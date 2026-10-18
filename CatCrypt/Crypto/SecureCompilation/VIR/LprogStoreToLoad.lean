@@ -49,8 +49,12 @@ operand of a two-address binop through the reserved scratches `R15`
 
 The second `mov R15, k.7` (rendered `movq <off>(%rsp), %r15`) reloads a slot the
 register already holds.  `elimReloads` is a forward scan carrying a per-register
-environment `held : reg ↦ slot` (the slot a physical register is currently known
-to hold); a reload `MOV R ← K` whose `held R = some K` is dropped.
+environment `held : reg ↦ (slot, mnemonic)` (the slot a physical register is
+currently known to hold, and the mnemonic of the move that loaded it); a reload
+`MOV R ← K` under mnemonic `m` whose `held R = some (K, m)` is dropped.  The
+mnemonic fixes the operand width (`MOV` is a 32-bit move that zero-extends,
+`MOV:64` and `MOVQ` are 64-bit moves), so a dropped reload has the width of the
+move that established the binding.
 
 ## What is proved
 
@@ -64,7 +68,7 @@ Structurally:
    width — is rewritten.
 2. `stepReload_drop_is_held_reload` — every dropped instruction is a pure
    reload `MOV R ← K` whose register `R` the held-environment records as already
-   holding `K`.
+   holding `K`, loaded by a move of the same mnemonic.
 
 Semantically, against `JasminLsem.lsemStraight` (the straight-line linear
 machine at uniform word width, whose `applyOpn` models the single-source
@@ -123,32 +127,47 @@ def asReload : LinstrR → Option (String × String)
   | .Lopn [.reg d] opn [.reg s] => if isMovMnem opn then some (d, s) else none
   | _ => none
 
+/-- The mnemonic of an `Lopn`; `none` for a non-`Lopn` instruction. -/
+def mnemOf : LinstrR → Option String
+  | .Lopn _ opn _ => some opn
+  | _ => none
+
+/-- The mnemonic a reload is recorded under: the mnemonic of the instruction, and the
+    empty string for an instruction that is no `Lopn`. -/
+def reloadMnem (i : LinstrR) : String := (mnemOf i).getD ""
+
 /-! ## 2. The held environment
 
-`Held` maps a physical register name to the slot/source name it currently holds.
-A plain association list; `set`/`killReg`/`killSlot` keep it sound under the
-forward scan. -/
+`Held` maps a physical register name to the slot/source name it currently holds,
+together with the mnemonic of the move that established the binding; the mnemonic
+carries the operand width (`MOV` is a 32-bit move, `MOV:64` and `MOVQ` are 64-bit
+moves).  A plain association list keyed by register (`HeldOf`);
+`set`/`killReg`/`killSlot` keep it sound under the forward scan. -/
 
-/-- The reload environment: register name ↦ the source name it currently holds. -/
-abbrev Held := List (String × String)
+/-- An association list keyed by register name. -/
+abbrev HeldOf (β : Type) := List (String × β)
 
-/-- Look up the slot a register currently holds. -/
-def Held.find (h : Held) (r : String) : Option String := h.lookup r
+/-- The reload environment: register name ↦ the source name it currently holds and the
+    mnemonic of the move that loaded it. -/
+abbrev Held := HeldOf (String × String)
 
-/-- Record that register `r` now holds source `k` (after a reload `MOV r ← k`):
-    drop any stale binding for `r`, then add `r ↦ k`. -/
-def Held.set (h : Held) (r k : String) : Held :=
+/-- Look up the value recorded for a register. -/
+def HeldOf.find {β : Type} (h : HeldOf β) (r : String) : Option β := h.lookup r
+
+/-- Record the value `k` for register `r`: drop any stale binding for `r`, then add
+    `r ↦ k`. -/
+def HeldOf.set {β : Type} (h : HeldOf β) (r : String) (k : β) : HeldOf β :=
   (h.filter (fun e => e.1 ≠ r)) ++ [(r, k)]
 
 /-- Drop every binding whose **register** is `r`: a write to `r` invalidates the
     binding recorded for it. -/
-def Held.killReg (h : Held) (r : String) : Held :=
+def HeldOf.killReg {β : Type} (h : HeldOf β) (r : String) : HeldOf β :=
   h.filter (fun e => e.1 ≠ r)
 
 /-- Drop every binding whose **held slot** is `k` (called when slot `k` is
     written: any register claiming to hold `k`'s value is now stale). -/
-def Held.killSlot (h : Held) (k : String) : Held :=
-  h.filter (fun e => e.2 ≠ k)
+def HeldOf.killSlot (h : HeldOf (String × String)) (k : String) : HeldOf (String × String) :=
+  h.filter (fun e => e.2.1 ≠ k)
 
 /-! ## 3. Destinations an instruction writes
 
@@ -167,15 +186,17 @@ def writtenNames : LinstrR → List String
 /-! ## 4. The forwarding scan
 
 `stepReload held i` decides whether `i` is a *redundant* reload (its register
-already holds its source), and returns the updated environment.
+already holds its source, loaded by a move of the same mnemonic), and returns the
+updated environment.
 
-* A reload `MOV R ← K` with `held R = some K` is **redundant**: drop it (return
-  `none`), environment unchanged (R still holds K).
-* A reload `MOV R ← K` with `held R ≠ some K` is **kept**: writing register `R`
-  drops `R`'s own binding (`killReg R`) and invalidates any register recorded as
-  holding `R`-as-a-source (`killSlot R`); then record `R ↦ K`.  `K`'s own value is
-  unchanged by the load, so `K`-as-a-source holders survive — only a later write
-  to `K` invalidates them (handled in the general arm below).
+* A reload `MOV R ← K` under mnemonic `m` with `held R = some (K, m)` is
+  **redundant**: drop it, environment unchanged (R still holds K, loaded by a move
+  of the same width).
+* Any other reload `MOV R ← K` under mnemonic `m` is **kept**: writing register
+  `R` drops `R`'s own binding (`killReg R`) and invalidates any register recorded
+  as holding `R`-as-a-source (`killSlot R`); then record `R ↦ (K, m)`.  `K`'s own
+  value is unchanged by the load, so `K`-as-a-source holders survive — only a
+  later write to `K` invalidates them (handled in the general arm below).
 * Any other instruction writes its destination names: kill every written
   register's binding and every register holding a written slot.
 
@@ -186,24 +207,14 @@ The decision (`keep?`) and the new environment are returned together. -/
 def stepReload (h : Held) (i : LinstrR) : Bool × Held :=
   match asReload i with
   | some (d, s) =>
-      match h.find d with
-      | some k =>
-          if k = s then
-            -- redundant: d already holds s, drop the reload, env unchanged
-            (false, h)
-          else
-            -- d held a different slot; now it holds s.  Writing register `d`
-            -- both changes `d`'s own binding (killReg d) and invalidates any
-            -- register recorded as holding `d`-as-a-source (killSlot d), then
-            -- records `d ↦ s`.
-            (true, ((h.killReg d).killSlot d).set d s)
-      | none =>
-          (true, ((h.killReg d).killSlot d).set d s)
+      if h.find d = some (s, reloadMnem i) then
+        (false, h)
+      else
+        (true, ((h.killReg d).killSlot d).set d (s, reloadMnem i))
   | none =>
-      -- not a reload: kill every written register and every slot-holder
       let ws := writtenNames i
-      let h1 := ws.foldl Held.killReg h
-      let h2 := ws.foldl Held.killSlot h1
+      let h1 := ws.foldl HeldOf.killReg h
+      let h2 := ws.foldl HeldOf.killSlot h1
       (true, h2)
 
 /-- Run the forward scan over a body, threading the held environment and dropping
@@ -265,34 +276,31 @@ theorem elimReloads_length_le (body : List Linstr) :
 
 A `Linstr` is dropped exactly when `stepReload` returns `keep = false`, which —
 by definition of `stepReload` — happens only for a reload `MOV R ← K` whose
-register the held environment already records as holding `K` (`held R = some K`).
-We expose that as a theorem: a drop is always of a `MOV R ← K` with `R` already
-holding `K`.  This is the structural witness that the drop is value-preserving:
-the reload copies into `R` exactly the value `R` already contains, a no-op on any
-deterministic machine. -/
+register the held environment already records as holding `K`, loaded by a move of
+the same mnemonic (`held R = some (K, m)`).  We expose that as a theorem.  This is
+the structural witness that the drop is value-preserving: the reload copies into
+`R` exactly the value `R` already contains, at the width of the move that loaded
+it, a no-op on any deterministic machine. -/
 
 /-- **Drop characterisation.**  `stepReload` drops an instruction (`keep = false`)
-    iff that instruction is a pure reload `MOV R ← K` whose register `R` the held
-    environment already records as holding `K`.  A dropped instruction is
-    therefore a register-to-itself no-op (it reloads a value `R` already has), so
-    removing it cannot change the machine state. -/
+    only if that instruction is a pure reload `MOV R ← K` whose register `R` the held
+    environment already records as holding `K`, loaded by a move of the same
+    mnemonic, hence of the same width.  A dropped instruction is therefore a
+    register-to-itself no-op (it reloads a value `R` already has), so removing it
+    cannot change the machine state. -/
 theorem stepReload_drop_is_held_reload (h : Held) (i : LinstrR)
     (hdrop : (stepReload h i).1 = false) :
-    ∃ d s, asReload i = some (d, s) ∧ h.find d = some s := by
+    ∃ d s, asReload i = some (d, s) ∧ h.find d = some (s, reloadMnem i) := by
   cases hr : asReload i with
   | none =>
     simp only [stepReload, hr] at hdrop; exact absurd hdrop (by decide)
   | some ds =>
     obtain ⟨d, s⟩ := ds
     refine ⟨d, s, rfl, ?_⟩
-    cases hf : h.find d with
-    | none =>
-      simp only [stepReload, hr, hf] at hdrop; exact absurd hdrop (by decide)
-    | some k =>
-      by_cases hks : k = s
-      · subst hks; rfl
-      · simp only [stepReload, hr, hf, hks, if_false] at hdrop
-        exact absurd hdrop (by decide)
+    by_cases hf : h.find d = some (s, reloadMnem i)
+    · exact hf
+    · simp only [stepReload, hr, hf, if_false] at hdrop
+      exact absurd hdrop (by decide)
 
 /-! ## 7. Applying the pass to an `Lprog`
 
@@ -377,11 +385,6 @@ theorem elimReloads_attr_sublist {α : Type} (attr : Linstr → α) (body : List
     ((elimReloads body).map attr).Sublist (body.map attr) :=
   (elimReloads_sublist body).map attr
 
-/-- The mnemonic of an `Lopn`; `none` for a non-`Lopn` instruction. -/
-def mnemOf : LinstrR → Option String
-  | .Lopn _ opn _ => some opn
-  | _ => none
-
 -- A duplicated 64-bit reload loses its second copy and the survivor keeps the
 -- `MOV:64` mnemonic, so the rendered operand width is unchanged.
 #guard ((elimReloads [⟨0, .Lopn [.reg "R15"] "MOV:64" [.reg "k.7"]⟩,
@@ -390,8 +393,8 @@ def mnemOf : LinstrR → Option String
 
 /-! ## 10. The held environment against a machine state
 
-`Held` is an association list; `Held.find` reads its first binding for a key, and
-every entry of a list found this way is a member of it (`mem_of_find`).  The
+`HeldOf` is an association list; `HeldOf.find` reads its first binding for a key,
+and every entry of a list found this way is a member of it (`mem_of_find`).  The
 `killReg` / `killSlot` / `set` operations are filters and an append, so
 membership in the updated environment implies membership in the original
 together with the inequality the filter enforces. -/
@@ -399,45 +402,46 @@ together with the inequality the filter enforces. -/
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 
 /-- A `find` hit is a binding of the association list. -/
-theorem mem_of_find {h : Held} {d k : String} (hf : h.find d = some k) : (d, k) ∈ h := by
+theorem mem_of_find {β : Type} {h : HeldOf β} {d : String} {k : β} (hf : h.find d = some k) :
+    (d, k) ∈ h := by
   induction h with
-  | nil => simp [Held.find] at hf
+  | nil => simp [HeldOf.find] at hf
   | cons e rest ih =>
     obtain ⟨d', k'⟩ := e
     by_cases hd : d = d'
     · subst hd
-      simp only [Held.find, List.lookup_cons, BEq.rfl] at hf
+      simp only [HeldOf.find, List.lookup_cons, BEq.rfl] at hf
       simp only [Option.some.injEq] at hf
       subst hf
       exact List.mem_cons_self
-    · simp only [Held.find, List.lookup_cons, beq_eq_false_iff_ne.2 hd] at hf
+    · simp only [HeldOf.find, List.lookup_cons, beq_eq_false_iff_ne.2 hd] at hf
       exact List.mem_cons_of_mem _ (ih hf)
 
 /-- A binding surviving `killReg r` was already present and does not bind `r`. -/
-theorem mem_killReg {h : Held} {p : String × String} {r : String}
+theorem mem_killReg {β : Type} {h : HeldOf β} {p : String × β} {r : String}
     (hp : p ∈ h.killReg r) : p ∈ h ∧ p.1 ≠ r := by
-  rw [Held.killReg, List.mem_filter] at hp
+  rw [HeldOf.killReg, List.mem_filter] at hp
   exact ⟨hp.1, by simpa using hp.2⟩
 
 /-- A binding surviving `killSlot k` was already present and does not hold `k`. -/
-theorem mem_killSlot {h : Held} {p : String × String} {k : String}
-    (hp : p ∈ h.killSlot k) : p ∈ h ∧ p.2 ≠ k := by
-  rw [Held.killSlot, List.mem_filter] at hp
+theorem mem_killSlot {h : Held} {p : String × String × String} {k : String}
+    (hp : p ∈ h.killSlot k) : p ∈ h ∧ p.2.1 ≠ k := by
+  rw [HeldOf.killSlot, List.mem_filter] at hp
   exact ⟨hp.1, by simpa using hp.2⟩
 
 /-- A binding of `set r k` is either an old binding of a register other than `r`,
     or the new binding `(r, k)`. -/
-theorem mem_set {h : Held} {p : String × String} {r k : String}
+theorem mem_set {β : Type} {h : HeldOf β} {p : String × β} {r : String} {k : β}
     (hp : p ∈ h.set r k) : (p ∈ h ∧ p.1 ≠ r) ∨ p = (r, k) := by
-  rw [Held.set, List.mem_append] at hp
+  rw [HeldOf.set, List.mem_append] at hp
   rcases hp with hf | hl
   · rw [List.mem_filter] at hf
     exact Or.inl ⟨hf.1, by simpa using hf.2⟩
   · exact Or.inr (by simpa using hl)
 
 /-- A binding surviving a fold of `killReg` binds none of the killed registers. -/
-theorem mem_foldl_killReg (ws : List String) (h : Held) (p : String × String)
-    (hp : p ∈ ws.foldl Held.killReg h) : p ∈ h ∧ p.1 ∉ ws := by
+theorem mem_foldl_killReg {β : Type} (ws : List String) (h : HeldOf β) (p : String × β)
+    (hp : p ∈ ws.foldl HeldOf.killReg h) : p ∈ h ∧ p.1 ∉ ws := by
   induction ws generalizing h with
   | nil => exact ⟨hp, by simp⟩
   | cons a rest ih =>
@@ -447,8 +451,8 @@ theorem mem_foldl_killReg (ws : List String) (h : Held) (p : String × String)
     exact ⟨hh, by simp only [List.mem_cons, not_or]; exact ⟨hne, hnot⟩⟩
 
 /-- A binding surviving a fold of `killSlot` holds none of the killed slots. -/
-theorem mem_foldl_killSlot (ws : List String) (h : Held) (p : String × String)
-    (hp : p ∈ ws.foldl Held.killSlot h) : p ∈ h ∧ p.2 ∉ ws := by
+theorem mem_foldl_killSlot (ws : List String) (h : Held) (p : String × String × String)
+    (hp : p ∈ ws.foldl HeldOf.killSlot h) : p ∈ h ∧ p.2.1 ∉ ws := by
   induction ws generalizing h with
   | nil => exact ⟨hp, by simp⟩
   | cons a rest ih =>
@@ -459,25 +463,22 @@ theorem mem_foldl_killSlot (ws : List String) (h : Held) (p : String × String)
 
 /-! ### The environment `stepReload` produces, per branch -/
 
-/-- On a kept reload the scan records the loaded slot, after killing the
-    destination register's own binding and every binding holding it. -/
+/-- On a kept reload the scan records the loaded slot and the mnemonic of the reload,
+    after killing the destination register's own binding and every binding holding
+    it. -/
 theorem stepReload_env_of_reload {h : Held} {i : LinstrR} {d k : String}
     (hr : asReload i = some (d, k)) (hkeep : (stepReload h i).1 = true) :
-    (stepReload h i).2 = ((h.killReg d).killSlot d).set d k := by
+    (stepReload h i).2 = ((h.killReg d).killSlot d).set d (k, reloadMnem i) := by
   simp only [stepReload, hr] at hkeep ⊢
-  cases hf : h.find d with
-  | none => rfl
-  | some k' =>
-    rw [hf] at hkeep
-    by_cases hk : k' = k
-    · subst hk; simp at hkeep
-    · simp [hk]
+  by_cases hf : h.find d = some (k, reloadMnem i)
+  · simp [hf] at hkeep
+  · simp [hf]
 
 /-- Outside the reload recognizer the scan kills every written register and every
     binding holding a written name. -/
 theorem stepReload_env_of_notReload {h : Held} {i : LinstrR} (hr : asReload i = none) :
     (stepReload h i).2 =
-      (writtenNames i).foldl Held.killSlot ((writtenNames i).foldl Held.killReg h) := by
+      (writtenNames i).foldl HeldOf.killSlot ((writtenNames i).foldl HeldOf.killReg h) := by
   simp [stepReload, hr]
 
 /-- A dropped instruction leaves the environment unchanged. -/
@@ -507,6 +508,13 @@ theorem asReload_shape {i : LinstrR} {d k : String} (h : asReload i = some (d, k
       exact ⟨opn, hm, rfl⟩
     · exact absurd h (by simp)
   · exact absurd h (by simp)
+
+/-- A recognized reload is determined by its destination, its source and the
+    mnemonic it is recorded under. -/
+theorem asReload_eq_reloadMnem {i : LinstrR} {d k : String} (h : asReload i = some (d, k)) :
+    i = .Lopn [.reg d] (reloadMnem i) [.reg k] := by
+  obtain ⟨opn, -, rfl⟩ := asReload_shape h
+  rfl
 
 /-- A move mnemonic copies its single source word under `applyOpn`. -/
 theorem applyOpn_isMovMnem {w : Nat} {opn : String} (hm : isMovMnem opn = true)
@@ -593,7 +601,7 @@ theorem lsemStraight_stateStore_congr {w : Nat} (l : List LinstrR) (s1 s2 : Lsta
 /-- The held environment agrees with a machine state: every recorded binding
     `R ↦ K` has `R` and `K` holding the same word. -/
 def HeldSound {w : Nat} (h : Held) (s : Lstate w) : Prop :=
-  ∀ p ∈ h, s.lvm p.1 = s.lvm p.2
+  ∀ p ∈ h, s.lvm p.1 = s.lvm p.2.1
 
 /-- The empty environment agrees with every state. -/
 theorem heldSound_nil {w : Nat} (s : Lstate w) : HeldSound ([] : Held) s := by
@@ -651,7 +659,7 @@ theorem elimAux_lsemStraight {w : Nat} : ∀ (h : Held) (body : List Linstr) (s 
       rw [ih h s hs]
       simp only [List.map_cons, lsemStraight, lsemStep_asReload hr s]
       refine lsemStraight_stateStore_congr _ s _ ?_
-      have hdk : s.lvm d = s.lvm k := hs (d, k) (mem_of_find hf)
+      have hdk : s.lvm d = s.lvm k := hs _ (mem_of_find hf)
       simp only [stateStore, Lstate.lvm_nextPc, Lstate.lvm_setReg, Prod.mk.injEq]
       refine ⟨?_, rfl⟩
       funext r
@@ -755,7 +763,7 @@ theorem elimAux_lsemLeak {w : Nat} : ∀ (h : Held) (body : List Linstr) (s : Ls
       rw [if_neg hk, stepReload_env_of_drop hdrop]
       obtain ⟨d, k, hr, hf⟩ := stepReload_drop_is_held_reload h i.li_i hdrop
       have hst : stateStore ((s.setReg d (s.lvm k)).nextPc) = stateStore s := by
-        have hdk : s.lvm d = s.lvm k := hs (d, k) (mem_of_find hf)
+        have hdk : s.lvm d = s.lvm k := hs _ (mem_of_find hf)
         simp only [stateStore, Lstate.lvm_nextPc, Lstate.lvm_setReg, Prod.mk.injEq]
         refine ⟨?_, rfl⟩
         funext r

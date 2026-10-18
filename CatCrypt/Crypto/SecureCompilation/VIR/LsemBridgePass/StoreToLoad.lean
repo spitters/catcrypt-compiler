@@ -100,7 +100,7 @@ theorem lsemStepFlag_drop {h : Held} {i : LinstrR} (tg : MemTag) {s : Lstate 64}
     (hs : HeldSound h s) (hdrop : (stepReload h i).1 = false) :
     ∃ b, lsemStepFlag (i, tg) s = some b ∧ SameF b s := by
   obtain ⟨d, k, hr, hf⟩ := stepReload_drop_is_held_reload h i hdrop
-  have hdk : s.lvm d = s.lvm k := hs (d, k) (mem_of_find hf)
+  have hdk : s.lvm d = s.lvm k := hs _ (mem_of_find hf)
   obtain ⟨opn, hm, rfl⟩ := asReload_shape hr
   refine ⟨(s.setReg d (s.lvm k)).nextPc,
     by rw [lsemStepFlag_one_src, lsemStep_asReload hr s], ?_, rfl, rfl, rfl⟩

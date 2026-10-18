@@ -704,7 +704,7 @@ theorem mem_writtenNames_of_dstNames {i : LinstrR} (h : dstsRegB i = true) {r : 
 
 /-- The environment of the scan agrees with the register file: a register recorded as
     holding a source holds the cell of that source. -/
-def HeldSoundM (h : Held) (s : LstateM) : Prop := ∀ p ∈ h, s.reg.lvm p.1 = s.reg.lvm p.2
+def HeldSoundM (h : Held) (s : LstateM) : Prop := ∀ p ∈ h, s.reg.lvm p.1 = s.reg.lvm p.2.1
 
 theorem lvm_setReg_nextPcM (s : LstateM) (d : String) {w : Nat} (v : BitVec w) (r : String) :
     ((s.setReg d v).nextPc).reg.lvm r = if r = d then ⟨w, v⟩ else s.reg.lvm r := by
@@ -747,15 +747,7 @@ theorem heldSoundM_step {h : Held} {i : LinstrR} (tg : MemTag) (hd : dstsRegB i 
       obtain ⟨opn, hm, rfl⟩ := asReload_shape hr
       rw [fstepF_reload hm, Option.some.injEq, Prod.mk.injEq] at hstep
       obtain ⟨rfl, -⟩ := hstep
-      have henv : (stepReload h (LinstrR.Lopn [.reg d] opn [.reg k])).2
-          = ((h.killReg d).killSlot d).set d k := by
-        cases hf : h.find d with
-        | none => simp [stepReload, hr, hf]
-        | some k' =>
-            by_cases hk : k' = k
-            · simp [stepReload, hr, hf, hk] at hkeep
-            · simp [stepReload, hr, hf, hk]
-      rw [henv]
+      rw [stepReload_env_of_reload hr hkeep]
       intro p hp
       rcases mem_set hp with ⟨hp1, hne⟩ | rfl
       · obtain ⟨hp2, hn2⟩ := mem_killSlot hp1
@@ -772,7 +764,7 @@ theorem fstepF_drop {h : Held} {i : LinstrR} (tg : MemTag) {s : LstateM} (zf : B
     (hs : HeldSoundM h s) (hdrop : (stepReload h i).1 = false) :
     ∃ b, fstepF (i, tg) s zf = some (b, zf) ∧ EqPc s b := by
   obtain ⟨d, k, hr, hf⟩ := stepReload_drop_is_held_reload h i hdrop
-  have hdk : s.reg.lvm d = s.reg.lvm k := hs (d, k) (mem_of_find hf)
+  have hdk : s.reg.lvm d = s.reg.lvm k := hs _ (mem_of_find hf)
   obtain ⟨opn, hm, rfl⟩ := asReload_shape hr
   refine ⟨_, fstepF_reload hm tg s zf, ?_⟩
   refine lstateM_ext (lstateN_ext ?_ rfl) rfl rfl rfl rfl

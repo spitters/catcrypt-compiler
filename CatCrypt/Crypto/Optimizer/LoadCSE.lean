@@ -121,23 +121,30 @@ def LoadEnv.killReg (h : LoadEnv) (r : String) : LoadEnv :=
 
 /-! ### Membership under the environment operations
 
-`LoadEnv` and `LprogStoreToLoad.Held` are the same carrier under opposite
-keyings, so `LoadEnv.find`/`LoadEnv.set` are `Held.find`/`Held.set` and
-`LoadEnv.killReg`/`LoadEnv.killSlot` are `Held.killSlot`/`Held.killReg`.  The
-`find`/`set` membership lemmas are taken verbatim from there; the two kill
-lemmas and their folds keep the name matching this module's keying. -/
+`LoadEnv` is an instance of the register-keyed association list
+`LprogStoreToLoad.HeldOf`, keyed here by slot, so `LoadEnv.find`/`LoadEnv.set` are
+`HeldOf.find`/`HeldOf.set` and `LoadEnv.killSlot` is `HeldOf.killReg`.  The
+`find`/`set` membership lemmas are taken verbatim from there; the kill lemmas and
+their folds keep the name matching this module's keying. -/
 
 theorem mem_killReg {h : LoadEnv} {p : String × String} {r : String}
-    (hp : p ∈ h.killReg r) : p ∈ h ∧ p.2 ≠ r :=
-  CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_killSlot hp
+    (hp : p ∈ h.killReg r) : p ∈ h ∧ p.2 ≠ r := by
+  rw [LoadEnv.killReg, List.mem_filter] at hp
+  exact ⟨hp.1, by simpa using hp.2⟩
 
 theorem mem_killSlot {h : LoadEnv} {p : String × String} {k : String}
     (hp : p ∈ h.killSlot k) : p ∈ h ∧ p.1 ≠ k :=
   CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_killReg hp
 
 theorem mem_foldl_killReg (ws : List String) (h : LoadEnv) (p : String × String)
-    (hp : p ∈ ws.foldl LoadEnv.killReg h) : p ∈ h ∧ p.2 ∉ ws :=
-  CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_foldl_killSlot ws h p hp
+    (hp : p ∈ ws.foldl LoadEnv.killReg h) : p ∈ h ∧ p.2 ∉ ws := by
+  induction ws generalizing h with
+  | nil => exact ⟨hp, by simp⟩
+  | cons a rest ih =>
+    rw [List.foldl_cons] at hp
+    obtain ⟨hmem, hnot⟩ := ih (h.killReg a) hp
+    obtain ⟨hh, hne⟩ := mem_killReg hmem
+    exact ⟨hh, by simp only [List.mem_cons, not_or]; exact ⟨hne, hnot⟩⟩
 
 theorem mem_foldl_killSlot (ws : List String) (h : LoadEnv) (p : String × String)
     (hp : p ∈ ws.foldl LoadEnv.killSlot h) : p ∈ h ∧ p.1 ∉ ws :=

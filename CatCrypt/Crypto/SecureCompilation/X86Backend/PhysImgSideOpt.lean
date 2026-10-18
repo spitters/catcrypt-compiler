@@ -16,7 +16,7 @@ The side condition `PhysImgOpt.optSideB` of a modeled run of the basic-block opt
 conjunction of the side conditions of `elimReloads` (`elimSideB`), of `reloadElimBody`
 (`reloadPairSideB`) and of `loadCSE` (`loadSideB`). This module proves the order conditions of
 `elimSideB` and the condition `reloadPairSideB` on every straight run of a sublist of the fused
-export body, so that `optSideB` on a run follows from `elimPairB` and `loadSideB` on it.
+export body, so that `optSideB` on a modeled run follows from `loadSideB` on it.
 
 A spill pair `MOV q ← r; MOV r ← q` into an array slot `q` needs a write of `q`, and the export
 writes an array slot only in the saves `MOVQ qsave.R, R` of the prologue (`StoreSelf`). No
@@ -40,8 +40,7 @@ hold on every run of every sublist of the fused body.
 * `fuse_mem`, `fuse_slotAfter`: every instruction of the fusion is an instruction of the body
   or writes no array slot, and the fusion keeps `slotAfterSlotReloadFreeB`.
 * `order_lfundefPhysAbiOfVirtCert`: the two order conditions on the fused export body.
-* `elimSideB_of_run`: `elimSideB` on a modeled run of a sublist of the fused body, from
-  `elimPairB` on the run.
+* `elimSideB_of_run`: `elimSideB` on every modeled run of a sublist of the fused body.
 * `physExpand_forall`: a property of every operation whose sources name no array slot and of
   the memref base reload holds of every instruction of an expansion.
 * `reloadPairSideB_of_pairs`, `reloadPairSideB_of_run`, `pairs_lfundefPhysAbiOfVirtCert`:
@@ -399,15 +398,13 @@ theorem sublist_of_mem_splitStraightRuns {b seg : Lcmd} (h : seg ∈ splitStraig
   rwa [splitStraightRuns_flatten] at this
 
 /-- **`elimSideB` on a run.** Let the fusion `Z` of a body satisfy the two order conditions
-    and `b1` be a sublist of `Z`. Then every modeled run of `b1` that satisfies `elimPairB`
-    satisfies `elimSideB`. -/
+    and `b1` be a sublist of `Z`. Then every modeled run of `b1` satisfies `elimSideB`. -/
 theorem elimSideB_of_run {Z b1 seg : Lcmd}
     (hZ : slotAfterSlotReloadFreeB slotArr false Z = true ∧ saveSrcB slotArr Z = true)
-    (hs : b1.Sublist Z) (hseg : seg ∈ splitStraightRuns b1) (hm : bodyAllModeled seg = true)
-    (hpair : elimPairB slotArr seg = true) :
+    (hs : b1.Sublist Z) (hseg : seg ∈ splitStraightRuns b1) (hm : bodyAllModeled seg = true) :
     elimSideB slotArr seg = true := by
   have hsub := (sublist_of_mem_splitStraightRuns hseg).trans hs
-  simp only [elimSideB, hm, hpair, Bool.true_and,
+  simp only [elimSideB, hm, Bool.true_and,
     slotAfterSlotReloadFreeB_sublist hsub (fun h => h) hZ.1, saveSrcB_sublist hsub hZ.2]
 
 /-- **`optSideB` from its three parts.** -/
@@ -932,14 +929,13 @@ theorem pairs_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
       · exact absurd h (ne_slotOfReg (by decide +kernel) _).symm
 
 /-- **`optSideB` on every run** of a sublist `b1` of a fusion `Z` with the two order
-    conditions and the spill-pair conditions, when every modeled run satisfies `elimPairB`
-    and `loadSideB` on the body the load CSE reads. -/
+    conditions and the spill-pair conditions, when every modeled run satisfies `loadSideB`
+    on the body the load CSE reads. -/
 theorem optSideB_runs {Z b1 : Lcmd}
     (hZ : slotAfterSlotReloadFreeB slotArr false Z = true ∧ saveSrcB slotArr Z = true)
     (hP : (∀ i ∈ Z, StoreSelf slotArr i) ∧ ∀ j ∈ Z, LoadOk slotArr j)
     (hs : b1.Sublist Z)
     (hrest : ∀ seg ∈ splitStraightRuns b1, bodyAllModeled seg = true →
-      elimPairB slotArr seg = true ∧
       loadSideB slotArr (LcmdCopyPropagate.copyPropagateBody (LprogScheduler.scheduleBody
         (LcmdReloadElim.reloadElimBody (elimReloads seg)))) = true) :
     (splitStraightRuns b1).all (optSideB slotArr) = true := by
@@ -947,9 +943,8 @@ theorem optSideB_runs {Z b1 : Lcmd}
   cases hm : bodyAllModeled seg with
   | false => simp [optSideB, hm]
   | true =>
-    obtain ⟨hp, h3⟩ := hrest seg hseg hm
-    exact optSideB_of_loadSide (elimSideB_of_run hZ hs hseg hm hp)
-      (reloadPairSideB_of_run hP.1 hP.2 hs hseg) h3
+    exact optSideB_of_loadSide (elimSideB_of_run hZ hs hseg hm)
+      (reloadPairSideB_of_run hP.1 hP.2 hs hseg) (hrest seg hseg hm)
 
 end Pairs
 

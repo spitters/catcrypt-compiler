@@ -203,19 +203,6 @@ theorem elimMarks_kept : ∀ (h : Held) (b : Lcmd),
     cases hk : (stepReload h i.li_i).1 <;>
       simp [elimMarks, hk, elimMarks_kept _ is]
 
-/-- A reload of the body that `slotMov?` does not read as a move, from a general-purpose name or
-    an array slot, has no destination and source of a move `slotMov?` of the body. A reload from
-    any other source is unconstrained: a move from such a source, a spill slot, gives the reload
-    scan the source itself, which is no array slot. The allocator places the 32-bit spill reload
-    `MOV R15, k.N` and the 64-bit spill reload `MOV:64 R15, k.N` of one slot in one run, and only
-    the second is a move of `slotMov?`. -/
-def elimPairB (slotArr : String → Option (String × Nat)) (b : Lcmd) : Bool :=
-  b.all fun j =>
-    match asReload j.li_i, slotMov? j.li_i with
-    | some p, none =>
-        !(gpNameB p.2 || (slotArr p.2).isSome) || b.all fun j' => slotMov? j'.li_i != some p
-    | _, _ => true
-
 /-- A reload whose source is an array slot. -/
 def slotSrcReloadB (slotArr : String → Option (String × Nat)) (j : Linstr) : Bool :=
   match asReload j.li_i with
@@ -241,13 +228,11 @@ def saveSrcB (slotArr : String → Option (String × Nat)) (b : Lcmd) : Bool :=
     | some (d, s) => (slotArr d).isNone || (slotArr s).isNone
     | none => true
 
-/-- **The side condition of `elimReloads`.** The body is modeled, a reload outside `slotMov?`
-    from a general-purpose name or an array slot shares no destination and source with a move
-    of `slotMov?`, no instruction writes an array slot after a reload from an array slot, and a
-    reload into an array slot reads no array slot. -/
+/-- **The side condition of `elimReloads`.** The body is modeled, no instruction writes an
+    array slot after a reload from an array slot, and a reload into an array slot reads no
+    array slot. -/
 def elimSideB (slotArr : String → Option (String × Nat)) (b : Lcmd) : Bool :=
-  bodyAllModeled b && elimPairB slotArr b && slotAfterSlotReloadFreeB slotArr false b &&
-    saveSrcB slotArr b
+  bodyAllModeled b && slotAfterSlotReloadFreeB slotArr false b && saveSrcB slotArr b
 
 theorem mem_of_lookup : ∀ (h : List (String × String)) (r k : String),
     h.lookup r = some k → (r, k) ∈ h
@@ -259,7 +244,7 @@ theorem mem_of_lookup : ∀ (h : List (String × String)) (r k : String),
         simpa [List.lookup, beq_eq_false_iff_ne.mpr hra] using hl
       exact List.mem_cons_of_mem _ (mem_of_lookup t r k this)
 
-theorem lookup_unique : ∀ (h : List (String × String)) (r K k : String),
+theorem lookup_unique {β : Type} : ∀ (h : List (String × β)) (r : String) (K k : β),
     (h.map Prod.fst).Nodup → (r, K) ∈ h → h.lookup r = some k → K = k
   | [], _, _, _, _, hm, _ => by simp at hm
   | (a, b) :: t, r, K, k, hn, hm, hl => by
@@ -277,19 +262,20 @@ theorem lookup_unique : ∀ (h : List (String × String)) (r K k : String),
       · cases he; exact absurd rfl hra
       · exact lookup_unique t r K k hn.2 he hl'
 
-theorem nodup_filter_fst {h : List (String × String)} (hn : (h.map Prod.fst).Nodup)
-    (P : String × String → Bool) : ((h.filter P).map Prod.fst).Nodup :=
+theorem nodup_filter_fst {β : Type} {h : List (String × β)} (hn : (h.map Prod.fst).Nodup)
+    (P : String × β → Bool) : ((h.filter P).map Prod.fst).Nodup :=
   hn.sublist ((List.filter_sublist).map _)
 
 /-- The invariant of the forward scan of `elimReloads` at position `N` of the whole body `W`,
-    after the prefix `P` of the segment `b`: the held registers are distinct, each binding is
-    recorded by a reload of `P`, and a binding that is a move of `b` resolves the register
-    whenever a move from its source would. -/
-def ElimInv (slotArr : String → Option (String × Nat)) (W b P : Lcmd) (N : Nat) (h : Held) :
+    after the prefix `P` of the segment: the held registers are distinct, each binding
+    `R ↦ (K, m)` is recorded by a reload of `P` under the mnemonic `m`, and a binding whose
+    recording move `R ← K` under `m` is a move of `slotMov?` resolves the register whenever a
+    move from its source would. -/
+def ElimInv (slotArr : String → Option (String × Nat)) (W P : Lcmd) (N : Nat) (h : Held) :
     Prop :=
-  (h.map Prod.fst).Nodup ∧ ∀ R K, (R, K) ∈ h →
-    (∃ j ∈ P, asReload j.li_i = some (R, K)) ∧
-      ((∃ j ∈ b, slotMov? j.li_i = some (R, K)) →
+  (h.map Prod.fst).Nodup ∧ ∀ R K m, (R, K, m) ∈ h →
+    (∃ j ∈ P, asReload j.li_i = some (R, K) ∧ reloadMnem j.li_i = m) ∧
+      (slotMov? (.Lopn [.reg R] m [.reg K]) = some (R, K) →
         ((movScan slotArr W N K).bind slotArr).isSome = true →
         ((reloadOf slotArr W N R).bind slotArr).isSome = true)
 
@@ -360,11 +346,12 @@ theorem elim_imp_surv (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o ss)
       rw [hKn] at hV
       simp at hV
 
-/-- **The deleted reload is transparent.** A reload `d ← s` whose binding resolves `d`
-    whenever a move from `s` would adds no resolving scan. -/
-theorem elim_transp {b : Lcmd} (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o ss)
-    {s : String} (hr : asReload i.li_i = some (d, s)) (hib : i ∈ b)
-    (himp : (∃ j ∈ b, slotMov? j.li_i = some (d, s)) →
+/-- **The deleted reload is transparent.** A reload `d ← s` that, when it is a move of
+    `slotMov?`, has a binding resolving `d` whenever a move from `s` would adds no resolving
+    scan. -/
+theorem elim_transp (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o ss)
+    {s : String} (hr : asReload i.li_i = some (d, s))
+    (himp : slotMov? i.li_i = some (d, s) →
       ((movScan slotArr W N s).bind slotArr).isSome = true →
       ((reloadOf slotArr W N d).bind slotArr).isSome = true) :
     ∀ y, (accArr slotArr W (N + 1) y).isSome = true →
@@ -381,7 +368,7 @@ theorem elim_transp {b : Lcmd} (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg 
         exact (Option.some.inj this).symm
       subst hp
       rw [reloadOf_succ_mov hW hm] at hy
-      exact himp ⟨i, hib, hm⟩ hy
+      exact himp hm hy
     | none =>
       rw [reloadOf_succ_noMov hW hj hm] at hy
       simp at hy
@@ -390,74 +377,48 @@ theorem elim_transp {b : Lcmd} (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg 
     · exact hy
     · simp at hy
 
-/-- A reload from a general-purpose name or an array slot that shares its destination and source
-    with a move of `slotMov?` of the body is that move. -/
-theorem slotMov_of_pair {b : Lcmd} (hpair : elimPairB slotArr b = true) (hib : i ∈ b)
-    {s : String} (hs : (gpNameB s || (slotArr s).isSome) = true)
-    (hr : asReload i.li_i = some (d, s)) (hex : ∃ j ∈ b, slotMov? j.li_i = some (d, s)) :
-    slotMov? i.li_i = some (d, s) := by
-  have := List.all_eq_true.mp hpair i hib
-  cases hm : slotMov? i.li_i with
-  | some p =>
-    have := asReload_of_slotMov hm
-    rw [hr] at this
-    rw [Option.some.inj this]
-  | none =>
-    rw [hr, hm] at this
-    simp only [hs, Bool.not_true, Bool.false_or] at this
-    obtain ⟨j, hj, hjm⟩ := hex
-    have := List.all_eq_true.mp this j hj
-    simp [hjm] at this
-
-/-- A move from `s` whose scan resolves to an array slot reads a general-purpose name or an
-    array slot. -/
-theorem movScan_src {W : Lcmd} {N : Nat} {s : String}
-    (h : ((movScan slotArr W N s).bind slotArr).isSome = true) :
-    (gpNameB s || (slotArr s).isSome) = true := by
-  unfold movScan at h
-  by_cases hg : gpNameB s = true
-  · simp [hg]
-  · rw [if_neg (by simp [hg])] at h
-    simpa [hg] using h
-
 /-- **One step of the scan of `elimReloads` keeps the invariant.** -/
-theorem elimInv_step {b P : Lcmd} {h : Held} (hW : W[N]? = some i)
-    (hj : i.li_i = .Lopn [.reg d] o ss) (hib : i ∈ b) (hpair : elimPairB slotArr b = true)
+theorem elimInv_step {P : Lcmd} {h : Held} (hW : W[N]? = some i)
+    (hj : i.li_i = .Lopn [.reg d] o ss)
     (hslot : (slotArr d).isSome = true → ∀ j ∈ P, slotSrcReloadB slotArr j = false)
-    (hinv : ElimInv slotArr W b P N h) :
-    ElimInv slotArr W b (P ++ [i]) (N + 1) (stepReload h i.li_i).2 := by
+    (hinv : ElimInv slotArr W P N h) :
+    ElimInv slotArr W (P ++ [i]) (N + 1) (stepReload h i.li_i).2 := by
   obtain ⟨hnd, hall⟩ := hinv
-  have horig : ∀ R K, (R, K) ∈ h → ∃ j ∈ P ++ [i], asReload j.li_i = some (R, K) := by
-    intro R K hm
-    obtain ⟨j, hjP, hjr⟩ := (hall R K hm).1
+  have horig : ∀ R K m, (R, K, m) ∈ h →
+      ∃ j ∈ P ++ [i], asReload j.li_i = some (R, K) ∧ reloadMnem j.li_i = m := by
+    intro R K m hm
+    obtain ⟨j, hjP, hjr⟩ := (hall R K m hm).1
     exact ⟨j, List.mem_append_left _ hjP, hjr⟩
-  have hslotd : ∀ R K, (R, K) ∈ h → (slotArr d).isSome = true → (slotArr K).isNone = true := by
-    intro R K hm hd
-    obtain ⟨j, hjP, hjr⟩ := (hall R K hm).1
+  have hslotd : ∀ R K m, (R, K, m) ∈ h → (slotArr d).isSome = true →
+      (slotArr K).isNone = true := by
+    intro R K m hm hd
+    obtain ⟨j, hjP, hjr, -⟩ := (hall R K m hm).1
     exact elim_slotd hjr (hslot hd j hjP)
-  have surv : ∀ R K, (R, K) ∈ h → R ≠ d → K ≠ d →
-      (∃ j ∈ P ++ [i], asReload j.li_i = some (R, K)) ∧
-      ((∃ j ∈ b, slotMov? j.li_i = some (R, K)) →
+  have surv : ∀ R K m, (R, K, m) ∈ h → R ≠ d → K ≠ d →
+      (∃ j ∈ P ++ [i], asReload j.li_i = some (R, K) ∧ reloadMnem j.li_i = m) ∧
+      (slotMov? (.Lopn [.reg R] m [.reg K]) = some (R, K) →
         ((movScan slotArr W (N + 1) K).bind slotArr).isSome = true →
         ((reloadOf slotArr W (N + 1) R).bind slotArr).isSome = true) := by
-    intro R K hm hR hK
-    exact ⟨horig R K hm, fun hex hV =>
-      elim_imp_surv hW hj hR hK (hslotd R K hm) ((hall R K hm).2 hex) hV⟩
+    intro R K m hm hR hK
+    exact ⟨horig R K m hm, fun hex hV =>
+      elim_imp_surv hW hj hR hK (hslotd R K m hm) ((hall R K m hm).2 hex) hV⟩
   have hnew : ∀ s, asReload i.li_i = some (d, s) →
-      (∃ j ∈ P ++ [i], asReload j.li_i = some (d, s)) ∧
-      ((∃ j ∈ b, slotMov? j.li_i = some (d, s)) →
+      (∃ j ∈ P ++ [i], asReload j.li_i = some (d, s) ∧
+          reloadMnem j.li_i = reloadMnem i.li_i) ∧
+      (slotMov? (.Lopn [.reg d] (reloadMnem i.li_i) [.reg s]) = some (d, s) →
         ((movScan slotArr W (N + 1) s).bind slotArr).isSome = true →
         ((reloadOf slotArr W (N + 1) d).bind slotArr).isSome = true) := by
     intro s hr
-    refine ⟨⟨i, by simp, hr⟩, fun hex hV => ?_⟩
-    have hm := slotMov_of_pair hpair hib (movScan_src hV) hr hex
+    refine ⟨⟨i, by simp, hr, rfl⟩, fun hm hV => ?_⟩
+    rw [← asReload_eq_reloadMnem hr] at hm
     rw [reloadOf_succ_mov hW hm]
     exact movScan_succ_mov hW hj hm hV
   have hset : ∀ s, asReload i.li_i = some (d, s) →
-      ElimInv slotArr W b (P ++ [i]) (N + 1) (((h.killReg d).killSlot d).set d s) := by
+      ElimInv slotArr W (P ++ [i]) (N + 1)
+        (((h.killReg d).killSlot d).set d (s, reloadMnem i.li_i)) := by
     intro s hr
-    refine ⟨?_, fun R K hm => ?_⟩
-    · simp only [Held.set, Held.killReg, Held.killSlot, List.map_append, List.map_cons,
+    refine ⟨?_, fun R K m hm => ?_⟩
+    · simp only [HeldOf.set, HeldOf.killReg, HeldOf.killSlot, List.map_append, List.map_cons,
         List.map_nil]
       refine List.nodup_append.mpr ⟨nodup_filter_fst (nodup_filter_fst (nodup_filter_fst hnd _)
         _) _, List.nodup_singleton _, ?_⟩
@@ -467,11 +428,13 @@ theorem elimInv_step {b P : Lcmd} {h : Held} (hW : W[N]? = some i)
       obtain ⟨e, he, rfl⟩ := List.mem_map.mp ha
       simp only [List.mem_filter, decide_eq_true_eq] at he
       exact he.2
-    · simp only [Held.set, Held.killReg, Held.killSlot, List.mem_append, List.mem_filter,
-        List.mem_singleton, Prod.mk.injEq, decide_eq_true_eq] at hm
-      rcases hm with ⟨⟨⟨hm, hR⟩, hK⟩, -⟩ | ⟨rfl, rfl⟩
-      · exact surv R K hm hR hK
-      · exact hnew K hr
+    · rcases mem_set hm with ⟨hm1, hR⟩ | heq
+      · obtain ⟨hm2, hK⟩ := mem_killSlot hm1
+        obtain ⟨hm3, -⟩ := mem_killReg hm2
+        exact surv R K m hm3 hR hK
+      · simp only [Prod.mk.injEq] at heq
+        obtain ⟨rfl, rfl, rfl⟩ := heq
+        exact hnew K hr
   cases har : asReload i.li_i with
   | none =>
     have hst : (stepReload h i.li_i).2 = (h.killReg d).killSlot d := by
@@ -479,67 +442,64 @@ theorem elimInv_step {b P : Lcmd} {h : Held} (hW : W[N]? = some i)
       rw [har]
       simp [hj, writtenNames_single]
     rw [hst]
-    refine ⟨nodup_filter_fst (nodup_filter_fst hnd _) _, fun R K hm => ?_⟩
-    simp only [Held.killReg, Held.killSlot, List.mem_filter, decide_eq_true_eq] at hm
-    exact surv R K hm.1.1 hm.1.2 hm.2
+    refine ⟨nodup_filter_fst (nodup_filter_fst hnd _) _, fun R K m hm => ?_⟩
+    obtain ⟨hm1, hK⟩ := mem_killSlot hm
+    obtain ⟨hm2, hR⟩ := mem_killReg hm1
+    exact surv R K m hm2 hR hK
   | some p =>
     obtain ⟨d', s⟩ := p
     have hd' : d' = d := by rw [hj] at har; exact asReload_single har
     subst hd'
-    cases hf : h.find d' with
-    | none =>
-      have hst : (stepReload h i.li_i).2 = ((h.killReg d').killSlot d').set d' s := by
+    by_cases hf : h.find d' = some (s, reloadMnem i.li_i)
+    · have hst : (stepReload h i.li_i).2 = h := by simp [stepReload, har, hf]
+      rw [hst]
+      have hmem : (d', s, reloadMnem i.li_i) ∈ h := mem_of_find hf
+      have hi := asReload_eq_reloadMnem har
+      refine ⟨hnd, fun R K m hm => ?_⟩
+      by_cases hR : R = d'
+      · subst hR
+        have hK : (K, m) = (s, reloadMnem i.li_i) := lookup_unique h R (K, m) _ hnd hm hf
+        simp only [Prod.mk.injEq] at hK
+        obtain ⟨rfl, rfl⟩ := hK
+        exact hnew K har
+      · by_cases hK : K = d'
+        · subst hK
+          refine ⟨horig R K m hm, fun hex hV => ?_⟩
+          have hdn : (slotArr K).isNone = true := by
+            by_cases hd : (slotArr K).isSome = true
+            · exact hslotd R K m hm hd
+            · simpa using hd
+          rw [reloadOf_succ_ne hW hj hR hdn]
+          refine (hall R K m hm).2 hex ?_
+          unfold movScan at hV ⊢
+          split_ifs at hV ⊢ with hc
+          · cases hm' : slotMov? i.li_i with
+            | some p =>
+              have hp : p = (K, s) := by
+                have := asReload_of_slotMov hm'
+                rw [har] at this
+                exact (Option.some.inj this).symm
+              subst hp
+              rw [reloadOf_succ_mov hW hm'] at hV
+              exact (hall K s _ hmem).2 (by rw [← hi]; exact hm') hV
+            | none =>
+              rw [reloadOf_succ_noMov hW hj hm'] at hV
+              simp at hV
+          · exact hV
+        · exact surv R K m hm hR hK
+    · have hst : (stepReload h i.li_i).2 =
+          ((h.killReg d').killSlot d').set d' (s, reloadMnem i.li_i) := by
         simp [stepReload, har, hf]
       rw [hst]; exact hset s har
-    | some k =>
-      by_cases hks : k = s
-      · subst hks
-        have hst : (stepReload h i.li_i).2 = h := by simp [stepReload, har, hf]
-        rw [hst]
-        have hmem : (d', k) ∈ h := mem_of_lookup h d' k hf
-        refine ⟨hnd, fun R K hm => ?_⟩
-        by_cases hR : R = d'
-        · subst hR
-          have hK : K = k := lookup_unique h R K k hnd hm hf
-          subst hK
-          exact hnew K har
-        · by_cases hK : K = d'
-          · subst hK
-            refine ⟨horig R K hm, fun hex hV => ?_⟩
-            have hdn : (slotArr K).isNone = true := by
-              by_cases hd : (slotArr K).isSome = true
-              · exact hslotd R K hm hd
-              · simpa using hd
-            rw [reloadOf_succ_ne hW hj hR hdn]
-            refine (hall R K hm).2 hex ?_
-            unfold movScan at hV ⊢
-            split_ifs at hV ⊢ with hc
-            · cases hm' : slotMov? i.li_i with
-              | some p =>
-                have hp : p = (K, k) := by
-                  have := asReload_of_slotMov hm'
-                  rw [har] at this
-                  exact (Option.some.inj this).symm
-                subst hp
-                rw [reloadOf_succ_mov hW hm'] at hV
-                exact (hall K k hmem).2 ⟨i, hib, hm'⟩ hV
-              | none =>
-                rw [reloadOf_succ_noMov hW hj hm'] at hV
-                simp at hV
-            · exact hV
-          · exact surv R K hm hR hK
-      · have hst : (stepReload h i.li_i).2 = ((h.killReg d').killSlot d').set d' s := by
-          simp [stepReload, har, hf, hks]
-        rw [hst]; exact hset s har
 
 end ElimStep
 
 /-- Every instruction that the scan of `elimReloads` deletes from the rest `rest` of the segment
     `b = P ++ rest` of `A ++ b ++ C` is transparent. -/
-theorem elim_marks_transp {A b C : Lcmd} (hpair : elimPairB slotArr b = true) :
+theorem elim_marks_transp {A b C : Lcmd} :
     ∀ (rest P : Lcmd) (h : Held), b = P ++ rest → (∀ j ∈ rest, instrModeled j = true) →
       slotAfterSlotReloadFreeB slotArr (P.any (slotSrcReloadB slotArr)) rest = true →
-      ElimInv slotArr (A ++ b ++ C) b P (A.length + P.length) h →
+      ElimInv slotArr (A ++ b ++ C) P (A.length + P.length) h →
       ∀ p j, (elimMarks h rest)[p]? = some (j, true) → ∀ y,
         (accArr slotArr (A ++ b ++ C) (A.length + P.length + p + 1) y).isSome = true →
         (accArr slotArr (A ++ b ++ C) (A.length + P.length + p) y).isSome = true
@@ -551,7 +511,6 @@ theorem elim_marks_transp {A b C : Lcmd} (hpair : elimPairB slotArr b = true) :
         show A.length + P.length - A.length = P.length by omega, List.append_assoc,
         List.getElem?_append_right le_rfl, Nat.sub_self]
       rfl
-    have hib : i ∈ b := by rw [hb]; simp
     simp only [slotAfterSlotReloadFreeB, Bool.and_eq_true] at hside
     have hslot : (slotArr d).isSome = true → ∀ j ∈ P, slotSrcReloadB slotArr j = false := by
       intro hd
@@ -570,11 +529,12 @@ theorem elim_marks_transp {A b C : Lcmd} (hpair : elimPairB slotArr b = true) :
       obtain ⟨d', s, hr, hf⟩ := stepReload_drop_is_held_reload h i.li_i hk
       have hd' : d' = d := by rw [hj] at hr; exact asReload_single hr
       subst hd'
-      exact elim_transp hW hj hr hib ((hinv.2 d' s (mem_of_lookup h d' s hf)).2) y hy
+      exact elim_transp hW hj hr (fun hm => (hinv.2 d' s _ (mem_of_find hf)).2
+        (by rw [← asReload_eq_reloadMnem hr]; exact hm)) y hy
     | succ p =>
       simp only [elimMarks, List.getElem?_cons_succ] at hp
-      have hinv' := elimInv_step hW hj hib hpair hslot hinv
-      have ih := elim_marks_transp hpair is (P ++ [i]) _ (by simp [hb])
+      have hinv' := elimInv_step hW hj hslot hinv
+      have ih := elim_marks_transp (A := A) (b := b) (C := C) is (P ++ [i]) _ (by simp [hb])
         (fun j hj => hmod j (by simp [hj]))
         (by rw [List.any_append]; simpa using hside.2)
         (by simpa [Nat.add_assoc] using hinv') p j hp y
@@ -590,14 +550,14 @@ theorem physImgB_elimReloads_ctx {A b C : Lcmd} (h : physImgB slotArr (A ++ b ++
     (hside : elimSideB slotArr b = true) :
     physImgB slotArr (A ++ elimReloads b ++ C) = true := by
   simp only [elimSideB, Bool.and_eq_true] at hside
-  obtain ⟨⟨⟨hmod, hpair⟩, hfree⟩, -⟩ := hside
+  obtain ⟨⟨hmod, hfree⟩, -⟩ := hside
   rw [elimReloads, ← elimMarks_kept [] b]
   refine physImgB_ctx_kept_of_transparent (by rw [elimMarks_fst]; exact h) ?_
   intro p j hp y hy
   rw [elimMarks_fst] at hy ⊢
-  have := elim_marks_transp (A := A) (C := C) hpair b [] [] rfl
+  have := elim_marks_transp (A := A) (C := C) b [] [] rfl
     (fun j hj => List.all_eq_true.mp hmod j hj) (by simpa using hfree)
-    ⟨List.nodup_nil, fun _ _ hm => by simp at hm⟩ p j hp y
+    ⟨List.nodup_nil, fun _ _ _ hm => by simp at hm⟩ p j hp y
   simpa using this hy
 
 /-- **`elimReloads` keeps the image class.** -/
