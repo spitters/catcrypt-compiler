@@ -66,7 +66,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline (bodyAllModel
   splitStraightRuns splitStraightRuns_flatten)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape (physExpand physRmap notLivePin)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgOpt

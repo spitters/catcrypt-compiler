@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAddLower
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-!
 # x86-64 rendering of the lowered Ed25519 extended-coordinate point addition
@@ -23,7 +23,7 @@ bindings and differ only in the returned variable, so the choice of `i` here doe
 not change the exported body.
 
 `pointAddLprog` exports it as the function `ed25519_point_add` with the ABI maps
-below, and `pointAddAsm` renders it with `FheMontMulEmit.fuseMulHiLprog` followed
+below, and `pointAddAsm` renders it with `FuseMulHi.fuseMulHiLprog` followed
 by `LprogOptPipeline.renderOwned`.
 
 ## Argument and output layout
@@ -126,7 +126,7 @@ def pointAddLprog : Lprog :=
     its default mode, in which `%rdx` carries no live value across a fused pair. -/
 def pointAddAsm (_ : Unit) : String :=
   CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwnedZeroized
-    (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog pointAddLprog)
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi.fuseMulHiLprog pointAddLprog)
 
 /-- Whether `s` contains the marker `UNHANDLED`. -/
 def hasUnhandled (s : String) : Bool :=

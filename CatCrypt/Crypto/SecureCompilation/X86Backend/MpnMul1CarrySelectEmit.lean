@@ -102,10 +102,10 @@ theorem mul1RtProgC_denote
 
     The `MULXHI` high-word binding the front emits for `SMulHiU` is coalesced
     with its paired low `MUL` into the printer's two-output `mulx` by
-    `FheMontMulEmit.fuseMulHiLprog` in its `saveRdx` looped-body mode. -/
+    `FuseMulHi.fuseMulHiLprog` in its `saveRdx` looped-body mode. -/
 def mul1RtLprogCOpt (fname : String) : Option Lprog :=
   mul1RtProgCOpt.map (fun c =>
-    FheMontMulEmit.fuseMulHiLprog
+    FuseMulHi.fuseMulHiLprog
       (ComL.toLprogPhysAbi c fname (argName 0) [argName 1]
         (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64])
       (saveRdx := true))

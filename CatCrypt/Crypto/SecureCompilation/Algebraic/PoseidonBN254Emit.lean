@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Algebraic.PoseidonBN254Lower
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-!
 # x86-64 rendering of the lowered BN254 Poseidon permutation
@@ -103,7 +103,7 @@ def permLprog : Lprog :=
     printer's two-output `MULX`. -/
 def permAsm (_ : Unit) : String :=
   CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwnedZeroized
-    (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog permLprog)
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi.fuseMulHiLprog permLprog)
 
 /-- Whether `s` contains the marker `UNHANDLED`. -/
 def hasUnhandled (s : String) : Bool :=

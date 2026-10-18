@@ -15,8 +15,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyEmit
 
@@ -76,7 +76,7 @@ blocks (each exposing `Xn_k`, `Xn2q_k`, `T_k` and NOT yet emitting its outputs),
 then `2K` output bindings `Xo_k = Xn_k + T_k`, `Yo_k = Xn2q_k − T_k` as the
 FINAL `2K` bindings (so `comToLfundefPhysAbi`'s "last `2K`" epilogue stores them
 in order). Each butterfly's discarded-low `Y·ω'` + `mulhi(Y,ω')` pair is fused by
-the unmodified `FheMontMulEmit.fuseMulHiLprog` into a two-output `mulx`; the
+the unmodified `FuseMulHi.fuseMulHiLprog` into a two-output `mulx`; the
 two sign-bit `shrImm`s per butterfly are legalised into `shrq $63` by the shared
 `FheNttButterflyEmit.legalizeShiftImmLprog`.
 
@@ -136,7 +136,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect (lowerThir lowerThir_denote thirDialect)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit (fuseMulHiLprog hasSub)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi (fuseMulHiLprog)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyEmit
   (fheQ fheTwoQ bflyRef kOmega kOmegaP legalizeShiftImmLprog)
 

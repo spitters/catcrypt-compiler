@@ -154,7 +154,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
 open CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms (gatherJBlock6)
 open CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
   (ComJasminCTByConstruction comJasminCT?_eq_true_iff)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge (comToLfundef_lcmdDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ComToLfundefDirect (comToLfundef_lcmdDirect)
 
 /-- A `MOV imm` at the `Lcmd` level (`Lopn [d] MOV:64 [#v]`). -/
 def movImm64L (d : String) (v : Nat) : Linstr :=
@@ -435,7 +435,7 @@ conditional-swap kernel is emitted under a secret-input policy and its addressin
 must be index-free. The check is discharged structurally rather than by
 evaluating the export: `maskSwapCom` binds only register arithmetic, so it is in
 the index-free fragment `ComJasminCTByConstruction`, and
-`FrontCTBridge.comToLfundef_lcmdDirect` with
+`ComToLfundefDirect.comToLfundef_lcmdDirect` with
 `AllocCTPreservation.toLprogPhysAbi_lcmdDirect` carry that through the virtual
 body and the deployed allocation to the exported program. -/
 

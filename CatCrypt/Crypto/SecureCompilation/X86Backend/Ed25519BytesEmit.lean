@@ -23,7 +23,7 @@ set_option autoImplicit false
 so the crate links the encoder's bytes with no assembler hop.
 
 The program encoded is the one `Ed25519PointAdd.pointAddAsm` prints: the
-exported `pointAddLprog` through `FheMontMulEmit.fuseMulHiLprog`,
+exported `pointAddLprog` through `FuseMulHi.fuseMulHiLprog`,
 `LprogOptPipeline.optimizeLprogBasicBlocks` and `StackZeroize.zeroizeLprog`,
 which are the three passes `LprogOptPipeline.renderOwnedZeroized` applies
 before the AT&T printer. The text file
@@ -49,7 +49,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 def pointAddShippedLprog : Lprog :=
   StackZeroize.zeroizeLprog
     (LprogOptPipeline.optimizeLprogBasicBlocks
-      (FheMontMulEmit.fuseMulHiLprog
+      (FuseMulHi.fuseMulHiLprog
         CatCrypt.Crypto.SecureCompilation.Algebraic.Ed25519PointAdd.pointAddLprog))
 
 /-- The gated object bytes of an `Lprog`: `none` when a body instruction is

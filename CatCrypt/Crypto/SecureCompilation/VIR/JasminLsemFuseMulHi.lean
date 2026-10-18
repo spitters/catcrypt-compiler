@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 public import CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaProcs
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 @[expose] public section
 
@@ -18,7 +18,7 @@ set_option autoImplicit false
 /-!
 # The `MULX` fusion on the flag machine
 
-The looped-body fusion `FheMontMulEmit.fuseMulHiBody (saveRdx := true)` keeps each low
+The looped-body fusion `FuseMulHi.fuseMulHiBody (saveRdx := true)` keeps each low
 `MUL d, [s1, s2]` and replaces a matching `MULXHI hd, [h1, s2]` by the save of `RDX` in
 `R15`, the pin `MOV:64 RDX, h1`, the two-output `MULX:64 d, hd, s2` and the restore of
 `RDX`. The `MULX` writes `d` again, with the low word of `h1 * s2`, and reads both sources
@@ -530,7 +530,7 @@ end Sim
 
 section Fuse
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames opNames)
 
 /-- A name the fusion leaves alone: not a reload scratch. -/
@@ -1011,7 +1011,7 @@ theorem site_sim {d hd h1 s2 opn : String} {cd : Option Nat}
   · rw [if_neg hrh, if_neg hrh]
     by_cases hrd : r = d
     · subst hrd
-      rw [if_pos rfl, hlo, X86Backend.FheMontMulEmit.mulx_lo_eq_mul]
+      rw [if_pos rfl, hlo, X86Backend.FuseMulHi.mulx_lo_eq_mul]
     · rw [if_neg hrd]
       exact hA.reg r hr
 
@@ -1118,7 +1118,7 @@ theorem mulLoB_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
   · rw [STerm.ev, ha, hb]
     simp [binW, extW, applyOpnN, hne, BitVec.mul_comm]
   · rw [STerm.ev, ha, hb]
-    simp [castW, X86Backend.FheMontMulEmit.mulx_lo_eq_mul]
+    simp [castW, X86Backend.FuseMulHi.mulx_lo_eq_mul]
 
 /-- The check of a fused site with low destination `d` on the symbolic state `ss` before
     it: a register-tagged `MULXHI hd, [h1, s2]` whose sources have width `64` and whose
@@ -1353,9 +1353,9 @@ theorem expInv_fuse {E : List String} {L : List (Option String)} {c : List Linst
                   simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at hsite
                   obtain ⟨⟨⟨⟨hhi, hdn, hdR⟩, hw1⟩, hw2⟩, hmul⟩ := hsite
                   have hmo := mulOK_spill (mulOK_of_wireOK hw)
-                    (by simp [X86Backend.FheMontMulEmit.isMulHiMnem, hhi] :
-                      (X86Backend.FheMontMulEmit.isLowMulMnem opn
-                        || X86Backend.FheMontMulEmit.isMulHiMnem opn) = true)
+                    (by simp [X86Backend.FuseMulHi.isMulHiMnem, hhi] :
+                      (X86Backend.FuseMulHi.isLowMulMnem opn
+                        || X86Backend.FuseMulHi.isMulHiMnem opn) = true)
                   have hr : ∀ q, s.reg.lvm q = (ss.regs q).ev V A C O := hH.1
                   obtain ⟨x, hx⟩ := width64 _ (w64_sound (A := A) (C := C) (O := O) hV hw1)
                   obtain ⟨y, hy⟩ := width64 _ (w64_sound (A := A) (C := C) (O := O) hV hw2)
@@ -1678,7 +1678,7 @@ theorem fuseLoAux_site : ∀ (pend : List (String × String)) (xs : List LinstrR
                 by_contra hn
                 obtain ⟨dst, opn', srcs, he, hm⟩ := LprogIsaProcs.shadowCall?_wire hn
                 cases he
-                simp [X86Backend.FheMontMulEmit.isMulHiMnem,
+                simp [X86Backend.FuseMulHi.isMulHiMnem,
                   hm.strip_ne "MULXHI" (by decide)] at hhi
               · simp at h
           · simp at h

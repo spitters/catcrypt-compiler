@@ -11,8 +11,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPh
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
@@ -1329,7 +1329,7 @@ theorem layer_denote_fold :
 
 /-! ## 7. Render the front-compiled fragments to owned `.s` -/
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
   (fuseMulHiLprog)
 
 /-- The fold chain rendered:

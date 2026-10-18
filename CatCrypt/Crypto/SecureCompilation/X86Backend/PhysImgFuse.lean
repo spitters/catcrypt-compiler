@@ -6,12 +6,12 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPass
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-!
 # The image class under the high-product fusion
 
-The fusion `FheMontMulEmit.fuseMulHiAux` reads a body from left to right and rewrites a
+The fusion `FuseMulHi.fuseMulHiAux` reads a body from left to right and rewrites a
 `MULXHI` that pairs with a pending low `MUL` into a sequence of moves around a two-output
 `MULX` (a fusion site); every other instruction passes unchanged. A site has no indexed
 access, and its destinations are the reload scratches `R15` and `R14`, `RDX`, the high
@@ -49,7 +49,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPass
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-! ## 1. Scratch environments -/
 

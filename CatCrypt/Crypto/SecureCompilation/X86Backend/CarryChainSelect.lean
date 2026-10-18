@@ -19,7 +19,7 @@ This module implements a *generic* instruction-selection pass that recognises a
 low-word multiply paired with the widening (high-word) form of the same product and rewrites the pair to a single
 two-output `MULX`. Today the fast ADX/BMI2 instructions (`MULX`/`ADCX`/`ADOX`)
 reach the emitted assembly only from hand-written `*Emit` kernels and the
-one-off `FheMontMulEmit.fuseMulHiLprog` post-pass, which runs on the
+one-off `FuseMulHi.fuseMulHiLprog` post-pass, which runs on the
 *string-keyed* `Lprog` layer (a syntactic `MUL`+`MULXHI` coalesce, value-checked
 externally by the orchestrator's GMP KAT). There is no generic selector that
 operates on the *typed* machine model where soundness is provable inside Lean.

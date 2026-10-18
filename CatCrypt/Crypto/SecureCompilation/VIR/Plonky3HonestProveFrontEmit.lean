@@ -672,7 +672,7 @@ theorem grind_trips :
 
 /-! ## 5. Render the front-compiled fold chain to owned `.s` -/
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
   (fuseMulHiLprog)
 
 /-- The fold chain rendered: `hp_fri_fold_chain(buf, lde, n16, n8, n4, n2)`.

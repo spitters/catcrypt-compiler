@@ -148,7 +148,7 @@ is, as always, the external byte-KAT.
 ## Ordering with the other post-passes
 
 Run this pass after any structural fuser (`AdxChainFuse.fuseAdxChain`,
-`FheMontMulEmit.fuseMulHiLprog`): those match exact operand patterns
+`FuseMulHi.fuseMulHiLprog`): those match exact operand patterns
 that a rewrite could break (their families are barriers here, so running
 after them is also *safe*, merely less effective if run before). The one pass
 that consumes this one's output is `LcmdLea.leaLprog`, which folds a

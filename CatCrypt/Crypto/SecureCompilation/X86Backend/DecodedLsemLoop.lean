@@ -40,7 +40,7 @@ flag, which holds exactly after the last trip.
   satisfy the exit relation.
 * `lsemFuelMemF_det`: two terminating flag-machine runs from one state agree.
 * `decSim_mulhi`, `decSim_mulhi_saved`, `decSim_mulhi_pinned`: the high half `MULXHI:64`
-  alone against the `mulx` of `FheMontMulEmit.fuseMulHiLprog`, which keeps the low
+  alone against the `mulx` of `FuseMulHi.fuseMulHiLprog`, which keeps the low
   `MUL:64` in place, so the two halves are simulated independently of what lies between
   them.
 * `decSim_binReg_mov`, `decSim_imul_mov`: a three-address operation against the copy and
@@ -504,7 +504,7 @@ theorem decNode_halts (fn : String) (seeds body : List LinstrRM) (top endL : LLa
 
 /-! ## 6. The high half of the widening multiply, alone
 
-`FheMontMulEmit.fuseMulHiLprog` keeps the low `MUL:64` in place and replaces the
+`FuseMulHi.fuseMulHiLprog` keeps the low `MUL:64` in place and replaces the
 `MULXHI:64` by a `mulx` whose low destination is a scratch register, so the two halves are
 simulated separately: the low half by its own instruction, the high half by the `mulx`,
 with any instructions in between. -/

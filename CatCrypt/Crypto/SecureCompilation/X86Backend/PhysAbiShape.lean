@@ -754,7 +754,7 @@ end SingleLoop
 
 section Fuser
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-- An instruction that is neither a low `MUL` nor a `MULXHI` of the
     three-register form `fuseMulHiAux` matches. -/
@@ -762,7 +762,7 @@ def NoMulSite (i : Linstr) : Prop :=
   ∀ d opn s1 s2, i.li_i = .Lopn [.reg d] opn [.reg s1, .reg s2] →
     isLowMulMnem opn = false ∧ isMulHiMnem opn = false
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit in
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi in
 /-- The Boolean test for `NoMulSite`. -/
 def noMulSiteB (i : Linstr) : Bool :=
   match i.li_i with

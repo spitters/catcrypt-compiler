@@ -1186,7 +1186,7 @@ theorem noScratchBaseB_lfundefPhysAbiOfVirtCert
       simp only [rm, remapOperand, isScratchOp, beq_eq_false_iff_ne]
       intro he
       exact PhysImgSideAlloc.physRegName_not_scratch _ (by
-        rw [he]; simp [FheMontMulEmit.fuseReloadScratches])
+        rw [he]; simp [FuseMulHi.fuseReloadScratches])
     | _ => simp [rm, remapOperand, isScratchOp]
   have hF : scratchPrevB false (((body1.flatMap (physExpand (PhysImgSideAlloc.certShiftImm
       shiftImm body1) (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter
@@ -1715,7 +1715,7 @@ theorem cmpScratchFreeB_of_cmpAccFree {body : Lcmd} (h : cmpAccFreeB false body 
 
 section Passes
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit (fuseMulHiAux fuseMulHiBody
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi (fuseMulHiAux fuseMulHiBody
   ScratchEnv isMulHiMnem)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline (optimizeBasicBlocks
   optRunBody splitStraightRuns splitStraightRuns_flatten bodyAllModeled instrModeled)

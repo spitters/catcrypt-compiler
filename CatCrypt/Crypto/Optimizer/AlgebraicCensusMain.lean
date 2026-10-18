@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.MontMulThirEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.NttBflyThirEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ChaChaQRThirEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul4FixedFrontEmit
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 public import CatCrypt.Crypto.SecureCompilation.Fe25519MulFront
 public import CatCrypt.Crypto.SecureCompilation.P256FieldMulMontFront
 public import CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront
@@ -289,7 +289,7 @@ def kernels : List Kernel :=
         (Mersenne31FrontEmit.toJasmin Mersenne31FrontEmit.reduceFrontCom)
         (ptr2Export "m31_reduce_owned"),
      ofLowered "probe_mul4" X86Backend.MpnMul4FixedFrontEmit.mul4LoweredOpt
-        (fun c => X86Backend.FheMontMulEmit.fuseMulHiLprog (ptr3Export "probe_mul4" c)
+        (fun c => X86Backend.FuseMulHi.fuseMulHiLprog (ptr3Export "probe_mul4" c)
           (saveRdx := false)) ].filterMap id)
 
 end Kernels

@@ -830,11 +830,13 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGateKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulOptimized
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ScalarmultCovered
+CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttBlockEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyProbe
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttLoopEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheShoupEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
+CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed
 CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt

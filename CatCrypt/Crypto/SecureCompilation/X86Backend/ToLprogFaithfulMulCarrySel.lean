@@ -88,7 +88,7 @@ The `%rdx` pin and the two-output form of `mulx` are below this layer. At the
 `physBody` / `lsem` layer `MULXHI` is a single-destination three-operand word op
 that writes only its renamed destination; the `%rdx`-homed multiplicand and the
 paired low word appear only after the `fuseMulHiLprog` post-pass, whose machine
-model is `JasminModel`'s `runBlock` (`FheMontMulEmit.mulx_computes`).
+model is `JasminModel`'s `runBlock` (`FuseMulHi.mulx_computes`).
 `JasminLsem` carries no two-output instruction, so the agreement of a fused
 `mulx` with the unfused low/high pair is not statable here. The carry-in and
 carry-out of `ADCX` / `ADCXHI` are explicit `reg 1` operands on the value path,

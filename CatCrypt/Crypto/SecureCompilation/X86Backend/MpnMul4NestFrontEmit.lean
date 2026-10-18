@@ -77,7 +77,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr TowerType Located)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit (seqAll ltuCmds sv)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (Com.toLprogPhysAbi Lprog)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit (fuseMulHiLprog)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi (fuseMulHiLprog)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline (renderOwned)
 
 /-! ## 1. The straight-line body -/

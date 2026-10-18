@@ -17,8 +17,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-!
 # Lazy (Harvey) FHE-NTT Shoup CT butterfly through the OWNED x86 backend (no jasminc)
@@ -29,7 +29,7 @@ conditional reductions — driven through the `compile-from-hax` front
 
 * the Stage-1 lazy Shoup product (`FheShoupEmit.fheShoupThir`): the
   discarded-low + `mulhi` fusion pair coalesced into one two-output `mulx` by the
-  unmodified `FheMontMulEmit.fuseMulHiLprog`, with its rdx-pin / `R8`
+  unmodified `FuseMulHi.fuseMulHiLprog`, with its rdx-pin / `R8`
   evacuation, plus the single-`SUB` lazy difference `Y·ω − q̂·q ∈ [0, 2q)` (no
   ADX carry chain); and
 * the feasibility-probe's branchless sign-mask conditional subtract
@@ -149,7 +149,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect (lowerThir lowerThir_denote thirDialect)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit (fuseMulHiLprog hasSub)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi (fuseMulHiLprog)
 
 /-! ## 1. The FHE-NTT prime constants -/
 

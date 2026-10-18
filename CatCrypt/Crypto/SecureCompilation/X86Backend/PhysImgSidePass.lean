@@ -71,7 +71,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit (slotArr_none_of_p
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFold (copyNoSlotB cellBaseFreeB
   gpNameB_prefix isPhysGP_eq_gpNameB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPrint (flagTiedB)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data tieBase)
 
 variable {slotArr : String → Option (String × Nat)}

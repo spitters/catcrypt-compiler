@@ -13,8 +13,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 
@@ -167,7 +167,7 @@ def curveWiden128Lprog : Lprog :=
     `dst_lo == dst_hi` redundant low to a scratch. -/
 def curveWiden128Asm : String :=
   CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline.renderOwned
-    (CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi.fuseMulHiLprog
       curveWiden128Lprog true)
 
 /-- The byte-correct widening-mul owned-emit driver. -/

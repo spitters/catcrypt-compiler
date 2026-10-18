@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToLfundefDirect
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Bignum4AddArrAbiDemo
 
 /-!
@@ -280,7 +280,7 @@ is the condition for emitting it.
 
 The check is discharged structurally rather than by evaluating the export:
 `bignum4AddCom` binds only `regArith` ops, so it is in the index-free fragment
-`ComJasminCTByConstruction`, and `FrontCTBridge.comToLfundef_lcmdDirect` with
+`ComJasminCTByConstruction`, and `ComToLfundefDirect.comToLfundef_lcmdDirect` with
 `AllocCTPreservation.toLprogPhysAbi_lcmdDirect` carry that through the virtual
 body and the deployed allocation to the exported program.
 
@@ -294,7 +294,7 @@ and not rendered. -/
 
 open CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
   (ComJasminCTByConstruction comJasminCT?_eq_true_iff)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge (comToLfundef_lcmdDirect)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ComToLfundefDirect (comToLfundef_lcmdDirect)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
   (toLprogPhysAbi_lcmdDirect)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Bignum4AddArrAbiDemo

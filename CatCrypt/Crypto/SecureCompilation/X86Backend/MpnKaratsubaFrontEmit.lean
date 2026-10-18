@@ -348,7 +348,7 @@ def karaOutStoreMap : OutStoreMap :=
     straight-line, so no `%rdx` save/restore is needed around a back-edge. -/
 def karaLprogOpt : Option Lprog :=
   karaComOpt.map fun c =>
-    CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit.fuseMulHiLprog
+    CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi.fuseMulHiLprog
       (Com.toLprogPhysAbi c "mpn_kara_front" (fun _ => none)
         karaImmSlots karaInLoadMap karaOutStoreMap)
 

@@ -48,7 +48,7 @@ instructions per limb → 1), closing the residual gap the selection pass left
 
 ## What the pass does (`fuseAdxChain : Lprog → Lprog`)
 
-Mirrors `FheMontMulEmit.fuseMulHiLprog`: it maps each `Lfundef` body. In a
+Mirrors `FuseMulHi.fuseMulHiLprog`: it maps each `Lfundef` body. In a
 body it recognises the adjacent triple
 
 * `p`  — an `ADCX` **data** op (`Lopn [d] ADCX [a, s, cin]`, three sources), which
@@ -282,7 +282,7 @@ def fuseAdxChainFundef (f : Lfundef) : Lfundef :=
   { f with lfd_body := fuseAdxChainBody f.lfd_body }
 
 /-- **The pass.** Apply the ADX carry-chain fusion to every function body of an
-    `Lprog`. Sibling of `FheMontMulEmit.fuseMulHiLprog`; plugs into the owned
+    `Lprog`. Sibling of `FuseMulHi.fuseMulHiLprog`; plugs into the owned
     pipeline at the same stage (after physical lowering, before the AT&T printer). -/
 def fuseAdxChain (p : Lprog) : Lprog :=
   { p with

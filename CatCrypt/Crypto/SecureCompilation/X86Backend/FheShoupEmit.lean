@@ -11,7 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.FheShoupMulLaw
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-!
 # Single-word 60-bit FHE **Shoup** modmul through the OWNED x86 backend (no jasminc)
@@ -54,7 +54,7 @@ instead of the REDC's `qinv` multiply + reduce).
 
 ## The standalone `mulhi` and how `fuseMulHiLprog` is reused (no scaffold edit)
 
-`fuseMulHiLprog` (from `FheMontMulEmit`) fuses a low `MUL` immediately
+`fuseMulHiLprog` (from `FuseMulHi`) fuses a low `MUL` immediately
 followed by a `MULXHI` that shares the low op's second source `s2` into the
 printer's two-output `mulx`. In the Montgomery REDC every `mulhi` was paired with
 a low `mul` over the same operands, so fusion fired. The Shoup `qhat = mulhi a b'`
@@ -68,7 +68,7 @@ this is exactly the `MUL`+`MULXHI` pair `fuseMulHiAux` keys on (shared second
 source `b'`), so the unmodified pass coalesces them into one `mulx`, and the low
 word lands in `loQ`'s slot where it is never read (discarded — the `t` binding
 reads `lo1 = a·b` and `lo2 = qhat·q`, not `loQ`). This keeps
-`FheMontMulEmit.fuseMulHiLprog` byte-for-byte untouched (the cleaner of the
+`FuseMulHi.fuseMulHiLprog` byte-for-byte untouched (the cleaner of the
 two options the task allows).
 
 ## What is verified vs trusted (scope)
@@ -103,7 +103,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.ThirDialect (lowerThir lowerThir_denote thirDialect)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (renderLprogAtt)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit (fuseMulHiLprog hasSub)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi (fuseMulHiLprog)
 
 /-! ## 1. The FHE-NTT prime constant (as `Nat`, matching `FheShoupMulLaw.fheQ`) -/
 
@@ -216,7 +216,7 @@ def fheShoupOutStoreMap : OutStoreMap := [("RDI", 0)]
 The single-output Shoup modmul is lowered through the thirDialect spine
 (`lowerThir fheShoupThir`), exported to a physical, two-address SysV `Lprog`
 (3-pointer-load `inp`, 1-store `out`), then the §"standalone mulhi" trick lets the
-**unmodified** `FheMontMulEmit.fuseMulHiLprog` coalesce the discarded low
+**unmodified** `FuseMulHi.fuseMulHiLprog` coalesce the discarded low
 `loQ = a·bprime` + `qhat = mulhi(a,bprime)` pair into the printer's two-output
 `mulx`, and the result is rendered to AT&T. No shift-immediate legalisation pass
 is needed (no `thShrImm`/`thRor`), and — crucially — there is no carry-chain to

@@ -534,7 +534,7 @@ section Export
 open CatCrypt.Crypto.SecureCompilation.VIR.AllocForm (lopnOperands)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape (physExpand physRmap notLivePin)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc
 

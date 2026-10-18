@@ -81,7 +81,7 @@ assigns `%rdx` to whatever name appears third; it does NOT evacuate src1 of the
 `MULX` into `%rdx`. So the *rendered* `mulx` line's implicit src1 register is not
 guaranteed to hold `Y`. The `runBlock` semantics uses `a.eval`/`b.eval` directly
 (ignoring the physical rdx pin), so the value KAT passes; but a faithful `.s`
-needs the rdx evacuation that the `Lprog` path's `FheMontMulEmit.fuseMulHiLprog`
+needs the rdx evacuation that the `Lprog` path's `FuseMulHi.fuseMulHiLprog`
 performs. This probe deliberately stays on the simpler scalar `JInstr` printer to
 isolate the *conditional-reduction* question; the Shoup high-word `mulx` should be
 routed through `fuseMulHiLprog` (as `FheShoupEmit` does) for a shippable

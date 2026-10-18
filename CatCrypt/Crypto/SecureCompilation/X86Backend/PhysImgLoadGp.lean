@@ -303,7 +303,7 @@ local macro "site_fin" : tactic => `(tactic|
       forall_const, implies_true, and_true, true_and] <;>
     (try and_intros) <;> site_one))
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit in
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi in
 /-- The paired site of the fusion of `MULXHI d, [s1, s2]` with a register high destination
     or outside the looped-body mode: the save and the pin of `RDX`, the reload of a spilled
     `s2`, the `MULX`, the store of a spilled high word and the restore of `RDX`. -/
@@ -365,7 +365,7 @@ theorem wideOk_pairSite (s : Bool) (ii : Nat) (d s1 s2 loDst : String)
       implies_true, and_true]
     all_goals site_one
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit in
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi in
 /-- **One step of the fusion keeps `WideOk`**: it writes the instruction itself, or a fusion
     site of a `MULXHI` whose sources have no prefix `mem.`, whose every instruction
     satisfies `WideOk`. -/
@@ -410,10 +410,10 @@ theorem fuseMulHiAux_cons_wide (s : Bool) (env : ScratchEnv) (pend : List (Strin
 /-- No `MULXHI` of the body has a source with the prefix `mem.`. -/
 def MulHiNoCell (b : Lcmd) : Prop :=
   ∀ i ∈ b, ∀ d opn s1 s2, i.li_i = .Lopn [.reg d] opn [.reg s1, .reg s2] →
-    FheMontMulEmit.isMulHiMnem opn = true →
+    FuseMulHi.isMulHiMnem opn = true →
       hasPrefix s1 "mem." = false ∧ hasPrefix s2 "mem." = false
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit in
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi in
 theorem wideOk_fuseMulHiAux (s : Bool) :
     ∀ (b : Lcmd) (env : ScratchEnv) (pend : List (String × String)), (∀ j ∈ b, WideOk j) →
       MulHiNoCell b → ∀ j ∈ fuseMulHiAux s env pend b, WideOk j
@@ -435,7 +435,7 @@ theorem wideOk_fuseMulHiAux (s : Bool) :
     prefix `mem.`: every move of a fusion site is between `RDX`, `R14`, `R15`, a source of
     the `MULXHI` and a spilled destination. -/
 theorem wideOk_fuseMulHiBody {b : Lcmd} (s : Bool) (h : ∀ j ∈ b, WideOk j)
-    (hm : MulHiNoCell b) : ∀ j ∈ FheMontMulEmit.fuseMulHiBody b s, WideOk j :=
+    (hm : MulHiNoCell b) : ∀ j ∈ FuseMulHi.fuseMulHiBody b s, WideOk j :=
   wideOk_fuseMulHiAux s b [] [] h hm
 
 /-! ## 5. The expansion -/
@@ -915,7 +915,7 @@ theorem wideOk_lfundefPhysAbiOfVirtCert
     (hmat : ∀ j, NameOk (physNameForBody body1 (physTableOut body1 []) (argName j))) :
     let b0 := (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs
       abiTyin x86Abi posBind).1.lfd_body
-    ∀ j ∈ FheMontMulEmit.fuseMulHiBody b0 true, WideOk j := by
+    ∀ j ∈ FuseMulHi.fuseMulHiBody b0 true, WideOk j := by
   intro b0
   have hrmE : physRmap body1 [] =
       fun o =>

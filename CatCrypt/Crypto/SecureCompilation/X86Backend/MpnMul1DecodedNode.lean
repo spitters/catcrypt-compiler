@@ -37,7 +37,7 @@ label `4 + 0x40000000`.
 
 `mul1PhysBody` is the body of the one function of
 `MpnMul1FrontEmit.mul1RtLprogOpt "mpn_mul_1_rt"`: the output of
-`ComL.toLprogPhysAbi` followed by `FheMontMulEmit.fuseMulHiLprog` in its
+`ComL.toLprogPhysAbi` followed by `FuseMulHi.fuseMulHiLprog` in its
 `saveRdx` mode, before `LprogOptPipeline.optimizeLprog`. `mul1PhysBody_eq` pins it
 to the literal `mul1PhysBodyLit`. The function bytes `encodeLfundefBytes` lays down
 for it decode to `nodeLayout mul1DecPre mul1DecLoop mul1DecPost`: the prologue

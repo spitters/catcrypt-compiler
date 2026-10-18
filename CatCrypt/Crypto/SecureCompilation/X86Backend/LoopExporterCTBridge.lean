@@ -5,13 +5,14 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge
+public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ComToLfundefDirect
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 
 /-!
 # Direct addressing in the bodies the loop exporters emit
 
-`FrontCTBridge.comToLfundef_lcmdDirect` covers the straight-line walk `comToBody`.
+`ComToLfundefDirect.comToLfundef_lcmdDirect` covers the straight-line walk `comToBody`.
 This module covers the loop exporters of `VIR.JasminLprogExport` — `forLoopLcmd`,
 `forLoopLcmdN`, `forLoopLcmdNCall`, `forLoopLcmdNRt`, `forLoopLcmdNRtNested`,
 `whileLcmdNz`, `blockLoopFrame`, `forLoopBlockLcmd` — together with
@@ -64,7 +65,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.JasminCTByConstruction
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ComToLfundefDirect
 open _root_.Hax (ImpExpr)
 open CatCrypt.Crypto.SecureCompilation.CompileFromHax
 open CatCrypt.Crypto.SecureCompilation.CompileFromHaxScope

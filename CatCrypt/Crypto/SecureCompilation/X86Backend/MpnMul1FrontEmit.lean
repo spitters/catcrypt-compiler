@@ -15,8 +15,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
-public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 
 /-!
 # `mpn_mul_1` as a front-generated runtime-trip loop
@@ -497,12 +497,12 @@ theorem mul1RtProg_denote
 
     The `MULXHI` high-word binding the front emits for `SMulHiU` is coalesced
     with its paired low `MUL` into the printer's two-output `mulx` by
-    `FheMontMulEmit.fuseMulHiLprog` in its `saveRdx` looped-body mode: the
+    `FuseMulHi.fuseMulHiLprog` in its `saveRdx` looped-body mode: the
     kernel's multiply sits inside a back-edge, so `%rdx` is saved and restored
     around the pinned multiplicand. -/
 def mul1RtLprogOpt (fname : String) : Option Lprog :=
   (mul1RtProgOpt ()).map (fun c =>
-    FheMontMulEmit.fuseMulHiLprog
+    FuseMulHi.fuseMulHiLprog
       (ComL.toLprogPhysAbi c fname (argName 0) [argName 1]
         (fun _ => none) (fun _ => none) ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64])
       (saveRdx := true))

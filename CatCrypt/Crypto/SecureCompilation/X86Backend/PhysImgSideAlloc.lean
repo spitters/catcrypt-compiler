@@ -61,7 +61,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPass
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
-open CatCrypt.Crypto.SecureCompilation.X86Backend.FheMontMulEmit
+open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
   (physExpand physRmap notLivePin physBodyWithStores_eq_physExpand
     physPositionEmit_eq_physExpand)
