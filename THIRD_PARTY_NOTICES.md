@@ -276,12 +276,10 @@ repository states it. Paths are relative to the root of this package.
   - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMldsaDecomposeFull.lean`
   - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMldsaHint.lean`
   - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMldsaMontgomery.lean`
-  - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMldsaPack.lean`
   - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMldsaPoly.lean`
   - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMldsaReduce32.lean`
   - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMlkemCompress.lean`
   - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMlkemRej.lean`
-  - `CatCrypt/Crypto/SecureCompilation/CompileFromHaxMlkemSerial.lean`
   - `CatCrypt/Crypto/SecureCompilation/VIR/MldsaNttMergedLevelEmit.lean`
   - `CatCrypt/Crypto/SecureCompilation/VIR/MlkemNttMergedLevelEmit.lean`
 

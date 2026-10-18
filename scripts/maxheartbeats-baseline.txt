@@ -24,7 +24,6 @@ CatCrypt/Crypto/SecureCompilation/CompileFromHaxAscon.lean
 CatCrypt/Crypto/SecureCompilation/CompileFromHaxAscon.lean
 CatCrypt/Crypto/SecureCompilation/CompileFromHaxAscon.lean
 CatCrypt/Crypto/SecureCompilation/CompileFromHaxCompressLoop.lean
-CatCrypt/Crypto/SecureCompilation/CompileFromHaxUovGf256.lean
 CatCrypt/Crypto/SecureCompilation/Dialects/ScalarSetSeqSequencer.lean
 CatCrypt/Crypto/SecureCompilation/EcEmitRealizesFromGroupLaw.lean
 CatCrypt/Crypto/SecureCompilation/GenericEcEmitValue.lean

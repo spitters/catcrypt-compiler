@@ -78,7 +78,7 @@ declares into `X86Backend.Jasmin`; `Model.lean`, `Lowering.lean` and
   over export signatures.
 - `Lprog` passes applied by an emitter: `LcmdReloadElim.lean` (`reloadElimLprog`,
   `renderLprogAttOpt`), `LcmdCopyPropagate.lean` (`copyPropagateLprog`),
-  `AdxChainFuse.lean` (`fuseAdxChain`), `FheMontMulEmit.lean` (`fuseMulHiLprog`),
+  `AdxChainFuse.lean` (`fuseAdxChain`), `FuseMulHi.lean` (`fuseMulHiLprog`),
   `LcmdLea.lean`, `LprogLICM.lean`, `LprogOptPipeline.lean`, `StackZeroize.lean`
   (`zeroizeLprog`).
 
@@ -130,7 +130,7 @@ declares into `X86Backend.Jasmin`; `Model.lean`, `Lowering.lean` and
   `Pasta*.lean`, `Bn254*.lean`, `Bls12381*.lean`.
 - Symmetric and hashing: `Chacha4Way*.lean`, `ChaChaQRThirEmit.lean`, `Sha2*.lean`,
   `Sha256*.lean`, `Sha512*.lean`, `Keccak*.lean`, `Blake2*.lean`, `Aes*.lean`,
-  `SimdBytesVsimd.lean`, `XtsTweakKernel.lean`, `Sm3PermThirEmit.lean`,
+  `SimdBytesVsimd.lean`, `XtsTweakKernel.lean`,
   `Poly1305Kernel.lean`, `WotsChainEmit.lean`, `TreehashChainEmit.lean`.
 - Lattice and FHE: `Fhe*.lean`, `Hawk*.lean`, `Avx2YmmNttUnifiedEmit.lean`,
   `InlinedNttKernel.lean`, `BarrettButterflyKernel.lean`, `ButterflyBlockCom*.lean`.

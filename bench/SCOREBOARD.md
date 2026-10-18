@@ -203,13 +203,12 @@ module holds the `emitMain` and its body comes from its imports. Per-primitive t
 | aes_xts_compare | AES-XTS tweak | `SC/X86Backend/XtsTweakKernel.lean` | driver |
 | chacha_compare | ChaCha20 block, five renders | `SC/VIR/Chacha20BlockEmit.lean` and siblings | builder `Com` |
 | keccak_compare | Keccak-f1600, resident and SIMD renders | `SC/VIR/KeccakResidentChiRowEmit.lean`, `SC/VIR/KeccakSimdSingleEmit.lean` | text |
-| lea_lsh_compare | LEA round, LSH-512 mix | `SC/X86Backend/LeaRoundThirEmit.lean`, `SC/X86Backend/LshMixThirEmit.lean` | front-generated |
+| lea_lsh_compare | LEA round | `SC/X86Backend/LeaRoundThirEmit.lean` | front-generated |
 | thir_front_sha256_* (six) | SHA-256 Σ, σ1, message schedule, round, T1, T2 | `SC/X86Backend/Sha256BigSigmaThirEmit.lean` and five siblings | front-generated |
 | thir_front_sha512_* (five) | SHA-512 Σ, σ, Ch and Maj, message schedule, T1 | `SC/X86Backend/Sha512BigSigmaThirEmit.lean` and four siblings | front-generated |
 | thir_front_sigma0 | SHA-256 σ0 | `SC/X86Backend/Sigma0FrontEmit.lean` | builder `Com` |
 | thir_front_blake2b_g_owned | BLAKE2b G function | `SC/X86Backend/Blake2bGThirEmit.lean` | front-generated |
 | thir_front_chacha_qr_owned | ChaCha quarter-round | `SC/X86Backend/ChaChaQRThirEmit.lean` | front-generated |
-| thir_front_sm3_perm_owned | SM3 permutation | `SC/X86Backend/Sm3PermThirEmit.lean` | front-generated |
 | thir_front_treehash_owned | treehash chain | `SC/X86Backend/TreehashChainEmit.lean` | front-generated |
 | wots_chain_owned | WOTS+ chain | `SC/X86Backend/WotsChainEmit.lean` | front-generated |
 | thir_front_montmul_owned | BabyBear Montgomery multiply | `SC/X86Backend/MontMulThirEmit.lean` | front-generated |
@@ -231,7 +230,7 @@ module holds the `emitMain` and its body comes from its imports. Per-primitive t
 | halo2_compare | Pallas and Vesta Montgomery multiply | `SC/X86Backend/PastaMontMulKernel.lean` | builder `Com` |
 | s2n_montmul_compare | 4×4 → 8 limb bignum multiply | `SC/X86Backend/GenericEmit.lean` | driver |
 | field_kernel_compare | ML-DSA NTT-8 | `SC/FieldNtt8EmitMldsa.lean` | front-generated |
-| fhe_ntt_compare | FHE NTT block | `SC/X86Backend/FheNttBlockEmit.lean` | front-generated |
+| fhe_ntt_compare | FHE NTT (whole transform) | `SC/X86Backend/FheNttLoopEmit.lean` | front-generated |
 | uov_compare | MAYO and UOV GF(256) MAC | `SC/VIR/MayoUovGf256Emit.lean` | builder `Com` |
 | mpn_adx_owned_compare | mpn add_n and sub_n, ADX, n = 4, 8, 16, 32 | `SC/X86Backend/MpnAdxLprog.lean` over `SC/X86Backend/MpnAddFrontEmit.lean` | front-generated |
 | mpn_cmp_front_compare | constant-time mpn compare | `SC/X86Backend/MpnCmpFrontEmit.lean` | front-generated |

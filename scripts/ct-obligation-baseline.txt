@@ -107,11 +107,7 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/Dot4FrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/EcFeMulReduceComplete.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519MulOptimized.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Fe25519MulProvenEmit.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/FheMontMulEmit.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/FheNttBlockEmit.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/FheNttButterflyEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/FheNttLoopEmit.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/FheShoupEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/GenericEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/HawkNttEmitMain.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Keccak4WayVpackZmmEmit.lean
@@ -119,7 +115,6 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/Keccak4WayWholePermVpackZmmEmit.lea
 CatCrypt/Crypto/SecureCompilation/X86Backend/Keccak4WayWholeRoundVpackZmmEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Keccak4WayWholeVpackZmmEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/LeaRoundThirEmit.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/LshMixThirEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MontMulThirEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAdd4FixedFrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/MpnAddFrontEmit.lean
@@ -166,7 +161,6 @@ CatCrypt/Crypto/SecureCompilation/X86Backend/Sha512X8ZmmWideEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Sigma0FrontEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/SimdBytesVsimd.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/Sm2MontMulProvenEmit.lean
-CatCrypt/Crypto/SecureCompilation/X86Backend/Sm3PermThirEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/TreehashChainEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/VpackAdd8VpackZmmEmit.lean
 CatCrypt/Crypto/SecureCompilation/X86Backend/WotsChainEmit.lean
