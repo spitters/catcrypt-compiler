@@ -11,54 +11,29 @@ public import CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToMLIR
 public import CatCrypt.Crypto.SecureCompilation.MLIRBackend.ComToVeir
 
 /-!
-# MLIR backend — denotation preservation
+# MLIR backend: emitted-text shape and AST-direct denotation
 
-The trust-boundary statement for the MLIR backend.
+This module proves two kinds of statement about the MLIR backend.
 
-## Scope
+## Main results
 
-This module names the trust gaps the MLIR backend introduces. The structure
-mirrors `MlirToolchainSemanticsAgrees` (in
-`VIR/ComToVeir_JasminDialect.lean`): the *external* trust statement
-(`MlirBackendSemanticsAgrees`) is a *named hypothesis* that we cannot
-prove inside Lean because it asserts agreement with an external
-toolchain (`mlir-opt → mlir-translate → llc`).
+* **Text shape.** For the text emitter `emitCmd` / `emitFunc`
+  (`ComToMLIR.lean`), each scalar and vector `Cassgn` arm and each
+  control-flow constructor (`Cif`, `Cfor`, `Cwhile`) emits the MLIR lines
+  the lowering table gives: one `arith.*` line per arithmetic assignment,
+  and the `scf.if` / `scf.for` / `scf.while` header, separator and trailer
+  lines around the recursively emitted bodies.
+* **AST-direct denotation.** The typed lowering of `ScalarDSL` programs to
+  `VIR.Com` over the MLIR arith and scf dialects (`ComToVeir.lean`)
+  preserves denotation: `denoteCmd_eq_compileProg_denote_full` for
+  straight-line scalar programs, and `controlFlow_denoteAgrees` for
+  `Cif`, `Cfor` and `Cwhile`, with no hypothesis.
 
-What is proved inside Lean are the *per-arm shape statements*: each
-scalar / vector PExpr / InstrR family produces exactly the MLIR lines the
-lowering table promises. They are `theorem`s proved from the
-auto-generated equation lemmas for the total `emitPExpr` / `emitInstrR` /
-`emitPapp2`.
-
-## Outside this module's scope
-
-* No model of MLIR's `arith.*` denotation in Lean: that would re-prove
-  what the upstream MLIR dialect docs already specify. We trust the
-  upstream spec via the named hypothesis.
-* No `mlir-opt → llc` correctness: black-box external toolchain (same
-  trust shape as `MlirToolchainSemanticsAgrees`).
-
-## Proof obligations
-
-| Constructor              | Obligation                          | Status         |
-|--------------------------|-------------------------------------|----------------|
-| `Cmd = []`               | emit body = []                      | **proved**     |
-| `Cassgn (Lvar _) _ _ (Pvar _)`     | emit = no-op + symtable update      | **proved** |
-| `Cassgn (Lvar _) _ _ (Pconst _)`   | emit = one `arith.constant` line    | **proved** |
-| `Cassgn (Lvar _) _ _ (Papp2 op _ _)` arith | emit = sub-emits + one `arith.*` line | **proved** |
-| `Cassgn (Lvar _) _ _ (Papp2 op _ _)` vector | emit = sub-emits + one vector `arith.*` line | **proved** |
-| Scalar/Vector denote     | under `MlirBackendSemanticsAgrees`  | **proved (conditional)** |
-| `Cif cond cthen celse`   | emit = `scf.if` header / branches / trailer | **proved** |
-| `Cfor v range body`      | emit = preamble + `scf.for` header / body / trailer | **proved** |
-| `Cwhile cb cond ca`      | emit = `scf.while` header / before / mid / after / trailer | **proved** |
-| Control-flow denote      | under `MlirBackendSemanticsAgrees`  | **proved (conditional)** |
-| `Cassgn _ _ _ _` semantic | semantic agreement with MLIR spec  | named hypothesis (external) |
-
-The only trust gap is the **external** `MlirBackendSemanticsAgrees`
-hypothesis (covering the `mlir-opt → mlir-translate → llc` toolchain,
-including `--convert-scf-to-cf` for the control-flow lowering). All eight
-per-arm shape statements are `theorem`s, and `ControlFlow_DenoteAgrees`
-is a concrete `def` with a `theorem`.
+The text emitter has no Lean semantics for its output, so no statement here
+relates the meaning of the emitted text to the source `Cmd`. The proposition
+`MlirBackendSemanticsAgrees` names the agreement of the external toolchain
+(`mlir-opt → mlir-translate → llc`) with the upstream MLIR dialect
+specifications.
 -/
 
 @[expose] public section
@@ -69,15 +44,9 @@ namespace CatCrypt.Crypto.SecureCompilation.MLIRBackend
 
 open CatCrypt.Crypto.Jasmin
 
-/-! ## §1. The named hypothesis
+/-! ## §1. The external toolchain proposition -/
 
-The trust statement that connects the *text* produced by `emitFunc` to
-the run-time behaviour of the asm produced by `mlir-opt → llc`. This is
-a `Prop`-level *named hypothesis*, not an axiom: callers that want a
-toolchain-validated end-to-end statement must discharge it (e.g. via
-KAT testing). -/
-
-/-- The named hypothesis that the MLIR toolchain — `mlir-opt
+/-- The proposition that the MLIR toolchain — `mlir-opt
     --convert-vector-to-llvm --convert-arith-to-llvm
     --convert-func-to-llvm` followed by `mlir-translate --mlir-to-llvmir`
     and `llc -O3 -mattr=<target>` — preserves the semantics of MLIR's
@@ -87,11 +56,8 @@ KAT testing). -/
     Concretely: for any well-typed module that the emitter produces, the
     object code resulting from the toolchain implements the same
     input/output function as the source MLIR module's denotation under
-    the upstream dialect spec.
-
-    This is the *external* trust statement. It is paired with the
-    closed shape lemmas (`emit_empty_body` below) and the named per-arm
-    obligations. -/
+    the upstream dialect spec. It is opaque: it states agreement with an
+    external toolchain, which has no model in Lean. -/
 opaque MlirBackendSemanticsAgrees : Prop
 
 /-! ## §2. Closed (Lean-side) shape statements
@@ -210,23 +176,6 @@ theorem vector_arith_shape_agrees : VectorArith_ShapeAgrees := by
   simp [emitPExpr, emitPapp2Combine, EmitState.fresh, EmitState.emit,
         hscalar, hvec, hwidths]
 
-/-- Semantic agreement for the scalar + vector subset: under
-    `MlirBackendSemanticsAgrees` (the external toolchain trust
-    statement) and conjoined with the four per-arm shape
-    statements above, the scalar + vector emitter's output denotes
-    the same input/output function as the source `Cmd`.
-
-    This is stated *conditionally* on the external hypothesis. The
-    proposition is `True` once the hypothesis is supplied because the
-    informational content lives in the four shape theorems above plus
-    the external hypothesis; there is no Lean-side MLIR text
-    interpreter. -/
-def ScalarVector_DenoteAgrees : Prop :=
-  MlirBackendSemanticsAgrees → True
-
-theorem scalar_vector_denote_agrees : ScalarVector_DenoteAgrees :=
-  fun _ => trivial
-
 /-! ### Control-flow shape lemmas (`scf` dialect)
 
 Three closed shape lemmas — one per control-flow constructor — stating
@@ -308,13 +257,10 @@ theorem cwhile_shape_agrees : Cwhile_ShapeAgrees := by
   intro cbefore cond cafter s
   simp [emitInstrR, scfWhileTrailer]
 
-/-! ### Control-flow denotation under the external hypothesis
+/-! ### Control-flow shape and AST-direct denotation
 
 `ControlFlow_DenoteAgrees` conjoins the three control-flow shape lemmas
-with AST-direct denotational equalities for `Cif`, `Cfor` and `Cwhile`.
-The text-emit side is covered by `MlirBackendSemanticsAgrees` (which
-covers the `mlir-opt --convert-scf-to-cf` lowering of the `scf` dialect);
-the AST-direct side needs no hypothesis. -/
+with AST-direct denotational equalities for `Cif`, `Cfor` and `Cwhile`. -/
 
 /-- **Control-flow denotation.** The three shape statements, plus
     AST-direct denotational equalities for the three control-flow
@@ -380,120 +326,35 @@ theorem controlFlow_denoteAgrees : ControlFlow_DenoteAgrees :=
    fun Γ w fuel initIdx hinit cond body V =>
      compileCwhile_denote Γ w fuel initIdx hinit cond body V⟩
 
-/-- The full denotation-preservation theorem at trust-boundary
-    granularity. The per-arm obligations are discharged inline (no
-    hypothesis required):
-
-    * Five scalar / vector statements (`rename_instr_shape_agrees`,
-      `pconst_shape_agrees`, `scalar_arith_shape_agrees`,
-      `vector_arith_shape_agrees`, `scalar_vector_denote_agrees`).
-    * Three control-flow shape statements (`cif_shape_agrees`,
-      `cfor_shape_agrees`, `cwhile_shape_agrees`) consolidated into
-      `controlFlow_denoteAgrees`.
-
-    The only hypothesis is the external
-    `MlirBackendSemanticsAgrees` covering the `mlir-opt → mlir-translate
-    → llc` toolchain.
-
-    The conclusion is `True` because there is no Lean-side MLIR-text
-    interpreter; the informational content lives in the eight per-arm
-    shape theorems plus the external hypothesis. -/
-theorem denoteCmd_eq_emitFunc_full
-    (h_backend : MlirBackendSemanticsAgrees) :
-    True := by
-  have _h_sv := scalar_vector_denote_agrees h_backend
-  have _h_cf := controlFlow_denoteAgrees
-  trivial
-
-/-! ## §4. Sanity test: the full theorem typechecks
-
-A no-op test that the trust-boundary API stays consistent — a
-regression gate against accidentally renaming the remaining
-obligations. Only the external hypothesis appears here. -/
-
-example (h1 : MlirBackendSemanticsAgrees) : True :=
-  denoteCmd_eq_emitFunc_full h1
-
-/-! ## §5. AST-direct denotation — no hypothesis
+/-! ## §4. AST-direct denotation
 
 The AST-direct path lowers a *typed* `ScalarDSL.Prog` to a
-`VIR.Com mlirArithDialect` whose denotation is a pure Lean function.
+`VIR.Com mlirArithDialect` whose denotation is a Lean function.
 The theorem
 `compileProg_denote : (compileProg p).denote (cryptoCtxtValuation Γ V) = p.eval V`
-(in `ComToVeir.lean`) is proved by structural induction — no external trust
-hypothesis enters, because the target's denotation IS Lean
-computation. We re-export this here as the AST-direct top-level
-denotation-preservation statement, parallel to the text-emit
-`denoteCmd_eq_emitFunc_full` but with **zero hypotheses** for the
-scalar subset.
-
-### Comparison to the text-emit path
-
-The text-emit `denoteCmd_eq_emitFunc_full` (above) is conditional on
-the external toolchain hypothesis `MlirBackendSemanticsAgrees`,
-because the path emits *text* and the semantics of that text is
-fixed by the external `mlir-opt → llc` chain. The AST-direct path
-emits a *typed Lean term* (`VIR.Com`) whose semantics is a pure
-recursive Lean function — there is no external interpreter, hence
-no toolchain hypothesis.
-
-### Scope of the AST-direct statement
+(in `ComToVeir.lean`) is proved by structural induction, with no
+hypothesis.
 
 This statement covers the *scalar straight-line* fragment that
-`ScalarDSL` encodes: the eight `MlirArithOp` arms
+`ScalarDSL` encodes: the nine `MlirArithOp` arms
 (`constant`/`addi`/`subi`/`muli`/`andi`/`ori`/`xori`/`shli`/`shrui`).
-Control flow (`Cif` / `Cfor` / `Cwhile`) is covered separately by the
-`ScfProg` equalities in `controlFlow_denoteAgrees`; vector ops are outside
-the AST-direct scope (`MlirArithDialect` has no vector denotation). -/
+Control flow (`Cif` / `Cfor` / `Cwhile`) is covered by the `ScfProg`
+equalities in `controlFlow_denoteAgrees`; `MlirArithDialect` has no vector
+denotation. -/
 
-/-- **Top-level denotation-preservation theorem** for the
-    AST-direct scalar path. Re-exports `compileProg_denote` from
-    `ComToVeir.lean` with **zero hypotheses** — no external toolchain
-    trust required. The statement: for every typed scalar DSL program
-    `p : ScalarDSL.Prog Γ w` and every DSL valuation `V`, the compiled
-    VIR program's denotation equals the DSL's direct evaluation.
-
-    Scope: scalar straight-line ANF (the 9 arith arms — see
-    `ComToVeir.lean §4` for the DSL grammar). Control flow and vector
-    arith are outside the scope of this statement. -/
+/-- **Denotation preservation for the AST-direct scalar path**, with no
+    hypothesis: for every typed scalar DSL program `p : ScalarDSL.Prog Γ w`
+    and every DSL valuation `V`, the compiled VIR program's denotation equals
+    the DSL's direct evaluation. It is `compileProg_denote` of
+    `ComToVeir.lean`, over straight-line scalar programs (the DSL grammar is
+    `ComToVeir.lean §4`). -/
 theorem denoteCmd_eq_compileProg_denote_full
     {Γ : List Nat} {w : Nat} (V : ScalarDSL.Valuation Γ)
     (p : ScalarDSL.Prog Γ w) :
     (compileProg p).denote (cryptoCtxtValuation Γ V) = p.eval V :=
   compileProg_denote V p
 
-/-! ## §6. `ScalarVector_DenoteAgrees` and the AST-direct path
-
-`ScalarVector_DenoteAgrees` (above) is stated as
-`MlirBackendSemanticsAgrees → True`. A Lean-side interpreter exists
-only for the AST-direct path's typed scalar surface (`ScalarDSL`), not
-the text-emit path's `Jasmin.Cmd` directly.
-
-A `Cmd → ScalarDSL.Prog → VIR.Com` roundtrip statement would require a
-`Cmd → ScalarDSL.Prog` translator (name resolution + width inference +
-bail-out on out-of-scope constructors), which is outside this module's
-scope. The AST-direct path above is the zero-hypothesis statement for
-the scalar subset, and the text-emit path's `ScalarVector_DenoteAgrees`
-is conditional.
-
-Summary:
-
-| Path          | Top-level theorem                              | Hypothesis                       |
-|---------------|------------------------------------------------|----------------------------------|
-| AST-direct    | `denoteCmd_eq_compileProg_denote_full`         | **none** (scalar subset)         |
-| Text-emit     | `denoteCmd_eq_emitFunc_full`                   | `MlirBackendSemanticsAgrees`     |
-
-The AST-direct path is the preferred lowering when its scope covers
-the source; the text-emit path is the fallback for `Jasmin.Cmd`
-control flow and for vector arith, which has no denoting vector
-dialect. -/
-
-example {Γ : List Nat} {w : Nat} (V : ScalarDSL.Valuation Γ)
-    (p : ScalarDSL.Prog Γ w) :
-    (compileProg p).denote (cryptoCtxtValuation Γ V) = p.eval V :=
-  denoteCmd_eq_compileProg_denote_full V p
-
-/-! ## §7. Control-flow AST-direct samples
+/-! ## §5. Control-flow AST-direct samples
 
 These examples exercise the `Cfor` and `Cwhile` constructors through
 the full AST-direct pipeline: source `ScfProg.eval` evaluation, then

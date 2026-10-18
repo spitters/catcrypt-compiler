@@ -17,13 +17,19 @@ RISC-V, `runBBlock` for ARM — over the shared scalar register route
 out of the model's execution of the compiled-and-lowered block on the encoded
 input state equals the source `Com.denote`.
 
+## Main results
+
+* `compile_correct_all_genuine` — the equation for every `GenuineModelChoice`.
+* `genuineModel_exec_riscv_nonid`, `genuineModel_exec_arm_nonid` — each model's
+  `exec` is its block fold.
+
 ## Scope
 
 * The choices are the ISAs with a block executor over the shared `comToRegProg`
   route: RISC-V (`runRBlock64`) and ARM (`runBBlock`). x86 has no base-ALU
   register-block executor over that route (`X86Backend.runXBlock` is the SIMD
   `XInst` executor); x86 whole-function execution is `runProg` on the lattice
-  route (`compile_correct_all`).
+  route (`RunOutputReadback.runOutputToWords_chain_eq`).
 * Fragment: base-ALU (ADD/SUB/AND/OR/XOR), the fragment the underlying theorems
   `compile_correct_riscv` / `compile_correct_arm` cover. Grounding depths:
   RISC-V value-level Sail `execute_RTYPE`; ARM decode-round-trip + differential
@@ -48,14 +54,13 @@ open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLsem
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.Compiler (MachineModel)
 open CatCrypt.Crypto.SecureCompilation.VIR.CompileCorrectBaseAlu
 
 /-! ## 1. The model choices with a block executor, and the selector
 
 The cross-arch choices that carry a block executor over the shared
 `comToRegProg` route. Every constructor here maps to a model whose `exec` is
-non-`id`; in `Compiler.ModelChoice` every constructor maps to `exec = id`. -/
+a block fold. -/
 
 /-- The ISAs with a base-ALU block executor over the shared scalar
     register route (`comToRegProg`): RISC-V and ARM. -/
@@ -66,9 +71,8 @@ inductive GenuineModelChoice where
   | arm : GenuineModelChoice
 
 /-- The `MachineModel` for a choice —`riscvBaseAluModel` /
-    `armBaseAluModel`, each with a **non-`id`** `exec` (`runRBlock64` /
-    `runBBlock`), unlike `Compiler.chosenModel` which is `latticeModel`
-    (`exec = id`) for every choice. -/
+    `armBaseAluModel`, each with a block-fold `exec` (`runRBlock64` /
+    `runBBlock`). -/
 def genuineModel : GenuineModelChoice → MachineModel
   | .riscv => riscvBaseAluModel
   | .arm => armBaseAluModel
@@ -106,12 +110,8 @@ def genuineReadReg :
     compiled-and-lowered block on the encoded input state —
     `genuineReadReg choice (M.decodeOut (M.exec (genuineCode com) (M.encodeIn (genuineEncode V))))` —
     equals the source `Com.denote com V`, where `M.exec` is the
-    `runRBlock64` (RISC-V) / `runBBlock` (ARM) block fold, **not** the
-    `latticeModel` identity.
-
-    In `compile_correct_all`, by contrast, `exec = id` for every arm and the
-    RISC-V/ARM arms reuse the x86 run-output. Proved by dispatching to the
-    per-arch theorems
+    `runRBlock64` (RISC-V) / `runBBlock` (ARM) block fold. Proved by
+    dispatching to the per-arch theorems
     `compile_correct_riscv` / `compile_correct_arm`. -/
 theorem compile_correct_all_genuine {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) (hΓ : AllReg64 Γ)
@@ -128,13 +128,11 @@ theorem compile_correct_all_genuine {Γ : Ctxt jasminDialect}
 
 /-! ## 3. The `exec` is non-`id` for every choice -/
 
-/-- The RISC-V arm's `exec` is the `runRBlock64` fold — NOT
-    `latticeModel`'s `fun _ s => s`. -/
+/-- The RISC-V arm's `exec` is the `runRBlock64` fold. -/
 theorem genuineModel_exec_riscv_nonid (code : List RInst64) (s : RState64) :
     (genuineModel .riscv).exec code s = runRBlock64 s code := rfl
 
-/-- The ARM arm's `exec` is the `runBBlock` fold — NOT
-    `latticeModel`'s `fun _ s => s`. -/
+/-- The ARM arm's `exec` is the `runBBlock` fold. -/
 theorem genuineModel_exec_arm_nonid (code : List BInst) (s : BState) :
     (genuineModel .arm).exec code s = runBBlock s code := rfl
 

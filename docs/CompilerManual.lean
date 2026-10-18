@@ -119,8 +119,9 @@ Jasmin: hand-written Jasmin leaves are imported through the same backend, and
 `JincParserDemo` parses one `.jinc` leaf into the intermediate representation and
 inspects it. A further path prints a
 Jasmin program as MLIR text for `mlir-opt`, `mlir-translate` and `llc`. That path has
-no end-to-end correctness theorem, and `MLIRBackend/Denote.lean` states the external
-toolchain's correctness as the opaque proposition `MlirBackendSemanticsAgrees`.
+no end-to-end correctness theorem; `MLIRBackend/Denote.lean` proves the shape of the
+emitted text and names the external toolchain's correctness as the opaque
+proposition `MlirBackendSemanticsAgrees`.
 
 # The optimizer
 
@@ -275,8 +276,7 @@ butterfly-stage sequence, as a value model, computes the full 256-point DFT at
 `mlkemNttKernelSpec_eq_polyEval`). That DFT is not FIPS 203's 7-layer transform
 modulo `X^256 + 1`, and no theorem relates the owned ML-KEM NTT kernel that
 passes the NIST KAT to that model. The lattice-route theorems
-(`latticeNttMul_compile_correct`, `compile_correct_all`,
-`robustCompilation_source_to_x86`) are stated over the lattice dialect, whose NTT and
+(`latticeNttMul_compile_correct`, `robustCompilation_source_to_x86`) are stated over the lattice dialect, whose NTT and
 inverse NTT denote the identity and whose base multiply is the coefficient-wise
 product.
 
@@ -311,25 +311,25 @@ in the package carries a security bound to emitted machine code.
 Four theorems are cited as headlines. `AxiomAudit.lean` prints the axioms each one
 rests on.
 
-_Lattice route over the model interface_: `Compiler.compile_correct_all`. The
-lattice source at parameters `q`, `n` is one fixed program in the lattice dialect.
-Decoding the model's run of the emitted code `m` equals the source's per-slot
+_RISC-V and AArch64 over the model interface_:
+`CompileCorrectAllGenuine.compile_correct_all_genuine`. For a `Com` in the base
+arithmetic-logic subset (`ComBaseAlu com`) over a context of 64-bit registers
+(`AllReg64 Γ`) and either target, reading the result register out of the model's
+execution of the compiled and lowered block on the encoded input equals the source
 denotation:
 ```
-(chosenModel choice q n).validated
-∧ M.decodeOut (M.exec m (M.encodeIn (fun j => runOutputToWords (runProg leafSem m (mapVal V)) j))) i
-    = latticeDenote q n V i
+genuineReadReg choice
+    ((genuineModel choice).decodeOut
+      ((genuineModel choice).exec (genuineCode com choice)
+        ((genuineModel choice).encodeIn (genuineEncode V choice))))
+    (comRetName com Γ.length)
+  = Com.denote com V
 ```
-The explicit hypotheses are `hVal`, the chosen model's validation proposition;
-`hLeaf : LeafAgrees leafSem`, leaf agreement; `hInj`, injectivity of the fresh-name
-supply; `hPinj`, injectivity of the whole-function lowering's parameter map; and
-`hCompile`, the witness that `compile q n (.lattice q n)` returned `m`. `compile`
-returns `none` on the front route, whose statement is `Compiler.compile_correct_front`.
-For every model choice, `exec`, `encodeIn` and `decodeOut` are identities, so the
-equation is a statement about the `Com` evaluator `runProg`, and `validated` is the
-encoder round trip that each model records. The theorems that run backend
-instructions are `CompileCorrectBaseAlu.compile_correct_riscv` and
-`compile_correct_arm` on the base arithmetic-logic subset, and `com_x86_e2e` at x86.
+The model's `exec` is the block fold `runRBlock64` for RISC-V and `runBBlock` for
+AArch64. The per-target theorems are `CompileCorrectBaseAlu.compile_correct_riscv`
+and `compile_correct_arm`. On the lattice route,
+`CompilerCorrectness.latticeNttMul_compile_correct` states with no hypothesis that
+the lowered Jasmin `Com` of the NTT multiply denotes the source program's value.
 
 _Rust front_: `CompilerCorrectnessExtracted.rustToJasminCom_endToEnd`. For a LowCT
 source in `IsCoveredCtl`, given a `RustExec` run, a related entry state, the success
@@ -389,7 +389,7 @@ machine-code theorems.
 The trusted base includes the following. The package declares axioms, both
 uninterpreted types and operations of the reflection and Vale leaf modules and
 propositions about concrete computations and external tools, among them
-`bn254_pairing_correct_rocq` and `RustcExec_correct`. The hax export, the assembly
+`bn254_pairing_correct_rocq`. The hax export, the assembly
 printers and the GNU assembler are trusted. A theorem depends on an axiom only if
 `#print axioms` lists it; the Scope section of `README.md` gives the command that
 lists the axioms.

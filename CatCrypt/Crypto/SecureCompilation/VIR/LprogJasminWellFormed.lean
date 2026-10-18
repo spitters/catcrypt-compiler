@@ -10,22 +10,15 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-!
-# Named hypothesis: the exported `Lprog` is jasmin-`assemble_prog` well-formed
+# Jasmin `assemble_prog` well-formedness of the exported `Lprog`
 
-This module names an interface contract of the export. The export lemmas in
-`JasminLprogExport` (`physNoCollisionChaCha`, `twoAddr_denote`,
-`Com.toLprogPhys_wf`, `lowerTwoAddr_shape_noSpill`, `comToBody_ends_Lret`) are
-axiom-clean and verify *internal* invariants; they do not state that the output
-meets the preconditions of jasmin's `assemble_prog`
-(`compiler/proofs/arch/asm_gen.v:623`), and an emitted blob can satisfy them and
-still be rejected there. Meeting those preconditions is a format/interface
-contract, not a semantic property.
-
-This is the same shape as `LlvmIRSemanticsAgrees` and
-`MlirToolchainSemanticsAgrees`: a named-hypothesis bridge that makes the
-implicit interface assumption explicit. This module **states** the
-predicate. Discharging `LprogExportJasminWellFormed` requires a port of jasmin's
-well-formedness check from Coq, which is outside this module.
+This module defines `Lprog.jasminWellFormed`, a sufficient condition over the
+Lean mirror for the preconditions of jasmin's `assemble_prog`
+(`compiler/proofs/arch/asm_gen.v:623`), its Boolean form, and the clauses
+proved of the physical exports `Com.toLprogPhys` and `Com.toLprogPhysAbi`: the
+canonical RIP and RSP idents, a non-empty function table, an empty
+callee-saved list, and the SysV callee-saved save and restore instructions of
+the ABI prologue and epilogue (`respectsCalleeSaved_toLprogPhysAbi`).
 
 ## What jasmin's `assemble_prog` actually checks
 
@@ -59,36 +52,22 @@ where the exact precondition would require the jasmin spec (e.g. the full
 x86 `i_args_kinds` table), we encode a weaker check that the producer is
 known to satisfy, and document the over-approximation.
 
-The fields where we cannot capture the jasmin precondition at this layer
-(no in-Lean model of the x86 `sopn` GADT) are left as `True` and marked with
-an explicit comment. The named hypothesis `LprogExportJasminWellFormed` is
-**unproven**: it is a trust-boundary assumption, dischargeable by porting
-jasmin's per-mnemonic check predicate to Lean.
+The fields where the jasmin precondition has no counterpart at this layer
+(no in-Lean model of the x86 `sopn` GADT) are `True`, each marked with a
+comment.
 
-## Per-clause discharge table
+## Main results
 
-`Lprog.jasminWellFormed` has four outer fields plus the per-function fields of
-`Lfundef.jasminWellFormed`. Per-clause discharge status against
-`Com.toLprogPhys` and `Com.toLprogPhysAbi` (the ABI variant):
+`toLprogPhys_rip_rsp_canonical`, `toLprogPhys_funcs_nonempty`, the
+`toLprogPhysAbi_*` clause lemmas, `buildPrologue_saves_calleeSaved`,
+`calleeSaveRestoreEpilogue_restores_calleeSaved` and
+`respectsCalleeSaved_toLprogPhysAbi`.
 
-| Clause                                  | toLprogPhys             | toLprogPhysAbi          |
-|-----------------------------------------|-------------------------|-------------------------|
-| `rip_valid`                             | CLOSED (rfl, RIP="RIP") | CLOSED (rfl, same)      |
-| `rsp_canonical`                         | CLOSED (rfl, RSP="RSP") | CLOSED (rfl, same)      |
-| `funcs_nonempty`                        | CLOSED (one func)       | CLOSED (one func)       |
-| `every_func_wf.body_ends_Lret`          | `comToBody_ends_Lret`   | NOT DISCHARGED        |
-| `every_func_wf.body_operands_valid`     | NOT DISCHARGED        | NOT DISCHARGED        |
-| `every_func_wf.align_is_wsize`          | CLOSED via default `1`  | CLOSED via default `1`  |
-| `every_func_wf.rsp_not_arg`             | NOT DISCHARGED        | NOT DISCHARGED        |
-| `every_func_wf.scratch_not_arg`         | NOT DISCHARGED        | NOT DISCHARGED        |
-| `every_func_wf.scratch_not_res`         | NOT DISCHARGED        | NOT DISCHARGED        |
-| `every_func_wf.align_args_wsize`        | CLOSED via default `[]` | CLOSED via default `[]` |
-| `lfd_callee_saved` empty (`is_typed_reg`) | CLOSED (rfl, `[]`)    | CLOSED (rfl, `[]`)      |
-| Per-mnemonic `assemble_sopn` (`True`)   | OVER-APPROXIMATED       | OVER-APPROXIMATED + MOVQ |
-| `check_call_conv` (`True`)              | OVER-APPROXIMATED       | OVER-APPROXIMATED       |
+## Clauses proved of the exports
 
-The ABI variant's prologue/epilogue `MOVQ` save/restore instructions are not in
-`jasminKnownMnemonics`; that clause is not discharged for the ABI variant.
+For both `Com.toLprogPhys` and `Com.toLprogPhysAbi`: `rip_valid` and
+`rsp_canonical` (the idents are `"RIP"` and `"RSP"`) and `funcs_nonempty` (one
+function); for `Com.toLprogPhysAbi` also the empty `lfd_callee_saved` list.
 -/
 
 @[expose] public section
@@ -324,85 +303,7 @@ example :
     smoke.jasminWellFormedB = true := by
   native_decide
 
-/-! ## 5. The named-hypothesis bridge
-
-`LprogExportJasminWellFormed` asserts that for every `Com jasminDialect` the
-**physical** export (`Com.toLprogPhys`) lands inside the jasmin
-`assemble_prog`-acceptance set. It has the same shape as
-`MlirToolchainSemanticsAgrees` and `LlvmIRSemanticsAgrees`: a stated
-trust-boundary hypothesis, *unproven* here.
-
-Discharging it requires:
-1. Porting jasmin's `assemble_prog` / `assemble_fd` / `assemble_i` checks to
-   Lean (or at minimum porting `check_lprog_well_formed`-style sufficient
-   condition).
-2. Proving each clause of `Lprog.jasminWellFormed` holds of the producer's
-   output — which itself requires several existing per-clause lemmas in
-   `JasminLprogExport` to be lifted into this predicate (`comToBody_ends_Lret`
-   discharges the `body_ends_Lret` field; the operand-class clause
-   needs new per-instruction lemmas).
-
-The hypothesis is stated for `Com.toLprogPhys` (the physical-register, two-
-address export — the one `assemble_prog` consumes), not `Com.toLprog` (the
-pre-RA SSA export). -/
-
-/-- **Trust-boundary named hypothesis** (stated, *unproven*).
-
-    For every `Com jasminDialect` and any function name / immediate-slot map
-    the producer is configured with, the resulting physical `Lprog` satisfies
-    jasmin's `assemble_prog` well-formedness preconditions.
-
-    It has the same shape as `MlirToolchainSemanticsAgrees` and
-    `LlvmIRSemanticsAgrees`. It is a **format/interface contract**, not
-    a semantic property: it states that what we emit *parses* in jasmin's
-    intended sense. Discharging it requires a port of jasmin's checks to
-    Lean; it is the trust boundary at the Lean-↔-jasmin handoff. -/
-def LprogExportJasminWellFormed : Prop :=
-  ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) (fname : String)
-    (shiftImm : ShiftImmOracle) (immSlotMap : ImmSlotMap),
-    Lprog.jasminWellFormed (Com.toLprogPhys com fname shiftImm immSlotMap)
-
-/-- Convenience specialization: the default-immediate-slot-map form. The
-    physical export with both oracles defaulted is what the bench harness
-    (`bench/mlkem_compare/`, `bench/curve25519_jasmin_rs/`) emits.
-
-    Like `LprogExportJasminWellFormed`, this is an unproven trust-boundary. -/
-def LprogExportJasminWellFormed_default : Prop :=
-  ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) (fname : String),
-    Lprog.jasminWellFormed (Com.toLprogPhys com fname)
-
-/-- The general hypothesis implies the default-oracle form. (Proved — wiring
-    only, no jasmin content.) -/
-theorem LprogExportJasminWellFormed_default_of_general
-    (h : LprogExportJasminWellFormed) : LprogExportJasminWellFormed_default := by
-  intro Γ t com fname
-  exact h com fname (fun _ => none) (fun _ => none)
-
-/-! ## 6. Cheap structural discharge (what we *can* prove today)
-
-`comToBody_ends_Lret` (in `JasminLprogExport`) discharges
-`Lfundef.jasminWellFormed.body_ends_Lret` for any virtual / physical body
-produced by `comToBody` / `physBody`. We expose the corresponding tiny lemma
-on the physical export's body shape; the remaining clauses of
-`Lfundef.jasminWellFormed` are undischarged per-clause obligations.
-
-Each unproven clause is stated as a separate goal, not an implicit
-assumption. -/
-
-/-- The body of `comToLfundefPhys` (the physical-register lfundef) ends in
-    `Lret`. Follows from `comToBody_ends_Lret` after `physBody` (a pointwise
-    rewrite) — proving this in full requires a `physBody_preserves_lret`
-    lemma, which is not proved here. Stated as a `Prop` so the obligation is
-    visible. -/
-def physBody_preserves_lret_todo : Prop :=
-  ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) (fname : String)
-    (shiftImm : ShiftImmOracle) (immSlotMap : ImmSlotMap),
-    ((Com.toLprogPhys com fname shiftImm immSlotMap).lp_funcs.head?.bind
-        (fun e => e.2.lfd_body.getLast?)).map Linstr.li_i
-      = some LinstrR.Lret
+/-! ## 5. Structural clauses of the physical exports -/
 
 /-- The RIP/RSP idents of the physical export are exactly the canonical
     strings the predicate accepts. Proved — this is just an unfold of
@@ -497,7 +398,7 @@ theorem toLprogPhysAbi_lfd_callee_saved_empty {Γ : Ctxt jasminDialect} {t : Jas
   rcases hMem with ⟨_, rfl⟩
   rfl
 
-/-! ## 7. Callee-saved-register preservation
+/-! ## 6. Callee-saved-register preservation
 
 The export places `R14` and `R15` in the SysV callee-saved set in the prologue
 (`buildPrologue` ~ line 1145 of `JasminLprogExport`) and epilogue
@@ -660,22 +561,12 @@ structure respectsCalleeSaved (fd : Lfundef) : Prop where
 
 /-! ### Constructive specialisation for `Com.toLprogPhysAbi`
 
-The top-level bundle wires sub-lemmas 1 and 2 (proved) into a structural
-statement about the ABI-wrapped export. The body-invariant field is
-inhabited by the named hypothesis. -/
+Sub-lemmas 1 and 2, applied to the ABI-wrapped export. -/
 
-/-- **Top-level theorem**: every function in the ABI-wrapped
-    physical export `Com.toLprogPhysAbi` respects all six SysV
-    callee-saved GPRs.
-
-    Sub-lemmas 1 and 2 are discharged directly. Sub-lemma 3 (the
-    body-doesn't-write-qsave invariant) is taken as a named hypothesis,
-    matching the other named obligations in this module
-    (`physBody_preserves_lret_todo`, etc.).
-
-    Sub-clauses 1 and 2 are proved; sub-clause 3 is a
-    named hypothesis with a producer-side reason
-    recorded in `physBodyNoQsaveCalleeSavedWrite`'s docstring. -/
+/-- Every function in the ABI-wrapped physical export `Com.toLprogPhysAbi` is
+    ABI-wrapped, its prologue contains the `MOVQ` save of each of the six SysV
+    callee-saved GPRs to its `qsave.<R>` slot (sub-lemma 1), and the epilogue
+    contains the matching restore (sub-lemma 2). -/
 theorem respectsCalleeSaved_toLprogPhysAbi
     {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (fname : String)
@@ -687,8 +578,7 @@ theorem respectsCalleeSaved_toLprogPhysAbi
     (abiTyin : List Nat := [64, 64]) :
     ∀ entry ∈ (Com.toLprogPhysAbi com fname shiftImm immSlotMap inLoadMap
         outStoreMap abiArgs abiTyin).lp_funcs,
-      -- The fundef is ABI-wrapped, every save and restore is present,
-      -- and the body-no-write invariant is the named hypothesis.
+      -- The fundef is ABI-wrapped and every save and restore is present.
       fundefIsAbiWrapped entry.2 ∧
       (∀ r ∈ sysVCalleeSavedGPRs,
         ⟨0, LinstrR.Lopn [.reg (qsaveName r)] "MOVQ" [.reg r]⟩

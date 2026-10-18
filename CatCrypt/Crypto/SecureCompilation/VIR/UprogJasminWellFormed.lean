@@ -9,23 +9,20 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
 
 /-!
-# Named hypothesis: the exported `Uprog` is jasmin-`compile_prog_to_asm` well-formed
+# Jasmin `compile_prog_to_asm` well-formedness of the exported `Uprog`
 
-Source-level counterpart of `LprogJasminWellFormed`. This module names
-the interface-contract gap between the Lean-side `JasminUprogExport` producer
-and jasmin's `compile_prog_to_asm`: every committed export lemma in
-`JasminUprogExport` holds axiom-clean (`Com.toUprog_wf`, `Com.toUprogText_magic`,
-`Uprog.toBinary_magic`), yet there is no Lean-side proof that the emitted
-blob meets `compile_prog_to_asm`'s preconditions. That is a format / interface
-contract, not a semantic property, and it must be named before it can be
-discharged.
+Source-level counterpart of `LprogJasminWellFormed`. This module defines
+`Uprog.jasminWellFormed`, a sufficient condition over the Lean mirror for the
+preconditions of jasmin's `compile_prog_to_asm`, its Boolean form, and the
+outer clauses proved of the export `Com.toUprog`: a one-function table with
+the function name, unique function names, an empty globals section, and the
+`Export` calling convention.
 
-The same shape as `LlvmIRSemanticsAgrees`,
-`MlirToolchainSemanticsAgrees`, and `LprogExportJasminWellFormed`: a
-named-hypothesis bridge that makes the implicit interface assumption explicit.
-This module **states** the predicate. Discharging
-`UprogExportJasminWellFormed` requires porting jasmin's well-formedness checks
-from Coq.
+## Main results
+
+`toUprog_funcs_singleton`, `toUprog_funcs_nonempty`,
+`toUprog_funcs_unique_names`, `toUprog_globs_empty` and
+`toUprog_func_cc_export`.
 
 ## What jasmin's `compile_prog_to_asm` actually checks
 
@@ -54,31 +51,9 @@ Lean mirror: where the exact precondition would require the jasmin spec
 (e.g. the full x86 `i_args_kinds` table), we encode a weaker check that the
 producer is known to satisfy, and document the over-approximation.
 
-The fields where we cannot capture the jasmin precondition at this layer
-(no in-Lean model of the x86 `sopn` GADT) are left as `True` and marked
-with an explicit comment. The named hypothesis
-`UprogExportJasminWellFormed` is **unproven**: it is a trust-boundary
-assumption; discharging it requires porting jasmin's per-mnemonic check
-predicate to Lean.
-
-## Per-clause status
-
-`Uprog.jasminWellFormed` carries three outer fields plus the per-function
-fields of `Ufundef.jasminWellFormed`. Per-clause discharge status against
-`Com.toUprog`:
-
-| Clause                                  | Status                      |
-|-----------------------------------------|-----------------------------|
-| `funcs_nonempty`                        | CLOSED (one func)           |
-| `globs_consistent`                      | CLOSED (empty in v1)        |
-| `every_func_wf.body_well_formed`        | OPEN (needs jasmin port)    |
-| `every_func_wf.tyin_matches_params`     | OPEN (needs jasmin port)    |
-| `every_func_wf.tyout_matches_res`       | OPEN (needs jasmin port)    |
-| `every_func_wf.params_unique`           | OPEN (needs jasmin port)    |
-| `every_func_wf.cc_recognised`           | CLOSED via default `Export` |
-| `every_func_wf.contract_absent`         | CLOSED via default `false`  |
-| Per-mnemonic `check_sopn` (`True`)      | OVER-APPROXIMATED           |
-| Per-call resolution (`True`)            | OVER-APPROXIMATED           |
+The fields where the jasmin precondition has no counterpart at this layer
+(no in-Lean model of the x86 `sopn` GADT) are `True`, each marked with a
+comment.
 -/
 
 @[expose] public section
@@ -278,56 +253,7 @@ example :
     smoke.jasminWellFormedB = true := by
   native_decide
 
-/-! ## 5. The named-hypothesis bridge
-
-`UprogExportJasminWellFormed` asserts that for every `Com jasminDialect` the
-uprog export (`Com.toUprog`) lands inside the jasmin
-`compile_prog_to_asm`-acceptance set. Same shape as
-`MlirToolchainSemanticsAgrees`, `LlvmIRSemanticsAgrees`, and
-`LprogExportJasminWellFormed`: a stated trust-boundary hypothesis, *unproven*.
-
-Discharging it requires:
-1. Porting jasmin's `check_uprog` / per-pass-precondition checks to Lean.
-2. Proving each clause of `Uprog.jasminWellFormed` holds of the producer's
-   output — which itself requires per-instruction lemmas in
-   `JasminUprogExport` to be lifted into this predicate.
-
-The hypothesis is stated for `Com.toUprog` (the source-AST export — what
-`compile_prog_to_asm` consumes). -/
-
-/-- **Trust-boundary named hypothesis** (stated, *unproven*).
-
-    For every `Com jasminDialect` and any function name / immediate-slot
-    map the producer is configured with, the resulting `Uprog` satisfies
-    jasmin's `compile_prog_to_asm` well-formedness preconditions.
-
-    Same shape as `MlirToolchainSemanticsAgrees`,
-    `LlvmIRSemanticsAgrees`, and `LprogExportJasminWellFormed`. It is a
-    **format / interface contract**, not a semantic property: it states
-    that what we emit *type-checks* in jasmin's intended sense. It is the
-    trust boundary at the Lean-↔-jasmin handoff; discharging it requires
-    porting jasmin's checks to Lean. -/
-def UprogExportJasminWellFormed : Prop :=
-  ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) (fname : String)
-    (immSlotMap : ImmSlotMap),
-    Uprog.jasminWellFormed (Com.toUprog com fname immSlotMap)
-
-/-- Convenience specialization: the default-immediate-slot-map form. -/
-def UprogExportJasminWellFormed_default : Prop :=
-  ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (com : Com jasminDialect Γ t) (fname : String),
-    Uprog.jasminWellFormed (Com.toUprog com fname)
-
-/-- The general hypothesis implies the default-oracle form. (Proved —
-    wiring only, no jasmin content.) -/
-theorem UprogExportJasminWellFormed_default_of_general
-    (h : UprogExportJasminWellFormed) :
-    UprogExportJasminWellFormed_default := by
-  intro Γ t com fname
-  exact h com fname (fun _ => none)
-
-/-! ## 6. Cheap structural discharge (what we *can* prove today)
+/-! ## 5. Structural clauses of the export
 
 The outer-`Uprog` sub-clauses of `Uprog.jasminWellFormed` reduce by `rfl`
 on the producer's output — `Com.toUprog` always emits a one-function table

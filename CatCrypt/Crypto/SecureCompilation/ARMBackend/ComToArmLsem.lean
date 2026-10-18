@@ -8,14 +8,12 @@ module
 public import CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
-public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
 # `Com → AArch64`: a block-execution `MachineModel` and value preservation
 
-This module is the AArch64 counterpart of `RISCVBackend/ComToRiscvLsem.lean`. In
-`VIR/Compiler.lean`, `latticeModel` and `armModel` have
-`exec := fun _ s => s`, which does not run the code. This module defines a
+This module is the AArch64 counterpart of `RISCVBackend/ComToRiscvLsem.lean`,
+which defines the structure `MachineModel`. This module defines a
 `MachineModel` whose `exec` is the `ArmModel.runBBlock` block fold and whose
 `validated` field is the value-preservation statement for the base-ALU (GP-ALU)
 fragment of `Com → AArch64`.
@@ -46,7 +44,7 @@ fragment of `Com → AArch64`.
   trusted step. `roundtrip_binst_orr` carries the side condition `Rn ≠ XZR`,
   which separates `ORR` from the `MOV` alias.
 
-## Contents
+## Main results
 
 1. **`comToArmLsem_correct`** (main theorem) — for `ComBaseAlu com`,
    `AllReg64 Γ` and a start state with `s.regs = envOf Γ.length V`, the AArch64
@@ -106,10 +104,9 @@ open CatCrypt.Crypto.SecureCompilation.ScalarLinFront
 open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 open CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
 open CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
-  (RegBaseAlu BaseAluOp ComBaseAlu comToRegProg_RegBaseAlu)
+  (RegBaseAlu BaseAluOp ComBaseAlu comToRegProg_RegBaseAlu MachineModel)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.Compiler (MachineModel)
 
 /-! ## 1. The GP-ALU fragment of the machine `BInst` set
 
@@ -271,8 +268,7 @@ theorem runBBlock_regToBOp_base_pure (p : RegProg)
     through the `loadImm` selection, which the base-ALU fragment does not use.
 
     This is the AArch64 counterpart of `comToRiscvLsem_correct`, with `runBBlock`
-    as the execution semantics in place of the identity `exec` of
-    `latticeModel`/`armModel`.
+    as the execution semantics.
 
     **Trust scope:** conjunct (2) states only membership in the GP-ALU subset. For
     that subset the package has the `SailArmDecoder` decode round-trip theorems and
@@ -325,9 +321,8 @@ theorem armBaseAluGrounded_proof : ArmBaseAluGrounded :=
 /-- **The AArch64 base-ALU `MachineModel`.** Its `exec` is the `runBBlock` block
     fold over `BState`, and its `validated` field is `ArmBaseAluGrounded`
     (proved by `armBaseAluGrounded_proof`). `Code` is the executed `BInst` list;
-    `State` and `Value` are `BState`; `encodeIn` and `decodeOut` are `id`. In
-    `VIR/Compiler.lean`, `latticeModel`/`armModel` have `exec := fun _ s => s`,
-    which does not run the code. The AArch64 counterpart of `riscvBaseAluModel`.
+    `State` and `Value` are `BState`; `encodeIn` and `decodeOut` are `id`. The
+    AArch64 counterpart of `riscvBaseAluModel`.
 
     **Scope:** `validated` states value preservation and GP-ALU coverage, not a
     Sail-execute refinement. RISC-V has such a refinement against an in-file
@@ -342,8 +337,7 @@ def armBaseAluModel : MachineModel where
   exec := fun code s => runBBlock s code
   validated := ArmBaseAluGrounded
 
-/-- The model's `exec` is `runBBlock`, which runs the code, in contrast to the
-    `latticeModel` identity `fun _ s => s`. -/
+/-- The model's `exec` is the `runBBlock` block fold. -/
 theorem armBaseAluModel_exec (code : List BInst) (s : BState) :
     armBaseAluModel.exec code s = runBBlock s code := rfl
 

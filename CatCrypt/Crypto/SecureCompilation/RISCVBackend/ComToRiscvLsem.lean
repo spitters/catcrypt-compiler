@@ -8,16 +8,15 @@ module
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv64Refinement
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
 public import CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
-public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
 # `Com → RISC-V`: a Sail-related block-execution model and value preservation
 
-For the RV64 base-ALU fragment, this module defines a `MachineModel` whose `exec`
-is the `runRBlock64` block fold and relates each base-ALU step of that fold to the
-`execute_RTYPE` clause of an in-file excerpt of the sail-riscv-lean generated
-model (`SailRiscv64Refinement`). In `VIR/Compiler.lean`, `latticeModel` has
-`exec := fun _ s => s`, which does not run the code.
+This module defines the target-model structure `MachineModel`, used by the
+RISC-V and AArch64 backends. For the RV64 base-ALU fragment, it defines a
+`MachineModel` whose `exec` is the `runRBlock64` block fold and relates each
+base-ALU step of that fold to the `execute_RTYPE` clause of an in-file excerpt
+of the sail-riscv-lean generated model (`SailRiscv64Refinement`).
 
 ## Dependencies
 
@@ -37,7 +36,11 @@ model (`SailRiscv64Refinement`). In `VIR/Compiler.lean`, `latticeModel` has
   `9eba3f07`); its fidelity to that output is not machine-checked in this
   repository.
 
-## Contents
+## Main results
+
+`MachineModel` is the target-model structure that `riscvBaseAluModel`,
+`ComToRiscvMulLsem.riscvArithMulModel` and `ComToArmLsem.armBaseAluModel`
+instantiate.
 
 `com_riscv_e2e` is stated over the hand-written `evalRInst64`. The Sail excerpt
 uses a different register representation (`RegFile = BitVec 5 → BitVec 64`, run
@@ -84,7 +87,31 @@ open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 open CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.Compiler (MachineModel)
+
+/-! ## 0. Target machine models -/
+
+/-- **A target machine model.** For one target ISA: the emitted code type
+    `Code`, the machine state `State`, the value carrier `Value` with the maps
+    `encodeIn` and `decodeOut`, the execution semantics `exec`, and the
+    proposition `validated` that the model's execution satisfies. -/
+structure MachineModel where
+  /-- The emitted artifact for this ISA (e.g. an ARM or RISC-V instruction
+      list). -/
+  Code : Type
+  /-- The machine state the execution semantics acts on. -/
+  State : Type
+  /-- The abstract value the source program computes (the carrier `decodeOut`
+      reads back to). -/
+  Value : Type
+  /-- Encode an input value into an initial machine state. -/
+  encodeIn : Value → State
+  /-- Decode an output value out of a final machine state. -/
+  decodeOut : State → Value
+  /-- The execution semantics: run the emitted code on a state. -/
+  exec : Code → State → State
+  /-- The proposition the model's execution is validated against, stated per
+      instance. -/
+  validated : Prop
 
 /-! ## 1. The base-ALU fragment (the Sail-refined R-type subset) -/
 
@@ -273,8 +300,7 @@ theorem riscvBlock_all_baseAlu {Γ : Ctxt jasminDialect}
     `riscvStep64_sail_grounded` relates its `evalRInst64` step to the
     `execute_RTYPE` excerpt under a register alignment, a destination other than
     `"zero"`/`"x0"`, and a nonzero Sail register number; those hypotheses are not
-    discharged here. The execution semantics is `runRBlock64`, in place of the
-    identity `exec` of `latticeModel`. -/
+    discharged here. The execution semantics is `runRBlock64`. -/
 theorem comToRiscvLsem_correct {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) (hΓ : AllReg64 Γ)
     (V : Ctxt.Valuation Γ) (s : RState64) (hs : s.regs = envOf Γ.length V) :
@@ -287,8 +313,7 @@ theorem comToRiscvLsem_correct {Γ : Ctxt jasminDialect}
 /-! ## 5. A RISC-V `MachineModel` with `exec := runRBlock64` -/
 
 /-- The statement of `riscvStep64_sail_grounded` as a proposition, used as the
-    `MachineModel.validated` field. Where `VIR/Compiler.lean`'s `RiscvValidated`
-    concerns the `decode∘encode` round-trip, this proposition is value-level: for
+    `MachineModel.validated` field. It is value-level: for
     every base-ALU `RInst64` with destination other than `"zero"`/`"x0"`, under
     `RegAlign s rf nm` and `(nm (rinstD i)).toNat ≠ 0`, the value `evalRInst64`
     writes to the destination equals the value the `execute_RTYPE` excerpt
@@ -308,9 +333,7 @@ theorem riscvBaseAluGrounded_proof : RiscvBaseAluGrounded :=
 /-- **The RISC-V base-ALU `MachineModel`.** Its `exec` is the `runRBlock64` block
     fold over `RState64`, and its `validated` field is `RiscvBaseAluGrounded`
     (proved by `riscvBaseAluGrounded_proof`). `Code` is the executed `RInst64`
-    list; `State` and `Value` are `RState64`; `encodeIn` and `decodeOut` are `id`.
-    In `VIR/Compiler.lean`, `latticeModel` has `exec := fun _ s => s`, which does
-    not run the code. -/
+    list; `State` and `Value` are `RState64`; `encodeIn` and `decodeOut` are `id`. -/
 def riscvBaseAluModel : MachineModel where
   Code := List RInst64
   State := RState64
@@ -320,8 +343,7 @@ def riscvBaseAluModel : MachineModel where
   exec := fun code s => runRBlock64 s code
   validated := RiscvBaseAluGrounded
 
-/-- The model's `exec` is `runRBlock64`, which runs the code, in contrast to the
-    `latticeModel` identity `fun _ s => s`. -/
+/-- The model's `exec` is the `runRBlock64` block fold. -/
 theorem riscvBaseAluModel_exec (code : List RInst64) (s : RState64) :
     riscvBaseAluModel.exec code s = runRBlock64 s code := rfl
 

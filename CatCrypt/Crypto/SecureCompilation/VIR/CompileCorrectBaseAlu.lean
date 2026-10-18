@@ -7,22 +7,20 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
 public import CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLsem
-public import CatCrypt.Crypto.SecureCompilation.VIR.Compiler
 
 /-!
-# `compile_correct_baseAlu`: compiler correctness over a non-identity `exec`
-
-`VIR/Compiler.lean`'s `compile_correct_all` is parametric over a `MachineModel`
-`choice`, but every `choice` instantiates `latticeModel`, whose
-`exec := fun _ s => s` is the identity. The RISC-V and ARM arms of
-`compile_correct_all` differ only in the `validated` field (the `decode∘encode`
-round-trip statements), not in `exec`, so for RISC-V and ARM its CompCert-shape
-equation `decodeOut (exec m (encodeIn …)) = denote` does not run any code.
+# `compile_correct_baseAlu`: compiler correctness over a block-execution `exec`
 
 This module states the CompCert-shape equation
 `decode (model.exec code (encode V)) = source value` for models whose `exec` is a
-block-execution semantics: `runRBlock64` for RISC-V and `runBBlock` for ARM. It
-leaves `compile_correct_all` and `latticeModel` unchanged.
+block-execution semantics: `runRBlock64` for RISC-V and `runBBlock` for ARM.
+
+## Main results
+
+* `compile_correct_baseAlu` — the equation for a `MachineModel` whose value
+  carrier is its state.
+* `compile_correct_riscv`, `compile_correct_arm` — the equation for
+  `riscvBaseAluModel` and `armBaseAluModel` on the base-ALU fragment.
 
 ## Carrier
 
@@ -77,7 +75,6 @@ open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
 open CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLsem
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.Compiler (MachineModel)
 
 /-! ## 1. Encoding a source valuation into the model's input state
 
@@ -122,7 +119,7 @@ output is read at the result register `comRetName`. -/
     not part of this statement.
 
     The conclusion runs `model.exec`, which is `runRBlock64` (the `evalRInst64`
-    fold), not the `latticeModel` identity `fun _ s => s`. Proved by instantiating
+    fold). Proved by instantiating
     `comToRiscvLsem_correct`. -/
 theorem compile_correct_riscv {Γ : Ctxt jasminDialect}
     {com : Com jasminDialect Γ (.reg 64)} (hba : ComBaseAlu com) (hΓ : AllReg64 Γ)
@@ -249,13 +246,13 @@ theorem compile_correct_baseAlu_arm {Γ : Ctxt jasminDialect}
 /-! ## 5. The `exec` of each model -/
 
 /-- The RISC-V model's `exec` used in `compile_correct_riscv` is the
-    `runRBlock64` block fold, not the `latticeModel` identity `fun _ s => s`. -/
+    `runRBlock64` block fold. -/
 theorem compile_correct_riscv_exec_nonid
     (code : List RInst64) (s : RState64) :
     riscvBaseAluModel.exec code s = runRBlock64 s code := rfl
 
 /-- The ARM model's `exec` used in `compile_correct_arm` is the `runBBlock` block
-    fold, not the `latticeModel` identity `fun _ s => s`. -/
+    fold. -/
 theorem compile_correct_arm_exec_nonid
     (code : List BInst) (s : BState) :
     armBaseAluModel.exec code s = runBBlock s code := rfl

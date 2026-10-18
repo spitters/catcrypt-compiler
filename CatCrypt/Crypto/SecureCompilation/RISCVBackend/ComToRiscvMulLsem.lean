@@ -40,7 +40,7 @@ This module extends the fragment to the **arith+mul** subset — base-ALU ∪
 * **The base-ALU grounding** — `ComToRiscvLsem.riscvStep64_sail_grounded`, reused
   for the five base-ALU arms of the widened step grounding.
 
-## What this module adds
+## Main results
 
 1. **`sailClause`** — the per-op selector mapping each `IsArithMul` `RInst64` to
    the *actual* Sail clause it refines: `execute_RTYPE … (rinstRop i)` for the
@@ -89,7 +89,6 @@ open CatCrypt.Crypto.SecureCompilation.ScalarLinDeBruijn
 open CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.Compiler (MachineModel)
 
 /-! ## 1. The arith+mul fragment (base-ALU ∪ {MUL, MULHU}) -/
 
@@ -349,9 +348,9 @@ theorem riscvArithMulGrounded_proof : RiscvArithMulGrounded :=
   fun s rf nm i ham hdst halign hrd =>
     riscvStepArithMul_sail_grounded s rf nm i ham hdst halign hrd
 
-/-- **5c (widened) — the RISC-V arith+mul `MachineModel`, with a non-`id` `exec`.**
+/-- **5c (widened) — the RISC-V arith+mul `MachineModel`.**
     Like `ComToRiscvLsem.riscvBaseAluModel`, its `exec` is the
-    `runRBlock64` block fold (not `latticeModel`'s `fun _ s => s`), and its
+    `runRBlock64` block fold, and its
     `validated` field is the widened Sail-grounding `RiscvArithMulGrounded`
     (inhabited by `riscvArithMulGrounded_proof`), covering the M-extension
     ops `MUL`/`MULHU` in addition to the base ALU. -/
@@ -364,7 +363,7 @@ def riscvArithMulModel : MachineModel where
   exec := fun code s => runRBlock64 s code
   validated := RiscvArithMulGrounded
 
-/-- The model's `exec` is `runRBlock64`, not the `latticeModel` identity. -/
+/-- The model's `exec` is the `runRBlock64` block fold. -/
 theorem riscvArithMulModel_exec (code : List RInst64) (s : RState64) :
     riscvArithMulModel.exec code s = runRBlock64 s code := rfl
 

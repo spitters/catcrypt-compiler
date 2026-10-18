@@ -11,17 +11,18 @@ public import CatCrypt.Crypto.Jasmin.JasminAST
 public import CatCrypt.Crypto.Jasmin.JasminSem
 
 /-!
-# Simulation theorem for `JasminToRustEmit.ppFunDecl`
+# Printer equations for `JasminToRustEmit.ppPExpr`
 
-The per-constructor lemmas of §1 state, by `rfl`, the string `ppPExpr` prints
-for each expression constructor.
+The lemmas of this module state, by `rfl`, the Rust source string the
+expression printer `ppPExpr` produces on each `PExpr` constructor. They are
+facts about the printed text; no statement here relates the printed program to
+the Jasmin semantics.
 
-§2 states the simulation of `ppFunDecl` against an opaque `RustcExec`
-predicate. `ppFunDecl_simulates` is the named axiom `RustcExec_correct`
-applied to its hypothesis, and `RustcExec` is constrained by nothing else, so
-the statement is assumed rather than proved. The axiom bundles the
-correctness of the printer with that of rustc and LLVM; the printer's part has
-no proof in this module.
+## Main results
+
+* `ppPExpr_simulates_Pvar`, `ppPExpr_simulates_Pconst`, `ppPExpr_simulates_Pif`,
+  `ppPExpr_simulates_Papp2_Oadd` and the other `ppPExpr_simulates_*` lemmas —
+  the printed string for each constructor.
 -/
 
 @[expose] public section
@@ -35,8 +36,7 @@ open CatCrypt.Crypto.Jasmin.SemBridge
 /-! ## §1.  Per-constructor lemmas for the expression printer
 
 Each lemma states what `ppPExpr` produces on a single constructor of
-`PExpr`. These are the building blocks for a future inductive proof of a
-full simulation theorem `ppFunDecl_simulates`. -/
+`PExpr`. -/
 
 /-- The expression printer on a `Pvar` produces the Rust variable name.
     This is the simplest non-trivial case: a `GVar` is rendered via
@@ -106,44 +106,5 @@ theorem ppPExpr_simulates_Papp2_Obeq (e1 e2 : PExpr) :
 theorem ppPExpr_simulates_PappN (op : OpN) (es : List PExpr) :
     ppPExpr (PExpr.PappN op es) = "/* unhandled PappN */" := by
   rfl
-
-/-! ## §2.  Top-level simulation statement
-
-The statement ties the emitted Rust source `ppFunDecl fd` to the `jasminSem`
-big-step operational semantics through an opaque `RustcExec` predicate, and
-the named axiom `RustcExec_correct` asserts it. -/
-
-/-- Trust-rustc oracle: predicate "rustc compiles `src` and the resulting
-    binary, when executed, transitions `σ` to `σ'` (under the same
-    `RustState` view used by the Jasmin operational semantics)." Opaque —
-    we do not model rustc / LLVM internals. -/
-opaque RustcExec : String → LowCT.RustState → LowCT.RustState → Prop
-
-/-- **Trust leaf for the printer and rustc together** (named axiom).
-
-    For any `FunDecl fd` and any `jasminSem` derivation taking `σ` to `σ'`
-    on `fd.body`, the rustc-compiled emitted source `ppFunDecl fd` exhibits
-    the same transition under `RustcExec`. The axiom bundles two claims: that
-    `ppFunDecl` prints a program with the meaning of `fd.body`, and that rustc
-    and LLVM execute it faithfully. The first is a property of the printer and
-    is not proved. -/
-axiom RustcExec_correct
-    (leafSpec : LowCT.LeafSpec) (fd : FunDecl) (σ σ' : LowCT.RustState) :
-    jasminSem leafSpec fd.body σ σ' → RustcExec (ppFunDecl fd) σ σ'
-
-/-- (assumed bound) **JasminToRustEmit simulation statement.**
-
-    For any `FunDecl`, `RustcExec (ppFunDecl fd)` holds of every `jasminSem`
-    transition of `fd.body`. The statement is the axiom `RustcExec_correct`
-    applied to its hypothesis. `RustcExec` is opaque and constrained by
-    nothing but that axiom, so the statement carries no information about the
-    printed text: the correctness of `ppFunDecl` is assumed here, not proved,
-    and the axiom covers outputs containing the printer's `unhandled`
-    markers. -/
-theorem ppFunDecl_simulates
-    (leafSpec : LowCT.LeafSpec) (fd : FunDecl) (σ σ' : LowCT.RustState)
-    (h : jasminSem leafSpec fd.body σ σ') :
-    RustcExec (ppFunDecl fd) σ σ' :=
-  RustcExec_correct leafSpec fd σ σ' h
 
 end CatCrypt.Crypto.Jasmin.JasminToRustEmitSimulates
