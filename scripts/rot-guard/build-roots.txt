@@ -924,6 +924,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgCell
+CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgLoadGp
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgLoadOrder
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideCmp
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideOpt
