@@ -48,7 +48,6 @@ CatCrypt/Crypto/SecureCompilation/P256FieldMulMontFront.lean
 CatCrypt/Crypto/SecureCompilation/Secp256k1FeMulFront.lean
 CatCrypt/Crypto/SecureCompilation/Secp256k1PointOpFront.lean
 CatCrypt/Crypto/SecureCompilation/Secp256k1PointOpFrontEmit.lean
-CatCrypt/Crypto/SecureCompilation/Secp256k1PointOpStageProbe.lean
 CatCrypt/Crypto/SecureCompilation/SqisignFieldMulMontFront.lean
 CatCrypt/Crypto/SecureCompilation/TileBackend/ComToTileIR.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockEmit.lean
