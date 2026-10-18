@@ -70,16 +70,20 @@ level** (structural) instead of per-primitive. The Montgomery ops denote with th
 `R⁻¹` factor explicit, so `montMul a b = a·b·R⁻¹` is a definitional fact at the
 dialect, not a re-proved obligation per curve.
 
-## Pure-only + constant-time
+## Pure denotations
 
 Like `JasminDialect` / `LatticeDialect`, all op denotations are total pure
-functions; no memory or sampling effect. **Every** ModArith op is
-data-oblivious — the entire point of constant-time field arithmetic is that the
-schedule is fixed and index-independent — so `ctSafe` is `true` for all ops
-(see `§ CT predicate`). This is the L2 instance of the VIR `ctSafe` story
-(`CTPredicate.lean`): the algebraic layer is CT by construction; the only
-data-dependent constructs (variable-time `div`/table lookups) are *not* in the
-op alphabet.
+functions; no memory or sampling effect. The op alphabet contains no
+variable-time `div` and no table lookup. The dialect carries no constant-time
+predicate; constant time is a property of the code a program lowers to
+(`Dialects.CryptoDialectCTLeak.catCT` at the dialect level,
+`DecodedCT.bytesCTCheck_sound` at the bytes).
+
+## Main results
+
+* `modArithDialect` with its signature and denotation `modArithDenote`;
+* the denotation facts `modMul_denote`, `modConst_denote`, `montMul_denote`,
+  `byInverse_denote`, `batchInverse_denote` and `mulHi_denote`.
 -/
 
 @[expose] public section
@@ -389,56 +393,7 @@ instance modArithDenote : DialectDenote modArithDialect where
     | .addCarryLo _ => fun args => addCarryLoF args.head args.tail.head args.tail.tail.head
     | .addCarryHi _ => fun args => addCarryHiF args.head args.tail.head args.tail.tail.head
 
-/-! ## 7. Constant-time predicate (L2 instance of `CTPredicate.lean`)
-
-Every ModArith op is data-oblivious: the schedule is fixed (no `ite` on data,
-no data-dependent memory index — the only data-dependent constructs would be
-variable-time `div` or table lookups, which are *not* in the op alphabet). So
-`ctSafe` is `true` for all ops, mirroring `CTPredicate.ctSafe`'s shape but with
-no non-CT constructor to exclude. -/
-
-/-- Per-op CT predicate: every ModArith op is constant-time (the algebraic layer
-    is CT by construction — no data-dependent branch or index). -/
-def ModArithOp.ctSafe : ModArithOp → Bool
-  | _ => true
-
-@[simp] theorem ModArithOp.ctSafe_all (op : ModArithOp) : op.ctSafe = true := rfl
-
-/-- Per-expression CT predicate. -/
-def ctSafeExpr {Γ : Ctxt modArithDialect} {t : ModArithTy}
-    (e : Expr modArithDialect Γ t) : Bool :=
-  e.op.ctSafe
-
-@[simp] theorem ctSafeExpr_true {Γ : Ctxt modArithDialect} {t : ModArithTy}
-    (e : Expr modArithDialect Γ t) : ctSafeExpr e = true := rfl
-
-/-- Per-program CT predicate: a `Com` is CT-safe iff every let-bound expression
-    is. Since all ModArith ops are CT, this is identically `true`. -/
-def ctSafeCom {Γ : Ctxt modArithDialect} {t : ModArithTy} :
-    Com modArithDialect Γ t → Bool
-  | .ret _ => true
-  | .var e body => ctSafeExpr e && ctSafeCom body
-
-/-- **CT by construction.** Every ModArith program is constant-time. This is the
-    L2-level realisation of the VIR CT-safety guarantee: the algebraic layer
-    introduces no data-dependent control flow or memory index, so CT-safety is
-    free — it does not have to be re-checked per primitive. -/
-theorem ctSafeCom_all {Γ : Ctxt modArithDialect} {t : ModArithTy}
-    (c : Com modArithDialect Γ t) : ctSafeCom c = true := by
-  induction c with
-  | ret _ => rfl
-  | var e _ ih => simp [ctSafeCom, ctSafeExpr_true, ih]
-
-/-- Propositional form, decidable (trivially, by `ctSafeCom_all`). -/
-def ctSafePropCom {Γ : Ctxt modArithDialect} {t : ModArithTy}
-    (c : Com modArithDialect Γ t) : Prop :=
-  ctSafeCom c = true
-
-instance {Γ : Ctxt modArithDialect} {t : ModArithTy}
-    (c : Com modArithDialect Γ t) : Decidable (ctSafePropCom c) := by
-  unfold ctSafePropCom; infer_instance
-
-/-! ## 8. Algebraic denotation facts (the once-per-dialect ties)
+/-! ## 7. Algebraic denotation facts (the once-per-dialect ties)
 
 These hold **definitionally** because the op denotations are `ZMod p`'s native
 operations. The point is that they are stated *once* at the dialect, rather than
@@ -473,7 +428,7 @@ theorem mulHi_denote {w : Nat} (a b : BitVec w) :
     modArithDenote.denote (.mulHi w) (.cons a (.cons b .nil))
       = CatCrypt.Crypto.SecureCompilation.X86Backend.mulHi a b := rfl
 
-/-! ## 9. Smoke test
+/-! ## 8. Smoke test
 
 A tiny two-op `Com modArithDialect` over `ZMod 7`: `let c = a * b; ret c`.
 On `a = 5, b = 4 : ZMod 7`, `c = 20 = 6 (mod 7)`. -/
@@ -495,7 +450,7 @@ example :
 example : modArithDenote.denote (.mulHi 8) (.cons (200 : BitVec 8) (.cons (3 : BitVec 8) .nil))
     = CatCrypt.Crypto.SecureCompilation.X86Backend.mulHi (200 : BitVec 8) 3 := rfl
 
-/-! ## 10. Representation annotations
+/-! ## 9. Representation annotations
 
 prime-ir's `!mod_arith.int<p : iW, true>` carries the storage width `W` of the
 modulus and the Montgomery flag. A representation map `ρ` assigns each modulus a

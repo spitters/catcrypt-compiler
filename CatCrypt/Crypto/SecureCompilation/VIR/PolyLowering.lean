@@ -15,9 +15,8 @@ The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
     Poly → Field → ModArith
 
-proven **denotation-preserving** and **CT-preserving**, mirroring
-`FieldLowering`'s / `ModArithLowering`'s `lower_denote_preserved` /
-`lower_ctSafe_preserved`.
+proven denotation-preserving, mirroring `FieldLowering`'s /
+`ModArithLowering`'s `lower_denote_preserved`.
 
 A Poly op lowers to a **schedule of ModArith ops** on the underlying `ZMod q`
 coefficients:
@@ -33,7 +32,7 @@ coefficients:
   evaluation point) — each lane is an independent residue-ring multiply; we
   prove the per-lane schedule denotes to the abstract pointwise product.
 
-## What is proven here
+## Main results
 
 * `ctButterfly` — the abstract Cooley–Tukey butterfly over `ZMod q`.
 * `ctButterflySchedule` — the ModArith-level butterfly schedule
@@ -47,9 +46,10 @@ coefficients:
 * `lower_denote_preserved` — the op-level identity-realisation statement
   (mirrors `FieldLowering`/`ModArithLowering`), plus the butterfly +
   pointwise-mul realisation theorems end-to-end.
-* `lower_ctSafe_preserved` — **CT preservation**: every Poly op is CT
-  (`PolyOp.ctSafe = true`) and its ModArith schedule is CT (every ModArith op is
-  CT), so the lowering preserves CT unconditionally.
+* `routeOfModulus_scalar_of_not_vectorizable` — the NTT-lane multiply routes to
+  the scalar path at a modulus that is not pseudo-Mersenne / Solinas.
+
+The module states no constant-time property.
 
 ## The redundant-limb gate on the Vector route
 
@@ -178,36 +178,7 @@ theorem lower_denote_preserved (op : PolyOp)
               (DialectSignature.sig (d := polyDialect) op)) :
     realise op args = polyDenote.denote op args := rfl
 
-/-! ## 5. CT preservation
-
-Every Poly op is CT (`PolyOp.ctSafe = true`), and its ModArith schedule is CT
-(every ModArith op is CT, `ModArithOp.ctSafe = true`): the NTT butterfly schedule
-is a fixed sequence of `modMul`/`modAdd`/`modSub`, the pointwise schedule a fixed
-sequence of `modMul`, no data-dependent branch or index.  So the lowering
-preserves CT unconditionally. -/
-
-/-- Is the lowered ModArith schedule of a Poly op CT-safe?  Both the coefficient
-    1:1 lowering and the NTT butterfly / pointwise schedules are sequences of CT
-    ModArith ops, hence CT by construction. -/
-def scheduleCtSafe (_ : PolyOp) : Bool := true
-
-@[simp] theorem scheduleCtSafe_all (op : PolyOp) : scheduleCtSafe op = true := rfl
-
-/-- **CT preservation (op-level).** Every Poly op is CT and its ModArith schedule
-    is CT.  The lowering therefore never introduces non-CT behaviour. -/
-theorem lower_ctSafe_preserved (op : PolyOp) :
-    op.ctSafe = true ∧ scheduleCtSafe op = true :=
-  ⟨rfl, rfl⟩
-
-/-- **CT preservation lifts to programs.** Since every Poly op is CT and every
-    schedule is CT, the whole-program CT predicate `ctSafeCom` is preserved by
-    lowering.  This is the L4′ instance of the CT-preservation guarantee. -/
-theorem lower_ctSafeCom_preserved {Γ : Ctxt polyDialect} {t : PolyTy}
-    (c : Com polyDialect Γ t) :
-    ctSafeCom c = true ∧ (∀ op : PolyOp, scheduleCtSafe op = true) :=
-  ⟨ctSafeCom_all c, fun op => scheduleCtSafe_all op⟩
-
-/-! ## 6. The redundant-limb gate on the NTT lanes
+/-! ## 5. The redundant-limb gate on the NTT lanes
 
 The pointwise-mul lane multiplies route to the Vector dialect iff the modulus is
 vectorizable (pseudo-Mersenne / Solinas).  We surface the L2 routing decision
@@ -219,6 +190,7 @@ Vector-vs-scalar choice for the NTT lanes is made once at L2. -/
 noncomputable def routeOfModulus (q : Nat) : ModArithDialect.LowerTarget :=
   ModArithDialect.routeOf (.modMul q)
 
+omit [NttDomains] in
 /-- The NTT lanes route to `scalar` at a non-vectorizable modulus — a random
     NTT-friendly prime keeps the lanes scalar (the redundant-limb rule applied to
     the NTT-domain pointwise product). -/
@@ -227,7 +199,7 @@ theorem routeOfModulus_scalar_of_not_vectorizable (q : Nat)
     routeOfModulus q = .scalar :=
   ModArithDialect.routeOf_scalar_of_not_vectorizable (.modMul q) q rfl hv
 
-/-! ## 7. Smoke test: the butterfly schedule matches the abstract step
+/-! ## 6. Smoke test: the butterfly schedule matches the abstract step
 
 On `ζ = 3, a = 5, b = 2 : ZMod 7` the butterfly gives
 `(5 + 3·2, 5 − 3·2) = (11, −1) = (4, 6) (mod 7)`, equal to the ModArith

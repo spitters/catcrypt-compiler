@@ -12,21 +12,16 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
 /-!
 # Robust compilation source → x86: composition of the lattice → Jasmin → x86 path
 
-This file composes three results on the shared ANF `Com` substrate and its
+This file composes two results on the shared ANF `Com` substrate and its
 emission into source → x86 statements for the lattice → Jasmin → x86 path:
 
-1. **Com-level robust constant-time safety** — the lattice → Jasmin lowering is
-   robustly CT-safe against every CT-safe linking context
-   (`RobustSafetyContext.lowerLatticeToJasmin_robustlyCTSafe_ctx`), and the
-   image-class RSP holds without a back-translation hypothesis
-   (`RobustSafetyBackTranslate.robustCTPreservation_ctx_image_uncond`).
-2. **Semantics preservation of the lowering** — running the emitted jasmin
+1. **Semantics preservation of the lowering** — running the emitted jasmin
    program under the Lean evaluator `runProg` equals the source `Com` denotation
    (`JasminPrintSemCorrect.lowerComToProg_sem_eq`, under its hypotheses
    `LeafAgrees`, `StraightLine`, and injectivity of `freshName` and of the
    parameter resolver), composed with the dialect-lowering denotation
    preservation (`LatticeToJasminDenoteUncond.lowerLatticeToJasmin_denote_eq_uncond`).
-3. **Per-opcode alignment with Lean transcriptions of jasmin's `psem`** —
+2. **Per-opcode alignment with Lean transcriptions of jasmin's `psem`** —
    `JasmincSemAlignment.opcode_alignment_total` proves, for every
    `JasminBinOp` operator of `regArith`, for `castW`, and for the
    `stackLoad`/`stackStore` element accessors, that the evaluator's primitive
@@ -53,7 +48,7 @@ way `JasminPrintSemCorrect` carries the opaque-leaf edge `LeafAgrees`. Its field
 `obsOf` of the program's result under the Lean evaluator `runProg`. This
 corresponds to the value half of `compile_prog_to_asmP`; obtaining it from the
 Coq theorem additionally requires that `runProg` agree with `psem` on the whole
-program, for which item 3 records the per-opcode rows.
+program, for which item 2 records the per-opcode rows.
 
 ## Constant time
 
@@ -74,7 +69,7 @@ injectivity of `freshName`, and injectivity of the parameter resolver.
 `trust_boundary_is_jasmin_ir_to_x86` states the conclusion from a
 `JasminIRToX86` record.
 
-## What is proved here
+## Main results
 
 * `lowerLatticeToJasmin_straightLine` — the lowering emits only `extCall`s, so the
   emitted jasmin `Com` is straight-line: the side condition of
@@ -86,10 +81,7 @@ injectivity of `freshName`, and injectivity of the parameter resolver.
 * `robustCompilation_source_to_x86` — given a `JasminVerifiedCompiler` record and
   `hLeaf`, `hInj`, `hPinj`, every compiled lattice program satisfies (i) the x86
   observable on the transported input is `obsOf` of `transTy` of the source
-  denotation. The proof uses result (2) and the record's `semRefine` field.
-* `robustCompilation_source_to_x86_image` — the same conclusion together with the
-  Com-level judgements `RobustlyCTSafeCtx` of the lowered program and
-  `RobustlyCTSafeCtxImage` of the source.
+  denotation. The proof uses result (1) and the record's `semRefine` field.
 * `trust_boundary_is_jasmin_ir_to_x86` — the conclusion of
   `robustCompilation_source_to_x86` from a `JasminIRToX86` record, with the same
   hypotheses `hLeaf`, `hInj`, `hPinj`.
@@ -108,9 +100,6 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
-open CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
-open CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyContext
-open CatCrypt.Crypto.SecureCompilation.VIR.RobustSafetyBackTranslate
 open CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
 open CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenoteUncond
 open CatCrypt.Crypto.Jasmin.LowCT (SecretLevel)
@@ -195,9 +184,7 @@ generated x86. The following are proved in Lean:
   of `regArith`, `castW`, and the `stackLoad`/`stackStore` element accessors,
   all `rfl`; the `extCall` row is the predicate `ExtCallAgrees`, and
   `JasmincWArrayAlignment` relates the element accessors to a byte-addressed
-  array);
-* the Com-level **robust constant-time** guarantee
-  (`robustCTPreservation_uncond`, `lowerLatticeToJasmin_robustlyCTSafe_ctx`).
+  array).
 
 `compile_prog_to_asmP` is a Coq theorem. The jasmin IR → x86 edge is carried as
 the hypothesis record `JasminIRToX86`, not as an axiom. It is parametric in:
@@ -237,8 +224,8 @@ structure JasminIRToX86
     jasmin IR → x86 edge corresponding to `compile_prog_to_asmP`, parametric in
     the x86-side observable `X86Obs` and behaviour `x86Behaviour`.
 
-    This is the record taken by `robustCompilation_source_to_x86` and
-    `robustCompilation_source_to_x86_image`. Its `psemFaithful` field follows
+    This is the record taken by `robustCompilation_source_to_x86`. Its
+    `psemFaithful` field follows
     from `semRefine`: `JasminVerifiedCompiler.ofIRToX86` builds this record from
     a `JasminIRToX86` record. -/
 structure JasminVerifiedCompiler
@@ -321,48 +308,7 @@ theorem robustCompilation_source_to_x86
   rw [jvc.semRefine (lowerLatticeToJasmin c) (mapVal V),
     source_to_evaluator_behaviour hLeaf hInj c hPinj V]
 
-/-! ## 5. Routing through the image-class full RSP back-translation
-
-`RobustSafetyBackTranslate.robustCTPreservation_ctx_image_uncond` is the
-*image-class* full RSP at the `Com` level: source robust CT against all lattice
-contexts implies target robust CT against all image-class (buildable-by-lowering)
-target contexts, without a back-translation hypothesis. The theorem below returns
-the behaviour conclusion of §4 together with the context-level (`Com`-with-a-hole)
-judgements. -/
-
-/-- **Robust compilation source → x86, via the context model.** Under the same
-    hypotheses as `robustCompilation_source_to_x86` (`jvc`, `hLeaf`, `hInj`,
-    `hPinj`), its behaviour conclusion holds, together with the `Com`-level
-    judgements `RobustlyCTSafeCtx (lowerLatticeToJasmin c)`
-    (`RobustSafetyContext.lowerLatticeToJasmin_robustlyCTSafe_ctx`) and
-    `RobustlyCTSafeCtxImage c` (`robustCTPreservation_ctx_image_uncond`): the
-    lowered program plugged into the lowering `lowerCtx C₀` of any lattice
-    context `C₀` is CT-safe under every labelling for which that lowered
-    context is CT-safe. Constant time of emitted code is proved at the decoded
-    bytes by `X86Backend.DecodedCT.bytesCTCheck_sound`, with the acceptance
-    theorems `DecodedCT.mul1Node_bytesCT` and `DecodedCT.feAddFramed_bytesCT`. -/
-theorem robustCompilation_source_to_x86_image
-    {leafSem : LeafSem} (hLeaf : LeafAgrees leafSem)
-    (hInj : Function.Injective freshName)
-    {X86Obs : Type}
-    {x86Behaviour : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
-        Com jasminDialect Γ t → Ctxt.Valuation Γ → X86Obs}
-    (jvc : JasminVerifiedCompiler leafSem X86Obs x86Behaviour)
-    {Γ : Ctxt latticeDialect} {t : LatticeTy} (c : Com latticeDialect Γ t)
-    (hPinj : ∀ (s s' : jasminDialect.Ty)
-                (v : Ctxt.Var (Γ.map tau) s) (v' : Ctxt.Var (Γ.map tau) s'),
-                (paramsAndMap (Γ.map tau)).2 s v
-                  = (paramsAndMap (Γ.map tau)).2 s' v' →
-                (∃ h : s = s', h ▸ v = v'))
-    (V : Ctxt.Valuation Γ) :
-    x86Behaviour (lowerLatticeToJasmin c) (mapVal V)
-        = jvc.obsOf (transTy (c.denote V))
-      ∧ RobustlyCTSafeCtx (lowerLatticeToJasmin c)
-      ∧ RobustlyCTSafeCtxImage c :=
-  ⟨robustCompilation_source_to_x86 hLeaf hInj jvc c hPinj V,
-    lowerLatticeToJasmin_robustlyCTSafe_ctx c, robustCTPreservation_ctx_image_uncond c⟩
-
-/-! ## 6. Per-opcode alignment rows, re-exported
+/-! ## 5. Per-opcode alignment rows, re-exported
 
 `JasmincSemAlignment` proves per-opcode rows relating the evaluator's primitives
 to Lean `def`s that transcribe jasmin's Coq `psem` primitives
@@ -406,7 +352,7 @@ theorem psem_alignment_total_discharged :
         stackSet a k v = JasmincSemAlignment.jArrSetEl a k v) :=
   JasmincSemAlignment.opcode_alignment_total
 
-/-! ## 7. The trust boundary
+/-! ## 6. The trust boundary
 
 `trust_boundary_is_jasmin_ir_to_x86` states the source → x86 conclusion from a
 `JasminIRToX86` record together with `hLeaf`, `hInj` and `hPinj`. Its hypotheses

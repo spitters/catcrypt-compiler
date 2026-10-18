@@ -70,8 +70,8 @@ Karatsuba/CIOS schedules are at `Field`/`ModArith`.
 
 A `padd`/`pdbl` lowers to a **schedule of Field-dialect ops** — the
 chord-tangent slope (one `fInv` + `fMul`s) and the coordinate maps `x₃`, `y₃`
-(`fMul`/`fSub`).  That lowering is proven denotation- and CT-preserving there,
-mirroring `FieldLowering`'s `lower_denote_preserved` / `lower_ctSafe_preserved`.
+(`fMul`/`fSub`).  That lowering is proven denotation-preserving there, mirroring
+`FieldLowering`'s `lower_denote_preserved`.
 
 ## Pure-only + constant-time
 
@@ -82,7 +82,16 @@ function (no memory/sampling effect).  The group-law ops (`padd`, `pdbl`,
 are CT **only** when realised by a constant-time ladder / fixed-window schedule
 (Montgomery ladder, fixed-window with conditional select); the dialect carries a
 per-op `ctSafe` flag so a variable-time double-and-add realisation is *flagged*,
-not silently accepted.  This is the L4 instance of the VIR `ctSafe` story.
+not silently accepted.  `ctSafeCom` is a syntactic check of these flags; it
+constrains no leakage of lowered code.
+
+## Main results
+
+* `ecDialect` with its signature and denotation `ecDenote`;
+* the per-op denotation facts `padd_denote`, `pdbl_denote`, `psmul_denote`,
+  `edPadd_denote`, `edPsmul_denote` and their siblings;
+* `denote_annotateEcCom` / `denote_unannotateEcCom` — representation annotations
+  preserve the denotation.
 -/
 
 @[expose] public section

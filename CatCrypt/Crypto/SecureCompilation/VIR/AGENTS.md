@@ -47,10 +47,9 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
 - `ThirToCatCryptDialect.lean` (`lowerThirToCatCrypt_denote`),
   `ThirToJasminViaCatCrypt.lean`, `ThirToJasminViaCatCryptOrFlat.lean`.
 - Algebraic lowerings: `FieldLowering.lean`, `ModArithLowering.lean` and
-  `EllipticCurveLowering.lean` (each with `lower_denote_preserved` and
-  `lower_ctSafe_preserved` per operation), `PolyLowering.lean`,
-  `FieldToModArithLowering.lean`, `DerivedToFieldLowering.lean`,
-  `EcConvertToFieldLowering.lean`, `DialectLoweringCorrectAndRobust.lean`.
+  `EllipticCurveLowering.lean` (each with `lower_denote_preserved` per operation),
+  `PolyLowering.lean`, `FieldToModArithLowering.lean`, `DerivedToFieldLowering.lean`,
+  `EcConvertToFieldLowering.lean`.
 - Composition and transport: `LoweringDataComp.lean`
   (`LoweringDataComp.compileVia_comp_correct`), `DialectLoweringTransport.lean`,
   `ParamDialectTransport.lean`, `ComParametricityTransport.lean`,
@@ -89,8 +88,8 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
   `JasminLsemShift.lean`, `JasminLsemMulCarry.lean`, `JasminLsemSimd.lean`,
   `JasminLsemWidthN.lean`: further fragments. `LsemPortAll.lean` imports them for the
   rot-guard.
-  `JasminLsemRobust.lean`: `owned_lsem_correct_and_robust_straightline` (its leak
-  model reads no register value; not CT evidence).
+  `JasminLsemRobust.lean`: `owned_lsem_correct_straightline` (functional correctness
+  of the straight-line linearizer) and the syntactic leak model `lsemLeak`.
 - `JasmincSemAlignment.lean`, `JasmincWArrayAlignment.lean`: alignment with Jasmin's
   Coq `psem`. `FrontControlLsem.lean`, `FrontWhileLsem.lean`,
   `GoldenPathLsemFaithful.lean`: front control flow and golden-path exports against
@@ -135,9 +134,10 @@ literal limb stores, selections within one tower type and admitted calls; it exc
 
 ## Constant time and robust compilation
 
-- `RobustSafety.lean` (`robustCTPreservation_uncond`,
-  `lowerLatticeToJasmin_secure_compilation`), `RobustSafetyBackTranslate.lean`
-  (`robustCTPreservation_ctx_image_uncond`), `RobustSafetyContext.lean`.
+- `RobustSafetyContext.lean`: programs with a hole on `Com` (`ComCtx`, `plug_denote`)
+  and the compositionality of the label checker `ctSafeJasmin` under plugging;
+  `RobustSafetyBackTranslate.lean`: the lattice lowering of a context
+  (`plug_lowerCtx`). `RobustSafety.lean` only re-exports its imports.
 - `RobustCompilationPipeline.lean`: `JasminVerifiedCompiler` and
   `RobustCompilationPipeline.robustCompilation_source_to_x86`, stated for the lattice
   dialect with the x86 observable as a parameter; it states value preservation and no constant-time property.

@@ -591,7 +591,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyReclassify
 CatCrypt.Crypto.SecureCompilation.VIR.CrossLaneSimdEmit
 CatCrypt.Crypto.SecureCompilation.VIR.DeadCodeElimReal
 CatCrypt.Crypto.SecureCompilation.VIR.DialectGrothendieck
-CatCrypt.Crypto.SecureCompilation.VIR.DialectLoweringCorrectAndRobust
 CatCrypt.Crypto.SecureCompilation.VIR.DialectRegionDenoteMonoidal
 CatCrypt.Crypto.SecureCompilation.VIR.DialectRegionFunctorMonoidal
 CatCrypt.Crypto.SecureCompilation.VIR.Dialects.LimbToNatLowering
@@ -713,6 +712,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance
 CatCrypt.Crypto.SecureCompilation.VIR.PackedStateRender
 CatCrypt.Crypto.SecureCompilation.VIR.PairElimPass
 CatCrypt.Crypto.SecureCompilation.VIR.ParamDescent
+CatCrypt.Crypto.SecureCompilation.VIR.ParamDialectTransport
 CatCrypt.Crypto.SecureCompilation.VIR.ParamPqcKernel
 CatCrypt.Crypto.SecureCompilation.VIR.ParamWordField
 CatCrypt.Crypto.SecureCompilation.VIR.PassChainDouble

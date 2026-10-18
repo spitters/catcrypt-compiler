@@ -8,46 +8,36 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
 
 /-!
-# Constant-time leakage over `lsem`, and the unconditional `correct ∧ robust`
-Scope: `lsemLeak` records index register names, not their values, and the CT hypotheses of the `owned_lsem_correct_and_robust_*` theorems are unused; "robust" here is correctness. Constant time of the shipped bytes is `DecodedCT.bytesCTCheck_sound`.
+# A syntactic leakage function over `lsem`, and architectural state agreement
 
-# capstone — increment 3 of porting jasmin's `lsem`
+`JasminLsem.lean` defines the straight-line linear machine
+(`Lstate`/`lsemStep`/`lsemStraight`), and `JasminLsemSimulation.lean` proves the
+functional simulation `comToLprog_faithful_straightline`: running the
+linearizer-emitted `.var`-chain `straightOps` on the encoded inputs, then
+decoding the result register, equals `Com.denote`, for the uniform-width
+`regArith` straight-line fragment.
 
-Increment 1 (`JasminLsem.lean`) built the straight-line linear machine
-(`Lstate`/`lsemStep`/`lsemStraight`). Increment 2
-(`JasminLsemSimulation.lean`) proved the *functional* simulation
-`comToLprog_faithful_straightline`: running the linearizer-emitted `.var`-chain
-`straightOps` on the encoded inputs, then decoding the result register, equals
-`Com.denote`, for the uniform-width `regArith` straight-line fragment.
+This module defines a leakage function `lsemLeak` over the same linear IR and
+the architectural state agreement `ArchAgree`. `lsemLeak` reads no register
+value: an indexed access leaks the index register's name, not its contents. Its
+state-independence on `straightOps` therefore holds for every program of the
+fragment and is not constant-time evidence; constant time of the shipped bytes
+is `DecodedCT.bytesCTCheck_sound`.
 
-This module is **increment 3**: it adds a *constant-time leakage model* over the
-same linear semantics and combines it with increment 2's functional simulation
-into a single, **unconditional** `correct ∧ robust` statement
-(`owned_lsem_correct_and_robust_straightline`) for the straight-line `regArith`
-fragment.
+## Main results
 
-## Why this closes the carried `JasminIRToX86`/`jasminc_preserves_ct` edge
+* `owned_lsem_correct_straightline` — the functional simulation for the
+  uniform-width `regArith` straight-line fragment, stated for `straightOps`.
+* `lsemLeak_straightOps_state_independent`, `lsemLeak_straightOps_no_branch` —
+  the leakage of `straightOps` is the same from any two states and contains no
+  branch event.
+* `lsemStep_archAgree`, `lsemStep_congr_of_archAgree` — `lsemStep` respects
+  architectural state agreement.
 
-Every prior owned-path CT result that reached *machine* leakage
-(`MachineConstantTime.blockLeak`, `LowCTToJInstrCT.lowerSeq_constant_time`)
-operates on `List (JInstr w)` — the x86 leaf — and so its tie to the source IR
-went through a *carried* edge (`JasminIRToX86` faithfulness, or the trusted
-`jasminc_preserves_ct`). Here the leak model is defined **directly over
-`lsemStraight`'s own `LinstrR` list** — the same linear IR the increment-2
-functional simulation runs — so the CT statement and the functional statement
-are about *one and the same* object: the linearizer-emitted straight-line body.
-No IR→x86 hypothesis, no `jasminc_preserves_ct`, appears anywhere below.
+## What `lsemLeak` records
 
-## Fidelity (trust-critical): what `lsemLeak` leaks, and why it is faithful
-
-`lsemLeak` mirrors `MachineConstantTime.blockLeak` / the Barthe-et-al. (CCS 2014)
-constant-time leakage model: a cache/branch-predictor attacker observes
-**control-flow conditions** and **memory addresses**, never arithmetic register
-*values*.
-
-For one straight-line `Lopn dsts opn srcs` instruction `lsemLeak` emits exactly
-its **public/structural shape** — the opcode `opn` together with the *operand
-structure* of `dsts` and `srcs`:
+For one straight-line `Lopn dsts opn srcs` instruction `lsemLeak` emits the
+opcode `opn` together with the operand structure of `dsts` and `srcs`:
 
 * a register operand `.reg r` leaks its **name** `r` (which register, not its
   contents);
@@ -59,24 +49,8 @@ structure* of `dsts` and `srcs`:
   value in `idx`. (For the `regArith` fragment this case never occurs; it is
   modeled so the leak function is total over the full IR.)
 
-`lsemLeak` **never reads `s.lvm`** — it never inspects a register value. For the
-straight-line `regArith` fragment there is no data-dependent branch (`Lopn` is
-unconditional) and no value-dependent memory addressing (every operand is
-`.reg`/`.imm`), so the leak is state-independent, and the model leaks the
-instruction's opcode/operand-register structure and nothing else.
-
-This is the linear-IR analogue of `MachineConstantTime.blockLeak_state_independent`
-and `LowCTToJInstrCT.lowerSeq_constant_time`, and the `lsem`-level counterpart of
-`RHPVerifiedMiddle.all_cprog_ct`.
-
-## Scope
-
-The capstone is unconditional **for the uniform-width `regArith` straight-line
-fragment** (`UniformRegArith`/`UniformCtxt`), the same fragment increment 2's
-functional simulation covers. The `lsem→bytes` encoder and the Sail
-encode/decode tables remain the declared trusted base, as for every verified
-compiler. **All goals closed, axioms ⊆ {propext, Classical.choice, Quot.sound}**, no
-`jasminc_preserves_ct`.
+`lsemLeak` never reads `s.lvm`. A secret-indexed `.arrIdx` access and a
+public-indexed one with the same index register therefore leak the same event.
 -/
 
 @[expose] public section
@@ -202,9 +176,9 @@ def lsemLeak {w : Nat} : List LinstrR → Lstate w → List LLeak
           | none => []) := rfl
 
 /-- On a list that runs to completion the leakage trace is the concatenation of
-    the per-instruction leaks, hence a function of the instruction list alone.
-    Constant-timeness of a completing body follows: two runs of one list leak the
-    same trace whatever their start states. -/
+    the per-instruction leaks, hence a function of the instruction list alone:
+    two completing runs of one list leak the same trace whatever their start
+    states. -/
 theorem lsemLeak_of_run {w : Nat} (is : List LinstrR) (s s₂ : Lstate w)
     (h : lsemStraight is s = some s₂) : lsemLeak is s = is.flatMap linstrLeak := by
   induction is generalizing s with
@@ -249,17 +223,14 @@ theorem opToLinstrR_regArith_isLopn {Γ : Ctxt jasminDialect} {w : Nat}
         = .Lopn [.reg dst] (withWidthTag w (binOpName bop)) srcs := by
   exact ⟨_, rfl⟩
 
-/-! ## 5. The robustness theorem: `lsemLeak` of `straightOps` is state-independent
+/-! ## 5. `lsemLeak` of `straightOps` is state-independent
 
 The leak of the `.var`-chain depends only on the instruction list, not the
 state: every instruction is an `Lopn` whose `linstrLeak` reads only syntax, and
 the only state-dependence in `lsemLeak` is through the *threaded* `lsemStep`
 result — which selects *which* tail to run, but both states run the *same* tail
-list `is`. By induction the tails leak equally regardless of the (possibly
-diverged) intermediate states.
-
-This is the linear-IR analogue of `MachineConstantTime.blockLeak_state_independent`
-and `LowCTToJInstrCT.lowerSeq_constant_time`. -/
+list `is`. Since `linstrLeak` reads no value, the statement holds for every
+program of the fragment. -/
 
 /-- A `regArith` head always `lsemStep`s successfully, from **any** state: its
     `applyOpn (binOpName bop) [a, b]` is total (`applyOpn_binOpName`). This is why
@@ -299,12 +270,7 @@ theorem lsemStep_regArith_succeeds {w nArgs curDepth : Nat} {Γ : Ctxt jasminDia
     an `Lopn` whose `linstrLeak` reads only syntax (never `s.lvm`), and every
     head `lsemStep`s successfully from any state (`lsemStep_regArith_succeeds`),
     so both states take the `some` branch and the (possibly diverged) tails are
-    run on the same instruction list — closed by the (unconditional) IH.
-
-    This is the linear-IR analogue of
-    `MachineConstantTime.blockLeak_state_independent` and
-    `LowCTToJInstrCT.lowerSeq_constant_time`, and the `lsem`-level counterpart of
-    `RHPVerifiedMiddle.all_cprog_ct`. -/
+    run on the same instruction list — closed by the (unconditional) IH. -/
 theorem lsemLeak_straightOps_state_independent {w : Nat} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : UniformRegArith w com) :
     ∀ {nArgs curDepth : Nat} (s₁ s₂ : Lstate w),
@@ -327,57 +293,23 @@ theorem lsemLeak_straightOps_state_independent {w : Nat} {Γ : Ctxt jasminDialec
       refine congrArg (linstrLeak _ ++ ·) ?_
       exact ih t₁ t₂
 
-/-! ## 6. The unconditional capstone: `correct ∧ robust`
+/-! ## 6. Functional correctness of `straightOps` -/
 
-Combine increment 2's functional simulation with §5's robustness into one
-statement for the uniform-width `regArith` straight-line fragment. **No
-`JasminIRToX86` hypothesis, no `jasminc_preserves_ct`** — both conjuncts are
-about the *same* linearizer-emitted `straightOps` list, run by `lsemStraight`
-(functional) and observed by `lsemLeak` (CT). The `lsem→bytes` encoder + Sail
-tables remain the declared trusted base, as for every verified compiler. -/
-
-/-- **Unconditional `correct ∧ robust` for the straight-line `regArith`
-    fragment.** For a uniform-width `regArith` straight-line `Com`:
-
-    1. *(correct, from increment 2)* running the linearizer-emitted `.var`-chain
-       `straightOps` on the encoded argument valuation and decoding the result
-       register yields exactly `com.denote V`; and
-    2. *(robust, syntactic leak model, from §5)* the linear-IR leakage trace
-       `lsemLeak (straightOps …)` is the **same from any two initial states** —
-       the attacker's control-flow + operand-structure view is a function of the
-       emitted instruction list alone, never of a register value.
-
-    This is **unconditional**: it carries no IR→x86 faithfulness hypothesis and
-    invokes no `jasminc_preserves_ct`. Both conjuncts concern one and the same
-    object — the linearizer-emitted straight-line body run by `lsemStraight` and
-    observed by `lsemLeak`. The `lsem→bytes` encoder and the Sail encode/decode
-    tables remain the declared trusted base, as for every verified compiler.
-
-    The leak function reads no register value (an indexed access leaks the index
-    register's name, not its value), so conjunct 2 holds for every program of the
-    fragment and is not constant-time evidence. Constant-time evidence for emitted
-    code is `AllocCTPreservation.toLprogPhysAbi_gather_constant_time` (straight-line
-    gathered blocks) and the per-kernel `blockLeak` theorems. -/
-theorem owned_lsem_correct_and_robust_straightline {w : Nat} {Γ : Ctxt jasminDialect}
+/-- **Functional correctness for the straight-line `regArith` fragment.** For a
+    uniform-width `regArith` straight-line `Com`, running the linearizer-emitted
+    `.var`-chain `straightOps` on the encoded argument valuation and decoding the
+    result register yields exactly `com.denote V`. This is
+    `comToLprog_faithful_straightline`, stated at this module's entry point. -/
+theorem owned_lsem_correct_straightline {w : Nat} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {com : Com jasminDialect Γ t} (hcom : UniformRegArith w com)
     (hu : UniformCtxt w Γ) (V : Ctxt.Valuation Γ) :
-    -- (1) functional correctness (increment 2)
-    ((lsemStraight (straightOps Γ.length com Γ.length) (encode V)).map
+    (lsemStraight (straightOps Γ.length com Γ.length) (encode V)).map
         (fun st' => decode st' (comRetReg Γ.length argName com Γ.length)) =
-      some (hcom.ret_ty ▸ com.denote V : ⟦(JasminTy.reg w)⟧))
-    ∧
-    -- (2) robustness / constant-time leakage (§5)
-    (∀ s₁ s₂ : Lstate w,
-      lsemLeak (straightOps Γ.length com Γ.length) s₁ =
-        lsemLeak (straightOps Γ.length com Γ.length) s₂) := by
-  refine ⟨comToLprog_faithful_straightline hcom hu V, ?_⟩
-  intro s₁ s₂
-  exact lsemLeak_straightOps_state_independent hcom s₁ s₂
+      some (hcom.ret_ty ▸ com.denote V : ⟦(JasminTy.reg w)⟧) :=
+  comToLprog_faithful_straightline hcom hu V
 
-/-- The constant-time leaf takes **no** control-flow branch: the straight-line
-    `regArith` chain emits only `Lopn`, so the branch channel of `lsemLeak` is
-    empty regardless of state. The branch-free half of the CT statement (cf.
-    `MachineConstantTime.blockLeak_no_branch`). -/
+/-- The straight-line `regArith` chain emits only `Lopn`, so `lsemLeak` of
+    `straightOps` contains no branch event, from any state. -/
 theorem lsemLeak_straightOps_no_branch {w : Nat} {Γ : Ctxt jasminDialect}
     {t : JasminTy} (com : Com jasminDialect Γ t) (nArgs curDepth : Nat)
     (s : Lstate w) :

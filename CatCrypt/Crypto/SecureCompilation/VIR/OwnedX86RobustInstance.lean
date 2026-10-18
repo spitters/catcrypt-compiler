@@ -19,6 +19,13 @@ external Coq compiler `compile_prog_to_asmP`. This file instantiates the minimal
 fragment the owned backend covers — the jasmin-IR → x86 value edge is a *proved*
 fact rather than a carried hypothesis.
 
+## Main results
+
+* `ownedX86_machine_realizes` — on the owned scalar `reg 64` fragment, the x86
+  machine run of the owned-emitted block equals `ownedX86Behaviour`.
+* `ownedRobustCompilation_source_to_x86` — `robustCompilation_source_to_x86`
+  with its `jvc` hypothesis discharged by the owned instance.
+
 ## The observable and the record fields
 
 * `ownedX86Obs := BitVec 64` — the value in the result register.
@@ -70,7 +77,6 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect
 open CatCrypt.Crypto.SecureCompilation.VIR.LatticeDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin
 open CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
-open CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
 open CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline
 open CatCrypt.Crypto.SecureCompilation.ScalarLin
 open CatCrypt.Crypto.SecureCompilation.ScalarLinFront

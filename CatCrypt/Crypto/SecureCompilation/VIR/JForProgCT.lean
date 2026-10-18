@@ -16,8 +16,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.RobustSafety
 # Constant-time / robust-safety theory for bounded for-loops (`JForProg`)
 
 This file is the **additive bounded-for-loop layer** for the Com / Jasmin
-constant-time pipeline. It extends the straight-line CT / robust-compilation
-story (`JasminCTPredicate.lean`, `RobustSafety.lean`) to the bounded loop IR
+constant-time pipeline. It extends the straight-line label checker
+(`JasminCTPredicate.lean`) to the bounded loop IR
 `JForProg` (`JasminPrint.lean` §7) — *without touching the core `Com`
 inductive*.
 
@@ -25,8 +25,8 @@ inductive*.
 
 Core `Com` (`VIR/Core.lean`) stays exactly **two constructors** (`ret`, `var`):
 it is straight-line by construction and all the existing straight-line CT
-proofs (`ctSafeJasmin`, `lowerLatticeToJasmin_ctSafeJasmin`,
-`RobustlyCTSafe`, …) remain valid verbatim. Control flow lives in *separate*
+proofs (`ctSafeJasmin`, `lowerLatticeToJasmin_ctSafeJasmin`, …) remain valid
+verbatim. Control flow lives in *separate*
 extended IRs layered on top, exactly as in this repo's existing precedent:
 
 * `CTPredicate.ctSafeComR` over `ComR` adds a `.ifBit` constructor with a
@@ -69,7 +69,7 @@ the `Com` context (it is the public `0..n` counter materialised only in the
 emitted `Cfor`), so it imposes no label obligation — exactly the
 data-independence above.
 
-## What is proved here
+## Main results
 
 1. **CT-safety of a bounded loop** (§2–3): `ctSafeJForProg p accL`, the
    headline `ctSafeJForProg_iff_body` (the loop is CT-safe iff its body is),
@@ -80,7 +80,7 @@ data-independence above.
 2. **Robust CT-safety** (§4): `RobustlyCTSafeJForProg p` (CT against every
    attacker labelling of the accumulator), reduced to robust CT-safety of the
    body via `RobustlyCTSafeJForProg_iff_body` — the loop construct is robustly
-   CT-safe iff its body is. Mirrors `RobustSafety.RobustlyCTSafe`.
+   CT-safe iff its body is.
 3. **Loop-emission consistency** (§5): the emitted `Cfor`
    (`JForProg.toCfor` / `toProg`) is structurally a single `UpTo` loop over
    `0..n` whose body lowers `update`; and the `n`-fold denotation
@@ -186,7 +186,7 @@ theorem ctSafeJForProg_eq {accTy : JasminTy} (p : JForProg accTy)
 
 /-! ## 4. Robust CT-safety of a bounded loop
 
-Mirroring `RobustSafety.RobustlyCTSafe`: a bounded loop **robustly** satisfies
+A bounded loop **robustly** satisfies
 CT iff it is CT-safe against *every* attacker labelling of the accumulator.
 Because the loop predicate is exactly the body predicate, robust loop CT-safety
 reduces to robust CT-safety of the body — the loop construct is robustly
@@ -195,8 +195,7 @@ CT-safe iff its body is. -/
 /-- **Robust CT-safety of a bounded for-loop.** A `JForProg` is robustly
     constant-time iff it is `ctSafeJForProg` under *every* accumulator secrecy
     label — i.e. no matter how the attacker classifies the loop-carried
-    accumulator, the loop never performs a secret-indexed access. Mirrors
-    `RobustSafety.RobustlyCTSafe`. -/
+    accumulator, the loop never performs a secret-indexed access. -/
 def RobustlyCTSafeJForProg {accTy : JasminTy} (p : JForProg accTy) : Prop :=
   ∀ accL : SecretLevel, ctSafeJForProg p accL = true
 
@@ -228,7 +227,7 @@ restrictive (not vacuously `true`), we exhibit a one-iteration loop whose body
 performs a `stackLoad` at the accumulator-as-index: when the accumulator is
 labelled `.Secret` the loop is flagged non-CT, and it is *not* robustly
 CT-safe. This is the loop analogue of `JasminCTPredicate.loadProg`'s smoke
-test and `RobustSafety.loadProg_not_robustlyCTSafe`. -/
+test. -/
 
 /-- A loop body over a `reg 64` accumulator that uses the accumulator itself as
     the load index of a stack array. A `JForProg` body has a single free
@@ -266,8 +265,7 @@ theorem secretLoop_public_ctSafe :
 
 /-- The secret-index loop is **not** robustly CT-safe: the `.Secret` accumulator
     labelling is a valid attacker choice that breaks CT. Confirms
-    `RobustlyCTSafeJForProg` is non-vacuous. Mirrors
-    `RobustSafety.loadProg_not_robustlyCTSafe`. -/
+    `RobustlyCTSafeJForProg` is non-vacuous. -/
 theorem secretLoop_not_robustlyCTSafe :
     ¬ RobustlyCTSafeJForProg secretLoop := by
   intro h

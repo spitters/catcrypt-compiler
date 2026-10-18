@@ -15,8 +15,8 @@ The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
     Field → ModArith
 
-proven **denotation-preserving** and **CT-preserving**, mirroring
-`ModArithLowering`'s `lower_denote_preserved` / `lower_ctSafe_preserved`.
+proven denotation-preserving, mirroring `ModArithLowering`'s
+`lower_denote_preserved`.
 
 A Field op lowers to a **schedule of ModArith ops** on the underlying `ZMod p`
 coefficients: a prime-field `fMul`/`fAdd`/… lowers 1:1 to the corresponding ModArith
@@ -31,7 +31,7 @@ The tower products (the `towerDialect` ops `mul .two`, `mul .six`, `mul .twelve`
   schedule (`Fp6` = 6 `Fp2`-muls + the `mul_xi` twist; `Fp12` = 3 `Fp6`-muls + the
   `mul_by_v` twist).
 
-## What is proven here
+## Main results
 
 * `Fp2MulSchedule` — the ModArith-level Karatsuba schedule (coefficient-wise),
   built from `ModArith`'s `modMulF`/`modAddF`/`modSubF` leaves.
@@ -43,14 +43,12 @@ The tower products (the `towerDialect` ops `mul .two`, `mul .six`, `mul .twelve`
   `Fp12` schedules.
 * `lower_denote_preserved` — the op-level identity-realisation statement
   (mirrors `ModArithLowering`).
-* `lower_ctSafe_preserved` — **CT preservation**: every Field op is CT
-  (`FieldOp.ctSafe = true`) and its ModArith schedule is CT (every ModArith op
-  is CT), so the lowering preserves CT unconditionally.
 
 The lowering is phrased at the **op** granularity (one Field op → its ModArith
 schedule) because `Com.denote` is a structural fold; the op-level
-denotation- and CT-preserving statement lifts to whole programs by the `Com`
-recursion, exactly as in `ModArithLowering`.
+denotation-preserving statement lifts to whole programs by the `Com`
+recursion, exactly as in `ModArithLowering`. The module states no constant-time
+property; dialect-level constant time is `Dialects.CryptoDialectCTLeak.catCT`.
 -/
 
 @[expose] public section
@@ -193,33 +191,7 @@ theorem lower_denote_preserved (op : FieldOp)
               (DialectSignature.sig (d := fieldDialect) op)) :
     realise op args = fieldDenote.denote op args := rfl
 
-/-! ## 4. CT preservation
-
-Every Field op is CT (`FieldOp.ctSafe = true`), and its ModArith schedule is CT
-(every ModArith op is CT, `ModArithOp.ctSafe = true`): no data-dependent branch or
-index.  So the lowering preserves CT unconditionally. -/
-
-/-- Is the lowered ModArith schedule of a Field op CT-safe?  The prime-field 1:1
-    lowering is a sequence of CT ModArith ops, hence CT by construction. -/
-def scheduleCtSafe (_ : FieldOp) : Bool := true
-
-@[simp] theorem scheduleCtSafe_all (op : FieldOp) : scheduleCtSafe op = true := rfl
-
-/-- **CT preservation (op-level).** Every Field op is CT and its ModArith
-    schedule is CT. The lowering therefore never introduces non-CT behaviour. -/
-theorem lower_ctSafe_preserved (op : FieldOp) :
-    op.ctSafe = true ∧ scheduleCtSafe op = true :=
-  ⟨rfl, rfl⟩
-
-/-- **CT preservation lifts to programs.** Since every Field op is CT and every
-    schedule is CT, the whole-program CT predicate `ctSafeCom` is preserved by
-    lowering. This is the L3 instance of the CT-preservation guarantee. -/
-theorem lower_ctSafeCom_preserved {Γ : Ctxt fieldDialect} {t : FieldTy}
-    (c : Com fieldDialect Γ t) :
-    ctSafeCom c = true ∧ (∀ op : FieldOp, scheduleCtSafe op = true) :=
-  ⟨ctSafeCom_all c, fun op => scheduleCtSafe_all op⟩
-
-/-! ## 5. Smoke test: the `Fp2` schedule on a value
+/-! ## 4. Smoke test: the `Fp2` schedule on a value
 
 On `a = 2 + 3u, b = 1 + u : Fp2Val 7` the schedule gives `(2·1 − 3·1, 2·1 + 3·1)
 = (−1, 5) = (6, 5) (mod 7)`. -/

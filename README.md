@@ -142,9 +142,6 @@ Each row states one result; the Lean name links to its source file.
 - x86-64, straight-line. [`toLprogPhysAbi_gather_constant_time`](CatCrypt/Crypto/SecureCompilation/X86Backend/AllocCTPreservation.lean):
   an exported function body with direct addressing that gathers to an x86 instruction block leaks the same
   machine trace (branch decisions and memory addresses) from any two states.
-  [`owned_lsem_correct_and_robust_straightline`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemRobust.lean) pairs functional
-  correctness of the linearizer with a leakage trace that reads no register value; the
-  trace equality holds for every program of the fragment.
 - x86-64, structured control flow, on a model IR. [`owned_ct_control_flow`](CatCrypt/Crypto/SecureCompilation/X86Backend/MachineConstantTime.lean): a block of
   the model IR [`OwnedCF`](CatCrypt/Crypto/SecureCompilation/X86Backend/MachineConstantTime.lean) built from conditionals with public guards and loops with
   literal trip counts leaks the same trace from any two states that agree on the public

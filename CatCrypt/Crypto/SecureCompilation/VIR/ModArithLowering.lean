@@ -16,7 +16,7 @@ The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
     ModArith → {Vector  if redundant-limb-vectorizable
               | LowCT/Com scalar otherwise}
 
-proven **denotation-preserving** and **CT-preserving**. The carry/widening ops
+proven denotation-preserving. The carry/widening ops
 (`mulHi`/`addCarry*`), which pairing/bignum owned register allocation needs, have
 a typed home (`ModArithDialect`), and their lowering target is selected by the
 **redundant-limb rule** rather than re-decided per primitive.
@@ -35,7 +35,7 @@ This is the single home of the routing decision: `vectorizable p` below. The
 Vector dialect's own lowering (`MLIR/VectorDialect/Lowering.lean`) is *gated by
 this same predicate*, so the choice is made once, at L2, not rediscovered.
 
-## What is proven here
+## Main results
 
 * `LowerTarget` — the two-way routing target (`vector` / `scalar`).
 * `routeOf` — the routing function, driven by `vectorizable`.
@@ -44,14 +44,11 @@ this same predicate*, so the choice is made once, at L2, not rediscovered.
   through the *same* leaf functions (`ZMod p`'s ops, `X86Backend.mulHi`/
   `addCarry`), this is an equality of the realised value, the L2 instance of
   the lean-mlir lowering-correctness statement.
-* `lower_ctSafe_preserved` — **CT preservation**: every ModArith op is CT
-  (`ModArithOp.ctSafe = true`), and *both* lowering targets are CT-by-
-  construction (no data-dependent branch/index is introduced by either route),
-  so the lowering preserves CT unconditionally.
 
-The lowering is phrased at the **op** granularity (one ModArith op → one
-target's realisation) because `Com.denote` is a structural fold over ops: an
-op-level denotation- + CT-preserving lowering lifts to the whole-program
+The module states no constant-time property. The lowering is phrased at the
+**op** granularity (one ModArith op → one target's realisation) because
+`Com.denote` is a structural fold over ops: an op-level denotation-preserving
+lowering lifts to the whole-program
 statement by the `Com` recursion (mirroring `LatticeDialect`'s
 `nttMul_rewrite_denote_eq` reducing to leaf agreement).
 -/
@@ -213,41 +210,7 @@ theorem lower_denote_mulHi {w : Nat} (a b : BitVec w)
       = CatCrypt.Crypto.SecureCompilation.X86Backend.mulHi a b := by
   subst ha hb; rfl
 
-/-! ## 4. CT preservation
-
-Every ModArith op is CT (`ModArithOp.ctSafe = true`, §7 of the dialect), and
-*both* lowering targets are CT by construction — neither the Vector route
-(packed-lane SIMD, fixed schedule) nor the scalar route (CIOS carry chain, fixed
-schedule) introduces a data-dependent branch or memory index. So the lowering
-preserves CT unconditionally: the target program's CT-safety is implied by the
-source op's, which is always `true`. -/
-
-/-- Is the chosen target CT-safe? Both routes are CT by construction. -/
-def LowerTarget.ctSafe : LowerTarget → Bool
-  | .vector => true
-  | .scalar => true
-
-@[simp] theorem LowerTarget.ctSafe_all (t : LowerTarget) : t.ctSafe = true := by
-  cases t <;> rfl
-
-/-- **CT preservation (op-level).** For every ModArith op, the op is CT and its
-    chosen lowering target is CT. The lowering therefore never *introduces*
-    non-CT behaviour — CT-safety is preserved unconditionally. -/
-theorem lower_ctSafe_preserved (op : ModArithOp) :
-    op.ctSafe = true ∧ (routeOf op).ctSafe = true := by
-  exact ⟨rfl, LowerTarget.ctSafe_all _⟩
-
-/-- **CT preservation lifts to programs.** Since every op is CT and every target
-    is CT, the whole-program CT predicate `ctSafeCom` is preserved by lowering —
-    it is identically `true` on both source (`ctSafeCom_all`) and any
-    realisation. This is the L2 instance of the CT-preservation guarantee that
-    the lowering theorems carry CT to x86. -/
-theorem lower_ctSafeCom_preserved {Γ : Ctxt modArithDialect} {t : ModArithTy}
-    (c : Com modArithDialect Γ t) :
-    ctSafeCom c = true ∧ (∀ op : ModArithOp, (routeOf op).ctSafe = true) := by
-  exact ⟨ctSafeCom_all c, fun op => LowerTarget.ctSafe_all _⟩
-
-/-! ## 5. Smoke test: the routing decision is the redundant-limb rule
+/-! ## 4. Smoke test: the routing decision is the redundant-limb rule
 
 `montMul` at `2^255−19` routes to `vector` (redundant-limb); at a generic
 non-vectorizable prime it routes to `scalar`. We check the second on a small

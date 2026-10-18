@@ -2154,19 +2154,10 @@ theorem copyPropagateBody_length_le (body : Lcmd) :
 the *operand shapes* — `operandShape (.reg r) = .regShape r` carries the register
 name — and nothing for `Lalign`/`Llabel`/`Lret`. The trace of a body that runs to
 completion is therefore the concatenation of the per-instruction leaks, a
-function of the instruction list alone. Constant-timeness in this model is
-independence of the start state, which every body has and the pass therefore
-keeps; trace *equality* between input and output does not hold, because deleting
-a copy removes its `LLeak.opn` event and rewriting a source changes the
-`regShape` inside one — the `#guard` at the end of this section pins that on
-`demoChain`. -/
-
-/-- The leakage trace of a body that runs from two start states is the same
-    trace: the constant-time property in this model. -/
-theorem lsemLeak_state_indep {w : Nat} (is : List LinstrR) (s t s₂ t₂ : Lstate w)
-    (hs : lsemStraight is s = some s₂) (ht : lsemStraight is t = some t₂) :
-    lsemLeak is s = lsemLeak is t := by
-  rw [lsemLeak_of_run is s s₂ hs, lsemLeak_of_run is t t₂ ht]
+function of the instruction list alone. Trace equality between input and output
+does not hold, because deleting a copy removes its `LLeak.opn` event and
+rewriting a source changes the `regShape` inside one; the `#guard` at the end of
+this section checks that on `demoChain`. -/
 
 /-- The leakage trace of the propagated body is the concatenation of its
     per-instruction leaks. -/
@@ -2176,17 +2167,6 @@ theorem copyPropagateBody_lsemLeak_eq_syntactic {w : Nat} (body : Lcmd) (s s₂ 
       = ((copyPropagateBody body).map Linstr.li_i).flatMap linstrLeak := by
   obtain ⟨t₂, ht, _, _⟩ := copyPropagateBody_lsemStraight body s s₂ hrun
   exact lsemLeak_of_run _ s t₂ ht
-
-/-- **The pass keeps the constant-time property.** Whenever the input runs from
-    two start states, the propagated body leaks the same trace from both. -/
-theorem copyPropagateBody_lsemLeak_state_indep {w : Nat} (body : Lcmd)
-    (s t s₂ t₂ : Lstate w)
-    (hs : lsemStraight (body.map Linstr.li_i) s = some s₂)
-    (ht : lsemStraight (body.map Linstr.li_i) t = some t₂) :
-    lsemLeak ((copyPropagateBody body).map Linstr.li_i) s
-      = lsemLeak ((copyPropagateBody body).map Linstr.li_i) t := by
-  rw [copyPropagateBody_lsemLeak_eq_syntactic body s s₂ hs,
-    copyPropagateBody_lsemLeak_eq_syntactic body t t₂ ht]
 
 -- The pass changes the leakage trace: on `demoChain` two `MOV:64` events are
 -- dropped and the surviving `XOR:64` event carries `regShape "RBX"` where the

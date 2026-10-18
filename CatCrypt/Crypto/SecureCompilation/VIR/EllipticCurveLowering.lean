@@ -16,8 +16,8 @@ The lowering step of the layered crypto-IR stack (`VIR/DIALECTS.md`):
 
     EllipticCurve → Field
 
-proven **denotation-preserving** and **CT-preserving**, mirroring
-`FieldLowering`'s `lower_denote_preserved` / `lower_ctSafe_preserved`.
+proven denotation-preserving, mirroring `FieldLowering`'s
+`lower_denote_preserved`.
 
 A group-law EC op lowers to a **schedule of Field-dialect ops** on the affine
 coordinates `ZMod p`:
@@ -30,7 +30,7 @@ coordinates `ZMod p`:
 * a `pdbl` lowers to the `dbl-2009-l` tangent schedule — the same coordinate
   maps with the tangent slope `λ = (3x² + a)·(2y)⁻¹`.
 
-## What is proven here
+## Main results
 
 * `AffineAddSchedule` / `AffineDblSchedule` — the Field-level chord/tangent
   coordinate schedules (over `FieldDialect`'s `fMulF`/`fSubF`/`fInvF` leaves).
@@ -41,12 +41,9 @@ coordinates `ZMod p`:
   `ZMod p` chord/tangent formula, so it is a ring identity.
 * `lower_denote_preserved` — the op-level identity-realisation statement
   (mirrors `FieldLowering`), plus the `padd`/`pdbl` realisation end-to-end.
-* `lower_ctSafe_preserved` — **CT preservation**: every group-law EC op is CT
-  (`ECOp.ctSafe = true`) and its Field schedule is CT (every Field op is CT), so
-  the lowering preserves CT for the group law unconditionally; for the
-  scalar-dependent ops CT is preserved exactly when the op carries `ct = true`.
 
-The lowering is phrased at **op** granularity (one EC op → its Field schedule);
+The module states no constant-time property: `ECOp.ctSafe` is the op's own `ct`
+flag, which this lowering does not inspect. The lowering is phrased at **op** granularity (one EC op → its Field schedule);
 the op-level statement lifts to whole programs by the `Com` recursion, exactly as
 in `FieldLowering`.
 -/
@@ -282,63 +279,7 @@ theorem lower_denote_preserved (op : ECOp)
               (DialectSignature.sig (d := ecDialect) op)) :
     realise op args = ecDenote.denote op args := rfl
 
-/-! ## 4. CT preservation
-
-Every group-law EC op is CT (`ECOp.ctSafe = true` for `padd`/`pdbl`/`pmadd`/
-`pneg`/`affToPoint`), and its Field schedule is CT (every Field op is CT, the
-chord/tangent schedule is a fixed sequence of `fMul`/`fSub`/`fInv`, no
-data-dependent branch or index).  So the lowering preserves CT for the group law
-unconditionally.  For the scalar-dependent ops CT is preserved exactly when the
-op carries `ct = true`. -/
-
-/-- Is the lowered Field schedule of an EC op CT-safe?  The group-law schedule is
-    a fixed sequence of CT Field ops, hence CT by construction; for the
-    scalar-dependent ops it tracks the op's own `ct` flag (the ladder / fixed-
-    window realisation is CT, a variable-time double-and-add is not). -/
-def scheduleCtSafe : ECOp → Bool
-  | .padd _ _ => true
-  | .pdbl _ _ => true
-  | .pneg _ => true
-  | .pmadd _ _ => true
-  | .affToPoint _ => true
-  | .line _ _ => true
-  | .psmul _ _ ct => ct
-  | .pcomb _ _ ct => ct
-  | .pwnaf _ _ ct => ct
-  | .edPadd _ _ => true
-  | .edPdbl _ _ => true
-  | .edPsmul _ _ ct => ct
-
-/-- The lowered schedule is exactly as CT-safe as the EC op itself: the Field
-    schedule never *adds* non-CT behaviour, and never *removes* the
-    scalar-dependent CT obligation. -/
-@[simp] theorem scheduleCtSafe_eq_ctSafe (op : ECOp) :
-    scheduleCtSafe op = op.ctSafe := by cases op <;> rfl
-
-/-- **CT preservation (op-level).** An EC op is CT iff its Field schedule is CT.
-    For the group-law ops both are unconditionally `true`; for the
-    scalar-dependent ops both track the `ct` flag — so the lowering preserves the
-    CT predicate exactly. -/
-theorem lower_ctSafe_preserved (op : ECOp) :
-    op.ctSafe = scheduleCtSafe op := (scheduleCtSafe_eq_ctSafe op).symm
-
-/-- **CT preservation, group law.** Every group-law EC op (`padd`/`pdbl`/`pmadd`/
-    `pneg`/`affToPoint`) lowers to a CT Field schedule unconditionally. -/
-theorem lower_ctSafe_grouplaw {p : Nat} (C : ECParams p) :
-    scheduleCtSafe (.padd p C) = true ∧ scheduleCtSafe (.pdbl p C) = true
-      ∧ scheduleCtSafe (.pmadd p C) = true ∧ scheduleCtSafe (.pneg p) = true :=
-  ⟨rfl, rfl, rfl, rfl⟩
-
-/-- **CT preservation, twisted-Edwards group law.** The unified Edwards add/double
-    ops lower to a CT Field schedule unconditionally; the `edPsmul` ladder is CT
-    exactly when it carries `ct = true` (the fixed-trip double-and-add ladder).
-    The L4 CT obligation the Ed25519/Ristretto scalar-mul discharges. -/
-theorem lower_ctSafe_edwards {p : Nat} (C : EdwardsParams p) :
-    scheduleCtSafe (.edPadd p C) = true ∧ scheduleCtSafe (.edPdbl p C) = true
-      ∧ scheduleCtSafe (.edPsmul p C true) = true :=
-  ⟨rfl, rfl, rfl⟩
-
-/-! ## 5. Smoke test: the chord schedule matches the dialect denotation
+/-! ## 4. Smoke test: the chord schedule matches the dialect denotation
 
 On the tiny curve `y² = x³ + x + 6` over `ZMod 7`, on distinct affine points
 `P = (2, 3)`, `Q = (4, 5)` the chord schedule and the abstract group add agree.
