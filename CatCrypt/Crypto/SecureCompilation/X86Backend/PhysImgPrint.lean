@@ -30,8 +30,11 @@ whose scan dominates the scan of the instruction, from the scan of the body in f
 * `domOn_flatMap`, `physImgB_flatMap_of_dom`: the class of a body expanded block by block.
 * `physImgB_twoAddrBody`: the two-address legalisation keeps the class, when no flag-only
   compare is untied (`flagTiedB`) and the save slot of the scratch register is no array slot.
-* `physImgB_cmpReload`: the compare-spill reload keeps the class, when the reload scratch
-  holds the pointer of no array at a compare on a spilled first operand (`cmpScratchFreeB`).
+* `reloadOf_cmpReload`: the reload scan through the compare-spill reload, for a name whose scan
+  carries no reload scratch past a compare on a spilled first operand.
+* `physImgB_cmpReload`: the compare-spill reload keeps the class, when the reload scan of the
+  base of no indexed access carries the reload scratch to the position after an earlier compare
+  on a spilled first operand (`cmpScratchFreeB`).
 
 Every result assumes that every array slot is a `qsave.` slot, which the region layout gives.
 -/
@@ -416,12 +419,27 @@ section CmpReload
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
 
-/-- At every compare on a spilled first operand, the reload scratch `reloadScratch` holds the
-    pointer of no array. -/
+/-- The instruction `r` at position `m` of the segment `c` is no indexed access, or the reload
+    scan of the base of its first source carries a name other than `reloadScratch` out of `c`,
+    or ends inside `c` (`scanExit`). -/
+def baseScanFreeB (slotArr : String → Option (String × Nat)) (c : Lcmd) (m : Nat)
+    (r : LinstrR) : Bool :=
+  !isAccB r ||
+    match r with
+    | .Lopn _ _ (.arrIdx x _ _ :: _) => scanExit slotArr c m x != some reloadScratch
+    | _ => true
+
+/-- At every compare on a spilled first operand at position `k`, the reload scan of the base of
+    no later indexed access carries the reload scratch `reloadScratch` to the position after
+    `k` (`baseScanFreeB` on the segment after `k`). -/
 def cmpScratchFreeB (slotArr : String → Option (String × Nat)) (body : Lcmd) : Bool :=
   (List.range body.length).all fun k =>
     match body[k]? with
-    | some i => (spillCmp? i.li_i).isNone || (accArr slotArr body k reloadScratch).isNone
+    | some i => (spillCmp? i.li_i).isNone ||
+        (List.range (body.drop (k + 1)).length).all fun m =>
+          match (body.drop (k + 1))[m]? with
+          | some j => baseScanFreeB slotArr (body.drop (k + 1)) m j.li_i
+          | none => true
     | none => true
 
 /-- A compare on a spilled first operand is `Lopn [d] opn [d, s]`. -/
@@ -436,58 +454,161 @@ theorem spillCmp?_some {r : LinstrR} {opn d : String} {s : LOperand}
     rw [hc.1.1.2]
   · cases h
 
+/-- The reload of a compare on a spilled first operand is the copy of the operand to the reload
+    scratch and the compare on the scratch. -/
+theorem cmpReloadI_of_some {i : Linstr} {opn d : String} {s : LOperand}
+    (hs : spillCmp? i.li_i = some (opn, d, s)) :
+    cmpReloadI i = [⟨i.li_ii, .Lopn [.reg reloadScratch] (movOf opn) [.reg d]⟩,
+      ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, s]⟩] := by
+  simp only [cmpReloadI, hs]; rfl
+
+/-- **The reload scan through the compare-spill reload.** Let the reload scan of `x` from the
+    end of `A` carry no `reloadScratch` to the position after a compare on a spilled first
+    operand. Then the scan of `x` from the end of `cmpReload A` finds the slot that the scan from
+    the end of `A` finds. -/
+theorem reloadOf_cmpReload (hR : slotArr reloadScratch = none) (A : Lcmd) :
+    ∀ (x : String) {q : String},
+      (∀ A₁ i A₂, A = A₁ ++ i :: A₂ → (spillCmp? i.li_i).isSome = true →
+        scanExit slotArr A₂ A₂.length x ≠ some reloadScratch) →
+      reloadOf slotArr A A.length x = some q →
+      reloadOf slotArr (cmpReload A) (cmpReload A).length x = some q := by
+  induction A using List.reverseRecOn with
+  | nil => intro x q _ h; cases h
+  | append_singleton A j ih =>
+    intro x q hno h
+    have hmv : ∀ y, scanExit slotArr [j] 1 x = some y → ∀ A₁ i A₂, A = A₁ ++ i :: A₂ →
+        (spillCmp? i.li_i).isSome = true → scanExit slotArr A₂ A₂.length y ≠ some reloadScratch := by
+      intro y hy A₁ i A₂ hA hs
+      have := hno A₁ i (A₂ ++ [j]) (by rw [hA]; simp) hs
+      rwa [List.length_append, List.length_singleton, scanExit_snoc, hy] at this
+    rw [List.length_append, List.length_singleton, reloadOf_snoc] at h
+    rw [cmpReload_append]
+    cases hs : spillCmp? j.li_i with
+    | none =>
+      have hg : cmpReload [j] = [j] := by simp [cmpReload, cmpReloadI_of_none hs]
+      rw [hg, List.length_append, List.length_singleton, reloadOf_snoc]
+      cases he : scanExit slotArr [j] 1 x with
+      | none => rw [he] at h; exact h
+      | some y => rw [he] at h; exact ih y (hmv y he) h
+    | some p =>
+      obtain ⟨opn, d, s⟩ := p
+      have hx : x ≠ reloadScratch := by
+        have := hno A j [] (by simp) (by simp [hs])
+        simpa [scanExit] using this
+      have hj := spillCmp?_some hs
+      have hg : cmpReload [j] = cmpReloadI j := by simp [cmpReload]
+      rw [hg, cmpReloadI_of_some hs]
+      have he : scanExit slotArr [j] 1 x = some x := by
+        by_cases hd : (d == x || (slotArr d).isSome) = true
+        · exfalso
+          have : reloadOf slotArr [j] 1 x = none := by
+            simp [reloadOf, hj, slotMov?, dstHitB, hd]
+          have hs' : scanExit slotArr [j] 1 x = none := by
+            simp [scanExit, hj, slotMov?, dstHitB, hd]
+          rw [hs', this] at h; cases h
+        · simp only [Bool.not_eq_true] at hd
+          simp [scanExit, hj, slotMov?, dstHitB, hd]
+      rw [he] at h
+      have hL : scanExit slotArr [⟨j.li_ii, .Lopn [.reg reloadScratch] (movOf opn) [.reg d]⟩,
+          ⟨j.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, s]⟩] 2 x = some x := by
+        simp only [scanExit, List.getElem?_cons_succ, List.getElem?_cons_zero]
+        simp [slotMov?, dstHitB, hR, Ne.symm hx]
+        split_ifs <;> simp [hR, Ne.symm hx]
+      have := reloadOf_append_scanExit slotArr (cmpReload A)
+        [⟨j.li_ii, .Lopn [.reg reloadScratch] (movOf opn) [.reg d]⟩,
+          ⟨j.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, s]⟩] 2 x
+      rw [hL] at this
+      rw [List.length_append, List.length_cons, List.length_singleton, this]
+      exact ih x (hmv x he) h
+
 /-- **The compare-spill reload keeps the class.** When every array slot is a `qsave.` slot and
-    the reload scratch holds the pointer of no array at a compare on a spilled first operand
-    (`cmpScratchFreeB`), the reload of a body in the class is in the class. -/
+    the reload scan of the base of no indexed access carries the reload scratch to the position
+    after an earlier compare on a spilled first operand (`cmpScratchFreeB`), the reload of a body
+    in the class is in the class. -/
 theorem physImgB_cmpReload
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
     (hfree : cmpScratchFreeB slotArr b = true) (h : physImgB slotArr b = true) :
     physImgB slotArr (cmpReload b) = true := by
   have hR : slotArr reloadScratch = none :=
     PhysImgEmit.slotArr_none_of_prefix hq (gpNameB_prefix (d := reloadScratch) (by decide)).1
-  show physImgB slotArr (b.flatMap fun i => cmpReloadI i) = true
-  refine physImgB_flatMap_of_dom (S := fun _ => True) (fun _ _ => trivial) h
-    (fun _ _ _ _ _ _ _ _ => trivial) fun A i C hb => ?_
+  refine physImgB_of_embed h fun k r hk => ?_
+  obtain ⟨A, i, C, o, hb, rfl, hr⟩ :=
+    flatMap_getElem?_split (g := fun i => cmpReloadI i) b k r hk
   have hpos : b[A.length]? = some i := by rw [hb]; simp
+  have hfl : cmpReload b = cmpReload A ++ (cmpReloadI i ++ cmpReload C) := by
+    rw [hb, cmpReload_append]; simp [cmpReload]
   cases hs : spillCmp? i.li_i with
-  | none => exact Or.inl (cmpReloadI_of_none hs)
   | some p =>
     obtain ⟨opn, d, s⟩ := p
-    right
+    left
     have hi := spillCmp?_some hs
-    have hg : cmpReloadI i = [⟨i.li_ii, .Lopn [.reg reloadScratch] (movOf opn) [.reg d]⟩,
-        ⟨i.li_ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, s]⟩] := by
-      simp only [cmpReloadI, hs]; rfl
-    have hm : slotMov? i.li_i = none := by rw [hi]; rfl
     obtain ⟨hacc, -⟩ := physImgB_getElem h hpos
     rw [hi] at hacc
     obtain ⟨hn1, hn2⟩ := accOkB_two hacc (by intro x y sc he; cases he)
-    rw [hg]
-    refine ⟨fun r hr => ?_, hm, fun f' hD => ?_⟩
-    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-      rcases hr with rfl | rfl
-      · refine ⟨isAccB_mov ?_, dstOk_single hR⟩
-        unfold movOf; split_ifs <;> simp
-      · exact ⟨isAccB_lopn hn1 hn2, dstOk_single hR⟩
-    · refine domOn_nonmove_block hm hi (fun x _ => ?_) hD
-      by_cases hx : x = reloadScratch
-      · right; right
-        subst hx
-        intro q hq
-        have hk : A.length < b.length := (List.getElem?_eq_some_iff.mp hpos).1
-        have := List.all_eq_true.mp hfree A.length (List.mem_range.mpr hk)
-        rw [hpos] at this
-        simp only [hs, Option.isNone_some, Bool.false_or, Option.isNone_iff_eq_none] at this
-        have e1 := congrFun (reloadOf_eq_provF (slotArr := slotArr) b A.length hk.le) reloadScratch
-        rw [hb, List.take_left' rfl, ← hb] at e1
-        simp only [accArr, e1, hq, Option.bind_some] at this
-        simp [this]
-      · right; left
-        refine provF_pass _ _ fun r hr => ?_
-        simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-        rcases hr with rfl | rfl
-        · exact ⟨_, _, _, rfl, Ne.symm hx, hR⟩
-        · exact ⟨_, _, _, rfl, Ne.symm hx, hR⟩
+    rw [cmpReloadI_of_some hs] at hr
+    have hmem := List.mem_of_getElem? hr
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
+    rcases hmem with rfl | rfl
+    · refine ⟨isAccB_mov ?_, slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
+      unfold movOf; split_ifs <;> simp
+    · exact ⟨isAccB_lopn hn1 hn2, slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
+  | none =>
+    rw [cmpReloadI_of_none hs] at hr
+    cases o with
+    | succ o => simp at hr
+    | zero =>
+    simp only [List.getElem?_singleton, if_true, Option.some.injEq] at hr
+    subst hr
+    have hent : ∀ R, entryRegB b A.length R = true →
+        entryRegB (cmpReload b) ((A.flatMap fun i => cmpReloadI i).length + 0) R = true := by
+      intro R hR'
+      by_cases hall : ∀ j ∈ A, spillCmp? j.li_i = none
+      · have hA : cmpReload A = A := cmpReload_of_forall hall
+        refine entryRegB_of_take_sublist ?_ hR'
+        show ((cmpReload b).take ((cmpReload A).length + 0)).Sublist _
+        rw [hfl, hb, Nat.add_zero, List.take_left' rfl, hA, List.take_left' rfl]
+      · push Not at hall
+        obtain ⟨j, hj, hjne⟩ := hall
+        exfalso
+        obtain ⟨⟨opn, d, s⟩, hjs⟩ := Option.ne_none_iff_exists'.mp hjne
+        unfold entryRegB at hR'
+        rw [hb, List.take_left' rfl, List.all_eq_true] at hR'
+        have := hR' j hj
+        rw [spillCmp?_some hjs] at this
+        cases this
+    obtain ⟨-, hw⟩ := physImgB_getElem h hpos
+    cases hacc : isAccB i.li_i with
+    | false => exact Or.inl ⟨rfl, slotWriteB_mono hent _ hw⟩
+    | true =>
+    refine Or.inr ⟨A.length, hpos, fun x hx ha => ?_, Or.inl hent⟩
+    obtain ⟨ds, o', y, ss, hx'⟩ := hx
+    have hno : ∀ A₁ i' A₂, A = A₁ ++ i' :: A₂ → (spillCmp? i'.li_i).isSome = true →
+        scanExit slotArr A₂ A₂.length x ≠ some reloadScratch := by
+      intro A₁ i' A₂ hA hs'
+      have hb' : b = A₁ ++ i' :: (A₂ ++ i :: C) := by rw [hb, hA]; simp
+      have hk : A₁.length < b.length := by rw [hb']; simp
+      have := List.all_eq_true.mp hfree A₁.length (List.mem_range.mpr hk)
+      have hp' : b[A₁.length]? = some i' := by rw [hb']; simp
+      have hd : b.drop (A₁.length + 1) = A₂ ++ i :: C := by rw [hb']; simp
+      rw [hp', hd] at this
+      have hn : (spillCmp? i'.li_i).isNone = false := by
+        cases hh : spillCmp? i'.li_i <;> simp_all
+      simp only [hn, Bool.false_or, List.all_eq_true, List.mem_range] at this
+      have h2 := this A₂.length (by simp)
+      rw [hx'] at hacc
+      simp only [List.getElem?_append_right le_rfl, Nat.sub_self, List.getElem?_cons_zero,
+        baseScanFreeB, hx', hacc, Bool.not_true, Bool.false_or, bne_iff_ne, ne_eq] at h2
+      rwa [scanExit_append_left _ _ _ _ _ le_rfl] at h2
+    rw [hb, accArr_append_left _ _ _ _ _ le_rfl] at ha
+    show (accArr slotArr (cmpReload b) ((cmpReload A).length + 0) x).isSome = true
+    rw [hfl, Nat.add_zero, accArr_append_left _ _ _ _ _ le_rfl]
+    simp only [accArr] at ha ⊢
+    cases hq1 : reloadOf slotArr A A.length x with
+    | none => simp [hq1] at ha
+    | some q =>
+      rw [hq1] at ha
+      rw [reloadOf_cmpReload hR A x hno hq1]
+      exact ha
 
 end CmpReload
 
