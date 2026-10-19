@@ -30,14 +30,17 @@ type alphabet `JasminTy ⊕ PfTy`) are joined with the casts `CastOp` (`Dialect.
 `w` bits (a `stackArr w n` of `jasminDialect`), and `fromWords p r w n` reads `n` words back,
 failing when their value is not below `p`. The casts are the only operations whose
 denotation fails, so `jasField` denotes in `Option` (`DialectDenoteM jasField Option`). In
-`jasMod` the operations of `modArithDialect` and of `pfDialect` are joined with the casts
-`ModCastOp`: `toRes p r` gives the stored residue in `ZMod p` (a `ModArithTy.fp p` value)
-and `ofRes p r` reads a residue as a field value; both are total.
+`jasMod` the operations of `jasminDialect` and of `modArithDialect` (the coproduct
+`jasModArith`, with type alphabet `JasminTy ⊕ ModArithTy`) are joined with the word casts
+`ModWordCastOp`: `toWordsM p w n` writes a residue of `ZMod p` as `n` little-endian words of
+`w` bits, and `fromWordsM p w n` reads `n` words back as a residue, failing when their value
+is not below `p`; `jasMod` denotes in `Option` as well (`DialectDenoteM jasMod Option`).
 
 The leakage model of `pfDialect` is quiet on every operation, as `fieldLeakModel` of
 `Hax/NFFieldSumLeak.lean` is on every operation other than inversion; the casts are quiet as
-well. The leakage models of `jasField` and `jasMod` are `sumLeak` of a leakage model of the
-machine dialect and `pfLeakModel`, extended by the quiet casts.
+well. The leakage model of `jasField` is `sumLeak` of a leakage model of `jasminDialect` and
+`pfLeakModel`, and that of `jasMod` is `sumLeak` of leakage models of `jasminDialect` and
+`modArithDialect`; both are extended by the quiet casts.
 
 ## Main definitions
 
@@ -48,15 +51,17 @@ machine dialect and `pfLeakModel`, extended by the quiet casts.
   of a value, and the two casts as functions.
 * `CastOp`, `castDialect`, `jasPf`, `jasField`, `jasFieldTraits`, `jasFieldLeak`,
   `jasFieldOpInfo`.
-* `ModCastOp`, `modCastDialect`, `modPf`, `jasMod`, `jasModTraits`, `jasModLeak`,
-  `jasModOpInfo`.
+* `fromWordsMF`, `toWordsMF`: the word casts of `mod_arith` residues as functions.
+* `ModWordCastOp`, `modWordCastDialect`, `jasModArith`, `jasMod`, `jasModTraits`,
+  `jasModLeak`, `jasModOpInfo`.
 
 ## Main results
 
 * `FieldRepr.ofRep_toRep`, `FieldRepr.toRep_ofRep`: the stored residue and its read-back are
   inverse under an admissible representation; `FieldRepr.toRep_mont_eq` and
   `FieldRepr.toRep_canon_eq` identify `toRep` with `MontParams.toRep` of
-  `VIR/FieldToModArithMont.lean`.
+  `VIR/FieldToModArithMont.lean`; `FieldRepr.toRep_add`, `FieldRepr.toRep_sub`,
+  `FieldRepr.toRep_neg`: the stored residue commutes with addition, subtraction and negation.
 * `pfDialect.denote_add`, …, `pfDialect.denote_toMont`, `pfDialect.denote_fromMont`: the
   value of every operation.
 * `wordsVal_wordsOf`, `wordsOf_wordsVal`, `wordsVal_lt`: the word encoding of naturals.
@@ -66,9 +71,9 @@ machine dialect and `pfLeakModel`, extended by the quiet casts.
 * `jasField_denoteM_jasmin`, `jasField_denoteM_pf`, `jasField_denoteM_fromWords`,
   `jasField_denoteM_toWords`: the denotation of each summand inside `jasField`.
 * `pfConstLaw`, `pfSpecLaw`, `pfPureLaw`, `jasFieldTraits_constLaw`, `jasFieldTraits_specLaw`,
-  `jasModTraits_constLaw`: the laws of the records.
-* `jasFieldLeak_ctLeak_pf`, `jasFieldLeak_ctLeak_cast`, `jasModLeak_ctLeak_pf`,
-  `jasModLeak_ctLeak_cast`: a field operation and a cast emit no event.
+  `modWordCastSpecLaw`, `jasModTraits_specLaw`: the laws of the records.
+* `jasFieldLeak_ctLeak_pf`, `jasFieldLeak_ctLeak_cast`, `jasModLeak_ctLeak_cast`: a field
+  operation and a cast emit no event.
 -/
 
 @[expose] public section
@@ -150,6 +155,29 @@ theorem toRep_mont_eq (M : FieldToModArithMont.MontParams) {p k : Nat}
 theorem toRep_canon_eq (M : FieldToModArithMont.MontParams) {p : Nat}
     (hM : M.isMont p = false) (x : ZMod p) : canon.toRep x = M.toRep x := by
   simp only [toRep, FieldToModArithMont.MontParams.toRep, hM, Bool.false_eq_true, if_false]
+
+/-- The stored residue of a sum is the sum of the stored residues. -/
+theorem toRep_add {p : Nat} (r : FieldRepr) (a b : ZMod p) :
+    r.toRep a + r.toRep b = r.toRep (a + b) := by
+  cases r
+  · rfl
+  · simp only [toRep]
+    ring
+
+/-- The stored residue of a difference is the difference of the stored residues. -/
+theorem toRep_sub {p : Nat} (r : FieldRepr) (a b : ZMod p) :
+    r.toRep a - r.toRep b = r.toRep (a - b) := by
+  cases r
+  · rfl
+  · simp only [toRep]
+    ring
+
+/-- The stored residue of a negation is the negation of the stored residue. -/
+theorem toRep_neg {p : Nat} (r : FieldRepr) (a : ZMod p) : -r.toRep a = r.toRep (-a) := by
+  cases r
+  · rfl
+  · simp only [toRep]
+    ring
 
 end FieldRepr
 
@@ -562,7 +590,9 @@ def jasFieldTraits (T : OpTraits jasminDialect) : OpTraits jasField :=
     coproduct model `sumLeak M pfLeakModel` on the operations of `jasPf`, and the quiet
     class on the casts. -/
 def jasFieldLeak (M : LeakModel jasminDialect) : LeakModel jasField where
-  kind := Sum.elim (sumLeak M pfLeakModel).kind fun _ => .quiet
+  kind := Sum.elim (sumLeak M pfLeakModel).kind fun
+    | .fromWords .. => .quiet
+    | .toWords .. => .quiet
   valNat := (sumLeak M pfLeakModel).valNat
 
 /-- The operation information of `jasField` from that of `jasminDialect`. -/
@@ -600,140 +630,152 @@ theorem jasFieldLeak_ctLeak_pf (M : LeakModel jasminDialect) {Γ : Ctxt jasField
 theorem jasFieldLeak_ctLeak_cast (M : LeakModel jasminDialect) {Γ : Ctxt jasField}
     {t : jasField.Ty} (e : Expr jasField Γ t) (o : CastOp) (h : e.op = .inr o)
     (V : Valuation Γ) : Expr.ctLeak (jasFieldLeak M) e V = [] :=
-  Expr.ctLeak_of_quiet _ e (by rw [h]; rfl) V
+  Expr.ctLeak_of_quiet _ e (by rw [h]; cases o <;> rfl) V
 
 /-- An operation of `jasminDialect` has in `jasField` the event class of `M`. -/
 @[simp] theorem jasFieldLeak_kind_jasmin (M : LeakModel jasminDialect) (o : JasminOp) :
     (jasFieldLeak M).kind (.inl (.inl o)) = M.kind o := rfl
 
-/-! ## 9. The dialect `jasMod` -/
+/-! ## 9. The word casts of residues -/
 
-/-- The casts between the residues of `modArithDialect` and the field values of
-    `pfDialect`. -/
-inductive ModCastOp where
-  /-- The stored residue of an element of `ZMod p` in the representation `r`. -/
-  | toRes (p : Nat) (r : FieldRepr)
-  /-- The element of `ZMod p` a residue stores in the representation `r`. -/
-  | ofRes (p : Nat) (r : FieldRepr)
+/-- The cast from `n` words of `w` bits to a residue of `ZMod p`: fails when the value of
+    the words is not below `p`. -/
+def fromWordsMF (p w n : Nat) (ws : Fin n → BitVec w) : Option (ZMod p) :=
+  if wordsVal n ws < p then some (wordsVal n ws : ZMod p) else none
+
+/-- The cast from a residue of `ZMod p` to `n` words of `w` bits: the words of its least
+    natural representative. -/
+def toWordsMF (p w n : Nat) (y : ZMod p) : Fin n → BitVec w :=
+  wordsOf w n y.val
+
+/-- The casts between the word tuples of `jasminDialect` and the residues of
+    `modArithDialect`. -/
+inductive ModWordCastOp where
+  /-- Read `n` words of `w` bits as a residue of `ZMod p`; fails when the value of the words
+      is not below `p`. -/
+  | fromWordsM (p w n : Nat)
+  /-- Write a residue of `ZMod p` as `n` words of `w` bits. -/
+  | toWordsM (p w n : Nat)
   deriving DecidableEq
 
-/-- The dialect of the residue casts, over the type alphabet `ModArithTy ⊕ PfTy`. -/
-@[reducible] def modCastDialect : Dialect := { Op := ModCastOp, Ty := ModArithTy ⊕ PfTy }
+/-- The dialect of the word casts, over the type alphabet `JasminTy ⊕ ModArithTy`. -/
+@[reducible] def modWordCastDialect : Dialect :=
+  { Op := ModWordCastOp, Ty := JasminTy ⊕ ModArithTy }
 
-instance : DialectSignature modCastDialect where
+instance : DialectSignature modWordCastDialect where
   sig
-    | .toRes p r => [.inr (.pf p r)]
-    | .ofRes p _ => [.inl (.fp p)]
+    | .fromWordsM _ w n => [.inl (.stackArr w n)]
+    | .toWordsM p _ _ => [.inr (.fp p)]
   ret
-    | .toRes p _ => .inl (.fp p)
-    | .ofRes p r => .inr (.pf p r)
+    | .fromWordsM p _ _ => .inr (.fp p)
+    | .toWordsM _ w n => .inl (.stackArr w n)
 
-/-- The denotation of the residue casts: `FieldRepr.toRep` and `FieldRepr.ofRep`. -/
-instance modCastDenote : DialectDenote modCastDialect where
-  denote
-    | .toRes p r, args => r.toRep (p := p) args.head
-    | .ofRes p r, args => r.ofRep (p := p) args.head
+/-- The `Option` denotation of the word casts: `fromWordsMF` and `toWordsMF`. -/
+instance modWordCastDenoteM : DialectDenoteM modWordCastDialect Option where
+  denoteM
+    | .fromWordsM p w n, args => fromWordsMF p w n args.head
+    | .toWordsM p w n, args => some (toWordsMF p w n args.head)
 
-/-- The value of `toRes`. -/
-theorem modCast_denote_toRes (p : Nat) (r : FieldRepr) (x : ZMod p) :
-    DialectDenote.denote (d := modCastDialect) (.toRes p r) (.cons x .nil) = r.toRep x := rfl
+/-- The operation properties of the word casts: `toWordsM` is speculatable; no cast is
+    pure or constant-like; every cast costs one. -/
+def modWordCastTraits : OpTraits modWordCastDialect where
+  pure _ := false
+  speculatable
+    | .fromWordsM _ _ _ => false
+    | .toWordsM _ _ _ => true
+  constLike _ := false
+  cost _ := 1
 
-/-- The value of `ofRes`. -/
-theorem modCast_denote_ofRes (p : Nat) (r : FieldRepr) (y : ZMod p) :
-    DialectDenote.denote (d := modCastDialect) (.ofRes p r) (.cons y .nil) = r.ofRep y := rfl
+/-- `toWordsM` succeeds at every argument. -/
+theorem modWordCastSpecLaw : SpecLaw modWordCastTraits := by
+  intro op h args
+  cases op with
+  | fromWordsM => simp [modWordCastTraits] at h
+  | toWordsM => rfl
 
-/-- The coproduct of `modArithDialect` and `pfDialect`. -/
-abbrev modPf : Dialect := Dialect.sum modArithDialect pfDialect
+/-! ## 10. The dialect `jasMod` -/
 
-instance : DialectSignature modPf :=
-  instDialectSignatureSum (d := modArithDialect) (e := pfDialect)
+/-- The coproduct of `jasminDialect` and `modArithDialect`. -/
+abbrev jasModArith : Dialect := Dialect.sum jasminDialect modArithDialect
 
-/-- The denotation of `modPf`: each summand by its own denotation. -/
-instance modPfDenote : DialectDenote modPf :=
-  instDialectDenoteSum (d := modArithDialect) (e := pfDialect)
+instance : DialectSignature jasModArith :=
+  instDialectSignatureSum (d := jasminDialect) (e := modArithDialect)
 
-/-- The field dialect over `modArithDialect`: the operations of `modArithDialect` and
-    `pfDialect`, and the casts between residues and field values. -/
-abbrev jasMod : Dialect := Dialect.opSum modPf modCastDialect
+/-- The denotation of `jasModArith`: each summand by its own denotation. -/
+instance jasModArithDenote : DialectDenote jasModArith :=
+  instDialectDenoteSum (d := jasminDialect) (e := modArithDialect)
+
+/-- The `mod_arith` dialect over `jasminDialect`: the operations of `jasminDialect` and
+    `modArithDialect`, and the casts between word tuples and residues. -/
+abbrev jasMod : Dialect := Dialect.opSum jasModArith modWordCastDialect
 
 instance : DialectSignature jasMod :=
-  DialectOpSum.instDialectSignatureOpSum (O₁ := modPf.Op) (O₂ := ModCastOp)
-    (T := ModArithTy ⊕ PfTy)
+  DialectOpSum.instDialectSignatureOpSum (O₁ := jasModArith.Op) (O₂ := ModWordCastOp)
+    (T := JasminTy ⊕ ModArithTy)
 
-/-- The denotation of `jasMod`: each summand by its own denotation. -/
-instance jasModDenote : DialectDenote jasMod :=
-  DialectOpSum.instDialectDenoteOpSum (O₁ := modPf.Op) (O₂ := ModCastOp)
-    (T := ModArithTy ⊕ PfTy)
+/-- The `Option` denotation of `jasMod`: the operations of `jasModArith` succeed with their
+    value, the casts denote by `modWordCastDenoteM`. -/
+instance jasModDenoteM : DialectDenoteM jasMod Option :=
+  DialectOpSum.instDialectDenoteMOpSum (O₁ := jasModArith.Op) (O₂ := ModWordCastOp)
+    (T := JasminTy ⊕ ModArithTy)
 
-/-- The trip counter of `jasMod` is the 64-bit word of `modArithDialect`. -/
+/-- The trip counter of `jasMod` is the 64-bit register of `jasminDialect`. -/
 instance : HasWord64 jasMod where
-  word := .inl (ModArithTy.word 64)
+  word := .inl (JasminTy.reg 64)
   toNat := BitVec.toNat
   ofNat := BitVec.ofNat 64
 
-/-- The branch bit of `jasMod` is the carry of `modArithDialect`, read as `true` exactly at
-    `1#1`. -/
+/-- The branch bit of `jasMod` is the 1-bit register of `jasminDialect`, read as `true`
+    exactly at `1#1`. -/
 instance : HasBoolBit jasMod where
-  bit := .inl ModArithTy.carry
+  bit := .inl (JasminTy.reg 1)
   toBool := fun (b : BitVec 1) => decide (b = 1#1)
 
 /-- `jasMod` denotes calls in the empty environment. -/
 instance : CallDenote jasMod := ⟨.empty⟩
 
-/-- The operation properties of the residue casts: both casts are pure and speculatable,
-    neither is constant-like, and both cost one. -/
-def modCastTraits : OpTraits modCastDialect where
-  pure _ := true
-  speculatable _ := true
-  constLike _ := false
-  cost _ := 1
+/-- The operation properties of `jasModArith` from records of `jasminDialect` and
+    `modArithDialect`. -/
+def jasModArithTraits (T : OpTraits jasminDialect) (U : OpTraits modArithDialect) :
+    OpTraits jasModArith where
+  pure := Sum.elim T.pure U.pure
+  speculatable := Sum.elim T.speculatable U.speculatable
+  constLike := Sum.elim T.constLike U.constLike
+  cost := Sum.elim T.cost U.cost
 
-/-- The operation properties of `modPf` from a record of `modArithDialect` and
-    `pfTraits`. -/
-def modPfTraits (T : OpTraits modArithDialect) : OpTraits modPf where
-  pure := Sum.elim T.pure pfTraits.pure
-  speculatable := Sum.elim T.speculatable pfTraits.speculatable
-  constLike := Sum.elim T.constLike pfTraits.constLike
-  cost := Sum.elim T.cost pfTraits.cost
+/-- The operation properties of `jasMod` from records of `jasminDialect` and
+    `modArithDialect`. -/
+def jasModTraits (T : OpTraits jasminDialect) (U : OpTraits modArithDialect) :
+    OpTraits jasMod :=
+  (jasModArithTraits T U).opSum modWordCastTraits
 
-/-- The operation properties of `jasMod` from a record of `modArithDialect`. -/
-def jasModTraits (T : OpTraits modArithDialect) : OpTraits jasMod :=
-  (modPfTraits T).opSum modCastTraits
+/-- The leakage model of `jasMod` from leakage models `M` of `jasminDialect` and `N` of
+    `modArithDialect`: the coproduct model `sumLeak M N` on the operations of `jasModArith`,
+    and the quiet class on the casts. -/
+def jasModLeak (M : LeakModel jasminDialect) (N : LeakModel modArithDialect) :
+    LeakModel jasMod where
+  kind := Sum.elim (sumLeak M N).kind fun
+    | .fromWordsM .. => .quiet
+    | .toWordsM .. => .quiet
+  valNat := (sumLeak M N).valNat
 
-/-- The leakage model of `jasMod` from a leakage model `M` of `modArithDialect`: the
-    coproduct model `sumLeak M pfLeakModel` on the operations of `modPf`, and the quiet
-    class on the casts. -/
-def jasModLeak (M : LeakModel modArithDialect) : LeakModel jasMod where
-  kind := Sum.elim (sumLeak M pfLeakModel).kind fun _ => .quiet
-  valNat := (sumLeak M pfLeakModel).valNat
+/-- The operation information of `jasMod` from that of `jasminDialect` and
+    `modArithDialect`. -/
+def jasModOpInfo (I : OpInfo jasminDialect) (J : OpInfo modArithDialect) : OpInfo jasMod :=
+  { jasModTraits I.toOpTraits J.toOpTraits, jasModLeak I.toLeakModel J.toLeakModel with }
 
-/-- The operation information of `jasMod` from that of `modArithDialect`. -/
-def jasModOpInfo (I : OpInfo modArithDialect) : OpInfo jasMod :=
-  { jasModTraits I.toOpTraits, jasModLeak I.toLeakModel with }
+/-- The speculation law of `jasMod`: every operation of `jasModArith` succeeds, and
+    `toWordsM` succeeds. -/
+theorem jasModTraits_specLaw (T : OpTraits jasminDialect) (U : OpTraits modArithDialect) :
+    SpecLaw (jasModTraits T U)
+  | .inl (.inl _), _, _ => rfl
+  | .inl (.inr _), _, _ => rfl
+  | .inr o, h, args => modWordCastSpecLaw o h args
 
-/-- The constant law of `modArithDialect` gives the constant law of `jasMod`. -/
-theorem jasModTraits_constLaw {T : OpTraits modArithDialect} (hT : ConstLaw T) :
-    ConstLaw (jasModTraits T)
-  | .inl (.inl o), h => by
-      show (DialectSignature.sig (d := modArithDialect) o).map Sum.inl = []
-      rw [hT o h]
-      rfl
-  | .inl (.inr o), h => by
-      show (DialectSignature.sig (d := pfDialect) o).map Sum.inr = []
-      rw [pfConstLaw o h]
-      rfl
-  | .inr _, h => by simp [jasModTraits, OpTraits.opSum, modCastTraits] at h
-
-/-- An operation of `pfDialect` emits no event in `jasMod`. -/
-theorem jasModLeak_ctLeak_pf (M : LeakModel modArithDialect) {Γ : Ctxt jasMod}
-    {t : jasMod.Ty} (e : Expr jasMod Γ t) (o : PfOp) (h : e.op = .inl (.inr o))
-    (V : Valuation Γ) : Expr.ctLeak (jasModLeak M) e V = [] :=
-  Expr.ctLeak_of_quiet _ e (by rw [h]; rfl) V
-
-/-- A residue cast emits no event in `jasMod`. -/
-theorem jasModLeak_ctLeak_cast (M : LeakModel modArithDialect) {Γ : Ctxt jasMod}
-    {t : jasMod.Ty} (e : Expr jasMod Γ t) (o : ModCastOp) (h : e.op = .inr o)
-    (V : Valuation Γ) : Expr.ctLeak (jasModLeak M) e V = [] :=
-  Expr.ctLeak_of_quiet _ e (by rw [h]; rfl) V
+/-- A word cast emits no event in `jasMod`. -/
+theorem jasModLeak_ctLeak_cast (M : LeakModel jasminDialect) (N : LeakModel modArithDialect)
+    {Γ : Ctxt jasMod} {t : jasMod.Ty} (e : Expr jasMod Γ t) (o : ModWordCastOp)
+    (h : e.op = .inr o) (V : Valuation Γ) : Expr.ctLeak (jasModLeak M N) e V = [] :=
+  Expr.ctLeak_of_quiet _ e (by rw [h]; cases o <;> rfl) V
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FieldChainDialect

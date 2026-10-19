@@ -319,6 +319,16 @@ mathematical Tate or Weil pairing.
   of `scripts/dialect-manifest.txt`. `nfFieldDialect` is not yet classified there, so
   `scripts/dialect-lowering-ratchet.sh` reports it as unmarked until the manifest
   gains a line for it.
+- The field chain of `VIR/FieldChainDialect.lean`: `pfDialect` carries prime-field
+  values with a representation attribute (`FieldRepr`), `castDialect` the casts between
+  word tuples and field values, and `jasField` is the operation sum of `jasPf`
+  (`Dialect.sum jasminDialect pfDialect`) and `castDialect`. `jasMod` is the operation
+  sum of `jasModArith` (`Dialect.sum jasminDialect modArithDialect`) and
+  `modWordCastDialect`, the casts between word tuples and residues. `fieldToModArithJ`
+  (`VIR/FieldToModArithChain.lean`, stage FIELD-A-MODARITH) lowers `jasField` to
+  `jasMod`, with the chain certificate `fieldToModArithCert`; the limb templates of
+  stage FIELD-A-LIMBS lower `jasMod` to `jasminDialect`. All seven are in the `lowers`
+  bucket of `scripts/dialect-manifest.txt`.
 - `latticeDialectG` is a family: `latticeDialect` and `realLatticeDialect` are its
   `.bits` and `.poly` instances, with one type alphabet, one op set, one
   `DialectSignature` and two `TyDenote` instances (`Fin n → BitVec 16` and

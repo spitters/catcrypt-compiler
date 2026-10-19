@@ -586,6 +586,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.FibTraceGenEmit
 CatCrypt.Crypto.SecureCompilation.VIR.FieldChainDialect
 CatCrypt.Crypto.SecureCompilation.VIR.FieldCmpSum
 CatCrypt.Crypto.SecureCompilation.VIR.FieldDerivedFieldEmit
+CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithChain
 CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.SignCompress
 CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit.Trapdoor

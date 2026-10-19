@@ -48,6 +48,17 @@ lowers towerDialect
 lowers gf2Dialect
 lowers rowDialect
 lowers laneDialect
+# Field chain (VIR/FieldChainDialect): pfDialect and castDialect are the summands of
+# jasField (with jasPf); fieldToModArithJ (VIR/FieldToModArithChain, FIELD-A-MODARITH)
+# lowers jasField to jasMod (with jasModArith, modWordCastDialect); the limb templates
+# of FIELD-A-LIMBS lower jasMod to jasminDialect.
+lowers pfDialect
+lowers castDialect
+lowers jasPf
+lowers jasField
+lowers jasModArith
+lowers modWordCastDialect
+lowers jasMod
 # scalarTile jasminDialect (VIR/NFTileSum): TileLegal.legalise at the shapes zmmQ, zmmD,
 # ymmQ (VIR/TileLegalX86) maps it to NFProg jasminDialect on the operations each gate
 # accepts; tileLegal_denote, tileLegal_laneLift_denote (VIR/TileLegalLaneMap). No pass

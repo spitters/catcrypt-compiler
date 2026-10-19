@@ -1647,6 +1647,7 @@ def pkgModules8 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChainSemantics,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.FieldLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.FieldOpInfo,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithChain,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithMont,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit,
