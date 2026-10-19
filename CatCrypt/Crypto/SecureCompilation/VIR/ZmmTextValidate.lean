@@ -29,11 +29,13 @@ exchanged for a commuting one), `vMulU` (`vpmuludq` as a 64-bit multiply, when r
 facts or constant lanes put both operands below `2^32`), `vShi` (a shift by a constant
 as an immediate shift), `vMulhi` and `vMullo` (the two halves of the `vpmuludq` /
 `vmovshdup` / merge sequence) and `vMinu` (the conditional add as an unsigned minimum,
-under the range fact `RangeDomain.condAdd_eq_umin` needs). A rotate `vprolq` and a
-`vpternlogq` of a supported truth table need no recogniser of their own: the symbolic
-step reads them as their composites of shifts and bitwise operations
-(`ZmmTextModel.rolTerm`, `ZmmTextModel.ternTerms`), each node normalised, so that each
-node is matched as the binding that computes it. The text is accepted when
+under the range fact `RangeDomain.condAdd_eq_umin` needs). A rotate `vprolq` / `vprold`
+and a `vpternlogq` of a supported truth table are read by the symbolic step as their
+composites of shifts and bitwise operations (`ZmmTextModel.rolTerm`,
+`ZmmTextModel.ternTerms`), each node normalised, so that each node is matched as the
+binding that computes it; the disjunction of the two shifts of a rotate is matched by
+`vOrRol` as a rotate binding `rol`, or as the exclusive or of two immediate shifts whose
+set bits are disjoint (`xor_shifts_eq_or`). The text is accepted when
 store `j` writes a register holding output `j`. Names are compared up to value numbering
 (`repTable`): the binding list may compute one value in several bindings, and the
 bindings are checked in the form `renameB` gives them, reading representatives.
@@ -45,7 +47,7 @@ per name (`RangeDomain.Iv.Mem`), the form `ComRange.rangeAnalysis_sound` conclud
 ## Main definitions
 
 * `SatB`, `Facts`: the reference and the facts the checks rest on.
-* `vBin`, `vMulU`, `vShi`, `vMulhi`, `vMullo`, `vMinu`, `vMontSub`, `verify`: the
+* `vBin`, `vMulU`, `vShi`, `vOrRol`, `vMulhi`, `vMullo`, `vMinu`, `vMontSub`, `verify`: the
   recognisers; `vMontSub` checks the Montgomery step kept in the even/odd products, under
   `montSub_extract`.
 * `keyMap`, `norm`: the candidate table and the normaliser.
@@ -83,6 +85,7 @@ def SatB (w : LaneW) (E : Nat → String → BitVec w.bits) (k : Nat) : ZBind �
   | .mulhi d a b => E k d = mulHiW (E k a) (E k b)
   | .const d v => E k d = lane w.bits (BitVec.ofNat 512 v) k
   | .shi w' l d a n => w' = w → E k d = if l then E k a <<< n else E k a >>> n
+  | .rol w' d a n => w' = w → E k d = (E k a).rotateLeft n
   | _ => True
 
 /-- The packed reference: lane `k` of `pack E n` is `E k n`. -/
@@ -974,6 +977,173 @@ theorem vMinu_sound (hf : Facts m w D rf E) {n : String} {wit : List String} {t 
 
 end Sound
 
+/-- The exclusive or of a left shift by `i` and a logical right shift by `j` with
+    `L ≤ i + j` is their disjunction: no bit is set in both. -/
+theorem xor_shifts_eq_or {L : Nat} (a b : BitVec L) {i j : Nat} (h : L ≤ i + j) :
+    a <<< i ^^^ b >>> j = a <<< i ||| b >>> j := by
+  ext k hk
+  simp only [BitVec.getElem_xor, BitVec.getElem_or, BitVec.getElem_shiftLeft,
+    BitVec.getElem_ushiftRight]
+  by_cases h1 : k < i <;> simp [h1]
+  have : L ≤ j + k := by omega
+  simp [BitVec.getLsbD_of_ge b _ this]
+
+/-- A rotate written as the exclusive or of its two shifts: for `k < L`,
+    `(x <<< k) ⊕ (x >>> (L - k))` is `x` rotated left by `k`. -/
+theorem xor_shifts_eq_rotateLeft {L : Nat} (x : BitVec L) {k : Nat} (h : k < L) :
+    x <<< k ^^^ x >>> (L - k) = x.rotateLeft k := by
+  rw [xor_shifts_eq_or x x (by omega), rotateLeft_eq_or_shifts x h]
+
+/-- A rotate right by `n`, `0 < n < L`, is the rotate left by `L - n`. -/
+theorem rotateRight_eq_rotateLeft_sub {L : Nat} (x : BitVec L) {n : Nat} (h0 : 0 < n)
+    (h : n < L) : x.rotateRight n = x.rotateLeft (L - n) := by
+  ext k hk
+  simp only [BitVec.getElem_rotateRight, BitVec.getElem_rotateLeft,
+    Nat.mod_eq_of_lt h, Nat.mod_eq_of_lt (show L - n < L by omega)]
+  split
+  · congr 1; omega
+  · rfl
+
+/-- The term `t` is the immediate shift of the name `a` by `i` at lane width `w`, left
+    when `left`: the shift node itself, or a name bound to that shift. -/
+def shOK (w : LaneW) (D : Std.HashMap String ZBind) (left : Bool) (i : Nat) (a : String)
+    (t : Term) : Bool :=
+  match t with
+  | .shi L l i' A => decide (L = w.bits) && decide (l = left) && decide (i' = i) && opMatch D A a
+  | .var x =>
+    match D[x]? with
+    | some (.shi w' l d a' i') => decide (w' = w) && decide (d = x) && decide (l = left) &&
+        decide (i' = i) && decide (a' = a)
+    | _ => false
+  | _ => false
+
+/-- The count of the immediate shift at lane width `w` (left when `left`) that binds the
+    name `x`. -/
+def shiCount (w : LaneW) (D : Std.HashMap String ZBind) (left : Bool) (x : String) :
+    Option Nat :=
+  match D[x]? with
+  | some (.shi w' l d _ i) => if w' = w ∧ d = x ∧ l = left then some i else none
+  | _ => none
+
+/-- The names `x`, `y` are bound to a left shift by `i` and a right shift by `j`, in
+    either order, with `w.bits ≤ i + j`: their set bits are disjoint. -/
+def disjSh (w : LaneW) (D : Std.HashMap String ZBind) (x y : String) : Bool :=
+  let one (p q : String) : Bool :=
+    match shiCount w D true p, shiCount w D false q with
+    | some i, some j => decide (w.bits ≤ i + j)
+    | _, _ => false
+  one x y || one y x
+
+/-- `lw L (bin or) ta tb` computes binding `n`: the rotate `n = a rotl i`, `i < L`, with
+    `ta`, `tb` the shifts of `a` left by `i` and right by `L - i` (the reading
+    `ZmmTextModel.rolTerm` gives `vprold` / `vprolq`), or the exclusive or `n = x ⊕ y` of
+    two shifts whose set bits are disjoint (`disjSh`, `xor_shifts_eq_or`). -/
+def vOrRol (w : LaneW) (D : Std.HashMap String ZBind) (n : String) (L : Nat)
+    (bop : JasminBinOp) (ta tb : Term) : Bool :=
+  decide (bop = .or) && decide (L = w.bits) &&
+  match D[n]? with
+  | some (.rol w' d a i) =>
+    decide (w' = w) && decide (d = n) && decide (i < w.bits) &&
+      shOK w D true i a ta && shOK w D false (w.bits - i) a tb
+  | some (.pack w' .xor d x y) =>
+    decide (w' = w) && decide (d = n) && disjSh w D x y &&
+      ((opMatch D ta x && opMatch D tb y) || (opMatch D ta y && opMatch D tb x))
+  | _ => false
+
+section SoundRol
+
+variable {m : Mode} {w : LaneW} {D : Std.HashMap String ZBind} {rf : Std.HashMap String Iv}
+  {E : Nat → String → BitVec w.bits} {σ0 : Fin 32 → BitVec 512}
+
+theorem shOK_lane (hf : Facts m w D rf E) {left : Bool} {i : Nat} {a : String} {t : Term}
+    (h : shOK w D left i a t = true) {k : Nat} (hk : Active m w k) :
+    lane w.bits (t.eval m σ0 (pack w E)) k = if left then E k a <<< i else E k a >>> i := by
+  unfold shOK at h
+  split at h
+  · rename_i L l i' A
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨rfl, rfl⟩, rfl⟩, hA⟩ := h
+    simp only [Term.eval]
+    rw [lane_wr _ hk, lane_semShImm _ _ _ (laneBits_pos _) hk.le512, opMatch_lane hf hA hk]
+  · rename_i x
+    split at h
+    · rename_i w' l d a' i' hd
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+      obtain ⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, rfl⟩ := h
+      simp only [Term.eval]
+      rw [lane_wr _ hk, lane_pack E _ hk]
+      exact hf.sat _ _ hd k hk rfl
+    · cases h
+  · cases h
+
+theorem shiCount_lane (hf : Facts m w D rf E) {left : Bool} {x : String} {i : Nat}
+    (h : shiCount w D left x = some i) {k : Nat} (hk : Active m w k) :
+    ∃ y : BitVec w.bits, E k x = if left then y <<< i else y >>> i := by
+  unfold shiCount at h
+  split at h
+  · rename_i w' l d a i' hd
+    split at h
+    · rename_i hc
+      obtain ⟨rfl, rfl, rfl⟩ := hc
+      cases h
+      exact ⟨E k a, hf.sat _ _ hd k hk rfl⟩
+    · cases h
+  · cases h
+
+theorem disjSh_xor (hf : Facts m w D rf E) {x y : String} (h : disjSh w D x y = true)
+    {k : Nat} (hk : Active m w k) : E k x ^^^ E k y = E k x ||| E k y := by
+  have one : ∀ p q, (match shiCount w D true p, shiCount w D false q with
+      | some i, some j => decide (w.bits ≤ i + j)
+      | _, _ => false) = true → E k p ^^^ E k q = E k p ||| E k q := by
+    intro p q hpq
+    split at hpq
+    · rename_i i j hi hj
+      obtain ⟨u, hu⟩ := shiCount_lane hf hi hk
+      obtain ⟨v, hv⟩ := shiCount_lane hf hj hk
+      simp only [if_true, Bool.false_eq_true, if_false] at hu hv
+      rw [hu, hv]
+      exact xor_shifts_eq_or u v (of_decide_eq_true hpq)
+    · cases hpq
+  unfold disjSh at h
+  simp only [Bool.or_eq_true] at h
+  rcases h with h | h
+  · exact one x y h
+  · rw [BitVec.xor_comm, BitVec.or_comm]; exact one y x h
+
+theorem vOrRol_sound (hf : Facts m w D rf E) {n : String} {L : Nat} {bop : JasminBinOp}
+    {ta tb : Term} (h : vOrRol w D n L bop ta tb = true) :
+    (Term.lw L (.bin bop) ta tb).eval m σ0 (pack w E) = (Term.var n).eval m σ0 (pack w E) := by
+  unfold vOrRol at h
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨rfl, rfl⟩, h⟩ := h
+  split at h
+  · rename_i w' d a i hd
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨⟨rfl, rfl⟩, hi⟩, hta⟩, htb⟩ := h
+    apply eval_eq_var
+    intro k hk
+    rw [lane_semLW _ _ _ (laneBits_pos _) hk.le512]
+    simp only [LOp.apply, JasminBinOp.apply]
+    rw [shOK_lane hf hta hk, shOK_lane hf htb hk, hf.sat _ _ hd k hk rfl]
+    simp only [if_true, Bool.false_eq_true, if_false]
+    exact (rotateLeft_eq_or_shifts _ hi).symm
+  · rename_i w' d x y hd
+    simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h
+    obtain ⟨⟨⟨rfl, rfl⟩, hdj⟩, hm⟩ := h
+    apply eval_eq_var
+    intro k hk
+    rw [lane_semLW _ _ _ (laneBits_pos _) hk.le512]
+    simp only [LOp.apply, JasminBinOp.apply]
+    rw [hf.sat _ _ hd k hk rfl]
+    simp only [JasminBinOp.apply]
+    rw [disjSh_xor hf hdj hk]
+    rcases hm with ⟨ha, hb⟩ | ⟨ha, hb⟩
+    · rw [opMatch_lane hf ha hk, opMatch_lane hf hb hk]
+    · rw [opMatch_lane hf ha hk, opMatch_lane hf hb hk, BitVec.or_comm]
+  · cases h
+
+end SoundRol
+
 /-! ## 7. Recognition: candidates and the normaliser -/
 
 /-- The checked recogniser: binding `n` (with witness `wit` for the conditional add)
@@ -981,7 +1151,7 @@ end Sound
 def verify (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (rf : Std.HashMap String Iv)
     (n : String) (wit : List String) (t : Term) : Bool :=
   match t with
-  | .lw L (.bin bop) a b => vBin w D n L bop a b
+  | .lw L (.bin bop) a b => vBin w D n L bop a b || vOrRol w D n L bop a b
   | .lw 64 .muludq a b => vMulU w m D rf n a b
   | .shi L l i a => vShi w m D n L l i a
   | _ => vMinu w m D rf n wit t || vMulhi w D n t || vMullo w D n t || vMontSub w D n t
@@ -993,7 +1163,10 @@ theorem verify_sound {m : Mode} {w : LaneW} {D : Std.HashMap String ZBind}
     t.eval m σ0 (pack w E) = (Term.var n).eval m σ0 (pack w E) := by
   unfold verify at h
   split at h
-  · exact vBin_sound hf h
+  · simp only [Bool.or_eq_true] at h
+    rcases h with h | h
+    · exact vBin_sound hf h
+    · exact vOrRol_sound hf h
   · exact vMulU_sound hf h
   · exact vShi_sound hf h
   · simp only [Bool.or_eq_true] at h
@@ -1031,7 +1204,13 @@ def candKeys (t : Term) : List String :=
     | some ka, some kb => [tag ++ "|" ++ ka ++ "|" ++ kb]
     | _, _ => []
   match t with
-  | .lw _ (.bin bop) a b => k2 ("b" ++ bopTag bop) a b
+  | .lw L (.bin bop) a b =>
+    let rolK : List String := match a, b with
+      | .shi _ true i A, _ => (termKey A).toList.map (fun kA => "r|" ++ toString i ++ "|" ++ kA)
+      | _, .shi _ false j B =>
+        (termKey B).toList.map (fun kB => "r|" ++ toString (L - j) ++ "|" ++ kB)
+      | _, _ => []
+    k2 ("b" ++ bopTag bop) a b ++ (if bop = .or then rolK ++ k2 "X" a b else [])
   | .lw _ .muludq a b => k2 "u" a b
   | .lw _ .minu a b => k2 "m" a b
   | .shi _ l i a =>
@@ -1122,8 +1301,10 @@ def bindKeys (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (b : ZBind) :
         | _, _ => []
       let minK := if bop = .add then minuKeys w D d a b2 else []
       let montK := if bop = .sub ∧ w = .d then montKeys D d b2 else []
+      let xorK := if bop = .xor then [one ("X|" ++ ka ++ "|" ++ kb), one ("X|" ++ kb ++ "|" ++ ka)]
+        else []
       let _ := m
-      binK ++ mulK ++ shK ++ minK ++ montK
+      binK ++ mulK ++ shK ++ minK ++ montK ++ xorK
     else []
   | .mulhi d a b2 =>
     let ka := leafKey D a
@@ -1132,6 +1313,8 @@ def bindKeys (w : LaneW) (m : Mode) (D : Std.HashMap String ZBind) (b : ZBind) :
   | .shi w' l d a i =>
     if w' = w then [("s|" ++ toString l ++ "|" ++ toString i ++ "|" ++ leafKey D a, (d, []))]
     else []
+  | .rol w' d a i =>
+    if w' = w then [("r|" ++ toString i ++ "|" ++ leafKey D a, (d, []))] else []
   | _ => []
 
 /-- The candidate table of a binding list: each key names the first binding that has it. -/
@@ -1938,6 +2121,24 @@ def shiftDBinds : Array ZBind := #[
   validateBinds .zmm .d ["a", "b"] shiftDBinds 1 none [] &&
   !validateBinds .zmm .d ["a", "b"] shiftDBinds 1 none []
     (fun s => s.replace "\tvpsrld $3, " "\tvpsrld $4, ")
+
+/-- Sixteen-lane rotates: the rotate binding `v0 = a rotl 9`, and the rotate of
+    `v1 = v0 + b` by `5` written as the exclusive or of its two immediate shifts,
+    `v3 = (v1 << 5) ⊕ (v1 >> 27)`; the output is `v3`. -/
+def rolDBinds : Array ZBind := #[
+  .rol .d "v0" "a" 9, .pack .d .add "v1" "v0" "b", .shi .d true "v2" "v1" 5,
+  .shi .d false "v4" "v1" 27, .pack .d .xor "v3" "v2" "v4"]
+
+/- Both rotates render as `vprold`, `$9` and `$5`, with no exclusive or, and the text
+    validates; with either count changed the text is rejected. -/
+#kat (VpackZmmLinearRender.renderZmmLinearBinds "f" (fun s => 64 * s) 1 ["a", "b"]
+    rolDBinds).toOption.any (fun s => (s.splitOn "\tvprold $9, ").length == 2 &&
+      (s.splitOn "\tvprold $5, ").length == 2 && (s.splitOn "vpxord").length == 1) &&
+  validateBinds .zmm .d ["a", "b"] rolDBinds 1 none [] &&
+  !validateBinds .zmm .d ["a", "b"] rolDBinds 1 none []
+    (fun s => s.replace "\tvprold $9, " "\tvprold $8, ") &&
+  !validateBinds .zmm .d ["a", "b"] rolDBinds 1 none []
+    (fun s => s.replace "\tvprold $5, " "\tvprold $6, ")
 
 /- Without the range fact on `v7` the `vpmuludq` of `v8` is rejected. -/
 #kat !validateBinds .zmm .q ["a", "b"] barrettBinds 1 (some (2013265920, barrettRanges))

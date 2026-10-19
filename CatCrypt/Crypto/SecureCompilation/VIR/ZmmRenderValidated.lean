@@ -568,9 +568,8 @@ theorem exprZBindScalar_sound : BindSound .q exprZBindScalar := by
   | _ => exact True.intro
 
 /-- The bindings of the 32-bit binding map `exprZBindScalar32` hold of the run of the scalar
-    program, lane by lane. `SatB` places no condition on a rotate binding `.rol`, so the
-    `rorImm` arm holds without content; the text validator has no recogniser for `vprold`
-    and refuses a text that contains a rotate binding. -/
+    program, lane by lane. The rotate right `rorImm 32 n`, `0 < n < 32`, is the rotate
+    left by `32 - n` (`ZmmTextValidate.rotateRight_eq_rotateLeft_sub`). -/
 theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by
   intro Γ t vm e dst V E k hk ha hd
   rcases e with ⟨op, rfl, args⟩
@@ -631,7 +630,16 @@ theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by
     · simp [exprZBindScalar32, hw, SatB]
   | rorImm w' n =>
     by_cases hw : w' = 32 ∧ 0 < n ∧ n < 32
-    · simp [exprZBindScalar32, hw, SatB]
+    · obtain ⟨rfl, hn0, hn⟩ := hw
+      match args with
+      | .cons a .nil =>
+        simp only [exprZBindScalar32, hn0, hn, and_self, if_true, SatB]
+        intro _
+        rw [hd _ (regAs_reg 32 _)]
+        change _ = (E k (vm (JasminTy.reg 32) a)).rotateLeft (32 - n)
+        rw [ha _ a _ (regAs_reg 32 _)]
+        exact ZmmTextValidate.rotateRight_eq_rotateLeft_sub
+          (show BitVec 32 from a.lookup V) hn0 hn
     · simp [exprZBindScalar32, hw, SatB]
   | _ => exact True.intro
 

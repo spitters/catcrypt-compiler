@@ -849,10 +849,12 @@ def bcastLane (consts : Std.HashMap String (String × Nat)) (w : LaneW) (n : Str
   (consts.get? n).bind (fun c => if isBcast w c.2 then some (c.2 % 2 ^ w.bits) else none)
 
 /-- The rotate `d = (a << n) | (a >> (L - n))`, `0 < n < L`, at lane width `L`, with the
-    shift counts broadcast constants or immediates, `a` not a constant and the two shifts each read once
-    and outside `keep`: the three bindings are rewritten to `rol w d a n` (`vprolq`) at
-    the position of `d`. The value of `d` is unchanged
-    (`ZmmTextModel.rotateLeft_eq_or_shifts`). -/
+    shift counts broadcast constants or immediates, `a` not a constant and the two shifts
+    each read once and outside `keep`: the three bindings are rewritten to `rol w d a n`
+    (`vprolq` / `vprold`) at the position of `d`. The same holds for the exclusive or
+    `d = (a << n) ⊕ (a >> (L - n))` of two immediate shifts (`.shi`), whose set bits are
+    disjoint. The value of `d` is unchanged (`ZmmTextModel.rotateLeft_eq_or_shifts`,
+    `ZmmTextValidate.xor_shifts_eq_rotateLeft`). -/
 def fuseRol (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet String)
     (bs : Array ZBind) : Array ZBind := Id.run do
   let defs : Std.HashMap String ZBind := bs.foldl (fun m b => m.insert b.dst b) {}
@@ -860,17 +862,20 @@ def fuseRol (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet St
     bs.foldl (fun m b => b.srcs.foldl (fun m s => m.insert s (m.getD s 0 + 1)) m) {}
   let used (n : String) : Nat := uses.getD n 0
   -- `x = a << n` and `y = a >> (L - n)`
-  -- a shift by a broadcast constant or by an immediate: its source and count
-  let shiftOf (w : LaneW) (left : Bool) (x : String) : Option (LaneW × String × Nat) :=
+  -- a shift by an immediate, or (unless `shiOnly`) by a broadcast constant: its source
+  -- and count
+  let shiftOf (w : LaneW) (shiOnly left : Bool) (x : String) :
+      Option (LaneW × String × Nat) :=
     match defs.get? x with
     | some (.pack w1 bop _ a k) =>
-      if bop == (if left then .shl else .shr) then (bcastLane consts w k).map (w1, a, ·)
+      if !shiOnly && bop == (if left then .shl else .shr) then
+        (bcastLane consts w k).map (w1, a, ·)
       else none
     | some (.shi w1 l _ a n) => if l == left then some (w1, a, n) else none
     | _ => none
-  let hit (w : LaneW) (x y : String) : Option (String × Nat) := do
-    let (w1, a, n) ← shiftOf w true x
-    let (w2, a2, n2) ← shiftOf w false y
+  let hit (w : LaneW) (shiOnly : Bool) (x y : String) : Option (String × Nat) := do
+    let (w1, a, n) ← shiftOf w shiOnly true x
+    let (w2, a2, n2) ← shiftOf w shiOnly false y
     guard (w1 == w && w2 == w && a == a2 && 0 < n && n < w.bits && n + n2 == w.bits)
     guard (!consts.contains a && x != y)
     guard (used x == 1 && used y == 1 && !keep.contains x && !keep.contains y)
@@ -879,8 +884,9 @@ def fuseRol (consts : Std.HashMap String (String × Nat)) (keep : Std.HashSet St
   let mut removed : Std.HashSet String := {}
   for b in bs do
     match b with
-    | .pack w .or d x y =>
-      match hit w x y <|> hit w y x with
+    | .pack w bop d x y =>
+      let s := bop == .xor
+      match if bop == .or || s then hit w s x y <|> hit w s y x else none with
       | some (a, n) =>
         rw := rw.insert d (.rol w d a n)
         removed := (removed.insert x).insert y
@@ -1103,6 +1109,17 @@ def ymmCheckBinds : Array ZBind := #[
   (renderZmmLinearBinds "g" (fun s => 32 * s) 1 ["a", "b"] ymmCheckBinds (ymm := true)).toOption
     == (renderZmmLinearBinds "g" (fun s => 32 * s) 1 ["a", "b"] ymmCheckBinds).toOption.map
       (fun s => (s.replace "%zmm" "%ymm").replace "{1to8}" "{1to4}")
+
+/-- A sixteen-lane rotate of `a + b` by `5` written as the exclusive or of its two
+    immediate shifts, `v3 = (v0 << 5) ⊕ (v0 >> 27)`. -/
+def rolXorBinds : Array ZBind := #[
+  .pack .d .add "v0" "a" "b", .shi .d true "v1" "v0" 5, .shi .d false "v2" "v0" 27,
+  .pack .d .xor "v3" "v1" "v2"]
+
+/- The rotate renders as one `vprold $5`, with no shift and no exclusive or. -/
+#kat (renderZmmLinearBinds "f" (fun s => 64 * s) 1 ["a", "b"] rolXorBinds).toOption.any
+  (fun s => (s.splitOn "\tvprold $5, ").length == 2 && (s.splitOn "vpxord").length == 1 &&
+    (s.splitOn "vpslld").length == 1 && (s.splitOn "vpsrld").length == 1)
 
 
 end CatCrypt.Crypto.SecureCompilation.VIR.VpackZmmLinearRender
