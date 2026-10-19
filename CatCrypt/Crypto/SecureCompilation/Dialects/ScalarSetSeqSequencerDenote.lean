@@ -1,0 +1,639 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+import all CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+import all CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSetSeqSequencer
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+import all CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+import all CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+import all CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+import all CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSetSeqSequencer
+public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
+
+@[expose] public section
+set_option autoImplicit false
+
+/-!
+# Denotation of the width-`w` statement sequencer
+
+`ScalarSetSeqSequencer.seqProg w vm stmts r` lowers a statement list
+`stmts : List (String × SExpr)` to a `Com catCryptDialect Γ (.sword w)` returning
+the slot of `r`. This module gives the statement list its source semantics and
+proves that the lowered program denotes it.
+
+* `evalSExprW w β e` is the value of `e` at width `w` over the name environment
+  `β : String → BitVec w`: wrapping `+ - *`, `&&& ^^^`, the logical shifts by
+  the count `shiftMask w` of the count operand's value, and the arithmetic shift
+  right by the count operand's value (the shift conventions of the dialect ops
+  `bvShiftLV`/`bvShiftRV`/`bvShiftRA` the lowering emits).
+* `stmtListEnv w β stmts` is the environment after executing `stmts` in order, each
+  `(x, e)` setting `x` to `evalSExprW w β e`.
+* `seqProg_denote`: when `seqProg w vm stmts r = some com` and the slots of `vm`
+  hold the values of `β`, `com.denote V = stmtListEnv w β stmts r`.
+* `seqProg_jasmin_denote`: the same value for the `jasminDialect` program
+  `cryptoDialectToJasminCom com` on the transported valuation.
+
+## Main results
+
+* `evalSExprW`, `stmtListEnv`: the width-`w` value of an `SExpr` and the environment a
+  statement list produces.
+* `seqProg_denote`: the program `seqProg w` builds denotes the value the statement list
+  gives the result name.
+* `seqProg_jasmin_denote`, `seqProg_jasmin_exists_denote`: the same for the
+  `jasminDialect` program `cryptoDialectToJasminCom` makes of it.
+
+The side conditions are name hygiene and literal shift counts: source names
+(variables, destinations, the result name) are not `tmpName` temporaries, and a
+literal shift count `k` is a `w`-bit word (`k < 2 ^ w`), because the lowering
+emits the immediate-count op with count `k` while `evalSExprW` shifts by the
+count's `w`-bit value `(BitVec.ofNat w k).toNat`.
+
+The proof is by induction over the builder: `lowerSExprW_denote` by induction on
+the `SExpr`, `lowerScalarSetSeqW_denote` by induction on the statement list, each
+step tracking a `ConsistentS` environment of the slots the `VarMap` names.
+-/
+
+namespace CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSetSeqSequencer
+
+open CatCrypt.Crypto.SecureCompilation.CryptoSSA
+open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms (tmpName seqOut)
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect)
+open CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
+
+/-! ## 1. Source semantics -/
+
+/-- The value of an `SExpr` at width `w` over the name environment `β`. The
+    arithmetic and bitwise operators wrap at width `w`; `SShl`/`SShr` shift by
+    `shiftMask w` of the count's value and `SAsr` shifts arithmetically by the
+    count's value. The constructors the sequencer does not lower (`SLt`, `SMulS`,
+    `SMulHiU`, `SMulHiS`, `SLimb`) have value `0`. -/
+def evalSExprW (w : Nat) (β : String → BitVec w) : SExpr → BitVec w
+  | .SVar x => β x
+  | .SLit n => BitVec.ofNat w n
+  | .SAdd a b => evalSExprW w β a + evalSExprW w β b
+  | .SSub a b => evalSExprW w β a - evalSExprW w β b
+  | .SMul a b => evalSExprW w β a * evalSExprW w β b
+  | .SAnd a b => evalSExprW w β a &&& evalSExprW w β b
+  | .SXor a b => evalSExprW w β a ^^^ evalSExprW w β b
+  | .SShl a b => evalSExprW w β a <<< shiftMask w (evalSExprW w β b).toNat
+  | .SShr a b => evalSExprW w β a >>> shiftMask w (evalSExprW w β b).toNat
+  | .SAsr a b => BitVec.sshiftRight (evalSExprW w β a) (evalSExprW w β b).toNat
+  | _ => 0
+
+/-- The environment after executing the statements in order: `(x, e)` sets `x`
+    to `evalSExprW w β e`, where `β` is the environment before the statement. -/
+def stmtListEnv (w : Nat) (β : String → BitVec w) :
+    List (String × SExpr) → String → BitVec w
+  | [] => β
+  | (x, e) :: rest => stmtListEnv w (fun n => if n = x then evalSExprW w β e else β n) rest
+
+/-- Source hygiene of an `SExpr` at width `w`: its variables are not `tmpName`
+    temporaries, and every literal shift count is below `2 ^ w`. -/
+def SrcCleanW (w : Nat) : SExpr → Prop
+  | .SVar x => ¬ isTmpName x
+  | .SAdd a b | .SSub a b | .SMul a b | .SAnd a b | .SXor a b =>
+      SrcCleanW w a ∧ SrcCleanW w b
+  | .SShl a b | .SShr a b | .SAsr a b =>
+      SrcCleanW w a ∧ SrcCleanW w b ∧ ∀ k, b = .SLit k → k < 2 ^ w
+  | _ => True
+
+/-- Source hygiene of a statement list: every destination is not a `tmpName`
+    temporary and every right-hand side is `SrcCleanW`. -/
+def StmtsClean (w : Nat) : List (String × SExpr) → Prop
+  | [] => True
+  | (x, e) :: rest => ¬ isTmpName x ∧ SrcCleanW w e ∧ StmtsClean w rest
+
+/-! ## 2. Prefix denotation and environment agreement -/
+
+/-- The prefix `f` sends every tail to a program whose denotation at `V` is the
+    tail's denotation at `V'`. -/
+def ContDenotes {Γ Γ' : Ctx} (f : ComCont Γ Γ')
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+    (V' : Ctxt.Valuation (d := catCryptDialect) Γ') : Prop :=
+  ∀ {t : CryptoTy} (tail : Com catCryptDialect Γ' t),
+    ∃ com, f tail = some com ∧ com.denote V = tail.denote V'
+
+/-- The identity prefix denotes the identity on valuations. -/
+theorem ContDenotes.id {Γ : Ctx} (V : Ctxt.Valuation (d := catCryptDialect) Γ) :
+    ContDenotes (ComCont.id (Γ := Γ)) V V :=
+  fun tail => ⟨tail, rfl, rfl⟩
+
+/-- Prefix denotations compose along `ComCont.comp`. -/
+theorem ContDenotes.comp {Γ Γ' Γ'' : Ctx} {f : ComCont Γ Γ'} {g : ComCont Γ' Γ''}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ}
+    {V₁ : Ctxt.Valuation (d := catCryptDialect) Γ'}
+    {V₂ : Ctxt.Valuation (d := catCryptDialect) Γ''}
+    (hf : ContDenotes f V V₁) (hg : ContDenotes g V₁ V₂) :
+    ContDenotes (ComCont.comp f g) V V₂ := by
+  intro t tail
+  obtain ⟨b, hb, hbd⟩ := hg tail
+  obtain ⟨c, hc, hcd⟩ := hf b
+  refine ⟨c, ?_, hcd.trans hbd⟩
+  show ComCont.comp f g tail = some c
+  unfold ComCont.comp
+  rw [hb]; exact hc
+
+/-- Every non-temporary name the environment binds at `.sword w` holds its `β`
+    value. -/
+def SlotsAgreeAt (w : Nat) (env : SEnvScalar) (β : String → BitVec w) : Prop :=
+  ∀ n, ¬ isTmpName n → ∀ x : BitVec w, env n = some ⟨.sword w, x⟩ → x = β n
+
+/-- Agreement transfers along an environment change confined to temporaries. -/
+theorem SlotsAgreeAt.of_onlyTmpBelow {w : Nat} {env env2 : SEnvScalar} {β : String → BitVec w}
+    {cnt : Nat} (hag : SlotsAgreeAt w env β) (hotb : OnlyTmpBelow env env2 cnt) :
+    SlotsAgreeAt w env2 β := by
+  intro n hn x hx
+  rw [hotb n (Or.inl hn)] at hx
+  exact hag n hn x hx
+
+/-- A slot found by `lookupUW` is read from a consistent environment at `.sword w`. -/
+theorem consistentS_lookupUW {w : Nat} {Γ : Ctx} {vm : VarMap Γ}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar}
+    (hc : ConsistentS vm V env) (nm : String) {v : CVar Γ (.sword w)}
+    (h : lookupUW w vm nm = some v) :
+    env nm = some ⟨.sword w, (toVIRVar v).lookup V⟩ := by
+  have hlk := hc nm
+  simp only [lookupUW] at h
+  split at h
+  · next w' v' heq =>
+      split at h
+      · next hw =>
+          subst hw
+          simp only [Option.some.injEq] at h
+          subst h
+          rw [heq] at hlk
+          exact hlk.symm
+      · simp at h
+  · simp at h
+
+/-- The slot `lookupUW` finds holds the environment's value of the name. -/
+theorem lookupUW_val {w : Nat} {Γ : Ctx} {vm : VarMap Γ}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar}
+    (hc : ConsistentS vm V env) {nm : String} {v : CVar Γ (.sword w)}
+    (h : lookupUW w vm nm = some v) {x : BitVec w}
+    (hx : env nm = some ⟨.sword w, x⟩) : (toVIRVar v).lookup V = x := by
+  have h2 := (consistentS_lookupUW hc nm h).symm.trans hx
+  simpa using h2
+
+/-- Aliasing `dst` to `src` is consistent with binding `dst` to `src`'s value. -/
+theorem consistentS_aliasBind {Γ : Ctx} {vm : VarMap Γ}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar}
+    (hc : ConsistentS vm V env) (dst src : String) {t : CryptoTy} {x : ⟦t⟧}
+    (hsrc : env src = some ⟨t, x⟩) :
+    ConsistentS (aliasBind vm dst src) V (env.upd dst x) := by
+  intro s
+  by_cases hs : s = dst
+  · subst hs
+    simp only [aliasBind, SEnvScalar.upd, ↓reduceIte]
+    rw [hc src, hsrc]
+  · simp only [aliasBind, SEnvScalar.upd, if_neg hs]
+    exact hc s
+
+/-! ## 3. The `SExpr` lowering -/
+
+/-- The result of lowering one `SExpr` from `(V, env)` at counter `cnt`: the
+    prefix `o.cont` denotes the passage from `V` to a valuation `V'` consistent
+    with an environment `env2` that differs from `env` only on temporaries of index
+    at least `cnt`, and the result name `nm` holds `x` in `env2`. -/
+def LowerOK (w : Nat) {Γ : Ctx} (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+    (env : SEnvScalar) (cnt : Nat) (o : DTransOut Γ) (nm : String) (cnt' : Nat)
+    (x : BitVec w) : Prop :=
+  ∃ (V' : Ctxt.Valuation (d := catCryptDialect) o.Γ') (env2 : SEnvScalar),
+    cnt ≤ cnt' ∧ ConsistentS o.vm V' env2 ∧ ContDenotes o.cont V V' ∧
+    OnlyTmpBelow env env2 cnt ∧ ResultOK nm cnt' ∧ env2 nm = some ⟨.sword w, x⟩
+
+/-- One `pushVarBindW` of an expression with value `y`, binding `tmpName c`. -/
+theorem pushVarBindW_step (w : Nat) {Γ : Ctx}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar} {cnt c : Nat}
+    (o : DTransOut Γ) (V₁ : Ctxt.Valuation (d := catCryptDialect) o.Γ')
+    (env1 : SEnvScalar) (hcont : ContDenotes o.cont V V₁)
+    (hc : ConsistentS o.vm V₁ env1) (hotb : OnlyTmpBelow env env1 cnt) (hle : cnt ≤ c)
+    (E : Expr catCryptDialect o.Γ' (.sword w)) (y : BitVec w) (hE : E.denote V₁ = y) :
+    LowerOK w V env cnt (pushVarBindW w o E (tmpName c)) (tmpName c) (c + 1) y := by
+  obtain ⟨hcons, hstep⟩ := scalar_step o.vm V₁ env1 hc (tmpName c) E
+  refine ⟨V₁.extend (E.denote V₁), env1.upd (tmpName c) (E.denote V₁), by omega, hcons,
+    ContDenotes.comp hcont (fun tail => hstep tail), ?_,
+    Or.inr ⟨c, Nat.lt_succ_self _, rfl⟩, ?_⟩
+  · intro s hs
+    have hne : s ≠ tmpName c := by
+      rcases hs with h1 | ⟨k, hk, rfl⟩
+      · exact ne_tmpName_of_not_isTmp h1 c
+      · exact tmpName_ne (by omega)
+    simp only [SEnvScalar.upd, if_neg hne]
+    exact hotb s hs
+  · simp [SEnvScalar.upd, hE]
+
+/-- A binary node: both operands lowered, then one op over their result slots. -/
+theorem lowerOK_bin (w : Nat) {β : String → BitVec w} {Γ : Ctx}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar} {cnt c1 c2 : Nat}
+    {oa : DTransOut Γ} {na : String} {ob : DTransOut oa.Γ'} {nb : String}
+    {xa xb : BitVec w} (hag : SlotsAgreeAt w env β)
+    (hA : LowerOK w V env cnt oa na c1 xa)
+    (hB : ∀ (V₁ : Ctxt.Valuation (d := catCryptDialect) oa.Γ') (env1 : SEnvScalar),
+      ConsistentS oa.vm V₁ env1 → SlotsAgreeAt w env1 β → LowerOK w V₁ env1 c1 ob nb c2 xb)
+    {va vb : CVar ob.Γ' (.sword w)}
+    (hla : lookupUW w ob.vm na = some va) (hlb : lookupUW w ob.vm nb = some vb)
+    (f : BitVec w → BitVec w → BitVec w) (E : Expr catCryptDialect ob.Γ' (.sword w))
+    (hE : ∀ V₂, E.denote V₂ = f ((toVIRVar va).lookup V₂) ((toVIRVar vb).lookup V₂)) :
+    LowerOK w V env cnt (pushVarBindW w (seqOut oa ob) E (tmpName c2)) (tmpName c2)
+      (c2 + 1) (f xa xb) := by
+  obtain ⟨V₁, env1, hleA, hcA, hcontA, hotbA, hrokA, hvalA⟩ := hA
+  obtain ⟨V₂, env2, hleB, hcB, hcontB, hotbB, -, hvalB⟩ :=
+    hB V₁ env1 hcA (hag.of_onlyTmpBelow hotbA)
+  have hva : (toVIRVar va).lookup V₂ = xa :=
+    lookupUW_val hcB hla (by rw [hotbB na hrokA]; exact hvalA)
+  have hvb : (toVIRVar vb).lookup V₂ = xb := lookupUW_val hcB hlb hvalB
+  exact pushVarBindW_step w (seqOut oa ob) V₂ env2 (ContDenotes.comp hcontA hcontB) hcB
+    (onlyTmpBelow_trans hotbA hotbB hleA) (by omega) E (f xa xb)
+    ((hE V₂).trans (by rw [hva, hvb]))
+
+/-- A unary node: the operand lowered, then one op over its result slot. -/
+theorem lowerOK_un (w : Nat) {Γ : Ctx}
+    {V : Ctxt.Valuation (d := catCryptDialect) Γ} {env : SEnvScalar} {cnt c1 : Nat}
+    {oa : DTransOut Γ} {na : String} {xa : BitVec w}
+    (hA : LowerOK w V env cnt oa na c1 xa)
+    {va : CVar oa.Γ' (.sword w)} (hla : lookupUW w oa.vm na = some va)
+    (f : BitVec w → BitVec w) (E : Expr catCryptDialect oa.Γ' (.sword w))
+    (hE : ∀ V₁, E.denote V₁ = f ((toVIRVar va).lookup V₁)) :
+    LowerOK w V env cnt (pushVarBindW w oa E (tmpName c1)) (tmpName c1) (c1 + 1) (f xa) := by
+  obtain ⟨V₁, env1, hleA, hcA, hcontA, hotbA, -, hvalA⟩ := hA
+  have hva : (toVIRVar va).lookup V₁ = xa := lookupUW_val hcA hla hvalA
+  exact pushVarBindW_step w oa V₁ env1 hcontA hcA hotbA hleA E (f xa)
+    ((hE V₁).trans (by rw [hva]))
+
+/-- **Denotation of one lowered `SExpr`.** From a state consistent with `env`,
+    where `env` agrees with `β` on non-temporary names, the prefix `lowerSExprW`
+    emits for a `SrcCleanW` expression denotes a valuation in which its result
+    name holds `evalSExprW w β e`. Induction on the `SExpr`. -/
+theorem lowerSExprW_denote (w : Nat) (β : String → BitVec w) (e : SExpr) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env : SEnvScalar) (cnt : Nat) (o : DTransOut Γ) (nm : String) (cnt' : Nat),
+      ConsistentS vm V env → SlotsAgreeAt w env β → SrcCleanW w e →
+      lowerSExprW w vm cnt e = some (o, nm, cnt') →
+      LowerOK w V env cnt o nm cnt' (evalSExprW w β e) := by
+  induction e with
+  | SVar x =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      simp only [lowerSExprW] at h
+      split at h
+      · next v hv =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl, rfl⟩ := h
+          have hx := consistentS_lookupUW hc x hv
+          refine ⟨V, env, le_refl _, hc, ContDenotes.id V, onlyTmpBelow_refl env cnt,
+            Or.inl hcl, ?_⟩
+          rw [hx, hag x hcl _ hx]; rfl
+      · simp at h
+  | SLit n =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      simp only [lowerSExprW, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl, rfl⟩ := h
+      exact pushVarBindW_step w ⟨Γ, ComCont.id, vm⟩ V env (ContDenotes.id V) hc
+        (onlyTmpBelow_refl env cnt) (le_refl _) _ _ rfl
+  | SAdd a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, sb⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · simp at h
+      · next Ro hra =>
+        split at h
+        · simp at h
+        · next So hrb =>
+          split at h
+          · next va vb hla hlb =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact lowerOK_bin w hag (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra)
+              (fun V₁ env1 hc1 hag1 => ihb Ro.1.vm V₁ env1 Ro.2.2 So.1 So.2.1 So.2.2 hc1 hag1 sb hrb)
+              hla hlb (· + ·) _ (fun _ => rfl)
+          · simp at h
+  | SSub a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, sb⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · simp at h
+      · next Ro hra =>
+        split at h
+        · simp at h
+        · next So hrb =>
+          split at h
+          · next va vb hla hlb =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact lowerOK_bin w hag (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra)
+              (fun V₁ env1 hc1 hag1 => ihb Ro.1.vm V₁ env1 Ro.2.2 So.1 So.2.1 So.2.2 hc1 hag1 sb hrb)
+              hla hlb (· - ·) _ (fun _ => rfl)
+          · simp at h
+  | SMul a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, sb⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · simp at h
+      · next Ro hra =>
+        split at h
+        · simp at h
+        · next So hrb =>
+          split at h
+          · next va vb hla hlb =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact lowerOK_bin w hag (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra)
+              (fun V₁ env1 hc1 hag1 => ihb Ro.1.vm V₁ env1 Ro.2.2 So.1 So.2.1 So.2.2 hc1 hag1 sb hrb)
+              hla hlb (· * ·) _ (fun _ => rfl)
+          · simp at h
+  | SAnd a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, sb⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · simp at h
+      · next Ro hra =>
+        split at h
+        · simp at h
+        · next So hrb =>
+          split at h
+          · next va vb hla hlb =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact lowerOK_bin w hag (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra)
+              (fun V₁ env1 hc1 hag1 => ihb Ro.1.vm V₁ env1 Ro.2.2 So.1 So.2.1 So.2.2 hc1 hag1 sb hrb)
+              hla hlb (· &&& ·) _ (fun _ => rfl)
+          · simp at h
+  | SXor a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, sb⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · simp at h
+      · next Ro hra =>
+        split at h
+        · simp at h
+        · next So hrb =>
+          split at h
+          · next va vb hla hlb =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            exact lowerOK_bin w hag (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra)
+              (fun V₁ env1 hc1 hag1 => ihb Ro.1.vm V₁ env1 Ro.2.2 So.1 So.2.1 So.2.2 hc1 hag1 sb hrb)
+              hla hlb (· ^^^ ·) _ (fun _ => rfl)
+          · simp at h
+  | SShl a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, sb, hlit⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · next k =>
+        split at h
+        · simp at h
+        · next Ro hra =>
+          split at h
+          · next va hla =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            have hk : k < 2 ^ w := hlit k rfl
+            have hval : evalSExprW w β (.SShl a (.SLit k))
+                = evalSExprW w β a <<< shiftMask w k := by
+              simp only [evalSExprW, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+            rw [hval]
+            exact lowerOK_un w (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra) hla
+              (fun x => x <<< shiftMask w k) _ (fun _ => rfl)
+          · simp at h
+      · split at h
+        · simp at h
+        · next Ro hra =>
+          split at h
+          · simp at h
+          · next So hrb =>
+            split at h
+            · next va vb hla hlb =>
+              simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              exact lowerOK_bin w hag (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra)
+                (fun V₁ env1 hc1 hag1 =>
+                  ihb Ro.1.vm V₁ env1 Ro.2.2 So.1 So.2.1 So.2.2 hc1 hag1 sb hrb)
+                hla hlb (fun x y => x <<< shiftMask w y.toNat) _ (fun _ => rfl)
+            · simp at h
+  | SShr a b iha ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, sb, hlit⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · next k =>
+        split at h
+        · simp at h
+        · next Ro hra =>
+          split at h
+          · next va hla =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            have hk : k < 2 ^ w := hlit k rfl
+            have hval : evalSExprW w β (.SShr a (.SLit k))
+                = evalSExprW w β a >>> shiftMask w k := by
+              simp only [evalSExprW, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+            rw [hval]
+            exact lowerOK_un w (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra) hla
+              (fun x => x >>> shiftMask w k) _ (fun _ => rfl)
+          · simp at h
+      · split at h
+        · simp at h
+        · next Ro hra =>
+          split at h
+          · simp at h
+          · next So hrb =>
+            split at h
+            · next va vb hla hlb =>
+              simp only [Option.some.injEq, Prod.mk.injEq] at h
+              obtain ⟨rfl, rfl, rfl⟩ := h
+              exact lowerOK_bin w hag (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra)
+                (fun V₁ env1 hc1 hag1 =>
+                  ihb Ro.1.vm V₁ env1 Ro.2.2 So.1 So.2.1 So.2.2 hc1 hag1 sb hrb)
+                hla hlb (fun x y => x >>> shiftMask w y.toNat) _ (fun _ => rfl)
+            · simp at h
+  | SAsr a b iha _ihb =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      obtain ⟨sa, -, hlit⟩ := hcl
+      simp only [lowerSExprW] at h
+      split at h
+      · next k =>
+        split at h
+        · simp at h
+        · next Ro hra =>
+          split at h
+          · next va hla =>
+            simp only [Option.some.injEq, Prod.mk.injEq] at h
+            obtain ⟨rfl, rfl, rfl⟩ := h
+            have hk : k < 2 ^ w := hlit k rfl
+            have hval : evalSExprW w β (.SAsr a (.SLit k))
+                = BitVec.sshiftRight (evalSExprW w β a) k := by
+              simp only [evalSExprW, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+            rw [hval]
+            exact lowerOK_un w (iha vm V env cnt Ro.1 Ro.2.1 Ro.2.2 hc hag sa hra) hla
+              (fun x => BitVec.sshiftRight x k) _ (fun _ => rfl)
+          · simp at h
+      · simp at h
+  | SLt a b _ _ | SMulS a b _ _ | SMulHiU a b _ _ | SMulHiS a b _ _ =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      simp [lowerSExprW] at h
+  | SLimb v i =>
+      intro Γ vm V env cnt o nm cnt' hc hag hcl h
+      simp [lowerSExprW] at h
+
+/-! ## 4. The statement sequence -/
+
+/-- **Denotation of the lowered statement sequence.** From a state consistent
+    with `env`, where `env` agrees with `β` on non-temporary names, the prefix
+    `lowerScalarSetSeqW` emits for a `StmtsClean` statement list denotes a
+    valuation consistent with an environment that agrees with `stmtListEnv w β stmts`
+    on non-temporary names. Induction on the statement list. -/
+theorem lowerScalarSetSeqW_denote (w : Nat) (stmts : List (String × SExpr)) :
+    ∀ {Γ : Ctx} (vm : VarMap Γ) (V : Ctxt.Valuation (d := catCryptDialect) Γ)
+      (env : SEnvScalar) (β : String → BitVec w) (cnt : Nat) (out : DTransOut Γ)
+      (cntf : Nat),
+      ConsistentS vm V env → SlotsAgreeAt w env β → StmtsClean w stmts →
+      lowerScalarSetSeqW w vm cnt stmts = some (out, cntf) →
+      ∃ (V' : Ctxt.Valuation (d := catCryptDialect) out.Γ') (env' : SEnvScalar),
+        ConsistentS out.vm V' env' ∧ ContDenotes out.cont V V' ∧
+        SlotsAgreeAt w env' (stmtListEnv w β stmts) := by
+  induction stmts with
+  | nil =>
+      intro Γ vm V env β cnt out cntf hc hag _ h
+      simp only [lowerScalarSetSeqW, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, -⟩ := h
+      exact ⟨V, env, hc, ContDenotes.id V, hag⟩
+  | cons s rest ih =>
+      obtain ⟨dst, e⟩ := s
+      intro Γ vm V env β cnt out cntf hc hag hcl h
+      obtain ⟨hdst, he, hrest⟩ := hcl
+      unfold lowerScalarSetSeqW at h
+      split at h
+      · simp at h
+      · next r resName cnt' hl =>
+        dsimp only [] at h
+        split at h
+        · simp at h
+        · next tail cntf' ht =>
+          simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨rfl, -⟩ := h
+          obtain ⟨V₁, env1, -, hc1, hcont1, hotb1, -, hval1⟩ :=
+            lowerSExprW_denote w β e vm V env cnt r resName cnt' hc hag he hl
+          have hcA := consistentS_aliasBind hc1 dst resName hval1
+          have hagA : SlotsAgreeAt w (env1.upd dst (t := .sword w) (evalSExprW w β e))
+              (fun n => if n = dst then evalSExprW w β e else β n) := by
+            intro n hn x hx
+            by_cases hnd : n = dst
+            · subst hnd
+              simp only [SEnvScalar.upd] at hx
+              simpa using hx.symm
+            · simp only [SEnvScalar.upd, if_neg hnd] at hx
+              simp only [if_neg hnd]
+              exact (hag.of_onlyTmpBelow hotb1) n hn x hx
+          obtain ⟨V', env', hc', hcont', hag'⟩ :=
+            ih (aliasBind r.vm dst resName) V₁ _ _ cnt' tail cntf' hcA hagA hrest ht
+          exact ⟨V', env', hc', ContDenotes.comp hcont1 hcont', hag'⟩
+
+/-- **Denotation of the sequencer's program.** If `seqProg w vm stmts r` returns
+    `com`, the `.sword w` slots `vm` binds to non-temporary names hold the values
+    of `β`, the statements are `StmtsClean` and `r` is not a temporary, then `com`
+    denotes the value of `r` in the environment the statement list produces. -/
+theorem seqProg_denote (w : Nat) {Γ : Ctx} (vm : VarMap Γ)
+    (stmts : List (String × SExpr)) (r : String)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (β : String → BitVec w)
+    (hin : ∀ n (v : CVar Γ (.sword w)), ¬ isTmpName n →
+      vm.lookup n = some ⟨.sword w, v⟩ → (toVIRVar v).lookup V = β n)
+    (hcl : StmtsClean w stmts) (hr : ¬ isTmpName r)
+    {com : Com catCryptDialect Γ (.sword w)} (hsp : seqProg w vm stmts r = some com) :
+    com.denote V = stmtListEnv w β stmts r := by
+  let env0 : SEnvScalar := fun s =>
+    (vm.lookup s).map (fun p => (⟨p.1, (toVIRVar p.2).lookup V⟩ : (t : CryptoTy) × ⟦t⟧))
+  have hc0 : ConsistentS vm V env0 := fun _ => rfl
+  have hag0 : SlotsAgreeAt w env0 β := by
+    intro n hn x hx
+    simp only [env0] at hx
+    cases hlk : vm.lookup n with
+    | none => rw [hlk] at hx; simp at hx
+    | some p =>
+        obtain ⟨t, v⟩ := p
+        rw [hlk] at hx
+        simp only [Option.map_some, Option.some.injEq, Sigma.mk.injEq] at hx
+        obtain ⟨rfl, hxv⟩ := hx
+        rw [← eq_of_heq hxv]
+        exact hin n v hn hlk
+  unfold seqProg at hsp
+  split at hsp
+  · next out cntf hlo =>
+    obtain ⟨V', env', hc', hcont', hag'⟩ :=
+      lowerScalarSetSeqW_denote w stmts vm V env0 β 0 out cntf hc0 hag0 hcl hlo
+    split at hsp
+    · next w' v hlr =>
+      split at hsp
+      · next hw =>
+        subst hw
+        obtain ⟨com', hcom', hden⟩ := hcont' (Com.ret (toVIRVar v))
+        have hcc : com' = com := Option.some.inj (hcom'.symm.trans hsp)
+        subst hcc
+        rw [hden]
+        have hx := hc' r
+        rw [hlr] at hx
+        exact hag' r hr _ hx.symm
+      · simp at hsp
+    · simp at hsp
+  · simp at hsp
+
+/-! ## 5. Composition with the jasmin lowering -/
+
+/-- **Denotation of the jasmin program.** The `jasminDialect` program
+    `cryptoDialectToJasminCom` produces from the sequencer's program denotes, on
+    the transported valuation, the value of `r` in the environment the statement
+    list produces. -/
+theorem seqProg_jasmin_denote (w : Nat) {Γ : Ctx} (vm : VarMap Γ)
+    (stmts : List (String × SExpr)) (r : String)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (β : String → BitVec w)
+    (hin : ∀ n (v : CVar Γ (.sword w)), ¬ isTmpName n →
+      vm.lookup n = some ⟨.sword w, v⟩ → (toVIRVar v).lookup V = β n)
+    (hcl : StmtsClean w stmts) (hr : ¬ isTmpName r)
+    {com : Com catCryptDialect Γ (.sword w)} (hsp : seqProg w vm stmts r = some com)
+    {jcom : Com jasminDialect (CryptoToJasminCom.mapCtx Γ)
+      (CryptoToJasminCom.mapTy (.sword w))}
+    (hj : DialectToJasminCom.cryptoDialectToJasminCom com = some jcom) :
+    jcom.denote (DialectToJasminComCorrect.ctMapValD V) = stmtListEnv w β stmts r := by
+  rw [DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq' com V jcom hj,
+    ← seqProg_denote w vm stmts r V β hin hcl hr hsp]
+  rfl
+
+/-- **The jasmin program exists and has the source value.** For a coverable
+    statement list whose program resolves, the jasmin lowering of the sequencer's
+    program succeeds and denotes the value of `r` in the environment the statement
+    list produces. -/
+theorem seqProg_jasmin_exists_denote (w : Nat) {Γ : Ctx} (vm : VarMap Γ)
+    (stmts : List (String × SExpr)) (r : String)
+    (V : Ctxt.Valuation (d := catCryptDialect) Γ) (β : String → BitVec w)
+    (hin : ∀ n (v : CVar Γ (.sword w)), ¬ isTmpName n →
+      vm.lookup n = some ⟨.sword w, v⟩ → (toVIRVar v).lookup V = β n)
+    (hcl : StmtsClean w stmts) (hr : ¬ isTmpName r) (hcov : SeqCovers w vm 0 stmts)
+    {com : Com catCryptDialect Γ (.sword w)} (hsp : seqProg w vm stmts r = some com) :
+    ∃ jcom, (seqProg w vm stmts r).bind DialectToJasminCom.cryptoDialectToJasminCom
+        = some jcom ∧
+      jcom.denote (DialectToJasminComCorrect.ctMapValD V) = stmtListEnv w β stmts r := by
+  obtain ⟨jcom, hj⟩ := Option.isSome_iff_exists.mp
+    (cryptoDialectToJasminCom_isSome com (seqProg_comJLowerable w vm stmts r hcov hsp))
+  refine ⟨jcom, by rw [hsp]; exact hj, ?_⟩
+  exact seqProg_jasmin_denote w vm stmts r V β hin hcl hr hsp hj
+
+end CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSetSeqSequencer

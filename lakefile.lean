@@ -1100,6 +1100,7 @@ def pkgModules6 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprFrontValidate,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSetSeqSequencer,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSetSeqSequencerDenote,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.ScalarStraightRun,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.Sha256RoundWidth32Front,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Dialects.StraightLineLeafCallEmit,
