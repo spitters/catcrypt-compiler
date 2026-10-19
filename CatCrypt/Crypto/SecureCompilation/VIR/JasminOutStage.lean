@@ -27,12 +27,21 @@ de Bruijn indices, and `nfToJasmin` makes it parameter `0` of the function
 (`nfToJasmin` orders the parameters as the reversed context). `outsSig` is the signature
 with that parameter as a `reg mut ptr` that holds the result.
 
+For `c` over `nIn` registers `reg ws`, `stageInOuts ws nIn nOut c` is the program over the
+context `[stackArr ws nIn, stackArr ws nOut]` that binds the indices `0, …, nIn - 1`
+(`regConst`), loads word `j` of the input array into the variable of index `j` of the
+context of `c` (`stackLoad`), and then runs `stageGo` on `c` renamed into the extended
+context. `nfToJasmin` makes the output array parameter `0` and the input array
+parameter `1` (`inOutsSig`).
+
 ## Main definitions
 
 * `stageOuts`: the program `c` followed by the stores of its last `nOut` bindings.
 * `outsSig`: the signature with the output array `out` as parameter `0`.
 * `emitJazzOuts`: the text of `stageOuts ws nOut c` through `nfToJasmin` and the checked
   printer.
+* `stageInOuts`, `inOutsSig`, `emitJazzInOuts`: the same with the inputs read from an
+  input array `inp` at parameter `1`.
 
 ## Main results
 
@@ -45,6 +54,10 @@ with that parameter as a `reg mut ptr` that holds the result.
 * `stageOuts_nfToJasmin_isSome`, `emitJazzOuts_eq_printChecked`: `nfToJasmin` then
   succeeds on the staged program, and `emitJazzOuts` is the checked printer applied to its
   unit.
+* `stageInOuts_denote`: from an input array whose word `j` is entry `j` of `V`, word `j` of
+  the returned array is entry `j` of `ComDCE.outputs nOut c V`.
+* `stageInOuts_nfToJasmin_isSome`, `emitJazzInOuts_parse`: completeness of `nfToJasmin` on
+  the staged program and the parse of a returned text.
 -/
 
 @[expose] public section
@@ -702,7 +715,524 @@ theorem emitJazzOuts_parse {ws nOut : Nat} {Γ : Ctxt jasminDialect} {t : Jasmin
   obtain ⟨u, hu, hparse⟩ := JasminPrintText.emitJazzNF_parse hs
   exact ⟨p, u, hp, hu, hparse⟩
 
-/-! ## 5. Checks -/
+/-! ## 5. Inputs read from an input array -/
+
+/-- The variable of index `i` of `Δ` when it has the type `u`. -/
+def tyIdx? (u : JasminTy) : (Δ : Ctxt jasminDialect) → Nat → Option (Ctxt.Var Δ u)
+  | [], _ => none
+  | t :: _, 0 => if h : t = u then some (Ctxt.Var.castTy h .here) else none
+  | _ :: Δ, i + 1 => (tyIdx? u Δ i).map .there
+
+/-- A variable `tyIdx?` returns has the index `i`, and entry `i` of every valuation is its
+value. -/
+theorem tyIdx?_spec {u : JasminTy} : ∀ {Δ : Ctxt jasminDialect} {i : Nat}
+    {v : Ctxt.Var Δ u}, tyIdx? u Δ i = some v →
+    varIndex v = i ∧ ∀ V : Ctxt.Valuation Δ, (valList V)[i]? = some ⟨u, v.lookup V⟩
+  | [], _, _, h => by simp [tyIdx?] at h
+  | t :: Δ, 0, v, h => by
+      simp only [tyIdx?] at h
+      split at h
+      · rename_i ht
+        subst ht
+        simp only [Option.some.injEq] at h
+        subst h
+        refine ⟨rfl, fun V => ?_⟩
+        cases V
+        rfl
+      · simp at h
+  | t :: Δ, i + 1, v, h => by
+      simp only [tyIdx?, Option.map_eq_some_iff] at h
+      obtain ⟨v', hv', rfl⟩ := h
+      obtain ⟨h2, h3⟩ := tyIdx?_spec hv'
+      refine ⟨by simp [varIndex, h2], fun V => ?_⟩
+      cases V with
+      | cons x V =>
+          show (⟨_, x⟩ :: valList V)[i + 1]? = some ⟨u, v'.lookup V⟩
+          simpa using h3 V
+
+/-- The embedding of `Γ` into `Γ ++ L` as a context homomorphism. -/
+def appHomL (L : Ctxt jasminDialect) {Γ : Ctxt jasminDialect} : Ctxt.Hom Γ (Γ ++ L) :=
+  fun v => inlHom L v
+
+/-- The context of `n` index registers `reg 64`. -/
+abbrev idxCtx (n : Nat) : Ctxt jasminDialect := List.replicate n (.reg 64)
+
+/-- The constants of the indices: with `k` constants left, the next one binds the index
+`nIn - 1 - (k - 1)`, so that entry `i` of the context `idxCtx nIn` holds the index `i`. -/
+def constsGo (ws nIn nOut : Nat) {ts : List JasminTy} : (k : Nat) →
+    NFProg jasminDialect ((idxCtx k ++ [.stackArr ws nIn]) ++ [.stackArr ws nOut]) ts →
+    NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] ts
+  | 0, p => p
+  | k + 1, p => constsGo ws nIn nOut k (.var ⟨.regConst 64 (nIn - 1 - k), rfl, .nil⟩ p)
+
+/-- The loads of the inputs: with `k` loads left, the next one reads word `nIn - 1 - k` of
+the input array into entry `k` of the context of `c`, with the index register of index
+`nIn - 1` of the context and the input array of index `k + nIn`. -/
+def loadsGo (ws nIn nOut : Nat) {ts : List JasminTy} : (k : Nat) →
+    NFProg jasminDialect ((List.replicate k (.reg ws) ++ (idxCtx nIn ++ [.stackArr ws nIn]))
+      ++ [.stackArr ws nOut]) ts →
+    Option (NFProg jasminDialect ((idxCtx nIn ++ [.stackArr ws nIn]) ++ [.stackArr ws nOut]) ts)
+  | 0, p => some p
+  | k + 1, p =>
+      (tyIdx? (.reg 64) ((List.replicate k (.reg ws) ++ (idxCtx nIn ++ [.stackArr ws nIn]))
+        ++ [.stackArr ws nOut]) (nIn - 1)).bind fun i =>
+      (tyIdx? (.stackArr ws nIn) ((List.replicate k (.reg ws) ++
+        (idxCtx nIn ++ [.stackArr ws nIn])) ++ [.stackArr ws nOut]) (k + nIn)).bind fun a =>
+      loadsGo ws nIn nOut k (.var ⟨.stackLoad ws nIn, rfl, .cons a (.cons i .nil)⟩ p)
+
+/-- **The program `c` with its inputs read from an input array and its last `nOut`
+bindings stored to an output array**: for `c` over `nIn` registers `reg ws`, a program over
+the context `[stackArr ws nIn, stackArr ws nOut]` (the input array `in`, then the output
+array `out`) that binds the indices `0, …, nIn - 1`, loads word `j` of `in` into the
+variable of index `j` of the context of `c`, runs the bindings of `c` and stores binding
+`comLen c - nOut + j` at index `j` of `out`. `none` when `c` has fewer than `nOut`
+bindings or one of the last `nOut` is not a `reg ws`. -/
+def stageInOuts (ws nIn nOut : Nat) {t : JasminTy}
+    (c : Com jasminDialect (List.replicate nIn (.reg ws)) t) :
+    Option (NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] [.stackArr ws nOut]) :=
+  if nOut ≤ Optimizer.UncomputePass.comLen c then
+    (stageGo ws nOut (c.rename (appHomL (idxCtx nIn ++ [.stackArr ws nIn])))).bind fun q =>
+      (loadsGo ws nIn nOut nIn q).map (constsGo ws nIn nOut nIn)
+  else none
+
+/-- The signature of a function with an input array and an output array: the output array
+`out`, a `reg mut ptr` that holds the result, at parameter `0`, and the input array `inp`, a
+`reg const ptr`, at parameter `1`. -/
+def inOutsSig (ws nIn nOut : Nat) :
+    JazzSig [.stackArr ws nIn, .stackArr ws nOut] (.stackArr ws nOut) where
+  params := [("out", .regPtr true, ptyOf (.stackArr ws nOut)),
+    ("inp", .regPtr false, ptyOf (.stackArr ws nIn))]
+  result := (.regPtr true, ptyOf (.stackArr ws nOut))
+  resultParam := some 0
+  params_length := rfl
+
+/-- **The text of `c` with an input array and an output array**: `stageInOuts ws nIn nOut c`
+printed as the `export fn` `name` with the signature `inOutsSig` by `nfToJasmin` and the
+checked printer. -/
+def emitJazzInOuts (name : String) (ws nIn nOut : Nat) {t : JasminTy}
+    (c : Com jasminDialect (List.replicate nIn (.reg ws)) t) : Option String :=
+  (stageInOuts ws nIn nOut c).bind (JasminPrintText.emitJazzNF name (inOutsSig ws nIn nOut))
+
+/-! ### The denotation -/
+
+theorem length_valList : ∀ {Δ : Ctxt jasminDialect} (V : Ctxt.Valuation Δ),
+    (valList V).length = Δ.length
+  | [], .nil => rfl
+  | _ :: _, .cons x V => by
+      show (⟨_, x⟩ :: valList V : List (Σ u : JasminTy, ⟦u⟧)).length = _
+      simp [length_valList V]
+
+/-- A valuation is determined by its values. -/
+theorem valList_injective : ∀ {Δ : Ctxt jasminDialect} {V W : Ctxt.Valuation Δ},
+    valList V = valList W → V = W
+  | [], .nil, .nil, _ => rfl
+  | _ :: _, .cons x V, .cons y W, h => by
+      have h' : (⟨_, x⟩ :: valList V : List (Σ u : JasminTy, ⟦u⟧)) = ⟨_, y⟩ :: valList W := h
+      simp only [List.cons.injEq, Sigma.mk.injEq, heq_eq_eq, true_and] at h'
+      rw [h'.1, valList_injective h'.2]
+
+/-- The values of the index constants: entry `i` of `constsVal nIn k` is the index
+`nIn - k + i`. -/
+def constsVal (nIn : Nat) : (k : Nat) → Ctxt.Valuation (idxCtx k)
+  | 0 => .nil
+  | k + 1 => .cons (show BitVec 64 from BitVec.ofNat 64 (nIn - 1 - k)) (constsVal nIn k)
+
+theorem constsVal_getElem? (nIn : Nat) : ∀ (k i : Nat), k ≤ nIn → i < k →
+    (valList (constsVal nIn k))[i]? =
+      some ⟨.reg 64, (show BitVec 64 from BitVec.ofNat 64 (nIn - k + i))⟩
+  | 0, _, _, hi => by omega
+  | k + 1, 0, hk, _ => by
+      show some _ = some _
+      rw [show nIn - (k + 1) + 0 = nIn - 1 - k by omega]
+  | k + 1, i + 1, hk, hi => by
+      show (valList (constsVal nIn k))[i]? = _
+      rw [constsVal_getElem? nIn k i (by omega) (by omega),
+        show nIn - (k + 1) + (i + 1) = nIn - k + i by omega]
+
+/-- The index constants run the continuation on the valuation that holds the indices
+before the arrays. -/
+theorem constsGo_denote {ws nIn nOut : Nat} {ts : List JasminTy} (fuel : Nat)
+    (ain : ⟦JasminTy.stackArr ws nIn⟧) (o : ⟦JasminTy.stackArr ws nOut⟧) :
+    ∀ (k : Nat) (p : NFProg jasminDialect ((idxCtx k ++ [.stackArr ws nIn])
+      ++ [.stackArr ws nOut]) ts),
+    (constsGo ws nIn nOut k p).denote fuel (.cons ain (.cons o .nil)) =
+      p.denote fuel (hvAppend (hvAppend (constsVal nIn k) (.cons ain .nil)) (.cons o .nil))
+  | 0, _ => rfl
+  | k + 1, p => by
+      rw [constsGo, constsGo_denote fuel ain o k, NFProg.denote_var,
+        Expr.denoteM_option_eq_some]
+      rfl
+
+/-- The loads with `k` loads left run the continuation on a valuation whose first `k`
+entries are words `nIn - k, …, nIn - 1` of the input array. -/
+theorem loadsGo_denote {ws nIn nOut : Nat} {ts : List JasminTy} (fuel : Nat)
+    (h64 : nIn ≤ 2 ^ 64) (ain : ⟦JasminTy.stackArr ws nIn⟧) (o : ⟦JasminTy.stackArr ws nOut⟧) :
+    ∀ (k : Nat) (p : NFProg jasminDialect ((List.replicate k (JasminTy.reg ws) ++
+      (idxCtx nIn ++ [.stackArr ws nIn])) ++ [.stackArr ws nOut]) ts) {q}, (hk : k ≤ nIn) →
+    loadsGo ws nIn nOut k p = some q →
+    ∃ L : Ctxt.Valuation (List.replicate k (JasminTy.reg ws)),
+      (∀ i (hi : i < k), (valList L)[i]? =
+        some ⟨.reg ws, (show Fin nIn → BitVec ws from ain) ⟨nIn - k + i, by omega⟩⟩) ∧
+      q.denote fuel (hvAppend (hvAppend (constsVal nIn nIn) (.cons ain .nil)) (.cons o .nil)) =
+        p.denote fuel (hvAppend (hvAppend L (hvAppend (constsVal nIn nIn) (.cons ain .nil)))
+          (.cons o .nil))
+  | 0, p, q, _, h => by
+      simp only [loadsGo, Option.some.injEq] at h
+      subst h
+      exact ⟨.nil, fun i hi => by omega, rfl⟩
+  | k + 1, p, q, hk, h => by
+      simp only [loadsGo, Option.bind_eq_some_iff] at h
+      obtain ⟨i, hi, a, ha, h⟩ := h
+      obtain ⟨L, hL, hd⟩ := loadsGo_denote fuel h64 ain o k _ (by omega) h
+      have hW : valList (hvAppend (hvAppend L (hvAppend (constsVal nIn nIn)
+          (HVector.cons ain HVector.nil))) (HVector.cons o HVector.nil)) =
+          valList L ++ (valList (constsVal nIn nIn) ++ [⟨_, ain⟩]) ++ [⟨_, o⟩] := by
+        rw [valList_hvAppend, valList_hvAppend, valList_hvAppend]
+        rfl
+      have hlen := length_valList L
+      have hlenC := length_valList (constsVal nIn nIn)
+      simp only [List.length_replicate] at hlen hlenC
+      have hiv := (tyIdx?_spec hi).2 (hvAppend (hvAppend L (hvAppend (constsVal nIn nIn)
+          (HVector.cons ain HVector.nil))) (HVector.cons o HVector.nil))
+      rw [hW, List.getElem?_append_left (by simp; omega), List.getElem?_append_right
+        (by omega), List.getElem?_append_left (by omega), hlen,
+        constsVal_getElem? nIn nIn _ le_rfl (by omega)] at hiv
+      have hav := (tyIdx?_spec ha).2 (hvAppend (hvAppend L (hvAppend (constsVal nIn nIn)
+          (HVector.cons ain HVector.nil))) (HVector.cons o HVector.nil))
+      rw [hW, List.getElem?_append_left (by simp; omega), List.getElem?_append_right
+        (by omega), List.getElem?_append_right (by omega), hlen, hlenC] at hav
+      simp only [show k + nIn - k - nIn = 0 by omega, List.getElem?_cons_zero,
+        Option.some.injEq, Sigma.mk.injEq, heq_eq_eq, true_and] at hiv hav
+      refine ⟨.cons ((show Fin nIn → BitVec ws from ain) ⟨nIn - 1 - k, by omega⟩) L,
+        fun j hj => ?_, ?_⟩
+      · cases j with
+        | zero =>
+            show some _ = some _
+            simp only [show nIn - (k + 1) + 0 = nIn - 1 - k by omega]
+        | succ j =>
+            show (valList L)[j]? = _
+            rw [hL j (by omega)]
+            simp only [show nIn - (k + 1) + (j + 1) = nIn - k + j by omega]
+      · rw [hd, NFProg.denote_var, Expr.denoteM_option_eq_some]
+        show NFProg.denote fuel p (Ctxt.Valuation.extend _ (stackGet (a.lookup _)
+          (BitVec.toNat (i.lookup _)))) = _
+        rw [← hiv, ← hav, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega),
+          show nIn - nIn + (nIn - 1 - k) = (⟨nIn - 1 - k, by omega⟩ : Fin nIn).val by simp,
+          stackGet_id]
+        rfl
+
+/-- The binding values of a renamed program are those of the program on the pulled-back
+valuation. -/
+theorem bindVals_rename : ∀ {Γ Γ' : Ctxt jasminDialect} {t : JasminTy}
+    (h : Ctxt.Hom Γ Γ') (c : Com jasminDialect Γ t) (W : Ctxt.Valuation Γ'),
+    Optimizer.ComDCE.bindVals (c.rename h) W = Optimizer.ComDCE.bindVals c (W.comap h)
+  | _, _, _, _, .ret _, _ => rfl
+  | _, _, _, h, .var e body, W => by
+      simp only [Com.rename, Optimizer.ComDCE.bindVals, Expr.denote_rename,
+        bindVals_rename h.lift body, Ctxt.Valuation.extend_comap_lift]
+
+/-- Renaming keeps the number of bindings. -/
+theorem comLen_rename : ∀ {Γ Γ' : Ctxt jasminDialect} {t : JasminTy}
+    (h : Ctxt.Hom Γ Γ') (c : Com jasminDialect Γ t),
+    Optimizer.UncomputePass.comLen (c.rename h) = Optimizer.UncomputePass.comLen c
+  | _, _, _, _, .ret _ => rfl
+  | _, _, _, h, .var e body => by
+      simp only [Com.rename, Optimizer.UncomputePass.comLen_var, comLen_rename h.lift body]
+
+/-- **The denotation of the staged program with an input array**: run from an input array
+`ain` whose word `j` is entry `j` of a valuation `V` of the context of `c` and from any
+initial output array `o`, `stageInOuts ws nIn nOut c` returns an array whose word `j` is
+entry `j` of the last `nOut` binding values `ComDCE.outputs nOut c V` of `c`. -/
+theorem stageInOuts_denote {ws nIn nOut : Nat} {t : JasminTy}
+    {c : Com jasminDialect (List.replicate nIn (.reg ws)) t}
+    {p : NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] [.stackArr ws nOut]}
+    (h : stageInOuts ws nIn nOut c = some p) (h64 : nIn ≤ 2 ^ 64) (fuel : Nat)
+    (V : Ctxt.Valuation (List.replicate nIn (JasminTy.reg ws))) (ain : ⟦JasminTy.stackArr ws nIn⟧)
+    (o : ⟦JasminTy.stackArr ws nOut⟧)
+    (hV : ∀ j : Fin nIn,
+      (valList V)[j.val]? = some ⟨.reg ws, (show Fin nIn → BitVec ws from ain) j⟩) :
+    ∃ a, p.denote fuel (.cons ain (.cons o .nil)) = some (.cons a .nil) ∧
+      ∀ j : Fin nOut, (Optimizer.ComDCE.outputs nOut c V)[j.val]? = some ⟨.reg ws, a j⟩ := by
+  unfold stageInOuts at h
+  split at h
+  · rename_i hn
+    obtain ⟨q, hq, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp h
+    rw [constsGo_denote]
+    obtain ⟨L, hL, hd⟩ := loadsGo_denote fuel h64 ain o nIn q le_rfl hr
+    rw [hd]
+    have hLV : L = V := by
+      refine valList_injective (List.ext_getElem? fun j => ?_)
+      rcases Nat.lt_or_ge j nIn with hj | hj
+      · rw [hL j hj, hV ⟨j, hj⟩]
+        simp only [Nat.sub_self, Nat.zero_add]
+      · rw [List.getElem?_eq_none (by rw [length_valList]; simpa using hj),
+          List.getElem?_eq_none (by rw [length_valList]; simpa using hj)]
+    subst hLV
+    obtain ⟨a, hd2, hw⟩ := stageGo_denote fuel _ hq
+      (hvAppend L (hvAppend (constsVal nIn nIn) (.cons ain .nil))) o
+    refine ⟨a, hd2, fun j => ?_⟩
+    have hcomap : Ctxt.Valuation.comap (appHomL (idxCtx nIn ++ [.stackArr ws nIn]))
+        (hvAppend L (hvAppend (constsVal nIn nIn) (.cons ain .nil))) = L :=
+      Ctxt.Valuation.ext _ _ fun _ v => by
+        rw [Ctxt.Valuation.lookup_comap]
+        exact lookup_inlHom _ v L
+    have hwj := hw j
+    rw [bindVals_rename, hcomap] at hwj
+    have hlen := Optimizer.ComDCE.length_bindVals c L
+    rw [← hwj, Optimizer.ComDCE.outputs, List.getElem?_drop, List.append_assoc,
+      List.getElem?_append_left (by simp only [List.length_reverse]; omega),
+      List.getElem?_reverse (by omega)]
+    congr 1
+    omega
+  · simp at h
+
+/-! ### The checks of `nfToJasmin` -/
+
+/-- A renaming that keeps the index of every variable. -/
+def IdxPres {Γ Γ' : Ctxt jasminDialect} (h : Ctxt.Hom Γ Γ') : Prop :=
+  ∀ {u : JasminTy} (v : Ctxt.Var Γ u), varIndex (h v) = varIndex v
+
+theorem IdxPres.lift {Γ Γ' : Ctxt jasminDialect} {h : Ctxt.Hom Γ Γ'} (hh : IdxPres h)
+    {u : JasminTy} : IdxPres (Ctxt.Hom.lift h : Ctxt.Hom (u :: Γ) (u :: Γ')) := by
+  intro _ v
+  cases v with
+  | here => rfl
+  | there v => simp [Ctxt.Hom.lift, varIndex, hh v]
+
+/-- The embedding of `Γ` into `Γ ++ L` keeps the index of a variable. -/
+theorem idxPres_appHomL (L : Ctxt jasminDialect) : ∀ {Γ : Ctxt jasminDialect},
+    IdxPres (appHomL L (Γ := Γ))
+  | _, _, .here => rfl
+  | _ :: _, _, .there v => by
+      exact congrArg (· + 1) (idxPres_appHomL L v)
+
+/-- A renaming that keeps indices keeps the indices of an argument vector. -/
+theorem hvIdxs_renameVars_of {Γ Γ' : Ctxt jasminDialect} {h : Ctxt.Hom Γ Γ'}
+    (hh : IdxPres h) : ∀ {ts : List JasminTy} (vs : HVector (fun t => Ctxt.Var Γ t) ts),
+      hvIdxs (HVector.renameVars h vs) = hvIdxs vs
+  | [], .nil => rfl
+  | _ :: _, .cons v vs => by
+      show varIndex (h v) :: hvIdxs (HVector.renameVars h vs) = varIndex v :: hvIdxs vs
+      rw [hh v, hvIdxs_renameVars_of hh vs]
+
+theorem usesIdx_ofCom_rename : ∀ {Γ Γ' : Ctxt jasminDialect} {t : JasminTy}
+    {h : Ctxt.Hom Γ Γ'} (c : Com jasminDialect Γ t), IdxPres h → ∀ i,
+    usesIdx (NFProg.ofCom (c.rename h)) i = usesIdx (NFProg.ofCom c) i
+  | _, _, _, h, .ret v, hh, i => by
+      exact congrArg (List.contains · i) (hvIdxs_renameVars_of hh (.cons v .nil))
+  | _, _, _, h, .var e body, hh, i => by
+      simp only [Com.rename, NFProg.ofCom, usesIdx, Expr.args_rename,
+        usesIdx_ofCom_rename body (IdxPres.lift hh)]
+      exact congrArg (fun l => List.contains l i || _) (hvIdxs_renameVars_of hh e.args)
+
+theorem linGo_ofCom_rename : ∀ {Γ Γ' : Ctxt jasminDialect} {t : JasminTy}
+    {h : Ctxt.Hom Γ Γ'} (c : Com jasminDialect Γ t), IdxPres h → ∀ loc,
+    linGo (NFProg.ofCom (c.rename h)) loc = linGo (NFProg.ofCom c) loc
+  | _, _, _, _, .ret _, _, _ => rfl
+  | _, _, _, h, .var e body, hh, loc => by
+      simp only [Com.rename, NFProg.ofCom, linGo, Expr.op_rename, Expr.args_rename,
+        hvIdxs_renameVars_of hh, usesIdx_ofCom_rename body (IdxPres.lift hh),
+        linGo_ofCom_rename body (IdxPres.lift hh)]
+
+/-- The in-place store check of a straight-line program holds at every larger number of
+bound variables. -/
+theorem linGo_ofCom_mono : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) {loc loc' : Nat}, loc ≤ loc' →
+    linGo (NFProg.ofCom c) loc = true → linGo (NFProg.ofCom c) loc' = true
+  | _, _, .ret _, _, _, _, _ => rfl
+  | _, _, .var e body, loc, loc', hl, h => by
+      simp only [NFProg.ofCom, linGo, Bool.and_eq_true] at h ⊢
+      refine ⟨?_, linGo_ofCom_mono body (by omega) h.2⟩
+      have h1 := h.1
+      cases hs : storeSrc? e.op (hvIdxs e.args) with
+      | none => rfl
+      | some a =>
+          rw [hs] at h1
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at h1 ⊢
+          exact ⟨by omega, h1.2⟩
+
+theorem widthsGo_ofCom_rename : ∀ {Γ Γ' : Ctxt jasminDialect} {t : JasminTy}
+    {h : Ctxt.Hom Γ Γ'} (c : Com jasminDialect Γ t),
+    widthsGo (NFProg.ofCom (c.rename h)) = widthsGo (NFProg.ofCom c)
+  | _, _, _, _, .ret _ => rfl
+  | _, _, _, _, .var _ body => by
+      simp only [Com.rename, NFProg.ofCom, widthsGo, Expr.op_rename,
+        widthsGo_ofCom_rename body]
+
+theorem regionExportable_ofCom_rename : ∀ {Γ Γ' : Ctxt jasminDialect} {t : JasminTy}
+    {h : Ctxt.Hom Γ Γ'} (c : Com jasminDialect Γ t),
+    RegionExportable (NFProg.ofCom c) → RegionExportable (NFProg.ofCom (c.rename h))
+  | _, _, _, _, .ret _, _ => trivial
+  | _, _, _, _, .var _ body, hc =>
+      ⟨bindMemN_rename _ hc.1, regionExportable_ofCom_rename body hc.2⟩
+
+theorem constsGo_regionExportable {ws nIn nOut : Nat} {ts : List JasminTy} :
+    ∀ (k : Nat) {p : NFProg jasminDialect ((idxCtx k ++ [.stackArr ws nIn])
+      ++ [.stackArr ws nOut]) ts},
+    RegionExportable p → RegionExportable (constsGo ws nIn nOut k p)
+  | 0, _, hp => hp
+  | k + 1, _, hp => constsGo_regionExportable k
+      ⟨Or.inl ⟨64, .here, ScalarMemN.const _ (by decide) rfl _ (ScalarMemN.ret _)⟩, hp⟩
+
+theorem constsGo_widthsGo {ws nIn nOut : Nat} {ts : List JasminTy} :
+    ∀ (k : Nat) (p : NFProg jasminDialect ((idxCtx k ++ [.stackArr ws nIn])
+      ++ [.stackArr ws nOut]) ts),
+    widthsGo (constsGo ws nIn nOut k p) = widthsGo p
+  | 0, _ => rfl
+  | k + 1, p => by
+      rw [constsGo, constsGo_widthsGo k]
+      show (tyOkB (.reg 64) && opOkB (.regConst 64 (nIn - 1 - k)) && widthsGo p) = _
+      rfl
+
+theorem constsGo_linGo {ws nIn nOut : Nat} {ts : List JasminTy} :
+    ∀ (k : Nat) (p : NFProg jasminDialect ((idxCtx k ++ [.stackArr ws nIn])
+      ++ [.stackArr ws nOut]) ts) (loc : Nat),
+    linGo (constsGo ws nIn nOut k p) loc = linGo p (loc + k)
+  | 0, _, _ => rfl
+  | k + 1, p, loc => by
+      rw [constsGo, constsGo_linGo k]
+      show (true && linGo p (loc + k + 1)) = _
+      rw [Bool.true_and, Nat.add_assoc]
+
+theorem loadsGo_regionExportable {ws nIn nOut : Nat} {ts : List JasminTy} :
+    ∀ (k : Nat) {p : NFProg jasminDialect ((List.replicate k (JasminTy.reg ws) ++
+      (idxCtx nIn ++ [.stackArr ws nIn])) ++ [.stackArr ws nOut]) ts} {q},
+    loadsGo ws nIn nOut k p = some q → RegionExportable p → RegionExportable q
+  | 0, p, q, h, hp => by
+      simp only [loadsGo, Option.some.injEq] at h
+      exact h ▸ hp
+  | k + 1, p, q, h, hp => by
+      simp only [loadsGo, Option.bind_eq_some_iff] at h
+      obtain ⟨i, _, a, _, h⟩ := h
+      exact loadsGo_regionExportable k h
+        ⟨Or.inl ⟨ws, .here, ScalarMemN.load rfl _ (ScalarMemN.ret _)⟩, hp⟩
+
+theorem loadsGo_widthsGo {ws nIn nOut : Nat} {ts : List JasminTy} (hws : widthOkB ws = true) :
+    ∀ (k : Nat) {p : NFProg jasminDialect ((List.replicate k (JasminTy.reg ws) ++
+      (idxCtx nIn ++ [.stackArr ws nIn])) ++ [.stackArr ws nOut]) ts} {q},
+    loadsGo ws nIn nOut k p = some q → widthsGo p = true → widthsGo q = true
+  | 0, p, q, h, hp => by
+      simp only [loadsGo, Option.some.injEq] at h
+      exact h ▸ hp
+  | k + 1, p, q, h, hp => by
+      simp only [loadsGo, Option.bind_eq_some_iff] at h
+      obtain ⟨i, _, a, _, h⟩ := h
+      refine loadsGo_widthsGo hws k h ?_
+      show (tyOkB (.reg ws) && opOkB (.stackLoad ws nIn) && widthsGo p) = true
+      simp only [tyOkB, bitOkB, opOkB, hws, Bool.or_true, hp, Bool.and_self]
+
+theorem loadsGo_linGo {ws nIn nOut : Nat} {ts : List JasminTy} :
+    ∀ (k : Nat) {p : NFProg jasminDialect ((List.replicate k (JasminTy.reg ws) ++
+      (idxCtx nIn ++ [.stackArr ws nIn])) ++ [.stackArr ws nOut]) ts} {q},
+    loadsGo ws nIn nOut k p = some q → ∀ loc, linGo q loc = linGo p (loc + k)
+  | 0, p, q, h, loc => by
+      simp only [loadsGo, Option.some.injEq] at h
+      subst h
+      rfl
+  | k + 1, p, q, h, loc => by
+      simp only [loadsGo, Option.bind_eq_some_iff] at h
+      obtain ⟨i, _, a, _, h⟩ := h
+      rw [loadsGo_linGo k h]
+      show (true && linGo p (loc + k + 1)) = _
+      rw [Bool.true_and, Nat.add_assoc]
+
+theorem stageInOuts_eq_some {ws nIn nOut : Nat} {t : JasminTy}
+    {c : Com jasminDialect (List.replicate nIn (.reg ws)) t}
+    {p : NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] [.stackArr ws nOut]}
+    (h : stageInOuts ws nIn nOut c = some p) :
+    nOut ≤ Optimizer.UncomputePass.comLen c ∧ ∃ q r,
+      stageGo ws nOut (c.rename (appHomL (idxCtx nIn ++ [.stackArr ws nIn]))) = some q ∧
+      loadsGo ws nIn nOut nIn q = some r ∧ p = constsGo ws nIn nOut nIn r := by
+  unfold stageInOuts at h
+  split at h
+  · obtain ⟨q, hq, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.mp h
+    exact ⟨‹_›, q, r, hq, hr, rfl⟩
+  · simp at h
+
+/-- The staged program with an input array is in the fragment of `RegionExportable` when
+`NFProg.ofCom c` is. -/
+theorem stageInOuts_regionExportable {ws nIn nOut : Nat} {t : JasminTy}
+    {c : Com jasminDialect (List.replicate nIn (.reg ws)) t}
+    {p : NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] [.stackArr ws nOut]}
+    (h : stageInOuts ws nIn nOut c = some p) (hc : RegionExportable (NFProg.ofCom c)) :
+    RegionExportable p := by
+  obtain ⟨_, q, r, hq, hr, rfl⟩ := stageInOuts_eq_some h
+  exact constsGo_regionExportable nIn (loadsGo_regionExportable nIn hr
+    (stageGo_regionExportable _ hq (regionExportable_ofCom_rename c hc)))
+
+/-- The staged program with an input array passes `linearArrB` when `NFProg.ofCom c`
+does. -/
+theorem stageInOuts_linearArrB {ws nIn nOut : Nat} {t : JasminTy}
+    {c : Com jasminDialect (List.replicate nIn (.reg ws)) t}
+    {p : NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] [.stackArr ws nOut]}
+    (h : stageInOuts ws nIn nOut c = some p) (hc : linearArrB (NFProg.ofCom c) = true) :
+    linearArrB p = true := by
+  obtain ⟨hn, q, r, hq, hr, rfl⟩ := stageInOuts_eq_some h
+  unfold linearArrB at hc ⊢
+  have hlin := stageGo_linGo _ hq
+    (by
+      rw [linGo_ofCom_rename c (idxPres_appHomL _)]
+      exact linGo_ofCom_mono c (by simp) hc)
+    (by rw [comLen_rename]; omega)
+  rw [constsGo_linGo, loadsGo_linGo nIn hr]
+  simp only [List.length_append, List.length_replicate, List.length_cons,
+    List.length_nil] at hlin ⊢
+  rw [show 0 + 1 + 1 + nIn + nIn = nIn + (nIn + 1) + 1 by omega]
+  exact hlin
+
+/-- The staged program with an input array passes `jasminWidthsB` when `NFProg.ofCom c`
+does, at a register width `ws`. -/
+theorem stageInOuts_jasminWidthsB {ws nIn nOut : Nat} {t : JasminTy}
+    {c : Com jasminDialect (List.replicate nIn (.reg ws)) t}
+    {p : NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] [.stackArr ws nOut]}
+    (h : stageInOuts ws nIn nOut c = some p) (hws : widthOkB ws = true)
+    (hc : jasminWidthsB (NFProg.ofCom c) = true) : jasminWidthsB p = true := by
+  obtain ⟨_, q, r, hq, hr, rfl⟩ := stageInOuts_eq_some h
+  unfold jasminWidthsB at hc ⊢
+  simp only [Bool.and_eq_true] at hc
+  have hw := stageGo_widthsGo hws _ hq (by rw [widthsGo_ofCom_rename]; exact hc.2)
+  simp only [List.all_cons, List.all_nil, tyOkB, hws, Bool.and_self, constsGo_widthsGo,
+    loadsGo_widthsGo hws nIn hr hw]
+
+/-- `inOutsSig` fits its context. -/
+theorem inOutsSig_fits (ws nIn nOut : Nat) : (inOutsSig ws nIn nOut).Fits := by
+  refine ⟨?_, ⟨_, rfl, rfl, rfl⟩⟩
+  intro q hq
+  simp only [inOutsSig, List.reverse_cons, List.reverse_nil, List.nil_append,
+    List.cons_append, List.zip_cons_cons, List.zip_nil_right, List.mem_cons,
+    List.not_mem_nil, or_false] at hq
+  rcases hq with rfl | rfl <;> rfl
+
+/-- **Completeness of the lowering on staged programs with an input array**: `nfToJasmin`
+succeeds with the signature `inOutsSig` on the staged program of every `c` whose embedding
+`NFProg.ofCom c` is in the fragment of `RegionExportable` and passes `linearArrB` and
+`jasminWidthsB`, at a register width `ws`. -/
+theorem stageInOuts_nfToJasmin_isSome {ws nIn nOut : Nat} {t : JasminTy}
+    {c : Com jasminDialect (List.replicate nIn (.reg ws)) t}
+    {p : NFProg jasminDialect [.stackArr ws nIn, .stackArr ws nOut] [.stackArr ws nOut]}
+    (name : String) (h : stageInOuts ws nIn nOut c = some p) (hws : widthOkB ws = true)
+    (hp : RegionExportable (NFProg.ofCom c)) (hlin : linearArrB (NFProg.ofCom c) = true)
+    (hw : jasminWidthsB (NFProg.ofCom c) = true) :
+    (nfToJasmin (inOutsSig ws nIn nOut) name p).isSome :=
+  nfToJasmin_isSome _ name (stageInOuts_regionExportable h hp) (stageInOuts_linearArrB h hlin)
+    (stageInOuts_jasminWidthsB h hws hw) (inOutsSig_fits ws nIn nOut)
+
+/-- **A returned text parses to the lowered unit**: the unit `nfToJasmin` returns on the
+staged program with an input array, without its extern signatures. -/
+theorem emitJazzInOuts_parse {ws nIn nOut : Nat} {t : JasminTy} {name : String}
+    {c : Com jasminDialect (List.replicate nIn (.reg ws)) t} {s : String}
+    (h : emitJazzInOuts name ws nIn nOut c = some s) :
+    ∃ p u, stageInOuts ws nIn nOut c = some p ∧
+      nfToJasmin (inOutsSig ws nIn nOut) name p = some u ∧
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok { u with externs := [] } := by
+  unfold emitJazzInOuts at h
+  obtain ⟨p, hp, hs⟩ := Option.bind_eq_some_iff.mp h
+  obtain ⟨u, hu, hparse⟩ := JasminPrintText.emitJazzNF_parse hs
+  exact ⟨p, u, hp, hu, hparse⟩
+
+/-! ## 6. Checks -/
 
 /-- The program `x + y`, `x ^ y` on two `reg 64` arguments, whose two bindings are its
 outputs. -/
@@ -717,5 +1247,9 @@ def sumXorSig : JazzSig ([.reg 64, .reg 64] ++ [.stackArr 64 2]) (.stackArr 64 2
 
 -- The two outputs of `sumXorCom` print to an output array through the checked printer.
 #kat (emitJazzOuts "sum_xor_outs" 64 2 sumXorSig sumXorCom).isSome
+
+-- The two inputs of `sumXorCom` load from an input array and its two outputs store to an
+-- output array through the checked printer.
+#kat (emitJazzInOuts "sum_xor_inouts" 64 2 2 sumXorCom).isSome
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
