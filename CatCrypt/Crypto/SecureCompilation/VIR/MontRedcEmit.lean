@@ -20,8 +20,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 # The single-word Montgomery REDC step through the OWNED x86 backend (NO jasminc)
 
 `MontRedcCatCryptEmit.lean` lowers the single-word Montgomery REDC step from the
-high `catCryptDialect` to `Com jasminDialect` (`montRedcWordJasmin`) and emits it
-through the *testing/comparison* path (`emitJazz` → jasminc). That step uses the
+high `catCryptDialect` to `Com jasminDialect` (`montRedcWordJasmin`) and prints it as
+Jasmin through the single printer (`emitJazzN`, `#MULX_lo_hi_64`). That step uses the
 split-word ops `bvMul`/`bvMulHi`/`bvAddCarryLo`/`bvAddCarryHi`, i.e. x86
 `MUL`/`MULX`/`ADCX` — and jasminc rejected the `MULXHI` form. The **owned** x86
 backend emits real `MULX`, so the same lowered `Com jasminDialect` renders fine:
