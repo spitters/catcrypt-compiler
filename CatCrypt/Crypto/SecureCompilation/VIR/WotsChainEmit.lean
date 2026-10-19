@@ -399,37 +399,46 @@ theorem sampleSig_denote_two :
 
 /-! ## 8. The emitted `.jazz`: the `len`-chain WOTS+ signature level sequence
 
-We render the WOTS+ signature as a self-contained jasminc `export fn`, the
-*actual* emitted level sequence (one variable-count `for i = 0 to digit` per
-chain), via `TreehashProg.toJazzExport` — NOT unrolled. The
-trip counts are the data-dependent chain positions, resolved (public) into the
-loop headers. -/
+The WOTS+ signature is the structured program `JForProg.seqToNF` of its chains, one
+counted loop per chain whose trip count is the chain position, printed by the single
+Jasmin printer (`JasminPrintText.emitJazzNF`). The structured program denotes the
+signature (`wotsSigNF_denote`). The trip counts are the data-dependent chain
+positions, resolved (public) into the loop counts. -/
 
-/-- The emitted `export fn` for the sample `len = 4` WOTS+ signature: the four
-    per-chain variable-count loops (`for i = 0 to 1/2/3/4`), each `acc = acc * acc`,
-    via `TreehashProg.toJazzExport`. -/
+/-- The structured program of the WOTS+ signature at the positions `digits`. -/
+def wotsSigNF {len : Nat} (digits : Fin len → Nat) : NFProg jasminDialect [.reg 64] [.reg 64] :=
+  JForProg.seqToNF (wotsSig digits) (Δ := [])
+
+/-- The structured program of the WOTS+ signature denotes `(wotsSig digits).denote`, at
+    every fuel, when every position is below `2 ^ 64`. -/
+theorem wotsSigNF_denote {len : Nat} (digits : Fin len → Nat) (h : ∀ i, digits i < 2 ^ 64)
+    (fuel : Nat) (a : BitVec 64) :
+    (wotsSigNF digits).denote fuel (.cons a .nil) =
+      some (.cons ((wotsSig digits).denote a) .nil) :=
+  JForProg.seqToNF_denote (wotsSig digits)
+    (by
+      intro p hp
+      simp only [wotsSig, List.mem_map] at hp
+      obtain ⟨i, -, rfl⟩ := hp
+      exact h i) fuel a .nil
+
+/-- The text of the `export fn` of the sample `len = 4` WOTS+ signature; empty when the
+    printer refuses, which the check of §9 excludes. -/
 def wotsSigExportJazz : String :=
-  TreehashProg.toJazzExport "slhdsa_wots_sign" (wotsSig sampleDigits)
+  (JasminPrintText.emitJazzNF "slhdsa_wots_sign" (JasminPrintText.JazzSig.acc (.reg 64))
+    (wotsSigNF sampleDigits)).getD ""
 
-#eval IO.println wotsSigExportJazz
+/-! ## 9. Structural checks of the emitted `.jazz` -/
 
-/-! ## 9. Structural smoke tests for the emitted `.jazz` -/
-
-/- The WOTS+ signature `.jazz` is an `export fn` jasminc unit. -/
-#guard (JasminPrint.strContains wotsSigExportJazz "export fn slhdsa_wots_sign")
-
-/- The WOTS+ signature `.jazz` has the per-chain **data-dependent** trip-count
-    loops: the positions `1, 2, 3, 4` appear as the loop bounds (one per chain),
-    confirming the variable trip counts are resolved into the emitted headers. -/
-#guard (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 1")
-    && (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 2")
-    && (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 3")
-    && (JasminPrint.strContains wotsSigExportJazz "for i = 0 to 4")
-
-/-- **Structural check: the signature is `len = 4` chains, not unrolled** — exactly
-    `4` chain loops (one `acc = acc * acc` per chain), each a real `for`, not the
-    `1+2+3+4 = 10` copies an unroll would produce. -/
-theorem wotsSigExport_len_chains :
-    (wotsSigExportJazz.splitOn "(acc * acc)").length = 5 := by native_decide
+-- The WOTS+ signature text is the `export fn slhdsa_wots_sign` with `len = 4` counted
+-- loops of 1, 2, 3 and 4 trips in this order, and one squaring per loop body (the
+-- `1 + 2 + 3 + 4 = 10` squarings are not unrolled).
+set_option kat.ms 1000 in
+#kat JasminPrint.strContains wotsSigExportJazz "export fn slhdsa_wots_sign(" &&
+  JasminPrint.strContains
+    ((((((wotsSigExportJazz.splitOn " = 1;").getLast!).splitOn " = 2;").getLast!).splitOn
+      " = 3;").getLast!) " = 4;" &&
+  (wotsSigExportJazz.splitOn "while (").length == 5 &&
+  (wotsSigExportJazz.splitOn " *= ").length == 5
 
 end CatCrypt.Crypto.SecureCompilation.VIR.WotsChainEmit

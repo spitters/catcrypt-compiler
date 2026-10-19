@@ -126,7 +126,6 @@ CatCrypt.Crypto.Jasmin.Plonky3LdeReflect
 CatCrypt.Crypto.Jasmin.Plonky3ProveReflect
 CatCrypt.Crypto.Jasmin.Plonky3Reflect
 CatCrypt.Crypto.Jasmin.Poseidon2Reflect
-CatCrypt.Crypto.Jasmin.RustEmitJazz
 CatCrypt.Crypto.Jasmin.Secp256k1Reflect
 CatCrypt.Crypto.Jasmin.ShaNiReflect
 CatCrypt.Crypto.Jasmin.SpartanSumCheckReflect

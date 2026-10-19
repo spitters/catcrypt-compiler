@@ -7,6 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
 public import CatCrypt.Crypto.SecureCompilation.VIR.JForProgTreehash
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 
 /-!
 # XMSS core emitted through the verified front: WOTS+ hash chains + Merkle treehash
@@ -267,57 +269,65 @@ theorem xmssRootDenote_three :
 
 /-! ## 6. The emitted `.jazz`: the WOTS chain loop + the Merkle treehash sequence
 
-We render two self-contained jasminc `export fn`s, each the *actual* emitted loop
-/ level sequence the two theorems cover (NOT unrolled):
+The two `export fn`s are the structured programs of the loops, `JForProg.toNF` and
+`JForProg.seqToNF`, printed by the single Jasmin printer (`JasminPrintText.emitJazzNF`):
 
-* `wots_chain` — the single WOTS+ chain loop (`for i = 0 to 15 { acc = acc*acc }`),
-* `xmss_treehash` — the `h = 3`-level Merkle treehash (`for i = 0 to 4 ; for i = 0
-  to 2 ; for i = 0 to 1`, each `acc = acc + acc`).
+* `wots_chain` — one counted loop of 15 trips whose body squares the accumulator,
+* `xmss_treehash` — the `h = 3` Merkle levels as three counted loops in sequence, of
+  4, 2 and 1 trips, each body doubling the accumulator.
 
+The structured programs denote the loops (`wotsChainNF_denote`, `merkleTreeNF_denote`).
 The composition is validated by the KAT driver (run the chain, feed into the
 treehash). -/
 
-/-- The emitted `export fn` for one WOTS+ chain: `for i = 0 to 15 { acc=acc*acc }`,
-    via the single-level `JForProg.toJazzExport` (the verified `Cfor`). -/
+/-- The structured program of one WOTS+ chain. -/
+def wotsChainNF : NFProg jasminDialect [.reg 64] [.reg 64] := wotsChain.toNF
+
+/-- The structured program of the `h = 3` Merkle treehash. -/
+def merkleTreeNF : NFProg jasminDialect [.reg 64] [.reg 64] :=
+  JForProg.seqToNF merkleTree (Δ := [])
+
+/-- The structured program of the WOTS+ chain denotes the chain, at every fuel. -/
+theorem wotsChainNF_denote (fuel : Nat) (a : BitVec 64) :
+    wotsChainNF.denote fuel (.cons a .nil) = some (.cons (wotsChain.denote a) .nil) :=
+  JForProg.toNF_denote wotsChain (by decide) fuel a
+
+/-- The structured program of the Merkle treehash denotes the serial level
+    composition `merkleTree.denote`, at every fuel. -/
+theorem merkleTreeNF_denote (fuel : Nat) (a : BitVec 64) :
+    merkleTreeNF.denote fuel (.cons a .nil) = some (.cons (merkleTree.denote a) .nil) :=
+  JForProg.seqToNF_denote merkleTree
+    (by rw [merkleTree_eq]; simp [merkleLevel]) fuel a .nil
+
+/-- The text of the WOTS+ chain `export fn`; empty when the printer refuses, which the
+    check of §7 excludes. -/
 def wotsChainExportJazz : String :=
-  JForProg.toJazzExport "wots_chain" wotsChain
+  (JasminPrintText.emitJazzNF "wots_chain" (JasminPrintText.JazzSig.acc (.reg 64))
+    wotsChainNF).getD ""
 
-/-- The emitted `export fn` for the `h = 3` Merkle treehash: three sequential
-    halving `for` loops, via `TreehashProg.toJazzExport`. -/
+/-- The text of the Merkle treehash `export fn`; empty when the printer refuses, which
+    the check of §7 excludes. -/
 def merkleTreeExportJazz : String :=
-  TreehashProg.toJazzExport "xmss_treehash" merkleTree
+  (JasminPrintText.emitJazzNF "xmss_treehash" (JasminPrintText.JazzSig.acc (.reg 64))
+    merkleTreeNF).getD ""
 
-#eval IO.println wotsChainExportJazz
-#eval IO.println merkleTreeExportJazz
+/-! ## 7. Structural checks of the emitted `.jazz` -/
 
-/-! ## 7. Structural smoke tests for the emitted `.jazz` -/
+-- The WOTS chain text is the `export fn wots_chain` with one counted loop of 15 trips
+-- and one squaring in its body (the loop is not unrolled).
+set_option kat.ms 1000 in
+#kat JasminPrint.strContains wotsChainExportJazz "export fn wots_chain(" &&
+  JasminPrint.strContains wotsChainExportJazz " = 15;" &&
+  (wotsChainExportJazz.splitOn "while (").length == 2 &&
+  (wotsChainExportJazz.splitOn " *= ").length == 2
 
-/- The WOTS chain `.jazz` is an `export fn` jasminc unit. -/
-#guard (JasminPrint.strContains wotsChainExportJazz "export fn wots_chain")
-
-/- The WOTS chain `.jazz` has the real `w - 1 = 15`-iteration loop (not unrolled). -/
-#guard (JasminPrint.strContains wotsChainExportJazz "for i = 0 to 15")
-
-/-- The WOTS chain body is the single squaring leaf `acc * acc`, and it appears
-    exactly once (a real `for`, not unrolled to 15 copies). -/
-theorem wotsChainExport_not_unrolled :
-    (wotsChainExportJazz.splitOn "(acc * acc)").length = 2 := by native_decide
-
-/- The Merkle treehash `.jazz` is an `export fn` jasminc unit. -/
-#guard (JasminPrint.strContains merkleTreeExportJazz "export fn xmss_treehash")
-
-/- The Merkle treehash `.jazz` has all three halving level loops. -/
-#guard (JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 4")
-    && (JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 2")
-    && (JasminPrint.strContains merkleTreeExportJazz "for i = 0 to 1")
-
-/- **Structural check: the three Merkle level loops appear in halving sequence**
-    (`4 → 2 → 1`), i.e. `h = 3` sequential `for` loops with the halving counts. -/
-#guard (JasminPrint.strContains ((((merkleTreeExportJazz.splitOn "for i = 0 to 4 {").getLast!).splitOn "for i = 0 to 2 {").getLast!) "for i = 0 to 1 {")
-
-/-- The Merkle treehash `.jazz` does NOT unroll: exactly three `acc + acc` combine
-    bodies (one per level loop), not `4 + 2 + 1 = 7` copies. -/
-theorem merkleTreeExport_not_unrolled :
-    (merkleTreeExportJazz.splitOn "(acc + acc)").length = 4 := by native_decide
+-- The Merkle treehash text is the `export fn xmss_treehash` with three counted loops
+-- of 4, 2 and 1 trips in this order, and one doubling per loop body.
+set_option kat.ms 1000 in
+#kat JasminPrint.strContains merkleTreeExportJazz "export fn xmss_treehash(" &&
+  JasminPrint.strContains
+    ((((merkleTreeExportJazz.splitOn " = 4;").getLast!).splitOn " = 2;").getLast!) " = 1;" &&
+  (merkleTreeExportJazz.splitOn "while (").length == 4 &&
+  (merkleTreeExportJazz.splitOn " += r").length == 4
 
 end CatCrypt.Crypto.SecureCompilation.VIR.XMSSEmit

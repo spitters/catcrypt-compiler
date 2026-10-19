@@ -371,62 +371,67 @@ theorem slhRootDenote_three :
 /-! ## 6. The emitted `.jazz`: the hypertree level sequence + the FORS level
 # sequence
 
-We render two self-contained jasminc `export fn`s, each the *actual* emitted
-level sequence the loop theorem covers (NOT unrolled):
+The two `export fn`s are the structured programs `JForProg.seqToNF` of the level
+sequences, printed by the single Jasmin printer (`JasminPrintText.emitJazzNF`):
 
-* `slhdsa_hypertree` — the `d = 2`-layer hypertree (`2 ·` the `4,2,1` halving
-  level sequence, each `acc = acc + acc`),
-* `slhdsa_fors` — the `k = 3`-tree FORS (`3 ·` the `2,1` halving level sequence
-  plus the `k - 1 = 2`-step root compression, each `acc = acc * acc`).
+* `slhdsa_hypertree` — the `d = 2`-layer hypertree, `2 ·` the `4, 2, 1` halving
+  sequence of counted loops, each body doubling the accumulator,
+* `slhdsa_fors` — the `k = 3`-tree FORS, `3 ·` the `2, 1` halving sequence followed by
+  the `k - 1 = 2`-trip root compression, each body squaring the accumulator.
 
-The composition is validated by the KAT driver (run FORS, feed into the
-hypertree). -/
+The structured programs denote the level sequences (`hyperTreeNF_denote`,
+`forsTreeNF_denote`). The composition is validated by the KAT driver (run FORS, feed
+into the hypertree). -/
 
-/-- The emitted `export fn` for the `d = 2`-layer hypertree: the two XMSS
-    treehashes back to back, via `TreehashProg.toJazzExport`. -/
+/-- The structured program of the `d = 2`-layer hypertree. -/
+def hyperTreeNF : NFProg jasminDialect [.reg 64] [.reg 64] :=
+  JForProg.seqToNF hyperTree (Δ := [])
+
+/-- The structured program of the `k = 3`-tree FORS treehash and root compression. -/
+def forsTreeNF : NFProg jasminDialect [.reg 64] [.reg 64] :=
+  JForProg.seqToNF forsTree (Δ := [])
+
+/-- The structured program of the hypertree denotes `hyperTree.denote`, at every
+    fuel. -/
+theorem hyperTreeNF_denote (fuel : Nat) (a : BitVec 64) :
+    hyperTreeNF.denote fuel (.cons a .nil) = some (.cons (hyperTree.denote a) .nil) :=
+  JForProg.seqToNF_denote hyperTree
+    (by rw [hyperTree_eq, XMSSEmit.merkleTree_eq]; simp [XMSSEmit.merkleLevel]) fuel a .nil
+
+/-- The structured program of the FORS tree denotes `forsTree.denote`, at every
+    fuel. -/
+theorem forsTreeNF_denote (fuel : Nat) (a : BitVec 64) :
+    forsTreeNF.denote fuel (.cons a .nil) = some (.cons (forsTree.denote a) .nil) :=
+  JForProg.seqToNF_denote forsTree
+    (by rw [forsTree_eq]; simp [forsSubtree, forsCounts_two, forsLevel, slhForsK]) fuel a .nil
+
+/-- The text of the hypertree `export fn`; empty when the printer refuses, which the
+    check of §7 excludes. -/
 def hyperTreeExportJazz : String :=
-  TreehashProg.toJazzExport "slhdsa_hypertree" hyperTree
+  (JasminPrintText.emitJazzNF "slhdsa_hypertree" (JasminPrintText.JazzSig.acc (.reg 64))
+    hyperTreeNF).getD ""
 
-/-- The emitted `export fn` for the `k = 3`-tree FORS treehash + root
-    compression, via `TreehashProg.toJazzExport`. -/
+/-- The text of the FORS `export fn`; empty when the printer refuses, which the check
+    of §7 excludes. -/
 def forsTreeExportJazz : String :=
-  TreehashProg.toJazzExport "slhdsa_fors" forsTree
+  (JasminPrintText.emitJazzNF "slhdsa_fors" (JasminPrintText.JazzSig.acc (.reg 64))
+    forsTreeNF).getD ""
 
-#eval IO.println hyperTreeExportJazz
-#eval IO.println forsTreeExportJazz
+/-! ## 7. Structural checks of the emitted `.jazz` -/
 
-/-! ## 7. Structural smoke tests for the emitted `.jazz` -/
+-- The hypertree text is the `export fn slhdsa_hypertree` with `d · h' = 6` counted
+-- loops and one doubling per loop body. Printing and parsing the text back takes about
+-- 300 ms.
+set_option kat.ms 1000 in
+#kat JasminPrint.strContains hyperTreeExportJazz "export fn slhdsa_hypertree(" &&
+  (hyperTreeExportJazz.splitOn "while (").length == 7 &&
+  (hyperTreeExportJazz.splitOn " += r").length == 7
 
-/- The hypertree `.jazz` is an `export fn` jasminc unit. -/
-#guard (JasminPrint.strContains hyperTreeExportJazz "export fn slhdsa_hypertree")
-
-/- The hypertree `.jazz` has the halving level loops of *both* XMSS layers: the
-    `4,2,1` halving counts appear (once per layer). -/
-#guard (JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 4")
-    && (JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 2")
-    && (JasminPrint.strContains hyperTreeExportJazz "for i = 0 to 1")
-
-/-- **Structural check: the hypertree is `d = 2` stacked XMSS treehashes** —
-    exactly `6 = d · h'` level loops (`2 ·` the `4,2,1` halving sequence), each a
-    real `for`, not unrolled. The combine body `acc = acc + acc` appears once per
-    level: `6` times for `d · h' = 6` levels. -/
-theorem hyperTreeExport_d_layers :
-    (hyperTreeExportJazz.splitOn "(acc + acc)").length = 7 := by native_decide
-
-/- The FORS `.jazz` is an `export fn` jasminc unit. -/
-#guard (JasminPrint.strContains forsTreeExportJazz "export fn slhdsa_fors")
-
-/- The FORS `.jazz` has the per-subtree halving level loops (`2, 1`) and the
-    `k - 1 = 2`-step root compression loop. -/
-#guard (JasminPrint.strContains forsTreeExportJazz "for i = 0 to 2")
-    && (JasminPrint.strContains forsTreeExportJazz "for i = 0 to 1")
-
-/-- **Structural check: FORS is `k = 3` subtrees plus a root compression** —
-    exactly `7 = k · a + 1` level loops (`3 ·` the `2,1` halving sequence, then
-    the `k - 1` compression), each a real `for`, not unrolled. The FORS combine
-    body `acc = acc * acc` appears once per level: `7` times for `k · a + 1 = 7`
-    levels. -/
-theorem forsTreeExport_k_trees :
-    (forsTreeExportJazz.splitOn "(acc * acc)").length = 8 := by native_decide
+-- The FORS text is the `export fn slhdsa_fors` with `k · a + 1 = 7` counted loops and
+-- one squaring per loop body.
+set_option kat.ms 1000 in
+#kat JasminPrint.strContains forsTreeExportJazz "export fn slhdsa_fors(" &&
+  (forsTreeExportJazz.splitOn "while (").length == 8 &&
+  (forsTreeExportJazz.splitOn " *= ").length == 8
 
 end CatCrypt.Crypto.SecureCompilation.VIR.SLHDSAEmit
