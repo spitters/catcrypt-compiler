@@ -1,0 +1,1177 @@
+# Machine-boundary baseline, written by scripts/machine-boundary-ratchet.py --write.
+# edge: a machine module imports a module outside the machine and allowed tiers.
+# escape: a machine module whose import closure leaves those tiers; closed: one whose closure does not.
+# cycle: a module outside the machine tiers, reached from a machine module, imports a machine module.
+# Tiers: scripts/machine-boundary-tiers.txt.
+# 616 machine modules (343,597 lines); 219 import outside the machine tiers (368 edges to 190 targets); 602 escape transitively, 14 closed (3,693 lines); 183 cycle edges; the closure adds 602 outside modules (326,090 lines)
+
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel -> CatCrypt.Crypto.SecureCompilation.MachineMem64
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAlloc -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAllocGeneric -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm -> CatCrypt.Crypto.SecureCompilation.ScalarLin
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmFront -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLoop -> CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmX25519FieldKernel
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLsem -> CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonCryptoModel -> CatCrypt.Crypto.Jasmin.JasminOps
+edge CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel -> CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+edge CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived -> CatCrypt.Crypto.SecureCompilation.Ascent.Imported.CallSeg
+edge CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived -> CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped
+edge CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived -> CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT
+edge CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemWord -> CatCrypt.Crypto.SecureCompilation.MachineMem64
+edge CatCrypt.Crypto.SecureCompilation.Ascent.AndNBytesValue -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Ascend -> Transfer.Congruence.ParamAuto
+edge CatCrypt.Crypto.SecureCompilation.Ascent.AscendDecide -> CatCrypt.Crypto.SecureCompilation.Dialects.CoveredSCtlDecide
+edge CatCrypt.Crypto.SecureCompilation.Ascent.BytesOfCorres -> HaxAscent.Ascent.FnCorresUnique
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres -> CatCrypt.Crypto.SecureCompilation.X86Backend.CarryMulBlock
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Core.Code
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.CryptoWord
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.Jasmin.JasminAST
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.Jasmin.JasminTypes
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.Jasmin.LowCTSyntax
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SDist
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.CryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.VIR.Core
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone -> CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Corres -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Corres -> Transfer.Base.Related
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Corres -> Transfer.Integrations.ParamRelatedBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Corres -> Transfer.Translate.ParamDB
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent -> CatCrypt.Crypto.SecureCompilation.RelationalCompileHigh
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentX86 -> CatCrypt.Crypto.SecureCompilation.RelationalCompile
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentX86 -> CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresGeneric -> HaxAscent.Calculus.CorresMCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericX86 -> HaxAscent.Calculus.CorresMCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoareSpec -> HaxAscent.Calculus.CorresGenericSpec
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec -> HaxAscent.Calculus.CorresGenericSpec
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsa -> HaxAscent.Calculus.CorresGenericSpec
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCfg -> HaxAscent.Calculus.CorresMCutPoint
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86 -> CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86Mov -> CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeMovReg
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresJRRel -> CatCryptCore.Refinement.Programs
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresJRRel -> HaxAscent.Ascent.Refines
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineRRel -> HaxAscent.Ascent.CorresRRel
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelational -> CatCrypt.Crypto.SecureCompilation.RelationalFrontInstances
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld -> CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted
+edge CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem -> CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasSquareBlock
+edge CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+edge CatCrypt.Crypto.SecureCompilation.Ascent.EgraphBlockEquality -> CatCrypt.Crypto.Optimizer.Rewrite.Egraph
+edge CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Exit -> HaxAscent.Ascent.Exit
+edge CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Core.Code
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.CryptoWord
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.Hax.RustSubsetToLowCT
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.Jasmin.JasminAST
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.Jasmin.JasminTypes
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.Jasmin.LowCTExec
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SDist
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.CryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.Core
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Core.Code
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.CryptoWord
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.Jasmin.JasminAST
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.Jasmin.JasminTypes
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.Jasmin.LowCTExec
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SDist
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.CryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.Core
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd -> CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSourceTower -> CatCrypt.Crypto.Hax.RustSubsetToLowCT
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Core.Code
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.CryptoWord
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.Jasmin.JasminAST
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.Jasmin.JasminTypes
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.Jasmin.LowCTSyntax
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SDist
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.CryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.VIR.Core
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic -> CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce -> CatCrypt.Crypto.Number.MontgomeryReduction
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce -> CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce -> CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedcCarryFold
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduceWide -> CatCrypt.Crypto.SecureCompilation.RelationalFrontCiosFieldMul
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Footprint -> CatCrypt.Crypto.SecureCompilation.MachineMem64
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FootprintEA -> CatCrypt.Crypto.SecureCompilation.X86Backend.EffAddr
+edge CatCrypt.Crypto.SecureCompilation.Ascent.FrontToBytes -> CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+edge CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP -> CatCryptCore.XDijkstra.GradedWP
+edge CatCrypt.Crypto.SecureCompilation.Ascent.GuardSatisfiable -> CatCrypt.Crypto.SecureCompilation.X86Backend.EncodedBlockCorres
+edge CatCrypt.Crypto.SecureCompilation.Ascent.GuardsLeaf -> CatCrypt.Crypto.SecureCompilation.Dialects.LeafOracleScalar
+edge CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas -> CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockProven
+edge CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie -> CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.JasminJumpLevel -> CatCrypt.Crypto.Jasmin.BignumToJ
+edge CatCrypt.Crypto.SecureCompilation.Ascent.JasminJumpLevel -> CatCrypt.Crypto.Jasmin.BignumToJLoops
+edge CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie -> CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram
+edge CatCrypt.Crypto.SecureCompilation.Ascent.KleisliQuotient -> HaxAscent.Ascent.SquareKleisli
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LeakageExceptT -> CatCryptCore.Crypto.UCMonad.LeakageExceptT
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeld -> CatCrypt.Crypto.Hax.RustSubsetToLowCT
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Core.Code
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.CryptoWord
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.Hax.RustSubsetToLowCT
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.Jasmin.JasminAST
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.Jasmin.JasminTypes
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.Jasmin.LowCTExec
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SDist
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.CryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecKernelAdeq
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecRoundAdeq
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.Core
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf -> CatCrypt.Crypto.Hax.RustSubsetToLowCT
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower -> CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
+edge CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower -> CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
+edge CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf -> CatCrypt.Crypto.Util.ZMod3329
+edge CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf -> Transfer.Examples.PrimeWord
+edge CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres -> HaxAscent.Calculus.IFold
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Phases -> HaxAscent.Ascent.Refines
+edge CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld -> HaxLean.Pipeline
+edge CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld -> HaxLean.PipelineCF
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Polish -> CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Strengthen
+edge CatCrypt.Crypto.SecureCompilation.Ascent.RRelParam -> CatCryptCore.Refinement.RRel
+edge CatCrypt.Crypto.SecureCompilation.Ascent.RRelParam -> Transfer.Hierarchy.ParamHierarchy
+edge CatCrypt.Crypto.SecureCompilation.Ascent.RRelParam -> Transfer.Integrations.ParamRCompOk
+edge CatCrypt.Crypto.SecureCompilation.Ascent.Rng -> CatCrypt.Crypto.SecureCompilation.MachineMem64
+edge CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo -> HaxAscent.Calculus.RustMSquare
+edge CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble -> CatCryptCore.ForMathlib.CategoryTheory.ThinDoubleCategory
+edge CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble -> HaxAscent.Calculus.RustMSquare
+edge CatCrypt.Crypto.SecureCompilation.Ascent.SExprOrNot -> CatCrypt.Crypto.Jasmin.LowCTSExpr
+edge CatCrypt.Crypto.SecureCompilation.Ascent.SExprSigned -> CatCrypt.Crypto.SecureCompilation.Dialects.GuardedLt
+edge CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareSpec -> CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+edge CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge -> CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
+edge CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble -> CatCryptCore.ForMathlib.CategoryTheory.ThinDoubleCategory
+edge CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement -> Transfer.Examples.MachineLimbField
+edge CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp -> CatCryptCore.Crypto.UCMonad.UCLeakageDecomp
+edge CatCrypt.Crypto.SecureCompilation.Ascent.While -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.WhileFunEmit -> CatCrypt.Crypto.SecureCompilation.VIR.RustToJasminComWhile
+edge CatCrypt.Crypto.SecureCompilation.Ascent.WhileTop -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectUnifiedDenote
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XAdvantageHybrid -> CatCryptCore.XDijkstra.XAdvantageHybrid
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XDijkstraAll -> CatCryptCore.XDijkstra.XDijkstraAll
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XHeapSoundness -> CatCryptCore.XDijkstra.XHeapSoundness
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XMorphismInstance -> CatCryptCore.XDijkstra.XMorphismInstance
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgen -> CatCryptCore.XDijkstra.XMvcgen
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenControl -> CatCryptCore.XDijkstra.XMvcgenControl
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenReg -> CatCryptCore.XDijkstra.XMvcgenReg
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XPostShape -> CatCryptCore.XDijkstra.XPostShape
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XPredCore -> CatCryptCore.XDijkstra.XPredCore
+edge CatCrypt.Crypto.SecureCompilation.Ascent.XRelatorPMF -> CatCryptCore.XDijkstra.XRelatorPMF
+edge CatCrypt.Crypto.SecureCompilation.CT.HaxLevels -> CatCrypt.Crypto.Hax.HaxToLowCTStruct
+edge CatCrypt.Crypto.SecureCompilation.CT.HaxLevels -> CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer
+edge CatCrypt.Crypto.SecureCompilation.CT.HaxLevels -> HaxLean.Secrecy
+edge CatCrypt.Crypto.SecureCompilation.CT.Leakage -> CatCrypt.Crypto.SecureCompilation.VarTimeOpDetector
+edge CatCrypt.Crypto.SecureCompilation.CT.LowCTLeakage -> CatCrypt.Crypto.Jasmin.LowCTExec
+edge CatCrypt.Crypto.SecureCompilation.CT.X86Timing -> CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem -> CatCrypt.Crypto.SecureCompilation.MultiBackendDemo
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv -> CatCrypt.Crypto.SecureCompilation.ScalarLin
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter64 -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64 -> CatCrypt.Crypto.SecureCompilation.MachineMem64
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvIsa -> CatCrypt.Crypto.SecureCompilation.MachineMem64
+edge CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel -> CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Types
+edge CatCrypt.Crypto.SecureCompilation.SepLogic.Abi -> CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
+edge CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer -> Transfer.Base.Related
+edge CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem -> CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+edge CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem -> CatCrypt.Crypto.Jasmin.LowCTExec
+edge CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemN -> CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality
+edge CatCrypt.Crypto.SecureCompilation.VIR.IsaEncodeComplete -> CatCrypt.Crypto.Optimizer.LoadCSE
+edge CatCrypt.Crypto.SecureCompilation.VIR.IsaEncodeComplete -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.LegalizeIsa
+edge CatCrypt.Crypto.SecureCompilation.VIR.IsaExportData -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportPhysAbi
+edge CatCrypt.Crypto.SecureCompilation.VIR.IsaMachineLoop -> CatCrypt.Crypto.SecureCompilation.MachineMem64
+edge CatCrypt.Crypto.SecureCompilation.VIR.IsaPrintedComplete -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.LegalizeIsa
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast -> Transfer.Base.Related
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic -> CatCrypt.Crypto.SecureCompilation.VIR.LoopNameDistinct
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogicShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCert -> CatCrypt.Crypto.SecureCompilation.VIR.LoopNameDistinct
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportPhysAnd -> CatCryptCore.Tactics.KatGuard
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer -> CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop -> CatCrypt.Crypto.SecureCompilation.VIR.JForProgCT
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTrip -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1LsemTie
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddmulSubmul1LsemTie
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripCmp -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripCmp -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpLsemTie
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1ArrMemN
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1LsemTie
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripLogical -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLogicalLsemTie
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1 -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1LsemTie
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftLsemTie
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak -> CatCrypt.Crypto.SecureCompilation.Dialects.JasminComLLeak
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard -> CatCryptCore.Tactics.KatGuard
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry -> Transfer.Base.Related
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift -> CatCrypt.Crypto.SecureCompilation.VIR.SarCount
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift -> Transfer.Base.Related
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation -> CatCrypt.Crypto.SecureCompilation.VIR.FreshNameInjective
+edge CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN -> CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
+edge CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaData -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Types
+edge CatCrypt.Crypto.SecureCompilation.VIR.LsemBridge -> CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+edge CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyProp -> CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
+edge CatCrypt.Crypto.SecureCompilation.VIR.VecIsa -> CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextModel
+edge CatCrypt.Crypto.SecureCompilation.VIR.X86IsaData -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Export
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.CheckKernels -> CatCrypt.Crypto.SecureCompilation.VIR.KeccakYmm4Alloc
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG -> CatCryptCore.Tactics.KatGuard
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGKernels -> CatCrypt.Crypto.Jasmin.KeccakJincImport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGKernels -> CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LfundefBridge
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGKernels -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.YmmInstance -> CatCrypt.Crypto.SecureCompilation.VIR.YmmRegAllocSound
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebs -> CatCrypt.Crypto.SecureCompilation.X86Backend.CoalesceComplete
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter -> CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Proofs
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge -> CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGather -> CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGather -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull -> CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr -> CatCrypt.Crypto.SecureCompilation.Mersenne31FrontEmit
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.Cond -> CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric -> CatCrypt.Crypto.SecureCompilation.X86Backend.FieldSubRunBlock
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold -> CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage -> CatCrypt.Crypto.SecureCompilation.X86Backend.BignumConstantTime
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGen -> CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLogicalFrontDenote
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNode -> CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat -> CatCrypt.Crypto.SecureCompilation.ThirToComFront
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat -> CatCryptCore.Tactics.KatGuard
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT -> CatCrypt.Crypto.Jasmin.LowCTTypes
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels -> CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep -> CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeComplete -> CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertComplete -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLogicalFrontDenote
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry -> CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntryUniq -> CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGateKernels -> CatCrypt.Crypto.SecureCompilation.ThirToComFront
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertKernels -> CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertKernels -> CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoop -> CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.FreshenArr -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsLeak
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.GateOfLegal -> CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody -> CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms -> CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace -> CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace -> CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt -> CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassSetccValueTie
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps -> CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck -> CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall -> CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets -> CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCellFold -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportPhysAbi
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWiden -> CatCrypt.Crypto.SecureCompilation.SecureCompileChain
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness -> CatCrypt.Crypto.SecureCompilation.X86Backend.CarryChainSelect
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine -> CatCrypt.Crypto.Optimizer.GenericRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine -> CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine -> CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachineSim -> CatCrypt.Crypto.Optimizer.GenericRegAllocSim
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdFlags -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Export
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim -> CatCrypt.Crypto.SecureCompilation.X86Backend.RedundantReloadElim
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdToOwnedCF -> CatCrypt.Crypto.SecureCompilation.X86Backend.SpeculativeCTControlFlow
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee -> CatCrypt.Crypto.Hax.Module
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll -> CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL -> CatCrypt.Relational.Rules
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSecPreserve -> CatCrypt.Crypto.SDist
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT -> CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowerLegal -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Proofs
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes -> CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecodeClosed -> CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow -> CatCrypt.Crypto.SecureCompilation.VIR.JForProgNested
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow -> CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce -> CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv -> CatCryptCore.Tactics.KatGuard
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline -> CatCrypt.Crypto.Optimizer.ComRangeFold
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline -> CatCrypt.Crypto.Optimizer.LoadCSE
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.Model -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfLegality -> CatCrypt.Crypto.SecureCompilation.Dialects.ComLegality
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels -> CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizeBasicBlocksCT
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Proofs
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc -> CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF -> CatCrypt.Crypto.SecureCompilation.VIR.AllocOut
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportPhysAbi
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF -> CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.RustAbiPrinter -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BlockRoundtrip -> CatCryptCore.Tactics.KatGuard
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CallSegRoundtrip -> CatCrypt.Crypto.SecureCompilation.Ascent.Imported.CallSeg
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean -> CatCrypt.Crypto.Jasmin.JasminOps
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean -> CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.X86Intrinsics
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean -> CatCrypt.Crypto.SecureCompilation.VIR.VPClmulEmit
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect -> CatCrypt.Crypto.Optimizer.JInstrRegAllocScoped
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.SelectImmCompare -> CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectCmovFront
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCurve25519Fragment -> CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.Curve25519
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift -> CatCrypt.Crypto.SecureCompilation.VIR.JasminImmShiftMnem
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill -> CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProbe
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn -> CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProbe
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize -> CatCrypt.Crypto.SecureCompilation.X86Backend.LegalizeShiftImm
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline -> CatCrypt.Crypto.Optimizer.GraphColoringCoalesce
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline -> CatCrypt.Crypto.Optimizer.Mem2Reg
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline -> CatCrypt.Crypto.Optimizer.RedundantReloadElim
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline -> CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline -> CatCrypt.Crypto.Optimizer.StoreToLoadForward
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline -> CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed -> CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed -> CatCrypt.Crypto.Optimizer.Mem2Reg
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed -> CatCrypt.Crypto.Optimizer.RedundantReloadElim
+edge CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed -> CatCrypt.Crypto.Optimizer.SpillSlotReuse
+
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAbiEncoder
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAllocValid
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmPrinter
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmSim
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBInstRegAlloc
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmControlFlow
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmElfObject
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmEncoder
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmIsa
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMach
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMachCT
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMachLoop
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmModel
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAlloc
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmRegAllocGeneric
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmFront
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLoop
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArmLsem
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.EncoderDiffAudit
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonAsmPrinter
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonCryptoModel
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonEncoder
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonLowering
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonModel
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArmDecoder
+escape CatCrypt.Crypto.SecureCompilation.ARMBackend.SailNeonDecoder
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemDerived
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemWord
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AndNBytesValue
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ArrLoadLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreEmit
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ArrStoreLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Ascend
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AscendDecide
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AscendMeta
+escape CatCrypt.Crypto.SecureCompilation.Ascent.AsmSquareDemo
+escape CatCrypt.Crypto.SecureCompilation.Ascent.BitwiseOrNot
+escape CatCrypt.Crypto.SecureCompilation.Ascent.BlockContextSynthesis
+escape CatCrypt.Crypto.SecureCompilation.Ascent.BlockHalts
+escape CatCrypt.Crypto.SecureCompilation.Ascent.BlockTieFinalState
+escape CatCrypt.Crypto.SecureCompilation.Ascent.BytesOfCorres
+escape CatCrypt.Crypto.SecureCompilation.Ascent.BytesToDialectJoin
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CallFrame
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Capstone
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CapstoneField
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainInterleave
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainTie
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainZeroIn
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorrect
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulCorres
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ComScalarPrefix
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ComToArithBlock
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ContractOfCorres
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Control
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Corres
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridge
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArith
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeArithComplete
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeCtrl
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMem
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentRiscv
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescentX86
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresGeneric
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresGenericX86
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoare
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresHoareSpec
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsa
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCall
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCallX86
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCfg
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCfgTactic
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaNode
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaReloc
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaRelocX86
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaRet
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaStackFrame
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaX86Mov
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresJRRel
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineRRel
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTie
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelational
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscv
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvLeaves
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvMacros
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresRiscvSolver
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresSolver
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresSym
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Mem
+escape CatCrypt.Crypto.SecureCompilation.Ascent.CorresX86Solver
+escape CatCrypt.Crypto.SecureCompilation.Ascent.DialectToBytes
+escape CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbCapstone
+escape CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbEmit
+escape CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
+escape CatCrypt.Crypto.SecureCompilation.Ascent.EgraphBlockEquality
+escape CatCrypt.Crypto.SecureCompilation.Ascent.EmitBridge
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Exit
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FeSubEndToEnd
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSourceTower
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FeSubSymbolic
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduce
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FieldReduceWide
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Footprint
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FootprintEA
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FramedJInstrTie
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FreshForCheck
+escape CatCrypt.Crypto.SecureCompilation.Ascent.FrontToBytes
+escape CatCrypt.Crypto.SecureCompilation.Ascent.GradedMvcgenProbe
+escape CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
+escape CatCrypt.Crypto.SecureCompilation.Ascent.GuardSatisfiable
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Guards
+escape CatCrypt.Crypto.SecureCompilation.Ascent.GuardsLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.HeapAbs
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ImageSpFree
+escape CatCrypt.Crypto.SecureCompilation.Ascent.ImageSpFreeCell
+escape CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
+escape CatCrypt.Crypto.SecureCompilation.Ascent.JInstrToArithBlock
+escape CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
+escape CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockRealloc
+escape CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockSeq
+escape CatCrypt.Crypto.SecureCompilation.Ascent.JasminComRunBlockTie
+escape CatCrypt.Crypto.SecureCompilation.Ascent.JasminJumpLevel
+escape CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
+escape CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
+escape CatCrypt.Crypto.SecureCompilation.Ascent.KleisliQuotient
+escape CatCrypt.Crypto.SecureCompilation.Ascent.LeakageExceptT
+escape CatCrypt.Crypto.SecureCompilation.Ascent.LegWeld
+escape CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo
+escape CatCrypt.Crypto.SecureCompilation.Ascent.LivenessTie
+escape CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
+escape CatCrypt.Crypto.SecureCompilation.Ascent.LoweredBlockCT
+escape CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
+escape CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres
+escape CatCrypt.Crypto.SecureCompilation.Ascent.MontBounds
+escape CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
+escape CatCrypt.Crypto.SecureCompilation.Ascent.MultiLimb
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Phases
+escape CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Polish
+escape CatCrypt.Crypto.SecureCompilation.Ascent.PrefixToBytes
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RRelParam
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RelationalProductMvcgen
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RightUnitOffName
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Rng
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RotateLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockLoopTriple
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgen
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo
+escape CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SExprOrNot
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SExprSigned
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SelectLeaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareCorrect
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareSpec
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrict
+escape CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
+escape CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Strengthen
+escape CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
+escape CatCrypt.Crypto.SecureCompilation.Ascent.While
+escape CatCrypt.Crypto.SecureCompilation.Ascent.WhileFun
+escape CatCrypt.Crypto.SecureCompilation.Ascent.WhileFunEmit
+escape CatCrypt.Crypto.SecureCompilation.Ascent.WhileTop
+escape CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
+escape CatCrypt.Crypto.SecureCompilation.Ascent.WriterTMvcgen
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XAdvantageHybrid
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XDijkstraAll
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XHeapSoundness
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XMorphismInstance
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgen
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenControl
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenReg
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XPostShape
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XPredCore
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XRelatorPMF
+escape CatCrypt.Crypto.SecureCompilation.Ascent.XrunRunBlockTie
+escape CatCrypt.Crypto.SecureCompilation.CT.ArmTiming
+escape CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
+escape CatCrypt.Crypto.SecureCompilation.CT.IsaRegime
+escape CatCrypt.Crypto.SecureCompilation.CT.Leakage
+escape CatCrypt.Crypto.SecureCompilation.CT.LowCTLeakage
+escape CatCrypt.Crypto.SecureCompilation.CT.LowCTLevelCheck
+escape CatCrypt.Crypto.SecureCompilation.CT.LowCTMachineCT
+escape CatCrypt.Crypto.SecureCompilation.CT.RiscvTiming
+escape CatCrypt.Crypto.SecureCompilation.CT.X86Timing
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvLsem
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.ComToRiscvMulLsem
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.EncoderDiffAudit
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvAsmPrinter64
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvControlFlow
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvElfObject
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvEncoder64
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering64
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel64
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvRegAlloc
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvAsmSim
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvIsa
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMach
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMachCT
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvMachLoop
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvSym
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvAsmPrinter
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvEncoder
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvLowering
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvvModel
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv64Refinement
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvDecoder64
+escape CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRvvDecoder
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.Abi
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRun
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRunSafe
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.AddrState
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.ContractX86
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.FootprintBridge
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.Mem64
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer
+escape CatCrypt.Crypto.SecureCompilation.SepLogic.X86State
+escape CatCrypt.Crypto.SecureCompilation.VIR.FrontControlLsem
+escape CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemN
+escape CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemNWalk
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaAsmSim
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaBackend
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaEncodeComplete
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaExportData
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaMachine
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaMachineBlock
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaMachineLoop
+escape CatCrypt.Crypto.SecureCompilation.VIR.IsaPrintedComplete
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCall
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCallN
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogic
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogicShipped
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCert
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChain
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportChainLogic
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLift
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportLower
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportPhysAnd
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAllocLeak
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedAnd
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedRen
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHiFast
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithful
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulCallN
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulLeaf
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulMC
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulMem
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemGeneralFaithfulSimd
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeledCallN
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeledLeaf
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeledMC
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeledSimd
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLeaf
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLoop
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTrip
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripAddmul
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripCmp
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripLogical
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChainBridge
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChecked
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeakLoop
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagInvTouch
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagPrefix
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopCall
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTie
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieEmitted
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhileUncond
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRobust
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimd
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame
+escape CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+escape CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut
+escape CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa
+escape CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaData
+escape CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaProcs
+escape CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaSubset
+escape CatCrypt.Crypto.SecureCompilation.VIR.LprogScheduler
+escape CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridge
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.Blocks
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.BlocksCfg
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CfgLift
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.Common
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyProp
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.CopyPropCfg
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.Scheduler
+escape CatCrypt.Crypto.SecureCompilation.VIR.LsemBridgePass.StoreToLoad
+escape CatCrypt.Crypto.SecureCompilation.VIR.VecIsa
+escape CatCrypt.Crypto.SecureCompilation.VIR.X86IsaData
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.Check
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.CheckKernels
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.GpInstance
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGKernels
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFGMemF
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.YmmInstance
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebs
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegCheck
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSig
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeStackRoom
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldL
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldLReg
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CheckedIsaCall
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillEncodable
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGather
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityToGatherFull
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.Cond
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldFuelMemF
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtEncoder
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecSimTactic
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeCarry
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGen
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMem
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMemLogic
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenMul1
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenNode
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenSim
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraight
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGenStraightKat
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLayout
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrWLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedABI
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTCall
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTKernels
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemLoop
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemStep
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeComplete
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.EncodeJBlock6Roundtrip
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertComplete
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntryUniq
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFaithful
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGate
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGateKernels
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertKernels
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoop
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertLoopBody
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertStraight
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.FreshenArr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiFuel
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.GateOfLegal
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.GatherImmForms
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTie
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.GatherMemOps
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheckIsa
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOut
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallX
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCellsLoop
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrLeakPhys
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRouteW
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimWCond
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSrc
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCellFold
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfgLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageRouteCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightArrLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCells
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRegW
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImgGateOfLegal
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ImpFrontWiden
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFlagLiveness
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFramedEmit
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrMemMachine
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachine
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrRegMachineSim
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdCopyPropagate
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdFlags
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdLea
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdToOwnedCF
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMulx
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSecPreserve
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSelectCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnifiedMem
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowerLegal
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageCmovSar
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringCoverageMulxMemSym
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtendedCoverage
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecodeClosed
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLink
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLinkReloc
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCfg
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrBytesAgree
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLICM
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeakCT
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeakTV
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.NarrowTyping
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksComplete
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksMemF
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElf
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfFull
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedComToElfLegality
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVBlocks
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVComplete
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVDeadImm
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVKernels
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVTwoAddr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedTVLeak
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgCell
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFold
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgLoadGp
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgLoadOrder
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgOpt
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPass
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPrint
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSched
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideCmp
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideOpt
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.PhysPositionEmitWF
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.RustAbiPrinter
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BlockRoundtrip
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BmiShift
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86ByteFields
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CFDecoder
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86CallSegRoundtrip
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86LeanUniversal
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Validation
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.SelectImmCompare
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulAssembled
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopMov
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopWide
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBody
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulConst
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCover
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCurve25519Fragment
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulEndToEnd
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulFlatMap
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulMulCarrySel
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulNary
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProlog
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRA
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRAInterference
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulSpill
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulTwoAddr
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWholeFn
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulWriteSide
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrFuelMemF
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSim
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.X86AsmSimImage
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.X86IsaDef
+escape CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+
+closed CatCrypt.Crypto.SecureCompilation.Ascent.CarryMulSpec
+closed CatCrypt.Crypto.SecureCompilation.Ascent.CorresAttr
+closed CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymEngine
+closed CatCrypt.Crypto.SecureCompilation.Ascent.PhysAbiReduction
+closed CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvLowering
+closed CatCrypt.Crypto.SecureCompilation.RISCVBackend.RiscvModel
+closed CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Refinement
+closed CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvBranchRefinement
+closed CatCrypt.Crypto.SecureCompilation.SepLogic.Array
+closed CatCrypt.Crypto.SecureCompilation.SepLogic.ByteMem
+closed CatCrypt.Crypto.SecureCompilation.SepLogic.Contract
+closed CatCrypt.Crypto.SecureCompilation.SepLogic.Core
+closed CatCrypt.Crypto.SecureCompilation.SepLogic.Lift
+closed CatCrypt.Crypto.SecureCompilation.SepLogic.VC.Core
+
+cycle CatCrypt.Crypto.Jasmin.BignumToJ -> CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
+cycle CatCrypt.Crypto.Jasmin.JincElab -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.Jasmin.JincElab -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
+cycle CatCrypt.Crypto.Jasmin.JincElab -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.Optimizer.GraphColoringCoalesce -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.Optimizer.GraphColoringCoalesce -> CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+cycle CatCrypt.Crypto.Optimizer.LoadCSE -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+cycle CatCrypt.Crypto.Optimizer.LoadCSE -> CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad
+cycle CatCrypt.Crypto.Optimizer.Mem2Reg -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.Optimizer.RandomizedRegAlloc -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.Optimizer.RedundantReloadElim -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.Optimizer.SpillingRegAlloc -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.Optimizer.StoreToLoadForward -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmMontMulKernel -> CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmLowering
+cycle CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmX25519FieldKernel -> CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmControlFlow
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide -> CatCrypt.Crypto.SecureCompilation.Ascent.AscendDecide
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide -> CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExit -> CatCrypt.Crypto.SecureCompilation.Ascent.Exit
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519KernelsBytes -> CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384 -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Proof -> CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Scalar -> CatCrypt.Crypto.SecureCompilation.Ascent.CorresScalar
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Scalar -> CatCrypt.Crypto.SecureCompilation.Ascent.RotateLeaf
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Strengthen -> CatCrypt.Crypto.SecureCompilation.Ascent.FeAddEndToEnd
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Strengthen -> CatCrypt.Crypto.SecureCompilation.Ascent.Strengthen
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.CallSeg -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519CombSelectShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519Join16Shipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PackSignShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519PointAddShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScMuladdShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Ed25519ScReduceShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519AddShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519MulShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519SqrShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.Fe25519SubShipped -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCT -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.Dialects.OrchFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+cycle CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDataWhile -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestWhile
+cycle CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoopCallLink -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopCall
+cycle CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestDepth
+cycle CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectPhaseCompose -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileNode -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile
+cycle CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath -> CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElf
+cycle CatCrypt.Crypto.SecureCompilation.FieldEmitGoldenPath -> CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfJInstrFull6
+cycle CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout -> CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
+cycle CatCrypt.Crypto.SecureCompilation.Mersenne31FrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.Mersenne31FrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.MultiBackendDemo -> CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+cycle CatCrypt.Crypto.SecureCompilation.MultiBackendDemo -> CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+cycle CatCrypt.Crypto.SecureCompilation.MultiLimbKernel -> CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+cycle CatCrypt.Crypto.SecureCompilation.MultiLimbKernel -> CatCrypt.Crypto.SecureCompilation.RISCVBackend.RegToRiscv
+cycle CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo -> CatCrypt.Crypto.SecureCompilation.ARMBackend.ComToArm
+cycle CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo -> CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+cycle CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim
+cycle CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.Secp256k1FeMulFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm
+cycle CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck -> CatCrypt.Crypto.SecureCompilation.CT.Leakage
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportLoops -> CatCrypt.Crypto.SecureCompilation.VIR.X86IsaData
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportPhys -> CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaData
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions -> CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaCfgTactic
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportTransfer
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTie
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions -> CatCrypt.Crypto.SecureCompilation.VIR.X86IsaData
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsLeak -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsLeak -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeakLoop
+cycle CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsLeak -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame
+cycle CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect -> CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+cycle CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.VIR.QuerySampleBranchFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+cycle CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.VIR.Shake256SpongeFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+cycle CatCrypt.Crypto.SecureCompilation.VartimeBignumInverse -> CatCrypt.Crypto.SecureCompilation.CT.LowCTLevelCheck
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BarrettButterflyKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BignumCarryDecomp -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BignumConstantTime -> CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BignumMontMulKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended -> CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.BlockBytesAgreeExtended -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogJInstrMnemDispatch
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CarryChainSelect -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CarryChainSelect -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CarryChainSelect -> CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CarryMulBlock -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CoalesceComplete -> CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectCmovFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectCmovFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedAsm
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CombSelectKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4MontMulProvenEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.CondSubRoundGeneric
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.EffAddr -> CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.EncodedBlockCorres -> CatCrypt.Crypto.SecureCompilation.Ascent.EcMultiLimbMul
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.EncodedBlockCorres -> CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86BlockRoundtrip
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LazyOpsKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LfundefBridge -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519LfundefBridge -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519OpsKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519UnifyingFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519UnifyingFront -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FieldAddSubTierA -> CatCrypt.Crypto.SecureCompilation.Ascent.MpnAdxCorres
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassSetccValueTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassSetccValueTie -> CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.ComToFramedJInstrLeaq
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.GatherInPlace
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.Model
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.Preservation
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Lean
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Validation
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.FramingReconcile -> CatCrypt.Crypto.SecureCompilation.X86Backend.TranslationValidation
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe -> CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLink
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes -> CatCrypt.Crypto.SecureCompilation.X86Backend.ElfObject
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.LeafBytes -> CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFrame -> CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockCorres
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract -> CatCrypt.Crypto.SecureCompilation.SepLogic.Abi
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract -> CatCrypt.Crypto.SecureCompilation.SepLogic.ContractX86
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract -> CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddmulSubmul1FrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddmulSubmul1LsemTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpArrMemN -> CatCrypt.Crypto.SecureCompilation.VIR.FrontLoopBodyArrMemNWalk
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpLsemTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1CarrySelectEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1FrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnDivRem1LsemTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLogicalFrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLogicalLsemTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontBodyTie -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecodeClosed
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanon
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode -> CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemLoop
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote -> CatCrypt.Crypto.SecureCompilation.Ascent.ExprLeaf
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1LsemTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftFrontEmit -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftLsemTie -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizeBasicBlocksCT -> CatCrypt.Crypto.SecureCompilation.CT.Leakage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizeBasicBlocksCT -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.PastaFieldAddSubKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather -> CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrGatherExtended
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather -> CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.PhysBodyGather -> CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarEncoder
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.RedundantReloadElim -> CatCrypt.Crypto.SecureCompilation.X86Backend.X86OptPipelineComposed
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT -> CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree -> CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic -> CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.SolinasSquareBlock -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.SpeculativeCTControlFlow -> CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.SpillSlotEncode -> CatCrypt.Crypto.SecureCompilation.X86Backend.GatherFullBody
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulProbe -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.X25519MonoLadderKernel -> CatCrypt.Crypto.SecureCompilation.X86Backend.X86ComPipeline
+cycle CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect -> CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel

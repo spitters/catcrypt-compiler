@@ -85,6 +85,19 @@ Each ratchet compares against a baseline in `scripts/` and fails when its count
 rises. When a count falls the ratchet rewrites the baseline downward; commit the
 tightened file, which is what the final CI step checks.
 
+`python3 -I scripts/machine-boundary-ratchet.py` checks the import boundary of the
+machine library: the tiers of `scripts/machine-boundary-tiers.txt` (machine models,
+decoders, encoders, the flag and address machines, the ISA records, ascent, separation
+logic, constant time, the ARM and RISC-V back ends and the x86 back half), assigned by
+the families of the code map behind `NAVIGATION.md`. From the import headers of this
+package, CatCrypt-core and the dev tree it computes the edges from a machine module to a
+module outside the machine tiers and the Lean toolchain with Mathlib, the machine modules
+whose import closure leaves those tiers, and the imports of a machine module by an
+outside module that a machine module reaches (a cycle between tiers). It fails when an
+entry appears that `scripts/machine-boundary-baseline.txt` does not list, and it reports
+the entries that are gone; `--write` records the baseline, and `--report` ranks the edge
+targets by the lines their closure pulls into the library.
+
 `scripts/rot-guard-build.sh --build` builds every module in
 `scripts/rot-guard/build-roots.txt` as its own target, in batches, so a failure
 names the modules it was building.

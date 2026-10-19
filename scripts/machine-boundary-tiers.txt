@@ -1,0 +1,130 @@
+# Tier map of the machine-boundary ratchet (read by scripts/machine-boundary-ratchet.py).
+#
+# A rule is `<tier> <kind> <pattern>`. The first rule that matches a module gives its
+# tier. Kinds:
+#   family  a family label of the code map (SSProve-lean scripts/code-map/annotations.txt,
+#           the generator behind NAVIGATION.md); a module belongs to the family whose row
+#           is the first in that file with a glob matching the module's path
+#   glob    <repo>:<path glob>; `**` crosses directories, `*` and `?` stay within one
+#           path component
+#   name    a module-name prefix, matched at a dot boundary; the only kind that applies to
+#           an import resolving to no scanned module (a package outside the workspace)
+# Repos: C catcrypt-compiler, K CatCrypt-core, D SSProve-lean, P ParamTransfer,
+# H hax-lean, N nominal-lean.
+#
+# `machine:` names the tiers that form the machine library and `allowed:` the tiers its
+# modules may import. A scanned module that no rule matches has tier `other`; an import
+# that resolves to no scanned module and matches no `name` rule has tier `unresolved`.
+
+machine: machine-core machine-back
+allowed: toolchain
+
+# ---------------------------------------------------------------- kernels inside machine
+# directories (they precede the family that would otherwise own them)
+
+kernels       glob    C:CatCrypt/Crypto/SecureCompilation/ARMBackend/*Kernel*.lean
+kernels       glob    C:CatCrypt/Crypto/SecureCompilation/RISCVBackend/*Kernel*.lean
+
+# ---------------------------------------------------------------- machine core: models,
+# decoders, encoders, the flag and address machines, the ISA records, ascent, separation
+# logic, constant time, the ARM and RISC-V back ends
+
+machine-core  family  X86: machine models
+machine-core  family  X86: decoding
+machine-core  family  X86: encoders and ISA record
+machine-core  family  X86: block constant time
+machine-core  family  VIR: flag and address machines
+machine-core  family  VIR: instruction-set abstraction
+machine-core  family  Ascent: instruction-set judgement
+machine-core  family  Ascent: calculus and welds
+machine-core  family  SepLogic
+machine-core  family  CT
+machine-core  family  ARM and RISC-V back ends
+
+# ---------------------------------------------------------------- machine back half:
+# validators, the image relation, linked calls, passes over printed bodies, printers
+
+machine-back  family  X86: validators
+machine-back  family  X86: image relation and gates
+machine-back  family  X86: completeness of the image gate
+machine-back  family  X86: linked calls
+machine-back  family  X86: printed-body passes
+machine-back  family  X86: optional passes
+machine-back  family  X86: printers
+machine-back  family  VIR: post-allocation passes
+
+# Legacy routes inside the machine families; carve-plan row 6 keeps or retires them.
+machine-back  family  VIR: earlier lsem machines
+machine-back  family  X86: earlier route ends
+machine-back  family  X86: gather and JInstr ELF route
+machine-back  family  X86: linear-scan faithfulness
+machine-back  family  X86: earlier LowCT compiler
+
+# ---------------------------------------------------------------- tiers outside the
+# machine library (they label the targets of boundary edges)
+
+kernels       family  Ascent: certificates of shipped code
+kernels       family  VIR: kernel emitters
+kernels       family  VIR: primitive kernels
+kernels       family  VIR: kernel ties to specifications
+kernels       family  VIR: templates
+kernels       family  VIR: vector
+kernels       family  VIR: algebra dialects
+kernels       glob    C:CatCrypt/Crypto/SecureCompilation/X86Backend/**
+kernels       glob    D:CatCrypt/Crypto/SecureCompilation/X86Backend/**
+kernels       glob    D:CatCrypt/Crypto/SecureCompilation/VIR/**
+
+vir           glob    C:CatCrypt/Crypto/SecureCompilation/VIR/**
+vir           glob    C:CatCrypt/Crypto/SecureCompilation/Dialects/**
+vir           glob    C:CatCrypt/Crypto/Optimizer/**
+vir           glob    D:CatCrypt/Crypto/Optimizer/**
+
+jasmin        glob    C:CatCrypt/Crypto/Jasmin/**
+jasmin        glob    C:CatCrypt/Crypto/SecureCompilation/Jasmin/**
+jasmin        glob    D:CatCrypt/Crypto/Jasmin/**
+
+hax-front     glob    C:CatCrypt/Hax/**
+hax-front     glob    C:CatCrypt/Crypto/Hax/**
+hax-front     glob    C:HaxAscent/**
+hax-front     glob    D:CatCrypt/Hax/**
+hax-front     glob    D:CatCrypt/Crypto/Hax/**
+hax-front     glob    D:CatCrypt/Crypto/SecureCompilation/Haxc/**
+
+compiler      glob    C:CatCrypt/Crypto/SecureCompilation/**
+compiler      glob    D:CatCrypt/Crypto/SecureCompilation/**
+
+tactics       family  Tactics
+core          family  Core shims
+core          glob    K:**
+transfer      glob    P:**
+hax-lean      glob    H:**
+nominal       glob    N:**
+crypto        glob    C:CatCrypt/**
+crypto        glob    D:CatCrypt/**
+
+# ---------------------------------------------------------------- packages outside the
+# workspace: the Lean toolchain and Mathlib are allowed, other packages are not
+
+toolchain     name    Init
+toolchain     name    Std
+toolchain     name    Lean
+toolchain     name    Lake
+toolchain     name    Mathlib
+toolchain     name    Batteries
+toolchain     name    Aesop
+toolchain     name    Qq
+toolchain     name    ProofWidgets
+toolchain     name    Plausible
+toolchain     name    ImportGraph
+toolchain     name    LeanSearchClient
+external      name    Iris
+external      name    Veir
+external      name    CompPoly
+external      name    Loom
+external      name    PolyFun
+external      name    Aeneas
+external      name    Cslib
+external      name    VCVio
+external      name    CatCryptVCVio
+external      name    CatCryptArkLib
+external      name    HaxCoreModels
