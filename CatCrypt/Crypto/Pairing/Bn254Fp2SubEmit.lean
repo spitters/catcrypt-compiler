@@ -38,7 +38,8 @@ public meta import CatCrypt.Crypto.Jasmin.Bn254Reflect
 public meta import CatCrypt.Crypto.Jasmin.LowCTReflect
 public import CatCrypt.Crypto.Jasmin.Bn254Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiJazz
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiJazz
 
 /-!
 # BN254 `Fp2` subtract — owned reg-ptr emit (completes the `tower_subset` set)
@@ -57,7 +58,7 @@ member missing an owned twin there is `Fp2_sub`. This module supplies it:
   bn254Fp2SubBody  (a `bn254_sub` leaf chain, mirroring `bn254Fp2AddBody`)
     --translateDialectControl-------->   Com[catCryptDialect]
     --cryptoDialectToJasminCom------->   Com[jasmin]
-    --emitAbiOrchRegPtr-------------->   .jazz   (reg ptr u64[4] leaf ABI)
+    --emitAbiOrchJ .regPtr----------->   .jazz   (reg ptr u64[4] leaf ABI)
 
 The denotation is the component-wise `Fp` subtract `(a−c) + (b−d)u`, exactly the
 abstract `Fp2` subtract over `Fp[u]/(u²+1)`; the emitted leaf graph routes both
@@ -82,6 +83,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectVarBridge
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapCtx mapTy)
 
 /-! ## 1. `Com` encoding + arg context (mirrors `fp_tower_from_rustcmd`) -/
 
@@ -121,37 +124,35 @@ def bn254Fp2SubReified : ReifiedFunc :=
 
 /-! ## 3. Drive the verified front (same helper shape as `fp_tower_from_rustcmd`) -/
 
-/-- Route `bn254Fp2SubReified` through `translateDialectControl →
-    cryptoDialectToJasminCom → emitAbiOrchRegPtr`, producing the reg-ptr `.jazz`. -/
-def emitRegPtr (name : String) : Option String :=
+/-- The `Fp2` subtract chain as a jasmin program: `bn254Fp2SubReified` through
+    `translateDialectControl` and `cryptoDialectToJasminCom`, with the result type
+    of `__im`. `none` when a stage refuses. -/
+def fp2SubCom : Option (Σ t : CryptoTy, Com jasminDialect (mapCtx fp2ArgCtx) (mapTy t)) :=
   match translateDialectControl fp2ArgVM bn254Fp2SubReified.body with
   | none => none
   | some o =>
     match o.vm.lookup bn254Fp2SubReified.retName with
     | none => none
-    | some ⟨_t, w⟩ =>
+    | some ⟨t, w⟩ =>
       match o.cont (Com.ret (toVIRVar w)) with
       | none => none
-      | some com =>
-        match cryptoDialectToJasminCom com with
-        | none => none
-        | some c => some (JasminAbiEmit.emitAbiOrchRegPtr name c)
+      | some com => (cryptoDialectToJasminCom com).map fun c => ⟨t, c⟩
 
-/-- The link form (`require` the leaf `.jinc` + the reg-ptr orchestration). -/
+/-- The extern signature of the base leaf `bn254_sub`: two `Fp` felems (`u64[4]`) to
+    one `Fp` felem. -/
+def bn254SubLeaf : String × List JasminTy × JasminTy :=
+  ("bn254_sub", [.stackArr 64 4, .stackArr 64 4], .stackArr 64 4)
+
+/-- The reg-ptr `.jazz` of `fp2SubCom` as the `export fn` `name`, printed by
+    `JasminAbiJazz.emitAbiOrchJ .regPtr` with the leaf `bn254_sub` and the `require`
+    lines `requires`. -/
+def emitRegPtr (name : String) (requires : List String := []) : Option String :=
+  fp2SubCom.bind fun c =>
+    JasminAbiJazz.emitAbiOrchJ .regPtr name c.2 [bn254SubLeaf] requires
+
+/-- The link form: `emitRegPtr` with the `require` line of the leaf `.jinc`. -/
 def emitRegPtrLink (name : String) : Option String :=
-  match translateDialectControl fp2ArgVM bn254Fp2SubReified.body with
-  | none => none
-  | some o =>
-    match o.vm.lookup bn254Fp2SubReified.retName with
-    | none => none
-    | some ⟨_t, w⟩ =>
-      match o.cont (Com.ret (toVIRVar w)) with
-      | none => none
-      | some com =>
-        match cryptoDialectToJasminCom com with
-        | none => none
-        | some c => some (JasminAbiEmit.emitAbiJazzWithLeavesRegPtr
-                            "../include/bn254_tower_leaves.jinc" name c)
+  emitRegPtr name ["../include/bn254_tower_leaves.jinc"]
 
 def emittedFp2SubJazz : Option String := emitRegPtr "bn254_Fp2_sub_rustcmd"
 def emittedFp2SubLink : Option String := emitRegPtrLink "bn254_Fp2_sub_rustcmd"
@@ -159,7 +160,21 @@ def emittedFp2SubLink : Option String := emitRegPtrLink "bn254_Fp2_sub_rustcmd"
 /-! ## 4. Structural front-fires + leaf/ABI theorems -/
 
 /-- The front fires on the `Fp2` subtract chain. -/
-theorem fp2_sub_front_fires : emittedFp2SubJazz.isSome := by rfl
+theorem fp2_sub_front_fires : fp2SubCom.isSome := by rfl
+
+-- The `Fp2` subtract chain prints through the checked printer in the `regPtr` mode, with
+-- and without the `require` line of the leaf `.jinc`.
+#kat emittedFp2SubJazz.isSome && emittedFp2SubLink.isSome
+
+/-- **A returned text parses to the unit**: a text of `emitRegPtr` parses to the erasure
+    of the unit that `JasminAbiJazz.orchUnit .regPtr` builds from `fp2SubCom`. -/
+theorem emitRegPtr_parse {name : String} {requires : List String} {s : String}
+    (h : emitRegPtr name requires = some s) :
+    ∃ c, fp2SubCom = some c ∧ ∃ u,
+      JasminAbiJazz.orchUnit .regPtr name c.2 [bn254SubLeaf] requires = some u ∧
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok u.erase := by
+  obtain ⟨c, hc, hs⟩ := Option.bind_eq_some_iff.mp (by simpa only [emitRegPtr] using h)
+  exact ⟨c, hc, JasminAbiJazz.emitAbiOrchJ_parse hs⟩
 
 /-- The reg-ptr ABI shape the render must carry: the export at the `Fp`
     (`u64[4]`) felem width, both components through the verified base

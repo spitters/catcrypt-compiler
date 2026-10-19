@@ -882,8 +882,9 @@ def mkFn (fname : String) (ps : List (JVar × Storage × PType)) (body : Cmd)
 def mkUnit (fn : JazzFn) : JazzUnit :=
   { externs := (cmdCalls fn.fd.body).dedup.map (externOf fn.fd.body), fns := [fn] }
 
-/-- The function of a lowered program: the result is moved to the result parameter, or to
-the result variable `mkV 'r' D` at the type of the signature's result. -/
+/-- The function of a lowered program: the result is moved to the result parameter `pj`,
+which the function returns as a `reg mut ptr` at the parameter's surface type, or to the
+result variable `mkV 'r' D` at the type of the signature's result. -/
 def finish {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname : String)
     (r : JOut) : JazzFn :=
   let ps := paramPairs sig
@@ -891,7 +892,8 @@ def finish {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname 
   match sig.resultParam with
   | some j =>
       let pj := (ps.map Prod.fst).getD j dfltV
-      mkFn fname ps (r.code ++ if pj == rv then [] else [asgn pj (pv rv)]) [] []
+      mkFn fname ps (r.code ++ if pj == rv then [] else [asgn pj (pv rv)]) [pj]
+        [(.regPtr true, ((ps.map Prod.snd).getD j (.reg, .word .U64)).2)]
   | none =>
       let rr := mkV 'r' r.depth sig.result.2.toSType
       mkFn fname ps (r.code ++ [asgn rr (pv rv)]) [rr] [sig.result]
@@ -1665,6 +1667,18 @@ theorem paramPairs_spec {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig 
     intro j _ j' _ h
     exact (nameOf_inj (congrArg (fun v : JVar => v.vname) h)).2.1
 
+/-- The surface type of the parameter at position `j` of a signature is the type of its
+variable, the defaults `(.reg, .word .U64)` and `dfltV` past the end. -/
+theorem paramPairs_getD_ty {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t)
+    (j : Nat) :
+    (((paramPairs sig).map Prod.snd).getD j (.reg, .word .U64)).2.toSType =
+      (((paramPairs sig).map Prod.fst).getD j dfltV).vtype := by
+  rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD, List.getElem?_map,
+    List.getElem?_map]
+  cases h : (paramPairs sig)[j]? with
+  | none => rfl
+  | some p => exact (paramPairs_spec sig).1 p (List.mem_of_getElem? h)
+
 /-! ## 10. Main results -/
 
 theorem emitOp_isSome {op : JasminOp} (h : OpPlain op) (d : Nat)
@@ -1806,7 +1820,8 @@ theorem nfToJasmin_wellFormed {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : Ja
   cases hrp : sig.resultParam with
   | some j =>
       simp only [finish, hrp] at hcal ⊢
-      refine mkFn_wellFormed _ _ _ _ _ _ hps hpg hpn ?_ (by simp) rfl (by simp) (by simp) hcal
+      refine mkFn_wellFormed _ _ _ _ _ _ hps hpg hpn ?_ (by simpa using hpj j) rfl
+        (by simpa using paramPairs_getD_ty sig j) (by simp [Storage.isReg]) hcal
       intro i hi
       rcases List.mem_append.mp hi with hi | hi
       · exact hb i hi

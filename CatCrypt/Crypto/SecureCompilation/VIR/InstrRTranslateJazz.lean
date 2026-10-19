@@ -1362,7 +1362,7 @@ theorem translateUnit_isSome_of_nfToJasmin {Γ : Ctxt jasminDialect} {t : Jasmin
     cases hrp : sig.resultParam with
     | some j =>
         simp only [finish, hrp]
-        refine translateFn_mkFn_isSome hpp (trC_append hb ?_) (by simp)
+        refine translateFn_mkFn_isSome hpp (trC_append hb ?_) (by simpa using okV_getD hpv j)
         split
         · exact trC_nil
         · exact trC_cons (isSome_asgn (okV_getD hpv j) (isSome_pv hrv)) trC_nil
