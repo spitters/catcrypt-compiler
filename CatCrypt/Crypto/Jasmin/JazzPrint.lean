@@ -21,7 +21,10 @@ statement). The printer is pure and total. An AST form without surface syntax
 the unit.
 
 Expressions print fully parenthesised (`(a OP b)`, `(c ? a : b)`), so every printed
-expression is an atom of the parser's grammar. An assignment `x = x OP y` with `y` a
+expression is an atom of the parser's grammar. The unsigned conversion `Oint_of_word`
+prints as the cast `(uint) e` and the negation `Oneg ws` as the sized operator `-NNu e`
+(`NN` the bits of `ws`), which the parser distinguishes from `-e`, its text for `0 - e`.
+An assignment `x = x OP y` with `y` a
 variable or a constant prints as `x OP= y;`, `x = 0 - y` with `y` a variable as
 `x = -y;`, and `x = Parr_init n` as the comment `// x : zero-init array (omitted)`,
 which the parser reads as whitespace. The storage class `regPtr false` prints `reg ptr`
@@ -107,6 +110,8 @@ def printExpr : PExpr → String
   | .Papp1 (.Oword_of_int _) (.Pconst k) => toString k
   | .Papp1 (.Ozeroext wso _) e => "(" ++ toString wso.bits ++ "u) " ++ printExpr e
   | .Papp1 (.Olnot _) e => "!" ++ printExpr e
+  | .Papp1 (.Oint_of_word _) e => "(uint) " ++ printExpr e
+  | .Papp1 (.Oneg ws) e => "-" ++ toString ws.bits ++ "u " ++ printExpr e
   | .Papp1 _ _ => noSyntax "unary_operator"
   | .Papp2 op a b =>
     match binOpTok op with

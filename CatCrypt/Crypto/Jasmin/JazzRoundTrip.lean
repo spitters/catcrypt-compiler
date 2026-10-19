@@ -553,12 +553,25 @@ def xyDecl : Decl := { storage := .reg, ty := .word .U64, names := ["x", "y"] }
   [.Cassgn (.Lvar { var := vr "s" (.sarr 16) }) .AT_none (.sarr 16) (.Parr_init 16),
    asg "x" (pv (u "k"))])).isSome
 
+-- The array index cast `(uint) e`, on a read and on a write.
+#kat (printChecked (oneFn .exportFn [] [] [xyDecl]
+  [asg "x" (.Pget .AAscale .U64 { gv := { var := vr "p" (.sarr 32) }, gs := false }
+      (.Papp1 (.Oint_of_word .U64) (pv (u "k")))),
+   .Cassgn (.Laset .AAscale .U64 { var := vr "p" (.sarr 32) }
+      (.Papp1 (.Oint_of_word .U64) (pv (u "y")))) .AT_none (.sword .U64)
+      (pv (u "x"))])).isSome
+
+-- The negation `-64u e` beside the subtraction `0 - e`, printed `-e`.
+#kat (printChecked (oneFn .exportFn [] [] [xyDecl]
+  [asg "y" (.Papp1 (.Oneg .U64) (pv (u "k"))),
+   asg "x" (.Papp2 (.Osub .U64) (.Pconst 0) (pv (u "y")))])).isSome
+
 -- A unit with an expression without surface syntax is refused, and the reason names the
 -- parse error.
 #kat (printChecked (oneFn .exportFn [] [] [xyDecl]
-  [asg "x" (.Papp1 (.Oneg .U64) (pv (u "k")))])).isNone &&
+  [asg "x" (.Papp1 (.Osignext .U64 .U32) (pv (u "k")))])).isNone &&
   (printCheckedWhy (oneFn .exportFn [] [] [xyDecl]
-    [asg "x" (.Papp1 (.Oneg .U64) (pv (u "k")))])).isSome
+    [asg "x" (.Papp1 (.Osignext .U64 .U32) (pv (u "k")))])).isSome
 
 end UnitRoundTrip
 

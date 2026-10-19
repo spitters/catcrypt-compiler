@@ -52,8 +52,9 @@ so the parser also reduces in the kernel.
   `[x + e]` (`Lmem`, width `U64` when omitted).
 * Expressions: decimal and `0x` numerals (`Pconst`), `-k` (`Pconst (-k)`),
   `true`, `false`, variables, `x[e]` (`Pget .AAscale`), memory reads
-  `[:uNN x + e]` (`Pload`), `-e` (`0 - e`), `!e` (`Olnot`), the cast `(NNu) e`
-  (`Ozeroext`), parentheses, the conditional `c ? a : b` (`Pif`, at the type
+  `[:uNN x + e]` (`Pload`), `-e` (`0 - e`), the sized negation `-NNu e` (`Oneg`),
+  `!e` (`Olnot`), the cast `(NNu) e` (`Ozeroext`), the cast `(uint) e`
+  (`Oint_of_word`, at the width of `e`), parentheses, the conditional `c ? a : b` (`Pif`, at the type
   `uNN` of the width of `a`, else of the target), and the binary operators
   `|| && | ^ & == != < <= > >= <s <=s >s >=s << >> >>s + - *` with C precedence
   and left associativity. The width of a binary operator is the width of its
@@ -490,6 +491,7 @@ def exprWidth : PExpr → Option WSize
   | .Pget _ w _ _ => some w
   | .Papp1 (.Ozeroext w _) _ => some w
   | .Papp1 (.Olnot w) _ => some w
+  | .Papp1 (.Oneg w) _ => some w
   | _ => none
 
 /-- Parse an expression; `ctx` is the width of the assignment target, used for
@@ -525,8 +527,15 @@ def parseExprF : Nat → WSize → EGoal → P PExpr
     | some (.num k) => advance; return .Pconst k
     | some (.bin .sub) =>
       advance
-      match ← peek with
-      | some (.num k) => advance; return .Pconst (-(k : Int))
+      match (← get).toks with
+      | .num k :: .ident "u" :: _ =>
+        advance; advance
+        match wsizeOfBits k with
+        | none => fail s!"negation at an unsupported width {k}"
+        | some ws =>
+          let e ← parseExprF f ctx .atom
+          return .Papp1 (.Oneg ws) e
+      | .num k :: _ => advance; return .Pconst (-(k : Int))
       | _ =>
         let e ← parseExprF f ctx .atom
         return .Papp2 (.Osub ((exprWidth e).getD ctx)) (.Pconst 0) e
@@ -544,6 +553,10 @@ def parseExprF : Nat → WSize → EGoal → P PExpr
         | some wso =>
           let e ← parseExprF f ctx .atom
           return .Papp1 (.Ozeroext wso ((exprWidth e).getD ctx)) e
+      | .ident "uint" :: .rparen :: _ =>
+        advance; advance
+        let e ← parseExprF f ctx .atom
+        return .Papp1 (.Oint_of_word ((exprWidth e).getD ctx)) e
       | _ =>
         let e ← parseExprF f ctx .top
         expect .rparen
@@ -1168,6 +1181,18 @@ def controlAst : List InstrR :=
 -- `controlBody` parses to `controlAst`.
 #kat match parseJazzBody controlEnv controlBody with
   | .ok is => instrsBEq is controlAst
+  | .error _ => false
+
+-- The cast `(uint) e` reads as `Oint_of_word`, the sized negation `-64u e` as `Oneg`,
+-- and `-e` as `0 - e`.
+#kat match parseJazzBody controlEnv "x = t[(uint) y]; t[(uint) n] = x; x = -64u y; n = -y;" with
+  | .ok is => instrsBEq is
+      [ asg "x" (.Pget .AAscale .U64 { gv := { var := arr "t" 32 }, gs := false }
+          (.Papp1 (.Oint_of_word .U64) (pv (u "y"))))
+      , .Cassgn (.Laset .AAscale .U64 { var := arr "t" 32 }
+          (.Papp1 (.Oint_of_word .U64) (pv (u "n")))) .AT_none (.sword .U64) (pv (u "x"))
+      , asg "x" (.Papp1 (.Oneg .U64) (pv (u "y")))
+      , asg "n" (.Papp2 (.Osub .U64) (.Pconst 0) (pv (u "y"))) ]
   | .error _ => false
 
 end RoundTrip
