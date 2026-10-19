@@ -620,6 +620,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
+CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
 CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincSemAlignmentOpMem
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment

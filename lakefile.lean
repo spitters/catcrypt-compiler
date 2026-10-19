@@ -1813,6 +1813,7 @@ def pkgModules9 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminOpInfo,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintCorrect,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintSemCorrect,
