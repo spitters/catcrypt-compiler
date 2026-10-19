@@ -603,6 +603,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.InstrSelectExtra
 CatCrypt.Crypto.SecureCompilation.VIR.InstructionScheduleReal
 CatCrypt.Crypto.SecureCompilation.VIR.IsaExportData
 CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound
+CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiJazz
 CatCrypt.Crypto.SecureCompilation.VIR.JasminImageOps
 CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreOrder
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsAbi

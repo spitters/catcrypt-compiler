@@ -1701,6 +1701,7 @@ def pkgModules9 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JForProgUnroll,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiInPlaceSound,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiJazz,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminBindingPrefixDenote,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminBufferReuse,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.JasminCTPredicate,
