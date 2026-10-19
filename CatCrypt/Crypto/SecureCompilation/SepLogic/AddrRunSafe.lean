@@ -17,7 +17,8 @@ footprint of the step at the program counter of `s` (`stepWrites`, the bytes of 
 (`stepReads`, the bytes of the words of `loadsA`); `AccessIn` is their conjunction.
 
 The run predicate `RunSafe frame c Q fuel s zf` (every state that a run of at most `fuel`
-steps steps from satisfies `Q`) is monotone in `Q` and closed under conjunction. Under
+steps steps from satisfies `Q`) is monotone in `Q`, closed under conjunction, and holds
+from any state satisfying an invariant that every step preserves and that implies `Q`. Under
 `RunSafe` for `StoreIn M` the memory locations of `runWrites` lie in `M`, and conversely;
 under `RunSafe` for `LoadIn M` the memory locations of `runReads` lie in `M`, and conversely.
 A byte outside `M` keeps its value through a halting run.
@@ -30,6 +31,8 @@ A byte outside `M` keeps its value through a halting run.
 
 * `DecodePrintedCFG.RunSafe.mono`, `DecodePrintedCFG.RunSafe.and`: closure of the run
   predicate.
+* `DecodePrintedCFG.runSafe_of_stepInv`: the run predicate from an invariant preserved by
+  every step.
 * `Addr.runSafe_storeIn_iff`, `Addr.runWrites_mem_sub`: the memory write footprint of a run.
 * `Addr.runSafe_loadIn_iff`, `Addr.runReads_mem_sub`: the memory read footprint of a run.
 * `Addr.runA_keep_mem`: a byte outside `M` keeps its value through a halting run.
@@ -63,6 +66,18 @@ theorem RunSafe.and {frame : String → Option (BitVec 64)} {body : Lcmd}
   | 0, _, _, _, _ => trivial
   | _ + 1, _, _, hP, hQ =>
       ⟨⟨hP.1, hQ.1⟩, fun s' zf' hst => RunSafe.and (hP.2 s' zf' hst) (hQ.2 s' zf' hst)⟩
+
+/-- **`RunSafe` from a step invariant.** If `I` is preserved by every step of the address
+    machine on `body` and every state satisfying `I` satisfies `Q`, then every run from a state
+    satisfying `I` is safe for `Q`. -/
+theorem runSafe_of_stepInv {frame : String → Option (BitVec 64)} {body : Lcmd}
+    {I : LstateA → Bool → Prop} {Q : LstateA → Prop} (hQ : ∀ s zf, I s zf → Q s)
+    (hI : ∀ s zf s' zf', I s zf →
+      VIR.JasminLsemAddrRun.stepA frame body s zf = some (s', zf') → I s' zf') :
+    ∀ {fuel : Nat} {s : LstateA} {zf : Bool}, I s zf → RunSafe frame body Q fuel s zf
+  | 0, _, _, _ => trivial
+  | _ + 1, s, zf, h =>
+      ⟨hQ s zf h, fun s' zf' hst => runSafe_of_stepInv hQ hI (hI s zf s' zf' h hst)⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
 
