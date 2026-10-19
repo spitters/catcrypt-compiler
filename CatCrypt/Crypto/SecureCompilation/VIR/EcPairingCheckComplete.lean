@@ -8,15 +8,14 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckOps
 
 /-!
-# `pairing_check` is SOUND relative to an ASSUMED bilinear, non-degenerate pairing
+# `pairing_check` is complete relative to an assumed bilinear, non-degenerate pairing
 
 `EcPairingCheckOps.lean` gives the `pairing_check` op a *decision procedure*
 (`pairingCheck2F ξ₀ e₁ e₂ = gtIsOneF (Fp12Val.mul ξ₀ e₁ e₂)`, true iff the GT
 product is the identity), but on its own that op decides nothing about a
-*pairing*: its two operands are arbitrary `Fp12Val p` elements.  This file turns
-it into a **sound verification predicate** by wiring the op to a bilinear,
-non-degenerate pairing interface and proving that the op accepts the canonical
-valid relation.
+*pairing*: its two operands are arbitrary `Fp12Val p` elements.  This file wires
+the op to a bilinear, non-degenerate pairing interface and proves that the op
+accepts the canonical valid relation: the verification predicate is complete.
 
 ## What is proved, and what is ASSUMED
 
@@ -40,7 +39,7 @@ bilinearity written directly over `Fp12Val.mul ξ₀`, the `1`-normalisations fr
 under `Fp12Val.mul ξ₀`.
 
 The trust surface is that of a pairing group: we assume the
-pairing is bilinear and non-degenerate, and prove the verification op is sound
+pairing is bilinear and non-degenerate, and prove the verification op complete
 relative to that assumption.  We claim **no** proof that `Fp12Val.mul ξ₀`
 realises the mathematical Tate/Weil pairing.
 
@@ -50,32 +49,27 @@ realises the mathematical Tate/Weil pairing.
   right-bilinearity + `Q + (-Q) = 0` + `e P 0 = 1`.  The GT product of a pairing
   and its negated-argument partner is the GT identity.
 * `Fp12Pairing.pairingCheck2_accepts` — the `pairingCheck2` op **accepts** the
-  canonical valid relation `(e P Q, e P (-Q))` (it returns `true`).  This is the
-  soundness/completeness link: the op admits exactly the GT-identity products a
-  pairing produces.
+  canonical valid relation `(e P Q, e P (-Q))` (it returns `true`): the op admits
+  the GT-identity products a pairing produces.
 * `Fp12Pairing.bls_verify_complete` — the BLS-verify-shape **forward** direction:
   if `e σ g₂ = e H pk` then `pairingCheck2F ξ₀ (e σ g₂) (e H (-pk)) = true`.  A
   valid BLS signature is accepted.
 
-## The BLS converse needs GT-group cancellation we do NOT assume
+## The converse
 
-The full BLS iff `pairingCheck2F ξ₀ (e σ g₂) (e H (-pk)) = true ↔ e σ g₂ = e H pk`
-would, in the `→` (accepts-ONLY-valid) direction, require multiplicative
-**cancellation** in the GT group: from `e σ g₂ ·_{ξ₀} e H (-pk) = 1` and
-`e H pk ·_{ξ₀} e H (-pk) = 1` one concludes `e σ g₂ = e H pk` only via
-uniqueness of inverses, i.e. a `Group`/cancellative-`Monoid` structure on
-`Fp12Val p` under `Fp12Val.mul ξ₀`.  That structure is **not** available (the
-tower multiply has no proven monoid laws) and is **not** assumed by this
-interface, so the converse is left as a documented gap rather than proved by a
-fabricated cancellation axiom.  Adding a `gt_mul_right_cancel` field would close
-it, at the cost of a stronger assumption; we keep the interface minimal.
+The converse (a check that accepts implies `e σ g₂ = e H pk`) uses multiplicative
+cancellation in the GT group, which this interface does not state: the tower
+multiply `Fp12Val.mul ξ₀` carries no monoid laws here. At the BLS12-381 carrier,
+where `Fp12Val.mul 1` is the multiplication of a transported `CommRing`, it is
+`EcPairingCheckSoundConverse.bls_verify_sound`, and the equivalence is
+`EcPairingCheckSoundConverse.bls_verify_iff`.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
 
-namespace CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckSound
+namespace CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckComplete
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.FieldDialect
@@ -175,4 +169,4 @@ theorem bls_verify_complete
 
 end Fp12Pairing
 
-end CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckSound
+end CatCrypt.Crypto.SecureCompilation.VIR.EcPairingCheckComplete
