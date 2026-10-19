@@ -627,7 +627,7 @@ theorem isLabel_imgInstr (slotArr : String → Option (String × Nat)) (body : L
         repeat' split
         all_goals exact ⟨_, _, _, rfl⟩
   | Llabel ii l' =>
-      simp only [imgInstr, bitStore?, normA, isLabel, isLabelB]
+      simp only [imgInstr, bitStore?, cellIdxStore?, normA, isLabel, isLabelB]
       cases h : (l == l') <;> cases h' : (l' == l) <;> simp_all [beq_iff_eq]
   | _ => rfl
 
@@ -1878,11 +1878,55 @@ theorem rel_jump {frame : String → Option (BitVec 64)}
 
 /-! ## 10. The dispatch over the kinds of instruction -/
 
+/-- An indexed store through a cell (`cellIdxStore?`) is a cell access (`cellA?`) that `normA`
+    keeps. -/
+theorem cellA?_of_cellIdxStore {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {k : Nat} {i : LinstrR} {p : String × Nat × String × String}
+    (h : cellIdxStore? slotArr body k i = some p) : (cellA? i).isSome = true ∧ normA i = i := by
+  obtain ⟨A, n, q, v⟩ := p
+  obtain ⟨c, D, -, -, -, -, -, -, -, rfl, hc, -⟩ := cellIdxStore?_spec h
+  simp [cellA?, hc, normA]
+
+/-- An instruction that is no cell access is no indexed store through a cell. -/
+theorem cellIdxStore?_of_cellA {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {k : Nat} {i : LinstrR} (h : cellA? i = none) : cellIdxStore? slotArr body k i = none := by
+  cases hs : cellIdxStore? slotArr body k i with
+  | none => rfl
+  | some p =>
+      have := (cellA?_of_cellIdxStore hs).1
+      rw [h] at this
+      cases this
+
+/-- A move between names (`slotMov?`) is no indexed store through a cell. -/
+theorem cellIdxStore?_of_slotMov {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {k : Nat} {i : LinstrR} {p : String × String} (hm : slotMov? i = some p) :
+    cellIdxStore? slotArr body k i = none := by
+  cases hs : cellIdxStore? slotArr body k i with
+  | none => rfl
+  | some p' =>
+      obtain ⟨A, n, q, v⟩ := p'
+      obtain ⟨c, D, -, -, -, -, -, -, -, rfl, hc, -⟩ := cellIdxStore?_spec hs
+      simp [slotMov?, hc] at hm
+
+/-- A register instruction that passes `regGateB` is no indexed store through a cell: the
+    gate refuses every cell access. -/
+theorem cellIdxStore?_of_regGateB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {i : LinstrR}
+    (h : regGateB frame (normA i) = true) : cellIdxStore? slotArr body k i = none := by
+  cases hs : cellIdxStore? slotArr body k i with
+  | none => rfl
+  | some p =>
+      obtain ⟨h1, h2⟩ := cellA?_of_cellIdxStore hs
+      obtain ⟨op, hop⟩ := Option.isSome_iff_exists.mp h1
+      rw [h2] at h
+      simp [regGateB, regOkB, hop] at h
+
 theorem imgInstr_reg (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "LOADIDX")
     (h2 : o ≠ "STOREIDX") (hk : castTagW o = none)
     (h3 : bitMovB body k (.Lopn ds o ss) = false)
-    (h4 : bitStore? body k (.Lopn ds o ss) = none) :
+    (h4 : bitStore? body k (.Lopn ds o ss) = none)
+    (h5 : cellIdxStore? slotArr body k (.Lopn ds o ss) = none) :
     imgInstr slotArr body k (.Lopn ds o ss) = (normA (.Lopn ds o ss), .reg none) := by
   have ht : ∀ ds' ss', tagA (.Lopn ds' o ss') = .reg none := fun _ _ => by
     rw [tagA_lopn h1 h2, hk]
@@ -2080,10 +2124,11 @@ theorem gate_step {frame : String → Option (BitVec 64)}
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
       have h3 : bitMovB body sa.reg.lpc bi.li_i = false := bitMovB_of_slotMov hm
       have h4 : bitStore? body sa.reg.lpc bi.li_i = none := bitStore?_of_slotMov hm
+      have h5 : cellIdxStore? slotArr body sa.reg.lpc bi.li_i = none := cellIdxStore?_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
-      · rw [hx] at h3 h4
-        rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
-          ← hx] at hstep
+      · rw [hx] at h3 h4 h5
+        rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) (by decide) h3 h4 h5,
+          evalInstrPMemFk_reg, ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
@@ -2094,10 +2139,11 @@ theorem gate_step {frame : String → Option (BitVec 64)}
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
       have h3 : bitMovB body sa.reg.lpc bi.li_i = false := bitMovB_of_slotMov hm
       have h4 : bitStore? body sa.reg.lpc bi.li_i = none := bitStore?_of_slotMov hm
+      have h5 : cellIdxStore? slotArr body sa.reg.lpc bi.li_i = none := cellIdxStore?_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
-      · rw [hx] at h3 h4
-        rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
-          ← hx] at hstep
+      · rw [hx] at h3 h4 h5
+        rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) (by decide) h3 h4 h5,
+          evalInstrPMemFk_reg, ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
@@ -2109,7 +2155,8 @@ theorem gate_step {frame : String → Option (BitVec 64)}
       have h3 : bitMovB body sa.reg.lpc (.Lopn [.reg d] "CMP:64" [.reg y, .reg q]) = false :=
         bitMovB_of_ne (by simp [JasminLsemCast.movImmStruct?])
       rw [hx, imgInstr_reg slotArr body _ (by decide) (by decide) (by decide) h3
-        (bitStore?_of_ne (by simp)), evalInstrPMemFk_reg, ← hx] at hstep
+        (bitStore?_of_ne (by simp)) (cellIdxStore?_of_ne slotArr (by simp)), evalInstrPMemFk_reg,
+        ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
@@ -2120,8 +2167,10 @@ theorem gate_step {frame : String → Option (BitVec 64)}
       obtain ⟨ds, o, ss, hx, ho1, ho2, hok⟩ := icase_reg hc
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
-      rw [hx] at h3 h4
-      rw [hx, imgInstr_reg slotArr body _ ho1 ho2 hok h3 (bitStore?_of_bitStoreB h4),
+      have h5 : cellIdxStore? slotArr body sa.reg.lpc bi.li_i = none :=
+        cellIdxStore?_of_regGateB hg
+      rw [hx] at h3 h4 h5
+      rw [hx, imgInstr_reg slotArr body _ ho1 ho2 hok h3 (bitStore?_of_bitStoreB h4) h5,
         evalInstrPMemFk_reg, ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys hgate P hrel hb hc hg hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩

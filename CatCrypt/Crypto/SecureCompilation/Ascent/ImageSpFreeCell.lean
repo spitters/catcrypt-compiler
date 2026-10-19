@@ -49,10 +49,10 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond (decodeA
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg imgInstr accArr
-  physImgB accOkB bitStore? bitStore?_spec virtImg_getElem?)
+  physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore?_spec)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (normA condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts? slotMov?)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (opNames)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (isCall)
 open CatCrypt.Crypto.SecureCompilation.Ascent
@@ -99,11 +99,13 @@ theorem mem_virtImg_lt {slotArr : String → Option (String × Nat)} {body : Lcm
   exact ⟨k, j, hj, by omega, rfl⟩
 
 /-- **The image of an instruction that passes `RspFreeUpToStore` passes `rspFreeB`**, when
-    every indexed access of the instruction resolves to an array (`accOkB`) and every array
-    name of the slot map passes `rspFreeNameB`. -/
+    every indexed access of the instruction resolves to an array (`accOkB`), every array
+    name of the slot map passes `rspFreeNameB` and every instruction of the body before it
+    passes `RspFreeUpToStore`. -/
 theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {x : LinstrR} (hx : RspFreeUpToStore x) (hacc : accOkB slotArr body k x = true)
-    (hsl : ∀ q A n, slotArr q = some (A, n) → rspFreeNameB A = true) :
+    (hsl : ∀ q A n, slotArr q = some (A, n) → rspFreeNameB A = true)
+    (hpre : ∀ j i, j < k → body[j]? = some i → RspFreeUpToStore i.li_i) :
     rspFreeB (imgInstr slotArr body k x).fst = true := by
   have harr : ∀ {b A : String} {n : Nat}, accArr slotArr body k b = some (A, n) →
       rspFreeNameB A = true := by
@@ -112,7 +114,7 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
     exact hsl q A n hq
   rcases hx with hf | ⟨d, b, i, v, rfl, hb, hi, hv⟩
   · rcases imgInstr_cases slotArr body k x with h | ⟨d, b, idx, A, n, rfl, hA, h⟩ |
-      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩
+      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩
     · rw [h]
       simp only [rspFreeB, operandNames_normA] at hf ⊢
       exact hf
@@ -126,6 +128,20 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
       simp [hf, hA']
     · rw [h]
       simpa [rspFreeB, operandNames, srcNames] using hf
+    · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, -, -, -,
+        hacc'⟩ := cellIdxStore?_spec hc
+      obtain ⟨q', -, hq', -⟩ := accArr_spec hacc'
+      have hqf : rspFreeNameB q = true := by
+        rcases hpre (k - 3) r' (by omega) hr' with hf' | ⟨_, _, _, _, he, -⟩
+        · have hn : ∀ r ∈ operandNames r'.li_i, rspFreeNameB r = true := by
+            simpa [rspFreeB] using hf'
+          exact hn q (rdWr_sub (read_of_slotMov hm))
+        · rw [he] at hm
+          simp [slotMov?] at hm
+      rw [h]
+      subst hx
+      simp [rspFreeB, operandNames, srcNames] at hf ⊢
+      simp [hf, hsl q' A n hq', hqf]
   · simp only [accOkB, if_neg (show ¬ ("STOREIDX" = "LOADIDX") by decide), if_true,
       Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
@@ -143,6 +159,7 @@ theorem virtImg_rspFree {slotArr : String → Option (String × Nat)} {body : Lc
   intro i hi
   obtain ⟨k, j, hk, hlt, rfl⟩ := mem_virtImg_lt hi
   exact rspFreeB_imgInstr (hx k j hk hlt) (physImgB_at hphys hk).1 hsl
+    (fun j' i' hj' hb' => hx j' i' hb' (by omega))
 
 /-- The widening multiply read at its width is a call or a return exactly when the
     instruction is. -/
@@ -157,9 +174,10 @@ theorem virtImg_noCall_of {slotArr : String → Option (String × Nat)} {body : 
   refine List.all_eq_true.mpr fun i hi => ?_
   obtain ⟨k, j, hk, hlt, rfl⟩ := mem_virtImg_lt hi
   rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩
+    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩
   · rw [h, isCall_normA, hx k j hk hlt]
     rfl
+  · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
@@ -298,9 +316,11 @@ theorem rspFreeNameB_of_read_virtImg {slotArr : String → Option (String × Nat
     (hi : i ∈ virtImg slotArr body) {r : String} (hr : r ∈ (rdWr i.fst).1) :
     rspFreeNameB r = true := by
   obtain ⟨k, j, hk, hlt, rfl⟩ := mem_virtImg_lt hi
-  rcases read_imgInstr hr with h | ⟨q, n, hq⟩
+  rcases read_imgInstr hr with h | ⟨q, n, hq⟩ | ⟨_, _, _, j', i', -, hj', hb', hr'⟩
   · exact rspFreeNameB_of_read (rspFree_of_instrOKWB (instrOKWB_of_printedAddrWB hp hk hlt)) h
   · exact hsl q r n hq
+  · exact rspFreeNameB_of_read
+      (rspFree_of_instrOKWB (instrOKWB_of_printedAddrWB hp hb' (by omega))) hr'
 
 /-- Every array name of the slot map of a layout passes `rspFreeNameB`: it is an argument
     name. -/

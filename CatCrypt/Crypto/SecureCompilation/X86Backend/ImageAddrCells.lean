@@ -47,7 +47,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (slotOfReg accArr imgInstr
   reloadOf reloadOf_succ_some reloadOf_succ_lopn reloadOf_succ_none_eq dstHitB bitStore?
-  bitStore?_of_ne bitStore?_of_bitStoreB)
+  bitStore?_of_ne bitStore?_of_bitStoreB cellIdxStore? cellIdxStore?_of_ne)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (LoadSafeAt)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (read64 write64)
@@ -632,10 +632,11 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
       have h3 : bitMovB c sa.reg.lpc bi.li_i = false := bitMovB_of_slotMov hm
       have h4 : bitStore? c sa.reg.lpc bi.li_i = none := bitStore?_of_slotMov hm
+      have h5 : cellIdxStore? slotArr c sa.reg.lpc bi.li_i = none := cellIdxStore?_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
-      · rw [hx] at h3 h4
-        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
-          ← hx] at hstep
+      · rw [hx] at h3 h4 h5
+        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3 h4 h5,
+          evalInstrPMemFk_reg, ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
@@ -646,10 +647,11 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
       have h3 : bitMovB c sa.reg.lpc bi.li_i = false := bitMovB_of_slotMov hm
       have h4 : bitStore? c sa.reg.lpc bi.li_i = none := bitStore?_of_slotMov hm
+      have h5 : cellIdxStore? slotArr c sa.reg.lpc bi.li_i = none := cellIdxStore?_of_slotMov hm
       rcases slotMov?_cases hm with hx | hx <;>
-      · rw [hx] at h3 h4
-        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3 h4, evalInstrPMemFk_reg,
-          ← hx] at hstep
+      · rw [hx] at h3 h4 h5
+        rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3 h4 h5,
+          evalInstrPMemFk_reg, ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
@@ -661,7 +663,8 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       have h3 : bitMovB c sa.reg.lpc (.Lopn [.reg d] "CMP:64" [.reg y, .reg q]) = false :=
         bitMovB_of_ne (by simp [JasminLsemCast.movImmStruct?])
       rw [hx, imgInstr_reg slotArr _ _ (by decide) (by decide) (by decide) h3
-        (bitStore?_of_ne (by simp)), evalInstrPMemFk_reg, ← hx] at hstep
+        (bitStore?_of_ne (by simp)) (cellIdxStore?_of_ne slotArr (by simp)), evalInstrPMemFk_reg,
+        ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
@@ -672,8 +675,10 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       obtain ⟨ds, o, ss, hx, ho1, ho2, hko⟩ := icase_reg hc
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
-      rw [hx] at h3 h4
-      rw [hx, imgInstr_reg slotArr _ _ ho1 ho2 hko h3 (bitStore?_of_bitStoreB h4),
+      have h5 : cellIdxStore? slotArr c sa.reg.lpc bi.li_i = none :=
+        cellIdxStore?_of_regGateB hg
+      rw [hx] at h3 h4 h5
+      rw [hx, imgInstr_reg slotArr _ _ ho1 ho2 hko h3 (bitStore?_of_bitStoreB h4) h5,
         evalInstrPMemFk_reg, ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys (.of_imgGateB hgate) P hrel hb hc hg hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
