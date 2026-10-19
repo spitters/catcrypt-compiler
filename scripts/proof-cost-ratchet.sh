@@ -40,7 +40,7 @@ for f in $(grep -rlE 'maxHeartbeats' --include='*.lean' CatCrypt/ 2>/dev/null ||
     s{/-.*?-/}{}gs; s{--[^\n]*}{}g;
     while (/set_option\s+maxHeartbeats\s+(\d+)/g) { print "'"$f"'\n" if $1 > 200000; }
   ' "$f"
-done | sort > "$MH_TMP"
+done | LC_ALL=C sort > "$MH_TMP"
 MH_CURRENT="$(grep -c . "$MH_TMP" || true)"
 
 fail=0
@@ -59,8 +59,8 @@ ratchet() {  # $1=name $2=current $3=baseline_file $4=tmp(sorted files) $5=count
     echo ""
     echo "FAIL: $name GREW ($base -> $cur)."
     echo "      New offender file(s) (not in the baseline):"
-    comm -13 <(grep -E '^CatCrypt/|	CatCrypt/' "$bfile" 2>/dev/null | sed -E 's/^[0-9]+\t//' | sort) \
-             <(sed -E 's/^[0-9]+\t//' "$tmp" | sort) | sed 's/^/        /'
+    comm -13 <(grep -E '^CatCrypt/|	CatCrypt/' "$bfile" 2>/dev/null | sed -E 's/^[0-9]+\t//' | LC_ALL=C sort) \
+             <(sed -E 's/^[0-9]+\t//' "$tmp" | LC_ALL=C sort) | sed 's/^/        /'
     echo "      Fix the proof (extract the expensive step as a lemma over abstract"
     echo "      inputs), or re-baseline deliberately."
     fail=1

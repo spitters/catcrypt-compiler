@@ -1,4 +1,4 @@
-72
+71
 # maxHeartbeats bumps > 200000 over CatCrypt/ (one line per occurrence, file path). Goal: 0.
 # Frozen baseline; auto-tightened by scripts/proof-cost-ratchet.sh.
 CatCrypt/Crypto/Hax/HaxToLowCT.lean
@@ -34,11 +34,11 @@ CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockMemrefEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Chacha20BlockResidentComEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Chacha20QRCatCryptEmit.lean
-CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterLanesReadoutDirect.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterLanesReadout.lean
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterLanesReadoutDirect.lean
+CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterReadoutHalf.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterReadoutHalfExt.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterReadoutHalfFull.lean
-CatCrypt/Crypto/SecureCompilation/VIR/KeccakEmitterReadoutHalf.lean
 CatCrypt/Crypto/SecureCompilation/VIR/KeccakRoundCatCryptEmit.lean
 CatCrypt/Crypto/SecureCompilation/VIR/Poseidon2EmitterReadoutHalf.lean
 CatCrypt/Crypto/SecureCompilation/VIR/RecursiveForLoopBlockFront.lean

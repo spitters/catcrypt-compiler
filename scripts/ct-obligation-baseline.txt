@@ -21,7 +21,6 @@ CatCrypt/Crypto/Jasmin/P384DhkemReflect.lean
 CatCrypt/Crypto/Jasmin/P384EcdsaReflect.lean
 CatCrypt/Crypto/Jasmin/P384Reflect.lean
 CatCrypt/Crypto/Jasmin/RustEmit.lean
-CatCrypt/Crypto/Jasmin/RustEmitJazz.lean
 CatCrypt/Crypto/Optimizer/ModReduceSelect.lean
 CatCrypt/Crypto/Pairing/Bls12_377Emit.lean
 CatCrypt/Crypto/Pairing/Bn254Fp2SubEmit.lean
