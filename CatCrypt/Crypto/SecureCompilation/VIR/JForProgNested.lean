@@ -75,6 +75,13 @@ single-level main theorem — no open goals, axiom-clean
 `acc := acc + acc` (doubling). The total is doubling `outerN * inner.n` times.
 For `outerN = 3`, `inner.n = 2` from `1` this computes `1 → 2^6 = 64`, KAT'd
 byte-identical in `bench/nested_loop/`.
+
+## Frozen text printers
+
+The text printer of this module, `NestedForProg.toJazzExport`, prints through the frozen
+`JasminPrint` printers and is itself frozen: it is kept unchanged for the bench drivers
+that call it. New Jasmin text is produced by the single printer, `Jazz.printChecked`,
+through `JasminPrintText.emitJazzN`.
 -/
 
 @[expose] public section

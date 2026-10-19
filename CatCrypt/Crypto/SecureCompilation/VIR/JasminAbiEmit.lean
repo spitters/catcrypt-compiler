@@ -45,12 +45,14 @@ step for a full bench. This closes the "verified pipeline's own text compiles
 through jasminc" gap for the NTT-multiply route; folding this ABI into
 `ppJasminProg` + SSA liveness is outside the scope of this module.
 
-## Replacement
+## Frozen text printers
 
-The orchestration modes and the register-arithmetic mode of this module will be replaced by
-storage choices of a `JazzUnit` printed by the single printer `Jazz.print`. The
-per-algorithm SIMD renderers are bench-only and are removed as owned emits cover their
-benches.
+The text printers of this module (the orchestration modes `emitAbiOrch*` and
+`emitAbiJazz*`, the register-arithmetic mode and the per-algorithm SIMD renderers) are
+frozen: they are kept unchanged for the bench drivers that call them. New Jasmin text is
+produced by the single printer, `Jazz.printChecked`, and its entries
+`JasminPrintText.emitJazzN`, `emitJazzOuts`, `emitJazzInOuts` and
+`JasminAbiJazz.emitAbiOrchJ`.
 -/
 
 @[expose] public section
@@ -3319,18 +3321,6 @@ string-containment companions that `KeccakSimd` ships.
 
 namespace Sha2Batch
 
-/-- Render `rotr(x, n)` at width `w` using three lines into a temporary `t`.
-    `srcSlot` and `dstSlot` are stack-array slots in `W` (for the schedule) or
-    register names. We keep working state in named registers (`a..h`) — `rotr`
-    on the WORKING state goes via a temporary register. -/
-def renderRotrToReg (w : Nat) (xReg : String) (n : Nat) (tReg uReg : String) :
-    List String :=
-  [ tReg ++ " = " ++ xReg ++ ";"
-  , uReg ++ " = " ++ xReg ++ ";"
-  , tReg ++ " = " ++ tReg ++ " >> " ++ toString n ++ ";"
-  , uReg ++ " = " ++ uReg ++ " << " ++ toString (w - n) ++ ";"
-  , tReg ++ " = " ++ tReg ++ " | " ++ uReg ++ ";" ]
-
 /-- SHA-256 σ0(x) = rotr(x,7) ⊕ rotr(x,18) ⊕ (x >> 3); result in `t0`. Uses
     `t0`, `t1` as scratch. Reads `x` from `srcStack` (a `W[i]` slot). -/
 def renderSigma0_256 (srcSlot : Nat) : List String :=
@@ -4658,122 +4648,6 @@ at width 64) and writes 8 outputs (`s0..s7`) via the same op sequence as
 `aesSboxBitslice` above, lifted lane-wise (`BitVec 64` per plane).
 EVERY emitted line is a pure `xor`/`and`/`not` on `reg u64` — no `extCall`,
 no `#AESENC`. -/
-
-/-- GF(2^8) `xtime` (= `gfDoubleByte`) rendered as jasmin ops on a bit-plane
-    state `s0..s7` (read), writing to `t0..t7` (written). The AES polynomial
-    `0x11b` reduces `x⁸ ≡ x⁴+x³+x+1`, i.e. `xtime` on `(s0,...,s7)` is:
-
-        t0 = s7
-        t1 = s0 ⊕ s7
-        t2 = s1
-        t3 = s2 ⊕ s7
-        t4 = s3 ⊕ s7
-        t5 = s4
-        t6 = s5
-        t7 = s6
-
-    (The `s7` plane is the "MSB" — its content broadcasts to the reduction
-    bits at positions 0, 1, 3, 4 of the result; positions 1 and 3 also get
-    the shifted bit, etc.) -/
-def renderXtimeLines (sIn sOut : String) : List String :=
-  [ sOut ++ "0 = " ++ sIn ++ "7;"
-  , sOut ++ "1 = " ++ sIn ++ "0 ^ " ++ sIn ++ "7;"
-  , sOut ++ "2 = " ++ sIn ++ "1;"
-  , sOut ++ "3 = " ++ sIn ++ "2 ^ " ++ sIn ++ "7;"
-  , sOut ++ "4 = " ++ sIn ++ "3 ^ " ++ sIn ++ "7;"
-  , sOut ++ "5 = " ++ sIn ++ "4;"
-  , sOut ++ "6 = " ++ sIn ++ "5;"
-  , sOut ++ "7 = " ++ sIn ++ "6;" ]
-
-/-- Render one bit-plane copy `dst_i = src_i` for `i ∈ [0..7]`. -/
-def renderCopyPlanes (dst src : String) : List String :=
-  (List.range 8).map (fun i =>
-    dst ++ toString i ++ " = " ++ src ++ toString i ++ ";")
-
-/-- Render the bit-plane AES affine: `s_i ⊕ s_{(i+1)%8} ⊕ s_{(i+2)%8} ⊕
-    s_{(i+3)%8} ⊕ s_{(i+4)%8} ⊕ c_i` for the AES post-affine matrix M (the
-    row sums shifted), with `c = 0x63`. Reads `y0..y7`, writes `s0..s7`.
-
-    For 64-way packing, the constant `c_i` broadcasts: bit `i` of `0x63 =
-    0b01100011` corresponds to plane `i`; planes 0,1,5,6 (= bits 0,1,5,6 of
-    0x63) get XOR'd with all-ones (`-1`), planes 2,3,4,7 are passed through. -/
-def renderAffineLines (yIn sOut : String) : List String :=
-  let row (i : Nat) : String :=
-    let idxs := [i, (i+1) % 8, (i+2) % 8, (i+3) % 8, (i+4) % 8]
-    let plane := fun (k : Nat) => yIn ++ toString k
-    let bits := idxs.map plane
-    String.intercalate " ^ " bits
-  let cBits : List Nat :=  -- bits of 0x63 = 01100011: positions 0,1,5,6
-    [0, 1, 5, 6]
-  (List.range 8).map (fun i =>
-    let body := row i
-    if cBits.contains i then
-      sOut ++ toString i ++ " = " ++ body ++ " ^ (-1);"
-    else
-      sOut ++ toString i ++ " = " ++ body ++ ";")
-
-/-- Render a single GF(2^8) multiply on bit-plane registers: takes
-    `a0..a7` and `b0..b7`, writes `r0..r7`. Uses 8 `xtime` steps unrolled.
-    Each step: `r ⊕= (sh & broadcast(b_i))`, then `sh = xtime(sh)`. With
-    `broadcast(b_i) = b_i` (since the bit-plane register IS the 64-way
-    broadcast already — bit `i` of byte j is in plane `i`, lane `j`).
-
-    This emits ~8·(8 ands + 8 xors) + 7·(xtime = 4 xors + 7 copies) ≈
-    96 ands + 156 xors per multiply (well within `bv_decide`-style budget). -/
-def renderGfMulLines (aIn bIn rOut : String) (tmpAcc tmpSh tmpXt tmpAnd : String)
-    : List String :=
-  let acc := tmpAcc
-  let sh := tmpSh
-  let xt := tmpXt
-  let an := tmpAnd
-  -- init: acc = 0, sh = a
-  let init : List String :=
-    (List.range 8).flatMap (fun i =>
-      [ acc ++ toString i ++ " = 0;"
-      , sh ++ toString i ++ " = " ++ aIn ++ toString i ++ ";" ])
-  -- one round: for each bit i of b (0..7):
-  --   for each plane k (0..7): an_k = sh_k & b_iIn   (b_iIn is plane-i of b)
-  --                            acc_k = acc_k ^ an_k
-  --   if i < 7: sh = xtime(sh)
-  let rounds : List String := (List.range 8).flatMap (fun i =>
-    let andStep : List String := (List.range 8).flatMap (fun k =>
-      [ an ++ toString k ++ " = " ++ sh ++ toString k
-          ++ " & " ++ bIn ++ toString i ++ ";"
-      , acc ++ toString k ++ " = " ++ acc ++ toString k
-          ++ " ^ " ++ an ++ toString k ++ ";" ])
-    let xtimeStep : List String :=
-      if i < 7 then
-        (renderXtimeLines sh xt) ++ renderCopyPlanes sh xt
-      else []
-    andStep ++ xtimeStep)
-  let store : List String := (List.range 8).map (fun k =>
-    rOut ++ toString k ++ " = " ++ acc ++ toString k ++ ";")
-  init ++ rounds ++ store
-
-/-- The Fermat-chain inverse on bit planes: 7 squarings (= gfMul x x) + 6
-    multiplications. Reads `x0..x7`, writes `y0..y7`. Uses scratch
-    `m1..m7` (intermediate 8-plane registers, one per chain step). -/
-def renderGfInvLines (xIn yOut : String) : List String :=
-  -- chain: x→x2→x3→x6→x7→x14→x15→x30→x31→x62→x63→x126→x127→x254
-  -- Naming convention: prefix "p" for each intermediate's 8 planes.
-  let mul (dst a b : String) : List String :=
-    renderGfMulLines a b dst (dst ++ "ac") (dst ++ "sh")
-                              (dst ++ "xt") (dst ++ "an")
-  let sq (dst a : String) : List String := mul dst a a
-  -- chain
-  (sq "p2" xIn)        -- x2 = x^2
-  ++ (mul "p3" "p2" xIn)   -- x3 = x2 · x
-  ++ (sq "p6" "p3")        -- x6 = (x3)^2
-  ++ (mul "p7" "p6" xIn)   -- x7 = x6 · x
-  ++ (sq "p14" "p7")       -- x14 = (x7)^2
-  ++ (mul "p15" "p14" xIn) -- x15 = x14 · x
-  ++ (sq "p30" "p15")      -- x30 = (x15)^2
-  ++ (mul "p31" "p30" xIn) -- x31 = x30 · x
-  ++ (sq "p62" "p31")      -- x62 = (x31)^2
-  ++ (mul "p63" "p62" xIn) -- x63 = x62 · x
-  ++ (sq "p126" "p63")     -- x126 = (x63)^2
-  ++ (mul "p127" "p126" xIn) -- x127 = x126 · x
-  ++ (sq yOut "p127")      -- x254 = (x127)^2
 
 /-- Emit the bitsliced S-box as a jasmin `inline fn` taking 8 bit-plane
     inputs and writing 8 bit-plane outputs. The body is the pure-boolean

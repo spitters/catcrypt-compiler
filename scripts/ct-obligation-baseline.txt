@@ -16,7 +16,6 @@ CatCrypt/Crypto/Jasmin/Examples/X25519BenchEmit.lean
 CatCrypt/Crypto/Jasmin/Examples/X25519LadderDSLEmit.lean
 CatCrypt/Crypto/Jasmin/JasminEmit.lean
 CatCrypt/Crypto/Jasmin/JasminToRustEmit.lean
-CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean
 CatCrypt/Crypto/Jasmin/P384DhkemReflect.lean
 CatCrypt/Crypto/Jasmin/P384EcdsaReflect.lean
 CatCrypt/Crypto/Jasmin/P384Reflect.lean

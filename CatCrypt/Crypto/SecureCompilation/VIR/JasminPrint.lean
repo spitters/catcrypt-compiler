@@ -73,11 +73,13 @@ a single named accumulator, the standard Jasmin idiom) is documented at
 Printer + smoke (`.jazz` text emitted, structural facts `decide`/`rfl`-checked)
 + bounded-for loop. All goals closed; standard axioms only.
 
-## Replacement
+## Frozen text printers
 
-The text functions of this module (`ppExportFn`, `emitJazz`, `JForProg.toJazzExport`) will be
-replaced by `emitJazzN`, the lowering `nfToJasmin` printed by the single printer `Jazz.print`;
-`lowerComToProg` and `JForProg` stay.
+The text functions of this module (`ppExportInstr`, `ppExportFn`, `emitJazz`,
+`JForProg.toJazzExport`) are frozen: they are kept unchanged for the bench drivers that
+call them. New Jasmin text is produced by the single printer, `Jazz.printChecked`, through
+`JasminPrintText.emitJazzN` on the lowering `nfToJasmin`. The lowering `lowerComToProg`
+and `JForProg` are not printers and are not frozen.
 -/
 
 @[expose] public section
@@ -811,12 +813,6 @@ def strContains (hay needle : String) : Bool :=
 def smokeProg (_ : Unit) : JasminProg :=
   lowerComToProg "smoke" JasminDialect.smokeProg
 
-/-- The emitted `.jazz` text. -/
-def smokeJazz (_ : Unit) : String := emitJazz "smoke" JasminDialect.smokeProg
-
--- Print the emitted `.jazz` text for visual inspection.
-#eval IO.println (smokeJazz ())
-
 /-- One function is produced. -/
 theorem smoke_one_func : (smokeProg ()).funcs.length = 1 := by decide
 
@@ -829,9 +825,6 @@ theorem smoke_two_params :
 theorem smoke_two_instrs :
     ((smokeProg ()).funcs.head?.map (fun fd => fd.body.length)) = some 2 := by
   decide
-
-/- The emitted `.jazz` mentions the function name. -/
-#guard (strContains (smokeJazz ()) "fn smoke")
 
 /-- A small bounded-for example: accumulate `acc := acc + acc` for 4 iterations
     (a `regArith add` on `reg 64`). -/
@@ -849,19 +842,10 @@ theorem doubleLoop_denote :
 /-- The loop lowers to a single-function program with a `Cfor` body. -/
 def doubleLoopProg (_ : Unit) : JasminProg := doubleLoop.toProg "double_loop"
 
-/-- The loop program emits to `.jazz` text. -/
-def doubleLoopJazz (_ : Unit) : String :=
-  CatCrypt.Crypto.Jasmin.LowCT.ppJasminProg (doubleLoopProg ())
-
-#eval IO.println (doubleLoopJazz ())
-
 /-- The loop body is a single top-level instruction (the `Cfor`). -/
 theorem doubleLoop_one_instr :
     ((doubleLoopProg ()).funcs.head?.map (fun fd => fd.body.length)) = some 1 := by
   decide
-
-/- The emitted `.jazz` contains a `for` loop. -/
-#guard (strContains (doubleLoopJazz ()) "for ")
 
 /-- The jasminc-compilable `export fn` for the doubling loop. -/
 def doubleLoopExportJazz (_ : Unit) : String := JForProg.toJazzExport "double_loop" doubleLoop

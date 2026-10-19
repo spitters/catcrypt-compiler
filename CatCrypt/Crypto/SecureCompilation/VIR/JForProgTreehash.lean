@@ -91,6 +91,13 @@ composition end-to-end: `h = 3` levels of a fixed 2→1 combiner `acc := acc + a
 (a single `regArith add` leaf), with the halving counts `4, 2, 1`. From the seed
 this composes `4 + 2 + 1 = 7` doublings, KAT'd byte-identical in
 `bench/treehash/`.
+
+## Frozen text printers
+
+The text printer of this module, `TreehashProg.toJazzExport`, prints through the frozen
+`JasminPrint` printers and is itself frozen: it is kept unchanged for the bench drivers
+that call it. New Jasmin text is produced by the single printer, `Jazz.printChecked`,
+through `JasminPrintText.emitJazzN`.
 -/
 
 @[expose] public section

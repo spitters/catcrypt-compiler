@@ -33,31 +33,16 @@ AUCurves' `rust_cmd`.
 * §3  State encoding bridge (`rustStateToHeap`)
 * §4  Simulation theorem (`rustExecSimulates`)
 * §5  Concrete programs (G1 add/dbl, G2 add)
-* §6  Pretty-printer — `ppJasminCmd`, `writeJasminProg`
+* §6  Pretty-printer — `ppInstrR`, `ppCmd`, `ppFunDecl`, `ppJasminProg`
 
-## Printing ASTs to files
+## Frozen text printers
 
-Both the `LowCT` and Jasmin ASTs can be emitted to disk from Lean:
-
-```lean
--- Print LowCT AST
--- #eval IO.println (repr g1Add)
-
--- Print translated Jasmin Cmd
--- #eval IO.println (repr (toJasminCmd g1Add))
-
--- Write Jasmin source to file
--- #eval writeJasminProg "g1_add.jazz" "g1_add" g1Add
-```
-
-`repr` uses the auto-derived `Repr` instances (all constructors have
-`deriving Repr`). `writeJasminProg` calls `ppFunDecl` which emits
-human-readable Jasmin syntax.
-
-## Replacement
-
-The printer `ppJasminProg` of this module will be removed; Jasmin text is produced by the
-single printer `Jazz.print` (`Jasmin/JazzPrint.lean`). The lowering `toJasminCmd` stays.
+The text printers of §6 (`ppJasminProg` and the functions it calls) are frozen: they are
+kept unchanged for the bench drivers that print through them, by way of
+`VIR/JasminPrint.emitJazz` and `JForProg.toJazzExport`. New Jasmin text is produced by the
+single printer, `Jazz.printChecked`, and its entries `JasminPrintText.emitJazzN`,
+`emitJazzOuts`, `emitJazzInOuts` and `JasminAbiJazz.emitAbiOrchJ`. The lowering
+`toJasminCmd` is not a printer and is not frozen.
 -/
 
 @[expose] public section
@@ -4114,34 +4099,11 @@ theorem g1DblPreservesInputs (rs rs' : RustState)
 end FrameTheorems
 end ConcretePrograms
 
-/-! ## §6  Pretty-printer and file output -/
+/-! ## §6  Pretty-printer
+
+These printers are frozen for the bench drivers that call them (module docstring). -/
 
 section Printer
-
-/-- Pretty-print a `TowerType` as a Jasmin array type comment. -/
-def ppTowerType : TowerType → String
-  | .TFp     => "fp"    | .TFp2  => "fp2"
-  | .TFp6    => "fp6"   | .TFp12 => "fp12"
-  | .TU64    => "u64"
-  | .TU8     => "u8"
-  | .TU32    => "u32"
-  | .TFp25519 => "fp25519"
-  | .TFp25519_64 => "fp25519_64"
-  | .TFpL25519 => "fpL25519"
-  | .TFpP256 => "fpP256"
-  | .TFp25519_4Bounded b => "fp25519_4(<2^" ++ toString b ++ ")"
-  | .TFpGen name n => "fpGen[" ++ name ++ ", " ++ toString n ++ "B]"
-  | .TFp2Gen name n => "fp2Gen[" ++ name ++ ", " ++ toString n ++ "B]"
-  | .TTuple a b => "(" ++ ppTowerType a ++ "," ++ ppTowerType b ++ ")"
-  | .TBytes n => "u8[" ++ toString n ++ "]"
-  | .TArr n t => ppTowerType t ++ "[" ++ toString n ++ "]"
-  -- Polynomial-mod-q pretty forms.
-  | .TPolyMod q n => "poly_mod[" ++ toString q ++ "," ++ toString n ++ "]"
-  | .TPolyVec q n k =>
-      "polyvec[" ++ toString q ++ "," ++ toString n ++ "," ++ toString k ++ "]"
-  | .TPolyMat q n k m =>
-      "polymat[" ++ toString q ++ "," ++ toString n ++ "," ++
-        toString k ++ "x" ++ toString m ++ "]"
 
 /-- Pretty-print a `WSize`. -/
 def ppWSize : WSize → String
@@ -4263,33 +4225,6 @@ def ppFunDecl (fd : FunDecl) : String :=
 def ppJasminProg (prog : JasminProg) : String :=
   String.intercalate "\n\n" (prog.funcs.map ppFunDecl)
 
-/-- Write a `LowCT` as a Jasmin function to a file. -/
-def writeJasminProg (filename name : String) (params results : List Located)
-    (c : LowCT) : IO Unit := do
-  let prog := toJasminProg name params results c
-  IO.FS.writeFile filename (ppJasminProg prog)
-
-/-- Write the `LowCT` Rocq repr to a file (for round-trip inspection). -/
-def writeLowCTRepr (filename : String) (c : LowCT) : IO Unit :=
-  IO.FS.writeFile filename (repr c |>.pretty 80)
-
 end Printer
-
-/-! ## §7  Demo: emit g1_add to file
-
-Uncomment to generate `g1_add.jazz` and `g1_add_rustcmd.txt`:
-
-```lean
--- #eval writeJasminProg "/tmp/g1_add.jazz" "g1_add"
-        [g1X1, g1Y1, g1Z1, g1X2, g1Y2, g1Z2]
-        [g1X3, g1Y3]
-        g1Add
-
--- #eval writeLowCTRepr "/tmp/g1_add_rustcmd.txt" g1Add
-
--- #eval IO.println (ppJasminProg (toJasminProg "g1_add"
-        [g1X1, g1Y1, g1Z1, g1X2, g1Y2, g1Z2] [g1X3, g1Y3] g1Add))
-```
--/
 
 end CatCrypt.Crypto.Jasmin.LowCT

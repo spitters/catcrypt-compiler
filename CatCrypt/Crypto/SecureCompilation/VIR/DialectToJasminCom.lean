@@ -102,6 +102,13 @@ program representation they recurse over, so neither is a restatement of the oth
 
 Front and smoke test. The `fp_add` leaf kernel lowers to a single `regArith add`
 over two `reg 64` inputs, checked by `native_decide`.
+
+## Frozen text printers
+
+This module defines no text printer. Its smoke checks print through
+`JasminPrint.emitJazz`, which is frozen for the bench drivers that call it; new Jasmin
+text is produced by the single printer, `Jazz.printChecked`, through
+`JasminPrintText.emitJazzN`.
 -/
 
 @[expose] public section
