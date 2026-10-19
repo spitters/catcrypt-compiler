@@ -1046,6 +1046,20 @@ theorem isSome_mulx {ws : AWSize} (hws : ws ≠ .U512) {x : JVar} (hx : OkV x)
   isSome_copn (opnNoneTys_asmName (by simp) hws (by simp))
     (fun y hy => by simp at hy; subst hy; exact hx) hes
 
+/-- The rotate `ROR` with the `b2w_ty` outputs of the word `x`. -/
+theorem isSome_ror {ws : AWSize} (hws : ws ≠ .U512) {x : JVar} (hx : OkV x)
+    {es : List APExpr} (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName "ROR" ws) [none, none, some x] es)).isSome := by
+  have ho := CatCrypt.Crypto.Jasmin.JazzToInstrR.rorAsm_opnNoneTys ws
+    (by cases ws <;> simp_all)
+  refine isSome_copn ?_ (fun y hy => by simp at hy; subst hy; exact hx) hes
+  rw [show ([none, none, some x] : List (Option JVar)).length = 3 from rfl]
+  simp only [asmName, ho, List.mem_cons, List.not_mem_nil, or_false]
+  rintro ty (rfl | rfl | rfl)
+  · simp
+  · simp
+  · exact sword_ne_U512 hws
+
 theorem isSome_add64 {x : JVar} (hx : OkV x) {es : List APExpr}
     (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
     (translateInstrRExt (copn "ADD_64" (outsCW x) es)).isSome :=
@@ -1107,6 +1121,7 @@ local macro "tr_solve" : tactic => `(tactic| repeat' (first
   | with_reducible apply isSome_oint_of_word | with_reducible apply isSome_andn
   | with_reducible apply isSome_adc | with_reducible apply isSome_neg
   | with_reducible apply isSome_cmpOp | with_reducible apply isSome_mulx
+  | with_reducible apply isSome_ror
   | with_reducible apply isSome_add64 | with_reducible apply isSome_adc64
   | with_reducible apply forall_mem_nil_isSome | with_reducible apply forall_mem_cons_isSome
   | with_reducible apply okV_tmp | with_reducible apply okV_cf

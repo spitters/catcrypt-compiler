@@ -718,6 +718,34 @@ theorem mapM_outsMulx {o : String} {ws : MWSize}
   simp only [List.mapM_cons, List.mapM_nil, hn, translateLValExt_lvv (translateVarIExt_mvi hx)]
   rfl
 
+/-- The `_` outputs of `ROR` at a word size of `gprB`: the flags `of cf` and a word. -/
+theorem opnNoneTys_ror {ws : MWSize} (hg : gprB ws = true) :
+    CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys (asmName "ROR" (wsOf ws.bits)) 3 =
+      [.sbool, .sbool, .sword (wsOf ws.bits)] :=
+  CatCrypt.Crypto.Jasmin.JazzToInstrR.rorAsm_opnNoneTys _ (by
+    have h := wsOf_gpr_mem hg
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at h ⊢
+    rcases h with h | h | h | h <;> simp [h])
+
+/-- The `b2w_ty` outputs of `ROR` with the word `x` translate to two discarded flags and
+`x`. -/
+theorem mapM_outsRor {ws : MWSize} (hg : gprB ws = true) {x : JVar} (hx : OkV x) :
+    (outLvs (CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys (asmName "ROR" (wsOf ws.bits))
+      ([none, none, some x] : List (Option JVar)).length) 0 [none, none, some x]).mapM
+      translateLValExt = some [mnb, mnb, .Lvar (mvi x)] := by
+  have hl : ([none, none, some x] : List (Option JVar)).length = 3 := rfl
+  rw [hl, opnNoneTys_ror hg]
+  simp only [outLvs, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some]
+  simp only [List.mapM_cons, List.mapM_nil, translateLValExt_lnone_bool,
+    translateLValExt_lvv (translateVarIExt_mvi hx)]
+  rfl
+
+/-- The operand types of `ROR` at a word size of `gprB`: a word and a `u8` count. -/
+theorem jazzArgTys_ror {ws : MWSize} (hg : gprB ws = true) :
+    JazzAsmSem.jazzArgTys (opName "ROR" ws) = some [.aword ws, .aword .U8] := by
+  cases ws <;> simp_all [gprB, JazzAsmSem.jazzArgTys, JazzAsmSem.jazzRows, opName,
+    JazzAsmSem.wsName, JazzAsmSem.rowArgTys]
+
 /-- The reads of translated locals. -/
 theorem mapM_pv_mvi : ∀ {xs : List JVar}, (∀ v ∈ xs, OkV v) →
     (xs.map pv).mapM translatePExprExt = some (xs.map fun v => mpv (mvi v))
@@ -802,6 +830,18 @@ theorem writeLvals_mulx (s : Estate SyscallState Mem) {ws : MWSize} (lo hi : Bit
   simp only [writeLvals, JResult.fold2, JResult.monad_bind_eq]
   rw [writeLval_lnone opS gd (by cases ws <;> rfl) rfl, JResult.bind_ok, writeLval_lvar opS gd
     rfl (by rw [hx]; rfl)]
+  rfl
+
+/-- The outputs of `ROR`: the two flags discarded, the word to `x`. -/
+theorem writeLvals_ror (s : Estate SyscallState Mem) {ws : MWSize}
+    (r : CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.B2W ws.bits) {x : MVarI}
+    (hx : x.v_var.vtype = .aword ws) :
+    writeLvals (Mem := Mem) true gd opS s (([mnb, mnb, .Lvar x] : List MLval).map typeLv)
+      (JazzAsmSem.b2wVals ws r) = .ok (s.withVm (s.evm.set x.v_var (.Vword ws r.word))) := by
+  rw [show ([mnb, mnb, .Lvar x] : List MLval).map typeLv = [mnb, mnb, .Lvar x] from rfl]
+  simp only [JazzAsmSem.b2wVals, writeLvals, JResult.fold2, JResult.monad_bind_eq,
+    writeLval_flag, JResult.bind_ok]
+  rw [writeLval_lvar opS gd rfl (by rw [hx]; rfl)]
   rfl
 
 end Outs
@@ -1005,6 +1045,73 @@ theorem sem_mulhi (haS : JazzAsmAgrees aS) {ws : MWSize} (hg : gprB ws = true)
   · intro z hz _
     rw [set_ne _ hz]
   · exact fun h => arrTyped_set h rfl (by rw [hxt]; rfl)
+
+/-- At a word size of `gprB` and a count `m` below its width, the word of `x86_ROR` at the
+`u8` count `m` is `rotateRight m`. -/
+theorem x86_ROR_word {ws : MWSize} (hg : gprB ws = true) (a : BitVec ws.bits) {m : Nat}
+    (hm : m < ws.bits) :
+    (CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.x86_ROR a
+      ((BitVec.ofInt CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits (m : Int)).setWidth
+        ws.bits)).word = a.rotateRight m := by
+  have h64 : ws.bits ≤ 64 := by cases ws <;> simp_all [gprB] <;> decide
+  have hp : ws.bits < 2 ^ ws.bits := by cases ws <;> simp_all [gprB] <;> decide
+  have h8 : (BitVec.ofInt CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits (m : Int)).toNat =
+      m := by
+    have h1 := toNat_ofInt_u8 (m := m) (by omega)
+    have h2 := (BitVec.ofInt CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits (m : Int)).isLt
+    rw [Nat.mod_eq_of_lt (lt_of_lt_of_eq h2 (by rfl))] at h1
+    exact h1
+  have hc : CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.shiftCount
+      ((BitVec.ofInt CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits (m : Int)).setWidth
+        ws.bits) = m := by
+    unfold CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.shiftCount
+    rw [BitVec.toNat_setWidth, h8, Nat.mod_eq_of_lt (by omega)]
+    exact shiftMask_of_lt hm
+  simp only [CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.x86_ROR, hc]
+  split_ifs with h0
+  · subst h0
+    simp [BitVec.rotateRight_def]
+  all_goals exact (rorImm_denote_eq_shiftOr m hm a).symm
+
+/-- **Immediate rotate.** `x = a; _, _, x = #ROR(x, m)` with the count `m` below the width
+typed `u8` writes `rotateRight m` of `a` to `x`. -/
+theorem sem_ror (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {ws : MWSize}
+    (hg : gprB ws = true) {m : Nat} (hm : m < ws.bits) {x a : JVar} (hx : OkV x) (ha : OkV a)
+    (hxt : (mvar x).vtype = .aword ws) {s : Estate SyscallState Mem} {va : BitVec ws.bits}
+    (hva : s.evm (mvar a) = .Vword ws va) {c' : List MInstr}
+    (hc : translateCmdExt [asgn x (pv a), copn (asmName "ROR" (wsOf ws.bits))
+      [none, none, some x] [pv x, cnst (m : Int)]] = some c') :
+    ∃ s', Sem aS opS gd prog s (typeC c') s' ∧
+      Post s s' (mvar x) (· = .Vword ws (va.rotateRight m)) := by
+  have hty : ∀ u : BitVec ws.bits, (Value.Vword ws u).typeOf = evalAtype (mvar x).vtype :=
+    fun _ => by rw [hxt]; rfl
+  have hmem : asmName "ROR" (wsOf ws.bits) ∈ jazzOps :=
+    asmName_ror_mem_jazzOps (widthOkB_bits hg)
+  refine ⟨s.withVm ((s.evm.set (mvar x) (.Vword ws va)).set (mvar x)
+    (.Vword ws (va.rotateRight m))), ?_, post_of (by simp) ?_ ?_⟩
+  · refine sem_asgn_step aS opS gd prog hx (translatePExprExt_pv (translateVarIExt_mvi ha)) hc
+      (semPexpr_mpv opS gd hva rfl) rfl (hty va) (fun c1 hc1 => ?_)
+    have hw := writeLvals_ror gd opS (s.withVm (s.evm.set (mvar x) (.Vword ws va)))
+      (CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.x86_ROR va
+        ((BitVec.ofInt CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits (m : Int)).setWidth
+          ws.bits)) (x := mvi x) hxt
+    rw [x86_ROR_word hg va hm] at hw
+    refine sem_copn_step aS opS gd prog
+      (vs := [.Vword ws va, .Vword .U8 (BitVec.ofInt _ (m : Int))]) hc1
+      (mapM_outsRor hg hx) (es' := [mpv (mvi x), .Pconst (m : Int)]) ?_ ?_ ?_ hw
+      (fun c2 hc2 => sem_nil_step aS opS gd prog hc2 _)
+    · simp only [List.mapM_cons, List.mapM_nil, translatePExprExt_pv (translateVarIExt_mvi hx),
+        translatePExprExt_cnst]
+      rfl
+    · rw [show sopnTys (.Oasm (asmName "ROR" (wsOf ws.bits))) = [.aword ws, .aword .U8] by
+        simp only [sopnTys, asmName_wsOf hg, jazzArgTys_ror hg, Option.getD_some]]
+      exact semPexprs_cons opS gd (semPexpr_mpv opS gd (set_same _ _ _) rfl)
+        (semPexprs_cons opS gd (semPexpr_wconst opS gd hop rfl _ _) (semPexprs_nil opS gd _))
+    · rw [haS _ hmem, asmName_wsOf hg]
+      exact JazzAsmSem.jazzAsmSem_ror ws hg va _
+  · intro z hz _
+    rw [set_ne _ hz, set_ne _ hz]
+  · exact fun h => arrTyped_set (arrTyped_set h rfl (hty _)) rfl (hty _)
 
 end Ops
 
@@ -2577,6 +2684,22 @@ theorem emitOp_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {Γ : Ctxt 
         hxok A.ok (mvar_new_reg hg d) (reg_val hg A.agr.2) hc
       refine ⟨s', hsem, hp.mono fun v hv => ?_, rfl, Or.inl ⟨rfl, rfl⟩⟩
       rw [hv, sshiftRight_sarCount]
+      exact reg_val_mk hg _
+  | rorImm w n =>
+      obtain ⟨a, rfl⟩ := hv1 (t1 := .reg w) args
+      obtain ⟨ws, hg, rfl, -, -⟩ := exists_gpr (show widthOkB w = true from hok)
+      have htw : tyOkB (.reg ws.bits) = true := by simp [tyOkB, bitOkB, widthOkB_bits hg]
+      have A := argOk hs a (hmem _ (by hv_mem)) htw
+      have hpos : 0 < ws.bits := by cases ws <;> simp_all [gprB] <;> decide
+      have he' : some ([asgn (mkV 'r' d (styOf (.reg ws.bits))) (pv (env.getD (varIndex a) dfltV)),
+          copn (asmName "ROR" (wsOf ws.bits)) [none, none, some (mkV 'r' d (styOf (.reg ws.bits)))]
+            [pv (mkV 'r' d (styOf (.reg ws.bits))), cnst ((n % ws.bits : Nat) : Int)]],
+          mkV 'r' d (styOf (.reg ws.bits))) = some (c, y) := he
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj he')
+      obtain ⟨s', hsem, hp⟩ := sem_ror aS opS gd prog haS hop hg (m := n % ws.bits)
+        (Nat.mod_lt _ hpos) hxok A.ok (mvar_new_reg hg d) (reg_val hg A.agr.2) hc
+      refine ⟨s', hsem, hp.mono fun v hv => ?_, rfl, Or.inl ⟨rfl, rfl⟩⟩
+      rw [hv, BitVec.rotateRight_mod_eq_rotateRight]
       exact reg_val_mk hg _
   | castW w w' =>
       obtain ⟨a, rfl⟩ := hv1 (t1 := .reg w) args

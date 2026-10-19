@@ -18,7 +18,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.JasminModel
 
 An operation of `jazzOps` is named `opName base ws`, the base name followed by `_` and the
 bit width of the word size `ws`, as jasminc names the width variants of an `x86_instr_decl.v`
-entry. `ADD`, `ADC`, `NEG` and `CMP` are interpreted at the four word sizes of the x86
+entry. `ADD`, `ADC`, `NEG`, `CMP` and `ROR` are interpreted at the four word sizes of the x86
 general-purpose registers, `U8` to `U64` (`gprB`); `ANDN` and `MULX_lo_hi`, which x86 has
 only at `U32` and `U64` (`bmiB`), at those two; `ADCX` at `U64`. Each returns the result tuple
 of its `x86_instr_decl.v` entry in that entry's output order, with operands in the entry's
@@ -31,6 +31,8 @@ input order:
   `x86_CMP`, without the difference word.
 * `MULX_lo_hi_n a b` returns the low and then the high word of
   `x86_MULX_lo_hi`.
+* `ROR_n a c`, with `c` a `u8` count, returns the `b2w_ty` tuple `OF, CF, w` (`b2wVals`)
+  of `x86_ROR` at the count `c` zero-extended to the word size.
 * `ADCX_64 a b c` returns the carry flag and the word of `x86_ADCX`; it is the
   operation of `x86AsmSem`.
 
@@ -54,7 +56,7 @@ used is the jasmin source tree at commit `7b6a3c65` (`x86_instr_decl.v` l.874–
 
 * `opName`, `jazzRows`, `jazzOps`, `jazzArgTys`, `jazzAsmSem`.
 * `jazzAsmSem_add`, `jazzAsmSem_adc`, `jazzAsmSem_neg`, `jazzAsmSem_cmp`,
-  `jazzAsmSem_andn`, `jazzAsmSem_mulx_lo_hi`, `jazzAsmSem_adcx`: one equation
+  `jazzAsmSem_andn`, `jazzAsmSem_mulx_lo_hi`, `jazzAsmSem_adcx`, `jazzAsmSem_ror`: one equation
   per base name, generic in the word size.
 * `jazzAsmSem_of_x86AsmSem`: `jazzAsmSem` returns every result `x86AsmSem`
   returns.
@@ -108,11 +110,11 @@ def b5wVals (ws : WSize) (r : B5W ws.bits) : Values :=
   b5Vals r ++ [.Vword ws r.word]
 
 /-- The base names and word sizes of the operations `jazzAsmSem` interprets: `ADD`, `ADC`,
-`NEG`, `CMP` at `U8` to `U64`, `ANDN` and `MULX_lo_hi` at `U32` and `U64`, and `ADCX` at
+`NEG`, `CMP`, `ROR` at `U8` to `U64`, `ANDN` and `MULX_lo_hi` at `U32` and `U64`, and `ADCX` at
 `U64`, which `x86AsmSem` already interprets. -/
 def jazzRows : List (String × WSize) :=
   [WSize.U8, .U16, .U32, .U64].flatMap (fun ws => [("ADD", ws), ("ADC", ws), ("NEG", ws),
-    ("CMP", ws)])
+    ("CMP", ws), ("ROR", ws)])
   ++ [("ANDN", .U32), ("ANDN", .U64), ("MULX_lo_hi", .U32), ("MULX_lo_hi", .U64),
     ("ADCX", .U64)]
 
@@ -120,10 +122,11 @@ def jazzRows : List (String × WSize) :=
 def jazzOps : List String := jazzRows.map fun r => opName r.1 r.2
 
 /-- The operand types of the operation `base` at the word size `ws`, the input types of its
-`x86_instr_decl.v` entry: a word for `NEG`, two words and the carry flag for `ADC` and
-`ADCX`, two words otherwise. -/
+`x86_instr_decl.v` entry: a word for `NEG`, a word and a `u8` count for `ROR`, two words
+and the carry flag for `ADC` and `ADCX`, two words otherwise. -/
 def rowArgTys (base : String) (ws : WSize) : List Atype :=
   if base = "NEG" then [.aword ws]
+  else if base = "ROR" then [.aword ws, .aword .U8]
   else if base = "ADC" ∨ base = "ADCX" then [.aword ws, .aword ws, .abool]
   else [.aword ws, .aword ws]
 
@@ -140,11 +143,25 @@ def binaryAsmResult (op : String) (ws : WSize) (a b : BitVec ws.bits) : Option V
     some [.Vword ws (x86_MULX_lo_hi a b).1, .Vword ws (x86_MULX_lo_hi a b).2]
   else none
 
+/-- The `b2w_ty` tuple `OF, CF, w` of a rotate result at the word size `ws`. -/
+def b2wVals (ws : WSize) (r : B2W ws.bits) : Values :=
+  [flagVal r.of, flagVal r.cf, .Vword ws r.word]
+
+/-- The rotate `ROR` at the word size `ws` on a word and a `u8` count, the count
+zero-extended to `ws` as `x86_ROR` takes it. -/
+def rorAsmResult (op : String) (ws : WSize) (a : BitVec ws.bits) (c : BitVec WSize.U8.bits) :
+    Option Values :=
+  if gprB ws = true ∧ op = opName "ROR" ws then
+    some (b2wVals ws (x86_ROR a (c.setWidth ws.bits)))
+  else none
+
 /-- The result of the operations `jazzAsmSem` adds, on well-typed operands: two words, two
-words and a carry, or one word, all of one word size; `none` on every other operation name
-or operand list. -/
+words and a carry, or one word, all of one word size, or a word and a `u8` count; `none` on
+every other operation name or operand list. -/
 def jazzSopn (op : String) : Values → Option Values
-  | [.Vword ws a, .Vword ws' b] => if h : ws' = ws then binaryAsmResult op ws a (h ▸ b) else none
+  | [.Vword ws a, .Vword ws' b] =>
+      (if h : ws' = ws then binaryAsmResult op ws a (h ▸ b) else none).or
+        (if h : ws' = .U8 then rorAsmResult op ws a (h ▸ b) else none)
   | [.Vword ws a, .Vword ws' b, .Vbool c] =>
       if h : ws' = ws then
         if gprB ws = true ∧ op = opName "ADC" ws then some (b5wVals ws (x86_ADC a (h ▸ b) c))
@@ -214,6 +231,22 @@ theorem jazzAsmSem_mulx_lo_hi (ws : WSize) (hws : bmiB ws = true) (a b : BitVec 
   have h3 : opName "MULX_lo_hi" ws ≠ opName "ANDN" ws := fun h => by simpa using opName_inj h
   simp [jazzAsmSem, jazzSopn, binaryAsmResult, hws, h1, h2, h3]
 
+/-- `ROR` under `jazzAsmSem`, at each word size of `gprB`: the `b2w_ty` tuple of `x86_ROR`
+with the `u8` count zero-extended to `ws`. -/
+theorem jazzAsmSem_ror (ws : WSize) (hws : gprB ws = true) (a : BitVec ws.bits)
+    (c : BitVec WSize.U8.bits) :
+    jazzAsmSem.sopn_sem (.Oasm (opName "ROR" ws)) [.Vword ws a, .Vword .U8 c]
+      = .ok (b2wVals ws (x86_ROR a (c.setWidth ws.bits))) := by
+  have h1 : opName "ROR" ws ≠ opName "ADD" ws := fun h => by simpa using opName_inj h
+  have h2 : opName "ROR" ws ≠ opName "CMP" ws := fun h => by simpa using opName_inj h
+  have h3 : opName "ROR" ws ≠ opName "ANDN" ws := fun h => by simpa using opName_inj h
+  have h4 : opName "ROR" ws ≠ opName "MULX_lo_hi" ws := fun h => by simpa using opName_inj h
+  have hn : (if h : WSize.U8 = ws then binaryAsmResult (opName "ROR" ws) ws a (h ▸ c)
+      else none) = none := by
+    split <;> simp [binaryAsmResult, h1, h2, h3, h4]
+  simp only [jazzAsmSem, jazzSopn, hn, Option.none_or, dite_true, rorAsmResult, hws, true_and,
+    if_true]
+
 /-- `ADCX_64` under `jazzAsmSem`: the carry flag, then the word. -/
 theorem jazzAsmSem_adcx (a b : BitVec 64) (c : Bool) :
     jazzAsmSem.sopn_sem (.Oasm (opName "ADCX" .U64)) [.Vword .U64 a, .Vword .U64 b, .Vbool c]
@@ -263,6 +296,9 @@ def JasminModelRow (base : String) (ws : WSize) : Prop :=
   | "ADCX" => ∀ (a b : BitVec ws.bits) (c : Bool),
       jazzAsmSem.sopn_sem (.Oasm (opName "ADCX" ws)) [.Vword ws a, .Vword ws b, .Vbool c]
         = .ok [flagVal (x86_ADCX a b c).1, .Vword ws (x86_ADCX a b c).2]
+  | "ROR" => ∀ (a : BitVec ws.bits) (c : BitVec WSize.U8.bits),
+      jazzAsmSem.sopn_sem (.Oasm (opName "ROR" ws)) [.Vword ws a, .Vword .U8 c]
+        = .ok (b2wVals ws (x86_ROR a (c.setWidth ws.bits)))
   | _ => False
 
 /-- Each operation of `jazzOps` is, under `jazzAsmSem`, the `X86Backend.Jasmin`
@@ -273,10 +309,10 @@ theorem jazzAsmSem_eq_jasminModel : ∀ r ∈ jazzRows, JasminModelRow r.1 r.2 :
   simp only [jazzRows, List.flatMap_cons, List.flatMap_nil, List.append_nil, List.cons_append,
     List.nil_append, List.mem_cons, List.not_mem_nil, or_false] at hr
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+    rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   all_goals first
     | exact jazzAsmSem_add _ rfl | exact jazzAsmSem_adc _ rfl | exact jazzAsmSem_neg _ rfl
     | exact jazzAsmSem_cmp _ rfl | exact jazzAsmSem_andn _ rfl
-    | exact jazzAsmSem_mulx_lo_hi _ rfl | exact jazzAsmSem_adcx
+    | exact jazzAsmSem_mulx_lo_hi _ rfl | exact jazzAsmSem_adcx | exact jazzAsmSem_ror _ rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JazzAsmSem

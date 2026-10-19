@@ -23,6 +23,7 @@ computed by `native_decide`, in a module that imports no part of the emit front.
 * `opnNoneTys_CMP_64`: five flags.
 * `opnNoneTys_MULX_64`: two `u64` words.
 * `gprAsm_opnNoneTys`: the same entries at the word sizes `U8` to `U64`.
+* `rorAsm_opnNoneTys`: two flags and a word for `ROR` at the word sizes `U8` to `U256`.
 -/
 
 @[expose] public section
@@ -72,6 +73,12 @@ theorem gprAsm_opnNoneTys : ∀ ws ∈ [WSize.U8, .U16, .U32, .U64],
         List.replicate 5 .sbool ++ [.sword ws] ∧
       opnNoneTys ("CMP" ++ "_" ++ toString ws.bits) 5 = List.replicate 5 .sbool ∧
       opnNoneTys ("MULX_lo_hi" ++ "_" ++ toString ws.bits) 2 = [.sword ws, .sword ws] := by
+  native_decide
+
+/-- The `_` outputs of `ROR` at the six word sizes `U8` to `U256`, with three outputs: the
+flags `of cf` and a word of that size. -/
+theorem rorAsm_opnNoneTys : ∀ ws ∈ [WSize.U8, .U16, .U32, .U64, .U128, .U256],
+    opnNoneTys ("ROR" ++ "_" ++ toString ws.bits) 3 = [.sbool, .sbool, .sword ws] := by
   native_decide
 
 end CatCrypt.Crypto.Jasmin.JazzToInstrR

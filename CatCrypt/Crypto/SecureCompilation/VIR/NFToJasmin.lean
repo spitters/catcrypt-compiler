@@ -372,6 +372,9 @@ def emitOp (op : JasminOp) (d : Nat) (x : JVar) (as : List JVar) : Option (Cmd �
       some ([asgn x (pv a0), asgn x (.Papp2 (.Olsl (wsOf w)) (pv x) (cnst (shiftMask w n)))], x)
   | .sarImm w n =>
       some ([asgn x (pv a0), asgn x (.Papp2 (.Oasr (wsOf w)) (pv x) (cnst (sarCount w n)))], x)
+  | .rorImm w n =>
+      some ([asgn x (pv a0), copn (asmName "ROR" (wsOf w)) [none, none, some x]
+        [pv x, cnst ((n % w : Nat) : Int)]], x)
   | .castW w w' => some (castCode x a0 w w', x)
   | .stackLoad w _ =>
       some ([asgn x (.Pget .AAscale (wsOf w) ⟨⟨a0, vi0⟩, false⟩
@@ -589,13 +592,13 @@ def tyOkB : JasminTy → Bool
   | _ => true
 
 /-- An operation whose widths are register widths of x86: a width of `widthOkB` for every
-arithmetic, shift, memory, comparison, carry and select operation, a width of `bmiOkB` for
+arithmetic, shift, rotate, memory, comparison, carry and select operation, a width of `bmiOkB` for
 `andn` and `mulhi`, and widths of `bitOkB` for `castW`. A `reg 1` value is thus produced by
 a comparison, a carry-out, a cast to width `1` or a constant, and read by `select`, a carry-in
 or a cast, and no other operation computes at width `1`. -/
 def opOkB : JasminOp → Bool
   | .regArith .andn w | .mulhi w => bmiOkB w
-  | .regArith _ w | .shrImm w _ | .shlImm w _ | .sarImm w _ | .stackLoad w _
+  | .regArith _ w | .shrImm w _ | .shlImm w _ | .sarImm w _ | .rorImm w _ | .stackLoad w _
   | .stackStore w _ | .stackStoreImm w _ _ | .stackZero w _ | .addCarryLo w
   | .addCarryHi w | .cmp _ w | .cmpImm _ w _ | .select w => widthOkB w
   | .castW w w' => bitOkB w && bitOkB w'
@@ -720,6 +723,21 @@ theorem asmName_mem_jazzOps {w : Nat} (hw : widthOkB w = true) :
       hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
       fun _ => ⟨hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows])⟩⟩
 
+/-- The name `asmName "ROR" (wsOf w)` at a width `w` of `widthOkB` is an operation of
+`jazzOps`. -/
+theorem asmName_ror_mem_jazzOps {w : Nat} (hw : widthOkB w = true) :
+    asmName "ROR" (wsOf w) ∈ jazzOps := by
+  have hm : ∀ {b : String} {ws : CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize},
+      (b, ws) ∈ JazzAsmSem.jazzRows → JazzAsmSem.opName b ws ∈ jazzOps :=
+    fun h => List.mem_map_of_mem (f := fun r => JazzAsmSem.opName r.1 r.2) h
+  have hn := asmName_eq_opName "ROR"
+  simp only [widthOkB, Bool.or_eq_true, beq_iff_eq] at hw
+  rcases hw with ((rfl | rfl) | rfl) | rfl
+  · rw [show wsOf 8 = .U8 from rfl, hn.1]; exact hm (by simp [JazzAsmSem.jazzRows])
+  · rw [show wsOf 16 = .U16 from rfl, hn.2.1]; exact hm (by simp [JazzAsmSem.jazzRows])
+  · rw [show wsOf 32 = .U32 from rfl, hn.2.2.1]; exact hm (by simp [JazzAsmSem.jazzRows])
+  · rw [show wsOf 64 = .U64 from rfl, hn.2.2.2]; exact hm (by simp [JazzAsmSem.jazzRows])
+
 /-- **The asm operations of the lowering are operations of `jazzOps`**: every asm operation
 name in the code `emitOp` emits for an operation that passes `opOkB` is in `jazzOps`. -/
 theorem emitOp_asmOps {op : JasminOp} {d : Nat} {x : JVar} {as : List JVar} {c : Cmd}
@@ -748,7 +766,7 @@ theorem emitOp_asmOps {op : JasminOp} {d : Nat} {x : JVar} {as : List JVar} {c :
   all_goals obtain ⟨_, h2, h3, h4, h5⟩ := hm
   all_goals first
     | exact (h5 hop).1 | exact (h5 hop).2 | exact ⟨hA, h2⟩ | exact ⟨hA, h2, hC⟩
-    | exact ⟨h3, hC⟩ | exact ⟨h4, hC⟩
+    | exact ⟨h3, hC⟩ | exact ⟨h4, hC⟩ | exact asmName_ror_mem_jazzOps hop
 
 /-! ## 6. Signatures and units -/
 
