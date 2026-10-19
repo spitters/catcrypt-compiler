@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSecPreserve
 
 This module lifts the Phase-4 results — compiler correctness as a `rHoare`
 judgment (`callfree_compile_rHoare`, P4.1/P4.2) and cryptographic-security
-preservation (`compiled_preserves_security`, P4.3) — from the **call-free**
+preservation (`sdist_transfer_of_srcDenote_eq`) — from the **call-free**
 scalar-arith fragment to **whole functions**, i.e. programs that interleave
 scalar segments with external **calls** (`scall`/`vis`).
 
@@ -68,7 +68,7 @@ congruence threaded through the call (`vis`) structure.
 * `wholeFn_preserves_security` — **the P4.4 capstone**: cryptographic / UC
   security (`sdist ≤ ε` to an ideal) is preserved for whole compiled functions
   (call-bearing), by composing `wholeFn_progEquiv` with
-  `spDenote_eq_preserves_sdist` — exactly as `compiled_preserves_security` did
+  `spDenote_eq_preserves_sdist` — exactly as `sdist_transfer_of_srcDenote_eq` does
   for the call-free fragment, now lifted through calls.
 
 ## The call step is the same-handler bind-congruence (= robust-against-context)

@@ -9,57 +9,28 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
 public import CatCrypt.Crypto.SDist
 
 /-!
-# Cryptographic-security preservation by composition
+# Transfer of an `sdist` bound along an equality of `srcDenote`
 
-This module proves cryptographic/UC-security preservation across
-the `LowCT → JInstr` compiler on the call-free scalar-arith fragment by
-**composing two results**, rather than building a fresh
-probabilistic-RHL IND-CCA argument:
+For call-free scalar-arith programs (`List ArithSrc`), the `SPComp` interpretation of the
+ITree denotation is the pure computation `SPComp.pure (srcDenote ps rs)`
+(`interpSP_callfree`). Two programs with equal `srcDenote` on a state therefore have equal
+`SPComp` interpretations, and an `sdist` bound to an ideal computation holds for one exactly
+when it holds for the other.
 
-1. **`interpSP_callfree`** (from `LowCTITreePRHL.lean`): deterministic
-   compiler correctness lifted to an `SPComp`-denotation *equality*.  The
-   call-free ITree denotation of a scalar-arith program `ps` interprets to the
-   *pure* computation `SPComp.pure (srcDenote ps rs)`.  Two programs whose
-   big-step `srcDenote` agree therefore have **equal `SPComp` denotation**.
-
-2. **`spDenote_eq_preserves_sdist`**: the generic robust-compilation / RrHP
-   fact that *equal denotation ⇒ equal `sdist` ⇒ same security bound*, proved
-   by the one-line "rewrite the equal computations under `sdist`" argument.
-
-So **cryptographic-security preservation here follows from the
-robust-compilation fact given `progEquiv`, and `progEquiv` *is*
-`compile_correct`.**  The paper's bespoke RHL is one route to the security-
-preservation obligation; this module composes the RrHP fact with the
-deterministic-to-pure lift `interpSP_callfree`.
+The programs are arbitrary lists of `ArithSrc`; no theorem here relates either of them to the
+output of a compiler.
 
 ## Main results
 
-* `spDenote_eq_preserves_sdist` — the **generic `SPComp` core fact**, stated
-  for plain `SPComp`: equal computations have the same `sdist`-bound to an
-  ideal, by substituting the equality.
-* `interpSP_progEquiv` — the **`progEquiv`-at-the-`SPComp`-level** lemma from
-  `compile_correct`: if two call-free programs have equal big-step `srcDenote`,
-  their `interpSP` interpretations are *equal* `SPComp` computations.  Proved by
-  rewriting both sides with `interpSP_callfree`.
-* `compiled_preserves_security` — **the main theorem**.  For the
-  call-free compiled kernel, a `sdist ≤ ε` security bound to an ideal transfers
-  from the source program to the compiled program, by composing
-  `interpSP_progEquiv` (denotation equality) with `spDenote_eq_preserves_sdist`
-  (equal denotation ⇒ same bound).  The hypothesis is the compile-correctness
-  equality (`srcDenote` agreement); the conclusion is the bound on the compiled
-  kernel.
+* `spDenote_eq_preserves_sdist` — equal `SPComp` computations have the same `sdist` bound to
+  an ideal computation.
+* `interpSP_progEquiv` — two call-free programs with equal `srcDenote` have equal `interpSP`
+  interpretations.
+* `sdist_transfer_of_srcDenote_eq` — an `sdist ≤ ε` bound to an ideal computation transfers
+  from `srcP` to `tgtP` when `srcDenote srcP rs = srcDenote tgtP rs`.
 
-## Relation to robust compilation
-
-Security preservation here is **not** a fresh IND-CCA RHL proof: it is
-`compile_correct` (⇒ `progEquiv` at the `SPComp` level via `interpSP_callfree`)
-composed with the robust-compilation (RrHP) fact `spDenote_eq_preserves_sdist`.
-
-## Iris-free
-
-Imports only `LowCTITreePRHL` (the iris-free ITree+pRHL layer) and
-`CatCrypt.Crypto.SDist` (the `sdist` API).  Nothing under `Bridges/` or
-`IrisBridge/`: no guarded ITrees, no step-indexing, no separation logic.
+The import closure contains `LowCTITreePRHL` and `CatCrypt.Crypto.SDist` and nothing under
+`Bridges/` or `IrisBridge/`.
 -/
 
 @[expose] public section
@@ -76,15 +47,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
 open scoped ENNReal
 
-/-! ## 1. The generic `SPComp` core fact
+/-! ## 1. Equal computations have the same `sdist` bound -/
 
-The generic "equal computations ⇒ equal `sdist` ⇒ same bound" argument, for
-plain `SPComp`: a one-line rewrite by the denotation equality. -/
-
-/-- **Generic security-preservation core (plain `SPComp`).**  If two `SPComp`
-    computations `c`, `c'` are equal, then any `sdist`-bound to an ideal
-    computation transfers from `c` to `c'`: equal
-    computations have equal `sdist`, hence the same security bound. -/
+/-- If two `SPComp` computations `c`, `c'` are equal, then an `sdist` bound to an ideal
+    computation transfers from `c` to `c'`. -/
 theorem spDenote_eq_preserves_sdist {α β : Type}
     {c c' ideal : SPComp β} {ε : ℝ≥0∞}
     (h_eq : c = c')
@@ -92,21 +58,12 @@ theorem spDenote_eq_preserves_sdist {α β : Type}
     sdist (fun _ : α => c') (fun _ : α => ideal) ≤ ε :=
   h_eq ▸ h_sec
 
-/-! ## 2. `progEquiv` at the `SPComp` level, from `compile_correct`
+/-! ## 2. Equal `srcDenote` gives equal `interpSP` interpretations -/
 
-`interpSP_callfree` collapses the call-free ITree denotation to
-`SPComp.pure (srcDenote …)`.  So two call-free programs whose big-step
-`srcDenote` agree have *equal* `SPComp` interpretations — this is precisely
-`progEquiv` (denotational equality) at the `SPComp` layer, derived from the
-deterministic `compile_correct`. -/
-
-/-- **`progEquiv` at the `SPComp` level (call-free fragment).**  If two
-    call-free scalar-arith programs `ps`, `qs` have equal big-step semantics on
-    the given states (`srcDenote ps rs₁ = srcDenote qs rs₂` — the
-    `compile_correct` equality), then their `interpSP` interpretations are
-    *equal* `SPComp` computations.  Proven by rewriting both sides with
-    `interpSP_callfree` and the `srcDenote` agreement.  This is the
-    `interpSP`-level `progEquiv` that feeds `spDenote_eq_preserves_sdist`. -/
+/-- If two call-free scalar-arith programs `ps`, `qs` have equal big-step semantics on the
+    given states (`srcDenote ps rs₁ = srcDenote qs rs₂`), then their `interpSP`
+    interpretations are equal `SPComp` computations. Proved by rewriting both sides with
+    `interpSP_callfree`. -/
 theorem interpSP_progEquiv
     (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
     (ps qs : List ArithSrc) (rs₁ rs₂ : RustState)
@@ -114,29 +71,13 @@ theorem interpSP_progEquiv
     interpSP h (itreeDenoteArith ps rs₁) = interpSP h (itreeDenoteArith qs rs₂) := by
   rw [interpSP_callfree, interpSP_callfree, hsrc]
 
-/-! ## 3. The main theorem
+/-! ## 3. Transfer of an `sdist` bound -/
 
-Compose §2 (denotation equality from `compile_correct`) with §1 (equal
-denotation ⇒ same `sdist`-bound).  The hypothesis is the compile-correctness
-`srcDenote` agreement between source and compiled program; the conclusion is the
-security bound on the compiled kernel. -/
-
-/-- **Compiled kernel preserves cryptographic security.**
-
-    Let `srcP` be a source call-free scalar-arith program and `tgtP` its
-    compilation (modelled here as a call-free program — the compiled block's
-    big-step behaviour), with `hcc : srcDenote srcP rs = srcDenote tgtP rs` the
-    `compile_correct` equality on the run state.  If the *source* kernel's
-    `SPComp` interpretation is `ε`-close (in `sdist`) to an `ideal` computation,
-    then so is the *compiled* kernel's.
-
-    Security preservation is obtained **by composition**: `interpSP_progEquiv`
-    (compile_correct ⇒ equal `SPComp` denotation, §2) feeds
-    `spDenote_eq_preserves_sdist` (equal denotation ⇒ same bound, §1).  No fresh
-    probabilistic-RHL IND-CCA argument is needed.
-
-    `(secure compilation via RrHP + deterministic-to-pure lift)` -/
-theorem compiled_preserves_security {α : Type}
+/-- **An `sdist` bound transfers along an equality of `srcDenote`.** For call-free
+    scalar-arith programs `srcP`, `tgtP` with `srcDenote srcP rs = srcDenote tgtP rs`, if the
+    `SPComp` interpretation of `srcP` is within `sdist ≤ ε` of `ideal`, so is that of `tgtP`.
+    It composes `interpSP_progEquiv` with `spDenote_eq_preserves_sdist`. -/
+theorem sdist_transfer_of_srcDenote_eq {α : Type}
     (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
     (srcP tgtP : List ArithSrc) (rs : RustState)
     (ideal : SPComp RustState) {ε : ℝ≥0∞}
