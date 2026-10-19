@@ -32,24 +32,24 @@ statement that the word bounds hold:
 
 At the bytes, the field and EC families have one theorem each over their records
 (`field_correct_bytes`, `Haxc/FieldBytes.lean`; `ec_correct_bytes`, `Haxc/EcBytes.lean`);
-the NTT byte theorems were removed. The per-instance hypothesis is acceptance by
-`compileJ` (`Haxc/BackHalf.lean`), the earlier back half, with the decided gate of
-`backend_correct`; the compiler `compileA` uses the region back half `compileRegion`, and
-the byte theorems keep the hypothesis on `compileJ` until they are restated over the
-region back half (plan row B2). For a result
-`(P', bytes)` of `compileJ` on the route program of the instance, the theorem gives a
-halting run of the decoded bytes from which the layout reads back the value of the
-template. An instance with an accepted program is therefore a theorem together with the
-result of running the gate.
+the NTT families have no byte theorem. The per-instance hypothesis is acceptance by the
+region back half `compileRegion` (`Haxc/RegionBackend.lean`), the back half of the compiler
+`compileA`, with the decided gate of `compileRegion_correct`. For a result `(P', bytes)` of
+`compileRegion` on the route program of the instance, the theorem gives a halting run of
+the decoded bytes from which the layout reads back the value of the template. An instance
+with an accepted program is therefore a theorem together with the result of running the
+gate.
 
 ## Instances at the bytes
 
-The executables `field-bytes-emit` and `mpn-bytes-emit` run the earlier back half `compileJ` and record each
-accepted program in `scripts/acceptance-registry.tsv` (columns `accepted`, `bytes`,
-`ct`). The `compileJ` and `compileOf` calls the executables run are the hypotheses of the
-theorems named below (`Haxc/FieldBytesEmitMain.lean`). The `ct` column is the result of
-the byte-level constant-time checker on the accepted bytes (`ctGateB`, `Haxc/CTPub.lean`),
-with `%rsp` and the array pointers public and the limb contents and scalar words secret.
+The tables `field-bytes-emit` and `mpn-bytes-emit` of the executable `catcrypt-emit`
+(`Haxc/EmitRegistry.lean`) run `compileRegion` on the route program of each instance; these
+calls are the hypotheses of the theorems named below. The instances are kernels: their rows
+in `scripts/acceptance-registry.tsv` have role `kernel` and are report-only, so a refusal or
+a change of size on them decides nothing, and the registry gates the construct probes of the
+census. With `--ct`, `catcrypt-emit` prints the verdict of the byte-level constant-time
+checker on the accepted bytes (`ctGateB`, `Haxc/CTPub.lean`), with `%rsp` and the array
+pointers public and the limb contents and scalar words secret.
 
 ### Fields (F1): Montgomery multiply, square, add, subtract
 
@@ -67,16 +67,17 @@ denotes the Montgomery form of the product at every limb count
 
 ### Lattice, symmetric, EC, mpn, towers (F3) and the prime-ir front (F4)
 
-Instances with an accepted program. Each theorem holds for the result of `compileJ`, or
-of `compileOf` for the prime-ir row, that the registry row records.
+Instances with an accepted program. Each theorem holds for a result of `compileRegion` on
+the route program of the instance, after the field front for the prime-ir row (the
+`catcrypt-emit` rows `mpn/mpn_<f>_<n>` and `primeir/fe_mul_add_p256`).
 
-| Statement proved | Programs | Registry row: size, `ct` | Lean names |
-|---|---|---|---|
-| The decoded bytes halt in a state from which the layout reads back `n + 1` words: the sum with its carry, the difference with its borrow, the product by one word with its high word, or that product added to the destination | `mpn_add_n`, `mpn_sub_n`, `mpn_mul_1`, `mpn_addmul_1` at every `n`; accepted at `n = 4` and `n = 8` | `n = 4`: 301 B, 359 B, 369 B, 499 B; `n = 8`: 534 B, 623 B, 614 B, 992 B; `ct` yes on all eight | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct` (`Haxc/MpnBytes.lean`) |
-| The field front accepts the surface function, and the decoded bytes halt in a state from which the layout reads back the Montgomery limbs of `fe_mul_add a b c` | prime-ir `fe_mul_add` at P-256, from the surface function to the bytes | `primeir/fe_mul_add_p256`: 3901 B, `ct` yes | `fieldFront_accepts_p256` (`Haxc/FieldFrontP256.lean`), [`impArgsNF_sound`](CatCrypt/Crypto/Hax/ImpToNF.lean), `fe_mul_add_bytes_p256` (`Haxc/FieldInstances.lean`) |
+| Statement proved | Programs | Lean names |
+|---|---|---|
+| The decoded bytes halt in a state from which the layout reads back `n + 1` words: the sum with its carry, the difference with its borrow, the product by one word with its high word, or that product added to the destination | `mpn_add_n`, `mpn_sub_n`, `mpn_mul_1`, `mpn_addmul_1` at every `n`; accepted at `n = 4` and `n = 8` | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct` (`Haxc/MpnBytes.lean`) |
+| The field front accepts the surface function, and the decoded bytes halt in a state from which the layout reads back the Montgomery limbs of `fe_mul_add a b c` | prime-ir `fe_mul_add` at P-256, from the surface function to the bytes | `fieldFront_accepts_p256` (`Haxc/FieldFrontP256.lean`), [`impArgsNF_sound`](CatCrypt/Crypto/Hax/ImpToNF.lean), `fe_mul_add_bytes_p256` (`Haxc/FieldInstances.lean`) |
 
 Theorems over every program the gate accepts. The hypothesis of each is the equation
-that `compileJ` returns `(P', bytes)` on the route program named.
+that `compileRegion` returns `(P', bytes)` on the route program named.
 
 | Statement proved | Programs | Lean names |
 |---|---|---|

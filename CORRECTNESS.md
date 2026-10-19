@@ -188,7 +188,9 @@ the wide moduli.
 
 A route theorem that keeps the compile hypothesis holds for every program the back half
 accepts on that route. The acceptance registry of the development repository
-(`scripts/acceptance-registry.tsv`) records the accepted programs.
+(`scripts/acceptance-registry.tsv`) gates the construct probes of the census (role
+`probe`); its kernel rows (role `kernel`), among them the template instances, are
+report-only.
 [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) has the tables per instance.
 
 ### Proofs, checks and translation validation in `haxc`

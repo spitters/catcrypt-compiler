@@ -80,9 +80,9 @@ if [ -n "$staged_lean" ] && [ -f "$dev_scripts/front-decide-lint.sh" ]; then
 fi
 
 # Gate-coverage registry: when a staged file is a gate module of the back half,
-# the acceptance executables run from the dev tree (through the build lock) and
-# every program its scripts/acceptance-registry.tsv records as accepted must still
-# be accepted. ACCEPTANCE_SKIP=1 skips the run.
+# the census runs from the dev tree (through the build lock) and every construct
+# probe its scripts/acceptance-registry.tsv records as accepted must still be
+# accepted; kernel rows are report-only. ACCEPTANCE_SKIP=1 skips the run.
 gate_re='^CatCrypt/Crypto/SecureCompilation/(X86Backend/(ImageStraight[^/]*|DecodePrinted[^/]*|OwnedLprogTV[^/]*|LprogBytes[^/]*|TwoAddrLegalize|LprogOptPipeline)|VIR/JasminLprogExport/ExportPhys[^/]*)\.lean$'
 if printf '%s\n' "$staged_lean" | grep -qE "$gate_re" \
    && [ -f "$dev_scripts/acceptance-registry-check.sh" ]; then
