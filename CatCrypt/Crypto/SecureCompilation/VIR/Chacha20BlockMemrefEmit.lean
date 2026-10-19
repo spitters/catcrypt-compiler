@@ -10,6 +10,8 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockEmit
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddMemrefEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.BignumAddMemrefEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 
 /-!
 # The whole ChaCha20 block emitted with ALL 16 output words written to an output memref
@@ -24,7 +26,7 @@ KAT — a real ChaCha20 block produces a 64-byte (16-word) keystream block.
 This file closes that multi-output residual exactly the way
 [`BignumAddMemrefEmit.lean`](BignumAddMemrefEmit.lean) closes the 256-bit-add
 residual: it writes **all sixteen output words to a caller-provided output memref**
-(the out-pointer ABI `chacha20_block(out, p0..p31)`), via the seam-covered
+(the out-pointer ABI `chacha20_block(out, w31, …, w0)`), via the seam-covered
 runtime-index store `memrefSetDyn` (which lowers to jasmin `stackStore`). With all
 16 words written to the output buffer, every one is live — no DCE — so the emitted
 function is fairly benchable + KAT-able against HACL*.
@@ -61,8 +63,10 @@ word.
   recoverable), independent of the buffer's prior contents.
 * `chacha20BlockMemrefJasmin` — lowered all the way to `Com jasminDialect` (the whole
   16-word result emitted via `stackStore`, no DCE).
-* `chacha20BlockMemrefJazz` / `emit` — the whole-function `.s` text, symbol
-  `chacha20_block`, to `bench/chacha_compare/gen_com/chacha20_block_memref.s`.
+* `chacha20BlockMemrefSig`, `chacha20BlockMemrefJazz` / `emit` — the signature and the
+  whole-function `.jazz` text printed by the single Jasmin printer
+  (`JasminPrintText.emitJazzN`), symbol `chacha20_block`, written to
+  `bench/chacha_compare/gen_com/chacha20_block_memref.s`.
 -/
 
 @[expose] public section
@@ -606,20 +610,34 @@ def chacha20BlockMemrefJasmin :
     Com jasminDialect (mapCtx inCtxtM) (mapTy (.memref 16)) :=
   (cryptoDialectToJasminCom chacha20BlockMemrefCom).get chacha20BlockMemref_jasmin_isSome
 
-/-- The whole-function `.jazz`/`.s` text of the whole ChaCha20 block with the
-    out-pointer ABI, symbol `chacha20_block`. -/
-def chacha20BlockMemrefJazz : String :=
-  JasminPrint.emitJazz "chacha20_block" chacha20BlockMemrefJasmin
+open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (JazzSig ptyOf)
 
-/-- **The public emit action.** Write the whole-block memref `.s` (from one `Com
+/-- The signature of the out-pointer function: the output buffer `out`, a
+    `reg mut ptr u64[16]` parameter that holds the result, followed by the 32 input words
+    as `reg u64` parameters in the reverse order of the context, `w31, …, w0`. -/
+def chacha20BlockMemrefSig : JazzSig (mapCtx inCtxtM) (mapTy (.memref 16)) where
+  params := ("out", .regPtr true, ptyOf (.stackArr 64 16)) ::
+    (List.range 32).reverse.map fun i => ("w" ++ toString i, .reg, ptyOf (.reg 64))
+  result := (.regPtr true, ptyOf (.stackArr 64 16))
+  resultParam := some 0
+  params_length := rfl
+
+/-- The `.jazz` text of the whole ChaCha20 block with the out-pointer ABI, symbol
+    `chacha20_block`, printed by the single Jasmin printer; `none` when `nfToJasmin` or
+    the checked printer refuses. A returned text parses to the lowered unit
+    (`JasminPrintText.emitJazzN_parse`). -/
+def chacha20BlockMemrefJazz : Option String :=
+  JasminPrintText.emitJazzN "chacha20_block" chacha20BlockMemrefSig chacha20BlockMemrefJasmin
+
+/-- **The public emit action.** Write the whole-block memref `.jazz` text (from one `Com
     catCryptDialect` lowered through the seam) to the bench gen-from-Com directory,
-    under the symbol `chacha20_block`. With all 16 output words written to the output
-    buffer, no `jasminc` DCE drops them — fairly benchable + KAT-able vs HACL*. The
-    orchestrator assembles + perf-compares against HACL* (`bench/chacha_compare`). -/
+    under the symbol `chacha20_block`, and fail when the printer refuses. With all 16
+    output words written to the output buffer, no `jasminc` DCE drops them. -/
 def emit : IO Unit := do
+  let some s := chacha20BlockMemrefJazz
+    | throw (IO.userError "chacha20_block_memref: the Jasmin printer refused the program")
   IO.FS.createDirAll "bench/chacha_compare/gen_com"
-  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_memref.s"
-    chacha20BlockMemrefJazz
+  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_memref.s" s
   IO.println "CatCrypt whole-block memref emit OK : bench/chacha_compare/gen_com/chacha20_block_memref.s"
 
 /-! ## Artifact generation at elaboration
