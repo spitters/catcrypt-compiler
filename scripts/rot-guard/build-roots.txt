@@ -581,6 +581,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.FheMontMulLaw
 CatCrypt.Crypto.SecureCompilation.VIR.FheShoupMulLaw
 CatCrypt.Crypto.SecureCompilation.VIR.FibProverSkeleton
 CatCrypt.Crypto.SecureCompilation.VIR.FibTraceGenEmit
+CatCrypt.Crypto.SecureCompilation.VIR.FieldChainDialect
 CatCrypt.Crypto.SecureCompilation.VIR.FieldCmpSum
 CatCrypt.Crypto.SecureCompilation.VIR.FieldDerivedFieldEmit
 CatCrypt.Crypto.SecureCompilation.VIR.FndsaEmit
@@ -679,6 +680,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.MultiLoweringRegionTypes
 CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 CatCrypt.Crypto.SecureCompilation.VIR.NFPassLeakMC
+CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapM
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapRel
 CatCrypt.Crypto.SecureCompilation.VIR.NFRegionLaws
 CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin
