@@ -11,8 +11,8 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 public meta import CatCrypt.Crypto.Number.MontgomeryReduction
 public import CatCrypt.Crypto.Number.MontgomeryReduction
 
@@ -289,23 +289,44 @@ theorem montRedcWordSpec_realizes_montgomeryReduce :
           ((BitVec.ofNat 64 0).toNat + (BitVec.ofNat 64 1).toNat * Rword) := by
   native_decide
 
-/-! ## 7. Emit: the lowered jasmin REDC step reaches `.s`/x86
+/-! ## 7. Emit: the lowered jasmin REDC step prints to `.jazz`
 
-`JasminPrint.emitJazz` lowers the jasmin `Com` to jasminc-compilable `.jazz`/`.s`
-text through the existing AST printer (the same path the bench emit uses). The
-orchestrator runs `jasminc -arch x86-64` on the emitted file to micro-bench the
-single-word Montgomery REDC step. -/
+`JasminPrintText.emitJazzN` lowers the jasmin `Com` with `nfToJasmin` and prints the
+unit with the checked printer; a returned text parses back to that unit
+(`JasminPrintText.emitJazzN_parse`). -/
 
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (emitJazz)
+open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (JazzSig ptyOf nfToJasmin)
 
-/-- The jasminc-compilable `.jazz`/`.s` text of the lowered single-word Montgomery
-    REDC step (symbol `mont_redc_step`). -/
-def montRedcWordJazz : String := emitJazz "mont_redc_step" montRedcWordJasmin
+/-- The signature of the REDC step: the four `reg u64` parameters in the reverse order
+    of the context, `qp, q, Thi, Tlo` (printed `a0, …, a3`), and a `reg u64` result. -/
+def montRedcWordSig : JazzSig (mapCtx Γᵣ) (mapTy (.sword 64)) where
+  params := ["qp", "q", "Thi", "Tlo"].map fun v => (v, .reg, ptyOf (.reg 64))
+  result := (.reg, ptyOf (.reg 64))
+  resultParam := none
+  params_length := rfl
 
-/-- Emit driver: write the lowered Montgomery REDC step to a `.s` file for the
-    orchestrator to `jasminc` + micro-bench. -/
+/-- The `.jazz` text of the lowered single-word Montgomery REDC step, symbol
+    `mont_redc_step`, printed by the single Jasmin printer; `none` when `nfToJasmin`
+    or the checked printer refuses. A returned text parses to the lowered unit
+    (`JasminPrintText.emitJazzN_parse`). -/
+def montRedcWordJazz : Option String :=
+  JasminPrintText.emitJazzN "mont_redc_step" montRedcWordSig montRedcWordJasmin
+
+-- The text exists and carries the high-half multiply (`bvMulHi` lowered to `mulhi`,
+-- printed as `#MULX_lo_hi_64`) and the carry chain (`#ADC_64`).
+#kat montRedcWordJazz.any fun s => s.contains "MULX" && s.contains "ADC"
+
+-- The lowered function has four parameters and a body of 15 instructions.
+#kat (nfToJasmin montRedcWordSig "mont_redc_step" (NFProg.ofCom montRedcWordJasmin)).any
+  fun u => u.fns.map (fun f => (f.fd.params.length, f.fd.body.length)) == [(4, 15)]
+
+/-- Emit driver: write the `.jazz` text of the lowered Montgomery REDC step to
+    `bench/bls12381_fieldmul_compare/gen_com/mont_redc_step.s`, and fail when the
+    printer refuses. -/
 def emit : IO Unit := do
+  let some s := montRedcWordJazz
+    | throw (IO.userError "mont_redc_step: the Jasmin printer refused the program")
   IO.FS.createDirAll "bench/bls12381_fieldmul_compare/gen_com"
-  IO.FS.writeFile "bench/bls12381_fieldmul_compare/gen_com/mont_redc_step.s" montRedcWordJazz
+  IO.FS.writeFile "bench/bls12381_fieldmul_compare/gen_com/mont_redc_step.s" s
 
 end CatCrypt.Crypto.SecureCompilation.VIR.MontRedcCatCryptEmit

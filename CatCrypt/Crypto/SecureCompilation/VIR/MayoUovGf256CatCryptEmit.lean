@@ -9,8 +9,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.AesRoundCatCryptEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.AesRoundCatCryptEmit
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 
 /-!
 # The MAYO / UOV GF(2⁸) MAC kernel on the high `catCryptDialect`
@@ -268,15 +268,15 @@ theorem gf256MacKernelW_kats :
 
 The MAC step `gf256StepAccCom k` is straight-line over `bvShiftR`/`bvAnd`/
 `bvSub`/`bvXor` — every op is in the `DialectToJasminCom.cryptoDialectToJasminCom`
-covered fragment, so the seam lowers the whole step to `Com jasminDialect`, and
-`JasminPrint.emitJazz` renders it to jasminc-compilable `.s`/`.jazz` for the
-orchestrator to `jasminc` + micro-bench. We emit the `k = 0` instance (the first
+covered fragment, so the seam lowers the whole step to `Com jasminDialect`, and the
+single Jasmin printer (`JasminPrintText.emitJazzN`: `nfToJasmin` followed by the
+checked printer) prints it to `.jazz`. We emit the `k = 0` instance (the first
 bit-serial MAC step, the hot UOV/MAYO GF(2⁸) multiply-accumulate body). -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect)
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom (cryptoDialectToJasminCom)
 open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy mapCtx)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (emitJazz)
+open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (JazzSig ptyOf nfToJasmin)
 
 /-- The GF(2⁸) MAC step lowers: every op (`bvShiftR`/`bvAnd`/`bvSub`/`bvXor`) is
     in the seam's covered fragment. -/
@@ -288,15 +288,36 @@ theorem gf256StepAccCom_lowers :
 def gf256MacStepJasmin : Com jasminDialect (mapCtx stepΓ) (mapTy T8) :=
   (cryptoDialectToJasminCom (gf256StepAccCom 0)).get gf256StepAccCom_lowers
 
-/-- The jasminc-compilable `.s`/`.jazz` text of the lowered GF(2⁸) MAC step
-    (symbol `mayo_gf256_mac`). -/
-def mayoGf256MacJazz : String := emitJazz "mayo_gf256_mac" gf256MacStepJasmin
+/-- The signature of the GF(2⁸) MAC step: the six `reg u8` parameters in the reverse
+    order of the context, `c1b, c0, c1, b, a, acc` (printed `a0_2, …, a5_2`), and a
+    `reg u8` result. -/
+def gf256MacStepSig : JazzSig (mapCtx stepΓ) (mapTy T8) where
+  params := ["c1b", "c0", "c1", "b", "a", "acc"].map fun v => (v, .reg, ptyOf (.reg 8))
+  result := (.reg, ptyOf (.reg 8))
+  resultParam := none
+  params_length := rfl
 
-/-- Emit driver: write the lowered GF(2⁸) MAC step to a `.s` file for the
-    orchestrator to `jasminc` + micro-bench. -/
+/-- The `.jazz` text of the lowered GF(2⁸) MAC step, symbol `mayo_gf256_mac`, printed
+    by the single Jasmin printer; `none` when `nfToJasmin` or the checked printer
+    refuses. A returned text parses to the lowered unit
+    (`JasminPrintText.emitJazzN_parse`). -/
+def mayoGf256MacJazz : Option String :=
+  JasminPrintText.emitJazzN "mayo_gf256_mac" gf256MacStepSig gf256MacStepJasmin
+
+-- The text exists and carries the masked conditional add (`&=`, `-=`, `^=`).
+#kat mayoGf256MacJazz.any fun s => s.contains "&=" && s.contains "-=" && s.contains "^="
+
+-- The lowered function has six parameters and a body of 11 instructions.
+#kat (nfToJasmin gf256MacStepSig "mayo_gf256_mac" (NFProg.ofCom gf256MacStepJasmin)).any
+  fun u => u.fns.map (fun f => (f.fd.params.length, f.fd.body.length)) == [(6, 11)]
+
+/-- Emit driver: write the `.jazz` text of the lowered GF(2⁸) MAC step to
+    `bench/uov_compare/gen_com/mayo_gf256_mac.s`, and fail when the printer refuses. -/
 def emit : IO Unit := do
+  let some s := mayoGf256MacJazz
+    | throw (IO.userError "mayo_gf256_mac: the Jasmin printer refused the program")
   IO.FS.createDirAll "bench/uov_compare/gen_com"
-  IO.FS.writeFile "bench/uov_compare/gen_com/mayo_gf256_mac.s" mayoGf256MacJazz
+  IO.FS.writeFile "bench/uov_compare/gen_com/mayo_gf256_mac.s" s
 
 /-! ## Artifact generation at elaboration
 

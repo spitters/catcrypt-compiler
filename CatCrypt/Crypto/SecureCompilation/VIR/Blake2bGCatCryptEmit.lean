@@ -7,8 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxBlake2b
 
@@ -28,13 +28,14 @@ straight-line `Com catCryptDialect` program over the dialect's width-64 word ops
 committed `catCryptDialect → jasminDialect` seam
 (`DialectToJasminCom.cryptoDialectToJasminCom`), composing the seam's
 denote-preservation so the *lowered jasmin program* denotes to the same RFC spec.
-The lowered jasmin `Com` then emits to `.jazz`/x86 via `JasminPrint.emitJazz`.
+The lowered jasmin `Com` then prints to `.jazz` through the single Jasmin printer
+(`JasminPrintText.emitJazzN`: `nfToJasmin` followed by the checked printer).
 
 ```
 RFC-7693 §3.1 BLAKE2b G  (CompileFromHaxBlake2b.blake2bG{a,b,c,d}Spec, the spec)
         ▲                         ▲
         │ denote = spec           │ denote = spec  (via the seam)
-   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazz──▶ .jazz/x86
+   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazzN──▶ .jazz
 ```
 
 ## The 14-op straight-line block (`w = 64`)
@@ -66,9 +67,11 @@ BLAKE2b G rotates *right*, so each rotate maps **directly** to `bvRor 64 n`
   `blake2bG_jasmin_denote{A,B,C,D}` proves the lowered *jasmin* `Com` denotes to
   the same RFC spec component, composing the catCrypt denote with the seam's
   `cryptoDialectToJasminCom_denote_eq'`.
-* `blake2bGJazzA*` — the lowered jasmin program emits to `.jazz` text through
-  `JasminPrint.emitJazz`, with a render smoke pinning the op shape (`#ROR_64`,
-  `+`, `^` reach the printer) and the `(params, body) = (6, 14)` shape.
+* `blake2bGSig`, `blake2bGJazzA` — the signature and the `.jazz` text of the lowered
+  `a`-output program printed by `JasminPrintText.emitJazzN`; a returned text parses to
+  the unit `nfToJasmin` returns (`JasminPrintText.emitJazzN_parse`). Checks pin that
+  the text exists and carries `#ROR_64`, `+` and `^`, and the parameter and
+  instruction counts of the lowered function.
 
 All goals closed.
 -/
@@ -433,33 +436,35 @@ theorem blake2bG_jasmin_denoteD (a b c d x y : BitVec 64) :
   rw [ctTransTy_sword (w := 64)]
   exact blake2bG_catcrypt_denoteD a b c d x y
 
-/-! ## 7. Emit: the lowered jasmin program reaches `.jazz`/x86
+/-! ## 7. Emit: the lowered jasmin program prints to `.jazz`
 
-`JasminPrint.emitJazz` lowers the jasmin `Com` to `.jazz` text through the
-existing AST printer (the same path the bench emit uses). The render smoke pins
-that the G mixing function's rotate and arithmetic ops survive to the printer. -/
+`JasminPrintText.emitJazzN` lowers a jasmin `Com` with `nfToJasmin` and prints the
+unit with the checked printer; a returned text parses back to that unit
+(`JasminPrintText.emitJazzN_parse`). -/
 
-/-- The `.jazz` text of the lowered `a`-output BLAKE2b G word. -/
-def blake2bGJazzA : String := JasminPrint.emitJazz "blake2b_g_a" blake2bGJasminA
+open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (JazzSig ptyOf nfToJasmin)
 
-/- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
-    scalar right-rotate asm op (`#ROR_64`) — the rotate of the G mixing function
-    reaches the x86 printer through the whole
-    `Com catCryptDialect → Com jasminDialect → .jazz` chain (the `bvRor` op lowered
-    to jasmin `rorImm`, which the printer renders as `#ROR_64`). -/
-#guard (JasminPrint.strContains blake2bGJazzA "ROR")
+/-- The signature of a BLAKE2b G output word: the six `reg u64` parameters in the
+    reverse order of the context, `y, x, d, c, b, a`, and a `reg u64` result. -/
+def blake2bGSig : JazzSig (mapCtx GCtx) (mapTy T64) where
+  params := ["y", "x", "d", "c", "b", "a"].map fun v => (v, .reg, ptyOf (.reg 64))
+  result := (.reg, ptyOf (.reg 64))
+  resultParam := none
+  params_length := rfl
 
-/- **Render smoke: the add survives.** -/
-#guard (JasminPrint.strContains blake2bGJazzA "+")
+/-- The `.jazz` text of the lowered `a`-output BLAKE2b G word, symbol `blake2b_g_a`,
+    printed by the single Jasmin printer; `none` when `nfToJasmin` or the checked
+    printer refuses. -/
+def blake2bGJazzA : Option String :=
+  JasminPrintText.emitJazzN "blake2b_g_a" blake2bGSig blake2bGJasminA
 
-/- **Render smoke: the xor survives.** -/
-#guard (JasminPrint.strContains blake2bGJazzA "^")
+-- The text exists and carries the rotate (`bvRor` lowered to `rorImm`, printed as
+-- `#ROR_64`), the add and the xor.
+set_option kat.ms 500 in
+#kat blake2bGJazzA.any fun s => s.contains "ROR" && s.contains "+" && s.contains "^"
 
-/-- **Shape: six `reg 64` inputs and 14 body instructions** — the same
-    parameter/op count the catCrypt block carries (14 ops, no spilled binds),
-    confirming the whole G mixing function lands in the jasmin function. -/
-theorem blake2bGJasminA_shape :
-    ((JasminPrint.lowerComToProg "blake2b_g_a" blake2bGJasminA).funcs.head?.map
-      (fun fd => (fd.params.length, fd.body.length))) = some (6, 14) := by native_decide
+-- The lowered function has six parameters and a body of 29 instructions.
+#kat (nfToJasmin blake2bGSig "blake2b_g_a" (NFProg.ofCom blake2bGJasminA)).any
+  fun u => u.fns.map (fun f => (f.fd.params.length, f.fd.body.length)) == [(6, 29)]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Blake2bGCatCryptEmit
