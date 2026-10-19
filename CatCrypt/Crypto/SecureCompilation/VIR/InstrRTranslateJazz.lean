@@ -14,18 +14,26 @@ public import CatCrypt.Crypto.Jasmin.JazzToInstrRFacts
 
 `translateFn` translates a function `JazzFn` of a Jasmin compilation unit to a function
 declaration of the `psem.v` mirror by `InstrRTranslateExt`: the parameters and results by
-`translateVarIExt`, the body by `translateCmdExt`, the parameter and result types read off
-the translated variables. `translateUnit` translates the functions of a unit to a mirror
-program `Prog` without globals; the extern signatures of a unit declare linked callees and
-contribute no function to the program.
+`translateVarIExt`, the body by `translateCmdExt` followed by the typing `typeC`, the
+parameter and result types read off the translated variables. `translateUnit` translates the
+functions of a unit to a mirror program `Prog` without globals; the extern signatures of a
+unit declare linked callees and contribute no function to the program.
+
+The typing `typeC` writes each integer constant in word position as jasminc's typing does,
+`Papp1 (Oword_of_int ws) (Pconst z)`: the right-hand side of an assignment at the assigned
+word type, the operands of a word operator, a shift count at `u8`, and the operands of an
+asm operation at the operand types `jazzArgTys` of `JazzAsmSem`. The typing acts on the
+mirror program; the Jasmin unit and its printed text do not contain the casts.
 
 The image theorems state, for each instruction shape of the op table of `nfToJasmin`, the
 mirror command `translateCmdExt` returns, over the mirror builders `mpv` (a local read),
 `masgn` (an assignment at the type of its target) and `mcopn` (an asm operation without
-tag), in the manner of `InstrRTranslateExt.translateInstrRExt_ccall`.
+tag), in the manner of `InstrRTranslateExt.translateInstrRExt_ccall`; `typeC_mkCmd`,
+`typeI_cinCode` and `typeI_masgn_const` give their typed form.
 
 ## Main definitions
 
+* `typeE`, `typeI`, `typeC`: the typing of constants in word position.
 * `translateFn`, `translateUnit`: the translation of a function and of a unit.
 * `mpv`, `masgn`, `mcopn`, `mkCmd`, `mcf`: the mirror builders.
 
@@ -58,7 +66,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslate
 open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslateExt
 open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin
-open CatCrypt.Crypto.Jasmin.CoqSemMirror (mkLvar)
+open CatCrypt.Crypto.Jasmin.CoqSemMirror (mkLvar OpKind CmpKind Sopn)
+open CatCrypt.Crypto.SecureCompilation.VIR.JazzAsmSem (jazzArgTys)
 open CatCrypt.Crypto.Jasmin.JazzToInstrR (opnNoneTys opnNoneTys_ADD_64 opnNoneTys_ADC_64
   opnNoneTys_NEG_64 opnNoneTys_CMP_64 opnNoneTys_MULX_64)
 
@@ -71,16 +80,112 @@ abbrev MFunDef := CatCrypt.Crypto.Jasmin.CoqSemMirror.FunDef
 /-- A mirror program. -/
 abbrev MProg := CatCrypt.Crypto.Jasmin.CoqSemMirror.Prog
 
-/-! ## 1. Functions and units -/
+/-! ## 1. Constants in word position -/
+
+/-- The operand type of an operation of kind `k`. -/
+def kindTy : OpKind → MAtype
+  | .Op_int => .aint
+  | .Op_w ws => .aword ws
+
+/-- The type of the count of a shift of kind `k`: `u8` for a word shift. -/
+def countTy : OpKind → MAtype
+  | .Op_int => .aint
+  | .Op_w _ => .aword .U8
+
+/-- The operand type of a comparison of kind `k`. -/
+def cmpTy : CmpKind → MAtype
+  | .Cmp_int => .aint
+  | .Cmp_w _ ws => .aword ws
+
+/-- The operand type of a unary operator (`type_of_op1` of `sem_op_typed.v`). -/
+def op1Ty : MSOp1 → MAtype
+  | .Oword_of_int _ => .aint
+  | .Oint_of_word _ ws => .aword ws
+  | .Osignext _ wsi => .aword wsi
+  | .Ozeroext _ wsi => .aword wsi
+  | .Onot => .abool
+  | .Olnot ws => .aword ws
+  | .Oneg k => kindTy k
+
+/-- The operand types of a binary operator (`type_of_op2` of `sem_op_typed.v`): a shift
+count is a `u8`. -/
+def op2Tys : MSOp2 → MAtype × MAtype
+  | .Obeq | .Oand | .Oor => (.abool, .abool)
+  | .Oadd k | .Omul k | .Osub k | .Odiv _ k | .Omod _ k | .Oeq k | .Oneq k =>
+      (kindTy k, kindTy k)
+  | .Olsl k | .Oasr k => (kindTy k, countTy k)
+  | .Oland ws | .Olor ws | .Olxor ws => (.aword ws, .aword ws)
+  | .Olsr ws | .Oror ws | .Orol ws => (.aword ws, .aword .U8)
+  | .Olt k | .Ole k | .Ogt k | .Oge k => (cmpTy k, cmpTy k)
+
+/-- The integer constant `z` at the type `ty`: `Papp1 (Oword_of_int ws) (Pconst z)` at a word
+type, as jasminc's typing writes an integer literal in word position, and `Pconst z`
+otherwise. -/
+def typeConst : MAtype → Int → MPexpr
+  | .aword ws, z => .Papp1 (.Oword_of_int ws) (.Pconst z)
+  | _, z => .Pconst z
+
+/-- The typing of an expression at the type `ty`: each integer constant becomes `typeConst`
+at the type of its position, the operand types of the operators, `int` for an array index
+and `u64` for an address. -/
+def typeE : MAtype → MPexpr → MPexpr
+  | ty, .Pconst z => typeConst ty z
+  | _, .Pget al aa ws x i => .Pget al aa ws x (typeE .aint i)
+  | _, .Psub aa ws n x i => .Psub aa ws n x (typeE .aint i)
+  | _, .Pload al ws e => .Pload al ws (typeE (.aword .U64) e)
+  | _, .Papp1 op e => .Papp1 op (typeE (op1Ty op) e)
+  | _, .Papp2 op a b => .Papp2 op (typeE (op2Tys op).1 a) (typeE (op2Tys op).2 b)
+  | _, .Pif t c a b => .Pif t (typeE .abool c) (typeE t a) (typeE t b)
+  | _, e => e
+
+/-- The typing of an l-value: its index at `int`, its address at `u64`. -/
+def typeLv : MLval → MLval
+  | .Lmem al ws i e => .Lmem al ws i (typeE (.aword .U64) e)
+  | .Laset al aa ws x i => .Laset al aa ws x (typeE .aint i)
+  | .Lasub aa ws n x i => .Lasub aa ws n x (typeE .aint i)
+  | lv => lv
+
+/-- The typing of the operands `es` at the types `tys`, operands past the end of `tys`
+unchanged. -/
+def typeArgs : List MAtype → List MPexpr → List MPexpr
+  | ty :: tys, e :: es => typeE ty e :: typeArgs tys es
+  | _, es => es
+
+/-- The operand types of an operator: those of `jazzArgTys` for an asm operation, none for
+an operation outside it. -/
+def sopnTys : Sopn → List MAtype
+  | .Oasm o => (jazzArgTys o).getD []
+  | .Oaddcarry ws | .Osubcarry ws => [.aword ws, .aword ws, .abool]
+  | .Omulu ws => [.aword ws, .aword ws]
+  | _ => []
+
+mutual
+/-- The typing of an instruction: the right-hand side of an assignment at the assigned
+type, the operands of an operator at its operand types, and conditions at `bool`. -/
+def typeI : MInstrR → MInstrR
+  | .Cassgn lv tag ty e => .Cassgn (typeLv lv) tag ty (typeE ty e)
+  | .Copn xs tag o es => .Copn (xs.map typeLv) tag o (typeArgs (sopnTys o) es)
+  | .Cif c t e => .Cif (typeE .abool c) (typeC t) (typeC e)
+  | .Cfor v r b => .Cfor v r (typeC b)
+  | .Cwhile al b c ii a => .Cwhile al (typeC b) (typeE .abool c) ii (typeC a)
+  | i => i
+
+/-- The typing of a command: `typeI` at each instruction. -/
+def typeC : List MInstr → List MInstr
+  | [] => []
+  | .MkI ii i :: c => .MkI ii (typeI i) :: typeC c
+end
+
+/-! ## 2. Functions and units -/
 
 /-- The translation of a function: its name, the translated parameters with their types,
-the translated body, and the translated results with their types. -/
+the typed translated body (`typeC`), and the translated results with their types. -/
 def translateFn (f : CatCrypt.Crypto.Jasmin.Jazz.JazzFn) : Option (MFunName × MFunDef) :=
   match f.fd.params.mapM (fun p => translateVarIExt p.var), translateCmdExt f.fd.body,
       f.fd.results.mapM translateVarIExt with
   | some ps, some body, some rs =>
       some ({ name := f.fd.name.name },
-        { tyin := ps.map (·.v_var.vtype), params := ps, body := body,
+        { tyin := ps.map (·.v_var.vtype), params := ps, body := typeC body,
           tyout := rs.map (·.v_var.vtype), rets := rs })
   | _, _, _ => none
 
@@ -95,7 +200,7 @@ theorem translateFn_eq_some (f : CatCrypt.Crypto.Jasmin.Jazz.JazzFn) {ps : List 
     (hb : translateCmdExt f.fd.body = some body)
     (hrs : f.fd.results.mapM translateVarIExt = some rs) :
     translateFn f = some ({ name := f.fd.name.name },
-      { tyin := ps.map (·.v_var.vtype), params := ps, body := body,
+      { tyin := ps.map (·.v_var.vtype), params := ps, body := typeC body,
         tyout := rs.map (·.v_var.vtype), rets := rs }) := by
   simp [translateFn, hps, hb, hrs]
 
@@ -105,7 +210,7 @@ theorem translateUnit_mkUnit (fn : CatCrypt.Crypto.Jasmin.Jazz.JazzFn) (fd : MFu
     translateUnit (mkUnit fn) = some { pFuncs := [fd], pGlobs := [] } := by
   simp [translateUnit, mkUnit, h]
 
-/-! ## 2. Mirror builders -/
+/-! ## 3. Mirror builders -/
 
 /-- The mirror read of a local variable. -/
 def mpv (x : MVarI) : MPexpr := .Pvar (mkLvar x)
@@ -135,7 +240,7 @@ def mWOuts (x : MVarI) : List MLval := [mnb, mnb, mnb, mnb, mnb, .Lvar x]
 /-- The mirror condition `v != 0`. -/
 def mnz (v : MVarI) : MPexpr := .Papp2 (.Oneq (.Op_w .U64)) (mpv v) (.Pconst 0)
 
-/-! ## 3. Variables, expressions and commands -/
+/-! ## 4. Variables, expressions and commands -/
 
 /-- The variable of a translated local carries the translated type. -/
 theorem translateSTypeExt_of_var {x : JVar} {x' : MVarI}
@@ -230,7 +335,7 @@ theorem translateCmdExt_seqMoves {ps : List (JVar × JVar)} {ps' : List (MVarI �
   | cons hp _ ih =>
       exact .cons (translateInstrRExt_asgn hp.1 (translatePExprExt_pv hp.2)) ih
 
-/-! ## 4. Image theorems of the op table -/
+/-! ## 5. Image theorems of the op table -/
 
 /-- A discarded Boolean output translates to `mnb`. -/
 theorem translateLValExt_lnone_bool :
@@ -606,7 +711,42 @@ theorem translateInstrRExt_call (f : String) {xs as : List JVar} {xs' as' : List
       some (.Ccall (xs'.map .Lvar) { name := f } (as'.map mpv)) := by
   simp only [translateInstrRExt, mapM_lvv hxs, mapM_pv has]
 
-/-! ## 5. Completeness on the units of `nfToJasmin` -/
+/-! ### The typed images -/
+
+/-- The typing of a command of `mkCmd` is `mkCmd` of the typed instructions. -/
+theorem typeC_mkCmd : ∀ c : List MInstrR, typeC (mkCmd c) = mkCmd (c.map typeI)
+  | [] => rfl
+  | i :: c => by
+      simp only [mkCmd, List.map_cons] at typeC_mkCmd ⊢
+      rw [typeC, typeC_mkCmd c]
+
+/-- A constant assigned to a variable is typed at the type of the variable. -/
+theorem typeI_masgn_const (x : MVarI) (z : Int) :
+    typeI (masgn x (.Pconst z)) = masgn x (typeConst x.v_var.vtype z) := rfl
+
+/-- **Typed carry-in.** The constant of `#ADD_64(cin, -1)` is the word `(64u) -1`. -/
+theorem typeI_cinCode (cin t0 : MVarI) :
+    typeI (mcopn "ADD_64" (mCWOuts t0) [mpv cin, .Pconst (-1)]) =
+      mcopn "ADD_64" (mCWOuts t0) [mpv cin, .Papp1 (.Oword_of_int .U64) (.Pconst (-1))] := by
+  rfl
+
+/-- **Typed flip.** The constant of the flip `x = x ^ 1` of the comparison idiom is the word
+`(64u) 1`. -/
+theorem typeI_flip (x : MVarI) :
+    typeI (masgn x (.Papp2 (.Olxor .U64) (mpv x) (.Pconst 1))) =
+      masgn x (.Papp2 (.Olxor .U64) (mpv x) (.Papp1 (.Oword_of_int .U64) (.Pconst 1))) := rfl
+
+/-- **Typed loop condition.** The constant of the condition `v != 0` is the word `(64u) 0`. -/
+theorem typeE_mnz (v : MVarI) :
+    typeE .abool (mnz v) =
+      .Papp2 (.Oneq (.Op_w .U64)) (mpv v) (.Papp1 (.Oword_of_int .U64) (.Pconst 0)) := rfl
+
+/-- **Typed shift count.** The count of a word shift is a `u8`. -/
+theorem typeE_olsr (ty : MAtype) (ws : MWSize) (x : MVarI) (z : Int) :
+    typeE ty (.Papp2 (.Olsr ws) (mpv x) (.Pconst z)) =
+      .Papp2 (.Olsr ws) (mpv x) (.Papp1 (.Oword_of_int .U8) (.Pconst z)) := rfl
+
+/-! ## 6. Completeness on the units of `nfToJasmin` -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect JasminTy)
 
@@ -827,9 +967,6 @@ theorem opnNoneTys_asmName {base : String}
   CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys_ne_U512 ws (by cases ws <;> simp_all)
     base hb n hn
 
-theorem wsOf_ne_U512_of {w : Nat} (h : ¬w = 512) : wsOf w ≠ .U512 :=
-  fun h' => h ((wsOf_eq_U512_iff w).mp h')
-
 theorem translateCmdExt_isSome {c : List AInstrR} (h : TrC c) :
     (translateCmdExt c).isSome := by
   unfold TrC at h; exact h
@@ -951,13 +1088,13 @@ theorem okV_getElem? {l : List JVar} (h : ∀ v ∈ l, OkV v) (i : Nat) :
     OkV (l[i]?.getD dfltV) := by
   simpa [List.getD_eq_getElem?_getD] using okV_getD h i
 
-theorem ne_512_64 : ¬(64 : Nat) = 512 := by decide
-
 /-- Closes the translation goals of the emitted instructions by the closure lemmas above,
 each applied at reducible transparency. -/
 local macro "tr_solve" : tactic => `(tactic| repeat' (first
   | assumption
-  | with_reducible apply okV_getElem? | with_reducible apply ne_512_64
+  | with_reducible apply okV_getElem?
+  | ((with_reducible apply wsOf_ne_U512); first | assumption | rfl)
+  | ((with_reducible apply wsOf_ne_U512_of_bit); assumption)
   | with_reducible apply trC_nil | with_reducible apply trC_cons
   | with_reducible apply isSome_asgn | with_reducible apply isSome_pv
   | with_reducible apply isSome_cnst | with_reducible apply isSome_papp2
@@ -973,7 +1110,7 @@ local macro "tr_solve" : tactic => `(tactic| repeat' (first
   | with_reducible apply isSome_add64 | with_reducible apply isSome_adc64
   | with_reducible apply forall_mem_nil_isSome | with_reducible apply forall_mem_cons_isSome
   | with_reducible apply okV_tmp | with_reducible apply okV_cf
-  | with_reducible apply okV_mkV | with_reducible apply wsOf_ne_U512_of
+  | with_reducible apply okV_mkV
   | with_reducible apply u64_ne_U512 | with_reducible apply sint_ne_U512
   | with_reducible apply sword_ne_U512))
 
@@ -988,8 +1125,9 @@ theorem emitOp_trC {op : JasminDialect.JasminOp} {d : Nat} {x : JVar} {as : List
   all_goals simp [emitOp] at h
   all_goals obtain ⟨rfl, rfl⟩ := h
   all_goals refine ⟨?_, by first | exact hx | exact okV_getElem? has _⟩
-  all_goals simp only [opOkB, widthOkB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hop
+  all_goals simp only [opOkB, Bool.and_eq_true] at hop
   all_goals try obtain ⟨hop, hop'⟩ := hop
+  all_goals try replace hop := widthOkB_of_bmi hop
   all_goals try simp only [castCode, matCF, cmpCode, cinCode, List.cons_append, List.nil_append,
     List.append_assoc]
   all_goals repeat' split

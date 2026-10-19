@@ -43,8 +43,10 @@ the stored array is bound in the region of the store and is not read after it.
 ## Operations
 
 The binding of an operation of the fragment of `RegionExportable` (`OpPlain`) is emitted
-in two-address form, a `reg 1` value held as a `0`/`1` word of type `u64`, and a width
-outside `WSize` held at `u64`:
+in two-address form, at the word size of its width, and a `reg 1` value held as a `0`/`1`
+word of type `u64`. `jasminWidthsB` accepts the widths `8`, `16`, `32`, `64` of the x86
+general-purpose registers, `32` and `64` for `andn` and `mulhi`, and `1` only for a value
+that a comparison, a carry-out, a cast or a constant produces:
 
 * `regArith op w`: `x = a; x = x OP b`; `andn` is `_, _, _, _, _, x = #ANDN_w(a, b)`.
 * `regConst w n`: `x = n mod 2^w`.
@@ -65,8 +67,7 @@ outside `WSize` held at `u64`:
   complemented codes.
 * `select w`: the mask select `x = a; x = x ^ b; x = x & m; x = x ^ b` with `m = -c`.
 
-The asm operations are the 64-bit operations of `JazzAsmSem.jazzOps` and their
-width variants. A counted loop is `ctr = count; i = 0; while (ctr != 0) { body; moves;
+The asm operations are operations of `JazzAsmSem.jazzOps` (`emitOp_asmOps`). A counted loop is `ctr = count; i = 0; while (ctr != 0) { body; moves;
 i += 1; ctr -= 1 }`, an exit-flag loop `while { body; flag = …; moves } (flag != 0)`, a
 branch `if (c != 0) { …; moves } else { …; moves }`, and a call `Ccall DoNotInline`.
 
@@ -84,8 +85,8 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
   its agreement with the context.
 * `nfToJasminBody`, `nfToJasmin`: the lowering of a region and of a whole program.
 * `linearArrB`: the programs whose in-place stores are not observed.
-* `jasminWidthsB`: the programs without a 512-bit word, whose word sizes are those of
-  Jasmin source.
+* `jasminWidthsB`: the programs whose words are those of the x86 general-purpose
+  registers.
 * `cmdErasedB`: the commands the erasure leaves unchanged.
 
 ## Main results
@@ -95,6 +96,7 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
 * `nfToJasmin_erase`: the erasure of every unit `nfToJasmin` returns is that unit without
   its extern signatures.
 * `cmdErase_of`: a command that passes `cmdErasedB` is its own erasure.
+* `emitOp_asmOps`: every asm operation the lowering emits is an operation of `jazzOps`.
 * `nfToJasmin_wellFormed`: every unit `nfToJasmin` returns is well formed.
 -/
 
@@ -293,13 +295,6 @@ def asgn (x : JVar) (e : PExpr) : InstrR := .Cassgn (lvv x) .AT_none x.vtype e
 
 /-- The name of the asm operation `base` at the word size `ws`. -/
 def asmName (base : String) (ws : WSize) : String := base ++ "_" ++ toString ws.bits
-
-/-- The 64-bit asm operations the lowering emits. -/
-def asmOps64 : List String :=
-  ["ADD_64", "ADC_64", "NEG_64", "CMP_64", "ANDN_64", "MULX_lo_hi_64"]
-
-/-- The 64-bit asm operations the lowering emits are operations of `jazzOps`. -/
-theorem asmOps64_sub_jazzOps : ∀ o ∈ asmOps64, o ∈ jazzOps := by decide
 
 /-- The l-values of the outputs `outs` of an asm operation with the output types `tys`
 from position `k`: `_` at the type of its position (`u64` past the end) for `none`. -/
@@ -574,24 +569,36 @@ def linearArrB {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) : Bool :=
   linGo p Γ.length
 
-/-! ## 5b. The word sizes of Jasmin source -/
+/-! ## 5b. The word sizes of the x86 registers -/
 
-/-- A width other than `512`: its word size `wsOf w` is one of the six word sizes of
-Jasmin source (`wsOf_eq_U512_iff`). -/
-def widthOkB (w : Nat) : Bool := w != 512
+/-- A width of an x86 general-purpose register: `8`, `16`, `32` or `64`. -/
+def widthOkB (w : Nat) : Bool := w == 8 || w == 16 || w == 32 || w == 64
 
-/-- A dialect type whose words and array elements have a word size of Jasmin source. -/
+/-- The width of a register value: a width of `widthOkB`, or `1`, a comparison result or a
+carry bit, held as a `0`/`1` word. -/
+def bitOkB (w : Nat) : Bool := w == 1 || widthOkB w
+
+/-- A width at which x86 has `ANDN` and `MULX`: `32` or `64`. -/
+def bmiOkB (w : Nat) : Bool := w == 32 || w == 64
+
+/-- A dialect type whose registers have a width of `bitOkB` and whose array elements have a
+width of `widthOkB`. -/
 def tyOkB : JasminTy → Bool
-  | .reg w => widthOkB w
+  | .reg w => bitOkB w
   | .stackArr w _ => widthOkB w
   | _ => true
 
-/-- An operation whose widths, read by `emitOp` through `wsOf`, are not `512`. -/
+/-- An operation whose widths are register widths of x86: a width of `widthOkB` for every
+arithmetic, shift, memory, comparison, carry and select operation, a width of `bmiOkB` for
+`andn` and `mulhi`, and widths of `bitOkB` for `castW`. A `reg 1` value is thus produced by
+a comparison, a carry-out, a cast to width `1` or a constant, and read by `select`, a carry-in
+or a cast, and no other operation computes at width `1`. -/
 def opOkB : JasminOp → Bool
+  | .regArith .andn w | .mulhi w => bmiOkB w
   | .regArith _ w | .shrImm w _ | .shlImm w _ | .sarImm w _ | .stackLoad w _
-  | .stackStore w _ | .stackStoreImm w _ _ | .stackZero w _ | .mulhi w | .addCarryLo w
+  | .stackStore w _ | .stackStoreImm w _ _ | .stackZero w _ | .addCarryLo w
   | .addCarryHi w | .cmp _ w | .cmpImm _ w _ | .select w => widthOkB w
-  | .castW w w' => widthOkB w && widthOkB w'
+  | .castW w w' => bitOkB w && bitOkB w'
   | _ => true
 
 /-- The width check of a program: the type of every binding, of every carried value and
@@ -606,8 +613,8 @@ def widthsGo : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
   | _, _, .whileLoop (cs := cs) _ body k => cs.all tyOkB && widthsGo body && widthsGo k
   | _, _, .call (rs := rs) _ _ k => rs.all tyOkB && widthsGo k
 
-/-- The programs without a 512-bit word: the types of the context and of the results and
-the program pass `widthsGo`. Jasmin source has the six word sizes `u8` to `u256`. -/
+/-- The programs whose words are those of the x86 general-purpose registers: the types of
+the context and of the results and the program pass `widthsGo`. -/
 def jasminWidthsB {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) : Bool :=
   Γ.all tyOkB && ts.all tyOkB && widthsGo p
@@ -620,17 +627,128 @@ theorem wsOf_eq_U512_iff (w : Nat) : wsOf w = .U512 ↔ w = 512 := by
     all_goals first | assumption | cases h
   · rintro rfl; rfl
 
+/-- A width that passes `bitOkB` passes `widthOkB` or is `1`. -/
+theorem bitOkB_iff {w : Nat} : bitOkB w = true ↔ w = 1 ∨ widthOkB w = true := by
+  simp [bitOkB]
+
+/-- A width that passes `bitOkB` has a word size other than `U512`. -/
+theorem wsOf_ne_U512_of_bit {w : Nat} (h : bitOkB w = true) : wsOf w ≠ .U512 := by
+  rw [Ne, wsOf_eq_U512_iff]
+  simp only [bitOkB, widthOkB, Bool.or_eq_true, beq_iff_eq] at h
+  omega
+
 /-- A width that passes `widthOkB` has a word size other than `U512`. -/
-theorem wsOf_ne_U512 {w : Nat} (h : widthOkB w = true) : wsOf w ≠ .U512 := by
-  rw [Ne, wsOf_eq_U512_iff]; simpa [widthOkB] using h
+theorem wsOf_ne_U512 {w : Nat} (h : widthOkB w = true) : wsOf w ≠ .U512 :=
+  wsOf_ne_U512_of_bit (by simp [bitOkB, h])
+
+/-- A width that passes `bmiOkB` passes `widthOkB`. -/
+theorem widthOkB_of_bmi {w : Nat} (h : bmiOkB w = true) : widthOkB w = true := by
+  simp only [bmiOkB, widthOkB, Bool.or_eq_true, beq_iff_eq] at h ⊢
+  omega
 
 /-- The Jasmin type of a dialect type that passes `tyOkB` is not a 512-bit word. -/
 theorem styOf_ne_U512 {t : JasminTy} (h : tyOkB t = true) : styOf t ≠ .sword .U512 := by
   cases t with
   | reg w =>
       simp only [styOf, ptyOf, PType.toSType, ne_eq, SType.sword.injEq]
-      exact wsOf_ne_U512 h
+      exact wsOf_ne_U512_of_bit h
   | _ => simp [styOf, ptyOf, PType.toSType]
+
+mutual
+/-- The names of the asm operations of an instruction. -/
+def instrAsmOps : InstrR → List String
+  | .Copn _ _ o _ => [opnName o]
+  | .Cif _ t e => cmdAsmOps t ++ cmdAsmOps e
+  | .Cfor _ _ b => cmdAsmOps b
+  | .Cwhile b _ a => cmdAsmOps b ++ cmdAsmOps a
+  | _ => []
+
+/-- The names of the asm operations of a command. -/
+def cmdAsmOps : List InstrR → List String
+  | [] => []
+  | i :: is => instrAsmOps i ++ cmdAsmOps is
+end
+
+/-- At the word sizes of the x86 general-purpose registers, `asmName base` is the name
+`opName base` of `JazzAsmSem` at the mirror word size. -/
+theorem asmName_eq_opName (base : String) :
+    asmName base .U8 = JazzAsmSem.opName base .U8 ∧
+      asmName base .U16 = JazzAsmSem.opName base .U16 ∧
+      asmName base .U32 = JazzAsmSem.opName base .U32 ∧
+      asmName base .U64 = JazzAsmSem.opName base .U64 := by
+  have h : (toString (8 : Nat), toString (16 : Nat), toString (32 : Nat), toString (64 : Nat)) =
+      ("8", "16", "32", "64") := by
+    simp [Nat.repr_of_ge, Nat.repr_of_lt, Nat.digitChar_eq_six.mpr rfl,
+      Nat.digitChar_eq_four.mpr rfl, Nat.digitChar_eq_eight.mpr rfl,
+      Nat.digitChar_eq_one.mpr rfl, Nat.digitChar_eq_three.mpr rfl,
+      Nat.digitChar_eq_two.mpr rfl]
+  simp only [Prod.mk.injEq] at h
+  obtain ⟨h8, h16, h32, h64⟩ := h
+  simp only [asmName, JazzAsmSem.opName, JazzAsmSem.wsName, WSize.bits, h8, h16, h32, h64,
+    and_self]
+
+/-- The names `asmName base (wsOf w)` of the operations of `jazzOps` at a width `w`: `ADD`,
+`ADC`, `NEG`, `CMP` at a width of `widthOkB`, `ANDN` and `MULX_lo_hi` at a width of
+`bmiOkB`. -/
+theorem asmName_mem_jazzOps {w : Nat} (hw : widthOkB w = true) :
+    asmName "ADD" (wsOf w) ∈ jazzOps ∧ asmName "ADC" (wsOf w) ∈ jazzOps ∧
+      asmName "NEG" (wsOf w) ∈ jazzOps ∧ asmName "CMP" (wsOf w) ∈ jazzOps ∧
+      (bmiOkB w = true → asmName "ANDN" (wsOf w) ∈ jazzOps ∧
+        asmName "MULX_lo_hi" (wsOf w) ∈ jazzOps) := by
+  have hm : ∀ {b : String} {ws : CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize},
+      (b, ws) ∈ JazzAsmSem.jazzRows → JazzAsmSem.opName b ws ∈ jazzOps :=
+    fun h => List.mem_map_of_mem (f := fun r => JazzAsmSem.opName r.1 r.2) h
+  have hn := asmName_eq_opName
+  simp only [widthOkB, Bool.or_eq_true, beq_iff_eq] at hw
+  rcases hw with ((rfl | rfl) | rfl) | rfl
+  · rw [show wsOf 8 = .U8 from rfl, (hn _).1, (hn _).1, (hn _).1, (hn _).1]
+    exact ⟨hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      fun hb => by simp [bmiOkB] at hb⟩
+  · rw [show wsOf 16 = .U16 from rfl, (hn _).2.1, (hn _).2.1, (hn _).2.1, (hn _).2.1]
+    exact ⟨hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      fun hb => by simp [bmiOkB] at hb⟩
+  · rw [show wsOf 32 = .U32 from rfl, (hn _).2.2.1, (hn _).2.2.1, (hn _).2.2.1, (hn _).2.2.1,
+      (hn _).2.2.1, (hn _).2.2.1]
+    exact ⟨hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      fun _ => ⟨hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows])⟩⟩
+  · rw [show wsOf 64 = .U64 from rfl, (hn _).2.2.2, (hn _).2.2.2, (hn _).2.2.2, (hn _).2.2.2,
+      (hn _).2.2.2, (hn _).2.2.2]
+    exact ⟨hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows]),
+      fun _ => ⟨hm (by simp [JazzAsmSem.jazzRows]), hm (by simp [JazzAsmSem.jazzRows])⟩⟩
+
+/-- **The asm operations of the lowering are operations of `jazzOps`**: every asm operation
+name in the code `emitOp` emits for an operation that passes `opOkB` is in `jazzOps`. -/
+theorem emitOp_asmOps {op : JasminOp} {d : Nat} {x : JVar} {as : List JVar} {c : Cmd}
+    {y : JVar} (h : emitOp op d x as = some (c, y)) (hop : opOkB op = true) :
+    ∀ o ∈ cmdAsmOps c, o ∈ jazzOps := by
+  have hA : "ADD_64" ∈ jazzOps := by
+    simp [jazzOps, JazzAsmSem.jazzRows, JazzAsmSem.opName, JazzAsmSem.wsName]
+  have hC : "ADC_64" ∈ jazzOps := by
+    simp [jazzOps, JazzAsmSem.jazzRows, JazzAsmSem.opName, JazzAsmSem.wsName]
+  cases op
+  all_goals try (cases ‹JasminDialect.JasminBinOp›)
+  all_goals try (cases ‹JasminDialect.JasminCmp›)
+  all_goals simp [emitOp] at h
+  all_goals obtain ⟨rfl, rfl⟩ := h
+  all_goals simp only [opOkB] at hop
+  all_goals first
+    | (have hm := asmName_mem_jazzOps (widthOkB_of_bmi hop))
+    | (have hm := asmName_mem_jazzOps hop)
+    | skip
+  all_goals simp only [castCode, matCF, cmpCode, cinCode, copn, cmdAsmOps, instrAsmOps, asgn,
+    opnName, List.cons_append, List.nil_append, List.append_nil, List.append_assoc]
+  all_goals repeat' split
+  all_goals simp only [cmdAsmOps, instrAsmOps, List.nil_append, List.append_nil,
+    List.cons_append, List.mem_cons, or_false, forall_eq_or_imp, forall_eq,
+    List.mem_nil_iff, false_imp_iff, implies_true]
+  all_goals obtain ⟨_, h2, h3, h4, h5⟩ := hm
+  all_goals first
+    | exact (h5 hop).1 | exact (h5 hop).2 | exact ⟨hA, h2⟩ | exact ⟨hA, h2, hC⟩
+    | exact ⟨h3, hC⟩ | exact ⟨h4, hC⟩
 
 /-! ## 6. Signatures and units -/
 
