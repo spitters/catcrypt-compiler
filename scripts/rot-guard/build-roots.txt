@@ -596,6 +596,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.GgmNodeLoopEmit
 CatCrypt.Crypto.SecureCompilation.VIR.GhashClmulVsimdCovered
 CatCrypt.Crypto.SecureCompilation.VIR.HawkMulComDenoteTie
 CatCrypt.Crypto.SecureCompilation.VIR.HgcongrDialectLeaves
+CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslateJazz
 CatCrypt.Crypto.SecureCompilation.VIR.InstrSelect
 CatCrypt.Crypto.SecureCompilation.VIR.InstrSelectExtra
 CatCrypt.Crypto.SecureCompilation.VIR.InstructionScheduleReal
