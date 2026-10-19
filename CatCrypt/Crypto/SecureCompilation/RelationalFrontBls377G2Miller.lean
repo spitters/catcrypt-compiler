@@ -52,13 +52,12 @@ the slopes).  The twist accumulator advances by the *realized* group law
 (`g2AffineDbl` / `g2AffineAdd`), and the line places the tangent-line
 coefficients `(Ty − λ·Tx, λ·Px, −Py)` in the M-type slots.
 
-Their algebraic **correctness** is deferred, exactly as the `AUCurvesPort` /
-`PairingAxioms` layer and `VIR.Bls377MillerSteps` defer it: that `make_line`
-equals the RELIC `pp_dbl_k12` sparse line, and that the resulting Miller fold is
-**bilinear / non-degenerate**, is Weil/Tate divisor theory Mathlib has no
-formalization of.  Those facts are the `concretePairing_bilinear_*` /
-`concretePairing_nondeg` assumptions of `VIR.Bls377MillerSteps`; this module does
-**not** re-prove or fabricate them.  What is proved here is structural: the
+Their algebraic correctness is not proved here, as in the `AUCurvesPort` /
+`PairingAxioms` layer and `VIR.Bls377MillerSteps`: that `make_line` equals the
+RELIC `pp_dbl_k12` sparse line, and that the resulting Miller fold is bilinear and
+non-degenerate, is Weil/Tate divisor theory Mathlib has no formalization of.
+`VIR.Bls377MillerSteps` states bilinearity and non-degeneracy of its pairing as
+the fields of the hypothesis `ConcretePairingLaws`.  What is proved here is structural: the
 producer's empty-loop base case, the accumulator-advance identities, and the
 line-list length.
 -/
