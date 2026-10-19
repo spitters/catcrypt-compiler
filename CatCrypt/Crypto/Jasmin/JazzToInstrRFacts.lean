@@ -57,4 +57,19 @@ theorem opnNoneTys_ne_U512 :
         ∀ ty ∈ opnNoneTys (base ++ "_" ++ toString ws.bits) n, ty ≠ .sword .U512 := by
   native_decide
 
+/-- The `_` outputs of the asm operations of the lowering at the word sizes of the x86
+general-purpose registers: five flags and a word for `ADD`, `ADC`, `NEG`, `ANDN`, five flags
+for `CMP`, and no entry for `MULX_lo_hi`. -/
+theorem gprAsm_opnNoneTys : ∀ ws ∈ [WSize.U8, .U16, .U32, .U64],
+    opnNoneTys ("ADD" ++ "_" ++ toString ws.bits) 6 = List.replicate 5 .sbool ++ [.sword ws] ∧
+      opnNoneTys ("ADC" ++ "_" ++ toString ws.bits) 6 =
+        List.replicate 5 .sbool ++ [.sword ws] ∧
+      opnNoneTys ("NEG" ++ "_" ++ toString ws.bits) 6 =
+        List.replicate 5 .sbool ++ [.sword ws] ∧
+      opnNoneTys ("ANDN" ++ "_" ++ toString ws.bits) 6 =
+        List.replicate 5 .sbool ++ [.sword ws] ∧
+      opnNoneTys ("CMP" ++ "_" ++ toString ws.bits) 5 = List.replicate 5 .sbool ∧
+      opnNoneTys ("MULX_lo_hi" ++ "_" ++ toString ws.bits) 2 = [] := by
+  native_decide
+
 end CatCrypt.Crypto.Jasmin.JazzToInstrR
