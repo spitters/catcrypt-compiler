@@ -842,6 +842,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.IdxBaseGateKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheckIsa
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
+CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
