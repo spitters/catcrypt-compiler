@@ -687,7 +687,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapRel
 CatCrypt.Crypto.SecureCompilation.VIR.NFRegionLaws
 CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin
 CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSem
-CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSemFrames
+CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSemFn
 CatCrypt.Crypto.SecureCompilation.VIR.NarrowFieldPlant64
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance

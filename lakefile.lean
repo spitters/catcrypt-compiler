@@ -1986,6 +1986,7 @@ def pkgModules10 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFTileSum,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSem,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSemFn,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSemFrames,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NarrowField,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NarrowFieldPlant64,
