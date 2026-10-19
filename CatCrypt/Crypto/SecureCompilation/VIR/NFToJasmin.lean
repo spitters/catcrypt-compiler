@@ -84,12 +84,14 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
   its agreement with the context.
 * `nfToJasminBody`, `nfToJasmin`: the lowering of a region and of a whole program.
 * `linearArrB`: the programs whose in-place stores are not observed.
+* `jasminWidthsB`: the programs without a 512-bit word, whose word sizes are those of
+  Jasmin source.
 * `cmdErasedB`: the commands the erasure leaves unchanged.
 
 ## Main results
 
 * `nfToJasmin_isSome`: `nfToJasmin` succeeds on every program of `RegionExportable` that
-  `linearArrB` accepts, under `JazzSig.Fits`.
+  `linearArrB` and `jasminWidthsB` accept, under `JazzSig.Fits`.
 * `nfToJasmin_erase`: the erasure of every unit `nfToJasmin` returns is that unit without
   its extern signatures.
 * `cmdErase_of`: a command that passes `cmdErasedB` is its own erasure.
@@ -572,6 +574,64 @@ def linearArrB {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) : Bool :=
   linGo p Γ.length
 
+/-! ## 5b. The word sizes of Jasmin source -/
+
+/-- A width other than `512`: its word size `wsOf w` is one of the six word sizes of
+Jasmin source (`wsOf_eq_U512_iff`). -/
+def widthOkB (w : Nat) : Bool := w != 512
+
+/-- A dialect type whose words and array elements have a word size of Jasmin source. -/
+def tyOkB : JasminTy → Bool
+  | .reg w => widthOkB w
+  | .stackArr w _ => widthOkB w
+  | _ => true
+
+/-- An operation whose widths, read by `emitOp` through `wsOf`, are not `512`. -/
+def opOkB : JasminOp → Bool
+  | .regArith _ w | .shrImm w _ | .shlImm w _ | .sarImm w _ | .stackLoad w _
+  | .stackStore w _ | .stackStoreImm w _ _ | .stackZero w _ | .mulhi w | .addCarryLo w
+  | .addCarryHi w | .cmp _ w | .cmpImm _ w _ | .select w => widthOkB w
+  | .castW w w' => widthOkB w && widthOkB w'
+  | _ => true
+
+/-- The width check of a program: the type of every binding, of every carried value and
+of every call result, and every operation width. -/
+def widthsGo : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
+    NFProg jasminDialect Γ ts → Bool
+  | _, _, .ret _ => true
+  | _, _, .var (t := t) e k => tyOkB t && opOkB e.op && widthsGo k
+  | _, _, .forLoop (cs := cs) _ _ body k => cs.all tyOkB && widthsGo body && widthsGo k
+  | _, _, .ifThenElse (rs := rs) _ thn els k =>
+      rs.all tyOkB && widthsGo thn && widthsGo els && widthsGo k
+  | _, _, .whileLoop (cs := cs) _ body k => cs.all tyOkB && widthsGo body && widthsGo k
+  | _, _, .call (rs := rs) _ _ k => rs.all tyOkB && widthsGo k
+
+/-- The programs without a 512-bit word: the types of the context and of the results and
+the program pass `widthsGo`. Jasmin source has the six word sizes `u8` to `u256`. -/
+def jasminWidthsB {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) : Bool :=
+  Γ.all tyOkB && ts.all tyOkB && widthsGo p
+
+/-- `wsOf w` is `U512` exactly at the width `512`. -/
+theorem wsOf_eq_U512_iff (w : Nat) : wsOf w = .U512 ↔ w = 512 := by
+  unfold wsOf
+  constructor
+  · intro h; repeat' split at h
+    all_goals first | assumption | cases h
+  · rintro rfl; rfl
+
+/-- A width that passes `widthOkB` has a word size other than `U512`. -/
+theorem wsOf_ne_U512 {w : Nat} (h : widthOkB w = true) : wsOf w ≠ .U512 := by
+  rw [Ne, wsOf_eq_U512_iff]; simpa [widthOkB] using h
+
+/-- The Jasmin type of a dialect type that passes `tyOkB` is not a 512-bit word. -/
+theorem styOf_ne_U512 {t : JasminTy} (h : tyOkB t = true) : styOf t ≠ .sword .U512 := by
+  cases t with
+  | reg w =>
+      simp only [styOf, ptyOf, PType.toSType, ne_eq, SType.sword.injEq]
+      exact wsOf_ne_U512 h
+  | _ => simp [styOf, ptyOf, PType.toSType]
+
 /-! ## 6. Signatures and units -/
 
 /-- The surface signature of a function over the argument context `Γ` with the result
@@ -702,10 +762,10 @@ def finish {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname 
 
 /-- **The lowering of a structured program to a Jasmin compilation unit**: the function
 `fname`, an `export fn`, over the parameters of `sig`. `none` when `sig` does not fit, when
-`linearArrB` refuses, or when the lowering of the body refuses. -/
+`linearArrB` or `jasminWidthsB` refuses, or when the lowering of the body refuses. -/
 def nfToJasmin {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname : String)
     (p : NFProg jasminDialect Γ [t]) : Option JazzUnit :=
-  if sig.fitsB && linearArrB p then
+  if sig.fitsB && linearArrB p && jasminWidthsB p then
     (nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p Γ.length 0).map fun r =>
       mkUnit (finish sig fname r)
   else none
@@ -1523,15 +1583,16 @@ theorem body_isSome : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       simp [nfToJasminBody, hw, hr]
 
 /-- **Completeness of the lowering**: `nfToJasmin` succeeds on every program of
-`RegionExportable` that `linearArrB` accepts, for a signature that fits its context. No
-operation of the fragment is refused; an arithmetic shift by `n` is emitted with the count
-`sarCount w n` (`sshiftRight_sarCount`). -/
+`RegionExportable` that `linearArrB` and `jasminWidthsB` accept, for a signature that fits
+its context. No operation of the fragment is refused; an arithmetic shift by `n` is emitted
+with the count `sarCount w n` (`sshiftRight_sarCount`). -/
 theorem nfToJasmin_isSome {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t)
     (fname : String) {p : NFProg jasminDialect Γ [t]} (hp : RegionExportable p)
-    (hlin : linearArrB p = true) (hsig : sig.Fits) : (nfToJasmin sig fname p).isSome := by
+    (hlin : linearArrB p = true) (hw : jasminWidthsB p = true) (hsig : sig.Fits) :
+    (nfToJasmin sig fname p).isSome := by
   obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp
     (body_isSome p hp ((paramPairs sig).map Prod.fst).reverse Γ.length 0)
-  simp [nfToJasmin, (sig.fitsB_iff).mpr hsig, hlin, hr]
+  simp [nfToJasmin, (sig.fitsB_iff).mpr hsig, hlin, hw, hr]
 
 theorem nfToJasmin_eq_some {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig Γ t}
     {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
@@ -1544,7 +1605,18 @@ theorem nfToJasmin_eq_some {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzS
     simp only [Bool.and_eq_true] at hc
     simp only [Option.map_eq_some_iff] at h
     obtain ⟨r, hr, rfl⟩ := h
-    exact ⟨hc.1, r, hr, rfl⟩
+    exact ⟨hc.1.1, r, hr, rfl⟩
+  · simp at h
+
+/-- Every program `nfToJasmin` lowers passes `jasminWidthsB`. -/
+theorem jasminWidthsB_of_nfToJasmin {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {sig : JazzSig Γ t} {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
+    (h : nfToJasmin sig fname p = some u) : jasminWidthsB p = true := by
+  unfold nfToJasmin at h
+  split at h
+  · rename_i hc
+    simp only [Bool.and_eq_true] at hc
+    exact hc.2
   · simp at h
 
 /-- **The units of the lowering are erased**: the erasure `JazzUnit.erase` of the single

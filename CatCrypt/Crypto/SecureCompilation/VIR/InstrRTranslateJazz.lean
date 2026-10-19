@@ -42,6 +42,10 @@ tag), in the manner of `InstrRTranslateExt.translateInstrRExt_ccall`.
   branch with its join moves), `translateInstrRExt_call` (a call with several results),
   `translateCmdExt_stackLoad` and `translateCmdExt_stackStore` (the `(uint) e` index), and
   `translateCmdExt_sarImm` (the arithmetic shift by `sarCount`).
+* `translateUnit_isSome_of_nfToJasmin`: every unit `nfToJasmin` returns translates. The
+  lowering refuses a 512-bit word (`jasminWidthsB`), and every variable, operation and `_`
+  output of the lowered code then has one of the six word sizes of the mirror
+  (`body_trC`, `emitOp_trC`).
 -/
 
 @[expose] public section
@@ -467,18 +471,17 @@ theorem translateCmdExt_sarImm {w n d : Nat} {x a : JVar} {x' a' : MVarI} {ws' :
 
 /-- The `(uint) i` index over a non-array local `i` translates to the unsigned
 `int_of_word` of its mirror read. -/
-theorem translateIdx_uint {i : JVar} {i' : MVarI} (hi : translateVarI ⟨i, vi0⟩ = some i') :
+theorem translateIdx_uint {i : JVar} {i' : MVarI} (hi : translateVarIExt ⟨i, vi0⟩ = some i') :
     translateIdx (.Papp1 (.Oint_of_word .U64) (pv i)) =
-      some (.Papp1 (.Oint_of_word .Unsigned .U64) (mpv i')) := by
-  simp [translateIdx, translatePExpr, translateSOp1, translateWSize, pv, translateGVar, hi,
-    mpv, mkLvar]
+      some (.Papp1 (.Oint_of_word .Unsigned .U64) (mpv i')) :=
+  translatePExprExt_papp1 rfl (translatePExprExt_pv hi)
 
 /-- **Array-load image.** The binding of `stackLoad w k` to `x` on the array `a` and the
 index `i`: `x = a[(uint) i]`. -/
 theorem translateCmdExt_stackLoad {w k d : Nat} {x a i : JVar} {x' a' i' : MVarI}
     {ws' : MWSize} (hws : translateWSize (wsOf w) = some ws')
     (hx : translateVarIExt ⟨x, vi0⟩ = some x') (ha : translateVarIExt ⟨a, vi0⟩ = some a')
-    (hi : translateVarI ⟨i, vi0⟩ = some i') :
+    (hi : translateVarIExt ⟨i, vi0⟩ = some i') :
     (emitOp (.stackLoad w k) d x [a, i]).bind (fun r => translateCmdExt r.1) =
       some (mkCmd [masgn x' (.Pget .Unaligned .AAscale ws' (mkLvar a')
         (.Papp1 (.Oint_of_word .Unsigned .U64) (mpv i')))]) := by
@@ -487,14 +490,14 @@ theorem translateCmdExt_stackLoad {w k d : Nat} {x a i : JVar} {x' a' i' : MVarI
         (.Papp1 (.Oint_of_word .U64) (pv i)))], x) := rfl
   rw [he, Option.bind_some]
   refine translateCmdExt_mkCmd (.cons (translateInstrRExt_asgn hx ?_) .nil)
-  simp [translatePExprExt, hws, translateGVarExt, ha, translateIdx_uint hi, translateArrAccess,
-    mkLvar]
+  simp [translatePExprExt_pget, hws, translateGVarExt, ha, translateIdx_uint hi,
+    translateArrAccess, mkLvar]
 
 /-- **Array-store image.** The binding of `stackStore w k` on the array `a`, the index `i`
 and the value `v`: `a[(uint) i] = v`, in place. -/
 theorem translateCmdExt_stackStore {w k d : Nat} {x a i v : JVar} {a' i' v' : MVarI}
     {ws' : MWSize} (hws : translateWSize (wsOf w) = some ws')
-    (ha : translateVarIExt ⟨a, vi0⟩ = some a') (hi : translateVarI ⟨i, vi0⟩ = some i')
+    (ha : translateVarIExt ⟨a, vi0⟩ = some a') (hi : translateVarIExt ⟨i, vi0⟩ = some i')
     (hv : translateVarIExt ⟨v, vi0⟩ = some v') :
     (emitOp (.stackStore w k) d x [a, i, v]).bind (fun r => translateCmdExt r.1) =
       some (mkCmd [.Cassgn (.Laset .Unaligned .AAscale ws' a'
@@ -602,5 +605,623 @@ theorem translateInstrRExt_call (f : String) {xs as : List JVar} {xs' as' : List
     translateInstrRExt (.Ccall .DoNotInline (xs.map lvv) ⟨f⟩ (as.map pv)) =
       some (.Ccall (xs'.map .Lvar) { name := f } (as'.map mpv)) := by
   simp only [translateInstrRExt, mapM_lvv hxs, mapM_pv has]
+
+/-! ## 5. Completeness on the units of `nfToJasmin` -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect JasminTy)
+
+/-- A variable whose type is not a 512-bit word. -/
+def OkV (v : JVar) : Prop := v.vtype ≠ .sword .U512
+
+/-- A command that translates. -/
+@[irreducible] def TrC (c : List AInstrR) : Prop := (translateCmdExt c).isSome = true
+
+theorem translateWSize_isSome {ws : AWSize} (h : ws ≠ .U512) : (translateWSize ws).isSome := by
+  cases ws <;> simp_all [translateWSize]
+
+theorem translateSTypeExt_isSome {s : ASType} (h : s ≠ .sword .U512) :
+    (translateSTypeExt s).isSome := by
+  cases s with
+  | sword ws => cases ws <;> simp_all [translateSTypeExt, translateSType, translateWSize]
+  | _ => simp [translateSTypeExt, translateSType]
+
+theorem translateVarIExt_isSome {v : JVar} (h : OkV v) (i : CatCrypt.Crypto.Jasmin.VarInfo) :
+    (translateVarIExt ⟨v, i⟩).isSome := by
+  simpa [translateVarIExt, translateVarExt] using translateSTypeExt_isSome h
+
+theorem okV_tmp {k : Nat} {ws : AWSize} (h : ws ≠ .U512) : OkV (tmp k ws) := by
+  simpa [OkV, tmp, mkV] using h
+
+theorem okV_cf : OkV cfVar := by simp [OkV, cfVar]
+
+theorem okV_u64 {c : Char} {k : Nat} : OkV (mkV c k u64) := by simp [OkV, mkV]
+
+theorem okV_getD {env : List JVar} (h : ∀ v ∈ env, OkV v) (i : Nat) :
+    OkV (env.getD i dfltV) := by
+  rw [List.getD_eq_getElem?_getD]
+  cases hi : env[i]? with
+  | none => simp [dfltV, OkV, mkV]
+  | some v => exact h v (List.mem_of_getElem? hi)
+
+theorem okV_headD {l : List JVar} (h : ∀ v ∈ l, OkV v) : OkV (l.headD dfltV) := by
+  cases l with
+  | nil => simp [dfltV, OkV, mkV]
+  | cons v l => exact h v (by simp)
+
+theorem okV_resolveHV {env : List JVar} (h : ∀ v ∈ env, OkV v) {Γ : Ctxt jasminDialect}
+    {ts : List JasminDialect.JasminTy} (hv : HVector (fun t => Ctxt.Var Γ t) ts) :
+    ∀ v ∈ resolveHV env hv, OkV v := by
+  intro v hv'
+  simp only [resolveHV, List.mem_map] at hv'
+  obtain ⟨i, _, rfl⟩ := hv'
+  exact okV_getD h i
+
+theorem okV_blockVars (base : Nat) {cs : List JasminDialect.JasminTy}
+    (h : cs.all tyOkB = true) : ∀ v ∈ blockVars base cs, OkV v := by
+  intro v hv
+  simp only [blockVars, List.mem_map] at hv
+  obtain ⟨p, hp, rfl⟩ := hv
+  exact styOf_ne_U512 (List.all_eq_true.mp h _ (List.fst_mem_of_mem_zipIdx hp))
+
+theorem okV_append {l l' : List JVar} (h : ∀ v ∈ l, OkV v) (h' : ∀ v ∈ l', OkV v) :
+    ∀ v ∈ l ++ l', OkV v := by
+  intro v hv
+  rcases List.mem_append.mp hv with hv | hv
+  · exact h v hv
+  · exact h' v hv
+
+theorem okV_cons {v : JVar} {l : List JVar} (h : OkV v) (h' : ∀ v ∈ l, OkV v) :
+    ∀ w ∈ v :: l, OkV w := by
+  intro w hw
+  rcases List.mem_cons.mp hw with rfl | hw
+  · exact h
+  · exact h' w hw
+
+theorem okV_zip {l l' : List JVar} (h : ∀ v ∈ l, OkV v) (h' : ∀ v ∈ l', OkV v) :
+    ∀ p ∈ l.zip l', OkV p.1 ∧ OkV p.2 :=
+  fun _ hp => ⟨h _ (List.of_mem_zip hp).1, h' _ (List.of_mem_zip hp).2⟩
+
+/-! ### Expressions, l-values and instructions -/
+
+theorem isSome_pv {v : JVar} (h : OkV v) : (translatePExprExt (pv v)).isSome := by
+  obtain ⟨v', hv⟩ := Option.isSome_iff_exists.mp (translateVarIExt_isSome h vi0)
+  rw [translatePExprExt_pv hv]; rfl
+
+theorem isSome_cnst (z : Int) : (translatePExprExt (cnst z)).isSome := rfl
+
+theorem isSome_papp2 {op : ASOp2} {e1 e2 : APExpr} (ho : (translateSOp2Ext op).isSome)
+    (h1 : (translatePExprExt e1).isSome) (h2 : (translatePExprExt e2).isSome) :
+    (translatePExprExt (.Papp2 op e1 e2)).isSome := by
+  obtain ⟨_, ho⟩ := Option.isSome_iff_exists.mp ho
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp h1
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp h2
+  rw [translatePExprExt_papp2 ho h1 h2]; rfl
+
+theorem isSome_papp1 {op : ASOp1} {e : APExpr} (ho : (translateSOp1 op).isSome)
+    (h : (translatePExprExt e).isSome) : (translatePExprExt (.Papp1 op e)).isSome := by
+  obtain ⟨_, ho⟩ := Option.isSome_iff_exists.mp ho
+  obtain ⟨_, h⟩ := Option.isSome_iff_exists.mp h
+  rw [translatePExprExt_papp1 ho h]; rfl
+
+theorem isSome_nz {v : JVar} (h : OkV v) : (translatePExprExt (nz v)).isSome :=
+  isSome_papp2 rfl (isSome_pv h) (isSome_cnst 0)
+
+theorem isSome_binSop {ws : AWSize} (h : ws ≠ .U512) (bop : JasminDialect.JasminBinOp) :
+    (translateSOp2Ext (binSop ws bop)).isSome := by
+  cases bop <;> cases ws <;> simp_all [binSop, translateSOp2Ext, translateSOp2, translateWSize]
+
+theorem isSome_olsr {ws : AWSize} (h : ws ≠ .U512) : (translateSOp2Ext (.Olsr ws)).isSome := by
+  cases ws <;> simp_all [translateSOp2Ext, translateSOp2, translateWSize]
+
+theorem isSome_olsl {ws : AWSize} (h : ws ≠ .U512) : (translateSOp2Ext (.Olsl ws)).isSome := by
+  cases ws <;> simp_all [translateSOp2Ext, translateSOp2, translateWSize]
+
+theorem isSome_oasr {ws : AWSize} (h : ws ≠ .U512) : (translateSOp2Ext (.Oasr ws)).isSome := by
+  cases ws <;> simp_all [translateSOp2Ext, translateSOp2, translateWSize]
+
+theorem isSome_olxor {ws : AWSize} (h : ws ≠ .U512) : (translateSOp2Ext (.Olxor ws)).isSome := by
+  cases ws <;> simp_all [translateSOp2Ext, translateSOp2, translateWSize]
+
+theorem isSome_oland {ws : AWSize} (h : ws ≠ .U512) : (translateSOp2Ext (.Oland ws)).isSome := by
+  cases ws <;> simp_all [translateSOp2Ext, translateSOp2, translateWSize]
+
+theorem isSome_oneg {ws : AWSize} (h : ws ≠ .U512) : (translateSOp1 (.Oneg ws)).isSome := by
+  cases ws <;> simp_all [translateSOp1, translateWSize]
+
+theorem isSome_ozeroext {ws ws' : AWSize} (h : ws ≠ .U512) (h' : ws' ≠ .U512) :
+    (translateSOp1 (.Ozeroext ws ws')).isSome := by
+  cases ws <;> cases ws' <;> simp_all [translateSOp1, translateWSize]
+
+theorem isSome_oint_of_word : (translateSOp1 (.Oint_of_word .U64)).isSome := rfl
+
+theorem u64_ne_U512 : (CatCrypt.Crypto.Jasmin.WSize.U64 : AWSize) ≠ .U512 := by decide
+
+theorem sint_ne_U512 : (CatCrypt.Crypto.Jasmin.SType.sint : ASType) ≠ .sword .U512 := by decide
+
+theorem sword_ne_U512 {ws : AWSize} (h : ws ≠ .U512) :
+    CatCrypt.Crypto.Jasmin.SType.sword ws ≠ .sword .U512 := by
+  simpa using h
+
+theorem okV_mkV {c : Char} {k : Nat} {s : ASType} (h : s ≠ .sword .U512) : OkV (mkV c k s) := h
+
+theorem translateIdx_isSome {e : APExpr} (h : (translatePExprExt e).isSome) :
+    (translateIdx e).isSome := by
+  cases e with
+  | Pvar g =>
+      simp only [translateIdx, intOfWordIdx]
+      split
+      · simpa [translatePExprExt] using h
+      · exact h
+  | _ => exact h
+
+theorem isSome_pget {aa : CatCrypt.Crypto.Jasmin.ArrAccess} {ws : AWSize} {a : JVar}
+    {i : APExpr} (hws : ws ≠ .U512) (ha : OkV a) (hi : (translatePExprExt i).isSome) :
+    (translatePExprExt (.Pget aa ws ⟨⟨a, vi0⟩, false⟩ i)).isSome := by
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp (translateWSize_isSome hws)
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp (translateVarIExt_isSome ha vi0)
+  obtain ⟨_, h3⟩ := Option.isSome_iff_exists.mp (translateIdx_isSome hi)
+  simp [translatePExprExt_pget, h1, translateGVarExt, h2, h3]
+
+theorem isSome_asgn {x : JVar} {e : APExpr} (hx : OkV x) (he : (translatePExprExt e).isSome) :
+    (translateInstrRExt (asgn x e)).isSome := by
+  obtain ⟨_, hx⟩ := Option.isSome_iff_exists.mp (translateVarIExt_isSome hx vi0)
+  obtain ⟨_, he⟩ := Option.isSome_iff_exists.mp he
+  rw [translateInstrRExt_asgn hx he]; rfl
+
+theorem isSome_laset {aa : CatCrypt.Crypto.Jasmin.ArrAccess} {ws : AWSize} {a : JVar}
+    {i e : APExpr} {ty : ASType} (hws : ws ≠ .U512) (ha : OkV a)
+    (hi : (translatePExprExt i).isSome) (hty : ty ≠ .sword .U512)
+    (he : (translatePExprExt e).isSome) :
+    (translateInstrRExt (.Cassgn (.Laset aa ws ⟨a, vi0⟩ i) .AT_none ty e)).isSome := by
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp (translateWSize_isSome hws)
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp (translateVarIExt_isSome ha vi0)
+  obtain ⟨_, h3⟩ := Option.isSome_iff_exists.mp (translateIdx_isSome hi)
+  obtain ⟨_, h4⟩ := Option.isSome_iff_exists.mp (translateSTypeExt_isSome hty)
+  obtain ⟨_, h5⟩ := Option.isSome_iff_exists.mp he
+  simp [translateInstrRExt, translateLValExt, h1, h2, h3, h4, h5]
+
+theorem mapM_isSome {α β : Type} {f : α → Option β} :
+    ∀ {l : List α}, (∀ a ∈ l, (f a).isSome) → (l.mapM f).isSome
+  | [], _ => rfl
+  | a :: l, h => by
+      obtain ⟨b, hb⟩ := Option.isSome_iff_exists.mp (h a (by simp))
+      obtain ⟨bs, hbs⟩ := Option.isSome_iff_exists.mp
+        (mapM_isSome (f := f) (l := l) fun a ha => h a (by simp [ha]))
+      simp [List.mapM_cons, hb, hbs]
+
+theorem outLvs_isSome {tys : List ASType} (htys : ∀ ty ∈ tys, ty ≠ .sword .U512) :
+    ∀ (k : Nat) (outs : List (Option JVar)), (∀ x, some x ∈ outs → OkV x) →
+      ∀ lv ∈ outLvs tys k outs, (translateLValExt lv).isSome
+  | _, [], _, lv, hlv => by simp [outLvs] at hlv
+  | k, none :: outs, h, lv, hlv => by
+      simp only [outLvs, List.mem_cons] at hlv
+      rcases hlv with rfl | hlv
+      · have hty : (tys[k]?).getD u64 ≠ .sword .U512 := by
+          cases hk : tys[k]? with
+          | none => simp
+          | some ty => exact htys ty (List.mem_of_getElem? hk)
+        simpa [translateLValExt] using translateSTypeExt_isSome hty
+      · exact outLvs_isSome htys (k + 1) outs (fun x hx => h x (by simp [hx])) lv hlv
+  | k, some v :: outs, h, lv, hlv => by
+      simp only [outLvs, List.mem_cons] at hlv
+      rcases hlv with rfl | hlv
+      · obtain ⟨_, hv⟩ := Option.isSome_iff_exists.mp
+          (translateVarIExt_isSome (h v (by simp)) vi0)
+        rw [translateLValExt_lvv hv]; rfl
+      · exact outLvs_isSome htys (k + 1) outs (fun x hx => h x (by simp [hx])) lv hlv
+
+theorem isSome_copn {o : String} {outs : List (Option JVar)} {es : List APExpr}
+    (htys : ∀ ty ∈ opnNoneTys o outs.length, ty ≠ .sword .U512)
+    (hout : ∀ x, some x ∈ outs → OkV x) (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn o outs es)).isSome := by
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp (mapM_isSome (outLvs_isSome htys 0 outs hout))
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp (mapM_isSome hes)
+  simp only [copn, translateInstrRExt, h1, h2]; rfl
+
+/-- The `_` outputs of the width variants of the asm operations of the op table have no
+512-bit word type. -/
+theorem opnNoneTys_asmName {base : String}
+    (hb : base ∈ ["ANDN", "ADC", "NEG", "CMP", "MULX_lo_hi"]) {ws : AWSize} (hws : ws ≠ .U512)
+    {n : Nat} (hn : n ∈ [2, 5, 6]) :
+    ∀ ty ∈ opnNoneTys (asmName base ws) n, ty ≠ .sword .U512 :=
+  CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys_ne_U512 ws (by cases ws <;> simp_all)
+    base hb n hn
+
+theorem wsOf_ne_U512_of {w : Nat} (h : ¬w = 512) : wsOf w ≠ .U512 :=
+  fun h' => h ((wsOf_eq_U512_iff w).mp h')
+
+theorem translateCmdExt_isSome {c : List AInstrR} (h : TrC c) :
+    (translateCmdExt c).isSome := by
+  unfold TrC at h; exact h
+
+theorem trC_append {a b : List AInstrR} (ha : TrC a) (hb : TrC b) : TrC (a ++ b) := by
+  obtain ⟨_, ha⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome ha)
+  obtain ⟨_, hb⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome hb)
+  unfold TrC; rw [translateCmdExt_append_eq_some ha hb]; rfl
+
+theorem trC_nil : TrC [] := by unfold TrC; rfl
+
+theorem trC_cons {i : AInstrR} {c : List AInstrR} (hi : (translateInstrRExt i).isSome)
+    (hc : TrC c) : TrC (i :: c) := by
+  obtain ⟨_, hi⟩ := Option.isSome_iff_exists.mp hi
+  obtain ⟨_, hc⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome hc)
+  unfold TrC; rw [translateCmdExt_cons hi hc]; rfl
+
+theorem trC_of_forall : ∀ {c : List AInstrR}, (∀ i ∈ c, (translateInstrRExt i).isSome) → TrC c
+  | [], _ => trC_nil
+  | i :: c, h => trC_cons (h i (by simp)) (trC_of_forall fun j hj => h j (by simp [hj]))
+
+theorem forall_mem_nil_isSome : ∀ e ∈ ([] : List APExpr), (translatePExprExt e).isSome := by
+  simp
+
+theorem forall_mem_cons_isSome {e : APExpr} {es : List APExpr}
+    (he : (translatePExprExt e).isSome) (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    ∀ e' ∈ e :: es, (translatePExprExt e').isSome := by
+  intro e' he'
+  rcases List.mem_cons.mp he' with rfl | he'
+  · exact he
+  · exact hes e' he'
+
+/-- The asm operation with the `b5w_ty` outputs of the word `x`. -/
+theorem isSome_copnW {base : String}
+    (hb : base ∈ ["ANDN", "ADC", "NEG", "CMP", "MULX_lo_hi"]) {ws : AWSize} (hws : ws ≠ .U512)
+    {x : JVar} (hx : OkV x) {es : List APExpr} (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName base ws) (outsW x) es)).isSome :=
+  isSome_copn (opnNoneTys_asmName hb hws (by simp [outsW]))
+    (fun y hy => by simp [outsW] at hy; subst hy; exact hx) hes
+
+/-- The asm operation with the `b5w_ty` outputs of the carry flag and the word `x`. -/
+theorem isSome_copnCW {base : String}
+    (hb : base ∈ ["ANDN", "ADC", "NEG", "CMP", "MULX_lo_hi"]) {ws : AWSize} (hws : ws ≠ .U512)
+    {x : JVar} (hx : OkV x) {es : List APExpr} (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName base ws) (outsCW x) es)).isSome :=
+  isSome_copn (opnNoneTys_asmName hb hws (by simp [outsCW]))
+    (fun y hy => by
+      simp [outsCW] at hy
+      rcases hy with rfl | rfl
+      · exact okV_cf
+      · exact hx) hes
+
+theorem isSome_andn {ws : AWSize} (hws : ws ≠ .U512) {x : JVar} (hx : OkV x)
+    {es : List APExpr} (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName "ANDN" ws) (outsW x) es)).isSome :=
+  isSome_copnW (by simp) hws hx hes
+
+theorem isSome_adc {ws : AWSize} (hws : ws ≠ .U512) {x : JVar} (hx : OkV x)
+    {es : List APExpr} (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName "ADC" ws) (outsCW x) es)).isSome :=
+  isSome_copnCW (by simp) hws hx hes
+
+theorem isSome_neg {ws : AWSize} (hws : ws ≠ .U512) {x : JVar} (hx : OkV x)
+    {es : List APExpr} (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName "NEG" ws) (outsCW x) es)).isSome :=
+  isSome_copnCW (by simp) hws hx hes
+
+theorem isSome_cmpOp {ws : AWSize} (hws : ws ≠ .U512) {es : List APExpr}
+    (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName "CMP" ws) [none, some cfVar, none, none, none] es)).isSome :=
+  isSome_copn (opnNoneTys_asmName (by simp) hws (by simp))
+    (fun y hy => by simp at hy; subst hy; exact okV_cf) hes
+
+theorem isSome_mulx {ws : AWSize} (hws : ws ≠ .U512) {x : JVar} (hx : OkV x)
+    {es : List APExpr} (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn (asmName "MULX_lo_hi" ws) [none, some x] es)).isSome :=
+  isSome_copn (opnNoneTys_asmName (by simp) hws (by simp))
+    (fun y hy => by simp at hy; subst hy; exact hx) hes
+
+theorem isSome_add64 {x : JVar} (hx : OkV x) {es : List APExpr}
+    (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn "ADD_64" (outsCW x) es)).isSome :=
+  isSome_copn (by simp [outsCW, opnNoneTys_ADD_64])
+    (fun y hy => by
+      simp [outsCW] at hy
+      rcases hy with rfl | rfl
+      · exact okV_cf
+      · exact hx) hes
+
+theorem isSome_adc64 {x : JVar} (hx : OkV x) {es : List APExpr}
+    (hes : ∀ e ∈ es, (translatePExprExt e).isSome) :
+    (translateInstrRExt (copn "ADC_64" (outsW x) es)).isSome :=
+  isSome_copn (by simp [outsW, opnNoneTys_ADC_64])
+    (fun y hy => by simp [outsW] at hy; subst hy; exact hx) hes
+
+theorem isSome_cfor {v : JVar} (hv : OkV v) (r : CatCrypt.Crypto.Jasmin.Range)
+    {body : List AInstrR} (hb : TrC body) :
+    (translateInstrRExt (.Cfor ⟨v, vi0⟩ r body)).isSome := by
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp (translateVarIExt_isSome hv vi0)
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome hb)
+  simp [translateInstrRExt, h1, h2]
+
+theorem isSome_cwhile {c1 c2 : List AInstrR} {e : APExpr} (h1 : TrC c1)
+    (he : (translatePExprExt e).isSome) (h2 : TrC c2) :
+    (translateInstrRExt (.Cwhile c1 e c2)).isSome := by
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome h1)
+  obtain ⟨_, he⟩ := Option.isSome_iff_exists.mp he
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome h2)
+  simp [translateInstrRExt, h1, he, h2]
+
+theorem isSome_cif {c1 c2 : List AInstrR} {e : APExpr} (he : (translatePExprExt e).isSome)
+    (h1 : TrC c1) (h2 : TrC c2) : (translateInstrRExt (.Cif e c1 c2)).isSome := by
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome h1)
+  obtain ⟨_, he⟩ := Option.isSome_iff_exists.mp he
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome h2)
+  simp [translateInstrRExt, h1, he, h2]
+
+theorem okV_getElem? {l : List JVar} (h : ∀ v ∈ l, OkV v) (i : Nat) :
+    OkV (l[i]?.getD dfltV) := by
+  simpa [List.getD_eq_getElem?_getD] using okV_getD h i
+
+theorem ne_512_64 : ¬(64 : Nat) = 512 := by decide
+
+/-- Closes the translation goals of the emitted instructions by the closure lemmas above,
+each applied at reducible transparency. -/
+local macro "tr_solve" : tactic => `(tactic| repeat' (first
+  | assumption
+  | with_reducible apply okV_getElem? | with_reducible apply ne_512_64
+  | with_reducible apply trC_nil | with_reducible apply trC_cons
+  | with_reducible apply isSome_asgn | with_reducible apply isSome_pv
+  | with_reducible apply isSome_cnst | with_reducible apply isSome_papp2
+  | with_reducible apply isSome_papp1 | with_reducible apply isSome_pget
+  | with_reducible apply isSome_laset | with_reducible apply isSome_cfor
+  | with_reducible apply isSome_binSop | with_reducible apply isSome_olsr
+  | with_reducible apply isSome_olsl | with_reducible apply isSome_oasr
+  | with_reducible apply isSome_olxor | with_reducible apply isSome_oland
+  | with_reducible apply isSome_oneg | with_reducible apply isSome_ozeroext
+  | with_reducible apply isSome_oint_of_word | with_reducible apply isSome_andn
+  | with_reducible apply isSome_adc | with_reducible apply isSome_neg
+  | with_reducible apply isSome_cmpOp | with_reducible apply isSome_mulx
+  | with_reducible apply isSome_add64 | with_reducible apply isSome_adc64
+  | with_reducible apply forall_mem_nil_isSome | with_reducible apply forall_mem_cons_isSome
+  | with_reducible apply okV_tmp | with_reducible apply okV_cf
+  | with_reducible apply okV_mkV | with_reducible apply wsOf_ne_U512_of
+  | with_reducible apply u64_ne_U512 | with_reducible apply sint_ne_U512
+  | with_reducible apply sword_ne_U512))
+
+/-- The code of the binding of an operation that passes `opOkB` translates, on variables
+without a 512-bit word type. -/
+theorem emitOp_trC {op : JasminDialect.JasminOp} {d : Nat} {x : JVar} {as : List JVar}
+    {c : List AInstrR} {y : JVar} (h : emitOp op d x as = some (c, y)) (hop : opOkB op = true)
+    (hx : OkV x) (has : ∀ v ∈ as, OkV v) : TrC c ∧ OkV y := by
+  cases op
+  all_goals try (cases ‹JasminDialect.JasminBinOp›)
+  all_goals try (cases ‹JasminDialect.JasminCmp›)
+  all_goals simp [emitOp] at h
+  all_goals obtain ⟨rfl, rfl⟩ := h
+  all_goals refine ⟨?_, by first | exact hx | exact okV_getElem? has _⟩
+  all_goals simp only [opOkB, widthOkB, Bool.and_eq_true, bne_iff_ne, ne_eq] at hop
+  all_goals try obtain ⟨hop, hop'⟩ := hop
+  all_goals try simp only [castCode, matCF, cmpCode, cinCode, List.cons_append, List.nil_append,
+    List.append_assoc]
+  all_goals repeat' split
+  all_goals refine trC_of_forall ?_
+  all_goals simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false, false_or,
+    forall_eq_or_imp, forall_eq]
+  all_goals and_intros
+  all_goals tr_solve
+
+/-! ### The frames of the lowering -/
+
+theorem trC_seqMoves {ps : List (JVar × JVar)} (h : ∀ p ∈ ps, OkV p.1 ∧ OkV p.2) :
+    TrC (seqMoves ps) := by
+  refine trC_of_forall fun i hi => ?_
+  simp only [seqMoves, List.mem_map] at hi
+  obtain ⟨p, hp, rfl⟩ := hi
+  exact isSome_asgn (h p hp).1 (isSome_pv (h p hp).2)
+
+theorem trC_parMovesJ (D : Nat) {ps : List (JVar × JVar)} (h : ∀ p ∈ ps, OkV p.1 ∧ OkV p.2) :
+    TrC (parMovesJ D ps) := by
+  refine trC_of_forall fun i hi => ?_
+  simp only [parMovesJ] at hi
+  split at hi
+  · simp only [List.mem_map, List.mem_filter] at hi
+    obtain ⟨p, ⟨hp, _⟩, rfl⟩ := hi
+    exact isSome_asgn (h p hp).1 (isSome_pv (h p hp).2)
+  · simp only [List.mem_append, List.mem_map] at hi
+    rcases hi with ⟨q, hq, rfl⟩ | ⟨q, hq, rfl⟩
+    · have hq' := (List.mem_filter.mp (List.fst_mem_of_mem_zipIdx hq)).1
+      exact isSome_asgn (okV_mkV (h _ hq').1) (isSome_pv (h _ hq').2)
+    · have hq' := (List.mem_filter.mp (List.fst_mem_of_mem_zipIdx hq)).1
+      exact isSome_asgn (h _ hq').1 (isSome_pv (okV_mkV (h _ hq').1))
+
+theorem trC_forCode {env : List JVar} {d n : Nat} {cs : List JasminTy} {inits : List JVar}
+    {ci : Nat} {b : JOut} (hcs : cs.all tyOkB = true) (henv : ∀ v ∈ env, OkV v)
+    (hinit : ∀ v ∈ inits, OkV v) (hb1 : TrC b.code) (hb2 : ∀ v ∈ b.res, OkV v) :
+    TrC (forCode env d n cs inits ci b) := by
+  have hcar := okV_blockVars (d + 1) hcs
+  unfold forCode
+  refine trC_append (trC_append (trC_seqMoves (okV_zip hcar hinit)) ?_)
+    (trC_seqMoves fun p hp => okV_zip (okV_blockVars d hcs) hcar p (List.mem_reverse.mp hp))
+  refine trC_cons (isSome_asgn okV_u64 (isSome_cnst 0))
+    (trC_cons (isSome_asgn okV_u64 (isSome_pv (okV_getD henv ci))) (trC_cons ?_ trC_nil))
+  refine isSome_cwhile trC_nil (isSome_nz okV_u64) ?_
+  refine trC_append (trC_append hb1 (trC_parMovesJ _ (okV_zip hcar hb2))) ?_
+  exact trC_cons (isSome_asgn okV_u64 (isSome_papp2 rfl (isSome_pv okV_u64) (isSome_cnst 1)))
+    (trC_cons (isSome_asgn okV_u64 (isSome_papp2 rfl (isSome_pv okV_u64) (isSome_cnst 1)))
+      trC_nil)
+
+theorem isSome_ifCode {env : List JVar} {d : Nat} {rs : List JasminTy} {ci : Nat}
+    {bt be : JOut} (hrs : rs.all tyOkB = true) (henv : ∀ v ∈ env, OkV v)
+    (ht1 : TrC bt.code) (ht2 : ∀ v ∈ bt.res, OkV v) (he1 : TrC be.code)
+    (he2 : ∀ v ∈ be.res, OkV v) :
+    (translateInstrRExt (ifCode env d rs ci bt be)).isSome := by
+  have hblk := okV_blockVars d hrs
+  exact isSome_cif (isSome_nz (okV_getD henv ci))
+    (trC_append ht1 (trC_parMovesJ _ (okV_zip hblk ht2)))
+    (trC_append he1 (trC_parMovesJ _ (okV_zip hblk he2)))
+
+theorem trC_whileCode {d : Nat} {cs : List JasminTy} {inits : List JVar} {b : JOut}
+    (hcs : cs.all tyOkB = true) (hinit : ∀ v ∈ inits, OkV v) (hb1 : TrC b.code)
+    (hb2 : ∀ v ∈ b.res, OkV v) : TrC (whileCode d cs inits b) := by
+  have hcar := okV_blockVars d hcs
+  have htail : ∀ v ∈ b.res.tail, OkV v := fun v hv => hb2 v (List.mem_of_mem_tail hv)
+  unfold whileCode
+  refine trC_append (trC_seqMoves (okV_zip hcar hinit)) (trC_cons ?_ trC_nil)
+  exact isSome_cwhile (trC_append hb1 (trC_cons (isSome_asgn okV_u64 (isSome_pv (okV_headD hb2)))
+    (trC_parMovesJ _ (okV_zip hcar htail)))) (isSome_nz okV_u64) trC_nil
+
+theorem isSome_call (f : String) {xs as : List JVar} (hxs : ∀ v ∈ xs, OkV v)
+    (has : ∀ v ∈ as, OkV v) :
+    (translateInstrRExt (.Ccall .DoNotInline (xs.map lvv) ⟨f⟩ (as.map pv))).isSome := by
+  have h1 : ((xs.map lvv).mapM translateLValExt).isSome := mapM_isSome fun lv hlv => by
+    simp only [List.mem_map] at hlv
+    obtain ⟨x, hx, rfl⟩ := hlv
+    obtain ⟨_, h⟩ := Option.isSome_iff_exists.mp (translateVarIExt_isSome (hxs x hx) vi0)
+    rw [translateLValExt_lvv h]; rfl
+  have h2 : ((as.map pv).mapM translatePExprExt).isSome := mapM_isSome fun e he => by
+    simp only [List.mem_map] at he
+    obtain ⟨a, ha, rfl⟩ := he
+    exact isSome_pv (has a ha)
+  obtain ⟨_, h1⟩ := Option.isSome_iff_exists.mp h1
+  obtain ⟨_, h2⟩ := Option.isSome_iff_exists.mp h2
+  simp only [translateInstrRExt, h1, h2]; rfl
+
+/-- **Translation of a lowered region.** On an environment of variables without a 512-bit
+word type, the code of every region `nfToJasminBody` lowers from a program that passes
+`widthsGo` translates, and its returned variables have no 512-bit word type. -/
+theorem body_trC : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) (env : List JVar) (d n : Nat) (r : JOut),
+    widthsGo p = true → (∀ v ∈ env, OkV v) → nfToJasminBody env p d n = some r →
+    TrC r.code ∧ ∀ v ∈ r.res, OkV v := by
+  intro Γ ts p
+  induction p with
+  | ret vs =>
+      intro env d n r _ henv h
+      simp only [nfToJasminBody, Option.some.injEq] at h
+      subst h
+      exact ⟨trC_nil, okV_resolveHV henv vs⟩
+  | @var Γ t ts e k ih =>
+      intro env d n r hw henv h
+      simp only [widthsGo, Bool.and_eq_true] at hw
+      obtain ⟨⟨ht, hop⟩, hk⟩ := hw
+      simp only [nfToJasminBody, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨⟨c, y⟩, hc, r', hr', rfl⟩ := h
+      obtain ⟨hc1, hy⟩ := emitOp_trC hc hop (okV_mkV (styOf_ne_U512 ht))
+        (okV_resolveHV henv e.args)
+      obtain ⟨hk1, hk2⟩ := ih _ _ _ _ hk (okV_cons hy henv) hr'
+      exact ⟨trC_append hc1 hk1, hk2⟩
+  | forLoop count inits body k ihb ihk =>
+      intro env d n r hw henv h
+      simp only [widthsGo, Bool.and_eq_true] at hw
+      obtain ⟨⟨hcs, hwb⟩, hwk⟩ := hw
+      simp only [nfToJasminBody, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, r', hr', rfl⟩ := h
+      obtain ⟨hb1, hb2⟩ := ihb _ _ _ _ hwb (okV_append (okV_blockVars _ hcs)
+        (okV_cons okV_u64 henv)) hb
+      obtain ⟨hk1, hk2⟩ := ihk _ _ _ _ hwk (okV_append (okV_blockVars _ hcs) henv) hr'
+      exact ⟨trC_append (trC_forCode hcs henv (okV_resolveHV henv inits) hb1 hb2) hk1, hk2⟩
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro env d n r hw henv h
+      simp only [widthsGo, Bool.and_eq_true] at hw
+      obtain ⟨⟨⟨hrs, hwt⟩, hwe⟩, hwk⟩ := hw
+      simp only [nfToJasminBody, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨t, ht, e, he, r', hr', rfl⟩ := h
+      obtain ⟨ht1, ht2⟩ := iht _ _ _ _ hwt henv ht
+      obtain ⟨he1, he2⟩ := ihe _ _ _ _ hwe henv he
+      obtain ⟨hk1, hk2⟩ := ihk _ _ _ _ hwk (okV_append (okV_blockVars _ hrs) henv) hr'
+      exact ⟨trC_append (trC_cons (isSome_ifCode hrs henv ht1 ht2 he1 he2) trC_nil) hk1, hk2⟩
+  | whileLoop inits body k ihb ihk =>
+      intro env d n r hw henv h
+      simp only [widthsGo, Bool.and_eq_true] at hw
+      obtain ⟨⟨hcs, hwb⟩, hwk⟩ := hw
+      simp only [nfToJasminBody, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, r', hr', rfl⟩ := h
+      obtain ⟨hb1, hb2⟩ := ihb _ _ _ _ hwb (okV_append (okV_blockVars _ hcs) henv) hb
+      obtain ⟨hk1, hk2⟩ := ihk _ _ _ _ hwk (okV_append (okV_blockVars _ hcs) henv) hr'
+      exact ⟨trC_append (trC_whileCode hcs (okV_resolveHV henv inits) hb1 hb2) hk1, hk2⟩
+  | call f args k ih =>
+      intro env d n r hw henv h
+      simp only [widthsGo, Bool.and_eq_true] at hw
+      obtain ⟨hrs, hwk⟩ := hw
+      simp only [nfToJasminBody] at h
+      split at h
+      · simp only [Option.map_eq_some_iff] at h
+        obtain ⟨r', hr', rfl⟩ := h
+        obtain ⟨hk1, hk2⟩ := ih _ _ _ _ hwk (okV_append (okV_blockVars _ hrs) henv) hr'
+        exact ⟨trC_append (trC_cons (isSome_call f (okV_blockVars _ hrs)
+          (okV_resolveHV henv args)) trC_nil) hk1, hk2⟩
+      · simp at h
+
+/-! ### Units -/
+
+/-- The parameters of a fitting signature over a context that passes `tyOkB` have no
+512-bit word type. -/
+theorem okV_paramPairs {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig Γ t}
+    (hfit : sig.fitsB = true) (hΓ : Γ.all tyOkB = true) : ∀ p ∈ paramPairs sig, OkV p.1 := by
+  intro p hp
+  simp only [paramPairs, List.mem_map, List.mem_range] at hp
+  obtain ⟨j, hj, rfl⟩ := hp
+  have hlen : j < Γ.reverse.length := by
+    rw [List.length_reverse, ← sig.params_length]; exact hj
+  have hmem : (sig.params[j], Γ.reverse[j]) ∈ sig.params.zip Γ.reverse := by
+    rw [List.mem_iff_getElem]
+    exact ⟨j, by simpa [hj] using hlen, by simp⟩
+  have hty := (sig.fitsB_iff.mp hfit).1 _ hmem
+  show (mkV _ _ _).vtype ≠ _
+  simp only [mkV, List.getElem?_eq_getElem hj, Option.getD_some]
+  rw [hty]
+  exact styOf_ne_U512 (List.all_eq_true.mp hΓ _ (List.mem_reverse.mp (List.getElem_mem hlen)))
+
+/-- The function of a body translates when its parameters and results have no 512-bit
+word type and its body translates. -/
+theorem translateFn_mkFn_isSome {fname : String}
+    {ps : List (JVar × CatCrypt.Crypto.Jasmin.Jazz.Storage × CatCrypt.Crypto.Jasmin.Jazz.PType)}
+    {body : List AInstrR} {res : List JVar}
+    {resTys : List (CatCrypt.Crypto.Jasmin.Jazz.Storage × CatCrypt.Crypto.Jasmin.Jazz.PType)}
+    (hps : ∀ p ∈ ps, OkV p.1) (hb : TrC body) (hres : ∀ v ∈ res, OkV v) :
+    (translateFn (mkFn fname ps body res resTys)).isSome := by
+  obtain ⟨_, e1⟩ := Option.isSome_iff_exists.mp
+    (mapM_isSome (f := fun p : CatCrypt.Crypto.Jasmin.FunParam => translateVarIExt p.var)
+      (l := (mkFn fname ps body res resTys).fd.params) fun q hq => by
+        simp only [mkFn, List.mem_map] at hq
+        obtain ⟨p, hp, rfl⟩ := hq
+        exact translateVarIExt_isSome (hps p hp) vi0)
+  obtain ⟨_, e2⟩ := Option.isSome_iff_exists.mp (translateCmdExt_isSome hb)
+  obtain ⟨_, e3⟩ := Option.isSome_iff_exists.mp
+    (mapM_isSome (f := translateVarIExt) (l := (mkFn fname ps body res resTys).fd.results)
+      fun x hx => by
+        simp only [mkFn, List.mem_map] at hx
+        obtain ⟨v, hv, rfl⟩ := hx
+        exact translateVarIExt_isSome (hres v hv) vi0)
+  rw [translateFn_eq_some _ e1 e2 e3]; rfl
+
+/-- **Completeness of the translation on the units of the lowering**: every unit
+`nfToJasmin` returns translates to a program of the `CoqSemMirror` syntax. -/
+theorem translateUnit_isSome_of_nfToJasmin {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {sig : JazzSig Γ t} {fname : String} {p : NFProg jasminDialect Γ [t]}
+    {u : CatCrypt.Crypto.Jasmin.Jazz.JazzUnit} (h : nfToJasmin sig fname p = some u) :
+    (translateUnit u).isSome := by
+  have hw := jasminWidthsB_of_nfToJasmin h
+  simp only [jasminWidthsB, Bool.and_eq_true] at hw
+  obtain ⟨⟨hΓ, ht⟩, hwp⟩ := hw
+  obtain ⟨hfit, r, hr, rfl⟩ := nfToJasmin_eq_some h
+  have hpp := okV_paramPairs hfit hΓ
+  have hpv : ∀ v ∈ (paramPairs sig).map Prod.fst, OkV v := by
+    intro v hv
+    simp only [List.mem_map] at hv
+    obtain ⟨q, hq, rfl⟩ := hv
+    exact hpp q hq
+  obtain ⟨hb, hres⟩ := body_trC p _ _ _ r hwp
+    (fun v hv => hpv v (List.mem_reverse.mp hv)) hr
+  have hrv : OkV (r.res.headD dfltV) := okV_headD hres
+  have htt : styOf t ≠ .sword .U512 := styOf_ne_U512 (by simpa using ht)
+  obtain ⟨fd, hfd⟩ : ∃ fd, translateFn (finish sig fname r) = some fd := by
+    apply Option.isSome_iff_exists.mp
+    cases hrp : sig.resultParam with
+    | some j =>
+        simp only [finish, hrp]
+        refine translateFn_mkFn_isSome hpp (trC_append hb ?_) (by simp)
+        split
+        · exact trC_nil
+        · exact trC_cons (isSome_asgn (okV_getD hpv j) (isSome_pv hrv)) trC_nil
+    | none =>
+        simp only [finish, hrp]
+        have hrt : sig.result.2.toSType = styOf t := by
+          simp only [JazzSig.fitsB, hrp, Bool.and_eq_true, beq_iff_eq] at hfit
+          exact hfit.2.2
+        have hrr : OkV (mkV 'r' r.depth sig.result.2.toSType) := okV_mkV (hrt ▸ htt)
+        refine translateFn_mkFn_isSome hpp
+          (trC_append hb (trC_cons (isSome_asgn hrr (isSome_pv hrv)) trC_nil)) ?_
+        simpa using hrr
+  rw [translateUnit_mkUnit _ _ hfd]; rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslateJazz

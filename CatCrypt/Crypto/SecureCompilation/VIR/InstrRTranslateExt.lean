@@ -28,7 +28,8 @@ initialiser `Parr_init`. It agrees with `translateInstrR` wherever that is defin
   array `aarr U8 n`.
 * An array index that is a `u64` register `Pvar idx` translates to
   `Papp1 (Oint_of_word Unsigned U64) (Pvar idx)`, the explicit conversion
-  Jasmin's type checker inserts (`ComJasminBridgeArrIdx.idxExpr`).
+  Jasmin's type checker inserts (`ComJasminBridgeArrIdx.idxExpr`); any other index
+  translates by `translatePExprExt` (`translateIdx`, `translatePExprExt_pget`).
 * The JasminAST `Pget`/`Laset` carry no alignment; the mirror image is `Unaligned`.
 * A `Cfor` range bound `n : Nat` translates to `Pconst n`.
 * `Parr_init n` (an `n`-byte array) translates to `Parr_init U8 n`, and `Cwhile`
@@ -80,14 +81,15 @@ def translateDir : CatCrypt.Crypto.Jasmin.LoopDir → CatCrypt.Crypto.Jasmin.Coq
   | .UpTo => .UpTo
   | .DownTo => .DownTo
 
-/-- An array index: a `u64` register read becomes its `int_of_word` conversion;
-    any other index is translated by `translatePExpr`. -/
-def translateIdx : APExpr → Option MPexpr
+/-- An array index `e` whose expression translates to `t`: a `u64` register read becomes
+    its `int_of_word` conversion, and any other index is `t`. -/
+def intOfWordIdx (e : APExpr) (t : Option MPexpr) : Option MPexpr :=
+  match e with
   | .Pvar g =>
       if g.gv.var.vtype = .sword .U64 then
         (translateGVarExt g).map (fun g' => .Papp1 (.Oint_of_word .Unsigned .U64) (.Pvar g'))
-      else (translateGVarExt g).map .Pvar
-  | e => translatePExpr e
+      else t
+  | _ => t
 
 /-! ## §2. Expressions and l-values -/
 
@@ -105,7 +107,7 @@ def translatePExprExt : APExpr → Option MPexpr
   | .Pvar g => (translateGVarExt g).map .Pvar
   | .Parr_init n => some (.Parr_init .U8 n)
   | .Pget aa ws x idx =>
-      match translateWSize ws, translateGVarExt x, translateIdx idx with
+      match translateWSize ws, translateGVarExt x, intOfWordIdx idx (translatePExprExt idx) with
       | some ws', some x', some i' => some (.Pget .Unaligned (translateArrAccess aa) ws' x' i')
       | _, _, _ => none
   | .Papp1 op e =>
@@ -117,6 +119,19 @@ def translatePExprExt : APExpr → Option MPexpr
       | some op', some e1', some e2' => some (.Papp2 op' e1' e2')
       | _, _, _ => none
   | e => translatePExpr e
+
+/-- An array index: a `u64` register read becomes its `int_of_word` conversion;
+    any other index is translated by `translatePExprExt`. -/
+def translateIdx (e : APExpr) : Option MPexpr := intOfWordIdx e (translatePExprExt e)
+
+/-- The array read translates its index by `translateIdx`. -/
+theorem translatePExprExt_pget (aa : CatCrypt.Crypto.Jasmin.ArrAccess) (ws : AWSize)
+    (x : AGVar) (idx : APExpr) :
+    translatePExprExt (.Pget aa ws x idx) =
+      match translateWSize ws, translateGVarExt x, translateIdx idx with
+      | some ws', some x', some i' => some (.Pget .Unaligned (translateArrAccess aa) ws' x' i')
+      | _, _, _ => none := by
+  rw [translatePExprExt]; rfl
 
 /-- `translateLVal` extended by the discarded l-value `Lnone`, variables of array
     type, and the array write `Laset`. -/
@@ -291,7 +306,7 @@ theorem translatePExprExt_pvar_local (x : AVarI) (x' : MVarI)
 theorem translateIdx_u64 (x : AVarI) (x' : MVarI) (hty : x.var.vtype = .sword .U64)
     (hx : translateVarIExt x = some x') :
     translateIdx (.Pvar { gv := x, gs := false }) = some (idxExpr x') := by
-  simp [translateIdx, translateGVarExt, hx, hty, idxExpr, mkLvar]
+  simp [translateIdx, intOfWordIdx, translateGVarExt, hx, hty, idxExpr, mkLvar]
 
 /-- **Rotate image.** The emitted rotate
     `Copn [Lnone _ bool, Lnone _ bool, Lvar dst] tag (Oasm ROR_sz) [Pvar src, Pconst n]`
@@ -365,7 +380,7 @@ theorem translateInstrRExt_pget (dst arr idx : AVarI) (dst' arr' idx' : MVarI)
       = some (.Cassgn (.Lvar dst') (translateAssgnTag tag) (.aword .U8)
           (.Pget .Unaligned (translateArrAccess aa) ws' (mkLvar arr') (idxExpr idx'))) := by
   simp [translateInstrRExt, translateLValExt, translateSTypeExt, translateSType, hdst,
-    translatePExprExt, hws, translateGVarExt, harr, translateIdx_u64 idx idx' hty hidx,
+    translatePExprExt_pget, hws, translateGVarExt, harr, translateIdx_u64 idx idx' hty hidx,
     mkLvar]
   rfl
 

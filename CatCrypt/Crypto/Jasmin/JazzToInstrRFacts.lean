@@ -49,4 +49,12 @@ theorem opnNoneTys_CMP_64 : opnNoneTys "CMP_64" 5 = List.replicate 5 .sbool := b
 /-- `MULX_lo_hi_64` has no entry in the output table; its `_` outputs are typed `u64`. -/
 theorem opnNoneTys_MULX_64 : opnNoneTys "MULX_lo_hi_64" 2 = [] := by native_decide
 
+/-- The `_` outputs of `ANDN`, `ADC`, `NEG`, `CMP` and `MULX_lo_hi` at the six word sizes
+`U8` to `U256`, with two, five or six outputs, have no 512-bit word type. -/
+theorem opnNoneTys_ne_U512 :
+    ∀ ws ∈ [WSize.U8, .U16, .U32, .U64, .U128, .U256],
+      ∀ base ∈ ["ANDN", "ADC", "NEG", "CMP", "MULX_lo_hi"], ∀ n ∈ [2, 5, 6],
+        ∀ ty ∈ opnNoneTys (base ++ "_" ++ toString ws.bits) n, ty ≠ .sword .U512 := by
+  native_decide
+
 end CatCrypt.Crypto.Jasmin.JazzToInstrR
