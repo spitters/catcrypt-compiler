@@ -8,50 +8,46 @@ module
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Jasmin.JasminAST
 public import CatCrypt.Crypto.Jasmin.Passes.DeadCode
+public import CatCrypt.Crypto.Jasmin.JazzRoundTrip
 
 /-!
-# Jasmin surface-syntax emitter for SSA u64 programs
+# Jasmin text of `FunDecl`s
 
-Produces a `.jazz` source string that `jasminc -arch x86-64` accepts,
-tailored to the SSA subset produced by our `S2NBignumSSA` ports. The
-existing `LowCTToJasmin.ppJasminProg` has two blocking bugs for our
-programs — every binary op prints as literal `" op "`, and
-`Papp1 (Oword_of_int)` immediates dump their raw AST — so this module
-provides a new printer rather than patching the old one.
+`emitFunDeclWithKind kind fd spill` renders a `FunDecl` as a `.jazz` function that
+`jasminc -arch x86-64` accepts. It builds the compilation unit `toLegacyUnit kind spill fd`
+and prints it with the single Jasmin printer `Jazz.print`, through the gate
+`Jazz.printChecked`, which returns the text only when it parses back to the unit's
+erasure. The unit is built in four steps:
 
-## x86 2-operand form
+1. `optimize` (arithmetic peephole, constant propagation, dead-code elimination and
+   copy coalescing) on the body and the results;
+2. `expandFlagCaptures`, the materialisation of carry flags used as words;
+3. `inferStorage`, the storage class and surface type of each parameter, result and
+   local;
+4. `legacyNormalize` and `retypeFn`, the body in the normal form the printer and the
+   parser agree on: x86's two-address form `x = y; x OP= z` for `x = y OP z`, the
+   split `x = y; x = !x` of `x = !y`, a call of a built-in binary operator as an
+   assignment, constants without `Oword_of_int`, and every variable and operator at
+   the type and width the parser assigns to its text.
 
-x86's arithmetic is mostly 2-operand (destructive). `jasminc`'s register
-allocator rejects `x = y OP z` when `x ≠ y`, so for each binary-op
-`Cassgn` we emit a two-instruction sequence:
+An assignment `x = Parr_init n` declares the array `x` and has no text: the printed
+function contains no `// x : zero-init array (omitted)` line. `emitFunDecl`,
+`emitFunDeclSpill`, `emitFunDeclRastack` and `emitFunDeclRastackSpill` fix the function
+kind and the spill flag; `emitFunDeclNoOpt` omits `optimize`.
 
-```
-x = y;
-x OP= z;
-```
+## Main definitions
 
-The Jasmin compiler's register allocator elides the initial `movq`
-whenever it can reuse the source register.
+* `optimize`, `expandFlagCaptures`: the passes before printing.
+* `legacyNormalize`, `inferStorage`, `retypeFn`: the printed normal form of a body, the
+  declarations of a function, and its typing by the declarations.
+* `toLegacyUnit`: the unit of a `FunDecl`.
+* `emitFunDeclWithKind`, `emitFunDecl`, `emitFunDeclSpill`, `emitFunDeclRastack`,
+  `emitFunDeclRastackSpill`, `emitFunDeclNoOpt`, `writeJazz`: the text of a `FunDecl`.
 
-## Supported instruction shapes
+## Main results
 
-| Jasmin `InstrR`                                | Emitted                        |
-|------------------------------------------------|--------------------------------|
-| `Cassgn x _ _ (Pconst k)`                      | `x = k;`                       |
-| `Cassgn x _ _ (Papp1 (Oword_of_int _) (Pconst k))` | `x = k;`                   |
-| `Cassgn x _ _ (Pvar y)`                        | `x = y;`                       |
-| `Cassgn x _ _ (Papp1 (Olnot _) (Pvar y))`      | `x = y; x = !x;`               |
-| `Cassgn x _ _ (Papp2 op (Pvar y) (Pvar z))`    | `x = y; x OP= z;`              |
-| `Cassgn x _ _ (Papp2 op (Pvar y) (Pconst k))`  | `x = y; x OP= k;`              |
-
-Any other shape produces `none`, and `emitFunDecl` propagates failure.
-
-## Replacement
-
-This printer will be replaced by the single Jasmin printer `Jazz.print`
-(`Jasmin/JazzPrint.lean`), whose output is accepted only when it parses back to the
-printed unit. `emitFunDecl` and its variants keep their names and their output;
-`optimize` and `expandFlagCaptures` run before that printer as explicit passes.
+* `emitFunDeclWithKind_parse`: a text returned by `emitFunDeclWithKind kind fd spill`
+  parses to the erasure of `toLegacyUnit kind spill fd`.
 -/
 
 @[expose] public section
@@ -260,348 +256,6 @@ def dedup : List String → List String :=
                  else go (x :: seen) (x :: acc) xs
   go [] []
 
-/-- **Arithmetic-expression renderer.** Render a `PExpr`
-    as a parenthesised Jasmin arithmetic expression.  This is the
-    expression-position counterpart of `emitInstr` (which only handles a
-    fixed set of flat `Cassgn` shapes): it recurses through the nested
-    arithmetic produced by `LowCTToJasmin.sexprToPExpr` (the `RScalarSetExpr`
-    lowering) and through dynamic-index `Pget` reads (the `RArrLoad`
-    lowering).
-
-    Supported subset:
-    * `Pvar x`              → `x`
-    * `Pconst k`            → `k` (integer literal — Jasmin's surface accepts
-      unsuffixed literals in expression position)
-    * `Papp1 (Oword_of_int) (Pconst k)` → `k` (the boxed-literal idiom)
-    * `Papp1 (Ozeroext w) e`  → `(<bits>u) <e>` (width cast)
-    * `Papp2 op a b`        → `(<a> <op> <b>)` for the arithmetic/bitwise/shift
-      `SOp2`s in `binOpStr`, plus unsigned `<` (`Olt Uextend`)
-    * `Pget AAscale ws arr idx` → `arr[<idx>]` (dynamic array read, `idx` may
-      itself be an arithmetic expression)
-
-    Anything else returns `none`, so an unexpected shape fails emission
-    conservatively rather than producing malformed jazz. -/
-partial def ppArithExpr : PExpr → Option String
-  | .Pvar gv => some gv.gv.var.vname
-  | .Pconst k => some (toString k)
-  | .Papp1 (.Oword_of_int _) (.Pconst k) => some (toString k)
-  | .Papp1 (.Ozeroext wso _) e => do
-      let es ← ppArithExpr e
-      some ("(" ++ toString (wsizeBits wso) ++ "u) " ++ es)
-  | .Papp2 op a b => do
-      let opS ← (match op with
-        | .Olt _ _ => some "<"
-        | _ => binOpStr op)
-      let as ← ppArithExpr a
-      let bs ← ppArithExpr b
-      some ("(" ++ as ++ " " ++ opS ++ " " ++ bs ++ ")")
-  | .Pget .AAscale _ arr idx => do
-      let is ← ppArithExpr idx
-      some (arr.gv.var.vname ++ "[" ++ is ++ "]")
-  | _ => none
-
-/-! ## Instruction emitter -/
-
-/-- Render one instruction as a (possibly 2-line) Jasmin statement.
-
-    **Extension 3A (`Cfor`):** `Cfor v {.UpTo, lo, hi} body` is emitted as
-    `for i = lo to hi { <body> }` using Jasmin's compile-time `inline int`
-    loop — jasminc fully unrolls it. The loop variable name is taken from
-    `v` in the AST (conventionally `i`).
-
-    Nested loops and multi-statement bodies are handled by recursing
-    through `emitInstr` on each body instruction. If any body instruction
-    is unsupported, the whole emission fails. -/
-partial def emitInstr (ind : String) : InstrR → Option String
-  -- `Parr_init n` zero-initializes an n-byte array. At the Jasmin
-  -- source level, `reg` declarations are uninitialized by convention
-  -- and parameter regs are initialized by the caller. So we emit a
-  -- comment marker rather than an explicit zero (which Jasmin doesn't
-  -- have a clean syntax for at the `reg u64` level). This keeps the
-  -- emit going for protocols like K3 Lizard that declare locals via
-  -- `rc_let`.
-  | .Cassgn (.Lvar x) _ _ (.Parr_init _) =>
-      some (ind ++ "// " ++ x.var.vname ++ " : zero-init array (omitted)")
-  | .Cassgn (.Lvar x) _ _ (.Pconst z) =>
-      some (ind ++ x.var.vname ++ " = " ++ toString z ++ ";")
-  | .Cassgn (.Lvar x) _ _ (.Papp1 (.Oword_of_int _) (.Pconst z)) =>
-      some (ind ++ x.var.vname ++ " = " ++ toString z ++ ";")
-  | .Cassgn (.Lvar x) _ _ (.Pvar y) =>
-      some (ind ++ x.var.vname ++ " = " ++ y.gv.var.vname ++ ";")
-  -- Memory load: `x = [:uNN base + k];`  (Extension 2B: memory support,
-  -- constant offset). `jasminc` parses this as a scaled `uNN` load at
-  -- `base + k` bytes (despite the name, `k` here is a byte offset). The
-  -- access width `ws` is carried in the `Pload`; `u64` and `u32` both
-  -- emit; the *byte* offset `k` already encodes the per-limb stride
-  -- (8 for u64, 4 for u32) chosen by the kernel `FunDecl`.
-  | .Cassgn (.Lvar x) _ _ (.Pload ws base (.Pconst k)) =>
-      some (ind ++ x.var.vname ++ " = [:" ++ wsizeTok ws ++ " " ++ base.var.vname ++
-            " + " ++ toString k ++ "];")
-  -- Memory store: `[:uNN base + k] = src;`.
-  | .Cassgn (.Lmem ws base (.Pconst k)) _ _ (.Pvar src) =>
-      some (ind ++ "[:" ++ wsizeTok ws ++ " " ++ base.var.vname ++ " + " ++ toString k ++
-            "] = " ++ src.gv.var.vname ++ ";")
-  | .Cassgn (.Lvar x) _ _ (.Papp1 (.Olnot _) (.Pvar y)) =>
-      let xn := x.var.vname
-      let yn := y.gv.var.vname
-      some (ind ++ xn ++ " = " ++ yn ++ ";\n" ++
-            ind ++ xn ++ " = !" ++ xn ++ ";")
-  -- Zero-extend a narrower word into a wider one: `x = (NNu) y;`.
-  -- Used by the open-coded carry materialization, where a one-byte
-  -- `#SETcc` result is widened into the u64 carry register (the x86
-  -- `movzx` idiom). `jasminc` accepts `(64u) src` for the widening cast.
-  | .Cassgn (.Lvar x) _ _ (.Papp1 (.Ozeroext wso _) (.Pvar y)) =>
-      some (ind ++ x.var.vname ++ " = (" ++ toString (wsizeBits wso) ++ "u) " ++
-            y.gv.var.vname ++ ";")
-  | .Cassgn (.Lvar x) _ _ (.Papp2 op (.Pvar y) (.Pvar z)) =>
-      match binOpStr op with
-      | none =>
-          -- Not a compact-infix binop (e.g. `Olt`): render the full
-          -- expression via `ppArithExpr` (`x = (y < z);`).
-          (ppArithExpr (.Papp2 op (.Pvar y) (.Pvar z))).map
-            (fun es => ind ++ x.var.vname ++ " = " ++ es ++ ";")
-      | some opS =>
-        let xn := x.var.vname
-        let yn := y.gv.var.vname
-        let zn := z.gv.var.vname
-        if xn = yn then
-          some (ind ++ xn ++ " " ++ opS ++ "= " ++ zn ++ ";")
-        else if xn = zn then
-          -- ALIAS GUARD: the dest aliases the second operand.  The compact
-          -- `x = y; x OP= z;` expansion would clobber `z` (== `x`) before the
-          -- `OP=`, computing `y OP y`.  Emit the single-expression form
-          -- `x = (y OP z);` instead — jasminc lowers this correctly (it reads
-          -- both operands before writing the destination).  Without this guard
-          -- `r0 = r - r0` mis-compiles to `r0 = r; r0 -= r0;` (= 0).
-          some (ind ++ xn ++ " = (" ++ yn ++ " " ++ opS ++ " " ++ zn ++ ");")
-        else
-          some (ind ++ xn ++ " = " ++ yn ++ ";\n" ++
-                ind ++ xn ++ " " ++ opS ++ "= " ++ zn ++ ";")
-  | .Cassgn (.Lvar x) _ _ (.Papp2 op (.Pvar y) (.Pconst k)) =>
-      match binOpStr op with
-      | none =>
-          (ppArithExpr (.Papp2 op (.Pvar y) (.Pconst k))).map
-            (fun es => ind ++ x.var.vname ++ " = " ++ es ++ ";")
-      | some opS =>
-        let xn := x.var.vname
-        let yn := y.gv.var.vname
-        if xn = yn then
-          some (ind ++ xn ++ " " ++ opS ++ "= " ++ toString k ++ ";")
-        else
-          some (ind ++ xn ++ " = " ++ yn ++ ";\n" ++
-                ind ++ xn ++ " " ++ opS ++ "= " ++ toString k ++ ";")
-  -- `x = k OP y` with the *constant on the left*.  jasminc's asmgen
-  -- cannot encode `dst = imm OP src` in one instruction (`reg = imm - reg`
-  -- raises `(compile_arg) not compatible asm_arg`), so split into
-  -- `x = k; x OP= y;` (load the immediate, then accumulate the variable).
-  -- For `0 - y` this is the negation idiom `x = 0; x -= y;`, which jasminc
-  -- lowers to `NEG`.  The `xn = yn` alias case (`x = k OP x`) is safe because
-  -- `x = k` overwrites `x` before the `OP= y` reads it — except when `y` also
-  -- aliases `x`, handled by emitting the read-before-write expression form.
-  | .Cassgn (.Lvar x) _ _ (.Papp2 (.Osub _) (.Pconst 0) (.Pvar y)) =>
-      -- `x = 0 - y` → unary negation `x = -y;` (jasminc lowers to `NEG`; the
-      -- `0 - y` subtraction form is rejected by asmgen).  Safe under aliasing.
-      some (ind ++ x.var.vname ++ " = -" ++ y.gv.var.vname ++ ";")
-  | .Cassgn (.Lvar x) _ _ (.Papp2 op (.Pconst k) (.Pvar y)) =>
-      match binOpStr op with
-      | none =>
-          (ppArithExpr (.Papp2 op (.Pconst k) (.Pvar y))).map
-            (fun es => ind ++ x.var.vname ++ " = " ++ es ++ ";")
-      | some opS =>
-        let xn := x.var.vname
-        let yn := y.gv.var.vname
-        if xn = yn then
-          -- alias `x = k OP x`: stage the immediate in a copy first via the
-          -- single-expression form (jasminc reads both operands before write).
-          some (ind ++ xn ++ " = (" ++ toString k ++ " " ++ opS ++ " " ++ yn ++ ");")
-        else
-          some (ind ++ xn ++ " = " ++ toString k ++ ";\n" ++
-                ind ++ xn ++ " " ++ opS ++ "= " ++ yn ++ ";")
-  -- Opaque x86 intrinsic via `Copn`. Each lval is either a discarded
-  -- flag (`Lnone` → `_`) or a named output (`Lvar name` → `name`).
-  -- Each arg is a `Pvar` or `Pconst`.  Examples:
-  --   `_, _, _, _, _, r = #LZCNT(a);`                   (all flags discarded)
-  --   `of, cf, sf, pf, zf, r0 = #ADD_64(a0, b0);`       (flags kept as regs)
-  --   `_, cf, _, _, _, r = #ADC_64(a, b, cf);`          (only carry kept)
-  --   `r = #BSWAP_64(a);`                                (no flags)
-  | .Copn lvs _ (.Oasm op) args => do
-      let lvStrs ← lvs.mapM (fun
-        | .Lnone _ _ => some "_"
-        | .Lvar x    => some x.var.vname
-        | _ => none)
-      let argStrs ← args.mapM (fun
-        | .Pvar gv => some gv.gv.var.vname
-        | .Pconst k => some (toString k)
-        -- Memory load as intrinsic arg: `#MULX(rdx, [:u64 bp + 16])`.
-        -- x86 MULX supports a memory operand for its second source, which
-        -- saves a register in tight schoolbook-multiplication kernels.
-        | .Pload ws base (.Pconst k) =>
-            some ("[:" ++ wsizeTok ws ++ " " ++ base.var.vname ++ " + " ++ toString k ++ "]")
-        | _ => none)
-      let lhs := String.intercalate ", " lvStrs
-      let argStr := String.intercalate ", " argStrs
-      some (ind ++ lhs ++ " = #" ++ op.name ++ "(" ++ argStr ++ ");")
-  -- Extension 3A: counted for-loop. Only `.UpTo` with compile-time
-  -- known `lo`/`hi` is emitted. The body is rendered with a deeper
-  -- indent, and each body instruction must itself be emission-supported.
-  | .Cfor vi range body =>
-      match range.dir with
-      | .UpTo => do
-        let bodyStrs ← body.mapM (emitInstr (ind ++ "  "))
-        let bodyStr := String.intercalate "\n" bodyStrs
-        some (ind ++ "for " ++ vi.var.vname ++ " = " ++
-              toString range.lo ++ " to " ++ toString range.hi ++ " {\n" ++
-              bodyStr ++ "\n" ++ ind ++ "}")
-      | .DownTo => none
-  -- Extension 3B: runtime while-loop. The condition must be a simple
-  -- comparison of a loop-counter variable to zero, and `cbefore` must
-  -- be empty (the standard `while (n != 0) { body }` shape). Any other
-  -- shape fails emission conservatively.
-  --
-  -- Emission: `while (n != 0) { <cafter> }`. Jasmin compiles this to
-  -- the `cmp 0; jne loopHeader` pattern we verified with `jasminc`. The
-  -- guard width (`Oneq .U64` / `.U32`) is the counter register's width;
-  -- the surface form `n != 0` is width-independent.
-  | .Cwhile [] (.Papp2 (.Oneq _) (.Pvar gv) (.Pconst 0)) cafter =>
-      do
-      let bodyStrs ← cafter.mapM (emitInstr (ind ++ "  "))
-      let bodyStr := String.intercalate "\n" bodyStrs
-      some (ind ++ "while (" ++ gv.gv.var.vname ++ " != 0) {\n" ++
-            bodyStr ++ "\n" ++ ind ++ "}")
-  -- Variant: `cond = (n != (word_of_int 0))`, produced by some
-  -- frontends. Semantically identical.
-  | .Cwhile [] (.Papp2 (.Oneq _) (.Pvar gv)
-                  (.Papp1 (.Oword_of_int _) (.Pconst 0))) cafter =>
-      do
-      let bodyStrs ← cafter.mapM (emitInstr (ind ++ "  "))
-      let bodyStr := String.intercalate "\n" bodyStrs
-      some (ind ++ "while (" ++ gv.gv.var.vname ++ " != 0) {\n" ++
-            bodyStr ++ "\n" ++ ind ++ "}")
-  -- Conditional branch on a counter-style inequality `(gv != 0)`. This is
-  -- the same `Papp2 (Oneq _) (Pvar _) (Pconst 0)` guard shape accepted by
-  -- the `Cwhile` clause above. It
-  -- covers the sign-equality / `mpn_compare`-result branches used by the
-  -- signed-mpz dispatcher in `Mpn.SignedJasminPrototype.lean`. The bodies
-  -- are rendered with a deeper indent; an unsupported body instruction
-  -- propagates `none` as everywhere else. Emitted form:
-  --   if (<gv> != 0) {
-  --     <then>
-  --   } else {
-  --     <else>
-  --   }
-  | .Cif (.Papp2 (.Oneq _) (.Pvar gv) (.Pconst 0)) th el => do
-      let thStrs ← th.mapM (emitInstr (ind ++ "  "))
-      let elStrs ← el.mapM (emitInstr (ind ++ "  "))
-      let thStr := String.intercalate "\n" thStrs
-      let elStr := String.intercalate "\n" elStrs
-      some (ind ++ "if (" ++ gv.gv.var.vname ++ " != 0) {\n" ++
-            thStr ++ "\n" ++ ind ++ "} else {\n" ++
-            elStr ++ "\n" ++ ind ++ "}")
-  -- Built-in binop *Ccall* lowering: `Ccall _ [Lvar dst] fn [Pvar a, Pvar b]`
-  -- where `fn.name` is one of `Add`/`Sub`/`Mul`/`BitXor`/`BitAnd`/`BitOr`/
-  -- `Shl`/`Shr` (plus width-suffixed variants like `BitXor#32`) — emit it
-  -- as a Jasmin infix `dst = a; dst OP= b;` (the two-operand form already
-  -- used by the `Cassgn (Papp2 …)` arms above). `jasminc` has no callable
-  -- functions named `BitXor` etc., so without this rewrite the bench-side
-  -- AST-direct chain would emit `dst = BitXor(a, b);` which `jasminc`
-  -- rejects. `LowCTToJasmin.toJasminCmd`'s `RCall f dest args` arm lowers
-  -- to a `Ccall .DoNotInline [locToLVal dest] { name := f } …`, so this is
-  -- the on-ramp the bench drivers (e.g. MAYO `sign_rwhile`) need to land
-  -- per-iter scalar work inside an `RWhileNz` body. The previous infix
-  -- rewriter lived only in `RustEmitJazz.lean` (the deprecated Rust-shaped
-  -- path); this arm gives the canonical AST-direct path the same coverage.
-  --
-  -- Falls through for any other shape (multi-return, more/fewer than two
-  -- `Pvar` args, non-binop name, …) to the regular function-call emit.
-  | .Ccall _ii [.Lvar dst] fn [.Pvar a, .Pvar b] =>
-      match binOpNameStr fn.name with
-      | some opS =>
-          let xn := dst.var.vname
-          let yn := a.gv.var.vname
-          let zn := b.gv.var.vname
-          if xn = yn then
-            some (ind ++ xn ++ " " ++ opS ++ "= " ++ zn ++ ";")
-          else
-            some (ind ++ xn ++ " = " ++ yn ++ ";\n" ++
-                  ind ++ xn ++ " " ++ opS ++ "= " ++ zn ++ ";")
-      | none =>
-          -- Not a builtin binop — emit as a regular single-return function
-          -- call: `dst = fn(a, b);`. Mirrors the multi-arg `Ccall` arm below.
-          some (ind ++ dst.var.vname ++ " = " ++ fn.name ++
-                "(" ++ a.gv.var.vname ++ ", " ++ b.gv.var.vname ++ ");")
-  -- Function call: `lvs = fn(args);` (or just `fn(args);` for void).
-  --
-  -- Each lval is `Lvar name → name` or `Lnone → _`; each arg is
-  -- `Pvar name`, `Pconst k`, or `Pload [:u64 base + k]`. The
-  -- `InlineInfo` tag is consumed at compile-time by jasminc when it
-  -- chooses a calling convention, but does not appear in surface
-  -- syntax — `inline` / non-inline is a property of the callee's
-  -- declaration, not the call site. Examples:
-  --   `bignum_add_4(op, ap, bp);`            (void return)
-  --   `r0, r1, r2, r3 = bignum_sqr_4(a0, a1, a2, a3);` (multi-return)
-  | .Ccall _ii lvs fn args => do
-      let lvStrs ← lvs.mapM (fun
-        | .Lnone _ _ => some "_"
-        | .Lvar x    => some x.var.vname
-        | _ => none)
-      let argStrs ← args.mapM (fun
-        | .Pvar gv => some gv.gv.var.vname
-        | .Pconst k => some (toString k)
-        | .Pload ws base (.Pconst k) =>
-            some ("[:" ++ wsizeTok ws ++ " " ++ base.var.vname ++ " + " ++ toString k ++ "]")
-        | _ => none)
-      let argStr := String.intercalate ", " argStrs
-      if lvs.isEmpty then
-        some (ind ++ fn.name ++ "(" ++ argStr ++ ");")
-      else
-        let lhs := String.intercalate ", " lvStrs
-        some (ind ++ lhs ++ " = " ++ fn.name ++ "(" ++ argStr ++ ");")
-  -- Literal-index array element load/store.
-  -- `Cassgn (Laset _ ws arr (Pconst i)) _ _ (Pvar src)`  ↦  `arr[i] = src;`
-  -- `Cassgn (Lvar dst) _ _ (Pget _ ws arr (Pconst i))`   ↦  `dst = arr[i];`
-  -- These are the literal-index array slots emitted by
-  -- `LowCTToJasmin.toJasminCmd` for the `RArrStoreLit`/`RArrLoadLit`
-  -- constructors.  Jasmin's surface syntax accepts an integer literal in
-  -- the bracket position directly, so we just stringify the `Pconst`.
-  | .Cassgn (.Laset _ _ arr (.Pconst i)) _ _ (.Pvar src) =>
-      some (ind ++ arr.var.vname ++ "[" ++ toString i ++ "] = " ++
-            src.gv.var.vname ++ ";")
-  | .Cassgn (.Lvar dst) _ _ (.Pget _ _ arr (.Pconst i)) =>
-      some (ind ++ dst.var.vname ++ " = " ++ arr.gv.var.vname ++ "[" ++
-            toString i ++ "];")
-  -- Dynamic-index array store / load.  The bracket
-  -- holds a register expression (a loop counter, possibly with arithmetic
-  -- offset) rather than a `Pconst`.  Emitted by `LowCTToJasmin`'s
-  -- `RArrStore`/`RArrLoad` arms.  jasminc scales the (`AAscale`) index by the
-  -- element word size, so `arr[i]` selects the `i`-th `u32`.
-  | .Cassgn (.Laset .AAscale _ arr idx) _ _ (.Pvar src) => do
-      let is ← ppArithExpr idx
-      some (ind ++ arr.var.vname ++ "[" ++ is ++ "] = " ++ src.gv.var.vname ++ ";")
-  -- Dynamic-index store with a narrowing cast `arr[i] = (32u) src;`.
-  | .Cassgn (.Laset .AAscale _ arr idx) _ _ (.Papp1 (.Ozeroext wso _) src) => do
-      let is ← ppArithExpr idx
-      let ss ← ppArithExpr src
-      some (ind ++ arr.var.vname ++ "[" ++ is ++ "] = (" ++
-            toString (wsizeBits wso) ++ "u) " ++ ss ++ ";")
-  | .Cassgn (.Lvar dst) _ _ (.Pget .AAscale _ arr idx) => do
-      let is ← ppArithExpr idx
-      some (ind ++ dst.var.vname ++ " = " ++ arr.gv.var.vname ++ "[" ++ is ++ "];")
-  -- Runtime-scalar arithmetic assignment.  The RHS is
-  -- a nested arithmetic `PExpr` (`Papp2`/`Papp1`/`Pget`/`Pvar`/`Pconst`)
-  -- produced by `sexprToPExpr`.  Render it via the recursive `ppArithExpr`.
-  -- This arm is placed LAST among the `Cassgn (.Lvar _)` arms so the
-  -- specific flat shapes above (single `Pvar`, single `Pconst`, two-operand
-  -- `Papp2`) take priority and emit their compact two-operand form; only
-  -- nested expressions reach here.
-  | .Cassgn (.Lvar x) _ _ rhs => do
-      let es ← ppArithExpr rhs
-      some (ind ++ x.var.vname ++ " = " ++ es ++ ";")
-  | _ => none
-
-/-- Emit all instructions, separated by newlines. -/
-def emitBody (ind : String) (body : List InstrR) : Option String :=
-  body.mapM (emitInstr ind) |>.map (String.intercalate "\n")
-
 /-! ## Optimization pipeline (applied before emission)
 
 Three pre-emission optimizations:
@@ -613,14 +267,12 @@ Three pre-emission optimizations:
 2. **Dead-code elimination** (`deadCodeElim` from the in-repo
    `Passes/DeadCode.lean`). Drops `Cassgn`s whose LHS is not live
    afterwards. Cheap liveness analysis.
-3. **BSWAP_64 intrinsic path.** When a port uses `Copn` with `Oasm`
-   name `"BSWAP_64"` (or any such intrinsic), `emitInstr` emits
-   the Jasmin source form `x = #BSWAP_64(y);`. `jasminc` lowers this
-   to a single `bswap` — matching s2n's hand-written `word_bytereverse`.
+3. **Copy coalescing** (`coalesceGo`) and **constant propagation**
+   (`propagateConstants`), which rename result variables into their producers and
+   substitute single-use constants.
 
-The three compose cleanly: `peepholeArith` feeds into `deadCodeElim`
-(which cleans up the dead producer assignment), and both run over
-the input to `emitBody`. -/
+`peepholeArith` feeds into `deadCodeElim`, which removes the dead producer
+assignment; `optimize` composes the passes and returns the renamed results. -/
 
 /-- Count how many instructions in `body` read the variable named `x`. -/
 def countReads (x : String) (body : List InstrR) : Nat :=
@@ -1600,16 +1252,18 @@ partial def u64AccessedArrays : List InstrR → List String
       | .Cwhile cb c ca => u64AccessedArrays cb ++ exprU64 c ++ u64AccessedArrays ca
     here ++ u64AccessedArrays rest
 
-/-- Render one `stack uNN[k] name;` declaration.  When `u32Packed` is true,
-    the slot is declared `stack u32[n/4]` (the ML-DSA poly-buffer layout);
-    otherwise the default packed-u64 / byte-wise `tbytesStackLayout` applies. -/
+/-- The element width and length of a `stack` array of `n` bytes: `u64` elements for a
+    Keccak-f1600 size (the layout of the `reg ptr u64[n/8]` callee parameter), `u32`
+    elements when `u32Packed` and `n` is a multiple of 4 (the ML-DSA polynomial buffer),
+    else the `tbytesStackLayout` layout. -/
+def stackArrLayout (u32Packed : Bool) (n : Nat) : WSize × Nat :=
+  if keccakU64ArrayBytes n then (WSize.U64, n / 8)
+  else if u32Packed && n % 4 == 0 then (WSize.U32, n / 4)
+  else tbytesStackLayout n
+
+/-- The declaration line `  stack uNN[k] name;` of the layout `stackArrLayout`. -/
 def stackArrDeclW (u32Packed : Bool) (name : String) (n : Nat) : String :=
-  -- A Keccak-f1600 ABI array size declares a u64-packed `stack u64[n/8]`
-  -- slot to match the `reg ptr u64[n/8]` callee param.  Takes precedence over
-  -- the u32-poly case so the sponge state buffer is not mis-declared u32.
-  let (w, k) := if keccakU64ArrayBytes n then (WSize.U64, n / 8)
-                else if u32Packed && n % 4 == 0 then (WSize.U32, n / 4)
-                else tbytesStackLayout n
+  let (w, k) := stackArrLayout u32Packed n
   "  stack " ++ wsizeTok w ++ "[" ++ toString k ++ "] " ++ name ++ ";\n"
 
 /-- Render one `stack uNN[k] name;` declaration. -/
@@ -1617,26 +1271,49 @@ def stackArrDecl (name : String) (n : Nat) : String :=
   let (w, k) := tbytesStackLayout n
   "  stack " ++ wsizeTok w ++ "[" ++ toString k ++ "] " ++ name ++ ";\n"
 
-/-! ## Function emitter -/
+/-! ## Function kinds and declarations -/
 
-/-- Internal: shared body-rendering core used by both `emitFunDecl` (export fn)
-    and `emitFunDeclWithKind` (the subroutine / annotated emitter). Produces
-    the optimised body string and the rendered prelude (parameter signature,
-    local declarations, return signature, return statement) so the caller
-    only has to plug in the `export fn` / `fn` prefix and any `#[...]`
-    annotations. -/
-def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
-    Option (String × String × String × String) := do
-  let liveOutIn := fd.results.map (·.var)
-  let (optBody0, optLO) := optimize liveOutIn fd.body
-  -- A flag-named variable that is actually used as a GPR (computed by
-  -- arithmetic, read in an arithmetic/memory context, or a data/`Ccall`
-  -- l-value) is NOT a flag — it is declared `reg u64` instead.
-  let gprUsed := gprUsedNames optBody0
-  let carryRegs := dedup (materializedCarryNames gprUsed optBody0)
-  let limbWS := bodyLimbWidth optBody0
-  let optBody := expandFlagCaptures limbWS gprUsed optBody0
-  let body ← emitBody "  " optBody
+/-- Function kinds at the Jasmin source level: `Export` is an `export fn`, callable
+    from C; `SubroutineRastack` is a `fn` with the annotation `#[returnaddress=stack]`,
+    a subroutine that jasminc does not inline and whose return address is passed on the
+    stack (required for non-inlined callable subroutines on x86-64, jasmin
+    `compiler/src/functionAnnotations.ml`). -/
+inductive FnKind where
+  /-- `export fn …`. -/
+  | Export : FnKind
+  /-- `#[returnaddress=stack] fn …`, a non-inlined subroutine. -/
+  | SubroutineRastack : FnKind
+  deriving Inhabited, DecidableEq
+
+/-- The text before a function's name for a given `FnKind`. -/
+def fnKindPrefix : FnKind → String
+  | .Export => "export fn "
+  | .SubroutineRastack => "#[returnaddress=stack]\nfn "
+
+/-- The surface function kind of a `FnKind`. -/
+def jazzKind : FnKind → Jazz.FnKind
+  | .Export => .exportFn
+  | .SubroutineRastack => .localFn ["returnaddress=stack"]
+
+/-- The storage classes and surface types of a function: `fd.body` is the body after
+    `expandFlagCaptures`, `body0` the body before it, and `liveOut` the results after
+    `optimize`. A parameter or result of type `sword ws` is `reg uNN`; one of type
+    `sarr n` is a `reg ptr` array of `u64` elements when it is accessed at width `U64`
+    or passed to a call and not accessed at width `U32`, or when `n` is a Keccak-f1600
+    size, else of `u32` elements when `n` is a multiple of 4, else of bytes; any other
+    is `reg u64`. The locals are, in this order: the flags `of cf sf pf zf` not used as
+    words together with the carry flags (`reg bool`), the carry bytes (`reg u8`), the
+    assigned scalars grouped by width (under `spill`, `stack` for those that are
+    neither results nor forced into registers by `regForcedNames`), one `stack` array
+    of layout `stackArrLayout` per `Parr_init` target, and the loop counters
+    (`inline int`). -/
+def inferStorage (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List InstrR)
+    (liveOut : List Var) : Jazz.JazzFn :=
+  -- A flag-named variable that is used as a GPR (computed by arithmetic, read in an
+  -- arithmetic or memory context, or a data or `Ccall` l-value) is declared as a word.
+  let gprUsed := gprUsedNames body0
+  let carryRegs := dedup (materializedCarryNames gprUsed body0)
+  let optBody := fd.body
   let declWidths := collectDeclWidths optBody
   -- A parameter or result typed `sarr n` (an array slot)
   -- is a *pointer-array* buffer passed by reference — the leaf-ABI shape the
@@ -1707,23 +1384,16 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
       | _ :: rest => goC rest
     (goC optBody).filter (fun n => !u32Scaled.contains n)
   let u64Names := dedup (u64AccessedArrays optBody ++ ccallSarrU64)
-  let ptrArrayTok : String → Nat → String := fun nm n =>
-    if u64Names.contains nm ∧ n % 8 == 0 then "reg ptr u64[" ++ toString (n / 8) ++ "]"
-    else if keccakU64ArrayBytes n then "reg ptr u64[" ++ toString (n / 8) ++ "]"
-    else if n % 4 == 0 then "reg ptr u32[" ++ toString (n / 4) ++ "]"
-    else "reg ptr u8[" ++ toString n ++ "]"
-  let paramStr := String.intercalate ", "
-    (fd.params.map (fun p =>
-      match p.var.var.vtype with
-      | .sword ws => "reg " ++ wsizeTok ws ++ " " ++ p.var.var.vname
-      | .sarr n   => ptrArrayTok p.var.var.vname n ++ " " ++ p.var.var.vname
-      | _         => "reg u64 " ++ p.var.var.vname))
-  let retTypes := String.intercalate ", "
-    (optLO.map (fun v => match v.vtype with
-      | .sword ws => "reg " ++ wsizeTok ws
-      | .sarr n   => ptrArrayTok v.vname n
-      | _ => "reg u64"))
-  let retNames := String.intercalate ", " (optLO.map (·.vname))
+  let ptrArrayTy : String → Nat → Jazz.PType := fun nm n =>
+    if u64Names.contains nm ∧ n % 8 == 0 then .arr .U64 (n / 8)
+    else if keccakU64ArrayBytes n then .arr .U64 (n / 8)
+    else if n % 4 == 0 then .arr .U32 (n / 4)
+    else .arr .U8 n
+  let slotOf : Var → Jazz.Storage × Jazz.PType := fun v =>
+    match v.vtype with
+    | .sword ws => (.reg, .word ws)
+    | .sarr n => (.regPtr false, ptrArrayTy v.vname n)
+    | _ => (.reg, .word .U64)
   let paramNames := fd.params.map (·.var.var.vname)
   let needsFlags := hasFlagCopn optBody
   let flagBank : List String := if needsFlags then ["of", "cf", "sf", "pf", "zf"] else []
@@ -1746,7 +1416,7 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
                             && !loopIdxNames.contains n && !tmpNames.contains n
                             && !arrayNames.contains n)
   let widthOrder : List WSize := [.U256, .U128, .U64, .U32, .U16, .U8]
-  -- `spillScalars`: declare scalar locals as `stack uNN` rather than
+  -- `spill`: declare scalar locals as `stack uNN` rather than
   -- `reg uNN`.  Needed for large straight-through kernels (e.g. the MAYO
   -- GF(16) Gaussian-elimination solve) whose live-scalar count exceeds the
   -- ~13 usable GPRs — jasminc's register allocator cannot fit them all in
@@ -1756,70 +1426,41 @@ def emitFunDeclCore (fd : FunDecl) (spillScalars : Bool := false) :
   -- vars too (jasminc lowers `while (n != 0)` over a stack `n` fine).
   -- Result variables must stay `reg` even when spilling (jasminc requires
   -- a `reg`/`reg ptr` result for a non-inlined function), so partition the
-  -- locals: result names → `reg`, the rest → `stack` (under `spillScalars`).
-  let resultNames := optLO.map (·.vname)
-  let mkGroups (cls : String) (ns : List String) : String :=
-    String.intercalate "" <| widthOrder.filterMap (fun w =>
+  -- locals: result names → `reg`, the rest → `stack` (under `spill`).
+  let resultNames := liveOut.map (·.vname)
+  let mkGroups (cls : Jazz.Storage) (ns : List String) : List Jazz.Decl :=
+    widthOrder.filterMap (fun w =>
       let names := ns.filter (fun n => declWidthOf declWidths n == w)
       if names.isEmpty then none
-      else some ("  " ++ cls ++ wsizeTok w ++ " " ++ String.intercalate " " names ++ ";\n"))
-  let localDecl :=
-    if locals.isEmpty then ""
-    else if spillScalars then
+      else some { storage := cls, ty := .word w, names := names })
+  let localDecl : List Jazz.Decl :=
+    if locals.isEmpty then []
+    else if spill then
       let forced := dedup (regForcedNames optBody)
       let keepReg := fun n => resultNames.contains n || forced.contains n
       let regKeep := locals.filter keepReg
       let stackSpill := locals.filter (fun n => !keepReg n)
-      mkGroups "reg " regKeep ++ mkGroups "stack " stackSpill
+      mkGroups .reg regKeep ++ mkGroups .stack stackSpill
     else
-      mkGroups "reg " locals
-  -- Render each array local as `stack uNN[k] name;` using the layout
-  -- table.  Look up the byte count by name from `arrayLocalsAll` (first
-  -- occurrence wins for repeated names).
-  -- A name that is u64-accessed (or threaded as a u64 ptr-array Ccall
-  -- operand) is declared `stack u64[n/8]`, even though its bare `.sarr` Ccall
-  -- operand also matched the u32 heuristic.  u64 detection wins.
+      mkGroups .reg locals
+  -- Each array local is one `stack uNN[k] name;` declaration; its byte count is that of
+  -- its first `Parr_init` in `arrayLocalsAll`. A name that is u64-accessed (or passed
+  -- as a u64 ptr-array `Ccall` operand) has `u64` elements, even when its bare `.sarr`
+  -- `Ccall` operand also matches the u32 case.
   let u32Arrays := dedup (u32AccessedArrays optBody) |>.filter
                      (fun n => !u64Names.contains n)
-  let arrayDecl :=
-    String.intercalate "" <| arrayNames.map (fun name =>
-      let n := (arrayLocalsAll.find? (·.1 = name)).map (·.2) |>.getD 0
-      stackArrDeclW (u32Arrays.contains name) name n)
-  let loopIdxDecl :=
-    if loopIdxNames.isEmpty then ""
-    else "  inline int " ++ String.intercalate " " loopIdxNames ++ ";\n"
-  let boolNames := flagNames ++ carryFlagTmps
-  let flagDecl :=
-    if boolNames.isEmpty then ""
-    else "  reg bool " ++ String.intercalate " " boolNames ++ ";\n"
-  let byteDecl :=
-    if carryByteTmps.isEmpty then ""
-    else "  reg u8 " ++ String.intercalate " " carryByteTmps ++ ";\n"
-  let sigArrow := if optLO.isEmpty then "" else " -> " ++ retTypes
-  let retStmt  := if optLO.isEmpty then "" else "\n\n  return " ++ retNames ++ ";"
-  let header := "(" ++ paramStr ++ ")" ++ sigArrow
-  let decls  := flagDecl ++ byteDecl ++ localDecl ++ arrayDecl ++ loopIdxDecl
-  let bodyBlock := "{\n" ++ decls ++ "\n" ++ body ++ retStmt ++ "\n}\n"
-  some (header, decls, bodyBlock, body)
-
-/-- Subroutine-function kinds at the Jasmin source level. `Export` is the
-    default (callable from C); `Subroutine` is a non-`export`, non-`inline`
-    `fn` that jasminc does NOT inline. `#[returnaddress=stack]` is the
-    annotation we attach to `Subroutine` declarations whose callee receives
-    its return address on the stack (mandatory for non-inlined, callable
-    subroutines on x86-64 — jasmin compiler/src/functionAnnotations.ml). -/
-inductive FnKind where
-  /-- `export fn …` — externally callable, default. -/
-  | Export : FnKind
-  /-- `#[returnaddress=stack] fn …` — non-inlined subroutine (the form needed
-      by `Ccall`-target wrappers in the mul_basecase Cwhile cascade). -/
-  | SubroutineRastack : FnKind
-  deriving Inhabited, DecidableEq
-
-/-- Render the prefix (annotations + keyword) for a given `FnKind`. -/
-def fnKindPrefix : FnKind → String
-  | .Export => "export fn "
-  | .SubroutineRastack => "#[returnaddress=stack]\nfn "
+  let arrayDecl : List Jazz.Decl := arrayNames.map (fun name =>
+    let n := (arrayLocalsAll.find? (·.1 = name)).map (·.2) |>.getD 0
+    let (w, k) := stackArrLayout (u32Arrays.contains name) n
+    { storage := .stack, ty := .arr w k, names := [name] })
+  let one (sto : Jazz.Storage) (ty : Jazz.PType) (ns : List String) : List Jazz.Decl :=
+    if ns.isEmpty then [] else [{ storage := sto, ty := ty, names := ns }]
+  { kind := jazzKind kind
+    fd := { fd with results := liveOut.map fun v => { var := v } }
+    paramTys := fd.params.map (slotOf ·.var.var)
+    resultTys := liveOut.map slotOf
+    decls := one .reg .bool (flagNames ++ carryFlagTmps) ++ one .reg (.word .U8) carryByteTmps ++
+      localDecl ++ arrayDecl ++ one .inlineVar .int loopIdxNames }
 
 /-! ### Require-line emit
 
@@ -1878,53 +1519,267 @@ partial def collectCallNames : List InstrR → List String
       collectCallNames th ++ collectCallNames el ++ collectCallNames rest
   | _ :: rest => collectCallNames rest
 
-/-- Render the `require "..."` prologue for a body: one line per
-    distinct kernel name that has an entry in `kernelRequireMap`,
-    in first-occurrence order.  Returns the empty string when no
-    referenced kernel is in the map.  -/
-def emitRequires (body : List InstrR) : String :=
-  let names := dedup (collectCallNames body)
-  let paths := names.filterMap kernelRequireMap
-  if paths.isEmpty then ""
-  else
-    String.intercalate "\n" (paths.map (fun p => "require \"" ++ p ++ "\"")) ++ "\n\n"
+/-! ## Normal form of the printed body -/
 
-/-- General-purpose emitter: render a `FunDecl` with the given function-kind
-    prefix. `Export` matches the existing `emitFunDecl` byte-identically (so
-    we use this as the new primitive). `SubroutineRastack` prepends the
-    `#[returnaddress=stack]` annotation and emits `fn` instead of `export fn`,
-    suitable as a `Ccall` target whose caller wants to force non-inlining
-    (e.g., the mul_basecase Cwhile cascade's inner blocked-addmul kernel).
+/-- The operator of a token of `binOpNameStr`, at width `U64`; `retypeFn` sets the
+    width. -/
+def binOpOfTok : String → Option SOp2
+  | "+" => some (.Oadd .U64)
+  | "-" => some (.Osub .U64)
+  | "*" => some (.Omul .U64)
+  | "<<" => some (.Olsl .U64)
+  | ">>" => some (.Olsr .U64)
+  | "&" => some (.Oland .U64)
+  | "|" => some (.Olor .U64)
+  | "^" => some (.Olxor .U64)
+  | _ => none
 
-    It prepends `require "..."` lines for every `Ccall` target name
-    registered in `kernelRequireMap`, which makes the verified emit's
-    `.jazz` directly jasminc-compilable for the five per-protocol bench
-    bridges. -/
+/-- The expression of a local variable. -/
+def varExpr (x : VarI) : PExpr := .Pvar { gv := x, gs := false }
+
+mutual
+/-- An expression in printed normal form: `Oword_of_int (Pconst k)` is `Pconst k`, an
+    `Olt` comparison is unsigned and an array read is `AAscale`. -/
+def legacyNormExpr : PExpr → PExpr
+  | .Papp1 (.Oword_of_int _) (.Pconst k) => .Pconst k
+  | .Papp1 op e => .Papp1 op (legacyNormExpr e)
+  | .Papp2 (.Olt _ w) a b => .Papp2 (.Olt .Uextend w) (legacyNormExpr a) (legacyNormExpr b)
+  | .Papp2 op a b => .Papp2 op (legacyNormExpr a) (legacyNormExpr b)
+  | .Pget _ ws x i => .Pget .AAscale ws x (legacyNormExpr i)
+  | .Psub aa ws n x i => .Psub aa ws n x (legacyNormExpr i)
+  | .Pload ws x o => .Pload ws x (legacyNormExpr o)
+  | .PappN op es => .PappN op (legacyNormExprs es)
+  | .Pif t c a b => .Pif t (legacyNormExpr c) (legacyNormExpr a) (legacyNormExpr b)
+  | e => e
+
+/-- `legacyNormExpr` on each expression of a list. -/
+def legacyNormExprs : List PExpr → List PExpr
+  | [] => []
+  | e :: es => legacyNormExpr e :: legacyNormExprs es
+end
+
+/-- An l-value in printed normal form: an array write is `AAscale`. -/
+def legacyNormLval : LVal → LVal
+  | .Lmem ws x o => .Lmem ws x (legacyNormExpr o)
+  | .Laset _ ws x i => .Laset .AAscale ws x (legacyNormExpr i)
+  | .Lasub aa ws n x i => .Lasub aa ws n x (legacyNormExpr i)
+  | lv => lv
+
+/-- `x = y; x = x OP z`, the two-address form of `x = y OP z`. -/
+def twoAddress (x : VarI) (t : AssgnTag) (ty : SType) (op : SOp2) (y z : PExpr) :
+    List InstrR :=
+  [.Cassgn (.Lvar x) t ty y, .Cassgn (.Lvar x) t ty (.Papp2 op (varExpr x) z)]
+
+mutual
+/-- The instructions of one instruction in printed normal form. -/
+def legacyNormInstr : InstrR → List InstrR
+  | .Cassgn (.Lvar _) _ _ (.Parr_init _) => []
+  | .Cassgn (.Lvar x) t ty (.Papp1 (.Olnot w) (.Pvar y)) =>
+    [.Cassgn (.Lvar x) t ty (.Pvar y), .Cassgn (.Lvar x) t ty (.Papp1 (.Olnot w) (varExpr x))]
+  | .Cassgn (.Lvar x) t ty (.Papp2 op (.Pvar y) (.Pvar z)) =>
+    if (binOpStr op).isSome && x.var.vname != y.gv.var.vname &&
+        x.var.vname != z.gv.var.vname then
+      twoAddress x t ty op (.Pvar y) (.Pvar z)
+    else [.Cassgn (.Lvar x) t ty (legacyNormExpr (.Papp2 op (.Pvar y) (.Pvar z)))]
+  | .Cassgn (.Lvar x) t ty (.Papp2 op (.Pvar y) (.Pconst k)) =>
+    if (binOpStr op).isSome && x.var.vname != y.gv.var.vname then
+      twoAddress x t ty op (.Pvar y) (.Pconst k)
+    else [.Cassgn (.Lvar x) t ty (legacyNormExpr (.Papp2 op (.Pvar y) (.Pconst k)))]
+  | .Cassgn (.Lvar x) t ty (.Papp2 op (.Pconst k) (.Pvar y)) =>
+    let neg := match op with
+      | .Osub _ => k == 0
+      | _ => false
+    if !neg && (binOpStr op).isSome && x.var.vname != y.gv.var.vname then
+      twoAddress x t ty op (.Pconst k) (.Pvar y)
+    else [.Cassgn (.Lvar x) t ty (legacyNormExpr (.Papp2 op (.Pconst k) (.Pvar y)))]
+  | .Cassgn lv t ty e => [.Cassgn (legacyNormLval lv) t ty (legacyNormExpr e)]
+  | .Copn lvs t op es => [.Copn (lvs.map legacyNormLval) t op (legacyNormExprs es)]
+  | .Ccall ii [.Lvar dst] fn [.Pvar a, .Pvar b] =>
+    match (binOpNameStr fn.name).bind binOpOfTok with
+    | some op =>
+      let acc := InstrR.Cassgn (.Lvar dst) .AT_none dst.var.vtype
+        (.Papp2 op (varExpr dst) (.Pvar b))
+      if dst.var.vname == a.gv.var.vname then [acc]
+      else [.Cassgn (.Lvar dst) .AT_none dst.var.vtype (.Pvar a), acc]
+    | none => [.Ccall ii [.Lvar dst] fn [.Pvar a, .Pvar b]]
+  | .Ccall ii lvs fn args => [.Ccall ii (lvs.map legacyNormLval) fn (legacyNormExprs args)]
+  | .Cif c th el => [.Cif (legacyNormExpr c) (legacyNormalize th) (legacyNormalize el)]
+  | .Cfor v r b => [.Cfor v r (legacyNormalize b)]
+  | .Cwhile pre c post =>
+    [.Cwhile (legacyNormalize pre) (legacyNormExpr c) (legacyNormalize post)]
+
+/-- A command in printed normal form: the two-address split of `x = y OP z`,
+    `x = y OP k` and `x = k OP y` for the operators of `binOpStr` when `x` is not an
+    operand, the split `x = y; x = !x` of `x = !y`, a call of a built-in binary
+    operator of `binOpNameStr` as the two-address assignment, `Oword_of_int (Pconst k)`
+    as `Pconst k`, unsigned `Olt`, `AAscale` array accesses, and the assignments
+    `x = Parr_init n` deleted. -/
+def legacyNormalize : Cmd → Cmd
+  | [] => []
+  | i :: is => legacyNormInstr i ++ legacyNormalize is
+end
+
+/-! ## Typing by the declarations -/
+
+/-- The declarations of a function in the order the parser brings them into scope,
+    the last first: parameters, then the names of each local declaration. -/
+def declEnv (f : Jazz.JazzFn) : List JazzToInstrR.VDecl :=
+  ((f.fd.params.zip f.paramTys).map (fun q => JazzToInstrR.mkVDecl q.1.var.var.vname q.2.1 q.2.2) ++
+    f.decls.flatMap (fun d => d.names.map fun n => JazzToInstrR.mkVDecl n d.storage d.ty)).reverse
+
+/-- A variable at the type of its declaration in `env`; unchanged when undeclared. -/
+def declVarI (env : List JazzToInstrR.VDecl) (x : VarI) : VarI :=
+  match env.find? (·.name == x.var.vname) with
+  | some d => d.varI
+  | none => x
+
+/-- A local-variable reference at the type of its declaration in `env`. -/
+def declGVar (env : List JazzToInstrR.VDecl) (x : GVar) : GVar :=
+  { gv := declVarI env x.gv, gs := false }
+
+/-- The element width of an array variable declared in `env`; `ws` when undeclared. -/
+def declEws (env : List JazzToInstrR.VDecl) (x : VarI) (ws : WSize) : WSize :=
+  match env.find? (·.name == x.var.vname) with
+  | some d => d.ews
+  | none => ws
+
+/-- A word operator at width `w`; other operators unchanged. -/
+def opAtWidth (w : WSize) : SOp2 → SOp2
+  | .Oadd _ => .Oadd w | .Osub _ => .Osub w | .Omul _ => .Omul w
+  | .Oland _ => .Oland w | .Olor _ => .Olor w | .Olxor _ => .Olxor w
+  | .Olsl _ => .Olsl w | .Olsr _ => .Olsr w | .Oasr _ => .Oasr w
+  | .Oeq _ => .Oeq w | .Oneq _ => .Oneq w
+  | .Olt s _ => .Olt s w | .Ole s _ => .Ole s w
+  | .Ogt s _ => .Ogt s w | .Oge s _ => .Oge s w
+  | op => op
+
+/-- The width of an expression for the parser's width rule, `ctx` when it has none. -/
+def widthOr (ctx : WSize) (e : PExpr) : WSize := (JazzToInstrR.exprWidth e).getD ctx
+
+mutual
+/-- An expression typed as `parseUnit` types its text in the target width `ctx`:
+    variables at their declared types, array reads at the declared element width,
+    and each operator, cast source, negation and conditional at the width of its
+    first operand, else `ctx`; indices and offsets in width `U64`. -/
+def retypeExpr (env : List JazzToInstrR.VDecl) (ctx : WSize) : PExpr → PExpr
+  | .Pvar x => .Pvar (declGVar env x)
+  | .Pget aa ws x i => .Pget aa (declEws env x.gv ws) (declGVar env x) (retypeExpr env .U64 i)
+  | .Psub aa ws n x i => .Psub aa ws n (declGVar env x) (retypeExpr env .U64 i)
+  | .Pload ws x o => .Pload ws (declVarI env x) (retypeExpr env .U64 o)
+  | .Papp1 (.Ozeroext wso _) e =>
+    let e' := retypeExpr env ctx e
+    .Papp1 (.Ozeroext wso (widthOr ctx e')) e'
+  | .Papp1 (.Olnot _) e =>
+    let e' := retypeExpr env ctx e
+    .Papp1 (.Olnot (widthOr ctx e')) e'
+  | .Papp1 op e => .Papp1 op (retypeExpr env ctx e)
+  | .Papp2 op a b =>
+    let a' := retypeExpr env ctx a
+    .Papp2 (opAtWidth (widthOr ctx a') op) a' (retypeExpr env ctx b)
+  | .PappN op es => .PappN op (retypeExprs env ctx es)
+  | .Pif _ c a b =>
+    let a' := retypeExpr env ctx a
+    .Pif (.sword (widthOr ctx a')) (retypeExpr env ctx c) a' (retypeExpr env ctx b)
+  | e => e
+
+/-- `retypeExpr` on each expression of a list. -/
+def retypeExprs (env : List JazzToInstrR.VDecl) (ctx : WSize) : List PExpr → List PExpr
+  | [] => []
+  | e :: es => retypeExpr env ctx e :: retypeExprs env ctx es
+end
+
+/-- An l-value typed as `parseUnit` types its text. -/
+def retypeLval (env : List JazzToInstrR.VDecl) : LVal → LVal
+  | .Lnone i t => .Lnone i t
+  | .Lvar x => .Lvar (declVarI env x)
+  | .Lmem ws x o => .Lmem ws (declVarI env x) (retypeExpr env .U64 o)
+  | .Laset aa ws x i => .Laset aa (declEws env x ws) (declVarI env x) (retypeExpr env .U64 i)
+  | .Lasub aa ws n x i => .Lasub aa ws n (declVarI env x) (retypeExpr env .U64 i)
+
+mutual
+/-- An instruction typed as `parseUnit` types its text: an assignment at the type of
+    its l-value with the right-hand side in the l-value's width (`x = -y` at the width
+    of `y`), arguments and conditions in width `U64`, an undeclared loop counter
+    `int`. -/
+def retypeInstr (env : List JazzToInstrR.VDecl) : InstrR → InstrR
+  | .Cassgn lv t _ e =>
+    let lv' := retypeLval env lv
+    let ctx := JazzToInstrR.lvalWs lv'
+    let e' := match lv', e with
+      | .Lvar _, .Papp2 (.Osub _) (.Pconst 0) (.Pvar y) =>
+        let y' := PExpr.Pvar (declGVar env y)
+        .Papp2 (.Osub (widthOr ctx y')) (.Pconst 0) y'
+      | _, _ => retypeExpr env ctx e
+    .Cassgn lv' t (JazzToInstrR.lvalTy lv') e'
+  | .Copn lvs t op es => .Copn (lvs.map (retypeLval env)) t op (retypeExprs env .U64 es)
+  | .Ccall ii lvs fn args => .Ccall ii (lvs.map (retypeLval env)) fn (retypeExprs env .U64 args)
+  | .Cif c th el => .Cif (retypeExpr env .U64 c) (retypeCmd env th) (retypeCmd env el)
+  | .Cfor v r b =>
+    let v' := match env.find? (·.name == v.var.vname) with
+      | some d => d.varI
+      | none => { var := { vname := v.var.vname, vtype := .sint } }
+    .Cfor v' r (retypeCmd env b)
+  | .Cwhile pre c post => .Cwhile (retypeCmd env pre) (retypeExpr env .U64 c) (retypeCmd env post)
+
+/-- `retypeInstr` on each instruction of a command. -/
+def retypeCmd (env : List JazzToInstrR.VDecl) : Cmd → Cmd
+  | [] => []
+  | i :: is => retypeInstr env i :: retypeCmd env is
+end
+
+/-- A function with its parameters, results and body typed by its declarations, as
+    `parseUnit` types its text. -/
+def retypeFn (f : Jazz.JazzFn) : Jazz.JazzFn :=
+  let env := declEnv f
+  { f with fd := { f.fd with
+      params := (f.fd.params.zip f.paramTys).map fun q =>
+        ⟨(JazzToInstrR.mkVDecl q.1.var.var.vname q.2.1 q.2.2).varI⟩
+      body := retypeCmd env f.fd.body
+      results := f.fd.results.map (declVarI env) } }
+
+/-! ## The unit of a function and its text -/
+
+/-- The banner line of every rendered function. -/
+def bannerLine : String := "// Auto-generated from CatCrypt Jasmin AST. Do not edit by hand."
+
+/-- The unit of `fd` from its body `body0` and results `liveOut` after `optimize`:
+    `expandFlagCaptures` applied, the declarations of `inferStorage`, the body in
+    printed normal form typed by the declarations, the banner line and the `require`
+    lines of the callees of `fd.body` in `kernelRequireMap`. -/
+def unitOfOptimized (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List InstrR)
+    (liveOut : List Var) : Jazz.JazzUnit :=
+  let body1 := expandFlagCaptures (bodyLimbWidth body0) (gprUsedNames body0) body0
+  let f := inferStorage kind spill { fd with body := body1 } body0 liveOut
+  { fns := [retypeFn { f with
+      preamble := [bannerLine]
+      requires := (dedup (collectCallNames fd.body)).filterMap kernelRequireMap
+      fd := { f.fd with body := legacyNormalize body1 } }] }
+
+/-- The unit `emitFunDeclWithKind` prints: `optimize` on the results and the body of
+    `fd`, then `unitOfOptimized`. -/
+def toLegacyUnit (kind : FnKind) (spill : Bool) (fd : FunDecl) : Jazz.JazzUnit :=
+  let (body0, lo) := optimize (fd.results.map (·.var)) fd.body
+  unitOfOptimized kind spill fd body0 lo
+
+/-- The text of `fd` as a function of kind `kind`: `Jazz.print` of `toLegacyUnit`, when
+    the text parses back to the unit's erasure (`Jazz.printChecked`). The `require`
+    lines name the callees of `fd` registered in `kernelRequireMap`, so that the text
+    compiles with jasminc beside the included leaves. -/
 def emitFunDeclWithKind (kind : FnKind) (fd : FunDecl)
-    (spillScalars : Bool := false) : Option String := do
-  let (header, _decls, bodyBlock, _body) ← emitFunDeclCore fd spillScalars
-  let requires := emitRequires fd.body
-  some <|
-    "// Auto-generated from CatCrypt Jasmin AST. Do not edit by hand.\n" ++
-    requires ++
-    fnKindPrefix kind ++ fd.name.name ++ header ++ "\n" ++ bodyBlock
+    (spillScalars : Bool := false) : Option String :=
+  Jazz.printChecked (toLegacyUnit kind spillScalars fd)
 
-/-- Render a full Jasmin `export fn` declaration. Handles any number of
-    `reg u64` return values (comma-separated return signature and
-    `return` statement). Returns `none` if an instruction shape is
-    unsupported by the emitter.
+/-- A text returned by `emitFunDeclWithKind` parses to the erasure of the printed
+    unit. -/
+theorem emitFunDeclWithKind_parse {kind : FnKind} {fd : FunDecl} {spill : Bool} {s : String}
+    (h : emitFunDeclWithKind kind fd spill = some s) :
+    JazzToInstrR.parseUnit s = .ok (toLegacyUnit kind spill fd).erase :=
+  (Jazz.printChecked_sound h).2
 
-    Runs `optimize` (peephole + constprop + DCE + copy-coalesce) first.
-    Return variable names are drawn from the *renamed* `liveOut` so that
-    a coalesce that merged a result variable into one of its producers
-    is reflected in the emitted `return` statement.
-
-    Flag-register declarations are added automatically when the body
-    contains a `Copn` whose lval list has `Lnone` entries (e.g.,
-    from flag-producing intrinsics like `#ADD_64` / `#ADC_64`).
-
-    For non-export `fn` (`#[returnaddress=stack]`) emit, see
-    `emitFunDeclWithKind` with `FnKind.SubroutineRastack`. -/
+/-- The text of `fd` as an `export fn`; `none` when the printed text does not parse
+    back to its unit. The returned variables are the results after `optimize`, so a
+    result coalesced into its producer is returned under the producer's name; the flag
+    registers are declared when the body calls a flag-producing intrinsic. -/
 def emitFunDecl (fd : FunDecl) : Option String :=
   emitFunDeclWithKind .Export fd
 
@@ -1950,28 +1805,14 @@ def emitFunDeclRastack (fd : FunDecl) : Option String :=
 def emitFunDeclRastackSpill (fd : FunDecl) : Option String :=
   emitFunDeclWithKind .SubroutineRastack fd (spillScalars := true)
 
-/-- Emit without running the optimization passes. Useful for benchmarking the
-    raw output against the optimized output. -/
-def emitFunDeclRaw (fd : FunDecl) : Option String := do
-  let body ← emitBody "  " fd.body
-  let paramStr := String.intercalate ", "
-    (fd.params.map (fun p => "reg u64 " ++ p.var.var.vname))
-  let paramNames := fd.params.map (·.var.var.vname)
-  let locals := dedup (lhsNames fd.body) |>.filter
-                  (fun n => !paramNames.contains n)
-  let localDecl :=
-    if locals.isEmpty then ""
-    else "  reg u64 " ++ String.intercalate " " locals ++ ";\n\n"
-  let retName := (fd.results.head?).map (·.var.vname) |>.getD "r"
-  some <|
-    "// Auto-generated (raw, no optimization) from CatCrypt Jasmin AST.\n" ++
-    "export fn " ++ fd.name.name ++ "(" ++ paramStr ++ ") -> reg u64\n" ++
-    "{\n" ++ localDecl ++ body ++ "\n\n  return " ++ retName ++ ";\n}\n"
+/-- The text of `fd` as an `export fn` without `optimize`: `unitOfOptimized` on the
+    body and the results of `fd`, printed through `Jazz.printChecked`. -/
+def emitFunDeclNoOpt (fd : FunDecl) : Option String :=
+  Jazz.printChecked (unitOfOptimized .Export false fd fd.body (fd.results.map (·.var)))
 
 /-! ## IO -/
 
-/-- Write the Jasmin source to `filename`; throw if any instruction is
-    not in the supported SSA shape. -/
+/-- Write the text `emitFunDecl fd` to `filename`; throw when it is `none`. -/
 def writeJazz (filename : String) (fd : FunDecl) : IO Unit := do
   match emitFunDecl fd with
   | some s => IO.FS.writeFile filename s

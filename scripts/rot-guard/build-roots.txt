@@ -97,6 +97,7 @@ CatCrypt.Crypto.Jasmin.GhashVpclmulReflect
 CatCrypt.Crypto.Jasmin.Halo2IPAProverReflect
 CatCrypt.Crypto.Jasmin.InfoFlow
 CatCrypt.Crypto.Jasmin.JasminEmitBridge
+CatCrypt.Crypto.Jasmin.JasminEmitLegacy
 CatCrypt.Crypto.Jasmin.JasminToRustEmitSimulates
 CatCrypt.Crypto.Jasmin.JasminTranslateLoopScope
 CatCrypt.Crypto.Jasmin.JazzRoundTrip
@@ -1051,6 +1052,7 @@ CatCrypt.Tactic.BignumReason
 CatCrypt.Tactic.BindAlign
 CatCrypt.Tactic.BindVcgen
 CatCrypt.Tactic.EnvSearch
+CatCrypt.Tactic.Inv
 CatCrypt.Tactic.MatrixDecide
 CatCrypt.Tactic.NormSqrt
 CatCrypt.Tactic.ProofTermAudit

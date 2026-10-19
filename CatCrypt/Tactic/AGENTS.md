@@ -16,6 +16,7 @@ the three correctness techniques (descent, ascent, transfer).
 | [`Unitarity`](Unitarity.lean) | unitarity of Hermitian involutory exponentials |
 | [`Basic`](Basic.lean) | pRHL tactics `rsame`, `rbind`, `rret`, `rsample_same`, `rconseq` |
 | [`KernelRfl`](KernelRfl.lean) | `kernel_rfl`, an `Eq` goal closed by `Eq.refl` with the check left to the kernel |
+| [`Inv`](Inv.lean), [`InvAttr`](InvAttr.lean) | `inv [f] h` (`with pat`), inversion of `h : f x = some y` or a checker `c x = true`; simp sets `ir_inv` (inversion) and `code_layout` (instruction-list `++`, length, indexing, membership) |
 | [`BindAlign`](BindAlign.lean), [`BindVcgen`](BindVcgen.lean), [`EnvSearch`](EnvSearch.lean), [`FieldClear`](FieldClear.lean), [`ProofTermAudit`](ProofTermAudit.lean) | re-exports of `CatCryptCore.Tactics.*` |
 
 The re-exports of the remaining CatCrypt-core tactics are in
