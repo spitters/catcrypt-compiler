@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.ZmmTextValidate
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComVarDepth
+public import CatCrypt.Crypto.SecureCompilation.VIR.LaneMapZmmD
 public import Std.Data.String.ToNat
 
 /-!
@@ -45,6 +46,8 @@ the value of binding `nBinds c - nOut + j` of the scalar run on lane `k`.
 * `traceEnv_lookup`, `traceEnv_bindWords`: the names hold the scalar values.
 * `collectWith_sat`: link 1.
 * `rfOf_mem`: link 2.
+* `collectWith_scalar32_noOther`: the 32-bit binding map leaves no binding of a program
+  covered by `LaneMapZmmD` outside the fragment.
 * `laneMapValidated_sound`, `renderValidated_sound`, `renderValidatedD_sound`.
 -/
 
@@ -564,6 +567,10 @@ theorem exprZBindScalar_sound : BindSound .q exprZBindScalar := by
     · simp [exprZBindScalar, hw, SatB]
   | _ => exact True.intro
 
+/-- The bindings of the 32-bit binding map `exprZBindScalar32` hold of the run of the scalar
+    program, lane by lane. `SatB` places no condition on a rotate binding `.rol`, so the
+    `rorImm` arm holds without content; the text validator has no recogniser for `vprold`
+    and refuses a text that contains a rotate binding. -/
 theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by
   intro Γ t vm e dst V E k hk ha hd
   rcases e with ⟨op, rfl, args⟩
@@ -596,7 +603,76 @@ theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by
       rw [hd _ (regAs_reg 32 _)]
       exact (lane_bcast512d n k (by simpa [LaneW.bits] using hk)).symm
     · simp [exprZBindScalar32, hw, SatB]
+  | shlImm w' n =>
+    by_cases hw : w' = 32 ∧ n < 32
+    · obtain ⟨rfl, hn⟩ := hw
+      match args with
+      | .cons a .nil =>
+        simp only [exprZBindScalar32, hn, and_self, if_true, SatB, if_true]
+        intro _
+        rw [hd _ (regAs_reg 32 _)]
+        change _ = E k (vm (JasminTy.reg 32) a) <<< n
+        rw [ha _ a _ (regAs_reg 32 _)]
+        exact congrArg (fun m : Nat => (show BitVec 32 from a.lookup V) <<< m)
+          (shiftMask_of_lt (w := 32) hn)
+    · simp [exprZBindScalar32, hw, SatB]
+  | shrImm w' n =>
+    by_cases hw : w' = 32 ∧ n < 32
+    · obtain ⟨rfl, hn⟩ := hw
+      match args with
+      | .cons a .nil =>
+        simp only [exprZBindScalar32, hn, and_self, if_true, SatB, if_false]
+        intro _
+        rw [hd _ (regAs_reg 32 _)]
+        change _ = E k (vm (JasminTy.reg 32) a) >>> n
+        rw [ha _ a _ (regAs_reg 32 _)]
+        exact congrArg (fun m : Nat => (show BitVec 32 from a.lookup V) >>> m)
+          (shiftMask_of_lt (w := 32) hn)
+    · simp [exprZBindScalar32, hw, SatB]
+  | rorImm w' n =>
+    by_cases hw : w' = 32 ∧ 0 < n ∧ n < 32
+    · simp [exprZBindScalar32, hw, SatB]
+    · simp [exprZBindScalar32, hw, SatB]
   | _ => exact True.intro
+
+/-- An expression in the fragment `LaneMapZmmD` covers has a binding inside the
+    fragment of `exprZBindScalar32`. -/
+theorem exprZBindScalar32_isOther_covered {Γ : JCtxt} {t : JasminTy} (vm : VarMap Γ)
+    (e : Expr jasminDialect Γ t) (dst : String) (he : LaneMapZmmD.CoveredExpr e) :
+    (exprZBindScalar32 vm e dst).isOther = false := by
+  rcases e with ⟨op, rfl, args⟩
+  cases op <;> simp_all [LaneMapZmmD.CoveredExpr, LaneMapVec.LaneShape.CoveredExpr,
+    LaneMapVec.dwordZmm, LaneMapVec.zmmDImmBlock, LaneMapVec.zmmDImmCovers,
+    exprZBindScalar32, ZBind.isOther]
+
+/-- The add-rotate-xor ops of `LaneMapZmmD.coveredExpr_arx` (`regArith add 32`,
+    `regArith xor 32`, `shlImm 32 n` and `shrImm 32 n` with `n < 32`, `rorImm 32 n` with
+    `0 < n < 32`) have bindings inside the fragment of `exprZBindScalar32`. -/
+theorem exprZBindScalar32_isOther_arx {Γ : JCtxt} {t : JasminTy} (vm : VarMap Γ)
+    (e : Expr jasminDialect Γ t) (dst : String)
+    (h : e.op = .regArith .add 32 ∨ e.op = .regArith .xor 32 ∨
+      (∃ n, n < 32 ∧ (e.op = .shlImm 32 n ∨ e.op = .shrImm 32 n)) ∨
+      ∃ n, 0 < n ∧ n < 32 ∧ e.op = .rorImm 32 n) :
+    (exprZBindScalar32 vm e dst).isOther = false :=
+  exprZBindScalar32_isOther_covered vm e dst (LaneMapZmmD.coveredExpr_arx e h)
+
+/-- For a straight-line program covered by `LaneMapZmmD`, every binding the 32-bit
+    collector appends lies inside the fragment: the binding list has no `.other`
+    when the accumulator has none. -/
+theorem collectWith_scalar32_noOther : ∀ {Γ : JCtxt} {t : JasminTy}
+    (c : Com jasminDialect Γ t) (vm : VarMap Γ) (next : Nat) (acc : Array ZBind),
+    (∀ b ∈ acc.toList, b.isOther = false) → LaneMapZmmD.LaneMapZmmDCovered c →
+    ∀ b ∈ (collectWith exprZBindScalar32 vm next acc c).1.toList, b.isOther = false
+  | _, _, .ret _, _, _, _, hacc, _ => hacc
+  | _, _, .var (t := s) e body, vm, next, acc, hacc, hc => by
+    have hc' : LaneMapZmmD.CoveredExpr e ∧ LaneMapZmmD.LaneMapZmmDCovered body := hc
+    exact collectWith_scalar32_noOther body (vm.extend (t := s) ("v" ++ toString next))
+      (next + 1) (acc.push (exprZBindScalar32 vm e ("v" ++ toString next))) (by
+        intro b hb
+        simp only [Array.toList_push, List.mem_append, List.mem_singleton] at hb
+        rcases hb with hb | rfl
+        · exact hacc b hb
+        · exact exprZBindScalar32_isOther_covered vm e _ hc'.1) hc'.2
 
 /-! ## 6. The validated render -/
 

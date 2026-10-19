@@ -211,8 +211,10 @@ def exprZBindScalar {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMa
 
 /-- The binding the 32-bit lane map `LaneMapZmmD` gives the scalar expression `e`
     defining `dst`: `regArith bop 32` is `vpackZMMd bop`, `mulhi 32` is the high-multiply
-    leaf, `regConst 32 k` is the sixteen-fold broadcast of `k`, and every other operation
-    is outside the fragment. -/
+    leaf, `regConst 32 k` is the sixteen-fold broadcast of `k`, `shlImm 32 n` and
+    `shrImm 32 n` with `n < 32` are the immediate shifts by `n`, `rorImm 32 n` with
+    `0 < n < 32` is the left rotate by `32 - n`, and every other operation is outside the
+    fragment. -/
 def exprZBindScalar32 {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : VarMap Γ)
     (e : Expr jasminDialect Γ t) (dst : String) : ZBind :=
   match e.op with
@@ -222,6 +224,13 @@ def exprZBindScalar32 {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (vm : Var
   | .mulhi w =>
       if w = 32 then .mulhi dst (argName vm e.args 0) (argName vm e.args 1) else .other dst
   | .regConst w k => if w = 32 then .const dst (bcast512d k) else .other dst
+  | .shlImm w n =>
+      if w = 32 ∧ n < 32 then .shi .d true dst (argName vm e.args 0) n else .other dst
+  | .shrImm w n =>
+      if w = 32 ∧ n < 32 then .shi .d false dst (argName vm e.args 0) n else .other dst
+  | .rorImm w n =>
+      if w = 32 ∧ 0 < n ∧ n < 32 then .rol .d dst (argName vm e.args 0) (32 - n)
+      else .other dst
   | _ => .other dst
 
 /-- The bindings of a straight-line `Com` in order under the binding map `f`, with fresh
