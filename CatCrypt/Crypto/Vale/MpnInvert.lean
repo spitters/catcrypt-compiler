@@ -172,7 +172,7 @@ k=4 emitted code computes. The correctness witness for k=4 is the C KAT vs
 libgmp (the same check the ML-DSA NTT emit uses), not the
 leaf axiom.
 
-**Axioms in use for the other sizes:**
+**Leaf statements for the other sizes:**
 
 * `MpnInvert_Safegcd_denote` / `MpnInvert_Safegcd_CT` for the **k=8 / 16 /
   32** paths (`mpn_invert_safegcd_k8` and the larger sizes) — those are
@@ -295,14 +295,14 @@ noncomputable opaque MpnInvert_Safegcd_denote
     leaf emits on modulus `m` and operand `a`. -/
 noncomputable opaque MpnInvert_Safegcd_leak (m : MpnBignum) (a : MpnBignum) : LeafLeak
 
-/-- **Constant-time axiom**: at each fixed modulus `m`, the leakage trace of
-    the AUCurves `mpn_invert_safegcd` leaf is the same at every operand `a`.
-    The divstep iteration count is a closed function of the modulus
-    bit-length, so it is fixed once `m` is, and the per-step update is
-    conditional-multiplexed adds and shifts with no operand-dependent branch
-    or memory access. The modulus is the public parameter; the operand is the
-    secret one. Cited in `ValeCoqAxioms.lean`. -/
-axiom MpnInvert_Safegcd_CT (m : MpnBignum) :
+/-- **The constant-time property of the leaf**: at the fixed modulus `m`, the
+    leakage trace of the AUCurves `mpn_invert_safegcd` leaf is the same at every
+    operand `a`. A theorem about the leaf takes it as a hypothesis. The divstep
+    iteration count is a closed function of the modulus bit-length, so it is fixed
+    once `m` is, and the per-step update is conditional-multiplexed adds and shifts
+    with no operand-dependent branch or memory access. The modulus is the public
+    parameter; the operand is the secret one. Cited in `ValeCoqAxioms.lean`. -/
+def MpnInvert_Safegcd_CT (m : MpnBignum) : Prop :=
     SecretIndependent (MpnInvert_Safegcd_leak m)
 
 /-! ## §3. `@[rust_cmd_pattern]` registration

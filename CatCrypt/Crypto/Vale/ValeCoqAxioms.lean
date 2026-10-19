@@ -13,9 +13,8 @@ Citation table for the `_CT` statements of `CatCrypt/Crypto/Vale/`. Each names a
 leaf's leakage function (`<leaf>_leak`, in the `LeafLeak` alphabet of
 `Vale/LeafLeakage.lean`) and states `SecretIndependent` of it: the leaf's
 observable trace does not vary with the argument the row calls secret. Every
-row except `MpnInvert_Safegcd_CT` is a proposition (`def … : Prop`) that a
-theorem about the leaf takes as a hypothesis; `MpnInvert_Safegcd_CT` is an
-axiom. The upstream result that each cites is recorded here with its file and
+row is a proposition (`def … : Prop`) that a theorem about the leaf takes as a
+hypothesis. The upstream result that each cites is recorded here with its file and
 line.
 
 Parallel to `P256FieldMulCoqAxioms.lean` and the other per-leaf value tables in
@@ -139,7 +138,7 @@ certificate is an `Axiom` with an OCaml re-check driver beside it.
 | `SafegcdBN254.AUCurves_safegcd_bn254_invert_CT` | 📌 cite-only | Certificate `AUCurves/src/Arithmetic/safegcd/divsteps_bn254.v`:30 (`Axiom bn254_certificate`), count at :33 (735). Instantiation `AUCurves/src/Bedrock/Field/Synthesis/Examples/BN254_FpInv.v`:67, with the iteration formula re-derived at :67-70 from the modulus bit-length at :53. |
 | `Pallas.Safegcd_Pallas_invert_CT` | 📌 cite-only | Certificate `AUCurves/src/Arithmetic/safegcd/divsteps_pallas.v`:29, count at :32 (738). Instantiation `AUCurves/src/Bedrock/Field/Synthesis/Examples/Pallas_FpInv.v`:67. |
 | `Vesta.Safegcd_Vesta_invert_CT` | 📌 cite-only | Certificate `AUCurves/src/Arithmetic/safegcd/divsteps_vesta.v`:29, count at :32 (738). Instantiation `AUCurves/src/Bedrock/Field/Synthesis/Examples/Vesta_FpInv.v`:67. |
-| `MpnInvert.MpnInvert_Safegcd_CT` | 📌 cite-only | The general-modulus form of the same argument: the iteration formula at `fiat-crypto/src/PushButtonSynthesis/WordByWordMontgomery.v`:121 as a function of the modulus, and the bounded loop at `fiat-crypto/src/Arithmetic/BYInv_fullproof_ref/Ref.v`:88. The modulus is the public parameter of the axiom, which is what makes the count public. |
+| `MpnInvert.MpnInvert_Safegcd_CT` | 📌 cite-only | The general-modulus form of the same argument: the iteration formula at `fiat-crypto/src/PushButtonSynthesis/WordByWordMontgomery.v`:121 as a function of the modulus, and the bounded loop at `fiat-crypto/src/Arithmetic/BYInv_fullproof_ref/Ref.v`:88. The modulus is the public parameter of the proposition, which is what makes the count public. |
 
 ## AUCurves pairing base-field arithmetic
 
