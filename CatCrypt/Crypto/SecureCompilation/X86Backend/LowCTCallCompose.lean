@@ -65,11 +65,11 @@ congruence threaded through the call (`vis`) structure.
 * `wholeFn_compile_rHoare` — **relational compiler correctness for whole
   functions** (with calls): the `rHoare` analogue of `callfree_compile_rHoare`,
   via `wholeFn_progEquiv` + `rHoare_refl`-style return reasoning.
-* `wholeFn_preserves_security` — **the P4.4 capstone**: cryptographic / UC
-  security (`sdist ≤ ε` to an ideal) is preserved for whole compiled functions
-  (call-bearing), by composing `wholeFn_progEquiv` with
-  `spDenote_eq_preserves_sdist` — exactly as `sdist_transfer_of_srcDenote_eq` does
-  for the call-free fragment, now lifted through calls.
+* `sdist_transfer_of_segsAgree` — an `sdist` bound to an ideal transfers from a
+  whole function (call-bearing) to every whole function that agrees with it
+  segment by segment (`SegsAgree`), by composing `wholeFn_progEquiv` with
+  `spDenote_eq_preserves_sdist`, as `sdist_transfer_of_srcDenote_eq` does for the
+  call-free fragment.
 
 ## The call step is the same-handler bind-congruence (= robust-against-context)
 
@@ -286,15 +286,16 @@ theorem wholeFn_compile_rHoare
   rw [wholeFn_progEquiv h segs₁ segs₂ hag rs]
   exact CatCrypt.Relational.rHoare_refl _
 
-/-! ## 6. The P4.4 capstone: security preservation for whole functions -/
+/-! ## 6. Transfer of an `sdist` bound between agreeing whole functions -/
 
-/-- **P4.4: whole compiled functions preserve cryptographic security.**
+/-- **An `sdist` bound transfers between agreeing whole functions.**
 
-    Let `srcSegs` be a source whole function (call-bearing) and `tgtSegs` its
-    compilation, with `hag : SegsAgree srcSegs tgtSegs` — the compiler keeps the
-    call structure intact and preserves each inter-call scalar segment's big-step
-    `srcDenote`.  If the *source* function's `interpSP` denotation is `ε`-close
-    (in `sdist`) to an `ideal` computation, then so is the *compiled* function's.
+    Let `srcSegs` and `tgtSegs` be whole functions (call-bearing) with
+    `hag : SegsAgree srcSegs tgtSegs`: the same calls, and each inter-call scalar
+    segment with the same big-step `srcDenote`. If the `interpSP` denotation of
+    `srcSegs` is `ε`-close (in `sdist`) to an `ideal` computation, then so is that
+    of `tgtSegs`. `tgtSegs` is any list that agrees with `srcSegs`; the theorem
+    states no property of a particular compiler.
 
     Security preservation is obtained **by composition through the call
     structure**: `wholeFn_progEquiv` (compiler correctness threaded through every
@@ -308,7 +309,7 @@ theorem wholeFn_compile_rHoare
 
     `(secure compilation via SCIO RrHP + deterministic-to-pure lift, lifted
     through calls)` -/
-theorem wholeFn_preserves_security {α : Type}
+theorem sdist_transfer_of_segsAgree {α : Type}
     (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
     (srcSegs tgtSegs : List CallSeg) (rs : RustState)
     (ideal : SPComp RustState) {ε : ℝ≥0∞}
@@ -320,27 +321,11 @@ theorem wholeFn_preserves_security {α : Type}
   spDenote_eq_preserves_sdist
     (wholeFn_progEquiv h srcSegs tgtSegs hag rs) hsec
 
-/-- **Canonical instance: the same whole function.**  When source and compiled
-    whole function are the same (`SegsAgree` reflexive), the bound is preserved
-    immediately — the `interpSP` denotation is literally unchanged.  This is the
-    `sdist_self`-style degenerate case of `wholeFn_preserves_security`. -/
-theorem wholeFn_preserves_security_self {α : Type}
-    (h : ∀ e : callEvents.Event, SPComp (callEvents.Resp e))
-    (segs : List CallSeg) (rs : RustState)
-    (ideal : SPComp RustState) {ε : ℝ≥0∞}
-    (hag : SegsAgree segs segs)
-    (hsec : sdist (fun _ : α => interpSP h (itreeDenote (segToStmts segs) rs))
-                  (fun _ : α => ideal) ≤ ε) :
-    sdist (fun _ : α => interpSP h (itreeDenote (segToStmts segs) rs))
-          (fun _ : α => ideal) ≤ ε :=
-  wholeFn_preserves_security h segs segs rs ideal hag hsec
-
 /-! ## 7. `SegsAgree` is reflexive
 
 Every whole function agrees with itself (the compiler's identity transform): the
 calls are equal and each scalar segment's `srcDenote` equals itself.  This
-witnesses that the hypothesis of the capstone is inhabited (non-vacuous) and
-supplies the reflexive instance used by `wholeFn_preserves_security_self`. -/
+witnesses that the hypothesis of `sdist_transfer_of_segsAgree` is inhabited. -/
 
 /-- `SegsAgree` is reflexive: a whole function agrees with itself. -/
 theorem SegsAgree_refl : ∀ segs : List CallSeg, SegsAgree segs segs
