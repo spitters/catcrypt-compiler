@@ -9,6 +9,7 @@ import all Init.Data.Repr
 public import CatCrypt.Crypto.Jasmin.JasminAST
 public import CatCrypt.Crypto.Jasmin.Passes.DeadCode
 public import CatCrypt.Crypto.Jasmin.JazzRoundTrip
+public import CatCrypt.Crypto.Jasmin.LowCTSyntax
 
 /-!
 # Jasmin text of `FunDecl`s
@@ -23,7 +24,7 @@ erasure. The unit is built in four steps:
    copy coalescing) on the body and the results;
 2. `expandFlagCaptures`, the materialisation of carry flags used as words;
 3. `inferStorage`, the storage class and surface type of each parameter, result and
-   local;
+   local, under an optional print-time retype `PrintTypes` given by the caller;
 4. `legacyNormalize` and `retypeFn`, the body in the normal form the printer and the
    parser agree on: x86's two-address form `x = y; x OP= z` for `x = y OP z`, the
    split `x = y; x = !x` of `x = !y`, a call of a built-in binary operator as an
@@ -40,14 +41,16 @@ kind and the spill flag; `emitFunDeclNoOpt` omits `optimize`.
 * `optimize`, `expandFlagCaptures`: the passes before printing.
 * `legacyNormalize`, `inferStorage`, `retypeFn`: the printed normal form of a body, the
   declarations of a function, and its typing by the declarations.
+* `PrintTypes`, `PrintTypes.ofLowCT`: the print-time surface types of named locations,
+  read off the tower types of a LowCT program at a coefficient width.
 * `toLegacyUnit`: the unit of a `FunDecl`.
 * `emitFunDeclWithKind`, `emitFunDecl`, `emitFunDeclSpill`, `emitFunDeclRastack`,
   `emitFunDeclRastackSpill`, `emitFunDeclNoOpt`, `writeJazz`: the text of a `FunDecl`.
 
 ## Main results
 
-* `emitFunDeclWithKind_parse`: a text returned by `emitFunDeclWithKind kind fd spill`
-  parses to the erasure of `toLegacyUnit kind spill fd`.
+* `emitFunDeclWithKind_parse`: a text returned by `emitFunDeclWithKind kind fd spill pt`
+  parses to the erasure of `toLegacyUnit kind spill fd pt`.
 -/
 
 @[expose] public section
@@ -1295,6 +1298,59 @@ def jazzKind : FnKind → Jazz.FnKind
   | .Export => .exportFn
   | .SubroutineRastack => .localFn ["returnaddress=stack"]
 
+/-! ## Print-time types
+
+A LowCT location of tower type `t` lowers to a byte array `sarr t.storageBytes`, the
+heap encoding of the LowCT simulation proofs, so the declarations read off the Jasmin
+body give a scalar or a coefficient array the layout of its byte count. A print-time
+retype gives the surface type of a named location instead: a `TU64` location is a
+`u64` register, a `TFp` location one word of the caller's coefficient width, and a
+polynomial, vector or matrix of polynomials an array of coefficients of that width. -/
+
+/-- The print-time surface types of the locations of a function: `tyOf x` is the type
+    printed for the location `x` in place of the layout of its Jasmin type. -/
+structure PrintTypes where
+  /-- The surface type of a named location, `none` for the layout of its Jasmin type. -/
+  tyOf : String → Option Jazz.PType
+
+/-- The surface type of a tower type with coefficients of width `w`: `u64` for `TU64`,
+    `uW` for `TFp`, and `uW[n]`, `uW[k*n]`, `uW[k*m*n]` for a polynomial of `n`
+    coefficients, a vector of `k` of them and a `k × m` matrix of them; `none` for any
+    other tower type. -/
+def towerPrintTy (w : WSize) : LowCT.TowerType → Option Jazz.PType
+  | .TU64 => some (.word .U64)
+  | .TFp => some (.word w)
+  | .TPolyMod _ n => some (.arr w n)
+  | .TPolyVec _ n k => some (.arr w (k * n))
+  | .TPolyMat _ n k m => some (.arr w (k * m * n))
+  | _ => none
+
+/-- The locations bound in a LowCT program with their tower types, in binding order:
+    `RLetZero x t` binds `x` at `t`, `RLetU64Zero x` binds `x` at `TU64`, and `RFnDef`
+    binds its parameters and returns. -/
+def lowctLocTypes : LowCT.LowCT → List (String × LowCT.TowerType)
+  | .RSeq a b => lowctLocTypes a ++ lowctLocTypes b
+  | .RLetZero x t body => (x, t) :: lowctLocTypes body
+  | .RLetU64Zero x body => (x, .TU64) :: lowctLocTypes body
+  | .RIfNz _ a b => lowctLocTypes a ++ lowctLocTypes b
+  | .RWhileNz _ body => lowctLocTypes body
+  | .RFor _ _ body => lowctLocTypes body
+  | .RBlock body => lowctLocTypes body
+  | .RForRuntime _ _ body => lowctLocTypes body
+  | .RFnDef _ ps rs body cont =>
+      (ps ++ rs).map (fun l => (l.locVar, l.locSrc)) ++ lowctLocTypes body ++
+        lowctLocTypes cont
+  | _ => []
+
+/-- The print-time types of a LowCT function with parameters `params`, results
+    `results` and body `c` at coefficient width `w`: a location takes the
+    `towerPrintTy w` type of its first binding among the parameters, the results and
+    the binders of `c`. -/
+def PrintTypes.ofLowCT (w : WSize) (params results : List LowCT.Located)
+    (c : LowCT.LowCT) : PrintTypes :=
+  let env := (params ++ results).map (fun l => (l.locVar, l.locSrc)) ++ lowctLocTypes c
+  { tyOf := fun x => (env.find? (·.1 == x)).bind (fun p => towerPrintTy w p.2) }
+
 /-- The storage classes and surface types of a function: `fd.body` is the body after
     `expandFlagCaptures`, `body0` the body before it, and `liveOut` the results after
     `optimize`. A parameter or result of type `sword ws` is `reg uNN`; one of type
@@ -1306,9 +1362,17 @@ def jazzKind : FnKind → Jazz.FnKind
     assigned scalars grouped by width (under `spill`, `stack` for those that are
     neither results nor forced into registers by `regForcedNames`), one `stack` array
     of layout `stackArrLayout` per `Parr_init` target, and the loop counters
-    (`inline int`). -/
+    (`inline int`). Under a retype `pt`, a location `x` with `pt.tyOf x = some (word w)`
+    is `reg uW` (a parameter, a result or a scalar local), and one with
+    `pt.tyOf x = some (arr w k)` is `reg ptr uW[k]` as a parameter or result and
+    `stack uW[k]` as an array local; `pt = none` gives the declarations above. -/
 def inferStorage (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List InstrR)
-    (liveOut : List Var) : Jazz.JazzFn :=
+    (liveOut : List Var) (pt : Option PrintTypes := none) : Jazz.JazzFn :=
+  let retyped : String → Option Jazz.PType := fun n => pt.bind (·.tyOf n)
+  let isWordRetyped : String → Bool := fun n =>
+    match retyped n with
+    | some (.word _) => true
+    | _ => false
   -- A flag-named variable that is used as a GPR (computed by arithmetic, read in an
   -- arithmetic or memory context, or a data or `Ccall` l-value) is declared as a word.
   let gprUsed := gprUsedNames body0
@@ -1390,10 +1454,14 @@ def inferStorage (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List Ins
     else if n % 4 == 0 then .arr .U32 (n / 4)
     else .arr .U8 n
   let slotOf : Var → Jazz.Storage × Jazz.PType := fun v =>
-    match v.vtype with
-    | .sword ws => (.reg, .word ws)
-    | .sarr n => (.regPtr false, ptrArrayTy v.vname n)
-    | _ => (.reg, .word .U64)
+    match retyped v.vname with
+    | some (.word w) => (.reg, .word w)
+    | some (.arr w k) => (.regPtr false, .arr w k)
+    | _ =>
+      match v.vtype with
+      | .sword ws => (.reg, .word ws)
+      | .sarr n => (.regPtr false, ptrArrayTy v.vname n)
+      | _ => (.reg, .word .U64)
   let paramNames := fd.params.map (·.var.var.vname)
   let needsFlags := hasFlagCopn optBody
   let flagBank : List String := if needsFlags then ["of", "cf", "sf", "pf", "zf"] else []
@@ -1407,14 +1475,24 @@ def inferStorage (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List Ins
   -- `Cassgn (.Lvar x) _ _ (.Parr_init n)` — the lowering shape produced
   -- by `LowCTToJasmin.toJasminCmd`'s `RLetZero loc (TBytes N)` arm.
   let arrayLocalsAll := collectArrayLocals optBody
-  let arrayNames : List String :=
+  let arrayNames0 : List String :=
     dedup (arrayLocalsAll.map (·.1)) |>.filter
       (fun n => !paramNames.contains n && !flagNames.contains n
                 && !loopIdxNames.contains n && !tmpNames.contains n)
-  let locals := dedup (lhsNames optBody) |>.filter
+  let locals0 := dedup (lhsNames optBody) |>.filter
                   (fun n => !paramNames.contains n && !flagNames.contains n
                             && !loopIdxNames.contains n && !tmpNames.contains n
-                            && !arrayNames.contains n)
+                            && !arrayNames0.contains n)
+  -- A byte-array local retyped to a word is a scalar local.
+  let (arrayNames, locals) : List String × List String :=
+    match pt with
+    | none => (arrayNames0, locals0)
+    | some _ => (arrayNames0.filter (fun n => !isWordRetyped n),
+                 locals0 ++ arrayNames0.filter isWordRetyped)
+  let localWidth : String → WSize := fun n =>
+    match retyped n with
+    | some (.word w) => w
+    | _ => declWidthOf declWidths n
   let widthOrder : List WSize := [.U256, .U128, .U64, .U32, .U16, .U8]
   -- `spill`: declare scalar locals as `stack uNN` rather than
   -- `reg uNN`.  Needed for large straight-through kernels (e.g. the MAYO
@@ -1430,7 +1508,7 @@ def inferStorage (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List Ins
   let resultNames := liveOut.map (·.vname)
   let mkGroups (cls : Jazz.Storage) (ns : List String) : List Jazz.Decl :=
     widthOrder.filterMap (fun w =>
-      let names := ns.filter (fun n => declWidthOf declWidths n == w)
+      let names := ns.filter (fun n => localWidth n == w)
       if names.isEmpty then none
       else some { storage := cls, ty := .word w, names := names })
   let localDecl : List Jazz.Decl :=
@@ -1450,9 +1528,12 @@ def inferStorage (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List Ins
   let u32Arrays := dedup (u32AccessedArrays optBody) |>.filter
                      (fun n => !u64Names.contains n)
   let arrayDecl : List Jazz.Decl := arrayNames.map (fun name =>
-    let n := (arrayLocalsAll.find? (·.1 = name)).map (·.2) |>.getD 0
-    let (w, k) := stackArrLayout (u32Arrays.contains name) n
-    { storage := .stack, ty := .arr w k, names := [name] })
+    match retyped name with
+    | some (.arr w k) => { storage := .stack, ty := .arr w k, names := [name] }
+    | _ =>
+      let n := (arrayLocalsAll.find? (·.1 = name)).map (·.2) |>.getD 0
+      let (w, k) := stackArrLayout (u32Arrays.contains name) n
+      { storage := .stack, ty := .arr w k, names := [name] })
   let one (sto : Jazz.Storage) (ty : Jazz.PType) (ns : List String) : List Jazz.Decl :=
     if ns.isEmpty then [] else [{ storage := sto, ty := ty, names := ns }]
   { kind := jazzKind kind
@@ -1743,45 +1824,49 @@ def retypeFn (f : Jazz.JazzFn) : Jazz.JazzFn :=
 def bannerLine : String := "// Auto-generated from CatCrypt Jasmin AST. Do not edit by hand."
 
 /-- The unit of `fd` from its body `body0` and results `liveOut` after `optimize`:
-    `expandFlagCaptures` applied, the declarations of `inferStorage`, the body in
-    printed normal form typed by the declarations, the banner line and the `require`
-    lines of the callees of `fd.body` in `kernelRequireMap`. -/
+    `expandFlagCaptures` applied, the declarations of `inferStorage` under the retype
+    `pt`, the body in printed normal form typed by the declarations, the banner line
+    and the `require` lines of the callees of `fd.body` in `kernelRequireMap`. -/
 def unitOfOptimized (kind : FnKind) (spill : Bool) (fd : FunDecl) (body0 : List InstrR)
-    (liveOut : List Var) : Jazz.JazzUnit :=
+    (liveOut : List Var) (pt : Option PrintTypes := none) : Jazz.JazzUnit :=
   let body1 := expandFlagCaptures (bodyLimbWidth body0) (gprUsedNames body0) body0
-  let f := inferStorage kind spill { fd with body := body1 } body0 liveOut
+  let f := inferStorage kind spill { fd with body := body1 } body0 liveOut pt
   { fns := [retypeFn { f with
       preamble := [bannerLine]
       requires := (dedup (collectCallNames fd.body)).filterMap kernelRequireMap
       fd := { f.fd with body := legacyNormalize body1 } }] }
 
 /-- The unit `emitFunDeclWithKind` prints: `optimize` on the results and the body of
-    `fd`, then `unitOfOptimized`. -/
-def toLegacyUnit (kind : FnKind) (spill : Bool) (fd : FunDecl) : Jazz.JazzUnit :=
+    `fd`, then `unitOfOptimized` under the retype `pt`. -/
+def toLegacyUnit (kind : FnKind) (spill : Bool) (fd : FunDecl)
+    (pt : Option PrintTypes := none) : Jazz.JazzUnit :=
   let (body0, lo) := optimize (fd.results.map (·.var)) fd.body
-  unitOfOptimized kind spill fd body0 lo
+  unitOfOptimized kind spill fd body0 lo pt
 
-/-- The text of `fd` as a function of kind `kind`: `Jazz.print` of `toLegacyUnit`, when
-    the text parses back to the unit's erasure (`Jazz.printChecked`). The `require`
-    lines name the callees of `fd` registered in `kernelRequireMap`, so that the text
-    compiles with jasminc beside the included leaves. -/
+/-- The text of `fd` as a function of kind `kind` under the print-time retype
+    `printTypes`: `Jazz.print` of `toLegacyUnit`, when the text parses back to the
+    unit's erasure (`Jazz.printChecked`). The `require` lines name the callees of `fd`
+    registered in `kernelRequireMap`, so that the text compiles with jasminc beside the
+    included leaves. -/
 def emitFunDeclWithKind (kind : FnKind) (fd : FunDecl)
-    (spillScalars : Bool := false) : Option String :=
-  Jazz.printChecked (toLegacyUnit kind spillScalars fd)
+    (spillScalars : Bool := false) (printTypes : Option PrintTypes := none) :
+    Option String :=
+  Jazz.printChecked (toLegacyUnit kind spillScalars fd printTypes)
 
 /-- A text returned by `emitFunDeclWithKind` parses to the erasure of the printed
     unit. -/
-theorem emitFunDeclWithKind_parse {kind : FnKind} {fd : FunDecl} {spill : Bool} {s : String}
-    (h : emitFunDeclWithKind kind fd spill = some s) :
-    JazzToInstrR.parseUnit s = .ok (toLegacyUnit kind spill fd).erase :=
+theorem emitFunDeclWithKind_parse {kind : FnKind} {fd : FunDecl} {spill : Bool}
+    {pt : Option PrintTypes} {s : String}
+    (h : emitFunDeclWithKind kind fd spill pt = some s) :
+    JazzToInstrR.parseUnit s = .ok (toLegacyUnit kind spill fd pt).erase :=
   (Jazz.printChecked_sound h).2
 
 /-- The text of `fd` as an `export fn`; `none` when the printed text does not parse
     back to its unit. The returned variables are the results after `optimize`, so a
     result coalesced into its producer is returned under the producer's name; the flag
     registers are declared when the body calls a flag-producing intrinsic. -/
-def emitFunDecl (fd : FunDecl) : Option String :=
-  emitFunDeclWithKind .Export fd
+def emitFunDecl (fd : FunDecl) (pt : Option PrintTypes := none) : Option String :=
+  emitFunDeclWithKind .Export fd false pt
 
 /-- Emit an `export fn` whose scalar locals are declared `stack uNN` rather
     than `reg uNN`.  Use for large kernels whose live-scalar count exceeds
@@ -1793,8 +1878,8 @@ def emitFunDeclSpill (fd : FunDecl) : Option String :=
     non-export, non-inline subroutine). Used by the mul_basecase Cwhile
     cascade to force jasminc to NOT inline the inner blocked-addmul
     callee — the inline expansion is what blows the GPR-allocator budget. -/
-def emitFunDeclRastack (fd : FunDecl) : Option String :=
-  emitFunDeclWithKind .SubroutineRastack fd
+def emitFunDeclRastack (fd : FunDecl) (pt : Option PrintTypes := none) : Option String :=
+  emitFunDeclWithKind .SubroutineRastack fd false pt
 
 /-- Emit a `#[returnaddress=stack] fn` whose scalar locals are stack-spilled
     (`stack uNN` instead of `reg uNN`).  This is the subroutine analogue of
