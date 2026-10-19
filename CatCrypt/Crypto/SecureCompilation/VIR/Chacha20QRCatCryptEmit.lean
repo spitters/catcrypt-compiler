@@ -8,8 +8,8 @@ module
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 public meta import CatCrypt.Crypto.Jasmin.ChaCha20QR
 public import CatCrypt.Crypto.Jasmin.ChaCha20QR
 
@@ -27,13 +27,14 @@ RFC spec `Jasmin.ChaCha20QR.quarterRound`, and lowers it through the committed
 (`DialectToJasminCom.cryptoDialectToJasminCom`), composing the seam's
 denote-preservation (`cryptoDialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'`)
 so the *lowered jasmin program* denotes to the same RFC spec. The lowered jasmin
-`Com` then emits to `.jazz`/x86 via the existing `JasminPrint.emitJazz` printer.
+`Com` then prints to `.jazz` through the single Jasmin printer
+(`JasminPrintText.emitJazzN`: `nfToJasmin` followed by the checked printer).
 
 ```
 RFC-8439 §2.1 quarterRound  (Jasmin.ChaCha20QR.quarterRound, the spec)
         ▲                         ▲
         │ denote = spec           │ denote = spec  (via the seam)
-   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazz──▶ .jazz/x86
+   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazzN──▶ .jazz
 ```
 
 ## The 12-op straight-line block
@@ -59,10 +60,11 @@ program — which uses only seam-lowering ops — denotes to the RFC quarter-rou
   returns `some`), and `chacha20QR_jasmin_denote{A,B,C,D}` proves the lowered
   *jasmin* `Com` denotes to the same RFC `quarterRound` component, by composing
   the catCrypt denote with the seam's `cryptoDialectToJasminCom_denote_eq'`.
-* `chacha20QRJazzA*` — the lowered jasmin program emits to `.jazz` text through
-  `JasminPrint.emitJazz`, with a render smoke pinning the op shape (the quarter-
-  round's `#ROR_32`/`+`/`^` reach the printer) and the `(params, body) = (4, 12)`
-  shape.
+* `chacha20QRSig`, `chacha20QRJazzA` — the signature and the `.jazz` text of the
+  lowered `a`-output program printed by `JasminPrintText.emitJazzN`; a returned text
+  parses to the unit `nfToJasmin` returns (`JasminPrintText.emitJazzN_parse`). Checks
+  pin that the text exists and carries `#ROR_32`, `+` and `^`, and the parameter and
+  instruction counts of the lowered function.
 
 All goals closed.
 -/
@@ -408,33 +410,37 @@ theorem chacha20QR_jasmin_denoteD (a b c d : BitVec 32) :
   rw [ctTransTy_sword (w := 32)]
   exact chacha20QR_catcrypt_denoteD a b c d
 
-/-! ## 7. Emit: the lowered jasmin program reaches `.jazz`/x86
+/-! ## 7. Emit: the lowered jasmin program prints to `.jazz`
 
-`JasminPrint.emitJazz` lowers the jasmin `Com` to `.jazz` text through the
-existing AST printer (the same path the bench emit uses). The render smoke pins
-that the quarter-round's rotate and arithmetic ops survive to the printer. -/
+`JasminPrintText.emitJazzN` lowers the jasmin `Com` with `nfToJasmin` and prints the
+unit with the checked printer; a returned text parses back to that unit
+(`JasminPrintText.emitJazzN_parse`). -/
 
-/-- The `.jazz` text of the lowered `a`-output quarter-round. -/
-def chacha20QRJazzA : String := JasminPrint.emitJazz "chacha20_qr_a" chacha20QRJasminA
+open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (JazzSig ptyOf nfToJasmin)
 
-/- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
-    scalar right-rotate asm op (`#ROR_32`) — the diagonal rotate of the
-    quarter-round reaches the x86 printer through the whole
-    `Com catCryptDialect → Com jasminDialect → .jazz` chain (the `bvRor` op lowered
-    to jasmin `rorImm`, which the printer renders as `#ROR_32`). -/
-#guard (JasminPrint.strContains chacha20QRJazzA "ROR")
+/-- The signature of a quarter-round output function: the four words as `reg u32`
+    parameters in the reverse order of the context, `d, c, b, a`, and a `reg u32`
+    result. -/
+def chacha20QRSig : JazzSig (mapCtx [T32,T32,T32,T32]) (mapTy T32) where
+  params := ["d", "c", "b", "a"].map fun x => (x, .reg, ptyOf (.reg 32))
+  result := (.reg, ptyOf (.reg 32))
+  resultParam := none
+  params_length := rfl
 
-/- **Render smoke: the add survives.** -/
-#guard (JasminPrint.strContains chacha20QRJazzA "+")
+/-- The `.jazz` text of the lowered `a`-output quarter-round, symbol `chacha20_qr_a`,
+    printed by the single Jasmin printer; `none` when `nfToJasmin` or the checked printer
+    refuses. -/
+def chacha20QRJazzA : Option String :=
+  JasminPrintText.emitJazzN "chacha20_qr_a" chacha20QRSig chacha20QRJasminA
 
-/- **Render smoke: the xor survives.** -/
-#guard (JasminPrint.strContains chacha20QRJazzA "^")
+-- The text exists and carries the rotate (`bvRor` lowered to `rorImm`, printed as
+-- `#ROR_32`), the add and the xor of the quarter-round.
+set_option kat.ms 500 in
+#kat chacha20QRJazzA.any fun s => s.contains "ROR" && s.contains "+" && s.contains "^"
 
-/-- **Shape: four `reg 32` inputs and 12 body instructions** — the same
-    parameter/op count the catCrypt block carries (12 ops, no spilled binds),
-    confirming the whole quarter-round block lands in the jasmin function. -/
-theorem chacha20QRJasminA_shape :
-    ((JasminPrint.lowerComToProg "chacha20_qr_a" chacha20QRJasminA).funcs.head?.map
-      (fun fd => (fd.params.length, fd.body.length))) = some (4, 12) := by native_decide
+-- The lowered function has the four input words as parameters and a body of 25
+-- instructions.
+#kat (nfToJasmin chacha20QRSig "chacha20_qr_a" (NFProg.ofCom chacha20QRJasminA)).any
+  fun u => u.fns.map (fun f => (f.fd.params.length, f.fd.body.length)) == [(4, 25)]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Chacha20QRCatCryptEmit

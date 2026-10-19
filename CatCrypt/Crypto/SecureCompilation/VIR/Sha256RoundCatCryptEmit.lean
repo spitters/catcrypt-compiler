@@ -7,8 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 public meta import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
 public import CatCrypt.Crypto.SecureCompilation.CompileFromHaxSha2KeccakTie
 public meta import CatCrypt.Crypto.Util.Sha256Verified
@@ -31,7 +31,8 @@ each through the committed `catCryptDialect → jasminDialect` seam
 denote-preservation
 (`DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'`) so the *lowered
 jasmin program* denotes to the same FIPS reference. The lowered jasmin `Com` then
-emits to `.jazz`/x86 via the existing `JasminPrint.emitJazz` printer.
+prints to `.jazz` through the single Jasmin printer (`JasminPrintText.emitJazzN`:
+`nfToJasmin` followed by the checked printer).
 
 ```
 FIPS 180-4 §4.1.2  Σ₀/Σ₁/Ch/Maj  (CatCrypt.Util.Sha256Verified.*, the spec)
@@ -68,9 +69,11 @@ non-trivial word-mixing pieces; the surrounding additions are dialect `bvAdd`.
   lowers each program (`cryptoDialectToJasminCom` returns `some`), and the lowered
   *jasmin* `Com` denotes to the same FIPS reference, by composing the catCrypt
   denote with `cryptoDialectToJasminCom_denote_eq'`.
-* `sha256Sigma0Jazz` + render smokes — the lowered jasmin program emits to `.jazz`
-  text through `JasminPrint.emitJazz`, with smokes pinning the op shape (`#ROR_32`,
-  `^`) reaching the printer and the `(params, body)` count.
+* `sha256Sigma0Jazz`, `sha256ChJazz` — the `.jazz` texts of the lowered `Σ₀` and `Ch`
+  programs printed by `JasminPrintText.emitJazzN`; a returned text parses to the unit
+  `nfToJasmin` returns (`JasminPrintText.emitJazzN_parse`). Checks pin that the texts
+  exist and carry `#ROR_32` and `^`, and the parameter and instruction counts of the
+  lowered `Σ₀` function.
 
 All goals closed.
 -/
@@ -386,36 +389,43 @@ theorem sha256_maj_jasmin_denote (a b c : BitVec 32) :
   rw [ctTransTy_sword (w := 32)]
   exact sha256_maj_catcrypt_denote a b c
 
-/-! ## 9. Emit: the lowered jasmin program reaches `.jazz`/x86
+/-! ## 9. Emit: the lowered jasmin programs print to `.jazz`
 
-`JasminPrint.emitJazz` lowers the jasmin `Com` to `.jazz` text through the existing
-AST printer (the same path the bench emit uses). The render smokes pin that the
-SHA-256 round-component ops survive to the printer. -/
+`JasminPrintText.emitJazzN` lowers a jasmin `Com` with `nfToJasmin` and prints the
+unit with the checked printer; a returned text parses back to that unit
+(`JasminPrintText.emitJazzN_parse`). -/
 
-/-- The `.jazz` text of the lowered `Σ₀` component. -/
-def sha256Sigma0Jazz : String := JasminPrint.emitJazz "sha256_sigma0" sha256Sigma0Jasmin
+open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (JazzSig ptyOf nfToJasmin)
 
-/- **Render smoke: the rotate survives.** The emitted `.jazz` names the native
-    scalar right-rotate asm op (`#ROR_32`) — the `bvRor` rotates of `Σ₀` reach the
-    x86 printer through the whole `Com catCryptDialect → Com jasminDialect → .jazz`
-    chain (`bvRor` lowered to jasmin `rorImm`, rendered as `#ROR_32`). -/
-#guard (JasminPrint.strContains sha256Sigma0Jazz "ROR")
+/-- The signature of a SHA-256 round component over the named words: one `reg u32`
+    parameter per word, in the reverse order of the context, and a `reg u32` result. -/
+def sha256Sig (xs : List String) : JazzSig (mapCtx (xs.map fun _ => T32)) (mapTy T32) where
+  params := xs.reverse.map fun x => (x, .reg, ptyOf (.reg 32))
+  result := (.reg, ptyOf (.reg 32))
+  resultParam := none
+  params_length := by simp [mapCtx]
 
-/- **Render smoke: the xor survives.** -/
-#guard (JasminPrint.strContains sha256Sigma0Jazz "^")
+/-- The `.jazz` text of the lowered `Σ₀` component, symbol `sha256_sigma0`, printed by
+    the single Jasmin printer; `none` when `nfToJasmin` or the checked printer
+    refuses. -/
+def sha256Sigma0Jazz : Option String :=
+  JasminPrintText.emitJazzN "sha256_sigma0" (sha256Sig ["a"]) sha256Sigma0Jasmin
 
-/-- **Shape: one `reg 32` input and 5 body instructions** — three rotates plus two
-    XORs, the catCrypt `Σ₀` block's op count, confirming the whole component lands
-    in the jasmin function. -/
-theorem sha256Sigma0Jasmin_shape :
-    ((JasminPrint.lowerComToProg "sha256_sigma0" sha256Sigma0Jasmin).funcs.head?.map
-      (fun fd => (fd.params.length, fd.body.length))) = some (1, 5) := by native_decide
+-- The `Σ₀` text exists and carries the rotate (`bvRor` lowered to `rorImm`, printed as
+-- `#ROR_32`) and the xor.
+set_option kat.ms 500 in
+#kat sha256Sigma0Jazz.any fun s => s.contains "ROR" && s.contains "^"
 
-/-- The `.jazz` text of the lowered `Ch` component, pinning the `andn`/`and`/`xor`
-    shape reaches the printer. -/
-def sha256ChJazz : String := JasminPrint.emitJazz "sha256_ch" sha256ChJasmin
+-- The lowered `Σ₀` function has one parameter and a body of 11 instructions.
+#kat (nfToJasmin (sha256Sig ["a"]) "sha256_sigma0" (NFProg.ofCom sha256Sigma0Jasmin)).any
+  fun u => u.fns.map (fun f => (f.fd.params.length, f.fd.body.length)) == [(1, 11)]
 
-/- **Render smoke (Ch): the xor survives.** -/
-#guard (JasminPrint.strContains sha256ChJazz "^")
+/-- The `.jazz` text of the lowered `Ch` component, symbol `sha256_ch`, printed by the
+    single Jasmin printer; `none` when `nfToJasmin` or the checked printer refuses. -/
+def sha256ChJazz : Option String :=
+  JasminPrintText.emitJazzN "sha256_ch" (sha256Sig ["e", "f", "g"]) sha256ChJasmin
+
+-- The `Ch` text exists and carries the xor.
+#kat sha256ChJazz.any fun s => s.contains "^"
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Sha256RoundCatCryptEmit
