@@ -22,7 +22,8 @@ storage classes for the array values:
   into the `reg mut ptr` parameter `out`, which the function returns. The leaves take
   their arrays as `stack` values.
 * `regPtr`: the buffers of `stackArr`; each leaf call `x = f(x, a, …)` passes the fresh
-  result buffer first. The leaves take their arrays as `reg mut ptr`.
+  result buffer first. The leaves take their input arrays as `reg ptr` and the result
+  buffer as `reg mut ptr`, which they return.
 * `memPtr`: every array is a `reg u64` memory address; the inputs are passed to the leaves
   directly and each array result is written through `out`: `out = f(out, a, …)`.
 
@@ -33,8 +34,8 @@ called leaf has an extern signature.
 
 ## Main definitions
 
-* `OrchMode`, `OrchMode.leafStorage`: the calling conventions and the storage class of a
-  leaf's array parameters.
+* `OrchMode`, `OrchMode.leafStorage`, `OrchMode.leafInStorage`: the calling conventions,
+  the storage class of a leaf's result array and that of its input arrays.
 * `leafExtern`: the extern signature of a leaf in a mode.
 * `orchBody`, `orchFn`, `orchUnit`: the lowering of a body, of the function and of the unit.
 * `emitAbiOrchJ`: the text of the unit through the checked printer `Jazz.printChecked`.
@@ -69,10 +70,18 @@ inductive OrchMode where
   | stackArr | regPtr | memPtr
   deriving DecidableEq, Repr, Inhabited
 
-/-- The storage class of the array parameters of a leaf: `stack`, `reg mut ptr` or `reg`. -/
+/-- The storage class of the result array of a leaf, and of its result buffer parameter:
+`stack`, `reg mut ptr` or `reg`. -/
 def OrchMode.leafStorage : OrchMode → Storage
   | .stackArr => .stack
   | .regPtr => .regPtr true
+  | .memPtr => .reg
+
+/-- The storage class of the input array parameters of a leaf: `stack`, `reg ptr` or
+`reg`. -/
+def OrchMode.leafInStorage : OrchMode → Storage
+  | .stackArr => .stack
+  | .regPtr => .regPtr false
   | .memPtr => .reg
 
 /-- Whether a leaf receives its result buffer as its first argument. -/
@@ -95,13 +104,15 @@ def OrchMode.slot (m : OrchMode) (s : Storage) (t : JasminTy) : Storage × PType
   | _, _ => (storOf (styOf t), ptyOf t)
 
 /-- The extern signature of the leaf `(f, argTys, retTy)` in the mode `m`: the slots of the
-arguments, preceded by the slot of the result buffer when the leaf takes it first, and the
-slot of the result. -/
+arguments at the input storage `leafInStorage`, preceded by the slot of the result buffer
+when the leaf takes it first, and the slot of the result; the result buffer and the result
+take the storage `leafStorage`, so in `regPtr` only the result buffer is mutable. -/
 def leafExtern (m : OrchMode) (l : String × List JasminTy × JasminTy) : ExternSig :=
-  let ps := l.2.1.map (m.slot m.leafStorage)
+  let ps := l.2.1.map (m.slot m.leafInStorage)
+  let dst := m.slot m.leafStorage l.2.2
   { name := l.1
-    params := if m.dstFirst && isArrTy l.2.2 then m.slot m.leafStorage l.2.2 :: ps else ps
-    results := [m.slot m.leafStorage l.2.2] }
+    params := if m.dstFirst && isArrTy l.2.2 then dst :: ps else ps
+    results := [dst] }
 
 /-! ## 2. The body -/
 
@@ -283,5 +294,12 @@ def safegcdOrch : Com jasminDialect [.stackArr 64 4] (.stackArr 64 4) :=
 
 -- The BN254 inversion body prints through the checked printer in the `regPtr` mode.
 #kat (emitAbiOrchJ .regPtr "bn254_safegcd_invert_rustcmd" safegcdOrch [safegcdLeaf]).isSome
+
+-- In the `regPtr` mode the inversion leaf takes its result buffer as `reg mut ptr` and its
+-- input as `reg ptr`, and returns the result buffer.
+#kat leafExtern .regPtr safegcdLeaf ==
+  { name := "safegcd_bn254_invert"
+    params := [(.regPtr true, .arr .U64 4), (.regPtr false, .arr .U64 4)]
+    results := [(.regPtr true, .arr .U64 4)] }
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiJazz
