@@ -47,7 +47,7 @@ The tables `field-bytes-emit` and `mpn-bytes-emit` of the executable `catcrypt-e
 calls are the hypotheses of the theorems named below. The instances are kernels: their rows
 in `scripts/acceptance-registry.tsv` have role `kernel` and are report-only, so a refusal or
 a change of size on them decides nothing, and the registry gates the construct probes of the
-census. With `--ct`, `catcrypt-emit` prints the verdict of the byte-level constant-time
+census. With `--ct`, `catcrypt-emit` prints the result of the byte-level constant-time
 checker on the accepted bytes (`ctGateB`, `Haxc/CTPub.lean`), with `%rsp` and the array
 pointers public and the limb contents and scalar words secret.
 
