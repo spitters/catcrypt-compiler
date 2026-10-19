@@ -7,8 +7,6 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockMemrefEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockMemrefEmit
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrintText
 
 /-!
 # The whole ChaCha20 block with the FULL pointer ABI: BOTH input and output via memrefs
@@ -61,11 +59,8 @@ state from them. No second set of inputs is needed.
   `denote`-peel reductions.
 * `chacha20BlockFullMemrefJasmin` — lowered all the way to `Com jasminDialect`
   (the input reads via `stackLoad`, the output stores via `stackStore`).
-* `chacha20BlockFullMemrefSig`, `chacha20BlockFullMemrefJazz` / `emit` — the signature
-  and the whole-function `.jazz` text printed by the single Jasmin printer
-  (`JasminPrintText.emitJazzN`), symbol `chacha20_block`, written to
-  `bench/chacha_compare/gen_com/chacha20_block_full.s`. The printed parameters follow
-  the reverse order of the context: `chacha20_block(inp, out)`.
+* `chacha20BlockFullMemrefJazz` / `emit` — the whole-function `.s` text, symbol
+  `chacha20_block`, to `bench/chacha_compare/gen_com/chacha20_block_full.s`.
 -/
 
 @[expose] public section
@@ -296,37 +291,22 @@ theorem chacha20BlockFullMemref_param_ctx :
 theorem chacha20BlockFullMemref_param_count :
     (mapCtx inCtxtFull).length = 2 := rfl
 
-open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (JazzSig ptyOf)
+/-- The whole-function `.jazz`/`.s` text of the whole ChaCha20 block with the
+    full pointer ABI, symbol `chacha20_block`. The `export fn` takes exactly two
+    pointer arguments `(out, in)` — fits the x86-64 6-register ABI. -/
+def chacha20BlockFullMemrefJazz : String :=
+  JasminPrint.emitJazz "chacha20_block" chacha20BlockFullMemrefJasmin
 
-/-- The signature of the full pointer ABI, in the reverse order of the context: the input
-    buffer `inp`, a `reg const ptr u64[16]`, and the output buffer `out`, a
-    `reg mut ptr u64[16]` that holds the result. -/
-def chacha20BlockFullMemrefSig : JazzSig (mapCtx inCtxtFull) (mapTy (.memref 16)) where
-  params := [("inp", .regPtr false, ptyOf (.stackArr 64 16)),
-    ("out", .regPtr true, ptyOf (.stackArr 64 16))]
-  result := (.regPtr true, ptyOf (.stackArr 64 16))
-  resultParam := some 1
-  params_length := rfl
-
-/-- The `.jazz` text of the whole ChaCha20 block with the full pointer ABI, symbol
-    `chacha20_block`, printed by the single Jasmin printer; `none` when `nfToJasmin` or
-    the checked printer refuses. The `export fn` takes exactly two pointer arguments,
-    which fits the x86-64 6-register ABI. A returned text parses to the lowered unit
-    (`JasminPrintText.emitJazzN_parse`). -/
-def chacha20BlockFullMemrefJazz : Option String :=
-  JasminPrintText.emitJazzN "chacha20_block" chacha20BlockFullMemrefSig
-    chacha20BlockFullMemrefJasmin
-
-/-- **The public emit action.** Write the whole-block full-memref `.jazz` text (from one
+/-- **The public emit action.** Write the whole-block full-memref `.s` (from one
     `Com catCryptDialect` lowered through the seam) to the bench gen-from-Com
-    directory, under the symbol `chacha20_block`, and fail when the printer refuses.
-    Both input and output flow through memref pointers, so the emitted `export fn` has
-    only two pointer arguments. -/
+    directory, under the symbol `chacha20_block`. Both input and output flow
+    through memref pointers, so the emitted `export fn` has only two pointer
+    arguments — jasminc compiles it (the 32-reg-arg version did not). The
+    orchestrator assembles + perf-compares against HACL* (`bench/chacha_compare`). -/
 def emit : IO Unit := do
-  let some s := chacha20BlockFullMemrefJazz
-    | throw (IO.userError "chacha20_block_full: the Jasmin printer refused the program")
   IO.FS.createDirAll "bench/chacha_compare/gen_com"
-  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_full.s" s
+  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_full.s"
+    chacha20BlockFullMemrefJazz
   IO.println "CatCrypt whole-block FULL-memref emit OK : bench/chacha_compare/gen_com/chacha20_block_full.s"
 
 /-! ## Artifact generation at elaboration
