@@ -513,6 +513,7 @@ CatCrypt.Crypto.SecureCompilation.SecureCompileChainDemo
 CatCrypt.Crypto.SecureCompilation.SepLogic.Abi
 CatCrypt.Crypto.SecureCompilation.SepLogic.FootprintBridge
 CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer
+CatCrypt.Crypto.SecureCompilation.SepLogic.VC.Core
 CatCrypt.Crypto.SecureCompilation.SignatureProtocolKernels
 CatCrypt.Crypto.SecureCompilation.SipHashRoundGoldenPath
 CatCrypt.Crypto.SecureCompilation.Speck128GoldenPath

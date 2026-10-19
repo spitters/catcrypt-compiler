@@ -1432,6 +1432,7 @@ def pkgModules7 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.Lift,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.Mem64,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.VC.Core,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.SepLogic.X86State,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Sha256KernelRegistryEntry,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Sha512BitFuncsGoldenPath,
