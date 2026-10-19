@@ -223,49 +223,38 @@ theorem sim_call (hE : JazzCallsAgree SyscallState Mem aS opS gd prog E)
   rw [hpost.frame z fun h => hz (writes_of_block h le_rfl)]
   exact set_ne w fun he => hz (Or.inr (Or.inl ⟨d, styOf t, le_rfl, he⟩))
 
-/-- **Region simulation with frames and calls.** Every region that `widthsGo` and `mulhi64B`
-accept simulates its denotation (`Sim`) when the callees of the mirror program agree with
-`E`: its bindings, counted loops, branches, exit-flag loops and calls. -/
+/-- **Region simulation with frames and calls.** Every region that `widthsGo` accepts
+simulates its denotation (`Sim`) when the callees of the mirror program agree with `E`: its
+bindings, counted loops, branches, exit-flag loops and calls. -/
 theorem nfToJasminRegion_sim_calls (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     (hE : JazzCallsAgree SyscallState Mem aS opS gd prog E) :
     ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts),
-      widthsGo p = true → mulhi64B p = true →
-      Sim SyscallState Mem aS opS gd prog E fuel p := by
+      widthsGo p = true → Sim SyscallState Mem aS opS gd prog E fuel p := by
   intro Γ ts p
   induction p with
-  | ret vs => intro _ _; exact sim_ret aS opS gd prog E fuel vs
+  | ret vs => intro _; exact sim_ret aS opS gd prog E fuel vs
   | @var Γ t ts e k ih =>
-      intro hw hmx
+      intro hw
       simp only [widthsGo, Bool.and_eq_true] at hw
       obtain ⟨⟨ht, hok⟩, hwk⟩ := hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
-      obtain ⟨hmx1, hmxk⟩ := hmx
-      refine sim_var aS opS gd prog E fuel haS hop e k ht hok (fun w hw' => ?_) (ih hwk hmxk)
-      rw [hw'] at hmx1
-      simpa using hmx1
+      exact sim_var aS opS gd prog E fuel haS hop e k ht hok (ih hwk)
   | forLoop count inits body k ihb ihk =>
-      intro hw hmx
+      intro hw
       simp only [widthsGo, Bool.and_eq_true] at hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
-      exact sim_for aS opS gd prog E fuel hop count inits body k hw.1.1
-        (ihb hw.1.2 hmx.1) (ihk hw.2 hmx.2)
+      exact sim_for aS opS gd prog E fuel hop count inits body k hw.1.1 (ihb hw.1.2) (ihk hw.2)
   | ifThenElse cond thn els k iht ihe ihk =>
-      intro hw hmx
+      intro hw
       simp only [widthsGo, Bool.and_eq_true] at hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
       exact sim_if aS opS gd prog E fuel hop cond thn els k hw.1.1.1
-        (iht hw.1.1.2 hmx.1.1) (ihe hw.1.2 hmx.1.2) (ihk hw.2 hmx.2)
+        (iht hw.1.1.2) (ihe hw.1.2) (ihk hw.2)
   | whileLoop inits body k ihb ihk =>
-      intro hw hmx
+      intro hw
       simp only [widthsGo, Bool.and_eq_true] at hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
-      exact sim_while aS opS gd prog E fuel hop inits body k hw.1.1
-        (ihb hw.1.2 hmx.1) (ihk hw.2 hmx.2)
+      exact sim_while aS opS gd prog E fuel hop inits body k hw.1.1 (ihb hw.1.2) (ihk hw.2)
   | call f args k ih =>
-      intro hw hmx
+      intro hw
       simp only [widthsGo, Bool.and_eq_true] at hw
-      simp only [mulhi64B] at hmx
-      exact sim_call aS opS gd prog E fuel hE f args k (ih hw.2 hmx)
+      exact sim_call aS opS gd prog E fuel hE f args k (ih hw.2)
 
 end Sim
 
@@ -547,15 +536,14 @@ variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
 `u` on the program `p` under a signature whose result is returned in a register, let `u`
 translate to the mirror program `prog`, and let `P` be a mirror program that defines
 `fname` as `prog` does and whose callees agree with `E` (`JazzCallsAgree`). When `p`
-denotes `x` at `V` in `E`, with its array indices in range and its `mulhi` operations at
-width `64`, the function `fname` of `P` runs, from every syscall state and memory and from
+denotes `x` at `V` in `E`, with its array indices in range, the function `fname` of `P` runs, from every syscall state and memory and from
 arguments that agree with `V`, to the same syscall state and memory and to one result that
 holds `x`. -/
 theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig Γ t}
     (hsig : sig.resultParam = none) {fname : String} {p : NFProg jasminDialect Γ [t]}
     {u : CatCrypt.Crypto.Jasmin.Jazz.JazzUnit} (hu : nfToJasmin sig fname p = some u) {prog : Prog}
-    (hprog : translateUnit u = some prog) (hmx : mulhi64B p = true)
+    (hprog : translateUnit u = some prog)
     {P : Prog} (hP : getFunDef P ⟨fname⟩ = getFunDef prog ⟨fname⟩)
     {E : CallEnv jasminDialect} (hE : JazzCallsAgree SyscallState Mem aS opS gd P E)
     {fuel : Nat} {V : Ctxt.Valuation Γ} {x : ⟦t⟧}
@@ -617,7 +605,7 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   -- the region
   obtain ⟨a', b', ha', hb', rfl⟩ := translateCmdExt_append_inv hb
   obtain ⟨s2, hsem2, hpost⟩ := nfToJasminRegion_sim_calls aS opS gd P E fuel haS hop hE p hwg
-    hmx hlin hr ha' hden hidx hs1
+    hlin hr ha' hden hidx hs1
   have hR := hpost.res
   obtain ⟨rv, hrv⟩ := List.length_eq_one_iff.1 (resAgrees_length hR)
   rw [hrv] at hR hb'

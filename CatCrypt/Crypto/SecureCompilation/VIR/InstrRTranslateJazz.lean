@@ -552,7 +552,7 @@ theorem translateCmdExt_mulhi {d : Nat} {x a b : JVar} {x' a' b' : MVarI}
   refine translateCmdExt_mkCmd (.cons ?_ .nil)
   have hl : ([none, some x] : List (Option JVar)).length = 2 := rfl
   simp only [copn, hl, opnNoneTys_MULX_64]
-  simp only [outLvs, List.getElem?_nil, Option.getD_none]
+  simp only [outLvs, List.getElem?_cons_zero, Option.getD_some]
   simp only [translateInstrRExt, List.mapM_cons, List.mapM_nil, translateLValExt_lnone_u64,
     translateLValExt_lvv hx, translatePExprExt_pv ha, translatePExprExt_pv hb]
   rfl

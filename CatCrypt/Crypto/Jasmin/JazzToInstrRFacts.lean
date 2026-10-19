@@ -21,7 +21,8 @@ computed by `native_decide`, in a module that imports no part of the emit front.
 
 * `opnNoneTys_ADD_64`, `opnNoneTys_ADC_64`, `opnNoneTys_NEG_64`: five flags and a word.
 * `opnNoneTys_CMP_64`: five flags.
-* `opnNoneTys_MULX_64`: no entry; the outputs of `MULX_lo_hi_64` are typed `u64`.
+* `opnNoneTys_MULX_64`: two `u64` words.
+* `gprAsm_opnNoneTys`: the same entries at the word sizes `U8` to `U64`.
 -/
 
 @[expose] public section
@@ -46,8 +47,9 @@ theorem opnNoneTys_NEG_64 :
 theorem opnNoneTys_CMP_64 : opnNoneTys "CMP_64" 5 = List.replicate 5 .sbool := by
   native_decide
 
-/-- `MULX_lo_hi_64` has no entry in the output table; its `_` outputs are typed `u64`. -/
-theorem opnNoneTys_MULX_64 : opnNoneTys "MULX_lo_hi_64" 2 = [] := by native_decide
+/-- The `_` outputs of `MULX_lo_hi_64`: the low and the high word. -/
+theorem opnNoneTys_MULX_64 :
+    opnNoneTys "MULX_lo_hi_64" 2 = [.sword .U64, .sword .U64] := by native_decide
 
 /-- The `_` outputs of `ANDN`, `ADC`, `NEG`, `CMP` and `MULX_lo_hi` at the six word sizes
 `U8` to `U256`, with two, five or six outputs, have no 512-bit word type. -/
@@ -59,7 +61,7 @@ theorem opnNoneTys_ne_U512 :
 
 /-- The `_` outputs of the asm operations of the lowering at the word sizes of the x86
 general-purpose registers: five flags and a word for `ADD`, `ADC`, `NEG`, `ANDN`, five flags
-for `CMP`, and no entry for `MULX_lo_hi`. -/
+for `CMP`, and two words for `MULX_lo_hi`. -/
 theorem gprAsm_opnNoneTys : ∀ ws ∈ [WSize.U8, .U16, .U32, .U64],
     opnNoneTys ("ADD" ++ "_" ++ toString ws.bits) 6 = List.replicate 5 .sbool ++ [.sword ws] ∧
       opnNoneTys ("ADC" ++ "_" ++ toString ws.bits) 6 =
@@ -69,7 +71,7 @@ theorem gprAsm_opnNoneTys : ∀ ws ∈ [WSize.U8, .U16, .U32, .U64],
       opnNoneTys ("ANDN" ++ "_" ++ toString ws.bits) 6 =
         List.replicate 5 .sbool ++ [.sword ws] ∧
       opnNoneTys ("CMP" ++ "_" ++ toString ws.bits) 5 = List.replicate 5 .sbool ∧
-      opnNoneTys ("MULX_lo_hi" ++ "_" ++ toString ws.bits) 2 = [] := by
+      opnNoneTys ("MULX_lo_hi" ++ "_" ++ toString ws.bits) 2 = [.sword ws, .sword ws] := by
   native_decide
 
 end CatCrypt.Crypto.Jasmin.JazzToInstrR

@@ -959,7 +959,6 @@ theorem sim_ret {Γ : Ctxt jasminDialect} {ts : List JasminTy}
 theorem sim_var (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {Γ : Ctxt jasminDialect}
     {t : JasminTy} {ts : List JasminTy} (e : Expr jasminDialect Γ t)
     (k : NFProg jasminDialect (t :: Γ) ts) (ht : tyOkB t = true) (hok : opOkB e.op = true)
-    (hmx : ∀ w, e.op = .mulhi w → w = 64)
     (ih : Sim SyscallState Mem aS opS gd prog E fuel k) :
     Sim SyscallState Mem aS opS gd prog E fuel (NFProg.var e k) := by
   intro loc env d n out hlin hout c' hc V r hden hidx s hs
@@ -968,7 +967,7 @@ theorem sim_var (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {Γ : Ctxt jas
   simp only [nfToJasminBody, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hout
   obtain ⟨⟨cx, y⟩, hcx, rk, hrk, rfl⟩ := hout
   obtain ⟨a', b', ha', hb', rfl⟩ := translateCmdExt_append_inv hc
-  obtain ⟨s1, hsem1, hp, hyt, hsrc⟩ := emitOp_sem aS opS gd prog haS hop e hok ht hmx
+  obtain ⟨s1, hsem1, hp, hyt, hsrc⟩ := emitOp_sem aS opS gd prog haS hop e hok ht
     hs (fun i hi => by simp [usesIdx, hi]) hidx.1 hcx ha'
   have hden' : k.denoteAt E fuel (V.extend (e.denote V)) = some r := by
     simpa [NFProg.denoteAt, NFProg.denote] using hden
@@ -1653,56 +1652,48 @@ theorem sim_while (hop : JazzOpAgrees opS) {Γ : Ctxt jasminDialect} {cs ts : Li
 
 /-! ## 9. Regions with frames -/
 
-/-- **Region simulation with frames.** Every call-free region that `widthsGo` and
-`mulhi64B` accept simulates its denotation (`Sim`): its bindings, counted loops, branches
-and exit-flag loops, lowered by `nfToJasminBody` and translated and typed. -/
+/-- **Region simulation with frames.** Every call-free region that `widthsGo` accepts
+simulates its denotation (`Sim`): its bindings, counted loops, branches and exit-flag loops,
+lowered by `nfToJasminBody` and translated and typed. -/
 theorem nfToJasminRegion_sim (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) :
     ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts),
-      p.callFree = true → widthsGo p = true → mulhi64B p = true →
+      p.callFree = true → widthsGo p = true →
       Sim SyscallState Mem aS opS gd prog E fuel p := by
   intro Γ ts p
   induction p with
-  | ret vs => intro _ _ _; exact sim_ret aS opS gd prog E fuel vs
+  | ret vs => intro _ _; exact sim_ret aS opS gd prog E fuel vs
   | @var Γ t ts e k ih =>
-      intro hcf hw hmx
+      intro hcf hw
       simp only [widthsGo, Bool.and_eq_true] at hw
       obtain ⟨⟨ht, hok⟩, hwk⟩ := hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
-      obtain ⟨hmx1, hmxk⟩ := hmx
-      refine sim_var aS opS gd prog E fuel haS hop e k ht hok (fun w hw' => ?_)
-        (ih hcf hwk hmxk)
-      rw [hw'] at hmx1
-      simpa using hmx1
+      exact sim_var aS opS gd prog E fuel haS hop e k ht hok (ih hcf hwk)
   | forLoop count inits body k ihb ihk =>
-      intro hcf hw hmx
+      intro hcf hw
       simp only [NFProg.callFree, Bool.and_eq_true] at hcf
       simp only [widthsGo, Bool.and_eq_true] at hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
       exact sim_for aS opS gd prog E fuel hop count inits body k hw.1.1
-        (ihb hcf.1 hw.1.2 hmx.1) (ihk hcf.2 hw.2 hmx.2)
+        (ihb hcf.1 hw.1.2) (ihk hcf.2 hw.2)
   | ifThenElse cond thn els k iht ihe ihk =>
-      intro hcf hw hmx
+      intro hcf hw
       simp only [NFProg.callFree, Bool.and_eq_true] at hcf
       simp only [widthsGo, Bool.and_eq_true] at hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
       exact sim_if aS opS gd prog E fuel hop cond thn els k hw.1.1.1
-        (iht hcf.1.1 hw.1.1.2 hmx.1.1) (ihe hcf.1.2 hw.1.2 hmx.1.2) (ihk hcf.2 hw.2 hmx.2)
+        (iht hcf.1.1 hw.1.1.2) (ihe hcf.1.2 hw.1.2) (ihk hcf.2 hw.2)
   | whileLoop inits body k ihb ihk =>
-      intro hcf hw hmx
+      intro hcf hw
       simp only [NFProg.callFree, Bool.and_eq_true] at hcf
       simp only [widthsGo, Bool.and_eq_true] at hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
       exact sim_while aS opS gd prog E fuel hop inits body k hw.1.1
-        (ihb hcf.1 hw.1.2 hmx.1) (ihk hcf.2 hw.2 hmx.2)
+        (ihb hcf.1 hw.1.2) (ihk hcf.2 hw.2)
   | call f args k _ => intro hcf; simp [NFProg.callFree] at hcf
 
-/-- **Regions with frames.** A call-free region that `widthsGo`, `mulhi64B` and the in-place
+/-- **Regions with frames.** A call-free region that `widthsGo` and the in-place
 store check `linGo` accept, lowered by `nfToJasminBody` and translated and typed, runs from
 a state that agrees with `V` on the variables the region reads, with its array indices in
 range, to a state in which the returned variables hold the values the region denotes. -/
 theorem nfToJasminBody_sem_frames (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) :
     ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts),
-      p.callFree = true → widthsGo p = true → mulhi64B p = true →
+      p.callFree = true → widthsGo p = true →
       ∀ {loc : Nat} {env : List JVar} {d n : Nat} {out : JOut}, linGo p loc = true →
       nfToJasminBody env p d n = some out →
       ∀ {c' : List MInstr}, translateCmdExt out.code = some c' →
@@ -1710,9 +1701,9 @@ theorem nfToJasminBody_sem_frames (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees o
       IdxInBounds E fuel p V →
       ∀ {s : Estate SyscallState Mem}, JazzStoreAgrees env d (fun i => usesIdx p i = true) V s →
       ∃ s', Sem aS opS gd prog s (typeC c') s' ∧ JazzResAgrees out.res r s' := by
-  intro Γ ts p hcf hw hmx loc env d n out hlin hout c' hc V r hden hidx s hs
+  intro Γ ts p hcf hw loc env d n out hlin hout c' hc V r hden hidx s hs
   obtain ⟨s', hsem, hpost⟩ :=
-    nfToJasminRegion_sim aS opS gd prog E fuel haS hop p hcf hw hmx hlin hout hc hden hidx hs
+    nfToJasminRegion_sim aS opS gd prog E fuel haS hop p hcf hw hlin hout hc hden hidx hs
   exact ⟨s', hsem, hpost.res⟩
 
 end Sim

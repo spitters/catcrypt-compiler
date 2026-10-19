@@ -642,7 +642,7 @@ theorem wsOf_gpr_mem {ws : MWSize} (hg : gprB ws = true) :
 
 /-- The types of the `_` outputs of the asm operations of the lowering at the word sizes of
 the x86 general-purpose registers: five flags and a word for `ADD`, `ADC`, `NEG`, `ANDN`,
-five flags for `CMP`, and none listed for `MULX_lo_hi`. -/
+five flags for `CMP`, and two words for `MULX_lo_hi`. -/
 theorem opnNoneTys_gpr : ∀ ws ∈ [CatCrypt.Crypto.Jasmin.WSize.U8, .U16, .U32, .U64],
     CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys (asmName "ADD" ws) 6 =
         List.replicate 5 .sbool ++ [.sword ws] ∧
@@ -654,7 +654,8 @@ theorem opnNoneTys_gpr : ∀ ws ∈ [CatCrypt.Crypto.Jasmin.WSize.U8, .U16, .U32
         List.replicate 5 .sbool ++ [.sword ws] ∧
       CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys (asmName "CMP" ws) 5 =
         List.replicate 5 .sbool ∧
-      CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys (asmName "MULX_lo_hi" ws) 2 = [] :=
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys (asmName "MULX_lo_hi" ws) 2 =
+        [.sword ws, .sword ws] :=
   CatCrypt.Crypto.Jasmin.JazzToInstrR.gprAsm_opnNoneTys
 
 /-- The `b5w_ty` outputs with the carry flag and the word `x` translate to `mCWOuts`. -/
@@ -700,18 +701,21 @@ theorem mapM_outsCmp {o : String}
     translateLValExt_lvv translateVarIExt_cf]
   rfl
 
-/-- The outputs of `MULX_lo_hi` with the high word `x` translate to a discarded `u64` and
-`x`. -/
-theorem mapM_outsMulx {o : String}
-    (ho : CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys o 2 = []) {x : JVar} (hx : OkV x) :
+/-- The outputs of `MULX_lo_hi` at a word size `ws` with the high word `x` translate to a
+discarded word of that size and `x`. -/
+theorem mapM_outsMulx {o : String} {ws : MWSize}
+    (ho : CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys o 2 =
+      [.sword (wsOf ws.bits), .sword (wsOf ws.bits)]) {x : JVar} (hx : OkV x) :
     (outLvs (CatCrypt.Crypto.Jasmin.JazzToInstrR.opnNoneTys o
       ([none, some x] : List (Option JVar)).length) 0 [none, some x]).mapM translateLValExt =
-      some [.Lnone () (.aword .U64), .Lvar (mvi x)] := by
+      some [.Lnone () (.aword ws), .Lvar (mvi x)] := by
   have hl : ([none, some x] : List (Option JVar)).length = 2 := rfl
+  have hn : translateLValExt (.Lnone vi0 (.sword (wsOf ws.bits))) =
+      some (.Lnone () (.aword ws)) := by
+    cases ws <;> rfl
   rw [hl, ho]
-  simp only [outLvs, List.getElem?_nil, Option.getD_none]
-  simp only [List.mapM_cons, List.mapM_nil, translateLValExt_lnone_u64,
-    translateLValExt_lvv (translateVarIExt_mvi hx)]
+  simp only [outLvs, List.getElem?_cons_zero, Option.getD_some]
+  simp only [List.mapM_cons, List.mapM_nil, hn, translateLValExt_lvv (translateVarIExt_mvi hx)]
   rfl
 
 /-- The reads of translated locals. -/
@@ -785,18 +789,19 @@ theorem writeLvals_cmp (s : Estate SyscallState Mem) {w : Nat}
   rw [show JazzAsmSem.flagVal (some cb) = .Vbool cb from rfl, writeLval_lvar opS gd rfl rfl]
   simp only [JResult.bind_ok]
 
-/-- The outputs of `MULX_lo_hi` at `u64`: the low word discarded, the high word to `x`. -/
-theorem writeLvals_mulx (s : Estate SyscallState Mem) (lo hi : BitVec 64) {x : MVarI}
-    (hx : x.v_var.vtype = .aword .U64) :
+/-- The outputs of `MULX_lo_hi` at a word size `ws`: the low word discarded, the high word
+to `x`. -/
+theorem writeLvals_mulx (s : Estate SyscallState Mem) {ws : MWSize} (lo hi : BitVec ws.bits)
+    {x : MVarI} (hx : x.v_var.vtype = .aword ws) :
     writeLvals (Mem := Mem) true gd opS s
-      (([.Lnone () (.aword .U64), .Lvar x] : List MLval).map typeLv)
-      [.Vword .U64 lo, .Vword .U64 hi] =
-      .ok (s.withVm (s.evm.set x.v_var (.Vword .U64 hi))) := by
-  rw [show (([.Lnone () (.aword .U64), .Lvar x] : List MLval).map typeLv) =
-    [.Lnone () (.aword .U64), .Lvar x] from rfl]
+      (([.Lnone () (.aword ws), .Lvar x] : List MLval).map typeLv)
+      [.Vword ws lo, .Vword ws hi] =
+      .ok (s.withVm (s.evm.set x.v_var (.Vword ws hi))) := by
+  rw [show (([.Lnone () (.aword ws), .Lvar x] : List MLval).map typeLv) =
+    [.Lnone () (.aword ws), .Lvar x] from rfl]
   simp only [writeLvals, JResult.fold2, JResult.monad_bind_eq]
-  rw [writeLval_lnone opS gd rfl rfl, JResult.bind_ok, writeLval_lvar opS gd rfl
-    (by rw [hx]; rfl)]
+  rw [writeLval_lnone opS gd (by cases ws <;> rfl) rfl, JResult.bind_ok, writeLval_lvar opS gd
+    rfl (by rw [hx]; rfl)]
   rfl
 
 end Outs
@@ -969,31 +974,34 @@ theorem sem_shiftImm (hop : JazzOpAgrees opS) {ws : MWSize} (_hg : gprB ws = tru
     rw [set_ne _ hz, set_ne _ hz]
   · exact fun h => arrTyped_set (arrTyped_set h rfl (hty _)) rfl (hty _)
 
-/-- **High multiply at `u64`.** `_, x = #MULX_lo_hi_64(a, b)` writes the high word. -/
-theorem sem_mulhi (haS : JazzAsmAgrees aS) {x a b : JVar} (hx : OkV x) (ha : OkV a)
-    (hb : OkV b) (hxt : (mvar x).vtype = .aword .U64) {s : Estate SyscallState Mem}
-    {va vb : BitVec 64} (hva : s.evm (mvar a) = .Vword .U64 va)
-    (hvb : s.evm (mvar b) = .Vword .U64 vb) {c' : List MInstr}
-    (hc : translateCmdExt [copn (asmName "MULX_lo_hi" (wsOf 64)) [none, some x] [pv a, pv b]] =
-      some c') :
+/-- **High multiply.** At a word size of `bmiB`, `_, x = #MULX_lo_hi_NN(a, b)` writes the
+high word. -/
+theorem sem_mulhi (haS : JazzAsmAgrees aS) {ws : MWSize} (hg : gprB ws = true)
+    (hbm : bmiB ws = true) {x a b : JVar} (hx : OkV x) (ha : OkV a)
+    (hb : OkV b) (hxt : (mvar x).vtype = .aword ws) {s : Estate SyscallState Mem}
+    {va vb : BitVec ws.bits} (hva : s.evm (mvar a) = .Vword ws va)
+    (hvb : s.evm (mvar b) = .Vword ws vb) {c' : List MInstr}
+    (hc : translateCmdExt
+      [copn (asmName "MULX_lo_hi" (wsOf ws.bits)) [none, some x] [pv a, pv b]] = some c') :
     ∃ s', Sem aS opS gd prog s (typeC c') s' ∧
-      Post s s' (mvar x) (· = .Vword .U64 (mulHiW va vb)) := by
-  have ho := (opnNoneTys_gpr _ (wsOf_gpr_mem (ws := .U64) rfl)).2.2.2.2.2
-  have hmem : asmName "MULX_lo_hi" (wsOf 64) ∈ jazzOps :=
-    ((asmName_mem_jazzOps (w := 64) rfl).2.2.2.2 rfl).2
-  refine ⟨s.withVm (s.evm.set (mvar x) (.Vword .U64 (mulHiW va vb))), ?_,
+      Post s s' (mvar x) (· = .Vword ws (mulHiW va vb)) := by
+  have ho := (opnNoneTys_gpr _ (wsOf_gpr_mem hg)).2.2.2.2.2
+  have hbm' : bmiOkB ws.bits = true := by cases ws <;> simp_all [bmiB] <;> rfl
+  have hmem : asmName "MULX_lo_hi" (wsOf ws.bits) ∈ jazzOps :=
+    ((asmName_mem_jazzOps (widthOkB_bits hg)).2.2.2.2 hbm').2
+  refine ⟨s.withVm (s.evm.set (mvar x) (.Vword ws (mulHiW va vb))), ?_,
     post_of (by simp) ?_ ?_⟩
-  · refine sem_copn_step aS opS gd prog (vs := [.Vword .U64 va, .Vword .U64 vb]) hc
+  · refine sem_copn_step aS opS gd prog (vs := [.Vword ws va, .Vword ws vb]) hc
       (mapM_outsMulx ho hx)
       (mapM_pv_mvi (xs := [a, b]) (by simp [ha, hb])) ?_ ?_
-      (writeLvals_mulx gd opS s (CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.x86_MULX_lo_hi va vb).1
+      (writeLvals_mulx gd opS s
+        (CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.x86_MULX_lo_hi va vb).1
         (mulHiW va vb) (x := mvi x) hxt) (fun c2 hc2 => sem_nil_step aS opS gd prog hc2 _)
     · rw [show [a, b].map (fun v => mpv (mvi v)) = [mvi a, mvi b].map mpv from rfl, typeArgs_mpv]
       exact semPexprs_cons opS gd (semPexpr_mpv opS gd hva rfl)
         (semPexprs_cons opS gd (semPexpr_mpv opS gd hvb rfl) (semPexprs_nil opS gd s))
-    · rw [haS _ hmem, show asmName "MULX_lo_hi" (wsOf 64) = opName "MULX_lo_hi" .U64 from
-        asmName_wsOf (ws := .U64) rfl _]
-      exact JazzAsmSem.jazzAsmSem_mulx_lo_hi .U64 rfl va vb
+    · rw [haS _ hmem, asmName_wsOf hg]
+      exact JazzAsmSem.jazzAsmSem_mulx_lo_hi ws hbm va vb
   · intro z hz _
     rw [set_ne _ hz]
   · exact fun h => arrTyped_set h rfl (by rw [hxt]; rfl)
@@ -2439,15 +2447,15 @@ local macro "hv_mem" : tactic => `(tactic| first
 section Emit
 variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
 
-/-- **The code of one binding.** For an operation that passes `opOkB` (with `mulhi` at
-width `64`) bound at a type of `tyOkB`, from a state that agrees with `V` on the operands,
+/-- **The code of one binding.** For an operation that passes `opOkB`
+bound at a type of `tyOkB`, from a state that agrees with `V` on the operands,
 with its array indices in range, the translated and typed code `emitOp` emits runs to a
 state in which the variable `y` it returns holds the denotation of the operation and every
 other variable outside the scratch variables is unchanged. `y` is the fresh binding at `d`,
 or the array operand of an in-place store. -/
 theorem emitOp_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (e : Expr jasminDialect Γ t) (hok : opOkB e.op = true)
-    (ht : tyOkB t = true) (hmx : ∀ w, e.op = .mulhi w → w = 64) {env : List JVar} {d : Nat}
+    (ht : tyOkB t = true) {env : List JVar} {d : Nat}
     {L : Nat → Prop} {V : Ctxt.Valuation Γ} {s : Estate SyscallState Mem}
     (hs : JazzStoreAgrees env d L V s) (hL : ∀ i ∈ hvIdxs e.args, L i)
     (hidx : opIdxOk e.op (Expr.lookupArgs e.args V)) {c : List AInstrR} {y : JVar}
@@ -2655,17 +2663,21 @@ theorem emitOp_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {Γ : Ctxt 
       exact arr_val_mk hg fun j => (h0 j).trans rfl
   | mulhi w =>
       obtain ⟨a, b, rfl⟩ := hv2 (t1 := .reg w) (t2 := .reg w) args
-      obtain rfl := hmx w rfl
-      have A := argOk hs a (hmem _ (by hv_mem)) (show tyOkB (.reg 64) = true from rfl)
-      have B := argOk hs b (hmem _ (by hv_mem)) (show tyOkB (.reg 64) = true from rfl)
-      have he' : some ([copn (asmName "MULX_lo_hi" (wsOf 64)) [none, some (mkV 'r' d (styOf (.reg 64)))]
+      have hw : bmiOkB w = true := hok
+      obtain ⟨ws, hg, rfl, -, -⟩ := exists_gpr (widthOkB_of_bmi hw)
+      have hbm : bmiB ws = true := by
+        cases ws <;> simp_all [bmiOkB, gprB, bmiB, CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.bits]
+      have htw : tyOkB (.reg ws.bits) = true := by simp [tyOkB, bitOkB, widthOkB_bits hg]
+      have A := argOk hs a (hmem _ (by hv_mem)) htw
+      have B := argOk hs b (hmem _ (by hv_mem)) htw
+      have he' : some ([copn (asmName "MULX_lo_hi" (wsOf ws.bits))
+          [none, some (mkV 'r' d (styOf (.reg ws.bits)))]
           [pv (env.getD (varIndex a) dfltV), pv (env.getD (varIndex b) dfltV)]],
-          mkV 'r' d (styOf (.reg 64))) = some (c, y) := he
+          mkV 'r' d (styOf (.reg ws.bits))) = some (c, y) := he
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj he')
-      obtain ⟨s', hsem, hp⟩ := sem_mulhi aS opS gd prog haS hxok A.ok B.ok
-        (mvar_new_reg (ws := .U64) rfl d) (reg_val (ws := .U64) rfl A.agr.2)
-        (reg_val (ws := .U64) rfl B.agr.2) hc
-      exact ⟨s', hsem, hp.mono fun v hv => by rw [hv]; exact reg_val_mk (ws := .U64) rfl _, rfl,
+      obtain ⟨s', hsem, hp⟩ := sem_mulhi aS opS gd prog haS hg hbm hxok A.ok B.ok
+        (mvar_new_reg hg d) (reg_val hg A.agr.2) (reg_val hg B.agr.2) hc
+      exact ⟨s', hsem, hp.mono fun v hv => by rw [hv]; exact reg_val_mk hg _, rfl,
         Or.inl ⟨rfl, rfl⟩⟩
   | addCarryLo w =>
       obtain ⟨a, b, cv, rfl⟩ := hv3 (t1 := .reg w) (t2 := .reg w) (t3 := .reg 1) args
@@ -2774,19 +2786,6 @@ def StraightLine : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
   | _, _, .var _ k => StraightLine k
   | _, _, _ => False
 
-/-- The programs whose `mulhi` operations are at width `64`. -/
-def mulhi64B : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
-    NFProg jasminDialect Γ ts → Bool
-  | _, _, .ret _ => true
-  | _, _, .var e k =>
-      (match e.op with
-        | .mulhi w => w == 64
-        | _ => true) && mulhi64B k
-  | _, _, .forLoop _ _ body k => mulhi64B body && mulhi64B k
-  | _, _, .ifThenElse _ thn els k => mulhi64B thn && mulhi64B els && mulhi64B k
-  | _, _, .whileLoop _ body k => mulhi64B body && mulhi64B k
-  | _, _, .call _ _ k => mulhi64B k
-
 omit [MemModel Mem] in
 /-- The returned variables of a store that agrees on their indices hold their values. -/
 theorem resAgrees_ret {env : List JVar} {d : Nat} {L : Nat → Prop} {Γ : Ctxt jasminDialect}
@@ -2801,7 +2800,7 @@ theorem resAgrees_ret {env : List JVar} {d : Nat} {L : Nat → Prop} {Γ : Ctxt 
 section Body
 variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
 
-/-- **Straight-line regions.** A straight-line region that `widthsGo`, `mulhi64B` and the
+/-- **Straight-line regions.** A straight-line region that `widthsGo` and the
 in-place store check `linGo` accept, lowered by `nfToJasminBody` and translated and typed,
 runs from a state that agrees with `V` on the variables the region reads, with its array
 indices in range, to a state in which the returned variables hold the values the region
@@ -2809,7 +2808,7 @@ denotes. -/
 theorem nfToJasminBody_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     (E : CallEnv jasminDialect) (fuel : Nat) :
     ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts),
-      StraightLine p → widthsGo p = true → mulhi64B p = true →
+      StraightLine p → widthsGo p = true →
       ∀ {loc : Nat} {env : List JVar} {d n : Nat} {out : JOut}, linGo p loc = true →
       nfToJasminBody env p d n = some out →
       ∀ {c' : List MInstr}, translateCmdExt out.code = some c' →
@@ -2820,7 +2819,7 @@ theorem nfToJasminBody_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   intro Γ ts p
   induction p with
   | ret vs =>
-      intro _ _ _ loc env d n out _ hout c' hc V r hden _ s hs
+      intro _ _ loc env d n out _ hout c' hc V r hden _ s hs
       simp only [nfToJasminBody, Option.some.injEq] at hout
       subst hout
       have hr : r = Expr.lookupArgs vs V := by
@@ -2829,21 +2828,15 @@ theorem nfToJasminBody_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
       refine ⟨s, sem_nil_step aS opS gd prog hc s, resAgrees_ret hs vs fun i hi => ?_⟩
       simp [usesIdx, hi]
   | @var Γ t ts e k ih =>
-      intro hsl hw hmx loc env d n out hlin hout c' hc V r hden hidx s hs
+      intro hsl hw loc env d n out hlin hout c' hc V r hden hidx s hs
       simp only [widthsGo, Bool.and_eq_true] at hw
       obtain ⟨⟨ht, hok⟩, hwk⟩ := hw
-      simp only [mulhi64B, Bool.and_eq_true] at hmx
-      obtain ⟨hmx1, hmxk⟩ := hmx
       simp only [linGo, Bool.and_eq_true] at hlin
       obtain ⟨hlin1, hlink⟩ := hlin
       simp only [nfToJasminBody, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hout
       obtain ⟨⟨cx, y⟩, hcx, rk, hrk, rfl⟩ := hout
       obtain ⟨a', b', ha', hb', rfl⟩ := translateCmdExt_append_inv hc
-      have hmx' : ∀ w, e.op = .mulhi w → w = 64 := by
-        intro w hw'
-        rw [hw'] at hmx1
-        simpa using hmx1
-      obtain ⟨s1, hsem1, hp, hyt, hsrc⟩ := emitOp_sem aS opS gd prog haS hop e hok ht hmx'
+      obtain ⟨s1, hsem1, hp, hyt, hsrc⟩ := emitOp_sem aS opS gd prog haS hop e hok ht
         hs (fun i hi => by simp [usesIdx, hi]) hidx.1 hcx ha'
       have hden' : k.denoteAt E fuel (V.extend (e.denote V)) = some r := by
         simpa [NFProg.denoteAt, NFProg.denote] using hden
@@ -2901,7 +2894,7 @@ theorem nfToJasminBody_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
               | succ j =>
                   exact congrArg (· + 1) (hs.inj i j (by simp [usesIdx, show usesIdx k (i + 1) = true from hi])
                     (by simp [usesIdx, show usesIdx k (j + 1) = true from hj]) heq)
-      obtain ⟨s2, hsem2, hres⟩ := ih hsl hwk hmxk hlink hrk hb' hden' hidx.2 hs1
+      obtain ⟨s2, hsem2, hres⟩ := ih hsl hwk hlink hrk hb' hden' hidx.2 hs1
       refine ⟨s2, ?_, hres⟩
       rw [typeC_append]
       exact ComJasminBridgeProgram.sem_append aS opS gd prog hsem1 hsem2

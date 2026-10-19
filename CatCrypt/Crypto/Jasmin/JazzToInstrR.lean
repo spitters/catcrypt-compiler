@@ -329,9 +329,12 @@ def wsizeOfBits : Nat → Option WSize
     `AND`, `ANDN`, `OR`, `XOR`, `SHL`, `SHR`, `SAR`, `LZCNT`, `TZCNT`, `POPCNT`; the
     flags `of sf pf zf` and the result of `INC`, `DEC`; the five flags of `CMP`,
     `TEST`; the five flags, the high and the low word of `MUL`, `IMUL`; the carry
-    and the result of `ADCX`, `ADOX`; `of cf` and the result of `ROL`, `ROR`. -/
+    and the result of `ADCX`, `ADOX`; `of cf` and the result of `ROL`, `ROR`; the low
+    and the high word of `MULX_lo_hi_NN`. -/
 def asmOutTys (op : String) : Option (List SType) :=
   match op.splitOn "_" with
+  | ["MULX", "lo", "hi", bits] =>
+    (bits.toNat?.bind wsizeOfBits).map fun w => [.sword w, .sword w]
   | [nm, bits] =>
     match bits.toNat?.bind wsizeOfBits with
     | none => none
