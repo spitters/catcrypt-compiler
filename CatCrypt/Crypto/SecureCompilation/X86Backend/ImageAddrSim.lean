@@ -57,6 +57,8 @@ the closing return, and `reloadSavedB`; `ImgGate.of_imgGateB` gives it from `img
   before it or the entry-held slot of a stack-argument name.
 * `rel_reg`, `rel_sload`, `rel_sstore`, `rel_scmp`, `rel_ldx`, `rel_stx`, `rel_label`,
   `rel_jump`: each kind of instruction keeps the relation.
+* `rel_zarr`, `rel_simm`: an array zeroing `ZEROARR` and a constant-index store `STOREIMM`
+  through a reloaded array pointer keep the relation.
 * `img_step`: one checked step of the image is one or two steps of the address machine.
 * `image_addr_sim`: a halting checked run of the image is matched by a halting run of the
   address machine on the body, with the relation at the end and every indexed load outside
@@ -1793,6 +1795,170 @@ theorem rel_stx {frame : String → Option (BitVec 64)} {slotArr : String → Op
     · refine ⟨arr', by simpa [eA] using harr', fun j hj => ?_⟩
       rw [read64_write64_of_disjoint _ _ _ _
         (hsep.cells q A n q' A' n' vi.toNat j hq hq' hlt hj (Or.inl (Ne.symm eA)))]
+      exact hcell' j hj
+
+/-- The zeroing of `n` words at `p` keeps a word disjoint from each of them. -/
+theorem read64_zeroWords_of_disjoint (m : Ascent.AddrMem.AMem) (p x : BitVec 64) :
+    ∀ n, (∀ i, i < n → Disjoint8 (cellAt p i) x) → read64 (zeroWords m p n) x = read64 m x
+  | 0, _ => rfl
+  | n + 1, h => by
+      rw [zeroWords, read64_write64_of_disjoint _ _ _ _ (h n (by omega))]
+      exact read64_zeroWords_of_disjoint m p x n fun i hi => h i (by omega)
+
+/-- Word `j < n` of the zeroing of `n` pairwise disjoint words at `p` is zero. -/
+theorem read64_zeroWords_of_lt (m : Ascent.AddrMem.AMem) (p : BitVec 64) :
+    ∀ n, (∀ i i', i < n → i' < n → i ≠ i' → Disjoint8 (cellAt p i) (cellAt p i')) →
+      ∀ j, j < n → read64 (zeroWords m p n) (cellAt p j) = 0
+  | 0, _, j, hj => absurd hj (Nat.not_lt_zero j)
+  | n + 1, h, j, hj => by
+      rw [zeroWords]
+      by_cases e : j = n
+      · subst e
+        exact read64_write64_same _ _ _
+      · rw [read64_write64_of_disjoint _ _ _ _ (h n j (by omega) hj (Ne.symm e))]
+        exact read64_zeroWords_of_lt m p n
+          (fun i i' hi hi' => h i i' (by omega) (by omega)) j (by omega)
+
+/-- The name-keyed step of the zeroing of the array `A` at shape `(64, n)`. -/
+theorem eval_zeroArr (P : LprogM) (A : String) (n' w' n : Nat) (s : LstateMF) :
+    evalInstrPMemF P (.Lopn [.reg A] "ZEROARR" [.imm n', .imm w'], .zero 64 n) s =
+      some { s with prog := { s.prog with
+        base := (s.prog.base.setArr A (fun _ : Fin n => (0 : BitVec 64))).nextPc } } := by
+  rw [evalInstrPMemF_isLopn P _ s ⟨_, _, _, rfl⟩]
+  simp only [fstepF, cmpArgs?, movRegArgs?]
+  rw [stepMemF_of_quiet rfl rfl rfl]
+  simp only [lsemStepMem, zeroStruct?, if_true]
+  rfl
+
+/-- The name-keyed step of the store of `v` into the array `A` at shape `(64, n)` at the
+    constant index `k`. -/
+theorem eval_storeImm (P : LprogM) (A v : String) (k n : Nat) (s : LstateMF) :
+    evalInstrPMemF P (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm k], .storeImm 64 n) s =
+      match s.prog.base.getArr A 64 n, s.prog.base.reg.getW v 64 with
+      | some arr, some vv =>
+          some { s with prog := { s.prog with
+            base := (s.prog.base.setArr A (stackSet arr k vv)).nextPc } }
+      | _, _ => none := by
+  rw [evalInstrPMemF_isLopn P _ s ⟨_, _, _, rfl⟩]
+  simp only [fstepF, cmpArgs?, movRegArgs?]
+  rw [stepMemF_of_quiet rfl rfl rfl]
+  simp only [lsemStepMem, storeImmStruct?, if_true]
+  cases s.prog.base.getArr A 64 n <;> cases s.prog.base.reg.getW v 64 <;> rfl
+
+/-- **An array zeroing keeps the relation.** The zeroing `ZEROARR [], [b, #n, #64]` through a
+    register `b` that holds the pointer of the array `A` of length `n` is stepped on the image
+    as the zeroing of `A` and on the address machine at the tag `.zero 64 n`. -/
+theorem rel_zarr {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
+    {base : String → BitVec 64} {rsp : BitVec 64} {body : Lcmd}
+    (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : ImgGate frame slotArr body) (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
+    (hb : body[sa.reg.lpc]? = some bi) {b A : String} {n : Nat}
+    (hx : bi.li_i = .Lopn [] "ZEROARR" [.reg b, .imm n, .imm 64])
+    (hacc : accArr slotArr body sa.reg.lpc b = some (A, n)) (hbf : frame b = none)
+    (hs : evalInstrPMemFk true P
+      (.Lopn [.reg A] "ZEROARR" [.imm n, .imm 64], .zero 64 n) s = some t) :
+    ∃ sa', fstepA frame (bi.li_i, .zero 64 n) sa zf = some (sa', t.zf)
+      ∧ ImgRel frame slotArr base body t sa' t.zf := by
+  have hs' := evalInstrPMemF_of_k hs
+  rw [eval_zeroArr] at hs'
+  cases hs'
+  obtain ⟨q, hq, hp⟩ := ptr_of_reload hsep hgate hrel hacc hbf
+  have hz := hrel.zf
+  subst hz
+  rw [hx, fstepA_zeroArr frame hp]
+  have hmem : ∀ q' a, frame q' = some a →
+      read64 (zeroWords sa.mem (base A) n) a = read64 sa.mem a :=
+    fun q' a ha => read64_zeroWords_of_disjoint _ _ _ n fun i hi =>
+      hsep.cellFrame q A n i hq hi q' a ha
+  obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := { sa with
+      reg := sa.reg.nextPc
+      mem := zeroWords sa.mem (base A) n })
+    hphys hrel hb (by rw [hx]; rfl) rfl hmem (fun _ _ _ => rfl)
+  refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
+    fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
+    hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl,
+    hrel.held.of_frames hmem⟩⟩
+  · intro q' a ha
+    simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
+    rw [hmem q' a ha]
+    exact hrel.slots q' a ha
+  · intro q' A' n' hq'
+    obtain ⟨arr', harr', hcell'⟩ := hrel.cells q' A' n' hq'
+    by_cases eA : A' = A
+    · subst eA
+      have hn := hsep.len q' q A' n' n hq' hq
+      subst hn
+      refine ⟨fun _ => 0, by simp, fun j hj => ?_⟩
+      exact read64_zeroWords_of_lt _ _ n'
+        (fun i i' hi hi' hne => hsep.cells q A' n' q A' n' i i' hq hq hi hi' (Or.inr hne)) j hj
+    · refine ⟨arr', by simpa [eA] using harr', fun j hj => ?_⟩
+      rw [read64_zeroWords_of_disjoint _ _ _ n fun i hi =>
+        hsep.cells q A n q' A' n' i j hq hq' hi hj (Or.inl (Ne.symm eA))]
+      exact hcell' j hj
+
+/-- **A constant-index store keeps the relation.** The store `STOREIMM d, [b, v, #k]` through a
+    register `b` that holds the pointer of the array `A` of length `n > k` is stepped on the
+    image as the store into `A` at the index `k` and on the address machine at the tag
+    `.storeImm 64 (k + 1)`. -/
+theorem rel_simm {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
+    {base : String → BitVec 64} {rsp : BitVec 64} {body : Lcmd}
+    (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : ImgGate frame slotArr body) (P : LprogM) {s t : LstateMF} {sa : LstateA}
+    {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
+    (hb : body[sa.reg.lpc]? = some bi) {d b v A : String} {k n : Nat}
+    (hx : bi.li_i = .Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k])
+    (hacc : accArr slotArr body sa.reg.lpc b = some (A, n)) (hk : k < n)
+    (hbf : frame b = none) (hv : frame v = none)
+    (hs : evalInstrPMemFk true P
+      (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm k], .storeImm 64 n) s = some t) :
+    ∃ sa', fstepA frame (bi.li_i, .storeImm 64 (k + 1)) sa zf = some (sa', t.zf)
+      ∧ ImgRel frame slotArr base body t sa' t.zf := by
+  have hs' := evalInstrPMemF_of_k hs
+  obtain ⟨q, hq, hp⟩ := ptr_of_reload hsep hgate hrel hacc hbf
+  obtain ⟨arr, harr, hcell⟩ := hrel.cells q A n hq
+  rw [eval_storeImm, harr] at hs'
+  have hve := getW_congr (r := s.prog.base.reg) (r' := sa.reg) (hrel.regs v hv) 64
+  cases hvv : sa.reg.getW v 64 with
+  | none => rw [hve, hvv] at hs'; cases hs'
+  | some vv =>
+  rw [hve, hvv] at hs'
+  cases hs'
+  have hz := hrel.zf
+  subst hz
+  rw [hx, fstepA_storeImm frame (Nat.lt_succ_self k) hp hvv]
+  obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := { sa with
+      reg := sa.reg.nextPc
+      mem := write64 sa.mem (base A + BitVec.ofNat 64 (8 * k)) vv })
+    hphys hrel hb (by rw [hx]; rfl) rfl
+    (fun q' a ha => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n k hq hk q' a ha)) (fun _ _ _ => rfl)
+  refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
+    fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
+    hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl,
+    hrel.held.of_frames fun q' a ha => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n k hq hk q' a ha)⟩⟩
+  · intro q' a ha
+    simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
+    rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q A n k hq hk q' a ha)]
+    exact hrel.slots q' a ha
+  · intro q' A' n' hq'
+    obtain ⟨arr', harr', hcell'⟩ := hrel.cells q' A' n' hq'
+    by_cases eA : A' = A
+    · subst eA
+      have hn := hsep.len q' q A' n' n hq' hq
+      subst hn
+      refine ⟨stackSet arr k vv, by simp, fun j hj => ?_⟩
+      rw [← stackGet_id (stackSet arr k vv) ⟨j, hj⟩]
+      by_cases ej : j = k
+      · subst ej
+        rw [read64_write64_same, stackGet_stackSet_same _ _ _ hk]
+      · rw [read64_write64_of_disjoint _ _ _ _
+          (hsep.cells q A' n' q A' n' k j hq hq hk hj (Or.inr (Ne.symm ej))),
+          stackGet_stackSet_ne _ _ _ _ hk hj ej, hcell j hj, stackGet_id arr ⟨j, hj⟩]
+    · refine ⟨arr', by simpa [eA] using harr', fun j hj => ?_⟩
+      rw [read64_write64_of_disjoint _ _ _ _
+        (hsep.cells q A n q' A' n' k j hq hq' hk hj (Or.inl (Ne.symm eA)))]
       exact hcell' j hj
 
 /-- A move of the program counters keeps the relation, given its save and reload
