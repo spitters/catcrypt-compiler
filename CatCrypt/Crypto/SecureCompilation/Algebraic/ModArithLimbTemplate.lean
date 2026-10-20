@@ -40,17 +40,17 @@ one 64-bit word are the load and the store at index `0`.
 * `ModArithLimbTemplate.LeakFixed`: a straight-line program emits the same events at every
   two valuations.
 * `ModArithLimbTemplate`: the class of limb templates.
-* `ModArithLimbTemplate.singleBody`, `ModArithLimbTemplate.loadBlk`,
-  `ModArithLimbTemplate.storeBlk`, `ModArithLimbTemplate.ofSingleWord`: the template of a
-  single-word representation.
+* `ModArithLimbTemplate.singleBody`, `ModArithLimbTemplate.singleLoadBlk`,
+  `ModArithLimbTemplate.singleStoreBlk`, `ModArithLimbTemplate.ofSingleWord`: the template of
+  a single-word representation.
 
 ## Main results
 
 * `ModArithLimbTemplate.methodVal_canon`: at `canon`, the value of a method is the
   operation of `ZMod p`.
 * `ModArithLimbTemplate.leakFixed_rename`: renaming keeps fixed events.
-* `ModArithLimbTemplate.loadBlk_denote`, `ModArithLimbTemplate.storeBlk_denote`: the word
-  casts at one word.
+* `ModArithLimbTemplate.singleLoadBlk_denote`, `ModArithLimbTemplate.singleStoreBlk_denote`:
+  the word casts at one word.
 -/
 
 @[expose] public section
@@ -198,20 +198,20 @@ theorem singleBody_denote {p : Nat} (F : SingleWordField p) (m : FieldMethod) (x
   · exact F.addBlk_denote _ _ _ x x rfl rfl
 
 /-- The load of the word at index `0` of an array of one word. -/
-def loadBlk : Com jasminDialect [.stackArr 64 1] w64 :=
+def singleLoadBlk : Com jasminDialect [.stackArr 64 1] w64 :=
   .var ⟨.regConst 64 0, rfl, .nil⟩ <|
     .var ⟨.stackLoad 64 1, rfl, .cons (.there .here) (.cons .here .nil)⟩ (.ret .here)
 
 /-- The store of a word at index `0` of a fresh array of one word. -/
-def storeBlk : Com jasminDialect [w64] (.stackArr 64 1) :=
+def singleStoreBlk : Com jasminDialect [w64] (.stackArr 64 1) :=
   .var ⟨.stackZero 64 1, rfl, .nil⟩ <|
     .var ⟨.stackStoreImm 64 1 0, rfl, .cons .here (.cons (.there .here) .nil)⟩ (.ret .here)
 
 /-- The load of the array of one word that `fromWordsM` reads as `y` is the canonical word
     of `y`. -/
-theorem loadBlk_denote {p : Nat} [NeZero p] (hp : p ≤ 2 ^ 64) (A : Fin 1 → BitVec 64)
+theorem singleLoadBlk_denote {p : Nat} [NeZero p] (hp : p ≤ 2 ^ 64) (A : Fin 1 → BitVec 64)
     (y : ZMod p) (h : fromWordsMF p 64 1 A = some y) :
-    loadBlk.denote (.cons A .nil) = canonEnc p y := by
+    singleLoadBlk.denote (.cons A .nil) = canonEnc p y := by
   have h' : (A 0).toNat < p ∧ ((A 0).toNat : ZMod p) = y := by
     simpa [fromWordsMF, wordsVal] using h
   obtain ⟨hlt, rfl⟩ := h'
@@ -220,8 +220,8 @@ theorem loadBlk_denote {p : Nat} [NeZero p] (hp : p ≤ 2 ^ 64) (A : Fin 1 → B
   simp [stackGet, ZMod.val_natCast, Nat.mod_eq_of_lt hlt]
 
 /-- The store of the canonical word of `y` is the one-word cast `toWordsM` of `y`. -/
-theorem storeBlk_denote {p : Nat} (y : ZMod p) :
-    storeBlk.denote (.cons (canonEnc p y) .nil) = toWordsMF p 64 1 y := by
+theorem singleStoreBlk_denote {p : Nat} (y : ZMod p) :
+    singleStoreBlk.denote (.cons (canonEnc p y) .nil) = toWordsMF p 64 1 y := by
   show stackSet (JasminTy.default (.stackArr 64 1)) (0 : Nat) (canonEnc p y) = _
   funext i
   fin_cases i
@@ -229,28 +229,28 @@ theorem storeBlk_denote {p : Nat} (y : ZMod p) :
   rfl
 
 /-- The load at index `0` has fixed events. -/
-theorem loadBlk_fixed (Pj : JLeakParams) : LeakFixed (jLeakModel Pj) loadBlk := by
+theorem singleLoadBlk_fixed (Pj : JLeakParams) : LeakFixed (jLeakModel Pj) singleLoadBlk := by
   intro V₁ V₂
   rfl
 
 /-- The store at index `0` has fixed events at leakage parameters with no variable-time
     operation. -/
-theorem storeBlk_fixed (Pj : JLeakParams) (hV : ∀ op, Pj.opVT op = none) :
-    LeakFixed (jLeakModel Pj) storeBlk := by
+theorem singleStoreBlk_fixed (Pj : JLeakParams) (hV : ∀ op, Pj.opVT op = none) :
+    LeakFixed (jLeakModel Pj) singleStoreBlk := by
   intro V₁ V₂
-  simp only [storeBlk, ComLevelCheck.Com.ctLeak, ComLevelCheck.Expr.ctLeak,
+  simp only [singleStoreBlk, ComLevelCheck.Com.ctLeak, ComLevelCheck.Expr.ctLeak,
     ComLevelCheck.opLeak, jLeakModel, Dialects.JasminComLLeak.jKind, hV]
 
 /-- The block of the cast `fromWordsM p w n` in a single-word representation: the load at
     one 64-bit word. -/
 def singleOfWords : (w n : Nat) → Option (Com jasminDialect [.stackArr w n] w64)
-  | 64, 1 => some loadBlk
+  | 64, 1 => some singleLoadBlk
   | _, _ => none
 
 /-- The block of the cast `toWordsM p w n` in a single-word representation: the store at
     one 64-bit word. -/
 def singleToWords : (w n : Nat) → Option (Com jasminDialect [w64] (.stackArr w n))
-  | 64, 1 => some storeBlk
+  | 64, 1 => some singleStoreBlk
   | _, _ => none
 
 /-- **The template of a single-word representation** `F` with the canonical encoding at a
@@ -273,13 +273,13 @@ def singleToWords : (w n : Nat) → Option (Com jasminDialect [w64] (.stackArr w
     split at hc
     · cases hc
       rw [hF]
-      exact loadBlk_denote hp A y hy
+      exact singleLoadBlk_denote hp A y hy
     · cases hc
   ofWords_fixed Pj _ w n c hc := by
     unfold singleOfWords at hc
     split at hc
     · cases hc
-      exact loadBlk_fixed Pj
+      exact singleLoadBlk_fixed Pj
     · cases hc
   toWords := singleToWords
   toWords_denote w n c hc y := by
@@ -287,13 +287,13 @@ def singleToWords : (w n : Nat) → Option (Com jasminDialect [w64] (.stackArr w
     split at hc
     · cases hc
       rw [hF]
-      exact storeBlk_denote y
+      exact singleStoreBlk_denote y
     · cases hc
   toWords_fixed Pj hV w n c hc := by
     unfold singleToWords at hc
     split at hc
     · cases hc
-      exact storeBlk_fixed Pj hV
+      exact singleStoreBlk_fixed Pj hV
     · cases hc
 
 end ModArithLimbTemplate

@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldChainDialect
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapM
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFMapLeakBlockEv
 
 /-!
 # The chain stage from the field dialect to the `mod_arith` dialect
@@ -35,6 +36,8 @@ squaring, `fromMont` and `fromWords`.
 * `mapTy`, `mapVar`, `transTy`, `mapVal`, `fieldToModArithJ`: the lowering and its
   transports.
 * `fieldToModArithStep`, `fieldToModArithCert`: the chain stage and its certificate.
+* `opCanon`: the operations at the representation `canon`.
+* `liftCallM`, `liftEnvM`: the call environment of `jasMod` from one of `jasminDialect`.
 
 ## Main results
 
@@ -42,6 +45,14 @@ squaring, `fromMont` and `fromWords`.
   leaves of the lowering other than the block leaf.
 * `block_fwd`: a successful source expression has a successful block with the stored
   residue of its value.
+* `isSome_map?_of_opCanon`, `fieldToModArithStep_isSome`: the stage returns a program when
+  every operation is at the representation `canon`.
+* `liftCallM_liftVM`: at injected types, `liftEnvM E` answers what `E` answers.
+* `blockEvO_eq`: at a quiet leakage model of `modArithDialect`, the blocks of an expression
+  emit its events.
+* `fieldToModArithStep_leakRunMC`, `fieldToModArithStep_leakRunC`: the lowered program runs
+  to the transported results with the source events, and equal source events give equal
+  events after the stage.
 -/
 
 @[expose] public section
@@ -63,7 +74,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringExtend (transArgs)
 /-! ## 1. Montgomery parameters of a radix -/
 
 /-- Admissibility of a representation is decidable. -/
-instance decAdmissible (p : Nat) : (r : FieldRepr) → Decidable (r.Admissible p)
+instance decAdmits (p : Nat) : (r : FieldRepr) → Decidable (r.Admits p)
   | .canon => isTrue trivial
   | .mont _ => inferInstanceAs (Decidable (Nat.Coprime 2 p))
 
@@ -151,7 +162,7 @@ def castBlock? {Γ : Ctxt jasField} : (o : CastOp) →
     HVector (fun t => Var Γ t) (DialectSignature.sig (d := castDialect) o) →
     Option (Com jasMod (Γ.map mapTy) (mapTy (DialectSignature.ret (d := castDialect) o)))
   | .fromWords p r w n, args =>
-      if r.Admissible p then
+      if r.Admits p then
         some (opB (.inr (.fromWordsM p w n)) (.cons (mapVar args.head) .nil))
       else none
   | .toWords p _ w n, args => some (opB (.inr (.toWordsM p w n)) (.cons (mapVar args.head) .nil))
@@ -371,7 +382,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
     | fromWords p r w n =>
         match args with
         | .cons a .nil =>
-            have hb' : (if r.Admissible p then some _ else none) = some blk := hb
+            have hb' : (if r.Admits p then some _ else none) = some blk := hb
             split at hb'
             · rename_i hr
               cases hb'
@@ -419,5 +430,272 @@ def fieldToModArithCert (E : CallEnv jasField) (E' : CallEnv jasMod)
   PassChain.StepCert.ofMapAtM? fieldToModArithJ regionTypes (fun x => transTy x)
     (fun V => mapVal V) varTransports (fun e blk hb V x hx => block_fwd e blk hb V x hx)
     mapValExtends regionTransports E E' hCall fuel Γ ts
+
+/-! ## 5. The stage is defined at the representation `canon` -/
+
+/-- An operation of `jasField` at the representation `canon`: every operation of
+    `jasminDialect`, an operation of `pfDialect` other than `toMont` and `fromMont` whose
+    representation is `canon`, and a cast at `canon`. -/
+def opCanon : jasField.Op → Bool
+  | .inl (.inl _) => true
+  | .inl (.inr (.add _ .canon)) => true
+  | .inl (.inr (.sub _ .canon)) => true
+  | .inl (.inr (.neg _ .canon)) => true
+  | .inl (.inr (.mul _ .canon)) => true
+  | .inl (.inr (.square _ .canon)) => true
+  | .inl (.inr (.double _ .canon)) => true
+  | .inl (.inr (.const _ .canon _)) => true
+  | .inl (.inr (.copy _ .canon)) => true
+  | .inr (.fromWords _ .canon _ _) => true
+  | .inr (.toWords _ .canon _ _) => true
+  | _ => false
+
+/-- An expression whose operation is at the representation `canon` has a block. -/
+theorem lowerBlock?_isSome_of_opCanon {Γ : Ctxt jasField} {t : jasField.Ty}
+    (e : Expr jasField Γ t) (h : opCanon e.op = true) :
+    (fieldToModArithJ.lowerExprBlock? e).isSome = true := by
+  obtain ⟨op, rfl, args⟩ := e
+  rcases op with (o | o) | o
+  · rfl
+  · cases o with
+    | mul _ r => cases r <;> first | rfl | (simp [opCanon] at h)
+    | square _ r => cases r <;> first | rfl | (simp [opCanon] at h)
+    | fromMont => simp [opCanon] at h
+    | _ => rfl
+  · cases o <;> rename_i r _ _ <;> cases r <;> first | rfl | (simp [opCanon] at h)
+
+/-- **`map?` is defined at the representation `canon`.** At every renaming, `map?` along
+    `fieldToModArithJ` returns a program on every program each of whose let-bound
+    expressions, in every region, has its operation at the representation `canon`. -/
+theorem isSome_map?_of_opCanon {Γ : Ctxt jasField} {ts : List jasField.Ty}
+    (p : NFProg jasField Γ ts) (hp : p.Covered (fun {_ _} e => opCanon e.op = true))
+    {Δ : Ctxt jasMod} (ren : Ctxt.Hom (fieldToModArithJ.mapCtx Γ) Δ) :
+    (NFProg.map? fieldToModArithJ regionTypes p ren).isSome = true :=
+  (NFProg.isSome_map?_iff fieldToModArithJ regionTypes p ren).2
+    (NFProg.Covered.mono (fun e he => lowerBlock?_isSome_of_opCanon e he) hp)
+
+/-- The chain stage returns a program on every program whose operations are at the
+    representation `canon`. -/
+theorem fieldToModArithStep_isSome {Γ : Ctxt jasField} {ts : List jasField.Ty}
+    (p : NFProg jasField Γ ts) (hp : p.Covered (fun {_ _} e => opCanon e.op = true)) :
+    ((fieldToModArithStep Γ ts).run p).isSome = true :=
+  isSome_map?_of_opCanon p hp _
+
+/-! ## 6. The call environment of `jasMod` along `Sum.inl` -/
+
+/-- The types of `jasminDialect` a list of types of `jasMod` holds, or `none` when a type of
+    `modArithDialect` occurs. -/
+def ofInlM? : List (JasminTy ⊕ ModArithTy) → Option (List JasminTy)
+  | [] => some []
+  | .inl t :: as => (ofInlM? as).map (t :: ·)
+  | .inr _ :: _ => none
+
+/-- An injected list of types is read back. -/
+theorem ofInlM?_map : ∀ as : List JasminTy, ofInlM? (as.map Sum.inl) = some as
+  | [] => rfl
+  | t :: as => by simp [ofInlM?, ofInlM?_map as]
+
+/-- A list read back is the injection of the result. -/
+theorem map_inl_of_ofInlM? : ∀ {as : List (JasminTy ⊕ ModArithTy)} {bs : List JasminTy},
+    ofInlM? as = some bs → bs.map Sum.inl = as
+  | [], bs, h => by cases h; rfl
+  | .inl t :: as, bs, h => by
+      simp only [ofInlM?, Option.map_eq_some_iff] at h
+      obtain ⟨cs, hcs, rfl⟩ := h
+      simp [map_inl_of_ofInlM? hcs]
+  | .inr _ :: _, _, h => by cases h
+
+/-- The valuation of the injected types of `jasMod`: the identity on every value. -/
+def liftVM {as : List JasminTy} (x : HVector (fun t => ⟦t⟧) as) :
+    HVector (fun t => ⟦t⟧) (as.map (Sum.inl (β := ModArithTy))) :=
+  transArgs Sum.inl (fun x => x) x
+
+/-- Stripping the tags of an injected valuation gives the valuation. -/
+theorem unmapInl_liftVM : ∀ {as : List JasminTy} (x : HVector (fun t => ⟦t⟧) as),
+    unmapInl (d := jasminDialect) (e := modArithDialect) (liftVM x) = x
+  | [], .nil => rfl
+  | _ :: _, .cons _ xs => congrArg (HVector.cons _) (unmapInl_liftVM xs)
+
+/-- A valuation of `jasMod` carried along an equality of type lists. -/
+def castVM {as bs : List (JasminTy ⊕ ModArithTy)} (h : as = bs)
+    (x : HVector (fun t => ⟦t⟧) as) : HVector (fun t => ⟦t⟧) bs :=
+  h ▸ x
+
+/-- The callee of the symbol `f` at injected types of `jasMod`: the callee of `E` at the
+    types of `jasminDialect` they inject, on the stripped arguments, with the injected
+    results; no callee at a list of types in which a type of `modArithDialect` occurs. -/
+def liftCallM (E : CallEnv jasminDialect) (f : String) (as rs : List (JasminTy ⊕ ModArithTy))
+    (x : HVector (fun t => ⟦t⟧) as) : Option (HVector (fun t => ⟦t⟧) rs) :=
+  match ha : ofInlM? as, hr : ofInlM? rs with
+  | some as', some rs' =>
+      (E.call f as' rs'
+        (unmapInl (d := jasminDialect) (e := modArithDialect)
+          (castVM (map_inl_of_ofInlM? ha).symm x))).map
+        fun y => castVM (map_inl_of_ofInlM? hr) (liftVM y)
+  | _, _ => none
+
+/-- At injected types, `liftCallM E` answers what `E` answers, injected. -/
+theorem liftCallM_liftVM (E : CallEnv jasminDialect) (f : String) (as rs : List JasminTy)
+    (x : HVector (fun t => ⟦t⟧) as) :
+    liftCallM E f (as.map Sum.inl) (rs.map Sum.inl) (liftVM x) =
+      (E.call f as rs x).map liftVM := by
+  unfold liftCallM
+  split
+  · rename_i as' rs' ha hr
+    rw [ofInlM?_map] at ha hr
+    cases ha
+    cases hr
+    simp only [castVM, unmapInl_liftVM]
+  · rename_i h
+    exact absurd (ofInlM?_map as) (fun e => h _ _ e (ofInlM?_map rs))
+
+/-- **The call environment of `jasMod`** from a call environment of `jasminDialect`: a
+    symbol at injected types is answered by `E`, and refuses at a signature in which a type
+    of `modArithDialect` occurs. -/
+def liftEnvM (E : CallEnv jasminDialect) : CallEnv jasMod := ⟨liftCallM E⟩
+
+/-! ## 7. The events of the stage -/
+
+section Events
+
+open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
+open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak (ExprEv)
+open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak.NFProg (leakRunMC)
+
+/-- The readings under `jasModLeak M N` of injected values of `jasminDialect` are their
+    readings under `M`. -/
+theorem valsNat_jasModLeak_inl (M : LeakModel jasminDialect) (N : LeakModel modArithDialect) :
+    ∀ {ts : List JasminTy} (vals : HVector (fun t => ⟦t⟧) (ts.map (Sum.inl (β := ModArithTy)))),
+      valsNat (jasModLeak M N) vals =
+        valsNat M (unmapInl (d := jasminDialect) (e := modArithDialect) vals)
+  | [], .nil => rfl
+  | _ :: _, .cons _ xs => congrArg (List.cons _) (valsNat_jasModLeak_inl M N xs)
+
+/-- The readings under `jasFieldLeak M` of injected values of `jasminDialect` are their
+    readings under `M`. -/
+theorem valsNat_jasFieldLeak_inl (M : LeakModel jasminDialect) :
+    ∀ {ts : List JasminTy} (vals : HVector (fun t => ⟦t⟧) (ts.map (Sum.inl (β := PfTy)))),
+      valsNat (jasFieldLeak M) vals =
+        valsNat M (unmapInl (d := jasminDialect) (e := pfDialect) vals)
+  | [], .nil => rfl
+  | _ :: _, .cons _ xs => congrArg (List.cons _) (valsNat_jasFieldLeak_inl M xs)
+
+/-- **The blocks of an expression emit its events.** At a leakage model `N` of
+    `modArithDialect` whose operations are quiet, the block events of `fieldToModArithJ` at
+    `jasModLeak M N` are the events of `jasFieldLeak M`: an operation of `jasminDialect` emits
+    its own events in its block, and the operations of `pfDialect`, the casts and their blocks
+    emit none. -/
+theorem blockEvO_eq (M : LeakModel jasminDialect) (N : LeakModel modArithDialect)
+    (hN : ∀ o, N.kind o = .quiet) :
+    blockEvO fieldToModArithJ (fun V => mapVal V) (jasModLeak M N : ExprEv jasMod) =
+      (jasFieldLeak M : ExprEv jasField) := by
+  have hE : ∀ {Δ : Ctxt jasMod} {t : jasMod.Ty} (m : ModArithOp)
+      (h : DialectSignature.ret (d := jasMod) (.inl (.inr m)) = t)
+      (args : HVector (fun t => Var Δ t) (DialectSignature.sig (d := jasMod) (.inl (.inr m))))
+      (W : Valuation Δ),
+      Expr.ctLeak (jasModLeak M N) (⟨.inl (.inr m), h, args⟩ : Expr jasMod Δ t) W = [] :=
+    fun m _ _ W => Expr.ctLeak_of_quiet _ _ (hN m) W
+  have hC : ∀ {Δ : Ctxt jasMod} {t : jasMod.Ty} (o : ModWordCastOp)
+      (h : DialectSignature.ret (d := jasMod) (.inr o) = t)
+      (args : HVector (fun t => Var Δ t) (DialectSignature.sig (d := jasMod) (.inr o)))
+      (W : Valuation Δ),
+      Expr.ctLeak (jasModLeak M N) (⟨.inr o, h, args⟩ : Expr jasMod Δ t) W = [] :=
+    fun o _ _ W => jasModLeak_ctLeak_cast M N _ o rfl W
+  have key : ∀ {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t)
+      (V : Valuation Γ),
+      (blockEvO fieldToModArithJ (fun V => mapVal V) (jasModLeak M N : ExprEv jasMod)).ev
+        _ _ e V = Expr.ctLeak (jasFieldLeak M) e V := by
+    intro Γ t e V
+    obtain ⟨op, rfl, args⟩ := e
+    rcases op with (o | o) | o
+    · show Com.ctLeakO _ (opB (Δ := Γ.map mapTy) (.inl (.inl o)) (argsJ args)) (mapVal V) = _
+      simp only [Com.ctLeakO]
+      split <;> simp only [List.append_nil] <;>
+        (unfold Expr.ctLeak opLeak
+         simp only [valsNat_jasModLeak_inl, valsNat_jasFieldLeak_inl, unmapInl_lookupArgs_argsJ]
+         rfl)
+    · rw [Expr.ctLeak_of_quiet _ _ rfl]
+      rcases o with ⟨p, _ | k⟩ | ⟨p, _ | k⟩ | ⟨p, _ | k⟩ | ⟨p, _ | k⟩ | ⟨p, _ | k⟩ |
+        ⟨p, _ | k⟩ | ⟨p, _ | k, c⟩ | ⟨p, _ | k⟩ | ⟨p, k⟩ | ⟨p, k⟩
+      all_goals
+        simp only [blockEvO, fieldToModArithJ, lowerBlock?, opBlock?, pfBlock?]
+        try split
+      all_goals try simp only [Com.ctLeakO, hE, List.nil_append]
+      all_goals first
+        | (split <;> (try split) <;> rfl)
+        | (rename_i hb
+           split at hb
+           · cases hb
+             simp only [Com.ctLeakO, hE, List.nil_append]
+             split <;> rfl
+           · cases hb)
+    · rw [Expr.ctLeak_of_quiet _ _ (by cases o <;> rfl)]
+      rcases o with ⟨p, _ | k, w, n⟩ | ⟨p, _ | k, w, n⟩
+      all_goals
+        simp only [blockEvO, fieldToModArithJ, lowerBlock?, opBlock?, castBlock?]
+        try split
+      all_goals try simp only [Com.ctLeakO, hC, List.nil_append]
+      all_goals first
+        | (split <;> rfl)
+        | (rename_i hb
+           split at hb
+           · cases hb
+             simp only [Com.ctLeakO, hC, List.nil_append]
+             split <;> rfl
+           · cases hb)
+  show (⟨_⟩ : ExprEv jasField) = ⟨_⟩
+  congr
+  funext Γ t e V
+  exact key e V
+
+/-- **The leakage run of the stage.** At a leakage model `N` of `modArithDialect` whose
+    operations are quiet, and call environments `E` and `E'` that agree along the transport at
+    the calls of `p`, a successful leakage run of `p` at `E` with the events of
+    `jasFieldLeak M` is matched by a run of the lowered program at `E'` with the events of
+    `jasModLeak M N`, from the transported valuation to the transported results and to the
+    same events. -/
+theorem fieldToModArithStep_leakRunMC (M : LeakModel jasminDialect)
+    (N : LeakModel modArithDialect) (hN : ∀ o, N.kind o = .quiet) (E : CallEnv jasField)
+    (E' : CallEnv jasMod) (fuel : Nat) {Γ : Ctxt jasField} {ts : List jasField.Ty}
+    {p : NFProg jasField Γ ts} {q : NFProg jasMod (Γ.map mapTy) (ts.map mapTy)}
+    (hf : (fieldToModArithStep Γ ts).run p = some q)
+    (hCall : E.Transports E' (fun as => as.map mapTy)
+      (fun x => transArgs mapTy (fun y => transTy y) x) p.Calls)
+    {V : Valuation Γ} {r : Valuation ts × List CTLeak}
+    (h : leakRunMC (jasFieldLeak M) E fuel p V = some r) :
+    leakRunMC (jasModLeak M N) E' fuel q (mapVal V) =
+      some (transArgs mapTy (fun y => transTy y) r.1, r.2) :=
+  map?_leakRunMC_blockEvO fieldToModArithJ (fun x => transTy x) (fun V => mapVal V)
+    (jasModLeak M N) regionTypes varTransports
+    (fun e blk hb V x hx => block_fwd e blk hb V x hx) mapValExtends regionTransports E E'
+    fuel p hCall (fun v => v) V (mapVal V) (NFProg.renRel_id _) q hf r
+    (by rw [blockEvO_eq M N hN]; exact h)
+
+/-- **Two leakage runs before the stage give two runs of its result, with equal events from
+    equal events.** At a leakage model `N` of `modArithDialect` whose operations are quiet,
+    and call environments `E` and `E'` that agree along the transport at the calls of `p`, two
+    runs of the source program at `E` are matched by runs of the lowered program at `E'` from
+    the transported valuations to the transported results; when the source events are equal,
+    so are the events of the two lowered runs. -/
+theorem fieldToModArithStep_leakRunC (M : LeakModel jasminDialect)
+    (N : LeakModel modArithDialect) (hN : ∀ o, N.kind o = .quiet) (E : CallEnv jasField)
+    (E' : CallEnv jasMod) (fuel : Nat) {Γ : Ctxt jasField} {ts : List jasField.Ty}
+    {p : NFProg jasField Γ ts} {q : NFProg jasMod (Γ.map mapTy) (ts.map mapTy)}
+    (hf : (fieldToModArithStep Γ ts).run p = some q)
+    (hCall : E.Transports E' (fun as => as.map mapTy)
+      (fun x => transArgs mapTy (fun y => transTy y) x) p.Calls)
+    {V₁ V₂ : Valuation Γ} {r₁ r₂ : Valuation ts × List CTLeak}
+    (h₁ : leakRunMC (jasFieldLeak M) E fuel p V₁ = some r₁)
+    (h₂ : leakRunMC (jasFieldLeak M) E fuel p V₂ = some r₂) :
+    ∃ l₁ l₂,
+      leakRunMC (jasModLeak M N) E' fuel q (mapVal V₁) =
+          some (transArgs mapTy (fun y => transTy y) r₁.1, l₁) ∧
+        leakRunMC (jasModLeak M N) E' fuel q (mapVal V₂) =
+          some (transArgs mapTy (fun y => transTy y) r₂.1, l₂) ∧
+        (r₁.2 = r₂.2 → l₁ = l₂) :=
+  ⟨r₁.2, r₂.2, fieldToModArithStep_leakRunMC M N hN E E' fuel hf hCall h₁,
+    fieldToModArithStep_leakRunMC M N hN E E' fuel hf hCall h₂, id⟩
+
+end Events
 
 end CatCrypt.Crypto.SecureCompilation.VIR.FieldToModArithChain

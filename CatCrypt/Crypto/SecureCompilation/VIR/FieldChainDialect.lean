@@ -44,7 +44,7 @@ well. The leakage model of `jasField` is `sumLeak` of a leakage model of `jasmin
 
 ## Main definitions
 
-* `FieldRepr`, `FieldRepr.toRep`, `FieldRepr.ofRep`, `FieldRepr.Admissible`: the
+* `FieldRepr`, `FieldRepr.toRep`, `FieldRepr.ofRep`, `FieldRepr.Admits`: the
   representations, the stored residue of a value and the value of a stored residue.
 * `PfTy`, `PfOp`, `pfDialect`, `pfTraits`, `pfLeakModel`, `pfOpInfo`.
 * `wordsVal`, `wordsOf`, `fromWordsF`, `toWordsF`: the value of a word tuple, the word tuple
@@ -62,7 +62,7 @@ well. The leakage model of `jasField` is `sumLeak` of a leakage model of `jasmin
   `FieldRepr.toRep_canon_eq` identify `toRep` with `MontParams.toRep` of
   `VIR/FieldToModArithMont.lean`; `FieldRepr.toRep_add`, `FieldRepr.toRep_sub`,
   `FieldRepr.toRep_neg`: the stored residue commutes with addition, subtraction and negation.
-* `pfDialect.denote_add`, …, `pfDialect.denote_toMont`, `pfDialect.denote_fromMont`: the
+* `pfDialect.pfDenote_add`, …, `pfDialect.pfDenote_toMont`, `pfDialect.pfDenote_fromMont`: the
   value of every operation.
 * `wordsVal_wordsOf`, `wordsOf_wordsVal`, `wordsVal_lt`: the word encoding of naturals.
 * `fromWordsF_toWordsF`, `toWordsF_of_fromWordsF_eq_some`, `toWordsF_fromWordsF`,
@@ -114,7 +114,7 @@ def ofRep {p : Nat} : FieldRepr → ZMod p → ZMod p
 
 /-- A representation is admissible at the modulus `p` when its radix is invertible modulo
     `p`: always for `canon`, and for `mont k` when `2` is coprime to `p`. -/
-def Admissible (p : Nat) : FieldRepr → Prop
+def Admits (p : Nat) : FieldRepr → Prop
   | canon => True
   | mont _ => Nat.Coprime 2 p
 
@@ -126,7 +126,7 @@ theorem isUnit_two_pow {p : Nat} (h : Nat.Coprime 2 p) (k : Nat) :
   exact h2.pow k
 
 /-- The read-back of the stored residue is the value. -/
-theorem ofRep_toRep {p : Nat} {r : FieldRepr} (hr : r.Admissible p) (x : ZMod p) :
+theorem ofRep_toRep {p : Nat} {r : FieldRepr} (hr : r.Admits p) (x : ZMod p) :
     r.ofRep (r.toRep x) = x := by
   cases r with
   | canon => rfl
@@ -135,7 +135,7 @@ theorem ofRep_toRep {p : Nat} {r : FieldRepr} (hr : r.Admissible p) (x : ZMod p)
       rw [mul_assoc, ZMod.mul_inv_of_unit _ (isUnit_two_pow hr k), mul_one]
 
 /-- The stored residue of the read-back is the residue. -/
-theorem toRep_ofRep {p : Nat} {r : FieldRepr} (hr : r.Admissible p) (y : ZMod p) :
+theorem toRep_ofRep {p : Nat} {r : FieldRepr} (hr : r.Admits p) (y : ZMod p) :
     r.toRep (r.ofRep y) = y := by
   cases r with
   | canon => rfl
@@ -265,43 +265,43 @@ namespace pfDialect
 variable {p : Nat} {r : FieldRepr}
 
 /-- The value of `add`. -/
-theorem denote_add (a b : ZMod p) :
+theorem pfDenote_add (a b : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.add p r) (.cons a (.cons b .nil)) = a + b := rfl
 
 /-- The value of `sub`. -/
-theorem denote_sub (a b : ZMod p) :
+theorem pfDenote_sub (a b : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.sub p r) (.cons a (.cons b .nil)) = a - b := rfl
 
 /-- The value of `neg`. -/
-theorem denote_neg (a : ZMod p) :
+theorem pfDenote_neg (a : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.neg p r) (.cons a .nil) = -a := rfl
 
 /-- The value of `mul`. -/
-theorem denote_mul (a b : ZMod p) :
+theorem pfDenote_mul (a b : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.mul p r) (.cons a (.cons b .nil)) = a * b := rfl
 
 /-- The value of `square`. -/
-theorem denote_square (a : ZMod p) :
+theorem pfDenote_square (a : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.square p r) (.cons a .nil) = a * a := rfl
 
 /-- The value of `double`. -/
-theorem denote_double (a : ZMod p) :
+theorem pfDenote_double (a : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.double p r) (.cons a .nil) = a + a := rfl
 
 /-- The value of `const`. -/
-theorem denote_const (c : ZMod p) :
+theorem pfDenote_const (c : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.const p r c) .nil = c := rfl
 
 /-- The value of `copy`. -/
-theorem denote_copy (a : ZMod p) :
+theorem pfDenote_copy (a : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.copy p r) (.cons a .nil) = a := rfl
 
 /-- `toMont` is the identity on the value. -/
-theorem denote_toMont {k : Nat} (a : ZMod p) :
+theorem pfDenote_toMont {k : Nat} (a : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.toMont p k) (.cons a .nil) = a := rfl
 
 /-- `fromMont` is the identity on the value. -/
-theorem denote_fromMont {k : Nat} (a : ZMod p) :
+theorem pfDenote_fromMont {k : Nat} (a : ZMod p) :
     DialectDenote.denote (d := pfDialect) (.fromMont p k) (.cons a .nil) = a := rfl
 
 /-- The stored residue changes by `toMont` from `x` to `x * 2 ^ k`. -/
@@ -435,7 +435,7 @@ theorem isSome_fromWordsF_iff (p : Nat) (r : FieldRepr) (w n : Nat) (ws : Fin n 
 /-- **`fromWords ∘ toWords`.** When `p` is positive and fits in `n` words of `w` bits, and
     the representation is admissible, reading back the words of a value gives the value. -/
 theorem fromWordsF_toWordsF {p : Nat} {r : FieldRepr} {w n : Nat} (hp : 0 < p)
-    (hpw : p ≤ 2 ^ (w * n)) (hr : r.Admissible p) (x : ZMod p) :
+    (hpw : p ≤ 2 ^ (w * n)) (hr : r.Admits p) (x : ZMod p) :
     fromWordsF p r w n (toWordsF p r w n x) = some x := by
   have : NeZero p := ⟨Nat.pos_iff_ne_zero.mp hp⟩
   have hlt : (r.toRep x).val < p := ZMod.val_lt _
@@ -446,7 +446,7 @@ theorem fromWordsF_toWordsF {p : Nat} {r : FieldRepr} {w n : Nat} (hp : 0 < p)
 /-- **`toWords ∘ fromWords`.** On a word tuple `fromWords` accepts, writing the value back
     gives the word tuple. -/
 theorem toWordsF_of_fromWordsF_eq_some {p : Nat} {r : FieldRepr} {w n : Nat}
-    (hr : r.Admissible p) (ws : Fin n → BitVec w) (x : ZMod p)
+    (hr : r.Admits p) (ws : Fin n → BitVec w) (x : ZMod p)
     (h : fromWordsF p r w n ws = some x) : toWordsF p r w n x = ws := by
   unfold fromWordsF at h
   split at h
@@ -457,7 +457,7 @@ theorem toWordsF_of_fromWordsF_eq_some {p : Nat} {r : FieldRepr} {w n : Nat}
   · cases h
 
 /-- On a word tuple whose value is below `p`, `toWords ∘ fromWords` is the identity. -/
-theorem toWordsF_fromWordsF {p : Nat} {r : FieldRepr} {w n : Nat} (hr : r.Admissible p)
+theorem toWordsF_fromWordsF {p : Nat} {r : FieldRepr} {w n : Nat} (hr : r.Admits p)
     (ws : Fin n → BitVec w) (hlt : wordsVal n ws < p) :
     ∃ x, fromWordsF p r w n ws = some x ∧ toWordsF p r w n x = ws := by
   refine ⟨r.ofRep (wordsVal n ws : ZMod p), by rw [fromWordsF, if_pos hlt], ?_⟩

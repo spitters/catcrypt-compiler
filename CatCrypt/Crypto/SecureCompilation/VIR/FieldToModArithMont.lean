@@ -89,7 +89,7 @@ def toRep {q : Nat} (x : ZMod q) : ZMod q := if M.isMont q then x * M.R q else x
 /-- The read-back of a representative: `y · R⁻¹` in Montgomery form, `y` otherwise. -/
 def ofRep {q : Nat} (y : ZMod q) : ZMod q := if M.isMont q then y * M.rInv q else y
 
-theorem ofRep_toRep {q : Nat} (x : ZMod q) : M.ofRep (M.toRep x) = x := by
+theorem montOfRep_toRep {q : Nat} (x : ZMod q) : M.ofRep (M.toRep x) = x := by
   unfold ofRep toRep
   cases h : M.isMont q
   · rfl
@@ -196,10 +196,10 @@ theorem mapVar_lookup (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
   | here => cases V with | cons x V => rfl
   | there v ih => cases V with | cons x V => exact ih V
 
-theorem varTransports (M : MontParams) : VarTransports (lowering M) (transTy M) (mapVal M) :=
+theorem montVarTransports (M : MontParams) : VarTransports (lowering M) (transTy M) (mapVal M) :=
   fun v V => mapVar_lookup M v V
 
-theorem mapValExtends (M : MontParams) :
+theorem montMapValExtends (M : MontParams) :
     MapValExtends (lowering M) (transTy M) (mapVal M) := by
   intro Γ t V x
   rfl
@@ -223,15 +223,15 @@ def Good (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
     (e : Expr fieldDialect Γ t) : Prop :=
   GoodOp M e.op
 
-theorem toRep_add (M : MontParams) {q : Nat} (a b : ZMod q) :
+theorem montToRep_add (M : MontParams) {q : Nat} (a b : ZMod q) :
     M.toRep a + M.toRep b = M.toRep (a + b) := by
   unfold MontParams.toRep; split <;> ring
 
-theorem toRep_sub (M : MontParams) {q : Nat} (a b : ZMod q) :
+theorem montToRep_sub (M : MontParams) {q : Nat} (a b : ZMod q) :
     M.toRep a - M.toRep b = M.toRep (a - b) := by
   unfold MontParams.toRep; split <;> ring
 
-theorem toRep_neg (M : MontParams) {q : Nat} (a : ZMod q) :
+theorem montToRep_neg (M : MontParams) {q : Nat} (a : ZMod q) :
     -M.toRep a = M.toRep (-a) := by
   unfold MontParams.toRep; split <;> ring
 
@@ -289,20 +289,20 @@ theorem blockSquare (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
           show modAddF ((mapVar a).lookup (mapVal M V)) ((mapVar b).lookup (mapVal M V))
             = M.toRep (fAddF (a.lookup V) (b.lookup V))
           rw [mapVar_lookup, mapVar_lookup]
-          exact toRep_add M _ _
+          exact montToRep_add M _ _
   | fSub q =>
       match args with
       | .cons a (.cons b .nil) =>
           show modSubF ((mapVar a).lookup (mapVal M V)) ((mapVar b).lookup (mapVal M V))
             = M.toRep (fSubF (a.lookup V) (b.lookup V))
           rw [mapVar_lookup, mapVar_lookup]
-          exact toRep_sub M _ _
+          exact montToRep_sub M _ _
   | fNeg q =>
       match args with
       | .cons a .nil =>
           show modNegF ((mapVar a).lookup (mapVal M V)) = M.toRep (fNegF (a.lookup V))
           rw [mapVar_lookup]
-          exact toRep_neg M _
+          exact montToRep_neg M _
   | fCopy q =>
       match args with
       | .cons a .nil =>
@@ -318,7 +318,7 @@ theorem blockSquare (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
           show modAddF ((mapVar a).lookup (mapVal M V)) ((mapVar a).lookup (mapVal M V))
             = M.toRep (fDoubleF (a.lookup V))
           rw [mapVar_lookup]
-          exact toRep_add M _ _
+          exact montToRep_add M _ _
   | fMul q =>
       match args with
       | .cons a (.cons b .nil) =>
@@ -371,8 +371,8 @@ theorem blockSquare (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
 theorem fieldToModArithMont_denote (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
     (c : Com fieldDialect Γ t) (hc : CoveredCom (Good M) c) (V : Valuation Γ) :
     ((lowering M).blockLowerCom c).denote (mapVal M V) = transTy M (c.denote V) :=
-  blockFundamental_on (lowering M) (transTy M) (mapVal M) (Good M) (varTransports M)
-    (fun e hg V => blockSquare M e hg V) (mapValExtends M) c hc V
+  blockFundamental_on (lowering M) (transTy M) (mapVal M) (Good M) (montVarTransports M)
+    (fun e hg V => blockSquare M e hg V) (montMapValExtends M) c hc V
 
 /-- **Stage 1 read back.** For a covered program returning `fp q`, reading the
     lowered program's value back through the representation gives the field
@@ -381,7 +381,7 @@ theorem fieldToModArithMont_readBack (M : MontParams) {Γ : Ctxt fieldDialect} {
     (c : Com fieldDialect Γ (.fp q)) (hc : CoveredCom (Good M) c) (V : Valuation Γ) :
     M.ofRep (q := q) (((lowering M).blockLowerCom c).denote (mapVal M V)) = c.denote V := by
   rw [fieldToModArithMont_denote M c hc V]
-  exact M.ofRep_toRep _
+  exact M.montOfRep_toRep _
 
 /-! ## 5. Montgomery flags read from the types -/
 

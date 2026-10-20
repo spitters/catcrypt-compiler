@@ -33,6 +33,8 @@ calls of `p`, to the same results and with the events `NFProg.dceEraseC` keeps
 ## Main definitions
 
 * `blockEv` — the events of the blocks of a lowering.
+* `Com.ctLeakO`, `blockEvO` — the events of a block that may fail, and of the blocks of a
+  lowering into a dialect that denotes in `Option`.
 * `NFProg.dceEraseC` — the erasure of dead-binding elimination on traces of runs at a call
   environment.
 
@@ -40,6 +42,8 @@ calls of `p`, to the same results and with the events `NFProg.dceEraseC` keeps
 
 * `leakRunMC_prefix_ev` — runs at two event functions whose events agree on agreeing events.
 * `map?_leakRunMC_blockEv` — the leakage run of `map?` at the events of the blocks.
+* `spliceNF?_leakRunMCO`, `map?_leakRunMC_blockEvO` — the leakage runs of a splice and of
+  `map?` into a dialect that denotes in `Option`.
 * `NFProg.leakRunMC_dce` — the leakage transformer of `dce` at call environments.
 * `NFProg.dce_ctRelC` — equal source events give equal events after `dce`.
 -/
@@ -352,6 +356,255 @@ theorem map?_leakRunMC_blockEv (P : PartialBlockLowering d d') (transTy : P.Tran
         hu
 
 end BlockEv
+
+/-! ## The events of `map?` into a dialect that denotes in `Option` -/
+
+section BlockEvO
+
+variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
+  [HasBoolBit d] [DialectDenoteM d Option]
+
+/-- **The events of a block that may fail**, at the event function `ev`: each binding emits
+    its `ev` events, and the bindings after a failing one emit none. -/
+def Com.ctLeakO (ev : ExprEv d) : {Γ : Ctxt d} → {t : d.Ty} → Com d Γ t → Valuation Γ →
+    List CTLeak
+  | _, _, .ret _, _ => []
+  | _, _, .var e body, V => ev.ev _ _ e V ++
+      match e.denoteM (M := Option) V with
+      | some x => Com.ctLeakO ev body (V.extend x)
+      | none => []
+
+omit [HasWord64 d] [HasBoolBit d] in
+/-- A renamed block emits, at a leakage model, the events of the block at a valuation the
+    renaming reads back. -/
+theorem Com.ctLeakO_rename_of (M : LeakModel d) : {Γ Δ : Ctxt d} → {t : d.Ty} →
+    (ren : Ctxt.Hom Γ Δ) → (c : Com d Γ t) → (W : Valuation Δ) → (W₀ : Valuation Γ) →
+    NFProg.RenRel ren W W₀ →
+    Com.ctLeakO (M : ExprEv d) (Com.rename ren c) W = Com.ctLeakO (M : ExprEv d) c W₀
+  | _, _, _, _, .ret _, _, _, _ => rfl
+  | _, _, _, ren, .var e body, W, W₀, h => by
+      have he : ComLevelCheck.Expr.ctLeak M (e.rename ren) W =
+          ComLevelCheck.Expr.ctLeak M e W₀ := by
+        obtain ⟨op, rfl, args⟩ := e
+        show ComLevelCheck.opLeak M op (Expr.lookupArgs (HVector.renameVars ren args) W) = _
+        rw [NFProg.lookupArgs_renameVars_of h args]
+        rfl
+      show ComLevelCheck.Expr.ctLeak M (e.rename ren) W ++
+          (match (e.rename ren).denoteM (M := Option) W with
+            | some x => Com.ctLeakO (M : ExprEv d) (Com.rename ren.lift body) (W.extend x)
+            | none => []) =
+        ComLevelCheck.Expr.ctLeak M e W₀ ++
+          (match e.denoteM (M := Option) W₀ with
+            | some x => Com.ctLeakO (M : ExprEv d) body (W₀.extend x)
+            | none => [])
+      rw [he, NFProg.Expr.denoteM_rename_of h e]
+      cases e.denoteM (M := Option) W₀ with
+      | none => rfl
+      | some x => exact congrArg _ (Com.ctLeakO_rename_of M _ body _ _ (h.lift x))
+
+/-- The statement `NFProg.leakRunMC_castRetHead` at every event function. -/
+theorem leakRunMC_castRetHead_ev (ev : ExprEv d) (E : CallEnv d) (fuel : Nat) {Δ : Ctxt d}
+    {a b : d.Ty} {ts : List d.Ty} (h : a = b) (p : NFProg d Δ (a :: ts)) (W : Valuation Δ) :
+    leakRunMC ev E fuel (NFProg.castRetHead h p) W =
+      (leakRunMC ev E fuel p W).map
+        (fun r => (.cons (NFProg.tyCast h r.1.head) r.1.tail, r.2)) := by
+  subst h
+  show leakRunMC ev E fuel p W = _
+  cases leakRunMC ev E fuel p W with
+  | none => rfl
+  | some r =>
+      obtain ⟨r1, l⟩ := r
+      cases r1
+      rfl
+
+/-- **The leakage run of a splice of a block that may fail.** Let the block succeed with `y`
+    at `W`, and let every program `k ren res` run to `G` whenever `ren` reads `W` back and
+    `res` holds `y`. Every program the splice returns runs to `G` with the events of the block
+    in front. -/
+theorem spliceNF?_leakRunMCO (ev : ExprEv d) (E : CallEnv d) (fuel : Nat) {ts : List d.Ty} :
+    {Δ : Ctxt d} → {a : d.Ty} → (blk : Com d Δ a) →
+    (k : {Δ' : Ctxt d} → Ctxt.Hom Δ Δ' → Var Δ' a → Option (NFProg d Δ' ts)) →
+    (W : Valuation Δ) → (y : ⟦a⟧) → blk.denoteM (M := Option) W = some y →
+    (G : Option (Valuation ts × List CTLeak)) →
+    (∀ {Δ' : Ctxt d} (ren : Ctxt.Hom Δ Δ') (res : Var Δ' a) (W' : Valuation Δ'),
+        NFProg.RenRel ren W' W → res.lookup W' = y →
+        ∀ q, k ren res = some q → leakRunMC ev E fuel q W' = G) →
+    ∀ q, NFProg.spliceNF? blk k = some q →
+      leakRunMC ev E fuel q W = G.map fun r => (r.1, Com.ctLeakO ev blk W ++ r.2)
+  | _, _, .ret v, k, W, y, hy, G, hk => by
+      intro q hq
+      cases hy
+      rw [hk (fun x => x) v W (NFProg.renRel_id W) rfl q hq]
+      cases G <;> rfl
+  | _, _, .var e blk, k, W, y, hy, G, hk => by
+      intro q hq
+      obtain ⟨q', hq', rfl⟩ := Option.map_eq_some_iff.mp hq
+      have hd : (Com.var e blk).denoteM (M := Option) W =
+          e.denoteM W >>= fun x => blk.denoteM (W.extend x) := rfl
+      cases he : e.denoteM (M := Option) W with
+      | none =>
+          rw [he] at hd
+          rw [hd] at hy
+          cases hy
+      | some x =>
+          rw [he] at hd
+          have hy' : blk.denoteM (M := Option) (W.extend x) = some y := hd.symm.trans hy
+          simp only [leakRunMC, he, Option.bind_some]
+          rw [spliceNF?_leakRunMCO ev E fuel blk _ (W.extend x) y hy' G
+            (fun ren res W' h1 h2 => hk (fun v => ren (.there v)) res W'
+              (fun v => h1 (.there v)) h2) q' hq', Option.map_map]
+          cases G with
+          | none => rfl
+          | some r =>
+              show some _ = some _
+              simp only [Function.comp, Com.ctLeakO, he, List.append_assoc]
+
+variable {d' : Dialect.{0, 0}} [DialectSignature d'] [TyDenote d'.Ty] [HasWord64 d']
+  [HasBoolBit d'] [DialectDenoteM d' Option]
+
+/-- **The events of the blocks of a lowering into a dialect that denotes in `Option`**: an
+    expression emits the events `Com.ctLeakO ev'` of its block at the transported valuation,
+    and none when the lowering refuses it. -/
+def blockEvO (P : PartialBlockLowering d d') (mapVal : P.MapVal) (ev' : ExprEv d') : ExprEv d :=
+  ⟨fun _ _ e V => match P.lowerExprBlock? e with
+    | some blk => Com.ctLeakO ev' blk (mapVal V)
+    | none => []⟩
+
+/-- **The leakage run of `map?` at the events of the blocks**, for a target dialect that
+    denotes in `Option`. Under the variable leaf, the forward block leaf in the `Option`
+    form, the binding-threading leaf, `RegionTransports`, and the agreement `hCall` of the
+    call environments along the transport at the calls of `p`, a program `map?` returns, at a
+    renaming reading back the transported `V`, runs at `E'` with the events of the leakage
+    model `M'` to the transported results and to the events of a successful source run at `E`
+    with the events `blockEvO P mapVal M'`. -/
+theorem map?_leakRunMC_blockEvO (P : PartialBlockLowering d d') (transTy : P.TransTy)
+    (mapVal : P.MapVal) (M' : LeakModel d') (hT : P.RegionTypes)
+    (hVar : P.VarTransports transTy mapVal)
+    (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) blk, P.lowerExprBlock? e = some blk →
+      ∀ (V : Valuation Γ) (x : ⟦t⟧), e.denoteM (M := Option) V = some x →
+      blk.denoteM (M := Option) (mapVal V) = some (transTy x))
+    (hExt : P.MapValExtends transTy mapVal) (hR : P.RegionTransports hT transTy)
+    (E : CallEnv d) (E' : CallEnv d') (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts)
+    (hCall : E.Transports E' (fun as => as.map P.mapTy) (fun x => transArgs P.mapTy transTy x)
+      p.Calls) :
+    ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (P.mapCtx Γ) Δ) (V : Valuation Γ) (W : Valuation Δ),
+      NFProg.RenRel ren W (mapVal V) → ∀ q, NFProg.map? P hT p ren = some q →
+      ∀ r, leakRunMC (blockEvO P mapVal (M' : ExprEv d')) E fuel p V = some r →
+      leakRunMC (M' : ExprEv d') E' fuel q W = some (transArgs P.mapTy transTy r.1, r.2) := by
+  induction p with
+  | ret vs =>
+      intro Δ ren V W hren q hq r hr
+      cases hq
+      simp only [leakRunMC, Option.some.injEq] at hr
+      subst hr
+      show some _ = some _
+      rw [NFProg.lookupArgs_mapArgs_of P transTy mapVal hVar ren V W hren]
+  | var e k ih =>
+      intro Δ ren V W hren q hq r hr
+      obtain ⟨blk, hblk, hq⟩ := Option.bind_eq_some_iff.mp hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hr
+      obtain ⟨x, hx, u, hu, rfl⟩ := hr
+      have hB : (Com.rename ren blk).denoteM (M := Option) W = some (transTy x) := by
+        rw [NFProg.Com.denoteM_rename_of ren blk W (mapVal V) hren, hBlk e blk hblk V x hx]
+      rw [spliceNF?_leakRunMCO (M' : ExprEv d') E' fuel _ _ W _ hB
+        (some (transArgs P.mapTy transTy u.1, u.2))
+        (fun ren' res W' h1 h2 q' hq' => ih hCall _ (V.extend x) W'
+          (NFProg.renRel_bodyHom P transTy mapVal hExt ren ren' res V x W W' hren h1 h2)
+          q' hq' u hu) q hq,
+        Com.ctLeakO_rename_of M' ren blk W (mapVal V) hren]
+      simp only [Option.map_some, blockEvO, hblk]
+  | forLoop count inits body k ihb ihk =>
+      intro Δ ren V W hren q hq r hr
+      have hCb := hCall.mono fun _ _ _ h => Or.inl h
+      have hCk := hCall.mono fun _ _ _ h => Or.inr h
+      obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hr
+      obtain ⟨a, ha, u, hu, rfl⟩ := hr
+      obtain ⟨a', ha', hra, hea⟩ := NFProg.forIterLeak_rel_fwd
+        (R := fun c c' => c' = transArgs P.mapTy transTy c)
+        (step' := fun i acc => leakRunMC (M' : ExprEv d') E' fuel b
+          (hvAppend acc (.cons (HasWord64.ofNat (d := d') i) W)))
+        _ (fun i _ c c' s hc hs => by
+          subst hc
+          refine ⟨(transArgs P.mapTy transTy s.1, s.2), ?_, rfl, rfl⟩
+          rw [← hR.ofNat_trans i]
+          exact ihb hCb _ _ _ (NFProg.renRel_appHom P transTy mapVal hExt _ _ _
+            (NFProg.renRel_liftTo P transTy mapVal hExt _ ren V W _ _ hren rfl) _ c) b hbq s hs)
+        _ _ a rfl ha
+      simp only [leakRunMC]
+      rw [NFProg.lookup_varTyCast, hren, hVar, hR.toNat_trans,
+        NFProg.lookupArgs_mapArgs_of P transTy mapVal hVar ren V W hren, ha']
+      simp only [Option.bind_some]
+      rw [hra, ihk hCk _ _ _ (NFProg.renRel_appHom P transTy mapVal hExt ren V W hren _ a.1) k'
+        hkq u hu, hea]
+      rfl
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro Δ ren V W hren q hq r hr
+      have hCt := hCall.mono fun _ _ _ h => Or.inl h
+      have hCe := hCall.mono fun _ _ _ h => Or.inr (Or.inl h)
+      have hCk := hCall.mono fun _ _ _ h => Or.inr (Or.inr h)
+      obtain ⟨a', haq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨b', hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hr
+      obtain ⟨a, ha, u, hu, rfl⟩ := hr
+      have harm : (if HasBoolBit.toBool (d := d) (cond.lookup V)
+            then leakRunMC (M' : ExprEv d') E' fuel a' W
+            else leakRunMC (M' : ExprEv d') E' fuel b' W) =
+          some (transArgs P.mapTy transTy a.1, a.2) := by
+        split
+        · rename_i hc
+          rw [if_pos hc] at ha
+          exact iht hCt ren V W hren a' haq a ha
+        · rename_i hc
+          rw [if_neg hc] at ha
+          exact ihe hCe ren V W hren b' hbq a ha
+      simp only [leakRunMC]
+      rw [NFProg.lookup_varTyCast, hren, hVar, hR.toBool_trans, harm]
+      simp only [Option.bind_some]
+      rw [ihk hCk _ _ _ (NFProg.renRel_appHom P transTy mapVal hExt ren V W hren _ a.1) k' hkq
+        u hu]
+      rfl
+  | whileLoop inits body k ihb ihk =>
+      intro Δ ren V W hren q hq r hr
+      have hCb := hCall.mono fun _ _ _ h => Or.inl h
+      have hCk := hCall.mono fun _ _ _ h => Or.inr h
+      obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [leakRunMC, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hr
+      obtain ⟨a, ha, u, hu, rfl⟩ := hr
+      obtain ⟨a', ha', hra, hea⟩ := NFProg.whileIterLeak_rel_fwd
+        (R := fun c c' => c' = transArgs P.mapTy transTy c)
+        (step' := fun acc => leakRunMC (M' : ExprEv d') E' fuel
+          (NFProg.castRetHead hT.bit_eq b) (hvAppend acc W))
+        (fun c c' s hc hs => by
+          subst hc
+          rw [leakRunMC_castRetHead_ev, ihb hCb _ _ _
+            (NFProg.renRel_appHom P transTy mapVal hExt ren V W hren _ c) b hbq s hs]
+          rcases s with ⟨_ | ⟨h0, t0⟩, ev0⟩
+          exact ⟨_, rfl, rfl, (hR.toBool_trans h0).symm, rfl⟩)
+        fuel _ _ a rfl ha
+      simp only [leakRunMC]
+      rw [NFProg.lookupArgs_mapArgs_of P transTy mapVal hVar ren V W hren, ha']
+      simp only [Option.bind_some]
+      rw [hra, ihk hCk _ _ _ (NFProg.renRel_appHom P transTy mapVal hExt ren V W hren _ a.1) k'
+        hkq u hu, hea]
+      rfl
+  | call f args k ih =>
+      intro Δ ren V W hren q hq r hr
+      have hCk := hCall.mono fun _ _ _ h => Or.inr h
+      obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [leakRunMC, Option.bind_eq_some_iff] at hr
+      obtain ⟨y, hy, hu⟩ := hr
+      simp only [leakRunMC]
+      rw [NFProg.lookupArgs_mapArgs_of P transTy mapVal hVar ren V W hren,
+        hCall f _ _ _ (Or.inl ⟨rfl, rfl, rfl⟩), hy, Option.map_some, Option.bind_some]
+      exact ih hCk _ _ _ (NFProg.renRel_appHom P transTy mapVal hExt ren V W hren _ y) k' hkq r
+        hu
+
+end BlockEvO
 
 end CatCrypt.Crypto.SecureCompilation.VIR
 
