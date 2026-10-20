@@ -50,6 +50,12 @@ read after the body.
 * `findLabelMem_webRen`, `evalInstrPMemF_congr_labels`: the renamed body has the labels of
   the body, and a flag-machine step reads a singleton program only through its labels.
 * `mem_webSuccs_of_nextPc`: a step of the flag machine reaches a position of `webSuccs`.
+* `forall_mem_webRen`, `webSuccs_webRen`: a fact on instructions closed under `renArr` holds
+  on the renamed body, and the renamed body has the successors of the body.
+* `webB_live_pred`: along an edge of an accepted body, a live name that the instruction does
+  not write keeps its web, and the renamed write is the name at the successor.
+* `webLook_cases`: a web name is the array name or the array name followed by `#w` and a
+  root slot.
 * `step_webs`: one step of an accepted instruction is matched by a step of the renamed
   instruction in the renamed body.
 * `lsemFuelMemF_webs`: a halting run of an accepted body is matched, with the same fuel,
@@ -164,6 +170,23 @@ theorem webB_exit {w : Nat → String → String} {body : List LinstrRM} {L : Na
   simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at h
   exact h.2
 
+/-- **The web along an edge.** For a body accepted by `webB` with the instruction `i` at
+    position `k`, a successor `k'` of `i` and a name `r` live at `k'`: when `i` does not write
+    `r`, the position map renames `r` at `k` and at `k'` alike; when `i` writes `r`, the
+    renamed write `w (k + 1) r` is `w k' r`. -/
+theorem webB_live_pred {w : Nat → String → String} {body : List LinstrRM}
+    {L : Nat → List String} {obs : List String} {aa : String → Nat → Option Nat}
+    {ao : String → Option Nat} (hc : webB w body L obs aa ao = true) {k k' : Nat}
+    {i : LinstrRM} (hi : body[k]? = some i) (hk' : k' ∈ webSuccs body k i) {r : String}
+    (hr : r ∈ L k') :
+    (wrArr ao i ≠ some r → w k r = w k' r) ∧ (wrArr ao i = some r → w (k + 1) r = w k' r) := by
+  have h := webB_instr hc hi
+  unfold webInstrB at h
+  simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at h
+  have e := h.2 k' hk' r hr
+  unfold stepRen at e
+  constructor <;> intro hw <;> simpa [hw] using e
+
 /-! ## 2. Labels and successors -/
 
 /-- The relation of two states through `σ` on `A` is one through every renaming that agrees
@@ -188,6 +211,43 @@ theorem findLabelMem_webRen (w : Nat → String → String) (ao : String → Opt
   apply List.ext_getElem (by simp [webRen])
   intro n h1 h2
   simp only [webRen, List.getElem_map, List.getElem_mapIdx, isLabel_renArr]
+
+/-- **Facts closed under renaming hold on the renamed body.** A predicate on instructions
+    that every renaming `renArr σ` keeps and that holds on every instruction of `body` holds
+    on every instruction of `webRen w ao body`. -/
+theorem forall_mem_webRen {P : LinstrRM → Prop} (hP : ∀ σ i, P i → P (renArr σ i))
+    (w : Nat → String → String) (ao : String → Option Nat) {body : List LinstrRM}
+    (h : ∀ i ∈ body, P i) : ∀ j ∈ webRen w ao body, P j := by
+  intro j hj
+  unfold webRen at hj
+  obtain ⟨k, hk, rfl⟩ := List.mem_mapIdx.mp hj
+  exact hP _ _ (h _ (List.getElem_mem hk))
+
+/-- **The renamed body has the successors of the body**: the successor positions of a
+    renamed instruction in the renamed body are those of the instruction in the body. -/
+theorem webSuccs_webRen (w : Nat → String → String) (ao : String → Option Nat)
+    (body : List LinstrRM) (k : Nat) (σ : String → String) (i : LinstrRM) :
+    webSuccs (webRen w ao body) k (renArr σ i) = webSuccs body k i := by
+  obtain ⟨wi, tag⟩ := i
+  cases wi with
+  | Lopn d o s =>
+      have : ∃ d' o' s', (renArr σ (.Lopn d o s, tag)).1 = .Lopn d' o' s' := by
+        cases tag <;> simp only [renArr, renLoad, renStore, renZero, renStoreImm] <;>
+          (try split) <;> (try split) <;>
+          first | exact ⟨_, _, _, rfl⟩ | exact renCallW_lopn ⟨_, _, _, rfl⟩
+      obtain ⟨d', o', s', h⟩ := this
+      simp only [webSuccs, h]
+  | Lgoto x =>
+      have : renArr σ (.Lgoto x, tag) = (.Lgoto x, tag) := by
+        cases tag <;> rfl
+      rw [this]
+      simp only [webSuccs, findLabelMem_webRen]
+  | Lcond c l =>
+      have : renArr σ (.Lcond c l, tag) = (.Lcond c l, tag) := by
+        cases tag <;> rfl
+      rw [this]
+      simp only [webSuccs, findLabelMem_webRen]
+  | _ => cases tag <;> rfl
 
 /-- **A flag-machine step reads a singleton program only through its labels.** -/
 theorem evalInstrPMemF_congr_labels {fn : String} {b1 b2 : List LinstrRM}
@@ -536,8 +596,8 @@ def webStep (body : List LinstrRM) (L : Nat → List String) (ao : String → Op
     certificate `L` and the names `obs` read after the body. The occurrences of the names
     of `L` are joined by `webStep`. A class that contains the occurrence after a write and
     no occurrence of a name live at entry or read after the body is named
-    `"a#" ++ toString root ++ "#" ++ r`, with `root` its root slot and `r` its array name;
-    every other occurrence keeps its name. -/
+    `r ++ "#w" ++ toString root`, with `r` its array name and `root` its root slot; every
+    other occurrence keeps its name. -/
 def webMap (ao : String → Option Nat) (L : Nat → List String) (obs : List String)
     (body : List LinstrRM) : Nat → String → String :=
   let st0 : WebSt := (L 0).foldl (fun st r => (st.slot (0, r)).1) {}
@@ -558,7 +618,7 @@ def webMap (ao : String → Option Nat) (L : Nat → List String) (obs : List St
     match st.slots[(k, r)]? with
     | some n =>
         let root := st.find n
-        if defs.contains root && !fixed.contains root then "a#" ++ toString root ++ "#" ++ r
+        if defs.contains root && !fixed.contains root then r ++ "#w" ++ toString root
         else r
     | none => r
 
@@ -589,9 +649,18 @@ def webLook (tab : WebSt × Std.HashSet Nat × Std.HashSet Nat) (k : Nat) (r : S
   match tab.1.slots[(k, r)]? with
   | some n =>
       let root := tab.1.find n
-      if tab.2.2.contains root && !tab.2.1.contains root then "a#" ++ toString root ++ "#" ++ r
+      if tab.2.2.contains root && !tab.2.1.contains root then
+        r ++ "#w" ++ toString root
       else r
   | none => r
+
+/-- **A web name keeps its array name as a prefix**: the lookup of `r` is `r` or
+    `r ++ "#w" ++ toString root` for a root slot `root`. -/
+theorem webLook_cases (tab : WebSt × Std.HashSet Nat × Std.HashSet Nat) (k : Nat)
+    (r : String) :
+    webLook tab k r = r ∨ ∃ root : Nat, webLook tab k r = r ++ "#w" ++ toString root := by
+  unfold webLook
+  split <;> (try dsimp only) <;> (try split) <;> first | exact Or.inr ⟨_, rfl⟩ | exact Or.inl rfl
 
 /-- The position map of the webs is the lookup in its tables. Code that renames many
     positions computes `webTab` once. -/
