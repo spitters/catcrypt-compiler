@@ -10,6 +10,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 public meta import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
 public import CatCrypt.Crypto.SecureCompilation.Dialects.ScalarSExprWidth32Prototype
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
 
 /-!
 # FrodoKEM core arithmetic emitted from a `Com jasminDialect`
@@ -22,7 +24,7 @@ That is precisely the operation jasmin / libjade does **not** ship.
 This module emits FrodoKEM's core arithmetic — a `16×16 · 16` matrix–vector tile
 over `Z/2^16` (the modulus `q = 2^16` of Frodo-976 / Frodo-1344) — as a
 straight-line jasmin computation, built directly as a `Com jasminDialect` and
-rendered through the register-arith EMIT-computation path (`emitAbiOrchReg`).
+printed through `JasminOutStage.emitJazzInOuts`.
 
 It is the **simplest** emit-computation target: dense `u16` schoolbook multiply +
 add, with modular reduction completely **free** via `u16` two's-complement
@@ -37,7 +39,7 @@ The kernel computes `out[r] = Σ_{c=0..15} A[r][c] · s[c]` (mod `2^16`) for the
 The builder threads a `BState` (the 16 output-slot variables, plus the two
 scratch variables) over a growing context, emitting one `regArith`-`mul` /
 `regArith`-`add` binding at a time via the CPS `emitOp`. To satisfy
-`emitAbiOrchReg`'s output convention — output word `j` is the `(cnt-nOut+j)`-th
+the last-`nOut` output convention — output word `j` is the `(cnt-nOut+j)`-th
 binding — the program is laid out in three phases:
 
 1. **main** (per row `r`): `out[r] = A[r][0]·s[0]` (one `mul`), then for
@@ -52,10 +54,10 @@ convention. Total: `464 + 16 + 16 = 496` bindings, checked below.
 
 ## ABI / state layout
 
-`export fn frodo_matmul(reg ptr u16[16] out, reg const ptr u16[272] inp)`.
+`export fn frodo_matmul(reg ptr u16[16] out, reg const ptr u16[305] inp)`.
 The input buffer holds `A[0..255]` (row-major, `A[r][c] = inp[r*16+c]`) followed
-by `s[0..15]` (`inp[256..271]`); all `272` are copied into the state array. The
-state file is a single `stack u16[305]` array `k`:
+by `s[0..15]` (`inp[256..271]`) and the 33 words of the remaining state slots,
+which no binding reads. The `305` state slots of `inCtxt` are:
 
 * `k[0..255]`   — the matrix `A` (row-major);
 * `k[256..271]` — the vector `s`;
@@ -82,7 +84,6 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.FrodoMatmulEmit
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
 set_option autoImplicit false
 
@@ -286,48 +287,31 @@ def frodoInName (i : Nat) : String := slotReg i
     orchestration. -/
 def frodoRegDecls : List String := ["stack u16[" ++ toString stateSize ++ "] k"]
 
-/-! ## 6. Emit the `.jazz` (register-arith mode) -/
+/-! ## 6. Emit the `.jazz`
 
-/-- The emitted `.jazz` for the FrodoKEM matrix–vector tile: a `reg ptr u16[16]
-    out` output buffer and a `reg const ptr u16[272] inp` input (256 matrix + 16
-    vector words), rendered through the `emitAbiOrchReg` EMIT-computation path.
-    No leaves: every line is a real `regArith` jasmin scalar `mul`/`add`. -/
-def frodoMatmulJazz : String :=
-  emitAbiOrchReg "frodo_matmul" (w := 16) (nIn := 272) (nOut := 16) (nCopy := 272)
-    frodoRegDecls frodoInName frodoDstName frodoMatmulCom
+`JasminOutStage.emitJazzInOuts` stages `frodoMatmulCom` with its `stateSize = 305`
+input words loaded from an input array and its last 16 bindings (the tail adds, output
+rows `0 … 15` in order) stored to an output array, lowers the staged program with
+`nfToJasmin` and prints the unit with the checked printer. The export takes the output
+array `u16[16]` as parameter `0` and the input array `u16[305]` as parameter `1`: words
+`0 … 255` are the matrix `A` (row-major), words `256 … 271` the vector `s`, and words
+`272 … 304` the output, accumulator and term-15 slots of `inCtxt`, which no binding
+reads. -/
 
-/-! ### Structural sanity checks on the emitted text -/
+/-- The `.jazz` text of the FrodoKEM matrix–vector tile, symbol `frodo_matmul`, through
+`JasminOutStage.emitJazzInOuts`; `none` when the staging, `nfToJasmin` or the checked
+printer refuses. -/
+def frodoMatmulJazz : Option String :=
+  JasminOutStage.emitJazzInOuts "frodo_matmul" 16 stateSize N frodoMatmulCom
 
-/- The export has the expected Frodo-tile ABI (16-word out, 272-word in:
-    256 matrix + 16 vector). -/
-#guard (strContains frodoMatmulJazz "export fn frodo_matmul(reg ptr u16[16] out, reg const ptr u16[272] inp)")
-
-/- The emitted body renders real `u16` multiply (the schoolbook products). -/
-#guard (strContains frodoMatmulJazz " * ")
-
-/- …and real `u16` add (the accumulation). -/
-#guard (strContains frodoMatmulJazz " + ")
-
-/- The first emitted op is row 0's first product `out[0] = A[0][0]·s[0]`,
-    rendered as the load/compute/store sequence over `w0`,`w1`:
-    `w0 = k[0]; w1 = k[256]; w0 = w0 * w1; k[272] = w0;`. -/
-#guard (strContains frodoMatmulJazz "w0 = k[0];")
-    && (strContains frodoMatmulJazz "w1 = k[256];")
-    && (strContains frodoMatmulJazz "w0 = w0 * w1;")
-
-/- The output is copied back from the state array via `w0`: output word 0 stores
-    the out-slot element `k[272]` (`out[0]`). -/
-#guard (strContains frodoMatmulJazz "w0 = k[272];") && (strContains frodoMatmulJazz "out[0] = w0;")
-
-/- The state lives in the reused `stack u16[305]` array `k`; the only registers
-    are the two working scratch `w0`,`w1` (no fresh `t{N}` per binding). -/
-#guard (strContains frodoMatmulJazz "stack u16[305] k;")
-    && (strContains frodoMatmulJazz "reg u16 w0;")
-    && !(strContains frodoMatmulJazz "reg u16 t100;")
-
-/- It emits **no** leaf call (pure computation): no `// non-regArith op skipped`
-    marker appears. The body is straight-line `regArith`. -/
-#guard !(strContains frodoMatmulJazz "non-regArith op skipped")
+/-- **A returned text parses to the lowered unit**: the unit `nfToJasmin` returns on the
+staged matrix–vector program, without its extern signatures. -/
+theorem frodoMatmulJazz_parse {s : String} (h : frodoMatmulJazz = some s) :
+    ∃ p u, JasminOutStage.stageInOuts 16 stateSize N frodoMatmulCom = some p ∧
+      NFToJasmin.nfToJasmin (JasminOutStage.inOutsSig 16 stateSize N) "frodo_matmul" p =
+        some u ∧
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok { u with externs := [] } :=
+  JasminOutStage.emitJazzInOuts_parse h
 
 /-- Binding count of a `Com` (one per `.var`). -/
 def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →

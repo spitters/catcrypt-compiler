@@ -10,6 +10,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701MulEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701MulEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
 
 
 @[expose] public section
@@ -31,8 +33,9 @@ through the verified front — NO hand-built `Com`:
     --(cryptoDialectToJasminCom)-->  ntruKaraCom : Com jasminDialect inCtxt r64
 ```
 
-`ntruKaraCom` is then rendered to a `.jazz` export (`emitAbiOrchReg`, symbol
-`ntru_mul_kara`) that is a drop-in for the schoolbook `ntru_mul` ABI.
+`ntruKaraCom` is then printed to a `.jazz` export (`JasminOutStage.emitJazzInOuts`,
+symbol `ntru_mul_kara`) with the input-array and output-array ABI of the schoolbook
+`ntru_mul`.
 
 ## Algorithm (the math)
 
@@ -67,7 +70,7 @@ value is `≤ 16·(2·8191)² < 2^33 ≪ 2^64` (exact at `w = 64`).
 
 `inCtxt` = 33 `r64` words: `0..15` = `a`, `16..31` = `b`, `32` = unused pad.
 The 16 output words are the **last 16 bindings** — the front's identity copies
-of `f[0..15]` (`emitAbiOrchReg`'s last-`nOut` convention). Export:
+of `f[0..15]` (the last-`nOut` convention of `emitJazzInOuts`). Export:
 `export fn ntru_mul_kara(reg ptr u64[16] out, reg const ptr u64[33] inp)`. The
 `& 8191` mask constant is front-materialised in the body (input word `inp[32]`
 is carried for ABI compatibility and never read).
@@ -86,7 +89,6 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirect
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectArms
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectDirectControl
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT SExpr)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
 
 /-- Karatsuba split point `H = N/2 = 8` (2-way, one level). -/
 abbrev H : Nat := 8
@@ -251,12 +253,11 @@ def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
 /-- The number of `regArith`/`regConst`/copy bindings of the lowered tile. -/
 def karaBindingCount : Nat := comBindings ntruKaraCom
 
-/-! ## 5. Emit the `.jazz` (register-arith mode) from the front `Com`.
+/-! ## 5. Register names of the per-binding rendering
 
-`ntruKaraCom` is the front pipeline's output; `emitAbiOrchReg` renders it
-structurally. Input word `i` is copied into register `in{i}`; binding `k` writes
-register `t{k}` (fresh per binding — SSA). The `& 8191` mask constant is a body
-literal (`regConst`), so no input word is read for it. -/
+Input word `i` is register `in{i}`; binding `k` writes register `t{k}` (fresh per
+binding). The `& 8191` mask constant is a body literal (`regConst`), so no input word
+is read for it. -/
 
 /-- Operand string for input word `i`: `a`/`b`/pad → the copied register `in{i}`. -/
 def karaInName (i : Nat) : String := "in" ++ toString i
@@ -270,24 +271,26 @@ def karaRegDecls : List String :=
   (List.range 33).map (fun i => "reg u64 in" ++ toString i)
     ++ (List.range karaBindingCount).map (fun k => "reg u64 t" ++ toString k)
 
-/-- The emitted `.jazz` for the degree-`N` cyclic ring multiply via 2-way
-    Karatsuba, rendered from the FRONT-GENERATED `ntruKaraCom`. ABI matches
-    `ntru_mul` (drop-in): `reg ptr u64[16] out`, `reg const ptr u64[33] inp`. -/
-def ntruKaraJazz : String :=
-  JasminAbiEmit.emitAbiOrchReg "ntru_mul_kara" (w := 64) (nIn := 33) (nOut := N)
-    (nCopy := 32) karaRegDecls karaInName karaDstName ntruKaraCom
+/-! ## 6. Emit the `.jazz` from the front `Com`
 
-/-! ### Structural sanity checks on the emitted text -/
+`JasminOutStage.emitJazzInOuts` stages `ntruKaraCom` with its 33 input words loaded
+from an input array and its last 16 bindings (the output copies `f[0..15]`) stored to
+an output array, lowers the staged program with `nfToJasmin` and prints the unit with
+the checked printer. The export takes the output array `u64[16]` as parameter `0` and
+the input array `u64[33]` as parameter `1`. -/
 
-/- The emitted `.jazz` carries the drop-in NTRU ring-multiply ABI (16-word out,
-    33-word in), real multiplication (`*`, the half-products) and the Karatsuba
-    middle-term subtraction (`-`), the front-materialised `& 8191` mask constant,
-    and no skipped-op sentinel (every front-lowered binding renders to a real
-    scalar assignment). -/
-#guard (strContains ntruKaraJazz "export fn ntru_mul_kara(reg ptr u64[16] out, reg const ptr u64[33] inp)")
-    && (strContains ntruKaraJazz " * ")
-    && (strContains ntruKaraJazz " - ")
-    && (strContains ntruKaraJazz "8191")
-    && !(strContains ntruKaraJazz "non-regArith op skipped")
+/-- The `.jazz` text of the degree-`N` cyclic ring multiply via 2-way Karatsuba,
+symbol `ntru_mul_kara`, through `JasminOutStage.emitJazzInOuts`; `none` when the
+staging, `nfToJasmin` or the checked printer refuses. -/
+def ntruKaraJazz : Option String :=
+  JasminOutStage.emitJazzInOuts "ntru_mul_kara" 64 33 N ntruKaraCom
+
+/-- **A returned text parses to the lowered unit**: the unit `nfToJasmin` returns on the
+staged Karatsuba program, without its extern signatures. -/
+theorem ntruKaraJazz_parse {s : String} (h : ntruKaraJazz = some s) :
+    ∃ p u, JasminOutStage.stageInOuts 64 33 N ntruKaraCom = some p ∧
+      NFToJasmin.nfToJasmin (JasminOutStage.inOutsSig 64 33 N) "ntru_mul_kara" p = some u ∧
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok { u with externs := [] } :=
+  JasminOutStage.emitJazzInOuts_parse h
 
 end CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
