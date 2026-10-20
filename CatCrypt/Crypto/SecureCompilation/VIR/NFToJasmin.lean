@@ -100,6 +100,8 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
 * `cmdErase_of`: a command that passes `cmdErasedB` is its own erasure.
 * `emitOp_asmOps`: every asm operation the lowering emits is an operation of `jazzOps`.
 * `erase_spillFn`: the spill pass keeps a function with an erased body its own erasure.
+* `mkFn_eq_mkFnFast`: `mkFn` is computed by `mkFnFast`, which removes the repeated
+  variables of the body with a hash set (`dedupGo_spec`).
 * `mkUnit_finish_wellFormed`: the unit of a lowered program before the spill pass is well
   formed; `JasminSpill.nfToJasmin_wellFormed` states it for every unit `nfToJasmin` returns.
 -/
@@ -912,6 +914,53 @@ def mkFn (fname : String) (ps : List (JVar × Storage × PType)) (body : Cmd)
     res.map (fun v => ⟨v, vi0⟩)⟩
   { kind := .exportFn, fd := fd, paramTys := ps.map Prod.snd, resultTys := resTys,
     decls := locals.map (declOf al) }
+
+/-- The variables of `l` without repetitions, each at its last occurrence as in
+`List.dedup`, paired with the hash set of the variables of `l`. -/
+def dedupGo : List JVar → List JVar × Std.HashSet JVar
+  | [] => ([], ∅)
+  | x :: l =>
+      let r := dedupGo l
+      if r.2.contains x then r else (x :: r.1, r.2.insert x)
+
+/-- `dedupGo l` is `List.dedup l` with the set of the variables of `l`. -/
+theorem dedupGo_spec : ∀ l : List JVar,
+    (dedupGo l).1 = l.dedup ∧ ∀ y, y ∈ (dedupGo l).2 ↔ y ∈ l
+  | [] => by
+      simp [dedupGo]
+  | x :: l => by
+      obtain ⟨h1, h2⟩ := dedupGo_spec l
+      by_cases hx : x ∈ l
+      · have hc : (dedupGo l).2.contains x = true :=
+          Std.HashSet.mem_iff_contains.mp ((h2 x).mpr hx)
+        rw [dedupGo, if_pos hc, List.dedup_cons_of_mem hx]
+        refine ⟨h1, fun y => (h2 y).trans ⟨List.mem_cons_of_mem _, fun h => ?_⟩⟩
+        rcases List.mem_cons.mp h with rfl | h
+        · exact hx
+        · exact h
+      · have hc : (dedupGo l).2.contains x = false :=
+          Bool.eq_false_iff.mpr fun h => hx ((h2 x).mp (Std.HashSet.mem_iff_contains.mpr h))
+        rw [dedupGo, if_neg (by simp [hc]), List.dedup_cons_of_notMem hx]
+        refine ⟨by rw [h1], fun y => ?_⟩
+        rw [Std.HashSet.mem_insert, h2, List.mem_cons, beq_iff_eq, eq_comm]
+
+/-- `mkFn` with the repetitions of the variables removed by `dedupGo`. -/
+def mkFnFast (fname : String) (ps : List (JVar × Storage × PType)) (body : Cmd)
+    (res : List JVar) (resTys : List (Storage × PType)) : JazzFn :=
+  let pvs := ps.map Prod.fst
+  let locals := (dedupGo (cmdVars body ++ res)).1.filter fun v => !pvs.contains v
+  let mv := cmdArrMoves body
+  let al := ptrClosure mv (mv.length + 1)
+    (ps.filterMap fun p => match p.2.1 with | .regPtr _ => some p.1 | _ => none)
+  let fd : FunDecl := ⟨⟨fname⟩, ps.map (fun p => ⟨⟨p.1, vi0⟩⟩), body,
+    res.map (fun v => ⟨v, vi0⟩)⟩
+  { kind := .exportFn, fd := fd, paramTys := ps.map Prod.snd, resultTys := resTys,
+    decls := locals.map (declOf al) }
+
+/-- `mkFn` is computed by `mkFnFast`. -/
+@[csimp] theorem mkFn_eq_mkFnFast : @mkFn = @mkFnFast := by
+  funext fname ps body res resTys
+  simp only [mkFn, mkFnFast, (dedupGo_spec _).1]
 
 /-- The unit of a function body: the function and the extern signature of each callee. -/
 def mkUnit (fn : JazzFn) : JazzUnit :=

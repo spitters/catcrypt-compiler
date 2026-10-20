@@ -10,6 +10,7 @@ public meta import CatCrypt.Crypto.Jasmin.JasminAST
 public import CatCrypt.Crypto.Jasmin.JazzUnit
 public meta import CatCrypt.Crypto.Jasmin.JazzUnit
 public import CatCryptCore.Tactics.KatGuard
+public import Std.Data.HashMap
 
 @[expose] public section
 set_option autoImplicit false
@@ -22,8 +23,9 @@ A recursive-descent parser from Jasmin surface syntax to the `JasminAST` types
 compilation units `Jazz.JazzUnit` that carry the surface information of a text.
 The accepted subset is the one the `S2NBignumSSA` ports, their printer
 `Emit.emitFunDecl` and the unit printer `Jazz.print` use. Every function is
-total: recursion is bounded by a fuel argument proportional to the input length,
-so the parser also reduces in the kernel.
+total: recursion is bounded by a fuel argument proportional to the input length.
+The declarations in scope are a `VEnv`, a list with a hash map from each name to its
+latest declaration, so a variable is found in constant expected time.
 
 ## Accepted subset
 
@@ -78,6 +80,9 @@ expression, undeclared variables) is a parse error naming the construct.
   → `List InstrR`.
 * `pexprBEq`, `instrsBEq`, `funDeclBEq`, `parsesTo`: structural equality of the AST
   and the check that a text parses to given declarations.
+
+`lookupVar_eq_lookupVarRef` states that the lookup in a `VEnv` is the search of its
+list of declarations.
 
 The `RoundTrip` section checks, by `#kat`, that the text `Emit.emitFunDecl`
 prints for the `bignum_add_4` port parses to that port's `FunDecl` (with the
@@ -248,13 +253,50 @@ structure VDecl where
   pty : Jazz.PType := .word .U64
   deriving Inhabited
 
+/-- The declarations in scope, last first, with a hash map from each name to its
+    latest declaration. -/
+structure VEnv where
+  /-- The declarations, last first. -/
+  decls : List VDecl
+  /-- The latest declaration of each name. -/
+  tab : Std.HashMap String VDecl
+  /-- The entry of a name is its first declaration in `decls`. -/
+  tab_eq : ∀ x, tab[x]? = decls.find? (·.name == x)
+
+/-- No declarations. -/
+def VEnv.empty : VEnv := ⟨[], ∅, by simp⟩
+
+/-- The declaration `d` in front of `e`. -/
+def VEnv.cons (d : VDecl) (e : VEnv) : VEnv :=
+  ⟨d :: e.decls, e.tab.insert d.name d, fun x => by
+    rw [Std.HashMap.getElem?_insert, e.tab_eq x, List.find?_cons]
+    cases d.name == x <;> rfl⟩
+
+/-- The declarations `l`, the first one last declared. -/
+def VEnv.ofList : List VDecl → VEnv
+  | [] => .empty
+  | d :: l => .cons d (ofList l)
+
+theorem VEnv.ofList_decls : ∀ l : List VDecl, (VEnv.ofList l).decls = l
+  | [] => rfl
+  | d :: l => congrArg (d :: ·) (VEnv.ofList_decls l)
+
+/-- The latest declaration of the name `x`. -/
+def VEnv.find? (e : VEnv) (x : String) : Option VDecl := e.tab[x]?
+
+/-- `VEnv.find?` is the first declaration of the name in the list of declarations. -/
+theorem VEnv.find?_eq (e : VEnv) (x : String) :
+    e.find? x = e.decls.find? (·.name == x) := e.tab_eq x
+
+instance : Inhabited VEnv := ⟨.empty⟩
+
 /-- Parser state: remaining tokens, the declarations in scope, the local
     declarations of the current function (last first), whether the `_` outputs of
     an intrinsic are typed by `asmOutTys`, and the fuel bound given to every
     recursive parsing function. -/
 structure St where
   toks : List Token
-  env : List VDecl := []
+  env : VEnv := .empty
   decls : List Jazz.Decl := []
   retype : Bool := false
   fuel : Nat
@@ -297,12 +339,22 @@ def expectNum : P Nat := do
 
 /-- The declaration of a variable in scope. -/
 def lookupVar (x : String) : P VDecl := do
-  match (← get).env.find? (·.name == x) with
+  match (← get).env.find? x with
   | some d => return d
   | none => fail s!"undeclared variable '{x}'"
 
+/-- `lookupVar` by a search of the list of declarations. -/
+def lookupVarRef (x : String) : P VDecl := do
+  match (← get).env.decls.find? (·.name == x) with
+  | some d => return d
+  | none => fail s!"undeclared variable '{x}'"
+
+theorem lookupVar_eq_lookupVarRef : lookupVar = lookupVarRef := by
+  funext x
+  simp only [lookupVar, lookupVarRef, VEnv.find?_eq]
+
 /-- Bring a declaration into scope. -/
-def declare (d : VDecl) : P Unit := modify fun st => { st with env := d :: st.env }
+def declare (d : VDecl) : P Unit := modify fun st => { st with env := st.env.cons d }
 
 /-- The variable of a declaration. -/
 def VDecl.varI (d : VDecl) : VarI := { var := { vname := d.name, vtype := d.ty } }
@@ -703,7 +755,7 @@ def parseStmtsF : Nat → P (List InstrR)
     | some (.ident "for") =>
       advance
       let x ← expectIdent
-      let v : VarI := match (← get).env.find? (·.name == x) with
+      let v : VarI := match (← get).env.find? x with
         | some d => d.varI
         | none => { var := { vname := x, vtype := .sint } }
       expect .assign
@@ -876,7 +928,7 @@ def parseReturnF : Nat → P (List VarI)
     paths `reqs` and the kind `kind` read before it. -/
 def parseFn (f : Nat) (pre reqs : List String) (kind : Jazz.FnKind) : P Jazz.JazzFn := do
   let name ← expectIdent
-  modify fun st => { st with env := [], decls := [] }
+  modify fun st => { st with env := .empty, decls := [] }
   expect .lparen
   let params ← parseParamsF f
   let resultTys ← (do
@@ -962,7 +1014,7 @@ def parseJazzProg (s : String) : Except String JasminProg :=
 def parseJazzBody (env : List VDecl) (s : String) : Except String (List InstrR) := do
   let toks ← tokenize s
   let fuel := 16 * (toks.length + 1)
-  let (body, st) ← (parseStmtsF fuel).run { toks := toks, env := env, fuel := fuel }
+  let (body, st) ← (parseStmtsF fuel).run { toks := toks, env := .ofList env, fuel := fuel }
   match st.toks with
   | [] => return body
   | t :: _ => throw s!"JazzToInstrR: unexpected {repr t} after the statements"

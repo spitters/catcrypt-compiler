@@ -58,6 +58,8 @@ parameter `1` (`inOutsSig`).
   the returned array is entry `j` of `ComDCE.outputs nOut c V`.
 * `stageInOuts_nfToJasmin_isSome`, `emitJazzInOuts_parse`: completeness of `nfToJasmin` on
   the staged program and the parse of a returned text.
+* `stageGo_eq_stageGoFast`: `stageGo` is computed by `stageGoD`, which takes the extended
+  context as an argument and builds its contexts as suffixes of it.
 -/
 
 @[expose] public section
@@ -188,6 +190,70 @@ def stageGo (ws nOut : Nat) : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
   | Γ, _, .var e body =>
       (stageGo ws nOut body).map
         (.var (e.rename (appHom (Γ := Γ) (.stackArr ws nOut))))
+
+/-- The variable `v` of `Γ` as a variable of `Δ = Γ ++ [A]`, built on the suffixes of `Δ`:
+the variable `appHom A v`. -/
+def appVar (A : JasminTy) : {Γ : Ctxt jasminDialect} → {u : JasminTy} →
+    (Δ : Ctxt jasminDialect) → Δ = Γ ++ [A] → Ctxt.Var Γ u → Ctxt.Var Δ u
+  | _ :: _, _, _ :: _, h, .here => Ctxt.Var.castTy (List.cons.inj h).1 .here
+  | _ :: _, _, _ :: Δ, h, .there v => .there (appVar A Δ (List.cons.inj h).2 v)
+  | _ :: _, _, [], h, _ => absurd h (List.cons_ne_nil _ _).symm
+
+/-- The last variable of `Δ = Γ ++ [A]`, built on the suffixes of `Δ`: the variable
+`inrHom Γ .here`. -/
+def lastVar (A : JasminTy) : (Γ Δ : Ctxt jasminDialect) → Δ = Γ ++ [A] → Ctxt.Var Δ A
+  | [], _ :: _, h => Ctxt.Var.castTy (List.cons.inj h).1 .here
+  | _ :: Γ, _ :: Δ, h => .there (lastVar A Γ Δ (List.cons.inj h).2)
+  | _, [], h => absurd h (by simp)
+
+/-- `stageGo` with the extended context `Δ = Γ ++ [stackArr ws nOut]` given as an argument,
+so that the contexts of the bindings and variables it builds are suffixes of `Δ`. -/
+def stageGoD (ws nOut : Nat) : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
+    (Δ : Ctxt jasminDialect) → Δ = Γ ++ [.stackArr ws nOut] → Com jasminDialect Γ t →
+    Option (NFProg jasminDialect Δ [.stackArr ws nOut])
+  | Γ, _, Δ, h, .ret _ => storesGo ws nOut nOut 0 (lastVar (.stackArr ws nOut) Γ Δ h)
+  | _, _, Δ, h, .var (t := t) e body =>
+      (stageGoD ws nOut (t :: Δ) (congrArg (t :: ·) h) body).map
+        (.var (e.rename (appVar (.stackArr ws nOut) Δ h)))
+
+/-- `stageGoD` on the context `Γ ++ [stackArr ws nOut]`. -/
+def stageGoFast (ws nOut : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t) :
+    Option (NFProg jasminDialect (Γ ++ [.stackArr ws nOut]) [.stackArr ws nOut]) :=
+  stageGoD ws nOut (Γ ++ [.stackArr ws nOut]) rfl c
+
+/-- `appVar` on the context `Γ ++ [A]` is `appHom A`. -/
+theorem appVar_eq (A : JasminTy) : ∀ {Γ : Ctxt jasminDialect} {u : JasminTy}
+    (v : Ctxt.Var Γ u), appVar A (Γ ++ [A]) rfl v = appHom A v
+  | _ :: _, _, .here => rfl
+  | _ :: _, _, .there v => congrArg Ctxt.Var.there (appVar_eq A v)
+
+/-- `lastVar` on the context `Γ ++ [A]` is `inrHom Γ .here`. -/
+theorem lastVar_eq (A : JasminTy) : ∀ (Γ : Ctxt jasminDialect),
+    lastVar A Γ (Γ ++ [A]) rfl = inrHom Γ (Ctxt.Var.here : Ctxt.Var [A] A)
+  | [] => rfl
+  | _ :: Γ => congrArg Ctxt.Var.there (lastVar_eq A Γ)
+
+/-- `stageGoD` on the context `Γ ++ [stackArr ws nOut]` is `stageGo`. -/
+theorem stageGoD_eq (ws nOut : Nat) : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (c : Com jasminDialect Γ t),
+    stageGoD ws nOut (Γ ++ [.stackArr ws nOut]) rfl c = stageGo ws nOut c
+  | Γ, _, .ret _ => by
+      simp only [stageGoD, stageGo, lastVar_eq]
+  | Γ, _, .var e body => by
+      rw [stageGoD, stageGo, ← stageGoD_eq ws nOut body]
+      have h : (fun {u} (v : Ctxt.Var Γ u) =>
+          appVar (.stackArr ws nOut) (Γ ++ [.stackArr ws nOut]) rfl v) =
+          @appHom (.stackArr ws nOut) Γ := by
+        funext u v
+        exact appVar_eq _ v
+      rw [h]
+      rfl
+
+/-- `stageGo` is computed by `stageGoFast`. -/
+@[csimp] theorem stageGo_eq_stageGoFast : @stageGo = @stageGoFast := by
+  funext ws nOut Γ t c
+  exact (stageGoD_eq ws nOut c).symm
 
 /-- **The program `c` with its last `nOut` bindings stored to an output array**: over the
 context `Γ ++ [stackArr ws nOut]`, the bindings of `c`, then the store of binding
@@ -1245,5 +1311,35 @@ def sumXorSig : JazzSig ([.reg 64, .reg 64] ++ [.stackArr 64 2]) (.stackArr 64 2
 -- The two inputs of `sumXorCom` load from an input array and its two outputs store to an
 -- output array through the checked printer.
 #kat (emitJazzInOuts "sum_xor_inouts" 64 2 2 sumXorCom).isSome
+
+/-- A chain of `k` xors over the context `Γ`: each binding is the xor of the previous value
+and the value bound 20 positions earlier; the program returns the last binding. `none`
+when `Γ` has fewer than 20 entries or an entry it reads is not a `reg 64`. -/
+def chainCom : (k : Nat) → (Γ : Ctxt jasminDialect) → Option (Com jasminDialect Γ (.reg 64))
+  | 0, Γ => (tyIdx? (.reg 64) Γ 0).map .ret
+  | k + 1, Γ => (tyIdx? (.reg 64) Γ 0).bind fun a => (tyIdx? (.reg 64) Γ 19).bind fun b =>
+      (chainCom k (.reg 64 :: Γ)).map
+        (.var ⟨.regArith .xor 64, rfl, .cons a (.cons b .nil)⟩)
+
+-- A chain of 4,000 xors over 25 inputs is staged with input and output arrays within the
+-- budget.
+set_option kat.ms 400 in
+#kat match chainCom 4000 (List.replicate 25 (.reg 64)) with
+  | some c => (stageInOuts 64 25 25 c).isSome
+  | none => false
+
+-- The staged chain of 4,000 xors is lowered by `nfToJasmin` and printed within the budget.
+set_option kat.ms 3000 in
+#kat match (chainCom 4000 (List.replicate 25 (.reg 64))).bind (stageInOuts 64 25 25) with
+  | some p => match nfToJasmin (inOutsSig 64 25 25) "chain" p with
+    | some u => (CatCrypt.Crypto.Jasmin.Jazz.print u).length > 0
+    | none => false
+  | none => false
+
+-- The text of the chain of 4,000 xors passes the checked printer within the budget.
+set_option kat.ms 5000 in
+#kat match chainCom 4000 (List.replicate 25 (.reg 64)) with
+  | some c => (emitJazzInOuts "chain" 64 25 25 c).isSome
+  | none => false
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
