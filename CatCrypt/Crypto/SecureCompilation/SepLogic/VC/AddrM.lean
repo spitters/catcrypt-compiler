@@ -322,7 +322,7 @@ theorem execAM_mov64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k 
   execAM_spec_of _ _ (fun s zf _ h => stepI_mov64 frame c k n S s zf h) Q
 
 /-- The base register of the cell name `n` (`cellParts?`). -/
-def cellBase (n : String) : String := ((cellParts? n).getD ("", 0)).1
+def cellBaseName (n : String) : String := ((cellParts? n).getD ("", 0)).1
 
 /-- The offset of the cell name `n` (`cellParts?`). -/
 def cellOff (n : String) : Nat := ((cellParts? n).getD ("", 0)).2
@@ -333,24 +333,24 @@ def cellOff (n : String) : Nat := ((cellParts? n).getD ("", 0)).2
 theorem execAM_store64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
     (n S : String) (Q : AMPost Unit) :
     ⦃spred(fun st => ⌜st.1.1.reg.lpc = k ∧ ((cellParts? n).isSome ∧
-        (st.1.1.reg.getW (cellBase n) 64).isSome ∧ (st.1.1.reg.getW S 64).isSome)⌝ ∧
+        (st.1.1.reg.getW (cellBaseName n) 64).isSome ∧ (st.1.1.reg.getW S 64).isSome)⌝ ∧
         Q.1 () (({ st.1.1 with
           reg := st.1.1.reg.nextPc
           mem := write64 st.1.1.mem
-            ((st.1.1.reg.getW (cellBase n) 64).getD 0 + BitVec.ofNat 64 (cellOff n))
+            ((st.1.1.reg.getW (cellBaseName n) 64).getD 0 + BitVec.ofNat 64 (cellOff n))
             ((st.1.1.reg.getW S 64).getD 0) }, st.1.2), st.2 ++ [k]))⦄
       execAM frame c k (.Lopn [.reg n] "STORE:64" [.reg S]) ⦃Q⦄ :=
-  execAM_spec_of (fun st => (cellParts? n).isSome ∧ (st.1.reg.getW (cellBase n) 64).isSome ∧
+  execAM_spec_of (fun st => (cellParts? n).isSome ∧ (st.1.reg.getW (cellBaseName n) 64).isSome ∧
       (st.1.reg.getW S 64).isSome)
     (fun st => ({ st.1 with
       reg := st.1.reg.nextPc
-      mem := write64 st.1.mem ((st.1.reg.getW (cellBase n) 64).getD 0 +
+      mem := write64 st.1.mem ((st.1.reg.getW (cellBaseName n) 64).getD 0 +
         BitVec.ofNat 64 (cellOff n)) ((st.1.reg.getW S 64).getD 0) }, st.2))
     (fun s zf _ ⟨hn, hB, hS⟩ => by
     obtain ⟨⟨B, off⟩, hn⟩ := Option.isSome_iff_exists.1 hn
     obtain ⟨p, hp⟩ := Option.isSome_iff_exists.1 hB
     obtain ⟨v, hv⟩ := Option.isSome_iff_exists.1 hS
-    have hb : cellBase n = B := by simp [cellBase, hn]
+    have hb : cellBaseName n = B := by simp [cellBaseName, hn]
     have ho : cellOff n = off := by simp [cellOff, hn]
     rw [hb] at hp
     rw [stepI_lopn_reg frame c k n S _ (Or.inr (Or.inl rfl)), fstepA_stm frame hn hp hv]
@@ -362,18 +362,18 @@ theorem execAM_store64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (
 theorem execAM_load64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
     (D n : String) (Q : AMPost Unit) :
     ⦃spred(fun st => ⌜st.1.1.reg.lpc = k ∧ ((cellParts? n).isSome ∧
-        (st.1.1.reg.getW (cellBase n) 64).isSome)⌝ ∧
+        (st.1.1.reg.getW (cellBaseName n) 64).isSome)⌝ ∧
         Q.1 () (({ st.1.1 with reg := (st.1.1.reg.setReg D (read64 st.1.1.mem
-          ((st.1.1.reg.getW (cellBase n) 64).getD 0 + BitVec.ofNat 64 (cellOff n)))).nextPc },
+          ((st.1.1.reg.getW (cellBaseName n) 64).getD 0 + BitVec.ofNat 64 (cellOff n)))).nextPc },
           st.1.2), st.2 ++ [k]))⦄
       execAM frame c k (.Lopn [.reg D] "LOAD:64" [.reg n]) ⦃Q⦄ :=
-  execAM_spec_of (fun st => (cellParts? n).isSome ∧ (st.1.reg.getW (cellBase n) 64).isSome)
+  execAM_spec_of (fun st => (cellParts? n).isSome ∧ (st.1.reg.getW (cellBaseName n) 64).isSome)
     (fun st => ({ st.1 with reg := (st.1.reg.setReg D (read64 st.1.mem
-      ((st.1.reg.getW (cellBase n) 64).getD 0 + BitVec.ofNat 64 (cellOff n)))).nextPc }, st.2))
+      ((st.1.reg.getW (cellBaseName n) 64).getD 0 + BitVec.ofNat 64 (cellOff n)))).nextPc }, st.2))
     (fun s zf _ ⟨hn, hB⟩ => by
     obtain ⟨⟨B, off⟩, hn⟩ := Option.isSome_iff_exists.1 hn
     obtain ⟨p, hp⟩ := Option.isSome_iff_exists.1 hB
-    have hb : cellBase n = B := by simp [cellBase, hn]
+    have hb : cellBaseName n = B := by simp [cellBaseName, hn]
     have ho : cellOff n = off := by simp [cellOff, hn]
     rw [hb] at hp
     rw [stepI_lopn_reg frame c k D n _ (Or.inr (Or.inr rfl)), fstepA_ldm frame hn hp]
