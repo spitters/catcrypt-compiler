@@ -866,21 +866,52 @@ def externOf (c : Cmd) (f : String) : ExternSig :=
       { name := f, params := args.map (callTy ∘ exprTy), results := lvs.map (callTy ∘ lvalTy) }
   | none => { name := f, params := [], results := [] }
 
-/-- The declaration of a variable at its type. -/
-def declOf (v : JVar) : Decl :=
-  { storage := storOf v.vtype, ty := canonP v.vtype, names := [v.vname] }
+mutual
+/-- The whole-array moves `x = y` of an instruction, as pairs `(x, y)`. -/
+def instrArrMoves : InstrR → List (JVar × JVar)
+  | .Cassgn (.Lvar x) _ (.sarr _) (.Pvar y) => [(x.var, y.gv.var)]
+  | .Cif _ t e => cmdArrMoves t ++ cmdArrMoves e
+  | .Cfor _ _ b => cmdArrMoves b
+  | .Cwhile b _ a => cmdArrMoves b ++ cmdArrMoves a
+  | _ => []
+
+/-- The whole-array moves of a command. -/
+def cmdArrMoves : List InstrR → List (JVar × JVar)
+  | [] => []
+  | i :: is => instrArrMoves i ++ cmdArrMoves is
+end
+
+/-- The closure of the variables `al` under the moves `mv`, in at most `n` rounds: a
+variable that a move takes from a variable of the closure is in the closure. -/
+def ptrClosure (mv : List (JVar × JVar)) : Nat → List JVar → List JVar
+  | 0, al => al
+  | n + 1, al =>
+      let new := (mv.filter fun p => al.contains p.2 && !al.contains p.1).map Prod.fst
+      if new.isEmpty then al else ptrClosure mv n (al ++ new.dedup)
+
+/-- The declaration of a variable at its type: a `reg ptr` when it is one of the pointer
+variables `al`, else at the storage class `storOf` of its type. -/
+def declOf (al : List JVar) (v : JVar) : Decl :=
+  { storage := if al.contains v then .regPtr false else storOf v.vtype,
+    ty := canonP v.vtype, names := [v.vname] }
 
 /-- The function of a body: the parameters `ps`, the results `res` with their storage
 classes and surface types `resTys`, and a declaration of every other variable of the
-body and the results, at its type. -/
+body and the results, at its type. An array that the whole-array moves of the body take,
+directly or through other moves, from a pointer parameter is declared a `reg ptr`: jasminc
+places it in the region of the parameter, and refuses to move a parameter into a `stack`
+array. -/
 def mkFn (fname : String) (ps : List (JVar × Storage × PType)) (body : Cmd)
     (res : List JVar) (resTys : List (Storage × PType)) : JazzFn :=
   let pvs := ps.map Prod.fst
   let locals := ((cmdVars body ++ res).dedup).filter fun v => !pvs.contains v
+  let mv := cmdArrMoves body
+  let al := ptrClosure mv (mv.length + 1)
+    (ps.filterMap fun p => match p.2.1 with | .regPtr _ => some p.1 | _ => none)
   let fd : FunDecl := ⟨⟨fname⟩, ps.map (fun p => ⟨⟨p.1, vi0⟩⟩), body,
     res.map (fun v => ⟨v, vi0⟩)⟩
   { kind := .exportFn, fd := fd, paramTys := ps.map Prod.snd, resultTys := resTys,
-    decls := locals.map declOf }
+    decls := locals.map (declOf al) }
 
 /-- The unit of a function body: the function and the extern signature of each callee. -/
 def mkUnit (fn : JazzFn) : JazzUnit :=
@@ -1547,7 +1578,7 @@ theorem fixAll_erased (k : Nat) (cand : JVar → Bool) (res : List JVar) :
 /-- The spill pass keeps the body of a function erased. -/
 theorem cmdErasedB_spillFn (k : Nat) {fn : JazzFn} (hb : cmdErasedB fn.fd.body = true) :
     cmdErasedB (spillFn k fn).fd.body = true := by
-  unfold spillFn
+  rw [JasminSpill.spillFn_eq_spillFnRef]; unfold JasminSpill.spillFnRef
   split
   · rw [cmdErasedB_iff] at hb ⊢
     have h1 := goBody_erased k (JasminSpill.regWordB fn) (JasminSpill.resOf fn) fn.fd.body
@@ -1860,8 +1891,8 @@ theorem body_good : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
 
 /-! ## 9. Well-formedness -/
 
-theorem flatMap_declOf (l : List JVar) :
-    (l.map declOf).flatMap (·.names) = l.map (·.vname) := by
+theorem flatMap_declOf (al l : List JVar) :
+    (l.map (declOf al)).flatMap (·.names) = l.map (·.vname) := by
   induction l with
   | nil => rfl
   | cons v l ih => simp [declOf, ih]

@@ -195,7 +195,7 @@ def ownDecl (m : OrchMode) (i : Nat) (t : JasminTy) : List Decl :=
 
 /-- The `export fn` `fname` over the parameters `ps` with the body `body` and the results
 `res` at the slots `resTys`: the array buffers are declared by `arrDecls`, every other
-variable of the body and the results by `declOf`. -/
+variable of the body and the results by `declOf` at the storage class of its type. -/
 def orchFnOf (fname : String) (ps : List (JVar × Storage × PType)) (body : Cmd)
     (arrDecls : List Decl) (res : List JVar) (resTys : List (Storage × PType)) : JazzFn :=
   let pvs := ps.map Prod.fst
@@ -205,7 +205,7 @@ def orchFnOf (fname : String) (ps : List (JVar × Storage × PType)) (body : Cmd
   let fd : FunDecl := ⟨⟨fname⟩, ps.map (fun p => ⟨⟨p.1, vi0⟩⟩), body,
     res.map (fun v => ⟨v, vi0⟩)⟩
   { kind := .exportFn, fd := fd, paramTys := ps.map Prod.snd, resultTys := resTys,
-    decls := arrDecls ++ locals.map declOf }
+    decls := arrDecls ++ locals.map (declOf []) }
 
 /-- **The function of an orchestration body.** An array result is the `reg mut ptr`
 parameter `out` (a `reg u64` address in `memPtr`), placed first and returned; the inputs

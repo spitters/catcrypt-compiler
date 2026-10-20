@@ -2618,7 +2618,7 @@ theorem isFreshName_ne {n : String} (hn : isFreshName n = false) (m : Nat) :
 /-- **The pass keeps well-formedness.** -/
 theorem spillFn_wellFormed (k : Nat) {callees : List String} {fn : JazzFn}
     (h : fn.wellFormedB callees = true) : (spillFn k fn).wellFormedB callees = true := by
-  unfold spillFn
+  rw [spillFn_eq_spillFnRef]; unfold spillFnRef
   split
   · rename_i hg
     simp only [Bool.and_eq_true, List.all_eq_true] at hg
@@ -2714,7 +2714,7 @@ theorem translateFn_isSome_iff (f : JazzFn) : (translateFn f).isSome = true ↔
 /-- The pass keeps the translation of a function to the `psem.v` mirror. -/
 theorem translateFn_isSome_spill (k : Nat) {f : JazzFn} (h : (translateFn f).isSome = true) :
     (translateFn (spillFn k f)).isSome = true := by
-  unfold spillFn
+  rw [spillFn_eq_spillFnRef]; unfold spillFnRef
   split
   · rename_i hg
     simp only [Bool.and_eq_true, List.all_eq_true] at hg
@@ -2764,7 +2764,7 @@ theorem spillFn_sem (k : Nat) (fn : JazzFn) {c : List MInstr}
     ∃ c' t', translateCmdExt (spillFn k fn).fd.body = some c' ∧
       Sem aS opS gd prog s (typeC c') t' ∧ t'.emem = s'.emem ∧ t'.escs = s'.escs ∧
       ∀ v : MVar, isFreshName v.vname = false → t'.evm v = s'.evm v := by
-  unfold spillFn
+  rw [spillFn_eq_spillFnRef]; unfold spillFnRef
   split
   · rename_i hg
     simp only [Bool.and_eq_true, List.all_eq_true] at hg
@@ -4072,12 +4072,16 @@ theorem liveRegsB_spillFn (k : Nat) (fn : JazzFn) (hs : ∀ i ∈ fn.fd.body, st
   obtain ⟨hd1, hd2, hd3, hd4⟩ := hd
   have hguard : (fn.fd.body.all straightI && noFreshB fn) = true := by
     simp only [Bool.and_eq_true, List.all_eq_true]; exact ⟨hs, hfr⟩
-  have e1 : (spillFn k fn).fd.params = fn.fd.params := by unfold spillFn; rw [if_pos hguard]
-  have e2 : (spillFn k fn).paramTys = fn.paramTys := by unfold spillFn; rw [if_pos hguard]
+  have e1 : (spillFn k fn).fd.params = fn.fd.params := by
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
+  have e2 : (spillFn k fn).paramTys = fn.paramTys := by
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
   have e3 : (spillFn k fn).decls = fn.decls ++ declsOf (run k fn).1 := by
-    unfold spillFn; rw [if_pos hguard]
-  have e4 : (spillFn k fn).fd.body = (run k fn).2 := by unfold spillFn; rw [if_pos hguard]
-  have e5 : resOf (spillFn k fn) = resOf fn := by unfold spillFn resOf; rw [if_pos hguard]
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
+  have e4 : (spillFn k fn).fd.body = (run k fn).2 := by
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
+  have e5 : resOf (spillFn k fn) = resOf fn := by
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef resOf; rw [if_pos hguard]
   obtain ⟨hG, hE⟩ := run_res (T := False) k fn hs (fun _ _ h => h.elim)
   have hnf : ∀ n ∈ fn.env.map Prod.fst ++ (cmdVars fn.fd.body ++ resOf fn).map (·.vname),
       isFreshName n = false := by
