@@ -578,15 +578,17 @@ section Fn
 variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
 
 /-- **The function of the lowering runs in the mirror.** Let `nfToJasmin` return the unit
-`u` on the program `p` under a signature whose result is returned in a register, let `u`
-translate to the mirror program `prog`, and let `P` be a mirror program that defines
-`fname` as `prog` does and whose callees agree with `E` (`JazzCallsAgree`). When `p`
-denotes `x` at `V` in `E`, with its array indices in range, the function `fname` of `P` runs, from every syscall state and memory and from
-arguments that agree with `V`, to the same syscall state and memory and to one result that
-holds `x`. -/
+`u` on the program `p` under the signature `sig`, let `u` translate to the mirror program
+`prog`, and let `P` be a mirror program that defines `fname` as `prog` does and whose
+callees agree with `E` (`JazzCallsAgree`). When `p` denotes `x` at `V` in `E`, with its
+array indices in range, the function `fname` of `P` runs, from every syscall state and
+memory and from arguments that agree with `V`, to the same syscall state and memory and to
+one result that holds `x` (`JazzValAgrees`: a word for a register result, a byte array whose
+little-endian words are the elements of `x` for an array result returned through its
+`reg mut ptr` parameter). -/
 theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig Γ t}
-    (hsig : sig.resultParam = none) {fname : String} {p : NFProg jasminDialect Γ [t]}
+    {fname : String} {p : NFProg jasminDialect Γ [t]}
     {u : CatCrypt.Crypto.Jasmin.Jazz.JazzUnit} (hu : nfToJasmin sig fname p = some u) {prog : Prog}
     (hprog : translateUnit u = some prog)
     {P : Prog} (hP : getFunDef P ⟨fname⟩ = getFunDef prog ⟨fname⟩)
@@ -607,9 +609,6 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   simp only [jasminWidthsB, Bool.and_eq_true, List.all_cons, List.all_nil, Bool.and_true]
     at hwid
   obtain ⟨⟨hΓ, htok⟩, hwg⟩ := hwid
-  have hres := hf.2
-  rw [hsig] at hres
-  obtain ⟨-, hrty⟩ := hres
   obtain ⟨r, hr, rfl⟩ := Option.map_eq_some_iff.1 hu
   -- the arguments
   have hargTy : List.Forall₂ TypedFor (paramVars sig) vargs := by
@@ -621,27 +620,71 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   have hs1 := storeAgrees_params hf p hargs hval1 (harr1 vmArrTyped_init)
   have hpok : ∀ y ∈ paramVars sig, OkV y :=
     forall₂_okV (paramVars_types hf) (by simpa using hΓ)
-  -- the unit
-  have hrrty : (mkV 'r' r.depth sig.result.2.toSType).vtype = styOf t := hrty
-  have hrrok : OkV (mkV 'r' r.depth sig.result.2.toSType) := by
-    rw [OkV, hrrty]; exact styOf_ne_U512 htok
-  have hfin : finish sig fname r = mkFn fname (paramPairs sig)
-      (r.code ++ [asgn (mkV 'r' r.depth sig.result.2.toSType) (pv (r.res.headD dfltV))])
-      [mkV 'r' r.depth sig.result.2.toSType] [sig.result] := by
-    simp only [finish, hsig]
+  -- the result variable `rr` and the move of the result of the body to it
+  obtain ⟨rr, tail, rtys, hfin, hrrok, hrrty, hfresh, htail⟩ :
+      ∃ (rr : JVar) (tail : CatCrypt.Crypto.Jasmin.Cmd)
+        (rtys : List (CatCrypt.Crypto.Jasmin.Jazz.Storage × CatCrypt.Crypto.Jasmin.Jazz.PType)),
+        finish sig fname r = mkFn fname (paramPairs sig) (r.code ++ tail) [rr] rtys ∧
+        OkV rr ∧ rr.vtype = styOf t ∧ JasminSpill.isFreshName rr.vname = false ∧
+        ∀ (rv : JVar), r.res.headD dfltV = rv → OkV rv → ∀ (s2 : Estate SyscallState Mem),
+          (s2.evm (mvar rv)).isDefined = true →
+          (s2.evm (mvar rv)).typeOf = evalAtype (mvar rr).vtype →
+          ∀ b', translateCmdExt tail = some b' →
+          ∃ s3 : Estate SyscallState Mem, Sem aS opS gd P s2 (typeC b') s3 ∧
+            s3.evm (mvar rr) = s2.evm (mvar rv) ∧ s3.escs = s2.escs ∧ s3.emem = s2.emem := by
+    have hres := hf.2
+    cases hrp : sig.resultParam with
+    | none =>
+        rw [hrp] at hres
+        obtain ⟨-, hrty⟩ := hres
+        have hrrty : (mkV 'r' r.depth sig.result.2.toSType).vtype = styOf t := hrty
+        have hrrok : OkV (mkV 'r' r.depth sig.result.2.toSType) := by
+          rw [OkV, hrrty]; exact styOf_ne_U512 htok
+        refine ⟨mkV 'r' r.depth sig.result.2.toSType,
+          [asgn (mkV 'r' r.depth sig.result.2.toSType) (pv (r.res.headD dfltV))], [sig.result],
+          by simp only [finish, hrp], hrrok, hrrty, isFreshName_mkV 'r' (by decide) _ _, ?_⟩
+        intro rv hrv hrvok s2 hdef hty b' hb'
+        subst hrv
+        exact ⟨_, sem_asgn_step aS opS gd P hrrok
+          (translatePExprExt_pv (translateVarIExt_mvi hrvok)) hb' (s := s2)
+          (semPexpr_mpv opS gd rfl hdef) hdef hty
+          (fun c'' hc'' => sem_nil_step aS opS gd P hc'' _), set_same _ _ _, rfl, rfl⟩
+    | some j =>
+        rw [hrp] at hres
+        obtain ⟨q, hq, hqt, -⟩ := hres
+        obtain ⟨pj, hpj⟩ : ∃ pj, ((paramPairs sig).map Prod.fst).getD j dfltV = pj := ⟨_, rfl⟩
+        have hpjE : pj = mkV 'a' j q.2.2.toSType := by
+          subst hpj
+          rw [← paramVars, paramVars_eq]
+          have hj := (List.getElem?_eq_some_iff.1 hq).1
+          rw [sig.params_length] at hj
+          simp [List.getD_eq_getElem?_getD, hj, hq]
+        have hpjty : pj.vtype = styOf t := by rw [hpjE]; exact hqt
+        have hpjok : OkV pj := by rw [OkV, hpjty]; exact styOf_ne_U512 htok
+        refine ⟨pj, if pj == r.res.headD dfltV then [] else [asgn pj (pv (r.res.headD dfltV))],
+          [(.regPtr true, ((paramPairs sig).map Prod.snd |>.getD j (.reg, .word .U64)).2)],
+          by simp only [finish, hrp, hpj], hpjok, hpjty,
+          by rw [hpjE]; exact isFreshName_mkV 'a' (by decide) _ _, ?_⟩
+        intro rv hrv hrvok s2 hdef hty b' hb'
+        subst hrv
+        split at hb'
+        · rename_i heq
+          refine ⟨s2, sem_nil_step aS opS gd P hb' s2, ?_, rfl, rfl⟩
+          rw [beq_iff_eq.1 heq]
+        · exact ⟨_, sem_asgn_step aS opS gd P hpjok
+            (translatePExprExt_pv (translateVarIExt_mvi hrvok)) hb' (s := s2)
+            (semPexpr_mpv opS gd rfl hdef) hdef hty
+            (fun c'' hc'' => sem_nil_step aS opS gd P hc'' _), set_same _ _ _, rfl, rfl⟩
   -- the function before the spill pass translates
   have hF0 := translateUnit_isSome_mkUnit_finish (fname := fname) hfit hwB hr
   rw [translateUnit_mkUnit_map, Option.isSome_map, hfin] at hF0
   obtain ⟨fd0, hfd0⟩ := Option.isSome_iff_exists.mp hF0
   have hps := mapM_params hpok
-  have hrs : [(⟨mkV 'r' r.depth sig.result.2.toSType, vi0⟩ : CatCrypt.Crypto.Jasmin.VarI)].mapM
-      translateVarIExt = some [mvi (mkV 'r' r.depth sig.result.2.toSType)] := by
+  have hrs : [(⟨rr, vi0⟩ : CatCrypt.Crypto.Jasmin.VarI)].mapM
+      translateVarIExt = some [mvi rr] := by
     simp [translateVarIExt_mvi hrrok]
-  obtain ⟨body', hb⟩ : ∃ body', translateCmdExt
-      (r.code ++ [asgn (mkV 'r' r.depth sig.result.2.toSType) (pv (r.res.headD dfltV))]) =
-        some body' := by
-    cases h : translateCmdExt
-        (r.code ++ [asgn (mkV 'r' r.depth sig.result.2.toSType) (pv (r.res.headD dfltV))]) with
+  obtain ⟨body', hb⟩ : ∃ body', translateCmdExt (r.code ++ tail) = some body' := by
+    cases h : translateCmdExt (r.code ++ tail) with
     | none =>
         simp only [translateFn, mkFn] at hfd0
         rw [hps, h] at hfd0
@@ -653,33 +696,30 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     hlin hr ha' hden hidx hs1
   have hR := hpost.res
   obtain ⟨rv, hrv⟩ := List.length_eq_one_iff.1 (resAgrees_length hR)
-  rw [hrv] at hR hb'
+  rw [hrv] at hR
   have hagr : JazzVarAgrees rv t x s2.evm := hR.1
   have hrvok : OkV rv := by rw [OkV, hagr.1]; exact styOf_ne_U512 htok
   obtain ⟨hdef, hty⟩ := valAgrees_typed htok hagr.2 hrrty
   -- the move to the result variable
-  have hsemA := sem_asgn_step aS opS gd P hrrok (translatePExprExt_pv (translateVarIExt_mvi hrvok))
-    hb' (s := s2) (semPexpr_mpv opS gd rfl hdef) hdef hty
-    (fun c'' hc'' => sem_nil_step aS opS gd P hc'' _)
+  obtain ⟨s3, hsemA, hs3r, hs3scs, hs3mem⟩ :=
+    htail rv (by rw [hrv]; rfl) hrvok s2 hdef hty b' hb'
   -- the body before the spill pass
-  have hbody : Sem aS opS gd P s1 (typeC (a' ++ b'))
-      (s2.withVm (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType)) (s2.evm (mvar rv)))) :=
-    by rw [typeC_append]; exact ComJasminBridgeProgram.sem_append aS opS gd P hsem2 hsemA
+  have hbody : Sem aS opS gd P s1 (typeC (a' ++ b')) s3 := by
+    rw [typeC_append]; exact ComJasminBridgeProgram.sem_append aS opS gd P hsem2 hsemA
   -- the spill pass
   have hc0 : translateCmdExt (finish sig fname r).fd.body = some (a' ++ b') := by
     rw [hfin]; exact hb
   have hwt : JasminSpill.WT s1.evm := writeVars_WT _ _ _ _ hw1 wT_init
   have hresd : ∀ q ∈ (finish sig fname r).fd.results, ∀ q', translateVarIExt q = some q' →
-      ((s2.withVm (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType))
-        (s2.evm (mvar rv)))).evm q'.v_var).isDefined = true := by
+      (s3.evm q'.v_var).isDefined = true := by
     intro q hq q' hq'
     rw [hfin] at hq
     simp only [mkFn, List.map_cons, List.map_nil, List.mem_singleton] at hq
     subst hq
     rw [translateVarIExt_mvi hrrok, Option.some.injEq] at hq'
     subst hq'
-    simp only [mvi, CatCrypt.Crypto.Jasmin.CoqSemMirror.Estate.withVm, set_same]
-    exact hdef
+    change (s3.evm (mvar rr)).isDefined = true
+    rw [hs3r]; exact hdef
   obtain ⟨c', t', hc', hsem', hmem', hscs', hagr'⟩ :=
     JasminSpill.spillFn_sem aS opS gd P spillK (finish sig fname r) hc0 hbody hwt hresd
   have hpF : (JasminSpill.spillFn spillK (finish sig fname r)).fd.params =
@@ -692,8 +732,7 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   have hprogE : prog = { pFuncs := [({ name := fname },
       { tyin := ((paramVars sig).map mvi).map (·.v_var.vtype), params := (paramVars sig).map mvi,
         body := typeC c',
-        tyout := [mvi (mkV 'r' r.depth sig.result.2.toSType)].map (·.v_var.vtype),
-        rets := [mvi (mkV 'r' r.depth sig.result.2.toSType)] })], pGlobs := [] } := by
+        tyout := [mvi rr].map (·.v_var.vtype), rets := [mvi rr] })], pGlobs := [] } := by
     have hname : (JasminSpill.spillFn spillK (finish sig fname r)).fd.name.name = fname := by
       rw [hnF, hfin]; rfl
     rw [hname] at hfd
@@ -705,23 +744,22 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   have hget : getFunDef P ⟨fname⟩ = some
       { tyin := ((paramVars sig).map mvi).map (·.v_var.vtype), params := (paramVars sig).map mvi,
         body := typeC c',
-        tyout := [mvi (mkV 'r' r.depth sig.result.2.toSType)].map (·.v_var.vtype),
-        rets := [mvi (mkV 'r' r.depth sig.result.2.toSType)] } := by
+        tyout := [mvi rr].map (·.v_var.vtype), rets := [mvi rr] } := by
     rw [hP]
     simp [getFunDef]
-  have hrr : t'.evm (mvar (mkV 'r' r.depth sig.result.2.toSType)) = s2.evm (mvar rv) := by
-    rw [hagr' _ (isFreshName_mkV 'r' (by decide) _ _)]
-    exact set_same _ _ _
+  have hrr : t'.evm (mvar rr) = s2.evm (mvar rv) := by
+    rw [hagr' _ hfresh]
+    exact hs3r
   have hgetv : CatCrypt.Crypto.Jasmin.CoqSemMirror.getVarIs true t'.evm
-      [mvi (mkV 'r' r.depth sig.result.2.toSType)] = .ok [s2.evm (mvar rv)] := by
+      [mvi rr] = .ok [s2.evm (mvar rv)] := by
     simp [CatCrypt.Crypto.Jasmin.CoqSemMirror.getVarIs, JResult.mapM,
       CatCrypt.Crypto.Jasmin.CoqSemMirror.getVar, Vm.get, mvi, hrr, hdef]
   have hcall := SemCall.EcallRun (aS := aS) (opS := opS) (gd := gd) (prog := P) scs m ⟨fname⟩ _
     vargs vargs { escs := scs, emem := m, evm := Vm.init } s1 t'
     _ _ hget (truncate_typed hargTy) rfl hw1 hsem'
-    hgetv (truncate_typed (xs := [mkV 'r' r.depth sig.result.2.toSType]) (.cons ⟨hdef, hty⟩ .nil))
-  have e1 : t'.escs = scs := hscs'.trans (hpost.scs.trans hscs1)
-  have e2 : t'.emem = m := hmem'.trans (hpost.mem.trans hmem1)
+    hgetv (truncate_typed (xs := [rr]) (.cons ⟨hdef, hty⟩ .nil))
+  have e1 : t'.escs = scs := hscs'.trans (hs3scs.trans (hpost.scs.trans hscs1))
+  have e2 : t'.emem = m := hmem'.trans (hs3mem.trans (hpost.mem.trans hmem1))
   rw [e1, e2] at hcall
   exact ⟨_, hcall, hagr.2⟩
 
