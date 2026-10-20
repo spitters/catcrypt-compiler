@@ -11,6 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JazzAsmSem
 public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 public import CatCrypt.Crypto.Jasmin.JazzUnit
 public import CatCrypt.Crypto.Jasmin.JazzRoundTrip
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminSpillPass
 public import Mathlib.Data.List.Dedup
 
 /-!
@@ -83,7 +84,8 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
 
 * `JazzSig`, `JazzSig.Fits`, `JazzSig.fitsB`: the surface signature of the function and
   its agreement with the context.
-* `nfToJasminBody`, `nfToJasmin`: the lowering of a region and of a whole program.
+* `nfToJasminBody`, `nfToJasmin`: the lowering of a region and of a whole program; the
+  latter applies the spill pass `JasminSpill.spillUnit spillK` to the unit it builds.
 * `linearArrB`: the programs whose in-place stores are not observed.
 * `jasminWidthsB`: the programs whose words are those of the x86 general-purpose
   registers.
@@ -97,7 +99,9 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
   its extern signatures.
 * `cmdErase_of`: a command that passes `cmdErasedB` is its own erasure.
 * `emitOp_asmOps`: every asm operation the lowering emits is an operation of `jazzOps`.
-* `nfToJasmin_wellFormed`: every unit `nfToJasmin` returns is well formed.
+* `erase_spillFn`: the spill pass keeps a function with an erased body its own erasure.
+* `mkUnit_finish_wellFormed`: the unit of a lowered program before the spill pass is well
+  formed; `JasminSpill.nfToJasmin_wellFormed` states it for every unit `nfToJasmin` returns.
 -/
 
 @[expose] public section
@@ -898,14 +902,21 @@ def finish {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname 
       let rr := mkV 'r' r.depth sig.result.2.toSType
       mkFn fname ps (r.code ++ [asgn rr (pv rv)]) [rr] [sig.result]
 
+/-- The number of registers the spill pass `JasminSpill.spillUnit` allots to the register
+variables of a lowered function: the sixteen x86-64 general-purpose registers less `rsp`
+and the three registers the parameters of the lowered functions occupy. -/
+def spillK : Nat := 12
+
 /-- **The lowering of a structured program to a Jasmin compilation unit**: the function
-`fname`, an `export fn`, over the parameters of `sig`. `none` when `sig` does not fit, when
-`linearArrB` or `jasminWidthsB` refuses, or when the lowering of the body refuses. -/
+`fname`, an `export fn`, over the parameters of `sig`, followed by the spill pass
+`JasminSpill.spillUnit spillK`, which keeps at most `spillK` register variables live at each
+instruction of a straight-line body. `none` when `sig` does not fit, when `linearArrB` or
+`jasminWidthsB` refuses, or when the lowering of the body refuses. -/
 def nfToJasmin {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname : String)
     (p : NFProg jasminDialect Γ [t]) : Option JazzUnit :=
   if sig.fitsB && linearArrB p && jasminWidthsB p then
     (nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p Γ.length 0).map fun r =>
-      mkUnit (finish sig fname r)
+      JasminSpill.spillUnit spillK (mkUnit (finish sig fname r))
   else none
 
 /-! ## 7. Erased units -/
@@ -1287,6 +1298,296 @@ theorem mkUnit_erase {fname : String} {ps : List (JVar × Storage × PType)} {bo
     CatCrypt.Crypto.Jasmin.Jazz.JazzFn.erase, CatCrypt.Crypto.Jasmin.Jazz.FunDecl.erase, mkFn,
     List.map_map, Function.comp_def, cmdErase_of body hb]
   rfl
+
+/-! ### Erasure of the spilled function -/
+
+section SpillErase
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminSpill (Src St renG renE renEs renLv renI mv reloadSrc reloadFresh evict makeRoom
+  helper helpers helpersOf loadOne loadAll dropDead afterDef stepI goBody fixOne fixAll initSt
+  run spillFn lookS)
+
+theorem renG_info (r : JVar → JVar) (g : GVar) : (renG r g).gv.info = g.gv.info := by
+  unfold renG; split <;> rfl
+
+mutual
+theorem exprErasedB_renE (r : JVar → JVar) : ∀ e : PExpr, exprErasedB (renE r e) = exprErasedB e
+  | .Pconst _ | .Pbool _ | .Parr_init _ => rfl
+  | .Pvar g => by simp only [renE, exprErasedB, renG_info]
+  | .Pget _ _ x i => by simp only [renE, exprErasedB, renG_info, exprErasedB_renE r i]
+  | .Psub _ _ _ x i => by simp only [renE, exprErasedB, renG_info, exprErasedB_renE r i]
+  | .Pload _ x o => by simp only [renE, exprErasedB, exprErasedB_renE r o]
+  | .Papp1 _ e => by simp only [renE, exprErasedB, exprErasedB_renE r e]
+  | .Papp2 _ a b => by simp only [renE, exprErasedB, exprErasedB_renE r a, exprErasedB_renE r b]
+  | .PappN _ es => by simp only [renE, exprErasedB, exprsErasedB_renEs r es]
+  | .Pif _ c a b => by
+      simp only [renE, exprErasedB, exprErasedB_renE r c, exprErasedB_renE r a,
+        exprErasedB_renE r b]
+
+theorem exprsErasedB_renEs (r : JVar → JVar) :
+    ∀ es : List PExpr, exprsErasedB (renEs r es) = exprsErasedB es
+  | [] => rfl
+  | e :: es => by simp only [renEs, exprsErasedB, exprErasedB_renE r e, exprsErasedB_renEs r es]
+end
+
+theorem isArrInit_renE (r : JVar → JVar) (e : PExpr) : isArrInit (renE r e) = isArrInit e := by
+  cases e <;> rfl
+
+theorem lvalErasedB_renLv (r : JVar → JVar) (ty : SType) (lv : LVal) :
+    lvalErasedB ty (renLv r lv) = lvalErasedB ty lv := by
+  cases lv <;> simp [renLv, lvalErasedB, exprErasedB_renE]
+
+/-- Renaming the reads of an instruction keeps it erased. -/
+theorem instrErasedB_renI (r : JVar → JVar) (i : InstrR) :
+    instrErasedB (renI r i) = instrErasedB i := by
+  cases i with
+  | Cassgn lv tag ty e =>
+      simp only [renI, instrErasedB, lvalErasedB_renLv, exprErasedB_renE, isArrInit_renE]
+  | Copn lvs tag op es => cases op; simp only [renI, instrErasedB, exprsErasedB_renEs]
+  | _ => rfl
+
+theorem instrErasedB_mv (d s : JVar) : instrErasedB (mv d s) = true := by
+  simp [mv, instrErasedB, lvalErasedB, exprErasedB, isArrInit, JasminSpill.vi, JasminSpill.lpv,
+    vi0]
+
+/-- A reload source whose right-hand side is erased and is not `Parr_init`. -/
+def SrcErasedP : Src → Prop
+  | .slot _ => True
+  | .remat _ e => exprErasedB e = true ∧ isArrInit e = false
+
+/-- The reload sources of a pass state are erased. -/
+def SigErased (st : St) : Prop := ∀ p ∈ st.sig, SrcErasedP p.2
+
+/-- The final state of a step of the pass has erased reload sources, and the instructions
+the step emits are erased. -/
+def OutErased (r : St × List InstrR) : Prop :=
+  SigErased r.1 ∧ ∀ i ∈ r.2, instrErasedB i = true
+
+theorem instrErasedB_reloadSrc (rho : List (JVar × JVar)) (d : JVar) {src : Src}
+    (h : SrcErasedP src) : instrErasedB (reloadSrc rho d src) = true := by
+  cases src with
+  | slot s => exact instrErasedB_mv _ _
+  | remat ty e =>
+      obtain ⟨h1, h2⟩ := h
+      simp [reloadSrc, instrErasedB, lvalErasedB, JasminSpill.vi, vi0, exprErasedB_renE,
+        isArrInit_renE, h1, h2]
+
+theorem srcErasedP_lookS {st : St} (h : SigErased st) {x : JVar} {src : Src}
+    (hl : lookS st.sig x = some src) : SrcErasedP src := by
+  unfold lookS at hl
+  obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp hl
+  exact h p (List.mem_of_find?_eq_some hp)
+
+theorem OutErased.app {r1 r2 : St × List InstrR} (h1 : OutErased r1) (h2 : OutErased r2) :
+    OutErased (r2.1, r1.2 ++ r2.2) :=
+  ⟨h2.1, fun i hi => (List.mem_append.mp hi).elim (h1.2 i) (h2.2 i)⟩
+
+theorem evict_erased (res : List JVar) (c : List InstrR) {st : St} (p : JVar × JVar)
+    (h : SigErased st) : OutErased (evict res c st p) := by
+  unfold evict
+  split
+  · refine ⟨?_, ?_⟩
+    · intro q hq
+      simp only [List.mem_cons] at hq
+      rcases hq with rfl | hq
+      · exact trivial
+      · exact h q hq
+    · intro i hi
+      simp only [List.mem_singleton] at hi
+      subst hi
+      exact instrErasedB_mv _ _
+  · exact ⟨h, by simp⟩
+
+theorem makeRoom_erased (k need : Nat) (prot res : List JVar) (c : List InstrR) :
+    ∀ (fuel : Nat) {st : St}, SigErased st → OutErased (makeRoom k need prot res c fuel st)
+  | 0, st, h => by
+      simp only [makeRoom]; exact ⟨h, by simp⟩
+  | fuel + 1, st, h => by
+      simp only [makeRoom]
+      split
+      · exact ⟨h, by simp⟩
+      · split
+        · exact ⟨h, by simp⟩
+        · next p _ =>
+          exact (evict_erased res c p h).app
+            (makeRoom_erased k need prot res c fuel (evict_erased res c p h).1)
+
+theorem reloadFresh_erased {st : St} (x : JVar) {src : Src} (h : SigErased st)
+    (hs : SrcErasedP src) : OutErased (reloadFresh st x src) := by
+  unfold reloadFresh
+  refine ⟨h, ?_⟩
+  intro i hi
+  simp only [List.mem_singleton] at hi
+  subst hi
+  exact instrErasedB_reloadSrc _ _ hs
+
+theorem helper_erased (cand : JVar → Bool) {st : St} (y : JVar) (h : SigErased st) :
+    OutErased (helper cand st y) := by
+  unfold helper
+  split
+  · exact ⟨h, by simp⟩
+  · split
+    · next ty e hl =>
+      split
+      · exact reloadFresh_erased y h (srcErasedP_lookS h hl)
+      · exact ⟨h, by simp⟩
+    · exact ⟨h, by simp⟩
+
+theorem helpers_erased (cand : JVar → Bool) :
+    ∀ (ys : List JVar) {st : St}, SigErased st → OutErased (helpers cand st ys)
+  | [], st, h => by simp only [helpers]; exact ⟨h, by simp⟩
+  | y :: ys, st, h => by
+      simp only [helpers]
+      exact (helper_erased cand y h).app (helpers_erased cand ys (helper_erased cand y h).1)
+
+theorem helpersOf_erased (cand : JVar → Bool) {st : St} (src : Src) (h : SigErased st) :
+    OutErased (helpersOf cand st src) := by
+  cases src with
+  | remat ty e => exact helpers_erased cand _ h
+  | slot s => simp only [helpersOf]; exact ⟨h, by simp⟩
+
+theorem loadOne_erased (k : Nat) (cand : JVar → Bool) (prot res : List JVar) (c : List InstrR)
+    {st : St} (x : JVar) (h : SigErased st) : OutErased (loadOne k cand prot res c st x) := by
+  unfold loadOne
+  split
+  · exact ⟨h, by simp⟩
+  · split
+    · exact ⟨h, by simp⟩
+    · next src hl =>
+      have h1 := makeRoom_erased k (JasminSpill.needOf cand src) prot res c st.rho.length h
+      have h2 := helpersOf_erased cand src h1.1
+      have h3 := reloadFresh_erased x h2.1 (srcErasedP_lookS h hl)
+      refine ⟨h3.1, ?_⟩
+      intro i hi
+      simp only [List.mem_append] at hi
+      rcases hi with (hi | hi) | hi
+      exacts [h1.2 i hi, h2.2 i hi, h3.2 i hi]
+
+theorem loadAll_erased (k : Nat) (cand : JVar → Bool) (prot res : List JVar) (c : List InstrR) :
+    ∀ (xs : List JVar) {st : St}, SigErased st → OutErased (loadAll k cand prot res c st xs)
+  | [], st, h => by simp only [loadAll]; exact ⟨h, by simp⟩
+  | x :: xs, st, h => by
+      simp only [loadAll]
+      exact (loadOne_erased k cand prot res c x h).app
+        (loadAll_erased k cand prot res c xs (loadOne_erased k cand prot res c x h).1)
+
+theorem afterDef_erased (cand : JVar → Bool) (c : List InstrR) {st : St} {i : InstrR}
+    (h : SigErased st) (hi : instrErasedB i = true) : SigErased (afterDef cand c st i) := by
+  intro q hq
+  simp only [afterDef] at hq
+  split at hq
+  · split at hq
+    · simp only [List.mem_cons] at hq
+      rcases hq with rfl | hq
+      · simp only [instrErasedB, Bool.and_eq_true, Bool.not_eq_true'] at hi
+        exact ⟨hi.1.2, hi.2⟩
+      · exact h q (List.mem_of_mem_filter hq)
+    · exact h q (List.mem_of_mem_filter hq)
+  · exact h q (List.mem_of_mem_filter hq)
+
+theorem stepI_erased (k : Nat) (cand : JVar → Bool) (res : List JVar) {st : St} {i : InstrR}
+    (c : List InstrR) (h : SigErased st) (hi : instrErasedB i = true) :
+    OutErased (stepI k cand res st i c) := by
+  have h1 := loadAll_erased k cand (JasminSpill.usesOf cand i) res (i :: c)
+    (JasminSpill.usesOf cand i) (st := dropDead res (i :: c) st) h
+  have h2 := makeRoom_erased k (JasminSpill.defsOf cand i).length (JasminSpill.usesOf cand i) res
+    (i :: c) (loadAll k cand (JasminSpill.usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+      (JasminSpill.usesOf cand i)).1.rho.length h1.1
+  refine ⟨afterDef_erased cand c h2.1 hi, ?_⟩
+  intro j hj
+  simp only [stepI, List.mem_append, List.mem_singleton] at hj
+  rcases hj with (hj | hj) | rfl
+  · exact h1.2 j hj
+  · exact h2.2 j hj
+  · rw [instrErasedB_renI]; exact hi
+
+theorem goBody_erased (k : Nat) (cand : JVar → Bool) (res : List JVar) :
+    ∀ (c : List InstrR) {st : St}, SigErased st → (∀ i ∈ c, instrErasedB i = true) →
+      OutErased (goBody k cand res st c)
+  | [], st, h, _ => by simp only [goBody]; exact ⟨h, by simp⟩
+  | i :: c, st, h, hc => by
+      simp only [goBody]
+      have h1 := stepI_erased k cand res c h (hc i List.mem_cons_self)
+      exact h1.app (goBody_erased k cand res c h1.1 fun j hj => hc j (List.mem_cons_of_mem _ hj))
+
+theorem fixOne_erased (k : Nat) (cand : JVar → Bool) (res : List JVar) {st : St} (r : JVar)
+    (h : SigErased st) : OutErased (fixOne k cand res st r) := by
+  unfold fixOne
+  split
+  · split
+    · exact ⟨h, by simp⟩
+    · have h1 := makeRoom_erased k 1 res res [] st.rho.length h
+      refine ⟨h1.1, ?_⟩
+      intro i hi
+      simp only [List.mem_append, List.mem_singleton] at hi
+      rcases hi with hi | rfl
+      · exact h1.2 i hi
+      · exact instrErasedB_mv _ _
+  · split
+    · exact ⟨h, by simp⟩
+    · next src hl =>
+      have h1 := makeRoom_erased k (JasminSpill.needOf cand src) res res [] st.rho.length h
+      have h2 := helpersOf_erased cand src h1.1
+      refine ⟨h2.1, ?_⟩
+      intro i hi
+      simp only [List.mem_append, List.mem_singleton] at hi
+      rcases hi with (hi | hi) | rfl
+      · exact h1.2 i hi
+      · exact h2.2 i hi
+      · exact instrErasedB_reloadSrc _ _ (srcErasedP_lookS h hl)
+
+theorem fixAll_erased (k : Nat) (cand : JVar → Bool) (res : List JVar) :
+    ∀ (rs : List JVar) {st : St}, SigErased st → OutErased (fixAll k cand res st rs)
+  | [], st, h => by simp only [fixAll]; exact ⟨h, by simp⟩
+  | r :: rs, st, h => by
+      simp only [fixAll]
+      exact (fixOne_erased k cand res r h).app
+        (fixAll_erased k cand res rs (fixOne_erased k cand res r h).1)
+
+/-- The spill pass keeps the body of a function erased. -/
+theorem cmdErasedB_spillFn (k : Nat) {fn : JazzFn} (hb : cmdErasedB fn.fd.body = true) :
+    cmdErasedB (spillFn k fn).fd.body = true := by
+  unfold spillFn
+  split
+  · rw [cmdErasedB_iff] at hb ⊢
+    have h1 := goBody_erased k (JasminSpill.regWordB fn) (JasminSpill.resOf fn) fn.fd.body
+      (st := initSt (JasminSpill.regWordB fn) (JasminSpill.resOf fn) fn.fd.body)
+      (by intro q hq; simp [initSt] at hq) hb
+    have h2 := fixAll_erased k (JasminSpill.regWordB fn) (JasminSpill.resOf fn)
+      (((JasminSpill.resOf fn).filter (JasminSpill.regWordB fn)).dedup) h1.1
+    intro i hi
+    simp only [run, List.mem_append] at hi
+    rcases hi with hi | hi
+    · exact h1.2 i hi
+    · exact h2.2 i hi
+  · exact hb
+
+/-- The spill pass keeps a function its own erasure when its body is erased. -/
+theorem erase_spillFn (k : Nat) {fn : JazzFn} (he : fn.erase = fn)
+    (hb : cmdErasedB fn.fd.body = true) : (spillFn k fn).erase = spillFn k fn := by
+  have hb' := cmdErasedB_spillFn k hb
+  have hp : (spillFn k fn).fd.params = fn.fd.params := by unfold spillFn; split <;> rfl
+  have hr : (spillFn k fn).fd.results = fn.fd.results := by unfold spillFn; split <;> rfl
+  have h1 := congrArg (fun f : JazzFn => f.fd.params) he
+  have h2 := congrArg (fun f : JazzFn => f.fd.results) he
+  simp only [CatCrypt.Crypto.Jasmin.Jazz.JazzFn.erase, CatCrypt.Crypto.Jasmin.Jazz.FunDecl.erase]
+    at h1 h2 ⊢
+  rw [cmdErase_of _ hb', hp, h1, hr, h2, ← hp, ← hr]
+
+/-- The unit of a function after the spill pass is its own erasure except for its extern
+signatures, when the unit before the pass is and the body of the function is erased. -/
+theorem spillUnit_mkUnit_erase (k : Nat) {fn : JazzFn}
+    (hu : (mkUnit fn).erase = { mkUnit fn with externs := [] })
+    (hb : cmdErasedB fn.fd.body = true) :
+    (JasminSpill.spillUnit k (mkUnit fn)).erase =
+      { JasminSpill.spillUnit k (mkUnit fn) with externs := [] } := by
+  have hF : fn.erase = fn := by
+    have := congrArg JazzUnit.fns hu
+    simpa [CatCrypt.Crypto.Jasmin.Jazz.JazzUnit.erase, mkUnit] using this
+  simp only [CatCrypt.Crypto.Jasmin.Jazz.JazzUnit.erase, JasminSpill.spillUnit, mkUnit,
+    List.map_cons, List.map_nil, erase_spillFn k hF hb]
+
+end SpillErase
 
 /-! ## 8. The variables of a lowered program -/
 
@@ -1748,7 +2049,7 @@ theorem nfToJasmin_eq_some {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzS
     {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
     (h : nfToJasmin sig fname p = some u) :
     sig.fitsB = true ∧ ∃ r, nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p
-      Γ.length 0 = some r ∧ u = mkUnit (finish sig fname r) := by
+      Γ.length 0 = some r ∧ u = JasminSpill.spillUnit spillK (mkUnit (finish sig fname r)) := by
   unfold nfToJasmin at h
   split at h
   · rename_i hc
@@ -1769,6 +2070,37 @@ theorem jasminWidthsB_of_nfToJasmin {Γ : Ctxt jasminDialect} {t : JasminTy}
     exact hc.2
   · simp at h
 
+/-- The body of the function of a lowered program is erased, and the unit of that function,
+before the spill pass, is its own erasure except for its extern signatures. -/
+theorem mkUnit_finish_erase {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t)
+    (fname : String) {p : NFProg jasminDialect Γ [t]} {r : JOut}
+    (hr : nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p Γ.length 0 = some r) :
+    cmdErasedB (finish sig fname r).fd.body = true ∧
+      (mkUnit (finish sig fname r)).erase = { mkUnit (finish sig fname r) with externs := [] } := by
+  have hb := body_erased p _ _ _ r hr
+  cases hrp : sig.resultParam with
+  | some j =>
+      simp only [finish, hrp]
+      have hc : cmdErasedB (r.code ++ if ((paramPairs sig).map Prod.fst).getD j dfltV ==
+          r.res.headD dfltV then [] else [asgn (((paramPairs sig).map Prod.fst).getD j dfltV)
+            (pv (r.res.headD dfltV))]) = true := by
+        simp only [cmdErasedB_iff, List.mem_append]
+        rintro i (hi | hi)
+        · exact hb i hi
+        · split at hi
+          · simp at hi
+          · simp only [List.mem_singleton] at hi; subst hi; simp
+      exact ⟨hc, mkUnit_erase hc⟩
+  | none =>
+      simp only [finish, hrp]
+      have hc : cmdErasedB (r.code ++ [asgn (mkV 'r' r.depth sig.result.2.toSType)
+          (pv (r.res.headD dfltV))]) = true := by
+        simp only [cmdErasedB_iff, List.mem_append, List.mem_singleton]
+        rintro i (hi | rfl)
+        · exact hb i hi
+        · simp
+      exact ⟨hc, mkUnit_erase hc⟩
+
 /-- **The units of the lowering are erased**: the erasure `JazzUnit.erase` of the single
 Jasmin printer leaves every unit `nfToJasmin` returns unchanged except for its extern
 signatures, which the erasure drops. -/
@@ -1776,30 +2108,14 @@ theorem nfToJasmin_erase {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig
     {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
     (h : nfToJasmin sig fname p = some u) : u.erase = { u with externs := [] } := by
   obtain ⟨_, r, hr, rfl⟩ := nfToJasmin_eq_some h
-  have hb := body_erased p _ _ _ r hr
-  cases hrp : sig.resultParam with
-  | some j =>
-      simp only [finish, hrp]
-      refine mkUnit_erase ?_
-      simp only [cmdErasedB_iff, List.mem_append]
-      rintro i (hi | hi)
-      · exact hb i hi
-      · split at hi
-        · simp at hi
-        · simp only [List.mem_singleton] at hi; subst hi; simp
-  | none =>
-      simp only [finish, hrp]
-      refine mkUnit_erase ?_
-      simp only [cmdErasedB_iff, List.mem_append, List.mem_singleton]
-      rintro i (hi | rfl)
-      · exact hb i hi
-      · simp
+  obtain ⟨hb, hu⟩ := mkUnit_finish_erase sig fname hr
+  exact spillUnit_mkUnit_erase spillK hu hb
 
-/-- **The units of the lowering are well formed.** -/
-theorem nfToJasmin_wellFormed {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig Γ t}
-    {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
-    (h : nfToJasmin sig fname p = some u) : u.WellFormed := by
-  obtain ⟨hfit, r, hr, rfl⟩ := nfToJasmin_eq_some h
+/-- The function of a lowered program, before the spill pass, is well formed. -/
+theorem mkUnit_finish_wellFormed {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t)
+    (fname : String) {p : NFProg jasminDialect Γ [t]} {r : JOut} (hfit : sig.fitsB = true)
+    (hr : nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p Γ.length 0 = some r) :
+    (mkUnit (finish sig fname r)).WellFormed := by
   obtain ⟨hps, hpg, hpn⟩ := paramPairs_spec sig
   have henv : ∀ v ∈ ((paramPairs sig).map Prod.fst).reverse, GoodV v := by
     intro v hv

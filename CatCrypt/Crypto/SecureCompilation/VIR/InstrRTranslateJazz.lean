@@ -50,7 +50,8 @@ tag), in the manner of `InstrRTranslateExt.translateInstrRExt_ccall`; `typeC_mkC
   branch with its join moves), `translateInstrRExt_call` (a call with several results),
   `translateCmdExt_stackLoad` and `translateCmdExt_stackStore` (the `(uint) e` index), and
   `translateCmdExt_sarImm` (the arithmetic shift by `sarCount`).
-* `translateUnit_isSome_of_nfToJasmin`: every unit `nfToJasmin` returns translates. The
+* `translateUnit_isSome_mkUnit_finish`: the unit of a lowered program before the spill pass
+  translates (`JasminSpill.translateUnit_isSome_of_nfToJasmin` adds the pass). The
   lowering refuses a 512-bit word (`jasminWidthsB`), and every variable, operation and `_`
   output of the lowered code then has one of the six word sizes of the mirror
   (`body_trC`, `emitOp_trC`).
@@ -1337,16 +1338,17 @@ theorem translateFn_mkFn_isSome {fname : String}
         exact translateVarIExt_isSome (hres v hv) vi0)
   rw [translateFn_eq_some _ e1 e2 e3]; rfl
 
-/-- **Completeness of the translation on the units of the lowering**: every unit
-`nfToJasmin` returns translates to a program of the `CoqSemMirror` syntax. -/
-theorem translateUnit_isSome_of_nfToJasmin {Γ : Ctxt jasminDialect} {t : JasminTy}
-    {sig : JazzSig Γ t} {fname : String} {p : NFProg jasminDialect Γ [t]}
-    {u : CatCrypt.Crypto.Jasmin.Jazz.JazzUnit} (h : nfToJasmin sig fname p = some u) :
-    (translateUnit u).isSome := by
-  have hw := jasminWidthsB_of_nfToJasmin h
+/-- **Completeness of the translation on the units of the lowering before the spill pass**:
+the unit of the function of a lowered program translates to a program of the
+`CoqSemMirror` syntax. `JasminSpill.translateUnit_isSome_of_nfToJasmin` states it for every
+unit `nfToJasmin` returns. -/
+theorem translateUnit_isSome_mkUnit_finish {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {sig : JazzSig Γ t} {fname : String} {p : NFProg jasminDialect Γ [t]} {r : JOut}
+    (hfit : sig.fitsB = true) (hw : jasminWidthsB p = true)
+    (hr : nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p Γ.length 0 = some r) :
+    (translateUnit (mkUnit (finish sig fname r))).isSome := by
   simp only [jasminWidthsB, Bool.and_eq_true] at hw
   obtain ⟨⟨hΓ, ht⟩, hwp⟩ := hw
-  obtain ⟨hfit, r, hr, rfl⟩ := nfToJasmin_eq_some h
   have hpp := okV_paramPairs hfit hΓ
   have hpv : ∀ v ∈ (paramPairs sig).map Prod.fst, OkV v := by
     intro v hv

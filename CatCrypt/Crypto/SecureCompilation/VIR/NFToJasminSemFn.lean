@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSemFrames
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminSpill
 
 /-!
 # Calls and functions of the Jasmin lowering in the `psem.v` mirror
@@ -14,7 +15,8 @@ The code `nfToJasminBody` emits for a region with calls runs in the mirror's `Se
 callee of the call environment is a function of the mirror program that computes the callee
 on agreeing words and word arrays (`JazzCallsAgree`), and the function `nfToJasmin` builds
 runs in the mirror's `SemCall` from arguments that agree with the valuation of the program to
-a result that agrees with its denotation (`nfToJasmin_sem`).
+a result that agrees with its denotation (`nfToJasmin_sem`). The run of the function after
+the spill pass comes from the run before it by `JasminSpill.spillFn_sem`.
 
 ## Calls
 
@@ -384,6 +386,48 @@ theorem writeVars_typed : ∀ {xs : List JVar} {vs : List Value} (s : Estate Sys
 
 end Write
 
+/-- Every defined value of the initial variable map has the type of its variable. -/
+theorem wT_init : JasminSpill.WT Vm.init := by
+  intro v hv
+  obtain ⟨vt, vn⟩ := v
+  cases vt with
+  | aword ws =>
+      cases ws <;> simp_all [Vm.init, CatCrypt.Crypto.Jasmin.CoqSemMirror.undefAddr,
+        CatCrypt.Crypto.Jasmin.CoqSemMirror.Value.typeOf,
+        CatCrypt.Crypto.Jasmin.CoqSemMirror.Value.isDefined,
+        CatCrypt.Crypto.Jasmin.CoqSemMirror.Ctype.isUndefT]
+  | _ => simp_all [Vm.init, CatCrypt.Crypto.Jasmin.CoqSemMirror.undefAddr,
+        CatCrypt.Crypto.Jasmin.CoqSemMirror.Value.typeOf,
+        CatCrypt.Crypto.Jasmin.CoqSemMirror.Value.isDefined,
+        CatCrypt.Crypto.Jasmin.CoqSemMirror.Ctype.isUndefT, evalAtype]
+
+omit [MemModel Mem] in
+/-- Binding variables keeps every defined value at the type of its variable. -/
+theorem writeVars_WT : ∀ (xs : List MVarI) (vs : List Value) (s s' : Estate SyscallState Mem),
+    CatCrypt.Crypto.Jasmin.CoqSemMirror.writeVars true xs vs s = .ok s' →
+    JasminSpill.WT s.evm → JasminSpill.WT s'.evm
+  | [], [], s, s', h, hw => by
+      simp only [CatCrypt.Crypto.Jasmin.CoqSemMirror.writeVars, JResult.fold2] at h
+      cases h; exact hw
+  | x :: xs, v :: vs, s, s', h, hw => by
+      simp only [CatCrypt.Crypto.Jasmin.CoqSemMirror.writeVars, JResult.fold2] at h
+      cases h1 : CatCrypt.Crypto.Jasmin.CoqSemMirror.writeVar true x v s with
+      | ok s1 =>
+          rw [h1] at h
+          obtain ⟨rfl, ht, -, -⟩ := JasminSpill.writeVar_ok h1
+          exact writeVars_WT xs vs _ s' h (hw.set ht)
+      | _ => simp [h1] at h
+  | [], _ :: _, s, s', h, _ => by
+      simp [CatCrypt.Crypto.Jasmin.CoqSemMirror.writeVars, JResult.fold2] at h
+  | _ :: _, [], s, s', h, _ => by
+      simp [CatCrypt.Crypto.Jasmin.CoqSemMirror.writeVars, JResult.fold2] at h
+
+/-- A variable of the lowering is not a fresh variable of the spill pass. -/
+theorem isFreshName_mkV (c : Char) (hc : c ≠ 's') (k : Nat) (s : CatCrypt.Crypto.Jasmin.SType) :
+    JasminSpill.isFreshName (mkV c k s).vname = false := by
+  simp [JasminSpill.isFreshName, JasminSpill.pfx, mkV, nameOf, String.toList_append,
+    List.isPrefixOf, hc.symm]
+
 /-- Truncating defined values at their own types is the identity. -/
 theorem truncate_typed : ∀ {xs : List JVar} {vs : List Value}, List.Forall₂ TypedFor xs vs →
     JResult.mapM (fun p : CatCrypt.Crypto.Jasmin.CoqSemMirror.Atype × Value =>
@@ -557,6 +601,7 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   rename_i hck
   simp only [Bool.and_eq_true] at hck
   obtain ⟨⟨hfit, hlin⟩, hwid⟩ := hck
+  have hwB := hwid
   have hf := (JazzSig.fitsB_iff sig).1 hfit
   simp only [jasminWidthsB, Bool.and_eq_true, List.all_cons, List.all_nil, Bool.and_true]
     at hwid
@@ -583,9 +628,10 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
       (r.code ++ [asgn (mkV 'r' r.depth sig.result.2.toSType) (pv (r.res.headD dfltV))])
       [mkV 'r' r.depth sig.result.2.toSType] [sig.result] := by
     simp only [finish, hsig]
-  rw [hfin] at hprog
-  rw [translateUnit_mkUnit_map] at hprog
-  obtain ⟨fd, hfd, rfl⟩ := Option.map_eq_some_iff.1 hprog
+  -- the function before the spill pass translates
+  have hF0 := translateUnit_isSome_mkUnit_finish (fname := fname) hfit hwB hr
+  rw [translateUnit_mkUnit_map, Option.isSome_map, hfin] at hF0
+  obtain ⟨fd0, hfd0⟩ := Option.isSome_iff_exists.mp hF0
   have hps := mapM_params hpok
   have hrs : [(⟨mkV 'r' r.depth sig.result.2.toSType, vi0⟩ : CatCrypt.Crypto.Jasmin.VarI)].mapM
       translateVarIExt = some [mvi (mkV 'r' r.depth sig.result.2.toSType)] := by
@@ -596,12 +642,10 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     cases h : translateCmdExt
         (r.code ++ [asgn (mkV 'r' r.depth sig.result.2.toSType) (pv (r.res.headD dfltV))]) with
     | none =>
-        simp only [translateFn, mkFn] at hfd
-        rw [hps, h] at hfd
-        cases hfd
+        simp only [translateFn, mkFn] at hfd0
+        rw [hps, h] at hfd0
+        cases hfd0
     | some b => exact ⟨b, rfl⟩
-  rw [translateFn_eq_some _ hps hb hrs, Option.some.injEq] at hfd
-  subst hfd
   -- the region
   obtain ⟨a', b', ha', hb', rfl⟩ := translateCmdExt_append_inv hb
   obtain ⟨s2, hsem2, hpost⟩ := nfToJasminRegion_sim_calls aS opS gd P E fuel haS hop hE p hwg
@@ -616,29 +660,67 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
   have hsemA := sem_asgn_step aS opS gd P hrrok (translatePExprExt_pv (translateVarIExt_mvi hrvok))
     hb' (s := s2) (semPexpr_mpv opS gd rfl hdef) hdef hty
     (fun c'' hc'' => sem_nil_step aS opS gd P hc'' _)
+  -- the body before the spill pass
+  have hbody : Sem aS opS gd P s1 (typeC (a' ++ b'))
+      (s2.withVm (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType)) (s2.evm (mvar rv)))) :=
+    by rw [typeC_append]; exact ComJasminBridgeProgram.sem_append aS opS gd P hsem2 hsemA
+  -- the spill pass
+  have hc0 : translateCmdExt (finish sig fname r).fd.body = some (a' ++ b') := by
+    rw [hfin]; exact hb
+  have hwt : JasminSpill.WT s1.evm := writeVars_WT _ _ _ _ hw1 wT_init
+  have hresd : ∀ q ∈ (finish sig fname r).fd.results, ∀ q', translateVarIExt q = some q' →
+      ((s2.withVm (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType))
+        (s2.evm (mvar rv)))).evm q'.v_var).isDefined = true := by
+    intro q hq q' hq'
+    rw [hfin] at hq
+    simp only [mkFn, List.map_cons, List.map_nil, List.mem_singleton] at hq
+    subst hq
+    rw [translateVarIExt_mvi hrrok, Option.some.injEq] at hq'
+    subst hq'
+    simp only [mvi, CatCrypt.Crypto.Jasmin.CoqSemMirror.Estate.withVm, set_same]
+    exact hdef
+  obtain ⟨c', t', hc', hsem', hmem', hscs', hagr'⟩ :=
+    JasminSpill.spillFn_sem aS opS gd P spillK (finish sig fname r) hc0 hbody hwt hresd
+  have hpF : (JasminSpill.spillFn spillK (finish sig fname r)).fd.params =
+      (finish sig fname r).fd.params := by unfold JasminSpill.spillFn; split <;> rfl
+  have hrF : (JasminSpill.spillFn spillK (finish sig fname r)).fd.results =
+      (finish sig fname r).fd.results := by unfold JasminSpill.spillFn; split <;> rfl
+  have hnF : (JasminSpill.spillFn spillK (finish sig fname r)).fd.name =
+      (finish sig fname r).fd.name := by unfold JasminSpill.spillFn; split <;> rfl
+  have hfd := translateFn_eq_some _ (by rw [hpF, hfin]; exact hps) hc' (by rw [hrF, hfin]; exact hrs)
+  have hprogE : prog = { pFuncs := [({ name := fname },
+      { tyin := ((paramVars sig).map mvi).map (·.v_var.vtype), params := (paramVars sig).map mvi,
+        body := typeC c',
+        tyout := [mvi (mkV 'r' r.depth sig.result.2.toSType)].map (·.v_var.vtype),
+        rets := [mvi (mkV 'r' r.depth sig.result.2.toSType)] })], pGlobs := [] } := by
+    have hname : (JasminSpill.spillFn spillK (finish sig fname r)).fd.name.name = fname := by
+      rw [hnF, hfin]; rfl
+    rw [hname] at hfd
+    simp only [translateUnit, JasminSpill.spillUnit, mkUnit, List.map_cons, List.map_nil,
+      List.mapM_cons, List.mapM_nil, hfd] at hprog
+    simpa using hprog.symm
+  subst hprogE
   -- the call
   have hget : getFunDef P ⟨fname⟩ = some
       { tyin := ((paramVars sig).map mvi).map (·.v_var.vtype), params := (paramVars sig).map mvi,
-        body := typeC (a' ++ b'),
+        body := typeC c',
         tyout := [mvi (mkV 'r' r.depth sig.result.2.toSType)].map (·.v_var.vtype),
         rets := [mvi (mkV 'r' r.depth sig.result.2.toSType)] } := by
     rw [hP]
-    simp [getFunDef, mkFn]
-  have hgetv : CatCrypt.Crypto.Jasmin.CoqSemMirror.getVarIs true
-      (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType)) (s2.evm (mvar rv)))
+    simp [getFunDef]
+  have hrr : t'.evm (mvar (mkV 'r' r.depth sig.result.2.toSType)) = s2.evm (mvar rv) := by
+    rw [hagr' _ (isFreshName_mkV 'r' (by decide) _ _)]
+    exact set_same _ _ _
+  have hgetv : CatCrypt.Crypto.Jasmin.CoqSemMirror.getVarIs true t'.evm
       [mvi (mkV 'r' r.depth sig.result.2.toSType)] = .ok [s2.evm (mvar rv)] := by
     simp [CatCrypt.Crypto.Jasmin.CoqSemMirror.getVarIs, JResult.mapM,
-      CatCrypt.Crypto.Jasmin.CoqSemMirror.getVar, Vm.get, mvi, hdef]
+      CatCrypt.Crypto.Jasmin.CoqSemMirror.getVar, Vm.get, mvi, hrr, hdef]
   have hcall := SemCall.EcallRun (aS := aS) (opS := opS) (gd := gd) (prog := P) scs m ⟨fname⟩ _
-    vargs vargs { escs := scs, emem := m, evm := Vm.init } s1
-    (s2.withVm (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType)) (s2.evm (mvar rv))))
-    _ _ hget (truncate_typed hargTy) rfl hw1
-    (by rw [typeC_append]; exact ComJasminBridgeProgram.sem_append aS opS gd P hsem2 hsemA)
+    vargs vargs { escs := scs, emem := m, evm := Vm.init } s1 t'
+    _ _ hget (truncate_typed hargTy) rfl hw1 hsem'
     hgetv (truncate_typed (xs := [mkV 'r' r.depth sig.result.2.toSType]) (.cons ⟨hdef, hty⟩ .nil))
-  have e1 : (s2.withVm (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType))
-      (s2.evm (mvar rv)))).escs = scs := hpost.scs.trans hscs1
-  have e2 : (s2.withVm (s2.evm.set (mvar (mkV 'r' r.depth sig.result.2.toSType))
-      (s2.evm (mvar rv)))).emem = m := hpost.mem.trans hmem1
+  have e1 : t'.escs = scs := hscs'.trans (hpost.scs.trans hscs1)
+  have e2 : t'.emem = m := hmem'.trans (hpost.mem.trans hmem1)
   rw [e1, e2] at hcall
   exact ⟨_, hcall, hagr.2⟩
 
