@@ -49,7 +49,9 @@ word of type `u64`. `jasminWidthsB` accepts the widths `8`, `16`, `32`, `64` of 
 general-purpose registers, `32` and `64` for `andn` and `mulhi`, and `1` only for a value
 that a comparison, a carry-out, a cast or a constant produces:
 
-* `regArith op w`: `x = a; x = x OP b`; `andn` is `_, _, _, _, _, x = #ANDN_w(a, b)`.
+* `regArith op w`: `x = a; x = x OP b`; `andn` is `_, _, _, _, _, x = #ANDN_w(a, b)`; the
+  shifts `shl` and `shr` are `x = a; t = b; x = x << t` (`>>`) with the count truncated to the
+  `u8` register `t` (`cntV`), the operand x86 takes in `cl`.
 * `regConst w n`: `x = n mod 2^w`.
 * `shrImm w n`, `shlImm w n`: `x = a; x = x >> m` (`<<`) with `m = shiftMask w n`.
 * `sarImm w n`: `x = a; x = x >>s m` with `m = sarCount w n = min n (w - 1)`.
@@ -85,7 +87,8 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
 * `JazzSig`, `JazzSig.Fits`, `JazzSig.fitsB`: the surface signature of the function and
   its agreement with the context.
 * `nfToJasminBody`, `nfToJasmin`: the lowering of a region and of a whole program; the
-  latter applies the spill pass `JasminSpill.spillUnit spillK` to the unit it builds.
+  latter applies the spill pass `JasminSpill.spillUnit` at the budget `spillBudget` of the
+  function to the unit it builds.
 * `linearArrB`: the programs whose in-place stores are not observed.
 * `jasminWidthsB`: the programs whose words are those of the x86 general-purpose
   registers.
@@ -323,6 +326,9 @@ def outsW (x : JVar) : List (Option JVar) := [none, none, none, none, none, some
 /-- A scratch register of the word size `ws`. -/
 def tmp (k : Nat) (ws : WSize) : JVar := mkV 't' k (.sword ws)
 
+/-- The `u8` scratch register that holds the count of a register shift. -/
+def cntV : JVar := tmp 0 .U8
+
 /-- The `SOp2` of a binary operation other than `andn`. -/
 def binSop (ws : WSize) : JasminBinOp → SOp2
   | .add => .Oadd ws | .sub => .Osub ws | .mul => .Omul ws | .and => .Oland ws
@@ -369,6 +375,12 @@ def emitOp (op : JasminOp) (d : Nat) (x : JVar) (as : List JVar) : Option (Cmd �
   match op with
   | .regArith .andn w =>
       some ([copn (asmName "ANDN" (wsOf w)) (outsW x) [pv a0, pv a1]], x)
+  | .regArith .shl w =>
+      some ([asgn x (pv a0), asgn cntV (pv a1),
+        asgn x (.Papp2 (.Olsl (wsOf w)) (pv x) (pv cntV))], x)
+  | .regArith .shr w =>
+      some ([asgn x (pv a0), asgn cntV (pv a1),
+        asgn x (.Papp2 (.Olsr (wsOf w)) (pv x) (pv cntV))], x)
   | .regArith bop w =>
       some ([asgn x (pv a0), asgn x (.Papp2 (binSop (wsOf w) bop) (pv x) (pv a1))], x)
   | .regConst w n => some ([asgn x (cnst ((n % 2 ^ w : Nat) : Int))], x)
@@ -982,21 +994,33 @@ def finish {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname 
       let rr := mkV 'r' r.depth sig.result.2.toSType
       mkFn fname ps (r.code ++ [asgn rr (pv rv)]) [rr] [sig.result]
 
+/-- Whether a storage class is `reg ptr`. -/
+def isRegPtr : Storage → Bool
+  | .regPtr _ => true
+  | _ => false
+
+/-- The number of pointer variables of a function: its parameters and the names of its
+declarations of storage `reg ptr`. -/
+def ptrCount (fn : JazzFn) : Nat :=
+  (fn.paramTys.filter fun p => isRegPtr p.1).length
+    + ((fn.decls.filter fun d => isRegPtr d.storage).map fun d => d.names.length).sum
+
 /-- The number of registers the spill pass `JasminSpill.spillUnit` allots to the register
-variables of a lowered function: the sixteen x86-64 general-purpose registers less `rsp`
-and the three registers the parameters of the lowered functions occupy. -/
-def spillK : Nat := 12
+variables of the function `fn`: fourteen less the number `ptrCount fn` of its pointer
+variables, which hold registers of their own. -/
+def spillBudget (fn : JazzFn) : Nat := 14 - ptrCount fn
 
 /-- **The lowering of a structured program to a Jasmin compilation unit**: the function
 `fname`, an `export fn`, over the parameters of `sig`, followed by the spill pass
-`JasminSpill.spillUnit spillK`, which keeps at most `spillK` register variables live at each
-instruction of a straight-line body. `none` when `sig` does not fit, when `linearArrB` or
-`jasminWidthsB` refuses, or when the lowering of the body refuses. -/
+`JasminSpill.spillUnit` at the budget `spillBudget` of that function, which keeps at most
+that many register variables live at each instruction of a straight-line body. `none` when
+`sig` does not fit, when `linearArrB` or `jasminWidthsB` refuses, or when the lowering of the
+body refuses. -/
 def nfToJasmin {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t) (fname : String)
     (p : NFProg jasminDialect Γ [t]) : Option JazzUnit :=
   if sig.fitsB && linearArrB p && jasminWidthsB p then
     (nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p Γ.length 0).map fun r =>
-      JasminSpill.spillUnit spillK (mkUnit (finish sig fname r))
+      JasminSpill.spillUnit (spillBudget (finish sig fname r)) (mkUnit (finish sig fname r))
   else none
 
 /-! ## 7. Erased units -/
@@ -1747,7 +1771,7 @@ theorem emitOp_good {op : JasminOp} {d : Nat} {x : JVar} {as : List JVar} {c : C
   all_goals refine ⟨?_, by first | exact hx | exact hg _⟩
   all_goals simp only [GoodC, castCode, matCF, cmpCode, cinCode]
   all_goals repeat' split
-  all_goals simp [asgn, copn, pv, cnst, lvv, outLvs, outsCW, outsW, tmp, instrVars,
+  all_goals simp [asgn, copn, pv, cnst, lvv, outLvs, outsCW, outsW, tmp, cntV, instrVars,
     pexprVars, pexprsVars, lvalVars, lvalsVars, cmdVars, hx, hg']
 
 theorem goodV_append {l l' : List JVar} (h : ∀ v ∈ l, GoodV v) (h' : ∀ v ∈ l', GoodV v) :
@@ -2129,7 +2153,8 @@ theorem nfToJasmin_eq_some {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzS
     {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
     (h : nfToJasmin sig fname p = some u) :
     sig.fitsB = true ∧ ∃ r, nfToJasminBody ((paramPairs sig).map Prod.fst).reverse p
-      Γ.length 0 = some r ∧ u = JasminSpill.spillUnit spillK (mkUnit (finish sig fname r)) := by
+      Γ.length 0 = some r ∧ u = JasminSpill.spillUnit (spillBudget (finish sig fname r))
+        (mkUnit (finish sig fname r)) := by
   unfold nfToJasmin at h
   split at h
   · rename_i hc
@@ -2189,7 +2214,7 @@ theorem nfToJasmin_erase {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig
     (h : nfToJasmin sig fname p = some u) : u.erase = { u with externs := [] } := by
   obtain ⟨_, r, hr, rfl⟩ := nfToJasmin_eq_some h
   obtain ⟨hb, hu⟩ := mkUnit_finish_erase sig fname hr
-  exact spillUnit_mkUnit_erase spillK hu hb
+  exact spillUnit_mkUnit_erase _ hu hb
 
 /-- The function of a lowered program, before the spill pass, is well formed. -/
 theorem mkUnit_finish_wellFormed {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t)

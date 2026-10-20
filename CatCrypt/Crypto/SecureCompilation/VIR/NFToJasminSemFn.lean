@@ -721,19 +721,21 @@ theorem nfToJasmin_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     change (s3.evm (mvar rr)).isDefined = true
     rw [hs3r]; exact hdef
   obtain ⟨c', t', hc', hsem', hmem', hscs', hagr'⟩ :=
-    JasminSpill.spillFn_sem aS opS gd P spillK (finish sig fname r) hc0 hbody hwt hresd
-  have hpF : (JasminSpill.spillFn spillK (finish sig fname r)).fd.params =
-      (finish sig fname r).fd.params := by unfold JasminSpill.spillFn; split <;> rfl
-  have hrF : (JasminSpill.spillFn spillK (finish sig fname r)).fd.results =
-      (finish sig fname r).fd.results := by unfold JasminSpill.spillFn; split <;> rfl
-  have hnF : (JasminSpill.spillFn spillK (finish sig fname r)).fd.name =
-      (finish sig fname r).fd.name := by unfold JasminSpill.spillFn; split <;> rfl
+    JasminSpill.spillFn_sem aS opS gd P (spillBudget (finish sig fname r)) (finish sig fname r)
+      hc0 hbody hwt hresd
+  have hpF : ∀ k, (JasminSpill.spillFn k (finish sig fname r)).fd.params =
+      (finish sig fname r).fd.params := fun _ => by unfold JasminSpill.spillFn; split <;> rfl
+  have hrF : ∀ k, (JasminSpill.spillFn k (finish sig fname r)).fd.results =
+      (finish sig fname r).fd.results := fun _ => by unfold JasminSpill.spillFn; split <;> rfl
+  have hnF : ∀ k, (JasminSpill.spillFn k (finish sig fname r)).fd.name =
+      (finish sig fname r).fd.name := fun _ => by unfold JasminSpill.spillFn; split <;> rfl
   have hfd := translateFn_eq_some _ (by rw [hpF, hfin]; exact hps) hc' (by rw [hrF, hfin]; exact hrs)
   have hprogE : prog = { pFuncs := [({ name := fname },
       { tyin := ((paramVars sig).map mvi).map (·.v_var.vtype), params := (paramVars sig).map mvi,
         body := typeC c',
         tyout := [mvi rr].map (·.v_var.vtype), rets := [mvi rr] })], pGlobs := [] } := by
-    have hname : (JasminSpill.spillFn spillK (finish sig fname r)).fd.name.name = fname := by
+    have hname : (JasminSpill.spillFn (spillBudget (finish sig fname r))
+        (finish sig fname r)).fd.name.name = fname := by
       rw [hnF, hfin]; rfl
     rw [hname] at hfd
     simp only [translateUnit, JasminSpill.spillUnit, mkUnit, List.map_cons, List.map_nil,

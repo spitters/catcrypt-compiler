@@ -773,6 +773,8 @@ theorem translateVarIExt_isSome {v : JVar} (h : OkV v) (i : CatCrypt.Crypto.Jasm
 theorem okV_tmp {k : Nat} {ws : AWSize} (h : ws ≠ .U512) : OkV (tmp k ws) := by
   simpa [OkV, tmp, mkV] using h
 
+theorem okV_cntV : OkV cntV := okV_tmp (by decide)
+
 theorem okV_cf : OkV cfVar := by simp [OkV, cfVar]
 
 theorem okV_u64 {c : Char} {k : Nat} : OkV (mkV c k u64) := by simp [OkV, mkV]
@@ -1125,7 +1127,7 @@ local macro "tr_solve" : tactic => `(tactic| repeat' (first
   | with_reducible apply isSome_ror
   | with_reducible apply isSome_add64 | with_reducible apply isSome_adc64
   | with_reducible apply forall_mem_nil_isSome | with_reducible apply forall_mem_cons_isSome
-  | with_reducible apply okV_tmp | with_reducible apply okV_cf
+  | with_reducible apply okV_tmp | with_reducible apply okV_cntV | with_reducible apply okV_cf
   | with_reducible apply okV_mkV
   | with_reducible apply u64_ne_U512 | with_reducible apply sint_ne_U512
   | with_reducible apply sword_ne_U512))

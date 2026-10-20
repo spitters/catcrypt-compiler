@@ -4173,7 +4173,7 @@ theorem nfToJasmin_wellFormed {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : Ja
     {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
     (h : nfToJasmin sig fname p = some u) : u.WellFormed := by
   obtain ⟨hfit, r, hr, rfl⟩ := nfToJasmin_eq_some h
-  exact JazzUnit.wellFormedB_sound (JasminSpill.spillUnit_wellFormed spillK
+  exact JazzUnit.wellFormedB_sound (JasminSpill.spillUnit_wellFormed _
     (JasminSpill.unit_wellFormedB_of_wellFormed (mkUnit_finish_wellFormed sig fname hfit hr)))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin
@@ -4193,7 +4193,7 @@ theorem translateUnit_isSome_of_nfToJasmin {Γ : Ctxt jasminDialect} {t : Jasmin
     (translateUnit u).isSome := by
   have hw := jasminWidthsB_of_nfToJasmin h
   obtain ⟨hfit, r, hr, rfl⟩ := nfToJasmin_eq_some h
-  exact JasminSpill.translateUnit_isSome_spill spillK
+  exact JasminSpill.translateUnit_isSome_spill _
     (translateUnit_isSome_mkUnit_finish hfit hw hr)
 
 end CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslateJazz

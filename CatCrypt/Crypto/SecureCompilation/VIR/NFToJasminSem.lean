@@ -2168,6 +2168,74 @@ theorem sem_castW (hop : JazzOpAgrees opS) {w w' : Nat} (hw : bitOkB w = true)
     apply BitVec.eq_of_toNat_eq
     rw [hu, BitVec.toNat_ofNat, BitVec.toNat_setWidth, mws_bits hw' h1, Nat.mod_mod]
 
+/-- The shifts `shl` and `shr` translate to mirror operators that, on a count truncated to
+`u8`, compute `JasminBinOp.apply`. -/
+theorem shiftSop_sem {opS : OpSem} (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true)
+    {bop : JasminBinOp} (hsh : bop = .shl ∨ bop = .shr) :
+    ∃ mop, translateSOp2Ext (binSop (wsOf ws.bits) bop) = some mop ∧
+      ∀ a b : BitVec ws.bits, opS.sem_sop2 mop (.Vword ws a)
+        (.Vword .U8 (BitVec.ofNat _ b.toNat)) = .ok (.Vword ws (bop.apply a b)) := by
+  have hws := translateWSize_gpr hg
+  rcases hsh with rfl | rfl
+  · refine ⟨.Olsl (.Op_w ws), by simp [binSop, translateSOp2Ext, translateSOp2, hws],
+      fun a b => ?_⟩
+    rw [hop.lsl ws .U8 hg rfl a _, BitVec.toNat_ofNat, Nat.mod_mod_of_dvd _ (by decide),
+      shiftMask_mod256 hg]
+    rfl
+  · refine ⟨.Olsr ws, by simp [binSop, translateSOp2Ext, translateSOp2, hws], fun a b => ?_⟩
+    rw [hop.lsr ws .U8 hg rfl a _, BitVec.toNat_ofNat, Nat.mod_mod_of_dvd _ (by decide),
+      shiftMask_mod256 hg]
+    rfl
+
+/-- **Register shift.** `x = a; t = b; x = x OP t`, with the count truncated to the `u8`
+scratch register `t` (`cntV`), writes `bop.apply a b` to `x` for the shifts `shl` and
+`shr`. -/
+theorem sem_shiftReg (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true)
+    {bop : JasminBinOp} (hsh : bop = .shl ∨ bop = .shr) {x a b : JVar} (hx : OkV x)
+    (ha : OkV a) (hb : OkV b) (hxt : (mvar x).vtype = .aword ws) (hxs : ¬ Scratch x.vname)
+    (hbx : b.vname ≠ x.vname) {s : Estate SyscallState Mem} {va vb : BitVec ws.bits}
+    (hva : s.evm (mvar a) = .Vword ws va) (hvb : s.evm (mvar b) = .Vword ws vb)
+    {c' : List MInstr}
+    (hc : translateCmdExt [asgn x (pv a), asgn cntV (pv b),
+      asgn x (.Papp2 (binSop (wsOf ws.bits) bop) (pv x) (pv cntV))] = some c') :
+    ∃ s', Sem aS opS gd prog s (typeC c') s' ∧
+      Post s s' (mvar x) (· = .Vword ws (bop.apply va vb)) := by
+  have hg8 : gprB .U8 = true := rfl
+  have hm : OkV cntV := okV_tmp_gpr hg8 0
+  have hmt : (mvar cntV).vtype = .aword .U8 := mvar_tmp hg8 0
+  have hsc : Scratch (mvar cntV).vname := scratch_tmp 0 .U8
+  have hle : CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits ≤ ws.bits := by
+    cases ws <;> simp_all [gprB] <;> decide
+  obtain ⟨mop, hmop, hsem⟩ := shiftSop_sem hop hg hsh
+  have hmx : (mvar cntV).vname ≠ x.vname := fun h => hxs (h ▸ hsc)
+  have htx : ∀ u : BitVec ws.bits, (Value.Vword ws u).typeOf = evalAtype (mvar x).vtype :=
+    fun _ => by rw [hxt]; rfl
+  have htm : ∀ u : BitVec CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits,
+      (Value.Vword .U8 u).typeOf = evalAtype (mvar cntV).vtype :=
+    fun _ => by rw [hmt]; rfl
+  refine ⟨s.withVm (((s.evm.set (mvar x) (.Vword ws va)).set (mvar cntV)
+      (.Vword .U8 (BitVec.ofNat _ vb.toNat))).set (mvar x) (.Vword ws (bop.apply va vb))), ?_,
+    post_of (by simp) ?_ ?_⟩
+  · refine sem_asgn_step aS opS gd prog hx (translatePExprExt_pv (translateVarIExt_mvi ha))
+      hc (semPexpr_mpv opS gd hva rfl) rfl (htx va) (fun c1 hc1 => ?_)
+    refine sem_asgn_step_tr aS opS gd prog hm (translatePExprExt_pv (translateVarIExt_mvi hb))
+      hc1 (v := .Vword ws vb) (semPexpr_mpv opS gd ?_ rfl)
+      (by rw [hmt]; exact truncateVal_word_le hle vb) rfl
+      (htm _) (fun c2 hc2 => ?_)
+    · exact (set_ne _ hbx).trans hvb
+    refine sem_asgn_step aS opS gd prog hx (translatePExprExt_papp2 hmop
+      (translatePExprExt_pv (translateVarIExt_mvi hx))
+      (translatePExprExt_pv (translateVarIExt_mvi hm))) hc2 ?_ rfl (htx _)
+      (fun c3 hc3 => sem_nil_step aS opS gd prog hc3 _)
+    show semPexpr (Mem := Mem) true gd opS _ (.Papp2 mop (mpv (mvi x)) (mpv (mvi cntV))) = _
+    rw [semPexpr_papp2 opS gd
+      (semPexpr_mpv opS gd ((set_ne _ (Ne.symm hmx)).trans (set_same _ _ _)) rfl)
+      (semPexpr_mpv opS gd (set_same _ _ _) rfl), hsem]
+  · intro z hz hzs
+    rw [set_ne _ hz, set_ne _ (ne_of_not_scratch hzs hsc), set_ne _ hz]
+  · exact fun h => arrTyped_set (arrTyped_set (arrTyped_set h rfl (htx _)) rfl (htm _)) rfl
+      (htx _)
+
 end Trunc
 
 /-! ## 15. The array operations -/
@@ -2490,12 +2558,21 @@ theorem opOkB_regArith {bop : JasminBinOp} (hb : bop ≠ .andn) (w : Nat) :
     opOkB (.regArith bop w) = widthOkB w := by
   cases bop <;> first | rfl | exact absurd rfl hb
 
-/-- The code of `regArith` other than `andn`. -/
-theorem emitOp_regArith {bop : JasminBinOp} (hb : bop ≠ .andn) (w d : Nat) (x : JVar)
-    (as : List JVar) :
+/-- The code of `regArith` other than `andn` and the shifts `shl` and `shr`. -/
+theorem emitOp_regArith {bop : JasminBinOp} (hb : bop ≠ .andn)
+    (hsh : ¬ (bop = .shl ∨ bop = .shr)) (w d : Nat) (x : JVar) (as : List JVar) :
     emitOp (.regArith bop w) d x as = some ([asgn x (pv (as.getD 0 dfltV)),
       asgn x (.Papp2 (binSop (wsOf w) bop) (pv x) (pv (as.getD 1 dfltV)))], x) := by
-  cases bop <;> first | rfl | exact absurd rfl hb
+  cases bop <;> first | rfl | exact absurd rfl hb | exact absurd (by simp) hsh
+
+/-- The code of the shifts `shl` and `shr` of `regArith`: the count moved to the `u8`
+register `cntV`. -/
+theorem emitOp_shiftReg {bop : JasminBinOp} (hsh : bop = .shl ∨ bop = .shr) (w d : Nat)
+    (x : JVar) (as : List JVar) :
+    emitOp (.regArith bop w) d x as = some ([asgn x (pv (as.getD 0 dfltV)),
+      asgn cntV (pv (as.getD 1 dfltV)),
+      asgn x (.Papp2 (binSop (wsOf w) bop) (pv x) (pv cntV))], x) := by
+  rcases hsh with rfl | rfl <;> rfl
 
 /-- The select code moves the condition word with a plain assignment at the widths of
 `gprB`. -/
@@ -2606,7 +2683,15 @@ theorem emitOp_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {Γ : Ctxt 
         have htw : tyOkB (.reg ws.bits) = true := by simp [tyOkB, bitOkB, widthOkB_bits hg]
         have A := argOk hs a (hmem _ (by hv_mem)) htw
         have B := argOk hs b (hmem _ (by hv_mem)) htw
-        have he' := (emitOp_regArith hbop ws.bits d (mkV 'r' d (styOf (.reg ws.bits)))
+        by_cases hsh : bop = .shl ∨ bop = .shr
+        · have he' := (emitOp_shiftReg hsh ws.bits d (mkV 'r' d (styOf (.reg ws.bits)))
+            [env.getD (varIndex a) dfltV, env.getD (varIndex b) dfltV]).symm.trans he
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj he')
+          obtain ⟨s', hsem, hp⟩ := sem_shiftReg aS opS gd prog hop hg hsh hxok A.ok B.ok
+            (mvar_new_reg hg d) hxs (B.fresh _) (reg_val hg A.agr.2) (reg_val hg B.agr.2) hc
+          exact ⟨s', hsem, hp.mono fun v hv => by rw [hv]; exact reg_val_mk hg _, rfl,
+            Or.inl ⟨rfl, rfl⟩⟩
+        have he' := (emitOp_regArith hbop hsh ws.bits d (mkV 'r' d (styOf (.reg ws.bits)))
           [env.getD (varIndex a) dfltV, env.getD (varIndex b) dfltV]).symm.trans he
         obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj he')
         obtain ⟨s', hsem, hp⟩ := sem_regArith aS opS gd prog hop hg hbop hxok A.ok B.ok
