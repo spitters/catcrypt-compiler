@@ -59,8 +59,13 @@ state from them. No second set of inputs is needed.
   `denote`-peel reductions.
 * `chacha20BlockFullMemrefJasmin` — lowered all the way to `Com jasminDialect`
   (the input reads via `stackLoad`, the output stores via `stackStore`).
-* `chacha20BlockFullMemrefJazz` / `emit` — the whole-function `.s` text, symbol
-  `chacha20_block`, to `bench/chacha_compare/gen_com/chacha20_block_full.s`.
+* `chacha20BlockFullRegCom` — the same rounds and feed-forward over the sixteen input
+  words alone, ending in 16 output staging moves.
+* `chacha20BlockFullMemrefJazz`, `chacha20BlockFullMemrefJazz_parse` / `emit` — the
+  `.jazz` text of `chacha20BlockFullRegCom` printed by `JasminOutStage.emitJazzInOuts`
+  (inputs from an input array `u64[16]`, outputs to an output array `u64[16]`), the unit
+  it parses to, and the action writing it to
+  `bench/chacha_compare/gen_com/chacha20_block_full.s`.
 -/
 
 @[expose] public section
@@ -291,22 +296,66 @@ theorem chacha20BlockFullMemref_param_ctx :
 theorem chacha20BlockFullMemref_param_count :
     (mapCtx inCtxtFull).length = 2 := rfl
 
-/-- The whole-function `.jazz`/`.s` text of the whole ChaCha20 block with the
-    full pointer ABI, symbol `chacha20_block`. The `export fn` takes exactly two
-    pointer arguments `(out, in)` — fits the x86-64 6-register ABI. -/
-def chacha20BlockFullMemrefJazz : String :=
-  JasminPrint.emitJazz "chacha20_block" chacha20BlockFullMemrefJasmin
+/-! ## 7. The printed text: the block over its sixteen input words
 
-/-- **The public emit action.** Write the whole-block full-memref `.s` (from one
-    `Com catCryptDialect` lowered through the seam) to the bench gen-from-Com
-    directory, under the symbol `chacha20_block`. Both input and output flow
-    through memref pointers, so the emitted `export fn` has only two pointer
-    arguments — jasminc compiles it (the 32-reg-arg version did not). The
-    orchestrator assembles + perf-compares against HACL* (`bench/chacha_compare`). -/
+The text is printed by `JasminOutStage.emitJazzInOuts` from the block over the sixteen
+input words alone (`chacha20BlockFullRegCom`): the staging loads them from the input
+array, and the output staging moves make the sixteen results the last bindings, which
+the staging stores into the output array. The export takes the output array `u64[16]`
+as parameter `0` and the input array `u64[16]` as parameter `1`, the order of
+`inCtxtFull`. -/
+
+/-- The register-only context of the sixteen input words. -/
+abbrev inCtxtFullR : Ctxt catCryptDialect := List.replicate 16 T64
+
+/-- Input word `i` of `inCtxtFullR` (`i < 16`). -/
+def inVarFullR (i : Nat) : Ctxt.Var inCtxtFullR T64 := inputVarM 15 [] i
+
+/-- The initial builder state over `inCtxtFullR`: both the state slots and the
+    feed-forward originals are the input words; the carried variable is input word `0`. -/
+def initBStateFullR : BState64 inCtxtFullR T64 where
+  cur := fun i => inVarFullR i.val
+  orig := fun i => inVarFullR i.val
+  out := inVarFullR 0
+
+/-- **The whole ChaCha20 block over its sixteen input words**: ten 64-carried
+    double-rounds, the 16-word feed-forward (adding the input words), then the 16
+    output staging moves; the last 16 bindings are the output words `0 … 15`. -/
+def chacha20BlockFullRegCom : Com catCryptDialect inCtxtFullR T64 :=
+  emitDoubleRounds64 10 initBStateFullR fun st =>
+  emitFeedForward64 16 st fun stf =>
+  emitOutMoves64 16 stf fun stO =>
+  .ret (stO.cur 15)
+
+/-- The `.jazz` text of the whole ChaCha20 block with an input array and an output
+    array, symbol `chacha20_block`: `chacha20BlockFullRegCom` lowered through the seam
+    and printed by `JasminOutStage.emitJazzInOuts`. `none` when the seam, the staging,
+    `nfToJasmin` or the checked printer refuses. -/
+def chacha20BlockFullMemrefJazz : Option String :=
+  (cryptoDialectToJasminCom chacha20BlockFullRegCom).bind
+    (JasminOutStage.emitJazzInOuts "chacha20_block" 64 16 16)
+
+/-- **A returned text parses to the lowered unit**: the seam lowers
+    `chacha20BlockFullRegCom` to a jasmin `Com` whose staged program `nfToJasmin` lowers
+    to a unit, and the text parses to that unit without its extern signatures. -/
+theorem chacha20BlockFullMemrefJazz_parse {s : String}
+    (h : chacha20BlockFullMemrefJazz = some s) :
+    ∃ c p u, cryptoDialectToJasminCom chacha20BlockFullRegCom = some c ∧
+      JasminOutStage.stageInOuts 64 16 16 c = some p ∧
+      NFToJasmin.nfToJasmin (JasminOutStage.inOutsSig 64 16 16) "chacha20_block" p = some u ∧
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok { u with externs := [] } := by
+  obtain ⟨c, hc, hs⟩ := Option.bind_eq_some_iff.mp h
+  obtain ⟨p, u, hp, hu, hparse⟩ := JasminOutStage.emitJazzInOuts_parse hs
+  exact ⟨c, p, u, hc, hp, hu, hparse⟩
+
+/-- **The public emit action.** Write the whole-block `.jazz` text (from one `Com
+    catCryptDialect` lowered through the seam) to the bench gen-from-Com directory,
+    under the symbol `chacha20_block`, and fail when the printer refuses. -/
 def emit : IO Unit := do
+  let some s := chacha20BlockFullMemrefJazz
+    | throw (IO.userError "chacha20_block_full: the Jasmin printer refused the program")
   IO.FS.createDirAll "bench/chacha_compare/gen_com"
-  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_full.s"
-    chacha20BlockFullMemrefJazz
+  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_full.s" s
   IO.println "CatCrypt whole-block FULL-memref emit OK : bench/chacha_compare/gen_com/chacha20_block_full.s"
 
 /-! ## Artifact generation at elaboration

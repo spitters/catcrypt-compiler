@@ -61,8 +61,12 @@ word.
   recoverable), independent of the buffer's prior contents.
 * `chacha20BlockMemrefJasmin` — lowered all the way to `Com jasminDialect` (the whole
   16-word result emitted via `stackStore`, no DCE).
-* `chacha20BlockMemrefJazz` / `emit` — the whole-function `.s` text, symbol
-  `chacha20_block`, to `bench/chacha_compare/gen_com/chacha20_block_memref.s`.
+* `chacha20BlockRegCom` — the same rounds and feed-forward over the 32 input words
+  alone, ending in 16 output staging moves (`emitOutMoves64`).
+* `chacha20BlockMemrefJazz`, `chacha20BlockMemrefJazz_parse` / `emit` — the `.jazz`
+  text of `chacha20BlockRegCom` printed by `JasminOutStage.emitJazzInOuts` (inputs from
+  an input array `u64[32]`, outputs to an output array `u64[16]`), the unit it parses
+  to, and the action writing it to `bench/chacha_compare/gen_com/chacha20_block_memref.s`.
 -/
 
 @[expose] public section
@@ -301,23 +305,26 @@ abbrev T64 : CryptoTy := .sword 64
 abbrev inCtxtM : Ctxt catCryptDialect :=
   List.replicate 32 T64 ++ [.memref 16]
 
-/-- The 16 current state words, 16 originals, and the output memref, as vars of `Γ`. -/
-structure BState64 (Γ : Ctxt catCryptDialect) where
+/-- The 16 current state words, 16 originals, and a carried variable `out` of type `o`
+(by default the output memref `.memref 16`), as vars of `Γ`. The round and feed-forward
+builders shift `out` through every binding and read it nowhere; `emitStores64` writes
+into it. -/
+structure BState64 (Γ : Ctxt catCryptDialect) (o : CryptoTy := .memref 16) where
   /-- The 16 working state words (slots `0..15`). -/
   cur : Fin 16 → Ctxt.Var Γ T64
   /-- The 16 feed-forward originals. -/
   orig : Fin 16 → Ctxt.Var Γ T64
-  /-- The output memref. -/
-  out : Ctxt.Var Γ (.memref 16)
+  /-- The carried variable: the output memref, by default. -/
+  out : Ctxt.Var Γ o
 
 /-- The continuation type for the 64-bit builder. -/
-abbrev Cont64 (t : CryptoTy) :=
-  {Γ' : Ctxt catCryptDialect} → BState64 Γ' → Com catCryptDialect Γ' t
+abbrev Cont64 (t : CryptoTy) (o : CryptoTy := .memref 16) :=
+  {Γ' : Ctxt catCryptDialect} → BState64 Γ' o → Com catCryptDialect Γ' t
 
 /-- `bvConst 64 (mask32)` then `dst := (a + b) &&& mask` — emits `bvAdd 64`, then
     `bvAnd 64` with the mask const (3 bindings; `cur dst` ends at the masked head). -/
-def emitAdd64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
-    (st : BState64 Γ) (dst a b : Fin 16) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitAdd64 {Γ : Ctxt catCryptDialect} {t o : CryptoTy}
+    (st : BState64 Γ o) (dst a b : Fin 16) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   -- m := bvConst 64 mask32
   .var (show Expr catCryptDialect Γ T64 from
         { op := .bvConst 64 mask32, retTy_eq := rfl, args := .nil }) <|
@@ -335,8 +342,8 @@ def emitAdd64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
         out := (((st.out).there).there).there })
 
 /-- `dst := dst ^^^ src` (`bvXor 64`, one binding). -/
-def emitXor64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
-    (st : BState64 Γ) (dst src : Fin 16) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitXor64 {Γ : Ctxt catCryptDialect} {t o : CryptoTy}
+    (st : BState64 Γ o) (dst src : Fin 16) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   .var (show Expr catCryptDialect Γ T64 from
         { op := .bvXor 64, retTy_eq := rfl,
           args := .cons (st.cur dst) (.cons (st.cur src) .nil) })
@@ -348,8 +355,8 @@ def emitXor64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
 /-- `dst := rotL64 dst m` = `((dst <<< m) ||| (dst >>> (32-m))) &&& mask32`:
     emits `bvConst mask`, `bvShiftL m`, `bvShiftR (32-m)`, `bvOr`, `bvAnd` — five
     bindings; `cur dst` ends at the masked head. -/
-def emitRotL64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
-    (st : BState64 Γ) (dst : Fin 16) (m : Nat) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitRotL64 {Γ : Ctxt catCryptDialect} {t o : CryptoTy}
+    (st : BState64 Γ o) (dst : Fin 16) (m : Nat) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   -- msk := bvConst 64 mask32
   .var (show Expr catCryptDialect Γ T64 from
         { op := .bvConst 64 mask32, retTy_eq := rfl, args := .nil }) <|
@@ -378,8 +385,8 @@ def emitRotL64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
 /-! ### 2.1 The quarter-round / round / feed-forward / store builders -/
 
 /-- The 64-carried quarter-round in place on slots `a b c d` (RFC §2.1). -/
-def emitQR64 {t : CryptoTy} {Γ : Ctxt catCryptDialect}
-    (st : BState64 Γ) (a b c d : Fin 16) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitQR64 {t o : CryptoTy} {Γ : Ctxt catCryptDialect}
+    (st : BState64 Γ o) (a b c d : Fin 16) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   emitAdd64 st a a b fun s1 =>            -- a += b
   emitXor64 s1 d a fun s2 =>             -- d ^= a
   emitRotL64 s2 d 16 fun s3 =>          -- d <<<= 16
@@ -394,36 +401,36 @@ def emitQR64 {t : CryptoTy} {Γ : Ctxt catCryptDialect}
   emitRotL64 s11 b 7 k                 -- b <<<= 7
 
 /-- Column round (64-carried). -/
-def emitColumnRound64 {t : CryptoTy} {Γ : Ctxt catCryptDialect}
-    (st : BState64 Γ) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitColumnRound64 {t o : CryptoTy} {Γ : Ctxt catCryptDialect}
+    (st : BState64 Γ o) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   emitQR64 st 0 4 8  12 fun s1 =>
   emitQR64 s1 1 5 9  13 fun s2 =>
   emitQR64 s2 2 6 10 14 fun s3 =>
   emitQR64 s3 3 7 11 15 k
 
 /-- Diagonal round (64-carried). -/
-def emitDiagonalRound64 {t : CryptoTy} {Γ : Ctxt catCryptDialect}
-    (st : BState64 Γ) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitDiagonalRound64 {t o : CryptoTy} {Γ : Ctxt catCryptDialect}
+    (st : BState64 Γ o) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   emitQR64 st 0 5 10 15 fun s1 =>
   emitQR64 s1 1 6 11 12 fun s2 =>
   emitQR64 s2 2 7 8  13 fun s3 =>
   emitQR64 s3 3 4 9  14 k
 
 /-- Double round (64-carried). -/
-def emitDoubleRound64 {t : CryptoTy} {Γ : Ctxt catCryptDialect}
-    (st : BState64 Γ) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitDoubleRound64 {t o : CryptoTy} {Γ : Ctxt catCryptDialect}
+    (st : BState64 Γ o) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   emitColumnRound64 st fun s1 => emitDiagonalRound64 s1 k
 
 /-- `n` double-rounds, threaded. -/
-def emitDoubleRounds64 {t : CryptoTy} : Nat → {Γ : Ctxt catCryptDialect} →
-    BState64 Γ → Cont64 t → Com catCryptDialect Γ t
+def emitDoubleRounds64 {t o : CryptoTy} : Nat → {Γ : Ctxt catCryptDialect} →
+    BState64 Γ o → Cont64 t o → Com catCryptDialect Γ t
   | 0, _, st, k => k st
   | (m+1), _, st, k => emitDoubleRound64 st fun s1 => emitDoubleRounds64 m s1 k
 
 /-- `dst := (cur dst + orig dst) &&& mask` — the feed-forward add (a `cur`/`orig`
     add, masked to 32 bits). Three bindings; `cur dst` ends at the masked head. -/
-def emitAddCO64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
-    (st : BState64 Γ) (dst : Fin 16) (k : Cont64 t) : Com catCryptDialect Γ t :=
+def emitAddCO64 {Γ : Ctxt catCryptDialect} {t o : CryptoTy}
+    (st : BState64 Γ o) (dst : Fin 16) (k : Cont64 t o) : Com catCryptDialect Γ t :=
   -- m := bvConst 64 mask32
   .var (show Expr catCryptDialect Γ T64 from
         { op := .bvConst 64 mask32, retTy_eq := rfl, args := .nil }) <|
@@ -442,8 +449,8 @@ def emitAddCO64 {Γ : Ctxt catCryptDialect} {t : CryptoTy}
 
 /-- The feed-forward: slot `i := add64 (cur i) (orig i)` for `i = m-1 … 0`, so the
     16 adds come out in index order `0..15`. -/
-def emitFeedForward64 {t : CryptoTy} : Nat → {Γ : Ctxt catCryptDialect} →
-    BState64 Γ → Cont64 t → Com catCryptDialect Γ t
+def emitFeedForward64 {t o : CryptoTy} : Nat → {Γ : Ctxt catCryptDialect} →
+    BState64 Γ o → Cont64 t o → Com catCryptDialect Γ t
   | 0, _, st, k => k st
   | (m+1), _, st, k =>
       if h : m < 16 then
@@ -473,6 +480,25 @@ def emitStores64 {t : CryptoTy} : Nat → {Γ : Ctxt catCryptDialect} →
               { cur := fun j => ((st'.cur j).there).there
                 orig := fun j => ((st'.orig j).there).there
                 out := .here })
+      else k st
+
+/-- Output staging: rebind `cur i := cur i ||| cur i` for `i = 0 … m-1` (in index
+    order), so that the 16 final words are the last 16 bindings, output word `i` at
+    binding `comLen - 16 + i` (the last-`nOut` convention of
+    `JasminOutStage.stageInOuts`). Each move is an idempotent `bvOr 64`. -/
+def emitOutMoves64 {t o : CryptoTy} : Nat → {Γ : Ctxt catCryptDialect} →
+    BState64 Γ o → Cont64 t o → Com catCryptDialect Γ t
+  | 0, _, st, k => k st
+  | (m+1), _, st, k =>
+      if h : m < 16 then
+        emitOutMoves64 m st fun st' =>
+          .var (show Expr catCryptDialect _ T64 from
+                { op := .bvOr 64, retTy_eq := rfl,
+                  args := .cons (st'.cur ⟨m, h⟩) (.cons (st'.cur ⟨m, h⟩) .nil) })
+            (k (Γ' := _)
+              { cur := fun j => if j = ⟨m, h⟩ then .here else (st'.cur j).there
+                orig := fun j => (st'.orig j).there
+                out := st'.out.there })
       else k st
 
 /-! ### 2.2 The initial builder state and the whole-block memref `Com` -/
@@ -513,6 +539,35 @@ def chacha20BlockMemrefCom : Com catCryptDialect inCtxtM (.memref 16) :=
   emitFeedForward64 16 st fun stf =>
   emitStores64 16 stf fun stS =>
   .ret stS.out
+
+/-! ### 2.3 The whole block over registers only
+
+The program printed through `JasminOutStage.emitJazzInOuts`: the same ten double-rounds
+and feed-forward over the 32 input words alone, followed by the output staging moves
+in place of the stores. The staging reads the 32 words from an input array and stores
+the last 16 bindings into an output array. -/
+
+/-- The register-only context: 16 state words and 16 feed-forward originals. -/
+abbrev inCtxtR : Ctxt catCryptDialect := List.replicate 32 T64
+
+/-- Input word `i` of `inCtxtR` (`i < 32`). -/
+def inVarR (i : Nat) : Ctxt.Var inCtxtR T64 := inputVarM 31 [] i
+
+/-- The initial builder state over `inCtxtR`: state slots `0..15` ↦ inputs `0..15`,
+    originals ↦ inputs `16..31`; the carried variable is input word `0`. -/
+def initBStateR : BState64 inCtxtR T64 where
+  cur := fun i => inVarR i.val
+  orig := fun i => inVarR (16 + i.val)
+  out := inVarR 0
+
+/-- **The whole ChaCha20 block over registers only**: ten 64-carried double-rounds, the
+    16-word feed-forward, then the 16 output staging moves; the last 16 bindings are
+    the output words `0 … 15`. -/
+def chacha20BlockRegCom : Com catCryptDialect inCtxtR T64 :=
+  emitDoubleRounds64 10 initBStateR fun st =>
+  emitFeedForward64 16 st fun stf =>
+  emitOutMoves64 16 stf fun stO =>
+  .ret (stO.cur 15)
 
 /-! ## 3. The denotation: each output memref cell holds `(chachaBlock s i).setWidth 64`
 
@@ -606,20 +661,36 @@ def chacha20BlockMemrefJasmin :
     Com jasminDialect (mapCtx inCtxtM) (mapTy (.memref 16)) :=
   (cryptoDialectToJasminCom chacha20BlockMemrefCom).get chacha20BlockMemref_jasmin_isSome
 
-/-- The whole-function `.jazz`/`.s` text of the whole ChaCha20 block with the
-    out-pointer ABI, symbol `chacha20_block`. -/
-def chacha20BlockMemrefJazz : String :=
-  JasminPrint.emitJazz "chacha20_block" chacha20BlockMemrefJasmin
+/-- The `.jazz` text of the whole ChaCha20 block on 64-bit-carried words, symbol
+    `chacha20_block`: `chacha20BlockRegCom` lowered through the seam and printed by
+    `JasminOutStage.emitJazzInOuts`. The export takes the output array `u64[16]` as
+    parameter `0` and the input array `u64[32]` as parameter `1` (state words `0 … 15`,
+    feed-forward originals `16 … 31`). `none` when the seam, the staging, `nfToJasmin`
+    or the checked printer refuses. -/
+def chacha20BlockMemrefJazz : Option String :=
+  (cryptoDialectToJasminCom chacha20BlockRegCom).bind
+    (JasminOutStage.emitJazzInOuts "chacha20_block" 64 32 16)
 
-/-- **The public emit action.** Write the whole-block memref `.s` (from one `Com
+/-- **A returned text parses to the lowered unit**: the seam lowers `chacha20BlockRegCom`
+    to a jasmin `Com` whose staged program `nfToJasmin` lowers to a unit, and the text
+    parses to that unit without its extern signatures. -/
+theorem chacha20BlockMemrefJazz_parse {s : String} (h : chacha20BlockMemrefJazz = some s) :
+    ∃ c p u, cryptoDialectToJasminCom chacha20BlockRegCom = some c ∧
+      JasminOutStage.stageInOuts 64 32 16 c = some p ∧
+      NFToJasmin.nfToJasmin (JasminOutStage.inOutsSig 64 32 16) "chacha20_block" p = some u ∧
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok { u with externs := [] } := by
+  obtain ⟨c, hc, hs⟩ := Option.bind_eq_some_iff.mp h
+  obtain ⟨p, u, hp, hu, hparse⟩ := JasminOutStage.emitJazzInOuts_parse hs
+  exact ⟨c, p, u, hc, hp, hu, hparse⟩
+
+/-- **The public emit action.** Write the whole-block `.jazz` text (from one `Com
     catCryptDialect` lowered through the seam) to the bench gen-from-Com directory,
-    under the symbol `chacha20_block`. With all 16 output words written to the output
-    buffer, no `jasminc` DCE drops them — fairly benchable + KAT-able vs HACL*. The
-    orchestrator assembles + perf-compares against HACL* (`bench/chacha_compare`). -/
+    under the symbol `chacha20_block`, and fail when the printer refuses. -/
 def emit : IO Unit := do
+  let some s := chacha20BlockMemrefJazz
+    | throw (IO.userError "chacha20_block_memref: the Jasmin printer refused the program")
   IO.FS.createDirAll "bench/chacha_compare/gen_com"
-  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_memref.s"
-    chacha20BlockMemrefJazz
+  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_memref.s" s
   IO.println "CatCrypt whole-block memref emit OK : bench/chacha_compare/gen_com/chacha20_block_memref.s"
 
 /-! ## Artifact generation at elaboration

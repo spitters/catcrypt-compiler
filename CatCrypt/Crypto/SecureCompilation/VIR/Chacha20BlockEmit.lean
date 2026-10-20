@@ -7,6 +7,8 @@ module
 
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockCatCryptEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.Chacha20BlockCatCryptEmit
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStage
 
 /-!
 # The whole ChaCha20 block as a SINGLE straight-line `Com catCryptDialect` (the unroll emit)
@@ -28,13 +30,14 @@ quarter-rounds *unrolled* into a single de-Bruijn-threaded program, then the
 16-word feed-forward add), proves the single `Com` denotes to
 `ChaCha20Block.chachaBlock`, lowers it through the committed
 `catCryptDialect → jasminDialect` seam (`cryptoDialectToJasminCom`) to a single
-jasmin `Com`, and emits the whole-function `.jazz`/`.s` via `JasminPrint.emitJazz`.
+jasmin `Com`, and prints it through `JasminOutStage.emitJazzInOuts` (the 32 input words
+loaded from an input array, the 16 feed-forward words stored to an output array).
 
 ```
 RFC-8439 §2.3 chachaBlock   (ChaCha20Block.chachaBlock, the spec)
         ▲                         ▲
         │ denote = spec           │ denote = spec  (via the seam)
-   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazz──▶ .jazz/x86
+   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazzInOuts──▶ .jazz
    (ONE straight-line 80-QR unroll + feed-forward, 976 ops (80×12 round + 16 feed-forward))
 ```
 
@@ -74,8 +77,9 @@ small lemma, folded through the round structure.
 
 * `chacha20BlockEmitJasmin` (`§7`) — the single jasmin `Com` produced by the
   seam (`cryptoDialectToJasminCom` returns `some`).
-* `chacha20BlockEmitJazz` / `emit` (`§8`) — the whole-function `.jazz`/`.s` text
-  via `JasminPrint.emitJazz`, written to
+* `chacha20BlockEmitJazz`, `chacha20BlockEmitJazz_parse` / `emit` (`§8`) — the
+  `.jazz` text printed by `JasminOutStage.emitJazzInOuts`, the unit it parses to, and
+  the action writing it to
   `bench/chacha_compare/gen_com/chacha20_block_catcrypt.s` under the symbol
   `chacha20_block`.
 
@@ -293,10 +297,10 @@ fresh `st'` over `T32 :: Γ`. By `Com.denote`'s `.var` case,
 `(emitX st … k).denote V = (k st').denote (V.extend (e.denote V))`. So a
 builder's denote is its continuation's denote at the extended valuation with the
 state-transformer applied — which is exactly what the `curState` transport
-lemmas below state. The four committed quarter-round denote lemmas
-`chacha20QR_catcrypt_denote{A,B,C,D}` and the committed round-structure
-keystones `quarterRoundAtCatCrypt_eq` / `chacha20Block_catcrypt_denote` do the
-arithmetic; this section is the de-Bruijn transport plumbing. -/
+lemmas below state. The quarter-round denote lemmas
+`chacha20QR_catcrypt_denote{A,B,C,D}` and the round-structure lemmas
+`quarterRoundAtCatCrypt_eq` / `chacha20Block_catcrypt_denote` carry the arithmetic;
+this section transports the de-Bruijn variables. -/
 
 /-- The `ChaChaState` read off a builder state's `cur` vector at valuation `V`. -/
 def curState {Γ : Ctxt catCryptDialect} (st : BState Γ) (V : Ctxt.Valuation Γ) :
@@ -416,45 +420,37 @@ def chacha20BlockEmitJasmin :
     Com jasminDialect (mapCtx inCtxt) (mapTy T32) :=
   (cryptoDialectToJasminCom chacha20BlockEmitCom).get chacha20BlockEmit_jasmin_isSome
 
-/-! ## 8. Emit: the whole block reaches `.jazz`/`.s`
+/-! ## 8. Emit: the whole block prints to `.jazz`
 
-`JasminPrint.emitJazz` lowers the jasmin `Com` to a whole-function `.jazz`/`.s`
-text (a scalar `reg u32` export `fn chacha20_block(…) -> reg u32 { … }`). The
-public `emit` action writes it to the bench gen-from-Com directory. -/
+`JasminOutStage.emitJazzInOuts` stages the jasmin `Com` with its 32 input words loaded
+from an input array and its last 16 bindings (the feed-forward adds, output words
+`0 … 15` in order) stored to an output array, lowers the staged program with
+`nfToJasmin` and prints the unit with the checked printer. The export takes the output
+array `u32[16]` as parameter `0` and the input array `u32[32]` as parameter `1`: input
+words `0 … 15` are the state, words `16 … 31` the feed-forward originals. -/
 
-/-- The whole-function `.jazz`/`.s` text of the whole ChaCha20 block, symbol
-    `chacha20_block`. -/
-def chacha20BlockEmitJazz : String :=
-  JasminPrint.emitJazz "chacha20_block" chacha20BlockEmitJasmin
+/-- The `.jazz` text of the whole ChaCha20 block, symbol `chacha20_block`, through
+`JasminOutStage.emitJazzInOuts`; `none` when the staging, `nfToJasmin` or the checked
+printer refuses. -/
+def chacha20BlockEmitJazz : Option String :=
+  JasminOutStage.emitJazzInOuts "chacha20_block" 32 32 16 chacha20BlockEmitJasmin
 
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint (strContains)
+/-- **A returned text parses to the lowered unit**: the unit `nfToJasmin` returns on the
+staged whole-block program, without its extern signatures. -/
+theorem chacha20BlockEmitJazz_parse {s : String} (h : chacha20BlockEmitJazz = some s) :
+    ∃ p u, JasminOutStage.stageInOuts 32 32 16 chacha20BlockEmitJasmin = some p ∧
+      NFToJasmin.nfToJasmin (JasminOutStage.inOutsSig 32 32 16) "chacha20_block" p = some u ∧
+      CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok { u with externs := [] } :=
+  JasminOutStage.emitJazzInOuts_parse h
 
-/- **Render smoke: the export symbol.** The emitted text is an `export fn`
-    named `chacha20_block`. -/
-#guard (strContains chacha20BlockEmitJazz "fn chacha20_block")
-
-/- **Render smoke: the rotate survives** (the diagonal ARX rotate reaches the
-    x86 printer as `#ROR_32` through the whole seam → printer chain). -/
-#guard (strContains chacha20BlockEmitJazz "ROR")
-
-/- **Render smoke: the add and xor survive.** -/
-#guard (strContains chacha20BlockEmitJazz "+") && (strContains chacha20BlockEmitJazz "^")
-
-/-- The lowered jasmin function takes the 32 input words as parameters (16 state
-    + 16 feed-forward originals); its body is the whole straight-line unroll (960
-    round ops + the 16 feed-forward adds). -/
-theorem chacha20BlockEmit_shape :
-    ((JasminPrint.lowerComToProg "chacha20_block" chacha20BlockEmitJasmin).funcs.head?.map
-      (fun fd => fd.params.length)) = some 32 := by native_decide
-
-/-- **The public emit action.** Write the whole-block `.s` (from one `Com
-    catCryptDialect` lowered through the seam) to the bench gen-from-Com
-    directory, under the symbol `chacha20_block`. The orchestrator assembles +
-    perf-compares it against HACL* (`bench/chacha_compare`). -/
+/-- **The public emit action.** Write the whole-block `.jazz` text (from one `Com
+    catCryptDialect` lowered through the seam) to the bench gen-from-Com directory,
+    under the symbol `chacha20_block`, and fail when the printer refuses. -/
 def emit : IO Unit := do
+  let some s := chacha20BlockEmitJazz
+    | throw (IO.userError "chacha20_block_catcrypt: the Jasmin printer refused the program")
   IO.FS.createDirAll "bench/chacha_compare/gen_com"
-  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_catcrypt.s"
-    chacha20BlockEmitJazz
+  IO.FS.writeFile "bench/chacha_compare/gen_com/chacha20_block_catcrypt.s" s
   IO.println "CatCrypt whole-block emit OK : bench/chacha_compare/gen_com/chacha20_block_catcrypt.s"
 
 /-! ## Artifact generation at elaboration
