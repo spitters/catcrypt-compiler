@@ -689,6 +689,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.MultiLoweringRegionTypes
 CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 CatCrypt.Crypto.SecureCompilation.VIR.NFMapLeakBlockEv
+CatCrypt.Crypto.SecureCompilation.VIR.NFFwdLoad1
 CatCrypt.Crypto.SecureCompilation.VIR.NFPassLeakMC
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapM
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapRel
