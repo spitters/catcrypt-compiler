@@ -96,8 +96,11 @@ the type `opnNoneTys` gives it (`u64` elsewhere), and no assignment has the righ
 
 ## Main results
 
-* `nfToJasmin_isSome`: `nfToJasmin` succeeds on every program of `RegionExportable` that
-  `linearArrB` and `jasminWidthsB` accept, under `JazzSig.Fits`.
+* `nfToJasmin_isSome_of_lowerable`: `nfToJasmin` succeeds on every program of
+  `BodyLowerable` (bindings whose operation `emitOp` lowers, `emitOp_isSome_iff`, and calls
+  at `wordSig`) that `linearArrB` and `jasminWidthsB` accept, under `JazzSig.Fits`;
+  `nfToJasmin_isSome` states it on `RegionExportable` through
+  `bodyLowerable_of_regionExportable`.
 * `nfToJasmin_erase`: the erasure of every unit `nfToJasmin` returns is that unit without
   its extern signatures.
 * `cmdErase_of`: a command that passes `cmdErasedB` is its own erasure.
@@ -2086,15 +2089,55 @@ theorem paramPairs_getD_ty {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzS
 
 /-! ## 10. Main results -/
 
-theorem emitOp_isSome {op : JasminOp} (h : OpPlain op) (d : Nat)
-    (x : JVar) (as : List JVar) : (emitOp op d x as).isSome := by
-  cases op
-  all_goals try (cases ‹JasminBinOp›)
-  all_goals simp_all [OpPlain, emitOp]
+/-- The operations `emitOp` lowers: those of `OpPlain` and the immediate rotation
+`rorImm`. -/
+def OpEmittable : JasminOp → Prop
+  | .regArith _ _ | .regConst _ _ | .select _ | .shrImm _ _ | .shlImm _ _
+  | .sarImm _ _ | .rorImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
+  | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _
+  | .stackZero _ _ | .stackStoreImm _ _ _ => True
+  | _ => False
 
-/-- The lowering of a region succeeds on every program of `RegionExportable`. -/
-theorem body_isSome : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    (p : NFProg jasminDialect Γ ts), RegionExportable p →
+/-- The programs `nfToJasminBody` lowers: every binding has an operation of `OpEmittable`
+and every call a signature of `wordSig`. -/
+def BodyLowerable : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
+    NFProg jasminDialect Γ ts → Prop
+  | _, _, .ret _ => True
+  | _, _, .var e k => OpEmittable e.op ∧ BodyLowerable k
+  | _, _, .forLoop _ _ body k => BodyLowerable body ∧ BodyLowerable k
+  | _, _, .ifThenElse _ thn els k =>
+      BodyLowerable thn ∧ BodyLowerable els ∧ BodyLowerable k
+  | _, _, .whileLoop _ body k => BodyLowerable body ∧ BodyLowerable k
+  | _, _, .call (as := as) (rs := rs) _ _ k => wordSig as rs = true ∧ BodyLowerable k
+
+theorem opEmittable_of_opPlain {op : JasminOp} (h : OpPlain op) : OpEmittable op := by
+  cases op <;> simp_all [OpPlain, OpEmittable]
+
+/-- `emitOp` succeeds exactly on the operations of `OpEmittable`. -/
+theorem emitOp_isSome_iff (op : JasminOp) (d : Nat) (x : JVar) (as : List JVar) :
+    (emitOp op d x as).isSome ↔ OpEmittable op := by
+  cases op <;> (try cases ‹JasminBinOp›) <;> simp [OpEmittable, emitOp]
+
+theorem emitOp_isSome {op : JasminOp} (h : OpPlain op) (d : Nat)
+    (x : JVar) (as : List JVar) : (emitOp op d x as).isSome :=
+  (emitOp_isSome_iff op d x as).mpr (opEmittable_of_opPlain h)
+
+/-- Every program of `RegionExportable` is a program of `BodyLowerable`. -/
+theorem bodyLowerable_of_regionExportable : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts), RegionExportable p → BodyLowerable p := by
+  intro Γ ts p
+  induction p with
+  | ret => intro _; trivial
+  | var e k ih => intro hp; exact ⟨opEmittable_of_opPlain hp.1.opPlain, ih hp.2⟩
+  | forLoop _ _ body k ihb ihk => intro hp; exact ⟨ihb hp.1, ihk hp.2⟩
+  | ifThenElse _ thn els k iht ihe ihk =>
+      intro hp; exact ⟨iht hp.1, ihe hp.2.1, ihk hp.2.2⟩
+  | whileLoop _ body k ihb ihk => intro hp; exact ⟨ihb hp.2.1, ihk hp.2.2⟩
+  | call _ _ k ih => intro hp; exact ⟨hp.1, ih hp.2⟩
+
+/-- The lowering of a region succeeds on every program of `BodyLowerable`. -/
+theorem body_isSome_of_lowerable : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts), BodyLowerable p →
     ∀ (env : List JVar) (d n : Nat), (nfToJasminBody env p d n).isSome := by
   intro Γ ts p
   induction p with
@@ -2103,7 +2146,7 @@ theorem body_isSome : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       intro hp env d n
       obtain ⟨he, hk⟩ := hp
       obtain ⟨cx, hcx⟩ := Option.isSome_iff_exists.mp
-        (emitOp_isSome he.opPlain d (mkV 'r' d (styOf t)) (resolveHV env e.args))
+        ((emitOp_isSome_iff e.op d (mkV 'r' d (styOf t)) (resolveHV env e.args)).mpr he)
       obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp (ih hk (cx.2 :: env) (d + 1) n)
       simp [nfToJasminBody, hcx, hr]
   | @forLoop Γ cs ts count inits body k ihb ihk =>
@@ -2124,7 +2167,7 @@ theorem body_isSome : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       simp [nfToJasminBody, ht', he', hr]
   | @whileLoop Γ cs ts inits body k ihb ihk =>
       intro hp env d n
-      obtain ⟨_, hb, hk⟩ := hp
+      obtain ⟨hb, hk⟩ := hp
       obtain ⟨b, hb'⟩ := Option.isSome_iff_exists.mp
         (ihb hb (blockVars d cs ++ env) (d + cs.length) n)
       obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp
@@ -2137,6 +2180,23 @@ theorem body_isSome : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy}
         (ih hk (blockVars d rs ++ env) (d + rs.length) n)
       simp [nfToJasminBody, hw, hr]
 
+/-- The lowering of a region succeeds on every program of `RegionExportable`. -/
+theorem body_isSome {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) (hp : RegionExportable p)
+    (env : List JVar) (d n : Nat) : (nfToJasminBody env p d n).isSome :=
+  body_isSome_of_lowerable p (bodyLowerable_of_regionExportable p hp) env d n
+
+/-- **Completeness of the lowering on `BodyLowerable`**: `nfToJasmin` succeeds on every
+program of `BodyLowerable` that `linearArrB` and `jasminWidthsB` accept, for a signature
+that fits its context. -/
+theorem nfToJasmin_isSome_of_lowerable {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (sig : JazzSig Γ t) (fname : String) {p : NFProg jasminDialect Γ [t]}
+    (hp : BodyLowerable p) (hlin : linearArrB p = true) (hw : jasminWidthsB p = true)
+    (hsig : sig.Fits) : (nfToJasmin sig fname p).isSome := by
+  obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp
+    (body_isSome_of_lowerable p hp ((paramPairs sig).map Prod.fst).reverse Γ.length 0)
+  simp [nfToJasmin, (sig.fitsB_iff).mpr hsig, hlin, hw, hr]
+
 /-- **Completeness of the lowering**: `nfToJasmin` succeeds on every program of
 `RegionExportable` that `linearArrB` and `jasminWidthsB` accept, for a signature that fits
 its context. No operation of the fragment is refused; an arithmetic shift by `n` is emitted
@@ -2144,10 +2204,9 @@ with the count `sarCount w n` (`sshiftRight_sarCount`). -/
 theorem nfToJasmin_isSome {Γ : Ctxt jasminDialect} {t : JasminTy} (sig : JazzSig Γ t)
     (fname : String) {p : NFProg jasminDialect Γ [t]} (hp : RegionExportable p)
     (hlin : linearArrB p = true) (hw : jasminWidthsB p = true) (hsig : sig.Fits) :
-    (nfToJasmin sig fname p).isSome := by
-  obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp
-    (body_isSome p hp ((paramPairs sig).map Prod.fst).reverse Γ.length 0)
-  simp [nfToJasmin, (sig.fitsB_iff).mpr hsig, hlin, hw, hr]
+    (nfToJasmin sig fname p).isSome :=
+  nfToJasmin_isSome_of_lowerable sig fname (bodyLowerable_of_regionExportable p hp) hlin hw
+    hsig
 
 theorem nfToJasmin_eq_some {Γ : Ctxt jasminDialect} {t : JasminTy} {sig : JazzSig Γ t}
     {fname : String} {p : NFProg jasminDialect Γ [t]} {u : JazzUnit}
