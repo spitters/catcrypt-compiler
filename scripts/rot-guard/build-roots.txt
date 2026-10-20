@@ -395,6 +395,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity2
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity3
 CatCrypt.Crypto.SecureCompilation.Dialects.MulHiFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.NFFlattenTuplesLeak
+CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakDeclass
 CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakLower
 CatCrypt.Crypto.SecureCompilation.Dialects.NestedRuntimeLoopFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchLoopFront
