@@ -853,6 +853,16 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
         recog hx
         all_goals a_loop h hN hM zf
     · exact ORel.none
+  | zero wd n =>
+    simp only
+    split
+    · cases hx : zeroArrA? w with
+      | none => exact ORel.none
+      | some b =>
+        unfold zeroArrA? at hx
+        recog hx
+        all_goals a_loop h hN hM zf
+    · exact ORel.none
   | _ => exact ORel.none
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr

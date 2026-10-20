@@ -27,7 +27,6 @@ The addresses the zeroing writes are a function of the destination register and 
 
 * `stPieces`, `zPieces`: the byte pieces of the two instructions, with their machine
   instructions.
-* `zeroWords`: a memory with the zero word written at `p + 8 i` for `i < n`, in order.
 
 ## Main results
 
@@ -119,11 +118,6 @@ theorem sim_storeImm (frame : String → Option (BitVec 64)) (rsp : BitVec 64) (
 
 /-! ## 2. The zeroing -/
 
-/-- The memory `m` with the zero word written at `p + 8 i` for `i = 0, …, n - 1`, in order. -/
-def zeroWords (m : AMem) (p : BitVec 64) : Nat → AMem
-  | 0 => m
-  | i + 1 => write64 (zeroWords m p i) (p + BitVec.ofNat 64 (8 * i)) 0
-
 /-- The byte pieces of `ZEROARR [D] <- [imm n; imm 64]`: `movq $0, 8i(%D)` for `i < n`. -/
 def zPieces (D : String) (n : Nat) : List (List (BitVec 8) × JInstr 64) :=
   (List.range n).map fun i =>
@@ -160,8 +154,8 @@ theorem zPieces_bytes (F W Q : Nat) (D : String) (n : Nat) (hD : isGpName D = tr
   omega
 
 /-- **The run of the zeroing**: the decoded stores write the zero word at the byte offsets
-    `8 i`, `i < n`, from the destination register, in order, and leave the registers and
-    flags. -/
+    `8 i`, `i < n`, from the destination register, in order (`JasminLsemAddrMem.zeroWords`),
+    and leave the registers and flags. -/
 theorem run_zPieces (sa : AState) (D : String) (n : Nat) :
     runBlockA sa ((zPieces D n).map Prod.snd)
       = { sa with mem := zeroWords sa.mem (sa.regs (phys D)) n } := by

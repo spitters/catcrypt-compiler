@@ -12,8 +12,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
 # The memory accessed by a run of the address machine
 
 For a set of bytes `M`, `StoreIn M frame c s` says that the memory part of the write
-footprint of the step at the program counter of `s` (`stepWrites`, the bytes of the word at
-`storeA?`) lies in `M`; `LoadIn M frame c s` says the same of the read footprint
+footprint of the step at the program counter of `s` (`stepWrites`, the bytes of the range
+`storeR?`) lies in `M`; `LoadIn M frame c s` says the same of the read footprint
 (`stepReads`, the bytes of the words of `loadsA`); `AccessIn` is their conjunction.
 
 The run predicate `RunSafe frame c Q fuel s zf` (every state that a run of at most `fuel`
@@ -109,15 +109,15 @@ def AccessIn (M : Set (BitVec 64)) (frame : String → Option (BitVec 64)) (c : 
     (s : LstateA) : Prop :=
   StoreIn M frame c s ∧ LoadIn M frame c s
 
-/-- At an `Lopn`, `StoreIn` says that the word at `storeA?` lies in `M`. -/
+/-- At an `Lopn`, `StoreIn` says that the byte range `storeR?` lies in `M`. -/
 theorem storeIn_lopn_iff {M : Set (BitVec 64)} {frame : String → Option (BitVec 64)}
     {c : Lcmd} {s : LstateA} {ii : Nat} {ds : List LOperand} {o : String}
     {ss : List LOperand} (hc : c[s.reg.lpc]? = some ⟨ii, .Lopn ds o ss⟩) :
-    StoreIn M frame c s ↔ ∀ a, storeA? frame (normA (.Lopn ds o ss),
-      tagAt c s.reg.lpc (.Lopn ds o ss)) s.reg = some a → ∀ x ∈ (⟨a, 8⟩ : Rng 64), x ∈ M := by
+    StoreIn M frame c s ↔ ∀ R, storeR? frame (normA (.Lopn ds o ss),
+      tagAt c s.reg.lpc (.Lopn ds o ss)) s.reg = some R → ∀ x ∈ R, x ∈ M := by
   unfold StoreIn stepWrites
   rw [hc]
-  exact ⟨fun h a ha x hx => h x ⟨a, ha, hx⟩, fun h x ⟨a, ha, hx⟩ => h a ha x hx⟩
+  exact ⟨fun h R hR x hx => h x ⟨R, hR, hx⟩, fun h x ⟨R, hR, hx⟩ => h R hR x hx⟩
 
 /-- At a halted state the step footprints hold no memory location and the step fails. -/
 theorem halted_step {frame : String → Option (BitVec 64)} {c : Lcmd} {s : LstateA}

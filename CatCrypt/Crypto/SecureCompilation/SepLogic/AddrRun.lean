@@ -350,6 +350,13 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
       storeA? (fun _ => none) (.Lopn [.reg "D"] "MOV:64" [.reg "S"], .reg none) r = none := by
     intro r
     simp [storeA?, slotMov?_mov64 hD hS]
+  have r1 : storeR? (fun _ => none) (.Lopn [.reg "mem.B.0"] "MOV:64" [.reg "V"], .reg none)
+      s.reg = some ⟨p + BitVec.ofNat 64 0, 8⟩ := by
+    simp [storeR?, s1]
+  have r2 : ∀ r : LstateN,
+      storeR? (fun _ => none) (.Lopn [.reg "D"] "MOV:64" [.reg "S"], .reg none) r = none := by
+    intro r
+    simp [storeR?, s2]
   rw [w1, w2 _ (by simp [JasminLsemWidthN.LstateN.nextPc, hpc])]
   simp only [runWrites, Set.union_empty]
   ext l
@@ -361,11 +368,11 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
   | pc => exact ⟨fun _ => trivial, fun _ => Or.inl trivial⟩
   | flag f => exact ⟨fun _ => trivial, fun _ => Or.inl trivial⟩
   | mem x =>
-    show ((∃ a, storeA? (fun _ => none) (.Lopn [.reg "mem.B.0"] "MOV:64" [.reg "V"], .reg none)
-        s.reg = some a ∧ x ∈ (⟨a, 8⟩ : Rng 64)) ∨
-      (∃ a, storeA? (fun _ => none) (.Lopn [.reg "D"] "MOV:64" [.reg "S"], .reg none)
-        s.reg.nextPc = some a ∧ x ∈ (⟨a, 8⟩ : Rng 64))) ↔ x ∈ (⟨p + BitVec.ofNat 64 0, 8⟩ : Rng 64)
-    rw [s1, s2]
+    show ((∃ R, storeR? (fun _ => none) (.Lopn [.reg "mem.B.0"] "MOV:64" [.reg "V"], .reg none)
+        s.reg = some R ∧ x ∈ R) ∨
+      (∃ R, storeR? (fun _ => none) (.Lopn [.reg "D"] "MOV:64" [.reg "S"], .reg none)
+        s.reg.nextPc = some R ∧ x ∈ R)) ↔ x ∈ (⟨p + BitVec.ofNat 64 0, 8⟩ : Rng 64)
+    rw [r1, r2]
     simp
 
 /-- **Non-vacuity of the frame rule for a run.** Two steps of `storeMoveBody` from the first

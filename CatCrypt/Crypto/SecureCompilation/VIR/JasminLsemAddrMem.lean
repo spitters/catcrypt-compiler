@@ -43,6 +43,8 @@ pattern of the export.
 * `STOREIMM _, [base, val, #k]` at the tag `.storeImm 64 n` stores `val` at
   `reg base + 8 (k mod n)`, the element `stackSet` writes, and stores nothing for `n = 0`
   (`storeImmAddr?`); at any other width it has no step;
+* `ZEROARR [], [base, #n', #w']` at the tag `.zero 64 n` writes `n` zero words from
+  `reg base` (`zeroWords`); at any other width it has no step;
 * `LOAD:64 d, mem.B.off` and `STORE:64 mem.B.off, v` load and store the word at
   `reg B + off`, a one-bit `v` zero-extended to 64 bits, and `LEA:64 d, mem.B.off` writes
   `reg B + off` to `d`; a 64-bit move `MOV:64 mem.B.off, v` or `MOV:64 d, mem.B.off` is that
@@ -428,6 +430,59 @@ theorem storeImmAddr?_of_lt (p : BitVec 64) {n k : Nat} (hk : k < n) :
     storeImmAddr? p n k = some (p + BitVec.ofNat 64 (8 * k)) := by
   simp [storeImmAddr?, Nat.mod_eq_of_lt hk, Nat.ne_zero_of_lt hk]
 
+/-- A memory with the zero word written at `p + 8 i` for `i < n`, in order. -/
+def zeroWords (m : AMem) (p : BitVec 64) : Nat → AMem
+  | 0 => m
+  | i + 1 => write64 (zeroWords m p i) (p + BitVec.ofNat 64 (8 * i)) 0
+
+/-- The offset of `x` from `p + j` is its offset from `p` less `j`, for `j` at most the offset
+    of `x` from `p`. -/
+theorem toNat_sub_add_ofNat (x p : BitVec 64) {j : Nat} (hj : j ≤ (x - p).toNat) :
+    (x - (p + BitVec.ofNat 64 j)).toNat = (x - p).toNat - j := by
+  simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofNat] at hj ⊢
+  omega
+
+/-- The zeroing of `n` words at `p` keeps every byte at an offset of at least `8 n` from `p`. -/
+theorem zeroWords_of_ge (m : AMem) (p x : BitVec 64) :
+    ∀ n, 8 * n ≤ (x - p).toNat → zeroWords m p n x = m x := by
+  intro n
+  induction n with
+  | zero => intro _; rfl
+  | succ i ih =>
+    intro h
+    have hne : ¬ InRange8 (p + BitVec.ofNat 64 (8 * i)) x := by
+      unfold InRange8
+      rw [toNat_sub_add_ofNat x p (by omega)]
+      omega
+    rw [zeroWords, write64_of_not_inRange _ _ _ _ hne]
+    exact ih (by omega)
+
+/-- Below the offset `8 n` from `p`, the zeroing of `n` words at `p` writes bytes that do not
+    depend on the memory it starts from. -/
+theorem zeroWords_congr (m m' : AMem) (p x : BitVec 64) :
+    ∀ n, (x - p).toNat < 8 * n → zeroWords m p n x = zeroWords m' p n x := by
+  intro n
+  induction n with
+  | zero => intro h; omega
+  | succ i ih =>
+    intro h
+    simp only [zeroWords, write64]
+    split
+    · rfl
+    · rename_i hne
+      apply ih
+      refine Nat.lt_of_not_le fun hge => hne ?_
+      unfold InRange8
+      rw [toNat_sub_add_ofNat x p hge]
+      omega
+
+/-- Recognise the address-machine form of the **array zeroing**
+    `Lopn [] "ZEROARR" [.reg base, .imm n, .imm w]`, the array addressed by the register
+    `base`, and return `base`; `none` otherwise. The word count is read from the `MemTag`. -/
+def zeroArrA? : LinstrR → Option String
+  | .Lopn [] opn [.reg base, .imm _, .imm _] => if opn = "ZEROARR" then some base else none
+  | _ => none
+
 /-- The register-file step: `fstepF` on a state with the given registers and flags. -/
 def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool) :=
   (fstepF i { reg := sa.reg, cf := sa.cf, of := sa.of } zf).map fun bz =>
@@ -452,7 +507,9 @@ def regStepA (i : LinstrRM) (sa : LstateA) (zf : Bool) : Option (LstateA × Bool
     instruction or a select on registers reads its carry-in or condition through `bitA`
     (`bitStepA`). At the tag `.storeImm 64 n` the constant-index store
     `STOREIMM _, [base, val, #k]` writes the word of `val` at the address `storeImmAddr?` of the
-    base register; at a tag `.storeImm w n` with `w ≠ 64` it has no step. -/
+    base register; at a tag `.storeImm w n` with `w ≠ 64` it has no step. At the tag
+    `.zero 64 n` the array zeroing `ZEROARR [], [base, #n', #w']` writes `n` zero words from
+    the address in `base` (`zeroWords`); at a tag `.zero w n` with `w ≠ 64` it has no step. -/
 def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA) (zf : Bool) :
     Option (LstateA × Bool) :=
   match i.snd with
@@ -581,6 +638,15 @@ def fstepA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA)
                 | some a => some ({ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a v }, zf)
                 | none => some ({ sa with reg := sa.reg.nextPc }, zf)
             | _, _ => none
+        | none => none
+      else none
+  | .zero w n =>
+      if w = 64 then
+        match zeroArrA? i.fst with
+        | some base =>
+            match sa.reg.getW base 64 with
+            | some p => some ({ sa with reg := sa.reg.nextPc, mem := zeroWords sa.mem p n }, zf)
+            | none => none
         | none => none
       else none
   | _ => none
@@ -727,6 +793,14 @@ theorem fstepA_storeImm (frame : String → Option (BitVec 64)) {d B V : String}
           reg := sa.reg.nextPc
           mem := write64 sa.mem (p + BitVec.ofNat 64 (8 * k)) v }, zf) := by
   simp [fstepA, storeImmStruct?, hB, hV, storeImmAddr?_of_lt p hk]
+
+/-- **The array zeroing.** `ZEROARR [], [B, #n', #w']` at the tag `.zero 64 n` writes `n` zero
+    words from the address in `B`. -/
+theorem fstepA_zeroArr (frame : String → Option (BitVec 64)) {B : String} {n' w' n : Nat}
+    {sa : LstateA} {p : BitVec 64} (hB : sa.reg.getW B 64 = some p) (zf : Bool) :
+    fstepA frame (.Lopn [] "ZEROARR" [.reg B, .imm n', .imm w'], .zero 64 n) sa zf
+      = some ({ sa with reg := sa.reg.nextPc, mem := zeroWords sa.mem p n }, zf) := by
+  simp [fstepA, zeroArrA?, hB]
 
 /-- The constant-index store has no step at a width other than `64`. -/
 theorem fstepA_storeImm_ne64 (frame : String → Option (BitVec 64)) (x : LinstrR) {w : Nat}

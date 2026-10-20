@@ -67,7 +67,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV (findInstrMem_sin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (evalInstrPMemF_next)
 open CatCrypt.Crypto.SecureCompilation.SepLogic (Rng)
 open CatCrypt.Crypto.SecureCompilation.SepLogic.Addr (StoreIn AccessIn storeIn_lopn_iff
-  stepWrites stepReads storeA? loadsA idxAddr? cellLdAddr?)
+  stepWrites stepReads storeA? storeR?_of_ne_zero loadsA idxAddr? cellLdAddr?)
 
 /-- The bytes of the frame words of `frame` and of the words `cellAt (base A) j`, `j < n`, of
     the arrays `(A, n)` of `slotArr`. -/
@@ -277,7 +277,14 @@ theorem accessIn_of_cases {M : Set (BitVec 64)} {frame : String → Option (BitV
   | Lopn ds o ss =>
     refine ⟨?_, ?_⟩
     · rw [storeIn_lopn_iff hb]
-      intro a ha x hx
+      intro R hR x hx
+      have hz : ∀ w n, tagAt c s.reg.lpc (.Lopn ds o ss) ≠ .zero w n := by
+        intro w n
+        unfold tagAt tagA
+        split_ifs <;> (try split) <;> (try split_ifs) <;> simp
+      rw [storeR?_of_ne_zero (i := (normA (.Lopn ds o ss), tagAt c s.reg.lpc (.Lopn ds o ss)))
+        hz] at hR
+      obtain ⟨a, ha, rfl⟩ := Option.map_eq_some_iff.mp hR
       rcases storeA?_cases ha with ⟨q, hq⟩ | ⟨b, idx, sc, v, p, vi, hs, hp, hvi, rfl⟩
         | ⟨b, off, v, p, hcl, hp, rfl⟩ | ⟨n, -, -, -, -, -, ht, -⟩
       · exact hF q a hq x hx

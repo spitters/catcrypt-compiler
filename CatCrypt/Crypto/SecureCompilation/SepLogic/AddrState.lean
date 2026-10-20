@@ -24,9 +24,11 @@ bytes; two states agree on a set of locations when they hold equal values there
 `storeA? frame i r` is the address of the eight-byte store of a step of `i` from the
 registers `r`: an indexed store `STOREIDX`, a constant-index store `STOREIMM`, a store into
 a cell (`STORE:64` or `MOV:64` into `mem.B.off`), and a store into a frame slot (a move, a carry-chain destination, an immediate
-move, a select destination). `writesA frame i s` holds the destination registers of `i`
-(`JasminLsemStepFrame.dstNames`), the program counter, the three flags and the eight bytes at
-the store address. `loadsA frame i r` lists the word addresses a step may read: the frame
+move, a select destination). `storeR? frame i r` is the byte range of the store: the eight
+bytes at `storeA?`, or the `8 n` bytes from the base register of an array zeroing `ZEROARR`
+at the tag `.zero 64 n`. `writesA frame i s` holds the destination registers of `i`
+(`JasminLsemStepFrame.dstNames`), the program counter, the three flags and the bytes of the
+store range. `loadsA frame i r` lists the word addresses a step may read: the frame
 addresses of the instruction's names, the address of an indexed load and the address of a
 cell load. `readsA frame i s` holds the registers the step reads
 (`JasminLsemAddrCongr.readsI`) and the destination registers, the program counter, the three
@@ -38,14 +40,15 @@ because a step may leave a destination register unchanged.
 * `Addr.Flag`, `Addr.Loc`, `Addr.loc`: the locations of `LstateA × Bool` and their values.
 * `Addr.regPts`, `Addr.pcPts`, `Addr.flagPts`, `Addr.memPts`, `Addr.arrPts`: points-to
   assertions.
-* `Addr.storeA?`, `Addr.loadsA`, `Addr.writesA`, `Addr.readsA`: the footprint of one step.
+* `Addr.storeA?`, `Addr.storeR?`, `Addr.loadsA`, `Addr.writesA`, `Addr.readsA`: the
+  footprint of one step.
 
 ## Main results
 
 * `Addr.fstepA_memStep`: a step from two states with equal registers and flags whose
   memories agree on the words of `loadsA` succeeds in both or in neither; the results have
-  equal registers and flags, keep every register off `dstNames`, and keep the memory or store
-  one word at `storeA?`.
+  equal registers and flags, keep every register off `dstNames`, keep the two memories
+  outside the range `storeR?` and hold equal bytes inside it.
 * `Addr.fstepA_writesIn`: a step agrees with its start outside `writesA`.
 * `Addr.fstepA_local`: two states that agree on `readsA` step alike; the results agree on
   `writesA` and each agrees with its start outside it.
@@ -239,14 +242,28 @@ def storeA? (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN)
       else none
   | _ => none
 
+/-- The byte range one step of `i` from the registers `r` stores into: at the tag `.zero 64 n`
+    the `8 n` bytes from the base register of an array zeroing (`zeroArrA?`), and at every other
+    tag the eight bytes at `storeA?`. -/
+def storeR? (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN) :
+    Option (Rng 64) :=
+  match i.2 with
+  | .zero w n =>
+      if w = 64 then
+        match zeroArrA? i.1 with
+        | some base => (r.getW base 64).map fun p => ⟨p, 8 * n⟩
+        | none => none
+      else none
+  | _ => (storeA? frame i r).map fun a => ⟨a, 8⟩
+
 /-- The locations one step of `i` from `s` may write: the destination registers, the program
-    counter, the three flags and the bytes of the word at `storeA?`. -/
+    counter, the three flags and the bytes of the range `storeR?`. -/
 def writesA (frame : String → Option (BitVec 64)) (i : LinstrRM) (s : LstateA) : Set Loc :=
   fun l => match l with
     | .reg r => r ∈ dstNames i.1
     | .pc => True
     | .flag _ => True
-    | .mem x => ∃ a, storeA? frame i s.reg = some a ∧ x ∈ (⟨a, 8⟩ : Rng 64)
+    | .mem x => ∃ R, storeR? frame i s.reg = some R ∧ x ∈ R
 
 /-- The locations one step of `i` from `s` may read: the registers of `readsI` and the
     destination registers, the program counter, the three flags and the bytes of the words of
@@ -262,14 +279,14 @@ def readsA (frame : String → Option (BitVec 64)) (i : LinstrRM) (s : LstateA) 
 
 /-- The results `p`, `q` of one step of `i` from `s` and `t`, two states with equal registers
     and flags: equal registers, flags and zero flags; every register off `dstNames` as in `s`;
-    the memories of `s` and `t`, or the two memories with one word stored at `storeA?`. -/
+    outside the range `storeR?` the memories of `s` and `t`, and inside it equal bytes. -/
 def MemStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (s t : LstateA)
     (p q : LstateA × Bool) : Prop :=
   p.1.reg = q.1.reg ∧ p.1.cf = q.1.cf ∧ p.1.of = q.1.of ∧ p.2 = q.2 ∧
     (∀ x, x ∉ dstNames i.1 → p.1.reg.lvm x = s.reg.lvm x) ∧
-    match storeA? frame i s.reg with
-    | none => p.1.mem = s.mem ∧ q.1.mem = t.mem
-    | some a => ∃ v, p.1.mem = write64 s.mem a v ∧ q.1.mem = write64 t.mem a v
+    (∀ x, (¬ ∃ R, storeR? frame i s.reg = some R ∧ x ∈ R) →
+      p.1.mem x = s.mem x ∧ q.1.mem x = t.mem x) ∧
+    ∀ x, (∃ R, storeR? frame i s.reg = some R ∧ x ∈ R) → p.1.mem x = q.1.mem x
 
 /-- The relation of two register-file results: equal registers and flags, every register off
     the names `D` as in the registers `r`, and the memories `m`, `m'`. -/
@@ -368,16 +385,17 @@ theorem slotImm?_names {frame : String → Option (BitVec 64)} {w : LinstrR} {a 
   · simp at h
 
 theorem memStep_of_regRes {frame : String → Option (BitVec 64)} {i : LinstrRM}
-    {s t : LstateA} (hs : storeA? frame i s.reg = none) {p q : LstateA × Bool}
+    {s t : LstateA} (hs : storeR? frame i s.reg = none) {p q : LstateA × Bool}
     (h : RegRes (dstNames i.1) s.reg s.mem t.mem p q) : MemStep frame i s t p q := by
   obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := h
-  refine ⟨h1, h2, h3, h4, h5, ?_⟩
-  rw [hs]
-  exact ⟨h6, h7⟩
+  refine ⟨h1, h2, h3, h4, h5, fun x _ => ⟨by rw [h6], by rw [h7]⟩, ?_⟩
+  rintro x ⟨R, hR, -⟩
+  rw [hs] at hR
+  cases hR
 
 /-- A step that writes the register `d` of `dstNames` and stores nothing. -/
 theorem memStep_reg {frame : String → Option (BitVec 64)} {i : LinstrRM} {r : LstateN}
-    {m m' : AMem} {c o : Bool} (hs : storeA? frame i r = none) {d : String}
+    {m m' : AMem} {c o : Bool} (hs : storeR? frame i r = none) {d : String}
     (hd : d ∈ dstNames i.1) {wd : Nat} (v : BitVec wd) (zf : Bool) :
     MemStep frame i ⟨r, m, c, o⟩ ⟨r, m', c, o⟩ (⟨(r.setReg d v).nextPc, m, c, o⟩, zf)
       (⟨(r.setReg d v).nextPc, m', c, o⟩, zf) := by
@@ -385,17 +403,32 @@ theorem memStep_reg {frame : String → Option (BitVec 64)} {i : LinstrRM} {r : 
   have : x ≠ d := fun e => hx (e ▸ hd)
   simp [LstateN.setReg, this]
 
+/-- A step that writes no register and replaces the memory by `f` of it, where `f` keeps every
+    byte outside the range `R` of `storeR?` and writes bytes inside `R` that do not depend on
+    the memory it starts from. -/
+theorem memStep_range {frame : String → Option (BitVec 64)} {i : LinstrRM} {r : LstateN}
+    {m m' : AMem} {c o : Bool} {R : Rng 64} (hs : storeR? frame i r = some R)
+    (f : AMem → AMem) (hout : ∀ (m : AMem) x, x ∉ R → f m x = m x)
+    (hin : ∀ (m m' : AMem) x, x ∈ R → f m x = f m' x) (zf : Bool) :
+    MemStep frame i ⟨r, m, c, o⟩ ⟨r, m', c, o⟩ (⟨r.nextPc, f m, c, o⟩, zf)
+      (⟨r.nextPc, f m', c, o⟩, zf) := by
+  refine ⟨rfl, rfl, rfl, rfl, fun x _ => rfl, fun x hx => ?_, fun x hx => ?_⟩
+  · have hxR : x ∉ R := fun h => hx ⟨R, hs, h⟩
+    exact ⟨hout m x hxR, hout m' x hxR⟩
+  · obtain ⟨R', hR', hxR⟩ := hx
+    rw [hs] at hR'
+    cases hR'
+    exact hin m m' x hxR
+
 /-- A step that stores the word `v` at `storeA?` and writes no register. -/
 theorem memStep_store {frame : String → Option (BitVec 64)} {i : LinstrRM} {r : LstateN}
-    {m m' : AMem} {c o : Bool} {a : BitVec 64} (hs : storeA? frame i r = some a)
+    {m m' : AMem} {c o : Bool} {a : BitVec 64} (hs : storeR? frame i r = some ⟨a, 8⟩)
     (v : BitVec 64) (zf : Bool) :
     MemStep frame i ⟨r, m, c, o⟩ ⟨r, m', c, o⟩ (⟨r.nextPc, write64 m a v, c, o⟩, zf)
-      (⟨r.nextPc, write64 m' a v, c, o⟩, zf) := by
-  refine ⟨rfl, rfl, rfl, rfl, fun x _ => rfl, ?_⟩
-  show match storeA? frame i r with
-    | none => _ | some a => _
-  rw [hs]
-  exact ⟨v, rfl, rfl⟩
+      (⟨r.nextPc, write64 m' a v, c, o⟩, zf) :=
+  memStep_range hs (fun m => write64 m a v)
+    (fun m x hx => write64_of_not_inRange m a v x hx)
+    (fun m m' x hx => by simp only [write64, if_pos (show InRange8 a x from hx)]) zf
 
 theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN)
     (m m' : AMem) (c o : Bool) (hm : ∀ a ∈ loadsA frame i r, read64 m' a = read64 m a)
@@ -441,7 +474,7 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
           rw [hm _ (by simp [loadsA, idxAddr?, hx, hb, hi])]
           unfold loadIdxA? at hx
           recog hx
-          exact ORel.some (memStep_reg (by simp [storeA?]) (by simp [dstNames, opNames]) _ zf)
+          exact ORel.some (memStep_reg (by simp [storeR?, storeA?]) (by simp [dstNames, opNames]) _ zf)
   | store wd n =>
     simp only
     cases hx : storeIdxA? w with
@@ -458,7 +491,7 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
           cases hv : r.getW val 64 with
           | none => exact ORel.none
           | some v =>
-            exact ORel.some (memStep_store (by simp [storeA?, hx, hb, hi]) v zf)
+            exact ORel.some (memStep_store (by simp [storeR?, storeA?, hx, hb, hi]) v zf)
   | reg cd =>
     simp only
     cases hs : slotMov? w with
@@ -470,23 +503,23 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
       | some a =>
         simp only
         rw [hname src hsrc a hfs]
-        exact ORel.some (memStep_reg (by simp [storeA?, hs, hfs]) hd _ zf)
+        exact ORel.some (memStep_reg (by simp [storeR?, storeA?, hs, hfs]) hd _ zf)
       | none =>
         cases hfd : frame dst with
         | some a =>
           simp only
           cases hv : r.getW src 64 with
-          | some v => exact ORel.some (memStep_store (by simp [storeA?, hs, hfs, hfd]) v zf)
+          | some v => exact ORel.some (memStep_store (by simp [storeR?, storeA?, hs, hfs, hfd]) v zf)
           | none =>
             simp only
             cases hv1 : r.getW src 1 with
             | some b =>
-              exact ORel.some (memStep_store (by simp [storeA?, hs, hfs, hfd]) _ zf)
+              exact ORel.some (memStep_store (by simp [storeR?, storeA?, hs, hfs, hfd]) _ zf)
             | none => exact ORel.none
         | none =>
           simp only
           exact (regStepA_mem _ r m m' c o zf).mono fun p q h =>
-            memStep_of_regRes (by simp [storeA?, hs, hfs, hfd]) h
+            memStep_of_regRes (by simp [storeR?, storeA?, hs, hfs, hfd]) h
     | none =>
       simp only
       cases hk : slotCmp? w with
@@ -506,13 +539,13 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
             simp [dstNames, opNames]
           rw [hname q hqn a hq]
           refine (regStepA_mem _ r m m' c o zf).mono fun p q h => memStep_of_regRes
-            (by simp [storeA?, hs, hk]) ?_
+            (by simp [storeR?, storeA?, hs, hk]) ?_
           rw [show (w, MemTag.reg cd).1 = w from rfl, hdn]
           simpa [dstNames, opNames] using h
         | none =>
           simp only
           exact (regStepA_mem _ r m m' c o zf).mono fun p q h =>
-            memStep_of_regRes (by simp [storeA?, hs, hk]) h
+            memStep_of_regRes (by simp [storeR?, storeA?, hs, hk]) h
       | none =>
         simp only
         cases hcl : cellA? w with
@@ -525,7 +558,7 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
             | some pb =>
               simp only
               rw [hm _ (by simp [loadsA, cellLdAddr?, hcl, hb])]
-              exact ORel.some (memStep_reg (by simp [storeA?, hs, hk, hcl])
+              exact ORel.some (memStep_reg (by simp [storeR?, storeA?, hs, hk, hcl])
                 (cellA?_ld_names hcl) _ zf)
           | st b off v =>
             simp only
@@ -534,19 +567,19 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
             | some pb =>
               cases hv : r.getW v 64 with
               | some x =>
-                exact ORel.some (memStep_store (by simp [storeA?, hs, hk, hcl, hb]) x zf)
+                exact ORel.some (memStep_store (by simp [storeR?, storeA?, hs, hk, hcl, hb]) x zf)
               | none =>
                 simp only
                 cases hv1 : r.getW v 1 with
                 | some x =>
-                  exact ORel.some (memStep_store (by simp [storeA?, hs, hk, hcl, hb]) _ zf)
+                  exact ORel.some (memStep_store (by simp [storeR?, storeA?, hs, hk, hcl, hb]) _ zf)
                 | none => exact ORel.none
           | lea d b off =>
             simp only
             cases hb : r.getW b 64 with
             | none => exact ORel.none
             | some pb =>
-              exact ORel.some (memStep_reg (by simp [storeA?, hs, hk, hcl])
+              exact ORel.some (memStep_reg (by simp [storeR?, storeA?, hs, hk, hcl])
                 (cellA?_lea_names hcl) _ zf)
         | none =>
           simp only
@@ -560,8 +593,8 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
               simp only [Bool.false_eq_true, ↓reduceIte] <;> split <;>
               first
               | exact ORel.none
-              | exact ORel.some (memStep_store (by simp [storeA?, hs, hk, hcl, hsc, hfd]) _ zf)
-              | exact ORel.some (memStep_reg (by simp [storeA?, hs, hk, hcl, hsc, hfd]) hd _ zf)
+              | exact ORel.some (memStep_store (by simp [storeR?, storeA?, hs, hk, hcl, hsc, hfd]) _ zf)
+              | exact ORel.some (memStep_reg (by simp [storeR?, storeA?, hs, hk, hcl, hsc, hfd]) hd _ zf)
           | none =>
             simp only
             cases hsi : slotImm? frame w with
@@ -570,7 +603,7 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
               obtain ⟨q, hq, hfq⟩ := slotImm?_names hsi
               simp only
               rw [hname q hq a hfq]
-              exact ORel.some (memStep_store (by simp [storeA?, hs, hk, hcl, hsc, hsi]) _ zf)
+              exact ORel.some (memStep_store (by simp [storeR?, storeA?, hs, hk, hcl, hsc, hsi]) _ zf)
             | none =>
               simp only
               cases hsv : slotCmov? frame w with
@@ -583,13 +616,13 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
                   first
                   | exact ORel.none
                   | exact ORel.some
-                      (memStep_store (by simp [storeA?, hs, hk, hcl, hsc, hsi, hsv, hfd]) _ zf)
+                      (memStep_store (by simp [storeR?, storeA?, hs, hk, hcl, hsc, hsi, hsv, hfd]) _ zf)
                   | exact ORel.some
-                      (memStep_reg (by simp [storeA?, hs, hk, hcl, hsc, hsi, hsv, hfd]) hd _ zf)
+                      (memStep_reg (by simp [storeR?, storeA?, hs, hk, hcl, hsc, hsi, hsv, hfd]) hd _ zf)
               | none =>
                 simp only
-                have hst : storeA? frame (w, .reg cd) r = none := by
-                  simp [storeA?, hs, hk, hcl, hsc, hsi, hsv]
+                have hst : storeR? frame (w, .reg cd) r = none := by
+                  simp [storeR?, storeA?, hs, hk, hcl, hsc, hsi, hsv]
                 have h1 := regStepA_mem (w, .reg cd) r m m' c o zf
                 have h2 := bitStepA_mem frame w r m m' c o zf hword hbit
                 revert h1
@@ -617,10 +650,27 @@ theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r
             simp only
             cases ha : storeImmAddr? pb n k with
             | some a =>
-              exact ORel.some (memStep_store (by simp [storeA?, hw, hx, hb, ha]) v zf)
+              exact ORel.some (memStep_store (by simp [storeR?, storeA?, hw, hx, hb, ha]) v zf)
             | none =>
-              exact ORel.some (memStep_of_regRes (by simp [storeA?, hw, hx, hb, ha])
+              exact ORel.some (memStep_of_regRes (by simp [storeR?, storeA?, hw, hx, hb, ha])
                 ⟨rfl, rfl, rfl, rfl, fun x _ => rfl, rfl, rfl⟩)
+    · exact ORel.none
+  | zero wd n =>
+    simp only
+    split
+    · next hw =>
+      cases hx : zeroArrA? w with
+      | none => exact ORel.none
+      | some base =>
+        simp only
+        cases hb : r.getW base 64 with
+        | none => exact ORel.none
+        | some pb =>
+          exact ORel.some (memStep_range (R := ⟨pb, 8 * n⟩)
+            (by simp [storeR?, hw, hx, hb]) (fun m => zeroWords m pb n)
+            (fun m x hx => zeroWords_of_ge m pb x n
+              (Nat.le_of_not_lt fun h => hx (Rng.mem_def.mpr h)))
+            (fun m m' x hx => zeroWords_congr m m' pb x n (Rng.mem_def.mp hx)) zf)
     · exact ORel.none
   | _ => exact ORel.none
 
@@ -693,6 +743,35 @@ theorem storeA?_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {r 
     · rfl
   | _ => rfl
 
+/-- Off the zero tag, the store range of a step is the eight bytes at `storeA?`. -/
+theorem storeR?_of_ne_zero {frame : String → Option (BitVec 64)} {i : LinstrRM} {r : LstateN}
+    (h : ∀ w n, i.2 ≠ .zero w n) :
+    storeR? frame i r = (storeA? frame i r).map fun a => ⟨a, 8⟩ := by
+  obtain ⟨w, tag⟩ := i
+  cases tag with
+  | zero wd n => exact absurd rfl (h wd n)
+  | _ => rfl
+
+/-- The store range of a step depends only on the registers the step reads. -/
+theorem storeR?_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {r r' : LstateN}
+    (h : NAgree (readsI i.1) r r') : storeR? frame i r = storeR? frame i r' := by
+  have hA := storeA?_congr frame i h
+  obtain ⟨w, tag⟩ := i
+  unfold storeR?
+  cases tag with
+  | zero wd n =>
+    simp only
+    split
+    · cases hx : zeroArrA? w with
+      | none => rfl
+      | some b =>
+        unfold zeroArrA? at hx
+        recog hx
+        simp only
+        reads_rw h
+    · rfl
+  | _ => simp only [hA]
+
 /-- **The write footprint of one step.** A successful step of `fstepA` agrees with its start
     outside `writesA`. -/
 theorem fstepA_writesIn (frame : String → Option (BitVec 64)) (i : LinstrRM) {s : LstateA}
@@ -703,22 +782,13 @@ theorem fstepA_writesIn (frame : String → Option (BitVec 64)) (i : LinstrRM) {
   rw [h] at hM
   cases hM with
   | some hpq =>
-    obtain ⟨-, -, -, -, hreg, hmem⟩ := hpq
+    obtain ⟨-, -, -, -, hreg, hmem, -⟩ := hpq
     intro l hl
     cases l with
     | reg x => exact (hreg x hl).symm
     | pc => exact absurd trivial hl
     | flag f => exact absurd trivial hl
-    | mem x =>
-      show m x = p.1.mem x
-      have hl' : ¬ ∃ a, storeA? frame i r = some a ∧ x ∈ (⟨a, 8⟩ : Rng 64) := hl
-      simp only at hmem
-      split at hmem
-      · exact (congrFun hmem.1 x).symm
-      · rename_i a hst
-        obtain ⟨v, hv, -⟩ := hmem
-        rw [hv]
-        exact (write64_of_not_inRange _ _ _ _ fun hx => hl' ⟨a, hst, hx⟩).symm
+    | mem x => exact (hmem x hl).1.symm
 
 /-- A step preserves an assertion whose footprint avoids the step's write footprint. -/
 theorem fstepA_frame (frame : String → Option (BitVec 64)) (i : LinstrRM) {s : LstateA}
@@ -767,7 +837,7 @@ theorem fstepA_local (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
   have hWt : ∀ q, fstepA frame i ⟨r', m', c, o⟩ zf = some q →
       AgreeOn (writesA frame i ⟨r', m', c, o⟩)ᶜ (⟨r', m', c, o⟩, zf) q :=
     fun _ hq => fstepA_writesIn frame i hq
-  have hst : storeA? frame i r' = storeA? frame i r := (storeA?_congr frame i hN).symm
+  have hst : storeR? frame i r' = storeR? frame i r := (storeR?_congr frame i hN).symm
   have hWeq : writesA frame i ⟨r', m', c, o⟩ = writesA frame i ⟨r, m, c, o⟩ := by
     funext l
     cases l <;> simp only [writesA, hst]
@@ -782,7 +852,7 @@ theorem fstepA_local (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
   | some hpq =>
   cases hC with
   | some hqq =>
-  obtain ⟨e1, e2, e3, e4, -, e6⟩ := hpq
+  obtain ⟨e1, e2, e3, e4, -, -, e6⟩ := hpq
   obtain ⟨n1, n2, n3, n4, n5⟩ := hqq
   refine ORel.some ⟨?_, hWs p rfl, hWeq ▸ hWt q rfl⟩
   intro l hl
@@ -805,12 +875,7 @@ theorem fstepA_local (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
     · exact e4.trans n5
   | mem x =>
     show p.1.mem x = q.1.mem x
-    obtain ⟨a, ha, hx⟩ := hl
-    have ha' : storeA? frame i r = some a := ha
     rw [← n2]
-    simp only [ha'] at e6
-    obtain ⟨v, hv, hv'⟩ := e6
-    rw [hv, hv']
-    simp only [write64, if_pos (show InRange8 a x from hx)]
+    exact e6 x hl
 
 end CatCrypt.Crypto.SecureCompilation.SepLogic.Addr
