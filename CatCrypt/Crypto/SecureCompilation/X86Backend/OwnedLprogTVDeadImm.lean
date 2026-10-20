@@ -230,8 +230,32 @@ theorem symMem_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
       · rw [symCast_congr (R' := ss'.regs) hR hL]; exact liftR_congr hS _
   | loadC => trivial
   | storeC => trivial
-  | zero _ _ => trivial
-  | storeImm _ _ => trivial
+  | zero w n =>
+      dsimp only
+      split
+      · rename_i dst opn a b
+        by_cases ho : opn = "ZEROARR"
+        · simp only [ho, if_true]
+          refine ⟨rfl, ⟨?_, hS.2⟩, [], rfl, rfl, fun _ h => by cases h⟩
+          simp [SSt.setA, hS.1]
+        · simp only [ho, if_false]
+          trivial
+      · trivial
+  | storeImm w n =>
+      dsimp only
+      split
+      · rename_i dst base val k hl
+        have hv : ss.regs val = ss'.regs val := by
+          unfold storeImmStruct? at hl
+          repeat' split at hl
+          all_goals simp_all [instrReadRegs, operandReads]
+        by_cases hk : k < 2 ^ 64
+        · simp only [hk, if_true]
+          refine ⟨by rw [hS.1, hv], ⟨?_, hS.2⟩, [], rfl, rfl, fun _ h => by cases h⟩
+          simp [SSt.setA, hS.1, hv]
+        · simp only [hk, if_false]
+          trivial
+      · trivial
   | reg cd => dsimp only; rw [symCast_congr (R' := ss'.regs) hR hL]; exact liftR_congr hS _
 
 theorem aluFlagOp?_reads {i : LinstrRM} {op : AluOp} {a c : LOperand}
@@ -485,8 +509,12 @@ theorem symStep_sh (i : LinstrRM) (ss ss' : SSt) :
                     · exact liftR_sh ss ss' (symCast_sh _ _ _)
                 | loadC => trivial
                 | storeC => trivial
-                | zero _ _ => trivial
-                | storeImm _ _ => trivial
+                | zero w n =>
+                    dsimp only
+                    split <;> (try split) <;> first | exact ⟨[], rfl, rfl⟩ | trivial
+                | storeImm w n =>
+                    dsimp only
+                    split <;> (try split) <;> first | exact ⟨[], rfl, rfl⟩ | trivial
                 | reg cd => exact liftR_sh ss ss' (symCast_sh _ _ _)
               generalize symMem i ss = o at hm
               generalize symMem i ss' = o' at hm
@@ -987,11 +1015,18 @@ end DeadImm
 
 /-! ## 7. Flag-quiet steps -/
 
-/-- The step of `i` writes no array: its tag is not an array store, or its instruction is
-    not a recognised indexed store. -/
+/-- The step of `i` writes no array: under a store tag its instruction is not a recognised
+    indexed store, under a zero tag it is not the `ZEROARR` form, under a constant-index
+    store tag it is not a recognised constant-index store, and every other tag writes no
+    array. -/
 def arrQuiet (i : LinstrRM) : Bool :=
   match i.2 with
   | .store _ _ => (storeStruct? i.1).isNone
+  | .zero _ _ =>
+      match i.1 with
+      | .Lopn [.reg _] opn [.imm _, .imm _] => opn != "ZEROARR"
+      | _ => true
+  | .storeImm _ _ => (storeImmStruct? i.1).isNone
   | _ => true
 
 /-- The step of `i` writes no flag and no array: `i` is not a compare, not a carry-family
@@ -1034,8 +1069,21 @@ theorem symMem_same (i : LinstrRM) (ha : arrQuiet i = true) {ss s : SSt} {gs : L
       · exact liftR_same h
   | loadC => cases h
   | storeC => cases h
-  | zero _ _ => cases h
-  | storeImm _ _ => cases h
+  | zero w n =>
+      dsimp only at h
+      split at h
+      · rename_i dst opn a b
+        by_cases ho : opn = "ZEROARR"
+        · simp [arrQuiet, ho] at ha
+        · simp only [ho, if_false] at h
+          cases h
+      · cases h
+  | storeImm w n =>
+      dsimp only at h
+      split at h
+      · rename_i hs
+        simp [arrQuiet, hs] at ha
+      · cases h
   | reg cd => exact liftR_same h
 
 /-- **A flag-quiet step keeps the flags and the arrays.** -/
@@ -1397,7 +1445,8 @@ theorem dropOkW_ownedCheckM_complete (outs : List String) (B : List (LinstrRM ×
 theorem immMov?_flagQuiet {i : LinstrRM} {r : String} (h : immMov? i = some r) :
     flagQuiet i = true := by
   obtain ⟨opn, n, tag, rfl, -, -⟩ := immMov?_spec h
-  cases tag <;> simp [flagQuiet, cmpArgs?, carryArgs?, aluFlagOp?, arrQuiet, storeStruct?]
+  cases tag <;> simp [flagQuiet, cmpArgs?, carryArgs?, aluFlagOp?, arrQuiet, storeStruct?,
+    storeImmStruct?]
 
 theorem wrOf_immMov {i : LinstrRM} {r : String} (h : immMov? i = some r) : wrOf i = [r] := by
   obtain ⟨w, n, hs⟩ := symStep_immMov h

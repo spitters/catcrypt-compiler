@@ -114,8 +114,18 @@ theorem symMem_flags (i : LinstrRM) (ss : SSt) :
       · exact liftR_flags ss _ ss' gs h
   | loadC => cases h
   | storeC => cases h
-  | zero _ _ => cases h
-  | storeImm _ _ => cases h
+  | zero w n =>
+      dsimp only at h
+      split at h <;> (try split at h) <;>
+        first
+        | (simp only [SOut.ok.injEq] at h; rw [← h.1]; exact ⟨rfl, rfl, rfl⟩)
+        | cases h
+  | storeImm w n =>
+      dsimp only at h
+      split at h <;> (try split at h) <;>
+        first
+        | (simp only [SOut.ok.injEq] at h; rw [← h.1]; exact ⟨rfl, rfl, rfl⟩)
+        | cases h
   | reg cd => exact liftR_flags ss _ ss' gs h
 
 /-- A description of a memref step that keeps the symbolic flags describes the step on the

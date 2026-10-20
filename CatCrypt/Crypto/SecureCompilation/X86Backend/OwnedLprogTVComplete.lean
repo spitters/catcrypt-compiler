@@ -518,6 +518,7 @@ theorem STerm.subst_ref : ∀ t : STerm, t.subst STerm.ref = t
 
 theorem SArr.subst_ref : ∀ a : SArr, a.subst STerm.ref = a
   | .cell _ => rfl
+  | .zero _ _ => rfl
   | .aset a _ _ i v => by
       simp only [SArr.subst, SArr.subst_ref a, STerm.subst_ref i, STerm.subst_ref v]
 end
@@ -599,6 +600,7 @@ theorem STerm.refsLt_of_subst {n : Nat} :
 theorem SArr.refsLt_of_subst {n : Nat} :
     ∀ a : SArr, a.subst (keepBelow n) = a → a.refsLt n = true
   | .cell _, _ => rfl
+  | .zero _ _, _ => rfl
   | .aset a _ _ i v, h => by
       simp only [SArr.subst, SArr.aset.injEq, true_and] at h
       simp only [SArr.refsLt, Bool.and_eq_true]
@@ -730,8 +732,22 @@ theorem symMem_eqv {ss ss' : SSt} (h : ss.Eqv ss') (i : LinstrRM) :
       · rw [← hR]; exact liftR_eqv h _
   | loadC => trivial
   | storeC => trivial
-  | zero _ _ => trivial
-  | storeImm _ _ => trivial
+  | zero w n =>
+      dsimp only
+      split
+      · split
+        · refine ⟨⟨hR, ?_, hZ, hC, hO⟩, rfl, [], rfl, rfl⟩
+          simp only [SSt.setA, hA]
+        · trivial
+      · trivial
+  | storeImm w n =>
+      dsimp only
+      split
+      · split
+        · refine ⟨⟨hR, ?_, hZ, hC, hO⟩, by rw [hR, hA], [], rfl, rfl⟩
+          simp only [SSt.setA, hR, hA]
+        · trivial
+      · trivial
   | reg cd => dsimp only; rw [← hR]; exact liftR_eqv h _
 
 theorem aluFl_eqv {ss ss' : SSt} (h : ss.Eqv ss') (i : LinstrRM) {o o' : SOut}
@@ -842,8 +858,18 @@ theorem symMem_frm (i : LinstrRM) {ss s : SSt} {gs : List SG}
       · exact liftR_frm h
   | loadC => cases h
   | storeC => cases h
-  | zero _ _ => cases h
-  | storeImm _ _ => cases h
+  | zero w n =>
+      dsimp only at h
+      split at h <;> (try split at h) <;>
+        first
+        | (simp only [SOut.ok.injEq] at h; rw [← h.1]; exact (SSt.Frm.refl ss).setA _ _)
+        | cases h
+  | storeImm w n =>
+      dsimp only at h
+      split at h <;> (try split at h) <;>
+        first
+        | (simp only [SOut.ok.injEq] at h; rw [← h.1]; exact (SSt.Frm.refl ss).setA _ _)
+        | cases h
   | reg cd => exact liftR_frm h
 
 theorem symCarry_frm {op : CarryOp} {d : String} {a b : LOperand} {ss s : SSt} {gs : List SG}
@@ -1336,8 +1362,8 @@ theorem symMem_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x opn : String) (b : LOpe
       exact liftR_copy e d x (symCast_writesOnly _ _ _ _ _ _)
   | loadC => trivial
   | storeC => trivial
-  | zero _ _ => trivial
-  | storeImm _ _ => trivial
+  | zero w n => exact trivial
+  | storeImm w n => cases b <;> exact trivial
   | reg cd =>
       simp only [symMem, hc]
       exact liftR_copy e d x (symCast_writesOnly _ _ _ _ _ _)

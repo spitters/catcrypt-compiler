@@ -1208,15 +1208,20 @@ theorem arrIn_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
 
 /-- Every element of the symbolic array `a` is at most `b`: a fact of `F` states it
     (`arrIn`), or `a` sets one element of an array that obeys the bound to a word whose
-    upper bound `hiNe` is within it. -/
+    upper bound `hiNe` is within it, or `a` is the zero array. -/
 def arrOk (F : List SFact) (b : Nat) : SArr → Bool
   | .cell r => arrIn F (.cell r) b
+  | .zero _ _ => true
   | .aset a w n i v => arrIn F (.aset a w n i v) b || (arrOk F b a && decide (hiNe F v ≤ b))
 
 theorem arrOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {b : Nat} :
     ∀ a : SArr, arrOk F b a = true → ArrLe (a.ev V A C O) b
   | .cell r, h => arrIn_sound hF h
+  | .zero w n, _ => fun _ => by
+      show wval ⟨w, 0⟩ ≤ b
+      simp only [wval, castW]
+      split <;> rename_i h <;> [subst h; skip] <;> simp
   | .aset a w n i v, h => by
       simp only [arrOk, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
       rcases h with h | ⟨ha, hv⟩

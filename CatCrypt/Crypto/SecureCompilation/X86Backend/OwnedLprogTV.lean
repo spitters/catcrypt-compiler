@@ -302,6 +302,8 @@ inductive SArr where
   | cell (r : String)
   /-- The array `a` read at shape `(w, n)` with element `i` set to `v`. -/
   | aset (a : SArr) (w n : Nat) (i v : STerm)
+  /-- The array of shape `(w, n)` whose elements are all zero. -/
+  | zero (w n : Nat)
 end
 
 deriving instance DecidableEq, Hashable for STerm, SArr
@@ -361,6 +363,7 @@ def STerm.ev : STerm → Σ w, BitVec w
 def SArr.ev : SArr → ArrCell
   | .cell r => A r
   | .aset a w n i v => ⟨w, n, stackSet (castA a.ev w n) (castW i.ev 64).toNat (castW v.ev w)⟩
+  | .zero w n => ⟨w, n, fun _ => 0⟩
 end
 
 /-- The value of a symbolic flag, for the start registers `V`, arrays `A` and flag `Z`. -/
@@ -1431,8 +1434,19 @@ def symMem (i : LinstrRM) (ss : SSt) : SOut :=
       | none => liftR ss (symCast (i.1, none) ss.regs)
   | .loadC => .unk
   | .storeC => .unk
-  | .zero _ _ => .unk
-  | .storeImm _ _ => .unk
+  | .zero w n =>
+      match i.1 with
+      | .Lopn [.reg dst] opn [.imm _, .imm _] =>
+          if opn = "ZEROARR" then .ok (ss.setA dst (.zero w n)) [] else .fail
+      | _ => .unk
+  | .storeImm w n =>
+      match storeImmStruct? i.1 with
+      | some (dst, base, val, k) =>
+          if k < 2 ^ 64 then
+            .ok (ss.setA dst (.aset (ss.arrs base) w n (.immW 64 k) (ss.regs val)))
+              [.shp (ss.arrs base) w n, .wid (ss.regs val) w]
+          else .unk
+      | none => .fail
   | .reg cd => liftR ss (symCast (i.1, cd) ss.regs)
 
 theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
@@ -1500,8 +1514,53 @@ theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
         exact liftR_sound (symCast_sound (x, none) ss.regs) V A C O m hm
   | loadC => trivial
   | storeC => trivial
-  | zero _ _ => trivial
-  | storeImm _ _ => trivial
+  | zero w n =>
+      dsimp only
+      split
+      · rename_i dst opn k1 k2
+        split
+        · rename_i hz
+          have heq : lsemStepMem (.Lopn [.reg dst] opn [.imm k1, .imm k2], .zero w n) m =
+              some ((m.setArr dst (fun _ : Fin n => (0 : BitVec w))).nextPc) := by
+            simp only [lsemStepMem, zeroStruct?, hz, if_true]
+          rw [heq]
+          refine ⟨fun m' hm' => ?_, fun _ => rfl⟩
+          cases hm'
+          exact ⟨allG_nil V A C O, hm.setA dst (.zero w n), rfl, rfl⟩
+        · rename_i hz
+          simp only [SOut.DescM, lsemStepMem, zeroStruct?, hz, if_false]
+      · trivial
+  | storeImm w n =>
+      dsimp only
+      split
+      · rename_i dst base val k hs
+        split
+        · rename_i hk
+          have heq : lsemStepMem (x, .storeImm w n) m =
+              if ((m.larr base).1 = w ∧ (m.larr base).2.1 = n) ∧ (m.reg.lvm val).1 = w then
+                some ((m.setArr dst (stackSet (castA (m.larr base) w n) k
+                  (castW (m.reg.lvm val) w))).nextPc)
+              else none := by
+            simp only [lsemStepMem, hs, getArr_eq, getW_eq]
+            split_ifs <;> simp_all
+          rw [heq, hm.2 base, hm.1 val]
+          have hk' : (castW ((STerm.immW 64 k).ev V A C O) 64).toNat = k := by
+            simpa [STerm.ev, castW] using hk
+          refine ⟨fun m' hm' => ?_, fun hg => ?_⟩
+          · split_ifs at hm' with hc
+            cases hm'
+            refine ⟨?_, ?_, rfl, rfl⟩
+            · simp only [AllG, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp,
+                forall_eq, SG.holds]
+              exact ⟨hc.1, hc.2⟩
+            · have := hm.setA dst ((ss.arrs base).aset w n (.immW 64 k) (ss.regs val))
+              simpa only [SArr.ev, hk'] using this
+          · simp only [AllG, List.mem_cons, List.mem_nil_iff, or_false, forall_eq_or_imp,
+              forall_eq, SG.holds] at hg
+            simp [hg]
+        · trivial
+      · rename_i hs
+        simp only [SOut.DescM, lsemStepMem, hs]
   | reg cd => exact liftR_sound (symCast_sound (x, cd) ss.regs) V A C O m hm
 
 /-- The symbolic word of an operand read at width `64`, with the guards of the read;
@@ -1767,8 +1826,20 @@ theorem symMem_zf (i : LinstrRM) (ss : SSt) :
       · exact liftR_zf ss _ ss' gs h
   | loadC => cases h
   | storeC => cases h
-  | zero _ _ => cases h
-  | storeImm _ _ => cases h
+  | zero w n =>
+      dsimp only at h
+      split at h
+      · split at h
+        · simp only [SOut.ok.injEq] at h; rw [← h.1]; rfl
+        · cases h
+      · cases h
+  | storeImm w n =>
+      dsimp only at h
+      split at h
+      · split at h
+        · simp only [SOut.ok.injEq] at h; rw [← h.1]; rfl
+        · cases h
+      · cases h
   | reg cd => exact liftR_zf ss _ ss' gs h
 
 /-- The carry-family step is described by `symCarry`. -/
@@ -2021,7 +2092,7 @@ theorem symStep_comm {opn d x : String} (hopn : opn ∈ commOpns) (hxd : x ≠ d
     simp only [hb, hs1, hs2, Bool.false_eq_true, ↓reduceIte]
   have hM : symMem (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss =
       symMem (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss := by
-    cases τ <;> simp only [symMem, loadStruct?, storeStruct?, hC]
+    cases τ <;> simp only [symMem, loadStruct?, storeStruct?, storeImmStruct?, hC]
   have hA : ∀ ofl, aluFlT (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss ofl =
       aluFlT (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss ofl := by
     intro ofl
@@ -2184,8 +2255,20 @@ theorem symMem_good (i : LinstrRM) {ss : SSt} (hg : ss.Good) {ss' : SSt} {gs : L
       · exact liftR_good hg h
   | loadC => cases h
   | storeC => cases h
-  | zero _ _ => cases h
-  | storeImm _ _ => cases h
+  | zero w n =>
+      dsimp only at h
+      split at h
+      · split at h
+        · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact hg.setA _ _
+        · cases h
+      · cases h
+  | storeImm w n =>
+      dsimp only at h
+      split at h
+      · split at h
+        · simp only [SOut.ok.injEq] at h; rw [← h.1]; exact hg.setA _ _
+        · cases h
+      · cases h
   | reg cd => exact liftR_good hg h
 
 theorem symCarry_good {op : CarryOp} {d : String} {a b : LOperand} {ss : SSt} (hg : ss.Good)
@@ -2311,6 +2394,7 @@ def STerm.vars : STerm → List String
 def SArr.vars : SArr → List String
   | .cell _ => []
   | .aset a _ _ i v => a.vars ++ i.vars ++ v.vars
+  | .zero _ _ => []
 end
 
 mutual
@@ -2337,6 +2421,7 @@ def STerm.readsF : STerm → Bool
 def SArr.readsF : SArr → Bool
   | .cell _ => false
   | .aset a _ _ i v => a.readsF || i.readsF || v.readsF
+  | .zero _ _ => false
 end
 
 /-- The start registers a symbolic flag reads. -/
@@ -2462,6 +2547,7 @@ theorem SArr.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell
           (fun e => hf (by simp [SArr.readsF, e])),
         STerm.ev_congr A v (fun r hr => h r (by simp [SArr.vars, hr]))
           (fun e => hf (by simp [SArr.readsF, e]))]
+  | .zero _ _, _, _ => rfl
 end
 
 theorem SFlag.ev_congr {V V' : String → Σ w, BitVec w} (A : String → ArrCell)
@@ -2768,6 +2854,13 @@ def SArr.same (gs gs' : List SG) : SArr → SArr → Bool
       (SArr.selfSt gs b w n i v && SArr.same gs gs' b (.aset b' w' n' i' v')) ||
         (SArr.selfSt gs' b' w' n' i' v' && SArr.same gs gs' (.aset b w n i v) b') ||
         (w == w' && n == n' && i == i' && v == v' && SArr.same gs gs' b b')
+  | .zero w n, .zero w' n' => w == w' && n == n'
+  | .zero w n, .aset b' w' n' i' v' =>
+      SArr.selfSt gs' b' w' n' i' v' && SArr.same gs gs' (.zero w n) b'
+  | .aset b w n i v, .zero w' n' =>
+      SArr.selfSt gs b w n i v && SArr.same gs gs' b (.zero w' n')
+  | .cell _, .zero _ _ => false
+  | .zero _ _, .cell _ => false
 termination_by a a' => sizeOf a + sizeOf a'
 
 /-- **A store of the element read leaves the array.** Under guards that hold, the array with
@@ -2818,6 +2911,15 @@ theorem SArr.same_ev {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
       · rw [SArr.selfSt_ev hg' h.1]; exact ih2 h.2
       · obtain ⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, hb⟩ := h
         simp only [SArr.ev, ih3 hb]
+  | case5 w n w' n' => grind only
+  | case6 w n b' w' n' i' v' ih =>
+      simp only [Bool.and_eq_true] at h
+      rw [SArr.selfSt_ev hg' h.1]; exact ih h.2
+  | case7 b w n i v w' n' ih =>
+      simp only [Bool.and_eq_true] at h
+      rw [SArr.selfSt_ev hg h.1]; exact ih h.2
+  | case8 => simp at h
+  | case9 => simp at h
 
 /-- The final arrays `a` and `a'` of one name agree at a block with live set `n`: they are
     one symbolic array that passes `okIn n`, or they are equal up to stores of the element
@@ -3572,6 +3674,7 @@ def STerm.subst (σ : Nat → STerm) : STerm → STerm
 def SArr.subst (σ : Nat → STerm) : SArr → SArr
   | .cell r => .cell r
   | .aset a w n i v => .aset (a.subst σ) w n (i.subst σ) (v.subst σ)
+  | .zero w n => .zero w n
 end
 
 /-- The symbolic flag `f` under the substitution `σ`. -/
@@ -3717,8 +3820,18 @@ theorem symMem_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) :
     · rw [← liftR_subst, ← symCast_subst, SSt.subst_regs σ ss]
   · rfl
   · rfl
-  · rfl
-  · rfl
+  · split
+    · split
+      · simp only [SOut.subst, SSt.subst_setA, List.map_nil, SArr.subst]
+      · rfl
+    · rfl
+  · split
+    · split
+      · simp only [SOut.subst, SSt.subst_setA, List.map_cons, List.map_nil,
+          SG.subst, SArr.subst, STerm.subst, SSt.subst_regs_apply]
+        rfl
+      · rfl
+    · rfl
   · rw [← liftR_subst, ← symCast_subst, SSt.subst_regs σ ss]
 
 theorem aluFlT_subst (σ : Nat → STerm) (i : LinstrRM) (ss : SSt) (ofl : Bool) :
@@ -3847,6 +3960,7 @@ def STerm.refsLt (n : Nat) : STerm → Bool
 def SArr.refsLt (n : Nat) : SArr → Bool
   | .cell _ => true
   | .aset a _ _ i v => a.refsLt n && i.refsLt n && v.refsLt n
+  | .zero _ _ => true
 end
 
 mutual
@@ -3901,6 +4015,7 @@ theorem SArr.refsLt_mono {n m : Nat} (hnm : n ≤ m) :
       simp only [SArr.refsLt, Bool.and_eq_true] at h ⊢
       exact ⟨⟨SArr.refsLt_mono hnm a h.1.1, STerm.refsLt_mono hnm i h.1.2⟩,
         STerm.refsLt_mono hnm v h.2⟩
+  | .zero _ _, _ => rfl
 end
 
 mutual
@@ -3957,6 +4072,7 @@ theorem SArr.subst_congr {n : Nat} {σ σ' : Nat → STerm} (hσ : ∀ k, k < n 
       simp only [SArr.refsLt, Bool.and_eq_true] at h
       rw [SArr.subst, SArr.subst, SArr.subst_congr hσ a h.1.1, STerm.subst_congr hσ i h.1.2,
         STerm.subst_congr hσ v h.2]
+  | .zero _ _, _ => rfl
 end
 
 /-- An entry of a term table: a node whose children are entries or leaves, the start
@@ -3998,6 +4114,7 @@ def STerm.varsT (E : Array TEnt) : STerm → List String
 def SArr.varsT (E : Array TEnt) : SArr → List String
   | .cell _ => []
   | .aset a _ _ i v => a.varsT E ++ i.varsT E ++ v.varsT E
+  | .zero _ _ => []
 end
 
 mutual
@@ -4024,6 +4141,7 @@ def STerm.readsFT (E : Array TEnt) : STerm → Bool
 def SArr.readsFT (E : Array TEnt) : SArr → Bool
   | .cell _ => false
   | .aset a _ _ i v => a.readsFT E || i.readsFT E || v.readsFT E
+  | .zero _ _ => false
 end
 
 /-- The width base of the word `t` over the table `E`. -/
@@ -4196,6 +4314,7 @@ theorem SArr.varsT_spec (h : TblOK σ E) :
       simp only [SArr.varsT, List.mem_append]
       exact hv.imp (Or.imp (SArr.varsT_spec h a hb.1.1 v) (STerm.varsT_spec h i hb.1.2 v))
         (STerm.varsT_spec h w hb.2 v)
+  | .zero _ _, _, v, hv => by simp [SArr.subst, SArr.vars] at hv
 end
 
 mutual
@@ -4273,6 +4392,7 @@ theorem SArr.readsFT_spec (h : TblOK σ E) :
       simp only [SArr.readsFT, Bool.or_eq_true]
       exact hf.imp (Or.imp (SArr.readsFT_spec h a hb.1.1) (STerm.readsFT_spec h i hb.1.2))
         (STerm.readsFT_spec h w hb.2)
+  | .zero _ _, _, hf => by simp [SArr.subst, SArr.readsF] at hf
 end
 
 theorem STerm.wbT_spec (h : TblOK σ E) :
@@ -5123,6 +5243,7 @@ def SArr.nfT (E : Array TEnt) (gs : List SG) : SArr → SArr
   | .aset b w n i v =>
       if SArr.selfStT E gs b w n i v then SArr.nfT E gs b
       else .aset (SArr.nfT E gs b) w n i v
+  | .zero w n => .zero w n
 
 theorem SArr.selfStT_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
     {gs : List SG} {b : SArr} {w n : Nat} {i v : STerm}
@@ -5192,6 +5313,27 @@ theorem SArr.nfT_same {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) (gs
           simp only [SArr.aset.injEq] at e
           obtain ⟨eb, rfl, rfl, rfl, rfl⟩ := e
           exact Or.inr ⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, SArr.nfT_same h gs gs' b b' eb⟩
+  | .zero w n, .zero w' n', e => by grind only [SArr.nfT, SArr.subst, SArr.same]
+  | .zero w n, .aset b' w' n' i' v', e => by
+      rw [SArr.nfT] at e
+      rw [SArr.nfT] at e
+      split at e
+      · rename_i hs
+        have ih := SArr.nfT_same h gs gs' (.zero w n) b' (by rw [SArr.nfT]; exact e)
+        rw [SArr.subst] at ih ⊢
+        rw [SArr.subst, SArr.same, SArr.selfStT_subst h hs, ih]; rfl
+      · cases e
+  | .aset b w n i v, .zero w' n', e => by
+      rw [SArr.nfT] at e
+      rw [SArr.nfT] at e
+      split at e
+      · rename_i hs
+        have ih := SArr.nfT_same h gs gs' b (.zero w' n') (by rw [SArr.nfT]; exact e)
+        rw [SArr.subst] at ih ⊢
+        rw [SArr.subst, SArr.same, SArr.selfStT_subst h hs, ih]; rfl
+      · cases e
+  | .cell _, .zero _ _, e => by simp [SArr.nfT] at e
+  | .zero _ _, .cell _, e => by simp [SArr.nfT] at e
 termination_by a a' => sizeOf a + sizeOf a'
 
 /-- The array check of `exitAgree` over the table `E` (`arrAgree`): the two arrays are one

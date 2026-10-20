@@ -761,7 +761,8 @@ theorem liftR_ren (ss : SSt) (d r : String) {ρ : ROut} (hρ : ρ.WritesOnly r) 
   | unk => trivial
 
 theorem symMem_ren (ss : SSt) (d r opn : String) (a b : LOperand) (τ : MemTag)
-    (hst : opn ≠ "STOREIDX") (h1 : NoSwap opn d a b) (h2 : NoSwap opn r a b) :
+    (hst : opn ≠ "STOREIDX") (hz : opn ≠ "ZEROARR") (h1 : NoSwap opn d a b)
+    (h2 : NoSwap opn r a b) :
     SOut.Ren ss d r (symMem (.Lopn [.reg d] opn [a, b], τ) ss)
       (symMem (.Lopn [.reg r] opn [a, b], τ) ss) := by
   have hc : ∀ cd, symCast (.Lopn [.reg d] opn [a, b], cd) ss.regs =
@@ -784,8 +785,10 @@ theorem symMem_ren (ss : SSt) (d r opn : String) (a b : LOperand) (τ : MemTag)
       exact liftR_ren ss d r (symCast_writesOnly _ _ _ _ _ _)
   | loadC => trivial
   | storeC => trivial
-  | zero _ _ => trivial
-  | storeImm _ _ => trivial
+  | zero _ _ =>
+      cases a <;> cases b <;> simp only [symMem, hz, if_false] <;> trivial
+  | storeImm _ _ =>
+      cases a <;> cases b <;> trivial
   | reg cd =>
       simp only [symMem, hc]
       exact liftR_ren ss d r (symCast_writesOnly _ _ _ _ _ _)
@@ -825,7 +828,8 @@ theorem symCarry_ren (ss : SSt) (op : CarryOp) (d r : String) (a b : LOperand) :
     only. -/
 theorem symStep_ren (ss : SSt) (d r opn : String) (a b : LOperand) (τ : MemTag)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmov : opn ≠ withWidthTag 64 "MOV")
-    (hst : opn ≠ "STOREIDX") (h1 : NoSwap opn d a b) (h2 : NoSwap opn r a b) :
+    (hst : opn ≠ "STOREIDX") (hz : opn ≠ "ZEROARR") (h1 : NoSwap opn d a b)
+    (h2 : NoSwap opn r a b) :
     SOut.Ren ss d r (symStep (.Lopn [.reg d] opn [a, b], τ) ss)
       (symStep (.Lopn [.reg r] opn [a, b], τ) ss) := by
   unfold symStep
@@ -833,7 +837,7 @@ theorem symStep_ren (ss : SSt) (d r opn : String) (a b : LOperand) (τ : MemTag)
   split_ifs <;> dsimp only <;>
     first
     | exact symCarry_ren ss _ d r a b
-    | exact aluFl_ren ss d r opn a b τ h1 h2 (symMem_ren ss d r opn a b τ hst h1 h2)
+    | exact aluFl_ren ss d r opn a b τ h1 h2 (symMem_ren ss d r opn a b τ hst hz h1 h2)
 
 /-! ## 7. The scratch chunk -/
 
@@ -868,12 +872,13 @@ theorem tRun_movReg {mv d x : String} (hmv : stripWidthTag mv = "MOV") (τ : Mem
 /-- **The scratch chunk.** For a scratch register `r` that neither the first source `y`, the
     destination `d` nor the second source `b` reads, the move of `y` into `r`, the operation on
     `r` and the move of `r` into `d` simulate `opn d, [y, b]` off `r`, when `opn` is not the
-    flag `CMP`, the two-source `MOV` or `STOREIDX`, and neither destination has its sources
+    flag `CMP`, the two-source `MOV`, `STOREIDX` or `ZEROARR`, and neither destination has its sources
     exchanged by `commSwap`. -/
 theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemTag)
     (hmv : stripWidthTag m = "MOV") (hyr : y ≠ r) (hb : avoidsReg r b)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmov : opn ≠ withWidthTag 64 "MOV")
-    (hst : opn ≠ "STOREIDX") (h1 : NoSwap opn d (.reg y) b) (h2 : NoSwap opn r (.reg y) b) :
+    (hst : opn ≠ "STOREIDX") (hz : opn ≠ "ZEROARR") (h1 : NoSwap opn d (.reg y) b)
+    (h2 : NoSwap opn r (.reg y) b) :
     ChunkOn [r] (.Lopn [.reg d] opn [.reg y, b], τ)
       [(.Lopn [.reg r] m [.reg y], τ1), (.Lopn [.reg r] opn [.reg r, b], τ),
         (.Lopn [.reg d] m [.reg r], τ3)] := by
@@ -893,7 +898,7 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
       [(.Lopn [.reg r] m [.reg y], τ1), (.Lopn [.reg r] opn [.reg r, b], τ)] ++
         [(.Lopn [.reg d] m [.reg r], τ3)] from rfl, tRun_append]
   have hcp := chunk_copy r y opn m b τ τ1 hmv hb hcmp ss _ T T' e''
-  have hren := symStep_ren ss d r opn (.reg y) b τ hcmp hmov hst h1 h2
+  have hren := symStep_ren ss d r opn (.reg y) b τ hcmp hmov hst hz h1 h2
   generalize hsd : symStep (.Lopn [.reg d] opn [.reg y, b], τ) ss = od at hren
   generalize hsr : symStep (.Lopn [.reg r] opn [.reg y, b], τ) ss = or' at hren
   cases od with
@@ -1128,10 +1133,11 @@ theorem chunkOn_saved (r S mv : String) (i : LinstrRM) (js : List LinstrRM) (τs
 /-- A two-source operation of the fragment of `symStep_ren` writes only its destination. -/
 theorem wrOf_opn {d r opn : String} {a b : LOperand} (τ : MemTag)
     (hcmp : opn ≠ withWidthTag 64 "CMP") (hmov : opn ≠ withWidthTag 64 "MOV")
-    (hst : opn ≠ "STOREIDX") (h1 : NoSwap opn d a b) (h2 : NoSwap opn r a b) :
+    (hst : opn ≠ "STOREIDX") (hz : opn ≠ "ZEROARR") (h1 : NoSwap opn d a b)
+    (h2 : NoSwap opn r a b) :
     ∀ q ∈ wrOf (.Lopn [.reg d] opn [a, b], τ), q = d := by
   intro q hq
-  have hren := symStep_ren SSt.start d r opn a b τ hcmp hmov hst h1 h2
+  have hren := symStep_ren SSt.start d r opn a b τ hcmp hmov hst hz h1 h2
   unfold wrOf at hq
   cases h : symStep (.Lopn [.reg d] opn [a, b], τ) SSt.start with
   | ok s g =>
@@ -1251,6 +1257,9 @@ theorem needsTie_mov64 (b : LOperand) : needsTie (withWidthTag 64 "MOV") b = fal
 theorem needsTie_storeIdx (b : LOperand) : needsTie "STOREIDX" b = false := by
   cases b <;> rfl
 
+theorem needsTie_zeroArr (b : LOperand) : needsTie "ZEROARR" b = false := by
+  cases b <;> rfl
+
 theorem twoAddrRouteWF_scratch_outs {outs : List String} {tg : LinstrR → MemTag} {x : LinstrR}
     {m : String} (hw : twoAddrRouteWF outs tg x = true) (hr : twoAddrRoute x = .scratch m) :
     scratchSave ∉ outs := by
@@ -1305,6 +1314,8 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
             rintro rfl; rw [needsTie_mov64] at hn; cases hn
           have hsne : opn ≠ "STOREIDX" := by
             rintro rfl; rw [needsTie_storeIdx] at hn; cases hn
+          have hzne : opn ≠ "ZEROARR" := by
+            rintro rfl; rw [needsTie_zeroArr] at hn; cases hn
           by_cases hcb : commBases.contains (tieBase opn) = true ∧ (b == .reg d) = true
           · rw [if_pos hcb, beq_iff_eq] at htag
             obtain ⟨hcm, hbd⟩ := hcb
@@ -1327,9 +1338,9 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
               (chunkOn_scratch reloadScratch d d opn m (.reg y) _ _ _
                 (TwoAddrLegalize.stripWidthTag_movFor hmv) hdr
                 (fun h => TwoAddrLegalize.ne_of_opAvoids ha _ h rfl)
-                (opn_ne_cmp64 hc) hmne hsne hns1 hns2) ?_
-              (fun h => hdr (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
-              (fun h => hdS (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
+                (opn_ne_cmp64 hc) hmne hsne hzne hns1 hns2) ?_
+              (fun h => hdr (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hzne hns1 hns2 _ h).symm)
+              (fun h => hdS (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hzne hns1 hns2 _ h).symm)
             exact scratchSave_not_symReads (by simp [instrAvoids, hd, ha])
           rw [if_neg hcb, beq_iff_eq] at htag
           have hcb' : (commBases.contains (tieBase opn) && b == .reg d) = false := by
@@ -1358,10 +1369,10 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
           exact chunkOn_saved reloadScratch scratchSave "MOV:64" _ [_, _, _] _ _ h64 hRS
             (chunkOn_scratch reloadScratch d y opn m b _ _ _
               (TwoAddrLegalize.stripWidthTag_movFor hmv) hyr hbr (opn_ne_cmp64 hc) hmne hsne
-              hns1 hns2)
+              hzne hns1 hns2)
             (scratchSave_not_symReads havx)
-            (fun h => hdr (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
-            (fun h => hdS (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hns1 hns2 _ h).symm)
+            (fun h => hdr (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hzne hns1 hns2 _ h).symm)
+            (fun h => hdS (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hzne hns1 hns2 _ h).symm)
       | _ => simp [twoAddrRouteWF, hm] at hw
     · cases hm'
   · have hns : ∀ m, twoAddrRoute x ≠ .scratch m := fun m h => hsc ⟨m, h⟩

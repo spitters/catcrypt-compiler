@@ -203,8 +203,18 @@ theorem symMem_frame (i : LinstrRM) {ss : SSt} {ss' : SSt} {gs : List SG}
       · exact liftR_frame h
   | loadC => cases h
   | storeC => cases h
-  | zero _ _ => cases h
-  | storeImm _ _ => cases h
+  | zero w n =>
+      dsimp only at h
+      split at h <;> (try split at h) <;>
+        first
+        | (simp only [SOut.ok.injEq] at h; rw [← h.1]; exact frameT_setA _ _ _)
+        | cases h
+  | storeImm w n =>
+      dsimp only at h
+      split at h <;> (try split at h) <;>
+        first
+        | (simp only [SOut.ok.injEq] at h; rw [← h.1]; exact frameT_setA _ _ _)
+        | cases h
   | reg cd => exact liftR_frame h
 
 theorem symCarry_frame {op : CarryOp} {d : String} {a b : LOperand} {ss : SSt}
