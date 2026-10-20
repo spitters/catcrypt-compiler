@@ -475,10 +475,12 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (entryV_abiEntr
 
 /-- One instruction of the alias map of a chain at the out symbols `outs`, each paired with
     the position of its destination operand, applied to the map `m` of the instructions
-    before it: the destination of a store is sent to the root of its base, and the
-    destination of a shadow instruction of a call of a symbol `f` of `outs` whose operand at
-    the destination position `k` of `f` is a register is sent to the root of that operand,
-    the destination array of the call. Every other instruction leaves `m` unchanged. -/
+    before it: the destination of a store (an indexed store, whose base is its indexed
+    source, or a constant-index store `STOREIMM`, whose base is its first register source)
+    is sent to the root of its base, and the destination of a shadow instruction of a call
+    of a symbol `f` of `outs` whose operand at the destination position `k` of `f` is a
+    register is sent to the root of that operand, the destination array of the call. Every
+    other instruction leaves `m` unchanged. -/
 def aliasStepO (outs : List (String × Nat)) (m : Std.HashMap String String) (i : LinstrRM) :
     Std.HashMap String String :=
   match LprogIsa.shadowCall? i.1 with
@@ -493,6 +495,8 @@ def aliasStepO (outs : List (String × Nat)) (m : Std.HashMap String String) (i 
       match i.1 with
       | .Lopn [.reg dst] opn (.arrIdx base _ _ :: _) =>
           if isMemStore opn then m.insert dst (m.getD base base) else m
+      | .Lopn [.reg dst] opn (.reg base :: _) =>
+          if opn == "STOREIMM" then m.insert dst (m.getD base base) else m
       | _ => m
 
 /-- **The coalescing renaming of a chain at the out symbols `outs`**: the destination of

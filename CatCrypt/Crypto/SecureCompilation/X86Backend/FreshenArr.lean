@@ -1395,6 +1395,17 @@ theorem getD_aliasStepO (outs : List (String × Nat)) (M : Std.HashMap String St
         rw [Std.HashMap.getD_insert, hne]
         rfl
       · rfl
+    · rename_i dst opn base rest hw
+      simp only at hw
+      subst hw
+      split
+      · have hne : (dst == r) = false := by
+          simp only [beq_eq_false_iff_ne]
+          rintro rfl
+          exact hr (by simp [dstNames, JasminLsemExportRewrites.opNames])
+        rw [Std.HashMap.getD_insert, hne]
+        rfl
+      · rfl
     · rfl
 
 /-- The alias step of a store `STOREIDX d, [b]` sends `d` to the image of `b`. -/
