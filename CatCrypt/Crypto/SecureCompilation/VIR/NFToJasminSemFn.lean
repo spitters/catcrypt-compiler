@@ -51,6 +51,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSemFrames
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (varIndex)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions (wordSig wordSig_iff
   callArgTy)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation (varIndex_lt)
 open CatCrypt.Crypto.SecureCompilation.VIR.JazzAsmSem (JazzAsmAgrees)
 open CatCrypt.Crypto.Jasmin.CoqSemMirror (Value Vm Estate OpSem AsmSem GlobDecls Prog Sem
   SemIr SemCall FunName JResult truncateVal evalAtype MemModel semPexpr writeLval writeLvals

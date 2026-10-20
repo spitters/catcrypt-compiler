@@ -326,7 +326,7 @@ def pickVictim (st : St) (prot : List JVar) (res : List JVar) (c : List InstrR) 
   maxBy (score st res c) (st.rho.filter (fun p => !prot.contains p.1))
 
 /-- The removal of the holders of variables not live before `c`. -/
-def dropDead (res : List JVar) (c : List InstrR) (st : St) : St :=
+def pruneDeadHolders (res : List JVar) (c : List InstrR) (st : St) : St :=
   { st with rho := st.rho.filter (fun p => liveB res p.1 c) }
 
 /-- Evict the holder `p.2` of `p.1`: a value live before `c` without a reload source gets a
@@ -405,7 +405,7 @@ def loadOne (k : Nat) (cand : JVar → Bool) (prot res : List JVar) (c : List In
         let r1 := makeRoom k (needOf cand src) prot res c st.rho.length st
         let r2 := helpersOf cand r1.1 src
         let r3 := reloadFresh r2.1 x src
-        (dropDead res c r3.1, r1.2 ++ r2.2 ++ r3.2)
+        (pruneDeadHolders res c r3.1, r1.2 ++ r2.2 ++ r3.2)
 
 /-- `loadOne` over a list. -/
 def loadAll (k : Nat) (cand : JVar → Bool) (prot res : List JVar) (c : List InstrR) :
@@ -452,7 +452,7 @@ def afterDef (cand : JVar → Bool) (c : List InstrR) (st : St) (i : InstrR) : S
 `i`, make room for its register outputs, and emit `i` reading the holders. -/
 def stepI (k : Nat) (cand : JVar → Bool) (res : List JVar) (st : St) (i : InstrR)
     (c : List InstrR) : St × List InstrR :=
-  let st0 := dropDead res (i :: c) st
+  let st0 := pruneDeadHolders res (i :: c) st
   let U := usesOf cand i
   let r1 := loadAll k cand U res (i :: c) st0 U
   let r2 := makeRoom k (defsOf cand i).length U res (i :: c) r1.1.rho.length r1.1
@@ -482,7 +482,7 @@ def fixOne (k : Nat) (cand : JVar → Bool) (res : List JVar) (st : St) (r : JVa
       | some src =>
           let r1 := makeRoom k (needOf cand src) res res [] st.rho.length st
           let r2 := helpersOf cand r1.1 src
-          (dropDead res [] { r2.1 with rho := (r, r) :: r2.1.rho },
+          (pruneDeadHolders res [] { r2.1 with rho := (r, r) :: r2.1.rho },
             r1.2 ++ r2.2 ++ [reloadSrc r2.1.rho r src])
 
 /-- `fixOne` over a list. -/

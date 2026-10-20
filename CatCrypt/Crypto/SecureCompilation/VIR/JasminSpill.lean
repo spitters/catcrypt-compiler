@@ -55,6 +55,8 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR.JasminSpill
 
 open CatCrypt.Crypto.Jasmin
 open CatCrypt.Crypto.Jasmin.Jazz
+open CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy (bind_eq_ok)
+open CatCrypt.Crypto.SecureCompilation.VIR.NFToJasmin (mem_cmdVars)
 
 /-! ## 4. Renaming in the mirror -/
 
@@ -298,7 +300,7 @@ theorem translateIdx_renE (h : RenOK r R) (e : APExpr) :
     translateIdx (renE r e) = (translateIdx e).map (mrenE R) :=
   translateIdx_renE_of h e (translatePExprExt_renE h e)
 
-theorem mapM_some_mem {α β : Type} {f : α → Option β} :
+theorem exists_mem_of_mapM_eq_some {α β : Type} {f : α → Option β} :
     ∀ {l : List α} {m : List β}, l.mapM f = some m → ∀ x ∈ l, ∃ y ∈ m, f x = some y
   | [], _, _, x, hx => by simp at hx
   | a :: l, m, h, x, hx => by
@@ -307,7 +309,7 @@ theorem mapM_some_mem {α β : Type} {f : α → Option β} :
       obtain ⟨b, hb, bs, hbs, rfl⟩ := h
       rcases List.mem_cons.mp hx with rfl | hx
       · exact ⟨b, by simp, hb⟩
-      · obtain ⟨y, hy, hfy⟩ := mapM_some_mem hbs x hx
+      · obtain ⟨y, hy, hfy⟩ := exists_mem_of_mapM_eq_some hbs x hx
         exact ⟨y, by simp [hy], hfy⟩
 
 theorem exists_of_mem_mapM_some {α β : Type} {f : α → Option β} :
@@ -351,7 +353,7 @@ theorem translateIdx_of {e : APExpr} {b : MPexpr} (h : translateIdx e = some b)
 
 /-- A translated expression is in the fragment, and its local reads are the translations of
 those of the expression. -/
-theorem translatePExprExt_of : ∀ (e : APExpr) (b : MPexpr), translatePExprExt e = some b →
+theorem mfrag_reads_of_translatePExprExt : ∀ (e : APExpr) (b : MPexpr), translatePExprExt e = some b →
     mfrag b = true ∧ (readsE e).mapM translateVarExt = some (mreads b)
   | .Pconst _, b, h => by
       simp [translatePExprExt, InstrRTranslate.translatePExpr] at h; subst h
@@ -369,7 +371,7 @@ theorem translatePExprExt_of : ∀ (e : APExpr) (b : MPexpr), translatePExprExt 
       cases hw : translateWSize ws <;> cases hx : translateGVarExt x <;>
         cases hi : translateIdx i <;> simp only [hw, hx, hi, reduceCtorEq, Option.some.injEq] at h
       subst h
-      obtain ⟨hf, hr⟩ := translateIdx_of hi (translatePExprExt_of i)
+      obtain ⟨hf, hr⟩ := translateIdx_of hi (mfrag_reads_of_translatePExprExt i)
       exact ⟨hf, by simpa [readsE, mreads] using mapM_append_some (mreads_mlocal_of hx) hr⟩
   | .Psub _ _ _ _ _, b, h => by simp [translatePExprExt, InstrRTranslate.translatePExpr] at h
   | .Pload _ _ _, b, h => by simp [translatePExprExt, InstrRTranslate.translatePExpr] at h
@@ -378,7 +380,7 @@ theorem translatePExprExt_of : ∀ (e : APExpr) (b : MPexpr), translatePExprExt 
       cases ho : translateSOp1 op <;> cases he : translatePExprExt e <;>
         simp only [ho, he, reduceCtorEq, Option.some.injEq] at h
       subst h
-      obtain ⟨hf, hr⟩ := translatePExprExt_of e _ he
+      obtain ⟨hf, hr⟩ := mfrag_reads_of_translatePExprExt e _ he
       exact ⟨hf, by simpa [readsE, mreads] using hr⟩
   | .Papp2 op a c, b, h => by
       simp only [translatePExprExt] at h
@@ -386,15 +388,15 @@ theorem translatePExprExt_of : ∀ (e : APExpr) (b : MPexpr), translatePExprExt 
         cases hc : translatePExprExt c <;>
         simp only [ho, ha, hc, reduceCtorEq, Option.some.injEq] at h
       subst h
-      obtain ⟨hfa, hra⟩ := translatePExprExt_of a _ ha
-      obtain ⟨hfc, hrc⟩ := translatePExprExt_of c _ hc
+      obtain ⟨hfa, hra⟩ := mfrag_reads_of_translatePExprExt a _ ha
+      obtain ⟨hfc, hrc⟩ := mfrag_reads_of_translatePExprExt c _ hc
       exact ⟨by simp [mfrag, hfa, hfc], by simpa [readsE, mreads] using mapM_append_some hra hrc⟩
   | .PappN _ _, b, h => by simp [translatePExprExt, InstrRTranslate.translatePExpr] at h
   | .Pif _ _ _ _, b, h => by simp [translatePExprExt, InstrRTranslate.translatePExpr] at h
 
 theorem translateIdx_frag_reads {e : APExpr} {b : MPexpr} (h : translateIdx e = some b) :
     mfrag b = true ∧ (readsE e).mapM translateVarExt = some (mreads b) :=
-  translateIdx_of h (translatePExprExt_of e)
+  translateIdx_of h (mfrag_reads_of_translatePExprExt e)
 
 end TransRen
 
@@ -406,10 +408,6 @@ open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslate
 open CatCrypt.Crypto.Jasmin.CoqSemMirror (Value Vm Estate OpSem GlobDecls JResult truncateVal
   evalAtype MemModel semPexpr getVar setVar writeLval writeLvals DB truncatable
   JArrayMirror)
-
-theorem bind_eq_ok {α β : Type} {r : JResult α} {f : α → JResult β} {c : β}
-    (h : JResult.bind r f = .ok c) : ∃ a, r = .ok a ∧ f a = .ok c := by
-  cases r <;> simp_all [JResult.bind]
 
 /-- Every defined value of a variable map has the type of its variable. -/
 def WT (vm : Vm) : Prop :=
@@ -470,7 +468,7 @@ def lasetVal (al : CatCrypt.Crypto.Jasmin.CoqSemMirror.Aligned)
                 JResult.bind (JArrayMirror.setWord a al aa ws i wv) fun a' => .ok (.Varr n a')
     | _ => .typeError
 
-theorem writeLval_laset (s : Estate SyscallState Mem) (al aa ws) (x : MVarI) (idx : MPexpr)
+theorem writeLval_eq_lasetVal (s : Estate SyscallState Mem) (al aa ws) (x : MVarI) (idx : MPexpr)
     (v : Value) :
     writeLval true gd opS (.Laset al aa ws x idx) v s =
       JResult.bind (lasetVal al aa ws (getVar true s.evm x.v_var) (semPexpr true gd opS s idx) v)
@@ -665,7 +663,7 @@ theorem writeLval_rel (R : MVar → MVar) {t o o1 : Estate SyscallState Mem} {l 
         fun hw => WT.set hw ht⟩
   | Laset al aa ws x i =>
       simp only [mlvfrag] at hf
-      rw [writeLval_laset] at h
+      rw [writeLval_eq_lasetVal] at h
       obtain ⟨val, hval, h⟩ := bind_eq_ok h
       obtain ⟨rfl, ht, -, hall⟩ := writeVar_ok h
       have hx : t.evm x.v_var = o.evm x.v_var := hb _ (by simp [mlvBase])
@@ -673,7 +671,7 @@ theorem writeLval_rel (R : MVar → MVar) {t o o1 : Estate SyscallState Mem} {l 
         semPexpr_mrenE gd opS R t o i hf (fun u hu => hr u (by simpa [mlvReads] using hu))
       refine ⟨⟨_, ?_, WR.set t o x.v_var val⟩, ?_, fun hw => WT.set hw ht⟩
       · simp only [mrenLv]
-        rw [writeLval_laset, show getVar true t.evm x.v_var = getVar true o.evm x.v_var by
+        rw [writeLval_eq_lasetVal, show getVar true t.evm x.v_var = getVar true o.evm x.v_var by
           simp [getVar, Vm.get, hx], hi, hval, JResult.bind_ok, hall]
       · simp only [lasetVal] at hval
         obtain ⟨vr, hvr, hval⟩ := bind_eq_ok hval
@@ -985,7 +983,7 @@ theorem readsEs_of : ∀ (es : List APExpr) (es' : List MPexpr), es.mapM transla
       simp only [List.mapM_cons, Option.bind_eq_bind, Option.bind_eq_some_iff,
         Option.pure_def, Option.some.injEq] at h
       obtain ⟨b, hb, bs, hbs, rfl⟩ := h
-      obtain ⟨hf, hr⟩ := translatePExprExt_of e b hb
+      obtain ⟨hf, hr⟩ := mfrag_reads_of_translatePExprExt e b hb
       obtain ⟨hfs, hrs⟩ := readsEs_of es bs hbs
       refine ⟨fun e he => ?_, by simpa [readsEs] using mapM_append_some hr hrs⟩
       rcases List.mem_cons.mp he with rfl | he
@@ -1028,7 +1026,7 @@ theorem translateInstrRExt_of {i : AInstrR} {j : MInstrR} (hs : straightI i = tr
       cases hl : translateLValExt lv <;> cases hty : translateSTypeExt ty <;>
         cases he : translatePExprExt e <;> simp only [hl, hty, he, reduceCtorEq, Option.some.injEq] at h
       subst h
-      obtain ⟨hf, hr⟩ := translatePExprExt_of e _ he
+      obtain ⟨hf, hr⟩ := mfrag_reads_of_translatePExprExt e _ he
       obtain ⟨hlf, hlr, hlb, hlw⟩ := translateLValExt_of hl
       simp [typeI, mifrag, hlf, mfrag_typeE _ _ hf, rdR, mreadsI, mreads_typeE,
         mapM_append_some hr hlr, rdB, mbaseI, hlb, writesI, mwI, hlw]
@@ -1089,7 +1087,7 @@ theorem RunA.single {s s1 : Estate SyscallState Mem} {i : InstrR} {j : MInstrR}
   ⟨[.MkI () j], by simp [translateCmdExt, hi], by
     simp only [typeC]; exact NFToJasminSem.sem_cons aS opS gd prog h (.Eskip _)⟩
 
-theorem RunA.cons_inv {s s2 : Estate SyscallState Mem} {i : InstrR} {c : List InstrR}
+theorem RunA.of_cons {s s2 : Estate SyscallState Mem} {i : InstrR} {c : List InstrR}
     (h : RunA aS opS gd prog s (i :: c) s2) :
     ∃ j s1, translateInstrRExt i = some j ∧ SemIr aS opS gd prog s (typeI j) s1 ∧
       RunA aS opS gd prog s1 c s2 := by
@@ -1123,7 +1121,7 @@ theorem RunA.asgn {t : Estate SyscallState Mem} {d : JVar} {tag : AssgnTag} {ty 
     cases dt <;> simp_all [evalAtype]
   simp [this]
 
-theorem translateSTypeExt_of_var {x : JVar} {x' : MVar} (h : translateVarExt x = some x') :
+theorem translateSTypeExt_of_translateVarExt {x : JVar} {x' : MVar} (h : translateVarExt x = some x') :
     translateSTypeExt x.vtype = some x'.vtype := by
   simp only [translateVarExt, Option.map_eq_some_iff] at h
   obtain ⟨t, ht, rfl⟩ := h
@@ -1136,7 +1134,7 @@ theorem RunA.mv {t : Estate SyscallState Mem} {d s : JVar} {d' s' : MVar}
     RunA aS opS gd prog t [mv d s] (t.withVm (t.evm.set d' val)) := by
   have hl : translatePExprExt (lpv s) = some (.Pvar { gv := { v_var := s' }, gs := .Slocal }) := by
     simp [lpv, vi, translatePExprExt, translateGVarExt, translateVarIExt, hs]
-  refine RunA.asgn aS opS gd prog (w := val) hd (translateSTypeExt_of_var hd) hl rfl ?_ ?_ ?_ ?_
+  refine RunA.asgn aS opS gd prog (w := val) hd (translateSTypeExt_of_translateVarExt hd) hl rfl ?_ ?_ ?_ ?_
   · show CatCrypt.Crypto.Jasmin.CoqSemMirror.getGvar true gd t.evm _ = _
     simp [CatCrypt.Crypto.Jasmin.CoqSemMirror.getGvar, CatCrypt.Crypto.Jasmin.CoqSemMirror.GVar.isLvar,
       getVar, Vm.get, hv, hdef]
@@ -1186,7 +1184,7 @@ theorem lookS_isSome_iff {sig : List (JVar × Src)} {x : JVar} :
     (lookS sig x).isSome = true ↔ ∃ p ∈ sig, p.1 = x := by
   simp [lookS, List.find?_isSome]
 
-theorem renOf_cases (rho : List (JVar × JVar)) (x : JVar) :
+theorem renOf_eq_self_or_mem (rho : List (JVar × JVar)) (x : JVar) :
     (renOf rho x = x ∧ lookR rho x = none) ∨ (x, renOf rho x) ∈ rho := by
   unfold renOf
   cases hl : lookR rho x with
@@ -1235,7 +1233,7 @@ theorem find?_congr {α : Type} {P Q : α → Bool} : ∀ {l : List α}, (∀ a 
 theorem renOK_renOf {rho : List (JVar × JVar)} (hty : ∀ p ∈ rho, p.2.vtype = p.1.vtype) :
     RenOK (renOf rho) (Rof rho) where
   ty x := by
-    rcases renOf_cases rho x with ⟨h, -⟩ | h
+    rcases renOf_eq_self_or_mem rho x with ⟨h, -⟩ | h
     · rw [h]
     · exact hty _ h
   tr x x' hx := by
@@ -1604,7 +1602,7 @@ theorem translateInstrRExt_mv_isSome {d s : JVar} (hd : isGprTy d.vtype = true)
   obtain ⟨d', hd'⟩ := Option.isSome_iff_exists.mp (isSome_translateVarExt_gpr hd)
   obtain ⟨s', hs'⟩ := Option.isSome_iff_exists.mp (isSome_translateVarExt_gpr hs)
   simp [mv, lpv, vi, translateInstrRExt, translateLValExt, translateVarIExt, translatePExprExt,
-    translateGVarExt, hd', hs', translateSTypeExt_of_var hd']
+    translateGVarExt, hd', hs', translateSTypeExt_of_translateVarExt hd']
 
 theorem instrVars_mv (d s : JVar) : instrVars (mv d s) = [d, s] := by
   simp [mv, lpv, vi, instrVars, lvalVars, pexprVars]
@@ -1737,7 +1735,7 @@ theorem reloadFresh_res {st : St} {x : JVar} {src : Src} (hG : GoodSt T O st)
           · exact Or.inr (by simp [reloadFresh])
           · obtain ⟨y, hy, hvy | hvy⟩ := pexprVars_renE _ e v hv <;> rw [hvy]
             · exact Or.inl (hvars y hy)
-            · rcases renOf_cases st.rho y with ⟨h, -⟩ | h
+            · rcases renOf_eq_self_or_mem st.rho y with ⟨h, -⟩ | h
               · rw [h]; exact Or.inl (hvars y hy)
               · rcases (hG.rho _ h).2.2.2 with h' | h'
                 · simp only at h'; rw [h']; exact Or.inl (hvars y hy)
@@ -1768,8 +1766,8 @@ theorem helpersOf_res (cand : JVar → Bool) {st : St} (src : Src) (hG : GoodSt 
   | slot s => exact Res.refl hG
   | remat ty e => exact helpers_res cand _ st hG
 
-theorem dropDead_res {res : List JVar} {c : List InstrR} {st : St} (hG : GoodSt T O st) :
-    Res (T := T) (O := O) st (dropDead res c st, []) :=
+theorem pruneDeadHolders_res {res : List JVar} {c : List InstrR} {st : St} (hG : GoodSt T O st) :
+    Res (T := T) (O := O) st (pruneDeadHolders res c st, []) :=
   ⟨hG.rho_sub (fun q hq => List.mem_of_mem_filter hq), ⟨fun _ h => h, fun _ h => h, le_rfl⟩,
     by simp, fun _ h => h⟩
 
@@ -1785,7 +1783,7 @@ theorem loadOne_res (k : Nat) (cand : JVar → Bool) (prot res : List JVar) (c :
       have h1 := makeRoom_res (T := T) (O := O) k (needOf cand src) prot res c st.rho.length st hG
       have h2 := helpersOf_res (T := T) (O := O) cand src h1.good
       have h3 := reloadFresh_res (x := x) (src := src) h2.good (h2.sig _ (h1.sig _ (lookS_some hl)))
-      have h4 := dropDead_res (res := res) (c := c) h3.good
+      have h4 := pruneDeadHolders_res (res := res) (c := c) h3.good
       have := ((h1.trans h2).trans h3).trans h4
       simpa using this
 
@@ -1863,7 +1861,7 @@ theorem renI_emit {st : St} {i : InstrR} (hG : GoodSt T O st) (hi : OrigOK T O i
   · rw [translateInstrRExt_renI hR hs]; simpa using ht hT
   · obtain ⟨y, hy, hvy | hvy⟩ := instrVars_renI _ hvi <;> rw [hvy]
     · exact Or.inl (hv y hy)
-    · rcases renOf_cases st.rho y with ⟨h, -⟩ | h
+    · rcases renOf_eq_self_or_mem st.rho y with ⟨h, -⟩ | h
       · rw [h]; exact Or.inl (hv y hy)
       · rcases (hG.rho _ h).2.2.2 with h' | h'
         · simp only at h'; rw [h']; exact Or.inl (hv y hy)
@@ -1875,11 +1873,11 @@ theorem stepI_res {k : Nat} {cand : JVar → Bool}
     ResEmit (T := T) (O := O) st (stepI k cand res st i c) := by
   unfold stepI
   dsimp only
-  have h0 := dropDead_res (T := T) (O := O) (res := res) (c := i :: c) hG
+  have h0 := pruneDeadHolders_res (T := T) (O := O) (res := res) (c := i :: c) hG
   have h1 := loadAll_res (T := T) (O := O) k cand (usesOf cand i) res (i :: c) (usesOf cand i)
-    (dropDead res (i :: c) st) h0.good
+    (pruneDeadHolders res (i :: c) st) h0.good
   have h2 := makeRoom_res (T := T) (O := O) k (defsOf cand i).length (usesOf cand i) res (i :: c)
-    (loadAll k cand (usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+    (loadAll k cand (usesOf cand i) res (i :: c) (pruneDeadHolders res (i :: c) st)
       (usesOf cand i)).1.rho.length _ h1.good
   obtain ⟨h3, h3le⟩ := afterDef_good (c := c) (i := i) hcand h2.good hi
   have h4 : ResEmit (T := T) (O := O) _ (afterDef cand c _ i, [renI (renOf _) i]) :=
@@ -1920,7 +1918,7 @@ theorem reloadSrc_emit {st : St} {x d : JVar} {src : Src} (hG : GoodSt T O st)
         · exact hdO
         · obtain ⟨y, hy, hvy | hvy⟩ := pexprVars_renE _ e v hv <;> rw [hvy]
           · exact Or.inl (hvars y hy)
-          · rcases renOf_cases st.rho y with ⟨h, -⟩ | h
+          · rcases renOf_eq_self_or_mem st.rho y with ⟨h, -⟩ | h
             · rw [h]; exact Or.inl (hvars y hy)
             · rcases (hG.rho _ h).2.2.2 with h' | h'
               · simp only at h'; rw [h']; exact Or.inl (hvars y hy)
@@ -1959,7 +1957,7 @@ theorem fixOne_res {k : Nat} {cand : JVar → Bool} {res : List JVar} {st : St} 
       have hx := h2.sig _ (h1.sig _ (lookS_some hl))
       have h3 : ResEmit (T := T) (O := O) (helpersOf cand (makeRoom k (needOf cand src) res res []
           st.rho.length st).1 src).1
-          (dropDead res [] { (helpersOf cand (makeRoom k (needOf cand src) res res []
+          (pruneDeadHolders res [] { (helpersOf cand (makeRoom k (needOf cand src) res res []
             st.rho.length st).1 src).1 with
             rho := (r, r) :: (helpersOf cand (makeRoom k (needOf cand src) res res []
               st.rho.length st).1 src).1.rho },
@@ -1967,7 +1965,7 @@ theorem fixOne_res {k : Nat} {cand : JVar → Bool} {res : List JVar} {st : St} 
               st.rho.length st).1 src).1.rho r src]) := by
         refine ⟨⟨fun q hq => ?_, h2.good.sig, h2.good.fresh, h2.good.nodup⟩,
           ⟨fun _ h => h, fun _ h => h, le_rfl⟩, fun j hj => ?_⟩
-        · simp only [dropDead, List.mem_filter, List.mem_cons] at hq
+        · simp only [pruneDeadHolders, List.mem_filter, List.mem_cons] at hq
           rcases hq.1 with rfl | hq
           · exact ⟨hrO, hrg, rfl, Or.inl rfl⟩
           · exact h2.good.rho q hq
@@ -2019,8 +2017,8 @@ theorem evict_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) {res : List JV
     have hval : t.evm h' = o.evm x' := hSI.rho p hp x' h' hx' hh'
     have hdef := HD p.1 x' hc.1 hx'
     have hsx : s'.vtype = x'.vtype := by
-      have h1 := translateSTypeExt_of_var hs'
-      have h2 := translateSTypeExt_of_var hx'
+      have h1 := translateSTypeExt_of_translateVarExt hs'
+      have h2 := translateSTypeExt_of_translateVarExt hx'
       simp only at h1
       rw [h1] at h2; exact Option.some.inj h2
     refine ⟨_, RunA.mv aS opS gd prog hs' hh' hval hdef (by rw [hsx]; exact HW x' hdef), ?_⟩
@@ -2079,7 +2077,7 @@ theorem env_of_SI (hO : ∀ x ∈ O, isFreshName x.vname = false) {st : St} (hG 
     {y' : MVar} (hy' : translateVarExt y = some y') : t.evm (Rof st.rho y') = o.evm y' := by
   have hR := renOK_renOf (rho := st.rho) (fun p hp => (hG.rho p hp).2.2.1)
   have htr := hR.tr y y' hy'
-  rcases renOf_cases st.rho y with ⟨h, -⟩ | h
+  rcases renOf_eq_self_or_mem st.rho y with ⟨h, -⟩ | h
   · rw [h, hy'] at htr
     rw [← Option.some.inj htr]
     exact hSI.orig y' (by rw [translateVarExt_vname hy']; exact hO y hy)
@@ -2093,8 +2091,8 @@ theorem reloadSrc_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) {st : St}
     RunA aS opS gd prog t [reloadSrc st.rho d src] (t.withVm (t.evm.set d' (o.evm x'))) := by
   obtain ⟨-, hxg, hsrc⟩ := hG.sig _ hx
   have hdx : d'.vtype = x'.vtype := by
-    have h1 := translateSTypeExt_of_var hd'
-    have h2 := translateSTypeExt_of_var hx'
+    have h1 := translateSTypeExt_of_translateVarExt hd'
+    have h2 := translateSTypeExt_of_translateVarExt hx'
     rw [hd, h2] at h1; exact (Option.some.inj h1).symm
   have hfact := hSI.sig _ hx x' hx'
   cases src with
@@ -2106,10 +2104,10 @@ theorem reloadSrc_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) {st : St}
   | remat ty e =>
       obtain ⟨hty, htr, hvars⟩ := hsrc
       obtain ⟨e', he'⟩ := Option.isSome_iff_exists.mp (htr trivial)
-      have hty' : translateSTypeExt ty = some x'.vtype := hty ▸ translateSTypeExt_of_var hx'
+      have hty' : translateSTypeExt ty = some x'.vtype := hty ▸ translateSTypeExt_of_translateVarExt hx'
       obtain ⟨w, hw, htr', hdb, htc⟩ := hfact e' x'.vtype he' hty'
       have hR := renOK_renOf (rho := st.rho) (fun p hp => (hG.rho p hp).2.2.1)
-      obtain ⟨hf, hrd⟩ := translatePExprExt_of e e' he'
+      obtain ⟨hf, hrd⟩ := mfrag_reads_of_translatePExprExt e e' he'
       refine RunA.asgn aS opS gd prog hd' hty'
         (by rw [translatePExprExt_renE hR e, he']; rfl) hdx ?_ htr' hdb htc
       rw [typeE_mrenE, semPexpr_mrenE gd opS _ t o _ (mfrag_typeE _ _ hf) ?_]
@@ -2169,8 +2167,8 @@ theorem helpersOf_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (cand : JV
   | slot s => exact SemOK.refl aS opS gd prog o st
   | remat ty e => exact helpers_sem aS opS gd prog hO cand _ st hG
 
-theorem dropDead_sem {res : List JVar} {c : List InstrR} (st : St) (o : Estate SyscallState Mem) :
-    SemOK aS opS gd prog o st (dropDead res c st, []) := fun t h =>
+theorem pruneDeadHolders_sem {res : List JVar} {c : List InstrR} (st : St) (o : Estate SyscallState Mem) :
+    SemOK aS opS gd prog o st (pruneDeadHolders res c st, []) := fun t h =>
   ⟨t, RunA.nil aS opS gd prog t, h.rho_sub (fun _ hq => List.mem_of_mem_filter hq)⟩
 
 theorem loadOne_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (k : Nat) (cand : JVar → Bool)
@@ -2191,7 +2189,7 @@ theorem loadOne_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (k : Nat) (c
         st.rho.length st hG
       have h2 := helpersOf_sem aS opS gd prog hO cand src r1.good (o := o)
       have h3 := reloadFresh_sem aS opS gd prog hO r2.good hx (o := o)
-      have h4 := dropDead_sem aS opS gd prog (res := res) (c := c) (reloadFresh (helpersOf cand
+      have h4 := pruneDeadHolders_sem aS opS gd prog (res := res) (c := c) (reloadFresh (helpersOf cand
         (makeRoom k (needOf cand src) prot res c st.rho.length st).1 src).1 x src).1 o
       have := ((h1.trans aS opS gd prog h2).trans aS opS gd prog h3).trans aS opS gd prog h4
       simpa using this
@@ -2282,7 +2280,7 @@ theorem afterDef_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (cand : JVa
           simp only [Src.reads, List.any_eq_false, Bool.not_eq_true, contains_eq_false_iff] at h2
           intro e' ty' he' hty'
           obtain ⟨w, hw, h3⟩ := hfact e' ty' he' hty'
-          obtain ⟨hf, hrd⟩ := translatePExprExt_of e e' he'
+          obtain ⟨hf, hrd⟩ := mfrag_reads_of_translatePExprExt e e' he'
           refine ⟨w, ?_, by rw [ho1]; exact h3⟩
           rw [semPexpr_frame opS gd o1 o _ (mfrag_typeE _ _ hf) ?_]
           · exact hw
@@ -2318,9 +2316,9 @@ theorem afterDef_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (cand : JVa
               rw [he] at he2; cases he2
               rw [hty'] at hty2; cases hty2
               have htyx : ty' = x''.v_var.vtype := by
-                have := translateSTypeExt_of_var hxv
+                have := translateSTypeExt_of_translateVarExt hxv
                 rw [← hty, hty'] at this; exact Option.some.inj this
-              obtain ⟨hf, hrd⟩ := translatePExprExt_of e _ he
+              obtain ⟨hf, hrd⟩ := mfrag_reads_of_translatePExprExt e _ he
               have hx1 : (o.withVm (o.evm.set x''.v_var v')).evm x''.v_var = v' :=
                 NFToJasminSem.set_same _ _ _
               refine ⟨v, ?_, by rw [hx1]; exact htr, by rw [hx1]; exact hdb,
@@ -2355,22 +2353,22 @@ theorem stepI_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (k : Nat) (can
       SI gd opS o1 t1 (stepI k cand res st i c).1.rho (stepI k cand res st i c).1.sig := by
   unfold stepI
   dsimp only
-  have g0 := (dropDead_res (T := True) (O := O) (res := res) (c := i :: c) hG).good
+  have g0 := (pruneDeadHolders_res (T := True) (O := O) (res := res) (c := i :: c) hG).good
   have g1 := (loadAll_res (T := True) (O := O) k cand (usesOf cand i) res (i :: c)
     (usesOf cand i) _ g0).good
   have g2 := (makeRoom_res (T := True) (O := O) k (defsOf cand i).length (usesOf cand i) res
-    (i :: c) (loadAll k cand (usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+    (i :: c) (loadAll k cand (usesOf cand i) res (i :: c) (pruneDeadHolders res (i :: c) st)
       (usesOf cand i)).1.rho.length _ g1).good
-  have hS0 : SI gd opS o t (dropDead res (i :: c) st).rho (dropDead res (i :: c) st).sig :=
+  have hS0 : SI gd opS o t (pruneDeadHolders res (i :: c) st).rho (pruneDeadHolders res (i :: c) st).sig :=
     hSI.rho_sub (fun _ hq => List.mem_of_mem_filter hq)
   obtain ⟨t1, ht1, hS1⟩ := loadAll_sem aS opS gd prog hO k cand (usesOf cand i) res (i :: c) HD HW
     (usesOf cand i) _ g0 t hS0
   obtain ⟨t2, ht2, hS2⟩ := makeRoom_sem aS opS gd prog hO k (defsOf cand i).length
     (usesOf cand i) res (i :: c) HD HW _ _ g1 t1 hS1
   set st2 := (makeRoom k (defsOf cand i).length (usesOf cand i) res (i :: c)
-    (loadAll k cand (usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+    (loadAll k cand (usesOf cand i) res (i :: c) (pruneDeadHolders res (i :: c) st)
       (usesOf cand i)).1.rho.length
-    (loadAll k cand (usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+    (loadAll k cand (usesOf cand i) res (i :: c) (pruneDeadHolders res (i :: c) st)
       (usesOf cand i)).1).1 with hst2
   have hR := renOK_renOf (rho := st2.rho) (fun p hp => (g2.rho p hp).2.2.1)
   obtain ⟨hfr, hrd, hbd, -⟩ := translateInstrRExt_of hi.1 hj
@@ -2404,7 +2402,7 @@ theorem liveB_def {res : List JVar} :
       simp only [liveB, List.contains_iff_mem] at hl
       exact hres x x' hl hx
   | i :: c, o, oe, hc, hrun, hres, x, x', hl, hx => by
-      obtain ⟨j, o1, hj, hstep, hrest⟩ := RunA.cons_inv aS opS gd prog hrun
+      obtain ⟨j, o1, hj, hstep, hrest⟩ := RunA.of_cons aS opS gd prog hrun
       have hi := hc i (by simp)
       obtain ⟨hfr, hrd, hbd, hW⟩ := translateInstrRExt_of hi.1 hj
       obtain ⟨⟨t1, -, hWR⟩, hdef, -⟩ := semIr_rel gd opS aS prog id (t := o) hfr
@@ -2413,10 +2411,10 @@ theorem liveB_def {res : List JVar} :
         List.contains_iff_mem, contains_eq_false_iff] at hl
       rcases hl with hl | ⟨hnw, hl⟩
       · rcases mem_readsI.mp hl with hl | hl
-        · obtain ⟨u, hu, hxu⟩ := mapM_some_mem hrd x hl
+        · obtain ⟨u, hu, hxu⟩ := exists_mem_of_mapM_eq_some hrd x hl
           rw [hx] at hxu; cases hxu
           exact hdef _ (List.mem_append_left _ hu)
-        · obtain ⟨u, hu, hxu⟩ := mapM_some_mem hbd x hl
+        · obtain ⟨u, hu, hxu⟩ := exists_mem_of_mapM_eq_some hbd x hl
           rw [hx] at hxu; cases hxu
           exact hdef _ (List.mem_append_right _ hu)
       · have ih := liveB_def c o1 oe (fun j hj => hc j (by simp [hj])) hrest hres x x' hl hx
@@ -2443,7 +2441,7 @@ theorem goBody_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (k : Nat) (ca
       exact ⟨t, RunA.nil aS opS gd prog t, hSI, hW⟩
   | i :: c, st, o, t, oe, hG, hc, hSI, hrun, hW, hres => by
       have HD := liveB_def aS opS gd prog (i :: c) o oe hc hrun hres
-      obtain ⟨j, o1, hj, hstep, hrest⟩ := RunA.cons_inv aS opS gd prog hrun
+      obtain ⟨j, o1, hj, hstep, hrest⟩ := RunA.of_cons aS opS gd prog hrun
       have hi := hc i (by simp)
       obtain ⟨hfr, -, -, -⟩ := translateInstrRExt_of hi.1 hj
       obtain ⟨-, -, hW1⟩ := semIr_rel gd opS aS prog id (t := o) hfr
@@ -2538,7 +2536,7 @@ theorem fixOne_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) (k : Nat) (ca
       rw [ho, withVm_set_self] at h3
       refine ⟨t2, by simpa using RunA.append aS opS gd prog ht2 h3, hS2.mem, hS2.scs, hS2.orig,
         fun q hq => ?_, hS2.sig⟩
-      simp only [dropDead, List.mem_filter, List.mem_cons] at hq
+      simp only [pruneDeadHolders, List.mem_filter, List.mem_cons] at hq
       rcases hq.1 with rfl | hq
       · intro y' h'' hy hh
         rw [hy] at hh; cases hh
@@ -2571,11 +2569,6 @@ section Struct
 open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslate
 open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslateExt
 open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslateJazz
-
-theorem mem_cmdVars : ∀ {l : List InstrR} {v : JVar}, v ∈ cmdVars l ↔ ∃ i ∈ l, v ∈ instrVars i
-  | [], v => by simp [cmdVars]
-  | i :: l, v => by
-      simp only [cmdVars, List.mem_append, mem_cmdVars, List.mem_cons, exists_eq_or_imp]
 
 theorem cmdCalls_straight : ∀ {l : List InstrR}, (∀ i ∈ l, straightI i = true) → cmdCalls l = []
   | [], _ => by simp [cmdCalls]
@@ -3047,15 +3040,15 @@ def H (st : St) : List JVar := st.rho.map Prod.snd
 
 variable {k cand res m}
 
-theorem dropDead_live {c : List InstrR} {st : St} (hL : LInv k cand res m c st) (reg : JVar → Bool) :
-    LInv k cand res m c (dropDead res c st) ∧ CertC k reg (H st) [] (H (dropDead res c st)) := by
+theorem pruneDeadHolders_live {c : List InstrR} {st : St} (hL : LInv k cand res m c st) (reg : JVar → Bool) :
+    LInv k cand res m c (pruneDeadHolders res c st) ∧ CertC k reg (H st) [] (H (pruneDeadHolders res c st)) := by
   refine ⟨⟨hL.keys.sublist (List.Sublist.map _ List.filter_sublist), hL.skeys,
     (List.length_filter_le _ _).trans hL.len, fun p hp => hL.kcand p (List.mem_of_mem_filter hp),
     hL.skcand, fun x hx hl => ?_, hL.remat⟩, fun x hx => ?_⟩
   · rcases hL.live x hx hl with ⟨h, hh⟩ | hs
     · exact Or.inl ⟨h, List.mem_filter.mpr ⟨hh, hl⟩⟩
     · exact Or.inr hs
-  · simp only [H, dropDead, List.mem_map] at hx ⊢
+  · simp only [H, pruneDeadHolders, List.mem_map] at hx ⊢
     obtain ⟨q, hq, rfl⟩ := hx
     exact ⟨q, List.mem_of_mem_filter hq, rfl⟩
 
@@ -3241,7 +3234,7 @@ theorem reloadFresh_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : 
     | remat ty e =>
         rw [readsI_reloadSrc_remat, List.mem_map] at hv
         obtain ⟨y, hy, rfl⟩ := hv
-        rcases renOf_cases st.rho y with ⟨h, hn⟩ | h
+        rcases renOf_eq_self_or_mem st.rho y with ⟨h, hn⟩ | h
         · rw [h] at hrv ⊢
           rw [hreg y (hsrc.2.2 y (readsE_sub e y hy))] at hrv
           obtain ⟨h', hh'⟩ := hrd ty e rfl y hy hrv
@@ -3440,7 +3433,7 @@ theorem loadOne_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : List
         b2
         (fun ty e he y hy hc => h2 ty e he y (by simp [candReads, hy, hc]))
         (fun s hs => hsl3 s (r3.le.slots hs))
-      obtain ⟨l4, c4⟩ := dropDead_live (c := c) l3 reg
+      obtain ⟨l4, c4⟩ := pruneDeadHolders_live (c := c) l3 reg
       refine ⟨l4, ?_, ?_, fun q hq hp => ?_⟩
       · have := CertC.append (CertC.append c1 c2) (CertC.append c3 c4)
         simpa using this
@@ -3660,18 +3653,18 @@ theorem stepI_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : List J
       CertC k reg (H st) (stepI k cand res st i c).2 (H (stepI k cand res st i c).1) := by
   unfold stepI at hsl ⊢
   dsimp only at hsl ⊢
-  have g0 := (dropDead_res (T := T) (O := O) (res := res) (c := i :: c) hG).good
+  have g0 := (pruneDeadHolders_res (T := T) (O := O) (res := res) (c := i :: c) hG).good
   have r1 := loadAll_res (T := T) (O := O) k cand (usesOf cand i) res (i :: c) (usesOf cand i)
-    (dropDead res (i :: c) st) g0
+    (pruneDeadHolders res (i :: c) st) g0
   have r2 := makeRoom_res (T := T) (O := O) k (defsOf cand i).length (usesOf cand i) res (i :: c)
-    (loadAll k cand (usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+    (loadAll k cand (usesOf cand i) res (i :: c) (pruneDeadHolders res (i :: c) st)
       (usesOf cand i)).1.rho.length _ r1.good
-  set st1 := (loadAll k cand (usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+  set st1 := (loadAll k cand (usesOf cand i) res (i :: c) (pruneDeadHolders res (i :: c) st)
       (usesOf cand i)).1 with hst1
   set st2 := (makeRoom k (defsOf cand i).length (usesOf cand i) res (i :: c) st1.rho.length
     st1).1 with hst2
   have hsl2 : ∀ s ∈ st2.slots, s ∈ Zs := hsl
-  obtain ⟨l0, c0⟩ := dropDead_live (c := i :: c) hL reg
+  obtain ⟨l0, c0⟩ := pruneDeadHolders_live (c := i :: c) hL reg
   have hUu := usesOf_filter_dedup (cand := cand) i
   have hUr : ∀ y ∈ usesOf cand i, y ∈ readsI i ∧ cand y = true := by
     intro y hy; simpa [usesOf] using hy
@@ -3690,7 +3683,7 @@ theorem stepI_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : List J
     · intro v hv hrv
       rcases readsI_renI _ hv with ⟨y, hy, rfl⟩ | hb
       · have hyr : y ∈ readsI i := mem_readsI.mpr (Or.inl hy)
-        rcases renOf_cases st2.rho y with ⟨h, hn⟩ | h
+        rcases renOf_eq_self_or_mem st2.rho y with ⟨h, hn⟩ | h
         · rw [h] at hrv ⊢
           rw [hreg y (hyO y hyr)] at hrv
           obtain ⟨h', hh'⟩ := hU2' y (by simp [usesOf, hyr, hrv])
@@ -3772,7 +3765,7 @@ theorem reloadInto_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : L
     | remat ty e =>
         rw [readsI_reloadSrc_remat, List.mem_map] at hv
         obtain ⟨y, hy, rfl⟩ := hv
-        rcases renOf_cases st.rho y with ⟨h, hn⟩ | h
+        rcases renOf_eq_self_or_mem st.rho y with ⟨h, hn⟩ | h
         · rw [h] at hrv ⊢
           rw [hreg y (hsrc.2.2 y (readsE_sub e y hy))] at hrv
           obtain ⟨h', hh'⟩ := hrd ty e rfl y hy hrv
@@ -3912,7 +3905,7 @@ theorem fixOne_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : List 
             rw [h] at hq'
             exact this (List.mem_filter.mp (List.mem_dedup.mp hq')).1)
         b2 (fun ty e he y hy hc => h2 ty e he y (by simp [candReads, hy, hc])) hsl2
-      obtain ⟨l4, c4⟩ := dropDead_live (c := []) l3 reg
+      obtain ⟨l4, c4⟩ := pruneDeadHolders_live (c := []) l3 reg
       refine ⟨l4, ?_, List.mem_filter.mpr ⟨List.mem_cons_self, hrl⟩, fun q hq hres _ => ?_⟩
       · have := CertC.append (CertC.append c1 c2) (CertC.append c3 c4)
         simpa [H] using this

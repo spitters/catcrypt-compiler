@@ -318,44 +318,9 @@ theorem envBelow_ne_ge {d : Nat} {v : JVar} (h : EnvBelow d v) {k : Nat} (hk : d
 
 open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering (hvAppend inlHom inrHom
   lookup_inlHom lookup_inrHom)
-
-/-- A variable of an appended context is a variable of its left or of its right part. -/
-theorem var_append_cases : ∀ {xs ys : Ctxt jasminDialect} {t : JasminTy}
-    (v : Ctxt.Var (xs ++ ys) t),
-    (∃ u : Ctxt.Var xs t, v = inlHom ys u) ∨ ∃ w : Ctxt.Var ys t, v = inrHom xs w
-  | [], _, _, v => Or.inr ⟨v, rfl⟩
-  | _ :: _, _, _, .here => Or.inl ⟨.here, rfl⟩
-  | _ :: _, _, _, .there v =>
-      match var_append_cases v with
-      | Or.inl ⟨u, h⟩ => Or.inl ⟨.there u, by rw [h]; rfl⟩
-      | Or.inr ⟨w, h⟩ => Or.inr ⟨w, by rw [h]; rfl⟩
-
-/-- The index of a variable of the left part of an appended context. -/
-theorem varIndex_inlHom {ys : Ctxt jasminDialect} : ∀ {xs : Ctxt jasminDialect} {t : JasminTy}
-    (u : Ctxt.Var xs t), varIndex (inlHom ys u) = varIndex u
-  | _, _, .here => rfl
-  | _, _, .there u => by
-      show varIndex (inlHom ys u) + 1 = varIndex u + 1
-      rw [varIndex_inlHom u]
-
-/-- The index of a variable of the right part of an appended context is shifted by the
-length of the left part. -/
-theorem varIndex_inrHom {ys : Ctxt jasminDialect} : ∀ (xs : Ctxt jasminDialect) {t : JasminTy}
-    (w : Ctxt.Var ys t), varIndex (inrHom xs w) = xs.length + varIndex w
-  | [], _, _ => by simp [inrHom]
-  | _ :: xs, _, w => by
-      show varIndex (inrHom xs w) + 1 = _
-      rw [varIndex_inrHom xs w, List.length_cons]
-      omega
-
-/-- The index of a variable is below the length of its context. -/
-theorem varIndex_lt : ∀ {xs : Ctxt jasminDialect} {t : JasminTy} (u : Ctxt.Var xs t),
-    varIndex u < xs.length
-  | _, _, .here => by simp [varIndex]
-  | _, _, .there u => by
-      show varIndex u + 1 < _
-      have := varIndex_lt u
-      simp; omega
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions (var_append_cases
+  varIndex_inlHom varIndex_inrHom)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemSimulation (varIndex_lt)
 
 /-! ## 4. Agreement of blocks -/
 

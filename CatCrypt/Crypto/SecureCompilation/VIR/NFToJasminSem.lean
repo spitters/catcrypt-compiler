@@ -589,7 +589,7 @@ theorem arrTyped_set {vm : Vm} (h : VmArrTyped vm) {x : MVar} {v : Value}
     exact h y ws n hy
 
 /-- A name of a scratch variable is not a name outside the scratch variables. -/
-theorem ne_of_scratch {a b : String} (ha : ¬ Scratch a) (hb : Scratch b) : a ≠ b :=
+theorem ne_of_not_scratch {a b : String} (ha : ¬ Scratch a) (hb : Scratch b) : a ≠ b :=
   fun h => ha (h ▸ hb)
 
 /-- The scratch registers are scratch variables. -/
@@ -1220,7 +1220,7 @@ theorem semPexpr_pget {s : Estate SyscallState Mem} {x : MVarI} {N : Nat}
 
 /-- **Array write.** A scaled write of a word to the array variable `x` at an evaluated
 index. -/
-theorem writeLval_laset {s : Estate SyscallState Mem} {x : MVarI} {N : Nat}
+theorem writeLval_of_setWord {s : Estate SyscallState Mem} {x : MVarI} {N : Nat}
     {arr : JArrayMirror N} (hx : s.evm x.v_var = .Varr N arr)
     (hxt : x.v_var.vtype = .aarr .U8 N) {e : MPexpr} {i : Int}
     (he : semPexpr (Mem := Mem) true gd opS s e = .ok (.Vint i)) {ws : MWSize}
@@ -1258,14 +1258,14 @@ theorem semIr_store {s : Estate SyscallState Mem} {ws : MWSize} {a : MVarI} {n :
       (s.withVm (s.evm.set a.v_var
         (.Varr _ (arr.writeLE (i * ws.bytes) ws.bytes vv.toNat)))) :=
   .Eassgn _ _ _ _ _ _ _ _ he (ComJasminBridgeFull.truncateVal_aword_self ws vv)
-    (writeLval_laset opS gd hva hat hidx (setWord_scaled ws arr hi vv))
+    (writeLval_of_setWord opS gd hva hat hidx (setWord_scaled ws arr hi vv))
 
 /-- A write leaves every other variable unchanged. -/
 theorem set_ne_var {vm : Vm} {x z : MVar} (v : Value) (h : z ≠ x) : vm.set x v z = vm z := by
   simp [Vm.set, h]
 
 /-- The typed body of a zeroing loop over the array `x` with the index `j`. -/
-def zeroBody (ws : MWSize) (x j : MVarI) : List MInstr :=
+def zeroArrayBody (ws : MWSize) (x j : MVarI) : List MInstr :=
   [.MkI () (.Cassgn (.Laset .Unaligned .AAscale ws x (mpv j)) .AT_none (.aword ws)
     (typeConst (.aword ws) 0))]
 
@@ -1277,7 +1277,7 @@ theorem semFor_zero (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true)
     ∀ (l : List Int) (s : Estate SyscallState Mem) (arr : JArrayMirror (n * ws.bytes)),
       s.evm x.v_var = .Varr _ arr → (∀ i ∈ l, 0 ≤ i ∧ i.toNat < n) →
       ∃ (s' : Estate SyscallState Mem) (arr' : JArrayMirror (n * ws.bytes)),
-        SemFor aS opS gd prog j l s (zeroBody ws x j) s' ∧ s'.escs = s.escs ∧
+        SemFor aS opS gd prog j l s (zeroArrayBody ws x j) s' ∧ s'.escs = s.escs ∧
         s'.emem = s.emem ∧ s'.evm x.v_var = .Varr _ arr' ∧
         (∀ q : Fin n, arr'.readLE (q.val * ws.bytes) ws.bytes =
           if ((q.val : Nat) : Int) ∈ l then 0 else arr.readLE (q.val * ws.bytes) ws.bytes) ∧
@@ -1345,7 +1345,7 @@ theorem semIr_zero (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true) 
     (hxt : x.v_var.vtype = .aarr .U8 (n * ws.bytes)) {s : Estate SyscallState Mem}
     {arr : JArrayMirror (n * ws.bytes)} (hx : s.evm x.v_var = .Varr _ arr) :
     ∃ (s' : Estate SyscallState Mem) (arr' : JArrayMirror (n * ws.bytes)),
-      SemIr aS opS gd prog s (.Cfor j ⟨.UpTo, .Pconst 0, .Pconst (n : Int)⟩ (zeroBody ws x j))
+      SemIr aS opS gd prog s (.Cfor j ⟨.UpTo, .Pconst 0, .Pconst (n : Int)⟩ (zeroArrayBody ws x j))
         s' ∧ s'.escs = s.escs ∧ s'.emem = s.emem ∧ s'.evm x.v_var = .Varr _ arr' ∧
       (∀ q : Fin n, arr'.readLE (q.val * ws.bytes) ws.bytes = 0) ∧
       (∀ z, z ≠ x.v_var → z ≠ j.v_var → s'.evm z = s.evm z) ∧
@@ -1512,9 +1512,9 @@ theorem blk_neq (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {ws : MWSize}
     fun _ => by rw [htt]; rfl
   set t := mvar (tmp 0 (wsOf ws.bits)) with ht_def
   have hf1 : ∀ (vm : Vm) (v : Value) (z : MVar), ¬ Scratch z.vname → vm.set t v z = vm z :=
-    fun _ _ z hz => set_ne _ (ne_of_scratch hz hsc)
+    fun _ _ z hz => set_ne _ (ne_of_not_scratch hz hsc)
   have hf2 : ∀ (vm : Vm) (v : Value) (z : MVar), ¬ Scratch z.vname → vm.set mcf.v_var v z = vm z :=
-    fun _ _ z hz => set_ne _ (ne_of_scratch hz scratch_cf)
+    fun _ _ z hz => set_ne _ (ne_of_not_scratch hz scratch_cf)
   refine ⟨s.withVm ((((s.evm.set t (.Vword ws a)).set t (.Vword ws (a ^^^ b))).set mcf.v_var
       (.Vbool (decide (a ^^^ b ≠ 0)))).set t (.Vword ws (0 - (a ^^^ b)))), ?_,
     post_of ?_ ?_ ?_⟩
@@ -1574,7 +1574,7 @@ theorem blk_below (haS : JazzAsmAgrees aS) {ws : MWSize} (hg : gprB ws = true)
   set t' := mvar (tmp 1 (wsOf ws.bits))
   have hf : ∀ (vm : Vm) (y : MVar) (v : Value) (z : MVar), Scratch y.vname →
       ¬ Scratch z.vname → vm.set y v z = vm z :=
-    fun _ _ _ z hy hz => set_ne _ (ne_of_scratch hz hy)
+    fun _ _ _ z hy hz => set_ne _ (ne_of_not_scratch hz hy)
   have htn : t'.vname ≠ t.vname := by
     simp only [t, t', mvar, tmp, mkV]
     intro h
@@ -1703,7 +1703,7 @@ theorem blk_cin (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {cv : JVar} (h
   · show (_ : Vm) mcf.v_var = _
     rw [set_ne _ (tmp_ne_cf 0 _).symm, set_same]
   · intro z _ hz
-    rw [set_ne _ (ne_of_scratch hz hsc), set_ne _ (ne_of_scratch hz scratch_cf)]
+    rw [set_ne _ (ne_of_not_scratch hz hsc), set_ne _ (ne_of_not_scratch hz scratch_cf)]
   · exact fun h => arrTyped_set (arrTyped_set h rfl rfl) rfl (by rw [htt]; rfl)
 
 /-- **Carry addition.** `x = a; _, cf, _, _, _, x = #ADC(x, b, cf)` with the carry flag `cb`
@@ -1744,7 +1744,7 @@ theorem blk_adc (haS : JazzAsmAgrees aS) {ws : MWSize} (hg : gprB ws = true) {x 
     · rw [haS _ hmem, asmName_wsOf hg]
       exact JazzAsmSem.jazzAsmSem_adc ws hg va vb cb
   · intro z hz hs
-    rw [set_ne _ hz, set_ne _ (ne_of_scratch hs scratch_cf), set_ne _ hz]
+    rw [set_ne _ hz, set_ne _ (ne_of_not_scratch hs scratch_cf), set_ne _ hz]
   · exact fun h => arrTyped_set (arrTyped_set (arrTyped_set h rfl (hty _)) rfl rfl) rfl (hty _)
   · exact (set_ne (z := mcf.v_var) (x := mvar x) _ hcfx).trans (set_same _ _ _)
 
@@ -1753,9 +1753,9 @@ end Blocks
 omit [MemModel Mem] in
 /-- A `Post` state over the scratch variable `y` is a `Post` state over every variable whose
 new value is in `R'`. -/
-theorem Post.retarget {s s' : Estate SyscallState Mem} {y y' : MVar} {R R' : Value → Prop}
+theorem Post.change_target {s s' : Estate SyscallState Mem} {y y' : MVar} {R R' : Value → Prop}
     (h : Post s s' y R) (hy : Scratch y.vname) (hR : R' (s'.evm y')) : Post s s' y' R' :=
-  ⟨h.scs, h.mem, hR, fun z _ hz => h.frame z (ne_of_scratch hz hy) hz, h.arr⟩
+  ⟨h.scs, h.mem, hR, fun z _ hz => h.frame z (ne_of_not_scratch hz hy) hz, h.arr⟩
 
 section Seq
 variable (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
@@ -1783,7 +1783,7 @@ variable. -/
 theorem Post.read {s s' : Estate SyscallState Mem} {y : MVar} {R : Value → Prop}
     (h : Post s s' y R) (hy : Scratch y.vname) {z : MVar} (hz : ¬ Scratch z.vname) :
     s'.evm z = s.evm z :=
-  h.frame z (ne_of_scratch hz hy) hz
+  h.frame z (ne_of_not_scratch hz hy) hz
 
 /-- **Low carry word.** The code of `addCarryLo`. -/
 theorem sem_addCarryLo (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {ws : MWSize}
@@ -1799,7 +1799,7 @@ theorem sem_addCarryLo (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {ws : M
       Post s s' (mvar x) (· = .Vword ws (x86_ADC va vb (decide (cin.toNat = 1))).word) := by
   refine seq_post aS opS gd prog hc
     (fun a' ha' => blk_cin aS opS gd prog haS hop hcv hcs hvc ha') (fun s1 hp1 b' hb' => ?_)
-    (fun z _ hz => ne_of_scratch hz scratch_cf)
+    (fun z _ hz => ne_of_not_scratch hz scratch_cf)
   obtain ⟨s2, h2, hp2, _⟩ := blk_adc aS opS gd prog haS hg hx ha hb hxt
     (fun h => hxs (h ▸ scratch_cf)) hbx ((hp1.read scratch_cf has).trans hva)
     ((hp1.read scratch_cf hbs).trans hvb) hp1.res hb'
@@ -1822,18 +1822,18 @@ theorem sem_addCarryHi (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {ws : M
           then 1 else 0))) := by
   have ht := okV_tmp_gpr hg 1
   have hsc := scratch_tmp 1 (wsOf ws.bits)
-  have hbt : b.vname ≠ (tmp 1 (wsOf ws.bits)).vname := ne_of_scratch hbs hsc
+  have hbt : b.vname ≠ (tmp 1 (wsOf ws.bits)).vname := ne_of_not_scratch hbs hsc
   refine seq_post aS opS gd prog hc (y1 := mcf.v_var)
     (R1 := (· = .Vbool (decide (2 ^ ws.bits ≤ va.toNat + vb.toNat +
       (if cin.toNat = 1 then 1 else 0))))) (fun a' ha' => ?_) (fun s2 hp2 b' hb' => ?_)
-    (fun z _ hz => ne_of_scratch hz scratch_cf)
+    (fun z _ hz => ne_of_not_scratch hz scratch_cf)
   · refine seq_post aS opS gd prog ha'
       (fun a'' ha'' => blk_cin aS opS gd prog haS hop hcv hcs hvc ha'')
-      (fun s1 hp1 b'' hb'' => ?_) (fun z _ hz => ne_of_scratch hz scratch_cf)
+      (fun s1 hp1 b'' hb'' => ?_) (fun z _ hz => ne_of_not_scratch hz scratch_cf)
     obtain ⟨s2, h2, hp2, hcf2⟩ := blk_adc aS opS gd prog haS hg ht ha hb (mvar_tmp hg 1)
       (tmp_ne_cf 1 _) hbt ((hp1.read scratch_cf has).trans hva)
       ((hp1.read scratch_cf hbs).trans hvb) hp1.res hb''
-    refine ⟨s2, h2, hp2.retarget hsc ?_⟩
+    refine ⟨s2, h2, hp2.change_target hsc ?_⟩
     rw [hcf2]
     simp
   · exact blk_matCF aS opS gd prog haS hop hx hxt hxs hp2.res hb'
@@ -1863,7 +1863,7 @@ theorem sem_cmpCode (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS) {ws : MWSi
   have hyx : ∀ z : MVar, z.vname ≠ (mvar x).vname → ¬ Scratch z.vname →
       z.vname ≠ (mvar x).vname := fun _ h _ => h
   have hycf : ∀ z : MVar, z.vname ≠ (mvar x).vname → ¬ Scratch z.vname →
-      z.vname ≠ mcf.v_var.vname := fun _ _ hz => ne_of_scratch hz scratch_cf
+      z.vname ≠ mcf.v_var.vname := fun _ _ hz => ne_of_not_scratch hz scratch_cf
   have hmat : ∀ (s1 : Estate SyscallState Mem) (P : Bool), s1.evm mcf.v_var = .Vbool P →
       ∀ b', translateCmdExt (matCF x) = some b' → ∃ s2, Sem aS opS gd prog s1 (typeC b') s2 ∧
         Post s1 s2 (mvar x) (· = .Vword .U64 (BitVec.ofNat 64 (if P then 1 else 0))) :=
@@ -1983,7 +1983,7 @@ theorem sem_select (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true)
   set m := mvar (tmp 0 (wsOf ws.bits))
   set mc : BitVec ws.bits := BitVec.ofNat ws.bits (BitVec.ofNat 64 cnd.toNat).toNat
   have hmx : m.vname ≠ x.vname := fun h => hxs (h ▸ hsc)
-  have hbm : b.vname ≠ m.vname := ne_of_scratch hbs hsc
+  have hbm : b.vname ≠ m.vname := ne_of_not_scratch hbs hsc
   have htx : ∀ u : BitVec ws.bits, (Value.Vword ws u).typeOf = evalAtype (mvar x).vtype :=
     fun _ => by rw [hxt]; rfl
   have htm : ∀ u : BitVec ws.bits, (Value.Vword ws u).typeOf = evalAtype m.vtype :=
@@ -2004,7 +2004,7 @@ theorem sem_select (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true)
       exact hop.neg ws hg _
     refine sem_asgn_step aS opS gd prog hx (translatePExprExt_pv (translateVarIExt_mvi ha))
       hc2 (v := .Vword ws va) (semPexpr_mpv opS gd ?_ rfl) rfl (htx _) (fun c3 hc3 => ?_)
-    · have ham : a.vname ≠ m.vname := ne_of_scratch has hsc
+    · have ham : a.vname ≠ m.vname := ne_of_not_scratch has hsc
       simp only [Estate.withVm, mvi,
         set_ne (z := mvar a) (x := mvar (tmp 0 (wsOf ws.bits))) _ ham, hva]
     refine sem_asgn_step aS opS gd prog hx (translatePExprExt_papp2 (op' := .Olxor ws)
@@ -2052,7 +2052,7 @@ theorem sem_select (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true)
       rw [h1]
       simp [selectW, BitVec.neg_one_eq_allOnes, BitVec.xor_assoc]
   · intro z hz hzs
-    have hzm : z.vname ≠ m.vname := ne_of_scratch hzs hsc
+    have hzm : z.vname ≠ m.vname := ne_of_not_scratch hzs hsc
     rw [set_ne _ hz, set_ne _ hz, set_ne _ hz, set_ne _ hz, set_ne _ hzm, set_ne _ hzm]
   · exact fun h => arrTyped_set (arrTyped_set (arrTyped_set (arrTyped_set (arrTyped_set
       (arrTyped_set h rfl (htm _)) rfl (htm _)) rfl (htx _)) rfl (htx _)) rfl (htx _)) rfl (htx _)
@@ -2903,10 +2903,10 @@ end Emit
 /-! ## 20. Straight-line regions -/
 
 /-- The straight-line programs: let-bindings, then `ret`. -/
-def StraightLine : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
+def LetsThenRet : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
     NFProg jasminDialect Γ ts → Prop
   | _, _, .ret _ => True
-  | _, _, .var _ k => StraightLine k
+  | _, _, .var _ k => LetsThenRet k
   | _, _, _ => False
 
 omit [MemModel Mem] in
@@ -2931,7 +2931,7 @@ denotes. -/
 theorem nfToJasminBody_sem (haS : JazzAsmAgrees aS) (hop : JazzOpAgrees opS)
     (E : CallEnv jasminDialect) (fuel : Nat) :
     ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts),
-      StraightLine p → widthsGo p = true →
+      LetsThenRet p → widthsGo p = true →
       ∀ {loc : Nat} {env : List JVar} {d n : Nat} {out : JOut}, linGo p loc = true →
       nfToJasminBody env p d n = some out →
       ∀ {c' : List MInstr}, translateCmdExt out.code = some c' →

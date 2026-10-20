@@ -1304,7 +1304,7 @@ theorem mkUnit_erase {fname : String} {ps : List (JVar × Storage × PType)} {bo
 section SpillErase
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminSpill (Src St renG renE renEs renLv renI mv reloadSrc reloadFresh evict makeRoom
-  helper helpers helpersOf loadOne loadAll dropDead afterDef stepI goBody fixOne fixAll initSt
+  helper helpers helpersOf loadOne loadAll pruneDeadHolders afterDef stepI goBody fixOne fixAll initSt
   run spillFn lookS)
 
 theorem renG_info (r : JVar → JVar) (g : GVar) : (renG r g).gv.info = g.gv.info := by
@@ -1489,9 +1489,9 @@ theorem stepI_erased (k : Nat) (cand : JVar → Bool) (res : List JVar) {st : St
     (c : List InstrR) (h : SigErased st) (hi : instrErasedB i = true) :
     OutErased (stepI k cand res st i c) := by
   have h1 := loadAll_erased k cand (JasminSpill.usesOf cand i) res (i :: c)
-    (JasminSpill.usesOf cand i) (st := dropDead res (i :: c) st) h
+    (JasminSpill.usesOf cand i) (st := pruneDeadHolders res (i :: c) st) h
   have h2 := makeRoom_erased k (JasminSpill.defsOf cand i).length (JasminSpill.usesOf cand i) res
-    (i :: c) (loadAll k cand (JasminSpill.usesOf cand i) res (i :: c) (dropDead res (i :: c) st)
+    (i :: c) (loadAll k cand (JasminSpill.usesOf cand i) res (i :: c) (pruneDeadHolders res (i :: c) st)
       (JasminSpill.usesOf cand i)).1.rho.length h1.1
   refine ⟨afterDef_erased cand c h2.1 hi, ?_⟩
   intro j hj

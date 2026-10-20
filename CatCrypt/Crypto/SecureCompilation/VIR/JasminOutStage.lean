@@ -74,7 +74,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering
   (hvAppend inlHom inrHom lookup_inlHom)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (varIndex)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
-  (RegionExportable BindMemN)
+  (RegionExportable BindMemN varIndex_inlHom)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (ScalarMemN)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond (ArrMemN)
 open CatCrypt.Crypto.Jasmin.Jazz (Storage PType JazzUnit)
@@ -82,26 +82,20 @@ open CatCrypt.Crypto.Jasmin.Jazz (Storage PType JazzUnit)
 /-! ## 1. Variables by index -/
 
 /-- The entry of a context at the index of a variable is the type of the variable. -/
-theorem getElem?_varIndex : ∀ {Γ : Ctxt jasminDialect} {u : JasminTy} (v : Ctxt.Var Γ u),
+theorem ctxt_getElem?_varIndex : ∀ {Γ : Ctxt jasminDialect} {u : JasminTy} (v : Ctxt.Var Γ u),
     Γ[varIndex v]? = some u
   | _, _, .here => rfl
-  | _, _, .there v => by simp only [varIndex, List.getElem?_cons_succ, getElem?_varIndex v]
-
-/-- The embedding of `Γ` into `Γ ++ [A]` keeps the index of a variable. -/
-theorem varIndex_inlHom {A : JasminTy} : ∀ {Γ : Ctxt jasminDialect} {u : JasminTy}
-    (v : Ctxt.Var Γ u), varIndex (inlHom [A] v) = varIndex v
-  | _, _, .here => rfl
-  | _, _, .there v => by simp only [inlHom, varIndex, varIndex_inlHom v]
+  | _, _, .there v => by simp only [varIndex, List.getElem?_cons_succ, ctxt_getElem?_varIndex v]
 
 /-- The embedding of `Γ` into `Γ ++ [A]` as a context homomorphism. -/
 def appHom (A : JasminTy) {Γ : Ctxt jasminDialect} : Ctxt.Hom Γ (Γ ++ [A]) :=
   fun v => inlHom [A] v
 
 /-- The last variable of `Γ ++ [A]` has the index `Γ.length`. -/
-theorem varIndex_inrHom (A : JasminTy) : ∀ (Γ : Ctxt jasminDialect),
+theorem varIndex_appendLast (A : JasminTy) : ∀ (Γ : Ctxt jasminDialect),
     varIndex (inrHom Γ (Ctxt.Var.here : Ctxt.Var [A] A)) = Γ.length
   | [] => rfl
-  | _ :: Γ => by simp only [inrHom, varIndex, varIndex_inrHom A Γ, List.length_cons]
+  | _ :: Γ => by simp only [inrHom, varIndex, varIndex_appendLast A Γ, List.length_cons]
 
 /-- The embedding of `Γ` into `Γ ++ [A]` keeps the indices of an argument vector. -/
 theorem hvIdxs_renameVars {A : JasminTy} {Γ : Ctxt jasminDialect} :
@@ -402,7 +396,7 @@ theorem storeSrc?_type {Γ : Ctxt jasminDialect} {u : JasminTy} (e : Expr jasmin
         have h' : storeSrc? (JasminOp.stackStore w n) (varIndex v :: hvIdxs vs) = some a := h
         simp only [storeSrc?, Option.some.injEq] at h'
         subst h'
-        exact ⟨w, n, getElem?_varIndex v⟩
+        exact ⟨w, n, ctxt_getElem?_varIndex v⟩
   case stackStoreImm w n i =>
     cases args with
     | cons v vs =>
@@ -410,7 +404,7 @@ theorem storeSrc?_type {Γ : Ctxt jasminDialect} {u : JasminTy} (e : Expr jasmin
           = some a := h
         simp only [storeSrc?, Option.some.injEq] at h'
         subst h'
-        exact ⟨w, n, getElem?_varIndex v⟩
+        exact ⟨w, n, ctxt_getElem?_varIndex v⟩
   all_goals simp [storeSrc?] at h
 
 /-- The stores are in the stack-memory fragment. -/
@@ -537,7 +531,7 @@ theorem stageGo_usesIdx {ws nOut : Nat} : ∀ {Γ : Ctxt jasminDialect} {t : Jas
   | Γ, _, .ret _, p, h, i, hu => by
       simp only [stageGo] at h
       rcases storesGo_usesIdx nOut 0 _ h (by omega) i hu with h0 | ⟨_, h1⟩
-      · rw [varIndex_inrHom] at h0
+      · rw [varIndex_appendLast] at h0
         exact Or.inr (Or.inr h0)
       · exact Or.inr (Or.inl (by simpa [Optimizer.UncomputePass.comLen] using h1))
   | _, _, .var e body, p, h, i, hu => by
@@ -564,9 +558,9 @@ theorem stageGo_linGo {ws nOut : Nat} : ∀ {Γ : Ctxt jasminDialect} {t : Jasmi
     linGo p (Γ.length + 1) = true
   | Γ, _, .ret _, p, h, _, hn => by
       simp only [stageGo] at h
-      refine storesGo_linGo nOut 0 _ _ h (by omega) (by rw [varIndex_inrHom]; omega)
+      refine storesGo_linGo nOut 0 _ _ h (by omega) (by rw [varIndex_appendLast]; omega)
         (Or.inr ?_)
-      rw [varIndex_inrHom]
+      rw [varIndex_appendLast]
       simpa [Optimizer.UncomputePass.comLen] using hn
   | Γ, _, .var e body, p, h, hl, hn => by
       simp only [stageGo, Option.map_eq_some_iff] at h

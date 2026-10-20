@@ -121,7 +121,7 @@ def kVar : JVar := mkV 'k' 0 .sint
 
 /-- The copy `for k = 0 to n { dst[k] = src[k]; }` of an array of type `t`; empty for a
 scalar type. -/
-def copyLoop (dst src : JVar) : JasminTy → Cmd
+def arrCopyLoop (dst src : JVar) : JasminTy → Cmd
   | .stackArr w n =>
       [.Cfor ⟨kVar, vi0⟩ ⟨.UpTo, 0, n⟩
         [.Cassgn (.Laset .AAscale (wsOf w) ⟨dst, vi0⟩ (pv kVar)) .AT_none (.sword (wsOf w))
@@ -187,7 +187,7 @@ def envVar (m : OrchMode) (i : Nat) (t : JasminTy) : JVar :=
 
 /-- The copy of the input `i` into its owned buffer. -/
 def copyIn (m : OrchMode) (i : Nat) (t : JasminTy) : Cmd :=
-  if owns m t then copyLoop (ownVar i t) (inVar m i t) t else []
+  if owns m t then arrCopyLoop (ownVar i t) (inVar m i t) t else []
 
 /-- The declaration of the owned buffer of the input `i`. -/
 def ownDecl (m : OrchMode) (i : Nat) (t : JasminTy) : List Decl :=
@@ -226,7 +226,7 @@ def orchFn (m : OrchMode) (name : String) {Γ : Ctxt jasminDialect} {t : JasminT
     | some o =>
         let post? : Option Cmd :=
           if m == .memPtr then (if r.2.2 == o then some [] else none)
-          else some (copyLoop o r.2.2 t)
+          else some (arrCopyLoop o r.2.2 t)
         post?.map fun post =>
           orchFnOf name ps (pre ++ r.1 ++ post) arrDecls [o] [m.slot (.regPtr true) t]
     | none =>
