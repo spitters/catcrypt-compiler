@@ -79,14 +79,17 @@ structure TraitLink where
 
 namespace TraitLink
 
-/-- The type of a parameter under its conversion: 32 bytes, or a `u64` word. -/
+/-- The type of a parameter under its conversion: 32 bytes as an array of 32 `u64` words, one
+    byte per word (the byte-word convention of `HaxLean.ByteWords` and of the extraction's
+    `[u8; 32]` arguments), or a `u64` word. -/
 def argTy : ArgConv → NfTy
-  | .bytes => .arr 32 (.word 8)
+  | .bytes => .arr 32 (.word 64)
   | .keep => .word 64
 
-/-- The type of the result under its conversion: 32 bytes, or a bit. -/
+/-- The type of the result under its conversion: 32 bytes as an array of 32 `u64` words, one
+    byte per word, or a bit. -/
 def resTy : ResConv → NfTy
-  | .bytes => .arr 32 (.word 8)
+  | .bytes => .arr 32 (.word 64)
   | .flag => .bit
 
 /-- **The generated callee of a link** as a function of a module: named by the head, with the
@@ -177,9 +180,10 @@ theorem resOk_admits {c : ResConv} {r : Value} (h : resOk c r = true) : c.Admits
     | int z => exact ⟨z, rfl⟩
     | _ => simp [resOk] at h
 
-/-- The integer values of natural numbers below `2^8` decode as bytes, one per number. -/
-theorem mapM_dec_byte : ∀ (ns : List Nat), (∀ n ∈ ns, n < 2 ^ 8) →
-    ∃ ys, (ns.map fun (n : Nat) => Value.int n).mapM (dec (.word 8)) = some ys ∧
+/-- The integer values of natural numbers below `2^w` decode as `w`-bit words, one per
+    number. -/
+theorem mapM_dec_word (w : Nat) : ∀ (ns : List Nat), (∀ n ∈ ns, n < 2 ^ w) →
+    ∃ ys, (ns.map fun (n : Nat) => Value.int n).mapM (dec (.word w)) = some ys ∧
       ys.length = ns.length := by
   intro ns
   induction ns with
@@ -187,9 +191,15 @@ theorem mapM_dec_byte : ∀ (ns : List Nat), (∀ n ∈ ns, n < 2 ^ 8) →
   | cons n ns ih =>
     intro h
     obtain ⟨ys, hys, hl⟩ := ih (fun k hk => h k (List.mem_cons_of_mem _ hk))
-    have hn : n < 256 := by have := h n List.mem_cons_self; omega
-    refine ⟨BitVec.ofNat 8 n :: ys, ?_, by simp [hl]⟩
+    have hn : (n : Int) < 2 ^ w := by exact_mod_cast h n List.mem_cons_self
+    refine ⟨BitVec.ofNat w n :: ys, ?_, by simp [hl]⟩
     simp [List.mapM_cons, hys, dec, hn]
+
+/-- The integer values of natural numbers below `2^8` decode as bytes, one per number. -/
+theorem mapM_dec_byte : ∀ (ns : List Nat), (∀ n ∈ ns, n < 2 ^ 8) →
+    ∃ ys, (ns.map fun (n : Nat) => Value.int n).mapM (dec (.word 8)) = some ys ∧
+      ys.length = ns.length :=
+  mapM_dec_word 8
 
 /-- The converted value of a result `resOk` accepts decodes at the result type. -/
 theorem dec_resTy_apply {c : ResConv} {r : Value} (h : resOk c r = true) :
@@ -198,11 +208,11 @@ theorem dec_resTy_apply {c : ResConv} {r : Value} (h : resOk c r = true) :
   | bytes =>
     cases r with
     | array vs =>
-      obtain ⟨ys, hys, hl⟩ := mapM_dec_byte (unpackLE (vs.map hax64WordNat)) (by
+      obtain ⟨ys, hys, hl⟩ := mapM_dec_word 64 (unpackLE (vs.map hax64WordNat)) (by
         intro n hn
         simp only [unpackLE, List.mem_map] at hn
         obtain ⟨k, -, rfl⟩ := hn
-        exact wordByteLE_lt _ k)
+        exact lt_of_lt_of_le (wordByteLE_lt _ k) (by norm_num))
       have h32 : ys.length = 32 := by simp [hl, unpackLE]
       simp [ResConv.apply, resTy, wordsVal, dec, hys, h32]
     | _ => simp [resOk] at h
