@@ -816,12 +816,14 @@ theorem gate_tagShift {frame : String → Option (BitVec 64)}
   have e6 : tagMnem b n ≠ "MOVQ" := by tag_ne hb
   have e7 : tagMnem b n ≠ "MOV:64" := by tag_ne hb
   have e8 : tagMnem b n ≠ "MOV" := by tag_ne hb
+  have e9 : tagMnem b n ≠ "ZEROARR" := by tag_ne hb
+  have e10 : tagMnem b n ≠ "STOREIMM" := by tag_ne hb
   have hcast := (tagMnem_facts hb hn0 hn (Params.ofBody body) [] d s).2.1
   have hsym := fun R => symN_tagShift hb hn0 hn d s R
   apply gateAtW_reg
   · img_reads
   · simp [carryI?]
-  · simp [icase, hcast, e4, e5, e6, e7, slotMov?, slotCmp?]
+  · simp [icase, hcast, e4, e5, e6, e7, e9, e10, slotMov?, slotCmp?]
   · exact movImmStruct?_ne e8
   · rfl
   · have hne : ∀ t : String, t.toList.take 2 ≠ ['S', 'H'] → (tagMnem b n = t) = False :=

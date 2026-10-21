@@ -510,6 +510,12 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
       obtain rfl := slotCmp?_eq hm
       simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, slotMov?, slotCmp?, ha]
+  | zarr b n w =>
+      obtain rfl := icase_zarr hc
+      simp [stepLeakA, hb, posT, hc, instrLeakA, tagA, zeroTagA]
+  | simm d b v j =>
+      obtain rfl := icase_simm hc
+      simp [stepLeakA, hb, posT, hc, instrLeakA, tagA, storeImmTagA]
   | reg =>
       rw [hc] at hg
       obtain ⟨ds, o, ss, rfl, ho1, ho2, hk⟩ := icase_reg hc
@@ -519,7 +525,8 @@ theorem step_leak {frame : String → Option (BitVec 64)}
           | exact hg.1
           | exact hg.1.1
           | exact hg.1.1.1
-      have ht : tagA (.Lopn ds o ss) = .reg none := tagA_reg ho1 ho2 hk
+      obtain ⟨hz1, hz2⟩ := icase_reg_arr hc ds o ss rfl
+      have ht : tagA (.Lopn ds o ss) = .reg none := tagA_reg ho1 ho2 hk hz1 hz2
       simp only [stepLeakA, hb, posT, hc, ht]
       exact instrLeakA_regOk hok none sa
 
@@ -562,6 +569,8 @@ theorem imgInstr_nextPc {frame : String → Option (BitVec 64)}
     | sstore q S =>
         rcases slotMov?_cases (icase_sstore hc).1 with h | h <;> exact Or.inl ⟨_, _, _, h⟩
     | scmp d y q => exact Or.inl ⟨_, _, _, slotCmp?_eq (icase_scmp hc).1⟩
+    | zarr b n w => exact Or.inl ⟨_, _, _, icase_zarr hc⟩
+    | simm d b v j => exact Or.inl ⟨_, _, _, icase_simm hc⟩
     | reg =>
         obtain ⟨ds, o, ss, h, -, -⟩ := icase_reg hc
         exact Or.inl ⟨_, _, _, h⟩
@@ -570,7 +579,9 @@ theorem imgInstr_nextPc {frame : String → Option (BitVec 64)}
         (imgInstr slotArr body k (.Lopn ds o ss)).1 = .Lopn ds' o' ss' := by
       unfold imgInstr
       repeat' split
-      all_goals exact ⟨_, _, _, rfl⟩
+      all_goals first
+        | exact ⟨_, _, _, rfl⟩
+        | (apply arrImmImg_lopn; assumption)
     rw [he] at h
     exact h
   · exact h

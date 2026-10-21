@@ -46,6 +46,8 @@ by moves (`slotMov?`) none of which writes `R`, so `R` still holds its entry val
 * `cellIdxStore?`, `cellIdxStore?_spec`, `imgInstr_cellIdxStore`: the indexed store through
   a cell `mem.D.0` whose base `D` is the address `LEA:64 D, (B, X, 8)` of a word of an array,
   and its image, the name-keyed store at the frame slot from which `X` was reloaded.
+* `arrImmImg`, `imgInstr_zeroArr`, `imgInstr_storeImm`: the image of an array zeroing
+  `ZEROARR` and of a constant-index store `STOREIMM` through the pointer of an array.
 * `isSaveB`, `entryRegB`, `slotWriteB`, `accOkB`, `physImgB`: the class.
 -/
 
@@ -289,13 +291,59 @@ theorem cellIdxStore?_spec {slotArr : String → Option (String × Nat)} {body :
     · cases h
   · cases h
 
+/-- The image of an array zeroing or a constant-index store through a register `b` that holds
+    the pointer of the array `A` of length `n` (`accArr`): the zeroing
+    `ZEROARR [], [b, #n', #w']` is the name-keyed zeroing of `A` at the tag `.zero 64 n`, and
+    the store `STOREIMM d, [b, v, #k]` is the name-keyed store `STOREIMM A, [A, v, #k]` at the
+    tag `.storeImm 64 n`; `none` for every other instruction and for a base register without
+    an array. -/
+def arrImmImg (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
+    LinstrR → Option LinstrRM
+  | .Lopn [] o [.reg b, .imm n', .imm w'] =>
+      if o = "ZEROARR" then
+        match accArr slotArr body k b with
+        | some (A, n) => some (.Lopn [.reg A] "ZEROARR" [.imm n', .imm w'], .zero 64 n)
+        | none => none
+      else none
+  | .Lopn [.reg _] o [.reg b, .reg v, .imm j] =>
+      if o = "STOREIMM" then
+        match accArr slotArr body k b with
+        | some (A, n) => some (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm j], .storeImm 64 n)
+        | none => none
+      else none
+  | _ => none
+
+/-- An instruction other than `ZEROARR` and `STOREIMM` has no image by `arrImmImg`. -/
+theorem arrImmImg_of_ne (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "ZEROARR")
+    (h2 : o ≠ "STOREIMM") : arrImmImg slotArr body k (.Lopn ds o ss) = none := by
+  grind only [= arrImmImg.eq_def]
+
+/-- `arrImmImg` reads the body only through the array scan of the base register of the
+    instruction. -/
+theorem arrImmImg_isSome_mono {slotArr : String → Option (String × Nat)} {b1 b2 : Lcmd}
+    {k1 k2 : Nat} {i : LinstrR}
+    (hmono : ∀ x, (∃ ds o ss, i = .Lopn ds o (.reg x :: ss)) →
+      (accArr slotArr b1 k1 x).isSome = true → (accArr slotArr b2 k2 x).isSome = true)
+    (h : (arrImmImg slotArr b1 k1 i).isSome = true) :
+    (arrImmImg slotArr b2 k2 i).isSome = true := by
+  grind only [= arrImmImg.eq_def, = Option.isSome_some, = Option.isSome_none]
+
+/-- An image by `arrImmImg` is an `Lopn`. -/
+theorem arrImmImg_lopn {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {i : LinstrR} {r : LinstrRM} (h : arrImmImg slotArr body k i = some r) :
+    ∃ ds o ss, r.1 = .Lopn ds o ss := by
+  grind only [= arrImmImg.eq_def]
+
 /-- The image of instruction `k` of `body`: an indexed load or store at scale `8` through a
     register that holds the pointer of the array `A` of length `n` is the name-keyed load or
     store on `A` at the shape `(64, n)`; a stored carry constant `MOV:64 d, #n` (`bitStore?`)
     is the untagged move `MOV d, #n` at the one-bit tag `.reg (some 1)`, the write of the bit
     `n`; an indexed store through a cell (`cellIdxStore?`) of `v` at the word `8 · q` of the
     array `A` of length `n` is the name-keyed store `STOREIDX A[q] := v` at the shape
-    `(64, n)`; every other instruction is `normA` of it at the tag `tagAt` of its position. -/
+    `(64, n)`; an array zeroing or a constant-index store through the pointer of an array is
+    its image by `arrImmImg`; every other instruction is `normA` of it at the tag `tagAt` of
+    its position. -/
 def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : LinstrRM :=
   match i with
@@ -317,7 +365,10 @@ def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Na
       | none =>
           match cellIdxStore? slotArr body k i with
           | some (A, n, q, v) => (.Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v], .store 64 n)
-          | none => (normA i, tagAt body k i)
+          | none =>
+              match arrImmImg slotArr body k i with
+              | some r => r
+              | none => (normA i, tagAt body k i)
 
 /-- The image of a stored carry constant `MOV:64 d, #n` is the one-bit move `MOV d, #n`. -/
 theorem imgInstr_bitStore (slotArr : String → Option (String × Nat)) {body : Lcmd} {k : Nat}
@@ -337,6 +388,23 @@ theorem imgInstr_cellIdxStore (slotArr : String → Option (String × Nat)) {bod
   have hb : bitStore? body k (.Lopn [.reg c] "MOV:64" [.reg v]) = none :=
     bitStore?_of_ne (by simp)
   simp only [imgInstr, hb, h]
+
+/-- The image of the array zeroing `ZEROARR [], [b, #n', #w']` through a register `b` that
+    holds the pointer of the array `A` of length `n` is the zeroing of `A` at `.zero 64 n`. -/
+theorem imgInstr_zeroArr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    {b A : String} {n' w' n : Nat} (h : accArr slotArr body k b = some (A, n)) :
+    imgInstr slotArr body k (.Lopn [] "ZEROARR" [.reg b, .imm n', .imm w'])
+      = (.Lopn [.reg A] "ZEROARR" [.imm n', .imm w'], .zero 64 n) := by
+  simp [imgInstr, bitStore?, cellIdxStore?, arrImmImg, h]
+
+/-- The image of the constant-index store `STOREIMM d, [b, v, #j]` through a register `b` that
+    holds the pointer of the array `A` of length `n` is the store `STOREIMM A, [A, v, #j]` at
+    `.storeImm 64 n`. -/
+theorem imgInstr_storeImm (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    {d b v A : String} {j n : Nat} (h : accArr slotArr body k b = some (A, n)) :
+    imgInstr slotArr body k (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm j])
+      = (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm j], .storeImm 64 n) := by
+  simp [imgInstr, bitStore?, cellIdxStore?, arrImmImg, h]
 
 /-- **The image of a physical body**: `imgInstr` at each instruction of the body without its
     final instruction (the return of a printed body). -/
@@ -386,7 +454,9 @@ def slotWriteB (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : 
   | _ => true
 
 /-- An indexed access of the body resolves to an array: an `LOADIDX` or `STOREIDX` is at
-    scale `8` and its base register holds the pointer of an array (`accArr`). -/
+    scale `8` and its base register holds the pointer of an array (`accArr`), and a `ZEROARR`
+    or `STOREIMM` has an image by `arrImmImg` (its form, with a base register that holds the
+    pointer of an array). -/
 def accOkB (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : Bool :=
   match i with
@@ -401,6 +471,7 @@ def accOkB (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
             (match i with | .Lopn [.reg _] _ _ => true | _ => false)
               && (accArr slotArr body k b).isSome
         | _ => false
+      else if o = "ZEROARR" ∨ o = "STOREIMM" then (arrImmImg slotArr body k i).isSome
       else true
   | _ => true
 

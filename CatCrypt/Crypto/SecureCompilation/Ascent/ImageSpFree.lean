@@ -78,7 +78,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond (decodeA
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg imgInstr accArr
-  physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore? cellIdxStore?_spec)
+  physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore? cellIdxStore?_spec
+  arrImmImg)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (normA condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts? slotMov?)
@@ -672,8 +673,9 @@ theorem stackFreeB_of_instrOKB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Pa
 
 /-- **The shapes of the image of an instruction**: the instruction with the widening
     multiply read at its width; an indexed load or an indexed store on the array of a
-    resolved access; the one-bit move of a stored carry constant; or the indexed store of an
-    indexed store through a cell (`cellIdxStore?`). -/
+    resolved access; the one-bit move of a stored carry constant; the indexed store of an
+    indexed store through a cell (`cellIdxStore?`); or the name-keyed zeroing or
+    constant-index store of an array zeroing or a constant-index store (`arrImmImg`). -/
 theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (x : LinstrR) :
     (imgInstr slotArr body k x).fst = normA x
@@ -686,9 +688,10 @@ theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcm
           = .Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v])
     ∨ (∃ d n, x = .Lopn [.reg d] "MOV:64" [.imm n]
         ∧ (imgInstr slotArr body k x).fst = .Lopn [.reg d] "MOV" [.imm n])
-    ∨ ∃ A n q v, cellIdxStore? slotArr body k x = some (A, n, q, v)
+    ∨ (∃ A n q v, cellIdxStore? slotArr body k x = some (A, n, q, v)
         ∧ (imgInstr slotArr body k x).fst
-          = .Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v] := by
+          = .Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v])
+    ∨ ∃ r, arrImmImg slotArr body k x = some r ∧ (imgInstr slotArr body k x).fst = r.1 := by
   unfold imgInstr
   split
   · split_ifs with ho
@@ -710,8 +713,28 @@ theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcm
       exact Or.inr (Or.inr (Or.inr (Or.inl ⟨d, n, (bitStore?_spec hb).1, rfl⟩)))
     · split
       · rename_i A n q v hc
-        exact Or.inr (Or.inr (Or.inr (Or.inr ⟨A, n, q, v, hc, rfl⟩)))
-      · exact Or.inl rfl
+        exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨A, n, q, v, hc, rfl⟩))))
+      · split
+        · rename_i r hr
+          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨r, hr, rfl⟩))))
+        · exact Or.inl rfl
+
+/-- An instruction of the covered fragment is no array zeroing and no constant-index store:
+    `arrImmImg` gives it no image. -/
+theorem arrImmImg_of_instrOKB {slotArr : String → Option (String × Nat)} {body body' : Lcmd}
+    {P : X86Backend.LprogBytesDecode.Params} {k : Nat} {x : LinstrR}
+    (hok : instrOKB body' P x = true) : arrImmImg slotArr body k x = none := by
+  unfold arrImmImg
+  split
+  · split_ifs with ho
+    · subst ho
+      simp [instrOKB, classifyA, classify] at hok
+    · rfl
+  · split_ifs with ho
+    · subst ho
+      simp [instrOKB, classifyA, classify] at hok
+    · rfl
+  · rfl
 
 /-- An instruction of the covered fragment is no indexed store through a cell: the fragment
     stores to a frame slot only, and a cell name is no frame slot. -/
@@ -749,7 +772,7 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
     stackFreeB (imgInstr slotArr body k x).fst = true := by
   rcases stackFreeB_of_instrOKB hok with hf | ⟨d, b, i, v, rfl, hb, hi, hv⟩
   · rcases imgInstr_cases slotArr body k x with h | ⟨d, b, idx, A, n, rfl, hA, h⟩ |
-      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, -⟩
+      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, -⟩ | ⟨ri, hri, -⟩
     · rw [h]
       simp only [stackFreeB, operandNames_normA] at hf ⊢
       exact hf
@@ -765,6 +788,8 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
       simpa [stackFreeB, operandNames, srcNames] using hf
     · rw [cellIdxStore?_of_instrOKB hok] at hc
       cases hc
+    · rw [arrImmImg_of_instrOKB hok] at hri
+      cases hri
   · simp only [accOkB, if_neg (show ¬ ("STOREIDX" = "LOADIDX") by decide), if_true,
       Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
@@ -822,13 +847,15 @@ theorem virtImg_noCall (slotArr : String → Option (String × Nat)) {body : Lcm
   obtain ⟨k, j, -, hj, rfl⟩ := mem_virtImg hi
   have hok := instrOKB_of_printedAddrB hp hj
   rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩
+    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, -⟩
   · rw [h]
     cases hx : j.li_i <;> rw [hx] at hok <;> simp [instrOKB] at hok <;> rfl
   · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
+  · rw [arrImmImg_of_instrOKB hok] at hri
+    cases hri
 
 /-! ## 5. The names an instruction of the image reads -/
 
@@ -876,7 +903,7 @@ theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd
       ∨ ∃ A n v j i', cellIdxStore? slotArr body k x = some (A, n, r, v) ∧ j < k
         ∧ body[j]? = some i' ∧ r ∈ (rdWr i'.li_i).1 := by
   rcases imgInstr_cases slotArr body k x with h | ⟨d, b, idx, A, n, rfl, hA, h⟩ |
-    ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩
+    ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ | ⟨ri, hri, h⟩
   rotate_left 4
   · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, -, -, -,
       hacc⟩ := cellIdxStore?_spec hc
@@ -890,6 +917,25 @@ theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd
     · left
       rw [hx]
       simp [rdWr, opNames]
+  · rw [h] at hr
+    unfold arrImmImg at hri
+    split at hri
+    · split_ifs at hri
+      split at hri
+      · cases hri
+        simp [rdWr, opNames] at hr
+      · cases hri
+    · split_ifs at hri
+      split at hri
+      · rename_i A n hA
+        cases hri
+        obtain ⟨q, -, hq, -⟩ := accArr_spec hA
+        simp [rdWr, opNames] at hr ⊢
+        rcases hr with rfl | rfl
+        · exact Or.inr (Or.inl ⟨q, n, hq⟩)
+        · simp
+      · cases hri
+    · cases hri
   · rw [h] at hr
     left
     cases x <;> exact hr

@@ -212,7 +212,7 @@ theorem fuse_step (s : Bool) (hq : ∀ q, (slotArr q).isSome = true → hasPrefi
     have hlo' : slotArr lo = none := hp (lo, k) hlo
     refine ⟨L, _, pend', he, hs.2, hh.2, hag', hes', fun p hp' => hp p (hsub p hp'),
       Or.inr ⟨fun r hr => ?_, fun r hr => List.all_eq_true.mp hrest r hr⟩⟩
-    obtain ⟨-, hds⟩ := hout r hr
+    obtain ⟨-, -, hds⟩ := hout r hr
     cases hr' : r.li_i with
     | Lopn ds o ss =>
       simp only [dstOkB, List.all_eq_true]

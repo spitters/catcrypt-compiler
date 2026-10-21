@@ -629,6 +629,8 @@ def gateAtW (frame : String → Option (BitVec 64)) (slotArr : String → Option
                 | some _ => sImmB frame slotArr x
                 | none => sImmB frame slotArr x || sCmovB frame slotArr x
                     || (regGateBW frame W (normA x) && cmovCondOkB W x)
+        | .zarr .. => false
+        | .simm .. => false
         | .other => castGateB frame x
 
 /-- The gate of instruction `k` of a body at its width analysis. -/
@@ -3369,7 +3371,8 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         rw [he.2.1] at hw
         simp [castTagW] at hw)]
       simp only
-      rw [normA_castW hw, tagAt_castW _ _ hw]
+      rw [normA_castW hw, tagAt_castW _ _ hw,
+        arrImmImg_of_ne slotArr c _ (castTagW_ne_arr hw).1 (castTagW_ne_arr hw).2]
     rw [himg] at hstep
     have hstep' : evalInstrPMemF P (bi.li_i, .reg (some w)) s = some t := by
       simpa [evalInstrPMemFk, idxOkB] using hstep
@@ -3418,9 +3421,11 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         [.reg a, .reg s', .reg cc]) = false :=
       bitMovB_of_ne (by cases hi <;> simp [movImmStruct?])
     rw [hx0, imgInstr_reg slotArr c _ hld hsd hkd h3 (bitStore?_of_ne (by cases hi <;> simp))
-      (cellIdxStore?_of_ne slotArr (by cases hi <;> simp)), evalInstrPMemFk_reg, ← hx0, hnA] at hstep
+      (cellIdxStore?_of_ne slotArr (by cases hi <;> simp)) (by cases hi <;> decide)
+      (by cases hi <;> decide), evalInstrPMemFk_reg, ← hx0, hnA] at hstep
     have hstepA : stepA frame c sa s.zf = fstepA frame (bi.li_i, .reg none) sa s.zf := by
-      rw [stepA_lopn frame hb hx0, hnA, hx0, tagAt_reg hld hsd hkd h3]
+      rw [stepA_lopn frame hb hx0, hnA, hx0, tagAt_reg hld hsd hkd h3 (by cases hi <;> decide)
+        (by cases hi <;> decide)]
     obtain ⟨sa', hst, hr⟩ : ∃ sa', fstepA frame (bi.li_i, .reg none) sa s.zf = some (sa', t.zf)
         ∧ ImgRelW frame slotArr base c t sa' t.zf := by
       cases hi
@@ -3431,6 +3436,8 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
     rw [hci] at hg
     cases hc : icase frame bi.li_i with
     | other => rw [hc] at hg; simp [castGateB, hkc] at hg
+    | zarr => rw [hc] at hg; cases hg
+    | simm => rw [hc] at hg; cases hg
     | cond cc l => exact absurd (icase_cond hc) (hnc (.reg cc) l)
     | label =>
         obtain ⟨ii, l, hx⟩ := icase_label hc
@@ -3538,6 +3545,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         rw [hc] at hg
         simp only [gateReadSet, hc] at hrd
         obtain ⟨ds, o, ss, hx, ho1, ho2, hko⟩ := icase_reg hc
+        obtain ⟨hz1, hz2⟩ := icase_reg_arr hc _ _ _ hx
         have hsafe := loadSafe_of (rsp := rsp) hb
           (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
         cases hmi : movImmStruct? bi.li_i with
@@ -3557,7 +3565,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
           rw [hx'] at hbit'
           have hi : imgInstr slotArr c sa.reg.lpc bi.li_i = (bi.li_i, .reg (some 1)) := by
             rw [hx']
-            simp [imgInstr, bitStore?, cellIdxStore?, tagAt, hbit', normA]
+            simp [imgInstr, bitStore?, cellIdxStore?, arrImmImg, tagAt, hbit', normA]
           rw [hi] at hstep
           have hstep' : evalInstrPMemF P (bi.li_i, .reg (some 1)) s = some t := by
             simpa [evalInstrPMemFk, idxOkB] using hstep
@@ -3590,13 +3598,13 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
               simpa [evalInstrPMemFk, idxOkB] using hstep
             obtain ⟨sa', hst, hr⟩ := rel_bstoreW hsep P hrel hb hbs hq hA hstep'
             refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-            rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3]
+            rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3 hz1 hz2]
           | none =>
             have h4 : bitStore? c sa.reg.lpc (.Lopn ds o ss) = none := by rw [← hx]; exact hbs
             rw [hbs] at hg
             have h5 : cellIdxStore? slotArr c sa.reg.lpc (.Lopn ds o ss) = none := by
               rw [← hx]; exact cellIdxStore?_of_regArmW hg
-            rw [hx, imgInstr_reg slotArr c _ ho1 ho2 hko h3 h4 h5, evalInstrPMemFk_reg, ← hx]
+            rw [hx, imgInstr_reg slotArr c _ ho1 ho2 hko h3 h4 h5 hz1 hz2, evalInstrPMemFk_reg, ← hx]
               at hstep
             obtain ⟨sa', hst, hr⟩ : ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa s.zf
                 = some (sa', t.zf) ∧ ImgRelW frame slotArr base c t sa' t.zf := by
@@ -3625,7 +3633,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
                     simpa [hsi, hsv] using hg
                   exact rel_regW hsep hphys P hrel hb hc hci hmi hbs hg'.1 hrd hg'.2 hstep
             refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-            rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3]
+            rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3 hz1 hz2]
 
 /-! ## 8. Halting, the read widths, and the frame -/
 

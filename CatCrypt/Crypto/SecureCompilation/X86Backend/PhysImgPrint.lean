@@ -180,9 +180,10 @@ theorem domOn_flatMap {S : String → Prop} (hS : ∀ q, gpNameB q = true → S 
     class. -/
 theorem physImgB_flatMap_of_dom {S : String → Prop} (hS : ∀ q, gpNameB q = true → S q)
     {b : Lcmd} {g : Linstr → Lcmd} (h : physImgB slotArr b = true)
-    (hbase : ∀ i ∈ b, ∀ ds o x y ss, i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss) → S x)
+    (hbase : ∀ i ∈ b, ∀ x, AccBase x i.li_i → S x)
     (hblk : ∀ A i C, b = A ++ i :: C → g i = [i] ∨
-      ((∀ r ∈ g i, isAccB r.li_i = false ∧ DstOk slotArr r.li_i) ∧ slotMov? i.li_i = none ∧
+      ((∀ r ∈ g i, isAccB r.li_i = false ∧ isArrImmB r.li_i = false ∧ DstOk slotArr r.li_i) ∧
+        slotMov? i.li_i = none ∧
         ∀ f', DomOn slotArr S (provF slotArr A fun _ => none) f' →
           DomOn slotArr S (scanStepF slotArr i (provF slotArr A fun _ => none))
             (provF slotArr (g i) f'))) :
@@ -200,8 +201,7 @@ theorem physImgB_flatMap_of_dom {S : String → Prop} (hS : ∀ q, gpNameB q = t
       simp only [List.getElem?_singleton, if_true, Option.some.injEq] at hr
       subst hr
       refine Or.inr ⟨A.length, by rw [hb]; simp, fun x hx ha => ?_, Or.inl fun R hR => ?_⟩
-      · obtain ⟨ds, o', y, ss, hx'⟩ := hx
-        have hSx := hbase i (by rw [hb]; simp) ds o' x y ss hx'
+      · have hSx := hbase i (by rw [hb]; simp) x hx
         rw [hb, accArr_append_left _ _ _ _ _ le_rfl] at ha
         rw [hfl, Nat.add_zero, accArr_append_left _ _ _ _ _ le_rfl]
         simp only [accArr] at ha ⊢
@@ -236,7 +236,7 @@ theorem physImgB_flatMap_of_dom {S : String → Prop} (hS : ∀ q, gpNameB q = t
             rw [hmj] at this
             cases this
   · have hmem : r ∈ g i := List.mem_of_getElem? hr
-    exact Or.inl ⟨(hblkr r hmem).1, slotWriteB_of_dstOk (hblkr r hmem).2 _ _⟩
+    exact Or.inl ⟨(hblkr r hmem).1, (hblkr r hmem).2.1, slotWriteB_of_dstOk (hblkr r hmem).2.2 _ _⟩
 
 /-- An operation with two sources whose first source is a register or an immediate, at which
     `accOkB` holds, is no indexed access. -/
@@ -245,6 +245,12 @@ theorem accOkB_two {body : Lcmd} {k : Nat} {d opn : String} {a c : LOperand}
     (ha : ∀ x y sc, a ≠ .arrIdx x y sc) : opn ≠ "LOADIDX" ∧ opn ≠ "STOREIDX" := by
   constructor <;> rintro rfl <;> cases a <;> simp_all [accOkB]
 
+/-- An operation with two sources at which `accOkB` holds is no `ZEROARR` or `STOREIMM`. -/
+theorem accOkB_two_arrImm {body : Lcmd} {k : Nat} {d opn : String} {a c : LOperand}
+    (h : accOkB slotArr body k (.Lopn [.reg d] opn [a, c]) = true) :
+    opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM" := by
+  constructor <;> rintro rfl <;> simp [accOkB, arrImmImg] at h
+
 theorem isAccB_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
     (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX") : isAccB (.Lopn ds o ss) = false := by
   simp [isAccB, h1, h2]
@@ -252,6 +258,10 @@ theorem isAccB_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
 theorem isAccB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
     (h : o = "MOV" ∨ o = "MOV:64") : isAccB (.Lopn ds o ss) = false := by
   rcases h with rfl | rfl <;> simp [isAccB]
+
+theorem isArrImmB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : o = "MOV" ∨ o = "MOV:64") : isArrImmB (.Lopn ds o ss) = false := by
+  rcases h with rfl | rfl <;> simp [isArrImmB]
 
 /-! ## 3. The two-address legalisation -/
 
@@ -354,7 +364,7 @@ theorem physImgB_twoAddrBody
     PhysImgEmit.slotArr_none_of_prefix hq (gpNameB_prefix (d := x86Data.tieScratch) (by decide)).1
   show physImgB slotArr (b.flatMap fun i => legalizeInstr (bodyAvoids b) i) = true
   refine physImgB_flatMap_of_dom (S := fun _ => True) (fun _ _ => trivial) h
-    (fun _ _ _ _ _ _ _ _ => trivial) fun A i C hb => ?_
+    (fun _ _ _ _ => trivial) fun A i C hb => ?_
   have hib : i ∈ b := by rw [hb]; simp
   have hpos : b[A.length]? = some i := by rw [hb]; simp
   have hfl : ∀ d opn x c, i.li_i = .Lopn [.reg d] opn [.reg x, c] →
@@ -373,14 +383,18 @@ theorem physImgB_twoAddrBody
     rw [hi] at hacc hwr
     have hd : slotArr d = none := slotArr_of_slotWriteB (by rw [← hi]; exact hm) hwr
     obtain ⟨hn1, hn2⟩ := accOkB_two hacc (by intro x y sc he; subst he; cases ha)
+    obtain ⟨hn3, hn4⟩ := accOkB_two_arrImm hacc
     refine ⟨fun r hr => ?_, hm, fun f' hD => ?_⟩
     · obtain ⟨e, o, ss, hr', ho, he⟩ := hL r hr
       have hse : slotArr e = none := by rcases he with rfl | ⟨-, rfl | rfl⟩ <;> assumption
       rw [hr']
-      refine ⟨?_, dstOk_single hse⟩
-      rcases ho with rfl | ho
-      · exact isAccB_lopn hn1 hn2
-      · exact isAccB_mov ho
+      refine ⟨?_, ?_, dstOk_single hse⟩
+      · rcases ho with rfl | ho
+        · exact isAccB_lopn hn1 hn2
+        · exact isAccB_mov ho
+      · rcases ho with rfl | ho
+        · exact PhysImgFold.isArrImmB_of_ne ⟨hn3, hn4⟩ _ _
+        · exact isArrImmB_mov ho
     · refine domOn_nonmove_block hm hi (fun x _ => ?_) hD
       by_cases hxd : x = d
       · left
@@ -524,10 +538,11 @@ theorem reloadOf_cmpReload (hR : slotArr reloadScratch = none) (A : Lcmd) :
 /-- **The compare-spill reload keeps the class.** When every array slot is a `qsave.` slot and
     the reload scan of the base of no indexed access carries the reload scratch to the position
     after an earlier compare on a spilled first operand (`cmpScratchFreeB`), the reload of a body
-    in the class is in the class. -/
+    in the class without `ZEROARR` and `STOREIMM` is in the class. -/
 theorem physImgB_cmpReload
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
-    (hfree : cmpScratchFreeB slotArr b = true) (h : physImgB slotArr b = true) :
+    (hfree : cmpScratchFreeB slotArr b = true) (h : physImgB slotArr b = true)
+    (himm : ∀ i ∈ b, isArrImmB i.li_i = false) :
     physImgB slotArr (cmpReload b) = true := by
   have hR : slotArr reloadScratch = none :=
     PhysImgEmit.slotArr_none_of_prefix hq (gpNameB_prefix (d := reloadScratch) (by decide)).1
@@ -545,13 +560,16 @@ theorem physImgB_cmpReload
     obtain ⟨hacc, -⟩ := physImgB_getElem h hpos
     rw [hi] at hacc
     obtain ⟨hn1, hn2⟩ := accOkB_two hacc (by intro x y sc he; cases he)
+    obtain ⟨hn3, hn4⟩ := accOkB_two_arrImm hacc
     rw [cmpReloadI_of_some hs] at hr
     have hmem := List.mem_of_getElem? hr
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hmem
     rcases hmem with rfl | rfl
-    · refine ⟨isAccB_mov ?_, slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
-      unfold movOf; split_ifs <;> simp
-    · exact ⟨isAccB_lopn hn1 hn2, slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
+    · have hmv : movOf opn = "MOV" ∨ movOf opn = "MOV:64" := by
+        unfold movOf; split_ifs <;> simp
+      exact ⟨isAccB_mov hmv, isArrImmB_mov hmv, slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
+    · exact ⟨isAccB_lopn hn1 hn2, PhysImgFold.isArrImmB_of_ne ⟨hn3, hn4⟩ _ _,
+        slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
   | none =>
     rw [cmpReloadI_of_none hs] at hr
     cases o with
@@ -578,10 +596,14 @@ theorem physImgB_cmpReload
         cases this
     obtain ⟨-, hw⟩ := physImgB_getElem h hpos
     cases hacc : isAccB i.li_i with
-    | false => exact Or.inl ⟨rfl, slotWriteB_mono hent _ hw⟩
+    | false =>
+      exact Or.inl ⟨rfl, himm i (List.mem_of_getElem? hpos), slotWriteB_mono hent _ hw⟩
     | true =>
     refine Or.inr ⟨A.length, hpos, fun x hx ha => ?_, Or.inl hent⟩
-    obtain ⟨ds, o', y, ss, hx'⟩ := hx
+    obtain ⟨ds, o', y, ss, hx'⟩ : ∃ ds o' y ss, i.li_i = .Lopn ds o' (.arrIdx x y 8 :: ss) := by
+      rcases hx with hx | ⟨_, _, _, -, hai⟩
+      · exact hx
+      · rw [himm i (List.mem_of_getElem? hpos)] at hai; cases hai
     have hno : ∀ A₁ i' A₂, A = A₁ ++ i' :: A₂ → (spillCmp? i'.li_i).isSome = true →
         scanExit slotArr A₂ A₂.length x ≠ some reloadScratch := by
       intro A₁ i' A₂ hA hs'

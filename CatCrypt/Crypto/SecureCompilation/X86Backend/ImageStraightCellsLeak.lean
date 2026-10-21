@@ -511,7 +511,7 @@ theorem cell_image_addr_ct {frame : String → Option (BitVec 64)}
 /-! ## 2b. The events of a step under the gate with carry chains -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (icase icase_ldx icase_stx
-  icase_label icase_cond icase_sload icase_sstore icase_scmp icase_reg slotMov?_cases
+  icase_zarr icase_simm icase_label icase_cond icase_sload icase_sstore icase_scmp icase_reg slotMov?_cases
   slotCmp?_eq imgInstr_ldx imgInstr_stx)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (gateAtW instrGateBW carryI?
   castGateB gateAtW_notW readNames)
@@ -565,6 +565,8 @@ theorem gateAtW_loadIdx {frame : String → Option (BitVec 64)}
       obtain ⟨⟨⟨⟨⟨An, hacc⟩, -⟩, -⟩, hidx⟩, hbf⟩ := hg
       exact ⟨rfl, ⟨An.1, An.2, hacc⟩, hidx, hbf⟩
   | stx d' b' idx' v' => have hx := icase_stx hc; simp at hx
+  | zarr b' n' w' => have hx := icase_zarr hc; simp at hx
+  | simm d' b' v' j => have hx := icase_simm hc; simp at hx
   | label => obtain ⟨ii, l, hx⟩ := icase_label hc; simp at hx
   | cond cc l => have hx := icase_cond hc; simp at hx
   | sload d' q => rcases slotMov?_cases (icase_sload hc).1 with hx | hx <;> simp at hx
@@ -602,6 +604,8 @@ theorem gateAtW_storeIdx {frame : String → Option (BitVec 64)}
       obtain ⟨⟨⟨⟨An, hacc⟩, hidx⟩, hbf⟩, -⟩ := hg
       exact ⟨rfl, ⟨An.1, An.2, hacc⟩, hidx, hbf⟩
   | ldx d' b' idx' => have hx := icase_ldx hc; simp at hx
+  | zarr b' n' w' => have hx := icase_zarr hc; simp at hx
+  | simm d' b' v' j => have hx := icase_simm hc; simp at hx
   | label => obtain ⟨ii, l, hx⟩ := icase_label hc; simp at hx
   | cond cc l => have hx := icase_cond hc; simp at hx
   | sload d' q => rcases slotMov?_cases (icase_sload hc).1 with hx | hx <;> simp at hx
@@ -723,14 +727,16 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
                   have hs' : storeIdxA? (normA (.Lopn ds "STOREIDX" ss)) = none := by
                     simpa [normA] using hst
                   simp [instrLeakA, tagA, hs']
-                · rw [tagA_lopn h1 h2]
-                  cases hc : cellA? (.Lopn ds o ss) with
-                  | none => exact instrLeakA_reg_indep (cellA?_normA hc) _ sa s0
-                  | some c =>
-                      obtain ⟨D, B, off, rfl⟩ := hcell c hc
-                      obtain ⟨n, hx, hn⟩ := cellA_lea hc
-                      rw [hx]
-                      simp [normA, instrLeakA, slotMov?, slotCmp?, cellA?, hn]
+                · rcases tagA_lopn_cases h1 h2 with ht | ⟨_, _, ht⟩ | ⟨_, _, ht⟩ <;> rw [ht]
+                  · cases hc : cellA? (.Lopn ds o ss) with
+                    | none => exact instrLeakA_reg_indep (cellA?_normA hc) _ sa s0
+                    | some c =>
+                        obtain ⟨D, B, off, rfl⟩ := hcell c hc
+                        obtain ⟨n, hx, hn⟩ := cellA_lea hc
+                        rw [hx]
+                        simp [normA, instrLeakA, slotMov?, slotCmp?, cellA?, hn]
+                  · simp [instrLeakA]
+                  · simp [instrLeakA]
   | Lcond c l => exact absurd rfl (hnc c l)
   | _ => simp [stepLeakA, hb, posTW, loadIdxA?, storeIdxA?]
 

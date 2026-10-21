@@ -154,6 +154,7 @@ theorem accOkB_mono {slotArr : String → Option (String × Nat)} {b1 b2 : Lcmd}
   · split_ifs
     · split <;> simp_all
     · split <;> simp_all
+    · exact arrImmImg_isSome_mono (fun x _ => hmono x)
     · simp
   · simp
 
@@ -175,12 +176,19 @@ def isAccB : LinstrR → Bool
   | .Lopn _ o _ => o == "LOADIDX" || o == "STOREIDX"
   | _ => false
 
+/-- The instruction is a constant-index array write, a `ZEROARR` or a `STOREIMM`. -/
+def isArrImmB : LinstrR → Bool
+  | .Lopn _ o _ => o == "ZEROARR" || o == "STOREIMM"
+  | _ => false
+
 theorem accOkB_of_not_acc (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
-    {i : LinstrR} (h : isAccB i = false) : accOkB slotArr body k i = true := by
+    {i : LinstrR} (h : isAccB i = false) (h' : isArrImmB i = false) :
+    accOkB slotArr body k i = true := by
   cases i with
   | Lopn ds o ss =>
     simp only [isAccB, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at h
-    simp [accOkB, h.1, h.2]
+    simp only [isArrImmB, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at h'
+    simp [accOkB, h.1, h.2, h'.1, h'.2]
   | _ => rfl
 
 /-- Every indexed access of the block `l` resolves to an array inside `l`. -/
@@ -188,11 +196,13 @@ def AccLocal (slotArr : String → Option (String × Nat)) (l : Lcmd) : Prop :=
   ∀ k i, l[k]? = some i → accOkB slotArr l k i.li_i = true
 
 theorem accLocal_of_noAcc {slotArr : String → Option (String × Nat)} {l : Lcmd}
-    (h : ∀ r ∈ l, isAccB r.li_i = false) : AccLocal slotArr l :=
+    (h : ∀ r ∈ l, isAccB r.li_i = false) (h' : ∀ r ∈ l, isArrImmB r.li_i = false) :
+    AccLocal slotArr l :=
   fun k _ hk => accOkB_of_not_acc slotArr l k (h _ (List.mem_of_getElem? hk))
+    (h' _ (List.mem_of_getElem? hk))
 
 theorem accLocal_nil (slotArr : String → Option (String × Nat)) : AccLocal slotArr [] :=
-  accLocal_of_noAcc (by simp)
+  accLocal_of_noAcc (by simp) (by simp)
 
 theorem accLocal_append {slotArr : String → Option (String × Nat)} {a b : Lcmd}
     (ha : AccLocal slotArr a) (hb : AccLocal slotArr b) : AccLocal slotArr (a ++ b) := by
@@ -242,10 +252,19 @@ theorem isAccB_of_slotMov {x : LinstrR} {p : String × String} (h : slotMov? x =
     rcases h1 with rfl | rfl <;> rfl
   · cases h
 
-/-- The access is no indexed access, or an indexed access at stride `8` through `R14` of the
-    form `accOkB` reads. -/
+/-- A move is no constant-index array write. -/
+theorem isArrImmB_of_slotMov {x : LinstrR} {p : String × String} (h : slotMov? x = some p) :
+    isArrImmB x = false := by
+  unfold slotMov? at h
+  split at h
+  · split_ifs at h with h1
+    rcases h1 with rfl | rfl <;> rfl
+  · cases h
+
+/-- The access is neither an indexed access nor a constant-index array write, or an indexed
+    access at stride `8` through `R14` of the form `accOkB` reads. -/
 def AccR14 (x : LinstrR) : Prop :=
-  isAccB x = false ∨ (∃ d y, x = .Lopn [.reg d] "LOADIDX" [.arrIdx reloadScratch2 y 8]) ∨
+  (isAccB x = false ∧ isArrImmB x = false) ∨ (∃ d y, x = .Lopn [.reg d] "LOADIDX" [.arrIdx reloadScratch2 y 8]) ∨
     ∃ d y v, x = .Lopn [.reg d] "STOREIDX" [.arrIdx reloadScratch2 y 8, .reg v]
 
 /-- **A reload window.** A block that starts with a move of the slot `q` of an array into
@@ -256,20 +275,23 @@ theorem accLocal_window {slotArr : String → Option (String × Nat)} {rl acc : 
     {mid post : Lcmd} {q : String} (hrl : slotMov? rl.li_i = some (reloadScratch2, q))
     (hq : (slotArr q).isSome = true)
     (hmid : ∀ r ∈ mid, (∃ ds o ss, r.li_i = .Lopn ds o ss ∧
-      ds.any (dstHitB slotArr reloadScratch2) = false) ∧ isAccB r.li_i = false)
-    (hacc : AccR14 acc.li_i) (hpost : ∀ r ∈ post, isAccB r.li_i = false) :
+      ds.any (dstHitB slotArr reloadScratch2) = false) ∧ isAccB r.li_i = false ∧
+        isArrImmB r.li_i = false)
+    (hacc : AccR14 acc.li_i)
+    (hpost : ∀ r ∈ post, isAccB r.li_i = false ∧ isArrImmB r.li_i = false) :
     AccLocal slotArr (rl :: (mid ++ acc :: post)) := by
   intro k i hk
   cases k with
   | zero =>
     simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
     subst hk
-    exact accOkB_of_not_acc _ _ _ (isAccB_of_slotMov hrl)
+    exact accOkB_of_not_acc _ _ _ (isAccB_of_slotMov hrl) (isArrImmB_of_slotMov hrl)
   | succ k =>
     simp only [List.getElem?_cons_succ] at hk
     rcases Nat.lt_trichotomy k mid.length with hlt | heq | hgt
     · rw [List.getElem?_append_left hlt] at hk
-      exact accOkB_of_not_acc _ _ _ (hmid _ (List.mem_of_getElem? hk)).2
+      exact accOkB_of_not_acc _ _ _ (hmid _ (List.mem_of_getElem? hk)).2.1
+        (hmid _ (List.mem_of_getElem? hk)).2.2
     · subst heq
       rw [List.getElem?_append_right (by omega), Nat.sub_self] at hk
       simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
@@ -284,13 +306,14 @@ theorem accLocal_window {slotArr : String → Option (String × Nat)} {rl acc : 
           ⟨mid[m'], List.getElem?_eq_getElem (by omega)⟩
         exact ⟨r, hr, (hmid r (List.mem_of_getElem? hr)).1⟩
       rcases hacc with h | ⟨d, y, h⟩ | ⟨d, y, v, h⟩
-      · exact accOkB_of_not_acc _ _ _ h
+      · exact accOkB_of_not_acc _ _ _ h.1 h.2
       · rw [h]; simp [accOkB, hA, hq]
       · rw [h]; simp [accOkB, hA, hq]
     · rw [List.getElem?_append_right (by omega)] at hk
       obtain ⟨m, hm⟩ : ∃ m, k - mid.length = m + 1 := ⟨k - mid.length - 1, by omega⟩
       rw [hm, List.getElem?_cons_succ] at hk
-      exact accOkB_of_not_acc _ _ _ (hpost _ (List.mem_of_getElem? hk))
+      exact accOkB_of_not_acc _ _ _ (hpost _ (List.mem_of_getElem? hk)).1
+        (hpost _ (List.mem_of_getElem? hk)).2
 
 /-! ## 3. The class of a body with a move prefix -/
 
@@ -323,7 +346,7 @@ theorem physImgB_of_movePrefix {slotArr : String → Option (String × Nat)} {pr
       have hi := List.mem_of_getElem? hb
       obtain ⟨⟨d, R⟩, hs⟩ := Option.isSome_iff_exists.mp (hpre i hi)
       obtain ⟨o, ho⟩ := slotMov?_eq hs
-      refine ⟨accOkB_of_not_acc _ _ _ (isAccB_of_slotMov hs), ?_⟩
+      refine ⟨accOkB_of_not_acc _ _ _ (isAccB_of_slotMov hs) (isArrImmB_of_slotMov hs), ?_⟩
       rw [ho]
       simp only [slotWriteB, List.all_cons, List.all_nil, Bool.and_true, Bool.or_eq_true]
       rw [← ho, hs]
@@ -581,6 +604,19 @@ theorem constIdxStore?_noAcc (k : Option Nat) (addr val : LOperand) (l : List Li
       · cases h
   · cases h
 
+theorem constIdxStore?_noArrImm (k : Option Nat) (addr val : LOperand) (l : List LinstrR)
+    (h : constIdxStore? k addr val = some l) : ∀ r ∈ l, isArrImmB r = false := by
+  unfold constIdxStore? at h
+  split at h
+  · split_ifs at h
+    all_goals
+      split at h
+      · split_ifs at h
+        cases h
+        simp [isArrImmB]
+      · cases h
+  · cases h
+
 /-- **The load arm after the base reload.** The reload `MOVQ R14, q` of the slot of an array
     followed by `legalizeMemLoad` of an `LOADIDX` from `R14` at stride `8` resolves its access
     locally. -/
@@ -602,11 +638,11 @@ theorem loadIdx_accLocal {slotArr : String → Option (String × Nat)}
   · exact accLocal_window (mid := []) (post := []) hrl hq (by simp)
       (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp)
   · exact accLocal_window (mid := []) hrl hq (by simp)
-      (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB])
+      (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB, isArrImmB])
   · exact accLocal_window (mid := [_]) (post := []) hrl hq
-      (by simp [isAccB, hm15]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp)
+      (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp)
   · exact accLocal_window (mid := [_]) hrl hq
-      (by simp [isAccB, hm15]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB])
+      (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB, isArrImmB])
 
 /-- **The store arm after the base reload.** The reload `MOVQ R14, q` of the slot of an array
     followed by `legalizeMemStoreK` of an `STOREIDX` of a register to `R14` at stride `8`
@@ -626,13 +662,14 @@ theorem storeIdx_accLocal {slotArr : String → Option (String × Nat)}
   cases hc : constIdxStore? kc (.arrIdx reloadScratch2 y 8) (.reg v) with
   | some l =>
     simp only [legalizeMemStoreK, hc]
-    refine accLocal_of_noAcc ?_
-    intro r hr
-    simp only [List.map_cons, List.map_nil, List.cons_append, List.nil_append,
-      List.mem_cons, List.mem_map] at hr
-    rcases hr with rfl | ⟨r', hr', rfl⟩
+    refine accLocal_of_noAcc ?_ ?_ <;> intro r hr <;>
+      simp only [List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+        List.mem_cons, List.mem_map] at hr <;>
+      rcases hr with rfl | ⟨r', hr', rfl⟩
     · rfl
     · exact constIdxStore?_noAcc _ _ _ l hc r' hr'
+    · rfl
+    · exact constIdxStore?_noArrImm _ _ _ l hc r' hr'
   | none =>
     rw [legalizeMemStoreK_of_none _ _ _ hc]
     simp only [legalizeMemStore, legalizeSibElem, sibNameSpill_reloadScratch2]
@@ -642,12 +679,12 @@ theorem storeIdx_accLocal {slotArr : String → Option (String × Nat)}
     · exact accLocal_window (mid := []) (post := []) hrl hq (by simp)
         (Or.inr (Or.inr ⟨_, _, _, rfl⟩)) (by simp)
     · split
-      · exact accLocal_of_noAcc (by simp [isAccB])
+      · exact accLocal_of_noAcc (by simp [isAccB]) (by simp [isArrImmB])
       · exact accLocal_window (mid := [_]) (post := []) hrl hq
-          (by simp [isAccB, hm15]) (Or.inr (Or.inr ⟨_, _, _, rfl⟩)) (by simp)
+          (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inr ⟨_, _, _, rfl⟩)) (by simp)
     · exact accLocal_window (mid := [_]) (post := []) hrl hq
-        (by simp [isAccB, hm15]) (Or.inr (Or.inr ⟨_, _, _, rfl⟩)) (by simp)
-    · exact accLocal_of_noAcc (by simp [isAccB])
+        (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inr ⟨_, _, _, rfl⟩)) (by simp)
+    · exact accLocal_of_noAcc (by simp [isAccB]) (by simp [isArrImmB])
 
 /-! ## 6. One position of `physPositionEmit` -/
 
@@ -685,6 +722,18 @@ theorem isAccB_of_armOut {ins : List LOperand} {opn : String} {r : LinstrR}
   · subst ho; simp [isAccB, h1, h2]
   · exact isAccB_of_movMnems ho
 
+theorem isArrImmB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : o ∈ movMnems) : isArrImmB (.Lopn ds o ss) = false := by
+  simp only [movMnems, List.mem_cons, List.not_mem_nil, or_false] at h
+  rcases h with rfl | rfl | rfl | rfl | rfl <;> rfl
+
+theorem isArrImmB_of_armOut {ins : List LOperand} {opn : String} {r : LinstrR}
+    (h : ArmOut ins opn r) (h34 : opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM") :
+    isArrImmB r = false := by
+  obtain ⟨ds, o, ss, rfl, ho | ho, -⟩ := h
+  · subst ho; simp [isArrImmB, h34.1, h34.2]
+  · exact isArrImmB_of_movMnems ho
+
 theorem emitOk_of_armOut {slotArr : String → Option (String × Nat)} {i : LinstrR}
     {ins : List LOperand} {opn : String} {r : LinstrR}
     (hs15 : slotArr reloadScratch = none) (hs14 : slotArr reloadScratch2 = none)
@@ -701,18 +750,20 @@ theorem emitOk_of_armOut {slotArr : String → Option (String × Nat)} {i : Lins
   · exact ⟨fun q hq => (by cases hq; exact hmem c), nofun, nofun⟩
 
 /-- An arm whose instructions are `ArmOut` under a mnemonic other than the two access
-    mnemonics is a block of the instruction. -/
+    mnemonics and the two constant-index array writes is a block of the instruction. -/
 theorem blockOk_of_arm {slotArr : String → Option (String × Nat)} {i : LinstrR}
     {ins : List LOperand} {opn : String} {l : List LinstrR} (ii : Nat)
     (hs15 : slotArr reloadScratch = none) (hs14 : slotArr reloadScratch2 = none)
     (hmem : ∀ c, slotArr ("mem." ++ c) = none) (hins : ∀ x ∈ ins, OperandOk slotArr x)
-    (hopn : opnOf i = some opn) (h1 : opn ≠ "LOADIDX") (h2 : opn ≠ "STOREIDX")
+    (hopn : opnOf i = some opn) (h34 : opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM")
+    (h1 : opn ≠ "LOADIDX") (h2 : opn ≠ "STOREIDX")
     (h : ∀ r ∈ l, ArmOut ins opn r) :
     BlockOk slotArr i (l.map fun r => (⟨ii, r⟩ : Linstr)) := by
-  refine ⟨fun r hr => ?_, accLocal_of_noAcc fun r hr => ?_⟩ <;>
+  refine ⟨fun r hr => ?_, accLocal_of_noAcc (fun r hr => ?_) (fun r hr => ?_)⟩ <;>
     obtain ⟨r', hr', rfl⟩ := List.mem_map.mp hr
   · exact emitOk_of_armOut hs15 hs14 hmem hins hopn (h r' hr')
   · exact isAccB_of_armOut (h r' hr') h1 h2
+  · exact isArrImmB_of_armOut (h r' hr') h34
 
 theorem emitAll_of_arm {slotArr : String → Option (String × Nat)} {i : LinstrR}
     {ins : List LOperand} {opn : String} {l : List LinstrR} (ii : Nat)
@@ -763,7 +814,8 @@ def AccForm (slotArr : String → Option (String × Nat)) (rm : LOperand → LOp
     (o = "LOADIDX" → ∃ d b y, ds = [.reg d] ∧ ss = [.arrIdx b y 8] ∧
       BaseReloaded slotArr rm mbr b y) ∧
     (o = "STOREIDX" → ∃ d b y v, ds = [.reg d] ∧ ss = [.arrIdx b y 8, .reg v] ∧
-      BaseReloaded slotArr rm mbr b y)
+      BaseReloaded slotArr rm mbr b y) ∧
+    o ≠ "ZEROARR" ∧ o ≠ "STOREIMM"
 
 theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
     (shiftImm : ShiftImmOracle) (body : Lcmd) (loadBase storeBase : String) (abiW : Nat)
@@ -799,13 +851,13 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
       fun x hx => hok x (by simp [lopnOperands, hx])
     have hmapd : ∀ x ∈ ds.map rm, OperandOk slotArr x := by
       intro x hx; obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx; exact hokd y hy
-    obtain ⟨hL, hS⟩ := hacc ds o ss rfl
+    obtain ⟨hL, hS, h34⟩ := hacc ds o ss rfl
     -- the generic single instruction
     have hsingle : o ≠ "LOADIDX" → o ≠ "STOREIDX" →
         BlockOk slotArr (.Lopn ds o ss)
           [⟨ii, .Lopn (ds.map rm) o (ss.map rm)⟩] := fun h1 h2 =>
       blockOk_of_arm (l := [.Lopn (ds.map rm) o (ss.map rm)]) ii hs15 hs14 hmem hmapd hopn
-        h1 h2 (fun r hr => by
+        h34 h1 h2 (fun r hr => by
           simp only [List.mem_singleton] at hr
           subst hr
           exact ⟨_, _, _, rfl, Or.inl rfl, fun x hx => Or.inl hx⟩)
@@ -833,7 +885,7 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
           · rw [if_pos hnat]
             have h1 : o ≠ "LOADIDX" := by
               rintro rfl; rw [isNativeShiftRotate_loadIdx] at hnat; cases hnat
-            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h1 h2
+            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
               (lowerNativeShiftRotate_armOut _ _ _ _ (movFor_ok o))
           rw [if_neg hnat]
           by_cases hld : isMemLoad o = true
@@ -857,14 +909,14 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
               · subst hLo
                 exact loadIdx_accLocal hs15 hq ii _ n' y' _ rfl
             · exact blockOk_append
-                (blockOk_of_arm ii hs15 hs14 hmem hnil hopn hLo h2
+                (blockOk_of_arm ii hs15 hs14 hmem hnil hopn h34 hLo h2
                   (reloadMemrefBase_armOut mbr (rm s0) o))
-                (blockOk_of_arm ii hs15 hs14 hmem hd hopn hLo h2
+                (blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 hLo h2
                   (legalizeMemLoad_armOut _ _ _ _ (movFor_ok o)))
           · rw [if_neg hld]
             have h1 : o ≠ "LOADIDX" := by
               rintro rfl; exact hld isMemLoad_loadIdx
-            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h1 h2
+            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
               (legalizeOneSrc_armOut _ _ _ _)
         · have h1 : o ≠ "LOADIDX" := fun h => by
             obtain ⟨_, _, _, h', -⟩ := hL h; simp at h'
@@ -881,9 +933,9 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
           have h2 : o ≠ "STOREIDX" := by
             rintro rfl; rw [isTwoAddrBinop_storeIdx] at hbin; cases hbin
           split
-          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h1 h2
+          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
               (lowerTwoAddrShiftImm_armOut _ _ _ _ _ (movFor_ok o))
-          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h1 h2
+          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
               (lowerTwoAddr_armOut _ _ _ _ _ (movFor_ok o))
         · rw [if_neg hbin]
           have hgen : (tail ≠ [] ∨ t ≠ []) → BlockOk slotArr (.Lopn (d :: tail) o (s0 :: s1 :: t))
@@ -896,7 +948,7 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
               rcases hne with hne | hne
               · exact hne hds.2
               · exact hne hss.2.2
-            exact blockOk_of_arm ii hs15 hs14 hmem hmapd hopn h1 h2
+            exact blockOk_of_arm ii hs15 hs14 hmem hmapd hopn h34 h1 h2
               (legalizeSpillDst_armOut _ _ _)
           rcases tail with _ | ⟨d2, tail2⟩ <;> rcases t with _ | ⟨s2, t2⟩
           · dsimp only
@@ -922,14 +974,14 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
                 · subst hSo
                   exact storeIdx_accLocal hs15 hq ii _ _ _ n' y' v' _ rfl rfl
               · exact blockOk_append
-                  (blockOk_of_arm ii hs15 hs14 hmem hnil hopn h1 hSo
+                  (blockOk_of_arm ii hs15 hs14 hmem hnil hopn h34 h1 hSo
                     (reloadMemrefBase_armOut mbr (rm s0) o))
-                  (blockOk_of_arm ii hs15 hs14 hmem hd hopn h1 hSo
+                  (blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 hSo
                     (legalizeMemStoreK_armOut _ _ _ _ _ _ (movFor_ok o)))
             · rw [if_neg hms]
               have h2 : o ≠ "STOREIDX" := by
                 rintro rfl; exact hms isMemStore_storeIdx
-              exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h1 h2
+              exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
                 (legalizeSpillDst_armOut _ _ _)
           · exact hgen (Or.inr (by simp))
           · exact hgen (Or.inl (by simp))
@@ -937,7 +989,7 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
   | Lcall a b => exact absurd rfl (hcall a b)
   | _ =>
     dsimp only
-    exact ⟨by simp [EmitOk], accLocal_of_noAcc (by simp [isAccB])⟩
+    exact ⟨by simp [EmitOk], accLocal_of_noAcc (by simp [isAccB]) (by simp [isArrImmB])⟩
 
 /-! ## 7. The stored body -/
 
@@ -958,17 +1010,22 @@ theorem blockOk_filter_livepin {slotArr : String → Option (String × Nat)} {i 
   intro L'
   refine ⟨fun r hr => fun ds o ss he => (h.1 r (List.mem_of_mem_filter hr) ds o ss he).1, ?_⟩
   by_cases hl : opnOf i = some "LIVEPIN"
-  · refine accLocal_of_noAcc fun r hr => ?_
-    have hr' := List.mem_of_mem_filter hr
-    cases hx : r.li_i with
-    | Lopn ds o ss =>
+  · have hmov : ∀ r ∈ L', ∀ ds o ss, r.li_i = .Lopn ds o ss → o ∈ movMnems := by
+      intro r hr ds o ss hx
+      have hr' := List.mem_of_mem_filter hr
       have := List.of_mem_filter hr
       rw [hx] at this
       simp only [bne_iff_ne, ne_eq] at this
       rcases (h.1 r hr' ds o ss hx).2 with ho | ho
       · rw [hl] at ho; cases ho; exact absurd rfl this
-      · exact isAccB_of_movMnems ho
-    | _ => rfl
+      · exact ho
+    refine accLocal_of_noAcc (fun r hr => ?_) (fun r hr => ?_) <;>
+      cases hx : r.li_i with
+      | Lopn ds o ss =>
+        first
+          | exact isAccB_of_movMnems (hmov r hr ds o ss hx)
+          | exact isArrImmB_of_movMnems (hmov r hr ds o ss hx)
+      | _ => rfl
   · have : L' = L := by
       refine List.filter_eq_self.mpr fun r hr => ?_
       cases hx : r.li_i with
@@ -1257,6 +1314,20 @@ theorem buildArgPtrMaterialize_noAcc (virt : Lfundef) (tbl : Array Nat)
       simp only [hs, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
       (try rcases hr with rfl | rfl) <;> rfl
 
+theorem buildArgPtrMaterialize_noArrImm (virt : Lfundef) (tbl : Array Nat)
+    (abiArgs : List String) (inLoadMap : InLoadMap) :
+    ∀ r ∈ buildArgPtrMaterialize virt tbl abiArgs inLoadMap, isArrImmB r.li_i = false := by
+  intro r hr
+  unfold buildArgPtrMaterialize at hr
+  obtain ⟨⟨abiReg, j⟩, -, hr⟩ := List.mem_flatMap.mp hr
+  simp only at hr
+  split at hr
+  · simp at hr
+  · split_ifs at hr <;>
+      rcases hs : abiSlotOfExt abiReg with _ | s <;>
+      simp only [hs, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
+      (try rcases hr with rfl | rfl) <;> rfl
+
 /-! ## 10. The destinations of every position -/
 
 /-- The destinations of an arm output satisfy every predicate that holds of its operands,
@@ -1503,6 +1574,10 @@ theorem physImgB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String �
     intro r hr
     simp only [calleeSaveRestoreEpilogue, List.mem_cons, List.not_mem_nil, or_false] at hr
     rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
+  have hepiImm : ∀ r ∈ calleeSaveRestoreEpilogue, isArrImmB r.li_i = false := by
+    intro r hr
+    simp only [calleeSaveRestoreEpilogue, List.mem_cons, List.not_mem_nil, or_false] at hr
+    rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> rfl
   have hA : AccLocal slotArr
       ((buildPrologue { virt0 with lfd_body := body1 } (physTableOut body1 []) (fun _ => none)
           ++ extraSaves abiArgs) ++
@@ -1512,13 +1587,16 @@ theorem physImgB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String �
             reloadScratch2 0 mbr cab).filter
               fun r => match r.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
             calleeSaveRestoreEpilogue)) := by
-    refine accLocal_append (accLocal_of_noAcc fun r hr => ?_) (accLocal_append
-      (accLocal_of_noAcc (buildArgPtrMaterialize_noAcc _ _ _ _)) ?_)
+    refine accLocal_append (accLocal_of_noAcc (fun r hr => ?_) (fun r hr => ?_))
+      (accLocal_append (accLocal_of_noAcc (buildArgPtrMaterialize_noAcc _ _ _ _)
+        (buildArgPtrMaterialize_noArrImm _ _ _ _)) ?_)
     · obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp (hpre r hr)
       exact isAccB_of_slotMov hp
+    · obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp (hpre r hr)
+      exact isArrImmB_of_slotMov hp
     · unfold insertEpilogue
       exact accLocal_append (accLocal_append (accLocal_dropLast hFa)
-        (accLocal_of_noAcc hepiAcc)) (accLocal_of_noAcc (by simp [isAccB]))
+        (accLocal_of_noAcc hepiAcc hepiImm)) (accLocal_of_noAcc (by simp [isAccB]) (by simp [isArrImmB]))
   refine physImgB_of_movePrefix hpre (prologue_hsave hslot _ _ abiArgs) ?_
     (fun k i _ hi => hA k i hi)
   intro j hj ds o ss he x hx

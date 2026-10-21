@@ -1068,7 +1068,7 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
         noLowMul_of_mnemOk hmn (fun o' h' => by cases h'; exact hml) r (hsub r hr)
       refine ⟨?_, SiteStays.of_noSite hns, fun env _ => homeOkB_of_noLowMul hnm env⟩
       rw [hF]
-      obtain ⟨hL, hS⟩ := hacc ds o ss rfl
+      obtain ⟨hL, hS, -⟩ := hacc ds o ss rfl
       rcases ho with rfl | rfl
       · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hL rfl
         obtain ⟨n', hn'⟩ := hreg dn

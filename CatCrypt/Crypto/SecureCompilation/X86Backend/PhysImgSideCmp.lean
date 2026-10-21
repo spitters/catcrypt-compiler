@@ -1040,7 +1040,7 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
   cases w with
   | Lopn ds o ss =>
     have ho : o = "LOADIDX" ∨ o = "STOREIDX" := by simpa [isAccB] using hA
-    obtain ⟨hL, hS⟩ := hacc ds o ss rfl
+    obtain ⟨hL, hS, -⟩ := hacc ds o ss rfl
     rcases ho with rfl | rfl
     · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hL rfl
       obtain ⟨n', hn'⟩ := hreg dn

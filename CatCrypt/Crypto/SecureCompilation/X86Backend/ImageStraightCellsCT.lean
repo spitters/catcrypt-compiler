@@ -1974,8 +1974,9 @@ theorem stepLenDetW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         simp only [LinstrR.Lopn.injEq] at hia
         obtain ⟨rfl, rfl, rfl⟩ := hia
         obtain ⟨h1, h2, -, -⟩ := castTagW_ne hw
+        obtain ⟨h3, h4⟩ := castTagW_ne_arr hw
         refine instrLeakA_length_reg (y := .Lopn [.reg D] o [.reg A]) (t := castTagW o)
-          (by rw [normA_castW hw, tagA_lopn h1 h2]) ?_ s₁ s₂
+          (by rw [normA_castW hw, tagA_lopn h1 h2 h3 h4]) ?_ s₁ s₂
         have hl : o ≠ "LOAD:64" := by rintro rfl; simp [castTagW] at hw
         have hs : o ≠ "STORE:64" := by rintro rfl; simp [castTagW] at hw
         have hle : o ≠ "LEA:64" := by rintro rfl; simp [castTagW] at hw

@@ -242,25 +242,38 @@ theorem accArr_snoc_mono {A B : Lcmd} {j : Linstr}
   | some y => rw [hs] at h; exact hAB y h
   | none => rw [hs] at h; exact h
 
+/-- The name `x` is a base that `accOkB` reads at the instruction `i`: the base of a first
+    source `.arrIdx x y 8`, or the base register of a `ZEROARR` or `STOREIMM` whose first
+    source is `.reg x`. -/
+def AccBase (x : String) (i : LinstrR) : Prop :=
+  (∃ ds o y ss, i = .Lopn ds o (.arrIdx x y 8 :: ss)) ∨
+    ∃ ds o ss, i = .Lopn ds o (.reg x :: ss) ∧ isArrImmB i = true
+
 /-- `accOkB` reads the body only through the array scan of the base of an access. -/
 theorem accOkB_of_base {b1 b2 : Lcmd} {k1 k2 : Nat} {i : LinstrR}
-    (hmono : ∀ x, (∃ ds o y ss, i = .Lopn ds o (.arrIdx x y 8 :: ss)) →
+    (hmono : ∀ x, AccBase x i →
       (accArr slotArr b1 k1 x).isSome = true → (accArr slotArr b2 k2 x).isSome = true)
     (h : accOkB slotArr b1 k1 i = true) : accOkB slotArr b2 k2 i = true := by
   revert h hmono
   unfold accOkB
   split
   · rename_i ds o ss
-    split_ifs
+    split_ifs with h1 h2 h3
     · split
       · rename_i heq
-        intro hm h; exact hm _ ⟨_, _, _, _, heq⟩ h
+        intro hm h; exact hm _ (Or.inl ⟨_, _, _, _, heq⟩) h
       · simp
     · split
       · intro hm h
         rw [Bool.and_eq_true] at h ⊢
-        exact ⟨h.1, hm _ ⟨_, _, _, _, rfl⟩ h.2⟩
+        exact ⟨h.1, hm _ (Or.inl ⟨_, _, _, _, rfl⟩) h.2⟩
       · simp
+    · intro hm h
+      refine arrImmImg_isSome_mono (fun x hx ha => hm x (Or.inr ?_) ha) h
+      obtain ⟨ds', o', ss', he⟩ := hx
+      cases he
+      refine ⟨_, _, _, rfl, ?_⟩
+      rcases h3 with rfl | rfl <;> rfl
     · simp
   · simp
 
@@ -294,15 +307,16 @@ theorem entryRegB_of_take_sublist {b1 b2 : Lcmd} {k1 k2 : Nat}
   exact fun j hj => h j (hs.subset hj)
 
 /-- **The class through corresponding positions.** Let every instruction of `b'` either be no
-    access with a satisfied `slotWriteB`, or occur at a position `m` of `b` at which the array
-    scan of each base of the instruction resolves in `b` only if it resolves in `b'`, and the
+    access (`isAccB`, `isArrImmB`) with a satisfied `slotWriteB`, or occur at a position `m` of
+    `b` at which the array scan of each base (`AccBase`) of the instruction resolves in `b` only if it resolves in `b'`, and the
     entry scan holds in `b` only if it holds in `b'`. Then `physImgB slotArr b` gives
     `physImgB slotArr b'`. -/
 theorem physImgB_of_embed {b b' : Lcmd} (h : physImgB slotArr b = true)
     (hk : ∀ k i, b'[k]? = some i →
-      (isAccB i.li_i = false ∧ slotWriteB slotArr b' k i.li_i = true) ∨
+      (isAccB i.li_i = false ∧ isArrImmB i.li_i = false ∧
+        slotWriteB slotArr b' k i.li_i = true) ∨
       ∃ m, b[m]? = some i ∧
-        (∀ x, (∃ ds o y ss, i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) →
+        (∀ x, AccBase x i.li_i →
           (accArr slotArr b m x).isSome = true → (accArr slotArr b' k x).isSome = true) ∧
         ((∀ R, entryRegB b m R = true → entryRegB b' k R = true) ∨
           slotWriteB slotArr b' k i.li_i = true)) :
@@ -321,8 +335,8 @@ theorem physImgB_of_embed {b b' : Lcmd} (h : physImgB slotArr b = true)
   | none => rfl
   | some i =>
     simp only [Bool.and_eq_true]
-    rcases hk k i hk' with ⟨ha, hw⟩ | ⟨m, hm, hacc, hent⟩
-    · exact ⟨accOkB_of_not_acc _ _ _ ha, hw⟩
+    rcases hk k i hk' with ⟨ha, hai, hw⟩ | ⟨m, hm, hacc, hent⟩
+    · exact ⟨accOkB_of_not_acc _ _ _ ha hai, hw⟩
     · obtain ⟨h1, h2⟩ := hb m i hm
       exact ⟨accOkB_of_base hacc h1, hent.elim (fun he => slotWriteB_mono he _ h2) id⟩
 
@@ -356,8 +370,7 @@ theorem kept_getElem?_split : ∀ (M : List (Linstr × Bool)) (k : Nat) (i : Lin
     class. -/
 theorem physImgB_kept_of_prefix {M : List (Linstr × Bool)}
     (h : physImgB slotArr (M.map Prod.fst) = true)
-    (hpre : ∀ M₁ M₂ i, M = M₁ ++ (i, false) :: M₂ → ∀ x,
-      (∃ ds o y ss, i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) →
+    (hpre : ∀ M₁ M₂ i, M = M₁ ++ (i, false) :: M₂ → ∀ x, AccBase x i.li_i →
       (accArr slotArr (M₁.map Prod.fst) M₁.length x).isSome = true →
       (accArr slotArr ((M₁.filter (fun p => !p.2)).map Prod.fst)
         ((M₁.filter (fun p => !p.2)).map Prod.fst).length x).isSome = true) :
@@ -529,8 +542,7 @@ theorem accArr_kept_of_passed : ∀ (M : List (Linstr × Bool)) (x : String),
     instruction carries across it. Then the kept instructions form a body in the class. -/
 theorem physImgB_kept_of_passed {M : List (Linstr × Bool)}
     (h : physImgB slotArr (M.map Prod.fst) = true)
-    (hps : ∀ m i, M[m]? = some (i, false) → ∀ x,
-      (∃ ds o y ss, i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) →
+    (hps : ∀ m i, M[m]? = some (i, false) → ∀ x, AccBase x i.li_i →
       (accArr slotArr (M.map Prod.fst) m x).isSome = true →
       ∀ p j, p < m → M[p]? = some (j, true) → ∀ y,
         scanExit slotArr (((M.map Prod.fst).take m).drop (p + 1)) (m - (p + 1)) x = some y →
@@ -652,14 +664,14 @@ theorem accArr_append_scanExit (slotArr : String → Option (String × Nat)) (a 
   cases scanExit slotArr c k x <;> rfl
 
 /-- **Replacing a segment.** Let `A ++ L ++ C` be in the class, let the segment `L'` have no
-    access and write no array slot, let `C` write no array slot, and let every name that the
+    access (`isAccB`, `isArrImmB`) and write no array slot, let `C` write no array slot, and let every name that the
     scan of a base of an instruction of `C` carries out of `C` resolve after `A ++ L'` whenever
     it resolves after `A ++ L`. Then `A ++ L' ++ C` is in the class. -/
 theorem physImgB_replace {A L L' C : Lcmd} (h : physImgB slotArr (A ++ L ++ C) = true)
-    (hL' : ∀ r ∈ L', isAccB r.li_i = false ∧ DstOk slotArr r.li_i)
+    (hL' : ∀ r ∈ L', isAccB r.li_i = false ∧ isArrImmB r.li_i = false ∧ DstOk slotArr r.li_i)
     (hC : ∀ r ∈ C, DstOk slotArr r.li_i)
     (hscan : ∀ k i x, C[k]? = some i →
-      (∃ ds o y ss, i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) → ∀ y, scanExit slotArr C k x = some y →
+      AccBase x i.li_i → ∀ y, scanExit slotArr C k x = some y →
       (accArr slotArr (A ++ L) (A ++ L).length y).isSome = true →
       (accArr slotArr (A ++ L') (A ++ L').length y).isSome = true) :
     physImgB slotArr (A ++ L' ++ C) = true := by
@@ -678,8 +690,8 @@ theorem physImgB_replace {A L L' C : Lcmd} (h : physImgB slotArr (A ++ L ++ C) =
   rcases Nat.lt_or_ge k (A ++ L').length with hL | hL
   · rw [List.append_assoc, List.getElem?_append_right hA,
       List.getElem?_append_left (by simp at hL; omega)] at hk
-    obtain ⟨h1, h2⟩ := hL' i (List.mem_of_getElem? hk)
-    exact Or.inl ⟨h1, slotWriteB_of_dstOk h2 _ _⟩
+    obtain ⟨h1, h1', h2⟩ := hL' i (List.mem_of_getElem? hk)
+    exact Or.inl ⟨h1, h1', slotWriteB_of_dstOk h2 _ _⟩
   · obtain ⟨k₀, rfl⟩ : ∃ k₀, k = (A ++ L').length + k₀ :=
       ⟨k - (A ++ L').length, by omega⟩
     rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left] at hk
@@ -702,22 +714,23 @@ theorem accArr_snoc_of_pass {a : Lcmd} {j : Linstr} {ds : List LOperand} {o : St
     reloadOf_append_left _ _ _ _ _ le_rfl]
 
 /-- **Rewriting an instruction.** Let `A ++ i :: C` be in the class, let `i'` be an operation
-    that is no move, no access and writes no array slot, and let `C` write no array slot. If at
+    that is no move, no access (`isAccB`, `isArrImmB`) and writes no array slot, and let `C`
+    write no array slot. If at
     every name `y` that the scan of a base of an instruction of `C` carries out of `C`, the
     instruction `i` is no move into `y` and `i'` writes no `y`, then `A ++ i' :: C` is in the
     class. -/
 theorem physImgB_rewrite {A C : Lcmd} {i i' : Linstr} {ds : List LOperand} {o : String}
     {ss : List LOperand} (h : physImgB slotArr (A ++ i :: C) = true)
     (hm : slotMov? i'.li_i = none) (hx : i'.li_i = .Lopn ds o ss) (hacc : isAccB i'.li_i = false)
+    (hai : isArrImmB i'.li_i = false)
     (hdst : DstOk slotArr i'.li_i) (hC : ∀ r ∈ C, DstOk slotArr r.li_i)
-    (hscan : ∀ k i₀ x, C[k]? = some i₀ →
-      (∃ ds o y ss, i₀.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) →
+    (hscan : ∀ k i₀ x, C[k]? = some i₀ → AccBase x i₀.li_i →
       ∀ y, scanExit slotArr C k x = some y →
         (∀ d s, slotMov? i.li_i = some (d, s) → d ≠ y) ∧
           ds.any (dstHitB slotArr y) = false) :
     physImgB slotArr (A ++ i' :: C) = true := by
   have h' : physImgB slotArr (A ++ [i] ++ C) = true := by simpa using h
-  have := physImgB_replace (L' := [i']) h' (by simp [hacc, hdst]) hC
+  have := physImgB_replace (L' := [i']) h' (by simp [hacc, hai, hdst]) hC
     (fun k i₀ x hk hb y hs ha => by
       obtain ⟨hmv, hd⟩ := hscan k i₀ x hk hb y hs
       simp only [List.length_append, List.length_singleton] at ha ⊢
@@ -727,19 +740,20 @@ theorem physImgB_rewrite {A C : Lcmd} {i i' : Linstr} {ds : List LOperand} {o : 
   simpa using this
 
 /-- **Inserting an instruction.** Let `A ++ C` be in the class, let `i'` be an operation that
-    is no move, no access and writes no array slot, and let `C` write no array slot. If `i'`
+    is no move, no access (`isAccB`, `isArrImmB`) and writes no array slot, and let `C` write
+    no array slot. If `i'`
     writes no name that the scan of a base of an instruction of `C` carries out of `C`, then
     `A ++ i' :: C` is in the class. -/
 theorem physImgB_insert {A C : Lcmd} {i' : Linstr} {ds : List LOperand} {o : String}
     {ss : List LOperand} (h : physImgB slotArr (A ++ C) = true)
     (hm : slotMov? i'.li_i = none) (hx : i'.li_i = .Lopn ds o ss) (hacc : isAccB i'.li_i = false)
+    (hai : isArrImmB i'.li_i = false)
     (hdst : DstOk slotArr i'.li_i) (hC : ∀ r ∈ C, DstOk slotArr r.li_i)
-    (hscan : ∀ k i₀ x, C[k]? = some i₀ →
-      (∃ ds o y ss, i₀.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) →
+    (hscan : ∀ k i₀ x, C[k]? = some i₀ → AccBase x i₀.li_i →
       ∀ y, scanExit slotArr C k x = some y → ds.any (dstHitB slotArr y) = false) :
     physImgB slotArr (A ++ i' :: C) = true := by
   have h' : physImgB slotArr (A ++ [] ++ C) = true := by simpa using h
-  have := physImgB_replace (L' := [i']) h' (by simp [hacc, hdst]) hC
+  have := physImgB_replace (L' := [i']) h' (by simp [hacc, hai, hdst]) hC
     (fun k i₀ x hk hb y hs ha => by
       simp only [List.append_nil, List.length_append, List.length_singleton] at ha ⊢
       rw [accArr_snoc_of_pass hm hx (hscan k i₀ x hk hb y hs)]

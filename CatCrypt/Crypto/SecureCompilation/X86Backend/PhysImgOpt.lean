@@ -71,6 +71,21 @@ theorem instrModeled_shape {i : Linstr} (h : instrModeled i = true) :
   · exact ⟨_, _, _, ‹_›⟩
   · cases h
 
+/-- A modeled instruction is no `ZEROARR` or `STOREIMM`. -/
+theorem instrModeled_arrImm {i : Linstr} (h : instrModeled i = true) :
+    isArrImmB i.li_i = false := by
+  unfold instrModeled at h
+  split at h
+  · rename_i d opn srcs heq
+    rw [heq]
+    simp only [isArrImmB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+    have e1 : stripWidthTag "ZEROARR" = "ZEROARR" := by simp [stripWidthTag, hasSuffix]; decide
+    have e2 : stripWidthTag "STOREIMM" = "STOREIMM" := by
+      simp [stripWidthTag, hasSuffix]; decide
+    constructor <;> rintro rfl <;> generalize srcs.length = n at h <;> revert h <;>
+      simp only [e1, e2] <;> split <;> simp_all <;> decide
+  · cases h
+
 /-- The value the reload scan gives the destination of a move from `s` placed at position `k`:
     the scan of `s` for a general-purpose name that is no array slot, and `s` itself
     otherwise. -/
@@ -725,9 +740,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFold (DomOn domOn_step)
 
 /-- **The class under a rewrite at fixed positions, from the dominance of the scans.** Let `b'`
     have the length of `b`, which is in the class, and let the reload scan of `b'` dominate that
-    of `b` at every position on a set `S` holding the bases of the accesses of `b'`. Let the
-    instruction of `b'` at each position be that of `b`, or have no access and no array-slot
-    destination; and let a move of `b` be a move into the same name in `b'`, unless an
+    of `b` at every position on a set `S` holding the bases (`AccBase`) of the instructions of
+    `b'`. Let the instruction of `b'` at each position be that of `b`, or have no access
+    (`isAccB`, `isArrImmB`) and no array-slot destination; and let a move of `b` be a move into the same name in `b'`, unless an
     instruction of `b` in front of it is no move. Then `b'` is in the class.
     `PhysImgFold.physImgB_of_pointwise` is the case where the dominance follows step by step. -/
 theorem physImgB_of_dom {S : String → Prop} {b b' : Lcmd}
@@ -735,11 +750,10 @@ theorem physImgB_of_dom {S : String → Prop} {b b' : Lcmd}
     (hdom : ∀ k, DomOn slotArr S (fun y => reloadOf slotArr b k y)
       (fun y => reloadOf slotArr b' k y))
     (hpt : ∀ (k : Nat) (i i' : Linstr), b[k]? = some i → b'[k]? = some i' →
-      i' = i ∨ (isAccB i'.li_i = false ∧ DstOk slotArr i'.li_i) ∨
+      i' = i ∨ (isAccB i'.li_i = false ∧ isArrImmB i'.li_i = false ∧ DstOk slotArr i'.li_i) ∨
         ∃ ds o b0 j0 v v', i.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v] ∧
           i'.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v'])
-    (hbase : ∀ (k : Nat) (i' : Linstr), b'[k]? = some i' →
-      ∀ ds o x y ss, i'.li_i = .Lopn ds o (.arrIdx x y 8 :: ss) → S x)
+    (hbase : ∀ (k : Nat) (i' : Linstr), b'[k]? = some i' → ∀ x, AccBase x i'.li_i → S x)
     (hent : ∀ (k : Nat) (i i' : Linstr), b[k]? = some i → b'[k]? = some i' →
       (∀ d s, slotMov? i.li_i = some (d, s) → ∃ s', slotMov? i'.li_i = some (d, s')) ∨
         ∃ (p : Nat) (j : Linstr), p < k ∧ b[p]? = some j ∧ slotMov? j.li_i = none) :
@@ -792,13 +806,12 @@ theorem physImgB_of_dom {S : String → Prop} {b b' : Lcmd}
   have hk : b[k]? = some b[k] := List.getElem?_eq_getElem (by omega)
   rw [hk', Bool.and_eq_true]
   obtain ⟨h1, h2⟩ := PhysImgFold.physImgB_getElem h hk
-  rcases hpt k b[k] b'[k] hk hk' with heq | ⟨hna, hdst⟩ | ⟨ds, o, b0, j0, v, v', hi, hi'⟩
+  rcases hpt k b[k] b'[k] hk hk' with heq | ⟨hna, hai, hdst⟩ | ⟨ds, o, b0, j0, v, v', hi, hi'⟩
   · rw [heq]
     refine ⟨accOkB_of_base (fun x hx ha => hacc k x ?_ ha) h1,
       slotWriteB_mono (hentry k) _ h2⟩
-    obtain ⟨ds, o, y, ss, hx'⟩ := hx
-    exact hbase k b'[k] hk' ds o x y ss (by rw [heq]; exact hx')
-  · exact ⟨accOkB_of_not_acc _ _ _ hna, slotWriteB_of_dstOk hdst _ _⟩
+    exact hbase k b'[k] hk' x (by rw [heq]; exact hx)
+  · exact ⟨accOkB_of_not_acc _ _ _ hna hai, slotWriteB_of_dstOk hdst _ _⟩
   · rw [hi] at h1 h2
     rw [hi']
     have e1 : accOkB slotArr b' k (.Lopn ds o [.arrIdx b0 j0 8, .reg v']) =
@@ -811,10 +824,11 @@ theorem physImgB_of_dom {S : String → Prop} {b b' : Lcmd}
     rw [e1, e2]
     refine ⟨accOkB_of_base (fun x hx ha => hacc k x ?_ ha) h1,
       slotWriteB_mono (hentry k) _ h2⟩
-    obtain ⟨ds', o', y, ss, hx'⟩ := hx
-    simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.arrIdx.injEq] at hx'
-    obtain ⟨-, -, ⟨rfl, -, -⟩, -⟩ := hx'
-    exact hbase k b'[k] hk' ds o b0 j0 [.reg v'] hi'
+    rcases hx with ⟨ds', o', y, ss, hx'⟩ | ⟨ds', o', ss, hx', -⟩
+    · simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.arrIdx.injEq] at hx'
+      obtain ⟨-, -, ⟨rfl, -, -⟩, -⟩ := hx'
+      exact hbase k b'[k] hk' b0 (Or.inl ⟨ds, o, j0, [.reg v'], hi'⟩)
+    · simp at hx'
 
 /-- The dominance of the scans is kept along a common suffix of instructions. -/
 theorem domOn_reloadOf_common {S : String → Prop} (hS : ∀ q, gpNameB q = true → S q)
@@ -1034,7 +1048,7 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
     (hslot : (slotArr d).isSome = true → ∀ j ∈ P, slotLoadB slotArr j = false)
     (hinv : LoadInv slotArr W W' P N env) :
     LoadInv slotArr W W' (P ++ [i]) (N + 1) (stepLoad env i).2 ∧
-      ((stepLoad env i).1 = i ∨ (isAccB (stepLoad env i).1.li_i = false ∧
+      ((stepLoad env i).1 = i ∨ (isAccB (stepLoad env i).1.li_i = false ∧ isArrImmB (stepLoad env i).1.li_i = false ∧
         DstOk slotArr (stepLoad env i).1.li_i ∧ ∀ d' s', slotMov? i.li_i = some (d', s') →
           ∃ s'', slotMov? (stepLoad env i).1.li_i = some (d', s''))) := by
   obtain ⟨hdom, hall⟩ := hinv
@@ -1079,7 +1093,7 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
         have := List.all_eq_true.mp hwide i hib
         simpa [har, hsm0] using this
       have hT : ∃ o' ss', (stepLoad env i).1.li_i = .Lopn [.reg d'] o' ss' ∧
-          ((stepLoad env i).1 = i ∨ (isAccB (stepLoad env i).1.li_i = false ∧
+          ((stepLoad env i).1 = i ∨ (isAccB (stepLoad env i).1.li_i = false ∧ isArrImmB (stepLoad env i).1.li_i = false ∧
             DstOk slotArr (stepLoad env i).1.li_i)) := by
         rcases hout with heq | ⟨r, hf, heq⟩
         · rw [heq]; exact ⟨o, ss, hj, Or.inl rfl⟩
@@ -1094,10 +1108,10 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
           · have hrs' : (r == s) = false := beq_eq_false_iff_ne.mpr hrs
             simp only [hrs', Bool.false_or, Bool.and_eq_true] at hchk
             obtain ⟨⟨hdn, -⟩, -⟩ := hchk
-            refine ⟨mn, [.reg r], rfl, Or.inr ⟨?_, dstOk_single (by simpa using hdn)⟩⟩
-            simp only [isAccB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
-            simp only [isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at hmn
-            rcases hmn with rfl | rfl <;> exact ⟨by decide, by decide⟩
+            refine ⟨mn, [.reg r], rfl, Or.inr ⟨?_, ?_, dstOk_single (by simpa using hdn)⟩⟩ <;>
+              simp only [isAccB, isArrImmB, Bool.or_eq_false_iff, beq_eq_false_iff_ne] <;>
+              simp only [isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at hmn <;>
+              rcases hmn with rfl | rfl <;> exact ⟨by decide, by decide⟩
       obtain ⟨o', ss', hj', hpt⟩ := hT
       rw [henv]
       refine ⟨⟨fun x _ q hf hq => ?_, fun s' r' hm => ?_⟩, ?_⟩
@@ -1114,9 +1128,9 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
             movDom_surv hW hW' hj hj' hs hr (hslotd s' r' hm) ((hall s' r' hm).2 hg)⟩
         · exact ⟨⟨i, by simp, mn, har⟩, fun hg q hq hqs =>
             (movScan_succ_noSlot hW hj hsv hg (by simp [hgd]) hq hqs).elim⟩
-      · rcases hpt with h1 | ⟨h1, h2⟩
+      · rcases hpt with h1 | ⟨h1, h1', h2⟩
         · exact Or.inl h1
-        · exact Or.inr ⟨h1, h2, fun d'' s'' h => by cases h⟩
+        · exact Or.inr ⟨h1, h1', h2, fun d'' s'' h => by cases h⟩
     have hsm : slotMov? i.li_i = some (d', s) := by
       have := asReload_of_slotMov hsm0
       rw [asReload_of_asWideReload har] at this
@@ -1125,7 +1139,7 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
     have hT : ∃ t, slotMov? (stepLoad env i).1.li_i = some (d', t) ∧
         (stepLoad env i).1.li_i = .Lopn [.reg d'] mn [.reg t] ∧
         MovDom slotArr W W' N s t ∧
-        ((stepLoad env i).1 = i ∨ (isAccB (stepLoad env i).1.li_i = false ∧
+        ((stepLoad env i).1 = i ∨ (isAccB (stepLoad env i).1.li_i = false ∧ isArrImmB (stepLoad env i).1.li_i = false ∧
           DstOk slotArr (stepLoad env i).1.li_i)) := by
       rcases hout with heq | ⟨r, hf, heq⟩
       · rw [heq]; exact ⟨s, hsm, hi, movDom_of_dom hdom s, Or.inl rfl⟩
@@ -1142,8 +1156,11 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
             beq_iff_eq] at hchk
           obtain ⟨⟨hdn, hg⟩, hm'⟩ := hchk
           refine ⟨r, by simpa using hm', rfl, (hall s r (mem_of_lookup env s r hf)).2 hg,
-            Or.inr ⟨?_, ?_⟩⟩
+            Or.inr ⟨?_, ?_, ?_⟩⟩
           · simp only [isAccB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+            simp only [isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at hmn
+            rcases hmn with rfl | rfl <;> exact ⟨by decide, by decide⟩
+          · simp only [isArrImmB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
             simp only [isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at hmn
             rcases hmn with rfl | rfl <;> exact ⟨by decide, by decide⟩
           · exact dstOk_single (by simpa using hdn)
@@ -1180,9 +1197,9 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
             · rwa [reloadOf_succ_ne hW hj hsd hrn] at hq
             · exact hq
         · exact (movScan_succ_noSlot hW hj hsv hg hcd hq hqs).elim
-    · rcases hpt with h1 | ⟨h1, h2⟩
+    · rcases hpt with h1 | ⟨h1, h1', h2⟩
       · exact Or.inl h1
-      · exact Or.inr ⟨h1, h2, fun d'' s'' h => by
+      · exact Or.inr ⟨h1, h1', h2, fun d'' s'' h => by
           rw [← hsm0, hsm] at h
           cases h
           exact ⟨t, hmt⟩⟩
@@ -1203,7 +1220,7 @@ theorem load_main {A b C : Lcmd} (hwide : wideMovB b = true) (hsave : saveSrcB s
         (fun y => reloadOf slotArr (A ++ b ++ C) (A.length + P.length + p) y)
         (fun y => reloadOf slotArr (A ++ loadCSE b ++ C) (A.length + P.length + p) y)) ∧
       (∀ (p : Nat) (i i' : Linstr), rest[p]? = some i → (loadCSEAux env rest)[p]? = some i' →
-        i' = i ∨ (isAccB i'.li_i = false ∧ DstOk slotArr i'.li_i ∧
+        i' = i ∨ (isAccB i'.li_i = false ∧ isArrImmB i'.li_i = false ∧ DstOk slotArr i'.li_i ∧
           ∀ d s, slotMov? i.li_i = some (d, s) → ∃ s', slotMov? i'.li_i = some (d, s')))
   | [], _, _, _, _, _, _, _, _, _, hinv => by
     refine ⟨fun p hp => ?_, fun p _ _ hp => by simp at hp⟩
@@ -1272,7 +1289,7 @@ theorem physImgB_loadCSE_ctx {A b C : Lcmd} (h : physImgB slotArr (A ++ b ++ C) 
   have hlen : (loadCSE b).length = b.length := loadCSE_length b
   have hpos : ∀ (k : Nat) (i i' : Linstr), (A ++ b ++ C)[k]? = some i →
       (A ++ loadCSE b ++ C)[k]? = some i' →
-      i' = i ∨ (isAccB i'.li_i = false ∧ DstOk slotArr i'.li_i ∧
+      i' = i ∨ (isAccB i'.li_i = false ∧ isArrImmB i'.li_i = false ∧ DstOk slotArr i'.li_i ∧
         ∀ d s, slotMov? i.li_i = some (d, s) → ∃ s', slotMov? i'.li_i = some (d, s')) := by
     intro k i i' hk hk'
     rcases Nat.lt_or_ge k A.length with hA | hA
@@ -1289,10 +1306,10 @@ theorem physImgB_loadCSE_ctx {A b C : Lcmd} (h : physImgB slotArr (A ++ b ++ C) 
       rw [List.getElem?_append_right (by omega), hlen] at hk'
       rw [hk] at hk'; cases hk'; exact Or.inl rfl
   refine physImgB_of_dom (S := fun _ => True) h (by simp [hlen]) (fun k => ?_)
-    (fun k i i' hk hk' => (hpos k i i' hk hk').imp id fun h => Or.inl ⟨h.1, h.2.1⟩)
-    (fun _ _ _ _ _ _ _ _ _ => trivial)
+    (fun k i i' hk hk' => (hpos k i i' hk hk').imp id fun h => Or.inl ⟨h.1, h.2.1, h.2.2.1⟩)
+    (fun _ _ _ _ _ => trivial)
     (fun k i i' hk hk' => Or.inl fun d s hs => by
-      rcases hpos k i i' hk hk' with rfl | ⟨-, -, h3⟩
+      rcases hpos k i i' hk hk' with rfl | ⟨-, -, -, h3⟩
       · exact ⟨s, hs⟩
       · exact h3 d s hs)
   rcases Nat.lt_or_ge k (A.length + b.length) with hk | hk
@@ -1387,8 +1404,7 @@ theorem accArr_kept_of_passThru : ∀ (M : List (Linstr × Bool)) (x : String),
     front of it. Then the kept instructions form a body in the class. -/
 theorem physImgB_kept_of_passThru {M : List (Linstr × Bool)}
     (h : physImgB slotArr (M.map Prod.fst) = true)
-    (hps : ∀ m i, M[m]? = some (i, false) → ∀ x,
-      (∃ ds o y ss, i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) →
+    (hps : ∀ m i, M[m]? = some (i, false) → ∀ x, AccBase x i.li_i →
       ∀ p j, p < m → M[p]? = some (j, true) → ∀ y,
         scanExit slotArr (((M.map Prod.fst).take m).drop (p + 1)) (m - (p + 1)) x = some y →
         PassThru slotArr j y) :
@@ -1672,6 +1688,32 @@ theorem deDrop_not_acc {i : Linstr} {live : List String} {ds : List LOperand} {o
     · rfl
   simp [deDrop, hi, hcs]
 
+/-- `ZEROARR` and `STOREIMM` are outside the recognized alphabet. -/
+theorem isRecognizedOpn_of_arrImm {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : isArrImmB (.Lopn ds o ss) = true) : isRecognizedOpn o = false := by
+  simp only [isArrImmB, Bool.or_eq_true, beq_iff_eq] at h
+  rcases h with rfl | rfl <;>
+    simp [isRecognizedOpn, implicitReads, LprogAsmPrinter.stripAbiTag,
+      LprogGpReallocCfg.isPrefixOf_list] <;> decide
+
+/-- A base (`AccBase`) of an instruction is live in front of it. -/
+theorem deLive_base {i : Linstr} {live : List String} {x : String} (hi : AccBase x i.li_i)
+    (hgp : isPhysGP x = true) : (deadElimStep i (live, [])).1.contains x = true := by
+  rcases hi with ⟨ds, o, z, ss, hi⟩ | ⟨ds, o, ss, hi, hai⟩
+  · exact deLive_acc hi hgp
+  · rw [hi] at hai
+    rw [deadElimStep_barrier i live [] (fun dsts opn' srcs' he => by
+      rw [hi] at he; cases he; simpa using isRecognizedOpn_of_arrImm hai)]
+    exact contains_physGPs hgp
+
+/-- An instruction with a base (`AccBase`) is not deleted. -/
+theorem deDrop_not_base {i : Linstr} {live : List String} {x : String}
+    (hi : AccBase x i.li_i) : deDrop i live = false := by
+  rcases hi with ⟨ds, o, z, ss, hi⟩ | ⟨ds, o, ss, hi, hai⟩
+  · exact deDrop_not_acc hi
+  · rw [hi] at hai
+    simp [deDrop, hi, isRecognizedOpn_of_arrImm hai]
+
 theorem take_drop_cons {W : Lcmd} {m k : Nat} (hk : k < m) (hkW : k < W.length) :
     (W.take m).drop k = W[k] :: (W.take m).drop (k + 1) := by
   rw [List.drop_eq_getElem_cons (by simp; omega)]
@@ -1680,9 +1722,8 @@ theorem take_drop_cons {W : Lcmd} {m k : Nat} (hk : k < m) (hkW : k < W.length) 
 /-- **The carried names are live.** Every general-purpose name that the reload scan of the base
     `x` of an access at position `m` of `A ++ b ++ C` carries to a position `k` of the segment
     `b` is in the live set that `deadElimBody` computes there. -/
-theorem deLive_claim {A b C : Lcmd} {m : Nat} {i : Linstr} {ds : List LOperand} {o x z : String}
-    {ss : List LOperand} (hm : (A ++ b ++ C)[m]? = some i)
-    (hi : i.li_i = .Lopn ds o (.arrIdx x z 8 :: ss)) :
+theorem deLive_claim {A b C : Lcmd} {m : Nat} {i : Linstr} {x : String}
+    (hm : (A ++ b ++ C)[m]? = some i) (hi : AccBase x i.li_i) :
     ∀ t k, k + t = min m (A.length + b.length) → A.length ≤ k → ∀ y,
       scanExit slotArr (((A ++ b ++ C).take m).drop k) (m - k) x = some y →
       isPhysGP y = true → (deLive (b.drop (k - A.length))).contains y = true
@@ -1700,8 +1741,8 @@ theorem deLive_claim {A b C : Lcmd} {m : Nat} {i : Linstr} {ds : List LOperand} 
       rw [List.drop_eq_getElem_cons (by omega), deLive_cons]
       have hbi : b[k - A.length] = i := by
         rw [List.getElem?_eq_getElem (by omega)] at hb; exact Option.some.inj hb
-      rw [hbi, if_neg (by simp [deDrop_not_acc hi])]
-      exact deLive_acc hi hgp
+      rw [hbi, if_neg (by simp [deDrop_not_base hi])]
+      exact deLive_base hi hgp
     · have hkK : k = A.length + b.length := by omega
       subst hkK
       rw [show A.length + b.length - A.length = b.length by omega, List.drop_length,
@@ -1805,8 +1846,7 @@ theorem physImgB_deadElimBody_ctx
   obtain ⟨p', rfl, hp'⟩ := ctxMarks_true hpj
   obtain ⟨hbj, hdrop⟩ := deMarks_getElem? b p' j true hp'
   have hpb : p' < b.length := (List.getElem?_eq_some_iff.mp hbj).1
-  obtain ⟨ds, o, z, ss, hxi⟩ := hx
-  have hlive := fun hg => deLive_claim (slotArr := slotArr) hW hxi
+  have hlive := fun hg => deLive_claim (slotArr := slotArr) hW hx
     (min m (A.length + b.length) - (A.length + p' + 1)) (A.length + p' + 1) (by omega)
     (by omega) y hy hg
   rw [show A.length + p' + 1 - A.length = p' + 1 by omega] at hlive
@@ -1976,10 +2016,12 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
     (hW : W[N]? = some i) (hW' : W'[N]? = some (propStep facts i).1)
     (hj : i.li_i = .Lopn [.reg d] o ss) (hPW : ∀ j ∈ P, j ∈ W.take N)
     (hwb : slotWriteB slotArr W N i.li_i = true) (hacc : accOkB slotArr W N i.li_i = true)
+    (hnoImm : isArrImmB i.li_i = false)
     (hinv : PropInv slotArr W W' P N facts) :
     PropInv slotArr W W' (P ++ [i]) (N + 1) (propStep facts i).2 ∧
       ((propStep facts i).1 = i ∨
-        (isAccB (propStep facts i).1.li_i = false ∧ DstOk slotArr (propStep facts i).1.li_i) ∨
+        (isAccB (propStep facts i).1.li_i = false ∧ isArrImmB (propStep facts i).1.li_i = false ∧
+          DstOk slotArr (propStep facts i).1.li_i) ∨
         ∃ ds o b0 j0 v v', i.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v] ∧
           (propStep facts i).1.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v']) ∧
       ((∀ d' s, slotMov? i.li_i = some (d', s) →
@@ -2178,7 +2220,8 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
       · left; rw [hps1, hmap, ← hj]
       · right
         by_cases hna : isAccB (propStep facts i).1.li_i = false
-        · exact Or.inl ⟨hna, by rw [hj']; exact dstOk_single hsd⟩
+        · refine Or.inl ⟨hna, ?_, by rw [hj']; exact dstOk_single hsd⟩
+          rw [hj] at hnoImm; rw [hj']; simpa [isArrImmB] using hnoImm
         · right
           rw [hj'] at hna
           simp only [isAccB, Bool.or_eq_false_iff, beq_eq_false_iff_ne, not_and_or,
@@ -2335,7 +2378,7 @@ theorem prop_main {A b C : Lcmd}
         (fun y => reloadOf slotArr (A ++ b ++ C) (A.length + P.length + p) y)
         (fun y => reloadOf slotArr (A ++ propagateAux [] b ++ C) (A.length + P.length + p) y)) ∧
       (∀ (p : Nat) (i i' : Linstr), rest[p]? = some i → (propagateAux facts rest)[p]? = some i' →
-        (i' = i ∨ (isAccB i'.li_i = false ∧ DstOk slotArr i'.li_i) ∨
+        (i' = i ∨ (isAccB i'.li_i = false ∧ isArrImmB i'.li_i = false ∧ DstOk slotArr i'.li_i) ∨
           ∃ ds o b0 j0 v v', i.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v] ∧
             i'.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v']) ∧
         ((∀ d s, slotMov? i.li_i = some (d, s) → ∃ s', slotMov? i'.li_i = some (d, s')) ∨
@@ -2365,7 +2408,8 @@ theorem prop_main {A b C : Lcmd}
         List.take_append, List.take_of_length_le le_rfl]
       simp [hj]
     obtain ⟨h1, h2⟩ := PhysImgFold.physImgB_getElem h hW
-    obtain ⟨hinv', hpt, hent⟩ := propInv_step hq hW hW' hj hPW h2 h1 hinv
+    obtain ⟨hinv', hpt, hent⟩ := propInv_step hq hW hW' hj hPW h2 h1
+      (instrModeled_arrImm (hmod i (by simp))) hinv
     have ih := prop_main hq h is (P ++ [i]) (Q ++ [(propStep facts i).1])
       (propStep facts i).2 (by simp [hb]) (by simp [hQ]) (by rw [hout, propagateAux_cons]; simp)
       (fun j hj => hmod j (by simp [hj])) (by simpa [Nat.add_assoc] using hinv')
@@ -2402,7 +2446,7 @@ theorem physImgB_propagateAux_ctx
   have hlen : (propagateAux [] b).length = b.length := propagateAux_length [] b
   have hpos : ∀ (k : Nat) (i i' : Linstr), (A ++ b ++ C)[k]? = some i →
       (A ++ propagateAux [] b ++ C)[k]? = some i' →
-      (i' = i ∨ (isAccB i'.li_i = false ∧ DstOk slotArr i'.li_i) ∨
+      (i' = i ∨ (isAccB i'.li_i = false ∧ isArrImmB i'.li_i = false ∧ DstOk slotArr i'.li_i) ∨
         ∃ ds o b0 j0 v v', i.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v] ∧
           i'.li_i = .Lopn ds o [.arrIdx b0 j0 8, .reg v']) ∧
       ((∀ d s, slotMov? i.li_i = some (d, s) → ∃ s', slotMov? i'.li_i = some (d, s')) ∨
@@ -2433,7 +2477,7 @@ theorem physImgB_propagateAux_ctx
       rw [hk] at hk'; cases hk'; exact ⟨Or.inl rfl, Or.inl fun d s hs => ⟨s, hs⟩⟩
   refine physImgB_of_dom (S := fun _ => True) h (by simp [hlen]) (fun k => ?_)
     (fun k i i' hk hk' => (hpos k i i' hk hk').1)
-    (fun _ _ _ _ _ _ _ _ _ => trivial)
+    (fun _ _ _ _ _ => trivial)
     (fun k i i' hk hk' => (hpos k i i' hk hk').2)
   rcases Nat.lt_or_ge k (A.length + b.length) with hk | hk
   · rcases Nat.lt_or_ge k A.length with hA | hA

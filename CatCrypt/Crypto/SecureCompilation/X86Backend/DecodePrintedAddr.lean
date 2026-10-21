@@ -1359,7 +1359,9 @@ theorem AArm.li_eq {P : Params} {a : AArm} (h : a.ok P = true) :
     simp only [AArm.instr, he, plainB, Bool.and_eq_true, bne_iff_ne, ne_eq,
       Option.isNone_iff_eq_none] at hp ⊢
     have ht : tagA (.Lopn ds o ss) = .reg none :=
-      (tagA_lopn hp.1.1.2 hp.1.2).trans (congrArg MemTag.reg hp.2)
+      (tagA_lopn_of_length hp.1.1.2 hp.1.2 (by
+        cases a <;> simp only [Arm.instr, LinstrR.Lopn.injEq] at he <;>
+          obtain ⟨-, -, rfl⟩ := he <;> simp)).trans (congrArg MemTag.reg hp.2)
     simp [AArm.li, AArm.instr, he, normA, ht, hp.1.1.1]
   | st m q S =>
     simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h

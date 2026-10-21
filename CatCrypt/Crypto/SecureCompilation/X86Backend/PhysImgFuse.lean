@@ -294,10 +294,11 @@ theorem EnvAgree.killAll {ef ep : ScratchEnv} (h : EnvAgree ef ep) (hs : EnvScra
 /-! ## 2. One step of the fusion -/
 
 /-- The block `L` written by a fusion site of a `MULXHI` with high destination `d`, paired with
-    a low `MUL` of home `lo`: no instruction is an indexed access, and every destination of an
-    operation is a register among the reload scratches, `RDX`, `d` and `lo`. -/
+    a low `MUL` of home `lo`: no instruction is an indexed access or a constant-index array
+    write, and every destination of an operation is a register among the reload scratches,
+    `RDX`, `d` and `lo`. -/
 def SiteOut (d lo : String) (L : Lcmd) : Prop :=
-  ∀ r ∈ L, isAccB r.li_i = false ∧ ∀ ds o ss, r.li_i = .Lopn ds o ss → ∀ x ∈ ds,
+  ∀ r ∈ L, isAccB r.li_i = false ∧ isArrImmB r.li_i = false ∧ ∀ ds o ss, r.li_i = .Lopn ds o ss → ∀ x ∈ ds,
     ∃ n, x = .reg n ∧ (n ∈ fuseReloadScratches ∨ n = "RDX" ∨ n = d ∨ n = lo)
 
 theorem site_assoc {α : Type} (a b c e t : List α) (x y : α) :
@@ -343,7 +344,7 @@ theorem fuseMulHiAux_cons_step (s : Bool) (env : ScratchEnv) (pend : List (Strin
                 simp only [List.cons_append, List.nil_append, List.mem_cons, List.not_mem_nil,
                   or_false] at hr <;>
                 rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;>
-                refine ⟨by simp [isAccB], ?_⟩ <;> rintro ds o ss ⟨⟩ <;>
+                refine ⟨by simp [isAccB], by simp [isArrImmB], ?_⟩ <;> rintro ds o ss ⟨⟩ <;>
                 simp [fuseReloadScratches, reloadScratch, reloadScratch2]
             · exact ⟨[i], _, _, rfl, ⟨[], rfl⟩, Or.inl ⟨rfl, Or.inl rfl⟩⟩
           · split
@@ -379,7 +380,8 @@ theorem fuseMulHiAux_cons_step (s : Bool) (env : ScratchEnv) (pend : List (Strin
                   (o = "MOVQ" ∨ o = "MOV:64" ∨ o = "MULX") ∧ ∀ x ∈ L, ∃ n, x = .reg n ∧
                     (n = reloadScratch ∨ n = reloadScratch2 ∨ n = "RDX" ∨ n = d ∨ n = loDst) by
                 obtain ⟨L, o, ss, hr, ho, hL⟩ := hs
-                refine ⟨?_, fun ds o' ss' he x hx => ?_⟩
+                refine ⟨?_, ?_, fun ds o' ss' he x hx => ?_⟩
+                · rw [hr]; rcases ho with rfl | rfl | rfl <;> rfl
                 · rw [hr]; rcases ho with rfl | rfl | rfl <;> rfl
                 · rw [hr] at he; cases he
                   obtain ⟨n, rfl, hn⟩ := hL x hx
@@ -556,17 +558,20 @@ theorem fuseMulHiAux_nil (s : Bool) (env : ScratchEnv) (pend : List (String × S
 
 /-- **The fusion keeps the image class**, from any position: let `A ++ rest` be in the class,
     let `rest` satisfy the site and home conditions at an environment `ep` with which the
-    environment `ef` of the fusion agrees, and let every pending home be no array slot. Then
-    `A` followed by the fusion of `rest` is in the class. -/
+    environment `ef` of the fusion agrees, let every pending home be no array slot, and let
+    no instruction of `rest` be a `ZEROARR` or `STOREIMM`. Then `A` followed by the fusion of
+    `rest` is in the class. -/
 theorem physImgB_fuseMulHiAux (s : Bool)
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) :
     ∀ (rest A : Lcmd) (ef ep : ScratchEnv) (pend : List (String × String)),
       physImgB slotArr (A ++ rest) = true → fuseSiteOkB slotArr rest = true →
       homeOkB slotArr ep rest = true → EnvAgree ef ep → EnvScratch ef →
-      (∀ p ∈ pend, slotArr p.1 = none) →
+      (∀ p ∈ pend, slotArr p.1 = none) → (∀ r ∈ rest, isArrImmB r.li_i = false) →
       physImgB slotArr (A ++ fuseMulHiAux s ef pend rest) = true
-  | [], A, _, _, _, h, _, _, _, _, _ => by rw [fuseMulHiAux_nil]; simpa using h
-  | i :: rest, A, ef, ep, pend, h, hs, hh, hag, hes, hp => by
+  | [], A, _, _, _, h, _, _, _, _, _, _ => by rw [fuseMulHiAux_nil]; simpa using h
+  | i :: rest, A, ef, ep, pend, h, hs, hh, hag, hes, hp, himm => by
+    have himm' : ∀ r ∈ rest, isArrImmB r.li_i = false :=
+      fun r hr => himm r (List.mem_cons_of_mem _ hr)
     obtain ⟨L, env', pend', he, ⟨ks, rfl⟩, hcase⟩ := fuseMulHiAux_cons_step s ef pend i rest
     simp only [fuseSiteOkB, homeOkB, Bool.and_eq_true] at hs hh
     have hag' := (hag.step i).killAll (hes.step i) ks
@@ -574,7 +579,7 @@ theorem physImgB_fuseMulHiAux (s : Bool)
     rw [he, ← List.append_assoc]
     rcases hcase with ⟨rfl, hpd⟩ | ⟨d, opn, s1, s2, heq, hhi, hsub, lo, k, hlo, hout⟩
     · refine physImgB_fuseMulHiAux s hq rest (A ++ [i]) _ _ pend' (by simpa using h) hs.2 hh.2
-        hag' hes' ?_
+        hag' hes' ?_ himm'
       rcases hpd with rfl | ⟨d, opn, s1, s2, heq, hlow, rfl⟩
       · exact hp
       · have h1 := hh.1
@@ -594,7 +599,7 @@ theorem physImgB_fuseMulHiAux (s : Bool)
             · exact h1.1
         · exact hp p hp'
     · refine physImgB_fuseMulHiAux s hq rest (A ++ L) _ _ pend' ?_ hs.2 hh.2 hag' hes'
-        (fun p hp' => hp p (hsub p hp'))
+        (fun p hp' => hp p (hsub p hp')) himm'
       have hsite : mulHiSiteB i = true := by simp [mulHiSiteB, heq, hhi]
       have h1 := hs.1
       simp only [hsite, Bool.not_true, Bool.false_or, Bool.and_eq_true] at h1
@@ -605,8 +610,8 @@ theorem physImgB_fuseMulHiAux (s : Bool)
       have hlo' : slotArr lo = none := hp (lo, k) hlo
       refine physImgB_replace (L := [i]) (by simpa using h) (fun r hr => ?_)
         (fun r hr => dstOk_of_dstOkB (List.all_eq_true.mp hrest r hr)) ?_
-      · obtain ⟨hacc, hds⟩ := hout r hr
-        refine ⟨hacc, fun ds o ss hr' x hx => ?_⟩
+      · obtain ⟨hacc, hai, hds⟩ := hout r hr
+        refine ⟨hacc, hai, fun ds o ss hr' x hx => ?_⟩
         obtain ⟨n, rfl, hn⟩ := hds ds o ss hr' x hx
         have : slotArr n = none := by
           rcases hn with hn | hn | rfl | rfl
@@ -616,21 +621,23 @@ theorem physImgB_fuseMulHiAux (s : Bool)
           · exact hlo'
         exact ⟨fun q hq' => by cases hq'; exact this, nofun, nofun⟩
       · intro k' i' x hk hb y hy
-        obtain ⟨ds, o, y', ss, hx⟩ := hb
-        rw [scanExit_of_scanStaysB hstay hk hx] at hy
-        cases hy
+        rcases hb with ⟨ds, o, y', ss, hx⟩ | ⟨ds, o, ss, -, hai⟩
+        · rw [scanExit_of_scanStaysB hstay hk hx] at hy
+          cases hy
+        · rw [himm' i' (List.mem_of_getElem? hk)] at hai
+          cases hai
 
 /-- **The fused body is in the image class.** A body in the class `physImgB slotArr`, whose
     array slots are `qsave.` slots, keeps the class under the fusion `fuseMulHiBody` in either
     mode when it satisfies the site condition `fuseSiteOkB` and the home condition `homeOkB`
-    from the empty environment. -/
+    from the empty environment and has no `ZEROARR` or `STOREIMM`. -/
 theorem physImgB_fuseMulHiBody (s : Bool)
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
     (h : physImgB slotArr b = true) (hsite : fuseSiteOkB slotArr b = true)
-    (hhome : homeOkB slotArr [] b = true) :
+    (hhome : homeOkB slotArr [] b = true) (himm : ∀ r ∈ b, isArrImmB r.li_i = false) :
     physImgB slotArr (fuseMulHiBody b s) = true := by
   have := physImgB_fuseMulHiAux s hq b [] [] [] [] (by simpa using h) hsite hhome
-    (EnvAgree.refl _) (fun _ hp => by cases hp) (fun _ hp => by cases hp)
+    (EnvAgree.refl _) (fun _ hp => by cases hp) (fun _ hp => by cases hp) himm
   simpa [fuseMulHiBody] using this
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse

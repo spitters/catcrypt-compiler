@@ -47,7 +47,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (slotOfReg accArr imgInstr
   reloadOf reloadOf_succ_some reloadOf_succ_lopn reloadOf_succ_none_eq dstHitB bitStore?
-  bitStore?_of_ne bitStore?_of_bitStoreB cellIdxStore? cellIdxStore?_of_ne)
+  bitStore?_of_ne bitStore?_of_bitStoreB cellIdxStore? cellIdxStore?_of_ne imgInstr_zeroArr
+  imgInstr_storeImm)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (LoadSafeAt)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (read64 write64)
@@ -668,21 +669,55 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
+  | zarr b n w =>
+      rw [hc] at hg
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, beq_iff_eq] at hg
+      obtain ⟨⟨hacc', rfl⟩, hbf⟩ := hg
+      cases hacc : accArr slotArr c sa.reg.lpc b with
+      | none => simp [hacc] at hacc'
+      | some An =>
+        obtain ⟨A, m⟩ := An
+        simp only [hacc, beq_iff_eq] at hacc'
+        subst hacc'
+        have hx := icase_zarr hc
+        rw [hx, imgInstr_zeroArr slotArr c _ hacc] at hstep
+        obtain ⟨sa', hst, hr⟩ :=
+          rel_zarr hsep hphys (.of_imgGateB hgate) P hrel hb hx hacc hbf hstep
+        refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), sa', ?_, hr⟩
+        rw [stepA_lopn frame hb hx, ← hst, hx]
+        rfl
+  | simm d b v j =>
+      rw [hc] at hg
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
+      obtain ⟨⟨hacc', hbf⟩, hv⟩ := hg
+      cases hacc : accArr slotArr c sa.reg.lpc b with
+      | none => simp [hacc] at hacc'
+      | some An =>
+        obtain ⟨A, n⟩ := An
+        simp only [hacc, decide_eq_true_eq] at hacc'
+        have hx := icase_simm hc
+        rw [hx, imgInstr_storeImm slotArr c _ hacc] at hstep
+        obtain ⟨sa', hst, hr⟩ :=
+          rel_simm hsep hphys (.of_imgGateB hgate) P hrel hb hx hacc hacc' hbf hv hstep
+        refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), sa', ?_, hr⟩
+        rw [stepA_lopn frame hb hx, ← hst, hx]
+        rfl
   | reg =>
       rw [hc] at hg
       simp only [Bool.and_eq_true, Bool.not_eq_true'] at hg
       obtain ⟨⟨hg, h3⟩, h4⟩ := hg
       obtain ⟨ds, o, ss, hx, ho1, ho2, hko⟩ := icase_reg hc
+      obtain ⟨hz1, hz2⟩ := icase_reg_arr hc _ _ _ hx
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
       have h5 : cellIdxStore? slotArr c sa.reg.lpc bi.li_i = none :=
         cellIdxStore?_of_regGateB hg
       rw [hx] at h3 h4 h5
-      rw [hx, imgInstr_reg slotArr _ _ ho1 ho2 hko h3 (bitStore?_of_bitStoreB h4) h5,
+      rw [hx, imgInstr_reg slotArr _ _ ho1 ho2 hko h3 (bitStore?_of_bitStoreB h4) h5 hz1 hz2,
         evalInstrPMemFk_reg, ← hx] at hstep
       obtain ⟨sa', hst, hr⟩ := rel_reg hsep hphys (.of_imgGateB hgate) P hrel hb hc hg hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3]
+      rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg ho1 ho2 hko h3 hz1 hz2]
 
 /-! ## 3. The run of a straight body with cells -/
 

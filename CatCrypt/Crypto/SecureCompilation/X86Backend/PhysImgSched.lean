@@ -285,10 +285,13 @@ theorem physImgB_schedSwap (hq : ∀ q, (slotArr q).isSome = true → hasPrefix 
   have hx : DstOk slotArr x.li_i := dstOk_of_indep_left hind hq (hpos _ _ gx)
   have hy : DstOk slotArr y.li_i := dstOk_of_indep_left hind' hq (hpos _ _ gy)
   have noAcc : ∀ (j : Linstr) (z : String), hasArrIdx j.li_i = false →
-      ¬ ∃ ds o y' ss, j.li_i = .Lopn ds o (.arrIdx z y' 8 :: ss) := by
-    rintro j z hj ⟨ds, o, y', ss, he⟩
-    rw [he] at hj
-    simp [hasArrIdx, opIsArrIdx] at hj
+      ¬ AccBase z j.li_i := by
+    rintro j z hj (⟨ds, o, y', ss, he⟩ | ⟨ds, o, ss, he, hai⟩)
+    · rw [he] at hj
+      simp [hasArrIdx, opIsArrIdx] at hj
+    · rw [he] at hj hai
+      simp only [isArrImmB, Bool.or_eq_true, beq_iff_eq] at hai
+      rcases hai with rfl | rfl <;> simp [hasArrIdx] at hj
   refine physImgB_of_embed h fun k i hk => ?_
   rcases Nat.lt_or_ge k A.length with hlt | hge
   · -- in front of the pair

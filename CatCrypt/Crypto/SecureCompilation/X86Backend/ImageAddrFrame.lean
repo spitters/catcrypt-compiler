@@ -448,7 +448,9 @@ theorem icase_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (x : Linst
   all_goals try rfl
   split_ifs
   · rfl
-  · rename_i _ ds o ss _ _ _
+  · rfl
+  · rfl
+  · rename_i _ ds o ss _ _ _ _ _
     cases hm : slotMov? (LinstrR.Lopn ds o ss) with
     | some p =>
         obtain ⟨d, q⟩ := p

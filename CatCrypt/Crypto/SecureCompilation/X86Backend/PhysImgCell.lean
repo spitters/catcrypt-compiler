@@ -81,12 +81,16 @@ theorem slotMov?_of_cellA {x : LinstrR} {c : CellOp} (h : cellA? x = some c)
     rcases hm with rfl | rfl <;> simp [slotMov?, hn]
   | lea D B off => exact absurd rfl (hc D B off)
 
-/-- **The cell body keeps the class.** When every array slot is a `qsave.` slot and no indexed
-    access has a cell name as its base (`cellBaseFreeB`), the cell body of a body in the class is
-    in the class. -/
+/-- **The cell body keeps the class.** When every array slot is a `qsave.` slot, no indexed
+    access has a cell name as its base (`cellBaseFreeB`) and no `ZEROARR` or `STOREIMM` has a
+    cell name as its base register (`hbaseImm`), the cell body of a body in the class is in the
+    class. -/
 theorem physImgB_cellBody
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
-    (hbase : cellBaseFreeB b = true) (h : physImgB slotArr b = true) :
+    (hbase : cellBaseFreeB b = true)
+    (hbaseImm : ∀ j ∈ b, ∀ ds o x ss, j.li_i = .Lopn ds o (.reg x :: ss) →
+      isArrImmB j.li_i = true → hasPrefix x "mem." = false)
+    (h : physImgB slotArr b = true) :
     physImgB slotArr (cellBody slotArr b) = true := by
   have hS : ∀ q, gpNameB q = true → hasPrefix q "mem." = false := fun q hq' =>
     (gpNameB_prefix hq').2
@@ -125,9 +129,9 @@ theorem physImgB_cellBody
       have hm := slotMov?_of_cellA hc (fun _ _ _ => CellOp.noConfusion)
       have hd : slotArr D = none :=
         slotArr_of_slotWriteB (by rw [← hi]; exact hm) (by rw [← hi]; exact (physImgB_getElem h hb).2)
-      exact Or.inr ⟨by simp [isAccB], dstOk_single hd⟩
-    · exact Or.inr ⟨by simp [isAccB], dstOk_single (hmem A off)⟩
-  · intro k i' hb' ds o x y ss hx
+      exact Or.inr ⟨by simp [isAccB], by simp [isArrImmB], dstOk_single hd⟩
+    · exact Or.inr ⟨by simp [isAccB], by simp [isArrImmB], dstOk_single (hmem A off)⟩
+  · intro k i' hb' x hx
     obtain ⟨i, hb, -⟩ : ∃ i, b[k]? = some i ∧ True := by
       rw [cellBody_getElem?] at hb'
       cases hbk : b[k]? with
@@ -136,9 +140,13 @@ theorem physImgB_cellBody
     rw [hget k i i' hb hb'] at hx
     rcases cellMove_cases (slotArr := slotArr) b k i with he | ⟨D, B, off, A, hc, he⟩ |
         ⟨B, off, S, A, hc, he⟩ <;> rw [he] at hx
-    · exact cellBaseFreeB_at hbase (List.mem_of_getElem? hb) hx
-    · simp at hx
-    · simp at hx
+    · rcases hx with ⟨ds, o, y, ss, hx⟩ | ⟨ds, o, ss, hx, hai⟩
+      · exact cellBaseFreeB_at hbase (List.mem_of_getElem? hb) hx
+      · exact hbaseImm i (List.mem_of_getElem? hb) ds o x ss hx hai
+    all_goals
+      rcases hx with ⟨_, _, _, _, hx⟩ | ⟨_, _, _, -, hai⟩
+      · simp at hx
+      · simp [isArrImmB] at hai
   · intro k i i' hb hb'
     rw [hget k i i' hb hb']
     rcases cellMove_cases (slotArr := slotArr) b k i with he | ⟨D, B, off, A, hc, he⟩ |
