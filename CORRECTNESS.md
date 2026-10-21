@@ -48,13 +48,10 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   (`CatCrypt/Crypto/Hax/HaxToLowCTExitWordOps.lean`) replaces marshalled word calls by
   scalar assignments and unsigned comparisons by their signed forms. `placedUse`
   (`CatCrypt/Crypto/Hax/HaxToLowCTPlaced.lean`) checks that every name is used in the
-  heap of its placement. [HAX_RUST.md](HAX_RUST.md) gives the procedures. The earlier
-  typed front `haxFrontT` (development repository, `CatCrypt/Crypto/Hax/HaxFrontT.lean`,
-  `haxFrontT_simulates`) places each name by its type and selects bodies with the
-  `LowCT` oracle `lowCTAccepts`; no pipeline runs it.
+  heap of its placement. [HAX_RUST.md](HAX_RUST.md) gives the procedures.
 - `compileA` runs neither front. Its front `haxToNF` selects bodies with the shape check
   `shapeAccepts` (`nfBody` in the development repository's `Haxc/NFFront.lean`), and its
-  import closure contains no module of `haxToLowCT` and none of `haxFrontT`. The tables
+  import closure contains no module of `haxToLowCT`. The tables
   the fronts share are in modules of their own: the call names, widths and scalar values
   in `CatCrypt/Crypto/Hax/HaxCallNames.lean`, and in the development repository the
   acceptance tests `FrontOracle` with the body selection (`Hax.HaxFrontOracle`), the
@@ -226,7 +223,6 @@ the development repository.
 
 | Statement proved | Programs | Check and class | Lean names |
 |---|---|---|---|
-| The `LowCT` program of the earlier typed front (not a stage of `compileA`) runs to a state whose result slots agree with the value of every source run that reads to a value | typed bodies accepted by `haxFrontTOk` | `haxFrontTOk`, D | `haxFrontT_simulates_hax64W` (`CatCrypt.Crypto.Hax.HaxFrontHax64W`) |
 | An accepted command lies in the guarded coverage fragment `IsCoveredSCtlGuarded` | `LowCT` commands accepted by `coveredGuardedB` | `coveredGuardedB`, D | [`isCoveredSCtlGuarded_of_coveredGuardedB`](CatCrypt/Crypto/SecureCompilation/Dialects/TranslateDialectGuarded.lean) |
 | The typed chain of the export, run by `lsemFuelMemF` from the ABI entry, halts with the return register holding the denotation of the program | straight-line programs returning a register, accepted by `straightCertB` | `straightCertB`, D | [`straight_export_faithful_abi`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertStraight.lean) |
 | The certified loop node halts under `lsemFuelMemF` from the ABI entry with the output array decoding to the denotation of the program | a program with one runtime-count loop accepted by `singleLoopB` | the export certificate `comLCertNB` (`routeCertB`), V: a certificate, per program, of a fixed export function | [`singleLoop_export_faithful_gate`](CatCrypt/Crypto/SecureCompilation/X86Backend/ExportCertGate.lean) |

@@ -166,7 +166,7 @@ Status: live (on the path of `compileA` or used by a headline), producer (genera
 | SC dev: MLIR vector leaf | 4 / 3.5 k | the MAYO `.jinc` leaf | producer | E 1 O 1 N 2 | 2026-10-08 | - | SSProve-lean `JINC_IMPORT.md` |
 | SC dev: other directories | 3 / 423 | dev modules in directories of the compiler package | unsorted | N 2 AGG 1 | 2026-09-15 | - | - |
 | SC dev: THIR ties and relational instances | 29 / 7.0 k | THIR-front ties and per-curve relational instances | legacy | Hs 4 E 3 O 7 N 15 | 2026-10-18 | - | - |
-| Hax dev: typed front and runners | 50 / 26.3 k | the typed front `haxFrontT`, the A-normaliser, `HaxRun` runners | legacy | H 16 E 17 O 8 N 8 AGG 1 | 2026-10-16 | `haxFrontT_simulates` | SSProve-lean `DESIGN.md` |
+| Hax dev: front helpers and runners | 50 / 26.3 k | the shared front tables, the A-normaliser, `HaxRun` runners | legacy | H 16 E 17 O 8 N 8 AGG 1 | 2026-10-16 | - | SSProve-lean `DESIGN.md` |
 | Jasmin dev: mpn and bignum | 123 / 86.3 k | GMP-class kernels as `.jazz`, s2n-bignum ports, Hoare triples | legacy | Hs 1 E 48 O 47 N 26 AGG 1 | 2026-10-08 | - | SSProve-lean `CatCrypt/Crypto/Jasmin/README.md`, SSProve-lean `CatCrypt/Crypto/Jasmin/AGENTS.md` |
 | CompilerSecurity | 47 / 13.3 k | compiler correctness to UC (`HaxcRC`), traced semantics, RHP over LowCT | live | H 5 Hs 6 O 25 N 11 | 2026-10-16 | `uc_of_gate` | - |
 | Optimizer dev | 2 / 443 | optimiser modules of the dev tree | unsorted | E 1 N 1 | 2026-09-27 | - | - |
