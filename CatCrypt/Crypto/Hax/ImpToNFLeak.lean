@@ -58,7 +58,7 @@ prefix; a filled prefix runs the prefix and then its continuation (`NFPre.leakRu
 ## Constant time
 
 Source constant time `SourceCTNF` for a level table `lt` compares the events `nfTrace` of two
-runs without the leaf calls of tagged field heads (`stripField`): a tagged field call is
+runs without the leaf calls of field heads (`stripField`): a field call is
 compiled to a field body whose constant time is proved separately. The leakage model
 `nfLeakModelQ` makes those calls quiet, and its runs are the stripped runs of `nfLeakModel`
 (`nfLeakRunQ_eq`, from the change of model `NFProg.leakRunM_filter`). From `SourceCTNF`, two
@@ -2092,16 +2092,16 @@ theorem impToNF_leak (bi : Builtins) (sigOf : String → List NfTy → Option Nf
 /-! ## The leakage model with quiet field calls -/
 
 /-- **The leakage model of `nfDialect` with quiet field calls**: the class `nfKind` of an
-    operation, except that a call of a tagged field head (`Hax.FieldTag.fieldTag?`) is
-    quiet. -/
+    operation, except that a call of a field head, canonical or Montgomery
+    (`Hax.FieldTag.fieldHeadB`), is quiet. -/
 def nfLeakModelQ : LeakModel nfDialect where
   kind op := match nfKind op with
-    | .vtCall f => if (_root_.Hax.FieldTag.fieldTag? f).isSome then .quiet else .vtCall f
+    | .vtCall f => if _root_.Hax.FieldTag.fieldHeadB f then .quiet else .vtCall f
     | k => k
   valNat := nfValNat
 
 /-- The events of an operation under `nfLeakModelQ` are its events under `nfLeakModel`
-    without the leaf calls of tagged field heads. -/
+    without the leaf calls of field heads. -/
 theorem opLeak_nfLeakModelQ (op : NfOp)
     (vals : HVector (fun t => ⟦t⟧) (DialectSignature.sig (d := nfDialect) op)) :
     ComLevelCheck.opLeak nfLeakModelQ op vals =
@@ -2117,7 +2117,7 @@ theorem opLeak_nfLeakModelQ (op : NfOp)
   simp only [nfLeakModelQ, nfLeakModel]
   cases nfKind op with
   | vtCall f =>
-      cases h : (_root_.Hax.FieldTag.fieldTag? f).isSome <;>
+      cases h : _root_.Hax.FieldTag.fieldHeadB f <;>
         simp [stripField, isFieldEvent, h]
   | _ => simp [stripField, isFieldEvent]
 
@@ -2129,7 +2129,7 @@ abbrev nfLeakRunQ (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List 
   @NFProg.leakRunM nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ fuel _ _ p V
 
 /-- **The run with quiet field calls is the stripped run**: the leakage run of a program in
-    `nfLeakModelQ` is its run in `nfLeakModel` with the leaf calls of tagged field heads
+    `nfLeakModelQ` is its run in `nfLeakModel` with the leaf calls of field heads
     removed from the events (`stripField`). -/
 theorem nfLeakRunQ_eq (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) (V : Valuation Γ) :
@@ -2142,7 +2142,7 @@ theorem nfLeakRunQ_eq (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : L
 /-- **Source constant time for `srcLeakNF`, modulo the field calls,** of `e` for the split
     `lt`: two runs at the same fuel from environments agreeing on the public variables, both
     ending in a value, have equal events `nfTrace` of their leakage once the leaf calls of
-    tagged field heads are removed (`stripField`). A tagged field call is compiled to a
+    field heads are removed (`stripField`). A field call is compiled to a
     fiat-template body whose constant time is a property of that body
     (`FieldLevel.fieldBody_nfCTRel`); its arguments are the only events removed. -/
 def SourceCTNF (bi : Builtins) (lt : LevelTable) (e : ImpExpr) : Prop :=
@@ -2156,7 +2156,7 @@ def SourceCTNF (bi : Builtins) (lt : LevelTable) (e : ImpExpr) : Prop :=
 /-- **Two runs through the front.** Under `TypedCalls bi sigOf`, `RepeatCalls bi` and source
     constant time modulo the field calls, the leakage runs of the program `impToNF` emits from
     two valuations related by `σ` to environments agreeing on the public variables, from which
-    the source runs to values, emit equal events once the leaf calls of tagged field heads are
+    the source runs to values, emit equal events once the leaf calls of field heads are
     removed. -/
 theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {lt : LevelTable} {e : ImpExpr} (hct : SourceCTNF bi lt e)

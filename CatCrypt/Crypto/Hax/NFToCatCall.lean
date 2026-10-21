@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.NFToCatLeak
 public import CatCrypt.Crypto.Hax.NFToCatImages
+public import HaxLean.SemanticsMontCalls
 
 /-!
 # Calls of declared external procedures in the translation to `catCryptDialect`
@@ -52,8 +53,8 @@ readings of a declared name: the builtin table of the source answers it by the f
 * `nfToCatExt_leak` — the leakage transformer on the translations without `call`.
 * `nfToCatExt_leakD` — the leakage transformer at a call environment, for declarations of
   no name `index` or `array_update`: the events of the translation are the source events
-  without the variable-time leaf calls of tagged field heads and of declared names
-  (`stripDecl D`).
+  without the variable-time leaf calls of field heads (`Hax.FieldTag.fieldHeadB`) and of
+  declared names (`stripDecl D`).
 * `nfToCatExt_leakC` — the same at declarations of tagged field heads, at which
   `stripDecl D` is `stripField`.
 -/
@@ -952,13 +953,13 @@ theorem nfToCatExt_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Built
 
 /-! ## 9. Leakage with calls -/
 
-/-- Whether an event is a variable-time leaf call of a tagged field head
-    (`Hax.FieldTag.fieldTag?`). -/
+/-- Whether an event is a variable-time leaf call of a field head, canonical or Montgomery
+    (`Hax.FieldTag.fieldHeadB`). -/
 def isFieldEvent : CTLeak → Bool
-  | .vtCall f _ => (_root_.Hax.FieldTag.fieldTag? f).isSome
+  | .vtCall f _ => _root_.Hax.FieldTag.fieldHeadB f
   | _ => false
 
-/-- The events with the variable-time leaf calls of tagged field heads removed. -/
+/-- The events with the variable-time leaf calls of field heads removed. -/
 def stripField (l : List CTLeak) : List CTLeak :=
   l.filter fun e => !isFieldEvent e
 
@@ -1046,7 +1047,7 @@ theorem stripField_opLeak_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDial
       catOp σ op args = some res → ∀ xs,
       stripField (opLeak nfLeakModel op xs) = opLeak nfLeakModel op xs := by
   intro op args res h xs
-  have hk : ∀ g, nfKind op = .vtCall g → _root_.Hax.FieldTag.fieldTag? g = none := by
+  have hk : ∀ g, nfKind op = .vtCall g → _root_.Hax.FieldTag.fieldHeadB g = false := by
     clear xs
     induction op with
     | named n op ih => exact ih args res h
@@ -1088,7 +1089,7 @@ theorem stripField_opLeak_tagged {f : String}
   split_ifs with h1 h2
   · rcases h1 with rfl | rfl <;> exact absurd hf (by decide)
   · rfl
-  · simp [stripField, isFieldEvent, hf]
+  · simp [stripField, isFieldEvent, _root_.Hax.FieldTag.fieldHeadB, hf]
 
 /-- The events of an operation `extArgs` reads as a declared call are removed by
     `stripField` when every declaration is of a tagged field head. -/
@@ -1111,15 +1112,15 @@ theorem stripField_opLeak_of_extArgs {D : List ExtDecl}
       · cases hc
   | _ => intro args c hc; cases hc
 
-/-- Whether an event is a variable-time leaf call of a tagged field head or of a name that `D`
-    declares. -/
+/-- Whether an event is a variable-time leaf call of a field head (`Hax.FieldTag.fieldHeadB`)
+    or of a name that `D` declares. -/
 def isDeclEvent (D : List ExtDecl) : CTLeak → Bool
   | .vtCall f _ =>
-      (_root_.Hax.FieldTag.fieldTag? f).isSome || D.any fun d => decide (d.name = f)
+      _root_.Hax.FieldTag.fieldHeadB f || D.any fun d => decide (d.name = f)
   | _ => false
 
-/-- The events with the variable-time leaf calls of tagged field heads and of the names that
-    `D` declares removed. -/
+/-- The events with the variable-time leaf calls of field heads and of the names that `D`
+    declares removed. -/
 def stripDecl (D : List ExtDecl) (l : List CTLeak) : List CTLeak :=
   l.filter fun e => !isDeclEvent D e
 
@@ -1147,11 +1148,11 @@ theorem stripDecl_eq_stripField {D : List ExtDecl}
   cases e with
   | vtCall f _ =>
       simp only [isDeclEvent, isFieldEvent]
-      cases h : (_root_.Hax.FieldTag.fieldTag? f).isSome
+      cases h : _root_.Hax.FieldTag.fieldHeadB f
       · rw [Bool.false_or, List.any_eq_false.mpr fun d hd hn => by
           rw [decide_eq_true_eq] at hn
           subst hn
-          rw [hT d hd] at h
+          rw [_root_.Hax.FieldTag.fieldHeadB, hT d hd] at h
           cases h]
       · rfl
   | _ => rfl
@@ -1240,7 +1241,7 @@ theorem stripDecl_opLeak_of_extArgs {D : List ExtDecl}
     `p` at the call environment `E`: a leakage run of `p` that succeeds from a valuation
     related to `W` by the readings is matched by a leakage run at `E` of the translated
     program from `W`, whose events are those of the source with the variable-time leaf calls
-    of tagged field heads removed, and with related results. -/
+    of field heads removed, and with related results. -/
 def NFLeakSoundC (P : CatLeakParams) (bi : _root_.Hax.Builtins) (E : CallEnv catCryptDialect)
     (D : List ExtDecl) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) : Prop :=
@@ -1255,7 +1256,7 @@ def NFLeakSoundC (P : CatLeakParams) (bi : _root_.Hax.Builtins) (E : CallEnv cat
     program `p` at the call environment `E`: a leakage run of `p` that succeeds from a
     valuation related to `W` by the readings is matched by a leakage run at `E` of the
     translated program from `W`, whose events are those of the source with the variable-time
-    leaf calls of tagged field heads and of the names `D` declares removed (`stripDecl D`),
+    leaf calls of field heads and of the names `D` declares removed (`stripDecl D`),
     and with related results. -/
 def NFLeakSoundD (P : CatLeakParams) (bi : _root_.Hax.Builtins) (E : CallEnv catCryptDialect)
     (D : List ExtDecl) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
@@ -1411,7 +1412,7 @@ theorem emitCall_leakC {P : CatLeakParams} (hP : NoVT P) (E : CallEnv catCryptDi
     declarations of no name `index` or `array_update`, a leakage run of a program that
     succeeds is matched by the leakage run at `E` of its translation, in which a call node
     emits no event: the events of the translation are those of the source with the
-    variable-time leaf calls of tagged field heads and of the declared names removed
+    variable-time leaf calls of field heads and of the declared names removed
     (`stripDecl D`). -/
 theorem nfToCatExt_leakD {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
     (hbi : SubTable bi) {E : CallEnv catCryptDialect} {D : List ExtDecl}
