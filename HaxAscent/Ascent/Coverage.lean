@@ -706,6 +706,7 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                 r.set `i (mkNatLit i); r.set `p xs[0]!; r.set `n (mkNatLit s.arity)
                 r.set `β (← s.compTy i)
                 r.side `hn
+                r.set `hlen (← closeSide (← r.goal `hlen).cleanupAnnotations)
                 r.done)
             (fun xs => mkEnc fty (mkApp (mkConst pd) xs[0]!))) with
         | .ok () => leafNames := leafNames.push (Name.str leafNs dn)
@@ -723,6 +724,8 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
                 r.set `β (← s.compTy i)
                 r.set `i (mkNatLit i); r.set `p xs[0]!; r.set `v xs[1]!; r.set `n (mkNatLit s.arity)
                 r.side `hn
+                r.set `hlen (← closeSide (← r.goal `hlen).cleanupAnnotations)
+                r.set `hcf (← closeSide (← r.goal `hcf).cleanupAnnotations)
                 r.done)
             (fun xs => do
               if s.arity == 1 then mkEnc sty xs[1]!

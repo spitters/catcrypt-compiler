@@ -39,10 +39,9 @@ change the flat array (`fuelSim_flatArrUpdate`).  A returned tuple with the vari
 `rs` is transported along the agreement `RetAt rs` (`fuelSim_retVars`,
 `corres_retVars`).
 
-**Leaves.**  The builtin premises `FieldSound` and `UpdateSound` of the struct
-arms hold for a table whose field and update calls are the ascent leaves
-`projLeaf` and `updateLeaf`, at every arity (`fieldSound_of_projLeaf`,
-`updateSound_of_updateLeaf`); the update call name is hax-lean's `structUpdateHead`.
+**Leaves.**  The builtin premise `FieldSound` of the struct arms holds for a table
+whose field calls are the ascent leaves `projLeaf`, at every arity
+(`fieldSound_of_projLeaf`).
 `OptionSound` holds for the runtime leaves of `Some` and `None`
 (`optionSound_of_leaves`).  The array builtins of the arrays-of-structs
 arms hold for the runtime leaves `indexLeaf`, `arrayUpdateLeaf`, `lenLeaf` and the
@@ -70,7 +69,7 @@ function holds the decoding of the thrown or returned value (`excPayload`).
   transport of `Corres` along it, and its composition through a binding arm
 * `corres_transport`, `corres_renameVar`, `corres_flatProj` — the transport along one
   relation, and its instances at `RenRel` and `StructFlatAt`
-* `fieldSound_of_projLeaf`, `updateSound_of_updateLeaf`, `optionSound_of_leaves` — the
+* `fieldSound_of_projLeaf`, `optionSound_of_leaves` — the
   struct and `Option` builtin premises from the ascent leaves
 * `arrIndexSound_of_indexLeaf`, `arrUpdateSound_of_arrayUpdateLeaf`,
   `lenSound_of_lenLeaf`, `idxArithSound_of_leaves`, `arrStructFlatAt_encFlat`,
@@ -103,7 +102,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Hax
 
 open _root_.Hax (ImpExpr ImpLit Value Env Outcome Builtins denote')
-open _root_.Hax.Ascent (Corres CorresX excVal ExcPlain FnCorresX encExc projLeaf updateLeaf)
+open _root_.Hax.Ascent (Corres CorresX excVal ExcPlain FnCorresX encExc projLeaf)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT RustState RustExec LeafSpec)
 
 /-! ## Transport along an environment relation -/
@@ -200,19 +199,7 @@ theorem projLeaf_structVal {i n : Nat} {vs : List Value} (hlen : vs.length = n) 
     obtain rfl : i = 0 := by omega
     rfl
   · rw [structVal_of_ne_one hn]
-    simp [projLeaf, show ¬ n ≤ 1 by omega]
-
-/-- The update leaf of field `i` of an `n`-field struct replaces component `i` of the
-    struct value. -/
-theorem updateLeaf_structVal {i n : Nat} {vs : List Value} (v : Value) (hlen : vs.length = n)
-    (hi : i < n) : updateLeaf i n [structVal n vs, v] = some (structVal n (vs.set i v)) := by
-  by_cases hn : n = 1
-  · subst hn
-    obtain ⟨w, rfl⟩ := List.length_eq_one_iff.mp hlen
-    obtain rfl : i = 0 := by omega
-    rfl
-  · rw [structVal_of_ne_one hn, structVal_of_ne_one hn]
-    simp [updateLeaf, show ¬ n ≤ 1 by omega, hlen, hi]
+    simp [projLeaf, show ¬ n ≤ 1 by omega, hlen]
 
 /-- The field calls of a struct, interpreted by the ascent leaves `projLeaf`, satisfy
     `FieldSound`. -/
@@ -222,16 +209,6 @@ theorem fieldSound_of_projLeaf {bi : Builtins} {fs : List String}
   intro vs i f hlen hi
   rw [h i f hi]
   exact projLeaf_structVal hlen (List.getElem?_eq_some_iff.1 hi).1
-
-/-- The update calls of a struct, interpreted by the ascent leaves `updateLeaf` under
-    hax-lean's names `structUpdateHead`, satisfy `UpdateSound`. -/
-theorem updateSound_of_updateLeaf {bi : Builtins} {S : String} {fs : List String}
-    (h : ∀ i, i < fs.length → ∀ vs,
-      bi (_root_.Hax.structUpdateHead S i fs.length) vs = updateLeaf i fs.length vs) :
-    UpdateSound bi S fs := by
-  intro vs i v hlen hi
-  rw [h i hi]
-  exact updateLeaf_structVal v hlen hi
 
 /-- `Some` and `None` interpreted by the runtime leaves satisfy `OptionSound`. -/
 theorem optionSound_of_leaves {bi : Builtins}

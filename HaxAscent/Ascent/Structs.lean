@@ -63,23 +63,27 @@ namespace Hax.Ascent
 def ctorLeaf (n : Nat) : Leaf := fun vs =>
   if vs.length = n then (if n = 1 then vs.head? else some (.tuple vs)) else none
 
-/-- The projection leaf of field `i` of an `n`-field struct: index `i` of the tuple, and
-    the value itself for a one-field struct. -/
+/-- The projection leaf of field `i` of an `n`-field struct: index `i` of a tuple of `n`
+    values, and the value itself for a one-field struct. -/
 def projLeaf (i n : Nat) : Leaf
   | [v] =>
     if n ≤ 1 then some v
     else match v with
-      | .tuple vs => vs[i]?
+      | .tuple vs => if vs.length = n then vs[i]? else none
       | _ => none
   | _ => none
 
-/-- The update leaf `struct_update#S#i#n`: the tuple with index `i` replaced, and the new
-    value itself for a one-field struct. -/
+/-- The update leaf `struct_update#S#i#n`: a tuple of `n` values, none of which is a
+    control-flow value, with index `i` replaced, and the new value itself for a one-field
+    struct. -/
 def updateLeaf (i n : Nat) : Leaf
   | [s, v] =>
     if n ≤ 1 then some v
     else match s with
-      | .tuple vs => if i < vs.length then some (.tuple (vs.set i v)) else none
+      | .tuple vs =>
+        if vs.length = n ∧ (vs.all fun x => !x.isControlFlow) = true then
+          some (.tuple (vs.set i v))
+        else none
       | _ => none
   | _ => none
 
@@ -128,6 +132,32 @@ instance (priority := low) {α : Type} [HaxEnc α] :
     @HaxField.Lawful α 0 α HaxField.last HaxTupleEnc.single _ :=
   ⟨fun _ => rfl, fun _ _ => rfl⟩
 
+/-- Every component of the flat encoding is plain: none is a top-level control-flow
+    value. -/
+class HaxTupleEnc.Plain (α : Type) [HaxTupleEnc α] : Prop where
+  all_not_cf : ∀ p : α, ((HaxTupleEnc.encList p).all fun x => !x.isControlFlow) = true
+
+instance {α γ : Type} [HaxEnc α] [HaxEnc.Plain α] [HaxTupleEnc γ] [HaxTupleEnc.Plain γ] :
+    HaxTupleEnc.Plain (α × γ) :=
+  ⟨fun p => by
+    change (!(enc p.1).isControlFlow && (HaxTupleEnc.encList p.2).all _) = true
+    rw [HaxEnc.Plain.not_cf, HaxTupleEnc.Plain.all_not_cf]
+    rfl⟩
+
+instance (priority := low) {α : Type} [HaxEnc α] [HaxEnc.Plain α] :
+    @HaxTupleEnc.Plain α HaxTupleEnc.single :=
+  ⟨fun a => by
+    change (!(enc a).isControlFlow && true) = true
+    rw [HaxEnc.Plain.not_cf]
+    rfl⟩
+
+/-- The components of the flat encoding of a product of plain types are no control-flow
+    values. -/
+theorem HaxTupleEnc.encList_all_not_isControlFlow {α : Type} [HaxTupleEnc α]
+    [HaxTupleEnc.Plain α] (p : α) :
+    ((HaxTupleEnc.encList p).all fun x => !x.isControlFlow) = true :=
+  HaxTupleEnc.Plain.all_not_cf p
+
 /-! ### Transport -/
 
 section Transport
@@ -146,9 +176,12 @@ theorem ctorLeaf_one (a : α) : ctorLeaf 1 [enc a] = some (enc a) := rfl
 /-- **Projection.** The projection leaf of field `i` maps the encoding of a product to
     the encoding of the field. -/
 theorem projLeaf_prod {i : Nat} [HaxField (α × γ) i β] [HaxEnc β]
-    [HaxField.Lawful (α × γ) i β] (p : α × γ) {n : Nat} (hn : 2 ≤ n) :
+    [HaxField.Lawful (α × γ) i β] (p : α × γ) {n : Nat} (hn : 2 ≤ n)
+    (hlen : (HaxTupleEnc.encList p).length = n := by rfl) :
     projLeaf i n [enc p] = some (enc (fieldGet i p)) := by
   simp only [projLeaf, if_neg (show ¬n ≤ 1 by omega)]
+  change (if (HaxTupleEnc.encList p).length = n then (HaxTupleEnc.encList p)[i]? else none) = _
+  rw [if_pos hlen]
   exact HaxField.Lawful.get_enc p
 
 theorem projLeaf_one (a : α) : projLeaf 0 1 [enc a] = some (enc a) := rfl
@@ -156,14 +189,16 @@ theorem projLeaf_one (a : α) : projLeaf 0 1 [enc a] = some (enc a) := rfl
 /-- **Update.** The update leaf of field `i` maps the encodings of a product and a value
     to the encoding of the product with the field replaced. -/
 theorem updateLeaf_prod {i : Nat} [HaxField (α × γ) i β] [HaxEnc β]
-    [HaxField.Lawful (α × γ) i β] (p : α × γ) (v : β) {n : Nat} (hn : 2 ≤ n) :
+    [HaxField.Lawful (α × γ) i β] (p : α × γ) (v : β) {n : Nat} (hn : 2 ≤ n)
+    (hlen : (HaxTupleEnc.encList p).length = n := by rfl)
+    (hcf : ((HaxTupleEnc.encList p).all fun x => !x.isControlFlow) = true := by
+      first | rfl | exact HaxTupleEnc.encList_all_not_isControlFlow _) :
     updateLeaf i n [enc p, enc v] = some (enc (fieldSet i p v)) := by
-  have hi : i < (HaxTupleEnc.encList p).length :=
-    (List.getElem?_eq_some_iff.mp (HaxField.Lawful.get_enc (β := β) p)).1
   simp only [updateLeaf, if_neg (show ¬n ≤ 1 by omega)]
-  change (if i < (HaxTupleEnc.encList p).length then
+  change (if (HaxTupleEnc.encList p).length = n ∧
+      ((HaxTupleEnc.encList p).all fun x => !x.isControlFlow) = true then
     some (Value.tuple ((HaxTupleEnc.encList p).set i (enc v))) else none) = _
-  rw [if_pos hi, HaxField.Lawful.set_enc]
+  rw [if_pos ⟨hlen, hcf⟩, HaxField.Lawful.set_enc]
   rfl
 
 theorem updateLeaf_one (a b : α) : updateLeaf 0 1 [enc a, enc b] = some (enc b) := rfl
