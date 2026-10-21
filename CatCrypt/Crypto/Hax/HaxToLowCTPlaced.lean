@@ -198,8 +198,8 @@ theorem scalarizeNarrowIn_of_noLetCall : ∀ (c : LowCT) (W : List String), noLe
   | .RArrLoadLit _ _ _, _, _ | .RScalarSetExpr _ _, _, _ | .RCallDstThreaded _ _ _, _, _
   | .RCopy _ _, _, _ => by simp [scalarizeNarrowIn]
 
-/-- On a program without a call-headed binding the word lowerings of `haxFront` are the
-    identity. -/
+/-- On a program without a call-headed binding the word lowerings `scalarizeNarrowOps` and
+    `scalarizeWordOps` are the identity. -/
 theorem scalarize_of_noLetCall {c : LowCT} (h : noLetCall c = true) :
     scalarizeWordOps (scalarizeNarrowOps c) = c := by
   rw [scalarizeNarrowOps, scalarizeNarrowIn_of_noLetCall c [] h,
