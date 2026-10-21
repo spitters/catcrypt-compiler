@@ -45,7 +45,10 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   (`haxToLowCT_simulates_program` and its array, tower and literal variants). The
   typed entry point `haxFrontT` (development repository,
   `CatCrypt/Crypto/Hax/HaxFrontT.lean`, `haxFrontT_simulates`) places each name by
-  its type. Early exits lower to exit-flag form. `scalarizeExitIn`
+  its type; its body selection uses the `LowCT` oracle `lowCTAccepts`. `compileA` runs
+  neither: its front `haxToNF` selects bodies with the shape check `shapeAccepts`
+  (`nfBody` in the development repository's `Haxc/NFFront.lean`). Early exits lower to
+  exit-flag form. `scalarizeExitIn`
   (`CatCrypt/Crypto/Hax/HaxToLowCTExitWordOps.lean`) replaces marshalled word calls by
   scalar assignments and unsigned comparisons by their signed forms. `placedUse`
   (`CatCrypt/Crypto/Hax/HaxToLowCTPlaced.lean`) checks that every name is used in the
