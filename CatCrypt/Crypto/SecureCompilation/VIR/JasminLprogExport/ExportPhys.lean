@@ -1015,6 +1015,108 @@ def reloadMemrefBase (memrefBaseReload : String → Option String) (o : LOperand
       | none => ([], o)
   | _ => ([], o)
 
+/-- **The reload of a register base** `b`: when `memrefBaseReload` maps `b` to a save slot
+    `q`, the move `MOVQ R14, q` and the base `R14` (`reloadScratch2`); no instruction and the
+    base `b` otherwise. It is the base reload of `reloadMemrefBase` for a base that is a
+    register operand rather than the base of an indexed operand
+    (`reloadMemrefBase_arrIdx`). -/
+def reloadRegBase (memrefBaseReload : String → Option String) (b : String) :
+    List LinstrR × String :=
+  match memrefBaseReload b with
+  | some qsave => ([.Lopn [.reg reloadScratch2] "MOVQ" [.reg qsave]], reloadScratch2)
+  | none => ([], b)
+
+theorem reloadRegBase_some {mbr : String → Option String} {b q : String}
+    (h : mbr b = some q) :
+    reloadRegBase mbr b = ([.Lopn [.reg reloadScratch2] "MOVQ" [.reg q]], reloadScratch2) := by
+  simp [reloadRegBase, h]
+
+theorem reloadRegBase_none {mbr : String → Option String} {b : String} (h : mbr b = none) :
+    reloadRegBase mbr b = ([], b) := by
+  simp [reloadRegBase, h]
+
+/-- The base reload of an indexed operand is the reload of its base register. -/
+theorem reloadMemrefBase_arrIdx (mbr : String → Option String) (b y : String) (s : Nat) :
+    reloadMemrefBase mbr (.arrIdx b y s) =
+      ((reloadRegBase mbr b).1, .arrIdx (reloadRegBase mbr b).2 y s) := by
+  cases h : mbr b <;> simp [reloadMemrefBase, reloadRegBase, h]
+
+/-- Every instruction of a register-base reload moves the save slot of the base into
+    `R14`. -/
+theorem reloadRegBase_mem {mbr : String → Option String} {b : String} {r : LinstrR}
+    (hr : r ∈ (reloadRegBase mbr b).1) :
+    ∃ q, mbr b = some q ∧ r = .Lopn [.reg reloadScratch2] "MOVQ" [.reg q] := by
+  cases h : mbr b with
+  | none => simp [reloadRegBase, h] at hr
+  | some q => exact ⟨q, rfl, by simpa [reloadRegBase, h] using hr⟩
+
+/-- **The base reload of a constant-shape array instruction**, the register-base form of
+    `reloadMemrefBase`. A zeroing `ZEROARR [B] [#n, #w]`, whose base is its destination `B`,
+    becomes the move `MOVQ R14, q` of the save slot `q` of `B` followed by the physical form
+    `ZEROARR [] [R14, #n, #w]`, which reads its base as a source; a constant-index store
+    `STOREIMM [D] [B, V, #k]` becomes `MOVQ R14, q` for the save slot `q` of `B` followed by
+    `STOREIMM [R14] [R14, V, #k]`. The result is `none` for every other instruction and when
+    the base has no save slot. -/
+def reloadArrImm (memrefBaseReload : String → Option String) : LinstrR → Option (List LinstrR)
+  | .Lopn [.reg b] opn [.imm n, .imm w] =>
+      if opn = "ZEROARR" then
+        (memrefBaseReload b).map fun q =>
+          [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
+           .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]]
+      else none
+  | .Lopn [.reg _] opn [.reg b, .reg v, .imm k] =>
+      if opn = "STOREIMM" then
+        (memrefBaseReload b).map fun q =>
+          [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
+           .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]]
+      else none
+  | _ => none
+
+theorem reloadArrImm_zeroArr {mbr : String → Option String} {b q : String} (n w : Nat)
+    (h : mbr b = some q) :
+    reloadArrImm mbr (.Lopn [.reg b] "ZEROARR" [.imm n, .imm w]) =
+      some [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
+        .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]] := by
+  simp [reloadArrImm, h]
+
+theorem reloadArrImm_storeImm {mbr : String → Option String} {b q : String} (d v : String)
+    (k : Nat) (h : mbr b = some q) :
+    reloadArrImm mbr (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k]) =
+      some [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
+        .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]] := by
+  simp [reloadArrImm, h]
+
+/-- An instruction other than `ZEROARR` and `STOREIMM` has no constant-shape base reload. -/
+theorem reloadArrImm_of_ne (mbr : String → Option String) {ds ss : List LOperand} {opn : String}
+    (h1 : opn ≠ "ZEROARR") (h2 : opn ≠ "STOREIMM") :
+    reloadArrImm mbr (.Lopn ds opn ss) = none := by
+  unfold reloadArrImm
+  split <;> simp_all
+
+/-- Off the memref path (no base has a save slot) there is no constant-shape base reload. -/
+theorem reloadArrImm_of_noSlot {mbr : String → Option String} (h : ∀ b, mbr b = none)
+    (i : LinstrR) : reloadArrImm mbr i = none := by
+  unfold reloadArrImm
+  split <;> simp_all
+
+/-- **The forms of a constant-shape base reload.** A reload `l` of `reloadArrImm` is the move
+    of the save slot `q` of the base `b` into `R14` followed by the physical form of a zeroing
+    of `b` or of a constant-index store into `b`, both addressed through `R14`. -/
+theorem reloadArrImm_eq_some {mbr : String → Option String} {i : LinstrR} {l : List LinstrR}
+    (h : reloadArrImm mbr i = some l) :
+    ∃ b q, mbr b = some q ∧
+      ((∃ n w, i = .Lopn [.reg b] "ZEROARR" [.imm n, .imm w] ∧
+          l = [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
+            .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]]) ∨
+        (∃ d v k, i = .Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k] ∧
+          l = [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
+            .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]])) := by
+  unfold reloadArrImm at h
+  split at h
+  · grind only [Option.map_eq_some_iff]
+  · grind only [Option.map_eq_some_iff]
+  · cases h
+
 /-- Legalize a two-address binop `op dst, src` (sources `[dst, src]`) so it
     carries **no** memory (spill) operand inside the binop itself — every `k.N`
     name appears only in a MOV source or destination. jasmin's `asmgen` refuses
