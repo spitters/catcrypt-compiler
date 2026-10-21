@@ -4,6 +4,17 @@
 
 Changes since `v0.1.0-alpha.2`.
 
+### 2026-10-18
+
+`VIR/Compiler.lean` is removed. Its generic `compile` and `compile_correct_all`,
+whose validation conjunct was its hypothesis returned unchanged, are retired with
+`_via_generic`, `compile_correct_front` and the identity models. The per-ISA
+results are `compile_correct_riscv`, `compile_correct_arm` and
+`compile_correct_all_genuine` over `IsaModel` (formerly `MachineModel`, now in
+`RISCVBackend/ComToRiscvLsem.lean`); the lattice route is
+`latticeNttMul_compile_correct`. The pipeline from hax-extracted Rust is
+`compileA`.
+
 ### 2026-09-16
 
 Ed25519 extended-coordinate point addition, from the algebraic route to assembly

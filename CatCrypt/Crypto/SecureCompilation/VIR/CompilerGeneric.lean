@@ -12,10 +12,10 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasminDenote
 /-!
 # De-specialized compiler-correctness theorem: generic dialect-lowering correctness
 
-The lattice theorem `compile_correct_all`
-(`CatCrypt/Crypto/SecureCompilation/VIR/Compiler.lean`) is the end-to-end
-statement *"running the emitted owned jasmin program reads back the source
-denotation"* — but **only for the one lattice route** (`lowerLatticeToJasmin`,
+The lattice theorem `latticeNttMul_compile_correct`
+(`CatCrypt/Crypto/SecureCompilation/VIR/CompilerCorrectness.lean`) states that the
+lowered jasmin program denotes the transport of the source denotation, **only
+for the one lattice route** (`lowerLatticeToJasmin`,
 `mapTy = tau`, `mapCtx = (·.map tau)`). This module proves the **general**
 theorem of which it is an instance.
 
@@ -58,8 +58,8 @@ theorem is recovered by instantiating at the lattice maps (`§3`).
   `fundamental` and the `StraightLine` + jasmin opaque-leaf-agreement
   (`JasminPrintSemCorrect.LeafAgrees`) of `lowerComToProg_sem_eq'`.
 * This is the **dialect-level + owned-execution** theorem. The per-slot
-  structured read-back (`runOutputToWords`) and the per-ISA Sail validation that
-  `Compiler.compile_correct_all` additionally folds in are *downstream* of this
+  structured read-back (`runOutputToWords`) and the per-ISA Sail validation of a
+  machine model are *downstream* of this
   equation (they post-compose a read-back and assert a model `validated` field);
   they are **not** re-stated here; this module states the generic
   dialect-lowering + owned-run correctness.
@@ -98,8 +98,8 @@ type; that is the whole point of de-specialization. -/
 
 /-- **The de-specialized compile.** Lower a source-dialect program `c` across an
     arbitrary structural lowering `L` into jasmin. Codomain is determined by
-    `L.mapCtx`/`L.mapTy`. This is the generic analogue of `Compiler.compile`'s
-    lattice branch (`lowerLatticeToJasmin`), with the lattice maps abstracted
+    `L.mapCtx`/`L.mapTy`. This is the generic form of the lattice lowering
+    `lowerLatticeToJasmin`, with the lattice maps abstracted
     into the parameter `L`. -/
 def compileVia (L : LoweringData d jasminDialect) {Γ : Ctxt d} {t : d.Ty}
     (c : Com d Γ t) : Com jasminDialect (L.mapCtx Γ) (L.mapTy t) :=
@@ -128,7 +128,7 @@ with `lowerComToProg_sem_eq'` (owned backend execution). -/
       (the jasmin opaque-`extCall` leaves agree with `leafSem`) that the owned
       whole-function backend `lowerComToProg_sem_eq'` needs.
 
-    This is `Compiler.compile_correct_all`'s lattice body with the lattice
+    This is the lattice-route argument with the lattice
     `LoweringData` replaced by the parameter `L`: `fundamental L … V` rewrites
     the lowered denotation to `transTy (c.denote V)`, and
     `lowerComToProg_sem_eq'` bridges `runProg … = (lowered).denote …`. No
@@ -217,7 +217,7 @@ theorem latticeMapValExtends :
     This is the de-specialized `compileVia_correct` at `latticeLoweringData`,
     rewritten through `compileVia_lattice`. It demonstrates that the lattice
     route is a *literal* instance of the generic theorem — the lattice-specific
-    `latticeNttMul_compile_correct` / `compile_correct_all` body is reproduced
+    `latticeNttMul_compile_correct` body is reproduced
     here with the lattice maps abstracted into the parameter `L` of §2.
 
     The lattice `OpLowerTransports` hypothesis `hLatLeaf` is unconditionally

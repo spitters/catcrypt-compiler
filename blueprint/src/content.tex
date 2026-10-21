@@ -107,32 +107,20 @@ x86-64, AArch64 and RISC-V.
 \end{theorem}
 
 \begin{theorem}[Backend correctness, lattice route]
-  \label{thm:compile-correct-all}
-  \lean{CatCrypt.Crypto.SecureCompilation.VIR.Compiler.compile_correct_all}
+  \label{thm:lattice-nttmul-compile-correct}
+  \lean{CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectness.latticeNttMul_compile_correct}
   \leanok
-  Fix a target model choice and lattice parameters $(q,n)$. Assume
-  \begin{itemize}
-    \item $\mathsf{hVal}$: the chosen model's $\mathsf{validated}$ proposition, the
-      encoder round trip that model records;
-    \item $\mathsf{hLeaf} : \mathsf{LeafAgrees}\ \mathit{leafSem}$, the leaf
-      agreement edge;
-    \item $\mathsf{hInj}$: injectivity of the fresh-name supply
-      $\mathsf{freshName}$;
-    \item $\mathsf{hPinj}$: injectivity of the whole-function lowering's
-      parameter map;
-    \item $\mathsf{hCompile} : \mathsf{compile}\ q\ n\ (\mathsf{lattice}\ q\ n)
-      = \mathsf{some}\ m$.
-  \end{itemize}
-  Then the conclusion is a conjunction. Its first conjunct, the model's validation,
-  is the hypothesis $\mathsf{hVal}$ returned unchanged. Its second states that,
-  slot-wise, decoding the model's execution of the emitted code $m$ on the
-  run-output state equals the source denotation $\mathsf{latticeDenote}\ q\ n\ V$.
+  For lattice parameters $(q,n)$ and every input valuation $V$, the jasmin
+  program obtained by rewriting the coefficient-form product into the NTT-domain
+  sequence and lowering it across the lattice-to-jasmin conversion denotes, at the
+  transported valuation, the transport of the source program's denotation. There
+  is no hypothesis.
 
-  The statement is at the lattice route only: $\mathsf{compile}$ returns
-  $\mathsf{none}$ on $\mathsf{Source.front}$, whose correctness is the separate
-  $\mathsf{compile\_correct\_front}$. The lattice carrier's $\mathsf{exec}$ is the
-  identity, so the equation concerns the emitted code's denotation under that
-  carrier; the block-executing models are Theorem~\ref{thm:compile-correct-basealu}.
+  The leaf functions of the lattice dialect take $\mathsf{ntt}$ and
+  $\mathsf{invntt}$ to be the identity and $\mathsf{basemul}$ the pointwise
+  product, so the theorem concerns the rewrite and the lowering, not the NTT
+  arithmetic of FIPS 203. The block-executing models are
+  Theorem~\ref{thm:compile-correct-basealu}.
 \end{theorem}
 
 \begin{theorem}[Backend correctness over a block-execution semantics]
