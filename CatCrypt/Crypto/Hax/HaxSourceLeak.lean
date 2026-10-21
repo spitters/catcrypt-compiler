@@ -28,7 +28,9 @@ events at its leaves (`SrcEv`):
 * `op l` — a call of a two-operand scalar operation on variables (`scalarOpExpr`): the
   operand events `l` of its `SExpr` in the leakage model `M` of CTP-1 (`sexprLeak`),
   which are empty unless `M` classes an instruction of the operation variable time;
-* `opaque env e` — a construct outside the modelled set: the whole environment.
+* `opaque env e` — a construct outside the modelled set: the whole environment;
+* `declass v` — a call `declassify x` of the builtin `declassify` on a variable `x`: the
+  value `v` of `x`.
 
 The last event makes the model conservative: a program containing an unmodelled
 construct is constant time only for runs from equal environments at that point.
@@ -45,6 +47,16 @@ as asking for equal flat traces.
 public. `SourceCT M bi lt e`: two runs of `e` at the same fuel from environments
 agreeing on the public variables, both ending in a value, have equal leakage.
 
+## Constant time modulo declassification
+
+`SrcLeak.decls` is the sequence of declassified values of a leakage tree.
+`SourceCTDOf bi L lt e`: for every sequence `d`, two runs of `e` from environments agreeing
+on the public variables, both ending in a value, whose leakages `L` declassify `d`, have
+equal leakage. `SourceCTD M bi lt e` is `SourceCTDOf` for `srcLeak M bi`; `SourceCT`
+implies it (`SourceCT.sourceCTD`), and an expression without a `declassify` call at a
+position `srcLeak` traverses (`DeclassFree`) declassifies no value
+(`srcLeak_decls_of_declassFree`).
+
 ## Determinism of the traced `LowCT` semantics
 
 `rustExecLeak_det`: two traced runs of a `LowCT` program from one state have the same
@@ -58,10 +70,12 @@ determined by those slots.
 * `boundInt`, `envScalarState`, `opLeak`, `tripCont`, `contLeak`
 * `whileLeak`, `forLeak`, `forRevLeak`, `boundsLeak`, `srcLeak`
 * `PubEqEnv`, `SourceCT`
+* `SrcEv.declOf`, `SrcLeak.decls`, `SourceCTDOf`, `SourceCTD`, `DeclassFree`
 * `sexprReadsOnly`
 
 ## Main results
 
+* `SourceCT.sourceCTD`, `srcLeak_decls_of_declassFree`
 * `rustExecLeak_det`
 * `evalState_congr`, `sexprLeak_congr`
 * `scalarOpExpr_readsOnly` — the `SExpr` of a scalar operation on the variables `a`
@@ -93,6 +107,13 @@ inductive SrcEv where
   | op (l : List CTLeak)
   /-- A construct outside the modelled set, with the whole environment. -/
   | opaque (env : Env) (e : ImpExpr)
+  /-- A call of the builtin `declassify`, with the value of its argument. -/
+  | declass (v : Value)
+
+/-- The value a source event declassifies: `v` for `declass v`, none otherwise. -/
+def SrcEv.declOf : SrcEv → Option Value
+  | .declass v => some v
+  | _ => none
 
 /-- The source leakage: a tree whose shape follows the evaluation. -/
 inductive SrcLeak where
@@ -105,6 +126,12 @@ def SrcLeak.flatten : SrcLeak → List SrcEv
   | .nil => []
   | .ev x => [x]
   | .cat a b => a.flatten ++ b.flatten
+
+/-- The declassified values of a leakage tree, in evaluation order. -/
+def SrcLeak.decls : SrcLeak → List Value
+  | .nil => []
+  | .ev x => x.declOf.toList
+  | .cat a b => a.decls ++ b.decls
 
 /-- The integer a counted-loop bound denotes: an integer or an unsigned word. -/
 def boundInt : Value → Option Int
@@ -218,6 +245,10 @@ def srcLeak (M : LowCTLeakModel) (bi : Builtins) : ImpExpr → Nat → Env → S
     .cat (srcLeak M bi v fuel env)
       (contLeak ((denote' bi fuel v).run env) fun w e1 => srcLeak M bi body fuel (e1.extend n w))
   | .app op [.var a, .var b], _, env => .ev (opLeak M op a b env)
+  | .app "declassify" [.var x], _, env =>
+    match env x with
+    | some v => .ev (.declass v)
+    | none => .nil
   | .seq a b, fuel, env =>
     .cat (srcLeak M bi a fuel env)
       (contLeak ((denote' bi fuel a).run env) fun _ e1 => srcLeak M bi b fuel e1)
@@ -259,6 +290,166 @@ def SourceCT (M : LowCTLeakModel) (bi : Builtins) (lt : LevelTable) (e : ImpExpr
     (denote' bi fuel e).run env₁ = (o₁, env₁') → (∃ v, o₁ = .val v) →
     (denote' bi fuel e).run env₂ = (o₂, env₂') → (∃ v, o₂ = .val v) →
     srcLeak M bi e fuel env₁ = srcLeak M bi e fuel env₂
+
+/-! ## Constant time modulo declassification -/
+
+/-- **Source constant time modulo declassification** of `e` for the split `lt` and the
+    source leakage `L`: for every sequence `d` of values, two runs of `e` at the same fuel
+    from environments agreeing on the public variables, both ending in a value, whose
+    leakages declassify the values `d` (`SrcLeak.decls`), have equal leakage. -/
+def SourceCTDOf (bi : Builtins) (L : ImpExpr → Nat → Env → SrcLeak) (lt : LevelTable)
+    (e : ImpExpr) : Prop :=
+  ∀ (d : List Value) (fuel : Nat) (env₁ env₂ env₁' env₂' : Env) (o₁ o₂ : Outcome),
+    PubEqEnv lt env₁ env₂ →
+    (denote' bi fuel e).run env₁ = (o₁, env₁') → (∃ v, o₁ = .val v) →
+    (denote' bi fuel e).run env₂ = (o₂, env₂') → (∃ v, o₂ = .val v) →
+    (L e fuel env₁).decls = d → (L e fuel env₂).decls = d →
+    L e fuel env₁ = L e fuel env₂
+
+/-- **Source constant time modulo declassification** for the source leakage `srcLeak`. -/
+abbrev SourceCTD (M : LowCTLeakModel) (bi : Builtins) (lt : LevelTable) (e : ImpExpr) : Prop :=
+  SourceCTDOf bi (srcLeak M bi) lt e
+
+/-- Source constant time implies source constant time modulo declassification. -/
+theorem SourceCT.sourceCTD {M : LowCTLeakModel} {bi : Builtins} {lt : LevelTable}
+    {e : ImpExpr} (h : SourceCT M bi lt e) : SourceCTD M bi lt e :=
+  fun _ fuel _ _ _ _ _ _ hp r₁ v₁ r₂ v₂ _ _ => h fuel _ _ _ _ _ _ hp r₁ v₁ r₂ v₂
+
+/-- `e` calls `declassify` at no position the source leakage `srcLeak` traverses. -/
+def DeclassFree : ImpExpr → Prop
+  | .typeAscription e _ => DeclassFree e
+  | .letBind _ v body => DeclassFree v ∧ DeclassFree body
+  | .app f _ => f ≠ "declassify"
+  | .seq a b => DeclassFree a ∧ DeclassFree b
+  | .ifThenElse c t e => DeclassFree c ∧ DeclassFree t ∧ DeclassFree e
+  | .cfBreak e => DeclassFree e
+  | .whileFoldReturn c body => DeclassFree c ∧ DeclassFree body
+  | .whileFold c body => DeclassFree c ∧ DeclassFree body
+  | .forFoldReturn _ lo hi body => DeclassFree lo ∧ DeclassFree hi ∧ DeclassFree body
+  | .forFold _ lo hi body => DeclassFree lo ∧ DeclassFree hi ∧ DeclassFree body
+  | .forFoldRevReturn _ lo hi body => DeclassFree lo ∧ DeclassFree hi ∧ DeclassFree body
+  | _ => True
+
+/-- A continuation that declassifies no value leaves `contLeak` declassifying none. -/
+theorem contLeak_decls {o : Outcome × Env} {k : Value → Env → SrcLeak}
+    (hk : ∀ w e1, (k w e1).decls = []) : (contLeak o k).decls = [] := by
+  unfold contLeak; split <;> simp_all [SrcLeak.decls]
+
+/-- A continuation that declassifies no value leaves `tripCont` declassifying none. -/
+theorem tripCont_decls {o : Outcome × Env} {k : Env → SrcLeak}
+    (hk : ∀ e2, (k e2).decls = []) : (tripCont o k).decls = [] := by
+  unfold tripCont; split <;> simp_all [SrcLeak.decls]
+
+/-- A guard and a body leakage that declassify no value leave `whileLeak` declassifying
+    none. -/
+theorem whileLeak_decls {bi : Builtins} {c body : ImpExpr} {lc lb : Nat → Env → SrcLeak}
+    (hc : ∀ n env, (lc n env).decls = []) (hb : ∀ n env, (lb n env).decls = []) :
+    ∀ n env, (whileLeak bi c body lc lb n env).decls = []
+  | 0, _ => rfl
+  | n + 1, env => by
+    have ih := whileLeak_decls (bi := bi) (c := c) (body := body) hc hb n
+    simp only [whileLeak, SrcLeak.decls, hc, List.nil_append]
+    split <;> simp only [SrcLeak.decls, hb, SrcEv.declOf, Option.toList, List.nil_append,
+      tripCont_decls ih]
+
+/-- A body leakage that declassifies no value leaves `forLeak` declassifying none. -/
+theorem forLeak_decls {bi : Builtins} {i : String} {body : ImpExpr}
+    {lb : Nat → Env → SrcLeak} (hb : ∀ n env, (lb n env).decls = []) :
+    ∀ n lo hi env, (forLeak bi i body lb n lo hi env).decls = []
+  | 0, _, _, _ => rfl
+  | n + 1, lo, hi, env => by
+    have ih := forLeak_decls (bi := bi) (i := i) (body := body) hb n (lo + 1) hi
+    simp only [forLeak]
+    split
+    · rfl
+    · simp only [SrcLeak.decls, hb, List.nil_append, tripCont_decls ih]
+
+/-- A body leakage that declassifies no value leaves `forRevLeak` declassifying none. -/
+theorem forRevLeak_decls {bi : Builtins} {i : String} {body : ImpExpr}
+    {lb : Nat → Env → SrcLeak} (hb : ∀ n env, (lb n env).decls = []) :
+    ∀ n lo hi env, (forRevLeak bi i body lb n lo hi env).decls = []
+  | 0, _, _, _ => rfl
+  | n + 1, lo, hi, env => by
+    have ih := forRevLeak_decls (bi := bi) (i := i) (body := body) hb n lo (hi - 1)
+    simp only [forRevLeak]
+    split
+    · rfl
+    · simp only [SrcLeak.decls, hb, List.nil_append, tripCont_decls ih]
+
+/-- Bound and trip leakages that declassify no value leave `boundsLeak` declassifying
+    none. -/
+theorem boundsLeak_decls {bi : Builtins} {lo hi : ImpExpr} {llo lhi : Env → SrcLeak}
+    {fuel : Nat} {trips : Int → Int → Env → SrcLeak} (hlo : ∀ env, (llo env).decls = [])
+    (hhi : ∀ env, (lhi env).decls = []) (ht : ∀ l h env, (trips l h env).decls = [])
+    (env : Env) : (boundsLeak bi lo hi llo lhi fuel trips env).decls = [] := by
+  unfold boundsLeak
+  simp only [SrcLeak.decls, hlo, List.nil_append]
+  split
+  · rfl
+  · simp only [SrcLeak.decls, hhi, List.nil_append]
+    split
+    · split
+      · simp only [SrcLeak.decls, SrcEv.declOf, Option.toList, ht, List.nil_append]
+      · rfl
+    · rfl
+  · rfl
+
+/-- `srcLeak_decls_of_declassFree` for the expressions of size below `k`. -/
+theorem srcLeak_decls_of_lt (M : LowCTLeakModel) (bi : Builtins) :
+    ∀ (k : Nat) (e : ImpExpr), sizeOf e < k → DeclassFree e →
+      ∀ fuel env, (srcLeak M bi e fuel env).decls = []
+  | 0, _, hk, _, _, _ => absurd hk (Nat.not_lt_zero _)
+  | k + 1, e, hk, h, fuel, env => by
+    have ih := srcLeak_decls_of_lt M bi k
+    fun_induction srcLeak M bi e fuel env
+    case case4 a _ _ _ _ =>
+      exact ih a (by simp at hk; omega) h _ _
+    case case5 v body _ _ _ _ =>
+      simp only [SrcLeak.decls, ih v (by simp at hk; omega) h.1, List.nil_append]
+      exact contLeak_decls fun _ _ => ih body (by simp at hk; omega) h.2 _ _
+    case case6 =>
+      simp only [SrcLeak.decls, opLeak]
+      split <;> rfl
+    case case7 => exact absurd rfl h
+    case case9 a b _ _ _ _ =>
+      simp only [SrcLeak.decls, ih a (by simp at hk; omega) h.1, List.nil_append]
+      exact contLeak_decls fun _ _ => ih b (by simp at hk; omega) h.2 _ _
+    case case10 c t f _ _ _ _ _ =>
+      simp only [SrcLeak.decls, ih c (by simp at hk; omega) h.1, List.nil_append]
+      split
+      · simp only [SrcLeak.decls, SrcEv.declOf, Option.toList, List.nil_append,
+          ih t (by simp at hk; omega) h.2.1]
+      · simp only [SrcLeak.decls, SrcEv.declOf, Option.toList, List.nil_append,
+          ih f (by simp at hk; omega) h.2.2]
+      · rfl
+    case case11 a _ _ _ =>
+      simp only [SrcLeak.decls, ih a (by simp at hk; omega) h, List.nil_append]
+      exact contLeak_decls fun _ _ => rfl
+    case case12 c body _ _ =>
+      exact whileLeak_decls (ih c (by simp at hk; omega) h.1)
+        (ih body (by simp at hk; omega) h.2) _ _
+    case case13 c body _ _ =>
+      exact whileLeak_decls (ih c (by simp at hk; omega) h.1)
+        (ih body (by simp at hk; omega) h.2) _ _
+    case case14 lo hi body _ _ =>
+      exact boundsLeak_decls (ih lo (by simp at hk; omega) h.1 _)
+        (ih hi (by simp at hk; omega) h.2.1 _)
+        (fun _ _ => forLeak_decls (ih body (by simp at hk; omega) h.2.2) _ _ _) _
+    case case15 lo hi body _ _ =>
+      exact boundsLeak_decls (ih lo (by simp at hk; omega) h.1 _)
+        (ih hi (by simp at hk; omega) h.2.1 _)
+        (fun _ _ => forLeak_decls (ih body (by simp at hk; omega) h.2.2) _ _ _) _
+    case case16 lo hi body _ _ =>
+      exact boundsLeak_decls (ih lo (by simp at hk; omega) h.1 _)
+        (ih hi (by simp at hk; omega) h.2.1 _)
+        (fun _ _ => forRevLeak_decls (ih body (by simp at hk; omega) h.2.2) _ _ _) _
+    all_goals rfl
+
+/-- The source leakage of an expression calling `declassify` at no position it traverses
+    declassifies no value. -/
+theorem srcLeak_decls_of_declassFree (M : LowCTLeakModel) (bi : Builtins) (e : ImpExpr)
+    (h : DeclassFree e) (fuel : Nat) (env : Env) : (srcLeak M bi e fuel env).decls = [] :=
+  srcLeak_decls_of_lt M bi (sizeOf e + 1) e (Nat.lt_succ_self _) h fuel env
 
 /-! ## Scalar expressions reading a set of slots -/
 

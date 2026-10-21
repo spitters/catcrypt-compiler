@@ -23,7 +23,8 @@ template requires that `T` has this cast block and that `p ≤ 2 ^ (64 * T.limbs
 
 * `ModArithLimbTemplate.fillArr`, `ModArithLimbTemplate.litArr`: the stack array of the
   words of a natural number, built by stores at constant indices.
-* `ModArithLimbTemplate.ofCanonMontMul`: Montgomery multiplication on two carriers.
+* `ModArithLimbTemplate.ofCanonMontMul`: Montgomery multiplication on two carriers at a
+  literal of `ZMod p`.
 * `ModArithLimbTemplate.ofCanonMont`: the template at `mont k`.
 
 ## Main results
@@ -166,24 +167,26 @@ theorem litArr_fixed (Pj : JLeakParams) (hV : ∀ op, Pj.opVT op = none) (w n N 
 variable {p : Nat} (T : ModArithLimbTemplate p .canon) (k : Nat)
   (hw : (T.ofWords 64 T.limbs).isSome = true)
 
-/-- Montgomery multiplication of the carriers `a` and `b`: the multiplication body of `T`
-    on `a` and `b`, then the multiplication body of `T` on the product and the literal
-    `(2 ^ k)⁻¹`, read by the cast block `T.ofWords 64 T.limbs` from its words. -/
-def ofCanonMontMul {Γ : Ctxt jasminDialect} (a b : Var Γ T.ty) : Com jasminDialect Γ T.ty :=
+/-- Montgomery multiplication of the carriers `a` and `b` at the literal `c`: the
+    multiplication body of `T` on `a` and `b`, then the multiplication body of `T` on the
+    product and `c`, read by the cast block `T.ofWords 64 T.limbs` from its words. At
+    `c = (2 ^ k)⁻¹` it is Montgomery multiplication at the radix `2 ^ k`. -/
+def ofCanonMontMul (c : ZMod p) {Γ : Ctxt jasminDialect} (a b : Var Γ T.ty) :
+    Com jasminDialect Γ T.ty :=
   spliceCom (Com.rename (consHom (consHom emptyCtxHom b) a) (T.body .mul)) <|
-    spliceCom (litArr 64 T.limbs ((radixParams k).rInv p).val) <|
+    spliceCom (litArr 64 T.limbs c.val) <|
       spliceCom (Com.rename (consHom emptyCtxHom .here) ((T.ofWords 64 T.limbs).get hw)) <|
         Com.rename (consHom (consHom emptyCtxHom .here) (.there (.there .here))) (T.body .mul)
 
-/-- Montgomery multiplication of the encodings of `x` and `y` is the encoding of
-    `montMulF (2 ^ k)⁻¹ x y`, when the words of `(2 ^ k)⁻¹` hold its value. -/
-theorem ofCanonMontMul_denote [NeZero p] (hpw : p ≤ 2 ^ (64 * T.limbs)) {Γ : Ctxt jasminDialect}
+/-- Montgomery multiplication at the literal `c` of the encodings of `x` and `y` is the
+    encoding of `montMulF c x y`, when the words of `c` hold its value. -/
+theorem ofCanonMontMul_denote [NeZero p] (hpw : p ≤ 2 ^ (64 * T.limbs)) (c : ZMod p)
+    {Γ : Ctxt jasminDialect}
     (a b : Var Γ T.ty) (V : Valuation Γ) (x y : ZMod p) (ha : a.lookup V = T.enc x)
     (hb : b.lookup V = T.enc y) :
-    (ofCanonMontMul T k hw a b).denote V = T.enc (montMulF ((radixParams k).rInv p) x y) := by
-  have hr : fromWordsMF p 64 T.limbs (wordsOf 64 T.limbs ((radixParams k).rInv p).val) =
-      some ((radixParams k).rInv p) := by
-    have hlt : ((radixParams k).rInv p).val < 2 ^ (64 * T.limbs) :=
+    (ofCanonMontMul T hw c a b).denote V = T.enc (montMulF c x y) := by
+  have hr : fromWordsMF p 64 T.limbs (wordsOf 64 T.limbs c.val) = some c := by
+    have hlt : c.val < 2 ^ (64 * T.limbs) :=
       lt_of_lt_of_le (ZMod.val_lt _) hpw
     simp only [fromWordsMF, wordsVal_wordsOf, Nat.mod_eq_of_lt hlt, ZMod.natCast_zmod_val,
       ZMod.val_lt, if_true]
@@ -202,7 +205,7 @@ theorem ofCanonMontMul_denote [NeZero p] (hpw : p ≤ 2 ^ (64 * T.limbs)) {Γ : 
   have h3 : (Com.rename (consHom emptyCtxHom .here) ((T.ofWords 64 T.limbs).get hw)).denote
       (Ctxt.Valuation.extend (t := JasminTy.stackArr 64 T.limbs)
         (Ctxt.Valuation.extend (t := T.ty) V (T.enc (x * y)))
-        (wordsOf 64 T.limbs ((radixParams k).rInv p).val)) = T.enc ((radixParams k).rInv p) := by
+        (wordsOf 64 T.limbs c.val)) = T.enc c := by
     refine (FieldDialectBlockDescent.Com.denote_rename _ _ _).trans ?_
     exact T.ofWords_denote 64 T.limbs _ (Option.some_get hw).symm _ _ hr
   rw [h3]
@@ -212,8 +215,8 @@ theorem ofCanonMontMul_denote [NeZero p] (hpw : p ≤ 2 ^ (64 * T.limbs)) {Γ : 
 /-- Montgomery multiplication has fixed events at leakage parameters with no variable-time
     operation. -/
 theorem ofCanonMontMul_fixed (Pj : JLeakParams) (hV : ∀ op, Pj.opVT op = none)
-    {Γ : Ctxt jasminDialect} (a b : Var Γ T.ty) :
-    LeakFixed (jLeakModel Pj) (ofCanonMontMul T k hw a b) := by
+    (c : ZMod p) {Γ : Ctxt jasminDialect} (a b : Var Γ T.ty) :
+    LeakFixed (jLeakModel Pj) (ofCanonMontMul T hw c a b) := by
   unfold ofCanonMontMul
   refine leakFixed_spliceCom _ (leakFixed_rename _ _ (T.body_fixed Pj hV .mul)) ?_
   refine leakFixed_spliceCom _ (litArr_fixed Pj hV _ _ _) ?_
@@ -226,9 +229,9 @@ theorem ofCanonMontMul_fixed (Pj : JLeakParams) (hV : ∀ op, Pj.opVT op = none)
 def ofCanonMontBody : (m : FieldMethod) → Com jasminDialect (limbSig T.ty m) T.ty
   | .add => T.body .add
   | .sub => T.body .sub
-  | .mul => ofCanonMontMul T k hw .here (.there .here)
+  | .mul => ofCanonMontMul T hw ((radixParams k).rInv p) .here (.there .here)
   | .neg => T.body .neg
-  | .square => ofCanonMontMul T k hw .here .here
+  | .square => ofCanonMontMul T hw ((radixParams k).rInv p) .here .here
   | .double => T.body .double
 
 /-! ## 4. The template -/
@@ -247,17 +250,17 @@ def ofCanonMontBody : (m : FieldMethod) → Com jasminDialect (limbSig T.ty m) T
     cases m
     · exact T.body_denote .add x y
     · exact T.body_denote .sub x y
-    · exact ofCanonMontMul_denote T k hw hpw .here (.there .here) _ x y rfl rfl
+    · exact ofCanonMontMul_denote T hw hpw _ .here (.there .here) _ x y rfl rfl
     · exact T.body_denote .neg x y
-    · exact ofCanonMontMul_denote T k hw hpw .here .here _ x x rfl rfl
+    · exact ofCanonMontMul_denote T hw hpw _ .here .here _ x x rfl rfl
     · exact T.body_denote .double x y
   body_fixed Pj hV m := by
     cases m
     · exact T.body_fixed Pj hV .add
     · exact T.body_fixed Pj hV .sub
-    · exact ofCanonMontMul_fixed T k hw Pj hV _ _
+    · exact ofCanonMontMul_fixed T hw Pj hV _ _ _
     · exact T.body_fixed Pj hV .neg
-    · exact ofCanonMontMul_fixed T k hw Pj hV _ _
+    · exact ofCanonMontMul_fixed T hw Pj hV _ _ _
     · exact T.body_fixed Pj hV .double
   ofWords := T.ofWords
   ofWords_denote := T.ofWords_denote

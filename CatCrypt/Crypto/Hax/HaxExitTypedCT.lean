@@ -1007,12 +1007,12 @@ def CalleeEventsOk (M : LowCTLeakModel) (bi : Builtins) (br : ValueTowerBridge) 
 
 /-- A call a leakage model may mark under the placement `A`: a linked callee of `A` with
     argument slot types `ts` (`exitCalleeTys`) outside `exitScalarRes`, `array_lit`,
-    `repeat`, the calls returning an `Option` and the scalar operations, whose events
-    satisfy `CalleeEventsOk` at `ts`. -/
+    `repeat`, the calls returning an `Option`, the scalar operations and `declassify`,
+    whose events satisfy `CalleeEventsOk` at `ts`. -/
 def CalleeMarked (M : LowCTLeakModel) (bi : Builtins) (br : ValueTowerBridge)
     (A : ExitTowers) (f : String) : Prop :=
   exitScalarRes f = false ∧ f ≠ "array_lit" ∧ f ≠ "repeat" ∧ exitOptTys A f = none ∧
-    (∀ a b, scalarOpExpr f (.SVar a) (.SVar b) = none) ∧
+    (∀ a b, scalarOpExpr f (.SVar a) (.SVar b) = none) ∧ f ≠ "declassify" ∧
     ∃ ts dr, exitCalleeTys A f = some (ts, dr) ∧ CalleeEventsOk M bi br f ts
 
 theorem vars_of_forall₂ {env : Env} :
@@ -1038,15 +1038,15 @@ theorem forall₂_vars_det {env : Env} :
     rw [forall₂_vars_det t1 t2]
 
 /-- The source leakage of a call on argument variables of a name outside the scalar
-    operations is the event `opaque` of the environment. -/
+    operations and `declassify` is the event `opaque` of the environment. -/
 theorem srcLeak_app_opaque {f : String}
-    (hso : ∀ a b, scalarOpExpr f (.SVar a) (.SVar b) = none) :
+    (hso : ∀ a b, scalarOpExpr f (.SVar a) (.SVar b) = none) (hdc : f ≠ "declassify") :
     ∀ (args : List ImpExpr), (∀ e ∈ args, ∃ x, e = ImpExpr.var x) → ∀ fuel env,
       srcLeak M bi (.app f args) fuel env = .ev (.opaque env (.app f args))
   | [], _, _, _ => rfl
   | [a], hv, _, _ => by
     obtain ⟨x, rfl⟩ := hv a (by simp)
-    rfl
+    simp [srcLeak, hdc]
   | [a, b], hv, _, env => by
     obtain ⟨x, rfl⟩ := hv a (by simp)
     obtain ⟨y, rfl⟩ := hv b (by simp)
@@ -1193,7 +1193,7 @@ theorem headTrace_appL (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br
         have hsil : Silent M N leafSpec (k .RSkip) := hcallS hc hvf
         rw [hsil _ _ _ h₁, hsil _ _ _ h₂]
       | true =>
-        obtain ⟨hsr, -, -, -, hsoN, ts', dr', hce, hev⟩ := hvtL f hvf
+        obtain ⟨hsr, -, -, -, hsoN, hdc, ts', dr', hce, hev⟩ := hvtL f hvf
         have hmar := hmarL hvf
         obtain ⟨ts, rfl, hmts, rfl⟩ : ∃ ts, dt = .TU64 ∧
             (callMarshal A .TU64 args).map (fun cl => cl.2.map (·.locDst)) = some ts ∧
@@ -1206,7 +1206,7 @@ theorem headTrace_appL (hvtL : ∀ g, M.leafVT g = true → CalleeMarked M bi br
             subst h
             exact ⟨ts, rfl, hm4, h4.1.symm⟩
         have hvars := vars_of_forall₂ hF₁
-        rw [srcLeak_app_opaque hsoN args hvars, srcLeak_app_opaque hsoN args hvars] at hL
+        rw [srcLeak_app_opaque hsoN hdc args hvars, srcLeak_app_opaque hsoN hdc args hvars] at hL
         injection hL with hL
         injection hL with henv
         subst henv

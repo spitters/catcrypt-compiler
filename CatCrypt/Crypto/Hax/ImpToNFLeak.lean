@@ -69,6 +69,18 @@ labels `entryLabels lt ps` (`impToNF_nfCTRel`). At `lt = levelsOf s`, with every
 listed in the secrecy record `s`, it holds for the parameter levels `paramLevelOf s`, the
 levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`).
 
+## Constant time modulo declassification
+
+The call leakage `CallLeak.nfD` has the events of `nfLeakModelQ` at a call, and its source
+leakage `nfDeclCallLeak` gives a call of `declassify` on a value `v` the event `declass v`
+and every other call its events without field calls; `srcLeakNFD` is `srcLeakCl` with it.
+Its runs are the runs in `nfLeakModelQ` (`nfLeakRunE_nfD`, `impToNF_leakD`). From source
+constant time modulo declassification `SourceCTDOf bi (srcLeakNFD bi) lt e`, two leakage
+runs in `nfLeakModelQ` from valuations related to environments agreeing on the public
+variables, whose source runs have the same declassified values, emit equal events
+(`impToNF_ct_runsD`); for a function body, for every sequence `d`, on the valuations whose
+source runs declassify `d` (`SrcDeclIs`) (`impToNF_nfCTRelD`).
+
 ## Main definitions
 
 * `NFProg.leakRunE`, `NFPre.leakRunE`, `PLeak`, `nfLeakRunE`, `QuietPre`
@@ -79,6 +91,8 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 * `nfLeakModelQ`, `nfLeakRunQ` — the leakage model with quiet field calls and its runs
 * `SourceCTNF` — constant time at the source for `srcLeakNF`, modulo the field calls
 * `entryLabels`, `entryEnvOf`, `paramLevelOf`
+* `nfDeclCallLeak`, `CallLeak.nfD`, `srcLeakNFD`, `SrcDeclIs` — the leakage with
+  declassification and the declassified values of the source runs
 
 ## Main results
 
@@ -96,6 +110,8 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 * `impToNF_lsound`, `impToNF_leakE`, `impToNF_leak` — the leakage transformer of the front
 * `impToNF_ct_runs`, `impToNF_nfCTRel`, `pubEqV_entryLabels_levelsOf`,
   `impToNF_nfCTRel_params`
+* `CallLeak.nfD_agrees`, `CallLeak.nfD_opEv`, `nfLeakRunE_nfD`, `impToNF_leakD`,
+  `impToNF_ct_runsD`, `impToNF_nfCTRelD` — constant time modulo declassification
 -/
 
 @[expose] public section
@@ -680,6 +696,7 @@ def nfEv : SrcEv → List CTLeak
   | .bound lo hi => [.trip ((hi - lo).toNat % 2 ^ 64)]
   | .op l => l
   | .opaque _ _ => []
+  | .declass _ => []
 
 /-- **The leakage transformer of `impToNF`**: the events of `nfLeakModel` of a source
     leakage tree, in evaluation order. -/
@@ -2329,5 +2346,138 @@ theorem impToNF_nfCTRel_params (bi : Builtins) (sigOf : String → List NfTy →
   intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
   exact impToNF_nfCTRel bi sigOf hT hR (levelsOf s) ps hct h fuel hterm tf V₁ V₂ q₁ q₂
     (pubEqV_entryLabels_levelsOf s ps hps V₁ V₂ hpub) hq₁ hq₂
+
+/-! ## Constant time modulo declassification through the front -/
+
+/-- The source leakage of a call with quiet field calls and declassification: the event
+    `declass v` at a call of `declassify` on the one value `v`, and otherwise the events
+    `callLeak f vals` without the leaf calls of field heads (`stripField`). -/
+def nfDeclCallLeak (f : String) (vals : List Value) : SrcLeak :=
+  match vals with
+  | [v] => if f = "declassify" then .ev (.declass v) else .ev (.op (stripField (callLeak f vals)))
+  | _ => .ev (.op (stripField (callLeak f vals)))
+
+/-- **The call leakage of the front with quiet field calls and declassification**: the
+    source leakage `nfDeclCallLeak` and the events of `nfLeakModelQ` at a call. -/
+def CallLeak.nfD : CallLeak where
+  cl := nfDeclCallLeak
+  ce f as _ x := stripField (callLeak f (encAll as x))
+
+/-- The call leakage `CallLeak.nfD` agrees with every builtins. -/
+theorem CallLeak.nfD_agrees (bi : Builtins) : CallLeak.nfD.Agrees bi := by
+  intro f as r x y _
+  change stripField (callLeak f (encAll as x)) = nfTrace (nfDeclCallLeak f (encAll as x))
+  unfold nfDeclCallLeak
+  split
+  · split
+    · subst f
+      simp [nfTrace, nfEv, callLeak, stripField]
+    · rfl
+  · rfl
+
+/-- The events of an operation under `CallLeak.nfD` are its events under `nfLeakModelQ`. -/
+theorem CallLeak.nfD_opEv : ∀ (op : NfOp) (x : HVector (fun t : NfTy => ⟦t⟧) op.sig),
+    CallLeak.nfD.opEv op x = ComLevelCheck.opLeak nfLeakModelQ op x := by
+  intro op
+  induction op with
+  | named _ op ih => exact ih
+  | call f as r =>
+    intro x
+    change stripField (callLeak f (encAll as x)) = _
+    rw [opLeak_nfLeakModelQ, ← CallLeak.nf_opEv]
+    rfl
+  | bin o _ =>
+    intro x
+    rw [opLeak_nfLeakModelQ]
+    cases o <;> rfl
+  | _ =>
+    intro x
+    rw [opLeak_nfLeakModelQ]
+    rfl
+
+/-- The leakage run under `CallLeak.nfD` is the leakage run in `nfLeakModelQ`. -/
+theorem nfLeakRunE_nfD (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (V : Valuation Γ) :
+    nfLeakRunE bi CallLeak.nfD fuel p V = nfLeakRunQ bi fuel p V :=
+  (@NFProg.leakRunE_congr nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ _ CallLeak.nfD_opEv
+    fuel _ _ p V).trans
+    (@NFProg.leakRunE_opLeak nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ fuel _ _ p V)
+
+/-- **The source leakage of the front with declassification**: `srcLeakCl` with the call
+    leakage `nfDeclCallLeak`. -/
+abbrev srcLeakNFD (bi : Builtins) : ImpExpr → Nat → Env → SrcLeak :=
+  srcLeakCl bi nfDeclCallLeak
+
+/-- **The leakage run of the program of the front with quiet field calls** is the events
+    `nfTrace` of the source leakage `srcLeakNFD` of a source run ending in a value. -/
+theorem impToNF_leakD (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {e : ImpExpr} {tgt : Option String}
+    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o)
+    {fuel : Nat} {env : Env} {V : Valuation Γ} {v : Value} {env' : Env}
+    (hrel : EnvRel σ env V) (hrun : (denote' bi fuel e).run env = (.val v, env')) (tf : Nat) :
+    ∃ x : o.t.denote, nfLeakRunQ bi tf o.prog V =
+        some (HVector.cons (f := fun t => ⟦t⟧) x .nil, nfTrace (srcLeakNFD bi e fuel env)) ∧
+      v = enc o.t x := by
+  rw [← nfLeakRunE_nfD]
+  exact impToNF_leakE bi sigOf hT hR (CallLeak.nfD_agrees bi) h hrel hrun tf
+
+/-- **The declassified sequence of the source runs**: every run of `e` from `env` ending in
+    a value has the declassified values `d` in its source leakage `srcLeakNFD`. -/
+def SrcDeclIs (bi : Builtins) (e : ImpExpr) (d : List Value) (env : Env) : Prop :=
+  ∀ (fuel : Nat) (v : Value) (env' : Env), (denote' bi fuel e).run env = (.val v, env') →
+    (srcLeakNFD bi e fuel env).decls = d
+
+/-- **Two runs through the front modulo declassification.** Under `TypedCalls bi sigOf`,
+    `RepeatCalls bi` and source constant time modulo declassification for `srcLeakNFD`, the
+    leakage runs in `nfLeakModelQ` of the program `impToNF` emits from two valuations related
+    by `σ` to environments agreeing on the public variables, from which the source runs to
+    values with the same declassified values, emit equal events. -/
+theorem impToNF_ct_runsD (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {lt : LevelTable} {e : ImpExpr}
+    (hct : SourceCTDOf bi (srcLeakNFD bi) lt e)
+    {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
+    (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env₁ env₂ env₁' env₂' : Env}
+    {V₁ V₂ : Valuation Γ} {v₁ v₂ : Value} (hr₁ : EnvRel σ env₁ V₁) (hr₂ : EnvRel σ env₂ V₂)
+    (hpub : PubEqEnv lt env₁ env₂)
+    (hrun₁ : (denote' bi fuel e).run env₁ = (.val v₁, env₁'))
+    (hrun₂ : (denote' bi fuel e).run env₂ = (.val v₂, env₂')) {d : List Value}
+    (hd₁ : (srcLeakNFD bi e fuel env₁).decls = d) (hd₂ : (srcLeakNFD bi e fuel env₂).decls = d)
+    (tf : Nat) {q₁ q₂ : Valuation (d := nfDialect) [o.t] × List CTLeak}
+    (hq₁ : nfLeakRunQ bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRunQ bi tf o.prog V₂ = some q₂) :
+    q₁.2 = q₂.2 := by
+  obtain ⟨_, h₁, -⟩ := impToNF_leakD bi sigOf hT hR h hr₁ hrun₁ tf
+  obtain ⟨_, h₂, -⟩ := impToNF_leakD bi sigOf hT hR h hr₂ hrun₂ tf
+  rw [h₁, Option.some.injEq] at hq₁
+  rw [h₂, Option.some.injEq] at hq₂
+  rw [← hq₁, ← hq₂]
+  exact congrArg nfTrace
+    (hct d fuel env₁ env₂ env₁' env₂' _ _ hpub hrun₁ ⟨_, rfl⟩ hrun₂ ⟨_, rfl⟩ hd₁ hd₂)
+
+/-- **Constant time through the front modulo declassification.** Under `TypedCalls bi sigOf`
+    and `RepeatCalls bi`, let `e` be constant time at the source modulo declassification for
+    `srcLeakNFD` and the level table `lt`, and let the source run of `e` at the fuel `fuel`
+    end in a value from the source environment of every valuation of the parameters `ps`.
+    Then for every sequence `d` of values, two valuations agreeing on the positions
+    `entryLabels lt ps` marks public, whose source runs have the declassified values `d`
+    (`SrcDeclIs`), give equal events of the leakage runs in `nfLeakModelQ` of the program
+    `impToNF` emits, at every target fuel. -/
+theorem impToNF_nfCTRelD (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (lt : LevelTable)
+    (ps : List (String × NfTy)) {e : ImpExpr}
+    (hct : SourceCTDOf bi (srcLeakNFD bi) lt e) {tgt : Option String} {o : Out (entryCtx ps)}
+    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
+    (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
+      (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat)
+    (d : List Value) (V₁ V₂ : Valuation (entryCtx ps))
+    (q₁ q₂ : Valuation (d := nfDialect) [o.t] × List CTLeak)
+    (hpub : PubEqV (entryLabels lt ps) V₁ V₂)
+    (hd₁ : SrcDeclIs bi e d (entryEnvOf ps V₁)) (hd₂ : SrcDeclIs bi e d (entryEnvOf ps V₂))
+    (hq₁ : nfLeakRunQ bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRunQ bi tf o.prog V₂ = some q₂) :
+    q₁.2 = q₂.2 := by
+  obtain ⟨v₁, env₁', hrun₁⟩ := hterm V₁
+  obtain ⟨v₂, env₂', hrun₂⟩ := hterm V₂
+  exact impToNF_ct_runsD bi sigOf hT hR hct h (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
+    (pubEqEnv_entryEnvOf lt ps V₁ V₂ hpub) hrun₁ hrun₂ (hd₁ fuel v₁ env₁' hrun₁)
+    (hd₂ fuel v₂ env₂' hrun₂) tf hq₁ hq₂
 
 end CatCrypt.Crypto.Hax.ImpToNF
