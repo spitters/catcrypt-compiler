@@ -17,7 +17,8 @@ set_option autoImplicit false
 
 `LprogBytes.encodeLopn` encodes the constant-index store `STOREIMM [d] <- [B; V; imm k]` as
 `movq %V, 8k(%B)` and the zeroing `ZEROARR [D] <- [imm n; imm 64]` as the `n` stores
-`movq $0, 8i(%D)`, `i < n`. The bytes of each instruction decode, piece by piece, to machine
+`movq $0, 8i(%D)`, `i < n`; the zeroing in the source form `ZEROARR [] <- [B; imm n; imm 64]`
+has the same stores from the base `B`. The bytes of each instruction decode, piece by piece, to machine
 stores, and the run of the decoded stores on the address machine writes the value register at
 the byte offset `8 k` from the base register, or the zero word at the byte offsets `8 i`,
 `i < n`, from the destination register, in order, with the registers and flags unchanged.
@@ -30,11 +31,13 @@ The addresses the zeroing writes are a function of the destination register and 
 
 ## Main results
 
-* `stPieces_bytes`, `zPieces_bytes`: the bytes of the instructions are their pieces, and each
-  piece decodes to its machine instruction.
+* `stPieces_bytes`, `zPieces_bytes`, `zPiecesSrc_bytes`: the bytes of the instructions are
+  their pieces, and each piece decodes to its machine instruction.
 * `run_stPieces`, `run_zPieces`: the runs of the decoded instructions on the address machine.
 * `sim_storeImm`: from `ACorrW`, the step of the address semantics `fstepA` at the tag
   `.storeImm 64 n` with `k < n` is matched by the run of the decoded store.
+* `sim_zeroArr`: from `ACorrW`, the step of `fstepA` on the source-form zeroing at the tag
+  `.zero 64 n` is matched by the run of the decoded stores.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.StackArrDecode
@@ -153,6 +156,18 @@ theorem zPieces_bytes (F W Q : Nat) (D : String) (n : Nat) (hD : isGpName D = tr
   simp only [stackDispOk, decide_eq_true_eq] at hk ⊢
   omega
 
+/-- **The bytes of the zeroing in the source form.** Over a general-purpose base, a positive
+    count and a last element offset `stackDispOk` admits, the bytes of
+    `ZEROARR [] <- [B; imm n; imm 64]` are the pieces `zPieces B n`, each of which decodes to
+    the store of `0` at `8 i` from `B`. -/
+theorem zPiecesSrc_bytes (F W Q : Nat) (B : String) (n : Nat) (hB : isGpName B = true)
+    (hn : 0 < n) (hk : stackDispOk (n - 1) = true) :
+    encodeLopn F W (.Lopn [] "ZEROARR" [.reg B, .imm n, .imm 64]) Q
+        = (zPieces B n).flatMap Prod.fst
+      ∧ ∀ q ∈ zPieces B n, PieceDec q := by
+  refine ⟨by simp [zPieces, encodeLopn_zeroArrSrc F W B n Q hB hn hk, encZeroArr,
+    List.flatMap_map], (zPieces_bytes F W Q B n hB hn hk).2⟩
+
 /-- **The run of the zeroing**: the decoded stores write the zero word at the byte offsets
     `8 i`, `i < n`, from the destination register, in order (`JasminLsemAddrMem.zeroWords`),
     and leave the registers and flags. -/
@@ -168,5 +183,33 @@ theorem run_zPieces (sa : AState) (D : String) (n : Nat) :
     rw [ih]
     simp [CatCrypt.Crypto.SecureCompilation.Ascent.CallFrame.evalInstrA_storeMem,
       JOperand.eval, zeroWords, ofInt_eight_mul]
+
+/-- The zeroing of `n` words at one address in both memories keeps their agreement outside a
+    word. -/
+theorem agree_zeroWords {m m' : AMem} {r : BitVec 64} (h : ∀ x, ¬ InRange8 r x → m x = m' x)
+    (p : BitVec 64) (n : Nat) :
+    ∀ x, ¬ InRange8 r x → zeroWords m p n x = zeroWords m' p n x := by
+  induction n with
+  | zero => exact h
+  | succ n ih => exact agree_write64 ih _ _
+
+/-- **The simulation of the zeroing.** From `ACorrW`, with the base `B` a general-purpose name
+    at width `64`, the step of the address semantics of `ZEROARR [], [B, #n, #64]` at the tag
+    `.zero 64 n` is matched by the run of the decoded stores `movq $0, 8i(%B)`, `i < n`. -/
+theorem sim_zeroArr (frame : String → Option (BitVec 64)) (rsp : BitVec 64) (B : String)
+    {n : Nat} (hB : gpOk B = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorrW rsp sa s) (hwB : (s.reg.lvm B).1 = 64) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA frame (.Lopn [] "ZEROARR" [.reg B, .imm n, .imm 64], .zero 64 n) s zf
+      = some (s', zf')) :
+    ACorrW rsp (runBlockA sa ((zPieces B n).map Prod.snd)) s' ∧ zf' = zf := by
+  rw [fstepA_zeroArr _ (hc.wide hB hwB)] at hst
+  obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hst)
+  rw [run_zPieces]
+  refine ⟨⟨fun r hr => ?_, hc.sp, fun x hx => ?_⟩, rfl⟩
+  · have hg : s.reg.nextPc.getW r 64 = s.reg.getW r 64 := LstateN.getW_nextPc _ _ _
+    show s.reg.nextPc.getW r 64 = _ ∨ (∃ b : BitVec 1, s.reg.nextPc.lvm r = ⟨1, b⟩ ∧ _) ∨ _
+    rw [hg]
+    exact hc.regs r hr
+  · exact agree_zeroWords hc.mem _ _ x hx
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.StackArrDecode

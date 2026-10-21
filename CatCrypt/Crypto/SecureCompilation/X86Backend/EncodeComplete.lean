@@ -927,6 +927,17 @@ theorem encodableLinstrR_zeroArr {F W Q : Nat} {dn : String} {n w : Nat}
   rw [encodeLopn_zeroArr F W dn n Q hd hn hk]
   exact encZeroArr_ne_nil _ hn
 
+/-- **A stack-array zeroing of `x86ZeroArr` from a general-purpose base register is
+    encodable.** -/
+theorem encodableLinstrR_zeroArrSrc {F W Q : Nat} {bn : String} {n w : Nat}
+    (ho : x86ZeroArr n w = true) (hb : isGpName bn = true) :
+    encodableLinstrR F W (.Lopn [] "ZEROARR" [.reg bn, .imm n, .imm w]) Q = true := by
+  simp only [x86ZeroArr, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at ho
+  obtain ⟨⟨rfl, hn⟩, hk⟩ := ho
+  apply encodable_lopn_of_ne_nil
+  rw [encodeLopn_zeroArrSrc F W bn n Q hb hn hk]
+  exact encZeroArr_ne_nil _ hn
+
 /-! ## Load forwarding -/
 
 section LoadCSE
@@ -1094,9 +1105,11 @@ def x86StoreImmB : LinstrR → Bool
       opn == "STOREIMM" && x86StoreImm k && isGpName bn && isGpName vn
   | _ => false
 
-/-- The decision of the stack-array zeroings of `LegalForm` at the x86 encoder. -/
+/-- The decision of the stack-array zeroings of `LegalForm` at the x86 encoder: into a
+    destination register, and from a base register with no destination. -/
 def x86ZeroArrB : LinstrR → Bool
   | .Lopn [.reg dn] opn [.imm n, .imm w] => opn == "ZEROARR" && x86ZeroArr n w && isGpName dn
+  | .Lopn [] opn [.reg bn, .imm n, .imm w] => opn == "ZEROARR" && x86ZeroArr n w && isGpName bn
   | _ => false
 
 /-- **The legal forms of the x86 encoder** in the context `c`, as a decision: the disjunction
@@ -1124,6 +1137,9 @@ theorem legalForm_of_x86LegalB {c : Nat × Nat × Nat} {i : LinstrR} (h : x86Leg
     · simp only [Bool.and_eq_true, beq_iff_eq] at h
       obtain ⟨⟨rfl, ho⟩, h1⟩ := h
       exact .zeroArr _ _ _ ho h1
+    · simp only [Bool.and_eq_true, beq_iff_eq] at h
+      obtain ⟨⟨rfl, ho⟩, h1⟩ := h
+      exact .zeroArrSrc _ _ _ ho h1
     · cases h
   · unfold x86MovB at h; split at h
     · simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
@@ -1301,6 +1317,10 @@ theorem x86LegalB_of_legalForm {c : Nat × Nat × Nat} {i : LinstrR}
     change x86ZeroArr n w = true at ho
     change isGpName dn = true at h1
     simp [x86ZeroArrB, ho, h1]
+  | zeroArrSrc bn n w ho h1 =>
+    change x86ZeroArr n w = true at ho
+    change isGpName bn = true at h1
+    simp [x86ZeroArrB, ho, h1]
   | fixed i hi =>
     change x86Fixed i = true at hi
     simp [hi]
@@ -1398,6 +1418,7 @@ theorem x86Enc_complete : EncoderComplete VIR.LprogIsa.x86Backend x86Enc where
   wideMul_reg _ _ _ _ _ ho hl hh hs := encodableLinstrR_wideMul ho hl hh hs
   storeImm_reg _ _ _ _ _ ho hb hv := encodableLinstrR_storeImm ho hb hv
   zeroArr_reg _ _ _ _ ho hd := encodableLinstrR_zeroArr ho hd
+  zeroArrSrc_reg _ _ _ _ ho hb := encodableLinstrR_zeroArrSrc ho hb
   fixed_instr _ _ hi := encodableLinstrR_fixed hi
 
 /-- The select mnemonic of the x86 instruction set is `CMOV`. -/

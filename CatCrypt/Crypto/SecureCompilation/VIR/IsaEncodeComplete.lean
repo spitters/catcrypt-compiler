@@ -268,6 +268,10 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
   /-- A stack-array zeroing the encoder builds into an encoder register is encodable. -/
   zeroArr_reg : ∀ (c : E.Ctx) (dn : String) (n w : Nat), E.zeroArr n w = true →
     E.reg dn = true → E.instr c (.Lopn [.reg dn] "ZEROARR" [.imm n, .imm w]) = true
+  /-- A stack-array zeroing the encoder builds from an encoder register holding the base,
+      with no destination, is encodable. -/
+  zeroArrSrc_reg : ∀ (c : E.Ctx) (bn : String) (n w : Nat), E.zeroArr n w = true →
+    E.reg bn = true → E.instr c (.Lopn [] "ZEROARR" [.reg bn, .imm n, .imm w]) = true
   /-- A three-source carry-chain addition the encoder builds over encoder registers is
       encodable. -/
   carry3_reg : ∀ (c : E.Ctx) (opn dn an sn kn : String), E.carry3 opn = true →
@@ -347,6 +351,9 @@ inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
   /-- A stack-array zeroing into an encoder register. -/
   | zeroArr (dn : String) (n w : Nat) : E.zeroArr n w = true → E.reg dn = true →
       LegalForm I E c (.Lopn [.reg dn] "ZEROARR" [.imm n, .imm w])
+  /-- A stack-array zeroing from an encoder register holding the base. -/
+  | zeroArrSrc (bn : String) (n w : Nat) : E.zeroArr n w = true → E.reg bn = true →
+      LegalForm I E c (.Lopn [] "ZEROARR" [.reg bn, .imm n, .imm w])
   /-- A three-source carry-chain addition over encoder registers. -/
   | carry3 (opn dn an sn kn : String) : E.carry3 opn = true → E.reg dn = true →
       E.reg an = true → E.reg sn = true → E.reg kn = true →
@@ -392,6 +399,7 @@ theorem instr_of_legalForm {c : E.Ctx} {i : LinstrR} (hi : LegalForm I E c i) :
   | sibStore a opn bn xn vn sc ho h1 h2 h3 => exact h.sibStore_reg c a opn bn xn vn sc ho h1 h2 h3
   | storeImm a bn vn k ho h1 h2 => exact h.storeImm_reg c a bn vn k ho h1 h2
   | zeroArr dn n w ho h1 => exact h.zeroArr_reg c dn n w ho h1
+  | zeroArrSrc bn n w ho h1 => exact h.zeroArrSrc_reg c bn n w ho h1
   | carry3 opn dn an sn kn ho h1 h2 h3 h4 => exact h.carry3_reg c opn dn an sn kn ho h1 h2 h3 h4
   | flagOut opn dn srcs ho h1 => exact h.flagOut_reg c opn dn srcs ho h1
   | wideMul opn ln hn sn ho h1 h2 h3 => exact h.wideMul_reg c opn ln hn sn ho h1 h2 h3

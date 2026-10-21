@@ -1673,6 +1673,10 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
           -- Constant-index store `STOREIMM [d] <- [base; val; imm k]`: `movq %val, 8k(%base)`.
           else if base == "STOREIMM" then encStoreImmOp a s cin
           else []
+      -- Array zeroing in the source form `ZEROARR [] <- [base; imm n; imm 64]`, the base a
+      -- source register: the stores `encZeroArrOp` from the base.
+      | [], [b, .imm n, .imm v] =>
+          if base == "ZEROARR" then encZeroArrOp b (.imm n) v else []
       | _, _ => []
   | _ => []
 
@@ -2965,6 +2969,24 @@ theorem encodeLopn_zeroArr (frame spillW : Nat) (dn : String) (n qsaveB : Nat)
     show ("ZEROARR" == "ZEROARR") = true from by decide +kernel,
     Bool.false_eq_true, if_false, if_true]
   simp [encZeroArrOp, hd, hn, hk]
+
+/-- **The array zeroing in the source form encodes to its word stores.**
+    `ZEROARR [] <- [base; imm n; imm 64]` over a general-purpose base, a positive count and a
+    last element offset `stackDispOk` admits encodes to `encZeroArr` from the base register. -/
+theorem encodeLopn_zeroArrSrc (frame spillW : Nat) (bn : String) (n qsaveB : Nat)
+    (hb : isGpName bn = true) (hn : 0 < n) (hk : stackDispOk (n - 1) = true) :
+    encodeLopn frame spillW (.Lopn [] "ZEROARR" [.reg bn, .imm n, .imm 64]) qsaveB
+      = encZeroArr (gpNumU bn) n := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "ZEROARR" || isMulHiBinding "ZEROARR") = false from by
+      decide +kernel,
+    show stripWidthTag "ZEROARR" = "ZEROARR" from by decide +kernel,
+    show ("ZEROARR" == "MULX") = false from by decide +kernel,
+    show ("ZEROARR" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "ZEROARR" = none from by decide +kernel,
+    show ("ZEROARR" == "ZEROARR") = true from by decide +kernel,
+    Bool.false_eq_true, if_false, if_true]
+  simp [encZeroArrOp, hb, hn, hk]
 
 /-- **The constant-index store encodes to one word store.**
     `STOREIMM [d] <- [base; val; imm k]` over a general-purpose base and value and an offset

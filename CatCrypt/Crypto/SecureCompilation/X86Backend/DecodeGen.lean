@@ -120,13 +120,14 @@ def tmpl1 (d : Nat) : List (List (BitVec 8) × JInstr 64) :=
       (encSetccReg op d, .setcc (if op = 0x94 then .e else .ne) (regName d)))
 
 /-- The `%rsp`-relative templates on register `r` at displacement `off`: load, store,
-    compare, and the conditional move `cmovne` from the frame word. -/
+    compare, and the conditional moves `cmovne` and `cmove` from the frame word. -/
 def tmplRsp (r : Nat) (off : Int) : List (List (BitVec 8) × JInstr 64) :=
   if dispOk32 off then
     [(encRspMem 1 0x8b r off, .loadMem (regName r) "%rsp" off),
      (encRspMem 1 0x89 r off, .storeMem "%rsp" off (.reg (regName r))),
      (encRspMem 1 0x3b r off, .cmpMem (regName r) "%rsp" off),
-     (encCmovRspMem 1 0x45 r off, .cmovccMem .ne (regName r) "%rsp" off)]
+     (encCmovRspMem 1 0x45 r off, .cmovccMem .ne (regName r) "%rsp" off),
+     (encCmovRspMem 1 0x44 r off, .cmovccMem .e (regName r) "%rsp" off)]
   else []
 
 /-- The indexed-move templates at scale `8`: register `r`, base `b`, index `i`. -/
@@ -296,11 +297,12 @@ theorem tmplRsp_sound (r : Nat) (off : Int) (hr : r < 16) :
   split at hq
   · rename_i hoff
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hq
-    rcases hq with rfl | rfl | rfl | rfl
+    rcases hq with rfl | rfl | rfl | rfl | rfl
     · exact decodeLinstr_rspLoad r off rest hr hoff
     · exact decodeLinstr_rspStore r off rest hr hoff
     · exact decodeLinstr_rspCmp r off rest hr hoff
     · exact decodeLinstr_rspCmov .ne r off rest hr hoff
+    · exact decodeLinstr_rspCmov .e r off rest hr hoff
   · simp at hq
 
 /-- The stride-8 register-indexed load `MOV (%base,%idx,8), %r` (`REX.W 8B /r` with a SIB
