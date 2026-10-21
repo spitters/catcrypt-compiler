@@ -43,10 +43,12 @@ block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
   bytes outside the `F` bytes below the entry stack register.
 * `calleeSpec_of_keepCheck`: `CalleeSpec` of the leaky run of a decoded block from the keep
   check, a halting run with a postcondition and equality of traces.
-* `keptB`, `keepPool`, `scratch_not_mem_keepPool`, `keepPoolB`, `keepPoolB_spec`,
-  `keepPoolB_keep`: the allocation pool of a caller, made of the general-purpose names kept
-  across a call other than the reload scratches of the allocator, its check, and the
-  preservation of the registers of a checked pool by a specified callee.
+* `keptB`, `keepCands`, `keepPool`, `scratch_not_mem_keepPool`, `keepPool_eq_of_kept`,
+  `keepPoolB`, `keepPoolB_spec`, `keepPoolB_keepPool`, `keepPoolB_keep`: the allocation pool
+  of a caller, made of the general-purpose names kept across a call other than the reload
+  scratches of the allocator, with `RDX` at index `3` when the callee keeps it, its check
+  with soundness and completeness, and the preservation of the registers of a checked pool
+  by a specified callee.
 * `PubSummary`, `CalleeSpec.kept_agree`, `pubSummary_of_ct`, `pubSummary_of_checkCert`: the
   leakage summary of a callee, what a specified callee keeps equal between two runs, and
   the summary of a decoded block from equality of traces or from a certificate of the
@@ -577,37 +579,70 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpList gpOk phy
 def keptB (c : CalleeSig) (r : String) : Bool :=
   gpOk r && !c.clob (phys r) && !c.args.contains r && (c.res != some r)
 
+/-- The candidates of the allocation pool of a caller of `c`: the general-purpose names kept
+    across a call of `c`, in the order of `gpList`, other than `RDX` and the reload scratches
+    `R14` and `R15`. -/
+def keepCands (c : CalleeSig) : List String :=
+  gpList.filter fun r => keptB c r && r != "RDX" && r != "R14" && r != "R15"
+
 /-- **The allocation pool of a caller of `c`**: the general-purpose names kept across a
     call of `c`, in the order of `gpList`, other than the reload scratches `R15` and `R14`
     of the allocator (`JasminLprogExport.reloadScratch`, `JasminLprogExport.reloadScratch2`),
-    which the reload of a spilled name and the load of an array base write; with `RDX` at
+    which the reload of a spilled name and the load of an array base write. `RDX` sits at
     index `3`, the index the allocator withholds for a body with a high multiplication
-    (`JasminLprogExport.bodyReservedGP`). -/
+    (`JasminLprogExport.bodyReservedGP`), when `c` keeps it and at least three other names
+    are kept; otherwise the pool is `keepCands c`, which does not contain `RDX`. -/
 def keepPool (c : CalleeSig) : List String :=
-  let ks := gpList.filter fun r => keptB c r && r != "RDX" && r != "R14" && r != "R15"
-  ks.take 3 ++ "RDX" :: ks.drop 3
+  if keptB c "RDX" && decide (3 ≤ (keepCands c).length) then
+    (keepCands c).take 3 ++ "RDX" :: (keepCands c).drop 3
+  else keepCands c
+
+/-- A member of `keepCands c` is kept across a call of `c` and is none of `RDX`, `R14`,
+    `R15`. -/
+theorem mem_keepCands {c : CalleeSig} {x : String} (hx : x ∈ keepCands c) :
+    keptB c x = true ∧ x ≠ "RDX" ∧ x ≠ "R14" ∧ x ≠ "R15" := by
+  have := (List.mem_filter.mp hx).2
+  simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
+  exact ⟨this.1.1.1, this.1.1.2, this.1.2, this.2⟩
+
+/-- `keepCands c` has no duplicate name. -/
+theorem keepCands_nodup (c : CalleeSig) : (keepCands c).Nodup :=
+  List.Nodup.sublist List.filter_sublist (by decide)
+
+/-- A member of `keepPool c` is `RDX` or a member of `keepCands c`. -/
+theorem mem_keepPool {c : CalleeSig} {x : String} (hx : x ∈ keepPool c) :
+    x = "RDX" ∨ x ∈ keepCands c := by
+  unfold keepPool at hx
+  split at hx
+  · rcases List.mem_append.mp hx with hx | hx
+    · exact .inr (List.mem_of_mem_take hx)
+    · rcases List.mem_cons.mp hx with rfl | hx
+      · exact .inl rfl
+      · exact .inr (List.mem_of_mem_drop hx)
+  · exact .inr hx
 
 /-- The pool `keepPool c` holds neither reload scratch of the allocator. -/
 theorem scratch_not_mem_keepPool (c : CalleeSig) :
     "R14" ∉ keepPool c ∧ "R15" ∉ keepPool c := by
-  have h : ∀ x, x ∈ keepPool c → x ≠ "R14" ∧ x ≠ "R15" := by
-    intro x hx
-    simp only [keepPool] at hx
-    rcases List.mem_append.mp hx with hx | hx
-    · have := (List.mem_filter.mp (List.mem_of_mem_take hx)).2
-      simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
-      exact ⟨this.1.2, this.2⟩
-    · rcases List.mem_cons.mp hx with rfl | hx
-      · decide
-      · have := (List.mem_filter.mp (List.mem_of_mem_drop hx)).2
-        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
-        exact ⟨this.1.2, this.2⟩
-  exact ⟨fun hm => (h _ hm).1 rfl, fun hm => (h _ hm).2 rfl⟩
+  constructor <;> intro hm <;> rcases mem_keepPool hm with h | h
+  · exact absurd h (by decide)
+  · exact (mem_keepCands h).2.2.1 rfl
+  · exact absurd h (by decide)
+  · exact (mem_keepCands h).2.2.2 rfl
+
+/-- **Where `c` keeps `RDX` and at least three other names, `keepPool c` places `RDX` at
+    index `3` of `keepCands c`.** -/
+theorem keepPool_eq_of_kept {c : CalleeSig} (hk : keptB c "RDX" = true)
+    (hl : 3 ≤ (keepCands c).length) :
+    keepPool c = (keepCands c).take 3 ++ "RDX" :: (keepCands c).drop 3 := by
+  simp [keepPool, hk, hl]
 
 /-- **The check of an allocation pool against a callee**: every name of the pool is kept
-    across a call of `c`, the name at index `3` is `RDX`, and no name occurs twice. -/
+    across a call of `c`, `RDX`, when it occurs, sits at index `3`, and no name occurs
+    twice. -/
 def keepPoolB (c : CalleeSig) (pool : List String) : Bool :=
-  pool.all (keptB c) && decide (pool[3]? = some "RDX") && decide pool.Nodup
+  pool.all (keptB c) && (!pool.contains "RDX" || decide (pool[3]? = some "RDX"))
+    && decide pool.Nodup
 
 /-- A kept name is a general-purpose name whose machine register is outside the clobber
     set, and is neither an argument name nor the result name. -/
@@ -618,9 +653,36 @@ theorem keptB_spec {c : CalleeSig} {r : String} (h : keptB c r = true) :
 /-- **Soundness of `keepPoolB`.** -/
 theorem keepPoolB_spec {c : CalleeSig} {pool : List String} (h : keepPoolB c pool = true) :
     (∀ r ∈ pool, gpOk r = true ∧ c.clob (phys r) = false ∧ r ∉ c.args ∧ c.res ≠ some r)
-      ∧ pool[3]? = some "RDX" ∧ pool.Nodup := by
-  simp only [keepPoolB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at h
-  exact ⟨fun r hr => keptB_spec (h.1.1 r hr), h.1.2, h.2⟩
+      ∧ ("RDX" ∈ pool → pool[3]? = some "RDX") ∧ pool.Nodup := by
+  simp only [keepPoolB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, Bool.or_eq_true,
+    Bool.not_eq_true'] at h
+  exact ⟨fun r hr => keptB_spec (h.1.1 r hr),
+    fun hm => h.1.2.resolve_left (fun hc => by simp [hm] at hc), h.2⟩
+
+/-- **Completeness of `keepPoolB`**: the check accepts the pool `keepPool c` of every
+    signature `c`. -/
+theorem keepPoolB_keepPool (c : CalleeSig) : keepPoolB c (keepPool c) = true := by
+  have hR : "RDX" ∉ keepCands c := fun h => (mem_keepCands h).2.1 rfl
+  unfold keepPoolB keepPool
+  split
+  · rename_i hif
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at hif
+    have hlen : ((keepCands c).take 3).length = 3 := by simp [hif.2]
+    simp only [Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, Bool.or_eq_true,
+      Bool.not_eq_true']
+    refine ⟨⟨fun x hx => ?_, .inr ?_⟩, ?_⟩
+    · rcases List.mem_append.mp hx with h | h
+      · exact (mem_keepCands (List.mem_of_mem_take h)).1
+      · rcases List.mem_cons.mp h with rfl | h
+        · exact hif.1
+        · exact (mem_keepCands (List.mem_of_mem_drop h)).1
+    · rw [List.getElem?_append_right (by omega), hlen]
+      rfl
+    · rw [List.perm_middle.nodup_iff, List.nodup_cons, List.take_append_drop]
+      exact ⟨hR, keepCands_nodup c⟩
+  · simp only [Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, Bool.or_eq_true,
+      Bool.not_eq_true']
+    exact ⟨⟨fun x hx => (mem_keepCands hx).1, .inl (by simpa using hR)⟩, keepCands_nodup c⟩
 
 /-- **A register of the pool holds its entry value at every return of a specified
     callee.** -/
