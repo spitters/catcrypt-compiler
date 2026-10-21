@@ -313,7 +313,10 @@ def montRedcWordJazz : Option String :=
   JasminPrintText.emitJazzN "mont_redc_step" montRedcWordSig montRedcWordJasmin
 
 -- The text exists and carries the high-half multiply (`bvMulHi` lowered to `mulhi`,
--- printed as `#MULX_lo_hi_64`) and the carry chain (`#ADC_64`).
+-- printed as `#MULX_lo_hi_64`) and the carry chain (`#ADC_64`). The check runs the whole
+-- single-printer route (`nfToJasmin`, the spill pass, the checked print); measured at 204 and
+-- 208 ms under load 2.3 (2026-10-21), so it carries twice the default budget.
+set_option kat.ms 400 in
 #kat montRedcWordJazz.any fun s => s.contains "MULX" && s.contains "ADC"
 
 -- The lowered function has four parameters and a body of 15 instructions.
