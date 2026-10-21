@@ -48,9 +48,10 @@ them in its one-instruction body:
   `ADOXHI:64`, a carry-out binding with two sources, and the flag materialisation `SETC`;
 * the widening multiplication at the tag `MULX:64`, the high-word binding `MULXHI`, the keep
   marker `KEEP` and the frame directive `FRAMEADD`;
-* the constant-index stack-array store `STOREIMM`, which the run of a body tags as a register
-  instruction (`JasminLsemAddrRun.tagA`), where the address machine `fstepA` has no step for
-  it, and the stack-array zeroing `ZEROARR`, at whose tag `fstepA` has no step;
+* the stack-array zeroing `ZEROARR D, [#n, #w]` into a destination register, a zeroing
+  through a base register at a width other than `64` or of no words, a constant-index store
+  `STOREIMM` whose destination is no general-purpose name, and a stack-array access through a
+  base whose word offset `stackDispOk` refuses;
 * `Lgoto`, `Lcall`, `Lalign`, a conditional branch on a condition other than the zero flag,
   and a conditional branch to a label the body does not define.
 
@@ -189,6 +190,14 @@ inductive GateForm (body : Lcmd) : LinstrR → Prop
   /-- The indexed store at stride `8` over general-purpose names into a named array. -/
   | storeIdx (a b x v : String) : gpOk b = true → gpOk x = true → gpOk v = true →
       GateForm body (.Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v])
+  /-- The zeroing `ZEROARR [], [B, #n, #64]` of `0 < n` words from a general-purpose base,
+      the offset of the last word admitted by `stackDispOk`. -/
+  | zeroArr (b : String) (n : Nat) : gpOk b = true → 0 < n → stackDispOk (n - 1) = true →
+      GateForm body (.Lopn [] "ZEROARR" [.reg b, .imm n, .imm 64])
+  /-- The constant-index store `STOREIMM D, [B, V, #k]` over general-purpose names, the
+      offset of word `k` admitted by `stackDispOk`. -/
+  | storeImm (d b v : String) (k : Nat) : gpOk d = true → gpOk b = true → gpOk v = true →
+      stackDispOk k = true → GateForm body (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k])
   /-- The 64-bit carry-chain add over general-purpose names whose carry-in is none of the word
       sources, and whose destination is the first source or none of the other sources. -/
   | adcx (d a s c : String) : gpOk d = true → gpOk a = true → gpOk s = true → gpOk c = true →
@@ -489,6 +498,8 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
   | storeIdx a b x v hb hx hv =>
     have h4 := (gpFacts hx).ne4
     gate_simp
+  | zeroArr b n hb hn hk => gate_simp
+  | storeImm d b v k hd hb hv hk => gate_simp
   | adcx d a s c hd ha hs hc h1 h2 h3 =>
     have hd' := gpOk_not_slot hd
     have ha' := gpOk_not_slot ha
@@ -646,6 +657,11 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
   | storeIdx a b x v hb hx hv =>
     exact .sibStore _ _ b x v 8 (by decide +kernel) (isGp_of_gpOk hb) (isGp_of_gpOk hx)
       (isGp_of_gpOk hv)
+  | zeroArr b n hb hn hk =>
+    exact .zeroArrSrc b n 64 (show x86ZeroArr n 64 = true by simp [x86ZeroArr, hn, hk])
+      (isGp_of_gpOk hb)
+  | storeImm d b v k hd hb hv hk =>
+    exact .storeImm _ b v k hk (isGp_of_gpOk hb) (isGp_of_gpOk hv)
   | adcx d a s c hd ha hs hc h1 h2 h3 =>
     exact .carry3 _ d a s c (by decide +kernel) (isGp_of_gpOk hd) (isGp_of_gpOk ha)
       (isGp_of_gpOk hs) (isGp_of_gpOk hc)

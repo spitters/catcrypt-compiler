@@ -17,22 +17,28 @@ set_option autoImplicit false
 `CellFoldL.cellFoldL` keeps an `Lopn` that is no array access only when it names no slot
 array (`ImageCellFold.keepB`). A flag-machine state has a register carrier and an array
 carrier, and `ImageCellFold.CellRel` relates the register carriers at every name that is no
-cell name, the names of the slot arrays included. An instruction whose tag is no array load
-and no array store reads and writes the register carrier, the word memory and the flags
+cell name, the names of the slot arrays included. An instruction whose tag is no array load,
+store or zeroing reads and writes the register carrier, the word memory and the flags
 only, so it steps alike from cell-related states when it reads and writes no cell name,
-whether or not a name of a slot array occurs in it as a register.
+whether or not a name of a slot array occurs in it as a register. An array zeroing
+`ZEROARR D, [#m, #w]` or a constant-index store `STOREIMM D, [B, V, #k]` whose array names `D`
+and `B` are no slot arrays writes an array the cell relation relates and reads the
+register `V`, so it steps alike under the same condition.
 
-This module proves that step, gives the cell fold `cellFoldLR` that keeps such an
+This module proves these steps, gives the cell fold `cellFoldLR` that keeps such an
 instruction where `ImageCellFold.foldOne` refuses it, proves the fold sound on the flag
 machine, and gives the image route `routeBW` over it.
 
 ## Main definitions
 
-* `noArrB`: the tag of the instruction is no array load and no array store.
+* `noArrB`: the tag of the instruction is no array load, store or zeroing.
 * `setL`: a state with its array carrier replaced.
 * `readNames`: the names a step of an instruction may read, apart from `RDX` and the empty
   name.
-* `keepRegB`: an `Lopn` without an array tag that reads and writes no cell name.
+* `arrImmB`: an array zeroing or a constant-index store whose array names are no slot
+  arrays.
+* `keepRegB`: an `Lopn` without an array tag, or of `arrImmB`, that reads and writes no cell
+  name.
 * `foldOneR`, `foldOneLR`, `cellFoldLR`: the fold of one `Lopn`, of one instruction of a
   body, and of a body.
 * `routeBW`: the check of the image route with carry chains and cells, over the fold
@@ -42,6 +48,8 @@ machine, and gives the image route `routeBW` over it.
 
 * `fstepF_setL`: a step of an instruction without an array tag commutes with the
   replacement of the array carrier.
+* `arrImm_step`: an instruction of `arrImmB` that reads no cell name steps alike from
+  cell-related states.
 * `keepReg_step`: an instruction of `keepRegB` steps alike from cell-related states.
 * `foldR_step`: one step of `foldOneR`.
 * `cellFoldLR_of_cellFoldL`: a fold by `cellFoldL` is the fold by `cellFoldLR`.
@@ -209,11 +217,101 @@ def readNames : LinstrR → List String
   | .Lopn ds _ ss => ss.flatMap srcNames ++ (ds ++ ss).filterMap cellBase
   | _ => []
 
+/-- The array zeroing `ZEROARR D, [#m, #w]` at a zeroing tag and the constant-index store
+    `STOREIMM D, [B, V, #k]` at a constant-index store tag, whose array names `D` and `B` are
+    no slot arrays. -/
+def arrImmB (R : Slots) : LinstrRM → Bool
+  | (.Lopn [.reg d] o [.imm _, .imm _], .zero _ _) => o == "ZEROARR" && !isArrB R d
+  | (.Lopn [.reg d] o [.reg b, .reg _, .imm _], .storeImm _ _) =>
+      o == "STOREIMM" && !isArrB R d && !isArrB R b
+  | _ => false
+
+/-- The step of the array zeroing `ZEROARR D, [#m, #w']` at the tag `.zero w n`. -/
+theorem fstepF_zeroArr (d : String) (m w' w n : Nat) (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg d] "ZEROARR" [.imm m, .imm w'], .zero w n) s zf
+      = some ((s.setArr d (fun _ : Fin n => (0 : BitVec w))).nextPc, zf) := by
+  simp (config := { decide := true }) [fstepF, JasminLsemMemFlagGuard.cmpArgs?,
+    JasminLsemMemFlagGuard.movRegArgs?, stepMemF, JasminLsemMem.lsemStepMem,
+    JasminLsemMem.zeroStruct?, withALUFlags, JasminLsemMemFlagGuard.aluFlagOp?]
+
+/-- The step of the constant-index store `STOREIMM D, [B, V, #k]` at the tag
+    `.storeImm w n`. -/
+theorem fstepF_storeImmArr (d b v : String) (k w n : Nat) (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k], .storeImm w n) s zf
+      = (s.getArr b w n).bind fun arr => (s.reg.getW v w).map fun vv =>
+          ((s.setArr d (JasminDialect.stackSet arr k vv)).nextPc, zf) := by
+  simp (config := { decide := true }) [fstepF, JasminLsemMemFlagGuard.cmpArgs?,
+    JasminLsemMemFlagGuard.movRegArgs?, stepMemF, JasminLsemMem.lsemStepMem,
+    JasminLsemMem.storeImmStruct?, withALUFlags, JasminLsemMemFlagGuard.aluFlagOp?,
+    JasminLsemMemFlagGuard.carryArgs?, JasminLsemMemFlagGuard.wideArgs?]
+  cases s.getArr b w n <;> cases s.reg.getW v w <;> simp
+
+/-- Writing the same array to a name that is no slot array, and advancing the program
+    counter, keeps the cell relation, under constants `env'` the written state holds. -/
+theorem cellRel_setArr_nextPc {R : Slots} {env env' : KEnv} {s s' : LstateM}
+    (hC : CellRel R env s s') {d : String} (hd : isArrB R d = false) {w n : Nat}
+    (a : Fin n → BitVec w)
+    (hE : ∀ x k, ImageCellFold.kval env' x = some k →
+      ((s.setArr d a).nextPc).reg.getW x 64 = some (BitVec.ofNat 64 k)) :
+    CellRel R env' ((s.setArr d a).nextPc) ((s'.setArr d a).nextPc) := by
+  refine ⟨fun r hr => hC.reg r hr, ?_, fun r hr => ?_, hC.mem, hC.cf, hC.of, fun p hp => ?_, hE⟩
+  · simp [LstateM.nextPc, JasminLsemWidthN.LstateN.nextPc, hC.pc]
+  · by_cases hrd : r = d
+    · simp [LstateM.setArr, LstateM.nextPc, hrd]
+    · simp [LstateM.setArr, LstateM.nextPc, hrd, hC.arr r hr]
+  · obtain ⟨arr, ha, hcl⟩ := hC.cells p hp
+    have hne : p.1 ≠ d := fun he => by
+      have := isArrB_mem hp
+      rw [he, hd] at this
+      cases this
+    refine ⟨arr, ?_, fun j hj => hcl j hj⟩
+    rw [ImageCellFold.getArr_congr (show ((s.setArr d a).nextPc).larr p.1 = s.larr p.1 by
+      simp [LstateM.setArr, LstateM.nextPc, hne])]
+    exact ha
+
+/-- **An instruction of `arrImmB` that reads no cell name** steps alike from cell-related
+    states. -/
+theorem arrImm_step {R : Slots} {env : KEnv} {i : LinstrRM} (ha : arrImmB R i = true)
+    (hr : ∀ r ∈ readNames i.1, isCellB R r = false) {s s' t : LstateM} {zf z : Bool}
+    (hC : CellRel R env s s') (h : fstepF i s zf = some (t, z)) :
+    ∃ t', fstepF i s' zf = some (t', z) ∧ CellRel R (kstep env i) t t' := by
+  unfold arrImmB at ha
+  split at ha
+  · rename_i d o m w' w n
+    simp only [Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at ha
+    obtain ⟨rfl, hd⟩ := ha
+    have h0 := fstepF_zeroArr d m w' w n s zf
+    rw [h0] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+    exact ⟨_, fstepF_zeroArr d m w' w n s' zf,
+      cellRel_setArr_nextPc hC hd _ (stepEnv h0 hC.env)⟩
+  · rename_i d o b v k w n
+    simp only [Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at ha
+    obtain ⟨⟨rfl, hd⟩, hb⟩ := ha
+    have hv : isCellB R v = false := hr v (by simp [readNames, srcNames])
+    have hgA : s'.getArr b w n = s.getArr b w n := ImageCellFold.getArr_congr (hC.arr b hb) w n
+    have hgV : s'.reg.getW v w = s.reg.getW v w := by
+      unfold JasminLsemWidthN.LstateN.getW
+      rw [hC.reg v hv]
+    have h0 := fstepF_storeImmArr d b v k w n s zf
+    rw [h0] at h
+    obtain ⟨arr, harr, h1⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨vv, hvv, h2⟩ := Option.map_eq_some_iff.mp h1
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj h2
+    have hs : fstepF (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k], .storeImm w n) s zf
+        = some ((s.setArr d (JasminDialect.stackSet arr k vv)).nextPc, zf) := by
+      rw [h0, harr, hvv]
+      rfl
+    refine ⟨_, ?_, cellRel_setArr_nextPc hC hd _ (stepEnv hs hC.env)⟩
+    rw [fstepF_storeImmArr, hgA, hgV, harr, hvv]
+    rfl
+  · cases ha
+
 /-- An instruction kept by the fold with slot-array names as registers: an `Lopn` whose tag
-    is no array load and no array store, that writes no cell name and reads no cell name,
-    where `RDX` is no cell name. -/
+    is no array load and no array store, or an instruction of `arrImmB`, that writes no cell
+    name and reads no cell name, where `RDX` is no cell name. -/
 def keepRegB (R : Slots) (i : LinstrRM) : Bool :=
-  isLopnB i && noArrB i && ((dstNames i.1).all fun r => !isCellB R r)
+  isLopnB i && (noArrB i || arrImmB R i) && ((dstNames i.1).all fun r => !isCellB R r)
     && ((readNames i.1).all fun r => !isCellB R r) && !isCellB R "RDX"
 
 /-- **An instruction of `keepRegB`** steps alike from cell-related states. -/
@@ -222,7 +320,11 @@ theorem keepReg_step {R : Slots} (hR : slotsOkB R = true) {env : KEnv} {i : Lins
     (h : fstepF i s zf = some (t, z)) :
     ∃ t', fstepF i s' zf = some (t', z) ∧ CellRel R (kstep env i) t t' := by
   simp only [keepRegB, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hk
-  obtain ⟨⟨⟨⟨hl, ha⟩, hd⟩, hr⟩, hrdx⟩ := hk
+  obtain ⟨⟨⟨⟨hl, hor⟩, hd⟩, hr⟩, hrdx⟩ := hk
+  by_cases ha : noArrB i = true
+  swap
+  · rw [Bool.eq_false_iff.2 ha, Bool.false_or] at hor
+    exact arrImm_step hor hr hC h
   simp only [slotsOkB, Bool.and_eq_true, Bool.not_eq_true'] at hR
   have hreads : ∀ r, readsI i.1 r → isCellB R r = false := by
     intro r hr'
