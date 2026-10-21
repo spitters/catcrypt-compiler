@@ -83,14 +83,16 @@ def nfBinKind : NfBinOp → LeakKind
 
 /-- The calls with no event: the names of the scalar tables `ImpToNF.hax64BinTable`,
     `ImpToNF.hax64UnTable`, `ImpToNF.hax64CmpTable` and `ImpToNF.hax64BitTable` of the front
-    and `select`, read through `ImpToNF.hax64NFScalar`, and the array calls `len` and
-    `array_lit`. -/
+    and `select`, read through `ImpToNF.hax64NFScalar`, the array calls `len` and
+    `array_lit`, and `declassify`, a register move. -/
 def quietCall (f : String) : Bool :=
-  (ImpToNF.hax64NFScalar ()).contains f || f == "len" || f == "array_lit"
+  (ImpToNF.hax64NFScalar ()).contains f || f == "len" || f == "array_lit" || f == "declassify"
 
-/-- `quietCall` holds of the names of `ImpToNF.hax64NFScalar`, `len` and `array_lit`. -/
+/-- `quietCall` holds of the names of `ImpToNF.hax64NFScalar`, `len`, `array_lit` and
+    `declassify`. -/
 theorem quietCall_iff {f : String} :
-    quietCall f = true ↔ f ∈ ImpToNF.hax64NFScalar () ∨ f = "len" ∨ f = "array_lit" := by
+    quietCall f = true ↔ f ∈ ImpToNF.hax64NFScalar () ∨ f = "len" ∨ f = "array_lit" ∨
+      f = "declassify" := by
   simp [quietCall, or_assoc]
 
 /-- `quietCall` holds of the names of `ImpToNF.hax64NFScalar`. -/
@@ -102,8 +104,9 @@ theorem quietCall_of_mem {f : String} (h : f ∈ ImpToNF.hax64NFScalar ()) :
 theorem quietCall_ne {f : String} (h : quietCall f = true) :
     f ≠ "index" ∧ f ≠ "array_update" := by
   have hn : ∀ g ∈ ImpToNF.hax64NFScalar (), g ≠ "index" ∧ g ≠ "array_update" := by decide
-  rcases quietCall_iff.mp h with h | rfl | rfl
+  rcases quietCall_iff.mp h with h | rfl | rfl | rfl
   · exact hn f h
+  · decide
   · decide
   · decide
 
@@ -135,6 +138,11 @@ def nfKind : NfOp → LeakKind
     nfKind (.call "array_update" as r) = .addrAt 1 := by
   simp [nfKind]
 
+/-- The call `declassify`, a register move, is quiet. -/
+@[simp] theorem nfKind_call_declassify (as : List NfTy) (r : NfTy) :
+    nfKind (.call "declassify" as r) = .quiet := by
+  simp [nfKind, quietCall]
+
 /-- A call of a name of `quietCall` is quiet. -/
 @[simp] theorem nfKind_call_quiet {f : String} (h : quietCall f = true) (as : List NfTy)
     (r : NfTy) : nfKind (.call f as r) = .quiet := by
@@ -160,10 +168,11 @@ theorem hax64SigOf_quietCall {f : String} {as : List NfTy} {r : NfTy}
     (h : ImpToNF.hax64SigOf f as = some r) :
     quietCall f = true ∨ f = "index" ∨ f = "array_update" ∨
       (_root_.Hax.FieldTag.fieldTag? f).isSome := by
-  rcases ImpToNF.hax64SigOf_name h with hm | rfl | rfl | rfl | rfl | ht
+  rcases ImpToNF.hax64SigOf_name h with hm | rfl | rfl | rfl | rfl | rfl | ht
   · exact Or.inl (quietCall_of_mem hm)
   · exact Or.inr (Or.inl rfl)
   · exact Or.inr (Or.inr (Or.inl rfl))
+  · exact Or.inl rfl
   · exact Or.inl rfl
   · exact Or.inl rfl
   · exact Or.inr (Or.inr (Or.inr ht))
@@ -702,7 +711,7 @@ theorem bitRes1_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDiale
 theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
     {f : String} {as : List NfTy} {r : NfTy} {rs : HVector (fun t => Rd Δ t) as}
     {res : OpRes Δ r} (h : scalarRes? f as r rs = some res) :
-    res.Quiet P ∧ f ∈ ImpToNF.hax64NFScalar () := by
+    res.Quiet P ∧ (f ∈ ImpToNF.hax64NFScalar () ∨ f = "declassify") := by
   match as, rs, h with
   | [ta, tb], .cons ra (.cons rb .nil), h =>
       change scalarRes2 f ta tb ra rb r = some res at h
@@ -710,7 +719,7 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
       split at h
       · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
         dsimp only at h
-        refine ⟨?_, ImpToNF.bin_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
+        refine ⟨?_, Or.inl (ImpToNF.bin_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp))⟩
         split at h
         · split at h
           · exact withVar1_quiet hP (fun a res' h' => by
@@ -719,25 +728,36 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
               cases h'; exact rotVarChain_quiet hP _ _ a b) h
         · exact withVar2_quiet hP (fun a b res' h' => binChain_quiet hP h') h
       · split at h
-        · exact bitRes2_quiet hP h
+        · exact (bitRes2_quiet hP h).imp_right Or.inl
         obtain ⟨c, hp, h⟩ := Option.bind_eq_some_iff.mp h
-        refine ⟨?_, ImpToNF.cmp_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
+        refine ⟨?_, Or.inl (ImpToNF.cmp_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp))⟩
         exact withVar2_quiet hP (fun a b res' h' => by
           cases h'; exact cmpChain_quiet hP c a b) h
       · cases h
   | [ta], .cons ra .nil, h =>
       change scalarRes1 f ta ra r = some res at h
       unfold scalarRes1 at h
+      by_cases hd : f = "declassify"
+      · rw [if_pos hd] at h
+        refine ⟨?_, Or.inr hd⟩
+        unfold declassRes1 at h
+        split at h
+        · cases h
+          trivial
+        · cases h
+          trivial
+        · cases h
+      rw [if_neg hd] at h
       split at h
       · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
         dsimp only at h
-        refine ⟨?_, ImpToNF.un_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp)⟩
+        refine ⟨?_, Or.inl (ImpToNF.un_mem_hax64NFScalar (ImpToNF.mem_of_find?_map hp))⟩
         split at h
         · obtain ⟨rr, -, rfl⟩ := Option.map_eq_some_iff.mp h
           trivial
         · exact withVar1_quiet hP (fun a res' h' => by
             cases h'; exact unChain_quiet hP o w a) h
-      · exact bitRes1_quiet hP h
+      · exact (bitRes1_quiet hP h).imp_right Or.inl
       · cases h
   | [], .nil, h =>
       change none = some res at h
@@ -811,7 +831,7 @@ theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
       rw [resLeak_quiet W res hq]
       unfold opLeak
       rw [show nfLeakModel.kind (.call f as r) = nfKind (.call f as r) from rfl,
-        nfKind_call_scalar hf]
+        nfKind_call_quiet (quietCall_iff.mpr (hf.imp_right fun hd => Or.inr (Or.inr hd)))]
     next =>
       obtain ⟨hq, rfl⟩ := arrLitRes_quiet hP h
       rw [resLeak_quiet W res hq]

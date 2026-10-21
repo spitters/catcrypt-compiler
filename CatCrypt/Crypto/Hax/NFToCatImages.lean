@@ -335,6 +335,11 @@ theorem scalarRes2_image {Δ : Ctxt catCryptDialect} {f : String} {ta tb : NfTy}
 theorem scalarRes1_image {Δ : Ctxt catCryptDialect} {f : String} {ta : NfTy} {ra : Rd Δ ta}
     {r : NfTy} {res : OpRes Δ r} (h : scalarRes1 f ta ra r = some res) : OpResImages res := by
   unfold scalarRes1 at h
+  by_cases hd : f = "declassify"
+  · rw [if_pos hd] at h
+    unfold declassRes1 at h
+    split at h <;> cases h <;> trivial
+  rw [if_neg hd] at h
   split at h
   · obtain ⟨⟨o, w⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
     dsimp only at h

@@ -1033,8 +1033,9 @@ theorem catCallRd_name {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
   next =>
     split at h
     next h₁ =>
-      exact Or.inr (Or.inr (quietCall_of_mem
-        (scalarRes_quiet (P := CatLeakParams.owned) noVT_owned h₁).2))
+      exact Or.inr (Or.inr (quietCall_iff.mpr
+        ((scalarRes_quiet (P := CatLeakParams.owned) noVT_owned h₁).2.imp_right
+          fun hd => Or.inr (Or.inr hd))))
     next =>
       obtain ⟨-, rfl⟩ := arrLitRes_quiet (P := CatLeakParams.owned) noVT_owned h
       exact Or.inr (Or.inr (by decide))

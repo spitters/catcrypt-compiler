@@ -310,7 +310,8 @@ theorem emitRes_isSome_of {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy} {L :
 /-! ## 3. The operations of the domain -/
 
 /-- The binary, unary and comparison calls of the scalar table on integers and `64`-bit
-    words, and the Boolean connectives of `ImpToNF.hax64BitTable` on bits. -/
+    words, the Boolean connectives of `ImpToNF.hax64BitTable` on bits, and `declassify` of
+    an integer or a `64`-bit word at the type of its operand. -/
 def scalarCallOk (f : String) : List NfTy → NfTy → Bool
   | [ta, tb], .word 64 =>
       ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb && (ImpToNF.scalarBinOf f).isSome
@@ -318,8 +319,11 @@ def scalarCallOk (f : String) : List NfTy → NfTy → Bool
       (ImpToNF.hax64NFWordTy ta && ImpToNF.hax64NFWordTy tb && (ImpToNF.scalarCmpOf f).isSome) ||
         (decide (ta = .bit) && decide (tb = .bit) &&
           (ImpToNF.scalarBitOf f).any ImpToNF.ScalarBit.binary)
-  | [ta], .word 64 => ImpToNF.hax64NFWordTy ta && (ImpToNF.scalarUnOf f).isSome
+  | [ta], .word 64 =>
+      (ImpToNF.hax64NFWordTy ta && (ImpToNF.scalarUnOf f).isSome) ||
+        (decide (ta = .word 64) && f == "declassify")
   | [ta], .bit => decide (ta = .bit) && decide (ImpToNF.scalarBitOf f = some .not)
+  | [ta], .int => decide (ta = .int) && f == "declassify"
   | _, _ => false
 
 /-- The calls `index` and `array_update` on an array of `64`-bit words, `select` on a bit
@@ -457,12 +461,23 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
               simp only [bitRes2, asBit, Option.bind_some, hp]
               cases o <;> first | rfl | cases hb
   · rename_i ta
-    simp only [Bool.and_eq_true] at h
-    obtain ⟨hta, hu⟩ := h
     rcases rs with _ | ⟨ra, _ | _⟩
     change (scalarRes1 f ta ra (.word 64)).isSome
+    by_cases hd : f = "declassify"
+    · subst hd
+      have hu0 : ImpToNF.scalarUnOf "declassify" = none := by
+        simp [ImpToNF.scalarUnOf, ImpToNF.hax64UnTable]
+      simp only [hu0, Option.isSome_none, Bool.and_false, Bool.false_or, Bool.and_eq_true,
+        decide_eq_true_eq] at h
+      obtain ⟨rfl, -⟩ := h
+      rw [NFToCat.scalarRes1_declassify rfl]
+      rfl
+    have h' : (ImpToNF.hax64NFWordTy ta && (ImpToNF.scalarUnOf f).isSome) = true := by
+      simpa [hd] using h
+    simp only [Bool.and_eq_true] at h'
+    obtain ⟨hta, hu⟩ := h'
     obtain ⟨⟨o, w⟩, hu⟩ := Option.isSome_iff_exists.mp hu
-    simp only [scalarRes1, hu, Option.bind_some]
+    simp only [scalarRes1, if_neg hd, hu, Option.bind_some]
     split
     · cases ra with
       | var a =>
@@ -477,7 +492,18 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
     change (scalarRes1 f .bit ra .bit).isSome
     cases ra with
     | lit _ hk => cases hk
-    | var a => simp [scalarRes1, bitRes1, asBit, hp]
+    | var a =>
+        have hd : f ≠ "declassify" := by
+          rintro rfl
+          simp [ImpToNF.scalarBitOf, ImpToNF.hax64BitTable] at hp
+        simp [scalarRes1, if_neg hd, bitRes1, asBit, hp]
+  · rename_i ta
+    simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    rcases rs with _ | ⟨ra, _ | _⟩
+    change (scalarRes1 "declassify" .int ra .int).isSome
+    rw [NFToCat.scalarRes1_declassify rfl]
+    rfl
   · cases h
 
 /-- A call `array_lit` of `memCallOk` is at an array of `n` `64`-bit words on `n` `64`-bit

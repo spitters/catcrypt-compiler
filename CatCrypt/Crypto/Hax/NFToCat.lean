@@ -816,17 +816,37 @@ def scalarRes2 {Δ : Ctxt catCryptDialect} (f : String) (ta tb : NfTy) (ra : Rd 
           withVar2 ta tb ra rb fun x y => some (cmpChain c x y)
   | _ => none
 
+/-- The translation of the call `declassify` on a reading of an integer or a `64`-bit word,
+    at the result type of its operand: the reading of the operand, with no binding. -/
+def declassRes1 {Δ : Ctxt catCryptDialect} : (ta : NfTy) → Rd Δ ta → (r : NfTy) →
+    Option (OpRes Δ r)
+  | .int, ra, .int => some (.rd ra)
+  | .word 64, ra, .word 64 => some (.rd ra)
+  | _, _, _ => none
+
 /-- The translation of a unary call of the scalar table on a reading, at the result type
-    `r`: the truncation to `64` bits as the reading of its operand, every other integer call
-    by `unChain`, the negation of a bit by `bitRes1`. -/
-def scalarRes1 {Δ : Ctxt catCryptDialect} (f : String) (ta : NfTy) (ra : Rd Δ ta) :
-    (r : NfTy) → Option (OpRes Δ r)
+    `r`: `declassify` by `declassRes1`, the truncation to `64` bits as the reading of its
+    operand, every other integer call by `unChain`, the negation of a bit by `bitRes1`. -/
+def scalarRes1 {Δ : Ctxt catCryptDialect} (f : String) (ta : NfTy) (ra : Rd Δ ta)
+    (r : NfTy) : Option (OpRes Δ r) :=
+  if f = "declassify" then declassRes1 ta ra r else
+  match r with
   | .word 64 =>
       (ImpToNF.scalarUnOf f).bind fun ⟨o, w⟩ =>
         if o = .cast ∧ w = 64 then (Rd.toWord64 ta ra).map .rd
         else withVar1 ta ra fun x => some (unChain o w x)
   | .bit => bitRes1 f ta ra
   | _ => none
+
+/-- **The lowered `declassify` is its argument**: on a reading `ra` of an integer or a
+    `64`-bit word, the translation of `declassify` is the reading `ra` itself, with no
+    binding. -/
+theorem scalarRes1_declassify {Δ : Ctxt catCryptDialect} {t : NfTy}
+    (ht : ImpToNF.hax64NFWordTy t = true) (ra : Rd Δ t) :
+    scalarRes1 "declassify" t ra t = some (.rd ra) := by
+  match t, ht with
+  | .int, _ => simp [scalarRes1, declassRes1]
+  | .word 64, _ => simp [scalarRes1, declassRes1]
 
 /-- The translation of a call of the scalar table on readings at the result type `r`: a
     binary call by `scalarRes2`, a unary call by `scalarRes1`. -/
@@ -1123,10 +1143,10 @@ theorem dec_arr_ofFn {n : Nat} {g : Fin n → Int} {y : Fin n → BitVec 64}
   simpa using this
 
 /-- The names of the calls the fragment translates: the scalar calls `hax64NFScalar`,
-    `index`, `array_update`, `len` and `array_lit`. -/
+    `index`, `array_update`, `len`, `array_lit` and `declassify`. -/
 def CatName (f : String) : Prop :=
   f ∈ ImpToNF.hax64NFScalar () ∨ f = "index" ∨ f = "array_update" ∨ f = "len" ∨
-    f = "array_lit"
+    f = "array_lit" ∨ f = "declassify"
 
 /-- The table `bi` agrees with the `u64` table with `select` at the names of the calls the
     fragment translates. -/
@@ -2256,6 +2276,25 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     (hy : (bi f [ImpToNF.enc ta x₁]).bind (ImpToNF.dec r) = some y) :
     OpResRel W r y res := by
   unfold scalarRes1 at h
+  by_cases hd : f = "declassify"
+  · rw [if_pos hd] at h
+    subst hd
+    obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
+    have hv := hbi.base _ _ _ (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl))))) (by decide) hbv
+    rw [_root_.Hax.hax64Builtins_declassify] at hv
+    cases hv
+    unfold declassRes1 at h
+    split at h
+    · cases h
+      change some x₁ = some y at hdv
+      cases hdv
+      exact h1
+    · cases h
+      change ImpToNF.dec (.word 64) (.int ((x₁.toNat : Nat) : Int)) = some y at hdv
+      rw [dec_word64_eq hdv, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+      exact h1
+    · cases h
+  rw [if_neg hd] at h
   split at h
   · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
     dsimp only at h
@@ -2449,7 +2488,8 @@ theorem arrLitRes_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       · rename_i hln
         cases h
         obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
-        have hv := hbi.base _ _ _ (Or.inr (Or.inr (Or.inr (Or.inr rfl)))) (by decide) hbv
+        have hv := hbi.base _ _ _ (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl))))) (by decide)
+          hbv
         change (_root_.Hax.hax64WordOps "array_lit" (ImpToNF.encAll as xs) <|>
           _root_.Hax.widthArrayOps "array_lit" (ImpToNF.encAll as xs)) = some v at hv
         rw [_root_.Hax.hax64WordOps_arrayLit, ImpToNF.widthArrayOps_arrayLit] at hv

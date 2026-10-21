@@ -4670,7 +4670,8 @@ theorem fieldTagSig_wide {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p :
 /-- **The call typing of `u64` code**: a tagged field call by `fieldTagSig`; a scalar call by
     `hax64ScalarSig`; at an index of a `hax64NFWordTy` type, `index` of an integer slice is an
     integer and `array_update` of an integer slice with a value of a `hax64NFWordTy` type is
-    an integer slice; on fixed-length arrays, `hax64SigOfArr`. -/
+    an integer slice; `declassify` of a value of a `hax64NFWordTy` type has the type of its
+    argument; on fixed-length arrays, `hax64SigOfArr`. -/
 def hax64SigOf (f : String) (as : List NfTy) : Option NfTy :=
   match fieldTagSig f as with
   | some r => some r
@@ -4682,6 +4683,7 @@ def hax64SigOf (f : String) (as : List NfTy) : Option NfTy :=
     | "index", [.slice .int, ti] => if hax64NFWordTy ti then some .int else none
     | "array_update", [.slice .int, ti, t] =>
         if hax64NFWordTy ti && hax64NFWordTy t then some (.slice .int) else none
+    | "declassify", [t] => if hax64NFWordTy t then some t else none
     | _, _ => hax64SigOfArr f as
 
 /-- The encoding of a value of a `hax64NFWordTy` type is an integer. -/
@@ -4933,6 +4935,14 @@ theorem dec_word64_nat {r : Nat} (hr : r < 2 ^ 64) :
   · simp only [dec, Int.natCast_nonneg, hr', and_self, if_true, Int.toNat_natCast]
   · simp only [enc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr]
 
+/-- The encoding of a value of a `hax64NFWordTy` type decodes at that type to a value with the
+    same encoding. -/
+theorem hax64NFWordTy_dec_enc {t : NfTy} (ht : hax64NFWordTy t = true) (x : t.denote) :
+    ∃ y, dec t (enc t x) = some y ∧ enc t x = enc t y := by
+  match t, ht with
+  | .int, _ => exact ⟨x, rfl, rfl⟩
+  | .word 64, _ => exact dec_word64_nat x.isLt
+
 /-- A value in the range of the `64`-bit words: an integer in `[0, 2 ^ 64)`, or a value that
     is no integer. -/
 def wordRangeB : Value → Bool
@@ -5178,22 +5188,23 @@ theorem hax64SigOfArr_name {f : String} {as : List NfTy} {r : NfTy}
   · cases h
 
 /-- The calls `hax64SigOf` types are the scalar calls of `hax64NFScalar`, `index`,
-    `array_update`, `len`, `array_lit` and the tagged field calls. -/
+    `array_update`, `len`, `array_lit`, `declassify` and the tagged field calls. -/
 theorem hax64SigOf_name {f : String} {as : List NfTy} {r : NfTy}
     (h : hax64SigOf f as = some r) :
     f ∈ hax64NFScalar () ∨ f = "index" ∨ f = "array_update" ∨ f = "len" ∨
-      f = "array_lit" ∨ (_root_.Hax.FieldTag.fieldTag? f).isSome := by
+      f = "array_lit" ∨ f = "declassify" ∨ (_root_.Hax.FieldTag.fieldTag? f).isSome := by
   unfold hax64SigOf at h
   split at h
   · rename_i hs
     obtain ⟨m, p, hmp, -, -⟩ := fieldTagSig_some hs
-    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by rw [hmp]; rfl)))))
+    exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (by rw [hmp]; rfl))))))
   · split at h
     · rename_i hs
       exact Or.inl (hax64ScalarSig_name hs)
     · split at h
       · exact Or.inr (Or.inl rfl)
       · exact Or.inr (Or.inr (Or.inl rfl))
+      · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl rfl)))))
       · rcases hax64SigOfArr_name h with rfl | rfl | rfl | rfl
         · exact Or.inr (Or.inl rfl)
         · exact Or.inr (Or.inr (Or.inl rfl))
@@ -5225,6 +5236,7 @@ theorem hax64SigOf_eq_none_of_fieldModOk {f : String} {m : _root_.Hax.FieldTag.F
     rw [fieldTag?_of_mem_hax64NFScalar (hax64ScalarSig_name hs)] at hmp
     cases hmp
   · split
+    · exact absurd rfl (hne _ rfl)
     · exact absurd rfl (hne _ rfl)
     · exact absurd rfl (hne _ rfl)
     · rcases hq : hax64SigOfArr f as with _ | r
@@ -5473,6 +5485,18 @@ theorem hax64Builtins_typedCalls : TypedCalls hax64BuiltinsR hax64SigOf := by
             · exact ⟨z, rfl⟩
           · cases hv
       · cases hr
+    · rename_i t _
+      split at hr
+      · rename_i ht
+        simp only [Option.some.injEq] at hr
+        subst hr
+        match xs with
+        | .cons x .nil =>
+          change _root_.Hax.hax64Builtins "declassify" [enc t x] = some v at hv
+          rw [_root_.Hax.hax64Builtins_declassify] at hv
+          cases hv
+          exact hax64NFWordTy_dec_enc ht x
+      · cases hr
     · exact hax64Builtins_typedCallsArr f as r hr xs v hv
 
 /-- A call of `select` that `hax64SigOf` types is typed by `hax64ScalarSig`. -/
@@ -5492,8 +5516,20 @@ theorem hax64SigOf_select {f : String} {as : List NfTy} {r : NfTy} (hf : f = "se
   · split at h
     · exact absurd hf (by decide)
     · exact absurd hf (by decide)
+    · exact absurd hf (by decide)
     · subst hf
       rcases hax64SigOfArr_name h with hf | hf | hf | hf <;> exact absurd hf (by decide)
+
+/-- **`declassify` is typed as the identity**: on one argument of a `hax64NFWordTy` type,
+    `hax64SigOf` gives `declassify` the type of its argument. -/
+theorem hax64SigOf_declassify {t : NfTy} (ht : hax64NFWordTy t = true) :
+    hax64SigOf "declassify" [t] = some t := by
+  have h0 : _root_.Hax.FieldTag.fieldTag? "declassify" = none := rfl
+  match t, ht with
+  | .int, _ => simp [hax64SigOf, hax64ScalarSig, fieldTagSig, scalarUnOf, scalarBitOf,
+      hax64UnTable, hax64BitTable, hax64NFWordTy, h0]
+  | .word 64, _ => simp [hax64SigOf, hax64ScalarSig, fieldTagSig, scalarUnOf, scalarBitOf,
+      hax64UnTable, hax64BitTable, hax64NFWordTy, h0]
 
 /-- **The call typing of `u64` code is sound for builtins with `select`**, when it is sound
     for the builtins. -/
