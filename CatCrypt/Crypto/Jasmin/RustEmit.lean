@@ -12,8 +12,7 @@ public import CatCrypt.Crypto.Jasmin.LowCTExec
 /-!
 # Rust Source Emission from `LowCT`
 
-Counterpart to `LowCTToJasmin.ppJasminProg`: produces a Rust source
-string from a `LowCT`. Together with `writeJasminProg` one `LowCT` yields one
+Produces a Rust source string from a `LowCT`. Together with `writeJasminProg` one `LowCT` yields one
 Jasmin file and one Rust file. The `rustExecSimulates` family relates the
 `LowCT` semantics to its Jasmin translation; no theorem relates the Rust text
 this module prints to the `LowCT` it prints from.

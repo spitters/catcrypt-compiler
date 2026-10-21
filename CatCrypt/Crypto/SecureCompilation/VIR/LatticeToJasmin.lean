@@ -12,16 +12,14 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
 
 /-!
-# `Com latticeDialect → Com jasminDialect → .jazz` (Phase 4: backend unification)
+# `Com latticeDialect → Com jasminDialect`
 
-This file joins the two halves of the Jasmin ⇄ VIR pipeline: the optimizer
-runs on the **lattice** dialect (`Com latticeDialect`, see `LatticeDialect.lean`),
-while the `.jazz` printer (`JasminPrint.lean`) emits from the **Jasmin** dialect
-(`Com jasminDialect → JasminProg → .jazz`). To get an *optimized* lattice
-program into the printer we need a dialect conversion:
+The optimizer runs on the **lattice** dialect (`Com latticeDialect`, see
+`LatticeDialect.lean`), and the Jasmin lowering `JasminPrint.lowerComToProg` reads the
+**Jasmin** dialect. This file defines the dialect conversion between them:
 
 ```
-Com[latticeDialect]  ──lowerLatticeToJasmin──▶  Com[jasminDialect]  ──emitJazz──▶ .jazz
+Com[latticeDialect]  ──lowerLatticeToJasmin──▶  Com[jasminDialect]  ──lowerComToProg──▶ JasminProg
 ```
 
 ## Approach A: a typed dialect conversion `Com[lattice] → Com[jasmin]`
@@ -68,9 +66,8 @@ applied to the lattice signature — making the conversion total and structural.
 leaves their real (data-oblivious) semantics, and the lattice op denotations
 agree with those leaves. Hence this conversion is denotation-preserving:
 `LatticeToJasminDenoteUncond.lowerLatticeToJasmin_denote_eq_uncond` proves it
-with no hypothesis. This file's own contribution is the structural end-to-end
-path (`Com[lattice] → Com[jasmin] → .jazz`) plus a smoke test that the emitted
-`.jazz` carries the expected NTT leaf calls; the denotational half lives in
+with no hypothesis. This file defines the conversion and the structural facts of
+the lowered NTT-expanded program; the denotational half lives in
 `LatticeToJasminDenote.lean` (parametric) and `LatticeToJasminDenoteUncond.lean`
 (discharged).
 -/
@@ -170,35 +167,15 @@ def lowerLatticeToJasmin {Γ : Ctxt latticeDialect} {t : LatticeTy} :
   | .ret v => .ret (mapVar v)
   | .var e body => .var (lowerExpr e) (lowerLatticeToJasmin body)
 
-/-! ## 6. End-to-end: `Com[lattice] → .jazz` -/
+/-! ## 6. The lowered NTT-expanded program
 
-/-- End-to-end emission: lower a lattice program to Jasmin and pretty-print to
-    `.jazz` text via the existing `JasminPrint.emitJazz`. This is the deliverable
-    path `Com latticeDialect → … → .jazz`. -/
-def emitLatticeJazz {Γ : Ctxt latticeDialect} {t : LatticeTy}
-    (name : String) (com : Com latticeDialect Γ t) : String :=
-  JasminPrint.emitJazz name (lowerLatticeToJasmin com)
-
-/-! ## 7. Smoke test: emit `tgtCom` (and `srcCom`) and check for leaf calls
-
-We emit the NTT-expanded target program `tgtCom` (`ntt a; ntt b; basemul; invntt;
-ret`) at ML-KEM-flavoured parameters `(q, n) = (3329, 256)` and check the `.jazz`
-contains the expected NTT leaf calls. We also emit the unoptimized `srcCom`
-(`poly_mul`) to confirm the unexpanded path. -/
+The NTT-expanded target program `tgtCom` (`ntt a; ntt b; basemul; invntt; ret`) at
+ML-KEM parameters `(q, n) = (3329, 256)`, lowered to the Jasmin dialect and to a
+`JasminProg`. -/
 
 /-- The Jasmin `Com` obtained by lowering `tgtCom 3329 256`. -/
 def tgtJasmin (_ : Unit) : Com jasminDialect ((LatticeDialect.inCtxt 3329 256).map tau) (tau (.polyC 3329 256)) :=
   lowerLatticeToJasmin (LatticeDialect.tgtCom 3329 256)
-
-/-- The emitted `.jazz` for the NTT-expanded target program. -/
-def tgtJazz (_ : Unit) : String := emitLatticeJazz "ntt_mul" (LatticeDialect.tgtCom 3329 256)
-
-/-- The emitted `.jazz` for the unexpanded source program (`poly_mul`). -/
-def srcJazz (_ : Unit) : String := emitLatticeJazz "poly_mul_src" (LatticeDialect.srcCom 3329 256)
-
--- Print the emitted `.jazz` text for visual inspection.
-#eval IO.println (tgtJazz ())
-#eval IO.println (srcJazz ())
 
 /-- The lowered target `Com` has four bindings (`ntt`, `ntt`, `basemul`,
     `invntt`) before its `ret`, so it lowers to a four-instruction body. -/
@@ -217,17 +194,5 @@ theorem tgt_two_params :
 theorem tgt_four_instrs :
     ((tgtProg ()).funcs.head?.map (fun fd => fd.body.length)) = some 4 := by
   decide
-
-/- The emitted target `.jazz` contains the `ntt_basemul_` leaf call. -/
-#guard (strContains (tgtJazz ()) "ntt_basemul_")
-
-/- The emitted target `.jazz` contains the `ntt_invntt_` leaf call. -/
-#guard (strContains (tgtJazz ()) "ntt_invntt_")
-
-/- The emitted target `.jazz` contains the forward `ntt_` leaf call. -/
-#guard (strContains (tgtJazz ()) "ntt_3329_256")
-
-/- The emitted source `.jazz` contains the unexpanded `poly_mul` leaf call. -/
-#guard (strContains (srcJazz ()) "poly_mul")
 
 end CatCrypt.Crypto.SecureCompilation.VIR.LatticeToJasmin

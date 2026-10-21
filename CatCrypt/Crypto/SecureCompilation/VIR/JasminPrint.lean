@@ -19,12 +19,12 @@ public import CatCrypt.Crypto.Jasmin.LowCTToJasmin
 This module builds on `JasminDialect.lean`. It defines a verified,
 structured AST → structured AST lowering from CatCrypt's typed-SSA VIR
 (`Com jasminDialect Γ t`) to the Jasmin program AST
-(`CatCrypt.Crypto.Jasmin.JasminProg`). The `.jazz` *text* is produced by the
-existing, already-tested `ppJasminProg` printer — so this file's job ends at
-producing a `JasminProg`; no string-munging happens here.
+(`CatCrypt.Crypto.Jasmin.JasminProg`). The module produces a `JasminProg`; the
+`.jazz` text of a dialect program is produced by the single printer
+(`JasminPrintText.emitJazzN`).
 
 ```
-Com[jasminDialect]  ──lowerComToProg──▶  JasminProg (AST)  ──ppJasminProg──▶ .jazz
+Com[jasminDialect]  ──lowerComToProg──▶  JasminProg (AST)
 ```
 
 The lowering emits the AST, not text: the reg-vs-stack and width distinctions
@@ -70,14 +70,13 @@ a single named accumulator, the standard Jasmin idiom) is documented at
 
 ## Status
 
-Printer + smoke (`.jazz` text emitted, structural facts `decide`/`rfl`-checked)
+Lowering (structural facts `decide`/`rfl`-checked)
 + bounded-for loop. All goals closed; standard axioms only.
 
 ## Frozen text printers
 
-The text functions of this module (`ppExportInstr`, `ppExportFn`, `emitJazz`,
-`JForProg.toJazzExport`) are frozen: they are kept unchanged for the bench drivers that
-call them. New Jasmin text is produced by the single printer, `Jazz.printChecked`, through
+The text function `JForProg.toJazzExport` is frozen: it is kept unchanged for the bench
+drivers that call it. New Jasmin text is produced by the single printer, `Jazz.printChecked`, through
 `JasminPrintText.emitJazzN` on the lowering `nfToJasmin`. The lowering `lowerComToProg`
 and `JForProg` are not printers and are not frozen.
 -/
@@ -538,148 +537,6 @@ def lowerComToProg {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
       body := body
       results := [mkVarI resName t] }
   { funcs := [fd] }
-
-/-! ### A jasminc-compilable `export fn` scaffold
-
-`ppJasminProg` (the shared LowCT printer) emits a bare
-`fn name(ty p0, …) -> (res) { … }` — fine for structural inspection, but **not**
-directly feedable to `jasminc`: it lacks the `export` keyword, the `reg`/`reg ptr`
-storage qualifiers on parameters, the local register declarations for the body's
-SSA temporaries (`v0, v1, …`), and a `return`. The functions below wrap the same
-lowered `JasminProg` in a real `export fn … { reg uW vN; …; <body>; return res; }`
-so the emitted `.jazz` compiles with `jasminc -arch x86-64` as-emitted. The body is
-the **actual** lowered instruction list printed by the shared `ppInstrR` (the same
-text the structural proofs reason about — only the surrounding scaffold is added).
-
-Scope: scalar `reg w` kernels (the ChaCha QR / SHA-256 round components — all
-`reg w` params, a straight-line body, a single `reg w` result). Array/stack
-parameters fall back to `ppJasminProg`'s structural rendering. -/
-
-/-- Render a Jasmin `SType` as a jasminc storage-typed declaration fragment
-    (e.g. `reg u32`). Scalar word types get `reg uW`; everything else keeps the
-    structural `ppSType` rendering (used only on the fallback path). -/
-def regDeclTy (ty : SType) : String :=
-  match ty with
-  | .sword ws => "reg " ++ CatCrypt.Crypto.Jasmin.LowCT.ppWSize ws
-  | other => CatCrypt.Crypto.Jasmin.LowCT.ppSType other
-
-/-- Collect the `(name, SType)` of every register lvalue bound in a body, in
-    first-occurrence order (no duplicates). These are the SSA temporaries
-    (`v0, v1, …`) that need a local `reg uW vN;` declaration. `Lnone` discards
-    (the `#ROR_w` flag lvalues) are skipped — they need no declaration. -/
-def collectRegDecls : List InstrR → List (String × SType)
-  | [] => []
-  | instr :: rest =>
-      let here : List (String × SType) :=
-        match instr with
-        | .Cassgn (.Lvar v) _ _ _ => [(v.var.vname, v.var.vtype)]
-        | .Copn lvs _ _ _ =>
-            lvs.filterMap (fun lv => match lv with
-              | .Lvar v => some (v.var.vname, v.var.vtype)
-              | _ => none)
-        | .Ccall _ lvs _ _ =>
-            lvs.filterMap (fun lv => match lv with
-              | .Lvar v => some (v.var.vname, v.var.vtype)
-              | _ => none)
-        | _ => []
-      let restDecls := collectRegDecls rest
-      -- prepend the new ones not already present deeper in the body
-      here.foldr (fun nt acc =>
-        if acc.any (fun p => p.1 == nt.1) then acc else nt :: acc) restDecls
-
-/-- Is a parameter / result list entirely scalar `sword` registers? Only then do
-    we emit the `export fn` scaffold (the array/stack case keeps the structural
-    fallback). -/
-def allScalarReg (vis : List VarI) : Bool :=
-  vis.all (fun vi => match vi.var.vtype with | .sword _ => true | _ => false)
-
-/-- Render one scalar-register instruction in jasmin's **two-address load-first**
-    form, the idiom jasminc x86 register-allocation accepts.
-
-    `ppCmd` would render `Cassgn dst _ _ (Papp2 op a b)` as the *expression* form
-    `dst = (a op b);`. jasminc compiles `&`/`^`/`>>`/`<<`/`+`/… as flag-clobbering
-    two-address ops, so when both operands are still live (e.g. SHA-256 `Ch` reads
-    `e` twice) it tries to merge `dst` with an operand register and fails register
-    allocation. The accepted idiom (matching the hand-written `bench/*/gen/*.jazz`
-    and `JasminAbiEmit.renderRegArith`) loads the first operand into `dst` first,
-    then computes in place: `dst = a; dst = dst op b;`. Unary forms (`#ROR_w`,
-    casts, the `andn` complement) and plain copies are passed through. -/
-def ppExportInstr (ind : Nat) : InstrR → String
-  | .Cassgn (.Lvar dst) _ _
-      (.Papp2 (.Oland _) (.Papp1 (.Olnot _) a) b) =>
-      -- BMI1 `andn` = `(!a) & b`: `dst = a; dst = !dst; dst = dst & b;`.
-      let d := dst.var.vname
-      CatCrypt.Crypto.Jasmin.LowCT.indent ind (d ++ " = " ++
-        CatCrypt.Crypto.Jasmin.LowCT.ppPExpr a ++ ";") ++ "\n" ++
-      CatCrypt.Crypto.Jasmin.LowCT.indent ind (d ++ " = !" ++ d ++ ";") ++ "\n" ++
-      CatCrypt.Crypto.Jasmin.LowCT.indent ind (d ++ " = " ++ d ++ " & " ++
-        CatCrypt.Crypto.Jasmin.LowCT.ppPExpr b ++ ";")
-  | .Cassgn (.Lvar dst) _ _ (.Papp2 op a b) =>
-      -- Plain binary op: `dst = a; dst = dst <op> b;`.
-      let d := dst.var.vname
-      CatCrypt.Crypto.Jasmin.LowCT.indent ind (d ++ " = " ++
-        CatCrypt.Crypto.Jasmin.LowCT.ppPExpr a ++ ";") ++ "\n" ++
-      CatCrypt.Crypto.Jasmin.LowCT.indent ind (d ++ " = " ++ d ++ " " ++
-        CatCrypt.Crypto.Jasmin.LowCT.ppSOp2 op ++ " " ++
-        CatCrypt.Crypto.Jasmin.LowCT.ppPExpr b ++ ";")
-  | .Copn [.Lnone _ _, .Lnone _ _, .Lvar dst] _ (.Oasm op) [src, amt] =>
-      -- Flag-clobbering rotate `#ROR_w`: also two-address. Load the source into
-      -- `dst` first, then rotate in place: `dst = src; _, _, dst = #ROR_w(dst, n);`.
-      let d := dst.var.vname
-      CatCrypt.Crypto.Jasmin.LowCT.indent ind (d ++ " = " ++
-        CatCrypt.Crypto.Jasmin.LowCT.ppPExpr src ++ ";") ++ "\n" ++
-      CatCrypt.Crypto.Jasmin.LowCT.indent ind ("_, _, " ++ d ++ " = #" ++
-        op.name ++ "(" ++ d ++ ", " ++
-        CatCrypt.Crypto.Jasmin.LowCT.ppPExpr amt ++ ");")
-  | instr =>
-      -- Unary (`#ROR_w`, casts, copies, calls): the shared printer already
-      -- emits an accepted single-instruction form.
-      CatCrypt.Crypto.Jasmin.LowCT.ppInstrR ind instr
-
-/-- Render a lowered single-function `JasminProg` as a jasminc-compilable
-    `export fn`. Falls back to `ppJasminProg` for non-scalar (array/stack) shapes
-    or a multi-function program. -/
-def ppExportFn (prog : JasminProg) : String :=
-  match prog.funcs with
-  | [fd] =>
-    if allScalarReg (fd.params.map (·.var)) && allScalarReg fd.results then
-      let params := String.intercalate ", "
-        (fd.params.map (fun p =>
-          regDeclTy p.var.var.vtype ++ " " ++ p.var.var.vname))
-      let retTy := String.intercalate ", "
-        (fd.results.map (fun r => regDeclTy r.var.vtype))
-      let retNames := String.intercalate ", " (fd.results.map (fun r => r.var.vname))
-      -- declare the body's SSA temporaries that are not already parameters
-      let paramNames := fd.params.map (fun p => p.var.var.vname)
-      let decls := (collectRegDecls fd.body).filter (fun nt => ¬ paramNames.contains nt.1)
-      let declStr := String.intercalate "\n"
-        (decls.map (fun nt => "  " ++ regDeclTy nt.2 ++ " " ++ nt.1 ++ ";"))
-      let declBlock := if decls.isEmpty then "" else declStr ++ "\n"
-      -- Render the body in jasmin two-address load-first form (jasminc-accepted).
-      let body := String.intercalate "\n" (fd.body.map (ppExportInstr 2))
-      "export fn " ++ fd.name.name ++ "(" ++ params ++ ") -> " ++ retTy ++ " {\n" ++
-      declBlock ++ body ++ "\n" ++ "  return " ++ retNames ++ ";\n}"
-    else
-      CatCrypt.Crypto.Jasmin.LowCT.ppJasminProg prog
-  | _ => CatCrypt.Crypto.Jasmin.LowCT.ppJasminProg prog
-
-/-- **`.jazz` TEXT — for jasminc-comparison benchmarking / interop ONLY, NOT the
-    canonical artifact.** The deployed output is the owned `.s` emitted by the
-    verified x86 backend (`Com → toLprogPhysAbi → renderLprogAtt`, i.e.
-    `LprogOptPipeline.renderOwned`); the `.jazz` produced here exists so the
-    classic jasmin compiler (`jasminc`, an EXTERNAL toolchain) can lower the same
-    emitted `Com` for a head-to-head cycle comparison. Never treat a `.jazz`
-    (or the fact that a bench registry names one) as the deployed emit: `jasminc`
-    is an external toolchain, and the deployed artifact is the AST-direct owned
-    emit.
-
-    Convenience: lower + pretty-print to jasminc-compilable `.jazz` text. For a
-    scalar `reg w` kernel this is the `export fn … { … return … }` scaffold
-    (compiles with `jasminc -arch x86-64` as-emitted); other shapes fall back to
-    the structural `ppJasminProg`. This is the only text-producing step. -/
-def emitJazz {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty}
-    (name : String) (com : Com jasminDialect Γ t) : String :=
-  ppExportFn (lowerComToProg name com)
 
 /-! ## 7. Bounded for-loop (`JForProg`)
 

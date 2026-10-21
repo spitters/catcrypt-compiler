@@ -21,7 +21,7 @@ into the typed Jasmin dialect `Com jasminDialect`.
 ```
 LowCT ──translateDialectControlTop──▶ Com catCryptDialect
       ──cryptoDialectToJasminCom──────▶ Com jasminDialect
-      ──JasminPrint.emitJazz──────────▶ .jazz
+      ──JasminPrintText.emitJazzN─────▶ .jazz
 ```
 
 The `lowCTToJasminComD` front composes
@@ -105,10 +105,8 @@ over two `reg 64` inputs, checked by `native_decide`.
 
 ## Frozen text printers
 
-This module defines no text printer. Its smoke checks print through
-`JasminPrint.emitJazz`, which is frozen for the bench drivers that call it; new Jasmin
-text is produced by the single printer, `Jazz.printChecked`, through
-`JasminPrintText.emitJazzN`.
+This module defines no text printer. Jasmin text is produced by the single printer,
+`Jazz.printChecked`, through `JasminPrintText.emitJazzN`.
 -/
 
 @[expose] public section
@@ -926,10 +924,6 @@ theorem addComCD_isSome : (cryptoDialectToJasminCom addComCD).isSome := by
 def addComJ : Com jasminDialect [.reg 64, .reg 64] (.reg 64) :=
   (cryptoDialectToJasminCom addComCD).get addComCD_isSome
 
-/- The lowered program emits a `+` in `.jazz`, end-to-end through the
-    `JasminPrint.emitJazz` printer. -/
-#guard (JasminPrint.strContains (JasminPrint.emitJazz "fp_add_arith_d" addComJ) "+")
-
 /-- Two parameters (the two `reg 64` inputs) and one body instruction. -/
 theorem addComJ_shape :
     ((JasminPrint.lowerComToProg "fp_add_arith_d" addComJ).funcs.head?.map
@@ -948,10 +942,6 @@ def extComCD : Com catCryptDialect [.sword 64, .sword 64] (.sword 64) :=
 /-- The extern dialect kernel lowers. -/
 theorem extComCD_isSome : (cryptoDialectToJasminCom extComCD).isSome := by
   native_decide
-
-/- The lowered `extCall` program names `fp_add` in `.jazz` (the leaf survives
-    the whole `Com catCryptDialect → Com jasminDialect → .jazz` chain). -/
-#guard (JasminPrint.strContains (JasminPrint.emitJazz "fp_add_ext_d" ((cryptoDialectToJasminCom extComCD).get extComCD_isSome)) "fp_add")
 
 end SmokeTest
 

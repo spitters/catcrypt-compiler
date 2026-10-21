@@ -23,11 +23,8 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.SarCount
 
 Dialect map, lowering status and upstream lineage: `VIR/DIALECTS.md`.
 
-`JasminPrint.emitJazz` (via `ppJasminProg`) prints a *simplified* pseudo-jasmin
-(`fn f(u8[512] p0) …`) that jasminc rejects: array parameters need a storage
-class and a pointer ABI, and arrays cannot be passed/returned by value. This
-file is an **additive** emitter (it does not touch the existing printers) that
-maps a `Com jasminDialect` whose ops are `extCall` leaves — exactly the shape
+Jasmin array parameters need a storage class and a pointer ABI, and arrays cannot be
+passed or returned by value. This file is an emitter that maps a `Com jasminDialect` whose ops are `extCall` leaves — exactly the shape
 `LatticeToJasmin.lowerLatticeToJasmin` produces — to *jasminc-valid* text using
 the standard in-place pointer ABI:
 
@@ -41,9 +38,7 @@ the standard in-place pointer ABI:
 
 Stub leaf bodies (`return a0;`) are emitted so the orchestration compiles
 self-contained; replacing them with real NTT leaves (e.g. formosa) is the link
-step for a full bench. This closes the "verified pipeline's own text compiles
-through jasminc" gap for the NTT-multiply route; folding this ABI into
-`ppJasminProg` + SSA liveness is outside the scope of this module.
+step for a full bench.
 
 ## Frozen text printers
 

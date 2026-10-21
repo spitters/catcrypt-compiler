@@ -33,13 +33,12 @@ AUCurves' `rust_cmd`.
 * §3  State encoding bridge (`rustStateToHeap`)
 * §4  Simulation theorem (`rustExecSimulates`)
 * §5  Concrete programs (G1 add/dbl, G2 add)
-* §6  Pretty-printer — `ppInstrR`, `ppCmd`, `ppFunDecl`, `ppJasminProg`
+* §6  Pretty-printer — `ppInstrR`, `ppCmd`
 
 ## Frozen text printers
 
-The text printers of §6 (`ppJasminProg` and the functions it calls) are frozen: they are
-kept unchanged for the bench drivers that print through them, by way of
-`VIR/JasminPrint.emitJazz` and `JForProg.toJazzExport`. New Jasmin text is produced by the
+The text printers of §6 (`ppInstrR` and `ppCmd`) are frozen: they are kept unchanged for
+the bench drivers that print through them, by way of `JForProg.toJazzExport`. New Jasmin text is produced by the
 single printer, `Jazz.printChecked`, and its entries `JasminPrintText.emitJazzN`,
 `emitJazzOuts`, `emitJazzInOuts` and `JasminAbiJazz.emitAbiOrchJ`. The lowering
 `toJasminCmd` is not a printer and is not frozen.
@@ -4212,18 +4211,6 @@ mutual
     | [] => ""
     | instrs => String.intercalate "\n" (instrs.map (ppInstrR ind))
 end
-
-/-- Pretty-print a `FunDecl`. -/
-def ppFunDecl (fd : FunDecl) : String :=
-  let params := String.intercalate ", "
-    (fd.params.map (fun p => ppSType p.var.var.vtype ++ " " ++ p.var.var.vname))
-  let results := String.intercalate ", " (fd.results.map (fun r => r.var.vname))
-  let body := ppCmd 2 fd.body
-  "fn " ++ fd.name.name ++ "(" ++ params ++ ") -> (" ++ results ++ ") {\n" ++ body ++ "\n}"
-
-/-- Pretty-print a full `JasminProg`. -/
-def ppJasminProg (prog : JasminProg) : String :=
-  String.intercalate "\n\n" (prog.funcs.map ppFunDecl)
 
 end Printer
 

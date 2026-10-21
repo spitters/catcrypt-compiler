@@ -1376,7 +1376,7 @@ def ownedLprog (p : Lprog)
     map and memory as the source. This optimizes a loop body — a straight-line run
     between labels and jumps — with a proven guarantee, where the earlier
     per-function guard left any control-flow body unoptimized. The `.jazz` text
-    path (`JasminPrint.emitJazz`) is the jasminc-comparison/interop side and does
+    path (`JasminPrintText.emitJazzN`) is the jasminc-comparison/interop side and does
     NOT go through this.
 
     Between the optimizer and the printer, `ownedLprog` applies

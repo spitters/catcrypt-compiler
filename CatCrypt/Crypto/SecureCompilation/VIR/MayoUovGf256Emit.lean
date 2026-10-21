@@ -20,7 +20,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 `MayoUovGf256CatCryptEmit.lean` lowers the GF(2⁸) bit-serial MAC step
 (`gf256StepAccCom 0`) from the high `catCryptDialect` down to a
 `Com jasminDialect` (`gf256MacStepJasmin`) and emits it through the
-*testing/comparison* path (`emitJazz` → jasminc). This file emits the **same**
+*testing/comparison* path (`.jazz` text → jasminc). This file emits the **same**
 lowered `Com jasminDialect` through the **owned** x86 backend instead:
 
 ```

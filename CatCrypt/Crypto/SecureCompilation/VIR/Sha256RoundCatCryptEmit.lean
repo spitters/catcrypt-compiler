@@ -38,7 +38,7 @@ prints to `.jazz` through the single Jasmin printer (`JasminPrintText.emitJazzN`
 FIPS 180-4 §4.1.2  Σ₀/Σ₁/Ch/Maj  (CatCrypt.Util.Sha256Verified.*, the spec)
         ▲                              ▲
         │ denote = spec                │ denote = spec  (via the seam)
-   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazz──▶ .jazz/x86
+   Com catCryptDialect ──cryptoDialectToJasminCom──▶ Com jasminDialect ──emitJazzN──▶ .jazz/x86
 ```
 
 ## The op fragment used

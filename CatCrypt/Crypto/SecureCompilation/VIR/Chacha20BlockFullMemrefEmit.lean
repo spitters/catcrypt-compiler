@@ -21,7 +21,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
 two-memref-pointer context `(out, in)` — from the high `catCryptDialect` to
 `Com jasminDialect` (`chacha20BlockFullMemrefJasmin`, with the input reads as
 `stackLoad` and the output stores as `stackStore`), and emits it through the
-*testing/comparison* path (`emitJazz` → jasminc). This file emits the **same**
+*testing/comparison* path (`.jazz` text → jasminc). This file emits the **same**
 lowered `Com jasminDialect` through the **owned** x86 backend:
 
 ```
