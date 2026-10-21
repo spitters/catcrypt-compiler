@@ -21,7 +21,10 @@ the rewrite.
 ## Main definitions
 
 * `StructsAgree` — struct specifications whose names have, under a field layout, the struct
-  roles of their leaves, and a table that covers every name with a struct role
+  roles of their leaves, and a table that covers every name with a struct role. `structHead?`
+  classifies a head by equality with the names the layout generates, so a non-canonical
+  spelling of a struct name has no struct role and needs no entry in the table.
+* `pairSpec` — the specification of the two-field struct of `pairLayout`
 
 ## Main results
 
@@ -29,6 +32,8 @@ the rewrite.
   call on arguments without a control-flow value as `structBi sf base` does
 * `fnCorres_tStructToTuple` — a function correspondence of a struct term under `S` is one of
   its rewrite under `T`, when `StructTab sf S T` and the term never reads the reserved name.
+* `structsAgree_pairLayout` — `pairSpec` agrees with `pairLayout`, so `structTab_structsTable`
+  applies at the two-field struct `P`.
 -/
 
 @[expose] public section
@@ -138,5 +143,76 @@ example (base : Builtins) :
   simp [pairCtorTerm, TExpr.erase, denote', denoteApp', denoteArgs', structBi, hc,
     bindParams, enc]
   rfl
+
+/-- The specification of the struct `P` of `pairLayout`: its constructor, the projections
+    `P.a`, `.a`, `P.b` and `.b`, and two fields. -/
+def pairSpec : StructSpec :=
+  { name := "P", arity := 2, projs := [("P.a", 0), (".a", 0), ("P.b", 1), (".b", 1)] }
+
+/-- The specification `pairSpec` agrees with the layout `pairLayout`. -/
+theorem structsAgree_pairLayout : StructsAgree pairLayout [pairSpec] := by
+  have hu : ∀ i, structUpdateHead "P" i 2 =
+      "struct_update#" ++ ("P" ++ ("#" ++ (Nat.repr i ++ ("#" ++ Nat.repr 2)))) := by
+    intro i
+    unfold structUpdateHead
+    simp only [toString, String.append_assoc]
+  have r0 : Nat.repr 0 = "0" := by
+    rw [Nat.repr_of_lt (by omega), Nat.digitChar_eq_zero.2 rfl]
+    decide
+  have r1 : Nat.repr 1 = "1" := by
+    rw [Nat.repr_of_lt (by omega), Nat.digitChar_eq_one.2 rfl]
+    decide
+  have r2 : Nat.repr 2 = "2" := by
+    rw [Nat.repr_of_lt (by omega), Nat.digitChar_eq_two.2 rfl]
+    decide
+  have u0 : structUpdateHead "P" 0 2 = "struct_update#P#0#2" := by
+    rw [hu, r0, r2]
+    decide
+  have u1 : structUpdateHead "P" 1 2 = "struct_update#P#1#2" := by
+    rw [hu, r1, r2]
+    decide
+  refine ⟨?_, fun f hf => ?_⟩
+  · intro s hs
+    simp only [List.mem_singleton] at hs
+    subst hs
+    refine ⟨by decide, by decide, fun i hi => ?_⟩
+    match i, hi with
+    | 0, _ =>
+      show structHead? pairLayout (structUpdateHead "P" 0 2) = some (.update 0 2)
+      simp [structHead?, structUpdateRole?, pairLayout, List.lookup, List.range,
+        List.range.loop, u0]
+    | 1, _ =>
+      show structHead? pairLayout (structUpdateHead "P" 1 2) = some (.update 1 2)
+      simp [structHead?, structUpdateRole?, pairLayout, List.lookup, List.find?, List.range,
+        List.range.loop, u0, u1]
+  · have hne : ∀ x, ((structsTable [pairSpec]).lookup x).isSome = true →
+        (f == x) = false ∧ (x == f) = false := fun x hx => by
+      have hfx : f ≠ x := by
+        rintro rfl
+        simp [hf] at hx
+      exact ⟨by simpa using hfx, by simpa using Ne.symm hfx⟩
+    have hT : ∀ x, ((structsTable [pairSpec]).lookup x).isSome =
+        ((structsTable [pairSpec]).map Prod.fst).contains x := by
+      intro x
+      simp only [structsTable, List.flatMap_cons, List.flatMap_nil, List.append_nil]
+      induction (pairSpec.table) with
+      | nil => rfl
+      | cons p t ih =>
+        simp only [List.lookup, List.map_cons, List.contains_cons]
+        cases h : x == p.1 <;> simp_all
+    simp [structHead?, structUpdateRole?, structFieldRole?, pairLayout, List.lookup, List.find?,
+      List.range, List.range.loop, List.findIdx?, List.findIdx?.go, List.filter, List.any, u0, u1,
+      (hne "P" (by decide)).1, (hne "P.a" (by decide)).2, (hne "P.b" (by decide)).2,
+      (hne ".a" (by decide)).2, (hne ".b" (by decide)).2,
+      (hne "struct_update#P#0#2" (by rw [hT]; simp [structsTable, StructSpec.table, pairSpec,
+        List.range, List.range.loop, u0, u1])).2,
+      (hne "struct_update#P#1#2" (by rw [hT]; simp [structsTable, StructSpec.table, pairSpec,
+        List.range, List.range.loop, u0, u1])).2]
+
+/-- The struct leaves of `pairSpec` over `base` answer every call on arguments without a
+    control-flow value as the struct heads of `pairLayout` over `base` do. -/
+example (base : Builtins) :
+    StructTab pairLayout ((structsTable [pairSpec]).over base) base :=
+  structTab_structsTable pairLayout [pairSpec] base structsAgree_pairLayout (by decide)
 
 end Hax.Ascent
