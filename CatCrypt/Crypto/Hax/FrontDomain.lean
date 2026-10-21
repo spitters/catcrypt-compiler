@@ -111,8 +111,8 @@ def tyName : NfTy → String
 
 /-- **A construct `impToNF` does not accept.** -/
 inductive Refusal where
-  /-- An expression whose constructor has no arm in `impToNF`: a closure, a projection, a
-      `match`, a borrow, an exit, or a loop other than `forFold` and `forFoldRev`. -/
+  /-- An expression whose constructor has no arm in `impToNF`: a closure, a `match`, a
+      borrow, an exit, or a loop other than `forFold` and `forFoldRev`. -/
   | construct (head : String)
   /-- A name the environment of names does not bind. -/
   | unbound (x : String)
@@ -144,6 +144,9 @@ inductive Refusal where
   /-- A call of `repeat` whose count is not an integer literal in `[0, 2 ^ 64)`; `impToNF`
       translates a call of `repeat` only at such a count (`repeatArgs?`). -/
   | arrayFill
+  /-- A projection of the component `i` of a value of the type `t` that is not a tuple type
+      with more than `i` components (`projOut`). -/
+  | projection (t : NfTy) (i : Nat)
 
 /-- The rendering of a refusal. -/
 def Refusal.toString : Refusal → String
@@ -165,6 +168,7 @@ def Refusal.toString : Refusal → String
   | .armTypes a b => s!"arms of types {tyName a} and {tyName b}"
   | .armCarried x => s!"name {x} changes type in an arm"
   | .arrayFill => "array fill (call repeat)"
+  | .projection t i => s!"projection {i} of a value of type {tyName t}"
 
 instance : ToString Refusal := ⟨Refusal.toString⟩
 
@@ -398,6 +402,8 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .tuple es => (atomsE σ es).map fun oa =>
       let r := tupleOut tgt oa.as oa.vs
       Out.mk r.fst (tupTy oa.as) (oa.pre.append r.snd.fst) (oa.σ.mapV r.snd.fst.wk) r.snd.snd
+  | tgt, _, σ, .proj e i => (frontOut sigOf none σ e).bind fun oe =>
+      orRefuse (.projection oe.t i) ((projOut tgt oe.σ oe.t oe.res i).map oe.comp)
   | tgt, _, σ, .forFold i lo hi body => (loE σ lo).bind fun eLo =>
       let oLo := loBind σ eLo
       (atomE oLo.σ hi).bind fun oHi =>
@@ -490,6 +496,9 @@ theorem toOption_frontOut (sigOf : String → List NfTy → Option NfTy) (e : Im
   case tuple es _ =>
     intro tgt Γ σ
     simp only [frontOut, impToNF, toOption_map, toOption_atomsE]
+  case proj e i ih =>
+    intro tgt Γ σ
+    simp only [frontOut, impToNF, toOption_bind, toOption_orRefuse, ih]
   case forFold i lo hi body _ _ ihb =>
     intro tgt Γ σ
     simp only [frontOut, impToNF, toOption_bind, loE, atomE, toOption_orRefuse]
@@ -809,6 +818,29 @@ theorem impArgsNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (args 
       simp only [opsPre_append, ih e List.mem_cons_self none σ o ho,
         ihes (fun a ha => ih a (List.mem_cons_of_mem _ ha)) o.σ os hos, Bool.and_self]
 
+/-- The bindings of `projOut` have no integer literal. -/
+theorem projOut_ilitWord (tgt : Option String) (i : Nat) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (t : NfTy) (x : Var Γ t) {o : Out Γ},
+      projOut tgt σ t x i = some o → opsPre ilitWordOp o.pre = true := by
+  induction i with
+  | zero =>
+      intro Γ σ t x o h
+      cases t with
+      | tcons h₀ t =>
+          simp only [projOut, Option.some.injEq] at h
+          subst h
+          simp [opsPre_bind1N, ilitWordOp]
+      | _ => simp [projOut] at h
+  | succ i ih =>
+      intro Γ σ t x o h
+      cases t with
+      | tcons h₀ t =>
+          simp only [projOut, Option.map_eq_some_iff] at h
+          obtain ⟨o₂, ho₂, rfl⟩ := h
+          simp only [Out.comp, opsPre_append, opsPre_bind1, ih _ _ _ ho₂, ilitWordOp,
+            Bool.and_self]
+      | _ => simp [projOut] at h
+
 /-- **The integer literals of the front's output**: every integer literal of a prefix
     `impToNF` returns lies in `[0, 2 ^ 64)`, at the integer type, at the `64`-bit words or at
     an unsigned width of at most `64` bits. -/
@@ -863,6 +895,12 @@ theorem impToNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (e : Imp
     simp only [impToNF, Option.map_eq_some_iff] at h
     obtain ⟨oa, hoa, rfl⟩ := h
     simp only [opsPre_append, argsOut_ilitWord es σ hoa, tupleOut_ilitWord, Bool.and_self]
+  case proj e i ih =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨oe, hoe, op, hop, rfl⟩ := h
+    simp only [Out.comp, opsPre_append, ih _ _ _ hoe, projOut_ilitWord tgt i _ _ _ hop,
+      Bool.and_self]
   case forFold i lo hi body _ _ ihb =>
     intro tgt Γ σ o h
     simp only [impToNF, Option.bind_eq_some_iff] at h

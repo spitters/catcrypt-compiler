@@ -359,6 +359,17 @@ def tupleOut : {Γ : Ctxt nfDialect} → (tgt : Option String) → (as : List Nf
         (r.snd.fst.append (.var (mkEN tgt (.tconsV a (tupTy as))
           (.cons (r.snd.fst.wk v) (.cons r.snd.snd .nil))) .nil), .here)
 
+/-- The bindings projecting the component `i` of the variable `x` of the tuple type `t`: `i`
+    bindings of `ttail`, then one binding of `thead` with the source name `tgt`. It is `none`
+    when `t` is not a tuple type with more than `i` components. -/
+def projOut (tgt : Option String) : {Γ : Ctxt nfDialect} → NfEnv Γ → (t : NfTy) → Var Γ t →
+    Nat → Option (Out Γ)
+  | _, σ, .tcons h t, x, 0 => some (bind1N tgt σ (.thead h t) (.cons x .nil))
+  | _, σ, .tcons h t, x, i + 1 =>
+      let o := bind1 σ (.ttail h t) (.cons x .nil)
+      (projOut tgt o.σ t o.res i).map o.comp
+  | _, _, _, _, _ => none
+
 /-- The first `cs.length` variables of `cs ++ Γ`, in order. -/
 def headVars {Γ : Ctxt nfDialect} :
     (cs : List NfTy) → HVector (fun t => Var (d := nfDialect) (cs ++ Γ) t) cs
@@ -568,6 +579,10 @@ mutual
 
     A call of `repeat` is `none`, and a call of any other name is typed by `sigOf`.
 
+    A projection `proj e i` translates `e` and then projects its value by `projOut`: `i`
+    bindings of `ttail` and one of `thead`. A projection of a value whose type is not a tuple
+    type with more than `i` components is `none`.
+
     The lower bound of a counted loop is bound as an integer first (`loOut`, `loBind`): a
     literal by `ilit`, a variable by `boundInt`.
 
@@ -609,6 +624,8 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
   | tgt, _, σ, .tuple es => (argsOut σ es).map fun oa =>
       let r := tupleOut tgt oa.as oa.vs
       Out.mk r.fst (tupTy oa.as) (oa.pre.append r.snd.fst) (oa.σ.mapV r.snd.fst.wk) r.snd.snd
+  | tgt, _, σ, .proj e i => (impToNF sigOf none σ e).bind fun oe =>
+      (projOut tgt oe.σ oe.t oe.res i).map oe.comp
   | tgt, _, σ, .forFold i lo hi body => (loOut σ lo).bind fun eLo =>
       let oLo := loBind σ eLo
       (atomOut oLo.σ hi).bind fun oHi =>
@@ -1435,6 +1452,72 @@ theorem tuple_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfT
       show PDen bi tf (oa.pre.append p) V = _
       rw [PDen_append, hW, Option.bind_some]
       exact hW2
+
+/-- `projOut` translates a projection only of a tuple type with a first component. -/
+theorem projOut_tcons {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {t : NfTy}
+    {x : Var Γ t} {i : Nat} {o : Out Γ} (h : projOut tgt σ t x i = some o) :
+    ∃ h₁ t₁, t = .tcons h₁ t₁ := by
+  cases t <;> cases i <;> simp [projOut] at h ⊢
+
+/-- The bindings of `projOut` denote, from a valuation related to an environment, a
+    valuation related to the same environment whose result variable encodes the component
+    `i` of the value of `x` (`Value.projIdx`). -/
+theorem projOut_sound (bi : Builtins) (tf : Nat) (tgt : Option String) (i : Nat) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (t : NfTy) (x : Var Γ t) {o : Out Γ},
+      projOut tgt σ t x i = some o → ∀ (env : Env) (V : Valuation Γ), EnvRel σ env V →
+      ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env W ∧
+        (enc t (x.lookup V)).projIdx i = some (enc o.t (o.res.lookup W)) := by
+  induction i with
+  | zero =>
+      intro Γ σ t x o h env V hrel
+      cases t with
+      | tcons h₀ t =>
+          simp only [projOut, Option.some.injEq] at h
+          subst h
+          refine ⟨V.extend (x.lookup V).1, ?_,
+            hrel.mapV (fun v => Var.there v) fun _ _ => rfl, rfl⟩
+          rw [PDen_bind1N]; rfl
+      | _ => simp [projOut] at h
+  | succ i ih =>
+      intro Γ σ t x o h env V hrel
+      cases t with
+      | tcons h₀ t =>
+          simp only [projOut, Option.map_eq_some_iff] at h
+          obtain ⟨o₂, ho₂, rfl⟩ := h
+          obtain ⟨h₁, t₁, rfl⟩ := projOut_tcons ho₂
+          have hrel1 : EnvRel (bind1 σ (.ttail h₀ (.tcons h₁ t₁)) (.cons x .nil)).σ env
+              (V.extend (x.lookup V).2) :=
+            hrel.mapV (fun v => Var.there v) fun _ _ => rfl
+          obtain ⟨W, hW, hrel2, hp⟩ := ih _ (.tcons h₁ t₁) _ ho₂ env _ hrel1
+          refine ⟨W, ?_, hrel2, ?_⟩
+          · show PDen bi tf ((bind1 σ (.ttail h₀ (.tcons h₁ t₁)) (.cons x .nil)).pre.append
+              o₂.pre) V = _
+            rw [PDen_append, PDen_bind1]
+            exact hW
+          · exact hp
+      | _ => simp [projOut] at h
+
+/-- A projection of a sound output is sound. -/
+theorem proj_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (tgt : Option String) (e : ImpExpr) (i : Nat) {Γ : Ctxt nfDialect}
+    (σ : NfEnv Γ) {o : Out Γ} (h : impToNF sigOf tgt σ (.proj e i) = some o)
+    (he : ∀ {oe : Out Γ}, impToNF sigOf none σ e = some oe → Sound bi fuel e σ oe) :
+    Sound bi fuel (.proj e i) σ o := by
+  simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+  obtain ⟨oe, hoe, op, hop, rfl⟩ := h
+  intro env V v env' hrel hrun tf
+  obtain ⟨r, e1, h1⟩ := run_val_split (denote' bi fuel e) env
+  rw [_root_.Hax.InlineLocalClosures.proj_run, h1] at hrun
+  cases r with
+  | val ve =>
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := he hoe env V ve e1 hrel h1 tf
+      obtain ⟨W2, hW2, hrel2, hp⟩ := projOut_sound bi tf tgt i oe.σ oe.t oe.res hop e1 W1 hrel1
+      have hv : v = enc op.t (op.res.lookup W2) ∧ env' = e1 := by
+        grind [enc_ne_controlFlow]
+      obtain ⟨rfl, rfl⟩ := hv
+      exact ⟨W2, by show PDen bi tf (oe.pre.append op.pre) V = _; rw [PDen_append, hW1]; exact hW2,
+        hrel2, rfl⟩
+  | _ => cases hrun
 
 /-! ## 9. The carried names of a loop -/
 
@@ -2803,6 +2886,9 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     exact app_sound bi sigOf hT hR fuel tgt f args σ
       (fun e he _ σ' _ h' => iha e he none σ' h' fuel) h
   case tuple es _ => intro tgt Γ σ o h fuel; exact tuple_sound bi sigOf fuel tgt es σ h
+  case proj e i ih =>
+    intro tgt Γ σ o h fuel
+    exact proj_sound bi sigOf fuel tgt e i σ h fun h' => ih none σ h' fuel
   case unitVal =>
     intro tgt Γ σ o h fuel
     simp only [impToNF, Option.some.injEq] at h

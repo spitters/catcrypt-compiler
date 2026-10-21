@@ -25,7 +25,8 @@ leakages of its arguments, left to right, and then the call leakage `cl f vals` 
 the argument values `vals`, except a call of `repeat`, which leaves only the leakages of its
 arguments (`lsound_repeat`: the front translates it to the quiet `arrRepeat`); an
 assignment leaves the leakage of its right-hand side; a tuple
-the leakages of its components. The source leakage of the front `srcLeakNF` has the call
+the leakages of its components; a projection the leakage of its operand (`lsound_proj`: the
+front translates it to the quiet `ttail` and `thead`). The source leakage of the front `srcLeakNF` has the call
 leakage `nfCallLeak`, the event `op (callLeak f vals)`; `callLeak f vals` is the event list of
 the leakage model `nfLeakModel` for a call of `f`, read on the source values (`valNatOf`).
 
@@ -86,7 +87,8 @@ levels of the labels `nfLabels s` of the direct front (`impToNF_nfCTRel_params`)
 * `NFPre.leakRunE_plug`, `NFPre.leakRunE_append`, `NFPre.leakRunE_fst`
 * `CallLeak.nf_agrees`, `CallLeak.nf_opEv`, `nfLeakRunE_nf` — the call leakage of the front
 * the case lemmas `lsound_lit`, `lsound_atom`, `lsound_seq`, `lsound_letBind`,
-  `lsound_assign`, `lsound_args`, `lsound_repeat`, `lsound_app`, `lsound_tuple`, `lsound_cond`,
+  `lsound_assign`, `lsound_args`, `lsound_repeat`, `lsound_app`, `lsound_tuple`, `lsound_proj`,
+  `lsound_cond`,
   `loop_leak`, `forRevLeak_ge`, `loopRev_leak`, `quietPre_ctrOut`, `loopOut_leak`,
   `lsound_forFold`, `lsound_forFoldRev`
 * `forIterLeak_filter`, `whileIterLeak_filter`, `NFProg.leakRunM_filter`,
@@ -634,6 +636,7 @@ def srcLeakCl (bi : Builtins) (cl : String → List Value → SrcLeak) :
        | (some vals, _) => cl f vals
        | _ => .nil)
   | .tuple es, fuel, env => srcArgsLeakCl bi cl es fuel env
+  | .proj e _, fuel, env => srcLeakCl bi cl e fuel env
   | .ifThenElse c t e, fuel, env =>
     .cat (srcLeakCl bi cl c fuel env)
       (match (denote' bi fuel c).run env with
@@ -825,6 +828,29 @@ theorem quietPre_tupleOut (bi : Builtins) (tf : Nat) :
   | _, tgt, _ :: as, .cons _ vs =>
       QuietPre.append (quietPre_tupleOut bi tf none as vs)
         (QuietPre.var bi tf tgt _ (fun _ => rfl) _)
+
+/-- The bindings of `projOut` (`ttail` and `thead`) have no event. -/
+theorem quietPre_projOut (bi : Builtins) (tf : Nat) (tgt : Option String) (i : Nat) :
+    ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (t : NfTy) (x : Var Γ t) {o : Out Γ},
+      projOut tgt σ t x i = some o → QuietPre bi C tf o.pre := by
+  induction i with
+  | zero =>
+      intro Γ σ t x o h
+      cases t with
+      | tcons h₀ t =>
+          simp only [projOut, Option.some.injEq] at h
+          subst h
+          exact QuietPre.var bi tf tgt _ (fun _ => rfl) _
+      | _ => simp [projOut] at h
+  | succ i ih =>
+      intro Γ σ t x o h
+      cases t with
+      | tcons h₀ t =>
+          simp only [projOut, Option.map_eq_some_iff] at h
+          obtain ⟨o₂, ho₂, rfl⟩ := h
+          exact QuietPre.append (QuietPre.var bi tf none (.ttail h₀ t) (fun _ => rfl) _)
+            (ih _ _ _ ho₂)
+      | _ => simp [projOut] at h
 
 /-- The prefix of an atom has no event. -/
 theorem quietPre_atomOut (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} (σ : NfEnv Γ)
@@ -1172,6 +1198,35 @@ theorem lsound_tuple (bi : Builtins) (sigOf : String → List NfTy → Option Nf
   rw [hq]
   rw [show PDen bi tf (oa.pre.append (tupleOut tgt oa.as oa.vs).2.1) V = some W from hW]
   rfl
+
+/-- A projection of an output sound with leakage is sound with leakage: its bindings have no
+    event, and the source leakage of the projection is that of its operand. -/
+theorem lsound_proj (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
+    (fuel : Nat) (tgt : Option String) (e : ImpExpr) (i : Nat) {Γ : Ctxt nfDialect}
+    (σ : NfEnv Γ) {o : Out Γ} (h : impToNF sigOf tgt σ (.proj e i) = some o)
+    (he : ∀ {oe : Out Γ}, impToNF sigOf none σ e = some oe → LSound bi C fuel e σ oe) :
+    LSound bi C fuel (.proj e i) σ o := by
+  have hs := proj_sound bi sigOf fuel tgt e i σ h fun h' => (he h').sound
+  simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+  obtain ⟨oe, hoe, op, hop, rfl⟩ := h
+  intro env V v env' hrel hrun tf
+  obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+  refine ⟨W, ?_, hr, hv⟩
+  obtain ⟨r, e1, h1⟩ := run_val_split (denote' bi fuel e) env
+  rw [_root_.Hax.InlineLocalClosures.proj_run, h1] at hrun
+  cases r with
+  | val ve =>
+      obtain ⟨W1, hW1, -, -⟩ := he hoe env V ve e1 hrel h1 tf
+      have hW2 : PDen bi tf op.pre W1 = some W := by
+        have hW' : PDen bi tf (oe.pre.append op.pre) V = some W := hW
+        rw [PDen_append, PLeak_den hW1, Option.bind_some] at hW'
+        exact hW'
+      have hq : PLeak bi C tf op.pre W1 = some (W, []) := by
+        rw [quietPre_projOut bi tf tgt i _ _ _ hop W1, hW2]; rfl
+      show PLeak bi C tf (oe.pre.append op.pre) V = _
+      rw [PLeak_append_some hW1 hq, List.append_nil]
+      rfl
+  | _ => cases hrun
 
 /-- The simulation with leakage from the simulation and the events of the prefix: a prefix
     leakage run that succeeds ends at the valuation of the simulation. -/
@@ -1959,6 +2014,9 @@ theorem impToNF_lsound (bi : Builtins) (sigOf : String → List NfTy → Option 
     exact lsound_app bi sigOf hT hR hC fuel tgt f args σ
       (fun e he _ σ' _ h' => iha e he none σ' h' fuel) h
   case tuple es _ => intro tgt Γ σ o h fuel; exact lsound_tuple bi sigOf fuel tgt es σ h
+  case proj e i ih =>
+    intro tgt Γ σ o h fuel
+    exact lsound_proj bi sigOf fuel tgt e i σ h fun h' => ih none σ h' fuel
   case unitVal =>
     intro tgt Γ σ o h fuel
     simp only [impToNF, Option.some.injEq] at h

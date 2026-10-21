@@ -20,6 +20,7 @@ environment `Γ'`. The call typing is `S`. The judgement has one rule per arm of
 * a call of a name other than `repeat`, its arguments typed left to right (`FrontTyArgs`) at
   the types `as`, with `S f as = some r`;
 * a tuple of atoms (`AtomsTy`);
+* a projection of a component of a value of a tuple type (`tupProjTy`);
 * a counted loop `forFold` or `forFoldRev`: a lower bound `LoTy` accepts, an atom upper bound
   that `boundOk 0` or `litBoundOk 0` accepts, the body typed with the counter at the `64`-bit
   words in front of the carried names (`carriedTy`) and the names other than the counter, every
@@ -257,6 +258,13 @@ inductive LoTy (Γ : TyEnv) : ImpExpr → Prop
   | lit {n : Int} : 0 ≤ n ∧ n < 2 ^ 64 → LoTy Γ (.lit (.int n))
   | var {x : String} {t : NfTy} : Γ.lookup x = some t → loTyOk t = true → LoTy Γ (.var x)
 
+/-- The type of the component `i` of a value of the tuple type `t`, and `none` when `t` is not a
+    tuple type with more than `i` components. -/
+def tupProjTy : NfTy → Nat → Option NfTy
+  | .tcons h _, 0 => some h
+  | .tcons _ t, i + 1 => tupProjTy t i
+  | _, _ => none
+
 mutual
 /-- **The typing judgement of the front.** From the environment `Γ`, the expression has the
     type `t` and leaves the environment `Γ'`, at the call typing `S`. -/
@@ -279,6 +287,8 @@ inductive FrontTy (S : String → List NfTy → Option NfTy) :
       FrontTy S Γ (.app f args) r Γa
   | tuple {Γ : TyEnv} {es : List ImpExpr} {as : List NfTy} :
       AtomsTy Γ es as → FrontTy S Γ (.tuple es) (tupTy as) Γ
+  | proj {Γ Γ' : TyEnv} {e : ImpExpr} {i : Nat} {t h : NfTy} :
+      FrontTy S Γ e t Γ' → tupProjTy t i = some h → FrontTy S Γ (.proj e i) h Γ'
   | forFold {Γ Γb : TyEnv} {i : String} {lo hi body : ImpExpr} {th tb : NfTy} :
       LoTy Γ lo → AtomTy Γ hi th → (boundOk 0 th || litBoundOk 0 hi) = true →
       FrontTy S ((i, .word 64) :: loopEnvTy Γ i body) body tb Γb →
@@ -488,6 +498,33 @@ theorem condOut_of_carried {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect �
 
 /-! ## 5. A derivation gives an output -/
 
+/-- A projection at a component type `tupProjTy` gives is translated by `projOut`, to an
+    output of that type whose environment of names erases to the same environment. -/
+theorem projOut_of_tupProjTy (tgt : Option String) (i : Nat) :
+    ∀ (t : NfTy) {h : NfTy} {Δ : Ctxt nfDialect} (σ : NfEnv Δ) (x : Var Δ t),
+      tupProjTy t i = some h →
+      ∃ o, projOut tgt σ t x i = some o ∧ o.t = h ∧ tysOf o.σ = tysOf σ := by
+  induction i with
+  | zero =>
+      intro t h Δ σ x hp
+      cases t with
+      | tcons h₀ t =>
+          simp only [tupProjTy, Option.some.injEq] at hp
+          subst hp
+          exact ⟨_, rfl, rfl, by simp [bind1N]⟩
+      | _ => simp [tupProjTy] at hp
+  | succ i ih =>
+      intro t h Δ σ x hp
+      cases t with
+      | tcons h₀ t =>
+          simp only [tupProjTy] at hp
+          obtain ⟨o, ho, hot, hoσ⟩ := ih t (bind1 σ (.ttail h₀ t) (.cons x .nil)).σ
+            (bind1 σ (.ttail h₀ t) (.cons x .nil)).res hp
+          refine ⟨(bind1 σ (.ttail h₀ t) (.cons x .nil)).comp o,
+            by simp only [projOut, ho, Option.map_some], hot, ?_⟩
+          simp only [Out.comp, hoσ, bind1, tysOf_mapV]
+      | _ => simp [tupProjTy] at hp
+
 mutual
 /-- **A derivation gives an output of the front.** From an environment of names erasing to
     `Γ`, an expression with a derivation `FrontTy S Γ e t Γ'` is translated by `impToNF`, to an
@@ -537,6 +574,12 @@ theorem impToNF_out_of_frontTy {S : String → List NfTy → Option NfTy} {Γ Γ
       obtain ⟨oa, hoa, has, hσa⟩ := argsOut_of_atomsTy σ hes
       simp only [impToNF, hoa, Option.map_some]
       exact ⟨_, rfl, by simp [has], by simp [hσa]⟩
+  | .proj he hp =>
+      obtain ⟨oe, hoe, hot, hoσ⟩ := impToNF_out_of_frontTy he none σ hσ
+      obtain ⟨op, hop, hpt, hpσ⟩ := projOut_of_tupProjTy tgt _ _ oe.σ oe.res
+        (by rw [hot]; exact hp)
+      exact ⟨oe.comp op, by simp only [impToNF, hoe, hop, Option.bind_some, Option.map_some],
+        hpt, hpσ.trans hoσ⟩
   | .forFold (i := i) (body := body) (Γb := Γb) hlo hhi hb hbody hkeep =>
       subst hσ
       obtain ⟨eLo, hLo⟩ := loOut_of_loTy σ hlo

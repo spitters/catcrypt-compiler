@@ -619,8 +619,7 @@ theorem bindParams_run_leak (bi : Builtins) (F n : Nat) (vals : List Value)
         cases v <;> first | rfl | exact absurd rfl (hv _ _)
       · rw [bindParams, hleak]
         simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hproj]
-        rw [show nfTrace (SrcLeak.ev (SrcEv.opaque e'' (.proj (.var (tmpName n)) i))) = []
-          from rfl, List.nil_append]
+        rw [show nfTrace SrcLeak.nil = [] from rfl, List.nil_append]
         generalize vals[i] = v at hv ⊢
         cases v <;> first | rfl | exact absurd rfl (hv _ _)
       · intro x v hx
