@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
 public import HaxLean.Phase.WhileTrueFlag
@@ -26,6 +26,11 @@ body breaks becomes the exit-flag loop `exitLoop` on the slot `g`, followed by
   whose rewriting lies in the fragment `exitSimOk`, the result slot of the lowered
   function holds the decoding of the returned or final value of the body
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

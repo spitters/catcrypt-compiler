@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
 public import CatCrypt.Crypto.SecureCompilation.Ascent.SExprOrNot
@@ -88,6 +88,11 @@ of the product of the Barrett reductions of `a` and `b`, exact for `1 < p < 2^32
 * `denote_mulModChain`, `denote_mulModLet`, `denote_mulModCall` — both forms of
   the idiom run as the call `mulmod#64`.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

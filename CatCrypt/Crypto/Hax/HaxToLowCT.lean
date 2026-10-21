@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 import all Init.Data.Repr
 public meta import CatCrypt.Crypto.Hax.LowCTSubset
@@ -61,6 +61,11 @@ nesting requires the H2.1 follow-up.
 name prefix; a future pass should derive it from the missing `ImpType`
 annotation on let-bindings.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

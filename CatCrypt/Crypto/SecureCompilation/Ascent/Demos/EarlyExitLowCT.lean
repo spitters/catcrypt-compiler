@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.EarlyExit
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit -- deprecated_module: ignore
 public import CatCrypt.Crypto.Jasmin.LowCTNotation
 
 /-!

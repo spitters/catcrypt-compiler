@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLit
 
@@ -50,6 +50,11 @@ are unchanged.  `haxToLowCTA A e` is the lowering followed by the pass.
   `RustExec` step of `RScalarSetExpr x (SLimb v i)`, and the simulation of the
   binding from a simulation of its body.  `simScopeA` rejects the binding.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 
@@ -14,6 +14,11 @@ Provides reusable constructors for `LeafCallAgreesTower` instances.
 Concrete per-leaf instances (e.g., for `fp25519_add`, `scalar25519_mul`)
 are populated by per-protocol wiring; this module defines their shape.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

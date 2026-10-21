@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxExitLoopCT
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ExitTyped
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ExitTyped -- deprecated_module: ignore
 
 /-!
 # The typed exit-flag lowering preserves constant time

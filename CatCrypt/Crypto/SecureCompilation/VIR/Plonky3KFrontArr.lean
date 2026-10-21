@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerDenote
-public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim
+public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim -- deprecated_module: ignore
 
 /-!
 # BabyBear butterfly networks over array parameters, generated through the front

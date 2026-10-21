@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.LowCTToHax
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops -- deprecated_module: ignore
 
 /-!
 # Semantic agreement of `lowCTToImp` with `RustExec`

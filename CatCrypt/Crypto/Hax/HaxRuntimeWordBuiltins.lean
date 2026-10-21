@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim
+public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim -- deprecated_module: ignore
 
 /-!
 # The `u64` word table of hax-lean meets the word contracts

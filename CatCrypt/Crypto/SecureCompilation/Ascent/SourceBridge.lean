@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program -- deprecated_module: ignore
 public import CatCrypt.Crypto.SecureCompilation.Ascent.PipelineWeld
 
 /-!

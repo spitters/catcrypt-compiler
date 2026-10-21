@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Hax.ReifyImp
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor -- deprecated_module: ignore
 public import HaxLean.Phase.FunctionalizeLoopsCF
 
 /-!

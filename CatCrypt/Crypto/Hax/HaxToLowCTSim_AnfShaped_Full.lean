@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_AnfShaped
@@ -43,6 +43,11 @@ to close the full syntactic-to-semantic implication.  Unblocks the
 * `denoteForLoop_val_or_err`, `denote_forLoop_val_or_err` — outcome dichotomy
   for counted loops.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

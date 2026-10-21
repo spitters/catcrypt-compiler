@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTExitWordOpsValue
 public import CatCrypt.Crypto.SecureCompilation.Dialects.GuardedRouteSeq
@@ -42,6 +42,11 @@ from the check `setExprsAgreeBL` on the input (`agreeRunL_of_checks`); the Boole
 * `exitScalL_inRange`, `agreeRunL_of_checks` — the checks give the agreement condition.
 * `exitScalBL_sound` — an input accepted by `exitScalBL I` is related to its scalarisation.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxRuntimeWordBuiltins
 public import CatCrypt.Crypto.Hax.HaxToLowCTSignedOps
@@ -37,6 +37,11 @@ conversion may be words or signed values (`EnvRelS.read`).
   of the continuation.
 * `hax64Builtins_signedBuiltins` — `SignedBuiltins Hax.hax64Builtins`.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 set_option autoImplicit false

@@ -6,8 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 public import HaxLean.NF
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit -- deprecated_module: ignore
 
 /-!
 # The front's checked fragments lie in the normal form `NF`

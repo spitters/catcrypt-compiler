@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTStruct
 public import HaxAscent.Ascent.EarlyExit
@@ -90,6 +90,11 @@ function holds the decoding of the thrown or returned value (`excPayload`).
 * `haxToLowCTFn_corresX`, `haxToLowCTFn_fnCorresX` — the lowered function's result
   slot under `CorresX` and `FnCorresX`
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

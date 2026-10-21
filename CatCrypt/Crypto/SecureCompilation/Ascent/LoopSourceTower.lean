@@ -5,9 +5,9 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
+public meta import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program -- deprecated_module: ignore
 public meta import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 public import CatCrypt.Crypto.SecureCompilation.Ascent.KeystoneControl
 

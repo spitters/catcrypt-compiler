@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Match
@@ -35,6 +35,11 @@ Per-protocol instantiations supply this predicate for concrete
 primitives (e.g. `(carry, sum) = adcx(a, b, c_in)` for bignum schedules,
 or `(lo, hi) = mul64x64(a, b)` for wide multiplications).
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

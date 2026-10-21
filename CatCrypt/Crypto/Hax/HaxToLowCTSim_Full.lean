@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Quarta_LeafAgrees
@@ -43,6 +43,11 @@ that decodes to no scalar), and obtains the lowered run.
 * `simFull_runs`: the hypotheses hold for `let y = leaf(a); y` with the constant
   builtin table `simFullBuiltins`, and the lowered program runs.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

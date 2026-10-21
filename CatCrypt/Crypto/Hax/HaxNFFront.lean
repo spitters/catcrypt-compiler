@@ -6,13 +6,13 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxNFRel
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramTower
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLit
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramArr
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops
-public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Program -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramTower -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLit -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramArr -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramLoops -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit -- deprecated_module: ignore
 
 /-!
 # The simulation theorems of the `ImpExpr` front on the normal form `NF`

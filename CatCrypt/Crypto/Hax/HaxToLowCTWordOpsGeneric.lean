@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsLoop
 
@@ -41,6 +41,11 @@ the body's bindings at each trip index, and instantiates it at `mpn_mul_1` and
   `forFold_binds_sim`.
 * `andN_front_prog`, `andN_loop_sim` — the lowered `mpn_and_n` and its loop.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 set_option autoImplicit false

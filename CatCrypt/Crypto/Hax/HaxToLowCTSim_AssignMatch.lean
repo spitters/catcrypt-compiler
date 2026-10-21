@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 
@@ -14,6 +14,11 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
 * `match_ (app f args) [(tuplePat [varPat n1, varPat n2], body)]` →
   `RLetZero n1 dt (RLetZero n2 dt (RSeq (RCallSwap f d1 d2 args') bodyC))`
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

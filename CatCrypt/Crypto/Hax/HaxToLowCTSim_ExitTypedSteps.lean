@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ExitTypedDefs
 public import CatCrypt.Crypto.Hax.HaxCallNames
@@ -20,6 +20,11 @@ and the counted-loop bounds read at run time (`boundSE_sim`), the simulation sta
 reserved tower slots (`callMarshal_sim`), and the simulation of the heads of a `letBind`
 (`head_lit`, `head_var`, `headT_app`, `head_app`).
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 

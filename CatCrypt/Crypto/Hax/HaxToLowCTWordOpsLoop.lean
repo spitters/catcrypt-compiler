@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim
 public import CatCrypt.Crypto.Hax.HaxRuntimeWordBuiltins
@@ -46,6 +46,11 @@ program returns with the denotation of the compiled runtime-trip loop
 * `mul1_hax_eq_compiled_runtime` — the same at hax-lean's `u64` table
   `Hax.hax64Builtins`.
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 set_option autoImplicit false

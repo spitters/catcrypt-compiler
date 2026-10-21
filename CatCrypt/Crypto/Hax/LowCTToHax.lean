@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Hax.HaxToLowCTExit
+public import CatCrypt.Crypto.Hax.HaxToLowCTExit -- deprecated_module: ignore
 
 /-!
 # Translation `LowCT → Option ImpExpr` into the hax AST

@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import CatCrypt.Crypto.Hax.HaxToLowCT -- deprecated_module: ignore
 public import CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
 
 /-!

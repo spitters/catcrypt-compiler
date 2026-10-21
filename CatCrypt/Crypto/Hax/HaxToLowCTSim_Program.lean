@@ -3,7 +3,7 @@ Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
 Released under MIT license as described in the file LICENSE.
 Authors: CatCrypt Contributors
 -/
-module
+module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_AnfShaped_Full
@@ -48,6 +48,11 @@ each dischargeable by vacuity of the builtin (`ProgramSimArms_of_vacuity`).
 The `match_` arm and every constructor `haxToLowCT` rejects are outside the
 checker (`simScope` returns `none`).
 -/
+
+deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
+  through haxToNF (Haxc.NFChain); this module remains for the SurfaceDeps bridges \
+  (*HaxLowCTBridge) and the kernel producers that use it."
+  (since := "2026-10-21")
 
 @[expose] public section
 
