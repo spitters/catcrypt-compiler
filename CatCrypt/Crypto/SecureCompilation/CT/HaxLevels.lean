@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import HaxLean.Secrecy
-public import CatCrypt.Crypto.Hax.HaxToLowCTStruct
+public import CatCrypt.Crypto.Hax.HaxCallNames
 public import CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer
 
 /-!

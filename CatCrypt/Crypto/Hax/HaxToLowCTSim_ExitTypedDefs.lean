@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
+public import CatCrypt.Crypto.Hax.HaxCallNames
 public import HaxLean.Phase.InlineLocalClosures
 
 /-!
@@ -13,8 +14,9 @@ public import HaxLean.Phase.InlineLocalClosures
 
 The first of four parts of the typed exit-flag lowering; the overview is the docstring of
 `HaxToLowCTSim_ExitTyped.lean`.  This part holds §1–§6: the placements `ExitTowers` and
-the reserved tower slots (`exitCallName`, `exitMarshalName`), the scalar operations
-(`scalarOpExprT`, `WidthOp`, `widthOpOf`), the heads of a `letBind` (`callMarshal`,
+the reserved tower slots (`exitCallName`, `exitMarshalName`), the admitted call names
+(`exitAdmits`; the scalar operations `scalarOpExprT`, `WidthOp`, `widthOpOf` and the
+scalar calls `exitScalarRes` are defined in `HaxCallNames`), the heads of a `letBind` (`callMarshal`,
 `callHeadAt`, `callHeadT`, `arrLitHeadN`, `letHeadT`), the translator (`haxToLowCTKT`,
 `haxToLowCTFnT`, `haxToLowCTFnI`, and the counted loops with bounds read at run time,
 `forBoundsV`, `exitForLoopV`), placement inference (`exitTowers`, `exitResultPlace`) and
@@ -76,149 +78,10 @@ def ExitRes.isOption : ExitRes → Bool
   | .option _ => true
   | _ => false
 
-/-! ## §2  Scalar operations -/
+/-! ## §2  Admitted call names
 
-/-- The two-operand operations of hax-lean's width-tagged word calls `op#w`. -/
-inductive WidthOp where
-  | add | sub | mul | and | or | xor | shl | shr | rotr | rotl
-  deriving DecidableEq, Repr
-
-/-- The width and operation of a width-tagged call name `op#w`: the operations
-    `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `BitAnd`, `BitOr`, `BitXor`, `Shl`,
-    `Shr`, `rotate_right`, `rotate_left` at the tags `8`, `16`, `32`, `64` and `size`
-    (width `64`). -/
-def widthOpOf : String → Option (Nat × WidthOp)
-  | "wrapping_add#8" => some (8, .add)
-  | "wrapping_add#16" => some (16, .add)
-  | "wrapping_add#32" => some (32, .add)
-  | "wrapping_add#64" => some (64, .add)
-  | "wrapping_add#size" => some (64, .add)
-  | "wrapping_sub#8" => some (8, .sub)
-  | "wrapping_sub#16" => some (16, .sub)
-  | "wrapping_sub#32" => some (32, .sub)
-  | "wrapping_sub#64" => some (64, .sub)
-  | "wrapping_sub#size" => some (64, .sub)
-  | "wrapping_mul#8" => some (8, .mul)
-  | "wrapping_mul#16" => some (16, .mul)
-  | "wrapping_mul#32" => some (32, .mul)
-  | "wrapping_mul#64" => some (64, .mul)
-  | "wrapping_mul#size" => some (64, .mul)
-  | "BitAnd#8" => some (8, .and)
-  | "BitAnd#16" => some (16, .and)
-  | "BitAnd#32" => some (32, .and)
-  | "BitAnd#64" => some (64, .and)
-  | "BitAnd#size" => some (64, .and)
-  | "BitOr#8" => some (8, .or)
-  | "BitOr#16" => some (16, .or)
-  | "BitOr#32" => some (32, .or)
-  | "BitOr#64" => some (64, .or)
-  | "BitOr#size" => some (64, .or)
-  | "BitXor#8" => some (8, .xor)
-  | "BitXor#16" => some (16, .xor)
-  | "BitXor#32" => some (32, .xor)
-  | "BitXor#64" => some (64, .xor)
-  | "BitXor#size" => some (64, .xor)
-  | "Shl#8" => some (8, .shl)
-  | "Shl#16" => some (16, .shl)
-  | "Shl#32" => some (32, .shl)
-  | "Shl#64" => some (64, .shl)
-  | "Shl#size" => some (64, .shl)
-  | "Shr#8" => some (8, .shr)
-  | "Shr#16" => some (16, .shr)
-  | "Shr#32" => some (32, .shr)
-  | "Shr#64" => some (64, .shr)
-  | "Shr#size" => some (64, .shr)
-  | "rotate_right#8" => some (8, .rotr)
-  | "rotate_right#16" => some (16, .rotr)
-  | "rotate_right#32" => some (32, .rotr)
-  | "rotate_right#64" => some (64, .rotr)
-  | "rotate_right#size" => some (64, .rotr)
-  | "rotate_left#8" => some (8, .rotl)
-  | "rotate_left#16" => some (16, .rotl)
-  | "rotate_left#32" => some (32, .rotl)
-  | "rotate_left#64" => some (64, .rotl)
-  | "rotate_left#size" => some (64, .rotl)
-  | _ => none
-
-/-- `e` masked to its low `w` bits: `e &&& (2^w - 1)`, which over `Nat` is
-    `e % 2^w`. -/
-def widthMask (w : Nat) (e : SExpr) : SExpr := .SAnd e (.SLit (2 ^ w - 1))
-
-/-- The bitwise disjunction as `(a ^^^ b) ^^^ (a &&& b)`, exact over `Nat`. -/
-def orExprN (a b : SExpr) : SExpr := .SXor (.SXor a b) (.SAnd a b)
-
-/-- The rotation amount `b` modulo a width `w` that is a power of two:
-    `b &&& (w - 1)`. -/
-def widthAmt (w : Nat) (b : SExpr) : SExpr := .SAnd b (.SLit (w - 1))
-
-/-- The scalar expression of the width-tagged operation `op` at width `w` on `a`
-    and `b`, with `x % 2^w` written as `widthMask w x`, `n % w` as `widthAmt w n` and
-    `|||` as `orExprN`. The difference is `((a % 2^w + (2^w - 1)) - b % 2^w) + 1` masked, whose
-    literals are words at every width `w ≤ 64`. -/
-def WidthOp.sexpr (w : Nat) : WidthOp → SExpr → SExpr → SExpr
-  | .add, a, b => widthMask w (.SAdd a b)
-  | .sub, a, b => widthMask w
-      (.SAdd (.SSub (.SAdd (widthMask w a) (.SLit (2 ^ w - 1))) (widthMask w b)) (.SLit 1))
-  | .mul, a, b => widthMask w (.SMul a b)
-  | .and, a, b => .SAnd (widthMask w a) (widthMask w b)
-  | .or, a, b => orExprN (widthMask w a) (widthMask w b)
-  | .xor, a, b => .SXor (widthMask w a) (widthMask w b)
-  | .shl, a, b => widthMask w (.SShl (widthMask w a) b)
-  | .shr, a, b => .SShr (widthMask w a) b
-  | .rotr, a, b => widthMask w (orExprN (.SShr (widthMask w a) (widthAmt w b))
-      (.SShl (widthMask w a) (.SSub (.SLit w) (widthAmt w b))))
-  | .rotl, a, b => widthMask w (orExprN (.SShl (widthMask w a) (widthAmt w b))
-      (.SShr (widthMask w a) (.SSub (.SLit w) (widthAmt w b))))
-
-/-- The `SExpr` of a scalar operation on the scalars `a` and `b`: the operations of
-    `scalarOpExpr`, their capitalised forms, the checked additions and subtractions at the
-    unsigned tags `8`, `16`, `32`, `64` and `size` (`Add#w`, `Sub#w`) as `Add` and `Sub`, the
-    Boolean connectives `&&`, `and` as `SAnd` and `||`, `or` as `orExprN` (exact on the
-    decodings `0` and `1` of two Booleans), and the width-tagged calls of `widthOpOf`. A
-    checked operation at a tag is defined only where its result lies below `2 ^ w`, so its
-    value is the unmasked sum or difference. -/
-def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
-  match op with
-  | "lt" | "Lt" => some (.SLt a b)
-  | "gt" | "Gt" => some (.SLt b a)
-  | "le" | "Le" => some (.SSub (.SLit 1) (.SLt b a))
-  | "ge" | "Ge" => some (.SSub (.SLit 1) (.SLt a b))
-  | "eq" | "Eq" => some (.SSub (.SSub (.SLit 1) (.SLt a b)) (.SLt b a))
-  | "ne" | "Ne" => some (.SAdd (.SLt a b) (.SLt b a))
-  | "add" | "Add" | "Add#8" | "Add#16" | "Add#32" | "Add#64" | "Add#size" => some (.SAdd a b)
-  | "sub" | "Sub" | "Sub#8" | "Sub#16" | "Sub#32" | "Sub#64" | "Sub#size" => some (.SSub a b)
-  | "&&" | "and" => some (.SAnd a b)
-  | "||" | "or" => some (orExprN a b)
-  | _ => (widthOpOf op).map fun p => p.2.sexpr p.1 a b
-
-/-- The call names whose result is a scalar besides the width-tagged ones. -/
-def exitScalarCalls : List String :=
-  ["len", "lt", "gt", "le", "ge", "eq", "ne", "add", "sub",
-   "Lt", "Gt", "Le", "Ge", "Eq", "Ne", "Add", "Sub", "Mul", "Div", "Rem",
-   "BitAnd", "BitOr", "BitXor", "Shl", "Shr", "Not", "Neg", "&&", "||", "and", "or",
-   "range_incl_end"]
-
-/-- A call whose result is held in the scalar heap: a name of `exitScalarCalls` or a
-    width-tagged name (containing `#`). -/
-def exitScalarCall (f : String) : Bool := exitScalarCalls.contains f || f.contains '#'
-
-/-- The leaf calls whose arguments are held in towers and whose result is a scalar: the
-    zero and identity predicates of field elements and curve points and the infinity
-    flags `infinity`, `g2_inf` of a point, used as conditions, and the accessors `k`,
-    `l`, `ctilde_len` (ML-DSA parameters), `height` and `depth` (a trace and a Merkle
-    tree), used as loop bounds.  Each is a leaf whose specification returns a word,
-    not an element of the tower. -/
-def exitTowerScalarNames : List String :=
-  ["is_zero", "fe_is_zero", "fp_is_zero", "fp2_is_zero", "h2c_p256_is_zero",
-   "point_is_identity", "g1_proj_is_identity", "g2_proj_is_identity", ".infinity",
-   ".g2_inf", ".k", ".l", "ctilde_len", ".height", ".depth"]
-
-/-- A leaf call of `exitTowerScalarNames`. -/
-def exitTowerScalarCall (f : String) : Bool := exitTowerScalarNames.contains f
-
-/-- A call whose result the typed lowering copies from limb `0` of the call slot into the
-    scalar heap: a scalar call or a leaf call of `exitTowerScalarNames`. -/
-def exitScalarRes (f : String) : Bool := exitScalarCall f || exitTowerScalarCall f
+The scalar operations (`scalarOpExprT`, `WidthOp`, `widthOpOf`) and the calls with a
+scalar result (`exitScalarRes`) are defined in `HaxCallNames`. -/
 
 /-- A call name the typed lowering admits: every name except a wide field head, a tagged
     field head `m#p` (`Hax.FieldTag.fieldTag?`) at a modulus `p ≥ 2^64`, whose operands and
@@ -245,49 +108,11 @@ theorem exitAdmits_of_scalarRes_false {f : String} (h : exitScalarRes f = false)
   simp only [exitScalarRes, exitScalarCall, Bool.or_eq_false_iff] at h
   exact h.1.2
 
-theorem exitScalarRes_index : exitScalarRes "index" = false := by
-  simp [exitScalarRes, exitScalarCall, exitScalarCalls, exitTowerScalarCall, exitTowerScalarNames]
-
-theorem exitScalarRes_arrayLit : exitScalarRes "array_lit" = false := by
-  simp [exitScalarRes, exitScalarCall, exitScalarCalls, exitTowerScalarCall, exitTowerScalarNames]
-
 /-! ## §3  The heads of a `letBind` -/
-
-/-- A tower type holding one scalar word: `TU64`, `TU32`, `TU8`. -/
-def exitWordTower : TowerType → Bool
-  | .TU64 | .TU32 | .TU8 => true
-  | _ => false
-
-/-- The element tower type of a tower type whose elements are tower values: an element of
-    `TFp2` is a `TFp`, of `TFp6` a `TFp2`, of `TFp12` a `TFp6`, and of `TArr n t` a `t`
-    when `t` is not a word type (`exitWordTower`).  `none` for a tower type whose elements
-    are scalar words. -/
-def exitElemTower : TowerType → Option TowerType
-  | .TFp2 => some .TFp
-  | .TFp6 => some .TFp2
-  | .TFp12 => some .TFp6
-  | .TArr _ t => if exitWordTower t then none else some t
-  | _ => none
-
-/-- The tower type of an array whose elements are held at the tower type `t`: the inverse
-    of `exitElemTower`. -/
-def exitContainer : TowerType → Option TowerType
-  | .TFp => some .TFp2
-  | .TFp2 => some .TFp6
-  | .TFp6 => some .TFp12
-  | _ => none
-
-theorem exitElemTower_of_container {t c : TowerType} (h : exitContainer t = some c) :
-    exitElemTower c = some t := by
-  cases t <;> simp only [exitContainer, reduceCtorEq, Option.some.injEq] at h <;> subst h <;> rfl
 
 /-- The type of the elements an element store writes into an array held at `t`: the
     element tower type of `exitElemTower`, and `t.elemType` for an array of words. -/
 def exitElem (t : TowerType) : TowerType := (exitElemTower t).getD t.elemType
-
-/-- The marshalling of a scalar word into limb `0` of a tower slot of type `dt` needs a
-    slot of at least `8` bytes. -/
-def exitMarshalOk (dt : TowerType) : Bool := decide (8 ≤ dt.storageBytes)
 
 /-- The argument slots of a call, and the context storing its scalar arguments: an
     argument held in a tower is read in place at its tower type; a scalar argument `x` is

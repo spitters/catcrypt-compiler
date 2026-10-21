@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_Exit
+public import CatCrypt.Crypto.Hax.HaxCallNames
 public import HaxAscent.ListBlocks
 
 /-!
@@ -146,8 +147,6 @@ abbrev StructLayout := List (String × List String)
 /-- The struct-typed variables of a function body, each with its struct name. -/
 abbrev StructVars := List (String × String)
 
-/-- The variable holding field `f` of the flattened struct variable `s`: `s.f`. -/
-def structCompName (s f : String) : String := s ++ "." ++ f
 
 /-- The value of a struct whose fields hold `vs`, for a struct with `n` fields: the
     field itself for a one-field struct (the printer's encoding, and `HaxEnc` of a

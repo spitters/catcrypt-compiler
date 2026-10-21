@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTExit
 public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+public import CatCrypt.Crypto.Hax.HaxCallNames
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramFor
 public import HaxLean.SemanticsCF
 public import HaxAscent.Ascent.EarlyExit
@@ -132,11 +133,9 @@ open _root_.Hax (ImpExpr ImpLit IntWidth Value Env Outcome Builtins denote')
 open CatCrypt.Crypto.Jasmin.LowCT
   (LowCT SExpr RustState RustExec LeafSpec rsSetScalar)
 
-/-! ## §1  Reserved names -/
+/-! ## §1  Reserved names
 
-/-- A name is reserved when it starts with `"__exit_"`. -/
-def exitReserved (name : String) : Bool := "__exit_".toList.isPrefixOf name.toList
-
+A name is reserved when it starts with `"__exit_"` (`exitReserved`, in `HaxCallNames`). -/
 /-- A loop slot: a name starting with `"__exit_run"`. -/
 def exitRunSlot (name : String) : Bool := "__exit_run".toList.isPrefixOf name.toList
 

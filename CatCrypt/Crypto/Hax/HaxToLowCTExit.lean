@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import CatCrypt.Crypto.Hax.HaxCallNames
 public import HaxLean.Phase.ContinueFlag
 
 /-!
@@ -130,8 +131,6 @@ def exitRetName : String := "__exit_ret"
 /-- The slot holding the word a `cfBreak` returns. -/
 def exitValName : String := "__exit_val"
 
-/-- The function's result slot. -/
-def exitResName : String := "__exit_res"
 
 /-- The exit context of a function body: `haxToLowCTFn` lowers the body in
     context `some exitFnSlot`, where the function frame `exitFunction` handles an
@@ -390,23 +389,9 @@ theorem haxToLowCT_letBind_eq_letHead (name : String) (val body : ImpExpr) :
     | _ => simp only [haxToLowCT, letHead]
   | _ => simp only [haxToLowCT, letHead]
 
-/-! ## §3  Scalar operations -/
+/-! ## §3  Scalar operations
 
-/-- The `SExpr` of hax-lean's unsigned operation `op` on the scalars `a` and
-    `b`.  Over `Nat`, `lt`, `gt`, `le`, `ge`, `eq` and `ne` are exact (each
-    `SLt` is `0` or `1`, and `SSub` truncates at `0`); `add` and `sub` agree with
-    hax-lean's wrapping `u64` operations when `a + b < 2^64` and `b ≤ a`. -/
-def scalarOpExpr (op : String) (a b : SExpr) : Option SExpr :=
-  match op with
-  | "lt"  => some (.SLt a b)
-  | "gt"  => some (.SLt b a)
-  | "le"  => some (.SSub (.SLit 1) (.SLt b a))
-  | "ge"  => some (.SSub (.SLit 1) (.SLt a b))
-  | "eq"  => some (.SSub (.SSub (.SLit 1) (.SLt a b)) (.SLt b a))
-  | "ne"  => some (.SAdd (.SLt a b) (.SLt b a))
-  | "add" => some (.SAdd a b)
-  | "sub" => some (.SSub a b)
-  | _     => none
+The `SExpr` of a scalar operation (`scalarOpExpr`) is defined in `HaxCallNames`. -/
 
 /-- The head of `letBind name val body` in scalar-operation mode `sc`: with
     `sc = true`, a scalar operation on two variables is the assignment

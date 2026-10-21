@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ExitTypedDefs
+public import CatCrypt.Crypto.Hax.HaxCallNames
 
 /-!
 # The exit-flag lowering with one heap per name: agreement, steps and heads
@@ -35,27 +36,8 @@ open CatCrypt.Crypto.Jasmin.LowCT
 open CatCrypt.Crypto.Jasmin.LowCT (rsSetTower locatedLookup locatedUpdate RustVal towerLimb
   rsTowerLimb)
 
-/-- A scalar value: an unsigned word below `2^64` of any width, a bool, an integer in
-    `[0, 2^64)`, or the unit. -/
-def ScalarValN : Value → Prop
-  | .uint _ n => n < 2 ^ 64
-  | .bool _ => True
-  | .int n => 0 ≤ n ∧ n < 2 ^ 64
-  | .unit => True
-  | _ => False
-
 theorem ScalarValN.not_cf {v : Value} (h : ScalarValN v) : v.isControlFlow = false := by
   cases v <;> first | rfl | exact h.elim
-
-/-- The four shapes of a scalar value. -/
-theorem ScalarValN.cases {v : Value} (h : ScalarValN v) :
-    (∃ w n, v = .uint w n ∧ n < 2 ^ 64) ∨ (∃ b, v = .bool b) ∨
-      (∃ n : Int, v = .int n ∧ 0 ≤ n ∧ n < 2 ^ 64) ∨ v = .unit := by
-  match v, h with
-  | .uint w n, h => exact Or.inl ⟨w, n, rfl, h⟩
-  | .bool b, _ => exact Or.inr (Or.inl ⟨b, rfl⟩)
-  | .int n, h => exact Or.inr (Or.inr (Or.inl ⟨n, rfl, h⟩))
-  | .unit, _ => exact Or.inr (Or.inr (Or.inr rfl))
 
 theorem ScalarValN.of_scalarVal {v : Value} (h : ScalarVal v) : ScalarValN v := by
   match v, h with
@@ -641,17 +623,6 @@ theorem leafCallScalar_of_unmatched (bi : Builtins) (leafSpec : LeafSpec) (f : S
   intro _ vals _ _ _ hBi
   rw [h vals] at hBi
   cases hBi
-
-/-- `ScalarValN` as a Boolean test. -/
-def scalarValNB : Value → Bool
-  | .uint _ n => decide (n < 2 ^ 64)
-  | .bool _ => true
-  | .int n => decide (0 ≤ n) && decide (n < 2 ^ 64)
-  | .unit => true
-  | _ => false
-
-theorem scalarValNB_iff (v : Value) : scalarValNB v = true ↔ ScalarValN v := by
-  cases v <;> simp [scalarValNB, ScalarValN]
 
 /-- A call whose result the range-refusing table `exitRange` checks: a call of
     `exitScalarRes`.  An element load is not checked: its result is a word or a tower value

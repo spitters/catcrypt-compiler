@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import CatCrypt.Crypto.Hax.HaxCallNames
 public import HaxLean.Semantics
 public import HaxLean.Value
 public import CatCrypt.Crypto.Jasmin.LowCTExec
@@ -81,17 +82,6 @@ open CatCrypt.Crypto.Jasmin.LowCT
 This predicate covers scalar bindings only.  Tower-typed agreement
 (content-bearing, byte-layout transport in the style of `bindingOK`)
 is `envAgreesRustFull` in `HaxToLowCTSim_Quarta.lean`. -/
-
-/-- Decode a Hax `Value` to a LowCT scalar: `int n` (when `n ≥ 0`),
-    the width-indexed `uint _ n`, `bool`, and `unit`.  Signed and array
-    values, towers, bytes, tuples and options have no scalar decoding. -/
-def valueToScalar : Value → Option Nat
-  | .int n => if 0 ≤ n then some n.toNat else none
-  | .uint _ n => some n
-  | .bool true => some 1
-  | .bool false => some 0
-  | .unit => some 0
-  | _ => none
 
 /-- Agreement on a single name.  If the Hax env has a value that
     decodes to a scalar, the RustState's scalar binding agrees. -/

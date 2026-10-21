@@ -6,8 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.CT.LowCTLeakage
-public import CatCrypt.Crypto.Hax.HaxToLowCTExit
-public import CatCrypt.Crypto.Hax.HaxToLowCTSimulates
+public import CatCrypt.Crypto.Hax.HaxCallNames
 public import HaxLean.SemanticsCF
 
 /-!
