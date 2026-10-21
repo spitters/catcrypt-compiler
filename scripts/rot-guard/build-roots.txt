@@ -1071,7 +1071,6 @@ CatCrypt.Tactic.BignumReason
 CatCrypt.Tactic.BindAlign
 CatCrypt.Tactic.BindVcgen
 CatCrypt.Tactic.EnvSearch
-CatCrypt.Tactic.Inv
 CatCrypt.Tactic.MatrixDecide
 CatCrypt.Tactic.NormSqrt
 CatCrypt.Tactic.ProofTermAudit

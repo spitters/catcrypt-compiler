@@ -3002,8 +3002,6 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactic.BindVcgen,
     Lake.Glob.one `CatCrypt.Tactic.EnvSearch,
     Lake.Glob.one `CatCrypt.Tactic.FieldClear,
-    Lake.Glob.one `CatCrypt.Tactic.Inv,
-    Lake.Glob.one `CatCrypt.Tactic.InvAttr,
     Lake.Glob.one `CatCrypt.Tactic.KernelRfl,
     Lake.Glob.one `CatCrypt.Tactic.MatrixDecide,
     Lake.Glob.one `CatCrypt.Tactic.NormSqrt,
