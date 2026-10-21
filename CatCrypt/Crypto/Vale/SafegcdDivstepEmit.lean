@@ -520,8 +520,11 @@ def divstepK4Fd : FunDecl :=
 -- #eval allScalars.length
 -- #eval (LowCT.toJasminCmd bodyK4).length
 
-/-- Emit driver (spill emitter: see module docstring on register pressure). -/
-private def main : IO Unit := do
+/-- Emit driver: writes the spill-emitted text of `divstepK4Fd` (see the module docstring
+on register pressure) to
+`bench/mpn_invert_safegcd_compare/gen_divstep/safegcd_divstep_invert_k4.jazz`, relative
+to the working directory. Run by `bench/mpn_invert_safegcd_compare/emit_k4.lean`. -/
+def emitK4 : IO Unit := do
   IO.FS.createDirAll "bench/mpn_invert_safegcd_compare/gen_divstep"
   match Emit.emitFunDeclSpill divstepK4Fd with
   | some s => do
@@ -531,5 +534,3 @@ private def main : IO Unit := do
   | none => IO.println "FAILED: emit none for safegcd_divstep_invert_k4"
 
 end CatCrypt.Crypto.Vale.SafegcdDivstepEmit
-
-private def main : IO Unit := CatCrypt.Crypto.Vale.SafegcdDivstepEmit.main
