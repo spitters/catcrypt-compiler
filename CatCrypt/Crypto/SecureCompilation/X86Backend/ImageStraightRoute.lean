@@ -530,6 +530,132 @@ def chainAlias (is : List LinstrRM) : String → String :=
 /-- Without out symbols the coalescing renaming is `chainAlias`. -/
 theorem chainAliasO_nil : chainAliasO [] = chainAlias := rfl
 
+/-- The destination `B` of a zeroing `ZEROARR [B] ...`; `none` for every other
+    instruction. -/
+def zeroDst? (i : LinstrRM) : Option String :=
+  match i.1 with
+  | .Lopn [.reg d] opn _ => if opn = "ZEROARR" then some d else none
+  | _ => none
+
+/-- The check that the first instruction of `is` that mentions `r` is the zeroing
+    `ZEROARR [r] ...`. -/
+def zeroFirstB (r : String) : List LinstrRM → Bool
+  | [] => false
+  | i :: is =>
+      if zeroDst? i = some r then true
+      else if (instrNames i.1).contains r then false else zeroFirstB r is
+
+/-- **The result root** of the code `is` at the result buffer `D` and the returned array
+    `src`: the root `r := chainAliasO outs is src` of `src`, when `r` is not `D`, `is` mentions
+    `D` nowhere and the first instruction of `is` that mentions `r` is the zeroing of `r`;
+    `none` otherwise. The returned array is then built from a zero array that neither `r`
+    nor `D` holds before its zeroing. -/
+def resRoot? (outs : List (String × Nat)) (D src : String) (is : List LinstrRM) :
+    Option String :=
+  let r := chainAliasO outs is src
+  if r != D && is.all (fun i => !(instrNames i.1).contains D) && zeroFirstB r is then some r
+  else none
+
+/-- **The alias table with the result root**: the fold of `aliasStepO` from the table that
+    sends the result root `r` of `resRoot?` to the result buffer `D`, so that the zeroing of
+    `r` and every store whose base resolves to `r` write `D`; the alias table `aliasTab outs
+    is` when there is no result root. -/
+def aliasTabRes (outs : List (String × Nat)) (D src : String) (is : List LinstrRM) :
+    Std.HashMap String String :=
+  match resRoot? outs D src is with
+  | some r => is.foldl (aliasStepO outs) (({} : Std.HashMap String String).insert r D)
+  | none => aliasTab outs is
+
+/-- The coalescing renaming with the result root: the lookup in `aliasTabRes`. -/
+def chainAliasRes (outs : List (String × Nat)) (D src : String) (is : List LinstrRM) :
+    String → String :=
+  canonMemrefName (aliasTabRes outs D src is)
+
+/-- One alias step commutes with a renaming `φ` of the resolved names: when every lookup in
+    `m'` is the `φ`-image of the lookup in `m`, the same holds after the step. -/
+theorem aliasStepO_getD_comp (outs : List (String × Nat)) (φ : String → String)
+    {m m' : Std.HashMap String String} (h : ∀ x, m'.getD x x = φ (m.getD x x))
+    (i : LinstrRM) (x : String) :
+    (aliasStepO outs m' i).getD x x = φ ((aliasStepO outs m i).getD x x) := by
+  unfold aliasStepO
+  repeat' split
+  all_goals first
+    | exact h x
+    | (simp only [Std.HashMap.getD_insert]; split <;> simp_all)
+
+/-- The alias fold commutes with a renaming `φ` of the resolved names. -/
+theorem foldl_aliasStepO_getD_comp (outs : List (String × Nat)) (φ : String → String) :
+    ∀ (is : List LinstrRM) {m m' : Std.HashMap String String},
+      (∀ x, m'.getD x x = φ (m.getD x x)) → ∀ x,
+      (is.foldl (aliasStepO outs) m').getD x x = φ ((is.foldl (aliasStepO outs) m).getD x x)
+  | [], _, _, h => h
+  | i :: is, _, _, h => foldl_aliasStepO_getD_comp outs φ is (aliasStepO_getD_comp outs φ h i)
+
+/-- **The coalescing renaming with the result root** is the coalescing renaming followed by
+    the renaming of the result root `r` to the result buffer `D`, and the coalescing renaming
+    when there is no result root. -/
+theorem chainAliasRes_apply (outs : List (String × Nat)) (D src : String)
+    (is : List LinstrRM) (x : String) :
+    chainAliasRes outs D src is x =
+      match resRoot? outs D src is with
+      | some r => if chainAliasO outs is x = r then D else chainAliasO outs is x
+      | none => chainAliasO outs is x := by
+  unfold chainAliasRes aliasTabRes
+  split
+  · rename_i r _
+    have key := foldl_aliasStepO_getD_comp outs (fun y => if y = r then D else y) is
+      (m := ({} : Std.HashMap String String))
+      (m' := ({} : Std.HashMap String String).insert r D)
+      (fun y => by
+        simp only [Std.HashMap.getD_insert, Std.HashMap.getD_empty, beq_iff_eq]
+        by_cases hy : r = y <;> simp [hy, eq_comm]) x
+    exact key
+  · rfl
+
+/-- The facts of a result root `r`: it is the root of the returned array `src`, it is not the
+    result buffer `D`, the code mentions `D` nowhere, and the first instruction of the code
+    that mentions `r` is the zeroing of `r`. -/
+theorem resRoot?_some {outs : List (String × Nat)} {D src r : String} {is : List LinstrRM}
+    (h : resRoot? outs D src is = some r) :
+    r = chainAliasO outs is src ∧ r ≠ D ∧ (∀ i ∈ is, D ∉ instrNames i.1) ∧
+      zeroFirstB r is = true := by
+  simp only [resRoot?] at h
+  split_ifs at h with hc
+  cases h
+  simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, List.all_eq_true, Bool.not_eq_true'] at hc
+  exact ⟨rfl, hc.1.1, fun i hi hm => by simpa [hm] using hc.1.2 i hi, hc.2⟩
+
+/-- **At a result root the returned array is the result buffer**: the coalescing renaming
+    with the result root sends `src` to `D`, so the array result copy into `D`, which the
+    copy decision takes only when the alias of `src` is not `D`, is not emitted. -/
+theorem chainAliasRes_src {outs : List (String × Nat)} {D src r : String}
+    {is : List LinstrRM} (h : resRoot? outs D src is = some r) :
+    chainAliasRes outs D src is src = D := by
+  rw [chainAliasRes_apply, h]
+  simp [← (resRoot?_some h).1]
+
+/-- Code without a zeroing has no first zeroing of any name. -/
+theorem zeroFirstB_of_noZero (r : String) :
+    ∀ {is : List LinstrRM}, (∀ i ∈ is, zeroDst? i = none) → zeroFirstB r is = false
+  | [], _ => rfl
+  | i :: is, h => by
+    simp only [zeroFirstB, h i List.mem_cons_self, reduceCtorEq, if_false]
+    rw [zeroFirstB_of_noZero r fun j hj => h j (List.mem_cons_of_mem _ hj)]
+    simp
+
+/-- **Code without a zeroing keeps its alias table**: without a `ZEROARR` there is no result
+    root, and the alias table with the result root is `aliasTab outs is`. -/
+theorem aliasTabRes_eq_of_noZero (outs : List (String × Nat)) (D src : String)
+    {is : List LinstrRM} (h : ∀ i ∈ is, zeroDst? i = none) :
+    aliasTabRes outs D src is = aliasTab outs is := by
+  simp [aliasTabRes, resRoot?, zeroFirstB_of_noZero _ h]
+
+/-- Code without a zeroing keeps its coalescing renaming. -/
+theorem chainAliasRes_eq_of_noZero (outs : List (String × Nat)) (D src : String)
+    {is : List LinstrRM} (h : ∀ i ∈ is, zeroDst? i = none) :
+    chainAliasRes outs D src is = chainAliasO outs is := by
+  rw [chainAliasRes, aliasTabRes_eq_of_noZero outs D src h]
+
 /-- A decision of `PlainLopnBody`. -/
 def plainB (is : List LinstrRM) : Bool :=
   is.all fun i => isLopnB i && (cmpArgs? i).isNone && (movRegArgs? i).isNone
