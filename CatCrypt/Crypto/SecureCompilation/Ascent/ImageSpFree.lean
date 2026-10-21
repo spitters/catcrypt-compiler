@@ -79,7 +79,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg imgInstr accArr
   physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore? cellIdxStore?_spec
-  arrImmImg)
+  arrImmImg arrImmImg_lopn)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (normA condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts? slotMov?)
@@ -505,6 +505,15 @@ theorem rspFree_of_armOk {P : X86Backend.LprogBytesDecode.Params} {x : LinstrR} 
       left
       simp [rspFreeB, operandNames, srcNames, AArm.instr, rspFreeNameB_gp h.1.1.1,
         rspFreeNameB_gp h.1.1.2, rspFreeNameB_gp h.1.2]
+  | zero B n =>
+      simp only [AArm.ok, Bool.and_eq_true] at h
+      left
+      simp [rspFreeB, operandNames, srcNames, AArm.instr, rspFreeNameB_gp h.1.1]
+  | simm d B V k =>
+      simp only [AArm.ok, Bool.and_eq_true] at h
+      left
+      simp [rspFreeB, operandNames, srcNames, AArm.instr, rspFreeNameB_gp h.1.1.1,
+        rspFreeNameB_gp h.1.1.2, rspFreeNameB_gp h.2]
 
 /-- The untagged immediate move that `movImmStruct?` reads. -/
 theorem movImmStruct?_spec {x : LinstrR} {d : String} {n : Nat}
@@ -719,23 +728,6 @@ theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcm
           exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨r, hr, rfl⟩))))
         · exact Or.inl rfl
 
-/-- An instruction of the covered fragment is no array zeroing and no constant-index store:
-    `arrImmImg` gives it no image. -/
-theorem arrImmImg_of_instrOKB {slotArr : String → Option (String × Nat)} {body body' : Lcmd}
-    {P : X86Backend.LprogBytesDecode.Params} {k : Nat} {x : LinstrR}
-    (hok : instrOKB body' P x = true) : arrImmImg slotArr body k x = none := by
-  unfold arrImmImg
-  split
-  · split_ifs with ho
-    · subst ho
-      simp [instrOKB, classifyA, classify] at hok
-    · rfl
-  · split_ifs with ho
-    · subst ho
-      simp [instrOKB, classifyA, classify] at hok
-    · rfl
-  · rfl
-
 /-- An instruction of the covered fragment is no indexed store through a cell: the fragment
     stores to a frame slot only, and a cell name is no frame slot. -/
 theorem cellIdxStore?_of_instrOKB {slotArr : String → Option (String × Nat)} {body body' : Lcmd}
@@ -772,7 +764,7 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
     stackFreeB (imgInstr slotArr body k x).fst = true := by
   rcases stackFreeB_of_instrOKB hok with hf | ⟨d, b, i, v, rfl, hb, hi, hv⟩
   · rcases imgInstr_cases slotArr body k x with h | ⟨d, b, idx, A, n, rfl, hA, h⟩ |
-      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, -⟩ | ⟨ri, hri, -⟩
+      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, -⟩ | ⟨ri, hri, h⟩
     · rw [h]
       simp only [stackFreeB, operandNames_normA] at hf ⊢
       exact hf
@@ -788,8 +780,23 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
       simpa [stackFreeB, operandNames, srcNames] using hf
     · rw [cellIdxStore?_of_instrOKB hok] at hc
       cases hc
-    · rw [arrImmImg_of_instrOKB hok] at hri
-      cases hri
+    · rw [h]
+      unfold arrImmImg at hri
+      split at hri
+      · split_ifs at hri
+        split at hri
+        · rename_i A n hA
+          cases hri
+          simp [stackFreeB, operandNames, srcNames, stackNameB_accArr hsl hA]
+        · cases hri
+      · split_ifs at hri
+        split at hri
+        · rename_i A n hA
+          cases hri
+          simp [stackFreeB, operandNames, srcNames] at hf ⊢
+          simp [hf, stackNameB_accArr hsl hA]
+        · cases hri
+      · cases hri
   · simp only [accOkB, if_neg (show ¬ ("STOREIDX" = "LOADIDX") by decide), if_true,
       Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
@@ -847,15 +854,16 @@ theorem virtImg_noCall (slotArr : String → Option (String × Nat)) {body : Lcm
   obtain ⟨k, j, -, hj, rfl⟩ := mem_virtImg hi
   have hok := instrOKB_of_printedAddrB hp hj
   rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, -⟩
+    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩
   · rw [h]
     cases hx : j.li_i <;> rw [hx] at hok <;> simp [instrOKB] at hok <;> rfl
   · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
-  · rw [arrImmImg_of_instrOKB hok] at hri
-    cases hri
+  · obtain ⟨ds, o, ss, he⟩ := arrImmImg_lopn hri
+    rw [h, he]
+    rfl
 
 /-! ## 5. The names an instruction of the image reads -/
 

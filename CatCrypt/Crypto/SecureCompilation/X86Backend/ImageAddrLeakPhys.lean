@@ -35,13 +35,16 @@ memory access of the decoded bytes.
 `ImageAddrSim.image_addr_sim` matches a run of the name-keyed image `virtImg slotArr body`
 from a state `s` by a run of the address machine on `body` from a state `sa` related by
 `ImgRel frame slotArr base body`. The events of the two runs correspond position by
-position. At instruction `x` of the body, `posT frame base x` maps the events `e` of the
-image instruction:
+position. At instruction `x` of the body with image instruction `i`, `posT frame base x i`
+maps the events `e` of the image instruction:
 
 * an indexed load or store: each `addr A o` of `e` to `evA (base A + o)` (`phiEv base`);
 * a branch: `e`;
 * a move from or to a frame word `q`, or a compare against it: the frame address of `q`,
   independent of `e` and of the state;
+* an array zeroing of `n` words and a constant-index store at index `j`, whose image
+  instruction names the array `A`: the words `base A + 8 i`, `i < n`, and the word
+  `base A + 8 j`, independent of `e` and of the state;
 * any other instruction: nothing.
 
 `physT frame base slotArr body xs k ℓ` applies `posT` along the instructions `xs` from
@@ -92,6 +95,11 @@ open CatCrypt.Crypto.SecureCompilation.CT (CTLeak ConstantTimeRel)
 /-- The event of a memory access at the byte address `a`. -/
 def evA (a : BitVec 64) : CTLeak := .addr "" (a.toNat : Int)
 
+/-- The events of the zeroing of `n` words from the address `p`: the words at `p + 8 i`,
+    `i < n`, in order. -/
+def zeroEvs (p : BitVec 64) (n : Nat) : List CTLeak :=
+  (List.range n).map fun i => evA (p + BitVec.ofNat 64 (8 * i))
+
 /-- **The events of an instruction on the address machine** at `sa`: the event of the byte
     address of each memory word `fstepA frame` reads or writes, sources before the
     destination. An indexed access reads or writes `base + sc · idx`, with the index the
@@ -102,7 +110,10 @@ def evA (a : BitVec 64) : CTLeak := .addr "" (a.toNat : Int)
     the address `LEA:64 d, mem.B.off` of a cell accesses no memory; a
     carry-chain instruction accesses its frame-slot carry-in, its frame-slot word sources and
     its frame-slot destination; a select accesses its frame-slot values and its frame-slot
-    destination, whatever the condition. Every other instruction emits nothing. -/
+    destination, whatever the condition. An array zeroing `ZEROARR [], [B, #n', #w']` at the
+    tag `.zero w n` writes the `n` words from the address in `B` (`zeroEvs`); a
+    constant-index store `STOREIMM d, [B, V, #k]` at the tag `.storeImm w n` writes the word
+    `storeImmAddr?` gives from the address in `B`. Every other instruction emits nothing. -/
 def instrLeakA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : LstateA) :
     List CTLeak :=
   match i.snd with
@@ -158,6 +169,20 @@ def instrLeakA (frame : String → Option (BitVec 64)) (i : LinstrRM) (sa : Lsta
                               (frame a).toList.map evA ++ (frame b).toList.map evA
                                 ++ (frame d).toList.map evA
                           | none => []
+  | .zero _ n =>
+      match zeroArrA? i.fst with
+      | some b =>
+          match sa.reg.getW b 64 with
+          | some p => zeroEvs p n
+          | none => []
+      | none => []
+  | .storeImm _ n =>
+      match storeImmStruct? i.fst with
+      | some (_, b, _, k) =>
+          match sa.reg.getW b 64 with
+          | some p => (storeImmAddr? p n k).toList.map evA
+          | none => []
+      | none => []
   | _ => []
 
 /-- **The events of a step of the address machine** on the body `c`: `instrLeakA` at an
@@ -357,11 +382,14 @@ def phiEv (base : String → BitVec 64) : CTLeak → CTLeak
   | .addr A o => evA (base A + BitVec.ofNat 64 o.toNat)
   | e => e
 
-/-- **The physical events at an instruction** `x` of the body from the events `e` of its
-    image: `phiEv base` of `e` at an indexed access, `e` at a branch, the frame address of the
-    frame word at a frame-word move or compare, nothing otherwise. -/
+/-- **The physical events at an instruction** `x` of the body, with image instruction `i`,
+    from the events `e` of the image: `phiEv base` of `e` at an indexed access, `e` at a
+    branch, the frame address of the frame word at a frame-word move or compare, the `n`
+    words from `base A` at an array zeroing of `n` words and the word `j` from `base A` at a
+    constant-index store at index `j`, `A` the array the image instruction names, nothing
+    otherwise. -/
 def posT (frame : String → Option (BitVec 64)) (base : String → BitVec 64) (x : LinstrR)
-    (e : List CTLeak) : List CTLeak :=
+    (i : LinstrRM) (e : List CTLeak) : List CTLeak :=
   match icase frame x with
   | .ldx _ _ _ => e.map (phiEv base)
   | .stx _ _ _ _ => e.map (phiEv base)
@@ -369,6 +397,14 @@ def posT (frame : String → Option (BitVec 64)) (base : String → BitVec 64) (
   | .sload _ q => (frame q).toList.map evA
   | .sstore q _ => (frame q).toList.map evA
   | .scmp _ _ q => (frame q).toList.map evA
+  | .zarr _ n _ =>
+      match i.fst with
+      | .Lopn [.reg A] _ _ => zeroEvs (base A) n
+      | _ => []
+  | .simm _ _ _ j =>
+      match i.fst with
+      | .Lopn [.reg A] _ _ => [evA (base A + BitVec.ofNat 64 (8 * j))]
+      | _ => []
   | _ => []
 
 /-- The operand is an array operand. -/
@@ -425,7 +461,8 @@ def physT (frame : String → Option (BitVec 64)) (base : String → BitVec 64)
     List Linstr → Nat → List CTLeak → List CTLeak
   | [], _, _ => []
   | x :: xs, k, ℓ =>
-      posT frame base x.li_i (ℓ.take (evCountF (imgInstr slotArr body k x.li_i)))
+      posT frame base x.li_i (imgInstr slotArr body k x.li_i)
+          (ℓ.take (evCountF (imgInstr slotArr body k x.li_i)))
         ++ physT frame base slotArr body xs (k + 1)
           (ℓ.drop (evCountF (imgInstr slotArr body k x.li_i)))
 
@@ -441,7 +478,8 @@ theorem step_leak {frame : String → Option (BitVec 64)}
     (hrel : ImgRel frame slotArr base body s sa zf) (hlt : sa.reg.lpc < body.length - 1)
     {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi) :
     stepLeakA frame body sa zf
-      = posT frame base bi.li_i (instrLeakF (imgInstr slotArr body sa.reg.lpc bi.li_i) s) := by
+      = posT frame base bi.li_i (imgInstr slotArr body sa.reg.lpc bi.li_i)
+          (instrLeakF (imgInstr slotArr body sa.reg.lpc bi.li_i) s) := by
   have hg : instrGateB frame slotArr body sa.reg.lpc bi.li_i = true := by
     simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
     have := hgate.1.1 sa.reg.lpc hlt
@@ -511,11 +549,30 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       obtain rfl := slotCmp?_eq hm
       simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, slotMov?, slotCmp?, ha]
   | zarr b n w =>
+      rw [hc] at hg
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
+      obtain ⟨⟨hacc, -⟩, hbf⟩ := hg
+      cases hA : accArr slotArr body sa.reg.lpc b with
+      | none => rw [hA] at hacc; cases hacc
+      | some An =>
+      obtain ⟨A, m⟩ := An
+      obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hA hbf
       obtain rfl := icase_zarr hc
-      simp [stepLeakA, hb, posT, hc, instrLeakA, tagA, zeroTagA]
+      rw [imgInstr_zeroArr slotArr body _ hA]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, zeroTagA, zeroArrA?, hp]
   | simm d b v j =>
+      rw [hc] at hg
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
+      obtain ⟨⟨hacc, hbf⟩, -⟩ := hg
+      cases hA : accArr slotArr body sa.reg.lpc b with
+      | none => rw [hA] at hacc; cases hacc
+      | some An =>
+      obtain ⟨A, m⟩ := An
+      obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hA hbf
       obtain rfl := icase_simm hc
-      simp [stepLeakA, hb, posT, hc, instrLeakA, tagA, storeImmTagA]
+      rw [imgInstr_storeImm slotArr body _ hA]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, storeImmTagA, storeImmStruct?, hp,
+        storeImmAddr?_of_lt _ (Nat.lt_succ_self j)]
   | reg =>
       rw [hc] at hg
       obtain ⟨ds, o, ss, rfl, ho1, ho2, hk⟩ := icase_reg hc

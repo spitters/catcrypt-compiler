@@ -205,6 +205,23 @@ theorem instrLeakA_nil {frame : String → Option (BitVec 64)} {x : LinstrR} (ta
       simp [instrLeakA, hm, hk, hcmp d y q hk]
     | none => simp [instrLeakA, hm, hk, hcell, hcar, himm, hsel]
 
+/-- The events of the stores of the zero word at `8 i` from the register `B`, `i` running
+    through `l`, under `doitm`: the address of each store, from the register of `B`, which
+    the stores leave. -/
+theorem blockLeakA_zeroStores (B : String) :
+    ∀ (l : List Nat) (sa : AState),
+      blockLeakA .doitm sa
+          (l.map fun i => (.storeMem B (Int.ofNat (8 * i)) (.imm 0) : JInstr 64))
+        = l.map fun i => evA (sa.regs B + BitVec.ofNat 64 (8 * i))
+  | [], _ => rfl
+  | i :: l, sa => by
+      have hr : (evalInstrA sa (.storeMem B (Int.ofNat (8 * i)) (.imm 0))).regs = sa.regs := by
+        simp [evalInstrA, evalInstr, JState.store, AState.view, writeAddr, writeVal]
+      simp only [List.map_cons, blockLeakA]
+      rw [blockLeakA_zeroStores B l, hr]
+      simp [opLeak, instrLeak, resolveEv, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing,
+        evA, ofInt_eight_mul]
+
 /-- **The leakage of one arm.** From the correspondence, the leakage of the decoded
     instructions of an arm whose conditions hold, under the regime `doitm`, is its leakage on
     the address machine followed by the red-zone accesses `redLeak`. -/
@@ -355,6 +372,17 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, JInstr.mnem,
       DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, instrLeakA, slotMov?,
       slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?, redLeak]
+  | zero B n =>
+    have hB : gpOk B = true := by simp only [AArm.ok, Bool.and_eq_true] at h; tauto
+    rw [show (AArm.zero B n).js P = (List.range n).map fun i =>
+        (.storeMem (phys B) (Int.ofNat (8 * i)) (.imm 0) : JInstr 64) by
+      simp [AArm.js, AArm.pieces, zeroPieces, Function.comp_def], blockLeakA_zeroStores]
+    simp [AArm.li, instrLeakA, zeroArrA?, hc.regs B hB, zeroEvs, redLeak]
+  | simm d B V k =>
+    have hB : gpOk B = true := by simp only [AArm.ok, Bool.and_eq_true] at h; tauto
+    simp [AArm.js, AArm.pieces, stPieces, blockLeakA, opLeak, instrLeak, resolveEv, JInstr.mnem,
+      DoitRegime.leaksOperands, X86Mnem.timing, evA, redLeak, AArm.li, instrLeakA,
+      storeImmStruct?, hc.regs B hB, storeImmAddr?_of_lt _ (Nat.lt_succ_self k), ofInt_eight_mul]
 
 /-! ## 3. The address machine with added events -/
 
@@ -915,6 +943,22 @@ theorem AArm.leak_length {P : Params} {a : AArm} (hok : a.ok P = true)
     simp only [AArm.li]; rw [instrLeakA_reg_indep (by simp [cellA?]) none s₁ s₂]
   | mulx L H S =>
     simp only [AArm.li]; rw [instrLeakA_reg_indep (by simp [cellA?]) none s₁ s₂]
+  | zero B n =>
+    cases hB₁ : s₁.reg.getW B 64 with
+    | none => simp [AArm.li, fstepA, zeroArrA?, hB₁] at h₁
+    | some p₁ =>
+      cases hB₂ : s₂.reg.getW B 64 with
+      | none => simp [AArm.li, fstepA, zeroArrA?, hB₂] at h₂
+      | some p₂ => simp [AArm.li, instrLeakA, zeroArrA?, hB₁, hB₂, zeroEvs]
+  | simm d B V k =>
+    cases hB₁ : s₁.reg.getW B 64 with
+    | none => simp [AArm.li, fstepA, storeImmStruct?, hB₁] at h₁
+    | some p₁ =>
+      cases hB₂ : s₂.reg.getW B 64 with
+      | none => simp [AArm.li, fstepA, storeImmStruct?, hB₂] at h₂
+      | some p₂ =>
+        simp [AArm.li, instrLeakA, storeImmStruct?, hB₁, hB₂,
+          storeImmAddr?_of_lt _ (Nat.lt_succ_self k)]
 
 /-- The step event lengths of a covered body are functions of the program counter. -/
 theorem stepLenDet_of {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs)

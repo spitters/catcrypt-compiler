@@ -897,19 +897,6 @@ theorem pieceDec_loadMem (d b : Nat) (off : Int) (hd : d < 16) (hb : b < 16)
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, regOf_canon d hd, regOf_canon b hb,
     gpNum_regName d hd, gpNum_regName b hb, LprogJInstrBytesAgree.encMemMovw_one] using e
 
-/-- `mov %s, off(%b)` with a signed 32-bit displacement. -/
-theorem pieceDec_storeMem (s b : Nat) (off : Int) (hs : s < 16) (hb : b < 16)
-    (h : dispOk32 off = true) :
-    PieceDec (encMemMovw 1 0x89 s b off,
-      .storeMem (SailX86Decoder.regName b) off (.reg (SailX86Decoder.regName s))) := by
-  intro rest
-  apply decodeLinstr_of_decodeJ1
-  have e := roundtrip_storeMem32 (canonAlloc ()) (SailX86Decoder.regName b)
-    (SailX86Decoder.regName s) off rest h
-  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon s hs,
-    regOf_canon b hb, gpNum_regName s hs, gpNum_regName b hb,
-    LprogJInstrBytesAgree.encMemMovw_one] using e
-
 /-- A cell name is no frame-slot name. -/
 theorem notSlot_of_cell {n : String} {p : String × Nat} (h : cellParts? n = some p) :
     isSpillOrQsave n = false ∧ ∀ F W qB, spillQsaveOff F W n qB = none := by

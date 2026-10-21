@@ -649,6 +649,68 @@ theorem cellA?_normA {x : LinstrR} (h : cellA? x = none) : cellA? (normA x) = no
       · simpa [normA, hm] using h
   | _ => exact h
 
+/-- The gate with carry chains refuses an array zeroing and a constant-index store. -/
+theorem gateAtW_arrImm (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (W : List String)
+    {ds : List LOperand} {o : String} {ss : List LOperand}
+    (ho : o = "ZEROARR" ∨ o = "STOREIMM") :
+    ImageAddrSimW.gateAtW frame slotArr body k W (.Lopn ds o ss) = false := by
+  have hne : ∀ {o' : String}, o = o' → o' ≠ "ZEROARR" → o' ≠ "STOREIMM" → False := by
+    intro o' h h1 h2
+    subst h
+    rcases ho with h | h
+    · exact h1 h
+    · exact h2 h
+  have hci : ImageAddrSimW.carryI? (.Lopn ds o ss) = none := by
+    unfold ImageAddrSimW.carryI?
+    split
+    · rename_i heq
+      simp only [LinstrR.Lopn.injEq] at heq
+      obtain ⟨-, rfl, -⟩ := heq
+      rcases ho with h | h <;> simp [h]
+    · rfl
+  have hk : DecodePrintedAddrW.classifyK (.Lopn ds o ss) = none := by
+    unfold DecodePrintedAddrW.classifyK
+    split
+    · rename_i heq
+      simp only [LinstrR.Lopn.injEq] at heq
+      obtain ⟨-, rfl, -⟩ := heq
+      rcases ho with h | h <;> simp [h, castTagW]
+    · rfl
+  unfold ImageAddrSimW.gateAtW
+  rw [hci]
+  cases hc : icase frame (.Lopn ds o ss) with
+  | other => simp [ImageAddrSimW.castGateB, hk]
+  | zarr => simp
+  | simm => simp
+  | label =>
+      obtain ⟨_, _, h⟩ := ImageAddrSim.icase_label hc
+      cases h
+  | cond => cases ImageAddrSim.icase_cond hc
+  | ldx =>
+      have h := ImageAddrSim.icase_ldx hc
+      simp only [LinstrR.Lopn.injEq] at h
+      exact (hne h.2.1 (by decide) (by decide)).elim
+  | stx =>
+      have h := ImageAddrSim.icase_stx hc
+      simp only [LinstrR.Lopn.injEq] at h
+      exact (hne h.2.1 (by decide) (by decide)).elim
+  | sload =>
+      rcases ImageAddrSim.slotMov?_cases (ImageAddrSim.icase_sload hc).1 with h | h <;>
+        simp only [LinstrR.Lopn.injEq] at h <;>
+        exact (hne h.2.1 (by decide) (by decide)).elim
+  | sstore =>
+      rcases ImageAddrSim.slotMov?_cases (ImageAddrSim.icase_sstore hc).1 with h | h <;>
+        simp only [LinstrR.Lopn.injEq] at h <;>
+        exact (hne h.2.1 (by decide) (by decide)).elim
+  | scmp =>
+      have h := ImageAddrSim.slotCmp?_eq (ImageAddrSim.icase_scmp hc).1
+      simp only [LinstrR.Lopn.injEq] at h
+      exact (hne h.2.1 (by decide) (by decide)).elim
+  | reg =>
+      obtain ⟨h1, h2⟩ := ImageAddrSim.icase_reg_arr hc ds o ss rfl
+      exact (hne rfl h1 h2).elim
+
 /-- **The events of one step under the gate with carry chains.** From states related by
     `ImgRelW`, at an instruction `bi` of a body that passes the gate `imgGateBW`, whose only
     cell operation is the address `LEA:64` of a cell and which is no conditional branch, a
@@ -735,8 +797,24 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
                         obtain ⟨n, hx, hn⟩ := cellA_lea hc
                         rw [hx]
                         simp [normA, instrLeakA, slotMov?, slotCmp?, cellA?, hn]
-                  · simp [instrLeakA]
-                  · simp [instrLeakA]
+                  · have ho : o = "ZEROARR" := by
+                      by_contra h3
+                      simp only [tagA, if_neg h1, if_neg h2, if_neg h3] at ht
+                      split_ifs at ht
+                      unfold storeImmTagA at ht
+                      split at ht <;> simp at ht
+                    rw [gateAtW_arrImm _ _ _ _ _ (Or.inl ho)] at hg
+                    cases hg
+                  · have ho : o = "STOREIMM" := by
+                      by_contra h4
+                      have h3 : o ≠ "ZEROARR" := by
+                        rintro rfl
+                        simp only [tagA, if_neg h1, if_neg h2, if_true, zeroTagA] at ht
+                        split at ht <;> simp at ht
+                      simp only [tagA, if_neg h1, if_neg h2, if_neg h3, if_neg h4] at ht
+                      split_ifs at ht
+                    rw [gateAtW_arrImm _ _ _ _ _ (Or.inr ho)] at hg
+                    cases hg
   | Lcond c l => exact absurd rfl (hnc c l)
   | _ => simp [stepLeakA, hb, posTW, loadIdxA?, storeIdxA?]
 

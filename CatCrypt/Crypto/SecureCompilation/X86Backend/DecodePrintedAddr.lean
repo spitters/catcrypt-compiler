@@ -35,8 +35,12 @@ scratch register in that red-zone word; no other covered instruction writes it.
 the frame-word moves; the frame-word store and load at `MOVQ` or `MOV:64`; the flag compare
 `CMP:64` with a register, a sign-extended `imm8` or a frame word; the indexed load `LOADIDX`
 and store `STOREIDX` at scale `8`; the low multiply `MUL:64`; the widening multiply `MULX`
-with coincident or with distinct destinations.
+with coincident or with distinct destinations; the array zeroing `ZEROARR [], [B, #n, #64]`
+and the constant-index store `STOREIMM d, [B, V, #k]` through a base register.
 `AArm.ok` is the Boolean condition of an arm, read off the instruction.
+
+The encoder lays down the zeroing as the `n` stores `movq $0, 8i(%B)` (`zeroPieces`) and the
+constant-index store as `movq %V, 8k(%B)` (`stPieces`).
 
 ## Main results
 
@@ -414,6 +418,134 @@ theorem mulxSameScratch_spec (h s : Nat) :
     simp only [Option.getD_some]
     omega
 
+/-! ## 4b. The pieces of the stack-array instructions -/
+
+/-- The byte piece of `STOREIMM [d] <- [B; V; imm k]`: `movq %V, 8k(%B)`. -/
+def stPieces (B V : String) (k : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  [(encMemMovw 1 0x89 (gpNumU V) (gpNumU B) (Int.ofNat (8 * k)),
+    .storeMem (phys B) (Int.ofNat (8 * k)) (.reg (phys V)))]
+
+/-- An element offset `stackDispOk` admits is a signed 32-bit displacement. -/
+theorem dispOk32_of_stackDispOk {k : Nat} (hk : stackDispOk k = true) :
+    dispOk32 (Int.ofNat (8 * k)) = true := by
+  simp only [stackDispOk, decide_eq_true_eq] at hk
+  simp only [dispOk32, decide_eq_true_eq, Int.ofNat_eq_natCast]
+  omega
+
+/-- The 64-bit image of the byte offset `8 k` read as an integer. -/
+theorem ofInt_eight_mul (k : Nat) : BitVec.ofInt 64 (8 * (k : Int)) = BitVec.ofNat 64 (8 * k) := by
+  rw [show (8 * (k : Int)) = ((8 * k : Nat) : Int) by push_cast; rfl]
+  exact BitVec.ofInt_natCast _ _
+
+/-- `mov %s, off(%b)` with a signed 32-bit displacement. -/
+theorem pieceDec_storeMem (s b : Nat) (off : Int) (hs : s < 16) (hb : b < 16)
+    (h : dispOk32 off = true) :
+    PieceDec (encMemMovw 1 0x89 s b off,
+      .storeMem (SailX86Decoder.regName b) off (.reg (SailX86Decoder.regName s))) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have e := roundtrip_storeMem32 (canonAlloc ()) (SailX86Decoder.regName b)
+    (SailX86Decoder.regName s) off rest h
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon s hs,
+    regOf_canon b hb, gpNum_regName s hs, gpNum_regName b hb,
+    LprogJInstrBytesAgree.encMemMovw_one] using e
+
+/-- **The bytes of the constant-index store.** Over a general-purpose base and value and an
+    offset `stackDispOk` admits, the bytes of `STOREIMM [d] <- [B; V; imm k]` are its piece,
+    which decodes to the store of `V` at `8 k` from `B`. -/
+theorem stPieces_bytes (F W Q : Nat) (a : LOperand) (B V : String) (k : Nat)
+    (hB : isGpName B = true) (hV : isGpName V = true) (hk : stackDispOk k = true) :
+    encodeLopn F W (.Lopn [a] "STOREIMM" [.reg B, .reg V, .imm k]) Q
+        = (stPieces B V k).flatMap Prod.fst
+      ∧ ∀ q ∈ stPieces B V k, PieceDec q := by
+  refine ⟨by simp [stPieces, encodeLopn_storeImm F W a B V k Q hB hV hk], ?_⟩
+  intro q hq
+  simp only [stPieces, List.mem_singleton] at hq
+  subst hq
+  exact pieceDec_storeMem _ _ _ (gpNumU_lt_16 V) (gpNumU_lt_16 B) (dispOk32_of_stackDispOk hk)
+
+/-- **The run of the constant-index store**: the decoded store writes the value register at
+    the byte offset `8 k` from the base register, and leaves the registers and flags. -/
+theorem run_stPieces (sa : AState) (B V : String) (k : Nat) :
+    runBlockA sa ((stPieces B V k).map Prod.snd)
+      = { sa with
+          mem := write64 sa.mem (sa.regs (phys B) + BitVec.ofNat 64 (8 * k)) (sa.regs (phys V)) }
+      := by
+  simp [stPieces, evalInstrA, evalInstr, JState.store, AState.view, writeAddr, writeVal,
+    JOperand.eval, ofInt_eight_mul]
+
+/-- The byte pieces of `ZEROARR [D] <- [imm n; imm 64]`: `movq $0, 8i(%D)` for `i < n`. -/
+def zeroPieces (D : String) (n : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  (List.range n).map fun i =>
+    (ScalarEncoder.encMemMovImm (gpNumU D) (Int.ofNat (8 * i)) 0,
+      .storeMem (phys D) (Int.ofNat (8 * i)) (.imm 0))
+
+/-- `movq $0, off(%b)` with a signed 32-bit displacement decodes to the store of `0` at `off`
+    from `%b`. -/
+theorem pieceDec_storeZero (b : Nat) (off : Int) (hb : b < 16) (h : dispOk32 off = true) :
+    PieceDec (ScalarEncoder.encMemMovImm b off 0,
+      .storeMem (SailX86Decoder.regName b) off (.imm 0)) := by
+  intro rest
+  apply decodeLinstr_of_decodeJ1
+  have e := roundtrip_storeMemImm32 (canonAlloc ()) (SailX86Decoder.regName b) off 0 rest
+    (by decide) (by decide) h
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon b hb,
+    gpNum_regName b hb] using e
+
+/-- **The bytes of the zeroing.** Over a general-purpose destination, a positive count and a
+    last element offset `stackDispOk` admits, the bytes of `ZEROARR [D] <- [imm n; imm 64]`
+    are its pieces, each of which decodes to the store of `0` at `8 i` from `D`. -/
+theorem zeroPieces_bytes (F W Q : Nat) (D : String) (n : Nat) (hD : isGpName D = true)
+    (hn : 0 < n) (hk : stackDispOk (n - 1) = true) :
+    encodeLopn F W (.Lopn [.reg D] "ZEROARR" [.imm n, .imm 64]) Q
+        = (zeroPieces D n).flatMap Prod.fst
+      ∧ ∀ q ∈ zeroPieces D n, PieceDec q := by
+  refine ⟨by simp [zeroPieces, encodeLopn_zeroArr F W D n Q hD hn hk, encZeroArr,
+    List.flatMap_map], ?_⟩
+  intro q hq
+  simp only [zeroPieces, List.mem_map, List.mem_range] at hq
+  obtain ⟨i, hi, rfl⟩ := hq
+  refine pieceDec_storeZero _ _ (gpNumU_lt_16 D) (dispOk32_of_stackDispOk (k := i) ?_)
+  simp only [stackDispOk, decide_eq_true_eq] at hk ⊢
+  omega
+
+/-- **The bytes of the zeroing in the source form.** Over a general-purpose base, a positive
+    count and a last element offset `stackDispOk` admits, the bytes of
+    `ZEROARR [] <- [B; imm n; imm 64]` are the pieces `zeroPieces B n`, each of which decodes to
+    the store of `0` at `8 i` from `B`. -/
+theorem zeroPiecesSrc_bytes (F W Q : Nat) (B : String) (n : Nat) (hB : isGpName B = true)
+    (hn : 0 < n) (hk : stackDispOk (n - 1) = true) :
+    encodeLopn F W (.Lopn [] "ZEROARR" [.reg B, .imm n, .imm 64]) Q
+        = (zeroPieces B n).flatMap Prod.fst
+      ∧ ∀ q ∈ zeroPieces B n, PieceDec q := by
+  refine ⟨by simp [zeroPieces, encodeLopn_zeroArrSrc F W B n Q hB hn hk, encZeroArr,
+    List.flatMap_map], (zeroPieces_bytes F W Q B n hB hn hk).2⟩
+
+/-- **The run of the zeroing**: the decoded stores write the zero word at the byte offsets
+    `8 i`, `i < n`, from the destination register, in order (`JasminLsemAddrMem.zeroWords`),
+    and leave the registers and flags. -/
+theorem run_zeroPieces (sa : AState) (D : String) (n : Nat) :
+    runBlockA sa ((zeroPieces D n).map Prod.snd)
+      = { sa with mem := zeroWords sa.mem (sa.regs (phys D)) n } := by
+  induction n with
+  | zero => simp [zeroPieces, zeroWords]
+  | succ n ih =>
+    simp only [zeroPieces, List.range_succ, List.map_append, List.map_map] at ih ⊢
+    rw [runBlockA_append]
+    simp only [Function.comp_def] at ih ⊢
+    rw [ih]
+    simp [evalInstrA, evalInstr, JState.store, AState.view, writeAddr, writeVal,
+      JOperand.eval, zeroWords, ofInt_eight_mul]
+
+/-- The zeroing of `n` words at one address in both memories keeps their agreement outside a
+    word. -/
+theorem agree_zeroWords {m m' : AMem} {r : BitVec 64} (h : ∀ x, ¬ InRange8 r x → m x = m' x)
+    (p : BitVec 64) (n : Nat) :
+    ∀ x, ¬ InRange8 r x → zeroWords m p n x = zeroWords m' p n x := by
+  induction n with
+  | zero => exact h
+  | succ n ih => exact agree_write64 ih _ _
+
 /-! ## 5. The arms -/
 
 /-- A covered instruction of a physical body on the address machine. -/
@@ -443,6 +575,11 @@ inductive AArm where
   /-- The widening multiply `MULX L, H, S` with distinct destinations: `L` receives the low
       and `H` the high word of the product of `RDX` and `S`. -/
   | mulx (L H S : String)
+  /-- The array zeroing `ZEROARR [], [B, #n, #64]` of `n` words from the address in `B`. -/
+  | zero (B : String) (n : Nat)
+  /-- The constant-index store `STOREIMM d, [B, V, #k]` of `V` at the word `k` from the address
+      in `B`; the destination `d` names the array and is not a machine operand. -/
+  | simm (d B V : String) (k : Nat)
 
 /-- The instruction of an arm. -/
 def AArm.instr : AArm → LinstrR
@@ -457,6 +594,8 @@ def AArm.instr : AArm → LinstrR
   | .mul D S => .Lopn [.reg D] "MUL:64" [.reg D, .reg S]
   | .mulxS H S => .Lopn [.reg H, .reg H] "MULX" [.reg S]
   | .mulx L H S => .Lopn [.reg L, .reg H] "MULX" [.reg S]
+  | .zero B n => .Lopn [] "ZEROARR" [.reg B, .imm n, .imm 64]
+  | .simm d B V k => .Lopn [.reg d] "STOREIMM" [.reg B, .reg V, .imm k]
 
 /-- The register arms of `DecodePrinted`: every arm but the frame-word moves. -/
 def regArmB : Arm → Bool
@@ -496,6 +635,8 @@ def AArm.pieces (P : Params) : AArm → List (List (BitVec 8) × JInstr 64)
           .loadMem (SailX86Decoder.regName (scrOf H S)) "%rsp" cmovRedZone)]
   | .mulx L H S => [(ScalarEncoder.encMulxRR (gpNumU H) (gpNumU L) (gpNumU S),
       .mulx (phys H) (phys L) (.reg "%rdx") (.reg (phys S)))]
+  | .zero B n => zeroPieces B n
+  | .simm _ B V k => stPieces B V k
 
 /-- The machine instructions of an arm. -/
 def AArm.js (P : Params) (a : AArm) : List (JInstr 64) := (a.pieces P).map Prod.snd
@@ -504,7 +645,9 @@ def AArm.js (P : Params) (a : AArm) : List (JInstr 64) := (a.pieces P).map Prod.
     frame word with an offset in `rel32` range, whose word a load or compare reads disjoint
     from the red-zone word; a frame-word move at `MOVQ` or `MOV:64`; an immediate compare in
     the sign-extended `imm8` range; an indexed access whose index register is not
-    `%rsp`; distinct destinations of the widening multiply `mulx`. -/
+    `%rsp`; distinct destinations of the widening multiply `mulx`; a zeroing of a positive
+    count whose last word offset and a constant-index store whose word offset `stackDispOk`
+    admits, the destination of the constant-index store a general-purpose name. -/
 def AArm.ok (P : Params) : AArm → Bool
   | .reg a => regArmB a && a.ok P [] && plainB a.instr
   | .st m q S => gpOk S && !gpOk q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
@@ -521,6 +664,8 @@ def AArm.ok (P : Params) : AArm → Bool
   | .mul D S => gpOk D && gpOk S
   | .mulxS H S => gpOk H && gpOk S
   | .mulx L H S => gpOk L && gpOk H && gpOk S && L != H
+  | .zero B n => gpOk B && decide (0 < n) && stackDispOk (n - 1)
+  | .simm d B V k => gpOk B && gpOk V && stackDispOk k && gpOk d
 
 theorem pieceDec_single {q : List (BitVec 8) × JInstr 64} (h : PieceDec q) :
     ∀ p ∈ [q], PieceDec p := by
@@ -604,16 +749,27 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
     exact ⟨by simp [AArm.instr, AArm.pieces,
         encodeLopn_mulx _ _ _ _ _ _ (beq_eq_false_iff_ne.mpr hne) hL hH hS],
       pieceDec_single (pieceDec_mulx _ _ _ (gpNumU_lt_16 H) (gpNumU_lt_16 L) (gpNumU_lt_16 S))⟩
+  | zero B n =>
+    simp only [AArm.ok, Bool.and_eq_true, decide_eq_true_eq] at h
+    exact zeroPiecesSrc_bytes P.frame P.spillW P.qsaveB B n (gpFacts h.1.1).isGp h.1.2 h.2
+  | simm d B V k =>
+    simp only [AArm.ok, Bool.and_eq_true] at h
+    exact stPieces_bytes P.frame P.spillW P.qsaveB (.reg d) B V k (gpFacts h.1.1.1).isGp
+      (gpFacts h.1.1.2).isGp h.1.2
 
 /-! ## 6. The simulation of one arm -/
 
 /-- The tagged instruction the address machine steps for an arm: the indexed accesses at the
-    load and store tags, the widening multiply at its width `MULX:64`. -/
+    load and store tags, the widening multiply at its width `MULX:64`, the zeroing of `n`
+    words at `.zero 64 n` and the constant-index store at index `k` at `.storeImm 64 (k + 1)`.
+    -/
 def AArm.li : AArm → LinstrRM
   | .ldx D B I => (.Lopn [.reg D] "LOADIDX" [.arrIdx B I 8], .load 64 0)
   | .stx d B I V => (.Lopn [.reg d] "STOREIDX" [.arrIdx B I 8, .reg V], .store 64 0)
   | .mulxS H S => (.Lopn [.reg H, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none)
   | .mulx L H S => (.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S], .reg none)
+  | .zero B n => (.Lopn [] "ZEROARR" [.reg B, .imm n, .imm 64], .zero 64 n)
+  | .simm d B V k => (.Lopn [.reg d] "STOREIMM" [.reg B, .reg V, .imm k], .storeImm 64 (k + 1))
   | a => (a.instr, .reg none)
 
 /-- The compare arms. -/
@@ -962,10 +1118,6 @@ theorem sim_cmpM (P : Params) (rsp : BitVec 64) (c q : String)
       rw [e2]; exact hc.mem x hx)
   · exact e3
 
-theorem ofInt_eight_mul (n : Nat) :
-    BitVec.ofInt 64 (8 * (n : Int)) = BitVec.ofNat 64 (8 * n) := by
-  rw [show (8 * (n : Int)) = ((8 * n : Nat) : Int) by push_cast; ring, BitVec.ofInt_natCast]
-
 theorem evalInstrA_loadMemIdx_eq (sa : AState) (D B I : String) :
     (∀ r, (evalInstrA sa (.loadMemIdx D B I 8)).regs r = if r = D then
         read64 sa.mem (sa.regs B + BitVec.ofNat 64 (8 * (sa.regs I).toNat)) else sa.regs r)
@@ -1218,6 +1370,35 @@ theorem sim_mulx (P : Params) (rsp : BitVec 64) (L H S : String)
     rw [m1]
     exact hc.mem z hz
 
+/-- **The array zeroing.** The decoded stores write the zero word at `8 i`, `i < n`, from the
+    machine register of `B`, as the address machine writes them from `B`; the registers are
+    unchanged. -/
+theorem sim_zero (P : Params) (rsp : BitVec 64) (B : String) (n : Nat)
+    (h : (AArm.zero B n).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorr rsp sa s) :
+    ∃ s' zf', fstepA (frameP P rsp) (AArm.zero B n).li s zf = some (s', zf')
+      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.zero B n).js P)) s' := by
+  simp only [AArm.ok, Bool.and_eq_true] at h
+  refine ⟨_, _, fstepA_zeroArr _ (hc.regs B h.1.1) zf, ?_⟩
+  rw [Ascent.RInstrAddrMem.aMachine_runBlock,
+    show (AArm.zero B n).js P = (zeroPieces B n).map Prod.snd from rfl, run_zeroPieces]
+  exact hc.keep rfl (fun r => LstateN.getW_nextPc _ _ _) (agree_zeroWords hc.mem _ _)
+
+/-- **The constant-index store.** The decoded store writes the machine register of `V` at
+    `8 k` from the machine register of `B`, as the address machine writes `V` from `B`; the
+    registers are unchanged. -/
+theorem sim_simm (P : Params) (rsp : BitVec 64) (d B V : String) (k : Nat)
+    (h : (AArm.simm d B V k).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorr rsp sa s) :
+    ∃ s' zf', fstepA (frameP P rsp) (AArm.simm d B V k).li s zf = some (s', zf')
+      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.simm d B V k).js P)) s' := by
+  simp only [AArm.ok, Bool.and_eq_true] at h
+  refine ⟨_, _, fstepA_storeImm _ (Nat.lt_succ_self k) (hc.regs B h.1.1.1) (hc.regs V h.1.1.2)
+    zf, ?_⟩
+  rw [Ascent.RInstrAddrMem.aMachine_runBlock,
+    show (AArm.simm d B V k).js P = (stPieces B V k).map Prod.snd from rfl, run_stPieces]
+  exact hc.keep rfl (fun r => LstateN.getW_nextPc _ _ _) (agree_write64 hc.mem _ _)
+
 /-- The address an indexed load of the arm `a` reads from the address state `s` is disjoint
     from the red-zone word. -/
 def AArm.LoadSafe (rsp : BitVec 64) (s : LstateA) : AArm → Prop
@@ -1273,6 +1454,12 @@ theorem AArm.sim (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) (
   | mulx L H S =>
     obtain ⟨s', zf', h1, h2⟩ := sim_mulx P rsp L H S h sa s zf hc
     exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
+  | zero B n =>
+    obtain ⟨s', zf', h1, h2⟩ := sim_zero P rsp B n h sa s zf hc
+    exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
+  | simm d B V k =>
+    obtain ⟨s', zf', h1, h2⟩ := sim_simm P rsp d B V k h sa s zf hc
+    exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
 
 /-! ## 7. Reading an instruction into an arm -/
 
@@ -1300,6 +1487,12 @@ def classifyA : LinstrR → Option AArm
       if m == "MULX" && h == h' then some (.mulxS h s)
       else if m == "MULX" then some (.mulx h h' s)
       else none
+  | .Lopn [] m [.reg b, .imm n, .imm w] =>
+      if m == "ZEROARR" && w == 64 then some (.zero b n)
+      else (classify (.Lopn [] m [.reg b, .imm n, .imm w])).map .reg
+  | .Lopn [.reg d] m [.reg b, .reg v, .imm k] =>
+      if m == "STOREIMM" then some (.simm d b v k)
+      else (classify (.Lopn [.reg d] m [.reg b, .reg v, .imm k])).map .reg
   | i => (classify i).map .reg
 
 theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.instr = i := by
@@ -1345,6 +1538,16 @@ theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.
     · obtain rfl := Option.some.inj h
       simp only [beq_iff_eq] at h2
       subst h2; rfl
+  · split_ifs at h with h1
+    · obtain rfl := Option.some.inj h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h1
+      obtain ⟨rfl, rfl⟩ := h1; rfl
+    · exact hm h
+  · split_ifs at h with h1
+    · obtain rfl := Option.some.inj h
+      simp only [beq_iff_eq] at h1
+      subst h1; rfl
+    · exact hm h
   · exact hm h
 
 /-- The address machine steps an arm whose conditions hold as the tagged instruction
@@ -1371,7 +1574,8 @@ theorem AArm.li_eq {P : Params} {a : AArm} (h : a.ok P = true) :
     simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h
     rcases h.2 with rfl | rfl <;>
       simp (config := { decide := true }) [AArm.li, AArm.instr, normA, tagA]
-  | _ => simp (config := { decide := true }) [AArm.li, AArm.instr, normA, tagA]
+  | _ => simp (config := { decide := true }) [AArm.li, AArm.instr, normA, tagA, zeroTagA,
+      storeImmTagA]
 
 theorem AArm.instr_lopn (a : AArm) : ∃ ds o ss, a.instr = .Lopn ds o ss := by
   cases a with

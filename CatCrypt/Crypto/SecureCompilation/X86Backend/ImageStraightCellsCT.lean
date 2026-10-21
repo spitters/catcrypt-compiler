@@ -1786,6 +1786,16 @@ theorem leak_aarmW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
     simp only [AArm.li]; exact instrLeakA_reg_indep (by simp [cellA?]) none _ _
   | mulx L H S =>
     simp only [AArm.li]; exact instrLeakA_reg_indep (by simp [cellA?]) none _ _
+  | zero B n =>
+    have hB : readsI (AArm.zero B n).li.fst B := reg_reads (by simp)
+    have hg := getW_widen (sa := sa) hw hB 64
+    simp only [AArm.li] at hg ⊢
+    simp only [instrLeakA, zeroArrA?, if_true, hg]
+  | simm d B V k =>
+    have hB : readsI (AArm.simm d B V k).li.fst B := reg_reads (by simp)
+    have hg := getW_widen (sa := sa) hw hB 64
+    simp only [AArm.li] at hg ⊢
+    simp only [instrLeakA, storeImmStruct?, if_true, hg]
 
 /-- The copy of an operand into an accumulator other than the stack register keeps the stack
     register. -/
