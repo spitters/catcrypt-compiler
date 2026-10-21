@@ -1,11 +1,29 @@
-# `CatCrypt/Crypto/Hax/`: hax-lean AST to LowCT and back
+# `CatCrypt/Crypto/Hax/`: the hax-lean AST to `NFProg` and to LowCT
 
-This directory translates hax-lean's `ImpExpr` to LowCT (the front the Rust route
-enters through), proves the translation simulates the source, and prints LowCT back
-as Rust. Modules are in the namespace `CatCrypt.Crypto.Hax`. The hax-lean AST and its
-semantics `denote` / `evalImp` come from the `hax-lean` dependency.
+This directory holds the front of `compileA`, which translates hax-lean's `ImpExpr` to
+`NFProg`, and the deprecated front `haxToLowCT`, which translates it to LowCT, with the
+printers of LowCT back to Rust. Modules are in the namespace `CatCrypt.Crypto.Hax`. The
+hax-lean AST and its semantics `denote` / `evalImp` come from the `hax-lean` dependency.
 
-## Entry points
+## The front of `compileA`
+
+| Module | Contents |
+|---|---|
+| [`ImpToNF`](ImpToNF.lean) | `impToNF`, the structured translation of `ImpExpr` to `NFProg nfDialect` |
+| [`FrontDomain`](FrontDomain.lean) | `frontOut`, the domain of `impToNF` as a function |
+| [`FrontTyping`](FrontTyping.lean) | `FrontTy`, the typing judgement of the front |
+| [`Module`](Module.lean) | `HaxModule`, an entry function with its callees and linked functions |
+| [`HaxCallNames`](HaxCallNames.lean) | the call-name, width, scalar-value and slot-name tables, shared with `haxToLowCT` |
+| [`HaxSourceLeak`](HaxSourceLeak.lean) | the source leakage of a run of `denote'` |
+
+The import closure of `compileA` contains no `HaxToLowCT*` module; the development
+repository's CI checks this.
+
+## The deprecated front `haxToLowCT`
+
+`haxToLowCT` remains as the producer of the protocols' `*HaxLowCTBridge` modules and of
+the kernel producers. New code does not import it; the development repository's CI
+freezes the set of its importers.
 
 | Module | Contents |
 |---|---|
@@ -19,15 +37,20 @@ semantics `denote` / `evalImp` come from the `hax-lean` dependency.
 | [`HaxToLowCTSim_ProgramLit`](HaxToLowCTSim_ProgramLit.lean) | `haxToLowCT_simulates_programL`: literal call arguments |
 | [`HaxToLowCTSim_ProgramFor`](HaxToLowCTSim_ProgramFor.lean), [`HaxToLowCTSim_ProgramLoops`](HaxToLowCTSim_ProgramLoops.lean), [`HaxToLowCTSim_ProgramArr`](HaxToLowCTSim_ProgramArr.lean) | counted, runtime-bound and data-dependent loops; array loads and stores |
 | [`HaxToLowCTSim_Exit`](HaxToLowCTSim_Exit.lean) | `haxToLowCTFn_simulates`: early returns, over `Hax.denote'` |
+
+The `HaxToLowCTSim_*` modules without a row hold the per-constructor cases
+(`_Call`, `_If`, `_Match`, `_While`, `_AssignMatch`, `_Quarta*`) that
+`HaxToLowCTSim_Main` assembles.
+
+## Printers from LowCT to Rust
+
+| Module | Contents |
+|---|---|
 | [`LowCTToHax`](LowCTToHax.lean) | `lowCTToImp : LowCT → Option ImpExpr`; `lowCTToImp_roundTrip` |
 | [`LowCTToHaxSim`](LowCTToHaxSim.lean) | `lowCTToImp_simulates`: agreement with `RustExec` |
 | [`ImpRustPrint`](ImpRustPrint.lean) | `ppImpRustFnRet`, the Rust printer; `parse_ppImpRustFnRet` |
 | [`ImpRustHaxCheck`](ImpRustHaxCheck.lean) | `haxReadAgrees`, `haxReadAgrees_sound` |
 | [`ImpRustHaxRoundTrip`](ImpRustHaxRoundTrip.lean) | `roundTrip_haxReadAgrees` on the example read back by hax |
-
-The `HaxToLowCTSim_*` modules without a row hold the per-constructor cases
-(`_Call`, `_If`, `_Match`, `_While`, `_AssignMatch`, `_Quarta*`) that
-`HaxToLowCTSim_Main` assembles.
 
 ## Conventions
 

@@ -71,6 +71,9 @@ side condition or translation validation) and the trust ledger;
 The typed SSA framework `Com`, the dialects `catCryptDialect`, `jasminDialect` and the
 PrimeIR dialects, and the instruction selection to x86-64, AArch64 and RV64 are the
 levels at which the theorems of the [README](README.md#the-pipeline) are stated. The
-front `haxToLowCT`, the Jasmin `.jinc` importer and the relational front reach them;
-`compileA` uses `jasminDialect` as the target of `extChain` and does not pass through
-`LowCT` or `Com`.
+deprecated front `haxToLowCT` (the producer of the protocols' `*HaxLowCTBridge` modules
+and of the kernel producers), the Jasmin `.jinc` importer and the relational front reach
+them. `compileA` uses `jasminDialect` as the target of `extChain` and does not pass
+through `LowCT` or `Com`; its import closure contains no module of `haxToLowCT`, and the
+call-name tables it shares with that front are in
+[`HaxCallNames`](CatCrypt/Crypto/Hax/HaxCallNames.lean).

@@ -40,19 +40,29 @@ families with a template are fields, lattices, GHASH, towers, RSA and isogeny mo
 [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) gives the instance tables with the accepted
 programs, the measured ratios against fiat-crypto and the size of the template layer.
 
-- The legacy hax front `haxToLowCT` in `CatCrypt/Crypto/Hax/`, a front of the kernel
-  producers outside the pipeline of `compileA`, lowers hax-lean's `ImpExpr` to `LowCT`
-  (`haxToLowCT_simulates_program` and its array, tower and literal variants). The
-  typed entry point `haxFrontT` (development repository,
-  `CatCrypt/Crypto/Hax/HaxFrontT.lean`, `haxFrontT_simulates`) places each name by
-  its type; its body selection uses the `LowCT` oracle `lowCTAccepts`. `compileA` runs
-  neither: its front `haxToNF` selects bodies with the shape check `shapeAccepts`
-  (`nfBody` in the development repository's `Haxc/NFFront.lean`). Early exits lower to
-  exit-flag form. `scalarizeExitIn`
+- The legacy hax front `haxToLowCT` in `CatCrypt/Crypto/Hax/` lowers hax-lean's
+  `ImpExpr` to `LowCT` (`haxToLowCT_simulates_program` and its array, tower and literal
+  variants). It is deprecated: it remains as the producer of the `*HaxLowCTBridge`
+  modules of the protocols' `SurfaceDeps` and of the kernel producers, and new code does
+  not import it. Early exits lower to exit-flag form. `scalarizeExitIn`
   (`CatCrypt/Crypto/Hax/HaxToLowCTExitWordOps.lean`) replaces marshalled word calls by
   scalar assignments and unsigned comparisons by their signed forms. `placedUse`
   (`CatCrypt/Crypto/Hax/HaxToLowCTPlaced.lean`) checks that every name is used in the
-  heap of its placement. [HAX_RUST.md](HAX_RUST.md) gives the procedures.
+  heap of its placement. [HAX_RUST.md](HAX_RUST.md) gives the procedures. The earlier
+  typed front `haxFrontT` (development repository, `CatCrypt/Crypto/Hax/HaxFrontT.lean`,
+  `haxFrontT_simulates`) places each name by its type and selects bodies with the
+  `LowCT` oracle `lowCTAccepts`; no pipeline runs it.
+- `compileA` runs neither front. Its front `haxToNF` selects bodies with the shape check
+  `shapeAccepts` (`nfBody` in the development repository's `Haxc/NFFront.lean`), and its
+  import closure contains no module of `haxToLowCT` and none of `haxFrontT`. The tables
+  the fronts share are in modules of their own: the call names, widths and scalar values
+  in `CatCrypt/Crypto/Hax/HaxCallNames.lean`, and in the development repository the
+  acceptance tests `FrontOracle` with the body selection (`Hax.HaxFrontOracle`), the
+  `u64` tables `hax64Exit` and `hax64WExit` (`Hax.Hax64Table`), the spine and typing
+  facts of a body (`Hax.HaxSpine`) and the word results of source runs
+  (`Haxc.WordResult`). The development repository's CI checks the import closure of the
+  roots `ComposeV1`, `RegionLinkCall`, `ComposeCTStraight` and `ComposeCTProved` and
+  freezes the set of modules that import `haxToLowCT`.
 - In the Jasmin `.jinc` importer (`CatCrypt/Crypto/Jasmin/`), `JincParser` and
   `JincToCom` read the straight-line fragment, `JincElab` elaborates it to
   `Com jasminDialect`, and `JincToLowCT` emits `for` and `while` as the loop nodes
@@ -84,8 +94,9 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `haxc_correct_auto_tuple_ct_regions` (`ComposeCTStraight.lean`) add constant time of
   the decoded program over runs from entry states that agree on the public data of the
   layout. The instances are `mpn_and_n_correct_auto` and
-  `mpn_and_n_correct_auto_ct_regions` (`AndNCorrect.lean`, `ComposeCTStraight.lean`),
-  `ltu_correct_auto` and `ltu_rc_proved` (`LtuCorrect.lean`, `ComposeCTStraight.lean`),
+  `mpn_and_n_correct_auto_ct_regions` (`AndNCorrect.lean`,
+  `Haxc.WorkedKernelCorollaries`), `ltu_correct_auto` and `ltu_rc_proved`
+  (`LtuCorrect.lean`, `Haxc.WorkedKernelCorollaries`),
   and `mpn_mul_1_correct_auto` and `mpn_mul_1_correct_auto_ct_regions`
   (`Mul1Correct.lean`, `Mul1CorrectCT.lean`).
 - The compiler entry of `haxc` (modules `Haxc.*` are in the development repository) is
@@ -133,8 +144,8 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `ctCheckRX_sound`; the joint statements `haxc_correct_auto_ct_proved_all`,
   `haxc_gate_proved_all` and `haxc_rc_proved_all` take `m.linked = []`.
   `haxc_rc_proved_all` adds robust compilation under the hypotheses of the joint statement; UC preservation
-  follows from its gate conclusion by `uc_of_gate`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved` are
-  `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`.
+  follows from its gate conclusion by `uc_of_gate`. The instances `mpn_and_n_rc_proved` and `ltu_rc_proved`
+  (`Haxc.WorkedKernelCorollaries`) are `haxc_rc_proved_all` at `mpn_and_n` and at `ltu`.
   For a loop of field multiplications, `fieldRegionFront_nfCT` (`Haxc.FieldLoopCT`) derives
   the constant-time property of the region program from the level check of the lowered
   program, and `regionChain_bytes_ct` carries it to the bytes of `compileRegion`.
