@@ -6,6 +6,13 @@ the five producers of the linked kernels that programs compiled by `compileA` ca
 are the field and lattice templates, LowCT written in Lean, relational compilation, and the
 Jasmin `.jinc` importer. [NAVIGATION.md](NAVIGATION.md) lists its modules under the THIR rows.
 
+The generator is deprecated since 2026-10-18. Its entry points `compileFromHax`, `impToJasmin`
+and `thirToJasmin` carry `@[deprecated]` attributes: a new kernel compiles through `compileA`
+(`haxToNF`), and each kernel family listed under Outputs moves to one of the other four
+producers, after which its THIR modules are removed. The tie manifest
+`scripts/compile_from_hax_tie_manifest.tsv` (development repository) has a ceiling on its row count, lowered as families
+move.
+
 ## What `Thir` is
 
 `Thir` is an IR of this package, not rustc's THIR. It is named after its ancestry: Rust source

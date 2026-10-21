@@ -91,11 +91,8 @@ Golden paths and kernel emitters.
   `BigNat*.lean`, `BigInt*.lean`: the variable-width limb carrier and its refinements.
 
 Realization and grounding.
-- `KernelRealizesClass.lean`, `GenericKernelRealization.lean`,
-  `ProtocolEmitRealizes.lean`: the kernel-realization predicate and registry.
-- `Concrete*Realizer.lean`, `*KernelRegistryEntry.lean`, `*ProtocolKernels.lean`,
-  `Grounded*.lean` (index in `GroundedPortfolio.lean`): instances per primitive or
-  protocol.
+- `GenericKernelRealization.lean`, `ProtocolEmitRealizes.lean`: the
+  kernel-realization predicate.
 - `EcRealizationGeneric.lean`, `EcProjectiveGeneric*.lean`,
   `MontgomeryLadderGeneric.lean`, `QuadExt*Generic.lean`, `CubExtGeneric.lean`:
   curve and extension-field specifications generic in the field.

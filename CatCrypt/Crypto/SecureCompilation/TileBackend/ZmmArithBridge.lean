@@ -53,9 +53,7 @@ set_option autoImplicit false
 
 /-! ## 0. Packed↔lane round-trip (re-proved locally)
 
-`zmmOfLanes_zmmLane` is also proved in `Poseidon2Avx512Jasmin.lean`, but that
-module is import-heavy (the full jasmin print/emit chain); to keep this bridge
-light we re-prove the exact lemma here from `BitVec.eq_of_getLsbD_eq` and the
+`zmmOfLanes_zmmLane` is proved here from `BitVec.eq_of_getLsbD_eq` and the
 `getLsbD`-of-`extractLsb'`/`append` lemmas. The `VectorBackendBridge` import (the
 same one the `TileS16HighMul` template carries) supplies `fin_cases`. -/
 

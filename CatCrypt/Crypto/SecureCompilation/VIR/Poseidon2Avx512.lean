@@ -34,10 +34,6 @@ written with `VPMULUDQ`, which the pass does not cover.
 Each `*_avx512_eq` theorem states that the lowered instruction writes the lane
 vector of the lane op; each `*_avx2_avx512_agree` theorem states that the AVX2
 lowering `lower` and the AVX-512 lowering write the same lane vector.
-
-The AVX-512 add also has a route through the jasmin chain:
-[`Poseidon2Avx512Jasmin.lean`](Poseidon2Avx512Jasmin.lean) lowers the MDS /
-RC-add `#VPADD_8u64` through the `jasminDialect` op `vpackZMM`.
 -/
 
 @[expose] public section

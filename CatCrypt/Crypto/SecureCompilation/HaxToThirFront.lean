@@ -98,15 +98,16 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (JasminBinOp jasminDial
 
 /-! ## §1  The front entry point -/
 
-/-- **The single front ingestion entry point.** Compose the source→`Thir`
+set_option linter.deprecated false in
+/-- The THIR front entry point. Compose the source→`Thir`
     translator with the `Thir`→`Com jasminDialect` lowering, at register width `w`
     over an `nIn`-word bundled input file with parameter names `params`. Returns
     the emittable `Com jasminDialect (frontCtxt w nIn []) (rW w)`, or `none` when
     either stage rejects (the source is outside the supported subset, or an atom
     fails to resolve).
 
-    This is the function the `catcrypt-emit` CLI calls on parsed
-    `cargo hax into lean` output, replacing hand-written `Com`/`Thir` drivers. -/
+    Retired with the THIR generator since 2026-10-18: new kernels compile
+    through `compileA` (`haxToNF`). -/
 def impToJasmin (w nIn : Nat) (params : List String) (e : ImpExpr) :
     Option (Com jasminDialect (frontCtxt w nIn []) (rW w)) :=
   (impExprToThir params e).bind fun t =>
@@ -222,5 +223,7 @@ theorem maddSrc_front_e2e (I : Fin 2 → BitVec 64) :
 /-- The front entry has the advertised type: `ImpExpr → Option (Com jasminDialect …)`. -/
 example : ImpExpr → Option (Com jasminDialect (frontCtxt 64 2 []) (rW 64)) :=
   impToJasmin 64 2 ["w"]
+
+attribute [deprecated "The THIR generator is retired: new kernels compile through compileA (haxToNF); existing THIR kernel families move to the other kernel producers. impToJasmin is the same composition as CompileFromHax.compileFromHax." (since := "2026-10-18")] impToJasmin
 
 end CatCrypt.Crypto.SecureCompilation.HaxToThirFront

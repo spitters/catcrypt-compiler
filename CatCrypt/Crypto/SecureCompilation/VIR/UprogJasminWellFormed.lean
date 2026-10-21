@@ -5,8 +5,8 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
-public import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport -- deprecated_module: ignore
+public import CatCrypt.Crypto.SecureCompilation.VIR.JasminUprogExport -- deprecated_module: ignore
 
 /-!
 # Jasmin `compile_prog_to_asm` well-formedness of the exported `Uprog`

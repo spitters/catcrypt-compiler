@@ -172,8 +172,7 @@ theorem cubeChainExample_correct (a : Nat) :
 
 When the libcrux (or openssl-style) P-256 inverse chain literal
 is imported, it will be a `List (ChainOp Loc)` of ~12 blocks. Each
-block discharges via the same per-block-instance pattern as the
-Curve25519 chain in `PerBlockInstances.lean`:
+block discharges via a per-block instance:
 
 ```lean
 theorem block2_inst_p256
@@ -183,9 +182,7 @@ theorem block2_inst_p256
   simp [evalP256Chain, ...] -- per-block decide / unfold
 ```
 
-The full discharge composes ~12 such per-block lemmas, exactly
-mirroring `BignumHoare/PerBlockInstances.lean`'s 13-block
-Curve25519 closure.
+The full discharge composes ~12 such per-block lemmas.
 
 The framework is now demonstrated end-to-end at the small-chain
 level; only a real chain literal (cited from libcrux / openssl /

@@ -13,8 +13,7 @@ public import Mathlib.Data.BitVec
 /-!
 # ZMM dword (16×u32) lane round-trip for the verified Jasmin VIR dialect
 
-The dword analogue of the 8×u64 `zmmOfLanes_zmmLane` round-trip proved in
-[`Poseidon2Avx512Jasmin.lean`](Poseidon2Avx512Jasmin.lean).  The verified Jasmin
+The dword analogue of the 8×u64 `zmmOfLanes_zmmLane` round-trip.  The verified Jasmin
 VIR dialect ([`JasminDialect.lean`](JasminDialect.lean)) carries the 16×u32 ZMM
 lane view (`zmmLane32`, the `extractLsb'` reader), its inverse assembler
 (`zmmOfLanes32`), and the two packed dword ops `zmmPackD` (`#VPADDD`/`#VPSUBD`/

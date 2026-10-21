@@ -58,11 +58,9 @@ After this file the inputs to the ML-KEM pass soundness are exactly:
   product (`NttEmitRealizes` / `NttKernelRealizes`), and
 * (c) off-signature pass-through (`OffSigPassThrough`).
 
-All three are **structural properties of a concrete realizer**.  A sibling
-file `ConcreteNttRealizer.lean` is constructing the concrete encoding (an
-injective `decode`, a product-realizing `leafSpec`, and the `oldV`
-pass-through law); we deliberately do **not** import it and instead keep (a)
-(b)(c) as hypotheses so this result composes with whatever concrete realizer
+All three are **structural properties of a concrete realizer** (an injective
+`decode`, a product-realizing `leafSpec`, and the `oldV` pass-through law); they
+are hypotheses, so this result composes with whatever concrete realizer
 discharges them.  Instantiating (a)(b)(c) with that concrete realizer yields
 the fully *unconditional* `nttAgreesPolyMul mlkemLeafSpec 3329 256` and hence
 the unconditional ML-KEM pass soundness — we do not claim it here, since (a)

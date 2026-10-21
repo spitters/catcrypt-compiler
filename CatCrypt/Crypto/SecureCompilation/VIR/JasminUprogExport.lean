@@ -104,6 +104,9 @@ This export is bench-only and frozen: it feeds one bench
 `Jazz.print`.
 -/
 
+deprecated_module "legacy Jasmin export; Jasmin text is printed by Jazz.printChecked \
+  through emitJazzN, emitJazzOuts or emitJazzInOuts" (since := "2026-10-21")
+
 @[expose] public section
 
 set_option autoImplicit false

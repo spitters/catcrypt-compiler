@@ -16,8 +16,7 @@ model. This module is the SIMD-dialect-unification companion: it re-expresses
 the bridge's packed two-operand arithmetic core directly as `Com jasminDialect`
 programs over `reg 512` ZMM registers, off the bespoke `Avx512Model` machine,
 using the verified dialect's `JasminOp.vpackZMM (bop)` op (denote `zmmPackQ bop`,
-the carry-free 8×u64 packed-lane op). This mirrors `ButterflyBlockCom.lean` and
-`Poseidon2Avx512Jasmin.lean`, which route the same `vpackZMM` ops through the
+the carry-free 8×u64 packed-lane op). This mirrors `ButterflyBlockCom.lean`, which routes the same `vpackZMM` ops through the
 `JasminPrint` / `JasminPrintSemCorrect` chain to AT&T `.s`.
 
 ## Which `ZInstr` ops migrate

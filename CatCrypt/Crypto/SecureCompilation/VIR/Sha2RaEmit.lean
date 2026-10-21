@@ -51,6 +51,9 @@ wrapper. The benchmark emit passes `UnrolledComRA.unrolledSlotRASha`, a linear
 scan over the slot domain of `compressCom`.
 -/
 
+deprecated_module "legacy Jasmin printer; Jasmin text is printed by Jazz.printChecked \
+  through emitJazzN, emitJazzOuts or emitJazzInOuts" (since := "2026-10-21")
+
 @[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.Sha2RaEmit

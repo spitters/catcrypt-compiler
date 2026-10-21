@@ -12,10 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.Poseidon2Lane
 /-!
 # Abstract Poseidon2-round ties for the unified-`Com` AVX-512 realization (model-free)
 
-`Poseidon2Avx512Jasmin.lean` routed **one** Poseidon2 AVX-512 lane op — the MDS /
-round-constant linear-layer add (`#VPADD_8u64`) — through the verified jasmin
-chain and pinned its 8 lanes to the abstract `Poseidon2LaneVec.padd`. Its sibling
-bespoke realizations (`Poseidon2Realization.lean`,
+The bespoke Poseidon2 AVX-512 realizations (`Poseidon2Realization.lean`,
 `Poseidon2RoundRealization.lean`) carry the rest of the round — the S-box
 `x ↦ x⁵`, the RC-add, the MDS mul-add — only as `runZBlock`-level *structural*
 realizations over the bespoke `Avx512Model` (`ZInstr`/`ZState`/`runZBlock`)

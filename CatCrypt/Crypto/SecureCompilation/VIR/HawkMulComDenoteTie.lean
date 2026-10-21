@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public import CatCrypt.Crypto.SecureCompilation.VIR.HawkMulEmit
+public import CatCrypt.Crypto.SecureCompilation.VIR.HawkMulEmit -- deprecated_module: ignore
 public import CatCrypt.Crypto.SecureCompilation.VIR.HawkMul4WayRealization
 
 /-!

@@ -75,6 +75,9 @@ are the **last 16 bindings** (identity copies of `o[0..15]` in order —
 `uint64_t *hawk_mul(uint64_t *out, const uint64_t *inp)`, 8-byte stride.
 -/
 
+deprecated_module "use CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmit \
+  (the HAWK-512 NTT multiply)" (since := "2026-10-21")
+
 @[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.HawkMulEmit

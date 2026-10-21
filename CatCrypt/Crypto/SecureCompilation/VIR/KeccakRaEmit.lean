@@ -52,6 +52,9 @@ linear scan with coalescing over a slot trace of `keccakF1600Com`.
 See `KeccakEmit.lean` for the map of the Keccak VIR modules.
 -/
 
+deprecated_module "legacy Jasmin printer; Jasmin text is printed by Jazz.printChecked \
+  through emitJazzN, emitJazzOuts or emitJazzInOuts" (since := "2026-10-21")
+
 @[expose] public section
 
 namespace CatCrypt.Crypto.SecureCompilation.VIR.KeccakRaEmit

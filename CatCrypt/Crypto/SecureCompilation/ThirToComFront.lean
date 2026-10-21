@@ -4127,4 +4127,6 @@ def treehashChainJazz (n : Nat) : String :=
 private theorem dot4Thir_denote (I : Fin 8 → BitVec 64) :
     dot4.denote I (LEnv.empty 64) = some (dotSpec 4 I) := rfl
 
+attribute [deprecated "The THIR generator is retired: new kernels compile through compileA (haxToNF); existing THIR kernel families move to the other kernel producers." (since := "2026-10-18")] thirToJasmin
+
 end CatCrypt.Crypto.SecureCompilation.ThirToComFront

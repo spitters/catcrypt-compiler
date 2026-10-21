@@ -72,9 +72,13 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (jasminDialect)
 (`none`), so the composition is `Option.bind`; whatever it *does* produce is
 value-preserving by `compileFromHax_denote`. -/
 
+set_option linter.deprecated false in
 /-- Compile a hax `ImpExpr` to a `Com jasminDialect`, in one step:
     `ImpExpr → Thir` (the C2 translator) then `Thir → Com` (the C1 front),
-    lowered at the empty local scope (`initFState w nIn`). -/
+    lowered at the empty local scope (`initFState w nIn`). Retired with the
+    THIR generator since 2026-10-18: new kernels compile through `compileA`
+    (`haxToNF`), and the kernel families built here move to the other kernel
+    producers. -/
 def compileFromHax {w nIn : Nat} (params : List String) (e : ImpExpr) :
     Option (Com jasminDialect (frontCtxt w nIn []) (rW w)) :=
   (impExprToThir params e).bind fun t => thirToJasmin [] (initFState w nIn) t
@@ -173,5 +177,7 @@ theorem sigma0_compiles :
   -- per-primitive obligation corollary of the C3 meta-theorem.
   exact compileFromHax_meets_spec (w := 32) (nIn := 1) ["x"] (fun _ => x)
     sigma0Src _ hc hspec
+
+attribute [deprecated "The THIR generator is retired: new kernels compile through compileA (haxToNF); existing compileFromHax kernel families move to the other kernel producers." (since := "2026-10-18")] compileFromHax
 
 end CatCrypt.Crypto.SecureCompilation.CompileFromHax

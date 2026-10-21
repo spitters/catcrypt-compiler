@@ -38,8 +38,7 @@ no new `SimdOp` is needed. This module re-expresses the SAME butterfly as
 straight-line `Com jasminDialect` programs over `reg 512` ZMM registers, off the
 bespoke `Avx512Model` machine. A `Com jasminDialect` built from `vpackZMM` ops
 lowers to AT&T `.s` through the existing `JasminPrint`/`JasminPrintSemCorrect`
-path (cf. `Poseidon2Avx512Jasmin.lean`, which routes a single `vpackZMM .add`
-through that chain).
+path.
 
 ## What is proved here
 

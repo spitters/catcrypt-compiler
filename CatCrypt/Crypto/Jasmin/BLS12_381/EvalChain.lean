@@ -401,9 +401,7 @@ theorem block2_inst_bls12_381 (a : Nat) :
   simp [evalFpChain, ...] -- per-block decide / unfold
 ```
 
-The full discharge composes ~12-16 such per-block lemmas, exactly
-mirroring `BignumHoare/PerBlockInstances.lean`'s 13-block
-Curve25519 closure.
+The full discharge composes ~12-16 such per-block lemmas.
 
 For the **final exponentiation** in `Fp12`, the chain is ~10×
 longer (~3000-4000 ops), but the per-block effort is identical:
