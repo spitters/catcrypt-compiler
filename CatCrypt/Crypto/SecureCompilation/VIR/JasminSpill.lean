@@ -1191,11 +1191,11 @@ theorem renOf_eq_self_or_mem (rho : List (JVar × JVar)) (x : JVar) :
   | none => exact Or.inl ⟨rfl, rfl⟩
   | some h => exact Or.inr (lookR_some hl)
 
-theorem isFreshName_freshName (n : Nat) : isFreshName (freshName n) = true := by
-  simp [isFreshName, freshName, List.isPrefixOf_iff_prefix]
+theorem isFreshName_spillName (n : Nat) : isFreshName (spillName n) = true := by
+  simp [isFreshName, spillName, List.isPrefixOf_iff_prefix]
 
-theorem freshName_inj {n m : Nat} (h : freshName n = freshName m) : n = m := by
-  simp only [freshName, String.append_right_inj] at h
+theorem spillName_inj {n m : Nat} (h : spillName n = spillName m) : n = m := by
+  simp only [spillName, String.append_right_inj] at h
   have h' : Nat.toDigits 10 n = Nat.toDigits 10 m := by
     rw [Nat.toString_eq_ofList_toDigits, Nat.toString_eq_ofList_toDigits] at h
     exact String.ofList_injective h
@@ -1481,7 +1481,7 @@ structure GoodSt (st : St) : Prop where
   rho : ∀ p ∈ st.rho, p.1 ∈ O ∧ isGprTy p.1.vtype = true ∧ p.2.vtype = p.1.vtype ∧
     (p.2 = p.1 ∨ p.2 ∈ st.regs)
   sig : ∀ p ∈ st.sig, p.1 ∈ O ∧ isGprTy p.1.vtype = true ∧ SrcGood T O st p.1 p.2
-  fresh : ∀ v ∈ st.slots ++ st.regs, isGprTy v.vtype = true ∧ ∃ n < st.cnt, v.vname = freshName n
+  fresh : ∀ v ∈ st.slots ++ st.regs, isGprTy v.vtype = true ∧ ∃ n < st.cnt, v.vname = spillName n
   nodup : ((st.slots ++ st.regs).map (·.vname)).Nodup
 
 /-- An emitted instruction is straight line, translates when `T` holds, and reads and writes
@@ -1514,17 +1514,17 @@ theorem GoodSt.rho_sub {st : St} (hG : GoodSt T O st) {rho : List (JVar × JVar)
 
 /-- The fresh name of the counter is not the name of a fresh variable already created. -/
 theorem GoodSt.new_name {st : St} (hG : GoodSt T O st) :
-    ∀ v ∈ st.slots ++ st.regs, v.vname ≠ freshName st.cnt := by
+    ∀ v ∈ st.slots ++ st.regs, v.vname ≠ spillName st.cnt := by
   intro v hv h
   obtain ⟨-, n, hn, hvn⟩ := hG.fresh v hv
   rw [hvn] at h
-  exact absurd (freshName_inj h) (by omega)
+  exact absurd (spillName_inj h) (by omega)
 
 /-- `GoodSt` after a new fresh variable `f` of the counter, with `f` in `slots` or `regs`. -/
-theorem GoodSt.add_fresh {st : St} (hG : GoodSt T O st) {f : JVar} (hf : f.vname = freshName st.cnt)
+theorem GoodSt.add_fresh {st : St} (hG : GoodSt T O st) {f : JVar} (hf : f.vname = spillName st.cnt)
     (hg : isGprTy f.vtype = true) {st' : St} (hcnt : st'.cnt = st.cnt + 1)
     (hsl : List.Perm (st'.slots ++ st'.regs) (f :: (st.slots ++ st.regs))) :
-    (∀ v ∈ st'.slots ++ st'.regs, isGprTy v.vtype = true ∧ ∃ n < st'.cnt, v.vname = freshName n) ∧
+    (∀ v ∈ st'.slots ++ st'.regs, isGprTy v.vtype = true ∧ ∃ n < st'.cnt, v.vname = spillName n) ∧
     ((st'.slots ++ st'.regs).map (·.vname)).Nodup := by
   constructor
   · intro v hv
@@ -1631,13 +1631,13 @@ theorem evict_good {res : List JVar} {c : List InstrR} {st : St} {p : JVar × JV
   split
   · dsimp only
     have hle : StLe st ⟨st.rho.filter (fun q => q.1 != p.1),
-        (p.1, .slot ⟨freshName st.cnt, p.1.vtype⟩) :: st.sig, st.cnt + 1,
-        ⟨freshName st.cnt, p.1.vtype⟩ :: st.slots, st.regs⟩ :=
+        (p.1, .slot ⟨spillName st.cnt, p.1.vtype⟩) :: st.sig, st.cnt + 1,
+        ⟨spillName st.cnt, p.1.vtype⟩ :: st.slots, st.regs⟩ :=
       ⟨fun _ h => List.mem_cons_of_mem _ h, fun _ h => h, by simp⟩
-    obtain ⟨hf, hn⟩ := hG.add_fresh (f := ⟨freshName st.cnt, p.1.vtype⟩) rfl hpg
+    obtain ⟨hf, hn⟩ := hG.add_fresh (f := ⟨spillName st.cnt, p.1.vtype⟩) rfl hpg
       (st' := ⟨st.rho.filter (fun q => q.1 != p.1),
-        (p.1, .slot ⟨freshName st.cnt, p.1.vtype⟩) :: st.sig, st.cnt + 1,
-        ⟨freshName st.cnt, p.1.vtype⟩ :: st.slots, st.regs⟩) rfl (by simp)
+        (p.1, .slot ⟨spillName st.cnt, p.1.vtype⟩) :: st.sig, st.cnt + 1,
+        ⟨spillName st.cnt, p.1.vtype⟩ :: st.slots, st.regs⟩) rfl (by simp)
     refine ⟨⟨fun q hq => ?_, fun q hq => ?_, hf, hn⟩, hle, fun i hi => ?_⟩
     · exact hG.rho q (List.mem_of_mem_filter hq)
     · rcases List.mem_cons.mp hq with rfl | hq
@@ -1704,7 +1704,7 @@ theorem reloadFresh_res {st : St} {x : JVar} {src : Src} (hG : GoodSt T O st)
   obtain ⟨hxO, hxg, hsrc⟩ := hG.sig _ hx
   have hle : StLe st (reloadFresh st x src).1 :=
     ⟨fun _ h => h, fun _ h => List.mem_cons_of_mem _ h, by simp [reloadFresh]⟩
-  obtain ⟨hf, hn⟩ := hG.add_fresh (f := ⟨freshName st.cnt, x.vtype⟩) rfl hxg
+  obtain ⟨hf, hn⟩ := hG.add_fresh (f := ⟨spillName st.cnt, x.vtype⟩) rfl hxg
     (st' := (reloadFresh st x src).1) rfl (by simp [reloadFresh, List.perm_middle])
   refine ⟨⟨fun q hq => ?_, fun q hq => ?_, hf, hn⟩, hle, fun i hi => ?_, fun q hq => hq⟩
   · simp only [reloadFresh, List.mem_cons] at hq
@@ -1725,7 +1725,7 @@ theorem reloadFresh_res {st : St} {x : JVar} {src : Src} (hG : GoodSt T O st)
         · have hR := renOK_renOf (rho := st.rho) (fun p hp => (hG.rho p hp).2.2.1)
           obtain ⟨e', he'⟩ := Option.isSome_iff_exists.mp (htr hT)
           obtain ⟨f', hf'⟩ := Option.isSome_iff_exists.mp
-            (isSome_translateVarExt_gpr (x := ⟨freshName st.cnt, x.vtype⟩) hxg)
+            (isSome_translateVarExt_gpr (x := ⟨spillName st.cnt, x.vtype⟩) hxg)
           obtain ⟨ty', hty'⟩ := Option.isSome_iff_exists.mp
             (isSome_translateSTypeExt_gpr (t := ty) (hty ▸ hxg))
           simp [reloadSrc, translateInstrRExt, translateLValExt, translateVarIExt, vi, hf', hty',
@@ -2013,7 +2013,7 @@ theorem evict_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) {res : List JV
     simp only [Bool.and_eq_true] at hc
     dsimp only
     obtain ⟨s', hs'⟩ := Option.isSome_iff_exists.mp
-      (isSome_translateVarExt_gpr (x := ⟨freshName st.cnt, p.1.vtype⟩) hpg)
+      (isSome_translateVarExt_gpr (x := ⟨spillName st.cnt, p.1.vtype⟩) hpg)
     have hval : t.evm h' = o.evm x' := hSI.rho p hp x' h' hx' hh'
     have hdef := HD p.1 x' hc.1 hx'
     have hsx : s'.vtype = x'.vtype := by
@@ -2023,7 +2023,7 @@ theorem evict_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) {res : List JV
       rw [h1] at h2; exact Option.some.inj h2
     refine ⟨_, RunA.mv aS opS gd prog hs' hh' hval hdef (by rw [hsx]; exact HW x' hdef), ?_⟩
     have h1 := SI.set_fresh hO hG hSI (f' := s') (val := o.evm x')
-      (by rw [translateVarExt_vname hs']; exact isFreshName_freshName _)
+      (by rw [translateVarExt_vname hs']; exact isFreshName_spillName _)
       (by rw [translateVarExt_vname hs']; exact hG.new_name)
     refine ⟨h1.mem, h1.scs, h1.orig, fun q hq => h1.rho q (List.mem_of_mem_filter hq),
       fun q hq => ?_⟩
@@ -2124,11 +2124,11 @@ theorem reloadFresh_sem (hO : ∀ x ∈ O, isFreshName x.vname = false) {st : St
   obtain ⟨-, hxg, -⟩ := hG.sig _ hx
   obtain ⟨x', hx'⟩ := Option.isSome_iff_exists.mp (isSome_translateVarExt_gpr hxg)
   obtain ⟨f', hf'⟩ := Option.isSome_iff_exists.mp
-    (isSome_translateVarExt_gpr (x := ⟨freshName st.cnt, x.vtype⟩) hxg)
-  refine ⟨_, reloadSrc_sem aS opS gd prog hO hG hSI (d := ⟨freshName st.cnt, x.vtype⟩) hx rfl
+    (isSome_translateVarExt_gpr (x := ⟨spillName st.cnt, x.vtype⟩) hxg)
+  refine ⟨_, reloadSrc_sem aS opS gd prog hO hG hSI (d := ⟨spillName st.cnt, x.vtype⟩) hx rfl
     hx' hf', ?_⟩
   have h1 := SI.set_fresh hO hG hSI (f' := f') (val := o.evm x')
-    (by rw [translateVarExt_vname hf']; exact isFreshName_freshName _)
+    (by rw [translateVarExt_vname hf']; exact isFreshName_spillName _)
     (by rw [translateVarExt_vname hf']; exact hG.new_name)
   refine ⟨h1.mem, h1.scs, h1.orig, fun q hq => ?_, h1.sig⟩
   rcases List.mem_cons.mp hq with rfl | hq
@@ -2612,8 +2612,8 @@ theorem mem_env_declsOf {fn : JazzFn} {st : St} {v : JVar} (hv : v ∈ st.slots 
   · exact ⟨_, Or.inr (Or.inr ⟨v, hv, rfl⟩), v.vname, by simp, by simp [ptyOf_toSType]⟩
 
 theorem isFreshName_ne {n : String} (hn : isFreshName n = false) (m : Nat) :
-    n ≠ freshName m := by
-  intro h; rw [h, isFreshName_freshName] at hn; cases hn
+    n ≠ spillName m := by
+  intro h; rw [h, isFreshName_spillName] at hn; cases hn
 
 /-- **The pass keeps well-formedness.** -/
 theorem spillFn_wellFormed (k : Nat) {callees : List String} {fn : JazzFn}
@@ -3128,7 +3128,7 @@ theorem evict_live {reg : JVar → Bool} {Zs : List JVar}
       rw [readsI_mv, List.mem_singleton] at hx
       subst hx
       exact List.mem_map_of_mem hp
-    · have hs : reg ⟨freshName st.cnt, p.1.vtype⟩ = false := hZ _ (hsl _ List.mem_cons_self)
+    · have hs : reg ⟨spillName st.cnt, p.1.vtype⟩ = false := hZ _ (hsl _ List.mem_cons_self)
       rw [writesI_mv]
       simp only [List.filter_cons, hs, List.filter_nil]
       exact (List.dedup_sublist _).length_le.trans (by simpa [H] using hL.len)
@@ -3243,7 +3243,7 @@ theorem reloadFresh_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : 
   · simp only [writesI_reloadSrc]
     refine (List.dedup_sublist _).length_le.trans ?_
     simp only [List.length_append, H, List.length_map]
-    have := List.length_filter_le reg [(⟨freshName st.cnt, x.vtype⟩ : JVar)]
+    have := List.length_filter_le reg [(⟨spillName st.cnt, x.vtype⟩ : JVar)]
     simp only [List.length_singleton] at this
     omega
   · intro v hv
@@ -3538,7 +3538,7 @@ theorem afterDef_live {T : Prop} {O : List JVar} (hO : ∀ x ∈ O, isFreshName 
     intro v hv hw
     obtain ⟨-, n, -, hn⟩ := hG.fresh v hv
     have := hO v (hWO v hw)
-    rw [hn, isFreshName_freshName] at this; cases this
+    rw [hn, isFreshName_spillName] at this; cases this
   have hhold : ∀ q ∈ st.rho, q.1 ∉ writesI i → q.2 ∉ writesI i := by
     intro q hq h1
     rcases (hG.rho q hq).2.2.2 with h | h
@@ -4093,7 +4093,7 @@ theorem liveRegsB_spillFn (k : Nat) (fn : JazzFn) (hs : ∀ i ∈ fn.fd.body, st
   have hfresh : ∀ v ∈ (run k fn).1.slots ++ (run k fn).1.regs, isFreshName v.vname = true := by
     intro v hv
     obtain ⟨-, n, -, hn⟩ := hG.fresh v hv
-    rw [hn]; exact isFreshName_freshName n
+    rw [hn]; exact isFreshName_spillName n
   have henv : ∀ n ∈ fn.env.map Prod.fst, isFreshName n = false :=
     fun n hn => hnf n (List.mem_append_left _ hn)
   have hreg : ∀ x ∈ cmdVars fn.fd.body ++ resOf fn,

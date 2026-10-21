@@ -89,9 +89,12 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminPrint
     conversion denotes to the `transTy`-transport of the source program's
     denotation — for every input valuation, with **no hypothesis**.
 
-    Since `transTy` is the (computed) identity transport `⟦t⟧ → ⟦tau t⟧`, this is
-    exactly: *the compiled jasmin code computes the same polynomial product as
-    the source `poly_mul`*. Composes the optimizer-rewrite soundness
+    Since `transTy` is the (computed) identity transport `⟦t⟧ → ⟦tau t⟧`, the
+    compiled jasmin code computes the denotation of the source `poly_mul`. The leaf
+    functions of `LatticeDialect` take `ntt` and `invntt` to be the identity and
+    `basemul` the pointwise product, and `poly_mul` is defined as their composite, so
+    the statement concerns the rewrite and the lowering, not the NTT arithmetic of
+    FIPS 203. Composes the optimizer-rewrite soundness
     (`nttMul_rewrite_denote_eq`) with the A3 backend-lowering soundness
     (`tgtCom_denote_preserved_uncond`). -/
 theorem latticeNttMul_compile_correct (q n : Nat)

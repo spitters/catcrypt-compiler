@@ -250,8 +250,8 @@ structure St where
 /-- The prefix of fresh names. -/
 def pfx : String := "spl_"
 
-/-- The fresh name of number `n`. -/
-def freshName (n : Nat) : String := pfx ++ toString n
+/-- The fresh name of spill slot or reload register number `n`. -/
+def spillName (n : Nat) : String := pfx ++ toString n
 
 /-- A name starting with the prefix of fresh names. -/
 def isFreshName (n : String) : Bool := pfx.toList.isPrefixOf n.toList
@@ -340,7 +340,7 @@ def evict (res : List JVar) (c : List InstrR) (st : St) (p : JVar × JVar) :
     St × List InstrR :=
   let st1 := { st with rho := st.rho.filter (fun q => q.1 != p.1) }
   if liveB res p.1 c && (lookS st.sig p.1).isNone then
-    let s : JVar := ⟨freshName st.cnt, p.1.vtype⟩
+    let s : JVar := ⟨spillName st.cnt, p.1.vtype⟩
     ({ st1 with sig := (p.1, .slot s) :: st1.sig, cnt := st.cnt + 1, slots := s :: st.slots },
       [mv s p.2])
   else (st1, [])
@@ -366,7 +366,7 @@ def reloadSrc (rho : List (JVar × JVar)) (d : JVar) : Src → InstrR
 
 /-- The reload of `x` into a fresh `reg` variable, which becomes its holder. -/
 def reloadFresh (st : St) (x : JVar) (src : Src) : St × List InstrR :=
-  let f : JVar := ⟨freshName st.cnt, x.vtype⟩
+  let f : JVar := ⟨spillName st.cnt, x.vtype⟩
   ({ st with rho := (x, f) :: st.rho, cnt := st.cnt + 1, regs := f :: st.regs },
     [reloadSrc st.rho f src])
 
@@ -626,7 +626,7 @@ def pruneF (q : UseQ) (S : StIx) : StIx :=
 def evictF (q : UseQ) (S : StIx) (p : JVar × JVar) : StIx × List InstrR :=
   let st1 := { S.st with rho := S.st.rho.filter (fun q => q.1 != p.1) }
   if (q.nu p.1).isSome && (S.idx[p.1]?).isNone then
-    let s : JVar := ⟨freshName S.st.cnt, p.1.vtype⟩
+    let s : JVar := ⟨spillName S.st.cnt, p.1.vtype⟩
     let st2 : St :=
       { st1 with sig := (p.1, .slot s) :: st1.sig, cnt := S.st.cnt + 1, slots := s :: S.st.slots }
     (⟨st2, S.idx.insert p.1 (.slot s), (S.men.insert p.1).insert s⟩, [mv s p.2])
