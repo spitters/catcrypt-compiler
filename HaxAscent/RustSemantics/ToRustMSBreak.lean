@@ -576,21 +576,12 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
     cases h
     simp only [toRustMSB, toRustMSB.argsSB, ih3 p.1 p.2 hp, ih2 p q.1 q.2 hq, ih1 q s.1 s.2 hs,
       bind_tc_ok, hr]
-  case case12 a b ρ ih2 ih1 =>
+  case case12 es ρ ih =>
     intro v ρ' h
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
-    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
     cases h
-    simp only [toRustMSB, toRustMSB.argsSB, ih2 p.1 p.2 hp, ih1 p q.1 q.2 hq, bind_tc_ok]
-  case case13 a b c ρ ih3 ih2 ih1 =>
-    intro v ρ' h
-    obtain ⟨p, hp, h⟩ := rustM_bind_ok h
-    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
-    obtain ⟨s, hs, h⟩ := rustM_bind_ok h
-    cases h
-    simp only [toRustMSB, toRustMSB.argsSB, ih3 p.1 p.2 hp, ih2 p q.1 q.2 hq, ih1 q s.1 s.2 hs,
-      bind_tc_ok]
-  case case14 c t e ρ ih3 ih2 ih1 =>
+    simp only [toRustMSB, ih p.1 p.2 hp, bind_tc_ok]
+  case case13 c t e ρ ih3 ih2 ih1 =>
     intro v ρ' h
     obtain ⟨⟨cv, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     have hc := ih3 cv ρ1 hp
@@ -604,7 +595,7 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
         simp only [toRustMSB, hc, bind_tc_ok]
         exact ih1 (.bool false, ρ1) v ρ' h
     | _ => cases h
-  case case15 var lo hi body ρ ih3 ih2 ih1 =>
+  case case14 var lo hi body ρ ih3 ih2 ih1 =>
     intro v ρ' h
     obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     obtain ⟨⟨u, ρ2⟩, hq, h⟩ := rustM_bind_ok h
@@ -627,7 +618,7 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
               cases hfin
               simp only [ih1 i ρ s.1 s.2 hs', bind_tc_ok, BOut.brk?]) _ _ _ _ hloop]
         rfl
-  case case16 var lo hi body ρ ih3 ih2 ih1 =>
+  case case15 var lo hi body ρ ih3 ih2 ih1 =>
     intro v ρ' h
     obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     obtain ⟨⟨u, ρ2⟩, hq, h⟩ := rustM_bind_ok h
@@ -652,7 +643,7 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
               cases hfin
               simp only [ih1 i ρ s.1 s.2 hs', bind_tc_ok]) _ _ _ _ hloop]
         rfl
-  case case17 e i ρ ih1 =>
+  case case16 e i ρ ih1 =>
     intro v ρ' h
     obtain ⟨⟨t, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     have ht := ih1 t ρ1 hp
@@ -665,20 +656,20 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
         cases h
         simp only [toRustMSB, ht, bind_tc_ok, hvi]
     | _ => cases h
-  case case18 f args ρ _ _ _ ih =>
+  case case17 f args ρ _ _ _ ih =>
     intro v ρ' h
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
     obtain ⟨r, hr, h⟩ := rustM_bind_ok h
     cases h
     simp only [toRustMSB, ih p.1 p.2 hp, bind_tc_ok, hr]
-  case case19 =>
+  case case18 =>
     intro v ρ' h
     cases h
-  case case20 ρ =>
+  case case19 ρ =>
     intro vs ρ' h
     cases h
     simp only [toRustMSB.argsSB]
-  case case21 a as ρ ih2 ih1 =>
+  case case20 a as ρ ih2 ih1 =>
     intro vs ρ' h
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
     obtain ⟨q, hq, h⟩ := rustM_bind_ok h

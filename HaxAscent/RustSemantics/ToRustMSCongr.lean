@@ -57,14 +57,18 @@ theorem toRustMS_congr {app app' : String → List AVal → RustM AVal} {ok : St
   suffices H : ∀ e ρ, CongrOk ok app' e ρ (toRustMS app e ρ) from H e ρ hc
   apply toRustMS.induct_unfolding app (CongrArgsOk ok app') (CongrOk ok app')
   all_goals intros
-  case case18 f args ρ _ _ _ ih =>
+  case case12 es ρ ih =>
+    intro hc
+    simp only [callsOK] at hc
+    rw [toRustMS_tuple_eq, ← ih hc]
+  case case17 f args ρ _ _ _ ih =>
     intro hc
     simp only [callsOK, Bool.and_eq_true] at hc
     rw [toRustMS_app_eq, ← ih hc.2, hag f hc.1]
-  case case20 ρ =>
+  case case19 ρ =>
     intro _
     simp only [toRustMS.argsS]
-  case case21 a as ρ ih2 ih1 =>
+  case case20 a as ρ ih2 ih1 =>
     intro hc
     simp only [callsOK.callsOKList, Bool.and_eq_true] at hc
     simp only [toRustMS.argsS, ← ih2 hc.1, fun p => (ih1 p hc.2).symm]

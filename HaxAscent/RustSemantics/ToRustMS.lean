@@ -17,7 +17,8 @@ public import HaxAscent.Ascent.ExtTable
 threads an environment, as `Hax.denote'` does: a `letBind` extends the environment for the
 rest of the run, a counted loop `forFold` (upwards) or `forFoldRev` (downwards) binds its
 index and keeps the bindings its body makes, and a call `.app f args` evaluates its arguments left to right and applies
-`app f` to their values, and a projection `.proj e i` returns component `i` of the tuple
+`app f` to their values, a tuple `.tuple es` of any arity evaluates its components left to
+right, and a projection `.proj e i` returns component `i` of the tuple
 `e` returns. The values (`AVal`) are integer literals, Booleans, unsigned
 words of every Aeneas width, Aeneas arrays `Aeneas.Std.Array (UScalar ty) n` of words,
 tuples and the unit value.
@@ -331,6 +332,11 @@ def appBNot : AVal → RustM AVal
   | .bool x => .ok (.bool (Hax.Not x))
   | _ => .fail .undef
 
+/-- The declassification `declassify` of a word: the identity on words. -/
+def appDeclassify : AVal → RustM AVal
+  | .w ty x => .ok (.w ty x)
+  | _ => .fail .undef
+
 /-- The comparisons of two integers with a Boolean result, by name. -/
 def cmpRt? : String → Option (Int → Int → Bool)
   | "Lt" => some Hax.lt
@@ -641,6 +647,16 @@ theorem appBNot_ok (base : Hax.Builtins) {a r : AVal} (h : appBNot a = .ok r) :
     exact Hax.Ascent.RuntimeOps.Not_bool x
   | _ => cases h
 
+/-- **The square of `declassify`**: on the value `appDeclassify` returns, the identity leaf
+    of the runtime returns the same value; the argument is a word. -/
+theorem appDeclassify_ok {a r : AVal} (h : appDeclassify a = .ok r) :
+    r = a ∧ (∃ ty x, a = .w ty x) ∧ Hax.Ascent.identLeaf [a.toValue] = some r.toValue := by
+  cases a with
+  | w ty x =>
+    cases h
+    exact ⟨rfl, ⟨ty, x, rfl⟩, by simp only [Hax.Ascent.identLeaf]⟩
+  | _ => cases h
+
 /-- **The squares of the Boolean connectives and the comparisons**: `appBool2` reads the
     runtime's `&&`, `||`, `Eq` and `Ne` on two Booleans and `Lt`, `Le`, `Gt`, `Ge`, `Eq` and
     `Ne` on two integers. -/
@@ -832,12 +848,7 @@ def toRustMS (app : String → List AVal → RustM AVal) :
   | .app f [a, b, c], ρ =>
     toRustMS app a ρ >>= fun p => toRustMS app b p.2 >>= fun q =>
       toRustMS app c q.2 >>= fun s => app f [p.1, q.1, s.1] >>= fun r => .ok (r, s.2)
-  | .tuple [a, b], ρ =>
-    toRustMS app a ρ >>= fun p => toRustMS app b p.2 >>= fun q =>
-      .ok (.tup [p.1, q.1], q.2)
-  | .tuple [a, b, c], ρ =>
-    toRustMS app a ρ >>= fun p => toRustMS app b p.2 >>= fun q =>
-      toRustMS app c q.2 >>= fun s => .ok (.tup [p.1, q.1, s.1], s.2)
+  | .tuple es, ρ => toRustMS.argsS app es ρ >>= fun p => .ok (.tup p.1, p.2)
   | .ifThenElse c t e, ρ =>
     toRustMS app c ρ >>= fun p => match p.1 with
       | .bool true => toRustMS app t p.2
@@ -1091,35 +1102,13 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
           (Hax.Ascent.denoteArgs'_cons bi fuel (h3 fuel (by omega))
             (AVal.toValue_isControlFlow _) (Hax.Ascent.denoteArgs'_nil bi fuel _))))
       (happ f [p.1, q.1, s.1] _ hr)
-  case case12 a b ρ ih2 ih1 =>
+  case case12 es ρ ih =>
     intro v ρ' h
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
-    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
     cases h
-    obtain ⟨F1, h1⟩ := ih2 p.1 p.2 hp
-    obtain ⟨F2, h2⟩ := ih1 p q.1 q.2 hq
-    refine ⟨max F1 F2, fun fuel hf => ?_⟩
-    exact Hax.Ascent.denote'_tuple bi fuel
-      (Hax.Ascent.denoteArgs'_cons bi fuel (h1 fuel (by omega)) (AVal.toValue_isControlFlow _)
-        (Hax.Ascent.denoteArgs'_cons bi fuel (h2 fuel (by omega))
-          (AVal.toValue_isControlFlow _) (Hax.Ascent.denoteArgs'_nil bi fuel _)))
-  case case13 a b c ρ ih3 ih2 ih1 =>
-    intro v ρ' h
-    obtain ⟨p, hp, h⟩ := rustM_bind_ok h
-    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
-    obtain ⟨s, hs, h⟩ := rustM_bind_ok h
-    cases h
-    obtain ⟨F1, h1⟩ := ih3 p.1 p.2 hp
-    obtain ⟨F2, h2⟩ := ih2 p q.1 q.2 hq
-    obtain ⟨F3, h3⟩ := ih1 q s.1 s.2 hs
-    refine ⟨max F1 (max F2 F3), fun fuel hf => ?_⟩
-    exact Hax.Ascent.denote'_tuple bi fuel
-      (Hax.Ascent.denoteArgs'_cons bi fuel (h1 fuel (by omega)) (AVal.toValue_isControlFlow _)
-        (Hax.Ascent.denoteArgs'_cons bi fuel (h2 fuel (by omega))
-          (AVal.toValue_isControlFlow _)
-          (Hax.Ascent.denoteArgs'_cons bi fuel (h3 fuel (by omega))
-            (AVal.toValue_isControlFlow _) (Hax.Ascent.denoteArgs'_nil bi fuel _))))
-  case case14 c t e ρ ih3 ih2 ih1 =>
+    obtain ⟨F, hF⟩ := ih p.1 p.2 hp
+    exact ⟨F, fun fuel hf => Hax.Ascent.denote'_tuple bi fuel (hF fuel hf)⟩
+  case case13 c t e ρ ih3 ih2 ih1 =>
     intro v ρ' h
     obtain ⟨⟨cv, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     obtain ⟨F1, h1⟩ := ih3 cv ρ1 hp
@@ -1137,7 +1126,7 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
         rw [Hax.Ascent.denote'_ifThenElse bi fuel (h1 fuel (by omega))]
         exact h2 fuel (by omega)
     | _ => cases h
-  case case15 var lo hi body ρ ih3 ih2 ih1 =>
+  case case14 var lo hi body ρ ih3 ih2 ih1 =>
     intro v ρ' h
     obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     obtain ⟨⟨u, ρ2⟩, hq, h⟩ := rustM_bind_ok h
@@ -1172,7 +1161,7 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
         have h4 := h3 fuel (by omega)
         rw [Int.toNat_of_nonneg hab.1] at h4
         exact h4
-  case case16 var lo hi body ρ ih3 ih2 ih1 =>
+  case case15 var lo hi body ρ ih3 ih2 ih1 =>
     intro v ρ' h
     obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     obtain ⟨⟨u, ρ2⟩, hq, h⟩ := rustM_bind_ok h
@@ -1207,7 +1196,7 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
         have h4 := h3 fuel (by omega)
         rw [Int.toNat_of_nonneg hab.1] at h4
         exact h4
-  case case17 e i ρ ih1 =>
+  case case16 e i ρ ih1 =>
     intro v ρ' h
     obtain ⟨⟨t, ρ1⟩, hp, h⟩ := rustM_bind_ok h
     obtain ⟨F1, h1⟩ := ih1 t ρ1 hp
@@ -1223,21 +1212,21 @@ theorem toRustMS_sim {bi : Hax.Builtins} {app : String → List AVal → RustM A
         simp only [AVal.toValue, Hax.Value.projIdx, AVal.toValues_eq_map, List.getElem?_map,
           hvi, Option.map_some]
     | _ => cases h
-  case case18 f args ρ _ _ _ ih =>
+  case case17 f args ρ _ _ _ ih =>
     intro v ρ' h
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
     obtain ⟨r, hr, h⟩ := rustM_bind_ok h
     cases h
     obtain ⟨F, hF⟩ := ih p.1 p.2 hp
     exact ⟨F, fun fuel hf => Hax.Ascent.denote'_app bi fuel (hF fuel hf) (happ f p.1 _ hr)⟩
-  case case19 =>
+  case case18 =>
     intro v ρ' h
     cases h
-  case case20 ρ =>
+  case case19 ρ =>
     intro vs ρ' h
     cases h
     exact ⟨0, fun fuel _ => Hax.Ascent.denoteArgs'_nil bi fuel _⟩
-  case case21 a as ρ ih2 ih1 =>
+  case case20 a as ρ ih2 ih1 =>
     intro vs ρ' h
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
     obtain ⟨q, hq, h⟩ := rustM_bind_ok h
@@ -1257,6 +1246,13 @@ theorem toRustMS_app_eq (app : String → List AVal → RustM AVal) (f : String)
   | [] => simp only [toRustMS]
   | [_] | [_, _] | [_, _, _] => simp only [toRustMS, toRustMS.argsS, bind_assoc]; rfl
   | _ :: _ :: _ :: _ :: _ => simp only [toRustMS]
+
+/-- **The reading of a tuple of any arity.** The components are read left to right by
+    `toRustMS.argsS`, and their values form the tuple. -/
+theorem toRustMS_tuple_eq (app : String → List AVal → RustM AVal) (es : List Hax.ImpExpr)
+    (ρ : AEnv) :
+    toRustMS app (.tuple es) ρ = toRustMS.argsS app es ρ >>= fun p => .ok (.tup p.1, p.2) := by
+  simp only [toRustMS]
 
 /-- `appRt` reads the runtime operations of the table of every extraction. -/
 theorem appRt_ok_extBuiltins (T : Hax.Ascent.Table) (fns : List Hax.Ascent.ExtFn) :
@@ -1417,8 +1413,7 @@ def fragOk (locals : List String) : Hax.ImpExpr → Bool
   | .app f [a, b, c] =>
     (rtNameOk f 3 || locals.contains f) && fragOk locals a && fragOk locals b &&
       fragOk locals c
-  | .tuple [a, b] => fragOk locals a && fragOk locals b
-  | .tuple [a, b, c] => fragOk locals a && fragOk locals b && fragOk locals c
+  | .tuple es => fragOk.list locals es
   | .ifThenElse c t e => fragOk locals c && fragOk locals t && fragOk locals e
   | .forFold _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body
   | .forFoldRev _ lo hi body => fragOk locals lo && fragOk locals hi && fragOk locals body

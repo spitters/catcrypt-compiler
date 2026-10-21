@@ -236,29 +236,15 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
     obtain ⟨hv', hv1⟩ := hag f hc.1 [p.1, q.1, s.1] v (by simp [hp1, hq1, hs1]) hv
     refine ⟨?_, hv1, hs2⟩
     simp only [toRustMS, hp', hq', hs', hv', rustM_ok_bind]
-  case case12 a b ρ ih2 ih1 =>
+  case case12 es ρ ih =>
     intro r hc hρ h
-    simp only [callsOK, callsOK.callsOKList, Bool.and_eq_true, Bool.and_true] at hc
+    simp only [callsOK] at hc
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
-    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
     cases h
-    obtain ⟨hp', hp1, hp2⟩ := ih2 p hc.1 hρ hp
-    obtain ⟨hq', hq1, hq2⟩ := ih1 p q hc.2 hp2 hq
-    refine ⟨?_, hI.tup _ (by simp [hp1, hq1]), hq2⟩
-    simp only [toRustMS, hp', hq', rustM_ok_bind]
-  case case13 a b c ρ ih3 ih2 ih1 =>
-    intro r hc hρ h
-    simp only [callsOK, callsOK.callsOKList, Bool.and_eq_true, Bool.and_true] at hc
-    obtain ⟨p, hp, h⟩ := rustM_bind_ok h
-    obtain ⟨q, hq, h⟩ := rustM_bind_ok h
-    obtain ⟨s, hs, h⟩ := rustM_bind_ok h
-    cases h
-    obtain ⟨hp', hp1, hp2⟩ := ih3 p hc.1 hρ hp
-    obtain ⟨hq', hq1, hq2⟩ := ih2 p q hc.2.1 hp2 hq
-    obtain ⟨hs', hs1, hs2⟩ := ih1 q s hc.2.2 hq2 hs
-    refine ⟨?_, hI.tup _ (by simp [hp1, hq1, hs1]), hs2⟩
-    simp only [toRustMS, hp', hq', hs', rustM_ok_bind]
-  case case14 c t e ρ ih3 ih2 ih1 =>
+    obtain ⟨hp', hp1, hp2⟩ := ih p hc hρ hp
+    refine ⟨?_, hI.tup _ hp1, hp2⟩
+    rw [toRustMS_tuple_eq, hp', rustM_ok_bind]
+  case case13 c t e ρ ih3 ih2 ih1 =>
     intro r hc hρ h
     simp only [callsOK, Bool.and_eq_true] at hc
     obtain ⟨⟨cv, ρ1⟩, hp, h⟩ := rustM_bind_ok h
@@ -277,7 +263,7 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
         simp only [toRustMS, hp', rustM_ok_bind]
         exact h'
     | _ => cases h
-  case case15 var lo hi body ρ ih3 ih2 ih1 =>
+  case case14 var lo hi body ρ ih3 ih2 ih1 =>
     intro r hc hρ h
     simp only [callsOK, Bool.and_eq_true] at hc
     obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
@@ -308,7 +294,7 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
         obtain ⟨hloop', hρ3⟩ := loopS_ok_of_inv hstep _ _ ρ2 ρ3 hρ2 hloop
         refine ⟨?_, hI.unit, hρ3⟩
         simp only [toRustMS, hp', hq', hl, hu, if_pos hab, hloop', rustM_ok_bind]
-  case case16 var lo hi body ρ ih3 ih2 ih1 =>
+  case case15 var lo hi body ρ ih3 ih2 ih1 =>
     intro r hc hρ h
     simp only [callsOK, Bool.and_eq_true] at hc
     obtain ⟨⟨l, ρ1⟩, hp, h⟩ := rustM_bind_ok h
@@ -339,7 +325,7 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
         obtain ⟨hloop', hρ3⟩ := loopRevS_ok_of_inv hstep _ _ ρ2 ρ3 hρ2 hloop
         refine ⟨?_, hI.unit, hρ3⟩
         simp only [toRustMS, hp', hq', hl, hu, if_pos hab, hloop', rustM_ok_bind]
-  case case17 e i ρ ih1 =>
+  case case16 e i ρ ih1 =>
     intro r hc hρ h
     simp only [callsOK] at hc
     obtain ⟨⟨t, ρ1⟩, hp, h⟩ := rustM_bind_ok h
@@ -354,7 +340,7 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
         refine ⟨?_, hI.proj vs w ht (List.mem_of_getElem? hvi), hρ1⟩
         simp only [toRustMS, hp', rustM_ok_bind, hvi]
     | _ => cases h
-  case case18 f args ρ _ _ _ ih =>
+  case case17 f args ρ _ _ _ ih =>
     intro r hc hρ h
     simp only [callsOK, Bool.and_eq_true] at hc
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
@@ -364,14 +350,14 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
     obtain ⟨hv', hv1⟩ := hag f hc.1 p.1 v hp1 hv
     refine ⟨?_, hv1, hp2⟩
     rw [toRustMS_app_eq, hp', rustM_ok_bind, hv', rustM_ok_bind]
-  case case19 =>
+  case case18 =>
     intro r hc hρ h
     cases h
-  case case20 ρ =>
+  case case19 ρ =>
     intro r hc hρ h
     cases h
     exact ⟨by simp only [toRustMS.argsS], by simp, hρ⟩
-  case case21 a as ρ ih2 ih1 =>
+  case case20 a as ρ ih2 ih1 =>
     intro r hc hρ h
     simp only [callsOK.callsOKList, Bool.and_eq_true] at hc
     obtain ⟨p, hp, h⟩ := rustM_bind_ok h
