@@ -599,7 +599,7 @@ theorem embed_levelCheck' (M : LeakModel d) {Γ : Ctxt (scalarTile d)}
     NFProg.levelCheck' (tileMemLeak d M) (embed d p) L
       = NFProg.levelCheck' (scalarTileLeak d M) p L := by
   induction p with
-  | ret vs => exact congrArg some (retLvls_castArgs d L vs)
+  | ret vs => with_unfolding_all exact congrArg some (retLvls_castArgs d L vs)
   | var e k ih =>
       simp only [embed, NFProg.levelCheck', embedExpr, ih]
       rw [argLvls_castArgs d L e.args]
@@ -618,7 +618,7 @@ theorem embed_levelCheck' (M : LeakModel d) {Γ : Ctxt (scalarTile d)}
         allSecret_tileMem]
       rw [retLvls_castArgs d L inits]
       rfl
-  | call f args k => rfl
+  | call f args k => with_unfolding_all rfl
 
 /-- An included program the level checker accepts in `scalarTile d` is constant time in
     `tileMem d` relative to its runs. -/

@@ -250,7 +250,7 @@ theorem tileAccLoop_denote (D : DialectDenoteM d Option) (n w : Nat)
 theorem tileAccLoop_levelCheck (M : LeakModel d) (n w : Nat) (lx la : SecretLevel) :
     (NFProg.levelCheck' (scalarTileLeak d M) (tileAccLoop d n w)
       (.cons .Public (.cons lx (.cons la .nil)))).isSome := by
-  cases lx <;> cases la <;> rfl
+  cases lx <;> cases la <;> with_unfolding_all rfl
 
 /-- `tileAccLoop d n w` is constant time at a public trip count and every level of the two
     tiles, relative to its runs. -/

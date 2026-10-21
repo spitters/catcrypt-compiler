@@ -348,7 +348,7 @@ theorem relabel_levelCheck'
     {Γ : Ctxt (opsOver O₁ T)} {ts : List T} (p : NFProg (opsOver O₁ T) Γ ts) (L : Labels Γ) :
     NFProg.levelCheck' MS (relabel f p) L = NFProg.levelCheck' ML p L := by
   induction p with
-  | ret vs => exact congrArg some (retLvls_cast L vs)
+  | ret vs => with_unfolding_all exact congrArg some (retLvls_cast L vs)
   | var e k ih =>
       simp only [relabel, NFProg.levelCheck', ih, hA, hL]
   | forLoop count inits body k ihb ihk =>
@@ -365,7 +365,7 @@ theorem relabel_levelCheck'
         allSecret_left]
       rw [retLvls_cast L inits]
       rfl
-  | call g args k => rfl
+  | call g args k => with_unfolding_all rfl
 
 /-- A translated program the level checker accepts in the source dialect is constant time
     in the target dialect relative to its runs. -/
