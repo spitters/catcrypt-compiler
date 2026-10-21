@@ -296,14 +296,14 @@ open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck
 
 /-- The events of a renamed program are those of the program at the pulled-back
     valuation. -/
-theorem Com.ctLeak_rename (L : LeakModel jasminDialect) :
+theorem Com.ctLeak_rename_comap (L : LeakModel jasminDialect) :
     ∀ {Γ Δ : Ctxt jasminDialect} {t : JasminTy} (ρ : Ctxt.Hom Γ Δ)
       (c : Com jasminDialect Γ t) (V : Ctxt.Valuation Δ),
       Com.ctLeak L (c.rename ρ) V = Com.ctLeak L c (V.comap ρ)
   | _, _, _, _, .ret _, _ => rfl
   | _, _, _, ρ, .var e body, V => by
       simp only [Com.rename, Com.ctLeak]
-      rw [Rewrite.AegraphGeneric.Expr.ctLeak_rename, Com.ctLeak_rename L ρ.lift body,
+      rw [Rewrite.AegraphGeneric.Expr.ctLeak_rename, Com.ctLeak_rename_comap L ρ.lift body,
         Ctxt.Valuation.extend_comap_lift, SecureCompilation.VIR.Expr.denote_rename]
 
 /-- **One CSE step keeps the events.** `cseHead e c` emits the events of the `.var e c`
@@ -324,7 +324,7 @@ theorem cseHead_ctLeak (L : LeakModel jasminDialect) {Γ : Ctxt jasminDialect}
           have hx : e'.denote (V.extend (e.denote V)) = e.denote V := by
             rw [heq]; exact shiftExpr_denote e V (e.denote V)
           simp only [cseHead, dif_pos, hd, if_true, Com.ctLeak]
-          rw [Com.ctLeak_rename L (copyHom Ctxt.Var.here) body2, ← pullV_eq_comap, hx]
+          rw [Com.ctLeak_rename_comap L (copyHom Ctxt.Var.here) body2, ← pullV_eq_comap, hx]
           congr 3
           exact pullV_copyHom Ctxt.Var.here (V.extend (e.denote V))
         · have hd' : (decEqExpr e' (shiftExpr (s := r') e)).decide = false := by

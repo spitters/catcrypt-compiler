@@ -166,11 +166,11 @@ def lowerK (F : SingleWordField p) {Γ : Ctxt fieldDialect} {t : FieldTy}
 
 /-! ## 4. The transport squares -/
 
-theorem varTransports (F : SingleWordField p) :
+theorem singleWord_varTransports (F : SingleWordField p) :
     VarTransports (lowering F) (transW F) (mapValW F) :=
   fun v V => mapVarW_lookup F v V
 
-theorem mapValExtends (F : SingleWordField p) :
+theorem singleWord_mapValExtends (F : SingleWordField p) :
     MapValExtends (lowering F) (transW F) (mapValW F) :=
   fun _ _ => rfl
 
@@ -249,8 +249,8 @@ theorem fieldToJasminWord_denote_on (F : SingleWordField p) {Γ : Ctxt fieldDial
     (V : Valuation Γ) :
     (lowerK F c).denote (mapValW F V) = transW F (c.denote V) :=
   (lowering F).blockLowerComK_denote_on (transW F) (mapValW F) (GoodW p)
-    (varTransports F) (fun e hg V => blockTransports_on F e hg V) (mapValExtends F)
-    c hcov V
+    (singleWord_varTransports F) (fun e hg V => blockTransports_on F e hg V)
+    (singleWord_mapValExtends F) c hcov V
 
 /-- **Denotation preservation of `fieldDialect → jasminDialect`.** A
     `GoodW p`-covered field program returning `fp p` lowers, through the blocks of

@@ -136,7 +136,8 @@ theorem sha256_smallsigma0_catcrypt_denote (x : BitVec 32) :
   simp only [sha256SmallSigma0Cat]
   rw [denote_var_bvRor, denote_var_bvRor, denote_var_bvShiftR, denote_var_bvXor,
     denote_var_bvXor]
-  simp only [Com.denote, lookup_here_extend, lookup_there_extend, lookup_here_cons, shRorW,
+  simp only [Com.denote, lookup_here_extend, lookup_there_extend, sha256Round_lookup_here_cons,
+    shRorW,
     shShrW, shXorW]
   rw [CatCrypt.Util.Sha256Verified.smallSigma0,
     rotateRight_eq_rotr x (n := 7) (by omega),
@@ -150,7 +151,8 @@ theorem sha256_smallsigma1_catcrypt_denote (x : BitVec 32) :
   simp only [sha256SmallSigma1Cat]
   rw [denote_var_bvRor, denote_var_bvRor, denote_var_bvShiftR, denote_var_bvXor,
     denote_var_bvXor]
-  simp only [Com.denote, lookup_here_extend, lookup_there_extend, lookup_here_cons, shRorW,
+  simp only [Com.denote, lookup_here_extend, lookup_there_extend, sha256Round_lookup_here_cons,
+    shRorW,
     shShrW, shXorW]
   rw [CatCrypt.Util.Sha256Verified.smallSigma1,
     rotateRight_eq_rotr x (n := 17) (by omega),

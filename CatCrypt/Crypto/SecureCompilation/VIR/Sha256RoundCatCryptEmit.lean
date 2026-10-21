@@ -154,12 +154,12 @@ theorem denote_var_bvRor {Γ : Ctxt catCryptDialect} {n : Nat} {s : CryptoTy}
 
 /-- `Ctxt.Var.here.lookup` on a cons valuation reads the head — resolves the
     input-register lookups (`inV1`/`inV3` are `HVector.cons`, not `extend`). -/
-@[simp] theorem lookup_here_cons {Γ : Ctxt catCryptDialect} {t : CryptoTy}
+@[simp] theorem sha256Round_lookup_here_cons {Γ : Ctxt catCryptDialect} {t : CryptoTy}
     (V : Ctxt.Valuation Γ) (v : ⟦t⟧) :
     (Ctxt.Var.here (Γ := Γ) (t := t)).lookup (HVector.cons v V) = v := rfl
 
 /-- `(Ctxt.Var.there w).lookup` on a cons valuation skips the head. -/
-@[simp] theorem lookup_there_cons {Γ : Ctxt catCryptDialect} {t t' : CryptoTy}
+@[simp] theorem sha256Round_lookup_there_cons {Γ : Ctxt catCryptDialect} {t t' : CryptoTy}
     (V : Ctxt.Valuation Γ) (v : ⟦t'⟧) (w : Ctxt.Var Γ t) :
     (Ctxt.Var.there (s := t') w).lookup (HVector.cons v V) = w.lookup V := rfl
 
@@ -261,7 +261,8 @@ theorem sha256_sigma0_catcrypt_denote (a : BitVec 32) :
   simp only [sha256Sigma0Cat]
   rw [denote_var_bvRor, denote_var_bvRor, denote_var_bvRor, denote_var_bvXor,
     denote_var_bvXor]
-  simp only [Com.denote, lookup_here_extend, lookup_there_extend, lookup_here_cons, shRorW, shXorW]
+  simp only [Com.denote, lookup_here_extend, lookup_there_extend, sha256Round_lookup_here_cons,
+    shRorW, shXorW]
   rw [CatCrypt.Util.Sha256Verified.bigSigma0,
     rotateRight_eq_rotr a (n := 2) (by omega),
     rotateRight_eq_rotr a (n := 13) (by omega),
@@ -274,7 +275,8 @@ theorem sha256_sigma1_catcrypt_denote (e : BitVec 32) :
   simp only [sha256Sigma1Cat]
   rw [denote_var_bvRor, denote_var_bvRor, denote_var_bvRor, denote_var_bvXor,
     denote_var_bvXor]
-  simp only [Com.denote, lookup_here_extend, lookup_there_extend, lookup_here_cons, shRorW, shXorW]
+  simp only [Com.denote, lookup_here_extend, lookup_there_extend, sha256Round_lookup_here_cons,
+    shRorW, shXorW]
   rw [CatCrypt.Util.Sha256Verified.bigSigma1,
     rotateRight_eq_rotr e (n := 6) (by omega),
     rotateRight_eq_rotr e (n := 11) (by omega),
@@ -286,8 +288,8 @@ theorem sha256_ch_catcrypt_denote (e f g : BitVec 32) :
     sha256ChCat.denote (inV3 e f g) = CatCrypt.Util.Sha256Verified.ch e f g := by
   simp only [sha256ChCat]
   rw [denote_var_bvAnd, denote_var_andn, denote_var_bvXor]
-  simp only [Com.denote, lookup_here_extend, lookup_there_extend, lookup_here_cons, lookup_there_cons, shAndW, shAndnW,
-    shXorW]
+  simp only [Com.denote, lookup_here_extend, lookup_there_extend, sha256Round_lookup_here_cons,
+    sha256Round_lookup_there_cons, shAndW, shAndnW, shXorW]
   rfl
 
 /-- **`Maj`.** The catCrypt program denotes to the FIPS reference
@@ -297,7 +299,8 @@ theorem sha256_maj_catcrypt_denote (a b c : BitVec 32) :
   simp only [sha256MajCat]
   rw [denote_var_bvAnd, denote_var_bvAnd, denote_var_bvAnd, denote_var_bvXor,
     denote_var_bvXor]
-  simp only [Com.denote, lookup_here_extend, lookup_there_extend, lookup_here_cons, lookup_there_cons, shAndW, shXorW]
+  simp only [Com.denote, lookup_here_extend, lookup_there_extend, sha256Round_lookup_here_cons,
+    sha256Round_lookup_there_cons, shAndW, shXorW]
   rfl
 
 /-! ## 7. Lowering through the `catCryptDialect → jasminDialect` seam

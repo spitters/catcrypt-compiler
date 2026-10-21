@@ -446,7 +446,7 @@ theorem minuBlk_spec (hS : IsShape L n r) :
   refine ⟨fun x y k => ?_, ⟨_, rfl⟩, trivial⟩
   unfold minuBlk vlane
   simp only [denote_var, denote_ret, lookup_here, lwE_denote]
-  rw [lookup_here_cons, lookup_there_cons, lookup_here_cons]
+  rw [tileSelect_lookup_here_cons, tileSelect_lookup_there_cons, tileSelect_lookup_here_cons]
   exact lane_semLW .minu x y hS.pos.1 (hS.bound k.isLt)
 
 /-- **The lane law of `muluBlk`**: qword `k` of its value is the half-width product of qword
@@ -458,7 +458,7 @@ theorem muluBlk_spec :
   refine ⟨fun x y k => ?_, ⟨_, rfl⟩, trivial⟩
   unfold muluBlk vlane
   simp only [denote_var, denote_ret, lookup_here, lwE_denote]
-  rw [lookup_here_cons, lookup_there_cons, lookup_here_cons]
+  rw [tileSelect_lookup_here_cons, tileSelect_lookup_there_cons, tileSelect_lookup_here_cons]
   exact lane_semLW .muludq x y (by omega) (isShape_qword.bound k.isLt)
 
 /-- The lane-wise minimum of the lanes of two packed tiles of sixteen 32-bit lanes. -/

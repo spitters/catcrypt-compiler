@@ -299,12 +299,12 @@ theorem denote_var_bvRor64 {Γ : Ctxt catCryptDialect} {n : Nat} {s : CryptoTy}
     (Ctxt.Var.there (s := t') w).lookup (V.extend v) = w.lookup V := rfl
 
 /-- `Ctxt.Var.here.lookup` on a cons valuation reads the head. -/
-@[simp] theorem lookup_here_cons {Γ : Ctxt catCryptDialect} {t : CryptoTy}
+@[simp] theorem blake2bG_lookup_here_cons {Γ : Ctxt catCryptDialect} {t : CryptoTy}
     (V : Ctxt.Valuation Γ) (v : ⟦t⟧) :
     (Ctxt.Var.here (Γ := Γ) (t := t)).lookup (HVector.cons v V) = v := rfl
 
 /-- `(Ctxt.Var.there w).lookup` on a cons valuation skips the head. -/
-@[simp] theorem lookup_there_cons {Γ : Ctxt catCryptDialect} {t t' : CryptoTy}
+@[simp] theorem blake2bG_lookup_there_cons {Γ : Ctxt catCryptDialect} {t t' : CryptoTy}
     (V : Ctxt.Valuation Γ) (v : ⟦t'⟧) (w : Ctxt.Var Γ t) :
     (Ctxt.Var.there (s := t') w).lookup (HVector.cons v V) = w.lookup V := rfl
 

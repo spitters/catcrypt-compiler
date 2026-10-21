@@ -168,16 +168,16 @@ abbrev args2 (a b : Nat) :
       (([NatKernelTy.nat, NatKernelTy.nat] : List natKernelDialect.Ty)) :=
   .cons a (.cons b .nil)
 
-theorem denote_const (n : Nat) :
+theorem natKernel_denote_const (n : Nat) :
     DialectDenote.denote (d := natKernelDialect) (.const n) .nil = n := rfl
 
-theorem denote_add (a b : Nat) :
+theorem natKernel_denote_add (a b : Nat) :
     DialectDenote.denote (d := natKernelDialect) .add (args2 a b) = Nat.add a b := rfl
 
-theorem denote_sub (a b : Nat) :
+theorem natKernel_denote_sub (a b : Nat) :
     DialectDenote.denote (d := natKernelDialect) .sub (args2 a b) = Nat.sub a b := rfl
 
-theorem denote_mul (a b : Nat) :
+theorem natKernel_denote_mul (a b : Nat) :
     DialectDenote.denote (d := natKernelDialect) .mul (args2 a b) = Nat.mul a b := rfl
 
 theorem denote_pow (a b : Nat) :

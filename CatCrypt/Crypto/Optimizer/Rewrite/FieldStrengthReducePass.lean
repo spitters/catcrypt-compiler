@@ -71,19 +71,19 @@ def denote (env : Nat → R) : FExpr R → R
   | sub a b => denote env a - denote env b
   | mul a b => denote env a * denote env b
 
-@[simp] theorem denote_const (env : Nat → R) (c : R) :
+@[simp] theorem fexpr_denote_const (env : Nat → R) (c : R) :
     denote env (const c) = c := rfl
 
 @[simp] theorem denote_var (env : Nat → R) (i : Nat) :
     denote env (var i) = env i := rfl
 
-@[simp] theorem denote_add (env : Nat → R) (a b : FExpr R) :
+@[simp] theorem fexpr_denote_add (env : Nat → R) (a b : FExpr R) :
     denote env (add a b) = denote env a + denote env b := rfl
 
-@[simp] theorem denote_sub (env : Nat → R) (a b : FExpr R) :
+@[simp] theorem fexpr_denote_sub (env : Nat → R) (a b : FExpr R) :
     denote env (sub a b) = denote env a - denote env b := rfl
 
-@[simp] theorem denote_mul (env : Nat → R) (a b : FExpr R) :
+@[simp] theorem fexpr_denote_mul (env : Nat → R) (a b : FExpr R) :
     denote env (mul a b) = denote env a * denote env b := rfl
 
 end FExpr

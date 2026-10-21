@@ -361,10 +361,10 @@ def lowering : PartialBlockLowering tileDialect d where
   lowerExprBlock? := fun e =>
     (T.gate e.op).map fun blk => congrArg T.ty e.retTy_eq ▸ Com.rename (T.argHom _ e.args) blk
 
-theorem lookup_mapVar : ∀ {Γ : Ctxt tileDialect} {t : TileTy} (v : Var Γ t) (V : Valuation Γ),
-    (T.mapVar v).lookup (T.mv V) = T.tr (v.lookup V)
+theorem lookup_mapVar_mv : ∀ {Γ : Ctxt tileDialect} {t : TileTy} (v : Var Γ t)
+    (V : Valuation Γ), (T.mapVar v).lookup (T.mv V) = T.tr (v.lookup V)
   | _, _, .here, .cons _ _ => rfl
-  | _, _, .there v, .cons _ xs => lookup_mapVar v xs
+  | _, _, .there v, .cons _ xs => lookup_mapVar_mv v xs
 
 theorem pullV_argHom {Γ : Ctxt tileDialect} (V : Valuation Γ) :
     (ts : List TileTy) → (args : HVector (fun t => Var Γ t) ts) →
@@ -373,7 +373,7 @@ theorem pullV_argHom {Γ : Ctxt tileDialect} (V : Valuation Γ) :
   | _ :: ts, .cons a as => by
       show HVector.cons ((T.mapVar a).lookup (T.mv V))
         (pullV (T.argHom ts as) (T.mv V)) = HVector.cons _ _
-      rw [T.lookup_mapVar a V, pullV_argHom V ts as]
+      rw [T.lookup_mapVar_mv a V, pullV_argHom V ts as]
       rfl
 
 /-- The binding leaf of `T.lowering`. -/

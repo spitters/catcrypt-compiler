@@ -131,12 +131,12 @@ theorem denote_var_vprordZMM {Γ : Ctxt jasminDialect} {s : JasminTy}
     (Ctxt.Var.there (s := t') w).lookup (V.extend v) = w.lookup V := rfl
 
 /-- `Ctxt.Var.here.lookup` on a cons valuation reads the head. -/
-@[simp] theorem lookup_here_cons {Γ : Ctxt jasminDialect} {t : JasminTy}
+@[simp] theorem chacha20Dword_lookup_here_cons {Γ : Ctxt jasminDialect} {t : JasminTy}
     (V : Ctxt.Valuation Γ) (v : ⟦t⟧) :
     (Ctxt.Var.here (Γ := Γ) (t := t)).lookup (.cons v V) = v := rfl
 
 /-- `(Ctxt.Var.there w).lookup` on a cons valuation skips the head. -/
-@[simp] theorem lookup_there_cons {Γ : Ctxt jasminDialect} {t t' : JasminTy}
+@[simp] theorem chacha20Dword_lookup_there_cons {Γ : Ctxt jasminDialect} {t t' : JasminTy}
     (V : Ctxt.Valuation Γ) (v : ⟦t'⟧) (w : Ctxt.Var Γ t) :
     (Ctxt.Var.there (s := t') w).lookup (.cons v V) = w.lookup V := rfl
 
@@ -275,7 +275,7 @@ macro "peel_qr" : tactic =>
        denote_var_vpackZMMd, denote_var_vpackZMMd, denote_var_vprordZMM,
        denote_var_vpackZMMd, denote_var_vpackZMMd, denote_var_vprordZMM];
      simp only [Com.denote, lookup_here_extend, lookup_there_extend,
-       lookup_here_cons, lookup_there_cons]))
+       chacha20Dword_lookup_here_cons, chacha20Dword_lookup_there_cons]))
 
 theorem qrComA_denote (a b c d : BitVec 512) :
     qrComA.denote (qrVal a b c d) = (qrSpecZ a b c d).1 := by

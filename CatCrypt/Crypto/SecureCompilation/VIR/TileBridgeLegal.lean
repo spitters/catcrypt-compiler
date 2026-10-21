@@ -47,7 +47,7 @@ the loop, and its events are `stripEv` of the events of the loop. `scaledAddLoop
 * `bridgeLegal`, `legaliseBridge`: the partial block lowering and the program map.
 * `bridgeLegalCert`, `bridgeLegalLeakCert`: the step certificates of `legaliseBridge` for
   denotations and for events.
-* `loadBlk`, `storeBlk`, `splatBlk`: the one-operation blocks of `vload`, `vstore`, `vsplat`.
+* `loadBlk`, `vstoreBlk`, `splatBlk`: the one-operation blocks of `vload`, `vstore`, `vsplat`.
 * `qwordMem`, `dwordMem`: the gates at the two lane shapes of a ZMM register.
 * `scalarRd`: the scalar reading of a legalised tuple of scalar types.
 * `scaledAddVec`: the legalised strip-mined program of `scaledAddLoop`.
@@ -637,7 +637,7 @@ def loadBlk (w N : Nat) :
   .var (vloadE w N .here (.there .here)) (.ret .here)
 
 /-- The block of a store of lanes of `w` bits to an array of `N` elements: one `vstore`. -/
-def storeBlk (w N : Nat) :
+def vstoreBlk (w N : Nat) :
     Com jasminVecMem [JasminTy.stackArr w N, JasminTy.reg 64, VReg] (JasminTy.stackArr w N) :=
   .var (vstoreE w N .here (.there .here) (.there (.there .here))) (.ret .here)
 
@@ -664,10 +664,10 @@ theorem loadBlk_denote (w N : Nat) (a : Fin N → BitVec w) (i : BitVec 64) :
   simp only [loadBlk, memDenote_var, memDenote_ret, vloadE_denote, memLookup_here]
   exact congrArg₂ (vecLoad w) (Eq.trans rfl rfl) (Eq.trans rfl rfl)
 
-/-- The value of `storeBlk`. -/
-theorem storeBlk_denote (w N : Nat) (a : Fin N → BitVec w) (i : BitVec 64) (v : BitVec 512) :
-    (storeBlk w N).denote (.cons a (.cons i (.cons v .nil))) = vecStore w a i.toNat v := by
-  simp only [storeBlk, memDenote_var, memDenote_ret, vstoreE_denote, memLookup_here]
+/-- The value of `vstoreBlk`. -/
+theorem vstoreBlk_denote (w N : Nat) (a : Fin N → BitVec w) (i : BitVec 64) (v : BitVec 512) :
+    (vstoreBlk w N).denote (.cons a (.cons i (.cons v .nil))) = vecStore w a i.toNat v := by
+  simp only [vstoreBlk, memDenote_var, memDenote_ret, vstoreE_denote, memLookup_here]
   exact Eq.trans rfl rfl
 
 /-- The value of `splatBlk`. -/
@@ -682,10 +682,10 @@ theorem loadBlk_ctLeak (M : LeakModel jasminDialect) (w N : Nat) (a : Fin N → 
     Com.ctLeak (jasminVecMemLeak M) (loadBlk w N) (.cons a (.cons i .nil)) =
       [CTLeak.addr "" ((M.valNat (.reg 64) i : Nat) : Int)] := rfl
 
-/-- `storeBlk` emits the reading of its index. -/
-theorem storeBlk_ctLeak (M : LeakModel jasminDialect) (w N : Nat) (a : Fin N → BitVec w)
+/-- `vstoreBlk` emits the reading of its index. -/
+theorem vstoreBlk_ctLeak (M : LeakModel jasminDialect) (w N : Nat) (a : Fin N → BitVec w)
     (i : BitVec 64) (v : BitVec 512) :
-    Com.ctLeak (jasminVecMemLeak M) (storeBlk w N) (.cons a (.cons i (.cons v .nil))) =
+    Com.ctLeak (jasminVecMemLeak M) (vstoreBlk w N) (.cons a (.cons i (.cons v .nil))) =
       [CTLeak.addr "" ((M.valNat (.reg 64) i : Nat) : Int)] := rfl
 
 /-- `splatBlk` emits no event. -/
@@ -703,7 +703,7 @@ abbrev memD : TileTarget jasminVecMem := memShape selD
     `tileSplat` one `vsplat`, at the lane width 64. -/
 def qwordMem : MemTarget memQ where
   load? := fun N => some (loadBlk 64 N)
-  store? := fun N => some (storeBlk 64 N)
+  store? := fun N => some (vstoreBlk 64 N)
   splat? := some (splatBlk 64)
   load_lane := by
     intro N blk h a i k
@@ -717,7 +717,7 @@ def qwordMem : MemTarget memQ where
     have hp : memQ.pack memQ.shapeTy t = packAt 8 64 (vof 64 8) (.tile 8 64) t := by
       simp only [memQ, memShape, selQ]
     rw [hp]
-    exact (storeBlk_denote 64 N a i _).trans
+    exact (vstoreBlk_denote 64 N a i _).trans
       (vecStore_eq_laneStore (w := 64) a i.toNat _ t
         (fun j => congrFun (vlane_packAt_qword t) j))
   splat_lane := by
@@ -730,7 +730,7 @@ def qwordMem : MemTarget memQ where
     `vstore`, `tileSplat` one `vsplat`, at the lane width 32. -/
 def dwordMem : MemTarget memD where
   load? := fun N => some (loadBlk 32 N)
-  store? := fun N => some (storeBlk 32 N)
+  store? := fun N => some (vstoreBlk 32 N)
   splat? := some (splatBlk 32)
   load_lane := by
     intro N blk h a i k
@@ -744,7 +744,7 @@ def dwordMem : MemTarget memD where
     have hp : memD.pack memD.shapeTy t = packAt 16 32 (vof 32 16) (.tile 16 32) t := by
       simp only [memD, memShape, selD]
     rw [hp]
-    exact (storeBlk_denote 32 N a i _).trans
+    exact (vstoreBlk_denote 32 N a i _).trans
       (vecStore_eq_laneStore (w := 32) a i.toNat _ t
         (fun j => congrFun (vlane_packAt_dword t) j))
   splat_lane := by
@@ -763,7 +763,7 @@ theorem qwordMem_addr (M : LeakModel jasminDialect) : qwordMem.Addr M where
   store := by
     intro N blk h a i v
     cases h
-    exact storeBlk_ctLeak M 64 N a i v
+    exact vstoreBlk_ctLeak M 64 N a i v
   splat := by
     intro blk h W
     cases h
@@ -779,7 +779,7 @@ theorem dwordMem_addr (M : LeakModel jasminDialect) : dwordMem.Addr M where
   store := by
     intro N blk h a i v
     cases h
-    exact storeBlk_ctLeak M 32 N a i v
+    exact vstoreBlk_ctLeak M 32 N a i v
   splat := by
     intro blk h W
     cases h
@@ -797,10 +797,10 @@ theorem memD_quiet (M : LeakModel jasminDialect) : memD.Quiet (jasminVecMemLeak 
     broadcast one `vsplat`. -/
 theorem bridge_gate_table (N : Nat) :
     qwordMem.gate (.tileLoad 8 64 N) = some (loadBlk 64 N) ∧
-      qwordMem.gate (.tileStore 8 64 N) = some (storeBlk 64 N) ∧
+      qwordMem.gate (.tileStore 8 64 N) = some (vstoreBlk 64 N) ∧
       qwordMem.gate (.tileSplat 8 64) = some (splatBlk 64) ∧
       dwordMem.gate (.tileLoad 16 32 N) = some (loadBlk 32 N) ∧
-      dwordMem.gate (.tileStore 16 32 N) = some (storeBlk 32 N) ∧
+      dwordMem.gate (.tileStore 16 32 N) = some (vstoreBlk 32 N) ∧
       dwordMem.gate (.tileSplat 16 32) = some (splatBlk 32) :=
   ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
 

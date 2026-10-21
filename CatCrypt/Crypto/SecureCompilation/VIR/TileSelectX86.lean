@@ -250,16 +250,16 @@ theorem lookup_here {Γ : Ctxt jasminVec} (v : ⟦VReg⟧) (V : Valuation Γ) :
 theorem lookup_there {Γ : Ctxt jasminVec} (w : Var Γ VReg) (v : ⟦VReg⟧) (V : Valuation Γ) :
     (Var.there w : Var (VReg :: Γ) VReg).lookup (V.extend v) = w.lookup V := Eq.trans rfl rfl
 
-theorem lookup_here_cons {Γ : Ctxt jasminVec} (v : ⟦VReg⟧) (V : Valuation Γ) :
+theorem tileSelect_lookup_here_cons {Γ : Ctxt jasminVec} (v : ⟦VReg⟧) (V : Valuation Γ) :
     (Var.here : Var (VReg :: Γ) VReg).lookup (.cons v V) = v := Eq.trans rfl rfl
 
-theorem lookup_there_cons {Γ : Ctxt jasminVec} (w : Var Γ VReg) (v : ⟦VReg⟧)
+theorem tileSelect_lookup_there_cons {Γ : Ctxt jasminVec} (w : Var Γ VReg) (v : ⟦VReg⟧)
     (V : Valuation Γ) : (Var.there w : Var (VReg :: Γ) VReg).lookup (.cons v V) = w.lookup V :=
   Eq.trans rfl rfl
 
 /-- Reads the variables of the entry valuation of a block. -/
 local macro "vlook" : tactic =>
-  `(tactic| repeat (first | rw [lookup_here_cons] | rw [lookup_there_cons]))
+  `(tactic| repeat (first | rw [tileSelect_lookup_here_cons] | rw [tileSelect_lookup_there_cons]))
 
 /-- The law of a one-operand block at the shape: lane `k` of its value is lane `k` of the
     tile operation on the lanes of its operand, and its operations are vector operations. -/

@@ -464,13 +464,13 @@ theorem denote_ret {Γ : Ctxt jasminDialect} {s : JasminTy} (v : Var Γ s) (V : 
   rfl
 
 /-- Looking up the head of a cons valuation. -/
-theorem lookup_here_cons {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (x : ⟦t⟧)
+theorem gf2_lookup_here_cons {Γ : Ctxt jasminDialect} {t : jasminDialect.Ty} (x : ⟦t⟧)
     (V : Valuation Γ) :
     (Ctxt.Var.here (Γ := Γ) (t := t)).lookup (V.extend x) = x :=
   rfl
 
 /-- Looking up a weakened variable in a cons valuation. -/
-theorem lookup_there_cons {Γ : Ctxt jasminDialect} {t t' : jasminDialect.Ty} (x : ⟦t'⟧)
+theorem gf2_lookup_there_cons {Γ : Ctxt jasminDialect} {t t' : jasminDialect.Ty} (x : ⟦t'⟧)
     (V : Valuation Γ) (v : Var Γ t) :
     (Ctxt.Var.there (s := t') v).lookup (V.extend x) = v.lookup V :=
   rfl
@@ -479,7 +479,7 @@ theorem lookup_there_cons {Γ : Ctxt jasminDialect} {t t' : jasminDialect.Ty} (x
 theorem mulReducedBlock_denote (a b : BitVec 128) :
     mulReducedBlock.denote (.cons a (.cons b .nil)) = mulRed a b := by
   simp only [mulReducedBlock, denote_var_clmul, denote_var_xor, denote_var_srl,
-    denote_var_sll, denote_var_const, denote_ret, lookup_here_cons, lookup_there_cons]
+    denote_var_sll, denote_var_const, denote_ret, gf2_lookup_here_cons, gf2_lookup_there_cons]
   rfl
 
 /-- `PSHUFB` by `byteRevIndex` reverses the byte order. -/

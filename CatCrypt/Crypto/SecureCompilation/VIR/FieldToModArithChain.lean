@@ -41,8 +41,9 @@ squaring, `fromMont` and `fromWords`.
 
 ## Main results
 
-* `lookup_mapVar`, `varTransports`, `mapValExtends`, `regionTypes`, `regionTransports`: the
-  leaves of the lowering other than the block leaf.
+* `fieldToModArith_lookup_mapVar`, `fieldToModArith_varTransports`,
+  `fieldToModArith_mapValExtends`, `regionTypes`, `regionTransports`: the leaves of the
+  lowering other than the block leaf.
 * `block_fwd`: a successful source expression has a successful block with the stored
   residue of its value.
 * `isSome_map?_of_opCanon`, `fieldToModArithStep_isSome`: the stage returns a program when
@@ -203,18 +204,18 @@ def mapVal {Γ : Ctxt jasField} (V : Valuation Γ) : Valuation (d := jasMod) (Γ
   transArgs mapTy transTy V
 
 /-- A mapped variable reads the transported value. -/
-theorem lookup_mapVar : ∀ {Γ : Ctxt jasField} {t : jasField.Ty} (v : Var Γ t)
+theorem fieldToModArith_lookup_mapVar : ∀ {Γ : Ctxt jasField} {t : jasField.Ty} (v : Var Γ t)
     (V : Valuation Γ), (mapVar v).lookup (mapVal V) = transTy (v.lookup V)
   | _, _, .here, .cons _ _ => rfl
-  | _, _, .there v, .cons _ xs => lookup_mapVar v xs
+  | _, _, .there v, .cons _ xs => fieldToModArith_lookup_mapVar v xs
 
 /-- The variable leaf of `fieldToModArithJ`. -/
-theorem varTransports :
+theorem fieldToModArith_varTransports :
     fieldToModArithJ.VarTransports (fun x => transTy x) (fun V => mapVal V) :=
-  fun v V => lookup_mapVar v V
+  fun v V => fieldToModArith_lookup_mapVar v V
 
 /-- The binding leaf of `fieldToModArithJ`. -/
-theorem mapValExtends :
+theorem fieldToModArith_mapValExtends :
     fieldToModArithJ.MapValExtends (fun x => transTy x) (fun V => mapVal V) :=
   fun _ _ => rfl
 
@@ -235,7 +236,8 @@ theorem unmapInl_lookupArgs_argsJ {Γ : Ctxt jasField} (V : Valuation Γ) :
       unmapInl (e := pfDialect) (Expr.lookupArgs args V)
   | [], _ => rfl
   | _ :: _, .cons v vs =>
-      congrArg₂ HVector.cons (lookup_mapVar v V) (unmapInl_lookupArgs_argsJ V vs)
+      congrArg₂ HVector.cons (fieldToModArith_lookup_mapVar v V)
+        (unmapInl_lookupArgs_argsJ V vs)
 
 /-- **The block leaf of `fieldToModArithJ`, forward form.** A source expression that
     succeeds with `x` has a block that succeeds, on the transported valuation, with the
@@ -262,7 +264,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             have hx' : some (modAddF (p := p) (a.lookup V) (b.lookup V)) = some x := hx
             cases hx'
             show some (modAddF ((mapVar a).lookup (mapVal V)) ((mapVar b).lookup (mapVal V))) = _
-            rw [lookup_mapVar, lookup_mapVar]
+            rw [fieldToModArith_lookup_mapVar, fieldToModArith_lookup_mapVar]
             exact congrArg some (FieldRepr.toRep_add r _ _)
     | sub p r =>
         match args with
@@ -271,7 +273,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             have hx' : some (modSubF (p := p) (a.lookup V) (b.lookup V)) = some x := hx
             cases hx'
             show some (modSubF ((mapVar a).lookup (mapVal V)) ((mapVar b).lookup (mapVal V))) = _
-            rw [lookup_mapVar, lookup_mapVar]
+            rw [fieldToModArith_lookup_mapVar, fieldToModArith_lookup_mapVar]
             exact congrArg some (FieldRepr.toRep_sub r _ _)
     | neg p r =>
         match args with
@@ -280,7 +282,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             have hx' : some (modNegF (p := p) (a.lookup V)) = some x := hx
             cases hx'
             show some (modNegF ((mapVar a).lookup (mapVal V))) = _
-            rw [lookup_mapVar]
+            rw [fieldToModArith_lookup_mapVar]
             exact congrArg some (FieldRepr.toRep_neg r _)
     | mul p r =>
         match args with
@@ -292,7 +294,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
                 cases hb
                 show some (modMulF ((mapVar a).lookup (mapVal V)) ((mapVar b).lookup (mapVal V)))
                   = _
-                rw [lookup_mapVar, lookup_mapVar]
+                rw [fieldToModArith_lookup_mapVar, fieldToModArith_lookup_mapVar]
                 rfl
             | mont k =>
                 have hb' : (if Nat.Coprime 2 p then some _ else none) = some blk := hb
@@ -302,7 +304,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
                   have hM : (radixParams k).isMont p = true := decide_eq_true h
                   show some (montMulF ((radixParams k).rInv p) ((mapVar a).lookup (mapVal V))
                     ((mapVar b).lookup (mapVal V))) = _
-                  rw [lookup_mapVar, lookup_mapVar]
+                  rw [fieldToModArith_lookup_mapVar, fieldToModArith_lookup_mapVar]
                   show some (montMulF _ ((FieldRepr.mont k).toRep _)
                     ((FieldRepr.mont k).toRep _)) = some ((FieldRepr.mont k).toRep _)
                   simp only [FieldRepr.toRep_mont_eq (radixParams k) hM rfl]
@@ -318,7 +320,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
                 cases hb
                 show some (modMulF ((mapVar a).lookup (mapVal V)) ((mapVar a).lookup (mapVal V)))
                   = _
-                rw [lookup_mapVar]
+                rw [fieldToModArith_lookup_mapVar]
                 rfl
             | mont k =>
                 have hb' : (if Nat.Coprime 2 p then some _ else none) = some blk := hb
@@ -328,7 +330,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
                   have hM : (radixParams k).isMont p = true := decide_eq_true h
                   show some (montMulF ((radixParams k).rInv p) ((mapVar a).lookup (mapVal V))
                     ((mapVar a).lookup (mapVal V))) = _
-                  rw [lookup_mapVar]
+                  rw [fieldToModArith_lookup_mapVar]
                   show some (montMulF _ ((FieldRepr.mont k).toRep _)
                     ((FieldRepr.mont k).toRep _)) = some ((FieldRepr.mont k).toRep _)
                   simp only [FieldRepr.toRep_mont_eq (radixParams k) hM rfl]
@@ -341,7 +343,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             have hx' : some (modAddF (p := p) (a.lookup V) (a.lookup V)) = some x := hx
             cases hx'
             show some (modAddF ((mapVar a).lookup (mapVal V)) ((mapVar a).lookup (mapVal V))) = _
-            rw [lookup_mapVar]
+            rw [fieldToModArith_lookup_mapVar]
             exact congrArg some (FieldRepr.toRep_add r _ _)
     | const p r c =>
         cases hb
@@ -355,7 +357,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             have hx' : some (a.lookup V) = some x := hx
             cases hx'
             show some (modCopyF ((mapVar a).lookup (mapVal V))) = _
-            rw [lookup_mapVar]
+            rw [fieldToModArith_lookup_mapVar]
     | toMont p k =>
         match args with
         | .cons a .nil =>
@@ -363,7 +365,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             have hx' : some (a.lookup V) = some x := hx
             cases hx'
             show some (modMulF ((mapVar a).lookup (mapVal V)) (2 ^ k)) = _
-            rw [lookup_mapVar]
+            rw [fieldToModArith_lookup_mapVar]
             rfl
     | fromMont p k =>
         match args with
@@ -375,7 +377,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             · rename_i h
               cases hb'
               show some (montReduceF ((radixParams k).rInv p) ((mapVar a).lookup (mapVal V))) = _
-              rw [lookup_mapVar]
+              rw [fieldToModArith_lookup_mapVar]
               exact congrArg some (FieldRepr.ofRep_toRep (r := .mont k) h _)
             · cases hb'
   · cases o with
@@ -392,7 +394,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
               · rename_i hlt
                 cases hx'
                 show (fromWordsMF p w n ((mapVar a).lookup (mapVal V)) >>= fun v => some v) = _
-                rw [lookup_mapVar]
+                rw [fieldToModArith_lookup_mapVar]
                 show (fromWordsMF p w n (a.lookup V) >>= fun v => some v) = _
                 rw [fromWordsMF, if_pos hlt]
                 exact congrArg some (FieldRepr.toRep_ofRep hr _).symm
@@ -405,7 +407,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
             have hx' : some (toWordsF p r w n (a.lookup V)) = some x := hx
             cases hx'
             show some (toWordsMF p w n ((mapVar a).lookup (mapVal V))) = _
-            rw [lookup_mapVar]
+            rw [fieldToModArith_lookup_mapVar]
             rfl
 
 /-! ## 4. The chain stage -/
@@ -428,8 +430,9 @@ def fieldToModArithCert (E : CallEnv jasField) (E' : CallEnv jasMod)
     PassChain.StepCert (fieldToModArithStep Γ ts).run (NFProgPasses.nfSemE E fuel Γ ts)
       (NFProgPasses.nfSemE E' fuel (Γ.map mapTy) (ts.map mapTy)) :=
   PassChain.StepCert.ofMapAtM? fieldToModArithJ regionTypes (fun x => transTy x)
-    (fun V => mapVal V) varTransports (fun e blk hb V x hx => block_fwd e blk hb V x hx)
-    mapValExtends regionTransports E E' hCall fuel Γ ts
+    (fun V => mapVal V) fieldToModArith_varTransports
+    (fun e blk hb V x hx => block_fwd e blk hb V x hx)
+    fieldToModArith_mapValExtends regionTransports E E' hCall fuel Γ ts
 
 /-! ## 5. The stage is defined at the representation `canon` -/
 
@@ -666,9 +669,9 @@ theorem fieldToModArithStep_leakRunMC (M : LeakModel jasminDialect)
     leakRunMC (jasModLeak M N) E' fuel q (mapVal V) =
       some (transArgs mapTy (fun y => transTy y) r.1, r.2) :=
   map?_leakRunMC_blockEvO fieldToModArithJ (fun x => transTy x) (fun V => mapVal V)
-    (jasModLeak M N) regionTypes varTransports
-    (fun e blk hb V x hx => block_fwd e blk hb V x hx) mapValExtends regionTransports E E'
-    fuel p hCall (fun v => v) V (mapVal V) (NFProg.renRel_id _) q hf r
+    (jasModLeak M N) regionTypes fieldToModArith_varTransports
+    (fun e blk hb V x hx => block_fwd e blk hb V x hx) fieldToModArith_mapValExtends
+    regionTransports E E' fuel p hCall (fun v => v) V (mapVal V) (NFProg.renRel_id _) q hf r
     (by rw [blockEvO_eq M N hN]; exact h)
 
 /-- **Two leakage runs before the stage give two runs of its result, with equal events from

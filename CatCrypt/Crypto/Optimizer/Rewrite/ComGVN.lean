@@ -158,14 +158,6 @@ theorem opLeak_length (L : LeakModel jasminDialect) (op : JasminOp)
     (opLeak L op a).length = (opLeak L op b).length :=
   AegraphGeneric.opLeak_length L op a b
 
-/-- The events of a renamed expression are those of the expression at the pulled-back
-    valuation. -/
-theorem Expr.ctLeak_rename (L : LeakModel jasminDialect) {Γ Δ : Ctxt jasminDialect}
-    {t : JasminTy} (ρ : Ctxt.Hom Γ Δ) (e : Expr jasminDialect Γ t) (V : Ctxt.Valuation Δ) :
-    Expr.ctLeak L (e.rename ρ) V = Expr.ctLeak L e (pullV ρ V) := by
-  rw [pullV_eq_comap]
-  exact AegraphGeneric.Expr.ctLeak_rename L ρ e V
-
 /-- **Leakage of the traversal.** Under tables sound for `V₁` and `V₂`, equal leakage of
     the input at the pulled-back valuations gives equal leakage of the output. -/
 theorem gvnGo_ctLeak (L : LeakModel jasminDialect) : ∀ {Γ Δ : Ctxt jasminDialect}

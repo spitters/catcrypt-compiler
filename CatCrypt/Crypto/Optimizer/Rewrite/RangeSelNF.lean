@@ -175,15 +175,15 @@ variable {Γ : JCtxt} {Δ : Ctxt jasminSel} {ρ : VarMap Γ Δ} {W : Ctxt.Valuat
 
 /-- An expression of `jasminDialect` as an expression of `jasminSel` over the output
     context: the operation tagged `.inl`, the arguments mapped. -/
-def embedExpr (ρ : VarMap Γ Δ) {t : JasminTy} (e : Expr jasminDialect Γ t) :
+def selEmbedExpr (ρ : VarMap Γ Δ) {t : JasminTy} (e : Expr jasminDialect Γ t) :
     Expr jasminSel Δ t where
   op := .inl e.op
   retTy_eq := e.retTy_eq
   args := VarMap.args ρ e.args
 
 /-- An embedded expression has the value of the expression. -/
-theorem embedExpr_denote (h : VarMap.OK ρ W V) {t : JasminTy} (e : Expr jasminDialect Γ t) :
-    (embedExpr ρ e).denote W = e.denote V := by
+theorem selEmbedExpr_denote (h : VarMap.OK ρ W V) {t : JasminTy} (e : Expr jasminDialect Γ t) :
+    (selEmbedExpr ρ e).denote W = e.denote V := by
   obtain ⟨op, rfl, args⟩ := e
   show DialectDenote.denote (d := jasminDialect) op
       (Expr.lookupArgs (d := jasminSel) (VarMap.args ρ args) W) = _
@@ -191,9 +191,9 @@ theorem embedExpr_denote (h : VarMap.OK ρ W V) {t : JasminTy} (e : Expr jasminD
   rfl
 
 /-- An embedded expression emits the events of the expression. -/
-theorem embedExpr_ctLeak (M : LeakModel jasminDialect) (h : VarMap.OK ρ W V) {t : JasminTy}
+theorem selEmbedExpr_ctLeak (M : LeakModel jasminDialect) (h : VarMap.OK ρ W V) {t : JasminTy}
     (e : Expr jasminDialect Γ t) :
-    Expr.ctLeak (jasminSelLeak M) (embedExpr ρ e) W = Expr.ctLeak M e V := by
+    Expr.ctLeak (jasminSelLeak M) (selEmbedExpr ρ e) W = Expr.ctLeak M e V := by
   show opLeak (jasminSelLeak M) (.inl e.op)
       (Expr.lookupArgs (d := jasminSel) (VarMap.args ρ e.args) W) = _
   rw [h.args e.args, jasminSel_opLeak_inl]
@@ -786,7 +786,7 @@ def selBind (A : AEnv Γ) (D : List SubFact) (len : Nat) (ρ : VarMap Γ Δ) {t 
     (e : Expr jasminDialect Γ t) : Emit Δ t :=
   match selOp A D len ρ e.op e.args with
   | some r => e.retTy_eq ▸ r
-  | none => .one (embedExpr ρ e)
+  | none => .one (selEmbedExpr ρ e)
 
 /-- **The bindings of `selBind` give the value of the input binding.** -/
 theorem selBind_val (hA : EnvOK A V) (hD : SubOK D V) (hlen : len = Γ.length)
@@ -797,7 +797,7 @@ theorem selBind_val (hA : EnvOK A V) (hD : SubOK D V) (hlen : len = Γ.length)
   split
   · rename_i r hr
     exact selOp_val hA hD hlen hρ hr
-  · exact embedExpr_denote hρ (Expr.mk op rfl args)
+  · exact selEmbedExpr_denote hρ (Expr.mk op rfl args)
 
 /-- **The bindings of `selBind` emit the events of the input binding** under a model whose
     `regArith` operations are quiet. -/
@@ -812,7 +812,7 @@ theorem selBind_leak {L : LeakModel jasminDialect}
     obtain ⟨bop, w, rfl⟩ := selOp_op hr
     rw [expr_ctLeak_regArith L hq _ rfl V]
     exact selOp_leak hq hr W
-  · exact embedExpr_ctLeak L hρ _
+  · exact selEmbedExpr_ctLeak L hρ _
 
 end Bind
 
