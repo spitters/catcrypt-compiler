@@ -29,10 +29,8 @@ freezes the set of its importers.
 |---|---|
 | [`HaxToLowCT`](HaxToLowCT.lean) | `haxToLowCT : ImpExpr → Option LowCT` |
 | [`LowCTSubset`](LowCTSubset.lean) | the subset filter on `ImpExpr` |
-| [`HaxToLowCT_ConstFold`](HaxToLowCT_ConstFold.lean) | the constant-substitution pre-pass |
 | [`HaxToLowCTExit`](HaxToLowCTExit.lean) | the exit-flag lowering of early returns |
 | [`HaxToLowCTSim_Program`](HaxToLowCTSim_Program.lean) | `haxToLowCT_simulates_program`: the program-level simulation under `simScope` |
-| [`HaxToLowCTSim_Full`](HaxToLowCTSim_Full.lean) | `haxToLowCT_simulates_full` |
 | [`HaxToLowCTSim_ProgramTower`](HaxToLowCTSim_ProgramTower.lean) | `haxToLowCT_simulates_programT`: builtins returning scalars |
 | [`HaxToLowCTSim_ProgramLit`](HaxToLowCTSim_ProgramLit.lean) | `haxToLowCT_simulates_programL`: literal call arguments |
 | [`HaxToLowCTSim_ProgramFor`](HaxToLowCTSim_ProgramFor.lean), [`HaxToLowCTSim_ProgramLoops`](HaxToLowCTSim_ProgramLoops.lean), [`HaxToLowCTSim_ProgramArr`](HaxToLowCTSim_ProgramArr.lean) | counted, runtime-bound and data-dependent loops; array loads and stores |
