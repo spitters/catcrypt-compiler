@@ -1009,8 +1009,8 @@ theorem denote'_forFoldRev_lit_run (i : String) (lo hi : Int) (body : ImpExpr) (
 
 theorem denoteForLoopRev'_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : hi ≤ lo) :
-    (_root_.Hax.denoteForLoopRev' bi fuel i lo hi body).run env = (.val .unit, env) := by
-  rw [_root_.Hax.denoteForLoopRev', if_pos h]; rfl
+    (_root_.Hax.denoteForLoopRev' bi fuel i lo hi body).run env = (.val .unit, env) :=
+  _root_.Hax.Ascent.denoteForLoopRev'_done bi fuel i body env h
 
 theorem denoteForLoopRev'_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : lo < hi) :
@@ -1047,9 +1047,9 @@ theorem denoteForLoopRev'_succ_iterate (n : Nat) (i : String) (lo hi : Int) (bod
     (hb : (denote' bi (n + 1) body).run (env.extend i (.int (hi - 1))) = (.val w, e2))
     (hw : w.isControlFlow = false) :
     (_root_.Hax.denoteForLoopRev' bi (n + 1) i lo hi body).run env =
-      (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2 := by
-  rw [denoteForLoopRev'_succ_run bi n i lo hi body env h, hb]
-  cases w <;> first | rfl | simp at hw
+      (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2 :=
+  _root_.Hax.Ascent.denoteForLoopRev'_next bi (n + 1) i h (Nat.add_one_ne_zero n) hb
+    (fun _ hc => by simp [hc] at hw)
 
 theorem denoteForLoopRev'_succ_nonval (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
     (env e2 : Env) (o : Outcome) (h : lo < hi)

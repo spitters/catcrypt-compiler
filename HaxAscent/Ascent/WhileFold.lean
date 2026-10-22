@@ -721,12 +721,6 @@ theorem denote'_forFoldRev (bi : Builtins) (fuel : Nat) {var : String} {lo hi bo
     denote' bi fuel (.forFoldRev var lo hi body) env = denoteForLoopRev' bi fuel var a b body s2 := by
   simp only [denote', stateM_bind_apply, hlo, hhi]
 
-theorem denoteForLoopRev'_done (bi : Builtins) (fuel : Nat) (var : String) {a b : Int}
-    (body : ImpExpr) (env : Env) (h : b ≤ a) :
-    denoteForLoopRev' bi fuel var a b body env = (.val .unit, env) := by
-  rw [denoteForLoopRev']
-  simp only [if_pos h]; rfl
-
 theorem denoteForLoopRev'_step (bi : Builtins) {fuel : Nat} (var : String) {a b : Int}
     {body : ImpExpr} {env s : Env} {v : Value} (hab : a < b) (hf : fuel ≠ 0)
     (h : denote' bi fuel body (env.extend var (.int (b - 1))) = (.val v, s)) :

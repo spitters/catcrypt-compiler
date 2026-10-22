@@ -32,7 +32,8 @@ a fuel `fuel₀` and an environment `env'` with `Q env' σ` such that at every
 
 * `denote'_lit`, `denote'_seq`, `denote'_letBind`, `denote'_ifThenElse`, `denote'_app`,
   `denote'_forFold`, `denoteForLoop'_done`, `denoteForLoop'_break`,
-  `denoteForLoop'_next`: the one-step equations of `denote'` at a fixed fuel.
+  `denoteForLoop'_next`, `denoteForLoopRev'_done`, `denoteForLoopRev'_next`: the one-step
+  equations of `denote'` at a fixed fuel.
 * `haxEval_eq`: a value returned from some fuel on is the eventual value.
 -/
 
@@ -161,6 +162,26 @@ theorem denoteForLoop'_next (var : String) {a b : Int} {body : ImpExpr} {env s :
     (hv : ∀ w, v ≠ .controlFlow true w) :
     denoteForLoop' bi fuel var a b body env = denoteForLoop' bi (fuel - 1) var (a + 1) b body s := by
   rw [denoteForLoop']
+  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
+  cases v
+  case controlFlow c w =>
+    cases c
+    · rfl
+    · exact absurd rfl (hv w)
+  all_goals rfl
+
+theorem denoteForLoopRev'_done (var : String) {a b : Int} (body : ImpExpr) (env : Env)
+    (h : a ≥ b) : denoteForLoopRev' bi fuel var a b body env = (.val .unit, env) := by
+  rw [denoteForLoopRev']
+  simp only [if_pos h]; rfl
+
+theorem denoteForLoopRev'_next (var : String) {a b : Int} {body : ImpExpr} {env s : Env}
+    {v : Value} (hab : a < b) (hf : fuel ≠ 0)
+    (h : denote' bi fuel body (env.extend var (.int (b - 1))) = (.val v, s))
+    (hv : ∀ w, v ≠ .controlFlow true w) :
+    denoteForLoopRev' bi fuel var a b body env =
+      denoteForLoopRev' bi (fuel - 1) var a (b - 1) body s := by
+  rw [denoteForLoopRev']
   simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
   cases v
   case controlFlow c w =>
