@@ -19,9 +19,10 @@ the register file at entry `rv`, the argument values `vals` and the return index
 stack register at entry is `rv "%rsp"`.
 
 * The precondition (`LinkedFn.entryAt` with the definedness of the meaning at `vals`): the
-  registers `abiRegs` of the layout hold their values under `rv`; the words of the pointer
-  regions of the layout are owned and pairwise separated, and the layout reads `vals` from
-  them; the return word at the stack register holds `ret`; the clobbered registers outside
+  registers `abiRegs` of the layout hold their values under `rv`; the words of each pointer
+  region are owned as an array of pairwise separated words (`arrOwn`), the read-only regions
+  joined by `SAssert.conj` and the region of an out result separated from them
+  (`regionsOwn`), and the layout reads `vals` from them; the return word at the stack register holds `ret`; the clobbered registers outside
   `abiRegs`, the flags and the `frame` bytes below the stack register are owned; and, joined
   by `SAssert.conj`, the stack parameters at entry and the locations of the result read-back.
 * The postcondition: the locations of the precondition are owned, the stack register and the
@@ -45,6 +46,8 @@ the constant-time regime `.doitm` meet the contract. The interface `LinkedFn.con
 ## Main definitions
 
 * `CallVar`: the logical variables of a call.
+* `arrPts`, `arrOwn`, `regionsOwn`: an array of cells in the memory of an address state, the
+  words of a region with some contents, and the pointer regions of a layout.
 * `LinkedFn.entryAt`, `LinkedFn.contractPre`, `LinkedFn.contractPost`,
   `LinkedFn.contractWrites`, `LinkedFn.contract`: the contract.
 * `LinkedFn.Meets`: the code of a linked function meets its contract.
@@ -53,6 +56,8 @@ the constant-time regime `.doitm` meet the contract. The interface `LinkedFn.con
 
 ## Main results
 
+* `fp_arrPts`, `holds_arrPts`, `holds_arrOwn`, `resultAt_words_arrPts`: the footprints and
+  predicates of the array assertions, and the result of an out layout as an array.
 * `holds_entryAt`: the facts of the precondition used by the adapters.
 * `entryOf_popRet`: an entry state whose stack register addresses the return word `ret` is the
   entry state of a call with return index `ret`.
@@ -60,7 +65,7 @@ the constant-time regime `.doitm` meet the contract. The interface `LinkedFn.con
   interface, and from the word interface `wordSig` of the record.
 * `contractWrites_subset`, `contractPost_fp_subset`, `Meets.frame`: the footprint lemmas and
   the frame rule at the contract.
-* `calleeSpec_of_meets`, `footBelow_contractSig`, `footBelowOut_contractSig`: the interface
+* `calleeSpec_of_sContract`, `calleeSpec_of_meets`, `footBelow_contractSig`, `footBelowOut_contractSig`: the interface
   of the contract.
 * `wordCallee_of_meets`, `outCallee_of_meets`: the readings of the interface.
 -/
@@ -83,7 +88,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe (entryOf retWor
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (decodeLprog RInstr)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
-  (AState AMem read64 write64 InRange8 write64_add write64_of_not_inRange)
+  (AState AMem read64 write64 InRange8 Disjoint8 write64_add write64_of_not_inRange)
 open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout AbiArg ArgKind ResultKind wordsAt)
 open CatCrypt.Crypto.Hax (LinkedFn wordVal dec_wordVal insVals)
 open CatCrypt.Crypto.Hax.ImpToNF (dec)
@@ -190,10 +195,84 @@ def stackRoom (sp : BitVec 64) (F : Nat) : Set Loc := Loc.mem '' {x | InFrame sp
 def regionLocs (σ : AbiLayout) (rv : String → BitVec 64) : Set Loc :=
   ⋃ p ∈ σ.regions, wordsLocs (regionWords (rv p.1) p.2)
 
-/-- The pointer regions of the layout `σ` at the registers `rv`, owned and pairwise
+/-- The array `xs` of `n`-byte cells from `a` in the memory of an address state: `arrAt` along
+    `AState.mem`. -/
+def arrPts (n : Nat) (a : BitVec 64) (xs : List (BitVec (8 * n))) : SAssert AState Loc :=
+  (arrAt n a xs).comap AState.mem Loc.mem projCompat_mem
+
+/-- The footprint of an array of words is the locations of its words. -/
+theorem fp_arrPts (p : BitVec 64) (xs : List (BitVec (8 * 8))) :
+    (arrPts 8 p xs).fp = wordsLocs (regionWords p xs.length) := by
+  ext x
+  constructor
+  · rintro ⟨y, hy, rfl⟩
+    obtain ⟨P, hP, hy⟩ := mem_fp_bigSep.1 hy
+    obtain ⟨j, hj, rfl⟩ := List.mem_mapIdx.1 hP
+    exact Set.mem_biUnion (x := p + BitVec.ofNat 64 (8 * j)) ⟨j, hj, rfl⟩ ⟨y, hy, rfl⟩
+  · intro hx
+    obtain ⟨a, ⟨j, hj, rfl⟩, y, hy, rfl⟩ := Set.mem_iUnion₂.1 hx
+    exact ⟨y, mem_fp_bigSep.2 ⟨_, List.mem_mapIdx.2 ⟨j, hj, rfl⟩, hy⟩, rfl⟩
+
+/-- An array of words holds when its words hold the cells of the list and are pairwise
     separated. -/
+theorem holds_arrPts {p : BitVec 64} {xs : List (BitVec (8 * 8))} {s : AState} :
+    (arrPts 8 p xs).holds s ↔
+      (∀ j (hj : j < xs.length), read64 s.mem (p + BitVec.ofNat 64 (8 * j)) = xs[j])
+      ∧ ∀ i j, i < j → j < xs.length →
+          Disjoint8 (p + BitVec.ofNat 64 (8 * i)) (p + BitVec.ofNat 64 (8 * j)) := by
+  change (arrAt 8 p xs).holds s.mem ↔ _
+  rw [arrAt, holds_bigSep, List.pairwise_iff_getElem]
+  simp only [List.length_mapIdx, List.getElem_mapIdx, fp_ptsLE]
+  constructor
+  · rintro ⟨hd, hh⟩
+    refine ⟨fun j hj => ?_, fun i j hij hj => ?_⟩
+    · have h1 := hh _ (List.mem_mapIdx.2 ⟨j, hj, rfl⟩)
+      rw [holds_ptsLE, readLE_eight_eq_addrMem_read64] at h1
+      exact h1
+    · exact disjoint8_iff_disj.2
+        (Rng.disj_of_disjoint (Nat.succ_pos 7) (Nat.succ_pos 7) (hd i j (by omega) hj hij))
+  · rintro ⟨hr, hd⟩
+    refine ⟨fun i j hi hj hij => ?_, fun P hP => ?_⟩
+    · exact (Rng.disj_iff_disjoint (Nat.succ_pos 7) (Nat.succ_pos 7)).1
+        (disjoint8_iff_disj.1 (hd i j hij hj))
+    · obtain ⟨j, hj, rfl⟩ := List.mem_mapIdx.1 hP
+      rw [holds_ptsLE, readLE_eight_eq_addrMem_read64]
+      exact hr j hj
+
+/-- The `n` words at `p`, with some contents: `arrPts` over the lists of length `n`. -/
+def arrOwn (p : BitVec 64) (n : Nat) : SAssert AState Loc :=
+  SAssert.sexists (wordsLocs (regionWords p n))
+    (fun xs : {xs : List (BitVec (8 * 8)) // xs.length = n} => arrPts 8 p xs.1)
+    (fun xs => by rw [fp_arrPts, xs.2])
+
+/-- The footprint of `arrOwn` (unfolding lemma). -/
+@[simp] theorem fp_arrOwn (p : BitVec 64) (n : Nat) :
+    (arrOwn p n).fp = wordsLocs (regionWords p n) := rfl
+
+/-- The `n` words at `p` are owned when they are pairwise separated. -/
+theorem holds_arrOwn {p : BitVec 64} {n : Nat} {s : AState} :
+    (arrOwn p n).holds s ↔ ∀ i j, i < j → j < n →
+      Disjoint8 (p + BitVec.ofNat 64 (8 * i)) (p + BitVec.ofNat 64 (8 * j)) := by
+  constructor
+  · rintro ⟨⟨xs, hl⟩, h⟩
+    subst hl
+    exact (holds_arrPts.1 h).2
+  · intro hd
+    refine ⟨⟨List.ofFn fun j : Fin n => read64 s.mem (p + BitVec.ofNat 64 (8 * j.val)),
+      List.length_ofFn⟩, holds_arrPts.2 ⟨fun j hj => by simp, ?_⟩⟩
+    simpa using hd
+
+/-- Whether the region `p` of `σ` is the region of an out result `.words r n`. -/
+def isResRegion (σ : AbiLayout) (p : String × Nat) : Bool :=
+  match σ.result with
+  | .words r n => p == (r, n)
+  | _ => false
+
+/-- The pointer regions of `σ` at `rv`: the read-only regions joined by `SAssert.conj`, which
+    lets two parameters name one array, separated from the region of an out result. -/
 def regionsOwn (σ : AbiLayout) (rv : String → BitVec 64) : SAssert AState Loc :=
-  bigSep (σ.regions.map fun p => own (wordsLocs (regionWords (rv p.1) p.2)))
+  ((σ.regions.filter fun p => !isResRegion σ p).map fun p => arrOwn (rv p.1) p.2).foldr conj emp
+    ∗ bigSep ((σ.regions.filter fun p => isResRegion σ p).map fun p => arrOwn (rv p.1) p.2)
 
 /-- A pointer region of a parameter. -/
 theorem mem_regions_of_words {σ : AbiLayout} {a : AbiArg} (ha : a ∈ σ.args) {n : Nat}
@@ -233,6 +312,38 @@ def resultAt (σ : AbiLayout) (sem : List Value → Option Value) (rv : String �
   fp := resLocs (entryRegs rv) σ.result
   holds s' := ∃ v, sem vals = some v ∧ σ.ResultOf (entryRegs rv) s' v
   supp _ _ h := fun ⟨v, hv, hr⟩ => ⟨v, hv, hr.trans (read_congr (entryRegs rv) σ.result h)⟩
+
+/-- **The result of an out layout as an array.** At a state where the `n` words at the
+    destination are owned, the result holds exactly when the meaning returns an array of `n`
+    words that the destination holds. -/
+theorem resultAt_words_arrPts {σ : AbiLayout} {sem : List Value → Option Value}
+    {rv : String → BitVec 64} {vals : List Value} {r : String} {n : Nat}
+    (hr : σ.result = .words r n) {s' : AState} (hown : (arrOwn (rv r) n).holds s') :
+    (resultAt σ sem rv vals).holds s' ↔
+      ∃ zs : List (BitVec (8 * 8)), zs.length = n
+        ∧ sem vals = some (.array (zs.map wordVal)) ∧ (arrPts 8 (rv r) zs).holds s' := by
+  have hw : ∀ zs : List (BitVec (8 * 8)), zs.length = n →
+      (∀ j (hj : j < zs.length), read64 s'.mem (rv r + BitVec.ofNat 64 (8 * j)) = zs[j]) →
+      wordsAt s'.mem (rv r) n = zs.map wordVal := by
+    intro zs hl hz
+    subst hl
+    refine List.ext_getElem (by simp [wordsAt]) fun j h1 h2 => ?_
+    simp only [wordsAt, List.getElem_map, List.getElem_range, wordVal]
+    rw [hz j (by simpa using h2)]
+  change (∃ v, sem vals = some v ∧ v = σ.result.read (entryRegs rv) s') ↔ _
+  rw [hr]
+  constructor
+  · rintro ⟨v, hv, rfl⟩
+    have hz : (arrPts 8 (rv r)
+        (List.ofFn fun j : Fin n => read64 s'.mem (rv r + BitVec.ofNat 64 (8 * j.val)))).holds s' :=
+      holds_arrPts.2 ⟨fun j hj => by simp, by simpa using holds_arrOwn.1 hown⟩
+    refine ⟨_, List.length_ofFn, ?_, hz⟩
+    rw [hv, ← hw _ List.length_ofFn (holds_arrPts.1 hz).1]
+    rfl
+  · rintro ⟨zs, hl, hv, hz⟩
+    refine ⟨_, hv, ?_⟩
+    change _ = Value.array (wordsAt s'.mem (rv r) n)
+    rw [hw zs hl (holds_arrPts.1 hz).1]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract
 
@@ -454,18 +565,24 @@ theorem Meets.frame {l : LinkedFn} (h : l.Meets) (R : CallVar → SAssert AState
 
 /-! ## 6. The interface of the contract -/
 
+/-- **A run relation that meets the contract meets the interface of the contract**, at every
+    argument names and result name. -/
+theorem calleeSpec_of_sContract {l : LinkedFn} {X : CalleeRun} (h : SContract X l.contract)
+    (args : List String) (res : Option String) : CalleeSpec X (l.contractSig args res) := by
+  refine calleeSpec_of_contract h (fun s ⟨a, ha⟩ => ⟨a, ha, fun s' h' => ⟨a, ha, h'⟩, ?_⟩)
+    (fun _ _ hp => hp)
+  rintro (r | f | y) hx
+  · exact ⟨by simpa [LinkedFn.contractSig] using hx.1, hx.2⟩
+  · trivial
+  · exact ⟨a, ha, hx⟩
+
 /-- **A linked function that meets its contract meets the interface of the contract**, at
     every argument names and result name. -/
 theorem calleeSpec_of_meets {l : LinkedFn} (h : l.Meets) (args : List String)
     (res : Option String) :
     ∃ q, decodeLprog l.bytes = some q ∧ CalleeSpec (runOf .doitm q) (l.contractSig args res) := by
   obtain ⟨q, hq, hC⟩ := h.code
-  refine ⟨q, hq, calleeSpec_of_contract hC (fun s ⟨a, ha⟩ => ⟨a, ha, fun s' h' => ⟨a, ha, h'⟩,
-    ?_⟩) (fun _ _ hp => hp)⟩
-  rintro (r | f | y) hx
-  · exact ⟨by simpa [LinkedFn.contractSig] using hx.1, hx.2⟩
-  · trivial
-  · exact ⟨a, ha, hx⟩
+  exact ⟨q, hq, calleeSpec_of_sContract hC args res⟩
 
 /-- **The footprint of the interface of a register result** is among the `frame` bytes below
     the entry stack register. -/

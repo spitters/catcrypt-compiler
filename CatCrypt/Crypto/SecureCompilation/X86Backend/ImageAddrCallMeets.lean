@@ -18,9 +18,9 @@ set_option autoImplicit false
 `ImageAddrCall.call_reestablishes` re-establishes `ImageAddrSim.ImgRel` and
 `DecodePrintedAddr.ACorr` after a callee given by a `Callee.CalleeSpec`, from the hypothesis
 `ImageCallProbe.FootClear` that the frame words and the array words lie outside the footprint
-of the callee and the return word. For a linked function `l` that meets its contract
-(`LinkedFn.Meets`), the same conclusion follows from the frame rule of the contract
-(`LinkedFnContract.Meets.frame`) with the frame `callerFrameA` of the caller.
+of the callee and the return word. For a run relation `X` that meets the contract of a
+linked function `l` (`SContract X l.contract`), the same conclusion follows from the frame
+rule `SContract.frame` with the frame `callerFrameA` of the caller.
 
 ## The frame of the caller
 
@@ -42,7 +42,7 @@ reads.
 * `callerFrameA_sep_pre`: under `ImageAddrCall.CallerSep` at the frame size of `l`, the
   precondition of the contract and the frame of the caller are separated at the entry state
   of the call.
-* `call_reestablishes_meets`: after every run of the code of `l` from the framed
+* `call_reestablishes_meets`: after every run of `X` from the framed
   precondition, `ACorr` and `ImgRel` hold for the summary step, and the framed
   postcondition holds at the return state of the callee.
 -/
@@ -68,7 +68,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe
   (retWord entryOf entryOf_regs entryOf_mem retOps_eq CallOut outOf memAfter)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (retOps)
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (InFrame runOf)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (CalleeRun InFrame)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState InRange8)
 open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
@@ -163,10 +163,20 @@ theorem callerFrameA_holds {frame : String → Option (BitVec 64)}
     regions. -/
 theorem regionsOwn_fp_subset (σ : Haxc.AbiLayout) (rv : String → BitVec 64) :
     (regionsOwn σ rv).fp ⊆ regionLocs σ rv := by
-  intro x hx
-  obtain ⟨P, hP, hx⟩ := mem_fp_bigSep.1 hx
-  obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hP
-  exact Set.mem_biUnion hp hx
+  have hc : ∀ L : List (String × Nat), (∀ p ∈ L, p ∈ σ.regions) →
+      ((L.map fun p => arrOwn (rv p.1) p.2).foldr conj emp).fp ⊆ regionLocs σ rv := by
+    intro L hL
+    induction L with
+    | nil => intro x hx; exact absurd hx (Set.notMem_empty x)
+    | cons p L ih =>
+      rintro x (hx | hx)
+      · exact Set.mem_biUnion (hL p List.mem_cons_self) hx
+      · exact ih (fun q hq => hL q (List.mem_cons_of_mem _ hq)) hx
+  rintro x (hx | hx)
+  · exact hc _ (fun p hp => (List.mem_filter.1 hp).1) hx
+  · obtain ⟨P, hP, hx⟩ := mem_fp_bigSep.1 hx
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hP
+    exact Set.mem_biUnion (List.mem_filter.1 hp).1 hx
 
 /-- **The locations of the precondition of the contract**: the registers of the layout, the
     scratch registers, the flags, the return word, the `frame` bytes below the stack register,
@@ -288,10 +298,10 @@ theorem memAfter_of_keep {rsp : BitVec 64} {sA sc : AState} {sa : LstateA} {ret 
 /-- **A linked call re-establishes the relations, by the frame rule of the contract.** Let the
     image state `s`, the address state `sa` and the byte state `sA` be related by `ImgRel` and
     `ACorr`, the instruction at the program counter be a call in a body of the class
-    `physImgB`, and the code of the linked function `l` meet its contract and decode to `q`.
+    `physImgB`, and the run relation `X` meet the contract of the linked function `l`.
     Let the entry state of the call satisfy the precondition of the contract separated from
     the frame of the caller, and every cell of an array of `passed` lie in a pointer region of
-    the layout outside the locations of the result. Then for every run of `q` and every
+    the layout outside the locations of the result. Then for every run of `X` and every
     oracle `ω`, after the return: `ACorr` holds for the address state `callAC` with the
     oracle `outOf`; `ImgRel` holds for the summary step with that oracle; and the
     postcondition of the contract separated from the frame of the caller holds at the return
@@ -299,7 +309,7 @@ theorem memAfter_of_keep {rsp : BitVec 64} {sA sc : AState} {sa : LstateA} {ret 
 theorem call_reestablishes_meets {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    {l : LinkedFn} (hl : l.Meets) {q : List RInstr} (hq : decodeLprog l.bytes = some q)
+    {l : LinkedFn} {X : CalleeRun} (hX : SContract X l.contract)
     (args : List String) (res : Option String) {s : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRel frame slotArr base body s sa zf) {sA : AState} (hc : ACorr rsp sA sa)
     {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi) {ra : Option String}
@@ -310,7 +320,7 @@ theorem call_reestablishes_meets {frame : String → Option (BitVec 64)}
       ∀ x, InRange8 (cellAt (base A) j) x →
         Loc.mem x ∈ regionLocs l.layout a.rv
           ∧ Loc.mem x ∉ resLocs (entryRegs a.rv) l.layout.result)
-    {t : List CTLeak} {sc : AState} (hrun : runOf .doitm q (entryOf ret sA) t sc) (ω : CallOut) :
+    {t : List CTLeak} {sc : AState} (hrun : X (entryOf ret sA) t sc) (ω : CallOut) :
     ACorr rsp (retOps.foldl aMachine.exec sc)
         (callAC (l.contractSig args res) (outOf (retOps.foldl aMachine.exec sc) ω)
           (memAfter rsp sa.mem (retOps.foldl aMachine.exec sc).mem) sa)
@@ -319,14 +329,12 @@ theorem call_reestablishes_meets {frame : String → Option (BitVec 64)}
           (callAC (l.contractSig args res) (outOf (retOps.foldl aMachine.exec sc) ω)
             (memAfter rsp sa.mem (retOps.foldl aMachine.exec sc).mem) sa) ω.zf
       ∧ (l.contractPost a ∗ callerFrameA frame slotArr base passed K).holds sc := by
-  obtain ⟨q1, hq1, hC⟩ := Meets.frame hl fun _ => callerFrameA frame slotArr base passed K
-  obtain ⟨q2, hq2, hX⟩ := calleeSpec_of_meets hl args res
-  have e1 : q1 = q := Option.some.inj (hq1.symm.trans hq)
-  have e2 : q2 = q := Option.some.inj (hq2.symm.trans hq)
-  subst e1 e2
+  have hC := hX.frame (fun _ => callerFrameA frame slotArr base passed K)
+    (fun a _ _ => contractWrites_subset l a) (fun a => contractPost_fp_subset l a)
+  have hS := calleeSpec_of_sContract hX args res
   have hpost := hC.post a _ t sc hpre hrun
   have hkeep := hC.keep a _ t sc hpre hrun
-  obtain ⟨hsp, -, hk, -, -⟩ := call_return hX ret sA ⟨a, hpre.2.1⟩ hrun
+  obtain ⟨hsp, -, hk, -, -⟩ := call_return hS ret sA ⟨a, hpre.2.1⟩ hrun
   have hra := sp_of_pre hpre.2.1
   have hmem : ∀ x, Loc.mem x ∉ l.contractWrites a → ¬ InRange8 (retWord sA) x →
       memAfter rsp sa.mem (retOps.foldl aMachine.exec sc).mem x = sa.mem x :=
