@@ -396,12 +396,13 @@ def scalarOpExprT (op : String) (a b : SExpr) : Option SExpr :=
   | "||" | "or" => some (orExprN a b)
   | _ => (widthOpOf op).map fun p => p.2.sexpr p.1 a b
 
-/-- The call names whose result is a scalar besides the width-tagged ones. -/
+/-- The call names whose result is a scalar besides the width-tagged ones; `declassify` is
+    the identity on a word. -/
 def exitScalarCalls : List String :=
   ["len", "lt", "gt", "le", "ge", "eq", "ne", "add", "sub",
    "Lt", "Gt", "Le", "Ge", "Eq", "Ne", "Add", "Sub", "Mul", "Div", "Rem",
    "BitAnd", "BitOr", "BitXor", "Shl", "Shr", "Not", "Neg", "&&", "||", "and", "or",
-   "range_incl_end"]
+   "range_incl_end", "declassify"]
 
 /-- A call whose result is held in the scalar heap: a name of `exitScalarCalls` or a
     width-tagged name (containing `#`). -/
@@ -430,6 +431,9 @@ theorem exitScalarRes_index : exitScalarRes "index" = false := by
 
 theorem exitScalarRes_arrayLit : exitScalarRes "array_lit" = false := by
   simp [exitScalarRes, exitScalarCall, exitScalarCalls, exitTowerScalarCall, exitTowerScalarNames]
+
+theorem exitScalarRes_declassify : exitScalarRes "declassify" = true := by
+  simp [exitScalarRes, exitScalarCall, exitScalarCalls]
 
 /-! ## §3  Word and element tower types -/
 
