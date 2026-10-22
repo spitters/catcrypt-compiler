@@ -39,9 +39,12 @@ Rust, so does the table. The known differences are:
 `runtimeTable` holds the untagged names. A tagged name `op#w`, a single `#` followed by
 decimal digits or by `size`, is parsed by `parseTag`, and `widthTable` gives the family
 `op` a leaf at every width `w`: `cast#w` is `Hax.castVal_w w`, `BitXor#w` is
-`Hax.bitxor_w w`, and so on. The tag `size` is the width `Hax.usizeBits`, as in the
-printer's `widthAwareRuntime`. A tagged name whose family has no entry, and every name
-with several `#` (the struct updates `struct_update#S#i#n`), is left to `base`.
+`Hax.bitxor_w w`, and so on. The checked names `Add#w`, `Sub#w`, `Mul#w` are the checked
+operations of `u<w>`, with no value where Rust panics (`checkedLeaf`). The tag `size` is
+the width `Hax.usizeBits`, as in the printer's `widthAwareRuntime`. A tagged name whose
+family has no entry, and every name with several `#` (the struct updates
+`struct_update#S#i#n`), is left to `base`. No name of `runtimeTable` contains `#`, so a
+tagged name is never read from it (`runtimeTable_lookup_of_parseTag`).
 
 The printer rewrites `index arr (RangeTo n)` into `Hax.slice_to arr n` and the other range
 arguments of `index` and `index_mut` into slices, `index_mut arr i` into `Hax.index arr i`,
@@ -64,12 +67,15 @@ generator (`corresB_proj`) and not by the table.
 
 ## Main definitions
 
-* `parseTag`, `widthTable`, `runtimeTable`, `runtimeBuiltins`
+* `parseTag`, `checkedLeaf`, `widthTable`, `runtimeTable`, `runtimeBuiltins`
 
 ## Main results
 
-* `runtimeBuiltins_of_lookup`, `runtimeBuiltins_of_tag`, `runtimeBuiltins_of_base` —
-  reading the table
+* `runtimeBuiltins_of_lookup`, `runtimeBuiltins_of_tag`, `runtimeBuiltins_of_base`,
+  `runtimeTable_lookup_of_parseTag` — reading the table
+* `runtimeBuiltins_addAt`, `runtimeBuiltins_subAt`, `runtimeBuiltins_mulAt`,
+  `runtimeBuiltins_rotlAt`, `runtimeBuiltins_negAt`, `runtimeBuiltins_declassify` — the
+  checked, rotation and negation families at every width, and `declassify`
 * `RuntimeOps.index_int`, `RuntimeOps.index_slice_to`, `RuntimeOps.slice_update_enc`,
   `RuntimeOps.Ne_int`, … — the `corres_app` equation of each name
 * `RuntimeOps.range_incl_end_eq_widthArrayOps` — the table's `range_incl_end`, the
@@ -103,10 +109,20 @@ def parseTag (f : String) : Option (String × Nat) :=
     else (digitsVal ds).map fun w => (String.ofList op, w)
   | (_, []) => none
 
+/-- A checked binary operation on two integers: the value of `g`, which is `none` where
+    Rust panics, and no value on any other argument list. -/
+def checkedLeaf (g : Int → Int → Option Value) : Leaf
+  | [.int a, .int b] => g a b
+  | _ => none
+
 /-- The width families, after the printer's `widthAwareRuntime`: each family name with
-    its leaf at every width. -/
+    its leaf at every width. The checked families `Add`, `Sub`, `Mul` are the checked
+    operations of `u<w>` (`Hax.uintAddOp`, `Hax.uintSubOp`, `Hax.uintMulOp`). -/
 noncomputable def widthTable : List (String × (Nat → Leaf)) :=
   [("cast", fun w => leaf1 (Hax.castVal_w w)),
+   ("Add", fun w => checkedLeaf (Hax.uintAddOp w)),
+   ("Sub", fun w => checkedLeaf (Hax.uintSubOp w)),
+   ("Mul", fun w => checkedLeaf (Hax.uintMulOp w)),
    ("BitAnd", fun w => leaf2 (Hax.bitand_w w)),
    ("bitand", fun w => leaf2 (Hax.bitand_w w)),
    ("BitOr", fun w => leaf2 (Hax.bitor_w w)),
@@ -157,6 +173,7 @@ noncomputable def runtimeTable : Table :=
    ("slice_update", sliceUpdateLeaf),
    ("deref", identLeaf), ("deref_mut", identLeaf), ("clone", identLeaf),
    ("to_vec", identLeaf), ("into_vec", identLeaf), ("from", identLeaf),
+   ("declassify", identLeaf),
    ("iter", iterLeaf), ("into_iter", iterLeaf), ("collect", iterLeaf),
    ("truncate", truncateLeaf),
    ("is_empty", isEmptyLeaf),
@@ -270,6 +287,45 @@ theorem parseTag_struct_update : parseTag "struct_update#Sha256State#1#4" = none
 theorem parseTag_hash : parseTag "hash" = none := by decide
 
 theorem parseTag_cast_size : parseTag "cast#size" = some ("cast", Hax.usizeBits) := rfl
+
+/-- The first element of the second part of a `span` is an element of the list that fails
+    the predicate. -/
+private theorem span_loop_snd {α : Type} (p : α → Bool) :
+    ∀ (l acc : List α) (c : α) (ds : List α), (List.span.loop p l acc).2 = c :: ds →
+      c ∈ l ∧ p c = false := by
+  intro l
+  induction l with
+  | nil => intro acc c ds h; simp [List.span.loop] at h
+  | cons a l ih =>
+    intro acc c ds h
+    grind [List.span.loop]
+
+/-- A tagged name contains `#`. -/
+theorem hash_mem_of_parseTag {p : String × Nat} (h : parseTag f = some p) : '#' ∈ f.toList := by
+  unfold parseTag at h
+  split at h
+  · rename_i op c ds heq
+    have hs := span_loop_snd (fun x => x != '#') f.toList [] c ds (by
+      rw [show List.span.loop _ _ [] = _ from heq])
+    obtain ⟨h1, h2⟩ := hs
+    simp only [bne_eq_false_iff_eq] at h2
+    exact h2 ▸ h1
+  · cases h
+
+/-- No name of `runtimeTable` contains `#`. -/
+theorem hash_not_mem_runtimeTable : ∀ k ∈ runtimeTable.map Prod.fst, '#' ∉ k.toList := by
+  decide
+
+/-- **A tagged name is no name of `runtimeTable`.** -/
+theorem runtimeTable_lookup_of_parseTag {p : String × Nat} (h : parseTag f = some p) :
+    runtimeTable.lookup f = none := by
+  rcases hl : runtimeTable.lookup f with _ | g
+  · rfl
+  · exfalso
+    have hm : f ∈ runtimeTable.map Prod.fst := Classical.byContradiction fun hn => by
+      rw [List.lookup_eq_none_iff.mpr (by grind)] at hl
+      cases hl
+    exact hash_not_mem_runtimeTable f hm (hash_mem_of_parseTag h)
 
 end Reading
 
@@ -685,6 +741,13 @@ theorem tagged1 {g : Nat → Int → Int}
     runtimeBuiltins base f [.int x] = some (.int (g w x)) :=
   (runtimeBuiltins_of_tag h₁ h₂ h₃).trans (leaf1_apply _ x)
 
+/-- A checked binary integer family at width `w`. -/
+theorem checked2 {g : Nat → Int → Int → Option Value}
+    (h₁ : runtimeTable.lookup f = none) (h₂ : parseTag f = some (op, w))
+    (h₃ : widthTable.lookup op = some fun w => checkedLeaf (g w)) (x y : Int) :
+    runtimeBuiltins base f [.int x, .int y] = g w x y :=
+  runtimeBuiltins_of_tag h₁ h₂ h₃
+
 end Tagged
 
 theorem cast8 (x : Int) :
@@ -711,5 +774,48 @@ theorem to_be_bytes64 (x : Int) :
     (leaf1_apply _ x)
 
 end RuntimeOps
+
+/-! ## The checked, rotation and negation families and `declassify` -/
+
+section Families
+
+variable {f : String} {w : Nat}
+
+open RuntimeOps
+
+/-- **`Add#t`** is the checked addition of `u<w>` at the width `w` of its tag. -/
+theorem runtimeBuiltins_addAt (base : Builtins) (h : parseTag f = some ("Add", w)) (a b : Int) :
+    runtimeBuiltins base f [.int a, .int b] = Hax.uintAddOp w a b :=
+  checked2 (runtimeTable_lookup_of_parseTag h) h rfl a b
+
+/-- **`Sub#t`** is the checked subtraction of `u<w>` at the width `w` of its tag. -/
+theorem runtimeBuiltins_subAt (base : Builtins) (h : parseTag f = some ("Sub", w)) (a b : Int) :
+    runtimeBuiltins base f [.int a, .int b] = Hax.uintSubOp w a b :=
+  checked2 (runtimeTable_lookup_of_parseTag h) h rfl a b
+
+/-- **`Mul#t`** is the checked multiplication of `u<w>` at the width `w` of its tag. -/
+theorem runtimeBuiltins_mulAt (base : Builtins) (h : parseTag f = some ("Mul", w)) (a b : Int) :
+    runtimeBuiltins base f [.int a, .int b] = Hax.uintMulOp w a b :=
+  checked2 (runtimeTable_lookup_of_parseTag h) h rfl a b
+
+/-- **`rotate_left#t`** is `Hax.rotate_left_w` at the width `w` of its tag. -/
+theorem runtimeBuiltins_rotlAt (base : Builtins) (h : parseTag f = some ("rotate_left", w))
+    (a b : Int) :
+    runtimeBuiltins base f [.int a, .int b] = some (.int (Hax.rotate_left_w w a b)) :=
+  tagged2 (runtimeTable_lookup_of_parseTag h) h rfl a b
+
+/-- **`wrapping_neg#t`** is `Hax.wrapping_neg_w` at the width `w` of its tag. -/
+theorem runtimeBuiltins_negAt (base : Builtins) (h : parseTag f = some ("wrapping_neg", w))
+    (a : Int) :
+    runtimeBuiltins base f [.int a] = some (.int (Hax.wrapping_neg_w w a)) :=
+  tagged1 (runtimeTable_lookup_of_parseTag h) h rfl a
+
+/-- **`declassify`** is the identity on one value. -/
+theorem runtimeBuiltins_declassify (base : Builtins) (v : Value) :
+    runtimeBuiltins base "declassify" [v] = some v := by
+  rw [runtimeBuiltins_of_lookup (g := identLeaf) rfl]
+  simp only [identLeaf]
+
+end Families
 
 end Hax.Ascent

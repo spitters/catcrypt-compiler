@@ -15,7 +15,8 @@ public import HaxAscent.Ascent.Corres
 The word fragment at an unsigned width `ty` is the part of the `ImpExpr` language whose
 every value is a `ty`-scalar: integer literals, variables, `let`, the width-tagged
 operations `BitAnd#w`, `BitOr#w`, `BitXor#w`, `wrapping_add#w`, `wrapping_sub#w`,
-`wrapping_mul#w`, `Shr#w`, `Shl#w`, `rotate_right#w` and `Not#w` whose tag `w` is the
+`wrapping_mul#w`, `Shr#w`, `Shl#w`, `rotate_right#w`, `rotate_left#w` and `Not#w` whose
+tag `w` is the
 tag of `ty` (`uTag`: the width in decimal, `size` for `usize`), and type ascriptions.
 
 * `toRustM ty e ρ` reads `e` as an Aeneas program over `Aeneas.Std.RustM`, each tagged
@@ -33,7 +34,8 @@ not exposed.
 ## Pasting
 
 `WordOp.square` is the class-1 square of each operation, taken from
-`HaxAscent/RustSemantics/Bitwise.lean` (and `wrapping_sub_w_u_square` below). The
+`HaxAscent/RustSemantics/Bitwise.lean` (and `wrapping_sub_w_u_square`,
+`rotate_left_w_u_square` below). The
 pasting theorem `toRustM_square` composes them along the expression: for environments
 related by the encoding (`EnvRel`), `RCompOk EncRel (toRustM ty e ρA)
 (pure (runWord ty e ρI))`, so every value the Aeneas program returns encodes the runtime
@@ -83,7 +85,7 @@ theorem wrapping_sub_w_u_square {ty : UScalarTy} (x y : UScalar ty) :
 
 /-- The binary operations of the word fragment. -/
 inductive WordOp
-  | band | bor | bxor | wadd | wsub | wmul | shr | shl | rotr
+  | band | bor | bxor | wadd | wsub | wmul | shr | shl | rotr | rotl
   deriving DecidableEq
 
 /-- The width tag of an unsigned type in a runtime operation name `op#tag`. -/
@@ -106,6 +108,7 @@ def WordOp.ofName (tag : String) (f : String) : Option WordOp :=
   else if f = "Shr#" ++ tag then some .shr
   else if f = "Shl#" ++ tag then some .shl
   else if f = "rotate_right#" ++ tag then some .rotr
+  else if f = "rotate_left#" ++ tag then some .rotl
   else none
 
 /-- The Aeneas operation of a word operation. A rotation amount is an Aeneas `U32`; an
@@ -123,6 +126,10 @@ def WordOp.aen {ty : UScalarTy} : WordOp → UScalar ty → UScalar ty → RustM
     if h : y.val < 2 ^ UScalarTy.U32.numBits then
       lift (UScalar.rotate_right x (UScalar.ofNatCore (ty := .U32) y.val h))
     else .fail .undef
+  | .rotl, x, y =>
+    if h : y.val < 2 ^ UScalarTy.U32.numBits then
+      lift (UScalar.rotate_left x (UScalar.ofNatCore (ty := .U32) y.val h))
+    else .fail .undef
 
 /-- The runtime operation of a word operation at width `w`. -/
 def WordOp.rt (w : Nat) : WordOp → Int → Int → Int
@@ -135,6 +142,17 @@ def WordOp.rt (w : Nat) : WordOp → Int → Int → Int
   | .shr => Hax.shr_w w
   | .shl => Hax.shl_w w
   | .rotr => Hax.rotate_right_w w
+  | .rotl => Hax.rotate_left_w w
+
+/-- Unsigned `rotate_left` agrees with `Hax.rotate_left_w` at the operand width. -/
+theorem rotate_left_w_u_square {ty : UScalarTy} (x : UScalar ty) (s : U32) :
+    RCompOk EncRel (lift (UScalar.rotate_left x s))
+      (pure (Hax.rotate_left_w ty.numBits (enc x) (enc s)) : Id Int) := by
+  rw [rcompOk_lift]
+  show ((x.bv.rotateLeft s.val).toNat : Int) = Hax.rotate_left_w _ (x.val : Int) (s.val : Int)
+  simp only [Hax.rotate_left_w, Hax.mod2w, Int.toNat_natCast, BitVec.toNat_rotateLeft,
+    Nat.or_mod_two_pow, UScalar.val, Nat.mod_eq_of_lt x.bv.isLt]
+  rw [Nat.mod_eq_of_lt (Nat.lt_of_le_of_lt (Nat.shiftRight_le _ _) x.bv.isLt)]
 
 /-- The class-1 square of every word operation. -/
 theorem WordOp.square {ty : UScalarTy} (o : WordOp) (x y : UScalar ty) :
@@ -152,6 +170,15 @@ theorem WordOp.square {ty : UScalarTy} (o : WordOp) (x y : UScalar ty) :
     split
     · rename_i h
       have hs := rotate_right_w_u_square x (UScalar.ofNatCore (ty := .U32) y.val h)
+      have he : enc (UScalar.ofNatCore (ty := .U32) y.val h) = enc y := rfl
+      rwa [he] at hs
+    · rw [rcompOk_iff]
+      intro a ha
+      cases ha
+  · simp only [WordOp.aen, WordOp.rt]
+    split
+    · rename_i h
+      have hs := rotate_left_w_u_square x (UScalar.ofNatCore (ty := .U32) y.val h)
       have he : enc (UScalar.ofNatCore (ty := .U32) y.val h) = enc y := rfl
       rwa [he] at hs
     · rw [rcompOk_iff]
@@ -326,8 +353,8 @@ theorem eq_of_litVal? {b : Hax.ImpExpr} {n : Int} (h : litVal? b = some n) :
 def WordOp.amountOk (w : Nat) (o : WordOp) (b : Hax.ImpExpr) : Bool :=
   match o, litVal? b with
   | .shr, some n | .shl, some n => decide (0 ≤ n ∧ n < w)
-  | .rotr, some n => decide (0 ≤ n ∧ n < 2 ^ 32)
-  | .shr, none | .shl, none | .rotr, none => false
+  | .rotr, some n | .rotl, some n => decide (0 ≤ n ∧ n < 2 ^ 32)
+  | .shr, none | .shl, none | .rotr, none | .rotl, none => false
   | _, _ => true
 
 /-- The check under which the Aeneas reading returns a value: every construct is in the
@@ -375,6 +402,9 @@ theorem WordOp.aen_isOk {ty : UScalarTy} (o : WordOp) (b : Hax.ImpExpr)
     show UScalar.shiftLeft x y.val = _
     unfold UScalar.shiftLeft
     rw [if_pos (by omega)]
+  · have h32 : y.val < 2 ^ UScalarTy.U32.numBits := by
+      simp only [UScalarTy.U32_numBits_eq]; omega
+    exact ⟨_, dif_pos h32⟩
   · have h32 : y.val < 2 ^ UScalarTy.U32.numBits := by
       simp only [UScalarTy.U32_numBits_eq]; omega
     exact ⟨_, dif_pos h32⟩

@@ -24,8 +24,11 @@ words of every Aeneas width, Aeneas arrays `Aeneas.Std.Array (UScalar ty) n` of 
 tuples and the unit value.
 
 `appRt` is the reading of the runtime operations: the width-tagged word operations of
-`WordOp` at each of the six unsigned widths, `Not#w`, `cast#w`, the untagged checked
-operations `Add`, `Sub`, `Mul`, `Div`, `Rem`, the array operations `index`,
+`WordOp` at each of the six unsigned widths, `Not#w`, `cast#w`, `wrapping_neg#w`
+(`appNeg`), the checked width-tagged operations `Add#w`, `Sub#w`, `Mul#w` (`checkedAt?`,
+`appChecked`: both operands read at the width of the tag, the value of the checked operation
+of `u<w>`), the untagged checked operations `Add`, `Sub`, `Mul`, `Div`, `Rem`, the
+declassification `declassify` of a word (`appDeclassify`), the array operations `index`,
 `array_update`, `repeat`, `len` and `array_lit` on the Aeneas `Array` model (`array_lit` at
 every number of arguments, `appArrayLit`), the untagged negation `Not` of a
 Boolean, the strict connectives `&&` and `||` and the equality and disequality of two
@@ -67,8 +70,9 @@ constructs it reads, and the call names `appRt` or a local function reads.
 
 * `AVal`, `AVal.toValue`, `AEnv`, `AEnv.upd`, `encEnv`, `AVal.asW`
 * `appRt`, `AppOk`, `loopS`, `loopRevS`, `toRustMS`, `callS`, `appExt`, `ExtNamesOk`,
-  `fragOk`, `appBNot`, `boolRt?`, `cmpRt?`, `appBool2`
-* `appBNot_ok`, `appBool2_ok`, `appBool2_undef`
+  `fragOk`, `appBNot`, `boolRt?`, `cmpRt?`, `appBool2`, `checkedAt?`, `appChecked`, `appNeg`
+* `appBNot_ok`, `appBool2_ok`, `appBool2_undef`, `appChecked_ok`, `appNeg_ok`,
+  `appRt_checkedAt`, `appRt_negAt`, `appRt_declassify`
 * `appRt_ok`, `loopS_sim`, `loopRevS_sim`, `toRustMS_sim`, `appExt_ok`, `fnCorres_toRustMS`
 -/
 
@@ -252,6 +256,50 @@ theorem AOp.square {ty : UScalarTy} (o : AOp) (x y : UScalar ty) :
   · exact div_u_square x y
   · exact rem_u_square x y
 
+/-- The width and operation of a checked width-tagged name `Add#t`, `Sub#t` or `Mul#t`. -/
+def checkedAt? (f : String) : Option (UScalarTy × AOp) :=
+  match tagTyAt? "Add#" f with
+  | some ty => some (ty, .add)
+  | none =>
+    match tagTyAt? "Sub#" f with
+    | some ty => some (ty, .sub)
+    | none => (tagTyAt? "Mul#" f).map fun ty => (ty, .mul)
+
+theorem checkedAt?_spec {f : String} {ty : UScalarTy} {o : AOp}
+    (h : checkedAt? f = some (ty, o)) :
+    (o = .add ∧ f = "Add#" ++ uTag ty) ∨ (o = .sub ∧ f = "Sub#" ++ uTag ty) ∨
+      (o = .mul ∧ f = "Mul#" ++ uTag ty) := by
+  unfold checkedAt? at h
+  split at h
+  · rename_i ty' h1
+    cases h
+    exact .inl ⟨rfl, tagTyAt?_spec h1⟩
+  · split at h
+    · rename_i ty' h1
+      cases h
+      exact .inr (.inl ⟨rfl, tagTyAt?_spec h1⟩)
+    · rcases h2 : tagTyAt? "Mul#" f with _ | ty'
+      · rw [h2] at h; cases h
+      · rw [h2] at h
+        cases h
+        exact .inr (.inr ⟨rfl, tagTyAt?_spec h2⟩)
+
+/-- The checked operation of Rust `u<w>` on integers, `none` where Rust panics. -/
+def AOp.checkedRt (w : Nat) : AOp → Int → Int → Option Hax.Value
+  | .add => Hax.uintAddOp w
+  | .sub => Hax.uintSubOp w
+  | .mul => Hax.uintMulOp w
+  | .div => Hax.uintDivOp w
+  | .rem => Hax.uintRemOp w
+
+/-- A checked width-tagged operation at width `ty`: both operands are read at `ty`, and the
+    Aeneas operation fails where Rust panics. -/
+def appChecked (ty : UScalarTy) (o : AOp) (a b : AVal) : RustM AVal := do
+  let x ← a.asW ty
+  let y ← b.asW ty
+  let r ← o.aen x y
+  .ok (.w ty r)
+
 /-- A tagged binary word operation at width `ty`. -/
 def appWord (ty : UScalarTy) (o : WordOp) (a b : AVal) : RustM AVal := do
   let x ← a.asW ty
@@ -337,6 +385,11 @@ def appDeclassify : AVal → RustM AVal
   | .w ty x => .ok (.w ty x)
   | _ => .fail .undef
 
+/-- `wrapping_neg#w` at the width `ty`: the two's complement negation. -/
+def appNeg (ty : UScalarTy) (a : AVal) : RustM AVal := do
+  let x ← a.asW ty
+  .ok (.w ty ⟨-x.bv⟩)
+
 /-- The comparisons of two integers with a Boolean result, by name. -/
 def cmpRt? : String → Option (Int → Int → Bool)
   | "Lt" => some Hax.lt
@@ -387,25 +440,32 @@ def appRt (f : String) : List AVal → RustM AVal
       match tagTyAt? "cast#" f with
       | some ty => appCast ty a
       | none =>
-        if f = "range_incl_end" then
-          match a.toInt? with
-          | some k => .ok (.int (k + 1))
-          | none => .fail .undef
-        else if f = "Not" then appBNot a
-        else if f = "len" then appLen a
-        else if f = "array_lit" then appArrayLit [a]
-        else .fail .undef
+        match tagTyAt? "wrapping_neg#" f with
+        | some ty => appNeg ty a
+        | none =>
+          if f = "range_incl_end" then
+            match a.toInt? with
+            | some k => .ok (.int (k + 1))
+            | none => .fail .undef
+          else if f = "Not" then appBNot a
+          else if f = "len" then appLen a
+          else if f = "array_lit" then appArrayLit [a]
+          else if f = "declassify" then appDeclassify a
+          else .fail .undef
   | [a, b] =>
     match wordOpAt? f with
     | some (ty, o) => appWord ty o a b
     | none =>
-      match AOp.ofName f with
-      | some o => appArith o a b
+      match checkedAt? f with
+      | some (ty, o) => appChecked ty o a b
       | none =>
-        if f = "index" then appIndex a b
-        else if f = "repeat" then appRepeat a b
-        else if f = "array_lit" then appArrayLit [a, b]
-        else appBool2 f a b
+        match AOp.ofName f with
+        | some o => appArith o a b
+        | none =>
+          if f = "index" then appIndex a b
+          else if f = "repeat" then appRepeat a b
+          else if f = "array_lit" then appArrayLit [a, b]
+          else appBool2 f a b
   | [a, i, v] =>
     if f = "array_update" then appUpdate a i v
     else if f = "array_lit" then appArrayLit [a, i, v]
@@ -446,6 +506,8 @@ theorem WordOp.leaf {ty : UScalarTy} {o : WordOp} {f : String}
     | exact tagged2 (op := "Shl") (g := Hax.shl_w) rfl (by first | decide | rfl) rfl x y
     | exact tagged2 (op := "rotate_right") (g := Hax.rotate_right_w) rfl
         (by first | decide | rfl) rfl x y
+    | exact tagged2 (op := "rotate_left") (g := Hax.rotate_left_w) rfl
+        (by first | decide | rfl) rfl x y
 
 /-- `Not#w` is read by the runtime at the width of its tag. -/
 theorem not_leaf {ty : UScalarTy} (x : Int) :
@@ -453,6 +515,25 @@ theorem not_leaf {ty : UScalarTy} (x : Int) :
       some (.int (Hax.bitnot_w ty.numBits x)) := by
   cases ty <;> simp only [uTag, String.reduceAppend] <;>
     exact tagged1 (op := "Not") (g := Hax.bitnot_w) rfl (by first | decide | rfl) rfl x
+
+/-- `wrapping_neg#w` is read by the runtime at the width of its tag. -/
+theorem neg_leaf {ty : UScalarTy} (x : Int) :
+    runtimeBuiltins base ("wrapping_neg#" ++ uTag ty) [.int x] =
+      some (.int (Hax.wrapping_neg_w ty.numBits x)) := by
+  cases ty <;> simp only [uTag, String.reduceAppend] <;>
+    exact runtimeBuiltins_negAt base (by first | decide | rfl) x
+
+/-- A checked width-tagged name is read by the runtime as the checked operation of `u<w>` at
+    the width of its tag. -/
+theorem checked_leaf {ty : UScalarTy} {o : AOp} {f : String} (hf : checkedAt? f = some (ty, o))
+    (x y : Int) :
+    runtimeBuiltins base f [.int x, .int y] = o.checkedRt ty.numBits x y := by
+  rcases checkedAt?_spec hf with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;> cases ty <;>
+    simp only [uTag, String.reduceAppend, AOp.checkedRt]
+  all_goals first
+    | exact runtimeBuiltins_addAt base (by first | decide | rfl) x y
+    | exact runtimeBuiltins_subAt base (by first | decide | rfl) x y
+    | exact runtimeBuiltins_mulAt base (by first | decide | rfl) x y
 
 /-- `cast#w` is read by the runtime at the width of its tag. -/
 theorem cast_leaf {ty : UScalarTy} (x : Int) :
@@ -508,6 +589,46 @@ theorem appWord_ok {ty : UScalarTy} {o : WordOp} {a b r : AVal} (h : appWord ty 
   refine ⟨x, y, AVal.asW_ok hx, AVal.asW_ok hy, ?_⟩
   show Hax.Value.int (enc r') = _
   rw [rcompOk_iff.mp (WordOp.square o x y) r' hr']
+
+/-- **The square of a checked width-tagged operation**: a value of `appChecked` at an
+    operation of `checkedAt?` is the value of the checked operation of `u<w>` on the
+    operands. -/
+theorem appChecked_ok {ty : UScalarTy} {o : AOp} {f : String} (hf : checkedAt? f = some (ty, o))
+    {a b r : AVal} (h : appChecked ty o a b = .ok r) :
+    ∃ x y : UScalar ty, a.toValue = .int (enc x) ∧ b.toValue = .int (enc y) ∧
+      o.checkedRt ty.numBits (enc x) (enc y) = some r.toValue := by
+  unfold appChecked at h
+  obtain ⟨x, hx, h⟩ := rustM_bind_ok h
+  obtain ⟨y, hy, h⟩ := rustM_bind_ok h
+  obtain ⟨z, hz, h⟩ := rustM_bind_ok h
+  cases h
+  refine ⟨x, y, AVal.asW_ok hx, AVal.asW_ok hy, ?_⟩
+  have hsq := rcompOk_iff.mp (AOp.square o x y) z hz
+  have hzb := z.bv.isLt
+  have hxb := x.bv.isLt
+  have hyb := y.bv.isLt
+  show _ = some (Hax.Value.int (enc z))
+  have h2 : ((2 : Int) ^ ty.numBits) = ((2 ^ ty.numBits : Nat) : Int) := by push_cast; rfl
+  rcases checkedAt?_spec hf with ⟨rfl, -⟩ | ⟨rfl, -⟩ | ⟨rfl, -⟩ <;>
+    simp only [AOp.checkedRt, Hax.uintAddOp, Hax.uintSubOp, Hax.uintMulOp] <;>
+    simp only [AOp.rt, Hax.add, Hax.sub, Hax.mul, EncRel, enc_uscalar, UScalar.val] at hsq <;>
+    rw [if_pos (by simp only [enc_uscalar, UScalar.val, h2]; omega)] <;>
+    simp only [enc_uscalar, UScalar.val, hsq]
+
+/-- **The square of `wrapping_neg#w`**. -/
+theorem appNeg_ok {ty : UScalarTy} {a r : AVal} (h : appNeg ty a = .ok r) :
+    ∃ x : UScalar ty, a.toValue = .int (enc x) ∧
+      r.toValue = .int (Hax.wrapping_neg_w ty.numBits (enc x)) := by
+  unfold appNeg at h
+  obtain ⟨x, hx, h⟩ := rustM_bind_ok h
+  cases h
+  refine ⟨x, AVal.asW_ok hx, ?_⟩
+  show Hax.Value.int (((-x.bv).toNat : Nat) : Int) = _
+  have hxb := x.bv.isLt
+  simp only [Hax.wrapping_neg_w, Hax.mod2w, BitVec.toNat_neg, enc_uscalar, UScalar.val]
+  rw [show ((2 : Int) ^ ty.numBits) = ((2 ^ ty.numBits : Nat) : Int) by push_cast; rfl]
+  congr 3
+  omega
 
 /-- An untagged checked operation returns no value on two integer literals. -/
 theorem appArith_int_int (o : AOp) (n m : Int) :
@@ -725,36 +846,48 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
           rw [show AVal.toValues [AVal.w ty' x] = [.int (enc x)] from rfl, cast_leaf,
             rcompOk_lift.mp (cast_u_square ty x)]
         · cases h
-      · by_cases hi : f = "range_incl_end"
-        · rw [if_pos hi] at h
-          subst hi
-          split at h
-          · rename_i k hk
-            cases h
-            rw [show AVal.toValues [a] = [.int k] from by
-              rw [AVal.toValues, AVal.toValues, AVal.toValue_of_toInt? hk],
-              Hax.Ascent.RuntimeOps.range_incl_end_int]
-            rfl
-          · cases h
-        · rw [if_neg hi] at h
-          by_cases hn : f = "Not"
-          · rw [if_pos hn] at h
-            subst hn
-            exact appBNot_ok base h
-          · rw [if_neg hn] at h
-            by_cases hl : f = "len"
-            · rw [if_pos hl] at h
-              subst hl
-              obtain ⟨vs, ha, hr⟩ := appLen_ok h
-              rw [show AVal.toValues [a] = [.array vs] from by simp only [AVal.toValues, ha],
-                len_leaf, hr]
-            · rw [if_neg hl] at h
-              by_cases hal : f = "array_lit"
-              · rw [if_pos hal] at h
-                subst hal
-                exact appArrayLit_rt base h
-              · rw [if_neg hal] at h
-                cases h
+      · split at h
+        · rename_i ty hty
+          rw [tagTyAt?_spec hty]
+          obtain ⟨x, hx, hr⟩ := appNeg_ok h
+          rw [show AVal.toValues [a] = [.int (enc x)] from by
+            simp only [AVal.toValues, hx], neg_leaf, hr]
+        · by_cases hi : f = "range_incl_end"
+          · rw [if_pos hi] at h
+            subst hi
+            split at h
+            · rename_i k hk
+              cases h
+              rw [show AVal.toValues [a] = [.int k] from by
+                rw [AVal.toValues, AVal.toValues, AVal.toValue_of_toInt? hk],
+                Hax.Ascent.RuntimeOps.range_incl_end_int]
+              rfl
+            · cases h
+          · rw [if_neg hi] at h
+            by_cases hn : f = "Not"
+            · rw [if_pos hn] at h
+              subst hn
+              exact appBNot_ok base h
+            · rw [if_neg hn] at h
+              by_cases hl : f = "len"
+              · rw [if_pos hl] at h
+                subst hl
+                obtain ⟨vs, ha, hr⟩ := appLen_ok h
+                rw [show AVal.toValues [a] = [.array vs] from by simp only [AVal.toValues, ha],
+                  len_leaf, hr]
+              · rw [if_neg hl] at h
+                by_cases hal : f = "array_lit"
+                · rw [if_pos hal] at h
+                  subst hal
+                  exact appArrayLit_rt base h
+                · rw [if_neg hal] at h
+                  by_cases hd : f = "declassify"
+                  · rw [if_pos hd] at h
+                    subst hd
+                    obtain ⟨rfl, -, -⟩ := appDeclassify_ok h
+                    exact Hax.Ascent.runtimeBuiltins_declassify base _
+                  · rw [if_neg hd] at h
+                    cases h
   · simp only [appRt] at h
     split at h
     · rename_i ty o ho
@@ -763,31 +896,36 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
         simp only [AVal.toValues, hx, hy], hr]
       exact WordOp.leaf (wordOpAt?_spec ho) _ _
     · split at h
-      · rename_i o ho
-        obtain ⟨x, y, hx, hy, hr⟩ := appArith_ok h
-        rw [show AVal.toValues [a, b] = [.int x, .int y] from by
-          simp only [AVal.toValues, hx, hy], hr]
-        exact AOp.leaf ho _ _
-      · by_cases hi : f = "index"
-        · rw [if_pos hi] at h
-          subst hi
-          obtain ⟨vs, j, ha, hb, hr⟩ := appIndex_ok h
-          rw [show AVal.toValues [a, b] = [.array vs, .int j] from by
-            simp only [AVal.toValues, ha, hb], index_leaf, hr]
-        · rw [if_neg hi] at h
-          by_cases hrep : f = "repeat"
-          · rw [if_pos hrep] at h
-            subst hrep
-            obtain ⟨n, hb, hr⟩ := appRepeat_ok h
-            rw [show AVal.toValues [a, b] = [a.toValue, .int n] from by
-              simp only [AVal.toValues, hb], repeat_leaf, hr]
-          · rw [if_neg hrep] at h
-            by_cases hal : f = "array_lit"
-            · rw [if_pos hal] at h
-              subst hal
-              exact appArrayLit_rt base h
-            · rw [if_neg hal] at h
-              exact appBool2_ok base h
+      · rename_i ty o ho
+        obtain ⟨x, y, hx, hy, hr⟩ := appChecked_ok ho h
+        rw [show AVal.toValues [a, b] = [.int (enc x), .int (enc y)] from by
+          simp only [AVal.toValues, hx, hy], checked_leaf ho, hr]
+      · split at h
+        · rename_i o ho
+          obtain ⟨x, y, hx, hy, hr⟩ := appArith_ok h
+          rw [show AVal.toValues [a, b] = [.int x, .int y] from by
+            simp only [AVal.toValues, hx, hy], hr]
+          exact AOp.leaf ho _ _
+        · by_cases hi : f = "index"
+          · rw [if_pos hi] at h
+            subst hi
+            obtain ⟨vs, j, ha, hb, hr⟩ := appIndex_ok h
+            rw [show AVal.toValues [a, b] = [.array vs, .int j] from by
+              simp only [AVal.toValues, ha, hb], index_leaf, hr]
+          · rw [if_neg hi] at h
+            by_cases hrep : f = "repeat"
+            · rw [if_pos hrep] at h
+              subst hrep
+              obtain ⟨n, hb, hr⟩ := appRepeat_ok h
+              rw [show AVal.toValues [a, b] = [a.toValue, .int n] from by
+                simp only [AVal.toValues, hb], repeat_leaf, hr]
+            · rw [if_neg hrep] at h
+              by_cases hal : f = "array_lit"
+              · rw [if_pos hal] at h
+                subst hal
+                exact appArrayLit_rt base h
+              · rw [if_neg hal] at h
+                exact appBool2_ok base h
   · simp only [appRt] at h
     by_cases hu : f = "array_update"
     · rw [if_pos hu] at h
@@ -811,6 +949,30 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
       exact appArrayLit_rt base h
     · rw [if_neg hal] at h
       cases h
+
+/-- A checked width-tagged name is no tagged binary word operation name. -/
+theorem wordOpAt?_of_checkedAt? {f : String} {ty : UScalarTy} {o : AOp}
+    (h : checkedAt? f = some (ty, o)) : wordOpAt? f = none := by
+  rcases checkedAt?_spec h with ⟨-, rfl⟩ | ⟨-, rfl⟩ | ⟨-, rfl⟩ <;> cases ty <;> decide
+
+/-- **A checked width-tagged name on two words of its width** is the Aeneas checked
+    operation at that width. -/
+theorem appRt_checkedAt {f : String} {ty : UScalarTy} {o : AOp}
+    (h : checkedAt? f = some (ty, o)) (x y : UScalar ty) :
+    appRt f [.w ty x, .w ty y] = o.aen x y >>= fun z => .ok (.w ty z) := by
+  simp only [appRt, wordOpAt?_of_checkedAt? h, h, appChecked]
+  simp [AVal.asW]
+
+/-- `wrapping_neg#t` on a word of the width of its tag is its two's complement negation (an
+    unfolding lemma of `appRt`). -/
+theorem appRt_negAt (ty : UScalarTy) (x : UScalar ty) :
+    appRt ("wrapping_neg#" ++ uTag ty) [.w ty x] = .ok (.w ty ⟨-x.bv⟩) := by
+  cases ty <;> rfl
+
+/-- `declassify` on a word is the word (an unfolding lemma of `appRt`). -/
+theorem appRt_declassify {ty : UScalarTy} (x : UScalar ty) :
+    appRt "declassify" [.w ty x] = .ok (.w ty x) := by
+  rfl
 
 /-! ## The reading -/
 
@@ -1392,10 +1554,12 @@ theorem appExt_ok (T : Hax.Ascent.Table) (fns : List Hax.Ascent.ExtFn)
 
 /-- The names of arity `n` that `appRt` reads. -/
 def rtNameOk (f : String) : Nat → Bool
-  | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome || f == "range_incl_end" ||
-      f == "Not" || f == "len" || f == "array_lit"
-  | 2 => (wordOpAt? f).isSome || (AOp.ofName f).isSome || f == "index" || f == "repeat" ||
-      (boolRt? f).isSome || (cmpRt? f).isSome || f == "array_lit"
+  | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome ||
+      (tagTyAt? "wrapping_neg#" f).isSome || f == "range_incl_end" || f == "Not" ||
+      f == "len" || f == "array_lit" || f == "declassify"
+  | 2 => (wordOpAt? f).isSome || (checkedAt? f).isSome || (AOp.ofName f).isSome ||
+      f == "index" || f == "repeat" || (boolRt? f).isSome || (cmpRt? f).isSome ||
+      f == "array_lit"
   | 3 => f == "array_update" || f == "array_lit"
   | _ => f == "array_lit"
 

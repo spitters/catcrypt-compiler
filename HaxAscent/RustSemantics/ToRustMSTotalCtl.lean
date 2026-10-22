@@ -39,7 +39,10 @@ on each signature. On the word ranges `WI ty L U` (the words `x` of width `ty` w
 `L ≤ x < U`) the checked `Add`, `Sub`, `Mul`, `Div` and `Rem` of `appRt` are typed under
 the conditions that make each total: `U₁ + U₂ ≤ 2 ^ w` for `Add`, `U₂ ≤ L₁ + 1` (the
 subtrahend at most the minuend) for `Sub`, `U₁ * U₂ ≤ 2 ^ w` for `Mul`, and `1 ≤ L₂` (a
-non-zero divisor) for `Div` and `Rem`; `AppTyped.append` joins signature lists.
+non-zero divisor) for `Div` and `Rem`; `AppTyped.append` joins signature lists. A checked
+width-tagged name `Add#t`, `Sub#t` or `Mul#t` on two word ranges of the width of its tag is
+typed by each signature of its untagged name (`appTyped_checkedAt`), and `declassify` keeps
+the range of its word (`appTyped_declassify`).
 
 The tagged shifts `Shl#t` and `Shr#t` read the shift amount as a word of the shifted width;
 on an amount in `[Lₐ, Uₐ)` with `Uₐ ≤ w` they are total, `Shl#t` under
@@ -86,6 +89,7 @@ reading.
 * `AppTyped.append`, `appRt_addI_total`, `appRt_sub_total`, `appRt_mul_total`,
   `appRt_div_total`, `appRt_rem_total`
 * `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem`
+* `appRt_checkedAt_eq`, `appTyped_checkedAt`, `appTyped_declassify`
 * `appRt_arith_int_undef`, `appRt_Shl_undef`, `appRt_Shr_undef`, `appRt_shl_total`,
   `appRt_shr_total`, `appTyped_shl`, `appTyped_shr`
 * `keyEqLit_kind`, `keyEqLit_triple`, `varLoopLit_kind`, `varLoopLit_total`
@@ -677,6 +681,56 @@ theorem appTyped_rem
   obtain ⟨rfl, rfl, rfl⟩ := hseq
   match vs, hvs with
   | [u, w], .cons hu (.cons hw .nil) => exact appRt_rem_total hB hu hw
+
+/-! ## Checked width-tagged arithmetic and `declassify` on word ranges -/
+
+/-- On two words of the width of its tag, a checked width-tagged name `g#t` is read as the
+    untagged checked name `g` of the same operation. -/
+theorem appRt_checkedAt_eq {f g : String} {ty : UScalarTy} {o : AOp}
+    (hf : checkedAt? f = some (ty, o)) (hg : AOp.ofName g = some o) (x y : UScalar ty) :
+    appRt f [.w ty x, .w ty y] = appRt g [.w ty x, .w ty y] := by
+  rw [appRt_checkedAt hf]
+  unfold AOp.ofName at hg
+  (repeat' split at hg) <;> cases hg <;> subst g
+  all_goals
+    (first | rw [appRt_Add] | rw [appRt_Sub] | rw [appRt_Mul] | rw [appRt_Div] | rw [appRt_Rem])
+    simp [appArith, AVal.asW]
+
+/-- **Checked width-tagged arithmetic on word ranges.** A signature of a checked
+    width-tagged name `g#t` on two word ranges of the width of its tag types `appRt` when
+    the same signature of the untagged name `g` does. -/
+theorem appTyped_checkedAt
+    {sig sig' : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (h : AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt)
+    (hsig : ∀ s ∈ sig', ∃ g ty o L1 U1 L2 U2, checkedAt? s.1 = some (ty, o) ∧
+      AOp.ofName g = some o ∧ s.2.1 = [.base (ty, L1, U1), .base (ty, L2, U2)] ∧
+      (g, s.2) ∈ sig) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig' appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨g, ty, o, L1, U1, L2, U2, hf, hg, hks, hmem⟩ := hsig _ hs
+  simp only at hf hks hmem
+  subst hks
+  match vs, hvs with
+  | [u, w], .cons hu (.cons hw .nil) =>
+    obtain ⟨x, rfl, -, -⟩ := id hu
+    obtain ⟨y, rfl, -, -⟩ := id hw
+    rw [appRt_checkedAt_eq hf hg]
+    exact h g _ k _ hmem (.cons hu (.cons hw .nil))
+
+/-- **`declassify` on word ranges.** `appRt` is typed by every signature list of
+    `declassify : WI ty L U → WI ty L U`. -/
+theorem appTyped_declassify
+    {sig : List (String × List (Kd (UScalarTy × Nat × Nat)) × Kd (UScalarTy × Nat × Nat))}
+    (hsig : ∀ s ∈ sig, ∃ ty L U, s = ("declassify", [.base (ty, L, U)], .base (ty, L, U))) :
+    AppTyped (fun p => WI p.1 p.2.1 p.2.2) sig appRt := by
+  intro f ks k vs hs hvs
+  obtain ⟨ty, L, U, hseq⟩ := hsig _ hs
+  simp only [Prod.mk.injEq] at hseq
+  obtain ⟨rfl, rfl, rfl⟩ := hseq
+  match vs, hvs with
+  | [u], .cons hu .nil =>
+    obtain ⟨x, rfl, -, -⟩ := id hu
+    exact ⟨_, appRt_declassify x, hu⟩
 
 /-! ## Arithmetic on integer literals
 
