@@ -913,10 +913,9 @@ theorem siteStep_contract_ins {frame : String → Option (BitVec 64)}
 
 /-- **A halting run of the image of a calling body whose call sites call one linked function
     on scalars and read-only arrays is a run through calls of the program its linked bytes
-    decode to**, for a callee block whose code `q` meets the contract of `l`. The hypotheses
-    are those of `ImageAddrCallArrChain.haltsC_of_linkedChecks_arr` with the specification of
-    `insSig` replaced by the contract, and the precondition and the entry hypotheses at the
-    calls replaced by the parameters passed at each call (`hpar`). -/
+    decode to**, for a callee block whose code `q` meets the contract of `l`. The calls are
+    specified by the contract, and the precondition and the entry hypotheses at the calls are
+    the parameters passed at each call (`hpar`). -/
 theorem haltsC_of_contract_ins {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
