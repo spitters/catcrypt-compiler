@@ -41,8 +41,8 @@ This is the loop rule of a relational Hoare logic (pRHL's `rHoare_foldM`) at the
   counted loop under a relation family indexed by the trip index;
   `NFProg.foldlM_add_bounded_rel` is an instance with the bound `a ≤ B * j`.
 * `NFProg.foldlM_rel`, `NFProg.foldlM_rel_fwd` — the counted loop, the constant family.
-* `NFProg.whileIter_rel`, `NFProg.whileIter_rel_fwd`, `NFProg.whileIter_rel_graded` — the
-  exit-flag loop.
+* `NFProg.whileIter_rel`, `NFProg.whileIter_rel_fwd`, `NFProg.whileIter_rel_graded`,
+  `NFProg.whileIter_fwd_le` — the exit-flag loop.
 * `NFProg.ite_rel`, `NFProg.ite_rel_fwd` — the branch.
 * `NFProg.forIterLeak_rel_bisim`, `NFProg.forIterLeak_rel_fwd`,
   `NFProg.whileIterLeak_rel_bisim`, `NFProg.whileIterLeak_rel_fwd` — the two loops of the
@@ -345,6 +345,26 @@ theorem whileIter_rel_fwd {cs : List d.Ty} {cs' : List d'.Ty}
         (fun r hr' => hs a a' r hr hr') (fun r r' c ⟨ht, hb⟩ => ?_) b h
       rw [hb]
       exact ite_rel_fwd rfl (fun b => whileIter_rel_fwd hs n _ _ b ht)
+        (fun b hb => by obtain rfl := Option.some.inj hb; exact ⟨_, rfl, ht⟩) c
+
+/-- **The exit-flag loop, forward form from a fuel to a larger one.** -/
+theorem whileIter_fwd_le {cs : List d.Ty} {cs' : List d'.Ty}
+    {R : Valuation cs → Valuation cs' → Prop}
+    {step : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs))}
+    {step' : Valuation cs' → Option (Valuation (HasBitType.bit (d := d') :: cs'))}
+    (hs : ∀ a a' r, R a a' → step a = some r → ∃ r', step' a' = some r' ∧ R r.tail r'.tail ∧
+      HasBoolBit.toBool (d := d) r.head = HasBoolBit.toBool (d := d') r'.head) :
+    ∀ (n m : Nat), n ≤ m → ∀ (a : Valuation cs) (a' : Valuation cs') (b : Valuation cs),
+      R a a' → whileIter step n a = some b → ∃ b', whileIter step' m a' = some b' ∧ R b b'
+  | 0, _, _, _, _, _, _, h => by cases h
+  | n + 1, 0, hle, _, _, _, _, _ => by omega
+  | n + 1, m + 1, hle, a, a', b, hr, h => by
+      simp only [whileIter] at h ⊢
+      refine bind_rel_fwd (R := fun r r' => R r.tail r'.tail ∧
+        HasBoolBit.toBool (d := d) r.head = HasBoolBit.toBool (d := d') r'.head)
+        (fun r hr' => hs a a' r hr hr') (fun r r' c ⟨ht, hb⟩ => ?_) b h
+      rw [hb]
+      exact ite_rel_fwd rfl (fun b => whileIter_fwd_le hs n m (by omega) _ _ b ht)
         (fun b hb => by obtain rfl := Option.some.inj hb; exact ⟨_, rfl, ht⟩) c
 
 end While

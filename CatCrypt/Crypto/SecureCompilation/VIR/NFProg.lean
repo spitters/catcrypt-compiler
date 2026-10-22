@@ -67,6 +67,7 @@ a counter value as a `Nat` and embeds a trip index into the word type, following
 * `NFProg.denote_ret`, `NFProg.denote_var`, `NFProg.denote_forLoop`,
   `NFProg.denote_ifThenElse`, `NFProg.denote_whileLoop`, `NFProg.denote_call` — the
   equations of `denote`.
+* `NFProg.denoteAt_whileLoop` — the equation of `denoteAt` at an exit-flag loop.
 * `NFProg.whileIter_zero` — a `whileLoop` at fuel `0` fails.
 * `NFProg.denote_fuel_of_whileFree` — a program without `whileLoop` denotes
   independently of the fuel.
@@ -298,6 +299,17 @@ def denoteAt (E : CallEnv d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NF
     (V : Valuation Γ) : Option (Valuation ts) :=
   @denote d _ _ _ _ _ ⟨E⟩ fuel Γ ts p V
 
+omit [CallDenote d] in
+/-- An exit-flag loop denotes, at the call environment `E`, the fuel-bounded iteration of
+    its body, then its continuation at the final tuple. -/
+theorem denoteAt_whileLoop (E : CallEnv d) {Γ : Ctxt d} {cs ts : List d.Ty}
+    (inits : HVector (fun t => Var Γ t) cs)
+    (body : NFProg d (cs ++ Γ) (HasBitType.bit (d := d) :: cs)) (k : NFProg d (cs ++ Γ) ts)
+    (fuel : Nat) (V : Valuation Γ) :
+    (NFProg.whileLoop inits body k).denoteAt E fuel V =
+      whileIter (fun acc => body.denoteAt E fuel (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V) >>= fun acc => k.denoteAt E fuel (hvAppend acc V) := rfl
+
 omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] [CallDenote d] in
 /-- The iteration of an exit-flag loop at fuel `0` fails. -/
 theorem whileIter_zero {cs : List d.Ty}
@@ -523,7 +535,7 @@ theorem Var.lookup_shiftApp {d : Dialect} [TyDenote d.Ty] {Γ : Ctxt d} {t : d.T
   | _ :: cs, .cons _ A, v, V => Var.lookup_shiftApp cs A v V
 
 /-- A prefix of an `NFProg` from the context `Γ` to a hole of context `Δ`: let-bindings,
-    counted loops and branches, each followed by the rest of the prefix. -/
+    counted loops, branches and exit-flag loops, each followed by the rest of the prefix. -/
 inductive NFPre (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
     [HasBoolBit d] : Ctxt d → Ctxt d → Type where
   /-- The hole. -/
@@ -538,6 +550,10 @@ inductive NFPre (d : Dialect.{0, 0}) [DialectSignature d] [TyDenote d.Ty] [HasWo
   /-- A two-armed branch with the results `rs`, then the rest. -/
   | ifThenElse {Γ Δ rs} (cond : Var Γ (HasBitType.bit (d := d)))
       (thn els : NFProg d Γ rs) (p : NFPre d (rs ++ Γ) Δ) : NFPre d Γ Δ
+  /-- A loop in exit-flag form carrying the tuple `cs`, then the rest. -/
+  | whileLoop {Γ Δ cs} (inits : HVector (fun t => Var Γ t) cs)
+      (body : NFProg d (cs ++ Γ) (HasBitType.bit (d := d) :: cs))
+      (p : NFPre d (cs ++ Γ) Δ) : NFPre d Γ Δ
 
 namespace NFPre
 
@@ -550,6 +566,7 @@ def plug : {Γ Δ : Ctxt d} → {ts : List d.Ty} → NFPre d Γ Δ → NFProg d 
   | _, _, _, .var e p, k => .var e (p.plug k)
   | _, _, _, .forLoop count inits body p, k => .forLoop count inits body (p.plug k)
   | _, _, _, .ifThenElse cond thn els p, k => .ifThenElse cond thn els (p.plug k)
+  | _, _, _, .whileLoop inits body p, k => .whileLoop inits body (p.plug k)
 
 /-- The prefix `p` followed by the prefix `q` in its hole. -/
 def append : {Γ Δ Θ : Ctxt d} → NFPre d Γ Δ → NFPre d Δ Θ → NFPre d Γ Θ
@@ -557,6 +574,7 @@ def append : {Γ Δ Θ : Ctxt d} → NFPre d Γ Δ → NFPre d Δ Θ → NFPre d
   | _, _, _, .var e p, q => .var e (p.append q)
   | _, _, _, .forLoop count inits body p, q => .forLoop count inits body (p.append q)
   | _, _, _, .ifThenElse cond thn els p, q => .ifThenElse cond thn els (p.append q)
+  | _, _, _, .whileLoop inits body p, q => .whileLoop inits body (p.append q)
 
 /-- A variable of the context of a prefix as a variable of the context of its hole. -/
 def wk : {Γ Δ : Ctxt d} → {t : d.Ty} → NFPre d Γ Δ → Var Γ t → Var Δ t
@@ -564,6 +582,7 @@ def wk : {Γ Δ : Ctxt d} → {t : d.Ty} → NFPre d Γ Δ → Var Γ t → Var 
   | _, _, _, .var _ p, v => p.wk v.there
   | _, _, _, .forLoop (cs := cs) _ _ _ p, v => p.wk (Var.shiftApp cs v)
   | _, _, _, .ifThenElse (rs := rs) _ _ _ p, v => p.wk (Var.shiftApp rs v)
+  | _, _, _, .whileLoop (cs := cs) _ _ p, v => p.wk (Var.shiftApp cs v)
 
 variable [DialectDenoteM d Option] [CallDenote d]
 
@@ -580,6 +599,10 @@ def denote (fuel : Nat) : {Γ Δ : Ctxt d} → NFPre d Γ Δ → Valuation Γ �
       (if HasBoolBit.toBool (d := d) (cond.lookup V) then thn.denote fuel V
         else els.denote fuel V) >>= fun r =>
         p.denote fuel (hvAppend r V)
+  | _, _, .whileLoop inits body p, V =>
+      NFProg.whileIter (fun acc => body.denote fuel (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V) >>= fun acc =>
+        p.denote fuel (hvAppend acc V)
 
 /-- A filled prefix denotes its continuation at the valuation of the hole. -/
 theorem denote_plug (fuel : Nat) {Γ Δ : Ctxt d} {ts : List d.Ty} (p : NFPre d Γ Δ)
@@ -593,6 +616,8 @@ theorem denote_plug (fuel : Nat) {Γ Δ : Ctxt d} {ts : List d.Ty} (p : NFPre d 
       simp only [plug, NFProg.denote, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
   | ifThenElse cond thn els p ih =>
       simp only [plug, NFProg.denote, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+  | whileLoop inits body p ih =>
+      simp only [plug, NFProg.denote, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
 
 /-- A composed prefix denotes the second prefix at the hole of the first. -/
 theorem denote_append (fuel : Nat) {Γ Δ Θ : Ctxt d} (p : NFPre d Γ Δ) (q : NFPre d Δ Θ)
@@ -604,6 +629,8 @@ theorem denote_append (fuel : Nat) {Γ Δ Θ : Ctxt d} (p : NFPre d Γ Δ) (q : 
   | forLoop count inits body p ih =>
       simp only [append, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
   | ifThenElse cond thn els p ih =>
+      simp only [append, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
+  | whileLoop inits body p ih =>
       simp only [append, denote, ih, Option.bind_eq_bind, Option.bind_assoc]
 
 /-- A weakened variable reads at the hole what it reads at the start. -/
@@ -627,6 +654,10 @@ theorem lookup_wk (fuel : Nat) {Γ Δ : Ctxt d} {t : d.Ty} (p : NFPre d Γ Δ) (
       simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
       obtain ⟨r, _, hp⟩ := h
       exact (ih _ hp).trans (Var.lookup_shiftApp _ r v _)
+  | whileLoop inits body p ih =>
+      simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+      obtain ⟨acc, _, hp⟩ := h
+      exact (ih _ hp).trans (Var.lookup_shiftApp _ acc v _)
 
 end NFPre
 

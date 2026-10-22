@@ -395,16 +395,6 @@ theorem denoteAt_ifThenElse (E : CallEnv catCryptDialect) {Γ : Ctxt catCryptDia
       (if HasBoolBit.toBool (d := catCryptDialect) (cond.lookup V) then thn.denoteAt E fuel V
         else els.denoteAt E fuel V) >>= fun r => k.denoteAt E fuel (hvAppend r V) := rfl
 
-/-- An exit-flag loop denotes, at the call environment `E`, the fuel-bounded iteration of
-    its body, then its continuation at the final tuple. -/
-theorem denoteAt_whileLoop (E : CallEnv catCryptDialect) {Γ : Ctxt catCryptDialect}
-    {cs ts : List CryptoTy} (inits : HVector (fun t => Var Γ t) cs)
-    (body : NFProg catCryptDialect (cs ++ Γ) (HasBitType.bit (d := catCryptDialect) :: cs))
-    (k : NFProg catCryptDialect (cs ++ Γ) ts) (fuel : Nat) (V : Valuation Γ) :
-    (NFProg.whileLoop inits body k).denoteAt E fuel V =
-      NFProg.whileIter (fun acc => body.denoteAt E fuel (hvAppend acc V)) fuel
-          (Expr.lookupArgs inits V) >>= fun acc => k.denoteAt E fuel (hvAppend acc V) := rfl
-
 /-- The builtin table `bi` answers the name of the declaration `d`, at its signature, by
     its function `sem`. -/
 def ExtDecl.InTable (bi : _root_.Hax.Builtins) (d : ExtDecl) : Prop :=
@@ -741,35 +731,13 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
         exact ⟨_, hr', hR.2, hR.1⟩
       have hiter : ∃ accF', NFProg.whileIter
           (fun acc => body'.denoteAt E fuel (hvAppend acc W')) fuel (Expr.lookupArgs ws W') =
-          some accF' ∧ VRelL cs accF accF' := by
-        obtain ⟨b', hb'', hR⟩ := NFProg.whileIter_rel_fwd (R := VRelL cs) hstep tf _ _ accF
-          hrel hw
-        have mono : ∀ (n m : Nat), n ≤ m → ∀ (a b : Valuation (d := catCryptDialect)
-            (cs.map catTy)), NFProg.whileIter
-              (fun acc => body'.denoteAt E fuel (hvAppend acc W')) n a = some b →
-            NFProg.whileIter (fun acc => body'.denoteAt E fuel (hvAppend acc W')) m a =
-              some b := by
-          intro n
-          induction n with
-          | zero => intro m _ a b h; cases h
-          | succ n ih =>
-              intro m hnm a b h
-              obtain ⟨m, rfl⟩ : ∃ m', m = m' + 1 := ⟨m - 1, by omega⟩
-              simp only [NFProg.whileIter, Option.bind_eq_bind, Option.bind_eq_some_iff]
-                at h ⊢
-              obtain ⟨r, hr, h⟩ := h
-              refine ⟨r, hr, ?_⟩
-              split at h
-              · rw [if_pos ‹_›]
-                exact ih m (by omega) _ _ h
-              · rw [if_neg ‹_›]
-                exact h
-        exact ⟨b', mono tf fuel hle _ _ hb'', hR⟩
+          some accF' ∧ VRelL cs accF accF' :=
+        NFProg.whileIter_fwd_le (R := VRelL cs) hstep tf fuel hle _ _ accF hrel hw
       obtain ⟨accF', hw', hrF⟩ := hiter
       obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend accF V)
         (hvAppend accF' W') out (TRd.agree_liftApp hag' cs accF accF' hrF) hkout fuel hle
       refine ⟨out', ?_, hR⟩
-      rw [denoteAt_whileLoop]
+      rw [NFProg.denoteAt_whileLoop]
       erw [hw']
       exact hden
   | call f args k _ =>

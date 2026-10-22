@@ -175,6 +175,7 @@ def preOps (P : d.Op → Bool) : {Γ Δ : Ctxt d} → NFPre d Γ Δ → Bool
   | _, _, .var e p => P e.op && preOps P p
   | _, _, .forLoop _ _ body p => opsNB P body && preOps P p
   | _, _, .ifThenElse _ thn els p => opsNB P thn && opsNB P els && preOps P p
+  | _, _, .whileLoop .. => false
 
 /-- `preOps` of the concatenation of two prefixes. -/
 theorem preOps_append (P : d.Op → Bool) {Γ Δ Θ : Ctxt d} (p : NFPre d Γ Δ)
@@ -184,6 +185,7 @@ theorem preOps_append (P : d.Op → Bool) {Γ Δ Θ : Ctxt d} (p : NFPre d Γ Δ
   | var e p ih => simp [NFPre.append, preOps, ih, Bool.and_assoc]
   | forLoop _ _ body p ih => simp [NFPre.append, preOps, ih, Bool.and_assoc]
   | ifThenElse _ thn els p ih => simp [NFPre.append, preOps, ih, Bool.and_assoc]
+  | whileLoop _ body p ih => simp [NFPre.append, preOps]
 
 /-- `opsNB` of a prefix plugged with a program. -/
 theorem opsNB_plug (P : d.Op → Bool) {Γ Δ : Ctxt d} {ts : List d.Ty} (p : NFPre d Γ Δ)
@@ -193,6 +195,7 @@ theorem opsNB_plug (P : d.Op → Bool) {Γ Δ : Ctxt d} {ts : List d.Ty} (p : NF
   | var e p ih => simp [NFPre.plug, preOps, opsNB, ih, Bool.and_assoc]
   | forLoop _ _ body p ih => simp [NFPre.plug, preOps, opsNB, ih, Bool.and_assoc]
   | ifThenElse _ thn els p ih => simp [NFPre.plug, preOps, opsNB, ih, Bool.and_assoc]
+  | whileLoop _ body p ih => simp [NFPre.plug, preOps, opsNB]
 
 omit [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] in
 /-- `opsNB` of a program cast along equal contexts and result types. -/
@@ -570,6 +573,7 @@ theorem PDen_fuel_of_preOps (bi : Builtins) {P : NfOp → Bool} {Γ Δ : Ctxt nf
       have ht := NFProg.denote_fuel_of_whileFree thn (whileFree_of_opsNB thn hp.1.1) n m
       have he := NFProg.denote_fuel_of_whileFree els (whileFree_of_opsNB els hp.1.2) n m
       simp only [PDen, NFPre.denote, ih hp.2, ht, he]
+  | whileLoop => simp [preOps] at hp
 
 /-- **A sound output whose prefix is of `preOps P` is matched at every fuel**: a run of the
     source to a value gives one valuation `W` of the hole that the prefix reaches at every

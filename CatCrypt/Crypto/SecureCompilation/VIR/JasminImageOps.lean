@@ -36,7 +36,7 @@ width, and `map?` keeps the operations of the blocks it splices.
 
 ## Main results
 
-* `coveredCom_rename`, `allOps_spliceNF?`, `allOps_map?` — renaming, splicing and `map?`
+* `allOps_spliceNF?`, `allOps_map?` — splicing and `map?`
   keep an operation predicate that holds of every lowered block.
 * `catMemB_block` — the block of an operation of `catMemB` has its operations in `opMemB`
   and its result types of positive width.
@@ -61,7 +61,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin
 open CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminCom (toJBlockD toJExprD toJMultiD)
-open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS (CoveredCom)
+open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS (CoveredCom coveredCom_rename)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (opMemB)
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy Ctx)
 
@@ -77,15 +77,7 @@ def widthPos : JasminTy → Bool
 def bindPosB (op : JasminOp) : Bool :=
   widthPos (DialectSignature.ret (d := jasminDialect) op)
 
-/-! ## 1. Operations through renaming, splicing and `map?` -/
-
-/-- A renaming keeps the operations of a block. -/
-theorem coveredCom_rename {d : Dialect} [DialectSignature d] (Q : d.Op → Bool) :
-    {Γ Γ' : Ctxt d} → {t : d.Ty} → (h : Ctxt.Hom Γ Γ') → (c : Com d Γ t) →
-      CoveredCom (fun e => Q e.op = true) c →
-        CoveredCom (fun e => Q e.op = true) (Com.rename h c)
-  | _, _, _, _, .ret _, _ => trivial
-  | _, _, _, h, .var _ body, hc => ⟨hc.1, coveredCom_rename Q h.lift body hc.2⟩
+/-! ## 1. Operations through splicing and `map?` -/
 
 section Generic
 

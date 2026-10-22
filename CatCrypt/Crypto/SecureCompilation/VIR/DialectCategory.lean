@@ -528,6 +528,7 @@ theorem append_nil {Γ Δ : Ctxt d} (p : NFPre d Γ Δ) : p.append .nil = p := b
   | var e p ih => exact congrArg (NFPre.var e) ih
   | forLoop count inits body p ih => exact congrArg (NFPre.forLoop count inits body) ih
   | ifThenElse cond thn els p ih => exact congrArg (NFPre.ifThenElse cond thn els) ih
+  | whileLoop inits body p ih => exact congrArg (NFPre.whileLoop inits body) ih
 
 /-- Composition of prefixes is associative. -/
 theorem append_assoc {Γ Δ Θ Ξ : Ctxt d} (p : NFPre d Γ Δ) (q : NFPre d Δ Θ)
@@ -538,6 +539,7 @@ theorem append_assoc {Γ Δ Θ Ξ : Ctxt d} (p : NFPre d Γ Δ) (q : NFPre d Δ 
   | forLoop count inits body p ih =>
       exact congrArg (NFPre.forLoop count inits body) (ih q)
   | ifThenElse cond thn els p ih => exact congrArg (NFPre.ifThenElse cond thn els) (ih q)
+  | whileLoop inits body p ih => exact congrArg (NFPre.whileLoop inits body) (ih q)
 
 /-- Plugging the empty prefix leaves a program unchanged. -/
 theorem nil_plug {Γ : Ctxt d} {ts : List d.Ty} (k : NFProg d Γ ts) :
@@ -553,6 +555,7 @@ theorem plug_append {Γ Δ Θ : Ctxt d} {ts : List d.Ty} (p : NFPre d Γ Δ) (q 
   | forLoop count inits body p ih =>
       exact congrArg (NFProg.forLoop count inits body) (ih q)
   | ifThenElse cond thn els p ih => exact congrArg (NFProg.ifThenElse cond thn els) (ih q)
+  | whileLoop inits body p ih => exact congrArg (NFProg.whileLoop inits body) (ih q)
 
 /-- The empty prefix denotes the unit of `Option`. -/
 theorem denote_nil [DialectDenoteM d Option] [CallDenote d] (fuel : Nat) {Γ : Ctxt d} (V : Valuation Γ) :

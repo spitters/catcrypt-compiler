@@ -922,6 +922,12 @@ theorem PDen_fuel_mono (bi : Builtins) {n m : Nat} (hnm : n ≤ m) {Γ Δ : Ctxt
       obtain ⟨r, hr, hp⟩ := h
       refine ⟨r, ?_, ih hp⟩
       split at hr <;> split <;> first | exact hP _ _ _ hr | contradiction
+  | whileLoop inits body p ih =>
+      simp only [PDen, NFPre.denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
+      obtain ⟨acc, hacc, hp⟩ := h
+      obtain ⟨acc', hacc', hea⟩ := NFProg.whileIter_fwd_le (R := Eq)
+        (fun a a' r ha hr => ⟨r, ha ▸ hP body _ r hr, rfl, rfl⟩) n m hnm _ _ acc rfl hacc
+      exact ⟨acc', hacc', hea ▸ ih hp⟩
 
 /-- A run of the prefix `p` from `V` to the valuation `W` at every fuel from some fuel on. -/
 def PDenEv (bi : Builtins) {Γ Δ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ) (V : Valuation Γ)

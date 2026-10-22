@@ -604,6 +604,7 @@ def opsPre (P : NfOp → Bool) : {Γ Δ : Ctxt nfDialect} → NFPre nfDialect Γ
   | _, _, .var e p => P e.op && opsPre P p
   | _, _, .forLoop _ _ body p => opsProg P body && opsPre P p
   | _, _, .ifThenElse _ thn els p => opsProg P thn && opsProg P els && opsPre P p
+  | _, _, .whileLoop _ body p => opsProg P body && opsPre P p
 
 theorem opsPre_append (P : NfOp → Bool) {Γ Δ Θ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ)
     (q : NFPre nfDialect Δ Θ) : opsPre P (p.append q) = (opsPre P p && opsPre P q) := by
@@ -612,6 +613,7 @@ theorem opsPre_append (P : NfOp → Bool) {Γ Δ Θ : Ctxt nfDialect} (p : NFPre
   | var e p ih => simp [NFPre.append, opsPre, ih, Bool.and_assoc]
   | forLoop _ _ body p ih => simp [NFPre.append, opsPre, ih, Bool.and_assoc]
   | ifThenElse _ thn els p ih => simp [NFPre.append, opsPre, ih, Bool.and_assoc]
+  | whileLoop _ body p ih => simp [NFPre.append, opsPre, ih, Bool.and_assoc]
 
 theorem opsProg_plug (P : NfOp → Bool) {Γ Δ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFPre nfDialect Γ Δ) (k : NFProg nfDialect Δ ts) :
@@ -621,6 +623,7 @@ theorem opsProg_plug (P : NfOp → Bool) {Γ Δ : Ctxt nfDialect} {ts : List NfT
   | var e p ih => simp [NFPre.plug, opsPre, opsProg, ih, Bool.and_assoc]
   | forLoop _ _ body p ih => simp [NFPre.plug, opsPre, opsProg, ih, Bool.and_assoc]
   | ifThenElse _ thn els p ih => simp [NFPre.plug, opsPre, opsProg, ih, Bool.and_assoc]
+  | whileLoop _ body p ih => simp [NFPre.plug, opsPre, opsProg, ih, Bool.and_assoc]
 
 theorem ilitWordOp_mkEN {Γ : Ctxt nfDialect} (tgt : Option String) (op : NfOp)
     (args : HVector (fun t => Var Γ t) op.sig) :

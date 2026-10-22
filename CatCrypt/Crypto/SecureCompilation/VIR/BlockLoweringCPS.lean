@@ -40,6 +40,8 @@ with the variable cast `castHom (L.mapCtx_cons u Γ)`.
 
 ## Main results
 
+* `coveredCom_rename`, `coveredCom_spliceCom`: renaming and splicing keep the operations
+  of a block.
 * `blockFundamental_on`: variable, `Good`-gated block and binding-threading squares
   give whole-program preservation for every `Good`-covered program.
 * `spliceComK_denote`: the denotation of `spliceComK`.
@@ -121,6 +123,23 @@ theorem coveredCom_of_forall (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t �
     ∀ {Γ : Ctxt d} {t : d.Ty} (c : Com d Γ t), CoveredCom Good c
   | _, _, .ret _ => trivial
   | _, _, .var e body => ⟨hG e, coveredCom_of_forall Good hG body⟩
+
+/-- A renaming keeps the operations of a block. -/
+theorem coveredCom_rename (Q : d.Op → Bool) :
+    {Γ Γ' : Ctxt d} → {t : d.Ty} → (h : Ctxt.Hom Γ Γ') → (c : Com d Γ t) →
+      CoveredCom (fun e => Q e.op = true) c →
+        CoveredCom (fun e => Q e.op = true) (Com.rename h c)
+  | _, _, _, _, .ret _, _ => trivial
+  | _, _, _, h, .var _ body, hc => ⟨hc.1, coveredCom_rename Q h.lift body hc.2⟩
+
+/-- **A splice of blocks has the operations of both.** -/
+theorem coveredCom_spliceCom (Q : d.Op → Bool) :
+    ∀ {Γ : Ctxt d} {t s : d.Ty} (c : Com d Γ t) (k : Com d (t :: Γ) s),
+      CoveredCom (fun e => Q e.op = true) c → CoveredCom (fun e => Q e.op = true) k →
+        CoveredCom (fun e => Q e.op = true) (spliceCom c k)
+  | _, _, _, .ret _, k, _, hk => coveredCom_rename Q _ k hk
+  | _, _, _, .var _ body, k, hc, hk =>
+      ⟨hc.1, coveredCom_spliceCom Q body _ hc.2 (coveredCom_rename Q _ k hk)⟩
 
 variable [TyDenote d.Ty] [DialectDenote d]
 variable {d' : Dialect} [TyDenote d'.Ty] [DialectSignature d'] [DialectDenote d']

@@ -244,26 +244,6 @@ theorem ScfCompat.eq : ScfCompat (ValRel.eq (d := d)) where
   bit_toBool h := by cases h; rfl
   bit_tail h := by cases h; rfl
 
-omit [DialectSignature d] [HasWord64 d] in
-/-- **The exit-flag iteration, forward form from a fuel to a larger one.** -/
-theorem NFProg.whileIter_fwd_le {cs : List d.Ty} {R : Valuation cs → Valuation cs → Prop}
-    {step step' : Valuation cs → Option (Valuation (HasBitType.bit (d := d) :: cs))}
-    (hs : ∀ a a' r, R a a' → step a = some r → ∃ r', step' a' = some r' ∧ R r.tail r'.tail ∧
-      HasBoolBit.toBool (d := d) r.head = HasBoolBit.toBool (d := d) r'.head) :
-    ∀ (n m : Nat), n ≤ m → ∀ (a a' b : Valuation cs), R a a' →
-      NFProg.whileIter step n a = some b → ∃ b', NFProg.whileIter step' m a' = some b' ∧ R b b'
-  | 0, _, _, _, _, _, _, h => by cases h
-  | n + 1, 0, hle, _, _, _, _, _ => by omega
-  | n + 1, m + 1, hle, a, a', b, hr, h => by
-      simp only [NFProg.whileIter] at h ⊢
-      refine NFProg.bind_rel_fwd (R := fun r r' => R r.tail r'.tail ∧
-        HasBoolBit.toBool (d := d) r.head = HasBoolBit.toBool (d := d) r'.head)
-        (fun r hr' => hs a a' r hr hr') (fun r r' c ⟨ht, hb⟩ => ?_) b h
-      rw [hb]
-      exact NFProg.ite_rel_fwd rfl
-        (fun b => NFProg.whileIter_fwd_le hs n m (by omega) _ _ b ht)
-        (fun b hb => by obtain rfl := Option.some.inj hb; exact ⟨_, rfl, ht⟩) c
-
 omit [DialectSignature d] in
 /-- **Structured control flow satisfies the congruence law**, bisimulation form, at
     every compatible family. -/

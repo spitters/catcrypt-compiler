@@ -241,6 +241,10 @@ def NFPre.leakRunE (ev : OpEvents d) (fuel : Nat) :
         else NFProg.leakRunE ev fuel els V).bind fun r =>
         (NFPre.leakRunE ev fuel p (hvAppend r.1 V)).map fun q =>
           (q.1, .branch (HasBoolBit.toBool (d := d) (cond.lookup V)) :: (r.2 ++ q.2))
+  | _, _, .whileLoop inits body p, V =>
+      (whileIterLeak (fun acc => NFProg.leakRunE ev fuel body (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V)).bind fun r =>
+        (NFPre.leakRunE ev fuel p (hvAppend r.1 V)).map fun q => (q.1, r.2 ++ q.2)
 
 /-- **A filled prefix** runs the prefix and then its continuation from the valuation of the
     hole, with the events of the two in order. -/
@@ -282,6 +286,18 @@ theorem NFPre.leakRunE_plug (ev : OpEvents d) (fuel : Nat) {Γ Δ : Ctxt d} {ts 
       simp only [NFPre.plug, NFProg.leakRunE_ifThenElse, NFPre.leakRunE, ih]
       cases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunE ev fuel thn V
         else NFProg.leakRunE ev fuel els V) with
+      | none => rfl
+      | some a =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunE ev fuel p (hvAppend a.1 V) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some]
+              cases NFProg.leakRunE ev fuel k r.1 <;> simp [List.append_assoc]
+  | whileLoop inits body p ih =>
+      simp only [NFPre.plug, NFProg.leakRunE_whileLoop, NFPre.leakRunE, ih]
+      cases whileIterLeak (fun acc => NFProg.leakRunE ev fuel body (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V) with
       | none => rfl
       | some a =>
           simp only [Option.bind_some]
@@ -339,6 +355,18 @@ theorem NFPre.leakRunE_append (ev : OpEvents d) (fuel : Nat) {Γ Δ Θ : Ctxt d}
           | some r =>
               simp only [Option.bind_some, Option.map_some]
               cases NFPre.leakRunE ev fuel q r.1 <;> simp [List.append_assoc]
+  | whileLoop inits body p ih =>
+      simp only [NFPre.append, NFPre.leakRunE, ih]
+      cases whileIterLeak (fun acc => NFProg.leakRunE ev fuel body (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V) with
+      | none => rfl
+      | some a =>
+          simp only [Option.bind_some]
+          cases NFPre.leakRunE ev fuel p (hvAppend a.1 V) with
+          | none => rfl
+          | some r =>
+              simp only [Option.bind_some, Option.map_some]
+              cases NFPre.leakRunE ev fuel q r.1 <;> simp [List.append_assoc]
 
 /-- **The valuation of the leakage run of a prefix** is its denotation in the empty call
     environment. -/
@@ -383,6 +411,18 @@ theorem NFPre.leakRunE_fst (ev : OpEvents d) (fuel : Nat) {Γ Δ : Ctxt d}
       simp only [NFPre.leakRunE, Option.bind_eq_bind]
       rcases (if HasBoolBit.toBool (d := d) (cond.lookup V) then NFProg.leakRunE ev fuel thn V
         else NFProg.leakRunE ev fuel els V) with _ | ⟨a, t⟩
+      · rfl
+      · simp only [Option.bind_some, Option.map_some, Option.map_map]
+        exact ih _
+  | @whileLoop Γ' Δ' cs_1 inits body p ih =>
+      have hb : ∀ acc : Valuation cs_1,
+          (NFProg.leakRunE ev fuel body (hvAppend acc V)).map Prod.fst =
+          body.denote fuel (hvAppend acc V) :=
+        fun acc => NFProg.leakRunE_fst ev fuel body (hvAppend acc V)
+      rw [NFPre.denote, ← whileIterLeak_fst _ _ hb]
+      simp only [NFPre.leakRunE, Option.bind_eq_bind]
+      rcases whileIterLeak (fun acc => NFProg.leakRunE ev fuel body (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V) with _ | ⟨a, t⟩
       · rfl
       · simp only [Option.bind_some, Option.map_some, Option.map_map]
         exact ih _
