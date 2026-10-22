@@ -41,7 +41,10 @@ decimal digits or by `size`, is parsed by `parseTag`, and `widthTable` gives the
 `op` a leaf at every width `w`: `cast#w` is `Hax.castVal_w w`, `BitXor#w` is
 `Hax.bitxor_w w`, and so on. The checked names `Add#w`, `Sub#w`, `Mul#w` are the checked
 operations of `u<w>`, with no value where Rust panics (`checkedLeaf`). The tag `size` is
-the width `Hax.usizeBits`, as in the printer's `widthAwareRuntime`. A tagged name whose
+the width `Hax.usizeBits`, as in the printer's `widthAwareRuntime`. A field head
+`<method>#p<modulus>` that `FieldTag.fieldTag?` reads parses as the family `fieldFamily` of
+its method (`mul#p`, …) at its modulus, and `widthTable` reads it as `FieldTag.fieldCall`, the
+meaning of the head in the `u64` table `Hax.hax64Builtins`. A tagged name whose
 family has no entry, and every name with several `#` (the struct updates
 `struct_update#S#i#n`), is left to `base`. No name of `runtimeTable` contains `#`, so a
 tagged name is never read from it (`runtimeTable_lookup_of_parseTag`).
@@ -67,7 +70,7 @@ generator (`corresB_proj`) and not by the table.
 
 ## Main definitions
 
-* `parseTag`, `checkedLeaf`, `widthTable`, `runtimeTable`, `runtimeBuiltins`
+* `fieldFamily`, `parseTag`, `checkedLeaf`, `widthTable`, `runtimeTable`, `runtimeBuiltins`
 
 ## Main results
 
@@ -76,6 +79,8 @@ generator (`corresB_proj`) and not by the table.
 * `runtimeBuiltins_addAt`, `runtimeBuiltins_subAt`, `runtimeBuiltins_mulAt`,
   `runtimeBuiltins_rotlAt`, `runtimeBuiltins_negAt`, `runtimeBuiltins_declassify` — the
   checked, rotation and negation families at every width, and `declassify`
+* `runtimeBuiltins_of_fieldTag?`, `runtimeBuiltins_eq_hax64Builtins_of_fieldTag?` — a field
+  head is `FieldTag.fieldCall`, as in `Hax.hax64Builtins`
 * `RuntimeOps.index_int`, `RuntimeOps.index_slice_to`, `RuntimeOps.slice_update_enc`,
   `RuntimeOps.Ne_int`, … — the `corres_app` equation of each name
 * `RuntimeOps.range_incl_end_eq_widthArrayOps` — the table's `range_incl_end`, the
@@ -99,15 +104,24 @@ def digitsVal (ds : List Char) : Option Nat :=
     some (ds.foldl (fun n c => 10 * n + (c.toNat - '0'.toNat)) 0)
   else none
 
-/-- The family and width of a tagged name `op#w`: the part before the first `#`, and the
-    rest when it is a nonempty string of decimal digits, or `Hax.usizeBits` when it is
-    `size`, the tag of the `usize` and `isize` operands. -/
+/-- The family of the field heads of the method `m`: the name of the method followed by
+    `#p`. -/
+def fieldFamily (m : FieldTag.FieldMethod) : String := String.ofList (m.nameChars ++ ['#', 'p'])
+
+/-- The family and index of a tagged name. A field head `<method>#p<modulus>` that
+    `FieldTag.fieldTag?` reads is the family `fieldFamily` of its method at its modulus. A
+    width-tagged name `op#w` is the part before the first `#` at the rest when it is a
+    nonempty string of decimal digits, or at `Hax.usizeBits` when it is `size`, the tag of
+    the `usize` and `isize` operands. -/
 def parseTag (f : String) : Option (String × Nat) :=
-  match f.toList.span (· != '#') with
-  | (op, _ :: ds) =>
-    if ds = ['s', 'i', 'z', 'e'] then some (String.ofList op, Hax.usizeBits)
-    else (digitsVal ds).map fun w => (String.ofList op, w)
-  | (_, []) => none
+  match FieldTag.fieldTag? f with
+  | some (m, p) => some (fieldFamily m, p)
+  | none =>
+    match f.toList.span (· != '#') with
+    | (op, _ :: ds) =>
+      if ds = ['s', 'i', 'z', 'e'] then some (String.ofList op, Hax.usizeBits)
+      else (digitsVal ds).map fun w => (String.ofList op, w)
+    | (_, []) => none
 
 /-- A checked binary operation on two integers: the value of `g`, which is `none` where
     Rust panics, and no value on any other argument list. -/
@@ -117,7 +131,8 @@ def checkedLeaf (g : Int → Int → Option Value) : Leaf
 
 /-- The width families, after the printer's `widthAwareRuntime`: each family name with
     its leaf at every width. The checked families `Add`, `Sub`, `Mul` are the checked
-    operations of `u<w>` (`Hax.uintAddOp`, `Hax.uintSubOp`, `Hax.uintMulOp`). -/
+    operations of `u<w>` (`Hax.uintAddOp`, `Hax.uintSubOp`, `Hax.uintMulOp`). The field
+    families `fieldFamily m` are indexed by the modulus, with the leaf `FieldTag.fieldCall m`. -/
 noncomputable def widthTable : List (String × (Nat → Leaf)) :=
   [("cast", fun w => leaf1 (Hax.castVal_w w)),
    ("Add", fun w => checkedLeaf (Hax.uintAddOp w)),
@@ -144,7 +159,10 @@ noncomputable def widthTable : List (String × (Nat → Leaf)) :=
    ("from_be_bytes", fun w => leaf1 (Hax.from_be_bytes_w w)),
    ("from_le_bytes", fun w => leaf1 (Hax.from_le_bytes_w w)),
    ("overflowing_add", fun w => leaf2 (Hax.overflowing_add_w w)),
-   ("overflowing_sub", fun w => leaf2 (Hax.overflowing_sub_w w))]
+   ("overflowing_sub", fun w => leaf2 (Hax.overflowing_sub_w w)),
+   ("add#p", FieldTag.fieldCall .add), ("sub#p", FieldTag.fieldCall .sub),
+   ("mul#p", FieldTag.fieldCall .mul), ("neg#p", FieldTag.fieldCall .neg),
+   ("square#p", FieldTag.fieldCall .square), ("double#p", FieldTag.fieldCall .double)]
 
 /-! ## The table of untagged names -/
 
@@ -303,6 +321,9 @@ private theorem span_loop_snd {α : Type} (p : α → Bool) :
 /-- A tagged name contains `#`. -/
 theorem hash_mem_of_parseTag {p : String × Nat} (h : parseTag f = some p) : '#' ∈ f.toList := by
   unfold parseTag at h
+  split at h
+  · rename_i m q hf
+    exact FieldTag.mem_toList_of_fieldTag? hf
   split at h
   · rename_i op c ds heq
     have hs := span_loop_snd (fun x => x != '#') f.toList [] c ds (by
@@ -817,5 +838,42 @@ theorem runtimeBuiltins_declassify (base : Builtins) (v : Value) :
   simp only [identLeaf]
 
 end Families
+
+/-! ## The field heads -/
+
+section Field
+
+variable {f : String} {m : FieldTag.FieldMethod} {p : Nat}
+
+/-- A field head parses as the family of its method at its modulus. -/
+theorem parseTag_of_fieldTag? (h : FieldTag.fieldTag? f = some (m, p)) :
+    parseTag f = some (fieldFamily m, p) := by
+  unfold parseTag
+  rw [h]
+
+/-- The width table reads the family of a method as the tagged head of the method. -/
+theorem widthTable_lookup_fieldFamily (m : FieldTag.FieldMethod) :
+    widthTable.lookup (fieldFamily m) = some (FieldTag.fieldCall m) := by
+  cases m <;> rfl
+
+/-- **A field head** is the value `FieldTag.fieldCall` of its method at its modulus. -/
+theorem runtimeBuiltins_of_fieldTag? (base : Builtins) (h : FieldTag.fieldTag? f = some (m, p))
+    (vs : List Value) : runtimeBuiltins base f vs = FieldTag.fieldCall m p vs :=
+  runtimeBuiltins_of_tag (runtimeTable_lookup_of_parseTag (parseTag_of_fieldTag? h))
+    (parseTag_of_fieldTag? h) (widthTable_lookup_fieldFamily m)
+
+/-- **The runtime table answers a field head as the `u64` table does.** -/
+theorem runtimeBuiltins_eq_hax64Builtins_of_fieldTag? (base : Builtins)
+    (h : FieldTag.fieldTag? f = some (m, p)) (vs : List Value) :
+    runtimeBuiltins base f vs = Hax.hax64Builtins f vs := by
+  rw [runtimeBuiltins_of_fieldTag? base h]
+  unfold Hax.hax64Builtins
+  rw [Hax.hax64WordOps_of_fieldTag? h, FieldTag.widthArrayOps_of_fieldTag? h]
+  cases FieldTag.fieldCall m p vs <;> rfl
+
+/-- `mul#p7` is the field head of the multiplication at the modulus `7`. -/
+theorem fieldTag?_mul_p7 : FieldTag.fieldTag? "mul#p7" = some (.mul, 7) := by decide
+
+end Field
 
 end Hax.Ascent

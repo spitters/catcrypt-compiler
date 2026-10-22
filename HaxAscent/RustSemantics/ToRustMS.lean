@@ -33,7 +33,9 @@ declassification `declassify` of a word (`appDeclassify`), the array operations 
 every number of arguments, `appArrayLit`), the untagged negation `Not` of a
 Boolean, the strict connectives `&&` and `||` and the equality and disequality of two
 Booleans, and the comparisons `Lt`, `Le`, `Gt`, `Ge`, `Eq` and `Ne` of two integers or words
-(`appBNot`, `appBool2`). An untyped integer literal is
+(`appBNot`, `appBool2`), and the field heads `<method>#p<modulus>` that `FieldTag.fieldTag?`
+reads at a modulus below `2^64`, on `u64` words below the modulus (`appField1`, `appField2`:
+the `u64` word of the value `FieldTag.fieldVal` of the method). An untyped integer literal is
 read at the width of the operation that consumes it (`AVal.asW`). An untagged checked
 operation takes its width from a word operand, fails where the Aeneas operation at that
 width fails, and returns no value on two integer literals (`appArith_int_int`), so every
@@ -70,9 +72,11 @@ constructs it reads, and the call names `appRt` or a local function reads.
 
 * `AVal`, `AVal.toValue`, `AEnv`, `AEnv.upd`, `encEnv`, `AVal.asW`
 * `appRt`, `AppOk`, `loopS`, `loopRevS`, `toRustMS`, `callS`, `appExt`, `ExtNamesOk`,
-  `fragOk`, `appBNot`, `boolRt?`, `cmpRt?`, `appBool2`, `checkedAt?`, `appChecked`, `appNeg`
+  `fragOk`, `appBNot`, `boolRt?`, `cmpRt?`, `appBool2`, `checkedAt?`, `appChecked`, `appNeg`,
+  `appField1`, `appField2`
 * `appBNot_ok`, `appBool2_ok`, `appBool2_undef`, `appChecked_ok`, `appNeg_ok`,
-  `appRt_checkedAt`, `appRt_negAt`, `appRt_declassify`
+  `appField1_rt`, `appField2_rt`, `appRt_checkedAt`, `appRt_negAt`, `appRt_declassify`,
+  `appRt_mul_p7`
 * `appRt_ok`, `loopS_sim`, `loopRevS_sim`, `toRustMS_sim`, `appExt_ok`, `fnCorres_toRustMS`
 -/
 
@@ -390,6 +394,25 @@ def appNeg (ty : UScalarTy) (a : AVal) : RustM AVal := do
   let x ← a.asW ty
   .ok (.w ty ⟨-x.bv⟩)
 
+/-- A field head of the method `m` with one argument at a modulus `p` below `2^64`: the operand
+    is read as a `u64` word below `p`, and the value is the `u64` word of the value
+    `FieldTag.fieldVal` of the method. -/
+def appField1 (m : Hax.FieldTag.FieldMethod) (p : Nat) (a : AVal) : RustM AVal := do
+  let x ← a.asW .U64
+  if p < 2 ^ 64 ∧ m.binary = false ∧ x.val < p then
+    .ok (.w .U64 ⟨BitVec.ofNat _ (Hax.FieldTag.fieldVal m p x.val 0)⟩)
+  else .fail .undef
+
+/-- A field head of the method `m` with two arguments at a modulus `p` below `2^64`: both
+    operands are read as `u64` words below `p`, and the value is the `u64` word of the value
+    `FieldTag.fieldVal` of the method. -/
+def appField2 (m : Hax.FieldTag.FieldMethod) (p : Nat) (a b : AVal) : RustM AVal := do
+  let x ← a.asW .U64
+  let y ← b.asW .U64
+  if p < 2 ^ 64 ∧ m.binary = true ∧ x.val < p ∧ y.val < p then
+    .ok (.w .U64 ⟨BitVec.ofNat _ (Hax.FieldTag.fieldVal m p x.val y.val)⟩)
+  else .fail .undef
+
 /-- The comparisons of two integers with a Boolean result, by name. -/
 def cmpRt? : String → Option (Int → Int → Bool)
   | "Lt" => some Hax.lt
@@ -451,7 +474,10 @@ def appRt (f : String) : List AVal → RustM AVal
           else if f = "len" then appLen a
           else if f = "array_lit" then appArrayLit [a]
           else if f = "declassify" then appDeclassify a
-          else .fail .undef
+          else
+            match Hax.FieldTag.fieldTag? f with
+            | some (m, p) => appField1 m p a
+            | none => .fail .undef
   | [a, b] =>
     match wordOpAt? f with
     | some (ty, o) => appWord ty o a b
@@ -465,7 +491,10 @@ def appRt (f : String) : List AVal → RustM AVal
           if f = "index" then appIndex a b
           else if f = "repeat" then appRepeat a b
           else if f = "array_lit" then appArrayLit [a, b]
-          else appBool2 f a b
+          else
+            match Hax.FieldTag.fieldTag? f with
+            | some (m, p) => appField2 m p a b
+            | none => appBool2 f a b
   | [a, i, v] =>
     if f = "array_update" then appUpdate a i v
     else if f = "array_lit" then appArrayLit [a, i, v]
@@ -629,6 +658,49 @@ theorem appNeg_ok {ty : UScalarTy} {a r : AVal} (h : appNeg ty a = .ok r) :
   rw [show ((2 : Int) ^ ty.numBits) = ((2 ^ ty.numBits : Nat) : Int) by push_cast; rfl]
   congr 3
   omega
+
+/-- **The square of a field head with one argument**: a value of `appField1` at the method and
+    modulus of a field head is the value the runtime table gives the head on the operand. -/
+theorem appField1_rt (base : Hax.Builtins) {f : String} {m : Hax.FieldTag.FieldMethod} {p : Nat}
+    (hf : Hax.FieldTag.fieldTag? f = some (m, p)) {a r : AVal} (h : appField1 m p a = .ok r) :
+    Hax.Ascent.runtimeBuiltins base f (AVal.toValues [a]) = some r.toValue := by
+  unfold appField1 at h
+  obtain ⟨x, hx, h⟩ := rustM_bind_ok h
+  split at h
+  · rename_i hc
+    obtain ⟨hp, hm, hxp⟩ := hc
+    cases h
+    rw [show AVal.toValues [a] = [.int (enc x)] from by
+      simp only [AVal.toValues, AVal.asW_ok hx],
+      Hax.Ascent.runtimeBuiltins_of_fieldTag? base hf]
+    have hv := Hax.FieldTag.fieldVal_lt m (Nat.zero_lt_of_lt hxp) x.val 0
+    simp [Hax.FieldTag.fieldCall, Hax.FieldTag.fieldArm, enc_uscalar, AVal.toValue, hm, hp, hxp]
+    show (_ : Int) = ((BitVec.ofNat 64 _).toNat : Int)
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+  · cases h
+
+/-- **The square of a field head with two arguments**: a value of `appField2` at the method and
+    modulus of a field head is the value the runtime table gives the head on the operands. -/
+theorem appField2_rt (base : Hax.Builtins) {f : String} {m : Hax.FieldTag.FieldMethod}
+    {p : Nat} (hf : Hax.FieldTag.fieldTag? f = some (m, p)) {a b r : AVal}
+    (h : appField2 m p a b = .ok r) :
+    Hax.Ascent.runtimeBuiltins base f (AVal.toValues [a, b]) = some r.toValue := by
+  unfold appField2 at h
+  obtain ⟨x, hx, h⟩ := rustM_bind_ok h
+  obtain ⟨y, hy, h⟩ := rustM_bind_ok h
+  split at h
+  · rename_i hc
+    obtain ⟨hp, hm, hxp, hyp⟩ := hc
+    cases h
+    rw [show AVal.toValues [a, b] = [.int (enc x), .int (enc y)] from by
+      simp only [AVal.toValues, AVal.asW_ok hx, AVal.asW_ok hy],
+      Hax.Ascent.runtimeBuiltins_of_fieldTag? base hf]
+    have hv := Hax.FieldTag.fieldVal_lt m (Nat.zero_lt_of_lt hxp) x.val y.val
+    simp [Hax.FieldTag.fieldCall, Hax.FieldTag.fieldArm, enc_uscalar, AVal.toValue, hm, hp, hxp,
+      hyp]
+    show (_ : Int) = ((BitVec.ofNat 64 _).toNat : Int)
+    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+  · cases h
 
 /-- An untagged checked operation returns no value on two integer literals. -/
 theorem appArith_int_int (o : AOp) (n m : Int) :
@@ -887,7 +959,10 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
                     obtain ⟨rfl, -, -⟩ := appDeclassify_ok h
                     exact Hax.Ascent.runtimeBuiltins_declassify base _
                   · rw [if_neg hd] at h
-                    cases h
+                    split at h
+                    · rename_i m p hf
+                      exact appField1_rt base hf h
+                    · cases h
   · simp only [appRt] at h
     split at h
     · rename_i ty o ho
@@ -925,7 +1000,10 @@ theorem appRt_ok (base : Hax.Builtins) : AppOk (Hax.Ascent.runtimeBuiltins base)
                 subst hal
                 exact appArrayLit_rt base h
               · rw [if_neg hal] at h
-                exact appBool2_ok base h
+                split at h
+                · rename_i m p hf
+                  exact appField2_rt base hf h
+                · exact appBool2_ok base h
   · simp only [appRt] at h
     by_cases hu : f = "array_update"
     · rw [if_pos hu] at h
@@ -972,6 +1050,12 @@ theorem appRt_negAt (ty : UScalarTy) (x : UScalar ty) :
 /-- `declassify` on a word is the word (an unfolding lemma of `appRt`). -/
 theorem appRt_declassify {ty : UScalarTy} (x : UScalar ty) :
     appRt "declassify" [.w ty x] = .ok (.w ty x) := by
+  rfl
+
+/-- The field head `mul#p7` on the `u64` words `3` and `5` is the word `3 * 5 mod 7 = 1`. -/
+theorem appRt_mul_p7 :
+    appRt "mul#p7" [.w .U64 ⟨BitVec.ofNat 64 3⟩, .w .U64 ⟨BitVec.ofNat 64 5⟩] =
+      .ok (.w .U64 ⟨BitVec.ofNat 64 1⟩) := by
   rfl
 
 /-! ## The reading -/
@@ -1556,10 +1640,10 @@ theorem appExt_ok (T : Hax.Ascent.Table) (fns : List Hax.Ascent.ExtFn)
 def rtNameOk (f : String) : Nat → Bool
   | 1 => (tagTyAt? "Not#" f).isSome || (tagTyAt? "cast#" f).isSome ||
       (tagTyAt? "wrapping_neg#" f).isSome || f == "range_incl_end" || f == "Not" ||
-      f == "len" || f == "array_lit" || f == "declassify"
+      f == "len" || f == "array_lit" || f == "declassify" || (Hax.FieldTag.fieldTag? f).isSome
   | 2 => (wordOpAt? f).isSome || (checkedAt? f).isSome || (AOp.ofName f).isSome ||
       f == "index" || f == "repeat" || (boolRt? f).isSome || (cmpRt? f).isSome ||
-      f == "array_lit"
+      f == "array_lit" || (Hax.FieldTag.fieldTag? f).isSome
   | 3 => f == "array_update" || f == "array_lit"
   | _ => f == "array_lit"
 
