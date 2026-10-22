@@ -9,7 +9,9 @@ This guide covers three uses of the hax bridge of this package:
    on `ImpExpr`).
 
 All three meet in hax-lean's `ImpExpr` (`HaxLean/AST.lean`) and its semantics
-`denote` / `evalImp` (`HaxLean/Semantics.lean`). The trusted base is rustc's
+`denote` (`HaxLean/Semantics.lean`); its value projection `evalImp` is defined in
+`CatCrypt/Crypto/Hax/HaxToLowCTSimulates.lean`, a module of the deprecated front
+`haxToLowCT`. The trusted base is rustc's
 THIR as exported by `cargo hax json`, hax-lean's JSON adapter, and the Rust
 bodies of the leaf operations.
 

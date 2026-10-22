@@ -42,9 +42,20 @@ programs, the measured ratios against fiat-crypto and the size of the template l
 
 - The legacy hax front `haxToLowCT` in `CatCrypt/Crypto/Hax/` lowers hax-lean's
   `ImpExpr` to `LowCT` (`haxToLowCT_simulates_program` and its array, tower and literal
-  variants). It is deprecated: it remains as the producer of the `*HaxLowCTBridge`
-  modules of the protocols' `SurfaceDeps` and of the kernel producers, and new code does
-  not import it. Early exits lower to exit-flag form. `scalarizeExitIn`
+  variants). It is deprecated (`deprecated_module`), and new code does not import it. In
+  the development repository no `SurfaceDeps` module imports a `*HaxLowCTBridge` module
+  (the ML-KEM and ML-DSA `SurfaceDeps` open namespaces named
+  `…HaxLowCTBridge.VerifiedZMod`, declared in other modules), and no module named in its
+  list of security headlines reaches the front. It is reached by the kernel producers; by
+  the instances `mpn_and_n_rc_proved` and `ltu_rc_proved` of `headline_haxc_rc_proved_all`,
+  through `Haxc.ArrLegChecks`, `Haxc.ScalLegChecks` and `Hax.HaxFrontHax64W` →
+  `Hax.HaxFrontHax64`; by the `compileA` instance `HashDRBG.MajCompiled`, through
+  `Hax.Hax64WReading`; by the `LowCT` → Rust route of [HAX_RUST.md](HAX_RUST.md); and by
+  the modules that use its definitions `evalImp`, `forToLoop`, the word-operation tables,
+  `ValueTowerBridge` and the typed-exit names. It is removed in stages: its unused
+  modules first, then the definitions used outside it move to modules of their own, then
+  the kernel instances and the bridges go, then the `LowCT` → Rust route, and last the
+  front itself. Early exits lower to exit-flag form. `scalarizeExitIn`
   (`CatCrypt/Crypto/Hax/HaxToLowCTExitWordOps.lean`) replaces marshalled word calls by
   scalar assignments and unsigned comparisons by their signed forms. `placedUse`
   (`CatCrypt/Crypto/Hax/HaxToLowCTPlaced.lean`) checks that every name is used in the
