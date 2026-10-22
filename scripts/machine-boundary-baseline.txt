@@ -176,8 +176,6 @@ edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.Sec
 edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 edge CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo -> CatCrypt.Crypto.SecureCompilation.VIR.YmmOpCore
 edge CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf -> CatCrypt.Crypto.Hax.RustSubsetToLowCT
-edge CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower -> CatCrypt.Crypto.Hax.HaxToLowCTSim_Main_Full
-edge CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower -> CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
 edge CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf -> CatCrypt.Crypto.Util.ZMod3329
 edge CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf -> Transfer.Examples.PrimeWord
 edge CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyFoldCorres -> HaxAscent.Calculus.IFold
@@ -195,7 +193,6 @@ edge CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble -> HaxAscent.Cal
 edge CatCrypt.Crypto.SecureCompilation.Ascent.SExprOrNot -> CatCrypt.Crypto.Jasmin.LowCTSExpr
 edge CatCrypt.Crypto.SecureCompilation.Ascent.SExprSigned -> CatCrypt.Crypto.SecureCompilation.Dialects.GuardedLt
 edge CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareSpec -> CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519MulKernel
-edge CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge -> CatCrypt.Crypto.Hax.HaxToLowCTSim_Program
 edge CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble -> CatCryptCore.ForMathlib.CategoryTheory.ThinDoubleCategory
 edge CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement -> Transfer.Examples.MachineLimbField
 edge CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp -> CatCryptCore.Crypto.UCMonad.UCLeakageDecomp
@@ -212,7 +209,7 @@ edge CatCrypt.Crypto.SecureCompilation.Ascent.XMvcgenReg -> CatCryptCore.XDijkst
 edge CatCrypt.Crypto.SecureCompilation.Ascent.XPostShape -> CatCryptCore.XDijkstra.XPostShape
 edge CatCrypt.Crypto.SecureCompilation.Ascent.XPredCore -> CatCryptCore.XDijkstra.XPredCore
 edge CatCrypt.Crypto.SecureCompilation.Ascent.XRelatorPMF -> CatCryptCore.XDijkstra.XRelatorPMF
-edge CatCrypt.Crypto.SecureCompilation.CT.HaxLevels -> CatCrypt.Crypto.Hax.HaxToLowCTStruct
+edge CatCrypt.Crypto.SecureCompilation.CT.HaxLevels -> CatCrypt.Crypto.Hax.HaxCallNames
 edge CatCrypt.Crypto.SecureCompilation.CT.HaxLevels -> CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer
 edge CatCrypt.Crypto.SecureCompilation.CT.HaxLevels -> HaxLean.Secrecy
 edge CatCrypt.Crypto.SecureCompilation.CT.Leakage -> CatCrypt.Crypto.SecureCompilation.VarTimeOpDetector
@@ -520,7 +517,6 @@ escape CatCrypt.Crypto.SecureCompilation.Ascent.LegWeld
 escape CatCrypt.Crypto.SecureCompilation.Ascent.LegWeldDemo
 escape CatCrypt.Crypto.SecureCompilation.Ascent.LivenessTie
 escape CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceLeaf
-escape CatCrypt.Crypto.SecureCompilation.Ascent.LoopSourceTower
 escape CatCrypt.Crypto.SecureCompilation.Ascent.LoweredBlockCT
 escape CatCrypt.Crypto.SecureCompilation.Ascent.MlkemFieldLeaf
 escape CatCrypt.Crypto.SecureCompilation.Ascent.MlkemPolyAddCapstone
@@ -550,7 +546,6 @@ escape CatCrypt.Crypto.SecureCompilation.Ascent.SExprSigned
 escape CatCrypt.Crypto.SecureCompilation.Ascent.SelectLeaf
 escape CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareCorrect
 escape CatCrypt.Crypto.SecureCompilation.Ascent.SolinasSquareSpec
-escape CatCrypt.Crypto.SecureCompilation.Ascent.SourceBridge
 escape CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrict
 escape CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
 escape CatCrypt.Crypto.SecureCompilation.Ascent.StoreRefinement

@@ -362,7 +362,7 @@ theorem step_evalInstr_xj (t : XJTrack) {s : State 64} {j : JState 64} (i : Inst
     | imm n =>
       simp only [step, evalInstr, xinstrToJ, operandToJ, Operand.eval, JOperand.eval,
         State.set, State.get, JState.writeB5W, JState.get, x86_SAR_word,
-        imm_toNat_lt n hsh, Nat.mod_eq_of_lt hsh]
+        imm_toNat_lt n hsh, Nat.mod_eq_of_lt hsh, shiftMask_of_lt hsh]
       exact ⟨rfl, by simp [hc], by simp [ho], by simp [hz]⟩
   | cmov cc d o =>
     cases cc with

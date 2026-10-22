@@ -76,7 +76,6 @@
 9	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScMuladdShippedProof.lean
 8	CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScReduceShippedProof.lean
 1	CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceLeaf.lean
-1	CatCrypt/Crypto/SecureCompilation/Ascent/LoopSourceTower.lean
 3	CatCrypt/Crypto/SecureCompilation/AUCurvesImport/PilotImport.lean
 5	CatCrypt/Crypto/SecureCompilation/BladeSelectiveProtect.lean
 6	CatCrypt/Crypto/SecureCompilation/Bn254TowerFrontEmit.lean
