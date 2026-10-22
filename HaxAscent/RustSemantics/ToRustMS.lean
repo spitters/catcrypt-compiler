@@ -1187,27 +1187,6 @@ theorem denote'_forFoldRev {var : String} {lo hi body : Hax.ImpExpr} {env s1 s2 
       Hax.denoteForLoopRev' bi fuel var a b body s2 := by
   simp only [Hax.denote', Hax.Ascent.stateM_bind_apply, hlo, hhi]
 
-theorem denoteForLoopRev'_done (var : String) {a b : Int} (body : Hax.ImpExpr) (env : Hax.Env)
-    (h : a ≥ b) : Hax.denoteForLoopRev' bi fuel var a b body env = (.val .unit, env) := by
-  rw [Hax.denoteForLoopRev']
-  simp only [if_pos h]; rfl
-
-theorem denoteForLoopRev'_next (var : String) {a b : Int} {body : Hax.ImpExpr}
-    {env s : Hax.Env} {v : Hax.Value} (hab : a < b) (hf : fuel ≠ 0)
-    (h : Hax.denote' bi fuel body (env.extend var (.int (b - 1))) = (.val v, s))
-    (hv : ∀ w, v ≠ .controlFlow true w) :
-    Hax.denoteForLoopRev' bi fuel var a b body env =
-      Hax.denoteForLoopRev' bi (fuel - 1) var a (b - 1) body s := by
-  rw [Hax.denoteForLoopRev']
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, Hax.Ascent.stateM_bind_apply,
-    Hax.Ascent.stateM_modify_apply, h]
-  cases v
-  case controlFlow c w =>
-    cases c
-    · rfl
-    · exact absurd rfl (hv w)
-  all_goals rfl
-
 end RevLoop
 
 /-- **The reverse loop square.** `k` steps of the reading downwards from the index
@@ -1222,7 +1201,7 @@ theorem loopRevS_sim {bi : Hax.Builtins} {var : String} {body : Hax.ImpExpr}
         Hax.denoteForLoopRev' bi fuel var i b body (encEnv ρ) = (.val .unit, encEnv ρ')
   | 0, i, b, ρ, ρ', hk, _, h => by
     cases h
-    exact ⟨0, fun fuel _ => denoteForLoopRev'_done bi fuel var body _ (by omega)⟩
+    exact ⟨0, fun fuel _ => Hax.Ascent.denoteForLoopRev'_done bi fuel var body _ (by omega)⟩
   | k + 1, i, b, ρ, ρ', hk, hb, h => by
     obtain ⟨ρ1, h1, h2⟩ := rustM_bind_ok h
     obtain ⟨v, F1, hF1⟩ := hstep (i + k) ρ ρ1 h1
@@ -1233,7 +1212,7 @@ theorem loopRevS_sim {bi : Hax.Builtins} {var : String} {body : Hax.ImpExpr}
     have hi : i + k < 2 ^ UScalarTy.Usize.numBits := by exact_mod_cast hi'
     have hbody := hF1 fuel (by omega)
     rw [encEnv_upd, ctr_toValue hi, hik] at hbody
-    rw [denoteForLoopRev'_next bi fuel var (by omega) (by omega) hbody
+    rw [Hax.Ascent.denoteForLoopRev'_next bi fuel var (by omega) (by omega) hbody
       (AVal.toValue_ne_break v)]
     exact hF2 (fuel - 1) (by omega)
 
