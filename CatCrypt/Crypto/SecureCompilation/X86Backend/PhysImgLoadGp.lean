@@ -903,6 +903,20 @@ theorem epilogue_loadGpOk : ∀ j ∈ calleeSaveRestoreEpilogue, LoadGpOk j := b
   rcases hj with rfl | rfl | rfl | rfl | rfl | rfl <;>
     exact loadGpOk_movq rfl (wideOkR_movq_gp (by decide +kernel))
 
+/-- The instructions of a constant-shape base reload satisfy `LoadGpOk`: the move into `R14`
+    and a write through `R14` with no two-register source list. -/
+theorem reloadArrImm_loadGpOk {mbr : String → Option String} {x : LinstrR} {l : List LinstrR}
+    (h : reloadArrImm mbr x = some l) {j : Linstr} (hj : j.li_i ∈ l) : LoadGpOk j := by
+  obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h <;>
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hj <;>
+    rcases hj with hj | hj
+  all_goals first
+    | exact loadGpOk_movq hj (wideOkR_movq_gp (by decide +kernel))
+    | (refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
+       unfold WideOk
+       rw [hj]
+       exact wideOkR_lopn_gp fun d' s' h1 h2 _ => by simp at h1 h2)
+
 /-- **`WideOk` on the fused export body.** Under the hypotheses of
     `PhysImgSideAlloc.lfundefPhysAbiOfVirtCert_body`, when every name the allocation table
     renders for the body is a general-purpose register or a spill slot `k.N` (`hname`), so is
@@ -951,8 +965,9 @@ theorem wideOk_lfundefPhysAbiOfVirtCert
           (fun _ => none) ++ extraSaves abiArgs) ++
         (buildArgPtrMaterialize { virt0 with lfd_body := body1 } (physTableOut body1 [])
             abiArgs (fun _ => none) ++
-          insertEpilogue ((body1.flatMap (physExpand (PhysImgSideAlloc.certShiftImm shiftImm body1)
-              (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter notLivePin)
+          insertEpilogue (reloadArrImmBody mbr ((body1.flatMap
+              (physExpand (PhysImgSideAlloc.certShiftImm shiftImm body1)
+                (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter notLivePin))
             calleeSaveRestoreEpilogue), LoadGpOk j := by
       intro j hj
       rcases List.mem_append.mp hj with hj | hj
@@ -962,10 +977,12 @@ theorem wideOk_lfundefPhysAbiOfVirtCert
         · unfold insertEpilogue at hj
           simp only [List.mem_append, List.mem_singleton] at hj
           rcases hj with (hj | hj) | rfl
-          · obtain ⟨i, -, hj⟩ := List.mem_flatMap.mp
-              (List.mem_of_mem_filter (List.dropLast_subset _ hj))
-            exact ⟨physExpand_wideOk _ _ _ mbr i hg j hj,
-              physExpand_noCell _ _ _ mbr i hg j hj⟩
+          · rcases mem_reloadArrImmBody (List.dropLast_subset _ hj) with
+              hj | ⟨i', -, l', hl, -, hx⟩
+            · obtain ⟨i, -, hj⟩ := List.mem_flatMap.mp (List.mem_of_mem_filter hj)
+              exact ⟨physExpand_wideOk _ _ _ mbr i hg j hj,
+                physExpand_noCell _ _ _ mbr i hg j hj⟩
+            · exact reloadArrImm_loadGpOk hl hx
           · exact epilogue_loadGpOk j hj
           · exact ⟨wideOkR_of_not_lopn (by intro ds o ss h; cases h),
               fun _ _ _ _ h => by cases h⟩

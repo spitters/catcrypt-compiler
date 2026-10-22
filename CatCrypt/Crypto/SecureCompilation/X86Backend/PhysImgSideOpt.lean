@@ -367,7 +367,7 @@ theorem order_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
   have hord : slotAfterSlotReloadFreeB slotArr false b0 = true ∧ saveSrcB slotArr b0 = true := by
     simp only [b0]
     rw [lfundefPhysAbiOfVirtCert_body virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin
-      posBind body1 hb1 mbr hmbr hcf, List.filter_flatMap]
+      posBind body1 hb1 mbr hmbr hcf, reloadArrImmBody_filter_flatMap]
     obtain ⟨-, -, -, hD⟩ := physExpand_flatMap_side (certShiftImm shiftImm body1) body1 mbr hcf
       hshape harr hidx hslot
     refine order_shape hslot (fun j hj => ?_) (fun j hj => ?_)
@@ -794,7 +794,7 @@ theorem pairs_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
   have hparts : (∀ i ∈ b0, StoreSelf slotArr i) ∧ ∀ j ∈ b0, LoadOk slotArr j := by
     simp only [b0]
     rw [lfundefPhysAbiOfVirtCert_body virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin
-      posBind body1 hb1 mbr hmbr hcf, List.filter_flatMap]
+      posBind body1 hb1 mbr hmbr hcf, reloadArrImmBody_filter_flatMap]
     obtain ⟨-, -, -, hD⟩ := physExpand_flatMap_side (certShiftImm shiftImm body1) body1 mbr hcf
       hshape harr hidx hslot
     have hpro := prologue_moves { virt0 with lfd_body := body1 } (physTableOut body1 []) abiArgs
@@ -855,18 +855,26 @@ theorem pairs_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
       intro x
       rw [hrmE]
       cases x <;> simp [remapOperand, GoodOp, hP]
-    have hF : ∀ j ∈ body1.flatMap (fun i => (physExpand (certShiftImm shiftImm body1)
-        (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr i).filter notLivePin),
+    have hF : ∀ j ∈ body1.flatMap (fun i => (reloadArrImmBody mbr
+        (physExpand (certShiftImm shiftImm body1) (LprogAsmPrinter.bodyIsU64 body1)
+          (physRmap body1 []) mbr i)).filter notLivePin),
         LoadOk slotArr j := by
       intro j hj
       obtain ⟨i, -, hj⟩ := List.mem_flatMap.mp hj
-      refine physExpand_forall (LoadOkR slotArr) (fun ds o ss hss x mn he => ?_)
-        (fun q => loadOkR_mov fun x hx _ => by subst hx; exact h14)
-        (fun r hr x mn he => absurd he (hr _ _ _)) _ _ _ mbr i hg hs15 hs14 j
-        (List.mem_of_mem_filter hj)
-      simp only [LinstrR.Lopn.injEq] at he
-      obtain ⟨-, -, rfl⟩ := he
-      exact hss _ List.mem_cons_self
+      rcases mem_reloadArrImmBody (List.mem_of_mem_filter hj) with hj | ⟨i', -, l', hl, -, hx⟩
+      · refine physExpand_forall (LoadOkR slotArr) (fun ds o ss hss x mn he => ?_)
+          (fun q => loadOkR_mov fun x hx _ => by subst hx; exact h14)
+          (fun r hr x mn he => absurd he (hr _ _ _)) _ _ _ mbr i hg hs15 hs14 j hj
+        simp only [LinstrR.Lopn.injEq] at he
+        obtain ⟨-, -, rfl⟩ := he
+        exact hss _ List.mem_cons_self
+      · show LoadOkR slotArr j.li_i
+        obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
+          rcases hx with hx | hx <;> rw [hx]
+        all_goals first
+          | exact loadOkR_mov fun x hx _ => by subst hx; exact h14
+          | (intro x mn he; simp [LinstrR.Lopn.injEq] at he)
     have hE : ∀ j ∈ calleeSaveRestoreEpilogue, LoadOk slotArr j := by
       intro j hj
       simp only [calleeSaveRestoreEpilogue, List.mem_cons, List.not_mem_nil, or_false] at hj

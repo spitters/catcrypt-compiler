@@ -861,6 +861,26 @@ theorem physBodyWithStores_allocOut_resolved_abi (shiftImm : ShiftImmOracle) (bo
     reloadScratch2 abiW memrefBaseReload callArgBaseReload reservedVec rm hrm hsib hdir haddr
     hmbr hargs memName_reloadScratch2_resolved memName_reloadScratch2_resolved hcall
 
+/-- **The constant-shape base reload keeps operations resolved**: when every operation of
+    `l` and every save slot of `mbr` is resolved, so is every operation of
+    `reloadArrImmBody mbr l`. -/
+theorem reloadArrImmBody_resolved {mbr : String → Option String} {l : Lcmd}
+    (hmbr : ∀ b q, mbr b = some q → opResolved (.reg q) = true)
+    (hl : ∀ r ∈ l, OpsResolved r.li_i) :
+    ∀ r ∈ reloadArrImmBody mbr l, OpsResolved r.li_i := by
+  intro r hr
+  rcases mem_reloadArrImmBody hr with h | ⟨i, hi, l', hre, -, hx⟩
+  · exact hl r h
+  · have hiR := hl i hi
+    obtain ⟨b, q, hq, ⟨n, w, -, rfl⟩ | ⟨d, v, k, hiEq, rfl⟩⟩ := reloadArrImm_eq_some hre
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
+      rcases hx with hx | hx <;> rw [hx] <;> simp [hmbr b q hq]
+    · rw [hiEq] at hiR
+      simp only [opsResolved_Lopn, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
+        forall_eq] at hiR
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
+      rcases hx with hx | hx <;> rw [hx] <;> simp [hmbr b q hq, hiR]
+
 /-! ## 8. The whole function -/
 
 /-- A well-formed instruction has resolved operands. -/
@@ -1145,18 +1165,32 @@ theorem lfundefPhysAbiOfVirt_allocOut_resolved (virt0 : Lfundef) (outArg' : Stri
   · refine buildArgPtrMaterialize_resolved _ _ abiArgs _ ?_ habi r ha
     exact hphys
   · refine insertEpilogue_resolved _ _ ?_ ?_ r hb
-    · intro r' hr'
-      have hmem := (List.mem_filter.mp hr').1
-      refine (opsResolved_iff_allocOut_x86 _).mpr
-        (physBodyWithStores_allocOut_resolved_abi _ (ofVirtAllocBody virt0 outArg' accRegs abiArgs)
-          _ [] 0 _ _ [] rm hrm hsib hdir haddr ?_ hargs ?_ r' hmem)
-      · refine findSnd_resolved _ ?_
+    · have hmbr : ∀ b q, Option.map Prod.snd
+          (List.find? (fun p => p.1 == b)
+            (List.filterMap
+              (fun x =>
+                match abiSaveOfExt x.2 with
+                | some saveName =>
+                  some
+                    (physNameForBody (ofVirtAllocBody virt0 outArg' accRegs abiArgs)
+                        (physTableOut (ofVirtAllocBody virt0 outArg' accRegs abiArgs) []) x.1,
+                      saveName)
+                | none => none)
+              (argBasePairs posBind outArg' inArgs' abiArgs))) = some q →
+          opResolved (.reg q) = true := by
+        refine findSnd_resolved _ ?_
         intro p hp
         obtain ⟨⟨argNm, abiReg⟩, -, hf⟩ := List.mem_filterMap.mp hp
         simp only at hf
         split at hf
         · next s hs => cases hf; exact abiSaveOfExt_resolved hs
         · cases hf
+      refine reloadArrImmBody_resolved hmbr ?_
+      intro r' hr'
+      have hmem := (List.mem_filter.mp hr').1
+      refine (opsResolved_iff_allocOut_x86 _).mpr
+        (physBodyWithStores_allocOut_resolved_abi _ (ofVirtAllocBody virt0 outArg' accRegs abiArgs)
+          _ [] 0 _ _ [] rm hrm hsib hdir haddr hmbr hargs ?_ r' hmem)
       · intro p hp
         obtain ⟨⟨abiReg, j⟩, -, hf⟩ := List.mem_filterMap.mp hp
         simp only at hf

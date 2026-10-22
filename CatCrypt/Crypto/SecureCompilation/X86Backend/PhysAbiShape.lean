@@ -198,6 +198,218 @@ theorem physBodyWithStores_eq_physExpand (shiftImm : ShiftImmOracle) (body : Lcm
       (hcall i (List.fst_mem_of_mem_zipIdx hp))
   rw [List.flatMap_congr h, ← List.flatMap_map (f := Prod.fst), List.zipIdx_map_fst]
 
+/-- **The expansion emits `ZEROARR` and `STOREIMM` only from the same operation**: an
+    instruction of `physExpand` whose operation is `ZEROARR` or `STOREIMM` is the expansion of
+    an instruction with that operation. -/
+theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
+    (rmap : LOperand → LOperand) (memrefBaseReload : String → Option String) (i : Linstr)
+    {r : Linstr} (hr : r ∈ physExpand shiftImm u64 rmap memrefBaseReload i)
+    {ds : List LOperand} {o : String} {ss : List LOperand} (ho : r.li_i = .Lopn ds o ss)
+    (hz : o = "ZEROARR" ∨ o = "STOREIMM") : ∃ ds' ss', i.li_i = .Lopn ds' o ss' := by
+  obtain ⟨rii, rw⟩ := r
+  obtain ⟨ii, w⟩ := i
+  simp only at ho
+  subst ho
+  cases w with
+  | Lopn ds0 o0 ss0 =>
+    refine ⟨ds0, ss0, ?_⟩
+    by_contra hne
+    have hne' : o ≠ o0 := fun h => hne (by rw [h])
+    clear hne
+    have l1 : o ≠ "MOV" := by rcases hz with rfl | rfl <;> decide
+    have l2 : o ≠ "MOV:64" := by rcases hz with rfl | rfl <;> decide
+    have l3 : o ≠ "MOVQ" := by rcases hz with rfl | rfl <;> decide
+    have l4 : o ≠ "LEA:64" := by rcases hz with rfl | rfl <;> decide
+    have l5 : o ≠ "STORE:64" := by rcases hz with rfl | rfl <;> decide
+    have l6 : o ≠ withWidthTag 64 "MOV" := by rcases hz with rfl | rfl <;> decide
+    have hmf : ∀ s : String, o ≠ (if hasSuffix s ":64" = true then "MOV:64" else "MOV") :=
+      fun s => by split <;> assumption
+    have hMov : ∀ d s m, o ≠ m → ∀ x ∈ legalizeMov d s m, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro d s m hm x hx ds ss
+      unfold legalizeMov at hx
+      split at hx <;> rintro rfl <;> simp [hm] at hx
+    have hBin : ∀ d s opn m, o ≠ opn → o ≠ m →
+        ∀ x ∈ legalizeBinop d s opn m, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro d s opn m ho hm x hx ds ss
+      unfold legalizeBinop at hx
+      split at hx <;> rintro rfl <;> simp [ho, hm] at hx
+    have hWide : ∀ s m, ∀ x ∈ (materializeWideImm s m).1, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro s m x hx ds ss
+      unfold materializeWideImm at hx
+      rintro rfl
+      repeat' split at hx
+      all_goals simp [l2] at hx
+    have hTwo : ∀ d s0 s1 opn m, o ≠ opn → o ≠ m →
+        ∀ x ∈ lowerTwoAddr d s0 s1 opn m, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro d s0 s1 opn m ho hm x hx ds ss
+      have hp := hWide s1 m
+      unfold lowerTwoAddr at hx
+      generalize materializeWideImm s1 m = p at hx hp
+      obtain ⟨pre, s1'⟩ := p
+      simp only at hx hp
+      split at hx <;> simp only [List.mem_append] at hx
+      · rcases hx with hx | hx
+        · exact hp x hx ds ss
+        · exact hBin _ _ _ _ ho hm x hx ds ss
+      · rcases hx with (hx | hx) | hx
+        · exact hMov _ _ _ hm x hx ds ss
+        · exact hp x hx ds ss
+        · exact hBin _ _ _ _ ho hm x hx ds ss
+    have hShI : ∀ d s0 v opn m, o ≠ opn → o ≠ m →
+        ∀ x ∈ lowerTwoAddrShiftImm d s0 v opn m, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro d s0 v opn m ho hm x hx ds ss
+      unfold lowerTwoAddrShiftImm at hx
+      repeat' split at hx
+      all_goals try simp only [List.mem_append] at hx
+      all_goals first
+        | (rcases hx with hx | hx
+           · exact hMov _ _ _ hm x hx ds ss
+           · rintro rfl; simp [ho] at hx)
+        | (rintro rfl; simp [ho, hm] at hx)
+    have hNat : ∀ d s opn m, o ≠ opn → o ≠ m →
+        ∀ x ∈ lowerNativeShiftRotate d s opn m, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro d s opn m ho hm x hx ds ss
+      unfold lowerNativeShiftRotate at hx
+      rintro rfl
+      repeat' split at hx
+      all_goals simp [ho, hm] at hx
+    have hSib : ∀ a ds ss, LinstrR.Lopn ds o ss ∉ (legalizeSibElem a).1 := by
+      intro a ds ss hx
+      unfold legalizeSibElem at hx
+      repeat' split at hx
+      all_goals simp [l2] at hx
+    have hLoad : ∀ d s opn m, o ≠ opn → o ≠ m →
+        ∀ x ∈ legalizeMemLoad d s opn m, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro d s opn m ho hm x hx ds ss
+      have hp := fun ds ss => hSib s ds ss
+      unfold legalizeMemLoad at hx
+      generalize legalizeSibElem s = p at hx hp
+      obtain ⟨pre, s'⟩ := p
+      simp only at hx hp
+      rintro rfl
+      repeat' split at hx
+      all_goals simp [hp, ho, hm, l2] at hx
+    have hConst : ∀ k addr val l, constIdxStore? k addr val = some l → ∀ ds ss,
+        LinstrR.Lopn ds o ss ∉ l := by
+      intro k addr val l hl ds ss hx
+      unfold constIdxStore? at hl
+      repeat' split at hl
+      all_goals (try simp only [Option.some.injEq, reduceCtorEq] at hl)
+      all_goals (try subst hl)
+      all_goals simp [l2, l5] at hx
+    have hStore : ∀ k dArr addr val opn m, o ≠ opn → o ≠ m →
+        ∀ x ∈ legalizeMemStoreK k dArr addr val opn m, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro k dArr addr val opn m ho hm x hx ds ss
+      unfold legalizeMemStoreK at hx
+      split at hx
+      · rintro rfl
+        exact hConst _ _ _ _ (by assumption) ds ss hx
+      · have hp := fun ds ss => hSib addr ds ss
+        unfold legalizeMemStore at hx
+        generalize legalizeSibElem addr = p at hx hp
+        obtain ⟨pre, a'⟩ := p
+        simp only at hx hp
+        rintro rfl
+        repeat' split at hx
+        all_goals simp [hp, ho, hm, l2, l4] at hx
+    have hRel : ∀ a, ∀ x ∈ (reloadMemrefBase memrefBaseReload a).1, ∀ ds ss,
+        x ≠ .Lopn ds o ss := by
+      intro a x hx ds ss
+      unfold reloadMemrefBase at hx
+      rintro rfl
+      repeat' split at hx
+      all_goals simp [l3] at hx
+    have hSpill : ∀ dsts opn srcs, o ≠ opn →
+        ∀ x ∈ legalizeSpillDst dsts opn srcs, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro dsts opn srcs ho x hx ds ss
+      unfold legalizeSpillDst at hx
+      rintro rfl
+      cases hc : cmovSpillDst? dsts opn srcs with
+      | some l =>
+        simp only [hc] at hx
+        unfold cmovSpillDst? at hc
+        split at hc
+        · split at hc
+          · cases hc
+            unfold cmovSpillSeq at hx
+            simp only [List.mem_append] at hx
+            rcases hx with hx | hx
+            · split at hx <;> simp [l2] at hx
+            · split at hx <;> simp [ho, l2] at hx
+          · cases hc
+        · cases hc
+      | none =>
+        simp only [hc] at hx
+        have hsm : o ≠ setccMov opn := hmf opn
+        cases hs : setccSpill? dsts opn srcs with
+        | some l =>
+          simp only [hs] at hx
+          unfold setccSpill? at hs
+          split at hs
+          · split at hs
+            · cases hs
+              simp [ho, hsm] at hx
+            · cases hs
+          · cases hs
+        | none =>
+          simp only [hs] at hx
+          simp [ho] at hx
+    have hOne : ∀ opn d s, o ≠ opn →
+        ∀ x ∈ legalizeOneSrc u64 opn d s, ∀ ds ss, x ≠ .Lopn ds o ss := by
+      intro opn d s ho x hx ds ss
+      unfold legalizeOneSrc spillImmMovMnem at hx
+      repeat' split at hx
+      all_goals first
+        | exact hMov _ _ _ ho x hx ds ss
+        | exact hMov _ _ _ l6 x hx ds ss
+        | (rintro rfl; simp [ho, l6] at hx)
+    simp only [physExpand] at hr
+    split at hr <;> (try split at hr) <;> (try split at hr) <;> (try split at hr)
+    all_goals (try simp only [LinstrR.Lopn.injEq] at *)
+    all_goals (try casesm* _ ∧ _)
+    all_goals (try subst_vars)
+    all_goals (try simp only [List.mem_append, List.mem_map, List.mem_singleton,
+      Linstr.mk.injEq] at hr)
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hShI _ _ _ _ _ hne' l2 a ha ds ss h
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hShI _ _ _ _ _ hne' l1 a ha ds ss h
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hTwo _ _ _ _ _ hne' l2 a ha ds ss h
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hTwo _ _ _ _ _ hne' l1 a ha ds ss h
+    · rcases hr with ⟨a, ha, -, h⟩ | ⟨a, ha, -, h⟩
+      · exact hRel _ a ha ds ss h
+      · exact hStore _ _ _ _ _ _ hne' (hmf _) a ha ds ss h
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hSpill _ _ _ hne' a ha ds ss h
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hSpill _ _ _ hne' a ha ds ss h
+    · obtain ⟨-, h⟩ := hr
+      simp only [LinstrR.Lopn.injEq] at h
+      exact hne' h.2.1
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hNat _ _ _ _ hne' l2 a ha ds ss h
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hNat _ _ _ _ hne' l1 a ha ds ss h
+    · rcases hr with ⟨a, ha, -, h⟩ | ⟨a, ha, -, h⟩
+      · exact hRel _ a ha ds ss h
+      · exact hLoad _ _ _ _ hne' l2 a ha ds ss h
+    · rcases hr with ⟨a, ha, -, h⟩ | ⟨a, ha, -, h⟩
+      · exact hRel _ a ha ds ss h
+      · exact hLoad _ _ _ _ hne' l1 a ha ds ss h
+    · obtain ⟨a, ha, -, h⟩ := hr
+      exact hOne _ _ _ hne' a ha ds ss h
+    · obtain ⟨-, h⟩ := hr
+      simp only [LinstrR.Lopn.injEq] at h
+      exact hne' h.2.1
+    · obtain ⟨-, h⟩ := hr
+      simp only [LinstrR.Lopn.injEq] at h
+      exact hne' h.2.1
+  | _ =>
+    simp only [physExpand, List.mem_singleton, Linstr.mk.injEq] at hr
+    cases hr.2
+
 /-! ## 2. The components of the physical-ABI export -/
 
 section Components
@@ -288,10 +500,11 @@ theorem toLfundefPhysAbi_body (shiftImm : ShiftImmOracle) (abiTyin : List Nat) :
           ++ buildArgPtrMaterialize (abiVirt c outArg inArgs immSlotMap abiArgs)
             (abiTbl c outArg inArgs immSlotMap abiArgs) abiArgs (fun _ => none)
           ++ insertEpilogue
-            ((physBodyWithStores (abiShiftImm c outArg inArgs immSlotMap abiArgs shiftImm)
-              (abiBody1 c outArg inArgs immSlotMap abiArgs) (fun _ => none) reloadScratch2 []
-              reloadScratch2 0 (abiReload c outArg inArgs immSlotMap abiArgs)
-              (abiCallReload c outArg inArgs immSlotMap abiArgs)).filter notLivePin)
+            (reloadArrImmBody (abiReload c outArg inArgs immSlotMap abiArgs)
+              ((physBodyWithStores (abiShiftImm c outArg inArgs immSlotMap abiArgs shiftImm)
+                (abiBody1 c outArg inArgs immSlotMap abiArgs) (fun _ => none) reloadScratch2 []
+                reloadScratch2 0 (abiReload c outArg inArgs immSlotMap abiArgs)
+                (abiCallReload c outArg inArgs immSlotMap abiArgs)).filter notLivePin))
             calleeSaveRestoreEpilogue := rfl
 
 end Components
@@ -680,8 +893,8 @@ theorem abiBody1_singleLoop (outArg : String) (inArgs abiArgs : List String)
     hκ, renLcmd_append_ret]
 
 /-- **The physical-ABI export of a single loop node.** For the program with one
-    runtime-count loop node and nothing after it, whose node issues no call, whose
-    aliased store thread is not empty and resolves as `κ`, the physical body is the
+    runtime-count loop node and nothing after it, whose node issues no call and no
+    `ZEROARR` or `STOREIMM`, whose aliased store thread is not empty and resolves as `κ`, the physical body is the
     qsave prologue, the saves of the further argument registers, the argument
     materialization, the register-allocated expansion (`physExpand`) of each
     instruction of the node renamed by `κ` after the accumulator alias, with the
@@ -698,7 +911,9 @@ theorem toLfundefPhysAbi_singleLoop (outArg : String) (inArgs : List String)
     (hκ : canonMemrefName (arrChainAlias (aliasRegBody (regName Γ.length)
       (abiDerived (singleLoop update count init invs) outArg inArgs immSlotMap).1
       (loopNode update count init invs immSlotMap))) = κ)
-    (hcall : ∀ i ∈ loopNode update count init invs immSlotMap, ∀ a b, i.li_i ≠ .Lcall a b) :
+    (hcall : ∀ i ∈ loopNode update count init invs immSlotMap, ∀ a b, i.li_i ≠ .Lcall a b)
+    (himm : ∀ i ∈ loopNode update count init invs immSlotMap, ∀ ds o ss,
+      i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM") :
     (ComL.toLfundefPhysAbi (singleLoop update count init invs) outArg inArgs shiftImm
         immSlotMap abiArgs abiTyin).lfd_body
       = buildPrologue (abiVirt (singleLoop update count init invs) outArg inArgs
@@ -740,7 +955,32 @@ theorem toLfundefPhysAbi_singleLoop (outArg : String) (inArgs : List String)
       obtain ⟨jj, w⟩ := j
       cases w <;> simp_all [renLinstr, renLinstrR]
     · subst hi; simp
-  rw [toLfundefPhysAbi_body, physBodyWithStores_eq_physExpand _ _ _ _ _ _ _ _ hc1]
+  rw [toLfundefPhysAbi_body, physBodyWithStores_eq_physExpand _ _ _ _ _ _ _ _ hc1,
+    reloadArrImmBody_eq_of_noArrImm _ ?himm]
+  case himm =>
+    intro r hr ds o ss ho
+    obtain ⟨i, hi, hri⟩ := List.mem_flatMap.mp (List.mem_filter.mp hr).1
+    refine not_or.mp fun hz => ?_
+    obtain ⟨ds', ss', hi'⟩ := physExpand_arrImm _ _ _ _ i hri ho hz
+    rw [hb1] at hi
+    rw [List.mem_append, List.mem_append, List.mem_singleton] at hi
+    rcases hi with hi | hi | rfl
+    · by_cases h4 : abiArgs.length ≥ 4
+      · simp only [abiLivePin, h4, if_true, List.mem_singleton] at hi
+        subst hi
+        simp only [LinstrR.Lopn.injEq] at hi'
+        rcases hz with rfl | rfl <;> simp at hi'
+      · simp [abiLivePin, h4] at hi
+    · simp only [renLcmd, aliasRegBody, List.map_map, List.mem_map] at hi
+      obtain ⟨j, hj, rfl⟩ := hi
+      obtain ⟨jj, w⟩ := j
+      cases w with
+      | Lopn dj oj sj =>
+        have := himm _ hj dj oj sj rfl
+        simp only [Function.comp, renLinstr, renLinstrR, LinstrR.Lopn.injEq] at hi'
+        rcases hz with rfl | rfl <;> simp_all
+      | _ => simp [renLinstr, renLinstrR] at hi'
+    · simp at hi'
   rw [hb1, List.flatMap_append, List.filter_append, abiLivePin_flatMap_filter,
     List.nil_append, List.flatMap_append, List.filter_append, List.flatMap_singleton]
   have hret : ∀ sh u rm rl, (physExpand sh u rm rl ⟨0, .Lret⟩).filter notLivePin

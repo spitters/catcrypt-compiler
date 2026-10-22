@@ -14,8 +14,8 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
 
 The looped physical ABI export `lfundefPhysAbiOfVirtCert` of a call-free body is the
 prologue, the saves of the further argument registers, the argument materialization, the
-flat map of the per-instruction expansion `physExpand` without its `LIVEPIN` instructions,
-the callee-saved restores and the return (`lfundefPhysAbiOfVirtCert_body`). This module
+flat map of the per-instruction expansion `physExpand` without its `LIVEPIN` instructions
+under the constant-shape base reload `reloadArrImmBody`, the callee-saved restores and the return (`lfundefPhysAbiOfVirtCert_body`). This module
 proves on that body the two side conditions of the high-product fusion
 (`PhysImgFuse.fuseSiteOkB`, `PhysImgFuse.homeOkB`).
 
@@ -78,8 +78,9 @@ def certShiftImm (shiftImm : ShiftImmOracle) (body1 : Lcmd) : ShiftImmOracle := 
 /-- **The body of the call-free looped physical ABI export.** For the allocator input
     `body1` of `lfundefPhysAbiOfVirtCert` and its memref base reload map `mbr`, a body
     without calls exports to the prologue, the saves of the further argument registers, the
-    argument materialization, the flat map of `physExpand` over `body1` without its
-    `LIVEPIN` instructions, the callee-saved restores and the return. -/
+    argument materialization, the constant-shape base reload (`reloadArrImmBody`) of the flat
+    map of `physExpand` over `body1` without its `LIVEPIN` instructions, the callee-saved
+    restores and the return. -/
 theorem lfundefPhysAbiOfVirtCert_body
     (virt0 : Lfundef) (outArg' : String) (inArgs' accRegs : List String)
     (shiftImm : ShiftImmOracle) (abiArgs : List String) (abiTyin : List Nat)
@@ -102,8 +103,9 @@ theorem lfundefPhysAbiOfVirtCert_body
           ++ extraSaves abiArgs) ++
         (buildArgPtrMaterialize { virt0 with lfd_body := body1 } (physTableOut body1 [])
             abiArgs (fun _ => none) ++
-          insertEpilogue ((body1.flatMap (physExpand (certShiftImm shiftImm body1)
-              (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter notLivePin)
+          insertEpilogue (reloadArrImmBody mbr ((body1.flatMap (physExpand
+              (certShiftImm shiftImm body1) (LprogAsmPrinter.bodyIsU64 body1)
+              (physRmap body1 []) mbr)).filter notLivePin))
             calleeSaveRestoreEpilogue) := by
   have hcall : ∀ i ∈ body1, ∀ a b, i.li_i ≠ .Lcall a b := by
     intro i hi a b he
@@ -116,14 +118,28 @@ theorem lfundefPhysAbiOfVirtCert_body
           ++ extraSaves abiArgs) ++
         buildArgPtrMaterialize { virt0 with lfd_body := body1 } (physTableOut body1 []) abiArgs
             (fun _ => none) ++
-          insertEpilogue ((physBodyWithStores (certShiftImm shiftImm body1) body1
-            (fun _ => none) reloadScratch2 [] reloadScratch2 0 mbr cab).filter notLivePin)
+          insertEpilogue (reloadArrImmBody mbr ((physBodyWithStores (certShiftImm shiftImm body1)
+            body1 (fun _ => none) reloadScratch2 [] reloadScratch2 0 mbr cab).filter notLivePin))
             calleeSaveRestoreEpilogue := by
     subst hb1 hmbr
     simp only [lfundefPhysAbiOfVirtCert]
     exact ⟨_, rfl⟩
   obtain ⟨cab, hb⟩ := hb
   rw [hb, List.append_assoc, physBodyWithStores_eq_physExpand _ _ _ _ _ _ _ [] hcall]
+
+/-- The constant-shape base reload of a flat map without its `LIVEPIN` instructions is the
+    flat map of the reloaded parts without theirs. -/
+theorem reloadArrImmBody_filter_flatMap (mbr : String → Option String) (f : Linstr → Lcmd)
+    (l : Lcmd) :
+    reloadArrImmBody mbr ((l.flatMap f).filter notLivePin) =
+      l.flatMap fun i => (reloadArrImmBody mbr (f i)).filter notLivePin := by
+  have hp : ∀ (i : Linstr) l', reloadArrImm mbr i.li_i = some l' →
+      ∀ x ∈ l', notLivePin ⟨i.li_ii, x⟩ = notLivePin i := by
+    intro i l' h x hx
+    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some h <;>
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
+      rcases hx with rfl | rfl <;> simp [notLivePin, hi]
+  rw [← reloadArrImmBody_filter notLivePin _ hp, reloadArrImmBody_flatMap, List.filter_flatMap]
 
 /-! ## 2. The reload scan is local -/
 
@@ -1083,6 +1099,116 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
         exact storeIdx_scanStays hs15 hq ii _ _ _ n' y' v' _ rfl rfl
     | _ => simp [isAccB] at hA
 
+/-- The instructions of the constant-shape base reload of an instruction have no indexed
+    source. -/
+theorem reloadArrImm_idxFree {mbr : String → Option String} {x : LinstrR} {l : List LinstrR}
+    (h : reloadArrImm mbr x = some l) : ∀ y ∈ l, idxFreeB y = true := by
+  obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h <;>
+    simp [idxFreeB]
+
+/-- The expansion of an instruction other than a constant-index array write is its own
+    constant-shape base reload. -/
+theorem reloadArrImmBody_physExpand_of_ne (shiftImm : ShiftImmOracle) (u64 : Bool)
+    (rmap : LOperand → LOperand) (mbr mbr' : String → Option String) (i : Linstr)
+    (hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM") :
+    reloadArrImmBody mbr' (physExpand shiftImm u64 rmap mbr i) =
+      physExpand shiftImm u64 rmap mbr i := by
+  refine reloadArrImmBody_eq_of_noArrImm mbr' fun r hr ds o ss ho =>
+    ⟨fun h => ?_, fun h => ?_⟩
+  · obtain ⟨ds', ss', he⟩ := PhysAbiShape.physExpand_arrImm shiftImm u64 rmap mbr i hr ho
+      (.inl h)
+    exact (hne ds' o ss' he).1 h
+  · obtain ⟨ds', ss', he⟩ := PhysAbiShape.physExpand_arrImm shiftImm u64 rmap mbr i hr ho
+      (.inr h)
+    exact (hne ds' o ss' he).2 h
+
+/-- **One reloaded expansion keeps the side conditions**: the conclusion of
+    `physExpand_block` for the expansion of `i` under the constant-shape base reload, whose
+    instructions carry only the mnemonic of `i` and moves. A constant-index array write
+    becomes the move `MOVQ R14, q` and the write through `R14`, neither of which has an
+    indexed source or is a low `MUL`. -/
+theorem physExpand_reload_block (hs15 : slotArr reloadScratch = none)
+    (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
+    (mbr : String → Option String) (i : Linstr)
+    (hmn : MnemOk i.li_i (reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr i)))
+    (hrmI : ∀ x, noIdxB x = true → noIdxB (rmap x) = true)
+    (hrmR : ∀ x n, rmap x = .reg n → n ∉ fuseReloadScratches ∧ slotArr n = none)
+    (hreg : ∀ n, ∃ n', rmap (.reg n) = .reg n')
+    (hacc : AccForm slotArr rmap mbr i.li_i)
+    (hidx : isAccB i.li_i = false → ∀ x ∈ lopnOperands i.li_i, noIdxB x = true) :
+    let F := (reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr i)).filter notLivePin
+    ScanStays slotArr F ∧ SiteStays slotArr F ∧
+      ∀ env, EnvScratch env → homeOkB slotArr env F = true := by
+  intro F
+  by_cases hz : ∃ ds o ss, i.li_i = .Lopn ds o ss ∧ (o = "ZEROARR" ∨ o = "STOREIMM")
+  · obtain ⟨ds, o, ss, hi, hz⟩ := hz
+    have hA : isAccB i.li_i = false := by
+      rw [hi]; rcases hz with rfl | rfl <;> rfl
+    have hfree : ∀ r ∈ F, idxFreeB r.li_i = true := by
+      intro r hr
+      rcases mem_reloadArrImmBody (List.mem_of_mem_filter hr) with hr | ⟨j, -, l', hl, -, hx⟩
+      · exact physExpand_idxFree shiftImm u64 rmap mbr i hrmI (hidx hA) r hr
+      · exact reloadArrImm_idxFree hl _ hx
+    refine ⟨scanStays_of_idxFree hfree, siteStays_of_idxFree hfree, fun env _ =>
+      homeOkB_of_noLowMul (fun r hr => noLowMul_of_mnemOk hmn ?_ r
+        (List.mem_of_mem_filter hr)) env⟩
+    intro o' ho'
+    rw [hi] at ho'
+    simp only [opnOf, Option.some.injEq] at ho'
+    subst ho'
+    rcases hz with rfl | rfl <;> decide +kernel
+  · have hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM" :=
+      fun ds o ss hi => not_or.mp fun hz' => hz ⟨ds, o, ss, hi, hz'⟩
+    have he := reloadArrImmBody_physExpand_of_ne shiftImm u64 rmap mbr mbr i hne
+    rw [he] at hmn
+    simp only [F, he]
+    exact physExpand_block hs15 shiftImm u64 rmap mbr i hmn hrmI hrmR hreg hacc hidx
+
+/-- The expansion of a constant-index array write with one destination and at least two
+    sources is the remapped instruction. -/
+theorem physExpand_arrImm_eq (shiftImm : ShiftImmOracle) (u64 : Bool)
+    (rmap : LOperand → LOperand) (mbr : String → Option String) (ii : Nat) (d : LOperand)
+    (o : String) (s0 s1 : LOperand) (t : List LOperand) (hz : o = "ZEROARR" ∨ o = "STOREIMM") :
+    physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn [d] o (s0 :: s1 :: t)⟩ =
+      [⟨ii, .Lopn [rmap d] o ((s0 :: s1 :: t).map rmap)⟩] := by
+  obtain ⟨hbin, hms, hcm, hset⟩ := arrImm_mnem_class hz
+  unfold physExpand
+  rcases t with _ | ⟨s2, t⟩ <;>
+    simp only [hbin, Bool.false_eq_true, if_false, hms, legalizeSpillDst,
+      cmovSpillDst?_of_ne _ _ hcm, setccSpill?_of_ne _ _ hset, List.map_cons, List.map_nil]
+
+/-- **The reloaded expansion of a constant-index array write.** For a `ZEROARR` or `STOREIMM`
+    of the access form, under an operand map that keeps immediates and sends registers to
+    registers, the expansion under the constant-shape base reload is the move `MOVQ R14, q` of
+    the array slot `q` that the reload map assigns to the remapped base, followed by the write
+    through `R14`; the value register of a store is the image of a source register. -/
+theorem reloadArrImmBody_physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
+    (rmap : LOperand → LOperand) (mbr : String → Option String) (ii : Nat)
+    (ds : List LOperand) (o : String) (ss : List LOperand)
+    (hacc : AccForm slotArr rmap mbr (.Lopn ds o ss)) (hz : o = "ZEROARR" ∨ o = "STOREIMM")
+    (himm : ∀ n, rmap (.imm n) = .imm n) (hreg : ∀ n, ∃ n', rmap (.reg n) = .reg n') :
+    ∃ b' q, mbr b' = some q ∧ (slotArr q).isSome = true ∧
+      ((∃ n w, reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn ds o ss⟩) =
+          [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
+            ⟨ii, .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]⟩]) ∨
+        ∃ v v' k, LOperand.reg v ∈ ss ∧ rmap (.reg v) = .reg v' ∧
+          reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn ds o ss⟩) =
+            [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
+              ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM"
+                [.reg reloadScratch2, .reg v', .imm k]⟩]) := by
+  obtain ⟨-, -, hZ, hS⟩ := hacc ds o ss rfl
+  rcases hz with rfl | rfl
+  · obtain ⟨b, n, w, rfl, rfl, b', q, hb', hq, hqs⟩ := hZ rfl
+    refine ⟨b', q, hq, hqs, .inl ⟨n, w, ?_⟩⟩
+    rw [physExpand_arrImm_eq _ _ _ _ _ _ _ _ _ _ (.inl rfl)]
+    simp [hb', himm, reloadArrImmBody, reloadArrImm_zeroArr n w hq]
+  · obtain ⟨d, b, v, k, rfl, rfl, b', q, hb', hq, hqs⟩ := hS rfl
+    obtain ⟨d', hd'⟩ := hreg d
+    obtain ⟨v', hv'⟩ := hreg v
+    refine ⟨b', q, hq, hqs, .inr ⟨v, v', k, by simp, hv', ?_⟩⟩
+    rw [physExpand_arrImm_eq _ _ _ _ _ _ _ _ _ _ (.inr rfl)]
+    simp [hb', hd', hv', himm, reloadArrImmBody, reloadArrImm_storeImm d' v' k hq]
+
 /-! ## 8. The export -/
 
 /-- The instruction is no site, has no indexed source and is no low `MUL`. -/
@@ -1172,8 +1298,8 @@ theorem physExpand_flatMap_side {slotArr : String → Option (String × Nat)}
     (harr : ∀ i ∈ body1, ∀ q n, LOperand.arr q n ∈ lopnOperands i.li_i → slotArr q = none)
     (hidx : ∀ i ∈ body1, isAccB i.li_i = false → ∀ x ∈ lopnOperands i.li_i, noIdxB x = true)
     (hslot : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) :
-    let F := body1.flatMap fun i => (physExpand shiftImm (LprogAsmPrinter.bodyIsU64 body1)
-      (physRmap body1 []) mbr i).filter notLivePin
+    let F := body1.flatMap fun i => (reloadArrImmBody mbr (physExpand shiftImm
+      (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr i)).filter notLivePin
     ScanStays slotArr F ∧ SiteStays slotArr F ∧
       (∀ env, EnvScratch env → homeOkB slotArr env F = true) ∧
       ∀ r ∈ F, dstOkB slotArr r.li_i = true := by
@@ -1200,8 +1326,8 @@ theorem physExpand_flatMap_side {slotArr : String → Option (String × Nat)}
     | arrIdx b y s => exact ⟨nofun, nofun, fun q j sc hq => by cases hq; exact hP _⟩
     | arr q n => exact ⟨nofun, fun q' n' hq => by cases hq; exact harr i hi q n hx, nofun⟩
     | imm _ => exact ⟨nofun, nofun, nofun⟩
-  have hblk : ∀ i ∈ body1, BlockOk slotArr i.li_i (physExpand shiftImm
-      (LprogAsmPrinter.bodyIsU64 body1) rm mbr i) := by
+  have hblk : ∀ i ∈ body1, BlockOk slotArr i.li_i (reloadArrImmBody mbr (physExpand shiftImm
+      (LprogAsmPrinter.bodyIsU64 body1) rm mbr i)) := by
     intro i hi
     rw [← hrmE, ← physPositionEmit_eq_physExpand shiftImm body1 reloadScratch2 reloadScratch2 0
       mbr [] [] i 0 (hcall i hi)]
@@ -1216,7 +1342,7 @@ theorem physExpand_flatMap_side {slotArr : String → Option (String × Nat)}
       subst h
       exact ⟨physRegName_not_scratch _, hP _⟩
     | _ => simp [rm, remapOperand] at h
-  have hside := fun i (hi : i ∈ body1) => physExpand_block hs15 shiftImm
+  have hside := fun i (hi : i ∈ body1) => physExpand_reload_block hs15 shiftImm
     (LprogAsmPrinter.bodyIsU64 body1) rm mbr i
     (fun r hr ds o ss he => ((hblk i hi).1 r hr ds o ss he).2)
     (fun x hx => noIdxB_remapOperand _ _ hx) hrmR (fun n => ⟨_, rfl⟩) (hshape i hi)
@@ -1257,7 +1383,7 @@ theorem fuseSiteOkB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (Strin
     fuseSiteOkB slotArr (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs
       abiTyin x86Abi posBind).1.lfd_body = true := by
   rw [lfundefPhysAbiOfVirtCert_body virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin
-    posBind body1 hb1 mbr hmbr hcf, List.filter_flatMap]
+    posBind body1 hb1 mbr hmbr hcf, reloadArrImmBody_filter_flatMap]
   obtain ⟨hS, hSi, -, hD⟩ := physExpand_flatMap_side (certShiftImm shiftImm body1) body1 mbr hcf
     hshape harr hidx hslot
   unfold insertEpilogue
@@ -1297,7 +1423,7 @@ theorem homeOkB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String ×
     homeOkB slotArr [] (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs
       abiTyin x86Abi posBind).1.lfd_body = true := by
   rw [lfundefPhysAbiOfVirtCert_body virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin
-    posBind body1 hb1 mbr hmbr hcf, List.filter_flatMap]
+    posBind body1 hb1 mbr hmbr hcf, reloadArrImmBody_filter_flatMap]
   obtain ⟨-, -, hH, -⟩ := physExpand_flatMap_side (certShiftImm shiftImm body1) body1 mbr hcf
     hshape harr hidx hslot
   unfold insertEpilogue

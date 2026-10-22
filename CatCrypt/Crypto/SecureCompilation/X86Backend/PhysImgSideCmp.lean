@@ -1188,18 +1188,40 @@ theorem noScratchBaseB_lfundefPhysAbiOfVirtCert
       exact PhysImgSideAlloc.physRegName_not_scratch _ (by
         rw [he]; simp [FuseMulHi.fuseReloadScratches])
     | _ => simp [rm, remapOperand, isScratchOp]
-  have hF : scratchPrevB false (((body1.flatMap (physExpand (PhysImgSideAlloc.certShiftImm
-      shiftImm body1) (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter
-        PhysAbiShape.notLivePin).map Linstr.li_i) = true := by
-    refine scratchPrevB_filter_livePin ?_
-    rw [List.map_flatMap]
-    exact scratchPrevB_flatMap _ fun i _ => by
-      rw [hrmE]
+  have hF : scratchPrevB false ((reloadArrImmBody mbr ((body1.flatMap
+      (physExpand (PhysImgSideAlloc.certShiftImm shiftImm body1)
+        (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter
+          PhysAbiShape.notLivePin)).map Linstr.li_i) = true := by
+    rw [PhysImgSideAlloc.reloadArrImmBody_filter_flatMap, List.map_flatMap]
+    refine scratchPrevB_flatMap _ fun i hi => scratchPrevB_filter_livePin ?_
+    rw [hrmE]
+    by_cases hz : ∃ ds o ss, i.li_i = .Lopn ds o ss ∧ (o = "ZEROARR" ∨ o = "STOREIMM")
+    · obtain ⟨ds, o, ss, hx, hz⟩ := hz
+      obtain ⟨ii, w⟩ := i
+      simp only at hx
+      subst hx
+      obtain ⟨b, q, hb, -, ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩⟩ :=
+        PhysImgSideAlloc.reloadArrImmBody_physExpand_arrImm _ _ rm mbr ii ds o ss (hshape _ hi)
+          hz (fun _ => rfl) (fun n => ⟨_, rfl⟩) <;>
+        rw [he] <;> refine scratchPrevB_of_free fun r hr => ?_ <;>
+        simp only [List.map_cons, List.map_nil, List.mem_cons, List.not_mem_nil,
+          or_false] at hr <;>
+        rcases hr with rfl | rfl
+      all_goals first
+        | exact scratchMovFreeB_of_opn (by decide)
+        | exact scratchMovFreeB_of_src (by simpa [isScratchOp] using hmq _ _ hb)
+    · rw [PhysImgSideAlloc.reloadArrImmBody_physExpand_of_ne _ _ _ _ _ _ fun ds o ss hx =>
+        not_or.mp fun hz' => hz ⟨ds, o, ss, hx, hz'⟩]
       exact physExpand_scratchPrev _ _ rm mbr i hrmS hmq
-  have hFb : ∀ j ∈ (body1.flatMap (physExpand (PhysImgSideAlloc.certShiftImm
-      shiftImm body1) (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter
-        PhysAbiShape.notLivePin, baseNoScratchB j.li_i = true := by
+  have hFb : ∀ j ∈ reloadArrImmBody mbr ((body1.flatMap
+      (physExpand (PhysImgSideAlloc.certShiftImm shiftImm body1)
+        (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter
+          PhysAbiShape.notLivePin), baseNoScratchB j.li_i = true := by
     intro j hj
+    rcases mem_reloadArrImmBody hj with hj | ⟨i', -, l', hl, -, hx⟩
+    swap
+    · exact baseNoScratchB_of_baseR14B (baseR14B_of_idxFree
+        (PhysImgSideAlloc.reloadArrImm_idxFree hl _ hx))
     obtain ⟨i, hi, hj⟩ := List.mem_flatMap.mp (List.mem_of_mem_filter hj)
     rw [hrmE] at hj
     refine baseNoScratchB_of_baseR14B ?_
@@ -1606,6 +1628,20 @@ theorem cmpRefines_mnOf {B : Lcmd} {i : Linstr} {ds : List LOperand} {o : String
     rcases ho with rfl | ho
     · rw [hi]; exact hc
     · rw [isCmpB_of_movMnems ho] at hc; cases hc
+
+/-- **The constant-shape base reload refines the body**: each reloaded write becomes a move
+    and the write under its own mnemonic. -/
+theorem cmpRefines_reloadArrImmBody (mbr : String → Option String) (l : Lcmd) :
+    CmpRefines (reloadArrImmBody mbr l) l := by
+  unfold reloadArrImmBody
+  refine cmpRefines_flatMap_single l fun i _ => ?_
+  split
+  · rename_i l' hl
+    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
+      refine cmpRefines_mnOf hi fun r hr => ?_ <;>
+      simp only [List.map_cons, List.map_nil, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
+      rcases hr with rfl | rfl <;> simp [MnOf, movMnems]
+  · exact CmpRefines.refl _
 
 /-! ### The free reload scratch at the compare-spill reload -/
 
@@ -2199,7 +2235,8 @@ theorem cmpAccFreeB_lfundefPhysAbiOfVirtCert
       rw [he]
       rfl
     · cases hj
-  have hF := ((cmpRefines_filter PhysAbiShape.notLivePin hlp).trans
+  have hF := (((cmpRefines_reloadArrImmBody mbr _).trans
+    (cmpRefines_filter PhysAbiShape.notLivePin hlp)).trans
     (cmpRefines_flatMap_single body1 fun i _ =>
       cmpRefines_physExpand (PhysImgSideAlloc.certShiftImm shiftImm body1)
         (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr i)).final hacc

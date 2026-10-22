@@ -764,7 +764,7 @@ theorem saveFreshB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String
   have hb : saveFreshB slotArr [] b0 = true := by
     simp only [b0]
     rw [lfundefPhysAbiOfVirtCert_body virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin
-      posBind body1 hb1 mbr hmbr hcf, List.filter_flatMap]
+      posBind body1 hb1 mbr hmbr hcf, reloadArrImmBody_filter_flatMap]
     obtain ⟨-, -, -, hD⟩ := physExpand_flatMap_side (certShiftImm shiftImm body1) body1 mbr hcf
       hshape harr hidx hslot
     refine saveFreshB_prologue hslot _ _ abiArgs fun j hj => ?_

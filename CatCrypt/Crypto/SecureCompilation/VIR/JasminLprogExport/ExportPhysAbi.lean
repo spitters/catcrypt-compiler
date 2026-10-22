@@ -1427,6 +1427,88 @@ theorem physBodyWithStores_allocName (body : Lcmd) (tbl : Array Nat) (n : String
   unfold allocName
   split <;> rfl
 
+/-- **The constant-shape base reload of a physical body**: every instruction that
+    `reloadArrImm` rewrites (a `ZEROARR` or `STOREIMM` whose register base has a save slot) is
+    replaced by its reload, each instruction of the reload carrying the instruction index of
+    the original; every other instruction is kept. -/
+def reloadArrImmBody (memrefBaseReload : String → Option String) (l : Lcmd) : Lcmd :=
+  l.flatMap fun r =>
+    match reloadArrImm memrefBaseReload r.li_i with
+    | some l' => l'.map fun x => (⟨r.li_ii, x⟩ : Linstr)
+    | none => [r]
+
+theorem reloadArrImmBody_append (mbr : String → Option String) (a b : Lcmd) :
+    reloadArrImmBody mbr (a ++ b) = reloadArrImmBody mbr a ++ reloadArrImmBody mbr b :=
+  List.flatMap_append ..
+
+theorem reloadArrImmBody_flatMap {α : Type} (mbr : String → Option String) (f : α → Lcmd)
+    (l : List α) :
+    reloadArrImmBody mbr (l.flatMap f) = l.flatMap fun a => reloadArrImmBody mbr (f a) :=
+  List.flatMap_assoc
+
+/-- A body none of whose instructions has a constant-shape base reload is its own reload. -/
+theorem reloadArrImmBody_eq_self {mbr : String → Option String} {l : Lcmd}
+    (h : ∀ r ∈ l, reloadArrImm mbr r.li_i = none) : reloadArrImmBody mbr l = l := by
+  induction l with
+  | nil => rfl
+  | cons a t ih => simp_all [reloadArrImmBody]
+
+/-- **A body without `ZEROARR` and `STOREIMM` keeps its bytes** under the constant-shape base
+    reload. -/
+theorem reloadArrImmBody_eq_of_noArrImm (mbr : String → Option String) {l : Lcmd}
+    (h : ∀ r ∈ l, ∀ ds o ss, r.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM") :
+    reloadArrImmBody mbr l = l := by
+  refine reloadArrImmBody_eq_self fun r hr => ?_
+  obtain ⟨ii, w⟩ := r
+  cases w with
+  | Lopn ds o ss =>
+    obtain ⟨h1, h2⟩ := h _ hr ds o ss rfl
+    exact reloadArrImm_of_ne mbr h1 h2
+  | _ => simp [reloadArrImm]
+
+/-- An instruction of the reloaded body is an instruction of the body, or an instruction of
+    the reload of an instruction `i` of the body, at the index of `i`. -/
+theorem mem_reloadArrImmBody {mbr : String → Option String} {l : Lcmd} {r : Linstr}
+    (hr : r ∈ reloadArrImmBody mbr l) :
+    r ∈ l ∨ ∃ i ∈ l, ∃ l', reloadArrImm mbr i.li_i = some l' ∧ r.li_ii = i.li_ii ∧
+      r.li_i ∈ l' := by
+  obtain ⟨i, hi, hri⟩ := List.mem_flatMap.mp hr
+  revert hri
+  cases hre : reloadArrImm mbr i.li_i with
+  | none => exact fun hri => .inl (by simp_all)
+  | some l' =>
+    intro hri
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hri
+    exact .inr ⟨i, hi, l', hre, rfl, hx⟩
+
+/-- **The reload commutes with a filter** `p` that takes, on each instruction of a reload,
+    the value it takes on the reloaded instruction. -/
+theorem reloadArrImmBody_filter {mbr : String → Option String} (p : Linstr → Bool) (l : Lcmd)
+    (hp : ∀ i l', reloadArrImm mbr i.li_i = some l' → ∀ x ∈ l', p ⟨i.li_ii, x⟩ = p i) :
+    (reloadArrImmBody mbr l).filter p = reloadArrImmBody mbr (l.filter p) := by
+  induction l with
+  | nil => rfl
+  | cons a t ih =>
+    rw [List.filter_cons]
+    simp only [reloadArrImmBody, List.flatMap_cons, List.filter_append] at ih ⊢
+    rw [ih]
+    cases hre : reloadArrImm mbr a.li_i with
+    | none => cases hpa : p a <;> simp [hpa, hre]
+    | some l' =>
+      have hl := hp a l' hre
+      cases hpa : p a
+      · simp only [Bool.false_eq_true, if_false]
+        rw [List.filter_eq_nil_iff.mpr]
+        · rfl
+        · intro x hx
+          obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
+          simp [hl y hy, hpa]
+      · simp only [if_true, List.flatMap_cons, hre, List.append_left_inj]
+        rw [List.filter_eq_self.mpr]
+        intro x hx
+        obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
+        simp [hl y hy, hpa]
+
 /-- The per-position emitter of `physBodyWithStores`: the instructions that one
     virtual position `(i, virtIdx)` of `body` contributes, as the concatenation
     of its inline ABI-prologue loads, its register-allocated expansion, its
@@ -2773,10 +2855,13 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   -- The rolled loop body with per-access SIB-base reloads. `outStoreMap = []`
   -- (the loop already carries its own inline `STOREIDX`), `inLoadMap = none`
   -- (the body self-addresses through the array pointers, not per-word loads).
-  let bodyWithReload := (physBodyWithStores shiftImm' virt.lfd_body
-    (fun _ => none) reloadScratch2 [] reloadScratch2 0 memrefBaseReload
-    callArgBaseReload (abi := abi)).filter
-    (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
+  -- A `ZEROARR`/`STOREIMM` whose register base has a save slot addresses its base
+  -- through `R14`, reloaded from that slot (`reloadArrImmBody`).
+  let bodyWithReload := reloadArrImmBody memrefBaseReload
+    ((physBodyWithStores shiftImm' virt.lfd_body
+      (fun _ => none) reloadScratch2 [] reloadScratch2 0 memrefBaseReload
+      callArgBaseReload (abi := abi)).filter
+      (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true))
   -- Restore the callee-saved registers before the final `Lret`.
   let bodyWithRestore := insertEpilogue bodyWithReload calleeSaveRestoreEpilogue
   ({ virt with
