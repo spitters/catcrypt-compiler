@@ -421,13 +421,16 @@ theorem crateOp_sound (h : CrateTables fs bi T) {base : String → List NfTy →
         simp only [nfDenoteOp, tableOf, Option.bind_eq_some_iff] at hy
         obtain ⟨v, hv, hd⟩ := hy
         obtain ⟨-, fuel, s, hrun⟩ := h.call m hc _ v hv
-        obtain ⟨W, hpre, -, hvW⟩ := impToNF_sound (T m) (crateSigOf fs base)
-          (h.typedCalls hT m) (h.repeatCalls hR hfR m) c.body none (entryEnv c.params) ho' fuel _ x v s
-          (entryEnv_rel_paramsEnv c.params x) hrun tf
+        have hw : o'.prog.whileFree = true :=
+          SecureCompilation.Haxc.FrontComplete.whileFree_of_opsNB _
+            (SecureCompilation.Haxc.FrontComplete.impToNF_prog_frontOp _ c.body none _ o' ho')
+        obtain ⟨W, hprog, -, hvW⟩ := ImpToNF.Sound.all_of_whileFree (impToNF_sound (T m)
+          (crateSigOf fs base) (h.typedCalls hT m) (h.repeatCalls hR hfR m) c.body none
+          (entryEnv c.params) ho' fuel) hw (entryEnv_rel_paramsEnv c.params x) hrun
         have hy' : y = o'.res.lookup W :=
           enc_inj _ _ _ ((dec_sound _ _ _ hd).symm.trans hvW)
         subst hy'
-        exact PDenP_plug_ret _ tf o'.pre (.cons o'.res .nil) x hpre
+        exact hprog tf
       · cases hb
   | named _ o ih =>
       intro b hb x y hy

@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.NFToCat
 public import CatCrypt.Crypto.Hax.NFToCatCall
+public import CatCrypt.Crypto.Hax.FrontOps
 
 /-!
 # The domain of `nfToCat`
@@ -33,7 +34,8 @@ list `D` declares (`extOk D`), and by the exit-flag loops. The translation `nfTo
 
 * `litCount` — the number of literals among a vector of readings.
 * `litAt`, `LitOn` — the literal flags of a context and the readings that respect them.
-* `scalarCallOk`, `memCallOk`, `ilitOk`, `tripOk`, `nbOp` — the operations of the domain.
+* `scalarCallOk`, `memCallOk`, `tripOk`, `nbOp` — the operations of the domain, with the
+  integer literals of `ilitOk` (module `FrontOps`).
 * `rotCallOk`, `rotOpOk`, `litOp` — the rotations by a literal and the literal bindings.
 * `NBL`, `NB` — the programs of the domain at a list of flags, and at the empty list.
 * `extOk`, `NBDL`, `NBD` — the declared calls, and the programs of the domain with declared
@@ -342,15 +344,6 @@ def memCallOk (f : String) : List NfTy → NfTy → Bool
   | [.arr _ (.word 64)], .word 64 => f == "len"
   | as, .arr n (.word 64) => f == "array_lit" && decide (as = List.replicate n (.word 64))
   | _, _ => false
-
-/-- The integer literals in `[0, 2^64)` at an integer, a `64`-bit word or an unsigned integer
-    of at most `64` bits. -/
-def ilitOk (t : NfTy) (v : Int) : Bool :=
-  decide (0 ≤ v) && decide (v < 2 ^ 64) &&
-    (ImpToNF.hax64NFWordTy t ||
-      match t with
-      | .uint W => decide (W.bits ≤ 64)
-      | _ => false)
 
 /-- The types of an upper bound of a counted loop: an integer, a `64`-bit word and an
     unsigned integer. -/

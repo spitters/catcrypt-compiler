@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.Hax.HaxSourceLeak
 public import CatCrypt.Crypto.Hax.NFToCatLeak
 public import CatCrypt.Crypto.Hax.NFToCatCall
 public import CatCrypt.Crypto.SecureCompilation.CT.HaxLevels
+public import CatCrypt.Crypto.Hax.FrontOps
 
 /-!
 # The leakage transformer of `impToNF`
@@ -87,7 +88,8 @@ source runs declassify `d` (`SrcDeclIs`) (`impToNF_nfCTRelD`).
 * `CallLeak`, `CallLeak.opEv`, `CallLeak.Quiet`, `CallLeak.Agrees`, `CallLeak.nf`
 * `valNatOf`, `callLeak`, `srcLeakCl`, `srcArgsLeakCl`, `nfCallLeak`, `srcLeakNF`,
   `srcArgsLeakNF`, `nfEv`, `nfTrace`
-* `LSound` — the simulation statement of `ImpToNF.Sound` with the leakage of the prefix
+* `LSound` — the simulation statement of `ImpToNF.Sound` at every target fuel, with the
+  leakage of the prefix
 * `nfLeakModelQ`, `nfLeakRunQ` — the leakage model with quiet field calls and its runs
 * `SourceCTNF` — constant time at the source for `srcLeakNF`, modulo the field calls
 * `entryLabels`, `entryEnvOf`, `paramLevelOf`
@@ -498,6 +500,8 @@ open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
 open CatCrypt.Crypto.Hax.NFToCat (nfLeakModel nfKind nfValNat nfLeakRun stripField
   isFieldEvent)
 open CatCrypt.Crypto.Jasmin.LowCT (LevelTable SecretLevel)
+open CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete (frontOp preOps_append preOps_bind1N
+  atomOut_frontOp impToNF_frontOp Sound.all_of_preOps)
 open MultiBlockLowering (hvAppend)
 open Ctxt (Var Valuation)
 
@@ -757,9 +761,9 @@ theorem contLeak_enc (t : NfTy) (x : t.denote) (e1 : Env) (k : Value → Env →
 /-! ## The simulation with leakage -/
 
 /-- **The simulation statement with leakage** for the expression `e` and the output `o` of
-    the front from `σ` under the call leakage `C`: `ImpToNF.Sound`, with the prefix run by
-    its leakage run with the events of `C`, whose events are the transformed source leakage
-    `nfTrace (srcLeakCl bi C.cl e fuel env)`. -/
+    the front from `σ` under the call leakage `C`: `ImpToNF.Sound` at every target fuel, with
+    the prefix run by its leakage run with the events of `C`, whose events are the transformed
+    source leakage `nfTrace (srcLeakCl bi C.cl e fuel env)`. -/
 def LSound (bi : Builtins) (C : CallLeak) (fuel : Nat) (e : ImpExpr) {Γ : Ctxt nfDialect}
     (σ : NfEnv Γ) (o : Out Γ) : Prop :=
   ∀ (env : Env) (V : Valuation Γ) (v : Value) (env' : Env), EnvRel σ env V →
@@ -769,10 +773,10 @@ def LSound (bi : Builtins) (C : CallLeak) (fuel : Nat) (e : ImpExpr) {Γ : Ctxt 
 
 /-- The simulation with leakage implies the simulation. -/
 theorem LSound.sound {bi : Builtins} {fuel : Nat} {e : ImpExpr} {Γ : Ctxt nfDialect}
-    {σ : NfEnv Γ} {o : Out Γ} (h : LSound bi C fuel e σ o) : Sound bi fuel e σ o := by
-  intro env V v env' hrel hrun tf
-  obtain ⟨W, hW, hr, hv⟩ := h env V v env' hrel hrun tf
-  exact ⟨W, PLeak_den hW, hr, hv⟩
+    {σ : NfEnv Γ} {o : Out Γ} (h : LSound bi C fuel e σ o) : Sound bi fuel e σ o :=
+  Sound.of_all fun env V v env' hrel hrun tf => by
+    obtain ⟨W, hW, hr, hv⟩ := h env V v env' hrel hrun tf
+    exact ⟨W, PLeak_den hW, hr, hv⟩
 
 /-- The prefix leakage run of one binding of a quiet operation. -/
 theorem PLeak_bind1N_quiet (bi : Builtins) (fuel : Nat) (tgt : Option String)
@@ -1124,7 +1128,10 @@ theorem lsound_repeat (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : 
   split at h
   · cases h
     intro env V v env' hrel hrun tf
-    obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+    obtain ⟨W, hW, hr, hv⟩ := Sound.all_of_preOps hs (P := frontOp fun _ _ => none)
+      (by simp [Out.comp, preOps_append, atomOut_frontOp _ _ _ hox, preOps_bind1N, frontOp])
+      hrel hrun
+    have hW := hW tf
     refine ⟨W, ?_, hr, hv⟩
     have hx : ∀ env, nfTrace (srcLeakCl bi C.cl x fuel env) = [] := by
       intro env
@@ -1200,10 +1207,12 @@ theorem lsound_tuple (bi : Builtins) (sigOf : String → List NfTy → Option Nf
     (σ : NfEnv Γ) {o : Out Γ}
     (h : impToNF sigOf tgt σ (.tuple es) = some o) : LSound bi C fuel (.tuple es) σ o := by
   have hs := tuple_sound bi sigOf fuel tgt es σ h
+  have hp := impToNF_frontOp sigOf (.tuple es) tgt σ o h
   simp only [impToNF, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, rfl⟩ := h
   intro env V v env' hrel hrun tf
-  obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+  obtain ⟨W, hW, hr, hv⟩ := Sound.all_of_preOps hs hp hrel hrun
+  have hW := hW tf
   refine ⟨W, ?_, hr, hv⟩
   have hq : QuietPre bi C tf (oa.pre.append (tupleOut tgt oa.as oa.vs).2.1) :=
     QuietPre.append (quietPre_argsOut bi tf es σ hoa) (quietPre_tupleOut bi tf tgt oa.as oa.vs)
@@ -1224,10 +1233,12 @@ theorem lsound_proj (bi : Builtins) (sigOf : String → List NfTy → Option NfT
     (he : ∀ {oe : Out Γ}, impToNF sigOf none σ e = some oe → LSound bi C fuel e σ oe) :
     LSound bi C fuel (.proj e i) σ o := by
   have hs := proj_sound bi sigOf fuel tgt e i σ h fun h' => (he h').sound
+  have hp := impToNF_frontOp sigOf (.proj e i) tgt σ o h
   simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oe, hoe, op, hop, rfl⟩ := h
   intro env V v env' hrel hrun tf
-  obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+  obtain ⟨W, hW, hr, hv⟩ := Sound.all_of_preOps hs hp hrel hrun
+  have hW := hW tf
   refine ⟨W, ?_, hr, hv⟩
   obtain ⟨r, e1, h1⟩ := run_val_split (denote' bi fuel e) env
   rw [_root_.Hax.InlineLocalClosures.proj_run, h1] at hrun
@@ -1254,12 +1265,12 @@ theorem lsound_of_sound {bi : Builtins} {fuel : Nat} {e : ImpExpr} {Γ : Ctxt nf
       ∀ tf, ∃ W, PLeak bi C tf o.pre V = some (W, nfTrace (srcLeakCl bi C.cl e fuel env))) :
     LSound bi C fuel e σ o := by
   intro env V v env' hrel hrun tf
-  obtain ⟨W, hW, hr, hv⟩ := hs env V v env' hrel hrun tf
+  obtain ⟨W, ⟨N, hN⟩, hr, hv⟩ := hs.ev hrel hrun
   obtain ⟨W', hW'⟩ := ht env V v env' hrel hrun tf
-  have hd := PLeak_den hW'
-  rw [hW, Option.some.injEq] at hd
+  have hd := PDen_fuel_mono bi (le_max_left tf N) _ (PLeak_den hW')
+  rw [hN _ (le_max_right tf N), Option.some.injEq] at hd
   subst hd
-  exact ⟨W, hW', hr, hv⟩
+  exact ⟨_, hW', hr, hv⟩
 
 /-! ## The conditional -/
 
@@ -1434,7 +1445,8 @@ theorem forLeak_ge (bi : Builtins) (i : String) (body : ImpExpr) (lb : Nat → E
   | zero => rfl
   | succ n => simp only [forLeak, if_pos (show lo ≥ hi from h)]
 
-/-- **The loop with leakage.** `ImpToNF.loop_sound` for a step with events: let every run of
+/-- **The loop with leakage.** `ImpToNF.loop_sound` at one target fuel, for a step with
+    events: let every run of
     the body from an environment satisfying `Inv`, extended with the counter `lo + k`, to a
     value be matched by the step at `k` with the events of the transformed source leakage of
     the body. Then a run of `denoteForLoop'` from the counter `lo + k` to a value, with `m`
@@ -1790,7 +1802,9 @@ theorem lsound_forFold (bi : Builtins) (sigOf : String → List NfTy → Option 
   have hrelLo : EnvRel (loBind σ eLo).σ e1
       (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) z V) :=
     hrel.mapV (fun v => Var.there v) fun _ _ => rfl
-  obtain ⟨W2, hW2, hrel2, rfl⟩ := atomOut_sound bi fuel _ hi hHi e1 _ hv e1 hrelLo hh tf
+  obtain ⟨W2, hW2, hrel2, rfl⟩ := Sound.all_of_preOps (atomOut_sound bi fuel _ hi hHi)
+    (P := frontOp fun _ _ => none) (atomOut_frontOp _ _ _ hHi) hrelLo hh
+  replace hW2 := hW2 tf
   have hlitE : ∀ n, hi = .lit (.int n) → enc oHi.t (oHi.res.lookup W2) = .int n :=
     fun n hn => by
       subst hn
@@ -1887,7 +1901,9 @@ theorem lsound_forFoldRev (bi : Builtins) (sigOf : String → List NfTy → Opti
   have hrelLo : EnvRel (loBind σ eLo).σ e1
       (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) z V) :=
     hrel.mapV (fun v => Var.there v) fun _ _ => rfl
-  obtain ⟨W2, hW2, hrel2, rfl⟩ := atomOut_sound bi fuel _ hi hHi e1 _ hv e1 hrelLo hh tf
+  obtain ⟨W2, hW2, hrel2, rfl⟩ := Sound.all_of_preOps (atomOut_sound bi fuel _ hi hHi)
+    (P := frontOp fun _ _ => none) (atomOut_frontOp _ _ _ hHi) hrelLo hh
+  replace hW2 := hW2 tf
   have hlitE : ∀ n, hi = .lit (.int n) → enc oHi.t (oHi.res.lookup W2) = .int n :=
     fun n hn => by
       subst hn

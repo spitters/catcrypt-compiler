@@ -10,6 +10,7 @@ public import CatCrypt.Crypto.Hax.DenoteKeeps
 public import HaxLean.Phase.ContinueFlag
 public import HaxAscent.Ascent.Fuel
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFRegionLaws
 
 /-!
 # The front from the normal form of `HaxLean` to `NFProg nfDialect`
@@ -74,6 +75,7 @@ readback; its run keeps the value of the source run (`nfRoute_run`).
 * `impToNF`, `impArgsNF` — the front, and its translation of the arguments of a call.
 * `PDen`, `PDenP` — the denotation of a prefix and of a program with the leaves of
   `tableOf bi`.
+* `PDenEv` — a run of a prefix to one valuation at every fuel from some fuel on.
 * `Sound` — the simulation statement for one expression.
 * `CarriedRel`, `FrameRel` — the carried names and the other names of a loop.
 * `RB`, `RBEnv`, `rbProg`, `nfToImp` — the readings of variables and the readback.
@@ -895,15 +897,97 @@ theorem PDen_append (bi : Builtins) (fuel : Nat) {Γ Δ Θ : Ctxt nfDialect}
     PDen bi fuel (p.append q) V = (PDen bi fuel p V).bind (PDen bi fuel q) :=
   @NFPre.denote_append nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ fuel Γ Δ Θ p q V
 
+/-- **Fuel monotonicity of prefixes.** A run of a prefix at a fuel is a run at every larger
+    fuel, to the same valuation of the hole. -/
+theorem PDen_fuel_mono (bi : Builtins) {n m : Nat} (hnm : n ≤ m) {Γ Δ : Ctxt nfDialect}
+    (p : NFPre nfDialect Γ Δ) {V : Valuation Γ} {W : Valuation Δ}
+    (h : PDen bi n p V = some W) : PDen bi m p V = some W := by
+  let _ : DialectDenoteM nfDialect Option := nfDenote (tableOf bi)
+  have hP : ∀ {Γ' : Ctxt nfDialect} {ts : List NfTy} (q : NFProg nfDialect Γ' ts)
+      (X : Valuation Γ') (out : Valuation (d := nfDialect) ts),
+      q.denote n X = some out → q.denote m X = some out :=
+    fun q X out hq => NFProg.denoteAt_fuel_mono .empty hnm q X out hq
+  induction p with
+  | nil => exact h
+  | var e p ih =>
+      simp only [PDen, NFPre.denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
+      obtain ⟨x, hx, hp⟩ := h
+      exact ⟨x, hx, ih hp⟩
+  | forLoop count inits body p ih =>
+      simp only [PDen, NFPre.denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
+      obtain ⟨acc, hacc, hp⟩ := h
+      exact ⟨acc, NFProg.foldlM_some_mono (fun b i b' hb => hP body _ b' hb) _ _ _ hacc, ih hp⟩
+  | ifThenElse cond thn els p ih =>
+      simp only [PDen, NFPre.denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢
+      obtain ⟨r, hr, hp⟩ := h
+      refine ⟨r, ?_, ih hp⟩
+      split at hr <;> split <;> first | exact hP _ _ _ hr | contradiction
+
+/-- A run of the prefix `p` from `V` to the valuation `W` at every fuel from some fuel on. -/
+def PDenEv (bi : Builtins) {Γ Δ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ) (V : Valuation Γ)
+    (W : Valuation Δ) : Prop :=
+  ∃ N, ∀ tf, N ≤ tf → PDen bi tf p V = some W
+
+/-- A run of a prefix at one fuel is a run at every fuel from that fuel on. -/
+theorem PDenEv.of_some {bi : Builtins} {n : Nat} {Γ Δ : Ctxt nfDialect}
+    {p : NFPre nfDialect Γ Δ} {V : Valuation Γ} {W : Valuation Δ}
+    (h : PDen bi n p V = some W) : PDenEv bi p V W :=
+  ⟨n, fun _ htf => PDen_fuel_mono bi htf p h⟩
+
+/-- A composed prefix runs, from some fuel on, to the valuation the second prefix reaches
+    from the hole of the first. -/
+theorem PDenEv.append {bi : Builtins} {Γ Δ Θ : Ctxt nfDialect} {p : NFPre nfDialect Γ Δ}
+    {q : NFPre nfDialect Δ Θ} {V : Valuation Γ} {W : Valuation Δ} {W' : Valuation Θ}
+    (hp : PDenEv bi p V W) (hq : PDenEv bi q W W') : PDenEv bi (p.append q) V W' := by
+  obtain ⟨N₁, h₁⟩ := hp
+  obtain ⟨N₂, h₂⟩ := hq
+  refine ⟨max N₁ N₂, fun tf htf => ?_⟩
+  rw [PDen_append, h₁ tf (le_of_max_le_left htf), Option.bind_some]
+  exact h₂ tf (le_of_max_le_right htf)
+
 /-- **The simulation statement** for the expression `e` and the output `o` of the front
     from `σ`: a run of `denote' bi fuel e` from an environment related to `V` to a value
-    is matched, at every fuel `tf` of the target, by a valuation `W` of the hole of the
-    prefix, related to the final environment, whose result variable encodes the value. -/
+    is matched, at every fuel `tf` of the target from some fuel `N` on, by a valuation `W`
+    of the hole of the prefix, related to the final environment, whose result variable
+    encodes the value. -/
 def Sound (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ)
     (o : Out Γ) : Prop :=
   ∀ (env : Env) (V : Valuation Γ) (v : Value) (env' : Env), EnvRel σ env V →
     (denote' bi fuel e).run env = (.val v, env') →
-    ∀ tf, ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧ v = enc o.t (o.res.lookup W)
+    ∃ N, ∀ tf, N ≤ tf → ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧
+      v = enc o.t (o.res.lookup W)
+
+/-- A sound output gives one valuation `W` of the hole, reached from some fuel on. -/
+theorem Sound.ev {bi : Builtins} {fuel : Nat} {e : ImpExpr} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {o : Out Γ} (hs : Sound bi fuel e σ o) {env : Env} {V : Valuation Γ}
+    {v : Value} {env' : Env} (hrel : EnvRel σ env V)
+    (hrun : (denote' bi fuel e).run env = (.val v, env')) :
+    ∃ W, PDenEv bi o.pre V W ∧ EnvRel o.σ env' W ∧ v = enc o.t (o.res.lookup W) := by
+  obtain ⟨N, hN⟩ := hs env V v env' hrel hrun
+  obtain ⟨W, hW, hrelW, hv⟩ := hN N le_rfl
+  exact ⟨W, PDenEv.of_some hW, hrelW, hv⟩
+
+/-- An output is sound when every run to a value gives one valuation of the hole, reached
+    from some fuel on. -/
+theorem Sound.of_ev {bi : Builtins} {fuel : Nat} {e : ImpExpr} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {o : Out Γ}
+    (h : ∀ (env : Env) (V : Valuation Γ) (v : Value) (env' : Env), EnvRel σ env V →
+      (denote' bi fuel e).run env = (.val v, env') →
+      ∃ W, PDenEv bi o.pre V W ∧ EnvRel o.σ env' W ∧ v = enc o.t (o.res.lookup W)) :
+    Sound bi fuel e σ o := by
+  intro env V v env' hrel hrun
+  obtain ⟨W, ⟨N, hN⟩, hrelW, hv⟩ := h env V v env' hrel hrun
+  exact ⟨N, fun tf htf => ⟨W, hN tf htf, hrelW, hv⟩⟩
+
+/-- An output is sound when every run to a value is matched at every fuel. -/
+theorem Sound.of_all {bi : Builtins} {fuel : Nat} {e : ImpExpr} {Γ : Ctxt nfDialect}
+    {σ : NfEnv Γ} {o : Out Γ}
+    (h : ∀ (env : Env) (V : Valuation Γ) (v : Value) (env' : Env), EnvRel σ env V →
+      (denote' bi fuel e).run env = (.val v, env') →
+      ∀ tf, ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧
+        v = enc o.t (o.res.lookup W)) :
+    Sound bi fuel e σ o :=
+  fun env V v env' hrel hrun => ⟨0, fun tf _ => h env V v env' hrel hrun tf⟩
 
 /-- The output of one binding is sound when the operation, on the values of its
     arguments, gives a value whose encoding is the source value, and the run leaves the
@@ -914,7 +998,7 @@ theorem sound_bind1 (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γ : Ctxt nfDial
       env' = env ∧ ∃ x, nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V) = some x ∧
         v = enc op.ret x) :
     Sound bi fuel e σ (bind1 σ op args) := by
-  intro env V v env' hrel hrun tf
+  refine Sound.of_all fun env V v env' hrel hrun tf => ?_
   obtain ⟨rfl, x, hx, rfl⟩ := h env V v env' hrel hrun
   refine ⟨V.extend x, ?_, ?_, rfl⟩
   · rw [PDen_bind1, hx]; rfl
@@ -927,7 +1011,7 @@ theorem sound_bind1N (bi : Builtins) (fuel : Nat) (e : ImpExpr) (tgt : Option St
       env' = env ∧ ∃ x, nfDenoteOp (tableOf bi) op (Expr.lookupArgs args V) = some x ∧
         v = enc op.ret x) :
     Sound bi fuel e σ (bind1N tgt σ op args) := by
-  intro env V v env' hrel hrun tf
+  refine Sound.of_all fun env V v env' hrel hrun tf => ?_
   obtain ⟨rfl, x, hx, rfl⟩ := h env V v env' hrel hrun
   refine ⟨V.extend x, ?_, ?_, rfl⟩
   · rw [PDen_bind1N, hx]; rfl
@@ -1008,7 +1092,7 @@ theorem atomOut_sound (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} (σ : N
   | var x =>
       simp only [atomOut, Option.map_eq_some_iff] at h
       obtain ⟨⟨t, r⟩, hx, rfl⟩ := h
-      intro env V v env' hrel hrun tf
+      refine Sound.of_all fun env V v env' hrel hrun tf => ?_
       rw [var_run] at hrun
       have he := hrel x t r hx
       rw [he] at hrun
@@ -1092,18 +1176,18 @@ theorem argsOut_sound (bi : Builtins) (fuel : Nat) (es : List ImpExpr) :
     ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, argsOut σ es = some oa →
     ∀ (env : Env) (V : Valuation Γ) (vals : List Value) (env' : Env), EnvRel σ env V →
     (denoteArgs' bi fuel es).run env = (some vals, env') →
-    ∀ tf, ∃ W, PDen bi tf oa.pre V = some W ∧ EnvRel oa.σ env' W ∧
+    ∃ W, PDenEv bi oa.pre V W ∧ EnvRel oa.σ env' W ∧
       vals = encAll oa.as (Expr.lookupArgs oa.vs W) := by
   induction es with
   | nil =>
-      intro Γ σ oa h env V vals env' hrel hr tf
+      intro Γ σ oa h env V vals env' hrel hr
       simp only [argsOut, Option.some.injEq] at h
       subst h
       rw [args_nil_run] at hr
       cases hr
-      exact ⟨V, rfl, hrel, rfl⟩
+      exact ⟨V, ⟨0, fun _ _ => rfl⟩, hrel, rfl⟩
   | cons e es ih =>
-      intro Γ σ oa h env V vals env' hrel hr tf
+      intro Γ σ oa h env V vals env' hrel hr
       simp only [argsOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
       obtain ⟨o, ho, os, hos, rfl⟩ := h
       obtain ⟨a, e1, h1⟩ := run_val_split (denote' bi fuel e) env
@@ -1113,7 +1197,7 @@ theorem argsOut_sound (bi : Builtins) (fuel : Nat) (es : List ImpExpr) :
       subst he1
       cases a with
       | val v =>
-          obtain ⟨W1, hW1, hrel1, rfl⟩ := atomOut_sound bi fuel σ e ho e1 V v e1 hrel h1 tf
+          obtain ⟨W1, hW1, hrel1, rfl⟩ := (atomOut_sound bi fuel σ e ho).ev hrel h1
           rw [args_cons_run_val bi fuel es h1 (enc_ne_controlFlow _ _)] at hr
           obtain ⟨m, e2, h2⟩ := run_val_split (denoteArgs' bi fuel es) e1
           rw [h2] at hr
@@ -1121,12 +1205,12 @@ theorem argsOut_sound (bi : Builtins) (fuel : Nat) (es : List ImpExpr) :
           | none => cases hr
           | some vals' =>
               cases hr
-              obtain ⟨W2, hW2, hrel2, rfl⟩ := ih o.σ hos e1 W1 vals' e2 hrel1 h2 tf
-              refine ⟨W2, ?_, hrel2, ?_⟩
-              · rw [PDen_append, hW1]; exact hW2
-              · show _ :: _ = enc o.t ((os.pre.wk o.res).lookup W2) :: _
-                rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ os.pre
-                  o.res _ _ hW2]
+              obtain ⟨W2, hW2, hrel2, rfl⟩ := ih o.σ hos e1 W1 vals' e2 hrel1 h2
+              refine ⟨W2, hW1.append hW2, hrel2, ?_⟩
+              obtain ⟨N₂, hN₂⟩ := hW2
+              show _ :: _ = enc o.t ((os.pre.wk o.res).lookup W2) :: _
+              rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ N₂ _ _ _ os.pre
+                o.res _ _ (hN₂ N₂ le_rfl)]
       | _ =>
           rw [args_cons_run, h1] at hr
           cases hr
@@ -1169,15 +1253,14 @@ theorem tupleOut_sound (bi : Builtins) (tf : Nat) :
 theorem seq_sound (bi : Builtins) (fuel : Nat) {a b : ImpExpr} {Γ : Ctxt nfDialect}
     {σ : NfEnv Γ} {oa : Out Γ} (ha : Sound bi fuel a σ oa) {ob : Out oa.Δ}
     (hb : Sound bi fuel b oa.σ ob) : Sound bi fuel (.seq a b) σ (oa.comp ob) := by
-  intro env V v env' hrel hrun tf
+  refine Sound.of_ev fun env V v env' hrel hrun => ?_
   obtain ⟨ra, e1, h1⟩ := run_val_split (denote' bi fuel a) env
   cases ra with
   | val va =>
-      obtain ⟨W1, hW1, hrel1, rfl⟩ := ha env V va e1 hrel h1 tf
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := ha.ev hrel h1
       rw [seq_run_val bi fuel b h1 (enc_ne_controlFlow _ _)] at hrun
-      obtain ⟨W2, hW2, hrel2, rfl⟩ := hb e1 W1 v env' hrel1 hrun tf
-      exact ⟨W2, by show PDen bi tf (oa.pre.append ob.pre) V = _; rw [PDen_append, hW1]; exact hW2,
-        hrel2, rfl⟩
+      obtain ⟨W2, hW2, hrel2, rfl⟩ := hb.ev hrel1 hrun
+      exact ⟨W2, hW1.append hW2, hrel2, rfl⟩
   | _ => rw [seq_run, h1] at hrun; cases hrun
 
 /-- A binding of a sound output, followed by a sound output from the environment of names
@@ -1186,15 +1269,14 @@ theorem letBind_sound (bi : Builtins) (fuel : Nat) (x : String) {v b : ImpExpr}
     {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {ov : Out Γ} (hv : Sound bi fuel v σ ov)
     {ob : Out ov.Δ} (hb : Sound bi fuel b ((x, ⟨ov.t, ov.res⟩) :: ov.σ) ob) :
     Sound bi fuel (.letBind x v b) σ (ov.comp ob) := by
-  intro env V w env' hrel hrun tf
+  refine Sound.of_ev fun env V w env' hrel hrun => ?_
   obtain ⟨rv, e1, h1⟩ := run_val_split (denote' bi fuel v) env
   cases rv with
   | val wv =>
-      obtain ⟨W1, hW1, hrel1, rfl⟩ := hv env V wv e1 hrel h1 tf
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := hv.ev hrel h1
       rw [letBind_run_val bi fuel x b h1 (enc_ne_controlFlow _ _)] at hrun
-      obtain ⟨W2, hW2, hrel2, rfl⟩ := hb _ W1 w env' (hrel1.cons x ov.t ov.res) hrun tf
-      exact ⟨W2, by show PDen bi tf (ov.pre.append ob.pre) V = _; rw [PDen_append, hW1]; exact hW2,
-        hrel2, rfl⟩
+      obtain ⟨W2, hW2, hrel2, rfl⟩ := hb.ev (hrel1.cons x ov.t ov.res) hrun
+      exact ⟨W2, hW1.append hW2, hrel2, rfl⟩
   | _ => rw [letBind_run, h1] at hrun; cases hrun
 
 /-- An assignment of a sound output is sound. -/
@@ -1202,18 +1284,16 @@ theorem assign_sound(bi : Builtins) (fuel : Nat) (x : String) (tgt : Option Stri
     {r : ImpExpr} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hr : Sound bi fuel r σ o) :
     Sound bi fuel (.assign x r) σ
       (o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)) := by
-  intro env V w env' hrel hrun tf
+  refine Sound.of_ev fun env V w env' hrel hrun => ?_
   obtain ⟨rv, e1, h1⟩ := run_val_split (denote' bi fuel r) env
   cases rv with
   | val wv =>
-      obtain ⟨W1, hW1, hrel1, rfl⟩ := hr env V wv e1 hrel h1 tf
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := hr.ev hrel h1
       rw [assign_run_val bi fuel x h1 (enc_ne_controlFlow _ _)] at hrun
       cases hrun
-      refine ⟨W1.extend (), ?_, (hrel1.cons x o.t o.res).mapV (fun v => Var.there v)
-        fun _ _ => rfl, rfl⟩
-      exact (PDen_append bi tf o.pre _ V).trans
-        (by rw [hW1, Option.bind_some]
-            exact (PDen_bind1N bi tf tgt _ .constUnit .nil W1).trans rfl)
+      refine ⟨W1.extend (), hW1.append ⟨0, fun tf _ => ?_⟩,
+        (hrel1.cons x o.t o.res).mapV (fun v => Var.there v) fun _ _ => rfl, rfl⟩
+      exact (PDen_bind1N bi tf tgt _ .constUnit .nil W1).trans rfl
   | _ =>
       simp only [denote', StateT.run, bind, StateT.bind, pure, modify, modifyGet,
         MonadStateOf.modifyGet] at h1 hrun
@@ -1230,25 +1310,24 @@ theorem impArgsNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option
     ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, impArgsNF sigOf σ es = some oa →
     ∀ (env : Env) (V : Valuation Γ) (vals : List Value) (env' : Env), EnvRel σ env V →
     (denoteArgs' bi fuel es).run env = (some vals, env') →
-    ∀ tf, ∃ W, PDen bi tf oa.pre V = some W ∧ EnvRel oa.σ env' W ∧
+    ∃ W, PDenEv bi oa.pre V W ∧ EnvRel oa.σ env' W ∧
       vals = encAll oa.as (Expr.lookupArgs oa.vs W) := by
   induction es with
   | nil =>
-      intro Γ σ oa h env V vals env' hrel hr tf
+      intro Γ σ oa h env V vals env' hrel hr
       simp only [impArgsNF, Option.some.injEq] at h
       subst h
       rw [args_nil_run] at hr
       cases hr
-      exact ⟨V, rfl, hrel, rfl⟩
+      exact ⟨V, ⟨0, fun _ _ => rfl⟩, hrel, rfl⟩
   | cons e es ih =>
-      intro Γ σ oa h env V vals env' hrel hr tf
+      intro Γ σ oa h env V vals env' hrel hr
       simp only [impArgsNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
       obtain ⟨o, ho, os, hos, rfl⟩ := h
       obtain ⟨a, e1, h1⟩ := run_val_split (denote' bi fuel e) env
       cases a with
       | val v =>
-          obtain ⟨W1, hW1, hrel1, rfl⟩ :=
-            H e List.mem_cons_self σ ho env V v e1 hrel h1 tf
+          obtain ⟨W1, hW1, hrel1, rfl⟩ := (H e List.mem_cons_self σ ho).ev hrel h1
           rw [args_cons_run_val bi fuel es h1 (enc_ne_controlFlow _ _)] at hr
           obtain ⟨m, e2, h2⟩ := run_val_split (denoteArgs' bi fuel es) e1
           rw [h2] at hr
@@ -1258,12 +1337,12 @@ theorem impArgsNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option
               cases hr
               obtain ⟨W2, hW2, hrel2, rfl⟩ :=
                 ih (fun e' he' => H e' (List.mem_cons_of_mem _ he')) o.σ hos e1 W1 vals' e2
-                  hrel1 h2 tf
-              refine ⟨W2, ?_, hrel2, ?_⟩
-              · rw [PDen_append, hW1]; exact hW2
-              · show _ :: _ = enc o.t ((os.pre.wk o.res).lookup W2) :: _
-                rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ os.pre
-                  o.res _ _ hW2]
+                  hrel1 h2
+              refine ⟨W2, hW1.append hW2, hrel2, ?_⟩
+              · obtain ⟨N₂, hN₂⟩ := hW2
+                show _ :: _ = enc o.t ((os.pre.wk o.res).lookup W2) :: _
+                rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ N₂ _ _ _ os.pre
+                  o.res _ _ (hN₂ N₂ le_rfl)]
       | _ =>
           rw [args_cons_run, h1] at hr
           cases hr
@@ -1355,7 +1434,7 @@ theorem repeat_sound (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : O
     dsimp only at ht
     subst ht
     cases h
-    intro env V v env' hrel hrun tf
+    refine Sound.of_ev fun env V v env' hrel hrun => ?_
     obtain ⟨a, e1, h1⟩ := run_val_split (denote' bi fuel x) env
     have he1 : e1 = env := by
       have := atomOut_env bi fuel σ x hox env
@@ -1365,7 +1444,7 @@ theorem repeat_sound (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : O
     rw [app_run] at hrun
     cases a with
     | val w =>
-        obtain ⟨W1, hW1, hrel1, rfl⟩ := atomOut_sound bi fuel σ x hox env V w env hrel h1 tf
+        obtain ⟨W1, hW1, hrel1, rfl⟩ := (atomOut_sound bi fuel σ x hox).ev hrel h1
         rw [args_cons_run_val bi fuel _ h1 (enc_ne_controlFlow _ _), args_cons_run, lit_run]
           at hrun
         simp only [Value.ofLit, args_nil_run, Option.map_some] at hrun
@@ -1379,8 +1458,7 @@ theorem repeat_sound (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : O
             refine ⟨W1.extend (show (NfTy.arr N.toNat (.word 64)).denote from
               fun _ => res.lookup W1), ?_,
               hrel1.mapV (fun v => Var.there v) fun _ _ => rfl, ?_⟩
-            · refine (PDen_append bi tf _ _ V).trans ?_
-              rw [hW1, Option.bind_some]
+            · refine hW1.append ⟨0, fun tf _ => ?_⟩
               exact PDen_bind1N bi tf tgt σ₁ (.arrRepeat N.toNat (.word 64)) (.cons res .nil) W1
             · exact (enc_arr_const N.toNat (res.lookup W1)).symm
     | _ =>
@@ -1404,14 +1482,14 @@ theorem app_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
   rw [impToNF_app_call sigOf tgt σ hf] at h
   simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, r, hr, rfl⟩ := h
-  intro env V v env' hrel hrun tf
+  refine Sound.of_ev fun env V v env' hrel hrun => ?_
   obtain ⟨m, e1, h1⟩ := run_val_split (denoteArgs' bi fuel args) env
   rw [app_run, h1] at hrun
   cases m with
   | none => cases hrun
   | some vals =>
       obtain ⟨W, hW, hrel1, rfl⟩ :=
-        impArgsNF_sound bi sigOf fuel args HA σ hoa env V vals e1 hrel h1 tf
+        impArgsNF_sound bi sigOf fuel args HA σ hoa env V vals e1 hrel h1
       dsimp only at hrun
       cases hb : bi f (encAll oa.as (Expr.lookupArgs oa.vs W)) with
       | none => rw [hb] at hrun; cases hrun
@@ -1419,9 +1497,8 @@ theorem app_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
           rw [hb] at hrun
           cases hrun
           obtain ⟨y, hy, rfl⟩ := hT f oa.as r hr _ _ hb
-          refine ⟨W.extend y, ?_, hrel1.mapV (fun v => Var.there v) fun _ _ => rfl, rfl⟩
-          show PDen bi tf (oa.pre.append _) V = _
-          rw [PDen_append, hW, Option.bind_some]
+          refine ⟨W.extend y, hW.append ⟨0, fun tf _ => ?_⟩,
+            hrel1.mapV (fun v => Var.there v) fun _ _ => rfl, rfl⟩
           cases tgt <;>
           · show ((tableOf bi).call f oa.as r (Expr.lookupArgs oa.vs W)).bind
               (fun x => some (W.extend (t := r) x)) = _
@@ -1434,24 +1511,21 @@ theorem tuple_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfT
     (h : impToNF sigOf tgt σ (.tuple es) = some o) : Sound bi fuel (.tuple es) σ o := by
   simp only [impToNF, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, rfl⟩ := h
-  intro env V v env' hrel hrun tf
+  refine Sound.of_ev fun env V v env' hrel hrun => ?_
   obtain ⟨m, e1, h1⟩ := run_val_split (denoteArgs' bi fuel es) env
   rw [_root_.Hax.InlineLocalClosures.tuple_run, h1] at hrun
   cases m with
   | none => cases hrun
   | some vals =>
       cases hrun
-      obtain ⟨W, hW, hrel1, rfl⟩ := argsOut_sound bi fuel es σ hoa env V vals env' hrel h1 tf
-      have ht := tupleOut_sound bi tf tgt oa.as oa.vs W
+      obtain ⟨W, hW, hrel1, rfl⟩ := argsOut_sound bi fuel es σ hoa env V vals env' hrel h1
+      have ht := tupleOut_sound bi 0 tgt oa.as oa.vs W
       generalize tupleOut tgt oa.as oa.vs = T at ht ⊢
       obtain ⟨Δ, p, rv⟩ := T
       obtain ⟨W2, hW2, henc⟩ := ht
-      refine ⟨W2, ?_, hrel1.mapV _ fun t u =>
-        @NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ p u _ _ hW2,
+      exact ⟨W2, hW.append (PDenEv.of_some hW2), hrel1.mapV _ fun t u =>
+        @NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ 0 _ _ _ p u _ _ hW2,
         henc.symm⟩
-      show PDen bi tf (oa.pre.append p) V = _
-      rw [PDen_append, hW, Option.bind_some]
-      exact hW2
 
 /-- `projOut` translates a projection only of a tuple type with a first component. -/
 theorem projOut_tcons {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {t : NfTy}
@@ -1505,18 +1579,17 @@ theorem proj_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
     Sound bi fuel (.proj e i) σ o := by
   simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oe, hoe, op, hop, rfl⟩ := h
-  intro env V v env' hrel hrun tf
+  refine Sound.of_ev fun env V v env' hrel hrun => ?_
   obtain ⟨r, e1, h1⟩ := run_val_split (denote' bi fuel e) env
   rw [_root_.Hax.InlineLocalClosures.proj_run, h1] at hrun
   cases r with
   | val ve =>
-      obtain ⟨W1, hW1, hrel1, rfl⟩ := he hoe env V ve e1 hrel h1 tf
-      obtain ⟨W2, hW2, hrel2, hp⟩ := projOut_sound bi tf tgt i oe.σ oe.t oe.res hop e1 W1 hrel1
+      obtain ⟨W1, hW1, hrel1, rfl⟩ := (he hoe).ev hrel h1
+      obtain ⟨W2, hW2, hrel2, hp⟩ := projOut_sound bi 0 tgt i oe.σ oe.t oe.res hop e1 W1 hrel1
       have hv : v = enc op.t (op.res.lookup W2) ∧ env' = e1 := by
         grind [enc_ne_controlFlow]
       obtain ⟨rfl, rfl⟩ := hv
-      exact ⟨W2, by show PDen bi tf (oe.pre.append op.pre) V = _; rw [PDen_append, hW1]; exact hW2,
-        hrel2, rfl⟩
+      exact ⟨W2, hW1.append (PDenEv.of_some hW2), hrel2, rfl⟩
   | _ => cases hrun
 
 /-! ## 9. The carried names of a loop -/
@@ -1751,33 +1824,35 @@ theorem forLoop_succ_run_val (bi : Builtins) (n : Nat) (i : String) {lo hi : Int
 
 /-- **The loop.** Let every run of the body from an environment satisfying `Inv`, extended
     with the counter `lo + k`, to a value be matched by the target body at the trip index
-    `k` with `lo + k` below the upper bound, to a valuation of the carried tuple satisfying
-    `Inv` with the final environment. Then a run of `denoteForLoop'` from the counter
-    `lo + k` to a value, with `m` trips left and `k + m < 2 ^ 64`, is matched by the fold of
-    the target body over the trip indices `k, …, k + m - 1`. -/
+    `k` with `lo + k` below the upper bound, from some target fuel on, to a valuation of the
+    carried tuple satisfying `Inv` with the final environment. Then a run of
+    `denoteForLoop'` from the counter `lo + k` to a value, with `m` trips left and
+    `k + m < 2 ^ 64`, is matched, from some target fuel on, by the fold of the target body
+    over the trip indices `k, …, k + m - 1`. -/
 theorem loop_sound (bi : Builtins) (i : String)
     (body : ImpExpr) (lo h : Int) {Γ₃ : Ctxt nfDialect} (V₃ : Valuation Γ₃) {cs : List NfTy}
-    (bodyP : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ₃) cs) (tf : Nat)
+    (bodyP : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ₃) cs)
     (Inv : Env → Valuation (d := nfDialect) cs → Prop)
     (HS : ∀ (k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
       (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv env acc →
       (denote' bi fuel body).run (env.extend i (.int (lo + k))) = (rb, e₂) →
       (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
-        PDenP bi tf bodyP (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc' ∧
+        (∃ N, ∀ tf, N ≤ tf → PDenP bi tf bodyP
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc') ∧
         Inv e₂ acc') :
     ∀ (m k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (r : Value) (e : Env),
       (h - (lo + k)).toNat = m → k + m < 2 ^ 64 → Inv env acc →
       (_root_.Hax.denoteForLoop' bi fuel i (lo + k) h body).run env = (.val r, e) →
-      r = .unit ∧ ∃ acc', (List.range' k m).foldlM
+      r = .unit ∧ ∃ acc', (∃ N, ∀ tf, N ≤ tf → (List.range' k m).foldlM
         (fun a j => PDenP bi tf bodyP (hvAppend a (.cons (BitVec.ofNat 64 j) V₃))) acc =
-          some acc' ∧ Inv e acc' := by
+          some acc') ∧ Inv e acc' := by
   intro m
   induction m with
   | zero =>
       intro k fuel env acc r e hm _ hinv hrun
       rw [forLoop_ge_run bi fuel i _ h body env (by omega)] at hrun
       cases hrun
-      exact ⟨rfl, acc, rfl, hinv⟩
+      exact ⟨rfl, acc, ⟨0, fun _ _ => rfl⟩, hinv⟩
   | succ m ih =>
       intro k fuel env acc r e hm hk hinv hrun
       have hlt : lo + k < h := by omega
@@ -1796,13 +1871,14 @@ theorem loop_sound (bi : Builtins) (i : String)
               rw [forLoop_succ_run_val bi f i body hlt hb hcf] at hrun
               have hk1 : lo + k + 1 = lo + ((k + 1 : Nat) : Int) := by push_cast; ring
               rw [hk1] at hrun
-              obtain ⟨hr, acc'', hfold, hinv''⟩ :=
+              obtain ⟨hr, acc'', ⟨N₂, hfold⟩, hinv''⟩ :=
                 ih (k + 1) f e₂ acc' r e (by omega) (by omega) hinv' hrun
-              refine ⟨hr, acc'', ?_, hinv''⟩
+              obtain ⟨N₁, hacc'⟩ := hacc'
+              refine ⟨hr, acc'', ⟨max N₁ N₂, fun tf htf => ?_⟩, hinv''⟩
               rw [List.range'_succ, List.foldlM_cons]
               show (PDenP bi tf bodyP (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))).bind _ = _
-              rw [hacc', Option.bind_some]
-              exact hfold
+              rw [hacc' tf (le_of_max_le_left htf), Option.bind_some]
+              exact hfold tf (le_of_max_le_right htf)
           | _ =>
               rw [forLoop_succ_run bi f i _ h body env hlt, hb] at hrun
               cases hrun
@@ -1969,33 +2045,34 @@ theorem forLoopRev_succ_run_val (bi : Builtins) (n : Nat) (i : String) {lo hi : 
 
 /-- **The reverse loop.** `loop_sound` for `denoteForLoopRev'`: let every run of the body from
     an environment satisfying `Inv`, extended with the counter `h - 1 - k`, to a value be
-    matched by the target body at the trip index `k`. Then a run of `denoteForLoopRev'` on the
-    range from `lo` to `h - k`, with `m` trips left and `k + m < 2 ^ 64`, is matched by the
-    fold of the target body over the trip indices `k, …, k + m - 1`. -/
+    matched by the target body at the trip index `k` from some target fuel on. Then a run of
+    `denoteForLoopRev'` on the range from `lo` to `h - k`, with `m` trips left and
+    `k + m < 2 ^ 64`, is matched, from some target fuel on, by the fold of the target body
+    over the trip indices `k, …, k + m - 1`. -/
 theorem loopRev_sound (bi : Builtins) (i : String)
     (body : ImpExpr) (lo h : Int) {Γ₃ : Ctxt nfDialect} (V₃ : Valuation Γ₃) {cs : List NfTy}
-    (bodyP : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ₃) cs) (tf : Nat)
+    (bodyP : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ₃) cs)
     (Inv : Env → Valuation (d := nfDialect) cs → Prop)
     (HS : ∀ (k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome)
       (e₂ : Env), k < 2 ^ 64 → lo + (k : Int) < h → Inv env acc →
       (denote' bi fuel body).run (env.extend i (.int (h - 1 - k))) = (rb, e₂) →
       (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
-        PDenP bi tf bodyP
-          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc' ∧
+        (∃ N, ∀ tf, N ≤ tf → PDenP bi tf bodyP
+          (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) = some acc') ∧
         Inv e₂ acc') :
     ∀ (m k fuel : Nat) (env : Env) (acc : Valuation (d := nfDialect) cs) (r : Value) (e : Env),
       (h - k - lo).toNat = m → k + m < 2 ^ 64 → Inv env acc →
       (_root_.Hax.denoteForLoopRev' bi fuel i lo (h - k) body).run env = (.val r, e) →
-      r = .unit ∧ ∃ acc', (List.range' k m).foldlM
+      r = .unit ∧ ∃ acc', (∃ N, ∀ tf, N ≤ tf → (List.range' k m).foldlM
         (fun a j => PDenP bi tf bodyP (hvAppend a (.cons (BitVec.ofNat 64 j) V₃))) acc =
-          some acc' ∧ Inv e acc' := by
+          some acc') ∧ Inv e acc' := by
   intro m
   induction m with
   | zero =>
       intro k fuel env acc r e hm _ hinv hrun
       rw [forLoopRev_ge_run bi fuel i lo _ body env (by omega)] at hrun
       cases hrun
-      exact ⟨rfl, acc, rfl, hinv⟩
+      exact ⟨rfl, acc, ⟨0, fun _ _ => rfl⟩, hinv⟩
   | succ m ih =>
       intro k fuel env acc r e hm hk hinv hrun
       have hlt : lo < h - k := by omega
@@ -2016,14 +2093,15 @@ theorem loopRev_sound (bi : Builtins) (i : String)
               rw [forLoopRev_succ_run_val bi f i body hlt hb hcf] at hrun
               have hk1 : h - (k : Int) - 1 = h - ((k + 1 : Nat) : Int) := by push_cast; ring
               rw [hk1] at hrun
-              obtain ⟨hr, acc'', hfold, hinv''⟩ :=
+              obtain ⟨hr, acc'', ⟨N₂, hfold⟩, hinv''⟩ :=
                 ih (k + 1) f e₂ acc' r e (by omega) (by omega) hinv' hrun
-              refine ⟨hr, acc'', ?_, hinv''⟩
+              obtain ⟨N₁, hacc'⟩ := hacc'
+              refine ⟨hr, acc'', ⟨max N₁ N₂, fun tf htf => ?_⟩, hinv''⟩
               rw [List.range'_succ, List.foldlM_cons]
               show (PDenP bi tf bodyP (hvAppend acc
                 (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃))).bind _ = _
-              rw [hacc', Option.bind_some]
-              exact hfold
+              rw [hacc' tf (le_of_max_le_left htf), Option.bind_some]
+              exact hfold tf (le_of_max_le_right htf)
           | _ =>
               rw [← hc] at hb
               rw [forLoopRev_succ_run bi f i lo _ body env hlt, hb] at hrun
@@ -2156,7 +2234,8 @@ theorem ctrVal_trip (lo h : Int) (k : Nat) (hM : (h - lo).toNat < 2 ^ 64)
       rw [revCtr_toNat _ k hM (by omega)]
       omega
 
-/-- **The counted loop of the front is sound.** Let the prefix `pre₀` denote `V₃`, related
+/-- **The counted loop of the front is sound.** Let the prefix `pre₀` denote `V₃` from some
+    fuel on, related
     by `σ₃` to `env`, with `lo` in `loV` and the trip count `(h - lo).toNat` in `tripV`;
     let the names `xs` carry the values of `inits`, every name of `σ₃` other than `i` and
     the names `xs` be one the body does not bind, and `rec` be sound for the body. On
@@ -2176,7 +2255,7 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
     (hfr : ∀ x, x ∉ xs → x ≠ i → ∀ q, σ₃.lookup x = some q →
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) body = true)
     (env : Env) (V : Valuation Γ) (V₃ : Valuation Γ₃)
-    (tf : Nat) (hpre : PDen bi tf pre₀ V = some V₃) (hrel : EnvRel σ₃ env V₃)
+    (hpre : PDenEv bi pre₀ V V₃) (hrel : EnvRel σ₃ env V₃)
     (hcar : CarriedRel env xs cs (Expr.lookupArgs inits V₃)) (lo h : Int)
     (hlo : loV.lookup V₃ = lo) (htrip : tripV.lookup V₃ = BitVec.ofNat 64 (h - lo).toNat)
     (hM : (h - lo).toNat < 2 ^ 64) (hlo0 : 0 ≤ lo) (hh64 : h ≤ 2 ^ 64)
@@ -2185,7 +2264,7 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
     (hrun : (match rev with
       | none => _root_.Hax.denoteForLoop' bi fuel i lo h body
       | some _ => _root_.Hax.denoteForLoopRev' bi fuel i lo h body).run env = (.val r, env')) :
-    ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧ r = enc o.t (o.res.lookup W) := by
+    ∃ W, PDenEv bi o.pre V W ∧ EnvRel o.σ env' W ∧ r = enc o.t (o.res.lookup W) := by
   simp only [loopOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₀
   obtain ⟨ob, hob, rets, hrets, rfl⟩ := h₀
   -- the invariant of the loop: the carried names and the frame
@@ -2205,11 +2284,11 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
         (e.extend i (.int (ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64))))) =
         (rb, e₂) →
       (∃ w, rb = .val w) → ∃ w acc', rb = .val w ∧ (∀ b u, w ≠ .controlFlow b u) ∧
-        PDenP bi tf ((NFPre.append (ctrOut cs i (loopEnv σ₃ i xs cs (headVars cs)
-            fun v => Var.shiftApp (d := nfDialect) cs v.there) loV rev).pre
+        (∃ N, ∀ tf, N ≤ tf → PDenP bi tf ((NFPre.append (ctrOut cs i (loopEnv σ₃ i xs cs
+            (headVars cs) fun v => Var.shiftApp (d := nfDialect) cs v.there) loV rev).pre
             ob.pre).plug (.ret rets))
           (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)) =
-          some acc' ∧ Inv e₂ acc' := by
+          some acc') ∧ Inv e₂ acc' := by
     intro k f e acc rb e₂ hk hkh hinv hb hval
     obtain ⟨w, rfl⟩ := hval
     have hB : EnvRel (loopEnv σ₃ i xs cs (headVars cs)
@@ -2226,38 +2305,41 @@ theorem loopOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Optio
     obtain ⟨Wc, hWc, hrelC, hencC⟩ := ctrOut_sound bi cs i _ loV rev acc V₃ k e hB hk lo hlo
       hlo0 hc
     rw [← hencC] at hb
-    obtain ⟨W', hW', hrel', rfl⟩ := HB _ hob f _ _ w e₂ (hrelC.cons i _ _) hb tf
+    obtain ⟨W', ⟨N, hW'⟩, hrel', rfl⟩ := (HB _ hob f).ev (hrelC.cons i _ _) hb
     refine ⟨_, Expr.lookupArgs rets W', rfl, enc_ne_controlFlow _ _, ?_, ?_, ?_⟩
-    · exact PDenP_plug_ret bi tf _ rets _ (PDen_append_some bi tf (hWc tf) hW')
+    · exact ⟨N, fun tf htf =>
+        PDenP_plug_ret bi tf _ rets _ (PDen_append_some bi tf (hWc tf) (hW' tf htf))⟩
     · exact CarriedRel.of_varsAt hrel' xs cs hrets
     · intro x hx hxi t v hl
       rw [denote'_keeps bi body (hfr x hx hxi _ hl) f _ hb (by rintro ⟨_, h⟩; cases h),
         Env.extend_other _ _ _ _ hxi]
       exact hinv.2 x hx hxi t v hl
-  obtain ⟨rfl, accF, hfold, hinvF⟩ : r = .unit ∧ ∃ accF, (List.range' 0 (h - lo).toNat).foldlM
+  obtain ⟨rfl, accF, ⟨N₁, hfold⟩, hinvF⟩ : r = .unit ∧ ∃ accF, (∃ N, ∀ tf, N ≤ tf →
+      (List.range' 0 (h - lo).toNat).foldlM
       (fun a j => PDenP bi tf ((NFPre.append (ctrOut cs i (loopEnv σ₃ i xs cs (headVars cs)
             fun v => Var.shiftApp (d := nfDialect) cs v.there) loV rev).pre
             ob.pre).plug (.ret rets)) (hvAppend a (.cons (BitVec.ofNat 64 j) V₃)))
-      (Expr.lookupArgs inits V₃) = some accF ∧ Inv env' accF := by
+      (Expr.lookupArgs inits V₃) = some accF) ∧ Inv env' accF := by
     cases rev with
     | none =>
         have hrun0 : (_root_.Hax.denoteForLoop' bi fuel i (lo + ((0 : Nat) : Int)) h
             body).run env = (.val r, env') := by simpa using hrun
-        exact loop_sound bi i body lo h V₃ _ tf Inv
+        exact loop_sound bi i body lo h V₃ _ Inv
           (fun k f e acc rb e₂ hk hkh hinv hb hval => HS k f e acc rb e₂ hk hkh hinv hb hval)
           ((h - lo).toNat) 0 fuel env (Expr.lookupArgs inits V₃) r env' (by simp)
           (by simpa using hM) ⟨hcar, fun x _ _ t v hl => hrel x t v hl⟩ hrun0
     | some m =>
         have hrun0 : (_root_.Hax.denoteForLoopRev' bi fuel i lo (h - ((0 : Nat) : Int))
             body).run env = (.val r, env') := by simpa using hrun
-        exact loopRev_sound bi i body lo h V₃ _ tf Inv
+        exact loopRev_sound bi i body lo h V₃ _ Inv
           (fun k f e acc rb e₂ hk hkh hinv hb hval => HS k f e acc rb e₂ hk hkh hinv
             (by rw [hcv k hkh]; exact hb) hval)
           ((h - lo).toNat) 0 fuel env (Expr.lookupArgs inits V₃) r env' (by simp)
           (by simpa using hM) ⟨hcar, fun x _ _ t v hl => hrel x t v hl⟩ hrun0
   refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend accF V₃), ?_, ?_, rfl⟩
-  · refine PDen_append_some bi tf hpre
-      (PDen_forLoop_some bi tf ((h - lo).toNat) ?_ hfold ?_)
+  · obtain ⟨N₀, hpre⟩ := hpre
+    refine ⟨max N₀ N₁, fun tf htf => PDen_append_some bi tf (hpre tf (le_of_max_le_left htf))
+      (PDen_forLoop_some bi tf ((h - lo).toNat) ?_ (hfold tf (le_of_max_le_right htf)) ?_)⟩
     · rw [htrip, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hM]
     · exact (PDen_bind1N bi tf tgt _ .constUnit .nil _).trans rfl
   · exact (EnvRel.loopEnv σ₃ i xs cs hlen (headVars cs) (fun v => Var.shiftApp cs v)
@@ -2409,7 +2491,7 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
   split at hL
   case isFalse => cases hL
   rename_i hbd
-  intro env V r env' hrel hrun tf
+  refine Sound.of_ev fun env V r env' hrel hrun => ?_
   obtain ⟨z, vlo, hl, hz, hz0, hz64, hLo⟩ := loOut_sound bi fuel σ lo hLoE env V hrel
   obtain ⟨hv, e1, hh⟩ := forFold_hi_val bi fuel i lo hi body hl hz hrun
   have he1 : e1 = env := by
@@ -2419,8 +2501,7 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
   have hrelLo : EnvRel (loBind σ eLo).σ e1
       (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) z V) :=
     hrel.mapV (fun v => Var.there v) fun _ _ => rfl
-  have hHiS := atomOut_sound bi fuel _ hi hHi e1 _ hv e1 hrelLo hh
-  obtain ⟨W2, hW2, hrel2, rfl⟩ := hHiS tf
+  obtain ⟨W2, hW2E, hrel2, rfl⟩ := (atomOut_sound bi fuel _ hi hHi).ev hrelLo hh
   have hlitE : ∀ n, hi = .lit (.int n) → enc oHi.t (oHi.res.lookup W2) = .int n :=
     fun n hn => by
       subst hn
@@ -2430,9 +2511,10 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
       exact h2.symm
   obtain ⟨hInt, htoInt⟩ := exists_toInt_of_bound hbd hlitE
   have hloop := forFold_enc_run bi fuel i lo hi body hl hz hh htoInt hrun
-  have hloW : (oHi.pre.wk (loBind σ eLo).res).lookup W2 = z :=
-    (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ oHi.pre _ _ _ hW2).trans
-      rfl
+  have hloW : (oHi.pre.wk (loBind σ eLo).res).lookup W2 = z := by
+    obtain ⟨N₂, hW2⟩ := hW2E
+    exact (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ N₂ _ _ _ oHi.pre _ _ _
+      (hW2 N₂ le_rfl)).trans rfl
   have hargsT : Expr.lookupArgs (HVector.cons (oHi.pre.wk (loBind σ eLo).res)
       (HVector.cons oHi.res .nil)) W2 =
       HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) z
@@ -2441,10 +2523,11 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
       (HVector.cons (oHi.res.lookup W2) .nil) = _
     rw [hloW]
     rfl
-  have hTrip : PDen bi tf (bind1 oHi.σ (.trip oHi.t)
+  have hTrip : ∀ tf, PDen bi tf (bind1 oHi.σ (.trip oHi.t)
       (.cons (oHi.pre.wk (loBind σ eLo).res) (.cons oHi.res .nil))).pre W2 =
       some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
         (BitVec.ofNat 64 (hInt - z).toNat) W2) := by
+    intro tf
     refine (PDen_bind1 bi tf _ (.trip oHi.t) _ W2).trans ?_
     refine (congrArg (fun a => Option.map _ (nfDenoteOp (tableOf bi) (.trip oHi.t) a))
       hargsT).trans ?_
@@ -2462,7 +2545,7 @@ theorem forFold_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     (fun σ' _ h' fuel' => HB σ' h' fuel')
     (by rw [List.length_map, entriesVars_length])
     (fun x hx hxi _ hl => frameOk_of_not_carried _ i body hl hxi hx)
-    e1 V _ tf (PDen_append_some bi tf (PDen_append_some bi tf (hLo tf) hW2) hTrip) hrelT
+    e1 V _ ((PDenEv.append ⟨0, fun tf _ => hLo tf⟩ hW2E).append ⟨0, fun tf _ => hTrip tf⟩) hrelT
     (CarriedRel.of_entries hrelT _ (carried_lookup _ i body)) z hInt hloW rfl
     (by omega) hz0 (by omega) (fun _ h => by cases h)
     r env' hloop
@@ -2481,7 +2564,7 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
   split at hL
   case isFalse => cases hL
   rename_i hbd
-  intro env V r env' hrel hrun tf
+  refine Sound.of_ev fun env V r env' hrel hrun => ?_
   obtain ⟨z, vlo, hl, hz, hz0, hz64, hLo⟩ := loOut_sound bi fuel σ lo hLoE env V hrel
   obtain ⟨hv, e1, hh⟩ := forFoldRev_hi_val bi fuel i lo hi body hl hz hrun
   have he1 : e1 = env := by
@@ -2491,8 +2574,7 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
   have hrelLo : EnvRel (loBind σ eLo).σ e1
       (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) z V) :=
     hrel.mapV (fun v => Var.there v) fun _ _ => rfl
-  have hHiS := atomOut_sound bi fuel _ hi hHi e1 _ hv e1 hrelLo hh
-  obtain ⟨W2, hW2, hrel2, rfl⟩ := hHiS tf
+  obtain ⟨W2, hW2E, hrel2, rfl⟩ := (atomOut_sound bi fuel _ hi hHi).ev hrelLo hh
   have hlitE : ∀ n, hi = .lit (.int n) → enc oHi.t (oHi.res.lookup W2) = .int n :=
     fun n hn => by
       subst hn
@@ -2502,9 +2584,10 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
       exact h2.symm
   obtain ⟨hInt, htoInt⟩ := exists_toInt_of_bound hbd hlitE
   have hloop := forFoldRev_enc_run bi fuel i lo hi body hl hz hh htoInt hrun
-  have hloW : (oHi.pre.wk (loBind σ eLo).res).lookup W2 = z :=
-    (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ oHi.pre _ _ _
-      hW2).trans rfl
+  have hloW : (oHi.pre.wk (loBind σ eLo).res).lookup W2 = z := by
+    obtain ⟨N₂, hW2⟩ := hW2E
+    exact (@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ N₂ _ _ _ oHi.pre _ _ _
+      (hW2 N₂ le_rfl)).trans rfl
   have hargsT : Expr.lookupArgs (HVector.cons (oHi.pre.wk (loBind σ eLo).res)
       (HVector.cons oHi.res .nil)) W2 =
       HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.int) z
@@ -2513,10 +2596,11 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
       (HVector.cons (oHi.res.lookup W2) .nil) = _
     rw [hloW]
     rfl
-  have hTrip : PDen bi tf (bind1 oHi.σ (.trip oHi.t)
+  have hTrip : ∀ tf, PDen bi tf (bind1 oHi.σ (.trip oHi.t)
       (.cons (oHi.pre.wk (loBind σ eLo).res) (.cons oHi.res .nil))).pre W2 =
       some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
         (BitVec.ofNat 64 (hInt - z).toNat) W2) := by
+    intro tf
     refine (PDen_bind1 bi tf _ (.trip oHi.t) _ W2).trans ?_
     refine (congrArg (fun a => Option.map _ (nfDenoteOp (tableOf bi) (.trip oHi.t) a))
       hargsT).trans ?_
@@ -2530,7 +2614,7 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
         (BitVec.ofNat 64 (hInt - z).toNat) W2) :=
     hrel2.mapV (fun v => Var.there v) fun _ _ => rfl
   -- the word `trip - 1`
-  have hOne : PDen bi tf (bind1 (bind1 oHi.σ (.trip oHi.t)
+  have hOne : ∀ tf, PDen bi tf (bind1 (bind1 oHi.σ (.trip oHi.t)
       (.cons (oHi.pre.wk (loBind σ eLo).res) (.cons oHi.res .nil))).σ
       (.ilit (.word 64) 1) .nil).pre
       (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
@@ -2538,8 +2622,8 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
       some (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 1)
         (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
           (BitVec.ofNat 64 (hInt - z).toNat) W2)) :=
-    (PDen_bind1 bi tf _ (.ilit (.word 64) 1) .nil _).trans rfl
-  have hSub : PDen bi tf (bind1 (bind1 (bind1 oHi.σ (.trip oHi.t)
+    fun tf => (PDen_bind1 bi tf _ (.ilit (.word 64) 1) .nil _).trans rfl
+  have hSub : ∀ tf, PDen bi tf (bind1 (bind1 (bind1 oHi.σ (.trip oHi.t)
       (.cons (oHi.pre.wk (loBind σ eLo).res) (.cons oHi.res .nil))).σ
       (.ilit (.word 64) 1) .nil).σ (.bin .sub 64)
       (.cons (Var.there Var.here) (.cons Var.here .nil))).pre
@@ -2551,7 +2635,7 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
         (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (BitVec.ofNat 64 1)
           (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
             (BitVec.ofNat 64 (hInt - z).toNat) W2))) :=
-    (PDen_bind1 bi tf _ (.bin .sub 64) _ _).trans rfl
+    fun tf => (PDen_bind1 bi tf _ (.bin .sub 64) _ _).trans rfl
   have hrelM := (hrelT.mapV (fun v => Var.there (s := NfTy.word 64) v) fun _ _ => rfl).mapV
     (fun v => Var.there (s := NfTy.word 64) v)
     (W := HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64)
@@ -2564,8 +2648,9 @@ theorem forFoldRev_sound (bi : Builtins) (sigOf : String → List NfTy → Optio
     (fun σ' _ h' fuel' => HB σ' h' fuel')
     (by rw [List.length_map, entriesVars_length])
     (fun x hx hxi _ hl => frameOk_of_not_carried _ i body hl hxi hx)
-    e1 V _ tf (PDen_append_some bi tf (PDen_append_some bi tf (PDen_append_some bi tf
-      (PDen_append_some bi tf (hLo tf) hW2) hTrip) hOne) hSub) hrelM
+    e1 V _ ((((PDenEv.append ⟨0, fun tf _ => hLo tf⟩ hW2E).append
+      ⟨0, fun tf _ => hTrip tf⟩).append ⟨0, fun tf _ => hOne tf⟩).append
+      ⟨0, fun tf _ => hSub tf⟩) hrelM
     (CarriedRel.of_entries hrelM _ (carried_lookup _ i body)) z hInt hloW rfl
     (by omega) hz0 (by omega)
     (fun _ hm => by cases hm; rfl) r env' hloop
@@ -2643,17 +2728,17 @@ theorem condArm_sound (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γc : Ctxt nfD
     (hS : Sound bi fuel e σc o)
     (hfr : ∀ x, x ∉ xs → ∀ q, σc.lookup x = some q →
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) e = true)
-    (env : Env) (Vc : Valuation Γc) (tf : Nat) (hrel : EnvRel σc env Vc) (r : Value)
+    (env : Env) (Vc : Valuation Γc) (hrel : EnvRel σc env Vc) (r : Value)
     (env' : Env) (hrun : (denote' bi fuel e).run env = (.val r, env')) :
     ∃ (x : o.t.denote) (acc : Valuation (d := nfDialect) cs),
-      PDenP bi tf (o.pre.plug (.ret (.cons o.res rets))) Vc =
-        some (HVector.cons (f := fun t => ⟦t⟧) x acc) ∧
+      (∃ N, ∀ tf, N ≤ tf → PDenP bi tf (o.pre.plug (.ret (.cons o.res rets))) Vc =
+        some (HVector.cons (f := fun t => ⟦t⟧) x acc)) ∧
       EnvRel (condEnv σc xs o.t cs) env'
         (HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc)) ∧
       r = enc o.t x := by
-  obtain ⟨W2, hW2, hrel2, rfl⟩ := hS env Vc r env' hrel hrun tf
+  obtain ⟨W2, ⟨N, hW2⟩, hrel2, rfl⟩ := hS.ev hrel hrun
   refine ⟨o.res.lookup W2, Expr.lookupArgs rets W2,
-    PDenP_plug_ret bi tf _ (HVector.cons o.res rets) Vc hW2, ?_, rfl⟩
+    ⟨N, fun tf htf => PDenP_plug_ret bi tf _ (HVector.cons o.res rets) Vc (hW2 tf htf)⟩, ?_, rfl⟩
   intro y t v hl
   refine EnvRel.bindAll xs cs _ _ hlen ?_ y ?_ t v hl
   · show CarriedRel env' xs cs (Expr.lookupArgs (HVector.renameVars (fun v => Var.there v)
@@ -2683,16 +2768,17 @@ theorem condArmU_sound (bi : Builtins) (fuel : Nat) (e : ImpExpr) {Γc : Ctxt nf
     (hS : Sound bi fuel e σc o)
     (hfr : ∀ x, x ∉ xs → ∀ q, σc.lookup x = some q →
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) e = true)
-    (env : Env) (Vc : Valuation Γc) (tf : Nat) (hrel : EnvRel σc env Vc) (r : Value)
+    (env : Env) (Vc : Valuation Γc) (hrel : EnvRel σc env Vc) (r : Value)
     (env' : Env) (hrun : (denote' bi fuel e).run env = (.val r, env')) :
     ∃ (acc : Valuation (d := nfDialect) cs) (x : o.t.denote),
-      PDenP bi tf (o.pre.plug (.ret rets)) Vc = some acc ∧
+      (∃ N, ∀ tf, N ≤ tf → PDenP bi tf (o.pre.plug (.ret rets)) Vc = some acc) ∧
       EnvRel (NfEnv.bindAll xs cs (headVars cs)
         (NfEnv.mapV (fun v => Var.shiftApp (d := nfDialect) cs v) σc)) env'
         (hvAppend acc Vc) ∧
       r = enc o.t x := by
-  obtain ⟨W2, hW2, hrel2, rfl⟩ := hS env Vc r env' hrel hrun tf
-  refine ⟨Expr.lookupArgs rets W2, o.res.lookup W2, PDenP_plug_ret bi tf _ rets Vc hW2, ?_, rfl⟩
+  obtain ⟨W2, ⟨N, hW2⟩, hrel2, rfl⟩ := hS.ev hrel hrun
+  refine ⟨Expr.lookupArgs rets W2, o.res.lookup W2,
+    ⟨N, fun tf htf => PDenP_plug_ret bi tf _ rets Vc (hW2 tf htf)⟩, ?_, rfl⟩
   intro y t v hl
   refine EnvRel.bindAll xs cs _ _ hlen ?_ y ?_ t v hl
   · rw [lookupArgs_headVars]
@@ -2713,7 +2799,8 @@ theorem enc_unit_eq {t : NfTy} (h : t = NfTy.unit) (x : t.denote) :
   subst h
   rfl
 
-/-- **The conditional of the front is sound.** Let the prefix `pre₀` denote `Vc`, related
+/-- **The conditional of the front is sound.** Let the prefix `pre₀` denote `Vc` from some
+    fuel on, related
     by `σc` to `env`; let `recA` and `recB` be sound for the arms `a` and `b`, and every
     name of `σc` outside `xs` be one neither arm binds. A run to a value of the arm the
     condition variable selects is then matched by the output of `condOut`. -/
@@ -2727,11 +2814,12 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
     (hfr : ∀ x, x ∉ xs → ∀ q, σc.lookup x = some q →
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) a = true ∧
         frameOk (fun _ => true) (fun n => n != x) (fun _ => true) b = true)
-    (env : Env) (V : Valuation Γ) (Vc : Valuation Γc) (tf : Nat)
-    (hpre : PDen bi tf pre₀ V = some Vc) (hrel : EnvRel σc env Vc) (r : Value) (env' : Env)
+    (env : Env) (V : Valuation Γ) (Vc : Valuation Γc)
+    (hpre : PDenEv bi pre₀ V Vc) (hrel : EnvRel σc env Vc) (r : Value) (env' : Env)
     (hrun : (denote' bi fuel (if HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) = true
       then a else b)).run env = (.val r, env')) :
-    ∃ W, PDen bi tf o.pre V = some W ∧ EnvRel o.σ env' W ∧ r = enc o.t (o.res.lookup W) := by
+    ∃ W, PDenEv bi o.pre V W ∧ EnvRel o.σ env' W ∧ r = enc o.t (o.res.lookup W) := by
+  obtain ⟨N₀, hpre⟩ := hpre
   unfold condOut at h₀
   obtain ⟨oa, hoa, h₀⟩ := Option.bind_eq_some_iff.mp h₀
   obtain ⟨ob, hob, h₀⟩ := Option.bind_eq_some_iff.mp h₀
@@ -2751,11 +2839,11 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
     by_cases hu : oa.t = NfTy.unit
     · rw [if_pos hu] at h₀
       subst h₀
-      obtain ⟨acc, x, hrv, hrelv, hval⟩ :
+      obtain ⟨acc, x, ⟨N₁, hrv⟩, hrelv, hval⟩ :
           ∃ (acc : Valuation (d := nfDialect) (cs ++ (condFresh σc oa.σ σb).map (·.2)))
             (x : oa.t.denote),
-          PDenP bi tf (if HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) = true then
-            oa.pre.plug (.ret ra) else preb.plug (.ret rb)) Vc = some acc ∧
+          (∃ N, ∀ tf, N ≤ tf → PDenP bi tf (if HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc)
+            = true then oa.pre.plug (.ret ra) else preb.plug (.ret rb)) Vc = some acc) ∧
           EnvRel (NfEnv.bindAll (xs ++ (condFresh σc oa.σ σb).map (·.1))
             (cs ++ (condFresh σc oa.σ σb).map (·.2))
             (headVars (cs ++ (condFresh σc oa.σ σb).map (·.2)))
@@ -2767,17 +2855,19 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
             rw [hc, if_pos rfl] at hrun
             rw [if_pos rfl]
             obtain ⟨acc, x, hrv, hrelv, hval⟩ := condArmU_sound bi fuel a σc _ _ hlen' ra hra
-              (HA hoa) (fun x hx q hq => (hfr' x hx q hq).1) env Vc tf hrel r env' hrun
+              (HA hoa) (fun x hx q hq => (hfr' x hx q hq).1) env Vc hrel r env' hrun
             exact ⟨acc, x, hrv, hrelv, hval⟩
         | false =>
             rw [hc, if_neg Bool.false_ne_true] at hrun
             rw [if_neg Bool.false_ne_true]
             obtain ⟨acc, x, hrv, hrelv, hval⟩ := condArmU_sound bi fuel b σc _ _ hlen' rb hrb
-              (HB hob) (fun x hx q hq => (hfr' x hx q hq).2) env Vc tf hrel r env' hrun
+              (HB hob) (fun x hx q hq => (hfr' x hx q hq).2) env Vc hrel r env' hrun
             exact ⟨acc, x, hrv, hrelv, hval⟩
       exact ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend acc Vc),
-        PDen_append_some bi tf (PDen_append_some bi tf hpre (PDen_ifThenElse_some bi tf hrv rfl))
-          ((PDen_bind1N bi tf none _ .constUnit .nil _).trans rfl),
+        ⟨max N₀ N₁, fun tf htf => PDen_append_some bi tf (PDen_append_some bi tf
+          (hpre tf (le_of_max_le_left htf))
+          (PDen_ifThenElse_some bi tf (hrv tf (le_of_max_le_right htf)) rfl))
+          ((PDen_bind1N bi tf none _ .constUnit .nil _).trans rfl)⟩,
         hrelv.mapV (fun v => Var.there v)
           (W := HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend acc Vc))
           fun _ _ => rfl,
@@ -2787,18 +2877,22 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
     cases hc : HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) with
     | true =>
         rw [hc, if_pos rfl] at hrun
-        obtain ⟨x, acc, hrv, hrelv, hval⟩ := condArm_sound bi fuel a σc _ _ hlen' ra hra
-          (HA hoa) (fun x hx q hq => (hfr' x hx q hq).1) env Vc tf hrel r env' hrun
+        obtain ⟨x, acc, ⟨N₁, hrv⟩, hrelv, hval⟩ := condArm_sound bi fuel a σc _ _ hlen' ra hra
+          (HA hoa) (fun x hx q hq => (hfr' x hx q hq).1) env Vc hrel r env' hrun
         exact ⟨HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc),
-          PDen_append_some bi tf hpre
-            (PDen_ifThenElse_some bi tf (by rw [hc, if_pos rfl]; exact hrv) rfl), hrelv, hval⟩
+          ⟨max N₀ N₁, fun tf htf => PDen_append_some bi tf (hpre tf (le_of_max_le_left htf))
+            (PDen_ifThenElse_some bi tf
+              (by rw [hc, if_pos rfl]; exact hrv tf (le_of_max_le_right htf)) rfl)⟩,
+          hrelv, hval⟩
     | false =>
         rw [hc, if_neg Bool.false_ne_true] at hrun
-        obtain ⟨x, acc, hrv, hrelv, hval⟩ := condArm_sound bi fuel b σc _ _ hlen' rb hrb
-          (HB hob) (fun x hx q hq => (hfr' x hx q hq).2) env Vc tf hrel r env' hrun
+        obtain ⟨x, acc, ⟨N₁, hrv⟩, hrelv, hval⟩ := condArm_sound bi fuel b σc _ _ hlen' rb hrb
+          (HB hob) (fun x hx q hq => (hfr' x hx q hq).2) env Vc hrel r env' hrun
         exact ⟨HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc),
-          PDen_append_some bi tf hpre
-            (PDen_ifThenElse_some bi tf (by rw [hc, if_neg Bool.false_ne_true]; exact hrv) rfl),
+          ⟨max N₀ N₁, fun tf htf => PDen_append_some bi tf (hpre tf (le_of_max_le_left htf))
+            (PDen_ifThenElse_some bi tf
+              (by rw [hc, if_neg Bool.false_ne_true]; exact hrv tf (le_of_max_le_right htf))
+              rfl)⟩,
           hrelv, hval⟩
   · rw [dif_neg ht] at h₀
     cases h₀
@@ -2836,16 +2930,16 @@ theorem cond_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
   by_cases htc : tc = NfTy.bit
   · subst htc
     rw [dif_pos rfl] at h
-    intro env V r env' hrel hrun tf
+    refine Sound.of_ev fun env V r env' hrel hrun => ?_
     obtain ⟨rc, e1, h1⟩ := run_val_split (denote' bi fuel c) env
     cases rc with
     | val vc =>
-        obtain ⟨W1, hW1, hrel1, rfl⟩ := hC env V vc e1 hrel h1 tf
+        obtain ⟨W1, hW1, hrel1, rfl⟩ := hC.ev hrel h1
         rw [ifThenElse_run_bool bi fuel a b h1] at hrun
         exact condOut_sound bi fuel a b prec σc resc _ _ _ _ h (fun h' => HA σc h')
           (fun h' => HB σc h') (by rw [List.length_map, entriesVars_length])
           (fun x hx _ hq => frameOk_of_not_condCarried σc a b hq hx)
-          e1 V W1 tf hW1 hrel1 r env' hrun
+          e1 V W1 hW1 hrel1 r env' hrun
     | _ =>
         rw [_root_.Hax.ContinueFlag.ifThenElse_run, h1] at hrun
         cases hrun
@@ -2855,10 +2949,11 @@ theorem cond_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
 /-! ## 11. The front simulates `denote'` -/
 
 /-- **The front simulates `denote'`.** Under the typing hypothesis `TypedCalls bi sigOf`
-    and `RepeatCalls bi`, for every expression `e` the front translates from `σ`, and every source fuel, a run of
-    `denote' bi fuel e` from an environment related to a valuation `V` to a value is
-    matched, at every target fuel, by the prefix: it denotes a valuation of its hole related
-    to the final environment, and the variable of the value encodes the value. -/
+    and `RepeatCalls bi`, for every expression `e` the front translates from `σ`, and every
+    source fuel, a run of `denote' bi fuel e` from an environment related to a valuation `V`
+    to a value is matched, at every target fuel from some fuel on, by the prefix: it denotes
+    a valuation of its hole related to the final environment, and the variable of the value
+    encodes the value. -/
 theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (e : ImpExpr) :
     ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
@@ -2898,11 +2993,11 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
       cases hr
       exact ⟨rfl, (), rfl, rfl⟩
   case typeAscription e s ih =>
-    intro tgt Γ σ o h fuel env V v env' hrel hrun tf
+    intro tgt Γ σ o h fuel env V v env' hrel hrun
     have hr : (denote' bi fuel (.typeAscription e s)).run env = (denote' bi fuel e).run env := by
       simp only [denote']
     rw [hr] at hrun
-    exact ih _ σ h fuel env V v env' hrel hrun tf
+    exact ih _ σ h fuel env V v env' hrel hrun
   case forFold i lo hi body _ _ ihb =>
     intro tgt Γ σ o h fuel
     exact forFold_sound bi sigOf fuel tgt i lo hi body σ h
@@ -4159,6 +4254,23 @@ theorem nfToImp_denote (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} {t : NfT
 def Out.prog {Γ : Ctxt nfDialect} (o : Out Γ) : NFProg nfDialect Γ [o.t] :=
   o.pre.plug (.ret (.cons o.res .nil))
 
+/-- **A sound output without `whileLoop` is matched at every fuel.** When the program of a
+    sound output has no `whileLoop`, a run of the source to a value gives one valuation `W`
+    of the hole such that the program denotes the result variable at `W` at every target
+    fuel. -/
+theorem Sound.all_of_whileFree {bi : Builtins} {fuel : Nat} {e : ImpExpr}
+    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hs : Sound bi fuel e σ o)
+    (hw : o.prog.whileFree = true) {env : Env} {V : Valuation Γ} {v : Value} {env' : Env}
+    (hrel : EnvRel σ env V) (hrun : (denote' bi fuel e).run env = (.val v, env')) :
+    ∃ W, (∀ tf, PDenP bi tf o.prog V = some (.cons (o.res.lookup W) .nil)) ∧
+      EnvRel o.σ env' W ∧ v = enc o.t (o.res.lookup W) := by
+  obtain ⟨W, ⟨N, hN⟩, hrelW, hv⟩ := hs.ev hrel hrun
+  refine ⟨W, fun tf => ?_, hrelW, hv⟩
+  have hp : PDenP bi N o.prog V = some (.cons (o.res.lookup W) .nil) :=
+    PDenP_plug_ret bi N o.pre (.cons o.res .nil) V (hN N le_rfl)
+  exact (@NFProg.denote_fuel_of_whileFree nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ _ _
+    o.prog hw tf N V).trans hp
+
 /-- **The route through `NFProg`** of an expression: the front `impToNF` from the
     environment of names `σ`, dead-code elimination `NFProg.dce`, and the readback
     `nfToImp` from the reading `ρ`. -/
@@ -4178,12 +4290,13 @@ theorem nfRoute_run (bi : Builtins) (sigOf : String → List NfTy → Option NfT
     ∃ fuel' env₂, (denote' bi fuel' e').run env = (.val v, env₂) := by
   simp only [nfRoute, Option.bind_eq_some_iff] at h
   obtain ⟨o, ho, hnf⟩ := h
-  obtain ⟨W, hpre, -, rfl⟩ := impToNF_sound bi sigOf hT hR e none σ ho fuel env V v env' hσ hrun 0
-  have hp : PDenP bi 0 o.prog V = some (.cons (o.res.lookup W) .nil) :=
-    PDenP_plug_ret bi 0 o.pre (.cons o.res .nil) V hpre
-  have hd : PDenP bi 0 (NFProg.dce o.prog) V = some (.cons (o.res.lookup W) .nil) :=
-    @NFProg.denote_dce nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ _ _ o.prog 0 V _ hp
-  exact nfToImp_denote bi 0 _ ρ hnf hρ hd
+  obtain ⟨N, hN⟩ := impToNF_sound bi sigOf hT hR e none σ ho fuel env V v env' hσ hrun
+  obtain ⟨W, hpre, -, rfl⟩ := hN N le_rfl
+  have hp : PDenP bi N o.prog V = some (.cons (o.res.lookup W) .nil) :=
+    PDenP_plug_ret bi N o.pre (.cons o.res .nil) V hpre
+  have hd : PDenP bi N (NFProg.dce o.prog) V = some (.cons (o.res.lookup W) .nil) :=
+    @NFProg.denote_dce nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ _ _ o.prog N V _ hp
+  exact nfToImp_denote bi N _ ρ hnf hρ hd
 
 /-! ## 15. The entry of a function -/
 

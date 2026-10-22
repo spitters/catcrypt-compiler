@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.ImpToNF
+public import CatCrypt.Crypto.Hax.FrontOps
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgModule
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
 public import CatCrypt.Crypto.SecureCompilation.Dialects.NFDceLeak
@@ -1709,15 +1710,17 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
         · rename_i v' hrun
           split at hv
           · cases hv
-            obtain ⟨W, hpre, -, hvW⟩ := impToNF_sound (crateBi fs bi fuelC m)
-              (crateSigOf fs base) (crateBi_typedCalls fs bi base hT fuelC m)
-              (crateBi_repeatCalls fs bi hR hfR fuelC m) c.body
-              none (entryEnv c.params) ho' fuelC _ x v _ (entryEnv_rel_paramsEnv c.params x)
-              (Prod.ext hrun rfl) tf
+            have hw : o'.prog.whileFree = true :=
+              SecureCompilation.Haxc.FrontComplete.whileFree_of_opsNB _
+                (SecureCompilation.Haxc.FrontComplete.impToNF_prog_frontOp _ c.body none _ o' ho')
+            obtain ⟨W, hprog, -, hvW⟩ := ImpToNF.Sound.all_of_whileFree (impToNF_sound
+              (crateBi fs bi fuelC m) (crateSigOf fs base) (crateBi_typedCalls fs bi base hT fuelC m)
+              (crateBi_repeatCalls fs bi hR hfR fuelC m) c.body none (entryEnv c.params) ho' fuelC)
+              hw (entryEnv_rel_paramsEnv c.params x) (Prod.ext hrun rfl)
             have hy' : y = o'.res.lookup W :=
               enc_inj _ _ _ ((dec_sound _ _ _ hd).symm.trans hvW)
             subst hy'
-            exact PDenP_plug_ret _ tf o'.pre (.cons o'.res .nil) x hpre
+            exact hprog tf
           · cases hv
         · cases hv
       · cases hb
