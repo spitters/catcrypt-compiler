@@ -8,6 +8,7 @@ module -- deprecated_module: ignore
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Hax.HaxToLowCT
 public import CatCrypt.Crypto.Hax.HaxCallNames
+public import CatCrypt.Crypto.Hax.ImpEval
 public import HaxLean.Semantics
 public import HaxLean.Value
 public import CatCrypt.Crypto.Jasmin.LowCTExec
@@ -59,7 +60,7 @@ The simulation proofs use the custom induction principle
 ## Contents
 
 * §1 Agreement predicate
-* §2 Source-side `evalImp` alias
+* §2 Source-side `evalImp` (defined in `ImpEval`)
 * §3 Main theorem statement (as `def` returning `Prop`)
 * §4 Demo lemmas validating the predicate setup
 * §5 Unreachable arms
@@ -100,87 +101,16 @@ def nameAgreesScalar (env : Env) (rs : RustState) (name : String) : Prop :=
 def envAgreesRust (env : Env) (rs : RustState) : Prop :=
   ∀ name, nameAgreesScalar env rs name
 
-/-! ## §2  Source-side evaluation alias
+/-! ## §2  Source-side evaluation
 
-The Hax-side big-step semantics `denote : Builtins → Nat → ImpExpr →
-StateM Env Outcome` is fuel-parametric.  This alias projects to the
-"good" case where evaluation produced a value. -/
-
-/-- `evalImp bi fuel e env` returns `some (v, env')` when `denote`
-    produces `Outcome.val v` with final env `env'`; `none` otherwise. -/
-def evalImp (bi : Builtins) (fuel : Nat) (e : ImpExpr) (env : Env) :
-    Option (Value × Env) :=
-  match (denote bi fuel e).run env with
-  | (.val v, env') => some (v, env')
-  | _ => none
-
-/-! ### §2.1  Source-side unfold lemmas
-
-These are the StateT/denote simp normal forms for the trivial cases.
-Each closes by unfolding the monad operations.
-
-The bi-directional lemmas (`_inv` variants) lift `evalImp e env = some
-(v, env')` to concrete equalities about `v` and `env'`, used in the
-per-case proofs of the main theorem. -/
+The value projection `evalImp` of `denote` and its unfold lemmas
+(`evalImp_unitVal`, `evalImp_var_some`, `evalImp_var_inv`,
+`evalImp_unitVal_inv`, `denote_typeAscription`, `evalImp_typeAscription`,
+`evalImp_letBind_lit_inv`) are in `CatCrypt.Crypto.Hax.ImpEval`, which this
+module re-exports. -/
 
 /-- The standard simp set for unfolding StateM operations on `denote`. -/
 abbrev stateMUnfolds : List Lean.Name := [] -- documentation only
-
-/-- `unitVal` evaluates to `.unit` with env unchanged. -/
-theorem evalImp_unitVal (bi : Builtins) (fuel : Nat) (env : Env) :
-    evalImp bi fuel .unitVal env = some (.unit, env) := by
-  unfold evalImp denote
-  simp only [pure, Pure.pure, StateT.pure, StateT.run]
-
-/-- `var name` evaluates to the env lookup when defined; env unchanged. -/
-theorem evalImp_var_some (bi : Builtins) (fuel : Nat) (name : String)
-    (env : Env) (v : Value) (h : env name = some v) :
-    evalImp bi fuel (.var name) env = some (v, env) := by
-  unfold evalImp denote
-  simp only [bind, Bind.bind, StateT.bind, get, getThe, MonadStateOf.get,
-             StateT.get, pure, Pure.pure, StateT.pure, StateT.run, h]
-
-/-- Inverse: extract `env name = some v` and `env' = env` from a
-    successful `evalImp` on `.var name`. -/
-theorem evalImp_var_inv (bi : Builtins) (fuel : Nat) (name : String)
-    (env : Env) (v : Value) (env' : Env)
-    (h : evalImp bi fuel (.var name) env = some (v, env')) :
-    env name = some v ∧ env' = env := by
-  cases hen : env name with
-  | none =>
-    exfalso
-    unfold evalImp denote at h
-    simp only [bind, Bind.bind, StateT.bind, get, getThe, MonadStateOf.get,
-               StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
-    cases h
-  | some w =>
-    have key := evalImp_var_some bi fuel name env w hen
-    rw [key] at h
-    rw [Option.some.injEq, Prod.mk.injEq] at h
-    exact ⟨congrArg some h.1, h.2.symm⟩
-
-/-- Inverse: extract `v = .unit` and `env' = env` from a successful
-    `evalImp` on `.unitVal`. -/
-theorem evalImp_unitVal_inv (bi : Builtins) (fuel : Nat)
-    (env : Env) (v : Value) (env' : Env)
-    (h : evalImp bi fuel .unitVal env = some (v, env')) :
-    v = .unit ∧ env' = env := by
-  have key := evalImp_unitVal bi fuel env
-  rw [key] at h
-  rw [Option.some.injEq, Prod.mk.injEq] at h
-  exact ⟨h.1.symm, h.2.symm⟩
-
-/-- `denote` erases a type ascription. -/
-theorem denote_typeAscription (bi : Builtins) (fuel : Nat) (e : ImpExpr) (ty : String) :
-    denote bi fuel (.typeAscription e ty) = denote bi fuel e := by
-  rw [denote]
-
-/-- `evalImp` erases a type ascription. -/
-theorem evalImp_typeAscription (bi : Builtins) (fuel : Nat) (e : ImpExpr) (ty : String)
-    (env : Env) :
-    evalImp bi fuel (.typeAscription e ty) env = evalImp bi fuel e env := by
-  unfold evalImp
-  rw [denote_typeAscription]
 
 /-- `haxToLowCT` erases a type ascription. -/
 theorem haxToLowCT_typeAscription_eq (e : ImpExpr) (ty : String) :
@@ -976,7 +906,7 @@ theorem haxToLowCT_simulates_cfBreakContinue
 /-! ## §6  Summary
 
 * §1 Agreement predicate (scalar-only)
-* §2 `evalImp` alias
+* §2 `evalImp` (in `ImpEval`)
 * §3 Main theorem statement as `def HaxToLowCTSimulates`
 * §4 Per-case LowCT-side structural lemmas:
   * `rustExec_RSkip_refl` (var / unitVal)
@@ -999,7 +929,7 @@ theorem haxToLowCT_simulates_cfBreakContinue
 * `seq`: `haxToLowCT_simulates_seq` via `evalImp_seq_inv` and
   `haxToLowCT_seq_some`, threading sub-IHs through
   `rustExec_RSeq_chain`.
-* `letBind lit`: the source-side inverse `evalImp_letBind_lit_inv`;
+* `letBind lit`: the source-side inverse `evalImp_letBind_lit_inv` (in `ImpEval`);
   the simulation instance, which also uses
   `envAgreesRust_extend_scalar`, is in `HaxToLowCTSim_Agreement.lean`.
 * The remaining productive cases are in the `HaxToLowCTSim_*` modules
@@ -1086,24 +1016,5 @@ theorem haxToLowCT_simulates_seq
   -- Combine via RSeq
   exact ⟨rs', rustExec_RSeq_chain N leafSpec aC bC rs rs_mid rs' hAexec hBexec,
          hAgree'⟩
-
-/-! ## §9  Source-side decomposition: `letBind` of a literal RHS
-
-For `letBind name (.lit l) body`, the RHS evaluation is `pure (.val
-(Value.ofLit l))` — guaranteed to succeed with no env change.  The
-inverse therefore says: there exists a value `vL = .ofLit l` such that
-the body, evaluated in the env extended at `name` with `vL`, produces
-`(v, env')`. -/
-
-theorem evalImp_letBind_lit_inv (bi : Builtins) (fuel : Nat) (name : String)
-    (l : ImpLit) (body : ImpExpr) (env : Env) (v : Value) (env' : Env)
-    (h : evalImp bi fuel (.letBind name (.lit l) body) env = some (v, env')) :
-    evalImp bi fuel body (env.extend name (Value.ofLit l)) = some (v, env') := by
-  unfold evalImp at h ⊢
-  -- Unfold the letBind + lit case of denote
-  simp only [denote, bind, Bind.bind, StateT.bind, StateT.run,
-             pure, Pure.pure, StateT.pure, modify, modifyGet,
-             MonadStateOf.modifyGet, StateT.modifyGet] at h
-  exact h
 
 end CatCrypt.Crypto.Hax

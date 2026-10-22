@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTSim_ProgramArr
+public import CatCrypt.Crypto.Hax.ImpEval
 
 /-!
 # Program-level simulation with counted loops
@@ -63,59 +64,10 @@ open CatCrypt.Crypto.Jasmin.LowCT
   (TowerType LowCT RustState RustExec LeafSpec Located RustVal SExpr
    rsSetTower rsSetScalar locatedUpdate locatedLookup)
 
-/-! ## §1  The source semantics of counted loops -/
+/-! ## §1  The source semantics of counted loops
 
-mutual
-
-/-- Every `forFold v lo hi body`, `forFoldRev v lo hi body` and `whileFold c body`
-    of a program replaced by `forLoop v lo hi body`, `forLoopRev v lo hi body`
-    and `whileLoop c body`, recursively. -/
-def forToLoop : ImpExpr → ImpExpr
-  | .lit l => .lit l
-  | .var n => .var n
-  | .letBind n v b => .letBind n (forToLoop v) (forToLoop b)
-  | .lam ps b => .lam ps (forToLoop b)
-  | .app f args => .app f (forToLoopArgs args)
-  | .tuple es => .tuple (forToLoopArgs es)
-  | .proj e i => .proj (forToLoop e) i
-  | .ifThenElse c t e => .ifThenElse (forToLoop c) (forToLoop t) (forToLoop e)
-  | .match_ s arms => .match_ (forToLoop s) (forToLoopArms arms)
-  | .unitVal => .unitVal
-  | .seq a b => .seq (forToLoop a) (forToLoop b)
-  | .borrow e => .borrow (forToLoop e)
-  | .deref e => .deref (forToLoop e)
-  | .assign n r => .assign n (forToLoop r)
-  | .forLoop v lo hi b => .forLoop v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .forLoopRev v lo hi b => .forLoopRev v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .whileLoop c b => .whileLoop (forToLoop c) (forToLoop b)
-  | .break_ none => .break_ none
-  | .break_ (some e) => .break_ (some (forToLoop e))
-  | .continue_ => .continue_
-  | .earlyReturn e => .earlyReturn (forToLoop e)
-  | .questionMark e => .questionMark (forToLoop e)
-  | .forFold v lo hi b => .forLoop v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .forFoldRev v lo hi b => .forLoopRev v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .whileFold c b => .whileLoop (forToLoop c) (forToLoop b)
-  | .forFoldReturn v lo hi b => .forFoldReturn v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .forFoldRevReturn v lo hi b =>
-      .forFoldRevReturn v (forToLoop lo) (forToLoop hi) (forToLoop b)
-  | .whileFoldReturn c b => .whileFoldReturn (forToLoop c) (forToLoop b)
-  | .cfBreak e => .cfBreak (forToLoop e)
-  | .cfContinue e => .cfContinue (forToLoop e)
-  | .cfBreakContinue e => .cfBreakContinue (forToLoop e)
-  | .typeAscription e ty => .typeAscription (forToLoop e) ty
-
-/-- `forToLoop` on every element of a list. -/
-def forToLoopArgs : List ImpExpr → List ImpExpr
-  | [] => []
-  | a :: as => forToLoop a :: forToLoopArgs as
-
-/-- `forToLoop` on every arm body. -/
-def forToLoopArms : List (ImpPat × ImpExpr) → List (ImpPat × ImpExpr)
-  | [] => []
-  | (p, e) :: rest => (p, forToLoop e) :: forToLoopArms rest
-
-end
+`forToLoop`, `forToLoopArgs` and `forToLoopArms` are in
+`CatCrypt.Crypto.Hax.ImpEval`, which this module re-exports. -/
 
 theorem forToLoopArgs_of_allVar :
     ∀ (args : List ImpExpr), args.all isVar = true → forToLoopArgs args = args
