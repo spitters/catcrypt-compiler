@@ -40,9 +40,9 @@ the rewrite.
 
 set_option autoImplicit false
 
-namespace Hax.Ascent
+namespace HaxAscent.Ascent
 
-open StructTuple
+open Hax Hax.Ascent StructTuple
 
 /-! ### The struct leaves as struct heads -/
 
@@ -56,21 +56,6 @@ def StructsAgree (sf : StructFieldTys) (structs : List StructSpec) : Prop :=
     ∀ i < s.arity,
       structHead? sf (structUpdateHead s.name i s.arity) = some (.update i s.arity)) ∧
   ∀ f, (structsTable structs).lookup f = none → structHead? sf f = none
-
-/-- An entry found by `List.lookup` is a member of the table. -/
-theorem mem_of_lookup_eq_some {t : Table} {f : String} {g : Leaf}
-    (h : t.lookup f = some g) : (f, g) ∈ t := by
-  induction t with
-  | nil => simp at h
-  | cons p t ih =>
-    obtain ⟨f', g'⟩ := p
-    by_cases hf : f = f'
-    · subst hf
-      rw [Table.lookup_cons_self] at h
-      cases h
-      exact List.mem_cons_self
-    · rw [Table.lookup_cons_of_ne _ _ hf] at h
-      exact List.mem_cons_of_mem _ (ih h)
 
 /-- The leaves of struct specifications of arity at least `2` that agree with the field
     layout `sf` answer every call on arguments without a control-flow value as the struct
@@ -86,7 +71,11 @@ theorem structTab_structsTable (sf : StructFieldTys) (structs : List StructSpec)
     simp [structBi, hagree.2 f hl, h]
   | some g =>
     rw [Table.over_of_lookup hl] at h
-    obtain ⟨s, hs, hm⟩ := List.mem_flatMap.mp (mem_of_lookup_eq_some hl)
+    have hmem : (f, g) ∈ structsTable structs := by
+      obtain ⟨_, _, he, -⟩ := List.lookup_eq_some_iff.mp hl
+      rw [he]
+      simp
+    obtain ⟨s, hs, hm⟩ := List.mem_flatMap.mp hmem
     obtain ⟨hctor, hproj, hupd⟩ := hagree.1 s hs
     have h2s := h2 s hs
     simp only [StructSpec.table, List.cons_append, List.mem_cons, List.mem_append,
@@ -215,4 +204,4 @@ example (base : Builtins) :
     StructTab pairLayout ((structsTable [pairSpec]).over base) base :=
   structTab_structsTable pairLayout [pairSpec] base structsAgree_pairLayout (by decide)
 
-end Hax.Ascent
+end HaxAscent.Ascent

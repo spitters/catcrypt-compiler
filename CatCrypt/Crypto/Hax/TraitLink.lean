@@ -27,7 +27,7 @@ declared head, and a link whose parameter names repeat. With no link it returns 
 `TraitLink.byteSem t T` is the byte-level meaning of the head of `t` read from the word meaning
 of the leaf in the table `T`: on admitted arguments it applies the conversions of the
 arguments, calls the leaf, and on an admitted result returns the converted result.
-`TraitLink.byteTable ls T bi` answers each declared head by its byte-level meaning and every
+`TraitLink.byteLinkTable ls T bi` answers each declared head by its byte-level meaning and every
 other call by `bi`.
 
 ## Main definitions
@@ -35,7 +35,7 @@ other call by `bi`.
 * `TraitLink` — a declared trait head, its leaf, the conversions of its parameters and of its
   result.
 * `TraitLink.wrapper` — the generated callee of a link as a function of a module.
-* `TraitLink.byteSem`, `TraitLink.byteTable` — the byte-level meaning of a declared head, and
+* `TraitLink.byteSem`, `TraitLink.byteLinkTable` — the byte-level meaning of a declared head, and
   the table extended by those meanings.
 * `HaxModule.withTraitLinks` — the module with the callees of the links added.
 
@@ -125,13 +125,13 @@ def byteSem (t : TraitLink) (T : Builtins) (vals : List Value) : Option Value :=
 /-- **The table extended by the byte-level meanings of the links `ls`**: the first link with a
     head answers a call by its byte-level meaning over `T`; every other call is a call of
     `bi`. -/
-def byteTable (ls : List TraitLink) (T bi : Builtins) : Builtins := fun g vals =>
+def byteLinkTable (ls : List TraitLink) (T bi : Builtins) : Builtins := fun g vals =>
   match ls.find? (·.head == g) with
   | some t => t.byteSem T vals
   | none => bi g vals
 
 /-- With no link the extended table is the base table. -/
-theorem byteTable_nil (T bi : Builtins) : byteTable [] T bi = bi :=
+theorem byteLinkTable_nil (T bi : Builtins) : byteLinkTable [] T bi = bi :=
   rfl
 
 /-- An array of integer words is the word array of its natural numbers, each below `2^64`. -/
@@ -357,7 +357,7 @@ theorem traitLinksOk_mem {ls : List TraitLink} {m : HaxModule} (hok : traitLinks
     with the links added, one depth higher.** For links without name clash, a base table
     whose linked-function table agrees with `hax64Builtins` on the builtin heads of the
     callee, and a module with no function of those heads: a call the reference table of the
-    module over `byteTable ls (m.linkTable bi) bi` answers by a value at depth `n` is answered
+    module over `byteLinkTable ls (m.linkTable bi) bi` answers by a value at depth `n` is answered
     by the same value at depth `n + 1` in the module with the callees of the links added over
     `bi`. -/
 theorem refBi_le_withTraitLinks {ls : List TraitLink} {m : HaxModule}
@@ -365,7 +365,7 @@ theorem refBi_le_withTraitLinks {ls : List TraitLink} {m : HaxModule}
     (hW : WrapperOps (m.linkTable bi))
     (hWf : ∀ g ∈ wrapperHeads, m.fns.find? (·.name == g) = none) :
     ∀ n g vals v,
-      refBi m.fns (linkBi m.linked (TraitLink.byteTable ls (m.linkTable bi) bi)) fuelC n g vals =
+      refBi m.fns (linkBi m.linked (TraitLink.byteLinkTable ls (m.linkTable bi) bi)) fuelC n g vals =
           some v →
         refBi (m.fns ++ ls.map TraitLink.wrapper) (m.linkTable bi) fuelC (n + 1) g vals =
           some v := by
@@ -395,7 +395,7 @@ theorem refBi_le_withTraitLinks {ls : List TraitLink} {m : HaxModule}
       rw [hfs, hWf g hg, hn]
       rfl
   have hbase : ∀ k g, m.fns.find? (·.name == g) = none → ∀ vals v,
-      linkBi m.linked (TraitLink.byteTable ls (m.linkTable bi) bi) g vals = some v →
+      linkBi m.linked (TraitLink.byteLinkTable ls (m.linkTable bi) bi) g vals = some v →
         refBi (m.fns ++ ls.map TraitLink.wrapper) (m.linkTable bi) fuelC (k + 1) g vals =
           some v := by
     intro k g hg vals v h
@@ -405,14 +405,14 @@ theorem refBi_le_withTraitLinks {ls : List TraitLink} {m : HaxModule}
       have hth : t.head = g := by simpa using List.find?_some ht
       subst hth
       rw [linkBi_of_find_none _ _ (traitLinksOk_mem hok htm).2.2.1] at h
-      simp only [TraitLink.byteTable, ht] at h
+      simp only [TraitLink.byteLinkTable, ht] at h
       exact hwrap k t htm ht vals v h
     | none =>
       rw [refBi_of_find_none _ _ _ _ (by rw [hfs, hg, ht]; rfl)]
-      have he : linkBi m.linked (TraitLink.byteTable ls (m.linkTable bi) bi) g vals =
+      have he : linkBi m.linked (TraitLink.byteLinkTable ls (m.linkTable bi) bi) g vals =
           linkBi m.linked bi g vals := by
         simp only [linkBi]
-        split <;> simp [TraitLink.byteTable, ht]
+        split <;> simp [TraitLink.byteLinkTable, ht]
       rw [he] at h
       exact h
   intro n
@@ -439,19 +439,19 @@ theorem refBi_le_withTraitLinks {ls : List TraitLink} {m : HaxModule}
     module with the links added.** When `withTraitLinks ls m = some m'`, the table of the
     linked functions of `m` over `bi` agrees with `hax64Builtins` on the builtin heads of the
     callee and no function of `m` has one of those heads, the source relation of `m` at the
-    table `byteTable ls (m.linkTable bi) bi`, from `sa` to `v`, is the source relation of `m'`
+    table `byteLinkTable ls (m.linkTable bi) bi`, from `sa` to `v`, is the source relation of `m'`
     at `bi` from `sa` to `v`. -/
 theorem runs_withTraitLinks (bi : Builtins) (σ : AbiLayout) {ls : List TraitLink}
     {m m' : HaxModule} (h : withTraitLinks ls m = some m')
     (hW : WrapperOps (m.linkTable bi))
     (hWf : ∀ g ∈ wrapperHeads, m.fns.find? (·.name == g) = none) {sa : AState} {v : Value}
-    (hr : Runs (TraitLink.byteTable ls (m.linkTable bi) bi) σ m sa v) : Runs bi σ m' sa v := by
+    (hr : Runs (TraitLink.byteLinkTable ls (m.linkTable bi) bi) σ m sa v) : Runs bi σ m' sa v := by
   unfold withTraitLinks at h
   split at h
   next hls =>
     cases h
     obtain rfl : ls = [] := List.isEmpty_iff.mp hls
-    rwa [TraitLink.byteTable_nil] at hr
+    rwa [TraitLink.byteLinkTable_nil] at hr
   next =>
     split at h
     next hok =>

@@ -145,14 +145,14 @@ def isHexChar (c : Char) : Bool :=
   c.isDigit || (c.toLower ≥ 'a' && c.toLower ≤ 'f')
 
 /-- The value of a digit string in base `base`. -/
-def digitsVal (base : Nat) (ds : List Char) : Nat :=
+def radixVal (base : Nat) (ds : List Char) : Nat :=
   ds.foldl (fun a c => a * base + hexDigitValue c) 0
 
 /-- Read a decimal or `0x` hexadecimal numeral from the front of the input. -/
 def readNumber : List Char → Nat × List Char
-  | '0' :: 'x' :: rest => (digitsVal 16 (rest.takeWhile isHexChar), rest.dropWhile isHexChar)
-  | '0' :: 'X' :: rest => (digitsVal 16 (rest.takeWhile isHexChar), rest.dropWhile isHexChar)
-  | cs => (digitsVal 10 (cs.takeWhile Char.isDigit), cs.dropWhile Char.isDigit)
+  | '0' :: 'x' :: rest => (radixVal 16 (rest.takeWhile isHexChar), rest.dropWhile isHexChar)
+  | '0' :: 'X' :: rest => (radixVal 16 (rest.takeWhile isHexChar), rest.dropWhile isHexChar)
+  | cs => (radixVal 10 (cs.takeWhile Char.isDigit), cs.dropWhile Char.isDigit)
 
 /-- The input after the `*/` closing a block comment, or `none` if there is none. -/
 def dropBlockComment : List Char → Option (List Char)

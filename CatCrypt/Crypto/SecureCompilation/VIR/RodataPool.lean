@@ -38,7 +38,7 @@ little-endian bytes.
 * `Pool.ref`: the label holding a constant, or the sentinel `undefinedRef`.
 * `Pool.directives`, `Pool.lines`, `Pool.sectionLines`, `Pool.text`: rendering.
 * `quadsAt`, `bytesAt`: the words and bytes at a label of a directive list.
-* `qwordsLE`, `leValue`, `bytesLE`, `wordOfBytes`: conversions between a number, its
+* `qwordsLE`, `leValue`, `bytesLE`, `bytesLEValue`: conversions between a number, its
   64-bit words and its bytes.
 
 ## Main results
@@ -51,7 +51,7 @@ little-endian bytes.
 * `Pool.canonical_ofList`, `Pool.canonical_intern`, `Pool.canonical_push`: the
   builders keep the pool canonical.
 * `leValue_qwordsLE`: the words `qwordsLE n v` denote `v mod 2^(64 n)`.
-* `bytesLE_wordOfBytes`: `bytesLE` inverts `wordOfBytes` on byte lists.
+* `bytesLE_bytesLEValue`: `bytesLE` inverts `bytesLEValue` on byte lists.
 -/
 
 @[expose] public section
@@ -115,9 +115,9 @@ def leValue : List Nat → Nat
   | w :: ws => w % 2 ^ 64 + 2 ^ 64 * leValue ws
 
 /-- The number a byte list denotes read little-endian. -/
-def wordOfBytes : List Nat → Nat
+def bytesLEValue : List Nat → Nat
   | [] => 0
-  | b :: bs => b + 256 * wordOfBytes bs
+  | b :: bs => b + 256 * bytesLEValue bs
 
 theorem leValue_qwordsLE (n v : Nat) : leValue (qwordsLE n v) = v % 2 ^ (64 * n) := by
   induction n generalizing v with
@@ -126,16 +126,16 @@ theorem leValue_qwordsLE (n v : Nat) : leValue (qwordsLE n v) = v % 2 ^ (64 * n)
     simp only [qwordsLE, leValue, ih, Nat.mod_mod]
     rw [Nat.mul_succ, Nat.pow_add, Nat.mul_comm (2 ^ (64 * n)) (2 ^ 64), Nat.mod_mul]
 
-theorem bytesLE_wordOfBytes (bs : List Nat) (h : ∀ b ∈ bs, b < 256) :
-    bytesLE bs.length (wordOfBytes bs) = bs := by
+theorem bytesLE_bytesLEValue (bs : List Nat) (h : ∀ b ∈ bs, b < 256) :
+    bytesLE bs.length (bytesLEValue bs) = bs := by
   induction bs with
   | nil => rfl
   | cons b bs ih =>
     have hb : b < 256 := h b (by simp)
     have hbs : ∀ c ∈ bs, c < 256 := fun c hc => h c (by simp [hc])
-    have hmod : (b + 256 * wordOfBytes bs) % 256 = b := by omega
-    have hdiv : (b + 256 * wordOfBytes bs) / 256 = wordOfBytes bs := by omega
-    simp only [List.length_cons, bytesLE, wordOfBytes, hmod, hdiv, ih hbs]
+    have hmod : (b + 256 * bytesLEValue bs) % 256 = b := by omega
+    have hdiv : (b + 256 * bytesLEValue bs) / 256 = bytesLEValue bs := by omega
+    simp only [List.length_cons, bytesLE, bytesLEValue, hmod, hdiv, ih hbs]
 
 /-! ## 3. Pools -/
 

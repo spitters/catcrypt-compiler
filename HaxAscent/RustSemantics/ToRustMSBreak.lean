@@ -43,9 +43,9 @@ value of `Hax.denote'` for a `.cfBreak`.
 
 set_option autoImplicit false
 
-namespace CatCrypt.Hax.RustSemantics
+namespace HaxAscent.RustSemantics
 
-open Aeneas.Std
+open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics Aeneas.Std
 
 /-! ## Outcomes -/
 
@@ -730,4 +730,4 @@ example : toRustMSB appRt
     rcases System.Platform.numBits_eq with h | h <;> rw [h] <;> decide
   simp [toRustMSB, AVal.toInt?, loopBS, BOut.brk?, h3, AEnv.upd]
 
-end CatCrypt.Hax.RustSemantics
+end HaxAscent.RustSemantics

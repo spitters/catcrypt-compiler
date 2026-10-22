@@ -42,7 +42,7 @@ decimal digits or by `size`, is parsed by `parseTag`, and `widthTable` gives the
 `Hax.bitxor_w w`, and so on. The checked names `Add#w`, `Sub#w`, `Mul#w` are the checked
 operations of `u<w>`, with no value where Rust panics (`checkedLeaf`). The tag `size` is
 the width `Hax.usizeBits`, as in the printer's `widthAwareRuntime`. A field head
-`<method>#p<modulus>` that `FieldTag.fieldTag?` reads parses as the family `fieldFamily` of
+`<method>#p<modulus>` that `FieldTag.fieldTag?` reads parses as the family `fieldMethodFamily` of
 its method (`mul#p`, …) at its modulus, and `widthTable` reads it as `FieldTag.fieldCall`, the
 meaning of the head in the `u64` table `Hax.hax64Builtins`. A tagged name whose
 family has no entry, and every name with several `#` (the struct updates
@@ -70,7 +70,7 @@ generator (`corresB_proj`) and not by the table.
 
 ## Main definitions
 
-* `fieldFamily`, `parseTag`, `checkedLeaf`, `widthTable`, `runtimeTable`, `runtimeBuiltins`
+* `fieldMethodFamily`, `parseTag`, `checkedLeaf`, `widthTable`, `runtimeTable`, `runtimeBuiltins`
 
 ## Main results
 
@@ -99,28 +99,28 @@ namespace Hax.Ascent
 /-! ## The width families -/
 
 /-- The value of a nonempty list of decimal digits. -/
-def digitsVal (ds : List Char) : Option Nat :=
+def decimalVal? (ds : List Char) : Option Nat :=
   if !ds.isEmpty && ds.all Char.isDigit then
     some (ds.foldl (fun n c => 10 * n + (c.toNat - '0'.toNat)) 0)
   else none
 
 /-- The family of the field heads of the method `m`: the name of the method followed by
     `#p`. -/
-def fieldFamily (m : FieldTag.FieldMethod) : String := String.ofList (m.nameChars ++ ['#', 'p'])
+def fieldMethodFamily (m : FieldTag.FieldMethod) : String := String.ofList (m.nameChars ++ ['#', 'p'])
 
 /-- The family and index of a tagged name. A field head `<method>#p<modulus>` that
-    `FieldTag.fieldTag?` reads is the family `fieldFamily` of its method at its modulus. A
+    `FieldTag.fieldTag?` reads is the family `fieldMethodFamily` of its method at its modulus. A
     width-tagged name `op#w` is the part before the first `#` at the rest when it is a
     nonempty string of decimal digits, or at `Hax.usizeBits` when it is `size`, the tag of
     the `usize` and `isize` operands. -/
 def parseTag (f : String) : Option (String × Nat) :=
   match FieldTag.fieldTag? f with
-  | some (m, p) => some (fieldFamily m, p)
+  | some (m, p) => some (fieldMethodFamily m, p)
   | none =>
     match f.toList.span (· != '#') with
     | (op, _ :: ds) =>
       if ds = ['s', 'i', 'z', 'e'] then some (String.ofList op, Hax.usizeBits)
-      else (digitsVal ds).map fun w => (String.ofList op, w)
+      else (decimalVal? ds).map fun w => (String.ofList op, w)
     | (_, []) => none
 
 /-- A checked binary operation on two integers: the value of `g`, which is `none` where
@@ -132,7 +132,7 @@ def checkedLeaf (g : Int → Int → Option Value) : Leaf
 /-- The width families, after the printer's `widthAwareRuntime`: each family name with
     its leaf at every width. The checked families `Add`, `Sub`, `Mul` are the checked
     operations of `u<w>` (`Hax.uintAddOp`, `Hax.uintSubOp`, `Hax.uintMulOp`). The field
-    families `fieldFamily m` are indexed by the modulus, with the leaf `FieldTag.fieldCall m`. -/
+    families `fieldMethodFamily m` are indexed by the modulus, with the leaf `FieldTag.fieldCall m`. -/
 noncomputable def widthTable : List (String × (Nat → Leaf)) :=
   [("cast", fun w => leaf1 (Hax.castVal_w w)),
    ("Add", fun w => checkedLeaf (Hax.uintAddOp w)),
@@ -847,20 +847,20 @@ variable {f : String} {m : FieldTag.FieldMethod} {p : Nat}
 
 /-- A field head parses as the family of its method at its modulus. -/
 theorem parseTag_of_fieldTag? (h : FieldTag.fieldTag? f = some (m, p)) :
-    parseTag f = some (fieldFamily m, p) := by
+    parseTag f = some (fieldMethodFamily m, p) := by
   unfold parseTag
   rw [h]
 
 /-- The width table reads the family of a method as the tagged head of the method. -/
-theorem widthTable_lookup_fieldFamily (m : FieldTag.FieldMethod) :
-    widthTable.lookup (fieldFamily m) = some (FieldTag.fieldCall m) := by
+theorem widthTable_lookup_fieldMethodFamily (m : FieldTag.FieldMethod) :
+    widthTable.lookup (fieldMethodFamily m) = some (FieldTag.fieldCall m) := by
   cases m <;> rfl
 
 /-- **A field head** is the value `FieldTag.fieldCall` of its method at its modulus. -/
 theorem runtimeBuiltins_of_fieldTag? (base : Builtins) (h : FieldTag.fieldTag? f = some (m, p))
     (vs : List Value) : runtimeBuiltins base f vs = FieldTag.fieldCall m p vs :=
   runtimeBuiltins_of_tag (runtimeTable_lookup_of_parseTag (parseTag_of_fieldTag? h))
-    (parseTag_of_fieldTag? h) (widthTable_lookup_fieldFamily m)
+    (parseTag_of_fieldTag? h) (widthTable_lookup_fieldMethodFamily m)
 
 /-- **The runtime table answers a field head as the `u64` table does.** -/
 theorem runtimeBuiltins_eq_hax64Builtins_of_fieldTag? (base : Builtins)
