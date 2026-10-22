@@ -41,10 +41,13 @@ readings of a declared name: the builtin table of the source answers it by the f
 
 ## Main results
 
-* `nfToCatExt_nil` — at no declarations the translation is `nfToCat`.
+* `nfToCatExt_nil` — at no declarations the translation returns every program `nfToCat`
+  returns.
 * `nfToCatExt_sound` — under `SubTable bi` and `ExtAgree bi E D`, a translated program
-  denotes at `E` values related to the values of the source program.
-* `nfToCat_of_callFree` — a translation without `call` is the translation `nfToCat` gives.
+  denotes at `E`, at every fuel at least the source fuel, values related to the values of the
+  source program.
+* `nfToCat_of_callFree` — a translation without `call` of a program without exit-flag loop
+  is the translation `nfToCat` gives.
 * `nfToCatExt_calls` — every call of a translated program is a declared one, at the mapped
   signature of its declaration, a signature of `64`-bit words and memrefs.
 * `nfToCatExt_opsHaveImages`, `isSome_map?_aegraphOptNF_nfToCatExt` — every operation of a
@@ -206,8 +209,10 @@ def emitOp (D : List ExtDecl) {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
   | none => (extArgs D σ op args).bind fun c => emitCall cont c.1 c.2.1 c.2.2 σ
 
 /-- **The translation of a program with the declared external procedures `D`**: the
-    translation `nfToCat`, with a binding translated by `emitOp`. `none` on an exit-flag
-    loop and on the node `call` of the source. -/
+    translation `nfToCat`, with a binding translated by `emitOp`, and an exit-flag loop
+    translated to an exit-flag loop over the mapped carried types, behind the `bvConst`
+    bindings `pinAll` gives the literals among its initial values. `none` on the node `call`
+    of the source. -/
 def nfToCatExt (D : List ExtDecl) : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryptDialect} →
     {ts : List NfTy} → NFProg nfDialect Γ ts → TRd Γ Δ →
       Option (NFProg catCryptDialect Δ (ts.map catTy))
@@ -228,7 +233,13 @@ def nfToCatExt (D : List ExtDecl) : {Γ : Ctxt nfDialect} → {Δ : Ctxt catCryp
               (nfToCatExt D k (TRd.liftApp rs σ)).map fun k' =>
                 .ifThenElse (rs := rs.map catTy) c thn' els' k'
       | .lit _ _ => none
-  | _, _, _, .whileLoop .., _ => none
+  | _, _, _, .whileLoop (cs := cs) inits body k, σ =>
+      pinAll (ts := cs)
+        (fun σ' ws =>
+          (nfToCatExt D body (TRd.liftApp cs σ')).bind fun body' =>
+            (nfToCatExt D k (TRd.liftApp cs σ')).map fun k' =>
+              .whileLoop (cs := cs.map catTy) ws body' k')
+        σ (σ.rds inits)
   | _, _, _, .call .., _ => none
 
 /-! ## 3. The instance at no declarations -/
@@ -245,37 +256,101 @@ theorem extArgs_nil {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
       intro args
       rfl
 
-/-- **At no declarations the translation is `nfToCat`.** -/
+/-- The bindings of a translated operation in front of two continuations: when the second
+    returns every program the first returns, so do the bindings. -/
+theorem emitRes_mono {Γ : Ctxt nfDialect} {s : NfTy} {ts : List NfTy}
+    {c₁ c₂ : ∀ {Δ' : Ctxt catCryptDialect}, TRd (s :: Γ) Δ' →
+      Option (NFProg catCryptDialect Δ' (ts.map catTy))}
+    (hc : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd (s :: Γ) Δ')
+      (q : NFProg catCryptDialect Δ' (ts.map catTy)), c₁ σ' = some q → c₂ σ' = some q) :
+    ∀ {Δ : Ctxt catCryptDialect} {t : NfTy} (h : t = s) (res : OpRes Δ t) (σ : TRd Γ Δ)
+      (q : NFProg catCryptDialect Δ (ts.map catTy)), emitRes c₁ h res σ = some q →
+      emitRes c₂ h res σ = some q
+  | _, _, _, .rd _, _, q, hq => hc _ q hq
+  | _, _, _, .expr _, _, _, hq => by
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [emitRes, hc _ k' hk', Option.map_some]
+  | _, _, _, .expr1 _ _, _, _, hq => by
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [emitRes, hc _ k' hk', Option.map_some]
+  | _, _, h, .bind _ _ rest, σ, _, hq => by
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq
+      simp only [emitRes, emitRes_mono hc h rest σ.wk k' hk', Option.map_some]
+
+/-- The bindings of `pinAll` in front of two programs: when the second gives every program
+    the first gives, so does `pinAll` on it. -/
+theorem pinAll_mono {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List NfTy}
+    {k₁ k₂ : ∀ {Δ' : Ctxt catCryptDialect}, TRd Γ Δ' →
+      HVector (fun t => Var Δ' t) (ts.map catTy) → Option (NFProg catCryptDialect Δ' us)}
+    (hc : ∀ {Δ' : Ctxt catCryptDialect} (σ' : TRd Γ Δ')
+      (ws : HVector (fun t => Var Δ' t) (ts.map catTy)) (q : NFProg catCryptDialect Δ' us),
+      k₁ σ' ws = some q → k₂ σ' ws = some q)
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (rs : HVector (fun t => Rd Δ t) ts)
+    (q : NFProg catCryptDialect Δ us) (h : pinAll k₁ σ rs = some q) :
+    pinAll k₂ σ rs = some q := by
+  unfold pinAll at h ⊢
+  generalize ts.length = n at h ⊢
+  induction n generalizing Δ with
+  | zero =>
+      obtain ⟨ws, hws, hk⟩ := Option.bind_eq_some_iff.mp h
+      simp only [pinAllN, hws, Option.bind_some]
+      exact hc σ ws q hk
+  | succ n ih =>
+      cases hfl : firstLit rs with
+      | none =>
+          simp only [pinAllN, hfl] at h ⊢
+          obtain ⟨ws, hws, hk⟩ := Option.bind_eq_some_iff.mp h
+          simp only [hws, Option.bind_some]
+          exact hc σ ws q hk
+      | some c =>
+          simp only [pinAllN, hfl] at h ⊢
+          obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
+          simp only [ih _ _ p hp, Option.map_some]
+
+/-- **At no declarations the translation extends `nfToCat`**: a program `nfToCat` returns
+    is returned by `nfToCatExt []`. -/
 theorem nfToCatExt_nil {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) :
-    ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ), nfToCatExt [] p σ = nfToCat p σ := by
+    ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (q : NFProg catCryptDialect Δ (ts.map catTy)),
+      nfToCat p σ = some q → nfToCatExt [] p σ = some q := by
   induction p with
   | ret vs =>
-      intro Δ σ
-      rfl
+      intro Δ σ q h
+      exact h
   | var e k ih =>
-      intro Δ σ
+      intro Δ σ q h
       obtain ⟨op, rfl, args⟩ := e
-      change emitOp [] (fun σ' => nfToCatExt [] k σ') σ op rfl args =
-        (catOp σ op args).bind fun res => emitRes (fun σ' => nfToCat k σ') rfl res σ
+      change (catOp σ op args).bind (fun res => emitRes (fun σ' => nfToCat k σ') rfl res σ) =
+        some q at h
+      change emitOp [] (fun σ' => nfToCatExt [] k σ') σ op rfl args = some q
       unfold emitOp
-      cases catOp σ op args with
-      | some res => simp only [ih, Option.bind_some]
-      | none =>
-          rw [extArgs_nil]
-          rfl
-  | forLoop count inits body k ihb ihk =>
-      intro Δ σ
-      simp only [nfToCatExt, nfToCat, ihb, ihk]
+      obtain ⟨res, hres, h⟩ := Option.bind_eq_some_iff.mp h
+      rw [hres]
+      exact emitRes_mono (fun σ' q' hq' => ih σ' q' hq') rfl res σ q h
+  | @forLoop _ cs _ count inits body k ihb ihk =>
+      intro Δ σ q h
+      refine pinAll_mono (ts := .word 64 :: cs) ?_ σ _ q h
+      intro Δ' σ' ws q' hq'
+      obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
+      simp only [ihb _ b' hb, ihk _ k' hk, Option.bind_some, Option.map_some]
   | ifThenElse cond thn els k iht ihe ihk =>
-      intro Δ σ
-      simp only [nfToCatExt, nfToCat, iht, ihe, ihk]
-      cases σ cond <;> rfl
+      intro Δ σ q h
+      simp only [nfToCat] at h
+      simp only [nfToCatExt]
+      split at h
+      · rename_i c hc
+        obtain ⟨t', ht, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨e', he, h⟩ := Option.bind_eq_some_iff.mp h
+        obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
+        simp only [hc, iht _ t' ht, ihe _ e' he, ihk _ k' hk, Option.bind_some,
+          Option.map_some]
+      · cases h
   | whileLoop inits body k _ _ =>
-      intro Δ σ
-      rfl
+      intro Δ σ q h
+      cases h
   | call f args k _ =>
-      intro Δ σ
-      rfl
+      intro Δ σ q h
+      cases h
 
 /-! ## 4. The value at an explicit call environment -/
 
@@ -319,6 +394,16 @@ theorem denoteAt_ifThenElse (E : CallEnv catCryptDialect) {Γ : Ctxt catCryptDia
     (NFProg.ifThenElse cond thn els k).denoteAt E fuel V =
       (if HasBoolBit.toBool (d := catCryptDialect) (cond.lookup V) then thn.denoteAt E fuel V
         else els.denoteAt E fuel V) >>= fun r => k.denoteAt E fuel (hvAppend r V) := rfl
+
+/-- An exit-flag loop denotes, at the call environment `E`, the fuel-bounded iteration of
+    its body, then its continuation at the final tuple. -/
+theorem denoteAt_whileLoop (E : CallEnv catCryptDialect) {Γ : Ctxt catCryptDialect}
+    {cs ts : List CryptoTy} (inits : HVector (fun t => Var Γ t) cs)
+    (body : NFProg catCryptDialect (cs ++ Γ) (HasBitType.bit (d := catCryptDialect) :: cs))
+    (k : NFProg catCryptDialect (cs ++ Γ) ts) (fuel : Nat) (V : Valuation Γ) :
+    (NFProg.whileLoop inits body k).denoteAt E fuel V =
+      NFProg.whileIter (fun acc => body.denoteAt E fuel (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V) >>= fun acc => k.denoteAt E fuel (hvAppend acc V) := rfl
 
 /-- The builtin table `bi` answers the name of the declaration `d`, at its signature, by
     its function `sem`. -/
@@ -499,8 +584,8 @@ theorem emitCall_sound (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect} {s : 
 
 /-- **The simulation statement of the translation with declarations** of the program `p`,
     at the call environment `E`: a denotation of `p` to `out` from a valuation related to `W`
-    by the readings is matched, at every fuel, by a denotation at `E` of the translated
-    program from `W` to a related vector. -/
+    by the readings at the fuel `tf` is matched, at every fuel at least `tf`, by a denotation
+    at `E` of the translated program from `W` to a related vector. -/
 def NFExtSound (bi : _root_.Hax.Builtins) (tf : Nat) (D : List ExtDecl)
     (E : CallEnv catCryptDialect) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) : Prop :=
@@ -508,7 +593,7 @@ def NFExtSound (bi : _root_.Hax.Builtins) (tf : Nat) (D : List ExtDecl)
     (p' : NFProg catCryptDialect Δ (ts.map catTy)), nfToCatExt D p σ = some p' →
     ∀ (V : Valuation Γ) (W : Valuation Δ) (out : Valuation (d := nfDialect) ts),
     σ.Agree V W → ImpToNF.PDenP bi tf p V = some out →
-    ∀ fuel, ∃ out', p'.denoteAt E fuel W = some out' ∧ VRelL ts out out'
+    ∀ fuel, tf ≤ fuel → ∃ out', p'.denoteAt E fuel W = some out' ∧ VRelL ts out out'
 
 /-- **The translation with declarations simulates the denotation.** Under `SubTable bi`
     and the agreement `ExtAgree bi E D` of the builtin table, the declarations and the call
@@ -520,14 +605,14 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
     NFExtSound bi tf D E p := by
   induction p with
   | ret vs =>
-      intro Δ σ p' h V W out hag hp fuel
+      intro Δ σ p' h V W out hag hp fuel _
       change some (Expr.lookupArgs vs V) = some out at hp
       cases hp
       exact pinAll_denoteAt E _ V _ _ fuel
         (fun σ' ws p'' W' hk _ hrel => by cases hk; exact ⟨_, rfl, hrel⟩)
         σ _ p' W h hag (TRd.rdRelL_rds hag vs)
   | var e k ih =>
-      intro Δ σ p' h V W out hag hp fuel
+      intro Δ σ p' h V W out hag hp fuel hle
       obtain ⟨op, rfl, args⟩ := e
       change (nfDenoteOp (ImpToNF.tableOf bi) op (Expr.lookupArgs args V)).bind
         (fun x => ImpToNF.PDenP bi tf k (V.extend x)) = some out at hp
@@ -537,16 +622,16 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
       split at h
       · rename_i res hres
         exact emitRes_denoteAt E (fun σ' => nfToCatExt D k σ') V y out fuel
-          (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' out hag' hp fuel)
+          (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' out hag' hp fuel hle)
           res σ W p' h hag (catOp_sound hbi σ hag op args res y hres hy)
       · obtain ⟨c, hc, h⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨f, as, rs⟩ := c
         obtain ⟨xs, hx, hE⟩ := extArgs_sound hD σ hag op args f as rs y hc hy
         exact emitCall_sound E (fun σ' => nfToCatExt D k σ') V y out fuel
-          (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' out hag' hp fuel)
+          (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' out hag' hp fuel hle)
           f as rs σ W xs p' h hag hx hE
   | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
-      intro Δ σ p' h V W out hag hp fuel
+      intro Δ σ p' h V W out hag hp fuel hle
       change ((List.range (count.lookup V : BitVec 64).toNat).foldlM
           (fun acc j => ImpToNF.PDenP bi tf body
             (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V)))
@@ -576,10 +661,11 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
           exact NFProg.foldlM_rel_fwd l fun j _ acc acc' a1 hr ha1 =>
             ihb (TRd.liftApp cs (TRd.lift σ')) body' hb' _ _ a1
               (TRd.agree_liftApp (TRd.agree_lift (s := NfTy.word 64) hag'
-                (x := BitVec.ofNat 64 j) (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr) ha1 fuel
+                (x := BitVec.ofNat 64 j) (y := BitVec.ofNat 64 j) rfl) cs acc acc' hr) ha1
+                fuel hle
         obtain ⟨accF', hfold', hrF⟩ := key _ _ _ accF his hfold
         obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend accF V)
-          (hvAppend accF' W') out (TRd.agree_liftApp hag' cs accF accF' hrF) hkout fuel
+          (hvAppend accF' W') out (TRd.agree_liftApp hag' cs accF accF' hrF) hkout fuel hle
         refine ⟨out', ?_, hR⟩
         rw [denoteAt_forLoop]
         have hc2 : HasWord64.toNat (d := catCryptDialect) (c.lookup W') =
@@ -597,7 +683,7 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
       obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
       exact core σ' W' c is body' k' hag' hrel.1 hrel.2 hb' hk'
   | @ifThenElse Γ₀ rs ts₀ cond thn els k iht ihe ihk =>
-      intro Δ σ p' h V W out hag hp fuel
+      intro Δ σ p' h V W out hag hp fuel hle
       change ((if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then
           ImpToNF.PDenP bi tf thn V else ImpToNF.PDenP bi tf els V).bind
           fun r => ImpToNF.PDenP bi tf k (hvAppend r V)) = some out at hp
@@ -618,19 +704,74 @@ theorem nfToCatExt_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (tf : Na
           rw [hcb]
           cases hb : HasBoolBit.toBool (d := nfDialect) (cond.lookup V)
           · rw [hb] at hr
-            exact ihe σ els' he' V W r hag hr fuel
+            exact ihe σ els' he' V W r hag hr fuel hle
           · rw [hb] at hr
-            exact iht σ thn' ht' V W r hag hr fuel
+            exact iht σ thn' ht' V W r hag hr fuel hle
         obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp rs σ) k' hk' (hvAppend r V)
-          (hvAppend r' W) out (TRd.agree_liftApp hag rs r r' hrR) hkout fuel
+          (hvAppend r' W) out (TRd.agree_liftApp hag rs r r' hrR) hkout fuel hle
         refine ⟨out', ?_, hR⟩
         rw [denoteAt_ifThenElse]
         erw [hr']
         exact hden
       · cases h
-  | whileLoop inits body k _ _ =>
-      intro Δ σ p' h
-      cases h
+  | @whileLoop Γ₀ cs ts₀ inits body k ihb ihk =>
+      intro Δ σ p' h V W out hag hp fuel hle
+      change (NFProg.whileIter (fun acc => ImpToNF.PDenP bi tf body (hvAppend acc V)) tf
+          (Expr.lookupArgs inits V)).bind (fun acc => ImpToNF.PDenP bi tf k (hvAppend acc V)) =
+        some out at hp
+      obtain ⟨accF, hw, hkout⟩ := Option.bind_eq_some_iff.mp hp
+      refine pinAll_denoteAt E (ts := cs) _ V (Expr.lookupArgs inits V) out fuel ?_ σ _ p' W h
+        hag (TRd.rdRelL_rds hag inits)
+      intro Δ' σ' ws p'' W' hk hag' hrel
+      obtain ⟨body', hb', hk⟩ := Option.bind_eq_some_iff.mp hk
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+      have hstep : ∀ (a : Valuation (d := nfDialect) cs)
+          (a' : Valuation (d := catCryptDialect) (cs.map catTy))
+          (r : Valuation (d := nfDialect) (NfTy.bit :: cs)), VRelL cs a a' →
+          ImpToNF.PDenP bi tf body (hvAppend a V) = some r →
+          ∃ r', body'.denoteAt E fuel (hvAppend a' W') = some r' ∧
+            VRelL cs r.tail r'.tail ∧
+            HasBoolBit.toBool (d := nfDialect) r.head =
+              HasBoolBit.toBool (d := catCryptDialect) r'.head := by
+        intro a a' r ha hs
+        obtain ⟨r', hr', hR⟩ := ihb (TRd.liftApp cs σ') body' hb' (hvAppend a V)
+          (hvAppend a' W') r (TRd.agree_liftApp hag' cs a a' ha) hs fuel hle
+        rcases r with _ | ⟨b, r⟩
+        rcases r' with _ | ⟨b', r'⟩
+        exact ⟨_, hr', hR.2, hR.1⟩
+      have hiter : ∃ accF', NFProg.whileIter
+          (fun acc => body'.denoteAt E fuel (hvAppend acc W')) fuel (Expr.lookupArgs ws W') =
+          some accF' ∧ VRelL cs accF accF' := by
+        obtain ⟨b', hb'', hR⟩ := NFProg.whileIter_rel_fwd (R := VRelL cs) hstep tf _ _ accF
+          hrel hw
+        have mono : ∀ (n m : Nat), n ≤ m → ∀ (a b : Valuation (d := catCryptDialect)
+            (cs.map catTy)), NFProg.whileIter
+              (fun acc => body'.denoteAt E fuel (hvAppend acc W')) n a = some b →
+            NFProg.whileIter (fun acc => body'.denoteAt E fuel (hvAppend acc W')) m a =
+              some b := by
+          intro n
+          induction n with
+          | zero => intro m _ a b h; cases h
+          | succ n ih =>
+              intro m hnm a b h
+              obtain ⟨m, rfl⟩ : ∃ m', m = m' + 1 := ⟨m - 1, by omega⟩
+              simp only [NFProg.whileIter, Option.bind_eq_bind, Option.bind_eq_some_iff]
+                at h ⊢
+              obtain ⟨r, hr, h⟩ := h
+              refine ⟨r, hr, ?_⟩
+              split at h
+              · rw [if_pos ‹_›]
+                exact ih m (by omega) _ _ h
+              · rw [if_neg ‹_›]
+                exact h
+        exact ⟨b', mono tf fuel hle _ _ hb'', hR⟩
+      obtain ⟨accF', hw', hrF⟩ := hiter
+      obtain ⟨out', hden, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend accF V)
+        (hvAppend accF' W') out (TRd.agree_liftApp hag' cs accF accF' hrF) hkout fuel hle
+      refine ⟨out', ?_, hR⟩
+      rw [denoteAt_whileLoop]
+      erw [hw']
+      exact hden
   | call f args k _ =>
       intro Δ σ p' h
       cases h
@@ -701,17 +842,20 @@ theorem pinAll_callFree {Γ : Ctxt nfDialect} {us : List CryptoTy} {ts : List Nf
           obtain ⟨p, hp, rfl⟩ := Option.map_eq_some_iff.mp h
           simp only [ih _ _ p hf hp, Option.map_some]
 
-/-- **A translation without `call` is the translation `nfToCat` gives.** -/
+/-- **A translation without `call` of a program without exit-flag loop is the translation
+    `nfToCat` gives.** -/
 theorem nfToCat_of_callFree (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) :
     ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (q : NFProg catCryptDialect Δ (ts.map catTy)),
-      nfToCatExt D p σ = some q → q.callFree = true → nfToCat p σ = some q := by
+      nfToCatExt D p σ = some q → q.callFree = true → p.whileFree = true →
+        nfToCat p σ = some q := by
   induction p with
   | ret vs =>
-      intro Δ σ q h _
+      intro Δ σ q h _ _
       exact h
   | var e k ih =>
-      intro Δ σ q h hf
+      intro Δ σ q h hf hw
+      change k.whileFree = true at hw
       obtain ⟨op, rfl, args⟩ := e
       change emitOp D (fun σ' => nfToCatExt D k σ') σ op rfl args = some q at h
       change (catOp σ op args).bind (fun res => emitRes (fun σ' => nfToCat k σ') rfl res σ) =
@@ -720,20 +864,23 @@ theorem nfToCat_of_callFree (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List 
       split at h
       · rename_i res hres
         rw [hres]
-        exact emitRes_callFree (fun σ' q' hq' hf' => ih σ' q' hq' hf') rfl res σ q h hf
+        exact emitRes_callFree (fun σ' q' hq' hf' => ih σ' q' hq' hf' hw) rfl res σ q h hf
       · obtain ⟨c, -, h⟩ := Option.bind_eq_some_iff.mp h
         rw [emitCall_callFree h] at hf
         cases hf
   | @forLoop _ cs _ count inits body k ihb ihk =>
-      intro Δ σ q h hf
+      intro Δ σ q h hf hw
+      simp only [NFProg.whileFree, Bool.and_eq_true] at hw
       refine pinAll_callFree (ts := .word 64 :: cs) ?_ σ _ q h hf
       intro Δ' σ' ws q' hq' hf'
       obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
       obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
       simp only [NFProg.callFree, Bool.and_eq_true] at hf'
-      simp only [ihb _ b' hb hf'.1, ihk _ k' hk hf'.2, Option.bind_some, Option.map_some]
+      simp only [ihb _ b' hb hf'.1 hw.1, ihk _ k' hk hf'.2 hw.2, Option.bind_some,
+        Option.map_some]
   | ifThenElse cond thn els k iht ihe ihk =>
-      intro Δ σ q h hf
+      intro Δ σ q h hf hw
+      simp only [NFProg.whileFree, Bool.and_eq_true] at hw
       simp only [nfToCatExt] at h
       simp only [nfToCat]
       split at h
@@ -742,12 +889,12 @@ theorem nfToCat_of_callFree (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List 
         obtain ⟨e', he, h⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
         simp only [NFProg.callFree, Bool.and_eq_true] at hf
-        simp only [hc, iht _ t' ht hf.1.1, ihe _ e' he hf.1.2, ihk _ k' hk hf.2,
-          Option.bind_some, Option.map_some]
+        simp only [hc, iht _ t' ht hf.1.1 hw.1.1, ihe _ e' he hf.1.2 hw.1.2,
+          ihk _ k' hk hf.2 hw.2, Option.bind_some, Option.map_some]
       · cases h
   | whileLoop inits body k _ _ =>
-      intro Δ σ q h
-      cases h
+      intro Δ σ q _ _ hw
+      cases hw
   | call f args k _ =>
       intro Δ σ q h
       cases h
@@ -854,9 +1001,16 @@ theorem nfToCatExt_calls (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfT
         · exact ihe _ e' he f as rs hcl
         · exact ihk _ k' hk f as rs hcl
       · cases h
-  | whileLoop inits body k _ _ =>
+  | @whileLoop _ cs _ inits body k ihb ihk =>
       intro Δ σ q h
-      cases h
+      refine pinAll_calls (ts := cs) ?_ σ _ q h
+      intro _ _ _ q' hq'
+      obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
+      intro f as rs hcl
+      rcases hcl with hcl | hcl
+      · exact ihb _ b' hb f as rs hcl
+      · exact ihk _ k' hk f as rs hcl
   | call f args k _ =>
       intro Δ σ q h
       cases h
@@ -920,7 +1074,13 @@ theorem nfToCatExt_opsHaveImages (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : 
         obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp h
         exact And.intro (iht _ t' ht) (And.intro (ihe _ e' he) (ihk _ k' hk))
       · cases h
-  | whileLoop => intro _ σ q h; cases h
+  | @whileLoop _ cs _ inits body k ihb ihk =>
+      intro _ σ q h
+      refine pinAll_opsHaveImages (ts := cs) ?_ σ _ q h
+      intro _ _ _ q' hq'
+      obtain ⟨b', hb, hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk, rfl⟩ := Option.map_eq_some_iff.mp hq'
+      exact And.intro (ihb _ b' hb) (ihk _ k' hk)
   | call => intro _ σ q h; cases h
 
 /-- **The conversion is defined on the e-graph pass of a program translated with
@@ -938,18 +1098,18 @@ theorem isSome_map?_aegraphOptNF_nfToCatExt (D : List ExtDecl) {Γ : Ctxt nfDial
 
 /-- **The leakage transformer on the translations without `call`.** `NFProg.leakRun` has
     no run on the node `call`, so the statement of `nfToCat_leak` holds of the programs
-    `nfToCatExt D` returns that have no `call`: such a program is the translation `nfToCat`
-    gives. -/
+    `nfToCatExt D` returns that have no `call`, from source programs without exit-flag
+    loop: such a program is the translation `nfToCat` gives. -/
 theorem nfToCatExt_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
     (hbi : SubTable bi) (fuel : Nat) (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ)
     (p' : NFProg catCryptDialect Δ (ts.map catTy)) (h : nfToCatExt D p σ = some p')
-    (hf : p'.callFree = true) (V : Valuation Γ) (W : Valuation Δ)
+    (hf : p'.callFree = true) (hw : p.whileFree = true) (V : Valuation Γ) (W : Valuation Δ)
     (r : Valuation (d := nfDialect) ts × List CTLeak) (hag : σ.Agree V W)
     (hr : nfLeakRun bi fuel p V = some r) :
     ∃ r', NFProg.leakRun (catLeakModel P) fuel p' W = some r' ∧ r'.2 = r.2 ∧
       VRelL ts r.1 r'.1 :=
-  nfToCat_leak hP hbi fuel p σ p' (nfToCat_of_callFree D p σ p' h hf) V W r hag hr
+  nfToCat_leak hP hbi fuel p σ p' (nfToCat_of_callFree D p σ p' h hf hw) V W r hag hr
 
 /-! ## 9. Leakage with calls -/
 
@@ -1575,9 +1735,69 @@ theorem nfToCatExt_leakD {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
           rw [Option.bind_some, hq', Option.map_some]
         · simp only [hea, heq, hcb, stripDecl_branch, stripDecl_append]
       · cases h
-  | whileLoop inits body k _ _ =>
-      intro Δ σ p' h
-      cases h
+  | @whileLoop Γ₀ cs ts₀ inits body k ihb ihk =>
+      intro Δ σ p' h V W r hag hr
+      change (whileIterLeak (fun acc => nfLeakRun bi fuel body (hvAppend acc V)) fuel
+          (Expr.lookupArgs inits V)).bind
+          (fun a => (nfLeakRun bi fuel k (hvAppend a.1 V)).map fun q =>
+            (q.1, a.2 ++ q.2)) = some r at hr
+      obtain ⟨a, ha, hr⟩ := Option.bind_eq_some_iff.mp hr
+      obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp hr
+      refine pinAll_leakC hP E fuel (ts := cs) _ V (Expr.lookupArgs inits V) q.1
+        (stripDecl D (a.2 ++ q.2)) ?_ σ _ p' W h hag (TRd.rdRelL_rds hag inits)
+      intro Δ' σ' ws p'' W' hk hag' hrel
+      obtain ⟨body', hb', hk⟩ := Option.bind_eq_some_iff.mp hk
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+      have key : ∀ (n : Nat) (acc : Valuation (d := nfDialect) cs)
+          (acc' : Valuation (d := catCryptDialect) (cs.map catTy))
+          (a : Valuation (d := nfDialect) cs × List CTLeak), VRelL cs acc acc' →
+          whileIterLeak (fun acc => nfLeakRun bi fuel body (hvAppend acc V)) n acc = some a →
+          ∃ a', whileIterLeak (fun acc => NFProg.leakRunMC (catLeakModel P) E fuel body'
+            (hvAppend acc W')) n acc' = some a' ∧ a'.2 = stripDecl D a.2 ∧
+            VRelL cs a.1 a'.1 := by
+        intro n
+        induction n with
+        | zero => intro acc acc' a _ h; cases h
+        | succ n ih =>
+            intro acc acc' a hra h
+            simp only [whileIterLeak, Option.bind_eq_some_iff] at h
+            obtain ⟨c, hc, h⟩ := h
+            obtain ⟨c', hc', he, hR⟩ := ihb (TRd.liftApp cs σ') body' hb' _ _ c
+              (TRd.agree_liftApp hag' cs acc acc' hra) hc
+            rcases c with ⟨_ | ⟨b, cv⟩, cl⟩
+            rcases c' with ⟨_ | ⟨b', cv'⟩, cl'⟩
+            obtain ⟨hb, hR⟩ := hR
+            change b = b' at hb
+            subst hb
+            dsimp only at he hR h
+            simp only [whileIterLeak]
+            erw [hc']
+            rw [Option.bind_some]
+            change (if HasBoolBit.toBool (d := nfDialect) b = true then _ else _) = some a at h
+            change ∃ a', (if HasBoolBit.toBool (d := nfDialect) b = true then _ else _) =
+              some a' ∧ _
+            split at h
+            · rename_i hbt
+              rw [if_pos hbt]
+              obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
+              obtain ⟨q', hq', he2, hR2⟩ := ih cv cv' q hR hq
+              refine ⟨(q'.1, cl' ++ .branch true :: q'.2), ?_, ?_, hR2⟩
+              · erw [hq']
+                rfl
+              · simp only [he, he2, stripDecl_append, stripDecl_branch]
+            · rename_i hbt
+              rw [if_neg hbt]
+              cases h
+              refine ⟨(cv', cl' ++ [.branch false]), rfl, ?_, hR⟩
+              simp only [he, stripDecl_append, stripDecl_branch, stripDecl_nil]
+      obtain ⟨a', ha', he, hrA⟩ := key fuel _ _ a hrel ha
+      obtain ⟨q', hq', heq, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend a.1 V)
+        (hvAppend a'.1 W') q (TRd.agree_liftApp hag' cs a.1 a'.1 hrA) hq
+      refine ⟨(q'.1, a'.2 ++ q'.2), ?_, ?_, hR⟩
+      · simp only [NFProg.leakRunMC]
+        erw [ha']
+        rw [Option.bind_some, hq', Option.map_some]
+      · simp only [he, heq, stripDecl_append]
   | call f args k _ =>
       intro Δ σ p' h
       cases h

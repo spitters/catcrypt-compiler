@@ -25,7 +25,8 @@ word, a subset of `nbOp`; `NBL` tracks these bindings as a list of flags aligned
 context. `nfToCat` is `some` on every program of `NB` at every reading of its context.
 
 `NBD D` widens `NB` by the let-bound calls `NfOp.call f as r`, possibly under `named`, that the
-list `D` declares (`extOk D`). The translation `nfToCatExt D` is `some` on every program of
+list `D` declares (`extOk D`), and by the exit-flag loops. The translation `nfToCatExt D` is
+`some` on every program of
 `NBD D`: a declared call that `catOp` refuses is translated by `emitCall`.
 
 ## Main definitions
@@ -878,7 +879,9 @@ theorem extArgs_isSome_of_extOk {D : List ExtDecl} {Γ : Ctxt nfDialect}
   | _ => intro h; simp [extOk] at h
 
 /-- **The programs of the domain with the declared calls `D`, at the literal flags `L`**:
-    `NBL`, where a let-bound operation may also be a call of `extOk D`. -/
+    `NBL`, where a let-bound operation may also be a call of `extOk D`, and an exit-flag loop
+    is in the domain when its body and continuation are; its carried variables are not
+    flagged. -/
 def NBDL (D : List ExtDecl) :
     {Γ : Ctxt nfDialect} → {ts : List NfTy} → List Bool → NFProg nfDialect Γ ts → Bool
   | _, _, _, .ret _ => true
@@ -889,7 +892,9 @@ def NBDL (D : List ExtDecl) :
         NBDL D (List.replicate cs.length false ++ L) k
   | _, _, L, .ifThenElse (rs := rs) _ thn els k =>
       NBDL D L thn && NBDL D L els && NBDL D (List.replicate rs.length false ++ L) k
-  | _, _, _, .whileLoop .. => false
+  | _, _, L, .whileLoop (cs := cs) _ body k =>
+      NBDL D (List.replicate cs.length false ++ L) body &&
+        NBDL D (List.replicate cs.length false ++ L) k
   | _, _, _, .call .. => false
 
 /-- **The programs of the domain with the declared calls `D`**: `NBDL` with no variable of the
@@ -995,7 +1000,16 @@ theorem nfToCatExt_isSome_of_NBDL (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts :
       obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp
         (ihk _ hp.2 (TRd.liftApp _ σ) (litOn_liftApp hσ _))
       simp [nfToCatExt, hc, ht, he, hk]
-  | whileLoop => intro _ hp; simp [NBDL] at hp
+  | whileLoop inits body k ihb ihk =>
+      intro L hp _ σ hσ
+      simp only [NBDL, Bool.and_eq_true] at hp
+      refine pinAll_isSome_of (fun σ' => LitOn L σ') (fun _ h => litOn_wk h)
+        (fun σ' ws hσ' => ?_) σ _ hσ
+      obtain ⟨b', hb⟩ := Option.isSome_iff_exists.mp
+        (ihb _ hp.1 (TRd.liftApp _ σ') (litOn_liftApp hσ' _))
+      obtain ⟨k', hk⟩ := Option.isSome_iff_exists.mp
+        (ihk _ hp.2 (TRd.liftApp _ σ') (litOn_liftApp hσ' _))
+      simp [hb, hk]
   | call => intro _ hp; simp [NBDL] at hp
 
 /-- **`nfToCatExt D` is defined on every program of the domain with the declared calls `D`**,

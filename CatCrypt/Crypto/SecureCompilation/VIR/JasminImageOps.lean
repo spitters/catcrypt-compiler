@@ -763,7 +763,15 @@ theorem nfToCatExt_allOps_catMemB (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts :
         simp only [NFProg.allOps, Bool.and_eq_true]
         exact ⟨⟨iht ht _ t' ht', ihe he _ e' he'⟩, ihk hk _ k' hk'⟩
       · cases h
-  | whileLoop => intro _ σ q h; cases h
+  | @whileLoop _ cs _ inits body k ihb ihk =>
+      intro _ σ q h
+      obtain ⟨-, hb, hk⟩ := hu
+      refine pinAll_allOps (ts := cs) ?_ σ _ q h
+      intro _ _ _ q' hq'
+      obtain ⟨b', hb', hq'⟩ := Option.bind_eq_some_iff.mp hq'
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq'
+      simp only [NFProg.allOps, Bool.and_eq_true]
+      exact ⟨ihb hb _ b' hb', ihk hk _ k' hk'⟩
   | call => intro _ σ q h; cases h
 
 /-- **`catToJasmin_allOps_opMemB`: the Jasmin image of a translated unit-free program has
