@@ -32,6 +32,13 @@ legacy front.
 * the scalar values (`valueToScalar`, `ScalarValN`, `scalarValNB`);
 * the reserved and component slot names (`exitResName`, `exitReserved`,
   `structCompName`).
+
+## Main results
+
+* `widthOpOf_spec`: a width-tagged call name is an operation name, `#` and a tag `8`, `16`,
+  `32`, `64` or `size`.
+* `exitMarshalOk_of_arrCtorLen`: the default call tower type of a name that is no array
+  constructor holds a word.
 -/
 
 @[expose] public section
@@ -88,18 +95,19 @@ the call name and the located type of the destination is the word-array type
 `.TArr n .TFp`.  The name family is decoded by `arrCtorLen`, which the dispatch
 on call names consults first. -/
 
-/-- The value of a list of decimal digits, accumulated onto `acc`. -/
-@[simp] def digitsVal : List Char → Nat → Option Nat
+/-- The value of a list of decimal digits accumulated onto `acc`; `none` at a character that
+    is no decimal digit. -/
+@[simp] def decDigitsAcc : List Char → Nat → Option Nat
   | [], acc => some acc
   | c :: cs, acc =>
       if '0'.toNat ≤ c.toNat ∧ c.toNat ≤ '9'.toNat then
-        digitsVal cs (acc * 10 + (c.toNat - '0'.toNat))
+        decDigitsAcc cs (acc * 10 + (c.toNat - '0'.toNat))
       else none
 
 /-- The value of a non-empty list of decimal digits. -/
 @[simp] def digitsVal? : List Char → Option Nat
   | [] => none
-  | c :: cs => digitsVal (c :: cs) 0
+  | c :: cs => decDigitsAcc (c :: cs) 0
 
 /-- The list `l` without its prefix `p`, when `p` is a prefix of `l`. -/
 @[simp] def stripPrefixL : List Char → List Char → Option (List Char)
@@ -345,6 +353,15 @@ def widthOpOf : String → Option (Nat × WidthOp)
   | "rotate_left#size" => some (64, .rotl)
   | _ => none
 
+/-- A name `widthOpOf` reads is an operation name, `#` and a tag `8`, `16`, `32`, `64` or
+    `size`. -/
+theorem widthOpOf_spec {f : String} {r : Nat × WidthOp} (h : widthOpOf f = some r) :
+    ∃ op ∈ ["wrapping_add", "wrapping_sub", "wrapping_mul", "BitAnd", "BitOr", "BitXor", "Shl",
+        "Shr", "rotate_right", "rotate_left"],
+      ∃ tag ∈ ["8", "16", "32", "64", "size"], f = op ++ "#" ++ tag := by
+  unfold widthOpOf at h
+  split at h <;> (try cases h) <;> decide
+
 /-- `e` masked to its low `w` bits: `e &&& (2^w - 1)`, which over `Nat` is
     `e % 2^w`. -/
 def widthMask (w : Nat) (e : SExpr) : SExpr := .SAnd e (.SLit (2 ^ w - 1))
@@ -468,6 +485,15 @@ theorem exitElemTower_of_container {t c : TowerType} (h : exitContainer t = some
 /-- The marshalling of a scalar word into limb `0` of a tower slot of type `dt` needs a
     slot of at least `8` bytes. -/
 def exitMarshalOk (dt : TowerType) : Bool := decide (8 ≤ dt.storageBytes)
+
+/-- The default call tower type of a name that is no array constructor holds a word. -/
+theorem exitMarshalOk_of_arrCtorLen {f : String} (h : arrCtorLen f = none) :
+    exitMarshalOk (towerOfCallName f) = true := by
+  show exitMarshalOk (towerOfCallName_default f) = true
+  unfold towerOfCallName_default
+  rw [h]
+  dsimp only
+  (repeat' split) <;> rfl
 
 /-! ## §4  Scalar values -/
 

@@ -1324,6 +1324,12 @@ theorem ne_index_of_tagged {f : String}
     f ≠ "index" ∧ f ≠ "array_update" := by
   refine ⟨fun h => ?_, fun h => ?_⟩ <;> subst h <;> exact absurd hf (by decide)
 
+/-- A field head is named neither `index` nor `array_update`: it contains `#`. -/
+theorem ne_index_of_fieldHeadB {f : String} (hf : _root_.Hax.FieldTag.fieldHeadB f = true) :
+    f ≠ "index" ∧ f ≠ "array_update" := by
+  have h := _root_.Hax.FieldTag.mem_hash_of_fieldHeadB hf
+  refine ⟨fun h' => ?_, fun h' => ?_⟩ <;> subst h' <;> exact absurd h (by decide)
+
 /-- The leakage kind of an operation `catOp` translates is no variable-time leaf call. -/
 theorem nfKind_ne_vtCall_of_catOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect}
     (σ : TRd Γ Δ) :

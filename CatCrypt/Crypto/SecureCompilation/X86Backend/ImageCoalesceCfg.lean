@@ -175,6 +175,12 @@ def arrShapeB (i : LinstrRM) : Bool :=
   | .storeImm _ _ => (storeImmStruct? i.1).isSome
   | _ => false
 
+/-- An instruction without an array position writes no array. -/
+theorem arrWrite_of_arrShapeB {i : LinstrRM} (h : arrShapeB i = false) :
+    arrWrite i = none := by
+  rcases i with ⟨w, t⟩
+  cases t <;> simp_all [arrShapeB, arrWrite]
+
 /-- An operation that none of the recognisers of the flag machine reads: no compare, no
     register move, no carry-family operation, no flag-quiet lift instruction and no
     flag-writing arithmetic or logical operation. -/
