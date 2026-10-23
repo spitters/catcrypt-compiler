@@ -67,7 +67,7 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
-open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit (slotArr_none_of_prefix)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit (slotArr_none_of_prefix isArrImmB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFold (copyNoSlotB cellBaseFreeB
   gpNameB_prefix isPhysGP_eq_gpNameB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPrint (flagTiedB)
@@ -82,9 +82,13 @@ variable {slotArr : String → Option (String × Nat)}
 def NoIdxFst (j : Linstr) : Prop :=
   ∀ ds o x y sc ss, j.li_i ≠ .Lopn ds o (.arrIdx x y sc :: ss)
 
-/-- The base of a register-indexed first source of the instruction is no cell name. -/
+/-- The base of a register-indexed first source of the instruction is no cell name, and so is
+    the register first source of a `ZEROARR` or `STOREIMM`. -/
 def CellOk (j : Linstr) : Prop :=
-  ∀ ds o x y sc ss, j.li_i = .Lopn ds o (.arrIdx x y sc :: ss) → hasPrefix x "mem." = false
+  (∀ ds o x y sc ss, j.li_i = .Lopn ds o (.arrIdx x y sc :: ss) →
+    hasPrefix x "mem." = false) ∧
+  ∀ ds o x ss, j.li_i = .Lopn ds o (.reg x :: ss) → isArrImmB j.li_i = true →
+    hasPrefix x "mem." = false
 
 /-- A flag-only compare of the instruction with a register as its first source is tied. -/
 def TiedI (j : Linstr) : Prop :=
@@ -100,13 +104,20 @@ theorem cellBaseFreeB_iff {b : Lcmd} : cellBaseFreeB b = true ↔ ∀ j ∈ b, C
   rw [List.all_eq_true]
   refine forall₂_congr fun j _ => ?_
   constructor
-  · intro h ds o x y sc ss he
-    rw [he] at h
-    simpa using h
   · intro h
+    refine ⟨fun ds o x y sc ss he => ?_, fun ds o x ss he hai => ?_⟩
+    · rw [he] at h
+      simpa using h
+    · rw [he] at h hai
+      simpa [hai] using h
+  · rintro ⟨h1, h2⟩
     split
     · rename_i ds o x y sc ss he
-      simpa using h ds o x y sc ss he
+      simpa using h1 ds o x y sc ss he
+    · rename_i ds o x ss he
+      cases hai : isArrImmB (.Lopn ds o (.reg x :: ss))
+      · simp
+      · simpa [hai] using h2 ds o x ss he (by rw [he]; exact hai)
     · rfl
 
 theorem flagTiedB_iff {b : Lcmd} : flagTiedB b = true ↔ ∀ j ∈ b, TiedI j := by
@@ -142,8 +153,10 @@ theorem copyNoSlotB_iff {b : Lcmd} :
       simpa using h d x he
     · rfl
 
-theorem cellOk_of_noIdxFst {j : Linstr} (h : NoIdxFst j) : CellOk j :=
-  fun ds o x y sc ss he => absurd he (h ds o x y sc ss)
+theorem cellOk_of_noIdxFst {j : Linstr} (h : NoIdxFst j) (h2 : isArrImmB j.li_i = false) :
+    CellOk j :=
+  ⟨fun ds o x y sc ss he => absurd he (h ds o x y sc ss),
+    fun _ _ _ _ _ hai => by rw [h2] at hai; cases hai⟩
 
 /-- A predicate on every instruction of a body holds on every sublist. -/
 theorem forall_of_sublist {P : Linstr → Prop} {b b' : Lcmd} (hs : b'.Sublist b)
@@ -263,8 +276,10 @@ theorem forall_fuseMulHiBody (s : Bool) {P : Linstr → Prop} {b : Lcmd} (h : �
 
 theorem cellOk_of_fuseOut {d s1 s2 : String} {r : Linstr} (h : FuseOut d s1 s2 r) :
     CellOk r := by
-  obtain ⟨ds, o, y, hr, -, -⟩ := h
-  exact cellOk_of_noIdxFst fun ds' o' x y' sc ss he => by rw [hr] at he; simp at he
+  obtain ⟨ds, o, y, hr, ho, -⟩ := h
+  refine cellOk_of_noIdxFst (fun ds' o' x y' sc ss he => by rw [hr] at he; simp at he) ?_
+  rw [hr]
+  rcases ho with rfl | rfl | rfl <;> simp [isArrImmB]
 
 theorem tiedI_of_fuseOut {d s1 s2 : String} {r : Linstr} (h : FuseOut d s1 s2 r) : TiedI r := by
   obtain ⟨ds, o, y, hr, -, -⟩ := h
@@ -401,9 +416,11 @@ def RwClosed (P : Linstr → Prop) : Prop :=
     i.li_i = .Lopn dsts opn srcs →
     (∀ a, OpRw dsts a (g a)) → P { i with li_i := .Lopn dsts opn (srcs.map g) }
 
-/-- A predicate closed under the redirects of a register move onto another source register. -/
+/-- A predicate closed under the redirects of a 64-bit register move (`isMov64Mnem`) onto
+    another source register. -/
 def MvClosed (P : Linstr → Prop) : Prop :=
   ∀ (i : Linstr) (d mn s r : String), P i → i.li_i = .Lopn [.reg d] mn [.reg s] →
+    CatCrypt.Crypto.Optimizer.LoadCSE.isMov64Mnem mn = true →
     P { i with li_i := .Lopn [.reg d] mn [.reg r] }
 
 theorem forall_copyPropagateBody {P : Linstr → Prop} (hP : RwClosed P) {b : Lcmd}
@@ -428,6 +445,7 @@ theorem forall_loadCSE {P : Linstr → Prop} (hP : MvClosed P) {b : Lcmd} (h : �
     subst hn
     exact hP i d mn s r (h i (List.mem_of_getElem? hb))
       (CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload_eq hw).1
+      (CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload_eq hw).2
 
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad (elimReloads elimReloads_sublist)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim (reloadElimBody
@@ -476,23 +494,42 @@ theorem forall_optimizeBasicBlocks_closed {P : Linstr → Prop} (hrw : RwClosed 
 /-! ### The base condition through the optimiser -/
 
 theorem cellOk_rwClosed : RwClosed CellOk := by
-  intro i dsts opn srcs g hi he hg ds o x y sc ss he'
-  dsimp only at he'
-  simp only [LinstrR.Lopn.injEq] at he'
-  obtain ⟨rfl, rfl, hs⟩ := he'
-  cases srcs with
-  | nil => cases hs
-  | cons a srcs =>
-    simp only [List.map_cons, List.cons.injEq] at hs
-    rcases hg a with ha | ⟨u, rfl, hf, -⟩
-    · rw [hs.1] at ha
-      exact hi _ _ _ _ _ _ (by rw [he, ← ha])
-    · rw [hs.1] at hf
-      cases hf
+  intro i dsts opn srcs g hi he hg
+  refine ⟨fun ds o x y sc ss he' => ?_, fun ds o x ss he' hai => ?_⟩
+  · dsimp only at he'
+    simp only [LinstrR.Lopn.injEq] at he'
+    obtain ⟨rfl, rfl, hs⟩ := he'
+    cases srcs with
+    | nil => cases hs
+    | cons a srcs =>
+      simp only [List.map_cons, List.cons.injEq] at hs
+      rcases hg a with ha | ⟨u, rfl, hf, -⟩
+      · rw [hs.1] at ha
+        exact hi.1 _ _ _ _ _ _ (by rw [he, ← ha])
+      · rw [hs.1] at hf
+        cases hf
+  · have hai' : isArrImmB i.li_i = true := by rw [he]; exact hai
+    dsimp only at he'
+    simp only [LinstrR.Lopn.injEq] at he'
+    obtain ⟨rfl, rfl, hs⟩ := he'
+    cases srcs with
+    | nil => cases hs
+    | cons a srcs =>
+      simp only [List.map_cons, List.cons.injEq] at hs
+      rcases hg a with ha | ⟨u, rfl, hf, -⟩
+      · rw [hs.1] at ha
+        exact hi.2 _ _ _ _ (by rw [he, ← ha]) hai'
+      · rw [hs.1] at hf
+        exact (gpNameB_prefix (by rw [← isPhysGP_eq_gpNameB]; exact hf)).2
 
 theorem cellOk_mvClosed : MvClosed CellOk := by
-  intro i d mn s r _ _ ds o x y sc ss he
-  simp at he
+  intro i d mn s r _ _ hmn
+  refine ⟨fun ds o x y sc ss he => by simp at he, fun ds o x ss he hai => ?_⟩
+  dsimp only at he hai
+  simp only [LinstrR.Lopn.injEq] at he
+  obtain ⟨-, rfl, -⟩ := he
+  simp only [CatCrypt.Crypto.Optimizer.LoadCSE.isMov64Mnem, Bool.or_eq_true, beq_iff_eq] at hmn
+  rcases hmn with rfl | rfl <;> simp [isArrImmB] at hai
 
 /-- **`cellBaseFreeB_elimReloads`**: the redundant-reload elimination keeps `cellBaseFreeB`. -/
 theorem cellBaseFreeB_elimReloads {b : Lcmd} (h : cellBaseFreeB b = true) :
@@ -542,7 +579,7 @@ theorem tiedI_rwClosed : RwClosed TiedI := by
   · exact absurd (hi d opn u c' he hf) (hu d rfl)
 
 theorem tiedI_mvClosed : MvClosed TiedI := by
-  intro i d mn s r _ _ d' opn x c he
+  intro i d mn s r _ _ _ d' opn x c he
   simp at he
 
 /-- **`flagTiedB_elimReloads`**: the redundant-reload elimination keeps `flagTiedB`. -/
@@ -784,18 +821,22 @@ theorem cellBaseFreeB_foldIndexedBody {b : Lcmd} (h : cellBaseFreeB b = true) :
     cellBaseFreeB (foldIndexedBody b) = true := by
   have h0 := cellBaseFreeB_iff.mp h
   have h1 : ∀ j ∈ constIndexFoldBody b, CellOk j := fun j hj =>
-    (mem_constIndexFoldBody hj).elim (h0 j) cellOk_of_noIdxFst
+    (mem_constIndexFoldBody hj).elim (h0 j) fun hn =>
+      (PhysImgFold.mem_constIndexFoldBody_arrImm hj).elim (h0 j) (cellOk_of_noIdxFst hn)
   refine cellBaseFreeB_iff.mpr (forall_spellMemBody ?_ (forall_dropDeadImmBody h1))
   intro i hi
-  rcases spellMemInstr_cases i.li_i with he | ⟨d, B, off, -, o, he, -⟩ |
-      ⟨d, B, off, vn, -, o, he, -⟩
+  rcases spellMemInstr_cases i.li_i with he | ⟨d, B, off, -, o, he, ho⟩ |
+      ⟨d, B, off, vn, -, o, he, ho⟩
   · have : ({ i with li_i := spellMemInstr i.li_i } : Linstr) = i := by rw [he]
     rw [this]; exact hi
   all_goals
-    refine cellOk_of_noIdxFst fun ds o' x y sc ss hc => ?_
-    dsimp only at hc
-    rw [he] at hc
-    simp at hc
+    refine cellOk_of_noIdxFst (fun ds o' x y sc ss hc => ?_) ?_
+    · dsimp only at hc
+      rw [he] at hc
+      simp at hc
+    · dsimp only
+      rw [he]
+      rcases ho with rfl | rfl <;> simp [isArrImmB]
 
 /-- **`flagTiedB_foldIndexedBody`**: the constant-index fold, the removal of dead immediate
     moves and the array-ABI spelling keep `flagTiedB`: the fold rewrites no compare. -/
@@ -835,18 +876,118 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCfg (annotate_fst)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocLeak (Piece.toLcmd pieces_flatten)
 
+/-- Every instruction of the re-allocation of a run carries the mnemonic of an instruction of
+    the run. -/
+theorem goAcc_opn {abi : IsaAbi} (lend : List String) :
+    ∀ (ann : List (FI × List String)) (m : LprogGpRealloc.Cur) (cs : List String)
+      (acc out : List FI), goAcc lend m ann cs acc abi = some out →
+      ∀ j ∈ out, j ∈ acc ∨ ∃ p ∈ ann, j.opn = p.1.opn := by
+  intro ann
+  induction ann with
+  | nil =>
+    intro m cs acc out h j hj
+    cases cs with
+    | cons _ _ => simp [goAcc] at h
+    | nil =>
+      simp only [goAcc] at h
+      split at h
+      · cases h; exact Or.inl (by simpa using hj)
+      · cases h
+  | cons p rest ih =>
+    intro m cs acc out h j hj
+    obtain ⟨i, la⟩ := p
+    have lift : (j ∈ acc ∨ ∃ p ∈ rest, j.opn = p.1.opn) →
+        j ∈ acc ∨ ∃ p ∈ (i, la) :: rest, j.opn = p.1.opn :=
+      fun h' => h'.imp id fun ⟨p, hp, he⟩ => ⟨p, List.mem_cons_of_mem _ hp, he⟩
+    have push : ∀ (c' : String) (args : List LOperand),
+        (j ∈ (⟨i.ii, c', i.opn, args⟩ : FI) :: acc ∨ ∃ p ∈ rest, j.opn = p.1.opn) →
+        j ∈ acc ∨ ∃ p ∈ (i, la) :: rest, j.opn = p.1.opn := by
+      intro c' args h'
+      rcases h' with h' | ⟨p, hp, he⟩
+      · rcases List.mem_cons.mp h' with rfl | h'
+        · exact Or.inr ⟨(i, la), List.mem_cons_self, rfl⟩
+        · exact Or.inl h'
+      · exact Or.inr ⟨p, List.mem_cons_of_mem _ hp, he⟩
+    cases cs with
+    | nil => simp [goAcc] at h
+    | cons c cs =>
+      simp only [goAcc] at h
+      split at h
+      · split at h
+        · split at h
+          · split at h
+            · exact lift (ih _ cs acc out h j hj)
+            · split at h
+              · exact lift (ih _ cs acc out h j hj)
+              · split at h
+                · exact push _ _ (ih _ cs _ out h j hj)
+                · cases h
+          · cases h
+        · split at h
+          · exact push _ _ (ih _ cs _ out h j hj)
+          · cases h
+      · cases h
+
+theorem reallocRun_opn {abi : IsaAbi} (lend : List String) (is : List FI) :
+    ∀ j ∈ reallocRun lend is abi, ∃ i ∈ is, j.opn = i.opn := by
+  unfold reallocRun reallocWith
+  split
+  · rename_i out hf
+    obtain ⟨cs, _, hcs⟩ := List.exists_of_findSome?_eq_some hf
+    intro j hj
+    rcases goAcc_opn lend _ {} cs [] out hcs j hj with h | ⟨p, hp, he⟩
+    · cases h
+    · exact ⟨p.1, annotate_fst lend is p hp, he⟩
+  · intro j hj
+    exact ⟨j, hj, rfl⟩
+
+/-- Every instruction of the re-allocated body is an instruction of the body or no `ZEROARR`
+    or `STOREIMM`: a re-allocated run carries the mnemonics of fragment instructions. -/
+theorem reallocBody_mem_arrImm {abi : IsaAbi} (res : List String) (body : Lcmd) :
+    ∀ li ∈ reallocBody res body abi, li ∈ body ∨ isArrImmB li.li_i = false := by
+  unfold reallocBody
+  dsimp only
+  have hspec := (LprogGpReallocCfg.pieces_spec
+    (recog := LcmdCopyPropagate.isRecognizedOpn) body).2.2.1
+  have hbar := (LprogGpReallocCfg.pieces_spec
+    (recog := LcmdCopyPropagate.isRecognizedOpn) body).2.2.2
+  generalize pieces body LcmdCopyPropagate.isRecognizedOpn = ps at hspec hbar
+  induction ps with
+  | nil => intro li hli; simp at hli
+  | cons p ps ih =>
+    intro li hli
+    have ih' := ih (fun is h => hspec is (List.mem_cons_of_mem _ h))
+      (fun l h => hbar l (List.mem_cons_of_mem _ h))
+    rw [List.foldr_cons] at hli
+    split at hli
+    · rename_i is
+      rcases List.mem_append.1 hli with hli | hli
+      · right
+        obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hli
+        obtain ⟨i, hi, he⟩ := reallocRun_opn _ is j hj
+        obtain ⟨li', -, hf⟩ := hspec is List.mem_cons_self i hi
+        have hz := PhysImgFold.fragOf?_opn_ne hf
+        simp [FI.toL, FI.toR, isArrImmB, he, hz.1, hz.2]
+      · exact ih' li hli
+    · rename_i li'
+      rcases List.mem_cons.1 hli with rfl | hli
+      · exact Or.inl (hbar _ List.mem_cons_self).1
+      · exact ih' li hli
+
 /-- **`cellBaseFreeB_reallocBody`**: the register re-allocation keeps `cellBaseFreeB`: every
-    instruction of a re-allocated run has direct sources. -/
-theorem cellBaseFreeB_reallocBody {abi : IsaAbi} {recog : String → Bool} (res : List String)
+    instruction of a re-allocated run has direct sources and is no `ZEROARR` or `STOREIMM`. -/
+theorem cellBaseFreeB_reallocBody {abi : IsaAbi} (res : List String)
     {b : Lcmd} (h : cellBaseFreeB b = true) :
-    cellBaseFreeB (reallocBody res b abi recog) = true := by
+    cellBaseFreeB (reallocBody res b abi) = true := by
   have h0 := cellBaseFreeB_iff.mp h
   refine cellBaseFreeB_iff.mpr fun j hj => ?_
-  rcases LprogGpReallocCT.reallocBody_mem res b j hj with hj | hd
-  · exact h0 j hj
-  · refine cellOk_of_noIdxFst fun ds o x y sc ss he => ?_
-    rw [he] at hd
-    simp [AllocCTPreservation.linstrRDirect, AllocCTPreservation.isIndexed] at hd
+  rcases LprogGpReallocCT.reallocBody_mem res b j hj with hj' | hd
+  · exact h0 j hj'
+  · rcases reallocBody_mem_arrImm res b j hj with hj' | hai
+    · exact h0 j hj'
+    · refine cellOk_of_noIdxFst (fun ds o x y sc ss he => ?_) hai
+      rw [he] at hd
+      simp [AllocCTPreservation.linstrRDirect, AllocCTPreservation.isIndexed] at hd
 
 /-- A mnemonic whose ABI-stripped form is `ANDN` has no flag-only base. -/
 theorem flagOnly_of_stripAbiTag_andn {opn : String} (h : stripAbiTag opn = "ANDN") :
@@ -1055,15 +1196,99 @@ theorem legalizeInstr_noIdxFst (ok : Bool) (i : Linstr) (I : IsaData) :
     · simp
   · simp
 
-/-- **`cellBaseFreeB_twoAddrBody`**: the two-address legalisation keeps `cellBaseFreeB`. -/
-theorem cellBaseFreeB_twoAddrBody {I : IsaData} {b : Lcmd} (h : cellBaseFreeB b = true) :
-    cellBaseFreeB (twoAddrBody b I) = true := by
+/-- The instruction is an operation under the mnemonic `o` or a move mnemonic. -/
+def MnOf (o : String) (r : LinstrR) : Prop :=
+  ∃ ds o' ss, r = .Lopn ds o' ss ∧ (o' = o ∨ o' ∈ PhysImgEmit.movMnems)
+
+/-- Every instruction of the two-address legalisation of an operation under `o` is an
+    operation under `o` or a move mnemonic. -/
+theorem legalizeInstr_mnOf (ok : Bool) (i : Linstr) {ds : List LOperand} {o : String}
+    {ss : List LOperand} (hi : i.li_i = .Lopn ds o ss) :
+    ∀ r ∈ legalizeInstr ok i x86Data, MnOf o r.li_i := by
+  have hself : MnOf o i.li_i := ⟨ds, o, ss, hi, Or.inl rfl⟩
+  have hmov : ∀ m, TwoAddrLegalize.movFor o = some m → m ∈ PhysImgEmit.movMnems := by
+    intro m hm
+    unfold TwoAddrLegalize.movFor at hm
+    split_ifs at hm <;> cases hm <;> decide +kernel
+  intro r hr
+  unfold legalizeInstr at hr
+  split at hr
+  · rename_i d opn a b he
+    rw [hi] at he
+    cases he
+    split at hr
+    · split at hr
+      · simp only [List.mem_singleton] at hr; subst hr; exact hself
+      · rename_i m hm
+        have hm' : m ∈ PhysImgEmit.movMnems := hmov m hm
+        split at hr
+        · split at hr
+          · simp only [List.mem_singleton] at hr; subst hr; exact ⟨_, _, _, rfl, Or.inl rfl⟩
+          · simp only [List.mem_singleton] at hr; subst hr; exact hself
+        · split at hr
+          · simp only [List.mem_singleton] at hr; subst hr; exact hself
+          · split at hr
+            · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+              rcases hr with rfl | rfl
+              · exact ⟨_, _, _, rfl, Or.inr hm'⟩
+              · exact ⟨_, _, _, rfl, Or.inl rfl⟩
+            · split at hr
+              · simp only [List.mem_singleton] at hr; subst hr; exact ⟨_, _, _, rfl, Or.inl rfl⟩
+              · split at hr
+                · split at hr <;>
+                    simp only [scratchRoute, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
+                    rcases hr with rfl | rfl | rfl | rfl | rfl <;>
+                    exact ⟨_, _, _, rfl, by
+                      first
+                      | exact Or.inl rfl
+                      | exact Or.inr hm'
+                      | exact Or.inr (by simp [PhysImgEmit.movMnems])⟩
+                · simp only [List.mem_singleton] at hr; subst hr; exact hself
+    · simp only [List.mem_singleton] at hr; subst hr; exact hself
+  · simp only [List.mem_singleton] at hr; subst hr; exact hself
+
+/-- The x86 two-address legalisation leaves a `ZEROARR` or `STOREIMM` alone. -/
+theorem legalizeInstr_arrImm (ok : Bool) (i : Linstr) (hai : isArrImmB i.li_i = true) :
+    legalizeInstr ok i x86Data = [i] := by
+  unfold legalizeInstr
+  split
+  · rename_i d opn a b he
+    rw [he] at hai
+    have ho : opn = "ZEROARR" ∨ opn = "STOREIMM" := by simpa [isArrImmB] using hai
+    have ht : TwoAddrLegalize.needsTie opn b = false := by
+      unfold TwoAddrLegalize.needsTie
+      rw [Bool.or_eq_false_iff, Bool.and_eq_false_iff]
+      rcases ho with rfl | rfl <;> exact ⟨by decide +kernel, Or.inl (by decide +kernel)⟩
+    simp only [ht, Bool.false_and, Bool.false_eq_true, if_false]
+  · rfl
+
+/-- **`cellBaseFreeB_twoAddrBody`**: the x86 two-address legalisation keeps `cellBaseFreeB`. -/
+theorem cellBaseFreeB_twoAddrBody {b : Lcmd} (h : cellBaseFreeB b = true) :
+    cellBaseFreeB (twoAddrBody b x86Data) = true := by
   have h0 := cellBaseFreeB_iff.mp h
   refine cellBaseFreeB_iff.mpr fun r hr => ?_
   obtain ⟨i, hi, hr⟩ := List.mem_flatMap.mp hr
-  rcases legalizeInstr_noIdxFst _ i I r hr with rfl | hn
+  by_cases hai : isArrImmB i.li_i = true
+  · rw [legalizeInstr_arrImm _ i hai, List.mem_singleton] at hr
+    subst hr
+    exact h0 r hi
+  rcases legalizeInstr_noIdxFst _ i x86Data r hr with rfl | hn
   · exact h0 r hi
-  · exact cellOk_of_noIdxFst hn
+  · refine cellOk_of_noIdxFst hn ?_
+    cases hil : i.li_i with
+    | Lopn ds o ss =>
+      obtain ⟨ds', o', ss', he, ho⟩ := legalizeInstr_mnOf _ i hil r hr
+      rw [he]
+      rcases ho with rfl | ho
+      · rw [hil] at hai
+        simpa [isArrImmB] using hai
+      · simp only [PhysImgEmit.movMnems, List.mem_cons, List.not_mem_nil, or_false] at ho
+        rcases ho with rfl | rfl | rfl | rfl | rfl <;> simp [isArrImmB]
+    | _ =>
+      have : ∀ ok, legalizeInstr ok i x86Data = [i] := fun ok => by unfold legalizeInstr; rw [hil]
+      rw [this, List.mem_singleton] at hr
+      subst hr
+      rw [hil]; rfl
 
 /-- **`cellBaseFreeB_cmpReload`**: the compare-spill reload keeps `cellBaseFreeB`. -/
 theorem cellBaseFreeB_cmpReload {abi : IsaAbi} {b : Lcmd} (h : cellBaseFreeB b = true) :
@@ -1073,9 +1298,23 @@ theorem cellBaseFreeB_cmpReload {abi : IsaAbi} {b : Lcmd} (h : cellBaseFreeB b =
   obtain ⟨i, hi, hr⟩ := List.mem_flatMap.mp hr
   unfold cmpReloadI at hr
   split at hr
-  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+  · rename_i opn d s heq
+    have hc : stripWidthTag opn = "CMP" := by
+      unfold CmpSpillReload.spillCmp? at heq
+      split at heq
+      · split_ifs at heq with hc
+        simp only [Option.some.injEq, Prod.mk.injEq] at heq
+        obtain ⟨rfl, -, -⟩ := heq
+        simp only [Bool.and_eq_true, beq_iff_eq] at hc
+        exact hc.1.1.1
+      · cases heq
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
     rcases hr with rfl | rfl <;>
-      exact cellOk_of_noIdxFst fun ds o x y sc ss he => by simp at he
+      refine cellOk_of_noIdxFst (fun ds o x y sc ss he => by simp at he) ?_
+    · simp only [isArrImmB, CmpSpillReload.movOf]
+      split_ifs <;> rfl
+    · simp only [isArrImmB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+      constructor <;> rintro rfl <;> revert hc <;> decide +kernel
   · rw [List.mem_singleton] at hr
     subst hr
     exact h0 r hi

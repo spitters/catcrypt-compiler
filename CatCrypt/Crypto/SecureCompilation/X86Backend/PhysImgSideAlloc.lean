@@ -202,11 +202,10 @@ theorem scanExit_append_right (slotArr : String → Option (String × Nat)) (a c
           · exact ih _
         | _ => rfl
 
-/-- The reload scan of every base of an indexed operand at stride `8` in first source position
-    ends inside `c`: the statement of `scanStaysB`. -/
+/-- The reload scan of every base (`AccBase`) of an instruction of `c` ends inside `c`: the
+    statement of `scanStaysB`. -/
 def ScanStays (slotArr : String → Option (String × Nat)) (c : Lcmd) : Prop :=
-  ∀ k i, c[k]? = some i → ∀ ds o x y ss, i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss) →
-    scanExit slotArr c k x = none
+  ∀ k i x, c[k]? = some i → AccBase x i.li_i → scanExit slotArr c k x = none
 
 variable {slotArr : String → Option (String × Nat)}
 
@@ -221,25 +220,30 @@ theorem scanStaysB_of_scanStays {c : Lcmd} (h : ScanStays slotArr c) :
   · rename_i ds o x y sc ss hx
     by_cases h8 : sc = 8
     · subst h8
-      simp [h k _ hget ds o x y ss hx]
+      simp [h k _ x hget (Or.inl ⟨ds, o, y, ss, hx⟩)]
     · simp [h8]
+  · rename_i ds o x ss hx
+    rw [hx]
+    cases hai : isArrImmB (.Lopn ds o (.reg x :: ss))
+    · simp
+    · simp [h k _ x hget (Or.inr ⟨ds, o, ss, hx, by rw [hx]; exact hai⟩)]
   · rfl
 
 theorem ScanStays.append {a c : Lcmd} (ha : ScanStays slotArr a) (hc : ScanStays slotArr c) :
     ScanStays slotArr (a ++ c) := by
-  intro k i hk ds o x y ss hx
+  intro k i x hk hx
   by_cases hlt : k < a.length
   · rw [List.getElem?_append_left hlt] at hk
     rw [scanExit_append_left slotArr a c k x (by omega)]
-    exact ha k i hk ds o x y ss hx
+    exact ha k i x hk hx
   · rw [List.getElem?_append_right (by omega)] at hk
     obtain ⟨m, rfl⟩ : ∃ m, k = a.length + m := ⟨k - a.length, by omega⟩
     rw [Nat.add_sub_cancel_left] at hk
-    rw [scanExit_append_right, hc m i hk ds o x y ss hx]
+    rw [scanExit_append_right, hc m i x hk hx]
     rfl
 
 theorem ScanStays.nil : ScanStays slotArr [] := by
-  intro k i hk; simp at hk
+  intro k i x hk; simp at hk
 
 theorem ScanStays.flatMap {α : Type} {l : List α} {f : α → Lcmd}
     (h : ∀ a ∈ l, ScanStays slotArr (f a)) : ScanStays slotArr (l.flatMap f) := by
@@ -251,13 +255,13 @@ theorem ScanStays.flatMap {α : Type} {l : List α} {f : α → Lcmd}
 
 theorem ScanStays.take {l : Lcmd} (h : ScanStays slotArr l) (n : Nat) :
     ScanStays slotArr (l.take n) := by
-  intro k i hk ds o x y ss hx
+  intro k i x hk hx
   have hlt : k < (l.take n).length := (List.getElem?_eq_some_iff.mp hk).1
   have hl : l = l.take n ++ l.drop n := (List.take_append_drop n l).symm
   have hk' : l[k]? = some i := by
     rw [hl, List.getElem?_append_left hlt]; exact hk
   rw [← scanExit_append_left slotArr (l.take n) (l.drop n) k x (by omega), ← hl]
-  exact h k i hk' ds o x y ss hx
+  exact h k i x hk' hx
 
 theorem ScanStays.dropLast {l : Lcmd} (h : ScanStays slotArr l) :
     ScanStays slotArr l.dropLast := by
@@ -365,14 +369,23 @@ def idxFreeB : LinstrR → Bool
 @[simp] theorem noIdxB_arrIdx (b i : String) (sc : Nat) : noIdxB (.arrIdx b i sc) = false :=
   rfl
 
-theorem scanStays_of_idxFree {c : Lcmd} (h : ∀ r ∈ c, idxFreeB r.li_i = true) :
-    ScanStays slotArr c := by
-  intro k i hk ds o x y ss hx
-  have := h i (List.mem_of_getElem? hk)
-  rw [hx] at this
-  simp [idxFreeB] at this
+/-- An instruction without indexed source and other than a constant-index array write has no
+    base (`AccBase`). -/
+theorem not_accBase_of_idxFree {r : LinstrR} (h1 : idxFreeB r = true) (h2 : isArrImmB r = false)
+    (x : String) : ¬ AccBase x r := by
+  rintro (⟨ds, o, y, ss, rfl⟩ | ⟨ds, o, ss, rfl, hai⟩)
+  · simp [idxFreeB] at h1
+  · rw [h2] at hai; cases hai
 
-theorem siteStays_of_idxFree {c : Lcmd} (h : ∀ r ∈ c, idxFreeB r.li_i = true) :
+theorem scanStays_of_idxFree {c : Lcmd}
+    (h : ∀ r ∈ c, idxFreeB r.li_i = true ∧ isArrImmB r.li_i = false) :
+    ScanStays slotArr c := by
+  intro k i x hk hx
+  have := h i (List.mem_of_getElem? hk)
+  exact (not_accBase_of_idxFree this.1 this.2 x hx).elim
+
+theorem siteStays_of_idxFree {c : Lcmd}
+    (h : ∀ r ∈ c, idxFreeB r.li_i = true ∧ isArrImmB r.li_i = false) :
     SiteStays slotArr c :=
   fun _ _ _ _ => scanStays_of_idxFree fun r hr => h r (List.mem_of_mem_drop hr)
 
@@ -593,22 +606,43 @@ theorem scanExit_succ_pass {c : Lcmd} {k : Nat} {j : Linstr} {x : String}
     rw [he]
     simp [hd]
 
+/-- A move of a register is no constant-index array write. -/
+theorem isArrImmB_of_slotMov {r : LinstrR} {d s : String} (h : slotMov? r = some (d, s)) :
+    isArrImmB r = false := by
+  obtain ⟨o, rfl⟩ := slotMov?_eq h
+  simp only [slotMov?] at h
+  split_ifs at h with h1
+  · rcases h1 with rfl | rfl <;> rfl
+
+/-- The base (`AccBase`) of an instruction with an indexed first source at stride `8` is the
+    base of that source. -/
+theorem accBase_arrIdx_eq {ds : List LOperand} {o b y x : String} {ss : List LOperand}
+    (h : AccBase x (.Lopn ds o (.arrIdx b y 8 :: ss))) : x = b := by
+  rcases h with ⟨_, _, _, _, he⟩ | ⟨_, _, _, he, -⟩ <;> cases he; rfl
+
+/-- The base (`AccBase`) of an instruction with a register first source is that register. -/
+theorem accBase_reg_eq {ds : List LOperand} {o b x : String} {ss : List LOperand}
+    (h : AccBase x (.Lopn ds o (.reg b :: ss))) : x = b := by
+  rcases h with ⟨_, _, _, _, he⟩ | ⟨_, _, _, he, -⟩ <;> cases he; rfl
+
 /-- **A reload window keeps its scans.** A block that starts with a move of the slot `q` of an
     array into `R14`, continues with operations that pass the scan of `R14` and have no
-    indexed source, then has one instruction whose indexed first source at stride `8` is
-    based at `R14`, then only instructions without indexed source, keeps its scans. -/
+    base (no indexed source, no constant-index array write), then has one instruction whose
+    bases (`AccBase`) are `R14`, then only instructions without base, keeps its scans. -/
 theorem scanStays_window {rl acc : Linstr} {mid post : Lcmd} {q : String}
     (hrl : slotMov? rl.li_i = some (reloadScratch2, q)) (hq : (slotArr q).isSome = true)
-    (hmid : ∀ r ∈ mid, PassesB slotArr reloadScratch2 r.li_i ∧ idxFreeB r.li_i = true)
-    (hacc : ∀ ds o x y ss, acc.li_i = .Lopn ds o (.arrIdx x y 8 :: ss) → x = reloadScratch2)
-    (hpost : ∀ r ∈ post, idxFreeB r.li_i = true) :
+    (hmid : ∀ r ∈ mid, PassesB slotArr reloadScratch2 r.li_i ∧ idxFreeB r.li_i = true ∧
+      isArrImmB r.li_i = false)
+    (hacc : ∀ x, AccBase x acc.li_i → x = reloadScratch2)
+    (hpost : ∀ r ∈ post, idxFreeB r.li_i = true ∧ isArrImmB r.li_i = false) :
     ScanStays slotArr (rl :: (mid ++ acc :: post)) := by
-  have hrlI : idxFreeB rl.li_i = true := by
+  have hrlI : idxFreeB rl.li_i = true ∧ isArrImmB rl.li_i = false := by
+    refine ⟨?_, isArrImmB_of_slotMov hrl⟩
     obtain ⟨o, ho⟩ := slotMov?_eq hrl
     rw [ho]; rfl
-  intro k i hk ds o x y ss hx
-  have hvac : idxFreeB i.li_i = true → False := fun h => by
-    rw [hx] at h; simp [idxFreeB] at h
+  intro k i x hk hx
+  have hvac : idxFreeB i.li_i = true ∧ isArrImmB i.li_i = false → False := fun h =>
+    not_accBase_of_idxFree h.1 h.2 x hx
   cases k with
   | zero =>
     simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
@@ -622,7 +656,7 @@ theorem scanStays_window {rl acc : Linstr} {mid post : Lcmd} {q : String}
       rw [List.getElem?_append_right (by omega), Nat.sub_self] at hk
       simp only [List.getElem?_cons_zero, Option.some.injEq] at hk
       subst hk
-      have hx14 := hacc ds o x y ss hx
+      have hx14 := hacc x hx
       subst hx14
       have hpass : ∀ m, m ≤ mid.length → scanExit slotArr (rl :: (mid ++ acc :: post)) (m + 1)
           reloadScratch2 = none := by
@@ -668,15 +702,15 @@ theorem loadIdx_scanStays (hs15 : slotArr reloadScratch = none) {q : String}
     simp only [Bool.false_eq_true, if_false, if_true, List.nil_append, List.cons_append,
       List.map_cons, List.map_nil, ge_iff_le, Nat.le_refl]
   · exact scanStays_window (mid := []) (post := []) hrl hq (by simp)
-      (fun _ _ _ _ _ h => by cases h; rfl) (by simp)
+      (fun _ h => accBase_arrIdx_eq h) (by simp)
   · exact scanStays_window (mid := []) hrl hq (by simp)
-      (fun _ _ _ _ _ h => by cases h; rfl) (by simp [idxFreeB])
+      (fun _ h => accBase_arrIdx_eq h) (by simp [idxFreeB, isArrImmB])
   · exact scanStays_window (mid := [_]) (post := []) hrl hq
-      (by simp [idxFreeB, passes_mov_r15 hs15])
-      (fun _ _ _ _ _ h => by cases h; rfl) (by simp)
+      (by simp [idxFreeB, passes_mov_r15 hs15, isArrImmB])
+      (fun _ h => accBase_arrIdx_eq h) (by simp)
   · exact scanStays_window (mid := [_]) hrl hq
-      (by simp [idxFreeB, passes_mov_r15 hs15])
-      (fun _ _ _ _ _ h => by cases h; rfl) (by simp [idxFreeB])
+      (by simp [idxFreeB, passes_mov_r15 hs15, isArrImmB])
+      (fun _ h => accBase_arrIdx_eq h) (by simp [idxFreeB, isArrImmB])
 
 /-- **The store arm keeps its scans.** The reload `MOVQ R14, q` of the slot of an array
     followed by `legalizeMemStoreK` of an `STOREIDX` of a register to `R14` at stride `8`
@@ -699,7 +733,7 @@ theorem storeIdx_scanStays (hs15 : slotArr reloadScratch = none) {q : String}
     simp only [List.map_cons, List.map_nil, List.cons_append, List.nil_append,
       List.mem_cons, List.mem_map] at hr
     rcases hr with rfl | ⟨r', hr', rfl⟩
-    · rfl
+    · exact ⟨rfl, rfl⟩
     · unfold constIdxStore? at hc
       simp only at hc
       split_ifs at hc
@@ -709,7 +743,7 @@ theorem storeIdx_scanStays (hs15 : slotArr reloadScratch = none) {q : String}
           cases hc
           simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hr'
           rcases hr' with h | h | h <;> (try subst h) <;>
-            first | exact h.elim | simp [idxFreeB]
+            first | exact h.elim | simp [idxFreeB, isArrImmB]
         · cases hc
   | none =>
     rw [legalizeMemStoreK_of_none _ _ _ hc]
@@ -718,19 +752,19 @@ theorem storeIdx_scanStays (hs15 : slotArr reloadScratch = none) {q : String}
       simp only [Bool.false_eq_true, if_false, if_true, List.nil_append, List.cons_append,
         List.map_cons, List.map_nil, ge_iff_le, Nat.le_refl, beq_self_eq_true]
     · exact scanStays_window (mid := []) (post := []) hrl hq (by simp)
-        (fun _ _ _ _ _ h => by cases h; rfl) (by simp)
+        (fun _ h => accBase_arrIdx_eq h) (by simp)
     · split
       · exact scanStays_window (mid := []) hrl hq (by simp)
-          (fun _ _ _ _ _ h => by cases h; rfl) (by simp [idxFreeB])
+          (fun _ h => accBase_arrIdx_eq h) (by simp [idxFreeB, isArrImmB])
       · exact scanStays_window (mid := [_]) (post := []) hrl hq
-          (by simp [idxFreeB, passes_mov_r15 hs15])
-          (fun _ _ _ _ _ h => by cases h; rfl) (by simp)
+          (by simp [idxFreeB, passes_mov_r15 hs15, isArrImmB])
+          (fun _ h => accBase_arrIdx_eq h) (by simp)
     · exact scanStays_window (mid := [_]) (post := []) hrl hq
-        (by simp [idxFreeB, passes_mov_r15 hs15])
-        (fun _ _ _ _ _ h => by cases h; rfl) (by simp)
+        (by simp [idxFreeB, passes_mov_r15 hs15, isArrImmB])
+        (fun _ h => accBase_arrIdx_eq h) (by simp)
     · exact scanStays_window (mid := [_]) (post := [_, _]) hrl hq
-        (by simp [idxFreeB, passes_mov_r15 hs15])
-        (fun _ _ _ _ _ h => by cases h; rfl) (by simp [idxFreeB])
+        (by simp [idxFreeB, passes_mov_r15 hs15, isArrImmB])
+        (fun _ h => accBase_arrIdx_eq h) (by simp [idxFreeB, isArrImmB])
 
 /-! ## 6. The home condition -/
 
@@ -1021,12 +1055,31 @@ theorem isMulHiMnem_acc (o : String) (h : o = "LOADIDX" ∨ o = "STOREIDX") :
     isMulHiMnem o = false ∧ isLowMulMnem o = false ∧ o ≠ "LIVEPIN" := by
   rcases h with rfl | rfl <;> decide +kernel
 
+/-- The expansion of an instruction other than a constant-index array write has no
+    constant-index array write. -/
+theorem physExpand_arrImmFree (shiftImm : ShiftImmOracle) (u64 : Bool)
+    (rmap : LOperand → LOperand) (mbr : String → Option String) (i : Linstr)
+    (hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM") :
+    ∀ r ∈ physExpand shiftImm u64 rmap mbr i, isArrImmB r.li_i = false := by
+  intro r hr
+  cases hr' : r.li_i with
+  | Lopn ds o ss =>
+    cases hai : isArrImmB (.Lopn ds o ss)
+    · rfl
+    · have ho : o = "ZEROARR" ∨ o = "STOREIMM" := by simpa [isArrImmB] using hai
+      obtain ⟨ds', ss', he⟩ := PhysAbiShape.physExpand_arrImm shiftImm u64 rmap mbr i hr hr' ho
+      rcases ho with rfl | rfl
+      · exact absurd rfl (hne ds' _ ss' he).1
+      · exact absurd rfl (hne ds' _ ss' he).2
+  | _ => rfl
+
 /-- **One expansion keeps the side conditions.** Let the expansion of `i` carry only its own
     mnemonic and moves, let the operand map send registers to registers that are no reload
     scratches and no array slots and keep operands without index, let `i` have the access
-    form, and let `i` have no indexed operand when it is no access. Then the expansion without
-    its `LIVEPIN` instructions keeps its scans, keeps the scans of every suffix behind a site,
-    and satisfies `homeOkB` from every environment that records only reload scratches. -/
+    form, let `i` have no indexed operand when it is no access, and let `i` be no
+    constant-index array write. Then the expansion without its `LIVEPIN` instructions keeps
+    its scans, keeps the scans of every suffix behind a site, and satisfies `homeOkB` from
+    every environment that records only reload scratches. -/
 theorem physExpand_block (hs15 : slotArr reloadScratch = none)
     (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
     (mbr : String → Option String) (i : Linstr)
@@ -1035,7 +1088,8 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
     (hrmR : ∀ x n, rmap x = .reg n → n ∉ fuseReloadScratches ∧ slotArr n = none)
     (hreg : ∀ n, ∃ n', rmap (.reg n) = .reg n')
     (hacc : AccForm slotArr rmap mbr i.li_i)
-    (hidx : isAccB i.li_i = false → ∀ x ∈ lopnOperands i.li_i, noIdxB x = true) :
+    (hidx : isAccB i.li_i = false → ∀ x ∈ lopnOperands i.li_i, noIdxB x = true)
+    (hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM") :
     let F := (physExpand shiftImm u64 rmap mbr i).filter notLivePin
     ScanStays slotArr F ∧ SiteStays slotArr F ∧
       ∀ env, EnvScratch env → homeOkB slotArr env F = true := by
@@ -1044,8 +1098,9 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
     List.mem_of_mem_filter hr
   cases hA : isAccB i.li_i
   · -- no access: no indexed operand
-    have hfree : ∀ r ∈ F, idxFreeB r.li_i = true := fun r hr =>
-      physExpand_idxFree shiftImm u64 rmap mbr i hrmI (hidx hA) r (hsub r hr)
+    have hfree : ∀ r ∈ F, idxFreeB r.li_i = true ∧ isArrImmB r.li_i = false := fun r hr =>
+      ⟨physExpand_idxFree shiftImm u64 rmap mbr i hrmI (hidx hA) r (hsub r hr),
+        physExpand_arrImmFree shiftImm u64 rmap mbr i hne r (hsub r hr)⟩
     refine ⟨scanStays_of_idxFree hfree, siteStays_of_idxFree hfree, fun env he => ?_⟩
     by_cases hlow : ∃ ds o ss, i.li_i = .Lopn ds o ss ∧ stripWidthTag o = "MUL"
     · obtain ⟨ds, o, ss, hi, hm⟩ := hlow
@@ -1122,48 +1177,6 @@ theorem reloadArrImmBody_physExpand_of_ne (shiftImm : ShiftImmOracle) (u64 : Boo
       (.inr h)
     exact (hne ds' o ss' he).2 h
 
-/-- **One reloaded expansion keeps the side conditions**: the conclusion of
-    `physExpand_block` for the expansion of `i` under the constant-shape base reload, whose
-    instructions carry only the mnemonic of `i` and moves. A constant-index array write
-    becomes the move `MOVQ R14, q` and the write through `R14`, neither of which has an
-    indexed source or is a low `MUL`. -/
-theorem physExpand_reload_block (hs15 : slotArr reloadScratch = none)
-    (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
-    (mbr : String → Option String) (i : Linstr)
-    (hmn : MnemOk i.li_i (reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr i)))
-    (hrmI : ∀ x, noIdxB x = true → noIdxB (rmap x) = true)
-    (hrmR : ∀ x n, rmap x = .reg n → n ∉ fuseReloadScratches ∧ slotArr n = none)
-    (hreg : ∀ n, ∃ n', rmap (.reg n) = .reg n')
-    (hacc : AccForm slotArr rmap mbr i.li_i)
-    (hidx : isAccB i.li_i = false → ∀ x ∈ lopnOperands i.li_i, noIdxB x = true) :
-    let F := (reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr i)).filter notLivePin
-    ScanStays slotArr F ∧ SiteStays slotArr F ∧
-      ∀ env, EnvScratch env → homeOkB slotArr env F = true := by
-  intro F
-  by_cases hz : ∃ ds o ss, i.li_i = .Lopn ds o ss ∧ (o = "ZEROARR" ∨ o = "STOREIMM")
-  · obtain ⟨ds, o, ss, hi, hz⟩ := hz
-    have hA : isAccB i.li_i = false := by
-      rw [hi]; rcases hz with rfl | rfl <;> rfl
-    have hfree : ∀ r ∈ F, idxFreeB r.li_i = true := by
-      intro r hr
-      rcases mem_reloadArrImmBody (List.mem_of_mem_filter hr) with hr | ⟨j, -, l', hl, -, hx⟩
-      · exact physExpand_idxFree shiftImm u64 rmap mbr i hrmI (hidx hA) r hr
-      · exact reloadArrImm_idxFree hl _ hx
-    refine ⟨scanStays_of_idxFree hfree, siteStays_of_idxFree hfree, fun env _ =>
-      homeOkB_of_noLowMul (fun r hr => noLowMul_of_mnemOk hmn ?_ r
-        (List.mem_of_mem_filter hr)) env⟩
-    intro o' ho'
-    rw [hi] at ho'
-    simp only [opnOf, Option.some.injEq] at ho'
-    subst ho'
-    rcases hz with rfl | rfl <;> decide +kernel
-  · have hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM" :=
-      fun ds o ss hi => not_or.mp fun hz' => hz ⟨ds, o, ss, hi, hz'⟩
-    have he := reloadArrImmBody_physExpand_of_ne shiftImm u64 rmap mbr mbr i hne
-    rw [he] at hmn
-    simp only [F, he]
-    exact physExpand_block hs15 shiftImm u64 rmap mbr i hmn hrmI hrmR hreg hacc hidx
-
 /-- The expansion of a constant-index array write with one destination and at least two
     sources is the remapped instruction. -/
 theorem physExpand_arrImm_eq (shiftImm : ShiftImmOracle) (u64 : Bool)
@@ -1209,26 +1222,81 @@ theorem reloadArrImmBody_physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bo
     rw [physExpand_arrImm_eq _ _ _ _ _ _ _ _ _ _ (.inr rfl)]
     simp [hb', hd', hv', himm, reloadArrImmBody, reloadArrImm_storeImm d' v' k hq]
 
+/-- **One reloaded expansion keeps the side conditions**: the conclusion of
+    `physExpand_block` for the expansion of `i` under the constant-shape base reload, whose
+    instructions carry only the mnemonic of `i` and moves, under an operand map that keeps
+    immediates. A constant-index array write becomes the reload window of the move
+    `MOVQ R14, q` and the write through `R14`, neither of which is a site or a low `MUL`. -/
+theorem physExpand_reload_block (hs15 : slotArr reloadScratch = none)
+    (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
+    (mbr : String → Option String) (i : Linstr)
+    (hmn : MnemOk i.li_i (reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr i)))
+    (hrmI : ∀ x, noIdxB x = true → noIdxB (rmap x) = true)
+    (hrmR : ∀ x n, rmap x = .reg n → n ∉ fuseReloadScratches ∧ slotArr n = none)
+    (hreg : ∀ n, ∃ n', rmap (.reg n) = .reg n')
+    (himm : ∀ n, rmap (.imm n) = .imm n)
+    (hacc : AccForm slotArr rmap mbr i.li_i)
+    (hidx : isAccB i.li_i = false → ∀ x ∈ lopnOperands i.li_i, noIdxB x = true) :
+    let F := (reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr i)).filter notLivePin
+    ScanStays slotArr F ∧ SiteStays slotArr F ∧
+      ∀ env, EnvScratch env → homeOkB slotArr env F = true := by
+  intro F
+  by_cases hz : ∃ ds o ss, i.li_i = .Lopn ds o ss ∧ (o = "ZEROARR" ∨ o = "STOREIMM")
+  · obtain ⟨ds, o, ss, hi, hz⟩ := hz
+    have hhome : ∀ env, EnvScratch env → homeOkB slotArr env F = true := fun env _ =>
+      homeOkB_of_noLowMul (fun r hr => noLowMul_of_mnemOk hmn (by
+        intro o' ho'
+        rw [hi] at ho'
+        simp only [opnOf, Option.some.injEq] at ho'
+        subst ho'
+        rcases hz with rfl | rfl <;> decide +kernel) r (List.mem_of_mem_filter hr)) env
+    obtain ⟨ii, w⟩ := i
+    simp only at hi
+    subst hi
+    obtain ⟨b', q, -, hq, hE⟩ :=
+      reloadArrImmBody_physExpand_arrImm shiftImm u64 rmap mbr ii ds o ss hacc hz himm hreg
+    have hrl : slotMov? (LinstrR.Lopn [.reg reloadScratch2] "MOVQ" [.reg q]) =
+        some (reloadScratch2, q) := by simp [slotMov?]
+    rcases hE with ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩
+    all_goals
+      refine ⟨?_, ?_, hhome⟩
+      · simp only [F, he]
+        rw [List.filter_eq_self.mpr (by simp [notLivePin])]
+        exact scanStays_window (mid := []) (post := []) hrl hq (by simp)
+          (fun _ h => accBase_reg_eq h) (by simp)
+      · simp only [F, he]
+        refine SiteStays.of_noSite fun r hr => ?_
+        simp only [List.mem_filter, List.mem_cons, List.not_mem_nil, or_false] at hr
+        rcases hr.1 with rfl | rfl <;> rfl
+  · have hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM" :=
+      fun ds o ss hi => not_or.mp fun hz' => hz ⟨ds, o, ss, hi, hz'⟩
+    have he := reloadArrImmBody_physExpand_of_ne shiftImm u64 rmap mbr mbr i hne
+    rw [he] at hmn
+    simp only [F, he]
+    exact physExpand_block hs15 shiftImm u64 rmap mbr i hmn hrmI hrmR hreg hacc hidx hne
+
 /-! ## 8. The export -/
 
 /-- The instruction is no site, has no indexed source and is no low `MUL`. -/
 def PlainB (r : Linstr) : Prop :=
-  mulHiSiteB r = false ∧ idxFreeB r.li_i = true ∧ noLowMulB r.li_i = true
+  mulHiSiteB r = false ∧ (idxFreeB r.li_i = true ∧ isArrImmB r.li_i = false) ∧
+    noLowMulB r.li_i = true
 
-theorem plainB_of_mov {r : Linstr} {d o s : String} (h : r.li_i = .Lopn [.reg d] o [.reg s]) :
-    PlainB r := by
-  unfold PlainB mulHiSiteB idxFreeB noLowMulB
-  rw [h]
-  simp
+theorem plainB_of_mov {r : Linstr} {d o s : String} (h : r.li_i = .Lopn [.reg d] o [.reg s])
+    (hai : isArrImmB r.li_i = false) : PlainB r := by
+  refine ⟨?_, ⟨?_, hai⟩, ?_⟩
+  · unfold mulHiSiteB; rw [h]
+  · unfold idxFreeB; rw [h]; simp
+  · unfold noLowMulB; rw [h]
 
-theorem plainB_ret : PlainB ⟨0, .Lret⟩ := ⟨rfl, rfl, rfl⟩
+theorem plainB_ret : PlainB ⟨0, .Lret⟩ := ⟨rfl, ⟨rfl, rfl⟩, rfl⟩
 
 theorem prologue_plainB (virt : Lfundef) (tbl : Array Nat) (abiArgs : List String) :
     ∀ r ∈ buildPrologue virt tbl (fun _ => none) ++ extraSaves abiArgs, PlainB r := by
   intro r hr
   obtain ⟨p, hp⟩ := Option.isSome_iff_exists.mp ((prologue_moves virt tbl abiArgs).1 r hr)
   obtain ⟨o, ho⟩ := slotMov?_eq hp
-  exact plainB_of_mov ho
+  exact plainB_of_mov ho (isArrImmB_of_slotMov hp)
 
 theorem buildArgPtrMaterialize_plainB (virt : Lfundef) (tbl : Array Nat)
     (abiArgs : List String) (inLoadMap : InLoadMap) :
@@ -1242,14 +1310,14 @@ theorem buildArgPtrMaterialize_plainB (virt : Lfundef) (tbl : Array Nat)
   · split_ifs at hr <;>
       rcases hs : abiSlotOfExt abiReg with _ | s <;>
       simp only [hs, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
-      (try rcases hr with rfl | rfl) <;> exact plainB_of_mov rfl
+      (try rcases hr with rfl | rfl) <;> exact plainB_of_mov rfl (by simp [isArrImmB])
 
 theorem epilogue_plainB : ∀ r ∈ calleeSaveRestoreEpilogue ++ [⟨0, .Lret⟩], PlainB r := by
   intro r hr
   simp only [calleeSaveRestoreEpilogue, List.cons_append, List.nil_append, List.mem_cons,
     List.not_mem_nil, or_false] at hr
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals exact ⟨rfl, rfl, rfl⟩
+  all_goals exact ⟨rfl, ⟨rfl, rfl⟩, rfl⟩
 
 /-- The site condition on a body made of a plain prefix `A`, a body `F` without its last
     instruction, and a plain tail `T`. -/
@@ -1345,8 +1413,8 @@ theorem physExpand_flatMap_side {slotArr : String → Option (String × Nat)}
   have hside := fun i (hi : i ∈ body1) => physExpand_reload_block hs15 shiftImm
     (LprogAsmPrinter.bodyIsU64 body1) rm mbr i
     (fun r hr ds o ss he => ((hblk i hi).1 r hr ds o ss he).2)
-    (fun x hx => noIdxB_remapOperand _ _ hx) hrmR (fun n => ⟨_, rfl⟩) (hshape i hi)
-    (hidx i hi)
+    (fun x hx => noIdxB_remapOperand _ _ hx) hrmR (fun n => ⟨_, rfl⟩) (fun _ => rfl)
+    (hshape i hi) (hidx i hi)
   simp only [F, hrmE]
   obtain ⟨h1, h2⟩ := SiteStays.flatMap (slotArr := slotArr) fun i hi =>
     ⟨(hside i hi).2.1, (hside i hi).1⟩

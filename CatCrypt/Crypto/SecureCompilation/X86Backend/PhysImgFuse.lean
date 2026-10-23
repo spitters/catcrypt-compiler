@@ -454,25 +454,30 @@ theorem dstOk_of_dstOkB {r : LinstrR} (h : dstOkB slotArr r = true) : DstOk slot
   · rintro q n rfl; simpa [operandOkB] using this
   · rintro q j sc rfl; simpa [operandOkB] using this
 
-/-- No reload scan of a base of `c` leaves `c`: at every instruction whose first source is an
-    element at stride `8` of base `x`, the scan of `x` ends inside `c` (`scanExit`). -/
+/-- No reload scan of a base (`AccBase`) of `c` leaves `c`: at every instruction whose first
+    source is an element at stride `8` of base `x`, and at every `ZEROARR` or `STOREIMM` whose
+    first source is `.reg x`, the scan of `x` ends inside `c` (`scanExit`). -/
 def scanStaysB (slotArr : String → Option (String × Nat)) (c : Lcmd) : Bool :=
   (List.range c.length).all fun k =>
     match c[k]? with
     | some i =>
         match i.li_i with
         | .Lopn _ _ (.arrIdx x _ sc :: _) => sc != 8 || (scanExit slotArr c k x).isNone
+        | .Lopn _ _ (.reg x :: _) => !isArrImmB i.li_i || (scanExit slotArr c k x).isNone
         | _ => true
     | none => true
 
 theorem scanExit_of_scanStaysB {c : Lcmd} (h : scanStaysB slotArr c = true) {k : Nat}
-    {i : Linstr} (hk : c[k]? = some i) {ds : List LOperand} {o x y : String}
-    {ss : List LOperand} (hx : i.li_i = .Lopn ds o (.arrIdx x y 8 :: ss)) :
+    {i : Linstr} (hk : c[k]? = some i) {x : String} (hx : AccBase x i.li_i) :
     scanExit slotArr c k x = none := by
   have hlt : k < c.length := (List.getElem?_eq_some_iff.mp hk).1
   have := List.all_eq_true.mp h k (List.mem_range.mpr hlt)
-  simp only [hk, hx, bne_self_eq_false, Bool.false_or, Option.isNone_iff_eq_none] at this
-  exact this
+  rcases hx with ⟨ds, o, y, ss, hx⟩ | ⟨ds, o, ss, hx, hai⟩
+  · simp only [hk, hx, bne_self_eq_false, Bool.false_or, Option.isNone_iff_eq_none] at this
+    exact this
+  · rw [hx] at hai
+    simp only [hk, hx, hai, Bool.not_true, Bool.false_or, Option.isNone_iff_eq_none] at this
+    exact this
 
 /-- A scan that resolves to an array ends inside the body. -/
 theorem scanExit_of_accArr {c : Lcmd} {k : Nat} {x : String}
@@ -484,6 +489,31 @@ theorem scanExit_of_accArr {c : Lcmd} {k : Nat} {x : String}
   | some y =>
     rw [hs] at e
     simp [accArr, e, reloadOf_zero] at h
+
+/-- The base register of a `ZEROARR` or `STOREIMM` with an image by `arrImmImg` holds the
+    pointer of an array. -/
+theorem accArr_of_arrImmImg {c : Lcmd} {k : Nat} {ds : List LOperand} {o x : String}
+    {ss : List LOperand} (h : (arrImmImg slotArr c k (.Lopn ds o (.reg x :: ss))).isSome = true) :
+    (accArr slotArr c k x).isSome = true := by
+  unfold arrImmImg at h
+  split at h
+  · rename_i b n' w' he
+    simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq] at he
+    obtain ⟨-, -, rfl, -⟩ := he
+    split_ifs at h
+    · split at h
+      · rename_i A n hA; rw [hA]; rfl
+      · cases h
+    · cases h
+  · rename_i d b v j he
+    simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq] at he
+    obtain ⟨-, -, rfl, -⟩ := he
+    split_ifs at h
+    · split at h
+      · rename_i A n hA; rw [hA]; rfl
+      · cases h
+    · cases h
+  · cases h
 
 /-- A body that resolves its accesses locally, and whose instructions with a first source at
     stride `8` are accesses, satisfies `scanStaysB`. -/
@@ -519,6 +549,17 @@ theorem scanStaysB_of_accLocal {c : Lcmd} (hacc : AccLocal slotArr c)
           exact ha.2
         · cases ha
     · simp [h8]
+  · rename_i ds o x ss hx
+    cases hai : isArrImmB c[k].li_i
+    · simp
+    · have ha := hacc k _ hget
+      rw [hx] at ha hai
+      have ho : o = "ZEROARR" ∨ o = "STOREIMM" := by simpa [isArrImmB] using hai
+      have hl : o ≠ "LOADIDX" ∧ o ≠ "STOREIDX" := by
+        rcases ho with rfl | rfl <;> decide
+      simp only [accOkB, hl.1, hl.2, ho, if_false, if_true] at ha
+      simp only [Bool.not_true, Bool.false_or, Option.isNone_iff_eq_none]
+      exact scanExit_of_accArr (accArr_of_arrImmImg ha)
   · rfl
 
 /-- **The site condition of the fusion.** At every instruction of the form of a rewritten
@@ -558,20 +599,17 @@ theorem fuseMulHiAux_nil (s : Bool) (env : ScratchEnv) (pend : List (String × S
 
 /-- **The fusion keeps the image class**, from any position: let `A ++ rest` be in the class,
     let `rest` satisfy the site and home conditions at an environment `ep` with which the
-    environment `ef` of the fusion agrees, let every pending home be no array slot, and let
-    no instruction of `rest` be a `ZEROARR` or `STOREIMM`. Then `A` followed by the fusion of
-    `rest` is in the class. -/
+    environment `ef` of the fusion agrees, and let every pending home be no array slot. Then
+    `A` followed by the fusion of `rest` is in the class. -/
 theorem physImgB_fuseMulHiAux (s : Bool)
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) :
     ∀ (rest A : Lcmd) (ef ep : ScratchEnv) (pend : List (String × String)),
       physImgB slotArr (A ++ rest) = true → fuseSiteOkB slotArr rest = true →
       homeOkB slotArr ep rest = true → EnvAgree ef ep → EnvScratch ef →
-      (∀ p ∈ pend, slotArr p.1 = none) → (∀ r ∈ rest, isArrImmB r.li_i = false) →
+      (∀ p ∈ pend, slotArr p.1 = none) →
       physImgB slotArr (A ++ fuseMulHiAux s ef pend rest) = true
-  | [], A, _, _, _, h, _, _, _, _, _, _ => by rw [fuseMulHiAux_nil]; simpa using h
-  | i :: rest, A, ef, ep, pend, h, hs, hh, hag, hes, hp, himm => by
-    have himm' : ∀ r ∈ rest, isArrImmB r.li_i = false :=
-      fun r hr => himm r (List.mem_cons_of_mem _ hr)
+  | [], A, _, _, _, h, _, _, _, _, _ => by rw [fuseMulHiAux_nil]; simpa using h
+  | i :: rest, A, ef, ep, pend, h, hs, hh, hag, hes, hp => by
     obtain ⟨L, env', pend', he, ⟨ks, rfl⟩, hcase⟩ := fuseMulHiAux_cons_step s ef pend i rest
     simp only [fuseSiteOkB, homeOkB, Bool.and_eq_true] at hs hh
     have hag' := (hag.step i).killAll (hes.step i) ks
@@ -579,7 +617,7 @@ theorem physImgB_fuseMulHiAux (s : Bool)
     rw [he, ← List.append_assoc]
     rcases hcase with ⟨rfl, hpd⟩ | ⟨d, opn, s1, s2, heq, hhi, hsub, lo, k, hlo, hout⟩
     · refine physImgB_fuseMulHiAux s hq rest (A ++ [i]) _ _ pend' (by simpa using h) hs.2 hh.2
-        hag' hes' ?_ himm'
+        hag' hes' ?_
       rcases hpd with rfl | ⟨d, opn, s1, s2, heq, hlow, rfl⟩
       · exact hp
       · have h1 := hh.1
@@ -599,7 +637,7 @@ theorem physImgB_fuseMulHiAux (s : Bool)
             · exact h1.1
         · exact hp p hp'
     · refine physImgB_fuseMulHiAux s hq rest (A ++ L) _ _ pend' ?_ hs.2 hh.2 hag' hes'
-        (fun p hp' => hp p (hsub p hp')) himm'
+        (fun p hp' => hp p (hsub p hp'))
       have hsite : mulHiSiteB i = true := by simp [mulHiSiteB, heq, hhi]
       have h1 := hs.1
       simp only [hsite, Bool.not_true, Bool.false_or, Bool.and_eq_true] at h1
@@ -621,23 +659,20 @@ theorem physImgB_fuseMulHiAux (s : Bool)
           · exact hlo'
         exact ⟨fun q hq' => by cases hq'; exact this, nofun, nofun⟩
       · intro k' i' x hk hb y hy
-        rcases hb with ⟨ds, o, y', ss, hx⟩ | ⟨ds, o, ss, -, hai⟩
-        · rw [scanExit_of_scanStaysB hstay hk hx] at hy
-          cases hy
-        · rw [himm' i' (List.mem_of_getElem? hk)] at hai
-          cases hai
+        rw [scanExit_of_scanStaysB hstay hk hb] at hy
+        cases hy
 
 /-- **The fused body is in the image class.** A body in the class `physImgB slotArr`, whose
     array slots are `qsave.` slots, keeps the class under the fusion `fuseMulHiBody` in either
     mode when it satisfies the site condition `fuseSiteOkB` and the home condition `homeOkB`
-    from the empty environment and has no `ZEROARR` or `STOREIMM`. -/
+    from the empty environment. -/
 theorem physImgB_fuseMulHiBody (s : Bool)
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
     (h : physImgB slotArr b = true) (hsite : fuseSiteOkB slotArr b = true)
-    (hhome : homeOkB slotArr [] b = true) (himm : ∀ r ∈ b, isArrImmB r.li_i = false) :
+    (hhome : homeOkB slotArr [] b = true) :
     physImgB slotArr (fuseMulHiBody b s) = true := by
   have := physImgB_fuseMulHiAux s hq b [] [] [] [] (by simpa using h) hsite hhome
-    (EnvAgree.refl _) (fun _ hp => by cases hp) (fun _ hp => by cases hp) himm
+    (EnvAgree.refl _) (fun _ hp => by cases hp) (fun _ hp => by cases hp)
   simpa [fuseMulHiBody] using this
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse

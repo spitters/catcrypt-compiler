@@ -46,7 +46,8 @@ general-purpose name whose own scan carries the reload scratch out of the segmen
   looped physical ABI export.
 
 The reload scan stops at every instruction other than an operation. The condition
-`cmpAccFreeB` (no indexed access follows a compare with only operations between them) therefore
+`cmpAccFreeB` (no indexed access or constant-index array write, `isMemB`, follows a compare
+with only operations between them) therefore
 implies `cmpScratchFreeB` (`cmpScratchFreeB_of_cmpAccFree`), and it is carried through the
 passes by a refinement of blocks (`CmpRefines`): a pass refines its input when, from every
 open-compare state from which the input passes, the output passes and leaves a compare open only
@@ -79,18 +80,58 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape (physExpand physRmap)
 open CatCrypt.Crypto.SecureCompilation.VIR.AllocForm (lopnOperands)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass (MnOf legalizeInstr_mnOf)
 
 variable {slotArr : String → Option (String × Nat)}
 
 /-! ## 1. The condition -/
 
-/-- The instruction `r` is no indexed access, or the base of its first source is a
-    general-purpose name other than the reload scratch. -/
+/-- The instruction `r` is no indexed access and no constant-index array write (`isAccB`,
+    `isArrImmB`), or the base of its first source (an indexed operand, or the register of a
+    `ZEROARR` or `STOREIMM`) is a general-purpose name other than the reload scratch. -/
 def baseNoScratchB (r : LinstrR) : Bool :=
-  !isAccB r ||
+  !(isAccB r || isArrImmB r) ||
     match r with
     | .Lopn _ _ (.arrIdx x _ _ :: _) => gpNameB x && x != reloadScratch
+    | .Lopn _ _ (.reg x :: _) => !isArrImmB r || (gpNameB x && x != reloadScratch)
     | _ => true
+
+/-- An instruction whose bases are general-purpose names other than the reload scratch
+    (`baseNoScratchB`) satisfies `baseScanFreeB` at a position from which the reload scan of no
+    such name carries the reload scratch out of the segment. -/
+theorem baseScanFreeB_of_baseNoScratch {c : Lcmd} {m : Nat} {r : LinstrR}
+    (h : ∀ x, gpNameB x = true → x ≠ reloadScratch →
+      scanExit slotArr c m x ≠ some reloadScratch)
+    (hb : baseNoScratchB r = true) : baseScanFreeB slotArr c m r = true := by
+  cases r with
+  | Lopn ds o ss =>
+    rcases ss with _ | ⟨s, ss⟩
+    · simp [baseScanFreeB]
+    · cases s with
+      | arrIdx x y sc =>
+        simp only [baseScanFreeB, baseNoScratchB, Bool.or_eq_true, Bool.not_eq_true',
+          Bool.and_eq_true, bne_iff_ne, ne_eq] at hb ⊢
+        rcases hb with hb | hb
+        · exact Or.inl hb
+        · exact Or.inr (h x hb.1 hb.2)
+      | reg x =>
+        simp only [baseScanFreeB, baseNoScratchB, Bool.or_eq_true, Bool.not_eq_true',
+          Bool.and_eq_true, bne_iff_ne, ne_eq] at hb ⊢
+        rcases hb with hb | hb | hb
+        · exact Or.inl hb
+        · exact Or.inr (Or.inl hb)
+        · exact Or.inr (Or.inr (h x hb.1 hb.2))
+      | arr _ _ => simp [baseScanFreeB]
+      | imm _ => simp [baseScanFreeB]
+  | _ => simp [baseScanFreeB]
+
+/-- An instruction satisfies `baseScanFreeB` at a position from which the reload scan of no
+    name carries the reload scratch out of the segment. -/
+theorem baseScanFreeB_of_scan {c : Lcmd} {m : Nat} {r : LinstrR}
+    (h : ∀ x, scanExit slotArr c m x ≠ some reloadScratch) :
+    baseScanFreeB slotArr c m r = true := by
+  unfold baseScanFreeB
+  split <;> simp [h]
 
 /-- The instruction `r` at position `m` of the segment `c` is no move of the reload scratch into
     a general-purpose name, or the reload scan of the reload scratch from `m` carries no reload
@@ -178,30 +219,14 @@ theorem cmpScratchFreeB_of_baseNoScratch {body : Lcmd}
     | some j =>
       simp only
       have hjb : j ∈ body := List.mem_of_mem_drop (List.mem_of_getElem? hcm)
-      have hbj := hb j hjb
-      unfold baseScanFreeB
-      unfold baseNoScratchB at hbj
-      cases hacc : isAccB j.li_i with
-      | false => rfl
-      | true =>
-        rw [hacc] at hbj
-        simp only [Bool.not_true, Bool.false_or] at hbj ⊢
-        split
-        · rename_i _ _ _ x _ _ _ hr
-          rw [hr] at hbj
-          simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hbj
-          rw [bne_iff_ne, ne_eq]
-          intro hex
-          obtain ⟨m', j', d', hlt, h1, h2, h3, h4⟩ :=
-            scanExit_scratch_witness slotArr _ m x hbj.1 hbj.2 hex
-          have hlen : m' < (body.drop (k + 1)).length := by
-            have := (List.getElem?_eq_some_iff.mp h1).1
-            exact this
-          have hfree := hmk m' (List.mem_range.mpr hlen)
-          rw [h1] at hfree
-          simp only [movScanFreeB, h2, beq_self_eq_true, h3, Bool.and_self, Bool.not_true,
-            Bool.false_or, h4, bne_self_eq_false, Bool.false_eq_true] at hfree
-        · rfl
+      refine baseScanFreeB_of_baseNoScratch (fun x hgx hx hex => ?_) (hb j hjb)
+      obtain ⟨m', j', d', hlt, h1, h2, h3, h4⟩ :=
+        scanExit_scratch_witness slotArr _ m x hgx hx hex
+      have hlen : m' < (body.drop (k + 1)).length := (List.getElem?_eq_some_iff.mp h1).1
+      have hfree := hmk m' (List.mem_range.mpr hlen)
+      rw [h1] at hfree
+      simp only [movScanFreeB, h2, beq_self_eq_true, h3, Bool.and_self, Bool.not_true,
+        Bool.false_or, h4, bne_self_eq_false, Bool.false_eq_true] at hfree
 
 /-- **A body without moves of the reload scratch into general-purpose names** whose bases are
     general-purpose names other than the reload scratch satisfies `noScratchBaseB`. -/
@@ -979,34 +1004,48 @@ theorem physExpand_scratchPrev (shiftImm : ShiftImmOracle) (u64 : Bool)
 
 /-! ## 7. The bases of the expansion -/
 
-/-- The first indexed source of the instruction, if any, is based at `R14`. -/
+/-- The first indexed source of the instruction, if any, is based at `R14`, and so is the
+    register first source of a `ZEROARR` or `STOREIMM`. -/
 def baseR14B : LinstrR → Bool
   | .Lopn _ _ (.arrIdx x _ _ :: _) => x == reloadScratch2
+  | .Lopn ds o (.reg x :: ss) => !isArrImmB (.Lopn ds o (.reg x :: ss)) || x == reloadScratch2
   | _ => true
 
 theorem baseNoScratchB_of_baseR14B {r : LinstrR} (h : baseR14B r = true) :
     baseNoScratchB r = true := by
-  unfold baseNoScratchB
-  split
-  · rename_i x _ _ _ _ _
-    simp only [baseR14B, beq_iff_eq] at h
-    subst h
-    simp only [Bool.or_eq_true, Bool.and_eq_true, bne_iff_ne, ne_eq]
-    exact Or.inr ⟨by decide, by decide⟩
-  · simp
+  have h14 : gpNameB reloadScratch2 = true ∧ reloadScratch2 ≠ reloadScratch :=
+    ⟨by decide, by decide⟩
+  cases r with
+  | Lopn ds o ss =>
+    rcases ss with _ | ⟨s, ss⟩
+    · simp [baseNoScratchB]
+    · cases s with
+      | arrIdx x y sc =>
+        simp only [baseR14B, beq_iff_eq] at h
+        subst h
+        simp [baseNoScratchB, h14]
+      | reg x =>
+        simp only [baseR14B, Bool.or_eq_true, Bool.not_eq_true', beq_iff_eq] at h
+        rcases h with h | rfl
+        · simp [baseNoScratchB, h]
+        · simp [baseNoScratchB, h14]
+      | arr _ _ => simp [baseNoScratchB]
+      | imm _ => simp [baseNoScratchB]
+  | _ => simp [baseNoScratchB]
 
-theorem baseR14B_of_idxFree {r : LinstrR} (h : PhysImgSideAlloc.idxFreeB r = true) :
-    baseR14B r = true := by
+theorem baseR14B_of_idxFree {r : LinstrR}
+    (h : PhysImgSideAlloc.idxFreeB r = true ∧ isArrImmB r = false) : baseR14B r = true := by
   unfold baseR14B
   split
   · simp [PhysImgSideAlloc.idxFreeB] at h
+  · simp [h.2]
   · rfl
 
 theorem legalizeMemLoad_baseR14 (n y mov : String) :
     (legalizeMemLoad (.reg n) (.arrIdx reloadScratch2 y 8) "LOADIDX" mov).all baseR14B
       = true := by
   simp only [legalizeMemLoad, legalizeSibElem, sibNameSpill_reloadScratch2]
-  split_ifs <;> simp [baseR14B]
+  split_ifs <;> simp_all [baseR14B, isArrImmB]
 
 theorem legalizeMemStoreK_baseR14 (kc : Option Nat) (na y v mov : String) :
     (legalizeMemStoreK kc (.reg na) (.arrIdx reloadScratch2 y 8) (.reg v) "STOREIDX" mov).all
@@ -1024,9 +1063,9 @@ theorem legalizeMemStoreK_baseR14 (kc : Option Nat) (na y v mov : String) :
         simp only at hc
         split_ifs at hc
         cases hc
-        simp [baseR14B]
+        simp [baseR14B, isArrImmB]
   · simp only [legalizeMemStore, legalizeSibElem, sibNameSpill_reloadScratch2]
-    split <;> (try split) <;> (try split_ifs) <;> simp_all [baseR14B]
+    split <;> (try split) <;> (try split_ifs) <;> simp_all [baseR14B, isArrImmB]
 
 /-- **The bases of the access arms.** The expansion of an indexed access whose base is
     reloaded has every indexed first source based at `R14`. -/
@@ -1218,17 +1257,30 @@ theorem noScratchBaseB_lfundefPhysAbiOfVirtCert
         (LprogAsmPrinter.bodyIsU64 body1) (physRmap body1 []) mbr)).filter
           PhysAbiShape.notLivePin), baseNoScratchB j.li_i = true := by
     intro j hj
-    rcases mem_reloadArrImmBody hj with hj | ⟨i', -, l', hl, -, hx⟩
-    swap
-    · exact baseNoScratchB_of_baseR14B (baseR14B_of_idxFree
-        (PhysImgSideAlloc.reloadArrImm_idxFree hl _ hx))
-    obtain ⟨i, hi, hj⟩ := List.mem_flatMap.mp (List.mem_of_mem_filter hj)
+    rw [PhysImgSideAlloc.reloadArrImmBody_filter_flatMap] at hj
+    obtain ⟨i, hi, hj⟩ := List.mem_flatMap.mp hj
+    replace hj := List.mem_of_mem_filter hj
     rw [hrmE] at hj
     refine baseNoScratchB_of_baseR14B ?_
-    cases hA : isAccB i.li_i
-    · exact baseR14B_of_idxFree (PhysImgSideAlloc.physExpand_idxFree _ _ rm mbr i
-        (fun x hx => PhysImgSideAlloc.noIdxB_remapOperand _ _ hx) (hidx i hi hA) j hj)
-    · exact physExpand_acc_baseR14 _ _ rm mbr i (fun n => ⟨_, rfl⟩) (hshape i hi) hA j hj
+    by_cases hz : ∃ ds o ss, i.li_i = .Lopn ds o ss ∧ (o = "ZEROARR" ∨ o = "STOREIMM")
+    · obtain ⟨ds, o, ss, hx, hz⟩ := hz
+      obtain ⟨ii, w⟩ := i
+      simp only at hx
+      subst hx
+      obtain ⟨b, q, hb, -, ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩⟩ :=
+        PhysImgSideAlloc.reloadArrImmBody_physExpand_arrImm _ _ rm mbr ii ds o ss (hshape _ hi)
+          hz (fun _ => rfl) (fun n => ⟨_, rfl⟩) <;>
+        rw [he] at hj <;>
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hj <;>
+        rcases hj with rfl | rfl <;> simp [baseR14B, isArrImmB]
+    · have hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM" :=
+        fun ds o ss hx => not_or.mp fun hz' => hz ⟨ds, o, ss, hx, hz'⟩
+      rw [PhysImgSideAlloc.reloadArrImmBody_physExpand_of_ne _ _ _ _ _ _ hne] at hj
+      cases hA : isAccB i.li_i
+      · exact baseR14B_of_idxFree ⟨PhysImgSideAlloc.physExpand_idxFree _ _ rm mbr i
+          (fun x hx => PhysImgSideAlloc.noIdxB_remapOperand _ _ hx) (hidx i hi hA) j hj,
+          PhysImgSideAlloc.physExpand_arrImmFree _ _ rm mbr i hne j hj⟩
+      · exact physExpand_acc_baseR14 _ _ rm mbr i (fun n => ⟨_, rfl⟩) (hshape i hi) hA j hj
   have hplain : ∀ j, PhysImgSideAlloc.PlainB j → baseNoScratchB j.li_i = true :=
     fun j h => baseNoScratchB_of_baseR14B (baseR14B_of_idxFree h.2.1)
   have hPro : scratchPrevB false ((buildPrologue { virt0 with lfd_body := body1 }
@@ -1290,12 +1342,16 @@ def cmpOpenStep (w : Bool) (r : LinstrR) : Bool := isOpnB r && (w || isCmpB r)
 /-- The open-compare state after the block `l` from the state `w`. -/
 def cmpOpenAfter (w : Bool) (l : Lcmd) : Bool := l.foldl (fun w j => cmpOpenStep w j.li_i) w
 
-/-- **No indexed access while a compare is open**: no indexed access (`isAccB`) of `l` follows
-    a compare with only operations between them; `w` says whether a compare is open before
-    `l`. -/
+/-- The instruction is an indexed access or a constant-index array write (`isAccB`,
+    `isArrImmB`): an instruction with a base (`AccBase`) that the image class reads. -/
+def isMemB (r : LinstrR) : Bool := isAccB r || isArrImmB r
+
+/-- **No indexed access while a compare is open**: no indexed access or constant-index array
+    write (`isMemB`) of `l` follows a compare with only operations between them; `w` says
+    whether a compare is open before `l`. -/
 def cmpAccFreeB : Bool → Lcmd → Bool
   | _, [] => true
-  | w, j :: l => !(w && isAccB j.li_i) && cmpAccFreeB (cmpOpenStep w j.li_i) l
+  | w, j :: l => !(w && isMemB j.li_i) && cmpAccFreeB (cmpOpenStep w j.li_i) l
 
 theorem cmpOpenAfter_cons (w : Bool) (j : Linstr) (l : Lcmd) :
     cmpOpenAfter w (j :: l) = cmpOpenAfter (cmpOpenStep w j.li_i) l := rfl
@@ -1353,16 +1409,14 @@ theorem cmpAccFreeB_dropLast : ∀ {w : Bool} (l : Lcmd), cmpAccFreeB w l = true
 theorem isOpnB_of_isCmpB {r : LinstrR} (h : isCmpB r = true) : isOpnB r = true := by
   cases r <;> simp_all [isCmpB, isOpnB]
 
-theorem isAccB_of_isCmpB {r : LinstrR} (h : isCmpB r = true) : isAccB r = false := by
+theorem isMemB_of_isCmpB {r : LinstrR} (h : isCmpB r = true) : isMemB r = false := by
   cases r with
   | Lopn ds o ss =>
-    cases ha : isAccB (.Lopn ds o ss)
+    cases ha : isMemB (.Lopn ds o ss)
     · rfl
-    · simp only [isAccB, Bool.or_eq_true, beq_iff_eq] at ha
+    · simp only [isMemB, isAccB, isArrImmB, Bool.or_eq_true, beq_iff_eq] at ha
       simp only [isCmpB] at h
-      rcases ha with rfl | rfl
-      · exact absurd h (by decide +kernel)
-      · exact absurd h (by decide +kernel)
+      rcases ha with (rfl | rfl) | (rfl | rfl) <;> exact absurd h (by decide +kernel)
   | _ => rfl
 
 theorem isCmpB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOperand}
@@ -1371,8 +1425,14 @@ theorem isCmpB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOperand
   simp only [isCmpB]
   rcases h with rfl | rfl | rfl | rfl | rfl <;> decide +kernel
 
-/-- A block without indexed accesses passes from every state. -/
-theorem cmpAccFreeB_of_noAcc : ∀ {l : Lcmd} (w : Bool), (∀ j ∈ l, isAccB j.li_i = false) →
+theorem isMemB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : o ∈ movMnems) : isMemB (.Lopn ds o ss) = false := by
+  simp only [movMnems, List.mem_cons, List.not_mem_nil, or_false] at h
+  rcases h with rfl | rfl | rfl | rfl | rfl <;> simp [isMemB, isAccB, isArrImmB]
+
+/-- A block without indexed accesses and constant-index array writes passes from every
+    state. -/
+theorem cmpAccFreeB_of_noAcc : ∀ {l : Lcmd} (w : Bool), (∀ j ∈ l, isMemB j.li_i = false) →
     cmpAccFreeB w l = true
   | [], _, _ => rfl
   | j :: l, w, h => by
@@ -1423,10 +1483,10 @@ theorem cmpOpenAfter_true : ∀ {l : Lcmd} {w : Bool}, cmpOpenAfter w l = true �
     · exact Or.inr ⟨r, List.mem_cons_of_mem _ hr, hc⟩
 
 /-- A block of operations without compares keeps the state, and passes from an open compare
-    only when it has no indexed access. -/
+    only when it has no indexed access and no constant-index array write. -/
 theorem opsNoCmp_eval : ∀ {l : Lcmd},
     (∀ j ∈ l, isOpnB j.li_i = true ∧ isCmpB j.li_i = false) → ∀ w : Bool,
-    cmpOpenAfter w l = w ∧ (cmpAccFreeB true l = true → ∀ j ∈ l, isAccB j.li_i = false)
+    cmpOpenAfter w l = w ∧ (cmpAccFreeB true l = true → ∀ j ∈ l, isMemB j.li_i = false)
   | [], _, _ => ⟨rfl, fun _ j hj => by simp at hj⟩
   | j :: l, h, w => by
     have ih := opsNoCmp_eval (l := l) (fun r hr => h r (List.mem_cons_of_mem _ hr))
@@ -1540,18 +1600,18 @@ theorem cmpRefines_sublist_append {pre' pre : Lcmd} (c : Lcmd) (hs : pre'.Sublis
     (hop : ∀ j ∈ pre, isOpnB j.li_i = true) : CmpRefines (pre' ++ c) (pre ++ c) :=
   (cmpRefines_sublist hs hop).append (CmpRefines.refl c)
 
-/-- **A block refines one operation** when it has an indexed access or a compare only where
-    the operation is one. -/
+/-- **A block refines one operation** when it has an indexed access, a constant-index array
+    write (`isMemB`) or a compare only where the operation is one. -/
 theorem cmpRefines_ops {B : Lcmd} {i : Linstr} (hi : isOpnB i.li_i = true)
-    (hacc : ∀ r ∈ B, isAccB r.li_i = true → isAccB i.li_i = true)
+    (hacc : ∀ r ∈ B, isMemB r.li_i = true → isMemB i.li_i = true)
     (hcmp : ∀ r ∈ B, isCmpB r.li_i = true → isCmpB i.li_i = true) : CmpRefines B [i] := by
   intro w hA
   simp only [cmpAccFreeB, Bool.and_true, Bool.not_eq_true'] at hA
   cases hc : isCmpB i.li_i with
   | true =>
-    have hna : isAccB i.li_i = false := isAccB_of_isCmpB hc
+    have hna : isMemB i.li_i = false := isMemB_of_isCmpB hc
     refine ⟨cmpAccFreeB_of_noAcc w fun r hr => ?_, fun _ => ?_⟩
-    · cases h : isAccB r.li_i
+    · cases h : isMemB r.li_i
       · rfl
       · rw [hacc r hr h] at hna; cases hna
     · simp [cmpOpenAfter, cmpOpenStep, hi, hc]
@@ -1567,19 +1627,19 @@ theorem cmpRefines_ops {B : Lcmd} {i : Linstr} (hi : isOpnB i.li_i = true)
       | true =>
         simp only [Bool.true_and] at hA
         exact cmpAccFreeB_of_noAcc true fun r hr => by
-          cases h : isAccB r.li_i
+          cases h : isMemB r.li_i
           · rfl
           · rw [hacc r hr h] at hA; cases hA
     · have := he.1 h
       subst this
       simp [cmpOpenAfter, cmpOpenStep, hi]
 
-/-- Blocks of operations without compares: `B` refines `A` when `B` has an indexed access only
-    where `A` has one. -/
+/-- Blocks of operations without compares: `B` refines `A` when `B` has an indexed access or a
+    constant-index array write (`isMemB`) only where `A` has one. -/
 theorem cmpRefines_noCmp {B A : Lcmd}
     (hA : ∀ j ∈ A, isOpnB j.li_i = true ∧ isCmpB j.li_i = false)
     (hB : ∀ j ∈ B, isOpnB j.li_i = true ∧ isCmpB j.li_i = false)
-    (hacc : ∀ j ∈ B, isAccB j.li_i = true → ∃ i ∈ A, isAccB i.li_i = true) :
+    (hacc : ∀ j ∈ B, isMemB j.li_i = true → ∃ i ∈ A, isMemB i.li_i = true) :
     CmpRefines B A := by
   intro w h
   have eA := opsNoCmp_eval hA w
@@ -1590,16 +1650,16 @@ theorem cmpRefines_noCmp {B A : Lcmd}
   | true =>
     have hA0 := eA.2 h
     exact cmpAccFreeB_of_noAcc true fun j hj => by
-      cases hj' : isAccB j.li_i
+      cases hj' : isMemB j.li_i
       · rfl
       · obtain ⟨i, hi, hi'⟩ := hacc j hj hj'
         rw [hA0 i hi] at hi'
         cases hi'
 
-/-- A block `B` without indexed accesses refines a block `A` of operations when `B` has a
-    compare only when `A` has one. -/
+/-- A block `B` without indexed accesses and constant-index array writes refines a block `A`
+    of operations when `B` has a compare only when `A` has one. -/
 theorem cmpRefines_noAcc {B A : Lcmd} (hA : ∀ j ∈ A, isOpnB j.li_i = true)
-    (hB : ∀ j ∈ B, isAccB j.li_i = false)
+    (hB : ∀ j ∈ B, isMemB j.li_i = false)
     (hcmp : ∀ j ∈ B, isCmpB j.li_i = true → ∃ i ∈ A, isCmpB i.li_i = true) :
     CmpRefines B A := by
   intro w _
@@ -1608,9 +1668,6 @@ theorem cmpRefines_noAcc {B A : Lcmd} (hA : ∀ j ∈ A, isOpnB j.li_i = true)
   · exact Or.inl hw
   · exact Or.inr (hcmp j hj hc)
 
-/-- The instruction is an operation under the mnemonic `o` or a move mnemonic. -/
-def MnOf (o : String) (r : LinstrR) : Prop :=
-  ∃ ds o' ss, r = .Lopn ds o' ss ∧ (o' = o ∨ o' ∈ movMnems)
 
 /-- A block of operations under the mnemonic of an operation or a move mnemonic refines the
     operation. -/
@@ -1622,7 +1679,7 @@ theorem cmpRefines_mnOf {B : Lcmd} {i : Linstr} {ds : List LOperand} {o : String
     rw [he] at ha
     rcases ho with rfl | ho
     · rw [hi]; exact ha
-    · rw [isAccB_of_movMnems ho] at ha; cases ha
+    · rw [isMemB_of_movMnems ho] at ha; cases ha
   · obtain ⟨ds', o', ss', he, ho⟩ := h r hr
     rw [he] at hc
     rcases ho with rfl | ho
@@ -1685,11 +1742,11 @@ theorem scanExit_of_ctl (c : Lcmd) : ∀ (m : Nat) (x : String),
             all_goals first | rfl | exact ih' _
           · rfl
 
-/-- After an open compare, an indexed access of a block that passes `cmpAccFreeB` follows an
-    instruction other than an operation. -/
+/-- After an open compare, an indexed access or a constant-index array write of a block that
+    passes `cmpAccFreeB` follows an instruction other than an operation. -/
 theorem ctl_before_acc : ∀ {c : Lcmd}, cmpAccFreeB true c = true →
     ∀ (m : Nat) (j : Linstr), c[m]? = some j →
-    isAccB j.li_i = true → ∃ p < m, ∃ j', c[p]? = some j' ∧ isOpnB j'.li_i = false
+    isMemB j.li_i = true → ∃ p < m, ∃ j', c[p]? = some j' ∧ isOpnB j'.li_i = false
   | [], _, m, j, hm, _ => by simp at hm
   | j0 :: c, h, m, j, hm, ha => by
     rw [cmpAccFreeB, Bool.and_eq_true] at h
@@ -1737,15 +1794,15 @@ theorem cmpScratchFreeB_of_cmpAccFree {body : Lcmd} (h : cmpAccFreeB false body 
       | none => rfl
       | some j =>
         simp only
-        unfold baseScanFreeB
-        cases hacc : isAccB j.li_i with
-        | false => rfl
+        cases hacc : isMemB j.li_i with
+        | false =>
+          unfold baseScanFreeB
+          simp only [isMemB] at hacc
+          rw [hacc]
+          rfl
         | true =>
           have hp := ctl_before_acc hc m j hcm hacc
-          simp only [Bool.not_true, Bool.false_or]
-          split
-          · simp [scanExit_of_ctl _ m _ hp]
-          · rfl
+          exact baseScanFreeB_of_scan fun x => by simp [scanExit_of_ctl _ m _ hp]
 
 /-! ### The passes -/
 
@@ -1777,7 +1834,7 @@ theorem cmpRefines_fuseMulHiAux (s : Bool) : ∀ (b : Lcmd) (env : ScratchEnv)
     · refine cmpRefines_ops (by simp [heq, isOpnB]) (fun r hr ha => ?_) (fun r hr hc => ?_)
       · obtain ⟨ds, o, y, he', ho, -⟩ := hout r hr
         rw [he'] at ha
-        rcases ho with rfl | rfl | rfl <;> simp [isAccB] at ha
+        rcases ho with rfl | rfl | rfl <;> simp [isMemB, isAccB, isArrImmB] at ha
       · obtain ⟨ds, o, y, he', ho, -⟩ := hout r hr
         rw [he'] at hc
         simp only [isCmpB] at hc
@@ -1829,7 +1886,7 @@ theorem cmpRefines_optimizeBasicBlocks (b : Lcmd) : CmpRefines (optimizeBasicBlo
     · rename_i hm
       have hseg : ∀ j ∈ seg, instrModeled j = true := List.all_eq_true.mp hm
       let P : Linstr → Prop := fun j => isOpnB j.li_i = true ∧ isCmpB j.li_i = false ∧
-        (isAccB j.li_i = true → ∃ i ∈ seg, isAccB i.li_i = true)
+        (isMemB j.li_i = true → ∃ i ∈ seg, isMemB i.li_i = true)
       have hP : ∀ j ∈ seg, P j := fun j hj =>
         ⟨(instrModeled_noCmp (hseg j hj)).1, (instrModeled_noCmp (hseg j hj)).2,
           fun ha => ⟨j, hj, ha⟩⟩
@@ -1839,7 +1896,7 @@ theorem cmpRefines_optimizeBasicBlocks (b : Lcmd) : CmpRefines (optimizeBasicBlo
         rw [he] at h1 h2 h3
         exact ⟨rfl, h2, h3⟩
       have hmv : PhysImgSidePass.MvClosed P := by
-        intro i d mn s r hi he
+        intro i d mn s r hi he _
         obtain ⟨h1, h2, h3⟩ := hi
         rw [he] at h1 h2 h3
         exact ⟨rfl, h2, h3⟩
@@ -1857,16 +1914,17 @@ theorem cmpRefines_map (f : Linstr → Linstr) : ∀ (l : Lcmd),
     exact (h a List.mem_cons_self).append
       (cmpRefines_map f l fun i hi => h i (List.mem_cons_of_mem _ hi))
 
-/-- An operation under a mnemonic that is neither a compare nor an access mnemonic. -/
+/-- An operation under a mnemonic that is neither a compare nor an access mnemonic (`isMemB`). -/
 theorem quiet_of_mn {ds : List LOperand} {o : String} {ss : List LOperand}
-    (hc : (stripWidthTag o == "CMP") = false) (ha : (o == "LOADIDX" || o == "STOREIDX") = false) :
-    isCmpB (.Lopn ds o ss) = false ∧ isAccB (.Lopn ds o ss) = false :=
+    (hc : (stripWidthTag o == "CMP") = false)
+    (ha : (o == "LOADIDX" || o == "STOREIDX" || (o == "ZEROARR" || o == "STOREIMM")) = false) :
+    isCmpB (.Lopn ds o ss) = false ∧ isMemB (.Lopn ds o ss) = false :=
   ⟨hc, ha⟩
 
 /-- One operation in place of an operation refines it when it is neither a compare nor an
-    indexed access. -/
+    indexed access or a constant-index array write. -/
 theorem cmpRefines_quiet_one {i j : Linstr} (hi : isOpnB i.li_i = true)
-    (hj : isCmpB j.li_i = false ∧ isAccB j.li_i = false) : CmpRefines [j] [i] := by
+    (hj : isCmpB j.li_i = false ∧ isMemB j.li_i = false) : CmpRefines [j] [i] := by
   refine cmpRefines_ops hi (fun r hr ha => ?_) (fun r hr hc => ?_)
   · rw [List.mem_singleton] at hr; subst hr; rw [hj.2] at ha; cases ha
   · rw [List.mem_singleton] at hr; subst hr; rw [hj.1] at hc; cases hc
@@ -1949,70 +2007,6 @@ theorem cmpRefines_foldIndexedBody (b : Lcmd) : CmpRefines (foldIndexedBody b) b
   unfold foldIndexedBody
   exact (cmpRefines_spellMemBody _).trans ((hdrop _).trans hconst)
 
-/-- Every instruction of the re-allocation of a run carries the mnemonic of an instruction of
-    the run. -/
-theorem goAcc_opn {abi : VIR.LprogIsa.IsaAbi} (lend : List String) :
-    ∀ (ann : List (FI × List String)) (m : LprogGpRealloc.Cur) (cs : List String)
-      (acc out : List FI), goAcc lend m ann cs acc abi = some out →
-      ∀ j ∈ out, j ∈ acc ∨ ∃ p ∈ ann, j.opn = p.1.opn := by
-  intro ann
-  induction ann with
-  | nil =>
-    intro m cs acc out h j hj
-    cases cs with
-    | cons _ _ => simp [goAcc] at h
-    | nil =>
-      simp only [goAcc] at h
-      split at h
-      · cases h; exact Or.inl (by simpa using hj)
-      · cases h
-  | cons p rest ih =>
-    intro m cs acc out h j hj
-    obtain ⟨i, la⟩ := p
-    have lift : (j ∈ acc ∨ ∃ p ∈ rest, j.opn = p.1.opn) →
-        j ∈ acc ∨ ∃ p ∈ (i, la) :: rest, j.opn = p.1.opn :=
-      fun h' => h'.imp id fun ⟨p, hp, he⟩ => ⟨p, List.mem_cons_of_mem _ hp, he⟩
-    have push : ∀ (c' : String) (args : List LOperand),
-        (j ∈ (⟨i.ii, c', i.opn, args⟩ : FI) :: acc ∨ ∃ p ∈ rest, j.opn = p.1.opn) →
-        j ∈ acc ∨ ∃ p ∈ (i, la) :: rest, j.opn = p.1.opn := by
-      intro c' args h'
-      rcases h' with h' | ⟨p, hp, he⟩
-      · rcases List.mem_cons.mp h' with rfl | h'
-        · exact Or.inr ⟨(i, la), List.mem_cons_self, rfl⟩
-        · exact Or.inl h'
-      · exact Or.inr ⟨p, List.mem_cons_of_mem _ hp, he⟩
-    cases cs with
-    | nil => simp [goAcc] at h
-    | cons c cs =>
-      simp only [goAcc] at h
-      split at h
-      · split at h
-        · split at h
-          · split at h
-            · exact lift (ih _ cs acc out h j hj)
-            · split at h
-              · exact lift (ih _ cs acc out h j hj)
-              · split at h
-                · exact push _ _ (ih _ cs _ out h j hj)
-                · cases h
-          · cases h
-        · split at h
-          · exact push _ _ (ih _ cs _ out h j hj)
-          · cases h
-      · cases h
-
-theorem reallocRun_opn {abi : VIR.LprogIsa.IsaAbi} (lend : List String) (is : List FI) :
-    ∀ j ∈ reallocRun lend is abi, ∃ i ∈ is, j.opn = i.opn := by
-  unfold reallocRun reallocWith
-  split
-  · rename_i out hf
-    obtain ⟨cs, _, hcs⟩ := List.exists_of_findSome?_eq_some hf
-    intro j hj
-    rcases goAcc_opn lend _ {} cs [] out hcs j hj with h | ⟨p, hp, he⟩
-    · cases h
-    · exact ⟨p.1, LprogGpReallocCfg.annotate_fst lend is p hp, he⟩
-  · intro j hj
-    exact ⟨j, hj, rfl⟩
 
 /-- **The register re-allocation** refines the body: a re-allocated run has no indexed access,
     and a compare only where the run has one. -/
@@ -2023,13 +2017,16 @@ theorem cmpRefines_reallocBody (res : List String) (b : Lcmd) :
       (pieces b)).flatten ((pieces b).map LprogGpReallocLeak.Piece.toLcmd).flatten by
     rwa [LprogGpReallocLeak.pieces_flatten] at h
   have hps := LprogGpReallocCT.pieces_spec (recog := LcmdCopyPropagate.isRecognizedOpn) b
+  have hgood := LprogGpReallocLeak.pieces_good b
   generalize LprogGpRealloc.labelLiveFrames b = lf
-  generalize pieces b = ps at hps
+  generalize pieces b = ps at hps hgood
   induction ps with
   | nil => exact CmpRefines.refl _
   | cons p ps ih =>
     simp only [LprogGpReallocLeak.outSegs, List.map_cons, List.flatten_cons]
-    refine CmpRefines.append ?_ (ih fun q hq => hps q (List.mem_cons_of_mem _ hq))
+    refine CmpRefines.append ?_ (ih (fun q hq => hps q (List.mem_cons_of_mem _ hq))
+      (fun q hq => hgood q (List.mem_cons_of_mem _ hq)))
+    have hg := hgood p List.mem_cons_self
     rcases hps p List.mem_cons_self with ⟨li, -, rfl⟩ | ⟨is, rfl, hwf⟩
     · exact CmpRefines.refl _
     · simp only [LprogGpReallocLeak.outSeg, LprogGpReallocLeak.Piece.toLcmd]
@@ -2037,61 +2034,16 @@ theorem cmpRefines_reallocBody (res : List String) (b : Lcmd) :
       · obtain ⟨i, -, rfl⟩ := List.mem_map.mp hj
         rfl
       · obtain ⟨k, hk, rfl⟩ := List.mem_map.mp hj
-        obtain ⟨i, hi, he⟩ := reallocRun_opn _ is k hk
+        obtain ⟨i, hi, he⟩ := PhysImgSidePass.reallocRun_opn _ is k hk
         have hw := hwf i hi
+        have hz := PhysImgFold.fragOf?_opn_ne (hg.2 i hi)
         simp only [LprogGpRealloc.FI.wf, Bool.and_eq_true, bne_iff_ne, ne_eq] at hw
-        simp [FI.toL, LprogGpRealloc.FI.toR, isAccB, he, hw.1.2, hw.2]
+        simp [FI.toL, LprogGpRealloc.FI.toR, isMemB, isAccB, isArrImmB, he, hw.1.2, hw.2,
+          hz.1, hz.2]
       · obtain ⟨k, hk, rfl⟩ := List.mem_map.mp hj
-        obtain ⟨i, hi, he⟩ := reallocRun_opn _ is k hk
+        obtain ⟨i, hi, he⟩ := PhysImgSidePass.reallocRun_opn _ is k hk
         exact ⟨i.toL, List.mem_map_of_mem hi, by
           simpa [FI.toL, LprogGpRealloc.FI.toR, isCmpB, he] using hc⟩
-
-/-- Every instruction of the two-address legalisation of an operation under `o` is an
-    operation under `o` or a move mnemonic. -/
-theorem legalizeInstr_mnOf (ok : Bool) (i : Linstr) {ds : List LOperand} {o : String}
-    {ss : List LOperand} (hi : i.li_i = .Lopn ds o ss) :
-    ∀ r ∈ legalizeInstr ok i x86Data, MnOf o r.li_i := by
-  have hself : MnOf o i.li_i := ⟨ds, o, ss, hi, Or.inl rfl⟩
-  have hmov : ∀ m, TwoAddrLegalize.movFor o = some m → m ∈ movMnems := by
-    intro m hm
-    unfold TwoAddrLegalize.movFor at hm
-    split_ifs at hm <;> cases hm <;> decide +kernel
-  intro r hr
-  unfold legalizeInstr at hr
-  split at hr
-  · rename_i d opn a b he
-    rw [hi] at he
-    cases he
-    split at hr
-    · split at hr
-      · simp only [List.mem_singleton] at hr; subst hr; exact hself
-      · rename_i m hm
-        have hm' : m ∈ movMnems := hmov m hm
-        split at hr
-        · split at hr
-          · simp only [List.mem_singleton] at hr; subst hr; exact ⟨_, _, _, rfl, Or.inl rfl⟩
-          · simp only [List.mem_singleton] at hr; subst hr; exact hself
-        · split at hr
-          · simp only [List.mem_singleton] at hr; subst hr; exact hself
-          · split at hr
-            · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-              rcases hr with rfl | rfl
-              · exact ⟨_, _, _, rfl, Or.inr hm'⟩
-              · exact ⟨_, _, _, rfl, Or.inl rfl⟩
-            · split at hr
-              · simp only [List.mem_singleton] at hr; subst hr; exact ⟨_, _, _, rfl, Or.inl rfl⟩
-              · split at hr
-                · split at hr <;>
-                    simp only [scratchRoute, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
-                    rcases hr with rfl | rfl | rfl | rfl | rfl <;>
-                    exact ⟨_, _, _, rfl, by
-                      first
-                      | exact Or.inl rfl
-                      | exact Or.inr hm'
-                      | exact Or.inr (by simp [movMnems])⟩
-                · simp only [List.mem_singleton] at hr; subst hr; exact hself
-    · simp only [List.mem_singleton] at hr; subst hr; exact hself
-  · simp only [List.mem_singleton] at hr; subst hr; exact hself
 
 /-- **The two-address legalisation** refines the body. -/
 theorem cmpRefines_twoAddrBody (b : Lcmd) : CmpRefines (twoAddrBody b) b := by
@@ -2172,7 +2124,7 @@ theorem cmpRefines_physExpand (shiftImm : ShiftImmOracle) (u64 : Bool)
   | _ => simp only [physExpand]; exact CmpRefines.refl _
 
 /-- The instruction is neither a compare nor an indexed access. -/
-def QuietI (j : Linstr) : Prop := isCmpB j.li_i = false ∧ isAccB j.li_i = false
+def QuietI (j : Linstr) : Prop := isCmpB j.li_i = false ∧ isMemB j.li_i = false
 
 theorem quiet_eval {l : Lcmd} (h : ∀ j ∈ l, QuietI j) (w : Bool) :
     cmpAccFreeB w l = true ∧ (cmpOpenAfter w l = true → w = true) :=

@@ -33,7 +33,8 @@ the scan of its output resolves to an array slot wherever the scan of its input 
   destination whose scan step dominates the step of the input.
 * `physImgB_foldIndexedBody`: the constant-index fold, the removal of dead immediate moves and
   the array-ABI spelling keep the class, when no 64-bit copy into a register reads an array slot
-  (`copyNoSlotB`) and no indexed access has a cell name as its base (`cellBaseFreeB`).
+  (`copyNoSlotB`) and no indexed access, `ZEROARR` or `STOREIMM` has a cell name as its base
+  (`cellBaseFreeB`).
 * `goAcc_img`: a run materialized by the check `goAcc` keeps the scans of every name that is no
   location or is live out, and writes an array slot only by a save after moves into other names.
 * `physImgB_reallocBody`: the register re-allocation keeps the class, when no result register
@@ -540,11 +541,13 @@ def copyNoSlotB (slotArr : String → Option (String × Nat)) (body : Lcmd) : Bo
     | .Lopn [.reg _] "MOV:64" [.reg x] => (slotArr x).isNone
     | _ => true
 
-/-- No indexed access has a cell name `mem.<B>.<off>` as its base. -/
+/-- No indexed access has a cell name `mem.<B>.<off>` as its base, and no `ZEROARR` or
+    `STOREIMM` has a cell name as its base register. -/
 def cellBaseFreeB (body : Lcmd) : Bool :=
   body.all fun j =>
     match j.li_i with
     | .Lopn _ _ (.arrIdx x _ _ :: _) => !hasPrefix x "mem."
+    | .Lopn ds o (.reg x :: ss) => !isArrImmB (.Lopn ds o (.reg x :: ss)) || !hasPrefix x "mem."
     | _ => true
 
 theorem copyNoSlotB_at {body : Lcmd} (h : copyNoSlotB slotArr body = true) {j : Linstr}
@@ -560,6 +563,14 @@ theorem cellBaseFreeB_at {body : Lcmd} (h : cellBaseFreeB body = true) {j : Lins
   have := List.all_eq_true.mp h j hj
   rw [hx] at this
   simpa using this
+
+theorem cellBaseFreeB_arrImm {body : Lcmd} (h : cellBaseFreeB body = true) {j : Linstr}
+    (hj : j ∈ body) {ds : List LOperand} {o x : String} {ss : List LOperand}
+    (hx : j.li_i = .Lopn ds o (.reg x :: ss)) (hai : isArrImmB j.li_i = true) :
+    hasPrefix x "mem." = false := by
+  have := List.all_eq_true.mp h j hj
+  rw [hx] at this hai
+  simpa [hai] using this
 
 /-- At a position of the fold, the step of the folded instruction dominates the step of the
     input instruction, the folded instruction is the input or has no access and no array-slot
@@ -810,14 +821,12 @@ theorem physImgB_spellMemBody
 /-- **The constant-index fold stage keeps the class.** `foldIndexedBody` folds the
     constant-index accesses to direct accesses, removes the dead immediate moves and spells the
     direct accesses as moves of cell names. When every array slot is a `qsave.` slot, no 64-bit
-    copy into a register reads an array slot (`copyNoSlotB`), no indexed access has a cell
-    name as its base (`cellBaseFreeB`) and no `ZEROARR` or `STOREIMM` has a cell name as its
-    base register (`hcbImm`), a body in the class gives a body in the class. -/
+    copy into a register reads an array slot (`copyNoSlotB`), and no indexed access, `ZEROARR`
+    or `STOREIMM` has a cell name as its base (`cellBaseFreeB`), a body in the class gives a
+    body in the class. -/
 theorem physImgB_foldIndexedBody
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {body : Lcmd}
     (hcp : copyNoSlotB slotArr body = true) (hcb : cellBaseFreeB body = true)
-    (hcbImm : ∀ j ∈ body, ∀ ds o x ss, j.li_i = .Lopn ds o (.reg x :: ss) →
-      isArrImmB j.li_i = true → hasPrefix x "mem." = false)
     (h : physImgB slotArr body = true) :
     physImgB slotArr (foldIndexedBody body) = true := by
   unfold foldIndexedBody
@@ -834,7 +843,7 @@ theorem physImgB_foldIndexedBody
     · exact cellBaseFreeB_at hcb hj'' hx
     · exact absurd hx (hne ds o x y 8 ss)
   · rcases mem_constIndexFoldBody_arrImm hj' with hj'' | hne
-    · exact hcbImm j hj'' ds o x ss hx hai
+    · exact cellBaseFreeB_arrImm hcb hj'' hx hai
     · rw [hne] at hai; cases hai
 
 end FoldStages

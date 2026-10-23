@@ -81,15 +81,12 @@ theorem slotMov?_of_cellA {x : LinstrR} {c : CellOp} (h : cellA? x = some c)
     rcases hm with rfl | rfl <;> simp [slotMov?, hn]
   | lea D B off => exact absurd rfl (hc D B off)
 
-/-- **The cell body keeps the class.** When every array slot is a `qsave.` slot, no indexed
-    access has a cell name as its base (`cellBaseFreeB`) and no `ZEROARR` or `STOREIMM` has a
-    cell name as its base register (`hbaseImm`), the cell body of a body in the class is in the
-    class. -/
+/-- **The cell body keeps the class.** When every array slot is a `qsave.` slot and no indexed
+    access, `ZEROARR` or `STOREIMM` has a cell name as its base (`cellBaseFreeB`), the cell body
+    of a body in the class is in the class. -/
 theorem physImgB_cellBody
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
     (hbase : cellBaseFreeB b = true)
-    (hbaseImm : ∀ j ∈ b, ∀ ds o x ss, j.li_i = .Lopn ds o (.reg x :: ss) →
-      isArrImmB j.li_i = true → hasPrefix x "mem." = false)
     (h : physImgB slotArr b = true) :
     physImgB slotArr (cellBody slotArr b) = true := by
   have hS : ∀ q, gpNameB q = true → hasPrefix q "mem." = false := fun q hq' =>
@@ -142,7 +139,7 @@ theorem physImgB_cellBody
         ⟨B, off, S, A, hc, he⟩ <;> rw [he] at hx
     · rcases hx with ⟨ds, o, y, ss, hx⟩ | ⟨ds, o, ss, hx, hai⟩
       · exact cellBaseFreeB_at hbase (List.mem_of_getElem? hb) hx
-      · exact hbaseImm i (List.mem_of_getElem? hb) ds o x ss hx hai
+      · exact PhysImgFold.cellBaseFreeB_arrImm hbase (List.mem_of_getElem? hb) hx hai
     all_goals
       rcases hx with ⟨_, _, _, _, hx⟩ | ⟨_, _, _, -, hai⟩
       · simp at hx

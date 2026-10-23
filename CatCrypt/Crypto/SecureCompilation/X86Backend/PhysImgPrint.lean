@@ -33,8 +33,8 @@ whose scan dominates the scan of the instruction, from the scan of the body in f
 * `reloadOf_cmpReload`: the reload scan through the compare-spill reload, for a name whose scan
   carries no reload scratch past a compare on a spilled first operand.
 * `physImgB_cmpReload`: the compare-spill reload keeps the class, when the reload scan of the
-  base of no indexed access carries the reload scratch to the position after an earlier compare
-  on a spilled first operand (`cmpScratchFreeB`).
+  base of no indexed access or constant-index array write carries the reload scratch to the
+  position after an earlier compare on a spilled first operand (`cmpScratchFreeB`).
 
 Every result assumes that every array slot is a `qsave.` slot, which the region layout gives.
 -/
@@ -433,15 +433,26 @@ section CmpReload
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
 
-/-- The instruction `r` at position `m` of the segment `c` is no indexed access, or the reload
-    scan of the base of its first source carries a name other than `reloadScratch` out of `c`,
-    or ends inside `c` (`scanExit`). -/
+/-- The instruction `r` at position `m` of the segment `c` is no indexed access and no
+    constant-index array write (`isAccB`, `isArrImmB`), or the reload scan of the base of its
+    first source (an indexed operand, or the register of a `ZEROARR` or `STOREIMM`) carries a
+    name other than `reloadScratch` out of `c`, or ends inside `c` (`scanExit`). -/
 def baseScanFreeB (slotArr : String → Option (String × Nat)) (c : Lcmd) (m : Nat)
     (r : LinstrR) : Bool :=
-  !isAccB r ||
+  !(isAccB r || isArrImmB r) ||
     match r with
     | .Lopn _ _ (.arrIdx x _ _ :: _) => scanExit slotArr c m x != some reloadScratch
+    | .Lopn _ _ (.reg x :: _) => !isArrImmB r || scanExit slotArr c m x != some reloadScratch
     | _ => true
+
+/-- At an access or a constant-index array write that satisfies `baseScanFreeB`, the reload scan
+    of every base (`AccBase`) carries no `reloadScratch` out of the segment. -/
+theorem baseScanFreeB_base {c : Lcmd} {m : Nat} {r : LinstrR} {x : String}
+    (h : baseScanFreeB slotArr c m r = true) (ha : (isAccB r || isArrImmB r) = true)
+    (hx : AccBase x r) : scanExit slotArr c m x ≠ some reloadScratch := by
+  rcases hx with ⟨ds, o, y, ss, rfl⟩ | ⟨ds, o, ss, rfl, hai⟩
+  · simpa [baseScanFreeB, ha] using h
+  · simpa [baseScanFreeB, ha, hai] using h
 
 /-- At every compare on a spilled first operand at position `k`, the reload scan of the base of
     no later indexed access carries the reload scratch `reloadScratch` to the position after
@@ -536,13 +547,12 @@ theorem reloadOf_cmpReload (hR : slotArr reloadScratch = none) (A : Lcmd) :
       exact ih x (hmv x he) h
 
 /-- **The compare-spill reload keeps the class.** When every array slot is a `qsave.` slot and
-    the reload scan of the base of no indexed access carries the reload scratch to the position
-    after an earlier compare on a spilled first operand (`cmpScratchFreeB`), the reload of a body
-    in the class without `ZEROARR` and `STOREIMM` is in the class. -/
+    the reload scan of the base of no indexed access or constant-index array write carries the
+    reload scratch to the position after an earlier compare on a spilled first operand
+    (`cmpScratchFreeB`), the reload of a body in the class is in the class. -/
 theorem physImgB_cmpReload
     (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true) {b : Lcmd}
-    (hfree : cmpScratchFreeB slotArr b = true) (h : physImgB slotArr b = true)
-    (himm : ∀ i ∈ b, isArrImmB i.li_i = false) :
+    (hfree : cmpScratchFreeB slotArr b = true) (h : physImgB slotArr b = true) :
     physImgB slotArr (cmpReload b) = true := by
   have hR : slotArr reloadScratch = none :=
     PhysImgEmit.slotArr_none_of_prefix hq (gpNameB_prefix (d := reloadScratch) (by decide)).1
@@ -595,15 +605,12 @@ theorem physImgB_cmpReload
         rw [spillCmp?_some hjs] at this
         cases this
     obtain ⟨-, hw⟩ := physImgB_getElem h hpos
-    cases hacc : isAccB i.li_i with
+    cases hacc : (isAccB i.li_i || isArrImmB i.li_i) with
     | false =>
-      exact Or.inl ⟨rfl, himm i (List.mem_of_getElem? hpos), slotWriteB_mono hent _ hw⟩
+      simp only [Bool.or_eq_false_iff] at hacc
+      exact Or.inl ⟨hacc.1, hacc.2, slotWriteB_mono hent _ hw⟩
     | true =>
     refine Or.inr ⟨A.length, hpos, fun x hx ha => ?_, Or.inl hent⟩
-    obtain ⟨ds, o', y, ss, hx'⟩ : ∃ ds o' y ss, i.li_i = .Lopn ds o' (.arrIdx x y 8 :: ss) := by
-      rcases hx with hx | ⟨_, _, _, -, hai⟩
-      · exact hx
-      · rw [himm i (List.mem_of_getElem? hpos)] at hai; cases hai
     have hno : ∀ A₁ i' A₂, A = A₁ ++ i' :: A₂ → (spillCmp? i'.li_i).isSome = true →
         scanExit slotArr A₂ A₂.length x ≠ some reloadScratch := by
       intro A₁ i' A₂ hA hs'
@@ -617,10 +624,9 @@ theorem physImgB_cmpReload
         cases hh : spillCmp? i'.li_i <;> simp_all
       simp only [hn, Bool.false_or, List.all_eq_true, List.mem_range] at this
       have h2 := this A₂.length (by simp)
-      rw [hx'] at hacc
-      simp only [List.getElem?_append_right le_rfl, Nat.sub_self, List.getElem?_cons_zero,
-        baseScanFreeB, hx', hacc, Bool.not_true, Bool.false_or, bne_iff_ne, ne_eq] at h2
-      rwa [scanExit_append_left _ _ _ _ _ le_rfl] at h2
+      simp only [List.getElem?_append_right le_rfl, Nat.sub_self, List.getElem?_cons_zero] at h2
+      have h3 := baseScanFreeB_base h2 hacc hx
+      rwa [scanExit_append_left _ _ _ _ _ le_rfl] at h3
     rw [hb, accArr_append_left _ _ _ _ _ le_rfl] at ha
     show (accArr slotArr (cmpReload b) ((cmpReload A).length + 0) x).isSome = true
     rw [hfl, Nat.add_zero, accArr_append_left _ _ _ _ _ le_rfl]
