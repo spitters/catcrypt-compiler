@@ -188,9 +188,11 @@ def adcxSlotCX : LinstrR := .Lopn [.reg "RCX"] "ADCX:64" [.reg "RAX", .reg "R11"
 #kat (LprogAsmPrinter.renderLopn 0 0 false [.reg "RAX"] "ADOX:64"
     [.reg "RAX", .reg "RBX", .reg "RCX"]).all (fun l => "\t# UNHANDLED".isPrefixOf l)
 
--- a carry-out into a frame slot is `movq $0` and `setc` into the slot, as the printer prints it
+-- a carry-out into a frame slot is `setc` and `movzbq` in `%rax`, saved at `-128(%rsp)`,
+-- then a store to the slot and the restore of `%rax`, as the printer prints it
 #kat enc (.Lopn [.reg "k.0"] "ADCXHI:64" [.reg "R10", .reg "R11", .reg "RCX"])
-  == encCarryOutRspMem 0x92 56
+  == encRspMem 1 0x89 0 (-128) ++ encSetccMovzx 0x92 0 ++ encRspMem 1 0x89 0 56
+    ++ encRspMem 1 0x8b 0 (-128)
 
 -- a carry-out into a register is `setc` and `movzbq`
 #kat enc (.Lopn [.reg "RBX"] "ADCXHI:64" [.reg "R10", .reg "R11", .reg "RCX"])

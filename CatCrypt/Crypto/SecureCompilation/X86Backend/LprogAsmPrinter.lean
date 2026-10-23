@@ -1668,13 +1668,18 @@ def renderLinstrR (frame spillW : Nat) (i : LinstrR) (lblPfx : String := "")
         match dsts with
         | [.reg dn] =>
             let setcc := if stripWidthTag opn == "ADOXHI" then "seto" else "setc"
-            -- A **spilled** carry-out destination (`k.N` / qsave / mem): `setcc`
-            -- takes an r/m8, so write the flag byte straight into the (first
-            -- zeroed) 64-bit slot — `mov` to memory leaves the flags untouched,
-            -- so the CF/OF read by `setcc` is still the matching data op's
-            -- carry-out.  Register destinations keep the existing
-            -- `setcc %r8b; movzbq` pair (byte-identical for existing kernels).
-            if "k.".isPrefixOf dn || "qsave.".isPrefixOf dn || "mem.".isPrefixOf dn then
+            -- A carry-out destination in a frame slot (`k.N` / `qsave.X`): the flag
+            -- is materialised in `%rax`, saved at `-128(%rsp)` and restored after
+            -- the store, so every line has a `JInstr` form (`setcc` to memory has
+            -- none). The save is a `mov`, which leaves the flags untouched, so the
+            -- CF/OF read by `setcc` is the matching data op's carry-out. A `mem.*`
+            -- destination writes the flag byte into the zeroed cell (its base may
+            -- be `%rax`). Register destinations take the `setcc %r8b; movzbq` pair.
+            if "k.".isPrefixOf dn || "qsave.".isPrefixOf dn then
+              let slot := resolveName frame spillW 64 dn qsaveB
+              [ "\tmovq %rax, -128(%rsp)", "\t" ++ setcc ++ " %al", "\tmovzbq %al, %rax",
+                "\tmovq %rax, " ++ slot, "\tmovq -128(%rsp), %rax" ]
+            else if "mem.".isPrefixOf dn then
               let slot := resolveName frame spillW 64 dn qsaveB
               [ "\tmovq $0, " ++ slot, "\t" ++ setcc ++ " " ++ slot ]
             else

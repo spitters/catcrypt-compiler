@@ -505,6 +505,16 @@ theorem cover_encCmovSelectMem {off : Int} {cn tn fn : Nat} (hoff : dispOk32 off
     (cover_encRspMem (Or.inr (Or.inl rfl)) hs hoff)).append
     (cover_encRspMem (Or.inl rfl) hs dispOk32_cmovRedZone)
 
+/-- The `setc` carry-out into a frame slot: `%rax` saved in the red zone, `setc` with its
+    `movzbq` into `%rax`, the store to the slot and the restore. -/
+theorem cover_encCarryOutRspMem {off : Int} (hoff : dispOk32 off = true) :
+    TemplateCover (encCarryOutRspMem 0x92 off) := by
+  unfold encCarryOutRspMem
+  exact (((cover_encRspMem (Or.inr (Or.inl rfl)) (by decide) dispOk32_cmovRedZone).append
+    (cover_setc (by decide))).append
+    (cover_encRspMem (Or.inr (Or.inl rfl)) (by decide) hoff)).append
+    (cover_encRspMem (Or.inl rfl) (by decide) dispOk32_cmovRedZone)
+
 /-- The select with a slot true value at `REX.W = 1`. -/
 theorem cover_encCmovSelectSlotT {dn cn fn : Nat} {off : Int} (hd : dn < 16) (hc : cn < 16)
     (hf : fn < 16) (hoff : dispOk32 off = true) :
