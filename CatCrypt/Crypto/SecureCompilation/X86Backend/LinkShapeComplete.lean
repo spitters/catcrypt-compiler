@@ -99,15 +99,6 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable.Temp
 theorem regNum?_regName {r : Nat} (hr : r < 16) : regNum? (regName r) = some r := by
   interval_cases r <;> rfl
 
-/-- The identity allocation sends each canonical name to itself. -/
-theorem regOf_canon {r : Nat} (hr : r < 16) :
-    AsmPrinter.regOf (canonAlloc ()) (regName r) = regName r := by
-  interval_cases r <;> rfl
-
-/-- `gpNum` inverts `regName` on the sixteen register numbers. -/
-theorem gpNum_regName {r : Nat} (hr : r < 16) : gpNum (regName r) = r := by
-  interval_cases r <;> rfl
-
 /-- Renaming through the identity allocation fixes each canonical name. -/
 theorem nameOf_canon {r : Nat} (hr : r < 16) :
     nameOf (canonAlloc ()) (regName r) = regName r := by

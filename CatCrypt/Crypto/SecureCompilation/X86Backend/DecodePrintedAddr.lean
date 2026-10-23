@@ -372,14 +372,6 @@ theorem pieceDec_imul (D S : String) (hD : gpOk D = true) (hS : gpOk S = true) :
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, AsmPrinter.regOf, eD, eS,
     phys, hl] using h
 
-theorem regOf_canon (n : Nat) (h : n < 16) :
-    AsmPrinter.regOf (canonAlloc ()) (SailX86Decoder.regName n) = SailX86Decoder.regName n := by
-  interval_cases n <;> decide
-
-theorem gpNum_regName (n : Nat) (h : n < 16) :
-    ScalarEncoder.gpNum (SailX86Decoder.regName n) = n := by
-  interval_cases n <;> decide
-
 /-- `MULX %s, %l, %h` with the implicit source `%rdx`. -/
 theorem pieceDec_mulx (h l s : Nat) (hh : h < 16) (hl : l < 16) (hs : s < 16) :
     PieceDec (ScalarEncoder.encMulxRR h l s, .mulx (SailX86Decoder.regName h)
@@ -390,9 +382,9 @@ theorem pieceDec_mulx (h l s : Nat) (hh : h < 16) (hl : l < 16) (hs : s < 16) :
   have hg : SailX86Decoder.regName (ScalarEncoder.gpNum "%rdx") = "%rdx" := by decide
   have e := roundtrip_mulx (canonAlloc ()) (SailX86Decoder.regName h) (SailX86Decoder.regName l)
     "%rdx" (SailX86Decoder.regName s) rest (by simp only [mulxRdxOk, hrdx]; decide)
-  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon h hh,
-    regOf_canon l hl, regOf_canon s hs, gpNum_regName h hh, gpNum_regName l hl,
-    gpNum_regName s hs, hrdx, hg] using e
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon hh,
+    regOf_canon hl, regOf_canon hs, gpNum_regName hh, gpNum_regName hl,
+    gpNum_regName hs, hrdx, hg] using e
 
 /-- The scratch register of the widening multiply with coincident destinations is a register
     number, neither the destination, the source, `%rdx` nor the stack register. -/
@@ -446,8 +438,8 @@ theorem pieceDec_storeMem (s b : Nat) (off : Int) (hs : s < 16) (hb : b < 16)
   apply decodeLinstr_of_decodeJ1
   have e := roundtrip_storeMem32 (canonAlloc ()) (SailX86Decoder.regName b)
     (SailX86Decoder.regName s) off rest h
-  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon s hs,
-    regOf_canon b hb, gpNum_regName s hs, gpNum_regName b hb,
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon hs,
+    regOf_canon hb, gpNum_regName hs, gpNum_regName hb,
     LprogJInstrBytesAgree.encMemMovw_one] using e
 
 /-- **The bytes of the constant-index store.** Over a general-purpose base and value and an
@@ -489,8 +481,8 @@ theorem pieceDec_storeZero (b : Nat) (off : Int) (hb : b < 16) (h : dispOk32 off
   apply decodeLinstr_of_decodeJ1
   have e := roundtrip_storeMemImm32 (canonAlloc ()) (SailX86Decoder.regName b) off 0 rest
     (by decide) (by decide) h
-  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon b hb,
-    gpNum_regName b hb] using e
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon hb,
+    gpNum_regName hb] using e
 
 /-- **The bytes of the zeroing.** Over a general-purpose destination, a positive count and a
     last element offset `stackDispOk` admits, the bytes of `ZEROARR [D] <- [imm n; imm 64]`
@@ -1232,7 +1224,7 @@ theorem fstepF_mulxS (H S : String) (b : LstateM) (zf : Bool) :
 
 theorem regName_ne_of_ne {m n : Nat} (hm : m < 16) (hn : n < 16) (h : m ≠ n) :
     SailX86Decoder.regName m ≠ SailX86Decoder.regName n := fun e =>
-  h (by rw [← gpNum_regName m hm, ← gpNum_regName n hn, e])
+  h (by rw [← gpNum_regName hm, ← gpNum_regName hn, e])
 
 /-- **The widening multiply with coincident destinations.** The machine saves the scratch
     register in the red-zone word, multiplies, and restores the scratch register: the

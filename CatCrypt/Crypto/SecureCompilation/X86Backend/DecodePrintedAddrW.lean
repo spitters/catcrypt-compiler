@@ -374,8 +374,8 @@ theorem pieceDec_bt (c : Nat) (hc : c < 16) :
   have e := roundtrip_bt (canonAlloc ()) (SailX86Decoder.regName c) 0 rest (by decide)
   have he : encBtImm 1 c 0 = ScalarEncoder.encBtImm8 c 0 := by
     simp [encBtImm, ScalarEncoder.encBtImm8, rexOpt_w1]
-  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon c hc,
-    gpNum_regName c hc, he] using e
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon hc,
+    gpNum_regName hc, he] using e
 
 /-- `adcx %s, %d`. -/
 theorem pieceDec_adcx (d s : Nat) (hd : d < 16) (hs : s < 16) :
@@ -385,8 +385,8 @@ theorem pieceDec_adcx (d s : Nat) (hd : d < 16) (hs : s < 16) :
   apply decodeLinstr_of_decodeJ1
   have e := roundtrip_adcx (canonAlloc ()) (SailX86Decoder.regName d) (SailX86Decoder.regName s)
     rest
-  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon d hd,
-    regOf_canon s hs, gpNum_regName d hd, gpNum_regName s hs] using e
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, regOf_canon hd,
+    regOf_canon hs, gpNum_regName hd, gpNum_regName hs] using e
 
 /-- `setc %o` and `movzbq`. -/
 theorem pieceDec_setc (o : Nat) (ho : o < 16) :
@@ -894,8 +894,8 @@ theorem pieceDec_loadMem (d b : Nat) (off : Int) (hd : d < 16) (hb : b < 16)
   apply decodeLinstr_of_decodeJ1
   have e := roundtrip_loadMem32 (canonAlloc ()) (SailX86Decoder.regName d)
     (SailX86Decoder.regName b) off rest h
-  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, regOf_canon d hd, regOf_canon b hb,
-    gpNum_regName d hd, gpNum_regName b hb, LprogJInstrBytesAgree.encMemMovw_one] using e
+  simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, regOf_canon hd, regOf_canon hb,
+    gpNum_regName hd, gpNum_regName hb, LprogJInstrBytesAgree.encMemMovw_one] using e
 
 /-- A cell name is no frame-slot name. -/
 theorem notSlot_of_cell {n : String} {p : String × Nat} (h : cellParts? n = some p) :
@@ -1380,12 +1380,12 @@ theorem pieceDec_adcxRsp (d : Nat) (off : Int) (hd : d < 16) (h : dispOk32 off =
   have hg4 : ScalarEncoder.gpNum "%rsp" = 4 := by decide
   have heq : encAdxRspMem 0x66 d off
       = ScalarEncoder.encodeJInstr (canonAlloc ()) (.adcxMem (SailX86Decoder.regName d) "%rsp" off) := by
-    simp only [ScalarEncoder.encodeJInstr, regOf_canon d hd, gpNum_regName d hd, hrsp, hg4,
+    simp only [ScalarEncoder.encodeJInstr, regOf_canon hd, gpNum_regName hd, hrsp, hg4,
       encAdxRspMem, ScalarEncoder.memTail]
     split_ifs <;> simp_all (config := { decide := true })
   rw [heq]
   have h4 : SailX86Decoder.regName 4 = "%rsp" := rfl
-  simpa [renameJ, nameOf, regOf_canon d hd, hrsp, gpNum_regName d hd, hg4, h4] using e
+  simpa [renameJ, nameOf, regOf_canon hd, hrsp, gpNum_regName hd, hg4, h4] using e
 
 /-- The pieces of the copy of a well-placed operand `A` into the accumulator decode. -/
 theorem sMv_pieceDec {P : Params} {D A : String} (hA : kOk P A = true) (acc : Nat)
@@ -2593,7 +2593,7 @@ theorem pieceDec_movImm64 (D : String) (v : Nat) (hv : v < 2 ^ 64)
     omega
   have e := roundtrip_movImm (canonAlloc ()) (phys D) v rest hv
   simpa [ScalarEncoder.encodeJInstr, h31, renameJ, nameOf, operandOf, phys,
-    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D)] using e
+    regOf_canon (gpNumU_lt_16 D), gpNum_regName (gpNumU_lt_16 D)] using e
 
 /-- **The bytes of an immediate store into a frame slot.** -/
 theorem iBytes (P : Params) (q : String) (v : Nat) (h : iOk P q v = true) :
@@ -3012,7 +3012,7 @@ theorem pieceDec_test (C : String) :
   apply decodeLinstr_of_decodeJ1
   have e := roundtrip_test (canonAlloc ()) (phys C) (phys C) rest
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
-    regOf_canon _ (gpNumU_lt_16 C), gpNum_regName _ (gpNumU_lt_16 C),
+    regOf_canon (gpNumU_lt_16 C), gpNum_regName (gpNumU_lt_16 C),
     LprogJInstrBytesAgree.encAluRRw_one] using e
 
 /-- `cmove %s, %d` decodes to the conditional move on the zero flag. -/
@@ -3022,8 +3022,8 @@ theorem pieceDec_cmove (D S : String) :
   apply decodeLinstr_of_decodeJ1
   have e := roundtrip_cmove (canonAlloc ()) (phys D) (phys S) rest
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
-    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D),
-    regOf_canon _ (gpNumU_lt_16 S), gpNum_regName _ (gpNumU_lt_16 S),
+    regOf_canon (gpNumU_lt_16 D), gpNum_regName (gpNumU_lt_16 D),
+    regOf_canon (gpNumU_lt_16 S), gpNum_regName (gpNumU_lt_16 S),
     LprogJInstrBytesAgree.enc0FRRw_one] using e
 
 /-- `cmovne %s, %d` decodes to the conditional move on the clear zero flag. -/
@@ -3033,8 +3033,8 @@ theorem pieceDec_cmovne (D S : String) :
   apply decodeLinstr_of_decodeJ1
   have e := roundtrip_cmovne (canonAlloc ()) (phys D) (phys S) rest
   simpa [ScalarEncoder.encodeJInstr, renameJ, nameOf, operandOf, phys,
-    regOf_canon _ (gpNumU_lt_16 D), gpNum_regName _ (gpNumU_lt_16 D),
-    regOf_canon _ (gpNumU_lt_16 S), gpNum_regName _ (gpNumU_lt_16 S),
+    regOf_canon (gpNumU_lt_16 D), gpNum_regName (gpNumU_lt_16 D),
+    regOf_canon (gpNumU_lt_16 S), gpNum_regName (gpNumU_lt_16 S),
     LprogJInstrBytesAgree.enc0FRRw_one] using e
 
 /-- **The bytes of a register select.** -/

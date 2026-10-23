@@ -81,6 +81,15 @@ theorem regNum?_spec {r : String} {n : Nat} (h : regNum? r = some n) :
 /-- The identity allocation on the sixteen canonical `%rN` names. -/
 def canonAlloc (_ : Unit) : GpAlloc := (List.range 16).map (fun n => (regName n, regName n))
 
+/-- The identity allocation sends each canonical name to itself. -/
+theorem regOf_canon {r : Nat} (hr : r < 16) :
+    AsmPrinter.regOf (canonAlloc ()) (regName r) = regName r := by
+  interval_cases r <;> rfl
+
+/-- `gpNum` inverts `regName` on the sixteen register numbers. -/
+theorem gpNum_regName {r : Nat} (hr : r < 16) : gpNum (regName r) = r := by
+  interval_cases r <;> rfl
+
 /-! ## 2. Byte templates -/
 
 /-- A byte string and an instruction: the string decodes, in front of every continuation,
