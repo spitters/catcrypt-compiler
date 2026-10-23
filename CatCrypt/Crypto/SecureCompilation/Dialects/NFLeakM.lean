@@ -387,7 +387,8 @@ theorem append_right (h : DeclDiff D t₁ t₂) (u₁ u₂ : List CTLeak) :
   obtain ⟨pre, s₁, s₂, a₁, a₂, hne, h₁, h₂, rfl, rfl⟩ := h
   exact ⟨pre, s₁ ++ u₁, s₂ ++ u₂, a₁, a₂, hne, h₁, h₂, by simp, by simp⟩
 
-theorem append_left (c : List CTLeak) (h : DeclDiff D t₁ t₂) :
+/-- A common prefix keeps a first difference at a declassification event. -/
+theorem prepend (c : List CTLeak) (h : DeclDiff D t₁ t₂) :
     DeclDiff D (c ++ t₁) (c ++ t₂) := by
   obtain ⟨pre, s₁, s₂, a₁, a₂, hne, h₁, h₂, rfl, rfl⟩ := h
   exact ⟨c ++ pre, s₁, s₂, a₁, a₂, hne, h₁, h₂, by simp, by simp⟩
@@ -408,7 +409,7 @@ theorem declDiff_seq {D : CTLeak → Bool} {t₁ t₂ u₁ u₂ : List CTLeak} {
   rcases h with ⟨rfl, hP⟩ | hd
   · rcases hk hP with ⟨rfl, hQ⟩ | hd
     · exact Or.inl ⟨rfl, hQ⟩
-    · exact Or.inr (hd.append_left _)
+    · exact Or.inr (hd.prepend _)
   · exact Or.inr (hd.append_right _ _)
 
 /-- A common first event keeps equal events or a first difference at a declassification
@@ -418,7 +419,7 @@ theorem declDiff_cons {D : CTLeak → Bool} {t₁ t₂ : List CTLeak} {Q : Prop}
     (c :: t₁ = c :: t₂ ∧ Q) ∨ DeclDiff D (c :: t₁) (c :: t₂) := by
   rcases h with ⟨rfl, hQ⟩ | hd
   · exact Or.inl ⟨rfl, hQ⟩
-  · exact Or.inr (hd.append_left [c])
+  · exact Or.inr (hd.prepend [c])
 
 /-- **The level checker with branches, exit-flag loops and declassification.** It extends
     `NFProg.levelCheck`: a branch requires a public condition, and its results take the join

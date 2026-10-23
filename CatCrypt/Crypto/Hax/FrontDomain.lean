@@ -351,7 +351,7 @@ def whileE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : Stri
       (rec σB).bind fun ob =>
         orRefuse (.loopCarried (carriedMiss ob.σ xs cs)) <| (varsAt ob.σ xs cs).map fun rets =>
           let oU := bind1N tgt σB .constUnit .nil
-          Out.mk oU.Δ oU.t (.whileLoop inits (whileStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
+          Out.mk oU.Δ oU.t (.whileLoop inits (whileOutStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
     else .error (.whileGuard p.1)
 
 theorem toOption_whileE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
@@ -802,7 +802,7 @@ theorem whileOut_ilitWord {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEn
   split at h
   · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ob, hob, rets, -, rfl⟩ := h
-    simp [opsPre, whileStep, opsProg_plug, opsProg, hrec _ _ hob, opsPre_bind1N, ilitWordOp]
+    simp [opsPre, whileOutStep, opsProg_plug, opsProg, hrec _ _ hob, opsPre_bind1N, ilitWordOp]
   · cases h
 
 theorem condOut_ilitWord {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc)

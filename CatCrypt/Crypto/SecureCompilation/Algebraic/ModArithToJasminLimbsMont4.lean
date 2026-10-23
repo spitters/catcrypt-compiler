@@ -310,19 +310,23 @@ theorem coveredCom_mono (G G' : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Pr
   | _, _, .ret _, _ => trivial
   | _, _, .var e body, hc => ⟨hG e hc.1, coveredCom_mono G G' hG body hc.2⟩
 
-theorem coveredCom_rename (Q : d.Op → Prop) :
+/-- A renaming keeps the coverage of a program by the expression predicate of an operation
+    predicate. -/
+theorem coveredCom_rename_opGood (Q : d.Op → Prop) :
     ∀ {Γ Γ' : Ctxt d} {t : d.Ty} (h : Ctxt.Hom Γ Γ') (c : Com d Γ t),
       CoveredCom (OpGood Q) c → CoveredCom (OpGood Q) (Com.rename h c)
   | _, _, _, _, .ret _, _ => trivial
-  | _, _, _, h, .var _ body, hc => ⟨hc.1, coveredCom_rename Q h.lift body hc.2⟩
+  | _, _, _, h, .var _ body, hc => ⟨hc.1, coveredCom_rename_opGood Q h.lift body hc.2⟩
 
-theorem coveredCom_spliceCom (Q : d.Op → Prop) :
+/-- A splice of two programs covered by the expression predicate of an operation predicate is
+    covered by it. -/
+theorem coveredCom_spliceCom_opGood (Q : d.Op → Prop) :
     ∀ {Γ : Ctxt d} {t s : d.Ty} (c : Com d Γ t) (k : Com d (t :: Γ) s),
       CoveredCom (OpGood Q) c → CoveredCom (OpGood Q) k →
         CoveredCom (OpGood Q) (FieldDialectBlockDescent.spliceCom c k)
-  | _, _, _, .ret _, k, _, hk => coveredCom_rename Q _ k hk
+  | _, _, _, .ret _, k, _, hk => coveredCom_rename_opGood Q _ k hk
   | _, _, _, .var _ body, k, hc, hk =>
-      ⟨hc.1, coveredCom_spliceCom Q body _ hc.2 (coveredCom_rename Q _ k hk)⟩
+      ⟨hc.1, coveredCom_spliceCom_opGood Q body _ hc.2 (coveredCom_rename_opGood Q _ k hk)⟩
 
 /-- A block lowering whose block of every `G`-expression is covered by an operation
     predicate `Q` lowers every `G`-covered program to a `Q`-covered program. -/
@@ -336,7 +340,7 @@ theorem coveredCom_blockLowerCom {d' : Dialect} [DialectSignature d']
   | _, _, .ret _, _ => trivial
   | Γ, _, .var (t := bs) e body, hc => by
       have ih := coveredCom_blockLowerCom L Q G hL body hc.2
-      refine coveredCom_spliceCom Q _ _ (hL e hc.1) ?_
+      refine coveredCom_spliceCom_opGood Q _ _ (hL e hc.1) ?_
       generalize L.blockLowerCom body = x at ih ⊢
       generalize L.mapCtx_cons bs Γ = hh
       revert x hh

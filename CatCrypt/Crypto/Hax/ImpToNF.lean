@@ -578,7 +578,7 @@ def whileEnv {Γ Δ : Ctxt nfDialect} (σ : NfEnv Γ) (xs : List String) (cs : L
     the translation `ob` of the body followed by the flag and the carried variables `rets`
     after it; otherwise the flag and the carried tuple unchanged. The flag returned by the
     first arm is the incoming flag, which holds `true` there. -/
-def whileStep {Γ : Ctxt nfDialect} (cs : List NfTy)
+def whileOutStep {Γ : Ctxt nfDialect} (cs : List NfTy)
     (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
     (rets : HVector (fun t => Var ob.Δ t) cs) :
     NFProg nfDialect (cs ++ Γ) (NfTy.bit :: cs) :=
@@ -587,7 +587,7 @@ def whileStep {Γ : Ctxt nfDialect} (cs : List NfTy)
 
 /-- **The `while` loop of the front.** From the environment of names `σ`, the loop carrying the
     names `xs` at the types `cs` from the variables `inits`, on the flag held by the name `g`
-    at the bit type: the step `whileStep` runs the translation `rec` of the source body when
+    at the bit type: the step `whileOutStep` runs the translation `rec` of the source body when
     the flag is set and returns the flag after it; the continuation binds the unit value, with
     the source name `tgt`. `none` when `g` is unbound or not a bit after the carried names are
     bound, or the body leaves a name of `xs` unbound or at another type. -/
@@ -600,7 +600,7 @@ def whileOut {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : St
       (rec σB).bind fun ob =>
         (varsAt ob.σ xs cs).map fun rets =>
           let oU := bind1N tgt σB .constUnit .nil
-          Out.mk oU.Δ oU.t (.whileLoop inits (whileStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
+          Out.mk oU.Δ oU.t (.whileLoop inits (whileOutStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
     else none
 
 /-- An expression containing no `whileFold` and no `whileFoldReturn`. -/
@@ -3066,11 +3066,11 @@ theorem EnvRel.whileEnv {Γ Δ : Ctxt nfDialect} (σ : NfEnv Γ) (xs : List Stri
 
 /-- The step of a `while` loop whose flag reads `false` returns the flag and the carried
     tuple. -/
-theorem PDenP_whileStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
+theorem PDenP_whileOutStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
     (cs : List NfTy) (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
     (rets : HVector (fun t => Var ob.Δ t) cs) (acc : Valuation (d := nfDialect) cs)
     (V : Valuation Γ) (h : gV.lookup (hvAppend acc V) = false) :
-    PDenP bi tf (whileStep cs gV ob rets) (hvAppend acc V) =
+    PDenP bi tf (whileOutStep cs gV ob rets) (hvAppend acc V) =
       some (HVector.cons (t := NfTy.bit) false acc) := by
   show ((if HasBoolBit.toBool (d := nfDialect) (gV.lookup (hvAppend acc V)) then
       PDenP bi tf (ob.pre.plug (.ret (.cons (ob.pre.wk gV) rets))) (hvAppend acc V)
@@ -3085,11 +3085,11 @@ theorem PDenP_whileStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
 
 /-- The step of a `while` loop whose flag reads `true` runs the body to the valuation `W` of
     its hole and returns the flag and the carried variables there. -/
-theorem PDenP_whileStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
+theorem PDenP_whileOutStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
     (cs : List NfTy) (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
     (rets : HVector (fun t => Var ob.Δ t) cs) (X : Valuation (d := nfDialect) (cs ++ Γ))
     {W : Valuation ob.Δ} (h : gV.lookup X = true) (hW : PDen bi tf ob.pre X = some W) :
-    PDenP bi tf (whileStep cs gV ob rets) X =
+    PDenP bi tf (whileOutStep cs gV ob rets) X =
       some (HVector.cons (t := NfTy.bit) true (Expr.lookupArgs rets W)) := by
   show ((if HasBoolBit.toBool (d := nfDialect) (gV.lookup X) then
       PDenP bi tf (ob.pre.plug (.ret (.cons (ob.pre.wk gV) rets))) X
@@ -3115,7 +3115,7 @@ theorem enc_isControlFlow (t : NfTy) (x : t.denote) : (enc t x).isControlFlow = 
     some target fuel on, by the flag `true` and a carried tuple satisfying `Inv` with the final
     environment. Then a run of `denoteWhile'` to a value is matched, at every target fuel and
     iteration count from some bound on, by the iteration of the step. -/
-theorem while_sound (bi : Builtins) (g : String) (body : ImpExpr) {Γ : Ctxt nfDialect}
+theorem denoteWhile_sound (bi : Builtins) (g : String) (body : ImpExpr) {Γ : Ctxt nfDialect}
     (V : Valuation Γ) {cs : List NfTy} (step : NFProg nfDialect (cs ++ Γ) (NfTy.bit :: cs))
     (Inv : Env → Valuation (d := nfDialect) cs → Prop)
     (fl : Valuation (d := nfDialect) cs → Bool)
@@ -3208,15 +3208,15 @@ theorem whileOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Opti
       fun v => Var.shiftApp (d := nfDialect) cs v) e (hvAppend acc V) := fun e acc hinv =>
     EnvRel.whileEnv σ xs cs hlen (headVars cs) _ (by rw [lookupArgs_headVars]; exact hinv.1)
       hinv.2 (fun t v => Var.lookup_shiftApp cs acc v V)
-  have hW := while_sound bi g body V (whileStep cs pv ob rets) Inv
+  have hW := denoteWhile_sound bi g body V (whileOutStep cs pv ob rets) Inv
     (fun acc => pv.lookup (hvAppend acc V))
     (fun e acc hinv => hB e acc hinv g _ pv hg)
-    (fun e acc tf _ hf => PDenP_whileStep_false bi tf cs pv ob rets acc V hf)
+    (fun e acc tf _ hf => PDenP_whileOutStep_false bi tf cs pv ob rets acc V hf)
     (fun f e acc rb e₂ hinv ht hb hval => by
       obtain ⟨w, rfl⟩ := hval
       obtain ⟨W', ⟨N, hW'⟩, hrel', rfl⟩ := (HB _ hob f).ev (hB e acc hinv) hb
       refine ⟨_, Expr.lookupArgs rets W', rfl, enc_isControlFlow _ _,
-        ⟨N, fun tf htf => PDenP_whileStep_true bi tf cs pv ob rets _ ht (hW' tf htf)⟩,
+        ⟨N, fun tf htf => PDenP_whileOutStep_true bi tf cs pv ob rets _ ht (hW' tf htf)⟩,
         CarriedRel.of_varsAt hrel' xs cs hrets, ?_⟩
       intro x hx t v hl
       rw [denote'_keeps bi body (hfr x hx _ hl) f _ hb (by rintro ⟨_, h⟩; cases h)]
@@ -3227,7 +3227,7 @@ theorem whileOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Opti
   refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend accF V),
     ⟨N, fun tf htf => ?_⟩, ?_, rfl⟩
   · show (NFProg.whileIter (d := nfDialect)
-        (fun acc => PDenP bi tf (whileStep cs pv ob rets) (hvAppend acc V)) tf
+        (fun acc => PDenP bi tf (whileOutStep cs pv ob rets) (hvAppend acc V)) tf
         (Expr.lookupArgs inits V)).bind (fun acc => PDen bi tf
           (bind1N tgt (whileEnv σ xs cs (headVars cs)
             fun v => Var.shiftApp (d := nfDialect) cs v) .constUnit .nil).pre

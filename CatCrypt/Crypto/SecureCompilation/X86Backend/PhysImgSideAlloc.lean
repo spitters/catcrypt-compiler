@@ -606,14 +606,6 @@ theorem scanExit_succ_pass {c : Lcmd} {k : Nat} {j : Linstr} {x : String}
     rw [he]
     simp [hd]
 
-/-- A move of a register is no constant-index array write. -/
-theorem isArrImmB_of_slotMov {r : LinstrR} {d s : String} (h : slotMov? r = some (d, s)) :
-    isArrImmB r = false := by
-  obtain ⟨o, rfl⟩ := slotMov?_eq h
-  simp only [slotMov?] at h
-  split_ifs at h with h1
-  · rcases h1 with rfl | rfl <;> rfl
-
 /-- The base (`AccBase`) of an instruction with an indexed first source at stride `8` is the
     base of that source. -/
 theorem accBase_arrIdx_eq {ds : List LOperand} {o b y x : String} {ss : List LOperand}

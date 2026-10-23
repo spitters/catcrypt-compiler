@@ -113,8 +113,8 @@ source runs declassify `d` (`SrcDeclIs`) (`impToNF_nfCTRelD`).
   `lsound_assign`, `lsound_args`, `lsound_repeat`, `lsound_app`, `lsound_tuple`, `lsound_proj`,
   `lsound_cond`,
   `loop_leak`, `forRevLeak_ge`, `loopRev_leak`, `quietPre_ctrOut`, `loopOut_leak`,
-  `lsound_forFold`, `lsound_forFoldRev`, `nfLeakRunE_whileStep_false`,
-  `nfLeakRunE_whileStep_true`, `while_leak`, `lsound_whileOut`
+  `lsound_forFold`, `lsound_forFoldRev`, `nfLeakRunE_whileOutStep_false`,
+  `nfLeakRunE_whileOutStep_true`, `while_leak`, `lsound_whileOut`
 * `forIterLeak_filter`, `whileIterLeak_filter`, `NFProg.leakRunM_filter`,
   `opLeak_nfLeakModelQ`, `nfLeakRunQ_eq` — the change of leakage model
 * `impToNF_lsound`, `impToNF_leakE`, `impToNF_leak` — the leakage transformer of the front;
@@ -2294,13 +2294,13 @@ theorem lsound_forFoldRev (bi : Builtins) (sigOf : String → List NfTy → Opti
 
 /-- The leakage run of the step of a `while` loop whose flag reads `false`: the flag and the
     carried tuple, with the event `branch false` of its conditional. -/
-theorem nfLeakRunE_whileStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
+theorem nfLeakRunE_whileOutStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
     (cs : List NfTy) (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
     (rets : HVector (fun t => Var ob.Δ t) cs) (acc : Valuation (d := nfDialect) cs)
     (V : Valuation Γ) (h : gV.lookup (hvAppend acc V) = false) :
-    nfLeakRunE bi C tf (whileStep cs gV ob rets) (hvAppend acc V) =
+    nfLeakRunE bi C tf (whileOutStep cs gV ob rets) (hvAppend acc V) =
       some (HVector.cons (t := NfTy.bit) false acc, [.branch false]) := by
-  unfold whileStep
+  unfold whileOutStep
   simp only [nfLeakRunE, NFProg.leakRunE_ifThenElse, h,
     show HasBoolBit.toBool (d := nfDialect) false = false from rfl, Bool.false_eq_true, if_false,
     NFProg.leakRunE_ret, Option.bind_some, Option.map_some, List.append_nil, lookupArgs_headVars]
@@ -2311,14 +2311,14 @@ theorem nfLeakRunE_whileStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDiale
 /-- The leakage run of the step of a `while` loop whose flag reads `true`, when the prefix of
     the body runs to the valuation `W` of its hole with the events `t`: the flag and the
     carried variables at `W`, with the event `branch true` of its conditional and then `t`. -/
-theorem nfLeakRunE_whileStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
+theorem nfLeakRunE_whileOutStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
     (cs : List NfTy) (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
     (rets : HVector (fun t => Var ob.Δ t) cs) (X : Valuation (d := nfDialect) (cs ++ Γ))
     {W : Valuation ob.Δ} {t : List CTLeak} (h : gV.lookup X = true)
     (hW : PLeak bi C tf ob.pre X = some (W, t)) :
-    nfLeakRunE bi C tf (whileStep cs gV ob rets) X =
+    nfLeakRunE bi C tf (whileOutStep cs gV ob rets) X =
       some (HVector.cons (t := NfTy.bit) true (Expr.lookupArgs rets W), .branch true :: t) := by
-  unfold whileStep
+  unfold whileOutStep
   simp only [nfLeakRunE, NFProg.leakRunE_ifThenElse, h,
     show HasBoolBit.toBool (d := nfDialect) true = true from rfl, if_true, NFPre.leakRunE_plug,
     NFProg.leakRunE_ret, Option.map_some, List.append_nil]
@@ -2330,8 +2330,8 @@ theorem nfLeakRunE_whileStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialec
     @NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ ob.pre gV _ _
       (PLeak_den hW), h]
 
-/-- **The `while` loop with leakage.** `ImpToNF.while_sound` for a step with events, indexed
-    by the target fuel: let the step return the flag `false` and `acc` with the event
+/-- **The `while` loop with leakage.** `ImpToNF.denoteWhile_sound` for a step with events,
+    indexed by the target fuel: let the step return the flag `false` and `acc` with the event
     `branch false` when the flag is unset, and, when it is set, match every run of the body to
     a value, from some target fuel on, by the flag `true` and a carried tuple satisfying `Inv`,
     with the event `branch true` and the events of the transformed source leakage of the body.
@@ -2441,15 +2441,15 @@ theorem lsound_whileOut (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Opt
     EnvRel.whileEnv σ xs cs hlen (headVars cs) _ (by rw [lookupArgs_headVars]; exact hinv.1)
       hinv.2 (fun t v => Var.lookup_shiftApp cs acc v V)
   have hW := while_leak bi g body
-    (fun tf acc => nfLeakRunE bi C tf (whileStep cs pv ob rets) (hvAppend acc V)) Inv
+    (fun tf acc => nfLeakRunE bi C tf (whileOutStep cs pv ob rets) (hvAppend acc V)) Inv
     (fun acc => pv.lookup (hvAppend acc V))
     (fun e acc hinv => hB e acc hinv g _ pv hg)
-    (fun e acc tf _ hf => nfLeakRunE_whileStep_false bi tf cs pv ob rets acc V hf)
+    (fun e acc tf _ hf => nfLeakRunE_whileOutStep_false bi tf cs pv ob rets acc V hf)
     (fun f e acc rb e₂ hinv ht hb hval => by
       obtain ⟨w, rfl⟩ := hval
       obtain ⟨W', ⟨N, hW'⟩, hrel', rfl⟩ := (HB _ hob f).ev (hB e acc hinv) hb
       refine ⟨_, Expr.lookupArgs rets W', rfl, enc_isControlFlow _ _,
-        ⟨N, fun tf htf => nfLeakRunE_whileStep_true bi tf cs pv ob rets _ ht (hW' tf htf)⟩,
+        ⟨N, fun tf htf => nfLeakRunE_whileOutStep_true bi tf cs pv ob rets _ ht (hW' tf htf)⟩,
         CarriedRel.of_varsAt hrel' xs cs hrets, ?_⟩
       intro x hx t v hl
       rw [denote'_keeps bi body (hfr x hx _ hl) f _ hb (by rintro ⟨_, h⟩; cases h)]
@@ -2459,7 +2459,8 @@ theorem lsound_whileOut (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Opt
     ⟨hcar env V hrel, fun x _ t v hl => hrel x t v hl⟩ hrun
   refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend accF V),
     ⟨N, fun tf htf => ?_⟩, ?_, rfl⟩
-  · show (whileIterLeak (fun acc => nfLeakRunE bi C tf (whileStep cs pv ob rets) (hvAppend acc V))
+  · show (whileIterLeak
+        (fun acc => nfLeakRunE bi C tf (whileOutStep cs pv ob rets) (hvAppend acc V))
         tf (Expr.lookupArgs inits V)).bind (fun r => (PLeak bi C tf (bind1N tgt (whileEnv σ xs cs
           (headVars cs) fun v => Var.shiftApp (d := nfDialect) cs v) .constUnit .nil).pre
           (hvAppend r.1 V)).map fun q => (q.1, r.2 ++ q.2)) = _
