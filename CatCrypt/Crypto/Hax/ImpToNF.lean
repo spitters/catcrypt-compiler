@@ -5710,8 +5710,7 @@ theorem dec_arr_word {n : Nat} (vs : List Value)
 
 /-- `Hax.widthArrayOps` answers `array_lit` on a list of values by the array of the list. -/
 theorem widthArrayOps_arrayLit (vs : List Value) :
-    _root_.Hax.widthArrayOps "array_lit" vs = some (.array vs) := by
-  simp [_root_.Hax.widthArrayOps]
+    _root_.Hax.widthArrayOps "array_lit" vs = some (.array vs) := rfl
 
 /-- The encodings of a vector of `64`-bit words are integers in `[0, 2 ^ 64)`, one for each
     word. -/
@@ -5939,12 +5938,9 @@ theorem hax64SigOf_select {f : String} {as : List NfTy} {r : NfTy} (hf : f = "se
     `hax64SigOf` gives `declassify` the type of its argument. -/
 theorem hax64SigOf_declassify {t : NfTy} (ht : hax64NFWordTy t = true) :
     hax64SigOf "declassify" [t] = some t := by
-  have h0 : _root_.Hax.FieldTag.fieldTag? "declassify" = none := rfl
   match t, ht with
-  | .int, _ => simp [hax64SigOf, hax64ScalarSig, fieldTagSig, scalarUnOf, scalarBitOf,
-      hax64UnTable, hax64BitTable, hax64NFWordTy, h0]
-  | .word 64, _ => simp [hax64SigOf, hax64ScalarSig, fieldTagSig, scalarUnOf, scalarBitOf,
-      hax64UnTable, hax64BitTable, hax64NFWordTy, h0]
+  | .int, _ => rfl
+  | .word 64, _ => rfl
 
 /-- **The call typing of `u64` code is sound for builtins with `select`**, when it is sound
     for the builtins. -/
@@ -5962,9 +5958,11 @@ theorem withSelect_typedCalls {bi : Builtins} (hT : TypedCalls bi hax64SigOf) :
 /-- `Hax.hax64Builtins` answers `repeat` on an integer and a count `N ≥ 0` by `N` copies. -/
 theorem repeatCalls_hax64Builtins : RepeatCalls _root_.Hax.hax64Builtins := by
   intro x N v hN h
-  simp only [_root_.Hax.hax64Builtins, _root_.Hax.hax64WordOps_repeat,
-    _root_.Hax.widthArrayOps, if_pos hN] at h
-  exact (Option.some.inj h).symm
+  have hw : _root_.Hax.hax64Builtins "repeat" [.int x, .int N] =
+      some (.array (List.replicate N.toNat (.int x))) := by
+    rw [_root_.Hax.hax64Builtins, _root_.Hax.hax64WordOps_repeat]
+    exact if_pos hN
+  exact (Option.some.inj (hw.symm.trans h)).symm
 
 /-- `hax64BuiltinsR` satisfies `RepeatCalls`. -/
 theorem repeatCalls_hax64BuiltinsR : RepeatCalls hax64BuiltinsR :=
