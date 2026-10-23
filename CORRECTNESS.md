@@ -46,10 +46,9 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   the development repository no `SurfaceDeps` module imports a `*HaxLowCTBridge` module
   (the ML-KEM and ML-DSA `SurfaceDeps` open namespaces named
   `…HaxLowCTBridge.VerifiedZMod`, declared in other modules), and no module named in its
-  list of security headlines reaches the front. It is reached by the kernel producers; by
-  the instances `mpn_and_n_rc_proved` and `ltu_rc_proved` of `headline_haxc_rc_proved_all`,
-  through `Hax.HaxFrontTResultWords` and `Hax.HaxFrontHax64W` →
-  `Hax.HaxFrontHax64`; by the `compileA` instance `HashDRBG.MajCompiled`, through
+  list of security headlines reaches the front, nor do the instances of
+  `headline_haxc_rc_proved_all`. It is reached by the kernel producers; by the `compileA`
+  instance `HashDRBG.MajCompiled`, through
   `Hax.Hax64WReading`; by the `LowCT` → Rust route of [HAX_RUST.md](HAX_RUST.md); and by
   the modules that use its definitions `evalImp`, `forToLoop`, the word-operation tables,
   `ValueTowerBridge` and the typed-exit names. It is removed in stages: its unused
