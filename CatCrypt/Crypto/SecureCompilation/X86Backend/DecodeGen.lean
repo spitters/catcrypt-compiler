@@ -28,7 +28,8 @@ round-trip lemma of the form `decodeLinstr (bytes ++ rest) = some (.op j, rest)`
 continuation `rest` (`pieceTemplates_sound`). The templates are the encoder forms of
 `LprogBytesDecode` over register numbers (register copies and the group-1 `ALU` forms, the
 compares, the sign-extended `imm8` forms, the `%rsp`-relative loads, stores, compares and
-`cmovne`, the indexed moves, the `D1` shifts, `neg`, `setcc`, the BMI2 variable shifts, the
+conditional moves, the register conditional moves `decodeRex` does not read, the `ADD` with
+a `[base + disp]` operand in either direction, the indexed moves, the `D1` shifts, `neg`, `setcc`, the BMI2 variable shifts, the
 indexed `lea`) and every instruction
 `SailX86Decoder.encodeJInstr` encodes and `decodeJ1` inverts (`roundtrip_decodeJ1`), at the
 identity allocation on the canonical `%rN` names. The template set is a closed list, so the
@@ -107,8 +108,23 @@ def tmplRR (d s : Nat) : List (List (BitVec 8) × JInstr 64) :=
     :: aluOps.filterMap (fun op => (aluMnemonic op).map
         (fun mk => (encAluRRw 1 op d s, mk (regName d) (.reg (regName s)))))
 
+/-- The register-register conditional moves `decodeRex` does not read (`REX.W 0F 40+tttn /r`
+    at the conditions `nb`, `l` and `nl`) on registers `d` (the `reg` field) and `s`. -/
+def tmplCmovRR (d s : Nat) : List (List (BitVec 8) × JInstr 64) :=
+  [Condt.nb, .l, .nl].map (fun c =>
+    (enc0FRRw 1 (0x40 + ScalarEncoder.condCode c) d s, .cmovcc c (regName d) (.reg (regName s))))
+
+/-- The memory-operand `ADD` templates on register `r`, base `b` and displacement `off`:
+    `ADD off(%b), %r` (`REX.W 03 /r`) and `ADD %r, off(%b)` (`REX.W 01 /r`). -/
+def tmplMemAdd (r b : Nat) (off : Int) : List (List (BitVec 8) × JInstr 64) :=
+  if dispOk32 off then
+    [(encMemMovw 1 0x03 r b off, .addMem (regName r) (regName b) off),
+     (encMemMovw 1 0x01 r b off, .addToMem (regName b) off (.reg (regName r)))]
+  else []
+
 /-- The immediate templates on register `d` and value `v`: the two `MOV` immediate forms,
-    the sign-extended `imm8` group-1 forms and `IMUL`, and the `D1` shifts by one. -/
+    the sign-extended `imm8` group-1 forms and `IMUL`, the `D1` shifts by one, and the
+    compare with a sign-extended `imm32` (`REX.W 81 /7 id`). -/
 def tmplImm (d v : Nat) : List (List (BitVec 8) × JInstr 64) :=
   (if decide (v < 2 ^ 64) && fitsImm32S v then [(encMovImmw 1 d v, .mov (regName d) (.imm v))]
     else [])
@@ -121,6 +137,8 @@ def tmplImm (d v : Nat) : List (List (BitVec 8) × JInstr 64) :=
   ++ (if v == 1 then [4, 5, 7].map (fun ext => (encShift1 1 ext d,
       (if ext = 4 then JInstr.shl else if ext = 5 then JInstr.shr else JInstr.sar)
         (regName d) (.imm 1))) else [])
+  ++ (if decide (v < 2 ^ 64) && fitsImm32S v then
+      [(encAluImmw 1 7 d v, .cmp (regName d) (.imm v))] else [])
 
 /-- The one-register templates: `neg` and the byte `setcc` of the zero flag. -/
 def tmpl1 (d : Nat) : List (List (BitVec 8) × JInstr 64) :=
@@ -199,6 +217,9 @@ def guess : JInstr 64 → List String × List Nat × List Int
   | .imulri d s v => ([d, s], [v], [])
   | .loadMem d b off | .cmpMem d b off | .cmovccMem _ d b off => ([d, b], [], [off])
   | .storeMem b off s => (b :: opNames s, [], [off])
+  | .cmovcc _ d s => (d :: opNames s, [], [])
+  | .addMem d b off => ([d, b], [], [off])
+  | .addToMem b off s => (b :: opNames s, [], [off])
   | .loadMemIdx d b i _ => ([d, b, i], [], [])
   | .storeMemIdx b i _ s => (b :: i :: opNames s, [], [])
   | .shlx d s c | .shrx d s c | .sarx d s c => ([d, s, c], [], [])
@@ -211,7 +232,8 @@ def pieceTemplates (j : JInstr 64) : List (List (BitVec 8) × JInstr 64) :=
   let ns := g.1.filterMap regNum?
   tmplJ j ++ tmplLea j ++ ns.flatMap (fun d =>
     ns.flatMap (fun s => tmplRR d s ++ tmplCast d s
-        ++ ns.flatMap (fun c => tmplIdx d s c ++ tmpl3 d s c))
+        ++ ns.flatMap (fun c => tmplIdx d s c ++ tmpl3 d s c)
+        ++ tmplCmovRR d s ++ g.2.2.flatMap (tmplMemAdd d s))
       ++ g.2.1.flatMap (tmplImm d) ++ tmpl1 d ++ g.2.2.flatMap (tmplRsp d))
 
 /-! ## 3. Soundness of the templates -/
@@ -255,10 +277,34 @@ theorem decodeLinstr_movImm32_rex (d v : Nat) (rest : List (BitVec 8)) (hd8 : 8 
   simp only [decodeJ1, e1, e2, e3, hr, hw, decodeRexW0, hop, g1, g2, hB, hd',
     imm32LE_recompose v hv, if_false, if_true, zero_ne_one, and_self]
 
+/-- The compare with a sign-extended `imm32` (`REX.W 81 /7 id`) decodes to `cmp` of the
+    immediate, for a 64-bit value that sign-extends from 32 bits. `decodeJ1` rejects the
+    digit `7` of the group-1 form, and the compares of `decodeJ1_6` read it. -/
+theorem decodeLinstr_cmpImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 16)
+    (hv : v < 2 ^ 64) (hf : fitsImm32S v = true) :
+    decodeLinstr (encAluImmw 1 7 d v ++ rest)
+      = some (.op (.cmp (regName d) (.imm v)), rest) := by
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 0 0 (bit d 3)))
+      (BitVec.ofNat 8 0x81 :: BitVec.ofNat 8 (modRMReg 7 d) :: (imm32LE v ++ rest)) = none := by
+    simp [decodeRex, modField_modRMReg, regField_modRMReg, imm32LE, aluImmMnemonic]
+  have himm := imm32S_imm32LE v hv hf
+  simp only [imm32S, BitVec.toNat_ofNat] at himm
+  apply decodeLinstr_of_decodeJ1_6
+  simp only [encAluImmw, rexOpt_w1, List.cons_append, List.nil_append]
+  rw [decodeJ1_6_of_none _ (by
+    rw [decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _)]; exact hnone)]
+  simp only [imm32LE, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
+    decodeShift1, decodeCmp,
+    isRex_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), BitVec.toNat_ofNat, modField_modRMReg,
+    regField_modRMReg, rmField_modRMReg, bitsplit _ hd, himm]
+  simp
+
 theorem tmplImm_sound (d v : Nat) (hd : d < 16) : ∀ q ∈ tmplImm d v, PieceDec q := by
   intro q hq rest
   simp only [tmplImm, List.mem_append] at hq
-  rcases hq with ((hq | hq) | hq) | hq
+  rcases hq with (((hq | hq) | hq) | hq) | hq
   · split at hq
     · rename_i hc
       simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
@@ -290,6 +336,13 @@ theorem tmplImm_sound (d v : Nat) (hd : d < 16) : ∀ q ∈ tmplImm d v, PieceDe
       simp only [List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at hq
       obtain ⟨ext, hext, rfl⟩ := hq
       exact decodeLinstr_shift1 ext d rest hext hd
+    · simp at hq
+  · split at hq
+    · rename_i hc
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+      simp only [List.mem_singleton] at hq
+      subst hq
+      exact decodeLinstr_cmpImm32 d v rest hd hc.1 hc.2
     · simp at hq
 
 theorem tmpl1_sound (d : Nat) (hd : d < 16) : ∀ q ∈ tmpl1 d, PieceDec q := by
@@ -390,6 +443,25 @@ theorem tmplCast_sound (d s : Nat) (hd : d < 16) (hs : s < 16) :
   · exact decodeLinstr_movzx16RR d s rest hd hs
   · exact decodeLinstr_mov32RR d s rest hd hs
 
+theorem tmplCmovRR_sound (d s : Nat) (hd : d < 16) (hs : s < 16) :
+    ∀ q ∈ tmplCmovRR d s, PieceDec q := by
+  intro q hq rest
+  simp only [tmplCmovRR, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at hq
+  obtain ⟨c, hc, rfl⟩ := hq
+  exact decodeLinstr_cmovccRR c d s rest hd hs (by rcases hc with rfl | rfl | rfl <;> decide)
+
+theorem tmplMemAdd_sound (r b : Nat) (off : Int) (hr : r < 16) (hb : b < 16) :
+    ∀ q ∈ tmplMemAdd r b off, PieceDec q := by
+  intro q hq rest
+  simp only [tmplMemAdd] at hq
+  split at hq
+  · rename_i hoff
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hq
+    rcases hq with rfl | rfl
+    · exact decodeLinstr_addMem r b off rest hr hb hoff
+    · exact decodeLinstr_addToMem r b off rest hr hb hoff
+  · simp at hq
+
 theorem tmplJ_sound (j : JInstr 64) : ∀ q ∈ tmplJ j, PieceDec q := by
   intro q hq rest
   simp only [tmplJ] at hq
@@ -431,12 +503,14 @@ theorem pieceTemplates_sound (j : JInstr 64) : ∀ q ∈ pieceTemplates j, Piece
   · exact tmplJ_sound j q hq
   · exact tmplLea_sound j q hq
   · rcases hq with (((⟨s, hs, hq⟩ | ⟨v, _, hq⟩) | hq) | ⟨off, _, hq⟩)
-    · rcases hq with (hq | hq) | ⟨c, hc, hq⟩
+    · rcases hq with ((((hq | hq) | ⟨c, hc, hq⟩) | hq) | ⟨off, _, hq⟩)
       · exact tmplRR_sound d s (hn d hd) (hn s hs) q hq
       · exact tmplCast_sound d s (hn d hd) (hn s hs) q hq
       · rcases hq with hq | hq
         · exact tmplIdx_sound d s c (hn d hd) (hn s hs) (hn c hc) q hq
         · exact tmpl3_sound d s c (hn d hd) (hn s hs) (hn c hc) q hq
+      · exact tmplCmovRR_sound d s (hn d hd) (hn s hs) q hq
+      · exact tmplMemAdd_sound d s off (hn d hd) (hn s hs) q hq
     · exact tmplImm_sound d v (hn d hd) q hq
     · exact tmpl1_sound d (hn d hd) q hq
     · exact tmplRsp_sound d off (hn d hd) q hq

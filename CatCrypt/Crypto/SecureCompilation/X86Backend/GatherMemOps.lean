@@ -1035,7 +1035,7 @@ theorem adc_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : Stri
     encodeJInstr alloc (.adc d (.reg r))
       = encTwoAddr frame spillW 1 0x11 (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_adc,
-    encTwoAddr_regReg frame spillW 1 0x11 dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg,
+    encTwoAddr_regReg frame spillW 1 0x11 dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg (by decide),
     encAluRRw_one, hd, hs]
 
 /-- **The `ADC:64` byte agreement.** The gathered `adc` block encodes to the bytes
@@ -1267,7 +1267,7 @@ theorem sbb_bytes_agree (alloc : GpAlloc) (frame spillW : Nat) (d r dn sn : Stri
     encodeJInstr alloc (.sbb d (.reg r))
       = encTwoAddr frame spillW 1 0x19 (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_sbb,
-    encTwoAddr_regReg frame spillW 1 0x19 dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg,
+    encTwoAddr_regReg frame spillW 1 0x19 dn sn qsaveB hdk hsk hdm hsm hdsp hssp hdg hsg (by decide),
     encAluRRw_one, hd, hs]
 
 /-- **The `SBB:64` byte agreement.** The gathered `sbb` block encodes to the bytes

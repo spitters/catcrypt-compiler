@@ -184,13 +184,13 @@ theorem gpFacts {r : String} (h : gpOk r = true) : GpFacts r := by
 /-! ## 3. The bytes of the covered arms -/
 
 /-- The two-address `encTwoAddr` form between two general-purpose names is the register
-    form. -/
+    form, for an opcode other than the `LOAD` opcode `0x8B`. -/
 theorem encTwoAddr_rr (F W w op : Nat) (D S : String) (qB : Nat) (hD : gpOk D = true)
-    (hS : gpOk S = true) :
+    (hS : gpOk S = true) (hop : op ≠ 0x8b) :
     encTwoAddr F W w op (.reg D) (.reg S) qB = encAluRRw w op (gpNumU D) (gpNumU S) := by
   have fD := gpFacts hD
   have fS := gpFacts hS
-  simp [encTwoAddr, fD.off, fS.off, fD.notMem, fS.notMem, fD.isGp, fS.isGp]
+  simp [encTwoAddr, fD.off, fS.off, fD.notMem, fS.notMem, fD.isGp, fS.isGp, memDstOp, hop]
 
 /-- The operation `op` of a general-purpose name into a frame word: for a move, the
     store `0x89`. -/
@@ -698,7 +698,7 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     obtain ⟨⟨hm, hD⟩, hS⟩ := h
     refine ⟨?_, ?_⟩
     · simp [Arm.instr, Arm.pieces, encodeLopn_movM _ _ _ _ _ _ hm,
-        encTwoAddr_rr _ _ _ _ _ _ _ hD hS]
+        encTwoAddr_rr _ _ _ 0x89 _ _ _ hD hS (by decide)]
     · simpa [Arm.pieces] using pieceDec_movRR D S
   | movRI D v =>
     simp only [Arm.ok, Bool.and_eq_true, decide_eq_true_eq] at h
@@ -736,7 +736,10 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     obtain ⟨⟨op, mk⟩, hop⟩ := Option.isSome_iff_exists.mp hm
     obtain ⟨he, htab, hmk⟩ := encodeLopn_alu P.frame P.spillW m D D S P.qsaveB hop
     refine ⟨?_, ?_⟩
-    · simp [Arm.instr, Arm.pieces, hop, he, encTwoAddr_rr _ _ _ _ _ _ _ hD hS]
+    · have h8b : op ≠ 0x8b := by
+        simp only [aluTableOp, decide_eq_true_eq] at htab
+        exact htab.2.2.2.1
+      simp [Arm.instr, Arm.pieces, hop, he, encTwoAddr_rr _ _ _ op _ _ _ hD hS h8b]
     · simp only [Arm.pieces, hop, List.mem_singleton]
       rintro p rfl rest
       exact decodeLinstr_aluRR op mk _ _ rest (gpNumU_lt_16 D) (gpNumU_lt_16 S) htab hmk

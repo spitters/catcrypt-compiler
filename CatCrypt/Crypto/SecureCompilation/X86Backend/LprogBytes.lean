@@ -464,7 +464,9 @@ def memSrcOp (op : Nat) : Nat := if op = 0x8b then 0x8b else op + 2
     qsave, which `gpNumU` would otherwise read as `%rax`. A memory
     destination takes the `r/m ← r` opcode `memDstOp op` and a memory source the
     `r ← r/m` opcode `memSrcOp op`, so `adc k.N, %rN` encodes `ADC r64, r/m64` as the
-    printer renders it, and a move (`op` = `0x89`/`0x8b`) the `MOV` store or load. -/
+    printer renders it, and a move (`op` = `0x89`/`0x8b`) the `MOV` store or load. Two
+    registers take the `r/m ← r` form `memDstOp op` with `rm` the destination: for the
+    `LOAD` opcode `0x8B` that is the `MOV` `89 /r` from the source into the destination. -/
 def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
     (qsaveB : Nat := qsaveBytes) : List (BitVec 8) :=
   match d, s with
@@ -480,7 +482,7 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
       | none, none =>
           match parseMemNameGp dn, parseMemNameGp sn with
           | none, none =>
-              if isGpName dn && isGpName sn then encAluRRw w op (gpNumU dn) (gpNumU sn)
+              if isGpName dn && isGpName sn then encAluRRw w (memDstOp op) (gpNumU dn) (gpNumU sn)
               else []
           -- store: dst is memory, op = 0x89 (MOV r/m←r). `reg`=src, base=dst mem.
           | some (bb, off), none =>

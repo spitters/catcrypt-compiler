@@ -51,11 +51,12 @@ type repairs it; the conditions are on the body and its call sites.
   have template covers has shapes; `noGoto_cover_of_shapesOf` is the converse.
 * `x86Backend_link_refuses`, `not_x86Backend_link_of_encodable`: the field
   `link_of_encodable` fails at `x86Backend`.
-* `x86LinkB_of_encodable`, `x86Backend_link_of_encodable` (2): the link check accepts an
+* `x86LinkB_of_cover`, `x86Backend_link_of_cover` (2): the link check accepts an
   encodable body within the call range at a callee with nonempty code and nonempty name,
   when the body has template covers, no conditional branch, no `Lgoto`, calls only the
   callee, and saves no register by `push`; `x86Backend_link_callBody` meets these hypotheses
-  at a body with a call.
+  at a body with a call. `LinkShapeComplete.x86LinkB_of_encodable` replaces the template
+  covers by the link forms `LinkShapeComplete.linkFormB`.
 
 A body with a conditional branch is outside (2): its branch check needs the displacement
 of the relaxed encoding (`LprogBytes.labelOffsets`) to land on the label, a layout fact of
@@ -497,7 +498,7 @@ structure LinkBody (name : String) (body : Lcmd) : Prop where
     accepts a body accepted by `encodableLcmd` that satisfies `LinkBody name body`, at a
     nonempty code and a nonempty symbol, when the function bytes of the relocating encoder
     are shorter than `2 ^ 31`. -/
-theorem x86LinkB_of_encodable (name : String) (code : List (BitVec 8)) (body : Lcmd)
+theorem x86LinkB_of_cover (name : String) (code : List (BitVec 8)) (body : Lcmd)
     (hcode : code ≠ []) (hname : name ≠ "") (henc : encodableLcmd body = true)
     (hb : LinkBody name body)
     (hdist : (encodeLfundefBytesReloc (VIR.LprogIsa.x86LinkSym name body) body).length
@@ -575,12 +576,12 @@ theorem x86LinkB_of_encodable (name : String) (code : List (BitVec 8)) (body : L
     and nonempty symbol and the bodies of `LinkBody`.** At the export data
     `x86ExportData`, a body accepted by the encodability of `x86Backend` whose call distance
     to the callee `c` is below `callRange` passes the link check of `c`. -/
-theorem x86Backend_link_of_encodable (c : VIR.LprogIsa.x86Backend.Callee) (body : Lcmd)
+theorem x86Backend_link_of_cover (c : VIR.LprogIsa.x86Backend.Callee) (body : Lcmd)
     (hcode : c.2 ≠ []) (hname : c.1 ≠ "") (hb : LinkBody c.1 body)
     (henc : VIR.LprogIsa.x86Backend.encodable body = true)
     (hd : VIR.LprogIsa.x86Backend.callDist c body < VIR.LprogIsa.x86ExportData.callRange) :
     VIR.LprogIsa.x86Backend.link c body = true :=
-  x86LinkB_of_encodable c.1 c.2 body hcode hname henc hb hd
+  x86LinkB_of_cover c.1 c.2 body hcode hname henc hb hd
 
 /-- The body of one call of the symbol `f` to the label `0` followed by the return. -/
 def callBody (f : String) : Lcmd := [⟨0, .Lcall none (f, 0)⟩, ⟨0, .Lret⟩]
@@ -589,7 +590,7 @@ def callBody (f : String) : Lcmd := [⟨0, .Lcall none (f, 0)⟩, ⟨0, .Lret⟩
     [0xc3])` accepts `callBody "f"`. -/
 theorem x86Backend_link_callBody :
     VIR.LprogIsa.x86Backend.link ("f", [0xc3]) (callBody "f") = true := by
-  refine x86Backend_link_of_encodable ("f", [0xc3]) (callBody "f") (by simp) (by decide)
+  refine x86Backend_link_of_cover ("f", [0xc3]) (callBody "f") (by simp) (by decide)
     ⟨?_, ?_, ?_, ?_, ?_⟩ ?_ ?_
   · simp [callBody]
   · simp [callBody]
