@@ -16,7 +16,7 @@ public import Mathlib.Tactic.NormNum.Prime
 
 A computable, verified Lean reference implementation of `Z/qZ` with
 `q = 8380417 = 2^23 - 2^13 + 1` for use by the ML-DSA bridge
-(`MldsaHaxLowCTBridge`) to replace opaque encoder round-trip axioms
+(`MldsaVerifiedZMod`) to replace opaque encoder round-trip axioms
 with proven identities.
 
 The prime `q = 2^23 - 2^13 + 1` is the modulus published in FIPS 204
