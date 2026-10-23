@@ -112,7 +112,8 @@ def tyName : NfTy → String
 /-- **A construct `impToNF` does not accept.** -/
 inductive Refusal where
   /-- An expression whose constructor has no arm in `impToNF`: a closure, a `match`, a
-      borrow, an exit, or a loop other than `forFold` and `forFoldRev`. -/
+      borrow, an exit, or a loop other than `forFold`, `forFoldRev` and `whileFold` on a
+      name. -/
   | construct (head : String)
   /-- A name the environment of names does not bind. -/
   | unbound (x : String)
@@ -147,6 +148,9 @@ inductive Refusal where
   /-- A projection of the component `i` of a value of the type `t` that is not a tuple type
       with more than `i` components (`projOut`). -/
   | projection (t : NfTy) (i : Nat)
+  /-- A `whileFold` whose flag, after the carried names are bound, is a name of the type `t`
+      other than the bit type (`whileOut`). -/
+  | whileGuard (t : NfTy)
 
 /-- The rendering of a refusal. -/
 def Refusal.toString : Refusal → String
@@ -167,6 +171,7 @@ def Refusal.toString : Refusal → String
   | .condType t => s!"condition of type {tyName t}"
   | .armTypes a b => s!"arms of types {tyName a} and {tyName b}"
   | .armCarried x => s!"name {x} changes type in an arm"
+  | .whileGuard t => s!"while flag of type {tyName t}"
   | .arrayFill => "array fill (call repeat)"
   | .projection t i => s!"projection {i} of a value of type {tyName t}"
 
@@ -334,6 +339,33 @@ theorem toOption_loopE {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String)
       loopOut tgt pre₀ σ₃ loV tripV rev i xs cs inits fun σ => (rec σ).toOption := by
   simp only [loopE, loopOut, toOption_bind, toOption_orRefuse]
 
+/-- `whileOut` with the refusal: the unbound flag, the flag of a type other than the bit type,
+    that of the body `rec`, or the carried name the body leaves unbound or at another type. -/
+def whileE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
+    (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Except Refusal (Out Δ)) :
+    Except Refusal (Out Γ) :=
+  let σB : NfEnv (cs ++ Γ) := whileEnv σ xs cs (headVars cs) fun v => Var.shiftApp cs v
+  (orRefuse (.unbound g) (σB.lookup g)).bind fun p =>
+    if h : p.1 = NfTy.bit then
+      (rec σB).bind fun ob =>
+        orRefuse (.loopCarried (carriedMiss ob.σ xs cs)) <| (varsAt ob.σ xs cs).map fun rets =>
+          let oU := bind1N tgt σB .constUnit .nil
+          Out.mk oU.Δ oU.t (.whileLoop inits (whileStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
+    else .error (.whileGuard p.1)
+
+theorem toOption_whileE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
+    (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Except Refusal (Out Δ)) :
+    (whileE tgt σ g xs cs inits rec).toOption =
+      whileOut tgt σ g xs cs inits fun σ => (rec σ).toOption := by
+  simp only [whileE, whileOut, toOption_bind, toOption_orRefuse]
+  congr 1
+  funext p
+  split
+  · simp only [toOption_bind, toOption_orRefuse]
+  · rfl
+
 /-- `condOut` with the refusal: that of the first arm, then that of the second, then the
     different result types of the arms, or the carried name an arm leaves unbound or at
     another type. -/
@@ -434,6 +466,10 @@ def frontOut (sigOf : String → List NfTy → Option NfTy) :
         condE oc.pre oc.σ (h ▸ oc.res) (W.map (·.1)) (entriesVars W).1
           (frontOut sigOf none oc.σ a) (frontOut sigOf none oc.σ b)
       else .error (.condType oc.t)
+  | tgt, _, σ, .whileFold (.var g) body =>
+      let W := condCarried σ body body
+      whileE tgt σ g (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
+        (fun σB => frontOut sigOf none σB body)
   | _, _, _, e => .error (.construct (exprHead e))
 
 /-- `impArgsNF` with the refusal. -/
@@ -533,6 +569,16 @@ theorem toOption_frontOut (sigOf : String → List NfTy → Option NfTy) (e : Im
     split
     · simp only [toOption_condE, iha, ihb]
     · rfl
+  case whileFold c body _ ihb =>
+    intro tgt Γ σ
+    cases c with
+    | var g =>
+        simp only [frontOut, impToNF]
+        refine (toOption_whileE _ _ _ _ _ _ _).trans ?_
+        congr 1
+        funext Δ σB
+        exact ihb _ _
+    | _ => rfl
   all_goals
     intro tgt Γ σ
     rfl
@@ -744,6 +790,21 @@ theorem loopOut_ilitWord {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String)
   simp [opsPre_append, opsPre, opsProg_plug, opsProg, hpre, ctrOut_ilitWord, hrec _ _ hob,
     opsPre_bind1N, ilitWordOp]
 
+theorem whileOut_ilitWord {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ)
+    (g : String) (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ))
+    (hrec : ∀ {Δ : Ctxt nfDialect} (σ : NfEnv Δ) (o : Out Δ), rec σ = some o →
+      opsPre ilitWordOp o.pre = true)
+    {o : Out Γ} (h : whileOut tgt σ g xs cs inits rec = some o) :
+    opsPre ilitWordOp o.pre = true := by
+  simp only [whileOut, Option.bind_eq_some_iff] at h
+  obtain ⟨p, -, h⟩ := h
+  split at h
+  · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ob, hob, rets, -, rfl⟩ := h
+    simp [opsPre, whileStep, opsProg_plug, opsProg, hrec _ _ hob, opsPre_bind1N, ilitWordOp]
+  · cases h
+
 theorem condOut_ilitWord {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc)
     (σc : NfEnv Γc) (cV : Var Γc NfTy.bit) (xs : List String) (cs : List NfTy)
     (recA recB : Option (Out Γc)) (hpre : opsPre ilitWordOp pre₀ = true)
@@ -931,6 +992,13 @@ theorem impToNF_ilitWord (sigOf : String → List NfTy → Option NfTy) (e : Imp
     · exact condOut_ilitWord _ _ _ _ _ _ _ (ihc _ _ _ hoc) (fun oa ha => iha _ _ _ ha)
         (fun ob hb => ihb _ _ _ hb) h
     · cases h
+  case whileFold c body _ ihb =>
+    intro tgt Γ σ o h
+    cases c with
+    | var g =>
+        exact whileOut_ilitWord _ _ _ _ _ _ _ (fun σB o' ho' => ihb _ σB o' ho')
+          (by simpa only [impToNF] using h)
+    | _ => simp [impToNF] at h
   all_goals
     intro tgt Γ σ o h
     simp [impToNF] at h

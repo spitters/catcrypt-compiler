@@ -642,6 +642,60 @@ theorem tysOf_entryEnv : ∀ ps : List (String × NfTy), tysOf (entryEnv ps) = p
       erw [tysOf_mapV]
       exact congrArg _ (tysOf_entryEnv ps)
 
+/-- An atom has no `whileFold`. -/
+theorem whileFoldFree_of_atomTy {Γ : TyEnv} {e : ImpExpr} {t : NfTy} (h : AtomTy Γ e t) :
+    whileFoldFree e = true := by
+  cases h <;> simp [whileFoldFree]
+
+/-- A list of atoms has no `whileFold`. -/
+theorem whileFoldFree_of_atomsTy {Γ : TyEnv} {es : List ImpExpr} {as : List NfTy}
+    (h : AtomsTy Γ es as) : whileFoldFree.freeList es = true := by
+  induction h with
+  | nil => rfl
+  | cons ha _ ih => simp [whileFoldFree.freeList, whileFoldFree_of_atomTy ha, ih]
+
+/-- A lower bound of a counted loop has no `whileFold`. -/
+theorem whileFoldFree_of_loTy {Γ : TyEnv} {e : ImpExpr} (h : LoTy Γ e) :
+    whileFoldFree e = true := by
+  cases h <;> simp [whileFoldFree]
+
+mutual
+/-- **An expression with a derivation has no `whileFold`.** -/
+theorem whileFoldFree_of_frontTy {S : String → List NfTy → Option NfTy} {Γ Γ' : TyEnv}
+    {e : ImpExpr} {t : NfTy} (h : FrontTy S Γ e t Γ') : whileFoldFree e = true :=
+  match h with
+  | .var _ => by simp [whileFoldFree]
+  | .lit _ => by simp [whileFoldFree]
+  | .unitVal => by simp [whileFoldFree]
+  | .typeAscription h => by simpa [whileFoldFree] using whileFoldFree_of_frontTy h
+  | .seq ha hb => by
+      simp [whileFoldFree, whileFoldFree_of_frontTy ha, whileFoldFree_of_frontTy hb]
+  | .letBind hv hb => by
+      simp [whileFoldFree, whileFoldFree_of_frontTy hv, whileFoldFree_of_frontTy hb]
+  | .assign hr => by simpa [whileFoldFree] using whileFoldFree_of_frontTy hr
+  | .app _ ha _ => by simpa [whileFoldFree] using whileFoldFree_of_frontTyArgs ha
+  | .tuple ha => by simpa [whileFoldFree] using whileFoldFree_of_atomsTy ha
+  | .proj h _ => by simpa [whileFoldFree] using whileFoldFree_of_frontTy h
+  | .forFold hlo hhi _ hb _ => by
+      simp [whileFoldFree, whileFoldFree_of_loTy hlo, whileFoldFree_of_atomTy hhi,
+        whileFoldFree_of_frontTy hb]
+  | .forFoldRev hlo hhi _ hb _ => by
+      simp [whileFoldFree, whileFoldFree_of_loTy hlo, whileFoldFree_of_atomTy hhi,
+        whileFoldFree_of_frontTy hb]
+  | .ifThenElse hc ha hb _ _ => by
+      simp [whileFoldFree, whileFoldFree_of_frontTy hc, whileFoldFree_of_frontTy ha,
+        whileFoldFree_of_frontTy hb]
+
+/-- The arguments of a call with a derivation have no `whileFold`. -/
+theorem whileFoldFree_of_frontTyArgs {S : String → List NfTy → Option NfTy} {Γ Γ' : TyEnv}
+    {es : List ImpExpr} {as : List NfTy} (h : FrontTyArgs S Γ es as Γ') :
+    whileFoldFree.freeList es = true :=
+  match h with
+  | .nil => rfl
+  | .cons he hes => by
+      simp [whileFoldFree.freeList, whileFoldFree_of_frontTy he, whileFoldFree_of_frontTyArgs hes]
+end
+
 /-- **A callee body with a derivation has a body**: when the body of the function `c` has a
     derivation from its parameters at the type `r`, at the call typing `crateSigOf fs base`,
     `crateBody` returns a program at the parameter types and `r`. -/
@@ -651,7 +705,7 @@ theorem crateBody_isSome_of_frontTy (fs : List CrateFn) (c : CrateFn) {as : List
     (NFInline.crateBody fs c as r base).isSome := by
   obtain ⟨o, ho, hot, -⟩ := impToNF_out_of_frontTy h none (entryEnv c.params)
     (tysOf_entryEnv _)
-  simp only [NFInline.crateBody, ho, Option.bind_some]
+  simp only [NFInline.crateBody, whileFoldFree_of_frontTy h, if_true, ho, Option.bind_some]
   rw [dif_pos ⟨has, hot⟩]
   rfl
 

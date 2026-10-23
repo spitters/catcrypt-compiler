@@ -412,7 +412,8 @@ theorem crateOp_sound (h : CrateTables fs bi T) {base : String → List NfTy →
       intro b hb x y hy
       simp only [crateOp, Option.bind_eq_some_iff] at hb
       obtain ⟨c, hc, hb⟩ := hb
-      simp only [crateBody, Option.bind_eq_some_iff] at hb
+      have hwf := whileFoldFree_of_crateBody hb
+      simp only [crateBody, hwf, if_true, Option.bind_eq_some_iff] at hb
       obtain ⟨o', ho', hb⟩ := hb
       split at hb
       · rename_i hty
@@ -423,7 +424,8 @@ theorem crateOp_sound (h : CrateTables fs bi T) {base : String → List NfTy →
         obtain ⟨-, fuel, s, hrun⟩ := h.call m hc _ v hv
         have hw : o'.prog.whileFree = true :=
           SecureCompilation.Haxc.FrontComplete.whileFree_of_opsNB _
-            (SecureCompilation.Haxc.FrontComplete.impToNF_prog_frontOp _ c.body none _ o' ho')
+            (SecureCompilation.Haxc.FrontComplete.impToNF_prog_frontOp _ c.body none _ o' ho'
+              hwf)
         obtain ⟨W, hprog, -, hvW⟩ := ImpToNF.Sound.all_of_whileFree (impToNF_sound (T m)
           (crateSigOf fs base) (h.typedCalls hT m) (h.repeatCalls hR hfR m) c.body none
           (entryEnv c.params) ho' fuel) hw (entryEnv_rel_paramsEnv c.params x) hrun

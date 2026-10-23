@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 public import CatCrypt.Crypto.Hax.DenoteKeeps
 public import HaxLean.Phase.ContinueFlag
+public import HaxLean.Phase.BreakFlag
 public import HaxAscent.Ascent.Fuel
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFRegionLaws
@@ -566,6 +567,88 @@ def condOut {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc) (σc : N
               (cs ++ (condFresh σc oa.σ ob.σ).map (·.2))) .here
     else none
 
+/-- The environment of names of the body and of the continuation of a `while` loop: the
+    carried names `xs` bound to the variables `hv`, in front of the names of `σ` moved by
+    `g`. -/
+def whileEnv {Γ Δ : Ctxt nfDialect} (σ : NfEnv Γ) (xs : List String) (cs : List NfTy)
+    (hv : HVector (fun t => Var Δ t) cs) (g : ∀ {t : NfTy}, Var Γ t → Var Δ t) : NfEnv Δ :=
+  NfEnv.bindAll xs cs hv (NfEnv.mapV g σ)
+
+/-- The step of the `while` loop of the front over the context `cs ++ Γ`: on the flag `gV`,
+    the translation `ob` of the body followed by the flag and the carried variables `rets`
+    after it; otherwise the flag and the carried tuple unchanged. The flag returned by the
+    first arm is the incoming flag, which holds `true` there. -/
+def whileStep {Γ : Ctxt nfDialect} (cs : List NfTy)
+    (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
+    (rets : HVector (fun t => Var ob.Δ t) cs) :
+    NFProg nfDialect (cs ++ Γ) (NfTy.bit :: cs) :=
+  .ifThenElse gV (ob.pre.plug (.ret (.cons (ob.pre.wk gV) rets)))
+    (.ret (.cons gV (headVars cs))) (.ret (headVars (NfTy.bit :: cs)))
+
+/-- **The `while` loop of the front.** From the environment of names `σ`, the loop carrying the
+    names `xs` at the types `cs` from the variables `inits`, on the flag held by the name `g`
+    at the bit type: the step `whileStep` runs the translation `rec` of the source body when
+    the flag is set and returns the flag after it; the continuation binds the unit value, with
+    the source name `tgt`. `none` when `g` is unbound or not a bit after the carried names are
+    bound, or the body leaves a name of `xs` unbound or at another type. -/
+def whileOut {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
+    (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) : Option (Out Γ) :=
+  let σB : NfEnv (cs ++ Γ) := whileEnv σ xs cs (headVars cs) fun v => Var.shiftApp cs v
+  (σB.lookup g).bind fun p =>
+    if h : p.1 = NfTy.bit then
+      (rec σB).bind fun ob =>
+        (varsAt ob.σ xs cs).map fun rets =>
+          let oU := bind1N tgt σB .constUnit .nil
+          Out.mk oU.Δ oU.t (.whileLoop inits (whileStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
+    else none
+
+/-- An expression containing no `whileFold` and no `whileFoldReturn`. -/
+def whileFoldFree : ImpExpr → Bool
+  | .letBind _ v b => whileFoldFree v && whileFoldFree b
+  | .lam _ b => whileFoldFree b
+  | .app _ args => freeList args
+  | .tuple es => freeList es
+  | .proj e _ => whileFoldFree e
+  | .ifThenElse c t e => whileFoldFree c && whileFoldFree t && whileFoldFree e
+  | .match_ s arms => whileFoldFree s && freeArms arms
+  | .seq a b => whileFoldFree a && whileFoldFree b
+  | .borrow e => whileFoldFree e
+  | .deref e => whileFoldFree e
+  | .assign _ r => whileFoldFree r
+  | .forLoop _ lo hi b => whileFoldFree lo && whileFoldFree hi && whileFoldFree b
+  | .forLoopRev _ lo hi b => whileFoldFree lo && whileFoldFree hi && whileFoldFree b
+  | .whileLoop c b => whileFoldFree c && whileFoldFree b
+  | .break_ (some e) => whileFoldFree e
+  | .earlyReturn e => whileFoldFree e
+  | .questionMark e => whileFoldFree e
+  | .forFold _ lo hi b => whileFoldFree lo && whileFoldFree hi && whileFoldFree b
+  | .forFoldRev _ lo hi b => whileFoldFree lo && whileFoldFree hi && whileFoldFree b
+  | .whileFold _ _ => false
+  | .forFoldReturn _ lo hi b => whileFoldFree lo && whileFoldFree hi && whileFoldFree b
+  | .forFoldRevReturn _ lo hi b => whileFoldFree lo && whileFoldFree hi && whileFoldFree b
+  | .whileFoldReturn _ _ => false
+  | .cfBreak e => whileFoldFree e
+  | .cfContinue e => whileFoldFree e
+  | .cfBreakContinue e => whileFoldFree e
+  | .typeAscription e _ => whileFoldFree e
+  | _ => true
+where
+  /-- `whileFoldFree` of every expression of a list. -/
+  freeList : List ImpExpr → Bool
+    | [] => true
+    | e :: es => whileFoldFree e && freeList es
+  /-- `whileFoldFree` of the body of every match arm. -/
+  freeArms : List (_root_.Hax.ImpPat × ImpExpr) → Bool
+    | [] => true
+    | (_, e) :: rest => whileFoldFree e && freeArms rest
+
+theorem whileFoldFree.freeList_eq (es : List ImpExpr) :
+    whileFoldFree.freeList es = es.all whileFoldFree := by
+  induction es with
+  | nil => rfl
+  | cons e es ih => simp [whileFoldFree.freeList, ih]
+
 mutual
 /-- The front: the `NFProg` prefix computing the value of an expression of the fragment,
     from the environment of names `σ`. The binding of the value has the source name `tgt`
@@ -604,7 +687,11 @@ mutual
     arms; a name only one arm binds is not. A conditional of the unit type has no value
     among the results: its unit value is bound after the region. After
     the region the carried names read its results (`condEnv`). The source name `tgt` is not
-    recorded on a conditional. -/
+    recorded on a conditional.
+
+    A loop `whileFold (var g) body` on the flag `g` is the region `NFPre.whileLoop`
+    (`whileOut`): it carries the names of the environment the body may bind (`condCarried`
+    of the body with itself), and its step runs the body while `g` reads `true`. -/
 def impToNF (sigOf : String → List NfTy → Option NfTy) :
     Option String → {Γ : Ctxt nfDialect} → NfEnv Γ → ImpExpr → Option (Out Γ)
   | _, _, σ, .var x => atomOut σ (.var x)
@@ -658,6 +745,10 @@ def impToNF (sigOf : String → List NfTy → Option NfTy) :
         condOut oc.pre oc.σ (h ▸ oc.res) (W.map (·.1)) (entriesVars W).1
           (impToNF sigOf none oc.σ a) (impToNF sigOf none oc.σ b)
       else none
+  | tgt, _, σ, .whileFold (.var g) body =>
+      let W := condCarried σ body body
+      whileOut tgt σ g (W.map (·.1)) (entriesVars W).1 (entriesVars W).2
+        (fun σB => impToNF sigOf none σB body)
   | _, _, _, _ => none
 
 /-- The arguments of a call, left to right: each argument translated by `impToNF` without a
@@ -2952,6 +3043,201 @@ theorem cond_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
   · rw [dif_neg htc] at h
     cases h
 
+/-! ## 10c. The `while` loop -/
+
+/-- The environment of names of a `while` loop is related to `env` when the carried names
+    read the values of `hv` and every other name of `σ` reads the value of its variable. -/
+theorem EnvRel.whileEnv {Γ Δ : Ctxt nfDialect} (σ : NfEnv Γ) (xs : List String)
+    (cs : List NfTy) (hlen : xs.length = cs.length) (hv : HVector (fun t => Var Δ t) cs)
+    (g : ∀ {t : NfTy}, Var Γ t → Var Δ t) {env : Env} {V : Valuation Γ} {W : Valuation Δ}
+    (hc : CarriedRel env xs cs (Expr.lookupArgs hv W))
+    (hf : ∀ x, x ∉ xs → ∀ t (v : Var Γ t), σ.lookup x = some ⟨t, v⟩ →
+      env x = some (enc t (v.lookup V)))
+    (hg : ∀ (t : NfTy) (v : Var Γ t), (g v).lookup W = v.lookup V) :
+    EnvRel (whileEnv σ xs cs hv g) env W := by
+  intro y t v hl
+  refine EnvRel.bindAll xs cs hv _ hlen hc y ?_ t v hl
+  intro hy t' v' hl'
+  rw [NfEnv.lookup_mapV, Option.map_eq_some_iff] at hl'
+  obtain ⟨⟨t0, v0⟩, h0, heq⟩ := hl'
+  simp only [Sigma.mk.injEq] at heq
+  obtain ⟨rfl, hv'⟩ := heq
+  rw [hf y hy t0 v0 h0, ← eq_of_heq hv', hg]
+
+/-- The step of a `while` loop whose flag reads `false` returns the flag and the carried
+    tuple. -/
+theorem PDenP_whileStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
+    (cs : List NfTy) (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
+    (rets : HVector (fun t => Var ob.Δ t) cs) (acc : Valuation (d := nfDialect) cs)
+    (V : Valuation Γ) (h : gV.lookup (hvAppend acc V) = false) :
+    PDenP bi tf (whileStep cs gV ob rets) (hvAppend acc V) =
+      some (HVector.cons (t := NfTy.bit) false acc) := by
+  show ((if HasBoolBit.toBool (d := nfDialect) (gV.lookup (hvAppend acc V)) then
+      PDenP bi tf (ob.pre.plug (.ret (.cons (ob.pre.wk gV) rets))) (hvAppend acc V)
+    else PDenP bi tf (.ret (.cons gV (headVars cs))) (hvAppend acc V)) >>= fun r =>
+      PDenP bi tf (.ret (headVars (NfTy.bit :: cs))) (hvAppend r (hvAppend acc V))) = _
+  rw [show HasBoolBit.toBool (d := nfDialect) (gV.lookup (hvAppend acc V)) = false from h,
+    if_neg Bool.false_ne_true]
+  show some (Expr.lookupArgs (headVars (NfTy.bit :: cs))
+    (hvAppend (HVector.cons (gV.lookup (hvAppend acc V))
+      (Expr.lookupArgs (headVars cs) (hvAppend acc V))) (hvAppend acc V))) = _
+  rw [lookupArgs_headVars, lookupArgs_headVars, h]
+
+/-- The step of a `while` loop whose flag reads `true` runs the body to the valuation `W` of
+    its hole and returns the flag and the carried variables there. -/
+theorem PDenP_whileStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
+    (cs : List NfTy) (gV : Var (d := nfDialect) (cs ++ Γ) NfTy.bit) (ob : Out (cs ++ Γ))
+    (rets : HVector (fun t => Var ob.Δ t) cs) (X : Valuation (d := nfDialect) (cs ++ Γ))
+    {W : Valuation ob.Δ} (h : gV.lookup X = true) (hW : PDen bi tf ob.pre X = some W) :
+    PDenP bi tf (whileStep cs gV ob rets) X =
+      some (HVector.cons (t := NfTy.bit) true (Expr.lookupArgs rets W)) := by
+  show ((if HasBoolBit.toBool (d := nfDialect) (gV.lookup X) then
+      PDenP bi tf (ob.pre.plug (.ret (.cons (ob.pre.wk gV) rets))) X
+    else PDenP bi tf (.ret (.cons gV (headVars cs))) X) >>= fun r =>
+      PDenP bi tf (.ret (headVars (NfTy.bit :: cs))) (hvAppend r X)) = _
+  rw [show HasBoolBit.toBool (d := nfDialect) (gV.lookup X) = true from h, if_pos rfl,
+    PDenP_plug_ret bi tf ob.pre _ X hW]
+  show some (Expr.lookupArgs (headVars (NfTy.bit :: cs))
+    (hvAppend (Expr.lookupArgs (HVector.cons (ob.pre.wk gV) rets) W) X)) = _
+  rw [lookupArgs_headVars]
+  show some (HVector.cons ((ob.pre.wk gV).lookup W) (Expr.lookupArgs rets W)) = _
+  rw [@NFPre.lookup_wk nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf _ _ _ ob.pre gV _ _ hW, h]
+
+/-- An encoded value is not tagged as a control-flow value. -/
+theorem enc_isControlFlow (t : NfTy) (x : t.denote) : (enc t x).isControlFlow = false := by
+  have := enc_ne_controlFlow t x
+  generalize enc t x = w at this ⊢
+  cases w <;> first | rfl | exact absurd rfl (this _ _)
+
+/-- **The `while` loop.** Let the flag `g` read `fl acc` in every environment satisfying
+    `Inv` with the carried tuple `acc`; let the target step return the flag `false` and `acc`
+    when the flag is unset, and, when it is set, match every run of the body to a value, from
+    some target fuel on, by the flag `true` and a carried tuple satisfying `Inv` with the final
+    environment. Then a run of `denoteWhile'` to a value is matched, at every target fuel and
+    iteration count from some bound on, by the iteration of the step. -/
+theorem while_sound (bi : Builtins) (g : String) (body : ImpExpr) {Γ : Ctxt nfDialect}
+    (V : Valuation Γ) {cs : List NfTy} (step : NFProg nfDialect (cs ++ Γ) (NfTy.bit :: cs))
+    (Inv : Env → Valuation (d := nfDialect) cs → Prop)
+    (fl : Valuation (d := nfDialect) cs → Bool)
+    (HG : ∀ e acc, Inv e acc → e g = some (.bool (fl acc)))
+    (HF : ∀ e acc tf, Inv e acc → fl acc = false →
+      PDenP bi tf step (hvAppend acc V) = some (HVector.cons (t := NfTy.bit) false acc))
+    (HT : ∀ (f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs) (rb : Outcome) (e₂ : Env),
+      Inv e acc → fl acc = true → (denote' bi f body).run e = (rb, e₂) → (∃ w, rb = .val w) →
+      ∃ w acc', rb = .val w ∧ w.isControlFlow = false ∧
+        (∃ N, ∀ tf, N ≤ tf →
+          PDenP bi tf step (hvAppend acc V) = some (HVector.cons (t := NfTy.bit) true acc')) ∧
+        Inv e₂ acc') :
+    ∀ (n : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs) (r : Value) (e' : Env),
+      Inv e acc → (_root_.Hax.denoteWhile' bi n (.var g) body).run e = (.val r, e') →
+      r = .unit ∧ ∃ accF, (∃ N, ∀ tf m, N ≤ tf → N ≤ m →
+        NFProg.whileIter (d := nfDialect) (fun a => PDenP bi tf step (hvAppend a V)) m acc =
+          some accF) ∧ Inv e' accF := by
+  intro n
+  induction n with
+  | zero =>
+      intro e acc r e' _ h
+      rw [_root_.Hax.denoteWhile', if_pos rfl] at h
+      cases h
+  | succ n ih =>
+      intro e acc r e' hinv h
+      have hg := HG e acc hinv
+      cases hb : fl acc with
+      | false =>
+          rw [hb] at hg
+          rw [_root_.Hax.BreakFlag.while_var_false n hg] at h
+          cases h
+          refine ⟨rfl, acc, ⟨1, fun tf m _ hm => ?_⟩, hinv⟩
+          obtain ⟨m, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
+          rw [NFProg.whileIter, HF e acc tf hinv hb]
+          rfl
+      | true =>
+          rw [hb] at hg
+          obtain ⟨rb, e₂, hbr⟩ := run_val_split (denote' bi (n + 1) body) e
+          cases rb with
+          | val w =>
+              obtain ⟨w', acc', hw, hcf, ⟨N₁, hst⟩, hinv'⟩ :=
+                HT (n + 1) e acc _ e₂ hinv hb hbr ⟨w, rfl⟩
+              cases hw
+              rw [_root_.Hax.BreakFlag.while_var_true n hg hbr hcf] at h
+              obtain ⟨hr, accF, ⟨N₂, hit⟩, hinvF⟩ := ih e₂ acc' r e' hinv' h
+              refine ⟨hr, accF, ⟨max N₁ (N₂ + 1), fun tf m htf hm => ?_⟩, hinvF⟩
+              obtain ⟨m, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
+              rw [NFProg.whileIter, hst tf (by omega)]
+              exact hit tf m (by omega) (by omega)
+          | _ =>
+              have hc : (denote' bi (n + 1) (.var g)).run e = (.val (.bool true), e) := by
+                rw [var_run, hg]
+              unfold _root_.Hax.denoteWhile' at h
+              rw [if_neg (Nat.add_one_ne_zero n)] at h
+              simp only [StateT.run, bind, StateT.bind] at hc hbr h
+              rw [hc] at h
+              dsimp only at h
+              simp only [StateT.bind, hbr] at h
+              cases h
+
+/-- **The `while` loop of the front is sound**, when the front is sound for its body, the
+    carried names have one type each, the names that are not carried are bound by no run of the
+    body, and the carried names read the values of `inits`. -/
+theorem whileOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Option String)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (g : String) (xs : List String) (cs : List NfTy)
+    (inits : HVector (fun t => Var Γ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) {o : Out Γ}
+    (h₀ : whileOut tgt σ g xs cs inits rec = some o)
+    (HB : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ}, rec σ' = some o' →
+      ∀ fuel', Sound bi fuel' body σ' o')
+    (hlen : xs.length = cs.length)
+    (hfr : ∀ x, x ∉ xs → ∀ q, σ.lookup x = some q →
+      frameOk (fun _ => true) (fun n => n != x) (fun _ => true) body = true)
+    (hcar : ∀ env V, EnvRel σ env V → CarriedRel env xs cs (Expr.lookupArgs inits V)) :
+    Sound bi fuel (.whileFold (.var g) body) σ o := by
+  simp only [whileOut, Option.bind_eq_some_iff] at h₀
+  obtain ⟨⟨pt, pv⟩, hg, h₀⟩ := h₀
+  split at h₀
+  case isFalse => cases h₀
+  rename_i hpt
+  dsimp only at hpt
+  subst hpt
+  simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₀
+  obtain ⟨ob, hob, rets, hrets, rfl⟩ := h₀
+  refine Sound.of_ev fun env V r env' hrel hrun => ?_
+  let Inv : Env → Valuation (d := nfDialect) cs → Prop := fun e acc =>
+    CarriedRel e xs cs acc ∧ ∀ x, x ∉ xs → ∀ t (v : Var Γ t), σ.lookup x = some ⟨t, v⟩ →
+      e x = some (enc t (v.lookup V))
+  have hB : ∀ e acc, Inv e acc → EnvRel (whileEnv σ xs cs (headVars cs)
+      fun v => Var.shiftApp (d := nfDialect) cs v) e (hvAppend acc V) := fun e acc hinv =>
+    EnvRel.whileEnv σ xs cs hlen (headVars cs) _ (by rw [lookupArgs_headVars]; exact hinv.1)
+      hinv.2 (fun t v => Var.lookup_shiftApp cs acc v V)
+  have hW := while_sound bi g body V (whileStep cs pv ob rets) Inv
+    (fun acc => pv.lookup (hvAppend acc V))
+    (fun e acc hinv => hB e acc hinv g _ pv hg)
+    (fun e acc tf _ hf => PDenP_whileStep_false bi tf cs pv ob rets acc V hf)
+    (fun f e acc rb e₂ hinv ht hb hval => by
+      obtain ⟨w, rfl⟩ := hval
+      obtain ⟨W', ⟨N, hW'⟩, hrel', rfl⟩ := (HB _ hob f).ev (hB e acc hinv) hb
+      refine ⟨_, Expr.lookupArgs rets W', rfl, enc_isControlFlow _ _,
+        ⟨N, fun tf htf => PDenP_whileStep_true bi tf cs pv ob rets _ ht (hW' tf htf)⟩,
+        CarriedRel.of_varsAt hrel' xs cs hrets, ?_⟩
+      intro x hx t v hl
+      rw [denote'_keeps bi body (hfr x hx _ hl) f _ hb (by rintro ⟨_, h⟩; cases h)]
+      exact hinv.2 x hx t v hl)
+  rw [_root_.Hax.BreakFlag.whileFold_run] at hrun
+  obtain ⟨rfl, accF, ⟨N, hit⟩, hinvF⟩ := hW fuel env (Expr.lookupArgs inits V) r env'
+    ⟨hcar env V hrel, fun x _ t v hl => hrel x t v hl⟩ hrun
+  refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend accF V),
+    ⟨N, fun tf htf => ?_⟩, ?_, rfl⟩
+  · show (NFProg.whileIter (d := nfDialect)
+        (fun acc => PDenP bi tf (whileStep cs pv ob rets) (hvAppend acc V)) tf
+        (Expr.lookupArgs inits V)).bind (fun acc => PDen bi tf
+          (bind1N tgt (whileEnv σ xs cs (headVars cs)
+            fun v => Var.shiftApp (d := nfDialect) cs v) .constUnit .nil).pre
+          (hvAppend acc V)) = _
+    rw [hit tf tf htf htf, Option.bind_some]
+    exact (PDen_bind1N bi tf tgt _ .constUnit .nil _).trans rfl
+  · exact (hB env' accF hinvF).mapV (fun v => Var.there v)
+      (W := HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend accF V))
+      fun _ _ => rfl
+
 /-! ## 11. The front simulates `denote'` -/
 
 /-- **The front simulates `denote'`.** Under the typing hypothesis `TypedCalls bi sigOf`
@@ -3016,6 +3302,16 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
     intro tgt Γ σ o h fuel
     exact cond_sound bi sigOf fuel tgt c a b σ h (fun h' => ihc none σ h' fuel)
       (fun σ' _ h' => iha none σ' h' fuel) (fun σ' _ h' => ihb none σ' h' fuel)
+  case whileFold c body _ ihb =>
+    intro tgt Γ σ o h fuel
+    cases c with
+    | var g =>
+        exact whileOut_sound bi fuel body tgt σ g _ _ _ _ (by simpa only [impToNF] using h)
+          (fun σ' _ h' fuel' => ihb none σ' h' fuel')
+          (by rw [List.length_map, entriesVars_length])
+          (fun x hx _ hl => (frameOk_of_not_condCarried σ body body hl hx).1)
+          (fun env V hrel => CarriedRel.of_entries hrel _ (condCarried_lookup σ body body))
+    | _ => simp [impToNF] at h
   all_goals intro tgt Γ σ o h; simp [impToNF] at h
 
 /-! ## 12. The readback -/

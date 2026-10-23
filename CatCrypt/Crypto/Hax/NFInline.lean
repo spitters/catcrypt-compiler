@@ -1537,16 +1537,26 @@ open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateSigOf hax64SigOf impToNF entryEnv
 
 /-- The body of the function `c` of the crate `fs` at the argument types `as` and the result
     type `r`: the program `impToNF` produces from its body over its parameters, at the call
-    typing `crateSigOf fs base`, when the parameter types are `as` and the result type is `r`.
+    typing `crateSigOf fs base`, when the body has no `whileFold` (`ImpToNF.whileFoldFree`),
+    the parameter types are `as` and the result type is `r`.
     The typing `base` of the calls of names of no function of `fs` is `hax64SigOf` unless
     given. -/
 def crateBody (fs : List CrateFn) (c : CrateFn) (as : List NfTy) (r : NfTy)
     (base : String → List NfTy → Option NfTy := hax64SigOf) :
     Option (NFProg nfDialect as [r]) :=
-  (impToNF (crateSigOf fs base) none (entryEnv c.params) c.body).bind fun o =>
-    if h : entryCtx c.params = as ∧ o.t = r then
-      some (cast (congrArg₂ (NFProg nfDialect) h.1 (congrArg (fun x => [x]) h.2)) o.prog)
-    else none
+  if ImpToNF.whileFoldFree c.body then
+    (impToNF (crateSigOf fs base) none (entryEnv c.params) c.body).bind fun o =>
+      if h : entryCtx c.params = as ∧ o.t = r then
+        some (cast (congrArg₂ (NFProg nfDialect) h.1 (congrArg (fun x => [x]) h.2)) o.prog)
+      else none
+  else none
+
+/-- The body of a function of the crate has no `whileFold` when `crateBody` returns one. -/
+theorem whileFoldFree_of_crateBody {fs : List CrateFn} {c : CrateFn} {as : List NfTy}
+    {r : NfTy} {base : String → List NfTy → Option NfTy} {b : NFProg nfDialect as [r]}
+    (hb : crateBody fs c as r base = some b) : ImpToNF.whileFoldFree c.body = true := by
+  by_contra hn
+  simp [crateBody, hn] at hb
 
 /-- The body of an operation in the library of the functions `fs` at the typing `base` of the
     other calls: a leaf call `NfOp.call f as r` of the first function of `fs` named `f` has the
@@ -1698,7 +1708,8 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
       intro b hb x y hy
       simp only [crateOp, Option.bind_eq_some_iff] at hb
       obtain ⟨c, hc, hb⟩ := hb
-      simp only [crateBody, Option.bind_eq_some_iff] at hb
+      have hwf := whileFoldFree_of_crateBody hb
+      simp only [crateBody, hwf, if_true, Option.bind_eq_some_iff] at hb
       obtain ⟨o', ho', hb⟩ := hb
       split at hb
       · rename_i hty
@@ -1712,7 +1723,8 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
           · cases hv
             have hw : o'.prog.whileFree = true :=
               SecureCompilation.Haxc.FrontComplete.whileFree_of_opsNB _
-                (SecureCompilation.Haxc.FrontComplete.impToNF_prog_frontOp _ c.body none _ o' ho')
+                (SecureCompilation.Haxc.FrontComplete.impToNF_prog_frontOp _ c.body none _ o' ho'
+                  hwf)
             obtain ⟨W, hprog, -, hvW⟩ := ImpToNF.Sound.all_of_whileFree (impToNF_sound
               (crateBi fs bi fuelC m) (crateSigOf fs base) (crateBi_typedCalls fs bi base hT fuelC m)
               (crateBi_repeatCalls fs bi hR hfR fuelC m) c.body none (entryEnv c.params) ho' fuelC)

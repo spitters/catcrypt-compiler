@@ -807,7 +807,7 @@ theorem expCallLeak_agrees (fs : List CrateFn) (bi : Builtins) (fuelC n : Nat) (
 /-- **The program the front emits for a term of a crate, run with the expanded calls, has the
     events of the inlined term.** Let `impToNF` translate `e` from `σ` under typed builtins
     with the crate `crateBi fs bi fuelC n`, where `RepeatCalls bi` holds and no function of the
-    crate is named `repeat`, `inlOk fs n` accept `e`, and `e` run at those
+    crate is named `repeat`, `inlOk fs n` accept `e`, `e` contain no `whileFold`, and `e` run at those
     builtins and the fuel `F` from an environment related to `V` to a value. Then the leakage
     run of the emitted program at those builtins with the expanded call leakage
     `expCallLeak fs bi fuelC n` returns the encoding of the value and the events
@@ -818,7 +818,8 @@ theorem impToNF_leak_inlineCrate (fs : List CrateFn) (bi : Builtins) (fuelC n : 
     (hT : TypedCalls (crateBi fs bi fuelC n) sigOf) (hR : RepeatCalls bi)
     (hfR : fs.find? (·.name == "repeat") = none) {e : ImpExpr} (he : inlOk fs n e = true)
     {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
-    (h : impToNF sigOf tgt σ e = some o) {F D : Nat} (hD : n * fuelC ≤ D) {env : Env}
+    (h : impToNF sigOf tgt σ e = some o) (hw : ImpToNF.whileFoldFree e = true) {F D : Nat}
+    (hD : n * fuelC ≤ D) {env : Env}
     {V : Valuation Γ} {v : Value} {env' : Env} (hrel : EnvRel σ env V)
     (hrun : (denote' (crateBi fs bi fuelC n) F e).run env = (.val v, env')) (tf : Nat) :
     ∃ x : o.t.denote,
@@ -828,7 +829,7 @@ theorem impToNF_leak_inlineCrate (fs : List CrateFn) (bi : Builtins) (fuelC n : 
       v = enc o.t x := by
   rw [inlineCrate_srcLeak fs bi fuelC n hfR he hD hrun (by rintro ⟨m, hm⟩; cases hm)]
   exact impToNF_leakE (crateBi fs bi fuelC n) sigOf hT (crateBi_repeatCalls fs bi hR hfR fuelC n)
-    (expCallLeak_agrees fs bi fuelC n _) h hrel hrun tf
+    (expCallLeak_agrees fs bi fuelC n _) h hw hrel hrun tf
 
 /-! ## The rounds of the NF inlining keep the leakage run -/
 
@@ -859,7 +860,8 @@ theorem crateOp_leak (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax
       intro b hb x y hy
       simp only [crateOp, Option.bind_eq_some_iff] at hb
       obtain ⟨c, hc, hb⟩ := hb
-      simp only [crateBody, Option.bind_eq_some_iff] at hb
+      have hwf := NFInline.whileFoldFree_of_crateBody hb
+      simp only [crateBody, hwf, if_true, Option.bind_eq_some_iff] at hb
       obtain ⟨o', ho', hb⟩ := hb
       split at hb
       · rename_i hty
@@ -875,7 +877,7 @@ theorem crateOp_leak (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax
               (crateBi fs bi fuelC m) (crateSigOf fs hax64SigOf)
               (crateBi_typedCalls fs bi hax64SigOf hT fuelC m)
               (crateBi_repeatCalls fs bi hR hfR fuelC m)
-              (expCallLeak_agrees fs bi fuelC m _) ho' (entryEnv_rel_paramsEnv c.params x)
+              (expCallLeak_agrees fs bi fuelC m _) ho' hwf (entryEnv_rel_paramsEnv c.params x)
               (Prod.ext hrun rfl) tf
             have hy' : y = x' := enc_inj _ _ _ ((dec_sound _ _ _ hd).symm.trans hvx)
             subst hy'

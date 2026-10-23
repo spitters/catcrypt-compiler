@@ -25,7 +25,8 @@ and `call` nodes in it.
   plugging keep `opsNB`.
 * `frontOp` — the operations of the front at a call typing.
 * `impToNF_frontOp`, `impToNF_prog_frontOp` — every operation of the output of `impToNF S`
-  satisfies `frontOp S`, and its program is a program of `opsNB (frontOp S)`.
+  on an expression without `whileFold` (`whileFoldFree`) satisfies `frontOp S`, and its
+  program is a program of `opsNB (frontOp S)`.
 -/
 
 @[expose] public section
@@ -450,44 +451,50 @@ theorem impArgsNF_frontOp (args : List ImpExpr)
         ihes (fun a ha => ih a (List.mem_cons_of_mem _ ha)) o.σ os hos, Bool.and_self]
 
 /-- **The operations of the front's output**: every operation of a prefix `impToNF S`
-    returns satisfies `frontOp S`, and its regions have no exit-flag loop and no `call`
-    node. -/
+    returns on an expression without `whileFold` satisfies `frontOp S`, and its regions have
+    no exit-flag loop and no `call` node. -/
 theorem impToNF_frontOp (e : ImpExpr) :
     ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (o : Out Γ),
-      impToNF S tgt σ e = some o → preOps (frontOp S) o.pre = true := by
+      impToNF S tgt σ e = some o → whileFoldFree e = true →
+        preOps (frontOp S) o.pre = true := by
   induction e using ImpExpr.ind
   case lit l =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h _
     exact litOut_frontOp S tgt σ l h
   case var x =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h _
     exact atomOut_frontOp S σ (.var x) h
   case unitVal =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h _
     simp only [impToNF, Option.some.injEq] at h
     subst h
     simp [preOps_bind1N, frontOp]
   case letBind x v b ihv ihb =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ov, hov, ob, hob, rfl⟩ := h
-    simp only [Out.comp, preOps_append, ihv _ _ _ hov, ihb _ _ _ hob, Bool.and_self]
+    simp only [Out.comp, preOps_append, ihv _ _ _ hov hw.1, ihb _ _ _ hob hw.2, Bool.and_self]
   case seq a b iha ihb =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨oa, hoa, ob, hob, rfl⟩ := h
-    simp only [Out.comp, preOps_append, iha _ _ _ hoa, ihb _ _ _ hob, Bool.and_self]
+    simp only [Out.comp, preOps_append, iha _ _ _ hoa hw.1, ihb _ _ _ hob hw.2, Bool.and_self]
   case assign x r ih =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree] at hw
     simp only [impToNF, Option.map_eq_some_iff] at h
     obtain ⟨o', ho', rfl⟩ := h
-    simp [Out.comp, preOps_append, ih _ _ _ ho', preOps_bind1N, frontOp]
+    simp [Out.comp, preOps_append, ih _ _ _ ho' hw, preOps_bind1N, frontOp]
   case typeAscription e s ih =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree] at hw
     simp only [impToNF] at h
-    exact ih _ _ _ h
+    exact ih _ _ _ h hw
   case app f args iha =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree, whileFoldFree.freeList_eq, List.all_eq_true] at hw
     rcases impToNF_app_cases S tgt σ h with ⟨x, N, -, h⟩ | ⟨-, oa, hoa, r, hr, rfl⟩
     · simp only [repeatOut, Option.bind_eq_some_iff] at h
       obtain ⟨ox, hox, h⟩ := h
@@ -495,61 +502,70 @@ theorem impToNF_frontOp (e : ImpExpr) :
       · cases h
         simp [Out.comp, preOps_append, atomOut_frontOp S _ _ hox, preOps_bind1N, frontOp]
       · cases h
-    · simp [preOps_append, preOps, impArgsNF_frontOp S args iha _ _ hoa, frontOp_mkEN,
-        frontOp, hr]
+    · simp [preOps_append, preOps,
+        impArgsNF_frontOp S args (fun a ha tgt' _ σ' o' h' => iha a ha tgt' σ' o' h' (hw a ha))
+          _ _ hoa, frontOp_mkEN, frontOp, hr]
   case tuple es _ =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h _
     simp only [impToNF, Option.map_eq_some_iff] at h
     obtain ⟨oa, hoa, rfl⟩ := h
     simp only [preOps_append, argsOut_frontOp S es σ hoa, tupleOut_frontOp, Bool.and_self]
   case proj e i ih =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree] at hw
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨oe, hoe, op, hop, rfl⟩ := h
-    simp only [Out.comp, preOps_append, ih _ _ _ hoe, projOut_frontOp S tgt i _ _ _ hop,
+    simp only [Out.comp, preOps_append, ih _ _ _ hoe hw, projOut_frontOp S tgt i _ _ _ hop,
       Bool.and_self]
   case forFold i lo hi body _ _ ihb =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     simp only [impToNF, Option.bind_eq_some_iff] at h
     obtain ⟨eLo, hLo, oHi, hHi, h⟩ := h
     split at h
     · rename_i hb
       have ht := bound_frontOp hHi hb
       refine loopOut_frontOp S _ _ _ _ _ _ _ _ _ _ _ ?_
-        (fun σB o' ho' => ihb _ σB o' ho') h
+        (fun σB o' ho' => ihb _ σB o' ho' hw.2) h
       simp only [preOps_append, preOps_bind1, atomOut_frontOp S _ _ hHi, loOut_frontOp S σ lo hLo,
         frontOp, ht, Bool.and_self]
     · cases h
   case forFoldRev i lo hi body _ _ ihb =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     simp only [impToNF, Option.bind_eq_some_iff] at h
     obtain ⟨eLo, hLo, oHi, hHi, h⟩ := h
     split at h
     · rename_i hb
       have ht := bound_frontOp hHi hb
       refine loopOut_frontOp S _ _ _ _ _ _ _ _ _ _ _ ?_
-        (fun σB o' ho' => ihb _ σB o' ho') h
+        (fun σB o' ho' => ihb _ σB o' ho' hw.2) h
       simp only [preOps_append, preOps_bind1, atomOut_frontOp S _ _ hHi, loOut_frontOp S σ lo hLo,
         frontOp, ht, Bool.and_self]
       decide
     · cases h
   case ifThenElse c a b ihc iha ihb =>
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h hw
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     simp only [impToNF, Option.bind_eq_some_iff] at h
     obtain ⟨oc, hoc, h⟩ := h
     split at h
-    · exact condOut_frontOp S _ _ _ _ _ _ _ (ihc _ _ _ hoc) (fun oa ha => iha _ _ _ ha)
-        (fun ob hb => ihb _ _ _ hb) h
+    · exact condOut_frontOp S _ _ _ _ _ _ _ (ihc _ _ _ hoc hw.1.1)
+        (fun oa ha => iha _ _ _ ha hw.1.2) (fun ob hb => ihb _ _ _ hb hw.2) h
     · cases h
+  case whileFold c body _ _ =>
+    intro tgt Γ σ o _ hw
+    simp [whileFoldFree] at hw
   all_goals
-    intro tgt Γ σ o h
+    intro tgt Γ σ o h _
     simp [impToNF] at h
 
-/-- The program of an output of `impToNF S` is a program of `opsNB (frontOp S)`. -/
+/-- The program of an output of `impToNF S` on an expression without `whileFold` is a
+    program of `opsNB (frontOp S)`. -/
 theorem impToNF_prog_frontOp (e : ImpExpr) (tgt : Option String) {Γ : Ctxt nfDialect}
-    (σ : NfEnv Γ) (o : Out Γ) (h : impToNF S tgt σ e = some o) :
+    (σ : NfEnv Γ) (o : Out Γ) (h : impToNF S tgt σ e = some o) (hw : whileFoldFree e = true) :
     opsNB (frontOp S) o.prog = true := by
-  simp [Out.prog, opsNB_plug, impToNF_frontOp S e tgt σ o h, opsNB]
+  simp [Out.prog, opsNB_plug, impToNF_frontOp S e tgt σ o h hw, opsNB]
 
 /-- A prefix of `preOps P` denotes independently of the fuel. -/
 theorem PDen_fuel_of_preOps (bi : Builtins) {P : NfOp → Bool} {Γ Δ : Ctxt nfDialect}

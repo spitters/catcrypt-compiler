@@ -541,7 +541,7 @@ open CatCrypt.Crypto.Hax.NFToCat (nfLeakModel nfKind nfValNat nfLeakRun stripFie
   isFieldEvent)
 open CatCrypt.Crypto.Jasmin.LowCT (LevelTable SecretLevel)
 open CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete (frontOp preOps_append preOps_bind1N
-  atomOut_frontOp impToNF_frontOp Sound.all_of_preOps)
+  atomOut_frontOp impToNF_frontOp Sound.all_of_preOps preOps argsOut_frontOp tupleOut_frontOp)
 open MultiBlockLowering (hvAppend)
 open Ctxt (Var Valuation)
 
@@ -1247,9 +1247,10 @@ theorem lsound_tuple (bi : Builtins) (sigOf : String → List NfTy → Option Nf
     (σ : NfEnv Γ) {o : Out Γ}
     (h : impToNF sigOf tgt σ (.tuple es) = some o) : LSound bi C fuel (.tuple es) σ o := by
   have hs := tuple_sound bi sigOf fuel tgt es σ h
-  have hp := impToNF_frontOp sigOf (.tuple es) tgt σ o h
   simp only [impToNF, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, rfl⟩ := h
+  have hp : preOps (frontOp sigOf) (oa.pre.append (tupleOut tgt oa.as oa.vs).2.1) = true := by
+    simp only [preOps_append, argsOut_frontOp sigOf es σ hoa, tupleOut_frontOp, Bool.and_self]
   intro env V v env' hrel hrun tf
   obtain ⟨W, hW, hr, hv⟩ := Sound.all_of_preOps hs hp hrel hrun
   have hW := hW tf
@@ -1270,10 +1271,11 @@ theorem lsound_tuple (bi : Builtins) (sigOf : String → List NfTy → Option Nf
 theorem lsound_proj (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (fuel : Nat) (tgt : Option String) (e : ImpExpr) (i : Nat) {Γ : Ctxt nfDialect}
     (σ : NfEnv Γ) {o : Out Γ} (h : impToNF sigOf tgt σ (.proj e i) = some o)
+    (hw : whileFoldFree e = true)
     (he : ∀ {oe : Out Γ}, impToNF sigOf none σ e = some oe → LSound bi C fuel e σ oe) :
     LSound bi C fuel (.proj e i) σ o := by
   have hs := proj_sound bi sigOf fuel tgt e i σ h fun h' => (he h').sound
-  have hp := impToNF_frontOp sigOf (.proj e i) tgt σ o h
+  have hp := impToNF_frontOp sigOf (.proj e i) tgt σ o h (by simpa [whileFoldFree] using hw)
   simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oe, hoe, op, hop, rfl⟩ := h
   intro env V v env' hrel hrun tf
@@ -2063,35 +2065,41 @@ theorem lsound_forFoldRev (bi : Builtins) (sigOf : String → List NfTy → Opti
 theorem impToNF_lsound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (hC : C.Agrees bi) (e : ImpExpr) :
     ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
-      impToNF sigOf tgt σ e = some o → ∀ fuel, LSound bi C fuel e σ o := by
+      impToNF sigOf tgt σ e = some o → whileFoldFree e = true →
+        ∀ fuel, LSound bi C fuel e σ o := by
   induction e using ImpExpr.ind
-  case lit l => intro tgt Γ σ o h fuel; exact lsound_lit bi fuel tgt σ l h
-  case var x => intro tgt Γ σ o h fuel; exact lsound_atom bi fuel σ _ h
+  case lit l => intro tgt Γ σ o h _ fuel; exact lsound_lit bi fuel tgt σ l h
+  case var x => intro tgt Γ σ o h _ fuel; exact lsound_atom bi fuel σ _ h
   case letBind x v b ihv ihb =>
-    intro tgt Γ σ o h fuel
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ov, hov, ob, hob, rfl⟩ := h
-    exact lsound_letBind bi fuel x (ihv _ σ hov fuel) (ihb _ _ hob fuel)
+    exact lsound_letBind bi fuel x (ihv _ σ hov hw.1 fuel) (ihb _ _ hob hw.2 fuel)
   case seq a b iha ihb =>
-    intro tgt Γ σ o h fuel
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨oa, hoa, ob, hob, rfl⟩ := h
-    exact lsound_seq bi fuel (iha _ σ hoa fuel) (ihb _ _ hob fuel)
+    exact lsound_seq bi fuel (iha _ σ hoa hw.1 fuel) (ihb _ _ hob hw.2 fuel)
   case assign x r ih =>
-    intro tgt Γ σ o h fuel
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree] at hw
     simp only [impToNF, Option.map_eq_some_iff] at h
     obtain ⟨o', ho', rfl⟩ := h
-    exact lsound_assign bi fuel x tgt (ih _ σ ho' fuel)
+    exact lsound_assign bi fuel x tgt (ih _ σ ho' hw fuel)
   case app f args iha =>
-    intro tgt Γ σ o h fuel
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree, whileFoldFree.freeList_eq, List.all_eq_true] at hw
     exact lsound_app bi sigOf hT hR hC fuel tgt f args σ
-      (fun e he _ σ' _ h' => iha e he none σ' h' fuel) h
-  case tuple es _ => intro tgt Γ σ o h fuel; exact lsound_tuple bi sigOf fuel tgt es σ h
+      (fun e he _ σ' _ h' => iha e he none σ' h' (hw e he) fuel) h
+  case tuple es _ => intro tgt Γ σ o h _ fuel; exact lsound_tuple bi sigOf fuel tgt es σ h
   case proj e i ih =>
-    intro tgt Γ σ o h fuel
-    exact lsound_proj bi sigOf fuel tgt e i σ h fun h' => ih none σ h' fuel
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree] at hw
+    exact lsound_proj bi sigOf fuel tgt e i σ h hw fun h' => ih none σ h' hw fuel
   case unitVal =>
-    intro tgt Γ σ o h fuel
+    intro tgt Γ σ o h _ fuel
     simp only [impToNF, Option.some.injEq] at h
     subst h
     exact lsound_bind1N bi fuel _ tgt σ _ (fun _ => rfl) _ (fun _ => rfl)
@@ -2100,26 +2108,33 @@ theorem impToNF_lsound (bi : Builtins) (sigOf : String → List NfTy → Option 
         cases hr
         exact ⟨rfl, (), rfl, rfl⟩
   case typeAscription e s ih =>
-    intro tgt Γ σ o h fuel env V v env' hrel hrun tf
+    intro tgt Γ σ o h hw fuel env V v env' hrel hrun tf
+    simp only [whileFoldFree] at hw
     have hr : (denote' bi fuel (.typeAscription e s)).run env = (denote' bi fuel e).run env := by
       simp only [denote']
     have hs : srcLeakCl bi C.cl (.typeAscription e s) fuel env = srcLeakCl bi C.cl e fuel env := by
       simp only [srcLeakCl]
     rw [hr] at hrun
     rw [hs]
-    exact ih _ σ h fuel env V v env' hrel hrun tf
+    exact ih _ σ h hw fuel env V v env' hrel hrun tf
   case forFold i lo hi body _ _ ihb =>
-    intro tgt Γ σ o h fuel
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     exact lsound_forFold bi sigOf fuel tgt i lo hi body σ h
-      fun σ' _ h' fuel' => ihb none σ' h' fuel'
+      fun σ' _ h' fuel' => ihb none σ' h' hw.2 fuel'
   case forFoldRev i lo hi body _ _ ihb =>
-    intro tgt Γ σ o h fuel
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
     exact lsound_forFoldRev bi sigOf fuel tgt i lo hi body σ h
-      fun σ' _ h' fuel' => ihb none σ' h' fuel'
+      fun σ' _ h' fuel' => ihb none σ' h' hw.2 fuel'
   case ifThenElse c a b ihc iha ihb =>
-    intro tgt Γ σ o h fuel
-    exact lsound_cond bi sigOf fuel tgt c a b σ h (fun h' => ihc none σ h' fuel)
-      (fun σ' _ h' => iha none σ' h' fuel) (fun σ' _ h' => ihb none σ' h' fuel)
+    intro tgt Γ σ o h hw fuel
+    simp only [whileFoldFree, Bool.and_eq_true] at hw
+    exact lsound_cond bi sigOf fuel tgt c a b σ h (fun h' => ihc none σ h' hw.1.1 fuel)
+      (fun σ' _ h' => iha none σ' h' hw.1.2 fuel) (fun σ' _ h' => ihb none σ' h' hw.2 fuel)
+  case whileFold c body _ _ =>
+    intro tgt Γ σ o _ hw
+    simp [whileFoldFree] at hw
   all_goals intro tgt Γ σ o h; simp [impToNF] at h
 
 /-- **The leakage transformer of `impToNF` under a call leakage.** Under
@@ -2132,13 +2147,14 @@ theorem impToNF_leakE (bi : Builtins) (sigOf : String → List NfTy → Option N
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (hC : C.Agrees bi) {e : ImpExpr}
     {tgt : Option String}
     {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o)
+    (hw : whileFoldFree e = true)
     {fuel : Nat} {env : Env} {V : Valuation Γ} {v : Value} {env' : Env}
     (hrel : EnvRel σ env V) (hrun : (denote' bi fuel e).run env = (.val v, env')) (tf : Nat) :
     ∃ x : o.t.denote, nfLeakRunE bi C tf o.prog V =
         some (HVector.cons (f := fun t => ⟦t⟧) x .nil, nfTrace (srcLeakCl bi C.cl e fuel env)) ∧
       v = enc o.t x := by
   obtain ⟨W, hW, -, rfl⟩ :=
-    impToNF_lsound bi sigOf hT hR hC e tgt σ h fuel env V v env' hrel hrun tf
+    impToNF_lsound bi sigOf hT hR hC e tgt σ h hw fuel env V v env' hrel hrun tf
   refine ⟨o.res.lookup W, ?_, rfl⟩
   rw [Out.prog, nfLeakRunE_plug, hW, Option.bind_some]
   show Option.map _ (some (Expr.lookupArgs (HVector.cons o.res .nil) W, ([] : List CTLeak))) = _
@@ -2153,14 +2169,15 @@ theorem impToNF_leakE (bi : Builtins) (sigOf : String → List NfTy → Option N
     `impToNF_leakE` at the call leakage `CallLeak.nf` of the front. -/
 theorem impToNF_leak (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {e : ImpExpr} {tgt : Option String} {Γ : Ctxt nfDialect}
-    {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env : Env}
+    {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o)
+    (hw : whileFoldFree e = true) {fuel : Nat} {env : Env}
     {V : Valuation Γ} {v : Value} {env' : Env} (hrel : EnvRel σ env V)
     (hrun : (denote' bi fuel e).run env = (.val v, env')) (tf : Nat) :
     ∃ x : o.t.denote, nfLeakRun bi tf o.prog V =
         some (HVector.cons (f := fun t => ⟦t⟧) x .nil, nfTrace (srcLeakNF bi e fuel env)) ∧
       v = enc o.t x := by
   rw [← nfLeakRunE_nf]
-  exact impToNF_leakE bi sigOf hT hR (CallLeak.nf_agrees bi) h hrel hrun tf
+  exact impToNF_leakE bi sigOf hT hR (CallLeak.nf_agrees bi) h hw hrel hrun tf
 
 /-! ## The leakage model with quiet field calls -/
 
@@ -2234,7 +2251,8 @@ def SourceCTNF (bi : Builtins) (lt : LevelTable) (e : ImpExpr) : Prop :=
 theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {lt : LevelTable} {e : ImpExpr} (hct : SourceCTNF bi lt e)
     {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
-    (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env₁ env₂ env₁' env₂' : Env}
+    (h : impToNF sigOf tgt σ e = some o) (hw : whileFoldFree e = true) {fuel : Nat}
+    {env₁ env₂ env₁' env₂' : Env}
     {V₁ V₂ : Valuation Γ} {v₁ v₂ : Value} (hr₁ : EnvRel σ env₁ V₁) (hr₂ : EnvRel σ env₂ V₂)
     (hpub : PubEqEnv lt env₁ env₂)
     (hrun₁ : (denote' bi fuel e).run env₁ = (.val v₁, env₁'))
@@ -2242,8 +2260,8 @@ theorem impToNF_ct_runs (bi : Builtins) (sigOf : String → List NfTy → Option
     {q₁ q₂ : Valuation (d := nfDialect) [o.t] × List CTLeak}
     (hq₁ : nfLeakRunQ bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRunQ bi tf o.prog V₂ = some q₂) :
     q₁.2 = q₂.2 := by
-  obtain ⟨_, h₁, -⟩ := impToNF_leak bi sigOf hT hR h hr₁ hrun₁ tf
-  obtain ⟨_, h₂, -⟩ := impToNF_leak bi sigOf hT hR h hr₂ hrun₂ tf
+  obtain ⟨_, h₁, -⟩ := impToNF_leak bi sigOf hT hR h hw hr₁ hrun₁ tf
+  obtain ⟨_, h₂, -⟩ := impToNF_leak bi sigOf hT hR h hw hr₂ hrun₂ tf
   rw [nfLeakRunQ_eq, h₁, Option.map_some, Option.some.injEq] at hq₁
   rw [nfLeakRunQ_eq, h₂, Option.map_some, Option.some.injEq] at hq₂
   rw [← hq₁, ← hq₂]
@@ -2315,7 +2333,7 @@ theorem impToNF_nfCTRel (bi : Builtins) (sigOf : String → List NfTy → Option
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (lt : LevelTable)
     (ps : List (String × NfTy)) {e : ImpExpr}
     (hct : SourceCTNF bi lt e) {tgt : Option String} {o : Out (entryCtx ps)}
-    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
+    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (hw : whileFoldFree e = true) (fuel : Nat)
     (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
       (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat) :
     @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ _ _
@@ -2323,7 +2341,7 @@ theorem impToNF_nfCTRel (bi : Builtins) (sigOf : String → List NfTy → Option
   intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
   obtain ⟨v₁, env₁', hrun₁⟩ := hterm V₁
   obtain ⟨v₂, env₂', hrun₂⟩ := hterm V₂
-  exact impToNF_ct_runs bi sigOf hT hR hct h (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
+  exact impToNF_ct_runs bi sigOf hT hR hct h hw (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
     (pubEqEnv_entryEnvOf lt ps V₁ V₂ hpub) hrun₁ hrun₂ tf hq₁ hq₂
 
 /-! ## The labels of a secrecy record -/
@@ -2394,13 +2412,13 @@ theorem impToNF_nfCTRel_params (bi : Builtins) (sigOf : String → List NfTy →
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (s : FnSecrecy)
     (ps : List (String × NfTy)) (hps : ∀ p ∈ ps, ∃ b, (p.1, b) ∈ s.params) {e : ImpExpr}
     (hct : SourceCTNF bi (levelsOf s) e) {tgt : Option String} {o : Out (entryCtx ps)}
-    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
+    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (hw : whileFoldFree e = true) (fuel : Nat)
     (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
       (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat) :
     @NFCTRel nfDialect _ _ _ _ (nfDenote (tableOf bi)) nfLeakModelQ _ _
       (entryLabels (paramLevelOf s) ps) tf o.prog := by
   intro V₁ V₂ q₁ q₂ hpub hq₁ hq₂
-  exact impToNF_nfCTRel bi sigOf hT hR (levelsOf s) ps hct h fuel hterm tf V₁ V₂ q₁ q₂
+  exact impToNF_nfCTRel bi sigOf hT hR (levelsOf s) ps hct h hw fuel hterm tf V₁ V₂ q₁ q₂
     (pubEqV_entryLabels_levelsOf s ps hps V₁ V₂ hpub) hq₁ hq₂
 
 /-! ## Constant time modulo declassification through the front -/
@@ -2469,13 +2487,14 @@ abbrev srcLeakNFD (bi : Builtins) : ImpExpr → Nat → Env → SrcLeak :=
 theorem impToNF_leakD (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {e : ImpExpr} {tgt : Option String}
     {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (h : impToNF sigOf tgt σ e = some o)
+    (hw : whileFoldFree e = true)
     {fuel : Nat} {env : Env} {V : Valuation Γ} {v : Value} {env' : Env}
     (hrel : EnvRel σ env V) (hrun : (denote' bi fuel e).run env = (.val v, env')) (tf : Nat) :
     ∃ x : o.t.denote, nfLeakRunQ bi tf o.prog V =
         some (HVector.cons (f := fun t => ⟦t⟧) x .nil, nfTrace (srcLeakNFD bi e fuel env)) ∧
       v = enc o.t x := by
   rw [← nfLeakRunE_nfD]
-  exact impToNF_leakE bi sigOf hT hR (CallLeak.nfD_agrees bi) h hrel hrun tf
+  exact impToNF_leakE bi sigOf hT hR (CallLeak.nfD_agrees bi) h hw hrel hrun tf
 
 /-- **The declassified sequence of the source runs**: every run of `e` from `env` ending in
     a value has the declassified values `d` in its source leakage `srcLeakNFD`. -/
@@ -2492,7 +2511,8 @@ theorem impToNF_ct_runsD (bi : Builtins) (sigOf : String → List NfTy → Optio
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) {lt : LevelTable} {e : ImpExpr}
     (hct : SourceCTDOf bi (srcLeakNFD bi) lt e)
     {tgt : Option String} {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ}
-    (h : impToNF sigOf tgt σ e = some o) {fuel : Nat} {env₁ env₂ env₁' env₂' : Env}
+    (h : impToNF sigOf tgt σ e = some o) (hw : whileFoldFree e = true) {fuel : Nat}
+    {env₁ env₂ env₁' env₂' : Env}
     {V₁ V₂ : Valuation Γ} {v₁ v₂ : Value} (hr₁ : EnvRel σ env₁ V₁) (hr₂ : EnvRel σ env₂ V₂)
     (hpub : PubEqEnv lt env₁ env₂)
     (hrun₁ : (denote' bi fuel e).run env₁ = (.val v₁, env₁'))
@@ -2501,8 +2521,8 @@ theorem impToNF_ct_runsD (bi : Builtins) (sigOf : String → List NfTy → Optio
     (tf : Nat) {q₁ q₂ : Valuation (d := nfDialect) [o.t] × List CTLeak}
     (hq₁ : nfLeakRunQ bi tf o.prog V₁ = some q₁) (hq₂ : nfLeakRunQ bi tf o.prog V₂ = some q₂) :
     q₁.2 = q₂.2 := by
-  obtain ⟨_, h₁, -⟩ := impToNF_leakD bi sigOf hT hR h hr₁ hrun₁ tf
-  obtain ⟨_, h₂, -⟩ := impToNF_leakD bi sigOf hT hR h hr₂ hrun₂ tf
+  obtain ⟨_, h₁, -⟩ := impToNF_leakD bi sigOf hT hR h hw hr₁ hrun₁ tf
+  obtain ⟨_, h₂, -⟩ := impToNF_leakD bi sigOf hT hR h hw hr₂ hrun₂ tf
   rw [h₁, Option.some.injEq] at hq₁
   rw [h₂, Option.some.injEq] at hq₂
   rw [← hq₁, ← hq₂]
@@ -2521,7 +2541,7 @@ theorem impToNF_nfCTRelD (bi : Builtins) (sigOf : String → List NfTy → Optio
     (hT : TypedCalls bi sigOf) (hR : RepeatCalls bi) (lt : LevelTable)
     (ps : List (String × NfTy)) {e : ImpExpr}
     (hct : SourceCTDOf bi (srcLeakNFD bi) lt e) {tgt : Option String} {o : Out (entryCtx ps)}
-    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (fuel : Nat)
+    (h : impToNF sigOf tgt (entryEnv ps) e = some o) (hw : whileFoldFree e = true) (fuel : Nat)
     (hterm : ∀ V : Valuation (entryCtx ps), ∃ v env',
       (denote' bi fuel e).run (entryEnvOf ps V) = (.val v, env')) (tf : Nat)
     (d : List Value) (V₁ V₂ : Valuation (entryCtx ps))
@@ -2532,7 +2552,7 @@ theorem impToNF_nfCTRelD (bi : Builtins) (sigOf : String → List NfTy → Optio
     q₁.2 = q₂.2 := by
   obtain ⟨v₁, env₁', hrun₁⟩ := hterm V₁
   obtain ⟨v₂, env₂', hrun₂⟩ := hterm V₂
-  exact impToNF_ct_runsD bi sigOf hT hR hct h (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
+  exact impToNF_ct_runsD bi sigOf hT hR hct h hw (entryEnvOf_rel ps V₁) (entryEnvOf_rel ps V₂)
     (pubEqEnv_entryEnvOf lt ps V₁ V₂ hpub) hrun₁ hrun₂ (hd₁ fuel v₁ env₁' hrun₁)
     (hd₂ fuel v₂ env₂' hrun₂) tf hq₁ hq₂
 
