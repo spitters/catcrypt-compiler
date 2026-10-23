@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Hax.ImpRustPrint
-public import CatCrypt.Crypto.Hax.LowCTToHaxSim
+public import CatCrypt.Crypto.Hax.ImpEval
 
 /-!
 # Checking the hax frontend's reading of printed Rust
@@ -964,33 +964,19 @@ theorem haxReadAgrees_parseFnRet (name : String) (params : List (String × ImpRu
 
 /-! ## §5  A program for the round trip
 
-`roundTripLowCT` binds `x` to the leaf call `fp_mul(a, b)`, replaces it four
+`roundTripImp` binds `x` to the leaf call `fp_mul(a, b)`, replaces it four
 times by `fp_mul(x, b)` in a counted loop, and binds the scalar `s` to `c + d`.
-Its translation `roundTripImp` lies in the part of the front the simulation
-`lowCTToImp_simulates_frontNF` covers (`roundTripImp_simScope`).  The emit
-driver `bench/hax_roundtrip/emit_roundtrip.lean` prints it with `ppImpRustFn`
-as the Rust function `roundtrip_prog` with the parameters `roundTripParams`
-and the local types `roundTripTy`. -/
-
-open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located SExpr TowerType)
-
-/-- A slot of the field tower `TFp`. -/
-def rtLoc (x : String) : Located := { locVar := x, locSrc := .TFp }
+The emit driver `bench/hax_roundtrip/emit_roundtrip.lean` prints it with
+`ppImpRustFn` as the Rust function `roundtrip_prog` with the parameters
+`roundTripParams` and the local types `roundTripTy`.  Its `LowCT` source and
+the simulation are in `CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip`. -/
 
 /-- The round-trip program. -/
-def roundTripLowCT : LowCT :=
-  .RLetZero "x" .TFp (.RSeq (.RCall "fp_mul" (rtLoc "x") [rtLoc "a", rtLoc "b"])
-    (.RSeq (.RFor "i" 4 (.RCall "fp_mul" (rtLoc "x") [rtLoc "x", rtLoc "b"]))
-      (.RLetU64Zero "s" (.RSeq (.RScalarSetExpr "s" (.SAdd (.SVar "c") (.SVar "d"))) .RSkip))))
-
-/-- The hax translation of the round-trip program. -/
 def roundTripImp : ImpExpr :=
   .letBind "x" (.app "fp_mul" [.var "a", .var "b"])
     (.seq (.forFold "i" (.lit (.int 0)) (.lit (.int 4))
         (.assign "x" (.app "fp_mul" [.var "x", .var "b"])))
       (.letBind "s" (.app "scalar#Add" [.var "c", .var "d"]) .unitVal))
-
-theorem lowCTToImp_roundTripLowCT : lowCTToImp roundTripLowCT = some roundTripImp := rfl
 
 /-- The Rust parameters of the printed function. -/
 def roundTripParams : List (String × ImpRust.Tok) :=
@@ -999,26 +985,5 @@ def roundTripParams : List (String × ImpRust.Tok) :=
 /-- The Rust types of the locals of the printed function. -/
 def roundTripTy (x : String) : Option ImpRust.Tok :=
   if x = "x" then some "[u64;6]" else if x = "s" then some "u64" else none
-
-/-- The scalar names of the round-trip program. -/
-def rtScalars : List String := ["i", "s", "c", "d"]
-
-/-- The entry scope: the parameters `a`, `b` at `TFp`. -/
-def rtEntryScope : TowerScope := [("a", .TFp), ("b", .TFp)]
-
-/-- The exit scope: the entry scope and the local `x` at `TFp`. -/
-def rtExitScope : TowerScope := [("x", .TFp), ("a", .TFp), ("b", .TFp)]
-
-/-- The scope checker of the simulation accepts the round-trip program. -/
-theorem roundTripImp_simScope :
-    simScopeW towerOfCallName [] rtScalars [] [] rtEntryScope roundTripImp =
-      some rtExitScope := by
-  rw [simScopeW_eq_tow towerOfCallName (fun _ => .TFp) [] rtScalars [] [] roundTripImp ?_]
-  · rfl
-  · intro f hf
-    simp only [roundTripImp, scopeCallNamesW, List.mem_cons, List.not_mem_nil, or_false,
-      List.nil_append, List.cons_append] at hf
-    rcases hf with rfl | rfl | rfl <;>
-      simp [towerOfCallName_default_eq, towerOfCallName_default]
 
 end CatCrypt.Crypto.Hax

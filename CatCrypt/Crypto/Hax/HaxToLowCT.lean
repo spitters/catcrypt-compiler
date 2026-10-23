@@ -16,6 +16,8 @@ public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.LowCTOps
 public meta import CatCrypt.Crypto.Hax.HaxCallNames
 public import CatCrypt.Crypto.Hax.HaxCallNames
+public meta import CatCrypt.Crypto.Hax.LowCTToImp
+public import CatCrypt.Crypto.Hax.LowCTToImp
 
 /-!
 # H2: Translation `ImpExpr → Option LowCT`
@@ -323,16 +325,8 @@ A call named `scalar#<Op>` for a binary operation `<Op>` of `scalarCallNames`
 has its operands and its result in the scalar heap: a binding
 `let name = scalar#<Op>(a, b)` on two variables lowers to the scalar assignment
 `RScalarSetExpr name e` of the scalar expression `e` of `<Op>` on `a` and `b`,
-inside `RLetU64Zero name`. -/
-
-/-- The call names computed in the scalar heap. -/
-def scalarCallNames : List String :=
-  ["scalar#Add", "scalar#Sub", "scalar#Mul", "scalar#BitAnd", "scalar#BitXor",
-   "scalar#Shr", "scalar#Shl",
-   "scalar#Lt", "scalar#Gt", "scalar#Le", "scalar#Ge", "scalar#Eq", "scalar#Ne"]
-
-/-- `f` is a call name computed in the scalar heap. -/
-def scalarCallName (f : String) : Bool := scalarCallNames.contains f
+inside `RLetU64Zero name`.  The call names `scalarCallNames` and the predicate
+`scalarCallName` are in `CatCrypt.Crypto.Hax.LowCTToImp`. -/
 
 /-- The scalar expression of the call `f` on the operands `a` and `b`: `Add`,
     `Sub`, `Mul`, `BitAnd`, `BitXor`, `Shr` and `Shl` as the `SExpr` operations
@@ -379,16 +373,8 @@ A binding `let name = index(v, i)` of a variable `v` at a non-negative integer
 literal `i` reads limb `i` of the tower slot `v` into the scalar heap: it lowers
 to the scalar assignment `RScalarSetExpr name (SLimb v i)` inside
 `RLetU64Zero name`.  An `index` call on two variables is the array load
-`RArrLoad`, whose result is a tower slot. -/
-
-/-- The slot and the limb of a limb read: the arguments of a call `index` on a
-    variable and a non-negative integer literal. -/
-def limbReadArgs (f : String) (args : List ImpExpr) : Option (String × Nat) :=
-  if f = "index" then
-    match args with
-    | [.var v, .lit (.int i)] => if 0 ≤ i then some (v, i.toNat) else none
-    | _ => none
-  else none
+`RArrLoad`, whose result is a tower slot.  The arguments of a limb read are
+`limbReadArgs` (`CatCrypt.Crypto.Hax.LowCTToImp`). -/
 
 /-- The arguments of a limb read are not all variables. -/
 theorem haxArgsToLocated_of_limbReadArgs {f : String} {args : List ImpExpr} {p : String × Nat}

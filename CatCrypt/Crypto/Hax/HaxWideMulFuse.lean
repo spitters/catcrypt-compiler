@@ -7,7 +7,7 @@ module
 
 public import HaxLean.Phase.Monomorphise
 public import HaxLean.TExpr
-public import CatCrypt.Crypto.Hax.HaxToLowCTWordOps -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.WordOpTable
 public import HaxAscent.Ascent.TableCongr
 
 /-!

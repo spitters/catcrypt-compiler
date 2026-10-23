@@ -7,6 +7,7 @@ module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCTWordOps
 public import CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalarDenote
+public import CatCrypt.Crypto.Hax.WordOpTable
 
 /-!
 # Straight-line simulation of the word-operation front in `semScalar`
@@ -26,26 +27,22 @@ default (`semScalar_load_TFp`).  `typeWordArrays` retypes the array accesses of 
 program on a table of array lengths, and the step lemmas are stated on the
 retyped shapes.
 
+The builtin contracts `WordBuiltins`, `WordBuiltins'` (the word calls restricted
+to results below `2^64`, the bound every binding carries in `WBind.Ok`, which the
+simulation theorems assume) and `NarrowBuiltins w` are in `WordOpTable`, which this module re-exports.
+
 ## Main definitions
 
 * `WordAt`, `ArrAt`, `EnvRelW` — the environment relation.
-* `WordBuiltins` — the facts the builtin table evaluates the word calls,
-  `index` and `array_update` by.
-* `WordBuiltins'` — the same facts with the word calls restricted to results
-  below `2^64`, the bound every binding carries in `WBind.Ok`; the simulation
-  theorems assume it.
 * `WBind`, `bindsHax`, `bindsLow`, `bindsNext`, `bindsScope`, `BindsOk` — the
   straight-line bindings, their hax and `LowCT` forms, the hax environment after
   them, the related names after them and their side conditions.
 * `typeWordArrays` — the retyping of the array accesses.
 * `LowersIn` — the scalar expressions `semLowerSExpr` lowers on a scalar
   environment.
-* `NarrowBuiltins w` — the facts a builtin table evaluates the `u<w>` word calls,
-  the casts to `w` bits and the complements `Not#w` by.
 
 ## Main results
 
-* `WordBuiltins.toBounded` — `WordBuiltins` implies `WordBuiltins'`.
 * `step_word`, `step_lit`, `step_load`, `step_store` — one binding preserves
   `EnvRelW`, with the hax run and the `semScalar` run each reduced to the run of
   the continuation.
@@ -190,37 +187,6 @@ theorem EnvRelW.update_arr {env env' : Env} {σ σ' : SEnvScalar} {S : List Stri
       exact ⟨vs, a, by rw [henv _ hpa, he], by rw [hσ _ hpa, hs], hl, hc⟩
   wordClean := h.wordClean
   arrClean := h.arrClean
-
-/-! ### The builtin table -/
-
-/-- The facts the builtin table evaluates the straight-line bindings by: every
-    word call of `wordOpNames` on two words below `2^64` as `wordOpNat`, an
-    `index` read of an `.int` cell, and an in-range `array_update`. -/
-structure WordBuiltins (bi : Builtins) : Prop where
-  word : ∀ f ∈ wordOpNames, ∀ n m : Nat, n < 2 ^ 64 → m < 2 ^ 64 →
-    bi f [.int n, .int m] = (wordOpNat f n m).map (fun r : Nat => Value.int r)
-  index : ∀ (vs : List Value) (i w : Nat), vs[i]? = some (.int w) →
-    bi "index" [.array vs, .int i] = some (.int w)
-  update : ∀ (vs : List Value) (i : Nat) (v : Value), i < vs.length →
-    bi "array_update" [.array vs, .int i, v] = some (.array (vs.set i v))
-
-/-- The facts a builtin table evaluates the straight-line bindings by: every word
-    call of `wordOpNames` on two words below `2^64` whose `wordOpNat` result is
-    below `2^64` returns that result, an `index` read of an `.int` cell, and an
-    in-range `array_update`. -/
-structure WordBuiltins' (bi : Builtins) : Prop where
-  word : ∀ f ∈ wordOpNames, ∀ n m r : Nat, n < 2 ^ 64 → m < 2 ^ 64 →
-    wordOpNat f n m = some r → r < 2 ^ 64 → bi f [.int n, .int m] = some (.int r)
-  index : ∀ (vs : List Value) (i w : Nat), vs[i]? = some (.int w) →
-    bi "index" [.array vs, .int i] = some (.int w)
-  update : ∀ (vs : List Value) (i : Nat) (v : Value), i < vs.length →
-    bi "array_update" [.array vs, .int i, v] = some (.array (vs.set i v))
-
-/-- `WordBuiltins` implies `WordBuiltins'`. -/
-theorem WordBuiltins.toBounded {bi : Builtins} (h : WordBuiltins bi) : WordBuiltins' bi where
-  word f hf n m r hn hm hr _ := by rw [h.word f hf n m hn hm, hr]; rfl
-  index := h.index
-  update := h.update
 
 /-! ### Cells of a memref -/
 
@@ -792,19 +758,6 @@ theorem lowersIn_word {env : Env} {σ : SEnvScalar} {S : List String} {A : List 
   simp only [SExpr.evalBV, envReader_of_envReadU64 hτa, BitVec.toNat_ofNat, Nat.mod_eq_of_lt haL]
 
 /-! ### The narrow word operations -/
-
-/-- The facts a builtin table evaluates the narrow word calls of width `w` by:
-    every call of `narrowOpOf` at width `w` on two words below `2^64` returns
-    its natural-number operation, every cast to `w` bits returns its operand
-    modulo `2^w`, and every complement `Not#w` of a word below `2^64` returns
-    `2^w - 1` minus the word modulo `2^w`. -/
-structure NarrowBuiltins (w : Nat) (bi : Builtins) : Prop where
-  op : ∀ (f : String) (op : NarrowOp), narrowOpOf f = some (w, op) → ∀ n m r : Nat,
-    n < 2 ^ 64 → m < 2 ^ 64 → op.nat w n m = some r → bi f [.int n, .int m] = some (.int r)
-  cast : ∀ f : String, narrowCastOf f = some w → ∀ n : Nat,
-    bi f [.int n] = some (.int ((n % 2 ^ w : Nat) : Int))
-  not : ∀ f : String, narrowNotOf f = some w → ∀ n : Nat, n < 2 ^ 64 →
-    bi f [.int n] = some (.int ((2 ^ w - 1 - n % 2 ^ w : Nat) : Int))
 
 /-- A masked accepted scalar expression is accepted. -/
 theorem lowersIn_narrowMask {σ : SEnvScalar} (w : Nat) {e : SExpr} (he : LowersIn σ e) :

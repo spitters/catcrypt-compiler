@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.ImpRustHaxCheck
 public import CatCrypt.Crypto.Hax.ImpRustHaxRoundTripExtracted
+public import CatCrypt.Crypto.Hax.LowCTToHaxSim
 
 /-!
 # The printed round-trip program, read back by the hax frontend
@@ -25,8 +26,14 @@ a run of the frontend's reading under hax-lean's semantics is simulated by
 (rustc's THIR and the JSON export), hax-lean's JSON adapter, and the builtin
 table's reading of the frontend operator names (`HaxOpsAgree`).
 
+`roundTripLowCT` is the `LowCT` source of `roundTripImp`
+(`lowCTToImp_roundTripLowCT`), and `roundTripImp` lies in the part of the front
+the simulation `lowCTToImp_simulates_frontNF` covers (`roundTripImp_simScope`).
+
 ## Main results
 
+* `roundTripImp_simScope` — the scope checker of the simulation accepts the
+  round-trip program.
 * `roundTrip_haxReadAgrees` — the check passes on the round-trip program.
 * `roundTrip_hax_simulates` — the frontend's reading of the printed program is
   simulated by its `LowCT` source.
@@ -39,7 +46,45 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Hax
 
 open _root_.Hax (Value Env Builtins)
-open CatCrypt.Crypto.Jasmin.LowCT (RustState RustExec LeafSpec)
+open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located SExpr TowerType RustState RustExec LeafSpec)
+
+/-! ## §1  The `LowCT` source and the scope of the simulation -/
+
+/-- A slot of the field tower `TFp`. -/
+def rtLoc (x : String) : Located := { locVar := x, locSrc := .TFp }
+
+/-- The `LowCT` source of the round-trip program. -/
+def roundTripLowCT : LowCT :=
+  .RLetZero "x" .TFp (.RSeq (.RCall "fp_mul" (rtLoc "x") [rtLoc "a", rtLoc "b"])
+    (.RSeq (.RFor "i" 4 (.RCall "fp_mul" (rtLoc "x") [rtLoc "x", rtLoc "b"]))
+      (.RLetU64Zero "s" (.RSeq (.RScalarSetExpr "s" (.SAdd (.SVar "c") (.SVar "d"))) .RSkip))))
+
+/-- The translation of the round-trip source is the round-trip program, by
+    evaluation of `lowCTToImp`. -/
+theorem lowCTToImp_roundTripLowCT : lowCTToImp roundTripLowCT = some roundTripImp := rfl
+
+/-- The scalar names of the round-trip program. -/
+def rtScalars : List String := ["i", "s", "c", "d"]
+
+/-- The entry scope: the parameters `a`, `b` at `TFp`. -/
+def rtEntryScope : TowerScope := [("a", .TFp), ("b", .TFp)]
+
+/-- The exit scope: the entry scope and the local `x` at `TFp`. -/
+def rtExitScope : TowerScope := [("x", .TFp), ("a", .TFp), ("b", .TFp)]
+
+/-- The scope checker of the simulation accepts the round-trip program. -/
+theorem roundTripImp_simScope :
+    simScopeW towerOfCallName [] rtScalars [] [] rtEntryScope roundTripImp =
+      some rtExitScope := by
+  rw [simScopeW_eq_tow towerOfCallName (fun _ => .TFp) [] rtScalars [] [] roundTripImp ?_]
+  · rfl
+  · intro f hf
+    simp only [roundTripImp, scopeCallNamesW, List.mem_cons, List.not_mem_nil, or_false,
+      List.nil_append, List.cons_append] at hf
+    rcases hf with rfl | rfl | rfl <;>
+      simp [towerOfCallName_default_eq, towerOfCallName_default]
+
+/-! ## §2  The frontend's reading -/
 
 /-- The frontend's reading of the printed round-trip program passes the
     check. -/

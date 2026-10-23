@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim -- deprecated_module: ignore
+public import CatCrypt.Crypto.Hax.WordOpTable
 
 /-!
 # The `u64` word table of hax-lean meets the word contracts
@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim -- deprecated_module: ign
 of each width-tagged word call on `.int` values, then the array operations on
 `.array`.  It gives the call `Add` Rust's `+` on `u64`, undefined when the sum
 reaches `2^64`, where `wordOpNat "Add"` is the unbounded sum.  The contract
-`WordBuiltins'` (`HaxToLowCTWordOpsSim`) asks the word calls only for results
+`WordBuiltins'` (`WordOpTable`) asks the word calls only for results
 below `2^64`, the bound every straight-line binding carries in `WBind.Ok`.
 
 ## Main results
