@@ -69,7 +69,7 @@ open CatCrypt.Crypto.Hax (SrcLeak SrcEv contLeak boundsLeak forLeak forRevLeak t
   boundInt)
 open CatCrypt.Crypto.Hax.ImpToNF (CrateFn crateBi paramsEnv crateBi_of_find_none srcLeakNF
   srcArgsLeakNF srcLeakCl srcArgsLeakCl nfCallLeak nfTrace nfEv callLeak CallLeak nfLeakRunE
-  impToNF_leakE impToNF TypedCalls Out NfEnv EnvRel enc encAll RepeatCalls crateBi_repeatCalls)
+  impToNF_leakE_all impToNF TypedCalls Out NfEnv EnvRel enc encAll RepeatCalls crateBi_repeatCalls)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open Ctxt (Valuation)
@@ -828,7 +828,7 @@ theorem impToNF_leak_inlineCrate (fs : List CrateFn) (bi : Builtins) (fuelC n : 
           nfTrace (srcLeakNF bi (inlineCrate fs n e) (F + D) env)) ∧
       v = enc o.t x := by
   rw [inlineCrate_srcLeak fs bi fuelC n hfR he hD hrun (by rintro ⟨m, hm⟩; cases hm)]
-  exact impToNF_leakE (crateBi fs bi fuelC n) sigOf hT (crateBi_repeatCalls fs bi hR hfR fuelC n)
+  exact impToNF_leakE_all (crateBi fs bi fuelC n) sigOf hT (crateBi_repeatCalls fs bi hR hfR fuelC n)
     (expCallLeak_agrees fs bi fuelC n _) h hw hrel hrun tf
 
 /-! ## The rounds of the NF inlining keep the leakage run -/
@@ -873,7 +873,7 @@ theorem crateOp_leak (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax
         · rename_i v' hrun
           split at hv
           · cases hv
-            obtain ⟨x', hx', hvx⟩ := impToNF_leakE (C := expCallLeak fs bi fuelC m)
+            obtain ⟨x', hx', hvx⟩ := impToNF_leakE_all (C := expCallLeak fs bi fuelC m)
               (crateBi fs bi fuelC m) (crateSigOf fs hax64SigOf)
               (crateBi_typedCalls fs bi hax64SigOf hT fuelC m)
               (crateBi_repeatCalls fs bi hR hfR fuelC m)
