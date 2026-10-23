@@ -38,13 +38,14 @@ conditions of the corresponding template.
   (`cover_encRspMem`, `cover_encCmovRspMem`, `cover_encAluRRw`, `cover_test`, `cover_enc0FRRw`,
   …), and the composite sequences built from them (`cover_encCmovSelect`,
   `cover_encCmovSelectSlotFE`, `cover_encZeroArrOp`, `cover_encStoreImmOp`, …).
-* Sub-encoders: `cover_encTwoAddr` (the two-address forms, with a memory operand for `ADD`,
-  `MOV`, `LOAD` and `STORE`), `cover_encImmOp` (the immediate forms at every immediate),
+* Sub-encoders: `cover_encTwoAddr` (the two-address forms, with a memory operand one
+  instruction for `ADD`, `MOV`, `LOAD` and `STORE` and the red-zone scratch sequence
+  `cover_encAluViaScratch` for the other operations), `cover_encImmOp` (the immediate forms at
+  every immediate),
   `cover_encTagShift`, `cover_twoByte`, `cover_encSetccCmpImm`.
 * `linkFormB`: the link forms, the conditions under which `encodeLopn` has a cover beyond
   encodability: not `ADOXHI`, displacements in signed 32-bit range, and the conjuncts
-  `aluMemFreeB`, `narrowFreeB`, `narrowIdxFreeB`, `sibIdxOkB`, each excluding a form the
-  decoder does not read.
+  `narrowFreeB`, `narrowIdxFreeB`, each excluding a form the decoder does not read.
 * `encodeLopn_cover`: the bytes of an instruction of a link form have a template cover.
 * `shapeOf_complete`, `shapesOf_isSome_of_encodableLcmd`: an encodable instruction other than
   `Lgoto` of a link form has a computed shape, and an encodable body of such instructions has
@@ -649,12 +650,6 @@ theorem cover_encStoreImmOp (a s k : JasminLprogExport.LOperand) :
 
 /-! ## 6. Covers of the sub-encoders of `encodeLopn` -/
 
-/-- An operand the encoder addresses as memory: a frame slot whose offset resolves or a
-    `mem.*` cell with a general-purpose base. -/
-def memOpdB (F W Q : Nat) : LOperand → Bool
-  | .reg n => (spillQsaveOff F W n Q).isSome || (parseMemNameGp n).isSome
-  | _ => false
-
 /-- The displacement of an operand the encoder addresses as memory is in signed 32-bit
     range. -/
 def opdDispB (F W Q : Nat) : LOperand → Bool
@@ -746,50 +741,81 @@ theorem encRspMem_eq_encMemMovw (op r : Nat) (off : Int) :
   rw [encRspMem_eq_memTail]
   simp [encMemMovw, rexOpt, bit]
 
-/-- The two-address forms at `REX.W = 1` of the opcodes `aluOpcode` names. A memory operand
-    (a frame slot or a `mem.*` cell) has a decoded form for `ADD`, `MOV`, `LOAD` and `STORE`. -/
+/-- A two-address operation with a memory operand through a red-zone scratch at
+    `REX.W = 1`: the scratch save, the load, the register-register operation, the store when
+    the memory operand is the destination, and the restore. -/
+theorem cover_encAluViaScratch {op r scr : Nat} {ld st : List (BitVec 8)}
+    (hop : op ∈ 0x89 :: 0x39 :: aluOps) (hr : r < 16) (hscr : scr < 16)
+    (hld : TemplateCover ld) (hst : TemplateCover st) (m : Bool) :
+    TemplateCover (encAluViaScratch 1 op r scr m ld st) := by
+  unfold encAluViaScratch
+  refine (((cover_encRspMem (Or.inr (Or.inl rfl)) hscr dispOk32_cmovRedZone).append hld).append
+    ?_).append (cover_encRspMem (Or.inl rfl) hscr dispOk32_cmovRedZone)
+  cases m
+  · exact cover_encAluRRw hop hr hscr
+  · exact (cover_encAluRRw hop hscr hr).append hst
+
+/-- `encAluRspScratch` at `REX.W = 1` over a frame word of in-range offset. -/
+theorem cover_encAluRspScratch {op r : Nat} {off : Int} (hop : op ∈ 0x89 :: 0x39 :: aluOps)
+    (hr : r < 16) (hoff : dispOk32 off = true) (m : Bool) :
+    TemplateCover (encAluRspScratch 1 op r off m) :=
+  cover_encAluViaScratch hop hr (aluMemScratch_lt r 4)
+    (cover_encRspMem (Or.inl rfl) (aluMemScratch_lt r 4) hoff)
+    (cover_encRspMem (Or.inr (Or.inl rfl)) (aluMemScratch_lt r 4) hoff) m
+
+/-- `encAluMemScratch` at `REX.W = 1` over a cell of in-range offset. -/
+theorem cover_encAluMemScratch {op r b : Nat} {off : Int} (hop : op ∈ 0x89 :: 0x39 :: aluOps)
+    (hr : r < 16) (hb : b < 16) (hoff : dispOk32 off = true) (m : Bool) :
+    TemplateCover (encAluMemScratch 1 op r b off m) :=
+  cover_encAluViaScratch hop hr (aluMemScratch_lt r b)
+    (cover_encMemMovw (Or.inl rfl) (aluMemScratch_lt r b) hb hoff)
+    (cover_encMemMovw (Or.inr (Or.inl rfl)) (aluMemScratch_lt r b) hb hoff) m
+
+/-- The two-address forms at `REX.W = 1` of the opcodes `aluOpcode` names, at every operand
+    pair of in-range displacements. A memory operand (a frame slot or a `mem.*` cell) is one
+    decoded instruction for `ADD`, `MOV`, `LOAD` and `STORE`, and the scratch sequence of
+    `encAluViaScratch` for the other operations. -/
 theorem cover_encTwoAddr (F W Q : Nat) {b : String} {op : Nat} (d s : LOperand)
     (hop : aluOpcode b = some op)
-    (hfree : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b
-      ∨ (memOpdB F W Q d = false ∧ memOpdB F W Q s = false))
     (hdD : opdDispB F W Q d = true) (hdS : opdDispB F W Q s = true) :
     TemplateCover (encTwoAddr F W 1 op d s Q) := by
   have hops : op = 0x01 ∨ op = 0x09 ∨ op = 0x11 ∨ op = 0x19 ∨ op = 0x21 ∨ op = 0x29
       ∨ op = 0x31 ∨ op = 0x89 ∨ op = 0x8b := by
     unfold aluOpcode at hop
     split at hop <;> simp only [Option.some.injEq, reduceCtorEq] at hop <;> omega
+  have hscr : ¬(op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) → op ∈ 0x89 :: 0x39 :: aluOps := by
+    intro h
+    simp only [aluOps, List.mem_cons, List.not_mem_nil, or_false]
+    omega
   unfold encTwoAddr
   split
   · rename_i dn sn
-    -- the memory forms admit only `ADD`, `MOV`, `LOAD` and `STORE`
-    have hmem : memOpdB F W Q (.reg dn) = true ∨ memOpdB F W Q (.reg sn) = true →
-        op = 0x01 ∨ op = 0x89 ∨ op = 0x8b := by
-      intro hm
-      rcases hfree with h | h | h | ⟨h1, h2⟩
-      · exact Or.inl h
-      · exact Or.inr (Or.inl h)
-      · exact Or.inr (Or.inr h)
-      · rcases hm with hm | hm <;> simp_all
     split
     · rename_i off hoffD _
       split
       · have hd : dispOk32 off = true := by simp_all [opdDispB]
-        have h3 := hmem (Or.inl (by simp [memOpdB, hoffD]))
-        rcases h3 with rfl | rfl | rfl
-        · simpa [memDstOp, encRspMem_eq_encMemMovw] using
-            cover_addMemw (Or.inr rfl) (gpNumU_lt_16 sn) (by decide) hd
-        · exact cover_encRspMem (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hd
-        · exact cover_encRspMem (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hd
+        split
+        · rename_i h3
+          rcases h3 with rfl | rfl | rfl
+          · simpa [memDstOp, encRspMem_eq_encMemMovw] using
+              cover_addMemw (Or.inr rfl) (gpNumU_lt_16 sn) (by decide) hd
+          · exact cover_encRspMem (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hd
+          · exact cover_encRspMem (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hd
+        · rename_i h3
+          exact cover_encAluRspScratch (hscr h3) (gpNumU_lt_16 sn) hd true
       · exact TemplateCover.nil
     · rename_i off _ hoffS
       split
       · have hd : dispOk32 off = true := by simp_all [opdDispB]
-        have h3 := hmem (Or.inr (by simp [memOpdB, hoffS]))
-        rcases h3 with rfl | rfl | rfl
-        · simpa [memSrcOp, encRspMem_eq_encMemMovw] using
-            cover_addMemw (Or.inl rfl) (gpNumU_lt_16 dn) (by decide) hd
-        · exact cover_encRspMem (Or.inl rfl) (gpNumU_lt_16 dn) hd
-        · exact cover_encRspMem (Or.inl rfl) (gpNumU_lt_16 dn) hd
+        split
+        · rename_i h3
+          rcases h3 with rfl | rfl | rfl
+          · simpa [memSrcOp, encRspMem_eq_encMemMovw] using
+              cover_addMemw (Or.inl rfl) (gpNumU_lt_16 dn) (by decide) hd
+          · exact cover_encRspMem (Or.inl rfl) (gpNumU_lt_16 dn) hd
+          · exact cover_encRspMem (Or.inl rfl) (gpNumU_lt_16 dn) hd
+        · rename_i h3
+          exact cover_encAluRspScratch (hscr h3) (gpNumU_lt_16 dn) hd false
       · exact TemplateCover.nil
     · exact TemplateCover.nil
     · rename_i hoffD hoffS
@@ -802,21 +828,27 @@ theorem cover_encTwoAddr (F W Q : Nat) {b : String} {op : Nat} (d s : LOperand)
         split
         · have hd : dispOk32 off = true := by simp_all [opdDispB]
           have hb := parseMemNameGp_fst_lt hp
-          have h3 := hmem (Or.inl (by simp [memOpdB, hp]))
-          rcases h3 with rfl | rfl | rfl
-          · exact cover_addMemw (Or.inr rfl) (gpNumU_lt_16 sn) hb hd
-          · exact cover_encMemMovw (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hb hd
-          · exact cover_encMemMovw (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hb hd
+          split
+          · rename_i h3
+            rcases h3 with rfl | rfl | rfl
+            · exact cover_addMemw (Or.inr rfl) (gpNumU_lt_16 sn) hb hd
+            · exact cover_encMemMovw (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hb hd
+            · exact cover_encMemMovw (Or.inr (Or.inl rfl)) (gpNumU_lt_16 sn) hb hd
+          · rename_i h3
+            exact cover_encAluMemScratch (hscr h3) (gpNumU_lt_16 sn) hb hd true
         · exact TemplateCover.nil
       · rename_i bb off _ hp
         split
         · have hd : dispOk32 off = true := by simp_all [opdDispB]
           have hb := parseMemNameGp_fst_lt hp
-          have h3 := hmem (Or.inr (by simp [memOpdB, hp]))
-          rcases h3 with rfl | rfl | rfl
-          · exact cover_addMemw (Or.inl rfl) (gpNumU_lt_16 dn) hb hd
-          · exact cover_encMemMovw (Or.inl rfl) (gpNumU_lt_16 dn) hb hd
-          · exact cover_encMemMovw (Or.inl rfl) (gpNumU_lt_16 dn) hb hd
+          split
+          · rename_i h3
+            rcases h3 with rfl | rfl | rfl
+            · exact cover_addMemw (Or.inl rfl) (gpNumU_lt_16 dn) hb hd
+            · exact cover_encMemMovw (Or.inl rfl) (gpNumU_lt_16 dn) hb hd
+            · exact cover_encMemMovw (Or.inl rfl) (gpNumU_lt_16 dn) hb hd
+          · rename_i h3
+            exact cover_encAluMemScratch (hscr h3) (gpNumU_lt_16 dn) hb hd false
         · exact TemplateCover.nil
       · exact TemplateCover.nil
   · exact TemplateCover.nil
@@ -993,15 +1025,6 @@ theorem cover_encImmOp (b : String) (d : LOperand) (v : Nat) :
 def widthFreeBase (b : String) : Bool :=
   (castMovBits b).isSome || b == "MULX" || b == "MULXMEM" || b == "SETC"
 
-/-- The two-address `ALU` operations with a memory operand are those the decoder reads: `ADD`
-    (`addMem`, `addToMem`) and the moves `MOV`, `LOAD`, `STORE`. `OR`, `ADC`, `SBB`, `AND`, `SUB`
-    and `XOR` against a frame slot or a `mem.*` cell have no decoded form (no `JInstr`
-    constructor), so an operation of theirs has no memory operand. -/
-def aluMemFreeB (F W Q : Nat) (b : String) (ds ss : List LOperand) : Bool :=
-  match aluOpcode b with
-  | some op => [0x01, 0x89, 0x8b].contains op || (ds ++ ss).all (fun o => !memOpdB F W Q o)
-  | none => true
-
 /-- The operation is a 64-bit one (`REX.W = 1`), a carry-out binding, or of a base whose bytes
     do not depend on the width. The 32-bit forms (`REX.W = 0`, a mnemonic without `:64`, and
     the narrow `MOV:16`, `MOV:8`) have no decoded form: `JInstr 64` has no 32-bit
@@ -1015,22 +1038,15 @@ def narrowFreeB (o : String) : Bool :=
 def narrowIdxFreeB (b : String) (ss : List LOperand) : Bool :=
   b == "LEA" || ss.all (fun o => match o with | .arrIdx _ _ sc => sc == 8 | _ => true)
 
-/-- A register-indexed element access other than an address computation has an index register
-    other than `%rsp`: the SIB index field `100` names no index register, and the `LOADIDX` and
-    `STOREIDX` arms of `encodeLopn` do not refuse that index. -/
-def sibIdxOkB (b : String) (ss : List LOperand) : Bool :=
-  b == "LEA" || ss.all (fun o => match o with | .arrIdx _ i _ => gpNumU i != 4 | _ => true)
-
 /-- **The link forms.** The conditions under which the bytes of an instruction have a template
     cover (`encodeLopn_cover`), beyond its encodability: the base is not `ADOXHI` (`seto` has no
     decoder), every displacement of a memory operand is in signed 32-bit range, and the
-    conditions `aluMemFreeB`, `narrowFreeB`, `narrowIdxFreeB` and `sibIdxOkB`, each of which
-    excludes a form the decoder does not read. -/
+    conditions `narrowFreeB` and `narrowIdxFreeB`, each of which excludes a form the decoder
+    does not read. -/
 def linkFormB (F W Q : Nat) : LinstrR → Bool
   | .Lopn ds o ss =>
-      stripWidthTag o != "ADOXHI" && (ds ++ ss).all (opdDispB F W Q)
-        && aluMemFreeB F W Q (stripWidthTag o) ds ss && narrowFreeB o
-        && narrowIdxFreeB (stripWidthTag o) ss && sibIdxOkB (stripWidthTag o) ss
+      stripWidthTag o != "ADOXHI" && (ds ++ ss).all (opdDispB F W Q) && narrowFreeB o
+        && narrowIdxFreeB (stripWidthTag o) ss
   | _ => true
 
 /-- A frame slot among operands of in-range displacements has an in-range offset. -/
@@ -1055,17 +1071,10 @@ theorem carryOutSetccOp_of_ne {b : String} (h : ¬ b = "ADOXHI") : carryOutSetcc
 
 /-- The two-address forms of an operation of a link form. -/
 theorem cover_encTwoAddr_of (F W Q : Nat) {b : String} {op : Nat} {ds ss : List LOperand}
-    (d s : LOperand) (hop : aluOpcode b = some op) (halu : aluMemFreeB F W Q b ds ss = true)
+    (d s : LOperand) (hop : aluOpcode b = some op)
     (hopd : (ds ++ ss).all (opdDispB F W Q) = true) (hd : d ∈ ds ++ ss) (hs : s ∈ ds ++ ss) :
-    TemplateCover (encTwoAddr F W 1 op d s Q) := by
-  refine cover_encTwoAddr F W Q d s hop ?_ (List.all_eq_true.mp hopd _ hd)
-    (List.all_eq_true.mp hopd _ hs)
-  simp only [aluMemFreeB, hop, Bool.or_eq_true, List.all_eq_true, Bool.not_eq_true'] at halu
-  rcases halu with h | h
-  · have h' : op ∈ [0x01, 0x89, 0x8b] := List.elem_iff.mp h
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at h'
-    rcases h' with h' | h' | h' <;> simp [h']
-  · exact Or.inr (Or.inr (Or.inr ⟨h d hd, h s hs⟩))
+    TemplateCover (encTwoAddr F W 1 op d s Q) :=
+  cover_encTwoAddr F W Q d s hop (List.all_eq_true.mp hopd _ hd) (List.all_eq_true.mp hopd _ hs)
 
 /-- The materialised comparison opcodes `setccCmpOp` names are `sete` and `setne`. -/
 theorem setccCmpOp_cases {b : String} {op : Nat} (h : setccCmpOp b = some op) :
@@ -1172,16 +1181,12 @@ theorem widthFreeBase_cases {b : String} (h : widthFreeBase b = true) :
     · simp only [Option.isSome_none, Bool.false_eq_true, false_or] at h
       tauto
 
-/-- The stride and the index register of an element access of a link form. -/
+/-- The stride of an element access of a link form. -/
 theorem idx_of_linkForm {b : String} {ss : List LOperand} {bn i : String} {sc : Nat}
     (hb : (b == "LEA") = false) (hidx : narrowIdxFreeB b ss = true)
-    (hsib : sibIdxOkB b ss = true) (hm : LOperand.arrIdx bn i sc ∈ ss) :
-    sc = 8 ∧ gpNumU i ≠ 4 := by
-  simp only [narrowIdxFreeB, sibIdxOkB, hb, Bool.false_or, List.all_eq_true] at hidx hsib
-  have h1 := hidx _ hm
-  have h2 := hsib _ hm
-  simp only [beq_iff_eq, bne_iff_ne, ne_eq] at h1 h2
-  exact ⟨h1, h2⟩
+    (hm : LOperand.arrIdx bn i sc ∈ ss) : sc = 8 := by
+  simp only [narrowIdxFreeB, hb, Bool.false_or, List.all_eq_true] at hidx
+  simpa only [beq_iff_eq] using hidx _ hm
 
 /-- The register-indexed load of a link form. -/
 theorem cover_encLoadIdx {dn bn i sc : Nat} (hsc : sc = 8) (hi : i < 16) (hi4 : i ≠ 4)
@@ -1233,9 +1238,8 @@ local macro_rules
 theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
     {ss : List LOperand} (hadox : ¬ stripWidthTag o = "ADOXHI")
     (hopd : (ds ++ ss).all (opdDispB F W Q) = true)
-    (halu : aluMemFreeB F W Q (stripWidthTag o) ds ss = true)
     (hidx : narrowIdxFreeB (stripWidthTag o) ss = true)
-    (hsib : sibIdxOkB (stripWidthTag o) ss = true) (hw : LprogBytes.rexW (mnemWidth o) = 1) :
+    (hw : LprogBytes.rexW (mnemWidth o) = 1) :
     TemplateCover (encodeLopn F W (.Lopn ds o ss) Q) := by
   · unfold encodeLopn
     simp only [hw]
@@ -1284,7 +1288,7 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                             (gpNumU_lt_16 _)
                     · exact TemplateCover.nil
                   · split
-                    · exact cover_encTwoAddr_of F W Q _ _ ‹_› halu hopd (by simp) (by simp)
+                    · exact cover_encTwoAddr_of F W Q _ _ ‹_› hopd (by simp) (by simp)
                     · split
                       · exact cover_twoByte ‹_› (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                       · split
@@ -1305,8 +1309,11 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                         · split
                           · split
                             · split
-                              · obtain ⟨hsc, hi4⟩ := idx_of_linkForm
-                                  (ne_lea_of_beq ‹_› (by decide)) hidx hsib
+                              · rename_i hc
+                                simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
+                                have hi4 := hc.2
+                                have hsc := idx_of_linkForm
+                                  (ne_lea_of_beq ‹_› (by decide)) hidx
                                   (List.mem_singleton_self _)
                                 exact cover_encLoadIdx hsc (gpNumU_lt_16 _) hi4 (gpNumU_lt_16 _)
                                   (gpNumU_lt_16 _)
@@ -1345,14 +1352,17 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                 · split
                   · exact cover_encTagShift (tagShiftExt_cases ‹_›) (gpNumU_lt_16 _)
                   · split
-                    · exact cover_encTwoAddr_of F W Q _ _ ‹_› halu hopd (by simp) (by simp)
+                    · exact cover_encTwoAddr_of F W Q _ _ ‹_› hopd (by simp) (by simp)
                     · split
                       · exact cover_twoByte ‹_› (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                       · split
                         · split
                           · split
-                            · obtain ⟨hsc, hi4⟩ := idx_of_linkForm
-                                (ne_lea_of_beq ‹_› (by decide)) hidx hsib List.mem_cons_self
+                            · rename_i hc
+                              simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
+                              have hi4 := hc.2
+                              have hsc := idx_of_linkForm
+                                (ne_lea_of_beq ‹_› (by decide)) hidx List.mem_cons_self
                               exact cover_encStoreIdx hsc (gpNumU_lt_16 _) hi4 (gpNumU_lt_16 _)
                                 (gpNumU_lt_16 _)
                             · exact TemplateCover.nil
@@ -1622,10 +1632,10 @@ theorem encodeLopn_cover (F W Q : Nat) (ds : List LOperand) (o : String) (ss : L
     (h : linkFormB F W Q (.Lopn ds o ss) = true) :
     TemplateCover (encodeLopn F W (.Lopn ds o ss) Q) := by
   simp only [linkFormB, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
-  obtain ⟨⟨⟨⟨⟨hadox, hopd⟩, halu⟩, hnar⟩, hidx⟩, hsib⟩ := h
+  obtain ⟨⟨⟨hadox, hopd⟩, hnar⟩, hidx⟩ := h
   simp only [narrowFreeB, Bool.or_eq_true, beq_iff_eq] at hnar
   rcases hnar with (hw | hcar) | hfree
-  · exact encodeLopn_cover_w1 hadox hopd halu hidx hsib hw
+  · exact encodeLopn_cover_w1 hadox hopd hidx hw
   · exact encodeLopn_cover_carry hadox hopd hcar
   · exact encodeLopn_cover_free hopd hfree
 

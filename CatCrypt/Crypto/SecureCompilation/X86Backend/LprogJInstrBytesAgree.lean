@@ -280,10 +280,10 @@ theorem encTwoAddr_store (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemNameGp dn = some (bb, off)) (hsm : parseMemName sn = none)
     (_hdsp : isSpillOrQsave dn = false) (_hssp : isSpillOrQsave sn = false)
-    (hsg : isGpName sn = true) :
+    (hsg : isGpName sn = true) (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w (memDstOp op) (gpNumU sn) bb off := by
-  simp only [encTwoAddr, hdk, hsk, hdm, parseMemNameGp_eq_none hsm, hsg, if_true]
+  simp only [encTwoAddr, hdk, hsk, hdm, parseMemNameGp_eq_none hsm, hsg, if_true, if_pos hop]
 
 /-- **Load `encTwoAddr` reduces to `encMemMovw (memSrcOp op)`.** When the source is a
     `mem.<base>.<off>` operand with a general-purpose base and the destination is a
@@ -296,10 +296,23 @@ theorem encTwoAddr_load (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (o
     (hsk : spillQsaveOff frame spillW sn qsaveB = none)
     (hdm : parseMemName dn = none) (hsm : parseMemNameGp sn = some (bb, off))
     (_hdsp : isSpillOrQsave dn = false) (_hssp : isSpillOrQsave sn = false)
-    (hdg : isGpName dn = true) :
+    (hdg : isGpName dn = true) (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w (memSrcOp op) (gpNumU dn) bb off := by
-  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, hsm, hdg, if_true]
+  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, hsm, hdg, if_true, if_pos hop]
+
+/-- An opcode whose memory-source opcode is the `MOV` load `0x8B` is a move or `LOAD`. -/
+theorem op_native_of_memSrcOp {op : Nat} (h : memSrcOp op = 0x8b) :
+    op = 0x01 ∨ op = 0x89 ∨ op = 0x8b := by
+  unfold memSrcOp at h
+  split_ifs at h <;> omega
+
+/-- An opcode whose memory-destination opcode is the `MOV` store `0x89` is a move or
+    `LOAD`. -/
+theorem op_native_of_memDstOp {op : Nat} (h : memDstOp op = 0x89) :
+    op = 0x01 ∨ op = 0x89 ∨ op = 0x8b := by
+  unfold memDstOp at h
+  split_ifs at h <;> omega
 
 /-! ### §2c. The byte agreement: equal register numbers ⇒ equal bytes
 
@@ -428,7 +441,8 @@ theorem load_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
     encodeJInstr alloc (.loadMem d base off)
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_loadMem,
-    encTwoAddr_load frame spillW 1 op dn sn bb off qsaveB hdk hsk hdm hsm hdsp hssp hdg, hop,
+    encTwoAddr_load frame spillW 1 op dn sn bb off qsaveB hdk hsk hdm hsm hdsp hssp hdg
+      (op_native_of_memSrcOp hop), hop,
     encMemMovw_one, hd, hb]
 
 /-- **`STORE` bytes agree.** JInstr `storeMem` (reg src) equals the Lprog `mem.*`←reg
@@ -447,7 +461,8 @@ theorem store_bytes_agree (alloc : GpAlloc) (frame spillW op : Nat)
     encodeJInstr alloc (.storeMem base off (.reg r))
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   rw [jinstr_storeMem,
-    encTwoAddr_store frame spillW 1 op dn sn bb off qsaveB hdk hsk hdm hsm hdsp hssp hsg, hop,
+    encTwoAddr_store frame spillW 1 op dn sn bb off qsaveB hdk hsk hdm hsm hdsp hssp hsg
+      (op_native_of_memDstOp hop), hop,
     encMemMovw_one, hr, hb]
 
 /-! ## §3. Block-level: lifting the per-instruction agreement to `gatherJBlock`

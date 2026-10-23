@@ -103,6 +103,20 @@ theorem encRspMem_ne_nil (w op r : Nat) (off : Int) : encRspMem w op r off ≠ [
   unfold encRspMem
   split_ifs <;> simp
 
+theorem encAluViaScratch_ne_nil (w op r scr : Nat) (m : Bool) (ld st : List (BitVec 8)) :
+    encAluViaScratch w op r scr m ld st ≠ [] := by
+  unfold encAluViaScratch
+  exact List.append_ne_nil_of_left_ne_nil (List.append_ne_nil_of_left_ne_nil
+    (List.append_ne_nil_of_left_ne_nil (encRspMem_ne_nil _ _ _ _) _) _) _
+
+theorem encAluRspScratch_ne_nil (w op r : Nat) (off : Int) (m : Bool) :
+    encAluRspScratch w op r off m ≠ [] :=
+  encAluViaScratch_ne_nil _ _ _ _ _ _ _
+
+theorem encAluMemScratch_ne_nil (w op r b : Nat) (off : Int) (m : Bool) :
+    encAluMemScratch w op r b off m ≠ [] :=
+  encAluViaScratch_ne_nil _ _ _ _ _ _ _
+
 theorem encCmovSelect_ne_nil (w dn cn tn fn : Nat) : encCmovSelect w dn cn tn fn ≠ [] := by
   unfold encCmovSelect
   split_ifs <;> simp [encAluRRw]
@@ -235,40 +249,46 @@ theorem encTwoAddr_ne_nil_iff {F W Q w op : Nat} {d s : String} :
     encTwoAddr F W w op (.reg d) (.reg s) Q ≠ [] ↔
       (isGpName d = true ∧ OpResolves F W Q s) ∨ (OpResolves F W Q d ∧ isGpName s = true) := by
   unfold encTwoAddr OpResolves
-  cases hod : spillQsaveOff F W d Q with
-  | some od =>
-    have hgd := isGpName_of_spillQsaveOff hod
-    cases hos : spillQsaveOff F W s Q with
-    | some os =>
-      simp [hod, hos, hgd, isGpName_of_spillQsaveOff hos]
-    | none =>
-      cases hgs : isGpName s <;> simp [hod, hos, hgd, hgs, encRspMem_ne_nil]
-  | none =>
-    cases hos : spillQsaveOff F W s Q with
-    | some os =>
-      have hgs := isGpName_of_spillQsaveOff hos
-      cases hgd : isGpName d <;> simp [hod, hos, hgd, hgs, encRspMem_ne_nil]
-    | none =>
-      cases hpd : parseMemNameGp d with
-      | some pd =>
-        obtain ⟨bd, od⟩ := pd
-        have hgd := isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hpd)
-        cases hps : parseMemNameGp s with
-        | some ps =>
-          obtain ⟨bs, os⟩ := ps
-          simp [hod, hos, hpd, hps, hgd,
-            isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hps)]
-        | none =>
-          cases hgs : isGpName s <;> simp [hod, hos, hpd, hps, hgd, hgs, encMemMovw_ne_nil]
+  by_cases hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b
+  all_goals
+    cases hod : spillQsaveOff F W d Q with
+    | some od =>
+      have hgd := isGpName_of_spillQsaveOff hod
+      cases hos : spillQsaveOff F W s Q with
+      | some os =>
+        simp [hod, hos, hgd, isGpName_of_spillQsaveOff hos]
       | none =>
-        cases hps : parseMemNameGp s with
-        | some ps =>
-          obtain ⟨bs, os⟩ := ps
-          have hgs := isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hps)
-          cases hgd : isGpName d <;> simp [hod, hos, hpd, hps, hgd, hgs, encMemMovw_ne_nil]
+        cases hgs : isGpName s <;>
+          simp [hod, hos, hgd, hgs, hop, encRspMem_ne_nil, encAluRspScratch_ne_nil]
+    | none =>
+      cases hos : spillQsaveOff F W s Q with
+      | some os =>
+        have hgs := isGpName_of_spillQsaveOff hos
+        cases hgd : isGpName d <;>
+          simp [hod, hos, hgd, hgs, hop, encRspMem_ne_nil, encAluRspScratch_ne_nil]
+      | none =>
+        cases hpd : parseMemNameGp d with
+        | some pd =>
+          obtain ⟨bd, od⟩ := pd
+          have hgd := isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hpd)
+          cases hps : parseMemNameGp s with
+          | some ps =>
+            obtain ⟨bs, os⟩ := ps
+            simp [hod, hos, hpd, hps, hgd,
+              isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hps)]
+          | none =>
+            cases hgs : isGpName s <;>
+              simp [hod, hos, hpd, hps, hgd, hgs, hop, encMemMovw_ne_nil, encAluMemScratch_ne_nil]
         | none =>
-          cases hgd : isGpName d <;> cases hgs : isGpName s <;>
-            simp [hod, hos, hpd, hps, hgd, hgs, encAluRRw_ne_nil]
+          cases hps : parseMemNameGp s with
+          | some ps =>
+            obtain ⟨bs, os⟩ := ps
+            have hgs := isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hps)
+            cases hgd : isGpName d <;>
+              simp [hod, hos, hpd, hps, hgd, hgs, hop, encMemMovw_ne_nil, encAluMemScratch_ne_nil]
+          | none =>
+            cases hgd : isGpName d <;> cases hgs : isGpName s <;>
+              simp [hod, hos, hpd, hps, hgd, hgs, encAluRRw_ne_nil]
 
 /-- **The two-address form has bytes** when both names resolve and at most one is a
     memory name. -/
@@ -549,15 +569,17 @@ def x86MemMov (mn : String) : Bool := ["LOAD", "STORE"].contains (stripWidthTag 
 /-- The strides x86 SIB addressing encodes. -/
 def x86SibScale (sc : Nat) : Bool := [1, 2, 4, 8].contains sc
 
-/-- The register-indexed loads and address computations the encoder builds: `LOADIDX` at a
-    stride of `x86SibScale`, and `LEA` at such a stride with an index other than `RSP`. -/
+/-- The register-indexed loads and address computations the encoder builds: `LOADIDX` and
+    `LEA` at a stride of `x86SibScale` with an index other than `RSP`, which the SIB index
+    field cannot name. -/
 def x86SibLoad (opn xn : String) (sc : Nat) : Bool :=
-  x86SibScale sc && (stripWidthTag opn == "LOADIDX" || (stripWidthTag opn == "LEA" && gpNumU xn != 4))
+  x86SibScale sc && (stripWidthTag opn == "LOADIDX" || stripWidthTag opn == "LEA")
+    && gpNumU xn != 4
 
 /-- The register-indexed stores the encoder builds: `STOREIDX` at a stride of
-    `x86SibScale`. -/
-def x86SibStore (opn : String) (sc : Nat) : Bool :=
-  stripWidthTag opn == "STOREIDX" && x86SibScale sc
+    `x86SibScale` with an index other than `RSP`. -/
+def x86SibStore (opn xn : String) (sc : Nat) : Bool :=
+  stripWidthTag opn == "STOREIDX" && x86SibScale sc && gpNumU xn != 4
 
 /-- The three-source carry-chain additions the encoder builds over registers: `ADCX` (the
     `ADOX` form with a value carry-in has no encoding). -/
@@ -826,10 +848,10 @@ theorem encodableLinstrR_sibLoad {F W Q : Nat} {opn dn bn xn : String} {sc : Nat
   apply encodable_lopn_of_ne_nil
   simp only [x86SibLoad, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, bne_iff_ne,
     ne_eq] at ho
-  obtain ⟨hsc, h1 | ⟨h1, h4⟩⟩ := ho
+  obtain ⟨⟨hsc, h1 | h1⟩, h4⟩ := ho
   · rcases x86SibScale_cases hsc with rfl | rfl | rfl | rfl <;>
       simp [encodeLopn, isCarryOutBinding, isMulHiBinding, h1, adxPrefix, tagShiftExt,
-        aluOpcode, twoByteOpcode, encLoadIdx, encMemMovSibw, enc0FMemSibw, hd, hb, hx]
+        aluOpcode, twoByteOpcode, encLoadIdx, encMemMovSibw, enc0FMemSibw, hd, hb, hx, h4]
   · rcases x86SibScale_cases hsc with rfl | rfl | rfl | rfl <;>
       simp [encodeLopn, isCarryOutBinding, isMulHiBinding, h1, adxPrefix, tagShiftExt,
         aluOpcode, twoByteOpcode, encMemMovSibw, hd, hb, hx, h4]
@@ -837,16 +859,16 @@ theorem encodableLinstrR_sibLoad {F W Q : Nat} {opn dn bn xn : String} {sc : Nat
 /-- **A register-indexed store of `x86SibStore` over general-purpose registers is
     encodable**, whatever its array destination. -/
 theorem encodableLinstrR_sibStore {F W Q : Nat} {a : LOperand} {opn bn xn vn : String}
-    {sc : Nat} (ho : x86SibStore opn sc = true) (hb : isGpName bn = true)
+    {sc : Nat} (ho : x86SibStore opn xn sc = true) (hb : isGpName bn = true)
     (hx : isGpName xn = true) (hv : isGpName vn = true) :
     encodableLinstrR F W (.Lopn [a] opn [.arrIdx bn xn sc, .reg vn]) Q = true := by
   apply encodable_lopn_of_ne_nil
-  simp only [x86SibStore, Bool.and_eq_true, beq_iff_eq] at ho
-  obtain ⟨h1, hsc⟩ := ho
+  simp only [x86SibStore, Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at ho
+  obtain ⟨⟨h1, hsc⟩, h4⟩ := ho
   rcases x86SibScale_cases hsc with rfl | rfl | rfl | rfl <;>
     cases a <;>
     simp [encodeLopn, isCarryOutBinding, isMulHiBinding, h1, adxPrefix, tagShiftExt, aluOpcode,
-      twoByteOpcode, encStoreIdx, encMemMovSibw, encMovwSib, encMovbSib, hb, hx, hv]
+      twoByteOpcode, encStoreIdx, encMemMovSibw, encMovwSib, encMovbSib, hb, hx, hv, h4]
 
 /-- **A three-source carry-chain addition of `x86Carry3` over general-purpose registers is
     encodable.** -/
@@ -1077,7 +1099,7 @@ def x86SibLoadB : LinstrR → Bool
 /-- The decision of the register-indexed stores of `LegalForm` at the x86 encoder. -/
 def x86SibStoreB : LinstrR → Bool
   | .Lopn [_] opn [.arrIdx bn xn sc, .reg vn] =>
-      x86SibStore opn sc && isGpName bn && isGpName xn && isGpName vn
+      x86SibStore opn xn sc && isGpName bn && isGpName xn && isGpName vn
   | _ => false
 
 /-- The decision of the three-source carry-chain additions of `LegalForm` at the x86
@@ -1286,7 +1308,7 @@ theorem x86LegalB_of_legalForm {c : Nat × Nat × Nat} {i : LinstrR}
     change isGpName xn = true at h3
     simp [x86SibLoadB, ho, h1, h2, h3]
   | sibStore a opn bn xn vn sc ho h1 h2 h3 =>
-    change x86SibStore opn sc = true at ho
+    change x86SibStore opn xn sc = true at ho
     change isGpName bn = true at h1
     change isGpName xn = true at h2
     change isGpName vn = true at h3

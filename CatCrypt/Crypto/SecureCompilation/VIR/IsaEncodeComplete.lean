@@ -146,8 +146,9 @@ structure IsaEncoder : Type 1 where
   /-- Whether the encoder builds the register-indexed load or address computation with this
       mnemonic, index register and scale. -/
   sibLoad : String → String → Nat → Bool
-  /-- Whether the encoder builds the register-indexed store with this mnemonic and scale. -/
-  sibStore : String → Nat → Bool
+  /-- Whether the encoder builds the register-indexed store with this mnemonic, index register
+      and scale. -/
+  sibStore : String → String → Nat → Bool
   /-- Whether the encoder builds the three-source carry-chain addition with this mnemonic. -/
   carry3 : String → Bool
   /-- Whether the encoder builds the flag materialisation with this mnemonic and these sources
@@ -258,7 +259,7 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
   /-- A register-indexed store the encoder builds over encoder registers is encodable,
       whatever its array destination. -/
   sibStore_reg : ∀ (c : E.Ctx) (a : LOperand) (opn bn xn vn : String) (sc : Nat),
-    E.sibStore opn sc = true → E.reg bn = true → E.reg xn = true → E.reg vn = true →
+    E.sibStore opn xn sc = true → E.reg bn = true → E.reg xn = true → E.reg vn = true →
     E.instr c (.Lopn [a] opn [.arrIdx bn xn sc, .reg vn]) = true
   /-- A constant-index stack-array store the encoder builds, with base and value encoder
       registers, is encodable, whatever its array destination. -/
@@ -341,7 +342,7 @@ inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
   | sibLoad (opn dn bn xn : String) (sc : Nat) : E.sibLoad opn xn sc = true → E.reg dn = true →
       E.reg bn = true → E.reg xn = true → LegalForm I E c (.Lopn [.reg dn] opn [.arrIdx bn xn sc])
   /-- A register-indexed store over encoder registers. -/
-  | sibStore (a : LOperand) (opn bn xn vn : String) (sc : Nat) : E.sibStore opn sc = true →
+  | sibStore (a : LOperand) (opn bn xn vn : String) (sc : Nat) : E.sibStore opn xn sc = true →
       E.reg bn = true → E.reg xn = true → E.reg vn = true →
       LegalForm I E c (.Lopn [a] opn [.arrIdx bn xn sc, .reg vn])
   /-- A constant-index stack-array store with base and value encoder registers. -/

@@ -329,10 +329,19 @@ theorem lowerNativeShiftRotate_legal {d s : LOperand} {opn mov : String}
 /-! ## Loads and stores -/
 
 /-- The register-indexed addresses the lowering legalises: a base and an index that are
-    allocated names, at a stride x86 encodes. -/
+    allocated names, the index not `RSP`, at a stride x86 encodes. -/
 def SibOk (F W Q : Nat) : LOperand → Prop
-  | .arrIdx b x sc => AllocOp F W Q (.reg b) ∧ AllocOp F W Q (.reg x) ∧ x86SibScale sc = true
+  | .arrIdx b x sc => AllocOp F W Q (.reg b) ∧ AllocOp F W Q (.reg x) ∧ gpNumU x ≠ 4
+      ∧ x86SibScale sc = true
   | _ => False
+
+/-- The index of a legalised register-indexed address is not `RSP` when the original index
+    is not. -/
+theorem gpNumU_ne4_of_legalize {x x' : String} (hx : gpNumU x ≠ 4)
+    (h : x' = reloadScratch ∨ x' = x) : gpNumU x' ≠ 4 := by
+  rcases h with rfl | rfl
+  · decide +kernel
+  · exact hx
 
 /-- The prelude of `legalizeSibElem` has legal forms, and its address has general-purpose
     base and index, the index the scratch `R15` or the index of the address. -/
@@ -378,7 +387,7 @@ theorem reloadMemrefBase_legal (mbr : String → Option String) (o : LOperand)
       exact ⟨by simp, id, fun _ h => by cases h⟩
     | some q =>
       simp only [reloadMemrefBase, hb]
-      refine ⟨?_, fun ⟨_, hx, hsc⟩ => ⟨allocOp_of_gp isGpName_reloadScratch2, hx, hsc⟩,
+      refine ⟨?_, fun ⟨_, hx, hx4, hsc⟩ => ⟨allocOp_of_gp isGpName_reloadScratch2, hx, hx4, hsc⟩,
         fun _ h => by cases h⟩
       intro i hi
       simp only [List.mem_singleton] at hi
@@ -431,9 +440,10 @@ theorem legalizeMemLoad_legal {dst src : LOperand} {opn mov : String}
     | arr _ _ => exact hsib.elim
     | imm _ => exact hsib.elim
     | arrIdx b x sc =>
-    obtain ⟨hb, hx, hsc⟩ := hsib
-    obtain ⟨hpre, b', x', hfix, hb', hx', -⟩ := legalizeSibElem_legal (sc := sc) hb hx
-    have hl : x86SibLoad opn x' sc = true := by simp [x86SibLoad, hsc, ho]
+    obtain ⟨hb, hx, hx4, hsc⟩ := hsib
+    obtain ⟨hpre, b', x', hfix, hb', hx', hxx⟩ := legalizeSibElem_legal (sc := sc) hb hx
+    have hl : x86SibLoad opn x' sc = true := by
+      simp [x86SibLoad, hsc, ho, gpNumU_ne4_of_legalize hx4 hxx]
     rcases hp : legalizeSibElem (.arrIdx b x sc) with ⟨pre, s'⟩
     rw [hp] at hpre hfix
     simp only at hpre hfix
@@ -470,7 +480,7 @@ theorem legalizeMemStoreK_legal (k : Option Nat) (dArr : LOperand) {addr val : L
   | arr _ _ => exact ha.elim
   | imm _ => exact ha.elim
   | arrIdx b x sc =>
-  obtain ⟨hb, hx, hsc⟩ := ha
+  obtain ⟨hb, hx, hx4, hsc⟩ := ha
   obtain ⟨vn, rfl, hv'⟩ := hv
   have hv : AllocOp F W Q (.reg vn) := ⟨vn, rfl, hv'⟩
   intro i hi
@@ -513,8 +523,8 @@ theorem legalizeMemStoreK_legal (k : Option Nat) (dArr : LOperand) {addr val : L
   · obtain ⟨hpre, b', x', hfix, hb', hx', hxx⟩ := legalizeSibElem_legal (sc := sc) hb hx
     have hsto : ∀ r, isGpName r = true →
         LF F W Q (.Lopn [dArr] opn [.arrIdx b' x' sc, .reg r]) := fun r hr =>
-      .sibStore dArr opn b' x' r sc (show x86SibStore opn sc = true by
-        simp [x86SibStore, hst, hsc]) hb' hx' hr
+      .sibStore dArr opn b' x' r sc (show x86SibStore opn x' sc = true by
+        simp [x86SibStore, hst, hsc, gpNumU_ne4_of_legalize hx4 hxx]) hb' hx' hr
     have hrm : isMovMnem (if sc ≥ 8 then "MOV:64" else mov) = true := by
       split_ifs
       · exact hm64
@@ -543,7 +553,7 @@ theorem legalizeMemStoreK_legal (k : Option Nat) (dArr : LOperand) {addr val : L
         · simp only [beq_iff_eq] at hxe
           subst hxe
           exact .sibLoad _ _ _ _ sc (show x86SibLoad "LEA:64" reloadScratch sc = true by
-            simp [x86SibLoad, hsc]; decide +kernel) h14 hb' hx'
+            simp only [x86SibLoad, hsc, Bool.true_and]; decide +kernel) h14 hb' hx'
         · exact lf_mov_left hrm h15 hv
         · exact lf_mov_res_right hrm h15 hmem
       · simp only [List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hi

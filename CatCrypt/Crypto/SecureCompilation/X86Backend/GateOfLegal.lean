@@ -652,11 +652,13 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
   | loadIdx d b x hd hb hx =>
     exact .sibLoad _ d b x 8
       (show x86SibLoad "LOADIDX" x 8 = true by
-        simp (config := { decide := true }) [x86SibLoad, x86SibScale]) (isGp_of_gpOk hd) (isGp_of_gpOk hb)
-      (isGp_of_gpOk hx)
+        simp (config := { decide := true }) [x86SibLoad, x86SibScale, (gpFacts hx).ne4])
+      (isGp_of_gpOk hd) (isGp_of_gpOk hb) (isGp_of_gpOk hx)
   | storeIdx a b x v hb hx hv =>
-    exact .sibStore _ _ b x v 8 (by decide +kernel) (isGp_of_gpOk hb) (isGp_of_gpOk hx)
-      (isGp_of_gpOk hv)
+    exact .sibStore _ _ b x v 8
+      (show x86SibStore "STOREIDX" x 8 = true by
+        simp (config := { decide := true }) [x86SibStore, x86SibScale, (gpFacts hx).ne4])
+      (isGp_of_gpOk hb) (isGp_of_gpOk hx) (isGp_of_gpOk hv)
   | zeroArr b n hb hn hk =>
     exact .zeroArrSrc b n 64 (show x86ZeroArr n 64 = true by simp [x86ZeroArr, hn, hk])
       (isGp_of_gpOk hb)

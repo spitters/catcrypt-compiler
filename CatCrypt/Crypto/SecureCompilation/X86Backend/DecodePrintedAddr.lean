@@ -281,7 +281,7 @@ theorem encodeLopn_ldx (F W : Nat) (D B I : String) (qB : Nat) (hD : gpOk D = tr
   have fB := gpFacts hB
   have fI := gpFacts hI
   simp (config := { decide := true }) [encodeLopn, encLoadIdx, fD.isGp, fB.isGp, fI.isGp,
-    tagShiftExt, aluOpcode, twoByteOpcode, stripWidthTag, adxPrefix]
+    fI.ne4, tagShiftExt, aluOpcode, twoByteOpcode, stripWidthTag, adxPrefix]
 
 /-- The indexed store `STOREIDX d, (B, I, 8), V` between general-purpose names. -/
 theorem encodeLopn_stx (F W : Nat) (d B I V : String) (qB : Nat) (hB : gpOk B = true)
@@ -292,7 +292,7 @@ theorem encodeLopn_stx (F W : Nat) (d B I V : String) (qB : Nat) (hB : gpOk B = 
   have fI := gpFacts hI
   have fV := gpFacts hV
   simp (config := { decide := true }) [encodeLopn, encStoreIdx, fV.isGp, fB.isGp, fI.isGp,
-    tagShiftExt, aluOpcode, twoByteOpcode, stripWidthTag, adxPrefix]
+    fI.ne4, tagShiftExt, aluOpcode, twoByteOpcode, stripWidthTag, adxPrefix]
 
 /-- The low multiply `MUL:64 D, D, S` between general-purpose names. -/
 theorem encodeLopn_mul (F W : Nat) (D S : String) (qB : Nat) :

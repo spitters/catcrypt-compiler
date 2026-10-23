@@ -192,21 +192,23 @@ theorem encTwoAddr_rr (F W w op : Nat) (D S : String) (qB : Nat) (hD : gpOk D = 
   have fS := gpFacts hS
   simp [encTwoAddr, fD.off, fS.off, fD.notMem, fS.notMem, fD.isGp, fS.isGp, memDstOp, hop]
 
-/-- The operation `op` of a general-purpose name into a frame word: for a move, the
-    store `0x89`. -/
+/-- The operation `op` (`ADD`, a move or `LOAD`) of a general-purpose name into a frame
+    word: for a move, the store `0x89`. -/
 theorem encTwoAddr_store (F W w op : Nat) (q S : String) (qB : Nat) (off : Int)
-    (hq : spillQsaveOff F W q qB = some off) (hS : gpOk S = true) :
+    (hq : spillQsaveOff F W q qB = some off) (hS : gpOk S = true)
+    (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr F W w op (.reg q) (.reg S) qB = encRspMem w (memDstOp op) (gpNumU S) off := by
   have fS := gpFacts hS
-  simp [encTwoAddr, hq, fS.off, fS.isGp]
+  simp only [encTwoAddr, hq, fS.off, fS.isGp, if_true, if_pos hop]
 
-/-- The operation `op` of a frame word into a general-purpose name: for a move, the
-    load `0x8b`. -/
+/-- The operation `op` (`ADD`, a move or `LOAD`) of a frame word into a general-purpose
+    name: for a move, the load `0x8b`. -/
 theorem encTwoAddr_load (F W w op : Nat) (D q : String) (qB : Nat) (off : Int)
-    (hq : spillQsaveOff F W q qB = some off) (hD : gpOk D = true) :
+    (hq : spillQsaveOff F W q qB = some off) (hD : gpOk D = true)
+    (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr F W w op (.reg D) (.reg q) qB = encRspMem w (memSrcOp op) (gpNumU D) off := by
   have fD := gpFacts hD
-  simp [encTwoAddr, hq, fD.off, fD.isGp]
+  simp only [encTwoAddr, hq, fD.off, fD.isGp, if_true, if_pos hop]
 
 /-- The register moves of a printed body: `MOV:64` and the whole-word `MOVQ`. -/
 def isMovM (m : String) : Bool := m == "MOV:64" || m == "MOVQ"
@@ -715,7 +717,7 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     have hso : slotOff P q = off := by simp [slotOff, hoff]
     refine ⟨?_, ?_⟩
     · simp [Arm.instr, Arm.pieces, encodeLopn_movM _ _ _ _ _ _ hm,
-        encTwoAddr_store _ _ _ _ _ _ _ _ hoff hS, hso, memDstOp]
+        encTwoAddr_store _ _ _ 0x89 _ _ _ _ hoff hS (by decide), hso, memDstOp]
     · simp only [Arm.pieces, List.mem_singleton]
       rintro p rfl rest
       exact decodeLinstr_rspStore _ _ rest (gpNumU_lt_16 S) hd
@@ -726,7 +728,7 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     have hso : slotOff P q = off := by simp [slotOff, hoff]
     refine ⟨?_, ?_⟩
     · simp [Arm.instr, Arm.pieces, encodeLopn_movM _ _ _ _ _ _ hm,
-        encTwoAddr_load _ _ _ _ _ _ _ _ hoff hD, hso, memSrcOp]
+        encTwoAddr_load _ _ _ 0x89 _ _ _ _ hoff hD (by decide), hso, memSrcOp]
     · simp only [Arm.pieces, List.mem_singleton]
       rintro p rfl rest
       exact decodeLinstr_rspLoad _ _ rest (gpNumU_lt_16 D) hd

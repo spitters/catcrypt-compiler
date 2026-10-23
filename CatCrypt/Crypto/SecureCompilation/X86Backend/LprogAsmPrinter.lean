@@ -681,6 +681,50 @@ def renderLoadSym (frame spillW : Nat) (d : LOperand) (sym : String)
     [ "\tleaq " ++ sym ++ "(%rip), %r15", "\tmovq %r15, " ++ dop ]
   else [ "\tleaq " ++ sym ++ "(%rip), " ++ dop ]
 
+/-- The two-address operations whose form with a memory operand goes through a scratch
+    register: `OR`, `ADC`, `SBB`, `AND`, `SUB`, `XOR`. -/
+def aluViaScratchBase (b : String) : Bool :=
+  b == "OR" || b == "ADC" || b == "SBB" || b == "AND" || b == "SUB" || b == "XOR"
+
+/-- The base register name of a `mem.<base>.<off>` operand name, and `""` for any other
+    name. -/
+def memBaseName (n : String) : String :=
+  if "mem.".isPrefixOf n then (((n.drop 4).toString).splitOn ".").headD "" else ""
+
+/-- The AT&T lines of the two-address operation `m<sz> s, d` between a register and a memory
+    operand through a scratch register, the text of `LprogBytes.encAluViaScratch`: the
+    scratch is the first of `%rax`, `%rcx`, `%rdx` that is neither the register operand nor
+    the base of a `mem.*` operand, saved at `-128(%rsp)`, loaded with the memory operand,
+    combined with the register (into the scratch, then stored back, when the memory operand
+    is the destination), and restored. `none` unless the width is `64` or `32` (the widths
+    `LprogBytes.encTwoAddr` encodes), both operands are names and exactly one is a memory
+    operand; the byte and word forms keep their single memory-operand instruction. -/
+def renderAluViaScratch (frame spillW w : Nat) (m : String) (d s : LOperand)
+    (qsaveB : Nat := qsaveBytes) : Option (List String) :=
+  if w != 64 && w != 32 then none else
+  match d, s with
+  | .reg dn, .reg sn =>
+      let dm := isMemOperand d
+      if dm == isMemOperand s then none else
+      let rn := if dm then sn else dn
+      let mn := if dm then dn else sn
+      let bn := memBaseName mn
+      let scr := if rn != "RAX" && bn != "RAX" then "RAX"
+        else if rn != "RCX" && bn != "RCX" then "RCX" else "RDX"
+      let sz := sizeSuffix w
+      let scrOp := resolveName frame spillW w scr qsaveB
+      let rOp := resolveName frame spillW w rn qsaveB
+      let mOp := resolveName frame spillW w mn qsaveB
+      let opLines :=
+        if dm then
+          [ "\t" ++ m ++ sz ++ " " ++ rOp ++ ", " ++ scrOp,
+            "\tmov" ++ sz ++ " " ++ scrOp ++ ", " ++ mOp ]
+        else [ "\t" ++ m ++ sz ++ " " ++ scrOp ++ ", " ++ rOp ]
+      some ([ "\tmovq " ++ gpReg64 scr ++ ", -128(%rsp)",
+              "\tmov" ++ sz ++ " " ++ mOp ++ ", " ++ scrOp ] ++ opLines
+            ++ [ "\tmovq -128(%rsp), " ++ gpReg64 scr ])
+  | _, _ => none
+
 /-- Render one `Lopn dsts opn srcs` (not a carry-out / MULX-hi binding) to its
     AT&T line(s). Handles the three arities the owned-RA body produces:
 
@@ -989,6 +1033,10 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
       | _ =>
       match attBase base with
       | some m =>
+          match (if aluViaScratchBase base then renderAluViaScratch frame spillW w m d s qsaveB
+                 else none) with
+          | some ls => ls
+          | none =>
           if isMemOperand s && isMemOperand d then
             -- **Mem-to-mem legalization** (backstop): x86 has no memory-to-memory
             -- move, but the only single-source op whose two operands are both
@@ -1266,6 +1314,10 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
         | some m =>
             let bOp := resolveOperand frame spillW w b qsaveB
             let dOp := resolveOperand frame spillW w d qsaveB
+            match (if aluViaScratchBase mnBase then
+                     renderAluViaScratch frame spillW w m d b qsaveB else none) with
+            | some ls => ls
+            | none =>
             -- **Mem-to-mem legalization for the flag-only compare class.** x86 has
             -- no memory-to-memory `cmp`/`test`, and the upstream two-address
             -- legalizer (`physBodyRmap`'s `isBinop` alphabet) does not cover

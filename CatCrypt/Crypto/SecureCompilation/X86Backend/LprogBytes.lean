@@ -448,6 +448,42 @@ def memDstOp (op : Nat) : Nat := if op = 0x8b then 0x89 else op
     (`ADD` `01`→`03`, `ADC` `11`→`13`, `MOV` `89`→`8B`, …), and `0x8B` for `LOAD`. -/
 def memSrcOp (op : Nat) : Nat := if op = 0x8b then 0x8b else op + 2
 
+/-- The red-zone cell a borrowed scratch register is parked in, the same `-128(%rsp)` the
+    printer uses. Call-free leaves do not write below `%rsp`, and the export's slots sit
+    at `-8k` for the register ABI arguments, never that deep. -/
+def cmovRedZone : Int := -128
+
+/-- The scratch register of a two-address operation with a memory operand: the first of
+    `%rax`, `%rcx`, `%rdx` (numbers `0`, `1`, `2`) that is neither the register operand
+    `r` nor the base register `b` of the memory operand. -/
+def aluMemScratch (r b : Nat) : Nat :=
+  if r ≠ 0 ∧ b ≠ 0 then 0 else if r ≠ 1 ∧ b ≠ 1 then 1 else 2
+
+theorem aluMemScratch_lt (r b : Nat) : aluMemScratch r b < 16 := by
+  unfold aluMemScratch; split_ifs <;> omega
+
+/-- A two-address operation `op` between the register `r` and a memory operand through the
+    scratch register `scr`: `mov scr, -128(%rsp)`, the load `ld` of the memory operand into
+    `scr`, the register-register `op` (into `scr` when the memory operand is the destination,
+    `memDst`, else into `r`), the store `st` of `scr` to the memory operand when it is the
+    destination, and `mov -128(%rsp), scr`. The moves write no flag, so a carry-in is the
+    flag before the sequence and the flags after it are those of `op`. -/
+def encAluViaScratch (w op r scr : Nat) (memDst : Bool) (ld st : List (BitVec 8)) :
+    List (BitVec 8) :=
+  encRspMem 1 0x89 scr cmovRedZone ++ ld
+    ++ (if memDst then encAluRRw w op scr r ++ st else encAluRRw w op r scr)
+    ++ encRspMem 1 0x8b scr cmovRedZone
+
+/-- `encAluViaScratch` with the frame word at `off(%rsp)` as the memory operand. -/
+def encAluRspScratch (w op r : Nat) (off : Int) (memDst : Bool) : List (BitVec 8) :=
+  encAluViaScratch w op r (aluMemScratch r 4) memDst (encRspMem w 0x8b (aluMemScratch r 4) off)
+    (encRspMem w 0x89 (aluMemScratch r 4) off)
+
+/-- `encAluViaScratch` with the cell `off(%b)` as the memory operand. -/
+def encAluMemScratch (w op r b : Nat) (off : Int) (memDst : Bool) : List (BitVec 8) :=
+  encAluViaScratch w op r (aluMemScratch r b) memDst
+    (encMemMovw w 0x8b (aluMemScratch r b) b off) (encMemMovw w 0x89 (aluMemScratch r b) b off)
+
 /-- Encode a two-address binop / move whose AT&T form is `op<sz> src, dst`, given the
     one-byte ALU opcode `op`, the frame size + body-uniform spill width (to resolve
     `%rsp`-relative spill/qsave operands to their offset, matching
@@ -461,12 +497,14 @@ def memSrcOp (op : Nat) : Nat := if op = 0x8b then 0x8b else op + 2
     operand of each form is one of the 16 general-purpose names (`isGpName`). Every
     other shape returns `[]`: two memory operands (slot, `mem.*` or one of each), an
     unparseable slot name, and a name that is none of register, `mem.*`, spill or
-    qsave, which `gpNumU` would otherwise read as `%rax`. A memory
-    destination takes the `r/m ← r` opcode `memDstOp op` and a memory source the
-    `r ← r/m` opcode `memSrcOp op`, so `adc k.N, %rN` encodes `ADC r64, r/m64` as the
-    printer renders it, and a move (`op` = `0x89`/`0x8b`) the `MOV` store or load. Two
-    registers take the `r/m ← r` form `memDstOp op` with `rm` the destination: for the
-    `LOAD` opcode `0x8B` that is the `MOV` `89 /r` from the source into the destination. -/
+    qsave, which `gpNumU` would otherwise read as `%rax`. For `ADD` (`0x01`), the moves
+    (`0x89`) and `LOAD` (`0x8b`) a memory destination takes the `r/m ← r` opcode
+    `memDstOp op` and a memory source the `r ← r/m` opcode `memSrcOp op`, one instruction.
+    The other operations (`OR`, `ADC`, `SBB`, `AND`, `SUB`, `XOR`) with a memory operand
+    go through a scratch register parked in the red zone (`encAluRspScratch`,
+    `encAluMemScratch`). Two registers take the `r/m ← r` form `memDstOp op` with `rm` the
+    destination: for the `LOAD` opcode `0x8B` that is the `MOV` `89 /r` from the source
+    into the destination. -/
 def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
     (qsaveB : Nat := qsaveBytes) : List (BitVec 8) :=
   match d, s with
@@ -474,22 +512,36 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
       match spillQsaveOff frame spillW dn qsaveB, spillQsaveOff frame spillW sn qsaveB with
       -- store to a spill/qsave slot: dst is `%rsp`-relative, src is a register.
       | some off, none =>
-          if isGpName sn then encRspMem w (memDstOp op) (gpNumU sn) off else []
+          if isGpName sn then
+            if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b then encRspMem w (memDstOp op) (gpNumU sn) off
+            else encAluRspScratch w op (gpNumU sn) off true
+          else []
       -- reload from a spill/qsave slot: src is `%rsp`-relative, dst is a register.
       | none, some off =>
-          if isGpName dn then encRspMem w (memSrcOp op) (gpNumU dn) off else []
+          if isGpName dn then
+            if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b then encRspMem w (memSrcOp op) (gpNumU dn) off
+            else encAluRspScratch w op (gpNumU dn) off false
+          else []
       | some _, some _ => []
       | none, none =>
           match parseMemNameGp dn, parseMemNameGp sn with
           | none, none =>
               if isGpName dn && isGpName sn then encAluRRw w (memDstOp op) (gpNumU dn) (gpNumU sn)
               else []
-          -- store: dst is memory, op = 0x89 (MOV r/m←r). `reg`=src, base=dst mem.
+          -- store: dst is memory. `reg`=src, base=dst mem.
           | some (bb, off), none =>
-              if isGpName sn then encMemMovw w (memDstOp op) (gpNumU sn) bb off else []
-          -- load: src is memory, op = 0x8B (MOV r←r/m). `reg`=dst, base=src mem.
+              if isGpName sn then
+                if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b then
+                  encMemMovw w (memDstOp op) (gpNumU sn) bb off
+                else encAluMemScratch w op (gpNumU sn) bb off true
+              else []
+          -- load: src is memory. `reg`=dst, base=src mem.
           | none, some (bb, off) =>
-              if isGpName dn then encMemMovw w (memSrcOp op) (gpNumU dn) bb off else []
+              if isGpName dn then
+                if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b then
+                  encMemMovw w (memSrcOp op) (gpNumU dn) bb off
+                else encAluMemScratch w op (gpNumU dn) bb off false
+              else []
           | some _, some _ => []
   | _, _ => []
 
@@ -881,12 +933,6 @@ def encCmovSelect (w dn cn tn fn : Nat) : List (BitVec 8) :=
   if dn == tn then tst ++ enc0FRRw w 0x44 dn fn
   else if dn == fn then tst ++ enc0FRRw w 0x45 dn tn
   else encAluRRw w 0x89 dn fn ++ tst ++ enc0FRRw w 0x45 dn tn
-
-/-- The red-zone cell the spilled-destination select parks its borrowed scratch
-    in, the same `-128(%rsp)` the printer uses. Call-free leaves do not write
-    below `%rsp`, and the export's slots sit at `-8k` for the register ABI
-    arguments, never that deep. -/
-def cmovRedZone : Int := -128
 
 /-- The carry-out binding into a frame slot at `off`, the five lines `renderLinstrR`
     prints for a spilled carry-out destination: `movq %rax, -128(%rsp)`,
@@ -1491,14 +1537,15 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                   -- (§3d): the `(%b, %i, s)` effective address `renderLopn`'s
                   -- `LOADIDX` arm prints, at the access width the stride fixes.
                   -- Off-table register names denote no address and carry no
-                  -- bytes, rather than being addressed as `%rax`. `LOADIDX`
+                  -- bytes, rather than being addressed as `%rax`, and so does the
+                  -- index `%rsp`, which the SIB index field cannot name. `LOADIDX`
                   -- reaches this arm last: it is in none of `tagShiftExt` /
                   -- `aluOpcode` / `twoByteOpcode`, so the dispatch lemmas that
                   -- enumerate those tables are unaffected by it.
                   else if base == "LOADIDX" then
                     match d, s with
                     | .reg dn, .arrIdx bn idxn scale =>
-                        if isGpName dn && isGpName bn && isGpName idxn then
+                        if isGpName dn && isGpName bn && isGpName idxn && gpNumU idxn != 4 then
                           encLoadIdx (gpNumU dn) (gpNumU bn) (gpNumU idxn) scale
                         else []
                     | _, _ => []
@@ -1556,13 +1603,14 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                   -- stored value; the `Lopn` destination names the functionally-updated
                   -- array (the dialect's `stackStore` result) and is not an x86 operand,
                   -- exactly as in `renderLopn`'s `STOREIDX` arm. The store is
-                  -- width-exact at the stride. Like `LOADIDX` above, this sits below
+                  -- width-exact at the stride; the index `%rsp` carries no bytes, as for
+                  -- `LOADIDX`. Like `LOADIDX` above, this sits below
                   -- `tagShiftExt` / `aluOpcode` / `twoByteOpcode`, so no dispatch lemma
                   -- over a variable mnemonic reaches it.
                   if base == "STOREIDX" then
                     match a, s with
                     | .arrIdx bn idxn scale, .reg vn =>
-                        if isGpName vn && isGpName bn && isGpName idxn then
+                        if isGpName vn && isGpName bn && isGpName idxn && gpNumU idxn != 4 then
                           encStoreIdx (gpNumU vn) (gpNumU bn) (gpNumU idxn) scale
                         else []
                     | _, _ => []
