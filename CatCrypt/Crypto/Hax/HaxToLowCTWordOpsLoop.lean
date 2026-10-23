@@ -506,7 +506,8 @@ section Values
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontEmit
   (mul1Limb ones mul1FoldStep mul1Fold)
-open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect (memGetDyn memSetDyn)
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+  (memGetDyn memSetDyn memGetDyn_memSetDyn)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1FrontDenote (hiU_eq ltu_chain)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect (mulHiW)
 

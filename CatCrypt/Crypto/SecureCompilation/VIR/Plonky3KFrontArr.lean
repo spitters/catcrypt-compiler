@@ -6,7 +6,6 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.Plonky3NttLayerDenote
-public import CatCrypt.Crypto.Hax.HaxToLowCTWordOpsSim -- deprecated_module: ignore
 
 /-!
 # BabyBear butterfly networks over array parameters, generated through the front
@@ -216,11 +215,11 @@ theorem stores_run (N : ℕ) (hN : N < 2 ^ 64) (P : ℕ → BitVec 64 → Prop) 
       exact r2
     · intro i hi
       rcases List.mem_cons.mp hi with rfl | hi
-      · rw [f2 i hc hcl, Hax.WordOpsSim.memGetDyn_memSetDyn o hc hc, if_pos rfl]; exact pw
+      · rw [f2 i hc hcl, memGetDyn_memSetDyn o hc hc, if_pos rfl]; exact pw
       · exact p2 i hi
     · intro j hj hjl
       have hjc : j ≠ c := fun h => hjl (h ▸ List.mem_cons_self ..)
-      rw [f2 j hj (fun h => hjl (List.mem_cons_of_mem _ h)), Hax.WordOpsSim.memGetDyn_memSetDyn o hc hj,
+      rw [f2 j hj (fun h => hjl (List.mem_cons_of_mem _ h)), memGetDyn_memSetDyn o hc hj,
         if_neg hjc]
 
 /-- The butterflies of `l` move the field values by the left fold of `bupd` and change no

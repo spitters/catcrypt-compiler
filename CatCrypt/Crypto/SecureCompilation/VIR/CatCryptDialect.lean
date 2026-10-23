@@ -258,6 +258,16 @@ def memSetDyn {n : Nat} (arr : Fin n → BitVec 64) (k : Nat) (v : BitVec 64) :
   | (m + 1), arr =>
       fun j => if j = ⟨k % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩ then v else arr j
 
+/-- Reading cell `j` after writing `v` at cell `i`, both in range, gives `v` when
+    `j = i` and the old cell otherwise. -/
+theorem memGetDyn_memSetDyn {n : Nat} (a : Fin n → BitVec 64) {i j : Nat} (hi : i < n)
+    (hj : j < n) (v : BitVec 64) :
+    memGetDyn (memSetDyn a i v) j = if j = i then v else memGetDyn a j := by
+  cases n with
+  | zero => omega
+  | succ m =>
+    simp only [memGetDyn, memSetDyn, Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt hj, Fin.mk.injEq]
+
 /-- Read a 128-bit value from a `.memref n` (64-bit-limb array) at 128-bit index
     `k`: the two consecutive limbs `2k`, `2k+1` packed little-endian
     (`lo ||| hi <<< 64`). Total (each `memGetDyn` reduces its index modulo `n`,

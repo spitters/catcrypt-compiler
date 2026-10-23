@@ -74,7 +74,8 @@ open _root_.Hax (ImpExpr ImpLit Value Env Builtins denote denoteArgs)
 open CatCrypt.Crypto.Jasmin.LowCT (LowCT Located TowerType SExpr)
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
 open CatCrypt.Crypto.SecureCompilation.LowCTToCryptoSSA (encodeTy)
-open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect (memGetDyn memSetDyn)
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+  (memGetDyn memSetDyn memGetDyn_memSetDyn)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar
   (SEnvScalar semScalar envReader envReadU64 semLowerSExpr binNode isTmpName isTmpName_tmpName
    OnlyTmpBelow ResultOK readU64_stable onlyTmpBelow_trans onlyTmpBelow_upd envReadU64_upd_self)
@@ -188,16 +189,6 @@ theorem EnvRelW.update_arr {env env' : Env} {σ σ' : SEnvScalar} {S : List Stri
   wordClean := h.wordClean
   arrClean := h.arrClean
 
-/-! ### Cells of a memref -/
-
-theorem memGetDyn_memSetDyn {n : Nat} (a : Fin n → BitVec 64) {i j : Nat} (hi : i < n)
-    (hj : j < n) (v : BitVec 64) :
-    memGetDyn (memSetDyn a i v) j = if j = i then v else memGetDyn a j := by
-  cases n with
-  | zero => omega
-  | succ m =>
-    simp only [memGetDyn, memSetDyn, Nat.mod_eq_of_lt hi, Nat.mod_eq_of_lt hj, Fin.mk.injEq]
-
 /-! ### Scalar-expression lowering of a word call -/
 
 /-- The scalar expression of a word call on two `u64` slots lowers to one fresh
@@ -223,10 +214,6 @@ theorem envReadU64_upd_ne {σ : SEnvScalar} {x y : String} {t : CryptoTy} (v : t
 theorem upd_ne {σ : SEnvScalar} {x y : String} {t : CryptoTy} (v : t.denote) (h : y ≠ x) :
     σ.upd x v y = σ y := by
   simp [SEnvScalar.upd, h]
-
-theorem upd_self {σ : SEnvScalar} {x : String} {t : CryptoTy} (v : t.denote) :
-    σ.upd x v x = some ⟨t, v⟩ := by
-  simp [SEnvScalar.upd]
 
 theorem ne_tmpName_of_not_isTmpName {y : String} (h : ¬ isTmpName y) (k : Nat) :
     y ≠ tmpName k := fun e => h (e ▸ isTmpName_tmpName k)

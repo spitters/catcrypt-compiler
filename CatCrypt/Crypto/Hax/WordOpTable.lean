@@ -260,6 +260,13 @@ namespace CatCrypt.Crypto.Hax.WordOpsSim
 
 open _root_.Hax (Value Builtins)
 
+open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy) in
+open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar (SEnvScalar) in
+/-- Updating `x` and reading `x` back gives the stored slot. -/
+theorem upd_self {σ : SEnvScalar} {x : String} {t : CryptoTy} (v : t.denote) :
+    σ.upd x v x = some ⟨t, v⟩ := by
+  simp [SEnvScalar.upd]
+
 /-! ### Contracts of a builtin table on the word calls -/
 
 /-- The facts the builtin table evaluates the straight-line bindings by: every

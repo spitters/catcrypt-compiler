@@ -10,7 +10,10 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 WATCH="scripts/duplicate-decl-watch.txt"
 [ -f "$WATCH" ] || exit 0
-pat="$(grep -vE '^\s*(#|$)' "$WATCH" | paste -sd'|')"
+pat="$(grep -vE '^\s*(#|$)' "$WATCH" | awk '{print $1}' | paste -sd'|')"
+# A watched family may name its one home (`<regex> home=<path>`): the module where
+# the family's definition belongs, which may add it.
+homes="$(grep -vE '^\s*(#|$)' "$WATCH" | grep -oE 'home=[^ ]+' | sed 's/^home=//' || true)"
 [ -n "$pat" ] || exit 0
 declre="^\+\s*(private\s+|protected\s+)?(noncomputable\s+)?(def|theorem|lemma|abbrev)\s+([A-Za-z_.']*\.)?($pat)\b"
 fail=0
@@ -18,6 +21,7 @@ tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 for f in "$@"; do
   case "$f" in *.lean) ;; *) continue ;; esac
+  if [ -n "$homes" ] && grep -qxF "$f" <<<"$homes"; then continue; fi
   { git diff --cached -U0 -- "$f" | grep -E "$declre" || true; } | while IFS= read -r line; do
     name="$(sed -E "s/$declre.*/\5/" <<<"$line")"
     if git show "HEAD:$f" 2>/dev/null | grep -qE "(def|theorem|lemma|abbrev)\s+([A-Za-z_.']*\.)?$name\b"; then
