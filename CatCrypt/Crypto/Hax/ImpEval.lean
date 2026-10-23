@@ -173,4 +173,191 @@ def forToLoopArms : List (ImpPat × ImpExpr) → List (ImpPat × ImpExpr)
 
 end
 
+/-! ## Unfold equations for `denote`
+
+Each lemma states `(denote bi fuel e).run env` for one constructor `e` as a match on the
+runs of its sub-expressions, without the `StateT` plumbing. -/
+
+section Unfold
+
+open _root_.Hax (denoteArgs denoteForLoop)
+
+/-- A `.lit` evaluates to `.val (Value.ofLit l)` with the environment unchanged. -/
+theorem denote_lit_eq (bi : Builtins) (fuel : Nat) (l : ImpLit) (env : Env) :
+    (denote bi fuel (.lit l)).run env = (.val (Value.ofLit l), env) := by
+  simp [denote, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- `.unitVal` evaluates to `.val .unit` with the environment unchanged. -/
+theorem denote_unitVal_eq (bi : Builtins) (fuel : Nat) (env : Env) :
+    (denote bi fuel .unitVal).run env = (.val .unit, env) := by
+  simp [denote, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- `.var n` runs to the environment lookup (value or undefined-variable error)
+    with the environment unchanged. -/
+theorem denote_var_run_eq (bi : Builtins) (fuel : Nat) (n : String)
+    (env : Env) :
+    (denote bi fuel (.var n)).run env =
+      ((match env n with
+        | some v => Outcome.val v
+        | none => Outcome.err s!"undefined variable: {n}"), env) := by
+  simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, get, getThe,
+             MonadStateOf.get, StateT.get, pure, Pure.pure]
+  cases env n <;> rfl
+
+/-- Unfold equation for `.letBind`. -/
+theorem denote_letBind_run_eq (bi : Builtins) (fuel : Nat) (n : String)
+    (val body : ImpExpr) (env : Env) :
+    (denote bi fuel (.letBind n val body)).run env =
+      (match (denote bi fuel val).run env with
+       | (.val v, env_a) => (denote bi fuel body).run (env_a.extend n v)
+       | (other, env_a) => (other, env_a)) := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure,
+        modify, modifyGet, MonadStateOf.modifyGet]
+  cases denote bi fuel val env with
+  | mk a s => cases a <;> rfl
+
+/-- Unfold equation for `.seq`. -/
+theorem denote_seq_run_eq (bi : Builtins) (fuel : Nat)
+    (e1 e2 : ImpExpr) (env : Env) :
+    (denote bi fuel (.seq e1 e2)).run env =
+      (match (denote bi fuel e1).run env with
+       | (.val _, env_a) => (denote bi fuel e2).run env_a
+       | (other, env_a) => (other, env_a)) := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
+  cases denote bi fuel e1 env with
+  | mk a s => cases a <;> rfl
+
+/-- Unfold equation for `.ifThenElse`. -/
+theorem denote_ifThenElse_run_eq (bi : Builtins) (fuel : Nat)
+    (c t e : ImpExpr) (env : Env) :
+    (denote bi fuel (.ifThenElse c t e)).run env =
+      (match (denote bi fuel c).run env with
+       | (.val (.bool true), env_a) => (denote bi fuel t).run env_a
+       | (.val (.bool false), env_a) => (denote bi fuel e).run env_a
+       | (.val _, env_a) => (.err "if condition not a bool", env_a)
+       | (other, env_a) => (other, env_a)) := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
+  cases denote bi fuel c env with
+  | mk a s =>
+    cases a with
+    | val v => cases v <;> first | rfl | (rename_i b; cases b <;> rfl)
+    | _ => rfl
+
+/-- Unfold equation for `.assign`. -/
+theorem denote_assign_run_eq (bi : Builtins) (fuel : Nat) (n : String)
+    (rhs : ImpExpr) (env : Env) :
+    (denote bi fuel (.assign n rhs)).run env =
+      (match (denote bi fuel rhs).run env with
+       | (.val v, env_a) => (.val .unit, env_a.extend n v)
+       | (other, env_a) => (other, env_a)) := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure,
+        modify, modifyGet, MonadStateOf.modifyGet]
+  cases denote bi fuel rhs env with
+  | mk a s => cases a <;> rfl
+
+/-- Unfold equation for `denoteArgs` on a cons cell.  The recursive
+    `denoteArgs bi fuel es` call is kept opaque so it can be rewritten
+    by an induction hypothesis. -/
+theorem denoteArgs_cons_run_eq (bi : Builtins) (fuel : Nat)
+    (e : ImpExpr) (es : List ImpExpr) (env : Env) :
+    (denoteArgs bi fuel (e :: es)).run env =
+      (match (denote bi fuel e).run env with
+       | (.val v, env_a) =>
+           (match (denoteArgs bi fuel es).run env_a with
+            | (rest, env_b) => (rest.map (v :: ·), env_b))
+       | (_, env_a) => (none, env_a)) := by
+  have hEq : denoteArgs bi fuel (e :: es) = (do
+      let r ← denote bi fuel e
+      match r with
+      | .val v => do
+          let rest ← denoteArgs bi fuel es
+          pure (rest.map (v :: ·))
+      | _ => pure none) := by
+    conv => lhs; unfold denoteArgs
+    rfl
+  show (denoteArgs bi fuel (e :: es)).run env = _
+  rw [hEq]
+  simp only [StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
+  cases denote bi fuel e env with
+  | mk a s =>
+    rcases a with v | v | v | _ | msg
+    · show StateT.bind (denoteArgs bi fuel es) _ s = _
+      simp only [StateT.bind]
+      cases denoteArgs bi fuel es s with
+      | mk rest s2 => rfl
+    all_goals rfl
+
+/-- Unfold equation for `.app`. -/
+theorem denote_app_run_eq (bi : Builtins) (fuel : Nat) (f : String)
+    (args : List ImpExpr) (env : Env) :
+    (denote bi fuel (.app f args)).run env =
+      (match (denoteArgs bi fuel args).run env with
+       | (some vals, env_a) =>
+           (match bi f vals with
+            | some v => (Outcome.val v, env_a)
+            | none => (Outcome.err s!"unknown function or bad args: {f}", env_a))
+       | (none, env_a) => (Outcome.err "non-value in function arguments", env_a)) := by
+  simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
+  rw [show (denoteArgs bi fuel args) env = (denoteArgs bi fuel args).run env from rfl]
+  rcases (denoteArgs bi fuel args).run env with ⟨mvals, env_a⟩
+  cases mvals with
+  | none => rfl
+  | some vs =>
+    dsimp only
+    cases bi f vs <;> rfl
+
+/-- A counted loop whose start is not below its bound runs no trip. -/
+theorem denoteForLoop_ge_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : hi ≤ lo) :
+    (denoteForLoop bi fuel v lo hi body).run env = (.val .unit, env) := by
+  show (denoteForLoop bi fuel v lo hi body).run env = _
+  unfold denoteForLoop
+  simp [h, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- A counted loop with a trip left fails at zero fuel. -/
+theorem denoteForLoop_zero_run (bi : Builtins) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : lo < hi) :
+    (denoteForLoop bi 0 v lo hi body).run env = (.err "out of fuel", env) := by
+  show (denoteForLoop bi 0 v lo hi body).run env = _
+  unfold denoteForLoop
+  simp [show ¬ hi ≤ lo by omega, StateT.run, pure, Pure.pure, StateT.pure]
+
+/-- One trip of a counted loop at successor fuel: the body runs at the same fuel
+    with the counter bound to the start, and the loop continues from the next
+    start at the predecessor fuel. -/
+theorem denoteForLoop_succ_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) (h : lo < hi) :
+    (denoteForLoop bi (fuel + 1) v lo hi body).run env =
+      (match (denote bi (fuel + 1) body).run (env.extend v (.int lo)) with
+       | (.val _, env_b) => (denoteForLoop bi fuel v (lo + 1) hi body).run env_b
+       | (.continued, env_b) => (denoteForLoop bi fuel v (lo + 1) hi body).run env_b
+       | (.broke w, env_b) => (.val w, env_b)
+       | (other, env_b) => (other, env_b)) := by
+  have hFor : denoteForLoop bi (fuel + 1) v lo hi body = (do
+      modify (Env.extend · v (.int lo))
+      let rb ← denote bi (fuel + 1) body
+      match rb with
+      | .val _ | .continued => denoteForLoop bi fuel v (lo + 1) hi body
+      | .broke w => pure (.val w)
+      | other => pure other) := by
+    conv => lhs; unfold denoteForLoop
+    simp only [show ¬ lo ≥ hi by omega, if_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
+    rfl
+  show (denoteForLoop bi (fuel + 1) v lo hi body).run env = _
+  rw [hFor]
+  simp only [StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, modify, modifyGet,
+    MonadStateOf.modifyGet, StateT.modifyGet]
+  cases denote bi (fuel + 1) body (env.extend v (.int lo)) with
+  | mk a s => cases a <;> rfl
+
+/-- Unfold equation for `.forLoop` with integer literal bounds. -/
+theorem denote_forLoop_lit_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
+    (body : ImpExpr) (env : Env) :
+    (denote bi fuel (.forLoop v (.lit (.int lo)) (.lit (.int hi)) body)).run env =
+      (denoteForLoop bi fuel v lo hi body).run env := by
+  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
+    Value.ofLit]
+
+end Unfold
+
 end CatCrypt.Crypto.Hax

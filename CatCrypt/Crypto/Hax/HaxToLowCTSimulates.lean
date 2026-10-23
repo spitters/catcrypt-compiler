@@ -339,51 +339,8 @@ theorem haxToLowCT_tuple_eq_none_of_not_all_vars (elems : List ImpExpr)
 
 `denote` on an all-`var` tuple leaves the env unchanged (each component
 read is effect-free), so the `RSkip` target trivially preserves
-agreement. -/
-
-/-- `.var n` runs to the env lookup (value or undefined-variable error)
-    with the env unchanged. -/
-theorem denote_var_run_eq (bi : Builtins) (fuel : Nat) (n : String)
-    (env : Env) :
-    (denote bi fuel (.var n)).run env =
-      ((match env n with
-        | some v => Outcome.val v
-        | none => Outcome.err s!"undefined variable: {n}"), env) := by
-  simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, get, getThe,
-             MonadStateOf.get, StateT.get, pure, Pure.pure]
-  cases env n <;> rfl
-
-/-- Unfold equation for `denoteArgs` on a cons cell.  The recursive
-    `denoteArgs bi fuel es` call is kept opaque so it can be rewritten
-    by an induction hypothesis. -/
-theorem denoteArgs_cons_run_eq (bi : Builtins) (fuel : Nat)
-    (e : ImpExpr) (es : List ImpExpr) (env : Env) :
-    (denoteArgs bi fuel (e :: es)).run env =
-      (match (denote bi fuel e).run env with
-       | (.val v, env_a) =>
-           (match (denoteArgs bi fuel es).run env_a with
-            | (rest, env_b) => (rest.map (v :: ·), env_b))
-       | (_, env_a) => (none, env_a)) := by
-  have hEq : denoteArgs bi fuel (e :: es) = (do
-      let r ← denote bi fuel e
-      match r with
-      | .val v => do
-          let rest ← denoteArgs bi fuel es
-          pure (rest.map (v :: ·))
-      | _ => pure none) := by
-    conv_lhs => unfold denoteArgs
-    rfl
-  show (denoteArgs bi fuel (e :: es)).run env = _
-  rw [hEq]
-  simp only [StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
-  cases denote bi fuel e env with
-  | mk a s =>
-    rcases a with v | v | v | _ | msg
-    · show StateT.bind (denoteArgs bi fuel es) _ s = _
-      simp only [StateT.bind]
-      cases denoteArgs bi fuel es s with
-      | mk rest s2 => rfl
-    all_goals rfl
+agreement.  The unfold equations `denote_var_run_eq` and
+`denoteArgs_cons_run_eq` are in `Hax.ImpEval`. -/
 
 /-- `denoteArgs` on an all-`var` list leaves the env unchanged. -/
 theorem denoteArgs_vars_run_env (bi : Builtins) (fuel : Nat)

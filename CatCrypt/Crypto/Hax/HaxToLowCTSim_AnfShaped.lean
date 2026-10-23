@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module -- deprecated_module: ignore
 
 public import CatCrypt.Crypto.Hax.HaxToLowCT
+public import CatCrypt.Crypto.Hax.ImpEval
 public import HaxLean.Semantics
 
 /-!
@@ -56,14 +57,14 @@ practice are straight-line let-bindings of leaf-call applications).
 
 ## Main exports
 
-* `denote_lit_eq`, `denote_unitVal_eq` — terminal evaluators.
 * `denote_var_outcome` — `var n` is `.val` or `.err`.
 * `denote_app_outcome` — `app f args` is `.val` (success or unknown-fn)
   or `.err` (non-value-in-args).
-* `denote_letBind_run_eq`, `denote_seq_run_eq`,
-  `denote_ifThenElse_run_eq`, `denote_assign_run_eq` — unfold
-  equations exposing each compound constructor as a pair-match on
-  sub-evaluations.
+
+The terminal evaluators `denote_lit_eq`, `denote_unitVal_eq` and the unfold
+equations `denote_letBind_run_eq`, `denote_seq_run_eq`,
+`denote_ifThenElse_run_eq`, `denote_assign_run_eq` are in `Hax.ImpEval`,
+which this module imports.
 -/
 
 deprecated_module "haxToLowCT is the legacy hax front, outside compileA's path: compileA compiles \
@@ -81,16 +82,6 @@ open _root_.Hax (ImpExpr ImpLit ImpType Value Env Outcome Builtins
                    denote denoteWhile denoteForLoop denoteArgs denoteMatchArms)
 
 /-! ## §1  Per-constructor outcome dichotomies -/
-
-/-- A `.lit` always evaluates to `.val (Value.ofLit l)` with state unchanged. -/
-theorem denote_lit_eq (bi : Builtins) (fuel : Nat) (l : ImpLit) (env : Env) :
-    (denote bi fuel (.lit l)).run env = (.val (Value.ofLit l), env) := by
-  simp [denote, StateT.run, pure, Pure.pure, StateT.pure]
-
-/-- `.unitVal` always evaluates to `.val .unit` with state unchanged. -/
-theorem denote_unitVal_eq (bi : Builtins) (fuel : Nat) (env : Env) :
-    (denote bi fuel .unitVal).run env = (.val .unit, env) := by
-  simp [denote, StateT.run, pure, Pure.pure, StateT.pure]
 
 /-- `.var n` evaluates to `.val v` if `env n = some v`, else `.err _`. -/
 theorem denote_var_outcome (bi : Builtins) (fuel : Nat) (n : String) (env : Env) :
@@ -136,64 +127,7 @@ theorem denote_app_outcome (bi : Builtins) (fuel : Nat) (f : String)
       rw [show (denoteArgs bi fuel args) env = (denoteArgs bi fuel args).run env from rfl, h]
       simp only [hf]; rfl
 
-/-! ## §2  Unfold equations for compound productive constructors
-
-These lemmas expose `(denote bi fuel (.X ...)).run env` as a clean
-pair-match on sub-evaluations, removing the `StateT.bind`/`modify`
-plumbing that obstructs further reasoning. -/
-
-/-- Unfold equation for `.letBind`. -/
-theorem denote_letBind_run_eq (bi : Builtins) (fuel : Nat) (n : String)
-    (val body : ImpExpr) (env : Env) :
-    (denote bi fuel (.letBind n val body)).run env =
-      (match (denote bi fuel val).run env with
-       | (.val v, env_a) => (denote bi fuel body).run (env_a.extend n v)
-       | (other, env_a) => (other, env_a)) := by
-  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure,
-        modify, modifyGet, MonadStateOf.modifyGet]
-  cases denote bi fuel val env with
-  | mk a s => cases a <;> rfl
-
-/-- Unfold equation for `.seq`. -/
-theorem denote_seq_run_eq (bi : Builtins) (fuel : Nat)
-    (e1 e2 : ImpExpr) (env : Env) :
-    (denote bi fuel (.seq e1 e2)).run env =
-      (match (denote bi fuel e1).run env with
-       | (.val _, env_a) => (denote bi fuel e2).run env_a
-       | (other, env_a) => (other, env_a)) := by
-  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
-  cases denote bi fuel e1 env with
-  | mk a s => cases a <;> rfl
-
-/-- Unfold equation for `.ifThenElse`. -/
-theorem denote_ifThenElse_run_eq (bi : Builtins) (fuel : Nat)
-    (c t e : ImpExpr) (env : Env) :
-    (denote bi fuel (.ifThenElse c t e)).run env =
-      (match (denote bi fuel c).run env with
-       | (.val (.bool true), env_a) => (denote bi fuel t).run env_a
-       | (.val (.bool false), env_a) => (denote bi fuel e).run env_a
-       | (.val _, env_a) => (.err "if condition not a bool", env_a)
-       | (other, env_a) => (other, env_a)) := by
-  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
-  cases denote bi fuel c env with
-  | mk a s =>
-    cases a with
-    | val v => cases v <;> first | rfl | (rename_i b; cases b <;> rfl)
-    | _ => rfl
-
-/-- Unfold equation for `.assign`. -/
-theorem denote_assign_run_eq (bi : Builtins) (fuel : Nat) (n : String)
-    (rhs : ImpExpr) (env : Env) :
-    (denote bi fuel (.assign n rhs)).run env =
-      (match (denote bi fuel rhs).run env with
-       | (.val v, env_a) => (.val .unit, env_a.extend n v)
-       | (other, env_a) => (other, env_a)) := by
-  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure,
-        modify, modifyGet, MonadStateOf.modifyGet]
-  cases denote bi fuel rhs env with
-  | mk a s => cases a <;> rfl
-
-/-! ## §3  Remaining work
+/-! ## §2  Remaining work
 
 The combined theorem `AnfShaped_outcome_val_or_err` (saying
 `AnfShaped e = true → (∃ v env', …) ∨ (∃ msg env', …)`) requires

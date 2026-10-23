@@ -481,26 +481,9 @@ theorem argsAvoid_fresh (name : String) (dt : TowerType) :
         · exact ih rest hAv.2 hR b hb
     | _ => simp [argsAvoid] at hAv
 
-/-! ## §4  Source-side lemmas -/
+/-! ## §4  Source-side lemmas
 
-/-- Unfold equation for `.app`. -/
-theorem denote_app_run_eq (bi : Builtins) (fuel : Nat) (f : String)
-    (args : List ImpExpr) (env : Env) :
-    (denote bi fuel (.app f args)).run env =
-      (match (denoteArgs bi fuel args).run env with
-       | (some vals, env_a) =>
-           (match bi f vals with
-            | some v => (Outcome.val v, env_a)
-            | none => (Outcome.err s!"unknown function or bad args: {f}", env_a))
-       | (none, env_a) => (Outcome.err "non-value in function arguments", env_a)) := by
-  simp only [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure]
-  rw [show (denoteArgs bi fuel args) env = (denoteArgs bi fuel args).run env from rfl]
-  rcases (denoteArgs bi fuel args).run env with ⟨mvals, env_a⟩
-  cases mvals with
-  | none => rfl
-  | some vs =>
-    dsimp only
-    cases bi f vs <;> rfl
+The unfold equation `denote_app_run_eq` for `.app` is in `Hax.ImpEval`. -/
 
 /-- A successful `denoteArgs` over variables resolves every variable in `env`. -/
 theorem denoteArgs_vars_defined (bi : Builtins) (fuel : Nat) (env : Env) :

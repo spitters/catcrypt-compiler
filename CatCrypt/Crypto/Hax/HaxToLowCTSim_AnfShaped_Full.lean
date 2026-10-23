@@ -21,8 +21,8 @@ to close the full syntactic-to-semantic implication.  Unblocks the
 * `denoteWhile_zero`, `denoteWhile_succ_run` — unfold equations for
   `denoteWhile`, separated by fuel: the zero-fuel case returns the
   out-of-fuel error; the successor case exposes one iteration as a
-  pair-match (analogous to `denote_letBind_run_eq` in the companion
-  `_AnfShaped.lean` file).  The successor form keeps the recursive
+  pair-match (analogous to `denote_letBind_run_eq` in `Hax.ImpEval`).
+  The successor form keeps the recursive
   `denoteWhile bi fuel _ _` call opaque so it can be discharged by an
   induction hypothesis.
 * `denote_whileLoop_run_eq`, `denote_match_run_eq` — unfold equations
@@ -38,8 +38,6 @@ to close the full syntactic-to-semantic implication.  Unblocks the
   `.broke`, `.continued`, or `.earlyRet`).
 * `hBodyAlwaysVal_of_AnfShaped` — derives the specific shape required
   by the whileLoop simulation lemma.
-* `denoteForLoop_ge_run`, `denoteForLoop_zero_run`, `denoteForLoop_succ_run`,
-  `denote_forLoop_lit_run` — unfold equations for counted loops.
 * `denoteForLoop_val_or_err`, `denote_forLoop_val_or_err` — outcome dichotomy
   for counted loops.
 -/
@@ -558,60 +556,9 @@ theorem hBodyAlwaysVal_of_AnfShaped
 
 /-! ## §6  Counted loops
 
-Unfold equations for `denoteForLoop` separated by the bound test and the fuel,
-and the outcome dichotomy for `denoteForLoop` and `.forLoop`. -/
-
-/-- A counted loop whose start is not below its bound runs no trip. -/
-theorem denoteForLoop_ge_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
-    (body : ImpExpr) (env : Env) (h : hi ≤ lo) :
-    (denoteForLoop bi fuel v lo hi body).run env = (.val .unit, env) := by
-  show (denoteForLoop bi fuel v lo hi body).run env = _
-  unfold denoteForLoop
-  simp [h, StateT.run, pure, Pure.pure, StateT.pure]
-
-/-- A counted loop with a trip left fails at zero fuel. -/
-theorem denoteForLoop_zero_run (bi : Builtins) (v : String) (lo hi : Int)
-    (body : ImpExpr) (env : Env) (h : lo < hi) :
-    (denoteForLoop bi 0 v lo hi body).run env = (.err "out of fuel", env) := by
-  show (denoteForLoop bi 0 v lo hi body).run env = _
-  unfold denoteForLoop
-  simp [show ¬ hi ≤ lo by omega, StateT.run, pure, Pure.pure, StateT.pure]
-
-/-- One trip of a counted loop at successor fuel: the body runs at the same fuel
-    with the counter bound to the start, and the loop continues from the next
-    start at the predecessor fuel. -/
-theorem denoteForLoop_succ_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
-    (body : ImpExpr) (env : Env) (h : lo < hi) :
-    (denoteForLoop bi (fuel + 1) v lo hi body).run env =
-      (match (denote bi (fuel + 1) body).run (env.extend v (.int lo)) with
-       | (.val _, env_b) => (denoteForLoop bi fuel v (lo + 1) hi body).run env_b
-       | (.continued, env_b) => (denoteForLoop bi fuel v (lo + 1) hi body).run env_b
-       | (.broke w, env_b) => (.val w, env_b)
-       | (other, env_b) => (other, env_b)) := by
-  have hFor : denoteForLoop bi (fuel + 1) v lo hi body = (do
-      modify (Env.extend · v (.int lo))
-      let rb ← denote bi (fuel + 1) body
-      match rb with
-      | .val _ | .continued => denoteForLoop bi fuel v (lo + 1) hi body
-      | .broke w => pure (.val w)
-      | other => pure other) := by
-    conv_lhs => unfold denoteForLoop
-    simp only [show ¬ lo ≥ hi by omega, if_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
-    rfl
-  show (denoteForLoop bi (fuel + 1) v lo hi body).run env = _
-  rw [hFor]
-  simp only [StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, modify, modifyGet,
-    MonadStateOf.modifyGet, StateT.modifyGet]
-  cases denote bi (fuel + 1) body (env.extend v (.int lo)) with
-  | mk a s => cases a <;> rfl
-
-/-- Unfold equation for `.forLoop` with integer literal bounds. -/
-theorem denote_forLoop_lit_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi : Int)
-    (body : ImpExpr) (env : Env) :
-    (denote bi fuel (.forLoop v (.lit (.int lo)) (.lit (.int hi)) body)).run env =
-      (denoteForLoop bi fuel v lo hi body).run env := by
-  simp [denote, StateT.run, bind, Bind.bind, StateT.bind, pure, Pure.pure, StateT.pure,
-    Value.ofLit]
+The outcome dichotomy for `denoteForLoop` and `.forLoop`, from the unfold
+equations `denoteForLoop_ge_run`, `denoteForLoop_zero_run`,
+`denoteForLoop_succ_run` and `denote_forLoop_lit_run` of `Hax.ImpEval`. -/
 
 /-- A counted loop whose body runs to a value or an error at every fuel runs to
     a value or an error. -/
