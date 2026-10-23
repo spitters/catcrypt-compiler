@@ -48,7 +48,7 @@ programs, the measured ratios against fiat-crypto and the size of the template l
   `…HaxLowCTBridge.VerifiedZMod`, declared in other modules), and no module named in its
   list of security headlines reaches the front. It is reached by the kernel producers; by
   the instances `mpn_and_n_rc_proved` and `ltu_rc_proved` of `headline_haxc_rc_proved_all`,
-  through `Haxc.ArrLegChecks`, `Haxc.ScalLegChecks` and `Hax.HaxFrontHax64W` →
+  through `Hax.HaxFrontTResultWords` and `Hax.HaxFrontHax64W` →
   `Hax.HaxFrontHax64`; by the `compileA` instance `HashDRBG.MajCompiled`, through
   `Hax.Hax64WReading`; by the `LowCT` → Rust route of [HAX_RUST.md](HAX_RUST.md); and by
   the modules that use its definitions `evalImp`, `forToLoop`, the word-operation tables,
