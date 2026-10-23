@@ -4344,7 +4344,7 @@ def eiPieces (n : Bool) (D A : String) (v : Nat) : List (List (BitVec 8) × JIns
 
 /-- The `imm32` compare `CMP $v, %d` (`REX.W 81 /7 id`) with `v < 2^31` decodes to the
     compare of `d` against the immediate. -/
-theorem decodeLinstr_cmpImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 16)
+theorem decodeLinstr_cmpImm31 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 16)
     (hv : v < 2 ^ 31) :
     decodeLinstr (encAluImmw 1 7 d v ++ rest)
       = some (.op (.cmp (SailX86Decoder.regName d) (.imm v)), rest) := by
@@ -4375,7 +4375,7 @@ theorem pieceDec_cmpImm (A : String) (v : Nat) (hv : v < 2 ^ 31) :
   split
   · exact decodeLinstr_aluImm8 7 JInstr.cmp _ _ rest (by decide) (gpNumU_lt_16 A)
       (by assumption) rfl
-  · simpa [phys] using decodeLinstr_cmpImm32 _ _ rest (gpNumU_lt_16 A) hv
+  · simpa [phys] using decodeLinstr_cmpImm31 _ _ rest (gpNumU_lt_16 A) hv
 
 /-- **The bytes of a materialised comparison with an immediate.** -/
 theorem eiBytes (P : Params) (n : Bool) (D A : String) (v : Nat) (h : eiOk D A v = true) :
