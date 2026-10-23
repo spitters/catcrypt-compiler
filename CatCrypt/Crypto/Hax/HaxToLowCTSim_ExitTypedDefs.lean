@@ -44,10 +44,6 @@ open CatCrypt.Crypto.Jasmin.LowCT
     absent from the list is held in the scalar heap. -/
 abbrev ExitTowers := List (String × TowerType)
 
-/-- The tower slot a call or an element load writes before its result is copied to
-    the bound name. -/
-def exitCallName : String := "__exit_call"
-
 /-- The tower slot holding the scalar `x` as a call argument. -/
 def exitMarshalName (x : String) : String := "__exit_m" ++ x
 
@@ -86,38 +82,12 @@ def ExitRes.isOption : ExitRes → Bool
 /-! ## §2  Admitted call names
 
 The scalar operations (`scalarOpExprT`, `WidthOp`, `widthOpOf`) and the calls with a
-scalar result (`exitScalarRes`) are defined in `HaxCallNames`. -/
+scalar result (`exitScalarRes`) are defined in `HaxCallNames`; the admitted names
+(`exitAdmits`) in `ExitTowerDefs`. -/
 
-/-- A call name the typed lowering admits: every name except a wide field head, a tagged
-    field head `m#p` (`Hax.FieldTag.fieldTag?`) at a modulus `p ≥ 2^64`, whose operands and
-    result `Hax.FieldTag.fieldCall` holds as arrays of `Hax.FieldTag.fieldLimbs p` limbs. -/
-def exitAdmits (f : String) : Bool :=
-  match _root_.Hax.FieldTag.fieldTag? f with
-  | some (_, p) => decide (p < 2 ^ 64)
-  | none => true
+/-! ## §3  The heads of a `letBind`
 
-/-- A name without `#` is admitted: it is no tagged field head. -/
-theorem exitAdmits_of_not_hash {f : String} (h : f.contains '#' = false) :
-    exitAdmits f = true := by
-  unfold exitAdmits
-  rcases ht : _root_.Hax.FieldTag.fieldTag? f with _ | ⟨m, p⟩
-  · rfl
-  · have hm := _root_.Hax.FieldTag.mem_toList_of_fieldTag? ht
-    simp [String.contains_char_eq, hm] at h
-
-/-- A call outside `exitScalarRes` is admitted: a tagged field head contains `#` and is a
-    scalar call. -/
-theorem exitAdmits_of_scalarRes_false {f : String} (h : exitScalarRes f = false) :
-    exitAdmits f = true := by
-  apply exitAdmits_of_not_hash
-  simp only [exitScalarRes, exitScalarCall, Bool.or_eq_false_iff] at h
-  exact h.1.2
-
-/-! ## §3  The heads of a `letBind` -/
-
-/-- The type of the elements an element store writes into an array held at `t`: the
-    element tower type of `exitElemTower`, and `t.elemType` for an array of words. -/
-def exitElem (t : TowerType) : TowerType := (exitElemTower t).getD t.elemType
+The element type of an element store (`exitElem`) is defined in `ExitTowerDefs`. -/
 
 /-- The argument slots of a call, and the context storing its scalar arguments: an
     argument held in a tower is read in place at its tower type; a scalar argument `x` is
@@ -300,15 +270,6 @@ def exitFirstTower (A : ExitTowers) : List ImpExpr → Option TowerType
       | some t => some t
       | none => exitFirstTower A as
   | _ :: as => exitFirstTower A as
-
-/-- The number of elements of an array type: `n` for `TArr n t`, and `2`, `3`, `2` for the
-    containers `TFp2`, `TFp6`, `TFp12` of `exitContainer`. -/
-def exitArrLen : TowerType → Option Nat
-  | .TArr n _ => some n
-  | .TFp2 => some 2
-  | .TFp6 => some 3
-  | .TFp12 => some 2
-  | _ => none
 
 /-- Every argument variable held in a tower is placed at `dt`. -/
 def exitArgsAt (A : ExitTowers) (dt : TowerType) (args : List ImpExpr) : Bool :=

@@ -237,15 +237,9 @@ theorem envAgreesT_of_eqOn {br : ValueTowerBridge} {A : ExitTowers} {env : Env}
   · rw [hS]; exact h'
   · rw [hT name hn]; exact h'
 
-/-! ## §8  Scalar operations and leaf conditions -/
+/-! ## §8  Scalar operations and leaf conditions
 
-/-- hax-lean's scalar operation `op` on scalars, as `LowCT` computes it: the value of
-    `scalarOpExprT op` on the literals `a` and `b`, and `0` for an operation outside
-    `scalarOpExprT`. -/
-def scalarOpNatT (op : String) (a b : Nat) : Nat :=
-  match scalarOpExprT op (.SLit a) (.SLit b) with
-  | some se => se.eval fun _ => 0
-  | none => 0
+`scalarOpNatT` is defined in `ExitTowerDefs`. -/
 
 theorem widthOp_sexpr_congr (w : Nat) (o : WidthOp) {a b a' b' : SExpr} {rs : RustState}
     {σ : String → Nat} (ha : a.evalState rs = a'.eval σ) (hb : b.evalState rs = b'.eval σ) :

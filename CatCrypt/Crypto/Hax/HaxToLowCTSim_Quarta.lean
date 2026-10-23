@@ -84,14 +84,7 @@ open CatCrypt.Crypto.Jasmin.LowCT
 
 /-! ## §1  Value-tower bridge
 
-The bridge is a per-protocol relation. -/
-
-/-- `ValueTowerBridge eq` packages a relation `eq : ∀ dt, Value → RustVal dt → Prop`
-    that says "Hax Value `v` and RustVal of tower type `dt` represent the
-    same logical value".  Per-protocol instances (BLS, Curve25519, etc.)
-    populate this. -/
-def ValueTowerBridge : Type :=
-  ∀ (dt : TowerType), Value → RustVal dt → Prop
+The bridge `ValueTowerBridge` (`ExitTowerDefs`) is a per-protocol relation. -/
 
 /-! ## §2  Tower-binding agreement
 

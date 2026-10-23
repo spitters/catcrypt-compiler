@@ -16,6 +16,8 @@ public import CatCrypt.Crypto.Jasmin.LowCTExec
 public import CatCrypt.Crypto.Jasmin.LowCTOps
 public meta import CatCrypt.Crypto.Hax.HaxCallNames
 public import CatCrypt.Crypto.Hax.HaxCallNames
+public meta import CatCrypt.Crypto.Hax.ExitTowerDefs
+public import CatCrypt.Crypto.Hax.ExitTowerDefs
 public meta import CatCrypt.Crypto.Hax.LowCTToImp
 public import CatCrypt.Crypto.Hax.LowCTToImp
 
@@ -248,34 +250,6 @@ def mlkemZeroConstTable : LeafTable :=
 /-- Lookup a zero-constant's tower type. -/
 def mlkemZeroConst? (name : String) : Option TowerType :=
   (mlkemZeroConstTable.find? (fun p => p.1 = name)).map (·.2)
-
-/-- Element type of a container TowerType.
-    `TPolyVec q n k` is `k` polynomials of `TPolyMod q n`, so the
-    element type is `TPolyMod q n`.
-    `TPolyMat q n k m` is `k × m` polynomials arranged as `k`
-    polyvecs of length `m`, so the element type of a 1-D `index`
-    is `TPolyVec q n m`.
-    `TBytes n` is a flat byte array; element type is `TFp` (treated
-    as a small int).
-    `TArr n t` element type is `t`.
-    Default: pass through (no narrowing).
-
-    Defined under `CatCrypt.Crypto.Jasmin.LowCT` (where `TowerType`
-    lives) so `arrTy.elemType` dot-notation resolves correctly. -/
-def _root_.CatCrypt.Crypto.Jasmin.LowCT.TowerType.elemType : TowerType → TowerType
-  | .TPolyVec q n _k    => .TPolyMod q n
-  | .TPolyMat q n _k m  => .TPolyVec q n m
-  -- A polynomial's element is a single `Z_q` coefficient — a scalar,
-  -- not the polynomial itself.  Without this arm `index(poly, i)`
-  -- (a coefficient read) would type as a whole-polynomial slice and
-  -- the Jasmin emit would wrongly stride by `n` (out-of-bounds).
-  | .TPolyMod _q _n     => .TFp
-  -- A byte buffer's element is a `u8` (Phase L.1).  Was `.TFp` (u16),
-  -- which made `index(bytes, j)` mistype as u16 and fail the u8→u16
-  -- store in the byte-packing kernels.
-  | .TBytes _           => .TU8
-  | .TArr _ t           => t
-  | t                   => t
 
 /-- **Stage 1a (2026-07-01) — runtime-loop bound conversion.**
     Convert a `forFold` upper-bound `ImpExpr` into a scalar `SExpr` so the
