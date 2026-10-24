@@ -973,6 +973,42 @@ theorem physAbiLoopWrap_lcmdDirect (virt : Lfundef) (tbl : Array Nat)
     (lcmdDirect_filter (physBodyWithStores_lcmdDirect _ _ _ _ _ _ _ _ _ hv))
     calleeSaveRestoreEpilogue_lcmdDirect
 
+/-- The register-base reload of `ZEROARR` and `STOREIMM` keeps every memory operand
+    direct. -/
+theorem reloadArrImmBody_lcmdDirect (mbr : String → Option String) {l : Lcmd}
+    (h : lcmdDirect l = true) : lcmdDirect (reloadArrImmBody mbr l) = true := by
+  unfold reloadArrImmBody
+  refine lcmdDirect_flatMap _ _ ?_
+  intro r hr
+  have h1 := (lcmdDirect_iff l).mp h r hr
+  split
+  · rename_i l' hl
+    obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
+      simp [lcmdDirect, linstrRDirect, isIndexed]
+  · simpa [lcmdDirect] using h1
+
+/-- The ABI wrapping of the looped export around a register-allocated body whose
+    `ZEROARR` and `STOREIMM` bases are reloaded keeps every memory operand direct. -/
+theorem physAbiLoopWrapReload_lcmdDirect (virt : Lfundef) (tbl : Array Nat)
+    (abiArgs : List String) (extra : Lcmd) (shiftImm : ShiftImmOracle)
+    (memrefBaseReload : String → Option String)
+    (callArgBaseReload : List (String × String)) (p : Linstr → Bool)
+    (hextra : lcmdDirect extra = true) (hv : lcmdDirect virt.lfd_body = true) :
+    lcmdDirect (buildPrologue virt tbl (fun _ => none) ++ extra
+      ++ buildArgPtrMaterialize virt tbl abiArgs (fun _ => none)
+      ++ insertEpilogue
+          (reloadArrImmBody memrefBaseReload
+            ((physBodyWithStores shiftImm virt.lfd_body (fun _ => none) reloadScratch2 []
+              reloadScratch2 0 memrefBaseReload callArgBaseReload).filter p))
+          calleeSaveRestoreEpilogue) = true := by
+  simp only [lcmdDirect_append, Bool.and_eq_true]
+  refine ⟨⟨⟨buildPrologue_lcmdDirect _ _ _, hextra⟩,
+    buildArgPtrMaterialize_lcmdDirect _ _ _ _⟩, ?_⟩
+  exact insertEpilogue_lcmdDirect
+    (reloadArrImmBody_lcmdDirect _
+      (lcmdDirect_filter (physBodyWithStores_lcmdDirect _ _ _ _ _ _ _ _ _ hv)))
+    calleeSaveRestoreEpilogue_lcmdDirect
+
 /-- A left fold of body transformations that each preserve direct addressing
     preserves direct addressing. -/
 theorem foldl_lcmdDirect_of {α : Type} (g : Lcmd → α → Lcmd)
@@ -990,7 +1026,7 @@ theorem ComL_toLfundefPhysAbi_lcmdDirect {Γ : Ctxt jasminDialect} {t : JasminTy
     (abiTyin : List Nat) (h : ComLIndexFree c) :
     lcmdDirect (ComL.toLfundefPhysAbi c outArg inArgs shiftImm immSlotMap abiArgs
       abiTyin).lfd_body = true := by
-  refine physAbiLoopWrap_lcmdDirect _ _ _ _ _ _ _ _
+  refine physAbiLoopWrapReload_lcmdDirect _ _ _ _ _ _ _ _
     (extraInputSaves_lcmdDirect (extraSaveRegs abiArgs)) ?_
   exact lcmdDirect_append_of (livePin_lcmdDirect abiArgs)
     (canonicalizeMemrefThread_lcmdDirect

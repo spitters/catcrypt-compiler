@@ -60,7 +60,7 @@ from four segments closed by `corres_sym`.
 * `SRmem`, `CellsSeparated`, `cellAddr`, `baseRegs`: the relation and its parts.
 * `corresJ_liftCarry2`: an `SRcarry2` leaf that writes no memory and no base register
   is an `SRmem` leaf.
-* `corresJ_mov2`, `corresJ_add2`, `corresJ_xor2`, `corresJ_imul2`: `SRcarry2` leaves
+* `corresJ_mov2`, `corresJ_addStep2`, `corresJ_xor2`, `corresJ_imul2`: `SRcarry2` leaves
   for `mov`, `add`, `xor` and two-operand `imul` with a register or immediate source.
 * `corresJ_loadMemM`, `corresJ_storeMemM`, `corresJ_mulxMemM`: the memory-operand
   leaves.
@@ -220,7 +220,7 @@ theorem corresJ_mov2 (d : String) (o : JOperand) :
   · exact hof
 
 /-- `add` refines `addStep2`. -/
-theorem corresJ_add2 (d : String) (o : JOperand) :
+theorem corresJ_addStep2 (d : String) (o : JOperand) :
     CorresJ SRcarry2 (fun _ => True) (addStep2 d o) [.add d o] := by
   intro s a ⟨hreg, _, _⟩ _
   have ho := evalX_eq s a.regs hreg o
@@ -374,7 +374,7 @@ theorem corresJ_movM (cells : List (String × Int)) (d : String) (o : JOperand)
 theorem corresJ_addM (cells : List (String × Int)) (d : String) (o : JOperand)
     (hd : d ∉ baseRegs cells) :
     CorresJ (SRmem cells) (fun _ => True) (fun a => ⟨addStep2 d o a.c, a.mem⟩) [.add d o] :=
-  corresJ_liftCarry2 cells (corresJ_add2 d o) (fun _ => rfl)
+  corresJ_liftCarry2 cells (corresJ_addStep2 d o) (fun _ => rfl)
     (fun x => base_of_write cells d hd _ x.regs)
 
 /-- `xor` to a register that is not a base, over `SRmem`. -/
@@ -546,7 +546,7 @@ theorem corresJ_addMemM (cells : List (String × Int)) (d b : String) (o : Int)
     (hc : (b, o) ∈ cells) (hd : d ∉ baseRegs cells) :
     CorresJ (SRmem cells) (fun _ => True) (addMemStepM d b o) [.addMem d b o] :=
   corresJ_memSrcM cells (fun v => [.add d (.imm v)]) (fun v => addStep2 d (.imm v)) b o hc
-    (fun v => corresJ_add2 d (.imm v))
+    (fun v => corresJ_addStep2 d (.imm v))
     (fun s => by simp [runBlock_cons, runBlock_nil, evalInstr, JOperand.eval])
     (fun _ _ => rfl) (fun _ x => base_of_write cells d hd _ x.regs)
 
@@ -947,7 +947,7 @@ theorem corresJ_bzhiM (cells : List (String × Int)) (d s idx : String)
 
 /-! ## `@[corres]` registrations and the solver -/
 
-attribute [corres] corresJ_mov2 corresJ_add2 corresJ_xor2 corresJ_imul2
+attribute [corres] corresJ_mov2 corresJ_addStep2 corresJ_xor2 corresJ_imul2
   corresJ_loadMemM corresJ_storeMemM corresJ_mulxMemM
   corresJ_movM corresJ_addM corresJ_xorM corresJ_imulM corresJ_mulxM
   corresJ_adcxM corresJ_adoxM

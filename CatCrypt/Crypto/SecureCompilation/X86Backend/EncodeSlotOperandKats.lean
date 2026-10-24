@@ -21,9 +21,10 @@ set_option autoImplicit false
 families against their component encoders, in a frame of `128` bytes with `64`-bit
 spill cells, where `k.0` is at offset `56` and `k.1` at offset `48`:
 
-* a two-address `ALU` operation with a slot source or destination takes the operation's
-  own opcode in the `r ← r/m` or `r/m ← r` direction (`ADC` `13`, `ADD` `01`), and a move
-  the `MOV` load `8B`;
+* `ADD` with a slot source or destination takes its own opcode in the `r ← r/m` or
+  `r/m ← r` direction (`ADD` `01`), and a move the `MOV` load `8B`; the other two-address
+  `ALU` operations (`ADC`) run in a scratch register saved at `-128(%rsp)`: the save, the
+  load of the slot, the register-register operation and the restore;
 * `MULX` with a slot source is the memory form `mulx off(%rsp), lo, hi`, and a slot
   destination has no encoding;
 * `ADCX` into a slot with a slot first source or a slot second source runs in the
@@ -86,8 +87,11 @@ def shapeJs (i : LinstrR) : String :=
 -- the frame offsets of the two spill cells
 #kat spillQsaveOff 128 64 "k.0" 64 == some 56 && spillQsaveOff 128 64 "k.1" 64 == some 48
 
--- `ADC:64` from a slot: `adc 56(%rsp), %rax`, opcode `13`
-#kat enc (.Lopn [.reg "RAX"] "ADC:64" [.reg "RAX", .reg "k.0"]) == encRspMem 1 0x13 0 56
+-- `ADC:64` from a slot runs in the scratch `%rcx` saved at `-128(%rsp)`: the save,
+-- `mov 56(%rsp), %rcx`, `adc %rcx, %rax` (opcode `11`), the restore
+#kat enc (.Lopn [.reg "RAX"] "ADC:64" [.reg "RAX", .reg "k.0"])
+  == encRspMem 1 0x89 1 (-128) ++ encRspMem 1 0x8b 1 56 ++ encAluRRw 1 0x11 0 1
+    ++ encRspMem 1 0x8b 1 (-128)
 
 -- `ADD:64` into a slot: `add %rbx, 56(%rsp)`, opcode `01`
 #kat enc (.Lopn [.reg "k.0"] "ADD:64" [.reg "k.0", .reg "RBX"]) == encRspMem 1 0x01 3 56

@@ -455,7 +455,7 @@ theorem physPositionEmit_spillStoreOps
             (physAbiMovBuf body abiW) storeBase off
             (physRmap body outStoreMap reservedVec d)) ++ post := by
   simp only [bindingIndexAt] at hlo hhi hout
-  simp only [physRmap] at hspill
+  simp only [physRmap, physAllocTbl] at hspill
   unfold physPositionEmit
   simp only []
   simp only [hi]
