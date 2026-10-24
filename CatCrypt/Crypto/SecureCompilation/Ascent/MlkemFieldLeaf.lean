@@ -175,14 +175,14 @@ theorem corres_setExpr_fqAdd (aName bName rName : String)
   · intro y hnt
     by_cases hyx : y = rName
     · refine ⟨SExpr.evalBV (envReader env) e, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_pos hyx]
+      · simp only [SEnvScalar.upd, ite_eq_left hyx]
       · show fqEnc (SExpr.evalBV (envReader env) e) = if y = rName then a aName + a bName else a y
-        rw [if_pos hyx]; exact hval
+        rw [ite_eq_left hyx]; exact hval
     · obtain ⟨w, hw, _, hwEnc⟩ := hSR y hnt
       refine ⟨w, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_neg hyx]
+      · simp only [SEnvScalar.upd, ite_eq_right hyx]
         rw [hotb y (Or.inl hnt)]; exact hw
       · show fqEnc w = if y = rName then a aName + a bName else a y
-        rw [if_neg hyx]; exact hwEnc
+        rw [ite_eq_right hyx]; exact hwEnc
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

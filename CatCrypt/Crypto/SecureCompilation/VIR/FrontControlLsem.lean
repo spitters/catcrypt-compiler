@@ -343,10 +343,10 @@ theorem findLabel_ifThen (fn : String) (cond : String) (lThen lEnd : LLabel)
   simp only [Option.none_or]
   -- suffix: `Lgoto :: Llabel lThen :: …`; first label match at index 1.
   rw [List.findIdx?_cons, isLabel_false lThen (.Lgoto (fn, lEnd)) (by intro k l; simp)]
-  simp only [Bool.false_eq_true, if_false]
+  simp only [Bool.false_eq_true, ite_false]
   rw [List.findIdx?_cons,
     show isLabel lThen (.Llabel .internal lThen) = true from by simp [isLabel]]
-  simp only [if_true, Option.map_some, List.length_cons]
+  simp only [ite_true, Option.map_some, List.length_cons]
   congr 1
   omega
 

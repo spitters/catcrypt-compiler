@@ -237,13 +237,13 @@ theorem evalOperand_setReg_resolveVar {w curDepth nArgs : Nat} {Γ : Ctxt jasmin
   set slot := curDepth - 1 - varIndex v with hslot
   have hslt : slot < curDepth := by omega
   by_cases hsa : slot < nArgs
-  · simp only [hsa, if_true]
+  · simp only [hsa, ite_true]
     simp only [evalOperand, Lstate.setReg]
-    rw [if_neg]
+    rw [ite_eq_right]
     exact fun he => (regName_ne_argName curDepth slot) he.symm
-  · simp only [hsa, if_false]
+  · simp only [hsa, ite_false]
     simp only [evalOperand, Lstate.setReg]
-    rw [if_neg]
+    rw [ite_eq_right]
     exact fun he => (regName_ne (by omega)) he.symm
 
 /-- `evalOperand` ignores the program counter. -/
@@ -269,7 +269,7 @@ theorem StoreAgrees.step {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       have hslot : curDepth + 1 - 1 - 0 = curDepth := by omega
       simp only [hslot]
       have hsa : ¬ curDepth < nArgs := by omega
-      simp only [hsa, if_false, evalOperand, Lstate.setReg]
+      simp only [hsa, ite_false, evalOperand, Lstate.setReg]
       -- RHS: `(.here).lookup (V.extend val) = val`.
       rfl
   | there v' =>
@@ -449,8 +449,8 @@ theorem encodeAux_lookup {w : Nat} {Γ : Ctxt jasminDialect} (hu : UniformCtxt w
         rw [show encodeAux (w := w) (HVector.cons hd tl) st
               = if h : w = w then (encodeAux tl st).setReg (argName Γ'.length)
                   (h ▸ hd : ⟦(JasminTy.reg w)⟧) else (encodeAux tl st) from rfl]
-        simp only [List.length_cons, varIndex, dif_pos, Lstate.lvm_setReg]
-        rw [if_pos (by congr 1)]
+        simp only [List.length_cons, varIndex, dite_eq_left, Lstate.lvm_setReg]
+        rw [ite_eq_left (by congr 1)]
         rfl
   | there v' ih =>
       rename_i Γ' σ ρ
@@ -462,8 +462,8 @@ theorem encodeAux_lookup {w : Nat} {Γ : Ctxt jasminDialect} (hu : UniformCtxt w
         rw [show encodeAux (w := w) (HVector.cons hd tl) st
               = if h : w = w then (encodeAux tl st).setReg (argName Γ'.length)
                   (h ▸ hd : ⟦(JasminTy.reg w)⟧) else (encodeAux tl st) from rfl]
-        simp only [List.length_cons, varIndex, dif_pos, Lstate.lvm_setReg]
-        rw [if_neg]
+        simp only [List.length_cons, varIndex, dite_eq_left, Lstate.lvm_setReg]
+        rw [ite_eq_right]
         · -- reduces to the tail lookup
           have htail := ih hut tl h
           have heq2 : Γ'.length + 1 - 1 - (varIndex v' + 1) = Γ'.length - 1 - varIndex v' := by omega
@@ -484,7 +484,7 @@ theorem encode_StoreAgrees {w : Nat} {Γ : Ctxt jasminDialect}
   -- at `curDepth = Γ.length`, the resolved slot is `< Γ.length`, so it is an arg.
   have hslot : Γ.length - 1 - varIndex v < Γ.length := by
     have := varIndex_lt v; omega
-  simp only [resolveVar, hslot, if_true, evalOperand, encode]
+  simp only [resolveVar, hslot, ite_true, evalOperand, encode]
   -- the immSlotMap is `none`, so the operand is `.reg (argName slot)`
   exact encodeAux_lookup hu V _ v h
 

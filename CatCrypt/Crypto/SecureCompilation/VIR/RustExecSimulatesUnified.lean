@@ -639,12 +639,12 @@ theorem agreeWhileNzU {N : Nat} {leafSpec : LeafSpec} (fuel : Nat)
             have hg : guardNz name b = decide (r1.rsScalar name ≠ 0) :=
               guardNz_eq_decide hB1' hIR1 name hBname hnt
             by_cases hz : r1.rsScalar name = 0
-            · rw [hg, decide_eq_false (by simp [hz]), if_neg (by simp)] at hsem
+            · rw [hg, decide_eq_false (by simp [hz]), ite_eq_right (by simp)] at hsem
               obtain rfl := Option.some.inj hsem
               cases hrest with
               | whileFalse _ _ _ _ => exact ⟨hB1', hIR1⟩
               | whileTrue _ _ _ _ _ v' hv' hne' _ _ => exact absurd (hv' ▸ hz) hne'
-            · rw [hg, decide_eq_true hz, if_pos rfl] at hsem
+            · rw [hg, decide_eq_true hz, ite_eq_left rfl] at hsem
               exact ihk hrest hsem hB1' hIR1 hreads hBname hz
 
 /-- The `RWhileNz` arm at an `IsCoveredAdeqU` body and a nonzero entry guard:

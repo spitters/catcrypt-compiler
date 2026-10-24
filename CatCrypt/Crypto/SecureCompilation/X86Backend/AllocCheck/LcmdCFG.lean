@@ -345,10 +345,10 @@ theorem cfgOf_start_zero {wl : List LinstrR} {G : CFG} (h : cfgOf wl = some G)
   simp only [wf, Bool.and_eq_true] at hw
   have h0 := hw.1.1.1.1
   by_cases hz : G.blocks.size = 0
-  · rw [if_pos hz] at h0
+  · rw [ite_eq_left hz] at h0
     simp only [decide_eq_true_eq, List.size_toArray, List.length_eq_zero_iff] at h0
     exact absurd h0 hne
-  · rw [if_neg hz] at h0
+  · rw [ite_eq_right hz] at h0
     exact ⟨Nat.pos_of_ne_zero hz, by simpa using h0⟩
 
 /-- The terminator check, as a case split on the terminator. -/
@@ -683,7 +683,7 @@ theorem findInstrMem_of_lt (P : LprogM) (s : LstatePM) (hfn : s.lfn = P.lfn)
     (hlt : s.base.lpc < P.body.length) :
     findInstrMem P s = some P.body[s.base.lpc] := by
   unfold findInstrMem
-  rw [if_pos hfn]
+  rw [ite_eq_left hfn]
   exact List.getElem?_eq_getElem hlt
 
 theorem findInstrMem_of_ge (P : LprogM) (s : LstatePM) (hge : P.body.length ≤ s.base.lpc) :
@@ -705,7 +705,7 @@ theorem memLMachine_sound (P : LprogM) : (memLMachine P).Sound (P.body.map Prod.
     split at h
     · rename_i i hi
       unfold findInstrMem at hi
-      rw [if_pos hs] at hi
+      rw [ite_eq_left hs] at hi
       exact (List.getElem?_eq_some_iff.mp hi).1
     · cases h
   step_next s s' i hs h hi := by
@@ -713,7 +713,7 @@ theorem memLMachine_sound (P : LprogM) : (memLMachine P).Sound (P.body.map Prod.
     split at h
     · rename_i j hj
       unfold findInstrMem at hj
-      rw [if_pos hs] at hj
+      rw [ite_eq_left hs] at hj
       rw [List.getElem?_map, hj] at hi
       cases hi
       exact (evalInstrPMemL_next P j s s' h).2

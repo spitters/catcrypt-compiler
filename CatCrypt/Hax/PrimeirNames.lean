@@ -298,7 +298,7 @@ theorem OpTable.typedCalls (T : OpTable) (p : Nat) (hT : T.ok = true) :
   subst has
   have hok := T.ok_of_entry? hT he
   have hv' : e.sem p (encAll _ xs) = some v := by
-    simpa only [OpTable.builtins, he, ArgKind.fitsAll_encAll, if_true] using hv
+    simpa only [OpTable.builtins, he, ArgKind.fitsAll_encAll, ite_true] using hv
   obtain ⟨name, args, res, key⟩ := e
   cases key with
   | field k =>
@@ -352,7 +352,7 @@ theorem OpTable.toOp_sound (T : OpTable) (p : Nat) (hT : T.ok = true) {Δ : Ctxt
       obtain ⟨hlen, z, hsem, hzv⟩ := FieldKey.toExpr_sound p k args e' h W zs hz
       refine ⟨z, ?_, hzv⟩
       simp only [OpTable.builtins, he]
-      rw [← hlen, ArgKind.fitsAll_replicate_fp, if_pos rfl]
+      rw [← hlen, ArgKind.fitsAll_replicate_fp, ite_eq_left rfl]
       exact hsem
   | ring _ | tower _ | gf2 _ | codec _ => cases h
 

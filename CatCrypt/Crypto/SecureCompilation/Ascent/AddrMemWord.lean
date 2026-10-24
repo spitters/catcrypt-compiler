@@ -55,10 +55,10 @@ theorem write64_eq (m : AMem) (a v : BitVec 64) :
   funext x
   by_cases h : (x - a).toNat < 8
   · have h' : InRange8 a x := h
-    simp only [write64, MachineMem64.write64, if_pos h, if_pos h']
+    simp only [write64, MachineMem64.write64, ite_eq_left h, ite_eq_left h']
     apply BitVec.eq_of_toNat_eq
     simp only [BitVec.toNat_ofNat, BitVec.extractLsb'_toNat, Nat.shiftRight_eq_div_pow]
   · rw [write64_of_not_inRange _ _ _ _ h]
-    simp only [MachineMem64.write64, if_neg h]
+    simp only [MachineMem64.write64, ite_eq_right h]
 
 end CatCrypt.Crypto.SecureCompilation.Ascent.Footprint

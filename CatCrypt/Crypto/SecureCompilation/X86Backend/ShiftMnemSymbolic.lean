@@ -132,9 +132,9 @@ theorem parseShiftMnem_isSome_shr (n : Nat) :
   unfold parseShiftMnem
   -- whichever `if`-arm fires, the result is `some`.
   by_cases hSHL : hasPrefix (stripWidthTag ("SHR:" ++ toString n ++ ":64")) "SHL:" = true
-  · simp only [hSHL, if_true, Option.isSome_some]
+  · simp only [hSHL, ite_true, Option.isSome_some]
   · simp only [Bool.not_eq_true] at hSHL
-    simp only [hSHL, hSHR, Bool.false_eq_true, if_false, if_true, Option.isSome_some]
+    simp only [hSHL, hSHR, Bool.false_eq_true, ite_false, ite_true, Option.isSome_some]
 
 /-- For symbolic `n`, the `SHL` export mnemonic parses. -/
 theorem parseShiftMnem_isSome_shl (n : Nat) :
@@ -142,7 +142,7 @@ theorem parseShiftMnem_isSome_shl (n : Nat) :
   have hSHL : hasPrefix (stripWidthTag ("SHL:" ++ toString n ++ ":64")) "SHL:" = true :=
     stripWidthTag_startsWith_of_startsWith _ _ (by decide) (sw_append_self "SHL:" (toString n))
   unfold parseShiftMnem
-  simp only [hSHL, if_true, Option.isSome_some]
+  simp only [hSHL, ite_true, Option.isSome_some]
 
 /-! ## 4. Symbolic-`n` `lowerShiftImmJ` / `lowerLinstrExt2` `isSome`
 

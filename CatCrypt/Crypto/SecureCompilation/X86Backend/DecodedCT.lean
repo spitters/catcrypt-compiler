@@ -564,7 +564,7 @@ theorem newRegs_sound (P : PubA) (i : JInstr 64) {s₁ s₂ : AState} (hag : P.A
       simp only [evalInstr, JState.writeB5W, JState.get]
       rw [show s₁.view.regs src = s₁.view.get src from rfl,
         show s₂.view.regs src = s₂.view.get src from rfl, hd]
-      simp only [if_true]
+      simp only [ite_true]
     · simp at hx
   | neg d =>
     simp only [newRegs] at hx
@@ -627,7 +627,7 @@ theorem stepA_sound (P : PubA) (i : JInstr 64) {F : List Int}
         simp only [newCells] at ho
         by_cases hb : b = "%rsp"
         · subst hb
-          simp only [beq_self_eq_true, if_true, List.mem_append, List.mem_filter] at ho
+          simp only [beq_self_eq_true, ite_true, List.mem_append, List.mem_filter] at ho
           have hw : ∀ s : AState, writeAddr s (.storeMem "%rsp" off src)
               = some (s.regs "%rsp" + BitVec.ofInt 64 off) := fun _ => rfl
           rcases ho with ho | ⟨ho, hfar⟩
@@ -910,7 +910,7 @@ theorem presStep_sound {F : List Int} {P P' : PresA} {i : JInstr 64} {se s : ASt
           rw [evalInstrA_regs_of_not_dst _ _ _ hnd']
           exact (hregs y r hy).2
       · by_cases hfw : frameWrite i = true
-        · simp only [hfw, if_true] at hq
+        · simp only [hfw, ite_true] at hq
           cases i with
           | storeMem b o src =>
             have hb : b = "%rsp" := by simpa [frameWrite] using hfw
@@ -945,14 +945,14 @@ theorem presStep_sound {F : List Int} {P P' : PresA} {i : JInstr 64} {se s : ASt
               exact hkeep (q, v) hq.1 hq.2
           | _ => simp at hq
         · have hfw' : frameWrite i = false := by simpa using hfw
-          simp only [hfw', Bool.false_eq_true, if_false] at hq
+          simp only [hfw', Bool.false_eq_true, ite_false] at hq
           by_cases hsw : sepWrite i = true
-          · simp only [hsw, if_true, List.mem_filter, List.contains_iff_mem] at hq
+          · simp only [hsw, ite_true, List.mem_filter, List.contains_iff_mem] at hq
             obtain ⟨hq, hin⟩ := hq
             rw [cellAt_preserved s i hd' _ fun a ha => hF hfw' a ha _ hin]
             exact hcells q v hq
           · have hsw' : sepWrite i = false := by simpa using hsw
-            simp only [hsw', Bool.false_eq_true, if_false] at hq
+            simp only [hsw', Bool.false_eq_true, ite_false] at hq
             rw [cellAt_preserved s i hd' _ fun a ha => by simp [writeAddr_none hfw' hsw'] at ha]
             exact hcells q v hq
 
@@ -1122,11 +1122,11 @@ theorem presCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat}
     simp only [presAt, hD, h, Bool.and_eq_true, beq_iff_eq] at hck
     obtain ⟨⟨⟨hst, hsn⟩, hot⟩, hon⟩ := hck
     by_cases hcnd : s.view.condB c = true
-    · simp only [hcnd, if_true] at ih
+    · simp only [hcnd, ite_true] at ih
       obtain ⟨Q, hQ, hle⟩ := presSucc_spec hst
       have := ih hQ (PresA.inv_of_le hle hI)
       rwa [hot] at this
-    · simp only [hcnd, if_false, Bool.false_eq_true] at ih
+    · simp only [hcnd, ite_false, Bool.false_eq_true] at ih
       obtain ⟨Q, hQ, hle⟩ := presSucc_spec hsn
       have := ih hQ (PresA.inv_of_le hle hI)
       rwa [hon] at this
@@ -1422,12 +1422,12 @@ theorem checkCert_sound {r : DoitRegime} {F : List Int} {own : Nat → Nat} {X :
       have hcb := condB_eq (hag.2.2.1 hfl) c
       by_cases hcnd : s₂.view.condB c = true
       · obtain ⟨b, hb, hle⟩ := succOk_spec hst
-        simp only [hcb, hcnd, if_true] at ih hr'
+        simp only [hcb, hcnd, ite_true] at ih hr'
         obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle hag) hr'
         rw [hot] at hs
         exact ⟨by rw [hcb, ht], hs⟩
       · obtain ⟨b, hb, hle⟩ := succOk_spec hsn
-        simp only [hcb, hcnd, if_false, Bool.false_eq_true] at ih hr'
+        simp only [hcb, hcnd, ite_false, Bool.false_eq_true] at ih hr'
         obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle hag) hr'
         rw [hon] at hs
         exact ⟨by rw [hcb, ht], hs⟩

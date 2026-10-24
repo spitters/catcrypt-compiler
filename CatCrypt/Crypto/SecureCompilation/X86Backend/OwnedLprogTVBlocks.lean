@@ -91,10 +91,10 @@ theorem foldl_join_ext : ∀ (l acc : List String), acc.Nodup →
       obtain ⟨hn, e, he⟩ := foldl_join_ext l _ h1
       refine ⟨hn, ?_⟩
       by_cases hc : acc.contains a = true
-      · rw [if_pos hc] at he
-        exact ⟨e, by rw [if_pos hc]; exact he⟩
-      · rw [if_neg hc] at he
-        exact ⟨a :: e, by rw [if_neg hc, he]; simp⟩
+      · rw [ite_eq_left hc] at he
+        exact ⟨e, by rw [ite_eq_left hc]; exact he⟩
+      · rw [ite_eq_right hc] at he
+        exact ⟨a :: e, by rw [ite_eq_right hc, he]; simp⟩
 
 theorem foldl_join_mem : ∀ (l acc : List String) (v : String),
     v ∈ l.foldl (fun a v => if a.contains v then a else a ++ [v]) acc → v ∈ acc ∨ v ∈ l
@@ -156,7 +156,7 @@ theorem blockNeed_mono {outs : List String} {L L' : Nat → List String × Bool}
           · refine Or.inr ?_
             split at hv
             · rename_i hf
-              rw [if_pos ((h j).2 hf)]
+              rw [ite_eq_left ((h j).2 hf)]
               exact hv
             · cases hv
         · exact Or.inl (Or.inr hv)
@@ -692,7 +692,7 @@ theorem getElem?_xpos (g : α → List γ) {M : List α} {pc i : Nat} (h : pc < 
 
 theorem getElem?_xpos_lt (g : α → List γ) {M : List α} {pc i : Nat} (h : pc < M.length)
     (hi : i < (g M[pc]).length) : (M.flatMap g)[xpos g M pc + i]? = (g M[pc])[i]? := by
-  rw [getElem?_xpos g h, if_pos hi]
+  rw [getElem?_xpos g h, ite_eq_left hi]
 
 theorem exists_xpos (g : α → List γ) : ∀ (M : List α) {p : Nat}, p < (M.flatMap g).length →
     ∃ pc, pc < M.length ∧ xpos g M pc ≤ p ∧ p < xpos g M (pc + 1)
@@ -1061,7 +1061,7 @@ theorem flStep_foldl (l : LLabel) : ∀ (xs : List LinstrR) (m : Std.HashMap LLa
           show (List.foldl flStep (if (!m.contains l') = true then (m.insert l' p, p + 1)
             else (m, p + 1)) xs).1[l]? = _
           by_cases hc : m.contains l' = true
-          · rw [if_neg (by simp [hc]), flStep_foldl l xs m (p + 1)]
+          · rw [ite_eq_right (by simp [hc]), flStep_foldl l xs m (p + 1)]
             by_cases hl : l = l'
             · subst hl
               obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp
@@ -1071,8 +1071,8 @@ theorem flStep_foldl (l : LLabel) : ∀ (xs : List LinstrR) (m : Std.HashMap LLa
             · have : JasminLsemLabeled.isLabel l (.Llabel k l') = false := by
                 show (l == l') = false
                 simp [hl]
-              rw [if_neg (by simp [this]), option_map_add_succ]
-          · rw [if_pos (by simpa using hc), flStep_foldl l xs _ (p + 1)]
+              rw [ite_eq_right (by simp [this]), option_map_add_succ]
+          · rw [ite_eq_left (by simpa using hc), flStep_foldl l xs _ (p + 1)]
             by_cases hl : l = l'
             · subst hl
               have hn : m[l]? = none := by
@@ -1081,18 +1081,18 @@ theorem flStep_foldl (l : LLabel) : ∀ (xs : List LinstrR) (m : Std.HashMap LLa
               have hl : JasminLsemLabeled.isLabel l (.Llabel k l) = true := by
                 show (l == l) = true
                 simp
-              rw [Std.HashMap.getElem?_insert_self, hn, if_pos hl]
+              rw [Std.HashMap.getElem?_insert_self, hn, ite_eq_left hl]
               simp only [Option.some_or, Option.none_or, Option.map_some, Nat.zero_add]
             · have : JasminLsemLabeled.isLabel l (.Llabel k l') = false := by
                 show (l == l') = false
                 simp [hl]
               have hb : ¬ (l' = l) := fun h => hl h.symm
-              rw [if_neg (by simp [this]), option_map_add_succ]
-              simp only [Std.HashMap.getElem?_insert, beq_iff_eq, hb, if_false]
+              rw [ite_eq_right (by simp [this]), option_map_add_succ]
+              simp only [Std.HashMap.getElem?_insert, beq_iff_eq, hb, ite_false]
       | _ =>
           show (List.foldl flStep (m, p + 1) xs).1[l]? = _
           rw [flStep_foldl l xs m (p + 1)]
-          rw [if_neg (fun h => by cases h), option_map_add_succ]
+          rw [ite_eq_right (fun h => by cases h), option_map_add_succ]
 
 /-- **Label positions.** `firstLabelPcs` sends a label to the index `findLabel` returns. -/
 theorem firstLabelPcs_eq (w : Array LinstrR) (l : LLabel) :
@@ -1127,9 +1127,9 @@ theorem forIn_label_filter
   | a :: l, S => by
       rw [List.filter_cons]
       cases ha : isLabelR a
-      · rw [if_neg (by simp), List.forIn_cons, h1 a S ha]
+      · rw [ite_eq_right (by simp), List.forIn_cons, h1 a S ha]
         exact forIn_label_filter h1 h2 l S
-      · rw [if_pos rfl, List.forIn_cons, List.forIn_cons]
+      · rw [ite_eq_left rfl, List.forIn_cons, List.forIn_cons]
         rcases h2 a S ha with ⟨v, hv⟩ | ⟨S', hS⟩
         · rw [hv]; rfl
         · rw [hS]
@@ -1156,7 +1156,7 @@ theorem findIdx?_append_of_none {β : Type} (p : β → Bool) :
       (l1 ++ l2).findIdx? p = (l2.findIdx? p).map (· + l1.length)
   | [], l2, _ => by simp
   | a :: l1, l2, h => by
-      rw [List.cons_append, List.findIdx?_cons, if_neg (by simp [h a (List.mem_cons_self ..)]),
+      rw [List.cons_append, List.findIdx?_cons, ite_eq_right (by simp [h a (List.mem_cons_self ..)]),
         findIdx?_append_of_none p l1 l2 (fun x hx => h x (List.mem_cons_of_mem _ hx))]
       cases l2.findIdx? p <;> simp; omega
 
@@ -1176,7 +1176,7 @@ theorem findLabel_expand (lb : LLabel) : ∀ (M : List α),
       · have hl : JasminLsemLabeled.isLabel lb (s a) = false := by
           simp only [Bool.or_eq_false_iff] at hc
           cases h : s a <;> simp_all [JasminLsemLabeled.isLabel, isLabelR]
-        rw [if_neg (by simp [hl]), findIdx?_append_of_none _ _ _ (fun y hy => by
+        rw [ite_eq_right (by simp [hl]), findIdx?_append_of_none _ _ _ (fun y hy => by
           have := h2 a (List.mem_cons_self ..) hc y hy
           simp only [straightR, Bool.and_eq_true, Bool.not_eq_true'] at this
           cases y <;> simp_all [JasminLsemLabeled.isLabel, isLabelR]), ih]
@@ -1199,7 +1199,7 @@ theorem filter_label_expand : ∀ (M : List α),
       rw [List.flatMap_cons, List.filter_append, ih, List.map_cons, List.filter_cons]
       cases hc : (isTermR (s a) || isLabelR (s a))
       · have hl : isLabelR (s a) = false := by simp_all
-        rw [if_neg (by simp [hl])]
+        rw [ite_eq_right (by simp [hl])]
         have : (g a).filter isLabelR = [] := List.filter_eq_nil_iff.mpr fun y hy => by
           have := h2 a (List.mem_cons_self ..) hc y hy
           simp only [straightR, Bool.and_eq_true, Bool.not_eq_true'] at this
@@ -1640,7 +1640,7 @@ theorem blockOfOk_of_build {w : Array LinstrR} {G : CFG} (h : build w = some G) 
   refine ⟨by rw [hbo, hs], fun pc hpc => ?_⟩
   obtain ⟨hn0, hz⟩ := leaderStarts_zero w (by omega)
   have hb : G.blockOf.getD pc 0 = (blockIndex w.size (leaderStarts w))[pc]! := by
-    rw [hbo, Array.getD, dif_pos (by omega), getElem!_pos _ _ (by omega)]
+    rw [hbo, Array.getD, dite_eq_left (by omega), getElem!_pos _ _ (by omega)]
     rfl
   rw [hb]
   generalize hbv : (blockIndex w.size (leaderStarts w))[pc]! = b
@@ -1758,19 +1758,19 @@ theorem ExpandOk.cfgOf (hE : ExpandOk s g M) {G : CFG}
       dsimp only
       rw [hb']
       dsimp only
-      rw [if_pos]
+      rw [ite_eq_left]
       simp only [wf, Bool.and_eq_true, List.all_eq_true, List.mem_range, Bool.not_eq_true'] at hw ⊢
       obtain ⟨⟨⟨⟨h0, hbk⟩, -⟩, hbar⟩, hdup⟩ := hw
       refine ⟨⟨⟨⟨?_, fun k hk => ?_⟩, blockOfOk_of_build hb'⟩, ?_⟩, ?_⟩
       · rw [hsz]
         split
         · rename_i h00
-          rw [if_pos h00] at h0
+          rw [ite_eq_left h00] at h0
           simp only [decide_eq_true_eq, List.size_toArray, List.length_map] at h0 ⊢
           have hM : M = [] := List.length_eq_zero_iff.mp h0
           subst hM; rfl
         · rename_i h00
-          rw [if_neg h00] at h0
+          rw [ite_eq_right h00] at h0
           simp only [decide_eq_true_eq] at h0 ⊢
           rw [hblk 0 (by omega)]
           simp [shiftB, h0, xpos_zero]
@@ -2107,10 +2107,10 @@ theorem dropOk_ownedCheckM_complete_blocks (outs : List String) (B : List (Linst
       ∀ y ∈ (if p.2 then [] else [p.1]), straightR y.1 = true := by
     intro p hp hc y hy
     cases hb : p.2
-    · rw [hb, if_neg (by simp), List.mem_singleton] at hy
+    · rw [hb, ite_eq_right (by simp), List.mem_singleton] at hy
       subst hy
       exact straightR_of_not_ctl hc (hbar _ (List.mem_map_of_mem (List.mem_map_of_mem hp)))
-    · rw [hb, if_pos rfl] at hy; cases hy
+    · rw [hb, ite_eq_left rfl] at hy; cases hy
   have h3 : ∀ pc (h : pc < B.length), isLeader (B.map fun p => p.1.1).toArray pc = true →
       (if B[pc].2 then [] else [B[pc].1]) ≠ [] := by
     intro pc h hL

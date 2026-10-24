@@ -354,12 +354,12 @@ theorem wordEnv_bindTy {bi : Builtins} {fuel : Nat} {ρ : String → Option Stri
   unfold bindTy at hy
   by_cases hyn : y = n
   · subst hyn
-    rw [if_pos rfl] at hy
+    rw [ite_eq_left rfl] at hy
     obtain ⟨a', w, ha', hrun, hw⟩ := specTy_runs (fuel := fuel) hsel htot hΓ _ _ hy
     have huw : u = w := specExpr_denote hsel href _ _ _ _ _ _ _ ha' h hu hrun
     subst huw
     exact ⟨u, Hax.Env.extend_same _ _ _, hw⟩
-  · rw [if_neg hyn] at hy
+  · rw [ite_eq_right hyn] at hy
     split at hy
     · rename_i hp
       have ex : x = env := env_of_pureForm hp h
@@ -519,14 +519,14 @@ theorem total_hax64Builtins {g : String} {τs : List STy} {τ : STy}
         rw [hsem, orElse_none_eq]
         cases uop with
         | not =>
-          simp only [ScalarUn.val, _root_.Hax.u64UnOp, if_pos ha']
+          simp only [ScalarUn.val, _root_.Hax.u64UnOp, ite_eq_left ha']
           exact ⟨_, rfl, _, lt_of_le_of_lt (Nat.sub_le _ _)
             (lt_of_lt_of_le (Nat.sub_lt (Nat.two_pow_pos w) Nat.one_pos) hP), rfl⟩
         | neg =>
-          simp only [ScalarUn.val, _root_.Hax.u64UnOp, if_pos ha']
+          simp only [ScalarUn.val, _root_.Hax.u64UnOp, ite_eq_left ha']
           exact ⟨_, rfl, _, Nat.mod_lt _ (by decide), rfl⟩
         | cast =>
-          simp only [ScalarUn.val, if_pos ha'.1]
+          simp only [ScalarUn.val, ite_eq_left ha'.1]
           exact ⟨_, rfl, _, lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos w)) hP, rfl⟩
         | incc => exact absurd rfl hinc
     · rw [hc] at h
@@ -749,9 +749,9 @@ theorem desugarRem_leaf_runs {bi : Builtins} {fuel : Nat} {κ : String → Optio
     (hs : denote' bi fuel e env = (.val v, e₁)) :
     denote' bi fuel (if pureForm e then remExpr κ e else e) env = (.val v, e₁) := by
   by_cases hp : pureForm e = true
-  · rw [if_pos hp]
+  · rw [ite_eq_left hp]
     exact remExpr_runs hsel hw hT hR e _ _ _ hp hk hs
-  · rw [if_neg hp]
+  · rw [ite_eq_right hp]
     exact hs
 
 /-- **The remainder pass runs.** At builtins with `SelectSpec`, `WordSpec`, `WordTotal`

@@ -112,16 +112,16 @@ theorem logicTauG_regName {k : Nat} (hk : k ≠ sl) :
     logicTauG d sl out i0 i1 (regName k) = loopReg d k := by
   have h7 : regName k ≠ regName sl := fun h => hk (JasminLsemSimulation.regName_injective h)
   have hex : ∃ k', regName k = regName k' := ⟨k, rfl⟩
-  rw [logicTauG, if_neg (JasminLsemSimulation.regName_ne_argName k 3),
-    if_neg (JasminLsemSimulation.regName_ne_argName k 2),
-    if_neg (JasminLsemSimulation.regName_ne_argName k 1),
-    if_neg (JasminLsemSimulation.regName_ne_argName k 0), if_neg h7, dif_pos hex,
+  rw [logicTauG, ite_eq_right (JasminLsemSimulation.regName_ne_argName k 3),
+    ite_eq_right (JasminLsemSimulation.regName_ne_argName k 2),
+    ite_eq_right (JasminLsemSimulation.regName_ne_argName k 1),
+    ite_eq_right (JasminLsemSimulation.regName_ne_argName k 0), ite_eq_right h7, dite_eq_left hex,
     JasminLsemSimulation.regName_injective hex.choose_spec.symm]
 
 theorem logicTauG_other {r : String} (h3' : r ≠ argName 3) (h2' : r ≠ argName 2)
     (h1' : r ≠ argName 1) (h0' : r ≠ argName 0) (h3 : ∀ k, r ≠ regName k) :
     logicTauG d sl out i0 i1 r = r := by
-  rw [logicTauG, if_neg h3', if_neg h2', if_neg h1', if_neg h0', if_neg (h3 sl), dif_neg]
+  rw [logicTauG, ite_eq_right h3', ite_eq_right h2', ite_eq_right h1', ite_eq_right h0', ite_eq_right (h3 sl), dite_eq_right]
   rintro ⟨k, rfl⟩
   exact h3 k rfl
 
@@ -676,16 +676,16 @@ theorem logicSigma_argName0 : logicSigma d (argName 0) = argName 2 := by
 
 theorem logicSigma_regName (k : Nat) : logicSigma d (regName k) = loopReg d k := by
   have hex : ∃ k', regName k = regName k' := ⟨k, rfl⟩
-  rw [logicSigma, if_neg (JasminLsemSimulation.regName_ne_argName k 3),
-    if_neg (JasminLsemSimulation.regName_ne_argName k 2),
-    if_neg (JasminLsemSimulation.regName_ne_argName k 1),
-    if_neg (JasminLsemSimulation.regName_ne_argName k 0), dif_pos hex,
+  rw [logicSigma, ite_eq_right (JasminLsemSimulation.regName_ne_argName k 3),
+    ite_eq_right (JasminLsemSimulation.regName_ne_argName k 2),
+    ite_eq_right (JasminLsemSimulation.regName_ne_argName k 1),
+    ite_eq_right (JasminLsemSimulation.regName_ne_argName k 0), dite_eq_left hex,
     JasminLsemSimulation.regName_injective hex.choose_spec.symm]
 
 theorem logicSigma_other {r : String} (h3' : r ≠ argName 3) (h2' : r ≠ argName 2)
     (h1' : r ≠ argName 1) (h0' : r ≠ argName 0) (h3 : ∀ k, r ≠ regName k) :
     logicSigma d r = r := by
-  rw [logicSigma, if_neg h3', if_neg h2', if_neg h1', if_neg h0', dif_neg]
+  rw [logicSigma, ite_eq_right h3', ite_eq_right h2', ite_eq_right h1', ite_eq_right h0', dite_eq_right]
   rintro ⟨k, rfl⟩
   exact h3 k rfl
 

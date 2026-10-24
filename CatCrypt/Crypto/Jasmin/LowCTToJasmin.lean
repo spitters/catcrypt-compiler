@@ -2533,14 +2533,14 @@ lemma rustCallSimulates
       intro x t v hxTower
       by_cases hx : x = dest.locVar
       · subst hx
-        simp only [locatedUpdate, rsSetTower, BEq.rfl, if_true] at hxTower
+        simp only [locatedUpdate, rsSetTower, BEq.rfl, ite_true] at hxTower
         -- hxTower : some ⟨dest.locDst, leafSpec ...⟩ = some ⟨t, v⟩
         obtain ⟨ht, hv⟩ := Sigma.mk.inj (Option.some.inj hxTower)
         subst ht
         simp at hv
         subst hv
         exact hDest
-      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, if_false] at hxTower
+      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, ite_false] at hxTower
         rw [hOtherTower x t hx]
         exact hInv x t v hxTower
     · -- ScalarInv after call (call doesn't touch scalars)
@@ -2617,13 +2617,13 @@ lemma rustLimbStoreSimulates
     · intro x t vx hxTower
       by_cases hx : x = loc.locVar
       · subst hx
-        simp only [locatedUpdate, rsSetTower, BEq.rfl, if_true] at hxTower
+        simp only [locatedUpdate, rsSetTower, BEq.rfl, ite_true] at hxTower
         obtain ⟨ht, hv⟩ := Sigma.mk.inj (Option.some.inj hxTower)
         subst ht
         simp at hv
         subst hv
         exact hDest
-      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, if_false] at hxTower
+      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, ite_false] at hxTower
         rw [hOtherTower x t hx]
         exact hInv x t vx hxTower
     · intro x
@@ -2705,13 +2705,13 @@ lemma rustCloneCallSimulates
       simp only [rsSetTower, beq_iff_eq] at hxTower
       by_cases hx : x = cloneVar
       · subst hx
-        simp only [if_true] at hxTower
+        simp only [ite_true] at hxTower
         obtain ⟨ht, hv⟩ := Sigma.mk.inj (Option.some.inj hxTower)
         subst ht
         simp at hv
         subst hv
         exact hCloneDest
-      · simp only [hx, if_false] at hxTower
+      · simp only [hx, ite_false] at hxTower
         rw [hCloneOther x t hx]
         exact hInv x t v hxTower
     have hSInv1 : ScalarInv rsClone heap1 sid := by
@@ -2901,7 +2901,7 @@ lemma rustSelectSimulates
     · intro x t v hxTower
       by_cases hx : x = dst.locVar
       · subst hx
-        simp only [locatedUpdate, rsSetTower, BEq.rfl, if_true] at hxTower
+        simp only [locatedUpdate, rsSetTower, BEq.rfl, ite_true] at hxTower
         obtain ⟨ht, hv⟩ := Sigma.mk.inj (Option.some.inj hxTower)
         subst ht; simp at hv; subst hv
         rw [hDestVal]
@@ -2910,7 +2910,7 @@ lemma rustSelectSimulates
         -- src0V = srcV (hSrcEq); h0 = hSrc0Eq (proof irrelevance on Prop).
         subst hSrcEq
         rfl
-      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, if_false] at hxTower
+      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, ite_false] at hxTower
         rw [hOtherTower x t hx]
         exact hInv x t v hxTower
     · intro x; rw [hScalarEq x]; exact hSInv x
@@ -2924,14 +2924,14 @@ lemma rustSelectSimulates
     · intro x t v' hxTower
       by_cases hx : x = dst.locVar
       · subst hx
-        simp only [locatedUpdate, rsSetTower, BEq.rfl, if_true] at hxTower
+        simp only [locatedUpdate, rsSetTower, BEq.rfl, ite_true] at hxTower
         obtain ⟨ht, hv⟩ := Sigma.mk.inj (Option.some.inj hxTower)
         subst ht; simp at hv; subst hv
         rw [hDestVal]
         simp [hSelV, hSelne]
         subst hSrcEq
         rfl
-      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, if_false] at hxTower
+      · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, ite_false] at hxTower
         rw [hOtherTower x t hx]
         exact hInv x t v' hxTower
     · intro x; rw [hScalarEq x]; exact hSInv x
@@ -3325,13 +3325,13 @@ lemma rustCloneCallSimulates_newSid
       simp only [rsSetTower, beq_iff_eq] at hxTower
       by_cases hx : x = cloneVar
       · subst hx
-        simp only [if_true] at hxTower
+        simp only [ite_true] at hxTower
         obtain ⟨ht, hv⟩ := Sigma.mk.inj (Option.some.inj hxTower)
         subst ht
         simp at hv
         subst hv
         exact hCloneDest
-      · simp only [hx, if_false] at hxTower
+      · simp only [hx, ite_false] at hxTower
         rw [hCloneOther x t hx]
         exact hInv x t v hxTower
     have hSInv1 : ScalarInv rsClone heap1 sid := by

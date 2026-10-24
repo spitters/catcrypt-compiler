@@ -346,7 +346,7 @@ theorem rangeGo_ctRel (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) (fuel 
       rw [← hc] at ha₂ hb₂
       have harm : a₁.2 = a₂.2 ∧ b₁.2 = b₂.2 ∧ b₁.1 = a₁.1 ∧ b₂.1 = a₂.1 := by
         cases hcb : HasBoolBit.toBool (d := jasminDialect) (cond.lookup V₁) <;>
-          simp only [hcb, if_true, if_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
+          simp only [hcb, ite_true, ite_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
         · have ha := NFProg.leakRun_prefix L fuel els _ _ a₁ a₂ q₁.2 q₂.2 ha₁ ha₂ he'
           exact ⟨ha, rangeGo_ctRel hq fuel A len els V₁ V₂ hlen hA₁ hA₂ a₁ a₂ b₁ b₂ ha₁ ha₂
             hb₁ hb₂ ha, rangeGo_fst_eq L fuel hlen hA₁ ha₁ hb₁,

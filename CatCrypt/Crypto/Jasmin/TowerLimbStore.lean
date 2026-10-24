@@ -72,8 +72,8 @@ theorem rustValByte_towerLimbSet_inside {t : TowerType} (v : RustVal t)
     (i k : Nat) (w : BitVec 64) (hk : k < 8) (hfit : i * 8 + 8 ≤ t.storageBytes) :
     rustValByte (towerLimbSet v i w) (i * 8 + k) = limbByte w k := by
   have hlt : i * 8 + k < t.storageBytes := by omega
-  simp only [rustValByte, towerLimbSet, dif_pos hlt]
-  rw [if_pos (by omega)]
+  simp only [rustValByte, towerLimbSet, dite_eq_left hlt]
+  rw [ite_eq_left (by omega)]
   congr 1
   omega
 
@@ -83,7 +83,7 @@ theorem rustValByte_towerLimbSet_outside {t : TowerType} (v : RustVal t)
     rustValByte (towerLimbSet v i w) m = rustValByte v m := by
   simp only [rustValByte, towerLimbSet]
   split
-  · rw [if_neg (by omega)]
+  · rw [ite_eq_right (by omega)]
   · rfl
 
 /-- The written limb reads back: the AUCurves `nth_set_nth_same`. -/

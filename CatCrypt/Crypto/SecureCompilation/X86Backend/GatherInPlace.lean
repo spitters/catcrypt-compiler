@@ -220,7 +220,7 @@ theorem lower_or64_inplace (dst s1 : String) :
   show lowerAluJ2InPlace dst "OR:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
     show stripWidthTag "OR:64" = "OR" from by decide +kernel, lowerShiftRegJ_OR,
-    Option.none_or, lowerAluJ, Option.map_some, if_pos]
+    Option.none_or, lowerAluJ, Option.map_some, ite_eq_left]
 
 /-- In-place `XOR:64 [d, s1]` lowers to just `[xor_ d s1]`. -/
 theorem lower_xor64_inplace (dst s1 : String) :
@@ -229,7 +229,7 @@ theorem lower_xor64_inplace (dst s1 : String) :
   show lowerAluJ2InPlace dst "XOR:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
     show stripWidthTag "XOR:64" = "XOR" from by decide +kernel, lowerShiftRegJ_XOR,
-    Option.none_or, lowerAluJ, Option.map_some, if_pos]
+    Option.none_or, lowerAluJ, Option.map_some, ite_eq_left]
 
 /-- In-place `ADD:64 [d, s1]` lowers to just `[add d s1]`. -/
 theorem lower_add64_inplace (dst s1 : String) :
@@ -238,7 +238,7 @@ theorem lower_add64_inplace (dst s1 : String) :
   show lowerAluJ2InPlace dst "ADD:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
     show stripWidthTag "ADD:64" = "ADD" from by decide +kernel, lowerShiftRegJ_ADD,
-    Option.none_or, lowerAluJ, Option.map_some, if_pos]
+    Option.none_or, lowerAluJ, Option.map_some, ite_eq_left]
 
 /-- In-place `SUB:64 [d, s1]` lowers to just `[sub d s1]`. -/
 theorem lower_sub64_inplace (dst s1 : String) :
@@ -247,7 +247,7 @@ theorem lower_sub64_inplace (dst s1 : String) :
   show lowerAluJ2InPlace dst "SUB:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
     show stripWidthTag "SUB:64" = "SUB" from by decide +kernel, lowerShiftRegJ_SUB,
-    Option.none_or, lowerAluJ, Option.map_some, if_pos]
+    Option.none_or, lowerAluJ, Option.map_some, ite_eq_left]
 
 /-- In-place `AND:64 [d, s1]` lowers to just `[and_ d s1]`. -/
 theorem lower_and64_inplace (dst s1 : String) :
@@ -256,7 +256,7 @@ theorem lower_and64_inplace (dst s1 : String) :
   show lowerAluJ2InPlace dst "AND:64" (lowerJOperand (.reg dst)) (lowerJOperand (.reg s1)) = _
   simp only [lowerAluJ2InPlace, lowerJOperand,
     show stripWidthTag "AND:64" = "AND" from by decide +kernel, lowerShiftRegJ_AND,
-    Option.none_or, lowerAluJ, Option.map_some, if_pos]
+    Option.none_or, lowerAluJ, Option.map_some, ite_eq_left]
 
 /-! ### 2b. The register-count shifts: one BMI2 instruction, no leading `mov`
 

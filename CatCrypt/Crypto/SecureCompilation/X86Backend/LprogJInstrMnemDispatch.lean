@@ -100,7 +100,7 @@ theorem dispatch_alu_one
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, halu, htag,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-- **ALU/`MOV` two-source (dst self-source) dispatch.** The same reduction on the
     two-source export form `Lopn [.reg dn] "<MNEM>:64" [.reg d0, .reg sn]` (`d0` the dst
@@ -116,7 +116,7 @@ theorem dispatch_alu_two
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg d0, .reg sn]) qsaveB
       = encTwoAddr frame spillW 1 op (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, halu, htag,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-- **`LOAD`/`STORE` dispatch (width-`0`, untagged).** The memory mnemonics carry no
     `:64` tag, so `mnemWidth = 32` and `w = 0`; the dispatch reduces to
@@ -132,7 +132,7 @@ theorem dispatch_mem
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
       = encTwoAddr frame spillW 0 op (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, halu, htag,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-! ### §1a. The concrete dispatch lemmas (closed mnemonics, `decide +kernel` guards)
 

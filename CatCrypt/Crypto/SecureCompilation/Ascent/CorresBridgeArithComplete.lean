@@ -55,7 +55,7 @@ theorem upd_tmpName_nonTmp (env : SEnvScalar) (cnt : Nat) (val : BitVec 64)
     (v : String) (hv : ¬ isTmpName v) :
     (env.upd (tmpName cnt) (t := .sword 64) val) v = env v := by
   have hne : v ≠ tmpName cnt := fun heq => hv ⟨cnt, heq⟩
-  simp only [SEnvScalar.upd, if_neg hne]
+  simp only [SEnvScalar.upd, ite_eq_right hne]
 
 /-- A single `binNode` step binds a fresh temporary `tmpName cnt`, so it leaves
     every non-temp name unchanged. -/
@@ -267,7 +267,7 @@ theorem arith_middle_tie_nonTmp (p : ArithSrc) (st : JState 64) (hb : p.b ≠ p.
         simp only [hlow, Option.some.injEq] at hsem2
         rw [← hsem2]
         have hv2 := semLowerSExpr_preserves_nonTmp (regEnv st) 0 p.toSExpr env2 nm cnt' hlow v hv
-        simp only [SEnvScalar.upd, if_neg hvd, hv2, regEnv,
+        simp only [SEnvScalar.upd, ite_eq_right hvd, hv2, regEnv,
           runBlock_lowerArith_id_other p st v hvd]
 
 /-! ## Deliverable 3 — the block-level non-temp tie (`lowerSeq`) -/
@@ -317,9 +317,9 @@ theorem arith_step_tie_gen (p : ArithSrc) (st : JState 64) (env : SEnvScalar)
         intro v hv
         by_cases hvd : v = dst
         · subst hvd
-          simp only [SEnvScalar.upd, if_true, hval]
+          simp only [SEnvScalar.upd, ite_true, hval]
         · have hvt : v ≠ tmpName 0 := fun hh => hv ⟨0, hh⟩
-          simp only [SEnvScalar.upd, if_neg hvd, if_neg hvt, hagree v hv, hoth v hvd]
+          simp only [SEnvScalar.upd, ite_eq_right hvd, ite_eq_right hvt, hagree v hv, hoth v hvd]
 
 /-- Generalized block tie, threaded over an arbitrary starting env that agrees
     with `regEnv st` on non-temp names.  Induction on `ps`: the head statement

@@ -138,7 +138,7 @@ theorem div_i_counterexample :
   refine not_rcompOk_of ⟨BitVec.sdiv ((-7)#i8).bv (2#i8).bv⟩ ?_ ?_
   · show IScalar.div _ _ = _
     unfold IScalar.div
-    rw [if_pos (by decide +kernel), if_pos (by decide +kernel)]
+    rw [ite_eq_left (by decide +kernel), ite_eq_left (by decide +kernel)]
   · show ¬ (_ : Int) = _
     decide +kernel
 
@@ -162,7 +162,7 @@ theorem rem_i_counterexample :
   refine not_rcompOk_of ⟨BitVec.srem ((-7)#i8).bv (2#i8).bv⟩ ?_ ?_
   · show IScalar.rem _ _ = _
     unfold IScalar.rem
-    rw [if_pos (by decide +kernel), if_pos (by decide +kernel)]
+    rw [ite_eq_left (by decide +kernel), ite_eq_left (by decide +kernel)]
   · show ¬ (_ : Int) = _
     decide +kernel
 

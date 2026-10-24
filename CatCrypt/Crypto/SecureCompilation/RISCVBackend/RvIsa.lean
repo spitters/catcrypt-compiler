@@ -418,8 +418,8 @@ theorem get_set_rvRegs (b : RState64) {d : String} (hd : d ∈ rvRegs) (v : BitV
   have hdz := ne_zero_of_rvRegs hd
   have hrz := ne_zero_of_rvRegs hr
   by_cases hrd : r = d
-  · subst hrd; simp only [RState64.get, RState64.set, hdz, if_false, if_true]
-  · simp only [RState64.get, RState64.set, hdz, hrz, if_false, hrd]
+  · subst hrd; simp only [RState64.get, RState64.set, hdz, ite_false, ite_true]
+  · simp only [RState64.get, RState64.set, hdz, hrz, ite_false, hrd]
 
 /-- **The one-step simulation of the selection**: from related states, the `rvIsa` step of
     a selected instruction succeeds, and the result is related to the `RInst64` step of the
@@ -439,7 +439,7 @@ theorem rvSel_step (P : LprogM) {i : LinstrRM} {ri : RInst64} (h : rvSel i = som
       base := (s.prog.base.setReg d (o.apply (b.get a) (b.get c))).nextPc } },
       ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · rw [rvIsa_step]
-      simp only [subsetStep, isCtl, hok, Bool.false_eq_true, if_false, if_true]
+      simp only [subsetStep, isCtl, hok, Bool.false_eq_true, ite_false, ite_true]
       exact coreStep_binop P o d a c s _ _ (hrel.getW ha) (hrel.getW hc)
     · refine RegRel_setReg hrel d _ (fun r hr => ?_)
       rcases ho with rfl | rfl | rfl | rfl | rfl <;>
@@ -453,7 +453,7 @@ theorem rvSel_step (P : LprogM) {i : LinstrRM} {ri : RInst64} (h : rvSel i = som
     refine ⟨{ s with prog := { s.prog with base := (s.prog.base.setReg d (b.get a)).nextPc } },
       ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · rw [rvIsa_step]
-      simp only [subsetStep, isCtl, hok, Bool.false_eq_true, if_false, if_true]
+      simp only [subsetStep, isCtl, hok, Bool.false_eq_true, ite_false, ite_true]
       exact coreStep_mov P d a tag s _ (hrel a ha)
     · exact RegRel_setReg hrel d _ (fun r hr => by simp only [evalRInst64, get_set_rvRegs b hd _ hr])
 
@@ -647,7 +647,7 @@ theorem rvIsa_step_core (P : LprogM) (d : List LOperand) (opn : String) (srcs : 
     (tag : MemTag) (s : LstateMF) (h : rvBases.contains (stripWidthTag opn) = true) :
     rvIsa.step P (.Lopn d opn srcs, tag) s = coreStep P (.Lopn d opn srcs, tag) s := by
   rw [rvIsa_step]
-  simp only [subsetStep, isCtl, mnemOk, h, Bool.false_eq_true, if_false, if_true]
+  simp only [subsetStep, isCtl, mnemOk, h, Bool.false_eq_true, ite_false, ite_true]
 
 /-- **The one-step simulation of an array load**: the `rvIsa` step of `LOADIDX` and the
     machine run of the address computation and `LD` preserve the register relation on

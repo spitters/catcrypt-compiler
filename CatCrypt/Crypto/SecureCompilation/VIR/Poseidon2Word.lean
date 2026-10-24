@@ -456,7 +456,7 @@ theorem hget_lane {w : ℕ} (g : ℕ → BitVec w) {n j : ℕ} (hj : j ≤ n) :
   rw [hget_zvals]
   have := laneVarG_lookup (Rw w) g n j 0 hj
   rw [Nat.zero_add] at this
-  simp only [rdT, rd, Bool.false_eq_true, if_false]
+  simp only [rdT, rd, Bool.false_eq_true, ite_false]
   rw [this]
 
 /-- Lane `j` of the twenty-lane context. -/
@@ -590,7 +590,7 @@ theorem valsIn_lanes {w B n : ℕ} (g : ℕ → BitVec w) (hg : ∀ j < n, (g j)
     ValsIn false (hvConst (0, (B : ℤ)) (Ctxs w n)) (lanesVal (Rw w) g n 0) := by
   refine (valsIn_const false w (0, (B : ℤ)) n _).mpr fun j hj => ?_
   rw [NegacyclicNttTemplate.hvGetG_lanesVal (Rw w) (0 : BitVec w) g n 0 j hj, Nat.zero_add]
-  simp only [rd, Bool.false_eq_true, if_false]
+  simp only [rd, Bool.false_eq_true, ite_false]
   exact ⟨Int.natCast_nonneg _, by exact_mod_cast hg j hj⟩
 
 /-- On lanes at most `inB`, the output of `extBlk` is its integer semantics and is at most
@@ -604,7 +604,7 @@ theorem extBlk_word {w p : ℕ} (L : LinRed) (h : L.extOk w p = true) (g : ℕ �
   simp only [LinRed.extOk, Bool.and_eq_true] at h
   obtain ⟨h1, -, h3⟩ := denote_eq_denoteZ_of_boundsOk false _ _ _ h.2 _ (valsIn_lanes g hg)
   rw [extBlk_denoteZ] at h1
-  simp only [rd, Bool.false_eq_true, if_false] at h1 h3
+  simp only [rd, Bool.false_eq_true, ite_false] at h1 h3
   exact ⟨h1, by exact_mod_cast h3⟩
 
 /-- On a diagonal constant at most `p − 1` and lanes at most `inB`, the output of `intBlk`
@@ -623,7 +623,7 @@ theorem intBlk_word {w p : ℕ} (L : LinRed) (h : L.intOk w p = true) (d x : Bit
       valsIn_lanes g hg⟩
   obtain ⟨h1, -, h3⟩ := denote_eq_denoteZ_of_boundsOk false _ _ _ h.2 _ hV
   rw [intBlk_denoteZ] at h1
-  simp only [rd, Bool.false_eq_true, if_false] at h1 h3
+  simp only [rd, Bool.false_eq_true, ite_false] at h1 h3
   exact ⟨h1, by exact_mod_cast h3⟩
 
 /-! ## 5. The layers on sixteen lanes -/
@@ -971,7 +971,7 @@ theorem extRcBlk_word {w p : ℕ} (R : RcRed) (h : R.extOk w p = true) (c : BitV
     ⟨⟨by simp [rd], by simp [rd]; omega⟩, valsIn_lanes g hg⟩
   obtain ⟨h1, -, h3⟩ := denote_eq_denoteZ_of_boundsOk false _ _ _ h.2 _ hV
   rw [extRcBlk_denoteZ] at h1
-  simp only [rd, Bool.false_eq_true, if_false] at h1 h3
+  simp only [rd, Bool.false_eq_true, ite_false] at h1 h3
   exact ⟨h1, by exact_mod_cast h3⟩
 
 /-- On a constant and a diagonal constant at most `p − 1` and lanes at most `inB`, the
@@ -993,7 +993,7 @@ theorem intRcBlk_word {w p : ℕ} (R : RcRed) (h : R.intOk w p = true) (c d x : 
       ⟨by simp [rd], by simp [rd]; omega⟩, valsIn_lanes g hg⟩
   obtain ⟨h1, -, h3⟩ := denote_eq_denoteZ_of_boundsOk false _ _ _ h.2 _ hV
   rw [intRcBlk_denoteZ] at h1
-  simp only [rd, Bool.false_eq_true, if_false] at h1 h3
+  simp only [rd, Bool.false_eq_true, ite_false] at h1 h3
   exact ⟨h1, by exact_mod_cast h3⟩
 
 /-! ## 8. The layers with folded constants on sixteen lanes -/
@@ -1226,14 +1226,14 @@ theorem sboxLayerProg_rep {w : ℕ} (P : Params) (M : ChainMul w P.p) (bits : Li
   rw [sboxLayerProg, laneMapW_denote, hvGetG_denoteN (Rw w) (0 : BitVec w) 16 _ _ i i.isLt,
     sboxLane]
   by_cases hc : full = true ∨ i.val = 0
-  · rw [if_pos hc, if_pos hc, Com.denote_rename, pullV_homOf]
+  · rw [ite_eq_left hc, ite_eq_left hc, Com.denote_rename, pullV_homOf]
     have hx : (MultiReturnCom.lookupVars (.cons (ln w i) .nil) W : Valuation (C1 w))
         = .cons (lane W i) .nil := by
       rw [← hl]
       rfl
     rw [hx]
     exact sboxProg_sbox P M bits hd hκ _ (hW i).1 (hW i).2
-  · rw [if_neg hc, if_neg hc]
+  · rw [ite_eq_right hc, ite_eq_right hc]
     show (bv (ln w i) W).toNat ≤ M.bound ∧ ((bv (ln w i) W).toNat : ZMod P.p) = u i * M.κ
     rw [hl]
     exact hW i

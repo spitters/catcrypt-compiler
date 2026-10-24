@@ -225,11 +225,11 @@ theorem EnvW.extend {Γ : TyEnv} {env : Env} {n : String} {v : Value} {τ : ImpT
   unfold Env.extend
   split
   · rename_i hxn
-    rw [if_pos hxn] at hx
+    rw [ite_eq_left hxn] at hx
     cases hx
     exact ⟨v, rfl, hv⟩
   · rename_i hxn
-    rw [if_neg hxn] at hx
+    rw [ite_eq_right hxn] at hx
     exact h x τ' hx
 
 /-- `Γ.extend n τ` extends `Γ` when `Γ` binds `n` at most at `τ`. -/
@@ -447,8 +447,8 @@ theorem denoteWhile'_eq (cond body : ImpExpr) :
         (pure (.val .unit))) := by
   rw [denoteWhile']
   by_cases h : fuel = 0
-  · rw [if_pos h, if_pos h]
-  · rw [if_neg h, if_neg h]
+  · rw [ite_eq_left h, ite_eq_left h]
+  · rw [ite_eq_right h, ite_eq_right h]
     congr 1
     funext o
     rcases o with v | _ | _ | _ | _
@@ -465,8 +465,8 @@ theorem denoteWhile'Return_eq (cond body : ImpExpr) :
         (pure (.val .unit))) := by
   rw [denoteWhile'Return]
   by_cases h : fuel = 0
-  · rw [if_pos h, if_pos h]
-  · rw [if_neg h, if_neg h]
+  · rw [ite_eq_left h, ite_eq_left h]
+  · rw [ite_eq_right h, ite_eq_right h]
     congr 1
     funext o
     rcases o with v | _ | _ | _ | _
@@ -590,14 +590,14 @@ theorem forLoop_run (hW : NoCF W) {τi σb : ImpType} {var : String} {body : Imp
     intro lo hi env henv
     rw [denoteForLoop'_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_pos rfl]; exact ⟨trivial, henv⟩
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_left rfl]; exact ⟨trivial, henv⟩
   | succ f ih =>
     intro lo hi env henv
     rw [denoteForLoop'_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_neg (Nat.succ_ne_zero f)]
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_right (Nat.succ_ne_zero f)]
       simp only [stateM_bind_apply, stateM_modify_apply]
       obtain ⟨ho, hs⟩ := hb (f + 1) _ (henv.extend (n := var) (hint lo))
       exact loopThen_run hW ho (hs.mono hle) (ih (lo + 1) hi _ (hs.mono hle))
@@ -613,14 +613,14 @@ theorem forLoopRev_run (hW : NoCF W) {τi σb : ImpType} {var : String} {body : 
     intro lo hi env henv
     rw [denoteForLoopRev'_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_pos rfl]; exact ⟨trivial, henv⟩
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_left rfl]; exact ⟨trivial, henv⟩
   | succ f ih =>
     intro lo hi env henv
     rw [denoteForLoopRev'_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_neg (Nat.succ_ne_zero f)]
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_right (Nat.succ_ne_zero f)]
       simp only [stateM_bind_apply, stateM_modify_apply]
       obtain ⟨ho, hs⟩ := hb (f + 1) _ (henv.extend (n := var) (hint (hi - 1)))
       exact loopThen_run hW ho (hs.mono hle) (ih lo (hi - 1) _ (hs.mono hle))
@@ -636,14 +636,14 @@ theorem forLoopReturn_run (hW : NoCF W) {τi σb : ImpType} {var : String} {body
     intro lo hi env henv
     rw [denoteForLoop'Return_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_pos rfl]; exact ⟨trivial, henv⟩
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_left rfl]; exact ⟨trivial, henv⟩
   | succ f ih =>
     intro lo hi env henv
     rw [denoteForLoop'Return_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_neg (Nat.succ_ne_zero f)]
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_right (Nat.succ_ne_zero f)]
       simp only [stateM_bind_apply, stateM_modify_apply]
       obtain ⟨ho, hs⟩ := hb (f + 1) _ (henv.extend (n := var) (hint lo))
       exact loopRetThen_run hW ho (hs.mono hle) (ih (lo + 1) hi _ (hs.mono hle))
@@ -659,14 +659,14 @@ theorem forLoopRevReturn_run (hW : NoCF W) {τi σb : ImpType} {var : String} {b
     intro lo hi env henv
     rw [denoteForLoopRev'Return_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_pos rfl]; exact ⟨trivial, henv⟩
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_left rfl]; exact ⟨trivial, henv⟩
   | succ f ih =>
     intro lo hi env henv
     rw [denoteForLoopRev'Return_eq]
     by_cases h : lo ≥ hi
-    · rw [if_pos h]; exact ⟨Or.inl hunit, henv⟩
-    · rw [if_neg h, if_neg (Nat.succ_ne_zero f)]
+    · rw [ite_eq_left h]; exact ⟨Or.inl hunit, henv⟩
+    · rw [ite_eq_right h, ite_eq_right (Nat.succ_ne_zero f)]
       simp only [stateM_bind_apply, stateM_modify_apply]
       obtain ⟨ho, hs⟩ := hb (f + 1) _ (henv.extend (n := var) (hint (hi - 1)))
       exact loopRetThen_run hW ho (hs.mono hle) (ih lo (hi - 1) _ (hs.mono hle))
@@ -678,11 +678,11 @@ theorem whileLoop_run (hW : NoCF W) {σc σb : ImpType} {cond body : ImpExpr}
   induction fuel with
   | zero =>
     intro env henv
-    rw [denoteWhile'_eq, if_pos rfl]
+    rw [denoteWhile'_eq, ite_eq_left rfl]
     exact ⟨trivial, henv⟩
   | succ f ih =>
     intro env henv
-    rw [denoteWhile'_eq, if_neg (Nat.succ_ne_zero f), stateM_bind_apply]
+    rw [denoteWhile'_eq, ite_eq_right (Nat.succ_ne_zero f), stateM_bind_apply]
     obtain ⟨ho, hs⟩ := hc (f + 1) env henv
     refine cfThen_run hW ho hs fun w _ => ?_
     cases w with
@@ -702,11 +702,11 @@ theorem whileLoopReturn_run (hW : NoCF W) {σc σb : ImpType} {cond body : ImpEx
   induction fuel with
   | zero =>
     intro env henv
-    rw [denoteWhile'Return_eq, if_pos rfl]
+    rw [denoteWhile'Return_eq, ite_eq_left rfl]
     exact ⟨trivial, henv⟩
   | succ f ih =>
     intro env henv
-    rw [denoteWhile'Return_eq, if_neg (Nat.succ_ne_zero f), stateM_bind_apply]
+    rw [denoteWhile'Return_eq, ite_eq_right (Nat.succ_ne_zero f), stateM_bind_apply]
     obtain ⟨ho, hs⟩ := hc (f + 1) env henv
     refine cfThen_run hW ho hs fun w _ => ?_
     cases w with

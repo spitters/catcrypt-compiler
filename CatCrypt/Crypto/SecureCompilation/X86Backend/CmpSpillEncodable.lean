@@ -108,7 +108,7 @@ theorem encodableLinstrR_spillCmp (frame spillW qsaveB : Nat) {opn d : String} (
       show twoByteOpcode "CMP" = none from by decide +kernel,
       show ("CMP" == "STOREIDX") = false from by decide +kernel,
       show ("CMP" == "CMP") = true from by decide +kernel,
-      Bool.false_eq_true, if_false, if_true]
+      Bool.false_eq_true, ite_false, ite_true]
     cases s <;> simp [encImmOp, hq, hg]
   simp [encodableLinstrR, hc, encodeLinstrR, he]
 

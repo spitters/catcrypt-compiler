@@ -752,7 +752,7 @@ theorem execInstrPlus_preserves_reg (i : InstrR) (s s' : BignumState) (r : Strin
       simp only [InstrR.regWrites, List.mem_singleton] at h_pres
       obtain ⟨w, rfl⟩ := execInstrPlus_Cassgn_Lvar_form _ _ _ _ _ _ h_exec
       show (if r = v.var.vname then w else s.regs r) = s.regs r
-      exact if_neg h_pres
+      exact ite_eq_right h_pres
     | Lmem ws base off =>
       cases ws with
       | U64 =>
@@ -1566,7 +1566,7 @@ theorem execInstr_preserves_reg (i : InstrR) (s s' : BignumState) (r : String)
       simp only [InstrR.regWrites, List.mem_singleton] at h_pres
       obtain ⟨w, rfl⟩ := execInstr_Cassgn_Lvar_form _ _ _ _ _ _ h_exec
       show (if r = v.var.vname then w else s.regs r) = s.regs r
-      exact if_neg h_pres
+      exact ite_eq_right h_pres
     | Lmem ws base off =>
       cases ws with
       | U64 =>
@@ -2023,7 +2023,7 @@ theorem bignumExecFuel_preserves_reg_aux
       simp only at h_exec
       -- chosen branch
       by_cases hc : condV != 0
-      · rw [if_pos hc] at h_exec
+      · rw [ite_eq_left hc] at h_exec
         rcases h_inner : bignumExecFuel registry fuel ct s with _ | s_mid
         · rw [h_inner] at h_exec; cases h_exec
         · rw [h_inner] at h_exec
@@ -2034,7 +2034,7 @@ theorem bignumExecFuel_preserves_reg_aux
             bignumExecFuel_preserves_reg_aux registry (fuel + 1) rest r h_tail
               s_mid s' h_exec
           rw [h_tail_pres, h_inner_pres]
-      · rw [if_neg hc] at h_exec
+      · rw [ite_eq_right hc] at h_exec
         rcases h_inner : bignumExecFuel registry fuel ce s with _ | s_mid
         · rw [h_inner] at h_exec; cases h_exec
         · rw [h_inner] at h_exec
@@ -2584,7 +2584,7 @@ theorem bignumExecFuel_preserves_mem_aux
     · rw [h_cond] at h_exec
       simp only at h_exec
       by_cases hc : condV != 0
-      · rw [if_pos hc] at h_exec
+      · rw [ite_eq_left hc] at h_exec
         rcases h_inner : bignumExecFuel registry fuel ct s with _ | s_mid
         · rw [h_inner] at h_exec; cases h_exec
         · rw [h_inner] at h_exec
@@ -2595,7 +2595,7 @@ theorem bignumExecFuel_preserves_mem_aux
             bignumExecFuel_preserves_mem_aux registry (fuel + 1) rest h_tail
               s_mid s' h_exec
           rw [h_tail_pres, h_inner_pres]
-      · rw [if_neg hc] at h_exec
+      · rw [ite_eq_right hc] at h_exec
         rcases h_inner : bignumExecFuel registry fuel ce s with _ | s_mid
         · rw [h_inner] at h_exec; cases h_exec
         · rw [h_inner] at h_exec

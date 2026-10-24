@@ -170,15 +170,15 @@ theorem mlkemFieldAddCom_denote_opaque (a b : BitVec 32) :
   -- The THIR denotation: `let s = a + b; let r = reduce(s); ret r` evaluates to
   -- `jasminExtSem "reduce" …` of the single argument `a + b`.
   have ha : inpGet (nIn := 2) I 0 = a := by
-    simp only [inpGet, show (0 : Nat) < 2 by decide, dif_pos, hI]; rfl
+    simp only [inpGet, show (0 : Nat) < 2 by decide, dite_eq_left, hI]; rfl
   have hb : inpGet (nIn := 2) I 1 = b := by
-    simp only [inpGet, show (1 : Nat) < 2 by decide, dif_pos, hI]
+    simp only [inpGet, show (1 : Nat) < 2 by decide, dite_eq_left, hI]
     norm_num
   have hthir : Thir.denote (w := 32) (nIn := 2) I mlkemFieldAddThir (LEnv.empty 32)
       = some (jasminExtSem reduceName (callArgTys 32 1) (rW 32)
           (HVector.cons ((a + b) : ⟦rW 32⟧) HVector.nil)) := by
     simp only [mlkemFieldAddThir, Thir.denote, Rhs.denote, Atom.denote, atomsHV,
-      ha, hb, Option.bind_some, Option.map_some, LEnv.set, if_pos, String.reduceEq]
+      ha, hb, Option.bind_some, Option.map_some, LEnv.set, ite_eq_left, String.reduceEq]
     rfl
   rw [hthir] at hfront
   exact (Option.some.injEq _ _ ▸ hfront).symm

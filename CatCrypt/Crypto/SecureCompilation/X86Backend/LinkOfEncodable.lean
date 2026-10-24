@@ -530,7 +530,7 @@ theorem x86LinkB_of_cover (name : String) (code : List (BitVec 8)) (body : Lcmd)
     simp [fundefItemsRelocL, itemBytes, mkLea, mkRet, hpre]
     omega
   have hsym : sym name = some ((L : Int) - (pre : Int)) := by
-    simp only [hsymdef, VIR.LprogIsa.x86LinkSym, if_true, prologueLen, hb.noSaves,
+    simp only [hsymdef, VIR.LprogIsa.x86LinkSym, ite_true, prologueLen, hb.noSaves,
       List.flatMap_nil, List.length_nil, Nat.zero_add, hL0split, hLsplit, hpre, hP]
     rfl
   have hit := itemsFromReloc_link (fundefItemsRelocL sym P body ds)

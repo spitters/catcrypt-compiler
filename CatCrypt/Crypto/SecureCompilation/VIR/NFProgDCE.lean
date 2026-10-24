@@ -330,8 +330,8 @@ theorem denote_dce {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
       obtain ⟨r, hr, hk⟩ := h
       refine ⟨r, ?_, ihk hk⟩
       split at hr
-      · rw [if_pos ‹_›]; exact iht hr
-      · rw [if_neg ‹_›]; exact ihe hr
+      · rw [ite_eq_left ‹_›]; exact iht hr
+      · rw [ite_eq_right ‹_›]; exact ihe hr
   | whileLoop inits body k ihb ihk =>
       intro fuel V out h
       simp only [dce, denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at h ⊢

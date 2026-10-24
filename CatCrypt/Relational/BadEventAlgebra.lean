@@ -253,7 +253,7 @@ theorem badMass_bind_le {bb : β → Prop} [DecidablePred bb]
         = ∑' b, ∑' a, d (some a) * (if bb b then (k a) (some b) else 0) := by
           refine tsum_congr fun b => ?_
           by_cases h : bb b
-          · simp only [h, if_true]
+          · simp only [h, ite_true]
             exact SDistr.bind_apply_some d k b
           · simp [h]
       _ = ∑' a, ∑' b, d (some a) * (if bb b then (k a) (some b) else 0) :=
@@ -308,7 +308,7 @@ theorem truncBad_le_some (d : SDistr α) (a : α) :
     the graded structure; on a bad value it is `fail` by `pure_bind`). -/
 theorem truncBad_pure_of_not_bad {a : α} (h : ¬ bad a) :
     truncBad bad (SDistr.pure a) = SDistr.pure a := by
-  rw [truncBad, SDistr.pure_bind, if_neg h]
+  rw [truncBad, SDistr.pure_bind, ite_eq_right h]
 
 end TruncApply
 
@@ -574,7 +574,7 @@ theorem truncBad_bind_congr {b₁ : α → Prop} [DecidablePred b₁]
   rw [hd]
   refine SDistr.bind_congr_support fun a ha => ?_
   refine hk a fun hb => ha ?_
-  rw [truncBad_apply_some, if_pos hb]
+  rw [truncBad_apply_some, ite_eq_left hb]
 
 /-- The bad-stopping composite is dominated by the original bind on
     successful outcomes. -/
@@ -608,7 +608,7 @@ theorem tvMargin_bind_trunc_le {b₁ : α → Prop} [DecidablePred b₁]
       simp [h0, ht]
     by_cases hb : b₁ a
     · have ht : truncBad b₁ d (some a) = 0 := by
-        rw [truncBad_apply_some, if_pos hb]
+        rw [truncBad_apply_some, ite_eq_left hb]
       calc ∑' b, (d (some a) * (k a) (some b)
               - truncBad b₁ d (some a) * truncBad b₂ (k a) (some b))
           = ∑' b, d (some a) * (k a) (some b) := by
@@ -617,9 +617,9 @@ theorem tvMargin_bind_trunc_le {b₁ : α → Prop} [DecidablePred b₁]
         _ = d (some a) * ∑' b, (k a) (some b) := ENNReal.tsum_mul_left
         _ ≤ d (some a) * 1 := mul_le_mul_right (SDistr.tsum_some_le_one (k a)) _
         _ = d (some a) := mul_one _
-        _ ≤ _ := by rw [if_pos hb]; exact le_self_add
+        _ ≤ _ := by rw [ite_eq_left hb]; exact le_self_add
     · have ht : truncBad b₁ d (some a) = d (some a) := by
-        rw [truncBad_apply_some, if_neg hb]
+        rw [truncBad_apply_some, ite_eq_right hb]
       calc ∑' b, (d (some a) * (k a) (some b)
               - truncBad b₁ d (some a) * truncBad b₂ (k a) (some b))
           = ∑' b, (d (some a) * (k a) (some b)
@@ -630,7 +630,7 @@ theorem tvMargin_bind_trunc_le {b₁ : α → Prop} [DecidablePred b₁]
             rw [ENNReal.tsum_mul_left]
             exact congrArg (d (some a) * ·) (tvMargin_truncBad b₂ (k a))
         _ ≤ d (some a) * ε₂ := mul_le_mul_right (hk a h0 hb) _
-        _ ≤ _ := by rw [if_neg hb, zero_add]
+        _ ≤ _ := by rw [ite_eq_right hb, zero_add]
   calc tvMargin (d.bind k) ((truncBad b₁ d).bind fun a => truncBad b₂ (k a))
       ≤ ∑' b, ∑' a, (d (some a) * (k a) (some b)
           - truncBad b₁ d (some a) * truncBad b₂ (k a) (some b)) := by
@@ -796,7 +796,7 @@ theorem prTrue_badProg (bad : Bool × Heap → Prop) [DecidablePred bad]
     _ = ∑' p : Bool × Heap, if bad p then G h (some p) else 0 := by
         refine tsum_congr fun p => ?_
         by_cases hb : bad p
-        · rw [if_pos hb, tsum_eq_single p.2]
+        · rw [ite_eq_left hb, tsum_eq_single p.2]
           · simp [hb]
           · intro h'' hne
             simp [hb, Ne.symm hne]

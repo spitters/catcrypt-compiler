@@ -110,7 +110,7 @@ theorem lsemStepMem_cmov (dst cond a b : String) (ls : LstateM)
   obtain ⟨h1, h2, h3, h4, h5, h6⟩ := cmovWire_delegates dst [.reg cond, .reg a, .reg b]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ h1 h2 h3 h4 h5, lsemStepSh_of_not_sar _ _ h6]
-  simp only [cmovLinstr, lsemStepN, stripWidthTag_withWidthTag_CMOV, if_pos, operandName, hvc,
+  simp only [cmovLinstr, lsemStepN, stripWidthTag_withWidthTag_CMOV, ite_eq_left, operandName, hvc,
     readReg_of_getW hva, evalOperandN, hvb, Option.map_some]
 
 /-- `castStruct?` recognises the bare-mnemonic `ZEROEXT` wire. -/
@@ -174,7 +174,7 @@ theorem JLstateCorrZ_setReg (s snew : JState 64) (ls : LstateM) (flg : String �
     rw [LstateN.getW_nextPc, hs r]
     by_cases hrd : r = dst
     · subst hrd; rw [LstateN.getW_setReg_same]; simp
-    · rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, hcorr.regAgree r hr, if_neg hrd]
+    · rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, hcorr.regAgree r hr, ite_eq_right hrd]
   · intro base off
     show ls.lmem base off = snew.mem base off
     rw [hmem base off]; exact hcorr.memAgree base off

@@ -263,7 +263,7 @@ theorem decodeLinstr_movImm32_rex (d v : Nat) (rest : List (BitVec 8)) (hd8 : 8 
   have hop : (BitVec.ofNat 8 (0xb8 + d % 8)).toNat = 0xb8 + (d - 8) := by
     rw [BitVec.toNat_ofNat]; omega
   apply decodeLinstr_of_decodeJ1
-  simp only [encMovImmw, if_true, hb, hrex, imm32LE, List.map_cons, List.map_nil,
+  simp only [encMovImmw, ite_true, hb, hrex, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append]
   have hr : isRex (BitVec.ofNat 8 0x41) = true := by decide
   have hw : rexW (BitVec.ofNat 8 0x41) = 0 := by decide
@@ -275,7 +275,7 @@ theorem decodeLinstr_movImm32_rex (d v : Nat) (rest : List (BitVec 8)) (hd8 : 8 
   have g2 : 0xb8 ≤ 0xb8 + (d - 8) ∧ 0xb8 + (d - 8) ≤ 0xbf := by omega
   have hd' : 1 * 8 + (0xb8 + (d - 8) - 0xb8) = d := by omega
   simp only [decodeJ1, e1, e2, e3, hr, hw, decodeRexW0, hop, g1, g2, hB, hd',
-    imm32LE_recompose v hv, if_false, if_true, zero_ne_one, and_self]
+    imm32LE_recompose v hv, ite_false, ite_true, zero_ne_one, and_self]
 
 /-- The compare with a sign-extended `imm32` (`REX.W 81 /7 id`) decodes to `cmp` of the
     immediate, for a 64-bit value that sign-extends from 32 bits. `decodeJ1` rejects the
@@ -377,17 +377,17 @@ theorem decodeLinstr_loadIdx8_sib (r base idx : Nat) (rest : List (BitVec 8))
   by_cases h5 : base &&& 7 = 5
   · apply decodeLinstr_of_decodeJ1
     have hd := decodeMemTail_sibTail r base idx 8 1 rest hidx hi4 (by decide) (Or.inr rfl)
-    simp only [if_true, List.cons_append, List.nil_append] at hd
-    simp only [encMemMovSibw_w1, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+    simp only [ite_true, List.cons_append, List.nil_append] at hd
+    simp only [encMemMovSibw_w1, encMemMovSib, ite_eq_left h5, List.map_cons, List.map_nil,
       List.cons_append, List.nil_append,
       show 1 * 64 + ((r &&& 7) * 8) + 4 = modRMMem 1 r 4 from rfl,
       decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
       decodeRex, BitVec.toNat_ofNat,
-      if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
-      if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      ite_eq_right (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
+      ite_eq_right (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
       rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _), hd,
       rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
-      rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hr, bitsplit _ hbase, if_true]
+      rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hr, bitsplit _ hbase, ite_true]
   · exact decodeLinstr_loadIdx8 r base idx rest hr hbase hidx h5 hi4
 
 /-- The stride-8 register-indexed store `MOV %r, (%base,%idx,8)` (`REX.W 89 /r` with a SIB
@@ -400,19 +400,19 @@ theorem decodeLinstr_storeIdx8_sib (r base idx : Nat) (rest : List (BitVec 8))
   by_cases h5 : base &&& 7 = 5
   · apply decodeLinstr_of_decodeJ1
     have hd := decodeMemTail_sibTail r base idx 8 1 rest hidx hi4 (by decide) (Or.inr rfl)
-    simp only [if_true, List.cons_append, List.nil_append] at hd
-    simp only [encMemMovSibw_w1, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+    simp only [ite_true, List.cons_append, List.nil_append] at hd
+    simp only [encMemMovSibw_w1, encMemMovSib, ite_eq_left h5, List.map_cons, List.map_nil,
       List.cons_append, List.nil_append,
       show 1 * 64 + ((r &&& 7) * 8) + 4 = modRMMem 1 r 4 from rfl,
       decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
       decodeRex, BitVec.toNat_ofNat,
-      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
-      if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
-      modField_modRMMem _ _ _ (by decide : 1 < 4), if_neg (show ¬((1 : Nat) = 3) by decide),
+      ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+      ite_eq_right (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+      modField_modRMMem _ _ _ (by decide : 1 < 4), ite_eq_right (show ¬((1 : Nat) = 3) by decide),
       rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _), hd,
       rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
-      rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hr, bitsplit _ hbase, if_true]
+      rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hr, bitsplit _ hbase, ite_true]
   · exact decodeLinstr_storeIdx8 r base idx rest hr hbase hidx h5 hi4
 
 theorem tmplIdx_sound (r b i : Nat) (hr : r < 16) (hb : b < 16) (hi : i < 16) :

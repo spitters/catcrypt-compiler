@@ -160,8 +160,8 @@ theorem condBlock_lowering_denote {w : Nat} {Γ : Ctxt (x86Dialect w)}
       = runCond s cond thenBlk fallBlk := by
   unfold lowerCond runCond
   cases h : cond s with
-  | true => simp only [if_true]; exact lowerBlock_denote thenBlk s V
-  | false => simp only [Bool.false_eq_true, if_false]; exact lowerBlock_denote fallBlk s V
+  | true => simp only [ite_true]; exact lowerBlock_denote thenBlk s V
+  | false => simp only [Bool.false_eq_true, ite_false]; exact lowerBlock_denote fallBlk s V
 
 /-- The closed-context specialisation (singleton context `[machine w]`): the
     lowered forward conditional denotes the state transformer

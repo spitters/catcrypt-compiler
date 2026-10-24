@@ -52,10 +52,10 @@ theorem getWord_eq_wordOfBytes8 {N : Nat} (a : JArray N) (off : Nat) (h : off + 
   dsimp only [Jasmin.WSize.bits, Jasmin.WSize.bytes]
   rw [show List.range 8 = [0,1,2,3,4,5,6,7] from rfl]
   simp only [List.foldl_cons, List.foldl_nil,
-    dif_pos (show off + 0 < N by omega), dif_pos (show off + 1 < N by omega),
-    dif_pos (show off + 2 < N by omega), dif_pos (show off + 3 < N by omega),
-    dif_pos (show off + 4 < N by omega), dif_pos (show off + 5 < N by omega),
-    dif_pos (show off + 6 < N by omega), dif_pos (show off + 7 < N by omega)]
+    dite_eq_left (show off + 0 < N by omega), dite_eq_left (show off + 1 < N by omega),
+    dite_eq_left (show off + 2 < N by omega), dite_eq_left (show off + 3 < N by omega),
+    dite_eq_left (show off + 4 < N by omega), dite_eq_left (show off + 5 < N by omega),
+    dite_eq_left (show off + 6 < N by omega), dite_eq_left (show off + 7 < N by omega)]
   simp
 
 /-- A word write leaves every byte outside the range `off .. off + 7`. -/
@@ -125,12 +125,12 @@ theorem byteOffset_lawfulArr : LawfulArr (byteOffsetLeafSpec 8) where
     have hj := j.isLt
     simp only [TowerType.storageBytes] at hj
     by_cases hji : j.val = idx
-    · refine (arrWords_apply n _ j).trans (Eq.trans ?_ (if_pos hji).symm)
+    · refine (arrWords_apply n _ j).trans (Eq.trans ?_ (ite_eq_left hji).symm)
       rw [hji, cryptoTy_TU64_eq_getWord]
       exact getWord_setWord_same oldV (8 * idx) _
         (by simp only [TowerType.storageBytes]; omega)
     · refine (arrWords_apply n _ j).trans
-        (Eq.trans ?_ ((if_neg hji).trans (arrWords_apply n oldV j)).symm)
+        (Eq.trans ?_ ((ite_eq_right hji).trans (arrWords_apply n oldV j)).symm)
       refine (getWord_eq_wordOfBytes8 (arrSetElem oldV 8 idx (valWord sv)) (8 * j.val) ?_).trans
         ((congrArg wordOfBytes8 (funext fun t => ?_)).trans
           (getWord_eq_wordOfBytes8 oldV (8 * j.val) ?_).symm)

@@ -879,7 +879,7 @@ theorem SrcAgree_of_FRel {m : Cur} {L : List String} {s s' : LstateM} {i : FI}
   · have hr : x ∈ i.reads abi := by
       simp only [FI.reads, List.mem_append, List.mem_flatMap]
       exact Or.inl ⟨.reg x, hx, by simp [opReads, hl]⟩
-    simp only [renOf, hl, if_true]
+    simp only [renOf, hl, ite_true]
     exact (hR.2.2.2.2.2 x (hL x hr) hl).2
   · simp only [Bool.not_eq_true] at hl
     simp only [renOf, hl]
@@ -909,9 +909,9 @@ theorem FRel.loc {m : Cur} {la : List String} {i : FI} {c : String} {s s' s1 s1'
   · rw [look_insert]
     by_cases hnd : n = i.d
     · subst hnd
-      simp only [if_true]
+      simp only [ite_true]
       exact ⟨hc, hw⟩
-    · rw [if_neg (Ne.symm hnd)]
+    · rw [ite_eq_right (Ne.symm hnd)]
       have h := hR.2.2.2.2.2 n (mem_liveBefore hn hnd) hnl
       exact ⟨h.1, by rw [hkeep n hn hnl hnd, h.2, hs1 n hnd]⟩
 
@@ -1027,14 +1027,14 @@ theorem goAccF_sound (habi : isLoc "" abi = false) (lend : List String) :
     simp only [goAcc] at hgo
     by_cases hb : basesOk m i abi = true
     swap
-    · rw [if_neg hb] at hgo; exact absurd hgo (by simp)
-    rw [if_pos hb] at hgo
+    · rw [ite_eq_right hb] at hgo; exact absurd hgo (by simp)
+    rw [ite_eq_left hb] at hgo
     by_cases hd : isLoc i.d abi = true
-    · rw [if_pos hd] at hgo
+    · rw [ite_eq_left hd] at hgo
       by_cases hok : (okLoc i.d c abi && shapeOk m i c abi) = true
       swap
-      · rw [if_neg hok] at hgo; exact absurd hgo (by simp)
-      rw [if_pos hok] at hgo
+      · rw [ite_eq_right hok] at hgo; exact absurd hgo (by simp)
+      rw [ite_eq_left hok] at hgo
       have hc : isLoc c abi = true := by
         simp only [Bool.and_eq_true, okLoc, Bool.or_eq_true, beq_iff_eq] at hok
         rcases hok.1 with h | h
@@ -1043,7 +1043,7 @@ theorem goAccF_sound (habi : isLoc "" abi = false) (lend : List String) :
       by_cases hcp :
           (isCopy64 i.opn && i.srcs.map (fun o => renOp m o abi) == [.reg c]) = true
       · -- a self-copy: dropped
-        rw [if_pos hcp] at hgo
+        rw [ite_eq_left hcp] at hgo
         simp only [Bool.and_eq_true, beq_iff_eq] at hcp
         obtain ⟨hcopyi, hmap⟩ := hcp
         obtain ⟨o, hso, hro⟩ : ∃ o, i.srcs = [o] ∧ renOp m o abi = .reg c := by
@@ -1060,7 +1060,7 @@ theorem goAccF_sound (habi : isLoc "" abi = false) (lend : List String) :
             = some (i.d, x) := by
           unfold movRegArgs?
           rcases hcop with h | h
-          · rw [h]; simp only; rw [if_pos (by decide +kernel)]
+          · rw [h]; simp only; rw [ite_eq_left (by decide +kernel)]
           · rw [h]; simp
         rw [hso, fstepF_copy hcm hmv] at hst'
         simp only [Option.some.injEq, Prod.mk.injEq] at hst'
@@ -1070,23 +1070,23 @@ theorem goAccF_sound (habi : isLoc "" abi = false) (lend : List String) :
         refine FRel.loc hR hd hc ?_ ?_ ?_ ?_ (fun y hy => ?_) (fun _ _ => rfl)
           (fun _ _ _ _ => rfl) ?_
         all_goals simp_all [LstateM.setReg, LstateM.nextPc, hR.1, hR.2.1, hR.2.2.1, hR.2.2.2.1]
-      · rw [if_neg hcp] at hgo
+      · rw [ite_eq_right hcp] at hgo
         obtain ⟨wr, cf, of, rfl, hcw, htgt⟩ := fstepF_val (c := c) (σ := renOf m abi) hwfl hA
           hR.2.2.1 hR.2.2.2.1 hst'
         by_cases hdead : (movClass i.opn && !la.contains i.d) = true
         · -- a dead move: dropped
-          rw [if_pos hdead] at hgo
+          rw [ite_eq_left hdead] at hgo
           simp only [Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
             decide_eq_false_iff_not] at hdead
           have hr := movClass_recog hdead.1 [.reg i.d] i.srcs (.reg none)
           obtain ⟨rfl, hcf1, hof1⟩ := fstepF_flags hr.1 hr.2.1 hr.2.2 hst'
           refine ih m cs acc out _ t s' z1 zt hwfs hcmps hgo ?_ hrest
           exact FRel.dead hR hd hdead.2 (by simp) (by simp) hcf1 hof1 (applyW_other s wr cf of)
-        · rw [if_neg hdead] at hgo
+        · rw [ite_eq_right hdead] at hgo
           by_cases hnc : noClobber m la i.d c = true
           swap
-          · rw [if_neg hnc] at hgo; exact absurd hgo (by simp)
-          rw [if_pos hnc] at hgo
+          · rw [ite_eq_right hnc] at hgo; exact absurd hgo (by simp)
+          rw [ite_eq_left hnc] at hgo
           let i' : FI := ⟨i.ii, c, i.opn, i.srcs.map (fun o => renOp m o abi)⟩
           have hstep' : fstepF (tyF i') s' zf = some (writeDstF s' c wr cf of, z1) := by
             show fstepF (.Lopn [.reg c] i.opn (i.srcs.map _), .reg none) s' zf = _
@@ -1132,12 +1132,12 @@ theorem goAccF_sound (habi : isLoc "" abi = false) (lend : List String) :
           rw [runStraightF_cons, hstep', Option.bind_some]
           exact hr'
     · -- a write to a non-location name
-      rw [if_neg hd] at hgo
+      rw [ite_eq_right hd] at hgo
       simp only [Bool.not_eq_true] at hd
       by_cases hsh : shapeOk m i i.d abi = true
       swap
-      · rw [if_neg hsh] at hgo; exact absurd hgo (by simp)
-      rw [if_pos hsh] at hgo
+      · rw [ite_eq_right hsh] at hgo; exact absurd hgo (by simp)
+      rw [ite_eq_left hsh] at hgo
       obtain ⟨wr, cf, of, rfl, hcw, htgt⟩ := fstepF_val (c := i.d) (σ := renOf m abi) hwfl hA
         hR.2.2.1 hR.2.2.2.1 hst'
       let i' : FI := ⟨i.ii, i.d, i.opn, i.srcs.map (fun o => renOp m o abi)⟩
@@ -1335,11 +1335,11 @@ theorem QRel.findLabelMem {B B' : List LinstrRM} (h : QRel Q B B') (l : LLabel) 
       split at hpc
       · rename_i hl
         cases hpc
-        exact ⟨0, if_pos hl, by simpa using hR⟩
+        exact ⟨0, ite_eq_left hl, by simpa using hR⟩
       · rename_i hl
         obtain ⟨k, hk, rfl⟩ := Option.map_eq_some_iff.mp hpc
         obtain ⟨k', hk', hd⟩ := ih k hk
-        exact ⟨k' + 1, by rw [if_neg hl, hk']; rfl, by simpa using hd⟩
+        exact ⟨k' + 1, by rw [ite_eq_right hl, hk']; rfl, by simpa using hd⟩
   | @blk seg seg' R R' _ _ hseg hseg' _ _ ih =>
       intro pc hpc
       rw [findLabelMem_prefix l seg R hseg] at hpc
@@ -1448,12 +1448,12 @@ theorem evalInstrPMemF_QRel {P P' : LprogM} (hfn : P'.lfn = P.lfn) (hpc : QPc Q)
         · rename_i hz
           obtain ⟨q', hq', hRq⟩ := hjump hk l hq
           refine ⟨{ s' with prog := q' }, ?_, hRq⟩
-          rw [hc, if_pos hz, hq']
+          rw [hc, ite_eq_left hz, hq']
           rfl
         · rename_i hz
           cases hq
           refine ⟨_, ?_, hnext hQR⟩
-          rw [hc, if_neg hz]
+          rw [hc, ite_eq_right hz]
           rfl
     | some pl =>
         obtain ⟨pol, lbl⟩ := pl
@@ -1464,12 +1464,12 @@ theorem evalInstrPMemF_QRel {P P' : LprogM} (hfn : P'.lfn = P.lfn) (hpc : QPc Q)
           obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp he
           obtain ⟨q', hq', hRq⟩ := hjump hk lbl hq
           refine ⟨{ s' with prog := q' }, ?_, hRq⟩
-          rw [if_pos (hS.zf.trans hz), hq']
+          rw [ite_eq_left (hS.zf.trans hz), hq']
           rfl
         · rename_i hz
           cases he
           refine ⟨_, ?_, hnext hQR⟩
-          rw [if_neg (fun h => hz (hS.zf.symm.trans h))]
+          rw [ite_eq_right (fun h => hz (hS.zf.symm.trans h))]
   · obtain rfl : wire = LinstrR.Lgoto tgt := hw
     obtain ⟨fn, l⟩ := tgt
     have hk : (∃ c' l', (LinstrR.Lgoto (fn, l), tag).1 = LinstrR.Lcond c' l') ∨
@@ -1486,7 +1486,7 @@ theorem evalInstrPMemF_QRel {P P' : LprogM} (hfn : P'.lfn = P.lfn) (hpc : QPc Q)
     · rename_i hf
       obtain ⟨q', hq', hRq⟩ := hjump hk l hq
       refine ⟨{ s' with prog := q' }, ?_, hRq⟩
-      rw [hfn, if_pos hf, hq']
+      rw [hfn, ite_eq_left hf, hq']
       rfl
     · exact absurd hq (by simp)
   · rw [hst P s] at he
@@ -1512,7 +1512,7 @@ theorem lsemFuelMemF_QRel {P P' : LprogM} (hfn : P'.lfn = P.lfn) (hpc : QPc Q)
       rw [hS.lfn, hfn]
       split
       · rename_i hl
-        rw [if_pos hl] at hf
+        rw [ite_eq_left hl] at hf
         have hd : P.body.drop s.prog.base.lpc = [] :=
           List.drop_eq_nil_iff.mpr (List.getElem?_eq_none_iff.mp hf)
         have hp := hS.pc
@@ -1539,7 +1539,7 @@ theorem lsemFuelMemF_QRel {P P' : LprogM} (hfn : P'.lfn = P.lfn) (hpc : QPc Q)
           obtain rfl : i0 = i := by simpa using hhead
           have hfetch' : findInstrMem P' s'.prog = some i0 := by
             unfold findInstrMem
-            rw [if_pos hfl']
+            rw [ite_eq_left hfl']
             have := congrArg (·[0]?) hY
             simpa [List.getElem?_drop] using this
           cases fuel with
@@ -2024,7 +2024,7 @@ theorem DX_mono (hgf : ∀ y, isGP y abi = true → isFrame y = false) {Lbl : St
     {E : List String} {i : LinstrRM} {R : List LinstrRM} (hi : isRetRM i = false) :
     ∀ y, DX abi Lbl E (i :: R) y → DX abi Lbl E R y := by
   intro y hy
-  simp only [DX, hi, Bool.false_eq_true, if_false] at hy
+  simp only [DX, hi, Bool.false_eq_true, ite_false] at hy
   obtain ⟨hf, hl, hs⟩ := hy
   cases R with
   | nil =>
@@ -2405,7 +2405,7 @@ theorem core (H : CoreHyp res abi recog tag T) :
                   rw [hRe] at hy hinr2
                   by_cases hret : li.li_i = .Lret
                   · have : isRetRM (li.li_i, tag li.li_i) = true := (isRetRM_eq _ _).2 hret
-                    simp only [DX, this, if_true] at hy
+                    simp only [DX, this, ite_true] at hy
                     exact absurd hl hy
                   · have hnr' : isRetRM (li.li_i, tag li.li_i) = false := by
                       cases h : isRetRM (li.li_i, tag li.li_i)
@@ -2422,7 +2422,7 @@ theorem core (H : CoreHyp res abi recog tag T) :
                         rcases hl with h | h
                         · exact h
                         · exact absurd h hfr
-                      simp only [hlend, List.mem_append, hreg, if_neg hret]
+                      simp only [hlend, List.mem_append, hreg, ite_eq_right hret]
                       exact Or.inl (by simpa [isGP] using hgp)
           exact QRel.blk (by simp) (by simpa using hlen) (fun i hi => by
               obtain ⟨j, -, rfl⟩ := List.mem_map.1 hi; exact ⟨_, _, _, rfl⟩)
@@ -2512,7 +2512,7 @@ theorem mem_labelLiveFrames {body : Lcmd} (hl : ∃ li ∈ body, ∃ k l, li.li_
     x ∈ labelLiveFrames body := by
   obtain ⟨li, hli, k, l, he⟩ := hl
   unfold labelLiveFrames
-  rw [if_pos (List.any_eq_true.2 ⟨li, hli, by simp [he]⟩), Std.HashSet.mem_insertMany_list]
+  rw [ite_eq_left (List.any_eq_true.2 ⟨li, hli, by simp [he]⟩), Std.HashSet.mem_insertMany_list]
   exact Or.inr (by simpa using hx)
 
 theorem label_of_findLabelMem {tag : LinstrR → MemTag} {b : Lcmd} {l : LLabel} {pc : Nat}
@@ -2609,7 +2609,7 @@ theorem body_sim (res : List String) (abi : IsaAbi) (recog : String → Bool)
   · have hnone : ∀ (P : LprogM), P.lfn = fn → findInstrMem P s.prog = none := by
       intro P hP
       unfold findInstrMem
-      rw [if_neg (by rw [hP]; exact hfn)]
+      rw [ite_eq_right (by rw [hP]; exact hfn)]
     rw [lsemFuelMemF_halt _ fuel s (hnone _ rfl)] at h
     cases h
     exact ⟨0, s, Nat.zero_le _, lsemFuelMemF_halt _ 0 s (hnone _ rfl), rfl, rfl,
@@ -2910,7 +2910,7 @@ theorem reallocCfgOKB_sound {tag : LinstrR → MemTag} {recog : String → Bool}
     have hk' : k < body.dropLast.length := by simp; omega
     have hm : li ∈ body.dropLast := by
       rw [List.mem_iff_getElem?]
-      exact ⟨k, by rw [List.getElem?_dropLast, if_pos (by simpa using hk'), hk]⟩
+      exact ⟨k, by rw [List.getElem?_dropLast, ite_eq_left (by simpa using hk'), hk]⟩
     have := h1 li hm
     rw [he] at this
     cases this

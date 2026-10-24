@@ -163,7 +163,7 @@ theorem binDecoded_and_halts (fuel : Nat) (sa sa' : AState)
     (hl : runXLoopA fuel (runBlockA sa binPrologue) andLoop = some sa') :
     HaltsNoCall aMachine (binDecoded (andMidDecoded .and_)) 0 sa (runBlockA sa' binEpilogue) :=
   ⟨44, (binDecoded_and_reaches_prologue sa).trans
-    ((Reaches.single (by rw [binDecoded_and_step_exit _ false hz, if_neg Bool.false_ne_true])).trans
+    ((Reaches.single (by rw [binDecoded_and_step_exit _ false hz, ite_eq_right Bool.false_ne_true])).trans
       ((binDecoded_and_reaches_loop fuel _ sa' hl).trans
         (binDecoded_and_reaches_epilogue sa'))), binDecoded_and_ret⟩
 
@@ -173,7 +173,7 @@ theorem binDecoded_and_halts_zero (sa : AState)
     HaltsNoCall aMachine (binDecoded (andMidDecoded .and_)) 0 sa
       (runBlockA (runBlockA sa binPrologue) binEpilogue) :=
   ⟨44, (binDecoded_and_reaches_prologue sa).trans
-    ((Reaches.single (by rw [binDecoded_and_step_exit _ true hz, if_pos rfl])).trans
+    ((Reaches.single (by rw [binDecoded_and_step_exit _ true hz, ite_eq_left rfl])).trans
       (binDecoded_and_reaches_epilogue _)), binDecoded_and_ret⟩
 
 /-- The exit state of the decoded loop is related by `LoopRel` to the exit state of the

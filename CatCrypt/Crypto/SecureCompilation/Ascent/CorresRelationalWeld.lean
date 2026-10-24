@@ -136,23 +136,23 @@ theorem addMod251_front_weld (φ : String → ZMod 251) :
     intro y hy
     simp only [addMod251Expr, csub251Expr, sexprVars, List.append_nil, List.nil_append,
       List.mem_append, List.mem_cons, List.not_mem_nil, or_false, or_self] at hy
-    simp only [σ, if_pos hy]
+    simp only [σ, ite_eq_left hy]
   have hσ : SrcTys σ := by
     intro x hx
     by_cases hab : x = "a" ∨ x = "b"
     · rcases hab with rfl | rfl
       · exact ha
       · exact hb
-    · simp only [σ, if_neg hab, Option.isSome_none, Bool.false_eq_true] at hx
+    · simp only [σ, ite_eq_right hab, Option.isSome_none, Bool.false_eq_true] at hx
   have happ : VmApprox σ vmAB := by
     intro x t hx
     by_cases hab : x = "a" ∨ x = "b"
-    · simp only [σ, if_pos hab, Option.some.injEq] at hx
+    · simp only [σ, ite_eq_left hab, Option.some.injEq] at hx
       subst hx
       rcases hab with rfl | rfl
       · exact ⟨.there .here, rfl⟩
       · exact ⟨.here, rfl⟩
-    · simp only [σ, if_neg hab, reduceCtorEq] at hx
+    · simp only [σ, ite_eq_right hab, reduceCtorEq] at hx
   obtain ⟨o, htr, happ', hcont⟩ := translateDialectControl_total htot vmAB hσ happ
   obtain ⟨w, hw⟩ := happ' "r" (.sword 64) (by simp only [NameTys.upd, ↓reduceIte])
   obtain ⟨com, hcom, hlow⟩ := hcont (Com.ret (toVIRVar w)) (by rfl)

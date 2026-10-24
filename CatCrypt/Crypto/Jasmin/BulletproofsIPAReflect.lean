@@ -298,7 +298,7 @@ theorem streamElem_elem (m : ℕ) (e : Limbs4) (hm : 4 ≤ m) :
   funext i
   have := i.2
   simp only [streamElem, slotLimbs, slotOf, elemStream, Nat.mul_zero, Nat.zero_add,
-    dif_pos (show i.1 < m by omega), dif_pos i.2]
+    dite_eq_left (show i.1 < m by omega), dite_eq_left i.2]
 
 theorem decVec_vec {α : Type} {n : ℕ} (m : ℕ) (enc : α → Limbs4) (dec : Limbs4 → α)
     (hrt : ∀ x, dec (enc x) = x) (v : Fin n → α) (hm : 4 * n ≤ m) :
@@ -311,7 +311,7 @@ theorem decVec_vec {α : Type} {n : ℕ} (m : ℕ) (enc : α → Limbs4) (dec : 
     have hi := i.2
     have h1 : 4 * j.1 + i.1 < m := by omega
     have h2 : (4 * j.1 + i.1) / 4 < n := by omega
-    simp only [streamElem, slotLimbs, slotOf, vecStream, dif_pos h1, dif_pos h2]
+    simp only [streamElem, slotLimbs, slotOf, vecStream, dite_eq_left h1, dite_eq_left h2]
     congr 2
     · exact Fin.ext (by simp only; omega)
     · omega

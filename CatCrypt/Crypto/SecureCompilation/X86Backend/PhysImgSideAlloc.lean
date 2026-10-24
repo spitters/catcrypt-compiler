@@ -598,7 +598,7 @@ theorem scanExit_succ_pass {c : Lcmd} {k : Nat} {j : Linstr} {x : String}
     cases he
     simp only [List.any_cons, List.any_nil, Bool.or_false, dstHitB, Bool.or_eq_false_iff,
       beq_eq_false_iff_ne, ne_eq] at hd
-    simp only [hd.1, if_false]
+    simp only [hd.1, ite_false]
     simp at hd
     simp [hd.2]
   | none =>
@@ -656,7 +656,7 @@ theorem scanStays_window {rl acc : Linstr} {mid post : Lcmd} {q : String}
         induction m with
         | zero =>
           intro _
-          simp only [scanExit, List.getElem?_cons_zero, hrl, if_true]
+          simp only [scanExit, List.getElem?_cons_zero, hrl, ite_true]
           simp [Option.isSome_iff_ne_none] at hq
           simp [hq]
         | succ m ih =>
@@ -691,7 +691,7 @@ theorem loadIdx_scanStays (hs15 : slotArr reloadScratch = none) {q : String}
       = some (reloadScratch2, q) := by simp [slotMov?]
   simp only [legalizeMemLoad, legalizeSibElem, sibNameSpill_reloadScratch2]
   cases hy : sibNameSpill y <;> cases hn : (LOperand.reg n).isSpill <;>
-    simp only [Bool.false_eq_true, if_false, if_true, List.nil_append, List.cons_append,
+    simp only [Bool.false_eq_true, ite_false, ite_true, List.nil_append, List.cons_append,
       List.map_cons, List.map_nil, ge_iff_le, Nat.le_refl]
   · exact scanStays_window (mid := []) (post := []) hrl hq (by simp)
       (fun _ h => accBase_arrIdx_eq h) (by simp)
@@ -741,7 +741,7 @@ theorem storeIdx_scanStays (hs15 : slotArr reloadScratch = none) {q : String}
     rw [legalizeMemStoreK_of_none _ _ _ hc]
     simp only [legalizeMemStore, legalizeSibElem, sibNameSpill_reloadScratch2]
     cases hy : sibNameSpill y <;> cases hn : (LOperand.reg v).isSpill <;>
-      simp only [Bool.false_eq_true, if_false, if_true, List.nil_append, List.cons_append,
+      simp only [Bool.false_eq_true, ite_false, ite_true, List.nil_append, List.cons_append,
         List.map_cons, List.map_nil, ge_iff_le, Nat.le_refl, beq_self_eq_true]
     · exact scanStays_window (mid := []) (post := []) hrl hq (by simp)
         (fun _ h => accBase_arrIdx_eq h) (by simp)
@@ -993,7 +993,7 @@ theorem physExpand_lowMul_homeOkB (hs15 : slotArr reloadScratch = none)
       rcases ds with _ | ⟨d2, ds⟩
       · simp [physExpand, hnat, hml, legalizeOneSrc_of_ne _ _ hm1 hm2, noLowMulB]
       · simp [physExpand, noLowMulB]
-    · simp only [physExpand, hbin, if_true, hsh, Bool.false_eq_true, if_false]
+    · simp only [physExpand, hbin, ite_true, hsh, Bool.false_eq_true, ite_false]
       exact homeOkB_lowerTwoAddr hs15 ii _ _ _ _ _ (fun n h => hrm d n h) env he
 
 /-- An instruction of no virtual mnemonic but `o`, and no move mnemonic. -/
@@ -1136,13 +1136,13 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
       · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hL rfl
         obtain ⟨n', hn'⟩ := hreg dn
         simp only [physExpand, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
-          Bool.false_eq_true, if_false, if_true, hrmA, hn', reloadMemrefBase, hmb]
+          Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb]
         exact loadIdx_scanStays hs15 hq ii _ n' y' _ rfl
       · obtain ⟨dn, b, y, v, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hS rfl
         obtain ⟨n', hn'⟩ := hreg dn
         obtain ⟨v', hv'⟩ := hreg v
         simp only [physExpand, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
-          Bool.false_eq_true, if_false, if_true, hrmA, hn', hv', reloadMemrefBase, hmb]
+          Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb]
         exact storeIdx_scanStays hs15 hq ii _ _ _ n' y' v' _ rfl rfl
     | _ => simp [isAccB] at hA
 
@@ -1179,7 +1179,7 @@ theorem physExpand_arrImm_eq (shiftImm : ShiftImmOracle) (u64 : Bool)
   obtain ⟨hbin, hms, hcm, hset⟩ := arrImm_mnem_class hz
   unfold physExpand
   rcases t with _ | ⟨s2, t⟩ <;>
-    simp only [hbin, Bool.false_eq_true, if_false, hms, legalizeSpillDst,
+    simp only [hbin, Bool.false_eq_true, ite_false, hms, legalizeSpillDst,
       cmovSpillDst?_of_ne _ _ hcm, setccSpill?_of_ne _ _ hset, List.map_cons, List.map_nil]
 
 /-- **The reloaded expansion of a constant-index array write.** For a `ZEROARR` or `STOREIMM`
@@ -1366,7 +1366,7 @@ theorem physExpand_flatMap_side {slotArr : String → Option (String × Nat)}
   intro F
   let rm := fun o => remapOperand body1 (straightCallComposeTable body1 (physTableOut body1 [] [])) o
   have hrmE : physRmap body1 [] = rm := by
-    simp only [physRmap, hcf, Bool.false_eq_true, if_false]
+    simp only [physRmap, hcf, Bool.false_eq_true, ite_false]
     rfl
   have hcall : ∀ i ∈ body1, ∀ a b, i.li_i ≠ .Lcall a b := by
     intro i hi a b he

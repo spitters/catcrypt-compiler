@@ -277,10 +277,10 @@ theorem minFold_mem : ∀ (l : List Int) (b : Option Int) (o : Int),
       | some c =>
         by_cases hx : x < c
         · left
-          have hxo : x = o := by simp only [if_pos hx] at h'; simpa using h'
+          have hxo : x = o := by simp only [ite_eq_left hx] at h'; simpa using h'
           exact hxo ▸ List.mem_cons_self ..
         · right
-          simp only [if_neg hx] at h'
+          simp only [ite_eq_right hx] at h'
           exact h'
 
 /-- One packing step stays on the grid: the offset it chooses is either an offset already

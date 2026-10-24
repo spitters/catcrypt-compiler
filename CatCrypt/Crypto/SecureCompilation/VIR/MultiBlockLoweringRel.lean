@@ -434,7 +434,7 @@ theorem gradeCom_goodXfer (L : MultiBlockLoweringData d d') (enc : L.Enc)
   | _, _, .var e body, hc, gΓ => by
       have h1 : goodXfer L enc Good e (gradeArgs gΓ e.args) = some () := by
         unfold goodXfer
-        exact if_pos hc.1
+        exact ite_eq_left hc.1
       simp only [gradeCom, h1]
       exact gradeCom_goodXfer L enc Good body hc.2 _
 
@@ -446,7 +446,7 @@ theorem blockSquareRelE_graph (L : MultiBlockLoweringData d d') (enc : L.Enc)
   intro Γ t e gs g hx vals W hW
   have hG : Good e := by
     by_contra hn
-    simp only [goodXfer, if_neg hn, reduceCtorEq] at hx
+    simp only [goodXfer, ite_eq_right hn, reduceCtorEq] at hx
   rw [(flatRel_graph_iff L enc gs vals W).mp hW]
   exact hBlk e hG vals
 

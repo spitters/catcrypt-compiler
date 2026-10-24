@@ -101,7 +101,7 @@ theorem atLevel_extend {Γ : JCtxt} {t : JasminTy} (V : Ctxt.Valuation Γ) (z : 
     (w ℓ : Nat)
     (h : ℓ < Γ.length) : atLevel (V.extend z) w ℓ = atLevel V w ℓ := by
   show (if ℓ = Γ.length then regAs t w z else atLevel V w ℓ) = _
-  rw [if_neg (by omega)]
+  rw [ite_eq_right (by omega)]
 
 theorem atLevel_varLevel : ∀ {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t)
     (V : Ctxt.Valuation Γ) (w : Nat), atLevel V w (varLevel v) = regAs t w (v.lookup V)
@@ -110,7 +110,7 @@ theorem atLevel_varLevel : ∀ {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t)
       simp [varLevel, varDepth]
     rw [hl]
     show (if Γ.length = Γ.length then regAs t w x else atLevel V w Γ.length) = _
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     rfl
   | s :: Γ, t, .there v, .cons x V, w => by
     have hv := varDepth_lt v
@@ -119,7 +119,7 @@ theorem atLevel_varLevel : ∀ {Γ : JCtxt} {t : JasminTy} (v : Ctxt.Var Γ t)
       simp [varLevel, varDepth]; omega
     rw [hl]
     show (if varLevel v = Γ.length then regAs s w x else atLevel V w (varLevel v)) = _
-    rw [if_neg (by have := varLevel_lt v; omega), ih]
+    rw [ite_eq_right (by have := varLevel_lt v; omega), ih]
     rfl
 
 /-- The word a register variable holds under `V`. -/

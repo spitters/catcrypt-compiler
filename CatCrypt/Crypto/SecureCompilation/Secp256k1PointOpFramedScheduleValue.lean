@@ -308,21 +308,21 @@ theorem stepFramed_pullback (op : FOp) (hop : DblNamed op)
       simp only [stepFramed, stepFOpG, envUpd, hR a ha, hR b hb]
       by_cases hmo : m = o
       · subst hmo; simp [Function.update_self]
-      · rw [Function.update_of_ne (fun h => hmo (slotOfDbl_inj hm ho h)), if_neg hmo]
+      · rw [Function.update_of_ne (fun h => hmo (slotOfDbl_inj hm ho h)), ite_eq_right hmo]
         exact hR m hm
   | add o a b =>
       obtain ⟨ho, ha, hb⟩ := hop
       simp only [stepFramed, stepFOpG, envUpd, hR a ha, hR b hb]
       by_cases hmo : m = o
       · subst hmo; simp [Function.update_self]
-      · rw [Function.update_of_ne (fun h => hmo (slotOfDbl_inj hm ho h)), if_neg hmo]
+      · rw [Function.update_of_ne (fun h => hmo (slotOfDbl_inj hm ho h)), ite_eq_right hmo]
         exact hR m hm
   | sub o a b =>
       obtain ⟨ho, ha, hb⟩ := hop
       simp only [stepFramed, stepFOpG, envUpd, hR a ha, hR b hb]
       by_cases hmo : m = o
       · subst hmo; simp [Function.update_self]
-      · rw [Function.update_of_ne (fun h => hmo (slotOfDbl_inj hm ho h)), if_neg hmo]
+      · rw [Function.update_of_ne (fun h => hmo (slotOfDbl_inj hm ho h)), ite_eq_right hmo]
         exact hR m hm
 
 /-- **The framed slot fold agrees with the named schedule interpreter.** For a

@@ -312,7 +312,7 @@ theorem regBit_of_lvm64 {r : LstateN} {x : String} {b : BitVec 1}
     obtain rfl : i = 0 := by omega
     simp
   simp only [regBit, h1, h64]
-  rw [if_pos hlt, hb]
+  rw [ite_eq_left hlt, hb]
 
 /-- A register of width `1` or `64` with a bit has the bit's zero-extension as its 64-bit
     word when it has width `64`. -/
@@ -345,7 +345,7 @@ theorem regBit_some {r : LstateN} {x : String} {b : BitVec 1} (h : regBit r x = 
     of `v`. -/
 theorem immWordA_mov_setWidth (ds ss : List LOperand) (old : BitVec 64) (v : Nat) :
     (immWordA (.Lopn ds "MOV" ss) old v).setWidth 1 = BitVec.ofNat 1 v := by
-  simp only [immWordA, if_true]
+  simp only [immWordA, ite_true]
   apply BitVec.eq_of_getElem_eq
   intro i hi
   obtain rfl : i = 0 := by omega
@@ -959,7 +959,7 @@ theorem EqOff.setReg {scr : String} {r r' : LstateN} (h : EqOff scr r r') (d : S
 theorem EqOff.setReg_scr_right {scr : String} {r r' : LstateN} (h : EqOff scr r r')
     {w : Nat} (v : BitVec w) : EqOff scr r (r'.setReg scr v) := by
   intro x hx
-  simp only [LstateN.lvm_setReg, if_neg hx]
+  simp only [LstateN.lvm_setReg, ite_eq_right hx]
   exact h x hx
 
 theorem EqOff.of_lvm {scr : String} {r r₁ r' : LstateN} (h : EqOff scr r r')
@@ -980,7 +980,7 @@ theorem stackGet_stackSet_ne {n : Nat} (arr : Fin n → BitVec 64) (j j' : Nat) 
   | zero => omega
   | succ m =>
       simp only [stackGet, stackSet]
-      rw [if_neg]
+      rw [ite_eq_right]
       intro hc
       have := congrArg Fin.val hc
       simp only [Nat.mod_eq_of_lt hj, Nat.mod_eq_of_lt hj'] at this
@@ -1071,7 +1071,7 @@ theorem load_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : Str
   rw [fstepF_loadN] at hstep
   obtain ⟨b', hb', hbz⟩ := Option.map_eq_some_iff.mp hstep
   obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ hbz
-  simp only [lsemStepMem, loadN, loadStruct?, if_true] at hb'
+  simp only [lsemStepMem, loadN, loadStruct?, ite_true] at hb'
   cases harr : s.getArr A 64 (L.len A) with
   | none => simp [harr] at hb'
   | some arr =>
@@ -1088,7 +1088,7 @@ theorem load_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : Str
       simp only [loadA, runStraightA, fstepA_reload frame scr q a hq, Option.bind_some]
       simp only [fstepA, loadIdxA?,
         X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList),
-        if_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
+        ite_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
         LstateN.getW_setReg_other _ _ _ _ _ hidx, hvia, Option.bind_some]
       refine ⟨_, rfl, ?_⟩
       · refine ⟨?_, ?_, ?_, hrel.flags⟩
@@ -1121,7 +1121,7 @@ theorem store_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : St
   rw [fstepF_storeN] at hstep
   obtain ⟨b', hb', hbz⟩ := Option.map_eq_some_iff.mp hstep
   obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ hbz
-  simp only [lsemStepMem, storeN, storeStruct?, if_true] at hb'
+  simp only [lsemStepMem, storeN, storeStruct?, ite_true] at hb'
   cases harr : s.getArr A 64 (L.len A) with
   | none => simp [harr] at hb'
   | some arr =>
@@ -1140,7 +1140,7 @@ theorem store_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : St
         simp only [storeA, runStraightA, fstepA_reload frame scr q a hq, Option.bind_some]
         simp only [fstepA, storeIdxA?,
           X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STOREIDX".toList),
-          if_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
+          ite_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
           LstateN.getW_setReg_other _ _ _ _ _ hidx, LstateN.getW_setReg_other _ _ _ _ _ hval,
           hvia, hvva, Option.bind_some]
         refine ⟨_, rfl, ?_⟩
@@ -1702,7 +1702,7 @@ theorem fstepF_loadN_getW {L : Layout} {dst A idx : String} {s b : LstateM} {zf 
   rw [fstepF_loadN] at h
   obtain ⟨b', hb', hbz⟩ := Option.map_eq_some_iff.mp h
   obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ hbz
-  simp only [lsemStepMem, loadN, loadStruct?, if_true] at hb'
+  simp only [lsemStepMem, loadN, loadStruct?, ite_true] at hb'
   split at hb'
   · obtain rfl := Option.some.inj hb'
     simp [hx]
@@ -1714,7 +1714,7 @@ theorem fstepF_storeN_getW {L : Layout} {dst A idx val : String} {s b : LstateM}
   rw [fstepF_storeN] at h
   obtain ⟨b', hb', hbz⟩ := Option.map_eq_some_iff.mp h
   obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ hbz
-  simp only [lsemStepMem, storeN, storeStruct?, if_true] at hb'
+  simp only [lsemStepMem, storeN, storeStruct?, ite_true] at hb'
   split at hb'
   · obtain rfl := Option.some.inj hb'
     simp
@@ -1917,12 +1917,12 @@ theorem fstepF_binRegI (opn base dst a b : String) (hstrip : stripWidthTag opn =
       (applyOpnN w base [va, vb]).map fun v =>
         (withALUFlags (binRegI opn dst a b) s ((s.setReg dst v).nextPc), zf) := by
   have hc : cmpArgs? (binRegI opn dst a b) = none := by
-    simp only [cmpArgs?, binRegI, if_neg hcmp]
+    simp only [cmpArgs?, binRegI, ite_eq_right hcmp]
   have hm : movRegArgs? (binRegI opn dst a b) = none := rfl
   have hk := carryArgs?_binRegI (dst := dst) (a := a) (b := b) hstrip hcarry
   have hw : wideArgs? (binRegI opn dst a b) = none := by
     simp only [wideArgs?, binRegI]
-    rw [if_neg]
+    rw [ite_eq_right]
     intro he
     subst he
     exact hmov (hstrip.symm.trans (by decide +kernel))
@@ -1930,7 +1930,7 @@ theorem fstepF_binRegI (opn base dst a b : String) (hstrip : stripWidthTag opn =
       = (s.reg.getW b w).bind fun vb =>
           (applyOpnN w base [va, vb]).map fun v => (s.reg.setReg dst v).nextPc := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
-      lsemStepMC_of_delegate _ _ (by simp only [mulhiStruct?, hstrip, if_neg hmul])
+      lsemStepMC_of_delegate _ _ (by simp only [mulhiStruct?, hstrip, ite_eq_right hmul])
         rfl rfl rfl rfl,
       lsemStepSh_of_not_sar _ _ rfl]
     simp only [lsemStepN, readReg_of_getW hg, evalOperandN, hstrip]
@@ -2079,7 +2079,7 @@ theorem fstepF_adcx (opn dst a b c : String) (hstrip : stripWidthTag opn = "ADCX
       = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
           (s.reg.setReg dst (addCarryWord va vb vc)).nextPc := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
-    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, hstrip, if_true, readReg_of_getW hg]
+    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, hstrip, ite_true, readReg_of_getW hg]
     cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
   unfold fstepF
   simp only [show cmpArgs? (carryRegI opn dst a b c) = none from rfl,
@@ -2102,8 +2102,8 @@ theorem fstepF_adcxhi (opn dst a b c : String) (hstrip : stripWidthTag opn = "AD
       = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
           (s.reg.setReg dst (carryOutBit va vb vc)).nextPc := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
-    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, hstrip, if_true,
-      show ¬ ("ADCXHI" = "ADCX") by decide, if_false, readReg_of_getW hg]
+    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, hstrip, ite_true,
+      show ¬ ("ADCXHI" = "ADCX") by decide, ite_false, readReg_of_getW hg]
     cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
   unfold fstepF
   simp only [show cmpArgs? (carryRegI opn dst a b c) = none from rfl,
@@ -2126,8 +2126,8 @@ theorem fstepF_sbb (opn dst a b c : String) (hstrip : stripWidthTag opn = "SBB")
       = (s.reg.getW b w).bind fun vb => (s.reg.getW c 1).map fun vc =>
           (s.reg.setReg dst (subBorrowWord va vb vc)).nextPc := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
-    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, hstrip, if_true,
-      show ¬ ("SBB" = "ADCX") by decide, show ¬ ("SBB" = "ADCXHI") by decide, if_false,
+    simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, hstrip, ite_true,
+      show ¬ ("SBB" = "ADCX") by decide, show ¬ ("SBB" = "ADCXHI") by decide, ite_false,
       readReg_of_getW hg]
     cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
   unfold fstepF
@@ -2152,8 +2152,8 @@ theorem fstepF_sbbhi (opn dst a b c : String) (hstrip : stripWidthTag opn = "SBB
           (s.reg.setReg dst (borrowOutBit va vb vc)).nextPc := by
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
     simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?,
-      hstrip, if_true, show ¬ ("SBBHI" = "ADCX") by decide,
-      show ¬ ("SBBHI" = "ADCXHI") by decide, show ¬ ("SBBHI" = "SBB") by decide, if_false,
+      hstrip, ite_true, show ¬ ("SBBHI" = "ADCX") by decide,
+      show ¬ ("SBBHI" = "ADCXHI") by decide, show ¬ ("SBBHI" = "SBB") by decide, ite_false,
       readReg_of_getW hg]
     cases s.reg.getW b w <;> cases s.reg.getW c 1 <;> rfl
   unfold fstepF

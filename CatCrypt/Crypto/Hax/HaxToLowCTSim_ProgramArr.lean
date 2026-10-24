@@ -462,7 +462,7 @@ theorem haxToLowCT_letBind_index_some (name f arr idx : String) (body : ImpExpr)
   cases hBody : haxToLowCT body with
   | none => simp [hBody] at h
   | some bodyC =>
-    simp only [hBody, if_neg hArr, if_pos hIdx, Option.some.injEq] at h
+    simp only [hBody, ite_eq_right hArr, ite_eq_left hIdx, Option.some.injEq] at h
     exact ⟨bodyC, rfl, h.symm⟩
 
 theorem haxToLowCT_letBind_arrUpdate_some (name f arr idx src : String) (body : ImpExpr)
@@ -475,7 +475,7 @@ theorem haxToLowCT_letBind_arrUpdate_some (name f arr idx src : String) (body : 
   cases hBody : haxToLowCT body with
   | none => simp [hBody] at h
   | some bodyC =>
-    simp only [hBody, if_pos hArr, Option.some.injEq] at h
+    simp only [hBody, ite_eq_left hArr, Option.some.injEq] at h
     exact ⟨bodyC, rfl, h.symm⟩
 
 /-- The lowering of `arr = array_update(arr, idx, src)` on three variables is the
@@ -485,7 +485,7 @@ theorem haxToLowCT_assign_arrUpdate_some (name f arr idx src : String) (c : LowC
     (h : haxToLowCT (.assign name (.app f [.var arr, .var idx, .var src])) = some c) :
     c = .RArrStore { locVar := arr, locSrc := .TBytes 0 } idx
       { locVar := src, locSrc := .TBytes 0 } := by
-  simp only [haxToLowCT, haxArgsToLocated, haxArgToLocated, if_pos hArr, Option.some.injEq] at h
+  simp only [haxToLowCT, haxArgsToLocated, haxArgToLocated, ite_eq_left hArr, Option.some.injEq] at h
   exact h.symm
 
 /-! ## §4  The simulation predicate -/
@@ -680,7 +680,7 @@ theorem progSimA_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
   subst hC
   have hBodyEval := evalImp_letBind_lit_inv bi fuel name l body env v env' hEval
   by_cases hTm : T.contains name = true
-  · rw [if_pos hTm] at hScope
+  · rw [ite_eq_left hTm] at hScope
     split at hScope
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
@@ -692,7 +692,7 @@ theorem progSimA_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
           simp only [litWord, Bool.and_eq_true, decide_eq_true_eq] at hW
           obtain ⟨h0, h1⟩ := hW
           refine ⟨n.toNat, by omega, by simp [Value.ofLit, Int.toNat_of_nonneg h0], ?_⟩
-          simp only [Value.ofLit, valueToScalar, if_pos h0, Option.some.injEq] at hDecode
+          simp only [Value.ofLit, valueToScalar, ite_eq_left h0, Option.some.injEq] at hDecode
           exact hDecode
         | _ => simp [litWord] at hW
       subst hm
@@ -727,7 +727,7 @@ theorem progSimA_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
       exact ⟨rs', RustExec.letZero name .TFp _ rs rs'
         (RustExec.seq _ _ _ _ _ hStore hBodyExec), hAgree', hSB', hSF'⟩
     · cases hScope
-  · rw [if_neg hTm] at hScope
+  · rw [ite_eq_right hTm] at hScope
     split at hScope
     · rename_i hIn
       rw [litTower_lit_not_mem T name m bodyC (by simpa using hTm), arrTower_letU64Zero,
@@ -778,7 +778,7 @@ theorem progSimA_letBind_app (name f : String) (args : List ImpExpr) (body : Imp
     ProgSimA bridge bi N leafSpec S T A (.letBind name (.app f args) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree
   simp only [condsScalar] at hConds
-  simp only [simScopeA, if_neg hf_arr, if_neg hf_idx] at hScope
+  simp only [simScopeA, ite_eq_right hf_arr, ite_eq_right hf_idx] at hScope
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
@@ -923,7 +923,7 @@ theorem progSimA_letBind_index (name f arr idx : String) (body : ImpExpr)
     ProgSimA bridge bi N leafSpec S T A (.letBind name (.app f [.var arr, .var idx]) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree
   simp only [condsScalar] at hConds
-  simp only [simScopeA, if_neg hf_arr, if_pos hf_idx] at hScope
+  simp only [simScopeA, ite_eq_right hf_arr, ite_eq_left hf_idx] at hScope
   rcases hA : List.lookup arr A with _ | t
   · rw [hA] at hScope; cases hScope
   simp only [hA] at hScope
@@ -992,7 +992,7 @@ theorem progSimA_letBind_arrUpdate (name f arr idx src : String) (body : ImpExpr
       (.letBind name (.app f [.var arr, .var idx, .var src]) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree
   simp only [condsScalar] at hConds
-  simp only [simScopeA, if_pos hf_arr] at hScope
+  simp only [simScopeA, ite_eq_left hf_arr] at hScope
   rcases hA : List.lookup arr A with _ | t
   · rw [hA] at hScope; cases hScope
   simp only [hA] at hScope
@@ -1091,7 +1091,7 @@ theorem haxToLowCT_simulates_programA
       by_cases hf_arr : f = "array_update"
       · rcases hSh : varArgs3 args with _ | ⟨arr, idx, src⟩
         · refine noneArm _ fun Γ => ?_
-          simp only [simScopeA, if_pos hf_arr]
+          simp only [simScopeA, ite_eq_left hf_arr]
           split
           · simp [varArgs3] at hSh
           · rfl
@@ -1101,7 +1101,7 @@ theorem haxToLowCT_simulates_programA
       by_cases hf_idx : f = "index"
       · rcases hSh : varArgs2 args with _ | ⟨arr, idx⟩
         · refine noneArm _ fun Γ => ?_
-          simp only [simScopeA, if_neg hf_arr, if_pos hf_idx]
+          simp only [simScopeA, ite_eq_right hf_arr, ite_eq_left hf_idx]
           split
           · simp [varArgs2] at hSh
           · rfl
@@ -1135,11 +1135,11 @@ theorem haxToLowCT_simulates_programA
       simp [litTower, arrTower]
     | app f args =>
       by_cases hf : f = "array_update" ∨ f = "index"
-      · exact noneArm _ fun Γ => by simp only [simScopeA, if_pos hf]
+      · exact noneArm _ fun Γ => by simp only [simScopeA, ite_eq_left hf]
       have hf_arr : f ≠ "array_update" := fun h => hf (Or.inl h)
       have hf_idx : f ≠ "index" := fun h => hf (Or.inr h)
       refine progSimA_of_progSimT_assign bridge bi N leafSpec S T A _
-        (fun Γ => by simp only [simScopeA, simScope, if_neg hf, if_neg hf_arr]) ?_
+        (fun Γ => by simp only [simScopeA, simScope, ite_eq_right hf, ite_eq_right hf_arr]) ?_
         (progSimT_assign_app bridge bi N leafSpec S name f args hf_arr (hLeaf f hf_arr hf_idx))
       intro c hc
       obtain ⟨_, _, rfl⟩ := haxToLowCT_assign_app_some name f args c hf_arr hc

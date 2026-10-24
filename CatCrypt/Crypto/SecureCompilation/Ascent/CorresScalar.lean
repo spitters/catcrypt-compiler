@@ -94,13 +94,13 @@ theorem corres_setExprWord (x : String) (e : SExpr) (he : srcClean e) :
     by_cases hyx : y = x
     · show (env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e)) y
         = some ⟨.sword 64, if y = x then SExpr.evalBV a e else a y⟩
-      rw [if_pos hyx]
-      simp only [SEnvScalar.upd, if_pos hyx]
+      rw [ite_eq_left hyx]
+      simp only [SEnvScalar.upd, ite_eq_left hyx]
       rw [hval]
     · show (env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e)) y
         = some ⟨.sword 64, if y = x then SExpr.evalBV a e else a y⟩
-      rw [if_neg hyx]
-      simp only [SEnvScalar.upd, if_neg hyx]
+      rw [ite_eq_right hyx]
+      simp only [SEnvScalar.upd, ite_eq_right hyx]
       rw [hotb y (Or.inl hnt)]
       exact hSR y hnt
 
@@ -138,7 +138,7 @@ theorem foldl_wordStep_frame (s : String) :
       cases c with
       | RScalarSetExpr x e =>
           have hne : s ≠ x := h x e (List.mem_cons.mpr (Or.inl rfl))
-          simp only [wordStep, if_neg hne]
+          simp only [wordStep, ite_eq_right hne]
       | _ => simp only [wordStep]
 
 /-- Sequence a list of `LowCT` into an `RSeq` chain. -/

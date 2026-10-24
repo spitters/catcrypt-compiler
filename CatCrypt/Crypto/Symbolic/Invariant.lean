@@ -141,15 +141,15 @@ theorem aeadFlows_of_extends {tr tr' : Trace} (h : tr.Extends tr') {key msg : By
 theorem labelOf_aeadEnc_of_flows {tr : Trace} {key nonce msg ad : Bytes}
     (hf : aeadFlows tr key msg) : labelOf tr (.aeadEnc key nonce msg ad) = .top := by
   have : (∀ tr', tr.Extends tr' → canFlow (labelOf tr' key) (labelOf tr' msg)) := hf
-  simp only [labelOf, this, if_true]
-  exact if_pos this
+  simp only [labelOf, this, ite_true]
+  exact ite_eq_left this
 
 theorem labelOf_aeadEnc_of_not_flows {tr : Trace} {key nonce msg ad : Bytes}
     (hf : ¬ aeadFlows tr key msg) :
     labelOf tr (.aeadEnc key nonce msg ad) = .meet (labelOf tr key) (labelOf tr msg) := by
   have : ¬ (∀ tr', tr.Extends tr' → canFlow (labelOf tr' key) (labelOf tr' msg)) := hf
   simp only [labelOf]
-  exact if_neg this
+  exact ite_eq_right this
 
 /-- A ciphertext of corrupt key and plaintext is corrupt. -/
 theorem isCorrupt_labelOf_aeadEnc {tr : Trace} {key nonce msg ad : Bytes} {C : String → Prop}

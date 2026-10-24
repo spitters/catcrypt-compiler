@@ -297,9 +297,9 @@ theorem spillFold_mem (st : Nat) (uses : Array Nat) :
         exact Or.inl (hb ▸ List.mem_cons_self)
       | some b =>
         by_cases hp : spillPrefer st uses a b
-        · simp only [hp, if_pos, Option.some.injEq] at hb
+        · simp only [hp, ite_eq_left, Option.some.injEq] at hb
           exact Or.inl (hb ▸ List.mem_cons_self)
-        · simp only [hp, Bool.false_eq_true, if_neg, not_false_iff] at hb
+        · simp only [hp, Bool.false_eq_true, ite_eq_right, not_false_iff] at hb
           exact Or.inr hb
 
 /-- `spillVictim` returns one of the active allocations. -/
@@ -489,7 +489,7 @@ theorem physNoCollision_of_boolB (tr : List PhysEvent)
   have step2 := List.all_eq_true.mp step1 r₂ h2
   by_cases heq : r₁.1 == r₂.1
   · simp only [beq_iff_eq] at heq; exact absurd heq hne
-  · simp only [heq, Bool.false_eq_true, if_false, hov, if_true] at step2
+  · simp only [heq, Bool.false_eq_true, ite_false, hov, ite_true] at step2
     simpa [bne, beq_iff_eq] using step2
 
 /- The concrete no-collision check for the ChaCha20-block physical allocation
@@ -535,7 +535,7 @@ theorem twoAddr_denote {w : Nat} (op : JasminBinOp) (st : RegStore w)
     (opStep op (movStep st dst src0) dst src1) dst
       = op.apply (st src0) (st src1) := by
   simp only [opStep, movStep, setReg, ↓reduceIte]
-  rw [if_neg (Ne.symm hne)]
+  rw [ite_eq_right (Ne.symm hne)]
 
 /-- **Collapsed two-address denotation (`dst = src0`, single `op dst,src1`).**
     When the RA placed `dst` on `src0`'s register, `dst` already holds `a`, so
@@ -595,7 +595,7 @@ theorem opStepImm_eq_opStep_of_const {w : Nat} (op : JasminBinOp)
 theorem reload_denote {w : Nat} (op : JasminBinOp) (st : RegStore w)
     (dst src sc : Nat) (hsc : dst ≠ sc) :
     (opStep op (movStep st sc src) dst sc) dst = op.apply (st dst) (st src) := by
-  simp only [opStep, movStep, setReg, if_true, if_neg hsc]
+  simp only [opStep, movStep, setReg, ite_true, ite_eq_right hsc]
 
 /-- **Dst-reload denotation (`mov sc, src0; op sc, src1; mov dst, sc`).** When
     `dst` is itself a spill slot, the reload pass routes the whole binop
@@ -610,7 +610,7 @@ theorem reloadDst_denote {w : Nat} (op : JasminBinOp) (st : RegStore w)
     let st1 := movStep st sc src0
     let st2 := opStep op st1 sc src1
     (setReg st2 dst (st2 sc)) dst = op.apply (st src0) (st src1) := by
-  simp only [opStep, movStep, setReg, if_true]
+  simp only [opStep, movStep, setReg, ite_true]
   by_cases h : src1 = sc
   · exact absurd h.symm hsc1
   · simp [h]
@@ -627,7 +627,7 @@ theorem reloadBoth_denote {w : Nat} (op : JasminBinOp) (st : RegStore w)
     let st2 := movStep st1 sc2 src1
     let st3 := opStep op st2 sc sc2
     (setReg st3 dst (st3 sc)) dst = op.apply (st src0) (st src1) := by
-  simp only [opStep, movStep, setReg, if_true]
+  simp only [opStep, movStep, setReg, ite_true]
   -- The result in `sc` after the op is `apply op (st2 sc) (st2 sc2)`.
   -- `st2 sc = st1 sc = st src0` (since src1 ≠ sc by hsc1, and sc was just
   -- written to st src0).
@@ -739,10 +739,10 @@ theorem legalizeMov_legalMemForm (dst src : LOperand) (mov : String := "MOV") :
   intro r hr
   unfold legalizeMov at hr
   by_cases h : dst.isSpill && src.isSpill
-  · simp only [h, if_true, List.mem_cons, List.not_mem_nil, or_false] at hr
+  · simp only [h, ite_true, List.mem_cons, List.not_mem_nil, or_false] at hr
     rcases hr with h1 | h1 <;> subst h1 <;>
       simp [LinstrR.legalMemForm, reloadScratch_not_spill]
-  · simp only [h, Bool.false_eq_true, if_false, List.mem_singleton] at hr
+  · simp only [h, Bool.false_eq_true, ite_false, List.mem_singleton] at hr
     subst hr
     simp only [LinstrR.legalMemForm, Bool.not_eq_true', Bool.and_eq_false_iff]
     rw [Bool.not_eq_true, Bool.and_eq_false_iff] at h
@@ -831,11 +831,11 @@ theorem lowerTwoAddrShiftImm_legalMemForm (dst s0 : LOperand) (v : Nat)
   · rw [Bool.not_eq_true] at hd
     simp only [hd, Bool.false_eq_true, ↓reduceIte] at hr
     by_cases heq : dst = s0
-    · rw [if_pos heq] at hr
+    · rw [ite_eq_left heq] at hr
       simp only [List.mem_singleton] at hr
       subst hr
       simp [LinstrR.legalMemForm, imm_not_spill]
-    · rw [if_neg heq] at hr
+    · rw [ite_eq_right heq] at hr
       rw [List.mem_append] at hr
       rcases hr with hr | hr
       · exact legalizeMov_legalMemForm dst s0 "MOV" r hr

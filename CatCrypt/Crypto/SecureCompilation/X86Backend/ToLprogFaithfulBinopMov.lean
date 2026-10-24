@@ -80,7 +80,7 @@ theorem lowerTwoAddr_regReg_ne (dst s0 s1 opn mov : String) (hne : dst ≠ s0) :
         ++ legalizeBinop (.reg dst) (.reg s1) opn mov := by
   have hneOp : (LOperand.reg dst) ≠ (LOperand.reg s0) := fun h => hne (by injection h)
   unfold lowerTwoAddr
-  simp only [materializeWideImm_reg, List.nil_append, List.append_nil, if_neg hneOp]
+  simp only [materializeWideImm_reg, List.nil_append, List.append_nil, ite_eq_right hneOp]
 
 /-! ## 2. The `physBodyElem` expansion of a binop head
 
@@ -98,7 +98,7 @@ theorem physBodyElem_binopTwoAddr (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     (physBodyElem body tbl ⟨ii, .Lopn (d :: ds) opn (s0 :: s1 :: ss)⟩).map (·.li_i)
       = lowerTwoAddr (remapOperand body tbl d) (remapOperand body tbl s0)
           (remapOperand body tbl s1) opn "MOV" := by
-  simp only [physBodyElem, hbin, hsh, h64, Bool.false_eq_true, if_false, if_true,
+  simp only [physBodyElem, hbin, hsh, h64, Bool.false_eq_true, ite_false, ite_true,
     List.map_map, Function.comp_def, List.map_id_fun', id_eq]
 
 /-- The `physBodyElem` expansion of a width-64 non-shift binop head is the
@@ -111,7 +111,7 @@ theorem physBodyElem_binopTwoAddr64 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     (physBodyElem body tbl ⟨ii, .Lopn (d :: ds) opn (s0 :: s1 :: ss)⟩).map (·.li_i)
       = lowerTwoAddr (remapOperand body tbl d) (remapOperand body tbl s0)
           (remapOperand body tbl s1) opn "MOV:64" := by
-  simp only [physBodyElem, hbin, hsh, h64, Bool.false_eq_true, if_false, if_true,
+  simp only [physBodyElem, hbin, hsh, h64, Bool.false_eq_true, ite_false, ite_true,
     List.map_map, Function.comp_def, List.map_id_fun', id_eq]
 
 /-! ## 3. Mnemonic congruence of a move and of a concatenation
@@ -128,7 +128,7 @@ theorem legalizeMov_mnem_congr {w : Nat} (nD nS : String) (mov1 mov2 : String)
       = lsemStraight (legalizeMov (.reg nD) (.reg nS) mov2) s := by
   unfold legalizeMov
   cases h1 : ((LOperand.reg nD).isSpill && (LOperand.reg nS).isSpill) <;>
-    simp only [if_true, if_false, Bool.false_eq_true, lsemStraight_cons, lsemStraight_nil,
+    simp only [ite_true, ite_false, Bool.false_eq_true, lsemStraight_cons, lsemStraight_nil,
       lsemStep_congr1 h]
 
 /-- Two concatenations whose corresponding halves run alike run alike. -/

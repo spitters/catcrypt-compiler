@@ -190,10 +190,10 @@ theorem physRegNameC_false_resolved (p : Nat) (abi : IsaAbi) :
     physRegNameC false p abi ∈ abi.allocPool ∨
       ∃ n : Nat, physRegNameC false p abi = "k." ++ toString n := by
   unfold physRegNameC
-  simp only [Bool.false_eq_true, if_false]
+  simp only [Bool.false_eq_true, ite_false]
   split
   · unfold physRegName
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
     split
     · next r hr => exact Or.inl (List.mem_of_getElem? hr)
     · exact Or.inr ⟨_, rfl⟩
@@ -205,8 +205,8 @@ theorem physRegNameC_true_resolved (p : Nat) (abi : IsaAbi) :
     physRegNameC true p abi ∈ vectorRegNames ∨
       ∃ n : Nat, physRegNameC true p abi = "kv." ++ toString n := by
   unfold physRegNameC physRegName
-  simp only [if_true]
-  rw [if_pos (Nat.le_max_right _ _)]
+  simp only [ite_true]
+  rw [ite_eq_left (Nat.le_max_right _ _)]
   split
   · next r hr => exact Or.inl (List.mem_of_getElem? hr)
   · exact Or.inr ⟨_, rfl⟩

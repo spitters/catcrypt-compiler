@@ -115,7 +115,7 @@ theorem nonTmpAgree_upd_tmp (env : SEnvScalar) (st : JState 64) (x : String)
     nonTmpAgree (env.upd x (t := .sword 64) val) st := by
   intro v hv
   have hne : v ≠ x := fun h => hv (by rw [h]; exact hx)
-  simp only [SEnvScalar.upd, if_neg hne]
+  simp only [SEnvScalar.upd, ite_eq_right hne]
   exact hag v hv
 
 /-! ## The abstract bounded-loop middle tie -/

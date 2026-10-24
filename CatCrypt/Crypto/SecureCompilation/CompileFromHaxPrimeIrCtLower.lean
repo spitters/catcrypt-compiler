@@ -222,7 +222,7 @@ theorem selLimbCmds_run {A B O : Fin 4 → BitVec 64} {C Q : BitVec 64} {env : S
   have i2 : e2 "i" = some ⟨.sword 64, BitVec.ofNat 64 k.val⟩ :=
     (f2 "i" (notTmp_of_head (by decide)) (by decide)).trans v1'
   have u2 : e2 "u" = some ⟨.sword 64, A k⟩ := by
-    rw [he2, SEnvScalar.upd, if_pos rfl, memGet_limb]
+    rw [he2, SEnvScalar.upd, ite_eq_left rfl, memGet_limb]
   have s3 := arrLoad_eq (dstN := "v") (tw := .TBytes 32) h2.b i2
   set e3 := e2.upd "v" (t := .sword 64) (memGetDyn B (BitVec.ofNat 64 k.val).toNat) with he3
   have f3 : ∀ s, ¬ isTmpName s → s ≠ "v" → e3 s = e2 s := fun s _ hs => upd_ne' hs
@@ -233,7 +233,7 @@ theorem selLimbCmds_run {A B O : Fin 4 → BitVec 64} {C Q : BitVec 64} {env : S
   have u3 : e3 "u" = some ⟨.sword 64, A k⟩ :=
     (f3 "u" (notTmp_of_head (by decide)) (by decide)).trans u2
   have v3 : e3 "v" = some ⟨.sword 64, B k⟩ := by
-    rw [he3, SEnvScalar.upd, if_pos rfl, memGet_limb]
+    rw [he3, SEnvScalar.upd, ite_eq_left rfl, memGet_limb]
   have s4 := semScalar_rSelect_word ⟨"t", .TU64⟩ "q" ⟨"u", .TU64⟩ ⟨"v", .TU64⟩
     e3 Q (A k) (B k) rfl q3 u3 v3
   set e4 := e3.upd "t" (t := .sword 64) (selectWord Q (A k) (B k)) with he4
@@ -243,7 +243,7 @@ theorem selLimbCmds_run {A B O : Fin 4 → BitVec 64} {C Q : BitVec 64} {env : S
   have i4 : e4 "i" = some ⟨.sword 64, BitVec.ofNat 64 k.val⟩ :=
     (f4 "i" (notTmp_of_head (by decide)) (by decide)).trans i3
   have t4 : e4 "t" = some ⟨.sword 64, selectWord Q (A k) (B k)⟩ := by
-    rw [he4, SEnvScalar.upd, if_pos rfl]
+    rw [he4, SEnvScalar.upd, ite_eq_left rfl]
   have s5 := arrStore_eq (arrN := "out") (srcN := "t") h4.out i4 t4
   have hk : (BitVec.ofNat 64 k.val).toNat = k.val := by
     simp only [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
@@ -375,7 +375,7 @@ theorem eqLimbCmds_run {A B : Fin 4 → BitVec 64} {R : BitVec 64} {env : SEnvSc
   have i2 : e2 "i" = some ⟨.sword 64, BitVec.ofNat 64 k.val⟩ :=
     (f2 "i" (notTmp_of_head (by decide)) (by decide)).trans v1'
   have u2 : e2 "u" = some ⟨.sword 64, A k⟩ := by
-    rw [he2, SEnvScalar.upd, if_pos rfl, memGet_limb]
+    rw [he2, SEnvScalar.upd, ite_eq_left rfl, memGet_limb]
   have s3 := arrLoad_eq (dstN := "v") (tw := .TBytes 32) h2.b i2
   set e3 := e2.upd "v" (t := .sword 64) (memGetDyn B (BitVec.ofNat 64 k.val).toNat) with he3
   have f3 : ∀ s, ¬ isTmpName s → s ≠ "v" → e3 s = e2 s := fun s _ hs => upd_ne' hs
@@ -383,7 +383,7 @@ theorem eqLimbCmds_run {A B : Fin 4 → BitVec 64} {R : BitVec 64} {env : SEnvSc
   have u3 : e3 "u" = some ⟨.sword 64, A k⟩ :=
     (f3 "u" (notTmp_of_head (by decide)) (by decide)).trans u2
   have v3 : e3 "v" = some ⟨.sword 64, B k⟩ := by
-    rw [he3, SEnvScalar.upd, if_pos rfl, memGet_limb]
+    rw [he3, SEnvScalar.upd, ite_eq_left rfl, memGet_limb]
   obtain ⟨e4, s4, v4, f4⟩ := setE_run (x := "q") (e := .SXor (.SVar "u") (.SVar "v"))
     (env := e3) ⟨notTmp_of_head (by decide), notTmp_of_head (by decide)⟩
     (by simp [sexprVars, readU64_of u3, readU64_of v3])
@@ -720,22 +720,22 @@ theorem selTys_vmApprox : VmApprox selTys ctSelVM := by
   simp only [selTys] at hx
   by_cases h1 : x = "out"
   · subst h1
-    simp only [if_true, Option.some.injEq] at hx
+    simp only [ite_true, Option.some.injEq] at hx
     subst hx
     exact ⟨.here, by simp [ctSelVM, VarMap.bind]; rfl⟩
   · by_cases h2 : x = "c"
     · subst h2
-      simp only [if_neg h1, if_true, Option.some.injEq] at hx
+      simp only [ite_eq_right h1, ite_true, Option.some.injEq] at hx
       subst hx
       exact ⟨.there .here, by simp [ctSelVM, VarMap.bind]; rfl⟩
     · by_cases h3 : x = "b"
       · subst h3
-        simp only [if_neg h1, if_neg h2, if_true, Option.some.injEq] at hx
+        simp only [ite_eq_right h1, ite_eq_right h2, ite_true, Option.some.injEq] at hx
         subst hx
         exact ⟨.there (.there .here), by simp [ctSelVM, VarMap.bind]; rfl⟩
       · by_cases h4 : x = "a"
         · subst h4
-          simp only [if_neg h1, if_neg h2, if_neg h3, if_true, Option.some.injEq] at hx
+          simp only [ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_true, Option.some.injEq] at hx
           subst hx
           exact ⟨.there (.there (.there .here)),
             by simp [ctSelVM, VarMap.bind, VarMap.empty]; rfl⟩
@@ -755,12 +755,12 @@ theorem eqTys_vmApprox : VmApprox eqTys ctEqVM := by
   simp only [eqTys] at hx
   by_cases h1 : x = "b"
   · subst h1
-    simp only [if_true, Option.some.injEq] at hx
+    simp only [ite_true, Option.some.injEq] at hx
     subst hx
     exact ⟨.here, by simp [ctEqVM, VarMap.bind]; rfl⟩
   · by_cases h2 : x = "a"
     · subst h2
-      simp only [if_neg h1, if_true, Option.some.injEq] at hx
+      simp only [ite_eq_right h1, ite_true, Option.some.injEq] at hx
       subst hx
       exact ⟨.there .here, by simp [ctEqVM, VarMap.bind, VarMap.empty]; rfl⟩
     · simp [h1, h2] at hx

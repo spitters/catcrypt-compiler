@@ -200,7 +200,7 @@ theorem andnWalk_var_none {Γ : Ctxt jasminDialect} {s : JasminTy} {t : JasminTy
     `AndnSelect.andnSelect_fires` for the refactored walker. Walking
     `mkAndnotSubtree w a b body` (the `const; xor; and` emulation) yields the native
     `mkAndnOp w a b` over the walked body. The recognizer's width/value/operand
-    decisions on the canonical subtree are discharged by `dif_pos` / `varBeq_self`. -/
+    decisions on the canonical subtree are discharged by `dite_eq_left` / `varBeq_self`. -/
 theorem andnWalk_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w : Nat)
     (a b : Ctxt.Var Γ (.reg w))
     (body : Com jasminDialect (.reg w :: .reg w :: .reg w :: Γ) s) :

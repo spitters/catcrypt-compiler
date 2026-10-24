@@ -112,8 +112,8 @@ theorem ctMergeStage_butterfly (e : ℕ) (ω : R) (L U : Fin (2 ^ e) → R)
   have hlo : k.val < 2 ^ e := k.isLt
   have hhi : ¬ (k.val + 2 ^ e < 2 ^ e) := by omega
   refine Prod.ext ?_ ?_
-  · simp only [ctMergeStage, dif_pos hlo]
-  · simp only [ctMergeStage, dif_neg hhi]
+  · simp only [ctMergeStage, dite_eq_left hlo]
+  · simp only [ctMergeStage, dite_eq_right hhi]
     have hsub : k.val + 2 ^ e - 2 ^ e = k.val := by omega
     simp only [hsub]
 
@@ -130,8 +130,8 @@ theorem nttIter_succ_eq_ctMergeStage (e : ℕ) (ω : R) (hω : ω ^ (2 ^ e) = -1
   funext k
   simp only [nttIter, ctMergeStage]
   by_cases h : k.val < 2 ^ e
-  · simp only [dif_pos h, ctButterfly_fst]
-  · simp only [dif_neg h, ctButterfly_snd]
+  · simp only [dite_eq_left h, ctButterfly_fst]
+  · simp only [dite_eq_right h, ctButterfly_snd]
     rw [hω]
     ring
 

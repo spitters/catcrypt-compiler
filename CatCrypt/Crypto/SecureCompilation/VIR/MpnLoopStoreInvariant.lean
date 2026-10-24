@@ -138,7 +138,7 @@ theorem storeIterate_writeInv {body : List (JInstr w)} {idxReg base : String}
             have : scale * ((s.get idxReg).toNat + k) ≠ scale * ((s.get idxReg).toNat + n) :=
               fun hc => hkn' (Nat.eq_of_mul_eq_mul_left hscale hc)
             exact_mod_cast this
-          rw [if_neg (by rintro ⟨-, h2⟩; exact hne h2)]
+          rw [ite_eq_right (by rintro ⟨-, h2⟩; exact hne h2)]
           exact ihW k (by omega)
       · intro b o hbo
         simp only [hstep, hmemN, hidx]
@@ -146,7 +146,7 @@ theorem storeIterate_writeInv {body : List (JInstr w)} {idxReg base : String}
           rcases hbo with hb' | hall
           · exact fun hc => hb' hc.1
           · exact fun hc => hall n (by omega) hc.2
-        rw [if_neg hcond]
+        rw [ite_eq_right hcond]
         refine ihU b o ?_
         rcases hbo with hb' | hall
         · exact Or.inl hb'

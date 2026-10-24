@@ -181,11 +181,11 @@ theorem feCsubG_val (ρ : Nat → BitVec 64) (xs : List WE) (n : Nat)
   simp only [selL]
   split
   · rename_i hz0
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
   · rename_i hz0
     have h1 : ((addLimbs (xs.map (WE.eval ρ)) kCV 0).getLastD 0).toNat = 1 := by omega
     rw [h1] at hsplit
-    rw [if_pos (by omega)]
+    rw [ite_eq_left (by omega)]
     omega
 
 
@@ -674,10 +674,10 @@ theorem feFoldG_val (ρ : Nat → BitVec 64) (S : List WE) (n : Nat)
       have hge : 2 ^ 256 * 1 ≤ 2 ^ 256 * ((Vg.map (WE.eval ρ)).getLastD 0).toNat :=
         Nat.mul_le_mul_left _ hz
       by_cases hcu0 : cu = 0
-      · rw [if_pos hcu0] at hVsplit
+      · rw [ite_eq_left hcu0] at hVsplit
         rw [hcu0] at hUsplit
         omega
-      · rw [if_neg hcu0] at hVsplit
+      · rw [ite_eq_right hcu0] at hVsplit
         have hcu1' : cu = 1 := by omega
         rw [hcu1'] at hUsplit
         omega
@@ -694,12 +694,12 @@ theorem feFoldG_val (ρ : Nat → BitVec 64) (S : List WE) (n : Nat)
   rw [hd2]
   have hkey : bignumVal (S.map (WE.eval ρ)) = V + (2 ^ 255 - 19) * (2 * (S4 + cu)) := by
     by_cases hcu0 : cu = 0
-    · rw [if_pos hcu0] at hVfin
+    · rw [ite_eq_left hcu0] at hVfin
       rw [hcu0] at hUsplit
       rw [hcu0]
       omega
     · have hcu1' : cu = 1 := by omega
-      rw [if_neg hcu0] at hVfin
+      rw [ite_eq_right hcu0] at hVfin
       rw [hcu1'] at hUsplit
       rw [hcu1']
       omega
@@ -1175,7 +1175,7 @@ theorem rhoPA_const (st : JState 64) (j c : Nat) (h : cK j = some c) :
     rw [List.getD_eq_getElem?_getD, h]
     rfl
   rw [rhoPA, wrun_below _ _ _ _ (by omega), rho0]
-  rw [if_neg (by omega), if_pos ⟨hj, hj25⟩, hgd]
+  rw [ite_eq_right (by omega), ite_eq_left ⟨hj, hj25⟩, hgd]
 
 theorem paIn_holds (st : JState 64) : MapHolds (rhoPA st) paIn st := by
   intro p hp
@@ -1184,7 +1184,7 @@ theorem paIn_holds (st : JState 64) : MapHolds (rhoPA st) paIn st := by
   simp only [Loc.val, WE.eval, rhoPA]
   rw [wrun_below _ _ _ _ (by omega)]
   simp only [rho0]
-  rw [if_pos ⟨by omega, by omega⟩]
+  rw [ite_eq_left ⟨by omega, by omega⟩]
   congr 2
   omega
 
@@ -1205,7 +1205,7 @@ theorem slots_eq_in (st : JState 64) (k : Nat) (hk : k < 8) :
   intro i hi
   simp only [List.mem_range] at hi
   simp only [Function.comp_def, WE.eval, rhoPA]
-  rw [wrun_below _ _ _ _ (by omega), rho0, if_pos ⟨by omega, by omega⟩]
+  rw [wrun_below _ _ _ _ (by omega), rho0, ite_eq_left ⟨by omega, by omega⟩]
   congr 2
   omega
 

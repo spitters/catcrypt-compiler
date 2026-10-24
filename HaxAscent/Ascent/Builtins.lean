@@ -225,7 +225,7 @@ theorem liftFn_encArgs {A B : Type} [HaxArgs A] [HaxEnc B] (g : A → B) (a : A)
     liftFn g (encArgs a) = some (enc (g a)) := by
   have hex : ∃ a' : A, encArgs a' = encArgs a := ⟨a, rfl⟩
   unfold liftFn
-  rw [dif_pos hex, HaxArgs.inj hex.choose_spec]
+  rw [dite_eq_left hex, HaxArgs.inj hex.choose_spec]
 
 section Curried
 

@@ -165,7 +165,7 @@ theorem lsemFuelMemF_seg_fuel_calls {I : Isa} {aa : String → Nat → Option Na
       intro b0 zf k t hl hpos h
       have hfetch : findInstrMem P { base := b0, lfn := fn } = some i := by
         unfold findInstrMem
-        rw [if_pos hfn]
+        rw [ite_eq_left hfn]
         simpa using hpos 0 (by simp)
       have hstep : ∀ u, I.step P i { prog := { base := b0, lfn := fn }, zf := zf } = some u →
           ∃ b1 z1, u = { prog := { base := b1, lfn := fn }, zf := z1 } ∧ b1.lpc = b0.lpc + 1 := by

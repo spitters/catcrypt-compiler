@@ -111,7 +111,7 @@ theorem evalImp_whileLoop_var_false_exit
   unfold evalImp at h
   simp only [denote] at h
   unfold denoteWhile at h
-  simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+  simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
              StateT.bind, denote, get, getThe, MonadStateOf.get,
              StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hEnv] at h
   rw [Option.some.injEq, Prod.mk.injEq] at h
@@ -139,7 +139,7 @@ theorem evalImp_whileLoop_var_true_iterate
   unfold evalImp at h ⊢
   simp only [denote] at h
   unfold denoteWhile at h
-  simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+  simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
              StateT.bind, denote, get, getThe, MonadStateOf.get,
              StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hEnv,
              hBody] at h
@@ -184,7 +184,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
     unfold evalImp at h
     simp only [denote] at h
     unfold denoteWhile at h
-    simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+    simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                StateT.bind, denote, get, getThe, MonadStateOf.get,
                StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
     cases h
@@ -195,7 +195,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
       unfold evalImp at h
       simp only [denote] at h
       unfold denoteWhile at h
-      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+      simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                  StateT.bind, denote, get, getThe, MonadStateOf.get,
                  StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
       cases h
@@ -217,7 +217,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
       unfold evalImp at h
       simp only [denote] at h
       unfold denoteWhile at h
-      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+      simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                  StateT.bind, denote, get, getThe, MonadStateOf.get,
                  StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
       cases h
@@ -226,7 +226,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
       unfold evalImp at h
       simp only [denote] at h
       unfold denoteWhile at h
-      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+      simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                  StateT.bind, denote, get, getThe, MonadStateOf.get,
                  StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
       cases h
@@ -235,7 +235,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
       unfold evalImp at h
       simp only [denote] at h
       unfold denoteWhile at h
-      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+      simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                  StateT.bind, denote, get, getThe, MonadStateOf.get,
                  StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
       cases h
@@ -244,7 +244,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
       unfold evalImp at h
       simp only [denote] at h
       unfold denoteWhile at h
-      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+      simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                  StateT.bind, denote, get, getThe, MonadStateOf.get,
                  StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
       cases h
@@ -253,7 +253,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
       unfold evalImp at h
       simp only [denote] at h
       unfold denoteWhile at h
-      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+      simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                  StateT.bind, denote, get, getThe, MonadStateOf.get,
                  StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
       cases h
@@ -262,7 +262,7 @@ theorem evalImp_whileLoop_var_step_inv_valArm
       unfold evalImp at h
       simp only [denote] at h
       unfold denoteWhile at h
-      simp only [Nat.add_one_ne_zero, if_false, bind, Bind.bind,
+      simp only [Nat.add_one_ne_zero, ite_false, bind, Bind.bind,
                  StateT.bind, denote, get, getThe, MonadStateOf.get,
                  StateT.get, pure, Pure.pure, StateT.pure, StateT.run, hen] at h
       cases h

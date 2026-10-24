@@ -102,7 +102,7 @@ chord slope. -/
 theorem bnToEC_add_distinct (P Q : BN254Point) (hne : P.x ≠ Q.x) :
     bn254Params.add (bnToEC P) (bnToEC Q)
       = bnToEC (bn254AffineAdd ((Q.y - P.y) * (Q.x - P.x)⁻¹) P Q) := by
-  simp only [bnToEC, ECPoint.aff, bn254Params, ECParams.add, if_neg hne,
+  simp only [bnToEC, ECPoint.aff, bn254Params, ECParams.add, ite_eq_right hne,
     ECParams.chordSlope, ECParams.affRx, ECParams.affRy,
     bn254AffineAdd, bn254AffineRx, bn254AffineRy]
 

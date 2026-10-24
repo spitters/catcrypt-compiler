@@ -95,11 +95,11 @@ theorem mem_spilledOffsets_of_spillSlotOf (decisions : List (String × Slot)) (n
     rw [spillSlotOf_cons] at h
     rw [spilledOffsets_cons]
     by_cases hk : n == k
-    · simp only [hk, if_true] at h
+    · simp only [hk, ite_true] at h
       cases v with
       | resident r => simp at h
       | spilled o => simp only [Option.some.injEq] at h; subst h; simp
-    · simp only [hk, Bool.false_eq_true, if_false] at h
+    · simp only [hk, Bool.false_eq_true, ite_false] at h
       have := ih h
       cases v with
       | resident r => exact this
@@ -117,11 +117,11 @@ theorem mem_spilledNames_of_spillSlotOf (decisions : List (String × Slot)) (n :
     by_cases hk : n == k
     · have hnk : n = k := by simpa using hk
       subst hnk
-      simp only [hk, if_true] at h
+      simp only [hk, ite_true] at h
       cases v with
       | resident r => simp at h
       | spilled o => simp
-    · simp only [hk, Bool.false_eq_true, if_false] at h
+    · simp only [hk, Bool.false_eq_true, ite_false] at h
       have := ih h
       cases v with
       | resident r => exact this
@@ -145,8 +145,8 @@ theorem spillSlot_inj (decisions : List (String × Slot))
       · have e2 : n2 = k := by simpa using hk2
         rw [e1, e2]
       · exfalso
-        simp only [hk1, if_true] at h1
-        simp only [hk2, Bool.false_eq_true, if_false] at h2
+        simp only [hk1, ite_true] at h1
+        simp only [hk2, Bool.false_eq_true, ite_false] at h2
         cases v with
         | resident r => simp at h1
         | spilled o =>
@@ -155,16 +155,16 @@ theorem spillSlot_inj (decisions : List (String × Slot))
           exact hnd.1 (mem_spilledOffsets_of_spillSlotOf ds n2 o h2)
     · by_cases hk2 : n2 == k
       · exfalso
-        simp only [hk2, if_true] at h2
-        simp only [hk1, Bool.false_eq_true, if_false] at h1
+        simp only [hk2, ite_true] at h2
+        simp only [hk1, Bool.false_eq_true, ite_false] at h1
         cases v with
         | resident r => simp at h2
         | spilled o =>
           simp only [Option.some.injEq] at h2; subst h2
           rw [List.nodup_cons] at hnd
           exact hnd.1 (mem_spilledOffsets_of_spillSlotOf ds n1 o h1)
-      · simp only [hk1, Bool.false_eq_true, if_false] at h1
-        simp only [hk2, Bool.false_eq_true, if_false] at h2
+      · simp only [hk1, Bool.false_eq_true, ite_false] at h1
+        simp only [hk2, Bool.false_eq_true, ite_false] at h2
         cases v with
         | resident r => exact ih hnd h1 h2
         | spilled o =>
@@ -190,19 +190,19 @@ theorem evalInstr_load_of_not_jinstrName {i : JInstr 64} {s : JState 64} {sb : S
   case storeMem base o' src =>
     simp only [jinstrNames, List.mem_cons, not_or] at h
     simp only [evalInstr, JState.load, JState.store, x86_MOV, JOperand.eval]
-    rw [if_neg (fun hc => h.1 hc.1)]
+    rw [ite_eq_right (fun hc => h.1 hc.1)]
   case storeMemIdx base idx sc src =>
     simp only [jinstrNames, List.mem_cons, not_or] at h
     simp only [evalInstr, JState.load, JState.storeIdx, JState.store, x86_MOV, JOperand.eval]
-    rw [if_neg (fun hc => h.1 hc.1)]
+    rw [ite_eq_right (fun hc => h.1 hc.1)]
   case addToMem base o' src =>
     simp only [jinstrNames, List.mem_cons, not_or] at h
     simp only [evalInstr, JState.load, JState.writeB5Mem, JState.writeB5, JState.store]
-    rw [if_neg (fun hc => h.1 hc.1)]
+    rw [ite_eq_right (fun hc => h.1 hc.1)]
   case loadSym dst sym =>
     simp only [jinstrNames, List.mem_singleton] at h
     simp only [evalInstr, JState.load]
-    rw [if_neg h]
+    rw [ite_eq_right h]
   all_goals
     simp [evalInstr, JState.load, JOperand.eval, x86_MOV, JState.flagB, JState.get,
       JState.setReg, JState.writeB5W, JState.writeB5, JState.writeB2W, JState.writeB4W,
@@ -408,8 +408,8 @@ theorem defCount_cons (i : JInstr 64) (rest : List (JInstr 64)) (n : String) :
   unfold defCount
   rw [List.filter_cons]
   by_cases h : (writtenNames i).contains n = true
-  · rw [if_pos h, if_pos h, List.length_cons]; omega
-  · rw [if_neg h, if_neg h]; omega
+  · rw [ite_eq_left h, ite_eq_left h, List.length_cons]; omega
+  · rw [ite_eq_right h, ite_eq_right h]; omega
 
 /-- Peel `readsAfterDef` over a `cons`. -/
 theorem readsAfterDef_cons {decisions : List (String × Slot)} {i : JInstr 64}
@@ -445,7 +445,7 @@ theorem spillInvAt_step (decisions : List (String × Slot)) (spillBase : String)
   · have hnw : n' ∉ writtenNames i := fun hmem => hw (by simpa using hmem)
     have hdc : defCount (i :: rest) n' = 0 := by
       have hc := defCount_cons i rest n'
-      rw [if_neg hw] at hc
+      rw [ite_eq_right hw] at hc
       omega
     have hsv : SpillValid spillBase off' n' s := hinv n' off' hslot hdc
     have hoff_notin : ∀ m ∈ writtenNames i, spillSlotOf decisions m ≠ some off' := by
@@ -532,8 +532,8 @@ theorem mem_foldl_dedup_acc {α : Type*} [DecidableEq α] (x : α) :
     rw [List.foldl_cons]
     apply ih
     by_cases hc : acc.contains hd = true
-    · simp only [hc, if_true]; exact h
-    · simp only [hc, Bool.false_eq_true, if_false]; exact List.mem_append_left _ h
+    · simp only [hc, ite_true]; exact h
+    · simp only [hc, Bool.false_eq_true, ite_false]; exact List.mem_append_left _ h
 
 /-- Contains reflects membership. -/
 theorem mem_of_contains {α : Type*} [DecidableEq α] {a : α} {l : List α}
@@ -552,8 +552,8 @@ theorem mem_foldl_dedup_of_mem {α : Type*} [DecidableEq α] (x : α) :
     rcases List.mem_cons.mp h with rfl | h'
     · apply mem_foldl_dedup_acc
       by_cases hc : acc.contains x = true
-      · simp only [hc, if_true]; exact mem_of_contains hc
-      · simp only [hc, Bool.false_eq_true, if_false]
+      · simp only [hc, ite_true]; exact mem_of_contains hc
+      · simp only [hc, Bool.false_eq_true, ite_false]
         exact List.mem_append_right _ (List.mem_cons_self ..)
     · exact ih _ h'
 

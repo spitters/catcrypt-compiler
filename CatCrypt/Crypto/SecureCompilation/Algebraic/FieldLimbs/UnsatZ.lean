@@ -387,7 +387,7 @@ theorem squareZ_cong (hT : ∀ t ∈ P.sqTerms, t.2.2.1 < P.n) (x : Fin P.n → 
   rw [sum_map_flatMap, sum_map_filter]
   refine sum_modEq _ _ _ fun j _ => ?_
   by_cases hij : i ≤ j
-  · simp only [hij, decide_true, if_true, List.map_map]
+  · simp only [hij, decide_true, ite_true, List.map_map]
     rw [← mul_assoc]
     convert P.sum_place ((if i = j then 1 else 2) * (x i * x j))
       (P.b * ((i : ℕ) + (j : ℕ))) using 3

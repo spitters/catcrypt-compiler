@@ -645,14 +645,14 @@ theorem SSt.Good.setR {ss : SSt} (h : ss.Good) (d : String) (t : STerm) :
     (ss.setR d t).Good := by
   refine ⟨fun r hr => ?_, h.2⟩
   simp only [SSt.setR, List.mem_cons, not_or] at hr
-  rw [SSt.setR_regs, if_neg hr.1]
+  rw [SSt.setR_regs, ite_eq_right hr.1]
   exact h.1 r hr.2
 
 theorem SSt.Good.setA {ss : SSt} (h : ss.Good) (d : String) (a : SArr) :
     (ss.setA d a).Good := by
   refine ⟨h.1, fun r hr => ?_⟩
   simp only [SSt.setA, List.mem_cons, not_or] at hr ⊢
-  rw [if_neg hr.1]
+  rw [ite_eq_right hr.1]
   exact h.2 r hr.2
 
 /-- A flag-machine state is described by a symbolic state, for the start registers `V`,
@@ -911,7 +911,7 @@ theorem stepN_lea (r : LstateN) (dst opn b x : String) (sc : Nat)
         some ((r.setReg dst (castW (r.lvm b) 64
           + BitVec.ofNat 64 (sc * (castW (r.lvm x) 64).toNat))).nextPc)
       else none := by
-  simp only [lsemStepN, h, if_true, getW_eq]
+  simp only [lsemStepN, h, ite_true, getW_eq]
   by_cases hb : (r.lvm b).1 = 64 <;> by_cases hx : (r.lvm x).1 = 64 <;> simp [hb, hx]
 
 /-- The effective address `sc · x` of a scaled index is the product of the index word and
@@ -928,7 +928,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
   · split_ifs with h
     · split
       · rename_i rc ra rb
-        simp only [ROut.Desc, lsemStepN, h, if_true, operandName, readReg_reg, evalOperandN,
+        simp only [ROut.Desc, lsemStepN, h, ite_true, operandName, readReg_reg, evalOperandN,
           getW_eq, hr rc, hr ra, hr rb, AllG, List.mem_cons, forall_eq_or_imp, SG.holds,
           STerm.ev]
         generalize STerm.ev V A C O (R ra) = pa
@@ -945,7 +945,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           · simp [hb, Ne.symm hb]
         · simp [hc]
       · rename_i rc ra n
-        simp only [ROut.Desc, lsemStepN, h, if_true, operandName, readReg_reg, evalOperandN,
+        simp only [ROut.Desc, lsemStepN, h, ite_true, operandName, readReg_reg, evalOperandN,
           getW_eq, hr rc, hr ra, AllG, List.mem_cons, forall_eq_or_imp, SG.holds, STerm.ev]
         generalize STerm.ev V A C O (R ra) = pa
         generalize STerm.ev V A C O (R rc) = pc
@@ -962,7 +962,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
     split
     · rename_i ra
       by_cases hb : binOk (stripWidthTag opn) = true
-      · rw [if_pos hb]
+      · rw [ite_eq_left hb]
         split
         · rename_i rb
           have key : ROut.Desc (lsemStepN (.Lopn [.reg dst] opn [.reg ra, .reg rb])) V A C O r
@@ -1002,12 +1002,12 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           | imm n => exact absurd rfl (hb2 n)
           | arr _ _ => simp [ROut.Desc, lsemStepN, readReg, evalOperandN]
           | arrIdx _ _ _ => simp [ROut.Desc, lsemStepN, readReg, evalOperandN]
-      · rw [if_neg hb]
+      · rw [ite_eq_right hb]
         have hn : ∀ {w : Nat} (x y : BitVec w), applyOpnN w (stripWidthTag opn) [x, y] = none :=
           fun x y => applyOpnN_bin_none (Bool.eq_false_iff.mpr hb) x y
         cases hc : cmpOfName? (stripWidthTag opn) with
         | some c =>
-          simp only [Option.isSome_some, if_true, Option.getD_some]
+          simp only [Option.isSome_some, ite_true, Option.getD_some]
           cases b with
           | reg rb =>
             simp only [ROut.Desc, lsemStepN, readReg_reg, evalOperandN, getW_eq, hn, hc, hr ra,
@@ -1032,14 +1032,14 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
               simp [AllG, extW]
           | _ => simp [ROut.Desc, lsemStepN, evalOperandN, readReg]
         | none =>
-        simp only [Option.isSome_none, Bool.false_eq_true, if_false, ROut.Desc]
+        simp only [Option.isSome_none, Bool.false_eq_true, ite_false, ROut.Desc]
         cases b with
         | reg rb => rw [stepN_bin_reg _ _ _ _ _ hc, hn]; simp
         | imm n => rw [stepN_bin_imm _ _ _ _ _ hc, hn]; simp
         | _ => simp [lsemStepN, evalOperandN, readReg]
     · rename_i n
       by_cases hb : binOk (stripWidthTag opn) = true
-      · rw [if_pos hb]
+      · rw [ite_eq_left hb]
         split
         · rename_i rb
           simp only [ROut.Desc, lsemStepN_immFirst, immFirstN, evalOperandN, getW_eq, hr rb]
@@ -1050,7 +1050,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
           · simp [extW_of_eq hw, hv, hw]
           · simp [hw]
         · trivial
-      · rw [if_neg hb]
+      · rw [ite_eq_right hb]
         simp only [ROut.Desc, lsemStepN_immFirst, immFirstN]
         split
         · rw [applyOpnN_bin_none (Bool.eq_false_iff.mpr hb)]; rfl
@@ -1200,7 +1200,7 @@ theorem symMC_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepMC x)
   split
   · rename_i d a b h
     simp only [ROut.Desc, lsemStepMC, h, readReg_reg, hr a, getW_eq, hr b, AllG,
-      List.mem_singleton, forall_eq, SG.holds, STerm.ev, binW, if_true]
+      List.mem_singleton, forall_eq, SG.holds, STerm.ev, binW, ite_true]
     split_ifs with hw
     · simp [extW_of_eq hw, hw.symm]
     · simp [Ne.symm hw]
@@ -1522,13 +1522,13 @@ theorem symMem_sound (i : LinstrRM) (ss : SSt) (V : String → Σ w, BitVec w)
         · rename_i hz
           have heq : lsemStepMem (.Lopn [.reg dst] opn [.imm k1, .imm k2], .zero w n) m =
               some ((m.setArr dst (fun _ : Fin n => (0 : BitVec w))).nextPc) := by
-            simp only [lsemStepMem, zeroStruct?, hz, if_true]
+            simp only [lsemStepMem, zeroStruct?, hz, ite_true]
           rw [heq]
           refine ⟨fun m' hm' => ?_, fun _ => rfl⟩
           cases hm'
           exact ⟨allG_nil V A C O, hm.setA dst (.zero w n), rfl, rfl⟩
         · rename_i hz
-          simp only [SOut.DescM, lsemStepMem, zeroStruct?, hz, if_false]
+          simp only [SOut.DescM, lsemStepMem, zeroStruct?, hz, ite_false]
       · trivial
   | storeImm w n =>
       dsimp only
@@ -1876,7 +1876,7 @@ theorem symCarry_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} 
            simp [g1.mp h1', g2.mp h2'])
         | (by_cases c1 : (ta.ev V A C O).1 = 64
            · by_cases c2 : (tb.ev V A C O).1 = 64
-             · simp only [c1, c2, if_true, Option.map_some, Option.some.injEq] at ht
+             · simp only [c1, c2, ite_true, Option.map_some, Option.some.injEq] at ht
                subst ht
                refine ⟨allG_append.mpr ⟨g1.mpr c1, g2.mpr c2⟩,
                  ⟨fun q => (hreg _ q).trans ?_, hs.2.1, hs.2.2.1, ?_, ?_⟩, rfl, rfl, rfl⟩
@@ -1905,7 +1905,7 @@ theorem symWide_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
       rw [e1]
       refine ⟨fun t ht => ?_, fun hg => ?_⟩
       · by_cases c1 : (tb.ev V A C O).1 = 64
-        · simp only [c1, if_true, Option.map_some, Option.some.injEq] at ht
+        · simp only [c1, ite_true, Option.map_some, Option.some.injEq] at ht
           subst ht
           refine ⟨g1.mpr c1, ⟨fun q => ?_, hs.2.1, hs.2.2.1, hs.2.2.2.1, hs.2.2.2.2⟩,
             rfl, rfl, rfl⟩
@@ -1933,7 +1933,7 @@ theorem symWide_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
         refine ⟨fun t ht => ?_, fun hg => ?_⟩
         · by_cases c0 : (tx.ev V A C O).1 = 64
           · by_cases c1 : (tb.ev V A C O).1 = 64
-            · simp only [c0, c1, if_true, Option.map_some, Option.some.injEq] at ht
+            · simp only [c0, c1, ite_true, Option.map_some, Option.some.injEq] at ht
               subst ht
               refine ⟨allG_append.mpr ⟨g0.mpr c0, g1.mpr c1⟩,
                 ⟨fun q => ?_, hs.2.1, hs.2.2.1, hs.2.2.2.1, hs.2.2.2.2⟩, rfl, rfl, rfl⟩
@@ -1943,9 +1943,9 @@ theorem symWide_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {
               · simp [hq, STerm.ev]
               · by_cases hl : q = lo
                 · subst hl
-                  simp only [hq, if_false, if_true]
+                  simp only [hq, ite_false, ite_true]
                   rw [mulLoT_ev c0 c1]
-                · simp only [hq, hl, if_false]
+                · simp only [hq, hl, ite_false]
                   exact hs.1 q
             · simp [c0, c1] at ht
           · simp [c0] at ht
@@ -1981,7 +1981,7 @@ theorem symStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
         refine ⟨fun t ht => ?_, fun hg => ?_⟩
         · by_cases c1 : (ta.ev V A C O).1 = 64
           · by_cases c2 : (tb.ev V A C O).1 = 64
-            · simp only [c1, c2, if_true, Option.some.injEq] at ht
+            · simp only [c1, c2, ite_true, Option.some.injEq] at ht
               subst ht
               exact ⟨allG_append.mpr ⟨g1.mpr c1, g2.mpr c2⟩,
                 ⟨hs.1, hs.2.1, rfl, hs.2.2.2⟩, rfl, rfl, rfl⟩
@@ -2087,7 +2087,7 @@ theorem symStep_comm {opn d x : String} (hopn : opn ∈ commOpns) (hxd : x ≠ d
     intro cd
     dsimp only [symCast, castStruct?, movImmStruct?, symMC, mulhiStruct?, adcxStruct?,
       adcxhiStruct?, sbbStruct?, sbbhiStruct?, symSh, sarStruct?]
-    simp only [hmx, if_false]
+    simp only [hmx, ite_false]
     dsimp only [symN]
     simp only [hb, hs1, hs2, Bool.false_eq_true, ↓reduceIte]
   have hM : symMem (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss =
@@ -2096,10 +2096,10 @@ theorem symStep_comm {opn d x : String} (hopn : opn ∈ commOpns) (hxd : x ≠ d
   have hA : ∀ ofl, aluFlT (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss ofl =
       aluFlT (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss ofl := by
     intro ofl
-    simp only [aluFlT, aluFlagOp?, aluSwap, hs1, hs2, hsub, if_false]
+    simp only [aluFlT, aluFlagOp?, aluSwap, hs1, hs2, hsub, ite_false]
     split_ifs <;> simp [symOp64]
   simp only [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, hcmp, hadc,
-    hsbb, hadcx, hadox, hmov, if_false, hM]
+    hsbb, hadcx, hadox, hmov, ite_false, hM]
   cases symMem (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss <;> simp only [aluFl, hA]
 
 /-! ## The x86 instruction set
@@ -3517,13 +3517,13 @@ theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpe
       run_inv_at hru (by rw [findInstrMem_single hul', hw, hz])
     rw [I.step_goto] at he
     by_cases hx : x = (singletonProgM fn B).lfn
-    · rw [if_pos hx, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hx, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       have he' : I.step (singletonProgM fn B') (.Lgoto (x, l'), zt') u' =
           some { u' with prog := { u'.prog with
             base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } } := by
-        rw [I.step_goto, if_pos (by simpa [singletonProgM, hul'', hul'] using hx),
+        rw [I.step_goto, ite_eq_left (by simpa [singletonProgM, hul'', hul'] using hx),
           evalJumpMem_single hl']
         rfl
       obtain ⟨f'', t', hr, hobs⟩ := jump_cont (w' := { u' with prog := { u'.prog with
@@ -3533,7 +3533,7 @@ theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpe
       refine ⟨m' + (f'' + 1), t', ?_, hobs⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
       exact hr
-    · rw [if_neg hx] at he
+    · rw [ite_eq_right hx] at he
       cases he
   · -- branch
     obtain ⟨_, hT', _⟩ | ⟨_, _, _, hT', _⟩ | ⟨tg', nx', c', l', hT', hzi', htg', hl', hnx'⟩ |
@@ -3559,13 +3559,13 @@ theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpe
     have hstop : 0 < (G.blk k).stop := by have := F.lt; omega
     have hstop' : 0 < (G'.blk k).stop := by have := F'.lt; omega
     by_cases hd : I.condEval u c = true
-    · rw [if_pos hd, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hd, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       have he' : I.step (singletonProgM fn B') (.Lcond c' l', zt') u' =
           some { u' with prog := { u'.prog with
             base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } } := by
-        rw [I.step_cond, if_pos (hdec.trans hd), evalJumpMem_single hl']
+        rw [I.step_cond, ite_eq_left (hdec.trans hd), evalJumpMem_single hl']
         rfl
       obtain ⟨f'', t', hr, hobs⟩ := jump_cont (w' := { u' with prog := { u'.prog with
           base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } }) ih htg hl hl' rfl rfl
@@ -3574,11 +3574,11 @@ theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpe
       refine ⟨m' + (f'' + 1), t', ?_, hobs⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ (by rw [findInstrMem_single hul'', hw', hz']) he']
       exact hr
-    · rw [if_neg hd] at he
+    · rw [ite_eq_right hd] at he
       simp only [Option.some.injEq] at he
       have he' : I.step (singletonProgM fn B') (.Lcond c' l', zt') u' =
           some { u' with prog := { u'.prog with base := u'.prog.base.nextPc } } := by
-        rw [I.step_cond, if_neg (by rw [hdec]; exact hd)]
+        rw [I.step_cond, ite_eq_right (by rw [hdec]; exact hd)]
       obtain ⟨f'', t', hr, hobs⟩ := fall_cont (w := u1)
         (w' := { u' with prog := { u'.prog with base := u'.prog.base.nextPc } })
         hc ih hk hnx.symm hnx'.symm
@@ -4475,7 +4475,7 @@ theorem TValid.push {E : Array TEnt} (hv : TValid E) {n : STerm}
   obtain ⟨⟨σ, hσ⟩, hb⟩ := hv
   let σ' : Nat → STerm := fun j => if j = E.size then n.subst σ else σ j
   have hag : ∀ k, k < E.size → σ k = σ' k := fun k hk => by
-    simp only [σ', if_neg (Nat.ne_of_lt hk)]
+    simp only [σ', ite_eq_right (Nat.ne_of_lt hk)]
   have hwb := STerm.wbT_refsLt hb n hn
   refine ⟨⟨σ', fun k hk => ?_⟩, fun k hk => ?_⟩
   · rw [Array.size_push] at hk
@@ -4622,7 +4622,7 @@ theorem Tbl.push_subst {σ : Nat → STerm} {E : Array TEnt} (T : Tbl) (n : STer
   unfold Tbl.push at hx ⊢
   split
   · rename_i hn
-    rw [if_pos hn] at hx
+    rw [ite_eq_left hn] at hx
     have he : E[T.ents.size]? = some (mkEnt T.ents n) := by
       have := hx T.ents.size (by simp)
       simpa using this
@@ -5299,17 +5299,17 @@ theorem SArr.nfT_same {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) (gs
       simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq]
       by_cases hs : SArr.selfStT E gs b w n i v = true
       · have e1 : SArr.nfT E gs b = SArr.nfT E gs' (.aset b' w' n' i' v') := by
-          rw [← e, SArr.nfT, if_pos hs]
+          rw [← e, SArr.nfT, ite_eq_left hs]
         have ih := SArr.nfT_same h gs gs' b _ e1
         rw [SArr.subst] at ih
         exact Or.inl (Or.inl ⟨SArr.selfStT_subst h hs, ih⟩)
       · by_cases hs' : SArr.selfStT E gs' b' w' n' i' v' = true
         · have e1 : SArr.nfT E gs (.aset b w n i v) = SArr.nfT E gs' b' := by
-            rw [e, SArr.nfT, if_pos hs']
+            rw [e, SArr.nfT, ite_eq_left hs']
           have ih := SArr.nfT_same h gs gs' _ b' e1
           rw [SArr.subst] at ih
           exact Or.inl (Or.inr ⟨SArr.selfStT_subst h hs', ih⟩)
-        · rw [SArr.nfT, SArr.nfT, if_neg hs, if_neg hs'] at e
+        · rw [SArr.nfT, SArr.nfT, ite_eq_right hs, ite_eq_right hs'] at e
           simp only [SArr.aset.injEq] at e
           obtain ⟨eb, rfl, rfl, rfl, rfl⟩ := e
           exact Or.inr ⟨⟨⟨⟨rfl, rfl⟩, rfl⟩, rfl⟩, SArr.nfT_same h gs gs' b b' eb⟩

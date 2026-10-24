@@ -76,14 +76,14 @@ theorem corresJ_iff_rrel (SR : JState 64 → A → Prop) (P : A → Prop) (fa : 
     rw [wp_runBlockM_apply]
     rw [wp_optProg_apply] at hwp
     by_cases hP : P a
-    · simp only [optGuard, if_pos hP] at hwp
+    · simp only [optGuard, ite_eq_left hP] at hwp
       exact @hQ () () trivial (runBlock s c) ⟨fa a, h s a hs hP, hwp⟩
-    · simp only [optGuard, if_neg hP] at hwp
+    · simp only [optGuard, ite_eq_right hP] at hwp
       exact hwp.elim
   · intro h st a hs hP
     have hwp := @h (fun _ a' => ⌜a' = fa a⌝) (fun _ s' => ⌜SR s' (fa a)⌝)
       (fun _ _ _ s' ⟨a', hs', he⟩ => he ▸ hs') ExceptConds.false ExceptConds.false rfl st
-      ⟨a, hs, by beta_reduce; rw [wp_optProg_apply]; simp only [optGuard, if_pos hP]; exact trivial⟩
+      ⟨a, hs, by beta_reduce; rw [wp_optProg_apply]; simp only [optGuard, ite_eq_left hP]; exact trivial⟩
     beta_reduce at hwp
     rw [wp_runBlockM_apply] at hwp
     exact hwp

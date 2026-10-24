@@ -285,7 +285,7 @@ theorem SubOK.append {D : List SubFact} : ∀ (cs : List JasminTy) {Γ : JCtxt}
 theorem atLevel_top (V : Ctxt.Valuation Γ) {w : Nat} (z : BitVec w) :
     atLevel (Γ := JasminTy.reg w :: Γ) (HVector.cons z V) w Γ.length = some z := by
   show (if Γ.length = Γ.length then regAs (.reg w) w z else atLevel V w Γ.length) = _
-  rw [if_pos rfl, regAs_reg]
+  rw [ite_eq_left rfl, regAs_reg]
 
 /-- The subtraction `a - b` bound on top of `V` holds as a recorded subtraction. -/
 theorem subFact_bound (V : Ctxt.Valuation Γ) {w : Nat} (a b : Ctxt.Var Γ (.reg w)) :
@@ -365,7 +365,7 @@ theorem atLevel_varAt {w : Nat} : ∀ {Γ : JCtxt} (V : Ctxt.Valuation Γ) {ℓ 
       show (if ℓ = Γ.length then regAs t w z else atLevel V w ℓ) = _
       split at h
       · rename_i hl
-        rw [if_pos hl]
+        rw [ite_eq_left hl]
         split at h
         · rename_i ht
           subst ht
@@ -373,7 +373,7 @@ theorem atLevel_varAt {w : Nat} : ∀ {Γ : JCtxt} (V : Ctxt.Valuation Γ) {ℓ 
           exact regAs_reg w z
         · cases h
       · rename_i hl
-        rw [if_neg hl]
+        rw [ite_eq_right hl]
         obtain ⟨v', hv', rfl⟩ := Option.map_eq_some_iff.mp h
         exact atLevel_varAt V hv'
 

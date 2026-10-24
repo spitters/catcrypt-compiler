@@ -352,7 +352,7 @@ theorem mergeM_store {i : LinstrR} {s t : LstateM} (h : Agree i s t) {b : String
   by_cases he : b' = b ∧ o' = Int.ofNat off
   · obtain ⟨rfl, rfl⟩ := he
     simp [hd]
-  · simp only [if_neg he]
+  · simp only [ite_eq_right he]
     split_ifs with hc
     · exact h.lmem_write hc.1 hc.2
     · rfl
@@ -612,8 +612,8 @@ theorem mergeM_comm {i1 i2 : LinstrR} (hind : indep i1 i2 = true) (s a b : Lstat
     simp only [mergeM]
     by_cases h1 : 0 ≤ o ∧ memTok b' o.toNat ∈ writeToks i1
     · have h2 : ¬ (0 ≤ o ∧ memTok b' o.toNat ∈ writeToks i2) := fun h2 => hw _ h1.2 h2.2
-      simp only [if_pos h1, if_neg h2]
-    · simp only [if_neg h1]
+      simp only [ite_eq_left h1, ite_eq_right h2]
+    · simp only [ite_eq_right h1]
   · simp only [mergeM]
     cases h1 : touchesFlags i1 <;> cases h2 : touchesFlags i2 <;> simp_all
   · simp only [mergeM]

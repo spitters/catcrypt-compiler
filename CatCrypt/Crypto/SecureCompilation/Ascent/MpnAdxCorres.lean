@@ -112,7 +112,7 @@ theorem carryAbs_regs_of_not_mem (f : BitVec 64 → BitVec 64 → Bool → BitVe
     intro a r hr
     simp only [List.map_cons, List.mem_cons, not_or] at hr
     rw [carryAbs, ih _ r hr.2, carryStep]
-    exact if_neg hr.1
+    exact ite_eq_right hr.1
 
 /-- **The register↔value bridge.** Under two name-disjointness conditions — the
     destination registers are pairwise distinct, and no destination register is a
@@ -144,18 +144,18 @@ theorem carryAbs_window (f : BitVec 64 → BitVec 64 → Bool → BitVec 64)
     -- the head destination is not rewritten by the rest of the chain
     have hhead : (carryAbs f g ps a1).regs d = f (a.regs d) (a.regs s) a.cf := by
       rw [carryAbs_regs_of_not_mem f g ps a1 d hdnot, ha1, carryStep]
-      exact if_pos rfl
+      exact ite_eq_left rfl
     -- the remaining limbs read the same source words in `a1` as in `a`
     have hsrc : ∀ q ∈ ps, a1.regs q.1 = a.regs q.1 := by
       intro q hq
       have : q.1 ≠ d := by
         intro h; exact hdnot (by rw [← h]; exact List.mem_map_of_mem hq)
-      rw [ha1, carryStep]; exact if_neg this
+      rw [ha1, carryStep]; exact ite_eq_right this
     have hsrc2 : ∀ q ∈ ps, a1.regs q.2 = a.regs q.2 := by
       intro q hq
       have : q.2 ≠ d :=
         Ne.symm (hdisj (d, s) (List.mem_cons_self ..) q (List.mem_cons_of_mem _ hq))
-      rw [ha1, carryStep]; exact if_neg this
+      rw [ha1, carryStep]; exact ite_eq_right this
     have hmap1 : ps.map (fun q => a1.regs q.1) = ps.map (fun q => a.regs q.1) :=
       List.map_congr_left hsrc
     have hmap2 : ps.map (fun q => a1.regs q.2) = ps.map (fun q => a.regs q.2) :=
@@ -252,7 +252,7 @@ theorem addWord_carry_id (x y : BitVec 64) (b : Bool) :
   have hx : x.toNat < 2 ^ 64 := x.isLt
   have hy : y.toNat < 2 ^ 64 := y.isLt
   cases b <;>
-    simp only [addWord, addCarryOut, add_carry, BitVec.toNat_ofNat, if_true, if_false,
+    simp only [addWord, addCarryOut, add_carry, BitVec.toNat_ofNat, ite_true, ite_false,
       Bool.false_eq_true, decide_eq_true_eq] <;>
     split <;> push_cast <;> omega
 
@@ -483,7 +483,7 @@ theorem kernelLimbAbs_regs_of_untouched (f : BitVec 64 → BitVec 64 → Bool �
     (g : BitVec 64 → BitVec 64 → Bool → Bool) (L : LimbSlots) (a : ACarry) (r : String)
     (h1 : r ≠ L.rSlot) (h2 : r ≠ L.acc) :
     (kernelLimbAbs f g L a).regs r = a.regs r := by
-  simp only [kernelLimbAbs, movStep, carryStep, if_neg h1, if_neg h2]
+  simp only [kernelLimbAbs, movStep, carryStep, ite_eq_right h1, ite_eq_right h2]
 
 /-- A register outside every limb's written slots is unchanged by the whole
     chain. -/
@@ -514,12 +514,12 @@ theorem kernelLimbAbs_apply (f : BitVec 64 → BitVec 64 → Bool → BitVec 64)
       ∧ (kernelLimbAbs f g L a).cf = g (a.regs L.aSlot) (a.regs L.bSlot) a.cf := by
   refine ⟨fun r => ?_, ?_⟩
   · by_cases h1 : r = L.rSlot
-    · simp only [kernelLimbAbs, movStep, carryStep, if_pos h1, if_true, if_neg hb]
+    · simp only [kernelLimbAbs, movStep, carryStep, ite_eq_left h1, ite_true, ite_eq_right hb]
     · by_cases h2 : r = L.acc
-      · simp only [kernelLimbAbs, movStep, carryStep, if_neg h1, if_pos h2, if_true,
-          if_neg hb]
-      · simp only [kernelLimbAbs, movStep, carryStep, if_neg h1, if_neg h2]
-  · simp only [kernelLimbAbs, movStep, carryStep, if_true, if_neg hb]
+      · simp only [kernelLimbAbs, movStep, carryStep, ite_eq_right h1, ite_eq_left h2, ite_true,
+          ite_eq_right hb]
+      · simp only [kernelLimbAbs, movStep, carryStep, ite_eq_right h1, ite_eq_right h2]
+  · simp only [kernelLimbAbs, movStep, carryStep, ite_true, ite_eq_right hb]
 
 /-! ### Name disjointness for a kernel limb chain -/
 
@@ -582,16 +582,16 @@ theorem kernelAbs_window (f : BitVec 64 → BitVec 64 → Bool → BitVec 64)
       exact hrn.2 (by rw [hEq]; exact List.mem_map_of_mem hM)
     have hhead : (kernelAbs f g Ls a1).regs L.rSlot = w := by
       rw [kernelAbs_regs_of_untouched f g Ls a1 L.rSlot huntouched, ha1, hone L.rSlot]
-      exact if_pos rfl
+      exact ite_eq_left rfl
     -- the remaining limbs read the same source words after the head limb
     have hsrcA : ∀ M ∈ Ls, a1.regs M.aSlot = a.regs M.aSlot := by
       intro M hM
       obtain ⟨h1, h2, _, _⟩ := hwf.srcNotWritten L hmemL M (List.mem_cons_of_mem _ hM)
-      rw [ha1, hone M.aSlot, if_neg h1, if_neg h2]
+      rw [ha1, hone M.aSlot, ite_eq_right h1, ite_eq_right h2]
     have hsrcB : ∀ M ∈ Ls, a1.regs M.bSlot = a.regs M.bSlot := by
       intro M hM
       obtain ⟨_, _, h3, h4⟩ := hwf.srcNotWritten L hmemL M (List.mem_cons_of_mem _ hM)
-      rw [ha1, hone M.bSlot, if_neg h3, if_neg h4]
+      rw [ha1, hone M.bSlot, ite_eq_right h3, ite_eq_right h4]
     have hmapA : Ls.map (fun M => a1.regs M.aSlot) = Ls.map (fun M => a.regs M.aSlot) :=
       List.map_congr_left hsrcA
     have hmapB : Ls.map (fun M => a1.regs M.bSlot) = Ls.map (fun M => a.regs M.bSlot) :=

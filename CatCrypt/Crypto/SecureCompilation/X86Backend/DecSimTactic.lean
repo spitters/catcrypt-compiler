@@ -259,7 +259,7 @@ theorem decSim_shrImm_mov (d a D A : String) (k : Nat) (hk0 : k ≠ 0) (hk : k <
         (BitVec.ofNat 64 k)).word else (evalInstrA sa (.mov (π d) (.reg (π a)))).regs r) = _
     have e : ∀ x, (evalInstrA sa (.mov (π d) (.reg (π a)))).regs x
         = if x = π d then sa.regs (π a) else sa.regs x := fun _ => rfl
-    rw [e, e, if_pos rfl, x86_SHR_word_imm _ k hk0 hk]
+    rw [e, e, ite_eq_left rfl, x86_SHR_word_imm _ k hk0 hk]
     split <;> rfl
 
 theorem decSim_addImm_r (d a D : String) (k : Nat) (hD : π d = D) (hA : π a = D) (ha : L a) :
@@ -492,23 +492,23 @@ theorem decSim_mulhi_bracket (hi a c S D T SP : String) (off : Int) (ha : L a) (
       (.mov T (.reg S))) (.mov S (.reg (π a)))) (.storeMem SP off (.reg D)))
       (.mulx (π hi) D (.reg S) (.reg (π c)))) (.loadMem D SP off)) (.mov S (.reg T))).regs r = _
     simp only [em, evalInstrA_loadMem_regs', evalInstrA_mulx_regs, es, esm, emm, exm,
-      if_neg hTD, if_neg hDSP.symm, if_neg hSSP.symm, if_neg hTSP.symm, if_neg hTS, if_neg hcS,
-      if_neg hcT, if_neg haT, if_neg hTH, if_neg hSD.symm, if_neg hTD.symm, if_neg hSPH, if_true,
+      ite_eq_right hTD, ite_eq_right hDSP.symm, ite_eq_right hSSP.symm, ite_eq_right hTSP.symm, ite_eq_right hTS, ite_eq_right hcS,
+      ite_eq_right hcT, ite_eq_right haT, ite_eq_right hTH, ite_eq_right hSD.symm, ite_eq_right hTD.symm, ite_eq_right hSPH, ite_true,
       read64_write64_same]
     by_cases h1 : r = S
-    · subst h1; rw [if_pos rfl, if_neg hSH, if_neg hTS.symm]
-    · rw [if_neg h1]
+    · subst h1; rw [ite_eq_left rfl, ite_eq_right hSH, ite_eq_right hTS.symm]
+    · rw [ite_eq_right h1]
       by_cases h2 : r = D
-      · subst h2; rw [if_pos rfl, if_neg hDH, if_neg hTD.symm]
-      · rw [if_neg h2, if_neg h2, if_neg h1]
+      · subst h2; rw [ite_eq_left rfl, ite_eq_right hDH, ite_eq_right hTD.symm]
+      · rw [ite_eq_right h2, ite_eq_right h2, ite_eq_right h1]
         by_cases h3 : r = π hi
-        · rw [if_pos h3, if_pos h3]; rfl
-        · rw [if_neg h3, if_neg h3]
+        · rw [ite_eq_left h3, ite_eq_left h3]; rfl
+        · rw [ite_eq_right h3, ite_eq_right h3]
   · show (evalInstrA (evalInstrA (evalInstrA (evalInstrA (evalInstrA (evalInstrA sa
       (.mov T (.reg S))) (.mov S (.reg (π a)))) (.storeMem SP off (.reg D)))
       (.mulx (π hi) D (.reg S) (.reg (π c)))) (.loadMem D SP off)) (.mov S (.reg T))).mem = _
-    simp only [emm, elm, exm, esm, em, if_neg hSSP.symm, if_neg hTSP.symm, if_neg hSD.symm,
-      if_neg hTD.symm]
+    simp only [emm, elm, exm, esm, em, ite_eq_right hSSP.symm, ite_eq_right hTSP.symm, ite_eq_right hSD.symm,
+      ite_eq_right hTD.symm]
 
 /-- **High half, bracketed, with the low half dropped.** `MULXHI:64 hi, a, c` against the
     copy `mov %S, %T`, the pin `mov %a, %S`, `mulx %c, %D, %hi` with implicit source `S` and
@@ -543,17 +543,17 @@ theorem decSim_mulhi_bracketD (hi a c S D T : String) (ha : L a) (hc : L c)
   · show (evalInstrA (evalInstrA (evalInstrA (evalInstrA sa
       (.mov T (.reg S))) (.mov S (.reg (π a))))
       (.mulx (π hi) D (.reg S) (.reg (π c)))) (.mov S (.reg T))).regs r = _
-    simp only [em, evalInstrA_mulx_regs, if_neg hTS, if_neg hcS, if_neg hcT, if_neg haT,
-      if_neg hTH, if_neg hTD, if_true]
+    simp only [em, evalInstrA_mulx_regs, ite_eq_right hTS, ite_eq_right hcS, ite_eq_right hcT, ite_eq_right haT,
+      ite_eq_right hTH, ite_eq_right hTD, ite_true]
     by_cases h1 : r = S
-    · subst h1; rw [if_pos rfl, if_neg hSH, if_neg hSD, if_neg hTS.symm]
-    · rw [if_neg h1]
+    · subst h1; rw [ite_eq_left rfl, ite_eq_right hSH, ite_eq_right hSD, ite_eq_right hTS.symm]
+    · rw [ite_eq_right h1]
       by_cases h3 : r = π hi
-      · rw [if_pos h3, if_pos h3]; rfl
-      · rw [if_neg h3, if_neg h3]
+      · rw [ite_eq_left h3, ite_eq_left h3]; rfl
+      · rw [ite_eq_right h3, ite_eq_right h3]
         by_cases h2 : r = D
-        · rw [if_pos h2, if_pos h2]
-        · rw [if_neg h2, if_neg h2, if_neg h1]
+        · rw [ite_eq_left h2, ite_eq_left h2]
+        · rw [ite_eq_right h2, ite_eq_right h2, ite_eq_right h1]
   · show (evalInstrA (evalInstrA (evalInstrA (evalInstrA sa
       (.mov T (.reg S))) (.mov S (.reg (π a))))
       (.mulx (π hi) D (.reg S) (.reg (π c)))) (.mov S (.reg T))).mem = _

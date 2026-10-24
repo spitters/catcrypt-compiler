@@ -214,7 +214,7 @@ theorem keep_step {D : List String} {i : LinstrRM} (hr : ∀ q ∈ D, readsB i q
       intro r hr'
       by_cases hrq : r = q
       · subst hrq; simp [t', LstateM.setReg]
-      · simp only [t', LstateM.reg_setReg, LstateN.lvm_setReg, hrq, if_false]
+      · simp only [t', LstateM.reg_setReg, LstateN.lvm_setReg, hrq, ite_false]
         exact hreads r hr'
     obtain ⟨t₂, ht₂, hN', -⟩ := fstepF_liveStep hreads' ha.symm hm.symm hc.symm ho.symm h
     rw [ht'] at ht₂
@@ -314,7 +314,7 @@ theorem runStraightF_drop :
           rw [hs, Option.bind_some] at h
           cases b with
           | true =>
-              simp only [dropStep, if_true] at hst
+              simp only [dropStep, ite_true] at hst
               cases hm : immMov? i with
               | none => rw [hm] at hst; cases hst
               | some r =>
@@ -327,7 +327,7 @@ theorem runStraightF_drop :
                   rw [hk]
                   exact ih _ D' hD s₁ t s₂ _ z₂ hA₁ h
           | false =>
-              simp only [dropStep, Bool.false_eq_true, if_false] at hst
+              simp only [dropStep, Bool.false_eq_true, ite_false] at hst
               split_ifs at hst with hc
               · simp only [Option.some.injEq] at hst
                 subst hst
@@ -419,12 +419,12 @@ theorem blockRel_drop :
                       | some D₂ =>
                           cases cb with
                           | true =>
-                              simp only [dropStep, if_true] at hcs
+                              simp only [dropStep, ite_true] at hcs
                               cases hm : immMov? ci with
                               | none => rw [hm] at hcs; cases hcs
                               | some r => rw [isLopnB_of_immMov hm] at hc; cases hc
                           | false =>
-                              simp only [dropStep, Bool.false_eq_true, if_false, hc,
+                              simp only [dropStep, Bool.false_eq_true, ite_false, hc,
                                 Bool.false_or] at hcs
                               split_ifs at hcs with hcc
                               simp only [Bool.and_eq_true] at hcc
@@ -464,12 +464,12 @@ theorem blockRel_drop :
                 rw [hst] at hM
                 cases b with
                 | true =>
-                    simp only [dropStep, if_true] at hst
+                    simp only [dropStep, ite_true] at hst
                     cases hm : immMov? i with
                     | none => rw [hm] at hst; cases hst
                     | some r => rw [isLopnB_of_immMov hm] at hli'; cases hli'
                 | false =>
-                    simp only [dropStep, Bool.false_eq_true, if_false] at hst
+                    simp only [dropStep, Bool.false_eq_true, ite_false] at hst
                     split_ifs at hst with hcc
                     simp only [Option.some.injEq, List.filter_nil] at hst
                     subst hst

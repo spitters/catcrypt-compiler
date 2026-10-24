@@ -125,10 +125,10 @@ theorem isFrameCell_of_mem_frameCellDsts {i : LinstrR} {n : String}
     cases o with
     | reg m =>
       by_cases hm : isFrameCell m = true
-      · simp only [hm, if_true, Option.some.injEq] at ho
+      · simp only [hm, ite_true, Option.some.injEq] at ho
         exact ho ▸ hm
       · simp only [Bool.not_eq_true] at hm
-        simp only [hm, Bool.false_eq_true, if_false] at ho
+        simp only [hm, Bool.false_eq_true, ite_false] at ho
         exact absurd ho (by simp)
     | arr b i => simp at ho
     | imm v => simp at ho
@@ -227,12 +227,12 @@ def zeroizeBody (body : Lcmd) : Lcmd :=
     the terminator. -/
 theorem zeroizeBody_eq_prefix_ret {body : Lcmd} (h : endsWithLret body = true) :
     zeroizeBody body = zeroizePrefix body ++ [⟨0, .Lret⟩] := by
-  simp only [zeroizeBody, h, if_true]
+  simp only [zeroizeBody, h, ite_true]
 
 /-- A body that does not end in `Lret` is returned unchanged. -/
 theorem zeroizeBody_of_not_ends {body : Lcmd} (h : endsWithLret body = false) :
     zeroizeBody body = body := by
-  simp only [zeroizeBody, h, Bool.false_eq_true, if_false]
+  simp only [zeroizeBody, h, Bool.false_eq_true, ite_false]
 
 /-- The transformed body still ends in `Lret`. -/
 theorem zeroizeBody_ends_Lret {body : Lcmd} (h : endsWithLret body = true) :

@@ -297,7 +297,7 @@ theorem span_ne_dot (L l : List Char) (h : '.' ∉ L) :
   | cons c L ih =>
     simp only [List.mem_cons, not_or] at h
     have hc : decide (c ≠ '.') = true := by simpa using Ne.symm h.1
-    simp only [List.cons_append, List.takeWhile_cons, List.dropWhile_cons, hc, if_true]
+    simp only [List.cons_append, List.takeWhile_cons, List.dropWhile_cons, hc, ite_true]
     have := ih h.2
     simp only [Prod.mk.injEq] at this
     rw [this.1, this.2]
@@ -338,7 +338,7 @@ theorem constIdxStore?_resolved (k : Option Nat) (addr val : LOperand) (l : List
     · have hm := memName_resolved_of_phys (by decide : reloadScratch2 ∈ x86PhysRegNames)
       have hr : opResolved (.reg b) = true := by
         simp [opResolved, regNameResolved, sibArgOk_spill_resolved hb hbs]
-      simp only [hbs, if_true] at h
+      simp only [hbs, ite_true] at h
       split_ifs at h
       split at h
       · split_ifs at h
@@ -347,7 +347,7 @@ theorem constIdxStore?_resolved (k : Option Nat) (addr val : LOperand) (l : List
       · cases h
     · rw [Bool.not_eq_true] at hbs
       have hm := memName_resolved_of_phys (sibArgOk_nonspill_phys hb hbs)
-      simp only [hbs, Bool.false_eq_true, if_false] at h
+      simp only [hbs, Bool.false_eq_true, ite_false] at h
       split_ifs at h
       split at h
       · split_ifs at h

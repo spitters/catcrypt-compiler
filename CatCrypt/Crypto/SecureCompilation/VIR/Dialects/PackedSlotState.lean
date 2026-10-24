@@ -239,7 +239,7 @@ theorem Represents.set [DecidableEq α] {idx : α → Nat} {P : α → Prop}
   · subst hed
     rw [pget_pset_self _ _ _ hx]
     simp
-  · simp only [if_neg hed]
+  · simp only [ite_eq_right hed]
     rw [pget_pset_ne σ (idx d) (idx e) x (fun hi => hed (hinj e d he hd hi.symm)) hx]
     exact h e he
 

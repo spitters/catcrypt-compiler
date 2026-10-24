@@ -396,7 +396,7 @@ theorem denoteWhile'Return_succ_run (n : Nat) (c body : ImpExpr) (env : Env) :
       | (.val _, e1) => (.err "while condition not a bool", e1)
       | (o, e1) => (o, e1) := by
   rw [_root_.Hax.denoteWhile'Return]
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, Nat.add_sub_cancel]
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure, Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) c) env with ⟨o, e1⟩
   rcases o with v | _ | _ | _ | _ <;> try rfl
   cases v with
@@ -637,7 +637,7 @@ theorem denoteForLoop'Return_ge_run (i : String) (lo hi : Int) (body : ImpExpr) 
 theorem denoteForLoop'Return_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : lo < hi) :
     (_root_.Hax.denoteForLoop'Return bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
-  rw [_root_.Hax.denoteForLoop'Return, if_neg (not_le.mpr h), if_pos rfl]; rfl
+  rw [_root_.Hax.denoteForLoop'Return, ite_eq_right (not_le.mpr h), ite_eq_left rfl]; rfl
 
 theorem denoteForLoop'Return_succ_run (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
     (env : Env) (h : lo < hi) :
@@ -649,8 +649,8 @@ theorem denoteForLoop'Return_succ_run (n : Nat) (i : String) (lo hi : Int) (body
           (_root_.Hax.denoteForLoop'Return bi n i (lo + 1) hi body).run e2
       | (.val _, e2) => (_root_.Hax.denoteForLoop'Return bi n i (lo + 1) hi body).run e2
       | (o, e2) => (o, e2) := by
-  rw [_root_.Hax.denoteForLoop'Return, if_neg (not_le.mpr h)]
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+  rw [_root_.Hax.denoteForLoop'Return, ite_eq_right (not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure, modify,
     modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) body) (env.extend i (.int lo)) with ⟨o2, e2⟩
   rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
@@ -699,12 +699,12 @@ theorem denote'_forFoldRevReturn_lit_run (i : String) (lo hi : Int) (body : ImpE
 theorem denoteForLoopRev'Return_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : hi ≤ lo) :
     (_root_.Hax.denoteForLoopRev'Return bi fuel i lo hi body).run env = (.val .unit, env) := by
-  rw [_root_.Hax.denoteForLoopRev'Return, if_pos h]; rfl
+  rw [_root_.Hax.denoteForLoopRev'Return, ite_eq_left h]; rfl
 
 theorem denoteForLoopRev'Return_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : lo < hi) :
     (_root_.Hax.denoteForLoopRev'Return bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
-  rw [_root_.Hax.denoteForLoopRev'Return, if_neg (not_le.mpr h), if_pos rfl]; rfl
+  rw [_root_.Hax.denoteForLoopRev'Return, ite_eq_right (not_le.mpr h), ite_eq_left rfl]; rfl
 
 theorem denoteForLoopRev'Return_succ_run (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
     (env : Env) (h : lo < hi) :
@@ -716,8 +716,8 @@ theorem denoteForLoopRev'Return_succ_run (n : Nat) (i : String) (lo hi : Int) (b
           (_root_.Hax.denoteForLoopRev'Return bi n i lo (hi - 1) body).run e2
       | (.val _, e2) => (_root_.Hax.denoteForLoopRev'Return bi n i lo (hi - 1) body).run e2
       | (o, e2) => (o, e2) := by
-  rw [_root_.Hax.denoteForLoopRev'Return, if_neg (not_le.mpr h)]
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+  rw [_root_.Hax.denoteForLoopRev'Return, ite_eq_right (not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure, modify,
     modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) body) (env.extend i (.int (hi - 1))) with ⟨o2, e2⟩
   rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
@@ -843,7 +843,7 @@ theorem denoteForLoop'_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (env :
 theorem denoteForLoop'_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : lo < hi) :
     (_root_.Hax.denoteForLoop' bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
-  rw [_root_.Hax.denoteForLoop', if_neg (not_le.mpr h), if_pos rfl]; rfl
+  rw [_root_.Hax.denoteForLoop', ite_eq_right (not_le.mpr h), ite_eq_left rfl]; rfl
 
 theorem denoteForLoop'_succ_run (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
     (env : Env) (h : lo < hi) :
@@ -854,8 +854,8 @@ theorem denoteForLoop'_succ_run (n : Nat) (i : String) (lo hi : Int) (body : Imp
           (_root_.Hax.denoteForLoop' bi n i (lo + 1) hi body).run e2
       | (.val _, e2) => (_root_.Hax.denoteForLoop' bi n i (lo + 1) hi body).run e2
       | (o, e2) => (o, e2) := by
-  rw [_root_.Hax.denoteForLoop', if_neg (not_le.mpr h)]
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+  rw [_root_.Hax.denoteForLoop', ite_eq_right (not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure, modify,
     modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) body) (env.extend i (.int lo)) with ⟨o2, e2⟩
   rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
@@ -912,7 +912,7 @@ theorem denoteWhile'_succ_run (n : Nat) (c body : ImpExpr) (env : Env) :
       | (.val _, e1) => (.err "while condition not a bool", e1)
       | (o, e1) => (o, e1) := by
   rw [_root_.Hax.denoteWhile']
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure,
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure,
     Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) c) env with ⟨o, e1⟩
   rcases o with v | _ | _ | _ | _ <;> try rfl
@@ -1197,7 +1197,7 @@ theorem runSlot_exitRunName {fl : Option String} (h : RunCtx fl) :
     have hr := (h r rfl).resolve_right hf
     unfold exitRunSlot at hr ⊢
     rw [List.isPrefixOf_iff_prefix] at hr ⊢
-    simp only [exitRunName, if_neg hf, String.toList_append]
+    simp only [exitRunName, ite_eq_right hf, String.toList_append]
     exact List.IsPrefix.trans hr (List.prefix_append _ _)
 
 theorem ne_of_reserved {n r : String} (hn : exitReserved n = false) (hr : exitReserved r = true) :
@@ -1220,7 +1220,7 @@ theorem envAgreesOff_set_reserved {env : Env} {rs : RustState} {x : String} (v :
     (hx : exitReserved x = true) (h : envAgreesOff env rs) :
     envAgreesOff env (rsSetScalar rs x v) := by
   intro name w hn hw
-  rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn hx)]
+  rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hn hx)]
   exact h name w hn hw
 
 /-- Binding a non-reserved name to a scalar value and writing its decoding into
@@ -1233,11 +1233,11 @@ theorem envAgreesOff_extend {env : Env} {rs : RustState} {n : String} {v : Value
   rw [rsScalar_rsSetScalar]
   by_cases he : name = n
   · subst he
-    simp only [_root_.Hax.Env.extend, beq_self_eq_true, if_true, Option.some.injEq] at hw
+    simp only [_root_.Hax.Env.extend, beq_self_eq_true, ite_true, Option.some.injEq] at hw
     subst hw
     exact ⟨hv, by simpa using hk⟩
-  · simp only [_root_.Hax.Env.extend, beq_iff_eq, he, if_false] at hw
-    rw [if_neg he]
+  · simp only [_root_.Hax.Env.extend, beq_iff_eq, he, ite_false] at hw
+    rw [ite_eq_right he]
     exact h name w hname hw
 
 /-- The three shapes of a scalar value. -/
@@ -1355,7 +1355,7 @@ theorem res_write (rs : RustState) (k : Nat) {env : Env} (h0 : rs.rsScalar exitR
       envAgreesOff env (rsSetScalar rs exitResName k) ∧
       (rsSetScalar rs exitResName k).rsScalar exitResName = k := by
   refine ⟨?_, envAgreesOff_set_reserved k exitReserved_res hag, by simp⟩
-  rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_res, h0]
+  rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_res, h0]
 
 /-- Clearing the exit flag after a loop break: a value outcome that is not
     control-flow-tagged agrees with the state whose flag is `0`. -/
@@ -1493,7 +1493,7 @@ theorem exitSim_cfBreak (e : ImpExpr) : ExitSim bi N leafSpec (.cfBreak e) := by
     obtain ⟨rfl, rfl⟩ := hK
     refine ⟨_, RustExec.seq _ _ _ _ _ hsexec (RustExec.scalarSet _ _ _), ?_, fun h => by cases h⟩
     refine ⟨by simp, ?_, ?_⟩
-    · rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val.symm, rsScalar_rsSetScalar, if_pos rfl]
+    · rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_val.symm, rsScalar_rsSetScalar, ite_eq_left rfl]
       exact hk
     · exact envAgreesOff_set_reserved 1 exitReserved_ret
         (envAgreesOff_set_reserved k exitReserved_val hag)
@@ -1543,7 +1543,7 @@ theorem exitSimT_letBind_lit (T : Bool → Option String → ImpExpr → Option 
   simp only [Option.some.injEq, Prod.mk.injEq] at hK
   obtain ⟨rfl, rfl⟩ := hK
   have hret' : (rsSetScalar rs n k).rsScalar exitRetName = 0 := by
-    rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn exitReserved_ret).symm, hret]
+    rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hn exitReserved_ret).symm, hret]
   obtain ⟨rs', hexec, hagree, hx⟩ :=
     ihb tl fl fuel (env.extend n v) env' o (rsSetScalar rs n k) bC x hokB hfl hB hrun hval
       (envAgreesOff_extend hn hsv hk hag) hret'
@@ -1590,15 +1590,15 @@ theorem exitSimT_letBind_var (T : Bool → Option String → ImpExpr → Option 
     rw [hB] at hK
     by_cases hns : n = s
     · subst hns
-      simp only [letHeadK, letHead, if_true, id, Option.some.injEq, Prod.mk.injEq] at hK
+      simp only [letHeadK, letHead, ite_true, id, Option.some.injEq, Prod.mk.injEq] at hK
       obtain ⟨rfl, rfl⟩ := hK
       have hself : env.extend n w = env := Env.extend_self env n w hw
       rw [hself] at hrun
       exact ihb tl fl fuel env env' o rs bC x hokB hfl hB hrun hval hag hret
-    · simp only [letHeadK, letHead, hns, if_false, Option.some.injEq, Prod.mk.injEq] at hK
+    · simp only [letHeadK, letHead, hns, ite_false, Option.some.injEq, Prod.mk.injEq] at hK
       obtain ⟨rfl, rfl⟩ := hK
       have hret' : (rsSetScalar rs n (rs.rsScalar s)).rsScalar exitRetName = 0 := by
-        rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn exitReserved_ret).symm, hret]
+        rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hn exitReserved_ret).symm, hret]
       obtain ⟨rs', hexec, hagree, hx⟩ :=
         ihb tl fl fuel (env.extend n w) env' o (rsSetScalar rs n (rs.rsScalar s)) bC x hokB hfl
           hB hrun hval (envAgreesOff_extend hn hsv hk hag) hret'
@@ -1672,7 +1672,7 @@ theorem exitSimT_letBind_app (T : Bool → Option String → ImpExpr → Option 
         have hk : valueToScalar r = some (se.eval rs.rsScalar) := by
           rw [scalarOpExpr_eval op a b se _ hse]; exact hdr
         have hret' : (rsSetScalar rs n (se.eval rs.rsScalar)).rsScalar exitRetName = 0 := by
-          rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn exitReserved_ret).symm, hret]
+          rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hn exitReserved_ret).symm, hret]
         obtain ⟨rs', hexec, hagree, hx⟩ :=
           ihb tl fl fuel (env.extend n r) env' o (rsSetScalar rs n (se.eval rs.rsScalar)) bC x
             hokB hfl hB hrun hval (envAgreesOff_extend hn hsr hk hag) hret'
@@ -1787,13 +1787,13 @@ theorem exitSimT_ifThenElse (T : Bool → Option String → ImpExpr → Option (
       rw [valueToScalar_bool, Option.some.injEq] at hdw
       cases bb with
       | true =>
-        simp only [if_true] at hrun hdw
+        simp only [ite_true] at hrun hdw
         obtain ⟨rs', hex, hag', hx⟩ := iht tl fl fuel env env' o rs tC xt hok'.2.1 hfl hT' hrun
           hval hag hret
         exact ⟨rs', RustExec.ifTrue _ _ _ _ _ 1 hdw.symm (by decide) hex, hag',
           fun h => hx (by simp at h; exact h.1)⟩
       | false =>
-        simp only [Bool.false_eq_true, if_false] at hrun hdw
+        simp only [Bool.false_eq_true, ite_false] at hrun hdw
         obtain ⟨rs', hex, hag', hx⟩ := ihe tl fl fuel env env' o rs eC xe hok'.2.2 hfl hE hrun
           hval hag hret
         exact ⟨rs', RustExec.ifFalse _ _ _ _ _ hdw.symm hex, hag',
@@ -1856,13 +1856,13 @@ theorem exitLoop_sim (run c : String) (body : ImpExpr) (bC : LowCT) (xb : Bool)
       · rw [valueToScalar_bool, Option.some.injEq] at hdw
         cases bb with
         | false =>
-          simp only [Bool.false_eq_true, if_false] at hdw
+          simp only [Bool.false_eq_true, ite_false] at hdw
           rw [denoteWhile'Return_succ_false bi n c body env hvc] at h
           obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
           exact ⟨rs, RustExec.whileFalse _ _ _ (by rw [hrc, ← hdw]),
             (envAgreesExit_val rfl).mpr ⟨hret, hag, fun h => by cases h⟩⟩
         | true =>
-          simp only [if_true] at hdw
+          simp only [ite_true] at hdw
           have hrun1 : rs.rsScalar run = 1 := by rw [hrc, ← hdw]
           rcases hb : (denote' bi (n + 1) body).run env with ⟨ob, e2⟩
           cases ob with
@@ -1880,7 +1880,7 @@ theorem exitLoop_sim (run c : String) (body : ImpExpr) (bC : LowCT) (xb : Bool)
               have hag2 : envAgreesOff e2 (rsSetScalar rs1 run (rs1.rsScalar c)) :=
                 envAgreesOff_set_reserved _ hresv hagE
               have hret2 : (rsSetScalar rs1 run (rs1.rsScalar c)).rsScalar exitRetName = 0 := by
-                rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, h1]
+                rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_ret hslot).symm, h1]
               have hrc2 : (rsSetScalar rs1 run (rs1.rsScalar c)).rsScalar run =
                   (rsSetScalar rs1 run (rs1.rsScalar c)).rsScalar c := by
                 simp [rsScalar_rsSetScalar, hcr]
@@ -1903,8 +1903,8 @@ theorem exitLoop_sim (run c : String) (body : ImpExpr) (bC : LowCT) (xb : Bool)
                       (RustExec.seq _ _ _ _ _ hex1
                         (RustExec.ifTrue _ _ _ _ _ 1 h1 (by decide) (RustExec.scalarSet _ _ _)))
                       (RustExec.whileFalse _ _ _ (by simp)), ?_, ?_, ?_⟩
-                  · rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, h1]
-                  · rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_val hslot).symm]; exact hw
+                  · rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_ret hslot).symm, h1]
+                  · rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_val hslot).symm]; exact hw
                   · exact envAgreesOff_set_reserved _ hresv hagE
               | _ => simp at hcf
           | _ =>
@@ -1966,9 +1966,9 @@ theorem exitedTrips (run : String) (B : LowCT) (hslot : exitRunSlot run = true) 
     intro k rs w env hag
     obtain ⟨h1, hw, hagO⟩ := hag
     have h1' : (rsSetScalar rs run k).rsScalar exitRetName = 1 := by
-      rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm]; exact h1
+      rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_ret hslot).symm]; exact h1
     have hag' : envAgreesExit false (.val (.controlFlow true w)) env (rsSetScalar rs run k) :=
-      ⟨h1', by rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_val hslot).symm]; exact hw,
+      ⟨h1', by rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_val hslot).symm]; exact hw,
         envAgreesOff_set_reserved _ (exitReserved_of_runSlot hslot) hagO⟩
     obtain ⟨rs', hT, hagL⟩ := IH (k + 1) (rsSetScalar rs run k) w env hag'
     exact ⟨rs', ⟨rsSetScalar rs run k, exitGuard_exited N leafSpec B _ h1', hT⟩, hagL⟩
@@ -2017,8 +2017,8 @@ theorem exitForTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : L
         envAgreesOff_extend hi_ ⟨by omega, by omega⟩ (valueToScalar_int _)
           (envAgreesOff_set_reserved _ hresv hag)
       have hretT : (rsSetScalar (rsSetScalar rs run j) i (lo + j)).rsScalar exitRetName = 0 := by
-        rw [rsScalar_rsSetScalar, if_neg hiret.symm, rsScalar_rsSetScalar,
-          if_neg (runSlot_ne_ret hslot).symm, hret]
+        rw [rsScalar_rsSetScalar, ite_eq_right hiret.symm, rsScalar_rsSetScalar,
+          ite_eq_right (runSlot_ne_ret hslot).symm, hret]
       have hpre : ∀ r, RustExec N leafSpec bC (rsSetScalar (rsSetScalar rs run j) i (lo + j)) r →
           RustExec N leafSpec (exitForTrip run i lo bC) (rsSetScalar rs run j) r := by
         intro r hr
@@ -2027,10 +2027,10 @@ theorem exitForTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : L
               (rsSetScalar (rsSetScalar rs run j) i 0)) =
             rsSetScalar (rsSetScalar rs run j) i (lo + j) := by
           rw [rsSetScalar_rsSetScalar]
-          simp only [SExpr.evalState, rsScalar_rsSetScalar, if_neg hir.symm, if_true]
+          simp only [SExpr.evalState, rsScalar_rsSetScalar, ite_eq_right hir.symm, ite_true]
           rw [Nat.add_comm]
         refine exitGuard_running N leafSpec _ _ _
-          (by rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, hret])
+          (by rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_ret hslot).symm, hret])
           (RustExec.letU64Zero _ _ _ _ (RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr _ _ _) ?_))
         rw [hst]; exact hr
       rcases hb : (denote' bi (n + 1) body).run (env.extend i (.int ((lo + j : Nat) : Int)))
@@ -2097,10 +2097,10 @@ theorem exitForLoopRt_sim (run i h : String) (lo : Nat) (body : ImpExpr) (bC : L
     envAgreesOff_set_reserved _ exitReserved_val (envAgreesOff_set_reserved _ exitReserved_ret hag)
   have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
       exitRetName = 0 := by
-    rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val, rsScalar_rsSetScalar, if_pos rfl]
+    rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_val, rsScalar_rsSetScalar, ite_eq_left rfl]
   have hH0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar h = H := by
-    rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hh_ exitReserved_val), rsScalar_rsSetScalar,
-      if_neg (ne_of_reserved hh_ exitReserved_ret), hdec]
+    rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hh_ exitReserved_val), rsScalar_rsSetScalar,
+      ite_eq_right (ne_of_reserved hh_ exitReserved_ret), hdec]
   have hrun0 : (_root_.Hax.denoteForLoop'Return bi fuel i ((lo + 0 : Nat) : Int) H body).run env =
       (o, env') := by
     rw [Nat.add_zero]; exact hrun
@@ -2157,7 +2157,7 @@ theorem exitSim_forFoldReturn (i : String) (lo hi body : ImpExpr)
       envAgreesOff_set_reserved _ exitReserved_val (envAgreesOff_set_reserved _ exitReserved_ret hag)
     have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
         exitRetName = 0 := by
-      rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val, rsScalar_rsSetScalar, if_pos rfl]
+      rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_val, rsScalar_rsSetScalar, ite_eq_left rfl]
     have hrun0 : (_root_.Hax.denoteForLoop'Return bi fuel i ((l + 0 : Nat) : Int) h body).run env =
         (o, env') := by
       rw [Nat.add_zero]; exact hrun
@@ -2210,8 +2210,8 @@ theorem exitForTripsRev_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC 
         envAgreesOff_extend hi_ ⟨by omega, by omega⟩ (by rw [hc, valueToScalar_int])
           (envAgreesOff_set_reserved _ hresv hag)
       have hretT : (rsSetScalar (rsSetScalar rs run j) i (hi - 1 - j)).rsScalar exitRetName = 0 := by
-        rw [rsScalar_rsSetScalar, if_neg hiret.symm, rsScalar_rsSetScalar,
-          if_neg (runSlot_ne_ret hslot).symm, hret]
+        rw [rsScalar_rsSetScalar, ite_eq_right hiret.symm, rsScalar_rsSetScalar,
+          ite_eq_right (runSlot_ne_ret hslot).symm, hret]
       have hpre : ∀ r, RustExec N leafSpec bC (rsSetScalar (rsSetScalar rs run j) i (hi - 1 - j)) r →
           RustExec N leafSpec (exitForTripRev run i hi bC) (rsSetScalar rs run j) r := by
         intro r hr
@@ -2220,9 +2220,9 @@ theorem exitForTripsRev_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC 
               (rsSetScalar (rsSetScalar rs run j) i 0)) =
             rsSetScalar (rsSetScalar rs run j) i (hi - 1 - j) := by
           rw [rsSetScalar_rsSetScalar]
-          simp only [SExpr.evalState, rsScalar_rsSetScalar, if_neg hir.symm, if_true]
+          simp only [SExpr.evalState, rsScalar_rsSetScalar, ite_eq_right hir.symm, ite_true]
         refine exitGuard_running N leafSpec _ _ _
-          (by rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, hret])
+          (by rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_ret hslot).symm, hret])
           (RustExec.letU64Zero _ _ _ _ (RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr _ _ _) ?_))
         rw [hst]; exact hr
       rcases hb : (denote' bi (n + 1) body).run (env.extend i (.int (((hi - j : Nat) : Int) - 1)))
@@ -2287,7 +2287,7 @@ theorem exitSim_forFoldRevReturn (i : String) (lo hi body : ImpExpr)
       envAgreesOff_set_reserved _ exitReserved_val (envAgreesOff_set_reserved _ exitReserved_ret hag)
     have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
         exitRetName = 0 := by
-      rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val, rsScalar_rsSetScalar, if_pos rfl]
+      rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_val, rsScalar_rsSetScalar, ite_eq_left rfl]
     have hrun0 : (_root_.Hax.denoteForLoopRev'Return bi fuel i l ((h - 0 : Nat) : Int) body).run
         env = (o, env') := by
       rw [Nat.sub_zero]; exact hrun
@@ -2343,8 +2343,8 @@ theorem breakForTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : 
         envAgreesOff_extend hi_ ⟨by omega, by omega⟩ (valueToScalar_int _)
           (envAgreesOff_set_reserved _ hresv hag)
       have hretT : (rsSetScalar (rsSetScalar rs run j) i (lo + j)).rsScalar exitRetName = 0 := by
-        rw [rsScalar_rsSetScalar, if_neg hiret.symm, rsScalar_rsSetScalar,
-          if_neg (runSlot_ne_ret hslot).symm, hret]
+        rw [rsScalar_rsSetScalar, ite_eq_right hiret.symm, rsScalar_rsSetScalar,
+          ite_eq_right (runSlot_ne_ret hslot).symm, hret]
       have hpre : ∀ r, RustExec N leafSpec bC (rsSetScalar (rsSetScalar rs run j) i (lo + j)) r →
           RustExec N leafSpec (exitForTrip run i lo bC) (rsSetScalar rs run j) r := by
         intro r hr
@@ -2353,10 +2353,10 @@ theorem breakForTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : 
               (rsSetScalar (rsSetScalar rs run j) i 0)) =
             rsSetScalar (rsSetScalar rs run j) i (lo + j) := by
           rw [rsSetScalar_rsSetScalar]
-          simp only [SExpr.evalState, rsScalar_rsSetScalar, if_neg hir.symm, if_true]
+          simp only [SExpr.evalState, rsScalar_rsSetScalar, ite_eq_right hir.symm, ite_true]
           rw [Nat.add_comm]
         refine exitGuard_running N leafSpec _ _ _
-          (by rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, hret])
+          (by rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_ret hslot).symm, hret])
           (RustExec.letU64Zero _ _ _ _ (RustExec.seq _ _ _ _ _ (RustExec.scalarSetExpr _ _ _) ?_))
         rw [hst]; exact hr
       rcases hb : (denote' bi (n + 1) body).run (env.extend i (.int ((lo + j : Nat) : Int)))
@@ -2415,7 +2415,7 @@ theorem breakForLoop_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : L
     envAgreesOff_set_reserved _ exitReserved_val (envAgreesOff_set_reserved _ exitReserved_ret hag)
   have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
       exitRetName = 0 := by
-    rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val, rsScalar_rsSetScalar, if_pos rfl]
+    rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_val, rsScalar_rsSetScalar, ite_eq_left rfl]
   have hrun0 : (_root_.Hax.denoteForLoop' bi fuel i ((lo + 0 : Nat) : Int) hi body).run env =
       (o, env') := by
     rw [Nat.add_zero]; exact hrun
@@ -2452,10 +2452,10 @@ theorem breakForLoopRt_sim (run i h : String) (lo : Nat) (body : ImpExpr) (bC : 
     envAgreesOff_set_reserved _ exitReserved_val (envAgreesOff_set_reserved _ exitReserved_ret hag)
   have hret0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar
       exitRetName = 0 := by
-    rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_val, rsScalar_rsSetScalar, if_pos rfl]
+    rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_val, rsScalar_rsSetScalar, ite_eq_left rfl]
   have hH0 : (rsSetScalar (rsSetScalar rs exitRetName 0) exitValName 0).rsScalar h = H := by
-    rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hh_ exitReserved_val), rsScalar_rsSetScalar,
-      if_neg (ne_of_reserved hh_ exitReserved_ret), hdec]
+    rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hh_ exitReserved_val), rsScalar_rsSetScalar,
+      ite_eq_right (ne_of_reserved hh_ exitReserved_ret), hdec]
   have hrun0 : (_root_.Hax.denoteForLoop' bi fuel i ((lo + 0 : Nat) : Int) H body).run env =
       (o, env') := by
     rw [Nat.add_zero]; exact hrun
@@ -2517,12 +2517,12 @@ theorem breakWhileTrips_sim (run c : String) (body : ImpExpr) (bC : LowCT) (xb :
       · rw [valueToScalar_bool, Option.some.injEq] at hdw
         cases bb with
         | false =>
-          simp only [Bool.false_eq_true, if_false] at hdw
+          simp only [Bool.false_eq_true, ite_false] at hdw
           rw [denoteWhile'_succ_false bi n c body env hvc] at h
           obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
           exact ⟨rs, RustExec.whileFalse _ _ _ (by rw [hrc, ← hdw]), envAgreesExit_reset hag rfl⟩
         | true =>
-          simp only [if_true] at hdw
+          simp only [ite_true] at hdw
           have hrun1 : rs.rsScalar run = 1 := by rw [hrc, ← hdw]
           rcases hb : (denote' bi (n + 1) body).run env with ⟨ob, e2⟩
           cases ob with
@@ -2540,7 +2540,7 @@ theorem breakWhileTrips_sim (run c : String) (body : ImpExpr) (bC : LowCT) (xb :
               have hag2 : envAgreesOff e2 (rsSetScalar rs1 run (rs1.rsScalar c)) :=
                 envAgreesOff_set_reserved _ hresv hagE
               have hret2 : (rsSetScalar rs1 run (rs1.rsScalar c)).rsScalar exitRetName = 0 := by
-                rw [rsScalar_rsSetScalar, if_neg (runSlot_ne_ret hslot).symm, h1]
+                rw [rsScalar_rsSetScalar, ite_eq_right (runSlot_ne_ret hslot).symm, h1]
               have hrc2 : (rsSetScalar rs1 run (rs1.rsScalar c)).rsScalar run =
                   (rsSetScalar rs1 run (rs1.rsScalar c)).rsScalar c := by
                 simp [rsScalar_rsSetScalar, hcr]
@@ -2619,7 +2619,7 @@ theorem exitSim_forFold (i : String) (lo hi body : ImpExpr)
           and_assoc] using hok
       have hokB := hok'.2.2.2
       have hslot := runSlot_exitRunName hfl
-      rw [haxToLowCTK_forFold_some_eq, if_pos hok'.2.2.1] at hK
+      rw [haxToLowCTK_forFold_some_eq, ite_eq_left hok'.2.2.1] at hK
       rcases hB : haxToLowCTK true false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
       · rw [hB] at hK
         rcases hFB : forBounds lo hi with _ | ⟨l, h⟩ <;>
@@ -2665,7 +2665,7 @@ theorem exitSim_whileFold (c : String) (body : ImpExpr)
         simpa only [exitSimOk, Option.isSome_some, Bool.and_eq_true, Bool.not_eq_true',
           and_assoc] using hok
       have hslot := runSlot_exitRunName hfl
-      rw [haxToLowCTK_whileFold_some_eq, if_pos hok'.2.1] at hK
+      rw [haxToLowCTK_whileFold_some_eq, ite_eq_left hok'.2.1] at hK
       rcases hB : haxToLowCTK true false (some (exitRunName (some r))) body with _ | ⟨bC, x⟩
       · rw [hB] at hK; cases hK
       rw [hB] at hK
@@ -2790,7 +2790,7 @@ theorem exitFunction_simT (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
           RustExec.letU64Zero _ _ _ _ (RustExec.letU64Zero _ _ _ _
             (RustExec.seq _ _ _ _ _ hex
               (RustExec.ifTrue _ _ _ _ _ 1 h1 (by decide) (RustExec.scalarSetExpr _ _ _)))), ?_⟩
-        simp only [outcomeScalar, rsScalar_rsSetScalar, if_true]
+        simp only [outcomeScalar, rsScalar_rsSetScalar, ite_true]
         exact hw
     | _ => simp at hcf
 
@@ -2869,13 +2869,13 @@ theorem rustExec_scalarUntouched (N : Nat) (leafSpec : LeafSpec) (s : String) {c
     rw [ih2 hu.2, ih1 hu.1]
   | letU64Zero x _ _ _ _ ih =>
     simp only [scalarUntouched, Bool.and_eq_true, bne_iff_ne, ne_eq] at hu
-    rw [ih hu.2, rsScalar_rsSetScalar, if_neg (Ne.symm hu.1)]
+    rw [ih hu.2, rsScalar_rsSetScalar, ite_eq_right (Ne.symm hu.1)]
   | scalarSet x _ _ =>
     simp only [scalarUntouched, bne_iff_ne, ne_eq] at hu
-    rw [rsScalar_rsSetScalar, if_neg (Ne.symm hu)]
+    rw [rsScalar_rsSetScalar, ite_eq_right (Ne.symm hu)]
   | scalarSetExpr x _ _ =>
     simp only [scalarUntouched, bne_iff_ne, ne_eq] at hu
-    rw [rsScalar_rsSetScalar, if_neg (Ne.symm hu)]
+    rw [rsScalar_rsSetScalar, ite_eq_right (Ne.symm hu)]
   | ifTrue _ _ _ _ _ _ _ _ _ ih =>
     simp only [scalarUntouched, Bool.and_eq_true] at hu; exact ih hu.1
   | ifFalse _ _ _ _ _ _ _ ih =>
@@ -2886,7 +2886,7 @@ theorem rustExec_scalarUntouched (N : Nat) (leafSpec : LeafSpec) (s : String) {c
   | forZero => rfl
   | forSucc x _ _ _ _ _ _ _ ih1 ih2 =>
     simp only [scalarUntouched, Bool.and_eq_true, bne_iff_ne, ne_eq] at hu
-    rw [ih2 hu.2, rsScalar_rsSetScalar, if_neg (Ne.symm hu.1), ih1 (by
+    rw [ih2 hu.2, rsScalar_rsSetScalar, ite_eq_right (Ne.symm hu.1), ih1 (by
       simp only [scalarUntouched, Bool.and_eq_true, bne_iff_ne, ne_eq]; exact hu)]
   | forRuntime _ _ _ _ _ _ ih =>
     simp only [scalarUntouched, Bool.and_eq_true, bne_iff_ne, ne_eq] at hu
@@ -2965,12 +2965,12 @@ theorem exitStopTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : 
           (rsSetScalar rs i (lo + j)) :=
         envAgreesOff_extend hi_ ⟨by omega, by omega⟩ (valueToScalar_int _) hag
       have hretT : (rsSetScalar rs i (lo + j)).rsScalar exitRetName = 0 := by
-        rw [rsScalar_rsSetScalar, if_neg hiret.symm, hret]
+        rw [rsScalar_rsSetScalar, ite_eq_right hiret.symm, hret]
       have hst : rsSetScalar (rsSetScalar rs i 0) i
           ((SExpr.SAdd (.SVar run) (.SLit lo)).evalState (rsSetScalar rs i 0)) =
           rsSetScalar rs i (lo + j) := by
         rw [rsSetScalar_rsSetScalar]
-        simp only [SExpr.evalState, rsScalar_rsSetScalar, if_neg hir.symm, hrun]
+        simp only [SExpr.evalState, rsScalar_rsSetScalar, ite_eq_right hir.symm, hrun]
         rw [Nat.add_comm]
       rcases hb : (denote' bi (n + 1) body).run (env.extend i (.int ((lo + j : Nat) : Int)))
         with ⟨ob, e2⟩
@@ -2980,10 +2980,10 @@ theorem exitStopTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : 
           ihb false (some run) (n + 1) _ e2 (.val vb) _ bC xb hokB hctx hKB hb ⟨vb, rfl⟩ hagT hretT
         have hrun1 : rs1.rsScalar run = j := by
           rw [rustExec_scalarUntouched N leafSpec run hex1 hfr, rsScalar_rsSetScalar,
-            if_neg hir.symm, hrun]
+            ite_eq_right hir.symm, hrun]
         have hbnd1 : rs1.rsScalar exitBndName = hi - lo := by
           rw [rustExec_scalarUntouched N leafSpec exitBndName hex1 hfb, rsScalar_rsSetScalar,
-            if_neg hibnd.symm, hbnd]
+            ite_eq_right hibnd.symm, hbnd]
         -- the state after the trip
         let rs2 := rsSetScalar rs1 run (j + 1)
         let rs3 := rsSetScalar rs2 exitGoName ((exitGoExpr run).evalState rs2)
@@ -2998,7 +2998,7 @@ theorem exitStopTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : 
         have hagO : ∀ env0, envAgreesOff env0 rs1 → envAgreesOff env0 rs3 := fun env0 h0 =>
           envAgreesOff_set_reserved _ exitReserved_go (envAgreesOff_set_reserved _ hresv h0)
         have hret3 : rs3.rsScalar exitRetName = rs1.rsScalar exitRetName := by
-          simp only [rs3, rs2, rsScalar_rsSetScalar, if_neg hgr.symm, if_neg hrr.symm]
+          simp only [rs3, rs2, rsScalar_rsSetScalar, ite_eq_right hgr.symm, ite_eq_right hrr.symm]
         cases hcf : vb.isControlFlow with
         | false =>
           obtain ⟨h1, hagE, -⟩ := (envAgreesExit_val hcf).mp hag1
@@ -3008,12 +3008,12 @@ theorem exitStopTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : 
             rw [show ((lo + (j + 1) : Nat) : Int) = ((lo + j : Nat) : Int) + 1 by push_cast; ring]
             exact h
           have hrun3 : rs3.rsScalar run = j + 1 := by
-            simp only [rs3, rs2, rsScalar_rsSetScalar, if_neg hrg, if_true]
+            simp only [rs3, rs2, rsScalar_rsSetScalar, ite_eq_right hrg, ite_true]
           have hbnd3 : rs3.rsScalar exitBndName = hi - lo := by
-            simp only [rs3, rs2, rsScalar_rsSetScalar, if_neg hgb.symm, if_neg hrb.symm, hbnd1]
+            simp only [rs3, rs2, rsScalar_rsSetScalar, ite_eq_right hgb.symm, ite_eq_right hrb.symm, hbnd1]
           have hgo3 : rs3.rsScalar exitGoName = (exitGoExpr run).evalState rs3 := by
-            simp only [rs3, rs2, exitGoExpr, SExpr.evalState, rsScalar_rsSetScalar, if_true,
-              if_neg hrg, if_neg hgb.symm, if_neg hgr.symm, if_neg hrb.symm, if_neg hrr.symm]
+            simp only [rs3, rs2, exitGoExpr, SExpr.evalState, rsScalar_rsSetScalar, ite_true,
+              ite_eq_right hrg, ite_eq_right hgb.symm, ite_eq_right hgr.symm, ite_eq_right hrb.symm, ite_eq_right hrr.symm]
           obtain ⟨rs', hW, hagL⟩ :=
             IH (j + 1) n e2 env' o rs3 (by omega) h' hval (hagO e2 hagE) (by rw [hret3, h1])
               hrun3 hbnd3 hgo3
@@ -3030,13 +3030,13 @@ theorem exitStopTrips_sim (run i : String) (lo hi : Nat) (body : ImpExpr) (bC : 
               rw [denoteForLoop'Return_succ_exit bi n i _ hi body env e2 ww hlt hb hwcf] at h
               obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
               have hgo3 : rs3.rsScalar exitGoName = 0 := by
-                simp only [rs3, rs2, exitGoExpr, SExpr.evalState, rsScalar_rsSetScalar, if_true,
-                  if_neg hrb.symm, if_neg hrr.symm, h1]
+                simp only [rs3, rs2, exitGoExpr, SExpr.evalState, rsScalar_rsSetScalar, ite_true,
+                  ite_eq_right hrb.symm, ite_eq_right hrr.symm, h1]
                 split <;> rfl
               refine ⟨rs3, RustExec.whileTrue _ _ _ _ _ 1 hgo1 (by decide) htrip
                 (RustExec.whileFalse _ _ _ hgo3), ?_⟩
               refine ⟨by rw [hret3, h1], ?_, hagO _ hagE⟩
-              simp only [rs3, rs2, rsScalar_rsSetScalar, if_neg hgv.symm, if_neg hrv.symm]
+              simp only [rs3, rs2, rsScalar_rsSetScalar, ite_eq_right hgv.symm, ite_eq_right hrv.symm]
               exact hw
           | _ => simp at hcf
       | _ =>
@@ -3074,33 +3074,33 @@ theorem exitStopLoop_entry (run i : String) (lo : Nat) (bnd bC : LowCT) (B : Nat
   let rs7 := rsSetScalar rs6 exitGoName ((exitGoExpr run).evalState rs6)
   have h5 : ∀ x, exitReserved x = false → rs5.rsScalar x = rs.rsScalar x := by
     intro x hx
-    simp only [rs5, rsScalar_rsSetScalar, if_neg (ne_of_reserved hx exitReserved_go),
-      if_neg (ne_of_reserved hx exitReserved_bnd), if_neg (ne_of_reserved hx hresv),
-      if_neg (ne_of_reserved hx exitReserved_val), if_neg (ne_of_reserved hx exitReserved_ret)]
+    simp only [rs5, rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hx exitReserved_go),
+      ite_eq_right (ne_of_reserved hx exitReserved_bnd), ite_eq_right (ne_of_reserved hx hresv),
+      ite_eq_right (ne_of_reserved hx exitReserved_val), ite_eq_right (ne_of_reserved hx exitReserved_ret)]
   have hag7 : envAgreesOff env rs7 :=
     envAgreesOff_set_reserved _ exitReserved_go (envAgreesOff_set_reserved _ exitReserved_bnd
       (envAgreesOff_set_reserved _ exitReserved_go (envAgreesOff_set_reserved _ exitReserved_bnd
         (envAgreesOff_set_reserved _ hresv (envAgreesOff_set_reserved _ exitReserved_val
           (envAgreesOff_set_reserved _ exitReserved_ret hag))))))
   have hret7 : rs7.rsScalar exitRetName = 0 := by
-    simp only [rs7, rs6, rs5, rsScalar_rsSetScalar, if_neg hgr.symm, if_neg hbr.symm,
-      if_neg hrr.symm, if_true]
+    simp only [rs7, rs6, rs5, rsScalar_rsSetScalar, ite_eq_right hgr.symm, ite_eq_right hbr.symm,
+      ite_eq_right hrr.symm, ite_true]
     decide
   have hrun7 : rs7.rsScalar run = 0 := by
-    simp only [rs7, rs6, rs5, rsScalar_rsSetScalar, if_neg hrg, if_neg hrb, if_true]
+    simp only [rs7, rs6, rs5, rsScalar_rsSetScalar, ite_eq_right hrg, ite_eq_right hrb, ite_true]
   have hbnd7 : rs7.rsScalar exitBndName = B := by
-    simp only [rs7, rs6, rsScalar_rsSetScalar, if_neg hgb.symm, if_true]
+    simp only [rs7, rs6, rsScalar_rsSetScalar, ite_eq_right hgb.symm, ite_true]
   have hgo7 : rs7.rsScalar exitGoName = (exitGoExpr run).evalState rs7 := by
     have h6r : rs6.rsScalar run = 0 := by
-      simp only [rs6, rs5, rsScalar_rsSetScalar, if_neg hrg, if_neg hrb, if_true]
+      simp only [rs6, rs5, rsScalar_rsSetScalar, ite_eq_right hrg, ite_eq_right hrb, ite_true]
     have h6b : rs6.rsScalar exitBndName = B := by
-      simp only [rs6, rsScalar_rsSetScalar, if_true]
+      simp only [rs6, rsScalar_rsSetScalar, ite_true]
     have h6t : rs6.rsScalar exitRetName = 0 := by
-      simp only [rs6, rs5, rsScalar_rsSetScalar, if_neg hgr.symm, if_neg hbr.symm,
-        if_neg hrr.symm, if_true]
+      simp only [rs6, rs5, rsScalar_rsSetScalar, ite_eq_right hgr.symm, ite_eq_right hbr.symm,
+        ite_eq_right hrr.symm, ite_true]
       decide
     have e7 : rs7.rsScalar exitGoName = (exitGoExpr run).evalState rs6 := by
-      simp only [rs7, rsScalar_rsSetScalar, if_true]
+      simp only [rs7, rsScalar_rsSetScalar, ite_true]
     rw [e7]
     simp only [exitGoExpr, SExpr.evalState, h6r, h6b, h6t, hrun7, hbnd7, hret7]
   obtain ⟨rs', hW', hP⟩ := hW rs7 hag7 hret7 hrun7 hbnd7 hgo7
@@ -3220,8 +3220,8 @@ theorem exitSimT_forFoldReturn_stop (bi : Builtins) (N : Nat) (leafSpec : LeafSp
     obtain ⟨rfl, rfl⟩ := hK
     have hSf : exitStopFor true fl i lo hi body = some c := by
       by_cases hp : pub body = true
-      · rw [if_pos hp] at hS; exact hS
-      · rw [if_neg hp] at hS; cases hS
+      · rw [ite_eq_left hp] at hS; exact hS
+      · rw [ite_eq_right hp] at hS; cases hS
     have hok' : ((forBounds lo hi).isSome || forBoundsRtOk lo hi) = true ∧
         exitReserved i = false ∧ exitSimOk false true body = true := by
       cases fl <;> simpa only [exitSimOk, Bool.and_eq_true, Bool.not_eq_true', and_assoc]
@@ -3234,8 +3234,8 @@ theorem exitSimT_forFoldReturn_stop (bi : Builtins) (N : Nat) (leafSpec : LeafSp
     simp only at hSf
     by_cases hU : (scalarUntouched (exitRunName fl) bC && scalarUntouched exitBndName bC) = true
     swap
-    · rw [if_neg hU] at hSf; cases hSf
-    rw [if_pos hU] at hSf
+    · rw [ite_eq_right hU] at hSf; cases hSf
+    rw [ite_eq_left hU] at hSf
     simp only [Bool.and_eq_true] at hU
     rcases hFB : forBounds lo hi with _ | ⟨l, h⟩
     · rcases hRt : forBoundsRt lo hi with _ | ⟨l, h⟩

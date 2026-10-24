@@ -116,13 +116,13 @@ theorem peepBin_sound {Γ : Ctxt jasminDialect} {w : Nat}
   · -- a = b
     have hab : a = b := varEq_sound a b hv
     subst hab
-    simp only [hv, if_true] at he
+    simp only [hv, ite_true] at he
     cases bop <;>
       first
         | (injection he with he; subst he;
            simp only [binE_denote, JasminBinOp.apply]; simp)
         | simp at he
-  · simp only [hv, Bool.false_eq_true, if_false] at he
+  · simp only [hv, Bool.false_eq_true, ite_false] at he
     exact absurd he (by simp)
 
 /-- Apply the peephole at one expression. Identity unless the expression is a
@@ -191,12 +191,12 @@ theorem peepBin_cost_le {Γ : Ctxt jasminDialect} {w : Nat}
     opCost e'.op ≤ opCost (JasminOp.regArith bop w) := by
   unfold peepBin at he
   by_cases hv : varEq a b
-  · simp only [hv, if_true] at he
+  · simp only [hv, ite_true] at he
     cases bop <;>
       first
         | (injection he with he; subst he; simp [opCost, binE])
         | simp at he
-  · simp only [hv, Bool.false_eq_true, if_false] at he
+  · simp only [hv, Bool.false_eq_true, ite_false] at he
     exact absurd he (by simp)
 
 /-- `peepExpr` never increases op cost. -/

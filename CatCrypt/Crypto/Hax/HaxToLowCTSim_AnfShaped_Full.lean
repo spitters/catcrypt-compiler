@@ -103,7 +103,7 @@ theorem denoteWhile_succ_run (bi : Builtins) (fuel : Nat)
       | .val _ => pure (.err "while condition not a bool")
       | other => pure other) := by
     conv_lhs => unfold denoteWhile
-    simp only [Nat.succ_ne_zero, if_false, Nat.add_sub_cancel]
+    simp only [Nat.succ_ne_zero, ite_false, Nat.add_sub_cancel]
     rfl
   show (denoteWhile bi (fuel + 1) cond body).run env = _
   rw [hWhile]
@@ -653,7 +653,7 @@ theorem denoteForLoopRev_succ_run (bi : Builtins) (fuel : Nat) (v : String) (lo 
       | .broke w => pure (.val w)
       | other => pure other) := by
     conv_lhs => unfold denoteForLoopRev
-    simp only [show ¬ lo ≥ hi by omega, if_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
+    simp only [show ¬ lo ≥ hi by omega, ite_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
     rfl
   show (denoteForLoopRev bi (fuel + 1) v lo hi body).run env = _
   rw [hFor]

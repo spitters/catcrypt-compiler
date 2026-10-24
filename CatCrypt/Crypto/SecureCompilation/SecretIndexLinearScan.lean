@@ -143,20 +143,20 @@ theorem foldl_scanStep_offset {α : Type _} {sel : CTSelect α}
       have h1 : ¬ (base + 1 ≤ base ∧ base < base + 1 + as.length) := by omega
       have h2 : base ≤ base ∧ base < base + (a :: as).length := by
         simp only [List.length_cons]; omega
-      rw [dif_neg h1, dif_pos h2, if_pos rfl]
+      rw [dite_eq_right h1, dite_eq_left h2, ite_eq_left rfl]
       simp
     · -- target, if in range, is in the tail
-      rw [if_neg hib]
+      rw [ite_eq_right hib]
       by_cases hin : base ≤ i ∧ i < base + (a :: as).length
       · have hin' : base + 1 ≤ i ∧ i < base + 1 + as.length := by
           simp only [List.length_cons] at hin; omega
-        rw [dif_pos hin', dif_pos hin]
+        rw [dite_eq_left hin', dite_eq_left hin]
         have hidx : i - base = (i - (base + 1)) + 1 := by omega
-        simp only [List.getElem_cons, hidx, Nat.add_one_ne_zero, dif_neg,
+        simp only [List.getElem_cons, hidx, Nat.add_one_ne_zero, dite_eq_right,
           Nat.add_sub_cancel, not_false_eq_true]
       · have hin' : ¬ (base + 1 ≤ i ∧ i < base + 1 + as.length) := by
           simp only [List.length_cons] at hin ⊢; omega
-        rw [dif_neg hin', dif_neg hin]
+        rw [dite_eq_right hin', dite_eq_right hin]
 
 /-- **Functional correctness.**  When the secret index `i` is in range, the oblivious
     linear scan returns exactly the direct (secret) indexed read `arr[i]`.
@@ -173,7 +173,7 @@ theorem linearScan_eq_index {α : Type _} {sel : CTSelect α}
   have hkey := foldl_scanStep_offset hsel i arr 0 d
   rw [hkey]
   have hcond : (0 ≤ i ∧ i < 0 + arr.length) := by omega
-  rw [dif_pos hcond]
+  rw [dite_eq_left hcond]
   simp
 
 /-- A convenient `get`-phrased restatement of `linearScan_eq_index`. -/

@@ -872,14 +872,14 @@ theorem foldl_addEv (j : Nat) (i : InstrR) (m : EventTab)
       intro y
       unfold addEv
       by_cases hx : x ∈ S
-      · have hh : (m'.getD x []).head?.map (·.1) = some j := by rw [h x, if_pos hx]; rfl
-        rw [if_pos hh, h y]
+      · have hh : (m'.getD x []).head?.map (·.1) = some j := by rw [h x, ite_eq_left hx]; rfl
+        rw [ite_eq_left hh, h y]
         by_cases hy : y = x
         · subst hy; simp [hx]
         · simp [hy]
       · have hh : ¬ (m'.getD x []).head?.map (·.1) = some j := by
-          rw [h x, if_neg hx]; exact hm x
-        rw [if_neg hh, Std.HashMap.getD_insert]
+          rw [h x, ite_eq_right hx]; exact hm x
+        rw [ite_eq_right hh, Std.HashMap.getD_insert]
         by_cases hy : y = x
         · subst hy; simp [hx, h]
         · have hxy : (x == y) = false := by simpa using Ne.symm hy
@@ -1178,7 +1178,7 @@ theorem afterDefF_eq {S : StIx} {q : UseQ} {res : List JVar} {c : List InstrR}
     split
     · exact idxOf_getElem? _ y
     · rename_i hh
-      rw [← hF, if_neg hh, hS.idx]
+      rw [← hF, ite_eq_right hh, hS.idx]
   have hI' : ∀ y, (if (writesI i).any S.men.contains = true then idxOf (S.st.sig.filter
       (fun p => !(writesI i).contains p.1 && !(p.2.reads.any (writesI i).contains)))
       else S.idx)[y]? = lookS (S.st.sig.filter (fun p => !(writesI i).contains p.1 &&

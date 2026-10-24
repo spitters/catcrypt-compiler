@@ -218,14 +218,14 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     simp only [evalInstr, JState.store, JOperand.eval, JState.get, x86_MOV]
     by_cases hc : b = base ∧ o = off
     · simp [hc]
-    · simp only [if_neg hc]; exact hm b o hbo
+    · simp only [ite_eq_right hc]; exact hm b o hbo
   | storeMemIdx base idx scale src =>
     refine ⟨rfl, rfl, ?_⟩
     intro b o hbo
     simp only [evalInstr, JState.storeIdx, JState.store, JOperand.eval, JState.get, x86_MOV]
     by_cases hc : b = base ∧ o = (scale : Int) * ((sr idx).toNat : Int)
-    · simp only [hc, and_self, if_true]
-    · simp only [hc, if_false]; exact hm b o hbo
+    · simp only [hc, and_self, ite_true]
+    · simp only [hc, ite_false]; exact hm b o hbo
   | loadSym dst sym =>
     have hb : ∀ o : Int, (sym, o) ∉ D := fun o =>
       pair_notin_of_base_notin o (hi sym (by simp [memReadBases]))
@@ -233,8 +233,8 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     intro b o hbo
     simp only [evalInstr]
     by_cases hc : b = dst
-    · simp only [hc, if_pos]; exact hm sym o (hb o)
-    · simp only [if_neg hc]; exact hm b o hbo
+    · simp only [hc, ite_eq_left]; exact hm sym o (hb o)
+    · simp only [ite_eq_right hc]; exact hm b o hbo
   -- The memory-source arithmetic reads a cell through a base outside `D`.
   | addMem dst base off | adcxMem dst base off | adoxMem dst base off | imulMem dst base off
   | imulriMem dst base off _ | cmpMem dst base off | cmovccMem _ dst base off =>
@@ -331,7 +331,7 @@ theorem witness_footprint (s : JState 64) :
     List.filterMap_nil, List.map_cons, List.map_nil, List.mem_singleton] at hbo
   by_cases hc : b = "%rbp" ∧ o = 0
   · exact absurd (by rw [hc.1, hc.2]) hbo
-  · simp only [if_neg hc]
+  · simp only [ite_eq_right hc]
 
 /-- Packaged as a `FootprintSound` certificate: the spill rewrite gated to fire on
     the witness block carries the footprint certificate with dead set

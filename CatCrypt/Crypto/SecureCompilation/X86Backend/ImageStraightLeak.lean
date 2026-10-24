@@ -188,7 +188,7 @@ theorem fRun_of_runStraightF (fn : String) (seg : List LinstrRM) (hl : ∀ i ∈
   have hhalt : JasminLsemMemLoop.findInstrMem (singletonProgM fn seg)
       { base := bz.1, lfn := fn } = none := by
     show (if fn = fn then seg[bz.1.lpc]? else none) = none
-    rw [if_pos rfl, hlpc]
+    rw [ite_eq_left rfl, hlpc]
     exact List.getElem?_eq_none (le_refl _)
   rw [lsemFuelMemFLeak_halt _ 0 { prog := { base := bz.1, lfn := fn }, zf := bz.2 } hhalt] at h
   refine ⟨seg.length + 0, { prog := { base := bz.1, lfn := fn }, zf := bz.2 }, ?_⟩
@@ -318,7 +318,7 @@ theorem straight_imgBytePub {σ : AbiLayout} {nm : String → String} {body : Lc
   have hentA : ∀ sa : AState, Entry sa (entryA σ sa) := fun sa =>
     ⟨rfl, fun R hR => by
       have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (phys R)⟩ := by
-        simp only [entryA, hR, if_true]
+        simp only [entryA, hR, ite_true]
       unfold JasminLsemWidthN.LstateN.getW
       rw [hl]
       simp, rfl⟩

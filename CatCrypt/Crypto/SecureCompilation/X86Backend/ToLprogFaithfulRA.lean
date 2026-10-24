@@ -207,11 +207,11 @@ theorem firstFittingCell_le (hulls : CellHulls) (st en : Nat) :
     intro i hn hi
     rw [firstFittingCell]
     by_cases hlt : i < hulls.size
-    · simp only [hlt, dif_pos]
+    · simp only [hlt, dite_eq_left]
       by_cases hov : physRangesOverlap hulls[i] (st, en)
-      · simp only [hov, if_pos]
+      · simp only [hov, ite_eq_left]
         exact ih (i + 1) (by omega) (by omega)
-      · simp only [hov, Bool.false_eq_true, if_neg, not_false_iff]
+      · simp only [hov, Bool.false_eq_true, ite_eq_right, not_false_iff]
         omega
     · simp [hlt, hi]
 
@@ -227,22 +227,22 @@ theorem firstFittingCell_disjoint (hulls : CellHulls) (st en : Nat) :
     intro i hn h hh
     rw [firstFittingCell] at hh
     have hge : ¬ i < hulls.size := by omega
-    simp only [hge, dif_neg, not_false_iff] at hh
+    simp only [hge, dite_eq_right, not_false_iff] at hh
     rw [Array.getElem?_eq_none (by omega)] at hh
     exact absurd hh (by simp)
   | succ n ih =>
     intro i hn h hh
     rw [firstFittingCell] at hh
     by_cases hlt : i < hulls.size
-    · simp only [hlt, dif_pos] at hh
+    · simp only [hlt, dite_eq_left] at hh
       by_cases hov : physRangesOverlap hulls[i] (st, en)
-      · simp only [hov, if_pos] at hh
+      · simp only [hov, ite_eq_left] at hh
         exact ih (i + 1) (by omega) h hh
-      · simp only [hov, Bool.false_eq_true, if_neg, not_false_iff] at hh
+      · simp only [hov, Bool.false_eq_true, ite_eq_right, not_false_iff] at hh
         rw [Array.getElem?_eq_getElem hlt] at hh
         cases hh
         exact hov
-    · simp only [hlt, dif_neg, not_false_iff] at hh
+    · simp only [hlt, dite_eq_right, not_false_iff] at hh
       rw [Array.getElem?_eq_none (by omega)] at hh
       exact absurd hh (by simp)
 
@@ -422,16 +422,16 @@ theorem inv_take_reg {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
     · exact inv.range a (List.mem_filter.mp ha').1
   · intro a ha
     rcases List.mem_cons.mp ha with rfl | ha'
-    · rw [physLoc_cons, if_pos rfl]
+    · rw [physLoc_cons, ite_eq_left rfl]
     · have hne : ¬ s = a.slot := fun h => hact a (List.mem_filter.mp ha').1 h.symm
-      rw [physLoc_cons, if_neg hne]
+      rw [physLoc_cons, ite_eq_right hne]
       exact inv.actLoc a (List.mem_filter.mp ha').1
   · intro t ph' hph' hloc
     rw [physLoc_cons] at hloc
     by_cases hts : s = t
     · subst hts
       exact Or.inl ⟨⟨st, en, ph, s⟩, List.mem_cons_self, rfl, by simp at hloc; omega⟩
-    · rw [if_neg hts] at hloc
+    · rw [ite_eq_right hts] at hloc
       rcases inv.regLive t ph' hph' hloc with ⟨a, ha, hs, hp⟩ | hd
       · by_cases hf : a ∈ act.filter (fun a => a.en ≥ st)
         · exact Or.inl ⟨a, List.mem_cons_of_mem _ hf, hs, hp⟩
@@ -443,28 +443,28 @@ theorem inv_take_reg {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
   · intro t i hloc
     rw [physLoc_cons] at hloc
     by_cases hts : s = t
-    · rw [if_pos hts] at hloc
+    · rw [ite_eq_left hts] at hloc
       exact absurd (by simpa using hloc) (by omega)
-    · rw [if_neg hts] at hloc
+    · rw [ite_eq_right hts] at hloc
       exact inv.cell t i hloc
   · intro t₁ t₂ p hne h1 h2
     rw [physLoc_cons] at h1 h2
     by_cases h1s : s = t₁ <;> by_cases h2s : s = t₂
     · exact absurd (h1s ▸ h2s) hne
-    · rw [if_pos h1s] at h1
-      rw [if_neg h2s] at h2
+    · rw [ite_eq_left h1s] at h1
+      rw [ite_eq_right h2s] at h2
       have hp : p = ph := by simpa using h1.symm
       subst hp
       subst h1s
       exact not_overlap_dead_left hrg (hdead t₂ h2)
-    · rw [if_neg h1s] at h1
-      rw [if_pos h2s] at h2
+    · rw [ite_eq_right h1s] at h1
+      rw [ite_eq_left h2s] at h2
       have hp : p = ph := by simpa using h2.symm
       subst hp
       subst h2s
       exact not_overlap_dead_right hrg (hdead t₁ h1)
-    · rw [if_neg h1s] at h1
-      rw [if_neg h2s] at h2
+    · rw [ite_eq_right h1s] at h1
+      rw [ite_eq_right h2s] at h2
       exact inv.noColl t₁ t₂ p hne h1 h2
 
 /-- The incoming interval is the one that goes to a stack cell. -/
@@ -483,14 +483,14 @@ theorem inv_spill_incoming {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
   · intro a ha; exact inv.range a (List.mem_filter.mp ha).1
   · intro a ha
     have hne : ¬ s = a.slot := fun h => hact a (List.mem_filter.mp ha).1 h.symm
-    rw [physLoc_cons, if_neg hne]
+    rw [physLoc_cons, ite_eq_right hne]
     exact inv.actLoc a (List.mem_filter.mp ha).1
   · intro t ph hph hloc
     rw [physLoc_cons] at hloc
     by_cases hts : s = t
-    · rw [if_pos hts] at hloc
+    · rw [ite_eq_left hts] at hloc
       exact absurd (by simpa using hloc) (by omega)
-    · rw [if_neg hts] at hloc
+    · rw [ite_eq_right hts] at hloc
       rcases inv.regLive t ph hph hloc with ⟨a, ha, hs, hp⟩ | hd
       · by_cases hf : a ∈ act.filter (fun a => a.en ≥ st)
         · exact Or.inl ⟨a, hf, hs, hp⟩
@@ -502,12 +502,12 @@ theorem inv_spill_incoming {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
   · intro t i hloc
     rw [physLoc_cons] at hloc
     by_cases hts : s = t
-    · rw [if_pos hts] at hloc
+    · rw [ite_eq_left hts] at hloc
       have hi : (allocCell hulls st en).1 = i := by simpa using hloc
       obtain ⟨h', hh', c1, c2⟩ := allocCell_covers hulls st en
       rw [hi] at hh'
       exact ⟨h', hh', by rw [← hts, hrg]; exact c1, by rw [← hts, hrg]; exact c2⟩
-    · rw [if_neg hts] at hloc
+    · rw [ite_eq_right hts] at hloc
       obtain ⟨h, hh, c1, c2⟩ := inv.cell t i hloc
       obtain ⟨h', hh', m1, m2⟩ := allocCell_mono hulls st en i h hh
       exact ⟨h', hh', by omega, by omega⟩
@@ -515,24 +515,24 @@ theorem inv_spill_incoming {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
     rw [physLoc_cons] at h1 h2
     by_cases h1s : s = t₁ <;> by_cases h2s : s = t₂
     · exact absurd (h1s ▸ h2s) hne
-    · rw [if_pos h1s] at h1
-      rw [if_neg h2s] at h2
+    · rw [ite_eq_left h1s] at h1
+      rw [ite_eq_right h2s] at h2
       have hp : numRegs + (allocCell hulls st en).1 = p := by simpa using h1
       subst hp
       obtain ⟨h, hh, c1, c2⟩ := inv.cell t₂ (allocCell hulls st en).1 h2
       have hdis := allocCell_disjoint hulls st en h hh
       rw [← h1s, hrg, physRangesOverlap_comm]
       exact not_overlap_of_hull c1 c2 hdis
-    · rw [if_neg h1s] at h1
-      rw [if_pos h2s] at h2
+    · rw [ite_eq_right h1s] at h1
+      rw [ite_eq_left h2s] at h2
       have hp : numRegs + (allocCell hulls st en).1 = p := by simpa using h2
       subst hp
       obtain ⟨h, hh, c1, c2⟩ := inv.cell t₁ (allocCell hulls st en).1 h1
       have hdis := allocCell_disjoint hulls st en h hh
       rw [← h2s, hrg]
       exact not_overlap_of_hull c1 c2 hdis
-    · rw [if_neg h1s] at h1
-      rw [if_neg h2s] at h2
+    · rw [ite_eq_right h1s] at h1
+      rw [ite_eq_right h2s] at h2
       exact inv.noColl t₁ t₂ p hne h1 h2
 
 /-- A register-resident value is evicted to a stack cell for its whole range and
@@ -588,26 +588,26 @@ theorem inv_evict {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
     · exact inv.range a (List.mem_filter.mp (List.mem_filter.mp ha').1).1
   · intro a ha
     rcases List.mem_cons.mp ha with rfl | ha'
-    · rw [physLoc_cons, if_neg hfarS, physLoc_cons, if_pos rfl]
+    · rw [physLoc_cons, ite_eq_right hfarS, physLoc_cons, ite_eq_left rfl]
     · have haf : a ∈ act.filter (fun a => a.en ≥ st) := (List.mem_filter.mp ha').1
       have hpne : ¬ a.phys = far.phys := by
         have := (List.mem_filter.mp ha').2
         simpa using this
       have h1 : ¬ far.slot = a.slot := fun h => hslotFar a haf hpne h.symm
       have h2 : ¬ s = a.slot := fun h => hact a (List.mem_filter.mp haf).1 h.symm
-      rw [physLoc_cons, if_neg h1, physLoc_cons, if_neg h2]
+      rw [physLoc_cons, ite_eq_right h1, physLoc_cons, ite_eq_right h2]
       exact inv.actLoc a (List.mem_filter.mp haf).1
   · intro t ph hph hloc
     rw [physLoc_cons, physLoc_cons] at hloc
     by_cases hf1 : far.slot = t
-    · rw [if_pos hf1] at hloc
+    · rw [ite_eq_left hf1] at hloc
       exact absurd (by simpa using hloc) (by omega)
-    · rw [if_neg hf1] at hloc
+    · rw [ite_eq_right hf1] at hloc
       by_cases hs1 : s = t
-      · rw [if_pos hs1] at hloc
+      · rw [ite_eq_left hs1] at hloc
         refine Or.inl ⟨⟨st, en, far.phys, s⟩, List.mem_cons_self, hs1, ?_⟩
         simpa using hloc
-      · rw [if_neg hs1] at hloc
+      · rw [ite_eq_right hs1] at hloc
         rcases inv.regLive t ph hph hloc with ⟨a, ha, hs, hp⟩ | hd
         · by_cases hfl : a ∈ act.filter (fun a => a.en ≥ st)
           · by_cases hpf : a.phys = far.phys
@@ -624,71 +624,71 @@ theorem inv_evict {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
   · intro t i hloc
     rw [physLoc_cons, physLoc_cons] at hloc
     by_cases hf1 : far.slot = t
-    · rw [if_pos hf1] at hloc
+    · rw [ite_eq_left hf1] at hloc
       have hi : (allocCell hulls far.st far.en).1 = i := by simpa using hloc
       obtain ⟨h', hh', c1, c2⟩ := allocCell_covers hulls far.st far.en
       rw [hi] at hh'
       exact ⟨h', hh', by rw [← hf1, hfarRg]; exact c1, by rw [← hf1, hfarRg]; exact c2⟩
-    · rw [if_neg hf1] at hloc
+    · rw [ite_eq_right hf1] at hloc
       by_cases hs1 : s = t
-      · rw [if_pos hs1] at hloc
+      · rw [ite_eq_left hs1] at hloc
         exact absurd (by simpa using hloc) (by omega)
-      · rw [if_neg hs1] at hloc
+      · rw [ite_eq_right hs1] at hloc
         obtain ⟨h, hh, c1, c2⟩ := inv.cell t i hloc
         obtain ⟨h', hh', m1, m2⟩ := allocCell_mono hulls far.st far.en i h hh
         exact ⟨h', hh', by omega, by omega⟩
   · intro t₁ t₂ p hne h1 h2
     rw [physLoc_cons, physLoc_cons] at h1 h2
     by_cases hf1 : far.slot = t₁
-    · rw [if_pos hf1] at h1
+    · rw [ite_eq_left hf1] at h1
       by_cases hf2 : far.slot = t₂
       · exact absurd (hf1 ▸ hf2) hne
-      · rw [if_neg hf2] at h2
+      · rw [ite_eq_right hf2] at h2
         by_cases hs2 : s = t₂
-        · rw [if_pos hs2] at h2
+        · rw [ite_eq_left hs2] at h2
           have hcon : numRegs + (allocCell hulls far.st far.en).1 = far.phys := by
             simpa using h1.trans h2.symm
           exact absurd hcon (by omega)
-        · rw [if_neg hs2] at h2
+        · rw [ite_eq_right hs2] at h2
           have hp : numRegs + (allocCell hulls far.st far.en).1 = p := by simpa using h1
           subst hp
           obtain ⟨h, hh, c1, c2⟩ := inv.cell t₂ (allocCell hulls far.st far.en).1 h2
           have hdis := allocCell_disjoint hulls far.st far.en h hh
           rw [← hf1, hfarRg, physRangesOverlap_comm]
           exact not_overlap_of_hull c1 c2 hdis
-    · rw [if_neg hf1] at h1
+    · rw [ite_eq_right hf1] at h1
       by_cases hs1 : s = t₁
-      · rw [if_pos hs1] at h1
+      · rw [ite_eq_left hs1] at h1
         by_cases hf2 : far.slot = t₂
-        · rw [if_pos hf2] at h2
+        · rw [ite_eq_left hf2] at h2
           have hcon : far.phys = numRegs + (allocCell hulls far.st far.en).1 := by
             simpa using h1.trans h2.symm
           exact absurd hcon (by omega)
-        · rw [if_neg hf2] at h2
+        · rw [ite_eq_right hf2] at h2
           by_cases hs2 : s = t₂
           · exact absurd (hs1 ▸ hs2) hne
-          · rw [if_neg hs2] at h2
+          · rw [ite_eq_right hs2] at h2
             have hp : far.phys = p := by simpa using h1
             subst hp
             rw [← hs1]
             exact not_overlap_dead_left hrg (hdeadFar t₂ (fun h => hf2 h.symm) h2)
-      · rw [if_neg hs1] at h1
+      · rw [ite_eq_right hs1] at h1
         by_cases hf2 : far.slot = t₂
-        · rw [if_pos hf2] at h2
+        · rw [ite_eq_left hf2] at h2
           have hp : numRegs + (allocCell hulls far.st far.en).1 = p := by simpa using h2
           subst hp
           obtain ⟨h, hh, c1, c2⟩ := inv.cell t₁ (allocCell hulls far.st far.en).1 h1
           have hdis := allocCell_disjoint hulls far.st far.en h hh
           rw [← hf2, hfarRg]
           exact not_overlap_of_hull c1 c2 hdis
-        · rw [if_neg hf2] at h2
+        · rw [ite_eq_right hf2] at h2
           by_cases hs2 : s = t₂
-          · rw [if_pos hs2] at h2
+          · rw [ite_eq_left hs2] at h2
             have hp : far.phys = p := by simpa using h2
             subst hp
             rw [← hs2]
             exact not_overlap_dead_right hrg (hdeadFar t₁ (fun h => hf1 h.symm) h1)
-          · rw [if_neg hs2] at h2
+          · rw [ite_eq_right hs2] at h2
             exact inv.noColl t₁ t₂ p hne h1 h2
 
 /-! ### One step and the whole scan -/
@@ -724,17 +724,17 @@ theorem physScanSpillStep_fresh {numRegs : Nat} {uses : Array Nat}
     physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved).2.2 t = none := by
   simp only [physScanSpillStep]
   split
-  next ph hfr => rw [physLoc_cons, if_neg h2]; exact h1
+  next ph hfr => rw [physLoc_cons, ite_eq_right h2]; exact h1
   next hfr =>
     split
     next far hv =>
       split
       next hp =>
         have hfarAct : far ∈ act := (List.mem_filter.mp (spillVictim_mem hv)).1
-        rw [physLoc_cons, if_neg (h3 far hfarAct), physLoc_cons, if_neg h2]
+        rw [physLoc_cons, ite_eq_right (h3 far hfarAct), physLoc_cons, ite_eq_right h2]
         exact h1
-      next hp => rw [physLoc_cons, if_neg h2]; exact h1
-    next hv => rw [physLoc_cons, if_neg h2]; exact h1
+      next hp => rw [physLoc_cons, ite_eq_right h2]; exact h1
+    next hv => rw [physLoc_cons, ite_eq_right h2]; exact h1
 
 /-- A step keeps out of the in-flight allocations every slot it does not process. -/
 theorem physScanSpillStep_act_slot {numRegs : Nat} {uses : Array Nat}
@@ -832,7 +832,7 @@ theorem physScanSpillStep_assigns {numRegs : Nat} {uses : Array Nat}
     physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved).2.2 s ≠ none := by
   simp only [physScanSpillStep]
   split
-  next ph hfr => rw [physLoc_cons, if_pos rfl]; simp
+  next ph hfr => rw [physLoc_cons, ite_eq_left rfl]; simp
   next hfr =>
     split
     next far hv =>
@@ -841,9 +841,9 @@ theorem physScanSpillStep_assigns {numRegs : Nat} {uses : Array Nat}
         rw [physLoc_cons]
         by_cases hfs : far.slot = s
         · simp [hfs]
-        · rw [if_neg hfs, physLoc_cons, if_pos rfl]; simp
-      next hp => rw [physLoc_cons, if_pos rfl]; simp
-    next hv => rw [physLoc_cons, if_pos rfl]; simp
+        · rw [ite_eq_right hfs, physLoc_cons, ite_eq_left rfl]; simp
+      next hp => rw [physLoc_cons, ite_eq_left rfl]; simp
+    next hv => rw [physLoc_cons, ite_eq_left rfl]; simp
 
 theorem physScanSpill_keeps (numRegs : Nat) (uses : Array Nat) (reserved : List Nat) :
     ∀ (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
@@ -919,11 +919,11 @@ theorem physLiveItems_slots_nodup (tr : List PhysEvent) :
   intro a b hab x hx y hy
   by_cases ha : (physLiveRange tr a).1 < tr.length
   · by_cases hb : (physLiveRange tr b).1 < tr.length
-    · simp only [ha, hb, if_pos, Option.some.injEq] at hx hy
+    · simp only [ha, hb, ite_eq_left, Option.some.injEq] at hx hy
       rw [← hx, ← hy]; exact hab
-    · simp only [hb, if_neg, not_false_iff] at hy
+    · simp only [hb, ite_eq_right, not_false_iff] at hy
       exact absurd hy (by simp)
-  · simp only [ha, if_neg, not_false_iff] at hx
+  · simp only [ha, ite_eq_right, not_false_iff] at hx
     exact absurd hx (by simp)
 
 /-- The shipped item list meets the scan's input contract. -/
@@ -943,9 +943,9 @@ theorem physLiveItems_range (tr : List PhysEvent) :
   rw [(List.mergeSort_perm _ _).mem_iff, List.mem_filterMap] at hit
   obtain ⟨a, _, hfa⟩ := hit
   by_cases ha : (physLiveRange tr a).1 < tr.length
-  · simp only [ha, if_pos, Option.some.injEq] at hfa
+  · simp only [ha, ite_eq_left, Option.some.injEq] at hfa
     rw [← hfa]
-  · simp only [ha, if_neg, not_false_iff] at hfa
+  · simp only [ha, ite_eq_right, not_false_iff] at hfa
     exact absurd hfa (by simp)
 
 /-- Two distinct slots whose conservative live ranges overlap never receive the
@@ -1034,7 +1034,7 @@ theorem lowerTwoAddr_dichotomy (dst s0 s1 opn : String) :
 theorem lowerTwoAddr_collapse_of_eq (dst s0 s1 opn : String) (hcol : dst = s0) :
     lowerTwoAddr (.reg dst) (.reg s0) (.reg s1) opn "MOV"
       = legalizeBinop (.reg dst) (.reg s1) opn "MOV" := by
-  rw [lowerTwoAddr_dichotomy, if_pos hcol]
+  rw [lowerTwoAddr_dichotomy, ite_eq_left hcol]
 
 /-! ## 6. `physRegName` injectivity — the rendering layer of `hinj`
 
@@ -1109,14 +1109,14 @@ theorem physRegName_gp_eq {a : Nat} (ha : a < gpRegNames.length) :
   have hv := numGPRegs_lt_vectorBase
   have ha2 : a < numGPRegs := by simpa [numGPRegs] using ha
   unfold physRegName
-  rw [if_neg (by omega), List.getElem?_eq_getElem ha]
+  rw [ite_eq_right (by omega), List.getElem?_eq_getElem ha]
 
 /-- A vector-block index renders to the vector register name at that index. -/
 theorem physRegName_vec_eq {a : Nat} (ha : vectorBase ≤ a)
     (hb : a - vectorBase < vectorRegNames.length) :
     physRegName a = vectorRegNames[a - vectorBase] := by
   unfold physRegName
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
   dsimp only
   rw [List.getElem?_eq_getElem hb]
 
@@ -1234,7 +1234,7 @@ theorem toString_nat_inj (m n : Nat) (h : toString m = toString n) : m = n := by
 theorem physRegName_spill_eq {a : Nat} (ha : numGPRegs ≤ a) (hv : a < vectorBase) :
     physRegName a = "k." ++ toString (a - numGPRegs) := by
   unfold physRegName
-  rw [if_neg (by omega), List.getElem?_eq_none (by simpa [numGPRegs] using ha)]
+  rw [ite_eq_right (by omega), List.getElem?_eq_none (by simpa [numGPRegs] using ha)]
   rfl
 
 /-- The vector spill name `physRegName` renders for a vector index beyond the
@@ -1243,7 +1243,7 @@ theorem physRegName_vspill_eq {a : Nat} (ha : vectorBase ≤ a)
     (hb : numVecRegs ≤ a - vectorBase) :
     physRegName a = "kv." ++ toString (a - vectorBase - numVecRegs) := by
   unfold physRegName
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
   dsimp only
   rw [List.getElem?_eq_none (by simpa [numVecRegs] using hb)]
 

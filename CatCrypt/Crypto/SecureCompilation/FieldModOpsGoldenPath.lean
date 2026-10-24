@@ -121,10 +121,10 @@ theorem modDoubleCom_spec (a : BitVec 64) (ha : a.toNat < 251) :
   have hadd : (a + a).toNat = 2 * a.toNat := by
     rw [BitVec.toNat_add, Nat.mod_eq_of_lt (by omega)]; omega
   by_cases hc : a < 126#64
-  · rw [if_pos hc, hadd]
+  · rw [ite_eq_left hc, hadd]
     rw [BitVec.lt_def] at hc; simp only [BitVec.toNat_ofNat] at hc
     omega
-  · rw [if_neg hc, BitVec.toNat_sub, hadd]
+  · rw [ite_eq_right hc, BitVec.toNat_sub, hadd]
     rw [BitVec.lt_def] at hc; simp only [BitVec.toNat_ofNat] at hc ⊢
     rw [show (2 ^ 64 - 251 % 2 ^ 64 + 2 * a.toNat) % 2 ^ 64 = 2 * a.toNat - 251 by omega]
     omega
@@ -215,7 +215,7 @@ theorem modNegCom_spec (a : BitVec 64) (ha : a.toNat < 251) :
   · subst h0; simp
   · have hane : a.toNat ≠ 0 := by
       intro hc; apply h0; apply BitVec.toNat_injective; rw [hc]; rfl
-    rw [if_neg h0, BitVec.toNat_sub]
+    rw [ite_eq_right h0, BitVec.toNat_sub]
     have h251 : (251 : BitVec 64).toNat = 251 := by decide
     rw [h251, show (2 ^ 64 - a.toNat + 251) % 2 ^ 64 = 251 - a.toNat by omega,
        Nat.mod_eq_of_lt (by omega)]
@@ -345,12 +345,12 @@ theorem condNegCom_spec (cond a : BitVec 64) (ha : a.toNat < 251)
               ||| (a &&& (((0 : BitVec 64) - 1) ^^^ (18446744073709551615 : BitVec 64)))
             = if a = 0 then 0 else (251 : BitVec 64) - a := by bv_decide
     rw [hsel]
-    simp only [if_true]
+    simp only [ite_true]
     by_cases h0 : a = 0
     · subst h0; simp
     · have hane : a.toNat ≠ 0 := by
         intro hcc; apply h0; apply BitVec.toNat_injective; rw [hcc]; rfl
-      rw [if_neg h0, BitVec.toNat_sub]
+      rw [ite_eq_right h0, BitVec.toNat_sub]
       have h251 : (251 : BitVec 64).toNat = 251 := by decide
       rw [h251, show (2 ^ 64 - a.toNat + 251) % 2 ^ 64 = 251 - a.toNat by omega,
          Nat.mod_eq_of_lt (by omega)]

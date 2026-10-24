@@ -125,7 +125,7 @@ symbolic evaluation of the per-coefficient ALU chain. (`JState.get_writeB5W_same
     not evaluate the ALU result. -/
 @[simp] theorem get_writeB5W_other {w : Nat} (s : JState w) (dst r : String)
     (t : B5W w) (h : r ≠ dst) : (s.writeB5W dst t).get r = s.get r := by
-  simp only [JState.writeB5W, JState.get, if_neg h]
+  simp only [JState.writeB5W, JState.get, ite_eq_right h]
 
 /-! ## 1. The terminating guarded-loop machine semantics
 
@@ -200,7 +200,7 @@ theorem tripCount_le_fuel {w : Nat} (fuel : Nat) (guard : JState w → Bool)
       simp only [tripCount]
       cases guard s with
       | false => simp
-      | true => simp only [if_true]; exact Nat.succ_le_succ (ih (runBlock s body))
+      | true => simp only [ite_true]; exact Nat.succ_le_succ (ih (runBlock s body))
 
 /-! ## 2b. Structural trip count of a counter-increment loop (body-opaque)
 
@@ -244,14 +244,14 @@ theorem tripCount_counterGuard {w : Nat} (k : String) (N : Nat)
       rw [tripCount]
       by_cases hlt : (s.get k).toNat < N
       · -- guard holds: peel one iteration
-        simp only [hlt, decide_true, if_true]
+        simp only [hlt, decide_true, ite_true]
         have hstep : ((runBlock s body).get k).toNat = (s.get k).toNat + 1 := hinc s hlt
         have hle' : ((runBlock s body).get k).toNat ≤ N := by omega
         have hfuel' : N - ((runBlock s body).get k).toNat ≤ f := by omega
         rw [ih (runBlock s body) hle' hfuel']
         omega
       · -- guard fails: counter has reached N, trip count is 0
-        rw [if_neg (fun h => hlt (of_decide_eq_true h))]
+        rw [ite_eq_right (fun h => hlt (of_decide_eq_true h))]
         omega
 
 /-! ## 2c. Structural FINAL counter of a counter-increment loop (body-opaque)
@@ -299,7 +299,7 @@ theorem runGuardedLoop_counterGuard_get {w : Nat} (k : String) (N : Nat)
       rw [runGuardedLoop_succ]
       by_cases hlt : (s.get k).toNat < N
       · -- guard holds: peel one iteration, body advances the counter by one
-        simp only [hlt, decide_true, if_true]
+        simp only [hlt, decide_true, ite_true]
         have hstep : (runBlock s body).get k = s.get k + 1 := hinc s hlt
         have hwpos : 0 < w := by
           rcases Nat.eq_zero_or_pos w with hw | hw
@@ -313,7 +313,7 @@ theorem runGuardedLoop_counterGuard_get {w : Nat} (k : String) (N : Nat)
             Nat.mod_eq_of_lt (by omega : (s.get k).toNat + 1 < 2 ^ w)]
         exact ih (runBlock s body) (by omega) (by omega)
       · -- guard fails: counter has reached N
-        rw [if_neg (fun h => hlt (of_decide_eq_true h))]
+        rw [ite_eq_right (fun h => hlt (of_decide_eq_true h))]
         have heq : (s.get k).toNat = N := by omega
         rw [← BitVec.toNat_inj, heq, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hN]
 
@@ -341,7 +341,7 @@ theorem runGuardedLoop_eq_runBoundedLoop_trip {w : Nat} (fuel : Nat)
       cases h : guard s with
       | false => simp
       | true =>
-          simp only [if_true]
+          simp only [ite_true]
           rw [ih (runBlock s body)]
           simp [runBoundedLoop]
 
@@ -862,6 +862,6 @@ theorem runGuardedLoop_guard_congr {w : Nat} (fuel : Nat)
       simp only [runGuardedLoop, h s]
       cases guard' s with
       | false => rfl
-      | true => simp only [if_true]; exact ih (runBlock s body)
+      | true => simp only [ite_true]; exact ih (runBlock s body)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop

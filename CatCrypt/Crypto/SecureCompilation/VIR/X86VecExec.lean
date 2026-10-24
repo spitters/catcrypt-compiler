@@ -42,7 +42,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 
 /-- The register written by `setZ` holds the written value. -/
 theorem setZ_zmm_self (v : VState) (d : Fin 32) (x : BitVec 512) : (v.setZ d x).zmm d = x :=
-  if_pos rfl
+  ite_eq_left rfl
 
 variable (m : Mode) (s : AState × VState)
 

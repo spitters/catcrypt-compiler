@@ -96,7 +96,7 @@ theorem VarMap.tyOf_bind {Γ : Ctx} {t : CryptoTy} (vm : VarMap Γ) (x : String)
   simp only [VarMap.tyOf, VarMap.bind, Typing.upd]
   by_cases hy : y = x
   · simp [hy]
-  · simp only [hy, if_false]
+  · simp only [hy, ite_false]
     rcases vm.lookup y with _ | ⟨t', v⟩ <;> rfl
 
 /-- The typing after the `n` fresh temporaries `tmpName lo, …, tmpName (lo + n - 1)`
@@ -450,7 +450,7 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
               ∧ VarMap.tyOf vm src1.locVar = some (.sword 64) :=
             ⟨hd, by simp [VarMap.tyOf, hsel], by simp [VarMap.tyOf, hs0],
               by simp [VarMap.tyOf, hs1]⟩
-          simp only [expand, if_pos hc, Option.some.injEq, Prod.mk.injEq] at he
+          simp only [expand, ite_eq_left hc, Option.some.injEq, Prod.mk.injEq] at he
           obtain ⟨rfl, rfl⟩ := he
           refine ⟨selectCmpCont_leakFactorsTrace_eq sV aV cV, ?_⟩
           show VarMap.tyOf (VarMap.bind _ _) = _
@@ -467,7 +467,7 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
             obtain ⟨⟨t1, cV⟩, hs1, h1⟩ := hs1
             cases hS; cases h0; cases h1
             exact hne sV aV cV hd hsel hs0 hs1
-          simp only [expand, if_neg hc] at he
+          simp only [expand, ite_eq_right hc] at he
           split at h
           · exact absurd h (by simp)
           · next resolvedArgs _ =>
@@ -531,7 +531,7 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
         case memrefW => exact absurd h (by simp)
         iterate 5 (exact absurd h (by simp))
         by_cases hlt : idx < n
-        · rw [if_pos hlt] at h he
+        · rw [ite_eq_left hlt] at h he
           simp only [Option.some.injEq, Prod.mk.injEq] at h he
           obtain ⟨rfl, rfl⟩ := he
           subst h
@@ -539,7 +539,7 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
             (ComCont.varBind_leakFactorsTrace _), ?_⟩
           show VarMap.tyOf (VarMap.bind _ _) = _
           rw [VarMap.tyOf_bind, VarMap.tyOf_weaken]
-        · rw [if_neg hlt] at h; exact absurd h (by simp)
+        · rw [ite_eq_right hlt] at h; exact absurd h (by simp)
       · have hty : VarMap.tyOf vm loc.locVar = some mt := by simp [VarMap.tyOf, hlk]
         rw [hlk] at h
         rw [hty] at he
@@ -548,8 +548,8 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
         case memrefW => exact absurd h (by simp)
         iterate 5 (exact absurd h (by simp))
         by_cases hlt : idx < n
-        · rw [dif_pos hlt] at h
-          rw [if_pos hlt] at he
+        · rw [dite_eq_left hlt] at h
+          rw [ite_eq_left hlt] at he
           simp only [Option.some.injEq, Prod.mk.injEq] at h he
           obtain ⟨rfl, rfl⟩ := he
           subst h
@@ -557,7 +557,7 @@ theorem translateDialectFull_leakTrace_expand {Γ : Ctx} (vm : VarMap Γ) (c : L
             (ComCont.varBind_leakFactorsTrace _), ?_⟩
           show VarMap.tyOf (VarMap.bind _ _) = _
           rw [VarMap.tyOf_bind, VarMap.tyOf_weaken]
-        · rw [dif_neg hlt] at h; exact absurd h (by simp)
+        · rw [dite_eq_right hlt] at h; exact absurd h (by simp)
   | _ => simp [expand] at he
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.CryptoDialectLeakExpansion

@@ -292,7 +292,7 @@ theorem lsemFuelMemFLeak_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
                 LstateMF).prog = some i := by
             show findInstrMem P { base := { b0 with cf := c0, of := o0 }, lfn := fn } = some i
             unfold findInstrMem
-            rw [if_pos (show ({ base := { b0 with cf := c0, of := o0 }, lfn := fn } :
+            rw [ite_eq_left (show ({ base := { b0 with cf := c0, of := o0 }, lfn := fn } :
               LstatePM).lfn = P.lfn from hfn)]
             have := hpos 0 (by simp)
             simp only [Nat.add_zero, List.getElem?_cons_zero] at this
@@ -341,7 +341,7 @@ theorem lsemFuelMemFLeak_plain (fn : String) (seg : List LinstrRM) (hplain : Pla
   rw [lsemFuelMemFLeak_halt]
   · simp
   · show (if fn = fn then seg[({ b with cf := c, of := o } : LstateM).lpc]? else none) = none
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     exact List.getElem?_eq_none (by show seg.length ≤ b.lpc; omega)
 
 /-! ## 5. The transformer of a straight-line program -/
@@ -418,7 +418,7 @@ theorem straightT_quiet (Pj : JLeakParams) (nArgs d : Nat) {Γ : Ctxt jasminDial
       = straightT Pj nArgs body (d + 1) ℓ := by
   have hl : (Expr.ctLeak (jLeakModel Pj) e V).length = kindLen (jKind Pj e.op) :=
     opLeak_length _ _ _
-  simp only [straightT, hm, Bool.false_eq_true, if_false, List.nil_append]
+  simp only [straightT, hm, Bool.false_eq_true, ite_false, List.nil_append]
   rw [← hl, List.drop_left]
 
 /-- The transformer at a binding whose events `ℓ₀` number `kindLen` of its class. -/

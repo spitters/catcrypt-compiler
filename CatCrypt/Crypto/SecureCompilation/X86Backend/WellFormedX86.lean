@@ -177,7 +177,7 @@ theorem digitSepOk_cons_digits (c : Char) (rest : List Char)
       simp [digitSepOk, hne, hb]
   | cons d rest ih =>
       obtain ⟨hne, hb⟩ := digit_sep_bounds (hd c List.mem_cons_self)
-      rw [digitSepOk, if_neg hne, hb, Bool.true_and]
+      rw [digitSepOk, ite_eq_right hne, hb, Bool.true_and]
       exact ih d (fun x hx => hd x (List.mem_cons_of_mem _ hx)) true
 
 /-- **The decimal round trip of `natOfDigitsSep?`**: the character list of
@@ -199,7 +199,7 @@ theorem natOfDigitsSep?_toString (k : Nat) :
     rw [hl] at hc
     simp [(digit_sep_bounds (hd c hc)).1]
   unfold natOfDigitsSep?
-  rw [if_pos hok, hf]
+  rw [ite_eq_left hok, hf]
   exact JasminImmShiftMnem.natOfDigits?_toString k
 
 /-- A spill-slot name `k.<n>` is resolved iff `<n>` parses as a natural number
@@ -332,10 +332,10 @@ theorem stackArgNameI_x86 (L : List Char) :
   split
   · rename_i ds
     by_cases h : (!ds.isEmpty && ds.all Char.isDigit) = true
-    · simp only [h, if_true, Option.isSome_some]
+    · simp only [h, ite_true, Option.isSome_some]
       simpa using h
     · simp only [Bool.not_eq_true] at h
-      simp only [h, Bool.false_eq_true, if_false, Option.isSome_none]
+      simp only [h, Bool.false_eq_true, ite_false, Option.isSome_none]
       simpa using h
   · rename_i hne
     have hp : ['R', 'S', 'P', '+'].isPrefixOf L = false := by
@@ -597,7 +597,7 @@ theorem legalizeSibElem_id_of_resolved (o : LOperand) (h : opResolved o = true) 
     simp only [opResolved, Bool.and_eq_true, decide_eq_true_eq] at h
     obtain ⟨⟨hbm, him⟩, _⟩ := h
     simp only [legalizeSibElem, physReg_not_sibSpill hbm, physReg_not_sibSpill him,
-      if_false, Bool.false_eq_true, List.append_nil]
+      ite_false, Bool.false_eq_true, List.append_nil]
   | _ => rfl
 
 /-- `legalizeMov dst src` produces only WF instructions, given resolved operands
@@ -611,12 +611,12 @@ theorem legalizeMov_wf (dst src : LOperand) (mov : String)
   intro i hi
   unfold legalizeMov at hi
   by_cases hb : (dst.isSpill && src.isSpill) = true
-  · rw [if_pos hb] at hi
+  · rw [ite_eq_left hb] at hi
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
     rcases hi with hi | hi
     · subst hi; exact wf_scratch_dst src mov hsrc
     · subst hi; exact wf_scratch_src dst mov hdst
-  · rw [if_neg hb] at hi
+  · rw [ite_eq_right hb] at hi
     -- `hb` false ⇒ not both spills ⇒ not both mem (via coincidence).
     rw [List.mem_singleton] at hi; subst hi
     apply wf_two_op dst src mov hdst hsrc
@@ -641,13 +641,13 @@ theorem legalizeMemLoad_wf (dst src : LOperand) (opn mov : String)
   rw [legalizeSibElem_id_of_resolved src hsrc] at hi
   simp only [List.nil_append] at hi
   by_cases hsp : dst.isSpill = true
-  · rw [if_pos hsp] at hi
+  · rw [ite_eq_left hsp] at hi
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
     rcases hi with hi | hi
     · subst hi; exact wf_scratch_dst src opn hsrc
     · subst hi; exact wf_scratch_src dst _ hdst
   · rw [Bool.not_eq_true] at hsp
-    rw [if_neg (by rw [hsp]; exact Bool.false_ne_true)] at hi
+    rw [ite_eq_right (by rw [hsp]; exact Bool.false_ne_true)] at hi
     rw [List.mem_singleton] at hi; subst hi
     apply wf_two_op dst src opn hdst hsrc
     intro ⟨hdm, _⟩
@@ -710,13 +710,13 @@ theorem legalizeMemStore_wf (dArr addr val : LOperand) (opn mov : String)
     · by_cases hc : (iN == reloadScratch) = true
       · -- index-collision arm: the SIB address is folded into `R14` by a `LEA`,
         -- then the value goes through `R15` into the flat `mem.R14.0` operand.
-        rw [if_pos hc] at hi
+        rw [ite_eq_left hc] at hi
         simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
         rcases hi with hi | hi | hi
         · subst hi; exact wf_scratch2_dst _ _ haddr
         · subst hi; exact wf_scratch_dst val _ hval
         · subst hi; exact wf_scratch_src _ _ scratch2Mem_resolved
-      · rw [if_neg hc] at hi
+      · rw [ite_eq_right hc] at hi
         simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
         rcases hi with hi | hi
         · subst hi; exact wf_scratch_dst val _ hval
@@ -835,7 +835,7 @@ theorem legalizeSibElem_fixed_resolved (base idx : String) (scale : Nat)
   obtain ⟨hb, hi, hs⟩ := h
   unfold legalizeSibElem
   by_cases hbs : sibNameSpill base = true <;> by_cases his : sibNameSpill idx = true <;>
-    simp only [hbs, his, if_true, if_false, Bool.false_eq_true, opResolved,
+    simp only [hbs, his, ite_true, ite_false, Bool.false_eq_true, opResolved,
       Bool.and_eq_true, decide_eq_true_eq]
   · exact ⟨⟨by decide, by decide⟩, hs⟩
   · refine ⟨⟨by decide, ?_⟩, hs⟩
@@ -854,7 +854,7 @@ theorem legalizeSibElem_prelude_wf (base idx : String) (scale : Nat)
   unfold legalizeSibElem at hmem
   simp only at hmem
   by_cases hbs : sibNameSpill base = true <;> by_cases his : sibNameSpill idx = true <;>
-    simp only [hbs, his, if_true, if_false, List.append_nil, List.nil_append,
+    simp only [hbs, his, ite_true, ite_false, List.append_nil, List.nil_append,
       List.mem_append, List.mem_cons, List.not_mem_nil, or_false,
       Bool.false_eq_true] at hmem
   · rcases hmem with hm | hm
@@ -961,7 +961,7 @@ theorem legalizeMemStore_sib_wf (scale : Nat)
         by_cases hc : (i2 == reloadScratch) = true
         · -- index-collision arm: the SIB address is folded into `R14` by a `LEA`,
           -- then the value goes through `R15` into the flat `mem.R14.0` operand.
-          rw [if_pos hc] at hi
+          rw [ite_eq_left hc] at hi
           rw [List.mem_append] at hi
           rcases hi with hi | hi
           · exact hpre i hi
@@ -970,7 +970,7 @@ theorem legalizeMemStore_sib_wf (scale : Nat)
             · subst hi; exact wf_scratch2_dst _ _ haddr'
             · subst hi; exact wf_scratch_dst valOp _ hval
             · subst hi; exact wf_scratch_src _ _ scratch2Mem_resolved
-        · rw [if_neg hc] at hi
+        · rw [ite_eq_right hc] at hi
           rw [List.mem_append] at hi
           rcases hi with hi | hi
           · exact hpre i hi
@@ -995,7 +995,7 @@ theorem legalizeMemLoad_sib_wf (dstOp : LOperand) (bN iN : String) (scale : Nat)
   rcases hi with hi | hi
   · exact legalizeSibElem_prelude_wf bN iN scale hb hidx i hi
   · by_cases hsp : dstOp.isSpill = true
-    · rw [if_pos hsp] at hi
+    · rw [ite_eq_left hsp] at hi
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
       rcases hi with hi | hi
       · subst hi
@@ -1005,7 +1005,7 @@ theorem legalizeMemLoad_sib_wf (dstOp : LOperand) (bN iN : String) (scale : Nat)
         exact absurd (reloadScratch_ok.2.symm.trans hc) (by decide)
       · subst hi; exact wf_scratch_src dstOp _ hdst
     · rw [Bool.not_eq_true] at hsp
-      rw [if_neg (by rw [hsp]; exact Bool.false_ne_true)] at hi
+      rw [ite_eq_right (by rw [hsp]; exact Bool.false_ne_true)] at hi
       rw [List.mem_singleton] at hi; subst hi
       -- `[dst] opn [src']`: dst not spill ⇒ not mem; src' is the sole mem operand.
       apply wf_two_op dstOp _ opn hdst hsrc'
@@ -1067,7 +1067,7 @@ theorem physRegName_spill_eq {a : Nat} (ha : JasminLprogExport.numGPRegs ≤ a)
     (hv : a < JasminLprogExport.vectorBase) :
     JasminLprogExport.physRegName a = "k." ++ toString (a - JasminLprogExport.numGPRegs) := by
   unfold JasminLprogExport.physRegName
-  rw [if_neg (show ¬ a ≥ JasminLprogExport.vectorBase from by omega),
+  rw [ite_eq_right (show ¬ a ≥ JasminLprogExport.vectorBase from by omega),
     List.getElem?_eq_none (by simpa [JasminLprogExport.numGPRegs] using ha)]
   rfl
 
@@ -1081,7 +1081,7 @@ theorem physRegName_resolved (p : Nat)
   · have hmem : JasminLprogExport.physRegName p ∈ x86PhysRegNames := by
       have hg : JasminLprogExport.physRegName p ∈ JasminLprogExport.gpRegNames := by
         unfold JasminLprogExport.physRegName
-        rw [if_neg (show ¬ p ≥ JasminLprogExport.vectorBase from by omega)]
+        rw [ite_eq_right (show ¬ p ≥ JasminLprogExport.vectorBase from by omega)]
         have hp' : p < JasminLprogExport.gpRegNames.length := by
           simpa [JasminLprogExport.numGPRegs] using hp
         rw [List.getElem?_eq_getElem hp']
@@ -1107,7 +1107,7 @@ theorem physRegName_memCoincides (p : Nat)
   rcases Nat.lt_or_ge p JasminLprogExport.numGPRegs with hp | hp
   · have hg : JasminLprogExport.physRegName p ∈ JasminLprogExport.gpRegNames := by
       unfold JasminLprogExport.physRegName
-      rw [if_neg (show ¬ p ≥ JasminLprogExport.vectorBase from by omega)]
+      rw [ite_eq_right (show ¬ p ≥ JasminLprogExport.vectorBase from by omega)]
       have hp' : p < JasminLprogExport.gpRegNames.length := by
         simpa [JasminLprogExport.numGPRegs] using hp
       rw [List.getElem?_eq_getElem hp']
@@ -1129,7 +1129,7 @@ theorem physRegName_sibArgOk (p : Nat)
   · left
     have hg : JasminLprogExport.physRegName p ∈ JasminLprogExport.gpRegNames := by
       unfold JasminLprogExport.physRegName
-      rw [if_neg (show ¬ p ≥ JasminLprogExport.vectorBase from by omega)]
+      rw [ite_eq_right (show ¬ p ≥ JasminLprogExport.vectorBase from by omega)]
       have hp' : p < JasminLprogExport.gpRegNames.length := by
         simpa [JasminLprogExport.numGPRegs] using hp
       rw [List.getElem?_eq_getElem hp']
@@ -1158,7 +1158,7 @@ theorem lowerNativeShiftRotate_wf (dst s : LOperand) (opn mov : String)
   intro i hi
   unfold JasminLprogExport.lowerNativeShiftRotate at hi
   by_cases hb : (dst.isSpill || s.isSpill) = true
-  · rw [if_pos hb] at hi
+  · rw [ite_eq_left hb] at hi
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
     rcases hi with hi | hi | hi
     · subst hi; exact wf_scratch_dst s mov hs
@@ -1168,7 +1168,7 @@ theorem lowerNativeShiftRotate_wf (dst s : LOperand) (opn mov : String)
       intro ⟨hc, _⟩
       exact absurd (reloadScratch_ok.2.symm.trans hc) (by decide)
     · subst hi; exact wf_scratch_src dst mov hdst
-  · rw [if_neg hb] at hi
+  · rw [ite_eq_right hb] at hi
     rw [List.mem_singleton] at hi; subst hi
     apply wf_two_op dst s opn hdst hs
     intro ⟨hdm, _hsm⟩
@@ -1187,7 +1187,7 @@ theorem lowerTwoAddrShiftImm_wf (dst s0 : LOperand) (v : Nat) (opn mov : String)
   intro i hi
   unfold JasminLprogExport.lowerTwoAddrShiftImm at hi
   by_cases hsp : dst.isSpill = true
-  · rw [if_pos hsp] at hi
+  · rw [ite_eq_left hsp] at hi
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
     rcases hi with hi | hi | hi
     · subst hi; exact wf_scratch_dst s0 mov hs0
@@ -1198,10 +1198,10 @@ theorem lowerTwoAddrShiftImm_wf (dst s0 : LOperand) (v : Nat) (opn mov : String)
   · rw [Bool.not_eq_true] at hsp
     have hdMem : isMemX86 dst = false := by rw [memCoincidesSpill] at hcd; rw [hcd, hsp]
     by_cases heq : dst = s0
-    · rw [if_neg (by rw [hsp]; exact Bool.false_ne_true), if_pos heq] at hi
+    · rw [ite_eq_right (by rw [hsp]; exact Bool.false_ne_true), ite_eq_left heq] at hi
       rw [List.mem_singleton] at hi; subst hi
       exact wf_binop dst (.imm v) opn hdst hdMem (by simp [opResolved])
-    · rw [if_neg (by rw [hsp]; exact Bool.false_ne_true), if_neg heq] at hi
+    · rw [ite_eq_right (by rw [hsp]; exact Bool.false_ne_true), ite_eq_right heq] at hi
       rw [List.mem_append] at hi
       rcases hi with hi | hi
       · exact legalizeMov_wf dst s0 mov hdst hs0 hcd hcs i hi
@@ -1250,12 +1250,12 @@ theorem lowerTwoAddr_wf (dst s0 s1 : LOperand) (opn mov : String)
   rw [hmw] at hi hpre hs1' hcs1'
   simp only at hi hpre hs1' hcs1'
   by_cases heq : dst = s0
-  · rw [if_pos heq] at hi
+  · rw [ite_eq_left heq] at hi
     rw [List.mem_append] at hi
     rcases hi with hi | hi
     · exact hpre i hi
     · exact legalizeBinop_wf dst s1v opn mov hdst hs1' hcd hcs1' i hi
-  · rw [if_neg heq] at hi
+  · rw [ite_eq_right heq] at hi
     rw [List.mem_append, List.mem_append] at hi
     rcases hi with (hi | hi) | hi
     · exact legalizeMov_wf dst s0 mov hdst hs0 hcd hcs0 i hi
@@ -1413,7 +1413,7 @@ theorem loadLeg_wf (dst : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
       isPrefixOf_eq_hasPrefix]
   have hmd := memDst_resolved off
   by_cases hsp : dst.isSpill = true
-  · rw [if_pos hsp] at ho
+  · rw [ite_eq_left hsp] at ho
     simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
     rcases ho with h|h|h <;> subst h
     · exact hRI
@@ -1421,7 +1421,7 @@ theorem loadLeg_wf (dst : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
         (by intro ⟨hc, _⟩; exact absurd (reloadScratch_ok.2.symm.trans hc) (by decide))
     · exact wf_scratch_src dst abiMovReg hdst
   · rw [Bool.not_eq_true] at hsp
-    rw [if_neg (by rw [hsp]; exact Bool.false_ne_true)] at ho
+    rw [ite_eq_right (by rw [hsp]; exact Bool.false_ne_true)] at ho
     simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
     rcases ho with h|h <;> subst h
     · exact hRI
@@ -1451,7 +1451,7 @@ theorem storeLeg_wf (src : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
       isPrefixOf_eq_hasPrefix]
   have hmd := memDst_resolved off
   by_cases hsp : src.isSpill = true
-  · rw [if_pos hsp] at ho
+  · rw [ite_eq_left hsp] at ho
     simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
     rcases ho with h|h|h <;> subst h
     · exact wf_scratch_dst src abiMovReg hsrc
@@ -1459,7 +1459,7 @@ theorem storeLeg_wf (src : LOperand) (off : Nat) (abiMovReg abiMovBuf : String)
     · exact wf_two_op _ _ abiMovBuf hmd reloadScratch_ok.1
         (by intro ⟨_, hc⟩; exact absurd (reloadScratch_ok.2.symm.trans hc) (by decide))
   · rw [Bool.not_eq_true] at hsp
-    rw [if_neg (by rw [hsp]; exact Bool.false_ne_true)] at ho
+    rw [ite_eq_right (by rw [hsp]; exact Bool.false_ne_true)] at ho
     simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
     rcases ho with h|h <;> subst h
     · exact hRO

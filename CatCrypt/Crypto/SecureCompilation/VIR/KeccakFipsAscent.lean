@@ -286,12 +286,12 @@ theorem respects_emitRotL {t : JasminTy} (dst : Fin numSlots) (n : Nat)
     refine Respects.of_eq (h1.congr ?_) ?_
     · intro σ ι
       congr 1
-      simp only [srcVal, JasminBinOp.apply, rotLM, if_neg hn, cond_true, cond_false,
+      simp only [srcVal, JasminBinOp.apply, rotLM, ite_eq_right hn, cond_true, cond_false,
         Function.update_of_ne hDst, Function.update_self,
         Function.update_of_ne (Ne.symm hDst), Function.update_idem]
     · intro Γ bs immV
       show emitRotL bs immV dst n k = _
-      simp only [emitRotL, hbeq, Bool.false_eq_true, if_false]
+      simp only [emitRotL, hbeq, Bool.false_eq_true, ite_false]
 
 /-! ### Reading one slot family through an update of another -/
 
@@ -380,24 +380,24 @@ theorem respects_emitRotL {t : JasminTy} (dst : Fin numSlots) (n : Nat)
       = if x % 5 = x' % 5 ∧ y % 5 = y' % 5 then v else σ (aSlot x y) := by
   rw [Function.update_apply]
   by_cases h : x % 5 = x' % 5 ∧ y % 5 = y' % 5
-  · rw [if_pos ((aSlot_eq_iff x y x' y').2 h), if_pos h]
-  · rw [if_neg (fun hc => h ((aSlot_eq_iff x y x' y').1 hc)), if_neg h]
+  · rw [ite_eq_left ((aSlot_eq_iff x y x' y').2 h), ite_eq_left h]
+  · rw [ite_eq_right (fun hc => h ((aSlot_eq_iff x y x' y').1 hc)), ite_eq_right h]
 
 @[simp] theorem upd_bSlot_at_bSlot (σ : SV) (v : BitVec 64) (x' y' x y : Nat) :
     Function.update σ (bSlot x' y') v (bSlot x y)
       = if x % 5 = x' % 5 ∧ y % 5 = y' % 5 then v else σ (bSlot x y) := by
   rw [Function.update_apply]
   by_cases h : x % 5 = x' % 5 ∧ y % 5 = y' % 5
-  · rw [if_pos ((bSlot_eq_iff x y x' y').2 h), if_pos h]
-  · rw [if_neg (fun hc => h ((bSlot_eq_iff x y x' y').1 hc)), if_neg h]
+  · rw [ite_eq_left ((bSlot_eq_iff x y x' y').2 h), ite_eq_left h]
+  · rw [ite_eq_right (fun hc => h ((bSlot_eq_iff x y x' y').1 hc)), ite_eq_right h]
 
 @[simp] theorem upd_cSlot_at_cSlot (σ : SV) (v : BitVec 64) (x' x : Nat) :
     Function.update σ (cSlot x') v (cSlot x)
       = if x % 5 = x' % 5 then v else σ (cSlot x) := by
   rw [Function.update_apply]
   by_cases h : x % 5 = x' % 5
-  · rw [if_pos ((cSlot_eq_iff x x').2 h), if_pos h]
-  · rw [if_neg (fun hc => h ((cSlot_eq_iff x x').1 hc)), if_neg h]
+  · rw [ite_eq_left ((cSlot_eq_iff x x').2 h), ite_eq_left h]
+  · rw [ite_eq_right (fun hc => h ((cSlot_eq_iff x x').1 hc)), ite_eq_right h]
 
 /-! ## 4. θ: the column parities and the column fold -/
 
@@ -526,7 +526,7 @@ theorem respects_emitRhoPiLane {t : JasminTy} (x y : Nat) (k : Cont t)
   congr 1
   by_cases hr : rhoOffset (x + 5 * y) = 0
   · simp [rotLM, rhoPiLaneM, rotModel, hr]
-  · simp only [rotLM, rhoPiLaneM, rotModel, if_neg hr, Function.update_self,
+  · simp only [rotLM, rhoPiLaneM, rotModel, ite_eq_right hr, Function.update_self,
       Function.update_comm (bSlot_ne_rotScr y (2 * x + 3 * y)), Function.update_idem]
 
 /-- Slot-map model of `emitRhoPi count start`. -/
@@ -683,10 +683,10 @@ open CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact in
 theorem rotModel_rho (ι : IV) (a : BitVec 64) (s : Nat) :
     rotModel a ι (rhoOffset s) = crotl a (rhoOffset s) := by
   by_cases hr0 : rhoOffset s = 0
-  · rw [hr0, rotModel, if_pos rfl, crotl]
+  · rw [hr0, rotModel, ite_eq_left rfl, crotl]
     bv_decide
   · have hr := rhoOffset_lt_64 s
-    rw [rotModel, if_neg hr0, crotl, shiftMask_of_lt hr,
+    rw [rotModel, ite_eq_right hr0, crotl, shiftMask_of_lt hr,
       shiftMask_of_lt (by omega : 64 - rhoOffset s < 64)]
 
 open CatCrypt.Crypto.SecureCompilation.VIR.KeccakDiffuseExact in
@@ -1002,7 +1002,7 @@ theorem immOK_keccakVal (a : Lanes) : ImmOK (immMap initImmVar (keccakVal a)) :=
     show ¬ (57 + immList.idxOf n < 25); omega
   have h2 : ¬ (firstImm + immIdx n < numSlots) := by
     show ¬ (57 + immList.idxOf n < 57); omega
-  rw [dif_neg h1, if_neg h2, Nat.add_sub_cancel_left]
+  rw [dite_eq_right h1, ite_eq_right h2, Nat.add_sub_cancel_left]
   rw [show immList.getD (immIdx n) 0 = n from getD_idxOf immList n hn]
 
 theorem lanesOf_keccakVal (a : Lanes) :
@@ -1014,9 +1014,9 @@ theorem lanesOf_keccakVal (a : Lanes) :
   have hj : (aSlot (i.val % 5) (i.val / 5)).val < 25 := by rw [hval]; exact hi
   show (initBState.st (aSlot (i.val % 5) (i.val / 5))).lookup (keccakVal a) = a i
   rw [show initBState.st (aSlot (i.val % 5) (i.val / 5))
-        = inVar (aSlot (i.val % 5) (i.val / 5)).val from by simp only [initBState, if_pos hj]]
+        = inVar (aSlot (i.val % 5) (i.val / 5)).val from by simp only [initBState, ite_eq_left hj]]
   rw [hval, inVar_keccakVal a i.val (by show i.val < 57 + immList.length; omega),
-    keccakWords, dif_pos hi]
+    keccakWords, dite_eq_left hi]
 
 /-- **The emitted Keccak-p[1600,24] permutation computes FIPS 202.** For every
     input state `a`, the denotation of the emitted `Com jasminDialect` program on

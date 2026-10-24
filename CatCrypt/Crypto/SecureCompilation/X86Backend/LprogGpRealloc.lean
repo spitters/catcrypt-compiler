@@ -257,13 +257,13 @@ theorem mem_addNew (xs : List String) :
     show n ∈ addNew xs (if L.contains x then L else x :: L) ↔ _
     rw [ih]
     by_cases hx : L.contains x = true
-    · simp only [hx, if_true, List.mem_cons]
+    · simp only [hx, ite_true, List.mem_cons]
       have : x ∈ L := by simpa using hx
       constructor
       · rintro (h | h) <;> simp [h]
       · rintro ((rfl | h) | h) <;> simp_all
     · simp only [Bool.not_eq_true] at hx
-      simp only [hx, Bool.false_eq_true, if_false, List.mem_cons]
+      simp only [hx, Bool.false_eq_true, ite_false, List.mem_cons]
       tauto
 
 /-- The names live before an instruction, from those live after it. -/
@@ -485,10 +485,10 @@ theorem eval_renOp {w : Nat} {abi : IsaAbi} {m : Cur} {L : List String} {σ τ :
     · have hr : n ∈ i.reads abi := by
         simp only [FI.reads, List.mem_append, List.mem_flatMap]
         exact Or.inl ⟨.reg n, ho, by simp [opReads, hn]⟩
-      simp only [renOp, hn, if_true, evalOperand]
+      simp only [renOp, hn, ite_true, evalOperand]
       exact (hR.2.2 n (hL n hr) hn).2
     · simp only [Bool.not_eq_true] at hn
-      simp only [renOp, hn, Bool.false_eq_true, if_false, evalOperand]
+      simp only [renOp, hn, Bool.false_eq_true, ite_false, evalOperand]
       exact hR.2.1 n hn
   | imm _ => rfl
   | _ => simp [regOrImm] at hro
@@ -581,11 +581,11 @@ theorem goAcc_sound {w : Nat} {abi : IsaAbi}
     | cons c cs =>
     simp only [goAcc] at hgo
     by_cases hb : basesOk m i abi = true
-    · rw [if_pos hb] at hgo
+    · rw [ite_eq_left hb] at hgo
       by_cases hd : isLoc i.d abi = true
-      · rw [if_pos hd] at hgo
+      · rw [ite_eq_left hd] at hgo
         by_cases hok : (okLoc i.d c abi && shapeOk m i c abi) = true
-        · rw [if_pos hok] at hgo
+        · rw [ite_eq_left hok] at hgo
           have hc : isLoc c abi = true := by
             simp only [Bool.and_eq_true, okLoc, Bool.or_eq_true, beq_iff_eq] at hok
             rcases hok.1 with h | h
@@ -594,7 +594,7 @@ theorem goAcc_sound {w : Nat} {abi : IsaAbi}
           by_cases hcp :
               (isCopy64 i.opn && i.srcs.map (fun o => renOp m o abi) == [.reg c]) = true
           · -- a self-copy: dropped
-            rw [if_pos hcp] at hgo
+            rw [ite_eq_left hcp] at hgo
             simp only [Bool.and_eq_true, beq_iff_eq] at hcp
             obtain ⟨hcopyi, hmap⟩ := hcp
             obtain ⟨o, hso, hro⟩ : ∃ o, i.srcs = [o] ∧ renOp m o abi = .reg c := by
@@ -619,14 +619,14 @@ theorem goAcc_sound {w : Nat} {abi : IsaAbi}
               by_cases hnd : n = i.d
               · subst hnd
                 simp [hc, Lstate.setReg, hτc]
-              · rw [if_neg (Ne.symm hnd)]
+              · rw [ite_eq_right (Ne.symm hnd)]
                 have := hR.2.2 n (mem_liveBefore hn hnd) hnl
                 refine ⟨this.1, ?_⟩
                 simp [Lstate.setReg, hnd, this.2]
-          · rw [if_neg hcp] at hgo
+          · rw [ite_eq_right hcp] at hgo
             by_cases hdead : (movClass i.opn && !la.contains i.d) = true
             · -- a dead move: dropped
-              rw [if_pos hdead] at hgo
+              rw [ite_eq_left hdead] at hgo
               simp only [Bool.and_eq_true, Bool.not_eq_true'] at hdead
               refine ih m cs acc out ((σ.setReg i.d v).nextPc) σ' τ hwfs hgo ⟨hR.1, ?_, ?_⟩ hrun
               · intro x hx
@@ -640,10 +640,10 @@ theorem goAcc_sound {w : Nat} {abi : IsaAbi}
                 have := hR.2.2 n (mem_liveBefore hn hnd) hnl
                 refine ⟨this.1, ?_⟩
                 simp [Lstate.setReg, hnd, this.2]
-            · rw [if_neg hdead] at hgo
+            · rw [ite_eq_right hdead] at hgo
               by_cases hnc : noClobber m la i.d c = true
               · -- a kept write at `c`
-                rw [if_pos hnc] at hgo
+                rw [ite_eq_left hnc] at hgo
                 let i' : FI := ⟨i.ii, c, i.opn, i.srcs.map (fun o => renOp m o abi)⟩
                 have hstep' : stepWith sem i' τ = some ((τ.setReg c v).nextPc) := by
                   simp only [stepWith, i', hev, hv]
@@ -659,7 +659,7 @@ theorem goAcc_sound {w : Nat} {abi : IsaAbi}
                     by_cases hnd : n = i.d
                     · subst hnd
                       simp [hc, Lstate.setReg]
-                    · rw [if_neg (Ne.symm hnd)]
+                    · rw [ite_eq_right (Ne.symm hnd)]
                       have := hR.2.2 n (mem_liveBefore hn hnd) hnl
                       have hne : look m n ≠ c := by
                         have h1 := List.all_eq_true.1 hnc n hn
@@ -678,13 +678,13 @@ theorem goAcc_sound {w : Nat} {abi : IsaAbi}
                   · exact hwr j hj
                 · simp only [runWith, hstep']
                   exact hr'
-              · rw [if_neg hnc] at hgo; exact absurd hgo (by simp)
-        · rw [if_neg hok] at hgo; exact absurd hgo (by simp)
+              · rw [ite_eq_right hnc] at hgo; exact absurd hgo (by simp)
+        · rw [ite_eq_right hok] at hgo; exact absurd hgo (by simp)
       · -- a write to a non-location name
-        rw [if_neg hd] at hgo
+        rw [ite_eq_right hd] at hgo
         simp only [Bool.not_eq_true] at hd
         by_cases hsh : shapeOk m i i.d abi = true
-        · rw [if_pos hsh] at hgo
+        · rw [ite_eq_left hsh] at hgo
           let i' : FI := ⟨i.ii, i.d, i.opn, i.srcs.map (fun o => renOp m o abi)⟩
           have hstep' : stepWith sem i' τ = some ((τ.setReg i.d v).nextPc) := by
             simp only [stepWith, i', hev, hv]
@@ -710,8 +710,8 @@ theorem goAcc_sound {w : Nat} {abi : IsaAbi}
             · exact hwr j hj
           · simp only [runWith, hstep']
             exact hr'
-        · rw [if_neg hsh] at hgo; exact absurd hgo (by simp)
-    · rw [if_neg hb] at hgo; exact absurd hgo (by simp)
+        · rw [ite_eq_right hsh] at hgo; exact absurd hgo (by simp)
+    · rw [ite_eq_right hb] at hgo; exact absurd hgo (by simp)
 
 /-! ## 7. The allocator
 

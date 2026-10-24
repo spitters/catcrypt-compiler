@@ -133,7 +133,7 @@ theorem x86Isa_lsemFuelMemF_straight (fn : String) (seg : List LinstrRM)
   have hlpc : b.lpc = seg.length := by
     rw [runStraightF_lpc seg b0 zf b z hrun, hpc, Nat.zero_add]
   unfold VIR.JasminLsemMemFlagGuard.lsemFuelMemF
-  simp only [findInstrMem, singletonProgM, if_true]
+  simp only [findInstrMem, singletonProgM, ite_true]
   rw [hlpc, List.getElem?_eq_none (le_refl _)]
 
 /-- **`CorresJ` over a run of an instruction set.** Let the run of `prog` at the instruction
@@ -208,7 +208,7 @@ theorem corresJ_add2 :
       (fun v => v + 3) add2Block := by
   intro st a h _
   simp only [add2Block, runBlock_cons, runBlock_nil, evalInstr, JState.writeB5W, x86_ADD,
-    rflags_of_aluop, JState.get, JOperand.eval, h, if_true, BitVec.add_assoc]
+    rflags_of_aluop, JState.get, JOperand.eval, h, ite_true, BitVec.add_assoc]
   rfl
 
 /-- **The two-instruction example at x86**: the lowered program of `x += 1; x += 2` adds `3`

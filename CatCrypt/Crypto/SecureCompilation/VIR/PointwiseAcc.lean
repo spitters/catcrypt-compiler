@@ -592,10 +592,10 @@ theorem basemulF_eq_blockMul_two (q psi logN : ℕ) (hlog : 0 < logN)
   rw [hB]
   refine blockMul_congr 2 (2 ^ (logN - 1)) (by norm_num) _ _ _ _ _ ?_ ?_ i (by omega)
   · intro j hj
-    simp only [rowLanes, dif_pos (show j < 2 ^ logN by omega)]
+    simp only [rowLanes, dite_eq_left (show j < 2 ^ logN by omega)]
     exact hx j (by omega)
   · intro j hj
-    simp only [rowLanes, dif_pos (show j < 2 ^ logN by omega)]
+    simp only [rowLanes, dite_eq_left (show j < 2 ^ logN by omega)]
     exact hy j (by omega)
 
 /-- **The row accumulation against the ring-level spec.** When the residues `x j`, `y j`

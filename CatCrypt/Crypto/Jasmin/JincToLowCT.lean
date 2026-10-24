@@ -710,7 +710,7 @@ theorem maskFrame_gatedStore (l : Located) (idx : String) (src : Located) :
   have h3 : gateSel ≠ gateIdx := by decide
   refine ⟨?_, ?_⟩
   · simp only [u64Loc, WState.setSc_sc, WState.setSc_arr, SExpr.evalBV, gatedSel,
-      if_true, h1, h2, h3, h1.symm, h3.symm, hgi.symm, hgo.symm, if_false, hm]
+      ite_true, h1, h2, h3, h1.symm, h3.symm, hgi.symm, hgo.symm, ite_false, hm]
     simp [WState.setCell]
   · simp [u64Loc, WState.setCell, hgi.symm, hgo.symm, hgs.symm, hm]
 
@@ -837,7 +837,7 @@ theorem gatedIter_frame (g : String) (names : List String) (body : LowCT)
     · exact hbody hw
     · exact absurd (scalarWrites_carryStore names _ hw) (by decide)
   refine ((gateAccess_maskFrame _ hmask _ _ h ?_).1).trans hl'
-  simp only [WState.setSc_sc, if_true]
+  simp only [WState.setSc_sc, ite_true]
   exact evalBV_maskExpr_zero _ _ (by simp [u64Loc, stateLoc, hl', hidx, h0, SExpr.evalBV])
 
 /-- **Iterations after the source loop's exit are no-ops.** Any number `k` of
@@ -1142,7 +1142,7 @@ theorem agree_setReg {w : Nat} {P : List String} {s₁ s₂ : Lstate w} (d : Str
   simp only [Lstate.nextPc, Lstate.lvm_setReg]
   by_cases hrd : r = d
   · simp [hrd]
-  · simp only [hrd, if_false]
+  · simp only [hrd, ite_false]
     exact h r (by simpa [hrd] using hr)
 
 theorem evalOperand_agree {w : Nat} {P : List String} {s₁ s₂ : Lstate w}
@@ -1203,7 +1203,7 @@ theorem stepL_arrIdx_lvm {w : Nat} (s : Lstate w) (d op b ix : String) (sc : Nat
     · split <;> rfl
     · split <;> simp [Lstate.nextPc, hr]
   · subst hop
-    simp only [stepL, lsemStep, if_neg (by decide : ("STOREIDX" : String) ≠ "LOADIDX"), if_true]
+    simp only [stepL, lsemStep, ite_eq_right (by decide : ("STOREIDX" : String) ≠ "LOADIDX"), ite_true]
     split <;> rfl
 
 /-- An instruction accepted by `pubInstrL` leaks the same observations from two
@@ -1216,7 +1216,7 @@ theorem pubInstrL_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i
   | Lopn ds op ss =>
       simp only [pubInstrL] at hi
       by_cases hok : (ds ++ ss).all (addrOK P) = true
-      · rw [if_pos hok] at hi
+      · rw [ite_eq_left hok] at hi
         refine ⟨instrAddrLeak_agree h ds op ss hok, ?_⟩
         by_cases hd : ∃ d, ds = [.reg d]
         · obtain ⟨d, rfl⟩ := hd
@@ -1225,9 +1225,9 @@ theorem pubInstrL_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i
             obtain ⟨h₁a, h₁b⟩ := stepL_arrIdx_lvm s₁ d op b ix sc rest
             obtain ⟨h₂a, h₂b⟩ := stepL_arrIdx_lvm s₂ d op b ix sc rest
             by_cases hop : op = "STOREIDX"
-            · simp only [hop, if_true, Option.some.injEq] at hi; subst hi
+            · simp only [hop, ite_true, Option.some.injEq] at hi; subst hi
               exact agree_of_lvm h (h₁b hop) (h₂b hop)
-            · simp only [hop, if_false, Option.some.injEq] at hi; subst hi
+            · simp only [hop, ite_false, Option.some.injEq] at hi; subst hi
               exact agree_kill d h h₁a h₂a
           · push Not at hss
             have hi' : (if (ss.all (pubOperand P) &&
@@ -1241,7 +1241,7 @@ theorem pubInstrL_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i
             rw [stepL_reg s₁ d op ss hss, stepL_reg s₂ d op ss hss]
             by_cases hpub : (ss.all (pubOperand P) &&
                 (decide (d ∈ P) || totalOp (stripWidthTag op) ss.length)) = true
-            · rw [if_pos hpub, Option.some.injEq] at hi'; subst hi'
+            · rw [ite_eq_left hpub, Option.some.injEq] at hi'; subst hi'
               simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at hpub
               have hv : ss.map (evalOperand s₁) = ss.map (evalOperand s₂) :=
                 List.map_congr_left (fun o ho =>
@@ -1260,7 +1260,7 @@ theorem pubInstrL_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i
                   rcases List.mem_cons.mp hr with rfl | hr
                   · exact h r hdP
                   · exact h r hr
-            · rw [if_neg hpub, Option.some.injEq] at hi'; subst hi'
+            · rw [ite_eq_right hpub, Option.some.injEq] at hi'; subst hi'
               refine agree_kill d h (fun r hr => ?_) (fun r hr => ?_) <;>
                 (split <;> simp [Lstate.nextPc, hr])
         · push Not at hd
@@ -1281,7 +1281,7 @@ theorem pubInstrL_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i
             · simpa using hi.symm
           rw [hst, hst, hP]
           exact agree_of_lvm h rfl rfl
-      · rw [if_neg hok] at hi; exact absurd hi (by simp)
+      · rw [ite_eq_right hok] at hi; exact absurd hi (by simp)
   | Lalign =>
       simp only [pubInstrL, Option.some.injEq] at hi; subst hi
       exact ⟨rfl, agree_of_lvm h rfl rfl⟩
@@ -1320,9 +1320,9 @@ theorem pubInstr_sound {w : Nat} {P P' : List String} {s₁ s₂ : Lstate w} (i 
       refine ⟨rfl, ?_⟩
       dsimp only
       by_cases hsym : sym ∈ P
-      · rw [if_pos hsym, h sym hsym]
+      · rw [ite_eq_left hsym, h sym hsym]
         exact agree_setReg d _ h
-      · rw [if_neg hsym]
+      · rw [ite_eq_right hsym]
         refine agree_kill d h (fun r hr => ?_) (fun r hr => ?_) <;>
           simp [Lstate.nextPc, hr]
 

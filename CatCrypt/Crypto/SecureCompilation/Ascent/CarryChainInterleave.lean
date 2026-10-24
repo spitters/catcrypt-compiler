@@ -142,7 +142,7 @@ theorem lowerAdcx_get_dst (ra rb dst : String) (hne : dst ≠ rb) (s : JState 64
       = addCarryWord (s.get ra) (s.get rb) (BitVec.ofBool (s.flagB (·.cf))) := by
   have hrb : rb ≠ dst := fun h => hne h.symm
   simp only [lowerAdcx, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MOV, JState.setReg, JState.get, JState.flagB, if_true, if_neg hrb]
+    x86_MOV, JState.setReg, JState.get, JState.flagB, ite_true, ite_eq_right hrb]
   exact (addCarryWord_adcx _ _ _).symm
 
 /-- **Carry-out of a `CF` step.** The `CF` left by the step is the dialect's
@@ -152,7 +152,7 @@ theorem lowerAdcx_cf (ra rb dst : String) (hne : dst ≠ rb) (s : JState 64) :
       = carryOutBit (s.get ra) (s.get rb) (BitVec.ofBool (s.flagB (·.cf))) := by
   have hrb : rb ≠ dst := fun h => hne h.symm
   simp only [lowerAdcx, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MOV, JState.setReg, JState.get, JState.flagB, if_neg hrb]
+    x86_MOV, JState.setReg, JState.get, JState.flagB, ite_eq_right hrb]
   exact (carryOutBit_adcx _ _ _).symm
 
 /-- **A `CF` step leaves `OF` alone.** This is what lets the `OF` chain's carry
@@ -164,7 +164,7 @@ theorem lowerAdcx_of (ra rb dst : String) (s : JState 64) :
 theorem lowerAdcx_get_other (ra rb dst r : String) (hr : r ≠ dst) (s : JState 64) :
     (runBlock s (lowerAdcx ra rb dst)).get r = s.get r := by
   simp only [lowerAdcx, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MOV, JState.setReg, JState.get, if_neg hr]
+    x86_MOV, JState.setReg, JState.get, ite_eq_right hr]
 
 /-- **Data word of an `OF` step.** Reading `dst` after the lowered step yields the
     dialect's `addCarryLo 64` at the entry `OF`. -/
@@ -173,7 +173,7 @@ theorem lowerAdox_get_dst (ra rb dst : String) (hne : dst ≠ rb) (s : JState 64
       = addCarryWord (s.get ra) (s.get rb) (BitVec.ofBool (s.flagB (·.of))) := by
   have hrb : rb ≠ dst := fun h => hne h.symm
   simp only [lowerAdox, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MOV, JState.setReg, JState.get, JState.flagB, if_true, if_neg hrb]
+    x86_MOV, JState.setReg, JState.get, JState.flagB, ite_true, ite_eq_right hrb]
   exact (addCarryWord_adcx _ _ _).symm
 
 /-- **Carry-out of an `OF` step.** The `OF` left by the step is the dialect's
@@ -183,7 +183,7 @@ theorem lowerAdox_of (ra rb dst : String) (hne : dst ≠ rb) (s : JState 64) :
       = carryOutBit (s.get ra) (s.get rb) (BitVec.ofBool (s.flagB (·.of))) := by
   have hrb : rb ≠ dst := fun h => hne h.symm
   simp only [lowerAdox, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MOV, JState.setReg, JState.get, JState.flagB, if_neg hrb]
+    x86_MOV, JState.setReg, JState.get, JState.flagB, ite_eq_right hrb]
   exact (carryOutBit_adcx _ _ _).symm
 
 /-- **An `OF` step leaves `CF` alone.** This is what lets the `CF` chain's carry
@@ -195,7 +195,7 @@ theorem lowerAdox_cf (ra rb dst : String) (s : JState 64) :
 theorem lowerAdox_get_other (ra rb dst r : String) (hr : r ≠ dst) (s : JState 64) :
     (runBlock s (lowerAdox ra rb dst)).get r = s.get r := by
   simp only [lowerAdox, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MOV, JState.setReg, JState.get, if_neg hr]
+    x86_MOV, JState.setReg, JState.get, ite_eq_right hr]
 
 /-! ## 3. The three-axis state correspondence -/
 

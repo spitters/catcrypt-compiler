@@ -475,7 +475,7 @@ theorem mulhs_eq_mulhu_sub (w : Nat) (hw : 1 ≤ w) (a b : BitVec w) :
   generalize a.msb = ca
   generalize b.msb = cb
   cases ca <;> cases cb <;>
-    simp only [Bool.false_eq_true, if_false, if_true, Nat.add_zero, Nat.sub_zero]
+    simp only [Bool.false_eq_true, ite_false, ite_true, Nat.add_zero, Nat.sub_zero]
   · exact natMod_eq_of_intSub (-2) (by push_cast; ring)
   · rw [show A * (B + W * (W - 1)) = A * B + W * ((W - 1) * A) by ring,
       Nat.add_mul_div_left _ _ hW0]
@@ -569,7 +569,7 @@ theorem Agree.bind {n w : Nat} {t : TSt} {ρ ρ' : Env n w} {st : TileState n w}
       simp [hv, TileState.set, TileState.get]
     · simp only [lookup_cons_ne _ _ hnm] at ho
       rw [hρ o]
-      · simp only [TileState.get, TileState.set, hnm, if_false]
+      · simp only [TileState.get, TileState.set, hnm, ite_false]
         exact h.val nm o ho
       · intro i hi he
         subst he
@@ -660,7 +660,7 @@ theorem Inv.step {n w : Nat} {ρ0 : Env n w} {t : TSt} {st : TileState n w}
       (fun i => (st.get a i ^^^ BitVec.ofInt w (-1)) &&& st.get b i)
     refine ⟨e3, ?_, ?_⟩
     · simp only [trOp, execBody_append, hρ, Option.bind_some, execBody_cons, execBody_nil,
-        Instr.exec, Mn.sem, hc, and_self, if_true, e3, e2, e1, Env.set_ne _ _ na0,
+        Instr.exec, Mn.sem, hc, and_self, ite_true, e3, e2, e1, Env.set_ne _ _ na0,
         Env.set_ne _ _ nb0, Env.set_ne _ _ nb1, Env.set_self, hA.opnd ha, hA.opnd hb]
     · refine hA.bind d (k := t.ctr + 2) (by omega) (by omega)
         (fun i => (~~~ st.get a i) &&& st.get b i) ?_ ?_ _
@@ -679,7 +679,7 @@ theorem Inv.step {n w : Nat} {ρ0 : Env n w} {t : TSt} {st : TileState n w}
     let e2 := e1.set (.v (t.ctr + 1)) (fun i => st.get a i >>> (BitVec.ofInt w imm).toNat)
     refine ⟨e2, ?_, ?_⟩
     · simp only [trOp, execBody_append, hρ, Option.bind_some, execBody_cons, execBody_nil,
-        Instr.exec, Sgn.sem, hc, and_self, if_true, e2, e1, Env.set_ne _ _ na0, Env.set_self,
+        Instr.exec, Sgn.sem, hc, and_self, ite_true, e2, e1, Env.set_ne _ _ na0, Env.set_self,
         hA.opnd ha]
     · refine hA.bind d (k := t.ctr + 1) (by omega) (by omega)
         (fun i => st.get a i >>> imm) ?_ ?_ _
@@ -717,7 +717,7 @@ theorem Inv.step {n w : Nat} {ρ0 : Env n w} {t : TSt} {st : TileState n w}
         - ((B i).sshiftRight K.toNat &&& A i))
     refine ⟨e8, ?_, ?_⟩
     · simp only [trOp, execBody_append, hρ, Option.bind_some, execBody_cons, execBody_nil,
-        Instr.exec, hc, and_self, if_true]
+        Instr.exec, hc, and_self, ite_true]
       simp [e8, e7, e6, e5, e4, e3, e2, e1, Env.set, na, nb, na0, nb0, hA.opnd ha, hA.opnd hb,
         Sgn.sem, Mn.sem, A, B, K]
     · refine hA.bind d (k := t.ctr + 7) (by omega) (by omega)
@@ -789,7 +789,7 @@ theorem run_toAst {n w : Nat} (name : String) (body : List TileOp) (res : String
       = some (storeTile mem pr ((runTileBlock st body).get res)) := by
   simp only [SupportedFunc, Bool.and_eq_true] at hs
   obtain ⟨ρ, hρ, hA⟩ := Inv.foldl body TSt.init st (Inv.init st) hs.1
-  simp only [Func.run, toAst, hshape, if_true, ha, hb]
+  simp only [Func.run, toAst, hshape, ite_true, ha, hb]
   rw [hρ, Option.bind_some, hA.opnd hs.2, Option.map_some]
 
 theorem supported_laneMoving {w : Nat} :
@@ -807,7 +807,7 @@ theorem emitTileFunc?_eq_some {n w : Nat} (name : String) (body : List TileOp) (
     emitTileFunc? n w name body res = some (toAst n w name body res).print := by
   simp only [SupportedFunc, Bool.and_eq_true] at hs
   simp only [emitTileFunc?, supported_laneMoving _ _ hs.1, Bool.false_eq_true,
-    if_false, emitTileFuncAt_eq_print]
+    ite_false, emitTileFuncAt_eq_print]
 
 /-! ## 7. Parser -/
 
@@ -1062,20 +1062,20 @@ theorem parseInstr_print (n w : Nat) (i : Instr) (r : List Char) :
       Nat.toString_eq_repr, Nat.toList_repr, Int.toString_eq_repr, parseInstr,
       Option.bind_eq_bind, Option.bind_some, Option.pure_def, expect_append, h0 k _ (by decide),
       span_off Char.isLower "constant".toList " <i".toList _ (by decide) (by decide),
-      parseInt_off v "> : ".toList _ (by decide), if_true]
+      parseInt_off v "> : ".toList _ (by decide), ite_true]
   | bin mn k x y =>
     simp only [Instr.print, binLine, vName, String.toList_append, List.append_assoc,
       Nat.toString_eq_repr, Nat.toList_repr, parseInstr,
       Option.bind_eq_bind, Option.bind_some, Option.pure_def, expect_append, h0 k _ (by decide),
       span_off Char.isLower mn.name.toList " ".toList _ (Mn.name_lower mn) (by decide),
-      (Mn.name_ne mn).1, (Mn.name_ne mn).2, if_false, Mn.ofChars_name,
+      (Mn.name_ne mn).1, (Mn.name_ne mn).2, ite_false, Mn.ofChars_name,
       parseOpnd_off x ", ".toList _ (by decide), parseOpnd_off y " : ".toList _ (by decide)]
   | shri sg k x y =>
     simp only [Instr.print, shriLine, vName, String.toList_append, List.append_assoc,
       Nat.toString_eq_repr, Nat.toList_repr, parseInstr,
       Option.bind_eq_bind, Option.bind_some, Option.pure_def, expect_append, h0 k _ (by decide),
       span_off Char.isLower "shri".toList " ".toList _ (by decide) (by decide),
-      show "shri".toList ≠ "constant".toList by decide, if_false, if_true,
+      show "shri".toList ≠ "constant".toList by decide, ite_false, ite_true,
       parseOpnd_off x ", ".toList _ (by decide), parseOpnd_off y " ".toList _ (by decide),
       span_off Char.isLower sg.name.toList " : ".toList _ (Sgn.name_lower sg) (by decide),
       Sgn.ofChars_name]
@@ -1124,7 +1124,7 @@ theorem parseBody_bodyText (n w : Nat) :
     have ho := parseOpnd_off o (storeTail n w).toList [] (startsOff_storeTail n w)
     simp only [List.append_nil] at ho
     simp only [bodyText, parseBody, Option.bind_eq_bind, Option.bind_some, Option.pure_def,
-      expect_append, expect_self, ho, if_true]
+      expect_append, expect_self, ho, ite_true]
   | i :: is, o, fuel + 1, h => by
     simp only [List.length_cons, Nat.add_lt_add_iff_right] at h
     simp only [bodyText, parseBody, Option.bind_eq_bind, Option.bind_some, Option.pure_def,
@@ -1245,11 +1245,11 @@ theorem bbMulTileComIR_correct :
   refine ⟨parse_bbMulTileComIR, fun mem pa pb pr => ⟨_, bbMulAst_run mem pa pb pr, ?_, ?_⟩⟩
   · intro i hx hy
     have hi : pr ≤ pr + i ∧ pr + i < pr + 8 := ⟨Nat.le_add_right _ _, by omega⟩
-    simp only [storeTile, hi, and_self, dif_pos, Nat.add_sub_cancel_left]
+    simp only [storeTile, hi, and_self, dite_eq_left, Nat.add_sub_cancel_left]
     exact CatCrypt.Crypto.SecureCompilation.TileBackend.TileArithCorrect.bbMulWord_toNat _ _ hx hy
   · intro q hq
     have : ¬ (pr ≤ q ∧ q < pr + 8) := by omega
-    simp only [storeTile, this, dif_neg, not_false_eq_true]
+    simp only [storeTile, this, dite_eq_right, not_false_eq_true]
     rfl
 
 end CatCrypt.Crypto.SecureCompilation.TileBackend.CudaTileSemantics

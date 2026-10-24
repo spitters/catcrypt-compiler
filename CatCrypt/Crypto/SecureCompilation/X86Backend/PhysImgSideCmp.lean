@@ -499,10 +499,10 @@ theorem scratchPrevB_filter (p : LinstrR → Bool) : ∀ {w : Bool} {l : List Li
       fun r' hr' => hn r' (List.mem_cons_of_mem _ hr')
     cases hp : p r with
     | true =>
-      simp only [List.filter_cons, hp, if_true, scratchPrevB, Bool.and_eq_true]
+      simp only [List.filter_cons, hp, ite_true, scratchPrevB, Bool.and_eq_true]
       exact ⟨h.1, scratchPrevB_filter p hn' h.2⟩
     | false =>
-      simp only [List.filter_cons, hp, Bool.false_eq_true, if_false]
+      simp only [List.filter_cons, hp, Bool.false_eq_true, ite_false]
       have hr := hn r List.mem_cons_self hp
       rw [hr.2] at h
       exact scratchPrevB_mono _ (scratchPrevB_filter p hn' h.2)
@@ -1084,7 +1084,7 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
     · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hL rfl
       obtain ⟨n', hn'⟩ := hreg dn
       simp only [physExpand, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
-        Bool.false_eq_true, if_false, if_true, hrmA, hn', reloadMemrefBase, hmb]
+        Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb]
       have h := legalizeMemLoad_baseR14 n' y' (if hasSuffix "LOADIDX" ":64" then "MOV:64"
         else "MOV")
       intro r hr
@@ -1098,7 +1098,7 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
       obtain ⟨n', hn'⟩ := hreg dn
       obtain ⟨v', hv'⟩ := hreg v
       simp only [physExpand, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
-        Bool.false_eq_true, if_false, if_true, hrmA, hn', hv', reloadMemrefBase, hmb]
+        Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb]
       intro r hr
       simp only [List.mem_append, List.mem_map] at hr
       rcases hr with ⟨r', hr', rfl⟩ | ⟨r', hr', rfl⟩
@@ -1206,7 +1206,7 @@ theorem noScratchBaseB_lfundefPhysAbiOfVirtCert
   let rm := fun o =>
     remapOperand body1 (straightCallComposeTable body1 (physTableOut body1 [] [])) o
   have hrmE : physRmap body1 [] = rm := by
-    simp only [physRmap, hcf, Bool.false_eq_true, if_false]
+    simp only [physRmap, hcf, Bool.false_eq_true, ite_false]
     rfl
   have hmq : ∀ b q, mbr b = some q → q ≠ reloadScratch := by
     intro b q h
@@ -1579,10 +1579,10 @@ theorem cmpRefines_filter (p : Linstr → Bool) : ∀ {l : Lcmd},
     have ih := cmpRefines_filter p (l := l) fun j hj => h j (List.mem_cons_of_mem _ hj)
     cases hp : p a with
     | true =>
-      simp only [List.filter_cons, hp, if_true]
+      simp only [List.filter_cons, hp, ite_true]
       exact ih.cons a
     | false =>
-      simp only [List.filter_cons, hp, Bool.false_eq_true, if_false]
+      simp only [List.filter_cons, hp, Bool.false_eq_true, ite_false]
       exact ih.cons_op (h a List.mem_cons_self hp)
 
 /-- **A sublist of a block of operations** refines it. -/
@@ -1862,14 +1862,14 @@ theorem instrModeled_noCmp {j : Linstr} (h : instrModeled j = true) :
       by_cases hca : '^' ∈ o.toList
       · have hT : o.toList.takeWhile (· != '^') = ['C', 'M', 'P'] := by
           unfold stripWidthTag at hc
-          rw [if_pos (by simpa using hca)] at hc
+          rw [ite_eq_left (by simpa using hca)] at hc
           simpa using congrArg String.toList hc
         unfold parseImmShiftMnem
-        rw [if_pos (by simpa using hca), hT]
+        rw [ite_eq_left (by simpa using hca), hT]
         split <;> rfl
       · have hl : o.toList = ['C', 'M', 'P'] ∨ o.toList = ['C', 'M', 'P', ':', '6', '4'] := by
           unfold stripWidthTag at hc
-          rw [if_neg (by simpa using hca)] at hc
+          rw [ite_eq_right (by simpa using hca)] at hc
           split at hc
           · right
             rename_i hs
@@ -1881,7 +1881,7 @@ theorem instrModeled_noCmp {j : Linstr} (h : instrModeled j = true) :
             rw [h3]; rfl
           · left; subst hc; rfl
         unfold parseImmShiftMnem
-        rw [if_neg (by simpa using hca)]
+        rw [ite_eq_right (by simpa using hca)]
         rcases hl with hl | hl <;> rw [hl] <;> rfl
     unfold instrModeled at h
     rw [he] at h

@@ -102,7 +102,7 @@ theorem join_in_holds (st : JState 64) : MapHolds (jRho st) joinIn st := by
 
 theorem join_cK (st : JState 64) (j c : Nat) (hj : j < 16) (h : cK j = some c) :
     jRho st j = BitVec.ofNat 64 c := by
-  rw [cK, if_neg (by omega)] at h
+  rw [cK, ite_eq_right (by omega)] at h
   exact absurd h (by simp)
 
 /-- The name-keyed canonical concatenation block leaves the four input blocks in the four

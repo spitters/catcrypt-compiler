@@ -204,7 +204,7 @@ def LstateN.nextPc (s : LstateN) : LstateN := { s with lpc := s.lpc + 1 }
 @[simp] theorem LstateN.getW_setReg_other (s : LstateN) (r r' : String) {w : Nat}
     (v : BitVec w) (w' : Nat) (h : r' ≠ r) :
     (s.setReg r v).getW r' w' = s.getW r' w' := by
-  have hlvm : (s.setReg r v).lvm r' = s.lvm r' := by simp [LstateN.setReg, if_neg h]
+  have hlvm : (s.setReg r v).lvm r' = s.lvm r' := by simp [LstateN.setReg, ite_eq_right h]
   unfold LstateN.getW
   rw [hlvm]
 
@@ -562,18 +562,18 @@ theorem getW_eq_some_iff {s : LstateN} {r : String} {w : Nat} {v : BitVec w} :
   · intro h
     by_cases hw : w' = w
     · subst hw
-      rw [dif_pos rfl] at h
+      rw [dite_eq_left rfl] at h
       simp only [Option.some.injEq] at h
       subst h
       rfl
-    · rw [dif_neg hw] at h; exact absurd h (by simp)
+    · rw [dite_eq_right hw] at h; exact absurd h (by simp)
   · intro h
     rw [Sigma.mk.injEq] at h
     obtain ⟨hfst, hsnd⟩ := h
     subst hfst
     simp at hsnd
     subst hsnd
-    rw [dif_pos rfl]
+    rw [dite_eq_left rfl]
 
 /-- `readReg` recovers the width-tagged value of a `.reg` operand from a
     `getW`-agreement: if `getW r w = some v` then `readReg` reads `⟨w, v⟩`. -/
@@ -727,10 +727,10 @@ theorem evalOperandN_setReg_resolveVar {curDepth nArgs : Nat} {Γ : Ctxt jasminD
   set slot := curDepth - 1 - varIndex v with hslot
   have hslt : slot < curDepth := by omega
   by_cases hsa : slot < nArgs
-  · simp only [hsa, if_true, evalOperandN]
+  · simp only [hsa, ite_true, evalOperandN]
     rw [LstateN.getW_setReg_other]
     exact fun he => (JasminLsemSimulation.regName_ne_argName curDepth slot) he.symm
-  · simp only [hsa, if_false, evalOperandN]
+  · simp only [hsa, ite_false, evalOperandN]
     rw [LstateN.getW_setReg_other]
     exact fun he => (JasminLsemSimulation.regName_ne (by omega)) he.symm
 
@@ -752,7 +752,7 @@ theorem StoreAgreesN.step {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       have hslot : curDepth + 1 - 1 - 0 = curDepth := by omega
       simp only [hslot]
       have hsa : ¬ curDepth < nArgs := by omega
-      simp only [hsa, if_false, evalOperandN]
+      simp only [hsa, ite_false, evalOperandN]
       -- `.here : Var (.reg w :: Γ) (.reg w')` forces `w' = w`; reads `val`.
       rw [LstateN.getW_setReg_same]
       rfl
@@ -868,7 +868,7 @@ theorem lsemStepN_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     have hc := hagree c
     rw [evalOperandN_resolveVar] at hc
     simp only [opToLinstrR, lsemStepN, hargs, stripWidthTag_withWidthTag_CMOV,
-      if_true, hc, readReg_resolveVar a hagree, hagree b]
+      ite_true, hc, readReg_resolveVar a hagree, hagree b]
     rfl
 
 /-- **`regConst` per-binding step (width-aware).** From any store, a `regConst w n`
@@ -892,7 +892,7 @@ theorem lsemStepN_const {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       some ((st.setReg (regName curDepth)
         ((⟨JasminOp.regConst w n, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote V)).nextPc) := by
   simp only [opToLinstrR, lsemStepN,
-    CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar.stripWidthTag_withWidthTag_MOV, if_pos]
+    CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar.stripWidthTag_withWidthTag_MOV, ite_eq_left]
   rw [widthFromTag_withWidthTag_MOV hwn]
   rfl
 
@@ -1042,7 +1042,7 @@ theorem encodeN_StoreAgreesN {Γ : Ctxt jasminDialect} (V : Ctxt.Valuation Γ) :
   intro w' v
   have hslot : Γ.length - 1 - varIndex v < Γ.length := by
     have := JasminLsemSimulation.varIndex_lt v; omega
-  simp only [resolveVar, hslot, if_true, evalOperandN, encodeN]
+  simp only [resolveVar, hslot, ite_true, evalOperandN, encodeN]
   exact encodeAuxN_lookup V _ v rfl
 
 /-! ## 10. The width-mixed straight-line faithfulness theorem -/

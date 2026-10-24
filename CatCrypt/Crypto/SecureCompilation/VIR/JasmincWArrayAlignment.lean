@@ -282,7 +282,7 @@ theorem decode_encode {w n : Nat} (hw : 8 * (w / 8) = w) (hpos : 0 < w / 8)
   have hmod : (k.val * bw w + i) % bw w = i := by
     rw [Nat.mul_comm, Nat.mul_add_mod]
     exact Nat.mod_eq_of_lt hbi
-  simp only [hrange, dif_pos, hmod]
+  simp only [hrange, dite_eq_left, hmod]
   congr 2
   exact Fin.ext hdiv
 
@@ -322,8 +322,8 @@ theorem stackSet_apply_lt {w n : Nat} (a : Fin n → BitVec w) (k : Nat) (v : Bi
       simp only [stackSet]
       have hkmod : k % (m + 1) = k := Nat.mod_eq_of_lt hk
       by_cases hjk : j = k
-      · rw [if_pos (Fin.ext (by simp [hkmod, hjk])), if_pos hjk]
-      · rw [if_neg, if_neg hjk]
+      · rw [ite_eq_left (Fin.ext (by simp [hkmod, hjk])), ite_eq_left hjk]
+      · rw [ite_eq_right, ite_eq_right hjk]
         intro hcontra
         exact hjk (by have := Fin.mk.injEq .. ▸ hcontra; omega)
 
@@ -349,12 +349,12 @@ theorem encode_stackSet_eq_jArrSetScaled {w n : Nat} (hpos : 0 < w / 8)
     have hwin : k * bw w ≤ b.val ∧ b.val < k * bw w + bw w := by
       constructor <;> [skip; skip] <;> rw [← hjk] <;> omega
     have hsub : b.val - k * bw w = b.val % bw w := by rw [← hjk]; omega
-    simp only [hjk, hwin, and_self, if_pos, hsub]
+    simp only [hjk, hwin, and_self, ite_eq_left, hsub]
   · -- `b` lies in a different element: both sides read `leByte (a ⟨b/bw,_⟩) (b%bw)`.
     have hwin : ¬ (k * bw w ≤ b.val ∧ b.val < k * bw w + bw w) := by
       rintro ⟨h1, h2⟩
       exact hjk (Nat.div_eq_of_lt_le h1 (by rw [Nat.add_one_mul]; omega))
-    simp only [hjk, if_neg, not_false_iff, hwin]
+    simp only [hjk, ite_eq_right, not_false_iff, hwin]
 
 /-! ## 4. The discharged memory obligation, bundled
 

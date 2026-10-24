@@ -227,7 +227,7 @@ theorem fieldMulSpecAgrees_canonical (leaf : FieldMulLeaf)
     FieldMulSpecAgrees leaf
       { call := fieldMulCallSpec leaf encode, limbStore := limbStore } := by
   intro xa xb oldDest
-  simp only [fieldMulCallSpec, dif_pos, hsection]
+  simp only [fieldMulCallSpec, dite_eq_left, hsection]
 
 /-- **Non-vacuous witness for the bundled assumption.**  Packages the canonical
     realizer as an inhabitant of `AUCurvesFieldMulBridge`, the analogue of

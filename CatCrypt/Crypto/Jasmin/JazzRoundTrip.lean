@@ -353,8 +353,8 @@ theorem Cmd.erase_erase (c : Cmd) : Cmd.erase (Cmd.erase c) = Cmd.erase c := by
   | nil => rfl
   | cons i is =>
     by_cases h : isZeroInit i = true
-    · simp only [Cmd.erase, h, if_true, Cmd.erase_erase is]
-    · simp only [Cmd.erase, h, if_false, Bool.false_eq_true, isZeroInit_eraseInstr,
+    · simp only [Cmd.erase, h, ite_true, Cmd.erase_erase is]
+    · simp only [Cmd.erase, h, ite_false, Bool.false_eq_true, isZeroInit_eraseInstr,
         eraseInstr_eraseInstr i, Cmd.erase_erase is]
 end
 

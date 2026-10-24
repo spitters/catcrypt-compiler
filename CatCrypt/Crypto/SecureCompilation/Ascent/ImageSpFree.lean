@@ -369,7 +369,7 @@ theorem rspFreeNameB_memName {A : String} (hA : rspFreeNameB A = true) (off : Na
     (by simp)) (by decide)
   have hb : cellBase (.reg (memName A off)) ≠ some "RSP" := by
     intro hb
-    simp only [cellBase, cellParts?, hasPrefix_memName, if_true] at hb
+    simp only [cellBase, cellParts?, hasPrefix_memName, ite_true] at hb
     have hd : (memName A off).toList.drop 4 = A.toList ++ '.' :: (toString off).toList := by
       simp [memName]
     rw [hd, List.span_eq_takeWhile_dropWhile] at hb
@@ -788,7 +788,7 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
           simp [hf, stackNameB_accArr hsl hA]
         · cases hri
       · cases hri
-  · simp only [accOkB, if_neg (show ¬ ("STOREIDX" = "LOADIDX") by decide), if_true,
+  · simp only [accOkB, ite_eq_right (show ¬ ("STOREIDX" = "LOADIDX") by decide), ite_true,
       Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
     rw [imgInstr_stx slotArr body k hA]

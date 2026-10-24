@@ -717,7 +717,7 @@ theorem runStraightF_cmpTouchRM (nReg : String) :
       have hstep : fstepF (.Lopn [.reg nReg] (withWidthTag 64 "CMP") [.reg nReg, .reg r],
           MemTag.reg none) s zf = some (s.nextPc, vn == vr) := by
         unfold fstepF
-        simp only [cmpArgs?, if_true]
+        simp only [cmpArgs?, ite_true]
         rw [show evalOperandN s.reg 64 (.reg nReg) = some vn from hvn,
           show evalOperandN s.reg 64 (.reg r) = some vr from hvr]
       obtain ⟨zf', hrest⟩ := ih s.nextPc (vn == vr)

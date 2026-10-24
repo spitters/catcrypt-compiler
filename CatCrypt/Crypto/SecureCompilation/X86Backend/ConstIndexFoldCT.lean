@@ -129,14 +129,14 @@ theorem foldCore_leak (p : Nat × Nat × Nat) (ex : List String) (r : DoitRegime
       by_cases hr : isLret i = true
       · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = true := by
           rw [isLret_foldInstr]; exact hr
-        rw [if_pos hr] at h
-        rw [if_pos hr'] at h'
+        rw [ite_eq_left hr] at h
+        rw [ite_eq_left hr'] at h'
         exact ih (nextEnv p env i) s ls ls' (by
-          simp only [nextEnv, hr, if_true]; exact KEnv.Holds.nil s) h h'
+          simp only [nextEnv, hr, ite_true]; exact KEnv.Holds.nil s) h h'
       · have hr' : ¬ isLret { i with li_i := foldInstr ex env i.li_i } = true := by
           rw [isLret_foldInstr]; exact hr
-        rw [if_neg hr] at h
-        rw [if_neg hr'] at h'
+        rw [ite_eq_right hr] at h
+        rw [ite_eq_right hr'] at h'
         have hr0 : isLret i = false := by simpa using hr
         cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
         | none => simp [hi] at h
@@ -245,8 +245,8 @@ theorem deadAfter_leak (p : Nat × Nat × Nat) (x : String) (r : DoitRegime) :
       intro ls s t hd hg h
       by_cases hr : isLret j = true
       · simp [deadAfter, hr] at hd
-      · rw [gatherList_cons, if_neg hr] at hg
-        simp only [deadAfter, hr, Bool.false_eq_true, if_false] at hd
+      · rw [gatherList_cons, ite_eq_right hr] at hg
+        simp only [deadAfter, hr, Bool.false_eq_true, ite_false] at hd
         cases hj : lowerPrinted p.1 p.2.1 p.2.2 j.li_i with
         | none => simp [hj] at hd
         | some bs =>
@@ -294,9 +294,9 @@ theorem dropDeadCore_leak (p : Nat × Nat × Nat) (r : DoitRegime)
         intro hk
         rw [gatherList_cons] at h hk
         by_cases hr : isLret i = true
-        · rw [if_pos hr] at h hk
+        · rw [ite_eq_left hr] at h hk
           exact ih ls ls' h hk s
-        · rw [if_neg hr] at h hk
+        · rw [ite_eq_right hr] at h hk
           cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
           | none => simp [hi] at h
           | some js =>
@@ -319,13 +319,13 @@ theorem dropDeadCore_leak (p : Nat × Nat × Nat) (r : DoitRegime)
           exact keep h'
       | some x =>
           by_cases hdead : deadAfter p x is = true
-          · simp only [dropDeadCore, hd, hdead, if_true] at h'
+          · simp only [dropDeadCore, hd, hdead, ite_true] at h'
             obtain ⟨k, hk⟩ := deadImmReg?_spec hd
             rw [gatherList_cons] at h
             by_cases hr : isLret i = true
-            · rw [if_pos hr] at h
+            · rw [ite_eq_left hr] at h
               exact ih ls ls' h h' s
-            · rw [if_neg hr, hk] at h
+            · rw [ite_eq_right hr, hk] at h
               cases hrest : gatherList p is with
               | none => simp [hrest] at h
               | some rest =>
@@ -342,7 +342,7 @@ theorem dropDeadCore_leak (p : Nat × Nat × Nat) (r : DoitRegime)
                   rw [hq, List.nil_append]
                   exact (deadAfter_leak p x r is rest _ _ hdead hrest
                     (AgreeOff.setReg_left (r := x) s _)).symm
-          · simp only [dropDeadCore, hd, hdead, Bool.false_eq_true, if_false] at h'
+          · simp only [dropDeadCore, hd, hdead, Bool.false_eq_true, ite_false] at h'
             exact keep h'
 
 /-- **Leakage of the elimination.** If a body and its elimination both gather, the

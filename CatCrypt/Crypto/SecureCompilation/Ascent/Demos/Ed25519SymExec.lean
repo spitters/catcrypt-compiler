@@ -81,7 +81,7 @@ theorem shr63_eq (z : BitVec 64) : z >>> 63 = if z.getLsbD 63 then (1 : BitVec 6
   rw [BitVec.toNat_ushiftRight, getLsbD63, Nat.shiftRight_eq_div_pow]
   have := z.isLt
   by_cases h : 2 ^ 63 ≤ z.toNat
-  · simp only [h, decide_true, if_true]; simp; omega
+  · simp only [h, decide_true, ite_true]; simp; omega
   · simp only [h, decide_false]; simp; omega
 
 theorem ofNat_allOnes : BitVec.ofNat 64 (2 ^ 64 - 1) = BitVec.allOnes 64 := by
@@ -137,11 +137,11 @@ theorem addCarry_toNat' (a b : BitVec 64) :
   have hb := b.isLt
   have hadd : (a + b).toNat = (a.toNat + b.toNat) % 2 ^ 64 := BitVec.toNat_add a b
   by_cases h : (a + b).ult a
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     have hlt : (a + b).toNat < a.toNat := BitVec.ult_iff_toNat_lt.mp h
     simp only [show (1 : BitVec 64).toNat = 1 from rfl]
     omega
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     have hge : ¬ (a + b).toNat < a.toNat := fun hh => h (BitVec.ult_iff_toNat_lt.mpr hh)
     simp only [show (0 : BitVec 64).toNat = 0 from rfl]
     omega
@@ -795,7 +795,7 @@ theorem wrun_below : ∀ (es : List WE) (n : Nat) (ρ : Nat → BitVec 64) (j : 
   | e :: es, n, ρ, j, hj => by
       simp only [wrun]
       rw [wrun_below es (n + 1) _ j (by omega)]
-      simp only [updρ, if_neg (Nat.ne_of_lt hj)]
+      simp only [updρ, ite_eq_right (Nat.ne_of_lt hj)]
 
 theorem holds_wrun : ∀ (es : List WE) (n : Nat) (ρ : Nat → BitVec 64), wfB n es = true →
     Holds (wrun n es ρ) n es
@@ -808,7 +808,7 @@ theorem holds_wrun : ∀ (es : List WE) (n : Nat) (ρ : Nat → BitVec 64), wfB 
       simp only [updρ]
       refine WE.eval_congr (fun j hj => ?_) e h.1
       rw [wrun_below es (n + 1) _ j (by omega)]
-      simp only [updρ, if_neg (Nat.ne_of_lt hj)]
+      simp only [updρ, ite_eq_right (Nat.ne_of_lt hj)]
 
 theorem holds_slice (ρ : Nat → BitVec 64) (es : List WE) (n a b : Nat) (h : Holds ρ n es)
     (ha : n ≤ a) (hab : a ≤ b) (hb : b ≤ n + es.length) :
@@ -1254,11 +1254,11 @@ theorem sget_cons_eq (x : Nat) (σ : List Nat) (n j : Nat) :
   unfold sget
   by_cases hj : j = n
   · subst hj; simp
-  · rw [if_neg hj]
+  · rw [ite_eq_right hj]
     by_cases hl : j < n
-    · rw [if_pos (by omega), if_pos hl, show n + 1 - 1 - j = (n - 1 - j) + 1 by omega,
+    · rw [ite_eq_left (by omega), ite_eq_left hl, show n + 1 - 1 - j = (n - 1 - j) + 1 by omega,
         List.getElem?_cons_succ]
-    · rw [if_neg (by omega), if_neg hl]
+    · rw [ite_eq_right (by omega), ite_eq_right hl]
 
 theorem SigOK.grow {T T' : Tb} {σ : List Nat} (hT : T.WF) (hg : Grows T T') (h : SigOK T σ) :
     SigOK T' σ := fun x hx => lt_of_lt_of_le (h x hx) (hg.size_le hT)
@@ -1443,7 +1443,7 @@ theorem lk_insK {α : Type} [DecidableEq α] (l : List (α × Nat)) (d : α) (x 
     lk (insK l d x) r = if r = d then some x else lk l r := by
   by_cases hr : r = d
   · simp [insK, lk, hr]
-  · simp only [insK, lk, if_neg hr]
+  · simp only [insK, lk, ite_eq_right hr]
     exact lk_filter d r hr l
 
 theorem mem_insK {α : Type} [DecidableEq α] {l : List (α × Nat)} {d : α} {x : Nat}
@@ -1493,7 +1493,7 @@ theorem SRel.setR {E : Env} {T : Tb} {S : SSt} {R : String → BitVec 64} {M : J
   · simp only [SSt.setR, lk_insK]
     by_cases hr : r = d
     · simp [hr, hv]
-    · simp only [hr, if_false]
+    · simp only [hr, ite_false]
       exact h.1 r
   · rcases mem_insK hp with rfl | hp
     · exact hx
@@ -1507,7 +1507,7 @@ theorem SRel.setM {E : Env} {T : Tb} {S : SSt} {R : String → BitVec 64} {M : J
   · simp only [SSt.setM, lk_insK, Prod.mk.injEq]
     by_cases hr : b' = b ∧ o' = o
     · simp [hr, hv]
-    · simp only [hr, if_false]
+    · simp only [hr, ite_false]
       exact h.2.1 b' o'
   · rcases mem_insK hp with rfl | hp
     · exact hx

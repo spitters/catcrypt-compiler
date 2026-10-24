@@ -258,7 +258,7 @@ theorem cellRel_setReg {R : Slots} {env : KEnv} {s s' : LstateM} (hC : CellRel R
     have hne : memName p.1 (8 * j) ≠ d := fun he => by
       rw [← he, isCellB_cell hp hj] at hd
       cases hd
-    simp only [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, if_neg hne]
+    simp only [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc, ite_eq_right hne]
     exact hc j hj
 
 /-- **The copies of a renaming keep the cell relation** when no source and no target is a

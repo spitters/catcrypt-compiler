@@ -286,7 +286,7 @@ theorem calleeEnterDN (env : LeafEnvM) (P : LprogM) (d : Nat) (hsegd : SegLemmaD
       = lsemFuelMemLC env P f
           { base := b.setLpc retPc, lfn := callerFn, rstack := rest } := by
   have hcur : curBodyC env P sym = calleeBody ++ [(LinstrR.Lret, MemTag.reg none)] := by
-    unfold curBodyC; rw [if_neg hne, hsym]; rfl
+    unfold curBodyC; rw [ite_eq_right hne, hsym]; rfl
   have hseg := hsegd sym calleeBody
       { base := base.setLpc 0, lfn := sym, rstack := (callerFn, retPc) :: rest } (1 + f)
       rfl hbok
@@ -324,7 +324,7 @@ theorem calleeEnterDN_none (env : LeafEnvM) (P : LprogM) (d : Nat) (hsegd : SegL
     lsemFuelMemLC env P (fuelCostDN env d calleeBody + 1 + g)
         { base := base.setLpc 0, lfn := sym, rstack := (callerFn, retPc) :: rest } = none := by
   have hcur : curBodyC env P sym = calleeBody ++ [(LinstrR.Lret, MemTag.reg none)] := by
-    unfold curBodyC; rw [if_neg hne, hsym]; rfl
+    unfold curBodyC; rw [ite_eq_right hne, hsym]; rfl
   have hseg := hsegd sym calleeBody
       { base := base.setLpc 0, lfn := sym, rstack := (callerFn, retPc) :: rest } (1 + g)
       rfl hbok

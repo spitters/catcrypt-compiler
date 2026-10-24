@@ -59,10 +59,10 @@ theorem getD_writeLE {n : Nat} (a : JArrayMirror n) (p k v q : Nat) :
       = if p ≤ q ∧ q < p + k ∧ q < n then BitVec.ofNat 8 (v / 256 ^ (q - p)) else getD a q := by
   unfold getD writeLE
   by_cases hq : q < n
-  · simp only [dif_pos hq]
+  · simp only [dite_eq_left hq]
     by_cases hr : p ≤ q ∧ q < p + k
-    · rw [if_pos hr, if_pos ⟨hr.1, hr.2, hq⟩]
-    · rw [if_neg hr, if_neg (fun h => hr ⟨h.1, h.2.1⟩)]
+    · rw [ite_eq_left hr, ite_eq_left ⟨hr.1, hr.2, hq⟩]
+    · rw [ite_eq_right hr, ite_eq_right (fun h => hr ⟨h.1, h.2.1⟩)]
   · simp [hq]
 
 /-- Two arrays with the same bytes at `q, …, q + c - 1` have the same
@@ -85,7 +85,7 @@ theorem readLE_writeLE_disjoint {n : Nat} (a : JArrayMirror n) (p k v q c : Nat)
     readLE (writeLE a p k v) q c = readLE a q c := by
   apply readLE_congr
   intro j hj
-  rw [getD_writeLE, if_neg (by omega)]
+  rw [getD_writeLE, ite_eq_right (by omega)]
 
 /-- A read of the `k` bytes a little-endian write of `v` placed at `p` returns
     `v mod 256 ^ k`, when the bytes lie in the array. -/
@@ -98,11 +98,11 @@ theorem readLE_writeLE_same {n : Nat} (a : JArrayMirror n) :
         = readLE (writeLE a (p + 1) k (v / 256)) (p + 1) k := by
       apply readLE_congr
       intro j hj
-      rw [getD_writeLE, getD_writeLE, if_pos (by omega), if_pos (by omega),
+      rw [getD_writeLE, getD_writeLE, ite_eq_left (by omega), ite_eq_left (by omega),
         show p + 1 + j - p = j + 1 by omega, show p + 1 + j - (p + 1) = j by omega,
         Nat.pow_succ', Nat.div_div_eq_div_mul]
     rw [hshift, readLE_writeLE_same a k (p + 1) (v / 256) (by omega), getD_writeLE,
-      if_pos (by omega), Nat.sub_self, Nat.pow_zero, Nat.div_one, BitVec.toNat_ofNat,
+      ite_eq_left (by omega), Nat.sub_self, Nat.pow_zero, Nat.div_one, BitVec.toNat_ofNat,
       show (2 : Nat) ^ 8 = 256 from rfl, show (256 : Nat) ^ (k + 1) = 256 * 256 ^ k from Nat.pow_succ',
       Nat.mod_mul]
 
@@ -124,14 +124,14 @@ theorem encodeWordArr_writeLE (m : Nat) (a : JArrayMirror (8 * m)) (i : Nat) (hi
     simp only [stackSet, Nat.mod_eq_of_lt hi]
     by_cases hk : k = ⟨i, hi⟩
     · subst hk
-      rw [if_pos rfl]
+      rw [ite_eq_left rfl]
       show BitVec.ofNat 64 (readLE (writeLE a (8 * i) 8 v.toNat) (8 * i) 8) = v
       rw [readLE_writeLE_same a 8 (8 * i) v.toNat (by omega)]
       apply BitVec.eq_of_toNat_eq
       simp only [BitVec.toNat_ofNat]
       rw [Nat.mod_eq_of_lt (show v.toNat < 256 ^ 8 from v.isLt),
         Nat.mod_eq_of_lt v.isLt]
-    · rw [if_neg hk]
+    · rw [ite_eq_right hk]
       have hne : k.val ≠ i := fun e => hk (Fin.ext e)
       show BitVec.ofNat 64 (readLE (writeLE a (8 * i) 8 v.toNat) (8 * k.val) 8)
         = BitVec.ofNat 64 (readLE a (8 * k.val) 8)
@@ -155,7 +155,7 @@ theorem getWord_u64 (m : Nat) (a : JArrayMirror (8 * m)) (al : Aligned) (i : Nat
     getWord a al .AAscale .U64 (i : Int) = .ok (encodeWordArr m a ⟨i, hi⟩) := by
   unfold getWord
   simp only
-  rw [if_pos (accessOk_u64 m al i hi)]
+  rw [ite_eq_left (accessOk_u64 m al i hi)]
   have hp : ((i : Int) * scale .AAscale .U64).toNat = 8 * i := by
     simp [scale, WSize.bytes]; omega
   rw [hp]
@@ -168,7 +168,7 @@ theorem setWord_u64 (m : Nat) (a : JArrayMirror (8 * m)) (al : Aligned) (i : Nat
     setWord a al .AAscale .U64 (i : Int) v = .ok (writeLE a (8 * i) 8 v.toNat) := by
   unfold setWord
   simp only
-  rw [if_pos (accessOk_u64 m al i hi)]
+  rw [ite_eq_left (accessOk_u64 m al i hi)]
   have hp : ((i : Int) * scale .AAscale .U64).toNat = 8 * i := by
     simp [scale, WSize.bytes]; omega
   rw [hp]
@@ -219,7 +219,7 @@ theorem semPexpr_pget_u64
   have hgv : getGvar true gd s.evm (mkLvar arr) = .ok (.Varr (8 * m) a) := by
     unfold getGvar
     rw [show (mkLvar arr).isLvar = true from rfl]
-    simp only [if_true]
+    simp only [ite_true]
     show getVar true s.evm (mkLvar arr).gv.v_var = _
     unfold getVar
     rw [show (mkLvar arr).gv.v_var = arr.v_var from rfl, hread]
@@ -349,7 +349,7 @@ theorem mirror_laset_u64_post
   have hw : Value.toWord .U64 (.Vword .U64 v) = .ok v := by
     show truncateWord .U64 (sz' := .U64) v = _
     unfold truncateWord
-    simp only [le_refl, if_true]
+    simp only [le_refl, ite_true]
     congr 1
     apply BitVec.eq_of_toNat_eq; simp
   show (do

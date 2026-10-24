@@ -393,7 +393,7 @@ theorem forwardStep_mulx_store (s : JState 64) :
                  .storeMem "z" 0 (.reg "w0")]).load "z" 0
       = (wumul (s.get "yd") (s.load "x" 0)).2 := by
   simp only [runBlock_cons, runBlock_nil, load_storeMem, get_mulxMem,
-    x86_MOV, JOperand.eval, and_self, if_true, String.reduceEq, if_false]
+    x86_MOV, JOperand.eval, and_self, ite_true, String.reduceEq, ite_false]
 
 /-! ### 4d. 2-limb stepping stone: the forward driver lands closed carry forms
 
@@ -483,8 +483,8 @@ macro "step_mul24" : tactic =>
        of_adcx, cf_adox, of_adox, cf_loadMem, of_loadMem, cf_mov, of_mov, cf_xor,
        of_xor, cf_storeMem, of_storeMem, JState.flagB, Option.getD, JOperand.eval,
        x86_MOV, x86_XOR, rflags_of_bwop, BitVec.xor_zero, BitVec.zero_xor,
-       and_self, and_true, true_and, and_false, false_and, if_true,
-       if_false, String.reduceEq, Int.reduceEq, reduceIte,
+       and_self, and_true, true_and, and_false, false_and, ite_true,
+       ite_false, String.reduceEq, Int.reduceEq, reduceIte,
        initState2_x0, initState2_x1, initState2_y0, initState2_y1, initState2_cf,
        initState2_of]))
 
@@ -548,7 +548,7 @@ macro "step_mul48" : tactic =>
        of_adcx, cf_adox, of_adox, cf_loadMem, of_loadMem, cf_mov, of_mov, cf_xor,
        of_xor, cf_storeMem, of_storeMem, JState.flagB, Option.getD, JOperand.eval,
        x86_MOV, x86_XOR, rflags_of_bwop, BitVec.xor_zero, BitVec.zero_xor,
-       and_self, and_true, true_and, and_false, false_and, if_true, if_false,
+       and_self, and_true, true_and, and_false, false_and, ite_true, ite_false,
        String.reduceEq, Int.reduceEq, reduceIte,
        initState_x0, initState_x1, initState_x2, initState_x3,
        initState_y0, initState_y1, initState_y2, initState_y3,

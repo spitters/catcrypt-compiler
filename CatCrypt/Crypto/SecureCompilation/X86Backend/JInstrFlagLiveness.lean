@@ -246,7 +246,7 @@ theorem pair_agree (s : JState 64) (hi lo a b : String) (ha : a ≠ lo) (hb : b 
   · funext r
     simp only [evalInstr, JOperand.eval, JState.setReg, JState.writeB5W, JState.get,
       x86_MULX_lo_hi]
-    rw [if_neg ha, if_neg hb]
+    rw [ite_eq_right ha, ite_eq_right hb]
     by_cases h1 : r = hi <;> by_cases h2 : r = lo <;> simp [h1, h2]
   · simp only [evalInstr, JOperand.eval, JState.setReg, JState.writeB5W, JState.get,
       x86_MULX_lo_hi]

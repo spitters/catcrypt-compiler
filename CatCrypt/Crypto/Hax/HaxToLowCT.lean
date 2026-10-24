@@ -646,7 +646,7 @@ def haxToLowCT : ImpExpr → Option LowCT
 /-- A self-alias `let name = name; body` lowers to the lowering of `body`. -/
 theorem haxToLowCT_letBind_var_self (name : String) (body : ImpExpr) :
     haxToLowCT (.letBind name (.var name) body) = haxToLowCT body := by
-  simp only [haxToLowCT, if_true]
+  simp only [haxToLowCT, ite_true]
 
 /-- A binding `let name = src; body` with `name ≠ src` lowers to the scalar
     copy of `src` into the fresh slot `name`, followed by the lowered body. -/
@@ -655,7 +655,7 @@ theorem haxToLowCT_letBind_var_ne (name src : String) (body : ImpExpr)
     haxToLowCT (.letBind name (.var src) body) =
       (haxToLowCT body).map fun bodyC =>
         .RLetU64Zero name (.RSeq (.RScalarSetExpr name (.SVar src)) bodyC) := by
-  simp only [haxToLowCT, h, if_false]
+  simp only [haxToLowCT, h, ite_false]
   cases haxToLowCT body <;> rfl
 
 /-! ### §3.bis  Typed lowering with a `TypeEnv` and `LeafTable`

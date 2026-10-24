@@ -295,12 +295,12 @@ theorem bin_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 64}
   refine ⟨_, _, hlow, hstep, ?_⟩
   rw [evalOperand_agree hc s0 h0, evalOperand_agree hc s1 h1]
   by_cases hd : lowerJOperand s0 = JOperand.reg d
-  · rw [if_pos hd]
+  · rw [ite_eq_left hd]
     refine LJCorr_write hc d _ _ (fun r => ?_)
     show (evalInstr s (mk d (lowerJOperand s1))).regs r = _
     rw [hev s (lowerJOperand s1) r, hd]
     rfl
-  · rw [if_neg hd]
+  · rw [ite_eq_right hd]
     have hs1 : isRegNamed d s1 = false := by
       rcases hguard with hg | hg
       · exact absurd (by cases s0 with

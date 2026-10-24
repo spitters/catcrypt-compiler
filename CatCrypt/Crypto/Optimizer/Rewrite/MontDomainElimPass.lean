@@ -117,13 +117,13 @@ theorem montDomainElim_denote (R Rinv : ZMod p) (h : R * Rinv = 1) :
         subst hR; subst hRinv
         rw [show montDomainElim R' Rinv' (Op.toMont R' :: Op.fromMont Rinv' :: rest)
               = montDomainElim R' Rinv' rest from by
-              simp only [montDomainElim, and_self, if_true]]
+              simp only [montDomainElim, and_self, ite_true]]
         rw [montDomainElim_denote R' Rinv' h rest]
         simp only [denote_cons, Op.denote]
         rw [fromMont_toMont R' Rinv' x h]
       · rw [show montDomainElim R Rinv (Op.toMont R' :: Op.fromMont Rinv' :: rest)
               = Op.toMont R' :: montDomainElim R Rinv (Op.fromMont Rinv' :: rest) from by
-              simp only [montDomainElim, if_neg hcond]]
+              simp only [montDomainElim, ite_eq_right hcond]]
         simp only [denote_cons]
         rw [montDomainElim_denote R Rinv h (Op.fromMont Rinv' :: rest)]
         simp only [denote_cons]
@@ -133,13 +133,13 @@ theorem montDomainElim_denote (R Rinv : ZMod p) (h : R * Rinv = 1) :
         subst hR; subst hRinv
         rw [show montDomainElim R' Rinv' (Op.fromMont Rinv' :: Op.toMont R' :: rest)
               = montDomainElim R' Rinv' rest from by
-              simp only [montDomainElim, and_self, if_true]]
+              simp only [montDomainElim, and_self, ite_true]]
         rw [montDomainElim_denote R' Rinv' h rest]
         simp only [denote_cons, Op.denote]
         rw [toMont_fromMont R' Rinv' x h]
       · rw [show montDomainElim R Rinv (Op.fromMont Rinv' :: Op.toMont R' :: rest)
               = Op.fromMont Rinv' :: montDomainElim R Rinv (Op.toMont R' :: rest) from by
-              simp only [montDomainElim, if_neg hcond]]
+              simp only [montDomainElim, ite_eq_right hcond]]
         simp only [denote_cons]
         rw [montDomainElim_denote R Rinv h (Op.toMont R' :: rest)]
         simp only [denote_cons]
@@ -188,7 +188,7 @@ def exampleProg (R Rinv c : ZMod p) : Prog p :=
     declared cancellation witness). -/
 theorem exampleProg_elim (R Rinv c : ZMod p) :
     montDomainElim R Rinv (exampleProg R Rinv c) = [Op.mul c] := by
-  simp only [exampleProg, montDomainElim, and_self, if_true]
+  simp only [exampleProg, montDomainElim, and_self, ite_true]
 
 /-- And the canonicalized program denotes the same function: both compute
     `x ↦ x · c`. -/

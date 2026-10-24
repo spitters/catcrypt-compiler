@@ -124,10 +124,10 @@ theorem condSub2_value (s : JState 64)
   rw [hd0, hd1]
   by_cases hb1 : (s.get "x1").toNat < (s.get "p1").toNat + c0
   · -- borrow ⇒ x < p ⇒ keep x
-    simp only [if_pos hb1] at hr1 ⊢
+    simp only [ite_eq_left hb1] at hr1 ⊢
     rw [Nat.mod_eq_of_lt (by omega)]
   · -- no borrow ⇒ x ≥ p ⇒ take x − p
-    simp only [if_neg hb1] at hr1 ⊢
+    simp only [ite_eq_right hb1] at hr1 ⊢
     rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
     omega
 

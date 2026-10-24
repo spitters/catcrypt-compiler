@@ -100,7 +100,7 @@ theorem resolveVar_argName {nArgs : Nat} {Γ : Ctxt jasminDialect} {t : JasminTy
   have hv : varIndex v < nArgs := hlen ▸ JasminLsemSimulation.varIndex_lt v
   refine ⟨nArgs - 1 - varIndex v, by omega, ?_⟩
   simp only [resolveVar, operandName]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
 
 /-- **Agreement reads argument cells only.** At depth `nArgs`, a state that reads
     every argument name's register and array as an agreeing state does agrees
@@ -314,7 +314,7 @@ theorem fstepF_movSelf (out : String) (s : LstateM) (zf : Bool) :
       = some ((s.setReg out (s.reg.lvm out).2).nextPc, zf) := by
   unfold fstepF
   simp only [cmpArgs?, movRegArgs?]
-  rw [if_pos (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)]
+  rw [ite_eq_left (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)]
   rfl
 
 /-- **The tail of the canonicalised body.** From a state whose index and counter
@@ -343,7 +343,7 @@ theorem canonTail_run (d : Nat) (out : String) (absent : Bool) (regs : List Stri
     | true => exact ⟨u, rfl, rfl, fun _ _ => rfl⟩
     | false =>
         refine ⟨(u.setReg out (u.reg.lvm out).2).nextPc, ?_, rfl, fun x w => ?_⟩
-        · simp only [Bool.false_eq_true, if_false, runStraightF_cons, fstepF_movSelf,
+        · simp only [Bool.false_eq_true, ite_false, runStraightF_cons, fstepF_movSelf,
             Option.bind_some, runStraightF_nil]
         · rw [LstateM.reg_nextPc, LstateN.getW_nextPc]
           exact getW_setReg_self u out x w
@@ -587,7 +587,7 @@ theorem canonBody_trip {w n : Nat}
         refine getW_congr_cell ?_ w'
         rw [hcell]
         show _ = (if idxRegMN invTys = idxRegMN invTys then _ else _)
-        rw [if_pos rfl, BitVec.ofNat_add]
+        rw [ite_eq_left rfl, BitVec.ofNat_add]
       · obtain ⟨h1, h2⟩ := hnotIC j hj hjn
         rw [hread _ w' h1 h2, hreg j hj w', LstateM.reg_setReg,
           LstateN.getW_setReg_other _ _ _ _ _
@@ -601,7 +601,7 @@ theorem canonBody_trip {w n : Nat}
         refine getArr_congr_cell ?_ w' n'
         rw [hl, hout]
         show _ = (if accRegMN invTys = accRegMN invTys then _ else _)
-        rw [if_pos rfl]
+        rw [ite_eq_left rfl]
       · rw [LstateM.getArr_congr_larr hl, harr j (by omega) w' n',
           LstateM.getArr_setArr_other _ _ _ _ _ _
             (show argName j ≠ accRegMN invTys from JasminLsemSimulation.argName_ne hja)]
@@ -719,7 +719,7 @@ theorem fstepF_movReg (dst src : String) (s : LstateM) (zf : Bool) :
       = some ((s.setReg dst (s.reg.lvm src).2).nextPc, zf) := by
   unfold fstepF
   simp only [cmpArgs?, movRegArgs?]
-  rw [if_pos (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)]
+  rw [ite_eq_left (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)]
   rfl
 
 /-- The memory step of the immediate move `MOV dst, #k` at width `64`. -/
@@ -736,7 +736,7 @@ theorem lsemStepMem_movImm64 (dst : String) (k : Nat) (st : LstateM) :
     rw [JasminLsemCast.lsemStepCast_of_delegate _ _ (Or.inr rfl),
       JasminLsemMulCarry.lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl,
       JasminLsemShift.lsemStepSh_of_not_sar _ _ (by simp [JasminLsemShift.sarStruct?])]
-    simp only [lsemStepN, hstrip, if_true]
+    simp only [lsemStepN, hstrip, ite_true]
     rw [hwidth]
   rw [lsemStepMem_reg, hstep, Option.map_some]
   rfl
@@ -912,7 +912,7 @@ theorem canonNodeRM_faithful {w n : Nat}
           ∧ bz.larr = bfin.larr := by
       rw [runFB_guarded, hv3]
       simp only []
-      rw [if_neg (by simp [hne0]), hsched]
+      rw [ite_eq_right (by simp [hne0]), hsched]
       exact ⟨_, rfl, rfl⟩
     have hrun : runFBsL m blks b0 zf = some (bz, true) := by
       rw [hblks, runFBsL_cons, runFB_straight, hseeds, Option.bind_some, runFBsL_cons, hbz,
@@ -1084,7 +1084,7 @@ theorem forLoopLcmdNRtRM_canon_wire (κ : String → String) (acc out : String)
       = (canonicalizeMemrefThread (aliasRegBody acc out
           (forLoopLcmdNRt d acc initOp countOp update invOps immSlotMap))).map
             Linstr.li_i := by
-  rw [canonicalizeMemrefThread_eq_renLcmd, if_neg (by simp [hne]), hκ, renLcmd_wire,
+  rw [canonicalizeMemrefThread_eq_renLcmd, ite_eq_right (by simp [hne]), hκ, renLcmd_wire,
     ← forLoopLcmdNRtRM_alias_wire, List.map_map, List.map_map, List.map_map]
   refine List.map_congr_left (fun i _ => ?_)
   show (renRM (κ ∘ aliasRegName acc out) i).1 = renLinstrR κ (renRM (aliasRegName acc out) i).1

@@ -504,7 +504,7 @@ theorem realSrcCom_denote [ND : NttDomains] [hp : Fact (Nat.Prime q)]
   show (if h : Nat.Prime q then
           (haveI : Fact (Nat.Prime q) := ⟨h⟩; realNttMul (ND.dom q) a b)
         else (0 : CPolynomial (ZMod q))) = realNttMul (ND.dom q) a b
-  rw [dif_pos hp.out]
+  rw [dite_eq_left hp.out]
 
 /-- The target (NTT-expanded) program's denotation likewise equals `realNttMul`
     of the inputs — by `real_nttMul_rewrite_denote_eq`. -/

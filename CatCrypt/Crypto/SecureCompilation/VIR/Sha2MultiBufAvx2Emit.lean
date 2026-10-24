@@ -430,7 +430,7 @@ theorem roundBlk_realizes (s : YState) (ℓ : Fin 8) :
           , e := s.get "ve" ℓ, f := s.get "vf" ℓ, g := s.get "vg" ℓ, h := s.get "vh" ℓ }).e := by
   simp only [roundBlk, rotBlk, bigSigma1Blk, bigSigma0Blk, runYBlock_cons,
     runYBlock_append, runYBlock_nil, evalYInst, YState.get_setV_apply,
-    String.reduceEq, if_true, if_false,
+    String.reduceEq, ite_true, ite_false,
     shaRound, bigSigma1L, bigSigma0L, chL, majL, rotrSynth, laneAdd, laneXor,
     laneAnd, laneOr, laneShl, laneShr]
   constructor <;> ring
@@ -441,7 +441,7 @@ theorem schedBlk_realizes (s : YState) (ℓ : Fin 8) :
     (runYBlock s (schedBlk "wd" "w2" "w7" "w15" "w16")).get "wd" ℓ
       = schedNext (s.get "w2" ℓ) (s.get "w7" ℓ) (s.get "w15" ℓ) (s.get "w16" ℓ) := by
   simp only [schedBlk, rotBlk, runYBlock_cons, runYBlock_append, runYBlock_nil,
-    evalYInst, YState.get_setV_apply, String.reduceEq, if_true, if_false,
+    evalYInst, YState.get_setV_apply, String.reduceEq, ite_true, ite_false,
     schedNext, smallSigma1L, smallSigma0L, rotrSynth, laneAdd,
     laneXor, laneOr, laneShl, laneShr]
 
@@ -838,7 +838,7 @@ theorem roundBlk_realizes (s : WState) (ℓ : Fin 4) :
           , e := s.get "ve" ℓ, f := s.get "vf" ℓ, g := s.get "vg" ℓ, h := s.get "vh" ℓ }).e := by
   simp only [roundBlk, rotBlk, bigSigma1Blk, bigSigma0Blk, runWBlock_cons,
     runWBlock_append, runWBlock_nil, evalWInst, WState.get_setV_apply,
-    String.reduceEq, if_true, if_false,
+    String.reduceEq, ite_true, ite_false,
     shaRound, bigSigma1L, bigSigma0L, chL, majL, rotrSynth, laneAdd, laneXor,
     laneAnd, laneOr, laneShl, laneShr]
   constructor <;> ring
@@ -848,7 +848,7 @@ theorem schedBlk_realizes (s : WState) (ℓ : Fin 4) :
     (runWBlock s (schedBlk "wd" "w2" "w7" "w15" "w16")).get "wd" ℓ
       = schedNext (s.get "w2" ℓ) (s.get "w7" ℓ) (s.get "w15" ℓ) (s.get "w16" ℓ) := by
   simp only [schedBlk, rotBlk, runWBlock_cons, runWBlock_append, runWBlock_nil,
-    evalWInst, WState.get_setV_apply, String.reduceEq, if_true, if_false,
+    evalWInst, WState.get_setV_apply, String.reduceEq, ite_true, ite_false,
     schedNext, smallSigma1L, smallSigma0L, rotrSynth, laneAdd,
     laneXor, laneOr, laneShl, laneShr]
 

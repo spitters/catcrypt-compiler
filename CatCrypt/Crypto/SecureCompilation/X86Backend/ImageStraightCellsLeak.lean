@@ -874,7 +874,7 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
               norm_cast
           | none =>
               simp only [stepLeakA, hb, posTW, hld, hst, Option.isSome_none, Bool.or_self,
-                Bool.false_eq_true, if_false]
+                Bool.false_eq_true, ite_false]
               by_cases h1 : o = "LOADIDX"
               · subst h1
                 have hl' : loadIdxA? (normA (.Lopn ds "LOADIDX" ss)) = none := by
@@ -896,7 +896,7 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
                           LprogAsmPrinter.untagCaret_of_caret_free (m := "LEA:64") (by decide)]
                   · have ho : o = "ZEROARR" := by
                       by_contra h3
-                      simp only [tagA, if_neg h1, if_neg h2, if_neg h3] at ht
+                      simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3] at ht
                       split_ifs at ht
                       unfold storeImmTagA at ht
                       split at ht <;> simp at ht
@@ -906,9 +906,9 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
                       by_contra h4
                       have h3 : o ≠ "ZEROARR" := by
                         rintro rfl
-                        simp only [tagA, if_neg h1, if_neg h2, if_true, zeroTagA] at ht
+                        simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_true, zeroTagA] at ht
                         split at ht <;> simp at ht
-                      simp only [tagA, if_neg h1, if_neg h2, if_neg h3, if_neg h4] at ht
+                      simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4] at ht
                       split_ifs at ht
                     rw [gateAtW_arrImm _ _ _ _ _ (Or.inr ho)] at hg
                     cases hg
@@ -1531,7 +1531,7 @@ theorem cellRoute_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     simp only [frameC, N.body q hq]
     show frameIn body _ q = _
     unfold frameIn
-    rw [if_pos hq]
+    rw [ite_eq_left hq]
   have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrs σ) r = none := by
     intro r hr
     cases hc : cellIdx (cellArrs σ) r with
@@ -1681,7 +1681,7 @@ theorem straightCell_bytes_ct {σ : AbiLayout} {nm : String → String} {body : 
   have hentA : ∀ sa : AState, Entry sa (entryA σ sa) := fun sa =>
     ⟨rfl, fun R hR => by
       have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (DecodePrinted.phys R)⟩ := by
-        simp only [entryA, hR, if_true]
+        simp only [entryA, hR, ite_true]
       unfold JasminLsemWidthN.LstateN.getW
       rw [hl]
       simp, rfl⟩

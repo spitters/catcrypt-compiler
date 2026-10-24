@@ -248,7 +248,7 @@ theorem roundtrip_MovImm (d v : Nat) (hd : d < 16) (hv : v < 2 ^ 32) :
   simp only [encMovImm, decodeImm, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append, isRex, modField, rexR, rexB, regField,
     rmField, rex, modRMReg, bit]
-  erw [if_pos]
+  erw [ite_eq_left]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · interval_cases d <;> rfl
@@ -269,7 +269,7 @@ theorem roundtrip_MovImm64 (d v : Nat) (hd : d < 16) (hv : v < 2 ^ 64) :
   have him := imm64LE_recompose v hv
   simp only [encMovImm64, decodeMovImm64, imm64LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append, isRex, rexB, rex, bit, BitVec.toNat_ofNat]
-  rw [if_pos]
+  rw [ite_eq_left]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, rfl, ?_, ?_⟩
     · interval_cases d <;> decide
@@ -287,7 +287,7 @@ theorem roundtrip_ImulImm (d v : Nat) (hd : d < 16) (hv : v < 2 ^ 32) :
   simp only [encImulImm, decodeImm, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append, isRex, modField, rexR, rexB, regField,
     rmField, rex, modRMReg, bit]
-  erw [if_pos]
+  erw [ite_eq_left]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · interval_cases d <;> rfl
@@ -309,7 +309,7 @@ theorem roundtrip_AluImm (digit d v : Nat) (hdig : digit < 8) (hd : d < 16) (hv 
   simp only [encAluImm, decodeImm, imm32LE, List.map_cons, List.map_nil,
     List.cons_append, List.nil_append, isRex, modField, rexR, rexB, regField,
     rmField, rex, modRMReg, bit]
-  erw [if_pos]
+  erw [ite_eq_left]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · simp only [BitVec.toNat_ofNat]; interval_cases digit <;> interval_cases d <;> decide
@@ -331,7 +331,7 @@ theorem roundtrip_ShiftImm (ext d imm : Nat) (hext : ext < 8) (hd : d < 16) (him
     omega
   simp only [encShiftImm, decodeShift, List.map_cons, List.map_nil, isRex, modField,
     rexR, rexB, regField, rmField, rex, modRMReg, bit]
-  erw [if_pos]
+  erw [ite_eq_left]
   · refine congrArg some ?_
     refine DecReg.mk.injEq .. ▸ ⟨rfl, ?_, ?_, ?_⟩
     · simp only [BitVec.toNat_ofNat]; interval_cases ext <;> interval_cases d <;> decide
@@ -542,7 +542,7 @@ theorem memTail_baseLow3_sib (reg base : Nat) (off : Int) (hb : base &&& 7 = 4) 
   -- outer split: disp0 vs disp8/disp32; inner split: disp8 vs disp32.
   split <;> [skip; split] <;>
     simp only [decodeBaseLow3, hsib 0 (by omega), hsib 1 (by omega), hsib 2 (by omega),
-      if_true, sibByte_0x24_base]
+      ite_true, sibByte_0x24_base]
 
 /-- The `memTail` base round-trip for the RIP escape (base low-3 = 5: `%rbp`/`%r13`)
     at displacement 0: the forced `mod=01`/`disp8=0` makes the decoder recover the
@@ -562,7 +562,7 @@ theorem memTail_baseLow3_rbp0 (reg base : Nat) (hb : base &&& 7 = 5) :
   -- the forced-disp8 condition `(5 = 5 ∧ 0 = 0)` holds ⇒ not the disp0 branch;
   -- `0` fits disp8 ⇒ the `[modRM, disp8 0]` form.
   norm_num
-  simp only [decodeBaseLow3, hsf, hmf, rmField_modRMMem, hb, if_false,
+  simp only [decodeBaseLow3, hsf, hmf, rmField_modRMMem, hb, ite_false,
     Bool.false_eq_true]
   norm_num
 

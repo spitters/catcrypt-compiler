@@ -184,7 +184,7 @@ theorem nameTysM_upd_word {Mem : String → Option CryptoTy} {C : String → Pro
     simp [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality.NameTys.upd,
       nameTysM, hm]
   · simp only [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality.NameTys.upd,
-      if_neg hyx, nameTysM]
+      ite_eq_right hyx, nameTysM]
     cases Mem y with
     | none => by_cases hc : C y <;> simp [hyx, hc]
     | some t => rfl
@@ -199,7 +199,7 @@ theorem nameTysM_upd_mem {Mem : String → Option CryptoTy} {C : String → Prop
     simp [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality.NameTys.upd,
       nameTysM, h]
   · simp only [CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectTotality.NameTys.upd,
-      if_neg hyx]
+      ite_eq_right hyx]
 
 /-- A multi-memref map claims no fresh temporary when neither its memref names
     nor its word set do. -/

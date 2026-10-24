@@ -219,9 +219,9 @@ theorem physBodyElem_binopCollapse64 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     rw [remapOperand_reg, remapOperand_reg, hcol]
   simp only [physBodyElem, isBinop_withWidthTag64_binOpName bop hns,
     not_isShift_withWidthTag64_binOpName bop hns, hasSuffix_withWidthTag64_binOpName bop,
-    Bool.false_eq_true, if_false, lowerTwoAddr]
-  rw [if_pos hcol']
-  simp only [if_true, remapOperand_reg, materializeWideImm_reg, List.nil_append,
+    Bool.false_eq_true, ite_false, lowerTwoAddr]
+  rw [ite_eq_left hcol']
+  simp only [ite_true, remapOperand_reg, materializeWideImm_reg, List.nil_append,
     List.map_map, Function.comp_def, List.map_id_fun', id_eq]
 
 /-- **The width-64 head is covered by its binding.** The `physBodyElem`

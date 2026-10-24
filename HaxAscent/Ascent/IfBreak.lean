@@ -51,11 +51,11 @@ theorem corresX_ifBreak {P : Env → S → Prop} {G : S → Prop} {c : ImpExpr} 
       (fun _ _ _ h => nomatch h) (corresX_of_corres (corres_unitVal P _))
     refine corresX_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun σ hG => ?_)
       (fun _ _ _ h => h)
-    rw [if_pos hG.2]
+    rw [ite_eq_left hG.2]
     rfl
   · refine corresX_conseq (corresX_of_corres (corres_unitVal P _)) (fun _ _ h _ => h)
       (fun _ h => h) (fun σ hG => ?_) (fun _ _ _ h => h)
-    rw [if_neg (by rw [hG.2]; decide)]
+    rw [ite_eq_right (by rw [hG.2]; decide)]
 
 /-- **A guarded early return followed by `k`.** -/
 theorem corresX_seq_ifBreak {P Q : Env → S → Prop} {G : S → Prop} {c k : ImpExpr}
@@ -71,7 +71,7 @@ theorem corresX_seq_ifBreak {P Q : Env → S → Prop} {G : S → Prop} {c k : I
     refine ⟨hG, ?_⟩
     cases hC : C σ
     · rfl
-    · rw [hC, if_pos rfl] at hv
+    · rw [hC, ite_eq_left rfl] at hv
       cases hv
   have h := corresX_seq (corresX_ifBreak hc w)
     (fun σ v _ h => by

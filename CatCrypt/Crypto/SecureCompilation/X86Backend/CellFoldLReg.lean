@@ -439,10 +439,10 @@ theorem foldOneLR_of_foldOneL {R : Slots} {env : KEnv} {i i' : LinstrRM}
   unfold foldOneLR
   split
   · rename_i hl
-    rw [if_pos hl] at h
+    rw [ite_eq_left hl] at h
     exact foldOneR_of_foldOne h
   · rename_i hl
-    rw [if_neg hl] at h
+    rw [ite_eq_right hl] at h
     exact h
 
 /-- **A fold by `cellFoldL` is the fold by `cellFoldLR`.** -/
@@ -630,14 +630,14 @@ theorem evalInstrPMemF_cellFoldLR {R : Slots} (hR : slotsOkB R = true)
       obtain ⟨f, l⟩ := tgt
       rw [evalInstrPMemF_goto] at h ⊢
       by_cases hfn : f = (singletonProgM fn is).lfn
-      · rw [if_pos hfn] at h
+      · rw [ite_eq_left hfn] at h
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
         obtain ⟨q', hq', hqfn, hCq⟩ := evalJumpMem_cellFoldL (e0 := e0) (fn := fn) (hlbl l)
           hC.base hC.lfn hq
         refine ⟨{ s' with prog := q' }, hi', ?_, hCq, hqfn, hC.zf⟩
-        rw [if_pos (show f = (singletonProgM fn is').lfn from hfn), hq']
+        rw [ite_eq_left (show f = (singletonProgM fn is').lfn from hfn), hq']
         rfl
-      · rw [if_neg hfn] at h
+      · rw [ite_eq_right hfn] at h
         cases h
     · rename_i c l
       obtain ⟨⟨pol, l'⟩, hcc⟩ := Option.isSome_iff_exists.mp hc
@@ -649,11 +649,11 @@ theorem evalInstrPMemF_cellFoldLR {R : Slots} (hR : slotsOkB R = true)
         obtain ⟨q', hq', hqfn, hCq⟩ := evalJumpMem_cellFoldL (e0 := e0) (fn := fn) (hlbl l')
           hC.base hC.lfn hq
         refine ⟨{ prog := q', zf := s.zf }, hi', ?_, hCq, hqfn, rfl⟩
-        rw [if_pos hz, hq']
+        rw [ite_eq_left hz, hq']
         rfl
       · rename_i hz
         cases h
-        refine ⟨_, hi', if_neg hz, ?_, hC.lfn, rfl⟩
+        refine ⟨_, hi', ite_eq_right hz, ?_, hC.lfn, rfl⟩
         show CellRel R (envAt e0 is (s.prog.base.nextPc).lpc) _ _
         rw [JasminLsemMemLoop.LstateM.lpc_nextPc, hnext]
         exact cellRel_nextPc hC.base
@@ -682,7 +682,7 @@ theorem lsemFuelMemF_cellFoldLR {R : Slots} (hR : slotsOkB R = true)
       rw [List.getElem?_eq_none_iff] at h ⊢
       rw [cellFoldLR_length is e0 is' hf]
       exact h
-    · exact if_neg fun h' => hfn (hC.lfn.symm.trans h')
+    · exact ite_eq_right fun h' => hfn (hC.lfn.symm.trans h')
   have hfetch' : ∀ {s s' : LstateMF} {i : LinstrRM},
       CellRelF R (envAt e0 is s.prog.base.lpc) s s' →
       findInstrMem (singletonProgM fn is) s.prog = some i →
@@ -695,7 +695,7 @@ theorem lsemFuelMemF_cellFoldLR {R : Slots} (hR : slotsOkB R = true)
       refine ⟨h, fun i' hi' => ?_⟩
       rw [findInstrMem_singleton _ _ _ (hC.lfn.trans hfn), hpc]
       exact hi'
-    · have hn : findInstrMem (singletonProgM fn is) s.prog = none := if_neg hfn
+    · have hn : findInstrMem (singletonProgM fn is) s.prog = none := ite_eq_right hfn
       rw [hn] at h
       cases h
   intro fuel
@@ -995,7 +995,7 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     simp only [frameC, N.body q hq']
     show ImageAddrFrame.frameIn body _ q = _
     unfold ImageAddrFrame.frameIn
-    rw [if_pos hq']
+    rw [ite_eq_left hq']
   have hrel0 := imgRel_entryV (nm := nm) (fr := frameR σ sa ps body) (sa := sa)
     (body := cellBody (slotR σ nm ps) body) (fn := fn) (ren := renOf ps) (un := unren ps)
     hfrR (fun _ _ hs => cellBody_save hent hs) hunr
@@ -1005,7 +1005,7 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     (imgStepWCond_of_gate _ hphys hgate' fn) _ _ rfl rfl (entryA σ sa) false hrel rfl
     (fun R' hR => by
       have hl : (entryA σ sa).reg.lvm R' = ⟨64, sa.regs (phys R')⟩ := by
-        simp only [entryA, hR, if_true]
+        simp only [entryA, hR, ite_true]
       unfold LstateN.getW
       rw [hl]
       simp) rfl _ hrunB hok

@@ -261,9 +261,9 @@ theorem cfSpecExec_of_no_mispredict {w : Nat} (window : Nat) (P : CFPredictor w)
   | ifPub guard thenB elseB iht ihe =>
     intro s
     by_cases hz : s.get guard = 0
-    · simp only [cfSpecExec, cfExec, if_pos hz, hno, transient_false, List.nil_append,
+    · simp only [cfSpecExec, cfExec, ite_eq_left hz, hno, transient_false, List.nil_append,
         iht s, ihe s, archTrace_cons]
-    · simp only [cfSpecExec, cfExec, if_neg hz, hno, transient_false, List.nil_append,
+    · simp only [cfSpecExec, cfExec, ite_eq_right hz, hno, transient_false, List.nil_append,
         iht s, ihe s, archTrace_cons]
 
 /-- With the speculation window closed the speculative trace is the architectural
@@ -388,7 +388,7 @@ theorem cfSpecExec_arch_mem_cfAddrs {w : Nat} (window : Nat) (P : CFPredictor w)
   | ifPub guard thenB elseB iht ihe =>
     intro s e he
     by_cases hz : s.get guard = 0
-    · rw [cfSpecExec, if_pos hz] at he
+    · rw [cfSpecExec, ite_eq_left hz] at he
       rcases List.mem_cons.mp he with h | h
       · cases h; exact List.mem_cons_self ..
       · rcases List.mem_append.mp h with h' | h'
@@ -396,7 +396,7 @@ theorem cfSpecExec_arch_mem_cfAddrs {w : Nat} (window : Nat) (P : CFPredictor w)
           · exact List.mem_cons_of_mem _ (List.mem_append_left _ (iht hd.1 s e h''))
           · exact absurd h'' (by simp)
         · exact List.mem_cons_of_mem _ (List.mem_append_right _ (ihe hd.2 s e h'))
-    · rw [cfSpecExec, if_neg hz] at he
+    · rw [cfSpecExec, ite_eq_right hz] at he
       rcases List.mem_cons.mp he with h | h
       · cases h; exact List.mem_cons_self ..
       · rcases List.mem_append.mp h with h' | h'
@@ -502,12 +502,12 @@ theorem cfSpecExec_pub_determined (pub : PubPred) {w : Nat} (window : Nat)
     by_cases hz : s₁.get guard = 0
     · have hz2 : s₂.get guard = 0 := by rw [← hgeq]; exact hz
       refine ⟨?_, ?_⟩
-      · rw [cfSpecExec, cfSpecExec, if_pos hz, if_pos hz2, hlt, hle, hm]
-      · rw [cfSpecExec, cfSpecExec, if_pos hz, if_pos hz2]; exact hae
+      · rw [cfSpecExec, cfSpecExec, ite_eq_left hz, ite_eq_left hz2, hlt, hle, hm]
+      · rw [cfSpecExec, cfSpecExec, ite_eq_left hz, ite_eq_left hz2]; exact hae
     · have hz2 : ¬ s₂.get guard = 0 := by rw [← hgeq]; exact hz
       refine ⟨?_, ?_⟩
-      · rw [cfSpecExec, cfSpecExec, if_neg hz, if_neg hz2, hlt, hle, hm]
-      · rw [cfSpecExec, cfSpecExec, if_neg hz, if_neg hz2]; exact hat
+      · rw [cfSpecExec, cfSpecExec, ite_eq_right hz, ite_eq_right hz2, hlt, hle, hm]
+      · rw [cfSpecExec, cfSpecExec, ite_eq_right hz, ite_eq_right hz2]; exact hat
 
 /-- **The speculative form of `owned_ct_control_flow`.** Over the counted-loop and
     public-guard-conditional fragment, a `CFControlled` block under a public-driven

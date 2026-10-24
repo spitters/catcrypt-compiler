@@ -248,7 +248,7 @@ theorem lowerLinstrExtCov2_cmov64 (dst cn tn fn : String)
     lowerLinstrExtCov2 (.Lopn [.reg dst] "CMOV:64" [.reg cn, .reg tn, .reg fn])
       = some [JInstr.mov dst (.reg fn), JInstr.test cn (.reg cn),
               JInstr.cmovne dst (.reg tn)] := by
-  simp only [lowerLinstrExtCov2, lowerCmovJ, hc, ht, hf, if_false, Bool.false_eq_true,
+  simp only [lowerLinstrExtCov2, lowerCmovJ, hc, ht, hf, ite_false, Bool.false_eq_true,
     List.nil_append, List.cons_append]
 
 /-- `CMOV:64` whose false-value operand is already the destination: no defaulting
@@ -257,8 +257,8 @@ theorem lowerLinstrExtCov2_cmov64_inPlace (dst cn tn : String)
     (hc : (cn == dst) = false) (ht : (tn == dst) = false) :
     lowerLinstrExtCov2 (.Lopn [.reg dst] "CMOV:64" [.reg cn, .reg tn, .reg dst])
       = some [JInstr.test cn (.reg cn), JInstr.cmovne dst (.reg tn)] := by
-  simp only [lowerLinstrExtCov2, lowerCmovJ, hc, ht, if_false, Bool.false_eq_true,
-    beq_self_eq_true, if_true, List.nil_append]
+  simp only [lowerLinstrExtCov2, lowerCmovJ, hc, ht, ite_false, Bool.false_eq_true,
+    beq_self_eq_true, ite_true, List.nil_append]
 
 /-- `CMOV:64` whose true-value operand is already the destination: the
     complementary `cmove` on the false-value operand. -/
@@ -266,15 +266,15 @@ theorem lowerLinstrExtCov2_cmov64_trueInPlace (dst cn fn : String)
     (hc : (cn == dst) = false) :
     lowerLinstrExtCov2 (.Lopn [.reg dst] "CMOV:64" [.reg cn, .reg dst, .reg fn])
       = some [JInstr.test cn (.reg cn), JInstr.cmove dst (.reg fn)] := by
-  simp only [lowerLinstrExtCov2, lowerCmovJ, hc, if_false, Bool.false_eq_true,
-    beq_self_eq_true, if_true]
+  simp only [lowerLinstrExtCov2, lowerCmovJ, hc, ite_false, Bool.false_eq_true,
+    beq_self_eq_true, ite_true]
 
 /-- A `CMOV:64` whose condition register is the destination lowers to `none`:
     the defaulting `mov` would clobber the condition. -/
 theorem lowerLinstrExtCov2_cmov64_condIsDst (dst tn fn : String) :
     lowerLinstrExtCov2 (.Lopn [.reg dst] "CMOV:64" [.reg dst, .reg tn, .reg fn])
       = none := by
-  simp only [lowerLinstrExtCov2, beq_self_eq_true, if_true]
+  simp only [lowerLinstrExtCov2, beq_self_eq_true, ite_true]
 
 /-! ## 6. Delegation
 
@@ -373,7 +373,7 @@ theorem lowerCmovJ_denote (s : JState 64) (dst cn tn fn : String)
       = if s.get cn = 0#64 then s.get fn else s.get tn := by
   have ht' : (tn == dst) = false := by simp [ht]
   have hf' : (fn == dst) = false := by simp [hf]
-  simp only [lowerCmovJ, ht', hf', if_false, Bool.false_eq_true, List.cons_append,
+  simp only [lowerCmovJ, ht', hf', ite_false, Bool.false_eq_true, List.cons_append,
     List.nil_append, runBlock]
   -- after `mov dst fn` the destination holds `fn`; `test cn cn` changes no
   -- register and sets `ZF` from `cn`; the `cmovne` then selects.

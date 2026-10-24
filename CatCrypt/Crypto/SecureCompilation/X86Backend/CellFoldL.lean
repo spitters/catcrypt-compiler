@@ -237,7 +237,7 @@ theorem cellFoldL_eq_cellFold {R : Slots} :
       simp only [List.all_cons, Bool.and_eq_true] at h
       unfold cellFoldL cellFold
       rw [kstepL_lopn h.1, cellFoldL_eq_cellFold is _ h.2]
-      simp only [foldOneL, h.1, if_true]
+      simp only [foldOneL, h.1, ite_true]
       cases foldOne R env i <;> cases cellFold R (kstep env i) is <;> rfl
 
 /-- Behind a label no constant is known. -/
@@ -288,9 +288,9 @@ theorem evalInstrPMemF_goto (P : LprogM) (f : String) (l : LLabel) (tg : MemTag)
   simp only [evalInstrPMemF, cmpArgs?, movRegArgs?, flagCondCC?, he, carryArgs?,
     wideArgs?, withALUFlags, aluFlagOp?]
   by_cases hfn : f = P.lfn
-  · simp only [if_pos hfn]
+  · simp only [ite_eq_left hfn]
     cases evalJumpMem P l s.prog <;> rfl
-  · simp only [if_neg hfn]
+  · simp only [ite_eq_right hfn]
 
 theorem evalInstrPMemF_flagCond (P : LprogM) {i : LinstrRM} {c : LOperand} {l l' : LLabel}
     {pol : Bool} (hi : i.1 = .Lcond c l) (h : flagCondCC? i = some (pol, l'))

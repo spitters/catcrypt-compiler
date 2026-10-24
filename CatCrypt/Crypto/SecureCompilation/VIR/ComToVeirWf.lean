@@ -228,11 +228,11 @@ theorem OpIs.createAtEnd {o : OperationPtr} {oc₀ : OpCode} {p₀ : propertiesO
   have hin := createAtEnd_op_inBounds_mono h ho.inBounds
   obtain ⟨_, _, _, _, _, h⟩ := createAtEnd_spec h
   refine ⟨hin, ?_, ?_, ?_, ?_, ?_⟩
-  · rw [OperationPtr.getOpType!_WfRewriter_createOp h, if_neg hne, ho.opType]
-  · rw [OperationPtr.getProperties!_WfRewriter_createOp h, if_neg hne, ho.props]
-  · rw [OperationPtr.getResultTypes!_WfRewriter_createOp h, if_neg hne, ho.resTys]
-  · rw [OperationPtr.getOperands!_WfRewriter_createOp h, if_neg hne, ho.operands]
-  · rw [OperationPtr.getSuccessors!_WfRewriter_createOp h, if_neg hne, ho.succs]
+  · rw [OperationPtr.getOpType!_WfRewriter_createOp h, ite_eq_right hne, ho.opType]
+  · rw [OperationPtr.getProperties!_WfRewriter_createOp h, ite_eq_right hne, ho.props]
+  · rw [OperationPtr.getResultTypes!_WfRewriter_createOp h, ite_eq_right hne, ho.resTys]
+  · rw [OperationPtr.getOperands!_WfRewriter_createOp h, ite_eq_right hne, ho.operands]
+  · rw [OperationPtr.getSuccessors!_WfRewriter_createOp h, ite_eq_right hne, ho.succs]
 
 /-- The block `blk` of `ctx` holds exactly the operations `L`, in order: its first and
 last operations are the head and the last element of `L`, and the successor of each
@@ -267,11 +267,11 @@ theorem Chain.createAtEnd {L : List OperationPtr} (hc : Chain ctx blk L)
     rcases hlen with hlt | rfl
     · rw [List.getElem_append_left hlt]
       have hne : L[i] ≠ op' := fun e => hnotin (e ▸ List.getElem_mem hlt)
-      rw [if_neg hne]
+      rw [ite_eq_right hne]
       by_cases hl : i + 1 = L.length
       · have hlast : some L[i] = L.getLast? := by
           rw [List.getLast?_eq_getElem?]; simp [← hl]
-        rw [if_pos hlast, List.getElem?_append_right (by omega)]
+        rw [ite_eq_left hlast, List.getElem?_append_right (by omega)]
         simp [hl]
       · have hne2 : some L[i] ≠ L.getLast? := by
           rw [List.getLast?_eq_getElem?]
@@ -279,7 +279,7 @@ theorem Chain.createAtEnd {L : List OperationPtr} (hc : Chain ctx blk L)
           have hlt' : L.length - 1 < L.length := by omega
           rw [List.getElem?_eq_getElem hlt'] at e
           exact absurd (List.getElem_inj hc.nodup |>.1 (Option.some.inj e)) (by omega)
-        rw [if_neg hne2, hc.next i hlt, List.getElem?_append_left (by omega)]
+        rw [ite_eq_right hne2, hc.next i hlt, List.getElem?_append_left (by omega)]
     · simp
   · intro o ho
     simp only [List.mem_append, List.mem_singleton] at ho
@@ -891,7 +891,7 @@ theorem createBlock_spec {types : Array TypeAttr} {c₀ c : WfIRContext OpCode} 
   obtain ⟨hc, rfl⟩ := h
   rw [← hc]
   have h0 := BlockPtr.getNumArguments!_BlockPtr_allocEmpty (block := blk₁) halloc
-  simp only [if_true] at h0
+  simp only [ite_true] at h0
   refine ⟨?_, fun i hi => ⟨?_, ?_⟩⟩
   · rw [BlockPtr.getNumArguments!_initBlockArguments, h0]; simp
   · rw [ValuePtr.getType!_initBlockArguments]; simp [h0, BlockPtr.getArgument_def, hi]
@@ -922,7 +922,7 @@ theorem createBlock_atEnd_spec {types : Array TypeAttr} {c₀ c : WfIRContext Op
     Prod.mk.injEq] at h
   obtain ⟨ctx₂, hins, hc, rfl⟩ := h
   have h0 := BlockPtr.getNumArguments!_BlockPtr_allocEmpty (block := blk₁) halloc
-  simp only [if_true] at h0
+  simp only [ite_true] at h0
   refine ⟨⟨⟨hchain.blockInBounds, by simpa using hchain.first, by simpa using hchain.last,
     fun i hi => absurd hi (by simp), fun o ho => absurd ho (by simp), List.nodup_nil⟩,
     ?_, fun i hi => ⟨?_, ?_⟩⟩, fun o => ?_, fun o i => ?_, fun hl => ?_⟩
@@ -1414,7 +1414,7 @@ theorem createAtEnd_exists {ctx : WfIRContext OpCode} {blk : BlockPtr} {oc : OpC
   have hfresh : ¬ (OperationPtr.mk ctx.raw.nextID).InBounds ctx.raw := fun hin =>
     Nat.lt_irrefl _ (hf _ hin)
   unfold createAtEnd
-  rw [dif_pos hx, dif_pos hb]
+  rw [dite_eq_left hx, dite_eq_left hb]
   unfold WfRewriter.createOp
   split
   · rename_i h
@@ -1584,7 +1584,7 @@ theorem lowerComWf_exists {blk : BlockPtr} :
       body hf₁ hc₁ hvm₁
     refine ⟨ctx₂, ops₁ ++ ops₂, final, ?_, hf₂⟩
     simp only [lowerComWf] at h₂
-    simp only [lowerComWf, lowerComWfWith, h₁, Option.bind_eq_bind, Option.bind_some, if_pos hval, h₂,
+    simp only [lowerComWf, lowerComWfWith, h₁, Option.bind_eq_bind, Option.bind_some, ite_eq_left hval, h₂,
       Option.pure_def]
 
 /-- `lowerComToBlockWf` returns a context for every program of `jasminDialect`. -/
@@ -1772,7 +1772,7 @@ theorem Reach.numRegions {a b : WfIRContext OpCode} (h : Reach a b) {q : Operati
     have hne : q ≠ o' := fun he => createAtEnd_new_not_inBounds h (he ▸ ho)
     have ho' := createAtEnd_op_inBounds_mono h ho
     obtain ⟨_, _, _, _, _, h⟩ := createAtEnd_spec h
-    rw [ih ho', OperationPtr.getNumRegions!_WfRewriter_createOp h, if_neg hne]
+    rw [ih ho', OperationPtr.getNumRegions!_WfRewriter_createOp h, ite_eq_right hne]
 
 theorem Reach.region {a b : WfIRContext OpCode} (h : Reach a b) (o : OperationPtr) (i : Nat) :
     o.getRegion! b.raw i = o.getRegion! a.raw i := by
@@ -1806,7 +1806,7 @@ theorem interpretFunction_of_interpretBlock {C : WfIRContext OpCode} {fn : Opera
   have hn' : fn.getNumRegions C.raw hf = 1 := by
     rw [← OperationPtr.getNumRegions!_eq_getNumRegions hf]; exact hn
   unfold interpretFunction
-  rw [dif_neg (by simp [hn'])]
+  rw [dite_eq_right (by simp [hn'])]
   have key : ∀ (r : RegionPtr) (hri : r.InBounds C.raw), r = reg →
       interpretRegion r vals ⟨.empty C, mem⟩ hri = .ok (S, res) := by
     rintro r hri rfl
@@ -1985,7 +1985,7 @@ theorem createOpAt_exists {ctx : WfIRContext OpCode} {oc : OpCode} {p : properti
     have hb := hmb mb rfl
     unfold createOpAt createAtEnd
     dsimp only
-    rw [dif_pos (fun v hv => by simp at hv), dif_pos hb]
+    rw [dite_eq_left (fun v hv => by simp at hv), dite_eq_left hb]
     obtain ⟨ctx', hc, hi⟩ := hwf (.inr ⟨mb, rfl⟩)
     exact ⟨ctx', _, hc, hi⟩
 
@@ -2015,7 +2015,7 @@ theorem createRegionOp_exists {ctx : WfIRContext OpCode} {oc : OpCode} {p : prop
     rw [RegionPtr.parent!_WfRewriter_createOp hc]
     simpa using createRegion_parent h₁
   refine ⟨WfRewriter.pushRegion ctx₂ o reg hin.1 hin.2.1 hin.2.2, o, reg, ?_, ?_⟩
-  · simp only [createRegionOp, h₁, h₂, Option.bind_eq_bind, Option.bind_some, dif_pos hin,
+  · simp only [createRegionOp, h₁, h₂, Option.bind_eq_bind, Option.bind_some, dite_eq_left hin,
       Option.pure_def]
   · have hn : (Rewriter.pushRegion ctx₂.raw o reg hin.1 hin.2.1 hin.2.2).nextID =
         ctx₂.raw.nextID := rfl
@@ -2107,7 +2107,7 @@ theorem createBlockIn_exists {ctx : WfIRContext OpCode} {types : Array TypeAttr}
     refine ⟨c₂, b₁, by simp [hc₂], ?_, hb₁⟩
     rw [hn₂, initBlockArguments_nextID, hn₁]
   unfold createBlockIn
-  rw [dif_pos hr]
+  rw [dite_eq_left hr]
   unfold WfRewriter.createBlock
   split
   · rename_i h
@@ -2238,7 +2238,7 @@ theorem setAttrsWf_of_empty {O : Type} [HasOpInfo O] :
   | (op, a) :: rest, ctx, h => by
     have ha : a = #[] := h _ List.mem_cons_self
     subst ha
-    rw [setAttrsWf, dif_neg (by simp)]
+    rw [setAttrsWf, dite_eq_right (by simp)]
     exact setAttrsWf_of_empty rest ctx (fun p hp => h p (List.mem_cons_of_mem _ hp))
 
 /-- For a program of `jasminDialect` and no externs, the context and module that the

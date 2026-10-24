@@ -306,7 +306,7 @@ theorem Lawful.lookup_enc (hA : A.Lawful) {v : VInstr} {bs : List (BitVec 8)}
     ⟨(v, bs, rest), hv, rfl⟩
   obtain ⟨h1, h2⟩ := hA.unique hv (Classical.choose_spec hex).1 (Classical.choose_spec hex).2
   unfold lookup
-  rw [dif_pos hex]
+  rw [dite_eq_left hex]
   exact congrArg some (Prod.ext h1.symm h2.symm)
 
 end VecAsm
@@ -324,14 +324,14 @@ noncomputable def mixedHead (A : VecAsm) (bs : List (BitVec 8)) :
     the same instruction and the same remaining bytes. -/
 theorem mixedHead_of_decodeLinstr (A : VecAsm) {bs r : List (BitVec 8)} {x : DInstr}
     (h : decodeLinstr bs = some (x, r)) : mixedHead A bs = some (Sum.inl x, r) := by
-  simp only [mixedHead, if_neg (not_vecHead h), h, Option.map_some]
+  simp only [mixedHead, ite_eq_right (not_vecHead h), h, Option.map_some]
 
 /-- `mixedHead` on a table entry in front of a continuation returns the instruction and the
     continuation. -/
 theorem VecAsm.Lawful.mixedHead_enc {A : VecAsm} (hA : A.Lawful) {v : VInstr}
     {bs : List (BitVec 8)} (hv : A.enc v = some bs) (rest : List (BitVec 8)) :
     mixedHead A (bs ++ rest) = some (Sum.inr v, rest) := by
-  simp only [mixedHead, if_pos (hA.vecHead hv rest), hA.lookup_enc hv, Option.map_some]
+  simp only [mixedHead, ite_eq_left (hA.vecHead hv rest), hA.lookup_enc hv, Option.map_some]
 
 /-- A vector instruction `mixedHead` returns was read from its table entry. -/
 theorem mixedHead_inr {A : VecAsm} {bs r : List (BitVec 8)} {v : VInstr}
@@ -533,7 +533,7 @@ theorem mixedStream_items (A : VecAsm) (items : List MixedItem)
           = it.bytes.length := by
         rw [List.length_append]; omega
       rw [hbs, mixedStream, hemp]
-      simp only [Bool.false_eq_true, if_false, hdecode, hlen]
+      simp only [Bool.false_eq_true, ite_false, hdecode, hlen]
       rw [ih' m (off + it.bytes.length) (by omega)]
       rfl
 
@@ -625,13 +625,13 @@ theorem mixedLayout_labelPos (A : VecAsm) (l : LLabel) (items : List MixedItem)
       cases hdec : it.dec with
       | none =>
         rw [hdec] at hit
-        simp only [hdec, Option.isSome_none, Bool.false_eq_true, if_false, hit,
+        simp only [hdec, Option.isSome_none, Bool.false_eq_true, ite_false, hit,
           List.length_nil, Nat.add_zero] at h
         obtain ⟨hle, hy⟩ := ih' j0 off0 j t h
         refine ⟨hle, fun y hyy => hy y ?_⟩
         simpa [mixedLayout, hdec, hit] using hyy
       | some x =>
-        simp only [hdec, Option.isSome_some, if_true] at h
+        simp only [hdec, Option.isSome_some, ite_true] at h
         obtain ⟨hle, hy⟩ := ih' (j0 + 1) _ j t h
         refine ⟨by omega, fun y hyy => hy y ?_⟩
         have hj : j - j0 = (j - (j0 + 1)) + 1 := by omega
@@ -659,7 +659,7 @@ theorem findIdx?_start_of_pairwise {α : Type} (xs : List (Nat × α))
       have hlt := hp.1 y hmem
       have hne : ¬ ((a.1 : Int) = (y.1 : Int)) := by omega
       rw [List.findIdx?_cons]
-      simp only [hne, decide_false, Bool.false_eq_true, if_false, ih hp.2 k y h,
+      simp only [hne, decide_false, Bool.false_eq_true, ite_false, ih hp.2 k y h,
         Option.map_some]
 
 /-- The instruction that follows the definition of a branch target is found in the layout

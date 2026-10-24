@@ -266,8 +266,8 @@ theorem rorImmSelect_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat)
     rorImmSelect (mkRotrSubtree w n src body) = mkRorOp w n src (rorImmSelect body) := by
   show (if _ : w = w ∧ w = w ∧ w = w ∧ n < w ∧ w = w ∧ w = w ∧ (w - n) = w - n
         then _ else _) = _
-  rw [dif_pos ⟨rfl, rfl, rfl, hlt, rfl, rfl, rfl⟩]
-  simp only [varBeq_self, Bool.and_self, if_true]
+  rw [dite_eq_left ⟨rfl, rfl, rfl, hlt, rfl, rfl, rfl⟩]
+  simp only [varBeq_self, Bool.and_self, ite_true]
   rfl
 
 /-- The pass is the identity on a bare `ret`. -/

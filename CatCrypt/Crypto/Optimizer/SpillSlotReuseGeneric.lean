@@ -159,7 +159,7 @@ theorem slotReuseValid_shareable {assign : List (String × Int)} {lrs : List Liv
   have hall₂ := (List.all_eq_true.mp hall₁) (n₂, o) h₂
   -- the `if`-condition holds: distinct names, shared offset
   have hcond : ((n₁, o).1 ≠ (n₂, o).1 ∧ (n₁, o).2 = (n₂, o).2) := ⟨hne, rfl⟩
-  rw [if_pos hcond, ra, rb] at hall₂
+  rw [ite_eq_left hcond, ra, rb] at hall₂
   -- `hall₂ : (¬ rangesOverlap a b) = true`, so `rangesOverlap a b = false`
   have hno : rangesOverlap a b = false := by
     simpa using hall₂

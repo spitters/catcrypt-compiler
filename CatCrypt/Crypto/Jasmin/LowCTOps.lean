@@ -174,8 +174,8 @@ theorem natSem_hax64WordOps (o : ScalarOp)
     by_cases h : a + b < 2 ^ 64
     · have hc : (0 : Int) ≤ a ∧ (a : Int) < 2 ^ 64 ∧ (0 : Int) ≤ b ∧ (b : Int) < 2 ^ 64 := by
         omega
-      rw [if_pos hc]
-    · rw [if_neg h]
+      rw [ite_eq_left hc]
+    · rw [ite_eq_right h]
       split <;> rfl
   · rw [show ScalarOp.name .mul = "Mul" from rfl, hax64WordOps_mul]
     simp only [natSem, natBin, Int.toNat_natCast, Int.natCast_nonneg, true_and]
@@ -185,22 +185,22 @@ theorem natSem_hax64WordOps (o : ScalarOp)
     by_cases h : a < 2 ^ 128 ∧ 0 < b ∧ b < 2 ^ 128
     · have hc : (0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128 := by
         omega
-      rw [if_pos hc, if_pos h]
+      rw [ite_eq_left hc, ite_eq_left h]
       rfl
     · have hc : ¬((0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128) := by
         omega
-      rw [if_neg hc, if_neg h]
+      rw [ite_eq_right hc, ite_eq_right h]
       rfl
   · rw [show ScalarOp.name .rem = "Rem" from rfl, hax64WordOps_rem]
     simp only [natSem, natBin, Int.toNat_natCast]
     by_cases h : a < 2 ^ 128 ∧ 0 < b ∧ b < 2 ^ 128
     · have hc : (0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128 := by
         omega
-      rw [if_pos hc, if_pos h]
+      rw [ite_eq_left hc, ite_eq_left h]
       rfl
     · have hc : ¬((0 : Int) ≤ a ∧ (a : Int) < 2 ^ 128 ∧ (0 : Int) < b ∧ (b : Int) < 2 ^ 128) := by
         omega
-      rw [if_neg hc, if_neg h]
+      rw [ite_eq_right hc, ite_eq_right h]
       rfl
 
 /-- On non-negative `int` arguments, `natSem` of `add`, `mul`, `div` and `rem`

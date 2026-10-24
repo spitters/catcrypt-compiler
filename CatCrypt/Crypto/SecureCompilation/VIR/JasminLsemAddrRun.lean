@@ -96,7 +96,7 @@ def tagA : LinstrR → MemTag
 theorem tagA_lopn {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "LOADIDX")
     (h2 : o ≠ "STOREIDX") (h3 : o ≠ "ZEROARR" := by decide)
     (h4 : o ≠ "STOREIMM" := by decide) : tagA (.Lopn ds o ss) = .reg (castTagW o) := by
-  simp only [tagA, castTagW, if_neg h1, if_neg h2, if_neg h3, if_neg h4]
+  simp only [tagA, castTagW, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4]
   split_ifs <;> rfl
 
 /-- The tag of an `Lopn` with fewer than three sources that is no indexed access is the
@@ -106,7 +106,7 @@ theorem tagA_lopn_of_length {ds : List LOperand} {o : String} {ss : List LOperan
     tagA (.Lopn ds o ss) = .reg (castTagW o) := by
   have hz : zeroTagA ss = .reg none := by unfold zeroTagA; split <;> simp_all
   have hs : storeImmTagA ss = .reg none := by unfold storeImmTagA; split <;> simp_all
-  simp only [tagA, castTagW, if_neg h1, if_neg h2, hz, hs]
+  simp only [tagA, castTagW, ite_eq_right h1, ite_eq_right h2, hz, hs]
   split_ifs <;> simp_all
 
 /-- The tag of an `Lopn` that is no indexed access is the register tag at `castTagW` of its
@@ -117,11 +117,11 @@ theorem tagA_lopn_cases {ds : List LOperand} {o : String} {ss : List LOperand}
       ∨ ∃ w n, tagA (.Lopn ds o ss) = .storeImm w n := by
   by_cases h3 : o = "ZEROARR"
   · subst h3
-    simp only [tagA, zeroTagA, if_neg h1, if_neg h2, if_true]
+    simp only [tagA, zeroTagA, ite_eq_right h1, ite_eq_right h2, ite_true]
     split <;> simp [castTagW]
   · by_cases h4 : o = "STOREIMM"
     · subst h4
-      simp only [tagA, storeImmTagA, if_neg h1, if_neg h2, if_neg h3, if_true]
+      simp only [tagA, storeImmTagA, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_true]
       split <;> simp [castTagW]
     · exact Or.inl (tagA_lopn h1 h2 h3 h4)
 
@@ -231,7 +231,7 @@ theorem tagAt_ne_storeImm (body : Lcmd) (k : Nat) {ds : List LOperand} {o : Stri
     {ss : List LOperand} (ho : o ≠ "STOREIMM") (w n : Nat) :
     tagAt body k (.Lopn ds o ss) ≠ .storeImm w n := by
   unfold tagAt tagA
-  simp only [zeroTagA, if_neg ho]
+  simp only [zeroTagA, ite_eq_right ho]
   split_ifs <;> (try split) <;> simp
 
 /-- A width-carrying cast `o D, A` between register names is tagged at any position with the

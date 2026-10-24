@@ -126,7 +126,7 @@ theorem corres_if (name nv : String) (thenVal elseVal : Nat) :
   refine ⟨env.upd nv (t := .sword 64)
       (phiSelect (w := 64) cw (BitVec.ofNat 64 thenVal) (BitVec.ofNat 64 elseVal)), ?_, ?_⟩
   · -- Match the real `semScalar` `RIfNz` arm.
-    simp only [semScalar, hcw, asSingleScalarSet, if_true]
+    simp only [semScalar, hcw, asSingleScalarSet, ite_true]
   · -- The state relation on the φ-merged env.
     intro s
     by_cases hs : s = nv
@@ -135,10 +135,10 @@ theorem corres_if (name nv : String) (thenVal elseVal : Nat) :
         by simp [SEnvScalar.upd], ?_⟩
       by_cases hz : cw = 0#64
       · have haz : a name = 0 := hcwEnc ▸ (wEnc_eq_zero_iff cw).mpr hz
-        simp only [phiSelect, if_pos hz, if_pos haz, if_true, wEnc, BitVec.toNat_ofNat,
+        simp only [phiSelect, ite_eq_left hz, ite_eq_left haz, ite_true, wEnc, BitVec.toNat_ofNat,
           ZMod.natCast_mod]
       · have haz : ¬ a name = 0 := fun h => hz ((wEnc_eq_zero_iff cw).mp (hcwEnc ▸ h))
-        simp only [phiSelect, if_neg hz, if_neg haz, if_true, wEnc, BitVec.toNat_ofNat,
+        simp only [phiSelect, ite_eq_right hz, ite_eq_right haz, ite_true, wEnc, BitVec.toNat_ofNat,
           ZMod.natCast_mod]
     · obtain ⟨w, hw, hwn⟩ := hSR s
       exact ⟨w, by simp [SEnvScalar.upd, hs, hw], by simp [hs, hwn]⟩

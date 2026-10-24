@@ -303,7 +303,7 @@ theorem evalInstrPMemF_expI {I : Isa} {fn : String} {body : List LinstrRM}
         rw [h2]; exact hinv
   · have hfetch : findInstrMem (singletonProgM fn (expI e body 0)) s'.prog = some i := by
       unfold findInstrMem
-      rw [if_pos (show s'.prog.lfn = (singletonProgM fn (expI e body 0)).lfn from hfn')]
+      rw [ite_eq_left (show s'.prog.lfn = (singletonProgM fn (expI e body 0)).lfn from hfn')]
       have := hpos 0 (by rw [hself]; simp)
       simpa [hself, singletonProgM] using this
     have hone : ∀ {u' : LstateMF},
@@ -344,14 +344,14 @@ theorem evalInstrPMemF_expI {I : Isa} {fn : String} {body : List LinstrRM}
             refine ⟨{ s' with prog := q' }, hone ?_, ⟨hfq, hR.zf, hpq, hQq, hiq _⟩⟩
             unfold evalInstrPMemF
             simp only [h1, h2, h3]
-            rw [if_pos (hR.zf.trans hz), hq']; rfl
+            rw [ite_eq_left (hR.zf.trans hz), hq']; rfl
           · rename_i hz
             cases he
             refine ⟨{ s' with prog := { s'.prog with base := s'.prog.base.nextPc } },
               hone ?_, ⟨hR.lfn, hR.zf, hnext.symm, hQN, hinvN _⟩⟩
             unfold evalInstrPMemF
             simp only [h1, h2, h3]
-            rw [if_neg (fun h => hz (hR.zf.symm.trans h))]
+            rw [ite_eq_right (fun h => hz (hR.zf.symm.trans h))]
     · obtain rfl : wire = LinstrR.Lgoto tgt := hw
       obtain ⟨gfn, l⟩ := tgt
       have hev : ∀ (R : LprogM) (x : LstateMF),
@@ -365,7 +365,7 @@ theorem evalInstrPMemF_expI {I : Isa} {fn : String} {body : List LinstrRM}
       · rename_i hf
         obtain ⟨q', hq', hQq, hfq, hpq, hiq⟩ := evalJumpMem_expI h l hR.base hG hR.lfn hq
         refine ⟨{ s' with prog := q' }, hone ?_, ⟨hfq, hR.zf, hpq, hQq, hiq _⟩⟩
-        rw [hev, if_pos (show gfn = (singletonProgM fn (expI e body 0)).lfn from hf), hq']; rfl
+        rw [hev, ite_eq_left (show gfn = (singletonProgM fn (expI e body 0)).lfn from hf), hq']; rfl
       · exact absurd hq (by simp)
 
 /-- **One step of a shadow instruction of a call.** At an instruction set `I` whose steps
@@ -451,7 +451,7 @@ theorem lsemFuelMemF_expI_calls {I : Isa} {aa : String → Nat → Option Nat}
     rw [hR.lfn]
     split
     · rename_i hfn
-      rw [if_pos (show s.prog.lfn = (singletonProgM fn body).lfn from hfn)] at hf
+      rw [ite_eq_left (show s.prog.lfn = (singletonProgM fn body).lfn from hfn)] at hf
       rw [hR.pc]
       exact getElem?_expI_pcI_none e (body := body) hf
     · rfl
@@ -612,7 +612,7 @@ theorem scratchStep_nil {i : Linstr} (h : wireOK i.li_i = true) : scratchStep []
         rw [List.foldl_cons]
         cases d with
         | reg dn =>
-            simp only [hd dn (by simp), Bool.false_eq_true, if_false]
+            simp only [hd dn (by simp), Bool.false_eq_true, ite_false]
             exact ih (fun x hx => hd x (List.mem_cons_of_mem _ hx))
         | _ => exact ih (fun x hx => hd x (List.mem_cons_of_mem _ hx))
   · rfl
@@ -665,23 +665,23 @@ theorem fuseMulHiAux_eq : ∀ (xs : Lcmd) (pend : List (String × String)),
         have hm := mulOK_of_wireOK hi
         by_cases hlo : isLowMulMnem opn = true
         · have hsp := mulOK_spill hm (by simp [hlo])
-          simp only [hlo, if_true, fuseL, List.singleton_append]
+          simp only [hlo, ite_true, fuseL, List.singleton_append]
           rw [fuseMulHiAux_eq rest ((d, s2) :: pend)
             (fun p hp' => by
               rcases List.mem_cons.mp hp' with rfl | hp'
               · exact ⟨hd, hsp.1, hsp.2.2.1⟩
               · exact hp p hp') hr]
-        · simp only [hlo, Bool.false_eq_true, if_false]
+        · simp only [hlo, Bool.false_eq_true, ite_false]
           by_cases hhi : isMulHiMnem opn = true
           · have hspm := mulOK_spill hm (by simp [hhi])
-            simp only [hhi, if_true]
+            simp only [hhi, ite_true]
             rcases hsp : List.span (fun p => p.2 != s2) pend with ⟨before, _ | ⟨⟨loDst, x⟩, after⟩⟩
             · simp only [hsp, fuseL, List.singleton_append]
               rw [fuseMulHiAux_eq rest pend hp hr]
             · have hlo2 := hp (loDst, x) (mem_of_span hsp (Or.inr (by simp)))
               simp only [hsp, hspm.1, beq_rdx hspm.2.2.1, hspm.2.1, beq_rdx hspm.2.2.2,
                 hlo2.2.1, foldl_scratchKill_nil, Bool.and_false,
-                Bool.false_eq_true, if_false, Bool.not_false, fuseL, siteL]
+                Bool.false_eq_true, ite_false, Bool.not_false, fuseL, siteL]
               have hb : (loDst != "RDX") = true := by simp [bne, beq_rdx hlo2.2.2]
               rw [fuseMulHiAux_eq rest (before ++ after)
                 (fun p hp' => hp p (mem_of_span hsp (by
@@ -689,7 +689,7 @@ theorem fuseMulHiAux_eq : ∀ (xs : Lcmd) (pend : List (String × String)),
                   · exact Or.inl h
                   · exact Or.inr (List.mem_cons_of_mem _ h)))) hr]
               simp [hb]
-          · simp only [hhi, Bool.false_eq_true, if_false, fuseL, List.singleton_append]
+          · simp only [hhi, Bool.false_eq_true, ite_false, fuseL, List.singleton_append]
             rw [fuseMulHiAux_eq rest pend hp hr]
       · rename_i hne
         split
@@ -727,9 +727,9 @@ theorem normA_normMulx (i : LinstrR) :
         X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide +kernel)
       have h2 : X86Backend.LprogAsmPrinter.untagCaret "MULX" = "MULX" :=
         X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide)
-      simp only [normMulx, if_true, JasminLsemAddrRun.normA, h1, h2]
+      simp only [normMulx, ite_true, JasminLsemAddrRun.normA, h1, h2]
       rfl
-    · simp only [normMulx, ho, if_false]
+    · simp only [normMulx, ho, ite_false]
   | _ => rfl
 
 /-- The looped-body `MULX` fusion `fuseMulHiBody (saveRdx := true)` on a typed body: each
@@ -918,26 +918,26 @@ theorem fstepF_saveRdx (tag : MemTag) (s : LstateM) (zf : Bool) :
     fstepF (.Lopn [.reg "R15"] "MOVQ" [.reg "RDX"], tag) s zf
       = some ((s.setReg "R15" (s.reg.lvm "RDX").2).nextPc, zf) :=
   fstepF_copy (by simp only [cmpArgs?])
-    (by simp only [movRegArgs?]; rw [if_neg (by decide), if_pos (by decide)]) s zf
+    (by simp only [movRegArgs?]; rw [ite_eq_right (by decide), ite_eq_left (by decide)]) s zf
 
 theorem fstepF_restoreRdx (tag : MemTag) (s : LstateM) (zf : Bool) :
     fstepF (.Lopn [.reg "RDX"] "MOVQ" [.reg "R15"], tag) s zf
       = some ((s.setReg "RDX" (s.reg.lvm "R15").2).nextPc, zf) :=
   fstepF_copy (by simp only [cmpArgs?])
-    (by simp only [movRegArgs?]; rw [if_neg (by decide), if_pos (by decide)]) s zf
+    (by simp only [movRegArgs?]; rw [ite_eq_right (by decide), ite_eq_left (by decide)]) s zf
 
 theorem fstepF_pinRdx (h1 : String) (tag : MemTag) (s : LstateM) (zf : Bool) :
     fstepF (.Lopn [.reg "RDX"] "MOV:64" [.reg h1], tag) s zf
       = some ((s.setReg "RDX" (s.reg.lvm h1).2).nextPc, zf) :=
   fstepF_copy (by simp only [cmpArgs?])
-    (by simp only [movRegArgs?]; rw [if_pos (by decide)]) s zf
+    (by simp only [movRegArgs?]; rw [ite_eq_left (by decide)]) s zf
 
 theorem fstepF_mulx64 (d hd s2 : String) (tag : MemTag) (s : LstateM) (zf : Bool) :
     fstepF (.Lopn [.reg d, .reg hd] (withWidthTag 64 "MULX") [.reg s2], tag) s zf
       = (wideStep (.mulx d hd (.reg s2)) s).map (fun t => (t, zf)) := by
   have hw : wideArgs? ((.Lopn [.reg d, .reg hd] (withWidthTag 64 "MULX") [.reg s2] : LinstrR),
       tag) = some (.mulx d hd (.reg s2)) := by
-    simp only [wideArgs?, true_or, if_true]
+    simp only [wideArgs?, true_or, ite_true]
   unfold fstepF stepMemF
   simp only [cmpArgs?, movRegArgs?, lsemStepMem_of_wideArgs hw]
   rw [show carryArgs? ((.Lopn [.reg d, .reg hd] (withWidthTag 64 "MULX") [.reg s2] : LinstrR),
@@ -969,13 +969,13 @@ theorem fstepF_mulhi (hd h1 s2 opn : String) (cd : Option Nat)
       = some ((s.setReg hd (mulHiW x y)).nextPc, zf) := by
   have hc : cmpArgs? ((.Lopn [.reg hd] opn [.reg h1, .reg s2] : LinstrR), MemTag.reg cd)
       = none := by
-    simp only [cmpArgs?]; rw [if_neg (ne_of_strip hhi (by decide))]
+    simp only [cmpArgs?]; rw [ite_eq_right (ne_of_strip hhi (by decide))]
   have ha : aluFlagOp? ((.Lopn [.reg hd] opn [.reg h1, .reg s2] : LinstrR), MemTag.reg cd)
       = none := by
     simp only [aluFlagOp?]
-    rw [if_neg (ne_of_strip hhi (by decide)), if_neg (ne_of_strip hhi (by decide)),
-      if_neg (ne_of_strip hhi (by decide)), if_neg (ne_of_strip hhi (by decide)),
-      if_neg (ne_of_strip hhi (by decide))]
+    rw [ite_eq_right (ne_of_strip hhi (by decide)), ite_eq_right (ne_of_strip hhi (by decide)),
+      ite_eq_right (ne_of_strip hhi (by decide)), ite_eq_right (ne_of_strip hhi (by decide)),
+      ite_eq_right (ne_of_strip hhi (by decide))]
   have hmc : lsemStepMC (.Lopn [.reg hd] opn [.reg h1, .reg s2]) s.reg
       = some ((s.reg.setReg hd (mulHiW x y)).nextPc) := by
     simp [lsemStepMC, mulhiStruct?, hhi, readReg, hx, getW_of_lvm hy]
@@ -1026,15 +1026,15 @@ theorem site_sim {d hd h1 s2 opn : String} {cd : Option Nat}
     have hk : KeptN "RDX" := by simp [KeptN]
     simp [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, Ne.symm hhdR,
       Ne.symm hkhd, Ne.symm hkd, hA.reg "RDX" hk]
-  simp only [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, if_neg hr,
-    if_neg hrx]
+  simp only [LstateM.setReg, LstateM.nextPc, LstateN.nextPc, LstateN.lvm_setReg, ite_eq_right hr,
+    ite_eq_right hrx]
   by_cases hrh : r = hd
   · simp [hrh, hhi']
-  · rw [if_neg hrh, if_neg hrh]
+  · rw [ite_eq_right hrh, ite_eq_right hrh]
     by_cases hrd : r = d
     · subst hrd
-      rw [if_pos rfl, hlo, X86Backend.FuseMulHi.mulx_lo_eq_mul]
-    · rw [if_neg hrd]
+      rw [ite_eq_left rfl, hlo, X86Backend.FuseMulHi.mulx_lo_eq_mul]
+    · rw [ite_eq_right hrd]
       exact hA.reg r hr
 
 end Steps

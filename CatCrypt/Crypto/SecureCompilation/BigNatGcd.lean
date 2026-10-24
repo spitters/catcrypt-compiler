@@ -49,8 +49,8 @@ theorem gcd_val (a b : List (BitVec 64)) :
     bignumVal (gcd a b) = Nat.gcd (bignumVal a) (bignumVal b) := by
   rw [gcd]
   by_cases h : bignumVal a = 0
-  · rw [if_pos h, h, Nat.gcd_zero_left]
-  · rw [if_neg h]
+  · rw [ite_eq_left h, h, Nat.gcd_zero_left]
+  · rw [ite_eq_right h]
     have hlt : bignumVal (mod b a) < bignumVal a := by
       rw [mod_val]; exact Nat.mod_lt _ (Nat.pos_of_ne_zero h)
     rw [gcd_val (mod b a) a, mod_val, Nat.gcd_rec (bignumVal a) (bignumVal b)]

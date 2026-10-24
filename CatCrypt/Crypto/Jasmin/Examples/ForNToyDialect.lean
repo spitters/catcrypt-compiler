@@ -242,12 +242,12 @@ theorem agree_storeDyn (len : Nat) (f : Fin len → BitVec 64) (i : Nat)
 /-- Out-of-bounds load returns `none`. -/
 theorem loadDyn_oob (a : DynArr) (i : Nat) (hi : ¬ i < a.len) :
     loadDyn a i = none := by
-  simp only [loadDyn, hi, dif_neg, not_false_iff]
+  simp only [loadDyn, hi, dite_eq_right, not_false_iff]
 
 /-- Out-of-bounds store returns `none`. -/
 theorem storeDyn_oob (a : DynArr) (i : Nat) (v : BitVec 64) (hi : ¬ i < a.len) :
     storeDyn a i v = none := by
-  simp only [storeDyn, hi, dif_neg, not_false_iff]
+  simp only [storeDyn, hi, dite_eq_right, not_false_iff]
 
 /-- A successful `storeDyn` preserves the length.  Needed so the per-iteration
     invariant `acc.len = len` is maintained across the loop in §4. -/
@@ -331,8 +331,8 @@ theorem staticStep_apply (len : Nat) (c : BitVec 64) (i : Nat)
   by_cases hj : j.val = i
   · -- `j = ⟨i, hi⟩` because their `.val`s agree (`Fin.ext`).
     have hjeq : j = ⟨i, hi⟩ := Fin.ext hj
-    simp only [if_true, hjeq]
-  · simp only [hj, if_false]
+    simp only [ite_true, hjeq]
+  · simp only [hj, ite_false]
 
 /-- **Single-step agreement (consumes `agree_loadDyn`/`agree_storeDyn`).**
     Under `i < len`, one `dynStep` on `some (ofStatic len f)` equals

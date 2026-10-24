@@ -169,7 +169,7 @@ theorem domOn_step_single {S : String → Prop} {d : String} (hd : slotArr d = n
       subst hd'
       obtain ⟨h1, h2⟩ := hnr s hm
       rw [hm] at hf
-      simp only [if_true, h2, Bool.and_false, Bool.false_eq_true, if_false,
+      simp only [ite_true, h2, Bool.and_false, Bool.false_eq_true, ite_false,
         Option.some.injEq] at hf
       subst hf
       simp [h1] at hq
@@ -400,7 +400,7 @@ theorem nextEnv_nil_of_move (p : Nat × Nat × Nat) {i : Linstr}
     unfold isLret; rcases hx with hx | hx <;> rw [hx]
   unfold nextEnv
   rw [hr]
-  simp only [Bool.false_eq_true, if_false]
+  simp only [Bool.false_eq_true, ite_false]
   cases hl : lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
   | some js => exact stepKs_nil (lowerPrinted_slotMov _ _ _ hm hl)
   | none =>
@@ -903,7 +903,7 @@ theorem gpNameB_of_isPool {x : String} (h : isPool x = true) : gpNameB x = true 
 /-- A location is no cell name. -/
 theorem cellParts?_of_loc {x : String} (h : isLoc x = true) : cellParts? x = none := by
   unfold cellParts?
-  rw [if_neg (by rw [(isLoc_prefix h).2]; exact Bool.false_ne_true)]
+  rw [ite_eq_right (by rw [(isLoc_prefix h).2]; exact Bool.false_ne_true)]
 
 /-- Under the slot hypothesis, a location is no array slot. -/
 theorem slotArr_loc (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true)
@@ -1005,9 +1005,9 @@ theorem stepRen (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." 
     rw [hmi] at hf
     simp only [Option.map_some]
     rcases hxy with ⟨rfl, rfl⟩ | ⟨hx, hy, hr⟩
-    · simp only [if_true] at hf ⊢
+    · simp only [ite_true] at hf ⊢
       by_cases hg : ((slotArr s).isNone && gpNameB s) = true
-      · rw [if_pos hg] at hf
+      · rw [ite_eq_left hg] at hf
         have hgs : gpNameB s = true := (Bool.and_eq_true _ _).mp hg |>.2
         have hsrcs : i.srcs = [.reg s] := by
           rcases slotMov?_shape hmi with h | h <;>
@@ -1016,18 +1016,18 @@ theorem stepRen (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." 
         have hloc : isLoc s = true := isLoc_of_gpNameB hgs
         have hgs' := (renOf_loc hm hloc).2 hgs
         have hsl' : slotArr (renOf m x86Abi s) = none := slotArr_loc hq (renOf_loc hm hloc).1
-        rw [if_pos (by simp [hsl', hgs'])]
+        rw [ite_eq_left (by simp [hsl', hgs'])]
         exact hsrc s hsrcs hgs q hf hqs
-      · rw [if_neg hg] at hf
+      · rw [ite_eq_right hg] at hf
         cases hf
         have hns : isLoc q = false := by
           cases hl : isLoc q with
           | false => rfl
           | true => rw [slotArr_loc hq hl] at hqs; cases hqs
-        rw [renOf_nonloc m hns, if_neg hg]
+        rw [renOf_nonloc m hns, ite_eq_right hg]
     · simp only at hf
-      rw [if_neg (Ne.symm hx)] at hf
-      rw [if_neg (Ne.symm hy), hsl]
+      rw [ite_eq_right (Ne.symm hx)] at hf
+      rw [ite_eq_right (Ne.symm hy), hsl]
       split_ifs at hf ⊢
       exact hr q hf hqs
   | none =>
@@ -1069,12 +1069,12 @@ theorem stepCopy (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave."
     unfold slotMov?
     rcases hcp with h | h <;> rw [h] <;> simp [cellParts?_of_loc hd, cellParts?_of_loc hsl]
   intro q hf hqs
-  simp only [scanStepF, FI.toL, FI.toR, hmi, if_true] at hf
+  simp only [scanStepF, FI.toL, FI.toR, hmi, ite_true] at hf
   by_cases hg : ((slotArr s).isNone && gpNameB s) = true
-  · rw [if_pos hg] at hf
+  · rw [ite_eq_left hg] at hf
     rw [← hrs]
     exact hsrc s hs ((Bool.and_eq_true _ _).mp hg).2 q hf hqs
-  · rw [if_neg hg] at hf
+  · rw [ite_eq_right hg] at hf
     cases hf
     rw [slotArr_loc hq hsl] at hqs
     cases hqs
@@ -1313,15 +1313,15 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
     simp only [goAcc] at hgo
     by_cases hb : basesOk m i = true
     swap
-    · rw [if_neg hb] at hgo; exact absurd hgo (by simp)
-    rw [if_pos hb] at hgo
+    · rw [ite_eq_right hb] at hgo; exact absurd hgo (by simp)
+    rw [ite_eq_left hb] at hgo
     by_cases hd : isLoc i.d = true
-    · rw [if_pos hd] at hgo
+    · rw [ite_eq_left hd] at hgo
       have hdsl : slotArr i.d = none := slotArr_loc hq hd
       by_cases hok : (okLoc i.d c && shapeOk m i c) = true
       swap
-      · rw [if_neg hok] at hgo; exact absurd hgo (by simp)
-      rw [if_pos hok] at hgo
+      · rw [ite_eq_right hok] at hgo; exact absurd hgo (by simp)
+      rw [ite_eq_left hok] at hgo
       have hokl : okLoc i.d c = true := ((Bool.and_eq_true _ _).mp hok).1
       have hc : isLoc c = true := isLoc_of_okLoc hd hokl
       have hcsl : slotArr c = none := slotArr_loc hq hc
@@ -1329,7 +1329,7 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
         fun x hx => scanStepF_single_ne hdsl hli hx f
       by_cases hcp : (isCopy64 i.opn && i.srcs.map (fun o => renOp m o) == [.reg c]) = true
       · -- a self-copy: dropped
-        rw [if_pos hcp] at hgo
+        rw [ite_eq_left hcp] at hgo
         simp only [Bool.and_eq_true, beq_iff_eq] at hcp
         obtain ⟨hcopyi, hmap⟩ := hcp
         have hR' : RelS slotArr (m.insert i.d c) la (scanStepF slotArr i.toL f) g := by
@@ -1338,20 +1338,20 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
             intro q hf; rw [hstay x hxd] at hf; exact hR.2.1 x hx q hf
           · rw [look_insert]
             by_cases hnd : i.d = n
-            · subst hnd; rw [if_pos rfl]
+            · subst hnd; rw [ite_eq_left rfl]
               exact stepCopy hq hd hc hcopyi hmap hsrc
-            · rw [if_neg hnd]
+            · rw [ite_eq_right hnd]
               intro q hf; rw [hstay n (Ne.symm hnd)] at hf
               exact hR.2.2 n (mem_liveBefore hn (Ne.symm hnd)) hnl q hf
         have hE' : EntryInv (done ++ [i]) ([] ++ acc) (m.insert i.d c) la :=
-          entryInv_step hE (fun R hR => by rw [look_insert, if_neg hR]) (by simp)
+          entryInv_step hE (fun R hR => by rw [look_insert, ite_eq_right hR]) (by simp)
         obtain ⟨rest, h1, h2, h3⟩ := ih (done ++ [i]) _ cs acc out _ _ hfull' hwfs himms hgo hR'
           (by simpa using hE')
         exact ⟨rest, h1, h2, fun x hx => by rw [hpi]; exact h3 x hx⟩
-      · rw [if_neg hcp] at hgo
+      · rw [ite_eq_right hcp] at hgo
         by_cases hdead : (movClass i.opn && !la.contains i.d) = true
         · -- a dead move: dropped
-          rw [if_pos hdead] at hgo
+          rw [ite_eq_left hdead] at hgo
           simp only [Bool.and_eq_true, Bool.not_eq_true', List.contains_eq_mem,
             decide_eq_false_iff_not] at hdead
           have hR' : RelS slotArr m la (scanStepF slotArr i.toL f) g := by
@@ -1366,18 +1366,18 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
           obtain ⟨rest, h1, h2, h3⟩ := ih (done ++ [i]) _ cs acc out _ _ hfull' hwfs himms hgo hR'
             (by simpa using hE')
           exact ⟨rest, h1, h2, fun x hx => by rw [hpi]; exact h3 x hx⟩
-        · rw [if_neg hdead] at hgo
+        · rw [ite_eq_right hdead] at hgo
           by_cases hnc : noClobber m la i.d c = true
           swap
-          · rw [if_neg hnc] at hgo; exact absurd hgo (by simp)
-          rw [if_pos hnc] at hgo
+          · rw [ite_eq_right hnc] at hgo; exact absurd hgo (by simp)
+          rw [ite_eq_left hnc] at hgo
           have hne : ∀ n ∈ la, n ≠ i.d → look m n ≠ c := by
             intro n hn hnd
             have h1 := List.all_eq_true.1 hnc n hn
             simp only [Bool.or_eq_true, beq_iff_eq, bne_iff_ne, ne_eq] at h1
             exact h1.resolve_left hnd
           refine emit c (m.insert i.d c) cs (Or.inr ⟨hd, hc⟩) (by rw [hcsl, hdsl])
-            (fun R h0 hR1 hR2 => ?_) (fun R hR => by rw [look_insert, if_neg hR])
+            (fun R h0 hR1 hR2 => ?_) (fun R hR => by rw [look_insert, ite_eq_right hR])
             ⟨poolMap_insert hR.1 hokl, fun x hx => ?_, fun n hn hnl => ?_⟩
             (fun _ => hcsl) (fun h => by rw [hd] at h; cases h) hgo
           · by_cases hRl : isLoc R = true
@@ -1391,20 +1391,20 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
               (Or.inr ⟨hxd, hxc, hR.2.1 x hx⟩)
           · rw [look_insert]
             by_cases hnd : i.d = n
-            · subst hnd; rw [if_pos rfl]
+            · subst hnd; rw [ite_eq_left rfl]
               exact stepRen hq hR.1 (Or.inr ⟨hd, hc⟩) (by rw [hcsl, hdsl]) hsrc
                 (Or.inl ⟨rfl, rfl⟩)
-            · rw [if_neg hnd]
+            · rw [ite_eq_right hnd]
               exact stepRen hq hR.1 (Or.inr ⟨hd, hc⟩) (by rw [hcsl, hdsl]) hsrc
                 (Or.inr ⟨Ne.symm hnd, hne n hn (Ne.symm hnd),
                   hR.2.2 n (mem_liveBefore hn (Ne.symm hnd)) hnl⟩)
     · -- a write to a name that is no location
-      rw [if_neg hd] at hgo
+      rw [ite_eq_right hd] at hgo
       simp only [Bool.not_eq_true] at hd
       by_cases hsh : shapeOk m i i.d = true
       swap
-      · rw [if_neg hsh] at hgo; exact absurd hgo (by simp)
-      rw [if_pos hsh] at hgo
+      · rw [ite_eq_right hsh] at hgo; exact absurd hgo (by simp)
+      rw [ite_eq_left hsh] at hgo
       refine emit i.d m cs (Or.inl rfl) rfl (fun R _ hR1 _ => hR1) (fun _ _ => rfl)
         ⟨hR.1, fun x hx => ?_, fun n hn hnl => ?_⟩
         (fun h => by rw [hd] at h; cases h) (fun _ => rfl) hgo

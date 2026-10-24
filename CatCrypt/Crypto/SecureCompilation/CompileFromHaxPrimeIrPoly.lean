@@ -215,7 +215,7 @@ theorem primeir_poly_ntt_recognized_denote [Fact (Nat.Prime q)] (p : CPolynomial
   show (if h : Nat.Prime q then
           (haveI : Fact (Nat.Prime q) := ⟨h⟩; nttF (ND.dom q) p)
         else (#[] : Array (ZMod q))) = realNtt (ND.dom q) p
-  rw [dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q)]
 
 /-- The recognized `PolyRing::intt` call ties to the inverse transform
     `inttF` on the NTT domain of `q`. -/
@@ -224,7 +224,7 @@ theorem primeir_poly_intt_recognized_denote [Fact (Nat.Prime q)] (a : Array (ZMo
   show (if h : Nat.Prime q then
           (haveI : Fact (Nat.Prime q) := ⟨h⟩; inttF (ND.dom q) a)
         else (0 : CPolynomial (ZMod q))) = inttF (ND.dom q) a
-  rw [dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q)]
 
 /-- The recognized `PolyRing::basemul` call ties to the entrywise product of
     two evaluation arrays. -/
@@ -233,7 +233,7 @@ theorem primeir_poly_basemul_recognized_denote [Fact (Nat.Prime q)] (a b : Array
   show (if h : Nat.Prime q then
           (haveI : Fact (Nat.Prime q) := ⟨h⟩; basemulF (ND.dom q) a b)
         else (#[] : Array (ZMod q))) = realBasemul (ND.dom q) a b
-  rw [dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q)]
 
 /-- The recognized `PolyRing::poly_add` call ties to `CPolynomial` addition. -/
 theorem primeir_poly_add_recognized_denote (p r : CPolynomial (ZMod q)) :
@@ -287,7 +287,7 @@ theorem nttAddCom_denote [Fact (Nat.Prime q)] (a b : Array (ZMod q)) :
                  else (0 : CPolynomial (ZMod q)))))
         else (#[] : Array (ZMod q)))
       = realNtt (ND.dom q) (inttF (ND.dom q) a + inttF (ND.dom q) b)
-  simp only [dif_pos (Fact.out : Nat.Prime q)]
+  simp only [dite_eq_left (Fact.out : Nat.Prime q)]
 
 end Ties
 

@@ -267,7 +267,7 @@ theorem optimizeChecked_denote {α : Type u} {β : Type v} [DecidableEq α] {f :
   unfold optimizeChecked witnessApplies
   by_cases h : ((start == input) && (finish == cand)) = true
   · -- witness applies: extract the endpoint equalities and chain through validate
-    simp only [h, if_true]
+    simp only [h, ite_true]
     rw [Bool.and_eq_true] at h
     obtain ⟨h1, h2⟩ := h
     have hs : start = input := by simpa using h1
@@ -276,7 +276,7 @@ theorem optimizeChecked_denote {α : Type u} {β : Type v} [DecidableEq α] {f :
     calc f cand = f finish := by rw [hf]
       _ = f start := (w.validate).symm
       _ = f input := by rw [hs]
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
 
 /-! ## 5. Specialisation to the `Com` engine
 

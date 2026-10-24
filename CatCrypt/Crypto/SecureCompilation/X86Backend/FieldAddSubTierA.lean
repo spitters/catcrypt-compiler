@@ -107,8 +107,8 @@ def condSubP (p v : Nat) : Nat := if v < p then v else v - p
 theorem condSubP_eq_mod (p v : Nat) (hv : v < 2 * p) : condSubP p v = v % p := by
   unfold condSubP
   by_cases h : v < p
-  · rw [if_pos h, Nat.mod_eq_of_lt h]
-  · rw [if_neg h]
+  · rw [ite_eq_left h, Nat.mod_eq_of_lt h]
+  · rw [ite_eq_right h]
     rw [Nat.not_lt] at h
     rw [Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
 
@@ -125,8 +125,8 @@ theorem condAddP_eq_mod (p a b : Nat) (ha : a < p) (hb : b < p) :
     condAddP p a b = (a + p - b) % p := by
   unfold condAddP
   by_cases h : a < b
-  · rw [if_pos h, Nat.mod_eq_of_lt (by omega)]
-  · rw [if_neg h]
+  · rw [ite_eq_left h, Nat.mod_eq_of_lt (by omega)]
+  · rw [ite_eq_right h]
     rw [Nat.not_lt] at h
     -- a + p - b = p + (a - b), and (a - b) < p
     have : a + p - b = p + (a - b) := by omega
@@ -197,7 +197,7 @@ theorem emit_add_cf (s : JState 64) (dst src : String) :
     preserved. -/
 theorem emit_add_other (s : JState 64) (dst src r : String) (hr : r ≠ dst) :
     (evalInstr s (.add dst (.reg src))).get r = s.get r := by
-  simp only [evalInstr, JState.get, JState.writeB5W, if_neg hr]
+  simp only [evalInstr, JState.get, JState.writeB5W, ite_eq_right hr]
 
 /-- One emitted ADC step writes `addCarryWord dst src (CF-bit)` into `dst`. -/
 theorem emit_adc_word (s : JState 64) (dst src : String) :
@@ -206,7 +206,7 @@ theorem emit_adc_word (s : JState 64) (dst src : String) :
   simp only [evalInstr, JState.get, JState.writeB5W, x86_ADC, rflags_of_aluop, add_carry,
     addCarryWord, JOperand.eval]
   rcases h : s.flagB (·.cf) with _ | _ <;>
-    simp only [if_true, if_false, Bool.false_eq_true] <;>
+    simp only [ite_true, ite_false, Bool.false_eq_true] <;>
     (apply BitVec.eq_of_toNat_eq) <;> simp [BitVec.toNat_add, BitVec.toNat_ofNat]
 
 /-- The carry-out characterisation as a `Nat` fact: for `X < 2^65` (two words plus
@@ -233,12 +233,12 @@ theorem emit_adc_cf (s : JState 64) (dst src : String) :
   simp only [JState.get] at hx hy
   refine wrap_iff _ ?_
   by_cases hc : Option.getD s.flags.cf false = true <;>
-    simp only [hc, if_true, if_false, Bool.false_eq_true] <;> omega
+    simp only [hc, ite_true, ite_false, Bool.false_eq_true] <;> omega
 
 /-- One emitted ADC step writes only `dst`: any other register is preserved. -/
 theorem emit_adc_other (s : JState 64) (dst src r : String) (hr : r ≠ dst) :
     (evalInstr s (.adc dst (.reg src))).get r = s.get r := by
-  simp only [evalInstr, JState.get, JState.writeB5W, if_neg hr]
+  simp only [evalInstr, JState.get, JState.writeB5W, ite_eq_right hr]
 
 /-! ## 2c. The emitted ADC chain over `runBlock` = `addLimbs`
 
@@ -442,12 +442,12 @@ theorem emitAdcChain_runBlock_value (ds ss : List String) (u v : List (BitVec 64
       = (addLimbs u v 0).2.toNat := by
     rw [bit_toNat (addLimbs u v 0).2]
     by_cases hb : (runBlock s (emitAdcChain ds ss)).flagB (·.cf) = true
-    · rw [if_pos hb]
+    · rw [ite_eq_left hb]
       have : (addLimbs u v 0).2 = 1 := by rw [← hcf]; exact hb
-      rw [if_pos this]
-    · rw [if_neg hb]
+      rw [ite_eq_left this]
+    · rw [ite_eq_right hb]
       have : ¬ ((addLimbs u v 0).2 = 1) := by rw [← hcf]; simpa using hb
-      rw [if_neg this]
+      rw [ite_eq_right this]
   rw [hcfbit, hdu]
   exact hrec
 

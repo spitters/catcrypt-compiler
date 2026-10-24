@@ -138,13 +138,13 @@ theorem corres_setScalar_fq (name : String) (n : Nat) (hn : n < 3329) :
   by_cases hx : x = name
   · refine ⟨BitVec.ofNat 64 n, by simp [SEnvScalar.upd, hx], ?_⟩
     show fqEnc (BitVec.ofNat 64 n) = if x = name then (n : ZMod 3329) else a x
-    rw [if_pos hx]
+    rw [ite_eq_left hx]
     have hlt : n < 2 ^ 64 := lt_of_lt_of_le hn (by norm_num)
     simp only [fqEnc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt]
   · obtain ⟨w, hw, _, hwEnc⟩ := hSR x hnt
     refine ⟨w, by simp [SEnvScalar.upd, hx, hw], ?_⟩
     show fqEnc w = if x = name then (n : ZMod 3329) else a x
-    rw [if_neg hx]; exact hwEnc
+    rw [ite_eq_right hx]; exact hwEnc
 
 /-- **`keystone_setScalar_fq`.** For a canonical literal coefficient `n < 3329`
     written to a non-temp `name`, the abstraction-side hypotheses of `keystone_fq`
@@ -208,12 +208,12 @@ theorem corres_setScalar_fqCanon (name : String) (n : Nat) (hn : n < 3329) :
   · refine ⟨BitVec.ofNat 64 n, by simp [SEnvScalar.upd, hx], ?_, ?_⟩
     · rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt]; exact hn
     · show fqEnc (BitVec.ofNat 64 n) = if x = name then (n : ZMod 3329) else a x
-      rw [if_pos hx]
+      rw [ite_eq_left hx]
       simp only [fqEnc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt]
   · obtain ⟨w, hw, hwlt, hwEnc⟩ := hSR x hnt
     refine ⟨w, by simp [SEnvScalar.upd, hx, hw], hwlt, ?_⟩
     show fqEnc w = if x = name then (n : ZMod 3329) else a x
-    rw [if_neg hx]; exact hwEnc
+    rw [ite_eq_right hx]; exact hwEnc
 
 /-- **The ascent leg of a canonical `poly_add` coefficient step.** The closed kernel
     `a0 := 100; b0 := 200; r0 := a0 + b0` (canonical literal inputs, `< 3329`)

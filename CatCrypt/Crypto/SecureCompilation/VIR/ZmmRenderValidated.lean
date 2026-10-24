@@ -180,7 +180,7 @@ theorem envOf_lookup {W : Nat} : ∀ {Γ : JCtxt} (vm : VarMap Γ) (V : Ctxt.Val
     regAs u W (v.lookup V) = some x → envOf W vm V (vm u v) = x
   | t :: _, vm, .cons y V, _, _, .here, x, hx => by
     show (if vm t .here = vm t .here then (regAs t W y).getD 0 else _) = x
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     exact congrArg (·.getD 0) hx |>.trans rfl
   | t :: _, vm, .cons y V, hi, u, .there v, x, hx => by
     have hne : vm u (.there v) ≠ vm t .here := fun h => by
@@ -188,7 +188,7 @@ theorem envOf_lookup {W : Nat} : ∀ {Γ : JCtxt} (vm : VarMap Γ) (V : Ctxt.Val
       simp [varDepth] at this
     show (if vm u (.there v) = vm t .here then _ else
       envOf W (fun s v => vm s v.there) V (vm u (.there v))) = x
-    rw [if_neg hne]
+    rw [ite_eq_right hne]
     exact envOf_lookup (fun s v => vm s v.there) V
       (fun _ _ v₁ v₂ h => by simpa [varDepth] using hi _ _ _ _ h) v x hx
 
@@ -544,7 +544,7 @@ theorem exprZBindScalar_sound : BindSound .q exprZBindScalar := by
     · obtain ⟨rfl, hn⟩ := hw
       match args with
       | .cons a .nil =>
-        simp only [exprZBindScalar, hn, and_self, if_true, SatB, if_true]
+        simp only [exprZBindScalar, hn, and_self, ite_true, SatB, ite_true]
         intro _
         rw [hd _ (regAs_reg 64 _)]
         change _ = E k (vm (JasminTy.reg 64) a) <<< n
@@ -557,7 +557,7 @@ theorem exprZBindScalar_sound : BindSound .q exprZBindScalar := by
     · obtain ⟨rfl, hn⟩ := hw
       match args with
       | .cons a .nil =>
-        simp only [exprZBindScalar, hn, and_self, if_true, SatB, if_false]
+        simp only [exprZBindScalar, hn, and_self, ite_true, SatB, ite_false]
         intro _
         rw [hd _ (regAs_reg 64 _)]
         change _ = E k (vm (JasminTy.reg 64) a) >>> n
@@ -607,7 +607,7 @@ theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by
     · obtain ⟨rfl, hn⟩ := hw
       match args with
       | .cons a .nil =>
-        simp only [exprZBindScalar32, hn, and_self, if_true, SatB, if_true]
+        simp only [exprZBindScalar32, hn, and_self, ite_true, SatB, ite_true]
         intro _
         rw [hd _ (regAs_reg 32 _)]
         change _ = E k (vm (JasminTy.reg 32) a) <<< n
@@ -620,7 +620,7 @@ theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by
     · obtain ⟨rfl, hn⟩ := hw
       match args with
       | .cons a .nil =>
-        simp only [exprZBindScalar32, hn, and_self, if_true, SatB, if_false]
+        simp only [exprZBindScalar32, hn, and_self, ite_true, SatB, ite_false]
         intro _
         rw [hd _ (regAs_reg 32 _)]
         change _ = E k (vm (JasminTy.reg 32) a) >>> n
@@ -633,7 +633,7 @@ theorem exprZBindScalar32_sound : BindSound .d exprZBindScalar32 := by
     · obtain ⟨rfl, hn0, hn⟩ := hw
       match args with
       | .cons a .nil =>
-        simp only [exprZBindScalar32, hn0, hn, and_self, if_true, SatB]
+        simp only [exprZBindScalar32, hn0, hn, and_self, ite_true, SatB]
         intro _
         rw [hd _ (regAs_reg 32 _)]
         change _ = (E k (vm (JasminTy.reg 32) a)).rotateLeft (32 - n)

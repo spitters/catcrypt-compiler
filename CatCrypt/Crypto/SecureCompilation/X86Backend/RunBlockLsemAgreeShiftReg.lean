@@ -95,8 +95,8 @@ theorem x86_SHL_word_reg {c : BitVec 64} (h : c.toNat < 64) (v : BitVec 64) :
   have hmin : min 64 c.toNat = c.toNat := by omega
   simp only [x86_SHL, shiftCount_of_toNat_lt h]
   by_cases h0 : c.toNat = 0
-  · rw [if_pos h0, h0]; simp [rflags_None]
-  · simp only [if_neg h0, rflags_OF, wshl, hmin]
+  · rw [ite_eq_left h0, h0]; simp [rflags_None]
+  · simp only [ite_eq_right h0, rflags_OF, wshl, hmin]
 
 /-- The `x86_SHR` data word at an in-range count is the plain logical right shift
     `v >>> c.toNat`. -/
@@ -105,8 +105,8 @@ theorem x86_SHR_word_reg {c : BitVec 64} (h : c.toNat < 64) (v : BitVec 64) :
   have hmin : min 64 c.toNat = c.toNat := by omega
   simp only [x86_SHR, shiftCount_of_toNat_lt h]
   by_cases h0 : c.toNat = 0
-  · rw [if_pos h0, h0]; simp [rflags_None]
-  · simp only [if_neg h0, rflags_OF, wshr, hmin]
+  · rw [ite_eq_left h0, h0]; simp [rflags_None]
+  · simp only [ite_eq_right h0, rflags_OF, wshr, hmin]
 
 /-- The BMI2 `x86_SHLX` word at an in-range count is `v <<< c.toNat`. `SHLX`
     writes no flag, so this is the whole result. -/

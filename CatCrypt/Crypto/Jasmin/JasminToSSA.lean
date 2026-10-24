@@ -186,8 +186,8 @@ theorem pureEvalMonoCmd_irrelevant {n : Nat}
         by_cases hwr : w = r
         · subst hwr; simp only [↓reduceIte, ha, hb, hcin]
         · by_cases hwcf : w = cf
-          · subst hwcf; simp only [if_neg hwr, ↓reduceIte, ha, hb, hcin]
-          · simp only [if_neg hwr, if_neg hwcf]
+          · subst hwcf; simp only [ite_eq_right hwr, ↓reduceIte, ha, hb, hcin]
+          · simp only [ite_eq_right hwr, ite_eq_right hwcf]
             exact h w (by simp_all [List.mem_append, List.mem_filter, hwr, hwcf])
     | Cif _ _ _ | Cfor _ _ _ | Cwhile _ _ _ | Ccall _ _ _ _ =>
       simp only [pureEvalMonoCmd]

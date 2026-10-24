@@ -174,7 +174,7 @@ theorem x86_SHL_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64)
     (x86_SHL v (BitVec.ofNat 64 k)).word = v <<< k := by
   have hkn : (BitVec.ofNat 64 k).toNat = k := by
     rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
-  simp only [x86_SHL, shiftCount, hkn, shiftMask_of_lt hk, if_neg hk0, rflags_OF, wshl,
+  simp only [x86_SHL, shiftCount, hkn, shiftMask_of_lt hk, ite_eq_right hk0, rflags_OF, wshl,
     Nat.min_eq_right hk.le]
 
 /-- **The immediate-operand shifts.** `SHL:64 d, a, #0` against `mov %a, %d` or, with `d` and
@@ -235,7 +235,7 @@ theorem decSim_shrImmS_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64
       fstepF_shrImmI d a k hk b zf _ (h.regs a ha)]
   · show (if r = π d then (x86_SHR (if π d = π d then sa.regs (π a) else sa.regs (π d))
         (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
-    rw [if_pos rfl, x86_SHR_word_imm _ k hk0 hk]
+    rw [ite_eq_left rfl, x86_SHR_word_imm _ k hk0 hk]
     split <;> simp_all
 
 /-- `SHL:64 d, a, #k` against `mov %a, %d` and `shl $k, %d`, `0 < k < 64`. -/
@@ -251,7 +251,7 @@ theorem decSim_shlImmS_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64
       fstepF_shlImmI d a k hk b zf _ (h.regs a ha)]
   · show (if r = π d then (x86_SHL (if π d = π d then sa.regs (π a) else sa.regs (π d))
         (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
-    rw [if_pos rfl, x86_SHL_word_imm _ k hk0 hk]
+    rw [ite_eq_left rfl, x86_SHL_word_imm _ k hk0 hk]
     split <;> simp_all
 
 /-- The count-`0` shift `SHL:64 d, a, #0` against the copy `mov %a, %d`. -/
@@ -320,7 +320,7 @@ theorem decSim_shrImmI_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64
   · rw [runStraightF_singleton, fstepF_shrImmI d a k hk b zf _ (h.regs a ha)]
   · show (if r = π d then (x86_SHR (if π d = π d then sa.regs (π a) else sa.regs (π d))
         (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
-    rw [if_pos rfl, x86_SHR_word_imm _ k hk0 hk]
+    rw [ite_eq_left rfl, x86_SHR_word_imm _ k hk0 hk]
     split <;> simp_all
 
 /-- `SHL:k:64 d, a` against `mov %a, %d` and `shl $k, %d`, `0 < k < 64`. -/
@@ -335,7 +335,7 @@ theorem decSim_shlImmI_mov (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64
   · rw [runStraightF_singleton, fstepF_shlImmI d a k hk b zf _ (h.regs a ha)]
   · show (if r = π d then (x86_SHL (if π d = π d then sa.regs (π a) else sa.regs (π d))
         (BitVec.ofNat 64 k)).word else (if r = π d then sa.regs (π a) else sa.regs r)) = _
-    rw [if_pos rfl, x86_SHL_word_imm _ k hk0 hk]
+    rw [ite_eq_left rfl, x86_SHL_word_imm _ k hk0 hk]
     split <;> simp_all
 
 end ShiftImmS
@@ -642,7 +642,7 @@ theorem runBlock_regs_of_decrOnce (R : String) :
       subst hj
       rw [Machine.runBlock_cons, runBlock_regs_of_not_dsts R js _ h]
       show (if R = R then sa.regs R - BitVec.ofNat 64 1 else sa.regs R) = _
-      rw [if_pos rfl]; rfl
+      rw [ite_eq_left rfl]; rfl
     · simp only [Bool.and_eq_true] at h
       rw [Machine.runBlock_cons, ih _ h.2]
       have hj : R ∉ dsts j := by simpa using h.1

@@ -161,18 +161,18 @@ theorem rvSymStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
   rw [rvIsa_step]
   unfold rvSymStep subsetStep
   by_cases hc : isCtl i.fst = true
-  · rw [if_pos hc, if_pos hc]
+  · rw [ite_eq_left hc, ite_eq_left hc]
     by_cases hl : isLbl i = true
-    · rw [if_pos hl]
+    · rw [ite_eq_left hl]
       obtain ⟨x, tag⟩ := i
       cases x <;> simp only [isLbl, Bool.false_eq_true] at hl
       refine ⟨fun t ht => ?_, fun _ => rfl⟩
       cases ht
       exact ⟨allG_nil V A C O, ⟨hs.1, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
-    · rw [if_neg hl]; trivial
-  · rw [if_neg hc, if_neg hc]
+    · rw [ite_eq_right hl]; trivial
+  · rw [ite_eq_right hc, ite_eq_right hc]
     by_cases hm : mnemOk rvBases i.fst = true
-    · rw [if_pos hm, if_pos hm]
+    · rw [ite_eq_left hm, ite_eq_left hm]
       simp only []
       unfold coreStep
       cases hmv : movRegArgs? i with
@@ -193,13 +193,13 @@ theorem rvSymStep_sound (P : LprogM) (i : LinstrRM) (ss : SSt) :
           exact descM_lift (symMem_flags i ss) hs
             (symMem_sound i ss V A C O s.prog.base ⟨hs.1, hs.2.1⟩)
             (fun b hb => lsemStepMem_flags hb)
-    · rw [if_neg hm, if_neg hm]
+    · rw [ite_eq_right hm, ite_eq_right hm]
       by_cases hk : isKeep i.fst = true
-      · rw [if_pos hk, if_pos hk]
+      · rw [ite_eq_left hk, ite_eq_left hk]
         refine ⟨fun t ht => ?_, fun _ => rfl⟩
         cases ht
         exact ⟨allG_nil V A C O, ⟨hs.1, hs.2.1, hs.2.2⟩, rfl, rfl, rfl⟩
-      · rw [if_neg hk, if_neg hk]
+      · rw [ite_eq_right hk, ite_eq_right hk]
         rfl
 
 /-- **The RV64 symbolic branch condition evaluates to the RV64 branch condition.** -/
@@ -245,7 +245,7 @@ theorem rvSym_lawful : rvSym.Lawful where
       obtain ⟨x, tag⟩ := i
       cases x <;> simp_all [isLbl, isCtl]
     unfold rvSymStep
-    rw [if_pos hc, if_pos hl]
+    rw [ite_eq_left hc, ite_eq_left hl]
   plain := by
     intro P x hx s t h
     rw [rvIsa_step] at h

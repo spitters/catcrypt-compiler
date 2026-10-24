@@ -109,21 +109,21 @@ primitives; the agreement lemmas below are stated in terms of them. -/
 /-- Reading the position just written by an in-bounds `array_update`. -/
 theorem index_array_update_self {α : Type} [Inhabited α] (a : Array α) (i : Int) (v : α)
     (hi : i.toNat < a.size) : Hax.index (Hax.array_update a i v) i = v := by
-  simp only [Hax.array_update, Hax.index, dif_pos hi, Array.size_set, Array.getElem_set_self]
+  simp only [Hax.array_update, Hax.index, dite_eq_left hi, Array.size_set, Array.getElem_set_self]
 
 /-- Reading a different, in-bounds position of an `array_update` passes through. -/
 theorem index_array_update_ne {α : Type} [Inhabited α] (a : Array α) (i k : Int) (v : α)
     (hik : k.toNat ≠ i.toNat) (hk : k.toNat < a.size) :
     Hax.index (Hax.array_update a i v) k = Hax.index a k := by
   by_cases hi : i.toNat < a.size
-  · simp only [Hax.index, Hax.array_update, dif_pos hi, Array.size_set, dif_pos hk]
+  · simp only [Hax.index, Hax.array_update, dite_eq_left hi, Array.size_set, dite_eq_left hk]
     rw [Array.getElem_set_ne _ _ (by omega)]
-  · simp only [Hax.array_update, dif_neg hi]
+  · simp only [Hax.array_update, dite_eq_right hi]
 
 /-- Reading an `Int` index into an array through `Hax.index`. -/
 theorem index_fin {α : Type} [Inhabited α] {n : Nat} (a : Array α) (m : Fin n)
     (h : m.val < a.size) : Hax.index a (m.val : Int) = a[m.val] := by
-  simp only [Hax.index, Int.toNat_natCast]; rw [dif_pos h]
+  simp only [Hax.index, Int.toNat_natCast]; rw [dite_eq_left h]
 
 namespace ArrayAgree
 variable [Inhabited γ] {e : ReprEmbedding C γ} {n : Nat} {arr : Array γ} {f : Fin n → C}
@@ -135,7 +135,7 @@ theorem update (h : ArrayAgree e n arr f) (k : Fin n) (v : C) :
   obtain ⟨hsz, hidx⟩ := h
   have hk : k.val < arr.size := by rw [hsz]; exact k.isLt
   have hupd : Hax.array_update arr (k.val : Int) (e.enc v) = arr.set k.val (e.enc v) hk := by
-    simp only [Hax.array_update, Int.toNat_natCast]; rw [dif_pos hk]
+    simp only [Hax.array_update, Int.toNat_natCast]; rw [dite_eq_left hk]
   refine ⟨by rw [hupd, Array.size_set, hsz], ?_⟩
   intro m
   have hm : m.val < (arr.set k.val (e.enc v) hk).size := by
@@ -144,7 +144,7 @@ theorem update (h : ArrayAgree e n arr f) (k : Fin n) (v : C) :
   by_cases hkm : k = m
   · subst hkm; simp
   · have hne : k.val ≠ m.val := fun hc => hkm (Fin.ext hc)
-    rw [if_neg hne, if_neg (fun hc : m = k => hkm hc.symm),
+    rw [ite_eq_right hne, ite_eq_right (fun hc : m = k => hkm hc.symm),
         ← index_fin arr m (by rw [hsz]; exact m.isLt)]
     exact hidx m
 

@@ -151,7 +151,7 @@ theorem whileExit_sim (semBody : SEnvScalar → Option SEnvScalar) (guard : SEnv
       rcases hfb : (fb a).run with e | a'
       · rw [hfb] at hSRb
         rw [hE b e hSRb] at hrun
-        simp only [Bool.false_eq_true, if_false, Option.some.injEq] at hrun
+        simp only [Bool.false_eq_true, ite_false, Option.some.injEq] at hrun
         subst hrun
         rw [whileE_succ_error C fb k a e hfb]
         exact ⟨hSRb, fun a' h => nomatch h⟩
@@ -160,9 +160,9 @@ theorem whileExit_sim (semBody : SEnvScalar → Option SEnvScalar) (guard : SEnv
         rw [hC b a' hSRb hP'] at hrun
         rw [whileE_succ_ok C fb k a a' hfb]
         by_cases hc : C a' = true
-        · rw [if_pos hc] at hrun ⊢
+        · rw [ite_eq_left hc] at hrun ⊢
           exact ih b a' env' hSRb hP' hc hrun
-        · rw [if_neg hc] at hrun ⊢
+        · rw [ite_eq_right hc] at hrun ⊢
           obtain rfl := Option.some.inj hrun
           refine ⟨hSRb, fun a'' h => ?_⟩
           obtain rfl := Except.ok.inj h
@@ -223,16 +223,16 @@ theorem corresU_condSet (fuel : Nat) (name nv : String) (v : Nat) (hname : ¬ is
         Option.getD_some, hz, ne_eq, not_true_eq_false, decide_false, cond_false]
     · intro s hs
       by_cases hsv : s = nv
-      · simp only [if_pos hsv, if_pos hz]; exact hSR s hs
-      · simp only [if_neg hsv]; exact hSR s hs
+      · simp only [ite_eq_left hsv, ite_eq_left hz]; exact hSR s hs
+      · simp only [ite_eq_right hsv]; exact hSR s hs
   · refine ⟨env.upd nv (t := .sword 64) (BitVec.ofNat 64 v), ?_, ?_⟩
     · simp only [semU, Dialects.TranslateDialectScalar.semScalarCond, guardNz, hg,
         Option.getD_some, ne_eq, hz, not_false_eq_true, decide_true, cond_true, semScalar]
     · intro s hs
       by_cases hsv : s = nv
       · subst hsv
-        simp only [SEnvScalar.upd, if_true, if_neg hz]
-      · simp only [SEnvScalar.upd, if_neg hsv]; exact hSR s hs
+        simp only [SEnvScalar.upd, ite_true, ite_eq_right hz]
+      · simp only [SEnvScalar.upd, ite_eq_right hsv]; exact hSR s hs
 
 /-- **The early-return word weld.** For a well-scoped raw program at the standard
     builtin table, from a control-flow-free environment: if the reference run

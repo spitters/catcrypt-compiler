@@ -189,7 +189,7 @@ theorem emitReduceBarrett_denote_ret {Γ : Ctxt jasminDialect}
   rw [emitConst_denote, emitBin_denote, emitConst_denote, emitBin_denote,
       emitConst_denote, emitBin_denote, emitConst_denote, emitBin_denote,
       emitBin_denote, emitCsub_denote_ret _ _ dst dst hd0 hd1 hd2]
-  simp only [slotVal, headVar, JasminBinOp.apply, if_true, if_false, hs0, hs1,
+  simp only [slotVal, headVar, JasminBinOp.apply, ite_true, ite_false, hs0, hs1,
     show (sc1 : Fin 25) ≠ sc0 from by decide,
     here_lookup, there_lookup]
   rfl
@@ -219,7 +219,7 @@ theorem emitMulBarrett_denote_ret {Γ : Ctxt jasminDialect}
       = bbMul (slotVal st V a) (slotVal st V b) := by
   unfold emitMulBarrett
   rw [emitBin_denote, emitReduceBarrett_denote_ret _ _ dst dst hd0 hd1 hd2 hd0 hd1,
-    slotVal_step, if_pos rfl]
+    slotVal_step, ite_eq_left rfl]
   exact bbBarrett_mul_eq_bbMul _ _ hav hbv
 
 end CatCrypt.Crypto.SecureCompilation.VIR.BabyBearBarrettBlock

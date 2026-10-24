@@ -1097,10 +1097,10 @@ theorem index_ofFn {n : Nat} {g : Fin n → Int} {i : Nat} {v : _root_.Hax.Value
   change _root_.Hax.widthArrayOps "index"
     [.array (List.ofFn fun k => .int (g k)), .int (i : Int)] = some v at hv
   rw [_root_.Hax.widthArrayOps_index_int] at hv
-  simp only [Int.natCast_nonneg, if_true, Int.toNat_natCast, List.getElem?_ofFn] at hv
+  simp only [Int.natCast_nonneg, ite_true, Int.toNat_natCast, List.getElem?_ofFn] at hv
   by_cases hk : i < n
   · refine ⟨hk, ?_⟩
-    simp only [hk, dif_pos, Option.bind_some] at hv
+    simp only [hk, dite_eq_left, Option.bind_some] at hv
     exact (Option.some.inj hv).symm
   · simp [hk] at hv
 
@@ -1119,7 +1119,7 @@ theorem update_ofFn {n : Nat} {g : Fin n → Int} {i : Nat} {z : Int} {v : _root
     Bool.true_and] at hv
   by_cases hk : i < n
   · refine ⟨hk, ?_⟩
-    simp only [hk, decide_true, if_true, Option.some.injEq] at hv
+    simp only [hk, decide_true, ite_true, Option.some.injEq] at hv
     subst hv
     congr 1
     apply List.ext_getElem
@@ -1139,7 +1139,7 @@ theorem dec_arr_ofFn {n : Nat} {g : Fin n → Int} {y : Fin n → BitVec 64}
   have he := ImpToNF.dec_sound _ _ _ hd
   have := congrArg (fun w : _root_.Hax.Value => match w with
     | .array l => l[k.1]? | _ => none) he
-  simp only [ImpToNF.enc, List.getElem?_ofFn, k.2, dif_pos] at this
+  simp only [ImpToNF.enc, List.getElem?_ofFn, k.2, dite_eq_left] at this
   simpa using this
 
 /-- The names of the calls the fragment translates: the scalar calls `hax64NFScalar`,
@@ -1323,9 +1323,9 @@ theorem catCall_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         change (y k).toNat = (memSetDyn (m.lookup W) (i'.lookup W).toNat (x'.lookup W) k).toNat
         rw [memSetDyn_of_lt' _ hk]
         by_cases hkk : k = ⟨(i'.lookup W).toNat, hk⟩
-        · simp only [hkk, if_true] at hyk ⊢
+        · simp only [hkk, ite_true] at hyk ⊢
           exact_mod_cast hyk.symm
-        · simp only [hkk, if_false, hgm] at hyk ⊢
+        · simp only [hkk, ite_false, hgm] at hyk ⊢
           exact_mod_cast hyk.symm
       · cases h
     · cases h
@@ -1471,9 +1471,9 @@ theorem rdRel_pin {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {k : Nat} (hk :
   | .lit k' hw, h => by
       by_cases hkk : k' = k
       · subst hkk
-        simp only [Rd.pin, if_pos]
+        simp only [Rd.pin, ite_eq_left]
         exact litVar_rel W hw h.1 hk
-      · simp only [Rd.pin, if_neg hkk]
+      · simp only [Rd.pin, ite_eq_right hkk]
         exact h
 
 theorem bindLit_rel {Δ : Ctxt catCryptDialect} {W : Valuation Δ} {k : Nat} (hk : k < 2 ^ 64) :
@@ -1971,7 +1971,7 @@ theorem unChain_rel{Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.S
       rw [BitVec.toNat_ofNat, BitVec.toNat_sub, BitVec.toNat_ofNat, Nat.zero_mod]
       omega
     · cases hv
-  · simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, if_true, Int.toNat_natCast] at hv
+  · simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, ite_true, Int.toNat_natCast] at hv
     obtain rfl := Option.some.inj hv
     refine ⟨_, rfl, ?_⟩
     change BitVec.ofNat 64 _ = (show BitVec 64 from a.lookup W) &&& maskW w
@@ -1995,9 +1995,9 @@ theorem carry_not_eq_one (x y : BitVec 64) :
   unfold carryOutBitC
   rw [BitVec.toNat_not, h1]
   by_cases h : y.toNat ≤ x.toNat
-  · rw [if_pos (by omega)]
+  · rw [ite_eq_left (by omega)]
     simp [h]
-  · rw [if_neg (by omega)]
+  · rw [ite_eq_right (by omega)]
     simp [h]
 
 /-- The carry of `x + ~~~y` is `1` exactly when `y < x`. -/
@@ -2008,9 +2008,9 @@ theorem carry_not_zero_eq_one (x y : BitVec 64) :
   unfold carryOutBitC
   rw [BitVec.toNat_not, h0]
   by_cases h : y.toNat < x.toNat
-  · rw [if_pos (by omega)]
+  · rw [ite_eq_left (by omega)]
     simp [h]
-  · rw [if_neg (by omega)]
+  · rw [ite_eq_right (by omega)]
     simp [h]
 
 /-- The comparison `bvEq` of two words is the equality of their natural numbers. -/
@@ -2277,7 +2277,7 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     OpResRel W r y res := by
   unfold scalarRes1 at h
   by_cases hd : f = "declassify"
-  · rw [if_pos hd] at h
+  · rw [ite_eq_left hd] at h
     subst hd
     obtain ⟨v, hbv, hdv⟩ := Option.bind_eq_some_iff.mp hy
     have hv := hbi.base _ _ _ (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr rfl))))) (by decide) hbv
@@ -2294,7 +2294,7 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
       rw [dec_word64_eq hdv, BitVec.ofNat_toNat, BitVec.setWidth_eq]
       exact h1
     · cases h
-  rw [if_neg hd] at h
+  rw [ite_eq_right hd] at h
   split at h
   · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
     dsimp only at h
@@ -2312,7 +2312,7 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
           obtain ⟨z', hz', rfl⟩ := Option.map_eq_some_iff.mp hrr
           rw [asWord_enc hz' W h1, ImpToNF.hax64UnTable_sem _ hmem,
             ImpToNF.orElse_none_eq] at hv
-          simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, if_true, Int.toNat_natCast,
+          simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, ite_true, Int.toNat_natCast,
             Option.some.injEq] at hv
           subst hv
           rw [Nat.mod_eq_of_lt (z'.lookup W).isLt] at hdv
@@ -2322,7 +2322,7 @@ theorem scalarRes1_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
           cases hrr
           rw [enc_of_toInt hk h1.1, ImpToNF.hax64UnTable_sem _ hmem,
             ImpToNF.orElse_none_eq] at hv
-          simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, if_true, Int.toNat_natCast,
+          simp only [ImpToNF.ScalarUn.val, Int.natCast_nonneg, ite_true, Int.toNat_natCast,
             Option.some.injEq] at hv
           subst hv
           rw [Nat.mod_eq_of_lt h1.2] at hdv
@@ -2378,8 +2378,8 @@ theorem storeChain_rel {n : Nat} : ∀ (k : Nat) {Δ : Ctxt catCryptDialect} (W 
           ((if i = idx 0 then x.lookup W else (m.lookup W : Fin n → BitVec 64) i :
             BitVec 64)).toNat
         by_cases hi0 : i = idx 0
-        · rw [if_pos hi0, hi0, h10]
-        · rw [if_neg hi0]
+        · rw [ite_eq_left hi0, hi0, h10]
+        · rw [ite_eq_right hi0]
           exact h2 i fun j => Fin.cases (fun h => hi0 h.symm) (fun j' => hi j') j
       · rename_i c hc hρ
         rw [hρ] at h10
@@ -2393,8 +2393,8 @@ theorem storeChain_rel {n : Nat} : ∀ (k : Nat) {Δ : Ctxt catCryptDialect} (W 
           ((if i = idx 0 then BitVec.ofNat 64 c else (m.lookup W : Fin n → BitVec 64) i :
             BitVec 64)).toNat
         by_cases hi0 : i = idx 0
-        · rw [if_pos hi0, hi0, hyc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hc64]
-        · rw [if_neg hi0]
+        · rw [ite_eq_left hi0, hi0, hyc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hc64]
+        · rw [ite_eq_right hi0]
           exact h2 i fun j => Fin.cases (fun h => hi0 h.symm) (fun j' => hi j') j
 
 /-- **A memref filled from zero simulates.** When every word read by `ρ j` is the value of
@@ -2532,13 +2532,13 @@ theorem satSub_eq (a b : BitVec 64) :
   have ha := a.isLt
   have hb := b.isLt
   by_cases h : b.toNat ≤ a.toNat
-  · rw [if_pos (by simpa using h)]
+  · rw [ite_eq_left (by simpa using h)]
     apply BitVec.eq_of_toNat_eq
     rw [BitVec.xor_allOnes]
     simp only [addCarryWordC, BitVec.toNat_add, BitVec.toNat_not, BitVec.toNat_ofNat]
     simp
     omega
-  · rw [if_neg (by simpa using h)]
+  · rw [ite_eq_right (by simpa using h)]
     apply BitVec.eq_of_toNat_eq
     simp
     omega
@@ -2664,7 +2664,7 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
           rw [Int.toNat_of_nonneg h0]
         · change (if 0 ≤ v ∧ v < 2 ^ 64 then some (BitVec.ofNat 64 v.toNat) else none) =
             some y at hy
-          rw [if_pos ⟨h0, h1⟩] at hy
+          rw [ite_eq_left ⟨h0, h1⟩] at hy
           cases hy
           refine ⟨?_, by omega⟩
           change some (((BitVec.ofNat 64 v.toNat).toNat : Nat) : Int) = some ((v.toNat : Nat) : Int)
@@ -3318,7 +3318,7 @@ theorem enc_inj_abi {k : SecureCompilation.Haxc.ArgKind} {y y' : (abiKindArr k).
       have h' := _root_.Hax.Value.array.inj h
       funext i
       have := congrArg (fun l : List _root_.Hax.Value => l[i.1]?) h'
-      simp only [List.getElem?_ofFn, i.2, dif_pos, Option.some.injEq] at this
+      simp only [List.getElem?_ofFn, i.2, dite_eq_left, Option.some.injEq] at this
       exact BitVec.eq_of_toNat_eq (by exact_mod_cast _root_.Hax.Value.int.inj this)
 
 /-- **The entry valuation is in range.** A valuation whose encodings a source environment the

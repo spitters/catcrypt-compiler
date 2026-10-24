@@ -638,7 +638,7 @@ theorem intOfChars_intChars (k : Int) : intOfChars (intChars k) = some k := by
       have := charDigit_isSome_of_mem_natChars n '-' (by simp [hcs])
       revert this; decide
     rw [hcs]
-    simp only [intOfChars, hc, if_false]
+    simp only [intOfChars, hc, ite_false]
     rw [← hcs, natOfChars_natChars]
     rfl
   | negSucc n =>
@@ -655,7 +655,7 @@ theorem charDigit_eq_none_of_identStart (c : Char) (h : identStart c = true) :
   simp only [identStart, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
     beq_iff_eq] at h
   unfold charDigit
-  rw [if_neg]
+  rw [ite_eq_right]
   omega
 
 theorem intOfTok_eq_none_of_validIdent (x : String) (h : validIdent x = true) :
@@ -805,7 +805,7 @@ theorem parseRhs_rhsToks (v : ImpExpr) (tv : List Tok) (h : rhsToks v = some tv)
     unfold rhsToks at h
     by_cases hnone : f = "None" ∧ args = []
     · obtain ⟨rfl, rfl⟩ := hnone
-      simp only [and_self, if_true, Option.some.injEq] at h
+      simp only [and_self, ite_true, Option.some.injEq] at h
       subst h
       have hn : intOfTok "None" = none := by decide
       cases rest with
@@ -813,10 +813,10 @@ theorem parseRhs_rhsToks (v : ImpExpr) (tv : List Tok) (h : rhsToks v = some tv)
       | cons t r =>
         simp only [stmtStop] at hr
         rcases hr with rfl | rfl <;> simp [parseRhs.eq_def, parseAtom, hn, symScalar]
-    simp only [hnone, if_false] at h
+    simp only [hnone, ite_false] at h
     by_cases hsub : f = "scalar#Sub"
     · subst hsub
-      simp only [if_true] at h
+      simp only [ite_true] at h
       split at h
       · split at h
         · simp only [Option.some.injEq] at h
@@ -826,7 +826,7 @@ theorem parseRhs_rhsToks (v : ImpExpr) (tv : List Tok) (h : rhsToks v = some tv)
           simp
         · simp at h
       · simp at h
-    simp only [hsub, if_false] at h
+    simp only [hsub, ite_false] at h
     cases hs : scalarSym f with
     | some op =>
       simp only [hs] at h
@@ -1164,12 +1164,12 @@ theorem parseSeq_ppToks (ty : String → Option Tok) (e : ImpExpr) :
     have hbp := (ihb tb htb).1 m rest
     cases hnb : needsBrace a with
     | true =>
-      simp only [hnb, if_true, List.length_append, List.length_cons, List.length_nil] at hn ⊢
+      simp only [hnb, ite_true, List.length_append, List.length_cons, List.length_nil] at hn ⊢
       have hap := (iha ta hta).1 m ("}" :: ";" :: (tb ++ rest)) (by omega) rfl
       simp only [List.cons_append, List.nil_append, List.append_assoc]
       exact parseSeq_brace m _ _ rest a b hap (hbp (by omega) hr)
     | false =>
-      simp only [hnb, Bool.false_eq_true, if_false, List.length_append, List.length_cons,
+      simp only [hnb, Bool.false_eq_true, ite_false, List.length_append, List.length_cons,
         List.length_nil] at hn ⊢
       obtain ⟨hh, hap⟩ := (iha ta hta).2 hnb m (";" :: (tb ++ rest)) (by omega) (Or.inr rfl)
       simp only [List.cons_append, List.nil_append, List.append_assoc]

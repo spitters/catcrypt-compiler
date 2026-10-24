@@ -395,7 +395,7 @@ theorem splitAtFirst_decomp (p : Linstr → Bool) (pre : List Linstr) (x : Linst
   | cons y ys ih =>
     have hy : p y = false := hpre y (List.mem_cons_self ..)
     have hys : ∀ z ∈ ys, p z = false := fun z hz => hpre z (List.mem_cons_of_mem _ hz)
-    simp only [List.cons_append, splitAtFirst, hy, Bool.false_eq_true, if_false, ih hys]; rfl
+    simp only [List.cons_append, splitAtFirst, hy, Bool.false_eq_true, ite_false, ih hys]; rfl
 
 /-- `eraseFirstMatch` deletes exactly the `i` after a match-free prefix. -/
 theorem eraseFirstMatch_decomp (i : Linstr) (before after : List Linstr)
@@ -406,7 +406,7 @@ theorem eraseFirstMatch_decomp (i : Linstr) (before after : List Linstr)
   | cons y ys ih =>
     have hy : matchHoist i y = false := hbef y (List.mem_cons_self ..)
     have hys : ∀ z ∈ ys, matchHoist i z = false := fun z hz => hbef z (List.mem_cons_of_mem _ hz)
-    simp only [List.cons_append, eraseFirstMatch, hy, Bool.false_eq_true, if_false, ih hys]
+    simp only [List.cons_append, eraseFirstMatch, hy, Bool.false_eq_true, ite_false, ih hys]
 
 /-- `hoistOne` on the loop shape: the invariant instruction moves before the loop
     header and out of the loop body. -/
@@ -556,7 +556,7 @@ theorem lsemStep_agreeExcept {w : Nat} (d : String) (i : LinstrR) {s t s1 : Lsta
               simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg]
               by_cases hrdst : r = dst
               · simp [hrdst]
-              · simp only [hrdst, if_false]; exact hv r hrd
+              · simp only [hrdst, ite_false]; exact hv r hrd
         | imm _ => simp [lsemStep] at hs
         | arr _ _ => simp [lsemStep] at hs
         | arrIdx _ _ _ => simp [lsemStep] at hs
@@ -692,8 +692,8 @@ theorem hoistedBody_full_agree {w : Nat} (d opn : String) (srcs : List LOperand)
           · funext r
             simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg]
             by_cases hrd : r = d
-            · rw [if_pos hrd, hrd, hvv]
-            · rw [if_neg hrd]; exact hAB.2 r hrd
+            · rw [ite_eq_left hrd, hrd, hvv]
+            · rw [ite_eq_right hrd]; exact hAB.2 r hrd
           · simp only [Lstate.nextPc, Lstate.setReg]; exact hAB.1
         have hmap := LprogOptPipeline.lsemStraight_stateStore aR hss
         rw [hs'] at hmap
@@ -1182,7 +1182,7 @@ theorem licm_loop
     have hm1lt : m1 < fuel := by omega
     by_cases hcnd : evalOperand sSbe.base cond ≠ 0
     · -- back-edge taken: both loop again
-      rw [if_pos hcnd] at htailS
+      rw [ite_eq_left hcnd] at htailS
       simp only [hsSbeLfn, evalJump, hgfS, hlblSrc] at htailS
       have hcndH : evalOperand sHbe.base cond ≠ 0 := hcondSH ▸ hcnd
       have hstoreH2 : stateStore (sHbe.setcpc fn (pre.length + 1 + 1)).base = stateStore bH := by
@@ -1205,13 +1205,13 @@ theorem licm_loop
         (by simp) (by simp) (by rfl) (by rfl) hAgree2 hHolds2 htailS
       have hstepH : lsemFuel P' (fuelLoop + 1) sHbe = some tH := by
         simp only [lsemFuel, hfiSbe', evalInstrP]
-        rw [if_pos hcndH]
+        rw [ite_eq_left hcndH]
         simp only [hsHbeLfn, evalJump, hgfH, hlblHoist]
         exact hloopH
       exact ⟨((before ++ after).map Linstr.li_i).length + (fuelLoop + 1), tH,
         by rw [hfwdH]; exact hstepH, hstoreT⟩
     · -- back-edge not taken: both fall through to the tail and halt
-      rw [if_neg hcnd] at htailS
+      rw [ite_eq_right hcnd] at htailS
       have hcndH : ¬ evalOperand sHbe.base cond ≠ 0 := hcondSH ▸ hcnd
       -- source runs the tail `post` to the end of the body
       have hnextLfnS : sSbe.nextPc.lfn = fn := hsSbeLfn
@@ -1298,7 +1298,7 @@ theorem licm_loop
             = lsemFuel P' (post.map Linstr.li_i).length sHbe.nextPc := by
           rw [Nat.add_comm]
           simp only [lsemFuel, hfiSbe', evalInstrP]
-          rw [if_neg hcndH]
+          rw [ite_eq_right hcndH]
         rw [hstep]
         have hpost0 := hfwdPH 0
         rw [Nat.add_zero] at hpost0
@@ -1450,7 +1450,7 @@ theorem LICMEntryStorePreservedGoalSL (L : LLabel) (i : Linstr)
       refine ⟨rfl, ?_⟩
       intro r hr
       show bPre0.lvm r = (if r = d then v else bPre0.lvm r)
-      rw [if_neg hr]
+      rw [ite_eq_right hr]
     -- 5. run the hoisted preheader forward
     have hfwdPreH := LprogOptPipeline.runForward (mapBodies (hoistOne L i) P) s.lfn
       (({ fd with lfd_body := hoistOne L i fd.lfd_body } : Lfundef).lfd_body.map Linstr.li_i) Hfetch'

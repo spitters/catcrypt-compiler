@@ -137,9 +137,9 @@ theorem castA_le {c : ArrCell} {b : Nat} (h : ArrLe c b) (w n : Nat) (i : Fin n)
     by_cases hn : n' = n
     · subst hn
       simpa using h i
-    · rw [dif_pos rfl, dif_neg hn]
+    · rw [dite_eq_left rfl, dite_eq_right hn]
       exact (wval_zero _).trans_le (Nat.zero_le b)
-  · rw [dif_neg hw]
+  · rw [dite_eq_right hw]
     exact (wval_zero _).trans_le (Nat.zero_le b)
 
 /-- An element read by `stackGet` from an array cell cast to the shape `(w, n)` obeys the
@@ -322,7 +322,7 @@ theorem wval_add_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C 
   rw [wval_bin]
   split
   · simp only [binW, STerm.ev, extW, BitVec.setWidth_eq]
-    simp only [show ("ADD" = "MULXHI") = False by decide, if_false, applyOpnN,
+    simp only [show ("ADD" = "MULXHI") = False by decide, ite_false, applyOpnN,
       Option.getD_some, BitVec.toNat_add, BitVec.toNat_ofNat]
     unfold wval
     have := Nat.mod_le (k) (2 ^ 64)
@@ -337,7 +337,7 @@ theorem wval_sub_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C 
   have hlt := wval_lt (x.ev V A C O)
   split
   · simp only [binW, STerm.ev, extW, BitVec.setWidth_eq]
-    simp only [show ("SUB" = "MULXHI") = False by decide, if_false, applyOpnN,
+    simp only [show ("SUB" = "MULXHI") = False by decide, ite_false, applyOpnN,
       Option.getD_some]
     unfold wval at hk hlt ⊢
     have hkn : (BitVec.ofNat 64 k).toNat = k := by
@@ -355,10 +355,10 @@ theorem wval_andOr_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (
   · rename_i hw
     unfold wval
     rcases h with rfl | ⟨rfl, rfl⟩
-    · simp only [binW, show ("AND" = "MULXHI") = False by decide, if_false, applyOpnN,
+    · simp only [binW, show ("AND" = "MULXHI") = False by decide, ite_false, applyOpnN,
         Option.getD_some, BitVec.toNat_and]
       exact Nat.and_le_left
-    · simp only [binW, show ("OR" = "MULXHI") = False by decide, if_false, applyOpnN,
+    · simp only [binW, show ("OR" = "MULXHI") = False by decide, ite_false, applyOpnN,
         Option.getD_some, extW_of_eq hw, BitVec.or_self, le_refl]
   · exact Nat.zero_le _
 
@@ -509,7 +509,7 @@ theorem wval_mulImm_le (V : String → Σ w, BitVec w) (A : String → ArrCell) 
   rw [wval_bin]
   split
   · simp only [binW, STerm.ev, extW, BitVec.setWidth_eq]
-    simp only [show ("MUL" = "MULXHI") = False by decide, if_false, applyOpnN,
+    simp only [show ("MUL" = "MULXHI") = False by decide, ite_false, applyOpnN,
       Option.getD_some, BitVec.toNat_mul, BitVec.toNat_ofNat]
     exact mulImm_mod_le _ _
   · exact Nat.zero_le _
@@ -520,7 +520,7 @@ theorem wval_immMul_le (V : String → Σ w, BitVec w) (A : String → ArrCell) 
     (y : STerm) (c : Nat) (hy : (y.ev V A C O).1 = 64) :
     wval ((STerm.bin "MUL" (.immW 64 c) y).ev V A C O) ≤ c * wval (y.ev V A C O) := by
   rw [wval_bin]
-  simp only [STerm.ev, if_true, binW, show ("MUL" = "MULXHI") = False by decide, if_false,
+  simp only [STerm.ev, ite_true, binW, show ("MUL" = "MULXHI") = False by decide, ite_false,
     applyOpnN, Option.getD_some, extW_of_eq hy, BitVec.toNat_mul]
   unfold wval
   simp only [castW, dite_true, BitVec.toNat_ofNat]
@@ -686,7 +686,7 @@ theorem wval_addR_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C
     wval ((STerm.bin "ADD" x y).ev V A C O) ≤ wval (x.ev V A C O) + wval (y.ev V A C O) := by
   rw [wval_bin]
   split
-  · simp only [binW, show ("ADD" = "MULXHI") = False by decide, if_false, applyOpnN,
+  · simp only [binW, show ("ADD" = "MULXHI") = False by decide, ite_false, applyOpnN,
       Option.getD_some, BitVec.toNat_add, extW_of_eq hy]
     unfold wval
     exact Nat.mod_le _ _
@@ -827,7 +827,7 @@ theorem wval_and_le (V : String → Σ w, BitVec w) (A : String → ArrCell) (C 
   rw [wval_bin]
   split
   · rename_i hw
-    simp only [binW, show ("AND" = "MULXHI") = False by decide, if_false, applyOpnN,
+    simp only [binW, show ("AND" = "MULXHI") = False by decide, ite_false, applyOpnN,
       Option.getD_some, BitVec.toNat_and]
     exact ⟨Nat.and_le_left, Nat.and_le_right⟩
   · exact ⟨Nat.zero_le _, Nat.zero_le _⟩
@@ -1012,7 +1012,7 @@ theorem wval_bin64 (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O
     (m : String) (x y : STerm) (hx : (x.ev V A C O).1 = 64) (hy : (y.ev V A C O).1 = 64) :
     wval ((STerm.bin m x y).ev V A C O) =
       (binW 64 m (castW (x.ev V A C O) 64) (castW (y.ev V A C O) 64)).toNat := by
-  rw [wval_bin, if_pos hx, extW_of_eq hy]
+  rw [wval_bin, ite_eq_left hx, extW_of_eq hy]
 
 /-- A product `MUL x y` of two terms of width `64` whose affine forms bound the product of
     their values below `2 ^ 64` is the product of the values. -/
@@ -1027,7 +1027,7 @@ theorem affEv_mulW {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
   have bx := affHi_sound hF Lx
   have bY := affHi_sound hF Ly
   rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
-  simp only [binW, show ("MUL" = "MULXHI") = False by decide, if_false, applyOpnN,
+  simp only [binW, show ("MUL" = "MULXHI") = False by decide, ite_false, applyOpnN,
     Option.getD_some, BitVec.toNat_mul]
   change (((wval (x.ev V A C O) * wval (y.ev V A C O)) % 2 ^ 64 : Nat) : Int) = _
   have hm : (wval (x.ev V A C O) : Int) * wval (y.ev V A C O) < 2 ^ 64 :=
@@ -1073,7 +1073,7 @@ theorem affOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
       have bx := affHi_sound hF (affOf F x).1
       have bY := affHi_sound hF (affOf F y).1
       rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
-      simp only [binW, show ("ADD" = "MULXHI") = False by decide, if_false, applyOpnN,
+      simp only [binW, show ("ADD" = "MULXHI") = False by decide, ite_false, applyOpnN,
         Option.getD_some, BitVec.toNat_add]
       change (((wval (x.ev V A C O) + wval (y.ev V A C O)) % 2 ^ 64 : Nat) : Int) = _
       rw [Nat.mod_eq_of_lt (by omega), affEv_add]
@@ -1084,7 +1084,7 @@ theorem affOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
       have bl := affLo_sound hF (affAdd (affOf F x).1 (affScale (-1) (affOf F y).1))
       rw [affEv_add, affEv_scale] at bl
       rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
-      simp only [binW, show ("SUB" = "MULXHI") = False by decide, if_false, applyOpnN,
+      simp only [binW, show ("SUB" = "MULXHI") = False by decide, ite_false, applyOpnN,
         Option.getD_some]
       have hyx : wval (y.ev V A C O) ≤ wval (x.ev V A C O) := by omega
       rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def]; exact hyx)]
@@ -1655,14 +1655,14 @@ theorem inv_step (hL : SymLaws I sym dec) (hG : cfgOf (B.map Prod.fst) = some G)
     have he0 := he
     rw [I.step_goto] at he
     by_cases hx : x = (singletonProgM fn B).lfn
-    · rw [if_pos hx, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hx, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       subst hf1
       exact runIdxOk_step_at hfetch (idxOkB_goto _ _ _ _) he0
         (ih f1 tg _ t (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
           (Or.inr ⟨rfl, label_at hl⟩) hul' (succOk_sound hti hF0 hH) hr1)
-    · rw [if_neg hx] at he
+    · rw [ite_eq_right hx] at he
       cases he
   · -- branch
     subst hzi
@@ -1679,7 +1679,7 @@ theorem inv_step (hL : SymLaws I sym dec) (hG : cfgOf (B.map Prod.fst) = some G)
     rw [I.step_cond] at he
     have hstop : 0 < (G.blk k).stop := by have := F.lt; omega
     by_cases hd : I.condEval u c = true
-    · rw [if_pos hd, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hd, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       have hE' : ∀ g ∈ startF (annAt ann k) ++ edgeFacts (dec ss c) true,
@@ -1691,7 +1691,7 @@ theorem inv_step (hL : SymLaws I sym dec) (hG : cfgOf (B.map Prod.fst) = some G)
       exact runIdxOk_step_at hfetch (idxOkB_cond _ _ _ _) he0
         (ih f1 tg _ t (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
           (Or.inr ⟨rfl, label_at hl⟩) hul' (succOk_sound htk hE' hH) hr1)
-    · rw [if_neg hd] at he
+    · rw [ite_eq_right hd] at he
       simp only [Option.some.injEq] at he
       subst he
       have hE' : ∀ g ∈ startF (annAt ann k) ++ edgeFacts (dec ss c) false,

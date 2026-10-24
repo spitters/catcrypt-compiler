@@ -288,7 +288,7 @@ theorem lsemStepMem_storeMemC {sp : String} {i : LinstrRM}
     | rfl
     | (simp only [Option.map_map]; rfl)
     | (have hne := hl _ _ _ (by assumption)
-       simp only [Option.map_some, LstateM.storeMemC, hne, false_and, if_false]
+       simp only [Option.map_some, LstateM.storeMemC, hne, false_and, ite_false]
        rfl)
     | (have hne := hs _ _ _ (by assumption)
        simp only [Option.map_some]
@@ -607,7 +607,7 @@ theorem lsemFuelMemF_atPc_length (isa : Isa) {fn : String} {B : List LinstrRM}
     intro m hf hfn hpc
     refine ⟨hfn, ?_⟩
     unfold findInstrMem at hf
-    rw [if_pos (show m.prog.lfn = (singletonProgM fn B).lfn from hfn)] at hf
+    rw [ite_eq_left (show m.prog.lfn = (singletonProgM fn B).lfn from hfn)] at hf
     exact Nat.le_antisymm hpc (List.getElem?_eq_none_iff.1 hf)
   intro k
   induction k with

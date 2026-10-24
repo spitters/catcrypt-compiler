@@ -306,14 +306,14 @@ theorem mem_blockNamesFold : ∀ (l acc : List String) (n : String),
       refine mem_blockNamesFold l _ n ?_
       show n ∈ (if acc.contains m then acc else acc ++ [m]) ∨ n ∈ l
       by_cases hc : (acc.contains m) = true
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         have hm : m ∈ acc := by simpa using hc
         rcases h with h | h
         · exact Or.inl h
         · rcases List.mem_cons.mp h with rfl | h
           · exact Or.inl hm
           · exact Or.inr h
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         rcases h with h | h
         · exact Or.inl (List.mem_append_left _ h)
         · rcases List.mem_cons.mp h with rfl | h

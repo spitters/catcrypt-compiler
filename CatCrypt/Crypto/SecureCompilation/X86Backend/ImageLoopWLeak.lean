@@ -108,7 +108,7 @@ theorem evalInstrPMemF_pc_det (P : LprogM) (i : LinstrRM) {s₁ s₂ t₁ t₂ :
       rw [hd] at h₁
       split at h₂
       · rename_i hdt
-        rw [if_pos hdt] at h₁
+        rw [ite_eq_left hdt] at h₁
         obtain ⟨p₁, hp₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
         obtain ⟨p₂, hp₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
         unfold evalJumpMem at hp₁ hp₂
@@ -120,7 +120,7 @@ theorem evalInstrPMemF_pc_det (P : LprogM) (i : LinstrRM) {s₁ s₂ t₁ t₂ :
           rfl
         · cases hp₁
       · rename_i hdt
-        rw [if_neg hdt] at h₁
+        rw [ite_eq_right hdt] at h₁
         cases h₁
         cases h₂
         show s₁.prog.base.lpc + 1 = s₂.prog.base.lpc + 1
@@ -623,7 +623,7 @@ theorem cellFoldLR_gtr {R : Slots} (hR : slotsOkB R = true) (hD : cellsDistinctB
       rw [List.getElem?_eq_none_iff] at h ⊢
       rw [cellFoldLR_length is e0 is' hf]
       exact h
-    · exact if_neg fun h' => hfn (hC.lfn.symm.trans h')
+    · exact ite_eq_right fun h' => hfn (hC.lfn.symm.trans h')
   have hfetch' : ∀ {s s' : LstateMF} {i : LinstrRM},
       CellRelF R (envAt e0 is s.prog.base.lpc) s s' →
       findInstrMem (singletonProgM fn is) s.prog = some i →
@@ -636,7 +636,7 @@ theorem cellFoldLR_gtr {R : Slots} (hR : slotsOkB R = true) (hD : cellsDistinctB
       refine ⟨h, fun i' hi' => ?_⟩
       rw [findInstrMem_singleton _ _ _ (hC.lfn.trans hfn), hpc]
       exact hi'
-    · have hn : findInstrMem (singletonProgM fn is) s.prog = none := if_neg hfn
+    · have hn : findInstrMem (singletonProgM fn is) s.prog = none := ite_eq_right hfn
       rw [hn] at h
       cases h
   intro fuel
@@ -1120,7 +1120,7 @@ theorem routeBW_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     simp only [frameC, N.body q hq']
     show ImageAddrFrame.frameIn body _ q = _
     unfold ImageAddrFrame.frameIn
-    rw [if_pos hq']
+    rw [ite_eq_left hq']
   have hrel0 := imgRel_entryV (nm := nm) (fr := frameR σ sa ps body) (sa := sa)
     (body := cellBody (slotR σ nm ps) body) (fn := fn) (ren := renOf ps) (un := unren ps)
     ((E.argSrc hreg.stackIn).congr (fun x hx => by simp only [frameC, hgpN _ hx])
@@ -1294,7 +1294,7 @@ theorem loop_bytesW_ct {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   have hentA : ∀ sa : AState, Entry sa (entryA σ sa) := fun sa =>
     ⟨rfl, fun R hR => by
       have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (DecodePrinted.phys R)⟩ := by
-        simp only [entryA, hR, if_true]
+        simp only [entryA, hR, ite_true]
       unfold JasminLsemWidthN.LstateN.getW
       rw [hl]
       simp, rfl⟩

@@ -107,7 +107,7 @@ def Disjoint8 (a b : BitVec 64) : Prop := 8 ≤ (b - a).toNat ∧ 8 ≤ (a - b).
 
 theorem write64_of_not_inRange (m : AMem) (a v x : BitVec 64) (h : ¬ InRange8 a x) :
     write64 m a v x = m x := by
-  simp only [write64, if_neg h]
+  simp only [write64, ite_eq_right h]
 
 theorem toNat_add_sub_self (a : BitVec 64) (k : Nat) (hk : k < 8) :
     (a + BitVec.ofNat 64 k - a).toNat = k := by
@@ -116,7 +116,7 @@ theorem toNat_add_sub_self (a : BitVec 64) (k : Nat) (hk : k < 8) :
 
 theorem write64_add (m : AMem) (a v : BitVec 64) (k : Nat) (hk : k < 8) :
     write64 m a v (a + BitVec.ofNat 64 k) = BitVec.ofNat 8 (v.toNat / 2 ^ (8 * k)) := by
-  simp only [write64, InRange8, toNat_add_sub_self a k hk, if_pos hk]
+  simp only [write64, InRange8, toNat_add_sub_self a k hk, ite_eq_left hk]
 
 /-- Reading back the eight bytes just written returns the stored word. -/
 theorem read64_write64_same (m : AMem) (a v : BitVec 64) : read64 (write64 m a v) a = v := by
@@ -352,7 +352,7 @@ theorem TagMap.get_set (t : TagMap) (d r : String) (v : Option String) :
     (t.set d v).get r = if r = d then v else t.get r := by
   by_cases h : r = d
   · simp [TagMap.set, TagMap.get, h]
-  · simp only [TagMap.set, TagMap.get, if_neg h]
+  · simp only [TagMap.set, TagMap.get, ite_eq_right h]
     exact TagMap.get_filter t d r h
 
 /-- Clear the tags of the registers `ds`. -/
@@ -520,12 +520,12 @@ theorem tagInv_step (t : TagMap) (P : String → BitVec 64) (s : JState 64) (i :
     simp only [hm, TagMap.get_set] at hr
     rw [eq_of_movSrc hm]
     by_cases hrd : r = d
-    · rw [if_pos hrd] at hr
+    · rw [ite_eq_left hrd] at hr
       subst hrd
-      simp only [evalInstr, JState.setReg, x86_MOV, JOperand.eval, JState.get, if_pos]
+      simp only [evalInstr, JState.setReg, x86_MOV, JOperand.eval, JState.get, ite_eq_left]
       exact h _ _ hr
-    · rw [if_neg hrd] at hr
-      simp only [evalInstr, JState.setReg, if_neg hrd]
+    · rw [ite_eq_right hrd] at hr
+      simp only [evalInstr, JState.setReg, ite_eq_right hrd]
       exact h _ _ hr
   | none =>
     simp only [hm, TagMap.get_killAll] at hr
@@ -546,9 +546,9 @@ theorem absMem_write (bank : String → Option String) (P : String → BitVec 64
       if k' = k then v else absMem bank P m k'.1 k'.2 := by
   by_cases h : k' = k
   · subst h
-    simp only [absMem, if_pos]
+    simp only [absMem, ite_eq_left]
     exact read64_write64_same m _ v
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     exact read64_write64_of_disjoint _ _ _ _ (hsep k hk k' hk' (Ne.symm h))
 
 theorem mem_writeKeys_cons {i : JInstr 64} {is : List (JInstr 64)} {k : String × Int} :
@@ -612,7 +612,7 @@ theorem runBlockA_sim_core (bank : String → Option String) (P : String → Bit
         · subst h
           simp
         · have h' : ¬ (k'.1 = k.1 ∧ k'.2 = k.2) := fun ⟨h1, h2⟩ => h (Prod.ext h1 h2)
-          rw [if_neg h, if_neg h']
+          rw [ite_eq_right h, ite_eq_right h']
           exact hK k' hk'
     · intro hs
       simp only [Bool.or_eq_false_iff] at hs

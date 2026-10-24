@@ -65,7 +65,7 @@ theorem internalRound_bbParams (x : Fin 16 → ZMod bbParams.p) (c : ZMod bbPara
   congr 1
   funext i
   by_cases h : i.val = 0
-  · simp only [BabyBear.sboxLane0, h, if_true, sbox_bbParams]
+  · simp only [BabyBear.sboxLane0, h, ite_true, sbox_bbParams]
     rfl
   · simp [BabyBear.sboxLane0, h]
 

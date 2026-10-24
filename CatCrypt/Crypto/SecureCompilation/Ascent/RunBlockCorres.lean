@@ -200,7 +200,7 @@ theorem corresJ_sbb (dst src : String) :
       simp only [runBlock_cons, runBlock_nil, evalInstr, x86_SBB, JState.writeB5W,
         sbbStep, JState.get, JOperand.eval, hcf, hreg]
     · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_SBB, JState.writeB5W,
-        sbbStep, JState.get, JOperand.eval, hcf, hreg, if_neg hr]
+        sbbStep, JState.get, JOperand.eval, hcf, hreg, ite_eq_right hr]
   · -- carry-flag agreement
     -- bridge the CONCRETE carry-in `st.flags.cf` to the abstract `a.cf` (the simp
     -- below unfolds `flagB` in the goal, so `hcf` must be pre-unfolded to fire).
@@ -288,7 +288,7 @@ theorem corresJ_adc (dst src : String) :
         add_carry, JState.writeB5W, adcStep, JState.get, JOperand.eval, hcf, hreg]
     · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADC, rflags_of_aluop,
         add_carry, JState.writeB5W, adcStep, JState.get, JOperand.eval, hcf, hreg,
-        if_neg hr]
+        ite_eq_right hr]
   · -- carry-flag agreement
     have hcf' : Option.getD st.flags.cf false = a.cf := by simpa [JState.flagB] using hcf
     simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADC, rflags_of_aluop,

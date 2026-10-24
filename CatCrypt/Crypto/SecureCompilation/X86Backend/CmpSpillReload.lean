@@ -407,7 +407,7 @@ theorem fstepF_copyWire (d s mov : String) (tg : MemTag)
   · by_cases h' : stripWidthTag mov = "MOV"
     · simp [movRegArgs?, h']
     · simp only [movRegArgs?]
-      rw [if_neg h', if_pos hm]
+      rw [ite_eq_right h', ite_eq_left hm]
 
 /-- The cell a register copy writes is the cell of its source. -/
 theorem lvm_copy (a : LstateM) (d s : String) :
@@ -483,7 +483,7 @@ theorem fstepF_cmov64_congr {D D' C C' T T' F F' : String} {cd cd' : Option Nat}
   have gC : b.reg.getW C' 1 = a.reg.getW C 1 := by unfold LstateN.getW; rw [hC]
   have gF : ∀ w, b.reg.getW F' w = a.reg.getW F w := fun w => by
     unfold LstateN.getW; rw [hF]
-  simp only [lsemStepN, hs, if_true, operandName, readReg, evalOperandN] at h ⊢
+  simp only [lsemStepN, hs, ite_true, operandName, readReg, evalOperandN] at h ⊢
   rw [gC, hT]
   simp only [gF]
   generalize a.reg.lvm T = cT at h ⊢
@@ -594,19 +594,19 @@ theorem fstepF_setcc_eq (c : JasminDialect.JasminCmp) (wOp : Nat) (D A B : Strin
   have hc : cmpArgs? (.Lopn [.reg D] (withWidthTag wOp (cmpName c)) [.reg A, .reg B], .reg cd)
       = none := by
     simp only [cmpArgs?]
-    rw [if_neg (hne "CMP" (by decide +kernel) (by cases c <;> decide))]
+    rw [ite_eq_right (hne "CMP" (by decide +kernel) (by cases c <;> decide))]
   have hm : movRegArgs?
       (.Lopn [.reg D] (withWidthTag wOp (cmpName c)) [.reg A, .reg B], .reg cd) = none := rfl
   have hk : carryArgs?
       (.Lopn [.reg D] (withWidthTag wOp (cmpName c)) [.reg A, .reg B], .reg cd) = none := by
     simp only [carryArgs?,
-      if_neg (hne "ADC" (by decide +kernel) (by cases c <;> decide)),
-      if_neg (hne "SBB" (by decide +kernel) (by cases c <;> decide)),
-      if_neg (hne "ADCX" (by decide +kernel) (by cases c <;> decide)),
-      if_neg (hne "ADOX" (by decide +kernel) (by cases c <;> decide))]
+      ite_eq_right (hne "ADC" (by decide +kernel) (by cases c <;> decide)),
+      ite_eq_right (hne "SBB" (by decide +kernel) (by cases c <;> decide)),
+      ite_eq_right (hne "ADCX" (by decide +kernel) (by cases c <;> decide)),
+      ite_eq_right (hne "ADOX" (by decide +kernel) (by cases c <;> decide))]
   have hw : wideArgs?
       (.Lopn [.reg D] (withWidthTag wOp (cmpName c)) [.reg A, .reg B], .reg cd) = none := by
-    simp only [wideArgs?, if_neg (hne "MOV" (by decide +kernel) (by cases c <;> decide))]
+    simp only [wideArgs?, ite_eq_right (hne "MOV" (by decide +kernel) (by cases c <;> decide))]
   unfold fstepF
   simp only [hc, hm]
   rw [stepMemF_of_quiet (aluFlagOp?_cmp c wOp D _ _ _) hk hw, lsemStepMem_reg,

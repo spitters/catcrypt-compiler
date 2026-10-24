@@ -344,10 +344,10 @@ theorem translateIdx_of {e : APExpr} {b : MPexpr} (h : translateIdx e = some b)
   cases e with
   | Pvar g =>
       by_cases hty : g.gv.var.vtype = .sword .U64
-      · simp only [hty, if_true, Option.map_eq_some_iff] at h
+      · simp only [hty, ite_true, Option.map_eq_some_iff] at h
         obtain ⟨g', hg', rfl⟩ := h
         exact ⟨rfl, by simpa [readsE, mreads] using mreads_mlocal_of hg'⟩
-      · simp only [hty, if_false] at h
+      · simp only [hty, ite_false] at h
         exact ih b h
   | _ => exact ih b h
 
@@ -425,7 +425,7 @@ theorem WT.set {vm : Vm} (h : WT vm) {x : MVar} {v : Value}
   intro u hu
   by_cases hux : u = x
   · subst hux
-    simp only [Vm.set, decide_true, if_true] at hu ⊢
+    simp only [Vm.set, decide_true, ite_true] at hu ⊢
     simp only [truncatable, Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at ht
     rcases ht with ht | ht
     · exact ht
@@ -3121,7 +3121,7 @@ theorem evict_live {reg : JVar → Bool} {Zs : List JVar}
       · exact Or.inl ⟨h, List.mem_filter.mpr ⟨hh, by simpa using hxp⟩⟩
       · exact Or.inr hs
   · rename_i hc
-    rw [if_pos hc] at hsl
+    rw [ite_eq_left hc] at hsl
     dsimp only at hsl ⊢
     refine CertC.single ?_ ?_ ?_
     · intro x hx _
@@ -3192,7 +3192,7 @@ theorem makeRoom_live {reg : JVar → Bool} {Zs : List JVar} (hZ : ∀ s ∈ Zs,
           have := keys_le_prot hL (prot := prot) (fun q hq => by simpa using hpv q hq)
           omega
         · rename_i p hpv
-          rw [if_neg hroom] at hsl
+          rw [ite_eq_right hroom] at hsl
           simp only [hpv] at hsl
           have hpm := (pickVictim_mem hpv).1
           obtain ⟨h1, h2, h3⟩ := evict_live hZ (reg := reg) hL hpm (fun s hs =>
@@ -3282,7 +3282,7 @@ theorem helper_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : List 
       · exact h
     have hls := lookS_of_mem hL.skeys hy0
     rw [hls]
-    simp only [he0, List.isEmpty_nil, if_true]
+    simp only [he0, List.isEmpty_nil, ite_true]
     obtain ⟨h1, h2, h3, h4, h5⟩ := reloadFresh_live hZ hreg hG hL hy0 hnx hroom
       (fun ty e he y' hy' hc => by
         cases he
@@ -3359,7 +3359,7 @@ theorem loadOne_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : List
     obtain ⟨q, hq, hq1⟩ := lookR_isSome_iff.mp hl
     exact ⟨hL, CertC.nil_sub (fun _ h => h), ⟨q.2, hq1 ▸ hq⟩, fun q hq _ => hq⟩
   · rename_i hl
-    rw [if_neg hl] at hsl
+    rw [ite_eq_right hl] at hsl
     have hnx : ∀ q ∈ st.rho, q.1 ≠ x := fun q hq h => hl (lookR_isSome_iff.mpr ⟨q, hq, h⟩)
     split
     · rename_i hs
@@ -3801,7 +3801,7 @@ theorem fixOne_live {T : Prop} {O : List JVar} {reg : JVar → Bool} {Zs : List 
       simp only [beq_iff_eq] at hh; subst hh
       exact ⟨hL, CertC.nil_sub (fun _ h => h), lookR_some hl, fun q hq _ _ => hq⟩
     · rename_i hh
-      rw [if_neg hh] at hsl
+      rw [ite_eq_right hh] at hsl
       have hsl1 : ∀ s ∈ (makeRoom k 1 res res [] st.rho.length st).1.slots, s ∈ Zs := hsl
       obtain ⟨l1, c1, b1⟩ := makeRoom_live hZ (reg := reg) (need := 1) res (by omega) []
         st.rho.length st hL le_rfl hsl1
@@ -4073,15 +4073,15 @@ theorem liveRegsB_spillFn (k : Nat) (fn : JazzFn) (hs : ∀ i ∈ fn.fd.body, st
   have hguard : (fn.fd.body.all straightI && noFreshB fn) = true := by
     simp only [Bool.and_eq_true, List.all_eq_true]; exact ⟨hs, hfr⟩
   have e1 : (spillFn k fn).fd.params = fn.fd.params := by
-    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [ite_eq_left hguard]
   have e2 : (spillFn k fn).paramTys = fn.paramTys := by
-    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [ite_eq_left hguard]
   have e3 : (spillFn k fn).decls = fn.decls ++ declsOf (run k fn).1 := by
-    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [ite_eq_left hguard]
   have e4 : (spillFn k fn).fd.body = (run k fn).2 := by
-    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [if_pos hguard]
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef; rw [ite_eq_left hguard]
   have e5 : resOf (spillFn k fn) = resOf fn := by
-    rw [spillFn_eq_spillFnRef]; unfold spillFnRef resOf; rw [if_pos hguard]
+    rw [spillFn_eq_spillFnRef]; unfold spillFnRef resOf; rw [ite_eq_left hguard]
   obtain ⟨hG, hE⟩ := run_res (T := False) k fn hs (fun _ _ h => h.elim)
   have hnf : ∀ n ∈ fn.env.map Prod.fst ++ (cmdVars fn.fd.body ++ resOf fn).map (·.vname),
       isFreshName n = false := by

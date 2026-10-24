@@ -582,11 +582,11 @@ theorem csubK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List (
   have hc2 := (lk1 c W₂).isLt
   by_cases hc : lk1 c W₂ = 1#1
   · have h1 : (lk1 c W₂).toNat = 1 := by rw [hc]; rfl
-    rw [if_pos hc]
+    rw [ite_eq_left hc]
     rw [h1] at hTv
     split_ifs <;> omega
   · have h0 : (lk1 c W₂).toNat ≠ 1 := fun h => hc (BitVec.eq_of_toNat_eq (by simpa using h))
-    rw [if_neg hc]
+    rw [ite_eq_right hc]
     split_ifs <;> omega
 
 /-- One accumulation step of the schoolbook product: the row `xs · y` is added to
@@ -805,7 +805,7 @@ theorem reduceK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (ps : List
       + (2 ^ 255 - 19) * (2 * (nv W (ps.drop 4) + nv W₄ (S.drop 4) + (lk1 cu W₆).toNat)) := by
     by_cases hc : lk1 cu W₆ = 1#1
     · have h1 : (lk1 cu W₆).toNat = 1 := by rw [hc]; rfl
-      rw [if_pos hc] at hVv
+      rw [ite_eq_left hc] at hVv
       rw [h1] at hUv
       have hU0 : nv W₆ U < 2 ^ 12 := by omega
       have hcv0 : (lk1 cv W₈).toNat = 0 := by omega
@@ -814,7 +814,7 @@ theorem reduceK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (ps : List
     · have h0 : (lk1 cu W₆).toNat = 0 := by
         have : (lk1 cu W₆).toNat ≠ 1 := fun h => hc (BitVec.eq_of_toNat_eq (by simpa using h))
         omega
-      rw [if_neg hc] at hVv
+      rw [ite_eq_right hc] at hVv
       rw [h0] at hUv
       have hcv0 : (lk1 cv W₈).toNat = 0 := by omega
       rw [hcv0] at hVv
@@ -896,10 +896,10 @@ theorem subK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : List
   have he2 := (lk1 e W₆).isLt
   by_cases hc : lk1 c W₄ = 1#1
   · have h1 : (lk1 c W₄).toNat = 1 := by rw [hc]; rfl
-    rw [if_pos hc]
+    rw [ite_eq_left hc]
     omega
   · have h0 : (lk1 c W₄).toNat ≠ 1 := fun h => hc (BitVec.eq_of_toNat_eq (by simpa using h))
-    rw [if_neg hc]
+    rw [ite_eq_right hc]
     omega
 
 /-- Field multiplication on four limbs: the schoolbook product, then `reduceK`. -/

@@ -323,11 +323,11 @@ theorem linearScanGo_allLive_residentPairs (stride : Int) :
                 | none => exact Or.inl rfl
                 | some b =>
                     by_cases hx : x.snd.snd > b.snd.snd
-                    · exact Or.inl (if_pos hx)
-                    · exact Or.inr (if_neg hx)) active none a hfa with hm | hn
+                    · exact Or.inl (ite_eq_left hx)
+                    · exact Or.inr (ite_eq_right hx)) active none a hfa with hm | hn
               · exact h a hm
               · cases hn
-            rw [if_neg (by omega), ← allLiveRanges,
+            rw [ite_eq_right (by omega), ← allLiveRanges,
               linearScanGo_allLive_residentPairs stride ns _ [] _ _ h]
             simp [residentPairs]
           · rw [← allLiveRanges, linearScanGo_allLive_residentPairs stride ns _ [] _ _ h]

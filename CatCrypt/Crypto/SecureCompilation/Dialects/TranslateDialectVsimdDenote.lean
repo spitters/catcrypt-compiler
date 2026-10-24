@@ -114,7 +114,7 @@ theorem lookupReg128_bind {Γ : Ctx} (vm : VarMap Γ) (name s : String) :
       = if s = name then some .here else (lookupReg128 vm s).map .there := by
   by_cases hs : s = name
   · subst hs; simp [lookupReg128, VarMap.bind]
-  · simp only [lookupReg128, VarMap.bind, if_neg hs]
+  · simp only [lookupReg128, VarMap.bind, ite_eq_right hs]
     cases hl : vm.lookup s with
     | none => rfl
     | some p =>
@@ -151,9 +151,9 @@ theorem vsimd_step {Γ : Ctx} (vm : VarMap Γ)
     rw [lookupReg128_bind]
     by_cases hsd : s = dst
     · subst hsd
-      simp only [if_pos rfl, Option.map_some, SEnv.upd, if_pos rfl]
+      simp only [ite_eq_left rfl, Option.map_some, SEnv.upd, ite_eq_left rfl]
       rfl
-    · simp only [if_neg hsd, SEnv.upd, if_neg hsd, Option.map_map]
+    · simp only [ite_eq_right hsd, SEnv.upd, ite_eq_right hsd, Option.map_map]
       rw [← hc s]
       apply Option.map_congr
       intro v _

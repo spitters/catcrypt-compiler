@@ -243,8 +243,8 @@ theorem KEnv.Holds.setReg_kill {s : JState 64} {env : KEnv} (h : KEnv.Holds s en
   rw [JState.get_setReg']
   by_cases hdr : d = r
   · simp [hdr] at hr
-  · rw [if_neg hdr] at hr
-    rw [if_neg (Ne.symm hdr)]
+  · rw [ite_eq_right hdr] at hr
+    rw [ite_eq_right (Ne.symm hdr)]
     exact h r v hr
 
 theorem KEnv.Holds.setReg_cons {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
@@ -253,10 +253,10 @@ theorem KEnv.Holds.setReg_cons {s : JState 64} {env : KEnv} (h : KEnv.Holds s en
   simp only [KEnv.find] at hr
   by_cases hdr : d = r
   · subst hdr
-    simp only [if_true, Option.some.injEq] at hr
+    simp only [ite_true, Option.some.injEq] at hr
     subst hr
     simp [JState.setReg]
-  · rw [if_neg hdr] at hr
+  · rw [ite_eq_right hdr] at hr
     exact h.setReg_kill d w r v hr
 
 /-- Forget every register of `ds`. -/
@@ -282,9 +282,9 @@ theorem KEnv.find_killAll {env : KEnv} {ds : List String} {r : String} {v : BitV
         simp only [KEnv.find] at h ⊢
         by_cases har : a = r
         · subst har
-          simp only [if_true] at h ⊢
+          simp only [ite_true] at h ⊢
           exact ⟨h, ha⟩
-        · simp only [har, if_false] at h ⊢
+        · simp only [har, ite_false] at h ⊢
           exact ih h
 
 /-- Forgetting the registers an instruction writes keeps the environment true across
@@ -319,7 +319,7 @@ theorem KEnv.Holds.killFrame {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
   cases b with
   | false => exact h r v hr
   | true =>
-      simp only [KEnv.killFrame, if_true] at hr
+      simp only [KEnv.killFrame, ite_true] at hr
       rw [KEnv.find_filter_name (fun n => !isSpillOrQsave n)] at hr
       split at hr
       · exact h r v hr
@@ -675,13 +675,13 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
         have h' : gatherList p is = some ls := by
           simpa [gatherList, List.filter_cons, hr] using h
         obtain ⟨ls', h1, h2⟩ := ih (nextEnv p env i) s ls (by
-          simp only [nextEnv, hr, if_true]; exact KEnv.Holds.nil s) h'
+          simp only [nextEnv, hr, ite_true]; exact KEnv.Holds.nil s) h'
         refine ⟨ls', ?_, h2⟩
         simpa [gatherList, foldCore, List.filter_cons, hr'] using h1
       · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = false := by
           rw [isLret_foldInstr]; simpa using hr
         have hr0 : isLret i = false := by simpa using hr
-        simp only [gatherList, List.filter_cons, hr0, Bool.not_false, if_true,
+        simp only [gatherList, List.filter_cons, hr0, Bool.not_false, ite_true,
           List.mapM_cons] at h
         cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
         | none => simp [hi] at h
@@ -702,7 +702,7 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
                 refine ⟨js' :: rest', ?_, ?_⟩
                 · simp only [gatherList] at h1
                   simp only [gatherList, foldCore, List.filter_cons, hr', Bool.not_false,
-                    if_true, List.mapM_cons, hj', h1, Option.bind_eq_bind,
+                    ite_true, List.mapM_cons, hj', h1, Option.bind_eq_bind,
                     Option.bind_some, Option.pure_def]
                 · simp only [List.flatten_cons, runBlock_append', hrun s hs, h2]
 
@@ -765,7 +765,7 @@ theorem constIndexFoldBody_lcmdDirect {body : Lcmd}
     (hc : covers (bodyParams body) [] body = true)
     (hg : bodyParams (foldCore (bodyParams body) [] [] body) = bodyParams body) :
     lcmdDirect (constIndexFoldBody body) = true := by
-  simp only [constIndexFoldBody, runtimeBases_of_covers _ body [] [] hc, hg, if_true]
+  simp only [constIndexFoldBody, runtimeBases_of_covers _ body [] [] hc, hg, ite_true]
   exact foldCore_lcmdDirect _ body [] hc
 
 /-- **Constant time.** Under the hypotheses of `constIndexFoldBody_lcmdDirect`,
@@ -842,7 +842,7 @@ theorem lowerMemOp_spellMemInstr_load (frame spillW qsaveB : Nat) {d B : String}
         qsaveB
       = lowerPrinted frame spillW qsaveB (.Lopn [.reg d] "LOAD" [.arr B off]) := by
   rw [lowerPrinted_load]
-  simp only [spellMemInstr, hd, if_true]
+  simp only [spellMemInstr, hd, ite_true]
   exact GatherMemOps.lowerMemOp_load _ _ _ _ _ _ _ (memNameParts_memName hB off) hB hd
 
 /-- The spelled store lowers, through the array-ABI memory arm, to the block the
@@ -853,7 +853,7 @@ theorem lowerMemOp_spellMemInstr_store (frame spillW qsaveB : Nat) {d B vn : Str
         (spellMemInstr (.Lopn [.reg d] "STORE" [.arr B off, .reg vn])) qsaveB
       = lowerPrinted frame spillW qsaveB (.Lopn [.reg d] "STORE" [.arr B off, .reg vn]) := by
   rw [lowerPrinted_store]
-  simp only [spellMemInstr, hv, if_true]
+  simp only [spellMemInstr, hv, ite_true]
   exact GatherMemOps.lowerMemOp_store _ _ _ _ _ _ _ (memNameParts_memName hB off) hB hv
 
 /-! ## 8. Displacement addressing at a literal index -/
@@ -1067,8 +1067,8 @@ theorem deadAfter_run (p : Nat × Nat × Nat) (r : String) :
       intro ls s t hd hg h
       by_cases hr : isLret j = true
       · simp [deadAfter, hr] at hd
-      · rw [gatherList_cons, if_neg hr] at hg
-        simp only [deadAfter, hr, Bool.false_eq_true, if_false] at hd
+      · rw [gatherList_cons, ite_eq_right hr] at hg
+        simp only [deadAfter, hr, Bool.false_eq_true, ite_false] at hd
         cases hj : lowerPrinted p.1 p.2.1 p.2.2 j.li_i with
         | none => simp [hj] at hd
         | some bs =>
@@ -1162,9 +1162,9 @@ theorem dropDeadCore_gather (p : Nat × Nat × Nat) :
           ∧ ∀ s, runBlock s ls'.flatten = runBlock s ls.flatten := by
         rw [gatherList_cons] at h ⊢
         by_cases hr : isLret i = true
-        · rw [if_pos hr] at h ⊢
+        · rw [ite_eq_left hr] at h ⊢
           exact ih ls h
-        · rw [if_neg hr] at h ⊢
+        · rw [ite_eq_right hr] at h ⊢
           cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
           | none => simp [hi] at h
           | some js =>
@@ -1181,13 +1181,13 @@ theorem dropDeadCore_gather (p : Nat × Nat × Nat) :
       | none => simpa [dropDeadCore, hd] using keep
       | some r =>
           by_cases hdead : deadAfter p r is = true
-          · simp only [dropDeadCore, hd, hdead, if_true]
+          · simp only [dropDeadCore, hd, hdead, ite_true]
             obtain ⟨k, hk⟩ := deadImmReg?_spec hd
             rw [gatherList_cons] at h
             by_cases hr : isLret i = true
-            · rw [if_pos hr] at h
+            · rw [ite_eq_left hr] at h
               exact ih ls h
-            · rw [if_neg hr, hk] at h
+            · rw [ite_eq_right hr, hk] at h
               cases hrest : gatherList p is with
               | none => simp [hrest] at h
               | some rest =>

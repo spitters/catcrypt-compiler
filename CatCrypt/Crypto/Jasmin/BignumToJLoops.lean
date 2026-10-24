@@ -190,13 +190,13 @@ theorem bignumExecFuel_append_same (reg : BignumRegistry) :
             · next cf hcf =>
               split at h
               · next hl =>
-                simp only [hl, if_true]
+                simp only [hl, ite_true]
                 exact ih b2 _ s' h
               · next hl =>
                 split at h
                 · cases h
                 · next s2 hs2 =>
-                  rw [if_neg hl]
+                  rw [ite_eq_right hl]
                   exact ih b2 s2 s' h
 
 /-- **One iteration of a `Cwhile`.** A run of `Cwhile cb c ca` at fuel `f + 2` runs `cb` at
@@ -225,10 +225,10 @@ theorem while_inv {reg : BignumRegistry} {fuel : Nat} {cb ca : List InstrR} {c :
       simp only [Option.some.injEq] at hif
       subst hif
       by_cases hz : (v != 0) = true
-      · rw [if_pos hz] at hsb
+      · rw [ite_eq_left hz] at hsb
         obtain ⟨m2, h1, h2⟩ := bignumExecFuel_append_same reg f ca _ m sb hsb
         exact Or.inr ⟨hz, m2, h1, h2⟩
-      · rw [if_neg hz] at hsb
+      · rw [ite_eq_right hz] at hsb
         exact Or.inl ⟨by simpa using hz, bignumExecFuel_nil hsb⟩
 
 /-- A `Cwhile` exits in a state where its guard evaluates to `0`. -/
@@ -316,17 +316,17 @@ theorem loopStep_mono {pre pre' post post' : AState → Option AState} {g : SGua
   split at h
   · cases h
   · next hb =>
-    rw [if_neg hb]
+    rw [ite_eq_right hb]
     obtain ⟨a1, h1, h2⟩ := Option.bind_eq_some_iff.1 h
     rw [hp _ _ h1, Option.bind_some]
     split at h2
     · next hg =>
-      rw [if_pos hg]
+      rw [ite_eq_left hg]
       obtain ⟨a2, h3, rfl⟩ := Option.map_eq_some_iff.1 h2
       rw [hq _ _ h3]
       rfl
     · next hg =>
-      rw [if_neg hg]
+      rw [ite_eq_right hg]
       exact h2
 
 /-- `loopRun` is monotone in the step function and in the fuel. -/
@@ -348,7 +348,7 @@ theorem loopRun_mono {step step' : AState × Bool → Option (AState × Bool)}
     · rw [loopRun_exited _ _ _ hc] at h ⊢
       exact h
     · obtain ⟨k, rfl⟩ : ∃ k, n' = k + 1 := ⟨n' - 1, by omega⟩
-      simp only [loopRun, hc, Bool.false_eq_true, if_false, Option.bind_eq_some_iff] at h ⊢
+      simp only [loopRun, hc, Bool.false_eq_true, ite_false, Option.bind_eq_some_iff] at h ⊢
       obtain ⟨c1, h1, h2⟩ := h
       exact ⟨c1, hs _ _ h1, ih k c1 r (by omega) h2⟩
 
@@ -367,9 +367,9 @@ theorem runS_mono : ∀ (P : SProg) (n n' : Nat) (sa r : AState), n ≤ n' →
     intro n n' sa r hle h
     simp only [runS] at h ⊢
     by_cases hg : g.holds sa = true
-    · rw [if_pos hg] at h ⊢
+    · rw [ite_eq_left hg] at h ⊢
       exact iht _ _ _ _ hle h
-    · rw [if_neg hg] at h ⊢
+    · rw [ite_eq_right hg] at h ⊢
       exact ihe _ _ _ _ hle h
   | loop pre g post ihpre ihpost =>
     intro n n' sa r hle h
@@ -624,12 +624,12 @@ theorem bignumExecFuel_runS_sim (reg : BignumRegistry) :
             subst h1
             obtain ⟨hc1, hgv⟩ := guardJ_sim hg hc hv
             by_cases hz : (v != 0) = true
-            · rw [if_pos hz] at hsb
+            · rw [ite_eq_left hz] at hsb
               obtain ⟨sa1, hr, hc2⟩ := ihF f (by omega) ct t s sb _ ht hc1 hsb
               refine ⟨sa1, ?_, hc2⟩
-              simp only [runS, hgv, hz, if_true]
+              simp only [runS, hgv, hz, ite_true]
               exact runS_mono t f (f + 1) _ _ (by omega) hr
-            · rw [if_neg hz] at hsb
+            · rw [ite_eq_right hz] at hsb
               obtain ⟨sa1, hr, hc2⟩ := ihF f (by omega) ce e s sb _ he' hc1 hsb
               refine ⟨sa1, ?_, hc2⟩
               simp only [runS, hgv, hz]

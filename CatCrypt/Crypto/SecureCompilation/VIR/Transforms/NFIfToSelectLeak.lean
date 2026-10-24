@@ -431,7 +431,7 @@ theorem lowerSel_ctRel (M : LeakModel d)
       rw [← hc] at ha₂
       have ha : a₁.2 = a₂.2 := by
         cases hcb : HasBoolBit.toBool (d := d) (cond.lookup V₁) <;>
-          simp only [hcb, if_true, if_false, Bool.false_eq_true] at ha₁ ha₂
+          simp only [hcb, ite_true, ite_false, Bool.false_eq_true] at ha₁ ha₂
         · exact NFProg.leakRun_prefix M fuel els _ _ a₁ a₂ q₁.2 q₂.2 ha₁ ha₂ he'
         · exact NFProg.leakRun_prefix M fuel thn _ _ a₁ a₂ q₁.2 q₂.2 ha₁ ha₂ he'
       rw [ha] at he'
@@ -461,7 +461,7 @@ theorem lowerSel_ctRel (M : LeakModel d)
         rw [g₂ cond, ← hc] at hv₂
         have e : Expr.lookupArgs res W₁' = a₁.1 ∧ Expr.lookupArgs res W₂' = a₂.1 := by
           cases hcb : HasBoolBit.toBool (d := d) (cond.lookup V₁) <;>
-            simp only [hcb, if_true, if_false, Bool.false_eq_true] at ha₁ ha₂ hv₁ hv₂
+            simp only [hcb, ite_true, ite_false, Bool.false_eq_true] at ha₁ ha₂ hv₁ hv₂
           · exact ⟨hv₁.trans (lowerSel_fst_eq M fuel g₁ ha₁ hy₁),
               hv₂.trans (lowerSel_fst_eq M fuel g₂ ha₂ hy₂)⟩
           · exact ⟨hv₁.trans (lowerSel_fst_eq M fuel g₁ ha₁ hx₁),
@@ -488,7 +488,7 @@ theorem lowerSel_ctRel (M : LeakModel d)
         rw [← hc] at hb₂
         have harm : b₁.2 = b₂.2 ∧ b₁.1 = a₁.1 ∧ b₂.1 = a₂.1 := by
           cases hcb : HasBoolBit.toBool (d := d) (cond.lookup V₁) <;>
-            simp only [hcb, if_true, if_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
+            simp only [hcb, ite_true, ite_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
           · exact ⟨ihe _ _ _ _ _ g₁ g₂ a₁ a₂ b₁ b₂ ha₁ ha₂ hb₁ hb₂ ha,
               lowerSel_fst_eq M fuel g₁ ha₁ hb₁, lowerSel_fst_eq M fuel g₂ ha₂ hb₂⟩
           · exact ⟨iht _ _ _ _ _ g₁ g₂ a₁ a₂ b₁ b₂ ha₁ ha₂ hb₁ hb₂ ha,

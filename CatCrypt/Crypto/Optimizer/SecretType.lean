@@ -202,12 +202,12 @@ theorem peepBin_exprTaint {Γ : Ctxt jasminDialect} {w : Nat}
     exprTaint T e' = exprTaint T (binE bop a b) := by
   unfold peepBin at he
   by_cases hv : varEq a b
-  · simp only [hv, if_true] at he
+  · simp only [hv, ite_true] at he
     cases bop <;>
       first
         | (injection he with he; subst he; rfl)
         | simp at he
-  · simp only [hv, Bool.false_eq_true, if_false] at he
+  · simp only [hv, Bool.false_eq_true, ite_false] at he
     exact absurd he (by simp)
 
 /-- `peepExpr` preserves the output taint of an expression: it either leaves the

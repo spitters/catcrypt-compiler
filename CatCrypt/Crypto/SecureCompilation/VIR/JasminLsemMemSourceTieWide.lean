@@ -90,7 +90,7 @@ theorem lsemStepMem_movImm (dst : String) (k : Nat) (st : LstateM) :
     rw [lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl,
       lsemStepSh_of_not_sar _ _ (by simp [sarStruct?])]
-    simp only [lsemStepN, stripWidthTag_MOV64, if_true]
+    simp only [lsemStepN, stripWidthTag_MOV64, ite_true]
     rw [widthFromTag_MOV64]
   rw [lsemStepMem_reg, hstep, Option.map_some]
   rfl

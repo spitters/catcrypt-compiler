@@ -118,7 +118,7 @@ theorem arrStoreN_eq {N : ℕ} {arrN idxN srcN : String} {a : Fin N → BitVec 6
   have key : ∀ (t : CryptoTy) (h : t = .memref N) (x : ⟦CryptoTy.memref N⟧),
       (⟨t, h.symm ▸ x⟩ : (t : CryptoTy) × ⟦t⟧) = ⟨.memref N, x⟩ := by
     intro t h x; subst h; rfl
-  simp only [semScalar, ha, hi, hv, dif_pos (encodeTy_arr N)]
+  simp only [semScalar, ha, hi, hv, dite_eq_left (encodeTy_arr N)]
   congr 1
   funext s
   simp only [SEnvScalar.upd]
@@ -215,12 +215,12 @@ theorem stores_run (N : ℕ) (hN : N < 2 ^ 64) (P : ℕ → BitVec 64 → Prop) 
       exact r2
     · intro i hi
       rcases List.mem_cons.mp hi with rfl | hi
-      · rw [f2 i hc hcl, memGetDyn_memSetDyn o hc hc, if_pos rfl]; exact pw
+      · rw [f2 i hc hcl, memGetDyn_memSetDyn o hc hc, ite_eq_left rfl]; exact pw
       · exact p2 i hi
     · intro j hj hjl
       have hjc : j ≠ c := fun h => hjl (h ▸ List.mem_cons_self ..)
       rw [f2 j hj (fun h => hjl (List.mem_cons_of_mem _ h)), memGetDyn_memSetDyn o hc hj,
-        if_neg hjc]
+        ite_eq_right hjc]
 
 /-- The butterflies of `l` move the field values by the left fold of `bupd` and change no
 source name outside the scratch names and the value slots. -/
@@ -351,17 +351,17 @@ theorem kArrTys_vmApprox (N T : ℕ) : VmApprox (kArrTys N T) (kArrVM N T) := by
   simp only [kArrTys] at hx
   by_cases h1 : x = "xs"
   · subst h1
-    simp only [if_true, Option.some.injEq] at hx
+    simp only [ite_true, Option.some.injEq] at hx
     subst hx
     exact ⟨.here, by simp [kArrVM, VarMap.bind]⟩
   · by_cases h2 : x = "ws"
     · subst h2
-      simp only [if_neg h1, if_true, Option.some.injEq] at hx
+      simp only [ite_eq_right h1, ite_true, Option.some.injEq] at hx
       subst hx
       exact ⟨.there .here, by simp [kArrVM, VarMap.bind]⟩
     · by_cases h3 : x = "ys"
       · subst h3
-        simp only [if_neg h1, if_neg h2, if_true, Option.some.injEq] at hx
+        simp only [ite_eq_right h1, ite_eq_right h2, ite_true, Option.some.injEq] at hx
         subst hx
         exact ⟨.there (.there .here), by simp [kArrVM, VarMap.bind, VarMap.empty]⟩
       · simp [h1, h2, h3] at hx

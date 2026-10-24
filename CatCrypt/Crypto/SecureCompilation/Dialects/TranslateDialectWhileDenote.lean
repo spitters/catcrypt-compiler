@@ -242,10 +242,10 @@ theorem semScalarWhile_eq_iter (semBody : SEnvScalar → Option SEnvScalar)
       | some b =>
           simp only [hb] at h ⊢
           by_cases hg : guard b
-          · simp only [if_pos hg] at h ⊢
+          · simp only [ite_eq_left hg] at h ⊢
             rw [semWhileIter_succ_front, hb]
             exact ih b env' h
-          · simp only [if_neg hg] at h ⊢
+          · simp only [ite_eq_right hg] at h ⊢
             obtain rfl := Option.some.inj h
             rw [semWhileIter_succ_front, hb]
             simp only [semWhileIter]

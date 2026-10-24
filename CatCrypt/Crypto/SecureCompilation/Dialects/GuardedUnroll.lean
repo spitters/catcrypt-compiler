@@ -421,7 +421,7 @@ theorem lookupD_insertL : ∀ (l : List (String × Nat)) (x y : String) (v : Nat
       obtain ⟨a, w⟩ := p
       by_cases hxa : x = a
       · subst hxa; by_cases hy : y = x <;> simp [insertL, lookupD, hy]
-      · simp only [insertL, if_neg hxa, lookupD, ih]
+      · simp only [insertL, ite_eq_right hxa, lookupD, ih]
         by_cases hya : y = a
         · subst hya; simp [Ne.symm hxa]
         · simp [hya]
@@ -450,7 +450,7 @@ theorem whileK_storeState (tw : String → Option (Σ t : TowerType, RustVal t))
       have hs : (storeState tw l).rsScalar g = lookupD l g := rfl
       by_cases h0 : lookupD l g = 0
       · simp [whileK, whileKL, hs, h0]
-      · simp only [whileK, whileKL, hs, h0, if_false, hb]
+      · simp only [whileK, whileKL, hs, h0, ite_false, hb]
         cases bodyL l with
         | none => rfl
         | some l1 => simp only [Option.map_some, Option.bind_some, ih]

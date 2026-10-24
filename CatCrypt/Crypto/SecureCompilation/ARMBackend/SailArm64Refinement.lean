@@ -228,7 +228,7 @@ theorem addWithCarryResult_add (x y : BitVec 64) :
 theorem addWithCarryResult_sub (x y : BitVec 64) :
     addWithCarryResult x (~~~ y) true = x - y := by
   apply BitVec.eq_of_toNat_eq
-  simp only [addWithCarryResult, uintBit, if_true, BitVec.toNat_ofNat,
+  simp only [addWithCarryResult, uintBit, ite_true, BitVec.toNat_ofNat,
     BitVec.toNat_not, BitVec.toNat_sub]
   omega
 
@@ -250,7 +250,7 @@ theorem addsub_sub (s : RegFile) (m n d : BitVec 5) (hd : d.toNat ≠ 31) :
       = (rget s n) - (rget s m) := by
   by_cases hn : n.toNat = 31 <;> by_cases hm : m.toNat = 31 <;>
     simp only [runXd, integer_arithmetic_addsub_shiftedreg, read_X, write_X, rget, upd,
-      shiftRegLSL, hn, hm, hd, if_true, if_false, BitVec.shiftLeft_zero, addWithCarryResult_sub,
+      shiftRegLSL, hn, hm, hd, ite_true, ite_false, BitVec.shiftLeft_zero, addWithCarryResult_sub,
       bind, StateT.bind, StateT.run, pure, StateT.pure, get, getThe, MonadStateOf.get,
       modify, modifyGet, MonadStateOf.modifyGet, StateT.get, StateT.modifyGet]
 

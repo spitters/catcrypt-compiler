@@ -421,9 +421,9 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
         case memrefW => exact absurd hT (by simp)
         iterate 5 (exact absurd hT (by simp))
         by_cases h : idx < n
-        · rw [if_pos h] at hT; simp only [Option.some.injEq] at hT; subst hT
+        · rw [ite_eq_left h] at hT; simp only [Option.some.injEq] at hT; subst hT
           exact noAlias_bind (noAlias_weaken hNA) loc.locVar
-        · rw [if_neg h] at hT; exact absurd hT (by simp)
+        · rw [ite_eq_right h] at hT; exact absurd hT (by simp)
       | some pair =>
         rw [hlk] at hT
         obtain ⟨ty, arr⟩ := pair
@@ -437,9 +437,9 @@ theorem translateDialectFull_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c : 
         | memref n =>
           simp only at hT
           by_cases h : idx < n
-          · rw [dif_pos h] at hT; simp only [Option.some.injEq] at hT; subst hT
+          · rw [dite_eq_left h] at hT; simp only [Option.some.injEq] at hT; subst hT
             exact noAlias_bind (noAlias_weaken hNA) loc.locVar
-          · rw [dif_neg h] at hT; exact absurd hT (by simp)
+          · rw [dite_eq_right h] at hT; exact absurd hT (by simp)
   | rCallSwap fname dest1 dest2 args =>
       simp only [translateDialectFull] at hT
       cases hMA1 : resolveLocatedArgs vm args with
@@ -525,15 +525,15 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
                 simp only at hT
                 by_cases h₁ : o₁.Γ' = Γ
                 · by_cases h₂ : o₂.Γ' = Γ
-                  · rw [dif_pos h₁, dif_pos h₂] at hT
+                  · rw [dite_eq_left h₁, dite_eq_left h₂] at hT
                     simp only [Option.some.injEq] at hT; subst hT
                     exact ihthen vm hdt hNA
-                  · rw [dif_pos h₁, dif_neg h₂] at hT
+                  · rw [dite_eq_left h₁, dite_eq_right h₂] at hT
                     exact absurd hT (by simp)
                 · by_cases h₂ : o₂.Γ' = Γ
-                  · rw [dif_neg h₁, dif_pos h₂] at hT
+                  · rw [dite_eq_right h₁, dite_eq_left h₂] at hT
                     exact absurd hT (by simp)
-                  · rw [dif_neg h₁, dif_neg h₂] at hT
+                  · rw [dite_eq_right h₁, dite_eq_right h₂] at hT
                     cases hss : asSingleScalarSet thenBr with
                     | none =>
                       rw [hss] at hT; exact absurd hT (by simp)
@@ -544,12 +544,12 @@ theorem translateDialectControl_preserves_noAlias {Γ : Ctx} (vm : VarMap Γ) {c
                       | some elseSet =>
                         rw [hss, hse] at hT; simp only at hT
                         by_cases hN : thenSet.name = elseSet.name
-                        · rw [if_pos hN] at hT
+                        · rw [ite_eq_left hN] at hT
                           simp only [Option.some.injEq] at hT; subst hT
                           exact noAlias_bind (noAlias_weaken (noAlias_weaken
                             (noAlias_weaken (noAlias_weaken (noAlias_weaken hNA)))))
                             thenSet.name
-                        · rw [if_neg hN] at hT
+                        · rw [ite_eq_right hN] at hT
                           exact absurd hT (by simp)
   | @rLetZero name tt body _hbody ih =>
       rw [translateDialectControl_rLetZero] at hT
@@ -1082,14 +1082,14 @@ theorem rustExecSimulatesDialect
         case memrefW => exact absurd hTrans (by simp)
         iterate 5 (exact absurd hTrans (by simp))
         by_cases h : idx < n
-        · rw [if_pos h] at hTrans
+        · rw [ite_eq_left h] at hTrans
           simp only [Option.some.injEq] at hTrans
           subst hTrans
           simp only [locatedUpdate]
           exact ⟨_, interp_bind_memref_setTower_general (x := loc.locVar)
             (rustStateInterp_weaken_word hInv vbv) loc.locDst hEnc
             (leafSpec.limbStore loc oldDestV idx vbv)⟩
-        · rw [if_neg h] at hTrans
+        · rw [ite_eq_right h] at hTrans
           exact absurd hTrans (by simp)
       | some pair =>
         rw [hLook] at hTrans
@@ -1104,7 +1104,7 @@ theorem rustExecSimulatesDialect
         | memref n =>
           simp only at hTrans
           by_cases h : idx < n
-          · rw [dif_pos h] at hTrans
+          · rw [dite_eq_left h] at hTrans
             simp only [Option.some.injEq] at hTrans
             subst hTrans
             have hOK := hInv loc.locVar (.memref n) arr hLook
@@ -1135,7 +1135,7 @@ theorem rustExecSimulatesDialect
               simp only [VarMap.bind] at hLook
               by_cases hN2 : nm = loc.locVar
               · subst hN2
-                rw [if_pos rfl] at hLook
+                rw [ite_eq_left rfl] at hLook
                 simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
                 obtain ⟨hs, hcv⟩ := hLook
                 subst hs
@@ -1145,7 +1145,7 @@ theorem rustExecSimulatesDialect
                       ⟨loc.locDst, leafSpec.limbStore loc oldDestV idx vbv⟩]
                 intro hAbs
                 exact absurd hAbs hEnc
-              · rw [if_neg hN2] at hLook
+              · rw [ite_eq_right hN2] at hLook
                 cases hOld : (vm.weaken : VarMap (.sword 64 :: Γ)).lookup nm with
                 | none => rw [hOld] at hLook; exact absurd hLook (by simp)
                 | some pair5 =>
@@ -1159,7 +1159,7 @@ theorem rustExecSimulatesDialect
                           (fun _ => 0 : Fin n → BitVec 64)
                           ⟨loc.locDst, leafSpec.limbStore loc oldDestV idx vbv⟩
                           hN2 (hInvW nm t' cv' hOld)
-          · rw [dif_neg h] at hTrans
+          · rw [dite_eq_right h] at hTrans
             exact absurd hTrans (by simp)
   | callN f dests args rs0 argList _hArgList _hArgs _hDests =>
       simp only [translateDialectControl, translateDialectFull] at hTrans

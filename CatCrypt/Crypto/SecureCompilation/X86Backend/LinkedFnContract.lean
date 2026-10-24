@@ -128,7 +128,7 @@ theorem entryOf_mem_eq (ret : Nat) (s : AState) :
     (entryOf ret s).mem = write64 s.mem (retWord s) (BitVec.ofNat 64 ret) := by
   have h1 := (evalInstrA_leaFrame s (-8)).1 "%rsp"
   have h2 := (evalInstrA_leaFrame s (-8)).2
-  rw [if_pos rfl] at h1
+  rw [ite_eq_left rfl] at h1
   rw [entryOf_eq]
   show write64 (CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem.evalInstrA s (leaFrame (-8))).mem
     ((CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem.evalInstrA s (leaFrame (-8))).regs "%rsp"

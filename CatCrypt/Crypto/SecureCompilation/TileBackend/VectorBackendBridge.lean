@@ -111,7 +111,7 @@ theorem vpadd32_com_is_tile_lowering (bop : JasminBinOp) (a b : BitVec 128) :
   funext k
   cases bop <;>
     simp only [v128BvToTile, TileState.get, TileState.set, evalRegInstr,
-      String.reduceEq, if_true, if_false, JasminBinOp.applyLane] <;>
+      String.reduceEq, ite_true, ite_false, JasminBinOp.applyLane] <;>
     rw [v128Pack32_lane] <;> simp [JasminBinOp.applyLane]
 
 /-- **The unified-op form of the x86 leg.** The `Com jasminDialect` program

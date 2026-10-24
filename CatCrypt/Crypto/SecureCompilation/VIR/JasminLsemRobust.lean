@@ -461,7 +461,7 @@ theorem lsemStep_archAgree {w : Nat} (i : LinstrR) {s t : Lstate w} (h : ArchAgr
             | arrIdx base idx scale =>
               simp only [lsemStep, hv, hm]
               by_cases hload : opn = "LOADIDX"
-              · simp only [hload, if_pos]
+              · simp only [hload, ite_eq_left]
                 simp [ArchAgreeOpt, ArchAgree, Lstate.nextPc, Lstate.setReg, hv, hm]
               · by_cases hstore : opn = "STOREIDX"
                 · simp only [hstore, reduceIte]

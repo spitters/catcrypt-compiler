@@ -358,7 +358,7 @@ theorem step_emb {I : Isa} {T : ProcTable} {fn : String} {B : List LinstrRM}
         obtain ⟨hCi, hφ⟩ := hc.instr _ i hf hq
         have hfetch : findInstrMem (singletonProgM fn C) (emb φ s).prog = some i := by
           unfold findInstrMem
-          rw [if_pos (show (emb φ s).prog.lfn = (singletonProgM fn C).lfn from hfn)]
+          rw [ite_eq_left (show (emb φ s).prog.lfn = (singletonProgM fn C).lfn from hfn)]
           exact hCi
         unfold Isa.lsemStepPMemF
         rw [hfetch]
@@ -387,7 +387,7 @@ theorem step_emb {I : Isa} {T : ProcTable} {fn : String} {B : List LinstrRM}
                 simp only [ctlStep] at h ⊢
                 rw [show I.condEval (emb φ s) c = I.condEval s c from hI.cond s _ c]
                 split at h
-                · rw [if_pos (by assumption)]
+                · rw [ite_eq_left (by assumption)]
                   unfold evalJumpMem at h ⊢
                   cases hl : findLabelMem l (singletonProgM fn B).body with
                   | none => rw [hl] at h; cases h
@@ -401,7 +401,7 @@ theorem step_emb {I : Isa} {T : ProcTable} {fn : String} {B : List LinstrRM}
                       refine ⟨?_, hql⟩
                       simp only [emb, goto, JasminLsemMemLoop.LstateM.lpc_setLpc, hqφ]
                       rfl
-                · rw [if_neg (by assumption)]
+                · rw [ite_eq_right (by assumption)]
                   simp only [Option.some.injEq] at h ⊢
                   subst h
                   refine ⟨?_, by
@@ -412,7 +412,7 @@ theorem step_emb {I : Isa} {T : ProcTable} {fn : String} {B : List LinstrRM}
                 obtain ⟨f, l⟩ := tgt
                 simp only [ctlStep] at h ⊢
                 split at h
-                · rw [if_pos (by assumption)]
+                · rw [ite_eq_left (by assumption)]
                   unfold evalJumpMem at h ⊢
                   cases hl : findLabelMem l (singletonProgM fn B).body with
                   | none => rw [hl] at h; cases h
@@ -463,7 +463,7 @@ theorem exit_step {I : Isa} {T : ProcTable} {fn : String} {B : List LinstrRM}
   have hat : atPc (singletonProgM fn C) (φ (stopPos B x)) (emb φ w) := ⟨hfn, by
     rw [emb, ← hpc]; rfl⟩
   rw [lsemStepPMemF_of_atPc I hat hi, I.step_goto,
-    if_pos (show fn = (singletonProgM fn C).lfn from rfl)]
+    ite_eq_left (show fn = (singletonProgM fn C).lfn from rfl)]
   unfold evalJumpMem
   rw [show findLabelMem fin (singletonProgM fn C).body = some k from hfin, ← hk]
   rfl
@@ -500,12 +500,12 @@ theorem cutRun_of_segTo {I : Isa} {T : ProcTable} {fn : String} {B : List Linstr
       · refine hexit hfn (Nat.le_antisymm hule ?_)
         have hh : findInstrMem (singletonProgM fn B) u.prog = none := hx
         unfold findInstrMem at hh
-        rw [if_pos (show u.prog.lfn = (singletonProgM fn B).lfn from hfn)] at hh
+        rw [ite_eq_left (show u.prog.lfn = (singletonProgM fn B).lfn from hfn)] at hh
         exact List.getElem?_eq_none_iff.mp hh
       · refine ⟨n, φ u.prog.base.lpc, fun j => lsemFuelMemF_of_steps I _ hsteps ?_ j⟩
         show findInstrMem (singletonProgM fn C) (emb φ u).prog = none
         unfold findInstrMem
-        exact if_neg hfn
+        exact ite_eq_right hfn
 
 /-! ## 5. The chain of runs of cut programs -/
 
@@ -874,7 +874,7 @@ def movI (dst src : String) : LinstrRM :=
 /-- A copy is no shadow instruction. -/
 theorem shadowCall?_movI (dst src : String) : shadowCall? (movI dst src).fst = none := by
   simp only [movI, shadowCall?]
-  rw [if_neg (by decide)]
+  rw [ite_eq_right (by decide)]
 
 /-- The names of a list of register operands; `none` when an operand is no register. -/
 def regNames? : List LOperand → Option (List String)
@@ -1142,7 +1142,7 @@ theorem lvm_movesF_of_not_mem : ∀ (ps : List (String × String)) (s : LstateMF
   | [], _, _, _ => rfl
   | p :: ps, s, r, h => by
       simp only [List.map_cons, List.mem_cons, not_or] at h
-      rw [movesF, lvm_movesF_of_not_mem ps _ r h.2, lvm_movS, if_neg h.1]
+      rw [movesF, lvm_movesF_of_not_mem ps _ r h.2, lvm_movS, ite_eq_right h.1]
 
 /-- After copies with distinct destinations and no source among the destinations, each
     destination holds the entry cell of its source. -/
@@ -1154,10 +1154,10 @@ theorem lvm_movesF_of_mem : ∀ (ps : List (String × String)) (s : LstateMF),
       simp only [List.map_cons, List.nodup_cons] at hnd
       rw [movesF]
       rcases List.mem_cons.mp hp with rfl | hp'
-      · rw [lvm_movesF_of_not_mem ps _ _ hnd.1, lvm_movS, if_pos rfl]
+      · rw [lvm_movesF_of_not_mem ps _ _ hnd.1, lvm_movS, ite_eq_left rfl]
       · rw [lvm_movesF_of_mem ps _ hnd.2
           (fun p' hp'' hm => hx p' (List.mem_cons_of_mem _ hp'') (by simp [hm])) p hp',
-          lvm_movS, if_neg]
+          lvm_movS, ite_eq_right]
         intro e
         exact hx p (List.mem_cons_of_mem _ hp') (by simp [e])
 
@@ -1200,7 +1200,7 @@ theorem argsRead_commonOps {sh : CallShape} {aa : Nat → Option Nat}
           = argRead aa b i (.reg x) := by
         cases hs : sh.arrArgs i with
         | some n =>
-            simp only [Option.isSome_some, if_true]
+            simp only [Option.isSome_some, ite_true]
             unfold argRead
             split
             · simp only [evalOperandN, LstateN.getW]
@@ -1209,7 +1209,7 @@ theorem argsRead_commonOps {sh : CallShape} {aa : Nat → Option Nat}
               rw [hla]
         | none =>
             have hpa : b'.reg.lvm a = b.reg.lvm x := hp (a, x) (by simp [commonPairs, hs])
-            simp only [Option.isSome_none, Bool.false_eq_true, if_false]
+            simp only [Option.isSome_none, Bool.false_eq_true, ite_false]
             unfold argRead
             rw [haa i hs]
             simp only [evalOperandN, LstateN.getW]
@@ -1301,7 +1301,7 @@ theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f
       rw [procCall?_callShadow, hT]
       simp only [Option.map_some]
       unfold procStep
-      rw [if_pos (by simpa [hopsl, hlen] using har), hread]
+      rw [ite_eq_left (by simpa [hopsl, hlen] using har), hread]
       simp only [Option.bind_some, hxr, Option.map_some]
     have hpl := commonPairs_length sh 0 args xs hlen.symm
     cases hout : sh.out with
@@ -1313,7 +1313,7 @@ theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f
       refine ⟨fun r => if r = d then ⟨64, w⟩ else if r = res then ⟨64, w⟩
         else u.prog.base.reg.lvm r, ?_, ?_⟩
       · rw [commonSeq, hout, runI_append, runI_moves, ← hu]
-        simp only [Bool.false_eq_true, if_false, Option.bind_some, runI, hcall, retRes_word,
+        simp only [Bool.false_eq_true, ite_false, Option.bind_some, runI, hcall, retRes_word,
           step_movI]
         conv_lhs => rw [hreg]
         rw [movS, retWord_eq_regUpd, retWord_eq_regUpd, regUpd_regUpd, regUpd_regUpd,
@@ -1326,12 +1326,12 @@ theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f
         show _ = if r = d then _ else _
         by_cases h1 : r = d
         · simp [h1]
-        · simp only [h1, hres, if_false]
+        · simp only [h1, hres, ite_false]
           exact hU2 r hr
     | true =>
       refine ⟨(retRes d x u).prog.base.reg.lvm, ?_, ?_⟩
       · rw [commonSeq, hout, runI_append, runI_moves, ← hu]
-        simp only [if_true, Option.bind_some, runI, hcall, Nat.add_zero]
+        simp only [ite_true, Option.bind_some, runI, hcall, Nat.add_zero]
         conv_lhs => rw [hreg, retRes_regUpd]
         rw [← hreg, hpl]
       · intro r hr _
@@ -1341,7 +1341,7 @@ theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f
             show (if r = d then _ else _) = (if r = d then _ else _)
             by_cases h1 : r = d
             · simp [h1]
-            · simp only [h1, if_false]
+            · simp only [h1, ite_false]
               exact hU2 r hr
         | arr a => exact hU2 r hr
   · cases h
@@ -1737,16 +1737,16 @@ theorem findLabelMem_commonCalls? {sh : CallShape} {f : String} {args : List Str
       cases hl : isLabel l j.fst with
       | true =>
           rw [hl] at hq
-          simp only [if_true, Option.some.injEq] at hq
+          simp only [ite_true, Option.some.injEq] at hq
           subst hq
           have hctl : isCtl j.fst = true := by
             cases hj : j.fst <;> simp_all [isLabel, isCtl]
           rw [commonCall?_none hjs (shadowCall?_of_isCtl hctl), expPos_zero]
           simp only [findLabelMem, findLabel, List.cons_append, List.nil_append, List.map_cons,
-            List.findIdx?_cons, hl, if_true]
+            List.findIdx?_cons, hl, ite_true]
       | false =>
           rw [hl] at hq
-          simp only [Bool.false_eq_true, if_false, Option.map_eq_some_iff] at hq
+          simp only [Bool.false_eq_true, ite_false, Option.map_eq_some_iff] at hq
           obtain ⟨q₀, hq₀, rfl⟩ := hq
           have ih := findLabelMem_commonCalls? l hB₁ (q := q₀) hq₀
           have hnone : (js.map Prod.fst).findIdx? (isLabel l) = none := by
@@ -1815,7 +1815,7 @@ theorem procStep_setRL {pr : ProcSummary} {d : String} {xs : List String}
     obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨x, hx', rfl⟩ := Option.map_eq_some_iff.mp h
     refine ⟨x, rfl, ?_⟩
-    rw [if_pos har, argsRead_regs_congr (b := s.prog.base) (b' := (setRL L' q s).prog.base)
+    rw [ite_eq_left har, argsRead_regs_congr (b := s.prog.base) (b' := (setRL L' q s).prog.base)
       pr.arrArgs rfl 0 hx, hvs]
     simp only [Option.bind_some, hx', Option.map_some]
   · cases h
@@ -1962,7 +1962,7 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
               simp only [ctlStep] at h ⊢
               rw [hcd c l tag hmem s L' _ hL]
               split at h
-              · rw [if_pos (by assumption)]
+              · rw [ite_eq_left (by assumption)]
                 unfold evalJumpMem at h ⊢
                 cases hl : findLabelMem l (singletonProgM fn B).body with
                 | none => rw [hl] at h; cases h
@@ -1977,7 +1977,7 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
                     show setRL L' (expPos (commonLen sh args.length) B q + 1) s
                       = setRL L' (expPos (commonLen sh args.length) B (q + 1)) s
                     rw [expPos_label_succ (commonLen sh args.length) (B := B) hl]
-              · rw [if_neg (by assumption)]
+              · rw [ite_eq_right (by assumption)]
                 simp only [Option.some.injEq] at h
                 subst h
                 refine ⟨_, rfl, L', hL, ?_⟩
@@ -1988,7 +1988,7 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
               obtain ⟨g, l⟩ := tgt
               simp only [ctlStep] at h ⊢
               split at h
-              · rw [if_pos (by assumption)]
+              · rw [ite_eq_left (by assumption)]
                 unfold evalJumpMem at h ⊢
                 cases hl : findLabelMem l (singletonProgM fn B).body with
                 | none => rw [hl] at h; cases h
@@ -2095,13 +2095,13 @@ theorem halted_common {sh : CallShape} {f : String} {args : List String} {res fn
   unfold Halted findInstrMem at ht ⊢
   split at ht
   · rename_i hfn
-    rw [if_pos (show (setRL L' _ t).prog.lfn = (singletonProgM fn B').lfn from hfn)]
+    rw [ite_eq_left (show (setRL L' _ t).prog.lfn = (singletonProgM fn B').lfn from hfn)]
     have hle : B.length ≤ t.prog.base.reg.lpc := List.getElem?_eq_none_iff.mp ht
     show B'[expPos (commonLen sh args.length) B t.prog.base.reg.lpc]? = none
     rw [expPos_of_le _ hle, ← commonCalls?_length hB]
     exact List.getElem?_eq_none (Nat.le_refl _)
   · rename_i hfn
-    exact if_neg hfn
+    exact ite_eq_right hfn
 
 /-- A state at the counter `0` is related to itself. -/
 theorem offRel_entry (N : List String) (n : Nat) (B : List LinstrRM) {s : LstateMF}
@@ -2517,7 +2517,7 @@ theorem segTo_of_steps_cut {I : Isa} {T : ProcTable} {fn : String} {B : List Lin
           refine ⟨w, ⟨0, Steps.refl _ _ _, ?_⟩, hexit hlen⟩
           show findInstrMem (singletonProgM fn B) w.prog = none
           unfold findInstrMem
-          rw [if_pos (show w.prog.lfn = (singletonProgM fn B).lfn from hfn)]
+          rw [ite_eq_left (show w.prog.lfn = (singletonProgM fn B).lfn from hfn)]
           exact hBi
       | some p =>
           obtain ⟨j, hj, hne⟩ := hv.stop p rfl
@@ -2553,7 +2553,7 @@ theorem segTo_of_steps_cut {I : Isa} {T : ProcTable} {fn : String} {B : List Lin
                   obtain ⟨q, hq'⟩ := Option.isSome_iff_exists.mp (hv.target _ _ l hBi rfl)
                   simp only [ctlStep] at hstep ⊢
                   split at hstep
-                  · rw [if_pos (by assumption)]
+                  · rw [ite_eq_left (by assumption)]
                     exact ⟨_, evalJumpMem_of_findLabelMem (P := singletonProgM fn B) hq' w⟩
                   · cases hstep
               | _ => simp [isCtl] at hctl
@@ -2615,7 +2615,7 @@ theorem Glue.goto {T : ProcTable} {P : LprogM} {p : Nat} {u v : LstateMF}
   rw [argsRead_congr (b := u.prog.base) (b' := (Ascent.IsaCfg.goto u k).prog.base) pr.arrArgs
     rfl 0 srcs fun o _ => congrFun he o]
   split at hstep
-  · rw [if_pos (by assumption)]
+  · rw [ite_eq_left (by assumption)]
     obtain ⟨vs, hvs, hstep⟩ := Option.bind_eq_some_iff.mp hstep
     obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.mp hstep
     rw [hvs]

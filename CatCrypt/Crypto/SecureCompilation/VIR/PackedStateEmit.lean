@@ -306,11 +306,11 @@ theorem maddW_toNat (a b : BitVec 32) (ha : a.toNat < mp.p) (hb : b.toNat < mp.p
   by_cases hge : mp.p ≤ a.toNat + b.toNat
   · have hs : (a + b - BitVec.ofNat 32 mp.p).toNat = a.toNat + b.toNat - mp.p := by
       rw [BitVec.toNat_sub, hab, hP]; omega
-    rw [if_neg (by omega), hs]
+    rw [ite_eq_right (by omega), hs]
     rw [Nat.mod_eq_sub_mod hge, Nat.mod_eq_of_lt (by omega)]
   · have hs : (a + b - BitVec.ofNat 32 mp.p).toNat = a.toNat + b.toNat + 2 ^ 32 - mp.p := by
       rw [BitVec.toNat_sub, hab, hP]; omega
-    rw [if_pos (by omega), hab, Nat.mod_eq_of_lt (by omega)]
+    rw [ite_eq_left (by omega), hab, Nat.mod_eq_of_lt (by omega)]
 
 /-- The modular difference of two words below `p`. -/
 theorem msubW_toNat (a b : BitVec 32) (ha : a.toNat < mp.p) (hb : b.toNat < mp.p) :
@@ -323,11 +323,11 @@ theorem msubW_toNat (a b : BitVec 32) (ha : a.toNat < mp.p) (hb : b.toNat < mp.p
   · have h1 : (a - b).toNat = a.toNat - b.toNat := by rw [BitVec.toNat_sub]; omega
     have h2 : (a - b + BitVec.ofNat 32 mp.p).toNat = a.toNat - b.toNat + mp.p := by
       rw [BitVec.toNat_add, h1, hP]; omega
-    rw [if_pos (by omega), if_pos hle, h1]
+    rw [ite_eq_left (by omega), ite_eq_left hle, h1]
   · have h1 : (a - b).toNat = a.toNat + 2 ^ 32 - b.toNat := by rw [BitVec.toNat_sub]; omega
     have h2 : (a - b + BitVec.ofNat 32 mp.p).toNat = a.toNat + mp.p - b.toNat := by
       rw [BitVec.toNat_add, h1, hP]; omega
-    rw [if_neg (by omega), if_neg hle, h2]
+    rw [ite_eq_right (by omega), ite_eq_right hle, h2]
 
 /-- The unsigned minimum `min(h − u, h − u + p)` for `h, u < p`. -/
 theorem uminSub_toNat (h u : BitVec 32) (hh : h.toNat < mp.p) (hu : u.toNat < mp.p) :

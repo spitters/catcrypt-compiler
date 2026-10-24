@@ -446,11 +446,11 @@ theorem fnCorres_refinesO {A β : Type} [HaxEnc β] {e : ImpExpr} {entry : A →
   subst hentry
   unfold optGuard at hf
   by_cases hG : G a
-  · rw [if_pos hG, Option.some.injEq] at hf
+  · rw [ite_eq_left hG, Option.some.injEq] at hf
     subst hf
     obtain ⟨fuel₀, hrun⟩ := h a hG
     exact ⟨_, haxEval_eq hrun, rfl⟩
-  · rw [if_neg hG] at hf
+  · rw [ite_eq_right hG] at hf
     exact absurd hf (by simp)
 
 /-- A function correspondence as the `AbsProg` refinement of the `Option` program
@@ -509,10 +509,10 @@ theorem fnCorres_iff_triple {A β : Type} [HaxEnc β] {e : ImpExpr} {entry : A �
   · intro h a b hb
     unfold optGuard at hb
     by_cases hG : G a
-    · rw [if_pos hG, Option.some.injEq] at hb
+    · rw [ite_eq_left hG, Option.some.injEq] at hb
       subst hb
       exact h a hG
-    · rw [if_neg hG] at hb
+    · rw [ite_eq_right hG] at hb
       exact absurd hb (by simp)
   · intro h a hG
     exact h a (f a) (by simp [optGuard, hG])

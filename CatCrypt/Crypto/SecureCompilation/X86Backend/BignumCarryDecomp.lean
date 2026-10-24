@@ -76,9 +76,9 @@ theorem waddcarry_decompose {w : Nat} (x y : BitVec w) (c : Bool) :
   have hy := y.isLt
   have hcle : (if c then 1 else 0) ≤ 1 := by split <;> omega
   by_cases hc : 2 ^ w ≤ x.toNat + y.toNat + (if c then 1 else 0)
-  · rw [if_pos hc, Nat.mod_eq_sub_mod hc, Nat.mod_eq_of_lt (by omega)]
+  · rw [ite_eq_left hc, Nat.mod_eq_sub_mod hc, Nat.mod_eq_of_lt (by omega)]
     omega
-  · rw [if_neg hc, Nat.mod_eq_of_lt (by omega)]
+  · rw [ite_eq_right hc, Nat.mod_eq_of_lt (by omega)]
     omega
 
 /-! ## 2. The little-endian limb codec (task C4) -/

@@ -189,7 +189,7 @@ theorem ofCanonMontMul_denote [NeZero p] (hpw : p ≤ 2 ^ (64 * T.limbs)) (c : Z
     have hlt : c.val < 2 ^ (64 * T.limbs) :=
       lt_of_lt_of_le (ZMod.val_lt _) hpw
     simp only [fromWordsMF, wordsVal_wordsOf, Nat.mod_eq_of_lt hlt, ZMod.natCast_zmod_val,
-      ZMod.val_lt, if_true]
+      ZMod.val_lt, ite_true]
   have h1 : (Com.rename (consHom (consHom emptyCtxHom b) a) (T.body .mul)).denote V =
       T.enc (x * y) := by
     refine (FieldDialectBlockDescent.Com.denote_rename _ _ V).trans ?_

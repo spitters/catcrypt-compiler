@@ -309,8 +309,8 @@ theorem memSetDyn_at {n : Nat} (arr : Fin n → BitVec 64) (k : Nat) (v : BitVec
   | (p + 1), arr =>
       simp only [memSetDyn, Nat.mod_eq_of_lt hk]
       by_cases h : m.val = k
-      · rw [if_pos (Fin.ext h), if_pos h]
-      · rw [if_neg (fun hc => h (by rw [hc])), if_neg h]
+      · rw [ite_eq_left (Fin.ext h), ite_eq_left h]
+      · rw [ite_eq_right (fun hc => h (by rw [hc])), ite_eq_right h]
 
 theorem memGetDyn_lt {n : Nat} (arr : Fin n → BitVec 64) {k : Nat} (hk : k < n) :
     memGetDyn arr k = arr ⟨k, hk⟩ := by

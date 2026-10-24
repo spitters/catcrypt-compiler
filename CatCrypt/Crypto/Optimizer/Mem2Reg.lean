@@ -369,7 +369,7 @@ theorem StoreDiff.store_intro (base : String) (off : Int) (s : JState 64) (v : B
   refine ⟨rfl, rfl, ?_⟩
   intro b o hbo
   simp only [JState.store]
-  rw [if_neg hbo]
+  rw [ite_eq_right hbo]
 
 /-! ### Per-arm helpers for the register-only writers
 
@@ -495,8 +495,8 @@ theorem StoreDiff.step {base : String} {off : Int} {s t : JState 64}
     · intro b o hbo
       simp only [evalInstr, JState.store, x86_MOV]
       by_cases hc : b = b' ∧ o = o'
-      · rw [if_pos hc, if_pos hc, hsrc]
-      · rw [if_neg hc, if_neg hc]; exact hm b o hbo
+      · rw [ite_eq_left hc, ite_eq_left hc, hsrc]
+      · rw [ite_eq_right hc, ite_eq_right hc]; exact hm b o hbo
   | mulx dh dl a b' =>
     refine ⟨?_, ?_, ?_⟩
     · simp only [evalInstr, JState.setReg]
@@ -790,7 +790,7 @@ theorem dseAux_runBlock_agree (prot : List (String × Int)) (block : List (JInst
       simp only [dseAux]
       by_cases hguard : ¬ isProtected prot base off ∧ ¬ cellReadIn base off is
       · -- dropped
-        rw [if_pos hguard]
+        rw [ite_eq_left hguard]
         -- original side: runBlock (evalInstr s (storeMem base off v)) is
         rw [runBlock_cons]
         -- DSE side: runBlock s (dseAux prot is); IH gives it ~ runBlock s is
@@ -809,7 +809,7 @@ theorem dseAux_runBlock_agree (prot : List (String × Int)) (block : List (JInst
         rw [hstore]
         exact hprop.agreeOn hp
       · -- kept
-        rw [if_neg hguard, runBlock_cons, runBlock_cons]
+        rw [ite_eq_right hguard, runBlock_cons, runBlock_cons]
         exact ih (evalInstr s (.storeMem base off v))
     | _ =>
       -- non-store: dseAux keeps it; both sides step by the same evalInstr s i
@@ -1013,8 +1013,8 @@ theorem PromoteRel.setReg_ne {b : String} {off : Int} {ρ : String} {s t : JStat
   refine ⟨fun r hrρ => ?_, ?_, hf, hm⟩
   · by_cases hrd : r = d
     · subst hrd; simp [JState.setReg, JState.get]
-    · simp only [JState.get, JState.setReg]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-  · simp only [JState.get, JState.setReg]; rw [if_neg (Ne.symm hd)]
+    · simp only [JState.get, JState.setReg]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+  · simp only [JState.get, JState.setReg]; rw [ite_eq_right (Ne.symm hd)]
     simpa [JState.get] using hρv
 
 /-- `writeB5W d` to `d ≠ ρ` with an agreeing `B5W` preserves `PromoteRel`: the data goes to
@@ -1026,8 +1026,8 @@ theorem PromoteRel.writeB5W_ne {b : String} {off : Int} {ρ : String} {s t : JSt
   refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
   · by_cases hrd : r = d
     · subst hrd; simp [JState.writeB5W, JState.get]
-    · simp only [JState.get, JState.writeB5W]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-  · simp only [JState.get, JState.writeB5W]; rw [if_neg (Ne.symm hd)]
+    · simp only [JState.get, JState.writeB5W]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+  · simp only [JState.get, JState.writeB5W]; rw [ite_eq_right (Ne.symm hd)]
     simpa [JState.get] using hρv
   · simp only [JState.writeB5W]
   · intro b' o' hc; simp only [JState.writeB5W]; exact hm b' o' hc
@@ -1042,8 +1042,8 @@ theorem PromoteRel.writeB2W_ne {b : String} {off : Int} {ρ : String} {s t : JSt
   refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
   · by_cases hrd : r = d
     · subst hrd; simp [JState.writeB2W, JState.get]
-    · simp only [JState.get, JState.writeB2W]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-  · simp only [JState.get, JState.writeB2W]; rw [if_neg (Ne.symm hd)]
+    · simp only [JState.get, JState.writeB2W]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+  · simp only [JState.get, JState.writeB2W]; rw [ite_eq_right (Ne.symm hd)]
     simpa [JState.get] using hρv
   · simp only [JState.writeB2W]; rw [hf]
   · intro b' o' hc; simp only [JState.writeB2W]; exact hm b' o' hc
@@ -1078,8 +1078,8 @@ theorem PromoteRel.writeB4W_ne {b : String} {off : Int} {ρ : String} {s t : JSt
   refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
   · by_cases hrd : r = d
     · subst hrd; simp [JState.writeB4W, JState.get]
-    · simp only [JState.get, JState.writeB4W]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-  · simp only [JState.get, JState.writeB4W]; rw [if_neg (Ne.symm hd)]
+    · simp only [JState.get, JState.writeB4W]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+  · simp only [JState.get, JState.writeB4W]; rw [ite_eq_right (Ne.symm hd)]
     simpa [JState.get] using hρv
   · simp only [JState.writeB4W]; rw [hf]
   · intro b' o' hc; simp only [JState.writeB4W]; exact hm b' o' hc
@@ -1094,8 +1094,8 @@ theorem PromoteRel.writeCFW_ne {b : String} {off : Int} {ρ : String} {s t : JSt
   refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
   · by_cases hrd : r = d
     · subst hrd; simp [JState.writeCFW, JState.get]
-    · simp only [JState.get, JState.writeCFW]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-  · simp only [JState.get, JState.writeCFW]; rw [if_neg (Ne.symm hd)]
+    · simp only [JState.get, JState.writeCFW]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+  · simp only [JState.get, JState.writeCFW]; rw [ite_eq_right (Ne.symm hd)]
     simpa [JState.get] using hρv
   · simp only [JState.writeCFW]; rw [hf]
   · intro b' o' hc; simp only [JState.writeCFW]; exact hm b' o' hc
@@ -1115,7 +1115,7 @@ theorem PromoteRel.writeB5W2_ne {b : String} {off : Int} {ρ : String} {s t : JS
     · split
       · rfl
       · exact hr r hrρ
-  · simp only [JState.get, JState.writeB5W2]; rw [if_neg (Ne.symm hdl), if_neg (Ne.symm hdh)]
+  · simp only [JState.get, JState.writeB5W2]; rw [ite_eq_right (Ne.symm hdl), ite_eq_right (Ne.symm hdh)]
     simpa [JState.get] using hρv
   · simp only [JState.writeB5W2]
   · intro b' o' hc; simp only [JState.writeB5W2]; exact hm b' o' hc
@@ -1161,14 +1161,14 @@ theorem PromoteRel.store_ne {b : String} {off : Int} {ρ : String} {s t : JState
     -- (b,off) ≠ (b',o'), so the store at (b',o') leaves cell (b,off) untouched
     have hbo : ¬ (b = b' ∧ off = o') := by
       intro hcon; exact hc ⟨hcon.1.symm, hcon.2.symm⟩
-    rw [if_neg hbo]
+    rw [ite_eq_right hbo]
     simpa [JState.get, JState.load] using hρv
   · simp only [JState.store]; exact hf
   · intro b₂ o₂ hc₂
     simp only [JState.store]
     by_cases hb : b₂ = b' ∧ o₂ = o'
-    · rw [if_pos hb, if_pos hb]
-    · rw [if_neg hb, if_neg hb]; exact hm b₂ o₂ hc₂
+    · rw [ite_eq_left hb, ite_eq_left hb]
+    · rw [ite_eq_right hb, ite_eq_right hb]; exact hm b₂ o₂ hc₂
 
 /-! ### The three promotion step lemmas
 
@@ -1187,14 +1187,14 @@ theorem PromoteRel.promoted_store {b : String} {off : Int} {ρ r : String} {s t 
   simp only [evalInstr, x86_MOV, JOperand.eval]
   refine ⟨fun r' hr'ρ => ?_, ?_, ?_, ?_⟩
   · -- store doesn't touch registers; mov writes ρ ≠ r'
-    simp only [JState.get, JState.store, JState.setReg]; rw [if_neg hr'ρ]; exact hr r' hr'ρ
+    simp only [JState.get, JState.store, JState.setReg]; rw [ite_eq_right hr'ρ]; exact hr r' hr'ρ
   · -- ρ holds r's value (t); cell holds r's value (s)
     have := (hr r hrρ).symm
     simp only [JState.get, JState.store, JState.setReg, JState.load] at this ⊢
     simpa using this
   · simp only [JState.store, JState.setReg]; exact hf
   · intro b' o' hc; simp only [JState.store, JState.setReg, JState.load]
-    rw [if_neg hc]; exact hm b' o' hc
+    rw [ite_eq_right hc]; exact hm b' o' hc
 
 /-- **Promoted load step.** The original `loadMem d b off` reads the cell; the promoted
     `mov d ρ` reads `ρ`. By `PromoteRel`, `ρ` (in `t`) holds the cell value (in `s`), so `d`
@@ -1422,8 +1422,8 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
     refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
     · by_cases hrd : r = d
       · subst hrd; simp [JState.get]
-      · simp only [JState.get]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-    · simp only [JState.get]; rw [if_neg (Ne.symm hd)]; simpa [JState.get] using hρv
+      · simp only [JState.get]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+    · simp only [JState.get]; rw [ite_eq_right (Ne.symm hd)]; simpa [JState.get] using hρv
     · simp only []; rw [hflags]
     · intro b' o' hc; exact hm b' o' hc
   | adox d src =>
@@ -1436,8 +1436,8 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
     refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
     · by_cases hrd : r = d
       · subst hrd; simp [JState.get]
-      · simp only [JState.get]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-    · simp only [JState.get]; rw [if_neg (Ne.symm hd)]; simpa [JState.get] using hρv
+      · simp only [JState.get]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+    · simp only [JState.get]; rw [ite_eq_right (Ne.symm hd)]; simpa [JState.get] using hρv
     · simp only []; rw [hflags]
     · intro b' o' hc; exact hm b' o' hc
   | loadMem d base o =>
@@ -1550,8 +1550,8 @@ theorem PromoteRel.step_transparent {b : String} {off : Int} {ρ : String} {s t 
     refine ⟨fun r hrρ => ?_, ?_, ?_, ?_⟩
     · by_cases hrd : r = d
       · subst hrd; simp [JState.get]
-      · simp only [JState.get]; rw [if_neg hrd, if_neg hrd]; exact hr r hrρ
-    · simp only [JState.get]; rw [if_neg (Ne.symm hd)]; simpa [JState.get] using hρv
+      · simp only [JState.get]; rw [ite_eq_right hrd, ite_eq_right hrd]; exact hr r hrρ
+    · simp only [JState.get]; rw [ite_eq_right (Ne.symm hd)]; simpa [JState.get] using hρv
     · simp only []; rw [hflags]
     · intro b' o' hc; exact hm b' o' hc
   | addToMem base o src =>
@@ -1603,13 +1603,13 @@ theorem PromoteRel.promoteCellInstr_step {b : String} {off : Int} {ρ : String} 
           simp only [promoteCellInstr]
           have : ¬ (base = b ∧ o = off) := fun hc =>
             hwcell (by simp only [writeCell]; rw [hc.1, hc.2])
-          rw [if_neg this]
+          rw [ite_eq_right this]
         | imm v => simp [promoteCellInstr]
       | loadMem d base o =>
         simp only [promoteCellInstr]
         have : ¬ (base = b ∧ o = off) := fun hc =>
           hrcell (by simp only [readCell]; rw [hc.1, hc.2])
-        rw [if_neg this]
+        rw [ite_eq_right this]
       | _ => rfl
     rw [hpc]; exact h.step_transparent i ht
 
@@ -1646,7 +1646,7 @@ theorem PromoteRel.promoteCell_runBlock {b : String} {off : Int} {ρ : String}
 theorem PromoteRel.init (b : String) (off : Int) (ρ : String) (s : JState 64) :
     PromoteRel b off ρ s (s.setReg ρ (s.load b off)) := by
   refine ⟨fun r hr => ?_, ?_, ?_, ?_⟩
-  · simp only [JState.get, JState.setReg]; rw [if_neg hr]
+  · simp only [JState.get, JState.setReg]; rw [ite_eq_right hr]
   · simp [JState.get, JState.setReg, JState.load]
   · rfl
   · intro b' o' _; rfl

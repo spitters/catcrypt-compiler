@@ -209,7 +209,7 @@ theorem emitEcAdd_realizes_affineAdd
   -- The four input-coordinate lookups in `s0`.
   have hx1 : s0.rsTower x1 = some ⟨.TFp, R.encC P.x⟩ := by
     simp only [hs0, stEcAdd, rsSetTower, beq_iff_eq]
-    rw [if_neg h1y2, if_neg h1x2, if_neg h1y1, if_pos trivial]
+    rw [ite_eq_right h1y2, ite_eq_right h1x2, ite_eq_right h1y1, ite_eq_left trivial]
   have hy1 : s0.rsTower y1 = some ⟨.TFp, R.encC P.y⟩ := by
     simp [hs0, stEcAdd, rsSetTower, hy1y2, hy1x2]
   have hx2 : s0.rsTower x2 = some ⟨.TFp, R.encC Q.x⟩ := by

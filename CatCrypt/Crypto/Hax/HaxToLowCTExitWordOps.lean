@@ -368,7 +368,7 @@ theorem exitCallArgs_callMarshal (A : ExitTowers) (dt : TowerType) :
         · simp only [Option.some.injEq, Prod.mk.injEq] at h
           obtain ⟨rfl, rfl⟩ := h
           refine ⟨by simp [hls], fun ms c => ?_⟩
-          simp only [exitCallArgs, if_true, hctx, List.reverse_cons, List.map_append,
+          simp only [exitCallArgs, ite_true, hctx, List.reverse_cons, List.map_append,
             List.map_cons, List.map_nil, List.append_assoc, List.cons_append, List.nil_append]
           rfl
         · cases h
@@ -422,11 +422,11 @@ theorem scalarizeExitIn_callHead {W I : List String} {A : ExitTowers} {n f : Str
     subst hk
     obtain ⟨hls, hctx⟩ := exitCallArgs_callMarshal A dt xs ctx ls hsc hm
     have hargs : exitCallArgs [] (ctx (.RCall f ⟨exitCallName, dr⟩ ls)) = some (f, xs) := by
-      rw [hctx, List.append_nil, exitCallArgs, if_pos rfl, hls,
+      rw [hctx, List.append_nil, exitCallArgs, ite_eq_left rfl, hls,
         mapM_lookup_exitMarshal _ dt xs (fun y hy =>
           by simpa using lookup_exitMarshalPair [] xs.reverse y (List.mem_reverse.mpr hy))]
       rfl
-    simp only [scalarizeExitIn, exitLowerCall, and_self, if_true, hargs, Option.bind_some, hse]
+    simp only [scalarizeExitIn, exitLowerCall, and_self, ite_true, hargs, Option.bind_some, hse]
 
 /-- **The pass on a comparison of two signed names.** The unsigned form `scalarOpExprT`
     gives a comparison `f(a, b)` of two names of `I` becomes the scalar expression of the

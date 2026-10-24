@@ -86,8 +86,8 @@ theorem dval_toDigitsCore (fuel : Nat) :
         interval_cases (n % 10) <;> decide
       unfold Nat.toDigitsCore
       by_cases hn' : n / 10 = 0
-      · rw [if_pos hn', dval_cons, hchar, Nat.mod_eq_of_lt (by omega : n < 10)]
-      · rw [if_neg hn']
+      · rw [ite_eq_left hn', dval_cons, hchar, Nat.mod_eq_of_lt (by omega : n < 10)]
+      · rw [ite_eq_right hn']
         have hlt : n / 10 < fuel := by
           have := Nat.div_lt_self (show 0 < n by omega) (show 1 < 10 by omega); omega
         rw [ih (n / 10) (Nat.digitChar (n % 10) :: ds) hlt, dval_cons,
@@ -193,7 +193,7 @@ theorem envOf_lookup {Γ : Ctxt jasminDialect} (hΓ : AllReg64 Γ)
 theorem resolveName_correct {Γ : Ctxt jasminDialect} (hΓ : AllReg64 Γ)
     (V : Ctxt.Valuation Γ) (v : Ctxt.Var Γ (.reg 64)) :
     Env.get (envOf Γ.length V) (resolveName Γ.length v) = v.lookup V := by
-  rw [resolveName, Env.get, if_neg (lvlName_ne_xzr _)]
+  rw [resolveName, Env.get, ite_eq_right (lvlName_ne_xzr _)]
   exact envOf_lookup hΓ V v
 
 /-! The recursive `exprSrcs.go`/`lookupArgs` will not reduce under generic `simp`

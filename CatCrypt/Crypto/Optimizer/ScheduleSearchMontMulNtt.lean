@@ -132,7 +132,7 @@ theorem bls_movStage_adcx_commute (s : JState 64) (pj : Nat) (tlo : String)
   congr 1
   · funext r
     by_cases ha : r = tlo <;> by_cases hb : r = "hi" <;> simp_all
-  · simp only [if_neg htlo, if_neg (show "lo" ≠ "hi" by decide)]
+  · simp only [ite_eq_right htlo, ite_eq_right (show "lo" ≠ "hi" by decide)]
 
 /-- `mov hi, imm` commutes with `adox thi, src`: same disjoint-footprint argument
     on the OF chain (the `adox` reads its window word + OF, writes that word + OF;
@@ -145,7 +145,7 @@ theorem bls_movStage_adox_commute (s : JState 64) (pj : Nat) (thi src : String)
   congr 1
   · funext r
     by_cases ha : r = thi <;> by_cases hb : r = "hi" <;> simp_all
-  · simp only [if_neg hthi, if_neg hsrc]
+  · simp only [ite_eq_right hthi, ite_eq_right hsrc]
 
 /-- **Winner TV for the one sound move (machine-state level).** The reduce-constant
     staging `mov hi, imm` hoisted past one ADCX accumulate yields the *same*

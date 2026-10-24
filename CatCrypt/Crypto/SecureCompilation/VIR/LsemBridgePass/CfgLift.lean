@@ -201,11 +201,11 @@ theorem BlockRel.findLabelMem {B B' : List LinstrRM} (h : BlockRel ck Inv B B')
       split at hpc
       · rename_i hl
         cases hpc
-        exact ⟨0, if_pos hl, by simpa using hR⟩
+        exact ⟨0, ite_eq_left hl, by simpa using hR⟩
       · rename_i hl
         obtain ⟨k, hk, rfl⟩ := Option.map_eq_some_iff.mp hpc
         obtain ⟨k', hk', hd⟩ := ih k hk
-        exact ⟨k' + 1, by rw [if_neg hl, hk']; rfl, by simpa using hd⟩
+        exact ⟨k' + 1, by rw [ite_eq_right hl, hk']; rfl, by simpa using hd⟩
   | @blk seg seg' R R' _ _ hseg hseg' _ _ ih =>
       intro pc hpc
       rw [findLabelMem_prefix l seg R hseg] at hpc
@@ -296,12 +296,12 @@ theorem evalInstrPMemF_blockRel {P P' : LprogM} (hfn : P'.lfn = P.lfn)
         · rename_i hz
           obtain ⟨q', hq', hRq⟩ := hjump l hq
           refine ⟨{ s' with prog := q' }, ?_, hRq⟩
-          rw [hc, if_pos hz, hq']
+          rw [hc, ite_eq_left hz, hq']
           rfl
         · rename_i hz
           cases hq
           refine ⟨_, ?_, hnext⟩
-          rw [hc, if_neg hz]
+          rw [hc, ite_eq_right hz]
           rfl
     | some pl =>
         obtain ⟨pol, lbl⟩ := pl
@@ -312,12 +312,12 @@ theorem evalInstrPMemF_blockRel {P P' : LprogM} (hfn : P'.lfn = P.lfn)
           obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp he
           obtain ⟨q', hq', hRq⟩ := hjump lbl hq
           refine ⟨{ s' with prog := q' }, ?_, hRq⟩
-          rw [if_pos (hS.zf.trans hz), hq']
+          rw [ite_eq_left (hS.zf.trans hz), hq']
           rfl
         · rename_i hz
           cases he
           refine ⟨_, ?_, hnext⟩
-          rw [if_neg (fun h => hz (hS.zf.symm.trans h))]
+          rw [ite_eq_right (fun h => hz (hS.zf.symm.trans h))]
   · obtain rfl : wire = LinstrR.Lgoto tgt := hw
     obtain ⟨fn, l⟩ := tgt
     have hev : ∀ (Q : LprogM) (x : LstateMF),
@@ -332,7 +332,7 @@ theorem evalInstrPMemF_blockRel {P P' : LprogM} (hfn : P'.lfn = P.lfn)
     · rename_i hf
       obtain ⟨q', hq', hRq⟩ := hjump l hq
       refine ⟨{ s' with prog := q' }, ?_, hRq⟩
-      rw [hfn, if_pos hf, hq']
+      rw [hfn, ite_eq_left hf, hq']
       rfl
     · exact absurd hq (by simp)
   · rw [hst P s] at he
@@ -366,7 +366,7 @@ theorem runIdxOk_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
           ({ prog := { base := b0, lfn := fn }, zf := zf } : LstateMF).prog = some i := by
         show findInstrMem P { base := b0, lfn := fn } = some i
         unfold findInstrMem
-        rw [if_pos (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
+        rw [ite_eq_left (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
         have := hpos 0 (by simp)
         simpa using this
       rw [List.length_cons, show is.length + 1 + f = (is.length + f) + 1 from by omega] at hok
@@ -414,7 +414,7 @@ theorem lsemFuelMemF_blockRel_of_runIdxOk {P P' : LprogM} (hfn : P'.lfn = P.lfn)
       rw [hS.lfn, hfn]
       split
       · rename_i hl
-        rw [if_pos hl] at hf
+        rw [ite_eq_left hl] at hf
         have hd : P.body.drop s.prog.base.lpc = [] :=
           List.drop_eq_nil_iff.mpr (List.getElem?_eq_none_iff.mp hf)
         have hp := hS.pc
@@ -440,7 +440,7 @@ theorem lsemFuelMemF_blockRel_of_runIdxOk {P P' : LprogM} (hfn : P'.lfn = P.lfn)
           obtain rfl : i0 = i := by simpa using hhead
           have hfetch' : findInstrMem P' s'.prog = some i0 := by
             unfold findInstrMem
-            rw [if_pos hfl']
+            rw [ite_eq_left hfl']
             have := congrArg (·[0]?) hY
             simpa [List.getElem?_drop] using this
           cases fuel with

@@ -191,8 +191,8 @@ theorem routedNtt_eq_nttRec :
                 * nttRec e (ω ^ 2) (oddPart (reindex e x)) ⟨k.val - 2 ^ e, _⟩)
     rw [heven, hodd]
     by_cases h : k.val < 2 ^ e
-    · rw [dif_pos h, dif_pos h, combine2, ihlo, ihhi]
-    · rw [dif_neg h, dif_neg h, ihlo, ihhi]
+    · rw [dite_eq_left h, dite_eq_left h, combine2, ihlo, ihhi]
+    · rw [dite_eq_right h, dite_eq_right h, ihlo, ihhi]
 
 /-! ## §3  The routed tree computes the abstract `dft`, at full depth -/
 

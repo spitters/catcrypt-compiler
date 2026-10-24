@@ -242,7 +242,7 @@ theorem read_denote (a : Nat) :
   | (o, e') :: rest, off, e, h => by
     by_cases ho : o = off
     · simp_all [eRead, denote, ChainState.read]
-    · simp only [eRead, ho, if_false] at h
+    · simp only [eRead, ho, ite_false] at h
       simpa [denote, ChainState.read, ho] using read_denote a rest off e h
 
 theorem write_denote (a : Nat) (es : List (Int × Nat)) (off : Int) (e : Nat) :

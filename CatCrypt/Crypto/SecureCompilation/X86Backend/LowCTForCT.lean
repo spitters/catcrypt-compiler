@@ -136,7 +136,7 @@ theorem movImm_stateMatch (ρ : RegMap) (hρ : Function.Injective ρ)
     simp [rsSetScalar]
   · have hvx : ρ v ≠ ρ x := fun h => hv (hρ h)
     rw [JState.get_setReg_other _ _ _ _ hvx]
-    simp only [rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, if_false]
+    simp only [rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, ite_false]
     exact hmatch v
 
 /-! ## 4. The unrolling lowering -/

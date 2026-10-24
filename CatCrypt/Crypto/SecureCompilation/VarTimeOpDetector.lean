@@ -214,7 +214,7 @@ theorem varTimeOp_public_accepted (i : VInstr)
   intro v1 v2 hagree
   unfold VInstr.timing
   by_cases hvt : i.op.varTime
-  · simp only [hvt, if_pos]
+  · simp only [hvt, ite_eq_left]
     -- the folds are equal because v1 k = v2 k for every k < length
     have hfold : ∀ k, k < i.argLevels.length → v1 k = v2 k := by
       intro k hk
@@ -236,7 +236,7 @@ theorem varTimeOp_public_accepted (i : VInstr)
         simp only [List.foldl_cons, List.foldl_nil]
         rw [hfold m (Nat.lt_of_succ_le hn)]
     exact this i.argLevels.length (le_refl _)
-  · simp only [hvt, if_neg, Bool.not_eq_true] at *
+  · simp only [hvt, ite_eq_right, Bool.not_eq_true] at *
 
 /-- **A variable-time op with a secret operand is NOT constant-time.**
 
@@ -269,10 +269,10 @@ theorem varTimeOp_secret_not_ct (i : VInstr)
         rw [List.getElem?_eq_getElem hk, hjval]
       rw [this] at hkpub
       exact absurd hkpub (by simp)
-    · simp only [v1, v2, if_neg hkj]
+    · simp only [v1, v2, ite_eq_right hkj]
   -- But the timings differ: the fold sees the extra 1 at slot j.
   have hne : i.timing v1 ≠ i.timing v2 := by
-    simp only [VInstr.timing, hvt, if_true]
+    simp only [VInstr.timing, hvt, ite_true]
     -- fold with v1 (all 0) = 0; fold with v2 = 1 (only slot j contributes, j < length)
     have hf1 : (List.range i.argLevels.length).foldl (fun acc k => acc + v1 k) 0 = 0 := by
       have : ∀ n, (List.range n).foldl (fun acc k => acc + v1 k) 0 = 0 := by
@@ -291,7 +291,7 @@ theorem varTimeOp_secret_not_ct (i : VInstr)
           rw [List.range_succ, List.foldl_append]
           rcases Nat.lt_or_ge j m with hlt | hge
           · rw [ih hlt]; simp only [List.foldl_cons, List.foldl_nil, v2]
-            rw [if_neg (by omega)]
+            rw [ite_eq_right (by omega)]
           · -- j = m
             have hjm : j = m := by omega
             have hf0 : (List.range m).foldl (fun acc k => acc + v2 k) 0 = 0 := by
@@ -302,10 +302,10 @@ theorem varTimeOp_secret_not_ct (i : VInstr)
                 | succ q ihq =>
                   rw [List.range_succ, List.foldl_append, ihq (Nat.le_of_succ_le hp)]
                   simp only [List.foldl_cons, List.foldl_nil, v2]
-                  rw [if_neg (by omega)]
+                  rw [ite_eq_right (by omega)]
               exact hz m (le_refl _)
             rw [hf0]; simp only [List.foldl_cons, List.foldl_nil, v2]
-            rw [if_pos hjm.symm]
+            rw [ite_eq_left hjm.symm]
       exact hgen _ hj
     rw [hf1, hf2]; omega
   exact hne (hct v1 v2 hagree)

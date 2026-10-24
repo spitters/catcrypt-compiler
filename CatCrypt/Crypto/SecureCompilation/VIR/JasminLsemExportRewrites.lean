@@ -184,7 +184,7 @@ theorem RelN.setReg {s s' : LstateN} (hσ : RenOn σ N) (h : RelN σ N s s') {d 
   simp only [LstateN.lvm_nextPc, LstateN.lvm_setReg]
   by_cases hrd : r = d
   · subst hrd; simp
-  · rw [if_neg (fun he => hrd (hσ.inj _ _ hr hd he)), if_neg hrd]
+  · rw [ite_eq_right (fun he => hrd (hσ.inj _ _ hr hd he)), ite_eq_right hrd]
     exact h.2 r hr
 
 theorem RelN.nextPc {s s' : LstateN} (h : RelN σ N s s') : RelN σ N s.nextPc s'.nextPc :=
@@ -210,7 +210,7 @@ local macro "ren_close " hd:term : tactic =>
       first
         | (simp at h; done)
         | (cases h; refine ⟨_, ?_, RelN.setReg hσ hR $hd _⟩;
-           simp only [*, if_true, if_false, reduceIte]; try (rw [if_neg (by decide)]))))
+           simp only [*, ite_true, ite_false, reduceIte]; try (rw [ite_eq_right (by decide)]))))
 
 /-- **`lsemStepN` under a renaming.** A successful step of the original
     instruction is matched by a step of the renamed instruction from a related
@@ -371,7 +371,7 @@ theorem zeroStruct?_of_ne {ds : List LOperand} {opn : String} {ss : List LOperan
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨-, rfl, -⟩ := heq
-    exact if_neg h
+    exact ite_eq_right h
   · rfl
 
 theorem zeroStruct?_ren (i : LinstrR) :
@@ -386,7 +386,7 @@ theorem storeImmStruct?_of_ne {ds : List LOperand} {opn : String} {ss : List LOp
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨-, rfl, -⟩ := heq
-    exact if_neg h
+    exact ite_eq_right h
   · rfl
 
 theorem storeImmStruct?_ren (i : LinstrR) :
@@ -644,7 +644,7 @@ theorem RelM.setArr {s s' : LstateM} (hσ : RenOn σ N) (h : RelM σ N s s') {d 
   simp only [LstateM.larr_nextPc, LstateM.larr_setArr]
   by_cases hrd : r = d
   · subst hrd; simp
-  · rw [if_neg (fun he => hrd (hσ.inj _ _ hr hd he)), if_neg hrd]
+  · rw [ite_eq_right (fun he => hrd (hσ.inj _ _ hr hd he)), ite_eq_right hrd]
     exact h.2.1 r hr
 
 theorem RelM.storeMemC {s s' : LstateM} (h : RelM σ N s s') (base : String) (off : Int)
@@ -670,7 +670,7 @@ local macro "ren_close_with " t:term : tactic =>
       first
         | (simp at h; done)
         | (cases h; refine ⟨_, ?_, $t⟩;
-           simp only [*, if_true, if_false, reduceIte])))
+           simp only [*, ite_true, ite_false, reduceIte])))
 
 /-- **`lsemStepMem` under a renaming.** A successful typed memory step of the
     original instruction is matched by a step of the renamed instruction from a
@@ -868,7 +868,7 @@ theorem lsemStepMem_of_carryArgs {i : LinstrRM} {p : CarryOp × String × LOpera
       · rename_i heq
         simp only [LinstrR.Lopn.injEq] at heq
         obtain ⟨-, rfl, -⟩ := heq
-        rw [if_neg]
+        rw [ite_eq_right]
         intro he
         subst he
         rcases hm with h | h | h | h <;> revert h <;> decide +kernel
@@ -952,7 +952,7 @@ theorem lsemStepMem_of_wideArgs {i : LinstrRM} {w : WideOp} (h : wideArgs? i = s
       · rename_i heq
         simp only [LinstrR.Lopn.injEq] at heq
         obtain ⟨-, rfl, -⟩ := heq
-        rw [if_neg]
+        rw [ite_eq_right]
         intro he
         subst he
         revert hm; decide +kernel
@@ -1199,7 +1199,7 @@ theorem evalInstrPMemL_ren {k0 : Nat} {P P' : LprogM} (hσ : RenOn σ N)
       simp only [evalInstrPMemL, renRM, renLinstrR] at h ⊢
       rw [hP.lfn]
       split at h
-      · rw [if_pos (by assumption)]
+      · rw [ite_eq_left (by assumption)]
         exact evalJumpMem_ren hP l hR hfn h
       · simp at h
   | Lopn d o s => exact hstep h
@@ -1254,13 +1254,13 @@ theorem evalInstrPMemF_ren {k0 : Nat} {P P' : LprogM} (hσ : RenOn σ N)
       split at h
       · obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
         obtain ⟨q', hq', hRq, hfn, hkq⟩ := evalJumpMem_ren hP l hR.1 hR.2.1 hq
-        refine ⟨{ prog := q', zf := s.zf }, by rw [if_pos (by assumption), hq']; rfl,
+        refine ⟨{ prog := q', zf := s.zf }, by rw [ite_eq_left (by assumption), hq']; rfl,
           ⟨hRq, hfn, rfl, ?_, ?_⟩, hkq⟩
         · rw [(evalJumpMem_flags hq').1, (evalJumpMem_flags hq).1]; exact hR.2.2.2.1
         · rw [(evalJumpMem_flags hq').2, (evalJumpMem_flags hq).2]; exact hR.2.2.2.2
       · cases h
         exact ⟨{ prog := { s'.prog with base := s'.prog.base.nextPc }, zf := s.zf },
-          by rw [if_neg (by assumption)], ⟨hR.1.nextPc, hR.2.1, rfl, hR.2.2.2⟩,
+          by rw [ite_eq_right (by assumption)], ⟨hR.1.nextPc, hR.2.1, rfl, hR.2.2.2⟩,
           Nat.le_succ_of_le hk⟩
   | none =>
   simp only [h3] at h ⊢
@@ -1640,7 +1640,7 @@ theorem renOn_aliasRegName {from_ to_ : String} (hf : from_ ≠ "") (ht : to_ �
   emp := fun h => ht h.symm
   fix := by
     unfold aliasRegName
-    rw [if_neg (by simpa using fun h : "" = from_ => hf h.symm)]
+    rw [ite_eq_right (by simpa using fun h : "" = from_ => hf h.symm)]
 
 /-- An `Lopn` that is not a `MULX` satisfies `CondOK`. -/
 theorem condOK_of_isLopn {i : LinstrRM} (h : IsLopn i) (hm : mulxFree i = true) : CondOK i := by
@@ -1726,7 +1726,7 @@ theorem evalInstrPMemF_movReg (P : LprogM) (dst src : String) (tag : MemTag) (s 
           (s.prog.base.setReg dst (s.prog.base.reg.lvm src).2).nextPc } } := by
   unfold evalInstrPMemF
   simp only [cmpArgs?, movRegArgs?]
-  rw [if_pos (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)]
+  rw [ite_eq_left (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)]
   rfl
 
 /-- **`aliasRegBody` preserves the runs of the runtime-count loop node.** Let the
@@ -1773,14 +1773,14 @@ theorem forLoopLcmdNRtRM_alias (fn : String) (d : Nat) (acc out : String) (count
         = some (LinstrR.Lopn [.reg acc] (withWidthTag 64 "MOV") [.reg out], MemTag.reg none) := by
     intro u hu hu0
     unfold findInstrMem
-    rw [if_pos (by simpa [singletonProgM] using hu), hu0]
+    rw [ite_eq_left (by simpa [singletonProgM] using hu), hu0]
     rfl
   have hseed' : findInstrMem (singletonProgM fn
         ((forLoopLcmdNRtRM d acc (.reg out) countOp update invOps immSlotMap).map
           (renRM (aliasRegName acc out)))) s'.prog
         = some (LinstrR.Lopn [.reg out] (withWidthTag 64 "MOV") [.reg out], MemTag.reg none) := by
     unfold findInstrMem
-    rw [if_pos (by simpa [singletonProgM] using hfn'), hpc']
+    rw [ite_eq_left (by simpa [singletonProgM] using hfn'), hpc']
     simp [singletonProgM, forLoopLcmdNRtRM, loopSeedsRM, renRM, renLinstrR, renOperand,
       aliasRegName]
   cases fuel with
@@ -1807,7 +1807,7 @@ theorem forLoopLcmdNRtRM_alias (fn : String) (d : Nat) (acc out : String) (count
         · subst hra
           simp [aliasRegName, hro]
         · have : aliasRegName acc out r = r := by simp [aliasRegName, hra]
-          rw [this, if_neg hr, if_neg hra]
+          rw [this, ite_eq_right hr, ite_eq_right hra]
           exact hreg r hr hra
       · show s'.prog.lfn = s.prog.lfn
         rw [hfn, hfn']
@@ -1877,7 +1877,7 @@ theorem arrChainAlias_threadCmd :
     `threadRen`. -/
 theorem canonicalizeMemrefThread_threadCmd :
     canonicalizeMemrefThread threadCmd = renLcmd threadRen threadCmd := by
-  rw [canonicalizeMemrefThread_eq_renLcmd, arrChainAlias_threadCmd, if_neg (by simp)]
+  rw [canonicalizeMemrefThread_eq_renLcmd, arrChainAlias_threadCmd, ite_eq_right (by simp)]
   have hσ : canonMemrefName ((∅ : Std.HashMap String String).insert "d" "b") = threadRen := by
     funext n
     simp only [canonMemrefName, threadRen, Std.HashMap.getD_insert]

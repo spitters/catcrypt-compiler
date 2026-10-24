@@ -182,7 +182,7 @@ theorem composeVSteps_two_binop {w : Nat} (body : Lcmd) (tbl : Array Nat)
   simp only [composeVSteps, BinopBinding.vstep,
     Lstate.lvm_setReg, hb1d, hb2d, hb1v, hb2v]
   -- the only surviving condition is `a = t`, false by `ht`; the rest are `True`
-  rw [if_neg (Ne.symm ht)]
+  rw [ite_eq_right (Ne.symm ht)]
   simp
 
 /-- **End-to-end concrete witness.** Running the two-binding binop body's physical

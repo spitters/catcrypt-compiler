@@ -128,8 +128,8 @@ theorem haxToLowCT_letBind_app_some
     cases hBody : haxToLowCT body with
     | none => simp [hArgs, hBody] at h
     | some bodyC =>
-      simp only [hArgs, hBody, if_neg hf_not_arr, if_neg hf_not_idx, hf_not_sc,
-                 Bool.false_eq_true, if_false, Option.some.injEq] at h
+      simp only [hArgs, hBody, ite_eq_right hf_not_arr, ite_eq_right hf_not_idx, hf_not_sc,
+                 Bool.false_eq_true, ite_false, Option.some.injEq] at h
       exact ⟨args', bodyC, rfl, rfl, h.symm⟩
 
 /-! ## §4  Source-side inverse for `letBind name (.app f args) body`

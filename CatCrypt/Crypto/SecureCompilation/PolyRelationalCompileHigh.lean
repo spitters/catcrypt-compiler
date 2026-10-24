@@ -307,8 +307,8 @@ theorem nttMulProg_denote [Fact (Nat.Prime q)]
               else (#[] : Array (ZMod q))))
         else (0 : CPolynomial (ZMod q)))
       = _
-  rw [dif_pos (Fact.out : Nat.Prime q), dif_pos (Fact.out : Nat.Prime q),
-      dif_pos (Fact.out : Nat.Prime q), dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q), dite_eq_left (Fact.out : Nat.Prime q),
+      dite_eq_left (Fact.out : Nat.Prime q), dite_eq_left (Fact.out : Nat.Prime q)]
 
 end NttMulDemo
 

@@ -125,13 +125,13 @@ theorem lane_mulVal (P MU A B : BitVec 512) (p mu : BitVec 32)
   rw [lane_lw32 _ _ _ hj, lane_lw32 _ _ _ hj, hP j hj, lane_semMerge _ _ _ hj]
   obtain ⟨i, rfl | rfl⟩ := Nat.even_or_odd' j
   · have hi : i < 8 := by omega
-    rw [evenMask_even i hi, if_pos rfl, lane_shdup _ hj,
+    rw [evenMask_even i hi, ite_eq_left rfl, lane_shdup _ hj,
       show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega, lane_lw32 _ _ _ (by omega),
       lane_muludq_odd _ _ _ hi, lane_muludq_odd _ _ _ hi, lane_muludq_even _ _ _ hi,
       lane_muludq_even _ _ _ hi, hP _ (by omega), hMU _ (by omega)]
     rfl
   · have hi : i < 8 := by omega
-    rw [evenMask_odd i hi, if_neg (by simp), lane_lw32 _ _ _ hj,
+    rw [evenMask_odd i hi, ite_eq_right (by simp), lane_lw32 _ _ _ hj,
       lane_muludq_odd _ _ _ hi, lane_muludq_odd _ _ _ hi, lane_muludq_even _ _ _ hi,
       lane_muludq_even _ _ _ hi, hP _ (by omega), hMU _ (by omega), lane_shdup _ (by omega),
       lane_shdup _ (by omega), show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
@@ -336,7 +336,7 @@ theorem lowerInstr_sim (mp : MontParams) (L : (Fin 16 → BitVec 32) → String)
           rw [hl j]
           simp only [idxWords, BitVec.toNat_ofNat]
           rw [Nat.mod_eq_of_lt (show (idx j).val < 2 ^ 32 by omega), Nat.mod_eq_of_lt h16]
-        simp only [MState.setZ, if_pos, wr]
+        simp only [MState.setZ, ite_eq_left, wr]
         rw [lane_semPerm _ _ _ j.isLt, hidx]
         simp [mreg_lit, hR, PInstr.step, PInstr.val, PInstr.dst]
       · have hne : mreg r ≠ mreg d := fun h => hr (mreg_inj h)
@@ -348,7 +348,7 @@ theorem lowerInstr_sim (mp : MontParams) (L : (Fin 16 → BitVec 32) → String)
     · intro r j
       by_cases hr : r = d
       · subst hr
-        simp only [MState.setZ, if_pos, wr]
+        simp only [MState.setZ, ite_eq_left, wr]
         rw [lane_semMerge _ _ _ j.isLt]
         simp [maskWord_getLsbD, hR, PInstr.step, PInstr.val, PInstr.dst]
       · have hne : mreg r ≠ mreg d := fun h => hr (mreg_inj h)

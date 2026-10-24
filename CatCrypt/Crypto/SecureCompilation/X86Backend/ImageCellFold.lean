@@ -452,7 +452,7 @@ theorem load_step {R : Slots} (hR : slotsOkB R = true) {env : KEnv} {d b x : Str
       JasminLsemWidthN.LstateN.nextPc, hC.pc]
   · obtain ⟨arr', ha', hcl'⟩ := hC.cells p hp
     refine ⟨arr', ha', fun j hj => ?_⟩
-    rw [lvm_setReg_nextPc, if_neg]
+    rw [lvm_setReg_nextPc, ite_eq_right]
     · exact hcl' j hj
     · intro he
       have := isCellB_cell hp hj
@@ -507,7 +507,7 @@ theorem store_step {R : Slots} (hR : slotsOkB R = true) (hD : cellsDistinctB R =
   have hbc : isArrB R b = true := isArrB_mem hmem
   refine ⟨_, fstepF_store64 _ v zf hv', ⟨fun r hr => ?_, ?_, fun r hr => ?_,
     hC.mem, hC.cf, hC.of, fun p hp => ?_, stepEnv h0 hC.env⟩⟩
-  · rw [lvm_setReg_nextPc, if_neg]
+  · rw [lvm_setReg_nextPc, ite_eq_right]
     · exact hC.reg r hr
     · intro he
       rw [he, isCellB_cell hmem hkn] at hr
@@ -515,7 +515,7 @@ theorem store_step {R : Slots} (hR : slotsOkB R = true) (hD : cellsDistinctB R =
   · simp [LstateM.setReg, LstateM.setArr, LstateM.nextPc, JasminLsemWidthN.LstateN.setReg,
       JasminLsemWidthN.LstateN.nextPc, hC.pc]
   · have hrb : r ≠ b := fun he => by rw [he, hbc] at hr; cases hr
-    simp only [LstateM.setReg, LstateM.setArr, LstateM.nextPc, hrb, if_false]
+    simp only [LstateM.setReg, LstateM.setArr, LstateM.nextPc, hrb, ite_false]
     exact hC.arr r hr
   · by_cases hpb : p.1 = b
     · have hpe : p = (b, n) := slot_key hR hp hmem hpb
@@ -525,7 +525,7 @@ theorem store_step {R : Slots} (hR : slotsOkB R = true) (hD : cellsDistinctB R =
       by_cases hjk : j = k
       · subst hjk
         simp
-      · rw [if_neg, if_neg hjk]
+      · rw [ite_eq_right, ite_eq_right hjk]
         · exact hcl j hj
         · intro he
           exact hjk (cellsDistinct hD hp hp hj hkn he).2
@@ -535,7 +535,7 @@ theorem store_step {R : Slots} (hR : slotsOkB R = true) (hD : cellsDistinctB R =
           (t := (s.setArr b (JasminDialect.stackSet arr k vv)).nextPc)
           (by simp [LstateM.setArr, LstateM.nextPc, hpb])]
         exact ha'
-      · rw [lvm_setReg_nextPc, if_neg]
+      · rw [lvm_setReg_nextPc, ite_eq_right]
         · exact hcl' j hj
         · intro he
           exact hpb (cellsDistinct hD hp hmem hj hkn he).1

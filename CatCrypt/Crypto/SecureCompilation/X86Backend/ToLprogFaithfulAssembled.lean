@@ -404,7 +404,7 @@ theorem calleeSaveRestoreEpilogue_frame {w : Nat} (s : Lstate w) (y : String)
   simp only [epilogueWritten, List.mem_cons, List.not_mem_nil, or_false, not_or] at hy
   obtain ⟨h1, h2, h3, h4, h5, h6⟩ := hy
   simp only [epilogueState, prologueStep, Lstate.lvm_nextPc, Lstate.lvm_setReg,
-    if_neg h1, if_neg h2, if_neg h3, if_neg h4, if_neg h5, if_neg h6]
+    ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4, ite_eq_right h5, ite_eq_right h6]
 
 /-- **Whole-function faithfulness with the callee-save restore epilogue.** The
     function body `buildPrologue ++ argMatSeq pairs ++ physBody ++

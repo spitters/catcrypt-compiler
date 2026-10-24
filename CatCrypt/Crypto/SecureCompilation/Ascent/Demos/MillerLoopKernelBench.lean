@@ -166,7 +166,7 @@ theorem millerBody_corres (ls : SemLeafSpec) (fuel : Nat)
     laLoc, inlineRCallVal_TFp12, inlineRCallVal_TU64, Option.bind_some,
     locNames, argVals, List.map_cons, List.map_nil,
     List.filterMap_cons, List.filterMap_nil, SEnvScalar.upd, hv, hi', semScalarCond, guardNz,
-    envReadU64, if_true, if_false, String.reduceEq, encodeTy, Option.getD_some]
+    envReadU64, ite_true, ite_false, String.reduceEq, encodeTy, Option.getD_some]
   have hsq := hL.sq v x hrep
   have hm := hL.mul _ _ _ _ hsq (hL.dbl n hn)
   cases hb : (es n).bit
@@ -174,14 +174,14 @@ theorem millerBody_corres (ls : SemLeafSpec) (fuel : Nat)
     simp only [hbit, cond_false]
     refine ⟨_, rfl, ?_, _, rfl, ?_⟩
     · rintro m ⟨⟩
-      simp only [SEnvScalar.upd, String.reduceEq, if_false, hi']
+      simp only [SEnvScalar.upd, String.reduceEq, ite_false, hi']
     · simp only [stepM, millerStepEntry, hb]
       exact hm
   · rw [hb] at hbit
     simp only [hbit, cond_true]
     refine ⟨_, rfl, ?_, _, rfl, ?_⟩
     · rintro m ⟨⟩
-      simp only [SEnvScalar.upd, String.reduceEq, if_false, hi']
+      simp only [SEnvScalar.upd, String.reduceEq, ite_false, hi']
     · simp only [stepM, millerStepEntry, hb]
       exact hL.mul _ _ _ _ hm (hL.add n hn)
 
@@ -195,8 +195,8 @@ theorem srm_setCounter (Rep : ⟦FTy⟧ → Fp12_377 → Prop) (env : SEnvScalar
   obtain ⟨-, v, hv, hrep⟩ := h
   refine ⟨?_, v, ?_, hrep⟩
   · rintro m ⟨⟩
-    simp only [SEnvScalar.upd, if_true, ctrArg]
-  · simp only [SEnvScalar.upd, String.reduceEq, if_false, hv]
+    simp only [SEnvScalar.upd, ite_true, ctrArg]
+  · simp only [SEnvScalar.upd, String.reduceEq, ite_false, hv]
 
 /-- The counted loop refines the `N`-fold abstract `forFold` of the Miller step. -/
 theorem millerLoopProg_corres (ls : SemLeafSpec) (fuel : Nat)

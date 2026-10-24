@@ -302,7 +302,7 @@ theorem redFramed_saved {c : List (JInstr 64)} (hc : CoreOK c) (s : AState)
   simp only [calleeSavedRegs, List.mem_cons, List.not_mem_nil, or_false] at hr
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;>
     simp (config := { decide := true }) only [frameEpilogue, runBlockA_cons, runBlockA_nil,
-      CallFrame.evalInstrA_loadMem, if_true, if_false] <;>
+      CallFrame.evalInstrA_loadMem, ite_true, ite_false] <;>
     rw [← hs2] at hsp <;>
     rw [hsp] <;>
     (first

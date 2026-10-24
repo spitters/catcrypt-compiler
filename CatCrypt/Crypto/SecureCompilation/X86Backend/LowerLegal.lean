@@ -164,7 +164,7 @@ theorem legalizeMov_legal {d s : LOperand} {mov : String} (hm : isMovMnem mov = 
       (allocOp_iff_allocOpI.1 hs)
   · obtain ⟨dn, rfl, hd'⟩ := hd
     intro i hi
-    simp only [legalizeMov, isSpill_imm, Bool.and_false, Bool.false_eq_true, if_false,
+    simp only [legalizeMov, isSpill_imm, Bool.and_false, Bool.false_eq_true, ite_false,
       List.mem_singleton] at hi
     subst hi
     exact lf_movImm hm ⟨dn, rfl, hd'⟩ hv
@@ -494,7 +494,7 @@ theorem legalizeMemStoreK_legal (k : Option Nat) (dArr : LOperand) {addr val : L
     unfold constIdxStore? at hl
     dsimp only at hl
     by_cases hbs : sibNameSpill b = true
-    · simp only [hbs, if_true] at hl
+    · simp only [hbs, ite_true] at hl
       split_ifs at hl with h1
       split at hl
       · next c =>
@@ -509,7 +509,7 @@ theorem legalizeMemStoreK_legal (k : Option Nat) (dArr : LOperand) {addr val : L
     · have hbs' : (LOperand.reg b).isSpill = false := by
         simpa [LOperand.isSpill, sibNameSpill] using hbs
       rw [Bool.not_eq_true] at hbs
-      simp only [hbs, Bool.false_eq_true, if_false] at hl
+      simp only [hbs, Bool.false_eq_true, ite_false] at hl
       split_ifs at hl with h1
       split at hl
       · next c =>
@@ -795,7 +795,7 @@ theorem imm32Fits_of_movFor {opn : String} {v : Nat} (hb : isTwoAddrBinop opn = 
     simp only [h]
     simp
     omega
-  · simp only [h, if_false, Bool.false_or, decide_eq_true_eq, hq]
+  · simp only [h, ite_false, Bool.false_or, decide_eq_true_eq, hq]
     split_ifs <;> first | omega | simp
 
 /-- The binding index of a position: the number of operations before it. -/
@@ -850,7 +850,7 @@ theorem lower_legal (shiftImm : ShiftImmOracle) (body : Lcmd)
   have h14 := isGpName_reloadScratch2
   have hmq : isMovMnem "MOVQ" = true := by decide +kernel
   unfold physPositionEmit at hr
-  simp only [List.mem_append, ← hrm, hb8, hb16, hb256, Bool.false_eq_true, if_false] at hr
+  simp only [List.mem_append, ← hrm, hb8, hb16, hb256, Bool.false_eq_true, ite_false] at hr
   rcases hr with ((hr | hr) | hr) | hr
   · -- the inline argument loads
     rw [List.mem_flatMap] at hr
@@ -891,7 +891,7 @@ theorem lower_legal (shiftImm : ShiftImmOracle) (body : Lcmd)
             · exact Or.inl (x86Alu_of_binop hbin hs)
             · refine Or.inr (hsh hs ?_)
               have hs' : (stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR") = true := hs
-              simp only [hs', if_true] at hv
+              simp only [hs', ite_true] at hv
               cases s1 <;> simp_all [shiftCount]
           · intro v _ hlt
             cases hs : isShiftMnem opn

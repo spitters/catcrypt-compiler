@@ -155,7 +155,7 @@ theorem procStep_congr {pr : ProcSummary} {dst : String} {args : List String}
     obtain ⟨vs, hvs, h⟩ := Option.bind_eq_some_iff.mp h
     obtain ⟨x, hx, rfl⟩ := Option.map_eq_some_iff.mp h
     refine ⟨x, rfl, ?_, fun hrw => ?_⟩
-    · rw [if_pos hlen, LprogIsa.argsRead_regs_congr pr.arrArgs hla 0 hag, hvs]
+    · rw [ite_eq_left hlen, LprogIsa.argsRead_regs_congr pr.arrArgs hla 0 hag, hvs]
       simp [hx]
     · rw [LprogIsa.ProcSummary.result_of_retWord hrw] at hx
       obtain ⟨w, -, rfl⟩ := Option.map_eq_some_iff.mp hx

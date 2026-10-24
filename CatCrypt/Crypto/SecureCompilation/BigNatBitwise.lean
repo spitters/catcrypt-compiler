@@ -59,8 +59,8 @@ theorem block_split
       Nat.testBit_two_pow_mul_add X hx, Nat.testBit_two_pow_mul_add Y hy,
       Nat.testBit_two_pow_mul_add (natOp X Y) (hrange x y hx hy)]
   by_cases hj : j < 64
-  · simp only [if_pos hj]; exact (hbit x y j).symm
-  · simp only [if_neg hj]; exact (hbit X Y (j - 64)).symm
+  · simp only [ite_eq_left hj]; exact (hbit x y j).symm
+  · simp only [ite_eq_right hj]; exact (hbit X Y (j - 64)).symm
 
 /-! ## Appending and zero-padding limb lists -/
 

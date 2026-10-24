@@ -123,7 +123,7 @@ theorem slotMap_emitOp_state {Γ : Ctxt jasminDialect}
     rw [Function.update_self]
     simp only [reduceIte]
     rfl
-  · simp only [if_neg h, Function.update_of_ne h]
+  · simp only [ite_eq_right h, Function.update_of_ne h]
     rfl
 
 /-! ## 2. Slot-map–respecting continuations
@@ -208,16 +208,16 @@ theorem respects_emitMasks {t : JasminTy} (k : Nat)
     have hE : (emitMasks k st kont) =
         emitOp st .and (outSlot k) (outSlot k) maskConstSlot (masksCont (k + 1) kont) := by
       conv_lhs => rw [emitMasks.eq_def]
-      simp only [hkN, if_true]
+      simp only [hkN, ite_true]
     rw [hE]
     have := hstep Γ st V
     rw [this]
     conv_rhs => rw [maskModel.eq_def]
-    simp only [hkN, if_true]
+    simp only [hkN, ite_true]
   · have hE : (emitMasks k st kont) = kont st := by
-      conv_lhs => rw [emitMasks.eq_def]; simp only [hkN, if_false]
+      conv_lhs => rw [emitMasks.eq_def]; simp only [hkN, ite_false]
     have hM : maskModel k (slotMap st V) = slotMap st V := by
-      conv_lhs => rw [maskModel.eq_def]; simp only [hkN, if_false]
+      conv_lhs => rw [maskModel.eq_def]; simp only [hkN, ite_false]
     rw [hE, hk Γ st V, hM]
 termination_by HawkMulEmit.N - k
 
@@ -272,16 +272,16 @@ theorem respects_emitCoeffTail {t : JasminTy} (k i : Nat)
           emitOp st1 (if i ≤ k then .add else .sub) (outSlot k) (outSlot k) scrSlot (fun st2 =>
             emitCoeffTail k (i + 1) st2 kont)) := by
       conv_lhs => rw [HawkMulEmit.emitCoeffTail.eq_def]
-      simp only [hiN, if_true]
+      simp only [hiN, ite_true]
     rw [hE]
     have := hstep1 Γ st V
     rw [this]
     conv_rhs => rw [tailModel.eq_def]
-    simp only [hiN, if_true]
+    simp only [hiN, ite_true]
   · have hE : (emitCoeffTail k i st kont) = kont st := by
-      conv_lhs => rw [HawkMulEmit.emitCoeffTail.eq_def]; simp only [hiN, if_false]
+      conv_lhs => rw [HawkMulEmit.emitCoeffTail.eq_def]; simp only [hiN, ite_false]
     have hM : tailModel k i (slotMap st V) = slotMap st V := by
-      conv_lhs => rw [tailModel.eq_def]; simp only [hiN, if_false]
+      conv_lhs => rw [tailModel.eq_def]; simp only [hiN, ite_false]
     rw [hE, hk Γ st V, hM]
 termination_by HawkMulEmit.N - i
 
@@ -325,16 +325,16 @@ theorem respects_emitCoeffs {t : JasminTy} (k : Nat)
     have hE : (emitCoeffs k st kont) =
         emitCoeff k st (fun st1 => emitCoeffs (k + 1) st1 kont) := by
       conv_lhs => rw [HawkMulEmit.emitCoeffs.eq_def]
-      simp only [hkN, if_true]
+      simp only [hkN, ite_true]
     rw [hE]
     have := hstep Γ st V
     rw [this]
     conv_rhs => rw [coeffsModel.eq_def]
-    simp only [hkN, if_true]
+    simp only [hkN, ite_true]
   · have hE : (emitCoeffs k st kont) = kont st := by
-      conv_lhs => rw [HawkMulEmit.emitCoeffs.eq_def]; simp only [hkN, if_false]
+      conv_lhs => rw [HawkMulEmit.emitCoeffs.eq_def]; simp only [hkN, ite_false]
     have hM : coeffsModel k (slotMap st V) = slotMap st V := by
-      conv_lhs => rw [coeffsModel.eq_def]; simp only [hkN, if_false]
+      conv_lhs => rw [coeffsModel.eq_def]; simp only [hkN, ite_false]
     rw [hE, hk Γ st V, hM]
 termination_by HawkMulEmit.N - k
 
@@ -419,15 +419,15 @@ theorem slotMap_initBState_encode (a b : HawkLane) :
   funext i
   unfold slotMap HawkMulEmit.initBState
   by_cases h1 : i.val < 32
-  · simp only [h1, if_true]
+  · simp only [h1, ite_true]
     rw [inVar_encode a b i.val (by omega)]
-  · simp only [h1, if_false]
+  · simp only [h1, ite_false]
     by_cases h2 : i.val = 49
-    · simp only [h2, if_true]
+    · simp only [h2, ite_true]
       rw [inVar_encode a b 32 (by omega)]
       simp only [encWords]
       norm_num
-    · simp only [h2, if_false]
+    · simp only [h2, ite_false]
       rw [inVar_encode a b 0 (by omega)]
 
 /-! ## 6. The convolution at the BitVec level
@@ -490,11 +490,11 @@ theorem bvAccum_congr (σ σ' : Fin M → BitVec 32) (k : Nat)
         unfold bvTerm; rw [ha, hb]
       conv_lhs => rw [bvAccum.eq_def]
       conv_rhs => rw [bvAccum.eq_def]
-      simp only [hiN, if_true, hterm]
+      simp only [hiN, ite_true, hterm]
       rw [ih]
     · conv_lhs => rw [bvAccum.eq_def]
       conv_rhs => rw [bvAccum.eq_def]
-      simp only [hiN, if_false]
+      simp only [hiN, ite_false]
 termination_by i => HawkMulEmit.N - i
 
 /-- `tailModel` accumulates `out[k]` exactly as `bvAccum` does, leaving the
@@ -508,7 +508,7 @@ theorem tailModel_outSlot (σ : Fin M → BitVec 32) (k i : Nat) :
       (JasminBinOp.apply (if i ≤ k then .add else .sub) (σ1 (outSlot k)) (σ1 scrSlot)) with hσ2
     have ih := tailModel_outSlot σ2 k (i + 1)
     rw [tailModel.eq_def]
-    simp only [hiN, if_true]
+    simp only [hiN, ite_true]
     change tailModel k (i + 1) σ2 (outSlot k) = _
     rw [ih]
     -- σ2 agrees with σ on a/b slots
@@ -528,15 +528,15 @@ theorem tailModel_outSlot (σ : Fin M → BitVec 32) (k i : Nat) :
     have hσ2out : σ2 (outSlot k) = σ (outSlot k) + bvTerm σ k i := by
       rw [hσ2, Function.update_self, hσ1out, hσ1scr, hP]
       unfold bvTerm JasminBinOp.apply
-      by_cases hik : i ≤ k <;> simp only [hik, if_true, if_false]
+      by_cases hik : i ≤ k <;> simp only [hik, ite_true, ite_false]
       rw [sub_eq_add_neg]
       rw [zero_sub]
     rw [hσ2out]
     -- bvAccum σ k i (σ outSlot) steps to bvAccum σ k (i+1) (σ outSlot + bvTerm)
     conv_rhs => rw [bvAccum.eq_def]
-    simp only [hiN, if_true]
+    simp only [hiN, ite_true]
   · rw [tailModel.eq_def, bvAccum.eq_def]
-    simp only [hiN, if_false]
+    simp only [hiN, ite_false]
 termination_by HawkMulEmit.N - i
 
 /-- **`coeffModel` computes the full BitVec convolution into `out[k]`.** The
@@ -557,11 +557,11 @@ theorem coeffModel_outSlot (σ : Fin M → BitVec 32) (k : Nat) :
   have hσ0out : σ0 (outSlot k) = bvTerm σ k 0 := by
     rw [hσ0, Function.update_self]
     unfold bvTerm JasminBinOp.apply
-    simp only [Nat.zero_le, if_true]
+    simp only [Nat.zero_le, ite_true]
   rw [hσ0out]
   -- bvAccum σ k 0 0 = bvAccum σ k 1 (0 + bvTerm σ k 0) = bvAccum σ k 1 (bvTerm σ k 0)
   conv_rhs => rw [bvAccum.eq_def]
-  simp only [show (0 : Nat) < HawkMulEmit.N by decide, if_true, zero_add]
+  simp only [show (0 : Nat) < HawkMulEmit.N by decide, ite_true, zero_add]
 
 /-! ### `coeffsModel` reads each `out[k]` off the original inputs
 
@@ -576,11 +576,11 @@ theorem tailModel_aSlot (σ : Fin M → BitVec 32) (k m : Nat) (i : Nat) :
     tailModel k i σ (aSlot m) = σ (aSlot m) := by
   rw [tailModel.eq_def]
   by_cases hiN : i < HawkMulEmit.N
-  · simp only [hiN, if_true]
+  · simp only [hiN, ite_true]
     rw [tailModel_aSlot _ k m (i + 1),
         Function.update_of_ne (aSlot_ne_outSlot m k),
         Function.update_of_ne (aSlot_ne_scrSlot m)]
-  · simp only [hiN, if_false]
+  · simp only [hiN, ite_false]
   termination_by HawkMulEmit.N - i
 
 /-- `tailModel` preserves `b`-slots. -/
@@ -588,11 +588,11 @@ theorem tailModel_bSlot (σ : Fin M → BitVec 32) (k m : Nat) (i : Nat) :
     tailModel k i σ (bSlot m) = σ (bSlot m) := by
   rw [tailModel.eq_def]
   by_cases hiN : i < HawkMulEmit.N
-  · simp only [hiN, if_true]
+  · simp only [hiN, ite_true]
     rw [tailModel_bSlot _ k m (i + 1),
         Function.update_of_ne (bSlot_ne_outSlot m k),
         Function.update_of_ne (bSlot_ne_scrSlot m)]
-  · simp only [hiN, if_false]
+  · simp only [hiN, ite_false]
   termination_by HawkMulEmit.N - i
 
 /-- `tailModel k` preserves `out[k']` for `k' ≠ k` (mod N). -/
@@ -601,10 +601,10 @@ theorem tailModel_outSlot_ne (σ : Fin M → BitVec 32) (k k' : Nat)
     tailModel k i σ (outSlot k') = σ (outSlot k') := by
   rw [tailModel.eq_def]
   by_cases hiN : i < HawkMulEmit.N
-  · simp only [hiN, if_true]
+  · simp only [hiN, ite_true]
     rw [tailModel_outSlot_ne _ k k' hne (i + 1),
         Function.update_of_ne hne, Function.update_of_ne (scrSlot_ne_outSlot k').symm]
-  · simp only [hiN, if_false]
+  · simp only [hiN, ite_false]
   termination_by HawkMulEmit.N - i
 
 theorem coeffModel_aSlot (σ : Fin M → BitVec 32) (k m : Nat) :
@@ -637,9 +637,9 @@ theorem coeffsModel_aSlot (σ : Fin M → BitVec 32) (m : Nat) (k : Nat) :
     coeffsModel k σ (aSlot m) = σ (aSlot m) := by
   rw [coeffsModel.eq_def]
   by_cases hkN : k < HawkMulEmit.N
-  · simp only [hkN, if_true]
+  · simp only [hkN, ite_true]
     rw [coeffsModel_aSlot _ m (k + 1), coeffModel_aSlot]
-  · simp only [hkN, if_false]
+  · simp only [hkN, ite_false]
   termination_by HawkMulEmit.N - k
 
 /-- `coeffsModel` preserves `b`-slots. -/
@@ -647,9 +647,9 @@ theorem coeffsModel_bSlot (σ : Fin M → BitVec 32) (m : Nat) (k : Nat) :
     coeffsModel k σ (bSlot m) = σ (bSlot m) := by
   rw [coeffsModel.eq_def]
   by_cases hkN : k < HawkMulEmit.N
-  · simp only [hkN, if_true]
+  · simp only [hkN, ite_true]
     rw [coeffsModel_bSlot _ m (k + 1), coeffModel_bSlot]
-  · simp only [hkN, if_false]
+  · simp only [hkN, ite_false]
   termination_by HawkMulEmit.N - k
 
 /-- After `coeffModel j` has set `out[j]`, the later coeffs `coeffsModel start …`
@@ -660,12 +660,12 @@ theorem coeffsModel_outSlot_preserved (σ : Fin M → BitVec 32) (start k : Nat)
     coeffsModel start σ (outSlot k) = σ (outSlot k) := by
   rw [coeffsModel.eq_def]
   by_cases hsN : start < HawkMulEmit.N
-  · simp only [hsN, if_true]
+  · simp only [hsN, ite_true]
     have hne : outSlot k ≠ outSlot start := by
       intro h; exact absurd (outSlot_inj k start hkN hsN h) (by omega)
     rw [coeffsModel_outSlot_preserved (coeffModel start σ) (start + 1) k (by omega) hkN]
     rw [coeffModel_outSlot_ne σ start k hne]
-  · simp only [hsN, if_false]
+  · simp only [hsN, ite_false]
   termination_by HawkMulEmit.N - start
 
 /-- **`coeffsModel j` writes the full convolution into each `out[k]`** for
@@ -677,7 +677,7 @@ theorem coeffsModel_outSlot (σ : Fin M → BitVec 32) (j k : Nat)
     coeffsModel j σ (outSlot k) = bvAccum σ k 0 0 := by
   rw [coeffsModel.eq_def]
   have hjN : j < HawkMulEmit.N := lt_of_le_of_lt hjk hkN
-  simp only [hjN, if_true]
+  simp only [hjN, ite_true]
   rcases Nat.lt_or_ge j k with hlt | hge
   · -- j < k: coeffModel j leaves out[k] alone; recurse, but a/b preserved
     have ih := coeffsModel_outSlot (coeffModel j σ) (j + 1) k (by omega) hkN
@@ -702,13 +702,13 @@ theorem tailModel_maskConstSlot (σ : Fin M → BitVec 32) (k i : Nat) :
     tailModel k i σ maskConstSlot = σ maskConstSlot := by
   rw [tailModel.eq_def]
   by_cases hiN : i < HawkMulEmit.N
-  · simp only [hiN, if_true]
+  · simp only [hiN, ite_true]
     rw [tailModel_maskConstSlot _ k (i + 1),
         Function.update_of_ne (maskConstSlot_ne_outSlot k),
         Function.update_of_ne (by
           intro h; have := Fin.val_eq_of_eq h
           simp only [HawkMulEmit.maskConstSlot, HawkMulEmit.scrSlot] at this; omega)]
-  · simp only [hiN, if_false]
+  · simp only [hiN, ite_false]
   termination_by HawkMulEmit.N - i
 
 theorem coeffModel_maskConstSlot (σ : Fin M → BitVec 32) (k : Nat) :
@@ -720,9 +720,9 @@ theorem coeffsModel_maskConstSlot (σ : Fin M → BitVec 32) (k : Nat) :
     coeffsModel k σ maskConstSlot = σ maskConstSlot := by
   rw [coeffsModel.eq_def]
   by_cases hkN : k < HawkMulEmit.N
-  · simp only [hkN, if_true]
+  · simp only [hkN, ite_true]
     rw [coeffsModel_maskConstSlot _ (k + 1), coeffModel_maskConstSlot]
-  · simp only [hkN, if_false]
+  · simp only [hkN, ite_false]
   termination_by HawkMulEmit.N - k
 
 /-! ### `maskModel` applies the `& 1023` reduction to each `out[k]` -/
@@ -732,10 +732,10 @@ theorem maskModel_maskConstSlot (σ : Fin M → BitVec 32) (j : Nat) :
     maskModel j σ maskConstSlot = σ maskConstSlot := by
   rw [maskModel.eq_def]
   by_cases hjN : j < HawkMulEmit.N
-  · simp only [hjN, if_true]
+  · simp only [hjN, ite_true]
     rw [maskModel_maskConstSlot _ (j + 1),
         Function.update_of_ne (maskConstSlot_ne_outSlot j)]
-  · simp only [hjN, if_false]
+  · simp only [hjN, ite_false]
   termination_by HawkMulEmit.N - j
 
 /-- `maskModel start` (`start > k`) leaves `out[k]` untouched. -/
@@ -744,12 +744,12 @@ theorem maskModel_outSlot_preserved (σ : Fin M → BitVec 32) (start k : Nat)
     maskModel start σ (outSlot k) = σ (outSlot k) := by
   rw [maskModel.eq_def]
   by_cases hsN : start < HawkMulEmit.N
-  · simp only [hsN, if_true]
+  · simp only [hsN, ite_true]
     have hne : outSlot k ≠ outSlot start := by
       intro h; exact absurd (outSlot_inj k start hkN hsN h) (by omega)
     rw [maskModel_outSlot_preserved _ (start + 1) k (by omega) hkN,
         Function.update_of_ne hne]
-  · simp only [hsN, if_false]
+  · simp only [hsN, ite_false]
   termination_by HawkMulEmit.N - start
 
 /-- **`maskModel j` masks each `out[k]`** (`j ≤ k < N`): the value at `out[k]`
@@ -760,7 +760,7 @@ theorem maskModel_outSlot (σ : Fin M → BitVec 32) (j k : Nat)
     maskModel j σ (outSlot k) = σ (outSlot k) &&& σ maskConstSlot := by
   rw [maskModel.eq_def]
   have hjN : j < HawkMulEmit.N := lt_of_le_of_lt hjk hkN
-  simp only [hjN, if_true]
+  simp only [hjN, ite_true]
   rcases Nat.lt_or_ge j k with hlt | hge
   · have hne : outSlot k ≠ outSlot j := by
       intro h; exact absurd (outSlot_inj k j hkN hjN h) (by omega)
@@ -867,7 +867,7 @@ theorem φ_bvAccum (σ : Fin M → BitVec 32) (k : Nat) (i : Nat) (acc : BitVec 
     φ (bvAccum σ k i acc) = φ acc + ∑ j ∈ Finset.Ico i HawkMulEmit.N, φ (bvTerm σ k j) := by
   rw [bvAccum.eq_def]
   by_cases hiN : i < HawkMulEmit.N
-  · simp only [hiN, if_true]
+  · simp only [hiN, ite_true]
     rw [φ_bvAccum σ k (i + 1) (acc + bvTerm σ k i)]
     rw [φ_add]
     rw [Finset.sum_Ico_eq_sum_range]
@@ -880,7 +880,7 @@ theorem φ_bvAccum (σ : Fin M → BitVec 32) (k : Nat) (i : Nat) (acc : BitVec 
       apply Finset.sum_congr rfl; intro x _
       rw [show i + 1 + x = i + (x + 1) from by omega]
     rw [hSeq]; ring
-  · simp only [hiN, if_false]
+  · simp only [hiN, ite_false]
     rw [Finset.Ico_eq_empty (by omega), Finset.sum_empty, add_zero]
   termination_by HawkMulEmit.N - i
 
@@ -894,7 +894,7 @@ theorem initσ_aSlot (a b : HawkLane) (i : Nat) :
     rw [haval]; have : i % HawkMulEmit.N < HawkMulEmit.N := Nat.mod_lt _ (by decide)
     simp only [HawkMulEmit.N] at *; omega
   have hlt : (aSlot i).val < 32 := by omega
-  simp only [hlt, if_true, encWords, dif_pos hlt16]
+  simp only [hlt, ite_true, encWords, dite_eq_left hlt16]
   congr 1
 
 /-- The initial slot map's `b`-slot `j` holds `embZ (b ⟨j % N⟩)`. -/
@@ -908,7 +908,7 @@ theorem initσ_bSlot (a b : HawkLane) (j : Nat) :
     rw [hbval]; have : j % HawkMulEmit.N < HawkMulEmit.N := Nat.mod_lt _ (by decide)
     simp only [HawkMulEmit.N] at *; omega
   have hnlt16 : ¬ (bSlot j).val < 16 := by rw [hbval]; omega
-  simp only [hlt, if_true, encWords, dif_neg hnlt16, dite_true]
+  simp only [hlt, ite_true, encWords, dite_eq_right hnlt16, dite_true]
   have hval : (bSlot j).val - 16 = j % HawkMulEmit.N := by
     rw [hbval]; simp only [HawkMulEmit.N]; omega
   congr 2
@@ -931,9 +931,9 @@ theorem φ_bvTerm (a b : HawkLane) (k i : Nat) (hk : k < HawkMulEmit.N)
     rw [Nat.mod_mod_of_dvd _ (dvd_refl _)]
   unfold bvTerm negaTerm
   by_cases hik : i ≤ k
-  · simp only [hik, if_true]
+  · simp only [hik, ite_true]
     rw [φ_mul, ha, hb]
-  · simp only [hik, if_false]
+  · simp only [hik, ite_false]
     rw [zero_sub]
     rw [show φ (-(slotMap HawkMulEmit.initBState (encode a b) (aSlot i)
           * slotMap HawkMulEmit.initBState (encode a b) (bSlot (partner k i))))

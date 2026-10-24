@@ -84,7 +84,7 @@ theorem consistentS_bind {Γ : Ctx} {t : CryptoTy} {vm : VarMap Γ}
   · subst hsd
     simp only [VarMap.bind, TranslateDialectScalar.SEnvScalar.upd]
     rfl
-  · simp only [VarMap.bind, TranslateDialectScalar.SEnvScalar.upd, if_neg hsd]
+  · simp only [VarMap.bind, TranslateDialectScalar.SEnvScalar.upd, ite_eq_right hsd]
     rw [← hc s]
     cases hl : vm.lookup s with
     | none => rfl

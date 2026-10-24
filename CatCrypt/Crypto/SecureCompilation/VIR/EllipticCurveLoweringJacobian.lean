@@ -90,10 +90,10 @@ def jacToPoint (J : ZMod p × ZMod p × ZMod p) : ECPoint p :=
   if J.2.2 = 0 then none else ECPoint.aff (J.1 * (J.2.2 ^ 2)⁻¹) (J.2.1 * (J.2.2 ^ 3)⁻¹)
 
 theorem jacToPoint_of_eq_zero {J : ZMod p × ZMod p × ZMod p} (h : J.2.2 = 0) :
-    jacToPoint J = none := if_pos h
+    jacToPoint J = none := ite_eq_left h
 
 theorem jacToPoint_of_ne_zero {J : ZMod p × ZMod p × ZMod p} (h : J.2.2 ≠ 0) :
-    jacToPoint J = ECPoint.aff (J.1 * (J.2.2 ^ 2)⁻¹) (J.2.1 * (J.2.2 ^ 3)⁻¹) := if_neg h
+    jacToPoint J = ECPoint.aff (J.1 * (J.2.2 ^ 2)⁻¹) (J.2.1 * (J.2.2 ^ 3)⁻¹) := ite_eq_right h
 
 /-! ## 2. Inputs, variables and bindings -/
 
@@ -366,16 +366,16 @@ theorem pdbl_lowers_to_jacobian (hp2 : p ≠ 2) (C : ECParams p)
     · rfl
     · simp [jacDoubleGenA, hZ]
   rw [jacToPoint_of_ne_zero (J := (X, Y, Z)) hZ]
-  simp only [pdblF, ECPoint.aff, ECParams.add, if_true]
+  simp only [pdblF, ECPoint.aff, ECParams.add, ite_true]
   by_cases hY : Y = 0
-  · rw [jacToPoint_of_eq_zero (by simp [jacDoubleGenA, hY]), if_pos (by simp [hY])]
+  · rw [jacToPoint_of_eq_zero (by simp [jacDoubleGenA, hY]), ite_eq_left (by simp [hY])]
   have hyy : ¬ (Y * (Z ^ 3)⁻¹ = -(Y * (Z ^ 3)⁻¹)) := by
     intro h
     have h' : (2 : ZMod p) * (Y * (Z ^ 3)⁻¹) = 0 := by linear_combination h
     rcases mul_eq_zero.mp h' with h'' | h''
     · exact h2 h''
     · exact hY (by simpa [hZ] using h'')
-  rw [if_neg hyy, jacToPoint_of_ne_zero (by simp [jacDoubleGenA, h2, hY, hZ])]
+  rw [ite_eq_right hyy, jacToPoint_of_ne_zero (by simp [jacDoubleGenA, h2, hY, hZ])]
   simp only [ECPoint.aff, ECParams.tangentSlope, ECParams.affRx, ECParams.affRy,
     jacDoubleGenA, Option.some.injEq, Prod.mk.injEq]
   constructor
@@ -414,7 +414,7 @@ theorem padd_lowers_to_jacobian (C : ECParams p) (J1 J2 : ZMod p × ZMod p × ZM
       rcases mul_eq_zero.mp hsq with h | h
       · exact absurd (sub_eq_zero.mp h) hne'
       · exact eq_neg_of_add_eq_zero_left h
-    rw [if_pos hx, if_pos hy, jacToPoint_of_eq_zero]
+    rw [ite_eq_left hx, ite_eq_left hy, jacToPoint_of_eq_zero]
     have hH : X2 * Z1 ^ 2 - X1 * Z2 ^ 2 = 0 := by
       field_simp at hx
       linear_combination -hx
@@ -430,7 +430,7 @@ theorem padd_lowers_to_jacobian (C : ECParams p) (J1 J2 : ZMod p × ZMod p × ZM
       simp only [jacAddGen]
       exact mul_ne_zero (mul_ne_zero hZ1 hZ2) hH
     have hr := jacAddGen_realizes X1 Y1 Z1 X2 Y2 Z2 hZ1 hZ2 hH hZ3
-    rw [if_neg hx, jacToPoint_of_ne_zero hZ3]
+    rw [ite_eq_right hx, jacToPoint_of_ne_zero hZ3]
     have hrx := congrArg ECAffPoint.x hr
     have hry := congrArg ECAffPoint.y hr
     simp only [jacToAffineGen, ecAffineAdd, ecAffineRx, ecAffineRy] at hrx hry

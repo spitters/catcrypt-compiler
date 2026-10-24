@@ -78,7 +78,7 @@ theorem whileFold_countdown {β : Type} (g : Int → β → β)
     have hg : Hax.gt ((n + 1 : Nat) : Int) (0 : Int) = true := by
       simp [Hax.gt]
     rw [Hax.whileFoldFuel]
-    simp only [hbody, hg, hs, if_true, Hax.cfContinue]
+    simp only [hbody, hg, hs, ite_true, Hax.cfContinue]
     exact ih (g n acc)
 
 /-- The decrementing counter loop from an integer `n ≥ 0`. -/
@@ -338,11 +338,11 @@ theorem foldRange_select_rel {M : Type} [AddMonoid M] (R : α → M → Prop) (P
     rw [hidx, hiVal_succ bit N s hsN]
     rcases hbit (N - (s + 1)) (by omega) with hb | hb <;> rw [hb]
     · have h := hsel 0 _ _ _ _ (Or.inl rfl) hadd' hdbl'
-      rw [if_neg (by decide)] at h
+      rw [ite_eq_right (by decide)] at h
       convert h using 2
       rw [← add_nsmul]; congr 1; simp; ring
     · have h := hsel 1 _ _ _ _ (Or.inr rfl) hadd' hdbl'
-      rw [if_pos rfl] at h
+      rw [ite_eq_left rfl] at h
       convert h using 2
       rw [← add_nsmul, ← succ_nsmul]; congr 1; simp; ring
 

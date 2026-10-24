@@ -337,7 +337,7 @@ theorem lowerSelect_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
     rw [locatedLookup_locatedUpdate_self] at hv
     have hvEq : v = h ▸ srcV := Option.some.inj hv.symm
     show (runBlock js (lowerSelect ρ p)).get (ρ p.dst) = _
-    rw [hvEq, hsrcEq, hreg, if_pos hsel0]; exact valWord_cast h srcV0
+    rw [hvEq, hsrcEq, hreg, ite_eq_left hsel0]; exact valWord_cast h srcV0
   | selectTrue dst sel src0 src1 _rs h vv srcV hselv hvne hslook =>
     -- `sel ≠ 0` branch: rs' = locatedUpdate rs dstLoc (h ▸ srcV), srcV = srcV1
     have hsrcEq : srcV = srcV1 := Option.some.inj (hslook.symm.trans hlook1)
@@ -345,7 +345,7 @@ theorem lowerSelect_denote_rustExec (N : Nat) (leafSpec : LeafSpec)
     have hvEq : v = h ▸ srcV := Option.some.inj hv.symm
     have hne : rs.rsScalar p.sel ≠ 0 := by rw [hselv]; exact hvne
     show (runBlock js (lowerSelect ρ p)).get (ρ p.dst) = _
-    rw [hvEq, hsrcEq, hreg, if_neg hne]; exact valWord_cast h srcV1
+    rw [hvEq, hsrcEq, hreg, ite_eq_right hne]; exact valWord_cast h srcV1
 
 /-- **Denotation preservation (the hard half), against the explicit select
     post-state.**  Specialises `lowerSelect_denote_rustExec` to the canonical

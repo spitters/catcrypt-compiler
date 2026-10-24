@@ -308,7 +308,7 @@ theorem lsemFuelMemF_segF_of_some {I : Isa} (hle : x86Isa.StepLe I) (P : LprogM)
           ({ prog := { base := b0, lfn := fn }, zf := zf } : LstateMF).prog = some i := by
         show findInstrMem P { base := b0, lfn := fn } = some i
         unfold findInstrMem
-        rw [if_pos (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
+        rw [ite_eq_left (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
         have := hpos 0 (by simp)
         simpa using this
       rw [runStraightF_cons] at h
@@ -363,7 +363,7 @@ theorem lsemFuelMemF_segF_agree {I : Isa} (P : LprogM) (fn : String) (hfn : fn =
           ({ prog := { base := b0, lfn := fn }, zf := zf } : LstateMF).prog = some i := by
         show findInstrMem P { base := b0, lfn := fn } = some i
         unfold findInstrMem
-        rw [if_pos (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
+        rw [ite_eq_left (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
         have := hpos 0 (by simp)
         simpa using this
       rw [List.length_cons, show is.length + 1 + f = (is.length + f) + 1 from by omega,
@@ -808,10 +808,10 @@ theorem runFRegionF_lpc (nReg : String) (body : List FBlock) (q : Nat) :
               rw [hv] at h
               simp only [] at h
               by_cases hz : (v == 0#64) = true
-              · rw [if_pos hz] at h
+              · rw [ite_eq_left hz] at h
                 obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj h
                 simp
-              · rw [if_neg hz] at h
+              · rw [ite_eq_right hz] at h
                 exact ih _ _ b zb h
 
 /-- A region do-while exits with the flag SET (the exit compare saw zero). -/
@@ -834,10 +834,10 @@ theorem runFRegionF_zf (nReg : String) (body : List FBlock) (q : Nat) :
               rw [hv] at h
               simp only [] at h
               by_cases hz : (v == 0#64) = true
-              · rw [if_pos hz] at h
+              · rw [ite_eq_left hz] at h
                 obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj h
                 rfl
-              · rw [if_neg hz] at h
+              · rw [ite_eq_right hz] at h
                 exact ih _ _ b zb h
 
 /-- A successful flag-block run advances the pc by the block's flat length. -/
@@ -862,12 +862,12 @@ theorem runFB_lpc (wf : Nat) (blk : FBlock) (s : LstateM) (zf : Bool) (b : Lstat
           rw [hv] at h
           simp only [] at h
           by_cases hz : (v == 0#64) = true
-          · rw [if_pos hz] at h
+          · rw [ite_eq_left hz] at h
             obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj h
             rw [fflat_guarded, guardedFlagLoop_length]
             simp only [LstateM.lpc_setLpc]
             omega
-          · rw [if_neg hz] at h
+          · rw [ite_eq_right hz] at h
             obtain ⟨bz, hbz, hrfl⟩ := Option.map_eq_some_iff.mp h
             obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ hrfl
             rw [fflat_guarded, guardedFlagLoop_length]
@@ -943,7 +943,7 @@ theorem guarded_get_endL (top endL : LLabel) (nReg : String) (body : List Linstr
 theorem findInstrMemF_self (P : LprogM) (x : LstateM) :
     findInstrMem P ({ base := x, lfn := P.lfn } : LstatePM) = P.body[x.lpc]? := by
   unfold findInstrMem
-  rw [if_pos rfl]
+  rw [ite_eq_left rfl]
 
 /-- The flag machine steps a label as the counter-register delegate: pc bump, flag unchanged. -/
 theorem evalInstrPMemF_label (P : LprogM) (lk : LabelKind) (lbl : LLabel)
@@ -1079,7 +1079,7 @@ theorem segFCore (P : LprogM) :
                     exact hcondP
                   by_cases hz : (v == 0#64) = true
                   · -- EXIT: the compare saw zero; `Lcond NZ` falls through
-                    rw [if_pos hz] at hrun
+                    rw [ite_eq_left hz] at hrun
                     obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj hrun
                     have hbase2 : bz.1.nextPc.nextPc
                         = bz.1.setLpc (tp + 1 + (flatFL body).length + 2) := by
@@ -1093,13 +1093,13 @@ theorem segFCore (P : LprogM) :
                                   (tp + 1 + (flatFL body).length + 2),
                                 lfn := P.lfn }, zf := true } := by
                       rw [evalInstrPMemF_jne]
-                      rw [if_neg (by simp [hz])]
+                      rw [ite_eq_right (by simp [hz])]
                       show (some (⟨⟨bz.1.nextPc.nextPc, P.lfn⟩,
                         v == 0#64⟩ : LstateMF) = _)
                       rw [hbase2, hz]
                     have hsteps : stepsFRegionF (w + 1) nReg body (tp + 1) b0 zf = n1 + 2 := by
                       rw [stepsFRegionF_succ, hn1e, hb1]
-                      simp only [hv, hz, if_true]
+                      simp only [hv, hz, ite_true]
                     intro f
                     rw [hsteps, show n1 + 2 + f = n1 + (2 + f) from by omega, hn1 (2 + f),
                       show 2 + f = (1 + f) + 1 from by omega,
@@ -1107,7 +1107,7 @@ theorem segFCore (P : LprogM) :
                       show 1 + f = f + 1 from by omega,
                       lsemFuelMemF_step P f _ _ _ hfetchCond hevalCond]
                   · -- TAKEN: the compare saw non-zero; `Lcond NZ` jumps to `top`
-                    rw [if_neg hz] at hrun
+                    rw [ite_eq_right hz] at hrun
                     have hz' : (v == 0#64) = false := by simpa using hz
                     have hevalCond : evalInstrPMemF P
                         (.Lcond (.reg "NZ") top, MemTag.reg none)
@@ -1117,7 +1117,7 @@ theorem segFCore (P : LprogM) :
                               { base := bz.1.setLpc (tp + 1),
                                 lfn := P.lfn }, zf := false } := by
                       rw [evalInstrPMemF_jne]
-                      rw [if_pos hz']
+                      rw [ite_eq_left hz']
                       unfold evalJumpMem
                       rw [hlbl]
                       simp only [Option.map_some]
@@ -1133,7 +1133,7 @@ theorem segFCore (P : LprogM) :
                     have hsteps : stepsFRegionF (w + 1) nReg body (tp + 1) b0 zf
                         = n1 + 2 + n2 := by
                       rw [stepsFRegionF_succ, hn1e, hb1]
-                      simp only [hv, hz', Bool.false_eq_true, if_false, hn2e]
+                      simp only [hv, hz', Bool.false_eq_true, ite_false, hn2e]
                       omega
                     intro f
                     rw [hsteps, show n1 + 2 + n2 + f = n1 + (2 + (n2 + f)) from by omega,
@@ -1245,7 +1245,7 @@ theorem segFCore (P : LprogM) :
                 exact guarded_get_condZ top endL nReg (flatFL body)
               by_cases hz : (v == 0#64) = true
               · -- ZERO-TRIP: `Lcond Z` jumps over the whole region
-                rw [if_pos hz] at hrun
+                rw [ite_eq_left hz] at hrun
                 obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ Option.some.inj hrun
                 have hevalCond : evalInstrPMemF P
                     (.Lcond (.reg "Z") endL, MemTag.reg none)
@@ -1254,7 +1254,7 @@ theorem segFCore (P : LprogM) :
                           { base := b0.setLpc (b0.lpc + (flatFL body).length + 6),
                             lfn := P.lfn }, zf := true } := by
                   rw [evalInstrPMemF_je]
-                  rw [if_pos hz]
+                  rw [ite_eq_left hz]
                   unfold evalJumpMem
                   rw [hlblE]
                   simp only [Option.map_some]
@@ -1267,14 +1267,14 @@ theorem segFCore (P : LprogM) :
                   rw [hb6, hz]
                 have hsteps : stepsFB wf (.guarded top endL nReg body) b0 zf = 2 := by
                   rw [stepsFB_guarded]
-                  simp only [hv, hz, if_true]
+                  simp only [hv, hz, ite_true]
                 intro f
                 rw [hsteps, show 2 + f = (1 + f) + 1 from by omega,
                   lsemFuelMemF_step P (1 + f) _ _ _ hfetchCmp hevalCmp,
                   show 1 + f = f + 1 from by omega,
                   lsemFuelMemF_step P f _ _ _ hfetchCond hevalCond]
               · -- NONZERO: `Lcond Z` falls through; label; do-while; `Llabel endL`
-                rw [if_neg hz] at hrun
+                rw [ite_eq_right hz] at hrun
                 obtain ⟨bz, hbz, hrfl⟩ := Option.map_eq_some_iff.mp hrun
                 obtain ⟨rfl, rfl⟩ := Prod.mk.injEq .. ▸ hrfl
                 have hz' : (v == 0#64) = false := by simpa using hz
@@ -1285,7 +1285,7 @@ theorem segFCore (P : LprogM) :
                           { base := b0.setLpc (b0.lpc + 2),
                             lfn := P.lfn }, zf := false } := by
                   rw [evalInstrPMemF_je]
-                  rw [if_neg (by simp [hz'])]
+                  rw [ite_eq_right (by simp [hz'])]
                   show (some (⟨⟨b0.nextPc.nextPc, P.lfn⟩,
                     v == 0#64⟩ : LstateMF) = _)
                   rw [LstateM.nextPc_nextPc', hz']
@@ -1340,7 +1340,7 @@ theorem segFCore (P : LprogM) :
                 have hsteps : stepsFB wf (.guarded top endL nReg body) b0 zf
                     = 2 + 1 + n2 + 1 := by
                   rw [stepsFB_guarded]
-                  simp only [hv, hz', Bool.false_eq_true, if_false, hn2e]
+                  simp only [hv, hz', Bool.false_eq_true, ite_false, hn2e]
                 -- the do-while exits at the `Llabel endL`; step it
                 have hbz_lpc : bz.1.lpc = b0.lpc + (flatFL body).length + 5 := by
                   have := runFRegionF_lpc nReg body (b0.lpc + 3) wf _ _ bz.1 bz.2 hbz
@@ -1593,9 +1593,9 @@ theorem monoFCore :
                   rw [hv] at h
                   simp only [] at h ⊢
                   by_cases hz : (v == 0#64) = true
-                  · rw [if_pos hz] at h ⊢
+                  · rw [ite_eq_left hz] at h ⊢
                     exact h
-                  · rw [if_neg hz] at h ⊢
+                  · rw [ite_eq_right hz] at h ⊢
                     exact (ih w (Nat.lt_succ_self w)).2 nReg body q _ false bz h
     have hblk : ∀ (blk : FBlock) (s : LstateM) (zf : Bool) (bz : LstateM × Bool),
         runFB wf blk s zf = some bz → runFB (wf + 1) blk s zf = some bz := by
@@ -1613,9 +1613,9 @@ theorem monoFCore :
               rw [hv] at h
               simp only [] at h ⊢
               by_cases hz : (v == 0#64) = true
-              · rw [if_pos hz] at h ⊢
+              · rw [ite_eq_left hz] at h ⊢
                 exact h
-              · rw [if_neg hz] at h ⊢
+              · rw [ite_eq_right hz] at h ⊢
                 obtain ⟨bz0, hbz0, hrfl⟩ := Option.map_eq_some_iff.mp h
                 rw [hreg nReg body (s.lpc + 3) _ false bz0 hbz0, Option.map_some,
                   hrfl]
@@ -1713,7 +1713,7 @@ theorem runFRegionF_of_schedule (nReg : String) (body : List FBlock) (q wf : Nat
               obtain ⟨v, hvread, hvne⟩ := condNZ_true_getW hc1
               rw [hvread]
               simp only []
-              rw [if_neg (by simp [hvne])]
+              rw [ite_eq_right (by simp [hvne])]
               exact ihm (bz.1.setLpc q) (by omega) bfin hbound
                 (fun i hi him bi hbi => hsched (i + 1) (by omega) (by omega) bi
                   (by rw [runBoundedFBs_succ, h1, Option.bind_some]; exact hbi))
@@ -1827,7 +1827,7 @@ theorem guardedFlagLoop_runBounded_general (fn : String) (top endL : LLabel)
       = some (bfin.setLpc (body.length + 6), true) := by
     rw [runFB_guarded, hv0]
     simp only []
-    rw [if_neg (by simp [hv0ne])]
+    rw [ite_eq_right (by simp [hv0ne])]
     rw [hpc, hfb]
     simp only [Nat.zero_add]
     rw [hsched]

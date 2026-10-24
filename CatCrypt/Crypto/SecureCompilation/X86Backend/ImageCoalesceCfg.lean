@@ -716,7 +716,7 @@ theorem lsemStepMem_coArr {i : LinstrRM} {after : List String}
                       rcases hc r hr with h' | h'
                       · exact absurd h' hrd
                       · exact h'
-                    simp only [hne, hrd, if_false]
+                    simp only [hne, hrd, ite_false]
                     exact hR.arr r (List.mem_append_right _
                       (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
   | loadC => simp [coArrStepB] at hc
@@ -754,7 +754,7 @@ theorem lsemStepMem_coArr {i : LinstrRM} {after : List String}
                     rcases hc r hr with h' | h'
                     · exact absurd h' hrd
                     · exact h'
-                  simp only [hne, hrd, if_false]
+                  simp only [hne, hrd, ite_false]
                   exact hR.arr r (List.mem_append_right _
                     (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
   | zero w n =>
@@ -779,7 +779,7 @@ theorem lsemStepMem_coArr {i : LinstrRM} {after : List String}
                 rcases hc r hr with h' | h'
                 · exact absurd h' hrd
                 · exact h'
-              simp only [hne, hrd, if_false]
+              simp only [hne, hrd, ite_false]
               exact hR.arr r (List.mem_append_right _
                 (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
 
@@ -839,7 +839,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
   unfold coInstrB at hc
   simp only [hn] at hc
   by_cases hsh : arrShapeB (w, tag) = true
-  · simp only [hsh, if_true, Bool.and_eq_true] at hc
+  · simp only [hsh, ite_true, Bool.and_eq_true] at hc
     obtain ⟨⟨⟨hp, hp'⟩, hstep⟩, hsub⟩ := hc
     simp only [plainArrB, Bool.and_eq_true, Option.isNone_iff_eq_none] at hp hp'
     obtain ⟨⟨⟨⟨⟨hl, h1⟩, h2⟩, hk⟩, hw⟩, ha⟩ := hp
@@ -869,11 +869,11 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         omega
   have hsh' : arrShapeB (w, tag) = false := by simpa using hsh
   rw [renArr_of_not_shape hsh' hn]
-  simp only [hsh', Bool.false_eq_true, if_false] at hc
+  simp only [hsh', Bool.false_eq_true, ite_false] at hc
   cases h1 : cmpArgs? (w, tag) with
   | some p =>
       obtain ⟨a, b⟩ := p
-      simp only [h1, Option.isSome_some, Bool.true_or, if_true] at hc
+      simp only [h1, Option.isSome_some, Bool.true_or, ite_true] at hc
       unfold evalInstrPMemF at h ⊢
       simp only [h1, hR.reg] at h ⊢
       cases ha : evalOperandN s.prog.base.reg 64 a with
@@ -889,7 +889,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
   cases h2 : movRegArgs? (w, tag) with
   | some p =>
       obtain ⟨d, r⟩ := p
-      simp only [h2, Option.isSome_some, Bool.or_true, if_true] at hc
+      simp only [h2, Option.isSome_some, Bool.or_true, ite_true] at hc
       unfold evalInstrPMemF at h ⊢
       simp only [h1, h2, hR.reg] at h ⊢
       cases hr : readReg s.prog.base.reg (.reg r) with
@@ -901,7 +901,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         exact ⟨_, rfl, coRel_nextPc (coRel_setReg (hR.mono (subB_spec hc)) d v), hfn, rfl, hz,
           hlt⟩
   | none =>
-  simp only [h1, h2, Option.isSome_none, Bool.or_false, Bool.false_eq_true, if_false] at hc
+  simp only [h1, h2, Option.isSome_none, Bool.or_false, Bool.false_eq_true, ite_false] at hc
   cases h3 : flagCondCC? (w, tag) with
   | some p =>
       obtain ⟨pol, lbl⟩ := p
@@ -909,11 +909,11 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
       unfold evalInstrPMemF at h ⊢
       simp only [h1, h2, h3, hz] at h ⊢
       by_cases hp : s.zf = pol
-      · rw [if_pos hp] at h ⊢
+      · rw [ite_eq_left hp] at h ⊢
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
         obtain ⟨q', hq', hRq, hfq, hfs, hle⟩ := evalJumpMem_coalesce hc.2 hR hfn hq
         exact ⟨{ prog := q', zf := s.zf }, by rw [hq']; rfl, hRq, hfq, hfs, rfl, hle⟩
-      · rw [if_neg hp] at h ⊢
+      · rw [ite_eq_right hp] at h ⊢
         cases h
         exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc.1)), hfn, rfl, rfl, hlt⟩
   | none =>
@@ -963,9 +963,9 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
       show ∃ q', evalInstrPMemL _ (LinstrR.Lcond c lbl, tag) s'.prog = some q' ∧ _
       simp only [evalInstrPMemL, hcz] at hq ⊢
       split at hq
-      · rw [if_pos (by assumption)]
+      · rw [ite_eq_left (by assumption)]
         exact evalJumpMem_coalesce hc.2 hR hfn hq
-      · rw [if_neg (by assumption)]
+      · rw [ite_eq_right (by assumption)]
         cases hq
         exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc.1)), hfn, rfl, hlt⟩
   | Lgoto tgt =>
@@ -980,7 +980,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
   | Lopn d o src =>
       by_cases hcw : ((carryArgs? (LinstrR.Lopn d o src, tag)).isSome
           || (wideArgs? (LinstrR.Lopn d o src, tag)).isSome) = true
-      · simp only [hcw, if_true] at hc
+      · simp only [hcw, ite_true] at hc
         have hRn := hR.mono (subB_spec hc)
         unfold evalInstrPMemF at h ⊢
         simp only [h1, h2, h3] at h ⊢
@@ -1015,7 +1015,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
                   exact hRu
                 · show u.lpc ≤ body.length
                   omega
-      · simp only [hcw, Bool.false_eq_true, if_false, Bool.and_eq_true] at hc
+      · simp only [hcw, Bool.false_eq_true, ite_false, Bool.and_eq_true] at hc
         obtain ⟨hstep, hsub⟩ := hc
         simp only [Bool.or_eq_true, not_or, Bool.not_eq_true, Option.isSome_eq_false_iff,
           Option.isNone_iff_eq_none] at hcw
@@ -1121,7 +1121,7 @@ theorem callStep_coalesce {I : Isa} {L : Nat → List String} {k : Nat}
             rcases hcl r hr with h' | h'
             · exact absurd h' hrd
             · exact h'
-          simp only [hne, hrd, if_false]
+          simp only [hne, hrd, ite_false]
           exact hR.arr r (subB_spec hsub r (List.mem_filter.mpr ⟨hr, by simpa using hrd⟩))
 
 /-- **One step of a coalesced instruction at an instruction set with local calls.** The

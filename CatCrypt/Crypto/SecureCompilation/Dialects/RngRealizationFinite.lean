@@ -24,7 +24,7 @@ PMF/SDistr *equality* and flagged the gap as "infinite-product-measure theory".
 
 The key insight that closes it on the finite layer: `readBv η n` reads only the
 **first `n` bits** of the entropy stream, so the relevant uniform object is a
-**finite** `PMF (BitVec n)` over `2 ^ n` outcomes — `PMF.uniformOfFintype
+**finite** `PMF (BitVec n)` over `2 ^ n` outcomes — `PMF.uniformFintype
 (BitVec n)` — **not** the infinite Bernoulli product measure on `Nat → Bool`.
 No cylinder σ-algebra is needed.  Two `SDistr`s with equal mass at every point
 are equal (`PMF.ext`), and the prior step pinned the mass everywhere:
@@ -58,13 +58,13 @@ open scoped ENNReal
     `readBv · n` realizes, because `readBv η n` consumes only `η`'s first `n`
     bits. -/
 noncomputable def uniformBVPMF (n : Nat) : PMF (BitVec n) :=
-  PMF.uniformOfFintype (BitVec n)
+  PMF.uniformFintype (BitVec n)
 
 /-- Each of the `2 ^ n` `n`-bit words carries equal mass `(2 ^ n)⁻¹` under the
     finite uniform PMF. -/
 theorem uniformBVPMF_apply (n : Nat) (b : BitVec n) :
     uniformBVPMF n b = ((2 ^ n : ℕ) : ℝ≥0∞)⁻¹ := by
-  rw [uniformBVPMF, PMF.uniformOfFintype_apply, card_bitvec]
+  rw [uniformBVPMF, PMF.uniformFintype_apply, card_bitvec]
 
 /-- The finite uniform sub-distribution on outcomes `(b, h)`: the pushforward of
     the finite uniform PMF on `BitVec n` onto the support point `(·, h)`, lifted
@@ -81,7 +81,7 @@ theorem uniformBV_apply_some (n : Nat) (h : Heap) (b : BitVec n) :
   rw [tsum_eq_single b]
   · simp [uniformBVPMF_apply]
   · intro b' hb'
-    rw [if_neg (fun hc => hb' (by simp only [Option.some.injEq, Prod.mk.injEq] at hc; exact hc.1.symm))]
+    rw [ite_eq_right (fun hc => hb' (by simp only [Option.some.injEq, Prod.mk.injEq] at hc; exact hc.1.symm))]
 
 /-- Mass of the finite uniform sub-distribution at a heap-mismatched point
     `some (b, h')`, `h' ≠ h`, is `0` — it lives entirely on the fixed heap `h`. -/
@@ -90,7 +90,7 @@ theorem uniformBV_apply_some_ne (n : Nat) (h h' : Heap) (b : BitVec n)
   rw [uniformBV, PMF.map_apply]
   apply ENNReal.tsum_eq_zero.mpr
   intro b'
-  rw [if_neg (fun hc => hne (by simp only [Option.some.injEq, Prod.mk.injEq] at hc; exact hc.2))]
+  rw [ite_eq_right (fun hc => hne (by simp only [Option.some.injEq, Prod.mk.injEq] at hc; exact hc.2))]
 
 /-- The finite uniform sub-distribution never fails. -/
 theorem uniformBV_apply_none (n : Nat) (h : Heap) :
@@ -98,7 +98,7 @@ theorem uniformBV_apply_none (n : Nat) (h : Heap) :
   rw [uniformBV, PMF.map_apply]
   apply ENNReal.tsum_eq_zero.mpr
   intro b
-  rw [if_neg (by simp)]
+  rw [ite_eq_right (by simp)]
 
 /-! ## The headline: `SPComp.sample (BitVec n)` IS this finite uniform -/
 
@@ -140,7 +140,7 @@ theorem sample_eq_uniformBV (n : Nat) (h : Heap) :
       | none => simp [SDistr.uniform_apply_none]
       | some b'' =>
         simp only [SDistr.pure, PMF.pure_apply, Option.some.injEq, Prod.mk.injEq]
-        rw [if_neg (by intro hc; exact hh hc.2)]
+        rw [ite_eq_right (by intro hc; exact hh hc.2)]
         simp
 
 /-! ## The deterministic-leaf realization corollary -/

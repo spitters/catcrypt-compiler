@@ -1213,7 +1213,7 @@ theorem getD_getBang {α : Type} [Inhabited α] (l : List α) (k : Nat) (hk : k 
 theorem take_getBang {α : Type} [Inhabited α] (l : List α) (n k : Nat) (hk : k < n) :
     (l.take n)[k]! = l[k]! := by
   rw [List.getElem!_eq_getElem?_getD, List.getElem!_eq_getElem?_getD, List.getElem?_take,
-    if_pos hk]
+    ite_eq_left hk]
 
 theorem maskCmds2_sem (pfx bw : String) (Keep : String → Prop)
     (hK : ∀ s, Keep s → ¬ isTmpName s)
@@ -1386,8 +1386,8 @@ theorem feAddHalves_sem_gen (q a b : String) {cq : Char}
       = if i < 8 then pl32.getD i 0 else 0 := by
     intro i hi
     by_cases h : i < 8
-    · rw [pN9_getD_lt i h, hP1 i h, if_pos h]
-    · rw [pN9_getD_ge i (by omega), hZ1, if_neg h]
+    · rw [pN9_getD_lt i h, hP1 i h, ite_eq_left h]
+    · rw [pN9_getD_ge i (by omega), hZ1, ite_eq_right h]
   -- block 2: the trial subtraction of `p`
   rw [subA, genSub_cmds, hs9len] at hgs
   obtain ⟨fr2, dlt2, ble2, acc2⟩ :=
@@ -1486,8 +1486,8 @@ theorem feAddHalves_sem_gen (q a b : String) {cq : Char}
           + 2 ^ (32 * 8) * (envReader E1 ((plNames ++ ["ZZ"]).getD 8 "ZZ")).toNat := accN_succ _ 8
     have hc : accN (fun k => (envReader E1 ((plNames ++ ["ZZ"]).getD k "ZZ")).toNat) 8
         = accN (fun k => pl32.getD k 0) 8 :=
-      accN_congr 8 (fun k hk => by rw [hpNv k (by omega), if_pos hk])
-    rw [h9, hc, accN_pl32, hpNv 8 (by omega), if_neg (by omega)]
+      accN_congr 8 (fun k hk => by rw [hpNv k (by omega), ite_eq_left hk])
+    rw [h9, hc, accN_pl32, hpNv 8 (by omega), ite_eq_right (by omega)]
     ring
   have hbal : accN (fun k => (envReader E2 s!"{q ++ "S"}d{k}").toNat) 9 + pNat
       = accN (fun k => (envReader E1 ((s9Of q (feH a) (feH b))[k]!)).toNat) 9
@@ -1656,13 +1656,13 @@ theorem feSubHalves_sem_gen (q a b : String) {cq : Char}
       = if k < 8 then s!"{q ++ "S"}d{k}" else "ZZ" := by
     intro k
     by_cases h : k < 8
-    · rw [getD_getBang _ k (by rw [hd8len]; exact h), hd8k k h, if_pos h]
-    · rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by rw [hd8len]; omega), if_neg h]; rfl
+    · rw [getD_getBang _ k (by rw [hd8len]; exact h), hd8k k h, ite_eq_left h]
+    · rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by rw [hd8len]; omega), ite_eq_right h]; rfl
   have hpmgd : ∀ k, (pmNamesOf q).getD k "ZZ" = if k < 8 then s!"{q}PM{k}" else "ZZ" := by
     intro k
     by_cases h : k < 8
-    · rw [pmNamesOf_getD q k h, if_pos h]
-    · rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by rw [hpmlen]; omega), if_neg h]; rfl
+    · rw [pmNamesOf_getD q k h, ite_eq_left h]
+    · rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none (by rw [hpmlen]; omega), ite_eq_right h]; rfl
   -- the value the masked modulus carries
   have hdE3 : ∀ k, k < 8 → envReader E3 s!"{q ++ "S"}d{k}" = envReader E1 s!"{q ++ "S"}d{k}" := by
     intro k hk
@@ -1684,8 +1684,8 @@ theorem feSubHalves_sem_gen (q a b : String) {cq : Char}
     rw [pmv i hi]
     rcases (by omega : (envReader E1 (sBor "ZZ" (q ++ "S") 8)).toNat = 0
         ∨ (envReader E1 (sBor "ZZ" (q ++ "S") 8)).toNat = 1) with hbv | hbv
-    · rw [mask0 hbv, if_neg (by omega), bvAnd_zero]
-    · rw [mask1 hbv, if_pos hbv, bvAnd_mask_lt (by rw [hplE2 i hi]; exact pl32_lt i), hplE2 i hi]
+    · rw [mask0 hbv, ite_eq_right (by omega), bvAnd_zero]
+    · rw [mask1 hbv, ite_eq_left hbv, bvAnd_mask_lt (by rw [hplE2 i hi]; exact pl32_lt i), hplE2 i hi]
   -- block 4: the add-back
   rw [genAdd_cmds, hmaxDA] at hga
   have hdOut : ∀ k, k < 8 → OutOf (q ++ "A") s!"{q ++ "S"}d{k}" := by
@@ -1737,26 +1737,26 @@ theorem feSubHalves_sem_gen (q a b : String) {cq : Char}
   have hcD : accN (fun k =>
         (envReader E3 ((genSub "ZZ" (feH a) (feH b) (q ++ "S")).2.1.getD k "ZZ")).toNat) 8
       = accN (fun k => (envReader E1 s!"{q ++ "S"}d{k}").toNat) 8 :=
-    accN_congr 8 (fun k hk => by rw [hd8gd k, if_pos hk, hdE3 k hk])
+    accN_congr 8 (fun k hk => by rw [hd8gd k, ite_eq_left hk, hdE3 k hk])
   have hcP : accN (fun k => (envReader E3 ((pmNamesOf q).getD k "ZZ")).toNat) 8
       = if (envReader E1 (sBor "ZZ" (q ++ "S") 8)).toNat = 1 then pNat else 0 := by
     rcases (by omega : (envReader E1 (sBor "ZZ" (q ++ "S") 8)).toNat = 0
         ∨ (envReader E1 (sBor "ZZ" (q ++ "S") 8)).toNat = 1) with hbv | hbv
-    · rw [if_neg (by omega),
+    · rw [ite_eq_right (by omega),
         accN_congr (v := fun k => (envReader E3 ((pmNamesOf q).getD k "ZZ")).toNat)
           (w := fun _ => 0) 8 (fun k hk => by
             show (envReader E3 ((pmNamesOf q).getD k "ZZ")).toNat = 0
-            rw [hpmgd k, if_pos hk,
+            rw [hpmgd k, ite_eq_left hk,
               show (s!"{q}PM{k}" : String) = (pmNamesOf q)[k]! from (pmNamesOf_getBang q k hk).symm,
-              hpmv k hk, if_neg (by omega)])]
+              hpmv k hk, ite_eq_right (by omega)])]
       simp [accN]
-    · rw [if_pos hbv,
+    · rw [ite_eq_left hbv,
         accN_congr (v := fun k => (envReader E3 ((pmNamesOf q).getD k "ZZ")).toNat)
           (w := fun k => pl32.getD k 0) 8 (fun k hk => by
             show (envReader E3 ((pmNamesOf q).getD k "ZZ")).toNat = pl32.getD k 0
-            rw [hpmgd k, if_pos hk,
+            rw [hpmgd k, ite_eq_left hk,
               show (s!"{q}PM{k}" : String) = (pmNamesOf q)[k]! from (pmNamesOf_getBang q k hk).symm,
-              hpmv k hk, if_pos hbv]),
+              hpmv k hk, ite_eq_left hbv]),
         accN_pl32]
   have hcA : accN (fun k => (envReader env ((feH a)[k]!)).toNat) 8
       = accN (fun k => (envReader env (feHN a k)).toNat) 8 :=
@@ -1781,7 +1781,7 @@ theorem feSubHalves_sem_gen (q a b : String) {cq : Char}
   rcases (by omega : (envReader E1 (sBor "ZZ" (q ++ "S") 8)).toNat = 0
       ∨ (envReader E1 (sBor "ZZ" (q ++ "S") 8)).toNat = 1) with hbv | hbv
   · rw [hbv] at acc1 accA
-    rw [if_neg (by decide : ¬ ((0 : Nat) = 1))] at accA
+    rw [ite_eq_right (by decide : ¬ ((0 : Nat) = 1))] at accA
     have hge : accN (fun k => (envReader env (feHN b k)).toNat) 8
         ≤ accN (fun k => (envReader env (feHN a k)).toNat) 8 := by omega
     rw [show accN (fun k => (envReader env (feHN a k)).toNat) 8 + pNat
@@ -1791,7 +1791,7 @@ theorem feSubHalves_sem_gen (q a b : String) {cq : Char}
       Nat.add_mod_right, Nat.mod_eq_of_lt (by omega)]
     omega
   · rw [hbv] at acc1 accA
-    rw [if_pos (rfl : (1 : Nat) = 1)] at accA
+    rw [ite_eq_left (rfl : (1 : Nat) = 1)] at accA
     rw [Nat.mod_eq_of_lt (by omega)]
     omega
 

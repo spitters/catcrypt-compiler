@@ -534,7 +534,7 @@ theorem exitScal_taken {N : Nat} {L : LeafSpec} (hL : ExitWordLaw L) {c c' : Low
       cases hexec with
       | ifTrue _ _ _ _ _ v hv hv0 hct =>
           have hpos : 0 < rs.rsScalar g := by subst hv; omega
-          rw [if_pos hpos] at hft hfe
+          rw [ite_eq_left hpos] at hft hfe
           obtain ⟨envT, hsT, henvT, hirT, hbT, hgT⟩ :=
             iht (some (guardName k)) S (k + 2) B rs rs' env3 hct (hIR.1 (by omega)) ht'
               (fun f hfe' => by cases hfe'; exact ⟨k, rfl, by omega, by rw [hft]; rfl⟩)
@@ -556,7 +556,7 @@ theorem exitScal_taken {N : Nat} {L : LeafSpec} (hL : ExitWordLaw L) {c c' : Low
             rw [hgE i (by omega), hgT i (by omega)]; exact hg3 i hi
       | ifFalse _ _ _ _ _ hz hce =>
           have hnpos : ¬ 0 < rs.rsScalar g := by omega
-          rw [if_neg hnpos] at hft hfe
+          rw [ite_eq_right hnpos] at hft hfe
           obtain ⟨envT, hsT, hpresT, hbT, hgT, -⟩ := ifConvert_skipped hct' (fun _ => False)
             (fun _ => .TU64) (fun _ h => h.elim) k S (k + 2) B env3 (by omega)
             (by rw [hft]; rfl) hS hb3 hB ht' htt' (arrTy_of_towerOK_false htt')
@@ -702,7 +702,7 @@ theorem exitScalB_sound (W I : List String) :
         obtain ⟨⟨hf, hx⟩, hy⟩ := hcall
         obtain ⟨se, hse⟩ := wordOpSExpr_of_mem hf (.SVar x) (.SVar y)
         have hlow : exitLowerCall W I exitCallName exitCallName k = some se := by
-          simp only [exitLowerCall, and_self, if_true, hk, Option.bind_some]
+          simp only [exitLowerCall, and_self, ite_true, hk, Option.bind_some]
           exact exitOpSExpr_word hse
         rw [scalarizeExitIn, hlow]
         exact .call hk hf hse hm (srcName_of_srcNameB hn) (srcName_of_srcNameB hx)

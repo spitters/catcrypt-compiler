@@ -948,14 +948,14 @@ theorem dedupGo_spec : ∀ l : List JVar,
       by_cases hx : x ∈ l
       · have hc : (dedupGo l).2.contains x = true :=
           Std.HashSet.mem_iff_contains.mp ((h2 x).mpr hx)
-        rw [dedupGo, if_pos hc, List.dedup_cons_of_mem hx]
+        rw [dedupGo, ite_eq_left hc, List.dedup_cons_of_mem hx]
         refine ⟨h1, fun y => (h2 y).trans ⟨List.mem_cons_of_mem _, fun h => ?_⟩⟩
         rcases List.mem_cons.mp h with rfl | h
         · exact hx
         · exact h
       · have hc : (dedupGo l).2.contains x = false :=
           Bool.eq_false_iff.mpr fun h => hx ((h2 x).mp (Std.HashSet.mem_iff_contains.mpr h))
-        rw [dedupGo, if_neg (by simp [hc]), List.dedup_cons_of_notMem hx]
+        rw [dedupGo, ite_eq_right (by simp [hc]), List.dedup_cons_of_notMem hx]
         refine ⟨by rw [h1], fun y => ?_⟩
         rw [Std.HashSet.mem_insert, h2, List.mem_cons, beq_iff_eq, eq_comm]
 
@@ -1394,7 +1394,7 @@ theorem cmdErase_of : (c : List InstrR) → cmdErasedB c = true →
   | i :: is, h => by
       simp only [cmdErasedB, Bool.and_eq_true] at h
       simp only [CatCrypt.Crypto.Jasmin.Jazz.Cmd.erase, isZeroInit_of h.1, Bool.false_eq_true,
-        if_false, eraseInstr_of i h.1, cmdErase_of is h.2]
+        ite_false, eraseInstr_of i h.1, cmdErase_of is h.2]
 end
 
 theorem mkUnit_erase {fname : String} {ps : List (JVar × Storage × PType)} {body : Cmd}

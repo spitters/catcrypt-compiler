@@ -154,41 +154,41 @@ theorem blockSquareL : loweringL.BlockSquare (fun {t} x => encL (t := t) x) Good
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL (.fAdd p25519)).denote (hvAppend (encL a) (hvAppend (encL b) .nil))
       = encL (t := .fp p25519) (fAddF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact addBlk_denote _ _ _ _ _ _ _ _ _ a b (nv_encX a _) (nv_encY _ b _)
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL (.fSub p25519)).denote (hvAppend (encL a) (hvAppend (encL b) .nil))
       = encL (t := .fp p25519) (fSubF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact subBlk_denote _ _ _ _ _ _ _ _ _ a b (nv_encX a _) (nv_encY _ b _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL (.fNeg p25519)).denote (hvAppend (encL a) .nil)
       = encL (t := .fp p25519) (fNegF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact negBlk_denote _ _ _ _ _ a (nv_encX a _)
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL (.fMul p25519)).denote (hvAppend (encL a) (hvAppend (encL b) .nil))
       = encL (t := .fp p25519) (fMulF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact mulBlk_denote _ _ _ _ _ _ _ _ _ a b (nv_encX a _) (nv_encY _ b _)
   · obtain ⟨⟩ := vals
     show (lowerOpL (.fConst p25519 c)).denote .nil = encL (t := .fp p25519) (fConstF c)
-    rw [encL_fp, lowerOpL, dif_pos rfl]
+    rw [encL_fp, lowerOpL, dite_eq_left rfl]
     exact constBlk_denote _ c
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL (.fCopy p25519)).denote (hvAppend (encL a) .nil)
       = encL (t := .fp p25519) (fCopyF a)
-    rw [encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, lowerOpL, ite_eq_left rfl]
     exact copyBlk_denote _ _ _ _ _ a (nv_encX a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL (.fieldDouble p25519)).denote (hvAppend (encL a) .nil)
       = encL (t := .fp p25519) (fDoubleF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact addBlk_denote _ _ _ _ _ _ _ _ _ a a (nv_encX a _) (nv_encX a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL (.fieldSquare p25519)).denote (hvAppend (encL a) .nil)
       = encL (t := .fp p25519) (fSquareF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact sqrBlk_denote _ _ _ _ _ a (nv_encX a _)
 
 /-- **Denotation preservation of `fieldDialect → jasminDialect` over four limbs.** A

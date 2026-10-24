@@ -157,13 +157,13 @@ theorem evalInstrPMemF_prefix (fn : String) (pre B : List LinstrRM)
         simp only [h1, h2, h3] at h ⊢
         split at h
         · rename_i hz
-          rw [if_pos hz]
+          rw [ite_eq_left hz]
           obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
           have hj := evalJumpMem_prefix fn pre B hpre lbl ⟨b, lfn'⟩ q hq
           refine ⟨⟨⟨q.base.setLpc (q.base.lpc + pre.length), q.lfn⟩, zf'⟩, ?_, rfl, rfl, rfl⟩
           rw [hj]; rfl
         · rename_i hz
-          rw [if_neg hz]
+          rw [ite_eq_right hz]
           cases h
           exact ⟨_, rfl, rfl, rfl, nextPc_shift b pre.length⟩
   · obtain ⟨wire, tag⟩ := i
@@ -180,7 +180,7 @@ theorem evalInstrPMemF_prefix (fn : String) (pre B : List LinstrRM)
     · rename_i hf
       have hj := evalJumpMem_prefix fn pre B hpre l ⟨b, lfn'⟩ q hq
       refine ⟨⟨⟨q.base.setLpc (q.base.lpc + pre.length), q.lfn⟩, zf'⟩, ?_, rfl, rfl, rfl⟩
-      rw [if_pos (show gfn = (singletonProgM fn (pre ++ B)).lfn from hf)]
+      rw [ite_eq_left (show gfn = (singletonProgM fn (pre ++ B)).lfn from hf)]
       simp only at hj ⊢
       rw [hj]; rfl
     · exact absurd hq (by simp)
@@ -303,7 +303,7 @@ theorem evalInstrPMemF_prefix_eq (fn : String) (pre B : List LinstrRM)
             simp only [h1, h2, h3] at h ⊢
             split at h
             · rename_i hz
-              rw [if_pos (show (shiftS pre.length
+              rw [ite_eq_left (show (shiftS pre.length
                 { prog := { base := b, lfn := lfn }, zf := zf }).zf = pol from hz)]
               simp only [shiftS]
               have hj := evalJumpMem_prefix_eq fn pre B hpre lbl ⟨b, lfn⟩
@@ -324,13 +324,13 @@ theorem evalInstrPMemF_prefix_eq (fn : String) (pre B : List LinstrRM)
         simp only [Option.map_eq_none_iff] at h
         simp only [Option.map_none, Option.map_eq_none_iff]
         by_cases hf : gfn = fn
-        · rw [if_pos (show gfn = (singletonProgM fn (pre ++ B)).lfn from hf)]
-          rw [if_pos (show gfn = (singletonProgM fn B).lfn from hf)] at h
+        · rw [ite_eq_left (show gfn = (singletonProgM fn (pre ++ B)).lfn from hf)]
+          rw [ite_eq_left (show gfn = (singletonProgM fn B).lfn from hf)] at h
           have hj := evalJumpMem_prefix_eq fn pre B hpre l ⟨b, lfn⟩
           simp only [shiftS] at hj ⊢
           rw [hj, h]
           rfl
-        · rw [if_neg (show ¬ gfn = (singletonProgM fn (pre ++ B)).lfn from hf)]
+        · rw [ite_eq_right (show ¬ gfn = (singletonProgM fn (pre ++ B)).lfn from hf)]
 
 /-- **A run behind the prefix, as an equation.** The run of `pre ++ B` from the moved state is
     the moved run of `B`. -/

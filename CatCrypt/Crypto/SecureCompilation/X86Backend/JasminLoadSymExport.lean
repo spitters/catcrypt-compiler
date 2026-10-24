@@ -112,7 +112,7 @@ theorem opToLinstrR_extCall_call (name dst : String) (srcs : List LOperand)
     (hgp : callHasWide (callMarshalWidth retTy) (List.map callMarshalWidth argTys) = false) :
     opToLinstrR (.extCall name argTys retTy) dst srcs
       = .Lopn [.reg dst] ("CALL:" ++ name) srcs := by
-  simp only [opToLinstrR, h, hgp, Bool.false_eq_true, if_false]
+  simp only [opToLinstrR, h, hgp, Bool.false_eq_true, ite_false]
 
 /-! ## 2. The exported `Linstr` lowers to `JInstr.loadSym`
 

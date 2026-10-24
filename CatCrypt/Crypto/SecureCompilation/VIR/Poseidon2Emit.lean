@@ -500,7 +500,7 @@ theorem bbCsub_toNat (r : BitVec 64) (hr : r.toNat < 2 ^ 63) :
       show (0 : BitVec 64).toNat = 0 from by decide]
   rcases Nat.lt_or_ge r.toNat 2013265921 with hlt | hge
   · -- r < p : t wraps, mask all-ones, result is r
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
     have ht : (2 ^ 64 - 2013265921 + r.toNat) % 2 ^ 64
         = 18446744073709551616 - 2013265921 + r.toNat := by
       rw [h64]; apply Nat.mod_eq_of_lt; omega
@@ -515,7 +515,7 @@ theorem bbCsub_toNat (r : BitVec 64) (hr : r.toNat < 2 ^ 63) :
     rw [hland, h64]
     omega
   · -- r ≥ p : t does not wrap, mask 0, result is r - p
-    rw [if_pos hge]
+    rw [ite_eq_left hge]
     have ht : (2 ^ 64 - 2013265921 + r.toNat) % 2 ^ 64 = r.toNat - 2013265921 := by
       rw [h64]
       rw [show 18446744073709551616 - 2013265921 + r.toNat
@@ -535,8 +535,8 @@ theorem bbCsub_residue (r : BitVec 64) (hr : r.toNat < 2 ^ 63) :
     (bbCsub r).toNat % 2013265921 = r.toNat % 2013265921 := by
   rw [bbCsub_toNat r hr]
   rcases Nat.lt_or_ge r.toNat 2013265921 with hlt | hge
-  · rw [if_neg (by omega)]
-  · rw [if_pos hge]
+  · rw [ite_eq_right (by omega)]
+  · rw [ite_eq_left hge]
     omega
 
 /-- **Two conditional subtracts canonicalise any `r < 3p`.** `bbCsub` drops one

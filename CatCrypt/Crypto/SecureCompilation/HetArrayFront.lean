@@ -228,7 +228,7 @@ theorem arrRead_compiles_n (n : Nat) (hn : n ≤ 2 ^ 64) :
         c.denote (arrInputValuation 32 n arr (BitVec.ofNat 64 i.val)) = arr i) := by
   refine ⟨arrLoadCom 32 n, ?_, ?_, ?_⟩
   · simp only [arrReadFront, arrReadModelN, isArrTypeOfW, Hax.IntWidth.bits,
-      decide_true, Bool.and_self, if_true]
+      decide_true, Bool.and_self, ite_true]
   · intro arr idx; exact arrLoadCom_denote 32 n arr idx
   · intro arr i
     rw [arrLoadCom_denote]

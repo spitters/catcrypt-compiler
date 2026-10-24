@@ -143,7 +143,7 @@ theorem entryOf_mem (ret : Nat) (s : AState) (x : BitVec 64) (hx : ¬ InRange8 (
     (entryOf ret s).mem x = s.mem x := by
   have h1 := (evalInstrA_leaFrame s (-8)).1 "%rsp"
   have h2 := (evalInstrA_leaFrame s (-8)).2
-  rw [if_pos rfl] at h1
+  rw [ite_eq_left rfl] at h1
   have e : s.regs "%rsp" + BitVec.ofInt 64 (-8) + BitVec.ofInt 64 0 = retWord s := by
     simp [retWord]
   rw [entryOf_eq]
@@ -173,14 +173,14 @@ theorem callSpec_return {q : List RInstr} {c : CalleeSig} (h : CalleeSpec q c)
   have hne : ∀ r, gpOk r = true → phys r ≠ "%rsp" := fun r hr => (gpFacts hr).physNe
   obtain ⟨hl, hlm⟩ := evalInstrA_leaFrame sc 8
   refine ⟨sc, hrun, ?_, ?_, fun r hr' => ?_, fun x hx hx' => ?_⟩
-  · rw [retOps_eq, hl, if_pos rfl, hsp, entryOf_regs, if_pos rfl, retWord, BitVec.add_assoc]
+  · rw [retOps_eq, hl, ite_eq_left rfl, hsp, entryOf_regs, ite_eq_left rfl, retWord, BitVec.add_assoc]
     simp
-  · rw [retOps_eq, hl, if_neg (hne _ hres), hr]
+  · rw [retOps_eq, hl, ite_eq_right (hne _ hres), hr]
     congr 1
     refine List.map_congr_left fun a ha => ?_
-    rw [entryOf_regs, if_neg (hne a (hargs a ha))]
-  · rw [retOps_eq, hl, if_neg (hne r (hkeep r hr')), hk r hr', entryOf_regs,
-      if_neg (hne r (hkeep r hr'))]
+    rw [entryOf_regs, ite_eq_right (hne a (hargs a ha))]
+  · rw [retOps_eq, hl, ite_eq_right (hne r (hkeep r hr')), hk r hr', entryOf_regs,
+      ite_eq_right (hne r (hkeep r hr'))]
   · rw [retOps_eq, hlm, hm x hx, entryOf_mem ret s x hx']
 
 /-- **A call to a relocated copy of a specified block.** In
@@ -623,10 +623,10 @@ theorem relX_sload {frame : String → Option (BitVec 64)}
         else s.prog.base.reg.lvm r)
       = (if r = d then ⟨_, (s'.prog.base.reg.lvm q).2⟩ else s'.prog.base.reg.lvm r)
     by_cases hd : r = d
-    · rw [if_pos hd, if_pos hd]
+    · rw [ite_eq_left hd, ite_eq_left hd]
       exact hqe
     · have hx : r ∉ X := fun hx => hr (by simp [hx, hd])
-      rw [if_neg hd, if_neg hd]
+      rw [ite_eq_right hd, ite_eq_right hd]
       exact hag.regs r hx
   · exact congrArg (· + 1) hag.pc
   · show ImgRel frame slotArr base body _ sa' s.zf

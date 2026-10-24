@@ -88,7 +88,7 @@ theorem bzAux_val : ∀ (fuel : Nat) (a b : List (BitVec 64)), bignumVal b ≠ 0
     by_cases hcond : a.length ≤ 1
     · have hunf : bzAux (fuel + 1) a b = (div a b, mod a b) := by
         show (if a.length ≤ 1 then (div a b, mod a b) else _) = _
-        rw [if_pos hcond]
+        rw [ite_eq_left hcond]
       rw [hunf]; exact ⟨div_val a b, mod_val a b⟩
     · have hbpos : 0 < bignumVal b := Nat.pos_of_ne_zero hb
       set k := a.length / 2 with hk
@@ -102,7 +102,7 @@ theorem bzAux_val : ∀ (fuel : Nat) (a b : List (BitVec 64)), bignumVal b ≠ 0
       have hunf : bzAux (fuel + 1) a b = (BigNat.add (shiftBy k hi.1) lo.1, lo.2) := by
         show (if a.length ≤ 1 then (div a b, mod a b)
               else (BigNat.add (shiftBy k hi.1) lo.1, lo.2)) = _
-        rw [if_neg hcond]
+        rw [ite_eq_right hcond]
       have hmidval : bignumVal mid = (2 ^ 64) ^ k * bignumVal hi.2 + bignumVal (a.take k) := by
         rw [hmid, BigNat.add_val, shiftBy_val]
       have hqval : bignumVal (BigNat.add (shiftBy k hi.1) lo.1)

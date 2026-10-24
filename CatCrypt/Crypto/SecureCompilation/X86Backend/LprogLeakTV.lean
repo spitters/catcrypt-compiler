@@ -128,15 +128,15 @@ theorem SMem.eval_only (V : String → BitVec w) (M : String → Int → BitVec 
       have ih := SMem.eval_only V M b o m
       by_cases h : b' = b
       · subst h
-        simp only [SMem.only, if_true, SMem.eval, ih]
-      · simp only [SMem.only, h, if_false, SMem.eval, ih, Ne.symm h]
+        simp only [SMem.only, ite_true, SMem.eval, ih]
+      · simp only [SMem.only, h, ite_false, SMem.eval, ih, Ne.symm h]
 
 theorem SMem.eval_of_not_mem (V : String → BitVec w) (M : String → Int → BitVec w)
     (b : String) (o : Int) : ∀ m : SMem, b ∉ m.bases → m.eval V M b o = M b o
   | .init, _ => rfl
   | .st b' sc x v m, h => by
       simp only [SMem.bases, List.mem_cons, not_or] at h
-      simp only [SMem.eval, h.1, if_false]
+      simp only [SMem.eval, h.1, ite_false]
       exact SMem.eval_of_not_mem V M b o m h.2
 
 /-! ## 2. Symbolic states and one step -/
@@ -166,7 +166,7 @@ theorem SSt.good_start : SSt.start.Good := fun _ _ => rfl
 theorem SSt.Good.set {ss : SSt} (h : ss.Good) (d : String) (t : STerm) : (ss.set d t).Good := by
   intro r hr
   simp only [SSt.set, List.mem_cons, not_or] at hr ⊢
-  rw [if_neg hr.1]
+  rw [ite_eq_right hr.1]
   exact h r hr.2
 
 /-- A concrete state is described by a symbolic state, for the start store `V`,
@@ -342,13 +342,13 @@ theorem symStep_sound {V : String → BitVec w} {M : String → Int → BitVec w
         simp only [lsemStep] at hs'
         split at h
         · rename_i hL
-          simp only [hL, if_true, Option.some.injEq] at hs' h
+          simp only [hL, ite_true, Option.some.injEq] at hs' h
           subst hs' h
           exact hH.set d _ _ (by simp only [STerm.eval, SMem.eval_only, ← hH.1 x, ← hH.2])
         · rename_i hL
           split at h
           · rename_i hS
-            rw [if_neg hL, if_pos hS] at hs'
+            rw [ite_eq_right hL, ite_eq_left hS] at hs'
             split at h
             · rename_i v
               simp only [Option.some.injEq] at hs' h
@@ -358,7 +358,7 @@ theorem symStep_sound {V : String → BitVec w} {M : String → Int → BitVec w
               simp only [Lstate.lmem_nextPc, SMem.eval, ← hH.1 x, symOp_eval hH, ← hH.2]
             · simp at h
           · rename_i hS
-            simp only [hL, hS, if_false] at hs'
+            simp only [hL, hS, ite_false] at hs'
             exact symGen_step_sound hH d opn _ hs' h
       · rename_i hnot
         rw [lsemStep_reg_srcs d opn srcs s (fun b x sc rest heq => hnot b x sc rest heq)] at hs'
@@ -824,12 +824,12 @@ theorem findLabel_segsL (lbl : LLabel) :
           match a, hlen with
           | [x], _ => exact ⟨x, rfl⟩
         by_cases hx : isLabel lbl x = true
-        · simp only [List.findIdx?_singleton, hx, if_true, Option.some_or,
+        · simp only [List.findIdx?_singleton, hx, ite_true, Option.some_or,
             Option.some.injEq] at hpc ⊢
           subst hpc
           exact ⟨0, by simp, by simp, by simp, by simp [bd_cons_succ], by simp [bd_cons_succ]⟩
         · simp only [Bool.not_eq_true] at hx
-          simp only [List.findIdx?_singleton, hx, Bool.false_eq_true, if_false, Option.none_or,
+          simp only [List.findIdx?_singleton, hx, Bool.false_eq_true, ite_false, Option.none_or,
             List.length_singleton] at hpc ⊢
           obtain ⟨pc', hpc', rfl⟩ := Option.map_eq_some_iff.1 hpc
           obtain ⟨k, hk, rfl, hB, hA1, hB1⟩ := ih pc' hpc'
@@ -1095,12 +1095,12 @@ theorem step_pos
         cases cnd <;> simp [evalOperand, hv, hm]
       simp only [evalInstrP, hev, hσ, hτ]
       by_cases hc : evalOperand τ.base cnd ≠ 0
-      · simp only [hc, if_true, ne_eq, not_false_eq_true]
+      · simp only [hc, ite_true, ne_eq, not_false_eq_true]
         obtain ⟨h1, h2⟩ := jump_pos hnone hchk fn l σ τ hst
         refine ⟨h1, fun σ' τ' e1 e2 => ?_⟩
         obtain ⟨k2, hk2⟩ := h2 σ' τ' e1 e2
         exact ⟨fn, k2, hk2⟩
-      · simp only [hc, if_false]
+      · simp only [hc, ite_false]
         refine ⟨rfl, fun σ' τ' e1 e2 => ?_⟩
         simp only [Option.some.injEq] at e1 e2
         subst e1 e2

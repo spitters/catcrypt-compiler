@@ -275,21 +275,21 @@ theorem simScope_lookup_mono (S : List String) (e : ImpExpr) :
     | app f args =>
       simp only [simScope] at h
       by_cases hArr : f = "array_update"
-      · rw [if_pos hArr] at h
+      · rw [ite_eq_left hArr] at h
         by_cases hAll : args.all isVar = true
-        · rw [if_pos hAll] at h
+        · rw [ite_eq_left hAll] at h
           exact ihBody Γ Γ' h m dt hm
-        · rw [if_neg hAll] at h; cases h
-      · rw [if_neg hArr] at h
+        · rw [ite_eq_right hAll] at h; cases h
+      · rw [ite_eq_right hArr] at h
         by_cases hIdx : f = "index"
-        · rw [if_pos hIdx] at h
+        · rw [ite_eq_left hIdx] at h
           split at h
           · rename_i hc
             simp only [Bool.and_eq_true] at hc
             exact ihBody _ Γ' h m dt
               (lookup_cons_of_scopeCompat Γ name .TFp hc.1.2 m dt hm)
           · cases h
-        · rw [if_neg hIdx] at h
+        · rw [ite_eq_right hIdx] at h
           split at h
           · rename_i hc
             simp only [Bool.and_eq_true] at hc
@@ -971,7 +971,7 @@ theorem progSim_letBind_app (name f : String) (args : List ImpExpr) (body : ImpE
     (ihBody : ProgSim bridge bi N leafSpec S body) :
     ProgSim bridge bi N leafSpec S (.letBind name (.app f args) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree
-  simp only [simScope, if_neg hf_arr, if_neg hf_idx] at hScope
+  simp only [simScope, ite_eq_right hf_arr, ite_eq_right hf_idx] at hScope
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc

@@ -271,10 +271,10 @@ theorem iotaCom_lane_eq_abstract_iota
     unfold constZmm; rw [zmmOfLanes_zmmLane']; rfl
   simp only [JasminBinOp.applyLane, iota, stateAt, iotaOperand]
   by_cases h : (x.val == 0 && y.val == 0) = true
-  · rw [h]; simp only [if_true, hrc]
+  · rw [h]; simp only [ite_true, hrc]
   · rw [Bool.not_eq_true] at h
     rw [h]
-    simp only [reduceCtorEq, if_false, hz]
+    simp only [reduceCtorEq, ite_false, hz]
     exact BitVec.xor_zero
 
 /-! ## 4. The abstract ρ/χ/ι ties packaged

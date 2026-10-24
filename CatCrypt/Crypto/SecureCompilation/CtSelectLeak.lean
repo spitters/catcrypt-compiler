@@ -119,7 +119,7 @@ theorem find_filterKey (q : String → Bool) :
           simp [KEnv.find] at h
           subst h
           exact ⟨by simp [KEnv.find], hq⟩
-        · simp only [KEnv.find, if_neg hr] at h
+        · simp only [KEnv.find, ite_eq_right hr] at h
           exact ⟨by simp [KEnv.find, hr, (ih r v h).1], (ih r v h).2⟩
       · rw [List.filter_cons_of_neg (by simpa using hq)] at h
         by_cases hr : er = r
@@ -153,7 +153,7 @@ theorem holds_stepKeep {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
         simp [KEnv.find] at hr
         subst hr
         simp [evalInstr, JOperand.eval, JState.setReg, x86_MOV]
-      · simp only [KEnv.find, if_neg hd] at hr
+      · simp only [KEnv.find, ite_eq_right hd] at hr
         exact hkept r v hr
   | .mov _ (.reg _) | .add _ _ | .sub _ _ | .adc _ _ | .sbb _ _ | .imul _ _
   | .neg _ | .setc _ | .and_ _ _ | .test _ _ | .cmp _ _ | .not_ _ | .andn _ _ _

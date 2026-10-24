@@ -79,7 +79,7 @@ theorem listRel_index [Inhabited β] {l : List α} {arr : _root_.Array β} (h : 
   rw [listRel_iff_getElem] at h
   obtain ⟨hk', rfl⟩ := List.getElem?_eq_some_iff.mp hk
   have hk'' : k < arr.size := h.1 ▸ hk'
-  simp only [Hax.index, Int.toNat_natCast, dif_pos hk'']
+  simp only [Hax.index, Int.toNat_natCast, dite_eq_left hk'']
   exact h.2 k hk' hk''
 
 /-- Entries of related containers at the same position are related. -/
@@ -155,7 +155,7 @@ theorem array_update_square {n : Usize} (v : Aeneas.Std.Array α n) {arr : _root
     rw [listRel_iff_getElem] at hv ⊢
     have hi : i.val < v.val.length := (List.getElem?_eq_some_iff.mp hy).1
     have hi' : i.val < arr.size := hv.1 ▸ hi
-    simp only [Hax.array_update, enc_uscalar, Int.toNat_natCast, dif_pos hi']
+    simp only [Hax.array_update, enc_uscalar, Int.toNat_natCast, dite_eq_left hi']
     refine ⟨by simp [hv.1], fun j hj hj' => ?_⟩
     simp only [List.getElem_set, _root_.Array.getElem_set]
     split
@@ -329,7 +329,7 @@ theorem slice_update_fold {γ : Type} (arr src : _root_.Array γ) (l : Nat) :
   | zero =>
     intro _
     refine ⟨rfl, fun j => ?_⟩
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
     rfl
   | succ n ih =>
     intro hn
@@ -340,15 +340,15 @@ theorem slice_update_fold {γ : Type} (arr src : _root_.Array γ) (l : Nat) :
     rw [_root_.Array.getElem?_setIfInBounds, ihj, ihs]
     by_cases hj : l + n = j
     · subst hj
-      simp only [if_true]
+      simp only [ite_true]
       by_cases hs : l + n < arr.size
-      · rw [if_pos hs, if_pos ⟨by omega, by omega, hs⟩, Nat.add_sub_cancel_left,
+      · rw [ite_eq_left hs, ite_eq_left ⟨by omega, by omega, hs⟩, Nat.add_sub_cancel_left,
           _root_.Array.getElem?_eq_getElem]
-      · rw [if_neg hs, if_neg (by omega), _root_.Array.getElem?_eq_none (by omega)]
-    · rw [if_neg hj]
+      · rw [ite_eq_right hs, ite_eq_right (by omega), _root_.Array.getElem?_eq_none (by omega)]
+    · rw [ite_eq_right hj]
       by_cases hin : l ≤ j ∧ j < l + n ∧ j < arr.size
-      · rw [if_pos hin, if_pos ⟨hin.1, by omega, hin.2.2⟩]
-      · rw [if_neg hin, if_neg (by omega)]
+      · rw [ite_eq_left hin, ite_eq_left ⟨hin.1, by omega, hin.2.2⟩]
+      · rw [ite_eq_right hin, ite_eq_right (by omega)]
 
 /-- `s[a..b].copy_from_slice(src)` returns, when `a ≤ b ≤ s.len()` and `src` has
     length `b - a`, a slice related to the array `Hax.slice_update` returns. -/
@@ -377,17 +377,17 @@ theorem slice_update_square (s : Slice α) (r : core.ops.range.Range Usize) (ss 
     rw [hget j] at hb
     by_cases h1 : j < r.start.val
     · rw [List.setSlice!_getElem?_prefix _ _ _ _ h1] at ha
-      rw [if_neg (by omega)] at hb
+      rw [ite_eq_right (by omega)] at hb
       exact listRel_getElem? hv ha hb
     · by_cases h2 : j < r.start.val + ss.val.length
       · have hj : j < s.val.length := by
           have := (List.getElem?_eq_some_iff.mp ha).1
           simpa using this
         rw [List.setSlice!_getElem?_middle _ _ _ _ ⟨by omega, by omega, hj⟩] at ha
-        rw [if_pos ⟨by omega, h2, by omega⟩] at hb
+        rw [ite_eq_left ⟨by omega, h2, by omega⟩] at hb
         exact listRel_getElem? hs ha hb
       · rw [List.setSlice!_getElem?_suffix _ _ _ _ (by omega)] at ha
-        rw [if_neg (by omega)] at hb
+        rw [ite_eq_right (by omega)] at hb
         exact listRel_getElem? hv ha hb
   · cases h
 

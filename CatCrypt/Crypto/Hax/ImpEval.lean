@@ -341,7 +341,7 @@ theorem denoteForLoop_succ_run (bi : Builtins) (fuel : Nat) (v : String) (lo hi 
       | .broke w => pure (.val w)
       | other => pure other) := by
     conv => lhs; unfold denoteForLoop
-    simp only [show ¬ lo ≥ hi by omega, if_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
+    simp only [show ¬ lo ≥ hi by omega, ite_false, Nat.succ_ne_zero, Nat.add_sub_cancel]
     rfl
   show (denoteForLoop bi (fuel + 1) v lo hi body).run env = _
   rw [hFor]

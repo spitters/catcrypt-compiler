@@ -183,7 +183,7 @@ theorem lsemStepMem_loadIdx (dst base idx : String) (sc : Nat) {w n : Nat}
     lsemStepMem (LinstrR.Lopn [.reg dst] "LOADIDX" [.arrIdx base idx sc],
         MemTag.load w n) st
       = some ((st.setReg dst (stackGet arr vi.toNat)).nextPc) := by
-  simp only [lsemStepMem, loadStruct?, if_true, hb, hi]
+  simp only [lsemStepMem, loadStruct?, ite_true, hb, hi]
 
 /-- **Raw memory step — `STOREIDX dst ← base[idx] := val`** from read facts
     alone (the destination slot is a free name — in particular it may be `base`
@@ -195,7 +195,7 @@ theorem lsemStepMem_storeIdx (dst base idx val : String) (sc : Nat) {w n : Nat}
     lsemStepMem (LinstrR.Lopn [.reg dst] "STOREIDX" [.arrIdx base idx sc, .reg val],
         MemTag.store w n) st
       = some ((st.setArr dst (stackSet arr vi.toNat vv)).nextPc) := by
-  simp only [lsemStepMem, storeStruct?, if_true, hb, hi, hv]
+  simp only [lsemStepMem, storeStruct?, ite_true, hb, hi, hv]
 
 /-! ## 2. The trip-context name geometry
 
@@ -219,7 +219,7 @@ theorem resolveVar_trip_acc {accTy : JasminTy} :
       = .reg (accRegMN invTys) := by
   have h : invTys.length + 2 - 1 - 0 = invTys.length + 1 := by omega
   simp only [resolveVar, varIndex, h]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
   rfl
 
 /-- The loop index (`.there .here`) resolves to `idxRegMN`. -/
@@ -229,7 +229,7 @@ theorem resolveVar_trip_idx {accTy : JasminTy} :
       = .reg (idxRegMN invTys) := by
   have h : invTys.length + 2 - 1 - (0 + 1) = invTys.length := by omega
   simp only [resolveVar, varIndex, h]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
   rfl
 
 /-- An invariant (`.there (.there v)`) resolves to an `argName` slot strictly
@@ -244,7 +244,7 @@ theorem resolveVar_trip_inv {accTy τ : JasminTy} (v : Ctxt.Var invTys τ) :
   have h : invTys.length + 2 - 1 - (varIndex v + 1 + 1) = invTys.length - 1 - varIndex v := by
     omega
   simp only [resolveVar, varIndex, h]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
 
 /-! ### Readers off a trip agreement -/
 
@@ -296,9 +296,9 @@ theorem StoreAgreesM.setReg_untracked {nArgs curDepth : Nat} {Γ : Ctxt jasminDi
     have hname : operandName (resolveVar curDepth nArgs argName (fun _ => none) u) ≠ r := by
       simp only [resolveVar, operandName]
       by_cases hsa : curDepth - 1 - varIndex u < nArgs
-      · simp only [hsa, if_true]
+      · simp only [hsa, ite_true]
         exact fun he => hra _ he.symm
-      · simp only [hsa, if_false]
+      · simp only [hsa, ite_false]
         exact fun he => hrr _ he.symm
     rw [LstateN.getW_setReg_other _ _ _ _ _ hname]
     have := h.reg u

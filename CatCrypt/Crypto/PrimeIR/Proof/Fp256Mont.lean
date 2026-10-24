@@ -89,7 +89,7 @@ theorem whileFold_count_gen {S σ : Type} (mk : σ → Int → S) (n : Int)
     have hlt : i < n := by push_cast at hm; omega
     have hstep := ih (i + 1) (g i s) (by push_cast at hm ⊢; omega)
     rw [Hax.whileFoldFuel]
-    simp only [hf, Hax.lt, hlt, decide_true, if_true, Hax.cfContinue, Hax.add]
+    simp only [hf, Hax.lt, hlt, decide_true, ite_true, Hax.cfContinue, Hax.add]
     rw [hstep, Hax.foldRange_step _ _ _ _ hlt]
 
 /-- A four-step range unrolls. -/
@@ -846,12 +846,12 @@ theorem reduce_once_spec {x0 x1 x2 x3 h : Int} (hx0 : W64 x0) (hx1 : W64 x1)
   have hD0 : 0 ≤ val4 d0 d1 d2 d3 := by unfold val4 W64 at *; omega
   have hD1 : val4 d0 d1 d2 d3 < 2 ^ 256 := by unfold val4 W64 at *; omega
   by_cases hc : h = 1 ∨ b = 0
-  · rw [if_pos hc, select_limbs_mask (Or.inr rfl) hd0 hd1 hd2 hd3 hx0 hx1 hx2 hx3, if_pos rfl]
+  · rw [ite_eq_left hc, select_limbs_mask (Or.inr rfl) hd0 hd1 hd2 hd3 hx0 hx1 hx2 hx3, ite_eq_left rfl]
     refine ⟨_, _, _, _, rfl, hd0, hd1, hd2, hd3, ?_⟩
     unfold pZ at *
     omega
-  · rw [if_neg hc, select_limbs_mask (Or.inl rfl) hd0 hd1 hd2 hd3 hx0 hx1 hx2 hx3,
-      if_neg (by norm_num)]
+  · rw [ite_eq_right hc, select_limbs_mask (Or.inl rfl) hd0 hd1 hd2 hd3 hx0 hx1 hx2 hx3,
+      ite_eq_right (by norm_num)]
     refine ⟨_, _, _, _, rfl, hx0, hx1, hx2, hx3, ?_⟩
     unfold pZ at *
     omega
@@ -2011,9 +2011,9 @@ theorem CtField_is_zero_eq {a : Array Int} (ha : Canon a) :
   have hv : val4 x0 x1 x2 x3 = 0 ↔ x0 = 0 ∧ x1 = 0 ∧ x2 = 0 ∧ x3 = 0 := by
     unfold val4; unfold W64 at h0 h1 h2 h3; omega
   by_cases hc : x0 = 0 ∧ x1 = 0 ∧ x2 = 0 ∧ x3 = 0
-  · rw [if_pos (z4.mpr ⟨z3.mpr ⟨z2.mpr ⟨z1.mpr ⟨rfl, hc.1⟩, hc.2.1⟩, hc.2.2.1⟩, hc.2.2.2⟩)]
+  · rw [ite_eq_left (z4.mpr ⟨z3.mpr ⟨z2.mpr ⟨z1.mpr ⟨rfl, hc.1⟩, hc.2.1⟩, hc.2.2.1⟩, hc.2.2.2⟩)]
     simp [hv.mpr hc, Hax.sub]
-  · rw [if_neg (by tauto)]
+  · rw [ite_eq_right (by tauto)]
     have h : ¬ val4 x0 x1 x2 x3 = 0 := fun h => hc (hv.mp h)
     simp [h, Hax.sub]
 

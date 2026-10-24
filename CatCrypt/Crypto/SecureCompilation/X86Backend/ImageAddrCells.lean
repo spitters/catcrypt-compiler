@@ -325,8 +325,8 @@ theorem reloadOf_cellBody {slotArr : String → Option (String × Nat)} {body : 
                         rw [hmv] at hb'
                         have hm' : slotMov? (LinstrR.Lopn [.reg D] "MOVQ" [.reg (memName A off)])
                             = some (D, memName A off) := by simp [slotMov?]
-                        rw [reloadOf_succ_some hb' hm', if_neg hnd.1,
-                          if_pos (by simpa using hnd.2)]
+                        rw [reloadOf_succ_some hb' hm', ite_eq_right hnd.1,
+                          ite_eq_left (by simpa using hnd.2)]
                         exact hIH
                       | none =>
                         have hmv : cellMove slotArr body k j = j := by
@@ -334,7 +334,7 @@ theorem reloadOf_cellBody {slotArr : String → Option (String × Nat)} {body : 
                         rw [hmv] at hb'
                         rw [reloadOf_succ_lopn hb' hm hxn]
                         simp only [List.any_cons, List.any_nil, Bool.or_false, dstHitB,
-                          hnd.2, beq_iff_eq, hnd.1, if_false]
+                          hnd.2, beq_iff_eq, hnd.1, ite_false]
                         exact hIH
                   | st B off S =>
                       obtain ⟨_, n, hxn, -, -⟩ := cellA_st hc
@@ -351,7 +351,7 @@ theorem reloadOf_cellBody {slotArr : String → Option (String × Nat)} {body : 
                           (by rw [hc]; simp)).1
                         have hne : memName A off ≠ b := fun e => by
                           rw [← e, hasPrefix_memName] at hpb; cases hpb
-                        rw [reloadOf_succ_some hb' hm', if_neg hne, if_pos (by simp [hsl])]
+                        rw [reloadOf_succ_some hb' hm', ite_eq_right hne, ite_eq_left (by simp [hsl])]
                         exact hIH
                       | none =>
                         have hmv : cellMove slotArr body k j = j := by

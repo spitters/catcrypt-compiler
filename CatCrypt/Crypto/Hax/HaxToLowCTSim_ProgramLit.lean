@@ -87,13 +87,13 @@ theorem litTower_lit_mem (T : List String) (x : String) (m : Nat) (b : LowCT)
       .RLetZero x .TFp
         (.RSeq (.RLimbStore { locVar := x, locSrc := .TFp } 0 (BitVec.ofNat 64 m))
           (litTower T b)) := by
-  simp only [litTower, h, if_true]
+  simp only [litTower, h, ite_true]
 
 theorem litTower_lit_not_mem (T : List String) (x : String) (m : Nat) (b : LowCT)
     (h : T.contains x = false) :
     litTower T (.RLetU64Zero x (.RSeq (.RScalarSet x m) b)) =
       .RLetU64Zero x (.RSeq (.RScalarSet x m) (litTower T b)) := by
-  simp only [litTower, h, Bool.false_eq_true, if_false]
+  simp only [litTower, h, Bool.false_eq_true, ite_false]
 
 theorem litTower_letBind_copy (T : List String) (x src : String) (b : LowCT) :
     litTower T (.RLetU64Zero x (.RSeq (.RScalarSetExpr x (.SVar src)) b)) =
@@ -128,7 +128,7 @@ theorem litTower_nil (c : LowCT) : litTower [] c = c := by
       cases a with
       | RScalarSet y m =>
         rw [litTower_seq] at ih
-        simp only [litTower, List.contains_nil, Bool.false_eq_true, if_false]
+        simp only [litTower, List.contains_nil, Bool.false_eq_true, ite_false]
         simp only [LowCT.RSeq.injEq] at ih
         rw [ih.2]
       | _ => simp only [litTower] at ih ⊢; rw [ih]
@@ -208,7 +208,7 @@ theorem simScopeL_nil (S : List String) (e : ImpExpr) :
     cases val with
     | app f args => simp only [simScopeL, simScope, ihBody]
     | lit l => simp only [simScopeL, simScope, ihBody, List.contains_nil, Bool.false_eq_true,
-        if_false]
+        ite_false]
     | var src => simp only [simScopeL, simScope, ihBody]
     | proj pe i => cases pe <;> simp only [simScopeL, simScope, ihBody]
     | _ => simp only [simScopeL, simScope]
@@ -236,21 +236,21 @@ theorem simScopeL_lookup_mono (S T : List String) (e : ImpExpr) :
     | app f args =>
       simp only [simScopeL] at h
       by_cases hArr : f = "array_update"
-      · rw [if_pos hArr] at h
+      · rw [ite_eq_left hArr] at h
         by_cases hAll : args.all isVar = true
-        · rw [if_pos hAll] at h
+        · rw [ite_eq_left hAll] at h
           exact ihBody Γ Γ' h m dt hm
-        · rw [if_neg hAll] at h; cases h
-      · rw [if_neg hArr] at h
+        · rw [ite_eq_right hAll] at h; cases h
+      · rw [ite_eq_right hArr] at h
         by_cases hIdx : f = "index"
-        · rw [if_pos hIdx] at h
+        · rw [ite_eq_left hIdx] at h
           split at h
           · rename_i hc
             simp only [Bool.and_eq_true] at hc
             exact ihBody _ Γ' h m dt
               (lookup_cons_of_scopeCompat Γ name .TFp hc.1.2 m dt hm)
           · cases h
-        · rw [if_neg hIdx] at h
+        · rw [ite_eq_right hIdx] at h
           split at h
           · rename_i hc
             simp only [Bool.and_eq_true] at hc
@@ -515,7 +515,7 @@ theorem progSimL_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
   subst hC
   have hBodyEval := evalImp_letBind_lit_inv bi fuel name l body env v env' hEval
   by_cases hTm : T.contains name = true
-  · rw [if_pos hTm] at hScope
+  · rw [ite_eq_left hTm] at hScope
     split at hScope
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
@@ -527,7 +527,7 @@ theorem progSimL_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
           simp only [litWord, Bool.and_eq_true, decide_eq_true_eq] at hW
           obtain ⟨h0, h1⟩ := hW
           refine ⟨n.toNat, by omega, by simp [Value.ofLit, Int.toNat_of_nonneg h0], ?_⟩
-          simp only [Value.ofLit, valueToScalar, if_pos h0, Option.some.injEq] at hDecode
+          simp only [Value.ofLit, valueToScalar, ite_eq_left h0, Option.some.injEq] at hDecode
           exact hDecode
         | _ => simp [litWord] at hW
       subst hm
@@ -562,7 +562,7 @@ theorem progSimL_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
       exact ⟨rs', RustExec.letZero name .TFp _ rs rs'
         (RustExec.seq _ _ _ _ _ hStore hBodyExec), hAgree', hSB', hSF'⟩
     · cases hScope
-  · rw [if_neg hTm] at hScope
+  · rw [ite_eq_right hTm] at hScope
     split at hScope
     · rename_i hIn
       rw [litTower_lit_not_mem T name m bodyC (by simpa using hTm)]
@@ -612,7 +612,7 @@ theorem progSimL_letBind_app (name f : String) (args : List ImpExpr) (body : Imp
     ProgSimL bridge bi N leafSpec S T (.letBind name (.app f args) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree
   simp only [condsScalar] at hConds
-  simp only [simScopeL, if_neg hf_arr, if_neg hf_idx] at hScope
+  simp only [simScopeL, ite_eq_right hf_arr, ite_eq_right hf_idx] at hScope
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
@@ -801,7 +801,7 @@ theorem haxToLowCT_simulates_programL
       rfl
     | app f args =>
       by_cases hf : f = "array_update"
-      · exact noneArm _ fun Γ => by simp only [simScopeL, if_pos hf]
+      · exact noneArm _ fun Γ => by simp only [simScopeL, ite_eq_left hf]
       refine progSimL_of_progSimT_assign bridge bi N leafSpec S T _ (fun Γ => rfl) ?_
         (progSimT_assign_app bridge bi N leafSpec S name f args hf (hLeaf f))
       intro c hc

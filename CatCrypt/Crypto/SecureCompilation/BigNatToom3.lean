@@ -403,13 +403,13 @@ theorem toom3_val (a b : List (BitVec 64)) :
   | zero =>
       intro a b hN
       have hlt : max a.length b.length < 48 := by omega
-      rw [toom3, dif_pos hlt]; exact BigNatKaratsuba.mulDispatch_val a b
+      rw [toom3, dite_eq_left hlt]; exact BigNatKaratsuba.mulDispatch_val a b
   | succ N ih =>
       intro a b hN
       rw [toom3]
       by_cases hg : max a.length b.length < 48
-      · rw [dif_pos hg]; exact BigNatKaratsuba.mulDispatch_val a b
-      · rw [dif_neg hg]
+      · rw [dite_eq_left hg]; exact BigNatKaratsuba.mulDispatch_val a b
+      · rw [dite_eq_right hg]
         extract_lets m a0 a1 a2 b0 b1 b2 ea1 eb1 eam1 ebm1 eam2 ebm2
           v0 v1 vm1 vm2 vinf
         -- Chunk length facts.

@@ -817,14 +817,14 @@ theorem retArrs_sound (hσ : SRel j B O O' σ V W) (hO : ∀ t v, arrAt j B t (O
   | t :: ts, org, .cons v vs, r, h => by
       obtain ⟨a, ha, h⟩ := Option.bind_eq_some_iff.mp h
       by_cases hix : vidx a.org = vidx (org _ .here)
-      · rw [if_pos hix] at h
+      · rw [ite_eq_left hix] at h
         obtain ⟨r', hr', rfl⟩ := Option.map_eq_some_iff.mp h
         have horg : a.org = org _ .here := vidx_inj _ _ hix
         refine ⟨?_, retArrs_sound hσ hO (fun t x => org t (.there x)) vs r' hr'⟩
         show outOk j B t (O t (org t .here)) (O' t (org t .here)) (v.lookup V) (a.tv.lookup W)
         rw [← horg]
         exact outOk_of_arrOk (hO _ _) ((hσ _ v).2.2.1 a ha)
-      · rw [if_neg hix] at h
+      · rw [ite_eq_right hix] at h
         cases h
 
 /-- **The lane form at a lane.** For a body `stripBody` accepts along `σ`, a leakage model in
@@ -1076,13 +1076,13 @@ theorem FormOk.entry (t : JasminTy) (tv : Var Δ (Sum.inl t)) (org : Var Γ₀ t
   | stackArr w' N =>
       by_cases hN : n ≤ N
       · have h : SForm.entry n w (JasminTy.stackArr w' N) tv org c =
-            SForm.array ⟨tv, org, false⟩ := if_pos hN
+            SForm.array ⟨tv, org, false⟩ := ite_eq_left hN
         rw [h]
         exact FormOk.array _ _ _
           (show laneFits n (JasminTy.stackArr w' N) ∧ y = O _ org ∧ tv.lookup W = O' _ org from
             ⟨hN, hO, hO'⟩)
       · have h : SForm.entry n w (JasminTy.stackArr w' N) tv org c = SForm.absent :=
-          if_neg hN
+          ite_eq_right hN
         rw [h]
         exact FormOk.absent _ _
   | reg w' =>

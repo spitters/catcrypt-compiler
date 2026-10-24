@@ -120,9 +120,9 @@ theorem footClearExcept_of_callerSep {frame : String → Option (BitVec 64)}
     have := x.isLt
     omega
   have he : (entryOf ret sA).regs "%rsp" = rsp + BitVec.ofInt 64 (-8) := by
-    rw [entryOf_regs, if_pos rfl, retWord, hsp]
+    rw [entryOf_regs, ite_eq_left rfl, retWord, hsp]
   have hp : (entryOf ret sA).regs (phys po) = base A := by
-    rw [entryOf_regs, if_neg (gpFacts hpo).physNe, hptr]
+    rw [entryOf_regs, ite_eq_right (gpFacts hpo).physNe, hptr]
   have hr : retWord sA = rsp + BitVec.ofInt 64 (-8) := by rw [retWord, hsp]
   refine ⟨fun q a ha x hx hT => ?_, fun q A' n' j hq hA' hj x hx hT => ?_⟩
   · obtain ⟨o, h1, rfl⟩ := hS.frames q a ha
@@ -193,12 +193,12 @@ theorem imgRel_callC_out {frame : String → Option (BitVec 64)}
     · subst hA'
       obtain rfl := hsep.len qA q A' n n' hqA hq
       refine ⟨arr, ?_, harr⟩
-      have hl : (s.prog.base.setArr A' arr).larr A' = ⟨64, n, arr⟩ := if_pos rfl
+      have hl : (s.prog.base.setArr A' arr).larr A' = ⟨64, n, arr⟩ := ite_eq_left rfl
       unfold LstateM.getArr
       rw [hl]
       simp
     · obtain ⟨arr', h1, h2⟩ := hrel.cells q A' n' hq
-      have hl : (s.prog.base.setArr A arr).larr A' = s.prog.base.larr A' := if_neg hA'
+      have hl : (s.prog.base.setArr A arr).larr A' = s.prog.base.larr A' := ite_eq_right hA'
       refine ⟨arr', ?_, fun j hj => ?_⟩
       · rw [← h1]
         unfold LstateM.getArr
@@ -305,7 +305,7 @@ theorem call_reestablishes_out {frame : String → Option (BitVec 64)}
       read64 (retOps.foldl aMachine.exec sc).mem (cellAt (base A) j) = arr ⟨j, hj⟩ := by
     intro j hj
     have h1 := hw.post _ _ hpre hpost
-    rw [hrd, hv, entryOf_regs, if_neg (gpFacts hw.po_gp).physNe, hpo] at h1
+    rw [hrd, hv, entryOf_regs, ite_eq_right (gpFacts hw.po_gp).physNe, hpo] at h1
     rw [hmR, Option.some.inj h1]
   have hfoot := footClearExcept_of_callerSep hsep hS hF hw.po_gp hc.sp hq hpo ret
   have hmem : ∀ x, ¬ (c.foot (entryOf ret sA) x ∨ InRange8 (retWord sA) x) →

@@ -108,7 +108,7 @@ theorem colSumSteps_eff : Eff P (colSumSteps P) colSumMap := by
         simp only [Sem.get, hτ])
     _ (List.nodup_finRange 16) σ₁ (fun _ => rfl)
   refine ⟨c₂.trans (c₁.trans hσ), funext fun j => ?_⟩
-  rw [l₂ j, if_pos (List.mem_finRange j), s₁, l₁]
+  rw [l₂ j, ite_eq_left (List.mem_finRange j), s₁, l₁]
   rfl
 
 theorem externalMDSSteps_eff : Eff P (externalMDSSteps P) externalMDS :=
@@ -172,7 +172,7 @@ theorem internalMDSSteps_eff : Eff P (internalMDSSteps P) (internalMDS P) := by
         · simp [semRun_cons, semRun_nil, lanes, hj, laneSlot_eq_iff])
     _ (List.nodup_finRange 16) _ ⟨a₁, c₁.trans hσ⟩
   refine ⟨c₂.trans (c₁.trans hσ), funext fun j => ?_⟩
-  rw [l₂ j, if_pos (List.mem_finRange j), l₁]
+  rw [l₂ j, ite_eq_left (List.mem_finRange j), l₁]
   rfl
 
 theorem internalRoundSteps_eff (hd : 1 ≤ P.sboxDeg) (r : Fin P.partialRounds) :
@@ -221,11 +221,11 @@ theorem constSteps_semRun (l : List (Fin (nConst P))) (σ : Sem P) :
     rw [List.map_cons, semRun_cons, h₂ j]
     simp only [stepSem, List.mem_cons]
     by_cases hm : j ∈ l
-    · exact (if_pos hm).trans (if_pos (Or.inr hm)).symm
+    · exact (ite_eq_left hm).trans (ite_eq_left (Or.inr hm)).symm
     by_cases hj : j = j₀
     · subst hj
-      exact (if_neg hm).trans ((if_pos rfl).trans (if_pos (Or.inl rfl)).symm)
-    · exact (if_neg hm).trans ((if_neg hj).trans (if_neg (by tauto)).symm)
+      exact (ite_eq_right hm).trans ((ite_eq_left rfl).trans (ite_eq_left (Or.inl rfl)).symm)
+    · exact (ite_eq_right hm).trans ((ite_eq_right hj).trans (ite_eq_right (by tauto)).symm)
 
 /-- The constant bindings leave the working slots alone and put `constVal` in
     every constant slot. -/
@@ -233,7 +233,7 @@ theorem constSteps_eff (σ : Sem P) :
     (semRun (constSteps P) σ).lane = σ.lane ∧ (semRun (constSteps P) σ).const = constVal P := by
   unfold constSteps
   obtain ⟨hl, hc⟩ := constSteps_semRun (List.finRange (nConst P)) σ
-  exact ⟨hl, funext fun j => (hc j).trans (if_pos (List.mem_finRange j))⟩
+  exact ⟨hl, funext fun j => (hc j).trans (ite_eq_left (List.mem_finRange j))⟩
 
 theorem permRest_eff (hd : 1 ≤ P.sboxDeg) : Eff P (permRest P) (permute P) :=
   (externalMDSSteps_eff.append
@@ -273,7 +273,7 @@ theorem permComAt_spec (hd : 1 ≤ P.sboxDeg) (i : Fin 16) (V : Ctxt.Valuation (
     funext k
     simp only [lanes]
     rw [show (semRun (constSteps P) σ₀).lane = σ₀.lane from hl]
-    simp only [σ₀, initState, laneSlot, inputState, k.isLt, if_pos]
+    simp only [σ₀, initState, laneSlot, inputState, k.isLt, ite_eq_left]
   rw [hin] at e
   simp only [lanes] at e
   rw [permSteps, semRun_append]

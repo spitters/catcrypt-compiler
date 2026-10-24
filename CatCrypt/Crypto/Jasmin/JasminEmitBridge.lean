@@ -509,7 +509,7 @@ lemma liftVm_setReg_eq (s : BignumExec.BignumState) (v : CoqSemMirror.Var)
     simp [hv, liftReg]
   · -- decide branch
     simp only [decide_eq_true_eq]
-    rw [if_neg hx]
+    rw [ite_eq_right hx]
     -- Need: liftVm s x = (if x.vname = v.vname ...). Two sub-cases on names.
     by_cases hn : x.vname = v.vname
     · -- Same name, different vars ⇒ different vtype.  But hHomog forces same vtype.
@@ -602,7 +602,7 @@ theorem opcodeAgrees_Cassgn_Lvar_Pvar
       show CoqSemMirror.getGvar true [] (stateToEstate s).evm
             (astToMirror_GVar w) = _
       unfold CoqSemMirror.getGvar
-      rw [if_pos hGvarLocal]
+      rw [ite_eq_left hGvarLocal]
       show CoqSemMirror.getVar true (stateToEstate s).evm (astToMirror_GVar w).gv.v_var = _
       change CoqSemMirror.getVar true (liftVm s) _ = _
       rw [getVar_liftVm_u64 s _ hSrcTy, hSrcName]
@@ -738,7 +738,7 @@ lemma semPexpr_Pvar_u64_gv
   show CoqSemMirror.getGvar true [] (stateToEstate s).evm
         (astToMirror_GVar g) = _
   unfold CoqSemMirror.getGvar
-  rw [if_pos hGvarLocal]
+  rw [ite_eq_left hGvarLocal]
   show CoqSemMirror.getVar true (stateToEstate s).evm
         (astToMirror_GVar g).gv.v_var = _
   change CoqSemMirror.getVar true (liftVm s) _ = _

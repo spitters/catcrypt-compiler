@@ -510,10 +510,10 @@ theorem scalarRes1_mem {Δ : Ctxt catCryptDialect} {f : String} {ta : NfTy} {ra 
     {r : NfTy} {res : OpRes Δ r} (h : scalarRes1 f ta ra r = some res) : OpResMem res := by
   unfold scalarRes1 at h
   by_cases hd : f = "declassify"
-  · rw [if_pos hd] at h
+  · rw [ite_eq_left hd] at h
     unfold declassRes1 at h
     split at h <;> cases h <;> trivial
-  rw [if_neg hd] at h
+  rw [ite_eq_right hd] at h
   split at h
   · obtain ⟨⟨o, w⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
     dsimp only at h

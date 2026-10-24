@@ -98,7 +98,7 @@ theorem andBodyNamed_run (s : JState 64) :
     JState.setReg, JState.writeB5W, JState.writeB5, JState.store, JState.storeIdx,
     JState.loadIdx, JState.load, JState.get, JOperand.eval, x86_MOV, x86_AND, x86_ADD, x86_SUB,
     x86_CMP, rflags_of_bwop, rflags_of_aluop, List.mem_cons, List.not_mem_nil, or_false,
-    not_or, if_true, if_false, Nat.cast_ofNat]
+    not_or, ite_true, ite_false, Nat.cast_ofNat]
   refine ⟨rfl, rfl, ?_, fun _ _ => trivial⟩
   intro r hr
   obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8⟩ := hr
@@ -175,10 +175,10 @@ theorem andNamedPass_boundedLoop (k : Nat) :
     · intro o ho
       have hc : ¬ ("rp" = "rp" ∧ o = 8 * ((s.regs "%rax").toNat : Int)) :=
         fun h => ho i le_rfl (by omega) (htoNat ▸ h.2)
-      rw [iframe o (fun j h1 h2 => ho j (by omega) (by omega)), pmem, hmem, if_neg hc]
+      rw [iframe o (fun j h1 h2 => ho j (by omega) (by omega)), pmem, hmem, ite_eq_right hc]
     · intro b o hb
       have hc : ¬ (b = "rp" ∧ o = 8 * ((s.regs "%rax").toNat : Int)) := fun h => hb h.1
-      rw [ibank b o hb, pmem, hmem, if_neg hc]
+      rw [ibank b o hb, pmem, hmem, ite_eq_right hc]
 
 /-! ## 2. The shipped loop over address memory -/
 
@@ -211,7 +211,7 @@ theorem andA_regInv (P : String → BitVec 64) (R : String → BitVec 64)
   simp only [DState.get, andA, lookupR] at h
   by_cases hr : r = "%rsp"
   · subst hr
-    simp only [if_true, Option.some.injEq] at h
+    simp only [ite_true, Option.some.injEq] at h
     subst h
     simp [AVal.denote, basePtr, andBank, hrsp]
   · simp [hr] at h
@@ -393,7 +393,7 @@ theorem prologueStores_run (sa : AState) :
       , .storeMem "%rsp" (-8) (.reg "%rdx"), .storeMem "%rsp" (-16) (.reg "%rcx") ] := rfl
   rw [e]
   simp +decide only [runBlockA_cons, runBlockA_nil, evalInstrA_storeMem_reg,
-    evalInstrA_mov_reg, evalInstrA_lea_self, if_false, ite_true, prologueMem, frameBase,
+    evalInstrA_mov_reg, evalInstrA_lea_self, ite_false, ite_true, prologueMem, frameBase,
     and_self]
 
 /-- A read at displacement `o'` from a base sees through a write at displacement `o` from
@@ -436,7 +436,7 @@ theorem prologueLoads_run (sa s : AState) (hm : s.mem = prologueMem sa)
       , .mov "%rdi" (.reg "%rsi"), .cmp "%rdi" (.imm 0) ] := rfl
   obtain ⟨r56, r48, -, -, -, -, -, -, -, rm16⟩ := prologueMem_reads sa
   simp +decide only [s1, e, runBlockA_cons, runBlockA_nil, evalInstrA_loadMem,
-    evalInstrA_mov_reg, evalInstrA_mov_imm, evalInstrA_cmp_zero, if_false, ite_true, hm, hsp,
+    evalInstrA_mov_reg, evalInstrA_mov_imm, evalInstrA_cmp_zero, ite_false, ite_true, hm, hsp,
     r56, r48, rm16, List.mem_cons, List.not_mem_nil, or_false, not_or, true_and, and_true]
   intro r hr
   obtain ⟨h1, h2, h3, h4, h5⟩ := hr
@@ -474,7 +474,7 @@ theorem binEpilogue_run (s : AState) :
         s'.regs r = s.regs r) := by
   intro s'
   simp +decide only [s', binEpilogue, runBlockA_cons, runBlockA_nil, evalInstrA_loadMem,
-    evalInstrA_lea_self, if_false, ite_true, List.mem_cons, List.not_mem_nil, or_false,
+    evalInstrA_lea_self, ite_false, ite_true, List.mem_cons, List.not_mem_nil, or_false,
     not_or, true_and]
   intro r hr
   obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := hr
@@ -497,7 +497,7 @@ theorem andBody_mem (sa : AState) :
           (slotWord sa 48 &&& slotWord sa (-8)) := by
   simp +decide only [andLoop, slotWord, runBlockA_cons, runBlockA_nil, evalInstrA_loadMem,
     evalInstrA_loadMemIdx, evalInstrA_mov_reg, evalInstrA_storeMemIdx_reg, evalInstrA_and_reg,
-    evalInstrA_add_imm, evalInstrA_sub_imm, evalInstrA_cmp_reg, if_false, ite_true,
+    evalInstrA_add_imm, evalInstrA_sub_imm, evalInstrA_cmp_reg, ite_false, ite_true,
     Nat.cast_mul, Nat.cast_ofNat]
 
 /-- The memory after a pass is the memory after the trip. -/
@@ -610,8 +610,8 @@ theorem andLoop_value (P : String → BitVec 64) (n : Nat) (hn1 : 1 ≤ n) (hn :
     rw [hregs, jreg r hr]; rfl
   · intro i hi
     have := hK ("rp", 8 * (i : Int)) (rp_cell n i hi)
-    simp only [absMem, keyAddr, basePtr, andBank, if_true] at this
-    simp only [String.reduceEq, if_false] at this
+    simp only [absMem, keyAddr, basePtr, andBank, ite_true] at this
+    simp only [String.reduceEq, ite_false] at this
     rw [this, jcell i (Nat.zero_le i) (by omega)]
     rfl
   · intro k hk hne
@@ -674,7 +674,7 @@ theorem regionLow_rp (sa : AState) (n : Nat) :
 theorem regionLow_stack (sa : AState) (h : 80 ≤ (sa.regs "%rsp").toNat) :
     regionLow andBank (entryP sa) ⟨"%rsp", -8, 9⟩ = (sa.regs "%rsp").toNat - 72 := by
   have := (sa.regs "%rsp").isLt
-  simp +decide only [regionLow, basePtr, andBank, entryP_rsp, ite_true, if_false]
+  simp +decide only [regionLow, basePtr, andBank, entryP_rsp, ite_true, ite_false]
   rw [ofInt_neg8, BitVec.toNat_add, BitVec.toNat_ofNat, frameBase_toNat sa h]
   omega
 

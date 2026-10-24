@@ -477,10 +477,10 @@ theorem mem_pointerParamsWritten {fd : FunDecl} {w : String}
   -- hopt : (if (..).contains p.var.var.vname = true
   --        then some p.var.var.vname else none) = some w
   by_cases hc : (bodyReadWriteBases fd.body).2.contains p.var.var.vname = true
-  · rw [if_pos hc] at hopt
+  · rw [ite_eq_left hc] at hopt
     have heq : p.var.var.vname = w := Option.some.inj hopt
     exact ⟨p, hp, heq, heq ▸ hc⟩
-  · rw [if_neg hc] at hopt
+  · rw [ite_eq_right hc] at hopt
     cases hopt
 
 /-- Characterization of `pointerParamsReadOnly`: a name is in this list
@@ -495,10 +495,10 @@ theorem mem_pointerParamsReadOnly {fd : FunDecl} {r : String}
   rcases List.mem_filterMap.mp hr with ⟨p, hp, hopt⟩
   by_cases hc : (bodyReadWriteBases fd.body).1.contains p.var.var.vname = true ∧
                 ¬ (bodyReadWriteBases fd.body).2.contains p.var.var.vname = true
-  · rw [if_pos hc] at hopt
+  · rw [ite_eq_left hc] at hopt
     have heq : p.var.var.vname = r := Option.some.inj hopt
     exact ⟨p, hp, heq, heq ▸ hc.1, heq ▸ hc.2⟩
-  · rw [if_neg hc] at hopt
+  · rw [ite_eq_right hc] at hopt
     cases hopt
 
 /-- The pairs returned by `disjointObligations` are between *distinct*

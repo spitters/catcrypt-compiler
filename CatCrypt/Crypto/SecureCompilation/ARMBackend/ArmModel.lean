@@ -109,7 +109,7 @@ def set (s : AState) (r : String) (v : W32) : AState :=
     (h : r' ≠ r) : (s.set r v).get r' = s.get r' := by
   by_cases hz : r' = "wzr"
   · simp [get, hz]
-  · simp only [get, hz, if_false, set]
+  · simp only [get, hz, ite_false, set]
     by_cases hr : r = "wzr"
     · simp [hr]
     · simp [hr, h]

@@ -91,10 +91,10 @@ theorem refinesP_iff_refinesO_guard (sem : C → Option D) (SRin : C → A → P
   · intro h c a b hSR hf
     unfold optGuard at hf
     by_cases hP : P a
-    · rw [if_pos hP, Option.some.injEq] at hf
+    · rw [ite_eq_left hP, Option.some.injEq] at hf
       subst hf
       exact h c a hSR hP
-    · rw [if_neg hP] at hf
+    · rw [ite_eq_right hP] at hf
       exact absurd hf (by simp)
   · intro h c a hSR hP
     exact h c a (f a) hSR (by simp [optGuard, hP])

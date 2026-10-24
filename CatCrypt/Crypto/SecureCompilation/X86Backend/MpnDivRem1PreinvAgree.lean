@@ -51,8 +51,8 @@ theorem bSltu_toNat (a b : BitVec 64) :
     (bSltu a b).toNat = if a.toNat < b.toNat then 1 else 0 := by
   rw [bSltu_eq]
   by_cases h : a.toNat < b.toNat
-  · rw [if_pos (BitVec.ult_iff_toNat_lt.mpr h), if_pos h]; rfl
-  · rw [if_neg (fun hh => h (BitVec.ult_iff_toNat_lt.mp hh)), if_neg h]; rfl
+  · rw [ite_eq_left (BitVec.ult_iff_toNat_lt.mpr h), ite_eq_left h]; rfl
+  · rw [ite_eq_right (fun hh => h (BitVec.ult_iff_toNat_lt.mp hh)), ite_eq_right h]; rfl
 
 /-- Reducing one factor mod `2^64` before multiplying leaves the product's residue fixed. -/
 theorem mod_mul_mod (a b : Nat) : (a % 2 ^ 64 * b) % 2 ^ 64 = a * b % 2 ^ 64 := by
@@ -218,9 +218,9 @@ theorem div2by1_abstract
   subst hrword hc1 hrmid hc3 hfinalr hfinalq
   rcases lt_or_ge rtil 0 with hA | hA
   · -- Case B: rtil < 0 (over-estimate q̃ = q + 1).
-    simp only [if_pos hA, if_pos hlo2]
+    simp only [ite_eq_left hA, ite_eq_left hlo2]
     have hCf : ¬ ((dn : Int) ≤ rtil + dn) := by linarith
-    simp only [if_neg hCf]
+    simp only [ite_eq_right hCf]
     refine euclid_unique _ _ _ _ hdpos ?_ ?_ ?_ ?_
     · linarith
     · linarith
@@ -234,9 +234,9 @@ theorem div2by1_abstract
         rcases hup with h | h
         · exact h
         · linarith
-      simp only [if_neg hAf, if_pos hB]
+      simp only [ite_eq_right hAf, ite_eq_left hB]
       have hCt : (dn : Int) ≤ rtil + dn := by linarith
-      simp only [if_pos hCt]
+      simp only [ite_eq_left hCt]
       refine euclid_unique _ _ _ _ hdpos ?_ ?_ ?_ ?_
       · linarith
       · linarith
@@ -246,9 +246,9 @@ theorem div2by1_abstract
       have hBf : ¬ ((q0 : Int) < rtil) := not_lt.2 hB
       rcases lt_or_ge rtil (dn : Int) with hC | hC
       · -- A2a: rtil < dn, c3 does not fire; q̃ = q.
-        simp only [if_neg hAf, if_neg hBf]
+        simp only [ite_eq_right hAf, ite_eq_right hBf]
         have hCf : ¬ ((dn : Int) ≤ rtil) := not_le.2 hC
-        simp only [if_neg hCf]
+        simp only [ite_eq_right hCf]
         refine euclid_unique _ _ _ _ hdpos ?_ ?_ ?_ ?_
         · linarith
         · linarith
@@ -259,7 +259,7 @@ theorem div2by1_abstract
           rcases hup with h | h
           · exfalso; linarith
           · exact h
-        simp only [if_neg hAf, if_neg hBf, if_pos hC]
+        simp only [ite_eq_right hAf, ite_eq_right hBf, ite_eq_left hC]
         refine euclid_unique _ _ _ _ hdpos ?_ ?_ ?_ ?_
         · linarith
         · linarith
@@ -303,8 +303,8 @@ theorem preinvStep_agrees (dinv d u1 u0 : BitVec 64)
   have hc0div : c0.toNat = (ql.toNat + u0.toNat) / 2 ^ 64 := by
     rw [hc0_n, hqla_n]
     rcases Nat.lt_or_ge (ql.toNat + u0.toNat) (2 ^ 64) with h | h
-    · rw [if_neg (by omega), Nat.div_eq_of_lt h]
-    · rw [if_pos (by omega), show (ql.toNat + u0.toNat) / 2 ^ 64 = 1 from by omega]
+    · rw [ite_eq_right (by omega), Nat.div_eq_of_lt h]
+    · rw [ite_eq_left (by omega), show (ql.toNat + u0.toNat) / 2 ^ 64 = 1 from by omega]
   have hcarry : ql.toNat + u0.toNat = qla.toNat + c0.toNat * 2 ^ 64 := by
     rw [hqla_n, hc0div]; clear hv; omega
   -- `2^64·H + q0 = vn·u1 + u0` (the `rtil_window` hypothesis).
@@ -352,30 +352,30 @@ theorem preinvStep_agrees (dinv d u1 u0 : BitVec 64)
     have hmp : (qtil * d.toNat) % 2 ^ 64 < 2 ^ 64 := Nat.mod_lt _ (by norm_num)
     rw [hrword_def]
     rcases lt_or_ge rtil 0 with h | h
-    · rw [if_pos h]; clear hv; omega
-    · rw [if_neg (not_lt.2 h)]; clear hv; omega
+    · rw [ite_eq_left h]; clear hv; omega
+    · rw [ite_eq_right (not_lt.2 h)]; clear hv; omega
   -- The `c1` comparison bit matches `c1v`.
   have hc1cond : ((qla.toNat : Int) < rword) ↔ qla.toNat < rr.toNat := by
     rw [← hrr_val]; exact Nat.cast_lt
   have hc1v_eq : (c1.toNat : Int) = c1v := by
     rw [hc1v_def, hc1, bSltu_toNat]
     by_cases h : qla.toNat < rr.toNat
-    · rw [if_pos h, if_pos (hc1cond.mpr h)]; simp
-    · rw [if_neg h, if_neg (fun hh => h (hc1cond.mp hh))]; simp
+    · rw [ite_eq_left h, ite_eq_left (hc1cond.mpr h)]; simp
+    · rw [ite_eq_right h, ite_eq_right (fun hh => h (hc1cond.mp hh))]; simp
   -- Line-7 remainder word equals `rmid`.
   have hrp_val : (rp.toNat : Int) = rmid := by
     rw [hrmid_def]
     by_cases hcc1 : qla.toNat < rr.toNat
     · have hc1e : c1 = 1 := by
-        rw [hc1, bSltu_eq, if_pos (BitVec.ult_iff_toNat_lt.mpr hcc1)]
+        rw [hc1, bSltu_eq, ite_eq_left (BitVec.ult_iff_toNat_lt.mpr hcc1)]
       have hmd : m1 &&& d = d := by rw [hm1, hc1e]; bv_decide
       have hrpn : rp.toNat = (rr.toNat + d.toNat) % 2 ^ 64 := by
         rw [hrp, hmd, BitVec.toNat_add]
-      rw [if_pos (hc1cond.mpr hcc1)]
+      rw [ite_eq_left (hc1cond.mpr hcc1)]
       rcases lt_or_ge rtil 0 with hs | hs
-      · have he : (rr.toNat : Int) = rtil + 2 ^ 64 := by rw [hrr_val, hrword_def, if_pos hs]
+      · have he : (rr.toNat : Int) = rtil + 2 ^ 64 := by rw [hrr_val, hrword_def, ite_eq_left hs]
         clear hv; omega
-      · have he : (rr.toNat : Int) = rtil := by rw [hrr_val, hrword_def, if_neg (not_lt.2 hs)]
+      · have he : (rr.toNat : Int) = rtil := by rw [hrr_val, hrword_def, ite_eq_right (not_lt.2 hs)]
         have hrtlt : rtil < 2 ^ 64 - d.toNat := by
           rcases hup with h | h
           · exact h
@@ -383,29 +383,29 @@ theorem preinvStep_agrees (dinv d u1 u0 : BitVec 64)
             linarith
         clear hv; omega
     · have hc1e : c1 = 0 := by
-        rw [hc1, bSltu_eq, if_neg (fun hh => hcc1 (BitVec.ult_iff_toNat_lt.mp hh))]
+        rw [hc1, bSltu_eq, ite_eq_right (fun hh => hcc1 (BitVec.ult_iff_toNat_lt.mp hh))]
       have hmd : m1 &&& d = 0 := by rw [hm1, hc1e]; bv_decide
       have hrpn : rp.toNat = rr.toNat := by
         rw [hrp, hmd]; simp
-      rw [if_neg (fun hh => hcc1 (hc1cond.mp hh)), hrpn, hrr_val]
+      rw [ite_eq_right (fun hh => hcc1 (hc1cond.mp hh)), hrpn, hrr_val]
   -- The `c3` bit matches `c3v`.
   have hc3wn : c3w.toNat = if rp.toNat < d.toNat then 0 else 1 := by
     rw [hc3w, hc2]
     by_cases h : rp.toNat < d.toNat
     · have he : bSltu rp d = 1 := by
-        rw [bSltu_eq, if_pos (BitVec.ult_iff_toNat_lt.mpr h)]
-      rw [he, if_pos h]; decide
+        rw [bSltu_eq, ite_eq_left (BitVec.ult_iff_toNat_lt.mpr h)]
+      rw [he, ite_eq_left h]; decide
     · have he : bSltu rp d = 0 := by
-        rw [bSltu_eq, if_neg (fun hh => h (BitVec.ult_iff_toNat_lt.mp hh))]
-      rw [he, if_neg h]; decide
+        rw [bSltu_eq, ite_eq_right (fun hh => h (BitVec.ult_iff_toNat_lt.mp hh))]
+      rw [he, ite_eq_right h]; decide
   have hc3wle : c3w.toNat ≤ 1 := by rw [hc3wn]; split <;> omega
   have hc3v_eq : (c3w.toNat : Int) = c3v := by
     rw [hc3v_def, hc3wn]
     have hcond : ((d.toNat : Int) ≤ rmid) ↔ (d.toNat ≤ rp.toNat) := by
       rw [← hrp_val]; exact Nat.cast_le
     by_cases h : rp.toNat < d.toNat
-    · rw [if_pos h, if_neg (fun hh => (Nat.not_lt.mpr (hcond.mp hh)) h)]; simp
-    · rw [if_neg h, if_pos (hcond.mpr (Nat.not_lt.mp h))]; simp
+    · rw [ite_eq_left h, ite_eq_right (fun hh => (Nat.not_lt.mpr (hcond.mp hh)) h)]; simp
+    · rw [ite_eq_right h, ite_eq_left (hcond.mpr (Nat.not_lt.mp h))]; simp
   -- The two output words are the Euclidean quotient and remainder.
   have hqlt : (u1.toNat * 2 ^ 64 + u0.toNat) / d.toNat < 2 ^ 64 := divLimb_quot_lt u1 u0 d hu1lt
   have hrlt : (u1.toNat * 2 ^ 64 + u0.toNat) % d.toNat < 2 ^ 64 :=
@@ -423,21 +423,21 @@ theorem preinvStep_agrees (dinv d u1 u0 : BitVec 64)
     rw [hfinalr_def] at hfr
     by_cases h : rp.toNat < d.toNat
     · have hc3e : c3w = 0 := by
-        rw [hc3w, hc2, bSltu_eq, if_pos (BitVec.ult_iff_toNat_lt.mpr h)]; decide
+        rw [hc3w, hc2, bSltu_eq, ite_eq_left (BitVec.ult_iff_toNat_lt.mpr h)]; decide
       have hmd : m3 &&& d = 0 := by rw [hm3, hc3e]; bv_decide
       have hz : rp - (m3 &&& d) = rp := by rw [hmd]; simp
       rw [hz]
       have hlt : (d.toNat : Int) ≤ rmid → False := fun hh => (Nat.not_lt.mpr (by
         have := hh; rw [← hrp_val] at this; exact_mod_cast this)) h
-      rw [if_neg hlt] at hfr
+      rw [ite_eq_right hlt] at hfr
       have : (rp.toNat : Int) = ((u1.toNat * 2 ^ 64 + u0.toNat) % d.toNat : Nat) := by
         rw [hrp_val]; exact hfr
       exact_mod_cast this
     · have hc3e : c3w = 1 := by
-        rw [hc3w, hc2, bSltu_eq, if_neg (fun hh => h (BitVec.ult_iff_toNat_lt.mp hh))]; decide
+        rw [hc3w, hc2, bSltu_eq, ite_eq_right (fun hh => h (BitVec.ult_iff_toNat_lt.mp hh))]; decide
       have hmd : m3 &&& d = d := by rw [hm3, hc3e]; bv_decide
       have hge : (d.toNat : Int) ≤ rmid := by rw [← hrp_val]; exact_mod_cast Nat.not_lt.mp h
-      rw [if_pos hge] at hfr
+      rw [ite_eq_left hge] at hfr
       rw [hmd, BitVec.toNat_sub]
       have hrpge : d.toNat ≤ rp.toNat := Nat.not_lt.mp h
       have hval : (rp.toNat : Int) - d.toNat = ((u1.toNat * 2 ^ 64 + u0.toNat) % d.toNat : Nat) := by

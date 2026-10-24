@@ -138,7 +138,7 @@ theorem scratchResolve_stepUpd (env : ScratchEnv) (opn : String) (srcs : List LO
   · rintro ⟨rfl, hr⟩
     have hc : fuseReloadScratches.contains r = true := by simpa using hr
     unfold stepUpd stepVal
-    simp only [hc, if_true]
+    simp only [hc, ite_true]
     split
     · split <;> simp [scratchResolve_scratchBind, scratchResolve_scratchKill]
     · simp [scratchResolve_scratchKill]
@@ -150,7 +150,7 @@ theorem scratchResolve_stepUpd (env : ScratchEnv) (opn : String) (srcs : List LO
       · have hne : r ≠ dn := by
           rintro rfl
           exact hn ⟨rfl, by simpa using hc⟩
-        simp only [hc, if_true]
+        simp only [hc, ite_true]
         split
         · split <;> simp [scratchResolve_scratchBind, scratchResolve_scratchKill, hne]
         · simp [scratchResolve_scratchKill, hne]
@@ -229,7 +229,7 @@ theorem EnvScratch.step {env : ScratchEnv} (h : EnvScratch env) (i : Linstr) :
       cases d with
       | reg dn =>
         by_cases hc : fuseReloadScratches.contains dn = true
-        · simp only [hc, if_true]
+        · simp only [hc, ite_true]
           have hb : ∀ v, EnvScratch (scratchBind e dn v) := by
             intro v p hp
             simp only [scratchBind, List.mem_cons] at hp
@@ -278,13 +278,13 @@ theorem EnvAgree.kill {ef ep : ScratchEnv} (h : EnvAgree ef ep) (hs : EnvScratch
   rw [scratchResolve_scratchKill]
   by_cases hr : r = dn
   · subst hr
-    simp only [if_true]
+    simp only [ite_true]
     by_cases hc : r ∈ fuseReloadScratches
     · exact Or.inr hc
     · have h1 := h r
       rw [scratchResolve_of_envScratch hs hc] at h1
       exact h1
-  · simp only [hr, if_false]; exact h r
+  · simp only [hr, ite_false]; exact h r
 
 theorem EnvAgree.killAll {ef ep : ScratchEnv} (h : EnvAgree ef ep) (hs : EnvScratch ef) :
     ∀ ks : List String, EnvAgree (ks.foldl scratchKill ef) ep
@@ -319,11 +319,11 @@ theorem fuseMulHiAux_cons_step (s : Bool) (env : ScratchEnv) (pend : List (Strin
   split
   · rename_i d opn s1 s2 heq
     by_cases hlo : isLowMulMnem opn = true
-    · simp only [hlo, if_true]
+    · simp only [hlo, ite_true]
       exact ⟨[i], _, _, rfl, ⟨[], rfl⟩, Or.inl ⟨rfl, Or.inr ⟨d, opn, s1, s2, heq, hlo, rfl⟩⟩⟩
-    · simp only [hlo, if_false, Bool.false_eq_true]
+    · simp only [hlo, ite_false, Bool.false_eq_true]
       by_cases hhi : isMulHiMnem opn = true
-      · simp only [hhi, if_true]
+      · simp only [hhi, ite_true]
         split
         · rename_i before loDst k after hspan
           have hpe : pend = before ++ (loDst, k) :: after := by
@@ -419,7 +419,7 @@ theorem fuseMulHiAux_cons_step (s : Bool) (env : ScratchEnv) (pend : List (Strin
                   exact ⟨_, _, _, rfl, by simp, by simp [reloadScratch]⟩
                 · simp at h
         · exact ⟨[i], _, _, rfl, ⟨[], rfl⟩, Or.inl ⟨rfl, Or.inl rfl⟩⟩
-      · simp only [hhi, if_false, Bool.false_eq_true]
+      · simp only [hhi, ite_false, Bool.false_eq_true]
         exact ⟨[i], _, _, rfl, ⟨[], rfl⟩, Or.inl ⟨rfl, Or.inl rfl⟩⟩
   · exact ⟨[i], _, _, rfl, ⟨[], rfl⟩, Or.inl ⟨rfl, Or.inl rfl⟩⟩
 
@@ -536,12 +536,12 @@ theorem scanStaysB_of_accLocal {c : Lcmd} (hacc : AccLocal slotArr c)
       refine scanExit_of_accArr ?_
       rcases hform _ (List.getElem_mem hlt) ds o x y ss hx with rfl | rfl
       · unfold accOkB at ha
-        simp only [if_true] at ha
+        simp only [ite_true] at ha
         split at ha
         · rename_i heq; cases heq; exact ha
         · cases ha
       · unfold accOkB at ha
-        simp only [if_true] at ha
+        simp only [ite_true] at ha
         simp at ha
         split at ha
         · rename_i heq; cases heq
@@ -557,7 +557,7 @@ theorem scanStaysB_of_accLocal {c : Lcmd} (hacc : AccLocal slotArr c)
       have ho : o = "ZEROARR" ∨ o = "STOREIMM" := by simpa [isArrImmB] using hai
       have hl : o ≠ "LOADIDX" ∧ o ≠ "STOREIDX" := by
         rcases ho with rfl | rfl <;> decide
-      simp only [accOkB, hl.1, hl.2, ho, if_false, if_true] at ha
+      simp only [accOkB, hl.1, hl.2, ho, ite_false, ite_true] at ha
       simp only [Bool.not_true, Bool.false_or, Option.isNone_iff_eq_none]
       exact scanExit_of_accArr (accArr_of_arrImmImg ha)
   · rfl
@@ -629,7 +629,7 @@ theorem physImgB_fuseMulHiAux (s : Bool)
         rcases hp' with rfl | hp'
         · cases s
           · exact h1.1
-          · simp only [if_true, lowHome]
+          · simp only [ite_true, lowHome]
             split
             · rcases hag d with he' | he'
               · rw [he']; exact h1.2

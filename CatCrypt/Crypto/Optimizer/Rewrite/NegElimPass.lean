@@ -240,11 +240,11 @@ theorem negElimBin_sound {Γ : Ctxt jasminDialect} {w : Nat}
       obtain ⟨hwz, hbz⟩ := hb
       by_cases hw : w' = w
       · subst hw
-        rw [dif_pos rfl, Option.some.injEq] at he
+        rw [dite_eq_left rfl, Option.some.injEq] at he
         subst he
         rw [binE_denote, binE_denote, JasminBinOp.apply, JasminBinOp.apply,
           ha, hbz, zsub_neg_or]
-      · rw [dif_neg hw] at he
+      · rw [dite_eq_right hw] at he
         simp at he
     case h_2 => simp at he
 
@@ -322,10 +322,10 @@ theorem negElimBin_cost_le {Γ : Ctxt jasminDialect} {w : Nat}
     case h_1 _ _ w' y hla hlb =>
       by_cases hw : w' = w
       · subst hw
-        rw [dif_pos rfl, Option.some.injEq] at he
+        rw [dite_eq_left rfl, Option.some.injEq] at he
         subst he
         simp [opCost, binE]
-      · rw [dif_neg hw] at he
+      · rw [dite_eq_right hw] at he
         simp at he
     case h_2 => simp at he
 

@@ -759,13 +759,13 @@ theorem KRefines.rotL_pos {t : JasminTy} (dst : Fin numSlots) (n : Nat)
       by_cases h1 : i = dst
       · subst h1
         simp only [readSlot_bsAfterOp_eq,
-          if_neg hDst, if_neg hRD, ite_true, cond_true, cond_false]
+          ite_eq_right hDst, ite_eq_right hRD, ite_true, cond_true, cond_false]
       · by_cases h2 : i = rotScr
         · subst h2
           simp only [readSlot_bsAfterOp_ne _ _ _ _ _ hRD, readSlot_bsAfterOp_eq,
-            if_neg h1, ite_true, cond_false]
+            ite_eq_right h1, ite_true, cond_false]
         · simp only [readSlot_bsAfterOp_ne _ _ _ _ _ h1,
-            readSlot_bsAfterOp_ne _ _ _ _ _ h2, if_neg h1, if_neg h2]
+            readSlot_bsAfterOp_ne _ _ _ _ _ h2, ite_eq_right h1, ite_eq_right h2]
     · funext m
       dsimp only
       simp [readImm_immVarAfter]

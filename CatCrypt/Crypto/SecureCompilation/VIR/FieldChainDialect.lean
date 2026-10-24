@@ -148,13 +148,13 @@ theorem toRep_ofRep {p : Nat} {r : FieldRepr} (hr : r.Admits p) (y : ZMod p) :
 theorem toRep_mont_eq (M : FieldToModArithMont.MontParams) {p k : Nat}
     (hM : M.isMont p = true) (hR : M.R p = 2 ^ k) (x : ZMod p) :
     (mont k).toRep x = M.toRep x := by
-  simp only [toRep, FieldToModArithMont.MontParams.toRep, hM, hR, if_true]
+  simp only [toRep, FieldToModArithMont.MontParams.toRep, hM, hR, ite_true]
 
 /-- The canonical representation stores what `MontParams.toRep` stores at a modulus whose
     Montgomery flag is unset. -/
 theorem toRep_canon_eq (M : FieldToModArithMont.MontParams) {p : Nat}
     (hM : M.isMont p = false) (x : ZMod p) : canon.toRep x = M.toRep x := by
-  simp only [toRep, FieldToModArithMont.MontParams.toRep, hM, Bool.false_eq_true, if_false]
+  simp only [toRep, FieldToModArithMont.MontParams.toRep, hM, Bool.false_eq_true, ite_false]
 
 /-- The stored residue of a sum is the sum of the stored residues. -/
 theorem toRep_add {p : Nat} (r : FieldRepr) (a b : ZMod p) :
@@ -441,7 +441,7 @@ theorem fromWordsF_toWordsF {p : Nat} {r : FieldRepr} {w n : Nat} (hp : 0 < p)
   have hlt : (r.toRep x).val < p := ZMod.val_lt _
   have hv : wordsVal n (toWordsF p r w n x) = (r.toRep x).val := by
     rw [toWordsF, wordsVal_wordsOf, Nat.mod_eq_of_lt (lt_of_lt_of_le hlt hpw)]
-  rw [fromWordsF, hv, if_pos hlt, ZMod.natCast_zmod_val, FieldRepr.ofRep_toRep hr]
+  rw [fromWordsF, hv, ite_eq_left hlt, ZMod.natCast_zmod_val, FieldRepr.ofRep_toRep hr]
 
 /-- **`toWords ∘ fromWords`.** On a word tuple `fromWords` accepts, writing the value back
     gives the word tuple. -/
@@ -460,8 +460,8 @@ theorem toWordsF_of_fromWordsF_eq_some {p : Nat} {r : FieldRepr} {w n : Nat}
 theorem toWordsF_fromWordsF {p : Nat} {r : FieldRepr} {w n : Nat} (hr : r.Admits p)
     (ws : Fin n → BitVec w) (hlt : wordsVal n ws < p) :
     ∃ x, fromWordsF p r w n ws = some x ∧ toWordsF p r w n x = ws := by
-  refine ⟨r.ofRep (wordsVal n ws : ZMod p), by rw [fromWordsF, if_pos hlt], ?_⟩
-  exact toWordsF_of_fromWordsF_eq_some hr ws _ (by rw [fromWordsF, if_pos hlt])
+  refine ⟨r.ofRep (wordsVal n ws : ZMod p), by rw [fromWordsF, ite_eq_left hlt], ?_⟩
+  exact toWordsF_of_fromWordsF_eq_some hr ws _ (by rw [fromWordsF, ite_eq_left hlt])
 
 /-! ## 6. The casts of `jasField` -/
 

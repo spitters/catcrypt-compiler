@@ -79,8 +79,8 @@ theorem ZMod.val_sub_borrow {q : Nat} [NeZero q] (a b : ZMod q) :
   · subst hb
     have ha : a.val < q := ZMod.val_lt a
     simp only [ZMod.neg_val, ZMod.val_zero, Nat.sub_zero, Nat.add_zero,
-      Nat.mod_eq_of_lt ha, Nat.add_mod_right, if_true]
-  · rw [ZMod.neg_val, if_neg hb]
+      Nat.mod_eq_of_lt ha, Nat.add_mod_right, ite_true]
+  · rw [ZMod.neg_val, ite_eq_right hb]
 
 /-! ## 2. The `k`-limb modular subtract kernel `mlSubModK` and its value law -/
 

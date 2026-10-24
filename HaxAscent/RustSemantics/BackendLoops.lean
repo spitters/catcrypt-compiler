@@ -103,7 +103,7 @@ theorem AVal.asW_int {ty : UScalarTy} (n : Int) : (AVal.int n).asW ty = litA ty 
 theorem litA_ofNat {ty : UScalarTy} {n : Nat} (h : n < 2 ^ ty.numBits) :
     litA ty (n : Int) = .ok ⟨BitVec.ofNat _ n⟩ := by
   have h' : (0 : Int) ≤ n ∧ (n : Int).toNat < 2 ^ ty.numBits := ⟨by omega, by simpa using h⟩
-  rw [litA, dif_pos h']
+  rw [litA, dite_eq_left h']
   simp only [UScalar.ofNatCore, Int.toNat_natCast]
   congr 2
   apply BitVec.eq_of_toNat_eq
@@ -128,7 +128,7 @@ theorem shr_uscalar_ofNat {ty tys : UScalarTy} (x : UScalar ty) {n : Nat}
 theorem shr_iscalar {tys : IScalarTy} {tyx : UScalarTy} (x : UScalar tyx) (s : IScalar tys)
     {n : Nat} (h0 : 0 ≤ s.val) (hn : s.toNat = n) : x >>> s = x.shiftRight n := by
   show UScalar.shiftRight_IScalar x s = _
-  rw [UScalar.shiftRight_IScalar, if_pos h0, hn]
+  rw [UScalar.shiftRight_IScalar, ite_eq_left h0, hn]
 
 theorem extStepS_of_ne {base : String → List AVal → RustM AVal} {fn : Hax.Ascent.ExtFn}
     {f : String} (h : f ≠ fn.name) : extStepS base fn f = base f := by
@@ -173,7 +173,7 @@ theorem next_usize (s n : Usize) :
   by_cases h : s.val < n.val
   · have hn : n.val < 2 ^ UScalarTy.Usize.numBits := n.bv.isLt
     have h1 : s.val + 1 < 2 ^ UScalarTy.Usize.numBits := by omega
-    simp only [decide_eq_true h, if_true, core.iter.range.UScalarStep.forward_checked]
+    simp only [decide_eq_true h, ite_true, core.iter.range.UScalarStep.forward_checked]
     have e1 : ∀ p, (UScalar.ofNatCore (ty := .Usize) 1 p).val = 1 := fun _ => rfl
     have e2 : UScalar.ofNatCore (ty := .Usize) (s.val + 1) h1 = ⟨BitVec.ofNat _ (s.val + 1)⟩ := by
       simp only [UScalar.ofNatCore]
@@ -181,7 +181,7 @@ theorem next_usize (s n : Usize) :
       apply BitVec.eq_of_toNat_eq
       simp only [BitVec.toNat_ofNat]
       exact (Nat.mod_eq_of_lt h1).symm
-    simp only [e1, dif_pos h1, bind_tc_ok, if_pos h, e2]
+    simp only [e1, dite_eq_left h1, bind_tc_ok, ite_eq_left h, e2]
   · simp [h]
 
 /-- **The Aeneas backend's loop over a `usize` range**, for a body that steps the range and
@@ -198,11 +198,11 @@ theorem loop_range {α : Type}
     ∀ (k : Nat) (s : Usize) (acc : α), k = n.val - s.val →
       loop body ({ start := s, «end» := n }, acc) = HaxBackend.foldRangeAux f k s.val acc
   | 0, s, acc, hk => by
-    rw [loop.eq_1, hbody, if_neg (by omega)]
+    rw [loop.eq_1, hbody, ite_eq_right (by omega)]
     rfl
   | k + 1, s, acc, hk => by
     have hlt : s.val < n.val := by omega
-    rw [loop.eq_1, hbody, if_pos hlt, HaxBackend.foldRangeAux, uscalar_ofNat_val]
+    rw [loop.eq_1, hbody, ite_eq_left hlt, HaxBackend.foldRangeAux, uscalar_ofNat_val]
     cases hf : f acc s with
     | ok acc' =>
       simp only [bind_tc_ok]

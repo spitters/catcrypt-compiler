@@ -262,7 +262,7 @@ theorem loopReg_ne_regName (d k j : Nat) : loopReg d k ≠ regName j :=
 theorem aliasRegName_loopReg (d k : Nat) (out : String) :
     aliasRegName (regName d) out (loopReg d k) = loopReg d k := by
   unfold aliasRegName
-  rw [if_neg (by simpa using loopReg_ne_regName d k d)]
+  rw [ite_eq_right (by simpa using loopReg_ne_regName d k d)]
 
 /-- The model resolves every operand to a register. -/
 theorem exprArgs_go_reg (cd nArgs : Nat) {Γ : Ctxt jasminDialect} :
@@ -326,10 +326,10 @@ theorem foldl_aliasStepL_walk {d nInv : Nat} {invRegs : List String} {σ : Strin
         have hres : lookupD l (aliasRegName (regName d) out (σ b)) = out := by
           rcases hh with rfl | ⟨k, hk, rfl⟩
           · rw [hσ.acc]
-            simp only [aliasRegName, beq_self_eq_true, if_true]
+            simp only [aliasRegName, beq_self_eq_true, ite_true]
             rw [hl.1]
             split <;> rfl
-          · rw [hσ.reg, aliasRegName_loopReg, hl.1, if_pos (List.mem_map_of_mem hk)]
+          · rw [hσ.reg, aliasRegName_loopReg, hl.1, ite_eq_left (List.mem_map_of_mem hk)]
         rw [hres, aliasRegName_loopReg]
         have := ih (cd + 1) (regName cd) (S ++ [cd]) _ (hl.store cd)
           (Or.inr ⟨cd, by simp, rfl⟩) hs
@@ -468,7 +468,7 @@ theorem abiBody1_singleLoop_certNode {Γ : Ctxt jasminDialect} {w n : Nat}
     · have hαr : α r = r := by
         rw [hα]
         unfold aliasRegName
-        rw [if_neg (by simpa using hr)]
+        rw [ite_eq_right (by simpa using hr)]
       rw [hαr, hρ]
       unfold certRho
       have hiff : r ∈ (certSlots update).map (loopReg Γ.length)
@@ -478,8 +478,8 @@ theorem abiBody1_singleLoop_certNode {Γ : Ctxt jasminDialect} {w n : Nat}
           List.mem_map]
         constructor <;> rintro ⟨k, hk, h⟩ <;> exact ⟨k, hk, h.symm⟩
       by_cases hm : r ∈ (certSlots update).map (loopReg Γ.length)
-      · rw [if_pos hm, if_pos (hiff.mp hm)]
-      · rw [if_neg hm, if_neg (mt hiff.mpr hm)]
+      · rw [ite_eq_left hm, ite_eq_left (hiff.mp hm)]
+      · rw [ite_eq_right hm, ite_eq_right (mt hiff.mpr hm)]
 
 /-! ## 5. The check without the body equation -/
 

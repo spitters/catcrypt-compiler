@@ -251,9 +251,9 @@ theorem bn254_jacDbl_realized (P : BN254Point) (hy : P.y ≠ -P.y) :
   -- the dialect `pdbl` denotation is `bn254Params.add P P` (the tangent branch).
   show bnToEC _ = bn254Params.add (bnToEC P) (bnToEC P)
   obtain ⟨x, y⟩ := P
-  simp only [bnToEC, ECPoint.aff, bn254Params, ECParams.add, if_neg hy,
+  simp only [bnToEC, ECPoint.aff, bn254Params, ECParams.add, ite_eq_right hy,
     ECParams.tangentSlope, ECParams.affRx, ECParams.affRy, CatCrypt.Util.bn254A, add_zero,
-    if_true]
+    ite_true]
 
 /-- **CT: the projective group law is constant-time as a dialect op.**  The
     inversion-free projective double/add are a fixed schedule of `fp_*` leaves

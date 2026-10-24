@@ -451,7 +451,7 @@ theorem varOfLvl?_varLvl {Δ : JCtxt} {s : JasminTy} (v : Ctxt.Var Δ s) :
     varOfLvl? Δ s (varLvl v) = some v := by
   have := varDepth_lt v
   unfold varOfLvl? varLvl
-  rw [if_pos (by omega), show Δ.length - 1 - (Δ.length - 1 - varDepth v) = varDepth v by omega]
+  rw [ite_eq_left (by omega), show Δ.length - 1 - (Δ.length - 1 - varDepth v) = varDepth v by omega]
   exact varOfDepth?_varDepth v
 
 /-- **A redundant cast removed.** In every program that zero-extends a variable `x` from

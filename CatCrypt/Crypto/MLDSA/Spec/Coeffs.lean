@@ -92,7 +92,7 @@ theorem rqDsa_roundtrip (cs : Fin 256 → ZMod q_dsa) :
   simp_rw [Polynomial.coeff_monomial]
   rw [Finset.sum_eq_single ⟨i, hi⟩]
   · simp
-  · intro j _ hj; rw [if_neg (Fin.val_ne_of_ne hj)]
+  · intro j _ hj; rw [ite_eq_right (Fin.val_ne_of_ne hj)]
   · exact absurd (Finset.mem_univ _)
 
 /-- Reading the coefficients of a ring element and rebuilding it is the identity. -/

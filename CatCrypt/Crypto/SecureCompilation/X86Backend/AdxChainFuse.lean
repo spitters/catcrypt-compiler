@@ -368,14 +368,14 @@ theorem fuseAdxStep_sound (s : JState 64) (cout d' : String) (src' : JOperand)
   have hd'ne : d' ≠ cout := fun h => hne h.symm
   have hd' : (btCF (evalInstr s (.setc cout)) cout).get d' = s.get d' := by
     simp only [btCF, JState.get, evalInstr, JState.setReg]
-    rw [if_neg hd'ne]
+    rw [ite_eq_right hd'ne]
   have hsrc' : src'.eval (btCF (evalInstr s (.setc cout)) cout) = src'.eval s := by
     cases src' with
     | imm v => simp [JOperand.eval]
     | reg r =>
         have hr : r ≠ cout := hsrc r rfl
         simp only [JOperand.eval, btCF, JState.get, evalInstr, JState.setReg]
-        rw [if_neg hr]
+        rw [ite_eq_right hr]
   have hcf3 : (btCF (evalInstr s (.setc cout)) cout).flagB (·.cf) = b := by
     have hround := btCF_setc_restores_cf s cout b hcf
     simp only [JState.flagB, hround, hcf, Option.getD_some]
@@ -415,7 +415,7 @@ theorem fuseAdxStep_store_sound (s : JState 64) (cout d' : String) (src' : JOper
   have htr : ∀ r, r ≠ cout → (btCF (evalInstr s (.setc cout)) cout).regs r = s.regs r := by
     intro r hr
     simp only [btCF, evalInstr, JState.setReg]
-    rw [if_neg hr]
+    rw [ite_eq_right hr]
   refine ⟨?_, ?_, ?_⟩
   · -- flags: both are `{ pre.flags with cf := co }`; the `co` agree by `hcfeq`,
     -- the non-`CF` fields agree because the round-trip only writes `CF`.
@@ -435,7 +435,7 @@ theorem fuseAdxStep_store_sound (s : JState 64) (cout d' : String) (src' : JOper
     · subst hd; exact hval
     · show (if r = d' then _ else (btCF (evalInstr s (.setc cout)) cout).regs r)
           = (if r = d' then _ else s.regs r)
-      rw [if_neg hd, if_neg hd]
+      rw [ite_eq_right hd, ite_eq_right hd]
       exact htr r hr
 
 /-! ## 4. Constant-time preservation

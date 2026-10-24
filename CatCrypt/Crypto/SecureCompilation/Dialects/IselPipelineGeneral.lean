@@ -211,7 +211,7 @@ theorem rorWalk_var_none {Γ : Ctxt jasminDialect} {s : JasminTy} {t : JasminTy}
     `RorImmSelect.rorImmSelect_fires` for the refactored walker. For `n < w`, walking
     `mkRotrSubtree w n src body` (the `shr; shl; or` emulation) yields the native
     `mkRorOp w n src` over the walked body. The recognizer's width/operand decisions on
-    the canonical subtree are discharged by `dif_pos` / `varBeq_self`. -/
+    the canonical subtree are discharged by `dite_eq_left` / `varBeq_self`. -/
 theorem rorWalk_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat) (hlt : n < w)
     (src : Ctxt.Var Γ (.reg w))
     (body : Com jasminDialect (.reg w :: .reg w :: .reg w :: Γ) s) :
@@ -223,7 +223,7 @@ theorem rorWalk_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w n : Nat) (hlt 
                horig := rfl } := by
     show (if _ : w = w ∧ w = w ∧ w = w ∧ n < w ∧ w = w ∧ w = w ∧ (w - n) = w - n
           then _ else _) = _
-    erw [dif_pos (show w = w ∧ w = w ∧ w = w ∧ n < w ∧ w = w ∧ w = w ∧ (w - n) = w - n from
+    erw [dite_eq_left (show w = w ∧ w = w ∧ w = w ∧ n < w ∧ w = w ∧ w = w ∧ (w - n) = w - n from
       ⟨rfl, rfl, rfl, hlt, rfl, rfl, rfl⟩)]
     simp only [varBeq_self, Bool.and_self, dite_true]; rfl
   rw [show mkRotrSubtree w n src body

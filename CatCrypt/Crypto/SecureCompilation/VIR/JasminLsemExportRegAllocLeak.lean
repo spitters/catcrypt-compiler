@@ -138,7 +138,7 @@ theorem instrLeakB_live (r r' : LstateN) (i : LinstrRM)
       simp only [instrLeakB, renRM, renLinstrR, ← List.map_append, List.flatMap_map]
       split_ifs with hlea
       · rfl
-      · rw [if_neg hlea] at hx hb
+      · rw [ite_eq_right hlea] at hx hb
         rw [List.map_flatMap]
         exact List.flatMap_congr fun op hop =>
           opLeakF_ren r r' op (fun x hx' => hx x (List.mem_flatMap.mpr ⟨op, hop, hx'⟩))

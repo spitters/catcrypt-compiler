@@ -507,19 +507,19 @@ theorem Agree.push {w nIn : Nat} {locals : List String} {I : Fin nIn → BitVec 
     simp only [FState.push] at hy
     by_cases hxy : y = x
     · subst hxy
-      rw [if_pos rfl] at hy
+      rw [ite_eq_left rfl] at hy
       cases hy
       show (ρ.set y e) y
           = some ((Ctxt.Var.here (t := rW w) (Γ := frontCtxt w nIn locals)).lookup
               (V.extend e))
       simp only [LEnv.set]; rfl
-    · rw [if_neg hxy] at hy
+    · rw [ite_eq_right hxy] at hy
       rcases hv : st.localVar y with _ | v0
       · rw [hv] at hy; cases hy
       · rw [hv] at hy
         injection hy with hy
         subst hy
-        simp only [LEnv.set, if_neg hxy]
+        simp only [LEnv.set, ite_eq_right hxy]
         have := hL y v0 hv
         rw [this]
         show some (v0.lookup V)
@@ -809,7 +809,7 @@ theorem inputVarRep_lookup (w : Nat) : (nIn : Nat) → (I : Fin nIn → BitVec w
       simp only [inputVarRep, Option.some.injEq] at h
       subst h
       show I 0 = inpGet I 0
-      simp only [inpGet, dif_pos (Nat.succ_pos m)]
+      simp only [inpGet, dite_eq_left (Nat.succ_pos m)]
       congr 1
   | (m + 1), I, (k + 1), v, h => by
       simp only [inputVarRep] at h
@@ -822,10 +822,10 @@ theorem inputVarRep_lookup (w : Nat) : (nIn : Nat) → (I : Fin nIn → BitVec w
         rw [inputVarRep_lookup w m (fun j => I j.succ) k v0 hv]
         -- `inpGet (I ∘ succ) k = inpGet I (k+1)`
         by_cases hk : k < m
-        · simp only [inpGet, dif_pos hk, dif_pos (Nat.succ_lt_succ hk)]
+        · simp only [inpGet, dite_eq_left hk, dite_eq_left (Nat.succ_lt_succ hk)]
           congr 1
-        · simp only [inpGet, dif_neg hk,
-            dif_neg (fun hc => hk (Nat.lt_of_succ_lt_succ hc))]
+        · simp only [inpGet, dite_eq_right hk,
+            dite_eq_right (fun hc => hk (Nat.lt_of_succ_lt_succ hc))]
 
 /-- `Agree` at the empty local scope, for `initFState`: the local clause is
     vacuous; the input clause is `inputVarRep_lookup`. -/
@@ -3106,10 +3106,10 @@ theorem addCarry2limb_reconstruct (a0 a1 b0 b1 : BitVec 64)
   have hc : c.toNat = (a0.toNat + b0.toNat) / 2 ^ 64 := by
     simp only [hcdef, carryOutBit, hz, Nat.add_zero]
     by_cases h : a0.toNat + b0.toNat ≥ 2 ^ 64
-    · rw [if_pos h]
+    · rw [ite_eq_left h]
       have : (1 : BitVec 1).toNat = 1 := rfl
       rw [this]; omega
-    · rw [if_neg h, hz, Nat.div_eq_of_lt (Nat.lt_of_not_le h)]
+    · rw [ite_eq_right h, hz, Nat.div_eq_of_lt (Nat.lt_of_not_le h)]
   have hcle : c.toNat ≤ 1 := Nat.le_of_lt_succ (by have := c.isLt; simpa using this)
   -- unfold both data words to ℕ and discharge by `omega` (which handles `% 2^64`).
   have hs0 : (addCarryWord a0 b0 0).toNat = (a0.toNat + b0.toNat) % 2 ^ 64 := by

@@ -610,8 +610,8 @@ theorem loadByte_store32 (m : Mem) (a v : UInt64) (k : Nat) (hk : k < 4) :
                show (UInt64.ofNat 1) = (1 : UInt64) from rfl,
                show (UInt64.ofNat 2) = (2 : UInt64) from rfl,
                show (UInt64.ofNat 3) = (3 : UInt64) from rfl]
-    repeat rw [if_neg (by bv_decide)]
-    rw [if_pos (by bv_decide)]
+    repeat rw [ite_eq_right (by bv_decide)]
+    rw [ite_eq_left (by bv_decide)]
 
 open MemoryModel in
 /-- **Read-back.**  `load32Mem (Mem.store32 m a v) a = some (v &&& 0xFFFFFFFF)`:
@@ -659,7 +659,7 @@ theorem loadByte_store32_frame (m : Mem) (a a' v : UInt64) (k : Nat)
              show (UInt64.ofNat 3) = (3 : UInt64) from rfl,
              show a' + (0 : UInt64) = a' from by bv_decide] at hn0 hn1 hn2 hn3
   simp only [Mem.store32, Mem.loadByte, Mem.storeByte,
-             if_neg hn3, if_neg hn2, if_neg hn1, if_neg hn0]
+             ite_eq_right hn3, ite_eq_right hn2, ite_eq_right hn1, ite_eq_right hn0]
 
 open MemoryModel in
 /-- **Frame.**  A `store32` into a block `[a', a' + 4)` disjoint from
@@ -1391,7 +1391,7 @@ theorem bignumExecFuel_append_split_aux
     · rw [h_cond] at h
       simp only at h
       by_cases hc : condV != 0
-      · rw [if_pos hc] at h
+      · rw [ite_eq_left hc] at h
         rcases h_inner : bignumExecFuel registry fuel ct s with _ | s_branch
         · rw [h_inner] at h; cases h
         · rw [h_inner] at h
@@ -1402,9 +1402,9 @@ theorem bignumExecFuel_append_split_aux
           show bignumExecFuel registry (fuel + 1) (.Cif cond ct ce :: rest) s
             = some s_end
           simp only [bignumExecFuel, h_cond]
-          rw [if_pos hc, h_inner]
+          rw [ite_eq_left hc, h_inner]
           exact h1
-      · rw [if_neg hc] at h
+      · rw [ite_eq_right hc] at h
         rcases h_inner : bignumExecFuel registry fuel ce s with _ | s_branch
         · rw [h_inner] at h; cases h
         · rw [h_inner] at h
@@ -1415,7 +1415,7 @@ theorem bignumExecFuel_append_split_aux
           show bignumExecFuel registry (fuel + 1) (.Cif cond ct ce :: rest) s
             = some s_end
           simp only [bignumExecFuel, h_cond]
-          rw [if_neg hc, h_inner]
+          rw [ite_eq_right hc, h_inner]
           exact h1
   | fuel + 1, .Cfor v range body :: rest, s, s', h =>
     -- Cfor head: bignumExecFuel unrolls and re-enters with `fuel`
@@ -1473,7 +1473,7 @@ theorem bignumExecFuel_append_split_aux
                 { s with mem := calleeFinal.mem } s' h
             refine ⟨s_end, fuel2, ?_, h2⟩
             simp only [bignumExecFuel, h_reg, h_args, h_callee, h_void,
-              if_true]
+              ite_true]
             exact h1
           · rename_i h_nonvoid
             -- Non-void branch: the result-binding helper is consulted;
@@ -1579,16 +1579,16 @@ theorem bignumExecFuel_append_join
         · rw [h_callee] at h1
           simp only at h1
           by_cases h_void : lvs.isEmpty
-          · rw [if_pos h_void] at h1
+          · rw [ite_eq_left h_void] at h1
             show bignumExecFuel registry (fuel + 1)
               (.Ccall ii lvs fn args :: rest ++ body2) s = some s'
             simp only [List.cons_append, bignumExecFuel, h_reg, h_args, h_callee]
-            rw [if_pos h_void]
+            rw [ite_eq_left h_void]
             have h_nc' : ∀ i ∈ rest, i.isNonControl :=
               fun i hi => h_nc i (List.mem_cons_of_mem _ hi)
             exact bignumExecFuel_append_join registry (fuel + 1) rest body2 h_nc'
               { s with mem := calleeFinal.mem } s_mid s' h1 h2
-          · rw [if_neg h_void] at h1
+          · rw [ite_eq_right h_void] at h1
             -- Non-void branch: result-binding is consulted.
             rcases h_bind : bindResults { s with mem := calleeFinal.mem }
                               calleeFinal lvs calleeFd.results with _ | sBound
@@ -1597,7 +1597,7 @@ theorem bignumExecFuel_append_join
               show bignumExecFuel registry (fuel + 1)
                 (.Ccall ii lvs fn args :: rest ++ body2) s = some s'
               simp only [List.cons_append, bignumExecFuel, h_reg, h_args, h_callee]
-              rw [if_neg h_void, h_bind]
+              rw [ite_eq_right h_void, h_bind]
               have h_nc' : ∀ i ∈ rest, i.isNonControl :=
                 fun i hi => h_nc i (List.mem_cons_of_mem _ hi)
               exact bignumExecFuel_append_join registry (fuel + 1) rest body2 h_nc'
@@ -1707,18 +1707,18 @@ theorem bignumExecFuel_mono
         · rw [h_callee] at h
           simp only at h
           by_cases h_void : lvs.isEmpty
-          · rw [if_pos h_void] at h
+          · rw [ite_eq_left h_void] at h
             show bignumExecFuel registry (fuel + 1 + extra) (.Ccall ii lvs fn args :: rest) s
               = some s'
             rw [show fuel + 1 + extra = (fuel + extra) + 1 from by omega]
             simp only [bignumExecFuel, h_reg, h_args]
             rw [bignumExecFuel_mono registry fuel extra calleeFd.body _ calleeFinal h_callee]
             simp only []
-            rw [if_pos h_void]
+            rw [ite_eq_left h_void]
             have hrec := bignumExecFuel_mono registry (fuel + 1) extra rest
               { s with mem := calleeFinal.mem } s' h
             rwa [show fuel + 1 + extra = (fuel + extra) + 1 from by omega] at hrec
-          · rw [if_neg h_void] at h
+          · rw [ite_eq_right h_void] at h
             -- Non-void branch: result-binding consulted; recurse on the
             -- bound caller state and re-pack at the bumped fuel envelope.
             rcases h_bind : bindResults { s with mem := calleeFinal.mem }
@@ -1731,7 +1731,7 @@ theorem bignumExecFuel_mono
               simp only [bignumExecFuel, h_reg, h_args]
               rw [bignumExecFuel_mono registry fuel extra calleeFd.body _ calleeFinal h_callee]
               simp only []
-              rw [if_neg h_void, h_bind]
+              rw [ite_eq_right h_void, h_bind]
               have hrec := bignumExecFuel_mono registry (fuel + 1) extra rest sBound s' h
               rwa [show fuel + 1 + extra = (fuel + extra) + 1 from by omega] at hrec
   termination_by (fuel, body.length)
@@ -1841,18 +1841,18 @@ theorem bignumExecFuel_seq
         · rw [h_callee] at h1
           simp only at h1
           by_cases h_void : lvs.isEmpty
-          · rw [if_pos h_void] at h1
+          · rw [ite_eq_left h_void] at h1
             show bignumExecFuel registry (f1 + 1 + f2) (.Ccall ii lvs fn args :: rest ++ body2) s
               = some s'
             rw [show f1 + 1 + f2 = (f1 + f2) + 1 from by omega, List.cons_append]
             simp only [bignumExecFuel, h_reg, h_args]
             rw [bignumExecFuel_mono registry f1 f2 calleeFd.body _ calleeFinal h_callee]
             simp only []
-            rw [if_pos h_void]
+            rw [ite_eq_left h_void]
             have hrec := bignumExecFuel_seq registry (f1 + 1) f2 rest body2
               { s with mem := calleeFinal.mem } s_mid s' h1 h2
             rwa [show f1 + 1 + f2 = (f1 + f2) + 1 from by omega] at hrec
-          · rw [if_neg h_void] at h1
+          · rw [ite_eq_right h_void] at h1
             -- Non-void branch: bind callee results, then sequence
             -- continuation `rest` and tail `body2` from the bound state.
             rcases h_bind : bindResults { s with mem := calleeFinal.mem }
@@ -1865,7 +1865,7 @@ theorem bignumExecFuel_seq
               simp only [bignumExecFuel, h_reg, h_args]
               rw [bignumExecFuel_mono registry f1 f2 calleeFd.body _ calleeFinal h_callee]
               simp only []
-              rw [if_neg h_void, h_bind]
+              rw [ite_eq_right h_void, h_bind]
               have hrec := bignumExecFuel_seq registry (f1 + 1) f2 rest body2
                 sBound s_mid s' h1 h2
               rwa [show f1 + 1 + f2 = (f1 + f2) + 1 from by omega] at hrec

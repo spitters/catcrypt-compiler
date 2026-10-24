@@ -396,7 +396,7 @@ theorem lsemFuelMemL_seg (P : LprogM) :
       have his : ∀ j ∈ is, IsLopn j := fun j hj => hlopn j (by simp [hj])
       have hfetch : findInstrMem P s = some i := by
         unfold findInstrMem
-        rw [if_pos hfn]
+        rw [ite_eq_left hfn]
         have := hpos 0 (by simp)
         simpa using this
       rw [List.length_cons, show is.length + 1 + f = (is.length + f) + 1 from by omega,
@@ -478,13 +478,13 @@ theorem loopMem_pass_taken (fn : String) (top : LLabel) (nReg : String)
       some (LinstrR.Lcond (.reg nReg) top, MemTag.reg none) := by
     have hc : ({ base := b, lfn := s.lfn } : LstatePM).lfn = P.lfn := rfl
     unfold findInstrMem
-    rw [if_pos hc, hPbody]
+    rw [ite_eq_left hc, hPbody]
     show (loopLinstrRM top nReg body)[b.lpc]? = _
     rw [hb_lpc]; exact loop_cond_pos top nReg body
   rw [show 1 + f = f + 1 from by omega, lsemFuelMemL, hfetch]
   simp only []
   unfold evalInstrPMemL
-  simp only [htaken, if_true]
+  simp only [htaken, ite_true]
   unfold evalJumpMem
   rw [hPbody, findLabelMem_loop]
 
@@ -515,13 +515,13 @@ theorem loopMem_pass_halt (fn : String) (top : LLabel) (nReg : String)
       some (LinstrR.Lcond (.reg nReg) top, MemTag.reg none) := by
     have hc : ({ base := b, lfn := s.lfn } : LstatePM).lfn = P.lfn := rfl
     unfold findInstrMem
-    rw [if_pos hc, hPbody]
+    rw [ite_eq_left hc, hPbody]
     show (loopLinstrRM top nReg body)[b.lpc]? = _
     rw [hb_lpc]; exact loop_cond_pos top nReg body
   have hhaltfetch : findInstrMem P { base := b.nextPc, lfn := s.lfn } = none := by
     have hc : ({ base := b.nextPc, lfn := s.lfn } : LstatePM).lfn = P.lfn := rfl
     unfold findInstrMem
-    rw [if_pos hc, hPbody]
+    rw [ite_eq_left hc, hPbody]
     show (loopLinstrRM top nReg body)[(b.nextPc).lpc]? = none
     have hpc2 : (b.nextPc).lpc = body.length + 2 := by
       rw [LstateM.lpc_nextPc, hb_lpc]; omega
@@ -533,7 +533,7 @@ theorem loopMem_pass_halt (fn : String) (top : LLabel) (nReg : String)
   rw [lsemFuelMemL, hfetch]
   simp only []
   unfold evalInstrPMemL
-  simp only [hhalt, if_false]
+  simp only [hhalt, ite_false]
   exact lsemFuelMemL_halt P 0 { base := b.nextPc, lfn := s.lfn } hhaltfetch
 
 /-! ## 8. Structural facts on `runBoundedLoopMem` (for the `n`-fold bridge) -/

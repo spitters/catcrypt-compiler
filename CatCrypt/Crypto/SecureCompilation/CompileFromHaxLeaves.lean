@@ -383,11 +383,11 @@ theorem horner4_compiles :
   refine ⟨c, hc, ?_⟩
   intro I
   -- The explicit Horner spec at `I`: `inpGet I j = I j` for `j < 5`.
-  have e0 : inpGet I 0 = I 0 := by simp only [inpGet, show (0:Nat)<5 by decide, dif_pos]; congr 1
-  have e1 : inpGet I 1 = I 1 := by simp only [inpGet, show (1:Nat)<5 by decide, dif_pos]; congr 1
-  have e2 : inpGet I 2 = I 2 := by simp only [inpGet, show (2:Nat)<5 by decide, dif_pos]; congr 1
-  have e3 : inpGet I 3 = I 3 := by simp only [inpGet, show (3:Nat)<5 by decide, dif_pos]; congr 1
-  have e4 : inpGet I 4 = I 4 := by simp only [inpGet, show (4:Nat)<5 by decide, dif_pos]; congr 1
+  have e0 : inpGet I 0 = I 0 := by simp only [inpGet, show (0:Nat)<5 by decide, dite_eq_left]; congr 1
+  have e1 : inpGet I 1 = I 1 := by simp only [inpGet, show (1:Nat)<5 by decide, dite_eq_left]; congr 1
+  have e2 : inpGet I 2 = I 2 := by simp only [inpGet, show (2:Nat)<5 by decide, dite_eq_left]; congr 1
+  have e3 : inpGet I 3 = I 3 := by simp only [inpGet, show (3:Nat)<5 by decide, dite_eq_left]; congr 1
+  have e4 : inpGet I 4 = I 4 := by simp only [inpGet, show (4:Nat)<5 by decide, dite_eq_left]; congr 1
   have hspec : ImpExpr.denoteScalar ["w"] I horner4Src (fun _ => none)
       = some ((((I 0 * I 4 + I 1) * I 4 + I 2) * I 4) + I 3) := by
     rw [horner4Src_denoteScalar (nIn := 5) I, e0, e1, e2, e3, e4]
@@ -478,8 +478,8 @@ theorem fib_compiles :
     (Option.some_get _).symm
   refine ⟨c, hc, ?_⟩
   intro I
-  have e0 : inpGet I 0 = I 0 := by simp only [inpGet, show (0:Nat)<2 by decide, dif_pos]; congr 1
-  have e1 : inpGet I 1 = I 1 := by simp only [inpGet, show (1:Nat)<2 by decide, dif_pos]; congr 1
+  have e0 : inpGet I 0 = I 0 := by simp only [inpGet, show (0:Nat)<2 by decide, dite_eq_left]; congr 1
+  have e1 : inpGet I 1 = I 1 := by simp only [inpGet, show (1:Nat)<2 by decide, dite_eq_left]; congr 1
   have hspec : ImpExpr.denoteScalar ["w"] I fibSrc (fun _ => none)
       = some (((I 1 + I 0) + I 1) + (I 1 + I 0)) := by
     rw [fibSrc_denoteScalar (nIn := 2) I, e0, e1]
@@ -572,13 +572,13 @@ theorem sched_compiles :
   refine ⟨c, hc, ?_⟩
   intro I
   have e15 : inpGet I 15 = I 15 := by
-    simp only [inpGet, show (15:Nat) < 16 by decide, dif_pos]; congr 1
+    simp only [inpGet, show (15:Nat) < 16 by decide, dite_eq_left]; congr 1
   have e10 : inpGet I 10 = I 10 := by
-    simp only [inpGet, show (10:Nat) < 16 by decide, dif_pos]; congr 1
+    simp only [inpGet, show (10:Nat) < 16 by decide, dite_eq_left]; congr 1
   have e2 : inpGet I 2 = I 2 := by
-    simp only [inpGet, show (2:Nat) < 16 by decide, dif_pos]; congr 1
+    simp only [inpGet, show (2:Nat) < 16 by decide, dite_eq_left]; congr 1
   have e1 : inpGet I 1 = I 1 := by
-    simp only [inpGet, show (1:Nat) < 16 by decide, dif_pos]; congr 1
+    simp only [inpGet, show (1:Nat) < 16 by decide, dite_eq_left]; congr 1
   have hspec : ImpExpr.denoteScalar ["w"] I schedSrc (fun _ => none)
       = some (sigma1Fn (I 15) + I 10 + sigma0Fn (I 2) + I 1) := by
     rw [schedSrc_denoteScalar (nIn := 16) I, e15, e10, e2, e1]

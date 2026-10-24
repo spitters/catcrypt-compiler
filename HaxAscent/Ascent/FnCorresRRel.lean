@@ -139,8 +139,8 @@ theorem fnCorres_iff_rrelPT [HaxEnc β] {e : ImpExpr} {entry : A → Env} {G : A
   · rintro ⟨env', hE⟩ env rfl
     refine ⟨_, env', hE, ?_⟩
     cases hc : (enc (f a)).isControlFlow
-    · exact Or.inl ⟨hc, trivial, f a, by simp only [fnExc, hc, Bool.false_eq_true, if_false], rfl⟩
-    · exact Or.inr ⟨hc, trivial, f a, by simp only [fnExc, hc, if_true], rfl⟩
+    · exact Or.inl ⟨hc, trivial, f a, by simp only [fnExc, hc, Bool.false_eq_true, ite_false], rfl⟩
+    · exact Or.inr ⟨hc, trivial, f a, by simp only [fnExc, hc, ite_true], rfl⟩
   · intro h
     obtain ⟨v, env', hE, hp⟩ := h (entry a) rfl
     refine ⟨env', ?_⟩

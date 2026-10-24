@@ -116,7 +116,7 @@ theorem lsemFuelMemF_plain_halts (fn : String) (seg : List LinstrRM) (hplain : P
   have hlpc : ({ b with cf := c, of := o } : LstateM).lpc = seg.length := by
     rw [runStraightF_lpc seg b0 zf _ zf hF, hpc, Nat.zero_add]
   unfold lsemFuelMemF
-  simp only [findInstrMem, singletonProgM, if_true]
+  simp only [findInstrMem, singletonProgM, ite_true]
   rw [show ({ b with cf := c, of := o } : LstateM).lpc = seg.length from hlpc,
     List.getElem?_eq_none (le_refl _)]
 

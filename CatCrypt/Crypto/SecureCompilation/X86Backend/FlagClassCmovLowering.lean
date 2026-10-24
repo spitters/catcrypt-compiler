@@ -137,13 +137,13 @@ theorem lowerCmovSelfContained_dest (s : JState 64) (d c a b : String) :
     by_cases hc : BitVec.setWidth 1 (s.regs c) = 1#1 <;>
       simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
         x86_CMOVcc, zf_x86_TEST_one, selectW, hc]
-  · rw [if_neg (by simpa using hb)]
+  · rw [ite_eq_right (by simpa using hb)]
     by_cases ha : d = a
     · subst ha
       by_cases hc : BitVec.setWidth 1 (s.regs c) = 1#1 <;>
         simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
           x86_CMOVcc, zf_x86_TEST_one, selectW, hc]
-    · rw [if_neg (by simpa using ha)]
+    · rw [ite_eq_right (by simpa using ha)]
       by_cases hc : BitVec.setWidth 1 (s.regs c) = 1#1 <;>
         simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
           x86_CMOVcc, x86_MOV, zf_x86_TEST_one, selectW, hc, Ne.symm ha]
@@ -214,13 +214,13 @@ theorem lowerCmovJ_dest (s : JState 64) (d c a b : String) (hcd : c ≠ d) :
     simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
       JState.get, x86_CMOVcc, zf_x86_TEST_self]
     rfl
-  · rw [if_neg (by simpa using ha)]
+  · rw [ite_eq_right (by simpa using ha)]
     by_cases hb : b = d
     · subst hb
       simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
         JState.get, x86_CMOVcc, zf_x86_TEST_self]
       rfl
-    · rw [if_neg (by simpa using hb)]
+    · rw [ite_eq_right (by simpa using hb)]
       simp [runBlock, evalInstr, JState.setReg, JState.flagB, JState.writeB5,
         JState.get, x86_CMOVcc, x86_MOV, zf_x86_TEST_self, hcd, ha]
       rfl

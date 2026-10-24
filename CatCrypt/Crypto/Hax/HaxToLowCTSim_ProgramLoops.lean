@@ -817,7 +817,7 @@ theorem tripsFrom_of_forLoop (i : String) (lo hi : Int) (body : ImpExpr) (bodyC 
       have hAgree1 : envAgreesRustT bridge (env.extend i (.int (lo + j)))
           (rsSetScalar rs i (lo.toNat + j)) :=
         envAgreesRustT_extend_scalar_fresh bridge env rs i _ _ hTi
-          (by simp only [valueToScalar]; rw [if_pos (by omega)]; congr 1; omega) hAgree
+          (by simp only [valueToScalar]; rw [ite_eq_left (by omega)]; congr 1; omega) hAgree
       have hNN1 : ScalarInv D S (env.extend i (.int (lo + j))) :=
         hNN.extend_of_nonneg i (fun k hk => by
           simp only [Value.int.injEq] at hk; omega)
@@ -881,7 +881,7 @@ theorem tripsFrom_of_forLoopRev (i : String) (lo hi : Int) (body : ImpExpr) (bod
       have hAgree1 : envAgreesRustT bridge (env.extend i (.int (hi - j - 1)))
           (rsSetScalar rs i (hi.toNat - 1 - j)) :=
         envAgreesRustT_extend_scalar_fresh bridge env rs i _ _ hTi
-          (by simp only [valueToScalar]; rw [if_pos (by omega)]; congr 1; omega) hAgree
+          (by simp only [valueToScalar]; rw [ite_eq_left (by omega)]; congr 1; omega) hAgree
       have hNN1 : ScalarInv D S (env.extend i (.int (hi - j - 1))) :=
         hNN.extend_of_nonneg i (fun k hk => by
           simp only [Value.int.injEq] at hk; omega)
@@ -1008,7 +1008,7 @@ theorem progSimW_forFold_var (i : String) (lo : Int) (n : String) (body : ImpExp
   refine ⟨rs', ?_, hA', hSB', hSF', hNN'⟩
   split
   · rename_i h0
-    rw [forShift, if_pos h0] at hExec
+    rw [forShift, ite_eq_left h0] at hExec
     rw [litTower_forRuntime, arrTower_forRuntime]
     refine RustExec.forRuntime i _ _ rs rs' ?_
     have hE : (SExpr.SVar n).evalState rs = k.toNat - lo.toNat := by
@@ -1016,7 +1016,7 @@ theorem progSimW_forFold_var (i : String) (lo : Int) (n : String) (body : ImpExp
     rw [hE]
     exact hExec
   · rename_i h0
-    rw [forShift, if_neg h0] at hExec
+    rw [forShift, ite_eq_right h0] at hExec
     rw [litTower_forRuntime, arrTower_forRuntime]
     refine RustExec.forRuntime i _ _ rs rs' ?_
     have hE : (SExpr.SSub (.SVar n) (.SLit lo.toNat)).evalState rs = k.toNat - lo.toNat := by
@@ -1073,7 +1073,7 @@ theorem progSimW_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
   simp only [forToLoop] at hEval
   have hBodyEval := evalImp_letBind_lit_inv bi fuel name l _ env v env' hEval
   by_cases hTm : T.contains name = true
-  · rw [if_pos hTm] at hScope
+  · rw [ite_eq_left hTm] at hScope
     split at hScope
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
@@ -1085,7 +1085,7 @@ theorem progSimW_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
           simp only [litWord, Bool.and_eq_true, decide_eq_true_eq] at hW
           obtain ⟨h0, h1⟩ := hW
           refine ⟨n.toNat, by omega, by simp [Value.ofLit, Int.toNat_of_nonneg h0], ?_⟩
-          simp only [Value.ofLit, valueToScalar, if_pos h0, Option.some.injEq] at hDecode
+          simp only [Value.ofLit, valueToScalar, ite_eq_left h0, Option.some.injEq] at hDecode
           exact hDecode
         | _ => simp [litWord] at hW
       subst hm
@@ -1122,7 +1122,7 @@ theorem progSimW_letBind_lit (name : String) (l : ImpLit) (body : ImpExpr)
       exact ⟨rs', RustExec.letZero name .TFp _ rs rs'
         (RustExec.seq _ _ _ _ _ hStore hBodyExec), hAgree', hSB', hSF', hNN'⟩
     · cases hScope
-  · rw [if_neg hTm] at hScope
+  · rw [ite_eq_right hTm] at hScope
     split at hScope
     · rename_i hIn
       rw [litTower_lit_not_mem T name m bodyC (by simpa using hTm), arrTower_letU64Zero,
@@ -1175,7 +1175,7 @@ theorem progSimW_letBind_app (name f : String) (args : List ImpExpr) (body : Imp
     (ihBody : ProgSimW bridge bi N leafSpec D S T A body) :
     ProgSimW bridge bi N leafSpec D S T A (.letBind name (.app f args) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
-  simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hf_sc, Bool.false_eq_true, if_false] at hScope
+  simp only [simScopeW, ite_eq_right hf_arr, ite_eq_right hf_idx, hf_sc, Bool.false_eq_true, ite_false] at hScope
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
@@ -1338,7 +1338,7 @@ theorem progSimW_letBind_scalar (name f a b : String) (body : ImpExpr)
     (ihBody : ProgSimW bridge bi N leafSpec D S T A body) :
     ProgSimW bridge bi N leafSpec D S T A (.letBind name (.app f [.var a, .var b]) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
-  simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hf_sc, ↓reduceIte] at hScope
+  simp only [simScopeW, ite_eq_right hf_arr, ite_eq_right hf_idx, hf_sc, ↓reduceIte] at hScope
   split at hScope
   swap
   · cases hScope
@@ -1353,7 +1353,7 @@ theorem progSimW_letBind_scalar (name f a b : String) (body : ImpExpr)
     cases hB : haxToLowCT body with
     | none => simp [hB] at hHax
     | some bodyC =>
-      simp only [hB, if_neg hf_arr, if_neg hf_idx, hf_sc, ↓reduceIte, hse,
+      simp only [hB, ite_eq_right hf_arr, ite_eq_right hf_idx, hf_sc, ↓reduceIte, hse,
         Option.some.injEq] at hHax
       exact ⟨bodyC, rfl, hHax.symm⟩
   obtain ⟨bodyC, hB, rfl⟩ := hHax'
@@ -1452,7 +1452,7 @@ theorem progSimW_letBind_index (name f arr idx : String) (body : ImpExpr)
     (ihBody : ProgSimW bridge bi N leafSpec D S T A body) :
     ProgSimW bridge bi N leafSpec D S T A (.letBind name (.app f [.var arr, .var idx]) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
-  simp only [simScopeW, if_neg hf_arr, if_pos hf_idx] at hScope
+  simp only [simScopeW, ite_eq_right hf_arr, ite_eq_left hf_idx] at hScope
   rcases hA : List.lookup arr A with _ | t
   · rw [hA] at hScope; cases hScope
   simp only [hA] at hScope
@@ -1526,7 +1526,7 @@ theorem progSimW_letBind_limb (name f v : String) (k : Int) (body : ImpExpr)
     ProgSimW bridge bi N leafSpec D S T A
       (.letBind name (.app f [.var v, .lit (.int k)]) body) := by
   intro fuel Γ Γ' c env env' rs w hScope hSB hSF hHax hEval hAgree hNN
-  simp only [simScopeW, if_neg hf_arr, if_pos hf_idx] at hScope
+  simp only [simScopeW, ite_eq_right hf_arr, ite_eq_left hf_idx] at hScope
   subst hf_idx
   rcases hL : List.lookup v Γ with _ | t
   · rw [hL] at hScope; cases hScope
@@ -1557,7 +1557,7 @@ theorem progSimW_letBind_arrUpdate (name f arr idx src : String) (body : ImpExpr
     ProgSimW bridge bi N leafSpec D S T A
       (.letBind name (.app f [.var arr, .var idx, .var src]) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
-  simp only [simScopeW, if_pos hf_arr] at hScope
+  simp only [simScopeW, ite_eq_left hf_arr] at hScope
   rcases hA : List.lookup arr A with _ | t
   · rw [hA] at hScope; cases hScope
   simp only [hA] at hScope
@@ -1622,7 +1622,7 @@ theorem progSimW_assign_arrUpdate (name f arr idx src : String)
     ProgSimW bridge bi N leafSpec D S T A
       (.assign name (.app f [.var arr, .var idx, .var src])) := by
   intro fuel Γ Γ' c env env' rs v hScope hSB hSF hHax hEval hAgree hNN
-  simp only [simScopeW, if_pos hf_arr] at hScope
+  simp only [simScopeW, ite_eq_left hf_arr] at hScope
   rcases hA : List.lookup arr A with _ | t
   · rw [hA] at hScope; cases hScope
   simp only [hA] at hScope
@@ -1777,7 +1777,7 @@ def scalarCallFree (bi : Builtins) : Builtins := fun f vals =>
 
 theorem scalarCallFree_of_false {bi : Builtins} {f : String} (h : scalarCallName f = false)
     (vals : List Value) : scalarCallFree bi f vals = bi f vals := by
-  simp only [scalarCallFree, h, Bool.false_eq_true, if_false]
+  simp only [scalarCallFree, h, Bool.false_eq_true, ite_false]
 
 theorem scalarCallFree_leaf (bridge : ValueTowerBridge) (bi : Builtins) (leafSpec : LeafSpec)
     (hLeaf : ∀ f, f ≠ "array_update" → f ≠ "index" → scalarCallName f = false →
@@ -1786,7 +1786,7 @@ theorem scalarCallFree_leaf (bridge : ValueTowerBridge) (bi : Builtins) (leafSpe
       LeafCallAgreesArgs (scalarCallFree bi) leafSpec f (towerOfCallName f) bridge := by
   intro f h1 h2 args vals argList oldV vRes hBi hF
   cases hc : scalarCallName f with
-  | true => simp only [scalarCallFree, hc, if_true] at hBi; cases hBi
+  | true => simp only [scalarCallFree, hc, ite_true] at hBi; cases hBi
   | false =>
     rw [scalarCallFree_of_false hc] at hBi
     exact hLeaf f h1 h2 hc args vals argList oldV vRes hBi hF
@@ -1932,7 +1932,7 @@ theorem haxToLowCT_simulates_programW
       by_cases hf_arr : f = "array_update"
       · rcases hSh : varArgs3 args with _ | ⟨arr, idx, src⟩
         · refine noneArm _ fun Γ => ?_
-          simp only [simScopeW, if_pos hf_arr]
+          simp only [simScopeW, ite_eq_left hf_arr]
           split
           · simp [varArgs3] at hSh
           · rfl
@@ -1946,7 +1946,7 @@ theorem haxToLowCT_simulates_programW
             exact progSimW_letBind_limb bridge bi N leafSpec D S T A name f v k body hf_arr
               hf_idx hLimb ihBody
           · refine noneArm _ fun Γ => ?_
-            simp only [simScopeW, if_neg hf_arr, if_pos hf_idx]
+            simp only [simScopeW, ite_eq_right hf_arr, ite_eq_left hf_idx]
             split
             · simp [varArgs2] at hSh
             · exact absurd ⟨_, _, rfl⟩ hl
@@ -1957,7 +1957,7 @@ theorem haxToLowCT_simulates_programW
       by_cases hsc : scalarCallName f = true
       · rcases hSh : varArgs2 args with _ | ⟨a, b⟩
         · refine noneArm _ fun Γ => ?_
-          simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc, ↓reduceIte]
+          simp only [simScopeW, ite_eq_right hf_arr, ite_eq_right hf_idx, hsc, ↓reduceIte]
           split
           · simp [varArgs2] at hSh
           · rfl
@@ -2012,7 +2012,7 @@ theorem haxToLowCT_simulates_programW
       by_cases hf_arr : f = "array_update"
       · rcases hSh : varArgs3 args with _ | ⟨arr, idx, src⟩
         · refine noneArm _ fun Γ => ?_
-          simp only [simScopeW, if_pos hf_arr]
+          simp only [simScopeW, ite_eq_left hf_arr]
           split
           · simp [varArgs3] at hSh
           · rfl
@@ -2020,27 +2020,27 @@ theorem haxToLowCT_simulates_programW
           exact progSimW_assign_arrUpdate bridge bi N leafSpec D S T A name f arr idx src hf_arr
             hUpd
       by_cases hf_idx : f = "index"
-      · exact noneArm _ fun Γ => by simp only [simScopeW, if_neg hf_arr, if_pos hf_idx]
+      · exact noneArm _ fun Γ => by simp only [simScopeW, ite_eq_right hf_arr, ite_eq_left hf_idx]
       have hf : ¬ (f = "array_update" ∨ f = "index") := not_or.mpr ⟨hf_arr, hf_idx⟩
       by_cases hsc : scalarCallName f = true
       · exact noneArm _ fun Γ => by
-          simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc, Bool.not_true, Bool.false_and,
-            Bool.false_eq_true, if_false]
+          simp only [simScopeW, ite_eq_right hf_arr, ite_eq_right hf_idx, hsc, Bool.not_true, Bool.false_and,
+            Bool.false_eq_true, ite_false]
       have hsc' : scalarCallName f = false := by simpa using hsc
       refine progSimW_of_progSimA_tables bridge bi N leafSpec D S T A (scalarCallFree bi) _
         (fun _ => by
-          simp only [simScopeW, simScopeA, if_neg hf_arr, if_neg hf_idx, if_neg hf, hsc',
+          simp only [simScopeW, simScopeA, ite_eq_right hf_arr, ite_eq_right hf_idx, ite_eq_right hf, hsc',
             Bool.not_false, Bool.true_and]) rfl
         ?_ ?_ ?_ (hA _)
       · intro Γ Γ' h
-        simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc', Bool.not_false, Bool.true_and] at h
+        simp only [simScopeW, ite_eq_right hf_arr, ite_eq_right hf_idx, hsc', Bool.not_false, Bool.true_and] at h
         split at h
         · rename_i hc
           simp only [Bool.and_eq_true] at hc
           simp only [forToLoop, forToLoopArgs_of_vars args (argsInScope_allVars Γ _ args hc.1.1)]
         · cases h
       · intro Γ Γ' c fuel env env' v hScope _ hEval hNN
-        simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc', Bool.not_false, Bool.true_and]
+        simp only [simScopeW, ite_eq_right hf_arr, ite_eq_right hf_idx, hsc', Bool.not_false, Bool.true_and]
           at hScope
         split at hScope
         · rename_i hc
@@ -2055,7 +2055,7 @@ theorem haxToLowCT_simulates_programW
           exact hNN.extend_of_not_mem (not_mem_of_not_contains S name hc.2) _
         · cases hScope
       · intro Γ Γ' h fuel env
-        simp only [simScopeW, if_neg hf_arr, if_neg hf_idx, hsc', Bool.not_false, Bool.true_and] at h
+        simp only [simScopeW, ite_eq_right hf_arr, ite_eq_right hf_idx, hsc', Bool.not_false, Bool.true_and] at h
         split at h
         · rename_i hc
           simp only [Bool.and_eq_true] at hc

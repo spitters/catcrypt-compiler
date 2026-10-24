@@ -341,14 +341,14 @@ theorem stepLoad_cases (h : LoadEnv) (i : Linstr) :
     | none => left; simp only [stepLoad, hr, hf]
     | some r =>
       by_cases hrd : r = d
-      · subst hrd; left; simp only [stepLoad, hr, hf, if_pos]
+      · subst hrd; left; simp only [stepLoad, hr, hf, ite_eq_left]
       · by_cases hmm : isMemName d = true ∧ isMemName r = true
-        · left; simp only [stepLoad, hr, hf, hrd, if_false, if_pos hmm]
+        · left; simp only [stepLoad, hr, hf, hrd, ite_false, ite_eq_left hmm]
         · by_cases hsr : isMemName s = false ∧ isMemName r = true
-          · left; simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm, if_pos hsr]
+          · left; simp only [stepLoad, hr, hf, hrd, ite_false, ite_eq_right hmm, ite_eq_left hsr]
           · right
             refine ⟨d, s, r, mn, rfl, hf, ⟨hrd, hmm, hsr⟩, ?_⟩
-            simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm, if_neg hsr]
+            simp only [stepLoad, hr, hf, hrd, ite_false, ite_eq_right hmm, ite_eq_right hsr]
 
 /-- **Rewrite characterisation.**  Whenever `loadCSE` emits an instruction that
     differs from the input, that input was a 64-bit reload `MOV d ← s` whose slot
@@ -455,7 +455,7 @@ theorem rewritten_asWideReload (d r mn : String) (ii : Nat)
     asWideReload (Linstr.li_i { li_ii := ii, li_i := .Lopn [.reg d] mn [.reg r] })
       = some (d, r, mn) := by
   show (if isMov64Mnem mn then some (d, r, mn) else none) = some (d, r, mn)
-  rw [if_pos hm]
+  rw [ite_eq_left hm]
 
 /-! ## 6. Whole-body rewrite-set characterisation -/
 

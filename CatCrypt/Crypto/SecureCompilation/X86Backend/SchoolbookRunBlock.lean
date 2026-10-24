@@ -125,16 +125,16 @@ theorem materialiseCarry_value (s : JState 64) (hi : String)
     rw [hs1]; exact cf_adcx s hi (.imm 0)
   have hof1 : s1.flags.of = s.flags.of := by rw [hs1]; exact of_adcx s hi (.imm 0)
   have hgethi1 : s1.get hi = (waddcarry (s.get hi) (0#64) (s.flagB (·.cf))).2 := by
-    rw [hs1, get_adcx]; simp only [if_true, JOperand.eval]
+    rw [hs1, get_adcx]; simp only [ite_true, JOperand.eval]
   -- the CF chain carry-out is 0 (no wrap: hi + cf < 2^64)
   have d1 := waddcarry_decompose (s.get hi) (0#64) (s.flagB (·.cf))
   simp only [BitVec.toNat_ofNat, Nat.zero_mod, Nat.add_zero] at d1
   have hc1 : (waddcarry (s.get hi) (0#64) (s.flagB (·.cf))).1 = false := by
     by_contra hbit
     rw [Bool.not_eq_false] at hbit
-    rw [hbit] at d1; simp only [if_true] at d1; omega
+    rw [hbit] at d1; simp only [ite_true] at d1; omega
   rw [hc1] at d1
-  simp only [Bool.false_eq_true, if_false, Nat.mul_zero, Nat.add_zero] at d1
+  simp only [Bool.false_eq_true, ite_false, Nat.mul_zero, Nat.add_zero] at d1
   have hgethi1val : (s1.get hi).toNat = (s.get hi).toNat + (if s.flagB (·.cf) then 1 else 0) := by
     rw [hgethi1]; omega
   -- the OF bit s1 reads is the original OF
@@ -146,9 +146,9 @@ theorem materialiseCarry_value (s : JState 64) (hi : String)
   have hc2 : (waddcarry (s1.get hi) (0#64) (s1.flagB (·.of))).1 = false := by
     by_contra hbit
     rw [Bool.not_eq_false] at hbit
-    rw [hbit] at d2; simp only [if_true, hofbit] at d2; rw [hgethi1val] at d2; omega
+    rw [hbit] at d2; simp only [ite_true, hofbit] at d2; rw [hgethi1val] at d2; omega
   rw [hc2] at d2
-  simp only [Bool.false_eq_true, if_false, Nat.mul_zero, Nat.add_zero] at d2
+  simp only [Bool.false_eq_true, ite_false, Nat.mul_zero, Nat.add_zero] at d2
   -- now unfold runBlock = step s1 then ADOX hi, 0
   have hrun : runBlock s (materialiseCarry hi) = evalInstr s1 (.adox hi (.imm 0)) := by
     simp only [materialiseCarry, runBlock_cons, runBlock_nil, ← hs1]
@@ -156,7 +156,7 @@ theorem materialiseCarry_value (s : JState 64) (hi : String)
   · -- value: gadget hi register = (hi + cf) + of
     rw [hrun]
     rw [hofbit] at d2
-    simp only [get_adox, JOperand.eval, if_true, hofbit]
+    simp only [get_adox, JOperand.eval, ite_true, hofbit]
     rw [d2, hgethi1val]
   · -- CF reset: ADOX leaves CF = s1's CF = (carry-out of ADCX) = false
     rw [hrun]
@@ -172,7 +172,7 @@ theorem materialiseCarry_value (s : JState 64) (hi : String)
 theorem materialiseCarry_other (s : JState 64) (hi r : String) (hr : r ≠ hi) :
     (runBlock s (materialiseCarry hi)).get r = s.get r := by
   simp only [materialiseCarry, runBlock_cons, runBlock_nil, get_adox, get_adcx,
-    if_neg hr]
+    ite_eq_right hr]
 
 /-! ## 2. One emitted column with flag reset = one abstract `mulAddc` column
 
@@ -202,8 +202,8 @@ theorem selectMulxMac_get_hi (s : JState 64) (acc a b cy hi lo : String)
       = (wumul (s.get a) (s.get b)).1 := by
   -- the two accumulates write `acc`; reading `hi` (≠ acc, ≠ lo) falls back to the MULX
   simp only [selectMulxMac, runBlock_cons, runBlock_nil, evalInstr, x86_MULX_lo_hi,
-    x86_ADCX, JState.setReg, wumul, if_neg hAccHi, if_neg (Ne.symm hLoHi),
-    if_neg (Ne.symm hAccHi), if_true, JOperand.eval, JState.get]
+    x86_ADCX, JState.setReg, wumul, ite_eq_right hAccHi, ite_eq_right (Ne.symm hLoHi),
+    ite_eq_right (Ne.symm hAccHi), ite_true, JOperand.eval, JState.get]
 
 /-- After `selectMulxMac` entered with `CF = OF = 0`, the accumulator holds
     `macLo` and the recombined `selCarry + hi` equals `macHi`. Extracted from the
@@ -298,9 +298,9 @@ theorem emitColumnReset_value (s : JState 64) (acc a b cy hi lo : String)
     simp only [emitColumnReset, runBlock_append, runBlock_cons, runBlock_nil, ← hs1, ← hs2]
   refine ⟨?_, ?_, ?_, ?_⟩
   · -- acc unchanged by the mov (cy ≠ acc)
-    rw [hrun]; simp only [get_mov, JOperand.eval, if_neg (Ne.symm hCyAcc), hs2acc]
+    rw [hrun]; simp only [get_mov, JOperand.eval, ite_eq_right (Ne.symm hCyAcc), hs2acc]
   · -- cy := hi = macHi
-    rw [hrun]; simp only [get_mov, JOperand.eval, if_true]
+    rw [hrun]; simp only [get_mov, JOperand.eval, ite_true]
     exact BitVec.eq_of_toNat_eq hs2hi
   · -- CF reset (mov touches no flag, gadget reset it)
     rw [hrun]; simp only [JState.flagB, cf_mov]; exact hmatCf
@@ -313,8 +313,8 @@ theorem selectMulxMac_other (s : JState 64) (acc a b cy hi lo r : String)
     (hr_acc : r ≠ acc) (hr_hi : r ≠ hi) (hr_lo : r ≠ lo) :
     (runBlock s (selectMulxMac acc a b cy hi lo)).get r = s.get r := by
   simp only [selectMulxMac, runBlock_cons, runBlock_nil, evalInstr, x86_MULX_lo_hi,
-    x86_ADCX, JState.setReg, wumul, if_neg hr_acc,
-    if_neg hr_hi, if_neg hr_lo, JOperand.eval, JState.get]
+    x86_ADCX, JState.setReg, wumul, ite_eq_right hr_acc,
+    ite_eq_right hr_hi, ite_eq_right hr_lo, JOperand.eval, JState.get]
 
 /-- `emitColumnReset` writes only `acc`, `cy`, `hi`, `lo`: any register distinct
     from all four is preserved. (The block is `MULX hi,lo`, `ADCX/ADOX acc`, the
@@ -324,7 +324,7 @@ theorem emitColumnReset_preserves (s : JState 64) (acc a b cy hi lo r : String)
     (runBlock s (emitColumnReset acc a b cy hi lo)).get r = s.get r := by
   rw [emitColumnReset, runBlock_append, runBlock_append, runBlock_cons, runBlock_nil,
     get_mov]
-  simp only [JOperand.eval, if_neg hr_cy]
+  simp only [JOperand.eval, ite_eq_right hr_cy]
   rw [materialiseCarry_other _ hi r hr_hi, selectMulxMac_other s acc a b cy hi lo r
     hr_acc hr_hi hr_lo]
 

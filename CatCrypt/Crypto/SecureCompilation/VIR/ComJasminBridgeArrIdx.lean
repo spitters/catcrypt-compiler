@@ -124,7 +124,7 @@ theorem semPexpr_pget_reg
   have hgv : getGvar true gd s.evm (mkLvar x) = .ok (.Varr n a) := by
     unfold getGvar
     rw [show (mkLvar x).isLvar = true from rfl]
-    simp only [if_true]
+    simp only [ite_true]
     show getVar true s.evm (mkLvar x).gv.v_var = _
     unfold getVar
     rw [show (mkLvar x).gv.v_var = x.v_var from rfl, hread]
@@ -150,7 +150,7 @@ theorem semPexpr_pget_reg
   show (if h : 0 ≤ (i.toNat : Int) ∧ (i.toNat : Int).toNat < n then
         (.ok (Value.Vword .U8 (a ⟨(i.toNat : Int).toNat, h.2⟩)) : JResult Value)
       else .typeError) = _
-  rw [dif_pos ⟨Int.natCast_nonneg _, by simpa using hin⟩]
+  rw [dite_eq_left ⟨Int.natCast_nonneg _, by simpa using hin⟩]
   simp
 
 /-- **Register-index `Pget`-read correspondence.** Under `StateCorrArr` for the
@@ -301,7 +301,7 @@ theorem mirror_laset_post
   have hw : Value.toWord .U8 (.Vword .U8 v) = .ok v := by
     show truncateWord .U8 (sz' := .U8) v = _
     unfold truncateWord
-    simp only [le_refl, if_true]
+    simp only [le_refl, ite_true]
     congr 1
     apply BitVec.eq_of_toNat_eq; simp
   show (do
@@ -336,7 +336,7 @@ theorem mirror_laset_post
         writeVar (Mem := Mem) true arr
           (.Varr n (JArrayMirror.setByte a ⟨(i.toNat : Int).toNat, h.2⟩ v)) s
       else .typeError) = _
-  rw [dif_pos ⟨Int.natCast_nonneg _, by simpa using hin⟩]
+  rw [dite_eq_left ⟨Int.natCast_nonneg _, by simpa using hin⟩]
   unfold writeVar setVar
   rw [harrTy]
   simp [DB, Value.isDefined, truncatable, Value.typeOf]

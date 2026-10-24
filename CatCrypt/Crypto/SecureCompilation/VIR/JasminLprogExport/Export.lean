@@ -257,7 +257,7 @@ theorem charsIsNatStep_of_isDigit (L : List Char) (hL : ∀ c ∈ L, c.isDigit =
     have hc := hL c (by simp)
     have hne : c ≠ '_' := by
       intro h; subst h; simp [Char.isDigit] at hc
-    rw [charsIsNatStep, if_neg hne, if_pos hc, ih (fun c hc => hL c (by simp [hc]))]
+    rw [charsIsNatStep, ite_eq_right hne, ite_eq_left hc, ih (fun c hc => hL c (by simp [hc]))]
     by_cases h : rest = [] <;> simp [h]
 
 /-- The `charsToNat?` fold over the decimal digits of `k` from an accumulator `a`
@@ -282,7 +282,7 @@ theorem foldl_toDigits_ten : ∀ (k a : Nat),
         simp [hlt] at this
       simp only [List.foldl_cons, List.foldl_nil, List.length_append, List.length_cons,
         List.length_nil, Nat.pow_succ]
-      rw [if_neg hd, show '0'.toNat = 48 from rfl, Nat.toNat_digitChar_sub_48_of_lt_ten hlt]
+      rw [ite_eq_right hd, show '0'.toNat = 48 from rfl, Nat.toNat_digitChar_sub_48_of_lt_ten hlt]
       generalize (10 : Nat) ^ (Nat.toDigits 10 (k / 10)).length = P
       have hm : a * (P * 10) = a * P * 10 := (Nat.mul_assoc a P 10).symm
       omega
@@ -292,7 +292,7 @@ theorem charsToNat?_toString_toList (k : Nat) : charsToNat? (toString k).toList 
   have hd := toString_toList_isDigit k
   rw [toString_toList_eq] at hd ⊢
   unfold charsToNat? charsIsNat
-  rw [charsIsNatStep_of_isDigit _ hd, if_neg Nat.toDigits_ne_nil]
+  rw [charsIsNatStep_of_isDigit _ hd, ite_eq_right Nat.toDigits_ne_nil]
   grind only [Option.getD_none, foldl_toDigits_ten]
 
 /-- A digit is neither width-tag separator. -/
@@ -316,7 +316,7 @@ theorem splitChars_of_not_mem (sep : Char) (L : List Char) (h : sep ∉ L) :
   | nil => rfl
   | cons a t ih =>
     have ha : a ≠ sep := fun e => h (e ▸ List.mem_cons_self)
-    rw [splitChars, if_neg ha, ih (fun ht => h (List.mem_cons_of_mem _ ht))]
+    rw [splitChars, ite_eq_right ha, ih (fun ht => h (List.mem_cons_of_mem _ ht))]
 
 /-- A prefix without `sep` followed by `sep` is the first `splitChars` group. -/
 theorem splitChars_append_cons (sep : Char) (L R : List Char) (h : sep ∉ L) :
@@ -326,7 +326,7 @@ theorem splitChars_append_cons (sep : Char) (L R : List Char) (h : sep ∉ L) :
   | cons a t ih =>
     have ha : a ≠ sep := fun e => h (e ▸ List.mem_cons_self)
     simp only [List.cons_append]
-    rw [splitChars, if_neg ha, ih (fun ht => h (List.mem_cons_of_mem _ ht))]
+    rw [splitChars, ite_eq_right ha, ih (fun ht => h (List.mem_cons_of_mem _ ht))]
 
 /-- The character list of a width-64 tagged mnemonic. -/
 theorem toList_withWidthTag_64 (m : String) :
@@ -380,11 +380,11 @@ theorem stripWidthTag_withWidthTag (w : Nat) {m : String} (hm : tagSepFree m = t
   by_cases hw : w = 64
   · subst hw
     unfold stripWidthTag
-    rw [if_neg (by rw [toList_withWidthTag_64]; simp [hat]), if_pos (hasSuffix_withWidthTag_64 m),
+    rw [ite_eq_right (by rw [toList_withWidthTag_64]; simp [hat]), ite_eq_left (hasSuffix_withWidthTag_64 m),
       toList_withWidthTag_64]
     simp
   · unfold stripWidthTag
-    rw [if_pos (by rw [toList_withWidthTag_of_ne hw]; simp), toList_withWidthTag_of_ne hw,
+    rw [ite_eq_left (by rw [toList_withWidthTag_of_ne hw]; simp), toList_withWidthTag_of_ne hw,
       List.takeWhile_append_of_pos (bne_at_of_not_mem hat)]
     simp
 
@@ -396,10 +396,10 @@ theorem wireWidth?_withWidthTag (w : Nat) {m : String} (hm : tagSepFree m = true
   · subst hw
     unfold wireWidth?
     dsimp only
-    rw [if_neg (by rw [toList_withWidthTag_64]; simp [hat]), if_pos (hasSuffix_withWidthTag_64 m)]
+    rw [ite_eq_right (by rw [toList_withWidthTag_64]; simp [hat]), ite_eq_left (hasSuffix_withWidthTag_64 m)]
   · unfold wireWidth?
     dsimp only
-    rw [toList_withWidthTag_of_ne hw, if_pos (by simp),
+    rw [toList_withWidthTag_of_ne hw, ite_eq_left (by simp),
       List.dropWhile_append_of_pos (bne_at_of_not_mem hat)]
     simpa [toString_toList_eq] using charsToNat?_toString_toList w
 
@@ -428,18 +428,18 @@ theorem parseImmShiftMnem_withWidthTag {m : String} (hm : tagSepFree m = true)
   · subst hw
     unfold parseImmShiftMnem
     dsimp only
-    rw [toList_withWidthTag_64, hB, if_neg (by simp [hat, has'])]
+    rw [toList_withWidthTag_64, hB, ite_eq_right (by simp [hat, has'])]
     simp only [List.append_assoc, List.cons_append]
     rw [splitChars_append_cons _ _ _ hcm, splitChars_append_cons _ _ _ hcs,
       splitChars_of_not_mem _ _ (by decide)]
     exact immShiftParts_toString _ _ _
   · unfold parseImmShiftMnem
     dsimp only
-    rw [toList_withWidthTag_of_ne hw, hB, if_pos (by simp),
+    rw [toList_withWidthTag_of_ne hw, hB, ite_eq_left (by simp),
       List.dropWhile_append_of_pos (bne_at_of_not_mem hatB),
       List.takeWhile_append_of_pos (bne_at_of_not_mem hatB)]
     simp only [List.dropWhile_cons, List.takeWhile_cons, bne_self_eq_false, Bool.false_eq_true,
-      if_false, List.tail_cons, List.append_nil, charsToNat?_toString_toList]
+      ite_false, List.tail_cons, List.append_nil, charsToNat?_toString_toList]
     rw [splitChars_append_cons _ _ _ hcm, splitChars_of_not_mem _ _ hcs]
     exact immShiftParts_toString _ _ _
 
@@ -454,7 +454,7 @@ theorem parseImmShiftMnem_untagged {m : String} (hm : tagSepFree m = true) (n : 
     simp
   unfold parseImmShiftMnem
   dsimp only
-  rw [hB, if_neg (by simp [hat, has']), splitChars_append_cons _ _ _ hcm,
+  rw [hB, ite_eq_right (by simp [hat, has']), splitChars_append_cons _ _ _ hcm,
     splitChars_of_not_mem _ _ hcs]
   exact immShiftParts_toString _ _ _
 

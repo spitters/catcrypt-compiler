@@ -764,7 +764,7 @@ def JState.store {w : Nat} (s : JState w) (base : String) (off : Int)
     (h : ¬ (b' = base ∧ o' = off)) :
     (s.store base off v).load b' o' = s.load b' o' := by
   simp only [JState.store, JState.load]
-  rw [if_neg h]
+  rw [ite_eq_right h]
 
 @[simp] theorem JState.regs_store {w : Nat} (s : JState w) (base : String)
     (off : Int) (v : BitVec w) : (s.store base off v).regs = s.regs := rfl
@@ -1489,7 +1489,7 @@ theorem runBlock_loadMem_add_eq_addMem {w : Nat} (s : JState w) (dst base t : St
     runBlock s [.loadMem t base off, .add dst (.reg t)] =
       (evalInstr s (.addMem dst base off)).setReg t (s.load base off) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
-    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+    JState.get, JOperand.eval, x86_MOV, ite_eq_right (Ne.symm ht), ite_eq_left]
   congr 1
   funext r
   by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
@@ -1501,7 +1501,7 @@ theorem runBlock_loadMem_adcx_eq_adcxMem {w : Nat} (s : JState w) (dst base t : 
     runBlock s [.loadMem t base off, .adcx dst (.reg t)] =
       (evalInstr s (.adcxMem dst base off)).setReg t (s.load base off) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.flagB,
-    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+    JState.get, JOperand.eval, x86_MOV, ite_eq_right (Ne.symm ht), ite_eq_left]
   congr 1
   funext r
   by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
@@ -1513,7 +1513,7 @@ theorem runBlock_loadMem_adox_eq_adoxMem {w : Nat} (s : JState w) (dst base t : 
     runBlock s [.loadMem t base off, .adox dst (.reg t)] =
       (evalInstr s (.adoxMem dst base off)).setReg t (s.load base off) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.flagB,
-    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+    JState.get, JOperand.eval, x86_MOV, ite_eq_right (Ne.symm ht), ite_eq_left]
   congr 1
   funext r
   by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
@@ -1525,7 +1525,7 @@ theorem runBlock_loadMem_imul_eq_imulMem {w : Nat} (s : JState w) (dst base t : 
     runBlock s [.loadMem t base off, .imul dst (.reg t)] =
       (evalInstr s (.imulMem dst base off)).setReg t (s.load base off) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
-    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+    JState.get, JOperand.eval, x86_MOV, ite_eq_right (Ne.symm ht), ite_eq_left]
   congr 1
   funext r
   by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
@@ -1536,7 +1536,7 @@ theorem runBlock_loadMem_imulri_eq_imulriMem {w : Nat} (s : JState w) (dst base 
     runBlock s [.loadMem dst base off, .imulri dst dst imm] =
       evalInstr s (.imulriMem dst base off imm) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
-    JState.get, x86_MOV, if_pos]
+    JState.get, x86_MOV, ite_eq_left]
   congr 1
   funext r
   split <;> simp_all
@@ -1548,7 +1548,7 @@ theorem runBlock_loadMem_cmp_eq_cmpMem {w : Nat} (s : JState w) (a base t : Stri
     runBlock s [.loadMem t base off, .cmp a (.reg t)] =
       (evalInstr s (.cmpMem a base off)).setReg t (s.load base off) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5,
-    JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+    JState.get, JOperand.eval, x86_MOV, ite_eq_right (Ne.symm ht), ite_eq_left]
 
 /-- `cmov<c> dst, [base + off]` is `loadMem t base off; cmov<c> dst t`, with `t` holding
     the loaded word. -/
@@ -1557,7 +1557,7 @@ theorem runBlock_loadMem_cmovcc_eq_cmovccMem {w : Nat} (s : JState w) (c : Condt
     runBlock s [.loadMem t base off, .cmovcc c dst (.reg t)] =
       (evalInstr s (.cmovccMem c dst base off)).setReg t (s.load base off) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.condB,
-    JState.flagB, JState.get, JOperand.eval, x86_MOV, if_neg (Ne.symm ht), if_pos]
+    JState.flagB, JState.get, JOperand.eval, x86_MOV, ite_eq_right (Ne.symm ht), ite_eq_left]
   congr 1
   funext r
   by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
@@ -1577,7 +1577,7 @@ theorem runBlock_loadMem_add_store_eq_addToMem {w : Nat} (s : JState w) (base t 
     | imm v => rfl
   simp only [runBlock_cons, runBlock_nil, evalInstr, hev]
   simp only [JState.setReg, JState.writeB5W, JState.writeB5Mem, JState.writeB5,
-    JState.store, JState.get, JOperand.eval, x86_MOV, if_pos]
+    JState.store, JState.get, JOperand.eval, x86_MOV, ite_eq_left]
   congr 1
   funext r
   by_cases h : r = t <;> simp [h]

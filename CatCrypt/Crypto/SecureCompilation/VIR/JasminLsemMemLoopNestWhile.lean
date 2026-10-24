@@ -202,7 +202,7 @@ theorem callee_run2 (env : LeafEnvM) (P : LprogM) (sym callerFn : String) (retPc
       = lsemFuelMemLC env P f
           { base := b.setLpc retPc, lfn := callerFn, rstack := rest } := by
   have hcur : curBodyC env P sym = calleeBody ++ [(LinstrR.Lret, MemTag.reg none)] := by
-    unfold curBodyC; rw [if_neg hne, hsym]; rfl
+    unfold curBodyC; rw [ite_eq_right hne, hsym]; rfl
   have hseg := segCallG env P sym calleeBody
       { base := base.setLpc 0, lfn := sym, rstack := (callerFn, retPc) :: rest } (1 + f)
       rfl hbok
@@ -343,8 +343,8 @@ theorem runWhileMem_halts_schedule (env : LeafEnvM) (guard : LstateM → Bool)
             rw [whileTripsMem_succ, hb]
           by_cases hg : guard b = true
           · -- guard true: recurse; m = m' + 1.
-            rw [if_pos hg] at h
-            rw [if_pos hg] at htrip
+            rw [ite_eq_left hg] at h
+            rw [ite_eq_left hg] at htrip
             obtain ⟨hm', hgfin', ⟨bprev', hprev', hlast'⟩, hbfin', hsched'⟩ :=
               ih (b.setLpc 1) bfin h
             set m' := whileTripsMem env guard body k (b.setLpc 1) with hm'def
@@ -369,10 +369,10 @@ theorem runWhileMem_halts_schedule (env : LeafEnvM) (guard : LstateM → Bool)
                 simp only [Nat.sub_self, runBoundedLoopMemC_zero, Option.some.injEq] at hbi
                 rw [← hbi, hgpc]; exact hg
           · -- guard false: bfin = b, m = 1.
-            rw [if_neg hg] at h
+            rw [ite_eq_right hg] at h
             obtain rfl : b = bfin := Option.some.inj h
             have hgf : guard b = false := by simpa using hg
-            rw [if_neg hg] at htrip
+            rw [ite_eq_right hg] at htrip
             rw [htrip]
             refine ⟨Nat.one_pos, hgf, ⟨s0, ?_, ?_⟩, ?_, ?_⟩
             · simp

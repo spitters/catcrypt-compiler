@@ -78,7 +78,7 @@ theorem StateResolves.push {w nIn : Nat} {locals : List String}
   · simp [FState.push, hyx]; rfl
   · rcases List.mem_cons.mp hy with rfl | hy
     · exact absurd rfl hyx
-    · simp only [FState.push, if_neg hyx]
+    · simp only [FState.push, ite_eq_right hyx]
       exact Option.isSome_map.trans (h.2 y hy)
 
 /-- Resolving a larger name list resolves a smaller one. -/

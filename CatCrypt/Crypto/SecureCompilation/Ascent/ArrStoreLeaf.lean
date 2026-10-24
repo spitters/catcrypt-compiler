@@ -139,19 +139,19 @@ theorem corres_arrStore {n : Nat} (arr src : Located) (idxVar : String)
   refine ⟨env.upd arr.locVar (t := encodeTy arr.locSrc)
       (harr.symm ▸ memSetDyn av iv.toNat sv), ?_, ?_⟩
   · -- semScalar reduces along the three known lookups + the `harr` guard.
-    simp only [semScalar, hArr, hIdx, hSrc, harr, dif_pos]
+    simp only [semScalar, hArr, hIdx, hSrc, harr, dite_eq_left]
   · -- the post-state is `SRarr`-related to the abstract array update.
     refine ⟨⟨memSetDyn av iv.toNat sv, ?_, ?_⟩, ⟨iv, ?_, hIdxEnc⟩, ⟨sv, ?_, hSrcEnc⟩⟩
     · -- env' at the array slot holds the concrete store (cast collapsed).
-      simp only [SEnvScalar.upd, if_true]
+      simp only [SEnvScalar.upd, ite_true]
       exact congrArg some (sigma_memref harr (memSetDyn av iv.toNat sv))
     · -- pointwise: encoding of the concrete store = abstract update.
       intro j
       show wEnc (memSetDyn av iv.toNat sv j) = _
       rw [wEnc_memSetDyn av a.arr hArrEnc iv.toNat sv j, hIdxEnc, hSrcEnc]
     · -- index slot preserved (distinct from the array slot).
-      simp only [SEnvScalar.upd, if_neg (Ne.symm hne_idx), hIdx]
+      simp only [SEnvScalar.upd, ite_eq_right (Ne.symm hne_idx), hIdx]
     · -- source slot preserved (distinct from the array slot).
-      simp only [SEnvScalar.upd, if_neg (Ne.symm hne_src), hSrc]
+      simp only [SEnvScalar.upd, ite_eq_right (Ne.symm hne_src), hSrc]
 
 end CatCrypt.Crypto.SecureCompilation.Ascent

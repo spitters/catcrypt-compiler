@@ -116,10 +116,10 @@ theorem adcStepW_spec (w : Nat) (a b : BitVec w) (cin : Bool) :
     -- `mod` with a non-numeral base, so peel it with `Nat.mod_eq_sub_mod`.
     have hmod : s % 2 ^ w = s - 2 ^ w := by
       rw [Nat.mod_eq_sub_mod hge, Nat.mod_eq_of_lt (by omega)]
-    simp only [hge, if_true, hmod]
+    simp only [hge, ite_true, hmod]
     omega
   · have hlt : s < 2 ^ w := by omega
-    simp only [hge, if_false]
+    simp only [hge, ite_false]
     rw [Nat.mod_eq_of_lt hlt]
     omega
 
@@ -235,13 +235,13 @@ theorem sbbStepW_spec (w : Nat) (a b : BitVec w) (bin : Bool) :
   · have hmod : (a.toNat + 2 ^ w - (b.toNat + (if bin then 1 else 0))) % 2 ^ w
         = a.toNat + 2 ^ w - (b.toNat + (if bin then 1 else 0)) := by
       apply Nat.mod_eq_of_lt; omega
-    rw [if_pos hlt, hmod]; omega
+    rw [ite_eq_left hlt, hmod]; omega
   · have hmod : (a.toNat + 2 ^ w - (b.toNat + (if bin then 1 else 0))) % 2 ^ w
         = a.toNat - (b.toNat + (if bin then 1 else 0)) := by
       have he : a.toNat + 2 ^ w - (b.toNat + (if bin then 1 else 0))
           = (a.toNat - (b.toNat + (if bin then 1 else 0))) + 2 ^ w := by omega
       rw [he, Nat.add_mod_right, Nat.mod_eq_of_lt (by omega)]
-    rw [if_neg hlt, hmod]; omega
+    rw [ite_eq_right hlt, hmod]; omega
 
 /-- **Main functional spec — proved by induction on the limb list,
     GENERIC in `w`.**

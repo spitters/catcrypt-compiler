@@ -267,7 +267,7 @@ theorem encTwoAddr_regReg (frame spillW w op : Nat) (dn sn : String) (qsaveB : N
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encAluRRw w op (gpNumU dn) (gpNumU sn) := by
   simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, parseMemNameGp_eq_none hsm,
-    hdg, hsg, Bool.and_self, if_true, memDstOp, if_neg hop]
+    hdg, hsg, Bool.and_self, ite_true, memDstOp, ite_eq_right hop]
 
 /-- **Store `encTwoAddr` reduces to `encMemMovw (memDstOp op)`.** When the destination
     is a `mem.<base>.<off>` operand with a general-purpose base and the source is a
@@ -283,7 +283,7 @@ theorem encTwoAddr_store (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (
     (hsg : isGpName sn = true) (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w (memDstOp op) (gpNumU sn) bb off := by
-  simp only [encTwoAddr, hdk, hsk, hdm, parseMemNameGp_eq_none hsm, hsg, if_true, if_pos hop]
+  simp only [encTwoAddr, hdk, hsk, hdm, parseMemNameGp_eq_none hsm, hsg, ite_true, ite_eq_left hop]
 
 /-- **Load `encTwoAddr` reduces to `encMemMovw (memSrcOp op)`.** When the source is a
     `mem.<base>.<off>` operand with a general-purpose base and the destination is a
@@ -299,7 +299,7 @@ theorem encTwoAddr_load (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (o
     (hdg : isGpName dn = true) (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w (memSrcOp op) (gpNumU dn) bb off := by
-  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, hsm, hdg, if_true, if_pos hop]
+  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, hsm, hdg, ite_true, ite_eq_left hop]
 
 /-- An opcode whose memory-source opcode is the `MOV` load `0x8B` is a move or `LOAD`. -/
 theorem op_native_of_memSrcOp {op : Nat} (h : memSrcOp op = 0x8b) :

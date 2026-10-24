@@ -734,10 +734,10 @@ theorem basemulProgW_basemulF (S : BasemulSched) (hS : S.Ok) (psi logN : ℕ) (h
   rw [hB]
   refine blockMul_congr 2 (2 ^ (logN - 1)) (by norm_num) _ _ _ _ _ ?_ ?_ i (by omega)
   · intro j hj
-    simp only [rowLanes, dif_pos (show j < 2 ^ logN by omega)]
+    simp only [rowLanes, dite_eq_left (show j < 2 ^ logN by omega)]
     exact (hx j (by omega)).symm
   · intro j hj
-    simp only [rowLanes, dif_pos (show j < 2 ^ logN by omega)]
+    simp only [rowLanes, dite_eq_left (show j < 2 ^ logN by omega)]
     exact (hy j (by omega)).symm
 
 /-- **`basemul` at `L = logN` on words.** When the residues `x`, `y` of one modulus are

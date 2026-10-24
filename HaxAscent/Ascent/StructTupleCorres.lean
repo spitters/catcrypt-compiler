@@ -82,19 +82,19 @@ theorem structTab_structsTable (sf : StructFieldTys) (structs : List StructSpec)
       List.mem_map, Prod.mk.injEq] at hm
     rcases hm with ⟨rfl, rfl⟩ | ⟨p, hp, rfl, rfl⟩ | ⟨i, hi, rfl, rfl⟩
     · simp only [structBi, hctor]
-      simp only [ctorLeaf, if_neg (show s.arity ≠ 1 by omega)] at h
+      simp only [ctorLeaf, ite_eq_right (show s.arity ≠ 1 by omega)] at h
       exact h
     · simp only [structBi, hproj p hp]
       rcases vals with _ | ⟨x, _ | ⟨y, rest⟩⟩
       · simp [projLeaf] at h
-      · simp only [projLeaf, if_neg (show ¬ s.arity ≤ 1 by omega)] at h
+      · simp only [projLeaf, ite_eq_right (show ¬ s.arity ≤ 1 by omega)] at h
         cases x <;> simp_all
       · simp [projLeaf] at h
     · simp only [structBi, hupd i (List.mem_range.mp hi)]
       rcases vals with _ | ⟨x, _ | ⟨y, _ | ⟨z, rest⟩⟩⟩
       · simp [updateLeaf] at h
       · simp [updateLeaf] at h
-      · simp only [updateLeaf, if_neg (show ¬ s.arity ≤ 1 by omega)] at h
+      · simp only [updateLeaf, ite_eq_right (show ¬ s.arity ≤ 1 by omega)] at h
         cases x <;> simp_all
       · simp [updateLeaf] at h
 

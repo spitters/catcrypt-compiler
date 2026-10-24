@@ -354,7 +354,7 @@ theorem evalInstr_comm_adcx_adox (s : JState 64)
     -- collapse the cross-register reads (dst2 in the adcx state, dst1 in the adox state)
     -- and the cross-operand reads, then the two records are equal field-by-field.
     simp only [JState.flagB, JState.get] at hget2 hsrc2 hget1 hsrc1 ⊢
-    rw [if_neg (Ne.symm hd12), if_neg hd12, hsrc2, hsrc1]
+    rw [ite_eq_right (Ne.symm hd12), ite_eq_right hd12, hsrc2, hsrc1]
   · rfl
 
 /-! ### Abstract-output ADX × mulx commutation lemmas

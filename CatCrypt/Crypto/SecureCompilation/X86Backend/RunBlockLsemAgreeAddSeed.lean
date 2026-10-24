@@ -110,7 +110,7 @@ theorem sub_borrow_zero (v1 v2 : BitVec 64) : sub_borrow v1 v2 0 = v1 - v2 := by
 /-- `x86_SUB` is `x86_SBB` at borrow-in `false`: the plain subtract is the
     zero-borrow subtract-with-borrow on every flag and the data word. -/
 theorem x86SUB_eq_SBB_false (v1 v2 : BitVec 64) : x86_SUB v1 v2 = x86_SBB v1 v2 false := by
-  simp only [x86_SUB, x86_SBB, Bool.false_eq_true, if_false, Nat.cast_zero, add_zero,
+  simp only [x86_SUB, x86_SBB, Bool.false_eq_true, ite_false, Nat.cast_zero, add_zero,
     sub_borrow_zero]
 
 /-- **`sub` seed data agreement.** The zero-borrow lsem borrow-subtract word equals

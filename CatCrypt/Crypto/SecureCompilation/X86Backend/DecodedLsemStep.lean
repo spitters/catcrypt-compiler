@@ -134,9 +134,9 @@ theorem DecLsemCorr.write {sa : AState} {b : LstateM} {zf : Bool}
   regs r hr := by
     rw [LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.getW_nextPc]
     rcases hL r hr with rfl | ⟨hrL, hne⟩
-    · rw [LstateN.getW_setReg_same, hregs, if_pos rfl]
+    · rw [LstateN.getW_setReg_same, hregs, ite_eq_left rfl]
     · have hrd : r ≠ d := fun h' => hne (by rw [h'])
-      rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, h.regs r hrL, hregs, if_neg hne]
+      rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, h.regs r hrL, hregs, ite_eq_right hne]
   zfEq := hzf
   cells A j hk := by
     obtain ⟨hj, arr, ha, hr⟩ := h.cells A j hk
@@ -152,7 +152,7 @@ theorem DecLsemCorr.machWrite {sa : AState} {b : LstateM} {zf : Bool}
     DecLsemCorr π L' Lay frame K zl' sa' b zf where
   regs r hr := by
     obtain ⟨hrL, hne⟩ := hL r hr
-    rw [h.regs r hrL, hregs, if_neg hne]
+    rw [h.regs r hrL, hregs, ite_eq_right hne]
   zfEq := hzf
   cells A j hk := by
     obtain ⟨hj, arr, ha, hr⟩ := h.cells A j hk
@@ -446,7 +446,7 @@ theorem x86_SHR_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64)
     (x86_SHR v (BitVec.ofNat 64 k)).word = v >>> k := by
   have hkn : (BitVec.ofNat 64 k).toNat = k := by
     rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
-  simp only [x86_SHR, shiftCount, hkn, shiftMask_of_lt hk, if_neg hk0, rflags_OF, wshr,
+  simp only [x86_SHR, shiftCount, hkn, shiftMask_of_lt hk, ite_eq_right hk0, rflags_OF, wshr,
     Nat.min_eq_right hk.le]
 
 /-- `SHR:k:64 d, a` against `shr $k, %d` with `d` and `a` in one register, `0 < k < 64`. -/
@@ -621,7 +621,7 @@ theorem decSim_machLoad (D B : String) (off : Int) (hL : ∀ r, L' r → L r ∧
 theorem evalInstrA_loadMem_regs (sa : AState) (D B : String) (off : Int) :
     (evalInstrA sa (.loadMem D B off)).regs D = read64 sa.mem (sa.regs B + BitVec.ofInt 64 off) := by
   show (if D = D then _ else _) = _
-  rw [if_pos rfl]; rfl
+  rw [ite_eq_left rfl]; rfl
 
 /-- A machine instruction leaves a register outside its destinations unchanged. -/
 theorem evalInstrA_regs_of_not_mem_dsts (sa : AState) (j : JInstr 64) (r : String)
@@ -646,7 +646,7 @@ theorem decSim_load (d A idx B : String) (hidx : L idx) (hL : Survives π L L' d
   obtain ⟨_, arr, harr, hcell⟩ := h.cells A _ hK
   refine ⟨(b.setReg d (stackGet arr (sa.regs (π idx)).toNat)).nextPc, zf, ?_, ?_⟩
   · rw [fstepF_loadN]
-    simp only [lsemStepMem, loadN, loadStruct?, if_true, harr, h.regs idx hidx, Option.map_some]
+    simp only [lsemStepMem, loadN, loadStruct?, ite_true, harr, h.regs idx hidx, Option.map_some]
   · refine h.write d _ _ (fun r => ?_) rfl hL (fun hz => h.zfEq hz)
     show (if r = π d then read64 sa.mem (sa.regs B
         + BitVec.ofInt 64 ((8 * (sa.regs (π idx)).toNat : Nat) : Int)) else sa.regs r) = _
@@ -669,7 +669,7 @@ theorem decSim_store (hsep : Lay.Sep frame) (dst A idx val B : String)
   obtain ⟨hjl, arr, harr, _⟩ := h.cells A j hK
   refine ⟨(b.setArr dst (stackSet arr j (sa.regs (π val)))).nextPc, zf, ?_, ?_⟩
   · rw [fstepF_storeN]
-    simp only [lsemStepMem, storeN, storeStruct?, if_true, harr, h.regs idx hidx,
+    simp only [lsemStepMem, storeN, storeStruct?, ite_true, harr, h.regs idx hidx,
       h.regs val hval, hj, Option.map_some]
   · have hmem : (evalInstrA sa (.storeMemIdx B (π idx) 8 (.reg (π val)))).mem
         = write64 sa.mem (Lay.addr A j) (sa.regs (π val)) := by
@@ -724,7 +724,7 @@ theorem reload_regs {sa : AState} {b : LstateM} {zf : Bool}
   obtain rfl := Option.some.inj hfa
   refine ⟨by rw [evalInstrA_loadMem_regs]; exact hpa, fun r hr => ?_⟩
   show (if r = S then _ else _) = _
-  rw [if_neg hr]
+  rw [ite_eq_right hr]
   rfl
 
 /-- **Indexed load through a reloaded pointer.** `LOADIDX d, (A, idx, 8)` against the reload

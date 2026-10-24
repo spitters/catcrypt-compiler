@@ -64,7 +64,7 @@ theorem add_carry_recompose (x y : BitVec 64) (b : Bool) :
   rw [hval]
   generalize (if b then 1 else 0 : ℕ) = c at hc ⊢
   by_cases h : 2 ^ 64 ≤ x.toNat + y.toNat + c
-  · rw [decide_eq_true h, if_pos rfl]; omega
+  · rw [decide_eq_true h, ite_eq_left rfl]; omega
   · rw [decide_eq_false h]; simp only [Bool.false_eq_true, ↓reduceIte]; omega
 
 /-- The base-`2^64` recomposition of a limb list is below `2^(64·length)`. -/

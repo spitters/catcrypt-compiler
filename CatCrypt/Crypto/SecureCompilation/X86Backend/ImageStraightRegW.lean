@@ -321,7 +321,7 @@ theorem cell_route_reg_bytes {σ : AbiLayout} {nm : String → String} {body : L
     simp only [frameC, N.body q hq]
     show frameIn body _ q = _
     unfold frameIn
-    rw [if_pos hq]
+    rw [ite_eq_left hq]
   have hrel0 := imgRel_entryV (nm := nm)
     (fr := frameC (abiBase (abiReg σ) sa) (cellArrs σ) (frameE body sa)) (sa := sa)
     (body := cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
@@ -334,7 +334,7 @@ theorem cell_route_reg_bytes {σ : AbiLayout} {nm : String → String} {body : L
     (fun R' hR => by
       have hl : (ImageAddrRoute.entryA σ sa).reg.lvm R'
           = ⟨64, sa.regs (DecodePrinted.phys R')⟩ := by
-        simp only [ImageAddrRoute.entryA, hR, if_true]
+        simp only [ImageAddrRoute.entryA, hR, ite_true]
       unfold JasminLsemWidthN.LstateN.getW
       rw [hl]
       simp) rfl _ hrunB hok

@@ -137,12 +137,12 @@ theorem elimAux_simF (tag : LinstrR → MemTag) : ∀ (body : List Linstr) (h : 
     | some s₁ =>
       rw [hstep, Option.bind_some] at hrun
       by_cases hk : (stepReload h i.li_i).1 = true
-      · rw [if_pos hk]
+      · rw [ite_eq_left hk]
         obtain ⟨t₁, ht₁, hst₁⟩ := lsemStepFlag_sameF (i.li_i, tag i.li_i) hst hstep
         simp only [List.map_cons, lsemStraightFlag_cons, ht₁, Option.bind_some]
         exact ih _ s₁ t₁ (heldSound_stepF _ hs hstep hk) hst₁ s₂ hrun
       · have hdrop : (stepReload h i.li_i).1 = false := by simpa using hk
-        rw [if_neg hk, stepReload_env_of_drop hdrop]
+        rw [ite_eq_right hk, stepReload_env_of_drop hdrop]
         obtain ⟨b, hb, hbs⟩ := lsemStepFlag_drop (tag i.li_i) hs hdrop
         rw [hb] at hstep
         obtain rfl := Option.some.inj hstep
@@ -189,7 +189,7 @@ theorem elimAux_eq_of_fragFB {A : String → Option Nat} (tag : LinstrR → MemT
     intro h hfrag
     have hr := asReload_of_fragFB (hfrag i List.mem_cons_self)
     have hk : (stepReload h i.li_i).1 = true := by simp [stepReload, hr]
-    rw [elimAux_cons, if_pos hk, ih _ fun j hj => hfrag j (List.mem_cons_of_mem i hj)]
+    rw [elimAux_cons, ite_eq_left hk, ih _ fun j hj => hfrag j (List.mem_cons_of_mem i hj)]
 
 /-- **The pass is the identity on the fragment with flags.** The fragment has no
     single-source register move, so no instruction of the body is a reload. -/

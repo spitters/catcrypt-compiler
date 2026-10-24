@@ -191,11 +191,11 @@ theorem segRun_certX_sound {r : DoitRegime} {F : List Int} {ext : Nat}
       have hcb := condB_eq (hag.2.2.1 hfl) c
       by_cases hcnd : s₂.view.condB c = true
       · obtain ⟨b, hb, hle⟩ := succOk_spec hst
-        simp only [hcb, hcnd, if_true] at ih hr'
+        simp only [hcb, hcnd, ite_true] at ih hr'
         obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle hag) hr'
         exact ⟨by rw [hcb, ht], hs⟩
       · obtain ⟨b, hb, hle⟩ := succOk_spec hsn
-        simp only [hcb, hcnd, if_false, Bool.false_eq_true] at ih hr'
+        simp only [hcb, hcnd, ite_false, Bool.false_eq_true] at ih hr'
         obtain ⟨ht, hs⟩ := ih hb (PubA.agree_of_le hle hag) hr'
         exact ⟨by rw [hcb, ht], hs⟩
   | @stack pc s₁ ri ops t₁ e₁ h hops hok hr ih =>

@@ -219,16 +219,16 @@ theorem r1_carry_split (a0 a1 b : BitVec 64) :
       = (if 2 ^ 64 ≤ (lo1 a1 b).toNat + (hi0 a0 b).toNat then 1 else 0) := by
     simp only [c1, carryOutBit, hz1, Nat.add_zero, ge_iff_le]
     by_cases h : 2 ^ 64 ≤ (lo1 a1 b).toNat + (hi0 a0 b).toNat
-    · rw [if_pos h, if_pos h]; rfl
-    · rw [if_neg h, if_neg h]; rfl
+    · rw [ite_eq_left h, ite_eq_left h]; rfl
+    · rw [ite_eq_right h, ite_eq_right h]; rfl
   rw [hword, hbit]
   by_cases h : 2 ^ 64 ≤ (lo1 a1 b).toNat + (hi0 a0 b).toNat
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     have hmod : ((lo1 a1 b).toNat + (hi0 a0 b).toNat) % 2 ^ 64
         = (lo1 a1 b).toNat + (hi0 a0 b).toNat - 2 ^ 64 := by
       rw [Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
     rw [hmod]; omega
-  · rw [if_neg h, Nat.mod_eq_of_lt (by omega)]; omega
+  · rw [ite_eq_right h, Nat.mod_eq_of_lt (by omega)]; omega
 
 /-- The high word of a 64×64 product is at most `2^64 - 2` (so `hi1 + c1` with
     `c1 ≤ 1` never wraps): `a·b ≤ (2^64-1)^2`, and that quotient is `2^64 - 2`. -/

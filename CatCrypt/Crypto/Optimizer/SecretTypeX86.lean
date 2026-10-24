@@ -378,12 +378,12 @@ theorem forwardStep_taint_sound {h : Held} {C : CellTaint} {R : RegTaint}
         simp only [Held.killCell, List.mem_filter] at he
         have hne : e.1 ≠ (base, off) := by simpa using he.2
         show (if e.1 = (base, off) then R r else C e.1) = R e.2
-        rw [if_neg hne]
+        rw [ite_eq_right hne]
         exact hv e he.1.1
       · simp only [List.mem_singleton] at he
         subst he
         show (if (base, off) = (base, off) then R r else C (base, off)) = R r
-        rw [if_pos rfl]
+        rw [ite_eq_left rfl]
     | imm v =>
       have hstep : forwardStep h (.storeMem base off (.imm v))
           = (.storeMem base off (.imm v), h.killCell base off) := by
@@ -602,7 +602,7 @@ theorem dropIdMovs_blockMaxTaintX_le (block : List (JInstr 64)) :
     unfold dropIdMovs
     rw [List.filter_cons]
     by_cases h : isIdMov i = true
-    · simp only [h, Bool.not_true, Bool.false_eq_true, if_false]
+    · simp only [h, Bool.not_true, Bool.false_eq_true, ite_false]
       match i, h with
       | .mov d (.reg r), h =>
         simp only [isIdMov, beq_iff_eq] at h
@@ -611,7 +611,7 @@ theorem dropIdMovs_blockMaxTaintX_le (block : List (JInstr 64)) :
         unfold dropIdMovs at htail
         simp only [blockMaxTaintX, stepRegTaint_idMov]
         exact SecretLevel.leq_trans htail (SecretLevel.leq_join_right _ _)
-    · rw [if_pos (by simp [h] : (! isIdMov i) = true)]
+    · rw [ite_eq_left (by simp [h] : (! isIdMov i) = true)]
       have htail := ih (stepRegTaint R C i) (stepCellTaint R C i)
       unfold dropIdMovs at htail
       simp only [blockMaxTaintX]
@@ -716,14 +716,14 @@ theorem fuseMulxGuarded_blockMaxTaintX_le (body : List (JInstr 64)) :
           = stepRegTaint R C (.mulx mHi lo (.reg mA) (.reg b)) := by
         funext y
         simp only [stepRegTaint, writtenRegs, List.mem_cons,
-          List.not_mem_nil, or_false, instrTaint, operandTaint, if_neg hane, if_neg hbne]
+          List.not_mem_nil, or_false, instrTaint, operandTaint, ite_eq_right hane, ite_eq_right hbne]
         by_cases h1 : y = mHi
         · simp [h1]
         · by_cases h2 : y = lo <;> simp [h1, h2]
       have hhead : instrTaint (stepRegTaint R C (.imul lo (.reg b))) C
             (.mulx mHi lo (.reg mA) (.reg b))
           = instrTaint R C (.mulx mHi lo (.reg mA) (.reg b)) := by
-        simp only [instrTaint, operandTaint, hR1, if_neg hane, if_neg hbne]
+        simp only [instrTaint, operandTaint, hR1, ite_eq_right hane, ite_eq_right hbne]
       simp only [blockMaxTaintX, hcellImul, hcellMulx, hhead, hthread]
       refine join_leq ?_ ?_
       · exact SecretLevel.leq_trans (SecretLevel.leq_join_left _ _)

@@ -120,7 +120,7 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
     subst hx
     simp only [stepA, hb, hpol, hp, Option.map_some]
   by_cases hzp : s.zf = pol
-  · rw [if_pos hzp] at hstep hstepA
+  · rw [ite_eq_left hzp] at hstep hstepA
     cases hstep
     refine ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
       Or.inr ⟨⟨c[p], ii', l, by simp [LstateA.setLpc], hli⟩,
@@ -135,7 +135,7 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
     simp only at hli
     subst hli
     simp [stepA, LstateA.setLpc, hb']
-  · rw [if_neg hzp] at hstep hstepA
+  · rw [ite_eq_right hzp] at hstep hstepA
     cases hstep
     exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
       Or.inl (rel_label hphys hrel hb hnm)⟩
@@ -192,7 +192,7 @@ theorem img_stepW_cond' {frame : String → Option (BitVec 64)}
     subst hx
     simp only [stepA, hb, hpol, hp, Option.map_some]
   by_cases hzp : s.zf = pol
-  · rw [if_pos hzp] at hstep hstepA
+  · rw [ite_eq_left hzp] at hstep hstepA
     cases hstep
     refine ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
       Or.inr ⟨⟨c[p], ii', l, by simp [LstateA.setLpc], hli⟩,
@@ -207,7 +207,7 @@ theorem img_stepW_cond' {frame : String → Option (BitVec 64)}
     simp only at hli
     subst hli
     simp [stepA, LstateA.setLpc, hb']
-  · rw [if_neg hzp] at hstep hstepA
+  · rw [ite_eq_right hzp] at hstep hstepA
     cases hstep
     exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
       Or.inl (rel_condFallW hphys hrel hb hx)⟩

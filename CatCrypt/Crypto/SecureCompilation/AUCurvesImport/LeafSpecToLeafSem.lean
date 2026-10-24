@@ -147,7 +147,7 @@ theorem carrierLeafSem_agrees (n : Nat) (mulName fname : String)
       (carrierLeafSem n mulName fname leafSpec oldDest) := by
   intro a b
   simp only [carrierLeafSem]
-  exact dif_pos ⟨rfl, rfl, rfl⟩
+  exact dite_eq_left ⟨rfl, rfl, rfl⟩
 
 /-! ## §3  The lift lemma: LowCT `LeafSpec` byte-edge ⇒ VIR `LeafSem` `fp_mul`
 

@@ -191,9 +191,9 @@ theorem looped_eq_unrolled_denote (P : AState → Prop) (l : ALoop)
     simp only [runALoop, unrollABounded, runABlock_append]
     by_cases hk : k = 0
     · subst hk
-      rw [if_pos (by rw [hc']; rfl)]
+      rw [ite_eq_left (by rw [hc']; rfl)]
       rfl
-    · rw [if_neg (by rw [hc']; intro h; have := congrArg BitVec.toNat h; simp at this; omega)]
+    · rw [ite_eq_right (by rw [hc']; intro h; have := congrArg BitVec.toNat h; simp at this; omega)]
       exact ih f _ hP' (by omega) (by omega) hc' (by omega)
 
 /-- Under the hypotheses of `looped_eq_unrolled_denote`, the loop terminates in

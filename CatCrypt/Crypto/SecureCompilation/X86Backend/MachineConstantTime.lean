@@ -656,13 +656,13 @@ theorem cfExec_pub_determined (pub : PubPred) {w : Nat} (cf : OwnedCF w) :
     · have hz2 : s₂.get guard = 0 := by rw [← hgeq]; exact hz
       obtain ⟨hl, ha⟩ := ihe hce s₁ s₂ hag
       refine ⟨?_, ?_⟩
-      · simp only [cfExec, if_pos hz, if_pos hz2]; rw [hl]
-      · simp only [cfExec, if_pos hz, if_pos hz2]; exact ha
+      · simp only [cfExec, ite_eq_left hz, ite_eq_left hz2]; rw [hl]
+      · simp only [cfExec, ite_eq_left hz, ite_eq_left hz2]; exact ha
     · have hz2 : ¬ s₂.get guard = 0 := by rw [← hgeq]; exact hz
       obtain ⟨hl, ha⟩ := iht hct s₁ s₂ hag
       refine ⟨?_, ?_⟩
-      · simp only [cfExec, if_neg hz, if_neg hz2]; rw [hl]
-      · simp only [cfExec, if_neg hz, if_neg hz2]; exact ha
+      · simp only [cfExec, ite_eq_right hz, ite_eq_right hz2]; rw [hl]
+      · simp only [cfExec, ite_eq_right hz, ite_eq_right hz2]; exact ha
 
 /-- **`owned_ct_control_flow`.** The headline corollary: over the counted-loop +
     public-guard-conditional owned fragment (`RFor` / `RIfNz`), a CT-controlled
@@ -773,7 +773,7 @@ theorem nonCT_secretGuard_leaks_value :
   have h1 : ¬ ({ regs := fun r => if r = "sec" then 1 else 0 } : JState 64).get "sec" = 0 := by
     decide
   have h2 : ({ regs := fun _ => 0 } : JState 64).get "sec" = 0 := by decide
-  simp only [cfSecretIf, cfExec, if_neg h1, if_pos h2, blockLeak_cons, instrLeak,
+  simp only [cfSecretIf, cfExec, ite_eq_right h1, ite_eq_left h2, blockLeak_cons, instrLeak,
     blockLeak_nil, List.append_nil]
   decide
 

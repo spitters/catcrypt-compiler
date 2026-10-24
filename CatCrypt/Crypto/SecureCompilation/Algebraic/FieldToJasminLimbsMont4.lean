@@ -176,46 +176,46 @@ theorem blockSquareV : (loweringL P).BlockSquare (fun {t} x => encL P (t := t) x
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL P (.fAdd P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fAddF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact addBlk_denote P _ _ _ _ _ _ _ _ _ a b (nv_encX P a _) (nv_encY P _ b _)
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL P (.fMul P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fMulF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact mulBlk_denote P _ _ _ _ _ _ _ _ _ a b (nv_encX P a _) (nv_encY P _ b _)
   · obtain ⟨⟩ := vals
     show (lowerOpL P (.fConst P.p c)).denote .nil = encL P (t := .fp P.p) (fConstF c)
-    rw [encL_fp, lowerOpL, dif_pos rfl]
+    rw [encL_fp, lowerOpL, dite_eq_left rfl]
     exact constBlk_denote _ _
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fCopy P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fCopyF a)
-    rw [encL_fp, lowerOpL, if_pos rfl, copyBlk_denote, nv_encX]
+    rw [encL_fp, lowerOpL, ite_eq_left rfl, copyBlk_denote, nv_encX]
     rfl
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL P (.fSub P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fSubF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact subBlk_denote_enc P _ _ _ _ _ _ _ _ _ a b (nv_encX P a _) (nv_encY P _ b _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fNeg P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fNegF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact negBlk_denote_enc P _ _ _ _ _ a (nv_encX P a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fieldDouble P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fDoubleF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact addBlk_denote P _ _ _ _ _ _ _ _ _ a a (nv_encX P a _) (nv_encX P a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fieldSquare P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fSquareF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact mulBlk_denote P _ _ _ _ _ _ _ _ _ a a (nv_encX P a _) (nv_encX P a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fInv P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fInvF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact invBlk_denote_inv P hp _ _ _ _ _ a (nv_encX P a _)
 
 /-- **The block square of `loweringL` on `GoodM`.** -/

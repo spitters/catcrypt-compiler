@@ -570,8 +570,8 @@ theorem liveAgree_write {Lr : List String} {dst opn : String} {srcs : List LOper
   rw [hs, ht]
   simp only [Lstate.lvm_setReg]
   by_cases hrd : r = dst
-  · rw [if_pos hrd, if_pos hrd]
-  · rw [if_neg hrd, if_neg hrd]
+  · rw [ite_eq_left hrd, ite_eq_left hrd]
+  · rw [ite_eq_right hrd, ite_eq_right hrd]
     refine h.2 r ?_
     rcases hr with hp | hm
     · exact Or.inl hp
@@ -724,7 +724,7 @@ theorem deadElim_simF (tag : LinstrR → MemTag) (body : Lcmd) :
                 · rcases (Bool.or_eq_true _ _).mp hdr with hself | hdead
                   · have hds : src = LOperand.reg dst :=
                       eq_of_beq ((Bool.and_eq_true _ _).mp hself).2
-                    rw [if_pos hrd, hv, hds]
+                    rw [ite_eq_left hrd, hv, hds]
                     simp only [evalOperand]
                     rw [← hrd]
                     exact h.2 r hr
@@ -733,7 +733,7 @@ theorem deadElim_simF (tag : LinstrR → MemTag) (body : Lcmd) :
                     rcases hr with hp | hm
                     · rw [hrd] at hp; rw [hp] at hd; exact absurd hd (by simp)
                     · rw [hrd, hnc] at hm; exact absurd hm (by simp)
-                · rw [if_neg hrd]; exact h.2 r hr
+                · rw [ite_eq_right hrd]; exact h.2 r hr
           · exact hkeep (deadElimStep_keep_some Lr outR hLi hrec hcs (by simpa using hdr))
       · rw [hbar Lr outR] at h ⊢
         dsimp only at h ⊢

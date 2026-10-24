@@ -251,12 +251,12 @@ theorem whileFun_sim (semBody : SEnvScalar → Option SEnvScalar) (guard : SEnvS
       cases hga : guardA (fb a) with
       | false =>
           rw [hga] at hg
-          simp only [hg, Bool.false_eq_true, if_false, Option.some.injEq] at h
+          simp only [hg, Bool.false_eq_true, ite_false, Option.some.injEq] at h
           subst h
           exact ⟨0, fb a, by omega, .exit hga, hSR₁⟩
       | true =>
           rw [hga] at hg
-          simp only [hg, if_true] at h
+          simp only [hg, ite_true] at h
           obtain ⟨n, a', hn, hrec, hSR'⟩ := ih env₁ (fb a) env' hSR₁ (hinv a hP) h
           exact ⟨n + 1, a', by omega, .iter hga hrec, hSR'⟩
 
@@ -286,7 +286,7 @@ theorem whileFun_total (semBody : SEnvScalar → Option SEnvScalar) (guard : SEn
       rw [hga] at hg
       obtain ⟨k', rfl⟩ : ∃ k', k = k' + 1 := ⟨k - 1, by omega⟩
       obtain ⟨env', hrun, hSR'⟩ := ih k' env₁ (fb a) rfl hSR₁ (hinv a hP) (by omega)
-      exact ⟨env', by simp only [semScalarWhile, hstep, hg, if_true]; exact hrun, hSR'⟩
+      exact ⟨env', by simp only [semScalarWhile, hstep, hg, ite_true]; exact hrun, hSR'⟩
 
 /-! ## C. The node rules at `semU` -/
 

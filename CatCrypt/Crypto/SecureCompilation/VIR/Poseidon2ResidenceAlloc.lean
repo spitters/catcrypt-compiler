@@ -89,11 +89,11 @@ theorem firstFittingCell_le (hulls : CellHulls) (st en : Nat) :
     intro i hn hi
     rw [firstFittingCell]
     by_cases hlt : i < hulls.size
-    · simp only [hlt, dif_pos]
+    · simp only [hlt, dite_eq_left]
       by_cases hov : physRangesOverlap hulls[i] (st, en)
-      · simp only [hov, if_pos]
+      · simp only [hov, ite_eq_left]
         exact ih (i + 1) (by omega) (by omega)
-      · simp only [hov, Bool.false_eq_true, if_neg, not_false_iff]
+      · simp only [hov, Bool.false_eq_true, ite_eq_right, not_false_iff]
         omega
     · simp [hlt, hi]
 
@@ -109,22 +109,22 @@ theorem firstFittingCell_disjoint (hulls : CellHulls) (st en : Nat) :
     intro i hn h hh
     rw [firstFittingCell] at hh
     have hge : ¬ i < hulls.size := by omega
-    simp only [hge, dif_neg, not_false_iff] at hh
+    simp only [hge, dite_eq_right, not_false_iff] at hh
     rw [Array.getElem?_eq_none (by omega)] at hh
     exact absurd hh (by simp)
   | succ n ih =>
     intro i hn h hh
     rw [firstFittingCell] at hh
     by_cases hlt : i < hulls.size
-    · simp only [hlt, dif_pos] at hh
+    · simp only [hlt, dite_eq_left] at hh
       by_cases hov : physRangesOverlap hulls[i] (st, en)
-      · simp only [hov, if_pos] at hh
+      · simp only [hov, ite_eq_left] at hh
         exact ih (i + 1) (by omega) h hh
-      · simp only [hov, Bool.false_eq_true, if_neg, not_false_iff] at hh
+      · simp only [hov, Bool.false_eq_true, ite_eq_right, not_false_iff] at hh
         rw [Array.getElem?_eq_getElem hlt] at hh
         cases hh
         exact hov
-    · simp only [hlt, dif_neg, not_false_iff] at hh
+    · simp only [hlt, dite_eq_right, not_false_iff] at hh
       rw [Array.getElem?_eq_none (by omega)] at hh
       exact absurd hh (by simp)
 
@@ -183,7 +183,7 @@ theorem allocCell_mono (hulls : CellHulls) (st en : Nat) (j : Nat) (h : Nat × N
   | none =>
     refine ⟨h, ?_, Nat.le_refl _, Nat.le_refl _⟩
     have hjlt : j < hulls.size := lt_size_of_getElem? hj
-    rw [Array.getElem?_push, if_neg (Nat.ne_of_lt hjlt)]
+    rw [Array.getElem?_push, ite_eq_right (Nat.ne_of_lt hjlt)]
     exact hj
 
 /-! ## 1. The first-fit fold over live ranges -/

@@ -223,7 +223,7 @@ theorem argMatSeq_reads {w : Nat} (pairs : List (String × String))
           -- the tail leaves `physDst` unchanged (distinct dests) reading from `s1`
           -- and `s1.lvm physDst = s.lvm abiReg`.
           have hs1_dst : s1.lvm physDst = s.lvm abiReg := by
-            simp only [hs1, Lstate.lvm_nextPc, Lstate.lvm_setReg, if_true]
+            simp only [hs1, Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_true]
           -- the tail's run does not touch `physDst`: every tail dest ≠ physDst
           have htail_frame : s'.lvm physDst = s1.lvm physDst := by
             -- distinctness: head dst differs from all tail dsts
@@ -237,7 +237,7 @@ theorem argMatSeq_reads {w : Nat} (pairs : List (String × String))
             have hpfresh : p.2 ≠ physDst :=
               hfresh p (List.mem_cons_of_mem _ hptl) (physDst, abiReg)
                 List.mem_cons_self
-            simp only [hs1, Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hpfresh]
+            simp only [hs1, Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_right hpfresh]
           rw [hread, hsrc_eq]
 
 /-! ## 3. Body-facing reformulation: argument registers hold the ABI values

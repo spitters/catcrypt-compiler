@@ -376,7 +376,7 @@ theorem honestResumption_invariant (client server : String) (psk : Bytes) :
   have h1 : (pskClientFinishedTag == clientFinishedTag) = false := by decide
   have h2 : (pskClientFinishedTag == serverFinishedTag) = false := by decide
   have h3 : (pskClientFinishedTag == pskClientFinishedTag) = true := by decide
-  rw [if_neg (by rw [h1]; decide), if_neg (by rw [h2]; decide), if_pos (by rw [h3])]
+  rw [ite_eq_right (by rw [h1]; decide), ite_eq_right (by rw [h2]; decide), ite_eq_left (by rw [h3])]
   refine ⟨server, _, rfl, .inl ⟨(ptr₄ client server psk).length, ?_, ?_⟩⟩
   · -- (ptr₄ c s psk).length < (ptr₆ c s psk).length
     unfold ptr₆ ptr₅ ptr₄ ptr₃ ptr₂ ptr₁ ptr₀

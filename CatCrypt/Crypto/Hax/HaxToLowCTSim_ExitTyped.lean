@@ -286,7 +286,7 @@ theorem exitFunctionT_sim (bi : Builtins) (N : Nat) (leafSpec : LeafSpec)
           RustExec.letU64Zero _ _ _ _ (RustExec.letU64Zero _ _ _ _
             (RustExec.seq _ _ _ _ _ hex
               (RustExec.ifTrue _ _ _ _ _ 1 h1 (by decide) (RustExec.scalarSetExpr _ _ _)))), ?_⟩
-        simp only [outcomeAgreesT, rsScalar_rsSetScalar, if_true]
+        simp only [outcomeAgreesT, rsScalar_rsSetScalar, ite_true]
         exact Or.inl hw
     | _ => simp at hcf
 
@@ -502,7 +502,7 @@ theorem hax64_scalarOp_int {f : String} {F : Nat → Nat → Nat}
       hax64Builtins f [.int n, .int m] = some r →
       r = .int (F n m) ∧ F n m < 2 ^ 64) :
     ScalarValN r ∧ valueToScalar r = some (scalarOpNatT f na nb) := by
-  simp only [valueToScalar, ha0, hb0, if_true, Option.some.injEq] at hna hnb
+  simp only [valueToScalar, ha0, hb0, ite_true, Option.some.injEq] at hna hnb
   obtain rfl : a = (na : Int) := by omega
   obtain rfl : b = (nb : Int) := by omega
   obtain ⟨rfl, hlt⟩ := hsem na nb r (by omega) (by omega) hbi
@@ -581,7 +581,7 @@ theorem hax64_cmp_int {f : String} {c : Int → Int → Bool}
     (ha0 : 0 ≤ a) (hb0 : 0 ≤ b)
     (hna : valueToScalar (.int a) = some na) (hnb : valueToScalar (.int b) = some nb) :
     ScalarValN r ∧ valueToScalar r = some (scalarOpNatT f na nb) := by
-  simp only [valueToScalar, ha0, hb0, if_true, Option.some.injEq] at hna hnb
+  simp only [valueToScalar, ha0, hb0, ite_true, Option.some.injEq] at hna hnb
   obtain rfl : a = (na : Int) := by omega
   obtain rfl : b = (nb : Int) := by omega
   exact hax64_bool_result (hc _ _) hbi (hexpr na nb)
@@ -856,7 +856,7 @@ theorem calleeSpec_call_self (leafSpec : LeafSpec) (N : Nat) (g : String) (cg : 
     (old : RustVal dt) :
     (calleeSpec leafSpec N g cg entry out).call g dt ds old args = out dt r := by
   have hex : ∃ r, RustExec N leafSpec cg (entry args) r := ⟨r, hr⟩
-  simp only [calleeSpec, if_true, dif_pos hex]
+  simp only [calleeSpec, ite_true, dite_eq_left hex]
   rw [hdet _ _ _ hex.choose_spec hr]
 
 /-- The environment `ρ` with the parameters `ps` bound to the values `vals`, in order. -/

@@ -110,7 +110,7 @@ theorem coeffStoreThenLoad (dst : Fin 256 → BitVec 16) (j : Fin 256)
     exact Nat.mod_eq_of_lt (by omega)
   rw [hj, stackGet_id (stackSet dst j.val v) j]
   simp only [stackSet]
-  rw [if_pos (Fin.ext (Nat.mod_eq_of_lt j.isLt).symm)]
+  rw [ite_eq_left (Fin.ext (Nat.mod_eq_of_lt j.isLt).symm)]
 
 /-! ## 2. CT-analysis level: the public-indexed coefficient loop is constant-time
 

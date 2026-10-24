@@ -525,7 +525,7 @@ def mulModLetArgs : ImpExpr → Option (ImpExpr × ImpExpr × String)
 theorem mulModLetArgs_mulModLet (x : String) (a b : ImpExpr) (m : String) (h : m ≠ x) :
     mulModLetArgs (mulModLet x a b m) = some (a, b, m) := by
   unfold mulModLet mulModLetArgs
-  exact if_pos ⟨rfl, h⟩
+  exact ite_eq_left ⟨rfl, h⟩
 
 /-- A right-hand side with the modular-multiplication idiom replaced by the call
     `mulmod#64` on its operands. -/

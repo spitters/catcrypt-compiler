@@ -226,7 +226,7 @@ theorem remapBlockMaintains1 {w : Nat} (body : Lcmd) (tbl : Array Nat)
       subst hmd
       simp
     · have hmne : m ≠ nDst := fun he => hm (by rw [he])
-      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm, if_neg hmne]
+      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_right hm, ite_eq_right hmne]
       exact hrel m (hcarry m hmL hmne)
 
 /-! ## 3. The `lsem` value of a decoded mnemonic -/
@@ -380,8 +380,8 @@ theorem physBodyElem_unaryImm (body : Lcmd) (tbl : Array Nat) (ii : Nat)
       || (LOperand.reg (physRename body tbl nSrc)).isSpill) = false) :
     (physBodyElem body tbl ⟨ii, .Lopn [.reg nDst] opn [.reg nSrc]⟩).map (·.li_i)
       = [.Lopn [.reg (physRename body tbl nDst)] opn [.reg (physRename body tbl nSrc)]] := by
-  simp only [physBodyElem, hnat, if_true, remapOperand_reg, lowerNativeShiftRotate, hnsp,
-    Bool.false_eq_true, if_false, List.map_cons, List.map_nil]
+  simp only [physBodyElem, hnat, ite_true, remapOperand_reg, lowerNativeShiftRotate, hnsp,
+    Bool.false_eq_true, ite_false, List.map_cons, List.map_nil]
 
 /-! ## 6. The sum of binding kinds -/
 

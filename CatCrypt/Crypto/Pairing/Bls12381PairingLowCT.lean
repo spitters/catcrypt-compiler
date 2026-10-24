@@ -272,7 +272,7 @@ theorem pairingLowCT_denote (prims : BlsPrimitives) (N : Nat)
     -- is decided by reduction on the literal sizes, so the `▸` casts (over
     -- `rfl`) vanish and the value is `prims.pairing a b` definitionally.
     simp only [primsLeafSpec, primsCall, gtLoc, g1Loc, g2Loc, locatedUpdate,
-      Located.locDst, List.map, if_pos]
+      Located.locDst, List.map, ite_eq_left]
     rfl
   rw [hval] at hstep
   exact hstep
@@ -332,7 +332,7 @@ theorem fp12MulLowCT_denote (prims : BlsPrimitives) (N : Nat)
     -- fp12_mul branch: name ≠ pairing, = fp12Mul; width guard holds.
     have hne : fp12MulLeafName ≠ pairingLeafName := by decide
     simp only [primsLeafSpec, primsCall, gtLoc, locatedUpdate,
-      Located.locDst, List.map, if_neg hne, if_pos]
+      Located.locDst, List.map, ite_eq_right hne, ite_eq_left]
     rfl
   rw [hval] at hstep
   exact hstep

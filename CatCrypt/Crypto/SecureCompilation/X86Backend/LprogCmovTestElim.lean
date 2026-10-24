@@ -318,8 +318,8 @@ theorem selectW_setWidth_of_lt_two {w : Nat} (c a b : BitVec w) (hc : c.toNat < 
     rw [show BitVec.toNat (0 : BitVec w) = 0 from rfl]
     omega
   by_cases h0 : c = 0
-  · rw [if_pos h0, if_neg (fun h => (key.mp h) h0)]
-  · rw [if_neg h0, if_pos (key.mpr h0)]
+  · rw [ite_eq_left h0, ite_eq_right (fun h => (key.mp h) h0)]
+  · rw [ite_eq_right h0, ite_eq_left (key.mpr h0)]
 
 /-- **`fstep` agrees with `lsemStep` on a `CMOV:64` with a `0`/`1`
     condition.** The store image of the flag-extended step equals that of
@@ -438,7 +438,7 @@ theorem fsem_cmovPart {w : Nat} (ii : Nat) (d t f : String) (x0 : FState w) (z :
     · cases z <;> simp [fsem, fstep, cmovccL, cmovArgs?, testArgs?, cmpArgs?, cmovccArgs?, hz,
         cmoveMn_ne_testMn, cmoveMn_ne_cmpMn, cmoveMn_ne_cmovneMn, evalOperand]
     · funext r; simp [Lstate.setReg]
-  · rw [if_neg hdt]
+  · rw [ite_eq_right hdt]
     by_cases hdf : d = f
     · subst hdf
       refine ⟨⟨(x0.st.setReg d (if z then x0.st.lvm d else x0.st.lvm t)).nextPc, some z⟩,
@@ -476,7 +476,7 @@ theorem cmovRewrite_fsem {w : Nat} (ii : Nat) (cur : Option String) (d c t f : S
   · intro c' hc'
     cases hc'
     rw [hz1, hv1]
-    simp only [if_neg (Ne.symm hdc), hv0]
+    simp only [ite_eq_right (Ne.symm hdc), hv0]
 
 /-! ## 7. The sweep -/
 
@@ -558,7 +558,7 @@ theorem curOk_nextCur {w : Nat} {cur : Option String} {i : LinstrR} {x x' : FSta
     simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hsil
     obtain ⟨hA, hB, hC, hD⟩ :=
       flagArgs_none_of_silent (ds := [.reg xr]) (srcs := srcs) hsil.1
-    simp only [fstep, hA, hB, hC, hD, flagSilentInstr, hsil.1, if_true] at hs
+    simp only [fstep, hA, hB, hC, hD, flagSilentInstr, hsil.1, ite_true] at hs
     cases hl : lsemStep (.Lopn [.reg xr] opn srcs) x.st with
     | none => rw [hl] at hs; cases hs
     | some s' =>
@@ -849,7 +849,7 @@ theorem LiveAgree.setReg_both {w : Nat} {L : List String} {s t : Lstate w}
   simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg]
   by_cases hrd : r = d
   · simp [hrd]
-  · simp only [if_neg hrd]
+  · simp only [ite_eq_right hrd]
     refine h.2 r (hr.imp id fun hc => ?_)
     simpa [List.contains_cons, hrd] using hc
 
@@ -865,7 +865,7 @@ theorem LiveAgree.setReg_left {w : Nat} {L : List String} {s t : Lstate w}
     rcases hr with hr | hr
     · rw [hb] at hr; cases hr
     · simp at hr
-  rw [if_neg hrb]
+  rw [ite_eq_right hrb]
   refine h.2 r (hr.imp id fun hc => ?_)
   simp only [List.contains_eq_mem, List.mem_filter, decide_eq_true_eq] at hc ⊢
   exact hc.1
@@ -1001,7 +1001,7 @@ theorem sel_step {w : Nat} {L : List String} {fl : Bool} {o n : FState w}
     · simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, hv1, hV, hV']
       by_cases hrd : r = d
       · simp [hrd]
-      · simp only [if_neg hrd]
+      · simp only [ite_eq_right hrd]
         refine hs.1.2 r (hr.imp id fun hc => ?_)
         simpa [List.contains_cons, hrd] using hc
     · intro b' ne' hc
@@ -1148,7 +1148,7 @@ theorem keep_step {w : Nat} {L : List String} {fl : Bool} {i : LinstrR} {o n : F
       · rfl
       · rw [hsil] at h
         simp only [Bool.not_true, Bool.or_false] at h
-        simp only [if_true]
+        simp only [ite_true]
         exact hs.2 h
     cases ho : lsemStep (.Lopn dsts opn srcs) o.st with
     | none =>
@@ -1194,7 +1194,7 @@ theorem fact_keep {w : Nat} {cur : Option (String × Bool)} {i : LinstrR}
     simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hsil
     obtain ⟨hA, hB, hC, hD⟩ :=
       flagArgs_none_of_silent (ds := [.reg xr]) (srcs := srcs) hsil.1
-    simp only [fstep, hA, hB, hC, hD, flagSilentInstr, hsil.1, if_true] at ho hn
+    simp only [fstep, hA, hB, hC, hD, flagSilentInstr, hsil.1, ite_true] at ho hn
     obtain ⟨vx, vy, hbv, hz⟩ := hf b ne rfl
     cases hlo : lsemStep (.Lopn [.reg xr] opn srcs) o.st with
     | none => rw [hlo] at ho; cases ho

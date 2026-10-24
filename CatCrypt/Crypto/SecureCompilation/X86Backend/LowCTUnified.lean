@@ -209,7 +209,7 @@ theorem lowerSel_denote (ρ : RegMap) (s : SelScalar) (rs : RustState) (js : JSt
   · -- v = dst: the destination register holds the selected word.
     subst hv
     rw [hreg]
-    simp only [selDenote, rsSetScalar, beq_self_eq_true, if_true]
+    simp only [selDenote, rsSetScalar, beq_self_eq_true, ite_true]
     by_cases hz : rs.rsScalar s.sel = 0 <;> simp [hz]
   · -- v ≠ dst: the select writes only ρ dst, so ρ v is untouched on both sides.
     have hvdR : ρ v ≠ ρ s.dst := fun h => hv (hρ h)
@@ -223,7 +223,7 @@ theorem lowerSel_denote (ρ : RegMap) (s : SelScalar) (rs : RustState) (js : JSt
       -- mov (writes only ρ dst)
       rw [cmove_get_other _ _ _ _ hvdR, selectFlag_value_any, mov_get_other _ _ _ _ hvdR]
     rw [hother]
-    simp only [selDenote, rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, if_false]
+    simp only [selDenote, rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, ite_false]
     exact hmatch v
 
 /-! ## 2. The unified statement type

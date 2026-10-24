@@ -176,7 +176,7 @@ theorem sample_apply_card_inv (n : Nat) (h : Heap) (b : BitVec n) :
     | some b' =>
       have hbb : b' ≠ b := fun heq => hob (by rw [heq])
       simp only [SDistr.pure, PMF.pure_apply, Option.some.injEq, Prod.mk.injEq]
-      rw [if_neg (by intro hc; exact hbb hc.1.symm)]
+      rw [ite_eq_right (by intro hc; exact hbb hc.1.symm)]
       simp
 
 /-- The uniform fibre weight, written explicitly as `(2 ^ n)⁻¹` via
@@ -240,7 +240,7 @@ theorem sample_support_eq_image (n : Nat) (h : Heap) :
       | none => simp [SDistr.uniform_apply_none]
       | some b'' =>
         simp only [SDistr.pure, PMF.pure_apply, Option.some.injEq, Prod.mk.injEq]
-        rw [if_neg (by intro hc; exact hne hc.2)]
+        rw [ite_eq_right (by intro hc; exact hne hc.2)]
         simp
     -- `(b, h') = (b, h)` is hit by `entropyOf b`.
     exact ⟨entropyOf b, by subst hh; exact Prod.ext (sampleDet_entropyOf b) rfl⟩

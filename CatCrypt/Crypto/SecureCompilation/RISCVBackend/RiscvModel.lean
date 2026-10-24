@@ -127,7 +127,7 @@ def set (s : RState) (r : String) (v : R32) : RState :=
     (h : r' ≠ r) : (s.set r v).get r' = s.get r' := by
   by_cases hz : r' = "zero" ∨ r' = "x0"
   · simp [get, hz]
-  · simp only [get, hz, if_false, set]
+  · simp only [get, hz, ite_false, set]
     by_cases hr : r = "zero" ∨ r = "x0"
     · simp [hr]
     · simp [hr, h]
@@ -250,15 +250,15 @@ def RInst.rorImm (d a : String) (m : Nat) : RInst :=
 
 /-- Below 32, `RInst.shlImm` is the `slliw` instruction with the same amount. -/
 theorem RInst.shlImm_of_lt (d a : String) {m : Nat} (h : m < 32) :
-    RInst.shlImm d a m = .slliw d a ⟨m, h⟩ := dif_pos h
+    RInst.shlImm d a m = .slliw d a ⟨m, h⟩ := dite_eq_left h
 
 /-- Below 32, `RInst.shrImm` is the `srliw` instruction with the same amount. -/
 theorem RInst.shrImm_of_lt (d a : String) {m : Nat} (h : m < 32) :
-    RInst.shrImm d a m = .srliw d a ⟨m, h⟩ := dif_pos h
+    RInst.shrImm d a m = .srliw d a ⟨m, h⟩ := dite_eq_left h
 
 /-- Below 32, `RInst.rorImm` is the `roriw` instruction with the same amount. -/
 theorem RInst.rorImm_of_lt (d a : String) {m : Nat} (h : m < 32) :
-    RInst.rorImm d a m = .roriw d a ⟨m, h⟩ := dif_pos h
+    RInst.rorImm d a m = .roriw d a ⟨m, h⟩ := dite_eq_left h
 
 /-- `RInst.shlImm d a m` writes `opSlliw a m` to `d`, for every `m`. -/
 theorem evalRInst_shlImm (s : RState) (d a : String) (m : Nat) :

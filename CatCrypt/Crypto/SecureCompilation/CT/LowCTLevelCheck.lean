@@ -63,7 +63,7 @@ theorem lk_of_not_mem (β : String → Bool) :
   | [], _, _ => rfl
   | (y, b) :: l, x, h => by
     simp only [List.map_cons, List.mem_cons, not_or] at h
-    simp only [lk, h.1, if_false]
+    simp only [lk, h.1, ite_false]
     exact lk_of_not_mem β l x h.2
 
 theorem lk_map (β : String → Bool) (f : String → Bool) :
@@ -181,9 +181,9 @@ theorem Rel.setTower {β : String → Bool} {L : Levels} {rs₁ rs₂ : RustStat
   refine ⟨fun hy => (h y).1 hy, fun hy => ?_⟩
   by_cases hyx : y = x
   · subst hyx
-    simp only [Levels.setTw, lk, if_true] at hy
+    simp only [Levels.setTw, lk, ite_true] at hy
     simp [rsSetTower, hv hy]
-  · simp only [Levels.setTw, lk, hyx, if_false] at hy
+  · simp only [Levels.setTw, lk, hyx, ite_false] at hy
     simp [rsSetTower, hyx, (h y).2 hy]
 
 theorem Rel.setTower_secret {β : String → Bool} {L : Levels} {rs₁ rs₂ : RustState}
@@ -212,9 +212,9 @@ theorem Rel.setScalar {β : String → Bool} {L : Levels} {rs₁ rs₂ : RustSta
   refine ⟨fun hy => ?_, fun hy => (h y).2 hy⟩
   by_cases hyx : y = x
   · subst hyx
-    simp only [Levels.setSc, lk, if_true] at hy
+    simp only [Levels.setSc, lk, ite_true] at hy
     simp [rsSetScalar, hv hy]
-  · simp only [Levels.setSc, lk, hyx, if_false] at hy
+  · simp only [Levels.setSc, lk, hyx, ite_false] at hy
     simp [rsSetScalar, hyx, (h y).1 hy]
 
 theorem lookup_eq {β : String → Bool} {L : Levels} {rs₁ rs₂ : RustState}
@@ -752,7 +752,7 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
         have hle : Levels.Le β L (L.setManyTw dests true) := fun x =>
           ⟨id, fun h => by rw [lk_setManyTw]; split <;> simp [h]⟩
         exact callNUpdate_secret _ _ _ _ _ dests 0 _ _ (hR.mono hle)
-          (fun d hd => by rw [lk_setManyTw, if_pos (List.mem_map_of_mem hd)])
+          (fun d hd => by rw [lk_setManyTw, ite_eq_left (List.mem_map_of_mem hd)])
       | false =>
         have hall := secArgs_false hs
         have hargs : secArgs β L args = false := by

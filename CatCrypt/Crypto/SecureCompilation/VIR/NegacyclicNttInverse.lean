@@ -145,11 +145,11 @@ theorem invLayerFn_layerFn (ψ : R) (L M : ℕ) (hψ : ψ ^ (2 ^ L) = -1) (ℓ :
   by_cases h : i % (len + len) < len
   · obtain ⟨hm, hd⟩ := partner_up len i h
     have hn : ¬ (i + len) % (len + len) < len := by omega
-    simp only [if_pos h, if_neg hn, hd, Nat.add_sub_cancel]
+    simp only [ite_eq_left h, ite_eq_right hn, hd, Nat.add_sub_cancel]
     ring
   · obtain ⟨hle, hm, hd⟩ := partner_down len i h
     have hn : (i - len) % (len + len) < len := by omega
-    simp only [if_neg h, if_pos hn, hd, Nat.sub_add_cancel hle]
+    simp only [ite_eq_right h, ite_eq_left hn, hd, Nat.sub_add_cancel hle]
     linear_combination (2 * a i) * zt_mul_ztInv ψ L hψ (2 ^ ℓ + i / (len + len))
 
 /-- A forward layer after the inverse layer of the same index multiplies every
@@ -164,11 +164,11 @@ theorem layerFn_invLayerFn (ψ : R) (L M : ℕ) (hψ : ψ ^ (2 ^ L) = -1) (ℓ :
   by_cases h : i % (len + len) < len
   · obtain ⟨hm, hd⟩ := partner_up len i h
     have hn : ¬ (i + len) % (len + len) < len := by omega
-    simp only [if_pos h, if_neg hn, hd, Nat.add_sub_cancel]
+    simp only [ite_eq_left h, ite_eq_right hn, hd, Nat.add_sub_cancel]
     linear_combination (a i - a (i + len)) * zt_mul_ztInv ψ L hψ (2 ^ ℓ + i / (len + len))
   · obtain ⟨hle, hm, hd⟩ := partner_down len i h
     have hn : (i - len) % (len + len) < len := by omega
-    simp only [if_neg h, if_pos hn, hd, Nat.sub_add_cancel hle]
+    simp only [ite_eq_right h, ite_eq_left hn, hd, Nat.sub_add_cancel hle]
     linear_combination (-(a (i - len) - a i)) * zt_mul_ztInv ψ L hψ (2 ^ ℓ + i / (len + len))
 
 theorem layerFn_smul (ψ : R) (L M ℓ : ℕ) (c : R) (f : ℕ → R) :
@@ -383,11 +383,11 @@ theorem invStageProg_denote (q M L : ℕ) (ψ s : ZMod q) (st : Option ℕ)
     generalize 2 ^ (M - 1 - ℓ) = len at hpart ⊢
     split
     · next hlt =>
-      rw [gsLaneProg_denote, if_pos rfl, fnVal_lookup q f m i 0 (by omega),
+      rw [gsLaneProg_denote, ite_eq_left rfl, fnVal_lookup q f m i 0 (by omega),
         fnVal_lookup q f m (i + len) 0 (by have := hpart hlt; omega)]
       simp
     · next hlt =>
-      rw [gsLaneProg_denote, if_neg (by simp), fnVal_lookup q f m (i - len) 0 (by omega),
+      rw [gsLaneProg_denote, ite_eq_right (by simp), fnVal_lookup q f m (i - len) 0 (by omega),
         fnVal_lookup q f m i 0 (by omega)]
       simp
 

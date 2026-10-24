@@ -173,7 +173,7 @@ theorem mem_load_middle_tie_at_dst (m : MemLoadSrc) (st : JState 64) (n : Nat)
     simp only [MemLoadSrc.toLowCT, semScalar, hdst, hArr, hIdx]
   · -- the written value at `m.dst` equals the machine's output register.
     rw [runBlock_lowerMemLoad_get]
-    simp only [SEnvScalar.upd, if_pos]
+    simp only [SEnvScalar.upd, ite_eq_left]
     rw [memGetDyn_regionArr st m.arr n m.scale (st.regs m.idx).toNat hidx_lt]
 
 /-- **The store round-trip middle tie for the array-store.** `semScalar` succeeds on
@@ -206,12 +206,12 @@ theorem mem_store_middle_tie_at_cell (m : MemStoreSrc) (st : JState 64) (n : Nat
       (harr.symm ▸ memSetDyn (fun j : Fin n => st.mem m.arr (m.scale * j.val))
         (st.regs m.idx).toNat (st.regs m.src)), ?_, ?_⟩
   · -- `semScalar` reduces along the three lookups + the `.memref n` encoding guard.
-    simp only [MemStoreSrc.toLowCT, semScalar, hArr, hIdx, hSrc, harr, dif_pos]
+    simp only [MemStoreSrc.toLowCT, semScalar, hArr, hIdx, hSrc, harr, dite_eq_left]
   · -- the post-env memref cell reads back to the machine's stored word.
     refine ⟨memSetDyn (fun j : Fin n => st.mem m.arr (m.scale * j.val))
       (st.regs m.idx).toNat (st.regs m.src), ?_, ?_⟩
     · -- the memref slot after the update (cast collapsed).
-      simp only [SEnvScalar.upd, if_pos]
+      simp only [SEnvScalar.upd, ite_eq_left]
       exact congrArg some
         (sigma_memref harr
           (memSetDyn (fun j : Fin n => st.mem m.arr (m.scale * j.val))

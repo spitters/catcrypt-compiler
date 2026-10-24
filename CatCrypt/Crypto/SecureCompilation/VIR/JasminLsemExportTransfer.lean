@@ -390,7 +390,7 @@ theorem immShiftExpand_structShift {m : String}
       = [(.Lopn [.reg dst] (withWidthTag w (m ++ ":" ++ toString n)) [.reg src],
           MemTag.reg none)] := by
   show (if isShiftBase (stripWidthTag (withWidthTag w m)) then _ else _) = _
-  rw [if_pos (isShiftBase_stripWidthTag hm w), shiftCountMnem_withWidthTag hm w n]
+  rw [ite_eq_left (isShiftBase_stripWidthTag hm w), shiftCountMnem_withWidthTag hm w n]
 
 /-- A two-source instruction whose mnemonic is not a shift base expands to
     itself. -/
@@ -399,7 +399,7 @@ theorem immShiftExpand_of_not_shiftBase (dst opn src : String) (n : Nat)
     immShiftExpand (.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none)
       = [(.Lopn [.reg dst] opn [.reg src, .imm n], MemTag.reg none)] := by
   show (if isShiftBase (stripWidthTag opn) then _ else _) = _
-  rw [if_neg (by rw [h]; exact Bool.false_ne_true)]
+  rw [ite_eq_right (by rw [h]; exact Bool.false_ne_true)]
 
 /-- An instruction that is not a structured immediate shift expands to
     itself. -/
@@ -505,7 +505,7 @@ theorem lsemStepN_immShiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m
         · exact Or.inr (Or.inr rfl)) w n
   have hdec := immShiftMnem?_shiftCount hm w n hw
   show (if _ = "NEG" then _ else if _ = "MOV" then _ else _) = _
-  rw [if_neg hneg, if_neg hmov, hdec]
+  rw [ite_eq_right hneg, ite_eq_right hmov, hdec]
   rcases hm with rfl | rfl | rfl
   · rw [lsemStepSh_of_not_sar _ _ (sarStruct?_of_ne
       (by rw [stripWidthTag_withWidthTag_SHR]; decide))]
@@ -541,7 +541,7 @@ theorem lsemStepN_immShiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m
     cases readReg r (.reg src) <;> rfl
   · have hsar : sarStruct? (LinstrR.Lopn [LOperand.reg dst] (withWidthTag w "SAR")
         [LOperand.reg src, LOperand.imm n]) = some (dst, src, n) := by
-      simp only [sarStruct?, stripWidthTag_withWidthTag_SAR, if_pos]
+      simp only [sarStruct?, stripWidthTag_withWidthTag_SAR, ite_eq_left]
     simp only [lsemStepSh, hsar]
     cases readReg r (LOperand.reg src) <;> simp [applyImmShiftN]
 
@@ -705,7 +705,7 @@ theorem instrOK_immShiftExpand_of_isLopn {i : LinstrRM} (hl : IsLopn i)
   unfold immShiftExpand
   split
   · next dst opn src n =>
-      rw [if_neg (by rw [h dst opn src n rfl]; exact Bool.false_ne_true)]
+      rw [ite_eq_right (by rw [h dst opn src n rfl]; exact Bool.false_ne_true)]
   · rfl
 
 /-- **The expansion certificate of the immediate-shift expansion.** Two programs
@@ -811,13 +811,13 @@ theorem lsemStepMem_larr (r : String) (i : LinstrRM) (s s' : LstateM)
     | (cases h; rfl)
     | (cases h
        simp only [LstateM.nextPc, LstateM.setArr]
-       rw [if_neg (Ne.symm (hi.1 _ _ _ _ (by assumption)))])
+       rw [ite_eq_right (Ne.symm (hi.1 _ _ _ _ (by assumption)))])
     | (cases h
        simp only [LstateM.nextPc, LstateM.setArr]
-       rw [if_neg (Ne.symm (hi.2.1 _ (by assumption)))])
+       rw [ite_eq_right (Ne.symm (hi.2.1 _ (by assumption)))])
     | (cases h
        simp only [LstateM.nextPc, LstateM.setArr]
-       rw [if_neg (Ne.symm (hi.2.2 _ _ _ _ (by assumption)))])
+       rw [ite_eq_right (Ne.symm (hi.2.2 _ _ _ _ (by assumption)))])
     | (simp at h)
 
 /-- A jump leaves the array carrier unchanged. -/
@@ -896,7 +896,7 @@ theorem fstepF_movReg_larr (acc ret : String) (tag : MemTag) (s s' : LstateM) (z
       = some (s', zf')) : s'.larr = s.larr := by
   unfold fstepF at h
   simp only [cmpArgs?, movRegArgs?] at h
-  rw [if_pos (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)] at h
+  rw [ite_eq_left (show stripWidthTag (withWidthTag 64 "MOV") = "MOV" by decide)] at h
   simp only [readReg] at h
   cases h
   rfl

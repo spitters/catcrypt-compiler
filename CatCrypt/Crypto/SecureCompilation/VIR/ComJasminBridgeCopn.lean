@@ -119,7 +119,7 @@ theorem rorAsmSem_agrees (sz : WSize) : RorAsmAgrees rorAsmSem sz := by
           (.ok [.Vbool false, .Vbool false, .Vword sz (w.rotateRight (Int.ofNat n).toNat)] :
             JResult Values)
         else .typeError) = _
-  rw [if_pos ⟨rfl, Int.natCast_nonneg n⟩]
+  rw [ite_eq_left ⟨rfl, Int.natCast_nonneg n⟩]
   rfl
 
 /-! ## §3. The mirror `Copn` post-state -/

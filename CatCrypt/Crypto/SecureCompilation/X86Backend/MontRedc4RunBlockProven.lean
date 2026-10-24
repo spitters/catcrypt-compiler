@@ -276,7 +276,7 @@ theorem xorClears3 (s : JState 64) (a b c : String)
     simp [JOperand.eval, x86_XOR, rflags_of_bwop, BitVec.xor_self]
   have hother : ∀ (t : JState 64) (x r : String), r ≠ x →
       (evalInstr t (JInstr.xor_ x (.reg x))).get r = t.get r := by
-    intro t x r hr; rw [get_xor, if_neg hr]
+    intro t x r hr; rw [get_xor, ite_eq_right hr]
   simp only [runBlock_cons, runBlock_nil]
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [hother _ c a hac, hother _ b a hab, hself]

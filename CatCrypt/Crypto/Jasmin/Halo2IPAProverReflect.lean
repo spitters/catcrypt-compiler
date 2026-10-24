@@ -274,7 +274,7 @@ theorem pallas_y_eq_of_parity {x y1 y2 : ZMod pallasQ}
     · exfalso
       have hodd := pallasQ_odd
       have hlt := ZMod.val_lt y2
-      rw [hy, ZMod.neg_val, if_neg hy2] at hpar
+      rw [hy, ZMod.neg_val, ite_eq_right hy2] at hpar
       omega
 
 theorem pallasPtNat_injective : Function.Injective pallasPtNat := by
@@ -306,7 +306,7 @@ noncomputable def pallasPtDec (w : Limbs4) : PallasPt :=
 theorem pallasPtDec_enc (P : PallasPt) : pallasPtDec (natLimbs (pallasPtNat P)) = P := by
   have hex : ∃ Q, pallasPtNat Q = limbsNat (natLimbs (pallasPtNat P)) :=
     ⟨P, (limbsNat_natLimbs _ (pallasPtNat_lt P)).symm⟩
-  rw [pallasPtDec, dif_pos hex]
+  rw [pallasPtDec, dite_eq_left hex]
   apply pallasPtNat_injective
   rw [Classical.choose_spec hex, limbsNat_natLimbs _ (pallasPtNat_lt P)]
 

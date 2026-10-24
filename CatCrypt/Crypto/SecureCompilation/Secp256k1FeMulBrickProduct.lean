@@ -504,8 +504,8 @@ theorem mCmdsIn_sem (zero : String) (aN bN : List String) (pfx : String) (na nb 
               else (envReader envJ ((mAccIn pfx a0 i j)[pos]!)).toNat := by
         intro pos hpos
         by_cases he : pos = i + j
-        · rw [if_pos he, he, hnewAt, hpFinal]
-        · rw [if_neg he, hnewOff pos he, hkeep pos hpos he]
+        · rw [ite_eq_left he, he, hnewAt, hpFinal]
+        · rw [ite_eq_right he, hnewOff pos he, hkeep pos hpos he]
       refine ⟨hfr', ?_, ?_, ?_⟩
       · intro pos hpos
         rw [hvalNew pos hpos]
@@ -519,8 +519,8 @@ theorem mCmdsIn_sem (zero : String) (aN bN : List String) (pfx : String) (na nb 
         have hupd := accN_upd (fun pos => (envReader envJ ((mAccIn pfx a0 i j)[pos]!)).toNat)
           (fun pos => (envReader env' ((mAccIn pfx a0 i (j + 1))[pos]!)).toNat) (i + j)
           (na + nb) hq (fun k hk hkq => by
-            rw [hvalNew k hk, if_neg hkq])
-        rw [hvalNew (i + j) hq, if_pos rfl] at hupd
+            rw [hvalNew k hk, ite_eq_right hkq])
+        rw [hvalNew (i + j) hq, ite_eq_left rfl] at hupd
         rw [pow32_add i (j + 1), pow32_add j 1, pow32_add i j] at *
         rw [accN_succ]
         set p2 := (2 : Nat) ^ (32 * i) with hp2

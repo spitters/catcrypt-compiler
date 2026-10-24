@@ -252,11 +252,11 @@ theorem splitK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (k : Nat)
     rw [hsplit, hk2, add_mul_mod_mul _ _ _ _ hL]
   unfold splitK
   by_cases hs : k % 64 = 0
-  · rw [if_pos hs]
+  · rw [ite_eq_left hs]
     refine hK _ _ _ W (Pres.id W) (by simp) (by simp) ?_ ?_
     · rw [hdiv, hs, Nat.pow_zero, Nat.div_one]
     · rw [hmod, hs, Nat.pow_zero, Nat.mod_one, Nat.mul_zero, Nat.add_zero]
-  · rw [if_neg hs]
+  · rw [ite_eq_right hs]
     have hs64 : k % 64 < 64 := Nat.mod_lt _ (by norm_num)
     obtain ⟨d, rest, hd⟩ : ∃ d rest, xs.drop (k / 64) = d :: rest := by
       cases h : xs.drop (k / 64) with

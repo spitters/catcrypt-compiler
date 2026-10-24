@@ -230,7 +230,7 @@ theorem parseLcmdCF_backEdgeFrameTail {pre region post : Lcmd} {top : LLabel}
   have hps : parseLcmdCF (f + 1) post = some (.straight post) :=
     parseLcmdCF_straight (Nat.succ_pos f) hpost
   rw [parseLcmdCF]
-  simp only [hdrop, htake, hdrop2, htake2, hseed, hps, if_pos hn, if_pos hok,
+  simp only [hdrop, htake, hdrop2, htake2, hseed, hps, ite_eq_left hn, ite_eq_left hok,
     Option.map_some]
 
 /-- Filtering the returns out of a back-edge frame with a straight-line prefix

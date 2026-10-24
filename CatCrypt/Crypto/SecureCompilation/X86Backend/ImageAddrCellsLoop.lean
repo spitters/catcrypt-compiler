@@ -273,7 +273,7 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
         simp only [stepA, hb, hpol, hp, Option.map_some]
       refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), ?_⟩
       by_cases hzp : s.zf = pol
-      · rw [if_pos hzp] at hstep hstepA
+      · rw [ite_eq_left hzp] at hstep hstepA
         cases hstep
         refine ⟨_, hstepA, Or.inr ⟨⟨body[p], ii', l, by simp [LstateA.setLpc], hli⟩,
           haltedA_of (bi := body[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
@@ -286,7 +286,7 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
         simp only at hli
         subst hli
         simp [stepA, LstateA.setLpc, hb']
-      · rw [if_neg hzp] at hstep hstepA
+      · rw [ite_eq_right hzp] at hstep hstepA
         cases hstep
         exact ⟨_, hstepA, Or.inl (rel_label hphys hrel hb hnm)⟩
   | _ => simp [icase] at hg

@@ -209,7 +209,7 @@ theorem extBuiltins_call {T : Table} {pre post : List ExtFn} {fn : ExtFn}
     extBuiltins T (pre ++ fn :: post) fn.name (ea a) = some (enc (g a)) := by
   rw [extBuiltins_self hrt htag hT hfresh]
   obtain ⟨fuel₀, hrun⟩ := h a hG
-  simp only [ExtFn.leaf, if_pos hlen, haxEval_eq hrun, Option.map_some, retVal_enc]
+  simp only [ExtFn.leaf, ite_eq_left hlen, haxEval_eq hrun, Option.map_some, retVal_enc]
 
 /-- The value of an early-return result whose two sides have one type. -/
 def mergeExcept {β : Type} : Except β β → β
@@ -237,7 +237,7 @@ theorem extBuiltins_callX {T : Table} {pre post : List ExtFn} {fn : ExtFn}
   have hev : haxEval (extBuiltins T pre) fn.body (fn.entry (extBuiltins T pre) (ea a))
       = some v :=
     haxEval_eq (fuel₀ := fuel₀) fun fuel hf => by rw [denote'_val_mono _ ho hf, ho]
-  simp only [ExtFn.leaf, if_pos hlen, hev, Option.map_some, Option.some.injEq]
+  simp only [ExtFn.leaf, ite_eq_left hlen, hev, Option.map_some, Option.some.injEq]
   try simp only [outcomeExceptCF, Option.some.injEq] at h₀
   unfold retVal
   rw [h₀]

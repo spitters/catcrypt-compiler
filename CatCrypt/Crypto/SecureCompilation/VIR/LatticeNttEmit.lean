@@ -1068,21 +1068,21 @@ theorem runNtt4way_stages {L n : Nat} (s0 : Ntt4wayState L n) (m : Nat) :
       · have h1 : L * (2 * p) + j < L * (2 * m) := lane_idx_lt _ _ j (by omega)
         have h2 : L * (2 * p + 1) + j < L * (2 * m) := lane_idx_lt _ _ j (by omega)
         have hm : L * (2 * m + 1) = L * (2 * m) + L := by ring
-        rw [dif_neg (by omega), dif_neg (by omega), dif_neg (by omega), dif_neg (by omega)]
+        rw [dite_eq_right (by omega), dite_eq_right (by omega), dite_eq_right (by omega), dite_eq_right (by omega)]
         exact hdone p hp j
       · have hm : L * (2 * p + 1) = L * (2 * p) + L := by ring
         have hj := j.isLt
         simp only [hm]
         constructor
-        · rw [dif_neg (by omega), dif_pos (by omega)]
+        · rw [dite_eq_right (by omega), dite_eq_left (by omega)]
           simp
-        · rw [dif_pos (by omega)]
+        · rw [dite_eq_left (by omega)]
           simp
     · intro i hi
       have hm : L * (2 * (m + 1)) = L * (2 * m + 1) + L := by ring
       have hm' : L * (2 * m + 1) = L * (2 * m) + L := by ring
       simp only
-      rw [dif_neg (by omega), dif_neg (by omega)]
+      rw [dite_eq_right (by omega), dite_eq_right (by omega)]
       exact hrest i (by omega)
 
 /-- **The 4-way kernel body computes Cooley–Tukey butterflies.** Running

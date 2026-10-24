@@ -159,8 +159,8 @@ theorem optimizeCF_cfExec_snd (ps : List ValidatedPass)
   | ifPub g t e iht ihe =>
     intro s
     by_cases hz : s.get g = 0
-    · simp only [optimizeCF, cfExec, if_pos hz, ihe s]
-    · simp only [optimizeCF, cfExec, if_neg hz, iht s]
+    · simp only [optimizeCF, cfExec, ite_eq_left hz, ihe s]
+    · simp only [optimizeCF, cfExec, ite_eq_right hz, iht s]
 
 /-- Post-state preservation at the default validated pipeline: every stage has an
     empty dead set, so the hypothesis of `optimizeCF_cfExec_snd` is `rfl`. -/

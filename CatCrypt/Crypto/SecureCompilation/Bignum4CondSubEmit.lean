@@ -116,10 +116,10 @@ theorem condSub4_value (s : JState 64)
   rw [hd0, hd1, hd2, hd3]
   by_cases hb3 : (s.get "x3").toNat < (s.get "p3").toNat + c2
   · -- borrow ⇒ x < p ⇒ keep x
-    simp only [if_pos hb3] at hr3 ⊢
+    simp only [ite_eq_left hb3] at hr3 ⊢
     rw [Nat.mod_eq_of_lt (by omega)]
   · -- no borrow ⇒ x ≥ p ⇒ take x − p
-    simp only [if_neg hb3] at hr3 ⊢
+    simp only [ite_eq_right hb3] at hr3 ⊢
     rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
     omega
 

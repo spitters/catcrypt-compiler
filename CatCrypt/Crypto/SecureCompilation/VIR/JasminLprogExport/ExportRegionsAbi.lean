@@ -214,9 +214,9 @@ theorem resolveVar_operandName_ne_rsp {curDepth nArgs : Nat} {Γ : Ctxt jasminDi
     operandName (resolveVar curDepth nArgs argName (fun _ => none) v) ≠ "RSP" := by
   simp only [resolveVar, operandName]
   by_cases hsa : curDepth - 1 - varIndex v < nArgs
-  · simp only [hsa, if_true]
+  · simp only [hsa, ite_true]
     exact argName_ne_rsp _
-  · simp only [hsa, if_false]
+  · simp only [hsa, ite_false]
     exact regName_ne_rsp _
 
 /-- The state after the return reads as the state before the replacement of the stack
@@ -273,7 +273,7 @@ theorem opSpB_reg_of_head {r : String} {c : Char} (hr : r.toList.head? = some c)
     exact hR (Option.some.inj hr).symm
   have h2 : cellParts? r = none := by
     unfold cellParts?
-    rw [if_neg]
+    rw [ite_eq_right]
     cases hl : r.toList with
     | nil => simp [hasPrefix, hl]
     | cons a tl =>

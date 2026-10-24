@@ -195,7 +195,7 @@ theorem semG_loopShape {c : LowCT} {bs : List Binder} {x n : String} {body : Low
       obtain ⟨hbs, hb⟩ := h
       subst hbs
       have hlf : loopFreeB b = false := loopFreeB_peel_false (Prod.ext rfl hb)
-      simp only [semG, hlf, Bool.false_eq_true, if_false] at hs
+      simp only [semG, hlf, Bool.false_eq_true, ite_false] at hs
       obtain ⟨env1, hw, hag⟩ := semScalar_gWrite_zero S y env
       rw [hw, Option.bind_some] at hs
       obtain ⟨E₀, hE, htr⟩ := ih (Prod.ext rfl hb) (y :: S) env1 e' hs
@@ -209,7 +209,7 @@ theorem semG_loopShape {c : LowCT} {bs : List Binder} {x n : String} {body : Low
       obtain ⟨hbs, hb⟩ := h
       subst hbs
       have hlf : loopFreeB b = false := loopFreeB_peel_false (Prod.ext rfl hb)
-      simp only [semG, hlf, Bool.false_eq_true, if_false] at hs
+      simp only [semG, hlf, Bool.false_eq_true, ite_false] at hs
       exact ih (Prod.ext rfl hb) S env e' hs
   | RForRuntime y bnd bd =>
       intro S env e' hs

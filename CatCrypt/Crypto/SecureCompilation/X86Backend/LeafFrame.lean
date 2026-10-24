@@ -196,7 +196,7 @@ theorem runBlock_framePrologue (s : JState 64) :
     withBank, JOperand.eval, JState.get, x86_MOV, JState.mk.injEq, true_and]
   funext b o
   by_cases hb : b = "%rsp"
-  · subst hb; simp only [saveBank, true_and, if_true]
+  · subst hb; simp only [saveBank, true_and, ite_true]
   · simp [hb]
 
 /-- The epilogue, run from a state whose `"%rsp"` bank is `saveBank s`, resets the six
@@ -206,7 +206,7 @@ theorem runBlock_frameEpilogue (s u : JState 64) :
       = restoreSaved (withBank u "%rsp" (saveBank s)) s.regs := by
   obtain ⟨regs, flags, mem⟩ := u
   simp only [frameEpilogue, runBlock_cons, runBlock_nil, evalInstr, JState.setReg,
-    JState.load, withBank, restoreSaved, x86_MOV, if_true, saveBank,
+    JState.load, withBank, restoreSaved, x86_MOV, ite_true, saveBank,
     JState.mk.injEq, and_true]
   funext r
   simp only [calleeSavedRegs, List.mem_cons, List.not_mem_nil, or_false]
@@ -263,7 +263,7 @@ theorem runBlock_framed_rsp (st : JState 64) (body : List (JInstr 64))
     (runBlock st (framePrologue ++ body ++ frameEpilogue)).regs "%rsp" = st.regs "%rsp" := by
   rw [runBlock_framed st body hb]
   have hn : "%rsp" ∉ calleeSavedRegs := by decide
-  simp only [restoreSaved, if_neg hn, withBank_regs]
+  simp only [restoreSaved, ite_eq_right hn, withBank_regs]
   exact runBlock_rsp_of_frameSafe st body hb
 
 /-- Off the callee-saved registers, the framed block ends with the registers of the

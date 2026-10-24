@@ -153,7 +153,7 @@ theorem arr_read_corr
   refine ⟨?_, ?_⟩
   · unfold getGvar
     rw [show (mkLvar x).isLvar = true from rfl]
-    simp only [if_true]
+    simp only [ite_true]
     show getVar true s.evm (mkLvar x).gv.v_var = _
     unfold getVar
     rw [show (mkLvar x).gv.v_var = x.v_var from rfl, hread]
@@ -194,7 +194,7 @@ theorem semPexpr_pget_const
         = .ok (.Varr n a) from by
     unfold getGvar
     rw [show (mkLvar x).isLvar = true from rfl]
-    simp only [if_true]
+    simp only [ite_true]
     show getVar true s.evm (mkLvar x).gv.v_var = _
     unfold getVar
     rw [show (mkLvar x).gv.v_var = x.v_var from rfl, hread]
@@ -213,7 +213,7 @@ theorem semPexpr_pget_const
   show (if h : 0 ≤ k ∧ k.toNat < n then
         (.ok (Value.Vword .U8 (a ⟨k.toNat, h.2⟩)) : JResult Value)
       else .typeError) = _
-  rw [dif_pos ⟨hk0, hkn⟩]
+  rw [dite_eq_left ⟨hk0, hkn⟩]
 
 /-- **`Pget`-read correspondence (const index).** Under `StateCorrArr names st vm`,
     for an array variable `x ∈ names` reading `Varr n a` and an in-range constant

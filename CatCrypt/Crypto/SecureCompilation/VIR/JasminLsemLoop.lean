@@ -196,7 +196,7 @@ def loopProg (fn : String) (top : LLabel) (body : List LinstrR) : Lprog :=
 theorem findLabel_loopLR (top : LLabel) (body : List LinstrR) :
     findLabel top (loopLR "NZ" top body) = some 0 := by
   simp only [findLabel, loopLR, List.cons_append, List.findIdx?_cons, isLabel,
-    beq_self_eq_true, if_pos]
+    beq_self_eq_true, ite_eq_left]
 
 /-- The body spec for the loop simulation: the body is jump-free (every
     instruction `IsStraightLine`), and `bodyStep : Lstate w → Lstate w` is the

@@ -400,7 +400,7 @@ theorem idxVar_lookup {Γ : Ctxt jasminDialect} (hA : S.arrWiden = true)
     (S.idxVar hA idx).lookup W = idx.lookup (S.laneOf k Γ W) := by
   have hne : (64 : Nat) ≠ S.laneBits := fun h => S.arr_index hA h.symm
   rw [← S.laneOf_lookup idx W k, idxVar, lookup_cast]
-  simp only [laneOfTy, dif_neg hne]
+  simp only [laneOfTy, dite_eq_right hne]
 
 /-- Lane `k` of an array read is the read of the lane-`k` array. -/
 theorem lane_stackGet (hA : S.arrWiden = true) {n : Nat} (arr : Fin n → BitVec S.regBits)
@@ -464,7 +464,7 @@ theorem laneOfTy_immLower (leafSem : LeafSem) {Γ : Ctxt jasminDialect} (op : Im
   have hblk : S.immLower op n rfl a = S.unaryBlock rfl (f n) a := by
     unfold immLower
     rw [hf]
-    exact dif_pos rfl
+    exact dite_eq_left rfl
   rw [hblk, laneOfTy_unaryBlock, S.imm_lane leafSem op f hf n hc, lane_wideVar]
 
 /-! ## 5. The covered fragment -/
@@ -511,7 +511,7 @@ theorem blockOpLane (leafSem : LeafSem) (hm : S.MulhiLane leafSem)
     cases rest2
     have hblk : S.lowerExprBlock (⟨.regArith bop S.laneBits, rfl, .cons a (.cons b .nil)⟩ :
         Expr jasminDialect Γ (.reg S.laneBits)) = S.packBlock rfl (S.packExpr bop) a b := by
-      exact dif_pos (And.intro rfl hc)
+      exact dite_eq_left (And.intro rfl hc)
     change S.laneOfTy k (.reg S.laneBits) _ = _
     rw [hblk, laneOfTy_packBlock, S.pack_lane leafSem bop hc, lane_wideVar, lane_wideVar]
     rfl
@@ -521,7 +521,7 @@ theorem blockOpLane (leafSem : LeafSem) (hm : S.MulhiLane leafSem)
     cases args
     have hblk : S.lowerExprBlock (⟨.regConst S.laneBits kk, rfl, .nil⟩ :
         Expr jasminDialect Γ (.reg S.laneBits)) = S.constBlock rfl kk := by
-      exact dif_pos rfl
+      exact dite_eq_left rfl
     change S.laneOfTy k (.reg S.laneBits) _ = _
     rw [hblk, laneOfTy_constBlock]
     rfl
@@ -539,7 +539,7 @@ theorem blockOpLane (leafSem : LeafSem) (hm : S.MulhiLane leafSem)
             else S.fallbackBlock Γ (.reg S.laneBits)
         | none => S.fallbackBlock Γ (.reg S.laneBits)) = _
       rw [hf]
-      exact dif_pos rfl
+      exact dite_eq_left rfl
     change S.laneOfTy k (.reg S.laneBits) _ = _
     rw [hblk, laneOfTy_packBlock, hm f hf, lane_wideVar, lane_wideVar]
     rfl
@@ -575,7 +575,7 @@ theorem blockOpLane (leafSem : LeafSem) (hm : S.MulhiLane leafSem)
     cases rest2
     have hblk : S.lowerExprBlock (⟨.stackLoad S.laneBits n, rfl, .cons arr (.cons idx .nil)⟩ :
         Expr jasminDialect Γ (.reg S.laneBits)) = S.loadBlock hA rfl n arr idx := by
-      exact dif_pos (And.intro hA rfl)
+      exact dite_eq_left (And.intro hA rfl)
     change S.laneOfTy k (.reg S.laneBits) _ = _
     rw [hblk, laneOfTy_loadBlock]
     rfl

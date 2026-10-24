@@ -363,8 +363,8 @@ theorem toRustMSB_sim {bi : Hax.Builtins} {app : String → List AVal → RustM 
       | some b =>
         simp only [hl, hu] at h
         by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
-        case neg => rw [if_neg hab] at h; cases h
-        rw [if_pos hab] at h
+        case neg => rw [ite_eq_right hab] at h; cases h
+        rw [ite_eq_left hab] at h
         obtain ⟨⟨o3, ρ3⟩, hloop, h⟩ := rustM_bind_ok h
         cases h
         have hstep : ∀ (i : Nat) (ρ : AEnv) (o : Option AVal) (ρ'' : AEnv),
@@ -405,8 +405,8 @@ theorem toRustMSB_sim {bi : Hax.Builtins} {app : String → List AVal → RustM 
       | some b =>
         simp only [hl, hu] at h
         by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
-        case neg => rw [if_neg hab] at h; cases h
-        rw [if_pos hab] at h
+        case neg => rw [ite_eq_right hab] at h; cases h
+        rw [ite_eq_left hab] at h
         obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
         cases h
         have hstep : ∀ (i : Nat) (ρ ρ'' : AEnv),
@@ -608,8 +608,8 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
       | some b =>
         simp only [hl, hu] at h ⊢
         by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
-        case neg => rw [if_neg hab] at h; cases h
-        rw [if_pos hab] at h ⊢
+        case neg => rw [ite_eq_right hab] at h; cases h
+        rw [ite_eq_left hab] at h ⊢
         obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
         cases h
         rw [loopBS_of_loopS (step' := fun i ρ => toRustMSB app body (ρ.upd var (ctr i)) >>=
@@ -631,8 +631,8 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
       | some b =>
         simp only [hl, hu] at h ⊢
         by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
-        case neg => rw [if_neg hab] at h; cases h
-        rw [if_pos hab] at h ⊢
+        case neg => rw [ite_eq_right hab] at h; cases h
+        rw [ite_eq_left hab] at h ⊢
         obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
         cases h
         rw [loopRevS_of_loopRevS (step' := fun i ρ => toRustMSB app body (ρ.upd var (ctr i)) >>=
@@ -695,14 +695,14 @@ theorem loop_range_break {α β : Type}
       loop body ({ start := s, «end» := n }, acc) =
         loopBS (fun i a => f a ⟨BitVec.ofNat _ i⟩) k s.val acc
   | 0, s, acc, hk => by
-    rw [loop.eq_1, hbody, if_neg (by omega)]
+    rw [loop.eq_1, hbody, ite_eq_right (by omega)]
     rfl
   | k + 1, s, acc, hk => by
     have hlt : s.val < n.val := by omega
     have e : (⟨BitVec.ofNat _ s.val⟩ : Usize) = s := by
       cases s
       simp [UScalar.val]
-    rw [loop.eq_1, hbody, if_pos hlt]
+    rw [loop.eq_1, hbody, ite_eq_left hlt]
     simp only [loopBS, e]
     cases hf : f acc s with
     | ok p =>

@@ -326,12 +326,12 @@ theorem corresJ_storeMemM (cells : List (String × Int)) (b : String) (o : Int)
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.store, x86_MOV, storeStepM]
   by_cases hcb : c = (b, o)
   · subst hcb
-    simp only [and_self, if_true]
+    simp only [and_self, ite_true]
     exact evalX_eq s a.c.regs hreg src
   · have hne : ¬ (c.1 = b ∧ c.2 = o) := fun ⟨h1, h2⟩ => hcb (Prod.ext h1 h2)
     have hadr : cellAddr a.c.regs c ≠ cellAddr a.c.regs (b, o) :=
       fun he => hcb (hsep c hc' (b, o) hc he)
-    rw [if_neg hne, if_neg hadr]
+    rw [ite_eq_right hne, ite_eq_right hadr]
     exact hm c hc'
 
 /-- `mulxMem` with a tracked memory source, writing two registers that are not bases,
@@ -427,7 +427,7 @@ theorem runBlock_imulMemImm (s : JState 64) (d b : String) (o : Int) (k : Nat) :
     runBlock s [.loadMem d b o, .imul d (.imm k)] =
       s.writeB5W d (x86_IMULt (s.load b o) (BitVec.ofNat 64 k)) := by
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
-    JState.get, JOperand.eval, x86_MOV, if_pos]
+    JState.get, JOperand.eval, x86_MOV, ite_eq_left]
   congr 1
   funext r
   split <;> simp_all
@@ -490,7 +490,7 @@ theorem corresJ_adcxImm2 (dst : String) (v : Nat) :
       simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
         add_carry, adcxImmStep2, JState.get, JOperand.eval, hcf, hreg]
     · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
-        adcxImmStep2, JState.get, JOperand.eval, hcf, hreg, if_neg hr]
+        adcxImmStep2, JState.get, JOperand.eval, hcf, hreg, ite_eq_right hr]
   · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
       JState.flagB, Option.getD_some, adcxImmStep2, JState.get, JOperand.eval, hcf', hreg]
   · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
@@ -511,7 +511,7 @@ theorem corresJ_adoxImm2 (dst : String) (v : Nat) :
       simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
         add_carry, adoxImmStep2, JState.get, JOperand.eval, hof, hreg]
     · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
-        adoxImmStep2, JState.get, JOperand.eval, hof, hreg, if_neg hr]
+        adoxImmStep2, JState.get, JOperand.eval, hof, hreg, ite_eq_right hr]
   · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
       JState.flagB, adoxImmStep2]
     exact hcf'
@@ -571,7 +571,7 @@ theorem corresJ_imulriMemM (cells : List (String × Int)) (d b : String) (o : In
       (fun _ _ => trivial))
     (fun s => by
       simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg, JState.writeB5W,
-        JState.get, JOperand.eval, x86_MOV, if_pos, BitVec.ofNat_toNat, BitVec.setWidth_eq]
+        JState.get, JOperand.eval, x86_MOV, ite_eq_left, BitVec.ofNat_toNat, BitVec.setWidth_eq]
       congr 1
       funext r
       split <;> simp_all)

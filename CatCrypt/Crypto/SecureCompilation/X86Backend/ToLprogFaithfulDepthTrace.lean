@@ -244,7 +244,7 @@ theorem le_physLastTouch_of_touched {tr : List PhysEvent} {pos s : Nat}
   refine mem_le_foldl_max _ 0 pos ?_
   rw [List.mem_filterMap]
   refine ⟨(tr[pos], pos), hmem, ?_⟩
-  simp only [List.elem_eq_true_of_mem hs, if_pos]
+  simp only [List.elem_eq_true_of_mem hs, ite_eq_left]
 
 /-- A slot an event touches is live at that event's position. -/
 theorem liveAt_of_touched {tr : List PhysEvent} {pos s : Nat}

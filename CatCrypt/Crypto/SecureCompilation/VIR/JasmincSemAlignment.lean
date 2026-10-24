@@ -575,7 +575,7 @@ theorem stackZero_agrees_jasmin {w n : Nat} (arr : Fin n → BitVec w) :
         rw [hj]
         split_ifs <;> first | rfl | omega
     funext j
-    rw [jArrZeroLoop, key (m + 1) le_rfl j, if_pos j.isLt]
+    rw [jArrZeroLoop, key (m + 1) le_rfl j, ite_eq_left j.isLt]
     rfl
 
 /-- **`stackStoreImm` row.** The store at the immediate index `i` is jasmin's

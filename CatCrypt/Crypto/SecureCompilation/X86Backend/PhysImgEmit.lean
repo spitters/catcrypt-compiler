@@ -642,7 +642,7 @@ theorem loadIdx_accLocal {slotArr : String → Option (String × Nat)}
   have hm15 := dstHitB_r15_r14 hs15
   simp only [legalizeMemLoad, legalizeSibElem, sibNameSpill_reloadScratch2]
   cases hy : sibNameSpill y <;> cases hn : (LOperand.reg n).isSpill <;>
-    simp only [Bool.false_eq_true, if_false, if_true, List.nil_append, List.cons_append,
+    simp only [Bool.false_eq_true, ite_false, ite_true, List.nil_append, List.cons_append,
       List.map_cons, List.map_nil, ge_iff_le, Nat.le_refl]
   · exact accLocal_window (mid := []) (post := []) hrl hq (by simp)
       (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp)
@@ -683,7 +683,7 @@ theorem storeIdx_accLocal {slotArr : String → Option (String × Nat)}
     rw [legalizeMemStoreK_of_none _ _ _ hc]
     simp only [legalizeMemStore, legalizeSibElem, sibNameSpill_reloadScratch2]
     cases hy : sibNameSpill y <;> cases hn : (LOperand.reg v).isSpill <;>
-      simp only [Bool.false_eq_true, if_false, if_true, List.nil_append, List.cons_append,
+      simp only [Bool.false_eq_true, ite_false, ite_true, List.nil_append, List.cons_append,
         List.map_cons, List.map_nil, ge_iff_le, Nat.le_refl, beq_self_eq_true]
     · exact accLocal_window (mid := []) (post := []) hrl hq (by simp)
         (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))) (by simp)
@@ -877,7 +877,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
   rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
   simp only [List.flatMap_nil, List.nil_append, List.length_nil, Nat.sub_zero, ← hrm]
   have hst : ∀ (b t : Nat), ¬ (b ≥ t ∧ b < t) := fun b t h => by omega
-  simp only [hst, if_false]
+  simp only [hst, ite_false]
   cases x with
   | Lopn ds o ss =>
     have hopn : opnOf (.Lopn ds o ss) = some o := rfl
@@ -919,14 +919,14 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
           dsimp only
           simp only [List.append_nil]
           by_cases hnat : isNativeShiftRotate o = true
-          · rw [if_pos hnat]
+          · rw [ite_eq_left hnat]
             have h1 : o ≠ "LOADIDX" := by
               rintro rfl; rw [isNativeShiftRotate_loadIdx] at hnat; cases hnat
             exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
               (lowerNativeShiftRotate_armOut _ _ _ _ (movFor_ok o))
-          rw [if_neg hnat]
+          rw [ite_eq_right hnat]
           by_cases hld : isMemLoad o = true
-          · rw [if_pos hld]
+          · rw [ite_eq_left hld]
             by_cases hLo : o = "LOADIDX"
             · obtain ⟨dn, b, y, hds, hss, b', y', q, hrmA, hmb, hq⟩ := hL hLo
               simp only [List.cons.injEq, and_true] at hds hss
@@ -950,7 +950,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
                   (reloadMemrefBase_armOut mbr (rm s0) o))
                 (blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 hLo h2
                   (legalizeMemLoad_armOut _ _ _ _ (movFor_ok o)))
-          · rw [if_neg hld]
+          · rw [ite_eq_right hld]
             have h1 : o ≠ "LOADIDX" := by
               rintro rfl; exact hld isMemLoad_loadIdx
             exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
@@ -966,7 +966,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
         dsimp only
         simp only [List.append_nil]
         by_cases hbin : isTwoAddrBinop o = true
-        · rw [if_pos hbin]
+        · rw [ite_eq_left hbin]
           have h2 : o ≠ "STOREIDX" := by
             rintro rfl; rw [isTwoAddrBinop_storeIdx] at hbin; cases hbin
           split
@@ -974,7 +974,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
               (lowerTwoAddrShiftImm_armOut _ _ _ _ _ (movFor_ok o))
           · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
               (lowerTwoAddr_armOut _ _ _ _ _ (movFor_ok o))
-        · rw [if_neg hbin]
+        · rw [ite_eq_right hbin]
           have hgen : (tail ≠ [] ∨ t ≠ []) → BlockOk slotArr (.Lopn (d :: tail) o (s0 :: s1 :: t))
               ((legalizeSpillDst ((d :: tail).map rm) o ((s0 :: s1 :: t).map rm)).map
                 fun r => (⟨ii, r⟩ : Linstr)) := by
@@ -990,7 +990,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
           rcases tail with _ | ⟨d2, tail2⟩ <;> rcases t with _ | ⟨s2, t2⟩
           · dsimp only
             by_cases hms : isMemStore o = true
-            · rw [if_pos hms]
+            · rw [ite_eq_left hms]
               by_cases hSo : o = "STOREIDX"
               · obtain ⟨dn, b, y, v, hds, hss, b', y', q, hrmA, hmb, hq⟩ := hS hSo
                 simp only [List.cons.injEq, and_true] at hds hss
@@ -1015,7 +1015,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
                     (reloadMemrefBase_armOut mbr (rm s0) o))
                   (blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 hSo
                     (legalizeMemStoreK_armOut _ _ _ _ _ _ (movFor_ok o)))
-            · rw [if_neg hms]
+            · rw [ite_eq_right hms]
               have h2 : o ≠ "STOREIDX" := by
                 rintro rfl; exact hms isMemStore_storeIdx
               exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
@@ -1080,9 +1080,9 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
       rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
       simp only [List.flatMap_nil, List.nil_append, List.length_nil, Nat.sub_zero, ← hrm]
       have hst : ∀ (b t : Nat), ¬ (b ≥ t ∧ b < t) := fun b t h => by omega
-      simp only [hst, if_false, hbin, Bool.false_eq_true, legalizeSpillDst]
+      simp only [hst, ite_false, hbin, Bool.false_eq_true, legalizeSpillDst]
       rcases t with _ | ⟨s2, t⟩ <;>
-        simp only [hms, Bool.false_eq_true, if_false, cmovSpillDst?_of_ne _ _ hcm,
+        simp only [hms, Bool.false_eq_true, ite_false, cmovSpillDst?_of_ne _ _ hcm,
           setccSpill?_of_ne _ _ hset, List.map_cons, List.map_nil, List.append_nil]
     have hrl : ∀ q, slotMov? (LinstrR.Lopn [.reg reloadScratch2] "MOVQ" [.reg q])
         = some (reloadScratch2, q) := fun q => by simp [slotMov?]

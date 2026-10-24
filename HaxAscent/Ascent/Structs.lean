@@ -168,7 +168,7 @@ variable {α γ β : Type} [HaxEnc α] [HaxTupleEnc γ]
     encoding. -/
 theorem ctorLeaf_prod (p : α × γ) {n : Nat} (hlen : (HaxTupleEnc.encList p).length = n)
     (hn : 2 ≤ n) : ctorLeaf n (HaxTupleEnc.encList p) = some (enc p) := by
-  simp only [ctorLeaf, hlen, if_true, if_neg (show n ≠ 1 by omega)]
+  simp only [ctorLeaf, hlen, ite_true, ite_eq_right (show n ≠ 1 by omega)]
   rfl
 
 theorem ctorLeaf_one (a : α) : ctorLeaf 1 [enc a] = some (enc a) := rfl
@@ -179,9 +179,9 @@ theorem projLeaf_prod {i : Nat} [HaxField (α × γ) i β] [HaxEnc β]
     [HaxField.Lawful (α × γ) i β] (p : α × γ) {n : Nat} (hn : 2 ≤ n)
     (hlen : (HaxTupleEnc.encList p).length = n := by rfl) :
     projLeaf i n [enc p] = some (enc (fieldGet i p)) := by
-  simp only [projLeaf, if_neg (show ¬n ≤ 1 by omega)]
+  simp only [projLeaf, ite_eq_right (show ¬n ≤ 1 by omega)]
   change (if (HaxTupleEnc.encList p).length = n then (HaxTupleEnc.encList p)[i]? else none) = _
-  rw [if_pos hlen]
+  rw [ite_eq_left hlen]
   exact HaxField.Lawful.get_enc p
 
 theorem projLeaf_one (a : α) : projLeaf 0 1 [enc a] = some (enc a) := rfl
@@ -194,11 +194,11 @@ theorem updateLeaf_prod {i : Nat} [HaxField (α × γ) i β] [HaxEnc β]
     (hcf : ((HaxTupleEnc.encList p).all fun x => !x.isControlFlow) = true := by
       first | rfl | exact HaxTupleEnc.encList_all_not_isControlFlow _) :
     updateLeaf i n [enc p, enc v] = some (enc (fieldSet i p v)) := by
-  simp only [updateLeaf, if_neg (show ¬n ≤ 1 by omega)]
+  simp only [updateLeaf, ite_eq_right (show ¬n ≤ 1 by omega)]
   change (if (HaxTupleEnc.encList p).length = n ∧
       ((HaxTupleEnc.encList p).all fun x => !x.isControlFlow) = true then
     some (Value.tuple ((HaxTupleEnc.encList p).set i (enc v))) else none) = _
-  rw [if_pos ⟨hlen, hcf⟩, HaxField.Lawful.set_enc]
+  rw [ite_eq_left ⟨hlen, hcf⟩, HaxField.Lawful.set_enc]
   rfl
 
 theorem updateLeaf_one (a b : α) : updateLeaf 0 1 [enc a, enc b] = some (enc b) := rfl

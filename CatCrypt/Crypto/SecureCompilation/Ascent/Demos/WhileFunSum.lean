@@ -108,7 +108,7 @@ theorem sumExit_sumStep (a : String → BitVec 64) (hk : a "k" ≠ 0) :
     have : (a "k").toNat ≠ 0 := fun h => hk (BitVec.eq_of_toNat_eq (by simpa using h))
     omega
   have hstepk : (sumStep a "k").toNat = n := by
-    simp only [sumStep, if_true]
+    simp only [sumStep, ite_true]
     bv_omega
   have htri : (n + 1) * (n + 1 + 1) / 2 = n * (n + 1) / 2 + (n + 1) := by
     have : (n + 1) * (n + 1 + 1) = n * (n + 1) + 2 * (n + 1) := by ring
@@ -119,7 +119,7 @@ theorem sumExit_sumStep (a : String → BitVec 64) (hk : a "k" ≠ 0) :
   · by_cases hsa : s = "acc"
     · subst hsa
       simp only [sumExit, hstepk, hn, htri, BitVec.ofNat_add]
-      simp only [sumStep, hsk, if_false, if_true]
+      simp only [sumStep, hsk, ite_false, ite_true]
       have hak : a "k" = BitVec.ofNat 64 (n + 1) := by
         apply BitVec.eq_of_toNat_eq
         rw [hn, BitVec.toNat_ofNat]
@@ -154,7 +154,7 @@ theorem sum_loopRecIn :
       have hk : a "k" ≠ 0 := by
         intro h; rw [h] at hn; simp at hn
       have hstepk : (sumStep a "k").toNat = n := by
-        simp only [sumStep, if_true]
+        simp only [sumStep, ite_true]
         bv_omega
       rw [← sumExit_sumStep a hk]
       exact .iter (by simpa only [sumGuard, decide_eq_true_eq] using hk) (ih (sumStep a) hstepk)

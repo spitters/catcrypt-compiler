@@ -785,7 +785,7 @@ theorem lsemStep_reg_nonmem {w : Nat} (dst opn : String) (srcs : List LOperand)
       srcs = LOperand.arrIdx base idx scale :: rest
   · obtain ⟨base, idx, scale, rest, rfl⟩ := harr
     simp only [lsemStep]
-    rw [if_neg hnm.1, if_neg hnm.2]
+    rw [ite_eq_right hnm.1, ite_eq_right hnm.2]
     rfl
   · exact lsemStep_reg_srcs dst opn srcs s
       (fun base idx scale rest heq => harr ⟨base, idx, scale, rest, heq⟩)
@@ -898,7 +898,7 @@ theorem evalOperand_setReg_of_not_names {w : Nat} {s : Lstate w} {r : String}
   | reg n =>
     have hn : n ≠ r := by simpa [factSrcNames] using h
     simp only [evalOperand, Lstate.lvm_nextPc, Lstate.lvm_setReg]
-    rw [if_neg hn]
+    rw [ite_eq_right hn]
   | imm _ => rfl
   | arr _ _ => rfl
   | arrIdx _ _ _ => exact absurd hok (by simp [isFactSrc])
@@ -979,7 +979,7 @@ theorem FactsOk_write {w : Nat} {facts : List MoveFact} {s : Lstate w}
       ((s.setReg dst v).nextPc) := by
   rw [regDefsOf_singleton]
   by_cases hp : isPhysGP dst = true
-  · rw [if_pos hp]
+  · rw [ite_eq_left hp]
     simp only [List.foldl_cons, List.foldl_nil]
     intro f hf
     obtain ⟨hm, h1, h2⟩ := mem_killFacts hf
@@ -987,9 +987,9 @@ theorem FactsOk_write {w : Nat} {facts : List MoveFact} {s : Lstate w}
     refine ⟨p1, p2, ?_⟩
     rw [evalOperand_setReg_of_not_names p2 h2]
     simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg]
-    rw [if_neg h1]
+    rw [ite_eq_right h1]
     exact p3
-  · rw [if_neg hp]
+  · rw [ite_eq_right hp]
     simp only [List.foldl_nil]
     intro f hf
     obtain ⟨p1, p2, p3⟩ := hok f hf
@@ -999,7 +999,7 @@ theorem FactsOk_write {w : Nat} {facts : List MoveFact} {s : Lstate w}
       factSrcNames_of_isFactSrc p2 (by simpa using hp)
     rw [evalOperand_setReg_of_not_names p2 h2]
     simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg]
-    rw [if_neg h1]
+    rw [ite_eq_right h1]
     exact p3
 
 /-- Recording a true move fact preserves the invariant. -/
@@ -1037,9 +1037,9 @@ theorem FactsOk_lvm_eq {w : Nat} {facts : List MoveFact} {s s₁ : Lstate w}
     rw [hlvm, evalOperand_lvm_eq hlvm p2]; exact p3
   rw [regDefsOf_singleton]
   by_cases hp : isPhysGP dst = true
-  · rw [if_pos hp]; simp only [List.foldl_cons, List.foldl_nil]
+  · rw [ite_eq_left hp]; simp only [List.foldl_cons, List.foldl_nil]
     intro f hf; exact hsub f (mem_killFacts hf).1
-  · rw [if_neg hp]; simp only [List.foldl_nil]; exact hsub
+  · rw [ite_eq_right hp]; simp only [List.foldl_nil]; exact hsub
 
 /-- The runtime-indexed opcode names carry no width tag, so `stripWidthTag`
     leaves them unchanged and `applyOpn` — which models neither — returns `none`
@@ -1087,7 +1087,7 @@ theorem FactsOk_mem_step {w : Nat} {facts : List MoveFact} {s s₁ : Lstate w}
               | cons _ _ => simp [lsemStep] at hstep
               | nil =>
                 simp only [lsemStep,
-                  if_neg (show ("STOREIDX" : String) ≠ "LOADIDX" from by decide),
+                  ite_eq_right (show ("STOREIDX" : String) ≠ "LOADIDX" from by decide),
                   reduceIte] at hstep
                 have hlvm : s₁.lvm = s.lvm := by
                   rw [← Option.some.inj hstep]; simp [Lstate.lvm_nextPc]
@@ -1226,7 +1226,7 @@ theorem lsemStep_rewrite_eq {w : Nat} {facts : List MoveFact} {s : Lstate w}
           by_cases hl : opn = "LOADIDX"
           · simp [hl]
           · by_cases hst : opn = "STOREIDX"
-            · simp only [if_neg hl, if_pos hst]
+            · simp only [ite_eq_right hl, ite_eq_left hst]
               cases rest with
               | nil => simp
               | cons val vs =>
@@ -1235,7 +1235,7 @@ theorem lsemStep_rewrite_eq {w : Nat} {facts : List MoveFact} {s : Lstate w}
                   simp only [List.map_cons, List.map_nil]
                   rw [evalOperand_rewriteOperand hok]
                 | cons _ _ => simp
-            · simp only [if_neg hl, if_neg hst, map_evalOperand_rewrite hok]
+            · simp only [ite_eq_right hl, ite_eq_right hst, map_evalOperand_rewrite hok]
         · have hna : ∀ base idx scale rest,
               srcs ≠ LOperand.arrIdx base idx scale :: rest :=
             fun base idx scale rest heq => harr ⟨base, idx, scale, rest, heq⟩
@@ -1271,7 +1271,7 @@ theorem moveShape_none_of_mem {i' : Linstr} {dsts : List LOperand} {opn : String
                     || stripAbiTag "LOADIDX" == "MOVQ") = false from by decide +kernel,
                  show (stripAbiTag "STOREIDX" == "MOV"
                     || stripAbiTag "STOREIDX" == "MOVQ") = false from by decide +kernel,
-                 Bool.and_false, Bool.false_and, Bool.false_eq_true, if_false]
+                 Bool.and_false, Bool.false_and, Bool.false_eq_true, ite_false]
   · rfl
 
 /-- The fact set `propagateAux` carries past a recognised op is valid in the
@@ -1307,8 +1307,8 @@ theorem FactsOk_step {w : Nat} {facts : List MoveFact} {s s₁ : Lstate w}
                   then (regDefsOf dsts).foldl killFacts facts
                   else (d, src, ww) :: (regDefsOf dsts).foldl killFacts facts) s₁
     by_cases hds : (src == LOperand.reg d) = true
-    · rw [if_pos hds]; exact hf1
-    · rw [if_neg hds]
+    · rw [ite_eq_left hds]; exact hf1
+    · rw [ite_eq_right hds]
       refine FactsOk_cons hf1 hd hsr ?_
       have hnames : factSrcNames src d = false :=
         factSrcNames_of_ne (by simpa using hds)
@@ -1411,8 +1411,8 @@ theorem contains_addRegs_left {r : String} : ∀ (rs l : List String),
     rw [addRegs_cons]
     refine ih _ ?_
     by_cases ha : l.contains a = true
-    · rw [if_pos ha]; exact h
-    · rw [if_neg ha]; simp only [List.contains_cons, h, Bool.or_true]
+    · rw [ite_eq_left ha]; exact h
+    · rw [ite_eq_right ha]; simp only [List.contains_cons, h, Bool.or_true]
 
 /-- `addRegs` adds everything in its second argument. -/
 theorem contains_addRegs_right {r : String} : ∀ (rs l : List String),
@@ -1427,8 +1427,8 @@ theorem contains_addRegs_right {r : String} : ∀ (rs l : List String),
     rcases h with he | hm
     · refine contains_addRegs_left as _ ?_
       by_cases ha : l.contains a = true
-      · rw [if_pos ha, he]; exact ha
-      · rw [if_neg ha]; simp [he]
+      · rw [ite_eq_left ha, he]; exact ha
+      · rw [ite_eq_right ha]; simp [he]
     · exact ih _ hm
 
 /-- An operand whose physical-GP reads are all live evaluates equally in two
@@ -1557,7 +1557,7 @@ theorem deadElimStep_barrier (i : Linstr) (live : List String) (acc : Lcmd)
     deadElimStep i (live, acc) = (physGPs, i :: acc) := by
   cases hi : i.li_i with
   | Lopn dsts opn srcs =>
-    simp only [deadElimStep, hi, h dsts opn srcs hi, Bool.false_eq_true, if_false]
+    simp only [deadElimStep, hi, h dsts opn srcs hi, Bool.false_eq_true, ite_false]
   | _ => simp only [deadElimStep, hi]
 
 /-- The dropping branch: a self-copy or a move whose destination is not live. -/
@@ -1567,7 +1567,7 @@ theorem deadElimStep_drop {i : Linstr} (live : List String) (acc : Lcmd)
     {d : String} {src : LOperand} {ww : Nat} (hcs : moveShape i = some (d, src, ww))
     (hdrop : ((ww == 64 && src == LOperand.reg d) || !(live.contains d)) = true) :
     deadElimStep i (live, acc) = (live, acc) := by
-  simp only [deadElimStep, hi, hrec, if_true, hcs, hdrop]
+  simp only [deadElimStep, hi, hrec, ite_true, hcs, hdrop]
 
 /-- The keeping branch for a non-move recognised op. -/
 theorem deadElimStep_keep_none {i : Linstr} (live : List String) (acc : Lcmd)
@@ -1577,7 +1577,7 @@ theorem deadElimStep_keep_none {i : Linstr} (live : List String) (acc : Lcmd)
     deadElimStep i (live, acc) =
       (addRegs (live.filter fun r => !((fullDefsOf dsts opn).contains r))
         (instrUses dsts opn srcs), i :: acc) := by
-  simp only [deadElimStep, hi, hrec, if_true, hcs, Bool.false_eq_true, if_false]
+  simp only [deadElimStep, hi, hrec, ite_true, hcs, Bool.false_eq_true, ite_false]
 
 /-- The keeping branch for a live move. -/
 theorem deadElimStep_keep_some {i : Linstr} (live : List String) (acc : Lcmd)
@@ -1588,7 +1588,7 @@ theorem deadElimStep_keep_some {i : Linstr} (live : List String) (acc : Lcmd)
     deadElimStep i (live, acc) =
       (addRegs (live.filter fun r => !((fullDefsOf dsts opn).contains r))
         (instrUses dsts opn srcs), i :: acc) := by
-  simp only [deadElimStep, hi, hrec, if_true, hcs, hdrop, Bool.false_eq_true, if_false]
+  simp only [deadElimStep, hi, hrec, ite_true, hcs, hdrop, Bool.false_eq_true, ite_false]
 
 /-- Every physical GP a source operand reads is an instruction use. -/
 theorem contains_instrUses_of_src {dsts : List LOperand} {opn : String}
@@ -1612,11 +1612,11 @@ theorem contains_fullDefsOf_false {dst r : String} {opn : String} (hne : r ≠ d
     (fullDefsOf [LOperand.reg dst] opn).contains r = false := by
   unfold fullDefsOf
   by_cases hc : (isDstWriteOnly opn && 32 ≤ effWidth opn) = true
-  · rw [if_pos hc, regDefsOf_singleton]
+  · rw [ite_eq_left hc, regDefsOf_singleton]
     by_cases hp : isPhysGP dst = true
     · simp [hp, hne]
     · simp [hp]
-  · rw [if_neg hc]; rfl
+  · rw [ite_eq_right hc]; rfl
 
 /-- **Phase 2 is a forward simulation up to the live set.** From states agreeing
     off the computed live-in set, a body that runs to completion is matched by the
@@ -1683,8 +1683,8 @@ theorem deadElim_sim {w : Nat} (body : Lcmd) :
               rw [hs₁]
               simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg]
               by_cases hrd : r = dst
-              · rw [if_pos hrd, if_pos hrd]
-              · rw [if_neg hrd, if_neg hrd]
+              · rw [ite_eq_left hrd, ite_eq_left hrd]
+              · rw [ite_eq_right hrd, ite_eq_right hrd]
                 refine h'.2 r ?_
                 rcases hr with hp | hm
                 · exact Or.inl hp
@@ -1740,7 +1740,7 @@ theorem deadElim_sim {w : Nat} (body : Lcmd) :
               · rcases (Bool.or_eq_true _ _).mp hdr with hself | hdead
                 · have hds : src = LOperand.reg dst :=
                     eq_of_beq ((Bool.and_eq_true _ _).mp hself).2
-                  rw [if_pos hrd, hv, hds]
+                  rw [ite_eq_left hrd, hv, hds]
                   simp only [evalOperand]
                   rw [← hrd]
                   exact h'.2 r hr
@@ -1749,7 +1749,7 @@ theorem deadElim_sim {w : Nat} (body : Lcmd) :
                   rcases hr with hp | hm
                   · rw [hrd] at hp; rw [hp] at hd; exact absurd hd (by simp)
                   · rw [hrd, hnc] at hm; exact absurd hm (by simp)
-              · rw [if_neg hrd]; exact h'.2 r hr
+              · rw [ite_eq_right hrd]; exact h'.2 r hr
           · rw [deadElimStep_keep_some Lr outR hLi hrec hcs (by simpa using hdr)] at h ⊢
             have h' : LiveAgree (addRegs (Lr.filter fun r => !((fullDefsOf dsts opn).contains r))
                 (instrUses dsts opn srcs)) s t := h
@@ -1769,8 +1769,8 @@ theorem deadElim_sim {w : Nat} (body : Lcmd) :
                 rw [hs₁]
                 simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg]
                 by_cases hrd : r = dst
-                · rw [if_pos hrd, if_pos hrd]
-                · rw [if_neg hrd, if_neg hrd]
+                · rw [ite_eq_left hrd, ite_eq_left hrd]
+                · rw [ite_eq_right hrd, ite_eq_right hrd]
                   refine h'.2 r ?_
                   rcases hr with hp | hm
                   · exact Or.inl hp
@@ -1904,13 +1904,13 @@ theorem lsemStep_isSome_indep {w : Nat} (i : LinstrR) (s t : Lstate w) :
             by_cases hl : opn = "LOADIDX"
             · simp [hl]
             · by_cases hs : opn = "STOREIDX"
-              · simp only [if_neg hl, if_pos hs]
+              · simp only [ite_eq_right hl, ite_eq_left hs]
                 cases rest with
                 | nil => simp
                 | cons v vs => cases vs with
                   | nil => simp
                   | cons _ _ => simp
-              · simp only [if_neg hl, if_neg hs]
+              · simp only [ite_eq_right hl, ite_eq_right hs]
                 have hlen := applyOpn_isSome_congr_length (stripWidthTag opn)
                   ((LOperand.arrIdx base idx scale :: rest).map (evalOperand s))
                   ((LOperand.arrIdx base idx scale :: rest).map (evalOperand t)) (by simp)

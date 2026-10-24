@@ -115,12 +115,12 @@ theorem mem_store_middle_tie_full (m : MemStoreSrc) (st : JState 64) (n : Nat)
       (harr.symm ▸ memSetDyn (fun j : Fin n => st.mem m.arr (m.scale * j.val))
         (st.regs m.idx).toNat (st.regs m.src)), ?_, ?_⟩
   · -- `semScalar` reduces along the three lookups + the `.memref n` encoding guard.
-    simp only [MemStoreSrc.toLowCT, semScalar, hArr, hIdx, hSrc, harr, dif_pos]
+    simp only [MemStoreSrc.toLowCT, semScalar, hArr, hIdx, hSrc, harr, dite_eq_left]
   · -- extract the post-env memref slot, then match it cell by cell.
     refine ⟨memSetDyn (fun j : Fin n => st.mem m.arr (m.scale * j.val))
       (st.regs m.idx).toNat (st.regs m.src), ?_, ?_⟩
     · -- the memref slot after the update (dependent cast collapsed).
-      simp only [SEnvScalar.upd, if_pos]
+      simp only [SEnvScalar.upd, ite_eq_left]
       exact congrArg some
         (sigma_memref harr
           (memSetDyn (fun j : Fin n => st.mem m.arr (m.scale * j.val))
@@ -138,7 +138,7 @@ theorem mem_store_middle_tie_full (m : MemStoreSrc) (st : JState 64) (n : Nat)
             have hjfin : j = ⟨(st.regs m.idx).toNat % (p + 1),
                 Nat.mod_lt _ (Nat.succ_pos p)⟩ := by
               apply Fin.ext; rw [hj]; exact hk.symm
-            rw [if_pos hjfin]
+            rw [ite_eq_left hjfin]
             rw [show ((m.scale * j.val : Nat) : Int)
                   = ((m.scale * (st.regs m.idx).toNat : Nat) : Int) from by rw [hj]]
             exact (runBlock_lowerMemStore_cell m st).symm
@@ -152,7 +152,7 @@ theorem mem_store_middle_tie_full (m : MemStoreSrc) (st : JState 64) (n : Nat)
               have hnat : m.scale * j.val = m.scale * (st.regs m.idx).toNat := by
                 exact_mod_cast heq
               exact hj (Nat.eq_of_mul_eq_mul_left hscale hnat)
-            rw [if_neg hjfin,
+            rw [ite_eq_right hjfin,
               runBlock_lowerMemStore_other m st ((m.scale * j.val : Nat) : Int) hne]
             simp only [Nat.cast_mul]
 

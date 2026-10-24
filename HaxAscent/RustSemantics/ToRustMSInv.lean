@@ -278,8 +278,8 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
       | some b =>
         simp only [hl, hu] at h
         by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
-        case neg => rw [if_neg hab] at h; cases h
-        rw [if_pos hab] at h
+        case neg => rw [ite_eq_right hab] at h; cases h
+        rw [ite_eq_left hab] at h
         obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
         cases h
         have hstep : ∀ (i : Nat) (ρ ρ' : AEnv), EnvInv Inv ρ →
@@ -293,7 +293,7 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
           exact ⟨by rw [h1, rustM_ok_bind], h2⟩
         obtain ⟨hloop', hρ3⟩ := loopS_ok_of_inv hstep _ _ ρ2 ρ3 hρ2 hloop
         refine ⟨?_, hI.unit, hρ3⟩
-        simp only [toRustMS, hp', hq', hl, hu, if_pos hab, hloop', rustM_ok_bind]
+        simp only [toRustMS, hp', hq', hl, hu, ite_eq_left hab, hloop', rustM_ok_bind]
   case case15 var lo hi body ρ ih3 ih2 ih1 =>
     intro r hc hρ h
     simp only [callsOK, Bool.and_eq_true] at hc
@@ -309,8 +309,8 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
       | some b =>
         simp only [hl, hu] at h
         by_cases hab : 0 ≤ a ∧ b ≤ 2 ^ UScalarTy.Usize.numBits
-        case neg => rw [if_neg hab] at h; cases h
-        rw [if_pos hab] at h
+        case neg => rw [ite_eq_right hab] at h; cases h
+        rw [ite_eq_left hab] at h
         obtain ⟨ρ3, hloop, h⟩ := rustM_bind_ok h
         cases h
         have hstep : ∀ (i : Nat) (ρ ρ' : AEnv), EnvInv Inv ρ →
@@ -324,7 +324,7 @@ theorem toRustMS_ok_of_inv {Inv : AVal → Prop} (hI : ValInv Inv)
           exact ⟨by rw [h1, rustM_ok_bind], h2⟩
         obtain ⟨hloop', hρ3⟩ := loopRevS_ok_of_inv hstep _ _ ρ2 ρ3 hρ2 hloop
         refine ⟨?_, hI.unit, hρ3⟩
-        simp only [toRustMS, hp', hq', hl, hu, if_pos hab, hloop', rustM_ok_bind]
+        simp only [toRustMS, hp', hq', hl, hu, ite_eq_left hab, hloop', rustM_ok_bind]
   case case16 e i ρ ih1 =>
     intro r hc hρ h
     simp only [callsOK] at hc

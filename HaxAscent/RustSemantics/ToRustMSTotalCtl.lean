@@ -244,7 +244,7 @@ theorem EnvTy.upd {κ : Type} {H : κ → AVal → Prop} {Γ : List (String × K
     exact ⟨v, by simp, hv⟩
   · have hb : (y == x) = false := by simpa using hyx
     simp only [List.lookup_cons, hb] at hy
-    rw [if_neg (by simpa using hyx)]
+    rw [ite_eq_right (by simpa using hyx)]
     exact h y k' hy
 
 theorem EnvTy.of_cons {κ : Type} [DecidableEq κ] {H : κ → AVal → Prop}
@@ -796,7 +796,7 @@ theorem appRt_shl_total {ty : UScalarTy} {L U La Ua : Nat} (hA : Ua ≤ ty.numBi
     have hsh : x <<< y = RustM.ok z := by
       show UScalar.shiftLeft_UScalar x y = _
       unfold UScalar.shiftLeft_UScalar UScalar.shiftLeft
-      rw [if_pos hs]
+      rw [ite_eq_left hs]
     simp [appWord, AVal.asW, WordOp.aen, hsh]
   · rw [hz]
     exact Nat.mul_le_mul hx1 (Nat.pow_le_pow_right (by omega) hy1)
@@ -821,7 +821,7 @@ theorem appRt_shr_total {ty : UScalarTy} {L U La Ua : Nat} (hA : Ua ≤ ty.numBi
     have hsh : x >>> y = RustM.ok z := by
       show UScalar.shiftRight_UScalar x y = _
       unfold UScalar.shiftRight_UScalar UScalar.shiftRight
-      rw [if_pos hs]
+      rw [ite_eq_left hs]
     simp [appWord, AVal.asW, WordOp.aen, hsh]
   · rw [hz]
     exact Nat.div_le_div hx1 (Nat.pow_le_pow_right (by omega) (by omega)) (Nat.ne_of_gt (Nat.two_pow_pos _))

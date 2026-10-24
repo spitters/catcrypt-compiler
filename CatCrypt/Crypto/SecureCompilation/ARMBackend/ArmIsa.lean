@@ -410,7 +410,7 @@ theorem get_set_armRegs (b : BState) {d : String} (hd : d ∈ armRegs) (v : BitV
   have hdz := ne_xzr_of_armRegs hd
   by_cases hr : r = d
   · subst hr; simp [BState.set, hdz]
-  · simp only [BState.get, BState.set, hdz, if_false, hr]
+  · simp only [BState.get, BState.set, hdz, ite_false, hr]
 
 /-- **The one-step simulation of the selection**: from related states, the `armIsa` step
     of a selected instruction succeeds, and the result is related to the `BInst` step of
@@ -429,12 +429,12 @@ theorem armSel_step (P : LprogM) {i : LinstrRM} {bi : BInst} (h : armSel i = som
     have hcmp : armCmp (.Lopn [.reg d] (withWidthTag 64 (binOpName o)) [.reg a, .reg c],
         .reg none) s = none := by
       simp only [armCmp, cmpArgs?]
-      rcases ho with rfl | rfl | rfl | rfl | rfl <;> rw [if_neg (by decide +kernel)]
+      rcases ho with rfl | rfl | rfl | rfl | rfl <;> rw [ite_eq_right (by decide +kernel)]
     refine ⟨{ s with prog := { s.prog with
       base := (s.prog.base.setReg d (o.apply (b.get a) (b.get c))).nextPc } },
       ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · rw [armIsa_step]
-      simp only [subsetStep, isCtl, hok, hcmp, Bool.false_eq_true, if_false, if_true]
+      simp only [subsetStep, isCtl, hok, hcmp, Bool.false_eq_true, ite_false, ite_true]
       exact coreStep_binop P o d a c s _ _ (hrel.getW ha) (hrel.getW hc)
     · refine RegRel_setReg hrel d _ (fun r _ => ?_)
       rcases ho with rfl | rfl | rfl | rfl | rfl <;>
@@ -450,7 +450,7 @@ theorem armSel_step (P : LprogM) {i : LinstrRM} {bi : BInst} (h : armSel i = som
     refine ⟨{ s with prog := { s.prog with base := (s.prog.base.setReg d (b.get a)).nextPc } },
       ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
     · rw [armIsa_step]
-      simp only [subsetStep, isCtl, hok, hcmp, Bool.false_eq_true, if_false, if_true]
+      simp only [subsetStep, isCtl, hok, hcmp, Bool.false_eq_true, ite_false, ite_true]
       exact coreStep_mov P d a tag s _ (hrel a ha)
     · exact RegRel_setReg hrel d _ (fun r _ => by simp only [evalBInst, get_set_armRegs b hd])
 
@@ -689,7 +689,7 @@ theorem armIsa_step_core (P : LprogM) (i : LinstrRM) (s : LstateMF)
     (hok : mnemOk armBases i.fst = true) (hctl : isCtl i.fst = false)
     (hcmp : armCmp i s = none) : armIsa.step P i s = coreStep P i s := by
   rw [armIsa_step]
-  simp only [subsetStep, hctl, hok, hcmp, Bool.false_eq_true, if_false, if_true]
+  simp only [subsetStep, hctl, hok, hcmp, Bool.false_eq_true, ite_false, ite_true]
 
 /-- A register write outside the array bases leaves the memory relation. -/
 theorem ArmMemRel_setReg {arrs : List String} {sz : String → Nat} {s : LstateMF} {b : BMState}
@@ -702,7 +702,7 @@ theorem ArmMemRel_setReg {arrs : List String} {sz : String → Nat} {s : LstateM
   obtain ⟨arr, harr, hat⟩ := hmem a ha
   have had : a ≠ d := fun e => hda (e ▸ ha)
   refine ⟨arr, by simpa using harr, ?_⟩
-  rw [hm, hregs, get_set_armRegs _ hd, if_neg had]
+  rw [hm, hregs, get_set_armRegs _ hd, ite_eq_right had]
   exact hat
 
 /-- **The one-step simulation of the memory selection**: from related states with in-range
@@ -737,7 +737,7 @@ theorem armSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i 
         (evalBMInst b (.ldrr d base idx)) rfl rfl _ _
     · intro x hx
       simp only [evalBMInst]
-      rw [get_set_armRegs _ hd, if_neg (fun (e : x = d) => hda (e ▸ hx))]
+      rw [get_set_armRegs _ hd, ite_eq_right (fun (e : x = d) => hda (e ▸ hx))]
   · -- the array store
     have hlt : (b.regs.get idx).toNat < sz base :=
       hbd.2 base base idx v (by simp [storeStruct?])
@@ -748,7 +748,7 @@ theorem armSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i 
       simp only [evalBMInst, armAddrR, shiftLeft_three_eq]
     have hcmp : armCmp (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
         .store 64 (sz base)) s = none := by
-      simp only [armCmp, cmpArgs?]; rw [if_neg (by decide +kernel)]
+      simp only [armCmp, cmpArgs?]; rw [ite_eq_right (by decide +kernel)]
     refine ⟨{ s with prog := { s.prog with
         base := (s.prog.base.setArr base
           (stackSet arr (b.regs.get idx).toNat (b.regs.get v))).nextPc } },
@@ -786,7 +786,7 @@ theorem armSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i 
     have hcmp : armCmp (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k],
         .reg none) s = none := by
       simp only [armCmp, cmpArgs?]
-      rcases hbop' with rfl | rfl <;> rw [if_neg (by decide +kernel)]
+      rcases hbop' with rfl | rfl <;> rw [ite_eq_right (by decide +kernel)]
     refine ⟨{ s with prog := { s.prog with
         base := (s.prog.base.setReg d (bop.apply (b.regs.get a) (BitVec.ofNat 64 k))).nextPc } },
       ?_, ?_, ?_, ?_, rfl, rfl, rfl, rfl, rfl, rfl⟩
@@ -799,7 +799,7 @@ theorem armSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i 
         (by rcases hbop with ⟨-, rfl⟩ | ⟨-, rfl⟩ <;> rfl)
         _ _
     · intro x hx
-      rw [hval, get_set_armRegs _ hd, if_neg (fun (e : x = d) => hda (e ▸ hx))]
+      rw [hval, get_set_armRegs _ hd, ite_eq_right (fun (e : x = d) => hda (e ▸ hx))]
   · -- a register instruction of `armSel`
     obtain ⟨s', hs', hrel', fr⟩ := armSel_step P hbb s b.regs hrel
     obtain ⟨f1, f2, f3, f4, f5, f6, f7⟩ := fr
@@ -820,7 +820,7 @@ theorem armSelM_step (P : LprogM) {arrs : List String} {sz : String → Nat} {i 
     obtain ⟨w, hw, hd⟩ := hdst
     have hbase : ∀ x ∈ arrs, (evalBMInst b (.alu bb)).regs.get x = b.regs.get x := by
       intro x hx
-      rw [evalBMInst_alu_regs, hw, get_set_armRegs _ hd, if_neg (fun (e : x = d) => hda (e ▸ hx))]
+      rw [evalBMInst_alu_regs, hw, get_set_armRegs _ hd, ite_eq_right (fun (e : x = d) => hda (e ▸ hx))]
     refine ⟨s', hs', hrel', ?_, hbase, f1, f2, f4, f5, f6, f7⟩
     intro x hx
     obtain ⟨arr, harr, hat⟩ := hmem x hx
@@ -942,7 +942,7 @@ theorem armIsa_step_cmp (P : LprogM) (x : LOperand) (a c : String) (tag : MemTag
   have hok : mnemOk armBases (.Lopn [x] (withWidthTag 64 "CMP") [.reg a, .reg c]) = true := by
     simp only [mnemOk]; decide +kernel
   rw [armIsa_step]
-  simp only [subsetStep, isCtl, hok, Bool.false_eq_true, if_false, if_true, armCmp, cmpArgs?,
+  simp only [subsetStep, isCtl, hok, Bool.false_eq_true, ite_false, ite_true, armCmp, cmpArgs?,
     evalOperandN, hrel.getW ha, hrel.getW hc, evalBMInst]
 
 /-- A register write leaves the carry flag of the A64 register file. -/
@@ -1076,7 +1076,7 @@ theorem armSelM_effect {arrs : List String} {sz : String → Nat} {i : LinstrRM}
     | ⟨d, opn, srcs, tag, bb, rfl, -, hbb, rfl⟩
   · refine ⟨d, _, _, rfl, rfl, BState_cf_set _ _ _, fun r hr => ?_, Or.inl rfl⟩
     simp only [evalBMInst]
-    rw [get_set_armRegs _ hd, if_neg hr]
+    rw [get_set_armRegs _ hd, ite_eq_right hr]
   · have hlt : (b.regs.get idx).toNat < sz base :=
       hbd.2 base base idx v (by simp [storeStruct?])
     refine ⟨base, _, _, rfl, rfl, rfl, fun r _ => rfl, Or.inr ⟨⟨_, hlt⟩, b.regs.get v, ha, ?_⟩⟩
@@ -1084,10 +1084,10 @@ theorem armSelM_effect {arrs : List String} {sz : String → Nat} {i : LinstrRM}
   · rcases hbop with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
     · refine ⟨d, _, _, rfl, rfl, BState_cf_set _ _ _, fun r hr => ?_, Or.inl rfl⟩
       simp only [evalBMInst]
-      rw [get_set_armRegs _ hd, if_neg hr]
+      rw [get_set_armRegs _ hd, ite_eq_right hr]
     · refine ⟨d, _, _, rfl, rfl, BState_cf_set _ _ _, fun r hr => ?_, Or.inl rfl⟩
       simp only [evalBMInst]
-      rw [get_set_armRegs _ hd, if_neg hr]
+      rw [get_set_armRegs _ hd, ite_eq_right hr]
   · have hdst : ∃ w, evalBInst b.regs bb = b.regs.set d w ∧ d ∈ armRegs := by
       rcases armSel_inv hbb with ⟨o, d', a, c, he, ho, hd', -, -, hbi⟩
         | ⟨d', a, tag', he, hd', -, rfl⟩
@@ -1105,7 +1105,7 @@ theorem armSelM_effect {arrs : List String} {sz : String → Nat} {i : LinstrRM}
     obtain ⟨w, hw, hd⟩ := hdst
     refine ⟨d, opn, srcs, rfl, rfl, ?_, fun r hr => ?_, Or.inl rfl⟩
     · rw [evalBMInst_alu_regs, hw, BState_cf_set]
-    · rw [evalBMInst_alu_regs, hw, get_set_armRegs _ hd, if_neg hr]
+    · rw [evalBMInst_alu_regs, hw, get_set_armRegs _ hd, ite_eq_right hr]
 
 /-- **The layout of the word cells**: distinct cells at the addresses `g p + off` are
     separated, and each cell is separated from each cell of each array of `arrs`. -/
@@ -1172,15 +1172,15 @@ theorem armSelX_step (P : LprogM) {arrs : List String} {sz : String → Nat}
       · exact ArmMemRel_setReg hmem d hda hd _ (evalBMInst b (.ldr d p (off / 8))) rfl rfl _ _
       · intro c hc
         simp only [LstateM.lmem_nextPc, LstateM.lmem_setReg, evalBMInst]
-        rw [get_set_armRegs _ hd, if_neg (hcd c hc)]
+        rw [get_set_armRegs _ hd, ite_eq_right (hcd c hc)]
         exact hword c hc
       · exact (BState_cf_set _ _ _).symm ▸ hflag.2
       · intro a ha
         simp only [evalBMInst]
-        rw [get_set_armRegs _ hd, if_neg (fun (e : a = d) => hda (e ▸ ha))]
+        rw [get_set_armRegs _ hd, ite_eq_right (fun (e : a = d) => hda (e ▸ ha))]
       · intro c hc
         simp only [evalBMInst]
-        rw [get_set_armRegs _ hd, if_neg (hcd c hc)]
+        rw [get_set_armRegs _ hd, ite_eq_right (hcd c hc)]
     · -- the immediate-offset store
       have haddr : armAddrI b.regs p (off / 8) = b.regs.get p + BitVec.ofNat 64 off := by
         rw [armAddrI, Nat.mul_div_cancel' (Nat.dvd_of_mod_eq_zero h8)]

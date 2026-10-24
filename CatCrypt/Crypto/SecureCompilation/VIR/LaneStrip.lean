@@ -1236,8 +1236,8 @@ theorem stripMine_leakRun (M : LeakModel jasminDialect) (hM : LaneQuiet w M) (hA
         W) := by
   have hl : l < 64 := by
     by_contra hl
-    simp only [stripMine, hl, if_false, reduceCtorEq] at h
-  simp only [stripMine, hl, if_true] at h
+    simp only [stripMine, hl, ite_false, reduceCtorEq] at h
+  simp only [stripMine, hl, ite_true] at h
   obtain ⟨E, -, rfl⟩ := Option.map_eq_some_iff.mp h
   obtain ⟨cs, count, inits, body, k, vbody, rfl, hv⟩ := E
   have hc : (memVar (inlVar count)).lookup (d := jasminTileMem) W =

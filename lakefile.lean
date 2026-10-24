@@ -3194,26 +3194,26 @@ lean_lib HaxAscent where
 -- The sibling packages are pinned by commit on their `lean-upgrade-4.32`
 -- branches; they carry no release label at Lean 4.32 yet.
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "6d0a962c226d3d72c90d2d4131d832e89601471c"
+  "https://github.com/spitters/CatCrypt-core.git" @ "lean-upgrade-4.35"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
 -- CatCrypt dialect folders `Veir/Dialects/{Catcrypt,Memref,Polynomial,Vector,X86vector}`.
 require Veir from git
-  "https://github.com/spitters/veir-catcrypt" @ "v4.33.1-catcrypt.3"
+  "https://github.com/spitters/veir-catcrypt" @ "v4.35.0-catcrypt.1"
 
 -- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
 require paramTransfer from git
-  "https://github.com/spitters/ParamTransfer.git" @ "740e465d38bb0bb5eba6cbbecee16805e9221e87"
+  "https://github.com/spitters/ParamTransfer.git" @ "lean-upgrade-4.35"
 require CompPoly from git
-  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.33.1"
+  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.35.0"
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "f9b55a798bf857ce2c5d7f1510cea41902234007"
+  "https://github.com/spitters/hax-lean.git" @ "lean-upgrade-4.35"
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4" @ "v4.33.1"
+  "https://github.com/leanprover-community/mathlib4" @ "v4.35.0"
 
 -- API documentation (opt-in, dev only — not in the normal build closure).
 --   lake -R -Kenv=doc build CatCryptCompiler:docs
@@ -3222,7 +3222,7 @@ require mathlib from git
 -- library build.
 meta if get_config? env = some "doc" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "v4.33.1"
+  "https://github.com/leanprover/doc-gen4" @ "v4.35.0"
 
 -- Executables whose root modules live in this package; the dev tree ran them
 -- before the 2026-09-12 restructure and still invokes them through `lake exe`,

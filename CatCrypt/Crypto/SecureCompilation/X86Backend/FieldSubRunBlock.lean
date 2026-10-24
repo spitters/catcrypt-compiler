@@ -113,30 +113,30 @@ theorem subb_recon (a b : BitVec 64) (bin : BitVec 1) :
   have hinner : (2 ^ 64 - b.toNat + a.toNat) % 2 ^ 64
       = if a.toNat < b.toNat then 2 ^ 64 + a.toNat - b.toNat else a.toNat - b.toNat := by
     by_cases hab : a.toNat < b.toNat
-    · rw [if_pos hab, Nat.mod_eq_of_lt (by omega)]; omega
-    · rw [if_neg hab,
+    · rw [ite_eq_left hab, Nat.mod_eq_of_lt (by omega)]; omega
+    · rw [ite_eq_right hab,
         show 2 ^ 64 - b.toNat + a.toNat = 2 ^ 64 + (a.toNat - b.toNat) by omega,
         Nat.add_mod_left, Nat.mod_eq_of_lt (by omega)]
   rw [hinner]
   by_cases hc : a.toNat < b.toNat + bin.toNat
-  · rw [if_pos hc]
+  · rw [ite_eq_left hc]
     have e1 : (1 : BitVec 1).toNat = 1 := rfl
     rw [e1]
     by_cases hab : a.toNat < b.toNat
-    · rw [if_pos hab,
+    · rw [ite_eq_left hab,
         show 2 ^ 64 - bin.toNat + (2 ^ 64 + a.toNat - b.toNat)
             = 2 ^ 64 + (2 ^ 64 - bin.toNat + a.toNat - b.toNat) by omega,
         Nat.add_mod_left, Nat.mod_eq_of_lt (by omega)]
       omega
     · -- a ≥ b but a < b + bin ⇒ a = b, bin = 1
-      rw [if_neg hab]
+      rw [ite_eq_right hab]
       rw [Nat.mod_eq_of_lt (show 2 ^ 64 - bin.toNat + (a.toNat - b.toNat) < 2 ^ 64 by omega)]
       omega
-  · rw [if_neg hc]
+  · rw [ite_eq_right hc]
     have e0 : (0 : BitVec 1).toNat = 0 := rfl
     rw [e0]
     have hab : ¬ a.toNat < b.toNat := by omega
-    rw [if_neg hab]
+    rw [ite_eq_right hab]
     -- no borrow: a ≥ b + bin, so 2^64 - bin + (a - b) ≥ 2^64 and wraps once.
     rw [show 2 ^ 64 - bin.toNat + (a.toNat - b.toNat)
           = 2 ^ 64 + (a.toNat - b.toNat - bin.toNat) by omega,
@@ -198,7 +198,7 @@ theorem emit_sub_cf (s : JState 64) (dst src : String) :
 /-- One emitted SUB step writes only `dst`: any other register is preserved. -/
 theorem emit_sub_other (s : JState 64) (dst src r : String) (hr : r ≠ dst) :
     (evalInstr s (.sub dst (.reg src))).get r = s.get r := by
-  simp only [evalInstr, JState.get, JState.writeB5W, if_neg hr]
+  simp only [evalInstr, JState.get, JState.writeB5W, ite_eq_right hr]
 
 /-- `subBorrowWord` is exactly Jasmin's `sub_borrow` at the same borrow-in: both
     are the two's-complement `a − b − c` word. -/
@@ -232,7 +232,7 @@ theorem emit_sbb_cf (s : JState 64) (dst src : String) :
   rcases hc : s.flagB (·.cf) with _ | _
   · -- carry-in 0
     simp only [evalInstr, x86_SBB, sub_borrow, JOperand.eval, hc, Bool.false_eq_true,
-      if_false]
+      ite_false]
     simp only [JState.flagB, JState.writeB5W, wunsigned, Option.getD_some, Nat.cast_zero,
       sub_zero, Nat.add_zero, ne_eq]
     refine decide_eq_decide.mpr ?_
@@ -241,7 +241,7 @@ theorem emit_sbb_cf (s : JState 64) (dst src : String) :
       ofInt_toNat_borrow _ (by push_cast; omega) (by push_cast; omega)]
     omega
   · -- carry-in 1
-    simp only [evalInstr, x86_SBB, sub_borrow, JOperand.eval, hc, if_true]
+    simp only [evalInstr, x86_SBB, sub_borrow, JOperand.eval, hc, ite_true]
     simp only [JState.flagB, JState.writeB5W, wunsigned, Option.getD_some, Nat.cast_one,
       ne_eq]
     refine decide_eq_decide.mpr ?_
@@ -253,7 +253,7 @@ theorem emit_sbb_cf (s : JState 64) (dst src : String) :
 /-- One emitted SBB step writes only `dst`: any other register is preserved. -/
 theorem emit_sbb_other (s : JState 64) (dst src r : String) (hr : r ≠ dst) :
     (evalInstr s (.sbb dst (.reg src))).get r = s.get r := by
-  simp only [evalInstr, JState.get, JState.writeB5W, if_neg hr]
+  simp only [evalInstr, JState.get, JState.writeB5W, ite_eq_right hr]
 
 /-! ## 3. The multi-limb ripple-subtract over the borrow chain
 
@@ -507,8 +507,8 @@ theorem emitSbbChain_runBlock_reconstruct (ds ss : List String) (u v : List (Bit
         then (1 : Nat) else 0) = (subLimbs u v 0).2.toNat := by
     rw [bit_toNat (subLimbs u v 0).2]
     by_cases hb : ((runBlock s (emitSbbChain ds ss)).flagB fun x ↦ x.cf) = true
-    · rw [if_pos hb, if_pos (by rw [← hcf]; exact hb)]
-    · rw [if_neg hb, if_neg (by rw [← hcf]; simpa using hb)]
+    · rw [ite_eq_left hb, ite_eq_left (by rw [← hcf]; exact hb)]
+    · rw [ite_eq_right hb, ite_eq_right (by rw [← hcf]; simpa using hb)]
   -- subLimbs_reconstruct: valLimbs diff + valLimbs v = valLimbs u + 2^{64n}·borrow
   rw [hrec]
   congr 2
@@ -555,18 +555,18 @@ theorem modSub_runBlock (p : Nat) (ds ss : List String) (a b : List (BitVec 64))
   -- case on the borrow flag
   by_cases hbor : runBlockSubBorrow ds ss s
   · -- borrow ⇒ a < b, D = a + R − b; (D + p) % R = a + p − b
-    simp only [if_pos hbor] at hrecon ⊢
+    simp only [ite_eq_left hbor] at hrecon ⊢
     have hDval : D = valLimbs a + R - valLimbs b := by omega
     have hab_lt : valLimbs a < valLimbs b := by omega
-    rw [hDval, condAddP, if_pos hab_lt]
+    rw [hDval, condAddP, ite_eq_left hab_lt]
     -- (a + R − b + p) % R = a + p − b  (since a + p − b < R)
     rw [show valLimbs a + R - valLimbs b + p = R + (valLimbs a + p - valLimbs b) by omega,
       Nat.add_mod_left, Nat.mod_eq_of_lt (by omega)]
   · -- no borrow ⇒ a ≥ b, D = a − b; (D + 0) % R = a − b
-    simp only [if_neg hbor, Nat.add_zero] at hrecon ⊢
+    simp only [ite_eq_right hbor, Nat.add_zero] at hrecon ⊢
     have hge : valLimbs b ≤ valLimbs a := by omega
     have hDval : D = valLimbs a - valLimbs b := by omega
-    rw [hDval, condAddP, if_neg (by omega : ¬ valLimbs a < valLimbs b),
+    rw [hDval, condAddP, ite_eq_right (by omega : ¬ valLimbs a < valLimbs b),
       Nat.mod_eq_of_lt (by omega)]
 
 /-! ## 6. Curve instances: Pasta (4-limb), BLS12-381 / P384 (6-limb)

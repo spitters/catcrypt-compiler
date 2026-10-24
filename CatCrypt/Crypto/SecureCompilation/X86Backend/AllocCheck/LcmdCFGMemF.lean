@@ -150,7 +150,7 @@ theorem memFMachine_sound (P : LprogM) : (memFMachine P).Sound (P.body.map Prod.
     split at h
     · rename_i i hi
       unfold findInstrMem at hi
-      rw [if_pos hs] at hi
+      rw [ite_eq_left hs] at hi
       exact (List.getElem?_eq_some_iff.mp hi).1
     · cases h
   step_next s s' i hs h hi := by
@@ -158,7 +158,7 @@ theorem memFMachine_sound (P : LprogM) : (memFMachine P).Sound (P.body.map Prod.
     split at h
     · rename_i j hj
       unfold findInstrMem at hj
-      rw [if_pos hs] at hj
+      rw [ite_eq_left hs] at hj
       rw [List.getElem?_map, hj] at hi
       cases hi
       exact (evalInstrPMemF_next P j s s' h).2

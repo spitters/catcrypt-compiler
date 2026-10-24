@@ -127,7 +127,7 @@ theorem takeWhile_append_of_all {α : Type} {p : α → Bool} {a b : List α}
   induction a with
   | nil => rfl
   | cons x xs ih =>
-    rw [List.cons_append, List.takeWhile_cons, if_pos (h x (List.mem_cons_self ..)),
+    rw [List.cons_append, List.takeWhile_cons, ite_eq_left (h x (List.mem_cons_self ..)),
       ih (fun y hy => h y (List.mem_cons_of_mem x hy)), List.cons_append]
 
 theorem dropWhile_append_of_all {α : Type} {p : α → Bool} {a b : List α}
@@ -135,7 +135,7 @@ theorem dropWhile_append_of_all {α : Type} {p : α → Bool} {a b : List α}
   induction a with
   | nil => rfl
   | cons x xs ih =>
-    rw [List.cons_append, List.dropWhile_cons, if_pos (h x (List.mem_cons_self ..)),
+    rw [List.cons_append, List.dropWhile_cons, ite_eq_left (h x (List.mem_cons_self ..)),
       ih (fun y hy => h y (List.mem_cons_of_mem x hy))]
 
 /-! ## 2. The loop-body walks emit straight-line instructions -/

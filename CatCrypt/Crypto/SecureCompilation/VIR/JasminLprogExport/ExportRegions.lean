@@ -1438,9 +1438,9 @@ theorem resolveVar_operandName_ne_loopCtr {curDepth nArgs : Nat} {Γ : Ctxt jasm
     operandName (resolveVar curDepth nArgs argName (fun _ => none) v) ≠ loopCtr l := by
   simp only [resolveVar, operandName]
   by_cases hsa : curDepth - 1 - varIndex v < nArgs
-  · simp only [hsa, if_true]
+  · simp only [hsa, ite_true]
     exact fun h => loopCtr_ne_argName l _ h.symm
-  · simp only [hsa, if_false]
+  · simp only [hsa, ite_false]
     exact fun h => loopCtr_ne_regName l _ h.symm
 
 /-- **A region frame keeps the store agreement at its depth.** -/
@@ -1720,11 +1720,11 @@ theorem callsSim_withProcs (I : Isa) {E : CallEnv jasminDialect} {T : ProcTable}
   refine ⟨fun f as has a v hcall P dst srcs tag s hlen hsrcs => ?_,
     fun f as n has a v hcall P dst srcs tag s hlen hsrcs => ?_⟩
   · obtain ⟨pr, hf, har, harr, hrun⟩ := h.1 f as has a v hcall
-    rw [I.withProcs_step_callShadow T hf, procStep, if_pos (by rw [har, hlen]), harr, hsrcs]
+    rw [I.withProcs_step_callShadow T hf, procStep, ite_eq_left (by rw [har, hlen]), harr, hsrcs]
     simp only [Option.bind_some, LprogIsa.ProcSummary.result, hrun, Option.map_some,
       LprogIsa.retRes_word]
   · obtain ⟨pr, hf, har, harr, hrun, hout, hro⟩ := h.2 f as n has a v hcall
-    rw [I.withProcs_step_callShadow T hf, procStep, if_pos (by rw [har, hlen]), harr, hsrcs,
+    rw [I.withProcs_step_callShadow T hf, procStep, ite_eq_left (by rw [har, hlen]), harr, hsrcs,
       Option.bind_some, LprogIsa.ProcSummary.result_of_out hout hrun, hro]
     rfl
 
@@ -1965,7 +1965,7 @@ theorem steps_addImm {P : LprogM} {k : Nat} {s : LstateMF} {dst a : String} {c :
       ∧ ∀ r, t.prog.base.reg.lvm r
           = if r = dst then ⟨64, va + BitVec.ofNat 64 c⟩ else s.prog.base.reg.lvm r :=
   steps_setReg (va + BitVec.ofNat 64 c) hat hi ⟨_, _, _, rfl⟩
-    (by unfold cmpArgs?; exact if_neg (by decide)) rfl
+    (by unfold cmpArgs?; exact ite_eq_right (by decide)) rfl
     (lsemStepMem_addI dst a c s.prog.base va ha)
 
 /-- **The decrement of the counter** `SUB dst, a, #c` is one step. -/
@@ -1978,7 +1978,7 @@ theorem steps_subImm {P : LprogM} {k : Nat} {s : LstateMF} {dst a : String} {c :
       ∧ ∀ r, t.prog.base.reg.lvm r
           = if r = dst then ⟨64, va - BitVec.ofNat 64 c⟩ else s.prog.base.reg.lvm r :=
   steps_setReg (va - BitVec.ofNat 64 c) hat hi ⟨_, _, _, rfl⟩
-    (by unfold cmpArgs?; exact if_neg (by decide)) rfl
+    (by unfold cmpArgs?; exact ite_eq_right (by decide)) rfl
     (lsemStepMem_subI dst a c s.prog.base va ha)
 
 /-- **The compare with zero** `CMP r, #0` is one step that sets the zero flag to the test
@@ -2008,7 +2008,7 @@ theorem steps_cc_taken {P : LprogM} {k q : Nat} {s : LstateMF} {cc : String} {l 
   unfold evalInstrPMemF
   rw [show cmpArgs? (condI (.reg cc) l) = none from rfl,
     show movRegArgs? (condI (.reg cc) l) = none from rfl, hcc]
-  simp only [if_pos hz]
+  simp only [ite_eq_left hz]
   exact evalJumpMem_of_findLabelMem hl s
 
 /-- **A conditional jump on a condition code**, not taken: one step to the next counter. -/
@@ -2021,7 +2021,7 @@ theorem steps_cc_fall {P : LprogM} {k : Nat} {s : LstateMF} {cc : String} {l : L
   unfold evalInstrPMemF
   rw [show cmpArgs? (condI (.reg cc) l) = none from rfl,
     show movRegArgs? (condI (.reg cc) l) = none from rfl, hcc]
-  simp only [if_neg hz]
+  simp only [ite_eq_right hz]
   rfl
 
 /-- **Register copies as an assignment.** The copies `MOV T j, S j` for `j < m`, with
@@ -2058,10 +2058,10 @@ theorem steps_moves (P : LprogM) (T S : Nat → String) :
       refine ⟨t', hs.trans hs', hat2, harr'.trans harr, fun j hj => ?_, fun r hr => ?_⟩
       · rw [hcell]
         rcases Nat.lt_succ_iff_lt_or_eq.mp hj with hj' | rfl
-        · rw [if_neg (hT j m hj' (Nat.lt_succ_self m)), hmov j hj']
-        · rw [if_pos rfl]
+        · rw [ite_eq_right (hT j m hj' (Nat.lt_succ_self m)), hmov j hj']
+        · rw [ite_eq_left rfl]
           exact hoth _ fun i hi => hS i j hi (Nat.lt_succ_self j)
-      · rw [hcell, if_neg (hr m (Nat.lt_succ_self m))]
+      · rw [hcell, ite_eq_right (hr m (Nat.lt_succ_self m))]
         exact hoth r fun j hj => hr j (by omega)
 
 /-! ## 13. The moves of a frame as copies by index -/
@@ -2212,7 +2212,7 @@ theorem storeAgreesM_append {nArgs D : Nat} {Γ cs : Ctxt jasminDialect} (hcs : 
     · rw [lookup_inlHom]
       have hu := JasminLsemSimulation.varIndex_lt u
       simp only [resolveVar, varIndex_inlHom]
-      rw [if_neg (by omega), evalOperandN,
+      rw [ite_eq_right (by omega), evalOperandN,
         show D + cs.length - 1 - varIndex u = D + (cs.length - 1 - varIndex u) by omega]
       exact hblk u
     · rw [lookup_inrHom, hres]
@@ -2239,7 +2239,7 @@ theorem findLabelMem_append_labelI (l : LLabel) (xs ys : List LinstrRM)
       have ih' := ih h.2
       unfold findLabelMem findLabel at ih' ⊢
       rw [List.cons_append, List.map_cons, List.findIdx?_cons, hx]
-      simp only [Bool.false_eq_true, if_false]
+      simp only [Bool.false_eq_true, ite_false]
       rw [ih']
       simp
 
@@ -2425,25 +2425,25 @@ theorem forTail_steps {P : LprogM} {d n nCar bD : Nat} {ops : List LOperand}
       (by rw [hbody]; simp only [advanceOps, List.append_assoc, List.cons_append,
         List.nil_append]; rfl)
       (by rw [List.length_append, hlenP]; rfl))
-    (by rw [hm2, if_neg (loopCtr_ne_regName n d)]; exact hctr1)
+    (by rw [hm2, ite_eq_right (loopCtr_ne_regName n d)]; exact hctr1)
   obtain ⟨t4, hs4, hat4, ha4, hm4, hz4⟩ := steps_cmpZero (v := c - 1#64) (r := loopCtr n) hat3
     (fetch_of_body (xs := pre ++ parMoves bD (carriedRegs (d + 1) nCar) ops
         ++ advanceOps (regName d) (loopCtr n))
       (by rw [hbody]; simp only [List.append_assoc]; rfl)
       (by rw [List.length_append, hlenP]; rfl))
-    (by rw [hm3, if_pos rfl])
+    (by rw [hm3, ite_eq_left rfl])
   have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
   refine ⟨t4, ((hs1.trans hs2).trans hs3).trans hs4, hat4, ((ha4.trans ha3).trans ha2).trans ha1,
     hz4, ?_, ?_, fun j hj => ?_, fun r hr hrc => ?_⟩
-  · rw [hm4, hm3, if_neg hri, hm2, if_pos rfl]
-  · rw [hm4, hm3, if_pos rfl]
+  · rw [hm4, hm3, ite_eq_right hri, hm2, ite_eq_left rfl]
+  · rw [hm4, hm3, ite_eq_left rfl]
   · have hne : regName (d + 1 + (nCar - 1 - j)) ≠ regName d := fun he => by
       have := JasminLsemSimulation.regName_injective he
       omega
-    rw [hm4, hm3, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hm2, if_neg hne,
+    rw [hm4, hm3, ite_eq_right (fun he => loopCtr_ne_regName n _ he.symm), hm2, ite_eq_right hne,
       ← carriedRegs_getD (d + 1) nCar j hj]
     exact hm1 j hj
-  · rw [hm4, hm3, if_neg hrc, hm2, if_neg (hr d le_rfl)]
+  · rw [hm4, hm3, ite_eq_right hrc, hm2, ite_eq_right (hr d le_rfl)]
     exact ho1 r (fun hm => by
         obtain ⟨j, _, he⟩ := mem_carriedRegs.mp hm
         exact hr _ (by omega) he)
@@ -2730,7 +2730,7 @@ theorem forHead_steps {P : LprogM} {d n nCar : Nat} {ops : List LOperand} {cn : 
       (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
       (by rw [List.length_append, List.length_append, hSlen]; rfl))
   have hc3 : t3.prog.base.reg.lvm (loopCtr n) = ⟨64, cnt⟩ := by
-    rw [hm3, if_pos rfl, hm2, if_neg (hcn d le_rfl),
+    rw [hm3, ite_eq_left rfl, hm2, ite_eq_right (hcn d le_rfl),
       ho1 cn fun j hj => by rw [carriedRegs_getD _ _ _ hj]; exact hcn _ (by omega)]
     exact hcnt
   obtain ⟨t4, hs4, hat4, ha4, hm4, hz4⟩ := steps_cmpZero (r := loopCtr n) (v := cnt) hat3
@@ -2741,16 +2741,16 @@ theorem forHead_steps {P : LprogM} {d n nCar : Nat} {ops : List LOperand} {cn : 
   have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
   refine ⟨t4, ((hs1.trans hs2).trans hs3).trans hs4, hat4, ((ha4.trans ha3).trans ha2).trans ha1,
     hz4, ?_, ?_, fun j hj => ?_, fun r hr hrc => ?_⟩
-  · rw [hm4, hm3, if_neg hri, hm2, if_pos rfl]
+  · rw [hm4, hm3, ite_eq_right hri, hm2, ite_eq_left rfl]
   · rw [hm4]
     exact hc3
   · have hne : regName (d + 1 + (nCar - 1 - j)) ≠ regName d := fun he => by
       have := JasminLsemSimulation.regName_injective he
       omega
-    rw [hm4, hm3, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hm2, if_neg hne,
+    rw [hm4, hm3, ite_eq_right (fun he => loopCtr_ne_regName n _ he.symm), hm2, ite_eq_right hne,
       ← carriedRegs_getD (d + 1) nCar j hj]
     exact hm1 j hj
-  · rw [hm4, hm3, if_neg hrc, hm2, if_neg (hr d le_rfl)]
+  · rw [hm4, hm3, ite_eq_right hrc, hm2, ite_eq_right (hr d le_rfl)]
     exact ho1 r fun j hj => by rw [carriedRegs_getD _ _ _ hj]; exact hr _ (by omega)
 
 /-! ## 17. The exit-flag loop -/
@@ -2820,7 +2820,7 @@ theorem lsemStepMem_select (dst c a b : String) (s : LstateM) (vc : BitVec 1)
   rw [lsemStepMem_reg, JasminLsemCast.lsemStepCast_of_delegate _ _ (Or.inr rfl),
     JasminLsemMulCarry.lsemStepMC_of_delegate _ _ h1 h2 h3 h4 h5,
     JasminLsemShift.lsemStepSh_of_not_sar _ _ h6]
-  simp only [lsemStepN, stripWidthTag_withWidthTag_CMOV, if_pos, operandName,
+  simp only [lsemStepN, stripWidthTag_withWidthTag_CMOV, ite_eq_left, operandName,
     getW_of_lvm _ _ _ hc, readReg, ha, evalOperandN, getW_of_lvm _ _ _ hb, Option.map_some]
   rfl
 
@@ -2844,11 +2844,11 @@ theorem flagWord_steps {P : LprogM} {r z f : String} (pre post : List LinstrRM) 
       (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
       (by rw [List.length_append]; rfl))
   have hflag2 : t2.prog.base.reg.lvm r = ⟨64, BitVec.ofNat 64 1⟩ := by
-    rw [hm2, if_neg hrz, hm1, if_pos rfl]
+    rw [hm2, ite_eq_right hrz, hm1, ite_eq_left rfl]
   have hz2 : t2.prog.base.reg.lvm z = ⟨64, BitVec.ofNat 64 0⟩ := by
-    rw [hm2, if_pos rfl]
+    rw [hm2, ite_eq_left rfl]
   have hf2 : t2.prog.base.reg.lvm f = ⟨1, bit⟩ := by
-    rw [hm2, if_neg hfz, hm1, if_neg hfr]
+    rw [hm2, ite_eq_right hfz, hm1, ite_eq_right hfr]
     exact hbit
   obtain ⟨t3, hs3, hat3, ha3, hm3⟩ := steps_setReg (dst := r)
     (selectW bit (BitVec.ofNat 64 1) (BitVec.ofNat 64 0)) hat2
@@ -2859,8 +2859,8 @@ theorem flagWord_steps {P : LprogM} {r z f : String} (pre post : List LinstrRM) 
     (lsemStepMem_select _ f _ _ t2.prog.base bit _ _ hf2 hflag2 hz2)
   refine ⟨t3, (hs1.trans hs2).trans hs3, hat3, (ha3.trans ha2).trans ha1, ?_,
     fun q hqr hqz => ?_⟩
-  · rw [hm3, if_pos rfl]
-  · rw [hm3, if_neg hqr, hm2, if_neg hqz, hm1, if_neg hqr]
+  · rw [hm3, ite_eq_left rfl]
+  · rw [hm3, ite_eq_right hqr, hm2, ite_eq_right hqz, hm1, ite_eq_right hqr]
 
 /-- **The tail of a trip of an exit-flag loop**: the widening of the continue bit, the
     parallel assignment of the returned tuple to the carried block, and the compare of the
@@ -3087,7 +3087,7 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
         whileLoop_trip nArgs fn body hcs hI hsim hb hlen harg hfn hbody hfh hR hA fuel V acc r m
           hden hat hag hblk
       by_cases hbt : HasBoolBit.toBool (d := jasminDialect) r.head = true
-      · rw [if_pos hbt] at hrest
+      · rw [ite_eq_left hbt] at hrest
         obtain ⟨hs', hat'⟩ := steps_cc_taken hcc hat2 hfetch (by rw [hz, hbt]; rfl) hl
         have hfr' : RegionFrame d n m.prog.base (goto t (A.length + 1)).prog.base :=
           hfr.trans (RegionFrame.of_cells rfl fun _ _ _ => rfl) le_rfl le_rfl
@@ -3096,7 +3096,7 @@ theorem whileLoop_trips : ∀ (f : Nat) (acc accN : Ctxt.Valuation cs) (m : Lsta
           hrest hat' (StoreAgreesM.of_regionFrame hlen hag hfr') (fun {w} u => hblk' u)
         exact ⟨k + 1 + k', m', (hs.trans (steps_of_stepLe hI hs')).trans hs'', hat'',
           hfr'.trans hfr'' le_rfl le_rfl, fun {w} u => hblk'' u, trips_le_succ hle hle''⟩
-      · rw [if_neg hbt] at hrest
+      · rw [ite_eq_right hbt] at hrest
         obtain rfl : r.tail = accN := Option.some.inj hrest
         obtain ⟨hs', hat'⟩ := steps_cc_fall hcc hat2 hfetch
           (by rw [hz, Bool.not_eq_true] at *; rw [hbt]; decide)
@@ -3344,7 +3344,7 @@ theorem joinJump_steps {P : LprogM} {r : String} {l : LLabel} {q : Nat}
     (fetch_of_body (xs := pre ++ [movImmI r 1])
       (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
       (by rw [List.length_append]; rfl))
-    (by rw [hm1, if_pos rfl])
+    (by rw [hm1, ite_eq_left rfl])
   obtain ⟨hs3, hat3⟩ := steps_cc_taken (cc := "NZ") (pol := false) rfl hat2
     (fetch_of_body (xs := pre ++ [movImmI r 1,
         guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])])
@@ -3353,7 +3353,7 @@ theorem joinJump_steps {P : LprogM} {r : String} {l : LLabel} {q : Nat}
     (by rw [hz2]; decide) hl
   refine ⟨_, (hs1.trans hs2).trans hs3, hat3, ha2.trans ha1, fun x hx => ?_⟩
   show t2.prog.base.reg.lvm x = s.prog.base.reg.lvm x
-  rw [hm2, hm1, if_neg hx]
+  rw [hm2, hm1, ite_eq_right hx]
 
 /-- **The assignment of branch results held in register cells.** For result types held in
     register cells and register operands, one for each result, `ifResMoves` is the
@@ -3375,7 +3375,7 @@ theorem ifResMoves_of_regTys {rs : List JasminTy} (hrs : RegTys rs) (d D : Nat)
       le_refl]
   rw [ifResMoves, hA, hR, List.map_fst_zip (by simp only [carriedRegs_length,
     List.length_map, hlen, le_refl])]
-  simp only [List.isEmpty_nil, if_true, List.nil_append]
+  simp only [List.isEmpty_nil, ite_true, List.nil_append]
   congr 1
   rw [show (fun p : String × String => LOperand.reg p.2) = LOperand.reg ∘ Prod.snd from rfl,
     ← List.map_map, List.map_snd_zip (by simp only [carriedRegs_length, List.length_map,
@@ -3829,8 +3829,8 @@ theorem steps_arrMove {P : LprogM} {z t : String} (a : ArrMove) (pre post : List
     rw [getArr_of_larr_eq (s' := s.prog.base) (r' := a.src) a.w a.n (by rw [hlarr1])]
     exact ha
   have h2 := lsemStepMem_storeIdx a.dst a.src z t (a.w / 8) arr vi (stackGet arr vi.toNat)
-    s1.prog.base ha1 (getW_of_lvm _ z vi (by rw [hlvm1, if_neg hzt]; exact hz))
-    (getW_of_lvm _ t _ (by rw [hlvm1, if_pos rfl]))
+    s1.prog.base ha1 (getW_of_lvm _ z vi (by rw [hlvm1, ite_eq_right hzt]; exact hz))
+    (getW_of_lvm _ t _ (by rw [hlvm1, ite_eq_left rfl]))
   rw [stackSet_stackGet_self] at h2
   obtain ⟨hs2, hat2⟩ := x86_steps_mem hat1
     (fetch_of_body (xs := pre ++ [(.Lopn [.reg t] "LOADIDX" [.arrIdx a.src z (a.w / 8)],
@@ -3838,13 +3838,13 @@ theorem steps_arrMove {P : LprogM} {z t : String} (a : ArrMove) (pre post : List
       (by rw [hbody]; simp only [arrMove, List.append_assoc, List.cons_append,
         List.nil_append]; rfl)
       (by rw [List.length_append, List.length_singleton])) ⟨_, _, _, rfl⟩
-    (by unfold cmpArgs?; exact if_neg (by decide)) rfl h2
+    (by unfold cmpArgs?; exact ite_eq_right (by decide)) rfl h2
   refine ⟨_, hs1.trans hs2, hat2, fun r => ?_, fun r hr => ?_⟩
   · rw [setBase_base, withALUFlags_larr]
     simp only [LstateM.nextPc, LstateM.setArr, hlarr1, larr_eq_of_getArr ha]
   · rw [setBase_base, withALUFlags_reg]
     simp only [LstateM.nextPc, LstateM.setArr, LstateN.lvm_nextPc]
-    rw [hlvm1, if_neg hr]
+    rw [hlvm1, ite_eq_right hr]
 
 /-- **Array moves as an assignment.** The moves `mv`, in which no move reads or writes the
     target of an earlier one, write at each target the cell its source held before the
@@ -3881,7 +3881,7 @@ theorem steps_arrMoves {P : LprogM} {z t : String} (hzt : z ≠ t) (vi : BitVec 
           obtain ⟨arr', harr'⟩ := hsrc p (List.mem_cons_of_mem _ hp)
           refine ⟨arr', ?_⟩
           rw [getArr_of_larr_eq (s' := s.prog.base) (r' := p.src) p.w p.n
-            (by rw [hl1, if_neg (hpa p hp).1])]
+            (by rw [hl1, ite_eq_right (hpa p hp).1])]
           exact harr')
       refine ⟨u, ?_, ?_, fun p hp => ?_, fun r hr => ?_, fun r hr => ?_⟩
       · have := hs1.trans hs2
@@ -3892,10 +3892,10 @@ theorem steps_arrMoves {P : LprogM} {z t : String} (hzt : z ≠ t) (vi : BitVec 
           = pre.length + 2 * (a :: mv).length by
             simp only [arrMove, List.length_cons, List.length_nil]; omega] at hat2
       · rcases List.mem_cons.mp hp with rfl | hp'
-        · rw [ho2 _ fun q hq => ((hpa q hq).2).symm, hl1, if_pos rfl]
-        · rw [hm2 p hp', hl1, if_neg (hpa p hp').1]
+        · rw [ho2 _ fun q hq => ((hpa q hq).2).symm, hl1, ite_eq_left rfl]
+        · rw [hm2 p hp', hl1, ite_eq_right (hpa p hp').1]
       · rw [ho2 r fun p hp => hr p (List.mem_cons_of_mem _ hp), hl1,
-          if_neg (hr a List.mem_cons_self)]
+          ite_eq_right (hr a List.mem_cons_self)]
       · rw [hr2 r hr, hr1 r hr]
 
 /-! ## 23. Typed moves -/
@@ -3934,10 +3934,10 @@ theorem steps_regMoves {P : LprogM} :
         rwa [show pre.length + 1 + mv.length = pre.length + (a :: mv).length by
           rw [List.length_cons]; omega] at hat2
       · rcases List.mem_cons.mp hp with rfl | hp'
-        · rw [ho2 _ fun q hq => ((hpa q hq).2).symm, hc1, if_pos rfl]
-        · rw [hm2 p hp', hc1, if_neg (hpa p hp').1]
+        · rw [ho2 _ fun q hq => ((hpa q hq).2).symm, hc1, ite_eq_left rfl]
+        · rw [hm2 p hp', hc1, ite_eq_right (hpa p hp').1]
       · rw [ho2 r fun p hp => hr p (List.mem_cons_of_mem _ hp), hc1,
-          if_neg (hr a List.mem_cons_self)]
+          ite_eq_right (hr a List.mem_cons_self)]
 
 theorem mem_regPairs {tp : List (JasminTy × String × String)} {ty : JasminTy}
     {dst src : String} (h : (ty, dst, src) ∈ tp) (hty : isRegTy ty = true) :
@@ -4108,7 +4108,7 @@ theorem steps_arrParMoves {P : LprogM} {z t : String} (hzt : z ≠ t) (vi : BitV
           u.prog.base.larr r = s.prog.base.larr r)
       ∧ (∀ r, r ≠ t → u.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
   by_cases hc : mv.all (fun q => mv.all fun p => q.src != p.dst) = true
-  · rw [arrParMoves, if_pos hc] at hbody ⊢
+  · rw [arrParMoves, ite_eq_left hc] at hbody ⊢
     have hpw : mv.Pairwise (fun p q => q.src ≠ p.dst ∧ q.dst ≠ p.dst) :=
       hnd.imp_of_mem fun {p q} hp hq h => ⟨by
         have := List.all_eq_true.mp (List.all_eq_true.mp hc q hq) p hp
@@ -4116,7 +4116,7 @@ theorem steps_arrParMoves {P : LprogM} {z t : String} (hzt : z ≠ t) (vi : BitV
     obtain ⟨u, hs, hat', hm, ho, hr⟩ := steps_arrMoves hzt vi mv pre post s hbody hat hz hpw hsrc
     rw [arrMoves_length]
     exact ⟨u, hs, hat', hm, fun r hr' _ => ho r hr', hr⟩
-  · rw [arrParMoves, if_neg hc] at hbody ⊢
+  · rw [arrParMoves, ite_eq_right hc] at hbody ⊢
     rw [← List.append_assoc] at hbody
     obtain ⟨u1, hs1, hat1, hm1, ho1, hr1⟩ := steps_arrMoves hzt vi (arrStage D mv) pre
       (arrMoves z t (arrCommit D mv) ++ post) s (by rw [hbody]; simp only [List.append_assoc])
@@ -4217,7 +4217,7 @@ theorem storeAgreesM_append_arr {nArgs D : Nat} {Γ cs : Ctxt jasminDialect}
     · rw [lookup_inlHom]
       have hu := JasminLsemSimulation.varIndex_lt u
       simp only [resolveVar, varIndex_inlHom]
-      rw [if_neg (by omega), evalOperandN,
+      rw [ite_eq_right (by omega), evalOperandN,
         show D + cs.length - 1 - varIndex u = D + (cs.length - 1 - varIndex u) by omega]
       exact hblk u
     · rw [lookup_inrHom, hres]
@@ -4226,7 +4226,7 @@ theorem storeAgreesM_append_arr {nArgs D : Nat} {Γ cs : Ctxt jasminDialect}
     · rw [lookup_inlHom]
       have hu := JasminLsemSimulation.varIndex_lt u
       simp only [resolveVar, varIndex_inlHom]
-      rw [if_neg (by omega), operandName,
+      rw [ite_eq_right (by omega), operandName,
         show D + cs.length - 1 - varIndex u = D + (cs.length - 1 - varIndex u) by omega]
       exact hblkA u
     · rw [lookup_inrHom, hres]
@@ -4290,7 +4290,7 @@ theorem forArrShift_steps {P : LprogM} {d : Nat} {cs : Ctxt jasminDialect}
     (shiftPairs d cs) (pre ++ [movImmI (regName d) 0]) post s0
     (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append])
     (by rw [List.length_append, List.length_singleton]; exact hat0)
-    (by rw [hm0, if_pos rfl]) (shiftPairs_pairwise d cs)
+    (by rw [hm0, ite_eq_left rfl]) (shiftPairs_pairwise d cs)
     (fun w n dst src h => by
       obtain ⟨v, -, rfl⟩ := shiftPairs_var h
       obtain ⟨arr, ha⟩ := hsrc v
@@ -4308,11 +4308,11 @@ theorem forArrShift_steps {P : LprogM} {d : Nat} {cs : Ctxt jasminDialect}
   rw [List.length_append, List.length_singleton] at hat'
   refine ⟨u, hs0.trans hs, hat', fun {w} v => ?_, fun {w n} v => ?_, fun r hr => ?_,
     fun r hr => ?_⟩
-  · rw [hmR _ _ _ (shiftPairs_mem v d) rfl, hm0, if_neg fun he => by
+  · rw [hmR _ _ _ (shiftPairs_mem v d) rfl, hm0, ite_eq_right fun he => by
       have := JasminLsemSimulation.regName_injective he
       omega]
   · rw [hmA _ _ _ _ (shiftPairs_mem v d), ha0]
-  · rw [hoR r (fun p hp => hdst p hp r hr) (hr _ (by omega)), hm0, if_neg (hr d le_rfl)]
+  · rw [hoR r (fun p hp => hdst p hp r hr) (hr _ (by omega)), hm0, ite_eq_right (hr d le_rfl)]
   · rw [hoA r fun p hp => hdst p hp r hr, ha0]
 
 /-- A typed pair of a carried tuple has a target of the carried block and the name of an
@@ -4472,7 +4472,7 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
     (arrPairs tp) (pre ++ [movImmI (regName (bD + 1)) 0]) _ s0
     (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
     (by rw [List.length_append, List.length_singleton]; exact hat0)
-    (by rw [hm0, if_pos rfl]) hndA
+    (by rw [hm0, ite_eq_left rfl]) hndA
     (fun a ha => hsrclow _ (of_mem_arrPairs ha)) (fun a ha => hdstlow _ (of_mem_arrPairs ha))
     (fun a ha => by
       obtain ⟨v, -, hsv⟩ := carriedPairs_var (htp ▸ of_mem_arrPairs ha)
@@ -4482,7 +4482,7 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
   rw [ha0] at hm1 ho1
   have hr1' : ∀ r, r ≠ regName bD → r ≠ regName (bD + 1) →
       u1.prog.base.reg.lvm r = s.prog.base.reg.lvm r := fun r h1 h2 => by
-    rw [hr1 r h1, hm0, if_neg h2]
+    rw [hr1 r h1, hm0, ite_eq_right h2]
   -- the registers
   obtain ⟨u2, hs2, hat2, ha2, hm2, ho2⟩ := steps_parMoves_pairs bD (regPairs tp)
     (pre ++ movImmI (regName (bD + 1)) 0
@@ -4532,12 +4532,12 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
       (by rw [hbody]; simp only [advanceOps, List.append_assoc, List.cons_append,
         List.nil_append]; rfl)
       (by rw [List.length_append]; rfl))
-    (by rw [hm3, if_neg (loopCtr_ne_regName n d)]; exact hctr2)
+    (by rw [hm3, ite_eq_right (loopCtr_ne_regName n d)]; exact hctr2)
   obtain ⟨u5, hs5, hat5, ha5, hm5, hz5⟩ := steps_cmpZero (v := c - 1#64) (r := loopCtr n) hat4
     (fetch_of_body (xs := X ++ advanceOps (regName d) (loopCtr n))
       (by rw [hbody]; simp only [List.append_assoc]; rfl)
       (by rw [List.length_append]; rfl))
-    (by rw [hm4, if_pos rfl])
+    (by rw [hm4, ite_eq_left rfl])
   have hri : regName d ≠ loopCtr n := (loopCtr_ne_regName n d).symm
   have hlarr5 : u5.prog.base.larr = u1.prog.base.larr :=
     (((ha5.trans ha4).trans ha3).trans ha2)
@@ -4546,22 +4546,22 @@ theorem forArrTail_steps {P : LprogM} {d n bD : Nat} {cs : Ctxt jasminDialect}
   · rw [hX]
     simp only [List.length_append, List.length_cons, parMoves_length, List.length_map]
     omega
-  · rw [hm5, hm4, if_neg hri, hm3, if_pos rfl]
-  · rw [hm5, hm4, if_pos rfl]
+  · rw [hm5, hm4, ite_eq_right hri, hm3, ite_eq_left rfl]
+  · rw [hm5, hm4, ite_eq_left rfl]
   · have hv := JasminLsemSimulation.varIndex_lt v
     have hmem := carriedPairs_mem v (d + 1) ops hlen
     rw [← htp] at hmem
     have hne : regName (d + 1 + (cs.length - 1 - varIndex v)) ≠ regName d := fun he => by
       have := JasminLsemSimulation.regName_injective he
       omega
-    rw [hm5, hm4, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hm3, if_neg hne,
+    rw [hm5, hm4, ite_eq_right (fun he => loopCtr_ne_regName n _ he.symm), hm3, ite_eq_right hne,
       hm2 _ (mem_regPairs hmem rfl)]
     exact hr1' _ (hsrclow _ hmem bD le_rfl) (hsrclow _ hmem (bD + 1) (by omega))
   · have hmem := carriedPairs_mem v (d + 1) ops hlen
     rw [← htp] at hmem
     rw [hlarr5]
     exact hm1 _ (mem_arrPairs hmem)
-  · rw [hm5, hm4, if_neg hrc, hm3, if_neg (hr d le_rfl)]
+  · rw [hm5, hm4, ite_eq_right hrc, hm3, ite_eq_right (hr d le_rfl)]
     exact hlvm2 r hr
   · rw [hlarr5]
     exact ho1 r (fun p hp => hdstfr _ (of_mem_arrPairs hp) r hr) (fun k hk => hr k (by omega))
@@ -4634,7 +4634,7 @@ theorem ifResMoves_steps {P : LprogM} {nArgs d D : Nat} {rs : Ctxt jasminDialect
       ∧ (∀ r, r ≠ regName (D + rs.length) → r ≠ regName (D + rs.length + 1) →
           u1.prog.base.reg.lvm r = s.prog.base.reg.lvm r) := by
     by_cases hemp : (arrPairs tp).isEmpty = true
-    · refine ⟨[], s, by rw [ifResMoves, ← htp, if_pos hemp], Steps.refl _ _ _,
+    · refine ⟨[], s, by rw [ifResMoves, ← htp, ite_eq_left hemp], Steps.refl _ _ _,
         by simpa using hat, fun a ha => ?_, fun _ _ _ => rfl, fun _ _ _ => rfl⟩
       rw [List.isEmpty_iff.mp hemp] at ha
       exact absurd ha List.not_mem_nil
@@ -4642,7 +4642,7 @@ theorem ifResMoves_steps {P : LprogM} {nArgs d D : Nat} {rs : Ctxt jasminDialect
           :: (arrParMoves (regName (D + rs.length + 1)) (regName (D + rs.length))
             (D + rs.length) (arrPairs tp) ++ (parMoves (D + rs.length)
               ((regPairs tp).map Prod.fst) ((regPairs tp).map fun p => .reg p.2) ++ post)) := by
-        rw [hbody, ifResMoves, ← htp, if_neg hemp]
+        rw [hbody, ifResMoves, ← htp, ite_eq_right hemp]
         simp only [List.append_assoc, List.cons_append]
       obtain ⟨s0, hs0, hat0, ha0, hm0⟩ := steps_movImm (dst := regName (D + rs.length + 1))
         (c := 0) hat (fetch_of_body hb' rfl)
@@ -4652,7 +4652,7 @@ theorem ifResMoves_steps {P : LprogM} {nArgs d D : Nat} {rs : Ctxt jasminDialect
           ((regPairs tp).map fun p => .reg p.2) ++ post) s0
         (by rw [hb']; simp only [List.append_assoc, List.cons_append, List.nil_append])
         (by rw [List.length_append, List.length_singleton]; exact hat0)
-        (by rw [hm0, if_pos rfl]) hndA
+        (by rw [hm0, ite_eq_left rfl]) hndA
         (fun a ha => hsrclow _ (of_mem_arrPairs ha)) (fun a ha => hdstlow _ (of_mem_arrPairs ha))
         (fun a ha => by
           have hm := of_mem_arrPairs ha
@@ -4664,13 +4664,13 @@ theorem ifResMoves_steps {P : LprogM} {nArgs d D : Nat} {rs : Ctxt jasminDialect
       refine ⟨movImmI (regName (D + rs.length + 1)) 0
           :: arrParMoves (regName (D + rs.length + 1)) (regName (D + rs.length))
             (D + rs.length) (arrPairs tp), u1,
-        by rw [ifResMoves, ← htp, if_neg hemp], ?_, ?_, hm1, ho1, fun r h1 h2 => ?_⟩
+        by rw [ifResMoves, ← htp, ite_eq_right hemp], ?_, ?_, hm1, ho1, fun r h1 h2 => ?_⟩
       · rw [List.length_cons, Nat.add_comm]
         exact hs0.trans hs1
       · rw [List.length_append, List.length_singleton] at hat1
         rw [List.length_cons, ← Nat.add_assoc, Nat.add_right_comm]
         exact hat1
-      · rw [hr1 r h1, hm0, if_neg h2]
+      · rw [hr1 r h1, hm0, ite_eq_right h2]
   -- the registers
   have hbody2 : P.body = (pre ++ A) ++ parMoves (D + rs.length) ((regPairs tp).map Prod.fst)
       ((regPairs tp).map fun p => .reg p.2) ++ post := by
@@ -4779,7 +4779,7 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
     (pre ++ [movImmI (regName d) 0]) _ s0
     (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
     (by rw [List.length_append, List.length_singleton]; exact hat0)
-    (by rw [hm0, if_pos rfl]) hpw
+    (by rw [hm0, ite_eq_left rfl]) hpw
     (fun w m dst src h => by
       obtain ⟨v, -, hsv⟩ := carriedPairs_var (htp ▸ h)
       rw [hsv]
@@ -4803,8 +4803,8 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
   obtain ⟨u3, hs3, hat3, ha3, hm3⟩ := steps_movReg (dst := loopCtr n) (src := cn) hat1'
     (fetch_of_body hbody rfl)
   have hc3 : u3.prog.base.reg.lvm (loopCtr n) = ⟨64, cnt⟩ := by
-    rw [hm3, if_pos rfl, hoR cn (fun p hp => hdstfr p hp cn hcn) (hcn _ (by omega)), hm0,
-      if_neg (hcn d le_rfl)]
+    rw [hm3, ite_eq_left rfl, hoR cn (fun p hp => hdstfr p hp cn hcn) (hcn _ (by omega)), hm0,
+      ite_eq_right (hcn d le_rfl)]
     exact hcnt
   obtain ⟨u4, hs4, hat4, ha4, hm4, hz4⟩ := steps_cmpZero (r := loopCtr n) (v := cnt) hat3
     (fetch_of_body (xs := X ++ [movI (loopCtr n) (.reg cn)])
@@ -4818,20 +4818,20 @@ theorem forArrHead_steps {P : LprogM} {d n : Nat} {cs : Ctxt jasminDialect}
   · rw [hX]
     simp only [List.length_append, List.length_cons]
     omega
-  · rw [hm4, hm3, if_neg hri, hoR _ hidx1 hzt, hm0, if_pos rfl]
+  · rw [hm4, hm3, ite_eq_right hri, hoR _ hidx1 hzt, hm0, ite_eq_left rfl]
   · rw [hm4]
     exact hc3
   · have hv := JasminLsemSimulation.varIndex_lt v
     have hmem := carriedPairs_mem v (d + 1) ops hlen
     rw [← htp] at hmem
-    rw [hm4, hm3, if_neg (fun he => loopCtr_ne_regName n _ he.symm), hmR _ _ _ hmem rfl, hm0,
-      if_neg (hsrcfr _ hmem d le_rfl)]
+    rw [hm4, hm3, ite_eq_right (fun he => loopCtr_ne_regName n _ he.symm), hmR _ _ _ hmem rfl, hm0,
+      ite_eq_right (hsrcfr _ hmem d le_rfl)]
   · have hmem := carriedPairs_mem v (d + 1) ops hlen
     rw [← htp] at hmem
     rw [hlarr4]
     exact hmA _ _ _ _ hmem
-  · rw [hm4, hm3, if_neg hrc, hoR r (fun p hp => hdstfr p hp r hr) (hr _ (by omega)), hm0,
-      if_neg (hr d le_rfl)]
+  · rw [hm4, hm3, ite_eq_right hrc, hoR r (fun p hp => hdstfr p hp r hr) (hr _ (by omega)), hm0,
+      ite_eq_right (hr d le_rfl)]
   · rw [hlarr4]
     exact hoA r fun p hp => hdstfr p hp r hr
 
@@ -4981,7 +4981,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
       ∧ kJ ≤ (1 + tripFactor fuel thn + tripFactor fuel els)
           * (TM.length + EM.length + 9 + t.code.length + e.code.length) := by
     by_cases hbt : HasBoolBit.toBool (d := jasminDialect) (cond.lookup V) = true
-    · rw [if_pos hbt] at hbr
+    · rw [ite_eq_left hbt] at hbr
       obtain ⟨hs1, hat1⟩ := steps_cc_fall (pol := true) rfl hat0 hfetchZ
         (by rw [hz0', hbt]; decide)
       rw [← hAlen] at hat1
@@ -5034,7 +5034,7 @@ theorem ifFrame_sim (nArgs : Nat) (fn : String) {Γ rs : Ctxt jasminDialect}
         fun {w m'} u => (getArr_of_larr_eq w m' (by rw [ha5])).trans (hblkA4 u),
         steps_le_factor (s := TM.length + EM.length + 9) (y := 0) (Y := 0) (ly := 0) hle3
           (Nat.zero_le _) (by omega) (by omega) (by omega)⟩
-    · rw [if_neg hbt] at hbr
+    · rw [ite_eq_right hbt] at hbr
       rw [Bool.not_eq_true] at hbt
       obtain ⟨hs1, hat1⟩ := steps_cc_taken (pol := true) rfl hat0 hfetchZ
         (by rw [hz0', hbt]; rfl) hl1

@@ -278,7 +278,7 @@ theorem roundtrip_vex3 (mm pp w l op d v m : Nat) (imm : Option Nat)
         List.cons_append, List.nil_append,
         modField, regField, rmField, vex3Mm, vex3R, vex3B, vex3Vvvv, vex3W,
         BitVec.toNat_ofNat]
-      rw [if_pos ⟨trivial, hmod⟩]
+      rw [ite_eq_left ⟨trivial, hmod⟩]
       refine congrArg some ?_
       refine DecVex3.mk.injEq .. ▸ ⟨rfl, hmm_id, hd_id, hv_id, hm_id, hw_id⟩
   rw [hdec, hop']
@@ -333,10 +333,10 @@ theorem roundtrip_encVpshufdU (d src imm : Nat)
     interval_cases d <;> interval_cases src <;> decide
   have hdec : decodeVpshufd (encVpshufdU 0 d src imm)
       = some (0x70, d, src, imm % 2 ^ 8) := by
-    simp only [encVpshufdU, bit, hbm, if_true, vex2p1,
+    simp only [encVpshufdU, bit, hbm, ite_true, vex2p1,
       modRMReg, cbit, decodeVpshufd, List.map_cons, List.map_nil,
       modField, regField, rmField, vex2R, BitVec.toNat_ofNat, hand]
-    rw [if_pos ⟨trivial, hmod⟩]
+    rw [ite_eq_left ⟨trivial, hmod⟩]
     refine congrArg some ?_
     refine Prod.ext rfl (Prod.ext ?_ (Prod.ext hsrc_id ?_))
     · exact hd_id
@@ -409,10 +409,10 @@ theorem roundtrip_encodeVsimdShift (ext d m imm : Nat)
     interval_cases ext <;> interval_cases d <;> decide
   have hdec : decodeVex2Shift (encodeVsimdShift ext 0 d m imm)
       = some { opcode := (0x73 : Nat) % 2 ^ 8, ext := ext, d := d, m := m, imm := imm % 2 ^ 8 } := by
-    simp only [encodeVsimdShift, encodeVsimdShiftImm, bit, hbm, if_true, vex2p1,
+    simp only [encodeVsimdShift, encodeVsimdShiftImm, bit, hbm, ite_true, vex2p1,
       modRMReg, cbit, decodeVex2Shift, List.map_cons, List.map_nil,
       modField, regField, rmField, vex2Vvvv, BitVec.toNat_ofNat, hand]
-    rw [if_pos ⟨trivial, hmod⟩]
+    rw [ite_eq_left ⟨trivial, hmod⟩]
     refine congrArg some ?_
     refine DecVexShift.mk.injEq .. ▸
       ⟨rfl, hext_id, hd_id, hm_id, Nat.mod_mod_of_dvd _ dvd_rfl⟩

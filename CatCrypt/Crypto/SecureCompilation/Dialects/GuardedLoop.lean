@@ -90,15 +90,15 @@ theorem rustExec_rFor_trips {x : String} {body : LowCT} :
       | forSucc _ _ _ _ r₁ _ hf hb =>
           obtain ⟨st, h0, hn, htr⟩ := rustExec_rFor_trips n hf
           refine ⟨fun t => if t ≤ n then st t else rs', ?_, ?_, ?_⟩
-          · dsimp only; rw [if_pos (Nat.zero_le _)]; exact h0
-          · dsimp only; rw [if_neg (by omega)]
+          · dsimp only; rw [ite_eq_left (Nat.zero_le _)]; exact h0
+          · dsimp only; rw [ite_eq_right (by omega)]
           · intro t ht
             dsimp only
             by_cases htn : t < n
-            · rw [if_pos (by omega), if_pos (by omega)]
+            · rw [ite_eq_left (by omega), ite_eq_left (by omega)]
               exact htr t htn
             · obtain rfl : t = n := by omega
-              rw [if_pos le_rfl, if_neg (by omega), hn]
+              rw [ite_eq_left le_rfl, ite_eq_right (by omega), hn]
               exact hb
 
 /-- `n` per-trip runs along `st` are a run of `RFor x n body` from `st 0` to `st n`. -/

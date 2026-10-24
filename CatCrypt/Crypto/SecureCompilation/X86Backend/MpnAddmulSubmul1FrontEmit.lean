@@ -131,13 +131,13 @@ theorem subBorrow_split (x y : BitVec 64) :
   rw [bSltu_eq]
   by_cases h : x.toNat < y.toNat
   · have hlt : x.ult y = true := by simp [BitVec.ult, h]
-    rw [if_pos hlt, hsub, Nat.mod_eq_of_lt (by omega)]
+    rw [ite_eq_left hlt, hsub, Nat.mod_eq_of_lt (by omega)]
     simp only [show ((1 : BitVec 64).toNat) = 1 from rfl]
     omega
   · have hlt : x.ult y = false := by
       simp only [BitVec.ult, decide_eq_false_iff_not, Nat.not_lt]
       omega
-    rw [if_neg (by simp [hlt]), hsub, Nat.mod_eq_sub_mod (by omega),
+    rw [ite_eq_right (by simp [hlt]), hsub, Nat.mod_eq_sub_mod (by omega),
       Nat.mod_eq_of_lt (by omega)]
     simp only [show ((0 : BitVec 64).toNat) = 0 from rfl]
     omega

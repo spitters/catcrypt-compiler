@@ -222,8 +222,8 @@ theorem getWord_setWord_same {n : Nat} (a : JArray n) (off : Nat) (v : BitVec 64
   have h7 : off + 7 < n := by omega
   rw [show List.range 8 = [0,1,2,3,4,5,6,7] from rfl]
   simp only [List.foldl_cons, List.foldl_nil,
-    dif_pos h0, dif_pos h1, dif_pos h2, dif_pos h3,
-    dif_pos h4, dif_pos h5, dif_pos h6, dif_pos h7]
+    dite_eq_left h0, dite_eq_left h1, dite_eq_left h2, dite_eq_left h3,
+    dite_eq_left h4, dite_eq_left h5, dite_eq_left h6, dite_eq_left h7]
   simp only [JArray.set, Function.update_apply, Fin.mk.injEq,
     Nat.add_right_cancel_iff]
   simp only [add_right_inj]

@@ -274,7 +274,7 @@ theorem tsHax_toExcept (bi : Hax.Builtins) (fuel : Nat) (e : Hax.ImpExpr)
     (h : Hax.checkNoEarlyExit e = true) :
     (tsHax bi fuel e).toExcept = haxExceptAbs bi fuel e := by
   unfold tsHax
-  rw [if_pos h]
+  rw [ite_eq_left h]
   funext env
   exact exceptOk_mapOk_of_noThrow _ (haxExceptAbs_noThrow bi fuel e h) env
 

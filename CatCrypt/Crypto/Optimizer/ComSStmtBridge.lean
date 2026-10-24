@@ -213,7 +213,7 @@ theorem resolveVar_none_ge : (Γ : Ctxt jasminDialect) → (m : Nat) → Γ.leng
       have hlt : Γ'.length < m := by simpa using hle
       have hne : ¬ (t = .reg 32 ∧ nameAtLevel m = nameAtLevel Γ'.length) := by
         rintro ⟨_, he⟩; exact absurd (nameAtLevel_inj he) (by omega)
-      simp only [resolveVar, dif_neg hne,
+      simp only [resolveVar, dite_eq_right hne,
         resolveVar_none_ge Γ' m (by simpa using Nat.le_of_lt hlt), Option.map_none]
 
 /-- Reading the embedded register file at any name agrees with looking up the
@@ -231,9 +231,9 @@ theorem embed_resolveVar {Γ : Ctxt jasminDialect} (name : String)
         by_cases h : t = .reg 32 ∧ name = nameAtLevel Γ'.length
         · obtain ⟨ht, hn⟩ := h
           subst ht; subst hn
-          rw [Function.update_self, resolveVar, dif_pos ⟨rfl, rfl⟩]
+          rw [Function.update_self, resolveVar, dite_eq_left ⟨rfl, rfl⟩]
           rfl
-        · rw [resolveVar, dif_neg h]
+        · rw [resolveVar, dite_eq_right h]
           by_cases hn : name = nameAtLevel Γ'.length
           · have htne : t ≠ .reg 32 := fun ht => h ⟨ht, hn⟩
             subst hn
@@ -308,7 +308,7 @@ theorem exprToSStmt_step {Γ : Ctxt jasminDialect} {t : JasminTy}
             | nil =>
               rcases hlan : laneOpOf bop with _ | lop
               · simp [exprToSStmt, hlan] at h
-              · simp only [exprToSStmt, hlan, if_true, Option.map_some, Option.some.injEq,
+              · simp only [exprToSStmt, hlan, ite_true, Option.map_some, Option.some.injEq,
                   HVector.head, HVector.tail] at h
                 subst h
                 funext n
@@ -316,10 +316,10 @@ theorem exprToSStmt_step {Γ : Ctxt jasminDialect} {t : JasminTy}
                 simp only [SStmt.exec]
                 by_cases hn : n = nameAtLevel Γ.length
                 · subst hn
-                  rw [Function.update_self, if_pos rfl,
+                  rw [Function.update_self, ite_eq_left rfl,
                       embed_lookup a, embed_lookup b, laneOpOf_faithful hlan]
                   cases bop <;> first | rfl | simp [laneOpOf] at hlan
-                · rw [Function.update_of_ne hn, if_neg hn]
+                · rw [Function.update_of_ne hn, ite_eq_right hn]
       · simp [exprToSStmt, hw] at h
   | stackLoad w n => simp [exprToSStmt] at h
   | stackStore w n => simp [exprToSStmt] at h

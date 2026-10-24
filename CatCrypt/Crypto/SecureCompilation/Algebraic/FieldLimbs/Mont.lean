@@ -316,18 +316,18 @@ theorem csubPCK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs : List
   rw [hval]
   by_cases hc : lk1 c W₂ = 1#1
   · have h1 : (lk1 c W₂).toNat = 1 := by rw [hc]; rfl
-    rw [if_pos hc]
+    rw [ite_eq_left hc]
     rw [h1] at hTv
     have hge : P.p ≤ nv W xs := by omega
-    rw [if_pos hge, nv_take W₂ T n (by omega) (by omega)]
+    rw [ite_eq_left hge, nv_take W₂ T n (by omega) (by omega)]
     omega
   · have h0 : (lk1 c W₂).toNat = 0 := by
       have : (lk1 c W₂).toNat ≠ 1 := fun h => hc (BitVec.eq_of_toNat_eq (by simpa using h))
       omega
-    rw [if_neg hc]
+    rw [ite_eq_right hc]
     rw [h0] at hTv
     have hlt : ¬ P.p ≤ nv W xs := by omega
-    rw [if_neg hlt, nv_take W₂ _ n (by simp [hlen]) (by rw [nv_map (Pres.comp h₁ h₂)]; omega),
+    rw [ite_eq_right hlt, nv_take W₂ _ n (by simp [hlen]) (by rw [nv_map (Pres.comp h₁ h₂)]; omega),
       nv_map (Pres.comp h₁ h₂)]
 
 /-- `if p ≤ V then V - p else V` is `V % p` below `2p`. -/
@@ -1183,13 +1183,13 @@ theorem subMK_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy} (xs ys : Lis
   have he : (lk1 e W₆).toNat = 0 ∨ (lk1 e W₆).toNat = 1 := by omega
   by_cases hc : lk1 c W₄ = 1#1
   · have h1 : (lk1 c W₄).toNat = 1 := by rw [hc]; rfl
-    rw [if_pos hc]
+    rw [ite_eq_left hc]
     rw [h1, Nat.mul_one] at hDv
     split_ifs <;> omega
   · have h0 : (lk1 c W₄).toNat = 0 := by
       have : (lk1 c W₄).toNat ≠ 1 := fun h => hc (BitVec.eq_of_toNat_eq (by simpa using h))
       omega
-    rw [if_neg hc]
+    rw [ite_eq_right hc]
     rw [h0, Nat.mul_zero, Nat.add_zero] at hDv
     rcases he with he | he <;> rw [he] at hEv <;> simp only [Nat.mul_zero, Nat.add_zero,
       Nat.mul_one] at hEv <;> split_ifs <;> omega

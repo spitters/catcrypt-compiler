@@ -254,9 +254,9 @@ theorem elimAux_sublist (h : Held) (body : List Linstr) :
   | cons i is ih =>
     rw [elimAux_cons]
     by_cases hk : (stepReload h i.li_i).1
-    · simp only [hk, if_true]
+    · simp only [hk, ite_true]
       exact (ih (stepReload h i.li_i).2).cons_cons i
-    · simp only [hk, Bool.false_eq_true, if_false]
+    · simp only [hk, Bool.false_eq_true, ite_false]
       exact (ih (stepReload h i.li_i).2).cons i
 
 /-- **The pass output is a sublist of the input.**  No instruction is added,
@@ -299,7 +299,7 @@ theorem stepReload_drop_is_held_reload (h : Held) (i : LinstrR)
     refine ⟨d, s, rfl, ?_⟩
     by_cases hf : h.find d = some (s, reloadMnem i)
     · exact hf
-    · simp only [stepReload, hr, hf, if_false] at hdrop
+    · simp only [stepReload, hr, hf, ite_false] at hdrop
       exact absurd hdrop (by decide)
 
 /-! ## 7. Applying the pass to an `Lprog`
@@ -631,7 +631,7 @@ theorem heldSound_step {w : Nat} {h : Held} {i : LinstrR} {s t : Lstate w}
     rcases mem_set hp with ⟨hph, hp1⟩ | rfl
     · obtain ⟨hph', hp2⟩ := mem_killSlot hph
       obtain ⟨hph'', _⟩ := mem_killReg hph'
-      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hp1, if_neg hp2]
+      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_right hp1, ite_eq_right hp2]
       exact hs p hph''
     · by_cases hkd : k = d <;> simp [hkd]
 
@@ -648,13 +648,13 @@ theorem elimAux_lsemStraight {w : Nat} : ∀ (h : Held) (body : List Linstr) (s 
     intro s hs
     rw [elimAux_cons]
     by_cases hk : (stepReload h i.li_i).1 = true
-    · rw [if_pos hk]
+    · rw [ite_eq_left hk]
       simp only [List.map_cons, lsemStraight]
       cases hstep : lsemStep i.li_i s with
       | none => rfl
       | some t => exact ih _ t (heldSound_step hs hstep hk)
     · have hdrop : (stepReload h i.li_i).1 = false := by simpa using hk
-      rw [if_neg hk, stepReload_env_of_drop hdrop]
+      rw [ite_eq_right hk, stepReload_env_of_drop hdrop]
       obtain ⟨d, k, hr, hf⟩ := stepReload_drop_is_held_reload h i.li_i hdrop
       rw [ih h s hs]
       simp only [List.map_cons, lsemStraight, lsemStep_asReload hr s]
@@ -754,13 +754,13 @@ theorem elimAux_lsemLeak {w : Nat} : ∀ (h : Held) (body : List Linstr) (s : Ls
     intro s hs
     rw [elimAux_cons]
     by_cases hk : (stepReload h i.li_i).1 = true
-    · rw [if_pos hk]
+    · rw [ite_eq_left hk]
       simp only [List.map_cons, lsemLeak]
       cases hstep : lsemStep i.li_i s with
       | none => simp
       | some t => exact (List.Sublist.refl _).append (ih _ t (heldSound_step hs hstep hk))
     · have hdrop : (stepReload h i.li_i).1 = false := by simpa using hk
-      rw [if_neg hk, stepReload_env_of_drop hdrop]
+      rw [ite_eq_right hk, stepReload_env_of_drop hdrop]
       obtain ⟨d, k, hr, hf⟩ := stepReload_drop_is_held_reload h i.li_i hdrop
       have hst : stateStore ((s.setReg d (s.lvm k)).nextPc) = stateStore s := by
         have hdk : s.lvm d = s.lvm k := hs _ (mem_of_find hf)

@@ -277,7 +277,7 @@ theorem lsemStepMem_coalesce {σ : String → String} {i : LinstrRM} {after : Li
                       rcases hd r hr with h' | h'
                       · exact absurd h' hrd
                       · exact h'
-                    simp only [hne, hrd, if_false]
+                    simp only [hne, hrd, ite_false]
                     exact hR.arr r (List.mem_append_right _
                       (List.mem_filter.mpr ⟨hr, by simp [arrWrite, hl, hrd]⟩))
   | loadC => simp [coStepB] at hc
@@ -386,7 +386,7 @@ theorem lsemFuelMemF_of_runStraightF (fn : String) (seg : List LinstrRM)
   have hlpc : b.lpc = seg.length := by
     rw [runStraightF_lpc seg b0 zf b z hrun, hpc, Nat.zero_add]
   unfold lsemFuelMemF
-  simp only [JasminLsemMemLoop.findInstrMem, singletonProgM, if_true]
+  simp only [JasminLsemMemLoop.findInstrMem, singletonProgM, ite_true]
   rw [hlpc, List.getElem?_eq_none (le_refl _)]
 
 /-- The state `entryV` at the frame map of the printed body `body` and the identity name
@@ -456,7 +456,7 @@ theorem straight_image_bytes {σ : AbiLayout} {nm : String → String} {body : L
     hsep fn _ _ rfl rfl (entryA σ sa) false (imgRel_entryS (E.argSrc hreg.stackIn) hent
       fun _ _ => rfl) rfl (fun R hR => by
         have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (DecodePrinted.phys R)⟩ := by
-          simp only [entryA, hR, if_true]
+          simp only [entryA, hR, ite_true]
         unfold JasminLsemWidthN.LstateN.getW
         rw [hl]
         simp) rfl _ hrun' hok
@@ -639,7 +639,7 @@ theorem zeroFirstB_of_noZero (r : String) :
     ∀ {is : List LinstrRM}, (∀ i ∈ is, zeroDst? i = none) → zeroFirstB r is = false
   | [], _ => rfl
   | i :: is, h => by
-    simp only [zeroFirstB, h i List.mem_cons_self, reduceCtorEq, if_false]
+    simp only [zeroFirstB, h i List.mem_cons_self, reduceCtorEq, ite_false]
     rw [zeroFirstB_of_noZero r fun j hj => h j (List.mem_cons_of_mem _ hj)]
     simp
 
@@ -836,7 +836,7 @@ theorem straight_image_reg_bytes {σ : AbiLayout} {nm : String → String} {body
   obtain ⟨prog, sa', hdec, hh, -, hregs, -⟩ :=
     DecodePrintedCFG.printedAddr_sim body hpr sa (entryA σ sa) false rfl (fun R hR => by
         have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (phys R)⟩ := by
-          simp only [entryA, hR, if_true]
+          simp only [entryA, hR, ite_true]
         unfold JasminLsemWidthN.LstateN.getW
         rw [hl]
         simp) rfl fuel' (s', zf') hrA hsafe

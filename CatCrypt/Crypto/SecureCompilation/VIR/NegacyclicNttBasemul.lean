@@ -95,8 +95,8 @@ theorem sum_pow_weight (γ : R) (K B t m : ℕ) (hB : 0 < B) (ht : t < B)
   · have hrw : ∀ s, (if m = t + s * B then (1 : R) else if m = t + s * B + K * B then -1 else 0)
         = if m = t + s * B then 1 else 0 := fun s => by
       by_cases h1 : m = t + s * B
-      · rw [if_pos h1, if_pos h1]
-      · rw [if_neg h1, if_neg h1, if_neg (by omega)]
+      · rw [ite_eq_left h1, ite_eq_left h1]
+      · rw [ite_eq_right h1, ite_eq_right h1, ite_eq_right (by omega)]
     simp only [hrw]
     rw [sum_pow_indicator γ K B t m hB ht]
     have hd : m / B < K := by rw [Nat.div_lt_iff_lt_mul hB]; exact hlt
@@ -107,10 +107,10 @@ theorem sum_pow_weight (γ : R) (K B t m : ℕ) (hB : 0 < B) (ht : t < B)
       have hsB : s * B + B ≤ K * B := by
         have := Nat.mul_le_mul_right B (show s + 1 ≤ K by omega)
         rw [Nat.add_mul, one_mul] at this; exact this
-      rw [if_neg (by omega)]
+      rw [ite_eq_right (by omega)]
       by_cases h2 : m - K * B = t + s * B
-      · rw [if_pos (by omega), if_pos h2]
-      · rw [if_neg (by omega), if_neg h2, neg_zero]
+      · rw [ite_eq_left (by omega), ite_eq_left h2]
+      · rw [ite_eq_right (by omega), ite_eq_right h2, neg_zero]
     rw [Finset.sum_congr rfl (fun s hs => by rw [hrw s (Finset.mem_range.mp hs)])]
     simp only [mul_neg, Finset.sum_neg_distrib]
     rw [sum_pow_indicator γ K B t (m - K * B) hB ht]
@@ -131,7 +131,7 @@ theorem sum_pow_weight (γ : R) (K B t m : ℕ) (hB : 0 < B) (ht : t < B)
     rw [hmod, hdiv]
     by_cases ht' : m % B = t
     · have hdK' : m / B - K < K := by omega
-      simp only [ht', hdK', and_self, if_true]
+      simp only [ht', hdK', and_self, ite_true]
       rw [show m / B = (m / B - K) + K from by omega, pow_add, hγ]
       simp only [Nat.add_sub_cancel]
       ring
@@ -159,14 +159,14 @@ theorem block_weight (γ : R) (B t u v s s' : ℕ) (hB : 0 < B) (ht : t < B) (hu
   have he : u + s * B + (v + s' * B) = (u + v) + (s + s') * B := by ring
   rw [he, Nat.add_mul_mod_self_right, Nat.add_mul_div_right _ _ hB]
   by_cases h1 : u + v = t
-  · rw [if_pos h1, if_pos (by rw [h1, Nat.mod_eq_of_lt ht]), h1, Nat.div_eq_of_lt ht,
+  · rw [ite_eq_left h1, ite_eq_left (by rw [h1, Nat.mod_eq_of_lt ht]), h1, Nat.div_eq_of_lt ht,
       Nat.zero_add, pow_add, mul_one]
   · by_cases h2 : u + v = t + B
-    · rw [if_neg h1, if_pos h2, if_pos (by rw [h2, Nat.add_mod_right, Nat.mod_eq_of_lt ht]), h2,
+    · rw [ite_eq_right h1, ite_eq_left h2, ite_eq_left (by rw [h2, Nat.add_mod_right, Nat.mod_eq_of_lt ht]), h2,
         show (t + B) / B = 1 from by
           rw [Nat.add_div_right _ hB, Nat.div_eq_of_lt ht], pow_add, pow_add, pow_one]
       ring
-    · rw [if_neg h1, if_neg h2, mul_zero, if_neg]
+    · rw [ite_eq_right h1, ite_eq_right h2, mul_zero, ite_eq_right]
       intro hmod
       have hlt : u + v < B + B := by omega
       rcases Nat.lt_or_ge (u + v) B with h | h
@@ -281,29 +281,29 @@ theorem negaMul_eq_signedNegaConv {N : ℕ} [NeZero N] (x y : Fin N → R) (k : 
   have hk := k.isLt
   have hi := i.isLt
   by_cases hle : i.val ≤ k.val
-  · rw [if_pos hle, Finset.sum_eq_single (k.val - i.val)]
+  · rw [ite_eq_left hle, Finset.sum_eq_single (k.val - i.val)]
     · have hsub : ((k - i : Fin N) : ℕ) = k.val - i.val := Fin.coe_sub_iff_le.mpr hle
-      rw [if_pos (by omega), finLanes, finLanes, dif_pos hi, dif_pos (by omega), mul_one]
+      rw [ite_eq_left (by omega), finLanes, finLanes, dite_eq_left hi, dite_eq_left (by omega), mul_one]
       congr 2
       exact Fin.ext hsub.symm
     · intro j hjN hj
       have hjN' := Finset.mem_range.mp hjN
       generalize k.val = kv at *
       generalize i.val = iv at *
-      rw [if_neg (by omega), if_neg (by omega), mul_zero]
+      rw [ite_eq_right (by omega), ite_eq_right (by omega), mul_zero]
     · intro h; exfalso; exact h (Finset.mem_range.mpr (by omega))
   · have hlt' : k.val < i.val := by omega
-    rw [if_neg hle, Finset.sum_eq_single (k.val + N - i.val)]
+    rw [ite_eq_right hle, Finset.sum_eq_single (k.val + N - i.val)]
     · have hsub : ((k - i : Fin N) : ℕ) = N + k.val - i.val := Fin.coe_sub_iff_lt.mpr hlt'
-      rw [if_neg (by omega), if_pos (by omega), finLanes, finLanes, dif_pos hi,
-        dif_pos (by omega), mul_neg, mul_one]
+      rw [ite_eq_right (by omega), ite_eq_left (by omega), finLanes, finLanes, dite_eq_left hi,
+        dite_eq_left (by omega), mul_neg, mul_one]
       congr 3
       exact Fin.ext (by simp only [hsub]; omega)
     · intro j hjN hj
       have hjN' := Finset.mem_range.mp hjN
       generalize k.val = kv at *
       generalize i.val = iv at *
-      rw [if_neg (by omega), if_neg (by omega), mul_zero]
+      rw [ite_eq_right (by omega), ite_eq_right (by omega), mul_zero]
     · intro h; exfalso; exact h (Finset.mem_range.mpr (by omega))
 
 end CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate

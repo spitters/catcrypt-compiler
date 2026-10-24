@@ -257,13 +257,13 @@ theorem carryDecide?_sound {a b : Iv} {x y : BitVec w} (cin : BitVec 1)
   by_cases hs : x.toNat + y.toNat + cin.toNat ≥ 2 ^ w
   · have hs' : (2 : Int) ^ w ≤ x.toNat + y.toNat + cin.toNat := by
       rw [← hp]; exact_mod_cast hs
-    rw [if_pos hs]
+    rw [ite_eq_left hs]
     split_ifs at h <;> cases h
     · omega
     · rfl
   · have hs' : (x.toNat : Int) + y.toNat + cin.toNat < 2 ^ w := by
       rw [← hp]; exact_mod_cast Nat.lt_of_not_le hs
-    rw [if_neg hs]
+    rw [ite_eq_right hs]
     split_ifs at h <;> cases h
     · rfl
     · omega
@@ -436,13 +436,13 @@ theorem stageOpAbs_sound {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) 
       have h1 := (bit_eq_of_toNat (Iv.toNat_eq_of_single (hA.reg ci).1 hc)).2 rfl
       show ValOK V (.reg w) (hget A a) (selectW (regVal V ci) (regVal V a) (regVal V b))
       rw [show selectW (regVal V ci) (regVal V a) (regVal V b) = regVal V a by
-        unfold selectW; rw [if_pos h1]]
+        unfold selectW; rw [ite_eq_left h1]]
       exact hA (.reg w) a
     · rename_i hc
       have h0 := (bit_eq_of_toNat (Iv.toNat_eq_of_single (hA.reg ci).1 hc)).1 rfl
       show ValOK V (.reg w) (hget A b) (selectW (regVal V ci) (regVal V a) (regVal V b))
       rw [show selectW (regVal V ci) (regVal V a) (regVal V b) = regVal V b by
-        unfold selectW; rw [if_neg (by rw [h0]; decide)]]
+        unfold selectW; rw [ite_eq_right (by rw [h0]; decide)]]
       exact hA (.reg w) b
     · exact ⟨Iv.mem_top _, SymOK.none _ _ _⟩
   all_goals exact opAbs_sound hA _ _
@@ -568,12 +568,12 @@ theorem ruleOp_sound {A : AEnv Γ} {V : Ctxt.Valuation Γ} (hA : EnvOK A V) (op 
       cases h
       have h1 := (bit_eq_of_toNat (Iv.toNat_eq_of_single (hA.reg ci).1 hc)).2 rfl
       show regVal V a ||| regVal V a = selectW (regVal V ci) (regVal V a) (regVal V b)
-      rw [BitVec.or_self]; unfold selectW; rw [if_pos h1]
+      rw [BitVec.or_self]; unfold selectW; rw [ite_eq_left h1]
     · rename_i hc
       cases h
       have h0 := (bit_eq_of_toNat (Iv.toNat_eq_of_single (hA.reg ci).1 hc)).1 rfl
       show regVal V b ||| regVal V b = selectW (regVal V ci) (regVal V a) (regVal V b)
-      rw [BitVec.or_self]; unfold selectW; rw [if_neg (by rw [h0]; decide)]
+      rw [BitVec.or_self]; unfold selectW; rw [ite_eq_right (by rw [h0]; decide)]
     · cases h
   all_goals simp [ruleOp] at h
 

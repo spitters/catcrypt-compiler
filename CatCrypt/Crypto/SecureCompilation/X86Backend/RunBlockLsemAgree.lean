@@ -217,13 +217,13 @@ theorem lsemStepMem_regArith
     lsemStepMem (.Lopn [.reg dst] (withWidthTag 64 base) [.reg dst, b], .reg none) ls
       = some { ls with reg := (ls.reg.setReg dst v).nextPc } := by
   have hm : mulhiStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg dst, b]) = none := by
-    cases b <;> simp only [mulhiStruct?, hstrip, if_neg h1]
+    cases b <;> simp only [mulhiStruct?, hstrip, ite_eq_right h1]
   have ha : adcxStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg dst, b]) = none := by
     cases b <;> rfl
   have hh : adcxhiStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg dst, b]) = none := by
     cases b <;> rfl
   have hs : sarStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg dst, b]) = none := by
-    cases b <;> simp only [sarStruct?, hstrip, if_neg h4]
+    cases b <;> simp only [sarStruct?, hstrip, ite_eq_right h4]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ hm ha hh (by cases b <;> rfl) (by cases b <;> rfl),
       lsemStepSh_of_not_sar _ _ hs]
@@ -240,7 +240,7 @@ theorem lsemStepMem_movImm (dst : String) (n : Nat) (ls : LstateM) :
     widthFromTag_withWidthTag_MOV (Or.inl rfl)
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
-  simp only [lsemStepN, hstr, Option.map_some, if_pos]
+  simp only [lsemStepN, hstr, Option.map_some, ite_eq_left]
   rw [hwidth]
 
 /-! ## 4. Correspondence preservation and the value-agreement lemmas -/
@@ -262,7 +262,7 @@ theorem JLstateCorr_setReg (s snew : JState 64) (ls : LstateM) (hcorr : JLstateC
     rw [LstateN.getW_nextPc, hs r]
     by_cases hr : r = dst
     · subst hr; rw [LstateN.getW_setReg_same]; simp
-    · rw [LstateN.getW_setReg_other _ _ _ _ _ hr, hcorr.regAgree r, if_neg hr]
+    · rw [LstateN.getW_setReg_other _ _ _ _ _ hr, hcorr.regAgree r, ite_eq_right hr]
   · intro base off
     show ls.lmem base off = snew.mem base off
     rw [hmem base off]; exact hcorr.memAgree base off
@@ -326,8 +326,8 @@ theorem loadMem_case (s : JState 64) (ls : LstateM) (hcorr : JLstateCorr s ls)
         simp only [runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.setReg, JState.load]
       rw [hrhs]
       by_cases hr : r = dst
-      · subst hr; rw [LstateN.getW_setReg_same, hV, if_pos rfl]
-      · rw [LstateN.getW_setReg_other _ _ _ _ _ hr, hcorr.regAgree r, if_neg hr]
+      · subst hr; rw [LstateN.getW_setReg_same, hV, ite_eq_left rfl]
+      · rw [LstateN.getW_setReg_other _ _ _ _ _ hr, hcorr.regAgree r, ite_eq_right hr]
     · intro base' off'
       show ((ls.setReg dst (ls.lmem base (Int.ofNat off.toNat))).nextPc).lmem base' off'
         = (runBlock s [.loadMem dst base off]).mem base' off'
@@ -506,13 +506,13 @@ theorem lsemStepMem_regArith3
     lsemStepMem (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b], .reg none) ls
       = some { ls with reg := (ls.reg.setReg dst v).nextPc } := by
   have hm : mulhiStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
-    cases b <;> simp only [mulhiStruct?, hstrip, if_neg h1]
+    cases b <;> simp only [mulhiStruct?, hstrip, ite_eq_right h1]
   have ha : adcxStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
     cases b <;> rfl
   have hh : adcxhiStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
     cases b <;> rfl
   have hs : sarStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
-    cases b <;> simp only [sarStruct?, hstrip, if_neg h4]
+    cases b <;> simp only [sarStruct?, hstrip, ite_eq_right h4]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ hm ha hh (by cases b <;> rfl) (by cases b <;> rfl),
       lsemStepSh_of_not_sar _ _ hs]
@@ -1081,7 +1081,7 @@ theorem mulx_caseF (s : JState 64) (ls : LstateM) (flg : String → Prop) (cfN o
         · simp only [hls2, hls1, LstateN.getW_nextPc,
             LstateN.getW_setReg_other _ _ _ _ _ hrhi, LstateN.getW_setReg_other _ _ _ _ _ hrlo]
           rw [hcorr.regAgree r hr]
-          simp only [JState.setReg, if_neg hrhi, if_neg hrlo]
+          simp only [JState.setReg, ite_eq_right hrhi, ite_eq_right hrlo]
     · intro base off; exact hcorr.memAgree base off
     · -- cfAgree unchanged
       simp only [hls2, hls1, LstateN.getW_nextPc,

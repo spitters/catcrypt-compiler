@@ -134,7 +134,7 @@ theorem Tbl.share_sub (T : Tbl) (n : STerm) : T.Sub (T.share n).1 := by
 theorem Tbl.push_has {T : Tbl} {n : STerm} (hn : n.refsLt T.ents.size = true) :
     (T.push n).2 = .ref T.ents.size ∧ (T.push n).1.Has n T.ents.size := by
   unfold Tbl.push
-  rw [if_pos hn]
+  rw [ite_eq_left hn]
   refine ⟨rfl, ?_, ?_⟩
   · simp
   · simp [mkEnt]
@@ -594,7 +594,7 @@ theorem STerm.refsLt_of_subst {n : Nat} :
       simp only [STerm.subst, keepBelow] at h
       simp only [STerm.refsLt, decide_eq_true_eq]
       by_contra hk
-      rw [if_neg hk] at h
+      rw [ite_eq_right hk] at h
       cases h
 
 theorem SArr.refsLt_of_subst {n : Nat} :
@@ -829,7 +829,7 @@ theorem SSt.Frm.setR {ss s : SSt} (h : ss.Frm s) (d : String) (t : STerm) :
   obtain ⟨ds, hw, hr⟩ := h
   refine ⟨d :: ds, by simp [SSt.setR, hw], fun r hr' => ?_⟩
   simp only [List.mem_cons, not_or] at hr'
-  rw [SSt.setR_regs, if_neg hr'.1]
+  rw [SSt.setR_regs, ite_eq_right hr'.1]
   exact hr r hr'.2
 
 theorem SSt.Frm.setA {ss s : SSt} (h : ss.Frm s) (d : String) (a : SArr) :
@@ -1005,7 +1005,7 @@ theorem Tbl.internRegs_inv : ∀ (T : Tbl) (ss : SSt) (ds : List String),
           simp only [this, SSt.putR_regs, ↓reduceIte]
           exact hd.2
       · simp only [List.mem_cons, not_or] at hr
-        rw [ih.2.2 r hr.2, SSt.putR_regs, if_neg hr.1]
+        rw [ih.2.2 r hr.2, SSt.putR_regs, ite_eq_right hr.1]
 
 theorem Tbl.internRegs_rerun : ∀ (T : Tbl) (ss ss' : SSt) (ds : List String),
     ss'.regs = ss.regs → (∀ r, (ss.regs r).refsLt T.ents.size = true) → ∀ (T' : Tbl),
@@ -1228,7 +1228,7 @@ def avoidsReg (d : String) (b : LOperand) : Prop :=
 theorem copyRegs_avoid_reg {R : String → STerm} {d x y : String}
     (hb : avoidsReg d (.reg y)) : copyRegs R d x y = R y := by
   have : y ≠ d := fun h => hb (by simp [LprogLeak.opNames, h])
-  simp only [copyRegs, if_neg this]
+  simp only [copyRegs, ite_eq_right this]
 
 theorem copyRegs_self (R : String → STerm) (d x : String) : copyRegs R d x d = R x := by
   simp [copyRegs]
@@ -1424,7 +1424,7 @@ theorem symStep_copy {ss ss' : SSt} (e : ss.Eqv ss') (d x opn : String) (b : LOp
       (symStep (.Lopn [.reg d] opn [.reg x, b], tag) ss)
       (symStep (.Lopn [.reg d] opn [.reg d, b], tag) (ss'.setR d (ss'.regs x))) := by
   unfold symStep
-  simp only [cmpArgs?, hcmp, if_false, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?]
+  simp only [cmpArgs?, hcmp, ite_false, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?]
   split_ifs <;> dsimp only <;>
     first
     | exact symCarry_copy e _ d x b hb
@@ -1573,7 +1573,7 @@ theorem legalizeInstr_copy (ok : Bool) (i : Linstr) (h : copyRouteOk i.li_i = tr
       simp only [TwoAddrLegalize.legalizeInstr, hn, hyd', Bool.and_self, ↓reduceIte, hm,
         TwoAddrLegalize.isRegOrImm, Bool.not_true, Bool.false_eq_true, hb, Bool.not_false, hmem,
         copyPair]
-      rw [if_neg (by simp [hc, ht])]
+      rw [ite_eq_right (by simp [hc, ht])]
       rfl
 
 /-- The target chunk of a typed instruction under two-address legalisation, with the memory
@@ -1725,7 +1725,7 @@ theorem blockIndex_one (n : Nat) : blockIndex n #[0] = Array.replicate n 0 := by
     | nil => intro a; simp
     | cons p l ih =>
         intro a
-        rw [List.foldl_cons, if_neg (by simp), ih]
+        rw [List.foldl_cons, ite_eq_right (by simp), ih]
         congr 1
         rw [Array.push_eq_append, Array.append_assoc]
         congr 1
@@ -1792,7 +1792,7 @@ theorem cfgOf_straight {wl : List LinstrR} (hne : wl ≠ [])
     exact ⟨this.1.1, this.1.2, this.2⟩
   unfold cfgOf
   simp only [build_straight hs' hn, List.size_toArray]
-  rw [if_pos]
+  rw [ite_eq_left]
   unfold wf
   simp only [hasDupLabel_straight hs', Bool.not_false, Bool.and_true, Bool.and_eq_true]
   refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩
@@ -1960,7 +1960,7 @@ theorem liveIter_single {outs : List String} {B : List LinstrRM} {G : AllocCheck
       simp only [Array.getD, Array.size_singleton, Nat.zero_lt_one, ↓reduceDIte]
       exact joinLive_of_cov (joinLive_cov _ _)
     have h0 : (#[([], false)] : Array (List String × Bool)).getD 0 ([], false) = ([], false) := rfl
-    rw [h0, hJ, if_pos (by simp)]
+    rw [h0, hJ, ite_eq_left (by simp)]
     simpa [Array.getD] using joinLive_cov ([], false) N
 
 theorem okIn_of_live {n m : List String × Bool} (h : LiveCov n m) {vs : List String} {rf : Bool}

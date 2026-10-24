@@ -226,7 +226,7 @@ theorem cellSelCmds_run {N : Nat} {T : Fin (4 * N) → BitVec 64} {D : BitVec 64
     (.SLit (4 * e + k.val))).toNat) with he2
   have f2 : ∀ s, ¬ isTmpName s → s ≠ "l" → e2 s = e1 s := fun s _ hs => upd_ne' hs
   have v2 : e2 "l" = some ⟨.sword 64, memGetDyn T (4 * e + k.val)⟩ := by
-    rw [he2, SEnvScalar.upd, if_pos rfl]
+    rw [he2, SEnvScalar.upd, ite_eq_left rfl]
     simp only [SExpr.evalBV, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hi]
   have h2 := h1.frame f2 rfl
   have q2 : e2 "q" = some ⟨.sword 64, Q⟩ := (f2 "q" nq (by decide)).trans q1
@@ -244,7 +244,7 @@ theorem cellSelCmds_run {N : Nat} {T : Fin (4 * N) → BitVec 64} {D : BitVec 64
     · subst hj
       simp [SEnvScalar.upd, setLimb]
     · rw [upd_ne' (accName_ne hj)]
-      simp only [setLimb, if_neg hj]
+      simp only [setLimb, ite_eq_right hj]
       exact h2.acc j
   · rw [upd_ne' (Ne.symm (accName_ne_q k))]; exact q2
 
@@ -313,12 +313,12 @@ theorem selScanVal_eq {N : Nat} (T : Fin (4 * N) → BitVec 64) (D : BitVec 64) 
           rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h64]; exact h
       rw [selScanVal, ih, selectWord]
       by_cases heq : D.toNat = n
-      · rw [if_pos (hiff.mpr heq), if_pos (by omega)]
+      · rw [ite_eq_left (hiff.mpr heq), ite_eq_left (by omega)]
         subst heq; rfl
-      · rw [if_neg (fun h => heq (hiff.mp h))]
+      · rw [ite_eq_right (fun h => heq (hiff.mp h))]
         by_cases hlt : D.toNat < n
-        · rw [if_pos hlt, if_pos (by omega)]
-        · rw [if_neg hlt, if_neg (by omega)]
+        · rw [ite_eq_left hlt, ite_eq_left (by omega)]
+        · rw [ite_eq_right hlt, ite_eq_right (by omega)]
 
 /-- **The two scans agree at every entry boundary.** After `n` entries the
     running limbs of the conditional-select scan equal those of the mask-form

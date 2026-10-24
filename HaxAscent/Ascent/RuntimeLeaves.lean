@@ -113,7 +113,7 @@ theorem Leaf.orElse_of_none {l₁ l₂ : Leaf} {vs : List Value} (h : l₁ vs = 
 theorem liftFn_eq_none {A B : Type} [HaxArgs A] [HaxEnc B] (g : A → B) {vs : List Value}
     (h : ∀ a : A, encArgs a ≠ vs) : liftFn g vs = none := by
   unfold liftFn
-  exact dif_neg fun ⟨a, ha⟩ => h a ha
+  exact dite_eq_right fun ⟨a, ha⟩ => h a ha
 
 section NoneLemmas
 
@@ -313,14 +313,14 @@ theorem indexLeaf_int (a : Array Int) (i : Int) :
   simp only [indexLeaf, enc_array_toList, indexVals, Hax.index, Option.some.injEq]
   by_cases h : i.toNat < a.size
   · simp [h]
-  · rw [dif_neg h, List.getElem?_eq_none (by simpa using h)]
+  · rw [dite_eq_right h, List.getElem?_eq_none (by simpa using h)]
     by_cases h0 : 0 < a.size
-    · rw [dif_pos h0]
+    · rw [dite_eq_left h0]
       obtain ⟨l⟩ := a
       cases l with
       | nil => simp at h0
       | cons x l => rfl
-    · rw [dif_neg h0]
+    · rw [dite_eq_right h0]
       obtain ⟨l⟩ := a
       cases l with
       | nil => rfl
@@ -331,7 +331,7 @@ theorem indexLeaf_pos [Inhabited α] (a : Array α) (h0 : 0 < a.size) (i : Int) 
   simp only [indexLeaf, enc_array_toList, indexVals, Hax.index, Option.some.injEq]
   by_cases h : i.toNat < a.size
   · simp [h]
-  · rw [dif_neg h, List.getElem?_eq_none (by simpa using h), dif_pos h0]
+  · rw [dite_eq_right h, List.getElem?_eq_none (by simpa using h), dite_eq_left h0]
     obtain ⟨l⟩ := a
     cases l with
     | nil => simp at h0
@@ -394,7 +394,7 @@ theorem vecRemoveLeaf_enc [Inhabited α] (a : Array α) (i : Int) (h0 : 0 ≤ i)
     (h : i < Hax.array_len a) :
     vecRemoveLeaf [enc a, .int i] = some (enc (Hax.vec_remove a i)) := by
   have hi : i.toNat < a.size := by simp only [Hax.array_len] at h; omega
-  simp only [vecRemoveLeaf, enc_array_toList, h0, if_true, Hax.vec_remove, hi, and_self,
+  simp only [vecRemoveLeaf, enc_array_toList, h0, ite_true, Hax.vec_remove, hi, and_self,
     dite_true, List.getElem?_map, Array.getElem?_toList, Array.getElem?_eq_getElem hi,
     Option.map_some, Option.some.injEq]
   show _ = Value.tuple [enc a[i.toNat], enc (a.eraseIdx i.toNat hi)]

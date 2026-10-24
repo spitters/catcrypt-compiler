@@ -128,10 +128,10 @@ theorem decLoop_trips (ctr : String) (body : List LinstrRM) (l : XLoop 64) (q m 
     refine ⟨aMachine.pass l sa, b₁.setLpc (q + (flatFL [.straight body]).length + 2), ?_, ?_,
       fun pc => ?_⟩
     · rw [runFRegionF_succ, runFBsL_straight, hr₁, Option.bind_some]
-      simp only [hv, hz, if_true]
+      simp only [hv, hz, ite_true]
     · have hf : (aMachine.view (aMachine.pass l sa)).flagB (·.zf) = true := by
         rw [← hz]; exact hzf
-      simp only [Machine.runXLoop, hf, if_true]
+      simp only [Machine.runXLoop, hf, ite_true]
     · have := hnext t (by omega) _ _ _ pc hJ
       rw [hz, show t + 1 = m by omega] at this
       exact this
@@ -153,7 +153,7 @@ theorem decLoop_trips (ctr : String) (body : List LinstrRM) (l : XLoop 64) (q m 
       exact hreg
     · have hf : (aMachine.view (aMachine.pass l sa)).flagB (·.zf) = false := by
         rw [← hz]; exact hzf
-      rw [Machine.runXLoop, if_neg (by rw [hf]; decide)]
+      rw [Machine.runXLoop, ite_eq_right (by rw [hf]; decide)]
       exact hmach
 
 /-! ## 3. The zero-trip guard -/
@@ -221,9 +221,9 @@ theorem decLoop_guarded_run (ctr : String) (body : List LinstrRM) (l : XLoop 64)
     refine ⟨aMachine.runBlock sa [l.cmpInstr],
       b.setLpc (b.lpc + (flatFL [.straight body]).length + 6), ?_, ?_, ?_⟩
     · rw [runFB_guarded, hv]
-      simp only [show (v == 0#64) = true from hz, if_true]
+      simp only [show (v == 0#64) = true from hz, ite_true]
     · refine hcmp.trans (.single ?_)
-      rw [aMachine_step_je_flag _ _ _ _ _ hzf (guardedLayout_je pre l rest), hz, if_pos rfl]
+      rw [aMachine_step_je_flag _ _ _ _ _ hzf (guardedLayout_je pre l rest), hz, ite_eq_left rfl]
     · have := hg0 _ _ _ (b.lpc + (flatFL [.straight body]).length + 6) hG
       rw [hz] at this
       exact this
@@ -238,7 +238,7 @@ theorem decLoop_guarded_run (ctr : String) (body : List LinstrRM) (l : XLoop 64)
       hsim hflag hnext k 0 (by omega) _ _ _ hI0
     refine ⟨sa', bR.setLpc (b.lpc + (flatFL [.straight body]).length + 6), ?_, ?_, hInv _⟩
     · rw [runFB_guarded, hv]
-      simp only [show (v == 0#64) = false from hz, Bool.false_eq_true, if_false]
+      simp only [show (v == 0#64) = false from hz, Bool.false_eq_true, ite_false]
       exact congrArg (Option.map _) hreg
     · have hje : Reaches aMachine (guardedLayout pre l rest) (pre.length + 1)
           (aMachine.runBlock sa [l.cmpInstr]) (pre.length + 2)
@@ -579,14 +579,14 @@ theorem decSim_mulhi_saved (hi a c S D SP : String) (off : Int) (ha : L a) (hc :
       else if r = D then (x86_MULX_lo_hi (sa.regs S) (sa.regs (π c))).1 else sa.regs r :=
     fun r => evalInstrA_mulx_regs _ _ _ _ _ r
   have hm₂ : s₂.mem = write64 sa.mem (sa.regs SP + BitVec.ofInt 64 off) (sa.regs D) := rfl
-  have hsp : s₂.regs SP = sa.regs SP := by rw [e₂, if_neg hSPh, if_neg hSPD]
+  have hsp : s₂.regs SP = sa.regs SP := by rw [e₂, ite_eq_right hSPh, ite_eq_right hSPD]
   show (evalInstrA s₂ (.loadMem D SP off)).regs r = _
   rw [evalInstrA_loadMem_regs']
   by_cases hrD : r = D
   · subst hrD
-    rw [if_pos rfl, hm₂, hsp, read64_write64_same, if_neg hDh]
+    rw [ite_eq_left rfl, hm₂, hsp, read64_write64_same, ite_eq_right hDh]
     rfl
-  · rw [if_neg hrD, e₂, if_neg hrD, hS]
+  · rw [ite_eq_right hrD, e₂, ite_eq_right hrD, hS]
     rfl
 
 /-- **High half, pinned and saved.** `MULXHI:64 hi, a, c` against the fused site of
@@ -614,9 +614,9 @@ theorem decSim_mulhi_pinned (hi a c S D SP : String) (off : Int) (ha : L a) (hc 
       [] [.mov S (.reg (π a))] :=
     DecSim.machOnly fun sa b zf ⟨h, hK, hF⟩ =>
       ⟨h.machWrite S _ _ (fun _ => rfl) rfl (fun r hr => hr) (fun hz => h.zfEq hz),
-        by rw [e, e, if_pos rfl, if_neg haS],
-        by rw [e, if_neg (Ne.symm hSSP)]; exact hK,
-        by rw [e, if_neg (Ne.symm hSSP)]; exact hF⟩
+        by rw [e, e, ite_eq_left rfl, ite_eq_right haS],
+        by rw [e, ite_eq_right (Ne.symm hSSP)]; exact hK,
+        by rw [e, ite_eq_right (Ne.symm hSSP)]; exact hF⟩
   exact DecSim.append h₁ (decSim_mulhi_saved hi a c S D SP off ⟨ha, haS⟩ ⟨hc, hcS⟩ hSPD hSPh
     hDh hL)
 
@@ -651,7 +651,7 @@ theorem decSim_binReg_mov (opn base : String) (hstrip : stripWidthTag opn = base
     rw [hmk]
     have e : ∀ x, (evalInstrA sa (.mov (π d) (.reg (π a)))).regs x
         = if x = π d then sa.regs (π a) else sa.regs x := fun _ => rfl
-    rw [e, e, if_pos rfl, if_neg hdc, e]
+    rw [e, e, ite_eq_left rfl, ite_eq_right hdc, e]
     split <;> rfl
 
 /-- `MUL:64 d, a, c` against `mov %a, %d` and `imul %c, %d`, the registers of `c` and `d`

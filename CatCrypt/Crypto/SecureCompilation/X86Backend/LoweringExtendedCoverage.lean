@@ -291,7 +291,7 @@ theorem lowerLinstrExtCov_adcx_denote (dst : String) (s0 s1 : JOperand) (s : JSt
       = (x86_ADCX ((s.setReg dst (x86_MOV (s0.eval s))).get dst)
           (s1.eval (s.setReg dst (x86_MOV (s0.eval s))))
           ((s.setReg dst (x86_MOV (s0.eval s))).flagB (·.cf))).2 := by
-  simp only [runBlock, evalInstr, JState.get, if_true]
+  simp only [runBlock, evalInstr, JState.get, ite_true]
 
 /-- **`ADOXHI` denotation.** Running the lowered `ADOXHI` carry-out block writes
     the overflow flag into `dst` as the word `1`/`0`. This is the `OF` analogue of

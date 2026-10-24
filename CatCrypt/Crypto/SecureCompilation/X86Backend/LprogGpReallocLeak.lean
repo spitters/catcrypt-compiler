@@ -375,13 +375,13 @@ theorem findLabel_segs (lbl : LLabel) :
           match a, hlen with
           | [x], _ => exact ⟨x, rfl⟩
         by_cases hx : isLabel lbl x.li_i = true
-        · simp only [List.map_cons, List.map_nil, List.findIdx?_singleton, hx, if_true,
+        · simp only [List.map_cons, List.map_nil, List.findIdx?_singleton, hx, ite_true,
             Option.some_or, Option.some.injEq] at hpc ⊢
           subst hpc
           exact ⟨0, by simp, by simp, by simp, by simp [bdry_cons_succ], by simp [bdry_cons_succ]⟩
         · simp only [Bool.not_eq_true] at hx
           simp only [List.map_cons, List.map_nil, List.findIdx?_singleton, hx,
-            Bool.false_eq_true, if_false, Option.none_or, List.length_singleton] at hpc ⊢
+            Bool.false_eq_true, ite_false, Option.none_or, List.length_singleton] at hpc ⊢
           obtain ⟨pc', hpc', rfl⟩ := Option.map_eq_some_iff.1 hpc
           obtain ⟨k, hk, rfl, hB, hA1, hB1⟩ := ih pc' hpc'
           simp only [findLabel] at hB
@@ -568,7 +568,7 @@ theorem mem_labelLiveFrames {body : Lcmd} (hlab : ∃ li ∈ body, ∃ k l, li.l
     x ∈ labelLiveFrames body := by
   obtain ⟨li, hli, k, l, hk⟩ := hlab
   unfold labelLiveFrames
-  rw [if_pos (List.any_eq_true.2 ⟨li, hli, by simp [hk]⟩), Std.HashSet.mem_insertMany_list]
+  rw [ite_eq_left (List.any_eq_true.2 ⟨li, hli, by simp [hk]⟩), Std.HashSet.mem_insertMany_list]
   exact Or.inr (List.contains_iff_mem.2 hx)
 
 /-! ## 7. The relation at piece boundaries -/
@@ -1191,11 +1191,11 @@ theorem sim_bar {w : Nat} {ε : Type} (L : LeakFn w ε) (P : Lprog) (fn : String
       rw [hσ1, hσ2] at hnext12
       by_cases h1 : evalOperand σ₁.base c ≠ 0
       · have h2 := hc12.1 h1
-        simp only [h1, h2, if_true, ne_eq, not_false_eq_true] at hnext12 ⊢
+        simp only [h1, h2, ite_true, ne_eq, not_false_eq_true] at hnext12 ⊢
         exact sim_jump L P fn fd hfd j σ₁ σ₂ τ₁ τ₂ hI1 hI2 hnret l
           (fun a b ha hb => (hnext12 a b ha hb).2.2)
       · have h2 : ¬ evalOperand σ₂.base c ≠ 0 := fun h => h1 (hc12.2 h)
-        simp only [h1, h2, if_false] at hnext12 ⊢
+        simp only [h1, h2, ite_false] at hnext12 ⊢
         right
         refine ⟨τ₁.nextPc, τ₂.nextPc, j + 1, rfl, rfl, σ₁.nextPc, σ₂.nextPc, by omega,
           hσ1, hσ2, hτ1, hτ2, ?_, ?_, ?_, ?_,

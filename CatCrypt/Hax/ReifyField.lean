@@ -403,8 +403,8 @@ theorem hax64Builtins_zmod_binary {m : FieldMethod} (ht : fieldTag? f = some (m,
     (hp : p < 2 ^ 64) (hm : m.binary = true) (x y : ZMod p) :
     hax64Builtins f [enc x, enc y] = some (.int (fieldVal m p x.val y.val : ℕ)) := by
   have h := hax64Builtins_fieldArgs ht hp x.val y.val
-  simp only [fieldArgs, hm, if_true] at h
-  rw [enc_zmod, enc_zmod, h, fieldArm, if_pos ⟨ZMod.val_lt x, fun _ => ZMod.val_lt y⟩]
+  simp only [fieldArgs, hm, ite_true] at h
+  rw [enc_zmod, enc_zmod, h, fieldArm, ite_eq_left ⟨ZMod.val_lt x, fun _ => ZMod.val_lt y⟩]
 
 /-- At a tagged head of a method with one argument at a modulus below `2^64`, the table
     `hax64Builtins` on an encoded element is the integer of `fieldVal`. -/
@@ -412,8 +412,8 @@ theorem hax64Builtins_zmod_unary {m : FieldMethod} (ht : fieldTag? f = some (m, 
     (hp : p < 2 ^ 64) (hm : m.binary = false) (x : ZMod p) :
     hax64Builtins f [enc x] = some (.int (fieldVal m p x.val 0 : ℕ)) := by
   have h := hax64Builtins_fieldArgs ht hp x.val 0
-  simp only [fieldArgs, hm, Bool.false_eq_true, if_false] at h
-  rw [enc_zmod, h, fieldArm, if_pos ⟨ZMod.val_lt x, fun h => absurd h (by simp [hm])⟩]
+  simp only [fieldArgs, hm, Bool.false_eq_true, ite_false] at h
+  rw [enc_zmod, h, fieldArm, ite_eq_left ⟨ZMod.val_lt x, fun h => absurd h (by simp [hm])⟩]
 
 /-- The table answers the tagged head of `add` by the encoding of the sum. -/
 theorem hax64Builtins_zmod_add (ht : fieldTag? f = some (.add, p)) (hp : p < 2 ^ 64)

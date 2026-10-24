@@ -215,7 +215,7 @@ theorem lowerExpr_correct {n w : Nat} {nm : Nat → String} {K : Nat → Option 
     (evalTileOp s op).get d = e.denote V := by
   obtain ⟨op', hret, args⟩ := e
   cases op' <;> cases hret <;> rcases args with _ | ⟨x, _ | ⟨y, _ | ⟨_, _⟩⟩⟩ <;>
-    simp only [lowerExpr, and_self, if_true, Option.some.injEq,
+    simp only [lowerExpr, and_self, ite_true, Option.some.injEq,
       Option.ite_none_right_eq_some] at h
   all_goals first
     | subst h
@@ -266,7 +266,7 @@ theorem constOf_denote {n w : Nat} {Γ : Ctxt tileDialect} (e : Expr tileDialect
     e.denote V = fun _ => BitVec.ofNat w k := by
   obtain ⟨op', hret, args⟩ := e
   cases op' <;> cases hret <;> rcases args with _ | ⟨x, _ | ⟨y, _ | ⟨_, _⟩⟩⟩ <;>
-    simp only [constOf, and_self, if_true, Option.some.injEq, reduceCtorEq] at h
+    simp only [constOf, and_self, ite_true, Option.some.injEq, reduceCtorEq] at h
   subst h
   rfl
 

@@ -470,12 +470,12 @@ theorem whileIterLeak_some_mono {cs : List d.Ty}
       refine ⟨r₁, h acc r₁ h₁, ?_⟩
       split at h₂
       · rename_i hb
-        rw [if_pos hb]
+        rw [ite_eq_left hb]
         simp only [Option.map_eq_some_iff] at h₂ ⊢
         obtain ⟨q, hq, rfl⟩ := h₂
         exact ⟨q, whileIterLeak_some_mono h n m (by omega) _ q hq, rfl⟩
       · rename_i hb
-        rw [if_neg hb]
+        rw [ite_eq_right hb]
         exact h₂
 
 /-- **Fuel monotonicity of the leakage run.** A leakage run of a program at a fuel is a
@@ -1392,7 +1392,7 @@ theorem lsound_repeat (bi : Builtins) (hR : RepeatCalls bi) (fuel : Nat) (tgt : 
       | lit _ => rfl
       | _ => simp [atomOut] at hox
     have hl : nfTrace (srcLeakCl bi C.cl (.app "repeat" [x, .lit (.int N)]) fuel env) = [] := by
-      simp only [srcLeakCl, if_true, nfTrace, List.append_nil, srcArgsLeakCl, hx,
+      simp only [srcLeakCl, ite_true, nfTrace, List.append_nil, srcArgsLeakCl, hx,
         List.nil_append]
       exact nfTrace_contLeak_nil _ _ fun _ _ => nfTrace_contLeak_nil _ _ fun _ _ => rfl
     rw [hl]
@@ -1453,7 +1453,7 @@ theorem lsound_app (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
               simp only [hcall, Option.bind_some, Option.map_some, List.append_nil]
           show PLeak bi C tf (oa.pre.append _) V = _
           rw [PLeak_append_some hW hstep, hC f oa.as r _ y hcall]
-          simp only [srcLeakCl, hf, if_false, h1, nfTrace]
+          simp only [srcLeakCl, hf, ite_false, h1, nfTrace]
 
 /-- A tuple of atoms is sound with leakage, with no event. -/
 theorem lsound_tuple (bi : Builtins) (sigOf : String → List NfTy → Option NfTy)
@@ -1545,8 +1545,8 @@ theorem PLeak_ifThenElse_some (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
   have hr' : (if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then
       nfLeakRunE bi C tf thn V else nfLeakRunE bi C tf els V) = some (r, t) := by
     split
-    · rename_i hc; rw [if_pos hc] at hr; exact hr
-    · rename_i hc; rw [if_neg hc] at hr; exact hr
+    · rename_i hc; rw [ite_eq_left hc] at hr; exact hr
+    · rename_i hc; rw [ite_eq_right hc] at hr; exact hr
   simp only [PLeak, NFPre.leakRunE]
   rw [hr']
   rfl
@@ -1572,7 +1572,7 @@ theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfT
   obtain ⟨Δc, tc, prec, σc, resc⟩ := oc
   by_cases htc : tc = NfTy.bit
   · subst htc
-    rw [dif_pos rfl] at h
+    rw [dite_eq_left rfl] at h
     intro env V r env' hrel hrun
     obtain ⟨rc, e1, h1⟩ := run_val_split (denote' bi fuel c) env
     cases rc with
@@ -1585,11 +1585,11 @@ theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfT
         obtain ⟨Δb, tb, preb, σb, resb⟩ := ob
         by_cases ht : tb = oa.t
         · subst ht
-          rw [dif_pos rfl] at h
+          rw [dite_eq_left rfl] at h
           obtain ⟨ra, hra, h⟩ := Option.bind_eq_some_iff.mp h
           obtain ⟨rb, hrb, h⟩ := Option.map_eq_some_iff.mp h
           by_cases hu : oa.t = NfTy.unit
-          · rw [if_pos hu] at h
+          · rw [ite_eq_left hu] at h
             subst h
             have hU : ∀ (tf : Nat) {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') (X : Valuation Γ'),
                 PLeak bi C tf (bind1N none σ' .constUnit .nil).pre X =
@@ -1612,7 +1612,7 @@ theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfT
                   (preb.plug (.ret rb)) W1 (r := Expr.lookupArgs ra W2)
                   (by
                     have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = true := hk
-                    rw [if_pos this]; exact harm)
+                    rw [ite_eq_left this]; exact harm)
                 refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) ()
                   (hvAppend (Expr.lookupArgs ra W2) W1),
                   (PLeak_append_some (PLeak_append_some hW1 hstep) (hU tf _ _)).trans ?_⟩
@@ -1635,13 +1635,13 @@ theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfT
                   (preb.plug (.ret rb)) W1 (r := Expr.lookupArgs rb W2)
                   (by
                     have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = false := hk
-                    rw [if_neg (by rw [this]; exact Bool.false_ne_true)]; exact harm)
+                    rw [ite_eq_right (by rw [this]; exact Bool.false_ne_true)]; exact harm)
                 refine ⟨HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) ()
                   (hvAppend (Expr.lookupArgs rb W2) W1),
                   (PLeak_append_some (PLeak_append_some hW1 hstep) (hU tf _ _)).trans ?_⟩
                 simp only [srcLeakCl, h1, hk, enc, nfTrace, nfEv, List.append_nil]
                 rfl
-          rw [if_neg hu] at h
+          rw [ite_eq_right hu] at h
           subst h
           cases hk : resc.lookup W1 with
           | true =>
@@ -1660,7 +1660,7 @@ theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfT
                 (r := Expr.lookupArgs (.cons oa.res ra) W2)
                 (by
                   have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = true := hk
-                  rw [if_pos this]; exact harm)
+                  rw [ite_eq_left this]; exact harm)
               refine ⟨hvAppend (Expr.lookupArgs (.cons oa.res ra) W2) W1,
                 (PLeak_append_some hW1 hstep).trans ?_⟩
               simp only [srcLeakCl, h1, hk, enc, nfTrace, nfEv, List.append_nil]
@@ -1684,17 +1684,17 @@ theorem lsound_cond (bi : Builtins) (sigOf : String → List NfTy → Option NfT
                 (r := Expr.lookupArgs (.cons resb rb) W2)
                 (by
                   have : HasBoolBit.toBool (d := nfDialect) (resc.lookup W1) = false := hk
-                  rw [if_neg (by rw [this]; exact Bool.false_ne_true)]; exact harm)
+                  rw [ite_eq_right (by rw [this]; exact Bool.false_ne_true)]; exact harm)
               refine ⟨hvAppend (Expr.lookupArgs (.cons resb rb) W2) W1,
                 (PLeak_append_some hW1 hstep).trans ?_⟩
               simp only [srcLeakCl, h1, hk, enc, nfTrace, nfEv, List.append_nil]
               rfl
-        · rw [dif_neg ht] at h
+        · rw [dite_eq_right ht] at h
           cases h
     | _ =>
         rw [_root_.Hax.ContinueFlag.ifThenElse_run, h1] at hrun
         cases hrun
-  · rw [dif_neg htc] at h
+  · rw [dite_eq_right htc] at h
     cases h
 
 /-! ## The counted loop -/
@@ -1713,7 +1713,7 @@ theorem forLeak_ge (bi : Builtins) (i : String) (body : ImpExpr) (lb : Nat → E
     forLeak bi i body lb fuel lo hi env = .nil := by
   cases fuel with
   | zero => rfl
-  | succ n => simp only [forLeak, if_pos (show lo ≥ hi from h)]
+  | succ n => simp only [forLeak, ite_eq_left (show lo ≥ hi from h)]
 
 /-- **The loop with leakage.** `ImpToNF.loop_sound` for a step with events, indexed by the
     target fuel: let every run of the body from an environment satisfying `Inv`, extended with
@@ -1772,7 +1772,7 @@ theorem loop_leak (bi : Builtins) (i : String) (body : ImpExpr) (lo h : Int) {cs
               rw [List.range'_succ]
               simp only [forIterLeak, hacc' tf (le_of_max_le_left htf), Option.bind_some,
                 hfold tf (le_of_max_le_right htf), Option.map_some]
-              simp only [forLeak, if_neg (show ¬ (lo + (k : Int) ≥ h) by omega), hb,
+              simp only [forLeak, ite_eq_right (show ¬ (lo + (k : Int) ≥ h) by omega), hb,
                 tripCont_val (isControlFlow_false hcf), hk1, nfTrace]
           | _ =>
               rw [forLoop_succ_run bi f i _ h body env hlt, hb] at hrun
@@ -1784,7 +1784,7 @@ theorem forRevLeak_ge (bi : Builtins) (i : String) (body : ImpExpr)
     forRevLeak bi i body lb fuel lo hi env = .nil := by
   cases fuel with
   | zero => rfl
-  | succ n => simp only [forRevLeak, if_pos (show lo ≥ hi from h)]
+  | succ n => simp only [forRevLeak, ite_eq_left (show lo ≥ hi from h)]
 
 /-- **The reverse loop with leakage.** `loop_leak` for `denoteForLoopRev'`: with the step at
     `k` matching the runs of the body from the counter `h - 1 - k`, a run of
@@ -1846,7 +1846,7 @@ theorem loopRev_leak (bi : Builtins) (i : String) (body : ImpExpr) (lo h : Int)
               rw [List.range'_succ]
               simp only [forIterLeak, hacc' tf (le_of_max_le_left htf), Option.bind_some,
                 hfold tf (le_of_max_le_right htf), Option.map_some]
-              simp only [forRevLeak, if_neg (show ¬ (lo ≥ h - (k : Int)) by omega), hb,
+              simp only [forRevLeak, ite_eq_right (show ¬ (lo ≥ h - (k : Int)) by omega), hb,
                 tripCont_val (isControlFlow_false hcf), nfTrace]
           | _ =>
               rw [← hc] at hb
@@ -2302,7 +2302,7 @@ theorem nfLeakRunE_whileOutStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDi
       some (HVector.cons (t := NfTy.bit) false acc, [.branch false]) := by
   unfold whileOutStep
   simp only [nfLeakRunE, NFProg.leakRunE_ifThenElse, h,
-    show HasBoolBit.toBool (d := nfDialect) false = false from rfl, Bool.false_eq_true, if_false,
+    show HasBoolBit.toBool (d := nfDialect) false = false from rfl, Bool.false_eq_true, ite_false,
     NFProg.leakRunE_ret, Option.bind_some, Option.map_some, List.append_nil, lookupArgs_headVars]
   rw [show Expr.lookupArgs (HVector.cons gV (headVars cs)) (hvAppend acc V) =
     HVector.cons (gV.lookup (hvAppend acc V)) (Expr.lookupArgs (headVars cs) (hvAppend acc V))
@@ -2320,7 +2320,7 @@ theorem nfLeakRunE_whileOutStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDia
       some (HVector.cons (t := NfTy.bit) true (Expr.lookupArgs rets W), .branch true :: t) := by
   unfold whileOutStep
   simp only [nfLeakRunE, NFProg.leakRunE_ifThenElse, h,
-    show HasBoolBit.toBool (d := nfDialect) true = true from rfl, if_true, NFPre.leakRunE_plug,
+    show HasBoolBit.toBool (d := nfDialect) true = true from rfl, ite_true, NFPre.leakRunE_plug,
     NFProg.leakRunE_ret, Option.map_some, List.append_nil]
   rw [show @NFPre.leakRunE nfDialect _ _ _ _ (nfDenote (tableOf bi)) C.opEv tf _ _ ob.pre X =
     some (W, t) from hW]
@@ -2362,7 +2362,7 @@ theorem while_leak (bi : Builtins) (g : String) (body : ImpExpr) {cs : List NfTy
   induction n with
   | zero =>
       intro e acc r e' _ h
-      rw [_root_.Hax.denoteWhile', if_pos rfl] at h
+      rw [_root_.Hax.denoteWhile', ite_eq_left rfl] at h
       cases h
   | succ n ih =>
       intro e acc r e' hinv h
@@ -2396,12 +2396,12 @@ theorem while_leak (bi : Builtins) (g : String) (body : ImpExpr) {cs : List NfTy
               rw [whileIterLeak, hst tf (by omega)]
               have hit' := hit tf m (by omega) (by omega)
               simp only [Option.bind_some, HVector.head, HVector.tail,
-                show HasBoolBit.toBool (d := nfDialect) true = true from rfl, if_true, hit',
+                show HasBoolBit.toBool (d := nfDialect) true = true from rfl, ite_true, hit',
                 Option.map_some, whileLeakNF, hc, hbr, tripCont_val hcf, srcLeakCl, nfTrace, nfEv,
                 List.nil_append, List.cons_append]
           | _ =>
               unfold _root_.Hax.denoteWhile' at h
-              rw [if_neg (Nat.add_one_ne_zero n)] at h
+              rw [ite_eq_right (Nat.add_one_ne_zero n)] at h
               simp only [StateT.run, bind, StateT.bind] at hc hbr h
               rw [hc] at h
               dsimp only at h

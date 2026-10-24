@@ -496,9 +496,9 @@ theorem flatProg_denote (T : NfLeafTable) (fuel : Nat) {Γ : Ctxt nfDialect} {ts
       rw [@NFProg.denote_ifThenElse nfDialect _ _ _ _ (nfDenote T),
         @NFProg.denote_ifThenElse nfDialect _ _ _ _ (nfDenote T), hc]
       by_cases hb : HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true
-      · rw [if_pos hb, if_pos hb, iht ren thn' ht V W hW]
+      · rw [ite_eq_left hb, ite_eq_left hb, iht ren thn' ht V W hW]
         exact NFProg.bind_map_comm _ flatV flatV _ _ hk'
-      · rw [if_neg hb, if_neg hb, ihe ren els' he V W hW]
+      · rw [ite_eq_right hb, ite_eq_right hb, ihe ren els' he V W hW]
         exact NFProg.bind_map_comm _ flatV flatV _ _ hk'
   | whileLoop inits body k ihb ihk =>
       intro Δ ren q hq V W hW

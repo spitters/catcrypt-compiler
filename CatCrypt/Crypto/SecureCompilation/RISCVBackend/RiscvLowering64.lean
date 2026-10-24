@@ -107,11 +107,11 @@ def ROp64.shlImm (d a : String) (i : Nat) : ROp64 :=
 
 /-- Below 64, `ROp64.shrImm` is the `srli` instruction with the same amount. -/
 theorem ROp64.shrImm_of_lt (d a : String) {i : Nat} (h : i < 64) :
-    ROp64.shrImm d a i = .srli d a ⟨i, h⟩ := dif_pos h
+    ROp64.shrImm d a i = .srli d a ⟨i, h⟩ := dite_eq_left h
 
 /-- Below 64, `ROp64.shlImm` is the `slli` instruction with the same amount. -/
 theorem ROp64.shlImm_of_lt (d a : String) {i : Nat} (h : i < 64) :
-    ROp64.shlImm d a i = .slli d a ⟨i, h⟩ := dif_pos h
+    ROp64.shlImm d a i = .slli d a ⟨i, h⟩ := dite_eq_left h
 
 /-- Lower a register-named 64-bit bignum op to a *list* of machine `RInst64`s. The
     carry-chain ops expand to the `SLTU` macros (the RISC-V analogue of ARM's

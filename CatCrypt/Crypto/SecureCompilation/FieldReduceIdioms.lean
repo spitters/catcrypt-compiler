@@ -64,9 +64,9 @@ theorem bCondSub_toNat (x p : BitVec 64) (hp : 0 < p.toNat) (hx : x.toNat < 2 * 
   have hplt := p.isLt
   rw [bCondSub_eq]
   by_cases h : x.toNat < p.toNat
-  · rw [if_pos (by simp [BitVec.ult, h]), Nat.mod_eq_of_lt h]
+  · rw [ite_eq_left (by simp [BitVec.ult, h]), Nat.mod_eq_of_lt h]
   · have hpx : p.toNat ≤ x.toNat := Nat.le_of_not_lt h
-    rw [if_neg (by simp only [BitVec.ult, decide_eq_true_eq]; omega),
+    rw [ite_eq_right (by simp only [BitVec.ult, decide_eq_true_eq]; omega),
         BitVec.toNat_sub_of_le hpx, Nat.mod_eq_sub_mod hpx,
         Nat.mod_eq_of_lt (show x.toNat - p.toNat < p.toNat by omega)]
 
@@ -87,13 +87,13 @@ theorem bSubMod_toNat (a b p : BitVec 64) (hp : 0 < p.toNat) (hp64 : p.toNat < 2
   rw [bSubMod_eq]
   have hab := a.isLt; have hbb := b.isLt; have hpb := p.isLt
   by_cases h : a.toNat < b.toNat
-  · rw [if_pos (by simp [BitVec.ult, h])]
+  · rw [ite_eq_left (by simp [BitVec.ult, h])]
     have e1 : (a - b).toNat = 2 ^ 64 - (b.toNat - a.toNat) := by rw [BitVec.toNat_sub]; omega
     rw [BitVec.toNat_add, e1,
         show (2 ^ 64 - (b.toNat - a.toNat) + p.toNat) % 2 ^ 64 = a.toNat + p.toNat - b.toNat from by
           omega,
         Nat.mod_eq_of_lt (by omega)]
-  · rw [if_neg (by simp only [BitVec.ult, decide_eq_true_eq]; omega)]
+  · rw [ite_eq_right (by simp only [BitVec.ult, decide_eq_true_eq]; omega)]
     have hba : b.toNat ≤ a.toNat := Nat.le_of_not_lt h
     rw [BitVec.toNat_sub_of_le hba,
         show a.toNat + p.toNat - b.toNat = (a.toNat - b.toNat) + p.toNat from by omega,
@@ -110,10 +110,10 @@ theorem addCarry_toNat (a b : BitVec 64) :
   have h1 : (1 : BitVec 64).toNat = 1 := by decide
   have h0 : (0 : BitVec 64).toNat = 0 := by decide
   by_cases h : (a + b).ult a
-  · rw [if_pos h, h1]
+  · rw [ite_eq_left h, h1]
     have hlt : (a + b).toNat < a.toNat := by simpa [BitVec.ult] using h
     omega
-  · rw [if_neg h, h0]
+  · rw [ite_eq_right h, h0]
     have hge : ¬ (a + b).toNat < a.toNat := by simpa [BitVec.ult] using h
     omega
 

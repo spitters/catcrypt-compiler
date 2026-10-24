@@ -220,7 +220,7 @@ theorem forFoldRev_run_loop {bi : Builtins} {F : Nat} {i : String} {lo hi b : Im
 theorem forLoopRev_zero_run (bi : Builtins) (i : String) (lo hi : Int) (body : ImpExpr)
     (env : Env) (h : lo < hi) :
     (denoteForLoopRev' bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
-  rw [denoteForLoopRev', if_neg (Int.not_le.mpr h), if_pos rfl]; rfl
+  rw [denoteForLoopRev', ite_eq_right (Int.not_le.mpr h), ite_eq_left rfl]; rfl
 
 theorem forLoopRev_succ_run (bi : Builtins) (n : Nat) (i : String) (lo hi : Int)
     (body : ImpExpr) (env : Env) (h : lo < hi) :
@@ -230,8 +230,8 @@ theorem forLoopRev_succ_run (bi : Builtins) (n : Nat) (i : String) (lo hi : Int)
       | (.val (.controlFlow false _), e2) => (denoteForLoopRev' bi n i lo (hi - 1) body).run e2
       | (.val _, e2) => (denoteForLoopRev' bi n i lo (hi - 1) body).run e2
       | (o, e2) => (o, e2) := by
-  rw [denoteForLoopRev', if_neg (Int.not_le.mpr h)]
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+  rw [denoteForLoopRev', ite_eq_right (Int.not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure, modify,
     modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) body) (env.extend i (.int (hi - 1))) with ⟨o2, e2⟩
   rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
@@ -289,17 +289,17 @@ theorem forLeak_off {v₁ v₂ : String} {b₁ b₂ : ImpExpr} {D : Nat}
     · rw [Nat.zero_add]
       cases D with
       | zero => rfl
-      | succ k => simp only [forLeak, hl, if_true]
+      | succ k => simp only [forLeak, hl, ite_true]
     · rw [forLoop_zero_run _ _ _ _ _ _ (by omega)] at hnb
       exact absurd ⟨_, rfl⟩ hnb
   | succ n ih =>
     intro lo hi e₁ e₂ hP hnb
     have hfu : n + 1 + D = n + D + 1 := by omega
     by_cases hl : lo ≥ hi
-    · rw [hfu]; simp only [forLeak, hl, if_true]
+    · rw [hfu]; simp only [forLeak, hl, ite_true]
     · rw [forLoop_succ_run _ _ _ _ _ _ _ (by omega)] at hnb
       rw [hfu]
-      simp only [forLeak, hl, if_false, nfTrace_cat]
+      simp only [forLeak, hl, ite_false, nfTrace_cat]
       generalize hb : (denote' bi₂ (n + 1) b₂).run (e₂.extend v₂ (.int lo)) = B at hnb
       obtain ⟨ob, sb⟩ := B
       have hob : ¬ IsErr ob := by rintro ⟨m, rfl⟩; exact hnb ⟨_, rfl⟩
@@ -333,17 +333,17 @@ theorem forRevLeak_off {v₁ v₂ : String} {b₁ b₂ : ImpExpr} {D : Nat}
     · rw [Nat.zero_add]
       cases D with
       | zero => rfl
-      | succ k => simp only [forRevLeak, hl, if_true]
+      | succ k => simp only [forRevLeak, hl, ite_true]
     · rw [forLoopRev_zero_run _ _ _ _ _ _ (by omega)] at hnb
       exact absurd ⟨_, rfl⟩ hnb
   | succ n ih =>
     intro lo hi e₁ e₂ hP hnb
     have hfu : n + 1 + D = n + D + 1 := by omega
     by_cases hl : lo ≥ hi
-    · rw [hfu]; simp only [forRevLeak, hl, if_true]
+    · rw [hfu]; simp only [forRevLeak, hl, ite_true]
     · rw [forLoopRev_succ_run _ _ _ _ _ _ _ (by omega)] at hnb
       rw [hfu]
-      simp only [forRevLeak, hl, if_false, nfTrace_cat]
+      simp only [forRevLeak, hl, ite_false, nfTrace_cat]
       generalize hb : (denote' bi₂ (n + 1) b₂).run (e₂.extend v₂ (.int (hi - 1))) = B at hnb
       obtain ⟨ob, sb⟩ := B
       have hob : ¬ IsErr ob := by rintro ⟨m, rfl⟩; exact hnb ⟨_, rfl⟩
@@ -627,10 +627,10 @@ theorem bindParams_run_leak (bi : Builtins) (F n : Nat) (vals : List Value)
         simp only [paramsEnv] at hx
         by_cases hxp : x = p
         · subst hxp
-          simp only [if_true] at hx
+          simp only [ite_true] at hx
           cases hx
           exact Env.extend_same _ _ _
-        · rw [if_neg hxp] at hx
+        · rw [ite_eq_right hxp] at hx
           rw [Env.extend_other _ _ _ _ (fun h => hxp (lvlName_inj h).2)]
           exact hpar x v hx
       · intro y hy
@@ -715,7 +715,7 @@ theorem callBlock_leak {fs : List CrateFn} {bi : Builtins} {fuelC n : Nat} {c : 
     (paramsEnv (c.params.map (·.1)) vals) hstart (by rw [hB]; exact hob)
   rw [hfe] at hbL
   rw [callBlock]
-  simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hA, hT, contLeak, hg, if_false]
+  simp only [srcLeakNF, srcLeakCl, nfTrace_cat, hA, hT, contLeak, hg, ite_false]
   rw [hargsL e₁ e₂ hP (by rw [hA]; simp), hleakB, hbL]
   simp only [expLeak, hc]
 
@@ -861,7 +861,7 @@ theorem crateOp_leak (fs : List CrateFn) (bi : Builtins) (hT : TypedCalls bi hax
       simp only [crateOp, Option.bind_eq_some_iff] at hb
       obtain ⟨c, hc, hb⟩ := hb
       have hwf := NFInline.whileFoldFree_of_crateBody hb
-      simp only [crateBody, hwf, if_true, Option.bind_eq_some_iff] at hb
+      simp only [crateBody, hwf, ite_true, Option.bind_eq_some_iff] at hb
       obtain ⟨o', ho', hb⟩ := hb
       split at hb
       · rename_i hty

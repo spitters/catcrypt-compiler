@@ -364,7 +364,7 @@ theorem decodeCallSegsAux_encode (nameAt : Int → Option String) (alloc : GpAll
       | none =>
           simp only [callsFit, hs] at hfit
           simp only [encodeCallSegsFrom, hs, segsFuel, Option.isSome_none,
-            Bool.false_eq_true, if_false, Nat.add_zero, List.map_cons, normSegsFrom, hren]
+            Bool.false_eq_true, ite_false, Nat.add_zero, List.map_cons, normSegsFrom, hren]
           rw [show fuel + (s.body.length + segsFuel ss) = (fuel + segsFuel ss) + s.body.length
             by omega, decodeCallSegsAux_block nameAt alloc s.body hcs]
           exact ih _ _ _ hcr hfit
@@ -373,7 +373,7 @@ theorem decodeCallSegsAux_encode (nameAt : Int → Option String) (alloc : GpAll
           obtain ⟨hδ, hfit⟩ := hfit
           have hrg := reloc_ge alloc symBase ss
             (off + (encodeJBlock alloc s.body).length + 5)
-          simp only [encodeCallSegsFrom, hs, segsFuel, Option.isSome_some, if_true,
+          simp only [encodeCallSegsFrom, hs, segsFuel, Option.isSome_some, ite_true,
             List.map_cons, normSegsFrom, hren]
           rw [show fuel + (s.body.length + 1 + segsFuel ss)
               = ((fuel + segsFuel ss) + 1) + s.body.length by omega]
@@ -390,14 +390,14 @@ theorem decodeCallSegsAux_encode (nameAt : Int → Option String) (alloc : GpAll
                   + (δ - ↑(off + (encodeJBlock alloc s.body).length + 5)) : Int) = δ := by
                 omega
               simp only [ht, hN f δ hb, Option.map_some, ih _ _ _ hcr hfit, renameSeg,
-                if_true]
+                ite_true]
           | none =>
               rw [decodeCallSegsAux_block nameAt alloc s.body hcs,
                 decodeCallSegsAux_succ_call _ _ _ _ _ _ (by simp only [callRel32,
                   List.cons_append, decodeJ1_e8])]
               simp only [callRel32, List.cons_append, callStep, BitVec.toNat_ofNat,
                 decodeDisp_disp32LE _ _ (show dispOk32 0 = true by decide), callTarget,
-                and_self, if_true, ih _ _ _ hcr hfit, Option.map_some, renameSeg]
+                and_self, ite_true, ih _ _ _ hcr hfit, Option.map_some, renameSeg]
 
 /-- The runs take no more decoding steps than they have bytes. -/
 theorem segsFuel_le (alloc : GpAlloc) (symBase : String → Option Int) :
@@ -414,13 +414,13 @@ theorem segsFuel_le (alloc : GpAlloc) (symBase : String → Option Int) :
       | none =>
           have := ih (off + (encodeJBlock alloc s.body).length) hcr
           simp only [segsFuel, encodeCallSegsFrom, hs, List.length_append,
-            Option.isSome_none, Bool.false_eq_true, if_false]
+            Option.isSome_none, Bool.false_eq_true, ite_false]
           omega
       | some f =>
           have := ih (off + (encodeJBlock alloc s.body).length + 5) hcr
           cases hb : symBase f <;>
           · simp only [segsFuel, encodeCallSegsFrom, hs, hb, List.length_append,
-              callRel32_length, Option.isSome_some, if_true]
+              callRel32_length, Option.isSome_some, ite_true]
             omega
 
 /-- Runs of covered instructions, separated by calls, decode back from their bytes

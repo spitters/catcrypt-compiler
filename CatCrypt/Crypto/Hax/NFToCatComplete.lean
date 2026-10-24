@@ -440,12 +440,12 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
       obtain ⟨⟨hta, htb⟩, hc⟩ := h
       have hne : ta ≠ .bit := by rintro rfl; cases hta
       obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp hc
-      simp only [scalarRes2, if_neg hne, hc, Option.bind_some]
+      simp only [scalarRes2, ite_eq_right hne, hc, Option.bind_some]
       exact withVar2_isSome hta htb _ _ fun _ _ => rfl
     · simp only [Bool.and_eq_true, decide_eq_true_eq] at h
       obtain ⟨⟨rfl, rfl⟩, hany⟩ := h
       obtain ⟨o, hp, hb⟩ := (Option.any_eq_true _ _).mp hany
-      simp only [scalarRes2, if_pos]
+      simp only [scalarRes2, ite_eq_left]
       cases ra with
       | lit _ hk => cases hk
       | var a =>
@@ -471,7 +471,7 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
     simp only [Bool.and_eq_true] at h'
     obtain ⟨hta, hu⟩ := h'
     obtain ⟨⟨o, w⟩, hu⟩ := Option.isSome_iff_exists.mp hu
-    simp only [scalarRes1, if_neg hd, hu, Option.bind_some]
+    simp only [scalarRes1, ite_eq_right hd, hu, Option.bind_some]
     split
     · cases ra with
       | var a =>
@@ -490,7 +490,7 @@ theorem scalarRes_isSome {Δ : Ctxt catCryptDialect} {f : String} {as : List NfT
         have hd : f ≠ "declassify" := by
           rintro rfl
           simp [ImpToNF.scalarBitOf, ImpToNF.hax64BitTable] at hp
-        simp [scalarRes1, if_neg hd, bitRes1, asBit, hp]
+        simp [scalarRes1, ite_eq_right hd, bitRes1, asBit, hp]
   · rename_i ta
     simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
     obtain ⟨rfl, rfl⟩ := h
@@ -634,7 +634,7 @@ theorem catOp_isSome_of_nbOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (
       rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
       change (binRes? .sub 64 (σ a) (σ b)).isSome
       unfold binRes?
-      rw [dif_pos ⟨rfl, rfl⟩]
+      rw [dite_eq_left ⟨rfl, rfl⟩]
       exact withVar2_isSome rfl rfl _ _ fun x y =>
         binChain_isSome 64 ⟨by decide, by decide⟩ x y
   | ilit t v =>
@@ -650,7 +650,7 @@ theorem catOp_isSome_of_nbOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (
         · cases t with
           | uint W =>
               simp only [decide_eq_true_eq] at ht
-              simp only [uintLit?, if_pos (And.intro ht (And.intro h0 h1)), Option.isSome_some]
+              simp only [uintLit?, ite_eq_left (And.intro ht (And.intro h0 h1)), Option.isSome_some]
           | _ => simp at ht
   | constBit b => intro _ _; rfl
   | constUnit => intro _ _; rfl
@@ -725,7 +725,7 @@ theorem catOp_litOp {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
       intro h _
       simp only [litOp, Bool.and_eq_true, decide_eq_true_eq] at h
       obtain ⟨⟨ht, h0⟩, h1⟩ := h
-      exact ⟨v.toNat, ht, by simp only [catOp, dif_pos (And.intro ht (And.intro h0 h1))]⟩
+      exact ⟨v.toNat, ht, by simp only [catOp, dite_eq_left (And.intro ht (And.intro h0 h1))]⟩
   | _ => intro h; simp [litOp] at h
 
 /-- A rotation of `rotCallOk` is translated by `catCallRd` at every reading of the flags. -/
@@ -748,7 +748,7 @@ theorem catCallRd_isSome_of_rot {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect
         split at ho
         · rename_i o w hof
           simp only [scalarRes2, hof, Option.bind_some]
-          rw [if_pos (by simpa using ho), hbk]
+          rw [ite_eq_left (by simpa using ho), hbk]
           exact withVar1_isSome hta _ fun _ => rfl
         · cases ho
       obtain ⟨res, hres⟩ := Option.isSome_iff_exists.mp hs

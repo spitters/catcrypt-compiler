@@ -939,9 +939,9 @@ theorem ACorr.write {rsp : BitVec 64} {sa sa' : AState} {s s' : LstateA}
     (hbD : s'.reg.getW D 64 = some v) : ACorr rsp sa' s' where
   regs r hr := by
     by_cases hrD : r = D
-    · subst hrD; rw [hbD, hregs, if_pos rfl]
-    · rw [hb r hrD, h.regs r hr, hregs, if_neg (fun e => hrD (phys_inj hr hD e))]
-  sp := by rw [hregs, if_neg (fun e => (gpFacts hD).physNe e.symm)]; exact h.sp
+    · subst hrD; rw [hbD, hregs, ite_eq_left rfl]
+    · rw [hb r hrD, h.regs r hr, hregs, ite_eq_right (fun e => hrD (phys_inj hr hD e))]
+  sp := by rw [hregs, ite_eq_right (fun e => (gpFacts hD).physNe e.symm)]; exact h.sp
   mem := hmem
 
 /-- Registers unchanged on both sides preserve the correspondence when the memories still
@@ -1012,8 +1012,8 @@ theorem sim_ld (P : Params) (rsp : BitVec 64) (m D q : String)
   refine ⟨⟨(s.reg.setReg D (read64 s.mem (rsp + BitVec.ofInt 64 off))).nextPc, s.mem, s.cf,
       s.of⟩, zf, ?_, hc.write (sa' := evalInstrA sa _) hD _
       (fun r => by rw [hregs, hc.sp]) (fun x hx => by rw [hmem]; exact hc.mem x hx)
-      (fun r hr => by rw [getW_setReg_nextPcN, if_neg hr])
-      (by rw [getW_setReg_nextPcN, if_pos rfl, hrd])⟩
+      (fun r hr => by rw [getW_setReg_nextPcN, ite_eq_right hr])
+      (by rw [getW_setReg_nextPcN, ite_eq_left rfl, hrd])⟩
   have hcq : cellParts? q = none := cellParts?_of_spillOff hsome
   simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, hoff, hcq, cellParts?_gp hD]
 
@@ -1044,7 +1044,7 @@ theorem sim_cmp (P : Params) (rsp : BitVec 64) (c : String) (o : LOperand) (o' :
     cases o <;> simp [cmpRI, slotMov?] at hs) (fun d x q hk => by
     cases o with
     | reg r =>
-      simp only [cmpRI, hw, slotCmp?, if_true, Option.some.injEq, Prod.mk.injEq] at hk
+      simp only [cmpRI, hw, slotCmp?, ite_true, Option.some.injEq, Prod.mk.injEq] at hk
       obtain ⟨-, -, rfl⟩ := hk
       exact hq r rfl
     | _ => simp [cmpRI, slotCmp?] at hk) (by cases o <;> simp [cmpRI, cellA?, hw])
@@ -1146,8 +1146,8 @@ theorem sim_ldx (P : Params) (rsp : BitVec 64) (D B I : String)
   refine ⟨⟨(s.reg.setReg D (read64 s.mem a)).nextPc, s.mem, s.cf, s.of⟩, zf, ?_,
     hc.write (sa' := evalInstrA sa _) hD _ (fun r => hregs r)
       (fun x hx => by rw [hmem]; exact hc.mem x hx)
-      (fun r hr => by rw [getW_setReg_nextPcN, if_neg hr])
-      (by rw [getW_setReg_nextPcN, if_pos rfl, hrd])⟩
+      (fun r hr => by rw [getW_setReg_nextPcN, ite_eq_right hr])
+      (by rw [getW_setReg_nextPcN, ite_eq_left rfl, hrd])⟩
   simp [AArm.li, fstepA, loadIdxA?, hc.regs B hB, hc.regs I hI, ha,
     untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList)]
 
@@ -1186,8 +1186,8 @@ theorem decSim_mulP (rsp : BitVec 64) (D S : String) (hD : gpOk D = true)
         Option.bind_some]
       rfl,
       hc.write hD (sa.regs (phys D) * sa.regs (phys S)) (fun _ => rfl) rfl
-        (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, if_neg hr])
-        (by rw [withALUFlags_reg, getW_setReg_nextPc, if_pos rfl])⟩
+        (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_right hr])
+        (by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_left rfl])⟩
 
 /-- **The low multiply.** -/
 theorem sim_mul (P : Params) (rsp : BitVec 64) (D S : String)
@@ -1211,7 +1211,7 @@ theorem fstepF_mulx (L H S : String) (b : LstateM) (zf : Bool) :
       = (wideStep (.mulx L H (.reg S)) b).map (fun t => (t, zf)) := by
   have hw : wideArgs? ((.Lopn [.reg L, .reg H] (withWidthTag 64 "MULX") [.reg S] : LinstrR),
       MemTag.reg none) = some (.mulx L H (.reg S)) := by
-    simp only [wideArgs?, true_or, if_true]
+    simp only [wideArgs?, true_or, ite_true]
   unfold fstepF stepMemF
   simp only [cmpArgs?, movRegArgs?,
     JasminLsemExportRewrites.lsemStepMem_of_wideArgs hw]
@@ -1269,7 +1269,7 @@ theorem sim_mulxS (P : Params) (rsp : BitVec 64) (H S : String)
   have m2 : sa2.mem = sa1.mem := evalInstrA_mem_of_noWriteB sa1 _ rfl
   obtain ⟨r3, m3⟩ := evalInstrA_loadMem_eq sa2 R "%rsp" cmovRedZone
   have hsp2 : sa2.regs "%rsp" = rsp := by
-    rw [r2, if_neg hHsp.symm, if_neg hRsp.symm, hc.sp]
+    rw [r2, ite_eq_right hHsp.symm, ite_eq_right hRsp.symm, hc.sp]
   have hfin : ∀ r, (aMachine.runBlock sa [.storeMem "%rsp" cmovRedZone (.reg R),
       .mulx (phys H) R (.reg "%rdx") (.reg (phys S)), .loadMem R "%rsp" cmovRedZone]).regs r
       = if r = phys H then hi else sa.regs r := by
@@ -1278,9 +1278,9 @@ theorem sim_mulxS (P : Params) (rsp : BitVec 64) (H S : String)
     rw [r3, hsp2, m2, m1, hc.sp]
     by_cases hrR : r = R
     · subst hrR
-      rw [if_pos rfl, if_neg hRH]
+      rw [ite_eq_left rfl, ite_eq_right hRH]
       exact read64_write64_same _ _ _
-    · rw [if_neg hrR, r2, if_neg hrR]
+    · rw [ite_eq_right hrR, r2, ite_eq_right hrR]
   have hmemf : (aMachine.runBlock sa [.storeMem "%rsp" cmovRedZone (.reg R),
       .mulx (phys H) R (.reg "%rdx") (.reg (phys S)), .loadMem R "%rsp" cmovRedZone]).mem
       = write64 sa.mem (redW rsp) (sa.regs R) := by
@@ -1350,15 +1350,15 @@ theorem sim_mulx (P : Params) (rsp : BitVec 64) (L H S : String)
     rw [r1, LstateN.getW_nextPc]
     by_cases hrH : r = H
     · subst hrH
-      rw [LstateN.getW_setReg_same, if_pos rfl]
-    · rw [LstateN.getW_setReg_other _ _ _ _ _ hrH, if_neg (fun e => hrH (phys_inj hr hH e))]
+      rw [LstateN.getW_setReg_same, ite_eq_left rfl]
+    · rw [LstateN.getW_setReg_other _ _ _ _ _ hrH, ite_eq_right (fun e => hrH (phys_inj hr hH e))]
       by_cases hrL : r = L
       · subst hrL
-        rw [LstateN.getW_setReg_same, if_pos rfl]
-      · rw [LstateN.getW_setReg_other _ _ _ _ _ hrL, if_neg (fun e => hrL (phys_inj hr hL e)),
+        rw [LstateN.getW_setReg_same, ite_eq_left rfl]
+      · rw [LstateN.getW_setReg_other _ _ _ _ _ hrL, ite_eq_right (fun e => hrL (phys_inj hr hL e)),
           hc.regs r hr]
-  · rw [r1, if_neg (fun e => (gpFacts hH).physNe e.symm),
-      if_neg (fun e => (gpFacts hL).physNe e.symm)]
+  · rw [r1, ite_eq_right (fun e => (gpFacts hH).physNe e.symm),
+      ite_eq_right (fun e => (gpFacts hL).physNe e.symm)]
     exact hc.sp
   · show s.mem z = sa'.mem z
     rw [m1]

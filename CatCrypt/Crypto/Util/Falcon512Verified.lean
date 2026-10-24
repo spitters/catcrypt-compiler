@@ -127,11 +127,11 @@ theorem asIntCentered_abs_le (g : Zq12289) : |asIntCentered g| ≤ 6144 := by
     exact_mod_cast asNat_lt g
   have h_nn : (0 : Int) ≤ (ZMod.val g : Int) := by exact_mod_cast Nat.zero_le _
   by_cases h : (ZMod.val g : Int) > 6144
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     have hneg : (ZMod.val g : Int) - 12289 < 0 := by linarith
     rw [abs_of_neg hneg]
     linarith
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     push Not at h
     rw [abs_of_nonneg h_nn]
     exact h

@@ -338,7 +338,7 @@ theorem slotCmov?_none_of_regOkB {frame : String → Option (BitVec 64)} {x : Li
     have hn : ∀ R, symN (.Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b]) R
         = .set d (.sel (R a) (R b) (R c)) [.wid (R c) 1, .eqW (R a) (R b)] := fun R => by
       unfold symN
-      simp only [hm, if_true]
+      simp only [hm, ite_true]
     have hd : ∀ R, symMC (.Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b]) R
         = .set d (.sel (R a) (R b) (R c)) [.wid (R c) 1, .eqW (R a) (R b)] := fun R => by
       simp [symMC, symSh, JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
@@ -534,7 +534,7 @@ theorem eval_slotCmp (P : LprogM) {x : LinstrR} {d y q : String}
   rw [slotCmp?_eq h]
   have hc : cmpArgs? (LinstrR.Lopn [.reg d] "CMP:64" [.reg y, .reg q], tag)
       = some (.reg y, .reg q) := by
-    simp only [cmpArgs?, withWidthTag_CMP, if_true]
+    simp only [cmpArgs?, withWidthTag_CMP, ite_true]
   unfold evalInstrPMemF
   rw [hc]
   rfl
@@ -550,7 +550,7 @@ theorem fstepA_slotCmp (frame : String → Option (BitVec 64)) {x : LinstrR} {d 
       | none => none := by
   have hx := slotCmp?_eq h
   have hm : slotMov? x = none := by rw [hx]; rfl
-  simp only [fstepA, hm, h, ha, regStepA, fstepF, cmpArgs?, withWidthTag_CMP, if_true,
+  simp only [fstepA, hm, h, ha, regStepA, fstepF, cmpArgs?, withWidthTag_CMP, ite_true,
     evalOperandN, BitVec.ofNat_toNat, BitVec.setWidth_eq]
   cases sa.reg.getW y 64 <;> rfl
 
@@ -567,7 +567,7 @@ theorem eval_loadIdx (P : LprogM) (d A idx : String) (n : Nat) (s : LstateMF) :
   rw [evalInstrPMemF_isLopn P _ s ⟨_, _, _, rfl⟩]
   simp only [fstepF, cmpArgs?, movRegArgs?]
   rw [stepMemF_of_quiet rfl rfl rfl]
-  simp only [lsemStepMem, loadStruct?, if_true]
+  simp only [lsemStepMem, loadStruct?, ite_true]
   cases s.prog.base.getArr A 64 n <;> cases s.prog.base.reg.getW idx 64 <;> rfl
 
 /-- The name-keyed step of an indexed store into the array `A` at shape `(64, n)`. -/
@@ -581,7 +581,7 @@ theorem eval_storeIdx (P : LprogM) (A idx v : String) (n : Nat) (s : LstateMF) :
   rw [evalInstrPMemF_isLopn P _ s ⟨_, _, _, rfl⟩]
   simp only [fstepF, cmpArgs?, movRegArgs?]
   rw [stepMemF_of_quiet rfl rfl rfl]
-  simp only [lsemStepMem, storeStruct?, if_true]
+  simp only [lsemStepMem, storeStruct?, ite_true]
   cases s.prog.base.getArr A 64 n <;> cases s.prog.base.reg.getW idx 64 <;>
     cases s.prog.base.reg.getW v 64 <;> rfl
 
@@ -594,7 +594,7 @@ theorem fstepA_loadIdx (frame : String → Option (BitVec 64)) (d b idx : String
           (read64 sa.mem (p + BitVec.ofNat 64 (8 * vi.toNat)))).nextPc }, zf)
       | _, _ => none := by
   simp only [fstepA, loadIdxA?,
-    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList), if_true]
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList), ite_true]
   cases sa.reg.getW b 64 <;> cases sa.reg.getW idx 64 <;> rfl
 
 /-- The address-machine step of an indexed store through the register `b`. -/
@@ -608,7 +608,7 @@ theorem fstepA_storeIdx (frame : String → Option (BitVec 64)) (d b idx v : Str
             mem := write64 sa.mem (p + BitVec.ofNat 64 (8 * vi.toNat)) vv }, zf)
       | _, _, _ => none := by
   simp only [fstepA, storeIdxA?,
-    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STOREIDX".toList), if_true]
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STOREIDX".toList), ite_true]
   cases sa.reg.getW b 64 <;> cases sa.reg.getW idx 64 <;> cases sa.reg.getW v 64 <;> rfl
 
 /-! ## 6. Labels and branches -/
@@ -1106,7 +1106,7 @@ theorem entryRegB_spec {body : Lcmd} {k : Nat} {R : String} (h : entryRegB body 
   rw [List.all_eq_true] at h
   have hm : i ∈ body.take k := by
     rw [List.mem_iff_getElem?]
-    exact ⟨j, by rw [List.getElem?_take, if_pos hj, hi]⟩
+    exact ⟨j, by rw [List.getElem?_take, ite_eq_left hj, hi]⟩
   have := h i hm
   cases hs : slotMov? i.li_i with
   | none => rw [hs] at this; cases this
@@ -1517,7 +1517,7 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
   have hz := hrel.zf
   subst hz
   have hw := hrel.wid S hgS
-  have hv : sa.reg.getW S 64 = some (castW (sa.reg.lvm S) 64) := by rw [getW_eq, if_pos hw]
+  have hv : sa.reg.getW S 64 = some (castW (sa.reg.lvm S) 64) := by rw [getW_eq, ite_eq_left hw]
   have hSv : s.prog.base.reg.lvm S = ⟨64, castW (sa.reg.lvm S) 64⟩ := by
     rw [hrel.regs S hS, sigma_of_castW hw]
   refine ⟨{ sa with reg := sa.reg.nextPc, mem := write64 sa.mem a (castW (sa.reg.lvm S) 64) },
@@ -1532,11 +1532,11 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
     · subst e
       rw [ha] at ha'
       cases ha'
-      simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, if_true,
+      simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, ite_true,
         read64_write64_same]
       rw [hSv]
     · simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, e,
-        if_false]
+        ite_false]
       rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' ha ha' (Ne.symm e))]
       exact hrel.slots q' a' ha'
   · intro r hr
@@ -1737,7 +1737,7 @@ theorem rel_ldx {frame : String → Option (BitVec 64)} {slotArr : String → Op
   rw [hidxe, hvi] at hs'
   cases hs'
   have hlt : vi.toNat < n := by
-    simp only [idxOkB, loadStruct?, if_true, idxBelowB, hidxe, hvi] at hok
+    simp only [idxOkB, loadStruct?, ite_true, idxBelowB, hidxe, hvi] at hok
     simpa using hok
   have hz := hrel.zf
   subst hz
@@ -1773,7 +1773,7 @@ theorem rel_ldx {frame : String → Option (BitVec 64)} {slotArr : String → Op
     by_cases e : r = d
     · subst e
       simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg,
-        if_true]
+        ite_true]
       rw [← hval]
     · simp [LstateM.setReg, LstateM.nextPc, e, hrel.regs r hr]
   · intro q' a' ha'
@@ -1814,7 +1814,7 @@ theorem rel_stx {frame : String → Option (BitVec 64)} {slotArr : String → Op
   rw [hidxe, hvi, hve, hvv] at hs'
   cases hs'
   have hlt : vi.toNat < n := by
-    simp only [idxOkB, storeStruct?, if_true, idxBelowB, hidxe, hvi] at hok
+    simp only [idxOkB, storeStruct?, ite_true, idxBelowB, hidxe, hvi] at hok
     simpa using hok
   have hz := hrel.zf
   subst hz
@@ -1884,7 +1884,7 @@ theorem eval_zeroArr (P : LprogM) (A : String) (n' w' n : Nat) (s : LstateMF) :
   rw [evalInstrPMemF_isLopn P _ s ⟨_, _, _, rfl⟩]
   simp only [fstepF, cmpArgs?, movRegArgs?]
   rw [stepMemF_of_quiet rfl rfl rfl]
-  simp only [lsemStepMem, zeroStruct?, if_true]
+  simp only [lsemStepMem, zeroStruct?, ite_true]
   rfl
 
 /-- The name-keyed step of the store of `v` into the array `A` at shape `(64, n)` at the
@@ -1899,7 +1899,7 @@ theorem eval_storeImm (P : LprogM) (A v : String) (k n : Nat) (s : LstateMF) :
   rw [evalInstrPMemF_isLopn P _ s ⟨_, _, _, rfl⟩]
   simp only [fstepF, cmpArgs?, movRegArgs?]
   rw [stepMemF_of_quiet rfl rfl rfl]
-  simp only [lsemStepMem, storeImmStruct?, if_true]
+  simp only [lsemStepMem, storeImmStruct?, ite_true]
   cases s.prog.base.getArr A 64 n <;> cases s.prog.base.reg.getW v 64 <;> rfl
 
 /-- **An array zeroing keeps the relation.** The zeroing `ZEROARR [], [b, #n, #64]` through a
@@ -2305,7 +2305,7 @@ theorem gate_step {frame : String → Option (BitVec 64)}
         simp only [stepA, hb, hpol, hp, Option.map_some]
       refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), hlfn, ?_⟩
       by_cases hzp : s.zf = pol
-      · rw [if_pos hzp] at hstep hstepA
+      · rw [ite_eq_left hzp] at hstep hstepA
         cases hstep
         refine ⟨_, _, hstepA, Or.inr ⟨haltedA_of (bi := body[p]) (by simp [LstateA.setLpc])
           (by rw [hli]; simp), loadSafe_of (bi := body[p]) (by simp [LstateA.setLpc])
@@ -2318,7 +2318,7 @@ theorem gate_step {frame : String → Option (BitVec 64)}
         simp only at hli
         subst hli
         simp [stepA, LstateA.setLpc, hb']
-      · rw [if_neg hzp] at hstep hstepA
+      · rw [ite_eq_right hzp] at hstep hstepA
         cases hstep
         exact ⟨_, _, hstepA, Or.inl (rel_label hphys hrel hb hnm)⟩
   | ldx d b idx =>
@@ -2479,7 +2479,7 @@ theorem haltedA_of_img {frame : String → Option (BitVec 64)}
   rw [findInstrMem_single hfn, virtImg_getElem?, ← hpc, List.getElem?_dropLast] at h
   have hge : ¬ sa.reg.lpc < body.length - 1 := by
     intro hlt
-    rw [if_pos hlt] at h
+    rw [ite_eq_left hlt] at h
     have hl : sa.reg.lpc < body.length := by omega
     rw [List.getElem?_eq_getElem hl] at h
     cases h

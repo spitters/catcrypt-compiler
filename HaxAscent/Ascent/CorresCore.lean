@@ -146,14 +146,14 @@ theorem denote'_forFold {var : String} {lo hi body : ImpExpr} {env s1 s2 : Env} 
 theorem denoteForLoop'_done (var : String) {a b : Int} (body : ImpExpr) (env : Env)
     (h : a ≥ b) : denoteForLoop' bi fuel var a b body env = (.val .unit, env) := by
   rw [denoteForLoop']
-  simp only [if_pos h]; rfl
+  simp only [ite_eq_left h]; rfl
 
 theorem denoteForLoop'_break (var : String) {a b : Int} {body : ImpExpr} {env s : Env}
     {w : Value} (hab : a < b) (hf : fuel ≠ 0)
     (h : denote' bi fuel body (env.extend var (.int a)) = (.val (.controlFlow true w), s)) :
     denoteForLoop' bi fuel var a b body env = (.val w, s) := by
   rw [denoteForLoop']
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
+  simp only [ite_eq_right (Int.not_le.mpr hab), ite_eq_right hf, stateM_bind_apply, stateM_modify_apply, h]
   rfl
 
 theorem denoteForLoop'_next (var : String) {a b : Int} {body : ImpExpr} {env s : Env}
@@ -162,7 +162,7 @@ theorem denoteForLoop'_next (var : String) {a b : Int} {body : ImpExpr} {env s :
     (hv : ∀ w, v ≠ .controlFlow true w) :
     denoteForLoop' bi fuel var a b body env = denoteForLoop' bi (fuel - 1) var (a + 1) b body s := by
   rw [denoteForLoop']
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
+  simp only [ite_eq_right (Int.not_le.mpr hab), ite_eq_right hf, stateM_bind_apply, stateM_modify_apply, h]
   cases v
   case controlFlow c w =>
     cases c
@@ -173,7 +173,7 @@ theorem denoteForLoop'_next (var : String) {a b : Int} {body : ImpExpr} {env s :
 theorem denoteForLoopRev'_done (var : String) {a b : Int} (body : ImpExpr) (env : Env)
     (h : a ≥ b) : denoteForLoopRev' bi fuel var a b body env = (.val .unit, env) := by
   rw [denoteForLoopRev']
-  simp only [if_pos h]; rfl
+  simp only [ite_eq_left h]; rfl
 
 theorem denoteForLoopRev'_next (var : String) {a b : Int} {body : ImpExpr} {env s : Env}
     {v : Value} (hab : a < b) (hf : fuel ≠ 0)
@@ -182,7 +182,7 @@ theorem denoteForLoopRev'_next (var : String) {a b : Int} {body : ImpExpr} {env 
     denoteForLoopRev' bi fuel var a b body env =
       denoteForLoopRev' bi (fuel - 1) var a (b - 1) body s := by
   rw [denoteForLoopRev']
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
+  simp only [ite_eq_right (Int.not_le.mpr hab), ite_eq_right hf, stateM_bind_apply, stateM_modify_apply, h]
   cases v
   case controlFlow c w =>
     cases c
@@ -235,7 +235,7 @@ theorem haxEval_eq {e : ImpExpr} {env : Env} {v : Value} {fuel₀ : Nat}
   have hex : ∃ v fuel₀, ∀ fuel, fuel₀ ≤ fuel → (denote' bi fuel e env).1 = .val v :=
     ⟨v, fuel₀, h⟩
   unfold haxEval
-  rw [dif_pos hex]
+  rw [dite_eq_left hex]
   obtain ⟨fuel₁, h₁⟩ := hex.choose_spec
   have e₁ := h₁ (max fuel₀ fuel₁) (by omega)
   rw [h (max fuel₀ fuel₁) (by omega)] at e₁

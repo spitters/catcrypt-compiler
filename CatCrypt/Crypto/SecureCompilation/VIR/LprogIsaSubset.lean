@@ -108,7 +108,7 @@ theorem subsetStep_refuse (bases : List String) (cond : LstateMF → LOperand �
     (s : LstateMF) (h : bases.contains (stripWidthTag opn) = false)
     (hk : (opn == "KEEP") = false) :
     subsetStep bases cond ext P (.Lopn dsts opn srcs, tag) s = none := by
-  simp only [subsetStep, isCtl, mnemOk, isKeep, h, hk, Bool.false_eq_true, if_false]
+  simp only [subsetStep, isCtl, mnemOk, isKeep, h, hk, Bool.false_eq_true, ite_false]
 
 /-- **The keep marker is a no-op** of a subset whose alphabet does not hold the base
     `KEEP`: the step advances the program counter and changes nothing else. -/
@@ -118,8 +118,8 @@ theorem subsetStep_keep (bases : List String) (cond : LstateMF → LOperand → 
     (h : bases.contains "KEEP" = false) :
     subsetStep bases cond ext P (.Lopn dsts "KEEP" srcs, tag) s = some (keepStep s) := by
   have hs : stripWidthTag "KEEP" = "KEEP" := by decide +kernel
-  simp only [subsetStep, isCtl, mnemOk, isKeep, hs, h, Bool.false_eq_true, if_false,
-    beq_self_eq_true, if_true]
+  simp only [subsetStep, isCtl, mnemOk, isKeep, hs, h, Bool.false_eq_true, ite_false,
+    beq_self_eq_true, ite_true]
 
 /-- **The core step of a 64-bit register arithmetic instruction** `d := a ⊙ b` with a
     register first source: the destination takes the value of the operation. -/
@@ -159,7 +159,7 @@ theorem coreStep_mov (P : LprogM) (d a : String) (tag : MemTag) (s : LstateMF)
   have hmov : movRegArgs? (.Lopn [.reg d] (withWidthTag 64 "MOV") [.reg a], tag)
       = some (d, a) := by
     simp only [movRegArgs?]
-    rw [if_pos (by decide +kernel)]
+    rw [ite_eq_left (by decide +kernel)]
   unfold coreStep
   rw [hmov]
   simp only [readReg, hv]
@@ -211,7 +211,7 @@ theorem coreStep_loadIdx (P : LprogM) (d base idx : String) (sc n : Nat) (s : Ls
   have hmov : movRegArgs? (.Lopn [.reg d] "LOADIDX" [.arrIdx base idx sc], MemTag.load 64 n)
       = none := rfl
   rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
-  simp only [lsemStepMem, loadStruct?, if_true, hga, hvi, Option.map_some]
+  simp only [lsemStepMem, loadStruct?, ite_true, hga, hvi, Option.map_some]
 
 /-- **The core step of an array store** `base[idx] := v` at width 64: the array takes the
     update `stackSet arr idx v`. -/
@@ -226,7 +226,7 @@ theorem coreStep_storeIdx (P : LprogM) (base idx v : String) (sc n : Nat) (s : L
   have hmov : movRegArgs? (.Lopn [.reg base] "STOREIDX" [.arrIdx base idx sc, .reg v],
       MemTag.store 64 n) = none := rfl
   rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
-  simp only [lsemStepMem, storeStruct?, if_true, hga, hvi, hvv, Option.map_some]
+  simp only [lsemStepMem, storeStruct?, ite_true, hga, hvi, hvv, Option.map_some]
 
 /-- **The core step of a 64-bit register-immediate arithmetic instruction** `d := a ⊙ k`: the
     destination takes the value of the operation on the immediate `k` at width 64. -/
@@ -242,7 +242,7 @@ theorem coreStep_binopImm (P : LprogM) (bop : JasminBinOp) (d a : String) (k : N
     simp only [mulhiStruct?]
   have hs : sarStruct? (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k])
       = none := by
-    simp only [sarStruct?, hstrip, if_neg hsar]
+    simp only [sarStruct?, hstrip, ite_eq_right hsar]
   have hstep : lsemStepMem
       (.Lopn [.reg d] (withWidthTag 64 (binOpName bop)) [.reg a, .imm k], .reg none) s.prog.base
       = some ((s.prog.base.setReg d (bop.apply va (BitVec.ofNat 64 k))).nextPc) := by
@@ -266,7 +266,7 @@ theorem coreStep_loadC (P : LprogM) (d p : String) (off : Nat) (s : LstateMF) :
   unfold coreStep
   have hmov : movRegArgs? (.Lopn [.reg d] "MOVQ" [.arr p off], MemTag.loadC) = none := rfl
   rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
-  simp only [lsemStepMem, loadCStruct?, if_true, Option.map_some]
+  simp only [lsemStepMem, loadCStruct?, ite_true, Option.map_some]
 
 /-- **The core step of a compile-time-offset store** `lmem p off := v` (`MOVQ`, tag
     `.storeC`). -/
@@ -278,7 +278,7 @@ theorem coreStep_storeC (P : LprogM) (p v : String) (off : Nat) (s : LstateMF) (
   unfold coreStep
   have hmov : movRegArgs? (.Lopn [.arr p off] "MOVQ" [.reg v], MemTag.storeC) = none := rfl
   rw [hmov, evalInstrPMemL_lopn P _ s.prog ⟨_, _, _, rfl⟩]
-  simp only [lsemStepMem, storeCStruct?, if_true, hvv, Option.map_some]
+  simp only [lsemStepMem, storeCStruct?, ite_true, hvv, Option.map_some]
 
 /-- On an in-range index the update `stackSet` changes that cell only. -/
 theorem stackSet_eq_of_lt {w n : Nat} (arr : Fin n → BitVec w) (k : Nat) (hk : k < n)

@@ -249,7 +249,7 @@ theorem execAM_spec_of {frame : String → Option (BitVec 64)} {c : Lcmd} {k : N
   intro st hst
   rw [wp_apply_run]
   obtain ⟨⟨hk, hP⟩, hQ⟩ := hst
-  simp only [StateT.run, execAM, hk, if_true, h _ _ hk hP, Option.map_some]
+  simp only [StateT.run, execAM, hk, ite_true, h _ _ hk hP, Option.map_some]
   exact hQ
 
 /-- The step of a register-tagged `Lopn` on two register operands whose mnemonic is `MOV:64`,
@@ -390,7 +390,7 @@ theorem execAM_label_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k 
   rw [wp_apply_run]
   obtain ⟨hk, hQ⟩ := hst
   simp only [StateT.run, execAM, stepI, Option.map_some]
-  rw [if_pos (show st.1.1.reg.lpc = k from hk)]
+  rw [ite_eq_left (show st.1.1.reg.lpc = k from hk)]
   exact hQ
 
 /-- **The conditional jump.** `Lcond cc l` on the condition `Z` or `NZ` moves the program
@@ -502,7 +502,7 @@ theorem agreeOn_storeMove (s : LstateA) (zf : Bool) (p v : BitVec 64) :
   | reg r =>
     show s.reg.lvm r = (s.reg.nextPc.setReg "D" (s.reg.nextPc.lvm "S").2).nextPc.lvm r
     simp only [LstateN.lvm_nextPc, LstateN.lvm_setReg]
-    rw [if_neg fun h : r = "D" => hD (h ▸ rfl)]
+    rw [ite_eq_right fun h : r = "D" => hD (h ▸ rfl)]
   | pc => exact absurd rfl hpc
   | flag f => cases f <;> rfl
   | mem x =>

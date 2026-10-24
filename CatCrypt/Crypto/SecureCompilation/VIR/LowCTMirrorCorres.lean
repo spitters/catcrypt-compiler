@@ -193,7 +193,7 @@ theorem mirrorHeapCorr_setWord (sid : AScopeId) (s : Estate SyscallState Mem) (h
   refine ⟨fun y => ?_, fun y n => ?_⟩
   · by_cases hxy : y = x
     · subst hxy
-      simp only [Estate.withVm, Vm.get, Vm.set, decide_true, if_true, getW_setW_same]
+      simp only [Estate.withVm, Vm.get, Vm.set, decide_true, ite_true, getW_setW_same]
     · have hv : mWordVar y ≠ mWordVar x := fun he => hxy (by cases he; rfl)
       simp only [Estate.withVm, Vm.get, Vm.set, hv, decide_false,
         getW_setW_other heap sid x y w (Ne.symm hxy)]
@@ -213,7 +213,7 @@ theorem mirrorHeapCorr_setArr (sid : AScopeId) (s : Estate SyscallState Mem) (he
     exact h.1 y
   · by_cases hxy : y = x ∧ m = n
     · obtain ⟨rfl, rfl⟩ := hxy
-      simp only [Estate.withVm, Vm.get, Vm.set, decide_true, if_true, getA_setA_same]
+      simp only [Estate.withVm, Vm.get, Vm.set, decide_true, ite_true, getA_setA_same]
     · have hv : mArrVar y m ≠ mArrVar x n := fun he => hxy (by cases he; exact ⟨rfl, rfl⟩)
       simp only [Estate.withVm, Vm.get, Vm.set, hv, decide_false]
       rw [getA_setA_other heap sid x y n m a (fun ⟨h1, h2⟩ => hxy ⟨h1.symm, h2.symm⟩)]
@@ -363,13 +363,13 @@ theorem corresTrans_ifNz {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Pr
       rw [CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cif_eval_true env sid _ ct cf n heap heap hc,
         hNt n (by omega) heap hp]
       beta_reduce
-      rw [if_pos hb]
+      rw [ite_eq_left hb]
     | false =>
       rw [hb] at hc
       rw [CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cif_eval_false env sid _ ct cf n heap heap hc,
         CatCrypt.Crypto.Jasmin.translateCmd_newSid, hNf n (by omega) heap hp]
       beta_reduce
-      rw [if_neg (by rw [hb]; decide)]
+      rw [ite_eq_right (by rw [hb]; decide)]
   · refine corresSem_instr _ () ?_
     intro s heap hSR hp
     have hcond := semPexpr_mirrorNeqZero gd opS e hop1 hop2 s heap hSR
@@ -379,14 +379,14 @@ theorem corresTrans_ifNz {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Pr
       obtain ⟨s', hs', hSR'⟩ := hSt s heap hSR hp
       refine ⟨s', .Eif_true _ _ _ _ _ hcond hs', ?_⟩
       beta_reduce
-      rw [if_pos hb]
+      rw [ite_eq_left hb]
       exact hSR'
     | false =>
       rw [hb] at hcond
       obtain ⟨s', hs', hSR'⟩ := hSf s heap hSR hp
       refine ⟨s', .Eif_false _ _ _ _ _ hcond hs', ?_⟩
       beta_reduce
-      rw [if_neg (by rw [hb]; decide)]
+      rw [ite_eq_right (by rw [hb]; decide)]
       exact hSR'
 
 /-! ## §3b. The loop on a scalar -/
@@ -471,7 +471,7 @@ theorem semPexpr_pvar_arr (gd : GlobDecls) (opS : OpSem) (s : Estate SyscallStat
   show getGvar true gd s.evm (mkLvar x) = _
   unfold getGvar
   rw [show (mkLvar x).isLvar = true from rfl]
-  simp only [if_true]
+  simp only [ite_true]
   show getVar true s.evm (mkLvar x).gv.v_var = _
   unfold getVar
   rw [show (mkLvar x).gv.v_var = x.v_var from rfl, h]
@@ -619,14 +619,14 @@ theorem corresTrans_select {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : 
       = _
     rw [hasm]
     by_cases hs : getW heap sid sel = 0
-    · rw [if_pos hs, if_pos hs]
+    · rw [ite_eq_left hs, ite_eq_left hs]
       show (do
         let s1 ← writeLval (Mem := Mem) true gd opS
           (.Lvar { v_var := mArrVar dstVar t.storageBytes }) _ s
         writeLvals (Mem := Mem) true gd opS s1 [] []) = _
       rw [writeLval_lvar_arr]
       rfl
-    · rw [if_neg hs, if_neg hs]
+    · rw [ite_eq_right hs, ite_eq_right hs]
       show (do
         let s1 ← writeLval (Mem := Mem) true gd opS
           (.Lvar { v_var := mArrVar dstVar t.storageBytes }) _ s
@@ -1553,9 +1553,9 @@ theorem whileClearProg_mirror_exec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) 
         (if getW heap sid "e" = 0 then 0 else 1) heap) sid "e" = 0 := by
     intro heap
     by_cases h : getW heap sid "e" = 0
-    · rw [if_pos h]
+    · rw [ite_eq_left h]
       exact ⟨fun j hj => absurd hj (Nat.not_lt_zero j), h⟩
-    · rw [if_neg h]
+    · rw [ite_eq_right h]
       refine ⟨fun j hj => ?_, ?_⟩
       · obtain rfl : j = 0 := by omega
         exact h

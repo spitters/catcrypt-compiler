@@ -452,11 +452,11 @@ theorem runBlock_dropIdMoves [MoveMachine I S] (block : List I) (s : S) :
     by_cases h : MoveMachine.isIdMove (S := S) i = true
     · -- dropped: i is an identity self-move, a no-op
       have hk : ¬ (! MoveMachine.isIdMove (S := S) i) = true := by simp [h]
-      rw [if_neg hk, hcons s i is, MoveMachine.idMove_runBlock_noop s i h]
+      rw [ite_eq_right hk, hcons s i is, MoveMachine.idMove_runBlock_noop s i h]
       exact ih (s := s)
     · -- kept
       have hk : (! MoveMachine.isIdMove (S := S) i) = true := by simp [h]
-      rw [if_pos hk, hcons s i (dropIdMoves (S := S) is), hcons s i is]
+      rw [ite_eq_left hk, hcons s i (dropIdMoves (S := S) is), hcons s i is]
       exact ih (s := RegMachine.runBlock s [i])
 
 /-- **Single-step coalescing equals rename-then-drop.** When a certified copy exists,

@@ -146,8 +146,8 @@ theorem cmpSign_eq_zero_iff (m n : Nat) : cmpSign m n = 0 ↔ m = n := by
   · intro h
     by_contra hne
     rcases Nat.lt_or_ge m n with hlt | hge
-    · rw [if_pos hlt] at h; exact absurd h (by decide)
-    · rw [if_neg (by omega), if_pos (by omega)] at h; exact absurd h (by decide)
+    · rw [ite_eq_left hlt] at h; exact absurd h (by decide)
+    · rw [ite_eq_right (by omega), ite_eq_left (by omega)] at h; exact absurd h (by decide)
   · intro h; subst h; simp
 
 /-- **The radix step for the comparison sign.** Comparing `x + 2^64·A` against
@@ -161,21 +161,21 @@ theorem cmpSign_radix (x y : BitVec 64) (A B : Nat) :
   rcases lt_trichotomy A B with h | h | h
   · have hAB : A + 1 ≤ B := h
     have hlt : x.toNat + 2 ^ 64 * A < y.toNat + 2 ^ 64 * B := by nlinarith
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
     unfold cmpSign
-    rw [if_pos hlt, if_pos h]
+    rw [ite_eq_left hlt, ite_eq_left h]
   · subst h
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     unfold cmpSign
     rcases lt_trichotomy x.toNat y.toNat with h' | h' | h'
-    · rw [if_pos (by omega), if_pos h']
-    · rw [if_neg (by omega), if_neg (by omega), if_neg (by omega), if_neg (by omega)]
-    · rw [if_neg (by omega), if_pos (by omega), if_neg (by omega), if_pos h']
+    · rw [ite_eq_left (by omega), ite_eq_left h']
+    · rw [ite_eq_right (by omega), ite_eq_right (by omega), ite_eq_right (by omega), ite_eq_right (by omega)]
+    · rw [ite_eq_right (by omega), ite_eq_left (by omega), ite_eq_right (by omega), ite_eq_left h']
   · have hBA : B + 1 ≤ A := h
     have hgt : y.toNat + 2 ^ 64 * B < x.toNat + 2 ^ 64 * A := by nlinarith
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
     unfold cmpSign
-    rw [if_neg (by omega), if_pos hgt, if_neg (by omega), if_pos h]
+    rw [ite_eq_right (by omega), ite_eq_left hgt, ite_eq_right (by omega), ite_eq_left h]
 
 /-! ## 2. The word functions the emitted body computes -/
 
@@ -197,10 +197,10 @@ theorem selW_eq (prev s : BitVec 64) :
     prev ^^^ ((bSltu 0 prev - 1) &&& (s ^^^ prev)) = if prev = 0 then s else prev := by
   by_cases h : prev = 0
   · subst h
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     unfold bSltu
     bv_decide
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     unfold bSltu
     bv_decide
 
@@ -270,8 +270,8 @@ theorem cmpFold_val {NR NA NB : Nat} (ap : Fin NA → BitVec 64) (bp : Fin NB �
       simp only [bignumVal, cmpSign_radix]
       by_cases hEq : bignumVal (segCells ap (top + 1 - m) m)
           = bignumVal (segCells bp (top + 1 - m) m)
-      · rw [if_pos hEq, if_pos ((cmpSign_eq_zero_iff _ _).mpr hEq)]
-      · rw [if_neg hEq, if_neg (fun hc => hEq ((cmpSign_eq_zero_iff _ _).mp hc))]
+      · rw [ite_eq_left hEq, ite_eq_left ((cmpSign_eq_zero_iff _ _).mpr hEq)]
+      · rw [ite_eq_right hEq, ite_eq_right (fun hc => hEq ((cmpSign_eq_zero_iff _ _).mp hc))]
 
 /-- **The comparison against the whole operands.** Running the loop for its full
     `top + 1` trips from a zeroed result cell leaves cell `0` holding

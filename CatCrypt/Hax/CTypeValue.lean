@@ -170,7 +170,7 @@ theorem project_inject : (τ : CType) → (v : τ.denote) →
   | .array elem n, v => by
     simp only [inject, project]
     have hlen : ((List.finRange n).map fun i => elem.inject v[i]).length = n := by simp
-    rw [dif_pos hlen]
+    rw [dite_eq_left hlen]
     -- Key: (finRange n).map (inject ∘ v[·]) = (ofFn v[·]).map inject
     have hmapeq : (List.finRange n).map (fun i => elem.inject v[i]) =
         (List.ofFn fun i : Fin n => v[i]).map elem.inject := by

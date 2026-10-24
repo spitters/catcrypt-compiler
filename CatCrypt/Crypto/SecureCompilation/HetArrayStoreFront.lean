@@ -156,7 +156,7 @@ theorem arrStore_compiles_n (n : Nat) :
         c.denote (arrStoreInputValuation 32 n arr idx val) = stackSet arr idx.toNat val := by
   refine ⟨arrStoreCom 32 n, ?_, ?_⟩
   · simp only [arrStoreFront, arrStoreModelN, isStoreHead, isArrTypeOfW, Hax.IntWidth.bits,
-      decide_true, Bool.and_self, beq_self_eq_true, Bool.true_or, Bool.or_true, if_true]
+      decide_true, Bool.and_self, beq_self_eq_true, Bool.true_or, Bool.or_true, ite_true]
   · intro arr idx val; exact arrStoreCom_denote 32 n arr idx val
 
 end CatCrypt.Crypto.SecureCompilation.HetArrayStoreFront

@@ -170,7 +170,7 @@ theorem resolveVar_top {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Ctxt.Var Γ
     resolveVar Γ.length Γ.length argName (fun _ => none) v = .reg (argName (argIdx v)) := by
   have := varIndex_lt v
   simp only [resolveVar]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
 
 /-- **An ABI entry agrees with an ABI valuation** at the argument depth. -/
 theorem storeAgreesM_of_abi {σ : AbiLayout} {sa : AState} {Γ : Ctxt jasminDialect}
@@ -285,7 +285,7 @@ theorem certSeed_of_storeAgreesM {out c : String}
     have h : invTys.length + 2 - 1 - (varIndex u + 1 + 1) = invTys.length - 1 - varIndex u := by
       omega
     simp only [resolveVar, varIndex, h]
-    rw [if_pos (by omega)]
+    rw [ite_eq_left (by omega)]
   refine ⟨fun {w'} v => ?_, fun {w' n'} v => ?_⟩
   · cases v with
     | there v' =>

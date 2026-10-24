@@ -222,7 +222,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
           simp [locArgsToImp, hfa] at hf ⊢
       · rfl
   case case7 x t f d args b hc ih =>
-    simp only [lowCTToImp, if_pos hc] at h
+    simp only [lowCTToImp, ite_eq_left hc] at h
     cases hb : lowCTToImp b with
     | none => simp [hb] at h
     | some b' =>
@@ -247,7 +247,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       subst h
       simp [haxToLowCT, ih b' hb, frontNF]
   case case13 x t y u f d el args b hc ih =>
-    simp only [lowCTToImp, if_pos hc] at h
+    simp only [lowCTToImp, ite_eq_left hc] at h
     cases hb : lowCTToImp b with
     | none => simp [hb] at h
     | some b' =>
@@ -340,7 +340,7 @@ theorem lowCTToImp_roundTrip (c : LowCT) (e : ImpExpr) (h : lowCTToImp c = some 
       simp only [h1, h2, reduceCtorEq] at h
     exact (hnone _ _ h1 h2).elim
   case case31 x t d s b hc ih =>
-    simp only [lowCTToImp, if_pos hc] at h
+    simp only [lowCTToImp, ite_eq_left hc] at h
     cases hb : lowCTToImp b with
     | none => simp [hb] at h
     | some b' =>

@@ -599,7 +599,7 @@ theorem compileS_steps (fn : String) (N : Nat) :
         (ys := ct ++ jmp P.lfn (n + 1) :: lbl n :: (ce ++ lbl (n + 1) :: post))
         (by rw [hbody]; simp) (by len_tac)
     by_cases hh : g.holds sa = true
-    · rw [if_pos hh] at hrun
+    · rw [ite_eq_left hh] at hrun
       obtain ⟨m1, hs1, hat1, hc1⟩ := guard_fall P hg hc hat hw hj hh
       obtain ⟨k, m2, hk, hs2, hat2, hc2⟩ := iht (n + 2) n1 ct ht P
         (pre ++ [cmpWire a o, jcc c n])
@@ -628,7 +628,7 @@ theorem compileS_steps (fn : String) (N : Nat) :
         le_trans (by omega : 2 + k + 1 ≤ stepBound t N + 3)
           (Nat.add_le_add_right (Nat.le_max_left _ _) 3),
         (hs1.trans hs2).trans hs3, atPc_cast hat3 (by len_tac), hc2.goto _⟩
-    · rw [if_neg hh] at hrun
+    · rw [ite_eq_right hh] at hrun
       have hLelse : findLabelMem n P.body = some (pre.length + ct.length + 3) :=
         findLabelMem_at
           (xs := pre ++ cmpWire a o :: jcc c n :: (ct ++ [jmp P.lfn (n + 1)]))
@@ -712,9 +712,9 @@ theorem compileS_steps (fn : String) (N : Nat) :
       | zero => intro sa m cf h; simp [loopRun] at h
       | succ j ih =>
         intro sa m cf h hat hc
-        simp only [loopRun, Bool.false_eq_true, if_false, Option.bind_eq_some_iff] at h
+        simp only [loopRun, Bool.false_eq_true, ite_false, Option.bind_eq_some_iff] at h
         obtain ⟨c1, hst, hrest⟩ := h
-        simp only [BignumToJLoops.loopStep, Bool.false_eq_true, if_false,
+        simp only [BignumToJLoops.loopStep, Bool.false_eq_true, ite_false,
           Option.bind_eq_some_iff] at hst
         obtain ⟨sa1, hpr, hst⟩ := hst
         obtain ⟨k1, m1, hk1, hs1, hat1, hc1⟩ := ihp (n + 2) n1 cp hp P (pre ++ [lbl n])
@@ -726,7 +726,7 @@ theorem compileS_steps (fn : String) (N : Nat) :
             exact ⟨hpre l (by omega), by omega⟩)
           sa sa1 m hpr (atPc_cast hat (by len_tac)) hc
         by_cases hh : g.holds sa1 = true
-        · rw [if_pos hh, Option.map_eq_some_iff] at hst
+        · rw [ite_eq_left hh, Option.map_eq_some_iff] at hst
           obtain ⟨sa2, hqr, rfl⟩ := hst
           obtain ⟨m2, hs2, hat2, hc2⟩ :=
             guard_fall P hg hc1 (atPc_cast hat1 (by len_tac)) hw hj hh
@@ -742,7 +742,7 @@ theorem compileS_steps (fn : String) (N : Nat) :
           obtain ⟨k5, m5, hk5, hs5, hat5, hc5⟩ := ih sa2 _ cf hrest hat4 (hc3.goto _)
           exact ⟨k1 + 2 + k3 + 1 + k5, m5, by rw [Nat.succ_mul]; omega,
             (((hs1.trans hs2).trans hs3).trans hs4).trans hs5, hat5, hc5⟩
-        · rw [if_neg hh, Option.some.injEq] at hst
+        · rw [ite_eq_right hh, Option.some.injEq] at hst
           subst hst
           rw [loopRun_exited _ _ _ rfl, Option.some.injEq] at hrest
           subst hrest

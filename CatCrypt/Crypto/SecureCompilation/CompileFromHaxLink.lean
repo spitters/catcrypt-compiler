@@ -257,7 +257,7 @@ theorem outerThir_lowers (w : Nat) :
   -- `f(inp 0)` resolves its one argument `inp 0` to a `Var` (input word 0 of a
   -- 1-word file), so `rhsExpr (.call …)` and then the `ret` both succeed.
   simp only [outerThir, thirToJasmin, rhsExpr, atomsToVarHV, Atom.toVar,
-    initFState, FState.push, inputVarRep, Option.map_some, if_true]
+    initFState, FState.push, inputVarRep, Option.map_some, ite_true]
   rfl
 
 /-- The toy outer `Com` (the front's output) at width `w`. -/
@@ -291,9 +291,9 @@ theorem outerCom_denote_opaque (w : Nat) (x : BitVec w) :
       = some (jasminExtSem fName (callArgTys w 1) (rW w)
           (HVector.cons (x : ⟦rW w⟧) HVector.nil)) := by
     have hx : inpGet (nIn := 1) (fun _ => x) 0 = x := by
-      simp only [inpGet, show (0 : Nat) < 1 by decide, dif_pos]
+      simp only [inpGet, show (0 : Nat) < 1 by decide, dite_eq_left]
     simp only [outerThir, Thir.denote, Rhs.denote, atomsHV, Atom.denote, hx,
-      Option.bind_some, Option.map_some, LEnv.set, if_pos]
+      Option.bind_some, Option.map_some, LEnv.set, ite_eq_left]
     rfl
   rw [hthir] at hfront
   exact (Option.some.injEq _ _ ▸ hfront).symm

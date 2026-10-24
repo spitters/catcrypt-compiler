@@ -403,7 +403,7 @@ theorem not_coincides {nIn : Nat} (params : List String) (I : Fin nIn → BitVec
   -- The two-argument binop/shift matches are stuck on the abstract heads; casing
   -- them exposes the arity fallthrough (`[a]` never matches a 2-element pattern).
   cases hb : recogBin f <;> cases hsh : recogShift f <;>
-    simp only [hf, if_true, atom_coincides params I ρ β hβ a ha, Option.map_some,
+    simp only [hf, ite_true, atom_coincides params I ρ β hβ a ha, Option.map_some,
       SExpr.evalBV] <;>
     rw [← allOnes64_eq]
 

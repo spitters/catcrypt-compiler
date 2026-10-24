@@ -198,15 +198,15 @@ theorem toECPoint_add (C : ECParams p) (P Q : (toW C).toAffine.Point) :
         by_cases hx : x1 = x2
         · -- tangent (doubling) case
           have hy : y1 ≠ (toW C).toAffine.negY x2 y2 := fun h => hxy ⟨hx, h⟩
-          rw [toW_slope_Y_ne C hx hy, if_pos hx]
+          rw [toW_slope_Y_ne C hx hy, ite_eq_left hx]
           rw [toW_negY] at hy
-          rw [if_neg hy]
+          rw [ite_eq_right hy]
           simp only [WeierstrassCurve.Affine.addX, WeierstrassCurve.Affine.addY,
             WeierstrassCurve.Affine.negAddY, toW_a₁, toW_a₂, toW_negY,
             ECParams.affRx, ECParams.affRy, Option.some.injEq, Prod.mk.injEq]
           constructor <;> ring
         · -- chord case
-          rw [toW_slope_X_ne C hx, if_neg hx]
+          rw [toW_slope_X_ne C hx, ite_eq_right hx]
           simp only [WeierstrassCurve.Affine.addX, WeierstrassCurve.Affine.addY,
             WeierstrassCurve.Affine.negAddY, toW_a₁, toW_a₂, toW_negY,
             ECParams.affRx, ECParams.affRy, Option.some.injEq, Prod.mk.injEq]

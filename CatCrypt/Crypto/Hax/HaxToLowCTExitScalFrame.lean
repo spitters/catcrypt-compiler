@@ -648,27 +648,27 @@ theorem killK_sim {K : List String} : ∀ (c : LowCT), noReadC K c = true →
       cases h with
       | letU64Zero _ _ _ _ hb =>
         by_cases hy : K.contains y = true
-        · simp only [killK, hy, if_true]
+        · simp only [killK, hy, ite_true]
           exact ih hn hb (agreeOff_set_mem hag (List.contains_iff_mem.mp hy) 0)
-        · simp only [killK, hy, Bool.false_eq_true, if_false]
+        · simp only [killK, hy, Bool.false_eq_true, ite_false]
           obtain ⟨r2, hb', hag2⟩ := ih hn hb (agreeOff_set hag y 0)
           exact ⟨r2, .letU64Zero _ _ _ _ hb', hag2⟩
   | RScalarSet y n =>
       intro _ rs1 r1 rs2 h hag
       cases h
       by_cases hy : K.contains y = true
-      · simp only [killK, hy, if_true]
+      · simp only [killK, hy, ite_true]
         exact ⟨rs2, .skip _, agreeOff_set_mem hag (List.contains_iff_mem.mp hy) n⟩
-      · simp only [killK, hy, Bool.false_eq_true, if_false]
+      · simp only [killK, hy, Bool.false_eq_true, ite_false]
         exact ⟨_, .scalarSet _ _ _, agreeOff_set hag y n⟩
   | RScalarSetExpr y e =>
       intro hn rs1 r1 rs2 h hag
       simp only [noReadC] at hn
       cases h
       by_cases hy : K.contains y = true
-      · simp only [killK, hy, if_true]
+      · simp only [killK, hy, ite_true]
         exact ⟨rs2, .skip _, agreeOff_set_mem hag (List.contains_iff_mem.mp hy) _⟩
-      · simp only [killK, hy, Bool.false_eq_true, if_false]
+      · simp only [killK, hy, Bool.false_eq_true, ite_false]
         rw [evalState_congr_agreeOff hag e hn]
         exact ⟨_, .scalarSetExpr _ _ _, agreeOff_set hag y _⟩
   | _ => intro hn; simp [noReadC] at hn

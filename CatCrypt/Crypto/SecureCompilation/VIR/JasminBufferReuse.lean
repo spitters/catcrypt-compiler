@@ -199,7 +199,7 @@ theorem NotBuffer.of_shapeDisjoint {Γ : Ctxt jasminDialect} {wB nB w n : Nat}
     cases hty; exact ⟨rfl, rfl⟩
   -- Now `ShapeDisjoint` at equal shape is `BufDisjoint B src`, i.e. `B ≠ src`.
   unfold ShapeDisjoint at h
-  rw [dif_pos (And.intro (rfl : w = w) (rfl : n = n))] at h
+  rw [dite_eq_left (And.intro (rfl : w = w) (rfl : n = n))] at h
   -- The casts are refls; `h : BufDisjoint B src`, target: `(rfl ▸ src) ≠ B`.
   simpa using fun (he : src = B) => h he.symm
 
@@ -539,7 +539,7 @@ theorem reuseBody_dead :
   show ShapeDisjoint Ctxt.Var.here (Ctxt.Var.there Ctxt.Var.here)
   -- Same shape (16,4): reduces to `here ≠ there here`.
   unfold ShapeDisjoint
-  rw [dif_pos (And.intro (rfl : (16 : Nat) = 16) (rfl : (4 : Nat) = 4))]
+  rw [dite_eq_left (And.intro (rfl : (16 : Nat) = 16) (rfl : (4 : Nat) = 4))]
   show BufDisjoint Ctxt.Var.here (Ctxt.Var.there Ctxt.Var.here)
   intro h
   exact absurd h (by simp)

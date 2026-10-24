@@ -122,36 +122,36 @@ theorem Agrees.after {Γ : Ctxt fieldDialect} {st : BState P Γ} {V : Ctxt.Valua
     refine ⟨fun i => ?_, fun j => h.2 j⟩
     by_cases hi : i = dst
     · subst hi
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rw [← h.get a, ← h.get b]
       rfl
-    · simp only [BState.after, stepSem, hi, if_false]
+    · simp only [BState.after, stepSem, hi, ite_false]
       exact h.1 i
   | mul dst a b =>
     refine ⟨fun i => ?_, fun j => h.2 j⟩
     by_cases hi : i = dst
     · subst hi
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rw [← h.get a, ← h.get b]
       rfl
-    · simp only [BState.after, stepSem, hi, if_false]
+    · simp only [BState.after, stepSem, hi, ite_false]
       exact h.1 i
   | copy dst a =>
     refine ⟨fun i => ?_, fun j => h.2 j⟩
     by_cases hi : i = dst
     · subst hi
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rw [← h.get a]
       rfl
-    · simp only [BState.after, stepSem, hi, if_false]
+    · simp only [BState.after, stepSem, hi, ite_false]
       exact h.1 i
   | konst j₀ c =>
     refine ⟨fun i => h.1 i, fun j => ?_⟩
     by_cases hj : j = j₀
     · subst hj
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rfl
-    · simp only [BState.after, stepSem, hj, if_false]
+    · simp only [BState.after, stepSem, hj, ite_false]
       exact h.2 j
 
 /-- **Denotation of `run`.** If `st` agrees with `σ` under `V` and the
@@ -194,7 +194,7 @@ theorem constVal_cExt (r : Fin (2 * P.halfFullRounds)) (i : Fin 16) :
   have hr := r.isLt
   have hi := i.isLt
   have h : (cExt P r i).val < 32 * P.halfFullRounds := by simp only [cExt]; omega
-  refine (dif_pos h).trans ?_
+  refine (dite_eq_left h).trans ?_
   congr 1
   · apply Fin.ext; simp only [cExt]; omega
   · apply Fin.ext; simp only [cExt]; omega
@@ -204,14 +204,14 @@ theorem constVal_cInt (r : Fin P.partialRounds) : constVal P (cInt P r) = P.rcIn
   have h : ¬ (cInt P r).val < 32 * P.halfFullRounds := by simp only [cInt]; omega
   have h' : (cInt P r).val < 32 * P.halfFullRounds + P.partialRounds := by
     simp only [cInt]; omega
-  refine (dif_neg h).trans ((dif_pos h').trans ?_)
+  refine (dite_eq_right h).trans ((dite_eq_left h').trans ?_)
   exact congrArg P.rcInternal (Fin.ext (by simp only [cInt]; omega))
 
 theorem constVal_cDiag (i : Fin 16) : constVal P (cDiag P i) = P.diag i := by
   have h : ¬ (cDiag P i).val < 32 * P.halfFullRounds := by simp only [cDiag]; omega
   have h' : ¬ (cDiag P i).val < 32 * P.halfFullRounds + P.partialRounds := by
     simp only [cDiag]; omega
-  refine (dif_neg h).trans ((dif_neg h').trans ?_)
+  refine (dite_eq_right h).trans ((dite_eq_right h').trans ?_)
   exact congrArg P.diag (Fin.ext (by simp only [cDiag]; omega))
 
 /-! ## 3. Lane effects -/
@@ -309,21 +309,21 @@ theorem powSteps_sem (x : Fin 24) (hx : x ≠ tpow) :
     · obtain ⟨c, v, o⟩ := ih (n / 2) (by omega) (by omega) tpow σ
       rw [semRun_append]
       refine ⟨c, ?_, fun k hk hk' => ?_⟩
-      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, if_true, Sem.get_lane, v]
+      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, ite_true, Sem.get_lane, v]
         rw [← pow_add]
         congr 1
         omega
-      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, hk', if_false]
+      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, hk', ite_false]
         exact o k hk hk
     · obtain ⟨c, v, o⟩ := ih (n - 1) (by omega) (by omega) tpow σ
       rw [semRun_append]
       refine ⟨c, ?_, fun k hk hk' => ?_⟩
-      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, if_true, Sem.get_lane, v,
+      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, ite_true, Sem.get_lane, v,
           o x hx hx]
         rw [← pow_succ]
         congr 1
         omega
-      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, hk', if_false]
+      · simp only [semRun_cons, semRun_nil, stepSem_mul_lane, hk', ite_false]
         exact o k hk hk
 
 theorem sboxSteps_lanes (hd : 1 ≤ P.sboxDeg) (i : Fin 16) (σ : Sem P) :
@@ -335,9 +335,9 @@ theorem sboxSteps_lanes (hd : 1 ≤ P.sboxDeg) (i : Fin 16) (σ : Sem P) :
   refine ⟨c, fun j => ?_⟩
   by_cases hj : j = i
   · subst hj
-    simp only [lanes, if_true]
+    simp only [lanes, ite_true]
     exact v
-  · simp only [lanes, hj, if_false]
+  · simp only [lanes, hj, ite_false]
     exact o _ (laneSlot_ne_tpow j) (by rwa [Ne, laneSlot_eq_iff])
 
 end CatCrypt.Crypto.SecureCompilation.Algebraic.Poseidon2Width16

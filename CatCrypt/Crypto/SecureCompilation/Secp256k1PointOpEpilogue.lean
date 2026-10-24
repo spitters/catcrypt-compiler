@@ -89,8 +89,8 @@ theorem memSetDyn_at {n : Nat} (a : Fin n → BitVec 64) (k : Nat) (v : BitVec 6
   | (p + 1), a =>
       simp only [memSetDyn, Nat.mod_eq_of_lt hk]
       by_cases h : m.val = k
-      · rw [if_pos (Fin.ext h), if_pos h]
-      · rw [if_neg (fun hc => h (by rw [hc])), if_neg h]
+      · rw [ite_eq_left (Fin.ext h), ite_eq_left h]
+      · rw [ite_eq_right (fun hc => h (by rw [hc])), ite_eq_right h]
 
 /-- The four-cell write window of one `storeField`, at a written cell. -/
 theorem foldl_memSetDyn_hit (b : Fin 12 → BitVec 64) (o : Nat) (V : Nat → BitVec 64)
@@ -366,12 +366,12 @@ theorem pointOpEpilogue_cells {b : Fin 12 → BitVec 64} {env : SEnvScalar}
     have hm12 : m.val < 12 := m.isLt
     rcases Nat.lt_or_ge m.val 4 with h4 | h4
     · rw [hmiss3 m (Or.inl (by omega)), hmiss2 m (Or.inl (by omega)),
-        hit1 m.val h4 m (by omega), pointCells_getD _ _ _ m.val hm12, if_pos h4]
+        hit1 m.val h4 m (by omega), pointCells_getD _ _ _ m.val hm12, ite_eq_left h4]
     · rcases Nat.lt_or_ge m.val 8 with h8 | h8
       · rw [hmiss3 m (Or.inl (by omega)),
           hit2 (m.val - 4) (by omega) m (by omega), hvY,
-          pointCells_getD _ _ _ m.val hm12, if_neg (by omega), if_pos h8]
+          pointCells_getD _ _ _ m.val hm12, ite_eq_right (by omega), ite_eq_left h8]
       · rw [hit3 (m.val - 8) (by omega) m (by omega), hvZ,
-          pointCells_getD _ _ _ m.val hm12, if_neg (by omega), if_neg (by omega)]
+          pointCells_getD _ _ _ m.val hm12, ite_eq_right (by omega), ite_eq_right (by omega)]
 
 end CatCrypt.Crypto.SecureCompilation.Secp256k1PointOpEpilogue

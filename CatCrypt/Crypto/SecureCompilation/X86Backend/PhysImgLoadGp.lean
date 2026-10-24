@@ -383,7 +383,7 @@ theorem fuseMulHiAux_cons_wide (s : Bool) (env : ScratchEnv) (pend : List (Strin
     · rename_i hlo
       by_cases hhi : isMulHiMnem opn = true
       · obtain ⟨hs1, hs2⟩ := hi d opn s1 s2 heq hhi
-        simp only [hhi, if_true]
+        simp only [hhi, ite_true]
         split
         · split
           · split
@@ -403,7 +403,7 @@ theorem fuseMulHiAux_cons_wide (s : Bool) (env : ScratchEnv) (pend : List (Strin
               refine ⟨_, _, _, hassoc _ _ _ _ _ _ _, Or.inr ?_⟩
               exact wideOk_pairSite s i.li_ii d s1 s2 _ hs1
         · exact ⟨[i], _, _, rfl, Or.inl rfl⟩
-      · simp only [hhi, if_false, Bool.false_eq_true]
+      · simp only [hhi, ite_false, Bool.false_eq_true]
         exact ⟨[i], _, _, rfl, Or.inl rfl⟩
   · exact ⟨[i], _, _, rfl, Or.inl rfl⟩
 
@@ -949,7 +949,7 @@ theorem wideOk_lfundefPhysAbiOfVirtCert
   have hrmE : physRmap body1 [] =
       fun o =>
         remapOperand body1 (straightCallComposeTable body1 (physTableOut body1 [] [])) o := by
-    simp only [physRmap, hcf, Bool.false_eq_true, if_false]
+    simp only [physRmap, hcf, Bool.false_eq_true, ite_false]
   have hg : ∀ x, OpOk (physRmap body1 [] x) := by
     intro x
     rw [hrmE]

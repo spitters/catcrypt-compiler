@@ -139,7 +139,7 @@ theorem getLvl_var {Γ : Ctxt d} {t : d.Ty} (v : Ctxt.Var Γ t)
     (V : Ctxt.Valuation Γ) : getLvl V (varLvl v) = some ⟨t, v.lookup V⟩ := by
   have hlt := varDepth_lt v
   unfold getLvl varLvl
-  rw [if_pos (by omega), show Γ.length - 1 - (Γ.length - 1 - varDepth v) = varDepth v by omega]
+  rw [ite_eq_left (by omega), show Γ.length - 1 - (Γ.length - 1 - varDepth v) = varDepth v by omega]
   exact getDepth_var v V
 
 theorem getLvl_extend_some {Γ : Ctxt d} {s : d.Ty}
@@ -149,7 +149,7 @@ theorem getLvl_extend_some {Γ : Ctxt d} {s : d.Ty}
   unfold getLvl at h ⊢
   split at h
   · rename_i hl
-    rw [if_pos (by simp; omega)]
+    rw [ite_eq_left (by simp; omega)]
     simp only [List.length_cons]
     rw [show Γ.length + 1 - 1 - l = (Γ.length - 1 - l) + 1 by omega]
     exact h
@@ -159,7 +159,7 @@ theorem getLvl_extend_top {Γ : Ctxt d} {s : d.Ty}
     (V : Ctxt.Valuation Γ) (x : ⟦s⟧) :
     getLvl (Γ := s :: Γ) (V.extend x) Γ.length = some ⟨s, x⟩ := by
   unfold getLvl
-  rw [if_pos (by simp)]
+  rw [ite_eq_left (by simp)]
   simp only [List.length_cons, Nat.add_sub_cancel, Nat.sub_self]
   rfl
 
@@ -246,7 +246,7 @@ theorem varOfLvl?_lookup {Δ : Ctxt d} {s : d.Ty} {l : Nat}
   unfold varOfLvl? at h
   unfold getLvl
   split at h
-  · rw [if_pos ‹_›]
+  · rw [ite_eq_left ‹_›]
     exact varOfDepth?_lookup Δ s _ w h V
   · cases h
 

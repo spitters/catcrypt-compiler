@@ -245,7 +245,7 @@ theorem jazzAsmSem_ror (ws : WSize) (hws : gprB ws = true) (a : BitVec ws.bits)
       else none) = none := by
     split <;> simp [binaryAsmResult, h1, h2, h3, h4]
   simp only [jazzAsmSem, jazzSopn, hn, Option.none_or, dite_true, rorAsmResult, hws, true_and,
-    if_true]
+    ite_true]
 
 /-- `ADCX_64` under `jazzAsmSem`: the carry flag, then the word. -/
 theorem jazzAsmSem_adcx (a b : BitVec 64) (c : Bool) :

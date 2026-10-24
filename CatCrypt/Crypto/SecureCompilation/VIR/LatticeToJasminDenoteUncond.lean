@@ -120,7 +120,7 @@ theorem latticeLeafAgrees : LatticeToJasminDenote.LeafAgrees := by
                 jasminDenote, jasminExtSem, latticeDenote, basemulF, transTy]
               change (if ("ntt_basemul_" ++ toString q ++ "_" ++ toString n) = "poly_add"
                 then _ else _ : Fin n → BitVec 16) j = _
-              rw [if_neg (leafName_basemul_ne_polyAdd q n)]
+              rw [ite_eq_right (leafName_basemul_ne_polyAdd q n)]
               simp only [stackGet_id]
               show ((mapVar va).lookup (mapVal V)) j * ((mapVar vb).lookup (mapVal V)) j
                 = (va.lookup V) j * (vb.lookup V) j
@@ -137,7 +137,7 @@ theorem latticeLeafAgrees : LatticeToJasminDenote.LeafAgrees := by
                 DialectSignature.sig, DialectSignature.ret, DialectDenote.denote,
                 jasminDenote, jasminExtSem, latticeDenote, polyAddNF, transTy]
               change (if "poly_add" = "poly_add" then _ else _ : Fin n → BitVec 16) j = _
-              rw [if_pos rfl]
+              rw [ite_eq_left rfl]
               simp only [stackGet_id]
               show ((mapVar va).lookup (mapVal V)) j + ((mapVar vb).lookup (mapVal V)) j
                 = (va.lookup V) j + (vb.lookup V) j
@@ -155,7 +155,7 @@ theorem latticeLeafAgrees : LatticeToJasminDenote.LeafAgrees := by
                 jasminDenote, jasminExtSem, latticeDenote, polyMulCF, invnttF,
                 basemulF, nttF, transTy]
               change (if "poly_mul" = "poly_add" then _ else _ : Fin n → BitVec 16) j = _
-              rw [if_neg (by decide)]
+              rw [ite_eq_right (by decide)]
               simp only [stackGet_id]
               show ((mapVar va).lookup (mapVal V)) j * ((mapVar vb).lookup (mapVal V)) j
                 = (va.lookup V) j * (vb.lookup V) j

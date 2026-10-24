@@ -257,7 +257,7 @@ theorem vpmulhw_com_is_tile_lowering (a b : BitVec 128) :
            (lowerRegInstr (.mulhs "d" "a" "b"))).get "d" := by
   funext k
   simp only [vpmulhw16BvToTile, lowerRegInstr, evalTileOp, TileState.get, TileState.set,
-    String.reduceEq, if_true, if_false]
+    String.reduceEq, ite_true, ite_false]
   exact vpmulhw16W_lane a b k
 
 /-- The x86 leg rides the unified op: `vpmulhw16W a b` is exactly the denotation of

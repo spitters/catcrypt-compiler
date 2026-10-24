@@ -234,8 +234,8 @@ theorem Abs.Holds.movTo {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa s
     (hr : ∀ R, sa'.regs R = if R = X then sa.regs Y else sa.regs R) :
     (a.movTo X Y).Holds base nb sa' := by
   have hk : (a.kill [X]).Holds base nb sa' :=
-    h.kill (fun R hR => by rw [hr, if_neg (by simpa using hR)])
-  have hX : sa'.regs X = sa.regs Y := by rw [hr, if_pos rfl]
+    h.kill (fun R hR => by rw [hr, ite_eq_right (by simpa using hR)])
+  have hX : sa'.regs X = sa.regs Y := by rw [hr, ite_eq_left rfl]
   have hY : sa'.regs Y = sa.regs Y := by rw [hr]; split <;> simp_all
   refine ⟨fun p hp => ?_, fun R hR => ?_, fun p hp => ?_, fun R hR => ?_⟩
   · rcases List.mem_cons.mp hp with rfl | hp
@@ -266,10 +266,10 @@ theorem Abs.Holds.zeroTo {a : Abs} {base : String → BitVec 64} {nb : Nat} {sa 
     (hr : ∀ R, sa'.regs R = if R = X then 0 else sa.regs R) :
     (a.zeroTo X).Holds base nb sa' := by
   have hk : (a.kill [X]).Holds base nb sa' :=
-    h.kill (fun R hR => by rw [hr, if_neg (by simpa using hR)])
+    h.kill (fun R hR => by rw [hr, ite_eq_right (by simpa using hR)])
   refine ⟨hk.1, hk.2.1, hk.2.2.1, fun R hR => ?_⟩
   rcases List.mem_cons.mp hR with rfl | hR
-  · rw [hr, if_pos rfl]
+  · rw [hr, ite_eq_left rfl]
   · exact hk.2.2.2 R hR
 
 /-! ## 3. The correspondence -/
@@ -601,7 +601,7 @@ theorem decSim_loadX {L L' : String → Prop} {zl : Prop} (d A idx B X : String)
   obtain ⟨_, arr, harr, hcell⟩ := h.cells A _ hK
   refine ⟨(b.setReg d (stackGet arr (sa.regs (π idx)).toNat)).nextPc, zf, ?_, ?_⟩
   · rw [fstepF_loadN]
-    simp only [lsemStepMem, loadN, loadStruct?, if_true, harr, h.regs idx hidx, Option.map_some]
+    simp only [lsemStepMem, loadN, loadStruct?, ite_true, harr, h.regs idx hidx, Option.map_some]
   · refine h.write d _ _ (fun r => ?_) rfl hL (fun hz => h.zfEq hz)
     show (if r = π d then read64 sa.mem (sa.regs B
         + BitVec.ofInt 64 ((8 * (sa.regs X).toNat : Nat) : Int)) else sa.regs r) = _
@@ -621,7 +621,7 @@ theorem decSim_storeX {L : String → Prop} {zl : Prop} (hsep : Lay.Sep frame)
   obtain ⟨hjl, arr, harr, _⟩ := h.cells A j hK
   refine ⟨(b.setArr A (stackSet arr j (sa.regs (π val)))).nextPc, zf, ?_, ?_⟩
   · rw [fstepF_storeN]
-    simp only [lsemStepMem, storeN, storeStruct?, if_true, harr, h.regs idx hidx,
+    simp only [lsemStepMem, storeN, storeStruct?, ite_true, harr, h.regs idx hidx,
       h.regs val hval, hj, Option.map_some]
   · have hmem : (evalInstrA sa (.storeMemIdx B X 8 (.reg (π val)))).mem
         = write64 sa.mem (Lay.addr A j) (sa.regs (π val)) := by
@@ -753,7 +753,7 @@ theorem machOK_regAfter {s : St} {js : List (JInstr 64)} {sa : AState} (Ls : Lis
       show (if R = D' then (if D' = D' then sa.regs A else sa.regs D')
           + (if Z = D' then sa.regs A else sa.regs Z)
         else if R = D' then sa.regs A else sa.regs R) = _
-      rw [if_neg hZD, hz, if_pos rfl]
+      rw [ite_eq_right hZD, hz, ite_eq_left rfl]
       split <;> simp
     · exact hk.2
   · exact hk.2
@@ -852,7 +852,7 @@ theorem machStep_sound {s s' : St} {j : JInstr 64} (h : machStep E s j = some s'
         = if r = X then sa.regs Y else sa.regs r := fun _ => rfl
     refine ⟨hc.machWrite X (sa.regs Y) _ em rfl (fun r hr => mem_liveO.mp hr)
       (fun hz => hc.zfEq hz), ?_, hm.2.movTo em⟩
-    rw [em, if_neg (Ne.symm hX)]; exact hm.1
+    rw [em, ite_eq_right (Ne.symm hX)]; exact hm.1
   · rename_i S B off
     split at h
     · exact absurd h (by simp)
@@ -879,9 +879,9 @@ theorem machStep_sound {s s' : St} {j : JInstr 64} (h : machStep E s j = some s'
         obtain ⟨hS1, _⟩ := reload_regs hc r.name S E.sp r.name off hq hfr
         refine ⟨hc.machWrite S _ _ em rfl (fun r hr => mem_liveO.mp hr)
           (fun hz => hc.zfEq hz), ?_, ?_⟩
-        · rw [em, if_neg (Ne.symm hS)]; exact hm.1
+        · rw [em, ite_eq_right (Ne.symm hS)]; exact hm.1
         · have hk : (s.2.kill [S]).Holds base E.nb (evalInstrA sa (.loadMem S E.sp off)) :=
-            hm.2.kill (fun R hR => by rw [em, if_neg (by simpa using hR)])
+            hm.2.kill (fun R hR => by rw [em, ite_eq_right (by simpa using hR)])
           refine ⟨hk.1, hk.2.1, fun p hp => ?_, hk.2.2.2⟩
           rcases List.mem_cons.mp hp with rfl | hp
           · exact hS1

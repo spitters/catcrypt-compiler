@@ -308,10 +308,10 @@ theorem loadZ_spec (b bits : ℕ) (hb : 8 ≤ b) (acc : ℤ) (rest : List ℤ) (
   | cons e r =>
     have he : 0 ≤ e := hr e (by simp)
     by_cases h : bits < 8
-    · simp only [loadZ, h, if_true]
+    · simp only [loadZ, h, ite_true]
       refine ⟨?_, by positivity, fun x hx => hr x (by simp [hx]), Or.inr (by omega)⟩
       simp only [evalL, pow_add]; ring
-    · simp only [loadZ, h, if_false]
+    · simp only [loadZ, h, ite_false]
       exact ⟨by simp, ha, hr, Or.inr (by omega)⟩
 
 theorem emit_eq (k bits : ℕ) (b : ℕ) (a : ℤ) (r : List ℤ) (ha : 0 ≤ a) (h : r = [] ∨ k ≤ bits) :
@@ -578,7 +578,7 @@ theorem loadK_Q {ts : List JasminTy} (b bits : ℕ) : ∀ (m : ℕ) {Γ : JCtxt}
     · refine bindK_Q _ _ _ _ fun r1 s Z1 h1 hs => ?_
       refine bindK_Q _ _ _ _ fun r2 a Z2 h2 ha => hk _ _ _ _ _ _ (PresZ.comp h1 h2) ?_ ?_ ?_
       · rw [ha, valsF_succ]
-        simp only [eAr_opZ, binZ, hs, eShl_opZ, h1, loadZ, h, if_true]
+        simp only [eAr_opZ, binZ, hs, eShl_opZ, h1, loadZ, h, ite_true]
       · simp [valsF_succ, loadZ, h]
       · rw [valsF_succ, valsF_map (PresZ.comp h1 h2) (fun i => xa i.succ)]
         simp [loadZ, h]
@@ -656,11 +656,11 @@ theorem ldK_Q {ts : List JasminTy} (b : ℕ) (all : Bool) : ∀ (m : ℕ) {Γ : 
       refine ldK_Q b all m _ _ _ _ _ _ fun r' a' bits' m' ya' Z4 h4 ha' hb' hya' =>
         hk _ _ _ _ _ _ (PresZ.comp hP h4) ?_ ?_ ?_
       · rw [ha', valsF_succ, valsF_map hP (fun i => ya i.succ), hav]
-        simp only [ldZ, h, if_true]
+        simp only [ldZ, h, ite_true]
       · rw [hb', valsF_succ, valsF_map hP (fun i => ya i.succ), hav]
-        simp only [ldZ, h, if_true]
+        simp only [ldZ, h, ite_true]
       · rw [hya', valsF_succ, valsF_map hP (fun i => ya i.succ), hav]
-        simp only [ldZ, h, if_true]
+        simp only [ldZ, h, ite_true]
     · refine hk _ _ _ _ _ _ (PresZ.id Z) ?_ ?_ ?_ <;> rw [valsF_succ] <;> simp [ldZ, h]
 
 /-- The `n` limbs of `unpackZ`. -/
@@ -921,7 +921,7 @@ theorem carryBlk_denoteZ (P : UnsatParams) (sched : List ℕ) (hb : P.b ≤ 64)
   rw [rdL_hvOfFn]
   congr 1
   funext j
-  rw [congrFun ho j, updL_apply, if_pos (List.mem_finRange j), congrFun hst j]
+  rw [congrFun ho j, updL_apply, ite_eq_left (List.mem_finRange j), congrFun hst j]
   simp only [LV.z, sVar, hget_rv]
 
 /-- The integer semantics of `freezeBlk` is `freezeZ` on the digits of `2^(b·n) - p` and of

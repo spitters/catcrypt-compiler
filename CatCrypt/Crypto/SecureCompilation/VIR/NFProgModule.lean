@@ -96,7 +96,7 @@ theorem extend_call_of_ne [DecidableEq d.Ty] (E : CallEnv d) {f g : String}
     {as rs as' rs' : List d.Ty} (sem : Valuation as → Option (Valuation rs))
     (h : ¬(g = f ∧ as' = as ∧ rs' = rs)) (x : Valuation as') :
     (E.extend f as rs sem).call g as' rs' x = E.call g as' rs' x := by
-  simp only [extend, dif_neg h]
+  simp only [extend, dite_eq_right h]
 
 /-- The environment `E` restricted to the calls satisfying `pre`: a call outside `pre`
     refuses. -/
@@ -124,7 +124,7 @@ theorem guard_call_of_pre (E : CallEnv d)
     {as rs : List d.Ty} {x : Valuation as} (h : pre f as rs x) :
     (E.guard pre).call f as rs x = E.call f as rs x := by
   classical
-  simp only [guard, if_pos h]
+  simp only [guard, ite_eq_left h]
 
 end CallEnv
 
@@ -251,9 +251,9 @@ theorem denoteAt_mono {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (E₁ 
       obtain ⟨r, hr, hk⟩ := hout
       refine ⟨r, ?_, ihk (fun f as rs x y hc => h f as rs x y (Or.inr (Or.inr hc))) _ _ hk⟩
       split at hr
-      · rw [if_pos ‹_›]
+      · rw [ite_eq_left ‹_›]
         exact iht (fun f as rs x y hc => h f as rs x y (Or.inl hc)) _ _ hr
-      · rw [if_neg ‹_›]
+      · rw [ite_eq_right ‹_›]
         exact ihe (fun f as rs x y hc => h f as rs x y (Or.inr (Or.inl hc))) _ _ hr
   | whileLoop inits body k ihb ihk =>
       simp only [denote, Option.bind_eq_bind, Option.bind_eq_some_iff] at hout ⊢

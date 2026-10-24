@@ -157,21 +157,21 @@ theorem stepFramed_pullback_of_inj {names : List String} {slotOf : String → Na
       simp only [stepFramed, stepFOpG, envUpd, hR a ha, hR b hb]
       by_cases hmo : m = o
       · subst hmo; simp [Function.update_self]
-      · rw [Function.update_of_ne (fun h => hmo (hinj m hm o ho h)), if_neg hmo]
+      · rw [Function.update_of_ne (fun h => hmo (hinj m hm o ho h)), ite_eq_right hmo]
         exact hR m hm
   | add o a b =>
       obtain ⟨ho, ha, hb⟩ := hop
       simp only [stepFramed, stepFOpG, envUpd, hR a ha, hR b hb]
       by_cases hmo : m = o
       · subst hmo; simp [Function.update_self]
-      · rw [Function.update_of_ne (fun h => hmo (hinj m hm o ho h)), if_neg hmo]
+      · rw [Function.update_of_ne (fun h => hmo (hinj m hm o ho h)), ite_eq_right hmo]
         exact hR m hm
   | sub o a b =>
       obtain ⟨ho, ha, hb⟩ := hop
       simp only [stepFramed, stepFOpG, envUpd, hR a ha, hR b hb]
       by_cases hmo : m = o
       · subst hmo; simp [Function.update_self]
-      · rw [Function.update_of_ne (fun h => hmo (hinj m hm o ho h)), if_neg hmo]
+      · rw [Function.update_of_ne (fun h => hmo (hinj m hm o ho h)), ite_eq_right hmo]
         exact hR m hm
 
 /-- **The framed slot fold agrees with the named schedule interpreter, at any
@@ -253,7 +253,7 @@ theorem stepFramed_pullback_of_avail {names : List String} {slotOf : String → 
           rcases List.mem_cons.mp hm with h | h
           · exact absurd h hmo
           · exact h
-        rw [Function.update_of_ne (fun h => hmo (hinj m (hsub m hm') o ho h)), if_neg hmo]
+        rw [Function.update_of_ne (fun h => hmo (hinj m (hsub m hm') o ho h)), ite_eq_right hmo]
         exact hR m hm'
   | add o a b =>
       obtain ⟨ho, -, -⟩ := hop
@@ -266,7 +266,7 @@ theorem stepFramed_pullback_of_avail {names : List String} {slotOf : String → 
           rcases List.mem_cons.mp hm with h | h
           · exact absurd h hmo
           · exact h
-        rw [Function.update_of_ne (fun h => hmo (hinj m (hsub m hm') o ho h)), if_neg hmo]
+        rw [Function.update_of_ne (fun h => hmo (hinj m (hsub m hm') o ho h)), ite_eq_right hmo]
         exact hR m hm'
   | sub o a b =>
       obtain ⟨ho, -, -⟩ := hop
@@ -279,7 +279,7 @@ theorem stepFramed_pullback_of_avail {names : List String} {slotOf : String → 
           rcases List.mem_cons.mp hm with h | h
           · exact absurd h hmo
           · exact h
-        rw [Function.update_of_ne (fun h => hmo (hinj m (hsub m hm') o ho h)), if_neg hmo]
+        rw [Function.update_of_ne (fun h => hmo (hinj m (hsub m hm') o ho h)), ite_eq_right hmo]
         exact hR m hm'
 
 /-- **The framed slot fold agrees with the named schedule interpreter from
@@ -716,7 +716,7 @@ theorem selWord_mux {A B bit : BitVec 64} (hbit : bit = 0 ∨ bit = 1)
       = if bit = 1 then A else B := by
   rcases hbit with rfl | rfl
   · simp
-  · rw [if_pos rfl,
+  · rw [ite_eq_left rfl,
       show (1 : BitVec 64) * BitVec.ofNat 64 4294967295 = BitVec.ofNat 64 4294967295 from by
         decide]
     have hxlt : (A ^^^ B).toNat < 2 ^ 32 := by
@@ -844,7 +844,7 @@ theorem emitSelectFramed_value {slotOf : String → Nat} (idx : Nat) (s a b o : 
   have hEbOff : ∀ t : String, t ≠ s!"{pfx}bit" → Eb t = Ea t := by
     intro t ht
     rw [← hc2']
-    simp only [SEnvScalar.upd, if_neg ht]
+    simp only [SEnvScalar.upd, ite_eq_right ht]
   have hBitVal : Eb s!"{pfx}bit" = some ⟨.sword 64, memGetDyn arr (4 * slotOf s)⟩ := by
     rw [← hc2', hIxToNat]
     simp [SEnvScalar.upd]
@@ -968,20 +968,20 @@ theorem emitSelectFramed_value {slotOf : String → Nat} (idx : Nat) (s a b o : 
       rw [hOhEq k, envReader_of_bound (hOhval k hk), hRnVal k hk]
     rcases hbit with h0 | h1
     · have hne : ¬ memGetDyn arr (4 * slotOf s) = 1 := by rw [h0]; decide
-      rw [if_neg hne]
+      rw [ite_eq_right hne]
       calc feVal Ed (pfx ++ "O")
           = accN (fun k => (envReader Ed (feHN (pfx ++ "O") k)).toNat) 8 :=
             feVal_eq_accN Ed (pfx ++ "O")
         _ = accN (fun k => (envReader E3 (feHN (pfx ++ "B") k)).toNat) 8 :=
-            accN_congr 8 (fun k hk => by rw [hOh k hk, if_neg hne])
+            accN_congr 8 (fun k hk => by rw [hOh k hk, ite_eq_right hne])
         _ = feVal E3 (pfx ++ "B") := (feVal_eq_accN E3 (pfx ++ "B")).symm
         _ = slotVal arr (slotOf b) := hvalB
-    · rw [if_pos h1]
+    · rw [ite_eq_left h1]
       calc feVal Ed (pfx ++ "O")
           = accN (fun k => (envReader Ed (feHN (pfx ++ "O") k)).toNat) 8 :=
             feVal_eq_accN Ed (pfx ++ "O")
         _ = accN (fun k => (envReader E3 (feHN (pfx ++ "A") k)).toNat) 8 :=
-            accN_congr 8 (fun k hk => by rw [hOh k hk, if_pos h1])
+            accN_congr 8 (fun k hk => by rw [hOh k hk, ite_eq_left h1])
         _ = feVal E3 (pfx ++ "A") := (feVal_eq_accN E3 (pfx ++ "A")).symm
         _ = slotVal arr (slotOf a) := hvalA
   have hrvlt : (if memGetDyn arr (4 * slotOf s) = 1

@@ -526,8 +526,8 @@ theorem toOption_frontOut (sigOf : String → List NfTy → Option NfTy) (e : Im
     intro tgt Γ σ
     by_cases hf : f = "repeat"
     · subst hf
-      simp only [frontOut, impToNF, if_true, toOption_bind, toOption_orRefuse, toOption_repeatE]
-    · simp only [frontOut, hf, if_false, impToNF_app_call sigOf tgt σ hf,
+      simp only [frontOut, impToNF, ite_true, toOption_bind, toOption_orRefuse, toOption_repeatE]
+    · simp only [frontOut, hf, ite_false, impToNF_app_call sigOf tgt σ hf,
         toOption_bind, toOption_orRefuse, toOption_frontArgs sigOf args iha]
   case tuple es _ =>
     intro tgt Γ σ
@@ -693,22 +693,22 @@ theorem litInt_ilitWord {l : ImpLit} {t : NfTy} {v : Int} (h : litInt l = some (
   cases l with
   | int n =>
       by_cases hc : 0 ≤ n ∧ n < 2 ^ 64
-      · simp only [litInt, if_pos hc, Option.some.injEq, Prod.mk.injEq] at h
+      · simp only [litInt, ite_eq_left hc, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
         simp only [ilitWordOp, hax64NFWordTy, Bool.true_or, Bool.and_true, Bool.and_eq_true,
           decide_eq_true_eq]
         exact hc
-      · simp only [litInt, if_neg hc, reduceCtorEq] at h
+      · simp only [litInt, ite_eq_right hc, reduceCtorEq] at h
   | uintLit W n =>
       by_cases hw : W.bits ≤ 64
-      · simp only [litInt, if_pos hw, Option.some.injEq, Prod.mk.injEq] at h
+      · simp only [litInt, ite_eq_left hw, Option.some.injEq, Prod.mk.injEq] at h
         obtain ⟨rfl, rfl⟩ := h
         have h1 : n % W.modulus < W.modulus := Nat.mod_lt _ (Nat.two_pow_pos _)
         have h2 : W.modulus ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) hw
         simp only [ilitWordOp, hw, decide_true, Bool.or_true, Bool.and_true,
           Bool.and_eq_true, decide_eq_true_eq]
         omega
-      · simp only [litInt, if_neg hw, reduceCtorEq] at h
+      · simp only [litInt, ite_eq_right hw, reduceCtorEq] at h
   | _ => simp [litInt] at h
 
 theorem litOut_ilitWord {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (l : ImpLit)

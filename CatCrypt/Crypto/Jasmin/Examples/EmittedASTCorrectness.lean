@@ -1606,39 +1606,39 @@ lemma fp25519ExpCall_sound {N : Nat} {leafSpec : LeafSpec} {decode : Fe25519Deco
   · simp only [fp25519ExpCall] at hT
     by_cases hdt : dt = TowerType.TFp25519
     swap
-    · rw [if_neg hdt] at hT; cases hT
+    · rw [ite_eq_right hdt] at hT; cases hT
     subst hdt
-    rw [if_pos rfl] at hT
+    rw [ite_eq_left rfl] at hT
     by_cases hs : st = TowerType.TFp25519 ∧ d ≠ s
     swap
-    · rw [if_neg hs] at hT; cases hT
-    rw [if_pos hs] at hT
+    · rw [ite_eq_right hs] at hT; cases hT
+    rw [ite_eq_left hs] at hT
     obtain ⟨rfl, hne⟩ := hs
     by_cases hf : f = "fe25519_sqr"
-    · rw [if_pos hf] at hT
+    · rw [ite_eq_left hf] at hT
       subst hf
       obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.1 hT
       obtain ⟨hd, hFr⟩ := hSqr d s rs rs' _ hne (hM _ (fp25519ExpFind_mem he)) hExec
       exact Fp25519ExpHolds_set hFr hM (by rw [mul_comm, pow_mul]; exact hd)
-    rw [if_neg hf] at hT
+    rw [ite_eq_right hf] at hT
     by_cases hf' : f = "fe25519_copy"
-    · rw [if_pos hf'] at hT
+    · rw [ite_eq_left hf'] at hT
       subst hf'
       obtain ⟨e, he, rfl⟩ := Option.map_eq_some_iff.1 hT
       obtain ⟨hd, hFr⟩ := hCopy d s rs rs' _ hne (hM _ (fp25519ExpFind_mem he)) hExec
       exact Fp25519ExpHolds_set hFr hM hd
-    rw [if_neg hf'] at hT; cases hT
+    rw [ite_eq_right hf'] at hT; cases hT
   · simp only [fp25519ExpCall] at hT
     by_cases hdt : dt = TowerType.TFp25519
     swap
-    · rw [if_neg hdt] at hT; cases hT
+    · rw [ite_eq_right hdt] at hT; cases hT
     subst hdt
-    rw [if_pos rfl] at hT
+    rw [ite_eq_left rfl] at hT
     by_cases hc : st = TowerType.TFp25519 ∧ bt = TowerType.TFp25519 ∧
         d ≠ s ∧ d ≠ b ∧ f = "fe25519_mul"
     swap
-    · rw [if_neg hc] at hT; cases hT
-    rw [if_pos hc] at hT
+    · rw [ite_eq_right hc] at hT; cases hT
+    rw [ite_eq_left hc] at hT
     obtain ⟨rfl, rfl, hna, hnb, rfl⟩ := hc
     cases hea : fp25519ExpFind m s <;> cases heb : fp25519ExpFind m b <;>
       rw [hea, heb] at hT <;> try cases hT

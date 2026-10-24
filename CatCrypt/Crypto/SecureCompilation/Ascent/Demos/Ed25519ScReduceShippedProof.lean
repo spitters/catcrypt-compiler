@@ -128,7 +128,7 @@ theorem scrIn_holds (st : JState 64) : MapHolds (rhoX st) scrIn st := by
   obtain ⟨k, hk, rfl⟩ := hp
   simp only [Loc.val, WE.eval, rhoX]
   rw [wrun_below _ _ _ _ (by omega)]
-  rw [rho0, if_pos (by omega), Nat.add_sub_cancel_left]
+  rw [rho0, ite_eq_left (by omega), Nat.add_sub_cancel_left]
 
 /-- **The canonical block computes `x mod L`.** For every name-keyed state, the canonical
     block stores in the cells `(%rdi, 0)` … `(%rdi, 24)` the four limbs of `x mod L`, where

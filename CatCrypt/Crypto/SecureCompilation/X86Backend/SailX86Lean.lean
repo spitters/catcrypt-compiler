@@ -99,7 +99,7 @@ covers two drift classes between the two toolchains:
   return `String.Slice` under the CatCrypt toolchain (wrap with `.toString`);
   `ForM`/`ForIn'` instances need `[Monad m]`; `IntRange.forIn'`/`forM`
   `decreasing_by` and the `Decidable (· ∈ ·)` instance use explicit unfolds +
-  step-sign `if_pos`/`if_neg` in place of a membership-unfolding that differs
+  step-sign `ite_eq_left`/`ite_eq_right` in place of a membership-unfolding that differs
   between the two toolchains.
 * **Sail-Lean-backend generated-codegen drifts**: the V1 memory builtins
   `read_mem`/`write_mem`/`write_mem_ea` are not emitted (bound to the runtime's

@@ -150,14 +150,14 @@ theorem rowCoeffs_fst {q : ℕ} (k logN : ℕ) (x y : ℕ → Limbs [q] (2 ^ log
     (hj : j < k) (ht : t < 2 ^ logN) (h : j * 2 ^ logN + t < 2 * k * 2 ^ logN) :
     rowCoeffs k logN x y ⟨j * 2 ^ logN + t, h⟩ = x j ⟨0, by simp⟩ ⟨t, ht⟩ := by
   obtain ⟨e1, e2⟩ := idx_div_mod (j := j) (Nat.two_pow_pos logN) ht
-  simp only [rowCoeffs, if_pos (idx_lt hj ht), e1, e2]
+  simp only [rowCoeffs, ite_eq_left (idx_lt hj ht), e1, e2]
 
 theorem rowCoeffs_snd {q : ℕ} (k logN : ℕ) (x y : ℕ → Limbs [q] (2 ^ logN)) {j t : ℕ}
     (ht : t < 2 ^ logN) (h : k * 2 ^ logN + j * 2 ^ logN + t < 2 * k * 2 ^ logN) :
     rowCoeffs k logN x y ⟨k * 2 ^ logN + j * 2 ^ logN + t, h⟩ = y j ⟨0, by simp⟩ ⟨t, ht⟩ := by
   obtain ⟨e1, e2⟩ := idx_div_mod (j := j) (Nat.two_pow_pos logN) ht
   have e0 : k * 2 ^ logN + j * 2 ^ logN + t - k * 2 ^ logN = j * 2 ^ logN + t := by omega
-  simp only [rowCoeffs, if_neg (show ¬ k * 2 ^ logN + j * 2 ^ logN + t < k * 2 ^ logN by omega),
+  simp only [rowCoeffs, ite_eq_right (show ¬ k * 2 ^ logN + j * 2 ^ logN + t < k * 2 ^ logN by omega),
     e0, e1, e2]
 
 /-! ## 3. The lane theorems under the relation -/

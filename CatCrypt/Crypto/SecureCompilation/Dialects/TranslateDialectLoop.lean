@@ -226,7 +226,7 @@ theorem consistentS_bind {Γ : Ctx} {t : CryptoTy} (vm : VarMap Γ)
   · subst hsd
     simp only [VarMap.bind, SEnvScalar.upd]
     rfl
-  · simp only [VarMap.bind, SEnvScalar.upd, if_neg hsd]
+  · simp only [VarMap.bind, SEnvScalar.upd, ite_eq_right hsd]
     rw [← hc s]
     cases hl : vm.lookup s with
     | none => rfl
@@ -593,7 +593,7 @@ theorem rustExec_rFor_rsScalar_of_body {N : Nat} {leafSpec : LeafSpec} {x : Stri
       cases h with
       | forSucc _ _ _ _ r₁ _ hf hb =>
           rw [hbody hb]
-          simp only [rsSetScalar, beq_iff_eq, if_neg hyx]
+          simp only [rsSetScalar, beq_iff_eq, ite_eq_right hyx]
           exact rustExec_rFor_rsScalar_of_body hyx hbody k hf
 
 /-- **Write frame.** On the word fragment `IsCoveredAdeq`, a `RustExec` run leaves
@@ -679,7 +679,7 @@ theorem semTripsInv_of_rustExec_rFor {N : Nat} {leafSpec : LeafSpec} {body : Low
                 simp [SEnvScalar.upd, rsSetScalar, hya]
               · have hyf : y ∈ frameReads body x accName := by
                   simpa [hya, hyx] using hy
-                simp only [SEnvScalar.upd, rsSetScalar, if_neg hya, if_neg hyx, beq_iff_eq]
+                simp only [SEnvScalar.upd, rsSetScalar, ite_eq_right hya, ite_eq_right hyx, beq_iff_eq]
                 rw [henv y (List.mem_cons_of_mem _ hyf) hnty, hfrm y hyf]
           have hirT : ScalarInRange (rsSetScalar r₁ x k) := scalarInRange_upd hir₁ x (by omega)
           obtain ⟨O, hO, hOb, hir'⟩ := rustExec_semScalar_agree_scoped hcov hbody hF hirT
@@ -695,7 +695,7 @@ theorem semTripsInv_of_rustExec_rFor {N : Nat} {leafSpec : LeafSpec} {body : Low
               Bool.not_eq_true'] at hy'
             have hyw : y ∉ loopWrites body := by simpa using hy'.2.2
             rw [rustExec_rsScalar_of_not_mem_loopWrites hcov hbody hyw]
-            simp only [rsSetScalar, beq_iff_eq, if_neg hy'.2.1.1]
+            simp only [rsSetScalar, beq_iff_eq, ite_eq_right hy'.2.1.1]
             exact hfrm y hy
 
 /-- **The loop node against the threaded run.** `runtimeLoopNode_denote` with the

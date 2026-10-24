@@ -102,7 +102,7 @@ theorem envAgreesRustT_extend_scalar_fresh (bridge : ValueTowerBridge) (env : En
   intro m w k hw hT hk
   by_cases hm : m = name
   · subst hm
-    simp only [Hax.Env.extend, beq_self_eq_true, if_true, Option.some.injEq] at hw
+    simp only [Hax.Env.extend, beq_self_eq_true, ite_true, Option.some.injEq] at hw
     subst hw
     rw [hDecode, Option.some.injEq] at hk
     subst hk
@@ -125,7 +125,7 @@ theorem envAgreesRustT_extend_copy (bridge : ValueTowerBridge) (env : Env) (rs :
   intro m w' k hw hT hk
   by_cases hm : m = name
   · subst hm
-    simp only [Hax.Env.extend, beq_self_eq_true, if_true, Option.some.injEq] at hw
+    simp only [Hax.Env.extend, beq_self_eq_true, ite_true, Option.some.injEq] at hw
     subst hw
     simpa [rsSetScalar] using hAgree.1 src w k hsrc hSrcFresh hk
   · have hEnv : env.extend name w m = env m := by simp [Hax.Env.extend, hm]
@@ -435,7 +435,7 @@ theorem progSimT_letBind_app (name f : String) (args : List ImpExpr) (body : Imp
     ProgSimT bridge bi N leafSpec S (.letBind name (.app f args) body) := by
   intro fuel Γ Γ' c env env' rs v hScope hConds hSB hSF hHax hEval hAgree
   simp only [condsScalar] at hConds
-  simp only [simScope, if_neg hf_arr, if_neg hf_idx] at hScope
+  simp only [simScope, ite_eq_right hf_arr, ite_eq_right hf_idx] at hScope
   split at hScope
   · rename_i hc
     simp only [Bool.and_eq_true] at hc
@@ -594,7 +594,7 @@ theorem progSimT_assign_app (name f : String) (args : List ImpExpr) (hf : f ≠ 
     (hLeaf : LeafCallAgreesArgs bi leafSpec f (towerOfCallName f) bridge) :
     ProgSimT bridge bi N leafSpec S (.assign name (.app f args)) := by
   intro fuel Γ Γ' c env env' rs v hScope _ hSB hSF hHax hEval hAgree
-  simp only [simScope, if_neg hf] at hScope
+  simp only [simScope, ite_eq_right hf] at hScope
   split at hScope
   · rename_i hc
     rw [Option.some.injEq] at hScope
@@ -690,7 +690,7 @@ theorem haxToLowCT_simulates_programT
     | app f args =>
       by_cases hf : f = "array_update"
       · exact progSimT_of_simScope_none bridge bi N leafSpec S _
-          (fun Γ => by simp only [simScope, if_pos hf])
+          (fun Γ => by simp only [simScope, ite_eq_left hf])
       · exact progSimT_assign_app bridge bi N leafSpec S name f args hf (hLeaf f)
     | _ => exact progSimT_of_simScope_none bridge bi N leafSpec S _ (fun Γ => by simp [simScope])
   | typeAscription e _ ih =>

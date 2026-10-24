@@ -280,7 +280,7 @@ theorem shift_word_ofNat (k : ShiftKind) {n : Nat} (h : n < 64) (v : BitVec 64) 
     by_cases h0 : n = 0
   all_goals first
     | (subst h0; simp [rflags_None])
-    | simp only [if_neg h0, rflags_OF, wshl, wshr, wsar, hmin]
+    | simp only [ite_eq_right h0, rflags_OF, wshl, wshr, wsar, hmin]
 
 theorem ShiftKind.word_zero (k : ShiftKind) (a : BitVec 64) : k.word 0 a = a := by
   cases k <;> simp [ShiftKind.word]
@@ -343,7 +343,7 @@ theorem strip_toList_of_sarCountOf {m : String} {n : Nat} (hs : sarCountOf m = s
     rw [String.toList_ofList, ← ht,
       List.takeWhile_append_of_pos (bne_at_of_not_mem (by decide))]
     simp_all
-  rw [if_pos (show hasSuffix m ":64" = true from hsuf), String.toList_ofList]
+  rw [ite_eq_left (show hasSuffix m ":64" = true from hsuf), String.toList_ofList]
   have hl : m.toList.dropLast.dropLast.dropLast = m.toList.take (m.toList.length - 3) := by
     simp only [List.dropLast_eq_take, List.take_take, List.length_take]
     congr 1
@@ -481,7 +481,7 @@ theorem shiftBlockReg_regs (k : ShiftKind) {n : Nat} (hn : n < 64) (s : JState 6
       = if r = d then k.word n (s.regs src) else s.regs r := by
   unfold shiftBlockReg
   by_cases hsd : src = d <;> by_cases hn0 : n = 0 <;>
-    simp only [hsd, hn0, if_true, if_false, runBlock_cons, runBlock_nil, shift_regs k hn,
+    simp only [hsd, hn0, ite_true, ite_false, runBlock_cons, runBlock_nil, shift_regs k hn,
       mov_regs, ShiftKind.word_zero, JOperand.eval, JState.get] <;>
     by_cases hr : r = d <;> simp [hr]
 
@@ -489,7 +489,7 @@ theorem shiftBlockReg_mem (k : ShiftKind) (n : Nat) (s : JState 64) (d src : Str
     (runBlock s (shiftBlockReg k d src n)).mem = s.mem := by
   unfold shiftBlockReg
   by_cases hsd : src = d <;> by_cases hn0 : n = 0 <;>
-    simp only [hsd, hn0, if_true, if_false, runBlock_cons, runBlock_nil, shift_mem, mov_mem]
+    simp only [hsd, hn0, ite_true, ite_false, runBlock_cons, runBlock_nil, shift_mem, mov_mem]
 
 /-- **One materialised comparison.** The gather emits the `cmp`/`mov`/`setcc`
     triple, the `lsem` step writes the fused `cmpBit` word, and the two results
@@ -514,7 +514,7 @@ theorem setcc_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 64}
   refine ⟨_, _, hlow, hstep, LJCorrM_write hc d _ _ (fun r => ?_) ?_⟩
   · by_cases hr : r = d
     · simp [hr]
-    · rw [if_neg hr]
+    · rw [ite_eq_right hr]
       exact flagClass_setcc_other_reg hcc hlowF hr
   · simp [runBlock_cons, runBlock_nil, evalInstr, JState.setRegMerge, JState.setReg,
       JState.writeB5]
@@ -621,8 +621,8 @@ theorem storeidx_case (frame spillW qsaveB : Nat) {ls : Lstate 64} {s : JState 6
     · subst hb
       by_cases ho : o = ((sc : Int) * ((s.regs i).toNat : Int))
       · simp [ho]
-      · simp only [ho, if_false]; exact hc.2 _ _
-    · simp only [hb, if_false]; exact hc.2 _ _
+      · simp only [ho, ite_false]; exact hc.2 _ _
+    · simp only [hb, ite_false]; exact hc.2 _ _
 
 /-! ## 8. The register-only arms carried over with memory -/
 

@@ -125,7 +125,7 @@ theorem zextOpSem_sem (szo szi : WSize) (w : BitVec szi.bits) :
   show (if h : szo = szo ∧ szi = szi then
           (.ok (.Vword szo (BitVec.setWidth szo.bits (h.2 ▸ w))) : JResult Value)
         else .typeError) = _
-  rw [dif_pos ⟨rfl, rfl⟩]
+  rw [dite_eq_left ⟨rfl, rfl⟩]
 
 /-- **`Com`/mirror value coincidence.** The `Com.denote` of `JasminDialect.castW
     szi szo` on `w` (`(w).zeroExtend szo.bits`) is the *same* `BitVec` the mirror

@@ -134,7 +134,7 @@ theorem legalizeBinop_regSpill_lsem {w : Nat} (s : Lstate w)
   -- `op dst, R15` reads `dst` (unchanged, `dst ≠ R15`) and `R15` (= `s.lvm src`).
   have heval_dst : evalOperand sM (.reg dst) = s.lvm dst := by
     show evalOperand ((s.setReg reloadScratch (s.lvm src)).nextPc) (.reg dst) = s.lvm dst
-    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, if_neg hd15]
+    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, ite_eq_right hd15]
   have heval_r15 : evalOperand sM (.reg reloadScratch) = s.lvm src := by
     show evalOperand ((s.setReg reloadScratch (s.lvm src)).nextPc) (.reg reloadScratch)
         = s.lvm src
@@ -183,7 +183,7 @@ theorem legalizeBinop_spillReg_lsem {w : Nat} (s : Lstate w)
     simp [evalOperand, Lstate.setReg, Lstate.nextPc]
   have heval_src : evalOperand ((s.setReg reloadScratch (s.lvm dst)).nextPc)
       (.reg src) = s.lvm src := by
-    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, if_neg (Ne.symm h15s)]
+    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, ite_eq_right (Ne.symm h15s)]
   have hop2 : lsemStep (LinstrR.Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg src])
       ((s.setReg reloadScratch (s.lvm dst)).nextPc)
       = some ((((s.setReg reloadScratch (s.lvm dst)).nextPc).setReg reloadScratch v).nextPc) := by
@@ -243,7 +243,7 @@ theorem legalizeBinop_spillSpill_lsem {w : Nat} (s : Lstate w)
   -- Step 2: `mov R14, src` loads `src` (unchanged, `R15 ≠ src`) into R14.
   have heval_src : evalOperand ((s.setReg reloadScratch (s.lvm dst)).nextPc)
       (.reg src) = s.lvm src := by
-    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, if_neg (Ne.symm h15s)]
+    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, ite_eq_right (Ne.symm h15s)]
   have hmov2 : lsemStep (LinstrR.Lopn [.reg reloadScratch2] "MOV" [.reg src])
       ((s.setReg reloadScratch (s.lvm dst)).nextPc)
       = some ((((s.setReg reloadScratch (s.lvm dst)).nextPc).setReg reloadScratch2 (s.lvm src)).nextPc) := by
@@ -254,7 +254,7 @@ theorem legalizeBinop_spillSpill_lsem {w : Nat} (s : Lstate w)
   have heval_r15 : evalOperand
       ((((s.setReg reloadScratch (s.lvm dst)).nextPc).setReg reloadScratch2 (s.lvm src)).nextPc)
       (.reg reloadScratch) = s.lvm dst := by
-    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, if_neg h1514, if_true]
+    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, ite_eq_right h1514, ite_true]
   have heval_r14 : evalOperand
       ((((s.setReg reloadScratch (s.lvm dst)).nextPc).setReg reloadScratch2 (s.lvm src)).nextPc)
       (.reg reloadScratch2) = s.lvm src := by

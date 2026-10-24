@@ -235,15 +235,15 @@ theorem corres_setExpr (x : String) (e : SExpr) (he : IsArithClean e) :
   · intro y hnt
     by_cases hyx : y = x
     · refine ⟨SExpr.evalBV (envReader env) e, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_pos hyx]
+      · simp only [SEnvScalar.upd, ite_eq_left hyx]
       · show wEnc (SExpr.evalBV (envReader env) e) = if y = x then evalZMod a e else a y
-        rw [if_pos hyx]; exact hval
+        rw [ite_eq_left hyx]; exact hval
     · obtain ⟨w, hw, hwe⟩ := hSR y hnt
       refine ⟨w, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_neg hyx]
+      · simp only [SEnvScalar.upd, ite_eq_right hyx]
         rw [hotb y (Or.inl hnt)]; exact hw
       · show wEnc w = if y = x then evalZMod a e else a y
-        rw [if_neg hyx]; exact hwe
+        rw [ite_eq_right hyx]; exact hwe
 
 /-! ## The bitwise value leaf — keeping the spec in the `BitVec 64` word algebra
 
@@ -315,7 +315,7 @@ theorem corres_setScalar_BV (name : String) (n : Nat) :
   intro x hnt
   by_cases hx : x = name
   · subst hx; simp [SEnvScalar.upd]
-  · simp only [SEnvScalar.upd, if_neg hx]
+  · simp only [SEnvScalar.upd, ite_eq_right hx]
     exact hSR x hnt
 
 /-- `corres_setExprBitwise` — the bitwise `RScalarSetExpr x e` value leaf. From a
@@ -358,13 +358,13 @@ theorem corres_setExprBitwise (x : String) (e : SExpr) (he : IsWordClean e) :
     by_cases hyx : y = x
     · show (env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e)) y
         = some ⟨.sword 64, if y = x then SExpr.evalBV a e else a y⟩
-      rw [if_pos hyx]
-      simp only [SEnvScalar.upd, if_pos hyx]
+      rw [ite_eq_left hyx]
+      simp only [SEnvScalar.upd, ite_eq_left hyx]
       rw [hval]
     · show (env2.upd x (t := .sword 64) (SExpr.evalBV (envReader env) e)) y
         = some ⟨.sword 64, if y = x then SExpr.evalBV a e else a y⟩
-      rw [if_neg hyx]
-      simp only [SEnvScalar.upd, if_neg hyx]
+      rw [ite_eq_right hyx]
+      simp only [SEnvScalar.upd, ite_eq_right hyx]
       rw [hotb y (Or.inl hnt)]
       exact hSR y hnt
 

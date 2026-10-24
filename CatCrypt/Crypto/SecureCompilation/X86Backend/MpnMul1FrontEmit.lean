@@ -139,14 +139,14 @@ theorem addCarry_split (x cy : BitVec 64) :
       simp only [BitVec.ult, decide_eq_true_eq, hsum]
       rw [Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
       omega
-    rw [if_pos hlt, hsum, Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
+    rw [ite_eq_left hlt, hsum, Nat.mod_eq_sub_mod h, Nat.mod_eq_of_lt (by omega)]
     simp only [show ((1 : BitVec 64).toNat) = 1 from rfl]
     omega
   · have hlt : (x + cy).ult x = false := by
       simp only [BitVec.ult, decide_eq_false_iff_not, hsum, Nat.not_lt]
       rw [Nat.mod_eq_of_lt (by omega)]
       omega
-    rw [if_neg (by simp [hlt]), hsum, Nat.mod_eq_of_lt (by omega)]
+    rw [ite_eq_right (by simp [hlt]), hsum, Nat.mod_eq_of_lt (by omega)]
     simp only [show ((0 : BitVec 64).toNat) = 0 from rfl]
     omega
 
@@ -232,7 +232,7 @@ theorem memGetDyn_memSetDyn_ne {N : Nat} (arr : Fin N → BitVec 64)
   | 0, _ => exact absurd hk (Nat.not_lt_zero k)
   | (m + 1), arr =>
       simp only [memGetDyn, memSetDyn, Nat.mod_eq_of_lt hk, Nat.mod_eq_of_lt hl]
-      rw [if_neg (by simp only [Fin.mk.injEq]; omega)]
+      rw [ite_eq_right (by simp only [Fin.mk.injEq]; omega)]
 
 /-- A memref write at an in-range index reads back at that index. -/
 theorem memGetDyn_memSetDyn_self {N : Nat} (arr : Fin N → BitVec 64)

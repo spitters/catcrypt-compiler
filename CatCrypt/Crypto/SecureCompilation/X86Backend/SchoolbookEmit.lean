@@ -175,7 +175,7 @@ theorem emitColumn_eq_mulAddc (s : JState 64) (acc a b cy hi lo : String)
   have hval := selectMulxMac_value_fullProduct s acc a b cy hi lo
     hAccLo hAccHi hCyLo hCyHi hCyAcc hLoHi
   rw [hga, hgb, hgacc, hgcy, hcf, hof] at hval
-  simp only [Bool.false_eq_true, if_false] at hval
+  simp only [Bool.false_eq_true, ite_false] at hval
   -- emitted side: acc_new + carries·2^64 + hi·2^64 = add + va·vb + cin
   -- abstract side: macHi·2^64 + macLo = va·vb + add + cin
   have habs := mulAddc_reconstruct va vb add cin

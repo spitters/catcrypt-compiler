@@ -157,10 +157,10 @@ theorem powLadder_correct [Monoid M] (bs : List Bool) (g : M) :
     rw [powLadder_append_one, bitsToNat_append_one, ih]
     cases b with
     | false =>
-      simp only [Bool.false_eq_true, if_false, mul_one, add_zero]
+      simp only [Bool.false_eq_true, ite_false, mul_one, add_zero]
       rw [pow_two_mul]
     | true =>
-      simp only [if_true]
+      simp only [ite_true]
       rw [pow_succ, pow_two_mul]
 
 /-! ## 4. Worked example: the multiplicative monoid of `ℕ`

@@ -123,9 +123,9 @@ theorem corres_of_realization {A : Type} {op : A → A → A}
   refine ⟨env', hstep, fun s hs => ?_⟩
   have h := hSR' s hs
   by_cases hsd : s = dst
-  · simp only [if_pos hsd] at h ⊢
+  · simp only [ite_eq_left hsd] at h ⊢
     rw [h, hbop, R.commutes]
-  · simp only [if_neg hsd] at h ⊢
+  · simp only [ite_eq_right hsd] at h ⊢
     exact h
 
 /-- The `Corres` rule of a `RealizedKernel`: `corres_of_realization` at the kernel's

@@ -200,7 +200,7 @@ theorem jacDblSchedule_realizes_specG (FM FA FS : Nat → Nat → Nat) (X Y Z : 
      scheduleEvalG FM FA FS jacDblSchedule (dblEnv0 X Y Z) "Zp")
       = jacDblSpecG FM FA FS X Y Z := by
   simp only [scheduleEvalG, jacDblSchedule, stepFOpG, dblEnv0, envUpd, jacDblSpecG,
-    List.foldl_cons, List.foldl_nil, String.reduceEq, if_true, if_false]
+    List.foldl_cons, List.foldl_nil, String.reduceEq, ite_true, ite_false]
 
 /-- Op-generic `jacAdd` realization. -/
 theorem jacAddSchedule_realizes_specG (FM FA FS : Nat → Nat → Nat)
@@ -210,7 +210,7 @@ theorem jacAddSchedule_realizes_specG (FM FA FS : Nat → Nat → Nat)
      scheduleEvalG FM FA FS jacAddSchedule (addEnv0 X1 Y1 Z1 X2 Y2 Z2) "Zp")
       = jacAddSpecG FM FA FS X1 Y1 Z1 X2 Y2 Z2 := by
   simp only [scheduleEvalG, jacAddSchedule, stepFOpG, addEnv0, envUpd, jacAddSpecG,
-    List.foldl_cons, List.foldl_nil, String.reduceEq, if_true, if_false]
+    List.foldl_cons, List.foldl_nil, String.reduceEq, ite_true, ite_false]
 
 /-- **`jacDblSchedule` realises `jacDblSpec` over `ℤ/pℤ`.** Running the 19-op
     doubling schedule with each `FOp` interpreted as its base-field-op residue

@@ -248,13 +248,13 @@ theorem legalise_tileAccLoop_isSome
     (h : (T.binary? (TileLegal.BinOp.bin .add)).isSome = true) :
     (legalise T (tileAccLoop jasminDialect T.laneCount T.laneBits)).isSome = true := by
   unfold legalise
-  rw [if_pos (by rfl)]
+  rw [ite_eq_left (by rfl)]
   refine (NFProg.isSome_map?_iff (tileLegal T) (tileLegal_regionTypes T) _ _).2
     ⟨⟨?_, trivial⟩, trivial⟩
   have hg : (T.gate (.tileBin .add T.laneCount T.laneBits)).isSome = true := by
     show (T.binaryGate _ _ _).isSome = true
     unfold TileTarget.binaryGate
-    rw [dif_pos ⟨rfl, rfl⟩, Option.isSome_map]
+    rw [dite_eq_left ⟨rfl, rfl⟩, Option.isSome_map]
     exact h
   obtain ⟨g, hg⟩ := Option.isSome_iff_exists.mp hg
   have hl : (T.lowering.lowerExprBlock?

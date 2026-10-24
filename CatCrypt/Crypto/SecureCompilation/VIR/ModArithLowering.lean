@@ -143,7 +143,7 @@ theorem routeOf_scalar_of_not_vectorizable (op : ModArithOp) (p : Nat)
     routeOf op = .scalar := by
   unfold routeOf
   rw [hp]
-  simp only [if_neg hv]
+  simp only [ite_eq_right hv]
 
 /-- The machine (carry/widening) ops always route `scalar`: they are the scalar
     realisation, never a redundant-limb field op. -/
@@ -222,6 +222,6 @@ theorem smoke_route_25519 (rInv : ZMod (2 ^ 255 - 19)) :
     routeOf (.montMul (2 ^ 255 - 19) rInv) = .vector := by
   unfold routeOf ModArithOp.modulus?
   simp only []
-  rw [if_pos vectorizable_25519]
+  rw [ite_eq_left vectorizable_25519]
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ModArithDialect

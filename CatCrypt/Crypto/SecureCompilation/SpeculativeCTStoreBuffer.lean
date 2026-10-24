@@ -433,7 +433,7 @@ theorem specRun_neverSpeculate (leafSpec : LeafSpec) (c : LowCT) (σ : SpecState
     have hf := ihf σ
     refine ⟨?_, ?_⟩ <;>
       simp only [specRun, archRun, neverSpeculate_mispredict, Bool.false_eq_true,
-        and_false, if_false, List.nil_append] <;>
+        and_false, ite_false, List.nil_append] <;>
       split
     · exact ht.1
     · exact hf.1
@@ -443,7 +443,7 @@ theorem specRun_neverSpeculate (leafSpec : LeafSpec) (c : LowCT) (σ : SpecState
     have hb := ih σ
     refine ⟨?_, ?_⟩ <;>
       simp only [specRun, archRun, neverSpeculate_mispredict, Bool.false_eq_true,
-        and_false, if_false, List.nil_append]
+        and_false, ite_false, List.nil_append]
     · exact hb.1
     · rw [hb.2]
   | RFor _ _ _ ih => simpa only [specRun, archRun] using ih σ
@@ -513,7 +513,7 @@ theorem specRun_of_window_zero (leafSpec : LeafSpec) (O : SpecOracle) (c : LowCT
     have ht := iht σ h
     have hf := ihf σ h
     refine ⟨?_, ?_, ?_⟩ <;>
-      simp only [specRun, archRun, h, lt_self_iff_false, false_and, if_false,
+      simp only [specRun, archRun, h, lt_self_iff_false, false_and, ite_false,
         List.nil_append] <;>
       split
     · exact ht.1
@@ -525,7 +525,7 @@ theorem specRun_of_window_zero (leafSpec : LeafSpec) (O : SpecOracle) (c : LowCT
   | RWhileNz cond body ih =>
     have hb := ih σ h
     refine ⟨?_, ?_, ?_⟩ <;>
-      simp only [specRun, archRun, h, lt_self_iff_false, false_and, if_false,
+      simp only [specRun, archRun, h, lt_self_iff_false, false_and, ite_false,
         List.nil_append]
     · exact hb.1
     · exact hb.2.1
@@ -1043,22 +1043,22 @@ theorem specRun_pub_determined (leafSpec : LeafSpec) (lt : LevelTable)
         = locatedLookup σ2.rs ⟨w0, t0⟩ := by rw [e11, ← hsame σ2.rs]
     by_cases h1 : σ1.rs.rsScalar sel = 0 <;> by_cases h2 : σ2.rs.rsScalar sel = 0 <;>
       simp only [specRun]
-    · rw [if_pos h1, if_pos h2, e00]
+    · rw [ite_eq_left h1, ite_eq_left h2, e00]
       repeat' split
       all_goals first
         | exact ⟨rfl, h⟩
         | exact ⟨rfl, h.1.set_tower_same _ _, h.2.1, h.2.2⟩
-    · rw [if_pos h1, if_neg h2, e01]
+    · rw [ite_eq_left h1, ite_eq_right h2, e01]
       repeat' split
       all_goals first
         | exact ⟨rfl, h⟩
         | exact ⟨rfl, h.1.set_tower_same _ _, h.2.1, h.2.2⟩
-    · rw [if_neg h1, if_pos h2, e10]
+    · rw [ite_eq_right h1, ite_eq_left h2, e10]
       repeat' split
       all_goals first
         | exact ⟨rfl, h⟩
         | exact ⟨rfl, h.1.set_tower_same _ _, h.2.1, h.2.2⟩
-    · rw [if_neg h1, if_neg h2, e11]
+    · rw [ite_eq_right h1, ite_eq_right h2, e11]
       repeat' split
       all_goals first
         | exact ⟨rfl, h⟩

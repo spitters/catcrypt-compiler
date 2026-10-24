@@ -183,7 +183,7 @@ theorem add_cf_eq (a b : BitVec 64) :
     decide ((a + b).toNat ≠ a.toNat + b.toNat) = addCarry a b false := by
   have ha := a.isLt
   have hb := b.isLt
-  simp only [addCarry, decide_eq_decide, BitVec.toNat_add, Bool.false_eq_true, if_false]
+  simp only [addCarry, decide_eq_decide, BitVec.toNat_add, Bool.false_eq_true, ite_false]
   omega
 
 /-- Jasmin's `x86_SUB` carry is the `Model`'s borrow-out. -/
@@ -192,7 +192,7 @@ theorem sub_cf_eq (a b : BitVec 64) :
       = subBorrow a b false := by
   have ha := a.isLt
   have hb := b.isLt
-  simp only [subBorrow, decide_eq_decide, BitVec.toNat_sub, Bool.false_eq_true, if_false]
+  simp only [subBorrow, decide_eq_decide, BitVec.toNat_sub, Bool.false_eq_true, ite_false]
   omega
 
 /-- Jasmin's `add_carry` carry is the `Model`'s carry-out. -/
@@ -223,7 +223,7 @@ theorem add_of_eq (a b : BitVec 64) :
   have ha' := a.le_toInt
   have hb := b.toInt_lt
   have hb' := b.le_toInt
-  simp only [addOverflow, signedOverflow, Bool.false_eq_true, if_false, add_zero,
+  simp only [addOverflow, signedOverflow, Bool.false_eq_true, ite_false, add_zero,
     decide_eq_decide, BitVec.toInt_add]
   unfold Int.bmod
   simp only [Nat.reducePow, Nat.reduceSub, Int.reducePow] at *
@@ -236,7 +236,7 @@ theorem sub_of_eq (a b : BitVec 64) :
   have ha' := a.le_toInt
   have hb := b.toInt_lt
   have hb' := b.le_toInt
-  simp only [subOverflow, signedOverflow, Bool.false_eq_true, if_false, sub_zero,
+  simp only [subOverflow, signedOverflow, Bool.false_eq_true, ite_false, sub_zero,
     decide_eq_decide, BitVec.toInt_sub]
   unfold Int.bmod
   simp only [Nat.reducePow, Nat.reduceSub, Int.reducePow] at *

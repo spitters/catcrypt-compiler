@@ -538,7 +538,7 @@ theorem decodeAt_head_start (n off : Nat) (bs : List (BitVec 8))
   | zero => simp [decodeAt, hemp] at h
   | succ n =>
     rw [decodeAt] at h
-    simp only [hemp, Bool.false_eq_true, if_false] at h
+    simp only [hemp, Bool.false_eq_true, ite_false] at h
     cases hd : decodeLinstr bs with
     | none => simp [hd] at h
     | some p =>
@@ -993,11 +993,11 @@ theorem labelPos_fundefItemsReloc (symBase : String → Option Int) {body : Lcmd
     hskip] at hsplit
   unfold fundefItemsRelocL
   rw [hsplit]
-  simp only [labelPos, mkLea, reduceCtorEq, if_false, Option.isSome_some, if_true]
+  simp only [labelPos, mkLea, reduceCtorEq, ite_false, Option.isSome_some, ite_true]
   rw [List.append_assoc, labelPos_append_of_ne _ _ _
     (itemsFromReloc_noLabel symBase _ l _ _ _ hpre),
     decCount_itemsFromReloc symBase _ (List.forall₂_take p hR)]
-  simp only [itemsFromReloc, hrem, dItems, List.cons_append, labelPos, hlab', if_true]
+  simp only [itemsFromReloc, hrem, dItems, List.cons_append, labelPos, hlab', ite_true]
   simp only [posOf, Option.some.injEq, Prod.mk.injEq]
   exact ⟨_, trivial, rfl⟩
 
@@ -1332,7 +1332,7 @@ theorem linked_step {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K
           obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
           subst e1
           subst e2
-          rw [if_pos hzp] at hms
+          rw [ite_eq_left hzp] at hms
           refine ⟨sA, acorr_setLpc hc _, hpl, fun bi' hb' hcnd => ?_, .single hms⟩
           have hb'' : body[p]? = some bi' := hb'
           rw [← (List.getElem?_eq_some_iff.mp hb'').2] at hcnd
@@ -1347,7 +1347,7 @@ theorem linked_step {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K
           obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
           subst e1
           subst e2
-          rw [if_neg hzp] at hms
+          rw [ite_eq_right hzp] at hms
           refine ⟨sA, acorr_setLpc hc _, hkn, fun bi' hb' hcnd => hnext sA bi' rfl hb' hcnd, ?_⟩
           show Reaches aMachine prog (posOf ds sa.reg.lpc) sA (posOf ds (sa.reg.lpc + 1)) sA
           rw [posOf_succ _ sa.reg.lpc (by omega), hsk]

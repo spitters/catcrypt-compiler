@@ -411,7 +411,7 @@ theorem runIBF_swap (tag : LinstrR → MemTag) (i1 i2 : LinstrR) (rest : List Li
             (runIBF (rest.map fun i => (i, tag i))) := by
     intro j k hj hk
     simp only [List.map_cons, runIBF, stepIBF, inBoundsB_of_hasArrIdx hj,
-      inBoundsB_of_hasArrIdx hk, if_true, Option.bind_assoc]
+      inBoundsB_of_hasArrIdx hk, ite_true, Option.bind_assoc]
   rw [e i1 i2 (indep_arrIdx_left h) (indep_arrIdx_right h),
     e i2 i1 (indep_arrIdx_right h) (indep_arrIdx_left h),
     lsemStepFlag_swap (i1, tag i1) (i2, tag i2) l h]

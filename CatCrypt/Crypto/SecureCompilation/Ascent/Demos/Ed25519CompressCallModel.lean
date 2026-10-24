@@ -153,12 +153,12 @@ theorem callSegsSaved_mem (C : ACallModel) (blk : List CallSeg) (d : Int) (sa : 
 theorem callSegsSaved_saved (C : ACallModel) (blk : List CallSeg) (d : Int) (sa : AState)
     (r : String) (hr : r ∈ "%rsp" :: calleeSavedRegs) :
     (callSegsSaved C blk d sa).regs r = sa.regs r := by
-  simp only [callSegsSaved, if_pos hr]
+  simp only [callSegsSaved, ite_eq_left hr]
 
 theorem callBlockSaved_saved (blk : List (JInstr 64)) (d : Int) (sa : AState)
     (r : String) (hr : r ∈ "%rsp" :: calleeSavedRegs) :
     (callBlockSaved blk d sa).regs r = sa.regs r := by
-  simp only [callBlockSaved, if_pos hr]
+  simp only [callBlockSaved, ite_eq_left hr]
 
 /-- **The shipped `ed25519_invert` meets the inversion specification of the compression.** -/
 theorem compressCallModel_inv (sa : AState)

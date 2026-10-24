@@ -116,7 +116,7 @@ noncomputable def derivedEnv (rs : RustState) : SEnvScalar :=
 
 theorem envRel_derivedEnv (rs : RustState) : EnvRel rs (derivedEnv rs) := by
   intro x hx
-  simp only [derivedEnv, if_neg hx]
+  simp only [derivedEnv, ite_eq_right hx]
 
 /-- The strong reflection is the total-domain restricted reflection. -/
 theorem envBoundOn_true_of_envRel {rs : RustState} {env : SEnvScalar} (h : EnvRel rs env) :
@@ -142,9 +142,9 @@ theorem scalarInRange_upd {rs : RustState} (h : ScalarInRange rs) (x : String) {
     (hv : v < 2 ^ 64) : ScalarInRange (rsSetScalar rs x v) := by
   intro y
   by_cases hyx : y = x
-  · subst hyx; simpa only [rsSetScalar, beq_self_eq_true, if_pos] using hv
+  · subst hyx; simpa only [rsSetScalar, beq_self_eq_true, ite_eq_left] using hv
   · have hne : ¬ (y == x) = true := by simp [hyx]
-    simp only [rsSetScalar, hne, if_false, Bool.false_eq_true]
+    simp only [rsSetScalar, hne, ite_false, Bool.false_eq_true]
     exact h y
 
 /-- A scalar write over an `OnlyTmpBelow` companion env extends `EnvBoundOn` by the
@@ -165,7 +165,7 @@ theorem envBoundOn_updExpr {rs : RustState} {env env2 : SEnvScalar} {B : String 
       · exact h
       · exact absurd h hyx
     have hne : ¬ (y == x) = true := by simp [hyx]
-    simp only [SEnvScalar.upd, if_neg hyx, rsSetScalar, hne, if_false, Bool.false_eq_true]
+    simp only [SEnvScalar.upd, ite_eq_right hyx, rsSetScalar, hne, ite_false, Bool.false_eq_true]
     rw [hotb y (Or.inl hnt)]; exact henv y hb hnt
 
 /-- The `env2 = env` special case: a plain scalar write extends `EnvBoundOn`. -/
@@ -553,7 +553,7 @@ theorem rustExec_semScalar_agree_scoped {N : Nat} {leafSpec : LeafSpec} {c : Low
           refine ⟨env.upd mergeName (t := .sword 64) (BitVec.ofNat 64 tv), ?_,
             envBoundOn_mono (envBoundOn_upd henv mergeName tv) (fun y hy => Or.inl hy),
             scalarInRange_upd hir mergeName htv⟩
-          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_neg hne0]
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, ite_true, ite_eq_right hne0]
       | ifFalse _ _ _ _ _ hveq hcf =>
           have heq0 : BitVec.ofNat 64 (rs.rsScalar name) = 0#64 :=
             (ofNat_eq_zero_iff (hir name)).mpr hveq
@@ -562,7 +562,7 @@ theorem rustExec_semScalar_agree_scoped {N : Nat} {leafSpec : LeafSpec} {c : Low
           refine ⟨env.upd mergeName (t := .sword 64) (BitVec.ofNat 64 ev), ?_,
             envBoundOn_mono (envBoundOn_upd henv mergeName ev) (fun y hy => Or.inl hy),
             scalarInRange_upd hir mergeName hev⟩
-          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_pos heq0]
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, ite_true, ite_eq_left heq0]
 
 /-- A `varsBoundIn` over a pointwise-true bound set is vacuous. -/
 theorem varsBoundIn_of_all : ∀ (e : SExpr) (B : String → Prop), (∀ y, B y) → varsBoundIn B e := by
@@ -919,7 +919,7 @@ theorem towerWordsOn_updScalar {rs : RustState} {env env2 : SEnvScalar} {T : Str
     TowerWordsOn (rsSetScalar rs x v) (env2.upd x (t := .sword 64) w) T := by
   intro y hy hnt
   have hyx : y ≠ x := fun hyx => hx (hyx ▸ hy)
-  simp only [SEnvScalar.upd, if_neg hyx, rsSetScalar]
+  simp only [SEnvScalar.upd, ite_eq_right hyx, rsSetScalar]
   rw [hotb y (Or.inl hnt)]; exact h y hy hnt
 
 /-- A located lookup is the tower binding at the located type. -/
@@ -1027,15 +1027,15 @@ theorem agreeArrS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henvs, henvi]; rfl
         · intro y hy hnt
           have hyd : y ≠ d := fun hyd => hdisj y hy (hyd ▸ hTd)
-          simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hyd : y = d
           · subst hyd
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TU64]
             rw [hload.1]
-          · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
             exact htw y hy hnt
   | rArrStore a idxVar s k ha hs hi =>
@@ -1058,18 +1058,18 @@ theorem agreeArrS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
         refine ⟨env.upd a (t := encodeTy (.TArr k .TU64))
           (memSetDyn (arrWords k oldV) idx (cryptoTyOfRustVal .TU64 srcV)), ?_, ?_, ?_, hir⟩
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henva, henvs, henvi]
-          exact dif_pos rfl
+          exact dite_eq_left rfl
         · intro y hy hnt
           have hya : y ≠ a := fun hya => hdisj y hy (hya ▸ hTa)
-          simp only [SEnvScalar.upd, if_neg hya, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hya : y = a
           · subst hya
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TArr]
             rw [hstore.1]
-          · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
             exact htw y hy hnt
   | rArrLoadBytes d s idxVar m hd hs hi =>
@@ -1092,15 +1092,15 @@ theorem agreeArrS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henvs, henvi]; rfl
         · intro y hy hnt
           have hyd : y ≠ d := fun hyd => hdisj y hy (hyd ▸ hTd)
-          simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hyd : y = d
           · subst hyd
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TU64]
             rw [hload.2]
-          · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
             exact htw y hy hnt
   | rArrStoreBytes a idxVar s m ha hs hi =>
@@ -1125,18 +1125,18 @@ theorem agreeArrS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec)
           (memSetDyn (bytesWords (8 * m) oldV) idx (cryptoTyOfRustVal .TU64 srcV)), ?_, ?_, ?_,
           hir⟩
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henva, henvs, henvi]
-          exact dif_pos rfl
+          exact dite_eq_left rfl
         · intro y hy hnt
           have hya : y ≠ a := fun hya => hdisj y hy (hya ▸ hTa)
-          simp only [SEnvScalar.upd, if_neg hya, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hya : y = a
           · subst hya
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TBytes]
             rw [hstore.2]
-          · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
             exact htw y hy hnt
 
@@ -1219,7 +1219,7 @@ theorem rustExec_semScalar_agree_arr {N : Nat} {leafSpec : LeafSpec}
             envBoundOn_mono (envBoundOn_upd henv mergeName tv) (fun y hy => Or.inl hy),
             towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) mergeName hTm _ _,
             scalarInRange_upd hir mergeName htv⟩
-          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_neg hne0]
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, ite_true, ite_eq_right hne0]
       | ifFalse _ _ _ _ _ hveq hcf =>
           have heq0 : BitVec.ofNat 64 (rs.rsScalar name) = 0#64 :=
             (ofNat_eq_zero_iff (hir name)).mpr hveq
@@ -1229,7 +1229,7 @@ theorem rustExec_semScalar_agree_arr {N : Nat} {leafSpec : LeafSpec}
             envBoundOn_mono (envBoundOn_upd henv mergeName ev) (fun y hy => Or.inl hy),
             towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) mergeName hTm _ _,
             scalarInRange_upd hir mergeName hev⟩
-          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_pos heq0]
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, ite_true, ite_eq_left heq0]
 
 /-! ## The word-slot agreement
 
@@ -1270,7 +1270,7 @@ theorem towerLimb_zero_TU64 (v : RustVal .TU64) :
     BitVec.ofNat 64 (towerLimb v 0) = cryptoTyOfRustVal .TU64 v := by
   simp only [towerLimb, rustValByte, cryptoTyOfRustVal, TowerType.storageBytes]
   simp only [Nat.zero_mul, Nat.zero_add]
-  simp (config := {decide := true}) only [dif_pos]
+  simp (config := {decide := true}) only [dite_eq_left]
   exact ofNat_bytes_eq_wordOfBytes8 _
 
 /-- The word-typedness of the word names `TW`: each is bound in the tower heap at
@@ -1356,8 +1356,8 @@ theorem evalState_towerSpell (TW : String → Prop) [DecidablePred TW] (rs : Rus
   | SVar x =>
       intro _
       by_cases hx : TW x
-      · simp only [towerSpell, if_pos hx, SExpr.evalState, SExpr.eval, spellReader]
-      · simp only [towerSpell, if_neg hx, SExpr.evalState, SExpr.eval, spellReader]
+      · simp only [towerSpell, ite_eq_left hx, SExpr.evalState, SExpr.eval, spellReader]
+      · simp only [towerSpell, ite_eq_right hx, SExpr.evalState, SExpr.eval, spellReader]
   | SLit n => intro _; rfl
   | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
   | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb | SMulHiU a b iha ihb =>
@@ -1541,9 +1541,9 @@ theorem envReader_eq_spellReader {rs : RustState} {env : SEnvScalar} {B T TW : S
   rcases hs with hs | hs
   · have hnw : ¬ TW s := fun hw => hdisj s hs (hTW s hw)
     rw [envReader_of_envBoundOn henv s hs hns]
-    simp only [SExpr.liftEnv, spellReader, if_neg hnw]
+    simp only [SExpr.liftEnv, spellReader, ite_eq_right hnw]
   · obtain ⟨v, hv, hb⟩ := wordBind_of_towerU64 htw hu hTW hs hns
-    simp only [envReader, hb, SExpr.liftEnv, spellReader, if_pos hs, rsTowerLimb, hv]
+    simp only [envReader, hb, SExpr.liftEnv, spellReader, ite_eq_left hs, rsTowerLimb, hv]
     exact (towerLimb_zero_TU64 v).symm
 
 /-! ### Straight-line agreement with word slots -/
@@ -1621,7 +1621,7 @@ theorem agreeArrWS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec
         rw [evalState_towerSpell TW rs e hclean]
         exact SExpr.eval_lt_of_inRange _ _ hirS
       by_cases hx : TW x
-      · simp only [towerSpellC, if_pos hx] at hexec
+      · simp only [towerSpellC, ite_eq_left hx] at hexec
         cases hexec with | limbStoreExpr _ _ _ _ oldV hold =>
           refine ⟨env2.upd x (t := .sword 64) (BitVec.ofNat 64 ((towerSpell TW e).evalState rs)),
             by simp only [semScalar, hsem2]; rw [hval], ?_, ?_, ?_, hir⟩
@@ -1635,19 +1635,19 @@ theorem agreeArrWS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec
               rcases hy with hy | ⟨_, hnw⟩
               · exact hy
               · exact absurd hx hnw
-            simp only [SEnvScalar.upd, if_neg hyx, locatedUpdate, rsSetTower]
+            simp only [SEnvScalar.upd, ite_eq_right hyx, locatedUpdate, rsSetTower]
             rw [hotb2 y (Or.inl hnt)]; exact henv y hby hnt
           · intro y hy hnt
             by_cases hyx : y = x
             · subst hyx
-              simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+              simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
                 Located.locDst, encodeTowerWords_TU64]
               rw [hlimb]
-            · simp only [SEnvScalar.upd, if_neg hyx, locatedUpdate]
+            · simp only [SEnvScalar.upd, ite_eq_right hyx, locatedUpdate]
               rw [rsSetTower_other rs _ y _ (Ne.symm hyx), hotb2 y (Or.inl hnt)]
               exact htw y hy hnt
           · exact towerU64On_setTower_TU64 hu x _
-      · simp only [towerSpellC, if_neg hx] at hexec
+      · simp only [towerSpellC, ite_eq_right hx] at hexec
         cases hexec
         have hTx : ¬ T x := htok.resolve_right hx
         refine ⟨env2.upd x (t := .sword 64) (BitVec.ofNat 64 ((towerSpell TW e).evalState rs)),
@@ -1680,15 +1680,15 @@ theorem agreeArrWS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henvs, henvi]; rfl
         · intro y hy hnt
           have hyd : y ≠ d := fun hyd => hdisj y hy (hyd ▸ hTd)
-          simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hyd : y = d
           · subst hyd
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TU64]
             rw [hload.1]
-          · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
             exact htw y hy hnt
   | rArrStore a idxVar s k ha hs hi =>
@@ -1713,18 +1713,18 @@ theorem agreeArrWS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec
           (memSetDyn (arrWords k oldV) idx (cryptoTyOfRustVal .TU64 srcV)), ?_, ?_, ?_,
           towerU64On_setTower_other hu htok.2.1 _, hir⟩
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henva, henvs, henvi]
-          exact dif_pos rfl
+          exact dite_eq_left rfl
         · intro y hy hnt
           have hya : y ≠ a := fun hya => hdisj y hy (hya ▸ hTa)
-          simp only [SEnvScalar.upd, if_neg hya, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hya : y = a
           · subst hya
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TArr]
             rw [hstore.1]
-          · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
             exact htw y hy hnt
   | rArrLoadBytes d s idxVar m hd hs hi =>
@@ -1748,15 +1748,15 @@ theorem agreeArrWS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henvs, henvi]; rfl
         · intro y hy hnt
           have hyd : y ≠ d := fun hyd => hdisj y hy (hyd ▸ hTd)
-          simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hyd : y = d
           · subst hyd
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TU64]
             rw [hload.2]
-          · simp only [SEnvScalar.upd, if_neg hyd, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hyd, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hyd)]
             exact htw y hy hnt
   | rArrStoreBytes a idxVar s m ha hs hi =>
@@ -1782,18 +1782,18 @@ theorem agreeArrWS {N : Nat} {leafSpec : LeafSpec} (hload : ArrLoadWord leafSpec
           (memSetDyn (bytesWords (8 * m) oldV) idx (cryptoTyOfRustVal .TU64 srcV)), ?_, ?_, ?_,
           towerU64On_setTower_other hu htok.2.1 _, hir⟩
         · rw [← hidxn]; simp only [semScalar, Located.locDst, henva, henvs, henvi]
-          exact dif_pos rfl
+          exact dite_eq_left rfl
         · intro y hy hnt
           have hya : y ≠ a := fun hya => hdisj y hy (hya ▸ hTa)
-          simp only [SEnvScalar.upd, if_neg hya, locatedUpdate, rsSetTower]
+          simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate, rsSetTower]
           exact henv y hy hnt
         · intro y hy hnt
           by_cases hya : y = a
           · subst hya
-            simp only [SEnvScalar.upd, if_true, locatedUpdate, rsSetTower_same, Option.map_some,
+            simp only [SEnvScalar.upd, ite_true, locatedUpdate, rsSetTower_same, Option.map_some,
               Located.locDst, encodeTowerWords_TBytes]
             rw [hstore.2]
-          · simp only [SEnvScalar.upd, if_neg hya, locatedUpdate]
+          · simp only [SEnvScalar.upd, ite_eq_right hya, locatedUpdate]
             rw [rsSetTower_other rs _ y _ (Ne.symm hya)]
             exact htw y hy hnt
 
@@ -1889,7 +1889,7 @@ theorem rustExec_semScalar_agree_arrW {N : Nat} {leafSpec : LeafSpec}
             envBoundOn_mono (envBoundOn_upd henv mergeName tv) (fun y hy => Or.inl hy),
             towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) mergeName hTm _ _,
             towerU64On_setScalar hu _ _, scalarInRange_upd hir mergeName htv⟩
-          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_neg hne0]
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, ite_true, ite_eq_right hne0]
       | ifFalse _ _ _ _ _ hveq hcf =>
           have heq0 : BitVec.ofNat 64 (rs.rsScalar name) = 0#64 :=
             (ofNat_eq_zero_iff (hir name)).mpr hveq
@@ -1899,6 +1899,6 @@ theorem rustExec_semScalar_agree_arrW {N : Nat} {leafSpec : LeafSpec}
             envBoundOn_mono (envBoundOn_upd henv mergeName ev) (fun y hy => Or.inl hy),
             towerWordsOn_updScalar htw (onlyTmpBelow_refl env 0) mergeName hTm _ _,
             towerU64On_setScalar hu _ _, scalarInRange_upd hir mergeName hev⟩
-          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, if_true, if_pos heq0]
+          simp only [semScalar, hcond, asSingleScalarSet, phiSelect, ite_true, ite_eq_left heq0]
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge

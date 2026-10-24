@@ -272,7 +272,7 @@ theorem evalInstrA_agree (sa sb : AState) (i : JInstr 64) (hr : sa.regs = sb.reg
       · exact hx
   · intro a ha x hx
     simp only [evalInstrA, writeAddr_congr sa sb i hr, h3, ha, write64,
-      if_pos (Rng.mem_word.1 hx)]
+      ite_eq_left (Rng.mem_word.1 hx)]
 
 /-- **Locality of a run.** Two states with equal registers and flags whose memories agree
     on every range the run from the first reads end with equal registers and flags; their
@@ -399,7 +399,7 @@ theorem runBlock_mem_frame (blk : List (JInstr 64)) :
     | some c =>
       have hne : ¬ (k.1 = c.1 ∧ k.2 = c.2) := fun ⟨e1, e2⟩ =>
         hk (mem_writeKeys_cons.2 (Or.inl (by rw [hw, Prod.ext e1 e2])))
-      simp only [if_neg hne]
+      simp only [ite_eq_right hne]
 
 /-- **Frame for `CorresJ`.** A predicate on the name-keyed memory that depends only on
     cells a displacement block does not write is carried along the correspondence. -/
@@ -706,7 +706,7 @@ theorem cellFootprint_of_footCheck {bank : String → Option String}
       ∀ k ∈ F.writes, Pc k = true := by
   obtain ⟨hd, hK⟩ := footCheckFrom_sound bank Pc blk {} h
   refine ⟨⟨(canonD bank blk).filterMap readKey, writeKeys (canonD bank blk)⟩, ?_, ?_, ?_⟩
-  · simp only [cellFootprint, disciplinedD, hd, if_true]
+  · simp only [cellFootprint, disciplinedD, hd, ite_true]
   · exact fun k hk => hK k (List.mem_append_left _ hk)
   · exact fun k hk => hK k (List.mem_append_right _ hk)
 

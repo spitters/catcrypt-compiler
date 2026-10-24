@@ -446,7 +446,7 @@ theorem callN_towerEnc {leafSpec : LeafSpec} {ls : SemLeafSpec} (hagree : CallAg
         rw [semCallNDestsL_other ls f args rest (i + 1) _ _ hxr,
           rsTower_callNUpdate_other leafSpec f argTs argList rest (i + 1) _ _ hxr,
           locatedUpdate_dest]
-        simp only [SEnvScalar.upd, if_true, Option.map_some, encodeRustVal]
+        simp only [SEnvScalar.upd, ite_true, Option.map_some, encodeRustVal]
         rw [hagree, hargs]
 
 /-- **The multi-destination call step.** After a `RustExec` step of `RCallN f dests args`

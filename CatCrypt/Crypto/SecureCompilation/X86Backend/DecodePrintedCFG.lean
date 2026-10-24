@@ -314,10 +314,10 @@ theorem labelPos_fundef {body : Lcmd} {shs : List DShape}
   rw [List.drop_eq_getElem_cons hpl, List.drop_eq_getElem_cons hps, hskip] at hsplit
   unfold fundefItemsL
   rw [hsplit]
-  simp only [labelPos, mkLea, reduceCtorEq, if_false, Option.isSome_some, if_true]
+  simp only [labelPos, mkLea, reduceCtorEq, ite_false, Option.isSome_some, ite_true]
   rw [List.append_assoc, labelPos_append_of_ne _ _ _
     (itemsFromL_noLabel P l _ _ _ hpre), decCount_itemsFromL P _ _ _ (by simp; omega)]
-  simp only [itemsFromL, dItems, List.cons_append, labelPos, hlab', if_true]
+  simp only [itemsFromL, dItems, List.cons_append, labelPos, hlab', ite_true]
   simp only [posOf, Option.some.injEq, Prod.mk.injEq]
   exact ⟨_, trivial, rfl⟩
 
@@ -657,7 +657,7 @@ theorem run_sim {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) (rsp
             cases li' <;> simp [isCondB, isLabelB]
           obtain ⟨sa', hR, hC⟩ := ih p sa (s.setLpc p) zf t rfl hpl (acorr_setLpc hc _) hz' hrun
             (hsafe.2 _ _ hstep)
-          rw [if_pos hzp] at hms
+          rw [ite_eq_left hzp] at hms
           exact ⟨sa', .next hms hR, hC⟩
         · have hstep : stepA frame body s zf = some (s.setLpc (k + 1), zf) := by
             unfold stepA
@@ -670,7 +670,7 @@ theorem run_sim {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) (rsp
             cases hcnd
           obtain ⟨sa', hR, hC⟩ := ih (k + 1) sa (s.setLpc (k + 1)) zf t rfl hkn (acorr_setLpc hc _)
             hz' hrun (hsafe.2 _ _ hstep)
-          rw [if_neg hzp] at hms
+          rw [ite_eq_right hzp] at hms
           rw [posOf_succ shs k hks, hsk] at hR
           exact ⟨sa', .next hms (by simpa [nOf] using hR), hC⟩
       | _ => simp [instrOKB] at hok
@@ -792,8 +792,8 @@ theorem printedAddr_sim_noCall (body : Lcmd) (h : printedAddrB body = true) (sa 
   obtain ⟨hl1, hm1⟩ := evalInstrA_leaFrame sa (-(Int.ofNat F))
   set sa1 := evalInstrA sa (leaFrame (-(Int.ofNat F)))
   have hc0 : ACorr rsp sa1 s :=
-    { regs := fun R hR => by rw [hent R hR, hl1, if_neg (fun e => (gpFacts hR).physNe e)]
-      sp := by rw [hl1, if_pos rfl, hrsp]; rfl
+    { regs := fun R hR => by rw [hent R hR, hl1, ite_eq_right (fun e => (gpFacts hR).physNe e)]
+      sp := by rw [hl1, ite_eq_left rfl, hrsp]; rfl
       mem := fun x _ => by rw [hmem, hm1] }
   have hz0 : isCondB (body[0]'hF.pos).li_i = true → sa1.flags.zf.getD false = zf := by
     intro hcnd
@@ -826,9 +826,9 @@ theorem printedAddr_sim_noCall (body : Lcmd) (h : printedAddrB body = true) (sa 
     have hpos0 : posOf shs 0 = 1 := by simp [posOf]
     rw [hpos0] at hR
     exact (h01.trans hR).trans (.single (aMachine_step_op prog _ sa2 _ he1))
-  · rw [hl2, if_pos rfl, hc2.sp, hrsp, frameRsp]
+  · rw [hl2, ite_eq_left rfl, hc2.sp, hrsp, frameRsp]
     simp [F, P, BitVec.ofInt_neg, BitVec.ofInt_natCast]
-  · rw [hl2, if_neg (fun e => (gpFacts hR).physNe e)]
+  · rw [hl2, ite_eq_right (fun e => (gpFacts hR).physNe e)]
     exact hc2.regs R hR
   · rw [hm2]
     exact hc2.mem x hx

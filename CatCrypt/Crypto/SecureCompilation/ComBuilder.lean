@@ -558,12 +558,12 @@ theorem buildCom_denote_evalCom :
                         intro L hLlt
                         simp only [envExtend]
                         by_cases hLd : L = depth
-                        · simp only [if_pos hLd]
+                        · simp only [ite_eq_left hLd]
                           have hz : depth + 1 - 1 - L = 0 := by omega
                           have he2 : valIdx ((.reg 64) :: Γ) (V.extend (e.denote V))
                               (depth + 1 - 1 - L) = e.denote V := by rw [hz]; rfl
                           rw [he2, hval]
-                        · simp only [if_neg hLd]
+                        · simp only [ite_eq_right hLd]
                           have hLlt' : L < depth := by omega
                           have hge : depth + 1 - 1 - L = (depth - 1 - L) + 1 := by omega
                           have he3 : valIdx ((.reg 64) :: Γ) (V.extend (e.denote V))

@@ -409,9 +409,9 @@ theorem tryInlineExpr_denote {Γ : Ctxt jasminDialect} {bs : JasminTy}
       -- Reduce the outer `match some fb` so the `dite`s are top-level.
       simp only at h_match
       by_cases hArg : fb.argTys = eArgTys
-      · rw [dif_pos hArg] at h_match
+      · rw [dite_eq_left hArg] at h_match
         by_cases hRet : fb.retTy = eRetTy
-        · rw [dif_pos hRet] at h_match
+        · rw [dite_eq_left hRet] at h_match
           subst hArg
           subst hRet
           simp only [Option.some.injEq] at h_match
@@ -420,8 +420,8 @@ theorem tryInlineExpr_denote {Γ : Ctxt jasminDialect} {bs : JasminTy}
           rw [inlineExpr_denote]
           rw [h_consistent name fb h_R (Expr.lookupArgs args V)]
           rfl
-        · rw [dif_neg hRet] at h_match; exact absurd h_match (by simp)
-      · rw [dif_neg hArg] at h_match; exact absurd h_match (by simp)
+        · rw [dite_eq_right hRet] at h_match; exact absurd h_match (by simp)
+      · rw [dite_eq_right hArg] at h_match; exact absurd h_match (by simp)
 
 /-- **Headline denotation theorem.** Under registry consistency, `inline R`
     preserves `Com.denote`. -/

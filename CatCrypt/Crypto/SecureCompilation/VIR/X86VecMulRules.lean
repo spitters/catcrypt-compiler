@@ -116,14 +116,14 @@ def OddIn (u v : BitVec 512) : Prop :=
 /-- Dword `2i` of `vmovshdup` is dword `2i+1` of its operand. -/
 theorem dup_even (w : BitVec 512) {i : Nat} (hi : i < 8) :
     lane 32 (semDup true w) (2 * i) = lane 32 w (2 * i + 1) := by
-  rw [lane_semDup _ _ (by omega), if_pos rfl]
+  rw [lane_semDup _ _ (by omega), ite_eq_left rfl]
   congr 1
   omega
 
 /-- Dword `2i+1` of `vmovsldup` is dword `2i` of its operand. -/
 theorem dupLow_odd (w : BitVec 512) {i : Nat} (hi : i < 8) :
     lane 32 (semDup false w) (2 * i + 1) = lane 32 w (2 * i) := by
-  rw [lane_semDup _ _ (by omega), if_neg (by decide)]
+  rw [lane_semDup _ _ (by omega), ite_eq_right (by decide)]
   congr 1
   omega
 
@@ -186,8 +186,8 @@ theorem bcast_lane (c : BitVec 32) {j : Nat} (hj : j < 16) : lane 32 (bcast 32 c
 theorem dup_bcast (odd : Bool) (c : BitVec 32) : semDup odd (bcast 32 c) = bcast 32 c := by
   refine lane_inj512 isShape_dword _ _ fun j hj => ?_
   cases odd
-  · rw [lane_semDup _ _ hj, if_neg (by decide), bcast_lane _ (by omega), bcast_lane _ hj]
-  · rw [lane_semDup _ _ hj, if_pos rfl, bcast_lane _ (by omega), bcast_lane _ hj]
+  · rw [lane_semDup _ _ hj, ite_eq_right (by decide), bcast_lane _ (by omega), bcast_lane _ hj]
+  · rw [lane_semDup _ _ hj, ite_eq_left rfl, bcast_lane _ (by omega), bcast_lane _ hj]
 
 /-- **A value from its even and its odd product**: the even dwords of `E` and, in the odd
     dwords, the even dwords of `O` moved up by `vmovsldup`. -/
@@ -197,10 +197,10 @@ theorem pair_low {E O v : BitVec 512} (hE : EvenAgree E v) (hO : OddIn O v) :
   rw [lane_semMerge _ _ _ hj]
   obtain ⟨i, rfl | rfl⟩ : ∃ i, j = 2 * i ∨ j = 2 * i + 1 := ⟨j / 2, by omega⟩
   · have hi : i < 8 := by omega
-    rw [(maskAAAA i hi).1, if_neg (by decide)]
+    rw [(maskAAAA i hi).1, ite_eq_right (by decide)]
     exact hE i hi
   · have hi : i < 8 := by omega
-    rw [(maskAAAA i hi).2, if_pos rfl, dupLow_odd _ hi]
+    rw [(maskAAAA i hi).2, ite_eq_left rfl, dupLow_odd _ hi]
     exact hO i hi
 
 /-- The inner product of a `vpmuludq` on a dword product, from operands with the even
@@ -258,12 +258,12 @@ theorem montSub_inside (a b a' b' c1 c2 : BitVec 512)
   obtain ⟨i, rfl | rfl⟩ : ∃ i, j = 2 * i ∨ j = 2 * i + 1 := ⟨j / 2, by omega⟩
   · have hi : i < 8 := by omega
     rw [(maskAAAA i hi).1]
-    simp only [Bool.false_eq_true, if_false]
+    simp only [Bool.false_eq_true, ite_false]
     rw [dup_even _ hi, dup_even _ hi, dup_even _ hi, sub_high a b c1 c2 hi (hinv i hi)]
     rfl
   · have hi : i < 8 := by omega
     rw [(maskAAAA i hi).2]
-    simp only [if_true]
+    simp only [ite_true]
     rw [sub_high a' b' c1 c2 hi (hinv i hi)]
     rfl
 
@@ -1101,7 +1101,7 @@ theorem mont_offers (D : Defs jasminVec) (μ : Nat) (a b lo E O μc m pc dm dp :
     simp only [Option.bind_some, hO]
   have h4 : oddSrc D μc = some μc := by
     unfold oddSrc
-    simp only [hμ, Option.bind_some, bcstNode?, if_true]
+    simp only [hμ, Option.bind_some, bcstNode?, ite_true]
   have k1 : ∀ x y : Var Δ VReg, ((lwE 64 .muludq x y).op, argLvls (lwE 64 .muludq x y).args)
       = ((.inr (.lw .zmm 64 .muludq) : jasminVec.Op), [varLvl x, varLvl y]) := fun _ _ => rfl
   constructor

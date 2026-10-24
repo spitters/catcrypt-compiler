@@ -409,20 +409,20 @@ theorem sarStruct?_shiftLinstr_SHR {w : Nat} (dst : String) (src : LOperand) (n 
     sarStruct? (shiftLinstr "SHR" w dst src n) = none := by
   simp only [shiftLinstr, sarStruct?]
   cases src <;> simp only []
-  · rw [if_neg]; rw [stripWidthTag_withWidthTag_SHR]; decide
+  · rw [ite_eq_right]; rw [stripWidthTag_withWidthTag_SHR]; decide
 
 /-- `sarStruct?` is `none` on a structured `SHL` instruction. -/
 theorem sarStruct?_shiftLinstr_SHL {w : Nat} (dst : String) (src : LOperand) (n : Nat) :
     sarStruct? (shiftLinstr "SHL" w dst src n) = none := by
   simp only [shiftLinstr, sarStruct?]
   cases src <;> simp only []
-  · rw [if_neg]; rw [stripWidthTag_withWidthTag_SHL]; decide
+  · rw [ite_eq_right]; rw [stripWidthTag_withWidthTag_SHL]; decide
 
 /-- `sarStruct?` recognises a structured `SAR` instruction with a `.reg` source, whose
     count is the clamped `sarCount w n`. -/
 theorem sarStruct?_shiftLinstr_SAR {w : Nat} (dst src : String) (n : Nat) :
     sarStruct? (shiftLinstr "SAR" w dst (.reg src) n) = some (dst, src, sarCount w n) := by
-  simp only [shiftLinstr, sarStruct?, stripWidthTag_withWidthTag_SAR, if_pos]
+  simp only [shiftLinstr, sarStruct?, stripWidthTag_withWidthTag_SAR, ite_eq_left]
 
 /-- **Structured `SHR` per-binding step.** From a store agreeing with `V`, the
     structured `SHR` instruction `lsemStepSh`s to the state writing the binding's
@@ -625,7 +625,7 @@ theorem sarStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
   rcases srcs with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
   · rfl
   · cases a <;> rfl
-  · cases a <;> cases b <;> simp only [sarStruct?, if_neg h]
+  · cases a <;> cases b <;> simp only [sarStruct?, ite_eq_right h]
   · cases a <;> simp only [sarStruct?]
 
 /-- The `regArith` `opToLinstrR` image is never a structured `SAR`. -/

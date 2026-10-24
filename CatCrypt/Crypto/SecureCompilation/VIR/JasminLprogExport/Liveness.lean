@@ -161,7 +161,7 @@ theorem interferenceOk_of_boolB (tr : List PhysEvent) (ρ : Nat → Nat)
   have hb' := List.all_eq_true.mp ha' b hb
   by_cases heq : a == b
   · simp only [beq_iff_eq] at heq; exact absurd heq hne
-  · simp only [heq, Bool.false_eq_true, if_false] at hb'
+  · simp only [heq, Bool.false_eq_true, ite_false] at hb'
     simpa [bne, beq_iff_eq] using hb'
 
 /-! ### 7f. The fresh-SSA trace and the proposed residence map
@@ -191,7 +191,7 @@ theorem interferenceOkB_id (tr : List PhysEvent) : interferenceOkB tr id = true 
   by_cases h : a == b
   · simp [h]
   · have hf : (a == b) = false := by simpa using h
-    simp only [hf, Bool.false_eq_true, if_false, id_eq, bne, Bool.not_false]
+    simp only [hf, Bool.false_eq_true, ite_false, id_eq, bne, Bool.not_false]
 
 /-! ### 7g. Phase-0 demonstration witnesses
 

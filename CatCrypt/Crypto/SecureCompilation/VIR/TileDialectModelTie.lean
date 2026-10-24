@@ -107,7 +107,7 @@ theorem tileBin_eq_evalTileOp {n w : Nat}
      simp only [toTileOp, evalTileOp, JasminBinOp.applyLane,
        CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.set,
        CatCrypt.Crypto.SecureCompilation.TileBackend.TileModel.TileState.get,
-       if_true])
+       ite_true])
 
 /-- **Direct form: the `Com`-dialect denotation equals the operational lane
     function.** For `op` other than `shl`/`shr`, the `tileDenote` of `tileBin op`

@@ -92,13 +92,13 @@ theorem interleave_deinterleave (n : ℕ) (j : Fin (2 * n)) :
   apply Fin.ext
   unfold deinterleave
   by_cases h : j.val < n
-  · rw [dif_pos h]
+  · rw [dite_eq_left h]
     unfold interleave
-    rw [if_pos (by simp only []; omega)]
+    rw [ite_eq_left (by simp only []; omega)]
     simp only []; omega
-  · rw [dif_neg h]
+  · rw [dite_eq_right h]
     unfold interleave
-    rw [if_neg (by simp only []; omega)]
+    rw [ite_eq_right (by simp only []; omega)]
     simp only []; omega
 
 theorem deinterleave_interleave (n : ℕ) (j : Fin (2 * n)) :
@@ -106,13 +106,13 @@ theorem deinterleave_interleave (n : ℕ) (j : Fin (2 * n)) :
   apply Fin.ext
   unfold interleave
   by_cases h : j.val % 2 = 0
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     unfold deinterleave
-    rw [dif_pos (by simp only []; omega)]
+    rw [dite_eq_left (by simp only []; omega)]
     simp only []; omega
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     unfold deinterleave
-    rw [dif_neg (by simp only []; omega)]
+    rw [dite_eq_right (by simp only []; omega)]
     simp only []; omega
 
 /-- The single-layer even/odd deinterleave is an `Equiv` of `Fin (2 * n)` — its
@@ -136,7 +136,7 @@ theorem deinterleave_lower_is_even {R : Type*} [CommRing R] (n : ℕ)
     (x ∘ deinterleave n) ⟨i.val, by omega⟩ = evenPart x i := by
   simp only [Function.comp, deinterleave, evenPart]
   have h : (⟨i.val, by omega⟩ : Fin (2 * n)).val < n := i.isLt
-  simp only [h, dif_pos]
+  simp only [h, dite_eq_left]
 
 /-- **Upper half is the odd sub-sequence.**  For an upper slot `n + i`, the
 deinterleaved vector reads the `2i+1`-th entry — exactly `oddPart x i`. -/
@@ -145,7 +145,7 @@ theorem deinterleave_upper_is_odd {R : Type*} [CommRing R] (n : ℕ)
     (x ∘ deinterleave n) ⟨n + i.val, by omega⟩ = oddPart x i := by
   simp only [Function.comp, oddPart]
   unfold deinterleave
-  rw [dif_neg (by simp only []; omega)]
+  rw [dite_eq_right (by simp only []; omega)]
   congr 1
   apply Fin.ext
   simp only []

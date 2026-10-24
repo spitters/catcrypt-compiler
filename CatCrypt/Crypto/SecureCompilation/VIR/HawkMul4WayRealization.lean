@@ -137,12 +137,12 @@ theorem hawk_negacyclic_mul_one (b : HawkLane) :
       apply Fin.ext
       show (k.val + 16 - 0) % 16 = k.val
       omega
-    simp only [if_pos hle, hjk]
+    simp only [ite_eq_left hle, hjk]
     norm_num
   · -- i ≠ 0 ⇒ a[i] = 0 ⇒ term = 0
     intro i _ hi
     have hi0 : i.val ≠ 0 := fun h => hi (by apply Fin.ext; simp [h])
-    simp only [hi0, if_false]
+    simp only [hi0, ite_false]
     by_cases hle : i.val ≤ k.val <;> simp [hle]
   · intro h; exact absurd (Finset.mem_univ _) h
 
@@ -179,7 +179,7 @@ theorem hawk_negacyclic_shift (b : HawkLane) (k : Fin N) :
         apply Fin.ext
         show (k.val + 16 - 1) % 16 = 16 - 1
         omega
-      simp only [if_neg hle, if_pos hk0, hjk]
+      simp only [ite_eq_right hle, ite_eq_left hk0, hjk]
       norm_num
     · -- k ≥ 1: 1 ≤ k ⇒ positive term, j = (k + N - 1) % N = k - 1
       have hle : (⟨1, by decide⟩ : Fin N).val ≤ k.val := by rw [hidx1]; omega
@@ -188,12 +188,12 @@ theorem hawk_negacyclic_shift (b : HawkLane) (k : Fin N) :
         apply Fin.ext
         show (k.val + 16 - 1) % 16 = k.val - 1
         omega
-      simp only [if_pos hle, if_neg hk0, hjk]
+      simp only [ite_eq_left hle, ite_eq_right hk0, hjk]
       norm_num
   · -- i ≠ 1 ⇒ a[i] = 0 ⇒ term = 0
     intro i _ hi
     have hi1 : i.val ≠ 1 := fun h => hi (by apply Fin.ext; simp [h])
-    simp only [hi1, if_false]
+    simp only [hi1, ite_false]
     by_cases hle : i.val ≤ k.val <;> simp [hle]
   · intro h; exact absurd (Finset.mem_univ _) h
 

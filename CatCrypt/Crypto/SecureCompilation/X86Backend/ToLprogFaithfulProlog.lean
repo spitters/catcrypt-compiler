@@ -154,8 +154,8 @@ theorem buildPrologue_frame {w : Nat} (sEntry : Lstate w) (y : String)
     not_or] at hy
   obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9⟩ := hy
   simp only [prologueState, prologueStep, Lstate.lvm_nextPc, Lstate.lvm_setReg,
-    if_neg h1, if_neg h2, if_neg h3, if_neg h4, if_neg h5, if_neg h6,
-    if_neg h7, if_neg h8, if_neg h9]
+    ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4, ite_eq_right h5, ite_eq_right h6,
+    ite_eq_right h7, ite_eq_right h8, ite_eq_right h9]
 
 /-! ## 3. Store-relation preservation (the prologue half of `hrel`) -/
 

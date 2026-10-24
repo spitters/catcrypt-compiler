@@ -509,7 +509,7 @@ theorem carryK_Q {Γ : JCtxt} {ts : List JasminTy} (hb : P.b ≤ 64)
   · refine splitK_Q _ hb _ _ _ _ fun r lo hi Z1 h1 hlo hhi => ?_
     refine addK_Q _ _ _ _ _ fun r' nl Z2 h2' hnl => hk _ _ _ (PresZ.comp h1 h2') ?_
     rw [z_update', z_update', z_map' (PresZ.comp h1 h2')]
-    simp only [UnsatParams.carryZ, h, h2, if_true, hg h]
+    simp only [UnsatParams.carryZ, h, h2, ite_true, hg h]
     have e : LV.z Z2 nl = setAt i (lowZ P.b ((st ⟨i, h⟩).z Z)) (fun j => (st j).z Z)
         ⟨i + 1, h2⟩ + (st ⟨i, h⟩).z Z / 2 ^ P.b := by
       rw [hnl, LV.z_map h1, hhi]
@@ -520,7 +520,7 @@ theorem carryK_Q {Γ : JCtxt} {ts : List JasminTy} (hb : P.b ≤ 64)
   · refine splitK_Q _ hb _ _ _ _ fun r lo hi Z1 h1 hlo hhi => ?_
     refine wrapK_Q P _ hW _ _ _ _ _ fun r' st' Z2 h2' hst => hk _ _ _ (PresZ.comp h1 h2') ?_
     rw [hst, z_update', z_map' h1]
-    simp only [UnsatParams.carryZ, h, h2, if_true, if_false, hg h, hhi]
+    simp only [UnsatParams.carryZ, h, h2, ite_true, ite_false, hg h, hhi]
     rw [update_eq_setAt]
     simp only [LV.z, hlo]
   · exact hk _ _ _ (PresZ.id Z) (by simp [UnsatParams.carryZ, h])
@@ -647,7 +647,7 @@ theorem carryProdBlk_denoteZ (P : UnsatParams) (T : List (Fin P.n × Fin P.n × 
   refine chainK_Q P hb hW _ _ _ _ (fun z => hvGetZ z j = _) fun r' st' Z2 h2 hst2 => ?_
   refine finK_Q _ _ _ _ _ (fun z => hvGetZ z j = _) fun r'' out Z3 h3 ho => ?_
   show hvGetZ (lookupZ (hvOfFn P.n out) Z3) j = _
-  rw [hvGetZ_lookupZ, congrFun ho j, updL_apply, if_pos (List.mem_finRange j),
+  rw [hvGetZ_lookupZ, congrFun ho j, updL_apply, ite_eq_left (List.mem_finRange j),
     congrFun hst2 j, hst, updL_finRange]
   rfl
 

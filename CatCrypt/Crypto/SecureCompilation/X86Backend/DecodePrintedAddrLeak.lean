@@ -355,7 +355,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
     set sa1 := evalInstrA sa (.storeMem "%rsp" cmovRedZone (.reg R))
     set sa2 := evalInstrA sa1 (.mulx (phys H) R (.reg "%rdx") (.reg (phys S)))
     have hsp2 : sa2.regs "%rsp" = rsp := by
-      rw [DecodedLsemLoop.evalInstrA_mulx_regs, r1, if_neg hHsp.symm, if_neg hRsp.symm, hc.sp]
+      rw [DecodedLsemLoop.evalInstrA_mulx_regs, r1, ite_eq_right hHsp.symm, ite_eq_right hRsp.symm, hc.sp]
     have hsp1 : sa1.regs "%rsp" = rsp := by rw [r1, hc.sp]
     have hA : instrLeakA (frameP P rsp) (AArm.mulxS H S).li s = [] := by
       simp [AArm.li, instrLeakA, slotMov?, slotCmp?, cellA?, slotCarry?, slotImm?, slotCmov?]
@@ -366,7 +366,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
       hsp2]
     rw [hc.sp]
     simp only [JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing, Bool.false_eq_true,
-      if_false, List.nil_append]
+      ite_false, List.nil_append]
     rfl
   | mulx L H S =>
     simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, JInstr.mnem,
@@ -673,7 +673,7 @@ theorem run_simL {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) (rs
           have hb' : sa.view.condB cd = true := by rw [hcb, hzp]; simp
           refine ⟨sa', ?_⟩
           have := RunL.jcc (r := .doitm) (ok := fun _ _ => True) hj hcd
-            (by rw [hb', if_pos rfl]; exact hR)
+            (by rw [hb', ite_eq_left rfl]; exact hR)
           rw [hb'] at this
           simpa [hzp] using this
         · have hstep : stepA frame body s zf = some (s.setLpc (k + 1), zf) := by
@@ -694,7 +694,7 @@ theorem run_simL {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) (rs
             rw [hcb]; cases zf <;> cases pol <;> simp_all
           refine ⟨sa', ?_⟩
           have := RunL.jcc (r := .doitm) (ok := fun _ _ => True) hj hcd
-            (by rw [hb', if_neg (by simp)]; simpa [nOf] using hR)
+            (by rw [hb', ite_eq_right (by simp)]; simpa [nOf] using hR)
           rw [hb'] at this
           have hzb : (zf == pol) = false := by cases zf <;> cases pol <;> simp_all
           simpa [hzb] using this
@@ -740,8 +740,8 @@ theorem printedAddr_simL (body : Lcmd) (h : printedAddrB body = true) (sa : ASta
   obtain ⟨hl1, hm1⟩ := evalInstrA_leaFrame sa (-(Int.ofNat F))
   set sa1 := evalInstrA sa (leaFrame (-(Int.ofNat F)))
   have hc0 : ACorr rsp sa1 s :=
-    { regs := fun R hR => by rw [hent R hR, hl1, if_neg (fun e => (gpFacts hR).physNe e)]
-      sp := by rw [hl1, if_pos rfl, hrsp]; rfl
+    { regs := fun R hR => by rw [hent R hR, hl1, ite_eq_right (fun e => (gpFacts hR).physNe e)]
+      sp := by rw [hl1, ite_eq_left rfl, hrsp]; rfl
       mem := fun x _ => by rw [hmem, hm1] }
   have hz0 : isCondB (body[0]'hF.pos).li_i = true → sa1.flags.zf.getD false = zf := by
     intro hcnd
@@ -806,8 +806,8 @@ theorem stepA_lpc_det {frame : String → Option (BitVec 64)} {c : Lcmd} {s₁ s
         | some pol =>
           simp only [hp, List.cons.injEq, CTLeak.branch.injEq, and_true] at h₁ h₂ hl
           by_cases e₁ : zf₁ = pol <;> by_cases e₂ : zf₂ = pol
-          · rw [if_pos e₁] at h₁
-            rw [if_pos e₂] at h₂
+          · rw [ite_eq_left e₁] at h₁
+            rw [ite_eq_left e₂] at h₂
             obtain ⟨p, hp1, hq₁⟩ := Option.map_eq_some_iff.mp h₁
             obtain ⟨p', hp2, hq₂⟩ := Option.map_eq_some_iff.mp h₂
             rw [hp1] at hp2
@@ -817,8 +817,8 @@ theorem stepA_lpc_det {frame : String → Option (BitVec 64)} {c : Lcmd} {s₁ s
             rfl
           · subst e₁; simp at hl; exact absurd hl e₂
           · subst e₂; simp at hl; exact absurd hl e₁
-          · rw [if_neg e₁] at h₁
-            rw [if_neg e₂] at h₂
+          · rw [ite_eq_right e₁] at h₁
+            rw [ite_eq_right e₂] at h₂
             simp only [Option.some.injEq, Prod.mk.injEq] at h₁ h₂
             rw [← h₁.1, ← h₂.1]
             rfl

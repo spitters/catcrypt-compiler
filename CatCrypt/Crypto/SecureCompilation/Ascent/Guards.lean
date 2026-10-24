@@ -395,11 +395,11 @@ theorem corresU_cond {fuel : Nat} {P : AState → Prop} {fb : AState → AState}
   · obtain ⟨env', hstep, hSR'⟩ := hbody env a hSR (hP hga)
     refine ⟨env', ?_, ?_⟩
     · simp only [semScalarCond, hgu, hga, cond_true, hstep]
-    · simp only [hga, if_true]; exact hSR'
+    · simp only [hga, ite_true]; exact hSR'
   · simp only [Bool.not_eq_true] at hga
     refine ⟨env, ?_, ?_⟩
     · simp only [semScalarCond, hgu, hga, cond_false]
-    · simp only [hga, Bool.false_eq_true, if_false]; exact hSR
+    · simp only [hga, Bool.false_eq_true, ite_false]; exact hSR
 
 /-- The do-while `RWhileNz name body` at the unified waist, trip by trip: under the
     abstract halting condition and the body precondition at every trip entry, the
@@ -421,13 +421,13 @@ theorem corresU_whileNz_aux {fuel : Nat} {Q : AState → Prop} {fb : AState → 
       by_cases hga : g (fb a) = true
       · obtain ⟨env', hrun, hSR'⟩ := ih env₁ (fb a) hSR₁ (hh hga) (ht.2 hga)
         refine ⟨env', ?_, ?_⟩
-        · simp only [semScalarWhile, hstep, hg env₁ (fb a) hSR₁, hga, if_true, hrun]
-        · simp only [awhile, hga, if_true]; exact hSR'
+        · simp only [semScalarWhile, hstep, hg env₁ (fb a) hSR₁, hga, ite_true, hrun]
+        · simp only [awhile, hga, ite_true]; exact hSR'
       · simp only [Bool.not_eq_true] at hga
         refine ⟨env₁, ?_, ?_⟩
         · simp only [semScalarWhile, hstep, hg env₁ (fb a) hSR₁, hga, Bool.false_eq_true,
-            if_false]
-        · simp only [awhile, hga, Bool.false_eq_true, if_false]; exact hSR₁
+            ite_false]
+        · simp only [awhile, hga, Bool.false_eq_true, ite_false]; exact hSR₁
 
 /-- The do-while rule at the unified waist: `RWhileNz name body` abstracts to
     `awhile g fb fuel` under the halting guard and the body precondition at every
@@ -584,7 +584,7 @@ theorem srwordL_arrWrite {L : ArrLayout} {env env' : SEnvScalar} {a : AField} (s
   · have hys : y ≠ s := ne_of_arrKeyB hyk (arrKeyB_name hmem)
     have hyk' : y ≠ elemKey s k := ne_of_arrKeyB hyk (arrKeyB_elemKey hmem _ _)
     obtain ⟨w, hw, hwe⟩ := hSR.1 y hy hyk
-    exact ⟨w, by rw [henv', if_neg hys, hw], by simp [setVal, hyk', hwe]⟩
+    exact ⟨w, by rw [henv', ite_eq_right hys, hw], by simp [setVal, hyk', hwe]⟩
   · obtain ⟨hnt, bv, hbv, hbvE⟩ := hSR.2 p hp
     refine ⟨hnt, ?_⟩
     obtain ⟨p1, p2⟩ := p
@@ -595,13 +595,13 @@ theorem srwordL_arrWrite {L : ArrLayout} {env env' : SEnvScalar} {a : AField} (s
       simp only [Option.some.injEq, Sigma.mk.inj_iff, CryptoSSA.CryptoTy.memref.injEq] at hbv
       obtain ⟨rfl, hb⟩ := hbv
       obtain rfl := eq_of_heq hb
-      refine ⟨av', by rw [henv', if_pos rfl], fun j => ?_⟩
+      refine ⟨av', by rw [henv', ite_eq_left rfl], fun j => ?_⟩
       rw [hav' j]
       by_cases hj : j.val = k
       · simp [hj, setVal, hz]
       · have hne : elemKey p1 j ≠ elemKey p1 k := fun h => hj (elemKey_inj h).2
         simp [hj, setVal, hne, hbvE j]
-    · refine ⟨bv, by rw [henv', if_neg hps, hbv], fun j => ?_⟩
+    · refine ⟨bv, by rw [henv', ite_eq_right hps, hbv], fun j => ?_⟩
       have hne : elemKey p1 j ≠ elemKey s k := fun h => hps (elemKey_inj h).1
       simp [setVal, hne, hbvE j]
 
@@ -709,7 +709,7 @@ theorem corresL_setExprVal (L : ArrLayout) (x : String) (e : SExpr) (hx : arrKey
   · simp only [semScalar, hsem]
   · refine srwordL_set x (SExpr.evalBV (envReader env) e) (val a) hx
       (by rw [hcongr]; exact hval a hP) hSR (by simp [SEnvScalar.upd]) (fun y hy hyx => ?_)
-    simp only [SEnvScalar.upd, if_neg hyx]
+    simp only [SEnvScalar.upd, ite_eq_right hyx]
     exact hotb y (Or.inl hy)
 
 /-- The `ZMod 2^64` value of an arithmetic expression at the canonical residues. -/
@@ -735,15 +735,15 @@ theorem corresL_if (L : ArrLayout) (name nv : String) (tv ev : Nat) (hname : ¬ 
   obtain ⟨cw, hcw, hcwEnc⟩ := hSR.1 name hname hk
   refine ⟨env.upd nv (t := .sword 64)
       (phiSelect (w := 64) cw (BitVec.ofNat 64 tv) (BitVec.ofNat 64 ev)), ?_, ?_⟩
-  · simp only [semScalar, hcw, asSingleScalarSet, if_true]
+  · simp only [semScalar, hcw, asSingleScalarSet, ite_true]
   · refine srwordL_set nv (phiSelect (w := 64) cw (BitVec.ofNat 64 tv) (BitVec.ofNat 64 ev))
       (if a name = 0 then (ev : ZMod (2 ^ 64)) else (tv : ZMod (2 ^ 64)))
       hnv ?_ hSR (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
     by_cases hz : cw = 0#64
     · have haz : a name = 0 := hcwEnc ▸ (wEnc_eq_zero_iff cw).mpr hz
-      simp only [phiSelect, if_pos hz, if_pos haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
+      simp only [phiSelect, ite_eq_left hz, ite_eq_left haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
     · have haz : ¬ a name = 0 := fun h => hz ((wEnc_eq_zero_iff cw).mp (hcwEnc ▸ h))
-      simp only [phiSelect, if_neg hz, if_neg haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
+      simp only [phiSelect, ite_eq_right hz, ite_eq_right haz, wEnc, BitVec.toNat_ofNat, ZMod.natCast_mod]
 
 /-- The residue of the abstract value at a word name is the stored word's `toNat`. -/
 theorem val_of_wEnc {w : BitVec 64} {z : ZMod (2 ^ 64)} (h : wEnc w = z) : z.val = w.toNat := by
@@ -787,14 +787,14 @@ theorem corresL_arrStore (L : ArrLayout) (arr src : Located) (idxVar : String) (
   obtain ⟨sv, hsv, hsvE⟩ := hSR.1 src.locVar hst hsk
   refine ⟨env.upd arr.locVar (t := encodeTy arr.locSrc) (harr.symm ▸ memSetDyn av iv.toNat sv),
     ?_, ?_⟩
-  · simp only [semScalar, Located.locDst, hav', hiv, hsv, harr, dif_pos]
+  · simp only [semScalar, Located.locDst, hav', hiv, hsv, harr, dite_eq_left]
   · show SRwordL L _ (setVal (elemKey arr.locVar ((a idxVar).val % (m + 1))) (a src.locVar) a)
     rw [val_of_wEnc hivE]
     refine srwordL_arrWrite arr.locVar (m + 1) (iv.toNat % (m + 1)) av
       (memSetDyn av iv.toNat sv) sv _ hsvE hSR hsz hav' (fun j => ?_) (fun y => ?_)
     · by_cases h : j.val = iv.toNat % (m + 1) <;> simp [memSetDyn, h, Fin.ext_iff]
     · by_cases hy : y = arr.locVar
-      · simp only [SEnvScalar.upd, if_pos hy]
+      · simp only [SEnvScalar.upd, ite_eq_left hy]
         exact congrArg some (sigma_memref harr _)
       · simp [SEnvScalar.upd, hy]
 
@@ -809,7 +809,7 @@ theorem corresL_limbStore (L : ArrLayout) (loc : Located) (idx : Nat) (v : BitVe
   have hav' : env loc.locVar = some ⟨.memref n, av⟩ := hav
   refine ⟨env.upd loc.locVar (t := .memref n) (fun j => if j = ⟨idx, hidx⟩ then v else av j),
     ?_, ?_⟩
-  · simp only [semScalar, hav', dif_pos hidx]
+  · simp only [semScalar, hav', dite_eq_left hidx]
   · exact srwordL_arrWrite loc.locVar n idx av _ v _ rfl hSR hsz hav'
       (fun j => by by_cases h : j.val = idx <;> simp [h, Fin.ext_iff]) (fun y => rfl)
 
@@ -880,8 +880,8 @@ theorem corresL_arrStoreLit (L : ArrLayout) (arr src : Located) (idx k m : Nat)
   show (if j = ⟨(BitVec.ofNat 64 idx).toNat % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩
     then sv else av j) = _
   by_cases h : j.val = idx
-  · rw [if_pos (Fin.ext (h.trans hk.symm)), if_pos h]
-  · rw [if_neg (fun hj => h ((congrArg Fin.val hj).trans hk)), if_neg h]
+  · rw [ite_eq_left (Fin.ext (h.trans hk.symm)), ite_eq_left h]
+  · rw [ite_eq_right (fun hj => h ((congrArg Fin.val hj).trans hk)), ite_eq_right h]
 
 /-- The constant-time word select over a layout: `RSelect dst sel src0 src1` with `dst`
     a `u64` word and the selector and both sources non-temp unreserved word names sets
@@ -904,9 +904,9 @@ theorem corresL_select (L : ArrLayout) (dst : Located) (sel : String) (src0 src1
     (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
   by_cases hz : sw = 0#64
   · have haz : a sel = 0 := hswE ▸ (wEnc_eq_zero_iff sw).mpr hz
-    rw [selectWord, if_pos hz, if_pos haz, hawE]
+    rw [selectWord, ite_eq_left hz, ite_eq_left haz, hawE]
   · have haz : ¬ a sel = 0 := fun h => hz ((wEnc_eq_zero_iff sw).mp (hswE ▸ h))
-    rw [selectWord, if_neg hz, if_neg haz, hcwE]
+    rw [selectWord, ite_eq_right hz, ite_eq_right haz, hcwE]
 
 /-! ## The total abstraction -/
 
@@ -1110,10 +1110,10 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
   case RScalarSet x n =>
     simp only [ascendGL]
     rcases hk : arrKeyB L x
-    · simp only [Bool.false_eq_true, if_false]
+    · simp only [Bool.false_eq_true, ite_false]
       exact corresU_weaken _ (corresU_of_corres _ rfl (corresL_setScalar L x n hk))
         (fun _ _ => trivial)
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresU_unsupported _ _ _ _
   case RScalarSetExpr x e =>
     show CorresU fuel (SRwordL L) (guardsHold (ascendExprL L x e).1) (ascendExprL L x e).2
@@ -1121,30 +1121,30 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     unfold ascendExprL
     rcases hx : arrKeyB L x
     · rcases hw : exprWordB L e
-      · simp only [Bool.false_or, Bool.not_false, if_true]
+      · simp only [Bool.false_or, Bool.not_false, ite_true]
         exact corresU_unsupported _ _ _ _
-      · simp only [Bool.false_or, Bool.not_true, Bool.false_eq_true, if_false]
+      · simp only [Bool.false_or, Bool.not_true, Bool.false_eq_true, ite_false]
         have hvb := exprWordB_sound hw
         unfold ascendExpr
         rcases h1 : isArithCleanB e
         · rcases h2 : srcCleanB e
-          · simp only [Bool.false_eq_true, if_false]
+          · simp only [Bool.false_eq_true, ite_false]
             exact corresU_unsupported _ _ _ _
-          · simp only [if_true, Bool.false_eq_true, if_false]
+          · simp only [ite_true, Bool.false_eq_true, ite_false]
             exact corresU_weaken _
               (corresU_of_corres _ rfl
                 (corresL_setExprVal L x e hx hvb (srcCleanB_sound e h2)
                   (fun a => e.inRange (natStore a)) (natEval e)
                   (fun a hir => wEnc_evalBV_liftEnv_range a e hir)))
               (fun a h => h _ (List.mem_singleton.mpr rfl))
-        · simp only [if_true]
+        · simp only [ite_true]
           have he := isArithCleanB_sound e h1
           exact corresU_weaken _
             (corresU_of_corres _ rfl
               (corresL_setExprVal L x e hx hvb (isArithClean_srcClean e he) (fun _ => True)
                 (fun a => evalZMod a e) (fun a _ => wEnc_evalBV_liftEnv_arith a e he)))
             (fun _ _ => trivial)
-    · simp only [Bool.true_or, if_true]
+    · simp only [Bool.true_or, ite_true]
       exact corresU_unsupported _ _ _ _
   case RAssert label =>
     show CorresU fuel (SRwordL L) (guardsHold [Guard.assert label]) id (.RAssert label)
@@ -1154,9 +1154,9 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     simp only [ascendGL]
     rcases hk : arrKeyB L x
     · rcases hlf : loopFree body
-      · simp only [Bool.false_eq_true, if_false]
+      · simp only [Bool.false_eq_true, ite_false]
         exact corresU_unsupported _ _ _ _
-      · simp only [Bool.false_eq_true, if_false, if_true]
+      · simp only [Bool.false_eq_true, ite_false, ite_true]
         intro env a hSR hP
         obtain ⟨env', hstep, hSRf⟩ :=
           ih _ _ (srwordL_upd_lit x 0 hk hSR) (guardsHold_map_after.mp hP)
@@ -1164,13 +1164,13 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
         show semScalar body (env.upd x (t := .sword 64) (0 : BitVec 64)) = some env'
         rw [← semU_eq_semScalar_of_loopFree fuel body hlf]
         exact hstep
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresU_unsupported _ _ _ _
   case RIfNz name thenBr elseBr ihT _ =>
     simp only [ascendGL]
     unfold ascendIf
     rcases hsk : isSkipB elseBr
-    · simp only [Bool.false_eq_true, if_false]
+    · simp only [Bool.false_eq_true, ite_false]
       have hne : elseBr ≠ .RSkip := fun h => by
         rw [h] at hsk; exact Bool.false_ne_true hsk.symm
       rcases ht : asSingleScalarSet thenBr with _ | ⟨nv, tv⟩
@@ -1180,7 +1180,7 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
         · dsimp only
           by_cases hc : nv = nv' ∧ notTmpB name = true ∧ arrKeyB L name = false ∧
               arrKeyB L nv = false
-          · rw [if_pos hc]
+          · rw [ite_eq_left hc]
             obtain ⟨hnv, hnt, hk, hkv⟩ := hc
             subst hnv
             obtain rfl := asSingleScalarSet_some ht
@@ -1189,45 +1189,45 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
               (corresU_of_corres _ (isSeqLike_rIfNz_of_ne _ _ _ hne)
                 (corresL_if L name nv tv ev (notTmpB_sound name hnt) hk hkv))
               (fun _ _ => trivial)
-          · rw [if_neg hc]
+          · rw [ite_eq_right hc]
             exact corresU_unsupported _ _ _ _
     · obtain rfl := (isSkipB_iff elseBr).mp hsk
-      simp only [if_true]
+      simp only [ite_true]
       rcases hk : arrKeyB L name
-      · simp only [Bool.false_eq_true, if_false]
+      · simp only [Bool.false_eq_true, ite_false]
         rcases hnt : notTmpB name
-        · simp only [Bool.false_eq_true, if_false]
+        · simp only [Bool.false_eq_true, ite_false]
           exact corresU_unsupported _ _ _ _
-        · simp only [if_true]
+        · simp only [ite_true]
           exact corresU_weaken _
             (corresU_cond _ (nzB name)
               (fun env a hSR => guardNz_srwordL (notTmpB_sound name hnt) hk hSR) ihT)
             (fun a h => guardsHold_map_whenNz.mp h)
-      · simp only [if_true]
+      · simp only [ite_true]
         exact corresU_unsupported _ _ _ _
   case RWhileNz name body ih =>
     simp only [ascendGL]
     rcases hk : arrKeyB L name
     · rcases hnt : notTmpB name
-      · simp only [Bool.false_eq_true, if_false]
+      · simp only [Bool.false_eq_true, ite_false]
         exact corresU_unsupported _ _ _ _
-      · simp only [Bool.false_eq_true, if_false, if_true]
+      · simp only [Bool.false_eq_true, ite_false, ite_true]
         refine corresU_weaken _
           (corresU_whileNz _ (nzB name)
             (fun env a hSR => guardNz_srwordL (notTmpB_sound name hnt) hk hSR) ih)
           (fun a h => ?_)
         refine ⟨h _ (List.mem_cons.mpr (Or.inl rfl)), guardsHold_map_loopBody.mp ?_⟩
         exact fun g hg => h g (List.mem_cons.mpr (Or.inr hg))
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresU_unsupported _ _ _ _
   case RFor x N body ih =>
     simp only [ascendGL]
     rcases hk : arrKeyB L x
-    · simp only [Bool.false_eq_true, if_false]
+    · simp only [Bool.false_eq_true, ite_false]
       exact corresU_weaken _
         (corresU_for_trips _ (setLit x) (fun env a n hSR => srwordL_upd_lit x n hk hSR) ih N)
         (fun a h => guardsHold_map_everyTrip.mp h)
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresU_unsupported _ _ _ _
   case RArrLoad dst src idxVar =>
     show CorresU fuel (SRwordL L) (guardsHold (arrLoadAbs L dst src idxVar).1)
@@ -1239,14 +1239,14 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     · dsimp only
       by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧
           notTmpB idxVar = true ∧ arrKeyB L idxVar = false
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         obtain ⟨hdst, hdk, hit, hik⟩ := hc
         exact corresU_weaken _
           (corresU_of_corres _ rfl
             (corresL_arrLoad L dst src idxVar m hdst (layoutSize_mem hs) hdk
               (notTmpB_sound _ hit) hik))
           (fun _ _ => trivial)
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         exact corresU_unsupported _ _ _ _
   case RArrStore arr idxVar src =>
     show CorresU fuel (SRwordL L) (guardsHold (arrStoreAbs L arr idxVar src).1)
@@ -1258,14 +1258,14 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     · dsimp only
       by_cases hc : encodeTy arr.locSrc = .memref (m + 1) ∧ notTmpB idxVar = true ∧
           arrKeyB L idxVar = false ∧ notTmpB src.locVar = true ∧ arrKeyB L src.locVar = false
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         obtain ⟨harr, hit, hik, hst, hsk⟩ := hc
         exact corresU_weaken _
           (corresU_of_corres _ rfl
             (corresL_arrStore L arr src idxVar m harr (layoutSize_mem hs)
               (notTmpB_sound _ hit) hik (notTmpB_sound _ hst) hsk))
           (fun _ _ => trivial)
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         exact corresU_unsupported _ _ _ _
   case RLimbStore loc idx v =>
     show CorresU fuel (SRwordL L) (guardsHold (limbStoreAbs L loc idx v).1)
@@ -1275,11 +1275,11 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     · exact corresU_unsupported _ _ _ _
     · dsimp only
       by_cases hc : idx < n
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         exact corresU_weaken _
           (corresU_of_corres _ rfl (corresL_limbStore L loc idx v n (layoutSize_mem hs) hc))
           (fun _ _ => trivial)
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         exact corresU_unsupported _ _ _ _
   case RArrLoadLit dst src idx =>
     show CorresU fuel (SRwordL L) (guardsHold (arrLoadLitAbs L dst src idx).1)
@@ -1291,7 +1291,7 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     · dsimp only
       by_cases hc : dst.locSrc = .TU64 ∧ isU64ArrB src.locSrc = true ∧
           arrKeyB L dst.locVar = false ∧ idx < m + 1 ∧ idx < 2 ^ 64
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         obtain ⟨hdst, hu, hdk, hidx, hlit⟩ := hc
         obtain ⟨k, hsrc⟩ := isU64ArrB_sound hu
         exact corresU_weaken _
@@ -1299,7 +1299,7 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
             (corresL_arrLoadLit L dst src idx k m hdst hsrc (layoutSize_mem hs) hidx hlit
               hdk))
           (fun _ _ => trivial)
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         exact corresU_unsupported _ _ _ _
   case RArrStoreLit arr idx src =>
     show CorresU fuel (SRwordL L) (guardsHold (arrStoreLitAbs L arr idx src).1)
@@ -1311,7 +1311,7 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     · dsimp only
       by_cases hc : isU64ArrB arr.locSrc = true ∧ idx < m + 1 ∧ idx < 2 ^ 64 ∧
           notTmpB src.locVar = true ∧ arrKeyB L src.locVar = false
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         obtain ⟨hu, hidx, hlit, hst, hsk⟩ := hc
         obtain ⟨k, harr⟩ := isU64ArrB_sound hu
         exact corresU_weaken _
@@ -1319,7 +1319,7 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
             (corresL_arrStoreLit L arr src idx k m harr (layoutSize_mem hs) hidx hlit
               (notTmpB_sound _ hst) hsk))
           (fun _ _ => trivial)
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         exact corresU_unsupported _ _ _ _
   case RSelect dst sel src0 src1 =>
     show CorresU fuel (SRwordL L) (guardsHold (selectAbs L dst sel src0 src1).1)
@@ -1328,14 +1328,14 @@ theorem ascendGL_sound (L : ArrLayout) (fuel : Nat) :
     by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ notTmpB sel = true ∧
         arrKeyB L sel = false ∧ notTmpB src0.locVar = true ∧ arrKeyB L src0.locVar = false ∧
         notTmpB src1.locVar = true ∧ arrKeyB L src1.locVar = false
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       obtain ⟨hdst, hdk, hst, hsk, h0t, h0k, h1t, h1k⟩ := hc
       exact corresU_weaken _
         (corresU_of_corres _ rfl
           (corresL_select L dst sel src0 src1 hdst hdk (notTmpB_sound _ hst) hsk
             (notTmpB_sound _ h0t) h0k (notTmpB_sound _ h1t) h1k))
         (fun _ _ => trivial)
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       exact corresU_unsupported _ _ _ _
   all_goals exact corresU_unsupported _ _ _ _
 
@@ -1426,7 +1426,7 @@ theorem ascendG_isAscendableExprB (fuel : Nat) :
     have h' : isArithCleanB e = true := h
     show (ascendExpr x e).1 = [] ∧ (ascendExpr x e).2 = _
     unfold ascendExpr
-    rw [if_pos h']
+    rw [ite_eq_left h']
     exact ⟨rfl, rfl⟩
   all_goals intro h; simp [isAscendableExprB] at h
 

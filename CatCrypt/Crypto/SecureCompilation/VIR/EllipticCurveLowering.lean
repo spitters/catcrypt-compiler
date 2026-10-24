@@ -131,7 +131,7 @@ theorem padd_lowers_to_schedule {p : Nat} (C : ECParams p)
         (.cons (ECPoint.aff x1 y1) (.cons (ECPoint.aff x2 y2) .nil))
       = some (AffineAddSchedule x1 y1 x2 y2) := by
   show C.add (ECPoint.aff x1 y1) (ECPoint.aff x2 y2) = _
-  simp only [ECParams.add, ECPoint.aff, if_neg hne, AffineAddSchedule,
+  simp only [ECParams.add, ECPoint.aff, ite_eq_right hne, AffineAddSchedule,
     chordSlopeSchedule, rxSchedule, rySchedule, ECParams.chordSlope,
     ECParams.affRx, ECParams.affRy, fMulF, fSubF, fInvF, ModArithDialect.modMulF,
     ModArithDialect.modSubF, ModArithDialect.byInverseF]
@@ -155,7 +155,7 @@ theorem pdbl_lowers_to_schedule {p : Nat} (C : ECParams p)
     ecDenote.denote (.pdbl p C) (.cons (ECPoint.aff x y) .nil)
       = some (AffineDblSchedule C.a x y) := by
   show C.add (ECPoint.aff x y) (ECPoint.aff x y) = _
-  simp only [ECParams.add, ECPoint.aff, if_pos, if_neg hy, AffineDblSchedule,
+  simp only [ECParams.add, ECPoint.aff, ite_eq_left, ite_eq_right hy, AffineDblSchedule,
     tangentSlopeSchedule, rxSchedule, rySchedule, ECParams.tangentSlope,
     ECParams.affRx, ECParams.affRy, fMulF, fAddF, fSubF, fInvF,
     ModArithDialect.modMulF, ModArithDialect.modAddF, ModArithDialect.modSubF,

@@ -230,8 +230,8 @@ theorem runWhileMem_countdown_halts_trips {w : Nat} (env : LeafEnvM)
         have hz : vn - 1#64 = 0#64 := by bv_omega
         have hfalse : condNZ bt' (.reg gReg) = false := by
           rw [hcond, hz]; simp
-        rw [hrun, htr, hfalse, if_neg Bool.false_ne_true,
-          if_neg Bool.false_ne_true]
+        rw [hrun, htr, hfalse, ite_eq_right Bool.false_ne_true,
+          ite_eq_right Bool.false_ne_true]
         exact ⟨⟨bt', rfl⟩, h1.symm⟩
       · -- taken back-edge: recurse from the decremented guard
         have hsub : (vn - 1#64).toNat = vn.toNat - 1 := by bv_omega
@@ -244,7 +244,7 @@ theorem runWhileMem_countdown_halts_trips {w : Nat} (env : LeafEnvM)
           exact hn'
         obtain ⟨⟨bfin, hfin⟩, htrips⟩ := ih (t + 1) (bt'.setLpc 1) _ (vn - 1#64)
           (StoreAgreesM.setLpc hAg' 1) hn1 (by omega) (by omega)
-        rw [hrun, htr, htrue, if_pos rfl, if_pos rfl]
+        rw [hrun, htr, htrue, ite_eq_left rfl, ite_eq_left rfl]
         exact ⟨⟨bfin, hfin⟩, by rw [htrips, hsub]; omega⟩
 
 /-! ## 4. The export corollaries: run schedule replaced by the seed value -/

@@ -153,14 +153,14 @@ the displacement tail. -/
 theorem roundtrip_jmp32 (d : Int) (hd : -2 ^ 31 ≤ d ∧ d < 2 ^ 31) :
     decodeCF (encJmp32 d) = some (.jmp d) := by
   simp only [encJmp32, decodeCF, BitVec.toNat_ofNat, show (0xe9 : Nat) % 2 ^ 8 = 0xe9 from rfl,
-    if_pos, disp32LE_roundtrip d hd, Option.map_some]
+    ite_eq_left, disp32LE_roundtrip d hd, Option.map_some]
 
 /-- **Round-trip for `call rel32`** (`encCall32`): decoding the `0xE8 cd` bytes
     recovers `call d`. The `0xE8 ≠ 0xE9` first-byte test routes to the `call` arm. -/
 theorem roundtrip_call32 (d : Int) (hd : -2 ^ 31 ≤ d ∧ d < 2 ^ 31) :
     decodeCF (encCall32 d) = some (.call d) := by
   simp only [encCall32, decodeCF, BitVec.toNat_ofNat, show (0xe8 : Nat) % 2 ^ 8 = 0xe8 from rfl,
-    if_true, if_neg (by decide : ¬(232 = 233)), disp32LE_roundtrip d hd, Option.map_some]
+    ite_true, ite_eq_right (by decide : ¬(232 = 233)), disp32LE_roundtrip d hd, Option.map_some]
 
 /-- **Round-trip for `jcc rel32`** (`encJcc32`): decoding the `0F 8x cd` bytes
     recovers `jcc (jccOpcode cc) d` — the **opcode** byte, not the condition name
@@ -179,8 +179,8 @@ theorem roundtrip_jcc32 (cc : String) (d : Int)
     fin_cases hcc <;> simp only [jccOpcode] <;> decide
   rw [hopeq] at hop
   simp only [encJcc32, decodeCF, BitVec.toNat_ofNat, show (0x0f : Nat) % 2 ^ 8 = 0x0f from rfl,
-    if_true, if_neg (by decide : ¬(15 = 233)), if_neg (by decide : ¬(15 = 232)),
-    hopeq, if_pos hop, disp32LE_roundtrip d hd, Option.map_some]
+    ite_true, ite_eq_right (by decide : ¬(15 = 233)), ite_eq_right (by decide : ¬(15 = 232)),
+    hopeq, ite_eq_left hop, disp32LE_roundtrip d hd, Option.map_some]
 
 /-! ## 4. Concrete examples (forward jump, loop back-edge, conditional back-edge) -/
 

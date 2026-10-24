@@ -194,7 +194,7 @@ def iMinusOne (ty : IScalarTy) : IScalar ty := ⟨BitVec.allOnes ty.numBits⟩
 theorem allOnes_toInt (ty : IScalarTy) : (BitVec.allOnes ty.numBits).toInt = -1 := by
   have := ty.numBits_nonzero
   simp only [BitVec.toInt_allOnes]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
 
 @[simp] theorem iMinusOne_val (ty : IScalarTy) : (iMinusOne ty).val = -1 := allOnes_toInt ty
 

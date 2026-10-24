@@ -199,11 +199,11 @@ def laneOfTy (k : Fin 8) : (s : JasminTy) → ⟦widen8Ty s⟧ → ⟦s⟧
   | .reg w, v => by
       by_cases h : w = 32
       · subst h; exact BitVec.extractLsb' (32 * k.val) 32 v
-      · simp only [widen8Ty, if_neg h] at v; exact v
+      · simp only [widen8Ty, ite_eq_right h] at v; exact v
   | .stackArr w n, v => by
       by_cases h : w = 32
       · subst h; exact fun i => BitVec.extractLsb' (32 * k.val) 32 (v i)
-      · simp only [widen8Ty, if_neg h] at v; exact v
+      · simp only [widen8Ty, ite_eq_right h] at v; exact v
   | .inlineInt, v => v
   | .bool, v => v
 
@@ -464,14 +464,14 @@ theorem laneOfTy_dwordYmm (k : Fin 8) :
   | .reg w, v => by
       by_cases h : w = 32
       · subst h; rfl
-      · simp only [laneOfTy, LaneShape.laneOfTy, dif_neg h,
-          dif_neg (show ¬w = dwordYmm.laneBits from h)]
+      · simp only [laneOfTy, LaneShape.laneOfTy, dite_eq_right h,
+          dite_eq_right (show ¬w = dwordYmm.laneBits from h)]
         rfl
   | .stackArr w n, v => by
       by_cases h : w = 32
       · subst h; rfl
       · have h' : ¬(dwordYmm.arrWiden = true ∧ w = dwordYmm.laneBits) := fun h' => h h'.2
-        simp only [laneOfTy, LaneShape.laneOfTy, dif_neg h, dif_neg h']
+        simp only [laneOfTy, LaneShape.laneOfTy, dite_eq_right h, dite_eq_right h']
         rfl
   | .inlineInt, _ => rfl
   | .bool, _ => rfl

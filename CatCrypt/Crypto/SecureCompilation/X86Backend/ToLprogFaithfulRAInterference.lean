@@ -92,7 +92,7 @@ theorem physLoc_map_add (k : Nat) :
     rw [List.map_cons, physLoc_cons, physLoc_cons]
     by_cases hq : q.1 = t
     · simp [hq]
-    · simp only [hq, if_neg, not_false_iff]
+    · simp only [hq, ite_eq_right, not_false_iff]
       exact ih t
 
 /-! ## 2. The physical indices the scan hands out are bounded -/
@@ -495,7 +495,7 @@ theorem physLiveItems_mem_of_start_lt {tr : List PhysEvent} {s : Nat}
   refine ⟨(s, (physLiveRange tr s).1, (physLiveRange tr s).2), ?_, rfl⟩
   simp only [physLiveItems, physLiveData, kernelMergeSort_eq]
   rw [(List.mergeSort_perm _ _).mem_iff, List.mem_filterMap]
-  exact ⟨s, List.mem_range.mpr hs, by simp only [hst, if_pos]⟩
+  exact ⟨s, List.mem_range.mpr hs, by simp only [hst, ite_eq_left]⟩
 
 /-- A slot live at a trace position inside the trace is an item of
     `physLiveItems`, and is inside the slot universe. -/

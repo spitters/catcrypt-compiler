@@ -439,24 +439,24 @@ theorem gradeNF_goodXfer (L : MultiBlockLoweringData d d') (enc : L.Enc)
       exact congrArg some (unitGrades_eq _ _)
   | var e k ih =>
       intro gΓ
-      have h1 : L.goodXfer enc Good e (gradeArgs gΓ e.args) = some () := if_pos hp.1
+      have h1 : L.goodXfer enc Good e (gradeArgs gΓ e.args) = some () := ite_eq_left hp.1
       simp only [gradeNF, h1]
       exact ih hc hp.2 _
   | forLoop count inits body k ihb ihk =>
       intro gΓ
       simp only [callFree, Bool.and_eq_true] at hc
       simp only [gradeNF, ihb hc.1 hp.1]
-      exact (if_pos (unitGrades_eq _ _)).trans (ihk hc.2 hp.2 _)
+      exact (ite_eq_left (unitGrades_eq _ _)).trans (ihk hc.2 hp.2 _)
   | ifThenElse cond thn els k iht ihe ihk =>
       intro gΓ
       simp only [callFree, Bool.and_eq_true] at hc
       simp only [gradeNF, iht hc.1.1 hp.1, ihe hc.1.2 hp.2.1]
-      exact (if_pos rfl).trans (ihk hc.2 hp.2.2 _)
+      exact (ite_eq_left rfl).trans (ihk hc.2 hp.2.2 _)
   | whileLoop inits body k ihb ihk =>
       intro gΓ
       simp only [callFree, Bool.and_eq_true] at hc
       simp only [gradeNF, ihb hc.1 hp.1]
-      exact (if_pos (unitGrades_eq _ _)).trans (ihk hc.2 hp.2 _)
+      exact (ite_eq_left (unitGrades_eq _ _)).trans (ihk hc.2 hp.2 _)
   | call => simp [callFree] at hc
 
 /-- **`mapM_denote` as the unit-grade case of `mapM_rel`.** Under the `Good`-gated block

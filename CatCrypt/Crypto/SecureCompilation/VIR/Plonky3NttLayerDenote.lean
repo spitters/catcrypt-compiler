@@ -96,12 +96,12 @@ theorem fixW_sub (x y : BitVec 64) (hx : x.toNat < 2013265921) (hy : y.toNat < 2
   · have hs : (x - y).toNat = x.toNat - y.toNat := BitVec.toNat_sub_of_le (by
       rw [BitVec.le_def]; exact hxy)
     have h0 : (0 : BitVec 64).toNat = 0 := rfl
-    rw [if_pos (by omega), BitVec.toNat_add, hs, h0, Nat.add_zero, Nat.mod_eq_of_lt (by omega)]
+    rw [ite_eq_left (by omega), BitVec.toNat_add, hs, h0, Nat.add_zero, Nat.mod_eq_of_lt (by omega)]
     rw [show x.toNat + 2013265921 - y.toNat = (x.toNat - y.toNat) + 2013265921 by omega,
       Nat.add_mod_right, Nat.mod_eq_of_lt (by omega)]
   · have hs : (x - y).toNat = 2 ^ 64 - (y.toNat - x.toNat) := by
       rw [BitVec.toNat_sub]; omega
-    rw [if_neg (by omega), BitVec.toNat_add, hs, bbP_toNat]
+    rw [ite_eq_right (by omega), BitVec.toNat_add, hs, bbP_toNat]
     rw [Nat.mod_eq_of_lt (show x.toNat + 2013265921 - y.toNat < 2013265921 by omega)]
     omega
 
@@ -115,13 +115,13 @@ theorem fixW_add (x y : BitVec 64) (hx : x.toNat < 2013265921) (hy : y.toNat < 2
   · have hs : (x + y - bbP).toNat = x.toNat + y.toNat - 2013265921 := by
       rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def, hxy, bbP_toNat]; exact h), hxy, bbP_toNat]
     have h0 : (0 : BitVec 64).toNat = 0 := rfl
-    rw [if_pos (by omega), BitVec.toNat_add, hs, h0, Nat.add_zero, Nat.mod_eq_of_lt (by omega)]
+    rw [ite_eq_left (by omega), BitVec.toNat_add, hs, h0, Nat.add_zero, Nat.mod_eq_of_lt (by omega)]
     rw [show x.toNat + y.toNat = (x.toNat + y.toNat - 2013265921) + 2013265921 by omega,
       Nat.add_mod_right, Nat.mod_eq_of_lt (by omega)]
     omega
   · have hs : (x + y - bbP).toNat = 2 ^ 64 - (2013265921 - (x.toNat + y.toNat)) := by
       rw [BitVec.toNat_sub, hxy, bbP_toNat]; omega
-    rw [if_neg (by omega), BitVec.sub_add_cancel, hxy, Nat.mod_eq_of_lt (by omega)]
+    rw [ite_eq_right (by omega), BitVec.sub_add_cancel, hxy, Nat.mod_eq_of_lt (by omega)]
 
 /-- The Barrett-reduced product the emitted butterfly computes from twiddle `w`
 and value `b`: `x = w·b`, `q = ((x >> 30)·MU) >> 32`, `t = x − q·p`, then one
@@ -829,7 +829,7 @@ theorem bindNames_env : ∀ (names : List String) (g : ℕ → BitVec 64), names
       have hk' : k < ns.length := by simpa using hk
       have hne : ns[k] ≠ n := fun h => hn (h ▸ List.getElem_mem hk')
       have ih' := ih (fun k => g (k + 1)) hnd' k hk'
-      simp only [List.getElem_cons_succ, bindNames, VarMap.bind, if_neg hne]
+      simp only [List.getElem_cons_succ, bindNames, VarMap.bind, ite_eq_right hne]
       cases hl : (bindNames ns).lookup ns[k] with
       | none => rw [hl] at ih'; simp at ih'
       | some p =>
@@ -901,7 +901,7 @@ theorem kEnv_v (N T : ℕ) (v tw : ℕ → BitVec 64) (i : ℕ) (hi : i < N) :
     simp
   have h := kEnv_at N T v tw i hk
   rw [hn] at h
-  rw [h, kWord, if_pos hi]
+  rw [h, kWord, ite_eq_left hi]
 
 theorem kEnv_tw (N T : ℕ) (v tw : ℕ → BitVec 64) (j : ℕ) (hj : j < T) :
     kEnv N T (kVal N T v tw) (twN j) = some ⟨.sword 64, tw j⟩ := by
@@ -913,7 +913,7 @@ theorem kEnv_tw (N T : ℕ) (v tw : ℕ → BitVec 64) (j : ℕ) (hj : j < T) :
     simp
   have h := kEnv_at N T v tw (N + j) hk
   rw [hn] at h
-  rw [h, kWord, if_neg (by omega), if_pos (by omega), Nat.add_sub_cancel_left]
+  rw [h, kWord, ite_eq_right (by omega), ite_eq_left (by omega), Nat.add_sub_cancel_left]
 
 theorem kEnv_mu (N T : ℕ) (v tw : ℕ → BitVec 64) :
     kEnv N T (kVal N T v tw) "mu" = some ⟨.sword 64, bbMU⟩ := by
@@ -924,7 +924,7 @@ theorem kEnv_mu (N T : ℕ) (v tw : ℕ → BitVec 64) :
     simp
   have h := kEnv_at N T v tw (N + T) hk
   rw [hn] at h
-  rw [h, kWord, if_neg (by omega), if_neg (by omega), if_pos rfl]
+  rw [h, kWord, ite_eq_right (by omega), ite_eq_right (by omega), ite_eq_left rfl]
 
 theorem kEnv_p (N T : ℕ) (v tw : ℕ → BitVec 64) :
     kEnv N T (kVal N T v tw) "p" = some ⟨.sword 64, bbP⟩ := by
@@ -935,7 +935,7 @@ theorem kEnv_p (N T : ℕ) (v tw : ℕ → BitVec 64) :
     simp
   have h := kEnv_at N T v tw (N + T + 1) hk
   rw [hn] at h
-  rw [h, kWord, if_neg (by omega), if_neg (by omega), if_neg (by omega)]
+  rw [h, kWord, ite_eq_right (by omega), ite_eq_right (by omega), ite_eq_right (by omega)]
 
 /-- The entry name-to-type map of a kernel: every input name is a word. -/
 def kTys (N T : ℕ) : NameTys := fun s => if s ∈ kInNames N T then some (.sword 64) else none
@@ -970,7 +970,7 @@ theorem kTys_vmApprox (N T : ℕ) : VmApprox (kTys N T) (bindNames (kInNames N T
     exact ⟨w, hl⟩
 
 theorem kTys_tyW (N T : ℕ) : TyW N T (kTys N T) := by
-  refine ⟨fun i hi => if_pos ?_, fun j hj => if_pos ?_, if_pos ?_, if_pos ?_⟩
+  refine ⟨fun i hi => ite_eq_left ?_, fun j hj => ite_eq_left ?_, ite_eq_left ?_, ite_eq_left ?_⟩
   · exact List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inl
       (List.mem_map.mpr ⟨i, List.mem_range.mpr hi, rfl⟩))))
   · exact List.mem_append.mpr (Or.inl (List.mem_append.mpr (Or.inr
@@ -1155,7 +1155,7 @@ theorem nttKernelAt_dft (e : ℕ) (ω : BB) (hω : ω ^ (2 ^ e) = -1)
       ∧ Enc (com.denote (kVal (2 ^ (e + 1)) (2 ^ e) (bitrevWords (e + 1) x) tw))
           (dft (2 ^ (e + 1)) ω (fun i => ((x i).toNat : BB)) k) := by
   have hv : ∀ i, i < 2 ^ (e + 1) → (bitrevWords (e + 1) x i).toNat < 2013265921 := by
-    intro i hi; simp only [bitrevWords, dif_pos hi]; exact hx _
+    intro i hi; simp only [bitrevWords, dite_eq_left hi]; exact hx _
   obtain ⟨com, h1, h2, h3⟩ := kFrontAt_denote _ _ _ (nttPairs_ok e) (bitrevWords (e + 1) x) tw
     hv (fun j hj => (htw j hj).1) k.isLt
   refine ⟨com, h1, h2, ?_⟩

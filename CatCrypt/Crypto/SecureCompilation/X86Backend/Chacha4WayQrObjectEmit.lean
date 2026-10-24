@@ -129,7 +129,7 @@ theorem encVmovdquBaseU_length_disp8 (op d rm disp : Nat) (hne : disp ≠ 0)
 theorem encVexShiftLaneU_length_low (ext l dst src imm : Nat)
     (hsrc : CryptoExt.bit src 3 = 0) :
     (encVexShiftLaneU ext l dst src imm).length = 5 := by
-  rw [encVexShiftLaneU, if_pos hsrc]
+  rw [encVexShiftLaneU, ite_eq_left hsrc]
   simp
 
 /-- The quarter-round body is 88 bytes: eight 4-byte `encAvx2Alu` ops and four

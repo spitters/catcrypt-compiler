@@ -230,7 +230,7 @@ theorem scalarPublicEquiv_setScalarExpr {lt : LevelTable} {rs1 rs2 : RustState}
   unfold rsSetScalar
   by_cases hxy : y = x
   · subst hxy
-    simp only [beq_self_eq_true, if_true]
+    simp only [beq_self_eq_true, ite_true]
     have hpub : exprLevel lt e = .Public := by
       unfold updLevel at hy; simpa using hy
     exact eval_eq_of_isPublic_scalar h e ((exprLevel_public_iff lt e).mp hpub)
@@ -331,7 +331,7 @@ theorem cmdCTFlow_sound (leafCT : LeafCTTable) :
       simp only [cmdCTFlow] at hCT
       revert hCT
       by_cases hg : (lt cond == SecretLevel.Public) = true
-      · simp only [hg, if_true]
+      · simp only [hg, ite_true]
         cases hct : cmdCTFlow ct lt leafCT with
         | none => intro hCT; simp at hCT
         | some lt1 =>
@@ -349,14 +349,14 @@ theorem cmdCTFlow_sound (leafCT : LeafCTTable) :
             refine ⟨?_, ?_⟩
             · simp only [dynLeakTraceF, hbit]
               by_cases hb : guardBit rs2 cond
-              · simp only [hb, if_true]; rw [ht1]
-              · simp only [hb, Bool.false_eq_true, if_false]; rw [ht2]
+              · simp only [hb, ite_true]; rw [ht1]
+              · simp only [hb, Bool.false_eq_true, ite_false]; rw [ht2]
             · simp only [flowStep, hbit]
               by_cases hb : guardBit rs2 cond
-              · simp only [hb, if_true]
+              · simp only [hb, ite_true]
                 intro y hy
                 exact hs1 y (join_eq_public_left hy)
-              · simp only [hb, Bool.false_eq_true, if_false]
+              · simp only [hb, Bool.false_eq_true, ite_false]
                 intro y hy
                 exact hs2 y (join_eq_public_right hy)
       · simp only [hg]; intro hCT; simp at hCT

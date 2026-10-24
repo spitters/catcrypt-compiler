@@ -104,7 +104,7 @@ theorem legalizeMov_regReg_step {w : Nat} (s : Lstate w) (dst s0 : String)
     lsemStraight (legalizeMov (.reg dst) (.reg s0) "MOV") s
       = some ((s.setReg dst (s.lvm s0)).nextPc) := by
   unfold legalizeMov
-  rw [if_neg hns]
+  rw [ite_eq_right hns]
   have hstep : lsemStep (LinstrR.Lopn [.reg dst] "MOV" [.reg s0]) s
       = some ((s.setReg dst (s.lvm s0)).nextPc) := by
     simp only [lsemStep, List.map_cons, List.map_nil, evalOperand,
@@ -152,14 +152,14 @@ theorem legalizeMov_regReg_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Na
     -- moved value.
     have hmd : m = nDst := hinj m hmL hm
     subst hmd
-    simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_pos]
+    simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_left]
     exact hrel nS0 hs0In
   · -- `m`'s slot differs ⇒ the physical write at `ρ nDst` misses it (frame), and
     -- the virtual copy at `nDst` misses `m` (`m ≠ nDst`); read through the
     -- incoming relation.
-    simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm]
+    simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_right hm]
     have hmne : m ≠ nDst := fun he => hm (by rw [he])
-    rw [if_neg hmne, hrel m (hcarry m hmL hmne)]
+    rw [ite_eq_right hmne, hrel m (hcarry m hmL hmne)]
 
 /-! ## 3. The composition: the whole `dst ≠ s0` `lowerTwoAddr` block
 
@@ -216,9 +216,9 @@ theorem movThenBinop_storeRel_step {w : Nat} (body : Lcmd) (tbl : Array Nat)
   -- (s.lvm nS0)`: `nDst ↦ s.lvm nS0` (copied), `nS1 ↦ s.lvm nS1` (`nS1 ≠ nDst`).
   -- So `applyOpn opn [sMid.lvm nDst, sMid.lvm nS1] = some v`.
   have hmidDst : (s.setReg nDst (s.lvm nS0)).lvm nDst = s.lvm nS0 := by
-    simp only [Lstate.lvm_setReg, if_pos]
+    simp only [Lstate.lvm_setReg, ite_eq_left]
   have hmidS1 : (s.setReg nDst (s.lvm nS0)).lvm nS1 = s.lvm nS1 := by
-    simp only [Lstate.lvm_setReg, if_neg hns1]
+    simp only [Lstate.lvm_setReg, ite_eq_right hns1]
   have hop' : applyOpn opn
       [(s.setReg nDst (s.lvm nS0)).lvm nDst, (s.setReg nDst (s.lvm nS0)).lvm nS1]
       = some v := by
@@ -307,7 +307,7 @@ theorem lowerTwoAddr_regReg_neq (body : Lcmd) (tbl : Array Nat)
   have hneOp : (LOperand.reg (physRename body tbl nDst))
       ≠ (LOperand.reg (physRename body tbl nS0)) := fun h => hne (by injection h)
   unfold lowerTwoAddr
-  simp only [materializeWideImm_MOV, List.append_nil, List.nil_append, if_neg hneOp]
+  simp only [materializeWideImm_MOV, List.append_nil, List.nil_append, ite_eq_right hneOp]
 
 /-- **`dst ≠ s0` two-address binop block is a `BlockMaintains` witness — stated
     over the literal `lowerTwoAddr` output.** Same as `movBinopBlockMaintains`,

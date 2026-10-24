@@ -148,13 +148,13 @@ theorem corres_iff_rrelPT {P Q : Env → S → Prop} {G : S → Prop} {e : ImpEx
   · rw [wpPost_of_plain hc, wpPost_of_plain hc]
     refine ⟨fun ⟨hv, hQ⟩ => ⟨hQ, v, ?_, rfl⟩, fun ⟨hQ, b, hb, hv⟩ => ⟨?_, hQ⟩⟩
     · subst hv
-      simp only [valExc, hc, Bool.false_eq_true, if_false]
+      simp only [valExc, hc, Bool.false_eq_true, ite_false]
     · rw [← hv]
       exact valExc_eq_ok hb
   · rw [wpPost_of_cf hc, wpPost_of_cf hc]
     refine ⟨fun ⟨hv, hQ⟩ => ⟨hQ, v, ?_, rfl⟩, fun ⟨hQ, r, hr, hv⟩ => ⟨?_, hQ⟩⟩
     · subst hv
-      simp only [valExc, hc, if_true]
+      simp only [valExc, hc, ite_true]
     · rw [hv]
       exact valExc_eq_error hr
 

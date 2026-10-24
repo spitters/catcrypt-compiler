@@ -139,7 +139,7 @@ theorem regAgree_setReg_matched (s : JState 64) (ls : LstateM) (flg : String →
   rw [LstateN.getW_nextPc, hs r]
   by_cases hrd : r = d
   · subst hrd; rw [LstateN.getW_setReg_same]; simp
-  · rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, hreg r hr, if_neg hrd]
+  · rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, hreg r hr, ite_eq_right hrd]
 
 /-! ## 3. The three-`xor` flag-clearing prologue -/
 

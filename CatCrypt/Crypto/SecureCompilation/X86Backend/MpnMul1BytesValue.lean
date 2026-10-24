@@ -163,7 +163,7 @@ theorem mul1Rho_id :
   rw [show loopReg 4 30 = "L4_r30" by decide +kernel] at h2
   rw [show loopReg 4 34 = "L4_r34" by decide +kernel] at h3
   unfold mul1Rho
-  rw [if_neg (by rintro (h | h | h) <;> contradiction)]
+  rw [ite_eq_right (by rintro (h | h | h) <;> contradiction)]
 
 /-! ## 2. The layout and the relation along the trip -/
 

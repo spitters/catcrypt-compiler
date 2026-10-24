@@ -103,7 +103,7 @@ theorem emit_adc_imm0_word (s : JState 64) (dst : String) :
   simp only [evalInstr, JState.get, JState.writeB5W, x86_ADC, rflags_of_aluop, add_carry,
     addCarryWord, JOperand.eval]
   rcases h : s.flagB (·.cf) with _ | _ <;>
-    simp only [if_true, if_false, Bool.false_eq_true] <;>
+    simp only [ite_true, ite_false, Bool.false_eq_true] <;>
     (apply BitVec.eq_of_toNat_eq) <;> simp [BitVec.toNat_add, BitVec.toNat_ofNat]
 
 /-- One emitted `adc dst, 0` sets `CF` to the carry-out of `dst + 0 + CF-in`. -/
@@ -117,13 +117,13 @@ theorem emit_adc_imm0_cf (s : JState 64) (dst : String) :
     simp only [JState.flagB] at h <;>
     simp only [evalInstr, JState.flagB, JState.writeB5W, x86_ADC, rflags_of_aluop, add_carry,
       JOperand.eval, wunsigned, Option.getD_some, BitVec.toNat_ofNat, JState.get, h,
-      if_true, if_false, Bool.false_eq_true] <;>
+      ite_true, ite_false, Bool.false_eq_true] <;>
     refine wrap_iff _ ?_ <;> omega
 
 /-- One emitted `adc dst, 0` writes only `dst`: any other register is preserved. -/
 theorem emit_adc_imm0_other (s : JState 64) (dst r : String) (hr : r ≠ dst) :
     (evalInstr s (.adc dst (.imm 0))).get r = s.get r := by
-  simp only [evalInstr, JState.get, JState.writeB5W, if_neg hr]
+  simp only [evalInstr, JState.get, JState.writeB5W, ite_eq_right hr]
 
 /-! ## 2. The `adc dᵢ, 0` propagation chain = `addLimbs u (replicate 0) cin`
 
@@ -261,7 +261,7 @@ theorem foldCascade_runBlock (D : List String) (rcy : String) (H : List (BitVec 
         have hs1cf : s1.flagB (·.cf) = (carryOutBit h0 r 0 = 1) := by
           rw [hs1, emit_add_cf, hd0, ← hr]
           have := cf_carryOut h0 r 0
-          simp only [if_neg (by decide : ¬ ((0 : BitVec 1) = 1)),
+          simp only [ite_eq_right (by decide : ¬ ((0 : BitVec 1) = 1)),
             Nat.add_zero] at this
           simp only [decide_eq_true_eq] at this ⊢
           rw [this]
@@ -319,8 +319,8 @@ theorem foldCascade_value (D : List String) (rcy : String) (H : List (BitVec 64)
       = (addLimbs H v 0).2.toNat := by
     rw [bit_toNat (addLimbs H v 0).2]
     by_cases hb : (runBlock s (foldCascade D rcy)).flagB (·.cf) = true
-    · rw [if_pos hb, if_pos (by rw [← hcf]; exact hb)]
-    · rw [if_neg hb, if_neg (by rw [← hcf]; simpa using hb)]
+    · rw [ite_eq_left hb, ite_eq_left (by rw [← hcf]; exact hb)]
+    · rw [ite_eq_right hb, ite_eq_right (by rw [← hcf]; simpa using hb)]
   rw [hcfbit]
   exact hrec
 

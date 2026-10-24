@@ -230,7 +230,7 @@ def LstateM.nextPc (s : LstateM) : LstateM := { s with reg := s.reg.nextPc }
 @[simp] theorem LstateM.getArr_setArr_other (s : LstateM) (r r' : String) {w n : Nat}
     (arr : Fin n → BitVec w) (w' n' : Nat) (h : r' ≠ r) :
     (s.setArr r arr).getArr r' w' n' = s.getArr r' w' n' := by
-  have hlarr : (s.setArr r arr).larr r' = s.larr r' := by simp [LstateM.setArr, if_neg h]
+  have hlarr : (s.setArr r arr).larr r' = s.larr r' := by simp [LstateM.setArr, ite_eq_right h]
   unfold LstateM.getArr
   rw [hlarr]
 
@@ -289,7 +289,7 @@ def LstateM.storeMemC (s : LstateM) (base : String) (off : Int) (v : BitVec 64) 
 @[simp] theorem LstateM.lmem_storeMemC_other (s : LstateM) (base : String) (off : Int)
     (v : BitVec 64) (b' : String) (o' : Int) (h : ¬ (b' = base ∧ o' = off)) :
     (s.storeMemC base off v).lmem b' o' = s.lmem b' o' := by
-  simp only [LstateM.storeMemC]; rw [if_neg h]
+  simp only [LstateM.storeMemC]; rw [ite_eq_right h]
 
 /-! ## 2. The typed instruction list and its wire projection
 
@@ -481,14 +481,14 @@ theorem lsemStepMem_cmp (c : JasminCmp) (wOp : Nat) (dst a : String) (b : LOpera
 theorem loadStruct?_stackLoad {w n : Nat} (dst base idx : String) :
     loadStruct? (opToLinstrR (JasminOp.stackLoad w n) dst [.reg base, .reg idx])
       = some (dst, base, idx) := by
-  simp only [opToLinstrR, loadStruct?, if_true]
+  simp only [opToLinstrR, loadStruct?, ite_true]
 
 /-- `storeStruct?` recognises the real `stackStore` wire form
     `Lopn [.reg dst] "STOREIDX" [.arrIdx base idx (w/8), .reg val]`. -/
 theorem storeStruct?_stackStore {w n : Nat} (dst base idx val : String) :
     storeStruct? (opToLinstrR (JasminOp.stackStore w n) dst [.reg base, .reg idx, .reg val])
       = some (dst, base, idx, val) := by
-  simp only [opToLinstrR, storeStruct?, if_true]
+  simp only [opToLinstrR, storeStruct?, ite_true]
 
 /-! ### 3a. The compile-time-offset load/store step reductions
 
@@ -505,7 +505,7 @@ word semantics over the type-identical carrier. -/
 theorem lsemStepMem_loadC (dst base : String) (off : Nat) (s : LstateM) :
     lsemStepMem (.Lopn [.reg dst] "MOVQ" [.arr base off], .loadC) s
       = some ((s.setReg dst (s.lmem base (Int.ofNat off))).nextPc) := by
-  simp only [lsemStepMem, loadCStruct?, if_true]
+  simp only [lsemStepMem, loadCStruct?, ite_true]
 
 /-- **Compile-time store step.** Given the source register `src` reads `v` at
     width 64, `lsemStepMem` of a `.storeC`-tagged `Lopn [.arr base off] "MOVQ"
@@ -515,7 +515,7 @@ theorem lsemStepMem_storeC (base : String) (off : Nat) (src : String) (s : Lstat
     (v : BitVec 64) (hv : s.reg.getW src 64 = some v) :
     lsemStepMem (.Lopn [.arr base off] "MOVQ" [.reg src], .storeC) s
       = some ((s.storeMemC base (Int.ofNat off) v).nextPc) := by
-  simp only [lsemStepMem, storeCStruct?, if_true, hv]
+  simp only [lsemStepMem, storeCStruct?, ite_true, hv]
 
 /-- **Array-zeroing step.** `lsemStepMem` of a `.zero w n`-tagged
     `Lopn [.reg dst] "ZEROARR" ss` writes the zero array of shape `(w, n)`, the value
@@ -524,13 +524,13 @@ theorem lsemStepMem_storeC (base : String) (off : Nat) (src : String) (s : Lstat
 theorem lsemStepMem_zeroC (dst : String) (ss : List LOperand) (w n : Nat) (s : LstateM) :
     lsemStepMem (.Lopn [.reg dst] "ZEROARR" ss, .zero w n) s
       = some ((s.setArr dst (fun _ : Fin n => (0 : BitVec w))).nextPc) := by
-  simp only [lsemStepMem, zeroStruct?, if_true]
+  simp only [lsemStepMem, zeroStruct?, ite_true]
 
 /-- `zeroStruct?` recognises the real `stackZero` wire form
     `Lopn [.reg dst] "ZEROARR" [.imm n, .imm w]`. -/
 theorem zeroStruct?_stackZero {w n : Nat} (dst : String) (src : List LOperand) :
     zeroStruct? (opToLinstrR (JasminOp.stackZero w n) dst src) = some dst := by
-  simp only [opToLinstrR, zeroStruct?, if_true]
+  simp only [opToLinstrR, zeroStruct?, ite_true]
 
 /-- **Constant-index store step.** Given the source array `base` at shape `(w, n)`
     and the value register `val` at width `w`, `lsemStepMem` of a `.storeImm w n`-tagged
@@ -542,14 +542,14 @@ theorem lsemStepMem_storeImmC (dst base val : String) (k w n : Nat) (s : LstateM
     (ha : s.getArr base w n = some arr) (hv : s.reg.getW val w = some v) :
     lsemStepMem (.Lopn [.reg dst] "STOREIMM" [.reg base, .reg val, .imm k], .storeImm w n) s
       = some ((s.setArr dst (stackSet arr k v)).nextPc) := by
-  simp only [lsemStepMem, storeImmStruct?, if_true, ha, hv]
+  simp only [lsemStepMem, storeImmStruct?, ite_true, ha, hv]
 
 /-- `storeImmStruct?` recognises the real `stackStoreImm` wire form
     `Lopn [.reg dst] "STOREIMM" [.reg base, .reg val, .imm k]`. -/
 theorem storeImmStruct?_stackStoreImm {w n k : Nat} (dst base val : String) :
     storeImmStruct? (opToLinstrR (JasminOp.stackStoreImm w n k) dst [.reg base, .reg val])
       = some (dst, base, val, k) := by
-  simp only [opToLinstrR, List.cons_append, List.nil_append, storeImmStruct?, if_true]
+  simp only [opToLinstrR, List.cons_append, List.nil_append, storeImmStruct?, ite_true]
 
 /-! ## 4. The typed emission `straightOpsMem` and the wire/byte tie
 
@@ -964,7 +964,7 @@ theorem lsemStepMem_load {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       have := hagree.reg idx
       rwa [evalOperandN_resolveVar] at this
     rw [exprArgs_load heq arr idx, resolveVar_isReg arr, resolveVar_isReg idx]
-    simp only [lsemStepMem, opToLinstrR, loadStruct?, if_true, harr, hidx]
+    simp only [lsemStepMem, opToLinstrR, loadStruct?, ite_true, harr, hidx]
     rfl
 
 /-- **`stackStore` per-binding step.** From a bundled store agreeing with `V`, the
@@ -1008,7 +1008,7 @@ theorem lsemStepMem_store {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       rwa [evalOperandN_resolveVar] at this
     rw [exprArgs_store heq arr idx val, resolveVar_isReg arr, resolveVar_isReg idx,
       resolveVar_isReg val]
-    simp only [lsemStepMem, opToLinstrR, storeStruct?, if_true, harr, hidx, hval]
+    simp only [lsemStepMem, opToLinstrR, storeStruct?, ite_true, harr, hidx, hval]
     rfl
 
 /-- **`stackZero` per-binding step.** The typed zeroing instruction writes the binding's
@@ -1031,7 +1031,7 @@ theorem lsemStepMem_zeroOp {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
           Expr jasminDialect Γ (.stackArr w n)).denote V)).nextPc) := by
   match args with
   | .nil =>
-    simp only [lsemStepMem, opToLinstrR, zeroStruct?, if_true]
+    simp only [lsemStepMem, opToLinstrR, zeroStruct?, ite_true]
     rfl
 
 /-- The `exprArgs` of a `stackStoreImm` binding is `[arrName, valName]`. -/
@@ -1078,7 +1078,7 @@ theorem lsemStepMem_storeImmOp {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
       rwa [evalOperandN_resolveVar] at this
     rw [exprArgs_storeImm heq arr val, resolveVar_isReg arr, resolveVar_isReg val]
     simp only [lsemStepMem, opToLinstrR, List.cons_append, List.nil_append, storeImmStruct?,
-      if_true, harr, hval]
+      ite_true, harr, hval]
     rfl
 
 /-! ### The register-delegated bindings over `LstateM`
@@ -1352,10 +1352,10 @@ theorem getArr_setArr_resolveVar {curDepth nArgs : Nat} {Γ : Ctxt jasminDialect
   set slot := curDepth - 1 - varIndex v with hslot
   have hslt : slot < curDepth := by omega
   by_cases hsa : slot < nArgs
-  · simp only [hsa, if_true]
+  · simp only [hsa, ite_true]
     rw [LstateM.getArr_setArr_other]
     exact fun he => (JasminLsemSimulation.regName_ne_argName curDepth slot) he.symm
-  · simp only [hsa, if_false]
+  · simp only [hsa, ite_false]
     rw [LstateM.getArr_setArr_other]
     exact fun he => (JasminLsemSimulation.regName_ne (by omega)) he.symm
 
@@ -1412,7 +1412,7 @@ theorem StoreAgreesM.stepArr {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
         have hslot : curDepth + 1 - 1 - 0 = curDepth := by omega
         simp only [hslot]
         have hsa : ¬ curDepth < nArgs := by omega
-        simp only [hsa, if_false, operandName, LstateM.getArr_nextPc]
+        simp only [hsa, ite_false, operandName, LstateM.getArr_nextPc]
         -- `.here : Var (.stackArr w n :: Γ) (.stackArr w' n')` forces `(w', n') = (w, n)`
         rw [LstateM.getArr_setArr_same]
         rfl
@@ -1954,7 +1954,7 @@ theorem encodeM_StoreAgreesM {Γ : Ctxt jasminDialect} (V : Ctxt.Valuation Γ) :
     intro w' n' v
     have hslot : Γ.length - 1 - varIndex v < Γ.length := by
       have := JasminLsemSimulation.varIndex_lt v; omega
-    simp only [resolveVar, hslot, if_true, operandName, encodeM]
+    simp only [resolveVar, hslot, ite_true, operandName, encodeM]
     exact encodeArrAuxM_lookup V _ v rfl
 
 /-! ## 12. Faithfulness and leak state-independence -/
@@ -2270,9 +2270,9 @@ theorem resolveVar_operandName_ne_regName {curDepth nArgs : Nat}
     operandName (resolveVar curDepth nArgs argName (fun _ => none) v) ≠ regName k := by
   simp only [resolveVar, operandName]
   by_cases hsa : curDepth - 1 - varIndex v < nArgs
-  · simp only [hsa, if_true]
+  · simp only [hsa, ite_true]
     exact fun h => JasminLsemSimulation.regName_ne_argName k _ h.symm
-  · simp only [hsa, if_false]
+  · simp only [hsa, ite_false]
     exact JasminLsemSimulation.regName_ne (by omega)
 
 /-- **Frame transport of the agreement.** A state carrying a `WriteFrame

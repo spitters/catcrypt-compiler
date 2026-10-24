@@ -110,7 +110,7 @@ theorem atLabel_goto {P : LprogM} {k q : Nat} {l : LLabel} {s : LstateMF}
 theorem findInstrMem_of_atPc {P : LprogM} {k : Nat} {s : LstateMF} (h : atPc P k s) :
     findInstrMem P s.prog = P.body[k]? := by
   unfold findInstrMem
-  rw [if_pos h.1, h.2]
+  rw [ite_eq_left h.1, h.2]
 
 /-- A state at or past the end of the body is halted. -/
 theorem halted_of_atPc {P : LprogM} {k : Nat} {s : LstateMF} (h : atPc P k s)
@@ -244,7 +244,7 @@ theorem steps_cond_taken (isa : Isa) {P : LprogM} {k q : Nat} {s : LstateMF} {c 
     (hl : findLabelMem l P.body = some q) :
     Steps isa P 1 s (goto s (q + 1)) ∧ atLabel P l (goto s (q + 1)) :=
   ⟨Steps.one (by
-      rw [lsemStepPMemF_of_atPc isa hat hi, isa.step_cond, if_pos hc,
+      rw [lsemStepPMemF_of_atPc isa hat hi, isa.step_cond, ite_eq_left hc,
         evalJumpMem_of_findLabelMem hl]),
     atLabel_goto hl hat⟩
 
@@ -254,7 +254,7 @@ theorem steps_cond_not_taken (isa : Isa) {P : LprogM} {k : Nat} {s : LstateMF}
     (hi : P.body[k]? = some (.Lcond c l, tag)) (hc : isa.condEval s c = false) :
     Steps isa P 1 s (next s) ∧ atPc P (k + 1) (next s) :=
   ⟨Steps.one (by
-      rw [lsemStepPMemF_of_atPc isa hat hi, isa.step_cond, if_neg (by rw [hc]; decide)]
+      rw [lsemStepPMemF_of_atPc isa hat hi, isa.step_cond, ite_eq_right (by rw [hc]; decide)]
       rfl),
     atPc_next hat⟩
 
@@ -264,7 +264,7 @@ theorem steps_goto (isa : Isa) {P : LprogM} {k q : Nat} {s : LstateMF} {l : LLab
     (hl : findLabelMem l P.body = some q) :
     Steps isa P 1 s (goto s (q + 1)) ∧ atLabel P l (goto s (q + 1)) :=
   ⟨Steps.one (by
-      rw [lsemStepPMemF_of_atPc isa hat hi, isa.step_goto, if_pos rfl,
+      rw [lsemStepPMemF_of_atPc isa hat hi, isa.step_goto, ite_eq_left rfl,
         evalJumpMem_of_findLabelMem hl]),
     atLabel_goto hl hat⟩
 

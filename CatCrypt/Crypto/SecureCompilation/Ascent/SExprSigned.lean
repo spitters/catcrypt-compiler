@@ -132,13 +132,13 @@ theorem evalBV_sextSExpr {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64)
     (β : String → BitVec 64) (e : SExpr) :
     (sextSExpr w e).evalBV β = ((e.evalBV β).setWidth w).signExtend 64 := by
   rcases hw with rfl | rfl | rfl | rfl
-  · simp only [sextSExpr, show ¬ ((8 : Nat) = 64) from by decide, if_false, SExpr.evalBV]
+  · simp only [sextSExpr, show ¬ ((8 : Nat) = 64) from by decide, ite_false, SExpr.evalBV]
     generalize e.evalBV β = v
     bv_decide
-  · simp only [sextSExpr, show ¬ ((16 : Nat) = 64) from by decide, if_false, SExpr.evalBV]
+  · simp only [sextSExpr, show ¬ ((16 : Nat) = 64) from by decide, ite_false, SExpr.evalBV]
     generalize e.evalBV β = v
     bv_decide
-  · simp only [sextSExpr, show ¬ ((32 : Nat) = 64) from by decide, if_false, SExpr.evalBV]
+  · simp only [sextSExpr, show ¬ ((32 : Nat) = 64) from by decide, ite_false, SExpr.evalBV]
     generalize e.evalBV β = v
     bv_decide
   · simp [sextSExpr]

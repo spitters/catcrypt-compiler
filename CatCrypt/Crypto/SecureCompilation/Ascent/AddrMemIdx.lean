@@ -195,9 +195,9 @@ theorem absMem_write_on (bank : String → Option String) (P : String → BitVec
       if k' = k then v else absMem bank P m k'.1 k'.2 := by
   by_cases h : k' = k
   · subst h
-    simp only [absMem, if_pos]
+    simp only [absMem, ite_eq_left]
     exact read64_write64_same m _ v
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     exact read64_write64_of_disjoint _ _ _ _ (hsep k k' hk hk' (Ne.symm h))
 
 theorem lookupC_dropBank (t : List ((String × Int) × AVal)) (e : String) (c : String × Int) :
@@ -287,7 +287,7 @@ theorem step_dyn (bank : String → Option String) (P Q : String → BitVec 64)
   cases hst : isStoreIdx i with
   | false =>
     obtain ⟨d, rfl⟩ := eq_load_of_idxOf hix hst
-    simp only [Bool.false_eq_true, if_false]
+    simp only [Bool.false_eq_true, ite_false]
     have hval : read64 sa.mem (sa.regs b + BitVec.ofInt 64 ((sc * (sa.regs x).toNat : Nat) : Int))
         = js.mem e ((sc * (js.regs x).toNat : Nat) : Int) := by
       have h := hK _ hK0
@@ -314,9 +314,9 @@ theorem step_dyn (bank : String → Option String) (P Q : String → BitVec 64)
         rw [this]; rfl
       rw [hs, DState.get_setR] at hv
       by_cases hrd : r' = d
-      · rw [if_pos hrd] at hv; cases hv
-      · rw [if_neg hrd] at hv
-        simp only [evalInstrA, evalInstr, JState.setReg, if_neg hrd, AState.view]
+      · rw [ite_eq_left hrd] at hv; cases hv
+      · rw [ite_eq_right hrd] at hv
+        simp only [evalInstrA, evalInstr, JState.setReg, ite_eq_right hrd, AState.view]
         exact hinv r' v hv
     · have hs : (stepD bank A (.loadMemIdx d b x sc)).cells = A.cells := by
         simp only [stepD]; rfl
@@ -329,7 +329,7 @@ theorem step_dyn (bank : String → Option String) (P Q : String → BitVec 64)
       exact hA c (by simpa [DState.cellKeys, hs] using hc)
   | true =>
     obtain ⟨s, rfl⟩ := dsts_of_idxOf_store hix hst
-    simp only [if_true]
+    simp only [ite_true]
     have hsv : s.eval sa.view = s.eval js := by
       cases s <;> simp [JOperand.eval, AState.view, hr]
     have hmem : (evalInstrA sa (.storeMemIdx b x sc s)).mem =
@@ -346,7 +346,7 @@ theorem step_dyn (bank : String → Option String) (P Q : String → BitVec 64)
       · subst h; simp
       · have h' : ¬ (k.1 = e ∧ k.2 = (sc : Int) * ((Q r).toNat : Int)) :=
           fun ⟨h1, h2⟩ => h (Prod.ext h1 (by rw [h2]; push_cast; rfl))
-        simp only [h, h', if_false]
+        simp only [h, h', ite_false]
         exact hK k hk
     · intro r' v hv
       exact hinv r' v hv
@@ -406,7 +406,7 @@ theorem step_static (bank : String → Option String) (P : String → BitVec 64)
       · subst h
         simp
       · have h' : ¬ (k'.1 = k.1 ∧ k'.2 = k.2) := fun ⟨e1, e2⟩ => h (Prod.ext e1 e2)
-        rw [if_neg h, if_neg h']
+        rw [ite_eq_right h, ite_eq_right h']
         exact hK k' hk'
   · intro k hk c hc hck
     exact hsep k c (hWK k hk) (hA c hc) (Ne.symm hck)
@@ -645,11 +645,11 @@ theorem lookupR_mem {t : List (String × Option AVal)} {r : String} {v : Option 
     obtain ⟨k, w⟩ := p
     simp only [lookupR] at h
     by_cases hr : r = k
-    · rw [if_pos hr] at h
+    · rw [ite_eq_left hr] at h
       cases h
       subst hr
       exact List.mem_cons_self
-    · rw [if_neg hr] at h
+    · rw [ite_eq_right hr] at h
       exact List.mem_cons_of_mem _ (ih h)
 
 theorem lookupC_mem {t : List ((String × Int) × AVal)} {c : String × Int} {v : AVal}
@@ -660,11 +660,11 @@ theorem lookupC_mem {t : List ((String × Int) × AVal)} {c : String × Int} {v 
     obtain ⟨k, w⟩ := p
     simp only [lookupC] at h
     by_cases hc : c = k
-    · rw [if_pos hc] at h
+    · rw [ite_eq_left hc] at h
       cases h
       subst hc
       exact List.mem_cons_self
-    · rw [if_neg hc] at h
+    · rw [ite_eq_right hc] at h
       exact List.mem_cons_of_mem _ (ih h)
 
 theorem entailsB_regInv {bank : String → Option String} {P : String → BitVec 64}
@@ -922,7 +922,7 @@ theorem andBody_rax (sa : AState) :
   rw [e, runBlockA_append, runBlockA_cons,
     runBlockA_regs_frame _ _ _ (by decide)]
   simp only [evalInstrA, evalInstr, JState.writeB5W, x86_ADD, AState.view, JState.get,
-    JOperand.eval, if_true]
+    JOperand.eval, ite_true]
   rw [runBlockA_regs_frame _ _ _ (by decide)]
   rfl
 
@@ -933,7 +933,7 @@ theorem andBody_rdi (sa : AState) :
   rw [e, runBlockA_append, runBlockA_cons,
     runBlockA_regs_frame _ _ _ (by decide)]
   simp only [evalInstrA, evalInstr, JState.writeB5W, x86_SUB, AState.view, JState.get,
-    JOperand.eval, if_true]
+    JOperand.eval, ite_true]
   rw [runBlockA_regs_frame _ _ _ (by decide)]
   rfl
 

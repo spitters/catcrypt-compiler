@@ -265,8 +265,8 @@ theorem wScheduleCat_eq (m : Fin 16 → BitVec 64) (t : Fin 80) :
       intro ht
       rw [wScheduleCat, wScheduleSpec]
       by_cases h : n < 16
-      · simp only [h, dif_pos]
-      · simp only [h, dif_neg, not_false_iff]
+      · simp only [h, dite_eq_left]
+      · simp only [h, dite_eq_right, not_false_iff]
         rw [ih (n - 2) (by omega) (by omega), ih (n - 7) (by omega) (by omega),
           ih (n - 15) (by omega) (by omega), ih (n - 16) (by omega) (by omega),
           smallSigma1Cat_eq, smallSigma0Cat_eq]

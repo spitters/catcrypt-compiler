@@ -128,14 +128,14 @@ theorem corresG_iff_wp {Γ N T : S → BList} {G : S → Prop} {e : ImpExpr} {C 
   cases hc : v.isControlFlow
   · rw [wpPost_of_plain hc]
     cases hC : C σ
-    · simp only [Bool.false_eq_true, if_false, true_and]
-    · simp only [if_true, Bool.true_eq_false, false_and, iff_false, not_and]
+    · simp only [Bool.false_eq_true, ite_false, true_and]
+    · simp only [ite_true, Bool.true_eq_false, false_and, iff_false, not_and]
       rintro rfl
       simp [Value.isControlFlow] at hc
   · rw [wpPost_of_cf hc]
     cases hC : C σ
-    · simp only [Bool.false_eq_true, if_false, false_and, true_and, false_or]
-    · simp only [if_true, Bool.true_eq_false, false_and, true_and, or_false]
+    · simp only [Bool.false_eq_true, ite_false, false_and, true_and, false_or]
+    · simp only [ite_true, Bool.true_eq_false, false_and, true_and, or_false]
 
 theorem CorresG.plain {Γ N T : S → BList} {G : S → Prop} {e : ImpExpr} {W V : S → Value}
     (h : CorresG bi Γ G e (fun _ => false) W V T N) : CorresB bi Γ G e V N := h
@@ -156,11 +156,11 @@ theorem corresG_conseq {Γ Γ' N N' T T' : S → BList} {G G' : S → Prop} {e :
   refine corres_conseq h (fun env σ hb hg => binds_of_sub hb (hΓ σ hg)) hG
     (fun σ hg => ?_) (fun env σ hg hb => ?_)
   · cases hC : C σ
-    · simp only [Bool.false_eq_true, if_false]; exact hV σ hg hC
-    · simp only [if_true]; rw [hW σ hg hC]
+    · simp only [Bool.false_eq_true, ite_false]; exact hV σ hg hC
+    · simp only [ite_true]; rw [hW σ hg hC]
   · cases hC : C σ
-    · simp only [hC, Bool.false_eq_true, if_false] at hb ⊢; exact binds_of_sub hb (hN σ hg hC)
-    · simp only [hC, if_true] at hb ⊢; exact binds_of_sub hb (hT σ hg hC)
+    · simp only [hC, Bool.false_eq_true, ite_false] at hb ⊢; exact binds_of_sub hb (hN σ hg hC)
+    · simp only [hC, ite_true] at hb ⊢; exact binds_of_sub hb (hT σ hg hC)
 
 /-- **Sequence with a guarded exit.** An exit of the first expression is the exit of the
     sequence; otherwise the second runs. -/
@@ -177,9 +177,9 @@ theorem corresG_seq {Γ N₁ T₁ N₂ T₂ : S → BList} {G : S → Prop} {e1 
   rw [wp_seq]
   refine wp_mono (h1 σ hG env hP) (fun v s _ ⟨hC, _, hN⟩ => ?_) fun v s hc h => ?_
   · refine wp_mono (h2 σ ⟨hG, hC⟩ s hN) (fun _ _ _ h => ?_) fun _ _ _ h => ?_ <;>
-      simpa only [hC, Bool.false_or, Bool.false_eq_true, if_false] using h
+      simpa only [hC, Bool.false_or, Bool.false_eq_true, ite_false] using h
   · rcases h with ⟨hC, hv, hT⟩ | ⟨hC, rfl, -⟩
-    · simp only [hC, Bool.true_or, if_true, true_and, Bool.true_eq_false, false_and, or_false]
+    · simp only [hC, Bool.true_or, ite_true, true_and, Bool.true_eq_false, false_and, or_false]
       exact ⟨hv, hT⟩
     · rw [hp σ hG hC] at hc
       cases hc
@@ -201,9 +201,9 @@ theorem corresG_letBind {Γ N₁ T₁ N₂ T₂ : S → BList} {G : S → Prop} 
   · subst hv
     refine wp_mono (h2 σ ⟨hG, hC⟩ _ (binds_extend hN x _)) (fun _ _ _ h => ?_)
       fun _ _ _ h => ?_ <;>
-      simpa only [hC, Bool.false_or, Bool.false_eq_true, if_false] using h
+      simpa only [hC, Bool.false_or, Bool.false_eq_true, ite_false] using h
   · rcases h with ⟨hC, hv, hT⟩ | ⟨hC, rfl, -⟩
-    · simp only [hC, Bool.true_or, if_true, true_and, Bool.true_eq_false, false_and, or_false]
+    · simp only [hC, Bool.true_or, ite_true, true_and, Bool.true_eq_false, false_and, or_false]
       exact ⟨hv, hT⟩
     · rw [hp σ hG hC] at hc
       cases hc
@@ -221,12 +221,12 @@ theorem corresG_ifThenElse {Γ N₀ Nt Tt Ne Te : S → BList} {G : S → Prop} 
   refine corres_ifThenElse hc ?_ ?_
   · refine corres_conseq ht (fun _ _ h _ => h) (fun _ h => h) (fun σ hG => ?_)
       (fun env σ hG h => ?_)
-    · simp only [hG.2, if_true]
-    · simp only [hG.2, if_true]; exact h
+    · simp only [hG.2, ite_true]
+    · simp only [hG.2, ite_true]; exact h
   · refine corres_conseq he (fun _ _ h _ => h) (fun _ h => h) (fun σ hG => ?_)
       (fun env σ hG h => ?_)
-    · simp only [hG.2, Bool.false_eq_true, if_false]
-    · simp only [hG.2, Bool.false_eq_true, if_false]; exact h
+    · simp only [hG.2, Bool.false_eq_true, ite_false]
+    · simp only [hG.2, Bool.false_eq_true, ite_false]; exact h
 
 /-- **`return` and `break`.** The value of the expression is the exit value. -/
 theorem corresG_cfBreak {Γ N : S → BList} {G : S → Prop} {e : ImpExpr} {V : S → Value}
@@ -249,8 +249,8 @@ theorem bindLookup_ite_of {c : Bool} {Γt Γe : BList} {x : String} {v₁ v₂ v
     (h : (if c = true then v₁ else v₂) = v) :
     bindLookup (if c = true then Γt else Γe) x = some v := by
   cases c
-  · simp only [Bool.false_eq_true, if_false] at h ⊢; rw [h₂, h]
-  · simp only [if_true] at h ⊢; rw [h₁, h]
+  · simp only [Bool.false_eq_true, ite_false] at h ⊢; rw [h₂, h]
+  · simp only [ite_true] at h ⊢; rw [h₁, h]
 
 theorem ite_enc {α : Type} [HaxEnc α] (c : Bool) (a b : α) :
     (if c = true then enc a else enc b) = enc (if c = true then a else b) := by
@@ -280,14 +280,14 @@ theorem fnCorresX_of_corresG {A β : Type} [HaxEnc β] [HaxEnc.Plain β] {Γ₀ 
   refine ⟨f₀, fun fuel hf => ?_⟩
   rw [r fuel hf]
   cases hC : C a
-  · simp only [hC, Bool.false_eq_true, if_false, hV a hG hC, outcomeExceptCF, encExc]
+  · simp only [hC, Bool.false_eq_true, ite_false, hV a hG hC, outcomeExceptCF, encExc]
     congr 1
     have := HaxEnc.Plain.not_cf (v a)
     generalize enc (v a) = x at this ⊢
     cases x with
     | controlFlow b y => cases b <;> simp_all [Value.isControlFlow]
     | _ => rfl
-  · simp only [hC, if_true, hW a hG hC, outcomeExceptCF, encExc, cfExcept_break]
+  · simp only [hC, ite_true, hW a hG hC, outcomeExceptCF, encExc, cfExcept_break]
 
 theorem mergeExcept_ite {β : Type} (c : Bool) (w v : β) :
     mergeExcept (if c = true then (.error w : Except β β) else .ok v) =
@@ -374,9 +374,9 @@ theorem loopBody_of_corresG {var : String} {body : ImpExpr} {G : S → Prop} {lo
     (fun _ _ => rfl) (fun env t hG hb => ?_)
   obtain ⟨σ, i, a⟩ := t
   cases hC : Cb (σ, i, a)
-  · simp only [hC, Bool.false_eq_true, if_false, stepCF, cfToExcept] at hb ⊢
+  · simp only [hC, Bool.false_eq_true, ite_false, stepCF, cfToExcept] at hb ⊢
     exact binds_of_sub hb (hN _ hG hC)
-  · simp only [hC, if_true, stepCF, cfToExcept] at hb ⊢
+  · simp only [hC, ite_true, stepCF, cfToExcept] at hb ⊢
     exact binds_of_sub hb (hT _ hG hC)
 
 /-- **Counted loop with a plain body.** The invariant binds `Λ σ a`, independent of the
@@ -479,12 +479,12 @@ theorem corresB_forFoldG [HaxEnc B] {Γ N₁ N₂ : S → BList} {G : S → Prop
     · obtain ⟨σ, i, a⟩ := t
       have hG' : G σ ∧ loF σ ≤ i ∧ i < hiF σ := ⟨hG.1, hl, hh⟩
       cases hC : Cb (σ, i, a)
-      · simp only [stepCF, Bool.false_eq_true, if_false, cfToExcept]
+      · simp only [stepCF, Bool.false_eq_true, ite_false, cfToExcept]
         intro x hx
         have := hV _ hG' hC
         rw [hx] at this
         cases this
-      · simp only [stepCF, if_true, cfToExcept]
+      · simp only [stepCF, ite_true, cfToExcept]
         rw [hW _ hG' hC]
   · intro env σ hP hG
     obtain ⟨f₁, e₁, hQ₁, r₁⟩ := hlo env σ hP hG.1
@@ -532,9 +532,9 @@ theorem corresB_whileFoldG [HaxEnc B] {Γ : S → BList} {G : S → Prop} {cond 
       (fun env t hG hq => ?_)
     obtain ⟨σ, a⟩ := t
     cases hC : Cb (σ, a)
-    · simp only [hC, Bool.false_eq_true, if_false, stepCF, cfToExcept] at hq ⊢
+    · simp only [hC, Bool.false_eq_true, ite_false, stepCF, cfToExcept] at hq ⊢
       exact binds_of_sub hq (hN _ hG hC)
-    · simp only [hC, if_true, stepCF, cfToExcept] at hq ⊢
+    · simp only [hC, ite_true, stepCF, cfToExcept] at hq ⊢
       exact binds_of_sub hq (hT _ hG hC)
   have hc' : WhileCond bi cond G c (fun env σ a => Binds env (Λ σ a))
       (fun env σ a => Binds env (Nc (σ, a))) := hcond
@@ -554,12 +554,12 @@ theorem corresB_whileFoldG [HaxEnc B] {Γ : S → BList} {G : S → Prop} {cond 
     have hG' : G σ ∧ c σ a = true := ⟨hG, hc⟩
     cases hC : Cb (σ, a)
     · have := hV _ hG' hC
-      simp only [stepCF, Bool.false_eq_true, if_false, cfToExcept, stepStop]
+      simp only [stepCF, Bool.false_eq_true, ite_false, cfToExcept, stepStop]
       generalize Vb (σ, a) = x at this ⊢
       cases x with
       | controlFlow b y => simp [Value.isControlFlow] at this
       | _ => rfl
-    · simp only [stepCF, if_true, cfToExcept, stopPlain, stepStop]
+    · simp only [stepCF, ite_true, cfToExcept, stopPlain, stepStop]
       rw [hW _ hG' hC]
 
 /-- **While loop whose body may break, with an accumulator invariant.**
@@ -605,9 +605,9 @@ theorem corresB_whileFoldGJ [HaxEnc B] {Γ : S → BList} {G : S → Prop} {cond
     obtain ⟨σ, a⟩ := t
     have hG' : (G σ ∧ c σ a = true) ∧ J σ a := ⟨hG, hP.2⟩
     cases hC : Cb (σ, a)
-    · simp only [hC, Bool.false_eq_true, if_false, stepCF, cfToExcept] at hq ⊢
+    · simp only [hC, Bool.false_eq_true, ite_false, stepCF, cfToExcept] at hq ⊢
       exact ⟨binds_of_sub hq (hN _ hG' hC), hJ _ hG' hC⟩
-    · simp only [hC, if_true, stepCF, cfToExcept] at hq ⊢
+    · simp only [hC, ite_true, stepCF, cfToExcept] at hq ⊢
       exact binds_of_sub hq (hT _ hG' hC)
   have hc' : WhileCond bi cond G c (fun env σ a => Binds env (Λ σ a) ∧ J σ a)
       (fun env σ a => Binds env (Nc (σ, a)) ∧ J σ a) := by
@@ -631,12 +631,12 @@ theorem corresB_whileFoldGJ [HaxEnc B] {Γ : S → BList} {G : S → Prop} {cond
     have hG' : G σ ∧ c σ a = true := ⟨hG, hc⟩
     cases hC : Cb (σ, a)
     · have := hV _ hG' hC
-      simp only [stepCF, Bool.false_eq_true, if_false, cfToExcept, stepStop]
+      simp only [stepCF, Bool.false_eq_true, ite_false, cfToExcept, stepStop]
       generalize Vb (σ, a) = x at this ⊢
       cases x with
       | controlFlow b y => simp [Value.isControlFlow] at this
       | _ => rfl
-    · simp only [stepCF, if_true, cfToExcept, stopPlain, stepStop]
+    · simp only [stepCF, ite_true, cfToExcept, stopPlain, stepStop]
       rw [hW _ hG' hC]
 
 /-- **`Hax.foldRangeRev` is the reverse fold of the loop rule.** -/
@@ -801,9 +801,9 @@ theorem corresG_forFoldReturnG [HaxEnc R] [HaxEnc.Plain R] {Γ N₁ N₂ : S →
         (fun _ hG => ⟨hG.1.1, hG.2⟩) (fun _ _ => rfl) (fun env t hG hq => ?_)
       obtain ⟨σ, i, a⟩ := t
       cases hC : Cb (σ, i, a)
-      · simp only [hC, Bool.false_eq_true, if_false, stepRet, stepToExcept] at hq ⊢
+      · simp only [hC, Bool.false_eq_true, ite_false, stepRet, stepToExcept] at hq ⊢
         exact binds_of_sub hq (hN _ ⟨hG.1.1, hG.2⟩ hC)
-      · simp only [hC, if_true, stepRet, stepToExcept, retBrk]
+      · simp only [hC, ite_true, stepRet, stepToExcept, retBrk]
     have h := corres_forFoldReturn (bi := bi) (P := fun env σ => Binds env (Γ σ))
       (G := fun σ => G σ ∧ loF σ ≤ hiF σ) (L := Unit) (X := fun _ r => enc r)
       (Wl := fun _ _ => .unit) (a₀ := a₀)
@@ -840,13 +840,13 @@ theorem corresG_forFoldReturnG [HaxEnc R] [HaxEnc.Plain R] {Γ N₁ N₂ : S →
       have hG' : G σ ∧ loF σ ≤ i ∧ i < hiF σ := ⟨hG.1, hl, hh⟩
       cases hC : Cb (σ, i, a)
       · have := hV _ hG' hC
-        simp only [Bool.false_eq_true, if_false, stepRet, stepToExcept, stepStop]
+        simp only [Bool.false_eq_true, ite_false, stepRet, stepToExcept, stepStop]
         generalize Vb (σ, i, a) = x at this ⊢
         cases x with
         | controlFlow b y => simp [Value.isControlFlow] at this
         | _ => rfl
       · have := HaxEnc.Plain.not_cf (w σ i a)
-        simp only [if_true, stepRet, stepToExcept, stepStop, retStop, hW _ hG' hC]
+        simp only [ite_true, stepRet, stepToExcept, stepStop, retStop, hW _ hG' hC]
         generalize enc (w σ i a) = x at this ⊢
         cases x with
         | controlFlow b y => simp [Value.isControlFlow] at this
@@ -862,9 +862,9 @@ theorem corresG_forFoldReturnG [HaxEnc R] [HaxEnc.Plain R] {Γ N₁ N₂ : S →
       rw [show (hiF σ - loF σ).toNat = 0 by omega]
       rfl
     refine ⟨max f₁ f₂, e₂, ?_, fun fuel hf => ?_⟩
-    · simp only [hr, retC, retAcc, Bool.false_eq_true, if_false]
+    · simp only [hr, retC, retAcc, Bool.false_eq_true, ite_false]
       exact binds_of_sub hQ₂ (hinit σ hG.1)
-    · simp only [hr, retC, Bool.false_eq_true, if_false]
+    · simp only [hr, retC, Bool.false_eq_true, ite_false]
       rw [denote'_forFoldReturn bi fuel (r₁ fuel (by omega)) (r₂ fuel (by omega))]
       exact denoteForLoop'Return_done bi fuel var body e₂ (by omega)
 
@@ -907,16 +907,16 @@ theorem corresG_optMatch {α : Type} [HaxEnc α] [Inhabited α] {Γ Ts Ns Tn Nn 
       exact binds_extend hb v _
     obtain ⟨f₀, e', hQ, r⟩ := hs _ σ hb' ⟨hG.1, hs'⟩
     refine ⟨f₀, e', ?_, fun fuel hf => ?_⟩
-    · simp only [hs', if_true]; exact hQ
-    · simp only [hs', if_true]; exact r fuel hf
+    · simp only [hs', ite_true]; exact hQ
+    · simp only [hs', ite_true]; exact r fuel hf
   · intro env σ hb hG
     have hn' : (O σ).isSome = false := by
       have := hG.2
       cases h : O σ <;> simp_all
     obtain ⟨f₀, e', hQ, r⟩ := hn env σ hb ⟨hG.1, hn'⟩
     refine ⟨f₀, e', ?_, fun fuel hf => ?_⟩
-    · simp only [hn', Bool.false_eq_true, if_false]; exact hQ
-    · simp only [hn', Bool.false_eq_true, if_false]; exact r fuel hf
+    · simp only [hn', Bool.false_eq_true, ite_false]; exact hQ
+    · simp only [hn', Bool.false_eq_true, ite_false]; exact r fuel hf
 
 end GenOptMatch
 
@@ -965,7 +965,7 @@ theorem denote'_matchTuple {s e : ImpExpr} {xs : List String} {env env₁ : Env}
       denote' bi fuel e (extendPats xs vs env₁) := by
   have hl : ((xs.map ImpPat.varPat).length != vs.length) = false := by simp [h]
   simp only [denote', stateM_bind_apply, hs, denoteMatchArms', stateM_get_apply, matchPat, hl,
-    Bool.false_eq_true, if_false, matchPatList_varPats xs vs env₁ h]
+    Bool.false_eq_true, ite_false, matchPatList_varPats xs vs env₁ h]
   rfl
 
 /-- **Tuple pattern.** A single arm whose pattern is a tuple of variables: the scrutinee
@@ -1018,8 +1018,8 @@ theorem corresG_seqL {Γ N₁ T₁ N₂ : S → BList} {G : S → Prop} {e1 e2 :
   have hC : (fun σ => C₁ σ || false) = C₁ := funext fun σ => Bool.or_false _
   rw [hC] at h
   refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun σ _ => ?_) (fun env σ _ hb => ?_)
-  · cases hc : C₁ σ <;> simp only [hc, if_true, Bool.false_eq_true, if_false]
-  · cases hc : C₁ σ <;> simp only [hc, if_true, Bool.false_eq_true, if_false] at hb ⊢ <;> exact hb
+  · cases hc : C₁ σ <;> simp only [hc, ite_true, Bool.false_eq_true, ite_false]
+  · cases hc : C₁ σ <;> simp only [hc, ite_true, Bool.false_eq_true, ite_false] at hb ⊢ <;> exact hb
 
 /-- `let` whose bound expression may exit and whose body has no exit. -/
 theorem corresG_letBindL {Γ N₁ T₁ N₂ : S → BList} {G : S → Prop} {x : String}
@@ -1032,8 +1032,8 @@ theorem corresG_letBindL {Γ N₁ T₁ N₂ : S → BList} {G : S → Prop} {x :
   have hC : (fun σ => C₁ σ || false) = C₁ := funext fun σ => Bool.or_false _
   rw [hC] at h
   refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun σ _ => ?_) (fun env σ _ hb => ?_)
-  · cases hc : C₁ σ <;> simp only [hc, if_true, Bool.false_eq_true, if_false]
-  · cases hc : C₁ σ <;> simp only [hc, if_true, Bool.false_eq_true, if_false] at hb ⊢ <;> exact hb
+  · cases hc : C₁ σ <;> simp only [hc, ite_true, Bool.false_eq_true, ite_false]
+  · cases hc : C₁ σ <;> simp only [hc, ite_true, Bool.false_eq_true, ite_false] at hb ⊢ <;> exact hb
 
 /-- The entry bindings of a function of the extraction. -/
 theorem binds_entry {bi' : Builtins} {fn : ExtFn} {gv : BList}
@@ -1058,8 +1058,8 @@ theorem corresG_castVW {Γ N T : S → BList} {G : S → Prop} {e : ImpExpr} {C 
     CorresG bi Γ G e C W' V' T N := by
   refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun σ hG => ?_) (fun _ _ _ h => h)
   cases hc : C σ
-  · simp only [Bool.false_eq_true, if_false]; exact hV σ hG hc
-  · simp only [if_true]; rw [hW σ hG hc]
+  · simp only [Bool.false_eq_true, ite_false]; exact hV σ hG hc
+  · simp only [ite_true]; rw [hW σ hG hc]
 
 /-- Replace the normal exit bindings under the normal condition. -/
 theorem corresG_subN {Γ N N' T : S → BList} {G : S → Prop} {e : ImpExpr} {C : S → Bool}
@@ -1068,8 +1068,8 @@ theorem corresG_subN {Γ N N' T : S → BList} {G : S → Prop} {e : ImpExpr} {C
     CorresG bi Γ G e C W V T N' := by
   refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun _ _ => rfl) (fun env σ hG hb => ?_)
   cases hc : C σ
-  · simp only [hc, Bool.false_eq_true, if_false] at hb ⊢; exact binds_of_sub hb (hN σ hG hc)
-  · simp only [hc, if_true] at hb ⊢; exact hb
+  · simp only [hc, Bool.false_eq_true, ite_false] at hb ⊢; exact binds_of_sub hb (hN σ hG hc)
+  · simp only [hc, ite_true] at hb ⊢; exact hb
 
 /-- Replace the exit condition by a pointwise equal one. -/
 theorem corresG_congrC {Γ N T : S → BList} {G : S → Prop} {e : ImpExpr} {C C' : S → Bool}
@@ -1131,8 +1131,8 @@ theorem corresG_subT {Γ N T T' : S → BList} {G : S → Prop} {e : ImpExpr} {C
     CorresG bi Γ G e C W V T' N := by
   refine corres_conseq h (fun _ _ h _ => h) (fun _ h => h) (fun _ _ => rfl) (fun env σ hG hb => ?_)
   cases hc : C σ
-  · simp only [hc, Bool.false_eq_true, if_false] at hb ⊢; exact hb
-  · simp only [hc, if_true] at hb ⊢; exact binds_of_sub hb (hT σ hG hc)
+  · simp only [hc, Bool.false_eq_true, ite_false] at hb ⊢; exact hb
+  · simp only [hc, ite_true] at hb ⊢; exact binds_of_sub hb (hT σ hG hc)
 
 theorem map_global_nil (bi' : Builtins) :
     ([] : List String).map (fun g => (g, (bi' g []).getD .unit)) = [] := rfl
@@ -1271,9 +1271,9 @@ theorem corresB_forFoldGJ [HaxEnc B] {Γ N₁ N₂ : S → BList} {G : S → Pro
       refine ⟨f₀, e', ?_, r⟩
       obtain ⟨σ, i, a⟩ := t
       cases hC : Cb (σ, i, a)
-      · simp only [hC, Bool.false_eq_true, if_false, stepCF, cfToExcept] at hb ⊢
+      · simp only [hC, Bool.false_eq_true, ite_false, stepCF, cfToExcept] at hb ⊢
         exact ⟨binds_of_sub hb (hN _ hG' hC), hJ _ hG' hC⟩
-      · simp only [hC, if_true, stepCF, cfToExcept] at hb ⊢
+      · simp only [hC, ite_true, stepCF, cfToExcept] at hb ⊢
         exact binds_of_sub hb (hT _ hG' hC)
     have h := corres_forFoldE (bi := bi) (G := fun σ => G σ ∧ loF σ ≤ hiF σ)
       (W := fun _ (p : B × A) => enc p.1) (a₀ := a₀)
@@ -1297,12 +1297,12 @@ theorem corresB_forFoldGJ [HaxEnc B] {Γ N₁ N₂ : S → BList} {G : S → Pro
     · obtain ⟨σ, i, a⟩ := t
       have hG' : G σ ∧ loF σ ≤ i ∧ i < hiF σ := ⟨hG.1, hl, hh⟩
       cases hC : Cb (σ, i, a)
-      · simp only [stepCF, Bool.false_eq_true, if_false, cfToExcept]
+      · simp only [stepCF, Bool.false_eq_true, ite_false, cfToExcept]
         intro x hx
         have := hV _ hG' hC
         rw [hx] at this
         cases this
-      · simp only [stepCF, if_true, cfToExcept]
+      · simp only [stepCF, ite_true, cfToExcept]
         rw [hW _ hG' hC]
   · intro env σ hP hG
     obtain ⟨f₁, e₁, hQ₁, r₁⟩ := hlo env σ hP hG.1
@@ -1364,9 +1364,9 @@ theorem array_len_vec_remove [Inhabited α] (a : Array α) (i : Int) :
       if 0 ≤ i ∧ i < Hax.array_len a then Hax.array_len a - 1 else Hax.array_len a := by
   unfold Hax.array_len Hax.vec_remove
   by_cases h : 0 ≤ i ∧ i.toNat < a.size
-  · rw [dif_pos h]; simp only [Array.size_eraseIdx]
-    rw [if_pos ⟨h.1, by omega⟩]; omega
-  · rw [dif_neg h, if_neg (by omega)]
+  · rw [dite_eq_left h]; simp only [Array.size_eraseIdx]
+    rw [ite_eq_left ⟨h.1, by omega⟩]; omega
+  · rw [dite_eq_right h, ite_eq_right (by omega)]
 
 theorem array_len_push (a : Array α) (x : α) :
     Hax.array_len (Hax.push a x) = Hax.array_len a + 1 := by

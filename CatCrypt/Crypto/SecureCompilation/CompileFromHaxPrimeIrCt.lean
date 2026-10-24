@@ -237,7 +237,7 @@ theorem ctAbs_eq_select {p : Nat} (a : ZMod p) :
 /-- The canonical representative of `-a` for `a ≠ 0` is `p - a.val`. -/
 theorem neg_val_of_ne_zero {p : Nat} [NeZero p] {a : ZMod p} (ha : a ≠ 0) :
     (-a).val = p - a.val := by
-  rw [ZMod.neg_val, if_neg ha]
+  rw [ZMod.neg_val, ite_eq_right ha]
 
 /-- For odd `p`, `ct_abs a` is not negative. -/
 theorem isNegative_ctAbs {p : Nat} [NeZero p] (hp : p % 2 = 1) (a : ZMod p) :

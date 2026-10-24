@@ -335,7 +335,7 @@ theorem storesGo_denote {ws nOut : Nat} (fuel : Nat) : ∀ (k j : Nat) {Δ : Ctx
             rw [hlo i (by omega)]
             show stackSet (arr.lookup V) j (v.lookup V) i = _
             rw [hset]
-            exact if_pos hij
+            exact ite_eq_left hij
           rw [ha, show nOut - 1 - (i.val - j) = nOut - 1 by omega]
           exact hvV V
       · have hij : i ≠ ⟨j, hj⟩ := fun h => by
@@ -345,7 +345,7 @@ theorem storesGo_denote {ws nOut : Nat} (fuel : Nat) : ∀ (k j : Nat) {Δ : Ctx
         rw [hlo i (by omega)]
         show stackSet (arr.lookup V) j (v.lookup V) i = _
         rw [hset]
-        exact if_neg hij
+        exact ite_eq_right hij
 
 /-- The staged program returns an array whose word `i` is entry `nOut - 1 - i` of the
 binding values of `c` in reverse order, followed by the valuation and the array

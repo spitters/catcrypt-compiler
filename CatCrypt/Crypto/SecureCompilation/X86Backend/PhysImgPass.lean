@@ -146,7 +146,7 @@ theorem scanStep_of_not_movInto {j : Linstr} {y : String}
   | some p =>
     obtain ⟨d, s⟩ := p
     have hd := hj d s hm
-    simp only [scanExit, reloadOf, List.getElem?_cons_zero, hm, if_neg hd]
+    simp only [scanExit, reloadOf, List.getElem?_cons_zero, hm, ite_eq_right hd]
     split_ifs <;> simp
   | none =>
     simp only [scanExit, reloadOf, List.getElem?_cons_zero, hm]
@@ -350,16 +350,16 @@ theorem kept_getElem?_split : ∀ (M : List (Linstr × Bool)) (k : Nat) (i : Lin
         ((M₁.filter (fun p => !p.2)).map Prod.fst).length = k
   | [], k, i, h => by simp at h
   | (j, true) :: M, k, i, h => by
-    simp only [List.filter_cons, Bool.not_true, Bool.false_eq_true, if_false] at h
+    simp only [List.filter_cons, Bool.not_true, Bool.false_eq_true, ite_false] at h
     obtain ⟨M₁, M₂, rfl, hl⟩ := kept_getElem?_split M k i h
     exact ⟨(j, true) :: M₁, M₂, rfl, by simpa using hl⟩
   | (j, false) :: M, 0, i, h => by
-    simp only [List.filter_cons, Bool.not_false, if_true, List.map_cons,
+    simp only [List.filter_cons, Bool.not_false, ite_true, List.map_cons,
       List.getElem?_cons_zero, Option.some.injEq] at h
     subst h
     exact ⟨[], M, rfl, rfl⟩
   | (j, false) :: M, k + 1, i, h => by
-    simp only [List.filter_cons, Bool.not_false, if_true, List.map_cons,
+    simp only [List.filter_cons, Bool.not_false, ite_true, List.map_cons,
       List.getElem?_cons_succ] at h
     obtain ⟨M₁, M₂, rfl, hl⟩ := kept_getElem?_split M k i h
     exact ⟨(j, false) :: M₁, M₂, rfl, by simp [hl]⟩
@@ -466,7 +466,7 @@ theorem accArr_succ_of_not_movInto {b : Lcmd} {p : Nat} {j : Linstr} {y : String
   cases hm : slotMov? j.li_i with
   | some ds =>
     obtain ⟨d, s⟩ := ds
-    rw [reloadOf_succ_some hb hm, if_neg (hj d s hm)] at h
+    rw [reloadOf_succ_some hb hm, ite_eq_right (hj d s hm)] at h
     split_ifs at h
     · exact h
     · simp at h
@@ -710,7 +710,7 @@ theorem accArr_snoc_of_pass {a : Lcmd} {j : Linstr} {ds : List LOperand} {o : St
     (hx : j.li_i = .Lopn ds o ss) (hd : ds.any (dstHitB slotArr y) = false) :
     accArr slotArr (a ++ [j]) (a.length + 1) y = accArr slotArr a a.length y := by
   unfold accArr
-  rw [reloadOf_succ_lopn (by simp) hm hx, if_neg (by simp [hd]),
+  rw [reloadOf_succ_lopn (by simp) hm hx, ite_eq_right (by simp [hd]),
     reloadOf_append_left _ _ _ _ _ le_rfl]
 
 /-- **Rewriting an instruction.** Let `A ++ i :: C` be in the class, let `i'` be an operation

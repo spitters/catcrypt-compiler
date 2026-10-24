@@ -242,11 +242,11 @@ theorem envRel_updEnv {ty : UScalarTy} {ρA : String → Option (UScalar ty)} {�
   unfold updEnv at hy ⊢
   split
   · rename_i hxy
-    rw [if_pos hxy] at hy
+    rw [ite_eq_left hxy] at hy
     cases hy
     rfl
   · rename_i hxy
-    rw [if_neg hxy] at hy
+    rw [ite_eq_right hxy] at hy
     exact h y b hy
 
 theorem litA_ok {ty : UScalarTy} {n : Int} {r : UScalar ty} (h : litA ty n = .ok r) :
@@ -375,7 +375,7 @@ def totalOk (ty : UScalarTy) : Hax.ImpExpr → (String → Bool) → Bool
 theorem litA_isOk {ty : UScalarTy} {n : Int} (h : 0 ≤ n ∧ n.toNat < 2 ^ ty.numBits) :
     ∃ r, litA ty n = .ok r := by
   unfold litA
-  rw [dif_pos h]
+  rw [dite_eq_left h]
   exact ⟨_, rfl⟩
 
 /-- An operation returns a value when its amount passes `WordOp.amountOk`. -/
@@ -397,17 +397,17 @@ theorem WordOp.aen_isOk {ty : UScalarTy} (o : WordOp) (b : Hax.ImpExpr)
   · refine ⟨⟨x.bv.ushiftRight y.val⟩, ?_⟩
     show UScalar.shiftRight x y.val = _
     unfold UScalar.shiftRight
-    rw [if_pos (by omega)]
+    rw [ite_eq_left (by omega)]
   · refine ⟨⟨x.bv.shiftLeft y.val⟩, ?_⟩
     show UScalar.shiftLeft x y.val = _
     unfold UScalar.shiftLeft
-    rw [if_pos (by omega)]
+    rw [ite_eq_left (by omega)]
   · have h32 : y.val < 2 ^ UScalarTy.U32.numBits := by
       simp only [UScalarTy.U32_numBits_eq]; omega
-    exact ⟨_, dif_pos h32⟩
+    exact ⟨_, dite_eq_left h32⟩
   · have h32 : y.val < 2 ^ UScalarTy.U32.numBits := by
       simp only [UScalarTy.U32_numBits_eq]; omega
-    exact ⟨_, dif_pos h32⟩
+    exact ⟨_, dite_eq_left h32⟩
 
 theorem updEnv_bound {ty : UScalarTy} {ρA : String → Option (UScalar ty)}
     {bound : String → Bool} (hb : ∀ x, bound x = true → ∃ v, ρA x = some v)
@@ -418,7 +418,7 @@ theorem updEnv_bound {ty : UScalarTy} {ρA : String → Option (UScalar ty)}
   split
   · exact ⟨a, rfl⟩
   · rename_i hxy
-    rw [if_neg hxy] at hy
+    rw [ite_eq_right hxy] at hy
     exact hb y hy
 
 /-- **The reading returns a value** on an expression that passes `totalOk` from an

@@ -190,11 +190,11 @@ theorem call_return {X : CalleeRun} {c : CalleeSig} (h : CalleeSpec X c) (ret : 
       ∧ c.post (entryOf ret s) sc := by
   obtain ⟨hl, hlm⟩ := evalInstrA_leaFrame sc 8
   refine ⟨?_, fun r hr => ?_, fun r hr hcl => ?_, fun x hx hx' => ?_, h.post _ t sc hpre hX⟩
-  · rw [retOps_eq, hl, if_pos rfl, h.rsp _ t sc hpre hX, entryOf_regs, if_pos rfl, retWord,
+  · rw [retOps_eq, hl, ite_eq_left rfl, h.rsp _ t sc hpre hX, entryOf_regs, ite_eq_left rfl, retWord,
       BitVec.add_assoc]
     simp
-  · rw [retOps_eq, hl, if_neg hr]
-  · rw [retOps_eq, hl, if_neg hr, h.keep _ t sc hpre hX r hcl, entryOf_regs, if_neg hr]
+  · rw [retOps_eq, hl, ite_eq_right hr]
+  · rw [retOps_eq, hl, ite_eq_right hr, h.keep _ t sc hpre hX r hcl, entryOf_regs, ite_eq_right hr]
   · rw [retOps_eq, hlm, h.frame _ t sc hpre hX x hx, entryOf_mem ret s x hx']
 
 /-! ## 2. The summary step of a call -/
@@ -458,7 +458,7 @@ theorem footClear_of_callerSep {frame : String → Option (BitVec 64)}
     FootClear frame slotArr base
       fun x => c.foot (entryOf ret sA) x ∨ InRange8 (retWord sA) x := by
   have he : (entryOf ret sA).regs "%rsp" = rsp + BitVec.ofInt 64 (-8) := by
-    rw [entryOf_regs, if_pos rfl, retWord, hsp]
+    rw [entryOf_regs, ite_eq_left rfl, retWord, hsp]
   have hr : retWord sA = rsp + BitVec.ofInt 64 (-8) := by rw [retWord, hsp]
   refine ⟨fun q a ha x hx hT => ?_, fun q A n j hq hj x hx hT => ?_⟩
   · obtain ⟨o, h1, rfl⟩ := hS.frames q a ha
@@ -510,7 +510,7 @@ theorem args_entry {frame : String → Option (BitVec 64)}
     args.map (fun a => (entryOf ret sA).regs (phys a)) = args.map (argWord s.prog.base.reg) := by
   refine List.map_congr_left fun a ha => ?_
   have hg := hargs a ha
-  rw [entryOf_regs, if_neg (gpFacts hg).physNe, argWord_congr (hrel.regs a (hsep.gp a hg))]
+  rw [entryOf_regs, ite_eq_right (gpFacts hg).physNe, argWord_congr (hrel.regs a (hsep.gp a hg))]
   simp [argWord, hc.regs a hg]
 
 /-- **The precondition of the callee from the image relation.** Under `ImgRel` and `ACorr`,
@@ -578,8 +578,8 @@ theorem agreeOffF_retWord (c : CalleeSig) (ω : CallOut) (s : LstateMF) {res : S
     = (if clobN c r then ⟨64, ω.reg r⟩ else s.prog.base.reg.lvm r)
   by_cases h1 : r = res
   · subst h1
-    rw [if_pos rfl, if_pos hcl, hv]
-  · rw [if_neg h1]
+    rw [ite_eq_left rfl, ite_eq_left hcl, hv]
+  · rw [ite_eq_right h1]
     split_ifs with h2
     · exfalso
       apply hr
@@ -610,8 +610,8 @@ theorem AgreeOffF.retWord {X : List String} {s s' : LstateMF} (h : AgreeOffF X s
   show (if r = res then (⟨64, v⟩ : Σ w, BitVec w) else s.prog.base.reg.lvm r)
     = (if r = res then ⟨64, v⟩ else s'.prog.base.reg.lvm r)
   by_cases h1 : r = res
-  · rw [if_pos h1, if_pos h1]
-  · rw [if_neg h1, if_neg h1]
+  · rw [ite_eq_left h1, ite_eq_left h1]
+  · rw [ite_eq_right h1, ite_eq_right h1]
     exact h.regs r fun hx => hr (List.mem_filter.mpr ⟨hx, by simpa using h1⟩)
 
 /-- The relaxed relation at `X` gives the relaxed relation at every list that contains
@@ -909,10 +909,10 @@ theorem ctl_deadStep {D : DeadTab} {fn : String} {B : List LinstrRM} {i : Linstr
       rw [hd]
       split at hs
       · rename_i hc
-        rw [if_pos hc]
+        rw [ite_eq_left hc]
         exact hjump l t htgt hs
       · rename_i hc
-        rw [if_neg hc]
+        rw [ite_eq_right hc]
         cases hs
         have h2 := AgreeOffD.of_le hnext hag
         exact ⟨_, rfl, ⟨fun r hr => h2.off.regs r hr, congrArg (· + 1) hag.off.pc, h2.off.arr,
@@ -922,7 +922,7 @@ theorem ctl_deadStep {D : DeadTab} {fn : String} {B : List LinstrRM} {i : Linstr
       simp only [LprogIsa.ctlStep] at hs ⊢
       split at hs
       · rename_i hc
-        rw [if_pos hc]
+        rw [ite_eq_left hc]
         exact hjump l t hk hs
       · cases hs
   | _ => cases hk
@@ -976,10 +976,10 @@ theorem steps_deadSeg {D : DeadTab} {fn : String} {B : List LinstrRM}
           have hstep : ∃ c', X86Isa.x86Isa.step (singletonProgM fn B) i s' = some c'
               ∧ DeadAgree D c c' := by
             by_cases hctl : LprogIsa.isCtl i.fst = true
-            · rw [if_pos hctl] at hchk
+            · rw [ite_eq_left hctl] at hchk
               rw [X86Isa.x86Isa.step_ctl _ _ _ hctl] at hc ⊢
               exact ctl_deadStep hchk hag hc
-            · rw [if_neg hctl] at hchk
+            · rw [ite_eq_right hctl] at hchk
               have hctl' : LprogIsa.isCtl i.fst = false := by simpa using hctl
               rw [X86Isa.x86Isa_step] at hc ⊢
               cases hsh : LprogIsa.shadowCall? i.fst with
@@ -1685,7 +1685,7 @@ theorem findLabelMem_callImg (slotArr : String → Option (String × Nat)) (res 
         have hv : (virtImg slotArr body)[n]'(by simpa using h2)
             = imgInstr slotArr body n (.Lcall none (f, l')) := by
           have hd : body.dropLast[n]? = some ⟨ii, .Lcall none (f, l')⟩ := by
-            rw [List.getElem?_dropLast, if_pos (by simpa using hlt)]
+            rw [List.getElem?_dropLast, ite_eq_left (by simpa using hlt)]
             exact heq
           have := virtImg_getElem? slotArr body n
           rw [hd, List.getElem?_eq_getElem (by simpa using h2)] at this
@@ -2040,7 +2040,7 @@ theorem steps_callImg {frame : String → Option (BitVec 64)}
           rw [JasminLsemMemChecked.evalInstrPMemF_of_k hck] at hn
           cases hn
         rw [callImg_getElem?_of_ne slotArr res args hb (fun f l => hnc none (f, l)),
-          virtImg_getElem?, List.getElem?_dropLast, if_pos hlt, hb, Option.map_some] at hf
+          virtImg_getElem?, List.getElem?_dropLast, ite_eq_left hlt, hb, Option.map_some] at hf
         obtain rfl := Option.some.inj hf
         obtain ⟨-, hsafe, hfn1, sa1, z1, hst1, hcase⟩ :=
           gate_step hsep hphys hgate fn
@@ -2113,7 +2113,7 @@ theorem segExact_callImg {frame : String → Option (BitVec 64)}
       by_contra hne
       have hnc : ∀ ra t, bi.li_i ≠ .Lcall ra t := fun ra t e => hne ⟨ra, t, e⟩
       rw [callImg_getElem?_of_ne slotArr res args hb (fun f l => hnc none (f, l)),
-        virtImg_getElem?, List.getElem?_dropLast, if_pos hp, hb, Option.map_some] at hi'
+        virtImg_getElem?, List.getElem?_dropLast, ite_eq_left hp, hb, Option.map_some] at hi'
       obtain rfl := Option.some.inj hi'
       have hsh := callSitesB_other hsites hb hp hnc
       simp [LprogCallCut.isProcB, LprogIsa.procCall?, hsh] at hproc

@@ -203,7 +203,7 @@ theorem bcSel_eq {NU : Nat} (up : Fin NU → BitVec 64) (un t : BitVec 64) :
   have hones : (0 : BitVec 64) - 1 = BitVec.allOnes 64 := by decide
   simp only [bcSel, bSltu_eq, BitVec.ult]
   by_cases h : t.toNat < un.toNat
-  · simp only [h, decide_true, if_pos, hones, BitVec.and_allOnes]
+  · simp only [h, decide_true, ite_eq_left, hones, BitVec.and_allOnes]
   · simp [h]
 
 /-! ## 3. The schoolbook fold over the memref carrier

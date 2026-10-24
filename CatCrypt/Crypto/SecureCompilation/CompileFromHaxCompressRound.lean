@@ -105,7 +105,7 @@ theorem agree_ext {ρ ρk : String → Option (BitVec 32)} {x : String} (hx : x 
     (v : BitVec 32) (h : ∀ y, y ∉ RL → ρk y = ρ y) :
     ∀ y, y ∉ RL → (fun z => if z = x then some v else ρk z) y = ρ y := by
   intro y hy
-  simp only [if_neg (ne_of_notMem_RL hy hx)]
+  simp only [ite_eq_right (ne_of_notMem_RL hy hx)]
   exact h y hy
 
 /-! ## §2  Name-distinctness facts for the output names `aN`/`eN` -/
@@ -191,11 +191,11 @@ theorem roundBody_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
               else if y = "ba" then some (ve.rotateRight 6) else ρ y) with hρ1def
   have agree1 : ∀ y, y ∉ RL → ρ1 y = ρ y := by
     intro y hy
-    simp only [hρ1def, if_neg (ne_of_notMem_RL hy (show "s1" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "bx" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "bc" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "bb" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "ba" ∈ RL by decide))]
+    simp only [hρ1def, ite_eq_right (ne_of_notMem_RL hy (show "s1" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "bx" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "bc" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "bb" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "ba" ∈ RL by decide))]
   have h_ones1 : ρ1 "__ones" = some (BitVec.ofNat 32 4294967295) := by
     rw [agree1 "__ones" (by decide)]; exact h_ones
   -- Ch(e,f,g)
@@ -211,10 +211,10 @@ theorem roundBody_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   have agree2 : ∀ y, y ∉ RL → ρ2 y = ρ y := by
     intro y hy
     rw [hρ2def]
-    simp only [if_neg (ne_of_notMem_RL hy (show "s2" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "cc" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "cb" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "ca" ∈ RL by decide))]
+    simp only [ite_eq_right (ne_of_notMem_RL hy (show "s2" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "cc" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "cb" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "ca" ∈ RL by decide))]
     exact agree1 y hy
   -- u7 := h + Σ₁
   have hs1 : ρ2 "s1" = some (ve.rotateRight 6 ^^^ ve.rotateRight 11 ^^^ ve.rotateRight 25) := by
@@ -295,11 +295,11 @@ theorem roundBody_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   have agree8 : ∀ y, y ∉ RL → ρ8 y = ρ y := by
     intro y hy
     rw [hρ8def]
-    simp only [if_neg (ne_of_notMem_RL hy (show "s3" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "bx" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "bc" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "bb" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "ba" ∈ RL by decide))]
+    simp only [ite_eq_right (ne_of_notMem_RL hy (show "s3" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "bx" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "bc" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "bb" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "ba" ∈ RL by decide))]
     exact agree7 y hy
   -- Maj(a,b,c)
   rw [majBlock_denote I ρ8 "s4" aE bE cE va vb vc
@@ -315,11 +315,11 @@ theorem roundBody_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   have agree9 : ∀ y, y ∉ RL → ρ9 y = ρ y := by
     intro y hy
     rw [hρ9def]
-    simp only [if_neg (ne_of_notMem_RL hy (show "s4" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "mx" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "mc" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "mb" ∈ RL by decide)),
-      if_neg (ne_of_notMem_RL hy (show "ma" ∈ RL by decide))]
+    simp only [ite_eq_right (ne_of_notMem_RL hy (show "s4" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "mx" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "mc" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "mb" ∈ RL by decide)),
+      ite_eq_right (ne_of_notMem_RL hy (show "ma" ∈ RL by decide))]
     exact agree8 y hy
   -- t2 := Σ₀ + Maj
   have hs3 : ρ9 "s3"
@@ -359,12 +359,12 @@ theorem roundBody_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
               else ρ10 y) with hρ11def
   have agree11 : ∀ y, y ∉ RL → y ≠ aN r → ρ11 y = ρ y := by
     intro y hy hy1
-    rw [hρ11def]; simp only [if_neg hy1]; exact agree10 y hy
+    rw [hρ11def]; simp only [ite_eq_right hy1]; exact agree10 y hy
   -- e' := d + t1
   rw [letAdd_denote I ρ11 (eN r)
         (hdE ρ11 (fun y hy hy1 _ => agree11 y hy hy1))
         ((denoteAtom_var I "t1" (by decide) ρ11).trans
-          (by rw [hρ11def]; simp only [if_neg (RL_ne_aN (show "t1" ∈ RL by decide) r)]
+          (by rw [hρ11def]; simp only [ite_eq_right (RL_ne_aN (show "t1" ∈ RL by decide) r)]
               exact ht1))]
   set ρ12 : String → Option (BitVec 32) :=
     (fun y => if y = eN r
@@ -372,11 +372,11 @@ theorem roundBody_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
                   + chFn ve vf vg + BitVec.ofNat 32 (kVal r) + inpGet I (8 + r)))
               else ρ11 y) with hρ12def
   refine ⟨ρ12, rfl, ?_, ?_, ?_⟩
-  · simp only [hρ12def, if_neg (aN_ne_eN r r), hρ11def, if_true,
+  · simp only [hρ12def, ite_eq_right (aN_ne_eN r r), hρ11def, ite_true,
       roundFn, bigSigma0, bigSigma1, kBV]
-  · simp only [hρ12def, if_true, roundFn, bigSigma1, kBV]
+  · simp only [hρ12def, ite_true, roundFn, bigSigma1, kBV]
   · intro y hy hy1 hy2
-    rw [hρ12def]; simp only [if_neg hy2]
+    rw [hρ12def]; simp only [ite_eq_right hy2]
     exact agree11 y hy hy1
 
 /-! ## §4  The compression unroller is value-preserving (general-N induction) -/

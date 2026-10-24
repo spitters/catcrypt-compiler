@@ -446,7 +446,7 @@ theorem impExprToThir_denoteScalar {w nIn : Nat} (params : List String)
         cases hrv : r.denote I ρ with
         | none => simp
         | some rv =>
-          simp only [Option.bind_some, Atom.denote, LEnv.set, if_true]
+          simp only [Option.bind_some, Atom.denote, LEnv.set, ite_true]
   | .tuple _, _, _, h => by simp [impExprToThir] at h
   | .proj _ _, _, _, h => by simp [impExprToThir] at h
   | .ifThenElse _ _ _, _, _, h => by simp [impExprToThir] at h
@@ -709,7 +709,7 @@ across iterations. -/
 theorem idxOf_arr_none {arr nm : String} (h : arr ≠ nm) :
     List.idxOf? nm [arr] = none := by
   simp only [List.idxOf?, List.findIdx?, List.findIdx?.go]
-  rw [if_neg]
+  rw [ite_eq_right]
   simp only [beq_iff_eq]
   exact h
 
@@ -754,7 +754,7 @@ theorem hornerUnroll_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
       have hmul : denoteAtomExpr [arr] I (.var (mulH i))
           (fun y => if y = mulH i then some (a0 * inpGet I xLit) else ρ y)
           = some (a0 * inpGet I xLit) := by
-        simp only [denoteAtomExpr, idxOf_arr_none (harrH i), if_true]
+        simp only [denoteAtomExpr, idxOf_arr_none (harrH i), ite_true]
       -- reduce the two-let chain to the tail under its env.
       simp only [hornerUnroll, ImpExpr.denoteScalar, recogBin, String.reduceEq,
         or_self, reduceIte, true_or, JasminBinOp.apply, hacc,
@@ -764,7 +764,7 @@ theorem hornerUnroll_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
         (hornerStepFn I xLit 0 a0 i)
         (fun y => if y = accH then some (a0 * inpGet I xLit + inpGet I i)
                   else if y = mulH i then some (a0 * inpGet I xLit) else ρ y)
-        (by simp only [if_true, hornerStepFn, Nat.zero_add])]
+        (by simp only [ite_true, hornerStepFn, Nat.zero_add])]
       rw [List.range_succ_eq_map, List.foldl_cons, List.foldl_map]
       rw [show (fun acc (j : Nat) => hornerStepFn I xLit 0 acc (i + 1 + j))
             = (fun acc (j : Nat) => hornerStepFn I xLit 0 acc (i + (j + 1)))
@@ -788,7 +788,7 @@ theorem hornerProgram_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
       Int.toNat, Option.map_some, BitVec.ofNat_eq_ofNat, Option.bind_some]
   -- The unrolled tail folds `i = 0 + j = j`, exactly `hornerFold`'s meaning.
   rw [hseed, hornerUnroll_denoteScalar I arr xLit harr harrH N 0 0
-    (fun y => if y = accH then some 0 else none) (by simp only [if_true])]
+    (fun y => if y = accH then some 0 else none) (by simp only [ite_true])]
   simp only [hornerFold, Nat.zero_add]
 
 /-! ## §8  Bounded array-write recurrences → per-element SSA unrolling
@@ -917,7 +917,7 @@ theorem wName_inj {i j : Nat} (h : i ≠ j) : wName i ≠ wName j := by
 theorem arrFold_succ_stable {w : Nat} (seed : Nat → BitVec w) (base count j : Nat)
     (h : j ≠ base + count) :
     arrFold seed base (count + 1) j = arrFold seed base count j := by
-  simp only [arrFold, Function.update_apply, if_neg h]
+  simp only [arrFold, Function.update_apply, ite_eq_right h]
 
 /-- The array state at slot `j` is **stable** once `j` has been written/seeded:
     extending the fold to any `count' ≥ count` leaves index `j` unchanged when
@@ -948,7 +948,7 @@ theorem arrFold_seed_below {w : Nat} (seed : Nat → BitVec w) (base j : Nat)
   induction count with
   | zero => rfl
   | succ c ih =>
-      simp only [arrFold, Function.update_apply, if_neg (by omega : j ≠ base + c)]; exact ih
+      simp only [arrFold, Function.update_apply, ite_eq_right (by omega : j ≠ base + c)]; exact ih
 
 /-- A `W[j]` read for `j < base + cnt` denotes (under `denoteScalar`'s atom layer)
     to the array state at `j`: when `j ≥ base` it is the local `wName j`, read off
@@ -964,11 +964,11 @@ theorem wReadExpr_denote {w nIn : Nat} (I : Fin nIn → BitVec w) (arr : String)
       = some (arrFold (inpGet I) base cnt j) := by
   unfold wReadExpr
   by_cases hb : base ≤ j
-  · simp only [hb, if_true]
+  · simp only [hb, ite_true]
     rw [denoteAtomExpr]
     simp only [idxOf_arr_none (harr j)]
     exact hρ j hb hj
-  · simp only [hb, if_false]
+  · simp only [hb, ite_false]
     have hb' : j < base := by omega
     rw [denoteAtomExpr_indexLit I arr j ρ, arrFold_seed_below (inpGet I) base j hb' cnt]
 
@@ -981,7 +981,7 @@ theorem arrFold_write {w : Nat} (seed : Nat → BitVec w) (base i : Nat)
     arrFold seed base (i - base + 1) i = arrStepFn (arrFold seed base (i - base)) i := by
   conv_lhs => rw [arrFold]
   rw [show base + (i - base) = i from by omega]
-  simp only [Function.update_apply, if_true]
+  simp only [Function.update_apply, ite_true]
 
 /-- **Array-write recurrence is value-preserving (per-element SSA).** The unrolled
     flat let-chain `arrRecUnroll` denotes (under `denoteScalar`, array parameter
@@ -1039,7 +1039,7 @@ theorem arrRecUnroll_denoteScalar {w nIn : Nat} (I : Fin nIn → BitVec w)
         · have hklt : k < i := by omega
           rw [show (fun y => if y = wName i then some (arrFold (inpGet I) base (i - base + 1) i)
                   else ρ y) (wName k)
-                = ρ (wName k) from by simp only [if_neg (wName_inj hki)]]
+                = ρ (wName k) from by simp only [ite_eq_right (wName_inj hki)]]
           rw [hρ k hk1 hklt]
           have hcc : i - base ≤ (i + 1) - base := by omega
           have hjlt : k < base + (i - base) := by rw [hbi]; exact hklt
@@ -1163,10 +1163,10 @@ theorem sigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
                     else if y = "sb" then some (v.rotateRight rot2) else ρ y) := by
   have e0 := hr ρ (fun _ _ _ => rfl)
   have e1 := hr (fun y => if y = "sa" then some (v.rotateRight rot1) else ρ y)
-    (fun y h _ => by simp [if_neg h])
+    (fun y h _ => by simp [ite_eq_right h])
   have e2 := hr (fun y => if y = "sb" then some (v.rotateRight rot2)
                           else if y = "sa" then some (v.rotateRight rot1) else ρ y)
-    (fun y h1 h2 => by simp [if_neg h1, if_neg h2])
+    (fun y h1 h2 => by simp [ite_eq_right h1, ite_eq_right h2])
   have hsa : denoteAtomExpr ["w"] I (ImpExpr.var "sa") = fun ρ' => ρ' "sa" := by
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("w":String) ≠ "sa" by decide)]
   have hsb : denoteAtomExpr ["w"] I (ImpExpr.var "sb") = fun ρ' => ρ' "sb" := by
@@ -1176,7 +1176,7 @@ theorem sigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   simp only [sigBlock, ImpExpr.denoteScalar, recogBin, recogShift,
     litNat?, ShiftKind.apply, JasminBinOp.apply, reduceIte,
     String.reduceEq, Int.toNat, or_self, or_false,
-    e0, e1, e2, hsa, hsb, hsc, Option.bind_some, Option.map_some, sigmaGen, if_true,
+    e0, e1, e2, hsa, hsb, hsc, Option.bind_some, Option.map_some, sigmaGen, ite_true,
     VIR.shiftMask_of_lt hsh]
   congr 1
   funext y
@@ -1238,7 +1238,7 @@ the three adds. -/
 theorem schedFold_succ_stable (seed : Nat → BitVec 32) (count j : Nat)
     (h : j ≠ 16 + count) :
     schedFold seed (count + 1) j = schedFold seed count j := by
-  simp only [schedFold, Function.update_apply, if_neg h]
+  simp only [schedFold, Function.update_apply, ite_eq_right h]
 
 /-- `schedFold` at slot `j` is stable once `j < 16 + count` (later writes hit only
     `16 + c ≥ j`). The §9 analogue of §8's `arrFold_stable`. -/
@@ -1263,7 +1263,7 @@ theorem schedFold_seed_below (seed : Nat → BitVec 32) (j : Nat) (hj : j < 16) 
   induction count with
   | zero => rfl
   | succ c ih =>
-      simp only [schedFold, Function.update_apply, if_neg (by omega : j ≠ 16 + c)]; exact ih
+      simp only [schedFold, Function.update_apply, ite_eq_right (by omega : j ≠ 16 + c)]; exact ih
 
 /-- Writing slot `i` (the `(i - 16)`-th write) yields the step value. The §9
     analogue of §8's `arrFold_write`. -/
@@ -1271,7 +1271,7 @@ theorem schedFold_write (seed : Nat → BitVec 32) (i : Nat) (hi : 16 ≤ i) :
     schedFold seed (i - 16 + 1) i = schedStepFn (schedFold seed (i - 16)) i := by
   conv_lhs => rw [schedFold]
   rw [show 16 + (i - 16) = i from by omega]
-  simp only [Function.update_apply, if_true]
+  simp only [Function.update_apply, ite_true]
 
 /-- A `W[j]` read (`wReadExpr "w" 16 j`) for `j < 16 + cnt` denotes to the
     `schedFold` array state at `j`, under any env whose `wName` slots satisfy the
@@ -1284,12 +1284,12 @@ theorem wReadExpr_denoteSched {nIn : Nat} (I : Fin nIn → BitVec 32) (j cnt : N
       = some (schedFold (inpGet I) cnt j) := by
   unfold wReadExpr
   by_cases hb : 16 ≤ j
-  · simp only [hb, if_true]
+  · simp only [hb, ite_true]
     rw [denoteAtomExpr]
     simp only [idxOf_arr_none (show ("w":String) ≠ wName j from (wName_ne_of_head
       (by decide)).symm)]
     exact hρ j hb hj
-  · simp only [hb, if_false]
+  · simp only [hb, ite_false]
     have hb' : j < 16 := by omega
     rw [denoteAtomExpr_indexLit I "w" j ρ, schedFold_seed_below (inpGet I) j hb' cnt]
 
@@ -1349,10 +1349,10 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
   have hρ1 : ∀ k, 16 ≤ k → k < 16 + cnt → ρ1 (wName k) = some (schedFold (inpGet I) cnt k) := by
     intro k hk1 hk2
     rw [hρ1def]
-    simp only [if_neg (wName_ne_of_head (by decide) : wName k ≠ "s1"),
-      if_neg (wName_ne_of_head (by decide) : wName k ≠ "sa"),
-      if_neg (wName_ne_of_head (by decide) : wName k ≠ "sc"),
-      if_neg (wName_ne_of_head (by decide) : wName k ≠ "sb")]
+    simp only [ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "s1"),
+      ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sa"),
+      ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sc"),
+      ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sb")]
     exact hρ' k hk1 hk2
   -- σ₀ block over W[i-15]
   rw [sigBlock_denote I ρ1 7 18 3 "s0"
@@ -1375,10 +1375,10 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
   have hρ2 : ∀ k, 16 ≤ k → k < 16 + cnt → ρ2 (wName k) = some (schedFold (inpGet I) cnt k) := by
     intro k hk1 hk2
     rw [hρ2def]
-    simp only [if_neg (wName_ne_of_head (by decide) : wName k ≠ "s0"),
-      if_neg (wName_ne_of_head (by decide) : wName k ≠ "sa"),
-      if_neg (wName_ne_of_head (by decide) : wName k ≠ "sc"),
-      if_neg (wName_ne_of_head (by decide) : wName k ≠ "sb")]
+    simp only [ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "s0"),
+      ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sa"),
+      ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sc"),
+      ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sb")]
     exact hρ1 k hk1 hk2
   have hr7 := wReadExpr_denoteSched I (i - 7) cnt (by omega) ρ2 hρ2
   -- reduce the three wrapping adds binding t1, t2, wName i
@@ -1388,7 +1388,7 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
     idxOf_arr_none (show ("w":String) ≠ "s0" by decide),
     idxOf_arr_none (show ("w":String) ≠ "t1" by decide),
     idxOf_arr_none (show ("w":String) ≠ "t2" by decide),
-    hs1, hs0, hr7, Option.bind_some, Option.map_some, if_true]
+    hs1, hs0, hr7, Option.bind_some, Option.map_some, ite_true]
   -- the final `W[i-16]` read (env extended at dead `t1`/`t2`) matches `ρ2`'s read.
   have hr16' : denoteAtomExpr ["w"] I (wReadExpr "w" 16 (i - 16))
       (fun y => if y = "t2" then some (sigma1Fn v1 + schedFold (inpGet I) cnt (i - 7) + sigma0Fn v0)
@@ -1396,8 +1396,8 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
       = some (schedFold (inpGet I) cnt (i - 16)) := by
     apply wReadExpr_denoteSched I (i - 16) cnt (by omega)
     intro k hk1 hk2
-    simp only [if_neg (wName_ne_of_head (by decide) : wName k ≠ "t2"),
-      if_neg (wName_ne_of_head (by decide) : wName k ≠ "t1")]
+    simp only [ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "t2"),
+      ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "t1")]
     exact hρ2 k hk1 hk2
   rw [hr16']
   -- the bound step value is `schedStepFn` = `schedFold (cnt+1) i`.
@@ -1412,8 +1412,8 @@ theorem schedStep_denote {nIn : Nat} (I : Fin nIn → BitVec 32) (i : Nat)
   congr 1
   funext y
   by_cases hy : y = wName i
-  · simp only [hy, if_true]
-  · simp only [if_neg hy, hρ2def, hρ1def, sigma1Fn, sigma0Fn]
+  · simp only [hy, ite_true]
+  · simp only [ite_eq_right hy, hρ2def, hρ1def, sigma1Fn, sigma0Fn]
     by_cases h1 : y = "s1"
     · simp [h1]
     by_cases ha : y = "sa"
@@ -1480,14 +1480,14 @@ theorem schedUnroll_denoteScalar {nIn : Nat} (I : Fin nIn → BitVec 32) :
                   (wName k) = some (schedFold (inpGet I) (k - 16 + 1) k) from by simp]
           rw [show (k + 1) - 16 = k - 16 + 1 from by omega]
         · have hklt : k < i := by omega
-          simp only [if_neg (wName_inj (by omega : k ≠ i)),
-            if_neg (wName_ne_of_head (by decide) : wName k ≠ "s1"),
-            if_neg (wName_ne_of_head (by decide) : wName k ≠ "sa"),
-            if_neg (wName_ne_of_head (by decide) : wName k ≠ "sc"),
-            if_neg (wName_ne_of_head (by decide) : wName k ≠ "sb"),
-            if_neg (wName_ne_of_head (by decide) : wName k ≠ "s0"),
-            if_neg (wName_ne_of_head (by decide) : wName k ≠ "t1"),
-            if_neg (wName_ne_of_head (by decide) : wName k ≠ "t2")]
+          simp only [ite_eq_right (wName_inj (by omega : k ≠ i)),
+            ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "s1"),
+            ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sa"),
+            ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sc"),
+            ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "sb"),
+            ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "s0"),
+            ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "t1"),
+            ite_eq_right (wName_ne_of_head (by decide) : wName k ≠ "t2")]
           rw [hρ k hk1 hklt]
           have hcc : i - 16 ≤ (i + 1) - 16 := by omega
           rw [schedFold_stable (inpGet I) (i - 16) k (by omega) ((i + 1) - 16) hcc]
@@ -1866,7 +1866,7 @@ theorem callInline_app_hit (reg : CallRegistry) (fuel : Nat) (f : String)
     (hlen : (callInlineList reg fuel args).length = params.length) :
     callInline reg (fuel + 1) (.app f args)
       = substVars (mkSubst params (callInlineList reg fuel args)) body := by
-  simp only [callInline, h, hlen, if_true]
+  simp only [callInline, h, hlen, ite_true]
 
 /-! ## §12  Let-flatten normalization (no `letBind` as a `letBind`'s RHS)
 

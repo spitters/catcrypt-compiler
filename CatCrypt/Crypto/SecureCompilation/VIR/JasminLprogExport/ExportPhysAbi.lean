@@ -395,7 +395,7 @@ theorem abiSlotOfExt_rsp (off : Nat) :
       intro r hr
       refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;> (rintro rfl; simp at hr)
     obtain ⟨h1, h2, h3, h5, h6, h7⟩ := h4 ("RSP+" ++ toString off) (by simp)
-    simp only [abiSaveOfExt, abiSaveOf, beq_iff_eq, h1, h2, h3, h5, h6, h7, if_false]
+    simp only [abiSaveOfExt, abiSaveOf, beq_iff_eq, h1, h2, h3, h5, h6, h7, ite_false]
   simp only [abiSlotOfExt, hs, abiStackOff?_rsp, Option.map_some]
 
 /-- **Materialize the pointer arguments into the body's register file.**
@@ -597,7 +597,7 @@ theorem legalizeOneSrc_spill {u64 : Bool} {opn : String} {d s : LOperand}
     split
     · simp [LOperand.isSpill] at hs
     · rfl
-  simp only [legalizeOneSrc, ho, if_true, hm, legalizeMov, hd, hs, Bool.and_self]
+  simp only [legalizeOneSrc, ho, ite_true, hm, legalizeMov, hd, hs, Bool.and_self]
 
 /-- The constant the oracle `shiftImm` gives for the index name of a
     register-indexed address of the virtual body; `none` on every other operand. -/
@@ -875,7 +875,7 @@ theorem legalizeSpillDst_setcc {d : LOperand} {opn a b : String}
          .Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg reloadScratch2],
          .Lopn [d] (setccMov opn) [.reg reloadScratch]] := by
   have hc : cmovSpillDst? [d] opn [.reg a, .reg b] = none := rfl
-  simp only [legalizeSpillDst, hc, setccSpill?, h, ho, Bool.and_self, if_true]
+  simp only [legalizeSpillDst, hc, setccSpill?, h, ho, Bool.and_self, ite_true]
 
 /-- Every instruction of `legalizeSpillDst dsts opn srcs` is an `Lopn` each of whose
     operands is a destination in `dsts`, a source in `srcs`, or one of the scratch
@@ -894,7 +894,7 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
         unfold cmovSpillSeq at h
         rename_i d c t f _
         cases hc : c.isSpill <;> cases hd : d.isSpill <;>
-          simp only [hc, hd, Bool.false_eq_true, if_false, if_true, List.nil_append,
+          simp only [hc, hd, Bool.false_eq_true, ite_false, ite_true, List.nil_append,
             List.cons_append, List.mem_cons, List.not_mem_nil, or_false] at h <;>
           rcases h with rfl | rfl | rfl <;>
           exact ⟨_, _, _, rfl, by intro x hx; simp at hx ⊢; aesop⟩
@@ -1497,13 +1497,13 @@ theorem reloadArrImmBody_filter {mbr : String → Option String} (p : Linstr →
     | some l' =>
       have hl := hp a l' hre
       cases hpa : p a
-      · simp only [Bool.false_eq_true, if_false]
+      · simp only [Bool.false_eq_true, ite_false]
         rw [List.filter_eq_nil_iff.mpr]
         · rfl
         · intro x hx
           obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
           simp [hl y hy, hpa]
-      · simp only [if_true, List.flatMap_cons, hre, List.append_left_inj]
+      · simp only [ite_true, List.flatMap_cons, hre, List.append_left_inj]
         rw [List.filter_eq_self.mpr]
         intro x hx
         obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx

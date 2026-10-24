@@ -95,7 +95,7 @@ theorem storeVal1?_denote {Γ : Ctxt jasminDialect} (e : Expr jasminDialect Γ (
     subst h
     show stackSet (z.lookup V) i (a'.lookup V) 0 = _
     simp only [stackSet]
-    rw [if_pos (Fin.ext (by simp [Nat.mod_one]))]
+    rw [ite_eq_left (Fin.ext (by simp [Nat.mod_one]))]
     rfl
   all_goals simp [storeVal1?] at h
 
@@ -417,7 +417,7 @@ theorem leakRunMC_fwdLoad1Go (M : LeakModel jasminDialect) (E : CallEnv jasminDi
           refine ⟨l, ?_, fun rest => ?_⟩
           · simp only [fwdLoad1Go, hl, ha]
             exact hl'
-          · simp only [fwdLoad1Erase, hc, Option.isSome_some, if_true, List.append_assoc]
+          · simp only [fwdLoad1Erase, hc, Option.isSome_some, ite_true, List.append_assoc]
             rw [hdrop]
             exact el rest
       | none =>
@@ -438,7 +438,7 @@ theorem leakRunMC_fwdLoad1Go (M : LeakModel jasminDialect) (E : CallEnv jasminDi
               simpa using denoteM_rename h e
             simp only [leakRunMC, Expr.denoteM_option_eq_some, Option.bind_some, hd, hl',
               ctLeak_exprRename M h e, Option.map_some]
-          · simp only [fwdLoad1Erase, hc, Option.isSome_none, Bool.false_eq_true, if_false,
+          · simp only [fwdLoad1Erase, hc, Option.isSome_none, Bool.false_eq_true, ite_false,
               List.append_assoc, htake, hdrop, el]
   | forLoop count inits body k ihb ihk =>
       intro Δ K ren V W h hK r hr
@@ -470,12 +470,12 @@ theorem leakRunMC_fwdLoad1Go (M : LeakModel jasminDialect) (E : CallEnv jasminDi
         split at ha
         · rename_i hb
           obtain ⟨l₁, h₁, e₁⟩ := iht K ren V W h hK a ha
-          exact ⟨l₁, by rw [if_pos hb]; exact h₁,
-            fun rest => by rw [if_pos hb]; exact e₁ rest⟩
+          exact ⟨l₁, by rw [ite_eq_left hb]; exact h₁,
+            fun rest => by rw [ite_eq_left hb]; exact e₁ rest⟩
         · rename_i hb
           obtain ⟨l₁, h₁, e₁⟩ := ihe K ren V W h hK a ha
-          exact ⟨l₁, by rw [if_neg hb]; exact h₁,
-            fun rest => by rw [if_neg hb]; exact e₁ rest⟩
+          exact ⟨l₁, by rw [ite_eq_right hb]; exact h₁,
+            fun rest => by rw [ite_eq_right hb]; exact e₁ rest⟩
       obtain ⟨l₁, h₁, e₁⟩ := harm
       refine ⟨.branch (HasBoolBit.toBool (d := jasminDialect) (cond.lookup V)) :: (l₁ ++ l₂),
         ?_, fun rest => ?_⟩

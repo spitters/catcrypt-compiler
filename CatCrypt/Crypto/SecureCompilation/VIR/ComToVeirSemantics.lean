@@ -121,13 +121,13 @@ theorem bitVec_ge_natCast_self_iff {w : Nat} (b : BitVec w) :
 /-- A shift amount at least the width: `arith.shli` is poison. -/
 theorem veirBinInt_shl_poison {w : Nat} (a b : BitVec w) (h : w ≤ b.toNat) :
     veirBinInt .shl (.val a) (.val b) = .poison := by
-  simp only [veirBinInt, LLVM.Int.shl, Id.run, (bitVec_ge_natCast_self_iff b).2 h, if_true]
+  simp only [veirBinInt, LLVM.Int.shl, Id.run, (bitVec_ge_natCast_self_iff b).2 h, ite_true]
   rfl
 
 /-- A shift amount at least the width: `arith.shrui` is poison. -/
 theorem veirBinInt_shr_poison {w : Nat} (a b : BitVec w) (h : w ≤ b.toNat) :
     veirBinInt .shr (.val a) (.val b) = .poison := by
-  simp only [veirBinInt, LLVM.Int.lshr, Id.run, (bitVec_ge_natCast_self_iff b).2 h, if_true]
+  simp only [veirBinInt, LLVM.Int.lshr, Id.run, (bitVec_ge_natCast_self_iff b).2 h, ite_true]
   rfl
 
 /-- On defined operands, and a shift amount below the width for the shifts,
@@ -215,11 +215,11 @@ theorem toNat_and_ofNat_shiftMask {w : Nat} (b : BitVec w) :
   unfold shiftMask
   by_cases h64 : w = 64
   · subst h64
-    rw [if_pos rfl, if_pos rfl,
+    rw [ite_eq_left rfl, ite_eq_left rfl,
       (by decide : (2 ^ 64 - 1) % 64 % 2 ^ 64 = 2 ^ 6 - 1), Nat.and_two_pow_sub_one_eq_mod]
-  rw [if_neg h64, if_neg h64]
+  rw [ite_eq_right h64, ite_eq_right h64]
   by_cases h32 : w ≤ 32
-  · rw [if_pos h32, if_pos h32]
+  · rw [ite_eq_left h32, ite_eq_left h32]
     by_cases h5 : 5 ≤ w
     · have hpow : 2 ^ w = 2 ^ 5 * 2 ^ (w - 5) := by
         rw [← Nat.pow_add, Nat.add_sub_cancel' h5]
@@ -233,17 +233,17 @@ theorem toNat_and_ofNat_shiftMask {w : Nat} (b : BitVec w) :
       rw [Nat.mod_eq_of_lt (show 2 ^ w - 1 < 32 by omega),
         Nat.mod_eq_of_lt (show 2 ^ w - 1 < 2 ^ w by omega), Nat.and_two_pow_sub_one_eq_mod,
         Nat.mod_eq_of_lt hb, Nat.mod_eq_of_lt (by omega)]
-  rw [if_neg h32, if_neg h32]
+  rw [ite_eq_right h32, ite_eq_right h32]
   by_cases h128 : w = 128
   · subst h128
-    rw [if_pos rfl, if_pos rfl,
+    rw [ite_eq_left rfl, ite_eq_left rfl,
       (by decide : (2 ^ 128 - 1) % 128 % 2 ^ 128 = 2 ^ 7 - 1), Nat.and_two_pow_sub_one_eq_mod]
-  rw [if_neg h128, if_neg h128]
+  rw [ite_eq_right h128, ite_eq_right h128]
   by_cases h256 : w = 256
   · subst h256
-    rw [if_pos rfl, if_pos rfl,
+    rw [ite_eq_left rfl, ite_eq_left rfl,
       (by decide : (2 ^ 256 - 1) % 256 % 2 ^ 256 = 2 ^ 8 - 1), Nat.and_two_pow_sub_one_eq_mod]
-  rw [if_neg h256, if_neg h256, Nat.mod_eq_of_lt (show 2 ^ w - 1 < 2 ^ w by omega),
+  rw [ite_eq_right h256, ite_eq_right h256, Nat.mod_eq_of_lt (show 2 ^ w - 1 < 2 ^ w by omega),
     Nat.and_two_pow_sub_one_eq_mod, Nat.mod_eq_of_lt hb]
 
 /-- A shift by the masked amount `b &&& shiftMask w (2 ^ w - 1)` is the shift by `b`. -/

@@ -87,7 +87,7 @@ theorem lsemStepMem_movReg (dst src : String) (ls : LstateM) (va : BitVec 64)
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ hm ha hh hsb hsbh,
       lsemStepSh_of_not_sar _ _ hs]
-  simp only [lsemStepN, hstr, if_neg hne, if_pos, readReg_of_getW hva, applyOpnN_MOV,
+  simp only [lsemStepN, hstr, ite_eq_right hne, ite_eq_left, readReg_of_getW hva, applyOpnN_MOV,
     Option.map_some]
 
 /-! ## 2. The lowering and the per-opcode agreement -/
@@ -206,7 +206,7 @@ theorem movReg_caseF (s : JState 64) (ls : LstateM) (flg : String → Prop) (cfN
         simp [JState.setReg]
       · simp only [LstateN.getW_nextPc, LstateN.getW_setReg_other _ _ _ _ _ hrd]
         rw [hcorr.regAgree r hr]
-        simp only [JState.setReg, if_neg hrd]
+        simp only [JState.setReg, ite_eq_right hrd]
     · intro base off; exact hcorr.memAgree base off
     · simp only [LstateN.getW_nextPc,
         LstateN.getW_setReg_other _ _ _ _ _ (Ne.symm hDst_cf)]

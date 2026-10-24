@@ -278,17 +278,17 @@ theorem forLoop_off {v₁ v₂ : String} {b₁ b₂ : ImpExpr} {D : Nat}
     intro lo hi
     unfold denoteForLoop'
     by_cases hl : lo ≥ hi
-    · simp only [hl, if_true]; exact RefR.pure _
-    · simp only [hl, if_false, if_true]
+    · simp only [hl, ite_true]; exact RefR.pure _
+    · simp only [hl, ite_false, ite_true]
       apply RefR.of_bad; intro _; exact ⟨_, rfl⟩
   | succ n ih =>
     intro lo hi
     unfold denoteForLoop'
     by_cases hl : lo ≥ hi
-    · simp only [hl, if_true]; exact RefR.pure _
+    · simp only [hl, ite_true]; exact RefR.pure _
     · have h1 : n + 1 + D ≠ 0 := by omega
       have h2 : n + 1 + D - 1 = n + D := by omega
-      simp only [hl, if_false, h1, Nat.add_one_ne_zero, Nat.add_sub_cancel, h2]
+      simp only [hl, ite_false, h1, Nat.add_one_ne_zero, Nat.add_sub_cancel, h2]
       refine refR_modify2 (fun e₁ e₂ h => hv e₁ e₂ _ h) (fun _ => ?_)
       refine RefR.bind (badα := IsErr) (h (n + 1)) (fun o ho => ?_) (fun a ha s => by
         obtain ⟨m, hm⟩ := ha; subst hm; exact ⟨m, rfl⟩)
@@ -305,17 +305,17 @@ theorem forLoopRev_off {v₁ v₂ : String} {b₁ b₂ : ImpExpr} {D : Nat}
     intro lo hi
     unfold denoteForLoopRev'
     by_cases hl : lo ≥ hi
-    · simp only [hl, if_true]; exact RefR.pure _
-    · simp only [hl, if_false, if_true]
+    · simp only [hl, ite_true]; exact RefR.pure _
+    · simp only [hl, ite_false, ite_true]
       apply RefR.of_bad; intro _; exact ⟨_, rfl⟩
   | succ n ih =>
     intro lo hi
     unfold denoteForLoopRev'
     by_cases hl : lo ≥ hi
-    · simp only [hl, if_true]; exact RefR.pure _
+    · simp only [hl, ite_true]; exact RefR.pure _
     · have h1 : n + 1 + D ≠ 0 := by omega
       have h2 : n + 1 + D - 1 = n + D := by omega
-      simp only [hl, if_false, h1, Nat.add_one_ne_zero, Nat.add_sub_cancel, h2]
+      simp only [hl, ite_false, h1, Nat.add_one_ne_zero, Nat.add_sub_cancel, h2]
       refine refR_modify2 (fun e₁ e₂ h => hv e₁ e₂ _ h) (fun _ => ?_)
       refine RefR.bind (badα := IsErr) (h (n + 1)) (fun o ho => ?_) (fun a ha s => by
         obtain ⟨m, hm⟩ := ha; subst hm; exact ⟨m, rfl⟩)
@@ -406,10 +406,10 @@ theorem bindParams_run (bi : Builtins) (F n : Nat) (vals : List Value)
         simp only [paramsEnv] at hx
         by_cases hxp : x = p
         · subst hxp
-          simp only [if_true] at hx
+          simp only [ite_true] at hx
           cases hx
           exact Env.extend_same _ _ _
-        · rw [if_neg hxp] at hx
+        · rw [ite_eq_right hxp] at hx
           rw [Env.extend_other _ _ _ _ (fun h => hxp (lvlName_inj h).2)]
           exact hpar x v hx
       · intro y hy

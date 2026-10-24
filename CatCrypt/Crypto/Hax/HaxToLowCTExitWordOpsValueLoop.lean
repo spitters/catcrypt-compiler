@@ -301,11 +301,11 @@ theorem exitScalL_semG {N : Nat} {L : LeafSpec} (hL : ExitWordLaw L) {c c' : Low
               ihb (boundG S a') (afterG B a') r1 rs' e₁ h2 (hag.2 r1 h1) hr.2 hS₁ hb₁ hB₁ henv₁
                 hir₁
             refine ⟨e₂, ?_, henv₂, hir₂, ?_, ?_, ?_⟩
-            · simp only [semG, hf', Bool.false_eq_true, if_false, hs₁, Option.bind_some]
+            · simp only [semG, hf', Bool.false_eq_true, ite_false, hs₁, Option.bind_some]
               exact hs₂
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hb₂
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hS₂
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hB₂
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hb₂
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hS₂
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hB₂
   | @letU64Zero x b b' hx hbb ih =>
       intro S B rs rs' env hexec hag hr hS hb hB henv hir
       by_cases hf : loopFreeB b' = true
@@ -323,11 +323,11 @@ theorem exitScalL_semG {N : Nat} {L : LeafSpec} (hL : ExitWordLaw L) {c c' : Low
               ih (x :: S) (fun y => B y ∨ y = x) _ rs' _ hbody hag hr (srcList_cons hx hS) hb1
                 (sub_cons x hB) henv1 (scalarInRange_upd hir x (by norm_num))
             refine ⟨env3, ?_, henv3, hir3, ?_, ?_, ?_⟩
-            · simp only [semG, hf', Bool.false_eq_true, if_false, hs2, Option.bind_some]
+            · simp only [semG, hf', Bool.false_eq_true, ite_false, hs2, Option.bind_some]
               exact hs3
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hb3
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hS3
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hB3
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hb3
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hS3
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hB3
   | @loop x bd body body' hx hbd hrel =>
       intro S B rs rs' env hexec hag hr hS hb hB henv hir
       have hcnt := boundVal_eq_evalState hbd hr.1 henv hir

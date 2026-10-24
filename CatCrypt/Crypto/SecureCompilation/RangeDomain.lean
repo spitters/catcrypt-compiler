@@ -408,7 +408,7 @@ theorem Iv.mem_condAdd (hw : 0 < w) {id ic : Iv} {d C : BitVec w} (hd : id.Mem w
       exact_mod_cast this
     rw [condAdd_of_ge hw d C hge]
     have hidneg : ¬ 0 ≤ id.1 := by omega
-    simp only [condAddIv, hidneg, if_false]
+    simp only [condAddIv, hidneg, ite_false]
     have hlt : d.toNat + C.toNat - 2 ^ w < 2 ^ w := by
       have := d.isLt; have := C.isLt; omega
     have hsum : (d + C).toNat = d.toNat + C.toNat - 2 ^ w := by
@@ -457,7 +457,7 @@ theorem condAdd_eq_umin (hw : 0 < w) {id : Iv} {d C : BitVec w} (hd : id.Mem w d
     have hsum : (d + C).toNat = d.toNat + C.toNat := by
       rw [BitVec.toNat_add, Nat.mod_eq_of_lt (by omega)]
     unfold umin
-    rw [if_pos (by omega)]
+    rw [ite_eq_left (by omega)]
   · have hge : 2 ^ (w - 1) ≤ d.toNat := by
       have : (2 : Int) ^ (w - 1) ≤ d.toNat := by omega
       exact_mod_cast this
@@ -469,7 +469,7 @@ theorem condAdd_eq_umin (hw : 0 < w) {id : Iv} {d C : BitVec w} (hd : id.Mem w d
       rw [BitVec.toNat_add, Nat.mod_eq_sub_mod hge', Nat.mod_eq_of_lt]
       have := d.isLt; have := C.isLt; omega
     unfold umin
-    rw [if_neg (by have := C.isLt; omega)]
+    rw [ite_eq_right (by have := C.isLt; omega)]
 
 /-- The direct form: for `d = x - C` in range, the conditional add is the unsigned
     minimum of `x` and `x - C`. -/

@@ -133,14 +133,14 @@ theorem runALeakX_sim_of_step {σ : Type} {frame : String → Option (BitVec 64)
     rw [hR0] at hrun
     cases hh : haltedA body s
     · simp [hh] at hrun
-    · simp only [hh, if_true, Option.some.injEq, Prod.mk.injEq] at hrun
+    · simp only [hh, ite_true, Option.some.injEq, Prod.mk.injEq] at hrun
       obtain ⟨h1, rfl⟩ := hrun
       exact hhalt a s zf hR hh h1
   | succ f ih =>
     intro a s zf ℓ hR hrun hsafe
     rw [hRs] at hrun
     cases hh : haltedA body s
-    · simp only [hh, Bool.false_eq_true, if_false] at hrun
+    · simp only [hh, Bool.false_eq_true, ite_false] at hrun
       cases hst : stepA frame body s zf with
       | none => rw [hst] at hrun; cases hrun
       | some bz =>
@@ -151,7 +151,7 @@ theorem runALeakX_sim_of_step {σ : Type} {frame : String → Option (BitVec 64)
         obtain ⟨rfl, rfl⟩ := heq
         obtain ⟨a', hR', hk⟩ := hstep a s zf s' zf' hR hh hsafe.1 hst
         exact hk ℓ' (ih a' s' zf' ℓ' hR' hrun' (hsafe.2 s' zf' hst))
-    · simp only [hh, if_true, Option.some.injEq, Prod.mk.injEq] at hrun
+    · simp only [hh, ite_true, Option.some.injEq, Prod.mk.injEq] at hrun
       obtain ⟨h1, rfl⟩ := hrun
       exact hhalt a s zf hR hh h1
 
@@ -242,9 +242,9 @@ theorem reaches_cond {a b : JInstr 64} {body : Lcmd} {shs : List DShape} {k : Na
   have hms := step_jcc_pol (decProg a b body shs) (posOf shs k) (posOf shs p) sa cc pol hpol
     (decProg_cond hks hshk hp)
   by_cases hz : sa.flags.zf.getD false = pol
-  · rw [if_pos hz] at hms ⊢
+  · rw [ite_eq_left hz] at hms ⊢
     exact .single hms
-  · rw [if_neg hz] at hms ⊢
+  · rw [ite_eq_right hz] at hms ⊢
     rw [posOf_cond hks hshk]
     exact .single hms
 
@@ -335,9 +335,9 @@ theorem runL_cond {r : DoitRegime} {ok : AState → JInstr 64 → Prop} {a b : J
   refine RunL.jcc hj hc ?_
   rw [hcb]
   by_cases hz : sa.flags.zf.getD false = pol
-  · rw [if_pos hz] at hR
+  · rw [ite_eq_left hz] at hR
     simpa [hz] using hR
-  · rw [if_neg hz, posOf_cond hks hshk] at hR
+  · rw [ite_eq_right hz, posOf_cond hks hshk] at hR
     have hb : (sa.flags.zf.getD false == pol) = false := by simpa using hz
     simpa [hb] using hR
 

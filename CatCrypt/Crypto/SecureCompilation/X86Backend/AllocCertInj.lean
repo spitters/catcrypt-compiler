@@ -141,7 +141,7 @@ theorem calleeFirstPhys_inj {p q : Nat} (h : calleeFirstPhys p = calleeFirstPhys
   have hbd : ∀ x ∈ calleeSavedFirstOrder, x < 13 := by decide
   unfold calleeFirstPhys at h
   rw [hn] at h
-  by_cases hp : p < 13 <;> by_cases hq : q < 13 <;> simp only [hp, hq, if_true, if_false] at h
+  by_cases hp : p < 13 <;> by_cases hq : q < 13 <;> simp only [hp, hq, ite_true, ite_false] at h
   · simp only [List.getD_eq_getElem?_getD,
       List.getElem?_eq_getElem (show p < calleeSavedFirstOrder.length by omega),
       List.getElem?_eq_getElem (show q < calleeSavedFirstOrder.length by omega),
@@ -226,9 +226,9 @@ theorem usedBody_step (body : Lcmd) (tbl : Array Nat) (isRead : Array Bool)
   by_cases hc : maskName body it.1 = true
   · have hc' := hc
     unfold maskName at hc'
-    rw [if_pos hc']
+    rw [ite_eq_left hc']
     by_cases hlt : physMapTabled tbl it.1 < numGPRegs
-    · rw [if_pos hlt]
+    · rw [ite_eq_left hlt]
       have hset : ∀ (c : Array Bool), (acc.1.set! (physMapTabled tbl it.1) true).size = numGPRegs
           ∧ (∀ r : Nat, acc.1[r]?.getD false = true →
               (acc.1.set! (physMapTabled tbl it.1) true)[r]?.getD false = true)
@@ -249,11 +249,11 @@ theorem usedBody_step (body : Lcmd) (tbl : Array Nat) (isRead : Array Bool)
             acc.2.set! (physMapTabled tbl it.1) true), rfl, h1, h2, fun _ _ => h3⟩
         | exact ⟨(acc.1.set! (physMapTabled tbl it.1) true, acc.2), rfl, h1, h2,
             fun _ _ => h3⟩
-    · rw [if_neg hlt]
+    · rw [ite_eq_right hlt]
       exact ⟨_, rfl, h, fun r hr => hr, fun _ h' => absurd h' hlt⟩
   · have hc' : ¬ ((bodyNames body).toArray[it.1]?.getD "" != "%livepin" &&
         !isHwRegName ((bodyNames body).toArray[it.1]?.getD "")) = true := hc
-    rw [if_neg hc']
+    rw [ite_eq_right hc']
     exact ⟨_, rfl, h, fun r hr => hr, fun h' => absurd h' hc⟩
 
 theorem usedLoop_aux (body : Lcmd) (tbl : Array Nat) (isRead : Array Bool) :
@@ -356,19 +356,19 @@ theorem relocInv_assign {u : Array Bool} {sb k : Nat}
   · intro r hr hur
     rw [hget]
     by_cases hkr : k = r
-    · rw [if_pos hkr]; exact hx
-    · rw [if_neg hkr]; exact hmono _ (h8 r (by omega) hur)
+    · rw [ite_eq_left hkr]; exact hx
+    · rw [ite_eq_right hkr]; exact hmono _ (h8 r (by omega) hur)
   · intro r₁ r₂ hr₁ hr₂ hu₁ hu₂ hne
     rw [hget, hget]
     by_cases hk1 : k = r₁ <;> by_cases hk2 : k = r₂
     · exact absurd (hk1.symm.trans hk2) hne
-    · rw [if_pos hk1, if_neg hk2]
+    · rw [ite_eq_left hk1, ite_eq_right hk2]
       intro he
       exact hfresh (he ▸ h8 r₂ (by omega) hu₂)
-    · rw [if_neg hk1, if_pos hk2]
+    · rw [ite_eq_right hk1, ite_eq_left hk2]
       intro he
       exact hfresh (he ▸ h8 r₁ (by omega) hu₁)
-    · rw [if_neg hk1, if_neg hk2]
+    · rw [ite_eq_right hk1, ite_eq_right hk2]
       exact h9 r₁ r₂ (by omega) (by omega) hu₁ hu₂ hne
 
 /-- Taking the head of a pool keeps the invariant. -/
@@ -446,17 +446,17 @@ theorem relocBody_step {u c : Array Bool} {sb k : Nat}
   obtain ⟨R, cp, np, ns⟩ := σ
   unfold relocBody
   by_cases hu : u[k]?.getD false = true
-  · rw [if_pos hu]
+  · rw [ite_eq_left hu]
     by_cases hc : c[k]?.getD false = true
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       cases cp with
       | cons r₀ rest => exact ⟨_, rfl, relocInv_pool_head hsb hI hk⟩
       | nil => exact ⟨_, rfl, relocInv_spill hsb hI hk⟩
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       cases np with
       | cons r₀ rest => exact ⟨_, rfl, relocInv_scratch_head hsb hI hk⟩
       | nil => exact ⟨_, rfl, relocInv_spill hsb hI hk⟩
-  · rw [if_neg hu]
+  · rw [ite_eq_right hu]
     exact ⟨_, rfl, relocInv_skip hI hu⟩
 
 theorem relocLoop_aux {u c : Array Bool} {sb : Nat} (hsb : numGPRegs ≤ sb) :
@@ -510,7 +510,7 @@ theorem gpSpillBase_foldl_gt (vecArr : Array Bool) :
     simp only [List.foldl_cons]
     rcases List.mem_cons.mp he with rfl | he'
     · refine Nat.lt_of_lt_of_le ?_ (gpSpillBase_foldl_ge vecArr l _)
-      simp only [hv, Bool.not_false, decide_eq_true hg, Bool.and_self, if_true]
+      simp only [hv, Bool.not_false, decide_eq_true hg, Bool.and_self, ite_true]
       exact Nat.lt_of_lt_of_le (Nat.lt_succ_self _) (Nat.le_max_right _ _)
     · exact gpSpillBase_foldl_gt vecArr l _ e he' hv hg
 
@@ -592,7 +592,7 @@ theorem straightCallComposeTable_ne {body : Lcmd} {T : Array Nat} {a b : String}
     physMapTabled (straightCallComposeTable body T) (nameSlot body a)
       ≠ physMapTabled (straightCallComposeTable body T) (nameSlot body b) := by
   unfold straightCallComposeTable
-  rw [if_pos hsc]
+  rw [ite_eq_left hsc]
   simp only
   rw [physMapTabled_map _ _ hsa, physMapTabled_map _ _ hsb]
   obtain ⟨isRead, hrel⟩ := straightCallRelocTable_eq body T
@@ -619,13 +619,13 @@ theorem straightCallComposeTable_ne {body : Lcmd} {T : Array Nat} {a b : String}
     exact relocAssigned_bound (h8 _ hlt (hused n hn hm hlt)) h7
   by_cases hla : physMapTabled T (nameSlot body a) < numGPRegs <;>
     by_cases hlb : physMapTabled T (nameSlot body b) < numGPRegs
-  · simp only [hla, hlb, if_true]
+  · simp only [hla, hlb, ite_true]
     exact h9 _ _ hla hlb (hused a ha hma hla) (hused b hb hmb hlb) hT
-  · simp only [hla, hlb, if_true, if_false]
+  · simp only [hla, hlb, ite_true, ite_false]
     exact relocated_ne_passthrough hcls hsp (hbound a ha hma hla) hsb (by omega)
-  · simp only [hla, hlb, if_true, if_false]
+  · simp only [hla, hlb, ite_true, ite_false]
     exact (relocated_ne_passthrough hcls hsp (hbound b hb hmb hlb) hsa (by omega)).symm
-  · simp only [hla, hlb, if_false]
+  · simp only [hla, hlb, ite_false]
     exact hT
 
 /-! ## The allocator's renaming -/
@@ -669,22 +669,22 @@ theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
     exact (live_out_of_mem_bodyNames hn).1
   unfold allocName
   by_cases hc : bodyHasCall body = true
-  · rw [if_pos hc, if_pos hc]
+  · rw [ite_eq_left hc, ite_eq_left hc]
     unfold physNameForBody
-    simp only [hfa, hfb, hc, hwa, hwb, Bool.false_eq_true, if_false, if_true]
+    simp only [hfa, hfb, hc, hwa, hwb, Bool.false_eq_true, ite_false, ite_true]
     by_cases hs : bodyStraightCall body = true
-    · simp only [hs, if_true]
+    · simp only [hs, ite_true]
       intro h
       exact straightCallComposeTable_ne hs (hcls hs) (hsp hs) ha hb
         (maskName_nameSlot ha hpa hwa) (maskName_nameSlot hb hpb hwb)
         (hsize a ha) (hsize b hb) hT (physRegName_inj h)
     · have hid : straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
           = physTableOut body outStoreMap reservedVec := by
-        unfold straightCallComposeTable; rw [if_neg hs]
-      simp only [hs, Bool.false_eq_true, if_false, hid]
+        unfold straightCallComposeTable; rw [ite_eq_right hs]
+      simp only [hs, Bool.false_eq_true, ite_false, hid]
       intro h
       exact hT (calleeFirstPhys_inj (physRegName_inj h))
-  · rw [if_neg hc, if_neg hc]
+  · rw [ite_eq_right hc, ite_eq_right hc]
     have hs : bodyStraightCall body = false := by
       unfold bodyStraightCall; simp only [Bool.not_eq_true] at hc; simp [hc]
     have hid : straightCallComposeTable body (physTableOut body outStoreMap reservedVec)

@@ -552,8 +552,8 @@ theorem evalOperand_rename {w : Nat} {s d : String} {σ τ : Lstate w} (hR : Ren
   | reg n =>
     simp only [renameOperand, renameName, evalOperand]
     by_cases hn : n = s
-    · rw [if_pos hn, hn]; exact hR.2.1
-    · rw [if_neg hn]; exact hR.2.2 n hn (ne_of_not_mentions_reg hd hm)
+    · rw [ite_eq_left hn, hn]; exact hR.2.1
+    · rw [ite_eq_right hn]; exact hR.2.2 n hn (ne_of_not_mentions_reg hd hm)
   | imm v => rfl
   | arr b i => simp only [renameOperand, evalOperand, hR.1]
   | arrIdx b i sc =>
@@ -596,12 +596,12 @@ theorem RenRel.step {w : Nat} {s d : String} {σ τ : Lstate w} (hR : RenRel s d
   · simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, renameName]
     by_cases hxs : x = s
     · subst hxs; simp
-    · rw [if_neg hxs, if_neg (Ne.symm hx), if_neg (Ne.symm hxs)]; exact hR.2.1
+    · rw [ite_eq_right hxs, ite_eq_right (Ne.symm hx), ite_eq_right (Ne.symm hxs)]; exact hR.2.1
   · intro r hrs hrd
     simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, renameName]
     by_cases hxs : x = s
-    · subst hxs; rw [if_pos rfl, if_neg hrd, if_neg hrs]; exact hR.2.2 r hrs hrd
-    · rw [if_neg hxs]
+    · subst hxs; rw [ite_eq_left rfl, ite_eq_right hrd, ite_eq_right hrs]; exact hR.2.2 r hrs hrd
+    · rw [ite_eq_right hxs]
       split
       · rfl
       · exact hR.2.2 r hrs hrd

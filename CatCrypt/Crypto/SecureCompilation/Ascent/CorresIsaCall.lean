@@ -188,7 +188,7 @@ theorem steps_call_entry (isa : Isa) {P : LprogM} {k q : Nat} {m : LstateMF} {l 
     Steps isa.withCalls P 1 m (callEntry isa.sp v q m) ∧
       atLabel P l (callEntry isa.sp v q m) := by
   refine ⟨Steps.one ?_, q, hl, hat.1, rfl⟩
-  rw [lsemStepPMemF_of_atPc isa.withCalls hat hi, isa.step_call, if_pos rfl]
+  rw [lsemStepPMemF_of_atPc isa.withCalls hat hi, isa.step_call, ite_eq_left rfl]
   show ((m.prog.base.reg.getW isa.sp 64).bind _) = _
   rw [hsp, Option.bind_some]
   exact evalJumpMem_of_findLabelMem hl (pushRet isa.sp v m)
@@ -338,7 +338,7 @@ theorem steps_append_withCalls (isa : Isa) {P P' : LprogM} {X : List LinstrRM}
           have hi : i ∈ P.body := List.mem_of_getElem? hf
           have hf' : findInstrMem P' s.prog = some i := by
             unfold findInstrMem
-            rw [if_pos (hl.trans hfn.symm), hbody, List.getElem?_append_left hlt]
+            rw [ite_eq_left (hl.trans hfn.symm), hbody, List.getElem?_append_left hlt]
             exact hf
           rw [hf']
           show isa.withCalls.step P' i s = some u

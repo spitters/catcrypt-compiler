@@ -1752,7 +1752,7 @@ theorem nfToCatExt_leakD {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
               some a' ∧ _
             split at h
             · rename_i hbt
-              rw [if_pos hbt]
+              rw [ite_eq_left hbt]
               obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
               obtain ⟨q', hq', he2, hR2⟩ := ih cv cv' q hR hq
               refine ⟨(q'.1, cl' ++ .branch true :: q'.2), ?_, ?_, hR2⟩
@@ -1760,7 +1760,7 @@ theorem nfToCatExt_leakD {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Buil
                 rfl
               · simp only [he, he2, stripDecl_append, stripDecl_branch]
             · rename_i hbt
-              rw [if_neg hbt]
+              rw [ite_eq_right hbt]
               cases h
               refine ⟨(cv', cl' ++ [.branch false]), rfl, ?_, hR⟩
               simp only [he, stripDecl_append, stripDecl_branch, stripDecl_nil]

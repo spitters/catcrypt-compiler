@@ -227,7 +227,7 @@ theorem shr_i_counterexample :
   refine not_rcompOk_of ⟨BitVec.sshiftRight ((-8)#i64).bv 1⟩ ?_ ?_
   · show IScalar.shiftRight (-8)#i64 (1#u32).val = _
     unfold IScalar.shiftRight
-    rw [if_pos (by decide +kernel)]
+    rw [ite_eq_left (by decide +kernel)]
     rfl
   · show ¬ (_ : Int) = _
     decide +kernel
@@ -273,7 +273,7 @@ theorem shl_u_counterexample :
   refine not_rcompOk_of ⟨BitVec.shiftLeft (128#u8).bv 1⟩ ?_ ?_
   · show UScalar.shiftLeft 128#u8 (1#u32).val = _
     unfold UScalar.shiftLeft
-    rw [if_pos (by decide +kernel)]
+    rw [ite_eq_left (by decide +kernel)]
     rfl
   · show ¬ (_ : Int) = _
     decide +kernel
@@ -286,7 +286,7 @@ theorem shl_i_counterexample :
   refine not_rcompOk_of ⟨BitVec.shiftLeft (1#i8).bv 7⟩ ?_ ?_
   · show IScalar.shiftLeft 1#i8 (7#u32).val = _
     unfold IScalar.shiftLeft
-    rw [if_pos (by decide +kernel)]
+    rw [ite_eq_left (by decide +kernel)]
     rfl
   · show ¬ (_ : Int) = _
     decide +kernel

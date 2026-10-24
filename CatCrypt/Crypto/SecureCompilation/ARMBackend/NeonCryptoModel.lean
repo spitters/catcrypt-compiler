@@ -572,7 +572,7 @@ theorem roundtrip_aese (d n : Nat) (hd : d < 32) (hn : n < 32) :
   have hid : fldAesId W = baseAese / 0x400 := by simp only [fldAesId, hW, baseAese]; omega
   have hrd : fldRd W = d := by simp only [fldRd, hW, baseAese]; omega
   have hrn : fldRn W = n := by simp only [fldRn, hW, baseAese]; omega
-  rw [decodeCryptoWord, hrd, hrn, if_pos hid]
+  rw [decodeCryptoWord, hrd, hrn, ite_eq_left hid]
 
 /-- **Round-trip for AESMC.** -/
 theorem roundtrip_aesmc (d n : Nat) (hd : d < 32) (hn : n < 32) :
@@ -588,7 +588,7 @@ theorem roundtrip_aesmc (d n : Nat) (hd : d < 32) (hn : n < 32) :
   have h2 : fldAesId W ≠ baseAesd / 0x400 := by rw [hid]; decide
   have hrd : fldRd W = d := by simp only [fldRd, hW, baseAesmc]; omega
   have hrn : fldRn W = n := by simp only [fldRn, hW, baseAesmc]; omega
-  rw [decodeCryptoWord, hrd, hrn, if_neg h1, if_neg h2, if_pos hid]
+  rw [decodeCryptoWord, hrd, hrn, ite_eq_right h1, ite_eq_right h2, ite_eq_left hid]
 
 /-- **Round-trip for AESD.** -/
 theorem roundtrip_aesd (d n : Nat) (hd : d < 32) (hn : n < 32) :
@@ -603,7 +603,7 @@ theorem roundtrip_aesd (d n : Nat) (hd : d < 32) (hn : n < 32) :
   have h1 : fldAesId W ≠ baseAese / 0x400 := by rw [hid]; decide
   have hrd : fldRd W = d := by simp only [fldRd, hW, baseAesd]; omega
   have hrn : fldRn W = n := by simp only [fldRn, hW, baseAesd]; omega
-  rw [decodeCryptoWord, hrd, hrn, if_neg h1, if_pos hid]
+  rw [decodeCryptoWord, hrd, hrn, ite_eq_right h1, ite_eq_left hid]
 
 /-- **Round-trip for AESIMC.** -/
 theorem roundtrip_aesimc (d n : Nat) (hd : d < 32) (hn : n < 32) :
@@ -620,7 +620,7 @@ theorem roundtrip_aesimc (d n : Nat) (hd : d < 32) (hn : n < 32) :
   have h3 : fldAesId W ≠ baseAesmc / 0x400 := by rw [hid]; decide
   have hrd : fldRd W = d := by simp only [fldRd, hW, baseAesimc]; omega
   have hrn : fldRn W = n := by simp only [fldRn, hW, baseAesimc]; omega
-  rw [decodeCryptoWord, hrd, hrn, if_neg h1, if_neg h2, if_neg h3, if_pos hid]
+  rw [decodeCryptoWord, hrd, hrn, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_left hid]
 
 /-- The AES class constants are all distinct from the PMULL `fldAesId` of a PMULL
     word (the PMULL base + `Rm` term lands `fldAesId` far above the AES ids), so the
@@ -649,7 +649,7 @@ theorem roundtrip_pmull (d n m : Nat) (hd : d < 32) (hn : n < 32) (hm : m < 32) 
   have hpid : fldPmullId W = basePmull := by
     rw [fldPmullId, hrd, hrn, hrm, hW]; simp only [basePmull]; omega
   obtain ⟨h1, h2, h3, h4⟩ := pmull_not_aes basePmull m n d (Or.inl rfl) hm hn hd
-  rw [decodeCryptoWord, hrd, hrn, hrm, if_neg h1, if_neg h2, if_neg h3, if_neg h4, if_pos hpid]
+  rw [decodeCryptoWord, hrd, hrn, hrm, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4, ite_eq_left hpid]
 
 /-- **Round-trip for PMULL2.** -/
 theorem roundtrip_pmull2 (d n m : Nat) (hd : d < 32) (hn : n < 32) (hm : m < 32) :
@@ -667,8 +667,8 @@ theorem roundtrip_pmull2 (d n m : Nat) (hd : d < 32) (hn : n < 32) (hm : m < 32)
     rw [fldPmullId, hrd, hrn, hrm, hW]; simp only [basePmull2]; omega
   have hpid1 : fldPmullId W ≠ basePmull := by rw [hpid]; decide
   obtain ⟨h1, h2, h3, h4⟩ := pmull_not_aes basePmull2 m n d (Or.inr rfl) hm hn hd
-  rw [decodeCryptoWord, hrd, hrn, hrm, if_neg h1, if_neg h2, if_neg h3, if_neg h4,
-    if_neg hpid1, if_pos hpid]
+  rw [decodeCryptoWord, hrd, hrn, hrm, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4,
+    ite_eq_right hpid1, ite_eq_left hpid]
 
 /-! ### Instruction-level round-trip: `decode (encode i) = i`
 

@@ -108,7 +108,7 @@ theorem firstIndexed_eq_none_iff (body : Lcmd) :
   | nil => simp [firstIndexed, lcmdDirect]
   | cons i is ih =>
       by_cases h : linstrRDirect i.li_i = true
-      · simp only [firstIndexed, h, if_true, lcmdDirect, List.all_cons,
+      · simp only [firstIndexed, h, ite_true, lcmdDirect, List.all_cons,
           Bool.and_eq_true, true_and]
         simpa [lcmdDirect] using ih
       · simp only [Bool.not_eq_true] at h
@@ -221,7 +221,7 @@ theorem emitChecked_lcmdDirect {render : Lprog → String} {pol : CtPolicy}
     {sym : String} {lp : Lprog} {s : String} (hp : pol.publicData = false)
     (h : emitChecked render pol sym lp = .ok s) :
     ∀ f ∈ lp.lp_funcs, lcmdDirect f.2.lfd_body = true := by
-  rw [emitChecked, hp, if_neg (by simp)] at h
+  rw [emitChecked, hp, ite_eq_right (by simp)] at h
   cases ho : firstOffender lp with
   | some p =>
       rw [ho] at h

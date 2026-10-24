@@ -378,9 +378,9 @@ theorem translateMonoCmdD_denoteSP_native {Γ : Ctx} {n : Nat}
           funext w
           by_cases h1 : w = rv.var
           · simp [h1]
-          · simp only [h1, if_false]
+          · simp only [h1, ite_false]
             by_cases h2 : w = cfv.var
-            · simp only [h2, if_true, boolToBVaux]
+            · simp only [h2, ite_true, boolToBVaux]
               split <;> simp_all
             · simp [h2]
       · -- ADC_64 shape : `dprog` = bvAdc ; fst ; snd ; body. Same shape as
@@ -453,9 +453,9 @@ theorem translateMonoCmdD_denoteSP_native {Γ : Ctx} {n : Nat}
           funext w
           by_cases h1 : w = rv.var
           · simp [h1]
-          · simp only [h1, if_false]
+          · simp only [h1, ite_false]
             by_cases h2 : w = cfv.var
-            · simp only [h2, if_true, boolToBVaux]
+            · simp only [h2, ite_true, boolToBVaux]
               split <;> simp_all
             · simp [h2]
       · exact absurd h_trans (by simp)

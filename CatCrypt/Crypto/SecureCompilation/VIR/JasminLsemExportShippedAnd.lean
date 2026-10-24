@@ -158,7 +158,7 @@ theorem canonFeedback_fixed (out : String) (absent : Bool) :
   intro i hi
   unfold canonFeedback at hi
   cases absent
-  · simp only [Bool.false_eq_true, if_false, List.mem_cons, List.not_mem_nil,
+  · simp only [Bool.false_eq_true, ite_false, List.mem_cons, List.not_mem_nil,
       or_false] at hi
     subst hi
     exact immShiftExpand_of_regs _ _ _ _ (by simp)
@@ -397,7 +397,7 @@ theorem canonNodeRM_instrOK {invTys : Ctxt jasminDialect} (τ : String → Strin
   · refine instrOK_of_fixed ?_ (canonFeedback_fixed out absent i hi)
     unfold canonFeedback at hi
     cases absent
-    · simp only [Bool.false_eq_true, if_false, List.mem_cons, List.not_mem_nil,
+    · simp only [Bool.false_eq_true, ite_false, List.mem_cons, List.not_mem_nil,
         or_false] at hi
       subst hi
       exact ⟨_, _, _, rfl⟩

@@ -72,9 +72,9 @@ theorem ctSelect_spec (cond x y : BitVec 64)
     (hcond : cond = 0 ∨ cond = BitVec.allOnes 64) :
     ctSelect cond x y = if cond = 0 then y else x := by
   rcases hcond with h | h
-  · subst h; rw [if_pos rfl]; unfold ctSelect; bv_decide
+  · subst h; rw [ite_eq_left rfl]; unfold ctSelect; bv_decide
   · subst h
-    rw [if_neg (by bv_decide)]
+    rw [ite_eq_right (by bv_decide)]
     unfold ctSelect; bv_decide
 
 /-! ## The LowCT mask-select chain and its bitwise leaf

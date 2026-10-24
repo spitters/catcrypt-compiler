@@ -201,12 +201,12 @@ theorem twoAddrRoute_untied {d opn : String} {a b : LOperand} {r : TwoAddrRoute}
   unfold twoAddrRoute at h
   dsimp only at h
   by_cases h1 : (needsTie opn b && a != LOperand.reg d) = true
-  · rw [if_pos h1] at h
+  · rw [ite_eq_left h1] at h
     simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at h1
     cases hm : movFor opn with
     | none => rw [hm] at h; exact absurd h.symm hr
     | some m => exact ⟨h1.1, h1.2, m, rfl⟩
-  · rw [if_neg h1] at h
+  · rw [ite_eq_right h1] at h
     exact absurd h.symm hr
 
 theorem twoAddrRoute_flag {d opn : String} {a b : LOperand}
@@ -215,7 +215,7 @@ theorem twoAddrRoute_flag {d opn : String} {a b : LOperand}
   unfold twoAddrRoute at h
   dsimp only at h
   by_cases h1 : (needsTie opn b && a != LOperand.reg d) = true
-  · rw [if_pos h1] at h
+  · rw [ite_eq_left h1] at h
     cases hm : movFor opn with
     | none => rw [hm] at h; cases h
     | some m =>
@@ -224,7 +224,7 @@ theorem twoAddrRoute_flag {d opn : String} {a b : LOperand}
         refine ⟨?_, m, rfl⟩
         split_ifs at h with h2
         · simpa using h2
-  · rw [if_neg h1] at h; cases h
+  · rw [ite_eq_right h1] at h; cases h
 
 theorem twoAddrRoute_copy {d opn m : String} {a b : LOperand}
     (h : twoAddrRoute (.Lopn [.reg d] opn [a, b]) = .copy m) :
@@ -233,7 +233,7 @@ theorem twoAddrRoute_copy {d opn m : String} {a b : LOperand}
   unfold twoAddrRoute at h
   dsimp only at h
   by_cases h1 : (needsTie opn b && a != LOperand.reg d) = true
-  · rw [if_pos h1] at h
+  · rw [ite_eq_left h1] at h
     cases hm : movFor opn with
     | none => rw [hm] at h; cases h
     | some m' =>
@@ -245,7 +245,7 @@ theorem twoAddrRoute_copy {d opn m : String} {a b : LOperand}
           simp only [Bool.or_eq_true, beq_iff_eq, not_or] at h2
           simp only [Bool.and_eq_true, Bool.not_eq_true'] at h4
           exact ⟨rfl, h4.1, h2.1, h2.2⟩
-  · rw [if_neg h1] at h; cases h
+  · rw [ite_eq_right h1] at h; cases h
 
 theorem twoAddrRoute_comm {d opn : String} {a b : LOperand}
     (h : twoAddrRoute (.Lopn [.reg d] opn [a, b]) = .comm) :
@@ -253,7 +253,7 @@ theorem twoAddrRoute_comm {d opn : String} {a b : LOperand}
   unfold twoAddrRoute at h
   dsimp only at h
   by_cases h1 : (needsTie opn b && a != LOperand.reg d) = true
-  · rw [if_pos h1] at h
+  · rw [ite_eq_left h1] at h
     cases hm : movFor opn with
     | none => rw [hm] at h; cases h
     | some m' =>
@@ -263,7 +263,7 @@ theorem twoAddrRoute_comm {d opn : String} {a b : LOperand}
         · split at h <;> cases h
         simp only [Bool.and_eq_true, beq_iff_eq] at h5
         exact ⟨h5.1.1, h5.1.2, m', rfl⟩
-  · rw [if_neg h1] at h; cases h
+  · rw [ite_eq_right h1] at h; cases h
 
 theorem twoAddrRoute_scratch {d opn m : String} {a b : LOperand}
     (h : twoAddrRoute (.Lopn [.reg d] opn [a, b]) = .scratch m) :
@@ -271,7 +271,7 @@ theorem twoAddrRoute_scratch {d opn m : String} {a b : LOperand}
   unfold twoAddrRoute at h
   dsimp only at h
   by_cases h1 : (needsTie opn b && a != LOperand.reg d) = true
-  · rw [if_pos h1] at h
+  · rw [ite_eq_left h1] at h
     cases hm : movFor opn with
     | none => rw [hm] at h; cases h
     | some m' =>
@@ -282,7 +282,7 @@ theorem twoAddrRoute_scratch {d opn m : String} {a b : LOperand}
         · cases h
           simp only [Bool.or_eq_true, beq_iff_eq, not_or] at h2
           exact ⟨rfl, h2.1, h2.2⟩
-  · rw [if_neg h1] at h; cases h
+  · rw [ite_eq_right h1] at h; cases h
 
 theorem twoAddrRouteWF_of_twoAddrWF (outs : List String) (tg : LinstrR → MemTag) (x : LinstrR)
     (h : twoAddrWF x = true) : twoAddrRouteWF outs tg x = true := by
@@ -309,7 +309,7 @@ theorem twoAddrRouteWF_of_twoAddrWF (outs : List String) (tg : LinstrR → MemTa
             unfold twoAddrRoute
             simp only [hn, hyd', Bool.and_self, ↓reduceIte, hm, isRegOrImm, Bool.not_true,
               Bool.false_eq_true, hb, hmem]
-            rw [if_neg (by simp [hc, ht])]
+            rw [ite_eq_right (by simp [hc, ht])]
           rw [hk]
   · rfl
 
@@ -597,14 +597,14 @@ def SSt.takeOn (D : List String) (ss ss' : SSt) : SSt :=
 theorem SSt.takeOn_regs (D : List String) (ss ss' : SSt) (q : String) :
     (SSt.takeOn D ss ss').regs q = if q ∈ D then ss.regs q else ss'.regs q := by
   induction D with
-  | nil => simp only [List.not_mem_nil, if_false]; rfl
+  | nil => simp only [List.not_mem_nil, ite_false]; rfl
   | cons a D ih =>
       change ((D.foldr (fun q (rf : RegFile) => rf.set q (ss.regs q)) ss'.rf).set a
         (ss.regs a)).get q = _
       rw [RegFile.get_set]
       by_cases h : q = a
       · subst h; simp
-      · rw [if_neg h]
+      · rw [ite_eq_right h]
         refine ih.trans ?_
         simp [h]
 
@@ -887,7 +887,7 @@ theorem symMem_ren (ss : SSt) (d r opn : String) (a b : LOperand) (τ : MemTag)
   | loadC => trivial
   | storeC => trivial
   | zero _ _ =>
-      cases a <;> cases b <;> simp only [symMem, hz, if_false] <;> trivial
+      cases a <;> cases b <;> simp only [symMem, hz, ite_false] <;> trivial
   | storeImm _ _ =>
       cases a <;> cases b <;> trivial
   | reg cd =>
@@ -934,7 +934,7 @@ theorem symStep_ren (ss : SSt) (d r opn : String) (a b : LOperand) (τ : MemTag)
     SOut.Ren ss d r (symStep (.Lopn [.reg d] opn [a, b], τ) ss)
       (symStep (.Lopn [.reg r] opn [a, b], τ) ss) := by
   unfold symStep
-  simp only [cmpArgs?, hcmp, if_false, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, hmov]
+  simp only [cmpArgs?, hcmp, ite_false, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, hmov]
   split_ifs <;> dsimp only <;>
     first
     | exact symCarry_ren ss _ d r a b
@@ -1016,7 +1016,7 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
               (T.internSt (ss.wrF d t c o) [d]).1.ents.size :=
             Tbl.internSt_inv (T := T) [d] (symStep_refsLt _ hI.1 hsd).1 (fun q hq => by
               have hqd : q ≠ d := by simpa using hq
-              simp only [SSt.wrF_regs, hqd, if_false]
+              simp only [SSt.wrF_regs, hqd, ite_false]
               exact hI.2.1 q)
           have hPr : ∀ q, (T.internSt (ss.wrF r t c o) [r]).2.regs q =
               if q = r then (T.internSt (ss.wrF d t c o) [d]).2.regs d else
@@ -1044,7 +1044,7 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
           | ok s2 g2 =>
               obtain ⟨rfl, e2, rfl⟩ := hcp'
               have hx : (s2.regs r).atom = true := by
-                rw [← congrFun e2.1 r, hPr r, if_pos rfl]
+                rw [← congrFun e2.1 r, hPr r, ite_eq_left rfl]
                 exact hInv.2.1 d
               have hc2 : s2.cf.atom = true := by rw [← e2.2.2.2.1, hcf]; exact hInv.2.2.1
               have ho2 : s2.of.atom = true := by rw [← e2.2.2.2.2, hof]; exact hInv.2.2.2
@@ -1056,7 +1056,7 @@ theorem chunkOn_scratch (r d y opn m : String) (b : LOperand) (τ τ1 τ3 : MemT
               · exact hcf.symm.trans e2.2.2.2.1
               · exact hof.symm.trans e2.2.2.2.2
               · have hqr : q ≠ r := by simpa using hq
-                rw [SSt.setR_regs, ← congrFun e2.1 r, ← congrFun e2.1 q, hPr r, hPr q, if_pos rfl, if_neg hqr]
+                rw [SSt.setR_regs, ← congrFun e2.1 r, ← congrFun e2.1 q, hPr r, hPr q, ite_eq_left rfl, ite_eq_right hqr]
                 by_cases hqd : q = d
                 · subst hqd; simp
                 · simp [hqd]
@@ -1122,16 +1122,16 @@ theorem chunkOn_saved (r S mv : String) (i : LinstrRM) (js : List LinstrRM) (τs
     refine ⟨⟨fun q => ?_, hI.1.2.1, hI.1.2.2.1, hI.1.2.2.2.1, hI.1.2.2.2.2⟩, fun q => ?_,
       hI.2.2.1, hI.2.2.2⟩
     · by_cases hq : q = S
-      · simp only [ssA, SSt.setR_regs, hq, if_true]; exact hI.1.1 r
-      · simp only [ssA, SSt.setR_regs, hq, if_false]; exact hI.1.1 q
+      · simp only [ssA, SSt.setR_regs, hq, ite_true]; exact hI.1.1 r
+      · simp only [ssA, SSt.setR_regs, hq, ite_false]; exact hI.1.1 q
     · by_cases hq : q = S
-      · simp only [ssA, SSt.setR_regs, hq, if_true]; exact hI.2.1 r
-      · simp only [ssA, SSt.setR_regs, hq, if_false]; exact hI.2.1 q
+      · simp only [ssA, SSt.setR_regs, hq, ite_true]; exact hI.2.1 r
+      · simp only [ssA, SSt.setR_regs, hq, ite_false]; exact hI.2.1 q
   have eA' : ssA.EqvOn [r] (ss'.setR S (ss'.regs r)) := by
     refine ⟨⟨e.1.1, e.1.2.1, e.1.2.2.1, e.1.2.2.2⟩, fun q hq => ?_⟩
     by_cases hqS : q = S
-    · simp only [ssA, SSt.setR_regs, hqS, if_true]; exact e.2 r hrS'
-    · simp only [ssA, SSt.setR_regs, hqS, if_false]; exact e.2 q (by simpa using hqS)
+    · simp only [ssA, SSt.setR_regs, hqS, ite_true]; exact e.2 r hrS'
+    · simp only [ssA, SSt.setR_regs, hqS, ite_false]; exact e.2 q (by simpa using hqS)
   have hsrc := tRun_on [S] [i] ss ssA T (fun j hj q hq hqS => by
     simp only [List.mem_singleton] at hj hqS
     subst hj hqS
@@ -1179,8 +1179,8 @@ theorem chunkOn_saved (r S mv : String) (i : LinstrRM) (js : List LinstrRM) (τs
               · rw [SSt.setR_regs]
                 by_cases hqr : q = r
                 · subst hqr
-                  rw [if_pos rfl, hs2S, eS.2 q hq, hAr]
-                · rw [if_neg hqr, ← e2.2 q (by simpa using hqr)]
+                  rw [ite_eq_left rfl, hs2S, eS.2 q hq, hAr]
+                · rw [ite_eq_right hqr, ← e2.2 q (by simpa using hqr)]
                   exact eS.2 q hq
           | fail => simp [ResD] at hcc
           | unk => simp [ResD] at hcc
@@ -1418,7 +1418,7 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
           have hzne : opn ≠ "ZEROARR" := by
             rintro rfl; rw [needsTie_zeroArr] at hn; cases hn
           by_cases hcb : commBases.contains (tieBase opn) = true ∧ (b == .reg d) = true
-          · rw [if_pos hcb, beq_iff_eq] at htag
+          · rw [ite_eq_left hcb, beq_iff_eq] at htag
             obtain ⟨hcm, hbd⟩ := hcb
             rw [beq_iff_eq] at hbd
             subst hbd
@@ -1443,7 +1443,7 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
               (fun h => hdr (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hzne hns1 hns2 _ h).symm)
               (fun h => hdS (wrOf_opn _ (opn_ne_cmp64 hc) hmne hsne hzne hns1 hns2 _ h).symm)
             exact scratchSave_not_symReads (by simp [instrAvoids, hd, ha])
-          rw [if_neg hcb, beq_iff_eq] at htag
+          rw [ite_eq_right hcb, beq_iff_eq] at htag
           have hcb' : (commBases.contains (tieBase opn) && b == .reg d) = false := by
             simpa using hcb
           simp only [legalR, hm, ↓reduceIte, hcb', Bool.false_eq_true, List.map_cons,

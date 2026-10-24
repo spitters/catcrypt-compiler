@@ -106,7 +106,7 @@ def curBodyC (env : LeafEnvM) (P : LprogM) (lfn : String) : List LinstrRM :=
 
 /-- On the program's own function, the current body is `P.body`. -/
 theorem curBodyC_self (env : LeafEnvM) (P : LprogM) (lfn : String) (h : lfn = P.lfn) :
-    curBodyC env P lfn = P.body := by unfold curBodyC; rw [if_pos h]
+    curBodyC env P lfn = P.body := by unfold curBodyC; rw [ite_eq_left h]
 
 /-- `find_instr`: the typed instruction at `lpc` in the current function's body. -/
 def findInstrMemC (env : LeafEnvM) (P : LprogM) (s : LstatePMC) : Option LinstrRM :=
@@ -284,7 +284,7 @@ theorem callee_run (env : LeafEnvM) (P : LprogM) (sym callerFn : String) (retPc 
           { base := b.setLpc retPc, lfn := callerFn, rstack := rest } := by
   -- the callee's current body is `leafOps ++ [Lret]`, fetched from the environment.
   have hcur : curBodyC env P sym = leafOps ++ [(LinstrR.Lret, MemTag.reg none)] := by
-    unfold curBodyC; rw [if_neg hne, hsym]; rfl
+    unfold curBodyC; rw [ite_eq_right hne, hsym]; rfl
   -- run the all-`Lopn` leaf ops as a straight-line segment (mirrors `lsemFuelMemL_seg`).
   have hseg :
       ∀ (seg pre : List LinstrRM),
@@ -364,7 +364,7 @@ theorem callee_run_none (env : LeafEnvM) (P : LprogM) (sym callerFn : String) (r
         { base := base.setLpc 0, lfn := sym, rstack := (callerFn, retPc) :: rest }
       = none := by
   have hcur : curBodyC env P sym = leafOps ++ [(LinstrR.Lret, MemTag.reg none)] := by
-    unfold curBodyC; rw [if_neg hne, hsym]; rfl
+    unfold curBodyC; rw [ite_eq_right hne, hsym]; rfl
   have hseg :
       ∀ (seg pre : List LinstrRM),
         (∀ i ∈ seg, IsLopn i) →
@@ -430,7 +430,7 @@ theorem segCallC (env : LeafEnvM) (P : LprogM) :
       simp only [fuelCostC_nil, Nat.zero_add, lsemStraightMemC_nil, Option.bind_some]
   | cons i is ih =>
       intro s f hfn hok hpos
-      have hcur : curBodyC env P s.lfn = P.body := by unfold curBodyC; rw [if_pos hfn]
+      have hcur : curBodyC env P s.lfn = P.body := by unfold curBodyC; rw [ite_eq_left hfn]
       have hii : BodyStepOK env P i := hok i (by simp)
       have his : ∀ j ∈ is, BodyStepOK env P j := fun j hj => hok j (by simp [hj])
       have hfetch : findInstrMemC env P s = some i := by
@@ -625,7 +625,7 @@ theorem loopCall_pass_taken (env : LeafEnvM) (fn : String) (top : LLabel) (nReg 
   rw [show 1 + f = f + 1 from by omega, lsemFuelMemLC, hfetch]
   simp only []
   unfold evalInstrPMemLC
-  simp only [htaken, if_true]
+  simp only [htaken, ite_true]
   unfold evalJumpMemC
   have hcur : curBodyC env Q ({ s with base := b } : LstatePMC).lfn = Q.body := by
     exact curBodyC_self env Q _ rfl

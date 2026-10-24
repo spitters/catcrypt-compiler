@@ -333,7 +333,7 @@ theorem parseMemName_of_parseMemNameGp {n : String} {p : Nat × Int}
   unfold parseMemName
   split at h
   · rename_i hp
-    rw [if_pos hp]
+    rw [ite_eq_left hp]
     split at h
     · split at h
       · split at h
@@ -981,7 +981,7 @@ def mulxSrcMem? (frame spillW : Nat) (s : String) (qsaveB : Nat := qsaveBytes) :
 theorem mulxSrcMem?_of_isGpName (frame spillW : Nat) {s : String} (qsaveB : Nat)
     (h : isGpName s = true) : mulxSrcMem? frame spillW s qsaveB = none := by
   obtain ⟨h1, h2⟩ := notSlotMem_of_isGpName h
-  simp only [mulxSrcMem?, h1, parseMemNameGp_eq_none h2, Bool.false_eq_true, if_false]
+  simp only [mulxSrcMem?, h1, parseMemNameGp_eq_none h2, Bool.false_eq_true, ite_false]
 
 /-- The scratch register a spilled-destination select borrows: the first of
     `%rax`, `%rbx`, `%rcx`, `%rdx` that is none of the three sources, as the
@@ -2128,7 +2128,7 @@ theorem encodeLcmd_fold_length_ge (frame spillW : Nat) (tbl : List (LLabel × Na
                 - Int.ofNat (off + instrLenAt frame spillW (fun _ => 0) instr.li_i qsaveB))
               instr.li_i qsaveB))
         instr.li_i qsaveB (hall instr List.mem_cons_self) hc
-      simp only [Bool.not_false, if_pos]
+      simp only [Bool.not_false, ite_eq_left]
       unfold byteCarrying at *
       omega
 
@@ -2778,7 +2778,7 @@ theorem encodeLopn_setc (frame spillW : Nat) (dn : String) :
     show ("SETC" == "MULXMEM") = false from by decide +kernel,
     show adxPrefix "SETC" = none from by decide +kernel,
     show ("SETC" == "SETC") = true from by decide +kernel,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
 
 /-- `ADCXHI` (the CF carry-out binding) materialises through `setc`+`movzbq`
     (`0x92`) into a general-purpose register, for ANY source list — the sources are
@@ -2855,7 +2855,7 @@ theorem encodeLopn_adcx3_pin (frame spillW : Nat) :
     show ("ADCX" == "MULX") = false from by decide +kernel,
     show ("ADCX" == "MULXMEM") = false from by decide +kernel,
     show adxPrefix "ADCX" = some 0x66 from by decide +kernel,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
   norm_num [show isSpillOrQsave "R11" = false from by decide +kernel,
     show isSpillOrQsave "R10" = false from by decide +kernel,
     show isSpillOrQsave "R9" = false from by decide +kernel,
@@ -3009,7 +3009,7 @@ theorem encodeLopn_loadidx (frame spillW : Nat) :
     show twoByteOpcode "LOADIDX" = none from by decide +kernel,
     show ("LOADIDX" == "LEA") = false from by decide +kernel,
     show ("LOADIDX" == "LOADIDX") = true from by decide +kernel,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
   norm_num [show isGpName "RAX" = true from by decide +kernel,
     show isGpName "RDI" = true from by decide +kernel,
     show isGpName "RSI" = true from by decide +kernel,
@@ -3035,7 +3035,7 @@ theorem encodeLopn_storeidx (frame spillW : Nat) :
     show aluOpcode "STOREIDX" = none from by decide +kernel,
     show twoByteOpcode "STOREIDX" = none from by decide +kernel,
     show ("STOREIDX" == "STOREIDX") = true from by decide +kernel,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
   norm_num [show isGpName "RAX" = true from by decide +kernel,
     show isGpName "RDI" = true from by decide +kernel,
     show isGpName "RSI" = true from by decide +kernel,
@@ -3059,7 +3059,7 @@ theorem encodeLopn_zeroArr (frame spillW : Nat) (dn : String) (n qsaveB : Nat)
     show adxPrefix "ZEROARR" = none from by decide +kernel,
     show ("ZEROARR" == "SETE" || "ZEROARR" == "SETNE") = false from by decide +kernel,
     show ("ZEROARR" == "ZEROARR") = true from by decide +kernel,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
   simp [encZeroArrOp, hd, hn, hk]
 
 /-- **The array zeroing in the source form encodes to its word stores.**
@@ -3077,7 +3077,7 @@ theorem encodeLopn_zeroArrSrc (frame spillW : Nat) (bn : String) (n qsaveB : Nat
     show ("ZEROARR" == "MULXMEM") = false from by decide +kernel,
     show adxPrefix "ZEROARR" = none from by decide +kernel,
     show ("ZEROARR" == "ZEROARR") = true from by decide +kernel,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
   simp [encZeroArrOp, hb, hn, hk]
 
 /-- **The constant-index store encodes to one word store.**
@@ -3097,7 +3097,7 @@ theorem encodeLopn_storeImm (frame spillW : Nat) (a : LOperand) (bn vn : String)
     show adxPrefix "STOREIMM" = none from by decide +kernel,
     show ("STOREIMM" == "CMOV") = false from by decide +kernel,
     show ("STOREIMM" == "STOREIMM") = true from by decide +kernel,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
   simp [encStoreImmOp, hb, hv, hk]
 
 /-- The word stores of a positive count carry bytes. -/
@@ -3174,7 +3174,7 @@ theorem encodeLopn_cmp (frame spillW : Nat) :
     show twoByteOpcode "CMP" = none from by decide +kernel,
     show ("CMP" == "STOREIDX") = false from by decide +kernel,
     show ("CMP" == "CMP") = true from by decide +kernel,
-    rexW, Bool.false_eq_true, if_false, if_true]
+    rexW, Bool.false_eq_true, ite_false, ite_true]
   norm_num [show isGpName "RBP" = true from by decide +kernel,
     show isGpName "RCX" = true from by decide +kernel,
     show gpNumU "RBP" = 5 from by decide +kernel,
@@ -3278,7 +3278,7 @@ theorem roundtrip_jmp32 (o : Int) (hlo : -(2^31) ≤ o) (hhi : o < 2^31) :
     decodeJmp32 (encJmp32 o) = some { opcode := 0xe9, disp := o } := by
   have hd := decodeDisp32_disp32LE o hlo hhi
   simp only [encJmp32, disp32LE, imm32LE, decodeJmp32, List.map_cons, List.map_nil] at *
-  rw [if_pos (by simp [BitVec.toNat_ofNat])]
+  rw [ite_eq_left (by simp [BitVec.toNat_ofNat])]
   simp only [decodeDisp32] at hd ⊢
   rw [hd]
 
@@ -3287,7 +3287,7 @@ theorem roundtrip_call32 (o : Int) (hlo : -(2^31) ≤ o) (hhi : o < 2^31) :
     decodeCall32 (encCall32 o) = some { opcode := 0xe8, disp := o } := by
   have hd := decodeDisp32_disp32LE o hlo hhi
   simp only [encCall32, disp32LE, imm32LE, decodeCall32, List.map_cons, List.map_nil] at *
-  rw [if_pos (by simp [BitVec.toNat_ofNat])]
+  rw [ite_eq_left (by simp [BitVec.toNat_ofNat])]
   simp only [decodeDisp32] at hd ⊢
   rw [hd]
 
@@ -3302,7 +3302,7 @@ theorem roundtrip_jcc32 (cc : String) (o : Int)
   simp only [encJcc32, disp32LE, imm32LE, decodeJcc32, List.map_cons, List.map_nil] at *
   have hmod : jccOpcode cc % 2 ^ 8 = jccOpcode cc :=
     Nat.mod_eq_of_lt (by rw [show (2:Nat)^8 = 256 from rfl]; omega)
-  rw [if_pos]
+  rw [ite_eq_left]
   · simp only [decodeDisp32] at hd ⊢
     rw [BitVec.toNat_ofNat, hmod, hd]
   · refine ⟨by simp [BitVec.toNat_ofNat], ?_, ?_⟩
@@ -3353,11 +3353,11 @@ theorem castMovBits_cases {o : String} {m : Nat} (h : castMovBits o = some m) :
 
 /-- At `m = 16` the cast move is `movzwl`. -/
 theorem encCastW_16 (d s : Nat) : encCastW 16 d s = encMovzx16RR d s := by
-  unfold encCastW; rw [if_pos rfl]
+  unfold encCastW; rw [ite_eq_left rfl]
 
 /-- At `m = 32` the cast move is `movl`. -/
 theorem encCastW_32 (d s : Nat) : encCastW 32 d s = encMov32RR d s := by
-  unfold encCastW; rw [if_neg (by decide)]
+  unfold encCastW; rw [ite_eq_right (by decide)]
 
 /-- The dispatch of `encodeLopn` on a mnemonic `castMovBits` reads: it is no carry-out or
     high-word binding, carries no width tag, and is in none of the mnemonic tables ahead of
@@ -3380,6 +3380,6 @@ theorem encodeLopn_castW (frame spillW : Nat) (o D A : String) (qsaveB m : Nat)
       = encCastW m (gpNumU D) (gpNumU A) := by
   obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11⟩ := castMovBits_dispatch hk
   simp only [encodeLopn, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, hk, hD, hA,
-    Bool.false_eq_true, if_false, Bool.and_self, if_true]
+    Bool.false_eq_true, ite_false, Bool.and_self, ite_true]
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes

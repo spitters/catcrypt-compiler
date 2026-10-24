@@ -132,7 +132,7 @@ theorem physPositionEmit_inlineStoreOps
       have ho : o = off := congrArg Prod.snd (Option.some.inj (hsome.symm.trans hout))
       subst ho
       rw [hnospill]
-      simp only [Bool.false_eq_true, if_false]
+      simp only [Bool.false_eq_true, ite_false]
       exact split_refl _
     · rename_i hnone
       exact absurd (hnone.symm.trans hout) (by simp)

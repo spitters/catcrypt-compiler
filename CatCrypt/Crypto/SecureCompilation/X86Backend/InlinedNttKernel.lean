@@ -128,7 +128,7 @@ theorem nttRegistry_consistent : RegistryConsistent nttRegistry := by
   intro name fb hfb V
   -- Only `wrapperName` is registered; extract `fb`.
   by_cases h : name = wrapperName
-  · rw [nttRegistry, if_pos h, Option.some.injEq] at hfb
+  · rw [nttRegistry, ite_eq_left h, Option.some.injEq] at hfb
     subst hfb; subst h
     -- `wrapperBody.defExpr.denote V = callU primName .here |>.denote V`
     --   = jasminExtSem primName [nttAcc] nttAcc (lookupArgs …)
@@ -137,7 +137,7 @@ theorem nttRegistry_consistent : RegistryConsistent nttRegistry := by
     -- valuation is destructured.
     cases V
     rfl
-  · rw [nttRegistry, if_neg h] at hfb
+  · rw [nttRegistry, ite_eq_right h] at hfb
     exact absurd hfb (by simp)
 
 /-- The accumulator-update body: one `extCall` to the wrapper leaf (the call

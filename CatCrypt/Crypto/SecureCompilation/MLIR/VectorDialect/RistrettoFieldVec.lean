@@ -238,12 +238,12 @@ theorem evalN_prod19 (a b : Limbs10) : evalN 19 (prod19 a b) = prodEval a b := b
   refine Finset.sum_congr rfl (fun j _ => ?_)
   have hk : (i : Nat) + j < 19 := by omega
   rw [Finset.sum_eq_single ⟨(i : Nat) + j, hk⟩]
-  · simp only [if_true]
+  · simp only [ite_true]
     push_cast
     rw [weight_add i j, prodCoeff]
     split_ifs <;> push_cast <;> ring
   · intro k _ hk'
-    rw [if_neg (fun h => hk' (Fin.ext h.symm)), Int.cast_zero, zero_mul]
+    rw [ite_eq_right (fun h => hk' (Fin.ext h.symm)), Int.cast_zero, zero_mul]
   · intro h; exact absurd (Finset.mem_univ _) h
 
 /-- The packed field multiply: the schoolbook product `prod19` folded by

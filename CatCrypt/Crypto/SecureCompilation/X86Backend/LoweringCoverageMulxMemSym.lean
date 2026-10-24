@@ -258,8 +258,8 @@ theorem lowerLinstrExtCovMS_loadsym_denote (dst sym idx : String) (scale : Nat)
     (s : JState 64) (hne : idx ≠ dst) :
     (runBlock s [JInstr.loadSym dst sym]).loadIdx dst idx scale
       = s.mem sym (scale * (s.get idx).toNat) := by
-  simp only [runBlock, evalInstr, JState.loadIdx, JState.load, JState.get, if_true]
-  rw [if_neg hne]
+  simp only [runBlock, evalInstr, JState.loadIdx, JState.load, JState.get, ite_true]
+  rw [ite_eq_right hne]
 
 /-! ## 7. Worked demo: forward-compatible shapes lowering
 

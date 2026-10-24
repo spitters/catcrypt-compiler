@@ -304,12 +304,12 @@ theorem chiRewrite_spec {t b c d : String} {srcs : List String} {rest : List Ymm
   by_cases hq : q = t
   · subst hq
     refine ⟨p, Or.inl rfl, ?_⟩
-    simp only [beq_self_eq_true, if_true, Bool.or_eq_true, beq_iff_eq] at h
+    simp only [beq_self_eq_true, ite_true, Bool.or_eq_true, beq_iff_eq] at h
     split_ifs at h with h1 h2 h3 <;> simp_all
   · by_cases hp : p = t
     · subst hp
       refine ⟨q, Or.inr rfl, ?_⟩
-      simp only [beq_iff_eq, hq, if_false, beq_self_eq_true, if_true, Bool.or_eq_true] at h
+      simp only [beq_iff_eq, hq, ite_false, beq_self_eq_true, ite_true, Bool.or_eq_true] at h
       split_ifs at h with h1 h2 h3 <;> simp_all
     · simp [hp, hq] at h
 

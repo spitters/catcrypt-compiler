@@ -215,7 +215,7 @@ theorem callNStruct?_callN {w : Nat} {retTys : List JasminTy} (name dst a : Stri
         ("CALLNW:" ++ toString (callMarshalWidth (retTys.headD (.reg 0))) ++ ";"
           ++ toString w ++ ";" ++ name).toList = true := by
       simp [List.isPrefixOf, String.toList_append]
-    simp only [callNStruct?, hpfx, if_true,
+    simp only [callNStruct?, hpfx, ite_true,
       JasminLsemLeaf.callw_extract _ _ _ _
         (JasminLsemLeaf.semi_notMem_toString _) (JasminLsemLeaf.semi_notMem_toString w),
       String.ofList_toList]

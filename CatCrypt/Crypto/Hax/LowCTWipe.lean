@@ -216,7 +216,7 @@ theorem appendWipes_toImp (t : TowerType) (xs : List (String × String)) :
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, if_pos hc] at h ⊢
+      simp only [lowCTToImp, ite_eq_left hc] at h ⊢
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb =>
@@ -264,7 +264,7 @@ theorem appendWipes_toImp (t : TowerType) (xs : List (String × String)) :
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, if_pos hc] at h ⊢
+      simp only [lowCTToImp, ite_eq_left hc] at h ⊢
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb =>
@@ -279,16 +279,16 @@ theorem appendWipes_toImp (t : TowerType) (xs : List (String × String)) :
     exact (hnone _ _ ha hb).elim
   case case8 x ty f d args b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case10 x ty d s idx b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case12 x ty d s i b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case14 x ty y u f d el args b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case15 y k b ih =>
     intro c' e h hc'
     simp only [appendWipes] at hc'
@@ -345,7 +345,7 @@ theorem appendWipes_toImp (t : TowerType) (xs : List (String × String)) :
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, scalarCallOfSExpr, limbReadOfSExpr, if_pos hc] at h ⊢
+      simp only [lowCTToImp, scalarCallOfSExpr, limbReadOfSExpr, ite_eq_left hc] at h ⊢
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb =>
@@ -361,7 +361,7 @@ theorem appendWipes_toImp (t : TowerType) (xs : List (String × String)) :
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, if_pos hc] at h ⊢
+      simp only [lowCTToImp, ite_eq_left hc] at h ⊢
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb =>
@@ -687,7 +687,7 @@ theorem frontNF_appendWipes {t : TowerType} (xs : List (String × String))
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, if_pos hc] at h
+      simp only [lowCTToImp, ite_eq_left hc] at h
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
@@ -723,7 +723,7 @@ theorem frontNF_appendWipes {t : TowerType} (xs : List (String × String))
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, if_pos hc] at h
+      simp only [lowCTToImp, ite_eq_left hc] at h
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
@@ -734,16 +734,16 @@ theorem frontNF_appendWipes {t : TowerType} (xs : List (String × String))
     exact (hnone _ _ ha hb).elim
   case case8 x ty f d args b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case10 x ty d s idx b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case12 x ty d s i b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case14 x ty y u f d el args b hc =>
     intro c' e h _hc'
-    simp only [lowCTToImp, if_neg hc, reduceCtorEq] at h
+    simp only [lowCTToImp, ite_eq_right hc, reduceCtorEq] at h
   case case15 y k b ih =>
     intro c' e h hc'
     simp only [appendWipes] at hc'
@@ -788,7 +788,7 @@ theorem frontNF_appendWipes {t : TowerType} (xs : List (String × String))
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, scalarCallOfSExpr, limbReadOfSExpr, if_pos hc] at h
+      simp only [lowCTToImp, scalarCallOfSExpr, limbReadOfSExpr, ite_eq_left hc] at h
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]
@@ -800,7 +800,7 @@ theorem frontNF_appendWipes {t : TowerType} (xs : List (String × String))
     | some b' =>
       simp only [hb, Option.map_some, Option.some.injEq] at hc'
       subst hc'
-      simp only [lowCTToImp, if_pos hc] at h
+      simp only [lowCTToImp, ite_eq_left hc] at h
       cases hbe : lowCTToImp b with
       | none => simp [hbe] at h
       | some eb => simp only [frontNF, appendWipes, ih b' eb hbe hb, Option.map_some]

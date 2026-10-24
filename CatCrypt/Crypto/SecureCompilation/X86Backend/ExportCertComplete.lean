@@ -236,7 +236,7 @@ theorem storeSlots_step {i : LinstrRM} {rest : List LinstrRM} {cd : Nat} {Sl : L
     have hn : cd ∉ storeSlots rest (cd + 1) := fun hm => by
       have := le_of_mem_storeSlots hm; omega
     cases hs : (storeHit? i).isSome
-    · simp only [hs, Bool.false_eq_true, if_false, List.not_mem_nil, false_or] at h
+    · simp only [hs, Bool.false_eq_true, ite_false, List.not_mem_nil, false_or] at h
       simpa [List.contains_iff_mem] using fun hm => hn (h.mp hm)
     · simpa [List.contains_iff_mem] using h.mpr (by simp [hs])
   · rw [hSl k (by omega)]
@@ -321,7 +321,7 @@ theorem threadCertB_of_threadLinB (tauC : String → Option String) (nArgs nInv 
           rcases hh with rfl | hi
           · simp
           · obtain ⟨t, ht, hto⟩ := htau a hi
-            have : nameAt nArgs a = argName a := by unfold nameAt; rw [if_pos (by omega)]
+            have : nameAt nArgs a = argName a := by unfold nameAt; rw [ite_eq_left (by omega)]
             rw [this, ht]
             simp [hto]
         show threadCertB tauC nArgs Sl out
@@ -330,7 +330,7 @@ theorem threadCertB_of_threadLinB (tauC : String → Option String) (nArgs nInv 
         simp only [threadCertB, useNames, opNames, List.flatMap_cons, List.flatMap_nil,
           List.append_nil, List.all_cons, List.all_nil,
           resolvedB_nameAt hsa, resolvedB_nameAt hsb,
-          arrUse?, JasminLsemMem.loadStruct?, if_true, Option.map_some, storeHit?, defNames,
+          arrUse?, JasminLsemMem.loadStruct?, ite_true, Option.map_some, storeHit?, defNames,
           hc, ih, Bool.and_true, Bool.true_and, beq_self_eq_true, Bool.not_false]
         exact hA
       case stackStore w n =>
@@ -353,7 +353,7 @@ theorem threadCertB_of_threadLinB (tauC : String → Option String) (nArgs nInv 
         have ih := threadCertB_of_threadLinB tauC nArgs nInv out hpos hinv htau body (cd + 1) cd
           Sl hl (by omega) hSl'
         have hcd' : nameAt nArgs cd = regName cd := by
-          unfold nameAt; rw [if_neg (by omega)]
+          unfold nameAt; rw [ite_eq_right (by omega)]
         rw [hcd'] at ih
         show threadCertB tauC nArgs Sl out
           ((.Lopn [.reg (regName cd)] "STOREIDX" [.arrIdx (nameAt nArgs a) (nameAt nArgs b)
@@ -361,7 +361,7 @@ theorem threadCertB_of_threadLinB (tauC : String → Option String) (nArgs nInv 
         simp only [threadCertB, useNames, opNames, List.flatMap_cons, List.flatMap_nil,
           List.append_nil, List.cons_append, List.nil_append, List.all_cons, List.all_nil,
           resolvedB_nameAt hsa, resolvedB_nameAt hsb, resolvedB_nameAt hsc, arrUse?,
-          JasminLsemMem.storeStruct?, if_true, Option.map_some, storeHit?, hc, ih,
+          JasminLsemMem.storeStruct?, ite_true, Option.map_some, storeHit?, hc, ih,
           Bool.and_true, beq_self_eq_true, Bool.true_or]
       all_goals
         rw [threadCertB_cons_reg tauC nArgs out (by simp_all [opMemB]) (by simp)
@@ -405,7 +405,7 @@ theorem storeOnHeadB_of_threadLinB (nArgs nInv : Nat) (hpos : 0 < nArgs) :
         obtain ⟨ih1, ih2⟩ := storeOnHeadB_of_threadLinB nArgs nInv hpos body (cd + 1) h hl'
           (by omega)
         refine ⟨by simp only [storeOnHeadB, hn]; exact ih1, ?_⟩
-        simp only [storeSlots, hn, Option.isSome_none, Bool.false_eq_true, if_false,
+        simp only [storeSlots, hn, Option.isSome_none, Bool.false_eq_true, ite_false,
           List.nil_append]
         exact ih2
       cases op <;> simp only [opMemB, Bool.false_eq_true] at hop
@@ -422,19 +422,19 @@ theorem storeOnHeadB_of_threadLinB (nArgs nInv : Nat) (hpos : 0 < nArgs) :
         obtain ⟨ih1, ih2⟩ := storeOnHeadB_of_threadLinB nArgs nInv hpos body (cd + 1) cd hl
           (by omega)
         have hcd' : nameAt nArgs cd = regName cd := by
-          unfold nameAt; rw [if_neg (by omega)]
+          unfold nameAt; rw [ite_eq_right (by omega)]
         rw [hcd'] at ih1
         rw [hargs]
         refine ⟨?_, ?_⟩
         · show storeOnHeadB ((.Lopn [.reg (regName cd)] "STOREIDX" [.arrIdx (nameAt nArgs a)
             (nameAt nArgs b) (w / 8), .reg (nameAt nArgs c)], .store w n) :: _) _ = true
-          simp only [storeOnHeadB, storeHit?, arrUse?, JasminLsemMem.storeStruct?, if_true,
+          simp only [storeOnHeadB, storeHit?, arrUse?, JasminLsemMem.storeStruct?, ite_true,
             Option.map_some, beq_self_eq_true, Bool.true_and, isStoreTagB, Bool.and_true]
           exact ih1
         · refine Or.inr ?_
           show _ ∈ storeSlots ((.Lopn [.reg (regName cd)] "STOREIDX" [.arrIdx (nameAt nArgs a)
             (nameAt nArgs b) (w / 8), .reg (nameAt nArgs c)], .store w n) :: _) cd
-          simp only [storeSlots, storeHit?, JasminLsemMem.storeStruct?, if_true, Option.map_some,
+          simp only [storeSlots, storeHit?, JasminLsemMem.storeStruct?, ite_true, Option.map_some,
             Option.isSome_some, List.singleton_append, List.mem_cons]
           exact ih2
       all_goals
@@ -516,8 +516,8 @@ theorem sigmaC_inv {d nInv : Nat} {acc : String} {invRegs : List String} {bound 
     sigmaC d nInv acc invRegs bound (argName j)
       = some (invRegs.getD (nInv - 1 - j) ("Linv" ++ toString d ++ "_" ++ toString j)) := by
   unfold sigmaC
-  rw [if_neg (by simpa using fun h => absurd (argName_injective h) (by omega)),
-    if_neg (by simpa using fun h => absurd (argName_injective h) (by omega)),
+  rw [ite_eq_right (by simpa using fun h => absurd (argName_injective h) (by omega)),
+    ite_eq_right (by simpa using fun h => absurd (argName_injective h) (by omega)),
     find?_range_argName hj]
 
 /-! ## 5. Completeness of `comLCertNB` -/
@@ -560,7 +560,7 @@ theorem comLCertNB_complete {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL �
         update _ _ hlin (Nat.le_refl _)
       have hacc : nameAt (invTys.length + 2) (invTys.length + 1)
           = JasminLsemMemSourceTieUncond.accRegMN invTys := by
-        unfold nameAt; rw [if_pos (by omega)]; rfl
+        unfold nameAt; rw [ite_eq_left (by omega)]; rfl
       rw [hacc] at hsoh
       have hfixInv : ∀ r ∈ JasminLsemExportLift.invRegsOf (ExportCertLoop.loopInvOps invs),
           certRho Γ.length (regName Γ.length) (argName (ExportCertEntry.argIdx init))
@@ -602,7 +602,7 @@ theorem comLCertNB_complete {Γ : Ctxt jasminDialect} {t : JasminTy} (c : ComL �
         · have hk := le_of_mem_storeSlots h1
           have : nameAt (invTys.length + 2) (retSlot update (invTys.length + 2))
               = regName (retSlot update (invTys.length + 2)) := by
-            unfold nameAt; rw [if_neg (by omega)]
+            unfold nameAt; rw [ite_eq_right (by omega)]
           rw [this, certSigma_reg]
           exact certRho_slot h1
       simp only [exportCertB, hlen, beq_self_eq_true, Bool.true_and, notLoopRegB_regName,

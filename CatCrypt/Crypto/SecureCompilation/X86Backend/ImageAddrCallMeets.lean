@@ -225,7 +225,7 @@ theorem mem_contractPre_fp {l : LinkedFn} {a : CallVar} {x : Loc}
 /-- The stack register at the entry of a call from a state with stack register `rsp`. -/
 theorem sp_of_pre {l : LinkedFn} {a : CallVar} {sA : AState} {ret : Nat}
     (hpre : (l.contractPre a).holds (entryOf ret sA)) : retWord sA = a.sp := by
-  rw [← (holds_entryAt (entryAt_of_pre hpre)).2.1, entryOf_regs, if_pos rfl]
+  rw [← (holds_entryAt (entryAt_of_pre hpre)).2.1, entryOf_regs, ite_eq_left rfl]
 
 /-! ## 3. The separation of the precondition and the frame of the caller -/
 
@@ -518,7 +518,7 @@ theorem entry_of_paramAt {slotArr : String → Option (String × Nat)}
   subst hk
   obtain ⟨hq, hptr⟩ := hm
   refine ⟨?_, hq⟩
-  rw [entryOf_regs, if_neg (gpFacts hgp).physNe]
+  rw [entryOf_regs, ite_eq_right (gpFacts hgp).physNe]
   exact Option.some.inj ((hc.regs pn hgp).symm.trans hptr)
 
 /-- **The array of a pointer region at the entry of a call.** For parameters `ins` passed by
@@ -619,7 +619,7 @@ theorem entryAt_at_call {frame : String → Option (BitVec 64)}
     (ret : Nat) : (l.entryAt (callVarOf l ret sA)).holds (entryOf ret sA) := by
   have hasp : (callVarOf l ret sA).sp = rsp + BitVec.ofInt 64 (-8) := by
     show (entryOf ret sA).regs "%rsp" = _
-    rw [entryOf_regs, if_pos rfl, retWord, hc.sp]
+    rw [entryOf_regs, ite_eq_left rfl, retWord, hc.sp]
   have hgp : ∀ p ∈ ins, gpOk p.1 = true := fun p hp => by
     obtain ⟨_, -, hpx⟩ := exists_mem_zip_of_forall₂ hpar hp
     exact hpx.1
@@ -686,7 +686,7 @@ theorem entryAt_at_call {frame : String → Option (BitVec 64)}
     cases he
   case hret =>
     show readLE 8 (entryOf ret sA).mem ((entryOf ret sA).regs "%rsp") = BitVec.ofNat 64 ret
-    rw [readLE_eight_eq_addrMem_read64, entryOf_mem_eq, entryOf_regs, if_pos rfl,
+    rw [readLE_eight_eq_addrMem_read64, entryOf_mem_eq, entryOf_regs, ite_eq_left rfl,
       Ascent.AddrMem.read64_write64_same]
   case res =>
     refine holds_bigSep.2 ⟨List.pairwise_map.2 ((((regions_pairwise hnd).filter _)).imp_of_mem
@@ -838,7 +838,7 @@ theorem call_reestablishes_meets_out {frame : String → Option (BitVec 64)}
       read64 (retOps.foldl aMachine.exec sc).mem (cellAt (base A) j) = arr ⟨j, hj⟩ := by
     intro j hj
     have h1 := hw.post _ _ hcpre ⟨a, hpre.2.1, hpost.2.1⟩
-    rw [hv, entryOf_regs, if_neg (gpFacts hw.po_gp).physNe, hpo] at h1
+    rw [hv, entryOf_regs, ite_eq_right (gpFacts hw.po_gp).physNe, hpo] at h1
     rw [hmR, Option.some.inj h1]
   have hmem : ∀ x, Loc.mem x ∉ l.contractWrites a → ¬ InRange8 (retWord sA) x →
       memAfter rsp sa.mem (retOps.foldl aMachine.exec sc).mem x = sa.mem x :=

@@ -223,9 +223,9 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       · subst hbb
         by_cases ho : o = off
         · subst ho; simp
-        · rw [if_neg (fun hc => ho hc.2), if_neg (fun hc => ho hc.2)]; exact hmem b o
+        · rw [ite_eq_right (fun hc => ho hc.2), ite_eq_right (fun hc => ho hc.2)]; exact hmem b o
       · have hne : ρ b ≠ ρ base := fun he => hbb (hinj he)
-        rw [if_neg (fun hc => hne hc.1), if_neg (fun hc => hbb hc.1)]; exact hmem b o
+        rw [ite_eq_right (fun hc => hne hc.1), ite_eq_right (fun hc => hbb hc.1)]; exact hmem b o
     | storeMemIdx base idx scale src =>
       have hbase : t.get (ρ base) = s.get base := h base (List.mem_cons_self ..)
       have hidxR : t.regs (ρ idx) = s.regs idx :=
@@ -254,9 +254,9 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       · subst hbb
         by_cases ho : o = off
         · subst ho; simp
-        · rw [if_neg (fun hc => ho hc.2), if_neg (fun hc => ho hc.2)]; exact hmem b o
+        · rw [ite_eq_right (fun hc => ho hc.2), ite_eq_right (fun hc => ho hc.2)]; exact hmem b o
       · have hne : ρ b ≠ ρ base := fun he => hbb (hinj he)
-        rw [if_neg (fun hc => hne hc.1), if_neg (fun hc => hbb hc.1)]; exact hmem b o
+        rw [ite_eq_right (fun hc => hne hc.1), ite_eq_right (fun hc => hbb hc.1)]; exact hmem b o
     | test a src =>
       -- `test` writes only the five flags, so both sides keep their own memory.
       simp only [renameInstr, evalInstr, JState.writeB5]
@@ -266,7 +266,7 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
       by_cases hbd : b = d
       · subst hbd; simpa using hmem sym o
       · have hne : ρ b ≠ ρ d := fun he => hbd (hinj he)
-        simp only [if_neg hne, if_neg hbd]; exact hmem b o
+        simp only [ite_eq_right hne, ite_eq_right hbd]; exact hmem b o
     | _ =>
       simp only [renameInstr, evalInstr, JState.setReg, JState.writeB5W, JState.writeB5,
         JState.writeB2W]

@@ -555,7 +555,7 @@ theorem leaFold_pending_shape (body : Lcmd) :
         cases fl with
         | true => exact absurd hA (by simp)
         | false =>
-          simp only [Bool.false_eq_true, if_false, Option.some.injEq,
+          simp only [Bool.false_eq_true, ite_false, Option.some.injEq,
             Prod.mk.injEq] at hA
           obtain ⟨h1, h2, h3⟩ := hA
           rw [← h1, hai, h2, h3]
@@ -569,8 +569,8 @@ theorem leaFold_pending_shape (body : Lcmd) :
       | some r =>
         obtain ⟨dm, sm⟩ := r
         by_cases hdm : (dm == ad) = true
-        · simp only [hpend, hmb, if_pos hdm] at he; exact absurd he (by simp)
-        · simp only [hpend, hmb, if_neg hdm] at he; exact hplain (aI :: acc) he
+        · simp only [hpend, hmb, ite_eq_left hdm] at he; exact absurd he (by simp)
+        · simp only [hpend, hmb, ite_eq_right hdm] at he; exact hplain (aI :: acc) he
 
 /-- Every non-fusing step emits its instruction at the head. -/
 theorem leaOut_leaPlain (i : Linstr) (fl : Bool) (A : Lcmd) :
@@ -648,7 +648,7 @@ theorem leaFold_sim {w : Nat} {memAddr : String → Option (String × Nat)}
           by_cases hdm : (dm == ad) = true
           · have hdmeq : dm = ad := by simpa using hdm
             subst hdmeq
-            simp only [if_pos hdm, leaOut_none]
+            simp only [ite_eq_left hdm, leaOut_none]
             obtain ⟨opn1, hi1, hmv⟩ := moveBase_inv hmb
             obtain ⟨opn2, hi2, hadd⟩ := addImm_inv (hinv aI dm ak hpend)
             have hs₁ : s₁ = (s.setReg dm (s.lvm sm)).nextPc := by
@@ -677,7 +677,7 @@ theorem leaFold_sim {w : Nat} {memAddr : String → Option (String × Nat)}
             obtain ⟨v₂, hv2run, hv2a, hv2b⟩ :=
               lsemStraightLea_congr_full memAddr (acc.map Linstr.li_i) hveq hmeq hu
             exact ⟨v₂, hv2run, hu1.trans hv2a, hu2.trans hv2b⟩
-          · simp only [if_neg hdm, leaOut_leaPlain]
+          · simp only [ite_eq_right hdm, leaOut_leaPlain]
             exact plainCase (aI :: acc) ih'
 
 /-- **The pass preserves the machine state on one body.** -/

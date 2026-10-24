@@ -498,11 +498,11 @@ theorem aluFlagOp?_cmp (c : JasminDialect.JasminCmp) (wOp : Nat) (dst : String)
       withWidthTag wOp (cmpName c) ≠ withWidthTag 64 m :=
     fun m h1 h2 he => h2 (hs.symm.trans (he ▸ h1))
   simp only [aluFlagOp?,
-    if_neg (hne "ADD" (by decide +kernel) (by cases c <;> decide)),
-    if_neg (hne "SUB" (by decide +kernel) (by cases c <;> decide)),
-    if_neg (hne "AND" (by decide +kernel) (by cases c <;> decide)),
-    if_neg (hne "OR" (by decide +kernel) (by cases c <;> decide)),
-    if_neg (hne "XOR" (by decide +kernel) (by cases c <;> decide))]
+    ite_eq_right (hne "ADD" (by decide +kernel) (by cases c <;> decide)),
+    ite_eq_right (hne "SUB" (by decide +kernel) (by cases c <;> decide)),
+    ite_eq_right (hne "AND" (by decide +kernel) (by cases c <;> decide)),
+    ite_eq_right (hne "OR" (by decide +kernel) (by cases c <;> decide)),
+    ite_eq_right (hne "XOR" (by decide +kernel) (by cases c <;> decide))]
 
 /-- **The comparison step of the flag machine.** The `SET<cc>` wire writes the comparison
     bit `cmpBit c va vb : BitVec 1` to `dst` and advances the pc, as `lsemStepMem_cmp`; the
@@ -622,7 +622,7 @@ theorem findInstrMem_singleton (fn : String) (body : List LinstrRM) (s : LstateP
     (hfn : s.lfn = fn) :
     findInstrMem (singletonProgM fn body) s = body[s.base.lpc]? := by
   unfold findInstrMem
-  rw [if_pos (show s.lfn = (singletonProgM fn body).lfn from hfn)]
+  rw [ite_eq_left (show s.lfn = (singletonProgM fn body).lfn from hfn)]
   rfl
 
 /-! ## 3. Conservativity: without the three emitted forms, this IS the counter-register machine -/
@@ -994,7 +994,7 @@ theorem lsemFuelMemF_seg (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
           ({ prog := { base := b0, lfn := fn }, zf := zf } : LstateMF).prog = some i := by
         show findInstrMem P { base := b0, lfn := fn } = some i
         unfold findInstrMem
-        rw [if_pos (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
+        rw [ite_eq_left (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
         have := hpos 0 (by simp)
         simpa using this
       rw [List.length_cons, show is.length + 1 + f = (is.length + f) + 1 from by omega,
@@ -1130,7 +1130,7 @@ theorem flagLoop_pass_taken (fn : String) (top : LLabel) (nReg : String)
       { prog := { base := b.nextPc, lfn := fn }, zf := v == 0#64 }
         = some { prog := { base := b.setLpc 1, lfn := fn }, zf := false } := by
     rw [evalInstrPMemF_jne]
-    rw [if_pos (show ({ prog := { base := b.nextPc, lfn := fn }, zf := v == 0#64 }
+    rw [ite_eq_left (show ({ prog := { base := b.nextPc, lfn := fn }, zf := v == 0#64 }
       : LstateMF).zf = false from hvne)]
     unfold evalJumpMem
     rw [show P.body = flagLoopLinstrRM top nReg body from rfl, findLabelMem_flagLoop]
@@ -1189,7 +1189,7 @@ theorem flagLoop_pass_halt (fn : String) (top : LLabel) (nReg : String)
       { prog := { base := b.nextPc, lfn := fn }, zf := (0#64 == 0#64) }
         = some { prog := { base := b.nextPc.nextPc, lfn := fn }, zf := true } := by
     rw [evalInstrPMemF_jne]
-    rw [if_neg (show ¬ ({ prog := { base := b.nextPc, lfn := fn }, zf := (0#64 == 0#64) }
+    rw [ite_eq_right (show ¬ ({ prog := { base := b.nextPc, lfn := fn }, zf := (0#64 == 0#64) }
       : LstateMF).zf = false from by simp)]
     rfl
   rw [show (1 : Nat) = 0 + 1 from rfl,
@@ -1344,7 +1344,7 @@ theorem findLabelMem_guarded_endL (top endL : LLabel) (nReg : String)
   rw [show JasminLsemLabeled.isLabel endL (.Llabel .internal top) = false from by
     simp only [JasminLsemLabeled.isLabel, beq_eq_false_iff_ne]
     exact fun h => htop h.symm]
-  simp only [Bool.false_eq_true, if_false, List.map_nil]
+  simp only [Bool.false_eq_true, ite_false, List.map_nil]
   rw [List.findIdx?_append, List.findIdx?_append]
   have hbodyNone : (body.map Prod.fst).findIdx? (JasminLsemLabeled.isLabel endL)
       = none := by
@@ -1415,7 +1415,7 @@ theorem guardedFlagLoop_zeroTrip (fn : String) (top endL : LLabel) (nReg : Strin
         = some { prog := { base := b0.nextPc.setLpc (body.length + 6), lfn := fn },
                  zf := true } := by
     rw [evalInstrPMemF_je]
-    rw [if_pos (show ({ prog := { base := b0.nextPc, lfn := fn }, zf := (0#64 == 0#64) }
+    rw [ite_eq_left (show ({ prog := { base := b0.nextPc, lfn := fn }, zf := (0#64 == 0#64) }
       : LstateMF).zf = true from by simp)]
     unfold evalJumpMem
     rw [show P.body = guardedFlagLoopLinstrRM top endL nReg body from rfl,

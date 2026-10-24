@@ -220,7 +220,7 @@ theorem slotVal_step {Γ : Ctxt jasminDialect} (st : BState Γ)
   unfold slotVal headVar
   by_cases h : j = dst
   · simp [h]
-  · simp only [h, if_false]; rfl
+  · simp only [h, ite_false]; rfl
 
 /-! ## 3. Scratch slots and constant indices
 
@@ -317,7 +317,7 @@ theorem emitCsub_denote_ret {Γ : Ctxt jasminDialect}
       emitConst_denote, emitBin_denote, emitConst_denote, emitBin_denote,
       emitBin_denote]
   simp only [Com.denote, slotVal, headVar,
-    JasminBinOp.apply, bbCsub, bbP, if_true, if_false,
+    JasminBinOp.apply, bbCsub, bbP, ite_true, ite_false,
     hs0,
     show (sc1 : Fin 25) ≠ sc0 from by decide,
     show (sc2 : Fin 25) ≠ sc0 from by decide,
@@ -352,7 +352,7 @@ theorem emitFold_denote_ret {Γ : Ctxt jasminDialect}
   -- `slotVal_step` shape. The scratch-slot disjointness (`sc0≠sc1`, etc.) and
   -- `src ∉ {sc0,sc1,sc2}` are decidable / hypotheses.
   simp only [Com.denote, slotVal, headVar,
-    JasminBinOp.apply, bbFold, bbC, bbM, if_true, if_false,
+    JasminBinOp.apply, bbFold, bbC, bbM, ite_true, ite_false,
     hs0, hs1,
     show (sc1 : Fin 25) ≠ sc0 from by decide,
     show (sc2 : Fin 25) ≠ sc0 from by decide,
@@ -482,7 +482,7 @@ theorem emitAdd_denote_ret {Γ : Ctxt jasminDialect}
   rw [emitCsub_denote_ret _ _ dst dst hd0 hd1 hd2]
   -- `slotVal (post-add state) dst = bbAdd's a + b`; reduce via `slotVal_step`.
   show bbCsub (slotVal (Γ := r64 :: Γ) _ (V.extend _) dst) = bbAdd _ _
-  rw [slotVal_step, if_pos rfl]
+  rw [slotVal_step, ite_eq_left rfl]
   rfl
 
 def emitMul {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -507,7 +507,7 @@ theorem emitMul_denote_ret {Γ : Ctxt jasminDialect}
   rw [emitBin_denote]
   rw [emitReduce_denote_ret _ _ dst dst hd0 hd1 hd2 hd0 hd1 hd2]
   show bbReduce (slotVal (Γ := r64 :: Γ) _ (V.extend _) dst) = bbMul _ _
-  rw [slotVal_step, if_pos rfl]
+  rw [slotVal_step, ite_eq_left rfl]
   rfl
 
 /-- `emitSbox dst src tmp2 tmp4`: writes `sbox(src) = src^7` into `dst`, using

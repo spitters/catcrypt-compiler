@@ -200,7 +200,7 @@ theorem lowHome_nil (d s2 : String) : lowHome [] d s2 = d := by
 /-- A low destination that is no reserved reload scratch is its own home. -/
 theorem lowHome_of_not_scratch (env : ScratchEnv) {d s2 : String}
     (h : fuseReloadScratches.contains s2 = false) : lowHome env d s2 = d := by
-  simp only [lowHome, h, Bool.and_false, Bool.false_eq_true, if_false]
+  simp only [lowHome, h, Bool.and_false, Bool.false_eq_true, ite_false]
 
 /-- The fused site of a squaring `MULXHI d, [s1, s1]` with a spilled high destination `d` in
     the looped-body mode: the save of `RDX` in `R15`, the pin of `s1` in `RDX`, the two-output
@@ -412,7 +412,7 @@ theorem mulx_computes (s : JState 64) (hiDst loDst : String) (a b : JOperand)
     rw [hev]
     refine ⟨?_, ?_, rfl, rfl⟩
     · simp only [Jasmin.JState.get, Jasmin.JState.setReg]
-      rw [if_neg hlh]; simp
+      rw [ite_eq_right hlh]; simp
     · simp only [Jasmin.JState.get, Jasmin.JState.setReg]; simp
 
 /-- The fused `MULX`'s low word is exactly the low product `v1 · v2` the
@@ -446,7 +446,7 @@ theorem fuseMulHiStep_sound (s : JState 64) (s1 s2 hiDst loDst : String)
   have ha : (JOperand.reg "RDX").eval (evalInstr s (.mov "RDX" (.reg s1))) = s.get s1 := by
     rw [hmov]; simp [JOperand.eval, Jasmin.JState.get, Jasmin.JState.setReg]
   have hb : (JOperand.reg s2).eval (evalInstr s (.mov "RDX" (.reg s1))) = s.get s2 := by
-    rw [hmov]; simp only [JOperand.eval, Jasmin.JState.get, Jasmin.JState.setReg, if_neg hs2]
+    rw [hmov]; simp only [JOperand.eval, Jasmin.JState.get, Jasmin.JState.setReg, ite_eq_right hs2]
   have hflmov : (evalInstr s (.mov "RDX" (.reg s1))).flags = s.flags := by rw [hmov]; rfl
   have hmemmov : (evalInstr s (.mov "RDX" (.reg s1))).mem = s.mem := by rw [hmov]; rfl
   simp only [runBlock]

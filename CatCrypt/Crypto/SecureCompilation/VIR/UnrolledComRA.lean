@@ -535,7 +535,7 @@ theorem noCollision_of_boolB (tr : List SlotEvent) (h : noCollisionB tr = true) 
   have step2 := List.all_eq_true.mp step1 r₂ h2
   by_cases heq : r₁.1 == r₂.1
   · simp only [beq_iff_eq] at heq; exact absurd heq hne
-  · simp only [heq, Bool.false_eq_true, if_false, hov, if_true] at step2
+  · simp only [heq, Bool.false_eq_true, ite_false, hov, ite_true] at step2
     simpa [bne, beq_iff_eq] using step2
 
 /-- **No-collision for the SHA-256 unrolled trace.** Two simultaneously-live

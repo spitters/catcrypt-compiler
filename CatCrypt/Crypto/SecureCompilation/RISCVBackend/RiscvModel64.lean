@@ -111,7 +111,7 @@ def set (s : RState64) (r : String) (v : X64R) : RState64 :=
     (h : r' ≠ r) : (s.set r v).get r' = s.get r' := by
   by_cases hz : r' = "zero" ∨ r' = "x0"
   · simp [get, hz]
-  · simp only [get, hz, if_false, set]
+  · simp only [get, hz, ite_false, set]
     by_cases hr : r = "zero" ∨ r = "x0"
     · simp [hr]
     · simp [hr, h]
@@ -160,13 +160,13 @@ theorem sltu_add_carry (a b : X64R) :
   by_cases h : a.toNat + b.toNat ≥ 2 ^ 64
   · have hb : b.toNat < 2 ^ 64 := b.isLt
     have ha : a.toNat < 2 ^ 64 := a.isLt
-    rw [if_pos h]
+    rw [ite_eq_left h]
     have : (a.toNat + b.toNat) % 2 ^ 64 = a.toNat + b.toNat - 2 ^ 64 := by omega
-    rw [this, if_pos (by omega)]; rfl
+    rw [this, ite_eq_left (by omega)]; rfl
   · have ha : a.toNat < 2 ^ 64 := a.isLt
-    rw [if_neg h]
+    rw [ite_eq_right h]
     have : (a.toNat + b.toNat) % 2 ^ 64 = a.toNat + b.toNat := Nat.mod_eq_of_lt (by omega)
-    rw [this, if_neg (by omega)]; rfl
+    rw [this, ite_eq_right (by omega)]; rfl
 
 /-- **The sub-borrow idiom is correct.** The borrow out of `a - b` is exactly
     `SLTU a, b` (`a <ᵘ b`). -/

@@ -155,11 +155,11 @@ theorem countedBody_spec {R : C → S → Prop} {Gb : Nat → S → Prop} {G : S
   unfold countedBody
   by_cases hlt : i < N
   · obtain ⟨c₁, h₁, hR₁⟩ := hbody i hlt c₀ (ifold fa i σ) hR₀ (hG σ hGσ i hlt)
-    simp only [hlt, if_true, h₁, bind_tc_ok, WP.spec_ok]
+    simp only [hlt, ite_true, h₁, bind_tc_ok, WP.spec_ok]
     exact ⟨⟨hlt, hR₁⟩, by omega⟩
   · have hiN : i = N := by omega
     subst hiN
-    simp only [hlt, if_false, WP.spec_ok]
+    simp only [hlt, ite_false, WP.spec_ok]
     exact ⟨c₀, rfl, hR₀⟩
 
 /-- **The counted-loop rule.** If at every trip `i < N` the body is in the square from the
@@ -232,7 +232,7 @@ theorem loop_countedBody_foldRangeTrip {ty : UScalarTy} (s : UScalar ty)
     intro i c hk
     rw [loop]
     have hlt : i < N := by omega
-    simp only [countedBody, hlt, if_true, foldRangeTrip, unitAccK, HaxBackend.foldRangeAux]
+    simp only [countedBody, hlt, ite_true, foldRangeTrip, unitAccK, HaxBackend.foldRangeAux]
     cases hb : body c ⟨BitVec.ofNat _ (s.val + i)⟩ with
     | ok c₁ =>
       have := ih (i + 1) c₁ (by omega)

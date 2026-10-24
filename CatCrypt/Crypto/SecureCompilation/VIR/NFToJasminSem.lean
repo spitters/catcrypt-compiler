@@ -287,7 +287,7 @@ theorem toWord_U8 {ws : MWSize} (h : gprB ws = true) (c : BitVec ws.bits) :
     (Value.Vword ws c).toWord .U8 = .ok (BitVec.ofNat _ c.toNat) := by
   have h8 : CatCrypt.Crypto.Jasmin.CoqSemMirror.WSize.U8.bits ≤ ws.bits := by
     cases ws <;> simp_all [gprB] <;> decide
-  simp only [Value.toWord, CatCrypt.Crypto.Jasmin.CoqSemMirror.truncateWord, h8, if_true]
+  simp only [Value.toWord, CatCrypt.Crypto.Jasmin.CoqSemMirror.truncateWord, h8, ite_true]
 
 /-- A shift of `jazzOpSem` with a count word of a size of `gprB`. -/
 theorem wordShiftSem_eq {ws ws' : MWSize} (h : gprB ws' = true)
@@ -303,7 +303,7 @@ theorem jazzOpSem_agrees : JazzOpAgrees jazzOpSem where
   wordOfInt _ _ _ := rfl
   intOfWord a := by
     simp only [jazzOpSem, jazzSop1, JResult.monad_bind_eq, Value.toWord,
-      CatCrypt.Crypto.Jasmin.CoqSemMirror.truncateWord, le_refl, if_true, JResult.bind_ok,
+      CatCrypt.Crypto.Jasmin.CoqSemMirror.truncateWord, le_refl, ite_true, JResult.bind_ok,
       BitVec.toNat_ofNat]
     exact congrArg (fun k : Nat => JResult.ok (Value.Vint (k : Int))) (Nat.mod_eq_of_lt a.isLt)
   zeroext _ _ _ _ a := by
@@ -349,7 +349,7 @@ theorem semPexpr_mpv {s : Estate SyscallState Mem} {x : MVarI} {v : Value}
     semPexpr (Mem := Mem) true gd opS s (mpv x) = .ok v := by
   show CatCrypt.Crypto.Jasmin.CoqSemMirror.getGvar true gd s.evm (mkLvar x) = _
   unfold CatCrypt.Crypto.Jasmin.CoqSemMirror.getGvar
-  rw [show (mkLvar x).isLvar = true from rfl, if_pos rfl]
+  rw [show (mkLvar x).isLvar = true from rfl, ite_eq_left rfl]
   show getVar true s.evm x.v_var = _
   unfold getVar
   simp [Vm.get, h, hv]
@@ -567,7 +567,7 @@ structure Post (s s' : Estate SyscallState Mem) (y : MVar) (R : Value → Prop) 
 theorem set_ne {vm : Vm} {x z : MVar} (v : Value) (h : z.vname ≠ x.vname) :
     vm.set x v z = vm z := by
   simp only [Vm.set]
-  rw [if_neg (by intro h'; exact h (by simp only [decide_eq_true_eq] at h'; rw [h']))]
+  rw [ite_eq_right (by intro h'; exact h (by simp only [decide_eq_true_eq] at h'; rw [h']))]
 
 /-- A write of a defined value of the declared type keeps arrays at their sizes. -/
 theorem arrTyped_set {vm : Vm} (h : VmArrTyped vm) {x : MVar} {v : Value}
@@ -585,7 +585,7 @@ theorem arrTyped_set {vm : Vm} (h : VmArrTyped vm) {x : MVar} {v : Value}
         subst hty
         exact ⟨a, rfl⟩
     | _ => simp_all [Value.typeOf, evalAtype, Value.isDefined]
-  · simp only [Vm.set, decide_eq_true_eq, hyx, if_false]
+  · simp only [Vm.set, decide_eq_true_eq, hyx, ite_false]
     exact h y ws n hy
 
 /-- A name of a scratch variable is not a name outside the scratch variables. -/
@@ -1147,7 +1147,7 @@ theorem getWord_scaled {n : Nat} (ws : MWSize) (arr : JArrayMirror (n * ws.bytes
     JArrayMirror.getWord arr .Unaligned .AAscale ws (i : Int) =
       .ok (BitVec.ofNat ws.bits (arr.readLE (i * ws.bytes) ws.bytes)) := by
   unfold JArrayMirror.getWord
-  rw [if_pos (accessOk_scaled ws hi)]
+  rw [ite_eq_left (accessOk_scaled ws hi)]
   simp only [JArrayMirror.scale]
   rw [show ((i : Int) * (ws.bytes : Int)).toNat = i * ws.bytes by omega]
 
@@ -1157,7 +1157,7 @@ theorem setWord_scaled {n : Nat} (ws : MWSize) (arr : JArrayMirror (n * ws.bytes
     JArrayMirror.setWord arr .Unaligned .AAscale ws (i : Int) v =
       .ok (arr.writeLE (i * ws.bytes) ws.bytes v.toNat) := by
   unfold JArrayMirror.setWord
-  rw [if_pos (accessOk_scaled ws hi)]
+  rw [ite_eq_left (accessOk_scaled ws hi)]
   simp only [JArrayMirror.scale]
   rw [show ((i : Int) * (ws.bytes : Int)).toNat = i * ws.bytes by omega]
 
@@ -1175,10 +1175,10 @@ theorem readLE_store {ws : MWSize} (hg : gprB ws = true) {n : Nat} {A : Fin n �
   dsimp only
   by_cases hj : j = ⟨i, hi⟩
   · subst hj
-    rw [if_pos rfl, ComJasminBridgeArrWord.readLE_writeLE_same arr _ _ _
+    rw [ite_eq_left rfl, ComJasminBridgeArrWord.readLE_writeLE_same arr _ _ _
       (by have := Nat.mul_le_mul_right ws.bytes hi; rw [Nat.succ_mul] at this; exact this),
       Nat.mod_eq_of_lt (toNat_lt_bytes hg v)]
-  · rw [if_neg hj, ComJasminBridgeArrWord.readLE_writeLE_disjoint, h j]
+  · rw [ite_eq_right hj, ComJasminBridgeArrWord.readLE_writeLE_disjoint, h j]
     have hne : j.val ≠ i := fun e => hj (Fin.ext e)
     rcases Nat.lt_or_gt_of_ne hne with hlt | hlt
     · left
@@ -1199,7 +1199,7 @@ theorem getGvar_mkLvar {s : Estate SyscallState Mem} {x : MVarI} {v : Value}
     (h : s.evm x.v_var = v) (hv : v.isDefined = true) :
     CatCrypt.Crypto.Jasmin.CoqSemMirror.getGvar true gd s.evm (mkLvar x) = .ok v := by
   unfold CatCrypt.Crypto.Jasmin.CoqSemMirror.getGvar
-  rw [show (mkLvar x).isLvar = true from rfl, if_pos rfl]
+  rw [show (mkLvar x).isLvar = true from rfl, ite_eq_left rfl]
   show getVar true s.evm x.v_var = _
   unfold getVar
   simp [Vm.get, h, hv]
@@ -1240,7 +1240,7 @@ theorem writeLval_of_setWord {s : Estate SyscallState Mem} {x : MVarI} {N : Nat}
     · cases hset
       simp only [writeLval, hget, he, JResult.monad_bind_eq, JResult.bind_ok, Value.toInt,
         toWord_self]
-      rw [dif_pos ‹_›]
+      rw [dite_eq_left ‹_›]
       exact hw
     · cases hset
   all_goals simp only [writeLval, hget, he, JResult.monad_bind_eq, JResult.bind_ok,
@@ -1313,15 +1313,15 @@ theorem semFor_zero (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true)
       · intro q
         rw [hrd q]
         by_cases hq : ((q.val : Nat) : Int) ∈ l
-        · rw [if_pos hq, if_pos (List.mem_cons_of_mem _ hq)]
-        · rw [if_neg hq]
+        · rw [ite_eq_left hq, ite_eq_left (List.mem_cons_of_mem _ hq)]
+        · rw [ite_eq_right hq]
           by_cases hqe : q.val = i.toNat
-          · rw [if_pos (List.mem_cons.mpr (Or.inl (by omega))), hqe,
+          · rw [ite_eq_left (List.mem_cons.mpr (Or.inl (by omega))), hqe,
               ComJasminBridgeArrWord.readLE_writeLE_same arr _ _ _
                 (by have := Nat.mul_le_mul_right ws.bytes hin; rw [Nat.succ_mul] at this
                     exact this)]
             simp
-          · rw [if_neg (by simp only [List.mem_cons, not_or]; exact ⟨by omega, hq⟩),
+          · rw [ite_eq_right (by simp only [List.mem_cons, not_or]; exact ⟨by omega, hq⟩),
               ComJasminBridgeArrWord.readLE_writeLE_disjoint]
             rcases Nat.lt_or_gt_of_ne hqe with hlt | hlt
             · left
@@ -1367,7 +1367,7 @@ theorem semIr_zero (hop : JazzOpAgrees opS) {ws : MWSize} (hg : gprB ws = true) 
       obtain ⟨k, hk, rfl⟩ := hi
       omega)
   refine ⟨s', arr', .Efor _ _ _ _ _ _ _ 0 n rfl rfl hfor, hscs, hm, hx', fun q => ?_, hfr, harr⟩
-  rw [hrd q, if_pos ((hmem q.val).mpr q.isLt)]
+  rw [hrd q, ite_eq_left ((hmem q.val).mpr q.isLt)]
 
 end Arr
 
@@ -2112,7 +2112,7 @@ theorem sem_castW (hop : JazzOpAgrees opS) {w w' : Nat} (hw : bitOkB w = true)
     by_cases hlt : (wsOf w).bits < (wsOf w').bits
     · refine ⟨(BitVec.ofNat (mws w).bits va.toNat).setWidth (mws w').bits, fun c c' hc s2 hr => ?_,
         ?_⟩
-      · rw [if_pos hlt] at hc
+      · rw [ite_eq_left hlt] at hc
         refine sem_asgn_step aS opS gd prog hx (translatePExprExt_papp1 hz
           (translatePExprExt_pv (translateVarIExt_mvi ha))) hc ?_ rfl (hty _) hr
         show semPexpr (Mem := Mem) true gd opS s (.Papp1 (.Ozeroext (mws w') (mws w)) (mpv (mvi a)))
@@ -2123,7 +2123,7 @@ theorem sem_castW (hop : JazzOpAgrees opS) {w w' : Nat} (hw : bitOkB w = true)
     · have hle : (mws w').bits ≤ (mws w).bits := by omega
       refine ⟨BitVec.ofNat (mws w').bits (BitVec.ofNat (mws w).bits va.toNat).toNat,
         fun c c' hc s2 hr => ?_, ?_⟩
-      · rw [if_neg hlt] at hc
+      · rw [ite_eq_right hlt] at hc
         exact sem_asgn_step_tr aS opS gd prog hx (translatePExprExt_pv (translateVarIExt_mvi ha))
           hc (semPexpr_mpv opS gd hva rfl) (by rw [hxt]; exact truncateVal_word_le hle _) rfl
           (hty _) hr
@@ -2132,7 +2132,7 @@ theorem sem_castW (hop : JazzOpAgrees opS) {w w' : Nat} (hw : bitOkB w = true)
   unfold castCode at hc
   by_cases h1 : w' = 1
   · subst h1
-    rw [if_pos rfl] at hc
+    rw [ite_eq_left rfl] at hc
     have hxt' : (mvar x).vtype = .aword .U64 := hxt
     have hty1 : ∀ u : BitVec 64, (Value.Vword .U64 u).typeOf = evalAtype (mvar x).vtype :=
       fun _ => by rw [hxt']; rfl
@@ -2159,7 +2159,7 @@ theorem sem_castW (hop : JazzOpAgrees opS) {w w' : Nat} (hw : bitOkB w = true)
       rw [show (BitVec.ofInt 64 1).toNat = 1 from rfl, Nat.and_one_is_mod, hu',
         BitVec.toNat_setWidth]
       omega
-  · rw [if_neg h1, List.append_nil] at hc
+  · rw [ite_eq_right h1, List.append_nil] at hc
     refine ⟨s.withVm (s.evm.set (mvar x) (.Vword (mws w') u)), hfirst [] c'
       (by rw [List.append_nil]; exact hc) _ (fun c'' hc'' => sem_nil_step aS opS gd prog hc'' _),
       post_of ?_ (fun z hz _ => set_ne _ hz) (fun h => arrTyped_set h rfl (hty _))⟩
@@ -2275,7 +2275,7 @@ theorem translateCmdExt_stackZero {w n d : Nat} {x : JVar} {as : List JVar} {ws'
   have hidx : translateIdx (pv (mkV 'i' d .sint)) = some (mpv (mvi (mkV 'i' d .sint))) := by
     unfold translateIdx intOfWordIdx
     simp only [pv]
-    rw [if_neg (by simp [mkV])]
+    rw [ite_eq_right (by simp [mkV])]
     exact translatePExprExt_pv (translateVarIExt_mvi hj)
   have hbody : translateCmdExt [.Cassgn (.Laset .AAscale (wsOf w) ⟨x, vi0⟩ (pv (mkV 'i' d .sint)))
       .AT_none (.sword (wsOf w)) (cnst 0)] =

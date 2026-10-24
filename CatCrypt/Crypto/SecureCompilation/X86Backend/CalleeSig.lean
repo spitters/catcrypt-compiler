@@ -431,9 +431,9 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
     have hpc : pc = 0 ∨ pc + 1 = q.length := by
       by_contra hne
       simp only [not_or] at hne
-      simp only [instrOkB, hne.1, hne.2, if_false, isLeaRsp, bodyOkB] at hc
+      simp only [instrOkB, hne.1, hne.2, ite_false, isLeaRsp, bodyOkB] at hc
       split at hc <;> simp at hc
-    rw [if_pos hpc] at h1
+    rw [ite_eq_left hpc] at h1
     exact ⟨h1, h2, h3⟩
   | @op pc s i t s' hq _ _ ih =>
     have hc := hat hq
@@ -441,41 +441,41 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
     apply ih
     unfold instrOkB at hc
     by_cases h0 : pc = 0
-    · rw [if_pos h0] at hc
+    · rw [ite_eq_left h0] at hc
       have hi := eq_of_isLeaRsp hc
       simp only [RInstr.op.injEq] at hi
       subst hi
       obtain ⟨hl, hlm⟩ := evalInstrA_leaFrame s (-(F : Int))
-      rw [if_pos (Or.inl h0)] at h1
+      rw [ite_eq_left (Or.inl h0)] at h1
       refine ⟨?_, fun r' hr' hcl => ?_, fun x hx => ?_⟩
-      · rw [hl, if_pos rfl, h1, if_neg (by omega)]
-      · rw [hl, if_neg hr']; exact h2 r' hr' hcl
+      · rw [hl, ite_eq_left rfl, h1, ite_eq_right (by omega)]
+      · rw [hl, ite_eq_right hr']; exact h2 r' hr' hcl
       · rw [hlm]; exact h3 x hx
-    · rw [if_neg h0] at hc
+    · rw [ite_eq_right h0] at hc
       by_cases h2n : pc + 2 = q.length
-      · rw [if_pos h2n] at hc
+      · rw [ite_eq_left h2n] at hc
         have hi := eq_of_isLeaRsp hc
         simp only [RInstr.op.injEq] at hi
         subst hi
         obtain ⟨hl, hlm⟩ := evalInstrA_leaFrame s (F : Int)
-        rw [if_neg (by omega)] at h1
+        rw [ite_eq_right (by omega)] at h1
         refine ⟨?_, fun r' hr' hcl => ?_, fun x hx => ?_⟩
-        · rw [hl, if_pos rfl, h1, if_pos (Or.inr (by omega)), BitVec.add_assoc,
+        · rw [hl, ite_eq_left rfl, h1, ite_eq_left (Or.inr (by omega)), BitVec.add_assoc,
             ← BitVec.ofInt_add]
           simp
-        · rw [hl, if_neg hr']; exact h2 r' hr' hcl
+        · rw [hl, ite_eq_right hr']; exact h2 r' hr' hcl
         · rw [hlm]; exact h3 x hx
-      · rw [if_neg h2n] at hc
+      · rw [ite_eq_right h2n] at hc
         by_cases h1n : pc + 1 = q.length
-        · rw [if_pos h1n] at hc; simp at hc
-        · rw [if_neg h1n] at hc
+        · rw [ite_eq_left h1n] at hc; simp at hc
+        · rw [ite_eq_right h1n] at hc
           simp only [bodyOkB, Bool.and_eq_true, List.all_eq_true, bne_iff_ne] at hc
           obtain ⟨hd, hst⟩ := hc
-          rw [if_neg (by omega)] at h1
+          rw [ite_eq_right (by omega)] at h1
           have hreg : ∀ r', (evalInstrA s i).regs r' = (evalInstr s.view i).regs r' :=
             fun _ => rfl
           refine ⟨?_, fun r' hr' hcl => ?_, fun x hx => ?_⟩
-          · rw [if_neg (by omega), hreg,
+          · rw [ite_eq_right (by omega), hreg,
               evalInstr_regs_of_not_mem_dsts _ _ _ (fun hm => (hd _ hm).1 rfl)]
             exact h1
           · rw [hreg, evalInstr_regs_of_not_mem_dsts _ _ _ (fun hm => by
@@ -488,19 +488,19 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
     apply ih
     unfold instrOkB at hc
     by_cases h0 : pc = 0
-    · rw [if_pos h0] at hc; simp [isLeaRsp] at hc
-    · rw [if_neg h0] at hc
+    · rw [ite_eq_left h0] at hc; simp [isLeaRsp] at hc
+    · rw [ite_eq_right h0] at hc
       by_cases h2n : pc + 2 = q.length
-      · rw [if_pos h2n] at hc; simp [isLeaRsp] at hc
-      · rw [if_neg h2n] at hc
+      · rw [ite_eq_left h2n] at hc; simp [isLeaRsp] at hc
+      · rw [ite_eq_right h2n] at hc
         by_cases h1n : pc + 1 = q.length
-        · rw [if_pos h1n] at hc; simp at hc
-        · rw [if_neg h1n] at hc
+        · rw [ite_eq_left h1n] at hc; simp at hc
+        · rw [ite_eq_right h1n] at hc
           simp only [bodyOkB, Bool.and_eq_true, decide_eq_true_eq] at hc
-          rw [if_neg (by omega)] at h1
+          rw [ite_eq_right (by omega)] at h1
           refine ⟨?_, h2, h3⟩
           rw [h1]
-          split <;> rw [if_neg (by omega)]
+          split <;> rw [ite_eq_right (by omega)]
   | @stack pc s ri ops t s' hq hops _ _ _ =>
     have hc := hat hq
     exfalso
@@ -523,7 +523,7 @@ theorem keepCheck_sound {q : List RInstr} {clob : String → Bool} {F : Nat}
       ∧ (∀ r', clob r' = false → s'.regs r' = s.regs r')
       ∧ ∀ x, ¬ InFrame (s.regs "%rsp") F x → s'.mem x = s.mem x := by
   obtain ⟨h1, h2, h3⟩ := keepCheck_inv hk s h
-    ⟨by rw [if_pos (Or.inl rfl)], fun _ _ _ => rfl, fun _ _ => rfl⟩
+    ⟨by rw [ite_eq_left (Or.inl rfl)], fun _ _ _ => rfl, fun _ _ => rfl⟩
   refine ⟨h1, fun r' hcl => ?_, h3⟩
   by_cases hr : r' = "%rsp"
   · rw [hr, h1]
@@ -921,7 +921,7 @@ theorem blockLeakA_callOps_of_rsp {a b : AState} (n : Nat)
     blockLeakA .doitm a (callOps n) = blockLeakA .doitm b (callOps n) := by
   simp only [callOps, blockLeakA, opLeak, instrLeak, resolveEv, List.map_cons, List.map_nil,
     evalInstrA_rsp_lea, h, List.append_nil, JInstr.mnem, DoitRegime.leaksOperands,
-    X86Mnem.timing, Bool.false_eq_true, if_false]
+    X86Mnem.timing, Bool.false_eq_true, ite_false]
 
 /-- Under the regime `doitm`, the stack operation of a return has no leakage. -/
 theorem blockLeakA_retOps_doitm (s : AState) : blockLeakA .doitm s retOps = [] := by

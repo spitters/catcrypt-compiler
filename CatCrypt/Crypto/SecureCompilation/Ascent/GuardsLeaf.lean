@@ -211,11 +211,11 @@ theorem corresUL_cond {fuel : Nat} {P : AState → Prop} {fb : AState → AState
   · obtain ⟨env', hstep, hSR'⟩ := hbody env a hSR (hP hga)
     refine ⟨env', ?_, ?_⟩
     · simp only [semScalarCond, hgu, hga, cond_true, hstep]
-    · simp only [hga, if_true]; exact hSR'
+    · simp only [hga, ite_true]; exact hSR'
   · simp only [Bool.not_eq_true] at hga
     refine ⟨env, ?_, ?_⟩
     · simp only [semScalarCond, hgu, hga, cond_false]
-    · simp only [hga, Bool.false_eq_true, if_false]; exact hSR
+    · simp only [hga, Bool.false_eq_true, ite_false]; exact hSR
 
 theorem corresUL_whileNz_aux {fuel : Nat} {Q : AState → Prop} {fb : AState → AState}
     {name : String} {body : LowCT} (g : AState → Bool)
@@ -234,13 +234,13 @@ theorem corresUL_whileNz_aux {fuel : Nat} {Q : AState → Prop} {fb : AState →
       by_cases hga : g (fb a) = true
       · obtain ⟨env', hrun, hSR'⟩ := ih env₁ (fb a) hSR₁ (hh hga) (ht.2 hga)
         refine ⟨env', ?_, ?_⟩
-        · simp only [semScalarWhile, hstep, hg env₁ (fb a) hSR₁, hga, if_true, hrun]
-        · simp only [awhile, hga, if_true]; exact hSR'
+        · simp only [semScalarWhile, hstep, hg env₁ (fb a) hSR₁, hga, ite_true, hrun]
+        · simp only [awhile, hga, ite_true]; exact hSR'
       · simp only [Bool.not_eq_true] at hga
         refine ⟨env₁, ?_, ?_⟩
         · simp only [semScalarWhile, hstep, hg env₁ (fb a) hSR₁, hga, Bool.false_eq_true,
-            if_false]
-        · simp only [awhile, hga, Bool.false_eq_true, if_false]; exact hSR₁
+            ite_false]
+        · simp only [awhile, hga, Bool.false_eq_true, ite_false]; exact hSR₁
 
 /-- The do-while rule at `semUL`. -/
 theorem corresUL_whileNz {fuel : Nat} {Q : AState → Prop} {fb : AState → AState}
@@ -342,14 +342,14 @@ theorem corresL_arrStore_oracle (ls : SemLeafSpec) (L : ArrLayout) (arr src : Lo
   obtain ⟨sv, hsv, hsvE⟩ := hSR.1 src.locVar hst hsk
   refine ⟨env.upd arr.locVar (t := encodeTy arr.locSrc) (harr.symm ▸ memSetDyn av iv.toNat sv),
     ?_, ?_⟩
-  · simp only [semScalarL, Located.locDst, hav', hiv, hsv, harr, dif_pos]
+  · simp only [semScalarL, Located.locDst, hav', hiv, hsv, harr, dite_eq_left]
   · show SRwordL L _ (setVal (elemKey arr.locVar ((a idxVar).val % (m + 1))) (a src.locVar) a)
     rw [val_of_wEnc hivE]
     refine srwordL_arrWrite arr.locVar (m + 1) (iv.toNat % (m + 1)) av
       (memSetDyn av iv.toNat sv) sv _ hsvE hSR hsz hav' (fun j => ?_) (fun y => ?_)
     · by_cases h : j.val = iv.toNat % (m + 1) <;> simp [memSetDyn, h, Fin.ext_iff]
     · by_cases hy : y = arr.locVar
-      · simp only [SEnvScalar.upd, if_pos hy]
+      · simp only [SEnvScalar.upd, ite_eq_left hy]
         exact congrArg some (sigma_memref harr _)
       · simp [SEnvScalar.upd, hy]
 
@@ -396,8 +396,8 @@ theorem corresL_arrStoreLit_oracle (ls : SemLeafSpec) (L : ArrLayout) (arr src :
   show (if j = ⟨(BitVec.ofNat 64 idx).toNat % (m + 1), Nat.mod_lt _ (Nat.succ_pos m)⟩
     then sv else av j) = _
   by_cases h : j.val = idx
-  · rw [if_pos (Fin.ext (h.trans hk.symm)), if_pos h]
-  · rw [if_neg (fun hj => h ((congrArg Fin.val hj).trans hk)), if_neg h]
+  · rw [ite_eq_left (Fin.ext (h.trans hk.symm)), ite_eq_left h]
+  · rw [ite_eq_right (fun hj => h ((congrArg Fin.val hj).trans hk)), ite_eq_right h]
 
 /-- The constant-time word select over a layout, at the oracle `ls`. -/
 theorem corresL_select_oracle (ls : SemLeafSpec) (L : ArrLayout) (dst : Located)
@@ -418,9 +418,9 @@ theorem corresL_select_oracle (ls : SemLeafSpec) (L : ArrLayout) (dst : Located)
     (by simp [SEnvScalar.upd]) (fun y _ hy => by simp [SEnvScalar.upd, hy])
   by_cases hz : sw = 0#64
   · have haz : a sel = 0 := hswE ▸ (wEnc_eq_zero_iff sw).mpr hz
-    rw [selectWord, if_pos hz, if_pos haz, hawE]
+    rw [selectWord, ite_eq_left hz, ite_eq_left haz, hawE]
   · have haz : ¬ a sel = 0 := fun h => hz ((wEnc_eq_zero_iff sw).mp (hswE ▸ h))
-    rw [selectWord, if_neg hz, if_neg haz, hcwE]
+    rw [selectWord, ite_eq_right hz, ite_eq_right haz, hcwE]
 
 /-! ## Abstract leaves -/
 
@@ -636,7 +636,7 @@ theorem setCells_ne (s : String) (g : Nat → ZMod (2 ^ 64)) (a : AField) (y : S
     ∀ n, (∀ j, j < n → y ≠ elemKey s j) → setCells s n g a y = a y
   | 0, _ => rfl
   | k + 1, h => by
-      simp only [setCells, setVal, if_neg (h k (Nat.lt_succ_self k))]
+      simp only [setCells, setVal, ite_eq_right (h k (Nat.lt_succ_self k))]
       exact setCells_ne s g a y k (fun j hj => h j (Nat.lt_succ_of_lt hj))
 
 theorem setCells_elemKey (s : String) (g : Nat → ZMod (2 ^ 64)) (a : AField) (j : Nat) :
@@ -646,7 +646,7 @@ theorem setCells_elemKey (s : String) (g : Nat → ZMod (2 ^ 64)) (a : AField) (
       simp only [setCells, setVal]
       by_cases hjk : j = k
       · subst hjk; simp
-      · rw [if_neg (fun he => hjk (elemKey_inj he).2)]
+      · rw [ite_eq_right (fun he => hjk (elemKey_inj he).2)]
         exact setCells_elemKey s g a j k (Nat.lt_of_le_of_ne (Nat.le_of_lt_succ h) hjk)
 
 /-- A write of every cell of the layout array `s`, cell `j` encoding `g j`, preserves the
@@ -660,7 +660,7 @@ theorem srwordL_arrWriteAll {L : ArrLayout} {env env' : SEnvScalar} {a : AField}
   refine ⟨fun y hy hyk => ?_, fun p hp => ?_⟩
   · have hys : y ≠ s := ne_of_arrKeyB hyk (arrKeyB_name hmem)
     obtain ⟨w, hw, hwe⟩ := hSR.1 y hy hyk
-    refine ⟨w, by rw [henv', if_neg hys, hw], ?_⟩
+    refine ⟨w, by rw [henv', ite_eq_right hys, hw], ?_⟩
     rw [setCells_ne s g a y n (fun j _ => ne_of_arrKeyB hyk (arrKeyB_elemKey hmem _ _))]
     exact hwe
   · obtain ⟨hnt, bv, hbv, hbvE⟩ := hSR.2 p hp
@@ -672,9 +672,9 @@ theorem srwordL_arrWriteAll {L : ArrLayout} {env env' : SEnvScalar} {a : AField}
       rw [hs] at hbv
       simp only [Option.some.injEq, Sigma.mk.inj_iff, CryptoSSA.CryptoTy.memref.injEq] at hbv
       obtain ⟨rfl, _⟩ := hbv
-      refine ⟨av', by rw [henv', if_pos rfl], fun j => ?_⟩
+      refine ⟨av', by rw [henv', ite_eq_left rfl], fun j => ?_⟩
       rw [hav' j, setCells_elemKey _ g a j _ j.isLt]
-    · refine ⟨bv, by rw [henv', if_neg hps, hbv], fun j => ?_⟩
+    · refine ⟨bv, by rw [henv', ite_eq_right hps, hbv], fun j => ?_⟩
       rw [setCells_ne s g a _ n (fun _ _ h => hps (elemKey_inj h).1)]
       exact hbvE j
 
@@ -720,13 +720,13 @@ theorem setCells_cellLeaf {L : ArrLayout} {s : String} {n : Nat} (hs : layoutSiz
   by_cases hy : ∃ j, j < n ∧ y = elemKey s j
   · obtain ⟨j, hj, rfl⟩ := hy
     rw [setCells_elemKey s _ a j n hj]
-    simp only [cellLeaf, setVal, List.headD_cons, absArg, hs, avalCell, dif_pos hj]
+    simp only [cellLeaf, setVal, List.headD_cons, absArg, hs, avalCell, dite_eq_left hj]
     by_cases hjk : j = k
     · subst hjk; simp
-    · rw [if_neg hjk, if_neg (fun h => hjk (elemKey_inj h).2)]
+    · rw [ite_eq_right hjk, ite_eq_right (fun h => hjk (elemKey_inj h).2)]
   · rw [setCells_ne s _ a y n (fun j hj h => hy ⟨j, hj, h⟩)]
     simp only [setVal]
-    rw [if_neg (fun h => hy ⟨k, hk, h⟩)]
+    rw [ite_eq_right (fun h => hy ⟨k, hk, h⟩)]
 
 /-- The oracle realising a family of abstract word leaves on `u64` destinations and a
     family of abstract array leaves on `.memref n` destinations; at every other type it
@@ -1366,14 +1366,14 @@ theorem corresUL_arrLoadAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
   · dsimp only
     by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧
         notTmpB idxVar = true ∧ arrKeyB L idxVar = false
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       obtain ⟨hdst, hdk, hit, hik⟩ := hc
       exact corresUL_weaken _ _
         (corresUL_of_corresL _ _ rfl
           (corresL_arrLoad_oracle ls L dst src idxVar m hdst (layoutSize_mem hs) hdk
             (notTmpB_sound _ hit) hik))
         (fun _ _ => trivial)
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       exact corresUL_unsupported _ _ _ _ _
 
 theorem corresUL_arrStoreAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
@@ -1387,14 +1387,14 @@ theorem corresUL_arrStoreAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
   · dsimp only
     by_cases hc : encodeTy arr.locSrc = .memref (m + 1) ∧ notTmpB idxVar = true ∧
         arrKeyB L idxVar = false ∧ notTmpB src.locVar = true ∧ arrKeyB L src.locVar = false
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       obtain ⟨harr, hit, hik, hst, hsk⟩ := hc
       exact corresUL_weaken _ _
         (corresUL_of_corresL _ _ rfl
           (corresL_arrStore_oracle ls L arr src idxVar m harr (layoutSize_mem hs)
             (notTmpB_sound _ hit) hik (notTmpB_sound _ hst) hsk))
         (fun _ _ => trivial)
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       exact corresUL_unsupported _ _ _ _ _
 
 theorem corresUL_limbStoreAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
@@ -1406,7 +1406,7 @@ theorem corresUL_limbStoreAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
   · exact corresUL_unsupported _ _ _ _ _
   · dsimp only
     by_cases hc : idx < n
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       exact corresUL_weaken _ _
         (corresUL_of_corresL _ _ rfl
           (corresL_of_corres_eqOn _ _
@@ -1416,7 +1416,7 @@ theorem corresUL_limbStoreAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
               have hav' : env loc.locVar = some ⟨.memref n, av⟩ := hav
               simp only [semScalarL, semScalar, hav'])))
         (fun _ _ => trivial)
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       exact corresUL_unsupported _ _ _ _ _
 
 theorem corresUL_arrLoadLitAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
@@ -1430,7 +1430,7 @@ theorem corresUL_arrLoadLitAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
   · dsimp only
     by_cases hc : dst.locSrc = .TU64 ∧ isU64ArrB src.locSrc = true ∧
         arrKeyB L dst.locVar = false ∧ idx < m + 1 ∧ idx < 2 ^ 64
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       obtain ⟨hdst, hu, hdk, hidx, hlit⟩ := hc
       obtain ⟨k, hsrc⟩ := isU64ArrB_sound hu
       exact corresUL_weaken _ _
@@ -1438,7 +1438,7 @@ theorem corresUL_arrLoadLitAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
           (corresL_arrLoadLit_oracle ls L dst src idx k m hdst hsrc (layoutSize_mem hs) hidx
             hlit hdk))
         (fun _ _ => trivial)
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       exact corresUL_unsupported _ _ _ _ _
 
 theorem corresUL_arrStoreLitAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
@@ -1452,7 +1452,7 @@ theorem corresUL_arrStoreLitAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
   · dsimp only
     by_cases hc : isU64ArrB arr.locSrc = true ∧ idx < m + 1 ∧ idx < 2 ^ 64 ∧
         notTmpB src.locVar = true ∧ arrKeyB L src.locVar = false
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       obtain ⟨hu, hidx, hlit, hst, hsk⟩ := hc
       obtain ⟨k, harr⟩ := isU64ArrB_sound hu
       exact corresUL_weaken _ _
@@ -1460,7 +1460,7 @@ theorem corresUL_arrStoreLitAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat)
           (corresL_arrStoreLit_oracle ls L arr src idx k m harr (layoutSize_mem hs) hidx hlit
             (notTmpB_sound _ hst) hsk))
         (fun _ _ => trivial)
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       exact corresUL_unsupported _ _ _ _ _
 
 theorem corresUL_selectAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat) (dst : Located)
@@ -1471,14 +1471,14 @@ theorem corresUL_selectAbs (ls : SemLeafSpec) (L : ArrLayout) (fuel : Nat) (dst 
   by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧ notTmpB sel = true ∧
       arrKeyB L sel = false ∧ notTmpB src0.locVar = true ∧ arrKeyB L src0.locVar = false ∧
       notTmpB src1.locVar = true ∧ arrKeyB L src1.locVar = false
-  · rw [if_pos hc]
+  · rw [ite_eq_left hc]
     obtain ⟨hdst, hdk, hst, hsk, h0t, h0k, h1t, h1k⟩ := hc
     exact corresUL_weaken _ _
       (corresUL_of_corresL _ _ rfl
         (corresL_select_oracle ls L dst sel src0 src1 hdst hdk (notTmpB_sound _ hst) hsk
           (notTmpB_sound _ h0t) h0k (notTmpB_sound _ h1t) h1k))
       (fun _ _ => trivial)
-  · rw [if_neg hc]
+  · rw [ite_eq_right hc]
     exact corresUL_unsupported _ _ _ _ _
 
 /-- The word case of the `RSelect` arm. -/
@@ -1494,13 +1494,13 @@ theorem corresUL_selectWordAbsL (ls : SemLeafSpec) (lf : AbsLeaves) (hlf : Leave
         argOkB L sel = true ∧ argOkB L src0.locVar = true ∧ argOkB L src1.locVar = true ∧
         ((layoutSize L sel).isSome || (layoutSize L src0.locVar).isSome ||
           (layoutSize L src1.locVar).isSome) = true
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       obtain ⟨hd, hdk, hs, h0, h1, harr⟩ := hc
       exact corresUL_weaken _ _
         (corresUL_of_corresL _ _ rfl
           (corresL_selectLeaf ls L dst sel src0 src1 f (hlf _ _ hl) hd hdk hs h0 h1 harr))
         (fun _ _ => trivial)
-    · rw [if_neg hc]
+    · rw [ite_eq_right hc]
       exact corresUL_selectAbs ls L fuel dst sel src0 src1
 
 /-- The destination fold of `RCallN` is abstracted by `callNAbsL` from every output
@@ -1560,12 +1560,12 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
   case RScalarSet x n =>
     simp only [ascendGLL]
     rcases hk : arrKeyB L x
-    · simp only [Bool.false_eq_true, if_false]
+    · simp only [Bool.false_eq_true, ite_false]
       exact corresUL_weaken _ _
         (corresUL_of_corresL _ _ rfl
           (corresL_of_corres_eq _ _ (corresL_setScalar L x n hk) (fun _ => rfl)))
         (fun _ _ => trivial)
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresUL_unsupported _ _ _ _ _
   case RScalarSetExpr x e =>
     have h := ascendGL_sound L fuel (.RScalarSetExpr x e)
@@ -1585,9 +1585,9 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
     simp only [ascendGLL]
     rcases hk : arrKeyB L x
     · rcases hlfr : loopFree body
-      · simp only [Bool.false_eq_true, if_false]
+      · simp only [Bool.false_eq_true, ite_false]
         exact corresUL_unsupported _ _ _ _ _
-      · simp only [Bool.false_eq_true, if_false, if_true]
+      · simp only [Bool.false_eq_true, ite_false, ite_true]
         intro env a hSR hP
         obtain ⟨env', hstep, hSRf⟩ :=
           ih _ _ (srwordL_upd_lit x 0 hk hSR) (guardsHold_map_after.mp hP)
@@ -1595,13 +1595,13 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
         show semScalarL ls body (env.upd x (t := .sword 64) (0 : BitVec 64)) = some env'
         rw [← semUL_eq_semScalarL_of_loopFree ls fuel body hlfr]
         exact hstep
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresUL_unsupported _ _ _ _ _
   case RIfNz name thenBr elseBr ihT _ =>
     simp only [ascendGLL]
     unfold ascendIf
     rcases hsk : isSkipB elseBr
-    · simp only [Bool.false_eq_true, if_false]
+    · simp only [Bool.false_eq_true, ite_false]
       have hne : elseBr ≠ .RSkip := fun h => by
         rw [h] at hsk; exact Bool.false_ne_true hsk.symm
       rcases ht : asSingleScalarSet thenBr with _ | ⟨nv, tv⟩
@@ -1611,7 +1611,7 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
         · dsimp only
           by_cases hc : nv = nv' ∧ notTmpB name = true ∧ arrKeyB L name = false ∧
               arrKeyB L nv = false
-          · rw [if_pos hc]
+          · rw [ite_eq_left hc]
             obtain ⟨hnv, hnt, hk, hkv⟩ := hc
             subst hnv
             obtain rfl := asSingleScalarSet_some ht
@@ -1622,45 +1622,45 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
                   (corresL_if L name nv tv ev (notTmpB_sound name hnt) hk hkv)
                   (fun _ => rfl)))
               (fun _ _ => trivial)
-          · rw [if_neg hc]
+          · rw [ite_eq_right hc]
             exact corresUL_unsupported _ _ _ _ _
     · obtain rfl := (isSkipB_iff elseBr).mp hsk
-      simp only [if_true]
+      simp only [ite_true]
       rcases hk : arrKeyB L name
-      · simp only [Bool.false_eq_true, if_false]
+      · simp only [Bool.false_eq_true, ite_false]
         rcases hnt : notTmpB name
-        · simp only [Bool.false_eq_true, if_false]
+        · simp only [Bool.false_eq_true, ite_false]
           exact corresUL_unsupported _ _ _ _ _
-        · simp only [if_true]
+        · simp only [ite_true]
           exact corresUL_weaken _ _
             (corresUL_cond _ _ (nzB name)
               (fun env a hSR => guardNz_srwordL (notTmpB_sound name hnt) hk hSR) ihT)
             (fun a h => guardsHold_map_whenNz.mp h)
-      · simp only [if_true]
+      · simp only [ite_true]
         exact corresUL_unsupported _ _ _ _ _
   case RWhileNz name body ih =>
     simp only [ascendGLL]
     rcases hk : arrKeyB L name
     · rcases hnt : notTmpB name
-      · simp only [Bool.false_eq_true, if_false]
+      · simp only [Bool.false_eq_true, ite_false]
         exact corresUL_unsupported _ _ _ _ _
-      · simp only [Bool.false_eq_true, if_false, if_true]
+      · simp only [Bool.false_eq_true, ite_false, ite_true]
         refine corresUL_weaken _ _
           (corresUL_whileNz _ _ (nzB name)
             (fun env a hSR => guardNz_srwordL (notTmpB_sound name hnt) hk hSR) ih)
           (fun a h => ?_)
         refine ⟨h _ (List.mem_cons.mpr (Or.inl rfl)), guardsHold_map_loopBody.mp ?_⟩
         exact fun g hg => h g (List.mem_cons.mpr (Or.inr hg))
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresUL_unsupported _ _ _ _ _
   case RFor x N body ih =>
     simp only [ascendGLL]
     rcases hk : arrKeyB L x
-    · simp only [Bool.false_eq_true, if_false]
+    · simp only [Bool.false_eq_true, ite_false]
       exact corresUL_weaken _ _
         (corresUL_for_trips _ _ (setLit x) (fun env a n hSR => srwordL_upd_lit x n hk hSR) ih N)
         (fun a h => guardsHold_map_everyTrip.mp h)
-    · simp only [if_true]
+    · simp only [ite_true]
       exact corresUL_unsupported _ _ _ _ _
   case RArrLoad dst src idxVar => exact corresUL_arrLoadAbs ls L fuel dst src idxVar
   case RArrStore arr idxVar src => exact corresUL_arrStoreAbs ls L fuel arr idxVar src
@@ -1704,7 +1704,7 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
     · exact corresUL_unsupported _ _ _ _ _
     all_goals
       by_cases hsz : layoutSize L oldDest.locVar = layoutSize L cv
-      · rw [if_pos hsz]
+      · rw [ite_eq_left hsz]
         refine corresUL_of_absStep ls rfl (fun env a hSR hg => ?_)
           (absStep_seq
             (absStep_leafDst ls lf lfa hlf hlfa L "RCloneCall" "clone" ⟨cv, oldDest.locSrc⟩
@@ -1730,7 +1730,7 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
           obtain ⟨_, av, hav, _⟩ := hSR.2 _ (layoutSize_mem hn)
           rw [show encodeTy oldDest.locSrc = .memref n from henc]
           exact ⟨av, hav⟩
-      · rw [if_neg hsz]
+      · rw [ite_eq_right hsz]
         exact corresUL_unsupported _ _ _ _ _
   case RCallN fname dests args =>
     show CorresUL ls fuel (SRwordL L) (guardsHold (callNTopAbsL lf lfa L fname dests args).1)
@@ -1762,7 +1762,7 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
     rcases lfa ("arrStore:" ++ toString idx) with _ | g
     · exact corresUL_arrStoreLitAbs ls L fuel arr idx src
     · by_cases hc : isU64ArrB arr.locSrc = false ∨ (layoutSize L src.locVar).isSome = true
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         refine corresUL_of_absStep ls rfl (fun env a hSR _ => ?_)
           (absStep_leafDst ls lf lfa hlf hlfa L "RArrStoreLit" ("arrStore:" ++ toString idx) arr
             (locNames [arr, src]))
@@ -1770,7 +1770,7 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
         rcases hc with h | h
         · rw [harr] at h; exact absurd h (by simp [isU64ArrB])
         · exact srwordL_layout_not_word hSR h v hs
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         exact corresUL_arrStoreLitAbs ls L fuel arr idx src
   case RArrLoadLit dst src idx =>
     show CorresUL ls fuel (SRwordL L) (guardsHold (arrLoadLitAbsL lf L dst src idx).1)
@@ -1782,13 +1782,13 @@ theorem ascendGLL_sound (ls : SemLeafSpec) (lf : AbsLeaves) (lfa : AbsArrLeaves)
       by_cases hc : dst.locSrc = .TU64 ∧ arrKeyB L dst.locVar = false ∧
           argOkB L src.locVar = true ∧
           (isU64ArrB src.locSrc = false ∨ layoutSize L src.locVar = none)
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         obtain ⟨hd, hdk, hs, hnw⟩ := hc
         exact corresUL_weaken _ _
           (corresUL_of_corresL _ _ rfl
             (corresL_arrLoadLitLeaf ls L dst src idx f (hlf _ _ hl) hd hdk hs hnw))
           (fun _ _ => trivial)
-      · rw [if_neg hc]
+      · rw [ite_eq_right hc]
         exact corresUL_arrLoadLitAbs ls L fuel dst src idx
   all_goals exact corresUL_unsupported _ _ _ _ _
 

@@ -54,7 +54,7 @@ theorem Trace.entryAt_ge_none (tr : Trace) (i : Nat) (h : tr.length ≤ i) :
   | snoc tr' _ ih =>
     simp only [Trace.entryAt]
     have hne : ¬(i == tr'.length) := by rw [beq_iff_eq]; simp [Trace.length] at h; omega
-    rw [if_neg hne]
+    rw [ite_eq_right hne]
     exact ih (by simp [Trace.length] at h; omega)
 
 /-- For i ≠ tr.length, entryAt of snoc gives the original entry. -/
@@ -63,7 +63,7 @@ theorem Trace.entryAt_snoc_ne (tr : Trace) (e : TraceEntry) (i : Nat)
     (Trace.snoc tr e).entryAt i = tr.entryAt i := by
   simp only [Trace.entryAt]
   have : ¬(i == tr.length) := by rw [beq_iff_eq]; exact h
-  rw [if_neg this]
+  rw [ite_eq_right this]
 
 /-- labelOf isCorrupt is preserved under trace extension. The only change
 to randLabelAt is at the new position, where the old label was .bot

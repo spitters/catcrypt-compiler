@@ -93,7 +93,7 @@ theorem dft_idft {R : Type*} [Field R] {ω : R} {n : ℕ} (hω : IsPrimitiveRoot
   rw [Finset.sum_congr rfl (fun l _ => hinner l)]
   simp only [mul_ite, mul_zero,
     Finset.sum_ite_eq Finset.univ k (fun l => (n : R)⁻¹ * X l * (n : R)),
-    Finset.mem_univ, if_true]
+    Finset.mem_univ, ite_true]
   rw [mul_right_comm, inv_mul_cancel₀ hn, one_mul]
 
 /-! ## The ML-DSA root, the index permutation and the twiddle table -/
@@ -235,10 +235,10 @@ lemma root_pow_add (i j : Fin 256) :
   have hval : (j + i).val = (i.val + j.val) % 256 := by
     simp [Fin.add_def, Nat.add_comm]
   rcases lt_or_ge (i.val + j.val) 256 with h | h
-  · rw [hval, Nat.mod_eq_of_lt h, if_pos (by omega)]
+  · rw [hval, Nat.mod_eq_of_lt h, ite_eq_left (by omega)]
     ring
   · have hmod : (i.val + j.val) % 256 = i.val + j.val - 256 := by omega
-    rw [hval, hmod, if_neg (by omega)]
+    rw [hval, hmod, ite_eq_right (by omega)]
     have hsplit : i.val + j.val = 256 + (i.val + j.val - 256) := by omega
     conv_lhs => rw [hsplit]
     rw [pow_add, root_pow_256]

@@ -226,14 +226,14 @@ theorem runA_local (frame : String → Option (BitVec 64)) (c : Lcmd) :
     | true =>
       rw [runA_halt frame c _ s zf hs, runA_halt frame c _ t zt (hh.trans hs)]
       unfold runWrites
-      rw [if_pos hs]
+      rw [ite_eq_left hs]
       exact ORel.some ⟨fun _ hl => absurd hl (Set.notMem_empty _),
         agreeOn_refl _ _, agreeOn_refl _ _⟩
     | false =>
       rw [runA_step frame c _ s zf hs, runA_step frame c _ t zt (hh.trans hs)]
       unfold runWrites
       unfold runReads at h
-      rw [if_neg (by simp [hs])] at h ⊢
+      rw [ite_eq_right (by simp [hs])] at h ⊢
       have hS := stepA_local frame c (agreeOn_anti Set.subset_union_left h)
       revert h hS
       cases stepA frame c s zf <;> cases stepA frame c t zt <;> intro h hS
@@ -288,7 +288,7 @@ theorem stepA_storeMoveBody_zero {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
   rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
     tagA_lopn (by decide) (by decide)]
   simp only [normA, castTagW]
-  simp (config := { decide := true }) only [if_false]
+  simp (config := { decide := true }) only [ite_false]
   exact fstepA_movStm _ hn hB hV zf
 
 /-- The second step of `storeMoveBody` moves the value of `S` into `D`. -/
@@ -327,9 +327,9 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
   have hstep2 := stepA_storeMoveBody_one (s := ⟨s.reg.nextPc,
     write64 s.mem (p + BitVec.ofNat 64 0) v, s.cf, s.of⟩) zf
     (by simp [JasminLsemWidthN.LstateN.nextPc, hpc])
-  rw [runWrites, if_neg (by simp [haltedA, hpc, storeMoveBody]), hstep]
+  rw [runWrites, ite_eq_right (by simp [haltedA, hpc, storeMoveBody]), hstep]
   simp only
-  rw [runWrites, if_neg (by simp [haltedA, hpc, storeMoveBody]), hstep2]
+  rw [runWrites, ite_eq_right (by simp [haltedA, hpc, storeMoveBody]), hstep2]
   have w1 : stepWrites (fun _ => none) storeMoveBody s
       = writesA (fun _ => none) (.Lopn [.reg "mem.B.0"] "MOV:64" [.reg "V"], .reg none) s := by
     unfold stepWrites

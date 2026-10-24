@@ -112,7 +112,7 @@ theorem dft_eq_listEval (n : ℕ) (ω : R) (x : Fin n → R) (k : Fin n) :
       (fun j => (if h : j < n then x ⟨j, h⟩ else 0) * (ω ^ k.val) ^ j) n]
   apply Finset.sum_congr rfl
   intro j _
-  simp only [j.isLt, dif_pos]
+  simp only [j.isLt, dite_eq_left]
 
 /-! ## The convolution theorem (forward direction) -/
 

@@ -211,7 +211,7 @@ theorem renOK_setReg (p : String) (t : BignumState) (y : String) (v : BitVec 64)
     RenOK p t (setReg (pull p t) y v) (setReg t (scr p y) v) := by
   refine ⟨pull_setReg p t y v, fun x hx => ?_⟩
   show (if x = scr p y then v else t.regs x) = t.regs x
-  rw [if_neg (hx y)]
+  rw [ite_eq_right (hx y)]
 
 theorem renOK_trans {p : String} {t t1 t2 s1 : BignumState} {y : String} {v : BitVec 64}
     (h1 : RenOK p t s1 t1) (h2 : t2 = setReg t1 (scr p y) v) :
@@ -219,7 +219,7 @@ theorem renOK_trans {p : String} {t t1 t2 s1 : BignumState} {y : String} {v : Bi
   subst h2
   refine ⟨by rw [pull_setReg, h1.1], fun x hx => ?_⟩
   show (if x = scr p y then v else t1.regs x) = t.regs x
-  rw [if_neg (hx y)]
+  rw [ite_eq_right (hx y)]
   exact h1.2 x hx
 
 theorem renOK_refl (p : String) (t : BignumState) : RenOK p t (pull p t) t :=
@@ -602,7 +602,7 @@ theorem paramVal_of_not_mem {d : String → BitVec 64} {y : String} :
   | _ :: _, [], _ => by simp [paramVal]
   | q :: qs, v :: vs, hy => by
     simp only [List.map_cons, List.mem_cons, not_or] at hy
-    simp only [paramVal, if_neg hy.1]
+    simp only [paramVal, ite_eq_right hy.1]
     exact paramVal_of_not_mem qs vs hy.2
 
 /-- The callee register file `bignumExecFuel` builds for a call is `paramVal` over `0`. -/
@@ -625,7 +625,7 @@ theorem calleeRegs_eq (qs : List FunParam) (vs : List (BitVec 64)) :
       · subst hq
         simp
       · have hq' : ¬ q.var.var.vname = name := fun h => hq h.symm
-        simp only [hq', decide_false, Bool.false_eq_true, if_false, if_neg hq]
+        simp only [hq', decide_false, Bool.false_eq_true, ite_false, ite_eq_right hq]
         rw [← this]
         cases List.findIdx? (fun x => decide (x.var.var.vname = name)) qs <;> simp
 
@@ -661,7 +661,7 @@ theorem paramCode_run (p : String) :
     · simp only [paramCode, bignumExec_append_eq, ht0, Option.bind_some, bignumExec, execInstr,
         scrLv, evalPExpr_agree hargs.1 hag0, hv, Option.bind_eq_bind]
     · show (if x = scr p q.var.var.vname then v else t0.regs x) = s.regs x
-      rw [if_neg (hx _)]
+      rw [ite_eq_right (hx _)]
       exact hag0.1 x hx
     · show (if scr p y = scr p q.var.var.vname then v else t0.regs (scr p y)) = _
       simp only [scr_inj, paramVal, hsc0]
@@ -679,7 +679,7 @@ theorem zeroCode_run (p : String) :
       simpa using ht'
     · rw [hag.1 x hx]
       show (if x = scr p z then 0 else t.regs x) = t.regs x
-      rw [if_neg (hx z)]
+      rw [ite_eq_right (hx z)]
     · rw [hsc y]
       show (if y ∈ Z then 0 else (if scr p y = scr p z then 0 else t.regs (scr p y))) = _
       simp only [scr_inj, List.mem_cons]
@@ -725,7 +725,7 @@ theorem resultCode_run (p : String) (cf : BignumState) :
         have hcf1 : ∀ r', (setReg t x.var.vname (cf.regs r.var.vname)).regs (scr p r') =
             cf.regs r' := fun r' => by
           show (if scr p r' = x.var.vname then _ else t.regs (scr p r')) = _
-          rw [if_neg (fun h => hx' r' h.symm)]
+          rw [ite_eq_right (fun h => hx' r' h.symm)]
           exact hcf r'
         obtain ⟨t', ht', hag', hsc', hs2⟩ := resultCode_run p cf lvs rs rc' _ _ s2 hrc' hag1 hcf1 hb
         refine ⟨t', ?_, hag', fun y => ?_, fun y => ?_⟩
@@ -734,10 +734,10 @@ theorem resultCode_run (p : String) (cf : BignumState) :
           exact ht'
         · rw [hsc' y]
           show (if scr p y = x.var.vname then _ else t.regs (scr p y)) = _
-          rw [if_neg (fun h => hx' y h.symm)]
+          rw [ite_eq_right (fun h => hx' y h.symm)]
         · rw [hs2 y]
           show (if scr p y = x.var.vname then _ else sc.regs (scr p y)) = _
-          rw [if_neg (fun h => hx' y h.symm)]
+          rw [ite_eq_right (fun h => hx' y h.symm)]
     · next b off rc' hrc' =>
       split at hrc
       · cases hrc
@@ -795,9 +795,9 @@ theorem callCode_sound (reg : BignumRegistry) (p : String) {fd : FunDecl} {lvs :
     · next blk hblk =>
       by_cases hargs : args.all (argOK p) = true
       swap
-      · rw [if_neg hargs] at hc
+      · rw [ite_eq_right hargs] at hc
         cases hc
-      rw [if_pos hargs] at hc
+      rw [ite_eq_left hargs] at hc
       obtain ⟨rc, hrc, rfl⟩ := Option.map_eq_some_iff.1 hc
       obtain ⟨t1, ht1, hag1, hsc1⟩ := paramCode_run p fd.params args vs s hargs hvs
       have hd : (fun y => s.regs (scr p y)) = fun _ => 0 := funext hinv

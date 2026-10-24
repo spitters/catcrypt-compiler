@@ -271,7 +271,7 @@ theorem callStruct?_extCall {w w' : Nat} (name dst a : String)
     have hpfx : "CALLW:".toList.isPrefixOf
         ("CALLW:" ++ toString w' ++ ";" ++ toString w ++ ";" ++ name).toList = true := by
       simp [List.isPrefixOf, String.toList_append]
-    simp only [callStruct?, hpfx, if_true,
+    simp only [callStruct?, hpfx, ite_true,
       callw_extract _ _ _ _ (semi_notMem_toString w') (semi_notMem_toString w),
       String.ofList_toList]
   · -- all-GP (`≤ 64`) widths: `opToLinstrR` keeps the plain `CALL:name` shadow.

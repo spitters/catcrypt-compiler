@@ -180,7 +180,7 @@ theorem carrier_div_mod (a b : List (BitVec 64)) (hb : 0 < bignumVal b) :
         (Nat.le_refl _) (by omega)]
     simp
   unfold div mod
-  rw [if_neg hbne, if_neg hbne]
+  rw [ite_eq_right hbne, ite_eq_right hbne]
   exact carrier_div_of_kdFold (ofListMem b.length b) (ofListMem (2 * a.length + b.length) a)
     a b a.length b.length (a.length + b.length) rfl (by omega) (by omega) hD hX hb
 
@@ -190,7 +190,7 @@ theorem div_val (a b : List (BitVec 64)) :
     bignumVal (div a b) = bignumVal a / bignumVal b := by
   rcases Nat.eq_zero_or_pos (bignumVal b) with h0 | hpos
   · unfold div
-    rw [if_pos h0, h0, Nat.div_zero]
+    rw [ite_eq_left h0, h0, Nat.div_zero]
     simp [bignumVal]
   · exact (carrier_div_mod a b hpos).1
 
@@ -200,7 +200,7 @@ theorem mod_val (a b : List (BitVec 64)) :
     bignumVal (mod a b) = bignumVal a % bignumVal b := by
   rcases Nat.eq_zero_or_pos (bignumVal b) with h0 | hpos
   · unfold mod
-    rw [if_pos h0, h0, Nat.mod_zero]
+    rw [ite_eq_left h0, h0, Nat.mod_zero]
   · exact (carrier_div_mod a b hpos).2
 
 end CatCrypt.Crypto.SecureCompilation.BigNatDivMod

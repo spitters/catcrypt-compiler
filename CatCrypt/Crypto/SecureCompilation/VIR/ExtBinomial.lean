@@ -116,12 +116,12 @@ theorem prodAt_eval (n : Nat) (x y : Fin n → ZMod p) (i j : Nat) :
   split
   · next h =>
     simp only [FExpr.eval, prodVal, prodE, Equiv.symm_apply_apply, Fin.append_left,
-      Fin.append_right, rd, dif_pos h.1, dif_pos h.2]
+      Fin.append_right, rd, dite_eq_left h.1, dite_eq_left h.2]
   · next h =>
     by_cases hi : i < n
     · have hj : ¬ j < n := fun hj => h ⟨hi, hj⟩
-      simp only [FExpr.eval, rd, dif_neg hj, mul_zero]
-    · simp only [FExpr.eval, rd, dif_neg hi, zero_mul]
+      simp only [FExpr.eval, rd, dite_eq_right hj, mul_zero]
+    · simp only [FExpr.eval, rd, dite_eq_right hi, zero_mul]
 
 /-- The products `x i * y j` with `i + j = k`, for `k < n`. -/
 def lowTerms (n k : Nat) : List (FExpr p (n * n)) :=
@@ -184,10 +184,10 @@ theorem sum_ite_low (a b : Nat → ZMod p) (n i k j₀ : Nat) (hj : j₀ < n) (h
     (∑ j ∈ Finset.range n, if i + j = k then a j else if i + j = k + n then b j else 0)
       = a j₀ := by
   rw [Finset.sum_eq_single j₀]
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
   · intro j hj' hne
     have hlt := Finset.mem_range.mp hj'
-    rw [if_neg (by omega), if_neg (by omega)]
+    rw [ite_eq_right (by omega), ite_eq_right (by omega)]
   · intro h'
     exact absurd (Finset.mem_range.mpr hj) h'
 
@@ -196,10 +196,10 @@ theorem sum_ite_high (a b : Nat → ZMod p) (n i k j₀ : Nat) (hj : j₀ < n)
     (∑ j ∈ Finset.range n, if i + j = k then a j else if i + j = k + n then b j else 0)
       = b j₀ := by
   rw [Finset.sum_eq_single j₀]
-  · rw [if_neg (by omega), if_pos h]
+  · rw [ite_eq_right (by omega), ite_eq_left h]
   · intro j hj' hne
     have hlt := Finset.mem_range.mp hj'
-    rw [if_neg (by omega), if_neg (by omega)]
+    rw [ite_eq_right (by omega), ite_eq_right (by omega)]
   · intro h'
     exact absurd (Finset.mem_range.mpr hj) h'
 

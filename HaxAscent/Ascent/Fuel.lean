@@ -207,7 +207,7 @@ local macro "loop_zero_case" f:ident : tactic => `(tactic| (
   intro var lo hi body hlt env hd fuel' _
   exfalso
   unfold $f at hd
-  simp [if_neg hlt, pure, StateT.pure] at hd))
+  simp [ite_eq_right hlt, pure, StateT.pure] at hd))
 
 set_option hygiene false in
 /-- The fuel-`0` case of a `while` helper in `denote'_fuel_mono_aux`: the run is an
@@ -223,7 +223,7 @@ set_option hygiene false in
 local macro "loop_empty_case" f:ident : tactic => `(tactic| (
   intro fuel var lo hi body hge env _ fuel' _
   unfold $f
-  simp only [if_pos hge]))
+  simp only [ite_eq_left hge]))
 
 set_option hygiene false in
 /-- The recursive call of a loop helper in `denote'_fuel_mono_aux`, through `ihr`. -/
@@ -257,7 +257,7 @@ local macro "loop_step_case" f:ident idx:term : tactic => `(tactic| (
   intro fuel var lo hi body hlt hf ihb ihr env hd fuel' hle
   have hf' : ¬ fuel' = 0 := by omega
   unfold $f at hd ⊢
-  simp only [if_neg hlt, if_neg hf, if_neg hf', stateM_bind_apply, stateM_modify_apply] at hd ⊢
+  simp only [ite_eq_right hlt, ite_eq_right hf, ite_eq_right hf', stateM_bind_apply, stateM_modify_apply] at hd ⊢
   rcases hr : denote' bi fuel body (Env.extend env var (.int $idx)) with ⟨o, s⟩
   have h1 : denote' bi fuel' body (Env.extend env var (.int $idx)) =
       denote' bi fuel body (Env.extend env var (.int $idx)) := by
@@ -274,7 +274,7 @@ local macro "while_step_case" f:ident : tactic => `(tactic| (
   intro fuel c b hf ihc ihb ihr env hd fuel' hle
   have hf' : ¬ fuel' = 0 := by omega
   unfold $f at hd ⊢
-  simp only [if_neg hf, if_neg hf', stateM_bind_apply] at hd ⊢
+  simp only [ite_eq_right hf, ite_eq_right hf', stateM_bind_apply] at hd ⊢
   rcases hr1 : denote' bi fuel c env with ⟨o1, s1⟩
   have h1 : denote' bi fuel' c env = denote' bi fuel c env := by
     refine ihc env (Or.inr ?_) fuel' hle

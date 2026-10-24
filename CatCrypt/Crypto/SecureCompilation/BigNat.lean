@@ -66,10 +66,10 @@ theorem bignumVal_norm : ∀ l : List (BitVec 64), bignumVal (norm l) = bignumVa
         rw [hxs] at ih
         by_cases hx : x == 0
         · have hx0 : x = 0 := by simpa using hx
-          simp only [hx, bignumVal, if_pos]
+          simp only [hx, bignumVal, ite_eq_left]
           simp [bignumVal, hx0] at ih ⊢
           omega
-        · simp only [hx, if_neg, Bool.not_eq_true] at *
+        · simp only [hx, ite_eq_right, Bool.not_eq_true] at *
           simp only [bignumVal] at ih ⊢
           omega
       | cons y ys =>
@@ -87,7 +87,7 @@ theorem canonical_norm : ∀ l : List (BitVec 64), Canonical (norm l)
         simp only [norm, hxs, Canonical]
         by_cases hx : x = 0
         · simp [hx]
-        · rw [if_neg (by simpa using hx)]
+        · rw [ite_eq_right (by simpa using hx)]
           simp only [List.getLast?_singleton, ne_eq, Option.some.injEq]
           simpa using hx
       | cons y ys =>

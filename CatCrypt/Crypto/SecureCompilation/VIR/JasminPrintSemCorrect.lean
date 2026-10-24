@@ -122,8 +122,8 @@ def Store.set (s : Store) (name : String) {t : JasminTy} (v : ⟦t⟧) : Store :
   show (if h : ((if name = name then ⟨t, v⟩ else s name) : DynVal).ty = t then
           h ▸ ((if name = name then ⟨t, v⟩ else s name) : DynVal).val
         else JasminTy.default t) = v
-  rw [if_pos rfl]
-  simp only [dif_pos]
+  rw [ite_eq_left rfl]
+  simp only [dite_eq_left]
 
 /-- Reading a *different* name is unaffected by a write. -/
 @[simp] theorem Store.get_set_other (s : Store) {name name' : String}
@@ -133,7 +133,7 @@ def Store.set (s : Store) (name : String) {t : JasminTy} (v : ⟦t⟧) : Store :
           hd ▸ ((if name' = name then (⟨t, v⟩ : DynVal) else s name')).val
         else JasminTy.default t')
       = s.get name' t'
-  rw [if_neg h]
+  rw [ite_eq_right h]
   rfl
 
 /-! ## 2. The minimal word-level evaluator for the emitted fragment

@@ -195,7 +195,7 @@ theorem fuse_step (s : Bool) (hq : ∀ q, (slotArr q).isSome = true → hasPrefi
       rcases hp' with rfl | hp'
       · cases s
         · exact h1.1
-        · simp only [if_true, lowHome]
+        · simp only [ite_true, lowHome]
           split
           · rcases hag d with he' | he'
             · rw [he']; exact h1.2
@@ -848,7 +848,7 @@ theorem pairs_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
     have hrmE : physRmap body1 [] =
         fun o =>
           remapOperand body1 (straightCallComposeTable body1 (physTableOut body1 [] [])) o := by
-      simp only [physRmap, hcf, Bool.false_eq_true, if_false]
+      simp only [physRmap, hcf, Bool.false_eq_true, ite_false]
     have hP : ∀ p, slotArr (physRegName p x86Abi) = none := fun p =>
       slotArr_none_of_prefix hslot (hasPrefix_qsave_physRegName p)
     have hg : ∀ x, GoodOp slotArr (physRmap body1 [] x) := by

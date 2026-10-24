@@ -413,7 +413,7 @@ theorem dec_arr_wordsAt (m : AMem) (p : BitVec 64) (n : Nat) :
   have hw : wordsAt m p n = (arrWords m p n).map wordVal := by
     simp [wordsAt, arrWords, wordVal, cellAt, List.map_map, Function.comp_def]
   rw [hw]
-  simp only [dec, hm, Option.bind_some, dif_pos hl]
+  simp only [dec, hm, Option.bind_some, dite_eq_left hl]
   congr 1
   funext j
   simp [arrWords]

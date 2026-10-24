@@ -94,7 +94,7 @@ theorem mkVal_lookup_inputVar :
 theorem stateVal_stateLanes (V : Ctxt.Valuation (d := jasminDialect) (List.replicate 25 r64)) :
     stateVal (stateLanes V) = V := by
   rw [stateVal, mkVal_congr _ (fun i => (KeccakEmit.inputVar 24 i).lookup V) 25
-    (fun i hi => by simp only [stateLanes, dif_pos hi])]
+    (fun i hi => by simp only [stateLanes, dite_eq_left hi])]
   exact mkVal_lookup_inputVar 24 V
 
 /-! ## 2. The FIPS 202 statement -/

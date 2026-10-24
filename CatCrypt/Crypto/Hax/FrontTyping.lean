@@ -149,7 +149,7 @@ theorem varsAt_of_keeps {Δ : Ctxt nfDialect} (σ : NfEnv Δ) :
       refine ⟨.cons (show Var Δ p.2 from hq1 ▸ q.2) v, ?_⟩
       show varsAt σ (p.1 :: ps.map (·.1)) (p.2 :: ps.map (·.2)) = _
       unfold varsAt
-      rw [hq, Option.bind_some, dif_pos hq1, hv]
+      rw [hq, Option.bind_some, dite_eq_left hq1, hv]
       rfl
 
 /-- `varsAt_of_keeps` at names and types given as the projections of `ps`. -/
@@ -334,7 +334,7 @@ theorem litOut_of_litTy {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv 
       · rename_i hs
         simp only [Option.some.injEq] at h
         subst h
-        simp only [litOut, hl, Option.bind_some, hs, if_true]
+        simp only [litOut, hl, Option.bind_some, hs, ite_true]
         exact ⟨_, rfl, rfl, by simp [bind1N]⟩
       · cases h
 
@@ -366,7 +366,7 @@ theorem argsOut_of_atomsTy {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {es : List ImpE
 theorem loOut_of_loTy {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {lo : ImpExpr}
     (h : LoTy (tysOf σ) lo) : ∃ e, loOut σ lo = some e := by
   cases h with
-  | @lit n hn => exact ⟨mkE (.ilit .int n) .nil, by simp only [loOut, if_pos hn]⟩
+  | @lit n hn => exact ⟨mkE (.ilit .int n) .nil, by simp only [loOut, ite_eq_left hn]⟩
   | var hx ht =>
       rw [lookup_tysOf] at hx
       obtain ⟨p, hp, hpt⟩ := Option.map_eq_some_iff.mp hx
@@ -470,7 +470,7 @@ theorem condOut_of_arms {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ �
   obtain ⟨rb, hrb⟩ := varsAt_of_keeps' ob.σ _ _ _ (List.map_append ..).symm
     (List.map_append ..).symm hfb
   simp only [condOut, Option.bind_some]
-  rw [dif_pos hab, hra, Option.bind_some, hrb, Option.map_some]
+  rw [dite_eq_left hab, hra, Option.bind_some, hrb, Option.map_some]
   split
   · rename_i hu
     exact ⟨_, rfl, hu.symm, by
@@ -586,7 +586,7 @@ theorem impToNF_out_of_frontTy {S : String → List NfTy → Option NfTy} {Γ Γ
       obtain ⟨oHi, hHi, htHi, hσHi⟩ := atomOut_of_atomTy (loBind σ eLo).σ
         (by simpa [loBind] using hhi)
       have hc : (boundOk 0 oHi.t || litBoundOk 0 _) = true := htHi ▸ hb
-      simp only [impToNF, hLo, Option.bind_some, hHi, hc, if_true]
+      simp only [impToNF, hLo, Option.bind_some, hHi, hc, ite_true]
       refine loopOut_of_carried tgt _ _ _ _ _ i body (tysOf σ) Γb _
         (by simp [bind1, hσHi, loBind]) (fun σB hσB => ?_) hkeep
       obtain ⟨o, ho, -, hoσ⟩ := impToNF_out_of_frontTy hbody none σB hσB
@@ -597,7 +597,7 @@ theorem impToNF_out_of_frontTy {S : String → List NfTy → Option NfTy} {Γ Γ
       obtain ⟨oHi, hHi, htHi, hσHi⟩ := atomOut_of_atomTy (loBind σ eLo).σ
         (by simpa [loBind] using hhi)
       have hc : (boundOk 0 oHi.t || litBoundOk 0 _) = true := htHi ▸ hb
-      simp only [impToNF, hLo, Option.bind_some, hHi, hc, if_true]
+      simp only [impToNF, hLo, Option.bind_some, hHi, hc, ite_true]
       refine loopOut_of_carried tgt _ _ _ _ _ i body (tysOf σ) Γb _
         (by simp [bind1, hσHi, loBind]) (fun σB hσB => ?_) hkeep
       obtain ⟨o, ho, -, hoσ⟩ := impToNF_out_of_frontTy hbody none σB hσB
@@ -607,7 +607,7 @@ theorem impToNF_out_of_frontTy {S : String → List NfTy → Option NfTy} {Γ Γ
       obtain ⟨oa, hoa, hta, hσa⟩ := impToNF_out_of_frontTy ha none oc.σ hσc
       obtain ⟨ob, hob, htb, hσb⟩ := impToNF_out_of_frontTy hb none oc.σ hσc
       simp only [impToNF, hoc, Option.bind_some]
-      rw [dif_pos htc, hoa, hob]
+      rw [dite_eq_left htc, hoa, hob]
       exact condOut_of_carried _ _ _ a b oa ob _ _ _ _ hσc hσa hσb hta htb hka hkb
 
 /-- **A derivation of the arguments gives an output of `impArgsNF`**, at the derived types
@@ -705,8 +705,8 @@ theorem crateBody_isSome_of_frontTy (fs : List CrateFn) (c : CrateFn) {as : List
     (NFInline.crateBody fs c as r base).isSome := by
   obtain ⟨o, ho, hot, -⟩ := impToNF_out_of_frontTy h none (entryEnv c.params)
     (tysOf_entryEnv _)
-  simp only [NFInline.crateBody, whileFoldFree_of_frontTy h, if_true, ho, Option.bind_some]
-  rw [dif_pos ⟨has, hot⟩]
+  simp only [NFInline.crateBody, whileFoldFree_of_frontTy h, ite_true, ho, Option.bind_some]
+  rw [dite_eq_left ⟨has, hot⟩]
   rfl
 
 end CatCrypt.Crypto.Hax.FrontTyping

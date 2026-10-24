@@ -73,8 +73,8 @@ theorem loadSlot4_get (r0 r1 r2 r3 base : String) (slot : Nat) (s : JState 64)
   simp only [loadSlot4, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.load,
     JState.setReg, JState.get]
   refine ⟨?_, ?_, ?_, ?_⟩ <;>
-    simp only [if_neg (Ne.symm h30), if_neg (Ne.symm h20), if_neg (Ne.symm h10),
-      if_neg (Ne.symm h31), if_neg (Ne.symm h21), if_neg (Ne.symm h32), if_true]
+    simp only [ite_eq_right (Ne.symm h30), ite_eq_right (Ne.symm h20), ite_eq_right (Ne.symm h10),
+      ite_eq_right (Ne.symm h31), ite_eq_right (Ne.symm h21), ite_eq_right (Ne.symm h32), ite_true]
 
 /-- The four limb offsets of a single slot are pairwise distinct: `slotOff slot k`
     differs in `k` (they are `32·slot + 8·k`, an injective function of `k` for the
@@ -177,7 +177,7 @@ theorem loadSlot4_other (r0 r1 r2 r3 base : String) (slot : Nat) (s : JState 64)
     (r : String) (h0 : r ≠ r0) (h1 : r ≠ r1) (h2 : r ≠ r2) (h3 : r ≠ r3) :
     (runBlock s (loadSlot4 r0 r1 r2 r3 base slot)).get r = s.get r := by
   simp only [loadSlot4, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.setReg,
-    JState.get, if_neg h0, if_neg h1, if_neg h2, if_neg h3]
+    JState.get, ite_eq_right h0, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3]
 
 /-- Frame-wrapped modular subtract: load slot `a` into the destination window
     `dregs`, slot `b` into the source window `sregs`, run the emitted SBB borrow

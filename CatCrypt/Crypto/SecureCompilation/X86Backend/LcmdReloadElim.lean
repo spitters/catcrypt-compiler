@@ -433,7 +433,7 @@ theorem isRedundantReloadL_jimage {i j : Linstr} (h : isRedundantReloadL i j = t
   · simp [linstrJ, spillStoreKey_eq_none_of_load hlj, hlj]
   · rw [RedundantReloadElim.dropReloads, RedundantReloadElim.dropReloads,
       RedundantReloadElim.dropReloads, RedundantReloadElim.consDrop,
-      RedundantReloadElim.consDrop, if_pos hrec]
+      RedundantReloadElim.consDrop, ite_eq_left hrec]
   · intro s
     rw [runBlock_cons, runBlock_cons, runBlock_cons,
       RedundantReloadElim.evalInstr_loadMem_storeMem]

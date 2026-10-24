@@ -76,8 +76,8 @@ theorem writeLE_eight_eq_write64 (m : MachineMem64.Mem64) (a v : BitVec 64) :
        try (congr 1; omega))
   · have hne : ∀ k : BitVec 64, k.toNat < 8 → ¬ d = k := fun k hk h => hd (h ▸ hk)
     simp only [hne 7 (by decide), hne 6 (by decide), hne 5 (by decide), hne 4 (by decide),
-      hne 3 (by decide), hne 2 (by decide), hne 1 (by decide), hne 0 (by decide), if_neg hd,
-      if_false]
+      hne 3 (by decide), hne 2 (by decide), hne 1 (by decide), hne 0 (by decide), ite_eq_right hd,
+      ite_false]
 
 /-- `MemSep` is disjointness of eight-byte ranges. -/
 theorem memSep_iff_disj {a b : BitVec 64} :

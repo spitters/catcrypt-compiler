@@ -93,7 +93,7 @@ theorem scanStepF_none_of_not_movInto {j : Linstr} {x : String}
   | some p =>
     obtain ⟨d, s⟩ := p
     have hd := hj d s hm
-    simp only [if_neg hd]
+    simp only [ite_eq_right hd]
     split_ifs <;> simp [hf]
   | none =>
     simp only
@@ -198,7 +198,7 @@ theorem physImgB_flatMap_of_dom {S : String → Prop} (hS : ∀ q, gpNameB q = t
     cases o with
     | succ o => simp at hr
     | zero =>
-      simp only [List.getElem?_singleton, if_true, Option.some.injEq] at hr
+      simp only [List.getElem?_singleton, ite_true, Option.some.injEq] at hr
       subst hr
       refine Or.inr ⟨A.length, by rw [hb]; simp, fun x hx ha => ?_, Or.inl fun R hR => ?_⟩
       · have hSx := hbase i (by rw [hb]; simp) x hx
@@ -597,7 +597,7 @@ theorem physImgB_cmpReload
     cases o with
     | succ o => simp at hr
     | zero =>
-    simp only [List.getElem?_singleton, if_true, Option.some.injEq] at hr
+    simp only [List.getElem?_singleton, ite_true, Option.some.injEq] at hr
     subst hr
     have hent : ∀ R, entryRegB b A.length R = true →
         entryRegB (cmpReload b) ((A.flatMap fun i => cmpReloadI i).length + 0) R = true := by

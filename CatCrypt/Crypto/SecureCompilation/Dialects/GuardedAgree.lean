@@ -346,10 +346,10 @@ theorem semScalar_gWrite {flag : Option String} {S : List String} {x : String} {
       · have h := semScalar_setExpr (x := x) (env := env)
           (e := .SAdd (.SVar x) (.SMul (.SVar f) (.SSub v (.SVar x))))
           ⟨hx, hft, hcl, hx⟩ ⟨fun _ => hxS hmem, fun _ => hfb, hv, fun _ => hxS hmem⟩
-        simpa only [gWrite, gVal, if_pos hmem, SExpr.evalBV] using h
+        simpa only [gWrite, gVal, ite_eq_left hmem, SExpr.evalBV] using h
       · have h := semScalar_setExpr (x := x) (env := env)
           (e := .SMul (.SVar f) v) ⟨hft, hcl⟩ ⟨fun _ => hfb, hv⟩
-        simpa only [gWrite, gVal, if_neg hmem, SExpr.evalBV] using h
+        simpa only [gWrite, gVal, ite_eq_right hmem, SExpr.evalBV] using h
 
 theorem gVal_one {flag : Option String} {S : List String} {x : String} {v : SExpr}
     {env : SEnvScalar} (h1 : flagVal flag env = 1) :
@@ -615,7 +615,7 @@ theorem semScalar_gStore {f i a s : String} {n k : Nat} {env : SEnvScalar}
       = some (envC.upd a (t := encodeTy (.TArr n .TU64))
           (memSetDyn wa (fv * iv).toNat (selectWord fv m sv))) := by
     simp only [semScalar, gWord, Located.locDst, haC, hkC, hgC]
-    exact dif_pos rfl
+    exact dite_eq_left rfl
   refine ⟨envC.upd a (t := encodeTy (.TArr n .TU64))
     (memSetDyn wa (fv * iv).toNat (selectWord fv m sv)), ?_, upd_self_any, ?_⟩
   · rw [gStore, semScalar_seq, hs1, Option.bind_some, semScalar_seq, hs2, Option.bind_some,
@@ -998,7 +998,7 @@ theorem ifConvert_store_on {flag : Option String} {S : List String} {k n : Nat}
         upd_self_any, fun y _ hya _ _ _ => upd_ne_any hya⟩
       show semScalar (.RArrStore ⟨a, .TArr n .TU64⟩ i ⟨s, .TU64⟩) env = _
       simp only [semScalar, Located.locDst, ha, hs, hi]
-      exact dif_pos rfl
+      exact dite_eq_left rfl
   | some f =>
       obtain ⟨j, rfl, hj, h1⟩ := hf f rfl
       obtain ⟨env', hs', ha', hfr⟩ := semScalar_gStore (k := k) (env_of_readU64 h1) hi ha hs
@@ -1222,7 +1222,7 @@ theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
       cases hexec with
       | ifTrue _ _ _ _ _ v hv hv0 hct =>
           have hpos : 0 < rs.rsScalar g := by subst hv; omega
-          rw [if_pos hpos] at hft hfe
+          rw [ite_eq_left hpos] at hft hfe
           obtain ⟨envT, hsT, henvT, hirT, hbT, hgT, htwT, htyTT⟩ :=
             iht (some (guardName k)) S (k + 2) B rs rs' env3 hct (hIR.1 (by omega)) ht'
               (fun f hfe' => by cases hfe'; exact ⟨k, rfl, by omega, by rw [hft]; rfl⟩)
@@ -1243,7 +1243,7 @@ theorem ifConvert_taken {N : Nat} {leafSpec : LeafSpec} {c : LowCT}
           · rw [hTE y hy]; exact htwT y hy hnt
       | ifFalse _ _ _ _ _ hz hce =>
           have hnpos : ¬ 0 < rs.rsScalar g := by omega
-          rw [if_neg hnpos] at hft hfe
+          rw [ite_eq_right hnpos] at hft hfe
           obtain ⟨envT, hsT, hpresT, hbT, hgT, hTT⟩ := ifConvert_skipped ht T τ hT k S (k + 2) B
             env3 (by omega) (by rw [hft]; rfl) hS hb3 hB ht' htok.1 hty.1
             (envTyped_of_tower htw3 htyT hT)
@@ -1653,7 +1653,7 @@ theorem translateDialectGuardedIn_jasmin {N : Nat} {leafSpec : LeafSpec} {c : Lo
     · simp [listTys, hm] at hx
   have happrox : VmApprox (listTys S) vm := fun x t hx => by
     by_cases hm : x ∈ S
-    · simp only [listTys, if_pos hm, Option.some.injEq] at hx
+    · simp only [listTys, ite_eq_left hm, Option.some.injEq] at hx
       subst hx
       exact lookup_of_consistentS hcons (hwS x hm)
     · simp [listTys, hm] at hx
@@ -1858,8 +1858,8 @@ theorem inRangeRunB_sound {N : Nat} {leafSpec : LeafSpec} (k : Nat) :
       | rIfNz _ hct hce =>
           simp only [inRangeRunB] at h
           refine ⟨fun hne => ?_, fun hz => ?_⟩
-          · rw [if_neg hne] at h; exact iht rs hct h
-          · rw [if_pos hz] at h; exact ihe rs hce h
+          · rw [ite_eq_right hne] at h; exact iht rs hct h
+          · rw [ite_eq_left hz] at h; exact ihe rs hce h
   | RArrLoad _ _ _ | RArrStore _ _ _ => intro _ hc _; cases hc
   | _ => intro _ _ _; trivial
 

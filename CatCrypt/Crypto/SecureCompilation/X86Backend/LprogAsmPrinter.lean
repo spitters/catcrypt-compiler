@@ -1610,7 +1610,7 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
 theorem wireWidth?_of_caret_free {m : String} (hm : '^' ∉ m.toList) :
     wireWidth? m = some 64 ∨ wireWidth? m = none := by
   unfold wireWidth?
-  simp only [List.contains_iff_mem, hm, if_false]
+  simp only [List.contains_iff_mem, hm, ite_false]
   split <;> simp
 
 /-- The width a `^`-tagged mnemonic carries, for a body without `^`. -/
@@ -1620,10 +1620,10 @@ theorem wireWidth?_withWidthTag_of_caret_free (w : Nat) {m : String}
   · subst hw
     unfold wireWidth?
     dsimp only
-    rw [if_neg (by rw [toList_withWidthTag_64]; simp [hm]), if_pos (hasSuffix_withWidthTag_64 m)]
+    rw [ite_eq_right (by rw [toList_withWidthTag_64]; simp [hm]), ite_eq_left (hasSuffix_withWidthTag_64 m)]
   · unfold wireWidth?
     dsimp only
-    rw [toList_withWidthTag_of_ne hw, if_pos (by simp),
+    rw [toList_withWidthTag_of_ne hw, ite_eq_left (by simp),
       List.dropWhile_append_of_pos (bne_at_of_not_mem hm)]
     simpa [toString_toList_eq] using charsToNat?_toString_toList w
 
@@ -1632,21 +1632,21 @@ theorem wireWidth?_withWidthTag_of_caret_free (w : Nat) {m : String}
 theorem stripWidthTag_withWidthTag_of_ne {w : Nat} (hw : w ≠ 64) {m : String}
     (hm : '^' ∉ m.toList) : stripWidthTag (withWidthTag w m) = m := by
   unfold stripWidthTag
-  rw [toList_withWidthTag_of_ne hw, if_pos (by simp)]
+  rw [toList_withWidthTag_of_ne hw, ite_eq_left (by simp)]
   simp [List.takeWhile_append_of_pos (bne_at_of_not_mem hm)]
 
 /-- `untagCaret` of a tag at a width other than `64` is the body. -/
 theorem untagCaret_withWidthTag {w : Nat} (hw : w ≠ 64) {m : String}
     (hm : '^' ∉ m.toList) : untagCaret (withWidthTag w m) = m := by
   unfold untagCaret
-  rw [wireWidth?_withWidthTag_of_caret_free w hm, if_pos (by rw [toList_withWidthTag_of_ne hw]; simp),
-    if_neg (by simpa using hw), stripWidthTag_withWidthTag_of_ne hw hm]
+  rw [wireWidth?_withWidthTag_of_caret_free w hm, ite_eq_left (by rw [toList_withWidthTag_of_ne hw]; simp),
+    ite_eq_right (by simpa using hw), stripWidthTag_withWidthTag_of_ne hw hm]
 
 /-- `untagCaret` fixes a mnemonic without `^`. -/
 theorem untagCaret_of_caret_free {m : String} (hm : '^' ∉ m.toList) :
     untagCaret m = m := by
   unfold untagCaret
-  rw [if_neg (by simpa using hm)]
+  rw [ite_eq_right (by simpa using hm)]
 
 /-- No mnemonic without `^` is refused. -/
 theorem narrowShiftRefused_of_caret_free {m : String} (hm : '^' ∉ m.toList) :
@@ -1694,7 +1694,7 @@ theorem renderLopn_retag32 (frame spillW : Nat) (rvs : Bool) (dsts : List LOpera
     renderLopn frame spillW rvs dsts (withWidthTag w m) srcs qsaveB
       = renderLopn frame spillW rvs dsts m srcs qsaveB := by
   unfold renderLopn
-  simp only [hr, narrowShiftRefused_of_caret_free hm, Bool.false_eq_true, if_false,
+  simp only [hr, narrowShiftRefused_of_caret_free hm, Bool.false_eq_true, ite_false,
     untagCaret_withWidthTag hw hm, untagCaret_of_caret_free hm]
 
 /-- The tags `^32`, `^16` and `^8` on an ALU head (a body without a width-tag
@@ -1734,7 +1734,7 @@ theorem renderLopn_narrowShift_refused (frame spillW : Nat) (rvs : Bool)
     rcases hb with rfl | ⟨k, rfl⟩ <;> rcases hm with rfl | rfl | rfl <;>
       simp
   unfold renderLopn
-  rw [if_pos]
+  rw [ite_eq_left]
   unfold narrowShiftRefused
   rw [wireWidth?_withWidthTag_of_caret_free w hbc, stripWidthTag_withWidthTag_of_ne (by omega) hbc,
     hbase]

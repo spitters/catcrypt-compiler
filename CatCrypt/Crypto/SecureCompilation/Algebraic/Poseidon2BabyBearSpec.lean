@@ -123,36 +123,36 @@ theorem Agrees.after {Γ : Ctxt fieldDialect} {st : BState Γ} {V : Ctxt.Valuati
     refine ⟨fun i => ?_, fun j => h.2 j⟩
     by_cases hi : i = dst
     · subst hi
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rw [← h.get a, ← h.get b]
       rfl
-    · simp only [BState.after, stepSem, hi, if_false]
+    · simp only [BState.after, stepSem, hi, ite_false]
       exact h.1 i
   | mul dst a b =>
     refine ⟨fun i => ?_, fun j => h.2 j⟩
     by_cases hi : i = dst
     · subst hi
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rw [← h.get a, ← h.get b]
       rfl
-    · simp only [BState.after, stepSem, hi, if_false]
+    · simp only [BState.after, stepSem, hi, ite_false]
       exact h.1 i
   | copy dst a =>
     refine ⟨fun i => ?_, fun j => h.2 j⟩
     by_cases hi : i = dst
     · subst hi
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rw [← h.get a]
       rfl
-    · simp only [BState.after, stepSem, hi, if_false]
+    · simp only [BState.after, stepSem, hi, ite_false]
       exact h.1 i
   | konst j₀ c =>
     refine ⟨fun i => h.1 i, fun j => ?_⟩
     by_cases hj : j = j₀
     · subst hj
-      simp only [BState.after, stepSem, if_true]
+      simp only [BState.after, stepSem, ite_true]
       rfl
-    · simp only [BState.after, stepSem, hj, if_false]
+    · simp only [BState.after, stepSem, hj, ite_false]
       exact h.2 j
 
 /-- **Denotation of `run`.** If `st` agrees with `σ` under `V` and the
@@ -196,7 +196,7 @@ theorem laneSlot_ne (i : Fin 16) (k : Fin 24) (hk : 16 ≤ k.val) : laneSlot i �
 theorem constVal_cExt (r : Fin 8) (i : Fin 16) :
     constVal (cExt r i) = fullRoundConstants r i := by
   have h : (cExt r i).val < 128 := by simp [cExt]; omega
-  refine (dif_pos h).trans ?_
+  refine (dite_eq_left h).trans ?_
   have hi : i.val < 16 := i.isLt
   have hr : r.val < 8 := r.isLt
   congr 1
@@ -206,13 +206,13 @@ theorem constVal_cExt (r : Fin 8) (i : Fin 16) :
 theorem constVal_cInt (r : Fin 13) : constVal (cInt r) = partialRoundConstants r := by
   have h : ¬ (cInt r).val < 128 := by simp [cInt]
   have h' : (cInt r).val < 141 := by simp [cInt]; omega
-  refine (dif_neg h).trans ((dif_pos h').trans ?_)
+  refine (dite_eq_right h).trans ((dite_eq_left h').trans ?_)
   exact congrArg partialRoundConstants (Fin.ext (by simp [cInt]))
 
 theorem constVal_cDiag (i : Fin 16) : constVal (cDiag i) = diagV i := by
   have h : ¬ (cDiag i).val < 128 := by simp [cDiag]; omega
   have h' : ¬ (cDiag i).val < 141 := by simp [cDiag]
-  refine (dif_neg h).trans ((dif_neg h').trans ?_)
+  refine (dite_eq_right h).trans ((dite_eq_right h').trans ?_)
   exact congrArg diagV (Fin.ext (by simp [cDiag]))
 
 /-! ## 3. Lane effects -/
@@ -407,7 +407,7 @@ theorem colSumSteps_eff : Eff colSumSteps colSumMap := by
         simp only [Sem.get, hτ])
     _ (List.nodup_finRange 16) σ₁ (fun _ => rfl)
   refine ⟨c₂.trans (c₁.trans hσ), funext fun j => ?_⟩
-  rw [l₂ j, if_pos (List.mem_finRange j), s₁, l₁]
+  rw [l₂ j, ite_eq_left (List.mem_finRange j), s₁, l₁]
   rfl
 
 theorem externalMDSSteps_eff : Eff externalMDSSteps externalMDS :=
@@ -466,7 +466,7 @@ theorem internalMDSSteps_eff : Eff internalMDSSteps internalMDS := by
         · simp [semRun_cons, semRun_nil, lanes, hj, laneSlot_eq_iff])
     _ (List.nodup_finRange 16) _ ⟨a₁, c₁.trans hσ⟩
   refine ⟨c₂.trans (c₁.trans hσ), funext fun j => ?_⟩
-  rw [l₂ j, if_pos (List.mem_finRange j), l₁]
+  rw [l₂ j, ite_eq_left (List.mem_finRange j), l₁]
   rfl
 
 theorem internalRoundSteps_eff (r : Fin 13) :
@@ -504,11 +504,11 @@ theorem constSteps_semRun (l : List (Fin 157)) (σ : Sem) :
     rw [List.map_cons, semRun_cons, h₂ j]
     simp only [stepSem, List.mem_cons]
     by_cases hm : j ∈ l
-    · exact (if_pos hm).trans (if_pos (Or.inr hm)).symm
+    · exact (ite_eq_left hm).trans (ite_eq_left (Or.inr hm)).symm
     by_cases hj : j = j₀
     · subst hj
-      exact (if_neg hm).trans ((if_pos rfl).trans (if_pos (Or.inl rfl)).symm)
-    · exact (if_neg hm).trans ((if_neg hj).trans (if_neg (by tauto)).symm)
+      exact (ite_eq_right hm).trans ((ite_eq_left rfl).trans (ite_eq_left (Or.inl rfl)).symm)
+    · exact (ite_eq_right hm).trans ((ite_eq_right hj).trans (ite_eq_right (by tauto)).symm)
 
 /-! ## 6. The permutation -/
 
@@ -531,7 +531,7 @@ theorem constSteps_eff (σ : Sem) :
     (semRun constSteps σ).lane = σ.lane ∧ (semRun constSteps σ).const = constVal := by
   unfold constSteps
   obtain ⟨hl, hc⟩ := constSteps_semRun (List.finRange 157) σ
-  exact ⟨hl, funext fun j => (hc j).trans (if_pos (List.mem_finRange j))⟩
+  exact ⟨hl, funext fun j => (hc j).trans (ite_eq_left (List.mem_finRange j))⟩
 
 theorem applyExternalPrefix_eq_foldl (x : Fin width → F) :
     applyExternalPrefix halfFullRounds (by decide) x =
@@ -622,7 +622,7 @@ theorem permComAt_spec (i : Fin 16) (V : Ctxt.Valuation inCtxt) :
     funext k
     simp only [lanes]
     rw [show (semRun constSteps σ₀).lane = σ₀.lane from hl]
-    simp only [σ₀, initState, laneSlot, inputState, k.isLt, if_pos]
+    simp only [σ₀, initState, laneSlot, inputState, k.isLt, ite_eq_left]
     rfl
   rw [hin] at e
   simp only [lanes] at e

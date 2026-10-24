@@ -64,12 +64,12 @@ def scfIf {σ : Type _} (cond : σ → Bool) (thn els : σ → σ) : σ → σ :
 /-- When the guard fires, `scfIf` takes the `then` branch. -/
 @[simp] theorem scfIf_true {σ : Type _} (cond : σ → Bool) (thn els : σ → σ)
     (s : σ) (h : cond s = true) : scfIf cond thn els s = thn s := by
-  simp only [scfIf, h, if_true]
+  simp only [scfIf, h, ite_true]
 
 /-- When the guard is false, `scfIf` takes the `else` branch. -/
 @[simp] theorem scfIf_false {σ : Type _} (cond : σ → Bool) (thn els : σ → σ)
     (s : σ) (h : cond s = false) : scfIf cond thn els s = els s := by
-  simp only [scfIf, h, Bool.false_eq_true, if_false]
+  simp only [scfIf, h, Bool.false_eq_true, ite_false]
 
 /-- A conditional with identical branches is that branch (irrespective of the
     guard) — the branch is dead, so the data-dependence collapses. -/
@@ -99,14 +99,14 @@ def scfWhile {σ : Type _} (fuel : Nat) (guard : σ → Bool) (step : σ → σ)
 theorem scfWhile_guard_false {σ : Type _} (fuel : Nat) (guard : σ → Bool)
     (step : σ → σ) (s : σ) (h : guard s = false) :
     scfWhile (fuel + 1) guard step s = s := by
-  simp only [scfWhile, h, Bool.false_eq_true, if_false]
+  simp only [scfWhile, h, Bool.false_eq_true, ite_false]
 
 /-- Guard true at entry: peel one iteration — run `step`, then loop on the
     remaining fuel. -/
 theorem scfWhile_guard_true {σ : Type _} (fuel : Nat) (guard : σ → Bool)
     (step : σ → σ) (s : σ) (h : guard s = true) :
     scfWhile (fuel + 1) guard step s = scfWhile fuel guard step (step s) := by
-  simp only [scfWhile, h, if_true]
+  simp only [scfWhile, h, ite_true]
 
 /-- **Tie to the counted loop.** When the guard is identically true, the
     fuel-bounded guarded loop is exactly the counted `scfRepeat` over the same

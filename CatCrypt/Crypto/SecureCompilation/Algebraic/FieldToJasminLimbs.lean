@@ -220,50 +220,50 @@ theorem blockSquareV :
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL P (.fAdd P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fAddF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact addBlk_denote P _ _ _ (opX_length _ _) (opY_length _ _) a b (nv_encX P a _)
       (nv_encY P _ b _)
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL P (.fMul P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fMulF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact mulBlkRoute_denote P _ _ _ (opX_length _ _) (opY_length _ _) a b (nv_encX P a _)
       (nv_encY P _ b _)
   · obtain ⟨⟩ := vals
     show (lowerOpL P (.fConst P.p c)).denote .nil = encL P (t := .fp P.p) (fConstF c)
-    rw [encL_fp, lowerOpL, dif_pos rfl]
+    rw [encL_fp, lowerOpL, dite_eq_left rfl]
     exact constBlk_denote _ _ _
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fCopy P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fCopyF a)
-    rw [encL_fp, lowerOpL, if_pos rfl, retN_denote _ _ _ (opX_length _ _), nv_encX]
+    rw [encL_fp, lowerOpL, ite_eq_left rfl, retN_denote _ _ _ (opX_length _ _), nv_encX]
     rfl
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpL P (.fSub P.p)).denote (hvAppend (encL P a) (hvAppend (encL P b) .nil))
       = encL P (t := .fp P.p) (fSubF a b)
-    rw [encL_fp, encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact subBlk_denote_enc P _ _ _ (opX_length _ _) (opY_length _ _) a b (nv_encX P a _)
       (nv_encY P _ b _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fNeg P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fNegF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact negBlk_denote_enc P _ _ (opX_length _ _) a (nv_encX P a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fieldDouble P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fDoubleF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact addBlk_denote P _ _ _ (opX_length _ _) (opX_length _ _) a a (nv_encX P a _)
       (nv_encX P a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fieldSquare P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fSquareF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact sqrBlk_denote P _ _ (opX_length _ _) a (nv_encX P a _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpL P (.fInv P.p)).denote (hvAppend (encL P a) .nil)
       = encL P (t := .fp P.p) (fInvF a)
-    rw [encL_fp, encL_fp, lowerOpL, if_pos rfl]
+    rw [encL_fp, encL_fp, lowerOpL, ite_eq_left rfl]
     exact invBlk_denote_inv P hp _ _ (opX_length _ _) a (nv_encX P a _)
 
 /-- **Denotation preservation of `fieldDialect → jasminDialect` over `n` limbs in
@@ -457,7 +457,7 @@ theorem storeVal_get_lt (o : Fin n → BitVec 64) (i : Nat) :
       rw [storeVal_get_lt _ i (j + 1) L (by omega) (by omega)]
       obtain ⟨n', rfl⟩ : ∃ n', n = n' + 1 := ⟨n - 1, by omega⟩
       simp only [stackGet, stackSet]
-      rw [if_neg]
+      rw [ite_eq_right]
       intro he
       have := congrArg Fin.val he
       simp only [Nat.mod_eq_of_lt (show i < n' + 1 by omega),
@@ -475,7 +475,7 @@ theorem arrLimbs_storeVal :
       rw [arrLimbs_storeVal _ (j + 1) L (by omega),
         storeVal_get_lt _ j (j + 1) L (by omega) (by omega)]
       obtain ⟨n', rfl⟩ : ∃ n', n = n' + 1 := ⟨n - 1, by omega⟩
-      simp only [stackGet, stackSet, if_true]
+      simp only [stackGet, stackSet, ite_true]
 
 theorem storeLimbs_denote (hn : n < 2 ^ 64) :
     ∀ {Δ : Ctxt jasminDialect} (m j : Nat) (o : Var Δ (arrTy n)) (h : Ctxt.Hom (Rn m) Δ)

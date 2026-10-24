@@ -291,7 +291,7 @@ theorem run2_eq_denoteZ {w B out : ℕ} {c : Com jasminDialect (C2 w) (.reg w)}
     ⟨⟨by simp [rd], by simp [rd]; omega⟩, ⟨by simp [rd], by simp [rd]; omega⟩, trivial⟩
   obtain ⟨h1, -, h3⟩ := denote_eq_denoteZ_of_boundsOk false _ c _ hb _ hV
   refine ⟨h1, ?_⟩
-  simp only [rd, Bool.false_eq_true, if_false] at h3
+  simp only [rd, Bool.false_eq_true, ite_false] at h3
   exact_mod_cast h3
 
 /-- The side condition of the Montgomery block: `p · montInv ≡ −1 (mod 2 ^ w)`, the

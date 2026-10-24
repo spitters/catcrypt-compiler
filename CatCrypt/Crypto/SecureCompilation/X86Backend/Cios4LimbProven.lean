@@ -108,13 +108,13 @@ theorem addc_recon (x y : BitVec 64) (cin : BitVec 1) :
   simp only [addCarryWord, carryOutBit, BitVec.toNat_add, BitVec.toNat_ofNat]
   rw [Nat.mod_eq_of_lt (show cin.toNat < 2 ^ 64 by omega)]
   by_cases hc : x.toNat + y.toNat + cin.toNat ≥ 2 ^ 64
-  · rw [if_pos hc]
+  · rw [ite_eq_left hc]
     have e : (1 : BitVec 1).toNat = 1 := rfl
     rw [e, Nat.add_mod,
       Nat.mod_eq_of_lt (show (x.toNat + y.toNat) % 2 ^ 64 < 2 ^ 64 from
         Nat.mod_lt _ (by positivity))]
     omega
-  · rw [if_neg hc]
+  · rw [ite_eq_right hc]
     have e : (0 : BitVec 1).toNat = 0 := rfl
     rw [e,
       Nat.mod_eq_of_lt (show (x.toNat + y.toNat) % 2 ^ 64 + cin.toNat < 2 ^ 64 by

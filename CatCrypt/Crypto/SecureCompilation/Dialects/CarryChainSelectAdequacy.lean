@@ -149,7 +149,7 @@ theorem semLowerSExpr_off_tmp :
       intro env env₂ cnt cnt' nm s h hs
       simp only [semLowerSExpr, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, -, -⟩ := h
-      simp only [SEnvScalar.upd, if_neg (ne_tmpName_of_not_isTmp hs cnt)]
+      simp only [SEnvScalar.upd, ite_eq_right (ne_tmpName_of_not_isTmp hs cnt)]
   | SAdd a b iha ihb | SSub a b iha ihb | SMul a b iha ihb | SAnd a b iha ihb
   | SXor a b iha ihb | SShl a b iha ihb | SShr a b iha ihb
   | SMulHiU a b iha ihb =>
@@ -164,7 +164,7 @@ theorem semLowerSExpr_off_tmp :
               · next va vb _ _ =>
                   simp only [Option.some.injEq, Prod.mk.injEq] at h
                   obtain ⟨rfl, -, -⟩ := h
-                  simp only [SEnvScalar.upd, if_neg (ne_tmpName_of_not_isTmp hs c2)]
+                  simp only [SEnvScalar.upd, ite_eq_right (ne_tmpName_of_not_isTmp hs c2)]
                   rw [ihb e1 e2 c1 c2 nb s h2 hs, iha env e1 cnt c1 na s h1 hs]
               · exact absurd h (by simp)
           · exact absurd h (by simp)
@@ -195,7 +195,7 @@ theorem semScalar_setExpr_eq {x : String} {e : SExpr} {env env' : SEnvScalar}
       subst h
       refine ⟨by simp [SEnvScalar.upd], ?_⟩
       intro s hs hne
-      simp only [SEnvScalar.upd, if_neg hne]
+      simp only [SEnvScalar.upd, ite_eq_right hne]
       exact semLowerSExpr_off_tmp e env env₂ 0 k nm s hlow hs
 
 /-- The word reader after one scalar assignment, at the assigned slot. -/

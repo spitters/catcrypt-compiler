@@ -244,7 +244,7 @@ theorem newCells_sound{w : Nat} (P : PubSet) (i : JInstr w) {s₁ s₂ : JState 
     · rename_i h
       simp only [List.mem_singleton] at hc
       subst hc
-      simp only [evalInstr, JState.store, and_self, if_true, opPub_eval h hag]
+      simp only [evalInstr, JState.store, and_self, ite_true, opPub_eval h hag]
     · simp at hc
   | _ => simp [newCells] at hc
 
@@ -1259,32 +1259,32 @@ theorem invertSym_not_mem_callees :
 /-- `shippedCalls` is a `ShippedModel`. -/
 theorem shippedCalls_model : ShippedModel shippedCalls where
   mul s := by
-    simp only [shippedCalls, leafCalls, leafOut, if_neg (show mulSym ≠ invertSym by decide)]
+    simp only [shippedCalls, leafCalls, leafOut, ite_eq_right (show mulSym ≠ invertSym by decide)]
     exact ⟨rfl, rfl⟩
   sqr s := by
-    simp only [shippedCalls, leafCalls, leafOut, if_neg (show sqrSym ≠ invertSym by decide),
-      if_neg (show sqrSym ≠ mulSym by decide)]
+    simp only [shippedCalls, leafCalls, leafOut, ite_eq_right (show sqrSym ≠ invertSym by decide),
+      ite_eq_right (show sqrSym ≠ mulSym by decide)]
     exact ⟨rfl, rfl⟩
   add s := by
-    simp only [shippedCalls, leafCalls, leafOut, if_neg (show addSym ≠ invertSym by decide),
-      if_neg (show addSym ≠ mulSym by decide), if_neg (show addSym ≠ sqrSym by decide)]
+    simp only [shippedCalls, leafCalls, leafOut, ite_eq_right (show addSym ≠ invertSym by decide),
+      ite_eq_right (show addSym ≠ mulSym by decide), ite_eq_right (show addSym ≠ sqrSym by decide)]
     exact ⟨rfl, rfl⟩
   sub s := by
-    simp only [shippedCalls, leafCalls, leafOut, if_neg (show subSym ≠ invertSym by decide),
-      if_neg (show subSym ≠ mulSym by decide), if_neg (show subSym ≠ sqrSym by decide),
-      if_neg (show subSym ≠ addSym by decide)]
+    simp only [shippedCalls, leafCalls, leafOut, ite_eq_right (show subSym ≠ invertSym by decide),
+      ite_eq_right (show subSym ≠ mulSym by decide), ite_eq_right (show subSym ≠ sqrSym by decide),
+      ite_eq_right (show subSym ≠ addSym by decide)]
     exact ⟨rfl, rfl⟩
   join16 s := by
-    simp only [shippedCalls, leafCalls, leafOut, if_neg (show join16Sym ≠ invertSym by decide),
-      if_neg (show join16Sym ≠ mulSym by decide), if_neg (show join16Sym ≠ sqrSym by decide),
-      if_neg (show join16Sym ≠ addSym by decide), if_neg (show join16Sym ≠ subSym by decide)]
+    simp only [shippedCalls, leafCalls, leafOut, ite_eq_right (show join16Sym ≠ invertSym by decide),
+      ite_eq_right (show join16Sym ≠ mulSym by decide), ite_eq_right (show join16Sym ≠ sqrSym by decide),
+      ite_eq_right (show join16Sym ≠ addSym by decide), ite_eq_right (show join16Sym ≠ subSym by decide)]
     exact ⟨rfl, rfl⟩
   packSign s := by
     simp only [shippedCalls, leafCalls, leafOut,
-      if_neg (show packSignSym ≠ invertSym by decide),
-      if_neg (show packSignSym ≠ mulSym by decide), if_neg (show packSignSym ≠ sqrSym by decide),
-      if_neg (show packSignSym ≠ addSym by decide), if_neg (show packSignSym ≠ subSym by decide),
-      if_neg (show packSignSym ≠ join16Sym by decide)]
+      ite_eq_right (show packSignSym ≠ invertSym by decide),
+      ite_eq_right (show packSignSym ≠ mulSym by decide), ite_eq_right (show packSignSym ≠ sqrSym by decide),
+      ite_eq_right (show packSignSym ≠ addSym by decide), ite_eq_right (show packSignSym ≠ subSym by decide),
+      ite_eq_right (show packSignSym ≠ join16Sym by decide)]
     exact ⟨rfl, rfl⟩
   invert s := by
     have h := segs_congr (C := shippedCalls) (C' := leafCalls)

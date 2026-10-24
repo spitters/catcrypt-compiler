@@ -237,7 +237,7 @@ theorem reachesIn_loopNode {prog : List M.Instr} {g top foot exit₀ ng nb : Nat
   | zero => exact ⟨hg.congr (by omega) (by simp [loopLeak]) (by simp) rfl, hpre 0 s h⟩
   | succ k =>
     obtain ⟨hl, hi⟩ := reachesIn_loop hbody hfoot hinv k (G s) (hpre (k + 1) s h)
-    rw [if_neg (Nat.succ_ne_zero k)] at hg
+    rw [ite_eq_right (Nat.succ_ne_zero k)] at hg
     exact ⟨(hg.trans hl).congr rfl rfl (by simp) rfl, hi⟩
 
 /-! ## Constant time from the leakage of one step -/

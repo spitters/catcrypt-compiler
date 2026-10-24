@@ -106,7 +106,7 @@ theorem zmmPackQ_is_tile_lowering (bop : JasminBinOp) (a b : BitVec 512) :
   funext k
   rw [lowerRegInstr_denote]
   simp only [zmmBvToTile, zmmPackQ, TileState.get, TileState.set, evalRegInstr,
-    String.reduceEq, if_true, if_false, zmmOfLanes_zmmLane]
+    String.reduceEq, ite_true, ite_false, zmmOfLanes_zmmLane]
 
 /-! ## 3. CROSS-LANE bridge — ZMM variable qword permute is the tile `permxv`
 
@@ -145,7 +145,7 @@ theorem zmmPermXvar_is_tile_permxv (idx a : BitVec 512) :
   -- both sides reduce to `zmmLane a ⟨(zmmLane idx i).toNat % 8, _⟩`; only the
   -- `Fin 8` proof terms of the source index differ (proof-irrelevant).
   simp only [zmmBvToTile, zmmPermXvar, evalTileOp, TileState.get, TileState.set,
-    String.reduceEq, if_true, if_false, zmmOfLanes_zmmLane]
+    String.reduceEq, ite_true, ite_false, zmmOfLanes_zmmLane]
 
 /-! ## 4. The consolidation, stated
 

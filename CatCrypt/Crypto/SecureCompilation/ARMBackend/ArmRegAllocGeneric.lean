@@ -116,14 +116,14 @@ instance instMemMachineAMemState : MemMachine AMemState where
     -- `setReg r (get r) = m`: writing a register a value it already holds is a no-op.
     unfold AMemState.setReg AMemState.get
     by_cases hz : r = "wzr"
-    · cases m with | mk st mem => simp only [AState.set, hz, if_true]
+    · cases m with | mk st mem => simp only [AState.set, hz, ite_true]
     · cases m with
       | mk st mem =>
-        simp only [AState.get, hz, if_false]
+        simp only [AState.get, hz, ite_false]
         congr 1
         cases st with
         | mk regs =>
-          simp only [AState.set, hz, if_false]
+          simp only [AState.set, hz, ite_false]
           congr 1
           funext r'
           by_cases h : r' = r <;> simp [h]

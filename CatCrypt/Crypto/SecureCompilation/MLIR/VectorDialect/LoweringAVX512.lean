@@ -511,7 +511,7 @@ theorem lowerAVX512_map_denote (L : LeafSem) {w : LaneWidth} (t : LaneOp w)
     (hv : (lowerInst t).valid = true) :
     (lowerAVX512 t).map (fun i => VectorOp.Result.vec (i.denote512 L))
       = some (denoteVectorOp (t.toVectorOp L)) := by
-  simp only [lowerAVX512, hv, if_true, Option.map_some, lowerInst_denote]
+  simp only [lowerAVX512, hv, ite_true, Option.map_some, lowerInst_denote]
 
 /-! ## 7. Rejected forms and required features -/
 

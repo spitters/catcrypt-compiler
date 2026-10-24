@@ -84,7 +84,7 @@ theorem diagonal_unit_unitary {d : ℕ} (f : Fin d → ℂ)
   simp only [Matrix.diagonal, Matrix.one_apply]
   split_ifs with h
   · subst h
-    simp only [Matrix.of_apply, if_true]
+    simp only [Matrix.of_apply, ite_true]
     change f i * starRingEnd ℂ (f i) = 1
     rw [Complex.mul_conj, Complex.normSq_eq_norm_sq]
     simp [hf i]

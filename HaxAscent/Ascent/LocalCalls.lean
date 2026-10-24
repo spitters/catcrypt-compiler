@@ -76,7 +76,7 @@ theorem leaf_of_fnCorres {bi : Builtins} {fn : LocalFn} {A β : Type} [HaxArgs A
     (hlen : (encArgs a).length = fn.params.length) :
     fn.leaf bi (encArgs a) = some (enc (g a)) := by
   obtain ⟨fuel₀, hrun⟩ := h a hG
-  simp only [leaf, if_pos hlen]
+  simp only [leaf, ite_eq_left hlen]
   exact haxEval_eq hrun
 
 end LocalFn

@@ -375,7 +375,7 @@ theorem genFold_split (full : List String) (pfx : String) (n : Nat)
   have hne : ¬ ((full.drop 8).isEmpty = true) := by
     simp only [List.isEmpty_iff, ← List.length_eq_zero_iff, hd8]
     omega
-  rw [genFold_unfold, if_neg hne]
+  rw [genFold_unfold, ite_eq_right hne]
   rfl
 
 /-- **One Solinas fold computes `solinasFold` of its input limbs' value.** The

@@ -607,8 +607,8 @@ theorem montInternalRound_eq (s : Fin width → F) (c : F) :
     funext i
     simp only [vForm, sboxLane0]
     by_cases h : i.val = 0
-    · simp only [h, if_true, ← bbMontForm_add, montSbox_eq]
-    · simp only [h, if_false]
+    · simp only [h, ite_true, ← bbMontForm_add, montSbox_eq]
+    · simp only [h, ite_false]
   rw [hstate]
   exact montInternalMDS_eq _
 
@@ -679,7 +679,7 @@ theorem montApplyExternalPrefix_eq (n : ℕ) (h : n ≤ fullRounds) (s : Fin wid
         externalMDS (fun i => montSbox (montAddRoundConstants
           (montApplyExternalPrefix k (vForm s)) (montFullRoundConstants ⟨k, hkx⟩) i))
       else montApplyExternalPrefix k (vForm s)) = _
-    rw [dif_pos hk, ih hk']
+    rw [dite_eq_left hk, ih hk']
     show externalMDS (fun i => montSbox (montAddRoundConstants
         (vForm (applyExternalPrefix k hk' s)) (vForm (fullRoundConstants ⟨k, hk⟩)) i)) = _
     rw [montExternalRound_eq]
@@ -689,7 +689,7 @@ theorem montApplyExternalPrefix_eq (n : ℕ) (h : n ≤ fullRounds) (s : Fin wid
     change _ = dite (k < fullRounds)
       (fun hkx => externalRound (applyExternalPrefix k hk' s) (fullRoundConstants ⟨k, hkx⟩))
       (fun _ => applyExternalPrefix k hk' s)
-    rw [dif_pos hk]
+    rw [dite_eq_left hk]
 
 /-- Generalized partial-rounds recursor lift (parametric in iteration count
     `n`, with the bound `partialRounds` fixed). -/
@@ -713,9 +713,9 @@ theorem montPartialRec_eq (n : ℕ) (s : Fin width → F) :
           else (_ : Fin width → F) i) else _) = _
     rw [ih]
     by_cases hk : k < partialRounds
-    · simp only [dif_pos hk, montPartialRoundConstants]
+    · simp only [dite_eq_left hk, montPartialRoundConstants]
       exact montInternalRound_eq _ _
-    · simp only [dif_neg hk]
+    · simp only [dite_eq_right hk]
 
 /-- The Montgomery partial rounds lift through `φ`. -/
 theorem montApplyAllPartialRounds_eq (s : Fin width → F) :
@@ -743,9 +743,9 @@ theorem montSuffixRec_eq (n : ℕ) (s : Fin width → F) :
           (montFullRoundConstants ⟨halfFullRounds + k, hk⟩) i)) else _) = _
     rw [ih]
     by_cases hk : halfFullRounds + k < fullRounds
-    · simp only [dif_pos hk, montFullRoundConstants]
+    · simp only [dite_eq_left hk, montFullRoundConstants]
       exact montExternalRound_eq _ _
-    · simp only [dif_neg hk]
+    · simp only [dite_eq_right hk]
 
 /-- The Montgomery external suffix lifts through `φ`. -/
 theorem montApplyExternalSuffix_eq (s : Fin width → F) :

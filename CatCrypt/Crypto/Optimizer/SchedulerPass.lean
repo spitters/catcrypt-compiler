@@ -613,7 +613,7 @@ theorem bubble_exec_iff (N : Nat) (leafSpec : LeafSpec) :
     intro rs rs'
     have hindep : indep s1 s2 = true := by
       have := hcond; simp only [Bool.and_eq_true] at this; exact this.1
-    simp only [bubble, if_pos hcond]
+    simp only [bubble, ite_eq_left hcond]
     rw [block_cons_iff]
     constructor
     · rintro ⟨m, hs2, hr⟩
@@ -628,7 +628,7 @@ theorem bubble_exec_iff (N : Nat) (leafSpec : LeafSpec) :
       exact ⟨m, hs2, by rw [ih]; exact hr⟩
   | case4 s1 s2 rest hcond ih =>
     intro rs rs'
-    simp only [bubble, if_neg hcond]
+    simp only [bubble, ite_eq_right hcond]
     rw [block_cons_iff, block_cons_iff]
     constructor
     · rintro ⟨m, hs1, hr⟩; exact ⟨m, hs1, (ih m rs').mp hr⟩
@@ -710,12 +710,12 @@ theorem bubble_cmdCT_eq (lt : LevelTable) (leafCT : LeafCTTable) :
   | case2 s => simp only [bubble]
   | case3 s1 s2 rest hcond ih =>
     -- bubble (s1::s2::rest) = s2 :: bubble (s1::rest)
-    simp only [bubble, if_pos hcond]
+    simp only [bubble, ite_eq_left hcond]
     rw [cmdCT_blockToCmd, cmdCT_blockToCmd] at ih ⊢
     simp only [List.all_cons] at ih ⊢
     rw [ih]; ac_rfl
   | case4 s1 s2 rest hcond ih =>
-    simp only [bubble, if_neg hcond]
+    simp only [bubble, ite_eq_right hcond]
     rw [cmdCT_blockToCmd, cmdCT_blockToCmd] at ih ⊢
     simp only [List.all_cons] at ih ⊢
     rw [ih]

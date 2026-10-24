@@ -84,7 +84,7 @@ theorem caret_free_untagCaret (o : String) :
   · rename_i h
     have hs : '^' ∉ (stripWidthTag o).toList := by
       unfold stripWidthTag
-      rw [if_pos h]
+      rw [ite_eq_left h]
       simpa using caret_not_mem_takeWhile o.toList
     split
     · simp [String.toList_append, hs]

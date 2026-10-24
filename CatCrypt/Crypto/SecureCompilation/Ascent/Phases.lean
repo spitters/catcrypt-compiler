@@ -251,7 +251,7 @@ theorem corres_setScalarW (name : String) (n : Nat) :
   intro x
   by_cases hx : x = name
   · subst hx; simp [SEnvScalar.upd]
-  · simp only [SEnvScalar.upd, if_neg hx]
+  · simp only [SEnvScalar.upd, ite_eq_right hx]
     exact (‹SRW env φ›) x
 
 /-! ## Worked example 1: the live `corres_setScalar` re-derived as `WA ∘ TS`

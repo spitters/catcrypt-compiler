@@ -125,7 +125,7 @@ theorem whileIterLeak_prefix {cs : List d.Ty}
       obtain ⟨u₂, hu₂, h₂⟩ := h₂
       by_cases c₁ : HasBoolBit.toBool (d := d) u₁.1.head = true <;>
         by_cases c₂ : HasBoolBit.toBool (d := d) u₂.1.head = true <;>
-        simp only [c₁, c₂, if_true, if_false, Bool.false_eq_true, Option.map_eq_some_iff,
+        simp only [c₁, c₂, ite_true, ite_false, Bool.false_eq_true, Option.map_eq_some_iff,
           Option.some.injEq] at h₁ h₂
       · obtain ⟨q₁, hq₁, rfl⟩ := h₁
         obtain ⟨q₂, hq₂, rfl⟩ := h₂
@@ -208,9 +208,9 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak.NFProg.leakRunM
       rw [← hc] at ha₂
       have ha : a₁.2 = a₂.2 := by
         split at ha₁
-        · rw [if_pos (by assumption)] at ha₂
+        · rw [ite_eq_left (by assumption)] at ha₂
           exact iht _ _ a₁ a₂ _ _ ha₁ ha₂ he'
-        · rw [if_neg (by assumption)] at ha₂
+        · rw [ite_eq_right (by assumption)] at ha₂
           exact ihe _ _ a₁ a₂ _ _ ha₁ ha₂ he'
       rw [ha] at he'
       have hq := ihk _ _ q₁ q₂ x y hq₁ hq₂ (List.append_cancel_left he')
@@ -336,7 +336,7 @@ theorem whileIterLeak_ctRel {cs : List d.Ty}
       have hrv := hrel X Y u₁ u₂ v₁ v₂ hu₁ hu₂ hv₁ hv₂
       by_cases c₁ : HasBoolBit.toBool (d := d) u₁.1.head = true <;>
         by_cases c₂ : HasBoolBit.toBool (d := d) u₂.1.head = true <;>
-        simp only [c₁, c₂, if_true, if_false, Bool.false_eq_true, Option.map_eq_some_iff,
+        simp only [c₁, c₂, ite_true, ite_false, Bool.false_eq_true, Option.map_eq_some_iff,
           Option.some.injEq] at h₁ h₂ h₃ h₄
       · obtain ⟨q₁, hq₁, rfl⟩ := h₁
         obtain ⟨q₂, hq₂, rfl⟩ := h₂
@@ -565,7 +565,7 @@ theorem nfGo_ctRel (R : RuleSet d) (hI : RulesIndep L R) (fuel : Nat) :
       rw [← hc] at ha₂ hb₂
       have harm : a₁.2 = a₂.2 ∧ b₁.2 = b₂.2 ∧ b₁.1 = a₁.1 ∧ b₂.1 = a₂.1 := by
         cases hcb : HasBoolBit.toBool (d := d) ((ρ cond).lookup V₁) <;>
-          simp only [hcb, if_true, if_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
+          simp only [hcb, ite_true, ite_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
         · have ha := NFProg.leakRun_prefix L fuel els _ _ a₁ a₂ q₁.2 q₂.2 ha₁ ha₂ he'
           exact ⟨ha, nfGo_ctRel R hI fuel ρ S els V₁ V₂ hS₁ hS₂ a₁ a₂ b₁ b₂ ha₁ ha₂ hb₁ hb₂ ha,
             nfGo_fst_eq R L fuel hS₁ ha₁ hb₁, nfGo_fst_eq R L fuel hS₂ ha₂ hb₂⟩
@@ -844,7 +844,7 @@ theorem nfGo_ctRelC (R : RuleSet d) (hI : RulesIndep L R) (E : CallEnv d) (fuel 
       rw [← hc] at ha₂ hb₂
       have harm : a₁.2 = a₂.2 ∧ b₁.2 = b₂.2 ∧ b₁.1 = a₁.1 ∧ b₂.1 = a₂.1 := by
         cases hcb : HasBoolBit.toBool (d := d) ((ρ cond).lookup V₁) <;>
-          simp only [hcb, if_true, if_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
+          simp only [hcb, ite_true, ite_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
         · have ha := NFProg.leakRunMC_prefix L E fuel els _ _ a₁ a₂ q₁.2 q₂.2 ha₁ ha₂ he'
           exact ⟨ha, nfGo_ctRelC R hI E fuel ρ S els V₁ V₂ hS₁ hS₂ a₁ a₂ b₁ b₂ ha₁ ha₂ hb₁ hb₂
             ha, nfGo_fst_eqC R L E fuel hS₁ ha₁ hb₁, nfGo_fst_eqC R L E fuel hS₂ ha₂ hb₂⟩

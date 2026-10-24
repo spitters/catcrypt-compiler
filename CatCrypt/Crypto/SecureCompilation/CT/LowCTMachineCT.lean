@@ -122,7 +122,7 @@ theorem whileCount_eq {α : Type} (step : α → α) (z : α → Prop) (a : α) 
     (hk : z (step^[k] a)) (hlt : ∀ j < k, ¬ z (step^[j] a)) : whileCount step z a = k := by
   classical
   unfold whileCount
-  rw [dif_pos ⟨k, hk⟩]
+  rw [dite_eq_left ⟨k, hk⟩]
   exact (Nat.find_eq_iff _).2 ⟨hk, hlt⟩
 
 /-- The trace of a guarded loop running `k` iterations: per iteration a
@@ -835,12 +835,12 @@ theorem srcRun_det (N : Nat) (leafSpec : LeafSpec) (O : String → Bool) :
     | ifTrue _ _ _ _ _ v tr hv hv0 hb =>
       obtain ⟨rfl, hr⟩ := srcRun_det N leafSpec O th ht.1.2 rs tr rs' σ hag hb
       have hz : ¬ σ g = 0 := by rw [hg, hv]; exact hv0
-      simp only [srcLeak, srcDen, if_neg hz]
+      simp only [srcLeak, srcDen, ite_eq_right hz]
       exact ⟨trivial, hr⟩
     | ifFalse _ _ _ _ _ tr hv hb =>
       obtain ⟨rfl, hr⟩ := srcRun_det N leafSpec O el ht.2 rs tr rs' σ hag hb
       have hz : σ g = 0 := hg.trans hv
-      simp only [srcLeak, srcDen, if_pos hz]
+      simp only [srcLeak, srcDen, ite_eq_left hz]
       exact ⟨trivial, hr⟩
   | .forLit x ctr n body, ht, rs, t, rs', σ, hag, h =>
     forRun_det N leafSpec O x body (srcRun_det N leafSpec O body ht) n rs t rs' σ hag h
@@ -1059,10 +1059,10 @@ theorem srcRun_exists_tower (N : Nat) (leafSpec : LeafSpec) :
       intro y u hy
       by_cases hyx : y = x
       · subst hyx
-        simp only [lookT, if_true, Option.some.injEq] at hy
+        simp only [lookT, ite_true, Option.some.injEq] at hy
         subst hy
         exact ⟨default, by simp [rsSetTower]⟩
-      · simp only [lookT, hyx, if_false] at hy
+      · simp only [lookT, hyx, ite_false] at hy
         obtain ⟨w, hw⟩ := hi y u hy
         exact ⟨w, by simp [rsSetTower, hyx, hw]⟩
     obtain ⟨t, r, hr, i⟩ := srcRun_exists_tower N leafSpec b _ Γ' h _ hi'
@@ -1353,7 +1353,7 @@ theorem loopBody_get (ρ : RegMap) (x ctr : String) (B : MCF) (r : String) (hx :
     (hc : r ≠ ctr) (hB : ∀ s, (mcfExec s B).get r = s.get r) (s : JState 64) :
     (mcfExec s (loopBody ρ x ctr B)).get r = s.get r := by
   simp only [loopBody, mcfExec, runBlock_cons, runBlock_nil]
-  rw [evalInstr_add_imm_get, if_neg hc, hB, evalInstr_mov_reg, JState.get_setReg_other _ _ _ _ hx]
+  rw [evalInstr_add_imm_get, ite_eq_right hc, hB, evalInstr_mov_reg, JState.get_setReg_other _ _ _ _ hx]
 
 /-- A register outside the image of `ρ` and outside `c.writes τ` keeps its value
     across the lowered program. -/
@@ -1384,7 +1384,7 @@ theorem lowerCF_preserves (ρ τ : RegMap) (r : String) (hr : ∀ v, ρ v ≠ r)
   | .mulHi d a b lo, h, s => by
     simp only [CFSrc.writes, List.mem_singleton] at h
     simp only [lowerCF, mcfExec, runBlock_cons, runBlock_nil]
-    rw [evalInstr_mulx_get, if_neg (fun h' => hr d h'.symm), if_neg h]
+    rw [evalInstr_mulx_get, ite_eq_right (fun h' => hr d h'.symm), ite_eq_right h]
   | .select dst sel s0 s1, h, s => by
     simp only [CFSrc.writes, List.mem_singleton] at h
     exact lowerSelect_get ρ τ dst sel s0 s1 s r h
@@ -1603,11 +1603,11 @@ theorem loop_sim (ρ τ : RegMap) (hρ : Function.Injective ρ) (O : String → 
     · rw [hB]
       simp only [loopBody, mcfExec, runBlock_cons, runBlock_nil]
       intro v hv
-      rw [evalInstr_add_imm_get, if_neg (hctrρ v)]
+      rw [evalInstr_add_imm_get, ite_eq_right (hctrρ v)]
       exact hmb v hv
     · rw [hB]
       simp only [loopBody, mcfExec, runBlock_cons, runBlock_nil]
-      rw [evalInstr_add_imm_get, if_pos rfl, hpres, hc1]
+      rw [evalInstr_add_imm_get, ite_eq_left rfl, hpres, hc1]
       simp [BitVec.ofNat_add]
     · rw [hB]
       simp only [loopBody, mcfLeak, mcfExec, runBlock_cons, runBlock_nil]
@@ -1747,11 +1747,11 @@ theorem lowerCF_sim (ρ τ : RegMap) (hρ : Function.Injective ρ) (O : String �
     · simp only [lowerCF, mcfExec, runBlock_cons, runBlock_nil, srcDen]
       refine hm.setS d _ _ (fun hd => ?_) ?_
       · simp only [CFSrc.taint, hd, Bool.false_or, Bool.and_eq_true, Bool.not_eq_true'] at ht
-        rw [evalInstr_mulx_get, if_pos rfl]
+        rw [evalInstr_mulx_get, ite_eq_left rfl]
         simp only [JOperand.eval]
         rw [hm a ht.1, hm b ht.2, x86_MULX_hi_ofNat]
       · intro u hu
-        rw [evalInstr_mulx_get, if_neg (fun h => hu (hρ h)), if_neg (hwf u)]
+        rw [evalInstr_mulx_get, ite_eq_right (fun h => hu (hρ h)), ite_eq_right (hwf u)]
     · rw [lowerCF, mcfLeak, blockLeakCT_mulx]; rfl
   | .select dst sel s0 s1, hwf, _, σ, js, hm, _ => by
     refine ⟨hm.of_regs fun v => ?_, ?_⟩
@@ -1788,17 +1788,17 @@ theorem lowerCF_sim (ρ τ : RegMap) (hρ : Function.Injective ρ) (O : String �
       rw [hm g ht.1.1]; exact ofNat_eq_zero_iff_of_lt _ hlt
     by_cases hz : σ g = 0
     · have hjz : js.get (ρ g) = 0 := hg.2 hz
-      rw [if_pos hz] at hin'
+      rw [ite_eq_left hz] at hin'
       obtain ⟨hme, hle⟩ := lowerCF_sim ρ τ hρ O e hwf.2 ht.2 σ js hm hin'
       refine ⟨?_, ?_⟩
-      · rw [lowerCF, mcfExec, if_pos hjz, srcDen, if_pos hz]; exact hme
-      · rw [lowerCF, mcfLeak, if_pos hjz, mTrace, if_pos hz, hle]
+      · rw [lowerCF, mcfExec, ite_eq_left hjz, srcDen, ite_eq_left hz]; exact hme
+      · rw [lowerCF, mcfLeak, ite_eq_left hjz, mTrace, ite_eq_left hz, hle]
     · have hjz : ¬ js.get (ρ g) = 0 := fun h => hz (hg.1 h)
-      rw [if_neg hz] at hin'
+      rw [ite_eq_right hz] at hin'
       obtain ⟨hmt, hlt'⟩ := lowerCF_sim ρ τ hρ O t hwf.1 ht.1.2 σ js hm hin'
       refine ⟨?_, ?_⟩
-      · rw [lowerCF, mcfExec, if_neg hjz, srcDen, if_neg hz]; exact hmt
-      · rw [lowerCF, mcfLeak, if_neg hjz, mTrace, if_neg hz, hlt']
+      · rw [lowerCF, mcfExec, ite_eq_right hjz, srcDen, ite_eq_right hz]; exact hmt
+      · rw [lowerCF, mcfLeak, ite_eq_right hjz, mTrace, ite_eq_right hz, hlt']
   | .forLit x ctr n body, hwf, ht, σ, js, hm, hin => by
     obtain ⟨hctrρ, hctrb, hwfb⟩ := hwf
     have hloop := loop_sim ρ τ hρ O x ctr body hctrρ (lowerCF_sim ρ τ hρ O body hwfb ht)
@@ -1971,7 +1971,7 @@ theorem srcLeak_prefix (τ : RegMap) :
   | .ifNz g t e, σ₁, σ₂, l₁, l₂, h => by
     simp only [srcLeak, mTrace] at h ⊢
     by_cases h₁ : σ₁ g = 0 <;> by_cases h₂ : σ₂ g = 0 <;>
-      simp only [h₁, h₂, if_true, if_false, List.cons_append, List.cons.injEq,
+      simp only [h₁, h₂, ite_true, ite_false, List.cons_append, List.cons.injEq,
         CTLeak.branch.injEq, reduceCtorEq, false_and, true_and] at h ⊢
     · exact srcLeak_prefix τ e _ _ _ _ h
     · exact srcLeak_prefix τ t _ _ _ _ h
@@ -2153,7 +2153,7 @@ theorem secretIndex_lowered_not_ct (N : Nat) (leafSpec : LeafSpec) :
     intro js l hl
     refine ⟨hl ▸ default, ?_⟩
     simp only [locatedLookup, liftState, u64Heap]
-    rw [dif_pos hl.symm]
+    rw [dite_eq_left hl.symm]
   have hadm : ∀ js : JState 64, Admissible N leafSpec id u64Heap (.arrLoad locD locTab "k") js := by
     intro js
     obtain ⟨vd, hd⟩ := hlook js locD rfl
@@ -2521,8 +2521,8 @@ theorem BoundedBy.upd {B : String → Bool} {σ : Env} (h : BoundedBy B σ) (x :
   intro y hy
   simp only [updB, setS] at hy ⊢
   split
-  · rw [if_pos (by assumption)] at hy; exact hv hy
-  · rw [if_neg (by assumption)] at hy; exact h y hy
+  · rw [ite_eq_left (by assumption)] at hy; exact hv hy
+  · rw [ite_eq_right (by assumption)] at hy; exact h y hy
 
 theorem WExpr.boundedB_spec {B : String → Bool} {σ : Env} (h : BoundedBy B σ) :
     ∀ e : WExpr, e.boundedB B = true → e.toSExpr.eval σ < 2 ^ 64

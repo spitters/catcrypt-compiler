@@ -510,7 +510,7 @@ theorem legalizeOneSrcI_legal {c : E.Ctx} {u64 : Bool} {opn : String} {d s : LOp
     obtain ⟨sn, rfl, -⟩ := hs
     rfl
   unfold legalizeOneSrcI
-  rw [if_pos (stripWidthTag_of_isMovMnem hm), hsm]
+  rw [ite_eq_left (stripWidthTag_of_isMovMnem hm), hsm]
   exact h.legalizeMovI_legal hm hd hs
 
 /-- **Every instruction of the one-source arm of the allocation on a register move over
@@ -542,7 +542,7 @@ theorem cmovSpillSeqI_legal (hsel : I.selectMnemonic = some "CMOV") {c : E.Ctx}
   intro i hi
   unfold cmovSpillSeqI at hi
   cases hcs : (LOperand.reg cn).isSpill <;> cases hds : (LOperand.reg dn).isSpill <;>
-    simp only [hcs, hds, if_true, if_false, Bool.false_eq_true, List.nil_append,
+    simp only [hcs, hds, ite_true, ite_false, Bool.false_eq_true, List.nil_append,
       List.cons_append, List.mem_cons, List.not_mem_nil, or_false] at hi
   · subst hi
     exact hsel' dn cn (reg_of_allocOp_not_spill hd hds) (reg_of_allocOp_not_spill hc hcs)
@@ -738,15 +738,15 @@ theorem stepLoad_preservesI {c : E.Ctx} (P : LinstrR → Prop)
       have hrr : E.resolves c r :=
         hh (s, r) (CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_of_find hf)
       by_cases hrd : r = d
-      · simp only [stepLoad, hr, hf, hrd, if_true]
+      · simp only [stepLoad, hr, hf, hrd, ite_true]
         exact ⟨by rw [hli]; exact hi, by simpa [hrd] using henv⟩
       · by_cases hmm : isMemName d = true ∧ isMemName r = true
-        · simp only [stepLoad, hr, hf, hrd, if_false, if_pos hmm]
+        · simp only [stepLoad, hr, hf, hrd, ite_false, ite_eq_left hmm]
           exact ⟨by rw [hli]; exact hi, henv⟩
         · by_cases hsr : isMemName s = false ∧ isMemName r = true
-          · simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm, if_pos hsr]
+          · simp only [stepLoad, hr, hf, hrd, ite_false, ite_eq_right hmm, ite_eq_left hsr]
             exact ⟨by rw [hli]; exact hi, henv⟩
-          · simp only [stepLoad, hr, hf, hrd, if_false, if_neg hmm, if_neg hsr]
+          · simp only [stepLoad, hr, hf, hrd, ite_false, ite_eq_right hmm, ite_eq_right hsr]
             refine ⟨hmov mn d r hmv hd hrr ?_, henv⟩
             cases hed : E.memName d <;> cases her : E.memName r
             all_goals first

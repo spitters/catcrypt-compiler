@@ -237,10 +237,10 @@ theorem ShapeDisjoint.there {Γ : Ctxt jasminDialect} {wX nX w n : Nat}
   unfold ShapeDisjoint at h ⊢
   by_cases hsh : wX = w ∧ nX = n
   · obtain ⟨rfl, rfl⟩ := hsh
-    rw [dif_pos (And.intro (rfl : wX = wX) (rfl : nX = nX))]
-    rw [dif_pos (And.intro (rfl : wX = wX) (rfl : nX = nX))] at h
+    rw [dite_eq_left (And.intro (rfl : wX = wX) (rfl : nX = nX))]
+    rw [dite_eq_left (And.intro (rfl : wX = wX) (rfl : nX = nX))] at h
     exact h.there
-  · rw [dif_neg hsh]
+  · rw [dite_eq_right hsh]
     trivial
 
 /-- **Load-source disjoint from a target buffer.** Given a stack buffer

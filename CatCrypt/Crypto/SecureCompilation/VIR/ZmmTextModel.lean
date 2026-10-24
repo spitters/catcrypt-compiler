@@ -818,12 +818,12 @@ theorem sstep_sound {m : Mode} {ro : Std.HashMap String (Array (BitVec 64))}
     simp only [Std.HashMap.getElem?_insert, beq_iff_eq] at ht
     by_cases e : (off : Int) - s.sp = a
     · subst e
-      simp only [if_true, Option.some.injEq] at ht
+      simp only [ite_true, Option.some.injEq] at ht
       subst ht
       simp [h1 r]
-    · rw [if_neg e] at ht
+    · rw [ite_eq_right e] at ht
       have e' : ¬ a + s.sp = (off : Int) := fun e'' => e (by omega)
-      simp only [if_neg e']
+      simp only [ite_eq_right e']
       exact h5 a t ht
   | spSub n =>
     simp only [sstep, Option.some.injEq] at hs

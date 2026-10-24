@@ -430,7 +430,7 @@ theorem memStep_store {frame : String → Option (BitVec 64)} {i : LinstrRM} {r 
       (⟨r.nextPc, write64 m' a v, c, o⟩, zf) :=
   memStep_range hs (fun m => write64 m a v)
     (fun m x hx => write64_of_not_inRange m a v x hx)
-    (fun m m' x hx => by simp only [write64, if_pos (show InRange8 a x from hx)]) zf
+    (fun m m' x hx => by simp only [write64, ite_eq_left (show InRange8 a x from hx)]) zf
 
 theorem fstepA_memStep (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN)
     (m m' : AMem) (c o : Bool) (hm : ∀ a ∈ loadsA frame i r, read64 m' a = read64 m a)

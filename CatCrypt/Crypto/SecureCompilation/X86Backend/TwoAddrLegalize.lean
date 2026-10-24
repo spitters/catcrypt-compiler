@@ -464,7 +464,7 @@ theorem scratchRoute_lsem {opn m d : String} {a b : LOperand} (ii : Nat)
         applyOpn_mov64 (evalOperand s (.reg reloadScratch)))
   refine ⟨s5, by simp only [scratchRoute, List.map_cons, List.map_nil, lsemStraight_cons, e1,
     e2, e3, e4, e5, lsemStraight_nil], rfl, fun x hx => ?_⟩
-  simp only [s5, s4, s3, s2, s1, Lstate.nextPc, Lstate.lvm_setReg, evalOperand, if_neg hx]
+  simp only [s5, s4, s3, s2, s1, Lstate.nextPc, Lstate.lvm_setReg, evalOperand, ite_eq_right hx]
   by_cases hxR : x = reloadScratch
   · subst hxR; simp [hdR.symm]
   · simp [hxR]

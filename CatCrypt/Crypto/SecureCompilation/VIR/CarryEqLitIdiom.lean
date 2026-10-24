@@ -180,7 +180,7 @@ theorem isEqLitIdiom_eq {w : Nat} (a : BitVec w) (k : Nat) :
     BitVec.xor_eq_zero_iff
   rw [or_neg_ushiftRight_wm1 (a ^^^ BitVec.ofNat w k)]
   by_cases hxz : a ^^^ BitVec.ofNat w k = 0#w
-  · rw [if_pos hxz, if_pos (ha_eq_iff.mp hxz)]; simp
-  · rw [if_neg hxz, if_neg (fun h => hxz (ha_eq_iff.mpr h))]; simp
+  · rw [ite_eq_left hxz, ite_eq_left (ha_eq_iff.mp hxz)]; simp
+  · rw [ite_eq_right hxz, ite_eq_right (fun h => hxz (ha_eq_iff.mpr h))]; simp
 
 end CatCrypt.Crypto.SecureCompilation.VIR

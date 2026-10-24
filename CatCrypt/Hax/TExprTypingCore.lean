@@ -370,9 +370,9 @@ theorem fitsB_le {Γ Δ : TyEnv} {n : String} {τ : ImpType} (hΔ : TyEnv.Le Γ 
   · subst hxn
     unfold fitsB at h
     rw [hx] at h
-    simp only [beq_self_eq_true, if_true]
+    simp only [beq_self_eq_true, ite_true]
     rw [eq_of_beq _ _ h]
-  · simp only [beq_iff_eq, hxn, if_false]
+  · simp only [beq_iff_eq, hxn, ite_false]
     exact hΔ x τ' hx
 
 theorem fitsListB_le {Γ : TyEnv} {bs : List (String × ImpType)}
@@ -734,11 +734,11 @@ theorem EnvHasType.extend {Γ : TyEnv} {env : Env} {n : String} {v : Value} {τ 
   unfold Env.extend
   split
   · rename_i hxn
-    rw [if_pos hxn] at hx
+    rw [ite_eq_left hxn] at hx
     cases hx
     exact ⟨v, rfl, hv⟩
   · rename_i hxn
-    rw [if_neg hxn] at hx
+    rw [ite_eq_right hxn] at hx
     exact h x τ' hx
 
 theorem OutcomeHasType.of_not_val {o : Outcome} {τ τ' : ImpType}

@@ -98,7 +98,7 @@ theorem emitterMatchesNttMul [Fact (Nat.Prime q)] (a b : CPolynomial (ZMod q)) :
   show (if h : Nat.Prime q then
           (haveI : Fact (Nat.Prime q) := ⟨h⟩; realNttMul (ND.dom q) a b)
         else (0 : CPolynomial (ZMod q))) = realNttMul (ND.dom q) a b
-  rw [dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q)]
 
 /-! ## 2. The migration headline (source + NTT-expanded target)
 

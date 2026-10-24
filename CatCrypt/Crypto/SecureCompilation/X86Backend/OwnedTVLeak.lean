@@ -775,8 +775,8 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
     show ([] : List CTLeak) ++ ℓ1' = [] ++ ℓ1
     rw [I.step_goto] at he he'
     by_cases hx : x = (singletonProgM fn B).lfn
-    · rw [if_pos hx, evalJumpMem_single hl] at he
-      rw [if_pos (by simpa [singletonProgM, hul'', hul'] using hx),
+    · rw [ite_eq_left hx, evalJumpMem_single hl] at he
+      rw [ite_eq_left (by simpa [singletonProgM, hul'', hul'] using hx),
         evalJumpMem_single hl'] at he'
       simp only [Option.map_some, Option.some.injEq] at he he'
       subst he he'
@@ -787,7 +787,7 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
           zf := u'.zf } t t' f1' ℓ1 ℓ1' (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
         (Or.inr ⟨rfl, label_at hl, rfl, label_at hl'⟩) (hsucc tg (by simp [hT, Term.succs]))
         (hfs tg (by simp [hT, Term.succs])) hul' hr1 hr1'
-    · rw [if_neg hx] at he
+    · rw [ite_eq_right hx] at he
       cases he
   · -- branch
     obtain ⟨_, hT', _⟩ | ⟨_, _, _, hT', _⟩ | ⟨tg', nx', c', l', hT', hzi', htg', hl', hnx'⟩ |
@@ -821,8 +821,8 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
     have hstop : 0 < (G.blk k).stop := by have := F.lt; omega
     have hstop' : 0 < (G'.blk k).stop := by have := F'.lt; omega
     by_cases hd : I.condEval u c = true
-    · rw [if_pos hd, evalJumpMem_single hl] at he
-      rw [if_pos (hdec.trans hd), evalJumpMem_single hl'] at he'
+    · rw [ite_eq_left hd, evalJumpMem_single hl] at he
+      rw [ite_eq_left (hdec.trans hd), evalJumpMem_single hl'] at he'
       simp only [Option.map_some, Option.some.injEq] at he he'
       subst he he'
       exact ih f1 tg
@@ -832,8 +832,8 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
           zf := u'.zf } t t' f1' ℓ1 ℓ1' (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
         (Or.inr ⟨rfl, label_at hl, rfl, label_at hl'⟩) (hsucc tg (by simp [hT, Term.succs]))
         (hfs tg (by simp [hT, Term.succs])) hul' hr1 hr1'
-    · rw [if_neg hd] at he
-      rw [if_neg (by rw [hdec]; exact hd)] at he'
+    · rw [ite_eq_right hd] at he
+      rw [ite_eq_right (by rw [hdec]; exact hd)] at he'
       simp only [Option.some.injEq] at he he'
       subst he he'
       refine fall_contL (w := { u with prog := { u.prog with base := u.prog.base.nextPc } })

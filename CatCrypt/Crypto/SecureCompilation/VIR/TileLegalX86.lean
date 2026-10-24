@@ -646,11 +646,11 @@ theorem shufBlk_lane (idx : List Nat) (x y : BitVec 256) (k : Fin 4) :
   unfold tileShuffleApply
   by_cases hx : idx.getD k.val k.val % 8 < 4
   · have e : idx.getD k.val k.val % 4 = idx.getD k.val k.val % (2 * 4) := by omega
-    simp only [hx, not_true_eq_false, decide_false, Bool.false_eq_true, if_false, dif_pos]
+    simp only [hx, not_true_eq_false, decide_false, Bool.false_eq_true, ite_false, dite_eq_left]
     show yQwordW x (idx.getD k.val k.val % 4) = yQwordW x (idx.getD k.val k.val % (2 * 4))
     rw [e]
   · have e : idx.getD k.val k.val % 4 = idx.getD k.val k.val % (2 * 4) - 4 := by omega
-    simp only [hx, not_false_eq_true, decide_true, if_true]
+    simp only [hx, not_false_eq_true, decide_true, ite_true]
     show yQwordW y (idx.getD k.val k.val % 4) = yQwordW y (idx.getD k.val k.val % (2 * 4) - 4)
     rw [e]
 

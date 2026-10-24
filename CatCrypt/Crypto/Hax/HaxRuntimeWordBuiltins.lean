@@ -72,30 +72,30 @@ theorem hax64Builtins_wordBuiltins' : WordBuiltins' hax64Builtins where
     · rw [hax64WordOps_bitXor, u64BinOp_natCast hn hm]; cases hr; rfl
     · rw [hax64WordOps_shr, u64BinOp_natCast hn hm]
       by_cases h : m < 64
-      · rw [show wordOpNat "Shr#64" n m = some ((n % 2 ^ 64) >>> m) from if_pos h] at hr
-        cases hr; rw [if_pos h]; rfl
-      · cases hr.symm.trans (show wordOpNat "Shr#64" n m = none from if_neg h)
+      · rw [show wordOpNat "Shr#64" n m = some ((n % 2 ^ 64) >>> m) from ite_eq_left h] at hr
+        cases hr; rw [ite_eq_left h]; rfl
+      · cases hr.symm.trans (show wordOpNat "Shr#64" n m = none from ite_eq_right h)
     · rw [hax64WordOps_shl, u64BinOp_natCast hn hm]
       by_cases h : m < 64
       · rw [show wordOpNat "Shl#64" n m = some (((n % 2 ^ 64) <<< m) % 2 ^ 64) from
-          if_pos h] at hr
-        cases hr; rw [if_pos h]; rfl
-      · cases hr.symm.trans (show wordOpNat "Shl#64" n m = none from if_neg h)
-    · rw [hax64WordOps_add, u64BinOp_natCast hn hm]; cases hr; rw [if_pos hrL]; rfl
+          ite_eq_left h] at hr
+        cases hr; rw [ite_eq_left h]; rfl
+      · cases hr.symm.trans (show wordOpNat "Shl#64" n m = none from ite_eq_right h)
+    · rw [hax64WordOps_add, u64BinOp_natCast hn hm]; cases hr; rw [ite_eq_left hrL]; rfl
   index vs i w h := by
     rw [hax64Builtins_of_none (hax64WordOps_index _ vs), widthArrayOps_index_int,
-      if_pos (Int.natCast_nonneg i), Int.toNat_natCast, h]
+      ite_eq_left (Int.natCast_nonneg i), Int.toNat_natCast, h]
     rfl
   update vs i v h := by
     rw [hax64Builtins_of_none (hax64WordOps_array_update _ vs v), widthArrayOps_array_update_int,
-      Int.toNat_natCast, if_pos (by simp [h])]
+      Int.toNat_natCast, ite_eq_left (by simp [h])]
 
 /-- **hax-lean's `u64` table runs the multiply-high idiom**: the casts, the
     128-bit product and shift, and the fused `mulhi#64`. -/
 theorem hax64Builtins_mulHiBuiltins : MulHiBuiltins hax64Builtins where
   cast128 n hn := by
     unfold hax64Builtins
-    rw [hax64WordOps_cast128, if_pos (Int.natCast_nonneg n), Int.toNat_natCast,
+    rw [hax64WordOps_cast128, ite_eq_left (Int.natCast_nonneg n), Int.toNat_natCast,
       Nat.mod_eq_of_lt (show n < 2 ^ 128 by omega)]
     rfl
   mul n m hn hm := by
@@ -103,17 +103,17 @@ theorem hax64Builtins_mulHiBuiltins : MulHiBuiltins hax64Builtins where
     rw [← Nat.pow_add] at h
     unfold hax64Builtins
     rw [hax64WordOps_mul, Int.toNat_natCast, Int.toNat_natCast,
-      if_pos ⟨Int.natCast_nonneg n, Int.natCast_nonneg m, h⟩]
+      ite_eq_left ⟨Int.natCast_nonneg n, Int.natCast_nonneg m, h⟩]
     rfl
   shr128 n hn := by
     have hn' : (n : Int) < 2 ^ 128 := by exact_mod_cast hn
     unfold hax64Builtins
-    rw [hax64WordOps_shr128, if_pos ⟨Int.natCast_nonneg n, hn', by decide, by decide⟩,
+    rw [hax64WordOps_shr128, ite_eq_left ⟨Int.natCast_nonneg n, hn', by decide, by decide⟩,
       Int.toNat_natCast]
     rfl
   cast64 n hn := by
     unfold hax64Builtins
-    rw [hax64WordOps_cast64, if_pos (Int.natCast_nonneg n), Int.toNat_natCast,
+    rw [hax64WordOps_cast64, ite_eq_left (Int.natCast_nonneg n), Int.toNat_natCast,
       Nat.mod_eq_of_lt hn]
     rfl
   mulhi n m hn hm := by
@@ -209,11 +209,11 @@ theorem hax64Builtins_narrowCast {w : Nat} (f : String) (hf : narrowCastOf f = s
   unfold narrowCastOf at hf
   split at hf <;> simp only [Option.some.injEq, reduceCtorEq] at hf
   all_goals (subst hf; apply hax64Builtins_of_some)
-  · rw [hax64WordOps_cast8, if_pos (Int.natCast_nonneg n), Int.toNat_natCast]
-  · rw [hax64WordOps_cast16, if_pos (Int.natCast_nonneg n), Int.toNat_natCast]
-  · rw [hax64WordOps_cast32, if_pos (Int.natCast_nonneg n), Int.toNat_natCast]
-  · rw [hax64WordOps_cast64, if_pos (Int.natCast_nonneg n), Int.toNat_natCast]
-  · rw [hax64WordOps_castSize, if_pos (Int.natCast_nonneg n), Int.toNat_natCast]
+  · rw [hax64WordOps_cast8, ite_eq_left (Int.natCast_nonneg n), Int.toNat_natCast]
+  · rw [hax64WordOps_cast16, ite_eq_left (Int.natCast_nonneg n), Int.toNat_natCast]
+  · rw [hax64WordOps_cast32, ite_eq_left (Int.natCast_nonneg n), Int.toNat_natCast]
+  · rw [hax64WordOps_cast64, ite_eq_left (Int.natCast_nonneg n), Int.toNat_natCast]
+  · rw [hax64WordOps_castSize, ite_eq_left (Int.natCast_nonneg n), Int.toNat_natCast]
 
 /-- Each complement of `narrowNotOf` runs in `hax64Builtins` as `2^w - 1` minus
     the word modulo `2^w`. -/
@@ -263,14 +263,14 @@ theorem hax64Builtins_mulModBuiltins : MulModBuiltins hax64Builtins where
     have hq0' : (0 : Int) < q := by exact_mod_cast hq0
     have hq' : (q : Int) < 2 ^ 128 := by exact_mod_cast hq
     unfold hax64Builtins
-    rw [hax64WordOps_rem, if_pos ⟨Int.natCast_nonneg n, hn', hq0', hq'⟩, Int.toNat_natCast,
+    rw [hax64WordOps_rem, ite_eq_left ⟨Int.natCast_nonneg n, hn', hq0', hq'⟩, Int.toNat_natCast,
       Int.toNat_natCast]
     rfl
   mulmod n m q hn hm hq0 hq := by
     have hq0' : (0 : Int) < q := by exact_mod_cast hq0
     have hq' : (q : Int) < 2 ^ 64 := by exact_mod_cast hq
     unfold hax64Builtins
-    rw [mulModCallName, hax64WordOps_mulmod, if_pos ⟨hq0', hq'⟩, u64BinOp_natCast hn hm,
+    rw [mulModCallName, hax64WordOps_mulmod, ite_eq_left ⟨hq0', hq'⟩, u64BinOp_natCast hn hm,
       Int.toNat_natCast]
     rfl
 

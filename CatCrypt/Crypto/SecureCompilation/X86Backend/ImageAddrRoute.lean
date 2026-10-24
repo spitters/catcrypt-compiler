@@ -370,7 +370,7 @@ theorem entryV_srcOf {σ : AbiLayout} {nm : String → String}
     (entryV σ fr sa un).reg.lvm (srcOf (nm a.reg)) = ⟨64, sa.regs a.reg⟩ := by
   rcases hR a ha with ⟨h1, h2, h3⟩ | ⟨h1, w, hw, hv⟩
   · rw [srcOf_of_gpOk h1]
-    simp only [entryV, entryA, h3, h1, if_true, h2]
+    simp only [entryV, entryA, h3, h1, ite_true, h2]
   · rw [srcOf_of_stack h1]
     simp only [entryV, hw, hv]
 
@@ -403,7 +403,7 @@ theorem boundFacts_entryV {σ : AbiLayout} {nm : String → String}
     ∀ (A : String → ArrCell), ∀ f ∈ boundFacts σ nm, f.holds (entryV σ fr sa un).reg.lvm A :=
   fun _ => boundFacts_holds hreg fun b hb => by
     obtain ⟨h1, h2, h3⟩ := hB b hb
-    simp only [entryV, entryA, h3, h1, if_true, h2]
+    simp only [entryV, entryA, h3, h1, ite_true, h2]
 
 /-- A slot of `slotArrOf`: the parameter whose register it saves, an array of the slot's
     length under its argument name. -/
@@ -507,7 +507,7 @@ theorem imgRel_entryV {σ : AbiLayout} {nm : String → String}
     have hR : nm a.reg = R := by simpa [slotOfReg] using hq
     rcases hS a (List.mem_of_getElem? hj) with ⟨h1, h2, -⟩ | ⟨h1, -⟩
     · have hl : (entryA σ sa).reg.lvm (nm a.reg) = ⟨64, sa.regs a.reg⟩ := by
-        simp only [entryA, h1, if_true, h2]
+        simp only [entryA, h1, ite_true, h2]
       show _ = some (abiBase (abiReg σ) sa (un (ren (argName j))))
       rw [hu, abiBase_argName hj, ← hR]
       unfold LstateN.getW
@@ -888,7 +888,7 @@ theorem spillQsaveOff_rsp (F W Q off : Nat) :
       = "RSP+" ++ toString off := by
     rw [slotOfReg, String.toList_append, show (6 : Nat) = "qsave.".toList.length from rfl,
       List.drop_left, String.ofList_toList]
-  rw [if_neg (by rw [h1]; exact Bool.false_ne_true), if_pos h2, h3,
+  rw [ite_eq_right (by rw [h1]; exact Bool.false_ne_true), ite_eq_left h2, h3,
     LprogAsmPrinter.qsaveFrameOff_rsp]
 
 /-- **The caller slot of a stack word at entry**: the frame word of the caller slot
@@ -900,10 +900,10 @@ theorem frameE_stack {body : Lcmd} (sa : AState) (off : Nat)
       = some (sa.regs "%rsp" + BitVec.ofNat 64 off) := by
   have hq : slotOfReg ("RSP+" ++ toString off) ∈ ImageAddrFrame.bodyNamesI body := by
     by_contra hn
-    rw [show frameE body sa (slotOfReg ("RSP+" ++ toString off)) = none from if_neg hn] at h
+    rw [show frameE body sa (slotOfReg ("RSP+" ++ toString off)) = none from ite_eq_right hn] at h
     cases h
   show ImageAddrFrame.frameIn body _ _ = _
-  rw [ImageAddrFrame.frameIn, if_pos hq, frameP, spillQsaveOff_rsp, Option.map_some,
+  rw [ImageAddrFrame.frameIn, ite_eq_left hq, frameP, spillQsaveOff_rsp, Option.map_some,
     frameRsp]
   congr 1
   rw [BitVec.add_assoc]
@@ -1060,7 +1060,7 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
     hsep fn _ t' rfl rfl (entryA σ sa) false (imgRel_entryS hS hent
       fun j hj => (R.unr j hj).2) rfl (fun R hR => by
         have hl : (entryA σ sa).reg.lvm R = ⟨64, sa.regs (phys R)⟩ := by
-          simp only [entryA, hR, if_true]
+          simp only [entryA, hR, ite_true]
         unfold LstateN.getW
         rw [hl]
         simp) rfl fuel' hrun' hok

@@ -134,7 +134,7 @@ theorem slotSaveSrc?_eq_some {j : Linstr} {X : String} (h : slotSaveSrc? slotArr
     rw [hr] at h
     obtain ⟨he, hm⟩ := asWideReload_eq hr
     by_cases hs : (slotArr q).isSome = true
-    · simp only [hs, if_true, Option.some.injEq] at h
+    · simp only [hs, ite_true, Option.some.injEq] at h
       subst h
       exact ⟨q, mn, he, hm, hs⟩
     · simp [hs] at h
@@ -596,7 +596,7 @@ theorem saveFreshB_append_of_max
       obtain ⟨q, mn, hi, hmn, hqs⟩ := slotSaveSrc?_eq_some ha
       have hX : X ∉ T := by
         have := h1.1
-        simp only [hi, CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload, hmn, if_true, hq q hqs,
+        simp only [hi, CatCrypt.Crypto.Optimizer.LoadCSE.asWideReload, hmn, ite_true, hq q hqs,
           Bool.not_true, Bool.false_or] at this
         simpa [List.contains_iff_mem] using this
       rw [saveFreshB_cons_some ha, Bool.and_eq_true]

@@ -188,7 +188,7 @@ theorem basemul_size [Fact (Nat.Prime q)] (a b : Array (ZMod q)) :
           (haveI : Fact (Nat.Prime q) := ⟨h⟩
            basemulF (NttDomains.dom q) a b)
         else (#[] : Array (ZMod q))).size = (NttDomains.dom q).n
-  rw [dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q)]
   simp [basemulF, realBasemul]
 
 /-- The `i`-th lane of the `basemul` denotation is `mulLaneProg` on the `i`-th
@@ -202,7 +202,7 @@ theorem basemul_lane_denote [Fact (Nat.Prime q)] (a b : Array (ZMod q))
           (haveI : Fact (Nat.Prime q) := ⟨h⟩
            basemulF (NttDomains.dom q) a b)
         else (#[] : Array (ZMod q))).getD i 0 = a.getD i 0 * b.getD i 0
-  rw [dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q)]
   have hsize : i < (basemulF (NttDomains.dom q) a b).size := by
     simpa [basemulF, realBasemul] using hi
   rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_getElem hsize]

@@ -134,7 +134,7 @@ theorem grows_snoc (tr : Trace) (e : TraceEntry) : grows tr (.snoc tr e) := by
   · exact Nat.le_succ _
   · intro i hi
     simp only [entryAt]
-    rw [if_neg (by rw [beq_iff_eq]; omega)]
+    rw [ite_eq_right (by rw [beq_iff_eq]; omega)]
 
 /-! ## Trace queries -/
 

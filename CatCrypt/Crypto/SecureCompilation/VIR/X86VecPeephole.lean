@@ -788,7 +788,7 @@ theorem varOfLvl?_self {d : Dialect.{0, 0}} [DecidableEq d.Ty] {Δ : Ctxt d} {s 
     (v : Var Δ s) : varOfLvl? Δ s (varLvl v) = some v := by
   have := varDepth_lt v
   unfold varOfLvl? varLvl
-  rw [if_pos (by omega),
+  rw [ite_eq_left (by omega),
     show Δ.length - 1 - (Δ.length - 1 - varDepth v) = varDepth v by omega]
   exact varOfDepth?_self v
 

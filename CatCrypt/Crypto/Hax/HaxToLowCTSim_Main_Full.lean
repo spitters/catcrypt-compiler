@@ -284,7 +284,7 @@ theorem locatedLookup_some_rsTower
     rw [hT] at h
     by_cases hty : ty = loc.locDst
     · subst hty
-      simp only [dif_pos, Option.some.injEq] at h
+      simp only [dite_eq_left, Option.some.injEq] at h
       subst h
       rfl
     · simp [hty] at h

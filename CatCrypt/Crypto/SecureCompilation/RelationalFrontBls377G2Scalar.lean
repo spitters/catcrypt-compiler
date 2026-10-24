@@ -169,10 +169,10 @@ theorem binaryLadder_correct [AddCommGroup G] (bs : List Bool) (P : G) :
     rw [binaryLadder_append_one, bitsToNat_append_one, ih]
     cases b with
     | false =>
-      simp only [Bool.false_eq_true, if_false, add_zero]
+      simp only [Bool.false_eq_true, ite_false, add_zero]
       rw [nsmul_double]
     | true =>
-      simp only [if_true]
+      simp only [ite_true]
       rw [nsmul_succ, nsmul_double]
 
 /-! ## 4. Instantiation to the concrete `bls12-377` `G2` group

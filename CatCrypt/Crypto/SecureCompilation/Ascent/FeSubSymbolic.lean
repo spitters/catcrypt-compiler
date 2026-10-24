@@ -262,7 +262,7 @@ theorem vmSubAll_resolves (a b : BitVec 64) :
   by_cases hx : x = "b"
   · subst hx
     exact ⟨.there .here, rfl, rfl⟩
-  · exact ⟨.here, by simp only [vmSubAll, if_neg hx], by simp only [if_neg hx]; rfl⟩
+  · exact ⟨.here, by simp only [vmSubAll, ite_eq_right hx], by simp only [ite_eq_right hx]; rfl⟩
 
 /-- **The kernel at the `Com jasminDialect` level, for all inputs.** The jasmin
     program the front and `cryptoDialectToJasminCom` produce for `r := a - b` at the

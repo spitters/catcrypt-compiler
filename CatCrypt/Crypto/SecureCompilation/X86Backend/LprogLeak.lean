@@ -211,11 +211,11 @@ theorem evalInstrP_lockstep (L : LeakFn w ε) (P : Lprog) (i : LinstrR)
       simp only [evalInstrP]
       by_cases h₁ : evalOperand s₁.base c ≠ 0
       · have h₂ := hc.1 h₁
-        simp only [h₁, h₂, if_true, ne_eq, not_false_eq_true]
+        simp only [h₁, h₂, ite_true, ne_eq, not_false_eq_true]
         rw [hfn]
         exact hjump (s₂.lfn, l)
       · have h₂ : ¬ evalOperand s₂.base c ≠ 0 := fun h => h₁ (hc.2 h)
-        simp only [h₁, h₂, if_false]
+        simp only [h₁, h₂, ite_false]
         refine ⟨rfl, ?_⟩
         intro a b ha hb
         simp only [Option.some.injEq] at ha hb

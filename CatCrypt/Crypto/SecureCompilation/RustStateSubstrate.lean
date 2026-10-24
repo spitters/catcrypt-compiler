@@ -251,7 +251,7 @@ theorem noAlias_bind {Γ : Ctx} {t : CryptoTy} {vm : VarMap Γ} (hNA : NoAliasVM
   by_cases e1 : n₁ = name <;> by_cases e2 : n₂ = name
   · rw [e1, e2]
   · exfalso
-    rw [if_pos e1] at h₁; rw [if_neg e2] at h₂
+    rw [ite_eq_left e1] at h₁; rw [ite_eq_right e2] at h₂
     simp only [Option.some.injEq, Sigma.mk.injEq] at h₁
     obtain ⟨hs, hv⟩ := h₁; subst hs; cases hv
     cases hL : vm.lookup n₂ with
@@ -260,7 +260,7 @@ theorem noAlias_bind {Γ : Ctx} {t : CryptoTy} {vm : VarMap Γ} (hNA : NoAliasVM
                 simp only [Option.some.injEq, Sigma.mk.injEq] at h₂
                 obtain ⟨hst, hv2⟩ := h₂; subst hst; cases hv2
   · exfalso
-    rw [if_neg e1] at h₁; rw [if_pos e2] at h₂
+    rw [ite_eq_right e1] at h₁; rw [ite_eq_left e2] at h₂
     simp only [Option.some.injEq, Sigma.mk.injEq] at h₂
     obtain ⟨hs, hv⟩ := h₂; subst hs; cases hv
     cases hL : vm.lookup n₁ with
@@ -268,7 +268,7 @@ theorem noAlias_bind {Γ : Ctx} {t : CryptoTy} {vm : VarMap Γ} (hNA : NoAliasVM
     | some p => rw [hL] at h₁; obtain ⟨t', v'⟩ := p
                 simp only [Option.some.injEq, Sigma.mk.injEq] at h₁
                 obtain ⟨hst, hv1⟩ := h₁; subst hst; cases hv1
-  · rw [if_neg e1] at h₁; rw [if_neg e2] at h₂
+  · rw [ite_eq_right e1] at h₁; rw [ite_eq_right e2] at h₂
     cases hL1 : vm.lookup n₁ with
     | none => rw [hL1] at h₁; simp at h₁
     | some p1 =>
@@ -391,7 +391,7 @@ theorem bindingOK_demandVal {Γ : Ctx} (rs : RustState) (V : HVec Γ)
     | none => simp only [h]
     | some p =>
         obtain ⟨t', vt⟩ := p; simp only [h]; intro henc
-        unfold demandVal; rw [h]; simp only [henc, dif_pos]; exact cast_heq _ _
+        unfold demandVal; rw [h]; simp only [henc, dite_eq_left]; exact cast_heq _ _
   · trivial
 
 open Classical in
@@ -410,7 +410,7 @@ theorem witVarFn_eq {Γ : Ctx} {vm : VarMap Γ} (hNA : NoAliasVM vm)
     witVarFn vm rs v = demandVal rs name t := by
   unfold witVarFn
   have hex : ∃ name, vm.lookup name = some ⟨t, v⟩ := ⟨name, hLook⟩
-  rw [dif_pos hex]; congr 1
+  rw [dite_eq_left hex]; congr 1
   exact hNA hex.choose name t v hex.choose_spec hLook
 
 /-- **Canonical witness under `NoAliasVM`.** For any `rs`, the valuation
@@ -596,7 +596,7 @@ lemma interp_bind_sword64_scalarSet
   simp only [VarMap.bind] at hLook
   by_cases hN : name = x
   · subst hN
-    rw [if_pos rfl] at hLook
+    rw [ite_eq_left rfl] at hLook
     simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
     obtain ⟨ht, hcv⟩ := hLook
     subst ht
@@ -606,7 +606,7 @@ lemma interp_bind_sword64_scalarSet
             (HVec.cons (BitVec.ofNat 64 v) V)
           = BitVec.ofNat 64 ((rsSetScalar rs name v).rsScalar name)
     simp [CVar.lookup, rsSetScalar]
-  · rw [if_neg hN] at hLook
+  · rw [ite_eq_right hN] at hLook
     -- Existing binding: extract from `vm.lookup`.
     cases hOld : vm.lookup name with
     | none => rw [hOld] at hLook; exact absurd hLook (by simp)
@@ -657,7 +657,7 @@ lemma interp_bind_sword64_letZeroTU64
   simp only [VarMap.bind] at hLook
   by_cases hN : name = x
   · subst hN
-    rw [if_pos rfl] at hLook
+    rw [ite_eq_left rfl] at hLook
     simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
     obtain ⟨ht, hcv⟩ := hLook
     subst ht
@@ -672,7 +672,7 @@ lemma interp_bind_sword64_letZeroTU64
     have : (rsSetTower rs name ⟨.TU64, default⟩).rsScalar = rs.rsScalar := by
       funext n; simp [rsSetTower]
     simp [CVar.lookup, this]
-  · rw [if_neg hN] at hLook
+  · rw [ite_eq_right hN] at hLook
     cases hOld : vm.lookup name with
     | none => rw [hOld] at hLook; exact absurd hLook (by simp)
     | some pair =>
@@ -702,7 +702,7 @@ lemma interp_bind_memref_letZero
   simp only [VarMap.bind] at hLook
   by_cases hX : name = x
   · subst hX
-    rw [if_pos rfl] at hLook
+    rw [ite_eq_left rfl] at hLook
     simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
     obtain ⟨hs, hcv⟩ := hLook
     subst hs
@@ -718,7 +718,7 @@ lemma interp_bind_memref_letZero
     rw [cryptoTyOfRustVal_default]
     rw [hN]
     rfl
-  · rw [if_neg hX] at hLook
+  · rw [ite_eq_right hX] at hLook
     cases hOld : vm.lookup name with
     | none => rw [hOld] at hLook; exact absurd hLook (by simp)
     | some pair =>
@@ -765,7 +765,7 @@ lemma interp_bind_sword64_setTowerTU64_general
   simp only [VarMap.bind] at hLook
   by_cases hN : name = x
   · subst hN
-    rw [if_pos rfl] at hLook
+    rw [ite_eq_left rfl] at hLook
     simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
     obtain ⟨ht, hcv⟩ := hLook
     subst ht
@@ -777,7 +777,7 @@ lemma interp_bind_sword64_setTowerTU64_general
     have : (rsSetTower rs name ⟨.TU64, val⟩).rsScalar = rs.rsScalar := by
       funext n; simp [rsSetTower]
     simp [CVar.lookup, this]
-  · rw [if_neg hN] at hLook
+  · rw [ite_eq_right hN] at hLook
     cases hOld : vm.lookup name with
     | none => rw [hOld] at hLook; exact absurd hLook (by simp)
     | some pair =>
@@ -809,7 +809,7 @@ lemma interp_bind_memref_setTower_general
   simp only [VarMap.bind] at hLook
   by_cases hX : name = x
   · subst hX
-    rw [if_pos rfl] at hLook
+    rw [ite_eq_left rfl] at hLook
     simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
     obtain ⟨hs, hcv⟩ := hLook
     subst hs
@@ -819,7 +819,7 @@ lemma interp_bind_memref_setTower_general
     intro _hEnc
     simp only [CVar.lookup]
     exact (cast_heq _ _).trans (HEq.refl _)
-  · rw [if_neg hX] at hLook
+  · rw [ite_eq_right hX] at hLook
     cases hOld : vm.lookup name with
     | none => rw [hOld] at hLook; exact absurd hLook (by simp)
     | some pair =>
@@ -855,7 +855,7 @@ lemma interp_cons_setTower_any
       simp only [VarMap.bind] at hLook
       by_cases hX : nm = cv
       · subst hX
-        rw [if_pos rfl] at hLook
+        rw [ite_eq_left rfl] at hLook
         simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
         obtain ⟨ht, hcv⟩ := hLook
         subst ht; cases hcv
@@ -864,7 +864,7 @@ lemma interp_cons_setTower_any
         have hScalar : (rsSetTower rs nm tv).rsScalar = rs.rsScalar := by
           funext n; simp [rsSetTower]
         simp [CVar.lookup, hScalar]
-      · rw [if_neg hX] at hLook
+      · rw [ite_eq_right hX] at hLook
         cases hOld : vm.lookup nm with
         | none => rw [hOld] at hLook; exact absurd hLook (by simp)
         | some pair =>
@@ -881,12 +881,12 @@ lemma interp_cons_setTower_any
       simp only [VarMap.bind] at hLook
       by_cases hX : nm = cv
       · subst hX
-        rw [if_pos rfl] at hLook
+        rw [ite_eq_left rfl] at hLook
         simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
         obtain ⟨ht, hcv⟩ := hLook
         subst ht; cases hcv
         exact bindingOK_sword_ne (n := n) h64 _ _ _ _
-      · rw [if_neg hX] at hLook
+      · rw [ite_eq_right hX] at hLook
         cases hOld : vm.lookup nm with
         | none => rw [hOld] at hLook; exact absurd hLook (by simp)
         | some pair =>
@@ -904,12 +904,12 @@ lemma interp_cons_setTower_any
     simp only [VarMap.bind] at hLook
     by_cases hX : nm = cv
     · subst hX
-      rw [if_pos rfl] at hLook
+      rw [ite_eq_left rfl] at hLook
       simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
       obtain ⟨ht, hcv⟩ := hLook
       subst ht; cases hcv
       exact bindingOK_memrefW _ _ _ _
-    · rw [if_neg hX] at hLook
+    · rw [ite_eq_right hX] at hLook
       cases hOld : vm.lookup nm with
       | none => rw [hOld] at hLook; exact absurd hLook (by simp)
       | some pair =>
@@ -931,7 +931,7 @@ lemma interp_cons_setTower_any
       simp only [VarMap.bind] at hLook
       by_cases hX : nm = cv
       · subst hX
-        rw [if_pos rfl] at hLook
+        rw [ite_eq_left rfl] at hLook
         simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
         obtain ⟨hs, hcv⟩ := hLook
         subst hs; cases hcv
@@ -940,7 +940,7 @@ lemma interp_cons_setTower_any
         intro _hEnc'
         simp only [CVar.lookup]
         exact (cast_heq _ _).trans (HEq.refl _)
-      · rw [if_neg hX] at hLook
+      · rw [ite_eq_right hX] at hLook
         cases hOld : vm.lookup nm with
         | none => rw [hOld] at hLook; exact absurd hLook (by simp)
         | some pair =>
@@ -958,7 +958,7 @@ lemma interp_cons_setTower_any
       simp only [VarMap.bind] at hLook
       by_cases hX : nm = cv
       · subst hX
-        rw [if_pos rfl] at hLook
+        rw [ite_eq_left rfl] at hLook
         simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
         obtain ⟨hs, hcv⟩ := hLook
         subst hs; cases hcv
@@ -966,7 +966,7 @@ lemma interp_cons_setTower_any
         rw [rsSetTower_same rs nm ⟨t', val⟩]
         intro hAbs
         exact absurd hAbs hEnc
-      · rw [if_neg hX] at hLook
+      · rw [ite_eq_right hX] at hLook
         cases hOld : vm.lookup nm with
         | none => rw [hOld] at hLook; exact absurd hLook (by simp)
         | some pair =>
@@ -984,12 +984,12 @@ lemma interp_cons_setTower_any
     simp only [VarMap.bind] at hLook
     by_cases hX : nm = cv
     · subst hX
-      rw [if_pos rfl] at hLook
+      rw [ite_eq_left rfl] at hLook
       simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
       obtain ⟨ht, hcv⟩ := hLook
       subst ht; cases hcv
       simp only [bindingOK]
-    · rw [if_neg hX] at hLook
+    · rw [ite_eq_right hX] at hLook
       cases hOld : vm.lookup nm with
       | none => rw [hOld] at hLook; exact absurd hLook (by simp)
       | some pair =>
@@ -1007,12 +1007,12 @@ lemma interp_cons_setTower_any
     simp only [VarMap.bind] at hLook
     by_cases hX : nm = cv
     · subst hX
-      rw [if_pos rfl] at hLook
+      rw [ite_eq_left rfl] at hLook
       simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
       obtain ⟨ht, hcv⟩ := hLook
       subst ht; cases hcv
       simp only [bindingOK]
-    · rw [if_neg hX] at hLook
+    · rw [ite_eq_right hX] at hLook
       cases hOld : vm.lookup nm with
       | none => rw [hOld] at hLook; exact absurd hLook (by simp)
       | some pair =>
@@ -1030,12 +1030,12 @@ lemma interp_cons_setTower_any
     simp only [VarMap.bind] at hLook
     by_cases hX : nm = cv
     · subst hX
-      rw [if_pos rfl] at hLook
+      rw [ite_eq_left rfl] at hLook
       simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
       obtain ⟨ht, hcv⟩ := hLook
       subst ht; cases hcv
       simp only [bindingOK]
-    · rw [if_neg hX] at hLook
+    · rw [ite_eq_right hX] at hLook
       cases hOld : vm.lookup nm with
       | none => rw [hOld] at hLook; exact absurd hLook (by simp)
       | some pair =>
@@ -1053,12 +1053,12 @@ lemma interp_cons_setTower_any
     simp only [VarMap.bind] at hLook
     by_cases hX : nm = cv
     · subst hX
-      rw [if_pos rfl] at hLook
+      rw [ite_eq_left rfl] at hLook
       simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
       obtain ⟨ht, hcv⟩ := hLook
       subst ht; cases hcv
       simp only [bindingOK]
-    · rw [if_neg hX] at hLook
+    · rw [ite_eq_right hX] at hLook
       cases hOld : vm.lookup nm with
       | none => rw [hOld] at hLook; exact absurd hLook (by simp)
       | some pair =>
@@ -1115,11 +1115,11 @@ lemma interp_cons_unchanged
   simp only [VarMap.bind] at hLook
   by_cases hN : name = x
   · subst hN
-    rw [if_pos rfl] at hLook
+    rw [ite_eq_left rfl] at hLook
     simp only [Option.some.injEq, Sigma.mk.injEq] at hLook
     obtain ⟨ht, hcv⟩ := hLook
     subst ht; cases hcv; exact hPick
-  · rw [if_neg hN] at hLook
+  · rw [ite_eq_right hN] at hLook
     cases hOld : vm.lookup name with
     | none => rw [hOld] at hLook; exact absurd hLook (by simp)
     | some pair =>

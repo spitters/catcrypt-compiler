@@ -149,14 +149,14 @@ theorem body_corres :
     refine corres_conseq hseq (fun _ _ h _ => h) (fun _ h => h) (fun _ _ => rfl) ?_
     intro env t hG hQ
     refine ⟨hQ.1, ?_⟩
-    simp only [keyEqStep, hG.2, if_true]
+    simp only [keyEqStep, hG.2, ite_true]
     exact hQ.2
   · -- the entries agree: `eq` is unchanged
     refine corres_conseq (corres_unitVal BodyP _) (fun _ _ h _ => h) (fun _ h => h)
       (fun _ _ => rfl) ?_
     intro env t hG hQ
     refine ⟨hQ.1.1, ?_⟩
-    simp only [keyEqStep, hG.2, Bool.false_eq_true, if_false]
+    simp only [keyEqStep, hG.2, Bool.false_eq_true, ite_false]
     exact hQ.1.2
 
 /-- The entry environment binds the two arrays. -/

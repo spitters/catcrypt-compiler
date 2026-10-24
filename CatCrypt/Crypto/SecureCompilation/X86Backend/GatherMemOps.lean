@@ -209,7 +209,7 @@ theorem parseMemName_of_memNameParts {n b : String} {off : Int}
   unfold parseMemName
   split at h
   · rename_i hp
-    rw [if_pos hp]
+    rw [ite_eq_left hp]
     split at h
     · split at h
       · simp_all
@@ -226,7 +226,7 @@ theorem parseMemNameGp_of_memNameParts {n b : String} {off : Int}
   unfold parseMemNameGp
   split at h
   · rename_i hp
-    rw [if_pos hp]
+    rw [ite_eq_left hp]
     split at h
     · split at h
       · simp_all
@@ -637,7 +637,7 @@ theorem dispatch_lea (frame spillW bb : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
       = encMemMovw 1 0x8d (gpNumU dn) bb off := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, htag, halu, h2b,
-    hlea, hd, hgp, Bool.false_eq_true, if_false, if_true]
+    hlea, hd, hgp, Bool.false_eq_true, ite_false, ite_true]
 
 /-- `LEA:64` (opcode `0x8d`, `w = 1`) dispatches to the effective-address bytes. -/
 theorem encodeLopn_lea64 (frame spillW bb : Nat) (dn sn : String) (off : Int)
@@ -689,7 +689,7 @@ theorem dispatch_adx_two (frame spillW pfx : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .reg sn]) qsaveB
       = encAdxCarry pfx (gpNumU dn) (gpNumU sn) := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-- **The one-source ADX dispatch.** -/
 theorem dispatch_adx_one (frame spillW pfx : Nat) (mnem base : String)
@@ -701,7 +701,7 @@ theorem dispatch_adx_one (frame spillW pfx : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
       = encAdxCarry pfx (gpNumU dn) (gpNumU sn) := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-- `ADCX:64` (prefix `0x66`, the CF chain) two-source dispatch. -/
 theorem encodeLopn_adcx64₂ (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
@@ -755,7 +755,7 @@ theorem dispatch_2b_two (frame spillW op : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .reg sn]) qsaveB
       = enc0FRRw 1 op (gpNumU dn) (gpNumU sn) := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, htag, halu, h2b,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-- `CMOVE:64` (`0F 44`) two-source dispatch. -/
 theorem encodeLopn_cmove64 (frame spillW : Nat) (dn an sn : String) (qsaveB : Nat) :
@@ -795,7 +795,7 @@ theorem dispatch_setc (frame spillW : Nat) (mnem base : String) (dn : String)
     encodeLopn frame spillW (.Lopn [.reg dn] mnem []) qsaveB
       = encSetccMovzx 0x92 (gpNumU dn) := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, hsetc,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
 
 /-- `SETC:64` dispatches to the CF materialisation pair. -/
 theorem encodeLopn_setc64 (frame spillW : Nat) (dn : String) (qsaveB : Nat) :
@@ -824,7 +824,7 @@ theorem dispatch_mulx (frame spillW : Nat) (mnem base : String)
   obtain ⟨hs1, hs2⟩ := notSlotMem_of_isGpName hs
   simp only [encodeLopn, hbind, hstrip, hmulx, hne, hl1, hl2, hh1, hh2, hs1, hs2,
     mulxSrcMem?_of_isGpName frame spillW qsaveB hs, Option.isSome_none, Bool.or_self,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
 
 /-- The register widening multiply with coincident destinations encodes the
     printer's scratch sequence `encMulxSameDst`: the high half lands in the
@@ -840,7 +840,7 @@ theorem encodeLopn_mulx_same (frame spillW : Nat) (mnem base : String)
   obtain ⟨hs1, hs2⟩ := notSlotMem_of_isGpName hs
   simp only [encodeLopn, hbind, hstrip, hmulx, BEq.rfl, hd1, hd2, hs1, hs2,
     mulxSrcMem?_of_isGpName frame spillW qsaveB hs, Option.isSome_none, Bool.or_self,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
 
 /-- `MULX:64` dispatches to the VEX register-form widening multiply. -/
 theorem encodeLopn_mulx64 (frame spillW : Nat) (dlN dhN s2 : String) (qsaveB : Nat)
@@ -865,7 +865,7 @@ theorem dispatch_mulxmem (frame spillW : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dlN, .reg dhN] mnem [.reg mn]) qsaveB
       = encMulxMem (gpNumU dhN) (gpNumU dlN) bb off := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hmem,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
 
 /-- `MULXMEM:64` dispatches to the VEX memory-form widening multiply. -/
 theorem encodeLopn_mulxmem64 (frame spillW : Nat) (dlN dhN mn : String) (bb : Nat)
@@ -890,7 +890,7 @@ theorem dispatch_alu_imm₂ (frame spillW : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg an, .imm v]) qsaveB
       = encImmOp 1 base (.reg dn) v := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, hcc,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
   split
   · next hz =>
     rw [beq_iff_eq] at hz

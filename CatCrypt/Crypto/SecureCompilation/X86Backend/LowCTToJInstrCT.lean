@@ -262,7 +262,7 @@ theorem lowerArith_denote (ρ : RegMap) (p : ArithSrc) (rs : RustState) (js : JS
     have hbv : ρ p.b ≠ ρ p.dst := fun h => hb (hρ h)
     rw [ArithOp.toJInstr_word, hs1_eq]
     simp only [JState.get_setReg_same, JState.get_setReg_other _ _ _ _ hbv,
-               rsSetScalar, beq_self_eq_true, if_true]
+               rsSetScalar, beq_self_eq_true, ite_true]
     rw [hmatch p.a, hmatch p.b]
     have hop := ArithSrc.toSExpr_eval_ofNat p rs.rsScalar
     cases p with
@@ -271,7 +271,7 @@ theorem lowerArith_denote (ρ : RegMap) (p : ArithSrc) (rs : RustState) (js : JS
     have hvd : ρ v ≠ ρ p.dst := fun h => hv (hρ h)
     rw [ArithOp.toJInstr_get_other _ _ _ _ _ hvd, hs1_eq,
         JState.get_setReg_other _ _ _ _ hvd]
-    simp only [rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, if_false]
+    simp only [rsSetScalar, beq_eq_false_iff_ne.mpr hv, Bool.false_eq_true, ite_false]
     exact hmatch v
 
 /-- The expression of an arithmetic source reads two scalar slots and no tower

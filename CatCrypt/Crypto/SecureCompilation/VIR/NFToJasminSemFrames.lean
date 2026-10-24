@@ -549,11 +549,11 @@ theorem semIr_while_flag {cs : List JasminTy}
       obtain ⟨r, hr, h⟩ := h
       obtain ⟨σ1, hb, hc, hinv1⟩ := hstep acc σ hinv (hP 0 acc rfl) r hr
       by_cases hbit : HasBoolBit.toBool (d := jasminDialect) r.head = true
-      · rw [if_pos hbit] at h
+      · rw [ite_eq_left hbit] at h
         obtain ⟨σ', hw, hinv'⟩ := ih r.tail σ1 accF h hinv1 fun n acc' h' =>
           hP (n + 1) acc' (by simp [whileStates, hr, hbit, h'])
         exact ⟨σ', .Ewhile_true _ _ _ _ _ _ _ _ _ hb (by rw [hc, hbit]) (.Eskip _) hw, hinv'⟩
-      · rw [if_neg hbit, Option.some.injEq] at h
+      · rw [ite_eq_right hbit, Option.some.injEq] at h
         subst h
         refine ⟨σ1, .Ewhile_false _ _ _ _ _ _ _ hb ?_, hinv1⟩
         rw [hc]
@@ -1093,16 +1093,16 @@ theorem sim_if (hop : JazzOpAgrees opS) {Γ : Ctxt jasminDialect} {rs ts : List 
       JazzResAgrees (blockVars d rs) rb s2 ∧ s2.escs = s.escs ∧ s2.emem = s.emem ∧
       (∀ z : MVar, ¬ Writes env 0 d n0 z.vname → s2.evm z = s.evm z) ∧ VmArrTyped s2.evm := by
     by_cases hb : HasBoolBit.toBool (d := jasminDialect) (cond.lookup V) = true
-    · rw [if_pos hb] at hrb
+    · rw [ite_eq_left hb] at hrb
       have hix := hidx.1
-      rw [if_pos hb] at hix
+      rw [ite_eq_left hb] at hix
       obtain ⟨s2, hsem, hres, hscs, hmm, hfr, harr⟩ := branch_run aS opS gd prog E fuel hok iht hlt
         hbt ht' hrb hix (hsub fun i hi => by simp [usesIdx, hi])
       exact ⟨s2, n, le_refl _, by omega, .Eif_true _ _ _ _ _ (by rw [hcval, hb]) hsem, hres, hscs,
         hmm, hfr, harr⟩
-    · rw [if_neg hb] at hrb
+    · rw [ite_eq_right hb] at hrb
       have hix := hidx.1
-      rw [if_neg hb] at hix
+      rw [ite_eq_right hb] at hix
       obtain ⟨s2, hsem, hres, hscs, hmm, hfr, harr⟩ := branch_run aS opS gd prog E fuel hok ihe hle
         hbe he' hrb hix (hsub fun i hi => by simp [usesIdx, hi])
       refine ⟨s2, bt.next, hmt.2, hme.2, .Eif_false _ _ _ _ _ ?_ hsem, hres, hscs, hmm, hfr, harr⟩

@@ -416,9 +416,9 @@ theorem denote_inline? {L : InlineLib d} {fuel : Nat} (hL : L.Sound fuel) {Γ : 
       obtain ⟨r, hr, hk⟩ := hp
       refine ⟨r, ?_, ihk hk' hk⟩
       split at hr
-      · rw [if_pos ‹_›]
+      · rw [ite_eq_left ‹_›]
         exact iht ht' hr
-      · rw [if_neg ‹_›]
+      · rw [ite_eq_right ‹_›]
         exact ihe he' hr
   | whileLoop inits body k ihb ihk =>
       intro p' V out hq hp
@@ -716,10 +716,10 @@ theorem whileIterLeak_mono {cs : List d.Ty}
       obtain ⟨u, hu, h₁⟩ := h₁
       refine ⟨u, h X u hu, ?_⟩
       split at h₁
-      · rw [if_pos ‹_›]
+      · rw [ite_eq_left ‹_›]
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h₁
         rw [whileIterLeak_mono a₁ a₂ h n _ q hq, Option.map_some]
-      · rw [if_neg ‹_›]
+      · rw [ite_eq_right ‹_›]
         exact h₁
 
 /-- **Inlining keeps every successful leakage run at `E`** under a library sound for the
@@ -766,9 +766,9 @@ theorem leakRunMC_inline? (M : LeakModel d) (E : CallEnv d) {L : InlineLib d} {f
       have ha' : (if HasBoolBit.toBool (d := d) (cond.lookup V) then leakRunMC M E fuel t' V
           else leakRunMC M E fuel e' V) = some a := by
         split at ha
-        · rw [if_pos ‹_›]
+        · rw [ite_eq_left ‹_›]
           exact iht ht' ha
-        · rw [if_neg ‹_›]
+        · rw [ite_eq_right ‹_›]
           exact ihe he' ha
       simp only [leakRunMC, ha', Option.bind_some, ihk hk' hs, Option.map_some]
   | whileLoop inits body k ihb ihk =>
@@ -842,15 +842,15 @@ theorem whileIterLeak_exists {cs : List d.Ty}
       obtain ⟨u, hu, h₁⟩ := h₁
       obtain ⟨m, hm⟩ := h X u hu
       by_cases hb : HasBoolBit.toBool (d := d) u.1.head = true
-      · rw [if_pos hb] at h₁
+      · rw [ite_eq_left hb] at h₁
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h₁
         obtain ⟨k, hk⟩ := whileIterLeak_exists f g h n _ q hq
         exact ⟨m ++ .branch true :: k, by
-          simp only [whileIterLeak, hm, Option.bind_some, hb, if_true, hk, Option.map_some]⟩
-      · rw [if_neg hb] at h₁
+          simp only [whileIterLeak, hm, Option.bind_some, hb, ite_true, hk, Option.map_some]⟩
+      · rw [ite_eq_right hb] at h₁
         cases h₁
         exact ⟨m ++ [.branch false], by
-          simp only [whileIterLeak, hm, Option.bind_some, hb, Bool.false_eq_true, if_false]⟩
+          simp only [whileIterLeak, hm, Option.bind_some, hb, Bool.false_eq_true, ite_false]⟩
 
 omit [DialectSignature d] [HasWord64 d] [DialectDenoteM d Option] in
 /-- **The iterations of two exit-flag loops whose single bodies split, split**: the analogue
@@ -877,49 +877,49 @@ theorem whileIterLeak_prefix {cs : List d.Ty}
       obtain ⟨m₁, m₂, hm₁, hm₂, hm⟩ := h X₁ X₂ u₁ u₂ hu₁ hu₂
       by_cases hb₁ : HasBoolBit.toBool (d := d) u₁.1.head = true <;>
         by_cases hb₂ : HasBoolBit.toBool (d := d) u₂.1.head = true
-      · rw [if_pos hb₁] at h₁
-        rw [if_pos hb₂] at h₂
+      · rw [ite_eq_left hb₁] at h₁
+        rw [ite_eq_left hb₂] at h₂
         obtain ⟨q₁, hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
         obtain ⟨q₂, hq₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
         obtain ⟨k₁, k₂, hk₁, hk₂, hk⟩ :=
           whileIterLeak_prefix f₁ f₂ g₁ g₂ e₁ e₂ h n _ _ q₁ q₂ hq₁ hq₂
         refine ⟨m₁ ++ .branch true :: k₁, m₂ ++ .branch true :: k₂, ?_, ?_,
           fun s₁ s₂ hs => ?_⟩
-        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, if_true, hk₁, Option.map_some]
-        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, if_true, hk₂, Option.map_some]
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, ite_true, hk₁, Option.map_some]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, ite_true, hk₂, Option.map_some]
         · simp only [List.append_assoc, List.cons_append] at hs
           obtain ⟨rfl, hs⟩ := hm _ _ hs
           obtain ⟨rfl, rfl⟩ := hk _ _ (List.cons.inj hs).2
           exact ⟨rfl, rfl⟩
-      · rw [if_pos hb₁] at h₁
-        rw [if_neg hb₂] at h₂
+      · rw [ite_eq_left hb₁] at h₁
+        rw [ite_eq_right hb₂] at h₂
         obtain ⟨q₁, hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
         cases h₂
         obtain ⟨k₁, hk₁⟩ := whileIterLeak_exists f₁ g₁ e₁ n _ q₁ hq₁
         refine ⟨m₁ ++ .branch true :: k₁, m₂ ++ [.branch false], ?_, ?_, fun s₁ s₂ hs => ?_⟩
-        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, if_true, hk₁, Option.map_some]
-        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, Bool.false_eq_true, if_false]
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, ite_true, hk₁, Option.map_some]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, Bool.false_eq_true, ite_false]
         · simp only [List.append_assoc, List.cons_append, List.nil_append] at hs
           obtain ⟨-, hs⟩ := hm _ _ hs
           simp at hs
-      · rw [if_neg hb₁] at h₁
-        rw [if_pos hb₂] at h₂
+      · rw [ite_eq_right hb₁] at h₁
+        rw [ite_eq_left hb₂] at h₂
         cases h₁
         obtain ⟨q₂, hq₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
         obtain ⟨k₂, hk₂⟩ := whileIterLeak_exists f₂ g₂ e₂ n _ q₂ hq₂
         refine ⟨m₁ ++ [.branch false], m₂ ++ .branch true :: k₂, ?_, ?_, fun s₁ s₂ hs => ?_⟩
-        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, Bool.false_eq_true, if_false]
-        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, if_true, hk₂, Option.map_some]
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, Bool.false_eq_true, ite_false]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, ite_true, hk₂, Option.map_some]
         · simp only [List.append_assoc, List.cons_append, List.nil_append] at hs
           obtain ⟨-, hs⟩ := hm _ _ hs
           simp at hs
-      · rw [if_neg hb₁] at h₁
-        rw [if_neg hb₂] at h₂
+      · rw [ite_eq_right hb₁] at h₁
+        rw [ite_eq_right hb₂] at h₂
         cases h₁
         cases h₂
         refine ⟨m₁ ++ [.branch false], m₂ ++ [.branch false], ?_, ?_, fun s₁ s₂ hs => ?_⟩
-        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, Bool.false_eq_true, if_false]
-        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, Bool.false_eq_true, if_false]
+        · simp only [whileIterLeak, hm₁, Option.bind_some, hb₁, Bool.false_eq_true, ite_false]
+        · simp only [whileIterLeak, hm₂, Option.bind_some, hb₂, Bool.false_eq_true, ite_false]
         · simp only [List.append_assoc, List.cons_append, List.nil_append] at hs
           obtain ⟨rfl, hs⟩ := hm _ _ hs
           exact ⟨rfl, (List.cons.inj hs).2⟩
@@ -1032,9 +1032,9 @@ theorem leakRunMC_inline?_prefix (M : LeakModel d) (E : CallEnv d) {L : InlineLi
             ∀ s₁ s₂ : List CTLeak, b₁.2 ++ s₁ = b₂.2 ++ s₂ → m₁ = m₂ ∧ s₁ = s₂ := by
         intro W₁ W₂ c b₁ b₂ h₁ h₂
         cases c
-        · simp only [Bool.false_eq_true, if_false] at h₁ h₂ ⊢
+        · simp only [Bool.false_eq_true, ite_false] at h₁ h₂ ⊢
           exact ihe he' h₁ h₂
-        · simp only [if_true] at h₁ h₂ ⊢
+        · simp only [ite_true] at h₁ h₂ ⊢
           exact iht ht' h₁ h₂
       obtain ⟨m₁, -, hm₁, -, -⟩ := hbr V₁ V₁ _ a₁ a₁ ha₁ ha₁
       obtain ⟨m₂, -, hm₂, -, -⟩ := hbr V₂ V₂ _ a₂ a₂ ha₂ ha₂
@@ -1268,9 +1268,9 @@ theorem denote_inline?_step [CallDenote d] {L : InlineLib d} {D₁ D₂ : Dialec
       obtain ⟨r, hr, hk⟩ := hp
       refine ⟨r, ?_, ihk ha.2 hk' hk⟩
       split at hr
-      · rw [if_pos ‹_›]
+      · rw [ite_eq_left ‹_›]
         exact iht ha.1.1 ht' hr
-      · rw [if_neg ‹_›]
+      · rw [ite_eq_right ‹_›]
         exact ihe ha.1.2 he' hr
   | whileLoop inits body k ihb ihk =>
       intro p' V out ha hq hp
@@ -1395,9 +1395,9 @@ theorem leakRunMC_inline?_step {L : InlineLib d} {D₁ D₂ : DialectDenoteM d O
           @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ t' V
           else @leakRunMC d _ _ _ _ D₂ ev₂.toExprEv E fuel _ _ e' V) = some a := by
         split at ha'
-        · rw [if_pos ‹_›]
+        · rw [ite_eq_left ‹_›]
           exact iht ha.1.1 ht' ha'
-        · rw [if_neg ‹_›]
+        · rw [ite_eq_right ‹_›]
           exact ihe ha.1.2 he' ha'
       simp only [leakRunMC, ha'', Option.bind_some, ihk ha.2 hk' hs, Option.map_some]
   | whileLoop inits body k ihb ihk =>
@@ -1638,10 +1638,10 @@ theorem entryEnv_rel_paramsEnv : ∀ (ps : List (String × NfTy)) (V : Valuation
       · rename_i hxx
         subst hxx
         cases hx'
-        rw [if_pos rfl]
+        rw [ite_eq_left rfl]
         rfl
       · rename_i hxx
-        rw [if_neg fun h => hxx h.symm]
+        rw [ite_eq_right fun h => hxx h.symm]
         exact EnvRel.mapV (entryEnv_rel_paramsEnv ps V) (fun v => Var.there v)
           (W := .cons y V) (fun _ _ => rfl) x' t' v hx'
 
@@ -1709,7 +1709,7 @@ theorem crateOp_sound (fs : List CrateFn) (bi : Builtins)
       simp only [crateOp, Option.bind_eq_some_iff] at hb
       obtain ⟨c, hc, hb⟩ := hb
       have hwf := whileFoldFree_of_crateBody hb
-      simp only [crateBody, hwf, if_true, Option.bind_eq_some_iff] at hb
+      simp only [crateBody, hwf, ite_true, Option.bind_eq_some_iff] at hb
       obtain ⟨o', ho', hb⟩ := hb
       split at hb
       · rename_i hty

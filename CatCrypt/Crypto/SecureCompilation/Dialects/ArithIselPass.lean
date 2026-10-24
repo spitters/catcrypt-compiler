@@ -148,12 +148,12 @@ theorem iselExpr_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
           subst h
           simp only [iselExpr]
           by_cases hc : binOpIsComm bop = true
-          · rw [if_pos hc]
+          · rw [ite_eq_left hc]
             simp only [Expr.denote, swapArgs, HVector.head, HVector.tail]
             show jasminDenote.denote (.regArith bop w) _
               = jasminDenote.denote (.regArith bop w) _
             exact binOp_apply_comm bop hc _ _
-          · rw [if_neg hc]
+          · rw [ite_eq_right hc]
   | _ => rfl
 
 /-! ## 4. Lift the rewrite structurally to `Com` -/

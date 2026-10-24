@@ -109,9 +109,9 @@ theorem tbtTwoStep (bb d q0 r0 : List (BitVec 64)) (A : Nat)
   set c2 := tbtStep bb d c1.1 c1.2 with hc2def
   by_cases hA : ble d r0 = true
   · -- No correction on the first step; the second is a no-op too.
-    have hc1eq : c1 = (q0, r0) := by rw [hc1def]; unfold tbtStep; rw [if_pos hA]
+    have hc1eq : c1 = (q0, r0) := by rw [hc1def]; unfold tbtStep; rw [ite_eq_left hA]
     have hc2eq : c2 = (q0, r0) := by
-      rw [hc2def, hc1eq]; unfold tbtStep; dsimp only; rw [if_pos hA]
+      rw [hc2def, hc1eq]; unfold tbtStep; dsimp only; rw [ite_eq_left hA]
     have hArle : bignumVal d ≤ bignumVal r0 := (ble_eq_true_iff d r0).mp hA
     rw [hc2eq]; dsimp only
     refine ⟨hArle, ?_, ?_⟩
@@ -123,7 +123,7 @@ theorem tbtTwoStep (bb d q0 r0 : List (BitVec 64)) (A : Nat)
       by_contra hc
       exact hA (hiff.mpr (by omega))
     have hc1eq : c1 = (bnSub q0 [(1 : BitVec 64)], BigNat.add r0 bb) := by
-      rw [hc1def]; unfold tbtStep; rw [if_neg hA]
+      rw [hc1def]; unfold tbtStep; rw [ite_eq_right hA]
     have hq0pos : 1 ≤ bignumVal q0 := by
       rcases Nat.eq_zero_or_pos (bignumVal q0) with h0 | h0
       · exfalso; rw [h0, Nat.zero_mul] at hinv; omega
@@ -144,7 +144,7 @@ theorem tbtTwoStep (bb d q0 r0 : List (BitVec 64)) (A : Nat)
     by_cases hB : ble d c1.2 = true
     · -- Second step is a no-op.
       have hc2eq : c2 = (c1.1, c1.2) := by
-        rw [hc2def]; unfold tbtStep; rw [if_pos hB]
+        rw [hc2def]; unfold tbtStep; rw [ite_eq_left hB]
       have hBrle : bignumVal d ≤ bignumVal c1.2 := (ble_eq_true_iff d c1.2).mp hB
       rw [hc2eq]; dsimp only
       refine ⟨hBrle, ?_, ?_⟩
@@ -160,7 +160,7 @@ theorem tbtTwoStep (bb d q0 r0 : List (BitVec 64)) (A : Nat)
         · exfalso; rw [h0, Nat.zero_mul] at hI1; omega
         · exact h0
       have hc2eq : c2 = (bnSub c1.1 [(1 : BitVec 64)], BigNat.add c1.2 bb) := by
-        rw [hc2def]; unfold tbtStep; rw [if_neg hB]
+        rw [hc2def]; unfold tbtStep; rw [ite_eq_right hB]
       have hc2_1v : bignumVal c2.1 = bignumVal c1.1 - 1 := by
         rw [hc2eq]; dsimp only; rw [bnSub_val, bignumVal_one]
       have hc2_2v : bignumVal c2.2 = bignumVal c1.2 + bignumVal bb := by

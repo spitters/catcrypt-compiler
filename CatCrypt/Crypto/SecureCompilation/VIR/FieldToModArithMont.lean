@@ -93,7 +93,7 @@ theorem montOfRep_toRep {q : Nat} (x : ZMod q) : M.ofRep (M.toRep x) = x := by
   unfold ofRep toRep
   cases h : M.isMont q
   · rfl
-  · simp only [if_true]
+  · simp only [ite_true]
     linear_combination x * M.R_mul_rInv q h
 
 end MontParams
@@ -237,7 +237,7 @@ theorem montToRep_neg (M : MontParams) {q : Nat} (a : ZMod q) :
 
 theorem toRep_montMul (M : MontParams) {q : Nat} (h : M.isMont q = true) (a b : ZMod q) :
     M.toRep a * M.toRep b * M.rInv q = M.toRep (a * b) := by
-  simp only [MontParams.toRep, h, if_true]
+  simp only [MontParams.toRep, h, ite_true]
   linear_combination (a * b * M.R q) * M.R_mul_rInv q h
 
 theorem toRep_mul (M : MontParams) {q : Nat} (h : M.isMont q = false) (a b : ZMod q) :
@@ -259,7 +259,7 @@ theorem toRep_montInverse (M : MontParams) {q : Nat} (h : M.isMont q = true)
   have hR := M.R_mul_rInv q h
   have hinv : (M.rInv q)⁻¹ = M.R q :=
     zmod_inv_eq_of_mul_eq_one (by rw [mul_comm]; exact hR)
-  simp only [MontParams.toRep, h, if_true, hinv]
+  simp only [MontParams.toRep, h, ite_true, hinv]
   by_cases ha : a = 0
   · subst ha
     simp only [zero_mul, ZMod.inv_zero]
@@ -323,12 +323,12 @@ theorem blockSquare (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
       match args with
       | .cons a (.cons b .nil) =>
           cases hm : M.isMont q
-          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, Bool.false_eq_true, if_false]
+          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, Bool.false_eq_true, ite_false]
             show modMulF ((mapVar a).lookup (mapVal M V)) ((mapVar b).lookup (mapVal M V))
               = M.toRep (fMulF (a.lookup V) (b.lookup V))
             rw [mapVar_lookup, mapVar_lookup]
             exact toRep_mul M hm _ _
-          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, if_true]
+          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, ite_true]
             show montMulF (M.rInv q) ((mapVar a).lookup (mapVal M V))
                 ((mapVar b).lookup (mapVal M V))
               = M.toRep (fMulF (a.lookup V) (b.lookup V))
@@ -338,12 +338,12 @@ theorem blockSquare (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
       match args with
       | .cons a .nil =>
           cases hm : M.isMont q
-          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, Bool.false_eq_true, if_false]
+          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, Bool.false_eq_true, ite_false]
             show modMulF ((mapVar a).lookup (mapVal M V)) ((mapVar a).lookup (mapVal M V))
               = M.toRep (fSquareF (a.lookup V))
             rw [mapVar_lookup]
             exact toRep_mul M hm _ _
-          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, if_true]
+          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, ite_true]
             show montMulF (M.rInv q) ((mapVar a).lookup (mapVal M V))
                 ((mapVar a).lookup (mapVal M V))
               = M.toRep (fSquareF (a.lookup V))
@@ -353,11 +353,11 @@ theorem blockSquare (M : MontParams) {Γ : Ctxt fieldDialect} {t : FieldTy}
       match args with
       | .cons a .nil =>
           cases hm : M.isMont q
-          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, Bool.false_eq_true, if_false]
+          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, Bool.false_eq_true, ite_false]
             show byInverseF ((mapVar a).lookup (mapVal M V)) = M.toRep (fInvF (a.lookup V))
             rw [mapVar_lookup]
             exact toRep_inv M hm _
-          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, if_true]
+          · simp only [lowering, lowerExprBlock, lowerOpBlock, hm, ite_true]
             show montInverseF (M.rInv q) ((mapVar a).lookup (mapVal M V))
               = M.toRep (fInvF (a.lookup V))
             rw [mapVar_lookup]

@@ -207,7 +207,7 @@ theorem kindOfL_of_straightOk {names : List (String × Nat)} (bound : List Strin
       unfold fits
       rw [lookup_straightΓ]
       split <;> simp
-    simp only [kindOfL, ihv h.1, hfit, if_true]
+    simp only [kindOfL, ihv h.1, hfit, ite_true]
     exact ihb h.2
   case case4 bound a b iha ihb =>
     simp only [Bool.and_eq_true] at h

@@ -316,10 +316,10 @@ theorem Field_from_bytes_eq (bytes : Array Int) :
           if st ≤ en then en else st) := by
     intro st en
     by_cases h : st ≤ en
-    · rw [if_pos h]
+    · rw [ite_eq_left h]
       exact whileFold_count_gen (fun (s : Array Int) (j : Int) => (s, j)) en _ _
         (fun s j => rfl) (en - st).toNat st _ (by omega)
-    · rw [if_neg h, Hax.foldRange_stop _ _ _ _ (by omega)]
+    · rw [ite_eq_right h, Hax.foldRange_stop _ _ _ _ (by omega)]
       exact Hax.whileFold_eq_of_fuel (n := 1)
         (by simp [Hax.whileFoldFuel, Hax.lt, Hax.cfBreak, show ¬ st < en by omega])
   unfold Field_from_bytes
@@ -457,22 +457,22 @@ theorem powStep_inv {a : Array Int} (ha : Canon a) {limb : Int} (hl : W64 limb) 
   cases started
   · have hE0 : E = 0 := hE rfl
     subst hE0
-    rw [if_neg (by decide : ¬ (Hax.bne false 0 = true))]
+    rw [ite_eq_right (by decide : ¬ (Hax.bne false 0 = true))]
     by_cases hd0 : d = 0
-    · rw [if_neg (by simp [hd0])]
+    · rw [ite_eq_right (by simp [hd0])]
       exact ⟨hc, by rw [hv, hd0], fun _ => by omega⟩
-    · rw [if_pos (by simp [hd0])]
+    · rw [ite_eq_left (by simp [hd0])]
       exact ⟨tc, by rw [tv]; congr 1; omega, fun h => absurd (show true = false from h) (by decide)⟩
-  · rw [if_pos (by decide : Hax.bne true 0 = true)]
+  · rw [ite_eq_left (by decide : Hax.bne true 0 = true)]
     obtain ⟨sc, sv⟩ := sqr_n_val hc 4
     simp only [Nat.cast_ofNat] at sc sv
     by_cases hd0 : d = 0
-    · rw [if_neg (by simp [hd0])]
+    · rw [ite_eq_right (by simp [hd0])]
       refine ⟨sc, ?_, fun h => absurd (show true = false from h) (by decide)⟩
       rw [sv, hv, ← pow_mul, hd0]
       congr 1
       omega
-    · rw [if_pos (by simp [hd0])]
+    · rw [ite_eq_left (by simp [hd0])]
       obtain ⟨mc, mv⟩ := mont_mul_limbs_val sc tc
       refine ⟨mc, ?_, fun h => absurd (show true = false from h) (by decide)⟩
       rw [mv, sv, tv, hv, ← pow_mul, ← pow_add]
@@ -745,19 +745,19 @@ theorem copy_index (bytes : Array Int) (st en : Int) (m : ℕ) (hm : m < 32) :
       (init := Hax.repeat_ (0 : Int) (32 : Int)) h ?_ ?_
     · exact key.2 m hm
     · refine ⟨by rw [Hax.size_repeat_]; rfl, fun m _ => ?_⟩
-      rw [index_repeat_zero, if_neg (by omega)]
+      rw [index_repeat_zero, ite_eq_right (by omega)]
     · intro i buf hi1 hi2 ⟨hs, ih⟩
       refine ⟨by rw [Hax.size_array_update_eq, hs], fun m hm => ?_⟩
       by_cases hmi : st + m = i
       · have hsub : Hax.sub i st = (m : Int) := by simp only [Hax.sub]; omega
         rw [hsub, Hax.index_array_update_same _ (by rw [hs, Int.toNat_natCast]; exact hm),
-          if_pos (by omega), hmi]
+          ite_eq_left (by omega), hmi]
       · rw [Hax.index_array_update_of_ne _ (by rw [hs, Int.toNat_natCast]; exact hm)
           (by simp only [Hax.sub]; omega), ih m hm]
         by_cases hlt : st + m < i
-        · rw [if_pos hlt, if_pos (by omega)]
-        · rw [if_neg hlt, if_neg (by omega)]
-  · rw [Hax.foldRange_stop _ _ _ _ (by omega), index_repeat_zero, if_neg (by omega)]
+        · rw [ite_eq_left hlt, ite_eq_left (by omega)]
+        · rw [ite_eq_right hlt, ite_eq_right (by omega)]
+  · rw [Hax.foldRange_stop _ _ _ _ (by omega), index_repeat_zero, ite_eq_right (by omega)]
 
 omit [PrimeirDeps] in
 /-- Entry `m` of the buffer of chunk `k` is byte `32 k + m` of the input, or `0` past its
@@ -789,10 +789,10 @@ theorem fbBuf_index {bytes : Array Int} (hb : IsDigits 8 bytes) (k m : ℕ) (hm 
       omega
   by_cases hlt : 32 * k + m < bytes.size
   · have hnat : ((32 : Int) * k + m).toNat = 32 * k + m := by omega
-    rw [if_pos (hcond.mpr hlt), Hax.index_eq_getElem (by rw [hnat]; exact hlt),
+    rw [ite_eq_left (hcond.mpr hlt), Hax.index_eq_getElem (by rw [hnat]; exact hlt),
       getD_of_lt (by simpa using hlt)]
     simp [hnat]
-  · rw [if_neg (fun h => hlt (hcond.mp h)), getD_of_le (by simpa using hlt)]
+  · rw [ite_eq_right (fun h => hlt (hcond.mp h)), getD_of_le (by simpa using hlt)]
 
 omit [PrimeirDeps] in
 /-- The little-endian value of a list of bytes from position `i` splits off `n` digits. -/

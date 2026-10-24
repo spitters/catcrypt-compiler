@@ -93,7 +93,7 @@ inductive jasminSem (leafSpec : LeafSpec) : Cmd → RustState → RustState → 
                  (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int)))]
         rs (rsSetScalar rs x v)
   /-- `Cif` true branch (scalar nonzero). -/
-  | if_true : ∀ (e : String) (ct cf : Cmd) (rs rs' : RustState) (v : Nat),
+  | ite_true : ∀ (e : String) (ct cf : Cmd) (rs rs' : RustState) (v : Nat),
       rs.rsScalar e = v → v ≠ 0 →
       jasminSem leafSpec ct rs rs' →
       jasminSem leafSpec
@@ -103,7 +103,7 @@ inductive jasminSem (leafSpec : LeafSpec) : Cmd → RustState → RustState → 
                (.Papp1 (.Oword_of_int .U64) (.Pconst 0))) ct cf]
         rs rs'
   /-- `Cif` false branch (scalar zero). -/
-  | if_false : ∀ (e : String) (ct cf : Cmd) (rs rs' : RustState),
+  | ite_false : ∀ (e : String) (ct cf : Cmd) (rs rs' : RustState),
       rs.rsScalar e = 0 →
       jasminSem leafSpec cf rs rs' →
       jasminSem leafSpec
@@ -164,12 +164,12 @@ theorem jasminSem_seq_compose
     exact jasminSem.cons _ l2 rs0 _ rs' (jasminSem.assgn_u64_zero x rs0) h2
   | assgn_u64_val x v rs0 =>
     exact jasminSem.cons _ l2 rs0 _ rs' (jasminSem.assgn_u64_val x v rs0) h2
-  | if_true e ct cf rs0 r1' v hv hne hct =>
+  | ite_true e ct cf rs0 r1' v hv hne hct =>
     exact jasminSem.cons _ l2 rs0 r1' rs'
-            (jasminSem.if_true e ct cf rs0 r1' v hv hne hct) h2
-  | if_false e ct cf rs0 r1' h0 hcf =>
+            (jasminSem.ite_true e ct cf rs0 r1' v hv hne hct) h2
+  | ite_false e ct cf rs0 r1' h0 hcf =>
     exact jasminSem.cons _ l2 rs0 r1' rs'
-            (jasminSem.if_false e ct cf rs0 r1' h0 hcf) h2
+            (jasminSem.ite_false e ct cf rs0 r1' h0 hcf) h2
   | call_oracle f dest args rs0 oldDestV argList hLk hArgs hArgsTyped =>
     exact jasminSem.cons _ l2 rs0 _ rs'
             (jasminSem.call_oracle f dest args rs0 oldDestV argList hLk hArgs
@@ -233,12 +233,12 @@ theorem rustExecSoundInJasmin
   | ifTrue e ct cf rs0 rs0' v hv hne_zero _h ih =>
     simp only [whileFree, Bool.and_eq_true] at hWf
     simp only [toJasminCmd_RIfNz]
-    exact jasminSem.if_true e (toJasminCmd ct) (toJasminCmd cf) rs0 rs0' v
+    exact jasminSem.ite_true e (toJasminCmd ct) (toJasminCmd cf) rs0 rs0' v
       hv hne_zero (ih hWf.1)
   | ifFalse e ct cf rs0 rs0' h _h ih =>
     simp only [whileFree, Bool.and_eq_true] at hWf
     simp only [toJasminCmd_RIfNz]
-    exact jasminSem.if_false e (toJasminCmd ct) (toJasminCmd cf) rs0 rs0'
+    exact jasminSem.ite_false e (toJasminCmd ct) (toJasminCmd cf) rs0 rs0'
       h (ih hWf.2)
   | whileFalse _ _ _ _ => simp [whileFree] at hWf
   | whileTrue _ _ _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf

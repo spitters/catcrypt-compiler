@@ -120,7 +120,7 @@ theorem lowerMulHi_get_dstHi (ra rb dstHi dstLo : String) (s : JState 64) :
     (runBlock s (lowerMulHi ra rb dstHi dstLo)).get dstHi
       = mulHiW (s.get ra) (s.get rb) := by
   simp only [lowerMulHi, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MULX_lo_hi, wumul, JState.setReg, JState.get, mulHiW, high_bits, if_true]
+    x86_MULX_lo_hi, wumul, JState.setReg, JState.get, mulHiW, high_bits, ite_true]
 
 /-- **Per-op frame (mulhi).** The lowered `MULX` writes only `dstHi` and `dstLo`;
     reading any other register `r` (distinct from both) falls through unchanged. -/
@@ -128,7 +128,7 @@ theorem lowerMulHi_get_other (ra rb dstHi dstLo r : String)
     (hHi : r ≠ dstHi) (hLo : r ≠ dstLo) (s : JState 64) :
     (runBlock s (lowerMulHi ra rb dstHi dstLo)).get r = s.get r := by
   simp only [lowerMulHi, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MULX_lo_hi, wumul, JState.setReg, JState.get, if_neg hHi, if_neg hLo]
+    x86_MULX_lo_hi, wumul, JState.setReg, JState.get, ite_eq_right hHi, ite_eq_right hLo]
 
 /-! ## 3. The single-op `mulhi` tie -/
 

@@ -260,7 +260,7 @@ theorem quadsAt_flatMap_directives (es : List Entry) (h : (es.map Entry.label).N
     · simp [quadRun_map_quad_append _ _ (quadRun_flatMap_directives es)]
     · have hne : e'.label ≠ e.label := fun heq =>
         h.1 (heq ▸ List.mem_map_of_mem he)
-      rw [if_neg hne, quadsAt_map_quad_append]
+      rw [ite_eq_right hne, quadsAt_map_quad_append]
       exact ih h.2 he
 
 theorem labelAt_injective (pfx : String) : Function.Injective (labelAt pfx) := by

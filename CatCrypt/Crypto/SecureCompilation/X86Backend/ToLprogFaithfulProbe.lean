@@ -111,7 +111,7 @@ theorem twoAddrExpand_lsem {w : Nat} (s : Lstate w) (dst s0 s1 opn : String)
     simp [evalOperand, Lstate.setReg, Lstate.nextPc]
   have heval_s1 : evalOperand s1State (.reg s1) = s.lvm s1 := by
     show evalOperand ((s.setReg dst (s.lvm s0)).nextPc) (.reg s1) = s.lvm s1
-    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, if_neg (Ne.symm hds)]
+    simp only [evalOperand, Lstate.setReg, Lstate.nextPc, ite_eq_right (Ne.symm hds)]
   have hop2 : lsemStep (LinstrR.Lopn [.reg dst] opn [.reg dst, .reg s1]) s1State
       = some ((s1State.setReg dst v).nextPc) := by
     simp only [lsemStep, List.map_cons, List.map_nil, heval_dst, heval_s1, hstrip, hop]

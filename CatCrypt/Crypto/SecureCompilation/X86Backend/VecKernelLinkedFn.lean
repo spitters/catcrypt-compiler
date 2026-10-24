@@ -279,11 +279,11 @@ theorem room_of_callSite {frame : String → Option (BitVec 64)}
     have : (8 * (i / 8)) ≤ i := Nat.mul_div_le i 8
     bv_omega
   have he : (entryOf ret sA).regs "%rsp" = rsp + BitVec.ofInt 64 (-8) := by
-    rw [entryOf_regs, if_pos rfl, retWord, hsp]
+    rw [entryOf_regs, ite_eq_left rfl, retWord, hsp]
   have h1 : (entryOf ret sA).regs "%rdi" = base D := by
-    rw [entryOf_regs, if_neg (by decide), hrdi]
+    rw [entryOf_regs, ite_eq_right (by decide), hrdi]
   have h2 : (entryOf ret sA).regs "%rsi" = base B := by
-    rw [entryOf_regs, if_neg (by decide), hrsi]
+    rw [entryOf_regs, ite_eq_right (by decide), hrsi]
   have hfr : ∀ x : BitVec 64, ∀ j < F,
       x = rsp + BitVec.ofInt 64 (-8) - BitVec.ofNat 64 F + BitVec.ofNat 64 j →
       InFrame (rsp + BitVec.ofInt 64 (-8)) F x := by

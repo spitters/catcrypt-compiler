@@ -120,7 +120,7 @@ theorem selectMulxMac_state (s : JState 64) (acc a b cy hi lo : String)
           (s.get cy) (s.flagB (·.of))).2 := by
   simp only [selectMulxMac, runBlock_cons, runBlock_nil, evalInstr, x86_MULX_lo_hi,
     x86_ADCX, JState.get, JState.setReg, JState.flagB, JOperand.eval,
-    hAccHi, hAccLo, hCyAcc, hCyHi, hCyLo, hLoHi, if_true, if_false]
+    hAccHi, hAccLo, hCyAcc, hCyHi, hCyLo, hLoHi, ite_true, ite_false]
 
 /-- The `CF` carry-out after the selected block is the `ADCX` chain's carry
     (`ADOX` writes `OF`, not `CF`); the `OF` carry-out is the `ADOX` chain's. -/
@@ -137,7 +137,7 @@ theorem selectMulxMac_flags (s : JState 64) (acc a b cy hi lo : String)
   constructor <;>
   simp only [selectMulxMac, runBlock_cons, runBlock_nil, evalInstr, x86_MULX_lo_hi,
     x86_ADCX, JState.get, JState.setReg, JState.flagB, JOperand.eval,
-    hAccHi, hAccLo, hCyAcc, hCyHi, hCyLo, hLoHi, if_true, if_false]
+    hAccHi, hAccLo, hCyAcc, hCyHi, hCyLo, hLoHi, ite_true, ite_false]
 
 /-! ## The MAC value identity
 
@@ -324,7 +324,7 @@ theorem selectMulxMac_singleLimb (a b cy hi lo : String)
         + (if false = true then 1 else 0))) := by simp; omega
     have e2 : ¬ (2 ^ 64 ≤ ((wumul va vb).2.toNat + BitVec.toNat (0 : BitVec 64)
         + (if false = true then 1 else 0))) := by simp; omega
-    rw [if_neg (by simpa using e1), if_neg (by simpa using e2)]
+    rw [ite_eq_right (by simpa using e1), ite_eq_right (by simpa using e2)]
   rw [hcarry0] at hval
   simpa using hval
 

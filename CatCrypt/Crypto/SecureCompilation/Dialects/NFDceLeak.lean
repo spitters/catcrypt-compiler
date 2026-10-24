@@ -251,12 +251,12 @@ theorem whileIterLeak_erase {cs : List d.Ty}
         obtain ⟨q', hq', rfl⟩ := Option.map_eq_some_iff.mp h
         obtain ⟨E₂, h₂, e₂⟩ := whileIterLeak_erase step stepD er hs n _ q' hq'
         refine ⟨E₁ ++ .branch true :: E₂, ?_, fun rest => ?_⟩
-        · simp only [whileIterLeak, h₁, Option.bind_some, if_pos hb, h₂, Option.map_some]
+        · simp only [whileIterLeak, h₁, Option.bind_some, ite_eq_left hb, h₂, Option.map_some]
         · simp only [List.append_assoc, List.cons_append, whileErase, e₁, e₂]
       · rename_i hb
         cases h
         refine ⟨E₁ ++ [.branch false], ?_, fun rest => ?_⟩
-        · simp only [whileIterLeak, h₁, Option.bind_some, if_neg hb]
+        · simp only [whileIterLeak, h₁, Option.bind_some, ite_eq_right hb]
         · simp only [List.append_assoc, List.cons_append, List.nil_append, whileErase, e₁]
 
 /-- **The leakage transformer of dead-binding elimination.** A leakage run of `p` that
@@ -290,14 +290,14 @@ theorem NFProg.leakRunM_dce (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : L
       · rename_i k' hr
         refine ⟨E, ?_, fun rest => ?_⟩
         · rw [NFProg.leakRunM_rename? M fuel _ hr (PRen.agrees_drop V x), hE]
-        · simp only [NFProg.dceErase, hr, Option.isSome_some, if_true, List.append_assoc,
+        · simp only [NFProg.dceErase, hr, Option.isSome_some, ite_true, List.append_assoc,
             hdrop, eE]
       · rename_i hr
         refine ⟨Expr.ctLeak M e V ++ E, ?_, fun rest => ?_⟩
         · simp only [NFProg.leakRunM, hx, Option.bind_some, hE, Option.map_some]
         · have hn : (NFProg.rename? PRen.drop (NFProg.dce k)).isSome = false := by
             rw [hr]; rfl
-          simp only [NFProg.dceErase, hn, Bool.false_eq_true, if_false, List.append_assoc,
+          simp only [NFProg.dceErase, hn, Bool.false_eq_true, ite_false, List.append_assoc,
             htake, hdrop, eE]
   | forLoop count inits body k ihb ihk =>
       intro V r h
@@ -325,10 +325,10 @@ theorem NFProg.leakRunM_dce (M : LeakModel d) (fuel : Nat) {Γ : Ctxt d} {ts : L
         split at ha
         · rename_i hb
           obtain ⟨E₁, h₁, e₁⟩ := iht V a ha
-          exact ⟨E₁, by rw [if_pos hb]; exact h₁, fun rest => by rw [if_pos hb]; exact e₁ rest⟩
+          exact ⟨E₁, by rw [ite_eq_left hb]; exact h₁, fun rest => by rw [ite_eq_left hb]; exact e₁ rest⟩
         · rename_i hb
           obtain ⟨E₁, h₁, e₁⟩ := ihe V a ha
-          exact ⟨E₁, by rw [if_neg hb]; exact h₁, fun rest => by rw [if_neg hb]; exact e₁ rest⟩
+          exact ⟨E₁, by rw [ite_eq_right hb]; exact h₁, fun rest => by rw [ite_eq_right hb]; exact e₁ rest⟩
       obtain ⟨E₁, h₁, e₁⟩ := harm
       refine ⟨.branch (HasBoolBit.toBool (d := d) (cond.lookup V)) :: (E₁ ++ E₂), ?_,
         fun rest => ?_⟩

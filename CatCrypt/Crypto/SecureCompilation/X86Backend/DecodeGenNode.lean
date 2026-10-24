@@ -213,13 +213,13 @@ theorem pInv_write {lo hi : Int} {sa0 : AState} {p : PSt} {sa sa' : AState} (D :
     (hr : ∀ r, sa'.regs r = if r = D then x else sa.regs r) (hm : sa'.mem = sa.mem)
     (hv : ∀ w, v = some w → x = w.den sa0) (h : PInv lo hi sa0 p sa) :
     PInv lo hi sa0 { p with regs := (D, v) :: p.regs } sa' where
-  sp := by rw [hr, if_neg (Ne.symm hD)]; exact h.sp
+  sp := by rw [hr, ite_eq_right (Ne.symm hD)]; exact h.sp
   regs r w hw := by
     simp only [PSt.get, getV_cons] at hw
     rw [hr]
     split at hw
-    · rename_i he; subst he; rw [if_pos rfl]; exact hv w hw
-    · rename_i he; rw [if_neg (Ne.symm he)]; exact h.regs r w hw
+    · rename_i he; subst he; rw [ite_eq_left rfl]; exact hv w hw
+    · rename_i he; rw [ite_eq_right (Ne.symm he)]; exact h.regs r w hw
   stk e he := by rw [hm]; exact h.stk e he
   mem a ha := by rw [hm]; exact h.mem a ha
 
@@ -239,13 +239,13 @@ theorem pstep_sound {lo hi : Int} {sa0 : AState} {p p' : PSt} {j : JInstr 64}
           = if r = "%rsp" then sa.regs "%rsp" + sa.regs I * BitVec.ofNat 64 0
             + BitVec.ofInt 64 off else sa.regs r := fun _ => rfl
       refine ⟨?_, fun r w hw => ?_, fun e he => h.stk e he, fun a ha => h.mem a ha⟩
-      · rw [hr, if_pos rfl, h.sp, BitVec.ofInt_add]
+      · rw [hr, ite_eq_left rfl, h.sp, BitVec.ofInt_add]
         simp [BitVec.add_assoc]
       · simp only [PSt.get, getV_cons] at hw
         split at hw
         · exact absurd hw (by simp)
         · rename_i he
-          rw [hr, if_neg (Ne.symm he)]; exact h.regs r w hw
+          rw [hr, ite_eq_right (Ne.symm he)]; exact h.regs r w hw
     · exact absurd hs (by simp)
   · -- store
     rename_i B off Y
@@ -625,7 +625,7 @@ theorem runBlock_regs_of_incrOnce (R : String) :
       subst hj
       rw [Machine.runBlock_cons, runBlock_regs_of_not_dsts R js _ h]
       show (if R = R then sa.regs R + BitVec.ofNat 64 1 else sa.regs R) = _
-      rw [if_pos rfl]; rfl
+      rw [ite_eq_left rfl]; rfl
     · simp only [Bool.and_eq_true] at h
       rw [Machine.runBlock_cons, ih _ h.2]
       have hj : R ∉ dsts j := by simpa using h.1

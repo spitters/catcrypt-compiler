@@ -133,7 +133,7 @@ instance instReadR15 : RegRead "%r15" := ⟨fun v _ => v.r15, fun _ _ => by simp
 macro "regwrite_cm_tac" d:str : tactic =>
   `(tactic| (funext r; by_cases h : r = $d
              · subst h; simp [regsOf]
-             · simp only [regsOf, h, if_false]))
+             · simp only [regsOf, h, ite_false]))
 
 instance instWriteRbx : RegWrite "%rbx" := ⟨fun v w => { v with rbx := w },
   fun _ _ _ => by regwrite_cm_tac "%rbx"⟩
@@ -227,7 +227,7 @@ theorem shrd51_toNat (x y : BitVec 64) :
 theorem bzhi51_toNat (x : BitVec 64) :
     (x86_BZHI x (BitVec.ofNat 64 51)).word.toNat = x.toNat % 2 ^ 51 := by
   simp only [x86_BZHI, BitVec.toNat_ofNat]
-  rw [if_pos (by norm_num), BitVec.toNat_and, BitVec.toNat_ofNat,
+  rw [ite_eq_left (by norm_num), BitVec.toNat_and, BitVec.toNat_ofNat,
     show (51 : Nat) % 2 ^ 64 % 256 = 51 by norm_num,
     Nat.mod_eq_of_lt (show 2 ^ 51 - 1 < 2 ^ 64 by norm_num), Nat.and_two_pow_sub_one_eq_mod]
 
@@ -281,7 +281,7 @@ theorem run_storeMem (b : String) (o : Int) (src : String) [RegRead b] [RegRead 
       Q (absRunMem rest (mkS base V cf of m'))) :
     Q (absRunMem (.storeMem b o (.reg src) :: rest) (mkS base V cf of m)) := by
   refine run_step ?_ (h (fun p => if p = RegRead.get b V base + BitVec.ofInt 64 o then
-    RegRead.get src V base else m p) (if_pos rfl) (fun p hp => if_neg hp))
+    RegRead.get src V base else m p) (ite_eq_left rfl) (fun p hp => ite_eq_right hp))
   simp only [mkS, absStepMem, storeStepM, cellAddr, RegRead.get_eq, evalX]
 
 /-- `mulx dHi, dLo, [b + o]` with `%rdx` as the implicit operand: `dHi` and `dLo` receive
@@ -411,7 +411,7 @@ theorem run_imulriMem19 (d b : String) (o : Int) [RegWrite d] [RegRead b] (x : B
   refine run_step ?_ (h (x * BitVec.ofNat 64 19) (imulOverflow x (BitVec.ofNat 64 19))
     (by rw [BitVec.toNat_mul]; rfl))
   simp only [mkS, absStepMem, imulriMemStepM, imulStep2, movStep2, RegWrite.set_eq,
-    RegRead.get_eq, cellAddr, hm, evalX, BitVec.ofNat_toNat, BitVec.setWidth_eq, if_pos]
+    RegRead.get_eq, cellAddr, hm, evalX, BitVec.ofNat_toNat, BitVec.setWidth_eq, ite_eq_left]
   congr 2
   funext r
   split <;> simp_all
@@ -1160,8 +1160,8 @@ theorem regsOf_ofRegs (regs : String → BitVec 64) : regsOf (RegCM.ofRegs regs)
       (if r = s then regs s else x) = regs r := by
     intro r s x h
     by_cases e : r = s
-    · subst e; exact if_pos rfl
-    · rw [if_neg e, h]
+    · subst e; exact ite_eq_left rfl
+    · rw [ite_eq_right e, h]
   funext r
   exact step (step (step (step (step (step (step (step (step (step (step (step (step
     rfl))))))))))))

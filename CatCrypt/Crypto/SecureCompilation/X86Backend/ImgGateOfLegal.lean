@@ -113,7 +113,7 @@ theorem symN_binRR (dst opn ra rb : String) (R : String → STerm)
         .set dst (.bin (stripWidthTag opn) (R rb) (R ra)) [.eqW (R rb) (R ra)]
       else .set dst (.bin (stripWidthTag opn) (R ra) (R rb)) [.eqW (R ra) (R rb)] := by
   dsimp only [symN]
-  rw [if_pos hb]
+  rw [ite_eq_left hb]
 
 theorem strip_ADD : stripWidthTag "ADD:64" = "ADD" := by decide +kernel
 theorem strip_SUB : stripWidthTag "SUB:64" = "SUB" := by decide +kernel
@@ -154,7 +154,7 @@ theorem symN_setccRR (dst opn ra rb : String) (R : String → STerm)
       .set dst (.setcc ((VIR.JasminLsemWidthN.cmpOfName? (stripWidthTag opn)).getD .eq) (R ra)
         (R rb)) [.eqW (R ra) (R rb)] := by
   dsimp only [symN]
-  rw [if_neg (by simp [hb]), if_pos hc]
+  rw [ite_eq_right (by simp [hb]), ite_eq_left hc]
 
 /-- The register description of a select over registers. -/
 theorem symN_cmov (dst opn c a b : String) (R : String → STerm)
@@ -162,7 +162,7 @@ theorem symN_cmov (dst opn c a b : String) (R : String → STerm)
     symN (.Lopn [.reg dst] opn [.reg c, .reg a, .reg b]) R =
       .set dst (.sel (R a) (R b) (R c)) [.wid (R c) 1, .eqW (R a) (R b)] := by
   dsimp only [symN]
-  rw [if_pos h]
+  rw [ite_eq_left h]
 
 /-- The register description of a move of an immediate into a register. -/
 theorem symN_movImm (dst opn : String) (n : Nat) (R : String → STerm)
@@ -170,7 +170,7 @@ theorem symN_movImm (dst opn : String) (n : Nat) (R : String → STerm)
     symN (.Lopn [.reg dst] opn [.imm n]) R =
       .set dst (.immW (VIR.JasminLsemWidthN.widthFromTag opn) n) [] := by
   dsimp only [symN]
-  rw [if_pos h]
+  rw [ite_eq_left h]
 
 /-- The register description of a two-source operation against an immediate that fits its
     width, other than a shift by `0`. -/
@@ -182,7 +182,7 @@ theorem symN_binRI (dst opn ra : String) (n : Nat) (R : String → STerm)
       .set dst (.bin (stripWidthTag opn) (R ra)
         (.immW (VIR.JasminLsemWidthN.widthFromTag opn) n)) [] := by
   dsimp only [symN]
-  rw [if_pos hb, if_neg h0, if_pos hn]
+  rw [ite_eq_left hb, ite_eq_right h0, ite_eq_left hn]
 
 /-- The register description of a shift by `0`. -/
 theorem symN_shift0 (dst opn ra : String) (R : String → STerm)
@@ -190,7 +190,7 @@ theorem symN_shift0 (dst opn ra : String) (R : String → STerm)
     (h0 : stripWidthTag opn = "SHL" ∨ stripWidthTag opn = "SHR") :
     symN (.Lopn [.reg dst] opn [.reg ra, .imm 0]) R = .set dst (R ra) [] := by
   dsimp only [symN]
-  rw [if_pos hb, if_pos ⟨h0, rfl⟩]
+  rw [ite_eq_left hb, ite_eq_left ⟨h0, rfl⟩]
 
 /-- The register description of a materialised comparison of a register against an immediate
     that fits its width. -/
@@ -202,7 +202,7 @@ theorem symN_setccRI (dst opn ra : String) (n : Nat) (R : String → STerm)
       .set dst (.setcc ((VIR.JasminLsemWidthN.cmpOfName? (stripWidthTag opn)).getD .eq) (R ra)
         (.immW (VIR.JasminLsemWidthN.widthFromTag opn) n)) [] := by
   dsimp only [symN]
-  rw [if_neg (by simp [hb]), if_pos hc, if_pos hn]
+  rw [ite_eq_right (by simp [hb]), ite_eq_left hc, ite_eq_left hn]
 
 /-- The register description of a count-in-mnemonic left or logical right shift by
     `1 … 63`. -/
@@ -222,9 +222,9 @@ theorem symN_tagShift {b : String} (hb : b ∈ ["SHL", "SHR"]) {n : Nat} (hn0 : 
   have hsh : shOk b = true := by rcases hb' with rfl | rfl <;> rfl
   have hlt : n < 2 ^ 64 := lt_trans hn (by decide)
   dsimp only [symN]
-  rw [if_neg hneg, if_neg hmov, hs]
-  simp only [hsh, if_true, if_neg (Nat.pos_iff_ne_zero.1 hn0), hw]
-  rw [if_pos ⟨hb', hlt⟩]
+  rw [ite_eq_right hneg, ite_eq_right hmov, hs]
+  simp only [hsh, ite_true, ite_eq_right (Nat.pos_iff_ne_zero.1 hn0), hw]
+  rw [ite_eq_left ⟨hb', hlt⟩]
 
 /-- The sources of an operation of a non-commutative base are not exchanged. -/
 theorem commSwap_of_not_comm (o d a b : String)
@@ -850,7 +850,7 @@ theorem gate_tagShift {frame : String → Option (BitVec 64)}
     have hmi := movImmStruct?_ne (ds := [.reg d]) (ss := [.reg s]) e8
     rw [VIR.JasminLsemAddrRun.normA_of_caret_free hcar]
     img_sym
-    simp only [if_neg e1, stripWidthTag_tagMnem hb, hneM, if_false, copyQ, beq_iff_eq,
+    simp only [ite_eq_right e1, stripWidthTag_tagMnem hb, hneM, ite_false, copyQ, beq_iff_eq,
       Bool.or_eq_true, hmi]
     simp only [hne "LOAD:64" (by decide), hne "STORE:64" (by decide), hne "LEA:64" (by decide),
       hne "MOVQ" (by decide), hne "MOV:64" (by decide), hne "ZEROEXT" (by decide),
@@ -858,7 +858,7 @@ theorem gate_tagShift {frame : String → Option (BitVec 64)}
       hne "CASTW_64_32" (by decide), hne "CASTW_64_64" (by decide),
       hne "CASTW_64_16" (by decide), hne "CASTW_16_64" (by decide),
       hne "CASTW_16_16" (by decide), hne "CASTW_16_32" (by decide),
-      hne "CASTW_32_16" (by decide), or_self, if_false, hsym]
+      hne "CASTW_32_16" (by decide), or_self, ite_false, hsym]
     img_fin
   · simp [cmovCondOkB]
 

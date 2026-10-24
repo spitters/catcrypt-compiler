@@ -147,7 +147,7 @@ theorem blockNames_selBlock (n : Nat) : blockNames (selBlock (n + 1)) = selNameO
     obtain ⟨i, hi, hxi⟩ := List.mem_flatMap.mp hx
     obtain ⟨j, -, hj⟩ := List.mem_flatMap.mp hi
     have := selEntry_jinstrNames _ x (List.mem_flatMap.mpr ⟨i, hj, hxi⟩)
-    simp only [List.contains_iff_mem, this, if_true]
+    simp only [List.contains_iff_mem, this, ite_true]
 
 /-- The allocation of `selBlock n`: `tbl = %rdi`, `d = %rsi`, `z = %rdx`, the accumulators
     `a0`–`a3` in `%rcx`, `%r8`, `%r9`, `%r10`, the comparison scratch `mask` in `%r11`, the

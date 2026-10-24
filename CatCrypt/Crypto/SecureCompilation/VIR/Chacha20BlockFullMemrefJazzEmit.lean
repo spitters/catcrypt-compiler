@@ -233,9 +233,9 @@ theorem emitReadsFrom_denote_reduces (m : Nat) :
   | succ m ih =>
       intro Γ inV outV words k V
       by_cases h : m < 16
-      · simp only [emitReadsFrom, dif_pos h, denote_var_peel]
+      · simp only [emitReadsFrom, dite_eq_left h, denote_var_peel]
         exact ih _ _ _ _ _
-      · simp only [emitReadsFrom, dif_neg h]
+      · simp only [emitReadsFrom, dite_eq_right h]
         exact ⟨_, _, V, rfl⟩
 
 /-- **Per-read-block denote reduction.** The sixteen `in`-reads' `denote` is the

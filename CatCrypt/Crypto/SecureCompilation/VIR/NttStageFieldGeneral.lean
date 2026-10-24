@@ -324,11 +324,11 @@ theorem stageLaneProg_denote (q n half : Nat) (wm : ZMod q) (a : Array (ZMod q))
   rw [stageLaneProg, stageLane]
   split
   · next hlt =>
-    rw [laneProg_denote, if_pos rfl, laneVar_lookup q a m i 0 (by omega),
+    rw [laneProg_denote, ite_eq_left rfl, laneVar_lookup q a m i 0 (by omega),
       laneVar_lookup q a m (i + half) 0 (by have := hup hlt; omega)]
     simp
   · next hlt =>
-    rw [laneProg_denote, if_neg (by simp), laneVar_lookup q a m (i - half) 0 (by omega),
+    rw [laneProg_denote, ite_eq_right (by simp), laneVar_lookup q a m (i - half) 0 (by omega),
       laneVar_lookup q a m i 0 (by omega)]
     simp
 
@@ -425,7 +425,7 @@ theorem innerRun_spec (bs half : Nat) (hbs : bs = half + half) (hh : 0 < half)
   | zero =>
       intro _
       refine ⟨(pow_zero wm).symm, rfl, fun i => ?_⟩
-      rw [if_neg (by omega), if_neg (by omega)]
+      rw [ite_eq_right (by omega), ite_eq_right (by omega)]
       rfl
   | succ m ih =>
       intro hm
@@ -435,10 +435,10 @@ theorem innerRun_spec (bs half : Nat) (hbs : bs = half + half) (hh : 0 < half)
           = butterflyInnerStep bs half wm block m (innerRun bs half wm block acc m) := rfl
       have hu : (innerRun bs half wm block acc m).1.getD (block * bs + m) 0
           = acc.getD (block * bs + m) 0 := by
-        rw [hget, if_neg (by omega), if_neg (by omega)]
+        rw [hget, ite_eq_right (by omega), ite_eq_right (by omega)]
       have hv : (innerRun bs half wm block acc m).1.getD (block * bs + m + half) 0
           = acc.getD (block * bs + m + half) 0 := by
-        rw [hget, if_neg (by omega), if_neg (by omega)]
+        rw [hget, ite_eq_right (by omega), ite_eq_right (by omega)]
       have hres : (innerRun bs half wm block acc (m + 1)).1
           = ((innerRun bs half wm block acc m).1.set! (block * bs + m)
                 (acc.getD (block * bs + m) 0
@@ -458,14 +458,14 @@ theorem innerRun_spec (bs half : Nat) (hbs : bs = half + half) (hh : 0 < half)
       · rw [hres]
         by_cases h1 : i = block * bs + m + half
         · subst h1
-          rw [getD_set!_self _ _ _ (by simp [hsz]; omega), if_neg (by omega),
-            if_pos (by omega),
+          rw [getD_set!_self _ _ _ (by simp [hsz]; omega), ite_eq_right (by omega),
+            ite_eq_left (by omega),
             show block * bs + m + half - half = block * bs + m from by omega,
             show block * bs + m + half - block * bs - half = m from by omega]
         · by_cases h0 : i = block * bs + m
           · subst h0
             rw [getD_set!_ne _ _ _ _ (by omega),
-              getD_set!_self _ _ _ (by rw [hsz]; omega), if_pos (by omega),
+              getD_set!_self _ _ _ (by rw [hsz]; omega), ite_eq_left (by omega),
               show block * bs + m - block * bs = m from by omega]
           · rw [getD_set!_ne _ _ _ _ (Ne.symm h1), getD_set!_ne _ _ _ _ (Ne.symm h0),
               hget i]
@@ -519,7 +519,7 @@ theorem blockRun_spec (half : Nat) (hh : 0 < half) (wm : ZMod q)
         if i < B * (half + half) then stageLane q half wm acc i else acc.getD i 0 := by
   intro B
   induction B with
-  | zero => intro _ i; rw [if_neg (by omega)]; rfl
+  | zero => intro _ i; rw [ite_eq_right (by omega)]; rfl
   | succ B ih =>
       intro hB i
       have hsucc : (B + 1) * (half + half) = B * (half + half) + (half + half) := by ring
@@ -535,18 +535,18 @@ theorem blockRun_spec (half : Nat) (hh : 0 < half) (wm : ZMod q)
       by_cases hc1 : B * (half + half) ≤ i ∧ i < B * (half + half) + half
       · have hmod : i % (half + half) = i - B * (half + half) :=
           mod_eq_sub_of_block half B i (by omega) (by omega)
-        rw [if_pos hc1, IH i, IH (i + half), if_neg (by omega), if_neg (by omega),
-          if_pos (by omega), stageLane, hmod, if_pos (by omega)]
+        rw [ite_eq_left hc1, IH i, IH (i + half), ite_eq_right (by omega), ite_eq_right (by omega),
+          ite_eq_left (by omega), stageLane, hmod, ite_eq_left (by omega)]
       · by_cases hc2 : B * (half + half) + half ≤ i
             ∧ i < B * (half + half) + half + half
         · have hmod : i % (half + half) = i - B * (half + half) :=
             mod_eq_sub_of_block half B i (by omega) (by omega)
-          rw [if_neg hc1, if_pos hc2, IH i, IH (i - half), if_neg (by omega),
-            if_neg (by omega), if_pos (by omega), stageLane, hmod, if_neg (by omega)]
-        · rw [if_neg hc1, if_neg hc2, IH i]
+          rw [ite_eq_right hc1, ite_eq_left hc2, IH i, IH (i - half), ite_eq_right (by omega),
+            ite_eq_right (by omega), ite_eq_left (by omega), stageLane, hmod, ite_eq_right (by omega)]
+        · rw [ite_eq_right hc1, ite_eq_right hc2, IH i]
           by_cases hlt : i < B * (half + half)
-          · rw [if_pos hlt, if_pos (by omega)]
-          · rw [if_neg hlt, if_neg (by omega)]
+          · rw [ite_eq_left hlt, ite_eq_left (by omega)]
+          · rw [ite_eq_right hlt, ite_eq_right (by omega)]
 
 /-- Every lane of `butterflyStageSpec` on a domain-sized array, at any stage
 index below the domain's `logN`. -/
@@ -569,7 +569,7 @@ theorem butterflyStageSpec_getD (D : Domain (ZMod q)) (stage : Nat)
           (D.n / (2 ^ stage + 2 ^ stage)) := by
     rw [butterflyStageSpec, hbs]
     exact rec_eq_blockRun _ _ _ a _
-  rw [hrun, blockRun_spec (2 ^ stage) hpos _ a _ (by omega) i, if_pos (by omega)]
+  rw [hrun, blockRun_spec (2 ^ stage) hpos _ a _ (by omega) i, ite_eq_left (by omega)]
 
 /-- Lane `i + half` of a stage is inside the domain whenever lane `i` is the
 lower operand of its butterfly. -/

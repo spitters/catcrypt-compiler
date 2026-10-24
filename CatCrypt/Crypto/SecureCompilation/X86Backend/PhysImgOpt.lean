@@ -103,7 +103,7 @@ theorem reloadOf_succ_single {W : Lcmd} {k : Nat} {j : Linstr} {d o : String}
     obtain ⟨d', q⟩ := p
     have hd' : d' = d := by rw [hj] at hm; exact slotMov?_single hm
     subst hd'
-    rw [reloadOf_succ_some hW hm, if_neg (Ne.symm hx)]
+    rw [reloadOf_succ_some hW hm, ite_eq_right (Ne.symm hx)]
   | none =>
     rw [reloadOf_succ_lopn hW hm hj]
     simp only [List.any_cons, List.any_nil, Bool.or_false, dstHitB]
@@ -111,13 +111,13 @@ theorem reloadOf_succ_single {W : Lcmd} {k : Nat} {j : Linstr} {d o : String}
     · simp [hs, Ne.symm hx]
     · simp only [Bool.not_eq_true, Option.isNone_eq_false_iff] at hs
       have hn : (slotArr d).isNone = false := by simpa using hs
-      simp only [hs, Bool.or_true, if_true, hn, Bool.false_eq_true, if_false]
+      simp only [hs, Bool.or_true, ite_true, hn, Bool.false_eq_true, ite_false]
 
 /-- The scan behind a move `slotMov?` into `d` from `s`, for the name `d`. -/
 theorem reloadOf_succ_mov {W : Lcmd} {k : Nat} {j : Linstr} {d s : String}
     (hW : W[k]? = some j) (hm : slotMov? j.li_i = some (d, s)) :
     reloadOf slotArr W (k + 1) d = movScan slotArr W k s := by
-  rw [reloadOf_succ_some hW hm, if_pos rfl]; rfl
+  rw [reloadOf_succ_some hW hm, ite_eq_left rfl]; rfl
 
 /-- The scan behind an operation with the single destination `d` that is no move `slotMov?`,
     for the name `d`. -/
@@ -301,7 +301,7 @@ variable {W : Lcmd} {N : Nat} {i : Linstr} {d o : String} {ss : List LOperand}
 theorem reloadOf_succ_ne (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o ss)
     {x : String} (hx : x ≠ d) (hd : (slotArr d).isNone = true) :
     reloadOf slotArr W (N + 1) x = reloadOf slotArr W N x := by
-  rw [reloadOf_succ_single hW hj hx, if_pos hd]
+  rw [reloadOf_succ_single hW hj hx, ite_eq_left hd]
 
 theorem movScan_succ_ne (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o ss)
     {K : String} (hK : K ≠ d) (hd : (slotArr d).isNone = true) :
@@ -316,17 +316,17 @@ theorem movScan_succ_mov (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o s
     ((movScan slotArr W N s).bind slotArr).isSome = true := by
   unfold movScan at h ⊢
   by_cases hc : ((slotArr s).isNone && gpNameB s) = true
-  · rw [if_pos hc] at h ⊢
+  · rw [ite_eq_left hc] at h ⊢
     by_cases hsd : s = d
     · subst hsd
       rw [reloadOf_succ_mov hW hm] at h
       unfold movScan at h
-      rwa [if_pos hc] at h
+      rwa [ite_eq_left hc] at h
     · rw [reloadOf_succ_single hW hj hsd] at h
       split_ifs at h
       · exact h
       · simp at h
-  · rw [if_neg hc] at h ⊢
+  · rw [ite_eq_right hc] at h ⊢
     exact h
 
 /-- The source of a reload that reads no array slot is no array slot. -/
@@ -354,7 +354,7 @@ theorem elim_imp_surv (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] o ss)
     exfalso
     unfold movScan at hV
     split_ifs at hV with hc
-    · rw [reloadOf_succ_single hW hj hK, if_neg hd] at hV
+    · rw [reloadOf_succ_single hW hj hK, ite_eq_right hd] at hV
       simp at hV
     · simp only [Option.bind_some] at hV
       simp only [Option.isNone_iff_eq_none] at hKn
@@ -652,7 +652,7 @@ theorem reloadElim_transp {A C : Lcmd} {i j : Linstr} (hred : isRedundantReloadL
       rw [reloadOf_succ_mov hW hm] at hy
       unfold movScan at hy
       rw [hside.2] at hy
-      simp only [Bool.and_false, Bool.false_eq_true, if_false, Option.bind_some] at hy
+      simp only [Bool.and_false, Bool.false_eq_true, ite_false, Option.bind_some] at hy
       have h1 := hside.1
       simp only [Option.isNone_iff_eq_none] at h1
       rw [h1] at hy
@@ -984,7 +984,7 @@ theorem movDom_surv (hW : W[N]? = some i) (hW' : W'[N]? = some i')
     exfalso
     unfold movScan at hq
     split_ifs at hq with hc
-    · rw [reloadOf_succ_single hW hj hs, if_neg hd] at hq
+    · rw [reloadOf_succ_single hW hj hs, ite_eq_right hd] at hq
       cases hq
     · cases hq
       simp only [Option.isNone_iff_eq_none] at hsn
@@ -1014,12 +1014,12 @@ theorem movScan_succ_noSlot (hW : W[N]? = some i) (hj : i.li_i = .Lopn [.reg d] 
       rw [hsn] at hds
       cases hds
     split_ifs at hq with hc
-    · rw [reloadOf_succ_single hW hj hne, if_neg hdn'] at hq
+    · rw [reloadOf_succ_single hW hj hne, ite_eq_right hdn'] at hq
       cases hq
     · cases hq
       simp only [Option.isNone_iff_eq_none] at hsn
       rw [hsn] at hqs; cases hqs
-  · rw [if_neg (by simp [hgs])] at hq
+  · rw [ite_eq_right (by simp [hgs])] at hq
     cases hq
     simp only [Option.isNone_iff_eq_none] at hsn
     rw [hsn] at hqs; cases hqs
@@ -1186,11 +1186,11 @@ theorem loadInv_step {b P : Lcmd} {env : LoadEnv} (hW : W[N]? = some i)
           have hrn : (slotArr r').isNone = true := by
             simp only [Bool.and_eq_true] at hcd; exact hcd.1
           unfold movScan
-          rw [if_pos hcd, reloadOf_succ_mov hW' hmt]
+          rw [ite_eq_left hcd, reloadOf_succ_mov hW' hmt]
           refine hMt q ?_ hqs
           by_cases hsd : s' = r'
           · subst hsd
-            rw [if_pos hcd, reloadOf_succ_mov hW hsm] at hq
+            rw [ite_eq_left hcd, reloadOf_succ_mov hW hsm] at hq
             exact hq
           · unfold movScan
             split_ifs at hq ⊢ with hc
@@ -1473,13 +1473,13 @@ theorem scanExit_one_cases {j : Linstr} {y' y : String}
     simp only at h
     by_cases h1 : d = y'
     · subst h1
-      rw [if_pos rfl] at h
+      rw [ite_eq_left rfl] at h
       split_ifs at h with h2
       simp only [Bool.and_eq_true] at h2
       simp only [Option.some.injEq] at h
       subst h
       exact Or.inl ⟨q, rfl, rfl, h2.1, h2.2⟩
-    · rw [if_neg h1] at h
+    · rw [ite_eq_right h1] at h
       split_ifs at h
       simp only [Option.some.injEq] at h
       subst h
@@ -1536,30 +1536,30 @@ theorem deadElimStep_cases (i : Linstr) (live : List String) (acc : Lcmd) :
     · cases hcs : moveShape i with
       | none =>
         have hd : deDrop i live = false := by simp [deDrop, hi, hrec, hcs]
-        rw [if_neg (by simp [hd]), deadElimStep_keep_none live acc hi hrec hcs,
+        rw [ite_eq_right (by simp [hd]), deadElimStep_keep_none live acc hi hrec hcs,
           deadElimStep_keep_none live [] hi hrec hcs]
       | some q =>
         obtain ⟨d, src, ww⟩ := q
         by_cases hdr : ((ww == 64 && src == LOperand.reg d) || !(live.contains d)) = true
         · have hd : deDrop i live = true := by simp only [deDrop, hi, hrec, hcs]; simpa using hdr
-          rw [if_pos hd, deadElimStep_drop live acc hi hrec hcs hdr]
+          rw [ite_eq_left hd, deadElimStep_drop live acc hi hrec hcs hdr]
         · have hdr' : ((ww == 64 && src == LOperand.reg d) || !(live.contains d)) = false := by
             simpa using hdr
           have hd : deDrop i live = false := by simp only [deDrop, hi, hrec, hcs]; simpa using hdr'
-          rw [if_neg (by simp [hd]), deadElimStep_keep_some live acc hi hrec hcs hdr',
+          rw [ite_eq_right (by simp [hd]), deadElimStep_keep_some live acc hi hrec hcs hdr',
             deadElimStep_keep_some live [] hi hrec hcs hdr']
     · have hb : ∀ dsts opn' srcs', i.li_i = .Lopn dsts opn' srcs' →
           isRecognizedOpn opn' = false := by
         intro dsts opn' srcs' he; rw [hi] at he; cases he; simpa using hrec
       have hd : deDrop i live = false := by simp [deDrop, hi, hrec]
-      rw [if_neg (by simp [hd]), deadElimStep_barrier i live acc hb,
+      rw [ite_eq_right (by simp [hd]), deadElimStep_barrier i live acc hb,
         deadElimStep_barrier i live [] hb]
   | _ =>
     have hb : ∀ dsts opn' srcs', i.li_i = .Lopn dsts opn' srcs' →
         isRecognizedOpn opn' = false := by
       intro dsts opn' srcs' he; rw [hi] at he; cases he
     have hd : deDrop i live = false := by simp [deDrop, hi]
-    rw [if_neg (by simp [hd]), deadElimStep_barrier i live acc hb,
+    rw [ite_eq_right (by simp [hd]), deadElimStep_barrier i live acc hb,
       deadElimStep_barrier i live [] hb]
 
 theorem deFoldr : ∀ b : Lcmd, b.foldr deadElimStep (physGPs, []) =
@@ -1741,7 +1741,7 @@ theorem deLive_claim {A b C : Lcmd} {m : Nat} {i : Linstr} {x : String}
       rw [List.drop_eq_getElem_cons (by omega), deLive_cons]
       have hbi : b[k - A.length] = i := by
         rw [List.getElem?_eq_getElem (by omega)] at hb; exact Option.some.inj hb
-      rw [hbi, if_neg (by simp [deDrop_not_base hi])]
+      rw [hbi, ite_eq_right (by simp [deDrop_not_base hi])]
       exact deLive_base hi hgp
     · have hkK : k = A.length + b.length := by omega
       subst hkK
@@ -1995,9 +1995,9 @@ theorem mem_facts₁ {facts : List MoveFact} {d : String} {f : MoveFact}
     f ∈ facts ∧ f.1 ≠ d ∧ factSrcNames f.2.1 d = false := by
   rw [regDefsOf_singleton] at h
   by_cases hd : isPhysGP d = true
-  · simp only [hd, if_true, List.foldl_cons, List.foldl_nil] at h
+  · simp only [hd, ite_true, List.foldl_cons, List.foldl_nil] at h
     exact mem_killFacts h
-  · simp only [hd, Bool.false_eq_true, if_false, List.foldl_nil] at h
+  · simp only [hd, Bool.false_eq_true, ite_false, List.foldl_nil] at h
     have hd' : isPhysGP d = false := by simpa using hd
     obtain ⟨h1, h2⟩ := hall f h
     refine ⟨h, fun he => ?_, factSrcNames_of_isFactSrc h2 hd'⟩
@@ -2066,7 +2066,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
       isImmFoldable o && (if isPhysGP d = true then some d else none).isSome,
       fun o' => rewriteOperand_cases _ _ _ _ o',
       fun h => by subst h; simp [isImmFoldable_storeidx],
-      by simp only [propStep, hj, hrec, if_true], by simp only [propStep, hj, hrec, if_true]⟩
+      by simp only [propStep, hj, hrec, ite_true], by simp only [propStep, hj, hrec, ite_true]⟩
   have hj' : (propStep facts i).1.li_i = .Lopn [.reg d] o (ss.map rw) := by rw [hps1]
   -- a fact source for a name that a fact rewrites
   have hfact : ∀ u, rw (.reg u) ≠ .reg u → ∃ fw, (u, rw (.reg u), fw) ∈ facts ∧
@@ -2101,7 +2101,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
           have hcu : ((slotArr u0).isNone && gpNameB u0) = true := by
             simp [slotArr_physGP hq hpu, ← PhysImgFold.isPhysGP_eq_gpNameB, hpu]
           unfold movScan at hf
-          rw [if_pos hcu] at hf
+          rw [ite_eq_left hcu] at hf
           have := hFD q hf hq'
           generalize hv : rw (.reg u0) = v at this
           cases v with
@@ -2114,7 +2114,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
               exact slotMov?_resrc hm (cellParts?_physGP hpv)
             rw [reloadOf_succ_mov hW' hm']
             unfold movScan
-            rw [if_pos (by simp [slotArr_physGP hq hpv, ← PhysImgFold.isPhysGP_eq_gpNameB, hpv])]
+            rw [ite_eq_left (by simp [slotArr_physGP hq hpv, ← PhysImgFold.isPhysGP_eq_gpNameB, hpv])]
             exact this
           | _ => exact this.elim
     -- the facts behind the step
@@ -2189,7 +2189,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
                   · obtain ⟨_, _, hp, _⟩ := hfact u0 hu
                     exact hp
                 unfold movScan at hF
-                rw [if_pos (by simp [slotArr_physGP hq hpu, ← PhysImgFold.isPhysGP_eq_gpNameB,
+                rw [ite_eq_left (by simp [slotArr_physGP hq hpu, ← PhysImgFold.isPhysGP_eq_gpNameB,
                   hpu])] at hF
                 have hdomu : ∃ v', src = .reg v' ∧ reloadOf slotArr W' N v' = some q := by
                   by_cases hu : rw (.reg u0) = .reg u0
@@ -2229,7 +2229,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
           rw [hj] at hacc
           rcases hna with rfl | rfl
           · exfalso
-            simp only [accOkB, if_true] at hacc
+            simp only [accOkB, ite_true] at hacc
             split at hacc
             · rename_i heq
               simp only [LinstrR.Lopn.injEq] at heq
@@ -2241,7 +2241,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
               · cases h
             · cases hacc
           · simp only [accOkB, show ("STOREIDX" = "LOADIDX") = False from by decide,
-              if_false, if_true] at hacc
+              ite_false, ite_true] at hacc
             split at hacc
             · rename_i b0 j0 v
               have hrv : ∃ v', rw (.reg v) = .reg v' := by
@@ -2352,7 +2352,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
     · exfalso
       have hne : f.1 ≠ d := by
         intro he; rw [← he, (hall f hf).1] at hpd; cases hpd
-      rw [reloadOf_succ_single hW hj hne, if_neg (by simpa using hsd)] at hF
+      rw [reloadOf_succ_single hW hj hne, ite_eq_right (by simpa using hsd)] at hF
       cases hF
 
 end PropStep

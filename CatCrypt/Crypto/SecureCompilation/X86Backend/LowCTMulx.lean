@@ -209,7 +209,7 @@ theorem lowerMulx_denote (ρ : RegMap) (m : MulxSrc) (rs : RustState) (js : JSta
       have hne : ρ m.lo ≠ ρ m.hi := fun h => hhilo (hρ h).symm
       rw [JState.get_setReg_other _ _ _ _ hne, JState.get_setReg_same]
       simp [mulxDenote, rsSetScalar, ← hprod]
-      rw [if_neg hvhi]
+      rw [ite_eq_right hvhi]
     · -- v ∉ {hi, lo}: untouched on both sides.
       have hnehi : ρ v ≠ ρ m.hi := fun h => hvhi (hρ h)
       have hnelo : ρ v ≠ ρ m.lo := fun h => hvlo (hρ h)

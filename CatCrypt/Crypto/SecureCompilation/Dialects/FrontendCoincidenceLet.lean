@@ -196,7 +196,7 @@ theorem envAgree_update {nIn : Nat} (params : List String)
     have hyx : y ≠ x := by rintro rfl; exact hx hy_mem
     rw [denoteAtomExpr_var_param params I (updRho ρ x vv) hidx]
     -- Path B: `updBeta β x vv y = β y` since `y ≠ x`.
-    simp only [updBeta, hyx, if_false]
+    simp only [updBeta, hyx, ite_false]
     -- And `denoteAtomExpr … ρ = some (inpGet I i)` by `EnvAgree`, hence `β y`.
     have := hβ y
     rw [denoteAtomExpr_var_param params I ρ hidx] at this
@@ -206,8 +206,8 @@ theorem envAgree_update {nIn : Nat} (params : List String)
     rw [denoteAtomExpr_var_local params I (updRho ρ x vv) hidx]
     by_cases hyx : y = x
     · subst hyx
-      simp only [updRho, updBeta, if_true]
-    · simp only [updRho, updBeta, hyx, if_false]
+      simp only [updRho, updBeta, ite_true]
+    · simp only [updRho, updBeta, hyx, ite_false]
       have := hβ y
       rw [denoteAtomExpr_var_local params I ρ hidx] at this
       exact this

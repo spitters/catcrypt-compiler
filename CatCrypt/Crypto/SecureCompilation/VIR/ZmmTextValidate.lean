@@ -421,7 +421,7 @@ theorem prod_lanes (x y bo : BitVec 512)
     simp only [LOp.apply, lane32_even]
   have hdx : lane 32 (wr m (semDup true x)) (2 * i) = lane 32 x (2 * i + 1) := by
     rw [lane_wr _ (by omega), lane_semDup _ _ (by omega)]
-    simp only [if_true]
+    simp only [ite_true]
     congr 1
     omega
   refine ⟨?_, ?_, ?_, ?_⟩
@@ -445,7 +445,7 @@ theorem oddOK_lane {Bo B : Term} (h : oddOK Bo B = true) (i : Nat) (hi : 64 * i 
   rcases h with rfl | ⟨rfl, hc⟩
   · simp only [Term.eval]
     rw [lane_wr _ (by omega), lane_semDup _ _ (by rcases m.act_cases with h | h <;> omega)]
-    simp only [if_true]
+    simp only [ite_true]
     congr 1
     omega
   · split at hc
@@ -455,7 +455,7 @@ theorem oddOK_lane {Bo B : Term} (h : oddOK Bo B = true) (i : Nat) (hi : 64 * i 
       rw [lane_wr _ (by omega), lane_wr _ (by omega)]
       conv_lhs => rw [← hc]
       rw [lane_semDup _ _ (by rcases m.act_cases with h | h <;> omega)]
-      rw [if_pos rfl, show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
+      rw [ite_eq_left rfl, show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
     · cases hc
 
 theorem mulHiW_comm {L : Nat} (a b : BitVec L) : mulHiW a b = mulHiW b a := by
@@ -497,14 +497,14 @@ theorem vMulhi_sound (hf : Facts m w D rf E) {n : String} {t : Term}
       · have hi : 64 * i + 64 ≤ m.act := by rcases m.act_cases with h | h <;> omega
         have hp := prod_lanes (A.eval m σ0 (pack .d E)) (B.eval m σ0 (pack .d E))
           (Bo.eval m σ0 (pack .d E)) (fun i hi => oddOK_lane hodd i hi) i hi
-        rw [(mask5555 i (by omega)).1, if_pos rfl, lane_semDup _ _ (by omega)]
-        simp only [if_true, show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
+        rw [(mask5555 i (by omega)).1, ite_eq_left rfl, lane_semDup _ _ (by omega)]
+        simp only [ite_true, show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
         exact hp.2.1
       · have hi : 64 * i + 64 ≤ m.act := by rcases m.act_cases with h | h <;> omega
         have hp := prod_lanes (A.eval m σ0 (pack .d E)) (B.eval m σ0 (pack .d E))
           (Bo.eval m σ0 (pack .d E)) (fun i hi => oddOK_lane hodd i hi) i hi
         rw [(mask5555 i (by omega)).2]
-        simp only [Bool.false_eq_true, if_false]
+        simp only [Bool.false_eq_true, ite_false]
         exact hp.2.2.2
     · cases hm
   · cases h
@@ -546,13 +546,13 @@ theorem vMullo_sound (hf : Facts m w D rf E) {n : String} {t : Term}
         have hp := prod_lanes (A'.eval m σ0 (pack .d E)) (B.eval m σ0 (pack .d E))
           (Bo.eval m σ0 (pack .d E)) (fun i hi => oddOK_lane hodd i hi) i hi
         rw [(maskAAAA i (by omega)).1]
-        simp only [Bool.false_eq_true, if_false]
+        simp only [Bool.false_eq_true, ite_false]
         exact hp.1
       · have hi : 64 * i + 64 ≤ m.act := by rcases m.act_cases with h | h <;> omega
         have hp := prod_lanes (A'.eval m σ0 (pack .d E)) (B.eval m σ0 (pack .d E))
           (Bo.eval m σ0 (pack .d E)) (fun i hi => oddOK_lane hodd i hi) i hi
-        rw [(maskAAAA i (by omega)).2, if_pos rfl, lane_semDup _ _ (by omega)]
-        simp only [Bool.false_eq_true, if_false, show 2 * ((2 * i + 1) / 2) + 0 = 2 * i by omega]
+        rw [(maskAAAA i (by omega)).2, ite_eq_left rfl, lane_semDup _ _ (by omega)]
+        simp only [Bool.false_eq_true, ite_false, show 2 * ((2 * i + 1) / 2) + 0 = 2 * i by omega]
         exact hp.2.2.1
     · cases hm
   · cases h
@@ -778,16 +778,16 @@ theorem vMontSub_sound (hf : Facts m w D rf E) {n : String} {t : Term}
       rw [lane_semMerge _ _ _ hj16]
       obtain ⟨i, rfl | rfl⟩ : ∃ i, j = 2 * i ∨ j = 2 * i + 1 := ⟨j / 2, by omega⟩
       · have hi : 64 * i + 64 ≤ m.act := by rcases m.act_cases with h | h <;> omega
-        rw [(mask5555 i (by omega)).1, if_pos rfl, lane_semDup _ _ (by omega)]
-        simp only [if_true, show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
+        rw [(mask5555 i (by omega)).1, ite_eq_left rfl, lane_semDup _ _ (by omega)]
+        simp only [ite_true, show 2 * (2 * i / 2) + 1 = 2 * i + 1 by omega]
         exact montSub_lane _ _ _ _ hi (hinv' i hi)
       · have hi : 64 * i + 64 ≤ m.act := by rcases m.act_cases with h | h <;> omega
         rw [(mask5555 i (by omega)).2]
-        simp only [Bool.false_eq_true, if_false]
+        simp only [Bool.false_eq_true, ite_false]
         have hdx : lane 32 (wr m (semDup true (A.eval m σ0 (pack .d E)))) (2 * i) =
             lane 32 (A.eval m σ0 (pack .d E)) (2 * i + 1) := by
           rw [lane_wr _ (by omega), lane_semDup _ _ (by omega)]
-          simp only [if_true]
+          simp only [ite_true]
           congr 1
           omega
         have hbo := oddOK_lane (σ0 := σ0) (E := E) hodd i hi
@@ -1100,7 +1100,7 @@ theorem disjSh_xor (hf : Facts m w D rf E) {x y : String} (h : disjSh w D x y = 
     · rename_i i j hi hj
       obtain ⟨u, hu⟩ := shiCount_lane hf hi hk
       obtain ⟨v, hv⟩ := shiCount_lane hf hj hk
-      simp only [if_true, Bool.false_eq_true, if_false] at hu hv
+      simp only [ite_true, Bool.false_eq_true, ite_false] at hu hv
       rw [hu, hv]
       exact xor_shifts_eq_or u v (of_decide_eq_true hpq)
     · cases hpq
@@ -1125,7 +1125,7 @@ theorem vOrRol_sound (hf : Facts m w D rf E) {n : String} {L : Nat} {bop : Jasmi
     rw [lane_semLW _ _ _ (laneBits_pos _) hk.le512]
     simp only [LOp.apply, JasminBinOp.apply]
     rw [shOK_lane hf hta hk, shOK_lane hf htb hk, hf.sat _ _ hd k hk rfl]
-    simp only [if_true, Bool.false_eq_true, if_false]
+    simp only [ite_true, Bool.false_eq_true, ite_false]
     exact (rotateLeft_eq_or_shifts _ hi).symm
   · rename_i w' d x y hd
     simp only [Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq] at h

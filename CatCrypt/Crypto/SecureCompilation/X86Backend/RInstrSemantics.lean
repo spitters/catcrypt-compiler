@@ -282,9 +282,9 @@ theorem reaches_xloop (M : Machine σ) (pre : List RInstr) (l : XLoop 64)
     · rename_i hz
       simp only [Option.some.injEq] at h
       subst h
-      exact hops.trans (.single (by rw [hstep true hz, if_pos rfl]))
+      exact hops.trans (.single (by rw [hstep true hz, ite_eq_left rfl]))
     · rename_i hz
-      exact hops.trans (.next (by rw [hstep false (by simpa using hz), if_neg Bool.false_ne_true])
+      exact hops.trans (.next (by rw [hstep false (by simpa using hz), ite_eq_right Bool.false_ne_true])
         (ih _ h))
 
 /-! ## 4. The name-keyed machine -/

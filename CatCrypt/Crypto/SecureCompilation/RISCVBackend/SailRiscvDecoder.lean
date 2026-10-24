@@ -448,7 +448,7 @@ theorem roundtrip_bcc (c : BCmp) (r1 r2 : String) (off : BitVec 13)
       show (BitVec.ofNat 3 5).toNat = 5 from rfl,
       show (BitVec.ofNat 3 6).toNat = 6 from rfl,
       show (BitVec.ofNat 3 7).toNat = 7 from rfl,
-      bcmpOfFunct3, if_true]
+      bcmpOfFunct3, ite_true]
 
 /-- Round-trip pilot for the loop back-edge `BNE ctr, x0` (the counter loop): the
     emitted `bne a2, zero` at a sample back-edge offset decodes to the same data. -/

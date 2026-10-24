@@ -88,19 +88,19 @@ def regionMapTys (m : d.Ty → List d'.Ty) (t : d.Ty) : List d'.Ty :=
 /-- `regionMapTys` sends the trip-counter type to `[HasWord64.word]`. -/
 theorem regionMapTys_word (m : d.Ty → List d'.Ty) :
     regionMapTys m (HasWord64.word (d := d)) = [HasWord64.word (d := d')] :=
-  if_pos rfl
+  ite_eq_left rfl
 
 /-- `regionMapTys` sends the bit type to `[HasBitType.bit]` when it differs from the
     trip-counter type. -/
 theorem regionMapTys_bit (m : d.Ty → List d'.Ty)
     (hwb : HasBitType.bit (d := d) ≠ HasWord64.word (d := d)) :
     regionMapTys m (HasBitType.bit (d := d)) = [HasBitType.bit (d := d')] := by
-  rw [regionMapTys, if_neg hwb, if_pos rfl]
+  rw [regionMapTys, ite_eq_right hwb, ite_eq_left rfl]
 
 /-- `regionMapTys m` agrees with `m` off the region types. -/
 theorem regionMapTys_of_not (m : d.Ty → List d'.Ty) {t : d.Ty} (h : ¬ IsRegionTy t) :
     regionMapTys m t = m t := by
-  rw [regionMapTys, if_neg (fun hw => h (Or.inl hw)), if_neg (fun hb => h (Or.inr hb))]
+  rw [regionMapTys, ite_eq_right (fun hw => h (Or.inl hw)), ite_eq_right (fun hb => h (Or.inr hb))]
 
 /-- The flattening by `regionMapTys m` of a context free of region types is the flattening
     by `m`. -/
@@ -180,7 +180,7 @@ def regionEnc (C : RegionValCodec d d') {m : d.Ty → List d'.Ty}
     NFProg.castVal (by rw [hw, regionMapTys_word])
       (.cons (C.encWord (NFProg.tyCast hw x)) .nil)
   else if hb : t = HasBitType.bit (d := d) then
-    NFProg.castVal (by rw [regionMapTys, if_neg hw, if_pos hb])
+    NFProg.castVal (by rw [regionMapTys, ite_eq_right hw, ite_eq_left hb])
       (.cons (C.encBit (NFProg.tyCast hb x)) .nil)
   else NFProg.castVal (regionMapTys_of_not m (fun h => h.elim hw hb)).symm (enc x)
 
@@ -188,7 +188,7 @@ def regionEnc (C : RegionValCodec d d') {m : d.Ty → List d'.Ty}
 theorem regionEnc_word (C : RegionValCodec d d') {m : d.Ty → List d'.Ty}
     (enc : ∀ {t : d.Ty}, ⟦t⟧ → Valuation (m t)) (x : ⟦HasWord64.word (d := d)⟧) :
     regionEnc C enc x = NFProg.castVal (regionMapTys_word m).symm (.cons (C.encWord x) .nil) := by
-  rw [regionEnc, dif_pos rfl]
+  rw [regionEnc, dite_eq_left rfl]
   rfl
 
 /-- `regionEnc` at the bit type. -/
@@ -197,14 +197,14 @@ theorem regionEnc_bit (C : RegionValCodec d d') {m : d.Ty → List d'.Ty}
     (hwb : HasBitType.bit (d := d) ≠ HasWord64.word (d := d)) (b : ⟦HasBitType.bit (d := d)⟧) :
     regionEnc C enc b =
       NFProg.castVal (regionMapTys_bit m hwb).symm (.cons (C.encBit b) .nil) := by
-  rw [regionEnc, dif_neg hwb, dif_pos rfl]
+  rw [regionEnc, dite_eq_right hwb, dite_eq_left rfl]
   rfl
 
 /-- `regionEnc` off the region types. -/
 theorem regionEnc_of_not (C : RegionValCodec d d') {m : d.Ty → List d'.Ty}
     (enc : ∀ {t : d.Ty}, ⟦t⟧ → Valuation (m t)) {t : d.Ty} (h : ¬ IsRegionTy t) (x : ⟦t⟧) :
     regionEnc C enc x = NFProg.castVal (regionMapTys_of_not m h).symm (enc x) := by
-  rw [regionEnc, dif_neg (fun hw => h (Or.inl hw)), dif_neg (fun hb => h (Or.inr hb))]
+  rw [regionEnc, dite_eq_right (fun hw => h (Or.inl hw)), dite_eq_right (fun hb => h (Or.inr hb))]
 
 /-- The flattened `regionEnc` encoding of a valuation free of region types is the carried
     flattened `enc` encoding. -/

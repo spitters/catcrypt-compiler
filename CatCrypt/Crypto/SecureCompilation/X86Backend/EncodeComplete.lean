@@ -323,7 +323,7 @@ theorem dispatch_alu_one_w
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn]) qsaveB
       = encTwoAddr frame spillW (rexW (mnemWidth mnem)) op (.reg dn) (.reg sn) qsaveB := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, halu, htag,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-- A register move dispatches to the two-address move form. -/
 theorem encodeLopn_movAny {F W Q : Nat} {mn : String} (d s : String) (hm : isMovMnem mn = true) :
@@ -436,7 +436,7 @@ theorem dispatch_setcc (frame spillW op : Nat) (mnem base : String) (dn an sn : 
   simp only [Bool.or_eq_false_iff] at hsh
   obtain ⟨⟨hshl, hshr⟩, hsar⟩ := hsh
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, htag, halu, h0f, hst, hcmp,
-    hshl, hshr, hsar, hcc, hgp, Bool.or_false, Bool.false_eq_true, if_false, if_true]
+    hshl, hshr, hsar, hcc, hgp, Bool.or_false, Bool.false_eq_true, ite_false, ite_true]
 
 theorem encodeLopn_setcc_ne_nil {F W Q : Nat} {opn dn an sn : String}
     (ho : isSetccEncMnem opn = true)
@@ -497,7 +497,7 @@ theorem dispatch_setccImm (frame spillW : Nat) (mnem base : String) (dn an : Str
       = encSetccCmpImm (rexW (mnemWidth mnem)) ((setccCmpOp base).getD 0x94) (gpNumU dn)
           (gpNumU an) v := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, hcc, hok,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
 
 theorem encodeLopn_setccImm_ne_nil {F W Q : Nat} {opn dn an : String} {v : Nat}
     (ho : isSetccImmEnc opn v = true) (hd : isGpName dn = true) (ha : isGpName an = true) :
@@ -700,7 +700,7 @@ theorem encodableLinstrR_movImm_slot {F W Q : Nat} {mn dn : String} {v : Nat}
   rcases hm with (rfl | rfl) | rfl <;>
     simp only [encodeLopn, isCarryOutBinding, isMulHiBinding, stripWidthTag_MOV,
       stripWidthTag_MOV64, stripWidthTag_MOVQ, hq, ho] <;>
-    simp (config := { decide := true }) only [if_false, if_true, adxPrefix] <;>
+    simp (config := { decide := true }) only [ite_false, ite_true, adxPrefix] <;>
     split_ifs <;> simp_all [rexW, mnemWidth_MOV, mnemWidth_MOV64, mnemWidth_MOVQ,
       encRspMem_ne_nil]
 

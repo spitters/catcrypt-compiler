@@ -370,7 +370,7 @@ theorem specTransient_eq_nil_of_archSilent
       | RAssert s =>
           by_cases hs : s = fenceLabel
           · simp [hs]
-          · simp only [hs, if_false]; exact ih2 h.2 rs
+          · simp only [hs, ite_false]; exact ih2 h.2 rs
       | _ => simp_all [ih2 h.2 rs]
   | RIfNz _ _ _ _ _ => simp [archSilent] at h
   | RWhileNz _ _ _ => simp [archSilent] at h
@@ -463,7 +463,7 @@ theorem specObsF_insertSelective_eq_archObs
         by_cases hp : protectSet cond = true
         · simp [selFence, hp, specTransient_fenced]
         · rcases hd with hleak | hcontra
-          · simp only [selFence, hp, Bool.false_eq_true, if_false,
+          · simp only [selFence, hp, Bool.false_eq_true, ite_false,
               specTransient_eq_nil_of_not_armLeaks protectSet hleak]
           · exact absurd hcontra hp
       -- From the head-coverage `(!(armLeaks ct || armLeaks cf)) || protectSet cond`.
@@ -491,7 +491,7 @@ theorem specObsF_insertSelective_eq_archObs
         by_cases hp : protectSet cond = true
         · simp [selFence, hp, specTransient_fenced]
         · rcases hdisj with hleak | hcontra
-          · simp only [selFence, hp, Bool.false_eq_true, if_false,
+          · simp only [selFence, hp, Bool.false_eq_true, ite_false,
               specTransient_eq_nil_of_not_armLeaks protectSet hleak]
           · exact absurd hcontra hp
       simp only [insertSelective, specObsF, archObs,

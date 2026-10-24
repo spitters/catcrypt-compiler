@@ -177,7 +177,7 @@ theorem SArm.leak_adcxc (P : Params) (rsp : BitVec 64) (D A S C : String)
   have hdC := kOk_sep hC hCs rsp
   obtain ⟨r3, -, -⟩ := run_cPre P rsp C acc sa hsp hdC
   have hsp3 : (aMachine.runBlock sa ((cPre P C acc).map Prod.snd)).regs "%rsp" = rsp := by
-    rw [r3, if_neg (Ne.symm hRsp), hsp]
+    rw [r3, ite_eq_right (Ne.symm hRsp), hsp]
   rw [fEv_slot hC hCs]
   by_cases hDs : isSpillOrQsave D = true
   · have hjs : (SArm.adcxc D A S C).js P
@@ -192,13 +192,13 @@ theorem SArm.leak_adcxc (P : Params) (rsp : BitVec 64) (D A S C : String)
       · right; rintro ⟨rfl, -⟩; exact hAs hDs
     obtain ⟨r4, -, -⟩ := run_sMv P rsp D A acc sa3 hsp3 hlay
     set sa4 := aMachine.runBlock sa3 ((sMv P D A acc).map Prod.snd)
-    have hsp4 : sa4.regs "%rsp" = rsp := by rw [r4, if_neg (Ne.symm hRsp), hsp3]
+    have hsp4 : sa4.regs "%rsp" = rsp := by rw [r4, ite_eq_right (Ne.symm hRsp), hsp3]
     obtain ⟨r5, -, -⟩ := run_sAd P rsp S acc sa4 hsp4
     set sa5 := aMachine.runBlock sa4 ((sAd P S acc).map Prod.snd)
-    have hsp5 : sa5.regs "%rsp" = rsp := by rw [r5, if_neg (Ne.symm hRsp), hsp4]
+    have hsp5 : sa5.regs "%rsp" = rsp := by rw [r5, ite_eq_right (Ne.symm hRsp), hsp4]
     obtain ⟨r6, -⟩ := evalInstrA_storeMem_eq sa5 "%rsp" R (slotOff P D)
     rw [hjs, blockLeakA_append, blockLeakA_append, blockLeakA_append, leak_cPre P rsp C acc sa hsp,
-      leak_sMv P rsp D A acc sa3 hsp3 hA, leak_sAd P rsp S acc sa4 hsp4 hS, if_pos hDs,
+      leak_sMv P rsp D A acc sa3 hsp3 hA, leak_sAd P rsp S acc sa4 hsp4 hS, ite_eq_left hDs,
       fEv_slot hD hDs]
     change _ ++ (_ ++ (_ ++ blockLeakA .doitm sa5 _)) = _
     simp only [blockLeakA, opLeak_storeRsp, opLeak_loadRsp, r6, hsp5]
@@ -222,7 +222,7 @@ theorem SArm.leak_adcxc (P : Params) (rsp : BitVec 64) (D A S C : String)
     have hsp5 : sa5.regs "%rsp" = rsp := by
       by_cases hlay : isSpillOrQsave A = true ∨ ¬ (A = D ∧ gpNumU D = gpNumU D)
       · obtain ⟨hr, -, -⟩ := run_sMv P rsp D A (gpNumU D) sa4 hsp4 hlay
-        rw [hr, hpD, if_neg (fun e => (gpFacts hDg).physNe e.symm), hsp4]
+        rw [hr, hpD, ite_eq_right (fun e => (gpFacts hDg).physNe e.symm), hsp4]
       · simp only [not_or, Bool.not_eq_true, not_not] at hlay
         obtain ⟨hAs, rfl, -⟩ := hlay
         have he : sMv P A A (gpNumU A) = [] := by simp [sMv, hAs]
@@ -230,7 +230,7 @@ theorem SArm.leak_adcxc (P : Params) (rsp : BitVec 64) (D A S C : String)
         exact hsp4
     rw [hjs, blockLeakA_append, blockLeakA_append, blockLeakA_append, hsa4',
       leak_cPre P rsp C acc sa hsp, leak_sMv P rsp D A (gpNumU D) sa4 hsp4 hA,
-      ← hsa5, leak_sAd P rsp S (gpNumU D) sa5 hsp5 hS, if_neg hDs]
+      ← hsa5, leak_sAd P rsp S (gpNumU D) sa5 hsp5 hS, ite_eq_right hDs]
     simp only [blockLeakA, opLeak_loadRsp, hsp3]
     simp [redW]
 
@@ -257,20 +257,20 @@ theorem leak_cmovSlotF (P : Params) (rsp : BitVec 64) (D C A B : String)
   have hRsp : phys D ≠ "%rsp" := (gpFacts hD).physNe
   obtain ⟨r1, -⟩ := evalInstrA_loadMem_eq sa (phys D) "%rsp" (slotOff P B)
   set sa1 := evalInstrA sa (.loadMem (phys D) "%rsp" (slotOff P B))
-  have hsp1 : sa1.regs "%rsp" = rsp := by rw [r1, if_neg (Ne.symm hRsp), hsp]
+  have hsp1 : sa1.regs "%rsp" = rsp := by rw [r1, ite_eq_right (Ne.symm hRsp), hsp]
   have hsp2 : (evalInstrA sa1 (.test (phys C) (.reg (phys C)))).regs "%rsp" = rsp := by
     simpa [evalInstrA, evalInstr, AState.view, JState.writeB5] using hsp1
   rw [fEv_slot hBk hBs]
   cases hAs : isSpillOrQsave A with
   | true =>
     rw [fEv_slot hAk hAs]
-    simp only [vfPieces, vfCm, hAs, if_true, List.map_cons, List.map_nil, blockLeakA,
+    simp only [vfPieces, vfCm, hAs, ite_true, List.map_cons, List.map_nil, blockLeakA,
       opLeak_loadRsp, hsp]
     simp [opLeak, instrLeak, resolveEv, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing,
       evA, hsp2, sa1]
   | false =>
     rw [fEv_of_not_slot hAk hAs]
-    simp only [vfPieces, vfCm, hAs, Bool.false_eq_true, if_false, List.map_cons, List.map_nil,
+    simp only [vfPieces, vfCm, hAs, Bool.false_eq_true, ite_false, List.map_cons, List.map_nil,
       blockLeakA, opLeak_loadRsp, hsp]
     simp [opLeak, instrLeak, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing]
 

@@ -185,7 +185,7 @@ theorem interferenceSeeded_of_interferenceOkB (L0 : List Nat) (ρ : Nat → Nat)
       have hbt : (b.dst == t) = false := by
         rw [beq_eq_false_iff_ne]; exact fun h => htd h.symm
       rw [hbt] at hrow
-      simp only [Bool.false_eq_true, if_false] at hrow
+      simp only [Bool.false_eq_true, ite_false] at hrow
       have : ρ b.dst ≠ ρ t := by simpa [bne, beq_iff_eq] using hrow
       exact fun hc => this hc.symm
 

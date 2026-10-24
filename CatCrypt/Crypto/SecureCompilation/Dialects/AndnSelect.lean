@@ -231,8 +231,8 @@ theorem andnSelect_fires {Γ : Ctxt jasminDialect} {s : JasminTy} (w : Nat)
     (body : Com jasminDialect (.reg w :: .reg w :: .reg w :: Γ) s) :
     andnSelect (mkAndnotSubtree w a b body) = mkAndnOp w a b (andnSelect body) := by
   show (if _ : w = w ∧ w = w ∧ w = w ∧ w = w ∧ (2 ^ w - 1) = 2 ^ w - 1 then _ else _) = _
-  rw [dif_pos ⟨rfl, rfl, rfl, rfl, rfl⟩]
-  simp only [varBeq_self, Bool.and_self, if_true]
+  rw [dite_eq_left ⟨rfl, rfl, rfl, rfl, rfl⟩]
+  simp only [varBeq_self, Bool.and_self, ite_true]
   rfl
 
 /-- The pass is the identity on a bare `ret`. -/

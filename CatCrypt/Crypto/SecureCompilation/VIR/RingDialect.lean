@@ -378,10 +378,10 @@ theorem inttF_nttF (ms : List Nat) (logN L : Nat) (psis scales : List Nat)
   have hsc := ScaleOk.cast _ _ hs
   simp only [inttF, inttSpec]
   rw [invRun_congr _ L logN L hOk.2.1 _ (nttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
-    (rowLanes x i)) (fun k hk => by simp only [rowLanes, dif_pos hk]; rfl) j j.isLt]
+    (rowLanes x i)) (fun k hk => by simp only [rowLanes, dite_eq_left hk]; rfl) j j.isLt]
   have := inttSpec_nttSpec _ L logN hψ hOk.1 hOk.2.1 _ hsc (rowLanes x i) j j.isLt
   simp only [inttSpec] at this
-  rw [this, rowLanes, dif_pos j.isLt]
+  rw [this, rowLanes, dite_eq_left j.isLt]
 
 open CatCrypt.Crypto.SecureCompilation.VIR.NegacyclicNttTemplate in
 /-- **`ntt` inverts `intt`.** Under the same side conditions, `nttF` after `inttF`
@@ -397,9 +397,9 @@ theorem nttF_inttF (ms : List Nat) (logN L : Nat) (psis scales : List Nat)
   simp only [nttF]
   rw [nttSpec_congr _ L logN hOk.2.1 _ (inttSpec ((psis.getD i 0 : Nat) : ZMod (ms.get i)) L logN
     ((scales.getD i 0 : Nat) : ZMod (ms.get i)) (rowLanes x i))
-    (fun k hk => by simp only [rowLanes, dif_pos hk]; rfl) j,
+    (fun k hk => by simp only [rowLanes, dite_eq_left hk]; rfl) j,
     nttSpec_inttSpec _ L logN hψ hOk.1 hOk.2.1 _ hsc (rowLanes x i) j j.isLt, rowLanes,
-    dif_pos j.isLt]
+    dite_eq_left j.isLt]
 
 /-- `basemul` denotes `basemulF`. -/
 theorem basemul_denote (ms : List Nat) (logN w L : Nat) (psis : List Nat)
@@ -424,11 +424,11 @@ theorem nttF_negaMulF (ms : List Nat) (logN L : Nat) (psis : List Nat)
     rw [← pow_add]; congr 1; omega
   simp only [nttF, basemulF]
   rw [nttSpec_congr _ L logN hLM _ (negaMul (2 ^ logN) (rowLanes x i) (rowLanes y i))
-    (fun k hk => by simp only [rowLanes, dif_pos hk]; rfl) j,
+    (fun k hk => by simp only [rowLanes, dite_eq_left hk]; rfl) j,
     nttSpec_negaMul _ L logN hψ hOk.2.1 _ _ j]
   refine blockMul_congr (2 ^ (logN - L)) (2 ^ L) (Nat.two_pow_pos _) _ _ _ _ _
-    (fun k hk => by rw [← hN] at hk; simp only [rowLanes, dif_pos hk]; rfl)
-    (fun k hk => by rw [← hN] at hk; simp only [rowLanes, dif_pos hk]; rfl) j
+    (fun k hk => by rw [← hN] at hk; simp only [rowLanes, dite_eq_left hk]; rfl)
+    (fun k hk => by rw [← hN] at hk; simp only [rowLanes, dite_eq_left hk]; rfl) j
     (by rw [← hN]; exact j.isLt)
 
 /-- With `L = logN` layers, `basemul` is the pointwise product `mul`. -/
@@ -436,7 +436,7 @@ theorem basemulF_eq_mulF (logN : Nat) (psis : List Nat) (x y : Limbs ms (2 ^ log
     basemulF logN logN psis x y = mulF x y := by
   funext i j
   simp only [basemulF, Nat.sub_self, pow_zero, NegacyclicNttTemplate.blockMul_one, mulF,
-    rowLanes, dif_pos j.isLt]
+    rowLanes, dite_eq_left j.isLt]
 
 /-- `add` denotes the per-limb sum. -/
 theorem add_denote (ms : List Nat) (n w : Nat) (d : Domain) (x y : Limbs ms n) :
@@ -555,7 +555,7 @@ theorem autoCoeffF_one (x : Limbs ms n) : autoCoeffF 1 x = x := by
     have := k.isLt
     rw [Nat.mod_eq_of_lt (by omega)]
     omega
-  simp only [h1, h2, if_false, Fin.val_inj]
+  simp only [h1, h2, ite_false, Fin.val_inj]
   simp
 
 /-! ## 7. Tensor round trips -/

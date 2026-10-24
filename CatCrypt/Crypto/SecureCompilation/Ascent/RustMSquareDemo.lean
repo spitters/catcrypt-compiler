@@ -64,7 +64,7 @@ theorem dec_square :
   intro c σ hc hG
   subst hc
   refine ⟨c - 1, ?_, rfl⟩
-  simp only [dec, if_neg (by omega : ¬ c = 0)]
+  simp only [dec, ite_eq_right (by omega : ¬ c = 0)]
 
 /-! ## 2. Horizontal composition -/
 

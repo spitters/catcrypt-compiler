@@ -190,13 +190,13 @@ def selBV (cond : Prop) [Decidable cond] (x y : BitVec 64) : BitVec 64 :=
 /-- `selBV cond x y = x` when `cond` holds (the masked idiom selects `x`). -/
 @[simp] theorem selBV_true (cond : Prop) [Decidable cond] (x y : BitVec 64)
     (h : cond) : selBV cond x y = x := by
-  simp only [selBV, boolMask, if_pos h, BitVec.and_allOnes,
+  simp only [selBV, boolMask, ite_eq_left h, BitVec.and_allOnes,
     BitVec.not_allOnes, BitVec.and_zero, BitVec.or_zero]
 
 /-- `selBV cond x y = y` when `cond` fails (the masked idiom selects `y`). -/
 @[simp] theorem selBV_false (cond : Prop) [Decidable cond] (x y : BitVec 64)
     (h : ¬ cond) : selBV cond x y = y := by
-  rw [selBV, boolMask, if_neg h]; bv_decide
+  rw [selBV, boolMask, ite_eq_right h]; bv_decide
 
 /-- **The branchless mask-select on encoded triples** (component-wise `selBV`).
     Selects encoded point `p` when `cond`, `q` otherwise.  The degenerate-case
@@ -259,7 +259,7 @@ theorem dblCase_eq_ECParams_add (x y1 y2 : ZMod 251) (hvert : ¬ (y1 = -y2)) :
     blsClassCurve.add (some (x, y1)) (some (x, y2))
       = some (ecDblAffine (x, y1)) := by
   simp only [ECParams.add, ecDblAffine, tangentSlope251, ECParams.tangentSlope,
-    blsClassCurve, ECParams.affRx, ECParams.affRy, if_neg hvert, if_true,
+    blsClassCurve, ECParams.affRx, ECParams.affRy, ite_eq_right hvert, ite_true,
     sub_sub]
 
 /-- The realized `BitVec 64` tangent slope `λ = (3x²)·(2y)⁻¹` on encoded
@@ -378,7 +378,7 @@ theorem encPoint_add_commutes (P Q : ECPoint 251) :
       · -- vertical: P + (−Q) = O
         rw [selBV3_true (y1 = -y2) _ _ hyv]
         have hO : blsClassCurve.add (some (x1, y1)) (some (x1, y2)) = none := by
-          simp only [ECParams.add, if_pos hyv, if_true]
+          simp only [ECParams.add, ite_eq_left hyv, ite_true]
         rw [hO, encPoint_none]
       · -- doubling (x₁ = x₂, y₁ ≠ −y₂): the tangent arm at the FIRST point
         rw [selBV3_false (y1 = -y2) _ _ hyv,
@@ -455,7 +455,7 @@ theorem worked_chord_unified_realized :
     branch and returns the infinity point `O = none`. -/
 theorem worked_vertical_unified :
     blsClassCurve.add (some (0, 1)) (some (0, 250)) = none := by
-  simp only [ECParams.add, if_true, if_pos (by decide : (1 : ZMod 251) = -(250 : ZMod 251))]
+  simp only [ECParams.add, ite_true, ite_eq_left (by decide : (1 : ZMod 251) = -(250 : ZMod 251))]
 
 /-- **The vertical `P + (−P) = O`, encoded/branchless side.**  `ecAddUnifiedBV`
     selects the `(0, 0, 0)` infinity arm — the encoding of `O`. -/

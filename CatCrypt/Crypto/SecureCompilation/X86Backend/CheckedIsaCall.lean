@@ -81,10 +81,10 @@ theorem idxOkB_of_shadowCall {i : LinstrRM} (h : shadowCall? i.fst ≠ none) (s 
   refine idxOkB_of_none ?_ ?_
   · show loadStruct? (.Lopn [.reg dst] opn srcs) = none
     unfold loadStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (hm.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (hm.ne _ (by decide)))
   · show storeStruct? (.Lopn [.reg dst] opn srcs) = none
     unfold storeStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (hm.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (hm.ne _ (by decide)))
 
 /-- **The x86 instruction set with the bounds-checked step**: the step is
     `JasminLsemMemChecked.evalInstrPMemFk true`, the data and the branch condition are those
@@ -93,7 +93,7 @@ def x86IsaK : Isa :=
   { x86Isa with
     step := JasminLsemMemChecked.evalInstrPMemFk true
     step_ctl := fun P i s h => by
-      rw [JasminLsemMemChecked.evalInstrPMemFk_true, if_pos (idxOkB_of_isCtl h s)]
+      rw [JasminLsemMemChecked.evalInstrPMemFk_true, ite_eq_left (idxOkB_of_isCtl h s)]
       exact x86Isa.step_ctl P i s h }
 
 theorem x86IsaK_step : x86IsaK.step = JasminLsemMemChecked.evalInstrPMemFk true := rfl
@@ -160,7 +160,7 @@ theorem x86IsaK_withProcs_step (T : ProcTable) (P : LprogM) (i : LinstrRM) (s : 
       have hs : shadowCall? i.fst ≠ none := by
         intro hn
         simp [procCall?, hn] at hq
-      rw [if_pos (idxOkB_of_shadowCall hs s)]
+      rw [ite_eq_left (idxOkB_of_shadowCall hs s)]
       simp only [Isa.withProcs, hq]
 
 /-- **The runs of `x86IsaK.withProcs T` are the checked runs of `x86Isa.withProcs T`.** -/
@@ -187,7 +187,7 @@ theorem mem_descReadsA_load {x : LinstrR} {w n : Nat} {ss : SSt} {gs : List SG}
     cases hl
     subst ho
     simp only [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, aluFl,
-      symMem, loadStruct?, if_true, SOut.ok.injEq] at h
+      symMem, loadStruct?, ite_true, SOut.ok.injEq] at h
     obtain ⟨-, rfl⟩ := h
     simp only [descReadsA, ImageAddrSim.descReads, List.mem_append, List.mem_flatMap]
     exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl
@@ -203,7 +203,7 @@ theorem mem_descReadsA_store {x : LinstrR} {w n : Nat} {ss : SSt} {gs : List SG}
     cases hl
     subst ho
     simp only [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, aluFl,
-      symMem, storeStruct?, if_true] at h
+      symMem, storeStruct?, ite_true] at h
     obtain ⟨-, rfl⟩ := h
     simp only [descReadsA, ImageAddrSim.descReads, List.mem_append, List.mem_flatMap]
     exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inl
@@ -282,10 +282,10 @@ theorem steps_deadSegK {D : DeadTab} {fn : String} {B : List LinstrRM}
           have hstep : ∃ c', x86IsaK.step (singletonProgM fn B) i s' = some c'
               ∧ DeadAgree D c c' := by
             by_cases hctl : LprogIsa.isCtl i.fst = true
-            · rw [if_pos hctl] at hchk
+            · rw [ite_eq_left hctl] at hchk
               rw [x86IsaK.step_ctl _ _ _ hctl] at hc ⊢
               exact ctl_deadStep hchk hag hc
-            · rw [if_neg hctl] at hchk
+            · rw [ite_eq_right hctl] at hchk
               have hctl' : LprogIsa.isCtl i.fst = false := by simpa using hctl
               cases hsh : LprogIsa.shadowCall? i.fst with
               | some q =>
@@ -301,7 +301,7 @@ theorem steps_deadSegK {D : DeadTab} {fn : String} {B : List LinstrRM}
                     (singletonProgM fn B) hk hag hc0
                   refine ⟨c', ?_, ?_⟩
                   · rw [x86IsaK_step, JasminLsemMemChecked.evalInstrPMemFk_true,
-                      ← idxOkB_congrD hk hag, hok, if_pos rfl]
+                      ← idxOkB_congrD hk hag, hok, ite_eq_left rfl]
                     exact hc'
                   · have e : c.prog.base.reg.lpc = s.prog.base.reg.lpc + 1 := by
                       have := x86IsaK_pcFree.lpc_succ (singletonProgM fn B) hctl' hc
@@ -520,14 +520,14 @@ theorem segWalk_sound (T : ProcTable) (cs : List IdxFact) (P : LprogM) :
               by_cases hob : oblsOk (F ++ g1.flatMap guardW64) (oblOf i ss) = true
               · have hw : segWalk T cs F ss (i :: is)
                     = segWalk T cs (F ++ g1.flatMap guardW64) ss1 is := by
-                  simp only [segWalk, hq, h1, if_pos hob]
+                  simp only [segWalk, hq, h1, ite_eq_left hob]
                 rw [hw] at hb ⊢
                 obtain ⟨ih1, ih2⟩ := segWalk_sound T cs P is _ ss1 V A C O Z s1 u hH1 hF1 e2 hb
                 refine ⟨⟨(oblOf_iff hs.1 i).mpr (oblsOk_sound hob hF1), fun s1' e1'' => ?_⟩, ih2⟩
                 rw [e1] at e1''
                 cases e1''
                 exact ih1
-              · exact absurd (by simp only [segWalk, hq, h1, if_neg hob]) hb
+              · exact absurd (by simp only [segWalk, hq, h1, ite_eq_right hob]) hb
           | fail =>
               rw [h1] at hstep
               simp only [SOut.Desc] at hstep
@@ -546,7 +546,7 @@ theorem segWalk_label {T : ProcTable} {cs : List IdxFact} {F : List SFact} {ss :
     cases tag <;> simp [oblOf, hx.1, hx.2]
   have hq : procCall? T x = none := by
     cases x <;> simp_all [isLbl, procCall?, shadowCall?]
-  simp only [segWalk, hq, symStep_label h, ho, oblsOk, List.all_nil, if_true, List.flatMap_nil,
+  simp only [segWalk, hq, symStep_label h, ho, oblsOk, List.all_nil, ite_true, List.flatMap_nil,
     List.append_nil]
 
 theorem segWalk_entry {T : ProcTable} {cs : List IdxFact} {F : List SFact} {B : List LinstrRM}
@@ -702,14 +702,14 @@ theorem inv_stepP (hG : cfgOf (B.map Prod.fst) = some G)
     have he0 := he
     rw [Isa.step_goto] at he
     by_cases hx : x = (singletonProgM fn B).lfn
-    · rw [if_pos hx, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hx, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       subst hf1
       exact runIdxOk_step_at hfetch (idxOkB_goto _ _ _ _) he0
         (ih f1 tg _ t (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
           (Or.inr ⟨rfl, label_at hl⟩) hul' (succOk_sound hti hF' hH) hr1)
-    · rw [if_neg hx] at he
+    · rw [ite_eq_right hx] at he
       cases he
   · -- branch
     subst hzi
@@ -727,7 +727,7 @@ theorem inv_stepP (hG : cfgOf (B.map Prod.fst) = some G)
     rw [Isa.step_cond, hce] at he
     have hstop : 0 < (G.blk k).stop := by have := F.lt; omega
     by_cases hd : decC u c = true
-    · rw [if_pos hd, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hd, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       have hE' : ∀ g ∈ F' ++ edgeFacts (symDec ss c) true, g.holds V' A' C' O' := by
@@ -738,7 +738,7 @@ theorem inv_stepP (hG : cfgOf (B.map Prod.fst) = some G)
       exact runIdxOk_step_at hfetch (idxOkB_cond _ _ _ _) he0
         (ih f1 tg _ t (measure_lt hN (show f1 + 1 ≤ fuel by omega)) htg
           (Or.inr ⟨rfl, label_at hl⟩) hul' (succOk_sound htk hE' hH) hr1)
-    · rw [if_neg hd] at he
+    · rw [ite_eq_right hd] at he
       simp only [Option.some.injEq] at he
       subst he
       have hE' : ∀ g ∈ F' ++ edgeFacts (symDec ss c) false, g.holds V' A' C' O' := by

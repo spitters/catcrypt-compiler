@@ -721,13 +721,13 @@ theorem blockBody_eq (nA sDepth wDepth : Nat) (immSlotMap : ImmSlotMap) (endSlot
                 (Ctxt.Var.here : Ctxt.Var (widen8Ty (.reg 32) :: widen8Ctxt Γ)
                 (widen8Ty (.reg 32)))) = .reg (regName wDepth) := by
           simp only [resolveVar, varIndex,
-            show wDepth + 2 - 1 - (0 + 1) = wDepth from by omega, if_neg (by omega : ¬ wDepth < nA)]
+            show wDepth + 2 - 1 - (0 + 1) = wDepth from by omega, ite_eq_right (by omega : ¬ wDepth < nA)]
         have e4 : resolveVar (wDepth + 2) nA argName immSlotMap
               (Ctxt.Var.here : Ctxt.Var (widen8Ty (.reg 32) :: widen8Ty (.reg 32) :: widen8Ctxt Γ)
                 (widen8Ty (.reg 32))) = .reg (regName (wDepth + 1)) := by
           simp only [resolveVar, varIndex,
             show wDepth + 2 - 1 - 0 = wDepth + 1 from by omega,
-            if_neg (by omega : ¬ wDepth + 1 < nA)]
+            ite_eq_right (by omega : ¬ wDepth + 1 < nA)]
         show [(⟨0, opToLinstrR (.vymm (.vpslld (32 - n))) (regName wDepth)
                 [operandOfVar nA sDepth immSlotMap endSlot a]⟩ : Linstr),
               ⟨0, opToLinstrR (.vymm (.vpsrld n)) (regName (wDepth + 1))

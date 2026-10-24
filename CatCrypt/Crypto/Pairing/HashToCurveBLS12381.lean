@@ -308,7 +308,7 @@ theorem swuZ_nonsquare : isSquare swuZ = false := by
   have hpow : swuZ ^ (BLS12381 / 2) ≠ 1 := fun h => hns (heuler.mpr h)
   have hexp : legendreExp = BLS12381 / 2 := by norm_num [legendreExp, BLS12381]
   unfold isSquare
-  rw [hexp, if_neg hpow, if_neg hne0]
+  rw [hexp, ite_eq_right hpow, ite_eq_right hne0]
 
 /-! ### §8.2  Square-root correctness (Rocq `HashToCurveSWUProof.v`) -/
 
@@ -329,7 +329,7 @@ theorem fpSqrt_correct (x : FpBLS) (h : isSquare x = true) : (fpSqrt x) ^ 2 = x 
   unfold isSquare at h
   by_cases hx : x ^ legendreExp = 1
   · rw [hx, one_mul]
-  · simp only [hx, if_false] at h
+  · simp only [hx, ite_false] at h
     by_cases hx0 : x = 0
     · rw [hx0]; simp
     · simp [hx0] at h
@@ -379,10 +379,10 @@ private theorem pow_legendreExp_of_isSquare_false (x : FpBLS)
     (h : isSquare x = false) : x ^ legendreExp = -1 := by
   unfold isSquare at h
   by_cases h1 : x ^ legendreExp = 1
-  · rw [if_pos h1] at h; simp at h
-  · rw [if_neg h1] at h
+  · rw [ite_eq_left h1] at h; simp at h
+  · rw [ite_eq_right h1] at h
     by_cases h0 : x = 0
-    · rw [if_pos h0] at h; simp at h
+    · rw [ite_eq_left h0] at h; simp at h
     · rcases pow_legendreExp_eq_one_or x h0 with he | he
       · exact absurd he h1
       · exact he
@@ -391,7 +391,7 @@ private theorem pow_legendreExp_of_isSquare_false (x : FpBLS)
 private theorem isSquare_of_pow_legendreExp (x : FpBLS)
     (h : x ^ legendreExp = 1) : isSquare x = true := by
   unfold isSquare
-  rw [if_pos h]
+  rw [ite_eq_left h]
 
 /-- `Z = 11` has Euler symbol `-1`. -/
 private theorem swuZ_pow_legendreExp : swuZ ^ legendreExp = -1 :=
@@ -505,7 +505,7 @@ theorem swuMapsToEprime (u : FpBLS) :
   rw [hy2]
   by_cases hgs : isSquare gx1 = true
   · -- `gx₁` is a square: take the `x₁` branch, `y² = gx₁`
-    rw [hxy, if_pos hgs]
+    rw [hxy, ite_eq_left hgs]
     dsimp only
     rw [fpSqrt_correct gx1 hgs, hgx1]
     simp only [curveRhs]
@@ -519,7 +519,7 @@ theorem swuMapsToEprime (u : FpBLS) :
       · -- edge case is impossible here: the edge `gx₁` is a square
         exfalso
         have hsq1 : isSquare gx1 = true := by
-          rw [hgx1, hx1, if_pos htv0]; exact edge_case_gx1_is_square
+          rw [hgx1, hx1, ite_eq_left htv0]; exact edge_case_gx1_is_square
         rw [hsq1] at hgsf; simp at hgsf
       · -- non-edge: `gx₂ = (Z·u²)³·gx₁`, and the Euler symbols multiply to `+1`
         have hu0 : u ≠ 0 := by
@@ -531,7 +531,7 @@ theorem swuMapsToEprime (u : FpBLS) :
         have hSne' : (swuZ * u ^ 2) ^ 2 + swuZ * u ^ 2 ≠ 0 := by rw [← hins]; exact hSne
         have htv1b : tv1 = ((swuZ * u ^ 2) ^ 2 + swuZ * u ^ 2)⁻¹ := by rw [htv1, hins]
         have hx1v : x1 = -isoB * isoA⁻¹ * (1 + ((swuZ * u ^ 2) ^ 2 + swuZ * u ^ 2)⁻¹) := by
-          rw [hx1, if_neg htv0, htv1b]
+          rw [hx1, ite_eq_right htv0, htv1b]
         have hgx2v : gx2 = (swuZ * u ^ 2) ^ 3 * gx1 := by
           have key := swuGxRatio isoA isoB (swuZ * u ^ 2) isoA_nonzero hSne'
           rw [hgx2, hx2, hgx1, hx1v]
@@ -543,7 +543,7 @@ theorem swuMapsToEprime (u : FpBLS) :
             pow_legendreExp_of_isSquare_false gx1 hgsf]
           ring
         exact isSquare_of_pow_legendreExp gx2 hg2leg
-    rw [hxy, if_neg hgs]
+    rw [hxy, ite_eq_right hgs]
     dsimp only
     rw [fpSqrt_correct gx2 hgs2, hgx2]
     simp only [curveRhs]
@@ -583,8 +583,8 @@ theorem isoMapsEprimeToE (pt : FpBLS × FpBLS) (h : onCurveEprime pt) :
   simp only
   by_cases hzero : hornerEvalMonic isoXden x' * hornerEvalMonic isoYden x' = 0
   · -- kernel case: image is (0, 2), and 2² = 0³ + 4
-    rw [if_pos hzero]; norm_num [bls12B]
-  · rw [if_neg hzero]
+    rw [ite_eq_left hzero]; norm_num [bls12B]
+  · rw [ite_eq_right hzero]
     have hxd0 : hornerEvalMonic isoXden x' ≠ 0 := fun h0 => hzero (by rw [h0, zero_mul])
     have hyd0 : hornerEvalMonic isoYden x' ≠ 0 := fun h0 => hzero (by rw [h0, mul_zero])
     exact isoMap_generic_aux x' y'
@@ -617,7 +617,7 @@ theorem pointAddPreserves (P Q : AffinePoint)
     · by_cases hy : y1 = -y2
       · simp [pointAdd, pointAtInfinity, hx, hy]
       · simp only [pointAdd]
-        rw [if_pos hx, if_neg hy]
+        rw [ite_eq_left hx, ite_eq_right hy]
         subst hx
         dsimp only
         have hy1 : y1 ≠ 0 := by
@@ -632,7 +632,7 @@ theorem pointAddPreserves (P Q : AffinePoint)
         have h2 : (2 : FpBLS) ≠ 0 := fp_nz 2 (by norm_num) (by norm_num [BLS12381])
         field_simp
         linear_combination (64 * y1 ^ 6) * hP
-    · simp only [pointAdd, if_neg hx]
+    · simp only [pointAdd, ite_eq_right hx]
       have hxx : x2 - x1 ≠ 0 := sub_ne_zero.mpr (Ne.symm hx)
       field_simp
       linear_combination (-x1 ^ 6 + 3 * x1 ^ 5 * x2 - 9 * x1 ^ 3 * x2 ^ 3 + x1 ^ 3 * y1 ^ 2

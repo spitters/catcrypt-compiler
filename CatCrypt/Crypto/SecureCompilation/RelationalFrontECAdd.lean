@@ -144,7 +144,7 @@ theorem chordCase_eq_ECParams_add
     blsClassCurve.add (some (x1, y1)) (some (x2, y2))
       = some (ecAddAffine (x1, y1) (x2, y2)) := by
   simp only [ECParams.add, ecAddAffine, chordSlope251, ECParams.chordSlope,
-    ECParams.affRx, ECParams.affRy, if_neg hx]
+    ECParams.affRx, ECParams.affRy, ite_eq_right hx]
 
 /-! ## 2. The realized `BitVec` schedule (`λ / x₃ / y₃` over encoded coords)
 

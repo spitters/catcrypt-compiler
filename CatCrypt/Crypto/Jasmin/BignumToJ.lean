@@ -439,7 +439,7 @@ theorem subBorrowIn_eq (a b c : BitVec 64) :
       simp at hc ⊢
       omega
     simp only [subBorrowIn, x86_SBB, wunsigned, Option.getD_some, BitVec.ult, decide_eq_true_eq,
-      h1, hsb, Bool.false_eq_true, if_false, hcf 0 (by omega)]
+      h1, hsb, Bool.false_eq_true, ite_false, hcf 0 (by omega)]
     by_cases h : a.toNat < b.toNat <;> simp [h]
   · have h1 : c &&& 1 = 1 := by
       apply BitVec.eq_of_toNat_eq
@@ -448,7 +448,7 @@ theorem subBorrowIn_eq (a b c : BitVec 64) :
       simp at hc ⊢
       omega
     simp only [subBorrowIn, x86_SBB, wunsigned, Option.getD_some, BitVec.ult, decide_eq_true_eq,
-      h1, hsb, if_true, hcf 1 (by omega)]
+      h1, hsb, ite_true, hcf 1 (by omega)]
     have he : ((a - b).toNat < (1 : BitVec 64).toNat) = (a.toNat = b.toNat) := by
       apply propext
       rw [BitVec.toNat_sub]
@@ -459,7 +459,7 @@ theorem subBorrowIn_eq (a b c : BitVec 64) :
     simp only [he]
     by_cases h : a.toNat < b.toNat
     · simp only [h, show a.toNat ≠ b.toNat by omega, show a.toNat < b.toNat + 1 by omega,
-        if_true, if_false]
+        ite_true, ite_false]
       rfl
     · by_cases h' : a.toNat = b.toNat
       · simp [h']
@@ -500,16 +500,16 @@ theorem addCarryIn_nat (a b c : BitVec 64) :
     by_cases h1 : (a + b).toNat < a.toNat
     · have h3 : 2 ^ 64 ≤ a.toNat + b.toNat + C := by omega
       by_cases h2 : (a + b + (c &&& 1)).toNat < (a + b).toNat
-      · simp only [decide_eq_true h1, decide_eq_true h2, if_pos h3, if_true]
+      · simp only [decide_eq_true h1, decide_eq_true h2, ite_eq_left h3, ite_true]
         rfl
-      · simp only [decide_eq_true h1, decide_eq_false h2, if_pos h3, if_true]
+      · simp only [decide_eq_true h1, decide_eq_false h2, ite_eq_left h3, ite_true]
         rfl
     · by_cases h2 : (a + b + (c &&& 1)).toNat < (a + b).toNat
       · have h3 : 2 ^ 64 ≤ a.toNat + b.toNat + C := by omega
-        simp only [decide_eq_false h1, decide_eq_true h2, if_pos h3]
+        simp only [decide_eq_false h1, decide_eq_true h2, ite_eq_left h3]
         rfl
       · have h3 : ¬ 2 ^ 64 ≤ a.toNat + b.toNat + C := by omega
-        simp only [decide_eq_false h1, decide_eq_false h2, if_neg h3]
+        simp only [decide_eq_false h1, decide_eq_false h2, ite_eq_right h3]
         rfl
   · apply BitVec.eq_of_toNat_eq
     simp only [BitVec.toNat_add, hcin, BitVec.toNat_ofNat]
@@ -526,8 +526,8 @@ theorem addCarryIn_adc (a b c : BitVec 64) :
   congr 1
   generalize (if c.getLsbD 0 then 1 else 0) = C
   by_cases h : 2 ^ 64 ≤ a.toNat + b.toNat + C
-  · rw [if_pos h, if_pos (by simp; omega)]
-  · rw [if_neg h, if_neg (by simp; omega)]
+  · rw [ite_eq_left h, ite_eq_left (by simp; omega)]
+  · rw [ite_eq_right h, ite_eq_right (by simp; omega)]
 
 theorem addCarryIn_adcx (a b c : BitVec 64) :
     addCarryIn a b c = (if (x86_ADCX a b (c.getLsbD 0)).1.getD false then 1 else 0,
@@ -542,10 +542,10 @@ theorem mulx_eq (a b : BitVec 64) :
 theorem shl64_eq (a k : BitVec 64) : shl64 a k = (x86_SHL a k).word := by
   simp only [x86_SHL]
   by_cases h : shiftCount k = 0
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp [rflags_None, shl64, h]
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_OF, shl64, wshl, shiftCount, SecureCompilation.VIR.shiftMask_64]
     congr 1
@@ -554,10 +554,10 @@ theorem shl64_eq (a k : BitVec 64) : shl64 a k = (x86_SHL a k).word := by
 theorem shr64_eq (a k : BitVec 64) : shr64 a k = (x86_SHR a k).word := by
   simp only [x86_SHR]
   by_cases h : shiftCount k = 0
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp [rflags_None, shr64, h]
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_OF, shr64, wshr, shiftCount, SecureCompilation.VIR.shiftMask_64]
     congr 1
@@ -566,11 +566,11 @@ theorem shr64_eq (a k : BitVec 64) : shr64 a k = (x86_SHR a k).word := by
 theorem shld64_eq (a b k : BitVec 64) : shld64 a b k = (x86_SHLD a b k).word := by
   simp only [x86_SHLD]
   by_cases h : shiftCount k = 0
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_None, shld64, h, Nat.sub_zero, BitVec.shiftLeft_zero]
     rw [BitVec.ushiftRight_eq_zero (by omega), BitVec.or_zero]
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_OF, shld64, wshl, wshr, shiftCount, SecureCompilation.VIR.shiftMask_64]
     rw [Nat.min_eq_right (by omega), Nat.min_eq_right (by omega)]
@@ -578,11 +578,11 @@ theorem shld64_eq (a b k : BitVec 64) : shld64 a b k = (x86_SHLD a b k).word := 
 theorem shrd64_eq (a b k : BitVec 64) : shrd64 a b k = (x86_SHRD a b k).word := by
   simp only [x86_SHRD]
   by_cases h : shiftCount k = 0
-  · rw [if_pos h]
+  · rw [ite_eq_left h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_None, shrd64, h, Nat.sub_zero, BitVec.ushiftRight_zero]
     rw [BitVec.shiftLeft_eq_zero (by omega), BitVec.or_zero]
-  · rw [if_neg h]
+  · rw [ite_eq_right h]
     simp only [shiftCount, SecureCompilation.VIR.shiftMask_64] at h
     simp only [rflags_OF, shrd64, wshl, wshr, shiftCount, SecureCompilation.VIR.shiftMask_64]
     rw [Nat.min_eq_right (by omega), Nat.min_eq_right (by omega)]
@@ -624,20 +624,20 @@ theorem run_mov_op (sa : AState) (r : String) (oa : JOperand) (i : JInstr 64)
   have hv : ∀ y, y ≠ r → (evalInstrA sa (.mov r oa)).view.regs y = sa.regs y := by
     intro y hy
     show (if y = r then _ else _) = _
-    rw [if_neg hy]
+    rw [ite_eq_right hy]
     rfl
   have hr : (evalInstrA sa (.mov r oa)).view.regs r = oa.eval sa.view := by
     show (if r = r then _ else _) = _
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     rfl
   refine ⟨?_, ?_⟩
   · show (evalInstr (evalInstrA sa (.mov r oa)).view i).regs = _
     rw [hregs _ hv, hr]
     funext y
     by_cases hy : y = r
-    · simp only [hy, if_true]
+    · simp only [hy, ite_true]
       rfl
-    · simp only [hy, if_false]
+    · simp only [hy, ite_false]
       exact hv y hy
   · show (match writeAddr (evalInstrA sa (.mov r oa)) i with
       | some a => _ | none => (evalInstrA sa (.mov r oa)).mem) = sa.mem
@@ -652,11 +652,11 @@ theorem run_mov_op_cf (sa : AState) (r : String) (oa : JOperand) (i : JInstr 64)
   have hv : ∀ y, y ≠ r → (evalInstrA sa (.mov r oa)).view.regs y = sa.regs y := by
     intro y hy
     show (if y = r then _ else _) = _
-    rw [if_neg hy]
+    rw [ite_eq_right hy]
     rfl
   have hr : (evalInstrA sa (.mov r oa)).view.regs r = oa.eval sa.view := by
     show (if r = r then _ else _) = _
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     rfl
   show (evalInstr (evalInstrA sa (.mov r oa)).view i).flags.cf = _
   rw [hcf _ hv, hr]
@@ -688,8 +688,8 @@ theorem run_mov_op_setc (sa : AState) (cf r : String) (hcr : cf ≠ r) (oa : JOp
   rw [h2, h1]
   by_cases hy : y = r
   · subst hy
-    simp only [if_true, if_neg hcr.symm]
-  · simp only [hy, if_false]
+    simp only [ite_true, ite_eq_right hcr.symm]
+  · simp only [hy, ite_false]
 
 /-! ## One instruction -/
 
@@ -805,7 +805,7 @@ theorem sim_logic {s : BignumState} {sa : AState} (hc : BJCorr s sa) (x a b : St
       (evalInstr (evalInstrA sa (.mov x (.reg a))).view (op x (.reg b))).regs y
     rw [hop]
     simp only [evalInstrA, evalInstr, AState.view, JState.setReg, JOperand.eval, JState.get,
-      x86_MOV, if_true, if_neg hb, hr]
+      x86_MOV, ite_true, ite_eq_right hb, hr]
     by_cases hy : y = x <;> simp [hy]
   · show BJMem s.mem (evalInstrA (evalInstrA sa (.mov x (.reg a))) (op x (.reg b))).mem
     simp only [evalInstrA, hw]
@@ -822,8 +822,8 @@ theorem sim_sub {s : BignumState} {sa : AState} (hc : BJCorr s sa) (cf r a b : S
     rw [subBorrow_eq]
     simp [setReg, evalInstrA, evalInstr, JState.setReg, JState.writeB5W, JState.flagB, x86_MOV,
       AState.view, hr]
-    rw [if_neg (Ne.symm hrb)]
-    by_cases h1 : y = r <;> by_cases h2 : y = cf <;> simp only [h1, h2, if_true, if_false] <;>
+    rw [ite_eq_right (Ne.symm hrb)]
+    by_cases h1 : y = r <;> by_cases h2 : y = cf <;> simp only [h1, h2, ite_true, ite_false] <;>
       (simp_all; try congr)
   · simpa [setReg, evalInstrA, writeAddr] using hm
 
@@ -838,8 +838,8 @@ theorem sim_sbb {s : BignumState} {sa : AState} (hc : BJCorr s sa) (cf r a b c :
     rw [subBorrowIn_eq]
     simp [setReg, evalInstrA, evalInstr, JState.setReg, JState.writeB5W, JState.flagB, x86_MOV,
       x86_BT, wbit, AState.view, hr]
-    rw [if_neg (Ne.symm hrb)]
-    by_cases h1 : y = r <;> by_cases h2 : y = cf <;> simp only [h1, h2, if_true, if_false] <;>
+    rw [ite_eq_right (Ne.symm hrb)]
+    by_cases h1 : y = r <;> by_cases h2 : y = cf <;> simp only [h1, h2, ite_true, ite_false] <;>
       (simp_all; try congr)
   · simpa [setReg, evalInstrA, writeAddr] using hm
 

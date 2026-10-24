@@ -145,7 +145,7 @@ theorem bstate_set_set (s : BState) (d : String) (a b : X64) :
     (s.set d a).set d b = s.set d b := by
   by_cases h : d = "xzr"
   · simp [BState.set, h]
-  · simp only [BState.set, h, if_false]
+  · simp only [BState.set, h, ite_false]
     congr 1; funext r'; by_cases hr : r' = d <;> simp [hr]
 
 /-- The `movz`/`movk` chain for `loadImm d n`, run on the machine, sets `d` to

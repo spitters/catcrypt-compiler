@@ -128,11 +128,11 @@ theorem corres_arrLoad {n : Nat} (dst src : Located) (idxVar : String)
   · -- the post-state is `SRarrLoad`-related to the abstract array read.
     refine ⟨⟨av, ?_, hArrEnc⟩, ⟨iv, ?_, hIdxEnc⟩, ⟨memGetDyn av iv.toNat, ?_, ?_⟩⟩
     · -- array slot preserved (distinct from the destination slot).
-      simp only [SEnvScalar.upd, if_neg (Ne.symm hne_arr), hArr]
+      simp only [SEnvScalar.upd, ite_eq_right (Ne.symm hne_arr), hArr]
     · -- index slot preserved (distinct from the destination slot).
-      simp only [SEnvScalar.upd, if_neg (Ne.symm hne_idx), hIdx]
+      simp only [SEnvScalar.upd, ite_eq_right (Ne.symm hne_idx), hIdx]
     · -- env' at the destination slot holds the concrete dynamic-index read.
-      simp only [SEnvScalar.upd, if_true]
+      simp only [SEnvScalar.upd, ite_true]
     · -- the loaded word's encoding = the abstract array read.
       rw [wEnc_memGetDyn av a.arr hArrEnc iv.toNat, hIdxEnc]
 

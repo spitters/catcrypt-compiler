@@ -151,10 +151,10 @@ theorem spillOne_live_imp (ev : List String) (i : Nat) (lr : LiveRange)
     lr.defIdx ≤ i ∧ i ≤ lr.lastUse := by
   unfold spillOne at h
   by_cases hc : ev.contains lr.name
-  · simp only [hc, if_true] at h
+  · simp only [hc, ite_true] at h
     -- truncated to [defIdx, defIdx]: i = defIdx, and defIdx ≤ lastUse by hwf
     exact ⟨h.1, Nat.le_trans h.2 hwf⟩
-  · simp only [hc, Bool.false_eq_true, if_false] at h
+  · simp only [hc, Bool.false_eq_true, ite_false] at h
     exact h
 
 /-- `spillOne` preserves a range's `name`. -/
@@ -203,15 +203,15 @@ theorem footprintSpill_pressure_le (ev : List String) (lrs : List LiveRange)
     by_cases hbig : (spillOne ev hd).defIdx ≤ i ∧ i ≤ (spillOne ev hd).lastUse
     · -- rewritten head live at i ⇒ original head live at i too
       have horig : hd.defIdx ≤ i ∧ i ≤ hd.lastUse := spillOne_live_imp ev i hd hwfhd hbig
-      rw [if_pos (by simpa using hbig), if_pos (by simpa using horig),
+      rw [ite_eq_left (by simpa using hbig), ite_eq_left (by simpa using horig),
         List.length_cons, List.length_cons]
       exact Nat.succ_le_succ ihtl
     · -- rewritten head dead at i: it is dropped, length unchanged on the left
-      rw [if_neg (by simpa using hbig)]
+      rw [ite_eq_right (by simpa using hbig)]
       by_cases horig : hd.defIdx ≤ i ∧ i ≤ hd.lastUse
-      · rw [if_pos (by simpa using horig), List.length_cons]
+      · rw [ite_eq_left (by simpa using horig), List.length_cons]
         exact Nat.le_trans ihtl (Nat.le_succ _)
-      · rw [if_neg (by simpa using horig)]
+      · rw [ite_eq_right (by simpa using horig)]
         exact ihtl
 
 /-! ### 4b. `foldl max` over a mapped range: the two bounds the peak needs

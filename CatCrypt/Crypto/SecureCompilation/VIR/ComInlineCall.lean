@@ -236,15 +236,15 @@ theorem inlineCalls_preserves_denote (R : FuncRegistryN)
         · by_cases hRet : fb.retTy = bs
           · -- The inline branch fires: splice the callee, then use its consistency.
             simp only [inlineCalls, extCallName, hRname]
-            rw [dif_pos hArg, dif_pos hRet]
+            rw [dite_eq_left hArg, dite_eq_left hRet]
             subst hArg; subst hRet
             have hre : eRetTy = fb.retTy := retTy_eq
             subst hre
             rw [inlineCallCom_denote, ih, hR name fb hRname (Expr.lookupArgs args V)]
             rfl
-          · simp only [inlineCalls, extCallName, hRname, dif_pos hArg, dif_neg hRet,
+          · simp only [inlineCalls, extCallName, hRname, dite_eq_left hArg, dite_eq_right hRet,
               Com.denote, ih]
-        · simp only [inlineCalls, extCallName, hRname, dif_neg hArg, Com.denote, ih]
+        · simp only [inlineCalls, extCallName, hRname, dite_eq_right hArg, Com.denote, ih]
     all_goals (simp only [inlineCalls, Com.denote, ih])
 
 /-! ## 6. Leaf-agnostic whole-`Com` denotation of the inlined program
@@ -309,14 +309,14 @@ theorem inlineCalls_denote_eq_denoteSubst (R : FuncRegistryN) :
         by_cases hArg : fb.argTys = eArgTys
         · by_cases hRet : fb.retTy = bs
           · simp only [inlineCalls, denoteSubst, extCallName, hRname,
-              dif_pos hArg, dif_pos hRet]
+              dite_eq_left hArg, dite_eq_left hRet]
             subst hArg; subst hRet
             have hre : eRetTy = fb.retTy := retTy_eq
             subst hre
             rw [inlineCallCom_denote, ih]
-          · simp only [inlineCalls, denoteSubst, extCallName, hRname, dif_pos hArg,
-              dif_neg hRet, Com.denote, ih]
-        · simp only [inlineCalls, denoteSubst, extCallName, hRname, dif_neg hArg,
+          · simp only [inlineCalls, denoteSubst, extCallName, hRname, dite_eq_left hArg,
+              dite_eq_right hRet, Com.denote, ih]
+        · simp only [inlineCalls, denoteSubst, extCallName, hRname, dite_eq_right hArg,
             Com.denote, ih]
     all_goals (simp only [inlineCalls, denoteSubst, Com.denote, ih])
 
@@ -331,7 +331,7 @@ theorem denoteSubst_matchedCall {Γ : Ctxt jasminDialect}
     (hR : R name = some fb) (V : Ctxt.Valuation Γ) :
     denoteSubst R (Com.var (callExpr (retTy := fb.retTy) name args) (Com.ret .here)) V
       = fb.body.denote (Expr.lookupArgs args V) := by
-  simp only [denoteSubst, callExpr, extCallName, hR, dif_pos]
+  simp only [denoteSubst, callExpr, extCallName, hR, dite_eq_left]
   rfl
 
 end CatCrypt.Crypto.SecureCompilation.VIR.ComInlineCall

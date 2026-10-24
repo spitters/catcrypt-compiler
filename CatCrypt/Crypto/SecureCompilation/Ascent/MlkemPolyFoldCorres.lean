@@ -309,19 +309,19 @@ theorem corres_setExpr_fqAddMixed (inputs : String → Prop)
   · intro y hnt
     by_cases hyx : y = rName
     · refine ⟨SExpr.evalBV (envReader env) e, ?_, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_pos hyx]
+      · simp only [SEnvScalar.upd, ite_eq_left hyx]
       · -- `y = rName` is a non-input name, so no canonicity obligation fires
         intro hin; exact absurd (hyx ▸ hin) hir
       · show fqEnc (SExpr.evalBV (envReader env) e)
           = if y = rName then a aName + a bName else a y
-        rw [if_pos hyx]; exact hval
+        rw [ite_eq_left hyx]; exact hval
     · obtain ⟨w, hw, hwcan, hwEnc⟩ := hSR y hnt
       refine ⟨w, ?_, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_neg hyx]
+      · simp only [SEnvScalar.upd, ite_eq_right hyx]
         rw [hotb y (Or.inl hnt)]; exact hw
       · exact hwcan
       · show fqEnc w = if y = rName then a aName + a bName else a y
-        rw [if_neg hyx]; exact hwEnc
+        rw [ite_eq_right hyx]; exact hwEnc
 
 /-! ## §6  String helpers: source coefficient names are never fresh temps
 
@@ -425,7 +425,7 @@ theorem polyAdd_fold_corres (n : Nat) :
     level. -/
 theorem polyAddStep_is_ring_add (i : Nat) (φ : String → ZMod 3329) :
     polyAddStep i φ (rNm i) = φ (aNm i) + φ (bNm i) := by
-  simp only [polyAddStep, if_pos]
+  simp only [polyAddStep, ite_eq_left]
 
 /-! ## §8  What `polyAdd_fold_corres` does not cover
 

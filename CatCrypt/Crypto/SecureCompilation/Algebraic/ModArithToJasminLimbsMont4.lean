@@ -231,7 +231,7 @@ theorem blockSquareA :
     show (lowerOpA P (.modAdd P.p)).denote (hvAppend (encA P a) (hvAppend (encA P b) .nil))
       = encA P (t := .fp P.p) (modAddF a b)
     change ZMod P.p at a b
-    rw [encA_fp, encA_fp, encA_fp, lowerOpA, if_pos rfl, ← enc_mul_rInv P (modAddF a b),
+    rw [encA_fp, encA_fp, encA_fp, lowerOpA, ite_eq_left rfl, ← enc_mul_rInv P (modAddF a b),
       show modAddF a b * rInv P = a * rInv P + b * rInv P by simp only [modAddF]; ring]
     exact addBlk_denote P _ _ _ _ _ _ _ _ _ (a * rInv P) (b * rInv P)
       ((nv_limbsOf _ (val_lt_two_pow P a) _).trans (val_mul_rInv_mul_R P a).symm)
@@ -241,7 +241,7 @@ theorem blockSquareA :
         (hvAppend (encA P a) (hvAppend (encA P b) .nil))
       = encA P (t := .fp P.p) (montMulF (rInv P) a b)
     change ZMod P.p at a b
-    rw [encA_fp, encA_fp, encA_fp, lowerOpA, if_pos rfl,
+    rw [encA_fp, encA_fp, encA_fp, lowerOpA, ite_eq_left rfl,
       ← enc_mul_rInv P (montMulF (rInv P) a b),
       show montMulF (rInv P) a b * rInv P = a * rInv P * (b * rInv P) by
         simp only [montMulF]; ring]
@@ -252,37 +252,37 @@ theorem blockSquareA :
     show (lowerOpA P (.montReduce P.p (rInv P))).denote (hvAppend (encA P a) .nil)
       = encA P (t := .fp P.p) (montReduceF (rInv P) a)
     change ZMod P.p at a
-    rw [encA_fp, encA_fp, lowerOpA, if_pos rfl, ← enc_mul_rInv P (montReduceF (rInv P) a),
+    rw [encA_fp, encA_fp, lowerOpA, ite_eq_left rfl, ← enc_mul_rInv P (montReduceF (rInv P) a),
       show montReduceF (rInv P) a * rInv P = a * rInv P * rInv P by rfl]
     exact reduceBlk_denote P _ _ _ _ _ (a * rInv P)
       ((nv_limbsOf _ (val_lt_two_pow P a) _).trans (val_mul_rInv_mul_R P a).symm)
   · obtain ⟨⟩ := vals
     show (lowerOpA P (.modConst P.p c)).denote .nil = encA P (t := .fp P.p) (modConstF c)
-    rw [encA_fp, lowerOpA, dif_pos rfl]
+    rw [encA_fp, lowerOpA, dite_eq_left rfl]
     exact constBlk_denote _ _
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpA P (.modCopy P.p)).denote (hvAppend (encA P a) .nil)
       = encA P (t := .fp P.p) (modCopyF a)
-    rw [encA_fp, lowerOpA, if_pos rfl, copyBlk_denote,
+    rw [encA_fp, lowerOpA, ite_eq_left rfl, copyBlk_denote,
       nv_limbsOf _ (val_lt_two_pow P a)]
   · rcases vals with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     show (lowerOpA P (.modSub P.p)).denote (hvAppend (encA P a) (hvAppend (encA P b) .nil))
       = encA P (t := .fp P.p) (modSubF a b)
     change ZMod P.p at a b
-    rw [encA_fp, encA_fp, encA_fp, lowerOpA, if_pos rfl]
+    rw [encA_fp, encA_fp, encA_fp, lowerOpA, ite_eq_left rfl]
     exact subBlk_denote P _ _ _ _ _ _ _ _ _ a b (nv_limbsOf _ (val_lt_two_pow P a) _)
       (nv_limbsY _ _ (val_lt_two_pow P b) _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpA P (.modNeg P.p)).denote (hvAppend (encA P a) .nil)
       = encA P (t := .fp P.p) (modNegF a)
     change ZMod P.p at a
-    rw [encA_fp, encA_fp, lowerOpA, if_pos rfl]
+    rw [encA_fp, encA_fp, lowerOpA, ite_eq_left rfl]
     exact negBlk_denote P _ _ _ _ _ a (nv_limbsOf _ (val_lt_two_pow P a) _)
   · rcases vals with _ | ⟨a, _ | _⟩
     show (lowerOpA P (.montInverse P.p (rInv P))).denote (hvAppend (encA P a) .nil)
       = encA P (t := .fp P.p) (montInverseF (rInv P) a)
     change ZMod P.p at a
-    rw [encA_fp, encA_fp, lowerOpA, if_pos rfl]
+    rw [encA_fp, encA_fp, lowerOpA, ite_eq_left rfl]
     exact invBlk_denote P hp _ _ _ _ _ a (nv_limbsOf _ (val_lt_two_pow P a) _)
 
 /-- **Stage 2 transport.** A `GoodA`-covered `mod_arith` program lowers to a
@@ -413,17 +413,17 @@ theorem encA_transTy {t : FieldTy} (x : ⟦t⟧) :
     by_cases h : q = P.p
     · subst h
       rw [encA_fp, ZMod.val_zero]
-    · simp only [encA, dif_neg h]
+    · simp only [encA, dite_eq_right h]
   cases t with
   | fp q =>
       by_cases h : q = P.p
       · subst h
         show encA P (t := .fp P.p) ((montOf P).toRep x) = encL P (t := .fp P.p) x
-        rw [encA_fp, encL_fp, FieldToModArithMont.MontParams.toRep, if_pos (montOf_isMont P),
+        rw [encA_fp, encL_fp, FieldToModArithMont.MontParams.toRep, ite_eq_left (montOf_isMont P),
           montOf_R]
         rfl
       · show encA P (t := .fp q) ((montOf P).toRep x) = encL P (t := .fp q) x
-        simp only [encA, encL, dif_neg h]
+        simp only [encA, encL, dite_eq_right h]
   | fp2 q => exact zero q
   | fp6 q => exact zero q
   | fp12 q => exact zero q

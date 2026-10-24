@@ -322,8 +322,8 @@ theorem bbMulTile_denote {n : Nat} (a b : Tile n 64) :
       = fun i => bbMulWord (a i) (b i) := by
   funext i
   simp only [bbMulTile, runTileBlock, List.foldl_cons, List.foldl_nil, evalTileOp,
-    TileState.set, TileState.get, bbMulInit, bbMulWord, String.reduceEq, if_true,
-    if_false]
+    TileState.set, TileState.get, bbMulInit, bbMulWord, String.reduceEq, ite_true,
+    ite_false]
 
 /-! ## 5. KAT — the tile `bbMul` matches the field reference on a worked vector
 
@@ -455,7 +455,7 @@ theorem bbMulReg_lowered_denote {n : Nat} (a b : Tile n 64) :
   funext i
   simp only [bbMulReg, runRegBlock, List.foldl_cons, List.foldl_nil, evalRegInstr,
     TileState.set, TileState.get, bbMulInit, bbMulWord, JasminBinOp.applyLane,
-    String.reduceEq, if_true, if_false, BitVec.toNat_ofNat]
+    String.reduceEq, ite_true, ite_false, BitVec.toNat_ofNat]
 
 /-- **KAT for the lowered `bbMul`** — the worked vector of `bbMulTile_kat`,
     through the lowering: `7·9=63`, `(p-1)²≡1`, `2·4=8`, `3·5=15`. -/

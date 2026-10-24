@@ -371,9 +371,9 @@ theorem haxToLowCT_letBind_eq_letHead (name : String) (val body : ImpExpr) :
     cases l with
     | int n =>
       by_cases h : n ≥ 0
-      · simp only [haxToLowCT, letHead, h, dite_true, if_true]
+      · simp only [haxToLowCT, letHead, h, dite_true, ite_true]
         cases haxToLowCT body <;> rfl
-      · simp only [haxToLowCT, letHead, h, dite_false, if_false]
+      · simp only [haxToLowCT, letHead, h, dite_false, ite_false]
     | uintLit w n => simp only [haxToLowCT, letHead]; cases haxToLowCT body <;> rfl
     | bool b => simp only [haxToLowCT, letHead]; cases haxToLowCT body <;> rfl
     | _ => simp only [haxToLowCT, letHead]
@@ -386,8 +386,8 @@ theorem haxToLowCT_letBind_eq_letHead (name : String) (val body : ImpExpr) :
       | (split_ifs <;> (repeat' split) <;> first | rfl | simp_all)
   | var s =>
     by_cases h : name = s
-    · simp only [haxToLowCT, letHead, h, if_true]; cases haxToLowCT body <;> rfl
-    · simp only [haxToLowCT, letHead, h, if_false]; cases haxToLowCT body <;> rfl
+    · simp only [haxToLowCT, letHead, h, ite_true]; cases haxToLowCT body <;> rfl
+    · simp only [haxToLowCT, letHead, h, ite_false]; cases haxToLowCT body <;> rfl
   | proj pe i =>
     cases pe with
     | var t => simp only [haxToLowCT, letHead]; cases haxToLowCT body <;> rfl

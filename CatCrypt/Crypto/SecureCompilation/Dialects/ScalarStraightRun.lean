@@ -207,13 +207,13 @@ theorem toS_setAt {tbl : List String} {σ : VEnv} {base : SEnvScalar} {x : Strin
   funext s
   simp only [SEnvScalar.upd]
   split
-  · subst_vars; simp only [toS, hx, getAt_setAt, if_true]
+  · subst_vars; simp only [toS, hx, getAt_setAt, ite_true]
   · rename_i hne
     simp only [toS]
     split
     · rename_i j hj
       have hji : j ≠ i := fun h => hne (idxIn_inj hj (h ▸ hx))
-      simp only [getAt_setAt, if_neg hji]
+      simp only [getAt_setAt, ite_eq_right hji]
     · rfl
 
 /-- Reading the table names out of a base environment gives an indexed
@@ -495,7 +495,7 @@ theorem runIdx_sound {tbl : List String} {base : SEnvScalar} :
               (hag _ (notTmp hii)).trans (toS_at hii' (rdW_some hI))
             have hS' : env src.locVar = some ⟨.sword 64, v⟩ :=
               (hag _ (notTmp hs)).trans (toS_at his (rdW_some hS))
-            refine ⟨_, by simp only [semScalar, hA', hI', hS', dif_pos hty]; rfl, ?_⟩
+            refine ⟨_, by simp only [semScalar, hA', hI', hS', dite_eq_left hty]; rfl, ?_⟩
             rw [toS_setAt hia]
             intro s hsn
             simp only [SEnvScalar.upd]

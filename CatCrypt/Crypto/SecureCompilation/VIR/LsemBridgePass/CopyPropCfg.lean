@@ -474,7 +474,7 @@ theorem storeImmStruct?_none_of_recognized {ds : List LOperand} {opn : String}
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨-, rfl, -⟩ := heq
-    rw [if_neg]
+    rw [ite_eq_right]
     rintro rfl
     exact absurd h (by
       simp (config := {decide := true}) [isRecognizedOpn, implicitReads, parseImmShiftMnem,
@@ -586,7 +586,7 @@ theorem factsOkM_step {facts : List MoveFact} {s s₁ : LstateM} {zf z : Bool}
         intro f hf
         rcases List.mem_cons.1 hf with rfl | hf
         · refine ⟨hpd, r, rfl, by simpa [isFactSrc] using hfs, ?_⟩
-          rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_pos rfl, if_neg hrd]
+          rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, ite_eq_left rfl, ite_eq_right hrd]
         · exact hkept f hf
 
 /-- The operand is not an immediate. -/
@@ -1207,7 +1207,7 @@ theorem isRecognizedOpn_of_readsRdx {ds : List LOperand} {o : String} {ss : List
   · have hT : ∃ rest, o.toList.takeWhile (· != '^') = 'M' :: 'U' :: 'L' :: 'X' :: rest := by
       have hc' : o.toList.contains '^' = true := by simpa using hc
       unfold X86Backend.LprogAsmPrinter.untagCaret stripWidthTag at hu
-      simp only [hc', if_true] at hu
+      simp only [hc', ite_true] at hu
       generalize List.takeWhile (fun x => x != '^') o.toList = T at hu ⊢
       split_ifs at hu
       · rcases hu with (hu | hu) | hu <;> have h2 := congrArg String.toList hu <;>
@@ -1238,7 +1238,7 @@ theorem isRecognizedOpn_of_readsRdx {ds : List LOperand} {o : String} {ss : List
     · rw [hL]
       simp [hasPrefix, List.takeWhile]
     · unfold stripWidthTag
-      rw [if_pos (by simpa using hc), hT]
+      rw [ite_eq_left (by simpa using hc), hT]
       simp [hasPrefix]
   · rw [X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hc] at hu
     rcases hu with (rfl | rfl) | rfl <;>
@@ -1289,7 +1289,7 @@ theorem liveAgreeM_drop {Lr : List String} {i : Linstr} (hc : cpRegOKB i = true)
   rw [lvm_setReg_nextPcM]
   by_cases hrd : r = d
   · subst hrd
-    rw [if_pos rfl]
+    rw [ite_eq_left rfl]
     rcases (Bool.or_eq_true _ _).mp hdr with hself | hdead
     · have hk : k = r := by simpa using ((Bool.and_eq_true _ _).mp hself).2
       subst hk
@@ -1301,7 +1301,7 @@ theorem liveAgreeM_drop {Lr : List String} {i : Linstr} (hc : cpRegOKB i = true)
         exact absurd hpd (by simp)
       · rw [hnc] at hm
         exact absurd hm (by simp)
-  · rw [if_neg hrd]
+  · rw [ite_eq_right hrd]
     exact h.1 r hr
 
 /-- **A kept recognised instruction keeps the agreement up to the live set.** From two
@@ -1363,7 +1363,7 @@ theorem liveAgreeM_keep {Lr : List String} {i : Linstr} {dsts : List LOperand} {
       cases x with
       | reg n =>
           by_cases hn : isPhysGP n = true
-          · simp only [regDefsOf, List.filterMap_cons, hn, if_true, List.filterMap_nil,
+          · simp only [regDefsOf, List.filterMap_cons, hn, ite_true, List.filterMap_nil,
               List.mem_singleton] at hrd
             exact ⟨by rw [hrd], hrd ▸ hn⟩
           · simp [regDefsOf, hn] at hrd
@@ -1379,14 +1379,14 @@ theorem liveAgreeM_keep {Lr : List String} {i : Linstr} {dsts : List LOperand} {
       split
       · rename_i heq
         injection heq with _ ho _
-        rw [if_neg (ho ▸ hns)]
+        rw [ite_eq_right (ho ▸ hns)]
       · rfl
     have hcmp : cmpArgs? (.Lopn [.reg r] opn srcs, tg) = none := by
       unfold cmpArgs?
       split
       · rename_i heq
         injection heq with _ ho _
-        rw [if_neg (ho ▸ hnc)]
+        rw [ite_eq_right (ho ▸ hnc)]
       · rfl
     have hz : zeroStruct? (.Lopn [.reg r] opn srcs) = none := by
       simp only [zeroStruct?]

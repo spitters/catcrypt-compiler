@@ -403,7 +403,7 @@ theorem ws_abackblock (r : Nat) (bound : List String)
         List.cons_append, List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hn
       subst hn; exact hh _ (mapN_mem (by norm_num))
   · refine ⟨aN i, .SVar (hN i), ?_, ?_, ?_⟩
-    · simp only [aBackStmt, beq_iff_eq, hne, if_neg, reduceIte]
+    · simp only [aBackStmt, beq_iff_eq, hne, ite_eq_right, reduceIte]
     · simp [ShapeAccepts]
     · intro n hn
       simp only [baseVars, List.nil_append, List.append_nil, List.singleton_append,

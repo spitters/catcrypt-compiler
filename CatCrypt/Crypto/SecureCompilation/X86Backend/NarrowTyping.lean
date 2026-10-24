@@ -468,7 +468,7 @@ theorem wTyped_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s s' 
     intro r w hl
     rw [hpc] at hl
     have hl' := typeIn_succ hb hl
-    simp only [typeStepAt, labB, Bool.false_eq_true, if_false, typeStep] at hl'
+    simp only [typeStepAt, labB, Bool.false_eq_true, ite_false, typeStep] at hl'
     cases hk : classifyK (.Lopn ds o ss) with
     | some q =>
       obtain ⟨d, a, m, w0⟩ := q
@@ -568,7 +568,7 @@ theorem wTyped_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s s' 
       · obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hst)
         intro r w hl
         have hl' := typeIn_succ hb hl
-        simp only [typeStepAt, labB, Bool.false_eq_true, if_false, typeStep, classifyK,
+        simp only [typeStepAt, labB, Bool.false_eq_true, ite_false, typeStep, classifyK,
           srcWidth?, movImmStruct?, dstNames] at hl'
         exact hI r w (lookup_wmDrop hl').2
     · cases hst

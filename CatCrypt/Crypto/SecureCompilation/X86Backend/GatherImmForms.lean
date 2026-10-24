@@ -253,9 +253,9 @@ theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
     show adxPrefix "SHR:1" = none from by decide +kernel,
     show tagShiftExt "SHR:1" = some 5 from by decide +kernel,
     show rexW (mnemWidth "SHR:1:64") = 1 from by decide +kernel,
-    hgp, hds, Bool.false_eq_true, if_false, List.nil_append,
-    encTagShift, hn, if_pos]
-  rw [if_neg (by decide)]
+    hgp, hds, Bool.false_eq_true, ite_false, List.nil_append,
+    encTagShift, hn, ite_eq_left]
+  rw [ite_eq_right (by decide)]
 
 /-- The Lprog `encodeLopn` of a count-1 left shift `SHL:1:64` reduces to the
     3-byte `D1 /4` short form `encShift1 1 4 (gpNumU dn)`, given `hn`. -/
@@ -272,9 +272,9 @@ theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
     show adxPrefix "SHL:1" = none from by decide +kernel,
     show tagShiftExt "SHL:1" = some 4 from by decide +kernel,
     show rexW (mnemWidth "SHL:1:64") = 1 from by decide +kernel,
-    hgp, hds, Bool.false_eq_true, if_false, List.nil_append,
-    encTagShift, hn, if_pos]
-  rw [if_neg (by decide)]
+    hgp, hds, Bool.false_eq_true, ite_false, List.nil_append,
+    encTagShift, hn, ite_eq_left]
+  rw [ite_eq_right (by decide)]
 
 /-- The `encodeJInstr6` count-1 right shift reduces to the same `encShift1 1 5`
     short form (closed `decide +kernel` on `RAX` under `physAlloc`). -/

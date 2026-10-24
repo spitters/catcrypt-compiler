@@ -339,8 +339,8 @@ theorem runRegion_lpc (env : LeafEnvM) (nReg : String) (body : List IBlock) (p :
       | some b1 =>
           rw [hb1, Option.bind_some] at h
           by_cases hg : condNZ b1 (.reg nReg)
-          · rw [if_pos hg] at h; exact ih _ b h
-          · rw [if_neg hg] at h
+          · rw [ite_eq_left hg] at h; exact ih _ b h
+          · rw [ite_eq_right hg] at h
             obtain rfl := Option.some.inj h
             simp
 
@@ -463,7 +463,7 @@ theorem segCore (env : LeafEnvM) (P : LprogM) :
                 exact loop_cond_pos top nReg (flatL body)
               by_cases hg : condNZ b1 (.reg nReg)
               · -- back-edge TAKEN: jump to the region's own label + 1, recurse
-                rw [if_pos hg] at hrun
+                rw [ite_eq_left hg] at hrun
                 obtain ⟨n2, hn2⟩ := (ih w (Nat.lt_succ_self w)).1 top nReg body p
                   { s with base := b1.setLpc (p + 1) } b hfn hok hpos hlbl hres rfl hrun
                 refine ⟨n1 + 1 + n2, fun f => ?_⟩
@@ -476,7 +476,7 @@ theorem segCore (env : LeafEnvM) (P : LprogM) :
                     (LinstrR.Lcond (.reg nReg) top, MemTag.reg none) { s with base := b1 }
                       = some { s with base := b1.setLpc (p + 1) } := by
                   unfold evalInstrPMemLC
-                  simp only [hg, if_true]
+                  simp only [hg, ite_true]
                   unfold evalJumpMemC
                   have hcur : curBodyC env P
                       ({ s with base := b1 } : LstatePMC).lfn = P.body :=
@@ -486,7 +486,7 @@ theorem segCore (env : LeafEnvM) (P : LprogM) :
                 simp only []
                 exact hn2 f
               · -- back-edge NOT taken: fall through past the region
-                rw [if_neg hg] at hrun
+                rw [ite_eq_right hg] at hrun
                 obtain rfl := Option.some.inj hrun
                 have hg' : condNZ b1 (.reg nReg) = false := by simpa using hg
                 refine ⟨n1 + 1, fun f => ?_⟩
@@ -497,7 +497,7 @@ theorem segCore (env : LeafEnvM) (P : LprogM) :
                     (LinstrR.Lcond (.reg nReg) top, MemTag.reg none) { s with base := b1 }
                       = some { s with base := b1.nextPc } := by
                   unfold evalInstrPMemLC
-                  simp only [hg', Bool.false_eq_true, if_false]
+                  simp only [hg', Bool.false_eq_true, ite_false]
                 rw [heval]
                 simp only []
                 have hnp : b1.nextPc = b1.setLpc (p + (flatL body).length + 2) := by
@@ -786,9 +786,9 @@ theorem monoCore (env : LeafEnvM) : ∀ wf, MonoAt env wf := by
               rw [h1, Option.bind_some] at h
               rw [(ih w (Nat.lt_succ_self w)).1 body s b1 h1, Option.bind_some]
               by_cases hg : condNZ b1 (.reg nReg)
-              · rw [if_pos hg] at h ⊢
+              · rw [ite_eq_left hg] at h ⊢
                 exact (ih w (Nat.lt_succ_self w)).2 nReg body p _ b h
-              · rw [if_neg hg] at h ⊢
+              · rw [ite_eq_right hg] at h ⊢
                 exact h
     have hblk : ∀ (blk : IBlock) (s b : LstateM),
         runIB env wf blk s = some b → runIB env (wf + 1) blk s = some b := by
@@ -862,7 +862,7 @@ theorem runRegion_reconstructs (env : LeafEnvM) (nReg : String) (body : List IBl
           have h1' : runIBsL env (w + 1) body s = some b1 :=
             (monoCore env w).1 body s b1 h1
           by_cases hg : condNZ b1 (.reg nReg)
-          · rw [if_pos hg] at h
+          · rw [ite_eq_left hg] at h
             obtain ⟨m', hm', hbound', hgf', hsched'⟩ := ih (b1.setLpc (p + 1)) bfin h
             have hbound'' : runBoundedIBs env (w + 1) body p m' (b1.setLpc (p + 1))
                 = some (bfin.setLpc (p + 1)) :=
@@ -886,7 +886,7 @@ theorem runRegion_reconstructs (env : LeafEnvM) (nReg : String) (body : List IBl
                   rw [hbi] at hbj'
                   obtain rfl := Option.some.inj hbj'
                   exact hsched' (i'' + 1) (by omega) (by omega) bi hbj
-          · rw [if_neg hg] at h
+          · rw [ite_eq_right hg] at h
             obtain rfl := Option.some.inj h
             have hg' : condNZ b1 (.reg nReg) = false := by simpa using hg
             refine ⟨1, Nat.one_pos, ?_, ?_, ?_⟩

@@ -285,7 +285,7 @@ theorem loadB_storeB_same (m : ByteFrame n) (off : Int) (v : Fin n → BitVec 8)
   have hi : (i.val : Int) < (n : Int) := by exact_mod_cast i.isLt
   have hidx : (off + (i.val : Int) - off).toNat = i.val := by omega
   simp only [loadB, storeB]
-  rw [dif_pos (by omega : off ≤ off + (i.val : Int) ∧ off + (i.val : Int) < off + (n : Int))]
+  rw [dite_eq_left (by omega : off ≤ off + (i.val : Int) ∧ off + (i.val : Int) < off + (n : Int))]
   simp only [hidx]
 
 /-- A store leaves a separated access unchanged: every byte the load reads lies outside
@@ -296,7 +296,7 @@ theorem loadB_storeB_sep (m : ByteFrame n) (off o : Int) (v : Fin n → BitVec 8
   have hi : (i.val : Int) < (n : Int) := by exact_mod_cast i.isLt
   have hi0 : (0 : Int) ≤ (i.val : Int) := Int.natCast_nonneg _
   simp only [loadB, storeB]
-  rw [dif_neg (by rcases h with h | h <;> omega)]
+  rw [dite_eq_right (by rcases h with h | h <;> omega)]
 
 /-- A store leaves the register file unchanged. -/
 theorem regs_storeB (m : ByteFrame n) (off : Int) (v : Fin n → BitVec 8) (r : String) :
@@ -308,7 +308,7 @@ theorem loadB_setRegB (m : ByteFrame n) (r : String) (v : Fin n → BitVec 8) (o
 
 /-- Writing one register leaves the others unchanged. -/
 theorem regs_setRegB_other (m : ByteFrame n) (r x : String) (v : Fin n → BitVec 8)
-    (h : x ≠ r) : (setRegB m r v).regs x = m.regs x := if_neg h
+    (h : x ≠ r) : (setRegB m r v).regs x = m.regs x := ite_eq_right h
 
 /-- Writing a register a value it already holds is a no-op. -/
 theorem setRegB_regs_self (m : ByteFrame n) (r : String) : setRegB m r (m.regs r) = m := by

@@ -138,7 +138,7 @@ theorem denote'_forFoldRevReturn {var : String} {lo hi body : ImpExpr} {env s1 s
 theorem denoteForLoop'Return_done (var : String) {a b : Int} (body : ImpExpr) (env : Env)
     (h : b ≤ a) : denoteForLoop'Return bi fuel var a b body env = (.val .unit, env) := by
   rw [denoteForLoop'Return]
-  simp only [if_pos h]; rfl
+  simp only [ite_eq_left h]; rfl
 
 theorem denoteForLoop'Return_step {fuel : Nat} (var : String) {a b : Int} {body : ImpExpr}
     {env s : Env} {v : Value} (hab : a < b) (hf : fuel ≠ 0)
@@ -147,7 +147,7 @@ theorem denoteForLoop'Return_step {fuel : Nat} (var : String) {a b : Int} {body 
       | some w => (.val w, s)
       | none => denoteForLoop'Return bi (fuel - 1) var (a + 1) b body s := by
   rw [denoteForLoop'Return]
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
+  simp only [ite_eq_right (Int.not_le.mpr hab), ite_eq_right hf, stateM_bind_apply, stateM_modify_apply, h]
   cases v with
   | controlFlow c w =>
     cases c
@@ -160,7 +160,7 @@ theorem denoteForLoop'Return_step {fuel : Nat} (var : String) {a b : Int} {body 
 theorem denoteForLoopRev'Return_done (var : String) {a b : Int} (body : ImpExpr) (env : Env)
     (h : b ≤ a) : denoteForLoopRev'Return bi fuel var a b body env = (.val .unit, env) := by
   rw [denoteForLoopRev'Return]
-  simp only [if_pos h]; rfl
+  simp only [ite_eq_left h]; rfl
 
 theorem denoteForLoopRev'Return_step {fuel : Nat} (var : String) {a b : Int}
     {body : ImpExpr} {env s : Env} {v : Value} (hab : a < b) (hf : fuel ≠ 0)
@@ -169,7 +169,7 @@ theorem denoteForLoopRev'Return_step {fuel : Nat} (var : String) {a b : Int}
       | some w => (.val w, s)
       | none => denoteForLoopRev'Return bi (fuel - 1) var a (b - 1) body s := by
   rw [denoteForLoopRev'Return]
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
+  simp only [ite_eq_right (Int.not_le.mpr hab), ite_eq_right hf, stateM_bind_apply, stateM_modify_apply, h]
   cases v with
   | controlFlow c w =>
     cases c
@@ -621,13 +621,13 @@ theorem whileFoldReturnFuel_of_rec {n : Nat} {a : A} {r : Except (Except R L) A}
   | @brk a b hc hf =>
     intro m hm
     obtain ⟨m, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
-    simp only [Hax.whileFoldReturnFuel, hc, if_true]
+    simp only [Hax.whileFoldReturnFuel, hc, ite_true]
     rcases hg : g a with (r | l) | a'
     all_goals (rw [hg] at hf; cases hf; try rfl)
   | @step n a a' r hc hf _ ih =>
     intro m hm
     obtain ⟨m, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
-    simp only [Hax.whileFoldReturnFuel, hc, if_true]
+    simp only [Hax.whileFoldReturnFuel, hc, ite_true]
     rcases hg : g a with (r' | l) | a''
     · rw [hg] at hf; cases hf
     · rw [hg] at hf; cases hf
@@ -646,11 +646,11 @@ theorem rec_of_whileFoldReturnFuel :
     cases hc : cond a with
     | false =>
       rw [hc] at h
-      simp only [Bool.false_eq_true, if_false, Option.some.injEq] at h
+      simp only [Bool.false_eq_true, ite_false, Option.some.injEq] at h
       subst h
       exact ⟨0, .done hc⟩
     | true =>
-      rw [hc, if_pos rfl] at h
+      rw [hc, ite_eq_left rfl] at h
       rcases hg : g a with (r' | l) | a'
       · rw [hg] at h
         simp only [Option.some.injEq] at h
@@ -733,7 +733,7 @@ theorem fnCorresX_absProg [HaxEnc R] [HaxEnc β] {e : ImpExpr} {entry : A → En
   subst hentry
   unfold optGuard at hf
   by_cases hG : G a
-  · rw [if_pos hG, Option.some.injEq] at hf
+  · rw [ite_eq_left hG, Option.some.injEq] at hf
     subst hf
     obtain ⟨fuel₀, hrun⟩ := h a hG
     have h₀ := hrun fuel₀ (Nat.le_refl _)
@@ -744,7 +744,7 @@ theorem fnCorresX_absProg [HaxEnc R] [HaxEnc β] {e : ImpExpr} {entry : A → En
       haxEval_eq (fuel₀ := fuel₀) fun fuel hf => by
         rw [denote'_val_mono bi ho hf, ho]
     exact ⟨cfExcept v, by simp [haxEvalX, hev], h₀⟩
-  · rw [if_neg hG] at hf
+  · rw [ite_eq_right hG] at hf
     exact absurd hf (by simp)
 
 end Functions

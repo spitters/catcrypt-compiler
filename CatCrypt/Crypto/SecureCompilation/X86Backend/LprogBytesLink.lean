@@ -256,7 +256,7 @@ theorem decodeAt_items_append (items : List Item) (hok : ∀ it ∈ items, ItemO
           = it.bytes.length := by
         rw [List.length_append]; omega
       rw [hbs, List.append_assoc, decodeAt, hemp]
-      simp only [Bool.false_eq_true, if_false, hdecode, hlen]
+      simp only [Bool.false_eq_true, ite_false, hdecode, hlen]
       rw [ih' k (off + it.bytes.length) xs₂ h (by omega)]
       rfl
 

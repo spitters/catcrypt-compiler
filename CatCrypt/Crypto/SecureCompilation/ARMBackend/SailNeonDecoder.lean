@@ -326,7 +326,7 @@ theorem roundtrip_shl (d n sh : Nat) (hd : d < 32) (hn : n < 32)
   have hrd : fldRd W = d := by simp only [fldRd, hW]; omega
   have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
   have hib : fldImmhb W = 32 + sh := by simp only [fldImmhb, hW]; omega
-  rw [decodeWord, if_neg hgn, hg, hrd, hrn, hib, if_pos rfl, if_pos ⟨hu, hoc⟩,
+  rw [decodeWord, ite_eq_right hgn, hg, hrd, hrn, hib, ite_eq_left rfl, ite_eq_left ⟨hu, hoc⟩,
     show 32 + sh - 32 = sh from by omega]
 
 /-- **Round-trip for USHR.4S, #sh** (`0 < sh < 32`). -/
@@ -349,9 +349,9 @@ theorem roundtrip_ushr (d n sh : Nat) (hd : d < 32) (hn : n < 32)
   have hrd : fldRd W = d := by simp only [fldRd, hW]; omega
   have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
   have hib : fldImmhb W = 64 - sh := by simp only [fldImmhb, hW]; omega
-  rw [decodeWord, if_neg hgn, hg, hrd, hrn, hib]
+  rw [decodeWord, ite_eq_right hgn, hg, hrd, hrn, hib]
   have hne : ¬ (fldU W = 0 ∧ fldOpcode W = 0x0a) := fun ⟨h, _⟩ => hun h
-  rw [if_pos rfl, if_neg hne, if_pos ⟨hu, hoc⟩,
+  rw [ite_eq_left rfl, ite_eq_right hne, ite_eq_left ⟨hu, hoc⟩,
     show 64 - (64 - sh) = sh from by omega]
 
 /-! ## 5. Instruction-level round-trip: `decode (encode i) = i`
@@ -457,7 +457,7 @@ theorem roundtrip_ninst_orr (alloc : VAlloc) (d a b : String)
       = some (.orr (vOf alloc d) (vOf alloc a) (vOf alloc b)) := by
   simp only [encodeNInst]
   rw [roundtrip_orr _ _ _ (vNum_lt_32 _) (vNum_lt_32 _) (vNum_lt_32 _)]
-  simp only [Option.bind_some, rebuild, if_neg hne]
+  simp only [Option.bind_some, rebuild, ite_eq_right hne]
   rw [hd, ha, hb]
 
 /-- Round-trip for EOR.16B. -/
@@ -481,7 +481,7 @@ theorem roundtrip_ninst_mov (alloc : VAlloc) (d s : String)
       = some (.mov (vOf alloc d) (vOf alloc s)) := by
   simp only [encodeNInst]
   rw [roundtrip_orr _ _ _ (vNum_lt_32 _) (vNum_lt_32 _) (vNum_lt_32 _)]
-  simp only [Option.bind_some, rebuild, if_true]
+  simp only [Option.bind_some, rebuild, ite_true]
   rw [hd, hs]
 
 /-- Round-trip for SHL.4S, #imm (`0 < imm < 32`; the ChaCha rotates `#7/#8/#12/#16`

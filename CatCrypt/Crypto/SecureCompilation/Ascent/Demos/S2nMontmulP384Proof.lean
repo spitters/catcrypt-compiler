@@ -178,8 +178,8 @@ theorem addc_fact (x y c : Nat) (hx : x < 2 ^ 64) (hy : y < 2 ^ 64) (hc : c ≤ 
       = x + y + c := by
   simp only [BitVec.toNat_ofNat, cb]
   by_cases h : 2 ^ 64 ≤ x + y + c
-  · simp only [h, decide_true, if_true]; omega
-  · simp only [h, decide_false, Bool.false_eq_true, if_false]; omega
+  · simp only [h, decide_true, ite_true]; omega
+  · simp only [h, decide_false, Bool.false_eq_true, ite_false]; omega
 
 theorem run_adcx (d src : String) (hs : Desc R cf of zf M s)
     (h : ∀ (w : BitVec 64) (c : Bool),

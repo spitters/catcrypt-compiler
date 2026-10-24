@@ -396,7 +396,7 @@ theorem block_fwd {Γ : Ctxt jasField} {t : jasField.Ty} (e : Expr jasField Γ t
                 show (fromWordsMF p w n ((mapVar a).lookup (mapVal V)) >>= fun v => some v) = _
                 rw [fieldToModArith_lookup_mapVar]
                 show (fromWordsMF p w n (a.lookup V) >>= fun v => some v) = _
-                rw [fromWordsMF, if_pos hlt]
+                rw [fromWordsMF, ite_eq_left hlt]
                 exact congrArg some (FieldRepr.toRep_ofRep hr _).symm
               · cases hx'
             · cases hb'

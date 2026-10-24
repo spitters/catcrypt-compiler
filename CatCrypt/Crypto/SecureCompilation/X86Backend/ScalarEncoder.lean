@@ -1408,13 +1408,13 @@ theorem encodeJInstr_sar_reg (alloc : GpAlloc) (d c : String) :
 /-- A register-count shift whose count is not in `%rcx` carries no bytes. -/
 theorem encodeJInstr_shr_reg_ne_rcx (alloc : GpAlloc) (d c : String)
     (h : regOf alloc c ≠ "%rcx") : encodeJInstr alloc (.shr d (.reg c)) = [] := by
-  rw [encodeJInstr_shr_reg, if_neg h]
+  rw [encodeJInstr_shr_reg, ite_eq_right h]
 
 /-- A register-count shift whose count is in `%rcx` is the `D3 /5` form. -/
 theorem encodeJInstr_shr_reg_rcx (alloc : GpAlloc) (d c : String)
     (h : regOf alloc c = "%rcx") :
     encodeJInstr alloc (.shr d (.reg c)) = encShiftCl 5 (gpNum (regOf alloc d)) := by
-  rw [encodeJInstr_shr_reg, if_pos h]
+  rw [encodeJInstr_shr_reg, ite_eq_left h]
 
 /-- The gated encoder refuses a register-count logical right shift. -/
 theorem encodeJInstr?_shr_reg (alloc : GpAlloc) (d c : String) :

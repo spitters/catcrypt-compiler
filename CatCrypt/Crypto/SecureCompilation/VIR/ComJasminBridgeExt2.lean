@@ -100,7 +100,7 @@ theorem sextOpSem_sem (szo szi : WSize) (w : BitVec szi.bits) :
   show (if h : szo = szo ∧ szi = szi then
           (.ok (.Vword szo (BitVec.signExtend szo.bits (h.2 ▸ w))) : JResult Value)
         else .typeError) = _
-  rw [dif_pos ⟨rfl, rfl⟩]
+  rw [dite_eq_left ⟨rfl, rfl⟩]
 
 /-- **Value coincidence (signed).** The mirror sign-extend output
     `BitVec.signExtend szo.bits w` is the *same* `BitVec` as the method-call

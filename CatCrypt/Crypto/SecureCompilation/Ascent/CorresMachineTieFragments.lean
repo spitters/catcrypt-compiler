@@ -163,9 +163,9 @@ theorem mem_load_step_gen (m : MemLoadSrc) (st : JState 64) (n : Nat) (env : SEn
       have hget : (runBlock st [lowerMemLoad idRho m]).regs m.dst
           = (runBlock st [lowerMemLoad idRho m]).get (idRho m.dst) := rfl
       rw [hget, runBlock_lowerMemLoad_get]
-      simp only [SEnvScalar.upd, if_pos]
+      simp only [SEnvScalar.upd, ite_eq_left]
       rw [memGetDyn_regionArr st m.arr n m.scale (st.regs m.idx).toNat hidx_lt]
-    · rw [SEnvScalar.upd, if_neg hvd, hagree v hv, regMemEnv_lowerMemLoad_of_ne m st n v hvd]
+    · rw [SEnvScalar.upd, ite_eq_right hvd, hagree v hv, regMemEnv_lowerMemLoad_of_ne m st n v hvd]
 
 /-- **The array-load is a `SimTie`.**  Under the memory relation `memLoadR`
     (regMemEnv-style agreement + in-range index), the real `RArrLoad` node ties to
@@ -190,7 +190,7 @@ theorem simTie_memLoad (m : MemLoadSrc) (n : Nat)
   have hidx_pres : (runBlock st [lowerMemLoad idRho m]).regs m.idx = st.regs m.idx := by
     rw [runBlock_lowerMemLoad]
     simp only [idRho, id_eq, JState.setReg]
-    exact if_neg hdst_ne_idx.symm
+    exact ite_eq_right hdst_ne_idx.symm
   rw [hidx_pres]
   exact hrange
 

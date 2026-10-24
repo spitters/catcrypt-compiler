@@ -119,7 +119,7 @@ theorem semPexpr_pvar_vword
   unfold getGvar
   -- `mkLvar a` is an lvar, so `getGvar = getVar`
   rw [show (mkLvar a).isLvar = true from rfl]
-  simp only [if_true]
+  simp only [ite_true]
   show getVar true s.evm (mkLvar a).gv.v_var = _
   unfold getVar
   -- `(mkLvar a).gv.v_var = a.v_var`, and its value is the defined `Vword`
@@ -233,7 +233,7 @@ theorem addOpSemReg_sem (sz : WSize) (wa wb : BitVec sz.bits) :
   show (if h : sz = sz ∧ sz = sz then
           (.ok (.Vword sz ((h.2 ▸ wa) + BitVec.ofNat sz.bits wb.toNat)) : JResult Value)
         else .typeError) = _
-  rw [dif_pos ⟨rfl, rfl⟩]
+  rw [dite_eq_left ⟨rfl, rfl⟩]
   have hbv : BitVec.ofNat sz.bits wb.toNat = wb := by
     apply BitVec.eq_of_toNat_eq; simp
   rw [hbv]

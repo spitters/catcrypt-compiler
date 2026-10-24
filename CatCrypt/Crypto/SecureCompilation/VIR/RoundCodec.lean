@@ -398,7 +398,7 @@ theorem decompress_denote (w q d : ℕ) (hq : q < 2 ^ w) (hd : 2 ^ d / 2 < 2 ^ w
     zvals false ((decompressProg w q d).denote (.cons y .nil))
       = .cons (decompressSpec q d y.toNat : ℤ) .nil := by
   have hV := valsIn_iv1 false (0, 2 ^ d - 1) y (by simp [rd]) (by
-    simp only [rd, Bool.false_eq_true, if_false]
+    simp only [rd, Bool.false_eq_true, ite_false]
     have : ((y.toNat : ℕ) : ℤ) < ((2 ^ d : ℕ) : ℤ) := by exact_mod_cast hy
     push_cast at this; omega)
   rw [(denoteMR_eq_denoteZ_of_boundsOk false _ _ _ hb _ hV).1]
@@ -729,12 +729,12 @@ theorem decZ_mldsa88 (a : ℤ) (h0 : 0 ≤ a) (h1 : a < Fips204.q) :
       = a - 190464 * T := by split_ifs <;> omega
   rw [key]
   rcases (show T ≤ 43 ∨ T = 44 by omega) with hT | hT
-  · rw [show (T + 20) / 64 = 0 by omega, if_neg (by omega),
+  · rw [show (T + 20) / 64 = 0 by omega, ite_eq_right (by omega),
       show (a - (T - 0 * 44) * 190464 + 12587007) / 16777216 = 0 by omega]
     simp only [Prod.mk.injEq]
     omega
   · subst hT
-    rw [if_pos (by omega)]
+    rw [ite_eq_left (by omega)]
     norm_num
     omega
 
@@ -756,12 +756,12 @@ theorem decZ_mldsa32 (a : ℤ) (h0 : 0 ≤ a) (h1 : a < Fips204.q) :
       = a - 523776 * T := by split_ifs <;> omega
   rw [key]
   rcases (show T ≤ 15 ∨ T = 16 by omega) with hT | hT
-  · rw [show (T + 48) / 64 = 0 by omega, if_neg (by omega),
+  · rw [show (T + 48) / 64 = 0 by omega, ite_eq_right (by omega),
       show (a - (T - 0 * 16) * 523776 + 12587007) / 16777216 = 0 by omega]
     simp only [Prod.mk.injEq]
     omega
   · subst hT
-    rw [if_pos (by omega)]
+    rw [ite_eq_left (by omega)]
     norm_num
     omega
 
@@ -806,7 +806,7 @@ theorem hintBit (h1 h2 : ℤ) (ha : 0 ≤ h1 ∧ h1 ≤ 43) (hb : 0 ≤ h2 ∧ h
   · have hl : 1 ≤ (h1 - h2) * (h1 - h2) := by
       rcases lt_or_gt_of_ne (sub_ne_zero.mpr e) with h | h <;> nlinarith
     have hu : (h1 - h2) * (h1 - h2) ≤ 1849 := by nlinarith
-    simp only [e, if_false]
+    simp only [e, ite_false]
     omega
 
 /-- **The `MakeHint` template computes FIPS 204 `MakeHint`** on the integers, for
@@ -874,10 +874,10 @@ theorem useHintZ_eq (P : DecomposeMagic) (γ2 : ℤ) (hw : P.w = 32) (hjq : P.jq
   simp only [hm] at hr ⊢
   have hM1 : (1 : ℤ) ≤ M := by rcases hM' with rfl | rfl <;> norm_num
   cases hb
-  · simp only [Bool.false_eq_true, if_false, zero_mul, add_zero, sub_zero, false_and]
+  · simp only [Bool.false_eq_true, ite_false, zero_mul, add_zero, sub_zero, false_and]
     rw [useHint_mod M hM' r1 (by omega) (by omega)]
     exact Int.emod_eq_of_lt (by omega) (by omega)
-  · simp only [if_true, one_mul, true_and]
+  · simp only [ite_true, one_mul, true_and]
     rw [useHint_pbit r0 (by omega) (by omega)]
     split_ifs
     · rw [useHint_mod M hM' _ (by omega) (by omega)]
@@ -973,7 +973,7 @@ theorem useHint_denote {P : DecomposeMagic} {γ2 : ℤ} (hP : MldsaInst P γ2)
   have e : rd true h = if decide (rd true h = 1) then 1 else 0 := by
     by_cases hc : rd true h = 1
     · simp [hc]
-    · simp only [hc, decide_false, Bool.false_eq_true, if_false]
+    · simp only [hc, decide_false, Bool.false_eq_true, ite_false]
       omega
   refine (useHintProg_denoteZ P (rd true h) (rd true r)).trans ?_
   rw [e, useHintZ_eq P γ2 hfix.1 hfix.2.1 hfix.2.2.1 hfix.2.2.2 (decZ_mldsa hP) _ _ h0 h1, ← e]

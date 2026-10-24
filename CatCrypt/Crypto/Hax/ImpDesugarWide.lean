@@ -661,16 +661,16 @@ theorem desugarAt_denote (hsp : WideSpec bi) :
         obtain rfl := hz rfl
         exact desugarAt_denote hsp t b _ _ _ _ _ h2 hv h2' hw
       cases t
-      · simp only [desugarAt, Bool.false_eq_true, if_false] at ht
+      · simp only [desugarAt, Bool.false_eq_true, ite_false] at ht
         obtain ⟨hvw, he, _⟩ := step ht
         obtain rfl := he rfl
         exact ⟨hvw, fun _ => rfl, fun _ _ => rfl⟩
       · rcases hl : mulModLetOf (.letBind x a b) with _ | ⟨a', b', n⟩
-        · simp only [desugarAt, if_true, hl] at ht
+        · simp only [desugarAt, ite_true, hl] at ht
           obtain ⟨hvw, _, hy⟩ := step ht
           refine ⟨hvw, Bool.noConfusion, fun y hne => hy y ?_⟩
           simpa only [wideLocal, hl] using hne
-        · simp only [desugarAt, if_true, hl] at ht
+        · simp only [desugarAt, ite_true, hl] at ht
           obtain ⟨rfl, rfl, ha, hb, hn⟩ := mulModLetOf_eq_some hl
           obtain ⟨s, ua, ub, un, rfl, h1, _, h2, _, h3, _, hval⟩ :=
             mulModLet_val ha hb hn hs hv
@@ -744,16 +744,16 @@ theorem desugarAt_run (htot : WideTotal bi) :
         obtain ⟨e₂, h2', hrest⟩ := desugarAt_run htot t b _ _ _ h2 hv
         exact ⟨e₂, by rw [denote'_letBind_of_val h1' hu]; exact h2', hrest⟩
       cases t
-      · simp only [desugarAt, Bool.false_eq_true, if_false]
+      · simp only [desugarAt, Bool.false_eq_true, ite_false]
         obtain ⟨e₂, h, he, _⟩ := step
         obtain rfl := he rfl
         exact ⟨e₁, h, fun _ => rfl, fun _ _ => rfl⟩
       · rcases hl : mulModLetOf (.letBind x a b) with _ | ⟨a', b', n⟩
-        · simp only [desugarAt, if_true, hl]
+        · simp only [desugarAt, ite_true, hl]
           obtain ⟨e₂, h, _, hy⟩ := step
           refine ⟨e₂, h, Bool.noConfusion, fun y hne => hy y ?_⟩
           simpa only [wideLocal, hl] using hne
-        · simp only [desugarAt, if_true, hl]
+        · simp only [desugarAt, ite_true, hl]
           obtain ⟨rfl, rfl, ha, hb, hn⟩ := mulModLetOf_eq_some hl
           obtain ⟨s, ua, ub, un, rfl, h1, hua, h2, hub, h3, hun, hval⟩ :=
             mulModLet_val ha hb hn hs hv
@@ -862,9 +862,9 @@ theorem desugarAt_wideFree (t : Bool) (e : ImpExpr) (h : wideOK t e = true) :
   fun_induction desugarAt t e
   case case1 t x v b a b' n hl =>
     cases t
-    · simp only [Bool.false_eq_true, if_false] at hl
+    · simp only [Bool.false_eq_true, ite_false] at hl
       cases hl
-    · simp only [if_true] at hl
+    · simp only [ite_true] at hl
       obtain ⟨_, _, ha, hb, hn⟩ := mulModLetOf_eq_some hl
       simp [wideFree, wideFreeL, wideName, mulModName, atom_wideFree ha, atom_wideFree hb,
         atom_wideFree (atomOff_atom hn)]
@@ -872,7 +872,7 @@ theorem desugarAt_wideFree (t : Bool) (e : ImpExpr) (h : wideOK t e = true) :
     have hvb : wideOK false v = true ∧ wideOK t b = true := by
       cases t
       · simpa [wideOK] using h
-      · simp only [if_true] at hl
+      · simp only [ite_true] at hl
         simpa [wideOK, hl] using h
     simp [wideFree, ihv hvb.1, ihb hvb.2]
   case case3 t a b iha ihb =>

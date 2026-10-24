@@ -115,31 +115,31 @@ theorem fstepF_of_carryArgs {i : LinstrRM} {p : CarryOp × String × LOperand ×
 
 theorem cmpArgs?_carryI (m d a c : String) (h : withWidthTag 64 m ≠ withWidthTag 64 "CMP") :
     cmpArgs? (carryI m d a c) = none := by
-  simp only [cmpArgs?, carryI, if_neg h]
+  simp only [cmpArgs?, carryI, ite_eq_right h]
 
 theorem movRegArgs?_carryI (m d a c : String) : movRegArgs? (carryI m d a c) = none := rfl
 
 theorem carryArgs?_adc (d a c : String) :
     carryArgs? (carryI "ADC" d a c) = some (.adc, d, .reg a, .reg c) := by
-  simp only [carryArgs?, carryI, if_true]
+  simp only [carryArgs?, carryI, ite_true]
 
 theorem carryArgs?_sbb (d a c : String) :
     carryArgs? (carryI "SBB" d a c) = some (.sbb, d, .reg a, .reg c) := by
-  simp only [carryArgs?, carryI, if_true,
-    if_neg (show withWidthTag 64 "SBB" ≠ withWidthTag 64 "ADC" by decide +kernel)]
+  simp only [carryArgs?, carryI, ite_true,
+    ite_eq_right (show withWidthTag 64 "SBB" ≠ withWidthTag 64 "ADC" by decide +kernel)]
 
 theorem carryArgs?_adcx (d a c : String) :
     carryArgs? (carryI "ADCX" d a c) = some (.adcx, d, .reg a, .reg c) := by
-  simp only [carryArgs?, carryI, if_true,
-    if_neg (show withWidthTag 64 "ADCX" ≠ withWidthTag 64 "ADC" by decide +kernel),
-    if_neg (show withWidthTag 64 "ADCX" ≠ withWidthTag 64 "SBB" by decide +kernel)]
+  simp only [carryArgs?, carryI, ite_true,
+    ite_eq_right (show withWidthTag 64 "ADCX" ≠ withWidthTag 64 "ADC" by decide +kernel),
+    ite_eq_right (show withWidthTag 64 "ADCX" ≠ withWidthTag 64 "SBB" by decide +kernel)]
 
 theorem carryArgs?_adox (d a c : String) :
     carryArgs? (carryI "ADOX" d a c) = some (.adox, d, .reg a, .reg c) := by
-  simp only [carryArgs?, carryI, if_true,
-    if_neg (show withWidthTag 64 "ADOX" ≠ withWidthTag 64 "ADC" by decide +kernel),
-    if_neg (show withWidthTag 64 "ADOX" ≠ withWidthTag 64 "SBB" by decide +kernel),
-    if_neg (show withWidthTag 64 "ADOX" ≠ withWidthTag 64 "ADCX" by decide +kernel)]
+  simp only [carryArgs?, carryI, ite_true,
+    ite_eq_right (show withWidthTag 64 "ADOX" ≠ withWidthTag 64 "ADC" by decide +kernel),
+    ite_eq_right (show withWidthTag 64 "ADOX" ≠ withWidthTag 64 "SBB" by decide +kernel),
+    ite_eq_right (show withWidthTag 64 "ADOX" ≠ withWidthTag 64 "ADCX" by decide +kernel)]
 
 /-! ## 3. The carry family -/
 
@@ -254,18 +254,18 @@ theorem decSimC_adox (d a c : String) (ha : L a) (hc : L c) (hda : π d = π a)
 theorem aluFlagOp?_addI (d a c : String) :
     aluFlagOp? (addI d a c) = some (.add, .reg a, .reg c) := by
   simp only [aluFlagOp?, addI, binRegI]
-  rw [if_pos (by decide +kernel)]
+  rw [ite_eq_left (by decide +kernel)]
 
 theorem aluFlagOp?_subI (d a c : String) :
     aluFlagOp? (subI d a c) = some (.sub, .reg a, .reg c) := by
   simp only [aluFlagOp?, subI, binRegI]
-  rw [if_neg (by decide +kernel), if_pos (by decide +kernel)]
+  rw [ite_eq_right (by decide +kernel), ite_eq_left (by decide +kernel)]
 
 theorem aluFlagOp?_xorI (d a c : String) :
     aluFlagOp? (xorI d a c) = some (.xor, .reg a, .reg c) := by
   simp only [aluFlagOp?, xorI, binRegI]
-  rw [if_neg (by decide +kernel), if_neg (by decide +kernel), if_neg (by decide +kernel),
-    if_neg (by decide +kernel), if_pos (by decide +kernel)]
+  rw [ite_eq_right (by decide +kernel), ite_eq_right (by decide +kernel), ite_eq_right (by decide +kernel),
+    ite_eq_right (by decide +kernel), ite_eq_left (by decide +kernel)]
 
 /-- The flags `withALUFlags` writes for a recognised operation on two registers readable at
     width `64`. -/
@@ -405,15 +405,15 @@ theorem fstepF_of_wideArgs {i : LinstrRM} {w : WideOp} (hc : cmpArgs? i = none)
 theorem fstepF_mov2I (d : String) (x b : LOperand) (s : LstateM) (zf : Bool) :
     fstepF (mov2I d x b) s zf = (wideStep (.mov d b) s).map (fun t => (t, zf)) :=
   fstepF_of_wideArgs
-    (by simp only [cmpArgs?, mov2I]; rw [if_neg (by decide +kernel)])
+    (by simp only [cmpArgs?, mov2I]; rw [ite_eq_right (by decide +kernel)])
     (by cases x <;> cases b <;> rfl)
-    (by simp only [carryArgs?, mov2I]; rw [if_neg (by decide +kernel), if_neg (by decide +kernel),
-      if_neg (by decide +kernel), if_neg (by decide +kernel)])
-    (by simp only [wideArgs?, mov2I, if_true]) s zf
+    (by simp only [carryArgs?, mov2I]; rw [ite_eq_right (by decide +kernel), ite_eq_right (by decide +kernel),
+      ite_eq_right (by decide +kernel), ite_eq_right (by decide +kernel)])
+    (by simp only [wideArgs?, mov2I, ite_true]) s zf
 
 theorem fstepF_mulxI (lo hi : String) (b : LOperand) (s : LstateM) (zf : Bool) :
     fstepF (mulxI lo hi b) s zf = (wideStep (.mulx lo hi b) s).map (fun t => (t, zf)) :=
-  fstepF_of_wideArgs rfl rfl rfl (by simp only [wideArgs?, mulxI, true_or, if_true]) s zf
+  fstepF_of_wideArgs rfl rfl rfl (by simp only [wideArgs?, mulxI, true_or, ite_true]) s zf
 
 /-- `MOV:64 d, x, s` against `mov %s, %d`. -/
 theorem decSimC_mov2 (d : String) (x : LOperand) (s : String) (hs : L s)
@@ -457,14 +457,14 @@ theorem DecLsemCorr.write2 {sa : AState} {b : LstateM} {zf : Bool}
   regs r hr := by
     rw [LstateM.reg_nextPc, LstateN.getW_nextPc, LstateM.reg_setReg, LstateM.reg_setReg]
     rcases hL r hr with rfl | rfl | ⟨hrL, h1, h2⟩
-    · rw [LstateN.getW_setReg_same, hregs, if_pos rfl]
+    · rw [LstateN.getW_setReg_same, hregs, ite_eq_left rfl]
     · have hne : r ≠ hi := fun e => hHL (by rw [e])
       rw [LstateN.getW_setReg_other _ _ _ _ _ hne, LstateN.getW_setReg_same, hregs,
-        if_neg (Ne.symm hHL), if_pos rfl]
+        ite_eq_right (Ne.symm hHL), ite_eq_left rfl]
     · have hne1 : r ≠ hi := fun e => h2 (by rw [e])
       have hne2 : r ≠ lo := fun e => h1 (by rw [e])
       rw [LstateN.getW_setReg_other _ _ _ _ _ hne1, LstateN.getW_setReg_other _ _ _ _ _ hne2,
-        h.regs r hrL, hregs, if_neg h2, if_neg h1]
+        h.regs r hrL, hregs, ite_eq_right h2, ite_eq_right h1]
   zfEq hz := hz.elim
   cells A j hk := by
     obtain ⟨hj, arr, ha, hr⟩ := h.cells A j hk
@@ -813,7 +813,7 @@ def loadCI (d c : String) : LinstrRM :=
 
 theorem fstepF_mulxMemI (lo hi c : String) (s : LstateM) (zf : Bool) :
     fstepF (mulxMemI lo hi c) s zf = (wideStep (.mulx lo hi (.reg c)) s).map (fun t => (t, zf)) :=
-  fstepF_of_wideArgs rfl rfl rfl (by simp only [wideArgs?, mulxMemI, or_true, if_true])
+  fstepF_of_wideArgs rfl rfl rfl (by simp only [wideArgs?, mulxMemI, or_true, ite_true])
     s zf
 
 theorem fstepF_loadCI (d c : String) (b : LstateM) (zf : Bool) (v : BitVec 64)
@@ -822,7 +822,7 @@ theorem fstepF_loadCI (d c : String) (b : LstateM) (zf : Bool) (v : BitVec 64)
   have hc : cmpArgs? (loadCI d c) = none := rfl
   have hm : movRegArgs? (loadCI d c) = some (d, c) := by
     simp only [movRegArgs?, loadCI]
-    rw [if_neg (by decide +kernel), if_pos (by decide +kernel)]
+    rw [ite_eq_right (by decide +kernel), ite_eq_left (by decide +kernel)]
   unfold fstepF
   rw [hc, hm]
   simp only [readReg_of_getW hv]

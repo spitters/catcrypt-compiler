@@ -601,12 +601,12 @@ theorem whileIterLeak_relD (D : CTLeak → Bool) {cs : List d.Ty} (A : Labels cs
       rcases hs X₁ X₂ r₁ r₂ h hr₁ hr₂ with ⟨he, hf, hp⟩ | hd
       · rw [← hf] at h₂
         split at h₁
-        · rw [if_pos (by assumption)] at h₂
+        · rw [ite_eq_left (by assumption)] at h₂
           obtain ⟨q₁', hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
           obtain ⟨q₂', hq₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
           exact declDiff_seq (Or.inl ⟨he, trivial⟩) fun _ => declDiff_cons _
             (whileIterLeak_relD D A step₁ step₂ hs n _ _ q₁' q₂' hp hq₁ hq₂)
-        · rw [if_neg (by assumption)] at h₂
+        · rw [ite_eq_right (by assumption)] at h₂
           simp only [Option.some.injEq] at h₁ h₂
           subst h₁ h₂
           exact Or.inl ⟨by simp only [he], hp⟩
@@ -786,11 +786,11 @@ theorem NFProg.levelCheckD_sound (M : LeakModel d) (isDeclass : d.Op → Bool)
           have harm : (a₁.2 = a₂.2 ∧ PubEqV (lvlJoin R₁ R₂) a₁.1 a₂.1) ∨
               DeclDiff isDeclEv a₁.2 a₂.2 := by
             split at ha₁
-            · rw [if_pos (by assumption)] at ha₂
+            · rw [ite_eq_left (by assumption)] at ha₂
               rcases iht L R₁ hR₁ _ _ _ _ hp ha₁ ha₂ with ⟨e, r⟩ | hd
               · exact Or.inl ⟨e, pubEqV_mono _ _ (lvlsLe_join_left R₁ R₂) _ _ r⟩
               · exact Or.inr hd
-            · rw [if_neg (by assumption)] at ha₂
+            · rw [ite_eq_right (by assumption)] at ha₂
               rcases ihe L R₂ hR₂ _ _ _ _ hp ha₁ ha₂ with ⟨e, r⟩ | hd
               · exact Or.inl ⟨e, pubEqV_mono _ _ (lvlsLe_join_right R₁ R₂) _ _ r⟩
               · exact Or.inr hd

@@ -185,13 +185,13 @@ theorem mask_sel (c d t : BitVec 64) :
   by_cases h : 2 ^ 63 ≤ t.toNat
   · have h1 : t >>> 63 = 1#64 := by
       apply BitVec.eq_of_toNat_eq; rw [shr63_toNat]; simp; omega
-    rw [if_pos h, h1]
+    rw [ite_eq_left h, h1]
     have h2 : (0 : BitVec 64) - 1#64 = BitVec.allOnes 64 := by decide
     simp only [h2, BitVec.and_allOnes]
     rw [BitVec.xor_comm c d, ← BitVec.xor_assoc, BitVec.xor_self, BitVec.zero_xor]
   · have h1 : t >>> 63 = 0#64 := by
       apply BitVec.eq_of_toNat_eq; rw [shr63_toNat]; simp; omega
-    rw [if_neg h, h1]
+    rw [ite_eq_right h, h1]
     simp
 
 theorem and_mask63 (t : BitVec 64) :
@@ -551,13 +551,13 @@ theorem selAcc_succ (M : JMem 64) (D : BitVec 64) (j : Nat) (hj : j < 2 ^ 64) (o
   unfold selAcc
   by_cases h : D = BitVec.ofNat 64 j
   · have hD : D.toNat = j := by rw [h, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hj]
-    rw [if_pos h, hD, if_pos (by omega)]
+    rw [ite_eq_left h, hD, ite_eq_left (by omega)]
   · have hD : D.toNat ≠ j := fun e => h (BitVec.eq_of_toNat_eq
       (by rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hj]; exact e))
-    rw [if_neg h]
+    rw [ite_eq_right h]
     by_cases hlt : D.toNat < j
-    · rw [if_pos hlt, if_pos (by omega)]
-    · rw [if_neg hlt, if_neg (by omega)]
+    · rw [ite_eq_left hlt, ite_eq_left (by omega)]
+    · rw [ite_eq_right hlt, ite_eq_right (by omega)]
 
 /-- One scan entry advances the invariant from `j` to `j + 1`. -/
 theorem selEntry_corresJ (M : JMem 64) (D : BitVec 64) (j : Nat) :
@@ -628,7 +628,7 @@ theorem selBlock_correct (n : Nat) (hn : n ≤ 2 ^ 64) (st : JState 64)
   have hsel : ∀ off : Int, selAcc st.mem (st.regs "d") n off
       = st.mem "tbl" (32 * ((st.regs "d").toNat : Int) + off) := by
     intro off
-    simp only [selAcc, if_pos hd, entryStride, Int.ofNat_eq_natCast]
+    simp only [selAcc, ite_eq_left hd, entryStride, Int.ofNat_eq_natCast]
     rw [Int.mul_comm]
   rcases (by omega : k = 0 ∨ k = 1 ∨ k = 2 ∨ k = 3) with rfl | rfl | rfl | rfl
   · simpa [hsel] using e0.trans h0
@@ -676,7 +676,7 @@ theorem combSelectBlock_initState (tab : Fin 16 → Fin 4 → BitVec 64) (didx :
   simp only [outLimbs, JState.load]
   rw [h, hr]
   simp only [initState, ↓reduceIte, tbl_off_toNat]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
   exact congrArg₂ tab (Fin.ext (by show _ % 16 = didx.toNat; omega))
     (Fin.ext (by show _ % 4 = k.val; omega))
 
@@ -690,7 +690,7 @@ theorem combSelect5Block_initState (tab : Fin 32 → Fin 4 → BitVec 64) (didx 
   simp only [outLimbs, JState.load]
   rw [h, hr]
   simp only [initState5, ↓reduceIte, tbl_off_toNat]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
   exact congrArg₂ tab (Fin.ext (by show _ % 32 = didx.toNat; omega))
     (Fin.ext (by show _ % 4 = k.val; omega))
 
@@ -704,7 +704,7 @@ theorem combSelect6Block_initState (tab : Fin 64 → Fin 4 → BitVec 64) (didx 
   simp only [outLimbs, JState.load]
   rw [h, hr]
   simp only [initState6, ↓reduceIte, tbl_off_toNat]
-  rw [if_pos (by omega)]
+  rw [ite_eq_left (by omega)]
   exact congrArg₂ tab (Fin.ext (by show _ % 64 = didx.toNat; omega))
     (Fin.ext (by show _ % 4 = k.val; omega))
 

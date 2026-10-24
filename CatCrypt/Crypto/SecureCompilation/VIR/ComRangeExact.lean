@@ -124,12 +124,12 @@ theorem rd_of_nonneg {s : Bool} {w : Nat} {x : BitVec w} (h : 0 ≤ rd s x) :
     rd s x = (x.toNat : ℤ) := by
   cases s
   · rfl
-  · simp only [rd, if_true] at h ⊢
+  · simp only [rd, ite_true] at h ⊢
     rw [BitVec.toInt_eq_toNat_cond] at h ⊢
     split
     · rfl
     · rename_i hc
-      rw [if_neg hc] at h
+      rw [ite_eq_right hc] at h
       have := Iv.toNat_lt_int x
       push_cast at h
       omega
@@ -154,10 +154,10 @@ theorem rd_eq_of_fits {s : Bool} {w : Nat} {x : BitVec w} {r : Iv} {z : ℤ}
   have hl := rd_lane s x
   have hb : -2 ^ w < rd s x - z ∧ rd s x - z < 2 ^ w := by
     cases s
-    · simp only [fitsLane, Bool.false_eq_true, if_false, Bool.and_eq_true,
+    · simp only [fitsLane, Bool.false_eq_true, ite_false, Bool.and_eq_true,
         decide_eq_true_eq] at hf hl
       constructor <;> linarith [hf.1, hf.2, hl.1, hl.2]
-    · simp only [fitsLane, if_true, Bool.and_eq_true, decide_eq_true_eq] at hf hl
+    · simp only [fitsLane, ite_true, Bool.and_eq_true, decide_eq_true_eq] at hf hl
       constructor <;> linarith [hf.1, hf.2, hl.1, hl.2]
   rw [hk] at hb
   rcases lt_trichotomy k 0 with hk0 | hk0 | hk0
@@ -660,15 +660,15 @@ theorem exactIv_sound (hA : EnvOK A V) (hZ : ZOK A s V Z) (op : JasminOp)
         refine ⟨Int.ediv_le_ediv hp ha1, Int.ediv_le_ediv hp ha2, ?_⟩
         have hx : rd s (regVal V a) = (regVal V a).toInt := by
           cases s
-          · simp only [fitsLane, if_true, Bool.and_eq_true, decide_eq_true_eq] at hc
+          · simp only [fitsLane, ite_true, Bool.and_eq_true, decide_eq_true_eq] at hc
             have hl := rd_lane false (regVal V a)
-            simp only [Bool.false_eq_true, if_false] at hl
-            simp only [rd, Bool.false_eq_true, if_false] at ha2 hl ⊢
+            simp only [Bool.false_eq_true, ite_false] at hl
+            simp only [rd, Bool.false_eq_true, ite_false] at ha2 hl ⊢
             have e2 : ((2 ^ w : ℕ) : ℤ) = 2 ^ w := by push_cast; rfl
             have hlt : 2 * (regVal V a).toNat < 2 ^ w := by
               have : (2 * (regVal V a).toNat : ℤ) < ((2 ^ w : ℕ) : ℤ) := by omega
               exact_mod_cast this
-            rw [BitVec.toInt_eq_toNat_cond, if_pos hlt]
+            rw [BitVec.toInt_eq_toNat_cond, ite_eq_left hlt]
           · rfl
         rw [hx, ← toInt_emod, BitVec.toInt_sshiftRight, Int.shiftRight_eq_div_pow]
         push_cast; rfl
@@ -1082,19 +1082,19 @@ theorem wordSchedBlock_denote (P : NttParams) (sch : WordSched)
   have hfj : ∀ j < 2 ^ P.logN,
       (f j : ℤ) = rd (wordSigned sch) (hvGetG (Rw sch.width) (0 : BitVec sch.width) V j) :=
     fun j hj => by
-      simp only [f, if_pos hj]
+      simp only [f, ite_eq_left hj]
       exact (rd_of_nonneg (hV j hj).1).symm
   have hf : ∀ j, f j < P.q := fun j => by
     by_cases hj : j < 2 ^ P.logN
     · have h1 := hfj j hj
       have h2 := (hV j hj).2
       omega
-    · simp only [f, if_neg hj]
+    · simp only [f, ite_eq_right hj]
       exact hq
   have hVf : lanesVal (Rw sch.width) (fun j => BitVec.ofNat sch.width (f j)) (2 ^ P.logN) 0
       = V :=
     lanesVal_eq _ _ _ _ V (fun i hi => by
-      simp only [f, Nat.zero_add, if_pos hi, BitVec.ofNat_toNat, BitVec.setWidth_eq])
+      simp only [f, Nat.zero_add, ite_eq_left hi, BitVec.ofNat_toNat, BitVec.setWidth_eq])
   have key := nttProgG_denote P hP sch hs f hf
   rw [hVf] at key
   refine ⟨(valsIn_const _ _ _ _ _).2 fun i hi => ?_, fun i hi => ?_⟩
@@ -1103,7 +1103,7 @@ theorem wordSchedBlock_denote (P : NttParams) (sch : WordSched)
     rw [abs_lt] at h1
     constructor <;> omega
   · obtain ⟨-, h2⟩ := key i hi
-    rw [hvGetZ_zvals, if_pos hi, rd_wordSigned, h2]
+    rw [hvGetZ_zvals, ite_eq_left hi, rd_wordSigned, h2]
     congr 1
     funext j
     rw [hvGetZ_zvals]

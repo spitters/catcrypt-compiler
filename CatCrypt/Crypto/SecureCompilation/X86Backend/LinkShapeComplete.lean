@@ -303,9 +303,9 @@ theorem cover_encMovImmw {w d v : Nat} (hd : d < 16)
     (mem_pieceTemplates_imm (v := v) (mem_nums_of hd (by simp [guess]))
       (by simp [guess, opImms]) ?_)
   rcases hv with ⟨rfl, h1, h2⟩ | ⟨rfl, h1⟩
-  · simp only [tmplImm, h1, h2, decide_true, Bool.and_self, if_true, List.mem_append,
+  · simp only [tmplImm, h1, h2, decide_true, Bool.and_self, ite_true, List.mem_append,
       List.mem_singleton, true_or]
-  · simp only [tmplImm, h1, decide_true, if_true, List.mem_append, List.mem_singleton,
+  · simp only [tmplImm, h1, decide_true, ite_true, List.mem_append, List.mem_singleton,
       true_or, or_true]
 
 /-- The sign-extended `imm8` group-1 forms (`83 /digit ib`) at `REX.W = 1`. -/
@@ -318,7 +318,7 @@ theorem cover_encAluImm8 {dig d v : Nat} (hdig : dig < 8) (hd : d < 16)
       (mem_pieceTemplates_imm (v := v) (mem_nums_of hd (by simp [hg]))
       (by simp [hg]) (by
         simp only [tmplImm, hv, List.mem_append, List.mem_filterMap, Option.map_eq_some_iff,
-          List.mem_range, List.mem_singleton, if_true]
+          List.mem_range, List.mem_singleton, ite_true]
         exact Or.inl (Or.inl (Or.inr (Or.inl ⟨dig, hdig, mk, hmk, rfl⟩)))))
   interval_cases dig
   · exact hm JInstr.add rfl rfl
@@ -499,7 +499,7 @@ theorem cover_encMovImm64 {d v : Nat} (hd : d < 16) (hlo : 2 ^ 31 ≤ v) (hv : v
     TemplateCover (encMovImm64 d v) :=
   cover_J (j := .mov (regName d) (.imm v)) (by simp [decodableJ]; omega) rfl
     (by simp [renameJ, operandOf, nameOf_canon hd])
-    (by simp only [encodeJInstr, regOf_canon hd, gpNum_regName hd]; rw [if_neg (by omega)])
+    (by simp only [encodeJInstr, regOf_canon hd, gpNum_regName hd]; rw [ite_eq_right (by omega)])
 
 /-- `adcx` and `adox` from a frame word. -/
 theorem cover_encAdxRspMem {pfx d : Nat} {off : Int} (hpfx : pfx = 0x66 ∨ pfx = 0xf3)
@@ -1269,10 +1269,10 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
     simp only [hw]
     cases hco : isCarryOutBinding o
     · cases hmh : LprogAsmPrinter.isMulHiBinding o
-      · simp only [Bool.or_self, Bool.false_eq_true, if_false]
+      · simp only [Bool.or_self, Bool.false_eq_true, ite_false]
         cases hmx : (stripWidthTag o == "MULX")
         · cases hmm : (stripWidthTag o == "MULXMEM")
-          · simp only [Bool.false_eq_true, if_false]
+          · simp only [Bool.false_eq_true, ite_false]
             cases hax : adxPrefix (stripWidthTag o)
             · dsimp only
               have hR : dispOk32 (-128) = true := by decide
@@ -1532,14 +1532,14 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
               · exact cover_encAdxCarry hp (gpNumU_lt_16 _) (gpNumU_lt_16 _)
               · exact cover_encAdxCarry hp (gpNumU_lt_16 _) (gpNumU_lt_16 _)
               · exact TemplateCover.nil
-          · simp only [Bool.false_eq_true, if_false, if_true]
+          · simp only [Bool.false_eq_true, ite_false, ite_true]
             cover_split
             · cover_split
               · exact cover_encMulxMem (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                   (parseMemNameGp_fst_lt ‹_›) (disp_of_mem hopd ‹_› (by simp))
               · exact TemplateCover.nil
             · exact TemplateCover.nil
-        · simp only [if_true]
+        · simp only [ite_true]
           cover_split
           · split_ifs
             · exact TemplateCover.nil
@@ -1560,9 +1560,9 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                   (mulxSrcMem?_disp hopd ‹_› (by simp))
               · exact cover_encMulxRR (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
           · exact TemplateCover.nil
-      · simp only [Bool.or_true, if_true, Bool.false_eq_true, if_false]
+      · simp only [Bool.or_true, ite_true, Bool.false_eq_true, ite_false]
         exact TemplateCover.nil
-    · simp only [Bool.true_or, if_true, carryOutSetccOp_of_ne hadox]
+    · simp only [Bool.true_or, ite_true, carryOutSetccOp_of_ne hadox]
       cover_split
       · split_ifs
         · exact cover_setc (gpNumU_lt_16 _)
@@ -1578,7 +1578,7 @@ theorem encodeLopn_cover_carry {F W Q : Nat} {ds : List LOperand} {o : String}
     (hopd : (ds ++ ss).all (opdDispB F W Q) = true) (hcar : isCarryOutBinding o = true) :
     TemplateCover (encodeLopn F W (.Lopn ds o ss) Q) := by
   · unfold encodeLopn
-    simp only [hcar, Bool.true_or, if_true, carryOutSetccOp_of_ne hadox]
+    simp only [hcar, Bool.true_or, ite_true, carryOutSetccOp_of_ne hadox]
     cover_split
     · split_ifs
       · exact cover_setc (gpNumU_lt_16 _)
@@ -1598,7 +1598,7 @@ theorem encodeLopn_cover_free {F W Q : Nat} {ds : List LOperand} {o : String}
     rcases hb with hb | hb | hb | hb | hb | hb | hb | hb | hb | hb | hb <;>
       simp (config := { decide := true }) only [hb, LprogAsmPrinter.isCarryOutBinding,
         LprogAsmPrinter.isMulHiBinding, adxPrefix, aluOpcode, twoByteOpcode, tagShiftExt,
-        castMovBits, setccCmpOp, if_false, if_true]
+        castMovBits, setccCmpOp, ite_false, ite_true]
     · lopn_cast_cover
     · lopn_cast_cover
     · lopn_cast_cover

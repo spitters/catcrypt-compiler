@@ -243,7 +243,7 @@ theorem repr_zero_eq : Nat.repr 0 = "0" := by
   simp [← String.toList_inj]
 
 theorem withWidthTag_shl0 : withWidthTag 64 ("SHL" ++ ":" ++ toString 0) = "SHL:0:64" := by
-  simp only [withWidthTag, if_true, Nat.toString_eq_repr, Nat.repr_of_lt (show 0 < 10 by decide)]
+  simp only [withWidthTag, ite_true, Nat.toString_eq_repr, Nat.repr_of_lt (show 0 < 10 by decide)]
   simp [← String.toList_inj]
 
 /-- The count-`0` shift passes the closed conditions of its arm. -/
@@ -394,14 +394,14 @@ theorem tagMnem_facts {b : String} (hb : b ∈ ["SHL", "SHR"]) {k : Nat} (hk0 : 
     have hst := stripWidthTag_tagMnem hb k
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
     rcases hb with rfl | rfl
-    · rw [if_pos rfl] at hext
+    · rw [ite_eq_left rfl] at hext
       simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagShName,
         hst, mnemWidth_tagMnem, hcount, hext, hadx]
       simp only [Nat.toString_eq_repr, String.reduceAppend] at e1 e2 e3 e4 e5
       simp [beq_eq_false_iff_ne.2 e1, beq_eq_false_iff_ne.2 e2, beq_eq_false_iff_ne.2 e3,
         beq_eq_false_iff_ne.2 e4, beq_eq_false_iff_ne.2 e5, LprogBytes.rexW, withWidthTag, tagMnem,
         hk0, hk]
-    · rw [if_neg (by decide)] at hext
+    · rw [ite_eq_right (by decide)] at hext
       simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagShName,
         hst, mnemWidth_tagMnem, hcount, hext, hadx]
       simp only [Nat.toString_eq_repr, String.reduceAppend] at e1 e2 e3 e4 e5
@@ -485,7 +485,7 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
     simp (config := { decide := true }) only [instrOKWB, classifyK, h1, h2, movImmStruct?,
       classifyS, classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
       classifyEI, classifyR, classifyA, classify, AArm.ok, regArmB, plainB, h3, h5, h6, hmv,
-      withWidthTag_shl0, h11, hd, hs, Option.map_some, if_false, Bool.false_and, Bool.true_and,
+      withWidthTag_shl0, h11, hd, hs, Option.map_some, ite_false, Bool.false_and, Bool.true_and,
       beq_iff_eq, h7, Bool.and_self]
     simp [Arm.instr, h8, h9, h10, h2]
   | shl0 d s hd hs => gate_simp
@@ -596,7 +596,7 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
   | cmpImm d v hd hv =>
     refine .aluImm _ d v ?_ (isGp_of_gpOk hd)
     show x86AluImm "CMP:64" v = true
-    simp only [fitsImm8S, if_true, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true] at hv
+    simp only [fitsImm8S, ite_true, Bool.or_eq_true, decide_eq_true_eq, Bool.and_eq_true] at hv
     simp (config := { decide := true }) [x86AluImm, x86Alu, imm32Fits, LprogBytes.rexW]
     omega
   | shiftImm m d k hm hd hk h0 =>

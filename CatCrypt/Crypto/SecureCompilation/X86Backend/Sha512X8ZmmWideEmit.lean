@@ -209,7 +209,7 @@ theorem roundBlk_realizes_zmm (s : ZState) (ℓ : Fin 8) :
   constructor <;>
     · simp only [roundBlk, rotBlk, bigSigma1Blk, bigSigma0Blk, runZBlock_cons,
         runZBlock_append, runZBlock_nil, evalZInst, ZState.get_setV_apply,
-        String.reduceEq, if_true, if_false,
+        String.reduceEq, ite_true, ite_false,
         shaRound, bigSigma1L, bigSigma0L, chL, majL, rotrSynth, laneAdd, laneXor,
         laneAnd, laneOr, laneShl, laneShr]
       ring
@@ -219,7 +219,7 @@ theorem schedBlk_realizes_zmm (s : ZState) (ℓ : Fin 8) :
     (runZBlock s (schedBlk "wd" "w2" "w7" "w15" "w16")).get "wd" ℓ
       = schedNext (s.get "w2" ℓ) (s.get "w7" ℓ) (s.get "w15" ℓ) (s.get "w16" ℓ) := by
   simp only [schedBlk, rotBlk, runZBlock_cons, runZBlock_append, runZBlock_nil,
-    evalZInst, ZState.get_setV_apply, String.reduceEq, if_true, if_false,
+    evalZInst, ZState.get_setV_apply, String.reduceEq, ite_true, ite_false,
     schedNext, smallSigma1L, smallSigma0L, rotrSynth, laneAdd,
     laneXor, laneOr, laneShl, laneShr]
 

@@ -251,7 +251,7 @@ theorem read_denote {Loc : Type} [DecidableEq Loc] (p a : Nat) :
   | (l, e') :: rest, loc, e, h => by
     by_cases hl : l = loc
     · simp_all [eRead, denote, ChainState.read]
-    · simp only [eRead, hl, if_false] at h
+    · simp only [eRead, hl, ite_false] at h
       simpa [denote, ChainState.read, hl] using read_denote p a rest loc e h
 
 theorem write_denote {Loc : Type} [DecidableEq Loc] (p a : Nat)

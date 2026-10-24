@@ -476,14 +476,14 @@ theorem evalInstrPMemF_expI_ctl {fn : String} {body : List LinstrRM}
           refine ⟨{ s' with prog := q' }, ?_, ⟨hfq, hR.zf, hpq, hQq, hiq _⟩⟩
           unfold evalInstrPMemF
           simp only [h1, h2, h3]
-          rw [if_pos (hR.zf.trans hz), hq']; rfl
+          rw [ite_eq_left (hR.zf.trans hz), hq']; rfl
         · rename_i hz
           cases he
           refine ⟨{ s' with prog := { s'.prog with base := s'.prog.base.nextPc } }, ?_,
             ⟨hR.lfn, hR.zf, hnext.symm, hQN, hinvN _⟩⟩
           unfold evalInstrPMemF
           simp only [h1, h2, h3]
-          rw [if_neg (fun h => hz (hR.zf.symm.trans h))]
+          rw [ite_eq_right (fun h => hz (hR.zf.symm.trans h))]
   · obtain rfl : wire = LinstrR.Lgoto tgt := hw
     obtain ⟨gfn, l⟩ := tgt
     have hev : ∀ (R : LprogM) (x : LstateMF),
@@ -497,7 +497,7 @@ theorem evalInstrPMemF_expI_ctl {fn : String} {body : List LinstrRM}
     · rename_i hf
       obtain ⟨q', hq', hQq, hfq, hpq, hiq⟩ := evalJumpMem_expI h l hR.base hG hR.lfn hq
       refine ⟨{ s' with prog := q' }, ?_, ⟨hfq, hR.zf, hpq, hQq, hiq _⟩⟩
-      rw [hev, if_pos (show gfn = (singletonProgM fn (expI e body 0)).lfn from hf), hq']; rfl
+      rw [hev, ite_eq_left (show gfn = (singletonProgM fn (expI e body 0)).lfn from hf), hq']; rfl
     · exact absurd hq (by simp)
 
 /-- **An expansion by index on the traced flag machine.** Under the conditions `ExpInv` of an
@@ -521,7 +521,7 @@ theorem lsemFuelMemFLeak_expI {fn : String} {body : List LinstrRM}
     rw [hR.lfn]
     split
     · rename_i hfn
-      rw [if_pos (show s.prog.lfn = (singletonProgM fn body).lfn from hfn)] at hf
+      rw [ite_eq_left (show s.prog.lfn = (singletonProgM fn body).lfn from hfn)] at hf
       rw [hR.pc]
       exact getElem?_expI_pcI_none e (body := body) hf
     · rfl
@@ -591,7 +591,7 @@ theorem lsemFuelMemFLeak_expI {fn : String} {body : List LinstrRM}
                 have hfetch : findInstrMem (singletonProgM fn (expI e body 0)) s'.prog
                     = some i := by
                   unfold findInstrMem
-                  rw [if_pos (show s'.prog.lfn = (singletonProgM fn (expI e body 0)).lfn
+                  rw [ite_eq_left (show s'.prog.lfn = (singletonProgM fn (expI e body 0)).lfn
                     from hfn')]
                   have := hpos 0 (by rw [hself]; simp)
                   simpa [hself, singletonProgM] using this

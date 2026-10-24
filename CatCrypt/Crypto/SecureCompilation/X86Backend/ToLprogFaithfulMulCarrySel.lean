@@ -231,7 +231,7 @@ theorem remapBlockMaintains2 {w : Nat} (body : Lcmd) (tbl : Array Nat)
       subst hmd
       simp
     · have hmne : m ≠ nDst := fun he => hm (by rw [he])
-      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm, if_neg hmne]
+      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_right hm, ite_eq_right hmne]
       exact hrel m (hcarry m hmL hmne)
 
 /-- **Maintenance of a three-source single-instruction binding.** The renamed
@@ -267,7 +267,7 @@ theorem remapBlockMaintains3 {w : Nat} (body : Lcmd) (tbl : Array Nat)
       subst hmd
       simp
     · have hmne : m ≠ nDst := fun he => hm (by rw [he])
-      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm, if_neg hmne]
+      simp only [Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_right hm, ite_eq_right hmne]
       exact hrel m (hcarry m hmL hmne)
 
 /-! ## 3. The three binding kinds -/
@@ -494,7 +494,7 @@ theorem physBodyElem_mulhi (body : Lcmd) (tbl : Array Nat) (ii : Nat)
         [.reg nA, .reg nB]⟩).map (·.li_i)
       = [.Lopn [.reg (physRename body tbl nDst)] (withWidthTag w "MULXHI")
           [.reg (physRename body tbl nA), .reg (physRename body tbl nB)]] := by
-  simp only [physBodyElem, not_isBinop_MULXHI, Bool.false_eq_true, if_false,
+  simp only [physBodyElem, not_isBinop_MULXHI, Bool.false_eq_true, ite_false,
     isMemStore_withWidthTag_MULXHI]
   simp [remapOperand, physRename]
 
@@ -508,7 +508,7 @@ theorem physBodyElem_src3 (body : Lcmd) (tbl : Array Nat) (ii : Nat)
       = [.Lopn [.reg (physRename body tbl nDst)] opn
           [.reg (physRename body tbl nA), .reg (physRename body tbl nB),
            .reg (physRename body tbl nC)]] := by
-  simp only [physBodyElem, hbin, Bool.false_eq_true, if_false]
+  simp only [physBodyElem, hbin, Bool.false_eq_true, ite_false]
   simp [remapOperand, physRename]
 
 /-! ## 6. The sum of binding kinds -/

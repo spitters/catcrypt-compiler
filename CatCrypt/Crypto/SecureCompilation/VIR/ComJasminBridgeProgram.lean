@@ -257,7 +257,7 @@ theorem semPexprs_opnArgs (gd : GlobDecls) (opS : OpSem)
         show getGvar true gd s.evm (mkLvar src) = _
         unfold getGvar
         rw [show (mkLvar src).isLvar = true from rfl]
-        simp only [if_true]
+        simp only [ite_true]
         show getVar true s.evm (mkLvar src).gv.v_var = _
         unfold getVar
         rw [show (mkLvar src).gv.v_var = src.v_var from rfl]
@@ -432,7 +432,7 @@ theorem x86AsmSem_mulx (a b : BitVec 64) :
   show (if "MULX_64" = "MULX_64" then
       (.ok [.Vword .U64 (x86_MULX_lo_hi a b).1, .Vword .U64 (x86_MULX_lo_hi a b).2] :
         JResult Values) else .typeError) = _
-  rw [if_pos rfl]
+  rw [ite_eq_left rfl]
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin in
 /-- `ADCX_64` under `x86AsmSem`. -/
@@ -442,7 +442,7 @@ theorem x86AsmSem_adcx (a b : BitVec 64) (c : Bool) :
   show (if "ADCX_64" = "ADCX_64" then
       (.ok [.Vbool ((x86_ADCX a b c).1.getD false), .Vword .U64 (x86_ADCX a b c).2] :
         JResult Values) else .typeError) = _
-  rw [if_pos rfl]
+  rw [ite_eq_left rfl]
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin in
 /-- `CMOVcc_64` under `x86AsmSem`. -/
@@ -451,7 +451,7 @@ theorem x86AsmSem_cmov (a b : BitVec 64) (c : Bool) :
       = .ok [.Vword .U64 (x86_CMOVcc c a b)] := by
   show (if "CMOVcc_64" = "CMOVcc_64" then
       (.ok [.Vword .U64 (x86_CMOVcc c a b)] : JResult Values) else .typeError) = _
-  rw [if_pos rfl]
+  rw [ite_eq_left rfl]
 
 end Copn
 

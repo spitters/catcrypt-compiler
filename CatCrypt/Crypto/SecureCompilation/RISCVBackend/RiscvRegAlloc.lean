@@ -170,7 +170,7 @@ instance instRegMachineRInst : RegMachine RInst RState where
     have hr2' : r' = "zero" ∨ r' = "x0" := by
       rcases (by simpa [or_assoc] using hr' : r' = "zero" ∨ r' = "x0") with h | h <;> simp [h]
     simp only [RState.get]
-    rw [if_pos hr2, if_pos hr2']
+    rw [ite_eq_left hr2, ite_eq_left hr2']
   get_set_same s r v h := by
     have : ¬ (r = "zero" ∨ r = "x0") := by
       simp only [Bool.or_eq_false_iff, beq_eq_false_iff_ne, ne_eq] at h
@@ -223,8 +223,8 @@ theorem get_store (m : RMemState) (off : Int) (v : R32) (r : String) :
     no-op (the RV64 register-file idempotence). -/
 theorem RState.set_get_self (s : RState) (r : String) : s.set r (s.get r) = s := by
   by_cases hz : r = "zero" ∨ r = "x0"
-  · simp only [RState.set, hz, if_true]
-  · simp only [RState.get, hz, if_false, RState.set]
+  · simp only [RState.set, hz, ite_true]
+  · simp only [RState.get, hz, ite_false, RState.set]
     congr 1
     funext r'
     by_cases h : r' = r <;> simp [h]

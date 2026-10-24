@@ -149,7 +149,7 @@ theorem immShiftMnem?_fresh {opn : String} (h : FreshMnem opn) : immShiftMnem? o
         (String.ofList (c :: g) == lit) = false := fun lit hl =>
       beq_eq_false_iff_ne.mpr (hf.ne lit hl)
     simp only [hne "SHL" (by decide), hne "SHR" (by decide), hne "SAR" (by decide),
-      Bool.or_self, Bool.false_eq_true, if_false]
+      Bool.or_self, Bool.false_eq_true, ite_false]
   · rfl
 
 variable {dst opn : String} {srcs : List LOperand}
@@ -172,7 +172,7 @@ theorem lsemStepN_fresh (h : FreshMnem opn) (s : LstateN) :
     | rfl
     | (rename_i heq
        cases heq <;>
-         (try simp only [h1, h2, h3, h4, h5, hap, immFirstN, immShiftMnem?_fresh h, if_false,
+         (try simp only [h1, h2, h3, h4, h5, hap, immFirstN, immShiftMnem?_fresh h, ite_false,
            Option.map_none]) <;>
          repeat' (first | rfl | split))
 
@@ -182,22 +182,22 @@ theorem lsemStepMC_fresh (h : FreshMnem opn) (s : LstateN) :
     lsemStepMC (.Lopn [.reg dst] opn srcs) s = none := by
   have e1 : mulhiStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold mulhiStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.strip.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.strip.ne _ (by decide)))
   have e2 : adcxStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold adcxStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.strip.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.strip.ne _ (by decide)))
   have e3 : adcxhiStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold adcxhiStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.strip.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.strip.ne _ (by decide)))
   have e4 : sbbStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold sbbStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.strip.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.strip.ne _ (by decide)))
   have e5 : sbbhiStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold sbbhiStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.strip.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.strip.ne _ (by decide)))
   have e6 : sarStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold sarStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.strip.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.strip.ne _ (by decide)))
   simp only [lsemStepMC, lsemStepSh, e1, e2, e3, e4, e5, e6, lsemStepN_fresh h]
 
 /-- The cast-aware step has no step on an `Lopn` with a mnemonic of `FreshMnem`, at every
@@ -209,7 +209,7 @@ theorem lsemStepCast_fresh (h : FreshMnem opn) (cd : Option Nat) (s : LstateN) :
     split
     · next heq =>
       cases heq
-      refine if_neg ?_
+      refine ite_eq_right ?_
       simp only [h.ne "ZEROEXT" (by decide), h.ne "TRUNC" (by decide),
         h.ne "CASTW_32_32" (by decide), h.ne "CASTW_32_64" (by decide),
         h.ne "CASTW_64_32" (by decide), h.ne "CASTW_64_64" (by decide),
@@ -222,7 +222,7 @@ theorem lsemStepCast_fresh (h : FreshMnem opn) (cd : Option Nat) (s : LstateN) :
     split
     · next heq =>
       cases heq
-      exact if_neg (fun hc => h.strip.ne "MOV" (by decide)
+      exact ite_eq_right (fun hc => h.strip.ne "MOV" (by decide)
         (JasminLsemCast.stripWidthTag_of_isMovImm hc))
     · rfl
   simp only [lsemStepCast, e1, e2, lsemStepMC_fresh h]
@@ -233,21 +233,21 @@ theorem lsemStepMem_fresh (h : FreshMnem opn) (tag : MemTag) (s : LstateM) :
     lsemStepMem (.Lopn [.reg dst] opn srcs, tag) s = none := by
   have e1 : loadStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold loadStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.ne _ (by decide)))
   have e2 : storeStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold storeStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.ne _ (by decide)))
   have e3 : loadCStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold loadCStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.ne _ (by decide)))
   have e4 : storeCStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold storeCStruct?
     split <;> first | rfl | (rename_i heq; cases heq)
   have e5 : zeroStruct? (.Lopn [.reg dst] opn srcs) = none := by
-    simp only [zeroStruct?, if_neg (h.ne "ZEROARR" (by decide))]
+    simp only [zeroStruct?, ite_eq_right (h.ne "ZEROARR" (by decide))]
   have e6 : storeImmStruct? (.Lopn [.reg dst] opn srcs) = none := by
     unfold storeImmStruct?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.ne _ (by decide)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.ne _ (by decide)))
   cases tag <;>
     simp only [lsemStepMem, e1, e2, e3, e4, e5, e6, lsemStepCast_fresh h, Option.map_none]
 
@@ -258,7 +258,7 @@ theorem evalInstrPMemF_fresh (h : FreshMnem opn) (P : LprogM) (tag : MemTag) (s 
   have hI : IsLopn (LinstrR.Lopn [.reg dst] opn srcs, tag) := ⟨_, _, _, rfl⟩
   have e1 : cmpArgs? (LinstrR.Lopn [.reg dst] opn srcs, tag) = none := by
     unfold cmpArgs?
-    split <;> first | rfl | (rename_i heq; cases heq; exact if_neg (h.ne _ (by decide +kernel)))
+    split <;> first | rfl | (rename_i heq; cases heq; exact ite_eq_right (h.ne _ (by decide +kernel)))
   have e2 : movRegArgs? (LinstrR.Lopn [.reg dst] opn srcs, tag) = none := by
     unfold movRegArgs?
     split
@@ -267,7 +267,7 @@ theorem evalInstrPMemF_fresh (h : FreshMnem opn) (P : LprogM) (tag : MemTag) (s 
       have hq : copyQ opn = false := by
         simp only [copyQ, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
         exact ⟨⟨h.ne _ (by decide), h.ne _ (by decide)⟩, h.ne _ (by decide)⟩
-      rw [if_neg (h.strip.ne "MOV" (by decide)), hq]
+      rw [ite_eq_right (h.strip.ne "MOV" (by decide)), hq]
       rfl
     · rfl
   have e3 : carryArgs? (LinstrR.Lopn [.reg dst] opn srcs, tag) = none := by
@@ -278,14 +278,14 @@ theorem evalInstrPMemF_fresh (h : FreshMnem opn) (P : LprogM) (tag : MemTag) (s 
       simp only [h.ne (withWidthTag 64 "ADC") (by decide +kernel),
         h.ne (withWidthTag 64 "SBB") (by decide +kernel),
         h.ne (withWidthTag 64 "ADCX") (by decide +kernel),
-        h.ne (withWidthTag 64 "ADOX") (by decide +kernel), if_false]
+        h.ne (withWidthTag 64 "ADOX") (by decide +kernel), ite_false]
     · rfl
   have e4 : wideArgs? (LinstrR.Lopn [.reg dst] opn srcs, tag) = none := by
     unfold wideArgs?
     split
     · next heq =>
       cases heq
-      exact if_neg (h.ne _ (by decide +kernel))
+      exact ite_eq_right (h.ne _ (by decide +kernel))
     · next heq =>
       cases heq
     · rfl

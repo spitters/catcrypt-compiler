@@ -449,7 +449,7 @@ theorem lsemFuelMemFLeak_segF (P : LprogM) (fn : String) (hfn : fn = P.lfn) :
               ({ prog := { base := b0, lfn := fn }, zf := zf } : LstateMF).prog = some i := by
             show findInstrMem P { base := b0, lfn := fn } = some i
             unfold findInstrMem
-            rw [if_pos (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
+            rw [ite_eq_left (show ({ base := b0, lfn := fn } : LstatePM).lfn = P.lfn from hfn)]
             have := hpos 0 (by simp)
             simp only [Nat.add_zero, List.getElem?_cons_zero] at this
             exact this
@@ -528,7 +528,7 @@ theorem gProg_fetch (x : LstateM) :
     findInstrMem (gProg fn pre top endL nReg B) ({ base := x, lfn := fn } : LstatePM)
       = (pre ++ guardedFlagLoopLinstrRM top endL nReg B)[x.lpc]? := by
   unfold findInstrMem
-  exact if_pos rfl
+  exact ite_eq_left rfl
 
 /-- The flag compare emits nothing. -/
 theorem instrLeakF_cmp (s : LstateMF) :
@@ -574,7 +574,7 @@ theorem gPass_taken (hB : ∀ i ∈ B, IsLopn i)
   have he2 : evalInstrPMemF (gProg fn pre top endL nReg B) (.Lcond (.reg "NZ") top, MemTag.reg none)
       { prog := { base := bz.1.nextPc, lfn := fn }, zf := v == 0#64 }
       = some { prog := { base := bz.1.setLpc (pre.length + 3), lfn := fn }, zf := false } := by
-    rw [evalInstrPMemF_jne, hv0, if_pos rfl]
+    rw [evalInstrPMemF_jne, hv0, ite_eq_left rfl]
     unfold evalJumpMem
     rw [show (gProg fn pre top endL nReg B).body = pre ++ guardedFlagLoopLinstrRM top endL nReg B
       from rfl, htopL]

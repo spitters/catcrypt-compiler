@@ -85,7 +85,7 @@ theorem exists_state_encoded (heap0 : Heap) :
   · intro y t v hy
     by_cases hyx : y = "x"
     · subst hyx
-      simp only [if_true, Option.some.injEq] at hy
+      simp only [ite_true, Option.some.injEq] at hy
       cases hy
       rfl
     · simp [hyx] at hy
@@ -227,7 +227,7 @@ theorem translateCmd_store64_eval (env : TransEnv) (loc : Located) (idx : Nat)
   simp only [translateCmd, translateInstrR, translatePExprAll,
     CatCrypt.Deep.eval_bind, CatCrypt.Deep.eval_ret, SPComp.bind_def, SPComp.pure_def,
     translatePExpr_locToPExpr_eval, SDistr.pure_bind, translatePExpr]
-  simp only [execSopn, execStore64, if_true, Int.toNat_natCast, intToWord_U64_toNat]
+  simp only [execSopn, execStore64, ite_true, Int.toNat_natCast, intToWord_U64_toNat]
   erw [translateWriteLVals_locToLVal_eval]
   simp only [SDistr.pure_bind]
 
@@ -272,11 +272,11 @@ theorem translateCmd_cmov_eval (env : TransEnv) (sel dstVar x0 x1 : String)
     simp only [SDistr.pure_bind]
   · have hs' : ¬ s = 0#WSize.U64.bits := hs
     simp [execSopn, execCmovTower]
-    rw [if_neg hs']
+    rw [ite_eq_right hs']
     erw [translateWriteLVals_locToLVal_eval sid { locVar := dstVar, locSrc := t }]
     simp only [SDistr.pure_bind]
     exact congrArg (fun a => SDistr.pure ((⟨()⟩ : ULift Unit), heap0.set (towerLoc sid dstVar t) a))
-      (if_neg hs).symm
+      (ite_eq_right hs).symm
 
 /-- The translation environment with no function bodies. -/
 def emptyTransEnv : TransEnv := ⟨fun _ => none⟩
@@ -559,10 +559,10 @@ theorem translateWriteLVals_dests_callNUpdate (leafSpec : LeafSpec) (f : String)
         rw [hv] at hv'
         obtain ⟨ht, -⟩ := Sigma.mk.inj (Option.some.inj hv')
         refine ⟨cast (congrArg RustVal ht) w, ?_⟩
-        simp only [locatedUpdate, rsSetTower, hx, BEq.rfl, if_true]
+        simp only [locatedUpdate, rsSetTower, hx, BEq.rfl, ite_true]
         exact congrArg some (Sigma.ext ht (cast_heq _ _).symm)
       · refine ⟨v', ?_⟩
-        simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, if_false]
+        simp only [locatedUpdate, rsSetTower, beq_iff_eq, hx, ite_false]
         exact hv'
     simp only [List.map_cons, callNUpdate, hLk, Option.getD_some, hspec]
     cases hR : R.drop i with
@@ -596,14 +596,14 @@ theorem translateWriteLVals_dests_callNUpdate (leafSpec : LeafSpec) (f : String)
         intro x t w hx
         by_cases hxd : x = d.locVar
         · subst hxd
-          simp only [locatedUpdate, rsSetTower, BEq.rfl, if_true] at hx
+          simp only [locatedUpdate, rsSetTower, BEq.rfl, ite_true] at hx
           obtain ⟨ht, hw⟩ := Sigma.mk.inj (Option.some.inj hx)
           subst ht
           simp at hw
           subst hw
           rw [callResultArr_cons, ← hOld]
           exact hDA
-        · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hxd, if_false] at hx
+        · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hxd, ite_false] at hx
           rw [hFA _ (towerLoc_id_ne sid x d.locVar t _ hxd)]
           exact hInv x t w hx
       obtain ⟨heap1, hE, hI, hS⟩ := ih (i + 1) _ heapA hInvA (hBrest _ _ rfl)
@@ -696,13 +696,13 @@ theorem leafImplOkNewSid_of_leafImplOk (leafSpec : LeafSpec) (env : TransEnv) (f
   · intro x t v hx
     by_cases hxd : x = dest.locVar
     · subst hxd
-      simp only [locatedUpdate, rsSetTower, BEq.rfl, if_true] at hx
+      simp only [locatedUpdate, rsSetTower, BEq.rfl, ite_true] at hx
       obtain ⟨ht, hv⟩ := Sigma.mk.inj (Option.some.inj hx)
       subst ht
       simp at hv
       subst hv
       exact hDest
-    · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hxd, if_false] at hx
+    · simp only [locatedUpdate, rsSetTower, beq_iff_eq, hxd, ite_false] at hx
       rw [hOther x t hxd]
       exact hInv x t v hx
   · intro x
@@ -837,15 +837,15 @@ theorem callNImplOk_addCallNLeafSpec (fuel : Nat) (hfuel : 2 ≤ fuel) :
   by_cases hname : callNLeafName f i = callNLeafName "add" 0
   · obtain ⟨rfl, rfl⟩ := callNLeafName_eq_add_zero f i hname
     simp [addCallNLeafSpec, addLeafTable]
-  · simp only [addCallNLeafSpec, hname, if_false, addLeafTable]
+  · simp only [addCallNLeafSpec, hname, ite_false, addLeafTable]
     by_cases hf : f = "add"
     · subst hf
       have hi : i ≠ 0 := fun h => hname (by rw [h])
       have hlen := addArrays_length_le (argList.map towerArgVal)
-      simp only [if_true]
+      simp only [ite_true]
       rw [List.drop_eq_nil_of_le (by omega)]
       rfl
-    · rw [if_neg hf]
+    · rw [ite_eq_right hf]
 
 /-! ## A program with one call of `add` -/
 

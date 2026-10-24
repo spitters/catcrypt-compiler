@@ -186,7 +186,7 @@ def merkleQueryRecompute (leaf : Digest) (index : ℕ) (siblings : List Digest) 
 theorem merkleQueryRecompute_one (leaf sib : Digest) :
     merkleQueryRecompute leaf 0 [sib] = merkleHashTwoToOne leaf sib := by
   simp only [merkleQueryRecompute, List.foldl_cons, List.foldl_nil, Nat.zero_mod,
-    if_true]
+    ite_true]
 
 /-! ## 6. KAT: byte-identity against the plonky3-hax reference -/
 

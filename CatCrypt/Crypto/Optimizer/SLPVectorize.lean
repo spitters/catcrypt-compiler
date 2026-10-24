@@ -195,7 +195,7 @@ def packedResult (op : LaneOp) (g : List SStmt) (r : SRegs) (L : Nat) :
 theorem slpGroup_denote (op : LaneOp) (g : List SStmt) (r : SRegs) (L : Nat)
     (j : Fin L) (sj : SStmt) (hj : g[j.val]? = some sj) :
     (packedResult op g r L) j = op.apply (r sj.s1) (r sj.s2) := by
-  simp only [packedResult, vmap₂, packSrc, hj, Bool.false_eq_true, if_true, if_false]
+  simp only [packedResult, vmap₂, packSrc, hj, Bool.false_eq_true, ite_true, ite_false]
 
 /-! ## §4  Whole-block vectorization
 
@@ -246,7 +246,7 @@ theorem slpVectorize_denote (g : List SStmt) (G : SLPGroup) (h : slpDetect g = s
       | cons s2 rest =>
         simp only [slpDetect] at h
         by_cases hp : packable (s :: s2 :: rest)
-        · simp only [hp, if_true, Option.some.injEq] at h
+        · simp only [hp, ite_true, Option.some.injEq] at h
           subst h
           -- `G.members = s :: s2 :: rest`, `G.op = s.op`; isomorphic ⇒ every member's op = s.op
           have hisoT : isomorphic (s :: s2 :: rest) = true := by
@@ -279,7 +279,7 @@ theorem slpVectorize_footprint_disjoint (g : List SStmt) (G : SLPGroup)
     | cons s2 rest =>
       simp only [slpDetect] at h
       by_cases hp : packable (s :: s2 :: rest)
-      · simp only [hp, if_true, Option.some.injEq] at h
+      · simp only [hp, ite_true, Option.some.injEq] at h
         subst h
         have hpe : packable (s :: s2 :: rest) = true := hp
         simp only [packable, Bool.and_eq_true] at hpe
@@ -298,7 +298,7 @@ theorem slpDetect_members (g : List SStmt) (G : SLPGroup) (h : slpDetect g = som
     | cons s2 rest =>
       simp only [slpDetect] at h
       by_cases hp : packable (s :: s2 :: rest)
-      · simp only [hp, if_true, Option.some.injEq] at h
+      · simp only [hp, ite_true, Option.some.injEq] at h
         subst h; rfl
       · simp [hp] at h
 
@@ -320,7 +320,7 @@ theorem runScalar_preserves_of_no_write (g : List SStmt) (r : SRegs) (x : String
     simp only [runScalar]
     rw [ih (s.exec r) (fun t ht => h t (List.mem_cons_of_mem _ ht))]
     simp only [SStmt.exec]
-    exact if_neg (Ne.symm (h s List.mem_cons_self))
+    exact ite_eq_right (Ne.symm (h s List.mem_cons_self))
 
 /-- On a pairwise-independent group, running the whole block and reading a
     member's destination equals that member's scalar result computed from the
@@ -347,7 +347,7 @@ theorem runScalar_reads_own_dst (g : List SStmt) (r : SRegs) (s : SStmt)
       have hhs := hall s htl
       simp only [indep, Bool.and_eq_true, bne_iff_ne] at hhs
       simp only [SStmt.exec]
-      rw [if_neg hhs.1.2, if_neg hhs.2]
+      rw [ite_eq_right hhs.1.2, ite_eq_right hhs.2]
 
 /-- **Whole-block denotation.**  When `slpDetect` fires, the packed result read
     at lane `j` equals the value the scalar block leaves at the `j`-th member's

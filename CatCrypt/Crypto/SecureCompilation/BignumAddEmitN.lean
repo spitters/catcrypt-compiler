@@ -143,7 +143,7 @@ structure AdcxFresh (ps : List (String × String)) : Prop where
 /-- One `.adcx` step writes only `dst`: any other register is preserved. -/
 theorem adcx_other (s : JState 64) (dst src r : String) (hr : r ≠ dst) :
     (evalInstr s (.adcx dst (.reg src))).get r = s.get r := by
-  simp only [get_adcx, if_neg hr]
+  simp only [get_adcx, ite_eq_right hr]
 
 /-- The chain writes only the destination registers: a register distinct from
     every `dst` is preserved across the whole chain. -/
@@ -201,7 +201,7 @@ theorem adcxChain_runBlock :
           -- head value: d := (waddcarry u0 v0 c).2
           have hs1d : s1.get d = (waddcarry u0 v0 c).2 := by
             rw [hs1, get_adcx]
-            simp only [JOperand.eval, hdhd, hshd, hcf, if_true]
+            simp only [JOperand.eval, hdhd, hshd, hcf, ite_true]
           -- head carry-out flag = (waddcarry u0 v0 c).1
           have hs1cf : s1.flagB (·.cf) = (waddcarry u0 v0 c).1 := by
             rw [hs1, JState.flagB, cf_adcx]

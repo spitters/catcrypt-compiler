@@ -51,7 +51,7 @@ theorem DeclDiff.filter_ne {D : CTLeak → Bool} {t₁ t₂ : List CTLeak} (h : 
     t₁.filter D ≠ t₂.filter D := by
   obtain ⟨pre, s₁, s₂, a₁, a₂, hne, h₁, h₂, rfl, rfl⟩ := h
   intro heq
-  simp only [List.filter_append, List.filter_cons, h₁, h₂, if_true, List.append_cancel_left_eq,
+  simp only [List.filter_append, List.filter_cons, h₁, h₂, ite_true, List.append_cancel_left_eq,
     List.cons.injEq] at heq
   exact hne heq.1
 

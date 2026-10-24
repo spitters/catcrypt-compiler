@@ -254,7 +254,7 @@ theorem cseHead_denote {Γ : Ctxt jasminDialect} {r t : JasminTy}
           have heq : e' = shiftExpr (s := r') e := of_decide_eq_true hd
           have hx : e'.denote (V.extend (e.denote V)) = e.denote V := by
             rw [heq]; exact shiftExpr_denote e V (e.denote V)
-          simp only [cseHead, dif_pos, hd, if_true, Com.denote]
+          simp only [cseHead, dite_eq_left, hd, ite_true, Com.denote]
           -- Goal: `(body2.rename copyHom).denote ((V.extend x0).extend x1)`
           --       `= body2.denote ((V.extend x0).extend x1)`, where `x1 = x0`.
           rw [CopyProp.Com.denote_rename (copyHom Ctxt.Var.here) body2
@@ -267,10 +267,10 @@ theorem cseHead_denote {Γ : Ctxt jasminDialect} {r t : JasminTy}
         · -- Non-firing: types match but expressions differ.
           have hd' : (decEqExpr e' (shiftExpr (s := r') e)).decide = false := by
             simp only [Bool.not_eq_true] at hd; exact hd
-          simp only [cseHead, dif_pos, hd', Bool.false_eq_true, if_false,
+          simp only [cseHead, dite_eq_left, hd', Bool.false_eq_true, ite_false,
             Com.denote]
       · -- Non-firing: inner binder type differs.
-        simp only [cseHead, dif_neg h, Com.denote]
+        simp only [cseHead, dite_eq_right h, Com.denote]
 
 /-- **Denotation preservation for `comCSE`.** `comCSE c` denotes the same function
 as `c`, by induction over the `Com` let-chain (each binder discharges via
@@ -323,14 +323,14 @@ theorem cseHead_ctLeak (L : LeakModel jasminDialect) {Γ : Ctxt jasminDialect}
         · have heq : e' = shiftExpr (s := r') e := of_decide_eq_true hd
           have hx : e'.denote (V.extend (e.denote V)) = e.denote V := by
             rw [heq]; exact shiftExpr_denote e V (e.denote V)
-          simp only [cseHead, dif_pos, hd, if_true, Com.ctLeak]
+          simp only [cseHead, dite_eq_left, hd, ite_true, Com.ctLeak]
           rw [Com.ctLeak_rename_comap L (copyHom Ctxt.Var.here) body2, ← pullV_eq_comap, hx]
           congr 3
           exact pullV_copyHom Ctxt.Var.here (V.extend (e.denote V))
         · have hd' : (decEqExpr e' (shiftExpr (s := r') e)).decide = false := by
             simp only [Bool.not_eq_true] at hd; exact hd
-          simp only [cseHead, dif_pos, hd', Bool.false_eq_true, if_false, Com.ctLeak]
-      · simp only [cseHead, dif_neg h, Com.ctLeak]
+          simp only [cseHead, dite_eq_left, hd', Bool.false_eq_true, ite_false, Com.ctLeak]
+      · simp only [cseHead, dite_eq_right h, Com.ctLeak]
 
 /-- **Leakage of CSE.** For every leakage model, `comCSE c` emits the events of `c` at
     every valuation. -/

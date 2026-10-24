@@ -176,9 +176,9 @@ theorem solinasReduce_eq_mod (P : SolinasPrime) {high low : Nat}
   -- Conclude: t' < 2p and t' ≡ V (mod p), so the conditional subtract gives V mod p.
   simp only [solinasReduce, ← ht, ← ht']
   by_cases hlt : t' < P.modulus
-  · rw [if_pos hlt]
+  · rw [ite_eq_left hlt]
     rw [← hmod, Nat.mod_eq_of_lt hlt]
-  · rw [if_neg hlt]
+  · rw [ite_eq_right hlt]
     have hlt : P.modulus ≤ t' := Nat.le_of_not_lt hlt
     have h1 : t' - P.modulus < P.modulus := by omega
     rw [← hmod]

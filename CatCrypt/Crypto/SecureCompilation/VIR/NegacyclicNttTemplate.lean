@@ -182,14 +182,14 @@ def rho (ψ : R) (L ℓ c : ℕ) : R :=
 
 theorem rho_even (ψ : R) (L ℓ c : ℕ) : rho ψ L (ℓ + 1) (2 * c) = zt ψ L (2 ^ ℓ + c) := by
   unfold rho
-  rw [if_neg (Nat.succ_ne_zero ℓ), if_pos (by omega)]
+  rw [ite_eq_right (Nat.succ_ne_zero ℓ), ite_eq_left (by omega)]
   congr 2
   omega
 
 theorem rho_odd (ψ : R) (L ℓ c : ℕ) :
     rho ψ L (ℓ + 1) (2 * c + 1) = - zt ψ L (2 ^ ℓ + c) := by
   unfold rho
-  rw [if_neg (Nat.succ_ne_zero ℓ), if_neg (by omega)]
+  rw [ite_eq_right (Nat.succ_ne_zero ℓ), ite_eq_right (by omega)]
   congr 3
   omega
 
@@ -202,7 +202,7 @@ theorem rho_sq (ψ : R) (L : ℕ) (hψ : ψ ^ (2 ^ L) = -1) (ℓ c : ℕ) (hl : 
   | 0 =>
     have hc0 : c = 0 := by simpa using hc
     subst hc0
-    rw [show rho ψ (m + 1) 0 0 = -1 from if_pos rfl, zt, ← pow_mul,
+    rw [show rho ψ (m + 1) 0 0 = -1 from ite_eq_left rfl, zt, ← pow_mul,
       show (2 : ℕ) ^ 0 + 0 = 1 from rfl, bitrev_one, mul_comm, hψ']
   | (l + 1) =>
     have hpow : (2 : ℕ) ^ (l + 1) = 2 * 2 ^ l := by ring
@@ -331,7 +331,7 @@ theorem layerInv_step (ψ : R) (L M : ℕ) (hψ : ψ ^ (2 ^ L) = -1) (w a : ℕ 
     have h2 := h' c (t + len) hcl (by omega)
     rw [show c * (len + len) + t = 2 * c * len + t from by ring] at h1
     rw [show c * (len + len) + (t + len) = 2 * c * len + t + len from by ring] at h2
-    simp only [layerFn, ← hlen_def, hdiv, hmod, if_pos ht, h1, h2]
+    simp only [layerFn, ← hlen_def, hdiv, hmod, ite_eq_left ht, h1, h2]
     rw [rho_even, hP, ← two_mul (2 ^ ℓ), layerSum_split, rho_sq ψ L hψ ℓ c hl hcl,
       two_mul len]
   · subst hc
@@ -346,7 +346,7 @@ theorem layerInv_step (ψ : R) (L M : ℕ) (hψ : ψ ^ (2 ^ L) = -1) (w a : ℕ 
     rw [show c * (len + len) + t = (2 * c + 1) * len + t - len from by
       rw [show (2 * c + 1) * len = c * (len + len) + len from by ring]; omega] at h1
     rw [show c * (len + len) + (t + len) = (2 * c + 1) * len + t from by ring] at h2
-    simp only [layerFn, ← hlen_def, hdiv, hmod, if_neg (show ¬ len + t < len by omega), h1, h2]
+    simp only [layerFn, ← hlen_def, hdiv, hmod, ite_eq_right (show ¬ len + t < len by omega), h1, h2]
     rw [rho_odd, hP, ← two_mul (2 ^ ℓ), layerSum_split, neg_sq, rho_sq ψ L hψ ℓ c hl hcl,
       two_mul len]
     ring
@@ -454,11 +454,11 @@ theorem layerLaneProg_denote (q n M L : ℕ) (ψ : ZMod q) (ℓ i : ℕ) (f : �
   generalize 2 ^ (M - 1 - ℓ) = len at *
   split
   · next hlt =>
-    rw [laneProg_denote, if_pos rfl, fnVal_lookup q f m i 0 (by omega),
+    rw [laneProg_denote, ite_eq_left rfl, fnVal_lookup q f m i 0 (by omega),
       fnVal_lookup q f m (i + len) 0 (by have := hup hlt; omega)]
     simp
   · next hlt =>
-    rw [laneProg_denote, if_neg (by simp), fnVal_lookup q f m (i - len) 0
+    rw [laneProg_denote, ite_eq_right (by simp), fnVal_lookup q f m (i - len) 0
       (by omega), fnVal_lookup q f m i 0 (by omega)]
     simp
 
@@ -729,8 +729,8 @@ theorem lazyLayer_lt (hS : SchedOk P S) (hq : 0 < P.q) (ℓ : ℕ) (f : ℕ → 
       omega
   rw [lazyLayer, bnd]
   by_cases hr : S.red ℓ = true
-  · rw [if_pos hr, if_pos hr]; exact Nat.mod_lt _ hq
-  · rw [if_neg hr, if_neg hr]; exact hpre
+  · rw [ite_eq_left hr, ite_eq_left hr]; exact Nat.mod_lt _ hq
+  · rw [ite_eq_right hr, ite_eq_right hr]; exact hpre
 
 theorem bnd_le_R (hS : SchedOk P S) (ℓ : ℕ) (hl : ℓ ≤ P.layers) : bnd P S ℓ ≤ S.R :=
   (hS.2.2.2.2.2 ℓ (by omega)).1

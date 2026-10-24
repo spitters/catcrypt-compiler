@@ -382,7 +382,7 @@ theorem encShaNI_length (op d s : Nat) :
     (encShaNI op d s).length = (if bit d 3 = 0 ∧ bit s 3 = 0 then 4 else 5) := by
   unfold encShaNI
   by_cases h : bit d 3 = 0 ∧ bit s 3 = 0 <;>
-    simp only [bit] at h <;> simp only [bit, h, if_false] <;> rfl
+    simp only [bit] at h <;> simp only [bit, h, ite_false] <;> rfl
 
 /-- A `VPCLMULQDQ` (VEX 3-byte) form always encodes to 6 bytes (C4 + 2 VEX + opcode
     + ModRM + imm8), independent of register choice or width. -/

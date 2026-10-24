@@ -118,7 +118,7 @@ theorem truncateVal_aword_self (sz : WSize) (w : BitVec sz.bits) :
         = .ok (.Vword sz w)
   unfold truncateWord
   have hle : sz.bits ≤ sz.bits := le_refl _
-  simp only [hle, if_true]
+  simp only [hle, ite_true]
   have hbv : BitVec.ofNat sz.bits w.toNat = w := by
     apply BitVec.eq_of_toNat_eq; simp
   rw [hbv]; rfl

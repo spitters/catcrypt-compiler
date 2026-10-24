@@ -128,7 +128,7 @@ theorem writesOnly_sbb (dst src : String) :
   intro st r hr
   have hrne : r ≠ dst := by simpa only [Finset.mem_singleton] using hr
   simp only [runBlock_cons, runBlock_nil, evalInstr, JState.get, JState.writeB5W]
-  rw [if_neg hrne]
+  rw [ite_eq_right hrne]
 
 /-! ## The frame rule -/
 

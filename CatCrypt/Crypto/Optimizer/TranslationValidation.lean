@@ -126,13 +126,13 @@ theorem exprEqB_sound {Γ : Ctxt jasminDialect} {t : JasminTy}
   simp only [exprEqB] at h
   by_cases hoo : op = op'
   · subst hoo
-    simp only [dif_pos] at h
+    simp only [dite_eq_left] at h
     have hargs : Expr.lookupArgs args V = Expr.lookupArgs args' V :=
       argsEqB_sound args args' h V
     subst hop
     cases hop'
     simp only [Expr.denote, hargs]
-  · simp only [dif_neg hoo] at h
+  · simp only [dite_eq_right hoo] at h
     exact (Bool.false_ne_true h).elim
 
 /-! ## §2  Decidable structural equality of `Com`

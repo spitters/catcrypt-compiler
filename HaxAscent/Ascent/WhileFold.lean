@@ -139,13 +139,13 @@ theorem whileLoopE_eq_of_rec {n : Nat} {a : A} {r : Except B A} (h : WhileRecIn 
     whileLoopE c f a = r := by
   have ht : WhileTerminates c f a := ⟨n, r, h⟩
   unfold whileLoopE
-  rw [dif_pos ht]
+  rw [dite_eq_left ht]
   exact (ht.choose_spec.choose_spec.det h).2
 
 theorem whileLoopE_of_not_terminates {a : A} (h : ¬ WhileTerminates c f a) :
     whileLoopE c f a = .ok a := by
   unfold whileLoopE
-  rw [dif_neg h]
+  rw [dite_eq_right h]
 
 theorem WhileTerminates.of_false {a : A} (hc : c a = false) : WhileTerminates c f a :=
   ⟨0, _, .done hc⟩
@@ -222,14 +222,14 @@ theorem whileFoldFuel_of_rec {n : Nat} {a : A} {r : Except B A}
   | @brk a b hc hf =>
     intro m hm
     obtain ⟨m, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
-    simp only [Hax.whileFoldFuel, hc, if_true]
+    simp only [Hax.whileFoldFuel, hc, ite_true]
     cases hg : g a with
     | Break b' => rw [hg] at hf; cases hf; rfl
     | Continue a' => rw [hg] at hf; cases hf
   | @step n a a' r hc hf _ ih =>
     intro m hm
     obtain ⟨m, rfl⟩ : ∃ k, m = k + 1 := ⟨m - 1, by omega⟩
-    simp only [Hax.whileFoldFuel, hc, if_true]
+    simp only [Hax.whileFoldFuel, hc, ite_true]
     cases hg : g a with
     | Break b' => rw [hg] at hf; cases hf
     | Continue a'' => rw [hg] at hf; cases hf; exact ih m (by omega)
@@ -247,11 +247,11 @@ theorem rec_of_whileFoldFuel :
     cases hc : cond a with
     | false =>
       rw [hc] at h
-      simp only [Bool.false_eq_true, if_false, Option.some.injEq] at h
+      simp only [Bool.false_eq_true, ite_false, Option.some.injEq] at h
       subst h
       exact ⟨0, .done hc⟩
     | true =>
-      rw [hc, if_pos rfl] at h
+      rw [hc, ite_eq_left rfl] at h
       cases hg : g a with
       | Break b =>
         rw [hg] at h
@@ -313,7 +313,7 @@ theorem denoteWhile'_false {fuel : Nat} {cond body : ImpExpr} {env s : Env} (hf 
     (hc : denote' bi fuel cond env = (.val (.bool false), s)) :
     denoteWhile' bi fuel cond body env = (.val .unit, s) := by
   rw [denoteWhile']
-  simp only [if_neg hf, stateM_bind_apply, hc]
+  simp only [ite_eq_right hf, stateM_bind_apply, hc]
   rfl
 
 theorem denoteWhile'_true {fuel : Nat} {cond body : ImpExpr} {env s s' : Env} {v : Value}
@@ -323,7 +323,7 @@ theorem denoteWhile'_true {fuel : Nat} {cond body : ImpExpr} {env s s' : Env} {v
       | some w => (.val w, s')
       | none => denoteWhile' bi (fuel - 1) cond body s' := by
   rw [denoteWhile']
-  simp only [if_neg hf, stateM_bind_apply, hc]
+  simp only [ite_eq_right hf, stateM_bind_apply, hc]
   simp only [hb]
   cases v with
   | controlFlow b w => cases b <;> rfl
@@ -333,7 +333,7 @@ theorem denoteWhile'Return_false {fuel : Nat} {cond body : ImpExpr} {env s : Env
     (hf : fuel ≠ 0) (hc : denote' bi fuel cond env = (.val (.bool false), s)) :
     denoteWhile'Return bi fuel cond body env = (.val .unit, s) := by
   rw [denoteWhile'Return]
-  simp only [if_neg hf, stateM_bind_apply, hc]
+  simp only [ite_eq_right hf, stateM_bind_apply, hc]
   rfl
 
 theorem denoteWhile'Return_true {fuel : Nat} {cond body : ImpExpr} {env s s' : Env}
@@ -343,7 +343,7 @@ theorem denoteWhile'Return_true {fuel : Nat} {cond body : ImpExpr} {env s s' : E
       | some w => (.val w, s')
       | none => denoteWhile'Return bi (fuel - 1) cond body s' := by
   rw [denoteWhile'Return]
-  simp only [if_neg hf, stateM_bind_apply, hc]
+  simp only [ite_eq_right hf, stateM_bind_apply, hc]
   simp only [hb]
   cases v with
   | controlFlow b w =>
@@ -363,16 +363,16 @@ theorem denoteWhile'_inv {fuel : Nat} {cond body : ImpExpr} {env e' : Env} {w : 
         isErr (denote' bi fuel body s).1 = false := by
   rw [denoteWhile'] at h
   by_cases hf : fuel = 0
-  · simp only [hf, if_true] at h
+  · simp only [hf, ite_true] at h
     cases h
   refine ⟨hf, ?_, ?_⟩
   · rcases hc : denote' bi fuel cond env with ⟨o, s⟩
-    simp only [if_neg hf, stateM_bind_apply, hc] at h
+    simp only [ite_eq_right hf, stateM_bind_apply, hc] at h
     cases o with
     | err m => cases h
     | _ => rfl
   · intro s hc
-    simp only [if_neg hf, stateM_bind_apply, hc] at h
+    simp only [ite_eq_right hf, stateM_bind_apply, hc] at h
     rcases hb : denote' bi fuel body s with ⟨o, s'⟩
     rw [hb] at h
     cases o with
@@ -388,16 +388,16 @@ theorem denoteWhile'Return_inv {fuel : Nat} {cond body : ImpExpr} {env e' : Env}
         isErr (denote' bi fuel body s).1 = false := by
   rw [denoteWhile'Return] at h
   by_cases hf : fuel = 0
-  · simp only [hf, if_true] at h
+  · simp only [hf, ite_true] at h
     cases h
   refine ⟨hf, ?_, ?_⟩
   · rcases hc : denote' bi fuel cond env with ⟨o, s⟩
-    simp only [if_neg hf, stateM_bind_apply, hc] at h
+    simp only [ite_eq_right hf, stateM_bind_apply, hc] at h
     cases o with
     | err m => cases h
     | _ => rfl
   · intro s hc
-    simp only [if_neg hf, stateM_bind_apply, hc] at h
+    simp only [ite_eq_right hf, stateM_bind_apply, hc] at h
     rcases hb : denote' bi fuel body s with ⟨o, s'⟩
     rw [hb] at h
     cases o with
@@ -728,7 +728,7 @@ theorem denoteForLoopRev'_step (bi : Builtins) {fuel : Nat} (var : String) {a b 
       | some w => (.val w, s)
       | none => denoteForLoopRev' bi (fuel - 1) var a (b - 1) body s := by
   rw [denoteForLoopRev']
-  simp only [if_neg (Int.not_le.mpr hab), if_neg hf, stateM_bind_apply, stateM_modify_apply, h]
+  simp only [ite_eq_right (Int.not_le.mpr hab), ite_eq_right hf, stateM_bind_apply, stateM_modify_apply, h]
   cases v with
   | controlFlow c w => cases c <;> rfl
   | _ => rfl

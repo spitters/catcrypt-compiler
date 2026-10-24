@@ -106,12 +106,12 @@ theorem laneOfTy_fixed (k : Fin S.laneCount) {t : JasminTy} (h : S.fixedTy t = t
   cases t with
   | reg w =>
       have hw : w ≠ S.laneBits := by simpa [fixedTy] using h
-      simp only [laneOfTy, dif_neg hw]
+      simp only [laneOfTy, dite_eq_right hw]
   | stackArr w n =>
       have hw : ¬(S.arrWiden = true ∧ w = S.laneBits) := by
         simp only [fixedTy, Bool.not_eq_eq_eq_not, Bool.not_true, Bool.and_eq_false_imp] at h
         exact fun ⟨hA, hw⟩ => absurd (h hA) (by simp [hw])
-      simp only [laneOfTy, dif_neg hw]
+      simp only [laneOfTy, dite_eq_right hw]
   | inlineInt => rfl
   | bool => rfl
 
@@ -412,7 +412,7 @@ theorem blockOpLaneX (hm : S.MulhiLane jasminExtSem) {Γ : Ctxt jasminDialect}
       · have hblk : S.lowerExprX X (⟨.regArith bop S.laneBits, rfl, .cons a (.cons b .nil)⟩ :
             Expr jasminDialect Γ (.reg S.laneBits))
             = S.lowerExprBlock ⟨.regArith bop S.laneBits, rfl, .cons a (.cons b .nil)⟩ := by
-          exact (dif_pos rfl).trans (if_pos hcov)
+          exact (dite_eq_left rfl).trans (ite_eq_left hcov)
         rw [hblk]
         exact S.blockOpLane_ext hm
           (⟨.regArith bop S.laneBits, rfl, .cons a (.cons b .nil)⟩ :
@@ -420,7 +420,7 @@ theorem blockOpLaneX (hm : S.MulhiLane jasminExtSem) {Γ : Ctxt jasminDialect}
       · obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp (hc.resolve_left hcov)
         have hblk : S.lowerExprX X (⟨.regArith bop S.laneBits, rfl, .cons a (.cons b .nil)⟩ :
             Expr jasminDialect Γ (.reg S.laneBits)) = S.binBlk rfl f a b := by
-          refine (dif_pos rfl).trans ((if_neg hcov).trans ?_)
+          refine (dite_eq_left rfl).trans ((ite_eq_right hcov).trans ?_)
           rw [hf]
         change S.laneOfTy k (.reg S.laneBits) _ = _
         rw [hblk, S.laneOfTy_binBlk X bop f hf]
@@ -430,7 +430,7 @@ theorem blockOpLaneX (hm : S.MulhiLane jasminExtSem) {Γ : Ctxt jasminDialect}
       have hblk : S.lowerExprX X (⟨.regArith bop w, rfl, .cons a (.cons b .nil)⟩ :
           Expr jasminDialect Γ (.reg w))
           = S.passOr ⟨.regArith bop w, rfl, .cons a (.cons b .nil)⟩ :=
-        dif_neg hw
+        dite_eq_right hw
       rw [hblk]
       exact S.passOr_lane hm _ (Or.inr hp) W k
   case stackStore w n =>
@@ -443,7 +443,7 @@ theorem blockOpLaneX (hm : S.MulhiLane jasminExtSem) {Γ : Ctxt jasminDialect}
       have hblk : S.lowerExprX X (⟨.stackStore S.laneBits n, rfl,
           .cons arr (.cons idx (.cons v .nil))⟩ :
             Expr jasminDialect Γ (.stackArr S.laneBits n)) = S.storeBlk hA rfl n arr idx v :=
-        dif_pos (And.intro hA rfl)
+        dite_eq_left (And.intro hA rfl)
       change S.laneOfTy k (.stackArr S.laneBits n) _ = _
       rw [hblk, S.laneOfTy_storeBlk hA]
       rfl
@@ -451,7 +451,7 @@ theorem blockOpLaneX (hm : S.MulhiLane jasminExtSem) {Γ : Ctxt jasminDialect}
       have hblk : S.lowerExprX X (⟨.stackStore w n, rfl,
           .cons arr (.cons idx (.cons v .nil))⟩ : Expr jasminDialect Γ (.stackArr w n))
           = S.passOr ⟨.stackStore w n, rfl, .cons arr (.cons idx (.cons v .nil))⟩ :=
-        dif_neg hw
+        dite_eq_right hw
       rw [hblk]
       exact S.passOr_lane hm _ (Or.inr hp) W k
   case castW w w' =>
@@ -467,7 +467,7 @@ theorem blockOpLaneX (hm : S.MulhiLane jasminExtSem) {Γ : Ctxt jasminDialect}
       obtain ⟨f, hf⟩ := Option.isSome_iff_exists.mp (he.resolve_right hne).2.2
       have hblk : S.lowerExprX X (⟨.castW w S.laneBits, rfl, .cons a .nil⟩ :
           Expr jasminDialect Γ (.reg S.laneBits)) = S.castBlk rfl hw2 f a := by
-        refine (dif_pos (And.intro rfl hw2)).trans ?_
+        refine (dite_eq_left (And.intro rfl hw2)).trans ?_
         rw [hf]
       change S.laneOfTy k (.reg S.laneBits) _ = _
       rw [hblk, S.laneOfTy_castBlk X hw2 f hf]
@@ -475,7 +475,7 @@ theorem blockOpLaneX (hm : S.MulhiLane jasminExtSem) {Γ : Ctxt jasminDialect}
     · have hp := he.resolve_left (fun h => hw ⟨h.1, h.2.1⟩)
       have hblk : S.lowerExprX X (⟨.castW w w', rfl, .cons a .nil⟩ :
           Expr jasminDialect Γ (.reg w')) = S.passOr ⟨.castW w w', rfl, .cons a .nil⟩ :=
-        dif_neg hw
+        dite_eq_right hw
       rw [hblk]
       exact S.passOr_lane hm _ (Or.inr hp) W k
   all_goals exact S.passOr_lane hm _ he W k

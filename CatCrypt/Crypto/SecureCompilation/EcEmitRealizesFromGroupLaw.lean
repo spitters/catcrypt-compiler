@@ -235,7 +235,7 @@ theorem ecJacKernelRealizes_canonical {F : Type u} [Field F]
   intro old
   show ecJacAddCallSpec P Q encP leaf leaf .TFp [.TFp, .TFp, .TFp, .TFp] old
       [⟨.TFp, encC P.x⟩, ⟨.TFp, encC P.y⟩, ⟨.TFp, encC Q.x⟩, ⟨.TFp, encC Q.y⟩] = _
-  simp only [ecJacAddCallSpec, if_true, dite_true]
+  simp only [ecJacAddCallSpec, ite_true, dite_true]
 
 /-- **Non-vacuity for the full bridge.**  Threading the canonical Jacobian-add
     realizer through `ecEmitRealizes_of_kernel` (under the generic-chart side

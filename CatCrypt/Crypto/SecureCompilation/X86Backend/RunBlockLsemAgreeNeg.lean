@@ -95,7 +95,7 @@ theorem lsemStepMem_neg (dst src : String) (ls : LstateM) (va : BitVec 64)
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ hm ha hh hsb hsbh,
       lsemStepSh_of_not_sar _ _ hs]
-  simp only [lsemStepN, negLinstr, stripWidthTag_withWidthTag_NEG, if_pos,
+  simp only [lsemStepN, negLinstr, stripWidthTag_withWidthTag_NEG, ite_eq_left,
     readReg_of_getW hva, applyOpnN_NEG, Option.map_some]
 
 /-! ## 3. The lowering and the per-opcode agreement -/

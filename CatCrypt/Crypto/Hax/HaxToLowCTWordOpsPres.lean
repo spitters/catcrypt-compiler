@@ -574,11 +574,11 @@ theorem hax64Builtins_taggedMul1Builtins : TaggedMul1Builtins _root_.Hax.hax64Bu
     rw [← Nat.pow_add] at h
     have hb : n * m < 2 ^ 128 := h
     unfold _root_.Hax.hax64Builtins
-    rw [_root_.Hax.hax64WordOps_mul128, _root_.Hax.uintMulOp, if_pos (by omega)]
+    rw [_root_.Hax.hax64WordOps_mul128, _root_.Hax.uintMulOp, ite_eq_left (by omega)]
     rfl
   addSize n m h := by
     unfold _root_.Hax.hax64Builtins
-    rw [_root_.Hax.hax64WordOps_addSize, _root_.Hax.uintAddOp, if_pos (by omega)]
+    rw [_root_.Hax.hax64WordOps_addSize, _root_.Hax.uintAddOp, ite_eq_left (by omega)]
     rfl
 
 section TaggedTreeValues

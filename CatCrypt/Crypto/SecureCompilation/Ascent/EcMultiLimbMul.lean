@@ -343,7 +343,7 @@ theorem corresJ_adcx (dst src : String) :
       simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
         add_carry, adcStep, JState.get, JOperand.eval, hcf, hreg]
     · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
-        adcStep, JState.get, JOperand.eval, hcf, hreg, if_neg hr]
+        adcStep, JState.get, JOperand.eval, hcf, hreg, ite_eq_right hr]
   · -- carry-flag agreement
     have hcf' : Option.getD st.flags.cf false = a.cf := by simpa [JState.flagB] using hcf
     simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
@@ -456,7 +456,7 @@ theorem corresJ_adcx2 (dst src : String) :
       simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
         add_carry, adcxStep2, JState.get, JOperand.eval, hcf, hreg]
     · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
-        adcxStep2, JState.get, JOperand.eval, hcf, hreg, if_neg hr]
+        adcxStep2, JState.get, JOperand.eval, hcf, hreg, ite_eq_right hr]
   · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
       JState.flagB, Option.getD_some, adcxStep2, JState.get, JOperand.eval, hcf', hreg]
   · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
@@ -479,7 +479,7 @@ theorem corresJ_adox2 (dst src : String) :
       simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
         add_carry, adoxStep2, JState.get, JOperand.eval, hof, hreg]
     · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
-        adoxStep2, JState.get, JOperand.eval, hof, hreg, if_neg hr]
+        adoxStep2, JState.get, JOperand.eval, hof, hreg, ite_eq_right hr]
   · simp only [runBlock_cons, runBlock_nil, evalInstr, x86_ADCX, waddcarry,
       JState.flagB, adoxStep2]
     exact hcf'

@@ -78,14 +78,14 @@ theorem certRho_acc (d : Nat) (acc out : String) (Sl : List Nat) :
 theorem certRho_slot {d : Nat} {acc out : String} {Sl : List Nat} {k : Nat} (hk : k ∈ Sl) :
     certRho d acc out Sl (loopReg d k) = out := by
   unfold certRho
-  rw [if_pos]
+  rw [ite_eq_left]
   simp only [Bool.or_eq_true, beq_iff_eq, List.any_eq_true]
   exact Or.inr ⟨k, hk, by simp⟩
 
 theorem certRho_fix {d : Nat} {acc out : String} {Sl : List Nat} {r : String} (h1 : r ≠ acc)
     (h2 : ∀ k ∈ Sl, r ≠ loopReg d k) : certRho d acc out Sl r = r := by
   unfold certRho
-  rw [if_neg]
+  rw [ite_eq_right]
   simp only [Bool.or_eq_true, beq_iff_eq, List.any_eq_true, not_or, not_exists, not_and]
   exact ⟨h1, fun k hk he => h2 k hk (by simpa using he)⟩
 
@@ -121,7 +121,7 @@ theorem certSigma_idx : certSigma d nInv acc invRegs (argName nInv) = loopIdx d 
 theorem certSigma_inv {j : Nat} (hj : j < nInv) : certSigma d nInv acc invRegs (argName j)
     = invRegs.getD (nInv - 1 - j) ("Linv" ++ toString d ++ "_" ++ toString j) := by
   have hex : ∃ j', j' < nInv ∧ argName j = argName j' := ⟨j, hj, rfl⟩
-  rw [certSigma, if_neg (argName_ne (by omega)), if_neg (argName_ne (by omega)), dif_pos hex]
+  rw [certSigma, ite_eq_right (argName_ne (by omega)), ite_eq_right (argName_ne (by omega)), dite_eq_left hex]
   have := argName_injective hex.choose_spec.2
   rw [← this]
 
@@ -129,13 +129,13 @@ theorem certSigma_reg (k : Nat) : certSigma d nInv acc invRegs (regName k) = loo
   have hex : ∃ k', regName k = regName k' := ⟨k, rfl⟩
   have hna : ¬ ∃ j, j < nInv ∧ regName k = argName j := fun ⟨j, _, h⟩ =>
     regName_ne_argName k j h
-  rw [certSigma, if_neg (regName_ne_argName k _), if_neg (regName_ne_argName k _), dif_neg hna,
-    dif_pos hex, regName_injective hex.choose_spec.symm]
+  rw [certSigma, ite_eq_right (regName_ne_argName k _), ite_eq_right (regName_ne_argName k _), dite_eq_right hna,
+    dite_eq_left hex, regName_injective hex.choose_spec.symm]
 
 theorem certSigma_other {r : String} (ha : ∀ j, r ≠ argName j) (hr : ∀ k, r ≠ regName k) :
     certSigma d nInv acc invRegs r = r := by
-  rw [certSigma, if_neg (ha _), if_neg (ha _), dif_neg (fun ⟨j, _, h⟩ => ha j h),
-    dif_neg (fun ⟨k, h⟩ => hr k h)]
+  rw [certSigma, ite_eq_right (ha _), ite_eq_right (ha _), dite_eq_right (fun ⟨j, _, h⟩ => ha j h),
+    dite_eq_right (fun ⟨k, h⟩ => hr k h)]
 
 /-- `certSigma` is the export's loop renaming. -/
 theorem certSigma_loopRen (hlen : invRegs.length = nInv) :
@@ -167,13 +167,13 @@ theorem sigmaC_sound {d nInv : Nat} {acc : String} {invRegs : List String} {boun
     certSigma d nInv acc invRegs b = t := by
   unfold sigmaC at h
   by_cases h1 : b = argName (nInv + 1)
-  · subst h1; simp only [beq_self_eq_true, if_true, Option.some.injEq] at h
+  · subst h1; simp only [beq_self_eq_true, ite_true, Option.some.injEq] at h
     rw [certSigma_acc, h]
-  rw [if_neg (by simpa using h1)] at h
+  rw [ite_eq_right (by simpa using h1)] at h
   by_cases h2 : b = argName nInv
-  · subst h2; simp only [beq_self_eq_true, if_true, Option.some.injEq] at h
+  · subst h2; simp only [beq_self_eq_true, ite_true, Option.some.injEq] at h
     rw [certSigma_idx, h]
-  rw [if_neg (by simpa using h2)] at h
+  rw [ite_eq_right (by simpa using h2)] at h
   cases hf : (List.range nInv).find? (fun j => b == argName j) with
   | some j =>
       rw [hf] at h

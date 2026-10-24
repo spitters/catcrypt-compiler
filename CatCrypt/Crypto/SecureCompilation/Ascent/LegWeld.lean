@@ -243,7 +243,7 @@ def derivedAbs (rs : RustState) : String → ZMod (2 ^ 64) :=
 theorem srwordNT_derivedEnv (rs : RustState) : SRwordNT (derivedEnv rs) (derivedAbs rs) := by
   intro s hs
   refine ⟨BitVec.ofNat 64 (rs.rsScalar s), ?_, rfl⟩
-  simp only [derivedEnv, if_neg hs]
+  simp only [derivedEnv, ite_eq_right hs]
 
 /-- The default state's scalars are all zero, hence in `u64` range. -/
 theorem scalarInRange_default : ScalarInRange (default : RustState) :=

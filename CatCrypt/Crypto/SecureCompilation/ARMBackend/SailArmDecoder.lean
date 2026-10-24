@@ -304,7 +304,7 @@ theorem roundtrip_logical (opc d n m : Nat) (hopc : opc < 4) (hd : d < 32) (hn :
   have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
   have hrm : fldRm W = m := by simp only [fldRm, hW]; omega
   have hopc' : fldOpc W = opc := by simp only [fldOpc, hW]; omega
-  rw [decodeWord, if_neg hgn, hg, hb21, hrd, hrn, hrm, hopc']; simp
+  rw [decodeWord, ite_eq_right hgn, hg, hb21, hrd, hrn, hrm, hopc']; simp
 
 /-- **Round-trip for EXTR (the ROR alias).** Decoding `encExtr d n m imms` recovers
     `(extr, Rd=d, Rn=n, Rm=m, imms=imms)` for registers `< 32`, `imms < 64`. -/
@@ -331,7 +331,7 @@ theorem roundtrip_extr (d n m imms : Nat) (hd : d < 32) (hn : n < 32) (hm : m < 
   have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
   have hrm : fldRm W = m := by simp only [fldRm, hW]; omega
   have hi : fldImms W = imms := by simp only [fldImms, hW]; omega
-  rw [decodeWord, if_neg hgn1, if_neg hgn2, if_pos ⟨hg, hb23, hb22, hgc⟩, hrd, hrn, hrm, hi]
+  rw [decodeWord, ite_eq_right hgn1, ite_eq_right hgn2, ite_eq_left ⟨hg, hb23, hb22, hgc⟩, hrd, hrn, hrm, hi]
 
 /-- **Round-trip for UBFM (the LSL/LSR alias).** Decoding `encUbfm d n immr imms`
     recovers `(ubfm, Rd=d, Rn=n, imms=imms, immr=immr)` for registers `< 32`,
@@ -361,7 +361,7 @@ theorem roundtrip_ubfm (d n immr imms : Nat) (hd : d < 32) (hn : n < 32)
   have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
   have hi : fldImms W = imms := by simp only [fldImms, hW]; omega
   have hr : fldImmr W = immr := by simp only [fldImmr, hW]; omega
-  rw [decodeWord, if_neg hgn1, if_neg hgn2, if_neg hgn3, if_pos ⟨hg, hb23, hb22, hgc⟩,
+  rw [decodeWord, ite_eq_right hgn1, ite_eq_right hgn2, ite_eq_right hgn3, ite_eq_left ⟨hg, hb23, hb22, hgc⟩,
     hrd, hrn, hi, hr]
 
 /-! ## 6. Instruction-level round-trip: `decode (encode i) = i`
@@ -475,7 +475,7 @@ theorem roundtrip_ainst_orr (alloc : GpAlloc) (d a b : String)
       = some (.orr (gpOf alloc d) (gpOf alloc a) (gpOf alloc b)) := by
   simp only [encodeAInst]
   rw [roundtrip_logical 1 _ _ _ (by decide) (wNum_lt_32 _) (wNum_lt_32 _) (wNum_lt_32 _)]
-  simp only [Option.bind_some, rebuild, if_neg hane]
+  simp only [Option.bind_some, rebuild, ite_eq_right hane]
   rw [hd, ha, hb]
 
 /-- Round-trip for `EOR Wd, Wa, Wb`. -/
@@ -499,7 +499,7 @@ theorem roundtrip_ainst_mov (alloc : GpAlloc) (d s : String)
       = some (.mov (gpOf alloc d) (gpOf alloc s)) := by
   simp only [encodeAInst]
   rw [roundtrip_logical 1 _ _ _ (by decide) (wNum_lt_32 _) (by decide) (wNum_lt_32 _)]
-  simp only [Option.bind_some, rebuild, if_true]
+  simp only [Option.bind_some, rebuild, ite_true]
   rw [hd, hs]
 
 /-- Round-trip for `ROR Wd, Wa, #imm` (the `EXTR Wd, Wa, Wa, #imm` alias), for a
@@ -526,7 +526,7 @@ theorem roundtrip_ainst_lsr (alloc : GpAlloc) (d a : String) (imm : Fin 32)
   have himm : imm.val < 32 := imm.isLt
   simp only [encodeAInst]
   rw [roundtrip_ubfm _ _ _ _ (wNum_lt_32 _) (wNum_lt_32 _) (by omega) (by decide)]
-  simp only [Option.bind_some, rebuild, if_true, dif_pos himm]
+  simp only [Option.bind_some, rebuild, ite_true, dite_eq_left himm]
   rw [hd, ha]
 
 /-- Round-trip for `LSL Wd, Wa, #imm` (the `UBFM Wd, Wa, #((32−imm) mod 32),
@@ -546,7 +546,7 @@ theorem roundtrip_ainst_lsl (alloc : GpAlloc) (d a : String) (imm : Fin 32)
   rw [Nat.mod_eq_of_lt (show 32 - imm.val < 32 by omega),
     roundtrip_ubfm _ _ _ _ (wNum_lt_32 _) (wNum_lt_32 _) (by omega) (by omega)]
   simp only [Option.bind_some, rebuild]
-  rw [if_neg (show ¬ (31 - imm.val = 31) by omega),
+  rw [ite_eq_right (show ¬ (31 - imm.val = 31) by omega),
     show Fin.ofNat 32 (32 - (32 - imm.val)) = imm from Fin.ext (by simp [Fin.ofNat]; omega),
     hd, ha]
 
@@ -893,7 +893,7 @@ theorem roundtrip_movWideX (opc d imm16 hw : Nat) (hopc2 : opc = 2 ∨ opc = 3)
   have himmF : fldImm16 W = imm16 := by simp only [fldImm16, hW]; omega
   have hdecW : decodeBignumWord W = none := by
     unfold decodeBignumWord
-    rw [if_neg hgn1, if_neg hgn2, if_neg hgn3, if_neg hgn5, if_neg hgn6]
+    rw [ite_eq_right hgn1, ite_eq_right hgn2, ite_eq_right hgn3, ite_eq_right hgn5, ite_eq_right hgn6]
   have hdecWide : decodeBignumWide W
       = some { cls := .movewide opc hw, rd := d, imm16 := imm16 } := by
     unfold decodeBignumWide
@@ -1242,7 +1242,7 @@ theorem roundtrip_binst_orr (alloc : GpAlloc) (d a b : String)
       = some (.orr (gpOf alloc d) (gpOf alloc a) (gpOf alloc b)) := by
   simp only [encodeBInst]
   rw [roundtrip_orrX _ _ _ (xNum_lt_32 _) (xNum_lt_32 _) (xNum_lt_32 _)]
-  simp only [Option.bind_some, rebuildB, if_neg hane]; rw [hd, ha, hb]
+  simp only [Option.bind_some, rebuildB, ite_eq_right hane]; rw [hd, ha, hb]
 
 /-- **Capstone round-trip for `EOR`.** -/
 theorem roundtrip_binst_eor (alloc : GpAlloc) (d a b : String)
@@ -1264,7 +1264,7 @@ theorem roundtrip_binst_mov (alloc : GpAlloc) (d s : String)
       = some (.mov (gpOf alloc d) (gpOf alloc s)) := by
   simp only [encodeBInst]
   rw [roundtrip_orrX _ _ _ (xNum_lt_32 _) (by decide) (xNum_lt_32 _)]
-  simp only [Option.bind_some, rebuildB, if_true]; rw [hd, hs]
+  simp only [Option.bind_some, rebuildB, ite_true]; rw [hd, hs]
 
 /-- **Capstone round-trip for `LSR`** (the `UBFM Xd, Xn, #sh, #63` alias), for
     every shift amount `sh : Fin 64`. -/
@@ -1276,7 +1276,7 @@ theorem roundtrip_binst_lsr (alloc : GpAlloc) (d a : String) (sh : Fin 64)
   have hsh : sh.val < 64 := sh.isLt
   simp only [encodeBInst]
   rw [roundtrip_ubfmX _ _ _ _ hsh (by decide) (xNum_lt_32 _) (xNum_lt_32 _)]
-  simp only [Option.bind_some, rebuildB, if_true, dif_pos hsh]; rw [hd, ha]
+  simp only [Option.bind_some, rebuildB, ite_true, dite_eq_left hsh]; rw [hd, ha]
 
 /-- **Capstone round-trip for `LSL`** (the `UBFM Xd, Xn, #((64−sh) mod 64),
     #(63−sh)` alias), for a shift amount `sh : Fin 64` other than 0.
@@ -1298,7 +1298,7 @@ theorem roundtrip_binst_lsl (alloc : GpAlloc) (d a : String) (sh : Fin 64)
   rw [Nat.mod_eq_of_lt (show 64 - sh.val < 64 by omega),
     roundtrip_ubfmX _ _ _ _ (by omega) (by omega) (xNum_lt_32 _) (xNum_lt_32 _)]
   simp only [Option.bind_some, rebuildB]
-  rw [if_neg (show ¬ (63 - sh.val = 63) by omega),
+  rw [ite_eq_right (show ¬ (63 - sh.val = 63) by omega),
     show Fin.ofNat 64 (64 - (64 - sh.val)) = sh from Fin.ext (by simp [Fin.ofNat]; omega),
     hd, ha]
 
@@ -1369,7 +1369,7 @@ theorem roundtrip_b (imm26 : Nat) (h : imm26 < 0x4000000) :
   set W := 0x14000000 + imm26 with hW
   have ht : fldTop6 W = 0x05 := by simp only [fldTop6, hW]; omega
   have hi : fldImm26 W = imm26 := by simp only [fldImm26, hW]; omega
-  rw [decodeBranchWord, if_pos ht, hi]
+  rw [decodeBranchWord, ite_eq_left ht, hi]
 
 /-- **Round-trip for `B.cond`.** Decoding `encBcond cond imm19` recovers
     `(bcond cond imm19)` for `cond < 16`, `imm19 < 2^19`. -/
@@ -1384,7 +1384,7 @@ theorem roundtrip_bcond (cond imm19 : Nat) (hc : cond < 16) (hi : imm19 < 0x8000
   have ht : W / 0x1000000 = 0x54 := by simp only [hW]; omega
   have hcd : fldCond4 W = cond := by simp only [fldCond4, hW]; omega
   have him : fldImm19 W = imm19 := by simp only [fldImm19, hW]; omega
-  rw [decodeBranchWord, if_neg htn, if_pos ht, hcd, him]
+  rw [decodeBranchWord, ite_eq_right htn, ite_eq_left ht, hcd, him]
 
 /-- **Round-trip for `CBNZ`/`CBZ`.** Decoding `encCmpBranch op t imm19` recovers
     `(cmpbr op t imm19)` for `op < 2`, `t < 32`, `imm19 < 2^19`. -/
@@ -1403,7 +1403,7 @@ theorem roundtrip_cmpbr (op t imm19 : Nat) (hop : op < 2) (ht : t < 32)
   have hop' : fldCbOp W = op := by simp only [fldCbOp, hW]; omega
   have hrt : W % 32 = t := by simp only [hW]; omega
   have him : fldImm19 W = imm19 := by simp only [fldImm19, hW]; omega
-  rw [decodeBranchWord, if_neg htn, if_neg ht54, if_pos hgrp, hop', hrt, him]
+  rw [decodeBranchWord, ite_eq_right htn, ite_eq_right ht54, ite_eq_left hgrp, hop', hrt, him]
 
 /-! ### Instruction-level branch round-trip: `decode (encode i) = i`
 
@@ -1585,8 +1585,8 @@ theorem roundtrip_addsubImmX (op d n imm : Nat) (hop : op < 2) (hd : d < 32) (hn
   unfold decodeMemWord
   rw [hrd, hrn, him]
   rcases (show op = 0 ∨ op = 1 by omega) with rfl | rfl
-  · rw [if_pos (by simp only [hW]; omega)]
-  · rw [if_neg (by simp only [hW]; omega), if_pos (by simp only [hW]; omega)]
+  · rw [ite_eq_left (by simp only [hW]; omega)]
+  · rw [ite_eq_right (by simp only [hW]; omega), ite_eq_left (by simp only [hW]; omega)]
 
 /-- **Word round trip of `CMP` (`SUBS XZR, Xn, Xm`).** -/
 theorem roundtrip_cmpX (n m : Nat) (hn : n < 32) (hm : m < 32) :
@@ -1602,8 +1602,8 @@ theorem roundtrip_cmpX (n m : Nat) (hn : n < 32) (hm : m < 32) :
   have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
   have hrm : fldRm W = m := by simp only [fldRm, hW]; omega
   unfold decodeMemWord
-  rw [if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
-    if_pos (by simp only [fldImms, fldRd, hW]; omega), hrn, hrm]
+  rw [ite_eq_right (by simp only [hW]; omega), ite_eq_right (by simp only [hW]; omega),
+    ite_eq_left (by simp only [fldImms, fldRd, hW]; omega), hrn, hrm]
 
 /-- **Word round trip of LDR/STR (unsigned immediate).** -/
 theorem roundtrip_ldStImmX (opc t n imm : Nat) (hop : opc < 2) (ht : t < 32) (hn : n < 32)
@@ -1621,11 +1621,11 @@ theorem roundtrip_ldStImmX (opc t n imm : Nat) (hop : opc < 2) (ht : t < 32) (hn
   have hrn : fldRn W = n := by simp only [fldRn, hW]; omega
   have him : fldImm12 W = imm := by simp only [fldImm12, hW]; omega
   unfold decodeMemWord
-  rw [hrd, hrn, him, if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
-    if_neg (by simp only [hW]; omega)]
+  rw [hrd, hrn, him, ite_eq_right (by simp only [hW]; omega), ite_eq_right (by simp only [hW]; omega),
+    ite_eq_right (by simp only [hW]; omega)]
   rcases (show opc = 0 ∨ opc = 1 by omega) with rfl | rfl
-  · rw [if_neg (by simp only [hW]; omega), if_pos (by simp only [hW]; omega)]
-  · rw [if_pos (by simp only [hW]; omega)]
+  · rw [ite_eq_right (by simp only [hW]; omega), ite_eq_left (by simp only [hW]; omega)]
+  · rw [ite_eq_left (by simp only [hW]; omega)]
 
 /-- **Word round trip of LDR/STR (register offset, `LSL #3`).** -/
 theorem roundtrip_ldStRegX (opc t n m : Nat) (hop : opc < 2) (ht : t < 32) (hn : n < 32)
@@ -1644,14 +1644,14 @@ theorem roundtrip_ldStRegX (opc t n m : Nat) (hop : opc < 2) (ht : t < 32) (hn :
   have hrm : fldRm W = m := by simp only [fldRm, hW]; omega
   have hsx : fldImms W = 0x1e := by simp only [fldImms, hW]; omega
   unfold decodeMemWord
-  rw [hrd, hrn, hrm, hsx, if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
-    if_neg (by simp only [hW]; omega), if_neg (by simp only [hW]; omega),
-    if_neg (by simp only [hW]; omega)]
+  rw [hrd, hrn, hrm, hsx, ite_eq_right (by simp only [hW]; omega), ite_eq_right (by simp only [hW]; omega),
+    ite_eq_right (by simp only [hW]; omega), ite_eq_right (by simp only [hW]; omega),
+    ite_eq_right (by simp only [hW]; omega)]
   have k : W / 0x200000 = 0x7c1 + 2 * opc := by simp only [hW]; omega
   rw [k]
   rcases (show opc = 0 ∨ opc = 1 by omega) with rfl | rfl
-  · rw [if_neg (by decide), if_pos (by decide)]
-  · rw [if_pos (by decide)]
+  · rw [ite_eq_right (by decide), ite_eq_left (by decide)]
+  · rw [ite_eq_left (by decide)]
 
 /-- **Word round trip of `CBNZ Xt` (64-bit).** -/
 theorem roundtrip_cbnzX (t imm : Nat) (ht : t < 32) (hi : imm < 0x80000) :
@@ -1666,8 +1666,8 @@ theorem roundtrip_cbnzX (t imm : Nat) (ht : t < 32) (hi : imm < 0x80000) :
   have him : fldImm19 W = imm := by simp only [fldImm19, hW]; omega
   unfold decodeMemWord
   rw [hrd, him]
-  repeat rw [if_neg (by simp only [hW]; omega)]
-  rw [if_pos (by simp only [hW]; omega)]
+  repeat rw [ite_eq_right (by simp only [hW]; omega)]
+  rw [ite_eq_left (by simp only [hW]; omega)]
 
 /-- **Word round trip of `B.cond`.** -/
 theorem roundtrip_bcondM (cond imm : Nat) (hc : cond < 16) (hi : imm < 0x80000) :
@@ -1682,8 +1682,8 @@ theorem roundtrip_bcondM (cond imm : Nat) (hc : cond < 16) (hi : imm < 0x80000) 
   have him : fldImm19 W = imm := by simp only [fldImm19, hW]; omega
   unfold decodeMemWord
   rw [hcd, him]
-  repeat rw [if_neg (by simp only [hW]; omega)]
-  rw [if_pos (by simp only [hW]; omega)]
+  repeat rw [ite_eq_right (by simp only [hW]; omega)]
+  rw [ite_eq_left (by simp only [hW]; omega)]
 
 /-- A word of the 64-bit shifted-register ADD, SUB, AND, ORR or EOR groups is outside the
     memory-and-branch classes. -/
@@ -1692,7 +1692,7 @@ theorem decodeMemWord_none (w : Nat)
       ∨ w / 0x1000000 = 0xca ∨ w / 0x1000000 = 0xcb) :
     decodeMemWord w = none := by
   unfold decodeMemWord
-  repeat rw [if_neg (by omega)]
+  repeat rw [ite_eq_right (by omega)]
 
 /-- The shifted-register ADD and SUB words (`S = 0`) are outside the memory-and-branch
     classes. -/

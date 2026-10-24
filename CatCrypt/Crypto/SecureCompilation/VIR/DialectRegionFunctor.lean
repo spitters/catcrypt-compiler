@@ -352,7 +352,7 @@ theorem map?_ofTemplate? (hT : (PartialBlockLowering.ofTemplate? F S).RegionType
       subst hret
       simp only [NFProg.map?, restrictNF?, ih]
       by_cases h : (S op).isSome
-      · rw [dif_pos h]
+      · rw [dite_eq_left h]
         have hb := templateBlock?_ofRestrict F S
           (⟨⟨op, h⟩, rfl, castArgs (O' := {op : d.Op // (S op).isSome}) args⟩ :
             Expr (d.restrict fun op => (S op).isSome) _ _)
@@ -361,7 +361,7 @@ theorem map?_ofTemplate? (hT : (PartialBlockLowering.ofTemplate? F S).RegionType
         cases restrictNF? (fun op => (S op).isSome) k with
         | none => exact spliceNF?_none _
         | some k₀ => rfl
-      · rw [dif_neg h]
+      · rw [dite_eq_right h]
         show ((S op).map _).bind _ = none
         rw [Option.not_isSome_iff_eq_none.mp h]
         rfl

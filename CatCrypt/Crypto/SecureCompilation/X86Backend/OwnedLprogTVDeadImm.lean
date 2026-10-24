@@ -235,10 +235,10 @@ theorem symMem_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
       split
       · rename_i dst opn a b
         by_cases ho : opn = "ZEROARR"
-        · simp only [ho, if_true]
+        · simp only [ho, ite_true]
           refine ⟨rfl, ⟨?_, hS.2⟩, [], rfl, rfl, fun _ h => by cases h⟩
           simp [SSt.setA, hS.1]
-        · simp only [ho, if_false]
+        · simp only [ho, ite_false]
           trivial
       · trivial
   | storeImm w n =>
@@ -250,10 +250,10 @@ theorem symMem_congr {ss ss' : SSt} (hS : ss.Same ss') (i : LinstrRM)
           repeat' split at hl
           all_goals simp_all [instrReadRegs, operandReads]
         by_cases hk : k < 2 ^ 64
-        · simp only [hk, if_true]
+        · simp only [hk, ite_true]
           refine ⟨by rw [hS.1, hv], ⟨?_, hS.2⟩, [], rfl, rfl, fun _ h => by cases h⟩
           simp [SSt.setA, hS.1, hv]
-        · simp only [hk, if_false]
+        · simp only [hk, ite_false]
           trivial
       · trivial
   | reg cd => dsimp only; rw [symCast_congr (R' := ss'.regs) hR hL]; exact liftR_congr hS _
@@ -579,7 +579,7 @@ theorem symStep_immMov {i : LinstrRM} {r : String} (h : immMov? i = some r) :
   have hn : ∀ R, symN (.Lopn [.reg r] opn [.imm n]) R =
       .set r (.immW (widthFromTag opn) n) [] := fun R => by
     unfold symN
-    simp only [hm, if_true]
+    simp only [hm, ite_true]
   have hd : ∀ R, symMC (.Lopn [.reg r] opn [.imm n]) R =
       .set r (.immW (widthFromTag opn) n) [] := fun R => by
     simp only [symMC, symSh, JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
@@ -592,12 +592,12 @@ theorem symStep_immMov {i : LinstrRM} {r : String} (h : immMov? i = some r) :
     · cases cd with
       | none =>
           refine ⟨widthFromTag opn, fun R => ?_⟩
-          simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, if_pos ho, hd]
+          simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, ite_eq_left ho, hd]
       | some w' =>
           refine ⟨w', fun R => ?_⟩
-          simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, if_pos ho]
+          simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, ite_eq_left ho]
     · have hmi : JasminLsemCast.movImmStruct? (.Lopn [.reg r] opn [.imm n]) = none := by
-        simp only [JasminLsemCast.movImmStruct?, if_neg ho]
+        simp only [JasminLsemCast.movImmStruct?, ite_eq_right ho]
       exact ⟨widthFromTag opn, fun R => by simp only [symCast, JasminLsemCast.castStruct?, hmi, hd]⟩
   obtain ⟨w, hm'⟩ : ∃ w, ∀ ss : SSt, symMem (.Lopn [.reg r] opn [.imm n], tag) ss =
       .ok (ss.setR r (.immW w n)) [] := by
@@ -627,7 +627,7 @@ theorem Tbl.internRegs_keep : ∀ (T : Tbl) (ss : SSt) (ds : List String) (q : S
   | T, ss, d :: ds, q, hq => by
       simp only [List.mem_cons, not_or] at hq
       simp only [Tbl.internRegs]
-      rw [Tbl.internRegs_keep _ _ ds q hq.2, SSt.putR_regs, if_neg hq.1]
+      rw [Tbl.internRegs_keep _ _ ds q hq.2, SSt.putR_regs, ite_eq_right hq.1]
 
 theorem Tbl.internRegs_on : ∀ (T : Tbl) (ss ss' : SSt) (ds : List String),
     (∀ q ∈ ds, ss.regs q = ss'.regs q) →
@@ -753,7 +753,7 @@ theorem tRun_drop : ∀ (B : List (LinstrRM × Bool)) (D : List String) (ss ss' 
           have e' : (ss.setR r (.immW w n)).EqvOn (r :: D) ss' := by
             refine ⟨e.1, fun q hq => ?_⟩
             simp only [List.mem_cons, not_or] at hq
-            rw [SSt.setR_regs, if_neg hq.1]
+            rw [SSt.setR_regs, ite_eq_right hq.1]
             exact e.2 q hq.2
           have hI' : (ss.setR r (.immW w n)).Inv T.ents.size := by
             obtain ⟨⟨hr, ha, hz, hc, ho⟩, hat, hca, hoa⟩ := hI
@@ -1069,7 +1069,7 @@ theorem symMem_same (i : LinstrRM) (ha : arrQuiet i = true) {ss s : SSt} {gs : L
       · rename_i dst opn a b
         by_cases ho : opn = "ZEROARR"
         · simp [arrQuiet, ho] at ha
-        · simp only [ho, if_false] at h
+        · simp only [ho, ite_false] at h
           cases h
       · cases h
   | storeImm w n =>

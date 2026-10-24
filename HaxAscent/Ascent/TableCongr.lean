@@ -138,7 +138,7 @@ theorem haxEval_congr (hag : ∀ f, ok f = true → bi f = bi' f) {e : ImpExpr}
   · have hex' : ¬ ∃ v fuel₀, ∀ fuel, fuel₀ ≤ fuel → (denote' bi' fuel e env).1 = .val v :=
       fun ⟨v, f₀, hv⟩ => hex ⟨v, f₀, fun fuel hf => by rw [denote'_congr hag he]; exact hv fuel hf⟩
     unfold haxEval
-    rw [dif_neg hex, dif_neg hex']
+    rw [dite_eq_right hex, dite_eq_right hex']
 
 theorem fnCorres_congr (hag : ∀ f, ok f = true → bi f = bi' f) {e : ImpExpr}
     (he : callsOK ok e = true) {A β : Type} [HaxEnc β] {entry : A → Env} {G : A → Prop}
@@ -228,7 +228,7 @@ local macro "loop_zero_case" f:ident : tactic => `(tactic| (
   intro var lo hi body hlt hc env hd
   exfalso
   unfold $f at hd
-  simp [if_neg hlt, pure, StateT.pure] at hd))
+  simp [ite_eq_right hlt, pure, StateT.pure] at hd))
 
 set_option hygiene false in
 /-- The fuel-`0` case of a `while` helper in `denote'_tableLE_aux`: the run is an
@@ -244,7 +244,7 @@ set_option hygiene false in
 local macro "loop_empty_case" f:ident : tactic => `(tactic| (
   intro fuel var lo hi body hge hc env _
   unfold $f
-  simp only [if_pos hge]))
+  simp only [ite_eq_left hge]))
 
 set_option hygiene false in
 /-- The recursive call of a loop helper in `denote'_tableLE_aux`, through `ihr`. -/
@@ -277,7 +277,7 @@ set_option hygiene false in
 local macro "loop_step_case" f:ident idx:term : tactic => `(tactic| (
   intro fuel var lo hi body hlt hf ihb ihr hc env hd
   unfold $f at hd ⊢
-  simp only [if_neg hlt, if_neg hf, stateM_bind_apply, stateM_modify_apply] at hd ⊢
+  simp only [ite_eq_right hlt, ite_eq_right hf, stateM_bind_apply, stateM_modify_apply] at hd ⊢
   rcases hr : denote' bi fuel body (Env.extend env var (.int $idx)) with ⟨o, s⟩
   have h1 : denote' bi' fuel body (Env.extend env var (.int $idx)) =
       denote' bi fuel body (Env.extend env var (.int $idx)) := by
@@ -293,7 +293,7 @@ set_option hygiene false in
 local macro "while_step_case" f:ident : tactic => `(tactic| (
   intro fuel c b hf ihc ihb ihr hcc hcb env hd
   unfold $f at hd ⊢
-  simp only [if_neg hf, stateM_bind_apply] at hd ⊢
+  simp only [ite_eq_right hf, stateM_bind_apply] at hd ⊢
   rcases hr1 : denote' bi fuel c env with ⟨o1, s1⟩
   have h1 : denote' bi' fuel c env = denote' bi fuel c env := by
     refine ihc hcc env ?_

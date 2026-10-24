@@ -161,7 +161,7 @@ theorem runLowered_eq_stepBinop {w : Nat} (st : RegStore w) (lb : LoweredBinop)
       · subst htd
         -- both compute op.apply (st src0) (st src1) at dst
         simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
-          setReg, if_true, Ne.symm hscd, ↓reduceIte,
+          setReg, ite_true, Ne.symm hscd, ↓reduceIte,
           Ne.symm hncb]
       · simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
           setReg, htd, ht, ↓reduceIte]
@@ -172,7 +172,7 @@ theorem runLowered_eq_stepBinop {w : Nat} (st : RegStore w) (lb : LoweredBinop)
       · subst htd
         simp only [runLowered, LoweredBinop.toKBinop]
         rw [reloadDst_denote b.op st b.dst b.src0 b.src1 sc hsc1]
-        simp only [stepBinop, opStep, movStep, setReg, if_true, ↓reduceIte,
+        simp only [stepBinop, opStep, movStep, setReg, ite_true, ↓reduceIte,
           Ne.symm hncb]
       · simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
           setReg, htd, ht, ↓reduceIte]
@@ -185,7 +185,7 @@ theorem runLowered_eq_stepBinop {w : Nat} (st : RegStore w) (lb : LoweredBinop)
       · subst htd
         simp only [runLowered, LoweredBinop.toKBinop]
         rw [reloadBoth_denote b.op st b.dst b.src0 b.src1 sc sc2 hsc1 hsc12]
-        simp only [stepBinop, opStep, movStep, setReg, if_true, ↓reduceIte,
+        simp only [stepBinop, opStep, movStep, setReg, ite_true, ↓reduceIte,
           Ne.symm hncb]
       · simp only [runLowered, stepBinop, LoweredBinop.toKBinop, opStep, movStep,
           setReg, htd, htsc, htsc2, ↓reduceIte]
@@ -270,9 +270,9 @@ theorem runLowered_runKernel_agree_off {w : Nat} (S : Nat → Prop)
       -- read only `dst,src0,src1` (non-scratch, where stL,stK agree) and write dst.
       by_cases hud : u = lb.toKBinop.dst
       · subst hud
-        simp only [stepBinop, opStep, movStep, setReg, if_true,
+        simp only [stepBinop, opStep, movStep, setReg, ite_true,
           hstart lb.toKBinop.src0 hseplb.2.2.1, hstart lb.toKBinop.src1 hseplb.2.2.2]
-      · simp only [stepBinop, opStep, movStep, setReg, if_neg hud]
+      · simp only [stepBinop, opStep, movStep, setReg, ite_eq_right hud]
         exact hstart u hu
 
 /-! ## 4. The capstone applies to a real spilled (reloaded) body

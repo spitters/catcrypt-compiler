@@ -90,7 +90,7 @@ theorem envAgreesT_set_reserved {x : String} (k : Nat) (hx : exitReserved x = tr
   intro name w hn hw
   have h' := h name w hn hw
   rcases hA : A.lookup name with _ | t <;> rw [hA] at h'
-  · rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn hx)]
+  · rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hn hx)]
     exact h'
   · exact h'
 
@@ -113,14 +113,14 @@ theorem envAgreesT_extend {n : String} {v : Value} {k : Nat} (hn : exitReserved 
   intro name w hname hw
   by_cases he : name = n
   · subst he
-    simp only [_root_.Hax.Env.extend, beq_self_eq_true, if_true, Option.some.injEq] at hw
+    simp only [_root_.Hax.Env.extend, beq_self_eq_true, ite_true, Option.some.injEq] at hw
     subst hw
     rw [hs]
     exact ⟨hv, by simpa using hk⟩
-  · simp only [_root_.Hax.Env.extend, beq_iff_eq, he, if_false] at hw
+  · simp only [_root_.Hax.Env.extend, beq_iff_eq, he, ite_false] at hw
     have h' := h name w hname hw
     rcases hA : A.lookup name with _ | t <;> rw [hA] at h'
-    · rw [rsScalar_rsSetScalar, if_neg he]
+    · rw [rsScalar_rsSetScalar, ite_eq_right he]
       exact h'
     · exact h'
 
@@ -133,11 +133,11 @@ theorem envAgreesT_extend_tower {n : String} {v : Value} {t : TowerType} {val : 
   intro name w hname hw
   by_cases he : name = n
   · subst he
-    simp only [_root_.Hax.Env.extend, beq_self_eq_true, if_true, Option.some.injEq] at hw
+    simp only [_root_.Hax.Env.extend, beq_self_eq_true, ite_true, Option.some.injEq] at hw
     subst hw
     rw [ht]
     exact ⟨hcf, val, CatCrypt.Crypto.Jasmin.LowCT.rsSetTower_same rs name _, hbr⟩
-  · simp only [_root_.Hax.Env.extend, beq_iff_eq, he, if_false] at hw
+  · simp only [_root_.Hax.Env.extend, beq_iff_eq, he, ite_false] at hw
     have h' := h name w hname hw
     rcases hA : A.lookup name with _ | u <;> rw [hA] at h'
     · exact h'
@@ -221,7 +221,7 @@ theorem res_writeT (rs : RustState) (k : Nat) {env : Env} (h0 : rs.rsScalar exit
       envAgreesT br A env (rsSetScalar rs exitResName k) ∧
       (rsSetScalar rs exitResName k).rsScalar exitResName = k := by
   refine ⟨?_, envAgreesT_set_reserved k exitReserved_res hag, by simp⟩
-  rw [rsScalar_rsSetScalar, if_neg exitRetName_ne_res, h0]
+  rw [rsScalar_rsSetScalar, ite_eq_right exitRetName_ne_res, h0]
 
 end ExitAgreement
 
@@ -1009,7 +1009,7 @@ theorem denoteForLoopRev'_ge_run (i : String) (lo hi : Int) (body : ImpExpr) (en
 theorem denoteForLoopRev'_zero_run (i : String) (lo hi : Int) (body : ImpExpr) (env : Env)
     (h : lo < hi) :
     (_root_.Hax.denoteForLoopRev' bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
-  rw [_root_.Hax.denoteForLoopRev', if_neg (not_le.mpr h), if_pos rfl]; rfl
+  rw [_root_.Hax.denoteForLoopRev', ite_eq_right (not_le.mpr h), ite_eq_left rfl]; rfl
 
 theorem denoteForLoopRev'_succ_run (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr)
     (env : Env) (h : lo < hi) :
@@ -1020,8 +1020,8 @@ theorem denoteForLoopRev'_succ_run (n : Nat) (i : String) (lo hi : Int) (body : 
           (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
       | (.val _, e2) => (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
       | (o, e2) => (o, e2) := by
-  rw [_root_.Hax.denoteForLoopRev', if_neg (not_le.mpr h)]
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+  rw [_root_.Hax.denoteForLoopRev', ite_eq_right (not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure, modify,
     modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) body) (env.extend i (.int (hi - 1))) with ⟨o2, e2⟩
   rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
@@ -1220,7 +1220,7 @@ theorem ScalarValN.lt_of_toScalar {v : Value} {k : Nat} (h : ScalarValN v)
   rcases h.cases with ⟨w, n, rfl, hn⟩ | ⟨b, rfl⟩ | ⟨n, rfl, h0, hn⟩ | rfl
   · rw [valueToScalar_uint] at hk; cases hk; exact hn
   · cases b <;> simp [valueToScalar] at hk <;> omega
-  · simp only [valueToScalar, if_pos h0, Option.some.injEq] at hk; omega
+  · simp only [valueToScalar, ite_eq_left h0, Option.some.injEq] at hk; omega
   · simp [valueToScalar] at hk; omega
 
 /-- The lower bounds of `loBoundSE`: a literal, or a variable other than the counter that
@@ -1415,7 +1415,7 @@ theorem loBoundSE_frame {bi : Builtins} {A : ExitTowers} {i : String} {body lo :
         refine ⟨by rw [hR.1], ?_⟩
         have hn' : n ≠ y := by simpa using hn
         simp only [_root_.Hax.Env.extend]
-        rw [if_neg (by simpa using hn'.symm)]
+        rw [ite_eq_right (by simpa using hn'.symm)]
         exact hR.2)
       (fun _ _ => rfl) body hfr fuel _ _ ⟨rfl, rfl⟩ _ e2 hb (fun ⟨m, hm⟩ => by cases hm)
     obtain ⟨s₁, -, hs⟩ := H
@@ -1434,7 +1434,7 @@ theorem loBound_keep {bi : Builtins} {A : ExitTowers} {i : String} {body lo : Im
   obtain ⟨hxi, hfr⟩ := loBoundSE_frame (bi := bi) hlo
   rw [hfr fuel _ e2 w hb]
   simp only [_root_.Hax.Env.extend]
-  rw [if_neg (by simpa using hxi)]
+  rw [ite_eq_right (by simpa using hxi)]
   exact hK x rfl
 
 /-- A counted loop whose bounds evaluate, leaving the environment unchanged, to scalar
@@ -1496,7 +1496,7 @@ theorem loBound_read {br : ValueTowerBridge} {A : ExitTowers} {i : String}
       have he1 : e1 x = some vlo := (hK x rfl).trans (hvlo x rfl)
       have hd := (envAgreesT_scalar hag hc.1 (by simpa [exitSc] using hc.2) he1).2
       rw [hL] at hd
-      simp only [SExpr.evalState, rsScalar_rsSetScalar, if_neg hxi, if_neg hxr]
+      simp only [SExpr.evalState, rsScalar_rsSetScalar, ite_eq_right hxi, ite_eq_right hxr]
       exact (Option.some.inj hd).symm
     · cases hb
 
@@ -1544,7 +1544,7 @@ theorem haxToLowCTKT_ifThenElse_eq (tl : Bool) (fl : Option String) (v : String)
       match haxToLowCTKT A tl fl t, haxToLowCTKT A tl fl e with
       | some (tC, xt), some (eC, xe) => some (.RIfNz v tC eC, xt || xe)
       | _, _ => none := by
-  cases tl <;> cases fl <;> exact if_pos hv
+  cases tl <;> cases fl <;> exact ite_eq_left hv
 
 theorem haxToLowCTKT_typeAscription_eq (tl : Bool) (fl : Option String) (e : ImpExpr)
     (ty : String) : haxToLowCTKT A tl fl (.typeAscription e ty) = haxToLowCTKT A tl fl e := by
@@ -1556,7 +1556,7 @@ theorem haxToLowCTKT_whileFoldReturn_eq (fl : Option String) (c : String) (body 
       match haxToLowCTKT A false (some (exitRunName fl)) body with
       | some (bC, _) => some (exitLoop (exitRunName fl) c bC, true)
       | none => none := by
-  cases fl <;> exact if_pos hc
+  cases fl <;> exact ite_eq_left hc
 
 theorem haxToLowCTKT_forFoldReturn_eq (fl : Option String) (i : String) (lo hi body : ImpExpr)
     (hi' : (exitSc A i && exitScRt A lo hi) = true) :
@@ -1570,7 +1570,7 @@ theorem haxToLowCTKT_forFoldReturn_eq (fl : Option String) (i : String) (lo hi b
           (forBoundsV A i body lo hi).map fun p =>
             (exitForLoopV (exitRunName fl) i p.1 p.2 bC, true)
       | _, _, _ => none := by
-  cases fl <;> exact if_pos hi'
+  cases fl <;> exact ite_eq_left hi'
 
 theorem haxToLowCTKT_forFoldRevReturn_eq (fl : Option String) (i : String)
     (lo hi body : ImpExpr) (hi' : exitSc A i = true) :
@@ -1578,7 +1578,7 @@ theorem haxToLowCTKT_forFoldRevReturn_eq (fl : Option String) (i : String)
       match forBounds lo hi, haxToLowCTKT A false (some (exitRunName fl)) body with
       | some (l, h), some (bC, _) => some (exitForLoopRev (exitRunName fl) i l h bC, true)
       | _, _ => none := by
-  cases fl <;> exact if_pos hi'
+  cases fl <;> exact ite_eq_left hi'
 
 theorem haxToLowCTKT_forFold_some_eq (r i : String) (lo hi body : ImpExpr)
     (hi' : (exitSc A i && exitScRt A lo hi) = true) :
@@ -1592,7 +1592,7 @@ theorem haxToLowCTKT_forFold_some_eq (r i : String) (lo hi body : ImpExpr)
       | none, none, some (bC, _) =>
           (forBoundsV A i body lo hi).map fun p =>
             (breakLoop (exitForLoopV (exitRunName (some r)) i p.1 p.2 bC), false)
-      | _, _, _ => none := if_pos hi'
+      | _, _, _ => none := ite_eq_left hi'
 
 theorem haxToLowCTKT_forFoldRev_some_eq (r i : String) (lo hi body : ImpExpr)
     (hi' : exitSc A i = true) :
@@ -1600,19 +1600,19 @@ theorem haxToLowCTKT_forFoldRev_some_eq (r i : String) (lo hi body : ImpExpr)
       match forBounds lo hi, haxToLowCTKT A false (some (exitRunName (some r))) body with
       | some (l, h), some (bC, _) =>
           some (breakLoop (exitForLoopRev (exitRunName (some r)) i l h bC), false)
-      | _, _ => none := if_pos hi'
+      | _, _ => none := ite_eq_left hi'
 
 theorem haxToLowCTKT_whileFold_some_eq (r c : String) (body : ImpExpr)
     (hc : exitSc A c = true) :
     haxToLowCTKT A false (some r) (.whileFold (.var c) body) =
       match haxToLowCTKT A false (some (exitRunName (some r))) body with
       | some (bC, _) => some (breakLoop (exitLoop (exitRunName (some r)) c bC), false)
-      | none => none := if_pos hc
+      | none => none := ite_eq_left hc
 
 theorem haxToLowCTKT_cfBreak_eq (tl : Bool) (r : String) (p : ImpExpr)
     (hp : exitScE A p = true) :
     haxToLowCTKT A tl (some r) (.cfBreak p) = (exitStore p).map fun s => (s, true) := by
-  cases tl <;> exact if_pos hp
+  cases tl <;> exact ite_eq_left hp
 
 end Equations
 
@@ -1903,7 +1903,7 @@ theorem exec_letU64_set (n : String) (kk : Nat) (bC : LowCT) (rs rs' : RustState
 theorem ret_setScalar {rs : RustState} {n : String} {q : Nat} (hn : exitReserved n = false)
     (kk : Nat) (h : rs.rsScalar exitRetName = q) :
     (rsSetScalar rs n kk).rsScalar exitRetName = q := by
-  rw [rsScalar_rsSetScalar, if_neg (ne_of_reserved hn exitReserved_ret).symm, h]
+  rw [rsScalar_rsSetScalar, ite_eq_right (ne_of_reserved hn exitReserved_ret).symm, h]
 
 /-- The head of `let n = l`: on a scalar name, the scalar binding of `letHead`; on a name
     placed in a tower at `t`, the zero slot of type `t` with the literal's word in limb `0`,
@@ -1929,7 +1929,7 @@ theorem head_lit (hmar : ExitMarshal br leafSpec) (n : String) (l : ImpLit) (bod
         exact ⟨_, hk'.symm, rfl⟩
       | int z =>
         simp only [exitLitOk, Bool.and_eq_true, decide_eq_true_eq] at hl
-        simp only [letHead, ge_iff_le, hl.1, if_true, Option.some.injEq] at hk'
+        simp only [letHead, ge_iff_le, hl.1, ite_true, Option.some.injEq] at hk'
         exact ⟨_, hk'.symm, by simp [valueToScalar, Value.ofLit, hl.1]⟩
       | bool b =>
         simp only [letHead, Option.some.injEq] at hk'
@@ -1977,24 +1977,24 @@ theorem head_var (n s : String) (body : ImpExpr) :
       obtain ⟨hsv, hdv⟩ := envAgreesT_scalar hag hs hA hw
       by_cases hsn : n = s
       · subst hsn
-        simp only [if_true, Option.some.injEq] at hk
+        simp only [ite_true, Option.some.injEq] at hk
         subst hk
         rw [Env.extend_self env n w hw] at hrun
         exact ⟨env, rs, hrun, hag, hret, fun bC rs' h => h⟩
-      · simp only [hsn, if_false, Option.some.injEq] at hk
+      · simp only [hsn, ite_false, Option.some.injEq] at hk
         subst hk
         exact ⟨_, _, hrun, envAgreesT_extend hn hns hsv hdv hag, ret_setScalar hn _ hret,
           fun bC rs' h => rustExec_letBind_copy N leafSpec n s bC rs rs' hsn h⟩
     · rw [hA] at hns
-      simp only [letHeadT, hns, hA, if_true] at hk
+      simp only [letHeadT, hns, hA, ite_true] at hk
       obtain ⟨-, val, hval', hbr⟩ := envAgreesT_tower hag hs hA hw
       by_cases hsn : n = s
       · subst hsn
-        simp only [if_true, Option.some.injEq] at hk
+        simp only [ite_true, Option.some.injEq] at hk
         subst hk
         rw [Env.extend_self env n w hw] at hrun
         exact ⟨env, rs, hrun, hag, hret, fun bC rs' h => h⟩
-      · simp only [hsn, if_false, Option.some.injEq] at hk
+      · simp only [hsn, ite_false, Option.some.injEq] at hk
         subst hk
         refine ⟨_, rsSetTower rs n ⟨t, val⟩, hrun,
           envAgreesT_extend_tower hn hns hcf hbr hag, hret, fun bC rs' h => ?_⟩
@@ -2106,10 +2106,10 @@ theorem callHeadT_some {n f : String} {args : List ImpExpr} {k : LowCT → LowCT
           (A.lookup n = none → dr = .TU64))) := by
   unfold callHeadT at h
   by_cases hs : exitScalarRes f = true
-  · rw [if_pos hs] at h
+  · rw [ite_eq_left hs] at h
     split_ifs at h with hn
     exact ⟨_, _, h, Or.inl ⟨hs, hn.1, rfl⟩⟩
-  · rw [if_neg hs] at h
+  · rw [ite_eq_right hs] at h
     have hs' : exitScalarRes f = false := by simpa using hs
     rcases hc : exitCalleeTys A f with _ | ⟨ts, dr⟩ <;> rw [hc] at h
     · simp only at h
@@ -2137,7 +2137,7 @@ theorem callHeadT_admits {n f : String} {args : List ImpExpr} {k : LowCT → Low
     (h : callHeadT A n f args = some k) : exitAdmits f = true := by
   by_cases hs : exitScalarRes f = true
   · unfold callHeadT at h
-    rw [if_pos hs] at h
+    rw [ite_eq_left hs] at h
     split_ifs at h with hn
     exact hn.2
   · exact exitAdmits_of_scalarRes_false (by simpa using hs)
@@ -2708,9 +2708,9 @@ theorem optCall_sim {D DO : String → Option TowerType}
     exact RustExec.seq _ _ _ _ _ (RustExec.letZero _ _ _ _ _ (RustExec.letZero _ _ _ _ _
       (hex _ _ hcall))) hset
   · show (rsSetScalar rs2 exitOptTagS _).rsScalar exitRetName = _
-    rw [rsScalar_rsSetScalar, if_neg exitOptTagS_ne_ret.symm, hS2]
+    rw [rsScalar_rsSetScalar, ite_eq_right exitOptTagS_ne_ret.symm, hS2]
   · show (rsSetScalar rs2 exitOptTagS _).rsScalar exitOptTagS = _
-    rw [rsScalar_rsSetScalar, if_pos rfl]
+    rw [rsScalar_rsSetScalar, ite_eq_left rfl]
     exact htag
 
 theorem head_app (hL : ExitLeaves bi leafSpec br (exitCallTys A) (exitOptTys A) (exitCalleeTys A)) (n f : String)

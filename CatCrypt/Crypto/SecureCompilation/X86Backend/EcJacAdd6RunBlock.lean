@@ -108,11 +108,11 @@ theorem loadSlot6_get (r0 r1 r2 r3 r4 r5 base : String) (slot : Nat) (s : JState
   simp only [loadSlot6, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.load,
     JState.setReg, JState.get]
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
-    simp only [if_neg (Ne.symm h50), if_neg (Ne.symm h40), if_neg (Ne.symm h30),
-      if_neg (Ne.symm h20), if_neg (Ne.symm h10), if_neg (Ne.symm h51), if_neg (Ne.symm h41),
-      if_neg (Ne.symm h31), if_neg (Ne.symm h21), if_neg (Ne.symm h52), if_neg (Ne.symm h42),
-      if_neg (Ne.symm h32), if_neg (Ne.symm h53), if_neg (Ne.symm h43), if_neg (Ne.symm h54),
-      if_true]
+    simp only [ite_eq_right (Ne.symm h50), ite_eq_right (Ne.symm h40), ite_eq_right (Ne.symm h30),
+      ite_eq_right (Ne.symm h20), ite_eq_right (Ne.symm h10), ite_eq_right (Ne.symm h51), ite_eq_right (Ne.symm h41),
+      ite_eq_right (Ne.symm h31), ite_eq_right (Ne.symm h21), ite_eq_right (Ne.symm h52), ite_eq_right (Ne.symm h42),
+      ite_eq_right (Ne.symm h32), ite_eq_right (Ne.symm h53), ite_eq_right (Ne.symm h43), ite_eq_right (Ne.symm h54),
+      ite_true]
 
 /-- `loadSlot6` touches no flag: each step is a `loadMem`, i.e. a `setReg`, which
     preserves the flag map. -/
@@ -137,7 +137,7 @@ theorem loadSlot6_other (r0 r1 r2 r3 r4 r5 base : String) (slot : Nat) (s : JSta
     (h4 : r ≠ r4) (h5 : r ≠ r5) :
     (runBlock s (loadSlot6 r0 r1 r2 r3 r4 r5 base slot)).get r = s.get r := by
   simp only [loadSlot6, runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.setReg,
-    JState.get, if_neg h0, if_neg h1, if_neg h2, if_neg h3, if_neg h4, if_neg h5]
+    JState.get, ite_eq_right h0, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4, ite_eq_right h5]
 
 /-! ## 3. The six-limb store window -/
 

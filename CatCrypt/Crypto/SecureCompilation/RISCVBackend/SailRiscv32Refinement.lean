@@ -184,7 +184,7 @@ theorem addw_lo32 (s : RegFile) (rs1 rs2 rd : BitVec 5) (hrd : rd.toNat ≠ 0) :
       = opAddw ((rget s rs1).extractLsb 31 0) ((rget s rs2).extractLsb 31 0) := by
   by_cases h1 : rs1.toNat = 0 <;> by_cases h2 : rs2.toNat = 0 <;>
     simp only [runRd, execute_RTYPEW, rX_bits, wX_bits, rget, upd, opAddw, sign_extend,
-      Sail.BitVec.extractLsb, h1, h2, hrd, if_true, if_false, bind, StateT.bind, StateT.run,
+      Sail.BitVec.extractLsb, h1, h2, hrd, ite_true, ite_false, bind, StateT.bind, StateT.run,
       pure, StateT.pure, get, getThe, MonadStateOf.get, modify, modifyGet,
       MonadStateOf.modifyGet, StateT.get, StateT.modifyGet] <;>
     rw [lo32_signExtend]
@@ -194,7 +194,7 @@ theorem subw_lo32 (s : RegFile) (rs1 rs2 rd : BitVec 5) (hrd : rd.toNat ≠ 0) :
       = opSubw ((rget s rs1).extractLsb 31 0) ((rget s rs2).extractLsb 31 0) := by
   by_cases h1 : rs1.toNat = 0 <;> by_cases h2 : rs2.toNat = 0 <;>
     simp only [runRd, execute_RTYPEW, rX_bits, wX_bits, rget, upd, opSubw, sign_extend,
-      Sail.BitVec.extractLsb, h1, h2, hrd, if_true, if_false, bind, StateT.bind, StateT.run,
+      Sail.BitVec.extractLsb, h1, h2, hrd, ite_true, ite_false, bind, StateT.bind, StateT.run,
       pure, StateT.pure, get, getThe, MonadStateOf.get, modify, modifyGet,
       MonadStateOf.modifyGet, StateT.get, StateT.modifyGet] <;>
     rw [lo32_signExtend]
@@ -232,7 +232,7 @@ theorem slliw_lo32 (s : RegFile) (rs1 rd : BitVec 5) (m : Nat) (hm : m < 32) (hr
   by_cases h1 : rs1.toNat = 0 <;>
     simp only [runRd, execute_SHIFTIWOP, rX_bits, wX_bits, rget, upd, opSlliw, sign_extend,
       shift_bits_left, Sail.BitVec.extractLsb, BitVec.shiftLeft_eq', shamt5_toNat m hm,
-      h1, hrd, if_true, if_false, bind, StateT.bind, StateT.run, pure, StateT.pure,
+      h1, hrd, ite_true, ite_false, bind, StateT.bind, StateT.run, pure, StateT.pure,
       get, getThe, MonadStateOf.get, modify, modifyGet, MonadStateOf.modifyGet,
       StateT.get, StateT.modifyGet] <;>
     rw [lo32_signExtend]
@@ -243,7 +243,7 @@ theorem srliw_lo32 (s : RegFile) (rs1 rd : BitVec 5) (m : Nat) (hm : m < 32) (hr
   by_cases h1 : rs1.toNat = 0 <;>
     simp only [runRd, execute_SHIFTIWOP, rX_bits, wX_bits, rget, upd, opSrliw, sign_extend,
       shift_bits_right, Sail.BitVec.extractLsb, BitVec.ushiftRight_eq', shamt5_toNat m hm,
-      h1, hrd, if_true, if_false, bind, StateT.bind, StateT.run, pure, StateT.pure,
+      h1, hrd, ite_true, ite_false, bind, StateT.bind, StateT.run, pure, StateT.pure,
       get, getThe, MonadStateOf.get, modify, modifyGet, MonadStateOf.modifyGet,
       StateT.get, StateT.modifyGet] <;>
     rw [lo32_signExtend]
@@ -254,7 +254,7 @@ theorem roriw_lo32 (s : RegFile) (rs1 rd : BitVec 5) (m : Nat) (hm : m < 32) (hr
       = opRoriw ((rget s rs1).extractLsb 31 0) m := by
   by_cases h1 : rs1.toNat = 0 <;>
     simp only [runRd, execute_RORIW, rX_bits, wX_bits, rget, upd, sign_extend,
-      roriw_value _ m hm, Sail.BitVec.extractLsb, h1, hrd, if_true, if_false, bind, StateT.bind,
+      roriw_value _ m hm, Sail.BitVec.extractLsb, h1, hrd, ite_true, ite_false, bind, StateT.bind,
       StateT.run, pure, StateT.pure, get, getThe, MonadStateOf.get, modify, modifyGet,
       MonadStateOf.modifyGet, StateT.get, StateT.modifyGet] <;>
     rw [lo32_signExtend]

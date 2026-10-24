@@ -579,7 +579,7 @@ theorem known_bindConst {bi : Builtins} {fuel : Nat} {κ : String → Option Nat
   unfold bindConst at hy
   by_cases hyn : y = n
   · subst hyn
-    rw [if_pos rfl] at hy
+    rw [ite_eq_left rfl] at hy
     cases a
     case lit l =>
       cases l
@@ -594,7 +594,7 @@ theorem known_bindConst {bi : Builtins} {fuel : Nat} {κ : String → Option Nat
         · cases hy
       all_goals simp [constOf] at hy
     all_goals simp [constOf] at hy
-  · rw [if_neg hyn] at hy
+  · rw [ite_eq_right hyn] at hy
     split at hy
     · rename_i hpure
       have ex : x = env := env_of_pureForm hpure h
@@ -625,10 +625,10 @@ theorem desugarRem_leaf {bi : Builtins} {fuel : Nat} {κ : String → Option Nat
     (ht : denote' bi fuel (if pureForm e then remExpr κ e else e) env = (.val w, e₂)) :
     v = w ∧ e₁ = e₂ := by
   by_cases hp : pureForm e = true
-  · rw [if_pos hp] at ht
+  · rw [ite_eq_left hp] at ht
     exact ⟨remExpr_denote hsel hw e _ _ _ _ _ hp hk hs ht,
       (env_of_pureForm hp hs).trans (env_of_pureForm (remExpr_pureForm κ e hp) ht).symm⟩
-  · rw [if_neg hp, hs] at ht
+  · rw [ite_eq_right hp, hs] at ht
     cases ht
     exact ⟨rfl, rfl⟩
 
@@ -710,7 +710,7 @@ theorem remExpr_rem_divFree {κ : String → Option Nat} {x m : ImpExpr} {p : Na
     (hm : modulusOf κ m = some p) (hx : divFree (remExpr κ x) = true) :
     divFree (remExpr κ (.app "Rem" [x, m])) = true := by
   rw [remExpr_app]
-  simp only [remSite, if_true, hm, remArgs]
+  simp only [remSite, ite_true, hm, remArgs]
   exact remForm_divFree hx
 
 end CatCrypt.Crypto.Hax.ImpDesugarRem

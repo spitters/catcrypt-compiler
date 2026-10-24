@@ -63,7 +63,7 @@ theorem nttSpec_eq_nttHalf (a : Fin 256 → ZMod 3329) (j : Fin 128) (r : ℕ) (
   rw [nttSpec, h2, hdiv, hmod, show (2 : ℕ) ^ 7 = 128 from by norm_num, nttHalf_apply,
     Finset.sum_range]
   refine Finset.sum_congr rfl fun s _ => ?_
-  rw [lanes, dif_pos (by omega)]
+  rw [lanes, dite_eq_left (by omega)]
   congr 1
   · exact congrArg a (Fin.ext (by simp only; omega))
   · rw [mul_comm (s.val)]; rfl
@@ -109,12 +109,12 @@ theorem inttSpec_mlkem_nttKem (a : Fin 256 → ZMod 3329) :
   have hfwd : ∀ j, j < 2 ^ 8 →
       lanes (coeffsOfPairs (nttKem a)) j = nttSpec (17 : ZMod 3329) 7 8 (lanes a) j := by
     intro j hj
-    rw [lanes, dif_pos (show j < 256 from hj)]
+    rw [lanes, dite_eq_left (show j < 256 from hj)]
     exact (congrFun (nttSpec_mlkem_eq_nttKem a) ⟨j, hj⟩).symm
   rw [inttSpec, invRun_congr _ 7 8 7 (by norm_num) _ _ hfwd i i.isLt, ← inttSpec,
     inttSpec_nttSpec (17 : ZMod 3329) 7 8 (mlkemNtt.psi_pow mlkemNtt_ok) (by norm_num)
       (by norm_num) (3303 : ZMod 3329) (ScaleOk.cast mlkemNtt 3303 mlkem_scaleOk) _ i i.isLt,
-    lanes, dif_pos i.isLt]
+    lanes, dite_eq_left i.isLt]
 
 /-- **The inverse is a right inverse of the FIPS 203 transform.** `nttKem` of the
 coefficients `inttSpec` produces from the lanes of `t` is `t`. -/
@@ -129,11 +129,11 @@ theorem nttKem_inttSpec_mlkem (t : Tq_kem) :
     have hcongr : ∀ j, j < 2 ^ 8 → lanes u j
         = inttSpec (17 : ZMod 3329) 7 8 (3303 : ZMod 3329) (lanes (coeffsOfPairs t)) j := by
       intro j hj
-      rw [lanes, dif_pos (show j < 256 from hj)]
+      rw [lanes, dite_eq_left (show j < 256 from hj)]
     rw [nttSpec_congr _ 7 8 (by norm_num) _ _ hcongr,
       nttSpec_inttSpec (17 : ZMod 3329) 7 8 (mlkemNtt.psi_pow mlkemNtt_ok) (by norm_num)
         (by norm_num) (3303 : ZMod 3329) (ScaleOk.cast mlkemNtt 3303 mlkem_scaleOk) _ i i.isLt,
-      lanes, dif_pos i.isLt]
+      lanes, dite_eq_left i.isLt]
   have h' := congrArg pairsOfCoeffs h
   rwa [pairs_roundtrip, pairs_roundtrip] at h'
 

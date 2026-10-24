@@ -59,8 +59,8 @@ theorem rustValByte_towerTupleLoad_inside {dstT : TowerType}
     (hsz : k < src.1.tupleComponentByteSize idx) :
     rustValByte (towerTupleLoad (dstT := dstT) src idx) k =
       rustValByte src.2 (src.1.tupleComponentByteOffset idx + k) := by
-  simp only [rustValByte, towerTupleLoad, dif_pos hk]
-  rw [if_pos hsz]
+  simp only [rustValByte, towerTupleLoad, dite_eq_left hk]
+  rw [ite_eq_left hsz]
 
 /-- Past the component's width, the loaded byte is zero. -/
 theorem rustValByte_towerTupleLoad_outside {dstT : TowerType}

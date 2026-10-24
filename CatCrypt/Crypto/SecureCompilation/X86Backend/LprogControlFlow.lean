@@ -268,9 +268,9 @@ theorem looped_eq_unrolled_denote {w : Nat} (P : JState w → Prop) (l : XLoop w
     rw [runBlock_append]
     by_cases hk : k = 0
     · subst hk
-      rw [if_pos (by rw [hzf, hc']; rfl)]
+      rw [ite_eq_left (by rw [hzf, hc']; rfl)]
       rfl
-    · rw [if_neg (by
+    · rw [ite_eq_right (by
         rw [hzf, hc']; simp only [decide_eq_true_eq]; intro h
         have := congrArg BitVec.toNat h
         rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)] at this
@@ -1327,8 +1327,8 @@ theorem runWhile_eq_runBoundedLoop_trips {w : Nat} (fuel : Nat)
   | zero => rfl
   | succ k ih =>
       by_cases h : guard s
-      · simp only [runWhile, whileTrips, if_pos h, ih, runBoundedLoop_succ]
-      · simp only [runWhile, whileTrips, if_neg h, runBoundedLoop_zero]
+      · simp only [runWhile, whileTrips, ite_eq_left h, ih, runBoundedLoop_succ]
+      · simp only [runWhile, whileTrips, ite_eq_right h, runBoundedLoop_zero]
 
 /-- **`whileLcmd` lowering denotation = `runWhile`.** Lowering the run-time
     determined number of body iterations (`whileTrips fuel guard body s`, the trip
@@ -1371,13 +1371,13 @@ theorem runWhile_succ_of_halted {w : Nat} (fuel : Nat) (guard : JState w → Boo
   | succ k ih =>
       by_cases hg : guard s
       · have h' : guard (runWhile k guard body (runBlock s body)) = false := by
-          rwa [runWhile_succ, if_pos hg] at h
+          rwa [runWhile_succ, ite_eq_left hg] at h
         calc runWhile (k + 1 + 1) guard body s
             = runWhile (k + 1) guard body (runBlock s body) := by
-              rw [runWhile_succ, if_pos hg]
+              rw [runWhile_succ, ite_eq_left hg]
           _ = runWhile k guard body (runBlock s body) := ih (runBlock s body) h'
-          _ = runWhile (k + 1) guard body s := by rw [runWhile_succ, if_pos hg]
-      · rw [runWhile_succ, if_neg hg, runWhile_succ, if_neg hg]
+          _ = runWhile (k + 1) guard body s := by rw [runWhile_succ, ite_eq_left hg]
+      · rw [runWhile_succ, ite_eq_right hg, runWhile_succ, ite_eq_right hg]
 
 /-- The lowering-denote bridge is usable at a concrete fuel: lowering the
     runtime-determined iteration count of any data-dependent `while` (here at fuel

@@ -434,7 +434,7 @@ theorem completeness_bundle :
           (le_max_left (max fb fa) fl)) hfb) ?_
       refine bind_ok_of hcond ?_
       refine bind_ok_of (a := true) rfl ?_
-      simp only [if_true]
+      simp only [ite_true]
       refine bind_ok_of
         (execCmd_mono aS opS gd prog (le_trans (le_max_right fb fa)
           (le_max_left (max fb fa) fl)) hfa) ?_

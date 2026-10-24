@@ -216,18 +216,18 @@ theorem ctlStep_relocate (cond : LstateMF → LOperand → Bool) (fn : String)
   | Lcond c l =>
       simp only [ctlStep, hcond] at h ⊢
       by_cases hc : cond s c = true
-      · rw [if_pos hc] at h ⊢
+      · rw [ite_eq_left hc] at h ⊢
         exact evalJumpMem_relocate fn post hfresh l h
-      · rw [if_neg hc] at h ⊢
+      · rw [ite_eq_right hc] at h ⊢
         cases h
         rfl
   | Lgoto p =>
       obtain ⟨f, l⟩ := p
       simp only [ctlStep, hfn] at h ⊢
       by_cases hf : f = fn
-      · rw [if_pos hf] at h ⊢
+      · rw [ite_eq_left hf] at h ⊢
         exact evalJumpMem_relocate fn post hfresh l h
-      · rw [if_neg hf] at h
+      · rw [ite_eq_right hf] at h
         cases h
   | _ => simp only [ctlStep, reduceCtorEq] at h
 
@@ -282,7 +282,7 @@ theorem lsemStepPMemF_relocate (isa isa' : Isa) (fn : String) {pre B : List Lins
           have hf' : findInstrMem (singletonProgM fn (pre ++ B ++ post))
               (shiftPc pre.length s).prog = some i := by
             unfold findInstrMem
-            rw [if_pos (show (shiftPc pre.length s).prog.lfn =
+            rw [ite_eq_left (show (shiftPc pre.length s).prog.lfn =
               (singletonProgM fn (pre ++ B ++ post)).lfn from hl)]
             exact getElem?_relocate post hfB
           rw [hf']

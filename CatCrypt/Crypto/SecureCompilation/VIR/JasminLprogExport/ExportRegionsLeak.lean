@@ -500,7 +500,7 @@ theorem idx0Lopn_store (z dst src val : String) (sc w n : Nat) :
   · simp [instrLeakB, idx0Leak, opLeakF, idxVal]
     exact Or.inr (by rw [hr]; rfl)
   · rw [evalInstrPMemF_lopn P _ s ⟨_, _, _, rfl⟩
-      (by unfold cmpArgs?; exact if_neg (by decide)) rfl] at h
+      (by unfold cmpArgs?; exact ite_eq_right (by decide)) rfl] at h
     obtain ⟨b, hb, rfl⟩ := Option.map_eq_some_iff.mp h
     unfold stepMemF at hb
     cases h1 : lsemStepMem (.Lopn [.reg dst] "STOREIDX" [.arrIdx src z sc, .reg val],
@@ -510,7 +510,7 @@ theorem idx0Lopn_store (z dst src val : String) (sc w n : Nat) :
         obtain rfl := Option.some.inj hb
         show (withALUFlags _ _ b1).reg.lvm z = _
         rw [withALUFlags_reg]
-        simp only [lsemStepMem, storeStruct?, if_true] at h1
+        simp only [lsemStepMem, storeStruct?, ite_true] at h1
         split at h1
         · cases h1
           rfl
@@ -654,7 +654,7 @@ theorem stepsL_of_idx0 {P : LprogM} {z : String} {zseg qseg pre post : List Lins
         obtain rfl := Option.some.inj hf'
         rw [hw] at ht'
         obtain rfl := Option.some.inj ht'
-        rw [hlvm, if_pos rfl]
+        rw [hlvm, ite_eq_left rfl]
       have hrec := stepsL_of_idx0_end Q z qseg hq zseg (pre ++ [movImmI z 0]) w u k
         (by rw [hQb]; simp only [List.append_assoc, List.cons_append, List.nil_append]) hz
         ⟨hwfn.trans hatQ.1, by
@@ -1637,7 +1637,7 @@ theorem joinJump_stepsL {P : LprogM} {r : String} {l : LLabel} {q : Nat}
     (fetch_of_body (xs := pre ++ [movImmI r 1])
       (by rw [hbody]; simp only [List.append_assoc, List.cons_append, List.nil_append]; rfl)
       (by rw [List.length_append]; rfl))
-    (by rw [hm1, if_pos rfl])
+    (by rw [hm1, ite_eq_left rfl])
   have hfJ : P.body[pre.length + 1 + 1]? = some (condI (.reg "NZ") l) :=
     fetch_of_body (xs := pre ++ [movImmI r 1,
         guardI (.Lopn [.reg r] (withWidthTag 64 "CMP") [.reg r, .imm 0])])
@@ -1658,7 +1658,7 @@ theorem joinJump_stepsL {P : LprogM} {r : String} {l : LLabel} {q : Nat}
   have hL3 := stepsL_cc (cc := "NZ") (pol := false) rfl hat2 hfJ hs3
   refine ⟨_, (hL12.trans hL3).cast (by rw [hz2]; rfl), hat3, ha2.trans ha1, fun x hx => ?_⟩
   show t2.prog.base.reg.lvm x = s.prog.base.reg.lvm x
-  rw [hm2, hm1, if_neg hx]
+  rw [hm2, hm1, ite_eq_right hx]
 
 /-- **The assignment of the results of a branch, with its events.** The run of
     `ifResMoves_steps` is a traced run with the events `idx0Leak` of the parallel
@@ -1696,7 +1696,7 @@ theorem ifResMoves_stepsL {P : LprogM} {nArgs d D : Nat} {rs : Ctxt jasminDialec
   rw [← htp]
   by_cases hemp : tp.isEmpty = true
   · have hM' : M = Q := by
-      rw [hM, hQ, ifResMoves, ← htp, if_pos hemp, List.nil_append]
+      rw [hM, hQ, ifResMoves, ← htp, ite_eq_left hemp, List.nil_append]
     rw [List.isEmpty_iff.mp hemp]
     subst hM'
     exact ⟨t, (stepsL_of_quiet hbody hq hat hs hat'.2).cast (by
@@ -1707,7 +1707,7 @@ theorem ifResMoves_stepsL {P : LprogM} {nArgs d D : Nat} {rs : Ctxt jasminDialec
     have hM' : M = movImmI (regName (D + rs.length + 1)) 0
         :: (arrParMoves (regName (D + rs.length + 1)) (regName (D + rs.length))
           (D + rs.length) tp ++ Q) := by
-      rw [hM, hQ, ifResMoves, ← htp, if_neg hemp, List.cons_append]
+      rw [hM, hQ, ifResMoves, ← htp, ite_eq_right hemp, List.cons_append]
     subst hM'
     have hL := stepsL_of_idx0 hbody (idx0Lopn_arrParMoves hzt _ _) hq hat hs (by
       rw [hat'.2]
@@ -1887,7 +1887,7 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
           mJ.prog.base.getArr (regName (d + (rs.length - 1 - varIndex u))) w m
             = some (u.lookup rv)) := by
     by_cases hbt : HasBoolBit.toBool (d := jasminDialect) (cond.lookup V) = true
-    · rw [if_pos hbt] at hbr
+    · rw [ite_eq_left hbt] at hbr
       obtain ⟨hs1, hat1⟩ := steps_cc_fall (pol := true) rfl hat0 hfetchZ
         (by rw [hz0', hbt]; decide)
       have hL1 := stepsL_cc (pol := true) rfl hat0 hfetchZ hs1
@@ -1942,7 +1942,7 @@ theorem exportRLeakSim_if (Pj : JLeakParams) (nArgs : Nat) (fn : String)
           have := JasminLsemSimulation.varIndex_lt u
           omega)).trans (hblk4 u),
         fun {w m} u => (getArr_of_larr_eq w m (by rw [ha5])).trans (hblkA4 u)⟩
-    · rw [if_neg hbt] at hbr
+    · rw [ite_eq_right hbt] at hbr
       rw [Bool.not_eq_true] at hbt
       obtain ⟨hs1, hat1⟩ := steps_cc_taken (pol := true) rfl hat0 hfetchZ
         (by rw [hz0', hbt]; rfl) hl1
@@ -2086,16 +2086,16 @@ theorem whileIterLeak_succ_eq_some {cs : List JasminTy}
   · rintro ⟨r, ℓb, hstep, h⟩
     refine ⟨r, ℓb, hstep, ?_⟩
     by_cases hb : HasBoolBit.toBool (d := jasminDialect) r.head = true
-    · rw [if_pos hb] at h
+    · rw [ite_eq_left hb] at h
       obtain ⟨⟨a', ℓ2⟩, h2, heq⟩ := Option.map_eq_some_iff.mp h
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj heq
       exact Or.inl ⟨hb, ℓ2, h2, rfl⟩
-    · rw [if_neg hb] at h
+    · rw [ite_eq_right hb] at h
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
       exact Or.inr ⟨Bool.not_eq_true _ ▸ hb, rfl, rfl⟩
   · rintro ⟨r, ℓb, hstep, ⟨hb, ℓ2, h2, rfl⟩ | ⟨hb, rfl, rfl⟩⟩
-    · exact ⟨r, ℓb, hstep, by rw [if_pos hb, h2]; rfl⟩
-    · exact ⟨r, ℓb, hstep, by rw [if_neg (by rw [hb]; decide)]⟩
+    · exact ⟨r, ℓb, hstep, by rw [ite_eq_left hb, h2]; rfl⟩
+    · exact ⟨r, ℓb, hstep, by rw [ite_eq_right (by rw [hb]; decide)]⟩
 
 section WhileLoopL
 
@@ -2680,11 +2680,11 @@ theorem machRun_of_leakRun (Pj : JLeakParams) (nArgs : Nat) (fn : String) (fuel 
             then machRun Pj nArgs fn fuel thn d (n + 3) V₂
             else machRun Pj nArgs fn fuel els d t.next V₂) = some (a₂, μ) := by
         by_cases hbt : HasBoolBit.toBool (d := jasminDialect) (cond.lookup V₁) = true
-        · rw [if_pos hbt] at hi₁ hi₂
-          rw [if_pos hbt, if_pos hbt]
+        · rw [ite_eq_left hbt] at hi₁ hi₂
+          rw [ite_eq_left hbt, ite_eq_left hbt]
           exact iht hp.1 hc.1.1 d (n + 3) _ _ _ _ _ _ _ _ hi₁ hi₂ hs
-        · rw [if_neg hbt] at hi₁ hi₂
-          rw [if_neg hbt, if_neg hbt]
+        · rw [ite_eq_right hbt] at hi₁ hi₂
+          rw [ite_eq_right hbt, ite_eq_right hbt]
           exact ihe hp.2.1 hc.1.2 d t.next _ _ _ _ _ _ _ _ hi₁ hi₂ hs
       obtain ⟨hu, hss, ν, hn₁, hn₂⟩ :=
         ihk hp.2.2 hc.2 (d + rs.length) e.next _ _ _ _ _ _ _ _ hk₁ hk₂ hs'

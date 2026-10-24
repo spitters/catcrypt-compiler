@@ -392,7 +392,7 @@ theorem getLsbD_readBytes (n : Nat) (mem : AMem) (a : BitVec 64) (i : Nat) :
 /-- A byte outside the stored range is unchanged. -/
 theorem writeBytes_of_not_lt (n : Nat) (mem : AMem) (a : BitVec 64) (x : BitVec 512)
     (p : BitVec 64) (h : ¬ (p - a).toNat < n) : writeBytes n mem a x p = mem p := by
-  simp only [writeBytes, if_neg h]
+  simp only [writeBytes, ite_eq_right h]
 
 theorem toNat_add_ofNat_sub (a : BitVec 64) (k : Nat) (hk : k < 64) :
     (a + BitVec.ofNat 64 k - a).toNat = k := by
@@ -415,7 +415,7 @@ theorem readBytes_writeBytes_same (m : Mode) (mem : AMem) (a : BitVec 64) (x : B
     have hdm : 8 * (i / 8) + i % 8 = i := Nat.div_add_mod i 8
     have hm : i % 8 < 8 := Nat.mod_lt _ (by decide)
     simp only [writeBytes, hk, hi, h, h8, decide_true, Bool.true_and]
-    rw [if_pos trivial, BitVec.getLsbD_extractLsb', hdm]
+    rw [ite_eq_left trivial, BitVec.getLsbD_extractLsb', hdm]
     simp [hm]
   · have h8 : ¬ i / 8 < m.stride := fun h' => h (hs.mp h')
     simp [h, h8]
@@ -804,9 +804,9 @@ theorem vexec_textStep {input : Nat → BitVec 512}
           wr m (if (k : Int) = (off : Int) then σ.zmm x else σ.stk (k : Int))
       by_cases e : k = off
       · subst e
-        rw [readBytes_writeBytes_same, if_pos rfl, hz]
+        rw [readBytes_writeBytes_same, ite_eq_left rfl, hz]
       · rw [readBytes_writeBytes_of_sep (stride_le m) _ _
-          (hsep.stk_stk off k hc hk' (Ne.symm e)), if_neg (by exact_mod_cast e)]
+          (hsep.stk_stk off k hc hk' (Ne.symm e)), ite_eq_right (by exact_mod_cast e)]
         exact hstk k hk'
   | op L o s2 s1 d =>
     cases s2 with
@@ -1343,9 +1343,9 @@ theorem exec_textStep {input : Nat → BitVec 512}
       rw [hsl off (by omega)]
       by_cases e : p = dp - off
       · subst e
-        rw [readBytes_writeBytes_same, if_pos (by omega), hz]
+        rw [readBytes_writeBytes_same, ite_eq_left (by omega), hz]
       · rw [readBytes_writeBytes_of_sep (stride_le m) _ _
-          (sepBytes_slot m _ hsep.frm_le hp hp' (Ne.symm e)), if_neg (by omega)]
+          (sepBytes_slot m _ hsep.frm_le hp hp' (Ne.symm e)), ite_eq_right (by omega)]
         exact hfrm p hp'
     · intro y hy1 hy2
       show writeBytes _ s.1.mem ((VAddr.mk "%rsp" none (off : Int)).eval s.1.regs) _ y = _
@@ -1465,17 +1465,17 @@ theorem exec_textStep {input : Nat → BitVec 512}
     subst hstep
     refine ⟨hz, hk, ?_, ?_, ?_, hdvd, hle, hin, hout, hfrm, hmem⟩
     · show imm = ((evalInstrA s.1 (.mov "%rax" (.imm imm.toNat))).regs "%rax").setWidth 32
-      rw [evalInstrA_mov_imm_regs, if_pos rfl]
+      rw [evalInstrA_mov_imm_regs, ite_eq_left rfl]
       apply BitVec.eq_of_toNat_eq
       have := imm.isLt
       simp only [BitVec.toNat_setWidth, BitVec.toNat_ofNat]
       omega
     · show (evalInstrA s.1 (.mov "%rax" (.imm imm.toNat))).regs "%rsp" = _
-      rw [evalInstrA_mov_imm_regs, if_neg (by decide)]
+      rw [evalInstrA_mov_imm_regs, ite_eq_right (by decide)]
       exact hsp
     · intro x h1 h2
       show (evalInstrA s.1 (.mov "%rax" (.imm imm.toNat))).regs x = _
-      rw [evalInstrA_mov_imm_regs, if_neg h2]
+      rw [evalInstrA_mov_imm_regs, ite_eq_right h2]
       exact hkeep x h1 h2
   | spSub n =>
     obtain ⟨hd, hb⟩ := hc
@@ -1485,14 +1485,14 @@ theorem exec_textStep {input : Nat → BitVec 512}
     subst hstep
     refine ⟨hz, hk, ?_, ?_, ?_, Nat.dvd_add hdvd hd, hb, hin, hout, ?_, hmem⟩
     · show σ.eax = ((evalInstrA s.1 (.sub "%rsp" (.imm n))).regs "%rax").setWidth 32
-      rw [evalInstrA_sub_imm_regs, if_neg (by decide)]
+      rw [evalInstrA_sub_imm_regs, ite_eq_right (by decide)]
       exact hax
     · show (evalInstrA s.1 (.sub "%rsp" (.imm n))).regs "%rsp" =
         s₀.regs "%rsp" - BitVec.ofNat 64 (dp + n)
-      rw [evalInstrA_sub_imm_regs, if_pos rfl, hsp, sub_ofNat_sub_ofNat]
+      rw [evalInstrA_sub_imm_regs, ite_eq_left rfl, hsp, sub_ofNat_sub_ofNat]
     · intro x h1 h2
       show (evalInstrA s.1 (.sub "%rsp" (.imm n))).regs x = _
-      rw [evalInstrA_sub_imm_regs, if_neg h1]
+      rw [evalInstrA_sub_imm_regs, ite_eq_right h1]
       exact hkeep x h1 h2
     · intro p hp
       show readBytes m.stride s.1.mem _ =
@@ -1509,14 +1509,14 @@ theorem exec_textStep {input : Nat → BitVec 512}
     refine ⟨hz, hk, ?_, ?_, ?_, Nat.dvd_sub hdvd hd, (by show dp - n ≤ F; omega), hin, hout,
       ?_, hmem⟩
     · show σ.eax = ((evalInstrA s.1 (.add "%rsp" (.imm n))).regs "%rax").setWidth 32
-      rw [evalInstrA_add_imm_regs, if_neg (by decide)]
+      rw [evalInstrA_add_imm_regs, ite_eq_right (by decide)]
       exact hax
     · show (evalInstrA s.1 (.add "%rsp" (.imm n))).regs "%rsp" =
         s₀.regs "%rsp" - BitVec.ofNat 64 (dp - n)
-      rw [evalInstrA_add_imm_regs, if_pos rfl, hsp, sub_ofNat_add_ofNat _ hb]
+      rw [evalInstrA_add_imm_regs, ite_eq_left rfl, hsp, sub_ofNat_add_ofNat _ hb]
     · intro x h1 h2
       show (evalInstrA s.1 (.add "%rsp" (.imm n))).regs x = _
-      rw [evalInstrA_add_imm_regs, if_neg h1]
+      rw [evalInstrA_add_imm_regs, ite_eq_right h1]
       exact hkeep x h1 h2
     · intro p hp
       show readBytes m.stride s.1.mem _ =
@@ -1643,16 +1643,16 @@ theorem opLeak_opOfText_congr {ro : Std.HashMap String (Array (BitVec 64))}
       · show DecodedCT.opLeak r s₁.1 _ = DecodedCT.opLeak r s₂.1 _
         simp [DecodedCT.opLeak, MachineConstantTime.instrLeak, JInstr.dataArgs]
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_mov_imm_regs, evalInstrA_mov_imm_regs, if_neg (by decide),
-          if_neg (by decide)]
+        rw [evalInstrA_mov_imm_regs, evalInstrA_mov_imm_regs, ite_eq_right (by decide),
+          ite_eq_right (by decide)]
         exact hsi
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_mov_imm_regs, evalInstrA_mov_imm_regs, if_neg (by decide),
-          if_neg (by decide)]
+        rw [evalInstrA_mov_imm_regs, evalInstrA_mov_imm_regs, ite_eq_right (by decide),
+          ite_eq_right (by decide)]
         exact hdi
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_mov_imm_regs, evalInstrA_mov_imm_regs, if_neg (by decide),
-          if_neg (by decide)]
+        rw [evalInstrA_mov_imm_regs, evalInstrA_mov_imm_regs, ite_eq_right (by decide),
+          ite_eq_right (by decide)]
         exact hsp
     | spSub n =>
       simp only [opOfText, Option.some.injEq, Sum.inl.injEq] at h
@@ -1662,15 +1662,15 @@ theorem opLeak_opOfText_congr {ro : Std.HashMap String (Array (BitVec 64))}
         simp [DecodedCT.opLeak, MachineConstantTime.instrLeak, JInstr.dataArgs, AState.view,
           hsp]
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_sub_imm_regs, evalInstrA_sub_imm_regs, if_neg (by decide),
-          if_neg (by decide)]
+        rw [evalInstrA_sub_imm_regs, evalInstrA_sub_imm_regs, ite_eq_right (by decide),
+          ite_eq_right (by decide)]
         exact hsi
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_sub_imm_regs, evalInstrA_sub_imm_regs, if_neg (by decide),
-          if_neg (by decide)]
+        rw [evalInstrA_sub_imm_regs, evalInstrA_sub_imm_regs, ite_eq_right (by decide),
+          ite_eq_right (by decide)]
         exact hdi
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_sub_imm_regs, evalInstrA_sub_imm_regs, if_pos rfl, if_pos rfl, hsp]
+        rw [evalInstrA_sub_imm_regs, evalInstrA_sub_imm_regs, ite_eq_left rfl, ite_eq_left rfl, hsp]
     | spAdd n =>
       simp only [opOfText, Option.some.injEq, Sum.inl.injEq] at h
       subst h
@@ -1679,15 +1679,15 @@ theorem opLeak_opOfText_congr {ro : Std.HashMap String (Array (BitVec 64))}
         simp [DecodedCT.opLeak, MachineConstantTime.instrLeak, JInstr.dataArgs, AState.view,
           hsp]
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_add_imm_regs, evalInstrA_add_imm_regs, if_neg (by decide),
-          if_neg (by decide)]
+        rw [evalInstrA_add_imm_regs, evalInstrA_add_imm_regs, ite_eq_right (by decide),
+          ite_eq_right (by decide)]
         exact hsi
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_add_imm_regs, evalInstrA_add_imm_regs, if_neg (by decide),
-          if_neg (by decide)]
+        rw [evalInstrA_add_imm_regs, evalInstrA_add_imm_regs, ite_eq_right (by decide),
+          ite_eq_right (by decide)]
         exact hdi
       · show (evalInstrA s₁.1 _).regs _ = (evalInstrA s₂.1 _).regs _
-        rw [evalInstrA_add_imm_regs, evalInstrA_add_imm_regs, if_pos rfl, if_pos rfl, hsp]
+        rw [evalInstrA_add_imm_regs, evalInstrA_add_imm_regs, ite_eq_left rfl, ite_eq_left rfl, hsp]
     | op L o s2 s1 d => cases s2 <;> simp [opOfText] at h
     | _ => simp [opOfText] at h
 

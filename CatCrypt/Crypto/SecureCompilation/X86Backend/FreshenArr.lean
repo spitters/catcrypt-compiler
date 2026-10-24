@@ -189,7 +189,7 @@ theorem steps_resCopy_aux {P : JasminLsemMemLoop.LprogM} {src D : String} {m : N
       have hb1' : u1.prog.base.getArr (copyName D k) 64 m = some b := by
         unfold LstateM.getArr; rw [hl1]; exact hb
       have hzl1 : u1.prog.base.reg.lvm copyIdx = ⟨64, BitVec.ofNat 64 k⟩ := by
-        rw [hr1, if_pos rfl]
+        rw [hr1, ite_eq_left rfl]
       have hz1 : u1.prog.base.reg.getW copyIdx 64 = some (BitVec.ofNat 64 k) :=
         getW_of_lvm _ _ _ hzl1
       -- The load of the word.
@@ -214,12 +214,12 @@ theorem steps_resCopy_aux {P : JasminLsemMemLoop.LprogM} {src D : String} {m : N
       have hb2' : u2.prog.base.getArr (copyName D k) 64 m = some b := by
         unfold LstateM.getArr; rw [hl2]; exact hb1'
       have hzl2 : u2.prog.base.reg.lvm copyIdx = ⟨64, BitVec.ofNat 64 k⟩ := by
-        rw [hr2, if_neg (by decide), hzl1]
+        rw [hr2, ite_eq_right (by decide), hzl1]
       have hz2 : u2.prog.base.reg.getW copyIdx 64 = some (BitVec.ofNat 64 k) :=
         getW_of_lvm _ _ _ hzl2
       have hv2 : u2.prog.base.reg.getW copyTmp 64
           = some (stackGet arr (BitVec.ofNat 64 k).toNat) := by
-        apply getW_of_lvm; rw [hr2, if_pos rfl]
+        apply getW_of_lvm; rw [hr2, ite_eq_left rfl]
       -- The store of the word.
       have h3 := JasminLsemMemSourceTieUncond.lsemStepMem_storeIdx (copyName D (k + 1))
         (copyName D k) copyIdx copyTmp 8 b _ _ u2.prog.base hb2' hz2 hv2
@@ -229,7 +229,7 @@ theorem steps_resCopy_aux {P : JasminLsemMemLoop.LprogM} {src D : String} {m : N
       rw [hS] at h3
       obtain ⟨hs3, hat3⟩ := x86_steps_mem hat2 (fetch_of_body hb3 (by simp))
         (by rw [← hS]; exact ⟨_, _, _, rfl⟩)
-        (by rw [← hS]; unfold JasminLsemMemFlagGuard.cmpArgs?; exact if_neg (by decide))
+        (by rw [← hS]; unfold JasminLsemMemFlagGuard.cmpArgs?; exact ite_eq_right (by decide))
         (by rw [← hS]; rfl) h3
       have hsL3 := stepsL_one hat2 (fetch_of_body hb3 (by simp)) hs3
       rw [instrLeakF_of_lopn (by rw [← hS]; exact ⟨_, _, _, rfl⟩), hlk3] at hsL3
@@ -257,7 +257,7 @@ theorem steps_resCopy_aux {P : JasminLsemMemLoop.LprogM} {src D : String} {m : N
       · rw [← hnb, stackSet_ofNat_apply b hk' hm, stackGet_ofNat_lt arr hk' hm]
         by_cases h : i = k
         · subst h; simp
-        · simp only [h, if_false]; exact hbv i hi (by omega)
+        · simp only [h, ite_false]; exact hbv i hi (by omega)
 
 /-- **The result copy** of the `m`-word array `src` into `D`, behind `pre` in the body of
     `P`, from a state at the end of `pre` in which `src` holds `arr` and `D` an array of `m`
@@ -377,7 +377,7 @@ theorem runStraightF_resCopy_aux {src D : String} {m : Nat} (hm : m < 2 ^ 64) (s
       have hz1 : ((u.setReg copyIdx (BitVec.ofNat 64 k)).nextPc).reg.getW copyIdx 64
           = some (BitVec.ofNat 64 k) := getW_of_lvm _ _ _ (by
         simp only [LstateM.nextPc, LstateM.setReg, LstateN.lvm_nextPc, LstateN.lvm_setReg,
-          if_true])
+          ite_true])
       generalize hu1 : (u.setReg copyIdx (BitVec.ofNat 64 k)).nextPc = u1 at hz1
       have hl1 : u1.larr = u.larr := by rw [← hu1]; rfl
       have hsrc1 : u1.getArr src 64 m = some arr := by unfold LstateM.getArr; rw [hl1]; exact hsu
@@ -393,13 +393,13 @@ theorem runStraightF_resCopy_aux {src D : String} {m : Nat} (hm : m < 2 ^ 64) (s
         rw [← hu2]
         simp only [LstateM.nextPc, LstateM.setReg]
         unfold LstateN.getW at hz1 ⊢
-        simp only [LstateN.lvm_nextPc, LstateN.lvm_setReg, if_neg (show copyIdx ≠ copyTmp by
+        simp only [LstateN.lvm_nextPc, LstateN.lvm_setReg, ite_eq_right (show copyIdx ≠ copyTmp by
           decide)]
         exact hz1
       have hv2 : u2.reg.getW copyTmp 64 = some v := getW_of_lvm _ _ _ (by
         rw [← hu2]
         simp only [LstateM.nextPc, LstateM.setReg, LstateN.lvm_nextPc, LstateN.lvm_setReg,
-          if_true])
+          ite_true])
       have hb2 : u2.getArr (copyName D k) 64 m = some b := by
         unfold LstateM.getArr; rw [hl2]; exact hb1
       -- The store of the word.
@@ -420,15 +420,15 @@ theorem runStraightF_resCopy_aux {src D : String} {m : Nat} (hm : m < 2 ^ 64) (s
         rw [← hnb, ← hv, stackSet_ofNat_apply b hk' hm, stackGet_ofNat_lt arr hk' hm]
         by_cases h : i = k
         · subst h; simp
-        · simp only [h, if_false]; exact hbv i hi (by omega)
+        · simp only [h, ite_false]; exact hbv i hi (by omega)
       · intro r h1 h2'
         rw [← hreg r h1 h2', ← hu2, ← hu1]
         simp only [LstateM.nextPc, LstateM.setArr, LstateM.setReg, LstateN.lvm_nextPc,
-          LstateN.lvm_setReg, if_neg h1, if_neg h2']
+          LstateN.lvm_setReg, ite_eq_right h1, ite_eq_right h2']
       · intro r hr
         rw [← harr r (fun j hj => hr j (by omega))]
         simp only [LstateM.larr_nextPc, LstateM.larr_setArr,
-          if_neg (hr k (Nat.lt_succ_self k)), hl2, hl1]
+          ite_eq_right (hr k (Nat.lt_succ_self k)), hl2, hl1]
       · rw [← hmem, ← hu2, ← hu1]; rfl
       · rw [← hcf, ← hu2, ← hu1]; rfl
       · rw [← hof, ← hu2, ← hu1]; rfl
@@ -588,7 +588,7 @@ theorem lsemFuelMemF_expI_callsPre {I : Isa} {aa : String → Nat → Option Nat
     rw [hR.lfn]
     split
     · rename_i hfn
-      rw [if_pos (show s.prog.lfn = (singletonProgM fn body).lfn from hfn)] at hf
+      rw [ite_eq_left (show s.prog.lfn = (singletonProgM fn body).lfn from hfn)] at hf
       rw [hR.pc]
       exact getElem?_expI_pcI_none e (body := body) hf
     · rfl
@@ -792,7 +792,7 @@ def freshenArr (L : Nat → List String) (aa : String → Nat → Option Nat)
 theorem copyName_fresh_ne (k j k' : Nat) : copyName (freshName k) (j + 1) ≠ freshName k' := by
   intro h
   have h' := congrArg String.toList h
-  simp only [copyName, freshName, Nat.add_one_ne_zero, if_false, String.toList_append] at h'
+  simp only [copyName, freshName, Nat.add_one_ne_zero, ite_false, String.toList_append] at h'
   have h2 : '#' ∈ Nat.toDigits 10 k' := by
     have := List.append_cancel_left (as := ['f', '#']) (by simpa using h')
     rw [← this]
@@ -1080,7 +1080,7 @@ theorem freshStore_sim {Rt : Nat → Nat → Prop} (outs : List (String × Nat))
   obtain ⟨t0, ht0, hzt⟩ := Option.map_eq_some_iff.mp h
   simp only [Prod.mk.injEq] at hzt
   obtain ⟨rfl, rfl⟩ := hzt
-  simp only [lsemStepMem, storeStruct?, if_true] at ht0
+  simp only [lsemStepMem, storeStruct?, ite_true] at ht0
   cases ha : s.getArr b 64 n with
   | none => simp [ha] at ht0
   | some arr =>
@@ -1157,7 +1157,7 @@ theorem freshStoreImm_sim {Rt : Nat → Nat → Prop} (outs : List (String × Na
   obtain ⟨t0, ht0, hzt⟩ := Option.map_eq_some_iff.mp h
   simp only [Prod.mk.injEq] at hzt
   obtain ⟨rfl, rfl⟩ := hzt
-  simp only [lsemStepMem, storeImmStruct?, if_true] at ht0
+  simp only [lsemStepMem, storeImmStruct?, ite_true] at ht0
   cases ha : s.getArr b 64 n with
   | none => simp [ha] at ht0
   | some arr =>
@@ -1712,7 +1712,7 @@ theorem copyName_succ_ne (D : String) (j : Nat) : copyName D (j + 1) ≠ D := by
   intro h
   have := congrArg String.length h
   have h2 : ("#c" : String).length = 2 := by decide
-  simp only [copyName, Nat.add_one_ne_zero, if_false, String.length_append, h2] at this
+  simp only [copyName, Nat.add_one_ne_zero, ite_false, String.length_append, h2] at this
   omega
 
 /-- The destination of a shadow instruction of a call is a name it writes. -/
@@ -1861,7 +1861,7 @@ theorem getD_foldl_freshESel {aa : String → Nat → Option Nat} {outs : List (
       simp only [hp]
     rw [hret]
     simp only [List.foldl_cons, List.foldl_nil, aliasStepO, shadowCall?_callShadow, hp,
-      List.getElem?_set_self hp', Std.HashMap.getD_insert, beq_self_eq_true, if_true, hcopy]
+      List.getElem?_set_self hp', Std.HashMap.getD_insert, beq_self_eq_true, ite_true, hcopy]
   · obtain ⟨sc, hw⟩ := storeStruct?_eq_some hst
     have hdd : d = d' := by
       rw [hw] at hd
@@ -1874,7 +1874,7 @@ theorem getD_foldl_freshESel {aa : String → Nat → Option Nat} {outs : List (
       simp only [hw]
     rw [hret]
     simp only [List.foldl_cons, List.foldl_nil, aliasStepO_store, Std.HashMap.getD_insert,
-      beq_self_eq_true, if_true, hcopy]
+      beq_self_eq_true, ite_true, hcopy]
   · have hw := storeImmStruct?_eq_some hst
     have hdd : d = d' := by
       rw [hw] at hd
@@ -1884,10 +1884,10 @@ theorem getD_foldl_freshESel {aa : String → Nat → Option Nat} {outs : List (
         = (.Lopn [.reg d] "STOREIMM" [.reg (copyName (freshName k) n), .reg v, .imm c], i.2) := by
       unfold retarget
       rw [hsh]
-      simp only [hw, if_true]
+      simp only [hw, ite_true]
     rw [hret]
     simp only [List.foldl_cons, List.foldl_nil, aliasStepO_storeImm, Std.HashMap.getD_insert,
-      beq_self_eq_true, if_true, hcopy]
+      beq_self_eq_true, ite_true, hcopy]
 
 /-- **The alias map at a site.** Over the expansion of a site with the fresh root
     `freshName k`, from an alias map that fixes the fresh root, the destination of the store or

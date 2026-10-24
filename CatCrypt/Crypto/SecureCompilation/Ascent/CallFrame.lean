@@ -198,7 +198,7 @@ theorem runBlockA_popI (t : AState) (r : String) (hr : r ≠ "%rsp") :
         flags := t.flags
         mem := t.mem } := by
   simp only [popI, runBlockA_cons, runBlockA_nil, evalInstrA_rspAdd, evalInstrA_loadRsp]
-  simp only [setRsp, Ne.symm hr, if_false]
+  simp only [setRsp, Ne.symm hr, ite_false]
 
 /-! ## The pushes -/
 
@@ -369,16 +369,16 @@ theorem popped_frameEpi (n : Nat) (f : AState → AState) :
       simp
     · intro q hq
       rcases List.mem_cons.1 hq with rfl | hq
-      · simp only [if_neg hr0]
+      · simp only [ite_eq_right hr0]
         rw [I.rsp, I.mem, t'rsp, ← slotAddr_zero, hs 0 (by simp), P.slot 0 (by simp)]
         rfl
       · have hq0 : q ≠ "%rsp" := fun h => hr1 (h ▸ hq)
         have hqr : q ≠ r := fun h => hrr (h ▸ hq)
-        simp only [if_neg hq0, if_neg hqr]
+        simp only [ite_eq_right hq0, ite_eq_right hqr]
         rw [I.saved q hq, t'regs q hq0]
     · intro q hq hq0
       have hqr : q ≠ r := fun h => hq (h ▸ List.mem_cons_self)
-      simp only [if_neg hq0, if_neg hqr]
+      simp only [ite_eq_right hq0, ite_eq_right hqr]
       exact I.other q (fun h => hq (List.mem_cons_of_mem _ h)) hq0
 
 /-! ## The call -/
@@ -485,13 +485,13 @@ theorem framedCall_popped (rs : List String) (n : Nat) (f : AState → AState)
     rw [trsp, slotAddr_succ]; exact hs k hk)
   rw [runBlockA_append, retI, runBlockA_cons, runBlockA_nil, evalInstrA_rspAdd]
   refine ⟨?_, fun q hq => ?_, fun q hq hq0 => ?_, I.flags, I.mem⟩
-  · simp only [setRsp, if_true]
+  · simp only [setRsp, ite_true]
     rw [I.rsp, trsp, ofInt_add_ofInt]
     simp
   · have hq0 : q ≠ "%rsp" := fun h => hr (h ▸ hq)
-    simp only [setRsp, if_neg hq0]
+    simp only [setRsp, ite_eq_right hq0]
     rw [I.saved q hq, tregs q hq0]
-  · simp only [setRsp, if_neg hq0]
+  · simp only [setRsp, ite_eq_right hq0]
     exact I.other q hq hq0
 
 /-! ## Straight-line bodies -/

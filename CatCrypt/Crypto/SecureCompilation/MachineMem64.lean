@@ -54,7 +54,7 @@ theorem read64_write64_same (m : Mem64) (a v : BitVec 64) : read64 (write64 m a 
   have h : ∀ i : BitVec 64, a + i - a = i := fun i => by bv_omega
   have k : ∀ i : BitVec 64, i.toNat < 8 →
       write64 m a v (a + i) = v.extractLsb' (8 * i.toNat) 8 :=
-    fun i hi => by simp only [write64, h, if_pos hi]
+    fun i hi => by simp only [write64, h, ite_eq_left hi]
   have k0 : write64 m a v a = v.extractLsb' 0 8 := by
     have := k 0 (by decide); simpa using this
   simp only [read64, k0, k 1 (by decide), k 2 (by decide), k 3 (by decide), k 4 (by decide),
@@ -72,7 +72,7 @@ theorem read64_write64_sep (m : Mem64) {a b : BitVec 64} (v : BitVec 64) (h : Me
   have e : ∀ i : BitVec 64, i.toNat < 8 → write64 m a v (b + i) = m (b + i) := by
     intro i hi
     have : ¬ ((b + i - a).toNat < 8) := by bv_omega
-    simp only [write64, if_neg this]
+    simp only [write64, ite_eq_right this]
   have e0 : write64 m a v b = m b := by
     have := e 0 (by decide); simpa using this
   simp only [read64, e0, e 1 (by decide), e 2 (by decide), e 3 (by decide), e 4 (by decide),
@@ -104,8 +104,8 @@ theorem ArrAt_write_cell {m : Mem64} {base : BitVec 64} {n : Nat} {arr : Fin n �
       (fun j => if j.val = k then v else arr j) := by
   intro j
   by_cases hjk : j.val = k
-  · simp only [hjk, if_true, read64_write64_same]
-  · simp only [hjk, if_false]
+  · simp only [hjk, ite_true, read64_write64_same]
+  · simp only [hjk, ite_false]
     rw [read64_write64_sep m v (memSep_cells base j.val k n j.isLt hk hn hjk)]
     exact h j
 

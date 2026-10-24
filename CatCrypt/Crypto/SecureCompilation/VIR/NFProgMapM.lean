@@ -470,10 +470,10 @@ theorem map?_refinesM_call [CallDenote d] [CallDenote d'] (hT : P.RegionTypes)
           some (transArgs P.mapTy transTy r) := by
         split
         · rename_i hc
-          rw [if_pos hc] at hr
+          rw [ite_eq_left hc] at hr
           exact iht ht hCt ren V W hren a haq r hr
         · rename_i hc
-          rw [if_neg hc] at hr
+          rw [ite_eq_right hc] at hr
           exact ihe he hCe ren V W hren b hbq r hr
       rw [harm]
       exact ihk hk hCk _ _ _ (renRel_appHom P transTy mapVal hExt ren V W hren _ r) k' hkq

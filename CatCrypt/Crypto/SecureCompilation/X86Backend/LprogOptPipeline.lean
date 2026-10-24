@@ -282,8 +282,8 @@ theorem optRunBody_stateStore {w : Nat} (body : List Linstr) (s : Lstate w) :
       = Option.map stateStore (lsemStraight (body.map Linstr.li_i) s) := by
   unfold optRunBody
   by_cases hm : bodyAllModeled body = true
-  · rw [if_pos hm]; exact optimizeVerifiedBody_stateStore body s
-  · rw [if_neg hm]
+  · rw [ite_eq_left hm]; exact optimizeVerifiedBody_stateStore body s
+  · rw [ite_eq_right hm]
 
 /-- `bodyIsStraightLine` on a cons: the head is not a control-flow instruction and
     the tail is straight-line. -/
@@ -349,7 +349,7 @@ theorem flushRun_pinned (cur l : List Linstr) (h : flagsLive l = true) :
     ∀ i ∈ cur.drop (pinStart cur), [i] ∈ flushRun cur l := by
   intro i hi
   unfold flushRun
-  rw [if_pos h, List.mem_append, List.mem_map]
+  rw [ite_eq_left h, List.mem_append, List.mem_map]
   exact Or.inr ⟨i, hi, rfl⟩
 
 /-- Every segment of `flushRun` over a straight-line run is non-empty and straight-line. -/
@@ -420,13 +420,13 @@ theorem splitStraightRunsAux_flatten (cur body : List Linstr) :
   | cons i rest ih =>
       unfold splitStraightRunsAux
       by_cases hci : isCtlInstr i = true
-      · simp only [hci, if_true, List.flatten_append, flushRun_flatten, List.flatten_cons, ih,
+      · simp only [hci, ite_true, List.flatten_append, flushRun_flatten, List.flatten_cons, ih,
           List.nil_append, List.singleton_append]
       · simp only [Bool.not_eq_true] at hci
         by_cases hm : (instrModeled i || flagHold cur (i :: rest)) = true
-        · simp only [hci, hm, Bool.false_eq_true, if_false, if_true, ih (cur ++ [i]),
+        · simp only [hci, hm, Bool.false_eq_true, ite_false, ite_true, ih (cur ++ [i]),
             List.append_assoc, List.singleton_append]
-        · simp only [hci, hm, Bool.false_eq_true, if_false]
+        · simp only [hci, hm, Bool.false_eq_true, ite_false]
           cases cur with
           | nil => simp [ih]
           | cons c cs => simp [ih]
@@ -460,7 +460,7 @@ theorem splitStraightRunsAux_straight (body cur : List Linstr)
         | false => rfl
         | true => rw [hh] at hi; exact absurd hi (by decide)
       unfold splitStraightRunsAux
-      simp only [hci, hmi, Bool.true_or, Bool.false_eq_true, if_false, if_true,
+      simp only [hci, hmi, Bool.true_or, Bool.false_eq_true, ite_false, ite_true,
         ih (cur ++ [i]) hrest hmrest,
         List.append_assoc, List.singleton_append]
 
@@ -474,8 +474,8 @@ theorem optimizeBasicBlocks_straight (body : List Linstr)
   cases body with
   | nil => rw [optRunBody_nil]; simp
   | cons i rest =>
-      simp only [Bool.false_eq_true, if_false, List.isEmpty_cons, List.map_cons,
-        List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil, if_pos h]
+      simp only [Bool.false_eq_true, ite_false, List.isEmpty_cons, List.map_cons,
+        List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil, ite_eq_left h]
 
 /-- On a straight-line, all-modeled body `optimizeBasicBlocks` preserves the store
     image from every start state: the per-run soundness lifted through the single-run
@@ -493,7 +493,7 @@ theorem optimizeBasicBlocks_straight_stateStore {w : Nat} (body : List Linstr)
 theorem optimizeBasicBlocks_eq_guarded (f : Lfundef)
     (h : bodyIsStraightLine f.lfd_body = true) (hm : bodyAllModeled f.lfd_body = true) :
     optimizeBasicBlocks f.lfd_body = (optimizeVerifiedFundef f).lfd_body := by
-  rw [optimizeBasicBlocks_straight f.lfd_body h hm, optRunBody, if_pos hm]
+  rw [optimizeBasicBlocks_straight f.lfd_body h hm, optRunBody, ite_eq_left hm]
   rfl
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled
@@ -572,11 +572,11 @@ theorem lsemStep_lpc_succ' {w} (i : LinstrR) (s b : Lstate w)
                 | arrIdx base idx scale =>
                     simp only [lsemStep] at h
                     by_cases hL : opn = "LOADIDX"
-                    · rw [if_pos hL] at h
+                    · rw [ite_eq_left hL] at h
                       simp only [Option.some.injEq] at h; rw [← h]; rfl
-                    · rw [if_neg hL] at h
+                    · rw [ite_eq_right hL] at h
                       by_cases hS : opn = "STOREIDX"
-                      · rw [if_pos hS] at h
+                      · rw [ite_eq_left hS] at h
                         cases rest with
                         | nil => simp at h
                         | cons val vrest =>
@@ -584,7 +584,7 @@ theorem lsemStep_lpc_succ' {w} (i : LinstrR) (s b : Lstate w)
                             | nil =>
                                 simp only [Option.some.injEq] at h; rw [← h]; rfl
                             | cons _ _ => simp at h
-                      · rw [if_neg hS] at h
+                      · rw [ite_eq_right hS] at h
                         cases happ : applyOpn (stripWidthTag opn)
                             (List.map (evalOperand s)
                               (LOperand.arrIdx base idx scale :: rest)) with
@@ -762,8 +762,8 @@ theorem splitAux_good (body cur : List Linstr) (hcur : bodyIsStraightLine cur = 
     intro seg hseg
     simp only [splitStraightRunsAux] at hseg
     by_cases hce : cur.isEmpty = true
-    · rw [if_pos hce] at hseg; simp at hseg
-    · rw [if_neg hce] at hseg
+    · rw [ite_eq_left hce] at hseg; simp at hseg
+    · rw [ite_eq_right hce] at hseg
       simp only [List.mem_singleton] at hseg
       subst hseg
       exact ⟨fun h => hce (by simp [h]), Or.inr hcur⟩
@@ -771,7 +771,7 @@ theorem splitAux_good (body cur : List Linstr) (hcur : bodyIsStraightLine cur = 
     intro seg hseg
     unfold splitStraightRunsAux at hseg
     by_cases hci : isCtlInstr i = true
-    · rw [if_pos hci, List.mem_append, List.mem_cons] at hseg
+    · rw [ite_eq_left hci, List.mem_append, List.mem_cons] at hseg
       rcases hseg with h | h | h
       · obtain ⟨hne, hsl⟩ := flushRun_good cur (i :: rest) hcur seg h
         exact ⟨hne, Or.inr hsl⟩
@@ -781,21 +781,21 @@ theorem splitAux_good (body cur : List Linstr) (hcur : bodyIsStraightLine cur = 
         cases hh : isCtlInstr i with
         | false => rfl
         | true => exact absurd hh hci
-      rw [if_neg hci] at hseg
+      rw [ite_eq_right hci] at hseg
       by_cases hm : (instrModeled i || flagHold cur (i :: rest)) = true
-      · rw [if_pos hm] at hseg
+      · rw [ite_eq_left hm] at hseg
         have hcur' : bodyIsStraightLine (cur ++ [i]) = true := by
           simp [bodyIsStraightLine_append, hcur, straight_singleton_of_not_ctl i hcif]
         exact ih (cur ++ [i]) hcur' seg hseg
-      · rw [if_neg hm] at hseg
+      · rw [ite_eq_right hm] at hseg
         have hsi := straight_singleton_of_not_ctl i hcif
         by_cases hce : cur.isEmpty = true
-        · rw [if_pos hce, List.nil_append] at hseg
+        · rw [ite_eq_left hce, List.nil_append] at hseg
           simp only [List.mem_cons] at hseg
           rcases hseg with h | h
           · subst h; exact ⟨by simp, Or.inr hsi⟩
           · exact ih [] (by simp [bodyIsStraightLine]) seg h
-        · rw [if_neg hce] at hseg
+        · rw [ite_eq_right hce] at hseg
           simp only [List.cons_append, List.nil_append, List.mem_cons] at hseg
           rcases hseg with h | h | h
           · subst h; exact ⟨fun he => hce (by simp [he]), Or.inr hcur⟩
@@ -915,7 +915,7 @@ theorem optRunBody_noLabel (seg : List Linstr) (hsl : bodyIsStraightLine seg = t
   have h0 : ∀ i ∈ seg, isLbl i.li_i = false := straightLine_noLabel seg hsl
   unfold optRunBody
   by_cases hm : bodyAllModeled seg = true
-  · rw [if_pos hm]
+  · rw [ite_eq_left hm]
     have h1 : ∀ i ∈ elimReloads seg, isLbl i.li_i = false :=
       fun i hi => h0 i ((elimReloads_sublist seg).mem hi)
     have h2 : ∀ i ∈ reloadElimBody (elimReloads seg), isLbl i.li_i = false :=
@@ -929,7 +929,7 @@ theorem optRunBody_noLabel (seg : List Linstr) (hsl : bodyIsStraightLine seg = t
       obtain ⟨x, hx, hxeq⟩ := hmem
       rw [← hxeq]; exact h2 x hx
     exact loadCSE_noLabel _ (copyPropagateBody_noLabel _ h3)
-  · rw [if_neg hm]; exact h0
+  · rw [ite_eq_right hm]; exact h0
 
 theorem findLabel_none_of_noLabel (lbl : LLabel) (X : List LinstrR)
     (h : ∀ x ∈ X, isLbl x = false) : findLabel lbl X = none := by
@@ -984,7 +984,7 @@ theorem optSeg_findLabel_none (lbl : LLabel) (seg : List Linstr)
     rw [hc] at hnone ⊢
     simp only [optSeg, hbsl]
     exact hnone
-  · rw [optSeg, if_pos hsl]
+  · rw [optSeg, ite_eq_left hsl]
     exact findLabel_none_map lbl (optRunBody seg) (optRunBody_noLabel seg hsl)
 
 theorem label_pres_segs (lbl : LLabel) : ∀ (segs : List (List Linstr)),
@@ -1019,13 +1019,13 @@ theorem label_pres_segs (lbl : LLabel) : ∀ (segs : List (List Linstr)),
       simp only [List.map_cons, List.map_nil, findLabel, List.findIdx?_cons, List.findIdx?_nil,
         Option.map_none] at hseg_fl
       by_cases hlab : isLabel lbl c.li_i
-      · rw [if_pos hlab] at hseg_fl
+      · rw [ite_eq_left hlab] at hseg_fl
         have hp0 : p0 = 0 := (Option.some.inj hseg_fl).symm
         refine ⟨1, 0, by simp, ?_, ?_, ?_⟩
         · rw [← hfl, hp0, hc, bdry_cons]; simp [bdry]
         · rw [findLabel_optflatten_cons, hc]; simp [optSeg, hbsl, findLabel, hlab]
         · rw [obdry_cons, hc]; simp [optSeg, hbsl, obdry]
-      · rw [if_neg hlab] at hseg_fl; exact absurd hseg_fl (by simp)
+      · rw [ite_eq_right hlab] at hseg_fl; exact absurd hseg_fl (by simp)
     | none =>
       rw [hseg_fl] at hfl
       simp only [Option.none_or] at hfl
@@ -1252,21 +1252,21 @@ theorem sim_main (P : Lprog) (hlp : LabelPres P) :
         · simp [lsemFuel, hfi, hcli, evalInstrP] at hfuel
         · by_cases hcnd : evalOperand s.base cond ≠ 0
           · have hf := hfuel
-            simp only [lsemFuel, hfi, hcli, evalInstrP, if_pos hcnd] at hf
+            simp only [lsemFuel, hfi, hcli, evalInstrP, ite_eq_left hcnd] at hf
             cases hj : evalJump P (s.lfn, lbl) s with
             | none => rw [hj] at hf; simp at hf
             | some s2src =>
               obtain ⟨s2', hj', hsim2⟩ := jumpSim P hlp s s' s2src s.lfn lbl hstore hj
               refine doStep s2src s2' ?_ ?_ hsim2
-              · rw [hcli]; simp only [evalInstrP, if_pos hcnd]; exact hj
+              · rw [hcli]; simp only [evalInstrP, ite_eq_left hcnd]; exact hj
               · have hcnd' : evalOperand s'.base cond ≠ 0 := by
                   rw [← evalOperand_congr hstore cond]; exact hcnd
-                rw [hcli]; simp only [evalInstrP, if_pos hcnd']; rw [hlfn]; exact hj'
+                rw [hcli]; simp only [evalInstrP, ite_eq_left hcnd']; rw [hlfn]; exact hj'
           · have hcnd' : ¬ evalOperand s'.base cond ≠ 0 := by
               rw [← evalOperand_congr hstore cond]; exact hcnd
             refine doStep s.nextPc s'.nextPc ?_ ?_ simNext
-            · rw [hcli]; simp only [evalInstrP, if_neg hcnd]
-            · rw [hcli]; simp only [evalInstrP, if_neg hcnd']
+            · rw [hcli]; simp only [evalInstrP, ite_eq_right hcnd]
+            · rw [hcli]; simp only [evalInstrP, ite_eq_right hcnd']
         · simp [lsemFuel, hfi, hcli, evalInstrP] at hfuel
       · have hnb : ∀ i ∈ (segs[k]).map Linstr.li_i, NotBranch i = true :=
           fun i hi => notBranch_of_straight segs[k] hstraight i hi
@@ -1543,7 +1543,7 @@ theorem renderOwnedCom_none {Γ : Ctxt jasminDialect} {t : JasminTy}
       renderOwned (Com.toLprogPhysAbi com fname shiftImm immSlotMap inLoadMap outStoreMap
         abiArgs abiTyin residence abiW forceLivePin) := by
   unfold renderOwnedCom
-  rw [show ownedComStage outStoreMap.length none com = com from rfl, if_pos hw]
+  rw [show ownedComStage outStoreMap.length none com = com from rfl, ite_eq_left hw]
 
 /-- **The width gate of the owned back end.** A program handed to the exporter with a
     general-purpose operation wider than `64` bits has the one-line text `# UNHANDLED-WIDTH`,

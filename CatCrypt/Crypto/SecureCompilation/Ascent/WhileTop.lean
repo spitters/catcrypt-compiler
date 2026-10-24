@@ -63,7 +63,7 @@ theorem semScalarWhile_guard_false
           by_cases hg : guard b
           · exact ih b env' (by simpa [hg] using h)
           · simp only [Bool.not_eq_true] at hg
-            simp only [hg, Bool.false_eq_true, if_false] at h
+            simp only [hg, Bool.false_eq_true, ite_false] at h
             obtain rfl := Option.some.inj h
             exact hg
 
@@ -120,18 +120,18 @@ theorem semWhileTop_guard_false
       by_cases hg : guard env
       · simp [hg] at h
       · simp only [Bool.not_eq_true] at hg
-        simp only [hg, Bool.false_eq_true, if_false, Option.some.injEq] at h
+        simp only [hg, Bool.false_eq_true, ite_false, Option.some.injEq] at h
         exact h ▸ hg
   | succ k ih =>
       intro env env' h
       simp only [semWhileTop] at h
       by_cases hg : guard env
-      · simp only [hg, if_true] at h
+      · simp only [hg, ite_true] at h
         cases hb : semBody env with
         | none => simp [hb] at h
         | some b => simp only [hb, Option.bind_some] at h; exact ih b env' h
       · simp only [Bool.not_eq_true] at hg
-        simp only [hg, Bool.false_eq_true, if_false, Option.some.injEq] at h
+        simp only [hg, Bool.false_eq_true, ite_false, Option.some.injEq] at h
         exact h ▸ hg
 
 /-- Fuel/termination bridge for the top-tested loop: a run halting within `fuel`
@@ -150,7 +150,7 @@ theorem semWhileTop_eq_iter (semBody : SEnvScalar → Option SEnvScalar)
       by_cases hg : guard env
       · simp [hg] at h
       · simp only [Bool.not_eq_true] at hg
-        simp only [hg, Bool.false_eq_true, if_false] at h
+        simp only [hg, Bool.false_eq_true, ite_false] at h
         simp only [topWhileTrips, semWhileIter]
         exact h
   | succ k ih =>
@@ -158,7 +158,7 @@ theorem semWhileTop_eq_iter (semBody : SEnvScalar → Option SEnvScalar)
       simp only [semWhileTop] at h
       simp only [topWhileTrips]
       by_cases hg : guard env
-      · simp only [hg, if_true] at h ⊢
+      · simp only [hg, ite_true] at h ⊢
         cases hb : semBody env with
         | none => simp [hb] at h
         | some b =>
@@ -166,7 +166,7 @@ theorem semWhileTop_eq_iter (semBody : SEnvScalar → Option SEnvScalar)
             rw [semWhileIter_succ_front, hb]
             exact ih b env' h
       · simp only [Bool.not_eq_true] at hg
-        simp only [hg, Bool.false_eq_true, if_false] at h ⊢
+        simp only [hg, Bool.false_eq_true, ite_false] at h ⊢
         simp only [semWhileIter]
         exact h
 

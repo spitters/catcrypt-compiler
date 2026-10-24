@@ -142,7 +142,7 @@ theorem mapStraightRuns_blockRel (tag : LinstrR → MemTag) (f : List Linstr →
   by_cases hsl : bodyIsStraightLine seg = true
   · obtain ⟨h1, h2, h3, h4⟩ := hseg seg hs hsl
     right
-    simp only [if_pos hsl]
+    simp only [ite_eq_left hsl]
     refine ⟨by simpa using hne, by simpa using h1, ?_, ?_, h4⟩
     · intro i hi
       obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hi
@@ -425,7 +425,7 @@ theorem runIBF_eq_of_noArrIdx :
       obtain ⟨w, t⟩ := i
       have hb : inBoundsB l (w, t) = true :=
         inBoundsB_of_hasArrIdx (h (w, t) List.mem_cons_self) t l
-      simp only [runIBF, stepIBF, hb, if_true, lsemStraightFlag_cons]
+      simp only [runIBF, stepIBF, hb, ite_true, lsemStraightFlag_cons]
       cases lsemStepFlag (w, t) l with
       | none => rfl
       | some l1 => simpa using ih (fun j hj => h j (List.mem_cons_of_mem _ hj)) l1
@@ -562,7 +562,7 @@ theorem fstepF_transport (i : LinstrRM) (hai : hasArrIdx i.1 = false) {s t : Lst
                 cases evalOperandN s.reg 64 b' with
                 | none => rfl
                 | some vb =>
-                    simp only [Option.map_some, Option.isSome_some, if_true, Option.some.injEq,
+                    simp only [Option.map_some, Option.isSome_some, ite_true, Option.some.injEq,
                       Prod.mk.injEq, and_true]
                     have := mergeM_ofReg h s.reg.nextPc
                     rw [mergeN_nextPc h.regAgree.wr] at this
@@ -587,7 +587,7 @@ theorem fstepF_transport (i : LinstrRM) (hai : hasArrIdx i.1 = false) {s t : Lst
           have er : t.reg.lvm src = s.reg.lvm src :=
             (h.reg src (mem_T_read (by simp [readToksSem, srcTok]))).symm
           simp only [readReg, er, Option.map_some, Option.isSome_none, Bool.false_eq_true,
-            if_false, Option.some.injEq, Prod.mk.injEq, and_true]
+            ite_false, Option.some.injEq, Prod.mk.injEq, and_true]
           exact (mergeM_setReg h (by simp [writeToks, opTok]) _).symm
       | none =>
           simp only
@@ -637,7 +637,7 @@ theorem fstepF_swap (i1 i2 : LinstrRM) (s : LstateM) (zf : Bool)
           cases hc2 : cmpArgs? i2 with
           | some p2 => simp
           | none =>
-              simp only [Option.isSome_none, Bool.false_eq_true, if_false]
+              simp only [Option.isSome_none, Bool.false_eq_true, ite_false]
               rw [fstepF_zf_of_not_cmp hc1 h1, fstepF_zf_of_not_cmp hc2 h2]
 
 /-- **Adjacent-transposition commutation for `runStraightF`.** -/
@@ -720,7 +720,7 @@ theorem fstepF_reload {d k opn : String} (hm : isMovMnem opn = true) (tg : MemTa
     unfold movRegArgs?
     simp only
     by_cases h1 : stripWidthTag opn = "MOV"
-    · rw [if_pos h1]
+    · rw [ite_eq_left h1]
     · have h2 : opn = "MOVQ" := by simpa [isMovMnem, h1] using hm
       subst h2
       rfl
@@ -752,9 +752,9 @@ theorem heldSoundM_step {h : Held} {i : LinstrR} (tg : MemTag) (hd : dstsRegB i 
       rcases mem_set hp with ⟨hp1, hne⟩ | rfl
       · obtain ⟨hp2, hn2⟩ := mem_killSlot hp1
         obtain ⟨hp3, -⟩ := mem_killReg hp2
-        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_neg hne, if_neg hn2]
+        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, ite_eq_right hne, ite_eq_right hn2]
         exact hs p hp3
-      · rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_pos rfl]
+      · rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, ite_eq_left rfl]
         split
         · rfl
         · rfl
@@ -805,7 +805,7 @@ theorem elimAux_runStraightF (tag : LinstrR → MemTag) : ∀ (body : List Linst
           obtain ⟨s₁, z₁⟩ := bz
           rw [hstep, Option.bind_some] at hrun
           by_cases hk : (stepReload h i.li_i).1 = true
-          · rw [if_pos hk]
+          · rw [ite_eq_left hk]
             have ht : t = s.setLpc t.lpc := hst
             have hstep' : fstepF (i.li_i, tag i.li_i) t zf
                 = some (s₁.setLpc (t.lpc + 1), z₁) := by
@@ -815,7 +815,7 @@ theorem elimAux_runStraightF (tag : LinstrR → MemTag) : ∀ (body : List Linst
             exact ih _ s₁ _ z₁ hdis (heldSoundM_step _ hdi hs hstep hk)
               (EqPc.refl_setLpc s₁ _) s₂ z₂ hrun
           · have hdrop : (stepReload h i.li_i).1 = false := by simpa using hk
-            rw [if_neg hk, stepReload_env_of_drop hdrop]
+            rw [ite_eq_right hk, stepReload_env_of_drop hdrop]
             obtain ⟨b, hb, hsb⟩ := fstepF_drop (tag i.li_i) zf hs hdrop
             rw [hb, Option.some.injEq, Prod.mk.injEq] at hstep
             obtain ⟨rfl, rfl⟩ := hstep
@@ -948,8 +948,8 @@ theorem consDropL_runStraightF (tag : LinstrR → MemTag) (i : Linstr) (k : Lcmd
       rw [fstepF_reload hmm, Option.bind_some, fstepF_reload hmm, Option.bind_some] at hrun
       have hsl : ((s.setReg slot (s.reg.lvm r).2).nextPc).reg.lvm r
           = ((s.setReg slot (s.reg.lvm r).2).nextPc).reg.lvm slot := by
-        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_neg (slot_ne_reg hslot hreg),
-          if_pos rfl]
+        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, ite_eq_right (slot_ne_reg hslot hreg),
+          ite_eq_left rfl]
       obtain ⟨u, hu, hEu⟩ := runStraightF_eqPc _ (EqPc.symm (setReg_nextPc_eqPc _ hsl)) hrun
       have hmid : runStraightF ((i :: rest).map fun i => (i.li_i, tag i.li_i)) s zf
           = some (u, z₂) := by
@@ -1057,10 +1057,10 @@ theorem stepLoad_envSoundM (h : LoadEnv) (i : Linstr) (tg : MemTag)
       rcases LprogStoreToLoad.mem_set hk with ⟨hk1, hne⟩ | heq
       · obtain ⟨hk2, hkd⟩ := mem_killSlot hk1
         obtain ⟨hk3, hrd⟩ := mem_killReg hk2
-        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_neg hrd, if_neg hkd]
+        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, ite_eq_right hrd, ite_eq_right hkd]
         exact hs k r hk3
       · obtain ⟨rfl, rfl⟩ := Prod.mk.inj heq
-        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, if_pos rfl]
+        rw [lvm_setReg_nextPcM, lvm_setReg_nextPcM, ite_eq_left rfl]
         split
         · rfl
         · rfl

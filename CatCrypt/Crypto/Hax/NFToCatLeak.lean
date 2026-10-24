@@ -409,7 +409,7 @@ theorem catCall_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
       obtain ⟨⟨n, a⟩, -, h⟩ := Option.bind_eq_some_iff.mp h
       obtain ⟨i, hi, rfl⟩ := Option.map_eq_some_iff.mp h
       simp only [Expr.ctLeak, opLeak, catLeakModel, nfLeakModel, catKind, nfKind, hf, true_or,
-        if_true]
+        ite_true]
       change [CTLeak.addr "" (((i.lookup W).toNat : Nat) : Int)] =
         [CTLeak.addr "" ((nfValNat tb x₂ : Nat) : Int)]
       rw [asWord_valNat hi W hx₂]
@@ -434,7 +434,7 @@ theorem catCall_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialec
       · obtain ⟨i', hi', h⟩ := Option.bind_eq_some_iff.mp h
         obtain ⟨x', -, rfl⟩ := Option.map_eq_some_iff.mp h
         simp only [Expr.ctLeak, opLeak, catLeakModel, nfLeakModel, catKind, nfKind, hf,
-          or_true, if_true]
+          or_true, ite_true]
         change [CTLeak.addr "" (((i'.lookup W).toNat : Nat) : Int)] =
           [CTLeak.addr "" ((nfValNat ti x₂ : Nat) : Int)]
         rw [asWord_valNat hi' W hx₂]
@@ -738,7 +738,7 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
       change scalarRes1 f ta ra r = some res at h
       unfold scalarRes1 at h
       by_cases hd : f = "declassify"
-      · rw [if_pos hd] at h
+      · rw [ite_eq_left hd] at h
         refine ⟨?_, Or.inr hd⟩
         unfold declassRes1 at h
         split at h
@@ -747,7 +747,7 @@ theorem scalarRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDia
         · cases h
           trivial
         · cases h
-      rw [if_neg hd] at h
+      rw [ite_eq_right hd] at h
       split at h
       · obtain ⟨⟨o, w⟩, hp, h⟩ := Option.bind_eq_some_iff.mp h
         dsimp only at h

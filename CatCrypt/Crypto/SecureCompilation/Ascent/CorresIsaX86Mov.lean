@@ -109,7 +109,7 @@ theorem fstepF_jToRMMov (i : JInstr 64) (hi : InMovRegSubset i) (s : JState 64)
     have hm : movRegArgs? (jToRMMov (.mov dst (.reg src))) = some (dst, src) := by
       rw [hw]
       simp only [movRegArgs?,
-        VIR.JasminLsemScalar.stripWidthTag_withWidthTag_MOV 64, if_true]
+        VIR.JasminLsemScalar.stripWidthTag_withWidthTag_MOV 64, ite_true]
     refine ⟨ls', ?_, hcorr'⟩
     unfold fstepF
     rw [hc, hm]

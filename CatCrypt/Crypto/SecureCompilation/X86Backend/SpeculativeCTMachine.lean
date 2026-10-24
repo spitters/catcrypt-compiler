@@ -400,7 +400,7 @@ theorem stlSpillGadget_arch_constant_time (s₁ s₂ : JState 64)
   simp only [stlSpillGadget, blockLeak_cons, blockLeak_nil, instrLeak, evalInstr,
     x86_MOV, JState.setReg, JState.store, JState.get, JState.load, JOperand.eval,
     List.nil_append, List.cons_append]
-  simp only [and_self, if_true, hp]
+  simp only [and_self, ite_true, hp]
 
 /-- **`stlSpillGadget` is not speculatively constant-time.** Under a predictor that
     bypasses the frame-slot write, the reload is forwarded the secret the earlier

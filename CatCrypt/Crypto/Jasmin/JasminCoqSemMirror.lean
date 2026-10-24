@@ -546,13 +546,13 @@ theorem getWord_U8 {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess
   unfold getWord
   simp only [hs]
   by_cases h : 0 ≤ i ∧ i.toNat < n
-  · rw [if_pos (hok.mpr h), dif_pos h]
+  · rw [ite_eq_left (hok.mpr h), dite_eq_left h]
     congr 1
     apply BitVec.eq_of_toNat_eq
     show (readLE a i.toNat 1) % 2 ^ 8 = _
-    simp only [readLE, getD, dif_pos h.2, Nat.mul_zero, Nat.add_zero]
+    simp only [readLE, getD, dite_eq_left h.2, Nat.mul_zero, Nat.add_zero]
     exact Nat.mod_eq_of_lt (a ⟨i.toNat, h.2⟩).isLt
-  · rw [if_neg (fun h' => h (hok.mp h')), dif_neg h]
+  · rw [ite_eq_right (fun h' => h (hok.mp h')), dite_eq_right h]
 
 /-- At width `U8`, `setWord` is the one-byte write at index `i`. -/
 theorem setWord_U8 {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess) (i : Int)
@@ -565,7 +565,7 @@ theorem setWord_U8 {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess
   unfold setWord
   simp only [hs]
   by_cases h : 0 ≤ i ∧ i.toNat < n
-  · rw [if_pos (hok.mpr h), dif_pos h]
+  · rw [ite_eq_left (hok.mpr h), dite_eq_left h]
     congr 1
     funext j
     show (if i.toNat ≤ j.val ∧ j.val < i.toNat + WSize.U8.bytes then
@@ -573,12 +573,12 @@ theorem setWord_U8 {n : Nat} (a : JArrayMirror n) (al : Aligned) (aa : ArrAccess
       = (if j = ⟨i.toNat, h.2⟩ then v else a j)
     by_cases hj : j.val = i.toNat
     · have hj' : j = ⟨i.toNat, h.2⟩ := Fin.ext hj
-      rw [if_pos (by simp only [WSize.bytes]; omega), if_pos hj', hj]
+      rw [ite_eq_left (by simp only [WSize.bytes]; omega), ite_eq_left hj', hj]
       apply BitVec.eq_of_toNat_eq
       simp
-    · rw [if_neg (by simp only [WSize.bytes]; omega),
-        if_neg (fun e => hj (congrArg Fin.val e))]
-  · rw [if_neg (fun h' => h (hok.mp h')), dif_neg h]
+    · rw [ite_eq_right (by simp only [WSize.bytes]; omega),
+        ite_eq_right (fun e => hj (congrArg Fin.val e))]
+  · rw [ite_eq_right (fun h' => h (hok.mp h')), dite_eq_right h]
 
 end JArrayMirror
 

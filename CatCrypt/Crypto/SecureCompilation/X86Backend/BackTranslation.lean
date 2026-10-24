@@ -261,7 +261,7 @@ theorem backTranslate_correct (ρmap : RegMap) (ρalloc : String → String)
         = decode ρmap ρalloc (srcDenote ps rs) (ρalloc (ρmap v))
   unfold decode
   have hex : ∃ w, ρalloc (ρmap w) = ρalloc (ρmap v) := ⟨v, rfl⟩
-  rw [dif_pos hex]
+  rw [dite_eq_left hex]
   -- the chosen witness equals v by injectivity of ρalloc ∘ ρmap
   have hchoose : hex.choose = v := hallocfun hex.choose_spec
   rw [slotView, hchoose]

@@ -411,7 +411,7 @@ theorem rhsOfT_denote {w nIn : Nat} (params : List String)
         split at h
         · -- `recogNotTy g` holds: `Rhs.bin .andn na b`.
           rename_i hg
-          rw [if_pos hg]
+          rw [ite_eq_left hg]
           rcases ha : atomOfT params na with _ | av
           · rw [ha] at h; simp at h
           rcases hbb : atomOfT params b with _ | bv
@@ -447,7 +447,7 @@ theorem rhsOfT_denote {w nIn : Nat} (params : List String)
           cases k <;> simp [ShiftKind.apply, Rhs.denote, Option.map_eq_bind]
         · -- (4) width-coercion `cast#w[a]`: a single-atom cast → `Rhs.cast`.
           by_cases hcast : recogCastTy f
-          · rw [if_pos hcast] at h ⊢
+          · rw [ite_eq_left hcast] at h ⊢
             -- the single-arg shape `[a]` is forced by `h = some r`.
             split at h
             · next aa _ _ _ =>
@@ -459,7 +459,7 @@ theorem rhsOfT_denote {w nIn : Nat} (params : List String)
               rw [atomOfT_denote params I ρ aa ha]
               simp [Rhs.denote, Option.map_eq_bind]
             · simp at h
-          · rw [if_neg hcast] at h; simp at h
+          · rw [ite_eq_right hcast] at h; simp at h
   | _ => simp [rhsOfT] at h
 
 /-- **Preservation theorem (typed front).** Whenever the typed translator
@@ -530,7 +530,7 @@ theorem texprToThir_denoteScalarT {w nIn : Nat} (params : List String)
         cases hrv : r.denote I ρ with
         | none => simp
         | some rv =>
-          simp only [Option.bind_some, Atom.denote, LEnv.set, if_true]
+          simp only [Option.bind_some, Atom.denote, LEnv.set, ite_true]
   -- The ~26 remaining `Hax.TExprKind` constructors (tuple/proj/match/loops/
   -- control-flow/ann/namedProj) are outside the scalar ARX subset: `texprToThir`
   -- maps each to `none`, so the hypothesis `… = some t` is impossible.

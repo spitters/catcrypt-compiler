@@ -136,7 +136,7 @@ instance instReadR15 : RegRead "%r15" := ⟨fun v _ => v.r15, fun _ _ => by simp
 macro "regwrite_tac" d:str : tactic =>
   `(tactic| (funext r; by_cases h : r = $d
              · subst h; simp [regsOf]
-             · simp only [regsOf, h, if_false]))
+             · simp only [regsOf, h, ite_false]))
 
 instance instWriteRax : RegWrite "%rax" := ⟨fun v w => { v with rax := w },
   fun _ _ _ => by regwrite_tac "%rax"⟩
@@ -456,7 +456,7 @@ theorem run_storeMem (b : String) (o : Int) (src : String) [BaseReg b] [RegRead 
       (∀ p, p ≠ cellAddr base (b, o) → m' p = m p) → Q (absRunMem rest (mkS base V cf of m'))) :
     Q (absRunMem (.storeMem b o (.reg src) :: rest) (mkS base V cf of m)) := by
   refine run_step ?_ (h (fun p => if p = cellAddr base (b, o) then RegRead.get src V base else m p)
-    (if_pos rfl) (fun p hp => if_neg hp))
+    (ite_eq_left rfl) (fun p hp => ite_eq_right hp))
   simp only [mkS, absStepMem, storeStepM, cellAddr, BaseReg.eq, RegRead.get_eq, evalX]
   rfl
 
@@ -844,8 +844,8 @@ theorem absRunMem_solinas_spec (a : AMemX) (hsep : SpillsApart a.c.regs) :
       (if r = s then regs s else x) = regs r := by
     intro regs r s x h
     by_cases e : r = s
-    · subst e; exact if_pos rfl
-    · rw [if_neg e, h]
+    · subst e; exact ite_eq_left rfl
+    · rw [ite_eq_right e, h]
   obtain ⟨⟨regs, cf, of⟩, mem⟩ := a
   have hr : regsOf ⟨regs "%rax", regs "%rbx", regs "%rcx", regs "%rdx", regs "%rbp", regs "%r8",
       regs "%r9", regs "%r10", regs "%r11", regs "%r12", regs "%r13", regs "%r14", regs "%r15"⟩

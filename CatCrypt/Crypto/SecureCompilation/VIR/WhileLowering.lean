@@ -208,7 +208,7 @@ theorem whileFuel_eq_iterate_of_count {α : Type} {cond : α → Bool} {step : �
       obtain ⟨fuel', rfl⟩ : ∃ f, fuel = f + 1 := ⟨fuel - 1, by omega⟩
       have hcond0 : cond acc = true := by
         have := hk 0 (by omega); simpa using this
-      rw [whileFuel_succ, if_pos hcond0]
+      rw [whileFuel_succ, ite_eq_left hcond0]
       -- Run the inner while on `step acc` for `k` steps.
       have hk' : ∀ i, i < k → cond (step^[i] (step acc)) = true := by
         intro i hi

@@ -719,7 +719,7 @@ theorem roundtrip_adcx (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8))
     isRex_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), modField_modRMReg, regField_modRMReg,
-    rmField_modRMReg, regName_split, renameJ, operandOf, if_true, and_true]
+    rmField_modRMReg, regName_split, renameJ, operandOf, ite_true, and_true]
 
 /-- `ADOX %src, %dst` (`F3 REX.W 0F 38 F6 /r`) decodes back to itself, consuming
     exactly its own six bytes. -/
@@ -728,12 +728,12 @@ theorem roundtrip_adox (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8))
       = some (renameJ alloc (.adox d (.reg s)), rest) := by
   simp only [encodeJInstr, encAdxCarry, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append, decodeJ1,
-    BitVec.toNat_ofNat, if_neg (show ¬((0xf3 : Nat) % 2 ^ 8 = 0x66) by decide),
+    BitVec.toNat_ofNat, ite_eq_right (show ¬((0xf3 : Nat) % 2 ^ 8 = 0x66) by decide),
     decodeAdx, isRex_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), modField_modRMReg, regField_modRMReg,
-    rmField_modRMReg, regName_split, renameJ, operandOf, if_true, and_true,
-    if_neg (show ¬(false = true) by decide)]
+    rmField_modRMReg, regName_split, renameJ, operandOf, ite_true, and_true,
+    ite_eq_right (show ¬(false = true) by decide)]
 
 /-! ## 6. The VEX prefix bytes of `MULX`
 
@@ -807,14 +807,14 @@ theorem roundtrip_mulx (alloc : GpAlloc) (dh dl a b : String) (rest : List (BitV
     rw [ha]; rfl
   simp only [encodeJInstr, encMulxRR, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append, decodeJ1,
-    BitVec.toNat_ofNat, if_neg (show ¬((0xc4 : Nat) % 2 ^ 8 = 0x66) by decide),
-    if_neg (show ¬((0xc4 : Nat) % 2 ^ 8 = 0xf3) by decide), decodeMulx,
+    BitVec.toNat_ofNat, ite_eq_right (show ¬((0xc4 : Nat) % 2 ^ 8 = 0x66) by decide),
+    ite_eq_right (show ¬((0xc4 : Nat) % 2 ^ 8 = 0xf3) by decide), decodeMulx,
     vex1_bit6, vex1_map,
     vex1_rbar _ _ (bit_le_one _ _) (bit_le_one _ _),
     vex1_bbar _ _ (bit_le_one _ _) (bit_le_one _ _),
     vex2_w, vex2_pp, vex2_vvvv _ (gpNum_lt_16 _), one_sub_one_sub_bit,
     modField_modRMReg, regField_modRMReg, rmField_modRMReg, regName_split,
-    renameJ, operandOf, nameOf, hrdx, if_true, and_true]
+    renameJ, operandOf, nameOf, hrdx, ite_true, and_true]
 
 /-! ## 8. The memory-operand tail -/
 
@@ -947,8 +947,8 @@ theorem decodeJ1_rex (r x b : Nat) (hr : r ≤ 1) (hx : x ≤ 1) (hb : b ≤ 1)
     rw [BitVec.toNat_ofNat]; unfold rex; omega
   have hc4 : ¬ ((BitVec.ofNat 8 (rex 1 r x b)).toNat = 0xc4) := by
     rw [BitVec.toNat_ofNat]; unfold rex; omega
-  simp only [decodeJ1, if_neg h66, if_neg hf3, if_neg hc4,
-    isRex_rex _ _ _ hr hx hb, rexW_rex _ _ _ hr hx hb, if_true]
+  simp only [decodeJ1, ite_eq_right h66, ite_eq_right hf3, ite_eq_right hc4,
+    isRex_rex _ _ _ hr hx hb, rexW_rex _ _ _ hr hx hb, ite_true]
 
 /-- `MOV off(%base), %dst` (`REX.W 8B /r`) decodes back to itself for a
     signed 32-bit displacement. -/
@@ -960,12 +960,12 @@ theorem roundtrip_loadMem32 (alloc : GpAlloc) (d base : String) (off : Int)
     List.nil_append,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
     rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _),
     decodeMemTail_memTail32 _ _ _ _ h,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, if_true]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, ite_true]
 
 /-- `MOV %src, off(%base)` (`REX.W 89 /r`) decodes back to itself for a
     signed 32-bit displacement. -/
@@ -982,12 +982,12 @@ theorem roundtrip_storeMem32 (alloc : GpAlloc) (base s : String) (off : Int)
     List.nil_append, hm,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg hmod, rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec,
+    ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right hmod, rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, ite_true]
 
 /-- `MULX off(%base), %dstLo, %dstHi` (`VEX.LZ.F2.0F38.W1 F6 /r` against
     `[base + disp]`, signed 32-bit displacement) decodes back to itself when the
@@ -1007,14 +1007,14 @@ theorem roundtrip_mulxMem32 (alloc : GpAlloc) (dh dl a base : String) (off : Int
   rw [hm, List.cons_append] at hdec
   simp only [encodeJInstr, encMulxMem, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append, hm, decodeJ1, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xc4 : Nat) % 2 ^ 8 = 0x66) by decide),
-    if_neg (show ¬((0xc4 : Nat) % 2 ^ 8 = 0xf3) by decide), decodeMulx,
+    ite_eq_right (show ¬((0xc4 : Nat) % 2 ^ 8 = 0x66) by decide),
+    ite_eq_right (show ¬((0xc4 : Nat) % 2 ^ 8 = 0xf3) by decide), decodeMulx,
     vex1_bit6, vex1_map,
     vex1_rbar _ _ (bit_le_one _ _) (bit_le_one _ _),
     vex1_bbar _ _ (bit_le_one _ _) (bit_le_one _ _),
     vex2_w, vex2_pp, vex2_vvvv _ (gpNum_lt_16 _), one_sub_one_sub_bit,
-    if_neg hmod, hdec, regName_split, renameJ, operandOf, nameOf, hrdx,
-    if_true, and_true]
+    ite_eq_right hmod, hdec, regName_split, renameJ, operandOf, nameOf, hrdx,
+    ite_true, and_true]
 
 /-- The index-free `LEA off(%base), %dst` (`REX.W 8D /r` against `[base + disp]`,
     signed 32-bit displacement), written `lea dst base base 0 off`, decodes back to
@@ -1032,11 +1032,11 @@ theorem roundtrip_lea32 (alloc : GpAlloc) (d base : String) (off : Int)
     List.cons_append, List.nil_append, hm,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0x8d : Nat) % 2 ^ 8 ∧ (0x8d : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0x8d : Nat) % 2 ^ 8 = 0x89) by decide),
-    ne_eq, hmod, not_false_eq_true, if_pos,
+    ite_eq_right (show ¬((0x8d : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0x8d : Nat) % 2 ^ 8 ∧ (0x8d : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0x8d : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0x8d : Nat) % 2 ^ 8 = 0x89) by decide),
+    ne_eq, hmod, not_false_eq_true, ite_eq_left,
     rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ]
@@ -1053,28 +1053,28 @@ theorem roundtrip_loadMemIdx (alloc : GpAlloc) (d base idx : String) (scale : Na
     (gpNum (regOf alloc base)) (gpNum (regOf alloc idx)) scale md rest (gpNum_lt_16 _) hx4 hs hmd
   by_cases h5 : gpNum (regOf alloc base) &&& 7 = 5
   · have hd := hdec 1 (Or.inr rfl)
-    simp only [if_true, List.cons_append, List.nil_append] at hd
-    simp only [encodeJInstr, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+    simp only [ite_true, List.cons_append, List.nil_append] at hd
+    simp only [encodeJInstr, encMemMovSib, ite_eq_left h5, List.map_cons, List.map_nil,
       List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
       decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
       decodeRex, BitVec.toNat_ofNat,
-      if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
-      if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      ite_eq_right (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
+      ite_eq_right (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
       rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
       rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
-      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true]
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, ite_true]
   · have hd := hdec 0 (Or.inl ⟨rfl, h5⟩)
-    simp only [if_neg (show ¬((0 : Nat) = 1) by decide), List.cons_append,
+    simp only [ite_eq_right (show ¬((0 : Nat) = 1) by decide), List.cons_append,
       List.nil_append] at hd
-    simp only [encodeJInstr, encMemMovSib, if_neg h5, List.map_cons, List.map_nil,
+    simp only [encodeJInstr, encMemMovSib, ite_eq_right h5, List.map_cons, List.map_nil,
       List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
       decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
       decodeRex, BitVec.toNat_ofNat,
-      if_neg (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
-      if_neg (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      ite_eq_right (show ¬((0x8b : Nat) % 2 ^ 8 = 0x0f) by decide),
+      ite_eq_right (show ¬(0xb8 ≤ (0x8b : Nat) % 2 ^ 8 ∧ (0x8b : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
       rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
       rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
-      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true]
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, ite_true]
 
 /-- `MOV %src, (%base,%idx,scale)` (`REX.W 89 /r` with a SIB byte) decodes back
     to itself when the index register is not `%rsp` and the stride is `1`, `2`,
@@ -1091,32 +1091,32 @@ theorem roundtrip_storeMemIdx (alloc : GpAlloc) (base idx : String) (scale : Nat
     fun md hmd => modField_modRMMem _ _ _ hmd
   by_cases h5 : gpNum (regOf alloc base) &&& 7 = 5
   · have hd := hdec 1 (Or.inr rfl)
-    simp only [if_true, List.cons_append, List.nil_append] at hd
-    simp only [encodeJInstr, encMemMovSib, if_pos h5, List.map_cons, List.map_nil,
+    simp only [ite_true, List.cons_append, List.nil_append] at hd
+    simp only [encodeJInstr, encMemMovSib, ite_eq_left h5, List.map_cons, List.map_nil,
       List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
       decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
       decodeRex, BitVec.toNat_ofNat,
-      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
-      if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
-      hmod 1 (by decide), if_neg (show ¬((1 : Nat) = 3) by decide),
+      ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+      ite_eq_right (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+      hmod 1 (by decide), ite_eq_right (show ¬((1 : Nat) = 3) by decide),
       rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
       rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
-      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, nameOf, if_true]
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, nameOf, ite_true]
   · have hd := hdec 0 (Or.inl ⟨rfl, h5⟩)
-    simp only [if_neg (show ¬((0 : Nat) = 1) by decide), List.cons_append,
+    simp only [ite_eq_right (show ¬((0 : Nat) = 1) by decide), List.cons_append,
       List.nil_append] at hd
-    simp only [encodeJInstr, encMemMovSib, if_neg h5, List.map_cons, List.map_nil,
+    simp only [encodeJInstr, encMemMovSib, ite_eq_right h5, List.map_cons, List.map_nil,
       List.cons_append, List.nil_append, sibModRM_eq_modRMMem,
       decodeJ1_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
       decodeRex, BitVec.toNat_ofNat,
-      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
-      if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-      if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
-      hmod 0 (by decide), if_neg (show ¬((0 : Nat) = 3) by decide),
+      ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+      ite_eq_right (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+      hmod 0 (by decide), ite_eq_right (show ¬((0 : Nat) = 3) by decide),
       rexX_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _), hd,
       rexR_rex _ _ _ (bit_le_one _ _) (bit_le_one _ _) (bit_le_one _ _),
-      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, nameOf, if_true]
+      rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, nameOf, ite_true]
 
 /-- The index-free `LEA off(%base), %dst` (`REX.W 8D /r`) decodes back to itself
     for a displacement the `disp8` form encodes. -/
@@ -1180,11 +1180,11 @@ theorem roundtrip_aluRR (alloc : GpAlloc) (op : Nat)
   have hm : op % 2 ^ 8 = op := Nat.mod_eq_of_lt hlt
   simp only [encAluRR, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    decodeRex, BitVec.toNat_ofNat, hm, if_neg h0f, if_neg hb8, if_neg h8b, if_neg h89,
+    decodeRex, BitVec.toNat_ofNat, hm, ite_eq_right h0f, ite_eq_right hb8, ite_eq_right h8b, ite_eq_right h89,
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_neg h81, if_neg hc7, if_neg h69, if_neg hc1, if_neg hf7, halu]
+    ite_false, ite_eq_right h81, ite_eq_right hc7, ite_eq_right h69, ite_eq_right hc1, ite_eq_right hf7, halu]
 
 /-- `MOV %src, %dst` (`REX.W 89 /r`) decodes back to itself. -/
 theorem roundtrip_movRR (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)) :
@@ -1194,12 +1194,12 @@ theorem roundtrip_movRR (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)
     List.nil_append,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0x89 : Nat) % 2 ^ 8 ∧ (0x89 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0x89 : Nat) % 2 ^ 8 = 0x8b) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, ite_true]
 
 /-- `ADD %src, %dst` (`REX.W 01 /r`) decodes back to itself. -/
 theorem roundtrip_addRR (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)) :
@@ -1254,7 +1254,7 @@ theorem roundtrip_imulRR (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8
     decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
     rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, ite_true]
 
 /-- `CMOVE %src, %dst` (`REX.W 0F 44 /r`) decodes back to itself. -/
 theorem roundtrip_cmove (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)) :
@@ -1266,8 +1266,8 @@ theorem roundtrip_cmove (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)
     decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
     rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true,
-    if_neg (show ¬((0x44 : Nat) % 2 ^ 8 = 0xaf) by decide)]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, ite_true,
+    ite_eq_right (show ¬((0x44 : Nat) % 2 ^ 8 = 0xaf) by decide)]
 
 /-- `CMOVNE %src, %dst` (`REX.W 0F 45 /r`) decodes back to itself. -/
 theorem roundtrip_cmovne (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)) :
@@ -1279,9 +1279,9 @@ theorem roundtrip_cmovne (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8
     decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
     rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true,
-    if_neg (show ¬((0x45 : Nat) % 2 ^ 8 = 0xaf) by decide),
-    if_neg (show ¬((0x45 : Nat) % 2 ^ 8 = 0x44) by decide)]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, ite_true,
+    ite_eq_right (show ¬((0x45 : Nat) % 2 ^ 8 = 0xaf) by decide),
+    ite_eq_right (show ¬((0x45 : Nat) % 2 ^ 8 = 0x44) by decide)]
 
 /-- `CMOVB %src, %dst` (`REX.W 0F 42 /r`) decodes back to itself. -/
 theorem roundtrip_cmovb (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)) :
@@ -1293,10 +1293,10 @@ theorem roundtrip_cmovb (alloc : GpAlloc) (d s : String) (rest : List (BitVec 8)
     decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
     rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, if_true,
-    if_neg (show ¬((0x42 : Nat) % 2 ^ 8 = 0xaf) by decide),
-    if_neg (show ¬((0x42 : Nat) % 2 ^ 8 = 0x44) by decide),
-    if_neg (show ¬((0x42 : Nat) % 2 ^ 8 = 0x45) by decide)]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf, ite_true,
+    ite_eq_right (show ¬((0x42 : Nat) % 2 ^ 8 = 0xaf) by decide),
+    ite_eq_right (show ¬((0x42 : Nat) % 2 ^ 8 = 0x44) by decide),
+    ite_eq_right (show ¬((0x42 : Nat) % 2 ^ 8 = 0x45) by decide)]
 
 /-- `MOVZX %src8, %dst` (`REX.W 0F B6 /r`, zero-extending an 8-bit source into a
     64-bit register) decodes back to itself. -/
@@ -1309,29 +1309,29 @@ theorem roundtrip_movzx8 (alloc : GpAlloc) (d src : String) (rest : List (BitVec
     decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
     rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true,
-    if_neg (show ¬((0xb6 : Nat) = 0xaf) by decide),
-    if_neg (show ¬((0xb6 : Nat) = 0x44) by decide),
-    if_neg (show ¬((0xb6 : Nat) = 0x45) by decide),
-    if_neg (show ¬((0xb6 : Nat) = 0x42) by decide)]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, ite_true,
+    ite_eq_right (show ¬((0xb6 : Nat) = 0xaf) by decide),
+    ite_eq_right (show ¬((0xb6 : Nat) = 0x44) by decide),
+    ite_eq_right (show ¬((0xb6 : Nat) = 0x45) by decide),
+    ite_eq_right (show ¬((0xb6 : Nat) = 0x42) by decide)]
 
 /-- `MOVZX %src16, %dst` (`REX.W 0F B7 /r`, zero-extending a 16-bit source into a
     64-bit register) decodes back to itself. -/
 theorem roundtrip_movzx16 (alloc : GpAlloc) (d src : String) (rest : List (BitVec 8)) :
     decodeJ1 (encodeJInstr alloc (.movzx d 16 src) ++ rest)
       = some (renameJ alloc (.movzx d 16 src), rest) := by
-  simp only [encodeJInstr, if_neg (show ¬((16 : Nat) = 8) by decide), enc0FRR,
+  simp only [encodeJInstr, ite_eq_right (show ¬((16 : Nat) = 8) by decide), enc0FRR,
     List.map_cons, List.map_nil, List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat, modField_modRMReg, regField_modRMReg,
     rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, if_true,
-    if_neg (show ¬((0xb7 : Nat) = 0xaf) by decide),
-    if_neg (show ¬((0xb7 : Nat) = 0x44) by decide),
-    if_neg (show ¬((0xb7 : Nat) = 0x45) by decide),
-    if_neg (show ¬((0xb7 : Nat) = 0x42) by decide),
-    if_neg (show ¬((0xb7 : Nat) = 0xb6) by decide)]
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, nameOf, ite_true,
+    ite_eq_right (show ¬((0xb7 : Nat) = 0xaf) by decide),
+    ite_eq_right (show ¬((0xb7 : Nat) = 0x44) by decide),
+    ite_eq_right (show ¬((0xb7 : Nat) = 0x45) by decide),
+    ite_eq_right (show ¬((0xb7 : Nat) = 0x42) by decide),
+    ite_eq_right (show ¬((0xb7 : Nat) = 0xb6) by decide)]
 
 /-- The little-endian 32-bit recomposition, on the `% 2 ^ 8` byte values the
     decoder reads out of `BitVec.ofNat 8` bytes. -/
@@ -1354,7 +1354,7 @@ theorem imm32_recompose_mod_any (v : Nat) :
   omega
 
 /-- Below `2 ^ 31` the sign extension is the identity. -/
-theorem sext32_of_lt (u : Nat) (h : u < 2 ^ 31) : sext32 u = u := if_pos h
+theorem sext32_of_lt (u : Nat) (h : u < 2 ^ 31) : sext32 u = u := ite_eq_left h
 
 /-- `fitsImm32S` as the arithmetic condition it decides. -/
 @[simp] theorem fitsImm32S_eq_true (v : Nat) :
@@ -1412,13 +1412,13 @@ theorem roundtrip_aluImm (alloc : GpAlloc) (digit : Nat)
     List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0x81 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0x81 : Nat) % 2 ^ 8 ∧ (0x81 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0x81 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0x81 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0x81 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0x81 : Nat) % 2 ^ 8 ∧ (0x81 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0x81 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0x81 : Nat) % 2 ^ 8 = 0x89) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg, hd7,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, halu, imm32S_imm32LE v hv hf]
+    ite_false, ite_true, halu, imm32S_imm32LE v hv hf]
 
 /-- `ADD $imm32, %dst` (`REX.W 81 /0 id`) decodes back to itself. -/
 theorem roundtrip_addImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
@@ -1478,15 +1478,15 @@ theorem roundtrip_imulImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List 
     List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0x69 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0x69 : Nat) % 2 ^ 8 ∧ (0x69 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0x69 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0x69 : Nat) % 2 ^ 8 = 0x89) by decide),
-    if_neg (show ¬((0x69 : Nat) % 2 ^ 8 = 0x81) by decide),
-    if_neg (show ¬((0x69 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0x69 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0x69 : Nat) % 2 ^ 8 ∧ (0x69 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0x69 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0x69 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0x69 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0x69 : Nat) % 2 ^ 8 = 0xc7) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, renameJ, operandOf, imm32S_imm32LE v hv hf]
+    ite_false, ite_true, renameJ, operandOf, imm32S_imm32LE v hv hf]
 
 /-- `MOV $imm, %dst` decodes back to itself for any immediate a 64-bit register
     can hold. The encoder picks the sign-extending `C7 /0 id` form below `2 ^ 31`
@@ -1498,18 +1498,18 @@ theorem roundtrip_movImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (
   by_cases h31 : v < 2 ^ 31
   · have hf : fitsImm32S v = true := by
       simp only [fitsImm32S, Bool.or_eq_true, decide_eq_true_eq]; exact Or.inl h31
-    simp only [encodeJInstr, if_pos h31, encMovImm, imm32LE, List.map_cons,
+    simp only [encodeJInstr, ite_eq_left h31, encMovImm, imm32LE, List.map_cons,
       List.map_nil, List.cons_append, List.nil_append,
       decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
       decodeRex, BitVec.toNat_ofNat,
-      if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x0f) by decide),
-      if_neg (show ¬(0xb8 ≤ (0xc7 : Nat) % 2 ^ 8 ∧ (0xc7 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-      if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8b) by decide),
-      if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x89) by decide),
-      if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x81) by decide),
+      ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x0f) by decide),
+      ite_eq_right (show ¬(0xb8 ≤ (0xc7 : Nat) % 2 ^ 8 ∧ (0xc7 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+      ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8b) by decide),
+      ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x89) by decide),
+      ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x81) by decide),
       modField_modRMReg, regField_modRMReg, rmField_modRMReg,
       rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-      if_false, if_true, show (0 : Nat) &&& 7 = 0 by decide, renameJ, operandOf,
+      ite_false, ite_true, show (0 : Nat) &&& 7 = 0 by decide, renameJ, operandOf,
       imm32S_imm32LE v hv hf]
   · have hlow : gpNum (regOf alloc d) &&& 7 = gpNum (regOf alloc d) % 8 :=
       Nat.and_two_pow_sub_one_eq_mod _ 3
@@ -1521,10 +1521,10 @@ theorem roundtrip_movImm (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (
     have hsub : (0xb8 + (gpNum (regOf alloc d) &&& 7)) % 2 ^ 8 - 0xb8
         = gpNum (regOf alloc d) &&& 7 := by
       rw [hlow]; omega
-    simp only [encodeJInstr, if_neg h31, encMovImm64, imm64LE, List.map_cons,
+    simp only [encodeJInstr, ite_eq_right h31, encMovImm64, imm64LE, List.map_cons,
       List.map_nil, List.cons_append, List.nil_append,
       decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
-      decodeRex, BitVec.toNat_ofNat, if_neg h0f, if_pos hrange, hsub,
+      decodeRex, BitVec.toNat_ofNat, ite_eq_right h0f, ite_eq_left hrange, hsub,
       rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf,
       imm64_recompose_mod v hv]
 
@@ -1537,16 +1537,16 @@ theorem roundtrip_shl (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (Bit
     List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, show (4 : Nat) &&& 7 = 4 by decide, renameJ, operandOf,
+    ite_false, ite_true, show (4 : Nat) &&& 7 = 4 by decide, renameJ, operandOf,
     imm8_recompose_mod v hv]
 
 /-- `SHR $imm8, %dst` (`REX.W C1 /5 ib`) decodes back to itself. -/
@@ -1558,17 +1558,17 @@ theorem roundtrip_shr (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (Bit
     List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, show (5 : Nat) &&& 7 = 5 by decide,
-    if_neg (show ¬((5 : Nat) = 4) by decide), renameJ, operandOf,
+    ite_false, ite_true, show (5 : Nat) &&& 7 = 5 by decide,
+    ite_eq_right (show ¬((5 : Nat) = 4) by decide), renameJ, operandOf,
     imm8_recompose_mod v hv]
 
 /-- `SAR $imm8, %dst` (`REX.W C1 /7 ib`) decodes back to itself. -/
@@ -1580,17 +1580,17 @@ theorem roundtrip_sar (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (Bit
     List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
-    if_neg (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, show (7 : Nat) &&& 7 = 7 by decide,
-    if_neg (show ¬((7 : Nat) = 4) by decide), if_neg (show ¬((7 : Nat) = 5) by decide),
+    ite_false, ite_true, show (7 : Nat) &&& 7 = 7 by decide,
+    ite_eq_right (show ¬((7 : Nat) = 4) by decide), ite_eq_right (show ¬((7 : Nat) = 5) by decide),
     renameJ, operandOf, imm8_recompose_mod v hv]
 
 /-- `NEG %dst` (`REX.W F7 /3`) decodes back to itself. -/
@@ -1601,17 +1601,17 @@ theorem roundtrip_neg (alloc : GpAlloc) (d : String) (rest : List (BitVec 8)) :
     List.cons_append, List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0xf7 : Nat) % 2 ^ 8 ∧ (0xf7 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x89) by decide),
-    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x81) by decide),
-    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0xc7) by decide),
-    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x69) by decide),
-    if_neg (show ¬((0xf7 : Nat) % 2 ^ 8 = 0xc1) by decide),
+    ite_eq_right (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0xf7 : Nat) % 2 ^ 8 ∧ (0xf7 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0xf7 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0xf7 : Nat) % 2 ^ 8 = 0x69) by decide),
+    ite_eq_right (show ¬((0xf7 : Nat) % 2 ^ 8 = 0xc1) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, show (3 : Nat) &&& 7 = 3 by decide, renameJ]
+    ite_false, ite_true, show (3 : Nat) &&& 7 = 3 by decide, renameJ]
 
 /-! ## 11. Round-trip for `TEST`, `BT`, `setc`, the memory-source `ADCX`/`ADOX` and
 the store-immediate -/
@@ -1624,20 +1624,20 @@ theorem roundtrip_test (alloc : GpAlloc) (a b : String) (rest : List (BitVec 8))
     List.nil_append,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0x85 : Nat) % 2 ^ 8 ∧ (0x85 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0x89) by decide),
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0x81) by decide),
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0xc7) by decide),
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0x69) by decide),
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0xc1) by decide),
-    if_neg (show ¬((0x85 : Nat) % 2 ^ 8 = 0xf7) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0x85 : Nat) % 2 ^ 8 ∧ (0x85 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0x69) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0xc1) by decide),
+    ite_eq_right (show ¬((0x85 : Nat) % 2 ^ 8 = 0xf7) by decide),
     show aluMnemonic ((0x85 : Nat) % 2 ^ 8) = none from rfl,
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
-    if_false, if_true, renameJ, operandOf]
+    ite_false, ite_true, renameJ, operandOf]
 
 /-- `BT $imm8, %d` (`REX.W 0F BA /4 ib`) decodes back to itself. -/
 theorem roundtrip_bt (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
@@ -1648,15 +1648,15 @@ theorem roundtrip_bt (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitV
     List.nil_append,
     decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xba : Nat) % 2 ^ 8 = 0xaf) by decide),
-    if_neg (show ¬((0xba : Nat) % 2 ^ 8 = 0x44) by decide),
-    if_neg (show ¬((0xba : Nat) % 2 ^ 8 = 0x45) by decide),
-    if_neg (show ¬((0xba : Nat) % 2 ^ 8 = 0x42) by decide),
-    if_neg (show ¬((0xba : Nat) % 2 ^ 8 = 0xb6) by decide),
-    if_neg (show ¬((0xba : Nat) % 2 ^ 8 = 0xb7) by decide),
-    if_neg (show ¬((0xba : Nat) % 2 ^ 8 = 0x92) by decide),
+    ite_eq_right (show ¬((0xba : Nat) % 2 ^ 8 = 0xaf) by decide),
+    ite_eq_right (show ¬((0xba : Nat) % 2 ^ 8 = 0x44) by decide),
+    ite_eq_right (show ¬((0xba : Nat) % 2 ^ 8 = 0x45) by decide),
+    ite_eq_right (show ¬((0xba : Nat) % 2 ^ 8 = 0x42) by decide),
+    ite_eq_right (show ¬((0xba : Nat) % 2 ^ 8 = 0xb6) by decide),
+    ite_eq_right (show ¬((0xba : Nat) % 2 ^ 8 = 0xb7) by decide),
+    ite_eq_right (show ¬((0xba : Nat) % 2 ^ 8 = 0x92) by decide),
     modField_modRMReg, regField_modRMReg, rmField_modRMReg,
-    rexB_rex _ _ _ (bit_le_one _ _), regName_split, if_true,
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, ite_true,
     show (4 : Nat) &&& 7 = 4 by decide, renameJ, operandOf, imm8_recompose_mod v hv]
 
 /-- The fused `setc` bytes `encSetcMovzx n` (`SETB %n8` then `MOVZBQ %n8, %n`)
@@ -1687,9 +1687,9 @@ theorem roundtrip_adcxMem32 (alloc : GpAlloc) (d base : String) (off : Int)
     List.nil_append, hm, decodeJ1, BitVec.toNat_ofNat, decodeAdx,
     isRex_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), if_neg hmod,
+    rexB_rex _ _ _ (bit_le_one _ _), ite_eq_right hmod,
     rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec, regName_split, renameJ,
-    if_true, and_true]
+    ite_true, and_true]
 
 /-- `ADOX off(%base), %dst` (`F3 REX.W 0F 38 F6 /r` against `[base + disp]`) decodes
     back to itself for a signed 32-bit displacement. -/
@@ -1704,12 +1704,12 @@ theorem roundtrip_adoxMem32 (alloc : GpAlloc) (d base : String) (off : Int)
   rw [hm, List.cons_append] at hdec
   simp only [encodeJInstr, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append, hm, decodeJ1, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xf3 : Nat) % 2 ^ 8 = 0x66) by decide), decodeAdx,
+    ite_eq_right (show ¬((0xf3 : Nat) % 2 ^ 8 = 0x66) by decide), decodeAdx,
     isRex_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
-    rexB_rex _ _ _ (bit_le_one _ _), if_neg hmod,
+    rexB_rex _ _ _ (bit_le_one _ _), ite_eq_right hmod,
     rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec, regName_split, renameJ,
-    if_true, and_true, if_neg (show ¬(false = true) by decide)]
+    ite_true, and_true, ite_eq_right (show ¬(false = true) by decide)]
 
 /-- `MOV $imm32, off(%base)` (`REX.W C7 /0 id` against `[base + disp]`) decodes back
     to itself for a 64-bit immediate that sign-extends from 32 bits and a signed
@@ -1727,15 +1727,15 @@ theorem roundtrip_storeMemImm32 (alloc : GpAlloc) (base : String) (off : Int) (v
     List.cons_append, List.nil_append, List.append_assoc, hm,
     decodeJ1_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
     decodeRex, BitVec.toNat_ofNat,
-    if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x0f) by decide),
-    if_neg (show ¬(0xb8 ≤ (0xc7 : Nat) % 2 ^ 8 ∧ (0xc7 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
-    if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8b) by decide),
-    if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x89) by decide),
-    if_neg (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8d) by decide),
-    ne_eq, hmod, not_false_eq_true, if_pos,
+    ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right (show ¬(0xb8 ≤ (0xc7 : Nat) % 2 ^ 8 ∧ (0xc7 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0xc7 : Nat) % 2 ^ 8 = 0x8d) by decide),
+    ne_eq, hmod, not_false_eq_true, ite_eq_left,
     rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec]
   simp only [imm32LE, List.map_cons, List.map_nil, List.cons_append, List.nil_append,
-    BitVec.toNat_ofNat, show (0 : Nat) &&& 7 = 0 by decide, if_true,
+    BitVec.toNat_ofNat, show (0 : Nat) &&& 7 = 0 by decide, ite_true,
     rexB_rex _ _ _ (bit_le_one _ _), regName_split, renameJ, operandOf,
     imm32S_imm32LE v hv hf]
 

@@ -485,7 +485,7 @@ noncomputable def lsmul (x : ZMod L) (P : EdPt) : EdPt :=
 /-- On an `L`-torsion point, `lsmul n P` is the `n`-fold sum of `P`. -/
 theorem lsmul_natCast_of_torsion {P : EdPt} (hP : L • P = 0) (n : ℕ) :
     lsmul (n : ZMod L) P = n • P := by
-  rw [lsmul, if_pos hP, ZMod.val_natCast, nsmul_mod_L hP]
+  rw [lsmul, ite_eq_left hP, ZMod.val_natCast, nsmul_mod_L hP]
 
 theorem lsmul_add (x y : ZMod L) (P : EdPt) :
     lsmul (x + y) P = lsmul x P + lsmul y P := by
@@ -499,8 +499,8 @@ theorem lsmul_mul (x y : ZMod L) (P : EdPt) :
   unfold lsmul
   by_cases h : L • P = 0
   · have h' : L • (y.val • P) = 0 := by rw [← mul_smul, Nat.mul_comm, mul_smul, h, smul_zero]
-    rw [if_pos h, if_pos h, if_pos h', ZMod.val_mul, nsmul_mod_L h, mul_smul]
-  · rw [if_neg h, if_neg h, smul_zero, if_pos rfl, smul_zero]
+    rw [ite_eq_left h, ite_eq_left h, ite_eq_left h', ZMod.val_mul, nsmul_mod_L h, mul_smul]
+  · rw [ite_eq_right h, ite_eq_right h, smul_zero, ite_eq_left rfl, smul_zero]
 
 theorem lsmul_zero (P : EdPt) : lsmul 0 P = 0 := by
   unfold lsmul
@@ -679,7 +679,7 @@ theorem ed_compress_spec_injective : Function.Injective ed_compress_spec := by
   · by_cases hq : Q.x = 0
     · exact EdwardsPointAff.ext_aff (by rw [hx, hq, neg_zero]) hy
     · exfalso
-      have hval : P.x.val = P25519 - Q.x.val := by rw [hx, ZMod.neg_val, if_neg hq]
+      have hval : P.x.val = P25519 - Q.x.val := by rw [hx, ZMod.neg_val, ite_eq_right hq]
       have hlt : Q.x.val < P25519 := Q.x.val_lt
       have hpos : Q.x.val ≠ 0 := (ZMod.val_ne_zero _).mpr hq
       unfold xParity at hpar
@@ -709,7 +709,7 @@ theorem compress_decompress_well_defined (P : EdPt) :
   have h : ∃ Q : EdPt, ed_compress_spec Q = ((ed_compress_spec P).1, (ed_compress_spec P).2) :=
     ⟨P, rfl⟩
   unfold ed_decompress_spec
-  rw [dif_pos h]
+  rw [dite_eq_left h]
   exact congrArg some (ed_compress_spec_injective h.choose_spec)
 
 /-- A successful decompression yields an on-curve point with the requested

@@ -652,7 +652,7 @@ theorem stackGet_stackSet_of_ne {w N : Nat} (a : Fin N → BitVec w) (k k' : Nat
   | zero => rfl
   | succ m =>
       simp only [stackGet, stackSet]
-      rw [if_neg]
+      rw [ite_eq_right]
       intro hc
       exact h (congrArg Fin.val hc)
 
@@ -661,7 +661,7 @@ theorem stackGet_stackSet_self {w N : Nat} (hN : 0 < N) (a : Fin N → BitVec w)
     (v : BitVec w) : stackGet (stackSet a k v) k = v := by
   cases N with
   | zero => exact absurd hN (Nat.lt_irrefl 0)
-  | succ m => simp only [stackGet, stackSet, if_true]
+  | succ m => simp only [stackGet, stackSet, ite_true]
 
 /-- Folding writes at the positions `i + j` over a list of lanes none of whose positions has
     the residue of `k` leaves the element at `k` unchanged. -/

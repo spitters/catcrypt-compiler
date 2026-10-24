@@ -294,20 +294,20 @@ theorem nzB_eq (w : BitVec 64) :
     simp
   rw [hbits, getLsbD63, getLsbD63, hneg]
   by_cases h0 : w.toNat = 0
-  · rw [if_pos h0]
+  · rw [ite_eq_left h0]
     have h1 : ¬ (2 ^ 63 ≤ w.toNat) := by omega
     have h2 : ¬ (2 ^ 63 ≤ (2 ^ 64 - w.toNat) % 2 ^ 64) := by
       rw [h0]
       norm_num
-    simp only [h1, h2, decide_false, Bool.or_self, Bool.false_eq_true, if_false]
-  · rw [if_neg h0]
+    simp only [h1, h2, decide_false, Bool.or_self, Bool.false_eq_true, ite_false]
+  · rw [ite_eq_right h0]
     have : (2 ^ 63 ≤ w.toNat) ∨ (2 ^ 63 ≤ (2 ^ 64 - w.toNat) % 2 ^ 64) := by
       by_cases hh : 2 ^ 63 ≤ w.toNat
       · exact Or.inl hh
       · refine Or.inr ?_
         rw [Nat.mod_eq_of_lt (by omega)]
         omega
-    rcases this with h | h <;> simp only [h, decide_true, Bool.or_true, Bool.true_or, if_true]
+    rcases this with h | h <;> simp only [h, decide_true, Bool.or_true, Bool.true_or, ite_true]
 
 theorem maskB_eq (z : BitVec 64) :
     maskB z = if z.toNat = 0 then 0 else BitVec.allOnes 64 := by
@@ -502,7 +502,7 @@ theorem adcx_carry (a b : BitVec 64) (c : Bool) :
       = decide (2 ^ 64 ≤ a.toNat + b.toNat + (if c then 1 else 0)) := rfl
   rw [hco, ← hcwn]
   by_cases hh : 2 ^ 64 ≤ a.toNat + b.toNat + cw.toNat
-  · rw [decide_eq_true hh, if_pos rfl]
+  · rw [decide_eq_true hh, ite_eq_left rfl]
     have : (bSltu (a + b) a + bSltu (a + b + cw) (a + b)).toNat = 1 := by omega
     rw [this]
     decide +kernel

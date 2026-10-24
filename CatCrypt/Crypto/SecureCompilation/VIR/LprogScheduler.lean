@@ -559,12 +559,12 @@ theorem bubble_perm : ∀ (b : List Linstr), (bubble b).Perm b := by
   | case1 => simp [bubble]
   | case2 i => simp [bubble]
   | case3 i1 i2 rest hcond ih =>
-      simp only [bubble, if_pos hcond]
+      simp only [bubble, ite_eq_left hcond]
       -- bubble (i1::i2::rest) = i2 :: bubble (i1::rest)
       refine (List.Perm.cons i2 ih).trans ?_
       exact List.Perm.swap i1 i2 rest
   | case4 i1 i2 rest hcond ih =>
-      simp only [bubble, if_neg hcond]
+      simp only [bubble, ite_eq_right hcond]
       exact List.Perm.cons i1 ih
 
 /-- Iterate `bubble` `k` times. -/
@@ -607,7 +607,7 @@ theorem noSwap_bubble_id : ∀ (b : List Linstr), noSwap b = true → bubble b =
       simp [noSwap, hcond] at hns
   | case4 i1 i2 rest hcond ih =>
       intro hns
-      simp only [bubble, if_neg hcond]
+      simp only [bubble, ite_eq_right hcond]
       have hns' : noSwap (i2 :: rest) = true := by
         simp only [noSwap] at hns
         cases hg : (indep i1.li_i i2.li_i && (latencyPrio i1.li_i < latencyPrio i2.li_i)) with
@@ -639,11 +639,11 @@ theorem bubbleNEarly_eq_bubbleN : ∀ (k : Nat) (b : List Linstr),
     intro b
     simp only [bubbleNEarly, bubbleN]
     by_cases h : noSwap b = true
-    · rw [if_pos h]
+    · rw [ite_eq_left h]
       have hf : bubble b = b := noSwap_bubble_id b h
       rw [hf]
       exact (bubbleN_of_bubble_id hf k).symm
-    · rw [if_neg h]
+    · rw [ite_eq_right h]
       exact ih (bubble b)
 
 /-! ## 5. The scheduler -/
@@ -705,7 +705,7 @@ theorem bubble_only_indep_swaps (i1 i2 : Linstr) (rest : List Linstr) :
   · -- non-swap branch: bubble emits i1 first, contradicting the head = i2 hypo
     -- unless i1 = i2 at the linstr_r level (excluded by hne).
     exfalso
-    simp only [bubble, if_neg hcond] at hb
+    simp only [bubble, ite_eq_right hcond] at hb
     -- hb : i1 :: bubble (i2 :: rest) = i2 :: tail  ⟹  i1 = i2
     have : i1 = i2 := (List.cons.injEq _ _ _ _).mp hb |>.1
     exact hne (this ▸ rfl)
@@ -1012,7 +1012,7 @@ theorem lsemStep_eq_applyEffU {w : Nat} (i : LinstrR) (s : Lstate w) :
                   simp only [lsemStep, stepEffU]
                   rfl
                 | cons _ _ => simp only [lsemStep, stepEffU]; rfl
-            · simp only [lsemStep, stepEffU, if_neg hL, if_neg hS]
+            · simp only [lsemStep, stepEffU, ite_eq_right hL, ite_eq_right hS]
               cases applyOpn (stripWidthTag opn)
                   (List.map (evalOperand s) (.arrIdx base idx scale :: tl)) <;> rfl
   | _ => rfl
@@ -1516,13 +1516,13 @@ theorem bubble_run {S : Type} {run : List LinstrR → S → Option S}
       intro s
       have hind : indep i1.li_i i2.li_i = true := by
         simp only [Bool.and_eq_true] at hcond; exact hcond.1
-      simp only [bubble, if_pos hcond, List.map_cons]
+      simp only [bubble, ite_eq_left hcond, List.map_cons]
       rw [hcong i2.li_i _ _ ih s]
       simp only [List.map_cons]
       exact (hswap i1.li_i i2.li_i (rest.map Linstr.li_i) s hind).symm
   | case4 i1 i2 rest hcond ih =>
       intro s
-      simp only [bubble, if_neg hcond, List.map_cons]
+      simp only [bubble, ite_eq_right hcond, List.map_cons]
       exact hcong i1.li_i _ _ ih s
 
 /-- Iterated bubble passes preserve such an execution function. -/
@@ -1744,7 +1744,7 @@ theorem bubble_id_of_uniform_prio (k : Nat) : ∀ (b : List Linstr),
       omega
   | case4 i1 i2 rest hcond ih =>
       intro hall
-      simp only [bubble, if_neg hcond]
+      simp only [bubble, ite_eq_right hcond]
       rw [ih (fun i hi => hall i (List.mem_cons_of_mem i1 hi))]
 
 /-- Iterated bubble passes are the identity on a uniform-priority body. -/

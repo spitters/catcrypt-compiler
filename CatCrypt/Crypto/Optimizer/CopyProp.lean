@@ -209,12 +209,12 @@ theorem isCopy_denote {Γ : Ctxt jasminDialect} {bs : JasminTy}
           by_cases hv : varEq x y
           · have hxy : x = y := varEq_sound x y hv
             subst hxy
-            simp only [hv, if_true, Option.some.injEq] at he
+            simp only [hv, ite_true, Option.some.injEq] at he
             subst he
             show (binE .or x x).denote V = x.lookup V
             rw [binE_denote]
             simp [JasminBinOp.apply]
-          · simp only [hv, Bool.false_eq_true, if_false] at he
+          · simp only [hv, Bool.false_eq_true, ite_false] at he
             exact absurd he (by simp)
         all_goals
           (simp only [isCopy] at he

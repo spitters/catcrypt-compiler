@@ -189,7 +189,7 @@ theorem encodeLopn_or₂ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
     show adxPrefix "OR" = none from by decide +kernel,
     show aluOpcode "OR" = some 0x09 from by decide +kernel,
     show tagShiftExt "OR" = none from by decide +kernel,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-- `XOR:64 [dn, sn]` (destructive) → `encTwoAddr … 1 0x31 …`. -/
 theorem encodeLopn_xor₂ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
@@ -204,7 +204,7 @@ theorem encodeLopn_xor₂ (frame spillW : Nat) (dn sn : String) (qsaveB : Nat) :
     show adxPrefix "XOR" = none from by decide +kernel,
     show aluOpcode "XOR" = some 0x31 from by decide +kernel,
     show tagShiftExt "XOR" = none from by decide +kernel,
-    Bool.false_eq_true, if_false]
+    Bool.false_eq_true, ite_false]
 
 /-! ### §1c. The byte equation: JInstr two-source block = leading self-`mov` ++ Lprog op
 
@@ -318,8 +318,8 @@ theorem dispatch_tagshift_reg_emits
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg sn])
       = encTagShift (rexW (mnemWidth mnem)) ext (gpNumU dn) base := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, hext,
-    Bool.false_eq_true, if_false]
-  rw [if_pos hgp, if_neg hcnt, if_pos hds, List.nil_append]
+    Bool.false_eq_true, ite_false]
+  rw [ite_eq_left hgp, ite_eq_right hcnt, ite_eq_left hds, List.nil_append]
 
 /-- **`SHR:19:64` now ENCODES** (asconSigma0's first rotate-hi shift). The Lprog byte encoder
     emits the `shr %d, $19` bytes (`encTagShift 1 5 (gpNumU dn) "SHR:19"`) — the rotation is no
@@ -408,7 +408,7 @@ theorem encJShr_eq_encTagShift
     (hn : tagShiftCount base = n) (hn1 : n ≠ 1)
     (hd : gpNum (regOf alloc dn) = gpNumU dn) :
     encodeJInstr alloc (JInstr.shr dn (.imm n)) = encTagShift 1 5 (gpNumU dn) base := by
-  rw [encTagShift, hn, if_neg hn1]
+  rw [encTagShift, hn, ite_eq_right hn1]
   show encShiftImm 5 (gpNum (regOf alloc dn)) n = encShiftImmw 1 5 (gpNumU dn) n
   rw [hd]; simp [encShiftImm, encShiftImmw, rexOpt]
 
@@ -418,7 +418,7 @@ theorem encJShl_eq_encTagShift
     (hn : tagShiftCount base = n) (hn1 : n ≠ 1)
     (hd : gpNum (regOf alloc dn) = gpNumU dn) :
     encodeJInstr alloc (JInstr.shl dn (.imm n)) = encTagShift 1 4 (gpNumU dn) base := by
-  rw [encTagShift, hn, if_neg hn1]
+  rw [encTagShift, hn, ite_eq_right hn1]
   show encShiftImm 4 (gpNum (regOf alloc dn)) n = encShiftImmw 1 4 (gpNumU dn) n
   rw [hd]; simp [encShiftImm, encShiftImmw, rexOpt]
 

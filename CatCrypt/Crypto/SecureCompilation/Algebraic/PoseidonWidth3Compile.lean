@@ -183,8 +183,8 @@ theorem quintExprs_eval (k : Nat) (y : Fin 3 → ZMod p) (i : Fin 3) :
       = if active P k i then y i ^ 5 else y i := by
   unfold quintExprs
   by_cases ha : active P k i
-  · simp only [ha, if_true, FExpr.eval]
-    rw [sqExprs_eval_hi, sqExprs_eval_lo, if_pos ha]
+  · simp only [ha, ite_true, FExpr.eval]
+    rw [sqExprs_eval_hi, sqExprs_eval_lo, ite_eq_left ha]
     ring
   · simp only [ha]
     exact sqExprs_eval_lo P k y i

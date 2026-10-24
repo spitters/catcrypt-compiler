@@ -170,7 +170,7 @@ theorem physPositionEmit_eq_physExpand (shiftImm : ShiftImmOracle) (body : Lcmd)
   rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
   simp only [List.flatMap_nil, List.nil_append, List.length_nil, Nat.sub_zero]
   have hst : ∀ (b t : Nat), ¬ (b ≥ t ∧ b < t) := fun b t h => by omega
-  simp only [hst, if_false]
+  simp only [hst, ite_false]
   obtain ⟨ii, w⟩ := i
   cases w with
   | Lopn ds o ss => cases ds <;> simp only [List.append_nil] <;> rfl
@@ -707,7 +707,7 @@ theorem arrChainAlias_spec (body : Lcmd) :
         · subst h; simp
         · have hb : (n == dst) = false := by simp [h]
           have hb' : (dst == n) = false := by simp [Ne.symm h]
-          simp only [hb, hb', Bool.false_eq_true, if_false]
+          simp only [hb, hb', Bool.false_eq_true, ite_false]
           exact h0 n
       · exact ih _ _ h0 h1
     next heq =>
@@ -889,7 +889,7 @@ theorem abiBody1_singleLoop (outArg : String) (inArgs abiArgs : List String)
           (abiDerived (singleLoop update count init invs) outArg inArgs immSlotMap).1
           (loopNode update count init invs immSlotMap) ++ [⟨0, .Lret⟩] := by
     simp [aliasRegBody]
-  rw [hal, canonicalizeMemrefThread_eq_renLcmd, arrChainAlias_append_ret, if_neg (by simp [hne]),
+  rw [hal, canonicalizeMemrefThread_eq_renLcmd, arrChainAlias_append_ret, ite_eq_right (by simp [hne]),
     hκ, renLcmd_append_ret]
 
 /-- **The physical-ABI export of a single loop node.** For the program with one
@@ -947,7 +947,7 @@ theorem toLfundefPhysAbi_singleLoop (outArg : String) (inArgs : List String)
     rw [List.mem_append, List.mem_append, List.mem_singleton] at hi
     rcases hi with hi | hi | hi
     · by_cases h4 : abiArgs.length ≥ 4
-      · simp only [abiLivePin, h4, if_true, List.mem_singleton] at hi; subst hi; simp
+      · simp only [abiLivePin, h4, ite_true, List.mem_singleton] at hi; subst hi; simp
       · simp [abiLivePin, h4] at hi
     · simp only [renLcmd, aliasRegBody, List.map_map, List.mem_map] at hi
       obtain ⟨j, hj, rfl⟩ := hi
@@ -966,7 +966,7 @@ theorem toLfundefPhysAbi_singleLoop (outArg : String) (inArgs : List String)
     rw [List.mem_append, List.mem_append, List.mem_singleton] at hi
     rcases hi with hi | hi | rfl
     · by_cases h4 : abiArgs.length ≥ 4
-      · simp only [abiLivePin, h4, if_true, List.mem_singleton] at hi
+      · simp only [abiLivePin, h4, ite_true, List.mem_singleton] at hi
         subst hi
         simp only [LinstrR.Lopn.injEq] at hi'
         rcases hz with rfl | rfl <;> simp at hi'
@@ -1128,13 +1128,13 @@ theorem EnvScratch.step {env : ScratchEnv} (h : EnvScratch env) (i : Linstr) :
     | reg dn =>
       dsimp only
       by_cases hc : fuseReloadScratches.contains dn = true
-      · rw [if_pos hc]
+      · rw [ite_eq_left hc]
         split
         · split
           · exact hbind _ _ _ he hc
           · exact he.kill _
         · exact he.kill _
-      · rw [if_neg hc]; exact he
+      · rw [ite_eq_right hc]; exact he
     | _ => exact he
   · exact h
 
@@ -1367,7 +1367,7 @@ theorem labelPos_append_of_ne (l : LLabel) (xs ys : List Item)
   induction xs generalizing j off with
   | nil => simp [decCount, itemBytes]
   | cons x xs ih =>
-    rw [List.cons_append, labelPos, if_neg (h x (by simp)),
+    rw [List.cons_append, labelPos, ite_eq_right (h x (by simp)),
       ih (fun it hit => h it (List.mem_cons_of_mem _ hit))]
     congr 1
     · simp only [decCount]; split <;> omega
@@ -1413,8 +1413,8 @@ theorem expectedFrom_node (A B C : List Item) (c1 j1 lt c2 j2 le rt : Item)
   have hpe : ∃ o, labelPos endL 0 0 all
       = some ((opsOf A).length + (opsOf B).length + 4, o) := by
     rw [hall, labelPos_append_of_ne _ _ _ (hA.noLabel _), decCount_opItems hA]
-    simp only [labelPos, hc1l, hj1l, hltl, reduceCtorEq, if_false, hc1, hj1, hlt,
-      Option.isSome_some, Option.isSome_none, if_true, Option.some.injEq, htop,
+    simp only [labelPos, hc1l, hj1l, hltl, reduceCtorEq, ite_false, hc1, hj1, hlt,
+      Option.isSome_some, Option.isSome_none, ite_true, Option.some.injEq, htop,
       Bool.false_eq_true]
     rw [labelPos_append_of_ne _ _ _ (hB.noLabel _), decCount_opItems hB]
     simp [labelPos, hc2l, hj2l, hlel, hc2, hj2]

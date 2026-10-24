@@ -179,32 +179,32 @@ theorem comScalarTailFrom_toComWith {Γ : Ctxt jasminDialect} {t : JasminTy}
   | case1 => rfl
   | case2 =>
       rename_i bop hop args hs v0 κ body ih
-      rw [comScalarTailFrom, dif_pos hs]
+      rw [comScalarTailFrom, dite_eq_left hs]
       simp only [ArithBlock.toComWith, arithExpr, hvector_two_eta args]
       rw [ih]
   | case3 =>
       rename_i bop hop args hs v0 κ body
-      rw [comScalarTailFrom, dif_neg hs]
+      rw [comScalarTailFrom, dite_eq_right hs]
       simp only [ArithBlock.toComWith]
       rfl
   | case4 =>
       rename_i k hop args hk v0 κ body ih
-      rw [comScalarTailFrom, dif_pos hk]
+      rw [comScalarTailFrom, dite_eq_left hk]
       simp only [ArithBlock.toComWith, unExpr_unOfShl, hvector_one_eta args]
       rw [ih]
   | case5 =>
       rename_i k hop args hk v0 κ body
-      rw [comScalarTailFrom, dif_neg hk]
+      rw [comScalarTailFrom, dite_eq_right hk]
       simp only [ArithBlock.toComWith]
       rfl
   | case6 =>
       rename_i k hop args hk v0 κ body ih
-      rw [comScalarTailFrom, dif_pos hk]
+      rw [comScalarTailFrom, dite_eq_left hk]
       simp only [ArithBlock.toComWith, unExpr, hvector_one_eta args]
       rw [ih]
   | case7 =>
       rename_i k hop args hk v0 κ body
-      rw [comScalarTailFrom, dif_neg hk]
+      rw [comScalarTailFrom, dite_eq_right hk]
       simp only [ArithBlock.toComWith]
       rfl
   | case8 =>
@@ -221,7 +221,7 @@ theorem comScalarTailFrom_toComWith {Γ : Ctxt jasminDialect} {t : JasminTy}
         simp only [Option.some.injEq] at heq
         subst heq
         dsimp only
-        rw [dif_pos hk]
+        rw [dite_eq_left hk]
         simp only [ArithBlock.toComWith, loadExpr, hvector_two_eta args]
         rw [ih]
       · rename_i heq
@@ -236,7 +236,7 @@ theorem comScalarTailFrom_toComWith {Γ : Ctxt jasminDialect} {t : JasminTy}
         simp only [Option.some.injEq] at heq
         subst heq
         dsimp only
-        rw [dif_neg hk]
+        rw [dite_eq_right hk]
         simp only [ArithBlock.toComWith]
         rfl
       · rename_i heq
@@ -260,7 +260,7 @@ theorem comScalarTailFrom_toComWith {Γ : Ctxt jasminDialect} {t : JasminTy}
         simp only [Option.some.injEq] at heq
         subst heq
         dsimp only
-        rw [dif_pos hk]
+        rw [dite_eq_left hk]
         simp only [ArithBlock.toComWith, storeExpr, hvector_three_eta args]
         rw [ih]
       · rename_i heq
@@ -275,7 +275,7 @@ theorem comScalarTailFrom_toComWith {Γ : Ctxt jasminDialect} {t : JasminTy}
         simp only [Option.some.injEq] at heq
         subst heq
         dsimp only
-        rw [dif_neg hk]
+        rw [dite_eq_right hk]
         simp only [ArithBlock.toComWith]
         rfl
       · rename_i heq
@@ -306,36 +306,36 @@ theorem comScalarPrefix_toComWith_sigma {Γ : Ctxt jasminDialect} {t : JasminTy}
   case case1 => simp [comScalarPrefix] at h
   case case2 =>
       rename_i bop hop hs args body
-      rw [comScalarPrefix, dif_pos hs] at h
+      rw [comScalarPrefix, dite_eq_left hs] at h
       simp only [Option.some.injEq] at h
       subst h
       simp only [ArithBlock.toComWith, arithExpr, hvector_two_eta args]
       rw [comScalarTailFrom_toComWith .here body]
   case case3 =>
       rename_i bop hop hs args body
-      rw [comScalarPrefix, dif_neg hs] at h
+      rw [comScalarPrefix, dite_eq_right hs] at h
       exact absurd h (by simp)
   case case4 =>
       rename_i k hop hk args body
-      rw [comScalarPrefix, dif_pos hk] at h
+      rw [comScalarPrefix, dite_eq_left hk] at h
       simp only [Option.some.injEq] at h
       subst h
       simp only [ArithBlock.toComWith, unExpr_unOfShl, hvector_one_eta args]
       rw [comScalarTailFrom_toComWith .here body]
   case case5 =>
       rename_i k hop hk args body
-      rw [comScalarPrefix, dif_neg hk] at h
+      rw [comScalarPrefix, dite_eq_right hk] at h
       exact absurd h (by simp)
   case case6 =>
       rename_i k hop hk args body
-      rw [comScalarPrefix, dif_pos hk] at h
+      rw [comScalarPrefix, dite_eq_left hk] at h
       simp only [Option.some.injEq] at h
       subst h
       simp only [ArithBlock.toComWith, unExpr, hvector_one_eta args]
       rw [comScalarTailFrom_toComWith .here body]
   case case7 =>
       rename_i k hop hk args body
-      rw [comScalarPrefix, dif_neg hk] at h
+      rw [comScalarPrefix, dite_eq_right hk] at h
       exact absurd h (by simp)
   case case8 =>
       rename_i n hop args body
@@ -348,7 +348,7 @@ theorem comScalarPrefix_toComWith_sigma {Γ : Ctxt jasminDialect} {t : JasminTy}
       rename_i n hop k hk args body hκ
       rw [comScalarPrefix] at h
       simp only [hκ] at h
-      rw [dif_pos hk] at h
+      rw [dite_eq_left hk] at h
       simp only [Option.some.injEq] at h
       subst h
       simp only [ArithBlock.toComWith, loadExpr, hvector_two_eta args]
@@ -357,7 +357,7 @@ theorem comScalarPrefix_toComWith_sigma {Γ : Ctxt jasminDialect} {t : JasminTy}
       rename_i n hop k hk args body hκ
       rw [comScalarPrefix] at h
       simp only [hκ] at h
-      rw [dif_neg hk] at h
+      rw [dite_eq_right hk] at h
       exact absurd h (by simp)
   case case11 =>
       rename_i n hop args body hκ

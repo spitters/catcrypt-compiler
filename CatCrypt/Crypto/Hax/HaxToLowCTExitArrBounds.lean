@@ -175,7 +175,7 @@ theorem arrLong_setTower_not {rs : RustState} (h : ArrLong A m δ rs) {y : Strin
     (v : Σ t : TowerType, RustVal t) : ArrLong A m δ (rsSetTower rs y v) := by
   intro a ha n w hw
   have hne : a ≠ y := fun e => hy (e ▸ ha)
-  simp only [rsSetTower, beq_iff_eq, hne, if_false] at hw
+  simp only [rsSetTower, beq_iff_eq, hne, ite_false] at hw
   exact h a ha n w hw
 
 theorem idxBelow_setTower {I : List (String × Nat)} {rs : RustState} (h : IdxBelow I m rs)
@@ -187,11 +187,11 @@ theorem arrLong_setTower_long {rs : RustState} (h : ArrLong A m δ rs) (y : Stri
   intro a ha n w hw
   by_cases hay : a = y
   · subst hay
-    simp only [rsSetTower, beq_self_eq_true, if_true, Option.some.injEq] at hw
+    simp only [rsSetTower, beq_self_eq_true, ite_true, Option.some.injEq] at hw
     have e := (Sigma.mk.inj_iff.mp hw).1
     subst e
     simpa [longTyB] using ht
-  · simp only [rsSetTower, beq_iff_eq, hay, if_false] at hw
+  · simp only [rsSetTower, beq_iff_eq, hay, ite_false] at hw
     exact h a ha n w hw
 
 /-- An access at an index name of offset `d ≤ δ a` into an array `a` of `A` is in bounds. -/

@@ -243,7 +243,7 @@ theorem buildAlgVar_denote {Γ : Ctxt catCryptDialect} {bs s : CryptoTy}
     | .cons v₁ (.cons v₂ .nil) =>
         simp only [buildAlgVar]
         by_cases hv : v₁ = v₂
-        · simp only [hv, if_true]
+        · simp only [hv, ite_true]
           subst hv
           -- `retTy_eq : .sword w = bs`. Substitute to make `bs = .sword w`,
           -- then all types reduce.
@@ -266,14 +266,14 @@ theorem buildAlgVar_denote {Γ : Ctxt catCryptDialect} {bs s : CryptoTy}
           congr 1
           have hzero : vv ^^^ vv = (0 : BitVec w) := by grind
           rw [hzero]
-        · simp only [hv, if_false]
+        · simp only [hv, ite_false]
   -- bvSub w
   · rename_i w
     match args with
     | .cons v₁ (.cons v₂ .nil) =>
         simp only [buildAlgVar]
         by_cases hv : v₁ = v₂
-        · simp only [hv, if_true]
+        · simp only [hv, ite_true]
           subst hv
           subst retTy_eq
           set vv : BitVec w := v₁.lookup V with hvv_def
@@ -289,7 +289,7 @@ theorem buildAlgVar_denote {Γ : Ctxt catCryptDialect} {bs s : CryptoTy}
           congr 1
           have hzero : vv - vv = (0 : BitVec w) := by grind
           rw [hzero]
-        · simp only [hv, if_false]
+        · simp only [hv, ite_false]
 
 /-- **Main correctness theorem.** The `peephole` pass preserves
     denotation. -/

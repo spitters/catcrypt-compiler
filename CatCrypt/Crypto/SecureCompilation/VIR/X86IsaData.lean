@@ -228,11 +228,11 @@ theorem movFor_of_caret_free {opn : String} (h : '^' ∉ opn.toList) :
     unfold wireWidth?; simp [h]
   unfold movFor
   by_cases h1 : (opn == tieBase opn) = true
-  · rw [if_pos h1, if_pos h1]
-  rw [if_neg h1, if_neg h1]
+  · rw [ite_eq_left h1, ite_eq_left h1]
+  rw [ite_eq_right h1, ite_eq_right h1]
   by_cases h2 : (opn == tieBase opn ++ ":64") = true
-  · rw [if_pos h2, if_pos h2]
-  rw [if_neg h2, if_neg h2, hw]
+  · rw [ite_eq_left h2, ite_eq_left h2]
+  rw [ite_eq_right h2, ite_eq_right h2, hw]
   split
   · grind only [withWidthTag.eq_def]
   · rfl
@@ -248,7 +248,7 @@ theorem stripWidthTag_of_tagSepFree {s : String} (hs : tagSepFree s = true) :
     stripWidthTag s = s := by
   obtain ⟨h1, h2⟩ := (tagSepFree_iff s).mp hs
   unfold stripWidthTag
-  rw [if_neg (by simpa using h2), if_neg]
+  rw [ite_eq_right (by simpa using h2), ite_eq_right]
   intro hsuf
   unfold hasSuffix at hsuf
   obtain ⟨l, hl⟩ := List.isSuffixOf_iff_suffix.mp hsuf

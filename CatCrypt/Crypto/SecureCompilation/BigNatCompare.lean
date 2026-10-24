@@ -112,13 +112,13 @@ theorem cmpSign_eq_one_iff (m n : Nat) : cmpSign m n = 1 ↔ n < m := by
   constructor
   · intro h
     by_cases h1 : m < n
-    · rw [if_pos h1] at h; exact absurd h (by decide)
-    · rw [if_neg h1] at h
+    · rw [ite_eq_left h1] at h; exact absurd h (by decide)
+    · rw [ite_eq_right h1] at h
       by_cases h2 : n < m
       · exact h2
-      · rw [if_neg h2] at h; exact absurd h (by decide)
+      · rw [ite_eq_right h2] at h; exact absurd h (by decide)
   · intro h
-    rw [if_neg (by omega), if_pos h]
+    rw [ite_eq_right (by omega), ite_eq_left h]
 
 /-- The sign word is not `1` exactly when `m ≤ n`. -/
 theorem cmpSign_ne_one_iff (m n : Nat) : cmpSign m n ≠ 1 ↔ m ≤ n := by

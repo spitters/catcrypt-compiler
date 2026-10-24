@@ -241,7 +241,7 @@ theorem paramsEnv_of_mem_zip : ∀ (xs : List String) (vs : List Value), xs.Nodu
       rcases h with ⟨rfl, rfl⟩ | h
       · simp
       · have hx : x ≠ y := fun e => hnd.1 (e ▸ (List.of_mem_zip h).1)
-        rw [if_neg hx]
+        rw [ite_eq_right hx]
         exact ih ws hnd.2 x v h
 
 /-- The reference reading of the callee `traitWrapperTExpr` is its reading by `denote'`. -/

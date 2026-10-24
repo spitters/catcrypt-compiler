@@ -219,7 +219,7 @@ theorem consistentS_aliasBind {Γ : Ctx} {vm : VarMap Γ}
   · subst hs
     simp only [aliasBind, SEnvScalar.upd, ↓reduceIte]
     rw [hc src, hsrc]
-  · simp only [aliasBind, SEnvScalar.upd, if_neg hs]
+  · simp only [aliasBind, SEnvScalar.upd, ite_eq_right hs]
     exact hc s
 
 /-! ## 3. The `SExpr` lowering -/
@@ -252,7 +252,7 @@ theorem pushVarBindW_step (w : Nat) {Γ : Ctx}
       rcases hs with h1 | ⟨k, hk, rfl⟩
       · exact ne_tmpName_of_not_isTmp h1 c
       · exact tmpName_ne (by omega)
-    simp only [SEnvScalar.upd, if_neg hne]
+    simp only [SEnvScalar.upd, ite_eq_right hne]
     exact hotb s hs
   · simp [SEnvScalar.upd, hE]
 
@@ -560,8 +560,8 @@ theorem lowerScalarSetSeqW_denote (w : Nat) (stmts : List (String × SExpr)) :
             · subst hnd
               simp only [SEnvScalar.upd] at hx
               simpa using hx.symm
-            · simp only [SEnvScalar.upd, if_neg hnd] at hx
-              simp only [if_neg hnd]
+            · simp only [SEnvScalar.upd, ite_eq_right hnd] at hx
+              simp only [ite_eq_right hnd]
               exact (hag.of_onlyTmpBelow hotb1) n hn x hx
           obtain ⟨V', env', hc', hcont', hag'⟩ :=
             ih (aliasBind r.vm dst resName) V₁ _ _ cnt' tail cntf' hcA hagA hrest ht
@@ -976,8 +976,8 @@ theorem lowerScalarSetSeqW_binds (w : Nat) (stmts : List (String × SExpr)) :
             · subst hnd
               simp only [SEnvScalar.upd] at hx
               simpa using hx.symm
-            · simp only [SEnvScalar.upd, if_neg hnd] at hx
-              simp only [if_neg hnd]
+            · simp only [SEnvScalar.upd, ite_eq_right hnd] at hx
+              simp only [ite_eq_right hnd]
               exact (hag.of_onlyTmpBelow hotb1) n hn x hx
           obtain ⟨V', L₂, hd2, hb2, hl2, hidx⟩ :=
             ih (aliasBind r.vm dst resName) V₁' _ _ cnt' tail cntf' hcA hagA hrest ht

@@ -266,7 +266,7 @@ theorem keccak_rounds_eq_foldl :
             else init)
           = (List.range' start (cnt + 1)).foldl
               (fun acc i => keccakDiffuse acc ^^^ rcWide i) init
-      rw [dif_pos hstart, keccak_round_bitexact init ⟨start, hstart⟩,
+      rw [dite_eq_left hstart, keccak_round_bitexact init ⟨start, hstart⟩,
           keccak_rounds_eq_foldl cnt (start + 1) (by omega),
           List.range'_succ, List.foldl_cons]
 

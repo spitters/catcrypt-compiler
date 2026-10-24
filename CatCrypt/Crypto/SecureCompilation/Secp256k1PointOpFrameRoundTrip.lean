@@ -88,7 +88,7 @@ theorem half_toNat (u : BitVec 64) :
 
 theorem upd_ne {t : CryptoTy} {env : SEnvScalar} {y : String} {v : ⟦t⟧} {x : String}
     (h : x ≠ y) : (env.upd y v) x = env x := by
-  simp only [SEnvScalar.upd, if_neg h]
+  simp only [SEnvScalar.upd, ite_eq_right h]
 
 theorem upd_self {t : CryptoTy} (env : SEnvScalar) (y : String) (v : ⟦t⟧) :
     (env.upd y v) y = some ⟨t, v⟩ := by
@@ -137,7 +137,7 @@ theorem semScalar_arrStore {arrN idxN srcN : String} {fw : Nat}
     upd_self _ _ _, fun s hs => upd_ne hs⟩
   have hty : encodeTy (Located.mk arrN (TowerType.TBytes fw)).locDst
       = CryptoTy.memref ((fw + 7) / 8) := rfl
-  simp only [semScalar, ha, hi, hv, dif_pos hty]
+  simp only [semScalar, ha, hi, hv, dite_eq_left hty]
   rfl
 
 /-- One `RScalarSetExpr` whose `SExpr` lowering makes progress: the destination

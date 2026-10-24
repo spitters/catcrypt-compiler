@@ -258,7 +258,7 @@ theorem runIB_lsemStraight :
       by_cases hb : inBoundsB l i = true
       swap
       · simp [hb] at h
-      rw [if_pos hb] at h
+      rw [ite_eq_left hb] at h
       cases hs : lsemStep i.1 l with
       | none => rw [hs] at h; exact absurd h (by simp)
       | some l1 =>
@@ -328,7 +328,7 @@ theorem lsemStep_lsemStepMem_rel_shape {A : String → Option Nat} (sh : Shape)
       have hM : lsemStepMem (.Lopn [.reg d] "LOADIDX" [.arrIdx B x 8], .load 64 n) s
           = some { s with reg := (s.reg.setReg d
               (l.lmem B (Int.ofNat (8 * (l.lvm x).toNat)))).nextPc } := by
-        simp only [lsemStepMem, loadStruct?, if_pos, hr.getArr hok, hr.getW x, hg]
+        simp only [lsemStepMem, loadStruct?, ite_eq_left, hr.getArr hok, hr.getW x, hg]
         rfl
       exact ⟨_, _, hM, lsemStep_loadidx d B x 8 l, hr.setReg d _, rfl, fun _ _ => rfl, rfl,
         rfl⟩
@@ -342,7 +342,7 @@ theorem lsemStep_lsemStepMem_rel_shape {A : String → Option Nat} (sh : Shape)
               larr := fun r => if r = B then
                 ⟨64, n, stackSet (fun k : Fin n => l.lmem B (Int.ofNat (8 * k.val))) vi (l.lvm v)⟩
                 else s.larr r } := by
-        simp only [lsemStepMem, storeStruct?, if_pos, hr.getArr hok, hr.getW x, hr.getW v]
+        simp only [lsemStepMem, storeStruct?, ite_eq_left, hr.getArr hok, hr.getW x, hr.getW v]
         rfl
       refine ⟨{ s with
               reg := s.reg.nextPc,
@@ -357,7 +357,7 @@ theorem lsemStep_lsemStepMem_rel_shape {A : String → Option Nat} (sh : Shape)
         · subst hBB
           rw [hok] at hB'
           cases hB'
-          rw [if_pos rfl]
+          rw [ite_eq_left rfl]
           congr 2
           funext k
           cases n with
@@ -366,7 +366,7 @@ theorem lsemStep_lsemStepMem_rel_shape {A : String → Option Nat} (sh : Shape)
               simp only [stackSet, Nat.mod_eq_of_lt hb, evalOperand, ← hvi]
               rw [Lstate.lmem_nextPc]
               dsimp only
-              rw [if_pos rfl]
+              rw [ite_eq_left rfl]
               by_cases hk : k = ⟨vi, hb⟩
               · subst hk; simp
               · have hk' : Int.ofNat (8 * k.val) ≠ Int.ofNat (8 * vi) := by
@@ -376,8 +376,8 @@ theorem lsemStep_lsemStepMem_rel_shape {A : String → Option Nat} (sh : Shape)
                   show k.val = vi
                   simp only [Int.ofNat_eq_natCast, Nat.cast_mul] at he
                   omega
-                rw [if_neg hk, if_neg hk']
-        · rw [if_neg hBB, hr.arrs B' n' hB']
+                rw [ite_eq_right hk, ite_eq_right hk']
+        · rw [ite_eq_right hBB, hr.arrs B' n' hB']
           simp [hBB]
       · have hbB : b ≠ B := by rintro rfl; rw [hok] at hb'; cases hb'
         simp [hbB]
@@ -416,7 +416,7 @@ theorem lsemStraight_lsemStraightMemF_rel {A : String → Option Nat} :
       by_cases hb : inBoundsB l i = true
       swap
       · simp [hb] at hib
-      rw [if_pos hb] at hib ⊢
+      rw [ite_eq_left hb] at hib ⊢
       obtain ⟨s1, l1, hs1, hl1, hr1, hm1, ha1⟩ :=
         lsemStep_stepMemF_rel (hf i List.mem_cons_self) hr hb
       rw [hl1, Option.bind_some] at hib ⊢
@@ -534,7 +534,7 @@ theorem runIB_swap (tag : LinstrR → MemTag) (i1 i2 : LinstrR) (rest : List Lin
         = (lsemStraight [j, k] l).bind (runIB (rest.map fun i => (i, tag i))) := by
     intro j k hj hk
     simp only [List.map_cons, runIB, stepIB, inBoundsB_of_hasArrIdx hj,
-      inBoundsB_of_hasArrIdx hk, if_true, lsemStraight_cons, lsemStraight_nil]
+      inBoundsB_of_hasArrIdx hk, ite_true, lsemStraight_cons, lsemStraight_nil]
     cases lsemStep j l with
     | none => rfl
     | some l1 =>
@@ -870,11 +870,11 @@ theorem fragFB_of_fragB {A : String → Option Nat} {i : LinstrRM} (hi : fragB A
             rintro m hm hst rfl
             rw [hst] at hi
             exact hm hi.1
-          rw [if_neg (hne "ADC" (by decide) (by decide +kernel)),
-            if_neg (hne "SBB" (by decide) (by decide +kernel)),
-            if_neg (hne "ADCX" (by decide) (by decide +kernel)),
-            if_neg (hne "ADOX" (by decide) (by decide +kernel)),
-            if_neg (hne "MOV" (by decide) (by decide +kernel)), hs]
+          rw [ite_eq_right (hne "ADC" (by decide) (by decide +kernel)),
+            ite_eq_right (hne "SBB" (by decide) (by decide +kernel)),
+            ite_eq_right (hne "ADCX" (by decide) (by decide +kernel)),
+            ite_eq_right (hne "ADOX" (by decide) (by decide +kernel)),
+            ite_eq_right (hne "MOV" (by decide) (by decide +kernel)), hs]
           rfl
         · simp [shape?] at hs
         · rw [hs]; rfl
@@ -893,13 +893,13 @@ theorem lsemStepMem_two_none (dst a : String) (b : LOperand) (ls : LstateM) (bas
     (hop : applyOpnN 64 base [va, vb] = none) (hc : cmpOfName? base = none) :
     lsemStepMem (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b], .reg none) ls = none := by
   have hm : mulhiStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
-    cases b <;> simp only [mulhiStruct?, hstrip, if_neg h1]
+    cases b <;> simp only [mulhiStruct?, hstrip, ite_eq_right h1]
   have ha : adcxStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
     cases b <;> rfl
   have hh : adcxhiStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
     cases b <;> rfl
   have hs : sarStruct? (.Lopn [.reg dst] (withWidthTag 64 base) [.reg a, b]) = none := by
-    cases b <;> simp only [sarStruct?, hstrip, if_neg h4]
+    cases b <;> simp only [sarStruct?, hstrip, ite_eq_right h4]
   rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
       lsemStepMC_of_delegate _ _ hm ha hh (by cases b <;> rfl) (by cases b <;> rfl),
       lsemStepSh_of_not_sar _ _ hs]
@@ -1091,7 +1091,7 @@ theorem runIBF_lsemStraightFlag :
       by_cases hb : inBoundsB l i = true
       swap
       · simp [hb] at h
-      rw [if_pos hb] at h
+      rw [ite_eq_left hb] at h
       cases hs : lsemStepFlag i l with
       | none => rw [hs] at h; exact absurd h (by simp)
       | some l1 =>
@@ -1117,7 +1117,7 @@ theorem lsemStraightFlag_lsemStraightMemF_rel {A : String → Option Nat} :
       by_cases hb : inBoundsB l i = true
       swap
       · simp [hb] at hib
-      rw [if_pos hb] at hib ⊢
+      rw [ite_eq_left hb] at hib ⊢
       obtain ⟨s1, l1, hs1, hl1, hr1, hm1, ha1⟩ :=
         lsemStepFlag_stepMemF_rel (hf i List.mem_cons_self) hr hb
       rw [hl1, Option.bind_some] at hib ⊢

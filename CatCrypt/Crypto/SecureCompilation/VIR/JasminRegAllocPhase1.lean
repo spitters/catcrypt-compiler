@@ -462,7 +462,7 @@ theorem mds4Rho_outputs_eq {w : Nat} (st' st : RegStore w)
     show (0:Nat)=5 ↔ False by decide, show (0:Nat)=4 ↔ False by decide,
     show (1:Nat)=5 ↔ False by decide, show (1:Nat)=6 ↔ False by decide,
     show (2:Nat)=6 ↔ False by decide, show (3:Nat)=6 ↔ False by decide,
-    if_true, if_false]
+    ite_true, ite_false]
   refine ⟨?_, ?_, ?_, ?_⟩ <;>
     rw [h0, h1, h2, h3] <;>
     simp only [JasminBinOp.apply] <;>

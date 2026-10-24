@@ -213,7 +213,7 @@ theorem lookupC_filter_self (t : List ((String × Int) × AVal)) (d : String × 
     · subst hk
       simp [List.filter, ih]
     · rw [List.filter_cons_of_pos (by simpa using hk)]
-      simp only [lookupC, ih, if_neg (Ne.symm hk)]
+      simp only [lookupC, ih, ite_eq_right (Ne.symm hk)]
 
 theorem lookupR_filter_self (t : List (String × Option AVal)) (d : String) :
     lookupR (t.filter (fun p => !decide (p.1 = d))) d = none := by
@@ -225,7 +225,7 @@ theorem lookupR_filter_self (t : List (String × Option AVal)) (d : String) :
     · subst hk
       simp [List.filter, ih]
     · rw [List.filter_cons_of_pos (by simpa using hk)]
-      simp only [lookupR, ih, if_neg (Ne.symm hk)]
+      simp only [lookupR, ih, ite_eq_right (Ne.symm hk)]
 
 theorem lookupR_setR (bank : String → Option String) (A : DState) (d r : String)
     (v : Option AVal) :
@@ -289,8 +289,8 @@ theorem DState.lookupC_setC (A : DState) (k c : String × Int) (v : Option AVal)
   by_cases h : c = k
   · subst h
     cases v <;> simp [DState.setC, lookupC, lookupC_filter_self]
-  · rw [if_neg h]
-    cases v <;> simp only [DState.setC, lookupC, if_neg h, lookupC_filter _ _ _ h]
+  · rw [ite_eq_right h]
+    cases v <;> simp only [DState.setC, lookupC, ite_eq_right h, lookupC_filter _ _ _ h]
 
 theorem DState.get_setC (bank : String → Option String) (A : DState) (k : String × Int)
     (v : Option AVal) (r : String) : (A.setC k v).get bank r = A.get bank r := rfl
@@ -304,7 +304,7 @@ theorem mem_cellKeys_of_lookupC {t : List ((String × Int) × AVal)} {c : String
     simp only [lookupC] at h
     by_cases hc : c = k
     · simp [hc]
-    · rw [if_neg hc] at h
+    · rw [ite_eq_right hc] at h
       exact List.mem_cons_of_mem _ (ih h)
 
 theorem cellKeys_setC (A : DState) (k : String × Int) (v : Option AVal) (c : String × Int)
@@ -545,7 +545,7 @@ def CellInvD (bank : String → Option String) (P : String → BitVec 64) (A : D
 theorem regInvD_entry (bank : String → Option String) (P : String → BitVec 64) :
     RegInvD bank P {} P := by
   intro r v h
-  simp only [DState.get, lookupR, if_true, entryVal] at h
+  simp only [DState.get, lookupR, ite_true, entryVal] at h
   split at h
   · rename_i hb
     cases h
@@ -737,7 +737,7 @@ theorem load_regs (bank : String → Option String) (P : String → BitVec 64) (
     (evalInstrA sa i).regs d = read64 sa.mem (keyAddr bank P k) := by
   obtain ⟨-, h1, -, -⟩ := evalInstrA_canonStep bank P A sa i hok hinv
   rw [h1]
-  simp only [canonStep, hmc, hc, evalInstr, JState.setReg, JState.load, x86_MOV, if_true,
+  simp only [canonStep, hmc, hc, evalInstr, JState.setReg, JState.load, x86_MOV, ite_true,
     jOfD, absMem]
 
 /-- `stepD` preserves the register invariant. -/
@@ -759,13 +759,13 @@ theorem regInvD_step (bank : String → Option String) (P : String → BitVec 64
     intro d he hc hds
     rw [he, DState.get_setR] at hv
     by_cases hrd : r = d
-    · rw [if_pos hrd] at hv
+    · rw [ite_eq_left hrd] at hv
       subst hrd
       simp only [DState.loadVal, Option.bind_eq_some_iff] at hv
       obtain ⟨k, hk, hl⟩ := hv
       rw [load_regs bank P A sa i r k hok hinv hk (hc k hk)]
       exact hcell k v hl
-    · rw [if_neg hrd] at hv
+    · rw [ite_eq_right hrd] at hv
       have hnd : r ∉ dsts i := by simp [hds, hrd]
       exact (evalInstr_regs_of_not_mem_dsts sa.view i r hnd).trans (hinv r v hv)
   cases i
@@ -773,32 +773,32 @@ theorem regInvD_step (bank : String → Option String) (P : String → BitVec 64
     simp only [stepD, DState.get_setR] at hv
     simp only [evalInstrA, evalInstr, JState.setReg, x86_MOV, AState.view]
     by_cases hrd : r = d
-    · rw [if_pos hrd] at hv ⊢
+    · rw [ite_eq_left hrd] at hv ⊢
       cases s with
       | reg s' => exact hinv s' v hv
       | imm n => cases hv; rfl
-    · rw [if_neg hrd] at hv ⊢
+    · rw [ite_eq_right hrd] at hv ⊢
       exact hinv r v hv
   case lea d b x sc off =>
     simp only [stepD, DState.get_setR] at hv
     simp only [evalInstrA, evalInstr, JState.setReg, x86_LEA, AState.view, JState.get]
     by_cases hrd : r = d
-    · rw [if_pos hrd] at hv ⊢
+    · rw [ite_eq_left hrd] at hv ⊢
       unfold DState.leaVal at hv
       by_cases hsc : sc = 0
-      · rw [if_pos hsc] at hv
+      · rw [ite_eq_left hsc] at hv
         subst hsc
         obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.1 hv
         rw [AVal.denote_shift, ← hinv b w hw]
         simp
-      · rw [if_neg hsc] at hv
+      · rw [ite_eq_right hsc] at hv
         split at hv
         · rename_i w c hw hc
           cases hv
           rw [AVal.denote_shift, ← hinv b w hw, hinv x _ hc]
           simp only [AVal.denote, mul_ofNat_eq_ofInt, BitVec.ofInt_add, BitVec.add_assoc]
         · cases hv
-    · rw [if_neg hrd] at hv ⊢
+    · rw [ite_eq_right hrd] at hv ⊢
       exact hinv r v hv
   case add d s =>
     cases s with
@@ -808,11 +808,11 @@ theorem regInvD_step (bank : String → Option String) (P : String → BitVec 64
       simp only [evalInstrA, evalInstr, JState.writeB5W, x86_ADD, rflags_of_aluop,
         AState.view, JState.get, JOperand.eval]
       by_cases hrd : r = d
-      · rw [if_pos hrd] at hv ⊢
+      · rw [ite_eq_left hrd] at hv ⊢
         subst hrd
         obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.1 hv
         rw [AVal.denote_shift, ← hinv r w hw, BitVec.ofInt_natCast]
-      · rw [if_neg hrd] at hv ⊢
+      · rw [ite_eq_right hrd] at hv ⊢
         exact hinv r v hv
   case sub d s =>
     cases s with
@@ -822,12 +822,12 @@ theorem regInvD_step (bank : String → Option String) (P : String → BitVec 64
       simp only [evalInstrA, evalInstr, JState.writeB5W, x86_SUB,
         AState.view, JState.get, JOperand.eval]
       by_cases hrd : r = d
-      · rw [if_pos hrd] at hv ⊢
+      · rw [ite_eq_left hrd] at hv ⊢
         subst hrd
         obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.1 hv
         rw [AVal.denote_shift, ← hinv r w hw, BitVec.ofInt_neg, BitVec.ofInt_natCast,
           BitVec.sub_eq_add_neg]
-      · rw [if_neg hrd] at hv ⊢
+      · rw [ite_eq_right hrd] at hv ⊢
         exact hinv r v hv
   case loadMem d b o => exact hload d rfl (fun _ _ => rfl) rfl
   case loadMemIdx d b x sc => exact hload d rfl (fun _ _ => rfl) rfl
@@ -947,9 +947,9 @@ theorem cellInvD_step (bank : String → Option String) (P : String → BitVec 6
     rw [hs, DState.lookupC_setC] at hl
     by_cases hck : c = k
     · subst hck
-      rw [if_pos rfl] at hl
+      rw [ite_eq_left rfl] at hl
       rw [read64_write64_same, hv w hl]
-    · rw [if_neg hck] at hl
+    · rw [ite_eq_right hck] at hl
       rw [read64_write64_of_disjoint _ _ _ _
         (hsep k hw c (mem_cellKeys_of_lookupC hl) hck)]
       exact hcell c w hl
@@ -1028,7 +1028,7 @@ theorem runBlockA_simD_core (bank : String → Option String) (P : String → Bi
         · subst h
           simp
         · have h' : ¬ (k'.1 = k.1 ∧ k'.2 = k.2) := fun ⟨e1, e2⟩ => h (Prod.ext e1 e2)
-          rw [if_neg h, if_neg h']
+          rw [ite_eq_right h, ite_eq_right h']
           exact hK k' hk'
     · intro hs
       simp only [Bool.or_eq_false_iff] at hs
@@ -1185,12 +1185,12 @@ theorem lookupC_filter_keep (t : List ((String × Int) × AVal)) (keep : List (S
     · rw [List.filter_cons_of_pos (by simpa using hk)] at h
       simp only [lookupC] at h ⊢
       by_cases hc : c = k
-      · subst hc; simp only [if_true] at h ⊢; exact ⟨hk, h⟩
-      · rw [if_neg hc] at h ⊢; exact ih h
+      · subst hc; simp only [ite_true] at h ⊢; exact ⟨hk, h⟩
+      · rw [ite_eq_right hc] at h ⊢; exact ih h
     · rw [List.filter_cons_of_neg (by simpa using hk)] at h
       obtain ⟨hck, hl⟩ := ih h
       have : c ≠ k := fun e => hk (e ▸ hck)
-      simp only [lookupC, if_neg this]
+      simp only [lookupC, ite_eq_right this]
       exact ⟨hck, hl⟩
 
 theorem DState.get_afterCallD (bank : String → Option String) (saved : List String)
@@ -1218,10 +1218,10 @@ theorem afterCallD_inv (bank : String → Option String) (P : String → BitVec 
   · intro r v hv
     rw [DState.get_afterCallD] at hv
     by_cases hr : r ∈ saved
-    · rw [if_pos hr] at hv
+    · rw [ite_eq_left hr] at hv
       rw [hR r hr]
       exact hinv r v hv
-    · rw [if_neg hr] at hv
+    · rw [ite_eq_right hr] at hv
       cases hv
   · intro c v hv
     obtain ⟨hk, hl⟩ := lookupC_filter_keep A.cells keep c v hv

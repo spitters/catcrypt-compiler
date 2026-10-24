@@ -519,7 +519,7 @@ theorem frameMark_isSome (body : Lcmd) (r : BitVec 64) (q : String) :
       = (frameIn body (frameP (Params.ofBody body) r) q).isSome := by
   by_cases hq : q ∈ bodyNamesI body
   · have e2 : frameIn body (frameP (Params.ofBody body) r) q
-        = frameP (Params.ofBody body) r q := if_pos hq
+        = frameP (Params.ofBody body) r q := ite_eq_left hq
     rw [e2]
     unfold frameP
     rw [Option.isSome_map]
@@ -527,20 +527,20 @@ theorem frameMark_isSome (body : Lcmd) (r : BitVec 64) (q : String) :
     · have h1 : q ∈ frameNames body := by
         simp only [frameNames, List.mem_filter, List.mem_eraseDups]
         exact ⟨hq, ho⟩
-      have e1 : frameMark (frameNames body) q = some 0 := if_pos h1
+      have e1 : frameMark (frameNames body) q = some 0 := ite_eq_left h1
       rw [e1]
       exact ho.symm
     · have h1 : q ∉ frameNames body := by
         simp only [frameNames, List.mem_filter, List.mem_eraseDups, not_and]
         exact fun _ => ho
-      have e1 : frameMark (frameNames body) q = none := if_neg h1
+      have e1 : frameMark (frameNames body) q = none := ite_eq_right h1
       rw [e1]
       exact (Bool.eq_false_iff.mpr ho).symm
   · have h1 : q ∉ frameNames body := by
       simp only [frameNames, List.mem_filter, List.mem_eraseDups, not_and]
       exact fun h => absurd h hq
-    have e1 : frameMark (frameNames body) q = none := if_neg h1
-    have e2 : frameIn body (frameP (Params.ofBody body) r) q = none := if_neg hq
+    have e1 : frameMark (frameNames body) q = none := ite_eq_right h1
+    have e2 : frameIn body (frameP (Params.ofBody body) r) q = none := ite_eq_right hq
     rw [e1, e2]
 
 /-- The gate of the image simulation at the restricted frame of a body, at any stack

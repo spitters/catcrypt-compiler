@@ -946,10 +946,10 @@ theorem EnvRel.cons {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {env : Env} {V : Valua
   rw [NfEnv.lookup_cons] at hy
   by_cases hxy : x = y
   · subst hxy
-    simp only [if_true, Option.some.injEq, Sigma.mk.injEq] at hy
+    simp only [ite_true, Option.some.injEq, Sigma.mk.injEq] at hy
     obtain ⟨rfl, hv⟩ := hy
     rw [Env.extend_same, eq_of_heq hv]
-  · rw [if_neg hxy] at hy
+  · rw [ite_eq_right hxy] at hy
     rw [Env.extend_other _ _ _ _ (Ne.symm hxy)]
     exact h y t' v hy
 
@@ -1120,16 +1120,16 @@ theorem ofLit_enc {l : ImpLit} {t : NfTy} {v : Int} (hl : litInt l = some (t, v)
   cases l with
   | int n =>
       by_cases hc : 0 ≤ n ∧ n < 2 ^ 64
-      · simp only [litInt, if_pos hc, Option.some.injEq, Prod.mk.injEq] at hl
+      · simp only [litInt, ite_eq_left hc, Option.some.injEq, Prod.mk.injEq] at hl
         obtain ⟨rfl, rfl⟩ := hl
-        simp only [NfTy.ofLit?, if_pos hc, Option.some.injEq] at hx
+        simp only [NfTy.ofLit?, ite_eq_left hc, Option.some.injEq] at hx
         subst hx
         show Value.int n = Value.int ((BitVec.ofNat 64 n.toNat).toNat : Int)
         rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega), Int.toNat_of_nonneg hc.1]
-      · simp only [litInt, if_neg hc, reduceCtorEq] at hl
+      · simp only [litInt, ite_eq_right hc, reduceCtorEq] at hl
   | uintLit W n =>
       by_cases hw : W.bits ≤ 64
-      · simp only [litInt, if_pos hw, Option.some.injEq, Prod.mk.injEq] at hl
+      · simp only [litInt, ite_eq_left hw, Option.some.injEq, Prod.mk.injEq] at hl
         obtain ⟨rfl, rfl⟩ := hl
         simp only [NfTy.ofLit?] at hx
         split at hx
@@ -1138,7 +1138,7 @@ theorem ofLit_enc {l : ImpLit} {t : NfTy} {v : Int} (hl : litInt l = some (t, v)
           simp only [Value.ofLit, enc, BitVec.ofInt_natCast, BitVec.toNat_ofNat,
             IntWidth.modulus, Nat.mod_mod]
         · cases hx
-      · simp only [litInt, if_neg hw, reduceCtorEq] at hl
+      · simp only [litInt, ite_eq_right hw, reduceCtorEq] at hl
   | sintLit W n => simp [litInt] at hl
   | bool b => simp [litInt] at hl
   | unit => simp [litInt] at hl
@@ -1463,7 +1463,7 @@ theorem impToNF_app_repeat_refused (sigOf : String → List NfTy → Option NfTy
     (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {args : List ImpExpr}
     (h : repeatArgs? "repeat" args = none) :
     impToNF sigOf tgt σ (.app "repeat" args) = none := by
-  simp only [impToNF, if_true, h, Option.bind_none]
+  simp only [impToNF, ite_true, h, Option.bind_none]
 
 /-- `impToNF` translates a call `repeatArgs?` accepts by `repeatOut`. -/
 theorem impToNF_app_repeat (sigOf : String → List NfTy → Option NfTy)
@@ -1471,7 +1471,7 @@ theorem impToNF_app_repeat (sigOf : String → List NfTy → Option NfTy)
     {args : List ImpExpr} {x : ImpExpr} {N : Int} (h : repeatArgs? f args = some (x, N)) :
     impToNF sigOf tgt σ (.app f args) = repeatOut tgt σ x N := by
   obtain ⟨rfl, -, -⟩ := repeatArgs?_eq_some h
-  simp only [impToNF, if_true, h, Option.bind_some]
+  simp only [impToNF, ite_true, h, Option.bind_some]
 
 /-- `repeatArgs?` accepts only calls of `repeat`. -/
 theorem repeatArgs?_of_ne {f : String} (hf : f ≠ "repeat") (args : List ImpExpr) :
@@ -1489,7 +1489,7 @@ theorem impToNF_app_call (sigOf : String → List NfTy → Option NfTy) (tgt : O
       (sigOf f oa.as).map fun r =>
       ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
         oa.σ.mapV .there, .here⟩ := by
-  simp only [impToNF, hf, if_false]
+  simp only [impToNF, hf, ite_false]
 
 /-- **The forms of a call `impToNF` translates**: a call `repeatArgs?` accepts, translated by
     `repeatOut`, or a call of a name other than `repeat`, translated as the typed call of its
@@ -1719,11 +1719,11 @@ theorem EnvRel.bindAll {Δ : Ctxt nfDialect} {env : Env} {W : Valuation Δ} :
         (x, ⟨c, u⟩) :: NfEnv.bindAll xs cs vs σ from rfl, NfEnv.lookup_cons] at hl
       by_cases hxy : x = y
       · subst hxy
-        simp only [if_true, Option.some.injEq, Sigma.mk.injEq] at hl
+        simp only [ite_true, Option.some.injEq, Sigma.mk.injEq] at hl
         obtain ⟨rfl, hv⟩ := hl
         rw [← eq_of_heq hv]
         exact hc.1
-      · rw [if_neg hxy] at hl
+      · rw [ite_eq_right hxy] at hl
         exact EnvRel.bindAll xs cs vs σ (by simpa using hlen) hc.2 y
           (fun hn => hy (by simp only [List.mem_cons, not_or]; exact ⟨Ne.symm hxy, hn⟩)) t v hl
   | [], _, _, σ, _, _, y, hy, t, v, hl => by
@@ -2099,13 +2099,13 @@ theorem forFoldRev_enc_run (bi : Builtins) (fuel : Nat) (i : String)
 theorem forLoopRev_ge_run (bi : Builtins) (fuel : Nat) (i : String) (lo hi : Int)
     (body : ImpExpr) (env : Env) (h : hi ≤ lo) :
     (_root_.Hax.denoteForLoopRev' bi fuel i lo hi body).run env = (.val .unit, env) := by
-  rw [_root_.Hax.denoteForLoopRev', if_pos h]; rfl
+  rw [_root_.Hax.denoteForLoopRev', ite_eq_left h]; rfl
 
 /-- A step of `denoteForLoopRev'` at a non-empty range without fuel fails. -/
 theorem forLoopRev_zero_run (bi : Builtins) (i : String) (lo hi : Int) (body : ImpExpr)
     (env : Env) (h : lo < hi) :
     (_root_.Hax.denoteForLoopRev' bi 0 i lo hi body).run env = (.err "out of fuel", env) := by
-  rw [_root_.Hax.denoteForLoopRev', if_neg (Int.not_le.mpr h), if_pos rfl]; rfl
+  rw [_root_.Hax.denoteForLoopRev', ite_eq_right (Int.not_le.mpr h), ite_eq_left rfl]; rfl
 
 /-- A step of `denoteForLoopRev'` at a non-empty range runs the body with the counter
     `hi - 1` and continues on the range up to `hi - 1`. -/
@@ -2118,8 +2118,8 @@ theorem forLoopRev_succ_run (bi : Builtins) (n : Nat) (i : String) (lo hi : Int)
           (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
       | (.val _, e2) => (_root_.Hax.denoteForLoopRev' bi n i lo (hi - 1) body).run e2
       | (o, e2) => (o, e2) := by
-  rw [_root_.Hax.denoteForLoopRev', if_neg (Int.not_le.mpr h)]
-  simp only [Nat.add_one_ne_zero, if_false, StateT.run, bind, StateT.bind, pure, modify,
+  rw [_root_.Hax.denoteForLoopRev', ite_eq_right (Int.not_le.mpr h)]
+  simp only [Nat.add_one_ne_zero, ite_false, StateT.run, bind, StateT.bind, pure, modify,
     modifyGet, MonadStateOf.modifyGet, StateT.modifyGet, Nat.add_sub_cancel]
   rcases (denote' bi (n + 1) body) (env.extend i (.int (hi - 1))) with ⟨o2, e2⟩
   rcases o2 with v2 | _ | _ | _ | _ <;> try rfl
@@ -2217,7 +2217,7 @@ theorem nfDenoteOp_ctr (T : NfLeafTable) (lo : Int) (x : BitVec 64) (h0 : 0 ≤ 
       (HVector.cons (t := NfTy.word 64) x .nil)) =
       some (BitVec.ofNat 64 (lo + (x.toNat : Int)).toNat) := by
   show (if 0 ≤ lo ∧ lo + (x.toNat : Int) < 2 ^ 64 then _ else none) = _
-  rw [if_pos ⟨h0, h⟩]
+  rw [ite_eq_left ⟨h0, h⟩]
   rfl
 
 /-- The `64`-bit word of an integer in `[0, 2 ^ 64)` encodes that integer. -/
@@ -2802,7 +2802,7 @@ theorem PDen_ifThenElse_some (bi : Builtins) (fuel : Nat) {Γ Δ : Ctxt nfDialec
   show ((if HasBoolBit.toBool (d := nfDialect) (cond.lookup V) = true then PDenP bi fuel thn V
     else PDenP bi fuel els V).bind fun r => PDen bi fuel p (hvAppend r V)) = some W
   cases hc : HasBoolBit.toBool (d := nfDialect) (cond.lookup V) <;>
-    simp only [hc, Bool.false_eq_true, if_false, if_true] at hr ⊢ <;>
+    simp only [hc, Bool.false_eq_true, ite_false, ite_true] at hr ⊢ <;>
     rw [hr, Option.bind_some, hp]
 
 /-- The first variables of `cs ++ Γ`, moved past one more variable, read the values `acc`
@@ -2923,7 +2923,7 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
   obtain ⟨Δb, tb, preb, σb, resb⟩ := ob
   by_cases ht : tb = oa.t
   · subst ht
-    rw [dif_pos rfl] at h₀
+    rw [dite_eq_left rfl] at h₀
     obtain ⟨ra, hra, h₀⟩ := Option.bind_eq_some_iff.mp h₀
     obtain ⟨rb, hrb, h₀⟩ := Option.map_eq_some_iff.mp h₀
     have hlen' : (xs ++ (condFresh σc oa.σ σb).map (·.1)).length =
@@ -2934,7 +2934,7 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
           frameOk (fun _ => true) (fun n => n != x) (fun _ => true) b = true :=
       fun x hx q hq => hfr x (fun h => hx (List.mem_append_left _ h)) q hq
     by_cases hu : oa.t = NfTy.unit
-    · rw [if_pos hu] at h₀
+    · rw [ite_eq_left hu] at h₀
       subst h₀
       obtain ⟨acc, x, ⟨N₁, hrv⟩, hrelv, hval⟩ :
           ∃ (acc : Valuation (d := nfDialect) (cs ++ (condFresh σc oa.σ σb).map (·.2)))
@@ -2949,14 +2949,14 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
           r = enc oa.t x := by
         cases hc : HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) with
         | true =>
-            rw [hc, if_pos rfl] at hrun
-            rw [if_pos rfl]
+            rw [hc, ite_eq_left rfl] at hrun
+            rw [ite_eq_left rfl]
             obtain ⟨acc, x, hrv, hrelv, hval⟩ := condArmU_sound bi fuel a σc _ _ hlen' ra hra
               (HA hoa) (fun x hx q hq => (hfr' x hx q hq).1) env Vc hrel r env' hrun
             exact ⟨acc, x, hrv, hrelv, hval⟩
         | false =>
-            rw [hc, if_neg Bool.false_ne_true] at hrun
-            rw [if_neg Bool.false_ne_true]
+            rw [hc, ite_eq_right Bool.false_ne_true] at hrun
+            rw [ite_eq_right Bool.false_ne_true]
             obtain ⟨acc, x, hrv, hrelv, hval⟩ := condArmU_sound bi fuel b σc _ _ hlen' rb hrb
               (HB hob) (fun x hx q hq => (hfr' x hx q hq).2) env Vc hrel r env' hrun
             exact ⟨acc, x, hrv, hrelv, hval⟩
@@ -2969,29 +2969,29 @@ theorem condOut_sound (bi : Builtins) (fuel : Nat) (a b : ImpExpr) {Γ Γc : Ctx
           (W := HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.unit) () (hvAppend acc Vc))
           fun _ _ => rfl,
         hval.trans (enc_unit_eq hu x)⟩
-    rw [if_neg hu] at h₀
+    rw [ite_eq_right hu] at h₀
     subst h₀
     cases hc : HasBoolBit.toBool (d := nfDialect) (cV.lookup Vc) with
     | true =>
-        rw [hc, if_pos rfl] at hrun
+        rw [hc, ite_eq_left rfl] at hrun
         obtain ⟨x, acc, ⟨N₁, hrv⟩, hrelv, hval⟩ := condArm_sound bi fuel a σc _ _ hlen' ra hra
           (HA hoa) (fun x hx q hq => (hfr' x hx q hq).1) env Vc hrel r env' hrun
         exact ⟨HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc),
           ⟨max N₀ N₁, fun tf htf => PDen_append_some bi tf (hpre tf (le_of_max_le_left htf))
             (PDen_ifThenElse_some bi tf
-              (by rw [hc, if_pos rfl]; exact hrv tf (le_of_max_le_right htf)) rfl)⟩,
+              (by rw [hc, ite_eq_left rfl]; exact hrv tf (le_of_max_le_right htf)) rfl)⟩,
           hrelv, hval⟩
     | false =>
-        rw [hc, if_neg Bool.false_ne_true] at hrun
+        rw [hc, ite_eq_right Bool.false_ne_true] at hrun
         obtain ⟨x, acc, ⟨N₁, hrv⟩, hrelv, hval⟩ := condArm_sound bi fuel b σc _ _ hlen' rb hrb
           (HB hob) (fun x hx q hq => (hfr' x hx q hq).2) env Vc hrel r env' hrun
         exact ⟨HVector.cons (f := fun t => ⟦t⟧) x (hvAppend acc Vc),
           ⟨max N₀ N₁, fun tf htf => PDen_append_some bi tf (hpre tf (le_of_max_le_left htf))
             (PDen_ifThenElse_some bi tf
-              (by rw [hc, if_neg Bool.false_ne_true]; exact hrv tf (le_of_max_le_right htf))
+              (by rw [hc, ite_eq_right Bool.false_ne_true]; exact hrv tf (le_of_max_le_right htf))
               rfl)⟩,
           hrelv, hval⟩
-  · rw [dif_neg ht] at h₀
+  · rw [dite_eq_right ht] at h₀
     cases h₀
 
 /-- A conditional the front translates has a condition and two arms the front translates,
@@ -3026,7 +3026,7 @@ theorem cond_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
   obtain ⟨Δc, tc, prec, σc, resc⟩ := oc
   by_cases htc : tc = NfTy.bit
   · subst htc
-    rw [dif_pos rfl] at h
+    rw [dite_eq_left rfl] at h
     refine Sound.of_ev fun env V r env' hrel hrun => ?_
     obtain ⟨rc, e1, h1⟩ := run_val_split (denote' bi fuel c) env
     cases rc with
@@ -3040,7 +3040,7 @@ theorem cond_sound (bi : Builtins) (sigOf : String → List NfTy → Option NfTy
     | _ =>
         rw [_root_.Hax.ContinueFlag.ifThenElse_run, h1] at hrun
         cases hrun
-  · rw [dif_neg htc] at h
+  · rw [dite_eq_right htc] at h
     cases h
 
 /-! ## 10c. The `while` loop -/
@@ -3077,7 +3077,7 @@ theorem PDenP_whileOutStep_false (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect
     else PDenP bi tf (.ret (.cons gV (headVars cs))) (hvAppend acc V)) >>= fun r =>
       PDenP bi tf (.ret (headVars (NfTy.bit :: cs))) (hvAppend r (hvAppend acc V))) = _
   rw [show HasBoolBit.toBool (d := nfDialect) (gV.lookup (hvAppend acc V)) = false from h,
-    if_neg Bool.false_ne_true]
+    ite_eq_right Bool.false_ne_true]
   show some (Expr.lookupArgs (headVars (NfTy.bit :: cs))
     (hvAppend (HVector.cons (gV.lookup (hvAppend acc V))
       (Expr.lookupArgs (headVars cs) (hvAppend acc V))) (hvAppend acc V))) = _
@@ -3095,7 +3095,7 @@ theorem PDenP_whileOutStep_true (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect}
       PDenP bi tf (ob.pre.plug (.ret (.cons (ob.pre.wk gV) rets))) X
     else PDenP bi tf (.ret (.cons gV (headVars cs))) X) >>= fun r =>
       PDenP bi tf (.ret (headVars (NfTy.bit :: cs))) (hvAppend r X)) = _
-  rw [show HasBoolBit.toBool (d := nfDialect) (gV.lookup X) = true from h, if_pos rfl,
+  rw [show HasBoolBit.toBool (d := nfDialect) (gV.lookup X) = true from h, ite_eq_left rfl,
     PDenP_plug_ret bi tf ob.pre _ X hW]
   show some (Expr.lookupArgs (headVars (NfTy.bit :: cs))
     (hvAppend (Expr.lookupArgs (HVector.cons (ob.pre.wk gV) rets) W) X)) = _
@@ -3137,7 +3137,7 @@ theorem denoteWhile_sound (bi : Builtins) (g : String) (body : ImpExpr) {Γ : Ct
   induction n with
   | zero =>
       intro e acc r e' _ h
-      rw [_root_.Hax.denoteWhile', if_pos rfl] at h
+      rw [_root_.Hax.denoteWhile', ite_eq_left rfl] at h
       cases h
   | succ n ih =>
       intro e acc r e' hinv h
@@ -3169,7 +3169,7 @@ theorem denoteWhile_sound (bi : Builtins) (g : String) (body : ImpExpr) {Γ : Ct
               have hc : (denote' bi (n + 1) (.var g)).run e = (.val (.bool true), e) := by
                 rw [var_run, hg]
               unfold _root_.Hax.denoteWhile' at h
-              rw [if_neg (Nat.add_one_ne_zero n)] at h
+              rw [ite_eq_right (Nat.add_one_ne_zero n)] at h
               simp only [StateT.run, bind, StateT.bind] at hc hbr h
               rw [hc] at h
               dsimp only at h
@@ -4333,8 +4333,8 @@ theorem rbProg_sound_aux (bi : Builtins) (tf : Nat) {Γ : Ctxt nfDialect} {ts : 
           rw [hcn, Option.bind_some] at h
           by_cases hnd : cn.Nodup
           swap
-          · rw [if_neg hnd] at h; cases h
-          rw [if_pos hnd] at h
+          · rw [ite_eq_right hnd] at h; cases h
+          rw [ite_eq_left hnd] at h
           split at h
           case h_2 => cases h
           rename_i lo' hra hrb
@@ -4954,7 +4954,7 @@ theorem withSelect_select_bool (bi : Builtins) (k : Bool) (x y : Value) :
 /-- At every other name than `select`, the builtins with `select` are `bi`. -/
 theorem withSelect_of_ne (bi : Builtins) {f : String} (hf : f ≠ "select") (vals : List Value) :
     withSelect bi f vals = bi f vals := by
-  simp only [withSelect, hf, if_false]
+  simp only [withSelect, hf, ite_false]
 
 /-- **`Hax.hax64Builtins` with `select` is `Hax.hax64Builtins`**: the table answers `select`
     by `selectOp`. -/
@@ -5068,7 +5068,7 @@ theorem fieldTagSig_narrow {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p
     (h : _root_.Hax.FieldTag.fieldTag? f = some (m, p)) (hp : p < 2 ^ 64)
     (hok : fieldModOk p = true) :
     fieldTagSig f m.sig = some (.word 64) := by
-  have he : fieldElemTy p = .word 64 := if_pos hp
+  have he : fieldElemTy p = .word 64 := ite_eq_left hp
   simp [fieldTagSig, h, he, hok, _root_.Hax.FieldTag.FieldMethod.sigAt_word]
 
 /-- At a modulus `p ≥ 2^64` that passes `fieldModOk`, a tagged call on arrays of
@@ -5079,7 +5079,7 @@ theorem fieldTagSig_wide {f : String} {m : _root_.Hax.FieldTag.FieldMethod} {p :
     fieldTagSig f (m.sigAt (.arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64))) =
       some (.arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64)) := by
   have he : fieldElemTy p = .arr (_root_.Hax.FieldTag.fieldLimbs p) (.word 64) :=
-    if_neg (by omega)
+    ite_eq_right (by omega)
   simp [fieldTagSig, h, he, hok]
 
 /-- **The call typing of `u64` code**: a tagged field call by `fieldTagSig`; a scalar call by
@@ -5148,10 +5148,10 @@ theorem uintAddOp_u64 {w : Nat} (hw : w ≤ 64) (a b : Int) :
     have hy : y < 2 ^ 64 := by exact_mod_cast h.2.2.2
     rw [_root_.Hax.uintAddOp_natCast, _root_.Hax.u64BinOp_natCast hx hy]
     by_cases hs : x + y < 2 ^ w
-    · rw [if_pos hs, if_pos hs]; rfl
-    · rw [if_neg hs, if_neg hs]; rfl
-  · rw [_root_.Hax.uintAddOp, _root_.Hax.u64BinOp, if_neg h,
-      if_neg fun hc => h ⟨hc.1, by linarith [hc.2.1, hc.2.2], hc.2.1, by linarith [hc.1, hc.2.2]⟩]
+    · rw [ite_eq_left hs, ite_eq_left hs]; rfl
+    · rw [ite_eq_right hs, ite_eq_right hs]; rfl
+  · rw [_root_.Hax.uintAddOp, _root_.Hax.u64BinOp, ite_eq_right h,
+      ite_eq_right fun hc => h ⟨hc.1, by linarith [hc.2.1, hc.2.2], hc.2.1, by linarith [hc.1, hc.2.2]⟩]
 
 /-- The checked subtraction at a width of at most `64` is `u64BinOp` of the difference of a
     minuend below `2 ^ w` and a subtrahend it bounds. -/
@@ -5167,10 +5167,10 @@ theorem uintSubOp_u64 {w : Nat} (hw : w ≤ 64) (a b : Int) :
     have hy : y < 2 ^ 64 := by exact_mod_cast h.2.2.2
     rw [_root_.Hax.uintSubOp_natCast, _root_.Hax.u64BinOp_natCast hx hy]
     by_cases hs : y ≤ x ∧ x < 2 ^ w
-    · rw [if_pos hs, if_pos hs]; rfl
-    · rw [if_neg hs, if_neg hs]; rfl
-  · rw [_root_.Hax.uintSubOp, _root_.Hax.u64BinOp, if_neg h,
-      if_neg fun hc => h ⟨by linarith [hc.1, hc.2.1], by linarith [hc.2.2], hc.1,
+    · rw [ite_eq_left hs, ite_eq_left hs]; rfl
+    · rw [ite_eq_right hs, ite_eq_right hs]; rfl
+  · rw [_root_.Hax.uintSubOp, _root_.Hax.u64BinOp, ite_eq_right h,
+      ite_eq_right fun hc => h ⟨by linarith [hc.1, hc.2.1], by linarith [hc.2.2], hc.1,
         by linarith [hc.2.1, hc.2.2]⟩]
 
 /-- The checked multiplication at a width of at most `64` is `u64BinOp` of the product of two
@@ -5187,10 +5187,10 @@ theorem uintMulOp_u64 {w : Nat} (hw : w ≤ 64) (a b : Int) :
     have hy : y < 2 ^ 64 := by exact_mod_cast h.2.2.2
     rw [_root_.Hax.uintMulOp_natCast, _root_.Hax.u64BinOp_natCast hx hy]
     by_cases hs : x < 2 ^ w ∧ y < 2 ^ w ∧ x * y < 2 ^ w
-    · rw [if_pos hs, if_pos hs]; rfl
-    · rw [if_neg hs, if_neg hs]; rfl
-  · rw [_root_.Hax.uintMulOp, _root_.Hax.u64BinOp, if_neg h,
-      if_neg fun hc => h ⟨hc.1, by linarith [hc.2.1], hc.2.2.1, by linarith [hc.2.2.2.1]⟩]
+    · rw [ite_eq_left hs, ite_eq_left hs]; rfl
+    · rw [ite_eq_right hs, ite_eq_right hs]; rfl
+  · rw [_root_.Hax.uintMulOp, _root_.Hax.u64BinOp, ite_eq_right h,
+      ite_eq_right fun hc => h ⟨hc.1, by linarith [hc.2.1], hc.2.2.1, by linarith [hc.2.2.2.1]⟩]
 
 /-- The binary integer calls of the table compute `ScalarBin.nat` by `u64BinOp`. -/
 theorem hax64BinTable_sem :
@@ -5347,7 +5347,7 @@ theorem dec_word64_nat {r : Nat} (hr : r < 2 ^ 64) :
     ∃ y, dec (.word 64) (.int r) = some y ∧ Value.int r = enc (.word 64) y := by
   have hr' : (r : Int) < 2 ^ 64 := by exact_mod_cast hr
   refine ⟨BitVec.ofNat 64 r, ?_, ?_⟩
-  · simp only [dec, Int.natCast_nonneg, hr', and_self, if_true, Int.toNat_natCast]
+  · simp only [dec, Int.natCast_nonneg, hr', and_self, ite_true, Int.toNat_natCast]
   · simp only [enc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hr]
 
 /-- The encoding of a value of a `hax64NFWordTy` type decodes at that type to a value with the
@@ -5395,7 +5395,7 @@ theorem hax64BuiltinsR_of {f : String} {vals : List Value} {v : Value}
   unfold hax64BuiltinsR
   rw [h]
   simp only
-  rw [if_neg]
+  rw [ite_eq_right]
   rintro ⟨hf, hw⟩
   rw [hr hf] at hw
   cases hw
@@ -5420,14 +5420,14 @@ theorem selectOp_typed {f : String} {as : List NfTy} {r : NfTy}
       change some (if xc then Value.int za else Value.int zb) = some v at hv
       cases hv
       by_cases hw : a = .word 64 ∧ b = .word 64
-      · rw [show selTy a b = NfTy.word 64 from if_pos hw]
+      · rw [show selTy a b = NfTy.word 64 from ite_eq_left hw]
         obtain ⟨rfl, rfl⟩ := hw
         cases hza
         cases hzb
         cases xc
         · exact dec_word64_nat xb.isLt
         · exact dec_word64_nat xa.isLt
-      · rw [show selTy a b = NfTy.int from if_neg hw]
+      · rw [show selTy a b = NfTy.int from ite_eq_right hw]
         cases xc <;> exact ⟨_, rfl, rfl⟩
     · cases hr
   | [], .nil, _, hv => simp [encAll, selectOp] at hv
@@ -5832,9 +5832,9 @@ theorem hax64Builtins_typedCalls : TypedCalls hax64BuiltinsR hax64SigOf := by
     obtain ⟨m, p, hmp, -, rfl⟩ := fieldTagSig_some hfs
     rcases _root_.Hax.FieldTag.fieldCall_some (_root_.Hax.hax64Builtins_of_fieldTag? hmp hv) with
       ⟨n, rfl, hn, hp⟩ | ⟨hp, n, rfl, -⟩
-    · rw [fieldElemTy, if_pos hp]
+    · rw [fieldElemTy, ite_eq_left hp]
       exact dec_word64_nat (by omega)
-    · rw [fieldElemTy, if_neg (by omega)]
+    · rw [fieldElemTy, ite_eq_right (by omega)]
       exact dec_arr_word _ (_root_.Hax.FieldTag.limbsOf_word _ _)
         (_root_.Hax.FieldTag.length_limbsOf _ _)
   rw [hfs] at hr
@@ -5961,7 +5961,7 @@ theorem repeatCalls_hax64Builtins : RepeatCalls _root_.Hax.hax64Builtins := by
   have hw : _root_.Hax.hax64Builtins "repeat" [.int x, .int N] =
       some (.array (List.replicate N.toNat (.int x))) := by
     rw [_root_.Hax.hax64Builtins, _root_.Hax.hax64WordOps_repeat]
-    exact if_pos hN
+    exact ite_eq_left hN
   exact (Option.some.inj (hw.symm.trans h)).symm
 
 /-- `hax64BuiltinsR` satisfies `RepeatCalls`. -/

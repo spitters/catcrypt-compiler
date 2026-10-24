@@ -224,12 +224,12 @@ theorem bubble_schedSwap : ∀ b : Lcmd, Relation.ReflTransGen SchedSwap b (bubb
   | case1 => simp only [bubble]; exact .refl
   | case2 i => simp only [bubble]; exact .refl
   | case3 i1 i2 rest hcond ih =>
-    simp only [bubble, if_pos hcond]
+    simp only [bubble, ite_eq_left hcond]
     simp only [Bool.and_eq_true] at hcond
     refine Relation.ReflTransGen.head ⟨[], rest, i1, i2, rfl, rfl, hcond.1⟩ ?_
     exact ih.lift (List.cons i2) fun a b (h : SchedSwap a b) => h.cons i2
   | case4 i1 i2 rest hcond ih =>
-    simp only [bubble, if_neg hcond]
+    simp only [bubble, ite_eq_right hcond]
     exact ih.lift (List.cons i1) fun a b (h : SchedSwap a b) => h.cons i1
 
 /-- The scheduled body is reached by transpositions of adjacent independent instructions. -/

@@ -119,7 +119,7 @@ theorem storeIdxA?_of_ne {ds ss : List LOperand} {o : String}
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    exact if_neg h
+    exact ite_eq_right h
   · rfl
 
 /-- `loadIdxA?` reads the mnemonic through `untagCaret` only. -/
@@ -148,7 +148,7 @@ theorem loadIdxA?_of_ne {ds ss : List LOperand} {o : String}
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨rfl, rfl, rfl⟩ := heq
-    exact if_neg h
+    exact ite_eq_right h
   · rfl
 
 /-- `normA` keeps the indexed store of an instruction. -/
@@ -356,7 +356,7 @@ theorem accessIn_of_cases {M : Set (BitVec 64)} {frame : String → Option (BitV
           have hshape : ds = [] ∧ o = "ZEROARR" ∧ ∃ n' w', ss = [.reg b, .imm n', .imm w'] := by
             have ho : o = "ZEROARR" := by
               by_contra hne
-              simp only [tagAt, tagA, if_neg hne, storeImmTagA] at ht
+              simp only [tagAt, tagA, ite_eq_right hne, storeImmTagA] at ht
               split_ifs at ht
               split at ht <;> cases ht
             subst ho
@@ -405,7 +405,7 @@ theorem accessIn_of_cases {M : Set (BitVec 64)} {frame : String → Option (BitV
           · rename_i heq
             simp only [LinstrR.Lopn.injEq] at heq
             obtain ⟨rfl, rfl, rfl⟩ := heq
-            simp only [if_true, Option.some.injEq, Prod.mk.injEq] at hst
+            simp only [ite_true, Option.some.injEq, Prod.mk.injEq] at hst
             obtain ⟨rfl, rfl, rfl, rfl⟩ := hst
             rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]), tagA_storeImm] at ht
             cases ht
@@ -616,7 +616,7 @@ theorem idx_mem_of_imgStep {frame : String → Option (BitVec 64)}
     cases hg
   subst hsc
   rcases hx with ⟨d, v, hx⟩ | ⟨d, hx⟩ <;> rw [hx] at hg hstep
-  · simp only [icase, if_true, Bool.and_eq_true, Option.isNone_iff_eq_none,
+  · simp only [icase, ite_true, Bool.and_eq_true, Option.isNone_iff_eq_none,
       Option.isSome_iff_exists] at hg
     obtain ⟨⟨⟨⟨⟨A, n⟩, hacc⟩, hidx⟩, hbf⟩, -⟩ := hg
     obtain ⟨q, hq, hpb⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hacc hbf
@@ -626,7 +626,7 @@ theorem idx_mem_of_imgStep {frame : String → Option (BitVec 64)}
     have hidxe := getW_congr (r := s.prog.base.reg) (r' := sa.reg) (hrel.regs idx hidx) 64
     exact cell_mem_imgStores hq (idx_lt_of_checked hstep
       (.inl ⟨_, A, A, v, rfl, by simp [storeStruct?]⟩) (hidxe.trans hvi))
-  · simp only [icase, if_true, Bool.and_eq_true, Option.isNone_iff_eq_none,
+  · simp only [icase, ite_true, Bool.and_eq_true, Option.isNone_iff_eq_none,
       Option.isSome_iff_exists] at hg
     obtain ⟨⟨⟨⟨⟨⟨A, n⟩, hacc⟩, -⟩, -⟩, hidx⟩, hbf⟩ := hg
     obtain ⟨q, hq, hpb⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hacc hbf

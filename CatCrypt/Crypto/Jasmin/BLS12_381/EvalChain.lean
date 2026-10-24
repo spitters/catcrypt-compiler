@@ -166,7 +166,7 @@ theorem eRead_write_self (es : List (Loc × Nat)) (l : Loc) (v : Nat) :
 
 theorem eRead_write_of_ne (es : List (Loc × Nat)) (l l' : Loc) (v : Nat) (h : l ≠ l') :
     eRead (ChainState.write es l v) l' = eRead es l' := by
-  simp only [ChainState.write, eRead, h, if_false]
+  simp only [ChainState.write, eRead, h, ite_false]
   induction es with
   | nil => rfl
   | cons x rest ih => by_cases hx : x.1 = l <;> simp_all [eRead]
@@ -207,13 +207,13 @@ theorem eChain_sqMulChain : ∀ (fuel e : Nat) (es : List (Loc × Nat)),
       by_cases hodd : e % 2 = 1
       · refine ⟨ChainState.write (ChainState.write es1 OFF_op (e / 2 * 2)) OFF_op
           (e / 2 * 2 + 1), ?_, ?_, ?_⟩
-        · simp only [sqMulChain, hsmall, hodd, if_true, if_false, eChain_append, h1,
+        · simp only [sqMulChain, hsmall, hodd, ite_true, ite_false, eChain_append, h1,
             Option.bind_some, eChain, eOp, hop1, Option.map_some, eRead_write_self,
             eRead_write_of_ne _ _ _ _ hne', hap1]
         · rw [eRead_write_self]; congr 1; omega
         · rw [eRead_write_of_ne _ _ _ _ hne', eRead_write_of_ne _ _ _ _ hne', hap1]
       · refine ⟨ChainState.write es1 OFF_op (e / 2 * 2), ?_, ?_, ?_⟩
-        · simp only [sqMulChain, hsmall, hodd, if_false, eChain_append, h1,
+        · simp only [sqMulChain, hsmall, hodd, ite_false, eChain_append, h1,
             Option.bind_some, eChain, eOp, hop1, Option.map_some]
         · rw [eRead_write_self]; congr 1; omega
         · rw [eRead_write_of_ne _ _ _ _ hne', hap1]

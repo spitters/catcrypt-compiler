@@ -167,18 +167,18 @@ theorem frameT_refl (ss : SSt) : FrameT ss ss := ⟨fun _ _ => rfl, fun _ _ => r
 theorem frameT_setR (ss : SSt) (d : String) (t : STerm) : FrameT ss (ss.setR d t) := by
   refine ⟨fun r hr => ?_, fun _ _ => rfl⟩
   simp only [SSt.setR, List.take_succ_cons, List.mem_cons, not_or] at hr
-  rw [SSt.setR_regs, if_neg hr.1]
+  rw [SSt.setR_regs, ite_eq_right hr.1]
 
 theorem frameT_setR_setR (ss : SSt) (d e : String) (t u : STerm) :
     FrameT ss ((ss.setR d t).setR e u) := by
   refine ⟨fun r hr => ?_, fun _ _ => rfl⟩
   simp only [SSt.setR, List.take_succ_cons, List.mem_cons, not_or] at hr
-  rw [SSt.setR_regs, SSt.setR_regs, if_neg hr.1, if_neg hr.2.1]
+  rw [SSt.setR_regs, SSt.setR_regs, ite_eq_right hr.1, ite_eq_right hr.2.1]
 
 theorem frameT_setA (ss : SSt) (d : String) (a : SArr) : FrameT ss (ss.setA d a) := by
   refine ⟨fun _ _ => rfl, fun r hr => ?_⟩
   simp only [SSt.setA, List.take_succ_cons, List.mem_cons, not_or] at hr ⊢
-  exact if_neg hr.1
+  exact ite_eq_right hr.1
 
 theorem liftR_frame {ss : SSt} {o : ROut} {ss' : SSt} {gs : List SG}
     (h : liftR ss o = .ok ss' gs) : FrameT ss ss' := by

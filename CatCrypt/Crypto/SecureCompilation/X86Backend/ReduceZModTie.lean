@@ -93,7 +93,7 @@ theorem csubLane_branch (x p : BitVec 64) :
     csubLane x p = if (x - p).msb then x else (x - p) := by
   simp only [csubLane, csub_mask]
   rcases hm : (x - p).msb with _ | _ <;>
-    simp only [if_false, if_true, Bool.false_eq_true] <;>
+    simp only [ite_false, ite_true, Bool.false_eq_true] <;>
     [bv_decide; rw [BitVec.sub_add_cancel]]
 
 /-! ## §3  The reduction-correctness facts on the csub domain `[0, 2P)`
@@ -131,8 +131,8 @@ theorem csubLane_toNat (x p : BitVec 64) (P : Nat) (hp : p.toNat = P)
     (csubLane x p).toNat = if x.toNat < P then x.toNat else x.toNat - P := by
   rw [csubLane_branch, csub_msb_iff x p P hp hP hx2]
   by_cases hlt : x.toNat < P
-  · simp only [hlt, decide_true, if_true]
-  · simp only [hlt, decide_false, if_false, Bool.false_eq_true]
+  · simp only [hlt, decide_true, ite_true]
+  · simp only [hlt, decide_false, ite_false, Bool.false_eq_true]
     rw [BitVec.toNat_sub]
     subst hp
     have hpw : p.toNat ≤ 2 ^ 64 := le_of_lt p.isLt
@@ -146,8 +146,8 @@ theorem csubLane_lt (x p : BitVec 64) (P : Nat) (hp : p.toNat = P)
     (csubLane x p).toNat < P := by
   rw [csubLane_toNat x p P hp hP hx2]
   by_cases hlt : x.toNat < P
-  · simp only [hlt, if_true]
-  · simp only [hlt, if_false]; omega
+  · simp only [hlt, ite_true]
+  · simp only [hlt, ite_false]; omega
 
 /-- **Residue preservation in `ZMod P`.**  The owned csub lane output, cast to
     `ZMod P`, equals the input lane's residue: the subtraction of `P` (in the
@@ -157,8 +157,8 @@ theorem csubLane_zmod (x p : BitVec 64) (P : Nat) (hp : p.toNat = P)
     ((csubLane x p).toNat : ZMod P) = (x.toNat : ZMod P) := by
   rw [csubLane_toNat x p P hp hP hx2]
   by_cases hlt : x.toNat < P
-  · simp only [hlt, if_true]
-  · simp only [hlt, if_false]
+  · simp only [hlt, ite_true]
+  · simp only [hlt, ite_false]
     rw [Nat.not_lt] at hlt
     have : x.toNat = (x.toNat - P) + P := by omega
     rw [this, Nat.cast_add]

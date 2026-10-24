@@ -132,7 +132,7 @@ theorem relN_setReg_keeps {s s' : LstateN} (h : RelN σ N s s') {d : String}
   · obtain rfl : d = r := by simpa using hd
     simp
   · have hrd : r ≠ d := fun he => hne d (by simp) (by rw [he])
-    rw [if_neg (hne d (by simp)), if_neg hrd]
+    rw [ite_eq_right (hne d (by simp)), ite_eq_right hrd]
     exact h.2 r hN
 
 theorem relN_operandName_of {s s' : LstateN} (hemp : N "") (hfix : σ "" = "")
@@ -165,7 +165,7 @@ local macro "live_close" : tactic =>
       first
         | (simp at h; done)
         | (cases h; refine ⟨_, ?_, relN_setReg_keeps hR hK _⟩;
-           simp only [*, if_true, if_false, reduceIte]; try (rw [if_neg (by decide)]))))
+           simp only [*, ite_true, ite_false, reduceIte]; try (rw [ite_eq_right (by decide)]))))
 
 /-- **`lsemStepN` between two name sets.** A successful step of an instruction
     whose read names lie in `N` is matched by a step of the renamed instruction
@@ -487,7 +487,7 @@ theorem RelM2.setArr_keeps {s s' : LstateM} (h : RelM2 σ Nr Na s s') {d : Strin
   · obtain rfl : d = r := by simpa using hd
     simp
   · have hrd : r ≠ d := fun he => hne d (by simp) (by rw [he])
-    rw [if_neg (hne d (by simp)), if_neg hrd]
+    rw [ite_eq_right (hne d (by simp)), ite_eq_right hrd]
     exact h.2.1 r hN
 
 theorem RelM2.storeMemC {s s' : LstateM} (h : RelM2 σ Nr Na s s') (hRg : ∀ r, Mr r → Nr r)
@@ -515,7 +515,7 @@ local macro "live_close_with " t:term : tactic =>
       first
         | (simp at h; done)
         | (cases h; refine ⟨_, ?_, $t⟩;
-           simp only [*, if_true, if_false, reduceIte])))
+           simp only [*, ite_true, ite_false, reduceIte])))
 
 /-- **`lsemStepMem` between two pairs of name sets.** A successful typed memory
     step of an instruction whose read register names lie in `Nr` and whose read
@@ -695,7 +695,7 @@ theorem carryArgs?_shape {i : LinstrRM} {p : CarryOp × String × LOperand × LO
       · rename_i heq
         simp only [LinstrR.Lopn.injEq] at heq
         obtain ⟨-, rfl, -⟩ := heq
-        rw [if_neg hm]
+        rw [ite_eq_right hm]
       · rfl
     have hsh : storeHit? (.Lopn [.reg d] opn [a, b], tag) = none := by
       unfold storeHit?
@@ -760,7 +760,7 @@ theorem wideArgs?_shape_mov {i : LinstrRM} {d : String} {b : LOperand}
       · rename_i heq
         simp only [LinstrR.Lopn.injEq] at heq
         obtain ⟨-, rfl, -⟩ := heq
-        rw [if_neg (by subst ho; decide +kernel)]
+        rw [ite_eq_right (by subst ho; decide +kernel)]
       · rfl
     have hmz : opn ≠ "ZEROARR" := by subst ho; decide +kernel
     have hsh : storeHit? (.Lopn [.reg d] opn [a, b], tag) = none := by
@@ -996,13 +996,13 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
       split at h
       · obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
         obtain ⟨q', hq', hRq, hfn, hkq⟩ := evalJumpMem_live hC hk hget hl hR.1 hR.2.1 hq
-        refine ⟨{ prog := q', zf := s.zf }, by rw [if_pos (by assumption), hq']; rfl,
+        refine ⟨{ prog := q', zf := s.zf }, by rw [ite_eq_left (by assumption), hq']; rfl,
           ⟨hRq, hfn, rfl, ?_, ?_⟩, hkq⟩
         · rw [(evalJumpMem_flags hq').1, (evalJumpMem_flags hq).1]; exact hR.2.2.2.1
         · rw [(evalJumpMem_flags hq').2, (evalJumpMem_flags hq).2]; exact hR.2.2.2.2
       · cases h
         exact ⟨{ prog := { s'.prog with base := s'.prog.base.nextPc }, zf := s.zf },
-          by rw [if_neg (by assumption)],
+          by rw [ite_eq_right (by assumption)],
           ⟨hfall (jumpLabel?_not_lopn hl), hR.2.1, rfl, hR.2.2.2⟩, Nat.le_succ_of_le hk⟩
   | none =>
   simp only [h3] at h ⊢
@@ -1025,7 +1025,7 @@ theorem evalInstrPMemF_live (hC : LiveCert σ k0 P P' Lr La) (i : LinstrRM)
         simp only [evalInstrPMemL, renRM, renLinstrR] at hq ⊢
         rw [hC.lfn]
         split at hq
-        · rw [if_pos (by assumption)]
+        · rw [ite_eq_left (by assumption)]
           exact evalJumpMem_live hC hk hget rfl hR.1 hR.2.1 hq
         · simp at hq
     | Lopn d o s => exact hstep hq
@@ -1120,14 +1120,14 @@ theorem cmpArgs?_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTa
   · next heq =>
       simp only [LinstrR.Lopn.injEq] at heq
       obtain ⟨-, rfl, -⟩ := heq
-      exact if_neg (callMnem_ne (by decide))
+      exact ite_eq_right (callMnem_ne (by decide))
   · rfl
 
 /-- A shadow instruction of a call is no array zeroing. -/
 theorem zeroStruct?_callShadow (dst f : String) (srcs : List LOperand) :
     zeroStruct? (callShadow dst f srcs) = none := by
   simp only [callShadow, zeroStruct?]
-  exact if_neg (callMnem_ne (by decide))
+  exact ite_eq_right (callMnem_ne (by decide))
 
 /-- A shadow instruction of a call is no constant-index store. -/
 theorem storeImmStruct?_callShadow (dst f : String) (srcs : List LOperand) :
@@ -1137,7 +1137,7 @@ theorem storeImmStruct?_callShadow (dst f : String) (srcs : List LOperand) :
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨-, rfl, -⟩ := heq
-    exact if_neg (callMnem_ne (by decide))
+    exact ite_eq_right (callMnem_ne (by decide))
   · rfl
 
 /-- A shadow instruction of a call writes its destination register. -/
@@ -1148,7 +1148,7 @@ theorem regDefs_callShadow (dst f : String) (srcs : List LOperand) (tag : MemTag
       storeImmStruct?_callShadow]
   unfold regDefs memRegDefs
   rw [cmpArgs?_callShadow, hs]
-  simp only [Option.isSome_none, Bool.false_eq_true, if_false, ite_self]
+  simp only [Option.isSome_none, Bool.false_eq_true, ite_false, ite_self]
   rfl
 
 /-- A shadow instruction of a call writes no array. -/
@@ -1382,13 +1382,13 @@ theorem Interf.extend {rng : String → Nat × Nat} (h : Interf σ rng) (x : Str
   by_cases hax : a = x
   · subst hax
     have hbx : b ≠ a := fun he => hab he.symm
-    simp only [if_true, if_neg hbx] at hca hcb
+    simp only [ite_true, ite_eq_right hbx] at hca hcb
     exact fun he => key b k hbx hb ha hcb hca he.symm
   · by_cases hbx : b = x
     · subst hbx
-      simp only [if_true, if_neg hax] at hca hcb
+      simp only [ite_true, ite_eq_right hax] at hca hcb
       exact key a k hax ha hb hca hcb
-    · simp only [if_neg hax, if_neg hbx] at hca hcb
+    · simp only [ite_eq_right hax, ite_eq_right hbx] at hca hcb
       exact h a b k hab ha hb hca hcb
 
 /-- The interval conditions for one kind of cell (register or array), for the
@@ -1549,7 +1549,7 @@ theorem physSigma_fix (body : Lcmd) : physSigma body "" = "" := by simp [physSig
 
 theorem physSigma_ne_empty (body : Lcmd) (n : String) (hn : n ≠ "") :
     physSigma body n ≠ "" := by
-  simp only [physSigma, if_neg hn]
+  simp only [physSigma, ite_eq_right hn]
   exact physRegName_ne_empty _
 
 /-- The export's operand remap is the renaming `physSigma` on operands that do not
@@ -1583,7 +1583,7 @@ theorem physSigma_interf (body : Lcmd) (pos : Nat → Nat) (rng : String → Nat
   intro a b k hab ha hb hca hcb he
   obtain ⟨hma, hpos, hla⟩ := hcov a k ha hca
   obtain ⟨hmb, _, hlb⟩ := hcov b k hb hcb
-  simp only [physSigma, if_neg ha, if_neg hb] at he
+  simp only [physSigma, ite_eq_right ha, ite_eq_right hb] at he
   exact hab (physRename_hinj_of_liveAt hfit hpos hma hmb hla hlb he)
 
 /-! ### The allocated body is not a renaming of the virtual body
@@ -1603,7 +1603,7 @@ theorem lowerTwoAddr_length (dst s0 s1 : LOperand) (opn mov : String) (h : dst �
   have h2 : ∀ s, 1 ≤ (legalizeBinop dst s opn mov).length := by
     intro s; unfold legalizeBinop; split <;> simp
   unfold lowerTwoAddr
-  simp only [if_neg h, List.length_append]
+  simp only [ite_eq_right h, List.length_append]
   have := h2 (materializeWideImm s1 mov).2
   omega
 

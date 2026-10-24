@@ -352,7 +352,7 @@ make `lsemStepMC` reduce to the right arm on each binding head. -/
 theorem mulhiStruct?_mulhi {w : Nat} (dst a b : String) :
     mulhiStruct? (.Lopn [.reg dst] (withWidthTag w "MULXHI") [.reg a, .reg b])
       = some (dst, a, b) := by
-  simp only [mulhiStruct?, stripWidthTag_withWidthTag_MULXHI, if_pos]
+  simp only [mulhiStruct?, stripWidthTag_withWidthTag_MULXHI, ite_eq_left]
 
 /-- `mulhiStruct?` of an `Lopn` whose stripped mnemonic is not `"MULXHI"` is
     `none` (regardless of operand shape). -/
@@ -362,14 +362,14 @@ theorem mulhiStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
   rcases srcs with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
   · rfl
   · cases a <;> rfl
-  · cases a <;> cases b <;> simp only [mulhiStruct?, if_neg h]
+  · cases a <;> cases b <;> simp only [mulhiStruct?, ite_eq_right h]
   · cases a <;> cases b <;> rfl
 
 /-- `adcxStruct?` recognises the structured `ADCX` (three `.reg` sources). -/
 theorem adcxStruct?_adcx {w : Nat} (dst a b c : String) :
     adcxStruct? (.Lopn [.reg dst] (withWidthTag w "ADCX") [.reg a, .reg b, .reg c])
       = some (dst, a, b, c) := by
-  simp only [adcxStruct?, stripWidthTag_withWidthTag_ADCX, if_pos]
+  simp only [adcxStruct?, stripWidthTag_withWidthTag_ADCX, ite_eq_left]
 
 /-- `adcxStruct?` of an `Lopn` whose stripped mnemonic is not `"ADCX"` is `none`. -/
 theorem adcxStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
@@ -379,14 +379,14 @@ theorem adcxStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
   · rfl
   · cases a <;> rfl
   · cases a <;> cases b <;> rfl
-  · cases a <;> cases b <;> cases c <;> simp only [adcxStruct?, if_neg h]
+  · cases a <;> cases b <;> cases c <;> simp only [adcxStruct?, ite_eq_right h]
   · cases a <;> cases b <;> cases c <;> rfl
 
 /-- `adcxhiStruct?` recognises the structured `ADCXHI`. -/
 theorem adcxhiStruct?_adcxhi {w : Nat} (dst a b c : String) :
     adcxhiStruct? (.Lopn [.reg dst] (withWidthTag w "ADCXHI") [.reg a, .reg b, .reg c])
       = some (dst, a, b, c) := by
-  simp only [adcxhiStruct?, stripWidthTag_withWidthTag_ADCXHI, if_pos]
+  simp only [adcxhiStruct?, stripWidthTag_withWidthTag_ADCXHI, ite_eq_left]
 
 /-- `adcxhiStruct?` of an `Lopn` whose stripped mnemonic is not `"ADCXHI"` is
     `none`. -/
@@ -397,7 +397,7 @@ theorem adcxhiStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
   · rfl
   · cases a <;> rfl
   · cases a <;> cases b <;> rfl
-  · cases a <;> cases b <;> cases c <;> simp only [adcxhiStruct?, if_neg h]
+  · cases a <;> cases b <;> cases c <;> simp only [adcxhiStruct?, ite_eq_right h]
   · cases a <;> cases b <;> cases c <;> rfl
 
 /-- The two distinct stripped mnemonics `"MULXHI"` and `"ADCX"` etc. give the
@@ -428,7 +428,7 @@ theorem adcxhiStruct?_adcx {w : Nat} (dst a b c : String) :
 theorem sbbStruct?_sbb {w : Nat} (dst a b c : String) :
     sbbStruct? (.Lopn [.reg dst] (withWidthTag w "SBB") [.reg a, .reg b, .reg c])
       = some (dst, a, b, c) := by
-  simp only [sbbStruct?, stripWidthTag_withWidthTag_SBB, if_pos]
+  simp only [sbbStruct?, stripWidthTag_withWidthTag_SBB, ite_eq_left]
 
 /-- `sbbStruct?` of an `Lopn` whose stripped mnemonic is not `"SBB"` is `none`. -/
 theorem sbbStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
@@ -438,14 +438,14 @@ theorem sbbStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
   · rfl
   · cases a <;> rfl
   · cases a <;> cases b <;> rfl
-  · cases a <;> cases b <;> cases c <;> simp only [sbbStruct?, if_neg h]
+  · cases a <;> cases b <;> cases c <;> simp only [sbbStruct?, ite_eq_right h]
   · cases a <;> cases b <;> cases c <;> rfl
 
 /-- `sbbhiStruct?` recognises the structured `SBBHI`. -/
 theorem sbbhiStruct?_sbbhi {w : Nat} (dst a b c : String) :
     sbbhiStruct? (.Lopn [.reg dst] (withWidthTag w "SBBHI") [.reg a, .reg b, .reg c])
       = some (dst, a, b, c) := by
-  simp only [sbbhiStruct?, stripWidthTag_withWidthTag_SBBHI, if_pos]
+  simp only [sbbhiStruct?, stripWidthTag_withWidthTag_SBBHI, ite_eq_left]
 
 /-- `sbbhiStruct?` of an `Lopn` whose stripped mnemonic is not `"SBBHI"` is `none`. -/
 theorem sbbhiStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
@@ -455,7 +455,7 @@ theorem sbbhiStruct?_of_ne {dst : String} {opn : String} {srcs : List LOperand}
   · rfl
   · cases a <;> rfl
   · cases a <;> cases b <;> rfl
-  · cases a <;> cases b <;> cases c <;> simp only [sbbhiStruct?, if_neg h]
+  · cases a <;> cases b <;> cases c <;> simp only [sbbhiStruct?, ite_eq_right h]
   · cases a <;> cases b <;> cases c <;> rfl
 
 /-- The prior recognizers are `none` on an `SBB` instruction (distinct mnemonics),

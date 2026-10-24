@@ -288,7 +288,7 @@ theorem evalInstrPMemF_expand {P P' : LprogM} (hP : ExpProg Q expand P P')
       rw [h1, h2, pcMap_succ expand hget, hR.pc]
   · have hfetch : findInstrMem P' s'.prog = some i := by
       unfold findInstrMem
-      rw [if_pos hfn']
+      rw [ite_eq_left hfn']
       have := hpos 0 (by rw [hself]; simp)
       simpa [hself] using this
     have hone : ∀ {u' : LstateMF}, evalInstrPMemF P' i s' = some u' →
@@ -321,14 +321,14 @@ theorem evalInstrPMemF_expand {P P' : LprogM} (hP : ExpProg Q expand P P')
             refine ⟨{ s' with prog := q' }, hone ?_, ⟨hfq, hR.zf, hpq, hQq⟩⟩
             unfold evalInstrPMemF
             simp only [h1, h2, h3]
-            rw [if_pos (hR.zf.trans hz), hq']; rfl
+            rw [ite_eq_left (hR.zf.trans hz), hq']; rfl
           · rename_i hz
             cases he
             refine ⟨{ s' with prog := { s'.prog with base := s'.prog.base.nextPc } },
               hone ?_, ⟨hR.lfn, hR.zf, hnext.symm, hP.pc _ _ _ _ hR.base⟩⟩
             unfold evalInstrPMemF
             simp only [h1, h2, h3]
-            rw [if_neg (fun h => hz (hR.zf.symm.trans h))]
+            rw [ite_eq_right (fun h => hz (hR.zf.symm.trans h))]
     · obtain rfl : wire = LinstrR.Lgoto tgt := hw
       obtain ⟨fn, l⟩ := tgt
       have hev : ∀ (R : LprogM) (x : LstateMF),
@@ -342,7 +342,7 @@ theorem evalInstrPMemF_expand {P P' : LprogM} (hP : ExpProg Q expand P P')
       · rename_i hf
         obtain ⟨q', hq', hQq, hfq, hpq⟩ := evalJumpMem_expand hP l hR.base hR.lfn hq
         refine ⟨{ s' with prog := q' }, hone ?_, ⟨hfq, hR.zf, hpq, hQq⟩⟩
-        rw [hev, hP.lfn, if_pos hf, hq']; rfl
+        rw [hev, hP.lfn, ite_eq_left hf, hq']; rfl
       · exact absurd hq (by simp)
 
 /-- **The flag machine under an instruction expansion.** Every halting run of
@@ -363,7 +363,7 @@ theorem lsemFuelMemF_expand {P P' : LprogM} (hP : ExpProg Q expand P P') {m : Na
     rw [hR.lfn, hP.lfn]
     split
     · rename_i hfn
-      rw [if_pos hfn] at hf
+      rw [ite_eq_left hfn] at hf
       rw [hR.pc, hP.body]
       exact getElem?_flatMap_pcMap_none expand hf
     · rfl
@@ -571,7 +571,7 @@ theorem lsemStepMC_twoAddr (st : LstateN) (d s0 : String) (s1 : LOperand) (opn :
       = (lsemStepMC (binopWire d s0 s1 opn) st).map (fun t => setLpcN t (st.lpc + 2)) := by
   have hr1 : readReg st (.reg s0) = some ⟨w, v⟩ := by simp only [readReg, hc]
   have hr2 : readReg ((st.setReg d v).nextPc) (.reg d) = some ⟨w, v⟩ := by
-    simp only [readReg, LstateN.lvm_nextPc, LstateN.lvm_setReg, if_true]
+    simp only [readReg, LstateN.lvm_nextPc, LstateN.lvm_setReg, ite_true]
   cases s1 with
   | reg b =>
       have hb : b ≠ d := fun h => hd (by rw [h])
@@ -613,7 +613,7 @@ theorem fstepF_movWire (d s0 mov : String) (tag : MemTag) (hmov : stripWidthTag 
       = some ((s.setReg d (s.reg.lvm s0).2).nextPc, zf) := by
   have h1 : cmpArgs? (movWire d s0 mov, tag) = none := rfl
   have h2 : movRegArgs? (movWire d s0 mov, tag) = some (d, s0) := by
-    simp only [movRegArgs?, movWire, hmov, if_true]
+    simp only [movRegArgs?, movWire, hmov, ite_true]
   unfold fstepF
   simp only [h1, h2]
   rfl
@@ -633,7 +633,7 @@ theorem fstepF_binopWire (d x : String) (s1 : LOperand) (opn : String) (cd : Opt
     fstepF (binopWire d x s1 opn, .reg cd) s zf
       = (stepMemF (binopWire d x s1 opn, .reg cd) s).map (fun b => (b, zf)) := by
   have h1 : cmpArgs? (binopWire d x s1 opn, MemTag.reg cd) = none := by
-    simp only [cmpArgs?, binopWire, hcmp, if_false]
+    simp only [cmpArgs?, binopWire, hcmp, ite_false]
   have h2 : movRegArgs? (binopWire d x s1 opn, MemTag.reg cd) = none := rfl
   unfold fstepF
   simp only [h1, h2]
@@ -740,8 +740,8 @@ theorem lowerRM_cases (isB : String → Bool) (movFor : String → String) (i : 
   split
   · rename_i d opn s0 s1 cd
     by_cases hc : isB opn = true ∧ d ≠ s0
-    · exact Or.inr ⟨d, opn, s0, s1, cd, rfl, hc.1, hc.2, by rw [if_pos hc]⟩
-    · exact Or.inl (by rw [if_neg hc])
+    · exact Or.inr ⟨d, opn, s0, s1, cd, rfl, hc.1, hc.2, by rw [ite_eq_left hc]⟩
+    · exact Or.inl (by rw [ite_eq_right hc])
   · exact Or.inl rfl
 
 theorem lowerRM_length_le (isB : String → Bool) (movFor : String → String) (i : LinstrRM) :

@@ -150,7 +150,7 @@ theorem vmApprox_upd {σ : NameTys} {Γ : Ctx} {vm : VarMap Γ} {t : CryptoTy}
     have hst : t = s := by simpa [NameTys.upd] using hy
     subst hst
     exact boundAt_bind_self vm y t
-  · simp only [NameTys.upd, if_neg hyx] at hy
+  · simp only [NameTys.upd, ite_eq_right hyx] at hy
     exact boundAt_bind_of_ne x t hyx (h y s hy)
 
 /-- A map update at a non-temporary name keeps the map temporary-free. -/
@@ -159,7 +159,7 @@ theorem srcTys_upd {σ : NameTys} {x : String} {t : CryptoTy}
   intro y hy
   by_cases hyx : y = x
   · exact hyx ▸ hx
-  · exact hσ y (by simpa [NameTys.upd, if_neg hyx] using hy)
+  · exact hσ y (by simpa [NameTys.upd, ite_eq_right hyx] using hy)
 
 /-- A weakening of the `VarMap` preserves every binding, shifted by one slot. -/
 theorem boundAt_weaken {Γ : Ctx} {vm : VarMap Γ} {y : String} {t s : CryptoTy}
@@ -256,7 +256,7 @@ set_option linter.auxLemma false in
 /-- Both branches of the `RArrLoad` prefix — the `memrefGetDyn` bind and the
     opaque `extCall` fallback — are jasmin-lowerable. The discriminants are
     cased so that the literal-pattern matcher reduces; the `64` literal
-    compiles to a `dite (w = 64)`, closed by `dif_neg` at `w ≠ 64`. -/
+    compiles to a `dite (w = 64)`, closed by `dite_eq_right` at `w ≠ 64`. -/
 theorem contJTotal_arrLoadCont {Γ : Ctx}
     (dty : CatCrypt.Crypto.Jasmin.LowCT.TowerType)
     (resolvedArgs : List ((t : CryptoTy) × CVar Γ t))
@@ -277,7 +277,7 @@ theorem contJTotal_arrLoadCont {Γ : Ctx}
   · exact ContJTotal.varBind rfl tail htail
   · unfold arrLoadCont
     delta arrLoadCont.match_1
-    simp only [dif_neg hw]
+    simp only [dite_eq_right hw]
     exact ContJTotal.varBind rfl tail htail
 
 /-- All three branches of the `RArrStore` prefix — the transported
@@ -535,7 +535,7 @@ theorem translateDialectFull_total {σ σ' : NameTys} {c : LowCT}
           have hst : CryptoTy.sword 64 = s := by simpa [NameTys.upd] using hy
           subst hst
           exact boundAt_bind_self _ _ _
-        · simp only [NameTys.upd, if_neg hyx] at hy
+        · simp only [NameTys.upd, ite_eq_right hyx] at hy
           exact boundAt_bind_of_ne _ _ hyx
             (hP1 y s (hσ y (by simp [hy])) (ha y s hy))
       · exact ContJTotal.comp hcont (ContJTotal.varBind rfl)
@@ -608,7 +608,7 @@ theorem frontLoopBodyCD_total {Γbody : Ctx} {accCTy : CryptoTy}
   obtain ⟨v, hv⟩ := happ accName accCTy hacc
   obtain ⟨com, hcom, hlow⟩ := hcont (Com.ret (toVIRVar v)) (by rfl)
   refine ⟨com, ?_, hlow⟩
-  simp only [frontLoopBodyCD, htr, hv, dif_pos]
+  simp only [frontLoopBodyCD, htr, hv, dite_eq_left]
   exact hcom
 
 /-- **The rolled-loop body front succeeds on a judged body**: the

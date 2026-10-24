@@ -381,8 +381,8 @@ theorem cfLeakCT_filterMap (r : DoitRegime) {w : Nat} (cf : OwnedCF w) (s : JSta
     | succ m ihm => simp only [iterLeak, cfLoop, List.filterMap_append, ih, ihm]
   | ifPub guard thenB elseB iht ihe =>
     by_cases hz : s.get guard = 0
-    · simp only [cfLeakCT, cfExec, if_pos hz, List.filterMap_cons, ctToMLeak?, ihe]
-    · simp only [cfLeakCT, cfExec, if_neg hz, List.filterMap_cons, ctToMLeak?, iht]
+    · simp only [cfLeakCT, cfExec, ite_eq_left hz, List.filterMap_cons, ctToMLeak?, ihe]
+    · simp only [cfLeakCT, cfExec, ite_eq_right hz, List.filterMap_cons, ctToMLeak?, iht]
 
 /-- Constant time over structured control flow: a CT-controlled block
     (`MachineConstantTime.CFControlled`: public guards, public index registers,
@@ -415,10 +415,10 @@ theorem owned_ct_control_flow_CT (r : DoitRegime) (pub : PubPred) {w : Nat} (cf 
     have hgeq : s₁.get guard = s₂.get guard := hag guard hg
     by_cases hz : s₁.get guard = 0
     · have hz2 : s₂.get guard = 0 := by rw [← hgeq]; exact hz
-      simp only [cfLeakCT, if_pos hz, if_pos hz2]
+      simp only [cfLeakCT, ite_eq_left hz, ite_eq_left hz2]
       exact congrArg (List.cons _) (ihe hce hq.2 s₁ s₂ hag)
     · have hz2 : ¬ s₂.get guard = 0 := by rw [← hgeq]; exact hz
-      simp only [cfLeakCT, if_neg hz, if_neg hz2]
+      simp only [cfLeakCT, ite_eq_right hz, ite_eq_right hz2]
       exact congrArg (List.cons _) (iht hct hq.1 s₁ s₂ hag)
 
 /-! ## 5. The denylist of `VarTimeOpDetector` against the allowlist -/

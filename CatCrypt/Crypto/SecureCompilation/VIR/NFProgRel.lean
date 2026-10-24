@@ -494,12 +494,12 @@ theorem whileIterLeak_rel_fwd {cs : List d.Ty} {cs' : List d'.Ty}
       simp only [whileIterLeak, hc', Option.bind_some]
       rw [← hb, ← he]
       split at h
-      · rw [if_pos ‹_›]
+      · rw [ite_eq_left ‹_›]
         obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
         obtain ⟨q', hq', hrq, heq⟩ := whileIterLeak_rel_fwd hs n _ _ q ht hq
         exact ⟨(q'.1, c.2 ++ .branch true :: q'.2), by rw [hq', Option.map_some], hrq,
           by simp only [heq]⟩
-      · rw [if_neg ‹_›]
+      · rw [ite_eq_right ‹_›]
         cases h
         exact ⟨_, rfl, ht, rfl⟩
 

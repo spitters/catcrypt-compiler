@@ -118,7 +118,7 @@ theorem addcarry_reconstruct (hi lo addend : BitVec 64) (hhi : hi.toNat < 2 ^ 64
     rw [BitVec.toNat_add]
   simp only [addCarryWord, carryOutBit, h0, add_zero]
   by_cases hc : lo.toNat + addend.toNat ≥ 2 ^ 64
-  · rw [if_pos hc]
+  · rw [ite_eq_left hc]
     have hwrap : (lo.toNat + addend.toNat) % 2 ^ 64 = lo.toNat + addend.toNat - 2 ^ 64 := by
       rw [Nat.mod_eq_sub_mod hc, Nat.mod_eq_of_lt (by omega)]
     have hires : (hi + BitVec.ofNat 64 ((1 : BitVec 1).toNat)).toNat = hi.toNat + 1 := by
@@ -127,7 +127,7 @@ theorem addcarry_reconstruct (hi lo addend : BitVec 64) (hhi : hi.toNat < 2 ^ 64
       rw [h1, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega : (1 : Nat) < 2 ^ 64),
           Nat.mod_eq_of_lt (by omega)]
     rw [hires, hlow, hwrap]; omega
-  · rw [if_neg hc]
+  · rw [ite_eq_right hc]
     have hc := not_le.mp hc
     have hires : (hi + BitVec.ofNat 64 ((0 : BitVec 1).toNat)).toNat = hi.toNat := by
       rw [BitVec.toNat_add, h0, BitVec.toNat_ofNat, Nat.zero_mod, Nat.add_zero,
@@ -215,12 +215,12 @@ theorem condsub_word (b1 b0 : BitVec 64) (hb1 : b1.toNat ≤ 1)
   have hb0 := b0.isLt
   simp only [condSub]
   by_cases hlt : b1.toNat * 2 ^ 64 + b0.toNat < multiGoldilocks.modulus
-  · rw [if_pos hlt, if_pos hlt]
+  · rw [ite_eq_left hlt, ite_eq_left hlt]
     have hb1z : b1.toNat = 0 := by
       by_contra h; have : b1.toNat = 1 := by omega
       rw [this] at hlt; omega
     omega
-  · rw [if_neg hlt, if_neg hlt]
+  · rw [ite_eq_right hlt, ite_eq_right hlt]
     have hpbv : pBV.toNat = multiGoldilocks.modulus := by
       simp only [pBV, BitVec.toNat_ofNat, hpmod]
       rw [Nat.mod_eq_of_lt (by omega)]

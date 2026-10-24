@@ -316,7 +316,7 @@ theorem setP_ne {P : String → Bool} {x y : String} {b : Bool} (h : y ≠ x) :
 
 theorem setP_self_imp {P : String → Bool} {x : String} {b : Bool} (h : setP P x b x = true) :
     b = true := by
-  simp only [setP, if_true, Bool.and_eq_true] at h
+  simp only [setP, ite_true, Bool.and_eq_true] at h
   exact h.1
 
 /-- The Boolean form of `AllPub`. -/
@@ -1171,7 +1171,7 @@ theorem levelCheckF_front : ∀ (c : LowCT) {Γ : Ctx} (vm : VarMap Γ) (L : Lb 
             split at ht
             · next w condVar hlk =>
               simp only [translateDialectFull, translateDialect,
-                asSingleScalarSet, List.cons_ne_self, dite_false, if_true,
+                asSingleScalarSet, List.cons_ne_self, dite_false, ite_true,
                 Option.some.injEq] at ht
               subst ht
               refine ⟨.cons (lvlOf (toVIRVar condVar) L) (.cons (lvlOf (toVIRVar condVar) L)

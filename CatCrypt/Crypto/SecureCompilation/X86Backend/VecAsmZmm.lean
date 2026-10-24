@@ -386,7 +386,7 @@ theorem sib_fields (b : Nat) (idx : Option (Nat × Nat)) (d : Int) (hb : b < 16)
   | none =>
     have h4 : RmF.xb (.mem (.sib b none d)) / 16 % 2 * 8 + sibByte b none / 8 % 8 = 4 := by
       simp only [sibByte, RmF.xb]; omega
-    rw [if_pos h4]
+    rw [ite_eq_left h4]
     simp only [sibByte, RmF.xb]
     exact ⟨by omega, by omega, by omega, trivial⟩
   | some p =>
@@ -396,7 +396,7 @@ theorem sib_fields (b : Nat) (idx : Option (Nat × Nat)) (d : Int) (hb : b < 16)
         + sibByte b (some (x, s)) / 8 % 8 = x := by
       simp only [sibByte, RmF.xb]; omega
     have h5 : sibByte b (some (x, s)) / 64 = s := by simp only [sibByte]; omega
-    rw [h4, if_neg hx4, h5]
+    rw [h4, ite_eq_right hx4, h5]
     simp only [sibByte, RmF.xb]
     exact ⟨by omega, by omega, by omega, trivial⟩
 
@@ -439,9 +439,9 @@ theorem decF_encF {f : EvexF} (hf : f.Valid) (r : List (BitVec 8)) :
           (BitVec.ofNat 8 0x25 :: d0 :: d1 :: d2 :: d3 :: (imm.toList.map (BitVec.ofNat 8) ++ r))
           = some (.mem (.abs a), imm.toList.map (BitVec.ofNat 8) ++ r) := by
         simp only [decRm]
-        rw [if_neg (by omega)]
+        rw [ite_eq_right (by omega)]
         simp only [BitVec.toNat_ofNat]
-        rw [if_pos (show (reg % 8 * 8 + 4) / 64 = 0 by omega), if_pos trivial, hs hrm]
+        rw [ite_eq_left (show (reg % 8 * 8 + 4) / 64 = 0 by omega), ite_eq_left trivial, hs hrm]
       rw [hdr]
       exact decF_tail _ _ _ _ _ _ _ _ _ himm hhas r
     | sib b idx d =>
@@ -460,8 +460,8 @@ theorem decF_encF {f : EvexF} (hf : f.Valid) (r : List (BitVec 8)) :
             (BitVec.ofNat 8 (sibByte b idx) :: (imm.toList.map (BitVec.ofNat 8) ++ r))
             = some (.mem (.sib b idx d), imm.toList.map (BitVec.ofNat 8) ++ r) := by
           simp only [decRm, BitVec.toNat_ofNat, Nat.reducePow, Nat.mod_eq_of_lt hs256]
-          rw [if_neg (by omega), if_pos (show (reg % 8 * 8 + 4) / 64 = 0 by omega),
-            if_neg (by omega), hbase, hix, h0.1]
+          rw [ite_eq_right (by omega), ite_eq_left (show (reg % 8 * 8 + 4) / 64 = 0 by omega),
+            ite_eq_right (by omega), hbase, hix, h0.1]
         rw [hdr]
         exact decF_tail _ _ _ _ _ _ _ _ _ himm hhas r
       · by_cases h8 : Disp8 d
@@ -480,8 +480,8 @@ theorem decF_encF {f : EvexF} (hf : f.Valid) (r : List (BitVec 8)) :
                 (imm.toList.map (BitVec.ofNat 8) ++ r))
               = some (.mem (.sib b idx d), imm.toList.map (BitVec.ofNat 8) ++ r) := by
             simp only [decRm, BitVec.toNat_ofNat, Nat.reducePow, Nat.mod_eq_of_lt hs256]
-            rw [if_neg (by omega), if_neg (show ¬ (64 + reg % 8 * 8 + 4) / 64 = 0 by omega),
-              if_pos (show (64 + reg % 8 * 8 + 4) / 64 = 1 by omega), hbase, hix, disp8_dec h8]
+            rw [ite_eq_right (by omega), ite_eq_right (show ¬ (64 + reg % 8 * 8 + 4) / 64 = 0 by omega),
+              ite_eq_left (show (64 + reg % 8 * 8 + 4) / 64 = 1 by omega), hbase, hix, disp8_dec h8]
           rw [hdr]
           exact decF_tail _ _ _ _ _ _ _ _ _ himm hhas r
         · obtain ⟨d0, d1, d2, d3, hdl, hs⟩ := le32_bytes d (imm.toList.map (BitVec.ofNat 8) ++ r)
@@ -501,8 +501,8 @@ theorem decF_encF {f : EvexF} (hf : f.Valid) (r : List (BitVec 8)) :
                 (imm.toList.map (BitVec.ofNat 8) ++ r))
               = some (.mem (.sib b idx d), imm.toList.map (BitVec.ofNat 8) ++ r) := by
             simp only [decRm, BitVec.toNat_ofNat, Nat.reducePow, Nat.mod_eq_of_lt hs256]
-            rw [if_neg (by omega), if_neg (show ¬ (128 + reg % 8 * 8 + 4) / 64 = 0 by omega),
-              if_neg (show ¬ (128 + reg % 8 * 8 + 4) / 64 = 1 by omega), hbase, hix, hs hd]
+            rw [ite_eq_right (by omega), ite_eq_right (show ¬ (128 + reg % 8 * 8 + 4) / 64 = 0 by omega),
+              ite_eq_right (show ¬ (128 + reg % 8 * 8 + 4) / 64 = 1 by omega), hbase, hix, hs hd]
           rw [hdr]
           exact decF_tail _ _ _ _ _ _ _ _ _ himm hhas r
 

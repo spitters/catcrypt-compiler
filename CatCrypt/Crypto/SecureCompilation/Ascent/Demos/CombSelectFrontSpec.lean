@@ -85,7 +85,7 @@ theorem combSelectFront_meets_spec (N : Nat) (hN : 4 * N ≤ 2 ^ 64)
   obtain ⟨com, hf, -, hden⟩ := combSelectFront_denote N hN O D T
   refine ⟨com, hf, fun k => ?_⟩
   rw [hden]
-  simp only [if_pos hD, selectedWord]
+  simp only [ite_eq_left hD, selectedWord]
 
 /-! ## 3. The conditional-move block meets it -/
 

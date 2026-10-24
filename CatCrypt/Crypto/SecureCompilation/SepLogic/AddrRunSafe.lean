@@ -152,12 +152,12 @@ theorem runSafe_storeIn_iff {M : Set (BitVec 64)} {frame : String → Option (Bi
     | true =>
       obtain ⟨hw, -, hst⟩ := halted_step (frame := frame) zf hs
       unfold runWrites
-      rw [if_pos hs]
+      rw [ite_eq_left hs]
       refine ⟨fun _ _ hx => absurd hx (Set.notMem_empty _), fun _ => ?_⟩
       exact ⟨fun x hx => absurd hx (hw x), fun s' zf' h => by rw [hst] at h; cases h⟩
     | false =>
       unfold runWrites
-      rw [if_neg (by simp [hs])]
+      rw [ite_eq_right (by simp [hs])]
       constructor
       · rintro ⟨h1, h2⟩ x (hx | hx)
         · exact h1 x hx
@@ -191,12 +191,12 @@ theorem runSafe_loadIn_iff {M : Set (BitVec 64)} {frame : String → Option (Bit
     | true =>
       obtain ⟨-, hr, hst⟩ := halted_step (frame := frame) zf hs
       unfold runReads
-      rw [if_pos hs]
+      rw [ite_eq_left hs]
       refine ⟨fun _ _ hx => Loc.noConfusion (Set.mem_singleton_iff.1 hx), fun _ => ?_⟩
       exact ⟨fun x hx => absurd hx (hr x), fun s' zf' h => by rw [hst] at h; cases h⟩
     | false =>
       unfold runReads
-      rw [if_neg (by simp [hs])]
+      rw [ite_eq_right (by simp [hs])]
       constructor
       · rintro ⟨h1, h2⟩ x (hx | hx)
         · exact h1 x hx

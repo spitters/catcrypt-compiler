@@ -167,8 +167,8 @@ theorem physBodyElem_binopCollapse (body : Lcmd) (tbl : Array Nat)
     physBodyElem body tbl ⟨ii, .Lopn (d :: ds) opn (s0 :: s1 :: ss)⟩
       = (legalizeBinop (remapOperand body tbl d) (remapOperand body tbl s1) opn "MOV").map
           (fun r => ⟨ii, r⟩) := by
-  simp only [physBodyElem, hbin, hsh, h64, Bool.false_eq_true, if_false,
-    lowerTwoAddr, hcol, if_pos, materializeWideImm_MOV, List.nil_append]
+  simp only [physBodyElem, hbin, hsh, h64, Bool.false_eq_true, ite_false,
+    lowerTwoAddr, hcol, ite_eq_left, materializeWideImm_MOV, List.nil_append]
 
 /-! ## 2. The whole-body `flatMap`-identity
 

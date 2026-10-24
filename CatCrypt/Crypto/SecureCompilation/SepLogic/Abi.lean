@@ -530,7 +530,7 @@ private theorem exLayout_abiPre : ∃ rv, (abiPre exLayout rv).holds exState := 
     rw [e] at hp hq
     rcases i with _ | _ | i <;> rcases j with _ | _ | j <;>
       simp at hp hq hij <;> subst hp hq <;> simp only at hk hk' <;>
-      simp only [exState, Disjoint8, if_pos, if_neg, String.reduceEq, not_false_eq_true, BitVec.reduceToNat,
+      simp only [exState, Disjoint8, ite_eq_left, ite_eq_right, String.reduceEq, not_false_eq_true, BitVec.reduceToNat,
         BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofNat] <;> omega
   · intro p hp k hk o ho1 ho2
     have e : exLayout.regions = [("%rdi", 2), ("%rsi", 2)] := rfl
@@ -538,7 +538,7 @@ private theorem exLayout_abiPre : ∃ rv, (abiPre exLayout rv).holds exState := 
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hp
     simp only [exLayout] at ho1 ho2
     rcases hp with rfl | rfl <;> simp only at hk <;>
-      simp only [exState, Disjoint8, if_pos, if_neg, String.reduceEq, not_false_eq_true, BitVec.reduceToNat,
+      simp only [exState, Disjoint8, ite_eq_left, ite_eq_right, String.reduceEq, not_false_eq_true, BitVec.reduceToNat,
         BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofNat, BitVec.toNat_ofInt] <;> omega
 
 example : (valAt exLayout exState (.tuple [.array [.int 0, .int 0], .int 0])).holds
@@ -565,7 +565,7 @@ private theorem exFrame_imgSepA : (imgSepA exFrame exSlot exBase 0x8000).holds e
     split_ifs at ha hq <;> cases ha <;>
       simp only [Option.some.injEq, Prod.mk.injEq] at hq <;>
       obtain ⟨rfl, rfl⟩ := hq <;>
-      simp only [cellAt, exBase, Disjoint8, if_pos, if_neg, String.reduceEq,
+      simp only [cellAt, exBase, Disjoint8, ite_eq_left, ite_eq_right, String.reduceEq,
         not_false_eq_true, BitVec.reduceToNat, BitVec.toNat_sub, BitVec.toNat_add,
         BitVec.toNat_ofNat] <;> omega
   · intro q A n q' A' n' j j' hq hq' hj hj' hne
@@ -573,7 +573,7 @@ private theorem exFrame_imgSepA : (imgSepA exFrame exSlot exBase 0x8000).holds e
     split_ifs at hq hq' <;>
       simp only [Option.some.injEq, Prod.mk.injEq] at hq hq' <;>
       obtain ⟨rfl, rfl⟩ := hq <;> obtain ⟨rfl, rfl⟩ := hq' <;>
-      simp only [cellAt, exBase, Disjoint8, if_pos, if_neg, String.reduceEq, ne_eq,
+      simp only [cellAt, exBase, Disjoint8, ite_eq_left, ite_eq_right, String.reduceEq, ne_eq,
         not_true_eq_false, false_or, not_false_eq_true, BitVec.reduceToNat, BitVec.toNat_sub,
         BitVec.toNat_add, BitVec.toNat_ofNat] at hne ⊢ <;> omega
   · intro q q' A n n' hq hq'
@@ -586,8 +586,8 @@ private theorem exFrame_imgSepA : (imgSepA exFrame exSlot exBase 0x8000).holds e
     simp only [exSlot] at hq
     split_ifs at hq <;> simp only [Option.some.injEq, Prod.mk.injEq] at hq <;>
       obtain ⟨rfl, rfl⟩ := hq <;>
-      simp only [redW, X86Backend.LprogBytes.cmovRedZone, cellAt, exBase, Disjoint8, if_pos,
-        if_neg, String.reduceEq, not_false_eq_true, BitVec.reduceToNat, BitVec.toNat_sub,
+      simp only [redW, X86Backend.LprogBytes.cmovRedZone, cellAt, exBase, Disjoint8, ite_eq_left,
+        ite_eq_right, String.reduceEq, not_false_eq_true, BitVec.reduceToNat, BitVec.toNat_sub,
         BitVec.toNat_add, BitVec.toNat_ofNat, BitVec.toNat_ofInt] <;> omega
   · intro r hr
     simp only [exFrame]

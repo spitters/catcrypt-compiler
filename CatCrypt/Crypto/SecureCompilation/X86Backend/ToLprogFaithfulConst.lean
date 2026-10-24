@@ -145,7 +145,7 @@ theorem ConstBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
     subst hmd
     simp [ConstBinding.vstep]
   · have hmne : m ≠ c.nDst := fun he => hm (by rw [he])
-    simp only [ConstBinding.vstep, Lstate.lvm_nextPc, Lstate.lvm_setReg, if_neg hm, if_neg hmne]
+    simp only [ConstBinding.vstep, Lstate.lvm_nextPc, Lstate.lvm_setReg, ite_eq_right hm, ite_eq_right hmne]
     exact hrel m (c.hcarry m hmL hmne)
 
 /-! ## 2. The `physBody` expansion of a constant head -/
@@ -178,8 +178,8 @@ theorem physBodyElem_regConst (body : Lcmd) (tbl : Array Nat) (ii : Nat)
     (physBodyElem body tbl ⟨ii, .Lopn [.reg nDst] (withWidthTag w "MOV") [.imm n]⟩).map (·.li_i)
       = [.Lopn [.reg (physRename body tbl nDst)] (withWidthTag w "MOV") [.imm n]] := by
   simp only [physBodyElem, isNativeShiftRotate_withWidthTag_MOV, isMemLoad_withWidthTag_MOV,
-    stripWidthTag_withWidthTag_MOV, Bool.false_eq_true, if_false, beq_self_eq_true,
-    Bool.true_or, if_true, legalizeMov, LOperand.isSpill]
+    stripWidthTag_withWidthTag_MOV, Bool.false_eq_true, ite_false, beq_self_eq_true,
+    Bool.true_or, ite_true, legalizeMov, LOperand.isSpill]
   simp [remapOperand, physRename]
 
 /-! ## 3. Binop-or-constant bindings and their cover -/

@@ -111,10 +111,10 @@ theorem binds_extend {env : Env} {Γ : List (String × Value)} (h : Binds env Γ
   rw [bindLookup_cons] at hy
   by_cases hyx : y = x
   · subst hyx
-    rw [if_pos rfl] at hy
+    rw [ite_eq_left rfl] at hy
     cases hy
     exact Env.extend_same _ _ _
-  · rw [if_neg hyx] at hy
+  · rw [ite_eq_right hyx] at hy
     rw [Env.extend_other _ _ _ _ hyx]
     exact h y w hy
 
@@ -130,8 +130,8 @@ theorem binds_cons_of {env : Env} {Γ : List (String × Value)} {x : String} {v 
   intro y w hy
   rw [bindLookup_cons] at hy
   by_cases hyx : y = x
-  · subst hyx; rw [if_pos rfl] at hy; cases hy; exact hx
-  · rw [if_neg hyx] at hy; exact h y w hy
+  · subst hyx; rw [ite_eq_left rfl] at hy; cases hy; exact hx
+  · rw [ite_eq_right hyx] at hy; exact h y w hy
 
 theorem bindParams_apply (ps : List (String × Value)) (x : String) :
     bindParams ps x = bindLookup ps x := by
@@ -143,7 +143,7 @@ theorem bindParams_apply (ps : List (String × Value)) (x : String) :
     · subst hx
       simp only [bindParams, bindLookup_cons]
       exact Env.extend_same _ _ _
-    · simp only [bindParams, bindLookup_cons, if_neg hx]
+    · simp only [bindParams, bindLookup_cons, ite_eq_right hx]
       rw [Env.extend_other _ _ _ _ hx, ih]
 
 theorem binds_bindParams (ps : List (String × Value)) : Binds (bindParams ps) ps :=
@@ -244,8 +244,8 @@ theorem corresB_ifThenElse {Γ Γ₁ Γt Γe : S → List (String × Value)} {G 
       (fun σ => if C σ = true then Γt σ else Γe σ) := by
   refine corres_ifThenElse hc ?_ ?_
   · refine corres_conseq ht (fun _ _ h _ => h) (fun _ h => h) (fun σ hG => ?_) (fun env σ hG h => ?_)
-    · simp only [hG.2, if_true]
-    · simp only [hG.2, if_true]; exact h
+    · simp only [hG.2, ite_true]
+    · simp only [hG.2, ite_true]; exact h
   · refine corres_conseq he (fun _ _ h _ => h) (fun _ h => h) (fun σ hG => ?_) (fun env σ hG h => ?_)
     · simp only [hG.2]; rfl
     · simp only [hG.2]; exact h

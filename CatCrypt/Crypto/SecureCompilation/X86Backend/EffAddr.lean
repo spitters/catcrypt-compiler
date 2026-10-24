@@ -139,7 +139,7 @@ theorem eaVal_sib (sa : AState) (b x : String) (sc : Nat) (off : Int) :
   by_cases h : sc = 0
   · subst h
     simp [eaVal, EA.sib, EA.idxVal]
-  · simp only [eaVal, EA.sib, if_neg h, EA.idxVal]
+  · simp only [eaVal, EA.sib, ite_eq_right h, EA.idxVal]
 
 /-! ## The operands of an instruction -/
 

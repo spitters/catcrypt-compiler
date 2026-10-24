@@ -321,7 +321,7 @@ theorem nttMul_denote [Fact (Nat.Prime q)] (p r : CPolynomial (ZMod q)) :
   show (if h : Nat.Prime q then
           (haveI : Fact (Nat.Prime q) := ⟨h⟩; nttMulF (ND.dom q) p r)
         else (0 : CPolynomial (ZMod q))) = realNttMul (ND.dom q) p r
-  rw [dif_pos (Fact.out : Nat.Prime q)]
+  rw [dite_eq_left (Fact.out : Nat.Prime q)]
 
 /-- **The once-per-dialect negacyclic tie.** With the CompPoly
     NTT operations plugged into the dialect denotation, the negacyclic reduction

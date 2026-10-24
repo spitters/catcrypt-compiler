@@ -433,7 +433,7 @@ theorem rename_step (f : String → String) (i : YmmInstr) (sv sp : YmmState)
       split_ifs <;> simp_all
     · intro m hm
       simp only [renameYmm, ymmStep, YmmState.setMem]
-      rw [if_neg]
+      rw [ite_eq_right]
       rintro ⟨h1, _⟩
       exact hb (h1 ▸ hm)
   | ternlog imm dst b c =>
@@ -587,7 +587,7 @@ theorem ymmMaterializeInstr_step (d : List (String × Slot)) (scratch : List Str
       refine ⟨?_, ?_⟩
       · intro m hm
         simp only [ymmStep, YmmState.setMem]
-        rw [if_neg (fun h => hm h.1)]
+        rw [ite_eq_right (fun h => hm h.1)]
         exact h2mem m hm
       · intro n hn sl hsl
         by_cases hnw : n = w
@@ -595,7 +595,7 @@ theorem ymmMaterializeInstr_step (d : List (String × Slot)) (scratch : List Str
           rw [hslw] at hsl
           injection hsl with hsl; subst hsl
           show (sp2.setMem _ _).mem _ = _
-          simp only [YmmState.setMem, and_self, if_true]
+          simp only [YmmState.setMem, and_self, ite_true]
           rw [← hpw]
           exact h2w n hwmem
         · have hlive : n ∈ liveStep i L := by simp [liveStep, hw, hn, hnw]
@@ -617,7 +617,7 @@ theorem ymmMaterializeInstr_step (d : List (String × Slot)) (scratch : List Str
           | spilled off =>
             show (sp2.setMem _ _).mem _ = _
             simp only [YmmState.setMem]
-            rw [if_neg, h2frame _ rfl, h1mem]
+            rw [ite_eq_right, h2frame _ rfl, h1mem]
             · exact hold
             · rintro ⟨_, hd⟩
               exact hne (by rw [hsl, hslw, hd])

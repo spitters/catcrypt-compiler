@@ -309,7 +309,7 @@ theorem translateDialectFull_totalArr {σ σ' : NameTys} {c : LowCT}
           have hst : CryptoTy.sword 64 = s := by simpa [NameTys.upd] using hy
           subst hst
           exact boundAt_bind_self _ _ _
-        · simp only [NameTys.upd, if_neg hyx] at hy
+        · simp only [NameTys.upd, ite_eq_right hyx] at hy
           exact boundAt_bind_of_ne _ _ hyx
             (hP1 y s (hσ y (by simp [hy])) (ha y s hy))
       · exact ContArrMemN.comp hcont
@@ -343,7 +343,7 @@ theorem translateDialectFull_totalArr {σ σ' : NameTys} {c : LowCT}
         vm.bind (t := encodeTy arr.locDst) arr.locVar⟩, ?_, ?_, ?_⟩
       · simp only [translateDialectFull, hres, hvi]
       · exact vmApprox_upd ha arr.locVar
-      · simp only [arrStoreCont, dif_pos hda]
+      · simp only [arrStoreCont, dite_eq_left hda]
         exact ContArrMemN.castCtx (congrArg (· :: Γ) hda.symm)
           (ContArrMemN.memrefSetDyn _)
 

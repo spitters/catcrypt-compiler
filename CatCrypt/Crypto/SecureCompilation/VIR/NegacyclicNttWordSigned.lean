@@ -548,11 +548,11 @@ theorem sLayerLaneProgW_denote (ℓ : ℕ) (hl : ℓ < P.logN) (g : ℕ → BitV
   generalize 2 ^ (P.logN - 1 - ℓ) = len at hpart ⊢
   split
   · next hlt =>
-    rw [sLaneProg_denote, if_pos rfl, laneVarG_lookup (Rw T.w) g m i 0 (by omega),
+    rw [sLaneProg_denote, ite_eq_left rfl, laneVarG_lookup (Rw T.w) g m i 0 (by omega),
       laneVarG_lookup (Rw T.w) g m (i + len) 0 (by have := hpart hlt; omega)]
     simp only [Nat.zero_add]
   · next hlt =>
-    rw [sLaneProg_denote, if_neg (by simp), laneVarG_lookup (Rw T.w) g m (i - len) 0 (by omega),
+    rw [sLaneProg_denote, ite_eq_right (by simp), laneVarG_lookup (Rw T.w) g m (i - len) 0 (by omega),
       laneVarG_lookup (Rw T.w) g m i 0 (by omega)]
     simp only [Nat.zero_add]
 
@@ -960,11 +960,11 @@ theorem sInvLayer_bound (hU : SInvOk P U) (hq : 0 < P.q) (ℓ : ℕ) (hl : ℓ <
       have := hf i; have := hf (i + len); push_cast; linarith
     cases hr : U.red ℓ
     · rw [hr] at hlow
-      simp only [Bool.false_eq_true, if_false] at hlow ⊢
+      simp only [Bool.false_eq_true, ite_false] at hlow ⊢
       have : ((2 * U.bnd (ℓ + 1) : ℕ) : ℤ) ≤ U.bnd ℓ := by exact_mod_cast hlow
       linarith
     · rw [hr] at hlow
-      simp only [if_true] at hlow ⊢
+      simp only [ite_true] at hlow ⊢
       have hv' : 2 * |((2 ^ U.bshift : ℕ) : ℤ) - P.q * U.bconst| ≤ P.q := by
         rw [Int.abs_eq_natAbs]; exact_mod_cast hv
       have hb := sbarrett_bound U.bshift P.q U.bconst hv' (f i + f (i + len))
@@ -1191,11 +1191,11 @@ theorem sInvLaneProgW_denote (s : ℕ) (st : Option ℕ) (hst : ∀ ℓ, st = so
     generalize 2 ^ (P.logN - 1 - ℓ) = len at hpart ⊢
     split
     · next hlt =>
-      rw [sInvLaneProg_denote, if_pos rfl, laneVarG_lookup (Rw U.w) g m i 0 (by omega),
+      rw [sInvLaneProg_denote, ite_eq_left rfl, laneVarG_lookup (Rw U.w) g m i 0 (by omega),
         laneVarG_lookup (Rw U.w) g m (i + len) 0 (by have := hpart hlt; omega)]
       simp only [Nat.zero_add]
     · next hlt =>
-      rw [sInvLaneProg_denote, if_neg (by simp),
+      rw [sInvLaneProg_denote, ite_eq_right (by simp),
         laneVarG_lookup (Rw U.w) g m (i - len) 0 (by omega),
         laneVarG_lookup (Rw U.w) g m i 0 (by omega)]
       simp only [Nat.zero_add]
@@ -1260,10 +1260,10 @@ theorem invSemSW_ofInt (hU : SInvOk P U) (hq : 1 < P.q) (s ℓ : ℕ) (hl : ℓ 
   generalize 2 ^ (P.logN - 1 - ℓ) = len at hbr ⊢
   generalize 2 ^ ℓ + i / (len + len) = k at hbr ⊢
   by_cases hlt : i % (len + len) < len
-  · simp only [if_pos hlt] at hbr ⊢
+  · simp only [ite_eq_left hlt] at hbr ⊢
     have hsum := toInt_add_ofInt (w := U.w) _ _ _ (hf i) (hf (i + len)) h4
     by_cases hr : U.red ℓ = true
-    · simp only [if_pos hr] at hlow hbr ⊢
+    · simp only [ite_eq_left hr] at hlow hbr ⊢
       have hs : |f i + f (i + len)| < 2 * U.bnd (ℓ + 1) := by
         have := abs_add_le (f i) (f (i + len))
         have := hf i; have := hf (i + len); linarith
@@ -1282,9 +1282,9 @@ theorem invSemSW_ofInt (hU : SInvOk P U) (hq : 1 < P.q) (s ℓ : ℕ) (hl : ℓ 
         have hfl' : ((2 * U.bnd ℓ : ℕ) : ℤ) ≤ ((2 ^ U.w : ℕ) : ℤ) := by exact_mod_cast hfl
         push_cast at hfl' ⊢
         linarith
-    · simp only [if_neg hr]
+    · simp only [ite_eq_right hr]
       exact hsum
-  · simp only [if_neg hlt] at hbr ⊢
+  · simp only [ite_eq_right hlt] at hbr ⊢
     have hdiff := toInt_sub_ofInt (w := U.w) _ _ _ (hf (i - len)) (hf i) h4
     have hd : |f (i - len) - f i| < ((2 * U.bnd (ℓ + 1) : ℕ) : ℤ) := by
       have := abs_sub (f (i - len)) (f i)

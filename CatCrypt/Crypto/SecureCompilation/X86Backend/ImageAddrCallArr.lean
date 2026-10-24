@@ -198,7 +198,7 @@ theorem readArgs_entry {frame : String → Option (BitVec 64)}
   congr 1
   · exact args_entry hsep hws hrel hc ret
   · have hp : (entryOf ret sA).regs (phys pa) = base A := by
-      rw [entryOf_regs, if_neg (gpFacts hpa).physNe]
+      rw [entryOf_regs, ite_eq_right (gpFacts hpa).physNe]
       exact Option.some.inj ((hc.regs pa hpa).symm.trans hptr)
     obtain ⟨arr', harr', hcell⟩ := hrel.cells q A n hq
     rw [harr] at harr'

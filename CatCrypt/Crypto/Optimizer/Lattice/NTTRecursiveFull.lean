@@ -160,14 +160,14 @@ theorem nttRec_eq_dft :
         = dft (2 * 2 ^ e) ω x' (Fin.cast hmn k)
     by_cases h : k.val < 2 ^ e
     · -- Lower half: `(Fin.cast hmn k)` is `Fin.castLE` of `⟨k.val, h⟩`.
-      rw [dif_pos h]
+      rw [dite_eq_left h]
       set k' : Fin (2 ^ e) := ⟨k.val, h⟩ with hk'
       have hidx : (Fin.cast hmn k) = Fin.castLE (by omega) k' := by
         apply Fin.ext; simp [hk']
       rw [hidx, dft_even_odd_split ω x' k']
       rw [hEdft k', hOdft k']
     · -- Upper half: `(Fin.cast hmn k) = ⟨k''.val + 2^e, _⟩` for `k'' = k.val - 2^e`.
-      rw [dif_neg h]
+      rw [dite_eq_right h]
       have hb : k.val - 2 ^ e < 2 ^ e := by
         have hk : k.val < 2 ^ (e + 1) := k.isLt
         omega

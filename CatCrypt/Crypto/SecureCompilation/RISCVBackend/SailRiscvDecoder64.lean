@@ -270,11 +270,11 @@ theorem riscvDecodeM64_of_decode64 {w : BitVec 32} {i : RInst64}
   · simp [riscvDecode64, h23] at h
   by_cases h63 : fOpcode w = 0x63
   · simp [riscvDecode64, h63] at h
-  rw [if_neg h3, if_neg h23, if_neg h63]
+  rw [ite_eq_right h3, ite_eq_right h23, ite_eq_right h63]
   by_cases hA : fOpcode w = 0x13 ∧ fFunct3 w = 0 ∧ fImm12 w ≠ 0
   · obtain ⟨h13, hf, hi⟩ := hA
     simp [riscvDecode64, h13, hf, hi] at h
-  · rw [if_neg hA, h]; rfl
+  · rw [ite_eq_right hA, h]; rfl
 
 /-- The sign-extended 12-bit immediate of an in-range integer is the integer. -/
 theorem toInt_ofInt12 {i : Int} (h1 : -2048 ≤ i) (h2 : i < 2048) :
@@ -331,8 +331,8 @@ theorem roundtrip_RMInst64 (i : RMInst64)
         rw [← toInt_ofInt12 h1 h2, BitVec.toInt_eq_toNat_cond, hz]; simp
       simp only [encodeMWord64, Option.get!, riscvDecodeM64, fOpcode, fFunct3, fRd, fRs1, fImm12,
         ho, hrd, hf, hrs, hi, regName_reg5 d hd, regName_reg5 a ha, toInt_ofInt12 h1 h2]
-      rw [if_neg (by decide), if_neg (by decide), if_neg (by decide),
-        if_pos ⟨by decide, by decide, hne⟩]
+      rw [ite_eq_right (by decide), ite_eq_right (by decide), ite_eq_right (by decide),
+        ite_eq_left ⟨by decide, by decide, hne⟩]
   | ld d base off =>
       obtain ⟨h1, h2⟩ := himm
       have hd := hregs d (by simp [rminst64Regs]); have hb := hregs base (by simp [rminst64Regs])

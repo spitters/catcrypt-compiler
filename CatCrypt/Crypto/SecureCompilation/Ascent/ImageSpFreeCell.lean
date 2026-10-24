@@ -160,7 +160,7 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
           simp [hf, harr hA]
         · cases hri
       · cases hri
-  · simp only [accOkB, if_neg (show ¬ ("STOREIDX" = "LOADIDX") by decide), if_true,
+  · simp only [accOkB, ite_eq_right (show ¬ ("STOREIDX" = "LOADIDX") by decide), ite_true,
       Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
     rw [imgInstr_stx slotArr body k hA]
@@ -211,7 +211,7 @@ theorem instrOKWB_of_printedAddrWB {body : Lcmd} (hp : printedAddrWB body = true
     instrOKWB body (X86Backend.LprogBytesDecode.Params.ofBody body) j.li_i = true := by
   simp only [printedAddrWB, Bool.and_eq_true, List.all_eq_true] at hp
   refine hp.1.1.1.2 j (List.mem_iff_getElem?.mpr ⟨k, ?_⟩)
-  rw [List.dropLast_eq_take, List.getElem?_take, if_pos (by omega)]
+  rw [List.dropLast_eq_take, List.getElem?_take, ite_eq_left (by omega)]
   exact hk
 
 /-- An instruction of the covered fragment with carry chains is no call and no return. -/

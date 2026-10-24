@@ -87,7 +87,7 @@ theorem arrLoad1_runs (B : String → Prop) (v : String) (src : Located) (idxVar
   · rintro x ⟨hxt, vv, hvv⟩
     by_cases hxv : x = v
     · subst hxv; exact ⟨hxt, w, by simp [SEnvScalar.upd]⟩
-    · exact ⟨hxt, vv, by rw [SEnvScalar.upd, if_neg hxv]; exact hvv⟩
+    · exact ⟨hxt, vv, by rw [SEnvScalar.upd, ite_eq_right hxv]; exact hvv⟩
   · rintro x rfl
     exact ⟨hnt, w, by simp [SEnvScalar.upd]⟩
 
@@ -275,8 +275,8 @@ theorem arrStore_runs (arr' src : Located) (idxV : String) (env : SEnvScalar) :
   simp only [semScalar]
   split <;>
     first
-      | exact ⟨_, rfl, fun s hs => by simp only [SEnvScalar.upd, if_neg hs]⟩
-      | (split <;> exact ⟨_, rfl, fun s hs => by simp only [SEnvScalar.upd, if_neg hs]⟩)
+      | exact ⟨_, rfl, fun s hs => by simp only [SEnvScalar.upd, ite_eq_right hs]⟩
+      | (split <;> exact ⟨_, rfl, fun s hs => by simp only [SEnvScalar.upd, ite_eq_right hs]⟩)
 
 /-- **The frame store runs from an environment binding the source half-limbs.**
     Each trip recombines two half-limbs into a `u64` and stores it; the store

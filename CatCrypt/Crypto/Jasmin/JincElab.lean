@@ -143,7 +143,7 @@ def ymmArgs (op : YmmDialect.YmmOp) {Γ : Ctxt jasminDialect}
         have hs : DialectSignature.sig (d := jasminDialect) (JasminOp.vymm op)
             = [JasminTy.reg 256, JasminTy.reg 256] := by
           show (if op.isBinary = true then _ else _) = _
-          rw [if_pos h]
+          rw [ite_eq_left h]
         some (cast (congrArg (HVector (fun ty => Ctxt.Var Γ ty)) hs.symm)
           (HVector.cons a (HVector.cons b HVector.nil)))
     | _ => none
@@ -153,7 +153,7 @@ def ymmArgs (op : YmmDialect.YmmOp) {Γ : Ctxt jasminDialect}
         have hs : DialectSignature.sig (d := jasminDialect) (JasminOp.vymm op)
             = [JasminTy.reg 256] := by
           show (if op.isBinary = true then _ else _) = _
-          rw [if_neg h]
+          rw [ite_eq_right h]
         some (cast (congrArg (HVector (fun ty => Ctxt.Var Γ ty)) hs.symm)
           (HVector.cons a HVector.nil))
     | _ => none
@@ -190,9 +190,9 @@ theorem ymmArgs_binary_denote (op : YmmDialect.YmmOp) (h : op.isBinary = true)
       ((⟨.vymm op, rfl, hv⟩ : Expr jasminDialect Γ (.reg 256)).denote V : BitVec 256))
       = some (op.denoteBinary (a.lookup V) (b.lookup V)) := by
   unfold ymmArgs
-  rw [dif_pos h]
+  rw [dite_eq_left h]
   simp only [Option.map_some, Option.some.injEq]
-  exact vymmDenote_cast_binary op op.isBinary h (by rw [if_pos h]) a b V
+  exact vymmDenote_cast_binary op op.isBinary h (by rw [ite_eq_left h]) a b V
 
 /-- The expression the elaborator builds for `Rhs.ymm op [a]` with `op` unary
     denotes `op.denoteUnary` of the value of `a`. -/
@@ -202,9 +202,9 @@ theorem ymmArgs_unary_denote (op : YmmDialect.YmmOp) (h : op.isBinary = false)
       ((⟨.vymm op, rfl, hv⟩ : Expr jasminDialect Γ (.reg 256)).denote V : BitVec 256))
       = some (op.denoteUnary (a.lookup V)) := by
   unfold ymmArgs
-  rw [dif_neg (by simp [h])]
+  rw [dite_eq_right (by simp [h])]
   simp only [Option.map_some, Option.some.injEq]
-  exact vymmDenote_cast_unary op op.isBinary h (by rw [if_neg (by simp [h])]) a V
+  exact vymmDenote_cast_unary op op.isBinary h (by rw [ite_eq_right (by simp [h])]) a V
 
 /-- The run-time loop hook of `elabStmtsG`: given the context, the environment,
     the trip index, the name of the trip count, the body and the statements

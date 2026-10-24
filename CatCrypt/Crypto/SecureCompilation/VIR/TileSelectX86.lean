@@ -116,7 +116,7 @@ def vof (L n : Nat) (f : Fin n → BitVec L) : BitVec 512 :=
 theorem vlane_vof (hS : IsShape L n r) (f : Fin n → BitVec L) (k : Fin n) :
     vlane L n (vof L n f) k = f k := by
   unfold vlane vof
-  rw [lane_ofLanes _ hS.pos.1 (hS.bound k.isLt), dif_pos k.isLt]
+  rw [lane_ofLanes _ hS.pos.1 (hS.bound k.isLt), dite_eq_left k.isLt]
 
 /-- Two registers with equal lanes are equal. -/
 theorem lane_inj512 (hS : IsShape L n r) (x y : BitVec 512)
@@ -198,7 +198,7 @@ theorem getLsbD_maskC (r : Nat) (f : Nat → Bool) {j : Nat} (hj : j < 16) :
     (maskC r f).getLsbD j = f (j / r) := by
   unfold maskC
   rw [BitVec.getLsbD_ofFnLE]
-  simp only [hj, dif_pos]
+  simp only [hj, dite_eq_left]
 
 /-- **The static blend.** Lane `k` of the dword blend under `maskC r f` is lane `k` of the
     first operand where `f k`, else of the second. -/
@@ -213,10 +213,10 @@ theorem lane_blend (hS : IsShape L n r) (f : Nat → Bool) (a b : BitVec 512)
     rw [lane_semMerge _ _ _ hj, getLsbD_maskC r f hj, Nat.mul_add_div hr, Nat.div_eq_of_lt ht,
       Nat.add_zero]
   cases hf : f k
-  · rw [if_neg (by decide)]
-    exact lane_eq_of_dwords hS _ _ _ _ (fun t ht => by rw [key t ht, hf, if_neg (by decide)])
-  · rw [if_pos rfl]
-    exact lane_eq_of_dwords hS _ _ _ _ (fun t ht => by rw [key t ht, hf, if_pos rfl])
+  · rw [ite_eq_right (by decide)]
+    exact lane_eq_of_dwords hS _ _ _ _ (fun t ht => by rw [key t ht, hf, ite_eq_right (by decide)])
+  · rw [ite_eq_left rfl]
+    exact lane_eq_of_dwords hS _ _ _ _ (fun t ht => by rw [key t ht, hf, ite_eq_left rfl])
 
 /-- A rotation right is the rotation left by the complement of the count. -/
 theorem rotateRight_eq_rotateLeft {w : Nat} (hw : 0 < w) (x : BitVec w) (c : Nat) :
@@ -317,8 +317,8 @@ theorem unSel_spec (hS : IsShape L n r) (o : UnOp) (blk : Blk1)
         simp only [denote_var, denote_ret, lookup_here, shiE_denote, sraE_denote, rolE_denote,
           UnOp.apply, tileShiftImmApply, TileImmOp.apply] <;>
         vlook
-      · exact (lane_semShImm true c x hL (hS.bound k.isLt)).trans (if_pos rfl)
-      · exact (lane_semShImm false c x hL (hS.bound k.isLt)).trans (if_neg (by decide))
+      · exact (lane_semShImm true c x hL (hS.bound k.isLt)).trans (ite_eq_left rfl)
+      · exact (lane_semShImm false c x hL (hS.bound k.isLt)).trans (ite_eq_right (by decide))
       · exact lane_semSra c x hL (hS.bound k.isLt)
       · exact lane_semRol c x hL (hS.bound k.isLt)
       · exact (lane_semRol _ x hL (hS.bound k.isLt)).trans
@@ -347,12 +347,12 @@ theorem shufBlk_lane (hS : IsShape L n r) (idx : List Nat) (x y : BitVec 512) (k
     lane_gather hS _ x k.isLt (Nat.mod_lt _ hn)]
   unfold tileShuffleApply
   by_cases hx : idx.getD k.val k.val % (2 * n) < n
-  · simp only [hx, not_true_eq_false, decide_false, Bool.false_eq_true, if_false, dif_pos]
+  · simp only [hx, not_true_eq_false, decide_false, Bool.false_eq_true, ite_false, dite_eq_left]
     show lane L x (idx.getD k.val k.val % (2 * n) % n) =
       lane L x (idx.getD k.val k.val % (2 * n))
     rw [Nat.mod_eq_of_lt hx]
   · have hlt : idx.getD k.val k.val % (2 * n) < 2 * n := Nat.mod_lt _ (by omega)
-    simp only [hx, not_false_eq_true, decide_true, if_true, dif_neg]
+    simp only [hx, not_false_eq_true, decide_true, ite_true, dite_eq_right]
     show lane L y (idx.getD k.val k.val % (2 * n) % n) =
       lane L y (idx.getD k.val k.val % (2 * n) - n)
     rw [Nat.mod_eq_sub_mod (Nat.le_of_not_lt hx), Nat.mod_eq_of_lt (by omega)]
@@ -378,7 +378,7 @@ theorem mulhuBlk_lane (x y : BitVec 512) {j : Nat} (hj : j < 16) :
   have hodd : ∀ (z : BitVec 512) (i : Nat), i < 8 →
       lane 32 (semDup true z) (2 * i) = lane 32 z (2 * i + 1) := by
     intro z i hi
-    rw [lane_semDup _ _ (by omega), if_pos rfl]
+    rw [lane_semDup _ _ (by omega), ite_eq_left rfl]
     congr 1
     omega
   rw [lane_semMerge _ _ _ hj]
@@ -388,14 +388,14 @@ theorem mulhuBlk_lane (x y : BitVec 512) {j : Nat} (hj : j < 16) :
       (fun i' hi' => hodd y i' (by have : Mode.zmm.act = 512 := rfl; omega)) i
       (by show 64 * i + 64 ≤ 512; omega)
     simp only [wr] at h
-    rw [(maskAAAA i hi).1, if_neg (by decide), hodd _ i hi]
+    rw [(maskAAAA i hi).1, ite_eq_right (by decide), hodd _ i hi]
     exact h.2.1
   · have hi : i < 8 := by omega
     have h := prod_lanes (m := .zmm) x y (semDup true y)
       (fun i' hi' => hodd y i' (by have : Mode.zmm.act = 512 := rfl; omega)) i
       (by show 64 * i + 64 ≤ 512; omega)
     simp only [wr] at h
-    rw [(maskAAAA i hi).2, if_pos rfl]
+    rw [(maskAAAA i hi).2, ite_eq_left rfl]
     exact h.2.2.2
 
 /-- The dwords `0, 1, 0, 1, …`. -/
@@ -431,9 +431,9 @@ theorem permQBlk_lane (i a : BitVec 512) {k : Nat} (hk : k < 8) :
     intro e he
     have e1 : lane 32 (semDup false (semShImm 64 true 1 i)) (2 * k + e) =
         (lane 64 i k <<< 1).setWidth 32 := by
-      rw [lane_semDup _ _ (by omega), if_neg (by decide),
+      rw [lane_semDup _ _ (by omega), ite_eq_right (by decide),
         show 2 * ((2 * k + e) / 2) + 0 = 2 * k by omega, lane32_even,
-        lane_semShImm _ _ _ (by omega) (by omega), if_pos rfl]
+        lane_semShImm _ _ _ (by omega) (by omega), ite_eq_left rfl]
     have e2 : lane 32 oddOne (2 * k + e) = BitVec.ofNat 32 e := by
       unfold oddOne
       rw [lane_ofLanes _ (by omega) (by omega), show (2 * k + e) % 2 = e by omega]
@@ -484,7 +484,7 @@ theorem binSel_spec (hS : IsShape L n r) (o : BinOp) (blk : Blk2)
       exact ⟨shufBlk_lane hS idx, ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, trivial⟩
   | permute =>
       rcases hS with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
-      · rw [binSel, if_pos rfl] at h
+      · rw [binSel, ite_eq_left rfl] at h
         cases h
         refine ⟨fun x y k => ?_, ⟨_, rfl⟩, trivial⟩
         unfold vlane
@@ -492,17 +492,17 @@ theorem binSel_spec (hS : IsShape L n r) (o : BinOp) (blk : Blk2)
           tilePermuteApply]
         vlook
         exact lane_semPerm 16 y x k.isLt
-      · rw [binSel, if_neg (by decide)] at h
+      · rw [binSel, ite_eq_right (by decide)] at h
         cases h
         exact ⟨fun x y k => permQBlk_lane x y k.isLt,
           ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, trivial⟩
   | mulhu =>
       rcases hS with ⟨rfl, rfl, rfl⟩ | ⟨rfl, rfl, rfl⟩
-      · rw [binSel, if_pos rfl] at h
+      · rw [binSel, ite_eq_left rfl] at h
         cases h
         exact ⟨fun x y k => mulhuBlk_lane x y k.isLt,
           ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, ⟨_, rfl⟩, trivial⟩
-      · rw [binSel, if_neg (by decide)] at h
+      · rw [binSel, ite_eq_right (by decide)] at h
         cases h
 
 end Shape

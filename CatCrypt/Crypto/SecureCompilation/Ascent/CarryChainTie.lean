@@ -137,7 +137,7 @@ theorem lowerAdc_get_dst (ra rb dst : String) (hne : dst ≠ rb) (s : JState 64)
   have hrb : rb ≠ dst := fun h => hne h.symm
   simp only [lowerAdc, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
     x86_MOV, JState.setReg, JState.get, JState.flagB, JState.writeB5W,
-    if_true, if_neg hrb]
+    ite_true, ite_eq_right hrb]
   exact (addCarryWord_adc _ _ _).symm
 
 /-- **Per-step carry-out.** The `CF` left by the lowered step is the dialect's
@@ -148,7 +148,7 @@ theorem lowerAdc_cf (ra rb dst : String) (hne : dst ≠ rb) (s : JState 64) :
   have hrb : rb ≠ dst := fun h => hne h.symm
   simp only [lowerAdc, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
     x86_MOV, JState.setReg, JState.get, JState.flagB, JState.writeB5W,
-    if_neg hrb]
+    ite_eq_right hrb]
   exact (carryOutBit_adc _ _ _).symm
 
 /-- **Per-step register frame.** The lowered step writes only `dst`; any other
@@ -156,7 +156,7 @@ theorem lowerAdc_cf (ra rb dst : String) (hne : dst ≠ rb) (s : JState 64) :
 theorem lowerAdc_get_other (ra rb dst r : String) (hr : r ≠ dst) (s : JState 64) :
     (runBlock s (lowerAdc ra rb dst)).get r = s.get r := by
   simp only [lowerAdc, runBlock_cons, runBlock_nil, evalInstr, JOperand.eval,
-    x86_MOV, JState.setReg, JState.get, JState.writeB5W, if_neg hr]
+    x86_MOV, JState.setReg, JState.get, JState.writeB5W, ite_eq_right hr]
 
 /-! ## 3. The two-axis state correspondence
 

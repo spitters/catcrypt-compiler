@@ -199,7 +199,7 @@ theorem encTwoAddr_store (F W w op : Nat) (q S : String) (qB : Nat) (off : Int)
     (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr F W w op (.reg q) (.reg S) qB = encRspMem w (memDstOp op) (gpNumU S) off := by
   have fS := gpFacts hS
-  simp only [encTwoAddr, hq, fS.off, fS.isGp, if_true, if_pos hop]
+  simp only [encTwoAddr, hq, fS.off, fS.isGp, ite_true, ite_eq_left hop]
 
 /-- The operation `op` (`ADD`, a move or `LOAD`) of a frame word into a general-purpose
     name: for a move, the load `0x8b`. -/
@@ -208,7 +208,7 @@ theorem encTwoAddr_load (F W w op : Nat) (D q : String) (qB : Nat) (off : Int)
     (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr F W w op (.reg D) (.reg q) qB = encRspMem w (memSrcOp op) (gpNumU D) off := by
   have fD := gpFacts hD
-  simp only [encTwoAddr, hq, fD.off, fD.isGp, if_true, if_pos hop]
+  simp only [encTwoAddr, hq, fD.off, fD.isGp, ite_true, ite_eq_left hop]
 
 /-- The register moves of a printed body: `MOV:64` and the whole-word `MOVQ`. -/
 def isMovM (m : String) : Bool := m == "MOV:64" || m == "MOVQ"
@@ -237,7 +237,7 @@ theorem encodeLopn_movImm (F W : Nat) (D : String) (v qB : Nat) (hD : gpOk D = t
     show ("MOV" == "MULX") = false from by decide +kernel,
     show ("MOV" == "MULXMEM") = false from by decide +kernel,
     show adxPrefix "MOV" = none from by decide +kernel,
-    LprogBytes.rexW, Bool.false_eq_true, if_false, if_true, fD.notSlot, Bool.false_and]
+    LprogBytes.rexW, Bool.false_eq_true, ite_false, ite_true, fD.notSlot, Bool.false_and]
   simp [encImmOp, fD.notSlot, hv]
 
 /-- The two-address arithmetic and logic mnemonics of the covered fragment, with the opcode of
@@ -280,7 +280,7 @@ theorem encodeLopn_shift (F W : Nat) (m D S : String) (qB ext : Nat)
   have fD := gpFacts hD
   have fS := gpFacts hS
   simp only [encodeLopn, hbind, hmulx, hmulxmem, hadx, hext, fD.isGp, fS.isGp,
-    Bool.false_eq_true, if_false, Bool.and_self, if_true, if_neg hn, beq_iff_eq]
+    Bool.false_eq_true, ite_false, Bool.and_self, ite_true, ite_eq_right hn, beq_iff_eq]
 
 /-- The immediate form of an arithmetic or logic mnemonic of `aluArm`: its encoding as the
     sign-extended `imm8` group-1 form under the opcode extension `dig`, the decoder's reading
@@ -425,7 +425,7 @@ theorem encodeLopn_shift0 (F W : Nat) (m D S : String) (qB ext : Nat)
   have fD := gpFacts hD
   have fS := gpFacts hS
   simp only [encodeLopn, hbind, hmulx, hmulxmem, hadx, hext, fD.isGp, fS.isGp,
-    Bool.false_eq_true, if_false, Bool.and_self, if_true, hn, beq_iff_eq]
+    Bool.false_eq_true, ite_false, Bool.and_self, ite_true, hn, beq_iff_eq]
 
 /-- The load-effective-address `LEA:64 D, [B + X · sc]` between general-purpose names, with
     an index other than `RSP` and a stride the SIB byte encodes, dispatches to the SIB form
@@ -450,7 +450,7 @@ theorem encodeLopn_leaIdx (F W : Nat) (D B X : String) (sc qB : Nat) (hD : gpOk 
     show aluOpcode "LEA" = none from by decide +kernel,
     show twoByteOpcode "LEA" = none from by decide +kernel,
     show ("LEA" == "LEA") = true from by decide +kernel,
-    LprogBytes.rexW, fD.isGp, fB.isGp, fX.isGp, Bool.false_eq_true, if_false, if_true]
+    LprogBytes.rexW, fD.isGp, fB.isGp, fX.isGp, Bool.false_eq_true, ite_false, ite_true]
   simp [h4, hs]
 
 /-! ## 4. The decoded pieces of the covered arms -/
@@ -483,7 +483,7 @@ theorem pieceDec_tagShr (D : String) (k : Nat) (hD : gpOk D = true) (hk0 : k ≠
     intro rest
     have h := decodeLinstr_shift1 5 (gpNumU D) rest (Or.inr (Or.inl rfl)) (gpNumU_lt_16 D)
     simpa [phys] using h
-  · simp only [h1, if_false]
+  · simp only [h1, ite_false]
     exact pieceDec_shrImm D k hD (by omega)
 
 /-- A count-in-mnemonic shift is a left shift: its group-2 opcode extension is `4`. -/
@@ -506,7 +506,7 @@ theorem pieceDec_tagShift (m D : String) (k : Nat) (hD : gpOk D = true) (hk0 : k
     (hk : k < 64) (base : String) (hc : tagShiftCount base = k) :
     PieceDec (encTagShift 1 (tagShExt m) (gpNumU D) base, tagShMk m (phys D) (.imm k)) := by
   by_cases hs : tagShl m = true
-  · simp only [tagShExt, tagShMk, hs, if_true]
+  · simp only [tagShExt, tagShMk, hs, ite_true]
     unfold encTagShift
     rw [hc]
     intro rest
@@ -516,7 +516,7 @@ theorem pieceDec_tagShift (m D : String) (k : Nat) (hD : gpOk D = true) (hk0 : k
         decodeLinstr_shift1 4 (gpNumU D) rest (Or.inl rfl) (gpNumU_lt_16 D)
     · simpa [phys, h1] using
         decodeLinstr_shiftImm8 4 (gpNumU D) k rest (Or.inl rfl) (gpNumU_lt_16 D) (by omega)
-  · simp only [tagShExt, tagShMk, hs, Bool.false_eq_true, if_false]
+  · simp only [tagShExt, tagShMk, hs, Bool.false_eq_true, ite_false]
     exact pieceDec_tagShr D k hD hk0 hk base hc
 
 /-! ## 5. The covered arms -/
@@ -753,7 +753,7 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
     by_cases h8 : fitsImm8S 1 v = true
     · refine ⟨?_, ?_⟩
       · simp [Arm.instr, Arm.pieces, hop, hdg, h8, henc P.frame P.spillW D v P.qsaveB hD h8]
-      · simp only [Arm.pieces, hop, hdg, h8, if_true, Option.getD_some, List.mem_singleton]
+      · simp only [Arm.pieces, hop, hdg, h8, ite_true, Option.getD_some, List.mem_singleton]
         rintro p rfl rest
         exact decodeLinstr_aluImm8 dig mk _ _ rest hdig (gpNumU_lt_16 D) h8 hmk
     · have h8f : fitsImm8S 1 v = false := Bool.eq_false_iff.mpr h8
@@ -764,7 +764,7 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
       obtain rfl := Option.some.inj hdg'
       refine ⟨?_, ?_⟩
       · simp [Arm.instr, Arm.pieces, hop, hdg, h8f, henc' P.frame P.spillW D v P.qsaveB hD h8f h32]
-      · simp only [Arm.pieces, hop, hdg, h8f, Bool.false_eq_true, if_false, Option.getD_some,
+      · simp only [Arm.pieces, hop, hdg, h8f, Bool.false_eq_true, ite_false, Option.getD_some,
           List.mem_singleton]
         rintro p rfl rest
         exact decodeLinstr_aluImm32 dig mk _ _ rest hdig (gpNumU_lt_16 D) hlt h32 hmk'
@@ -854,9 +854,9 @@ theorem PCorr.write {Q : List (String × Int)} {rsp : BitVec 64} {sa sa' : AStat
     (hbD : b'.reg.getW D 64 = some v) : PCorr Q rsp sa' b' zf' where
   regs r hr := by
     by_cases hrD : r = D
-    · subst hrD; rw [hbD, hregs, if_pos rfl]
-    · rw [hb r hrD, h.regs r hr, hregs, if_neg (fun e => hrD (phys_inj hr hD e))]
-  sp := by rw [hregs, if_neg (fun e => (gpFacts hD).physNe e.symm)]; exact h.sp
+    · subst hrD; rw [hbD, hregs, ite_eq_left rfl]
+    · rw [hb r hrD, h.regs r hr, hregs, ite_eq_right (fun e => hrD (phys_inj hr hD e))]
+  sp := by rw [hregs, ite_eq_right (fun e => (gpFacts hD).physNe e.symm)]; exact h.sp
   slots p hp := by
     have hne : p.1 ≠ D := fun e => by have := h.names p hp; rw [e, hD] at this; cases this
     rw [hb _ hne, hmem]; exact h.slots p hp
@@ -884,7 +884,7 @@ theorem fstepF_lea (d b x : String) (sc : Nat) (s : LstateM) (zf : Bool) {p vi :
       JasminLsemMulCarry.lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl,
       JasminLsemShift.lsemStepSh_of_not_sar _ _
         (by simp (config := { decide := true }) [JasminLsemShift.sarStruct?])]
-    simp only [lsemStepN, show stripWidthTag "LEA:64" = "LEA" from by decide +kernel, if_true,
+    simp only [lsemStepN, show stripWidthTag "LEA:64" = "LEA" from by decide +kernel, ite_true,
       hb, hx, Option.map_some]
     rfl
   simp [fstepF, cmpArgs?, movRegArgs?, stepMemF_of_lsemStepMem hl, withALUFlags, aluFlagOp?]
@@ -958,8 +958,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
     exact DecSim.single fun sa b zf hc =>
       ⟨_, zf, fstepF_movM m D S hm b zf _ (hc.regs S hS),
         hc.write hD (sa.regs (phys S)) (fun _ => rfl) rfl
-          (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-          (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])⟩
   | movRI D v =>
     simp only [Arm.ok, Bool.and_eq_true] at h
     obtain ⟨⟨hD, -⟩, -⟩ := h
@@ -967,8 +967,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
     exact DecSim.single fun sa b zf hc =>
       ⟨_, zf, fstepF_movII D v b zf,
         hc.write hD (BitVec.ofNat 64 v) (fun _ => rfl) rfl
-          (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-          (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])⟩
   | store m q S =>
     simp only [Arm.ok, Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true,
       Bool.or_eq_true, beq_iff_eq] at h
@@ -980,12 +980,12 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
     rw [hc.sp] at hmem
     refine ⟨fun r hr => ?_, by rw [hregs]; exact hc.sp, fun p hp => ?_, fun p hp => ?_⟩
     · have hrq : r ≠ q := fun e => by rw [e, hq] at hr; cases hr
-      rw [getW_setReg_nextPc, if_neg hrq, hregs]
+      rw [getW_setReg_nextPc, ite_eq_right hrq, hregs]
       exact hc.regs r hr
     · simp only [Arm.post, List.mem_cons, List.mem_filter, bne_iff_ne, ne_eq] at hp
       rcases hp with rfl | ⟨hpQ, hpq⟩
-      · rw [getW_setReg_nextPc, if_pos rfl, hmem, read64_write64_same]
-      · rw [getW_setReg_nextPc, if_neg hpq, hmem, hc.slots p hpQ,
+      · rw [getW_setReg_nextPc, ite_eq_left rfl, hmem, read64_write64_same]
+      · rw [getW_setReg_nextPc, ite_eq_right hpq, hmem, hc.slots p hpQ,
           read64_write64_of_disjoint]
         rcases hsep p hpQ with he | hs
         · exact absurd he hpq
@@ -1007,8 +1007,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
       ⟨_, zf, fstepF_movM m D q hm b zf _ (hv sa b zf hc), ?_⟩
     obtain ⟨hregs, hmem⟩ := evalInstrA_loadMem_eq sa (phys D) "%rsp" (slotOff P q)
     exact hc.write hD _ (fun r => by rw [hregs, hc.sp]) hmem
-      (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-      (by rw [getW_setReg_nextPc, if_pos rfl])
+      (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+      (by rw [getW_setReg_nextPc, ite_eq_left rfl])
   | alu m D S =>
     simp only [Arm.ok, Bool.and_eq_true] at h
     obtain ⟨⟨hm, hD⟩, hS⟩ := h
@@ -1022,8 +1022,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
       ⟨withALUFlags (binRegI m D D S) b
         ((b.setReg D (f (sa.regs (phys D)) (sa.regs (phys S)))).nextPc),
       zf, ?_, hc.write hD (f (sa.regs (phys D)) (sa.regs (phys S))) (hmk sa _ _) (hmkm sa _ _)
-        (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, if_neg hr])
-        (by rw [withALUFlags_reg, getW_setReg_nextPc, if_pos rfl])⟩
+        (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_right hr])
+        (by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_left rfl])⟩
     rw [fstepF_binRegI m base D D S hstrip hcmp hmul hcarry (ne_mov_of_applyOpnN hf) b zf _
       (hc.regs D hD) (cmpOfName?_of_applyOpnN (hf 0 0)), hc.regs S hS, Option.bind_some, hf,
       Option.map_some]
@@ -1040,8 +1040,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
       ⟨withALUFlags ((Arm.aluI m D v).instr, .reg none) b
         ((b.setReg D (f (sa.regs (phys D)) (BitVec.ofNat 64 v))).nextPc), zf, ?_,
       hc.write hD _ (fun r => hmk sa (phys D) r v) (hmkm sa _ _)
-        (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, if_neg hr])
-        (by rw [withALUFlags_reg, getW_setReg_nextPc, if_pos rfl])⟩
+        (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_right hr])
+        (by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_left rfl])⟩
     have hl := hstep b D _ v (hc.regs D hD)
     simp [fstepF, cmpArgs?, movRegArgs?, Arm.instr, hcmp, stepMemF_of_lsemStepMem hl]
   | shI m D k =>
@@ -1068,8 +1068,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
               show (if r = phys D then (x86_SHL (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
                 else sa.regs r) = _
               rw [hw]) rfl
-            (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-            (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+            (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+            (by rw [getW_setReg_nextPc, ite_eq_left rfl])⟩
     · have hi : ((Arm.shI "SHR:64" D k).instr, MemTag.reg none)
           = DecodeGenSim.shiftImmS "SHR" D D k := by
         simp [Arm.instr, DecodeGenSim.shiftImmS, withWidthTag]
@@ -1082,8 +1082,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
               show (if r = phys D then (x86_SHR (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
                 else sa.regs r) = _
               rw [x86_SHR_word_imm _ k (by omega) hk]) rfl
-            (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-            (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+            (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+            (by rw [getW_setReg_nextPc, ite_eq_left rfl])⟩
   | lea D B X sc =>
     simp only [Arm.ok, Bool.and_eq_true] at h
     obtain ⟨⟨⟨⟨hD, hB⟩, hX⟩, -⟩, -⟩ := h
@@ -1092,8 +1092,8 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
       ⟨_, zf, fstepF_lea D B X sc b zf (hc.regs B hB) (hc.regs X hX), ?_⟩
     obtain ⟨hregs, hmem⟩ := evalInstrA_lea_eq sa (phys D) (phys B) (phys X) sc
     exact hc.write hD _ hregs hmem
-      (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-      (by rw [getW_setReg_nextPc, if_pos rfl])
+      (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+      (by rw [getW_setReg_nextPc, ite_eq_left rfl])
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true, beq_iff_eq] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hm⟩ := h
@@ -1107,16 +1107,16 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
       exact DecSim.lsemOnly fun sa b zf hc =>
         ⟨_, zf, fstepF_shl0I D D b zf _ (hc.regs D hD),
           hc.write hD (sa.regs (phys D)) (fun r => by split <;> simp_all) rfl
-            (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-            (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+            (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+            (by rw [getW_setReg_nextPc, ite_eq_left rfl])⟩
     · have hjs : Arm.js P (.shl0 m D S) = [.mov (phys D) (.reg (phys S))] := by
         simp [Arm.js, Arm.pieces, hDS]
       rw [hjs]
       exact DecSim.single fun sa b zf hc =>
         ⟨_, zf, fstepF_shl0I D S b zf _ (hc.regs S hS),
           hc.write hD (sa.regs (phys S)) (fun _ => rfl) rfl
-            (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-            (by rw [getW_setReg_nextPc, if_pos rfl])⟩
+            (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+            (by rw [getW_setReg_nextPc, ite_eq_left rfl])⟩
   | shr m D S =>
     simp only [Arm.ok, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hk0⟩, hk⟩, hm⟩ :=
@@ -1126,7 +1126,7 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
       by_cases hDS : D = S <;> simp [Arm.js, Arm.pieces, hDS]
     rw [hjs]
     by_cases hs : tagShl m = true
-    · simp only [tagShName, tagShMk, hs, if_true] at hm ⊢
+    · simp only [tagShName, tagShMk, hs, ite_true] at hm ⊢
       generalize shrK m = k at hk0 hk hm ⊢
       have hi : ((Arm.shr m D S).instr, MemTag.reg none) = immShiftI "SHL" D S k := by
         rw [Arm.instr, immShiftI, ← hm]
@@ -1138,26 +1138,26 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
         fun v => DecodeGenSim.x86_SHL_word_imm v k (by omega) hk
       by_cases hDS : D = S
       · subst hDS
-        rw [if_pos rfl, List.nil_append]
+        rw [ite_eq_left rfl, List.nil_append]
         show PCorr Q rsp (evalInstrA sa (.shl (phys D) (.imm k))) _ zf
         exact hc.write hD _ (fun r => by
             show (if r = phys D then (x86_SHL (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
               else sa.regs r) = _
             rw [hw]) rfl
-          (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-          (by rw [getW_setReg_nextPc, if_pos rfl])
-      · rw [if_neg hDS, List.singleton_append]
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])
+      · rw [ite_eq_right hDS, List.singleton_append]
         show PCorr Q rsp (evalInstrA (evalInstrA sa (.mov (phys D) (.reg (phys S))))
           (.shl (phys D) (.imm k))) _ zf
         exact hc.write hD _ (fun r => by
             show (if r = phys D then (x86_SHL (if phys D = phys D then sa.regs (phys S)
               else sa.regs (phys D)) (BitVec.ofNat 64 k)).word
               else (if r = phys D then sa.regs (phys S) else sa.regs r)) = _
-            rw [hw, if_pos rfl]
+            rw [hw, ite_eq_left rfl]
             split <;> rfl) rfl
-          (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-          (by rw [getW_setReg_nextPc, if_pos rfl])
-    · simp only [tagShName, tagShMk, hs, Bool.false_eq_true, if_false] at hm ⊢
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])
+    · simp only [tagShName, tagShMk, hs, Bool.false_eq_true, ite_false] at hm ⊢
       generalize shrK m = k at hk0 hk hm ⊢
       have hi : ((Arm.shr m D S).instr, MemTag.reg none) = immShiftI "SHR" D S k := by
         rw [Arm.instr, immShiftI, ← hm]
@@ -1169,25 +1169,25 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
         fun v => x86_SHR_word_imm v k (by omega) hk
       by_cases hDS : D = S
       · subst hDS
-        rw [if_pos rfl, List.nil_append]
+        rw [ite_eq_left rfl, List.nil_append]
         show PCorr Q rsp (evalInstrA sa (.shr (phys D) (.imm k))) _ zf
         exact hc.write hD _ (fun r => by
             show (if r = phys D then (x86_SHR (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
               else sa.regs r) = _
             rw [hw]) rfl
-          (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-          (by rw [getW_setReg_nextPc, if_pos rfl])
-      · rw [if_neg hDS, List.singleton_append]
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])
+      · rw [ite_eq_right hDS, List.singleton_append]
         show PCorr Q rsp (evalInstrA (evalInstrA sa (.mov (phys D) (.reg (phys S))))
           (.shr (phys D) (.imm k))) _ zf
         exact hc.write hD _ (fun r => by
             show (if r = phys D then (x86_SHR (if phys D = phys D then sa.regs (phys S)
               else sa.regs (phys D)) (BitVec.ofNat 64 k)).word
               else (if r = phys D then sa.regs (phys S) else sa.regs r)) = _
-            rw [hw, if_pos rfl]
+            rw [hw, ite_eq_left rfl]
             split <;> rfl) rfl
-          (fun r hr => by rw [getW_setReg_nextPc, if_neg hr])
-          (by rw [getW_setReg_nextPc, if_pos rfl])
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])
 
 /-! ## 8. A straight-line segment -/
 
@@ -1383,8 +1383,8 @@ theorem printed_line_sim (body P1 : Lcmd) (r : Linstr) (hbody : body = P1 ++ [r]
   set rsp1 := sa.regs "%rsp" + BitVec.ofInt 64 (-(Int.ofNat F))
   have hc0 : PCorr [] rsp1 sa1 b zf :=
     { regs := fun R hR => by
-        rw [hent R hR, hl1, if_neg (fun e => (gpFacts hR).physNe e)]
-      sp := by rw [hl1, if_pos rfl]
+        rw [hent R hR, hl1, ite_eq_right (fun e => (gpFacts hR).physNe e)]
+      sp := by rw [hl1, ite_eq_left rfl]
       slots := fun p hp => absurd hp (by simp)
       names := fun p hp => absurd hp (by simp) }
   obtain ⟨b1, z1, hr1, hc1⟩ := lineOK_sim P rsp1 P1 [] Q shs1 hchk hs1 sa1 b zf hc0
@@ -1408,10 +1408,10 @@ theorem printed_line_sim (body P1 : Lcmd) (r : Linstr) (hbody : body = P1 ++ [r]
       [.ret] sa
     simpa [DecodeGenStraight.lineLayout] using h
   · simp [DecodeGenStraight.lineLayout]
-  · rw [hrb, hl2, if_pos rfl, hc1.sp]
+  · rw [hrb, hl2, ite_eq_left rfl, hc1.sp]
     simp [rsp1, F, BitVec.ofInt_neg, BitVec.ofInt_natCast]
   · intro R hR
-    rw [hrb, hl2, if_neg (fun e => (gpFacts hR).physNe e)]
+    rw [hrb, hl2, ite_eq_right (fun e => (gpFacts hR).physNe e)]
     exact hc1.regs R hR
 
 /-- An instruction that is the return. -/

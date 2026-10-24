@@ -117,7 +117,7 @@ variable [Fact (Nat.Prime p)] (params : ECParams p)
 theorem ecToEC_add_distinct (P Q : ECAffPoint (ZMod p)) (hne : P.x ≠ Q.x) :
     params.add (ecToEC P) (ecToEC Q)
       = ecToEC (ecAffineAdd ((Q.y - P.y) * (Q.x - P.x)⁻¹) P Q) := by
-  simp only [ecToEC, ECPoint.aff, ECParams.add, if_neg hne,
+  simp only [ecToEC, ECPoint.aff, ECParams.add, ite_eq_right hne,
     ECParams.chordSlope, ECParams.affRx, ECParams.affRy,
     ecAffineAdd, ecAffineRx, ecAffineRy]
 
@@ -129,7 +129,7 @@ theorem ecToEC_add_distinct (P Q : ECAffPoint (ZMod p)) (hne : P.x ≠ Q.x) :
 theorem ecToEC_dbl (ha : params.a = 0) (P : ECAffPoint (ZMod p)) (hy : P.y ≠ -P.y) :
     params.add (ecToEC P) (ecToEC P)
       = ecToEC (ecAffineDbl (ecTangentSlope P.x P.y) P) := by
-  simp only [ecToEC, ECPoint.aff, ECParams.add, if_pos, if_neg hy,
+  simp only [ecToEC, ECPoint.aff, ECParams.add, ite_eq_left, ite_eq_right hy,
     ECParams.tangentSlope, ECParams.affRx, ECParams.affRy,
     ecAffineDbl, ecTangentSlope, ecAffineRx, ecAffineRy,
     ha, add_zero]

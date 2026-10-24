@@ -427,9 +427,9 @@ theorem startC_regs (fs : List CFact) (r : String) :
       rw [RegFile.get_set, List.find?_cons]
       by_cases h : r = f.1
       · have h' : (f.1 == r) = true := beq_iff_eq.mpr h.symm
-        rw [if_pos h, h']
+        rw [ite_eq_left h, h']
       · have h' : (f.1 == r) = false := beq_false_of_ne (Ne.symm h)
-        rw [if_neg h, h']
+        rw [ite_eq_right h, h']
         exact ih
 
 theorem startC_good (fs : List CFact) : (startC fs).Good := by
@@ -1223,13 +1223,13 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
     have hok1 := runIdxOk_next_at hfetch he (hf1 ▸ hokU)
     rw [I.step_goto] at he
     by_cases hx : x = (singletonProgM fn B).lfn
-    · rw [if_pos hx, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hx, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       have he' : I.step (singletonProgM fn B') (.Lgoto (x, l'), zt') u' =
           some { u' with prog := { u'.prog with
             base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } } := by
-        rw [I.step_goto, if_pos (by simpa [singletonProgM, hul'', hul'] using hx),
+        rw [I.step_goto, ite_eq_left (by simpa [singletonProgM, hul'', hul'] using hx),
           evalJumpMem_single hl']
         rfl
       have hfetch' : findInstrMem (singletonProgM fn B') u'.prog =
@@ -1245,7 +1245,7 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_goto _ _ _ _) he' hrok)⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ hfetch' he']
       exact hr
-    · rw [if_neg hx] at he
+    · rw [ite_eq_right hx] at he
       cases he
   · -- branch
     obtain ⟨_, hT', _⟩ | ⟨_, _, _, hT', _⟩ | ⟨tg', nx', c', l', hT', hzi', htg', hl', hnx'⟩ |
@@ -1275,13 +1275,13 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
     have hstop : 0 < (G.blk k).stop := by have := F.lt; omega
     have hstop' : 0 < (G'.blk k).stop := by have := F'.lt; omega
     by_cases hd : I.condEval u c = true
-    · rw [if_pos hd, evalJumpMem_single hl] at he
+    · rw [ite_eq_left hd, evalJumpMem_single hl] at he
       simp only [Option.map_some, Option.some.injEq] at he
       subst he
       have he' : I.step (singletonProgM fn B') (.Lcond c' l', zt') u' =
           some { u' with prog := { u'.prog with
             base := u'.prog.base.setLpc ((G'.blk tg).start + 1) } } := by
-        rw [I.step_cond, if_pos (hdec.trans hd), evalJumpMem_single hl']
+        rw [I.step_cond, ite_eq_left (hdec.trans hd), evalJumpMem_single hl']
         rfl
       obtain ⟨f'', t', hfb, hr, hobs, hrok⟩ := jump_contCF
         (w' := { u' with prog := { u'.prog with
@@ -1293,11 +1293,11 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
         hmok _ (runIdxOk_step_at hfetch' (idxOkB_cond _ _ _ _) he' hrok)⟩
       rw [hm', I.lsemFuelMemF_step _ _ _ _ _ hfetch' he']
       exact hr
-    · rw [if_neg hd] at he
+    · rw [ite_eq_right hd] at he
       simp only [Option.some.injEq] at he
       have he' : I.step (singletonProgM fn B') (.Lcond c' l', zt') u' =
           some { u' with prog := { u'.prog with base := u'.prog.base.nextPc } } := by
-        rw [I.step_cond, if_neg (by rw [hdec]; exact hd)]
+        rw [I.step_cond, ite_eq_right (by rw [hdec]; exact hd)]
       obtain ⟨f'', t', hfb, hr, hobs, hrok⟩ := fall_contCF (w := u1)
         (w' := { u' with prog := { u'.prog with base := u'.prog.base.nextPc } })
         hc ih hk hnx.symm hnx'.symm

@@ -302,10 +302,10 @@ theorem corres_setScalar_of {A : Type} (V : ValueAbs (BitVec 64) A) (name : Stri
   by_cases hx : x = name
   · subst hx
     refine ⟨BitVec.ofNat 64 n, by simp [SEnvScalar.upd], ?_⟩
-    dsimp only; rw [if_pos rfl]; exact hv
+    dsimp only; rw [ite_eq_left rfl]; exact hv
   · obtain ⟨w, hw, hwn⟩ := hSR x hnt
     refine ⟨w, by simp [SEnvScalar.upd, hx, hw], ?_⟩
-    dsimp only; rw [if_neg hx]; exact hwn
+    dsimp only; rw [ite_eq_right hx]; exact hwn
 
 /-- The expression-assignment leaf over a pair of abstractions: from a store
     refined through `Vi`, `RScalarSetExpr x e` (source-clean `e`) lands in a store
@@ -344,13 +344,13 @@ theorem corresH_setExpr_of {A : Type} (Vi Vo : ValueAbs (BitVec 64) A)
   · intro y hnt
     by_cases hyx : y = x
     · refine ⟨SExpr.evalBV (envReader env) e, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_pos hyx]
-      · dsimp only; rw [if_pos hyx]; exact hval
+      · simp only [SEnvScalar.upd, ite_eq_left hyx]
+      · dsimp only; rw [ite_eq_left hyx]; exact hval
     · obtain ⟨w, hw, hwe⟩ := hSR y hnt
       refine ⟨w, ?_, ?_⟩
-      · simp only [SEnvScalar.upd, if_neg hyx]
+      · simp only [SEnvScalar.upd, ite_eq_right hyx]
         rw [hotb y (Or.inl hnt)]; exact hw
-      · dsimp only; rw [if_neg hyx]; exact hle hwe
+      · dsimp only; rw [ite_eq_right hyx]; exact hle hwe
 
 /-- The homogeneous expression-assignment leaf: `corresH_setExpr_of` at `Vi = Vo`. -/
 theorem corres_setExpr_of {A : Type} (V : ValueAbs (BitVec 64) A)
@@ -450,9 +450,9 @@ theorem corresJ_sbb_of {A : Type} (V : ValueAbs (BitVec 64) A) (dst src : String
   refine ⟨fun r => ?_, ?_⟩
   · by_cases hr : r = dst
     · subst hr
-      simp only [sbbStep, if_true]
+      simp only [sbbStep, ite_true]
       exact hdata _ _ _ _ _ (hρ _) (hρ _)
-    · simp only [sbbStep, if_neg hr]
+    · simp only [sbbStep, ite_eq_right hr]
       exact hρ r
   · simp only [sbbStep]
     exact hcf _ _ _ _ _ (hρ _) (hρ _)
@@ -475,9 +475,9 @@ theorem corresJ_adc_of {A : Type} (V : ValueAbs (BitVec 64) A) (dst src : String
   refine ⟨fun r => ?_, ?_⟩
   · by_cases hr : r = dst
     · subst hr
-      simp only [adcStep, if_true]
+      simp only [adcStep, ite_true]
       exact hdata _ _ _ _ _ (hρ _) (hρ _)
-    · simp only [adcStep, if_neg hr]
+    · simp only [adcStep, ite_eq_right hr]
       exact hρ r
   · simp only [adcStep]
     exact hcf _ _ _ _ _ (hρ _) (hρ _)

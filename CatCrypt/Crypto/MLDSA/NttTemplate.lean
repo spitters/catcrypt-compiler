@@ -52,7 +52,7 @@ theorem nttSpec_eq_ntt (w : Fin 256 → ZMod 8380417) (i : Fin 256) :
   simp only [Nat.sub_self, pow_zero, Nat.mod_one, Nat.div_one, mul_one, Nat.zero_add]
   rw [show (2 : ℕ) ^ 8 = 256 from by norm_num, Finset.sum_range]
   refine Finset.sum_congr rfl fun j _ => ?_
-  rw [lanes, dif_pos j.isLt]
+  rw [lanes, dite_eq_left j.isLt]
   rfl
 
 /-- **The ML-DSA instance.** Lane `i` of the template program at `mldsaNtt` is
@@ -72,11 +72,11 @@ theorem inttSpec_eq_invNtt (v : Fin 256 → ZMod 8380417) (i : Fin 256) :
     have hcongr : ∀ j, j < 2 ^ 8 →
         lanes u j = inttSpec (1753 : ZMod 8380417) 8 8 (8347681 : ZMod 8380417) (lanes v) j := by
       intro j hj
-      rw [lanes, dif_pos (show j < 256 from hj)]
+      rw [lanes, dite_eq_left (show j < 256 from hj)]
     rw [← nttSpec_eq_ntt, nttSpec_congr _ 8 8 le_rfl _ _ hcongr,
       nttSpec_inttSpec (1753 : ZMod 8380417) 8 8 (mldsaNtt.psi_pow mldsaNtt_ok) (by norm_num)
         le_rfl (8347681 : ZMod 8380417) (ScaleOk.cast mldsaNtt 8347681 mldsa_scaleOk) _ k k.isLt,
-      lanes, dif_pos k.isLt]
+      lanes, dite_eq_left k.isLt]
   show u i = invNtt v i
   rw [← hntt, invNtt_ntt]
 

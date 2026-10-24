@@ -81,7 +81,7 @@ theorem niels_roundtrip (P : EdPt) : niels_to_pt (niels_of P) = P := by
       ((P.y + P.x) / 2 + (P.y - P.x) / 2) := by
     rw [hx, hy]; exact P.on_curve
   unfold niels_to_pt niels_of
-  rw [dif_pos hon]
+  rw [dite_eq_left hon]
   exact EdwardsPointAff.ext_aff hx hy
 
 /-- The affine coordinates of the Niels-form mixed addition of `P` and `N`. -/
@@ -124,7 +124,7 @@ theorem ed_madd_niels_eq_add (P Q : EdPt) : ed_madd_niels P (niels_of Q) = ed_ad
   have hon : OnCurveAff ed25519Curve (madd_xy P (niels_of Q)).1 (madd_xy P (niels_of Q)).2 := by
     rw [e]; exact (P + Q).on_curve
   unfold ed_madd_niels
-  rw [dif_pos hon]
+  rw [dite_eq_left hon]
   exact EdwardsPointAff.ext_aff (by show (madd_xy P (niels_of Q)).1 = _; rw [e]; rfl)
     (by show (madd_xy P (niels_of Q)).2 = _; rw [e]; rfl)
 
@@ -192,7 +192,7 @@ theorem cached_roundtrip (P : EdPt) : cached_to_pt (cached_of P) = P := by
       ((P.y + P.x + (P.y - P.x)) / (2 * 1)) := by
     rw [hx, hy]; exact P.on_curve
   unfold cached_to_pt cached_of
-  rw [dif_pos hon]
+  rw [dite_eq_left hon]
   exact EdwardsPointAff.ext_aff hx hy
 
 /-- The affine coordinates of the readdition of `P` and the cached point `C`. -/
@@ -239,7 +239,7 @@ theorem ed_readd_eq_add (P Q : EdPt) : ed_readd P (cached_of Q) = ed_add P Q := 
       (readd_xy P (cached_of Q)).2 := by
     rw [e]; exact (P + Q).on_curve
   unfold ed_readd
-  rw [dif_pos hon]
+  rw [dite_eq_left hon]
   exact EdwardsPointAff.ext_aff (by show (readd_xy P (cached_of Q)).1 = _; rw [e]; rfl)
     (by show (readd_xy P (cached_of Q)).2 = _; rw [e]; rfl)
 

@@ -693,7 +693,7 @@ theorem dispatch_cmov_three (frame spillW w : Nat) (mnem base : String)
     encodeLopn frame spillW (.Lopn [.reg dn] mnem [.reg cn, .reg tn, .reg fn]) qsaveB
       = encCmovSelect w (gpNumU dn) (gpNumU cn) (gpNumU tn) (gpNumU fn) := by
   simp only [encodeLopn, hbind, hstrip, hw, hmulx, hmulxmem, hadx, hcmov, hgp,
-    Bool.false_eq_true, if_false, if_true]
+    Bool.false_eq_true, ite_false, ite_true]
 
 /-- `CMOV:64` (`w = 1`) dispatches to `encCmovSelect`. -/
 theorem encodeLopn_cmov64_emits (frame spillW : Nat) (dn cn tn fn : String)

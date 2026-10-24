@@ -513,12 +513,12 @@ theorem lsemStep_lpc_succ {w : Nat} (i : LinstrR) (s b : Lstate w)
                       | arrIdx base idx scale =>
                           simp only [lsemStep] at h
                           by_cases hL : opn = "LOADIDX"
-                          · rw [if_pos hL] at h
+                          · rw [ite_eq_left hL] at h
                             simp only [Option.some.injEq] at h
                             rw [← h]; rfl
-                          · rw [if_neg hL] at h
+                          · rw [ite_eq_right hL] at h
                             by_cases hS : opn = "STOREIDX"
-                            · rw [if_pos hS] at h
+                            · rw [ite_eq_left hS] at h
                               cases rest with
                               | nil => simp at h
                               | cons val vrest =>
@@ -527,7 +527,7 @@ theorem lsemStep_lpc_succ {w : Nat} (i : LinstrR) (s b : Lstate w)
                                       simp only [Option.some.injEq] at h
                                       rw [← h]; rfl
                                   | cons _ _ => simp at h
-                            · rw [if_neg hS] at h
+                            · rw [ite_eq_right hS] at h
                               cases happ : applyOpn (stripWidthTag opn)
                                   (List.map (evalOperand s)
                                     (LOperand.arrIdx base idx scale :: rest)) with

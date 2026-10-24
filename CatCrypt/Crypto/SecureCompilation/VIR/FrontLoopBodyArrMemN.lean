@@ -284,7 +284,7 @@ theorem frontLoopBodyCD_arrMem {Γbody : Ctx} {n : Nat}
       ∃ jc, cryptoDialectToJasminCom com = some jc ∧ ArrMemN jc := by
   obtain ⟨com, jc, hcom, hjc, hArr⟩ := hcont (Com.ret (toVIRVar v)) (arrMemN_ret v)
   refine ⟨com, ?_, jc, hjc, hArr⟩
-  simp only [frontLoopBodyCD, htr, hv, dif_pos]
+  simp only [frontLoopBodyCD, htr, hv, dite_eq_left]
   exact hcom
 
 /-- **The jasmin image of a front-compiled loop body is `ArrMemN`.** The

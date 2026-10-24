@@ -153,7 +153,7 @@ theorem subIntoX_value (s : JState 64) (hcf : s.flagB (·.cf) = false)
       = valLimbs [s.get "x0", s.get "x1"] - valLimbs [s.get "qp0", s.get "qp1"] := by
   have h := subIntoX_recon s hcf
   rw [hnb] at h
-  simp only [Bool.false_eq_true, if_false, Nat.zero_mul, add_zero] at h
+  simp only [Bool.false_eq_true, ite_false, Nat.zero_mul, add_zero] at h
   omega
 
 /-! ## The emitted Barrett tail: subtract then conditional subtract -/

@@ -155,9 +155,9 @@ theorem leakRunMC_prefix_ev (ev ev' : ExprEv d)
             ∀ s₁ s₂ : List CTLeak, b₁.2 ++ s₁ = b₂.2 ++ s₂ → m₁ = m₂ ∧ s₁ = s₂ := by
         intro W₁ W₂ c b₁ b₂ h₁ h₂
         cases c
-        · simp only [Bool.false_eq_true, if_false] at h₁ h₂ ⊢
+        · simp only [Bool.false_eq_true, ite_false] at h₁ h₂ ⊢
           exact ihe h₁ h₂
-        · simp only [if_true] at h₁ h₂ ⊢
+        · simp only [ite_true] at h₁ h₂ ⊢
           exact iht h₁ h₂
       obtain ⟨m₁, -, hm₁, -, -⟩ := hbr V₁ V₁ _ a₁ a₁ ha₁ ha₁
       obtain ⟨m₂, -, hm₂, -, -⟩ := hbr V₂ V₂ _ a₂ a₂ ha₂ ha₂
@@ -307,10 +307,10 @@ theorem map?_leakRunMC_blockEv (P : PartialBlockLowering d d') (transTy : P.Tran
           some (transArgs P.mapTy transTy a.1, a.2) := by
         split
         · rename_i hc
-          rw [if_pos hc] at ha
+          rw [ite_eq_left hc] at ha
           exact iht hCt ren V W hren a' haq a ha
         · rename_i hc
-          rw [if_neg hc] at ha
+          rw [ite_eq_right hc] at ha
           exact ihe hCe ren V W hren b' hbq a ha
       simp only [leakRunMC]
       rw [NFProg.lookup_varTyCast, hren, hVar, hR.toBool_trans, harm]
@@ -556,10 +556,10 @@ theorem map?_leakRunMC_blockEvO (P : PartialBlockLowering d d') (transTy : P.Tra
           some (transArgs P.mapTy transTy a.1, a.2) := by
         split
         · rename_i hc
-          rw [if_pos hc] at ha
+          rw [ite_eq_left hc] at ha
           exact iht hCt ren V W hren a' haq a ha
         · rename_i hc
-          rw [if_neg hc] at ha
+          rw [ite_eq_right hc] at ha
           exact ihe hCe ren V W hren b' hbq a ha
       simp only [leakRunMC]
       rw [NFProg.lookup_varTyCast, hren, hVar, hR.toBool_trans, harm]
@@ -698,14 +698,14 @@ theorem NFProg.leakRunMC_dce (M : LeakModel d) (E E' : CallEnv d) (fuel : Nat) {
       · rename_i k' hr
         refine ⟨l, ?_, fun rest => ?_⟩
         · rw [VIR.NFProg.leakRunMC_rename? M E' fuel _ hr (PRen.agrees_drop V x), hl]
-        · simp only [NFProg.dceEraseC, hr, Option.isSome_some, if_true, List.append_assoc]
+        · simp only [NFProg.dceEraseC, hr, Option.isSome_some, ite_true, List.append_assoc]
           exact (congrArg (NFProg.dceEraseC M fuel k) (hdrop rest)).trans (el rest)
       · rename_i hr
         refine ⟨Expr.ctLeak M e V ++ l, ?_, fun rest => ?_⟩
         · simp only [NFProg.leakRunMC, hx, Option.bind_some, hl, Option.map_some]
         · have hn : (NFProg.rename? PRen.drop (NFProg.dce k)).isSome = false := by
             rw [hr]; rfl
-          simp only [NFProg.dceEraseC, hn, Bool.false_eq_true, if_false, List.append_assoc,
+          simp only [NFProg.dceEraseC, hn, Bool.false_eq_true, ite_false, List.append_assoc,
             htake, hdrop, el]
   | forLoop count inits body k ihb ihk =>
       intro V r h
@@ -733,11 +733,11 @@ theorem NFProg.leakRunMC_dce (M : LeakModel d) (E E' : CallEnv d) (fuel : Nat) {
         split at ha
         · rename_i hb
           obtain ⟨l₁, h₁, e₁⟩ := iht (fun f as rs x hc => hCall f as rs x (Or.inl hc)) V a ha
-          exact ⟨l₁, by rw [if_pos hb]; exact h₁, fun rest => by rw [if_pos hb]; exact e₁ rest⟩
+          exact ⟨l₁, by rw [ite_eq_left hb]; exact h₁, fun rest => by rw [ite_eq_left hb]; exact e₁ rest⟩
         · rename_i hb
           obtain ⟨l₁, h₁, e₁⟩ :=
             ihe (fun f as rs x hc => hCall f as rs x (Or.inr (Or.inl hc))) V a ha
-          exact ⟨l₁, by rw [if_neg hb]; exact h₁, fun rest => by rw [if_neg hb]; exact e₁ rest⟩
+          exact ⟨l₁, by rw [ite_eq_right hb]; exact h₁, fun rest => by rw [ite_eq_right hb]; exact e₁ rest⟩
       obtain ⟨l₁, h₁, e₁⟩ := harm
       refine ⟨.branch (HasBoolBit.toBool (d := d) (cond.lookup V)) :: (l₁ ++ l₂), ?_,
         fun rest => ?_⟩

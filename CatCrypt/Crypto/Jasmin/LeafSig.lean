@@ -272,7 +272,7 @@ theorem noLateLoadAfterStore_append :
   | i :: is, post, hpre, hpost => by
     rw [List.cons_append]
     unfold noLateLoadAfterStore
-    rw [if_neg (by simp [hpre i List.mem_cons_self])]
+    rw [ite_eq_right (by simp [hpre i List.mem_cons_self])]
     exact noLateLoadAfterStore_append is post (fun k hk => hpre k (List.mem_cons_of_mem _ hk)) hpost
 
 end CatCrypt.Crypto.Jasmin

@@ -463,10 +463,10 @@ theorem bigSigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
                     else if y = "ba" then some (v.rotateRight rot1) else ρ y) := by
   have e0 := hr ρ (fun _ _ _ => rfl)
   have e1 := hr (fun y => if y = "ba" then some (v.rotateRight rot1) else ρ y)
-    (fun y h _ => by simp [if_neg h])
+    (fun y h _ => by simp [ite_eq_right h])
   have e2 := hr (fun y => if y = "bb" then some (v.rotateRight rot2)
                           else if y = "ba" then some (v.rotateRight rot1) else ρ y)
-    (fun y h1 h2 => by simp [if_neg h1, if_neg h2])
+    (fun y h1 h2 => by simp [ite_eq_right h1, ite_eq_right h2])
   have hba : denoteAtomExpr ["in"] I (ImpExpr.var "ba") = fun ρ' => ρ' "ba" := by
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "ba" by decide)]
   have hbb : denoteAtomExpr ["in"] I (ImpExpr.var "bb") = fun ρ' => ρ' "bb" := by
@@ -478,7 +478,7 @@ theorem bigSigBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   simp only [bigSigBlock, ImpExpr.denoteScalar, recogBin, recogShift, litNat?,
     ShiftKind.apply, JasminBinOp.apply, reduceIte, String.reduceEq, Int.toNat,
     or_self, or_false, e0, e1, e2, hba, hbb, hbc, hbx,
-    Option.bind_some, Option.map_some, if_true]
+    Option.bind_some, Option.map_some, ite_true]
 
 /-- `chBlock` is value-preserving: it runs `cont` with `nout := Ch(ve,vf,vg)`. The
     `__ones` local (the all-ones complement) is read from `ρ` (`h_ones`). -/
@@ -501,10 +501,10 @@ theorem chBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   have ea0 := hre ρ (fun _ _ _ => rfl)
   have ef0 := hrf ρ (fun _ _ _ => rfl)
   have ea1 := hre (fun y => if y = "ca" then some (ve &&& vf) else ρ y)
-    (fun y h _ => by simp [if_neg h])
+    (fun y h _ => by simp [ite_eq_right h])
   have eg2 := hrg (fun y => if y = "cb" then some (ve ^^^ BitVec.ofNat 32 4294967295)
                             else if y = "ca" then some (ve &&& vf) else ρ y)
-    (fun y h1 h2 => by simp [if_neg h1, if_neg h2])
+    (fun y h1 h2 => by simp [ite_eq_right h1, ite_eq_right h2])
   have hca : denoteAtomExpr ["in"] I (ImpExpr.var "ca") = fun ρ' => ρ' "ca" := by
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "ca" by decide)]
   have hcb : denoteAtomExpr ["in"] I (ImpExpr.var "cb") = fun ρ' => ρ' "cb" := by
@@ -515,7 +515,7 @@ theorem chBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "__ones" by decide)]
   simp only [chBlock, ImpExpr.denoteScalar, recogBin, JasminBinOp.apply, reduceIte,
     String.reduceEq, or_self, ea0, ef0, ea1, eg2, hca, hcb, hcc,
-    hones, h_ones, chFn, Option.bind_some, Option.map_some, if_true]
+    hones, h_ones, chFn, Option.bind_some, Option.map_some, ite_true]
 
 /-- `majBlock` is value-preserving: it runs `cont` with `nout := Maj(va,vb,vc)`. -/
 theorem majBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
@@ -538,15 +538,15 @@ theorem majBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
   have ea0 := hra ρ (fun _ _ _ => rfl)
   have eb0 := hrb ρ (fun _ _ _ => rfl)
   have ea1 := hra (fun y => if y = "ma" then some (va &&& vb) else ρ y)
-    (fun y h _ => by simp [if_neg h])
+    (fun y h _ => by simp [ite_eq_right h])
   have ec1 := hrc (fun y => if y = "ma" then some (va &&& vb) else ρ y)
-    (fun y h _ => by simp [if_neg h])
+    (fun y h _ => by simp [ite_eq_right h])
   have eb2 := hrb (fun y => if y = "mb" then some (va &&& vc)
                             else if y = "ma" then some (va &&& vb) else ρ y)
-    (fun y h1 h2 => by simp [if_neg h1, if_neg h2])
+    (fun y h1 h2 => by simp [ite_eq_right h1, ite_eq_right h2])
   have ec2 := hrc (fun y => if y = "mb" then some (va &&& vc)
                             else if y = "ma" then some (va &&& vb) else ρ y)
-    (fun y h1 h2 => by simp [if_neg h1, if_neg h2])
+    (fun y h1 h2 => by simp [ite_eq_right h1, ite_eq_right h2])
   have hma : denoteAtomExpr ["in"] I (ImpExpr.var "ma") = fun ρ' => ρ' "ma" := by
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "ma" by decide)]
   have hmb : denoteAtomExpr ["in"] I (ImpExpr.var "mb") = fun ρ' => ρ' "mb" := by
@@ -557,6 +557,6 @@ theorem majBlock_denote {nIn : Nat} (I : Fin nIn → BitVec 32)
     funext ρ'; simp only [denoteAtomExpr, idxOf_arr_none (show ("in":String) ≠ "mx" by decide)]
   simp only [majBlock, ImpExpr.denoteScalar, recogBin, JasminBinOp.apply, reduceIte,
     String.reduceEq, or_self, ea0, eb0, ea1, ec1, eb2, ec2, hma,
-    hmb, hmc, hmx, majFn, Option.bind_some, Option.map_some, if_true]
+    hmb, hmc, hmx, majFn, Option.bind_some, Option.map_some, ite_true]
 
 end CatCrypt.Crypto.SecureCompilation.CompileFromHaxCompress

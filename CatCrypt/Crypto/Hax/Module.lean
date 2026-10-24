@@ -413,7 +413,7 @@ theorem crateOp_sound (h : CrateTables fs bi T) {base : String → List NfTy →
       simp only [crateOp, Option.bind_eq_some_iff] at hb
       obtain ⟨c, hc, hb⟩ := hb
       have hwf := whileFoldFree_of_crateBody hb
-      simp only [crateBody, hwf, if_true, Option.bind_eq_some_iff] at hb
+      simp only [crateBody, hwf, ite_true, Option.bind_eq_some_iff] at hb
       obtain ⟨o', ho', hb⟩ := hb
       split at hb
       · rename_i hty
@@ -729,7 +729,7 @@ def wordVal (x : BitVec 64) : Value := .int x.toNat
 theorem dec_wordVal (x : BitVec 64) : dec (.word 64) (wordVal x) = some x := by
   have h : ((x.toNat : Int)).toNat = x.toNat := Int.toNat_natCast _
   simp only [wordVal, dec, h, BitVec.ofNat_toNat, BitVec.setWidth_eq]
-  rw [if_pos ⟨Int.natCast_nonneg _, by exact_mod_cast x.isLt⟩]
+  rw [ite_eq_left ⟨Int.natCast_nonneg _, by exact_mod_cast x.isLt⟩]
 
 /-- The source values of a list of argument words under a list of parameter kinds: a scalar
     takes one word as a source integer, an array of `m` words takes the next `m` words as a
@@ -1126,12 +1126,12 @@ theorem closureTable_le {bi bi' : Builtins}
         cases h
         have hr : denote' bi fuel body (bindAll ρ ps vals) =
             (.val v, (denote' bi fuel body (bindAll ρ ps vals)).2) := Prod.ext hw rfl
-        rw [if_pos ‹_›, if_pos ‹_›]
+        rw [ite_eq_left ‹_›, ite_eq_left ‹_›]
         simp only [StateT.run]
         rw [denote'_val_of_le hsub hr]
       · cases h
     · cases h
-  · rw [if_neg ‹_›]
+  · rw [ite_eq_right ‹_›]
     exact hsub g vals v h
 
 /-- **A run of the reference reading to a value is the run at every larger table**: a table
@@ -1145,7 +1145,7 @@ theorem denoteSpine_val_of_le (fuel : Nat) : ∀ (bi : Builtins) (e : ImpExpr) {
   induction bi, e using _root_.Hax.InlineLocalClosures.denoteSpine.induct fuel with
   | case1 bi f ps body cont hc ih =>
       intro bi' hsub env env' v h
-      simp only [denoteSpine, hc, if_true] at h ⊢
+      simp only [denoteSpine, hc, ite_true] at h ⊢
       exact ih env (closureTable_le hsub fuel f ps body env) env env' v h
   | case2 bi f ps body cont hc =>
       intro bi' hsub env env' v h
@@ -1274,14 +1274,14 @@ theorem refBi_le_linkFn (m : HaxModule) (bi : Builtins) (fuelC : Nat) {f : ModFn
   have hfs : ∀ g, g ≠ l.name →
       (m.linkFn l).fns.find? (·.name == g) = m.fns.find? (·.name == g) := fun g hg => by
     simp only [linkFn]
-    rw [find?_filter_name, if_neg hg]
+    rw [find?_filter_name, ite_eq_right hg]
   have hl : (m.linkFn l).fns.find? (·.name == l.name) = none := by
     simp only [linkFn]
-    rw [find?_filter_name, if_pos rfl]
+    rw [find?_filter_name, ite_eq_left rfl]
   have hlk : ∀ g, g ≠ l.name → ∀ vals,
       (m.linkFn l).linkTable bi g vals = m.linkTable bi g vals := fun g hg vals => by
     simp only [linkFn, linkTable]
-    rw [linkBi_cons, if_neg fun h => hg h.symm]
+    rw [linkBi_cons, ite_eq_right fun h => hg h.symm]
   have hnone : ∀ n g vals v, m.fns.find? (·.name == g) = none →
       refBi m.fns (m.linkTable bi) fuelC n g vals = some v →
         refBi (m.linkFn l).fns ((m.linkFn l).linkTable bi) fuelC n g vals = some v := by
@@ -1304,7 +1304,7 @@ theorem refBi_le_linkFn (m : HaxModule) (bi : Builtins) (fuelC : Nat) {f : ModFn
         rw [refBi_succ_refSem _ _ _ _ hf] at h
         rw [refBi_of_find_none _ _ _ _ hl]
         simp only [linkFn, linkTable]
-        rw [linkBi_cons, if_pos rfl]
+        rw [linkBi_cons, ite_eq_left rfl]
         exact hsem k vals v h
       · cases hg : m.fns.find? (·.name == g) with
         | none => exact hnone (k + 1) g vals v hg h

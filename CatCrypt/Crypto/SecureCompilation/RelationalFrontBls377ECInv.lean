@@ -118,12 +118,12 @@ theorem powModSpec_val {q : Nat} [NeZero q] (hq : 1 < q) (a : ZMod q) :
       have key : powModSpec q a.val ((e + 1) / 2) = (a ^ ((e + 1) / 2)).val := ih _ hm
       unfold powModSpec
       by_cases hbit : (e + 1) % 2 = 1
-      · rw [if_pos hbit, key, ← ZMod.val_mul, ← ZMod.val_mul]
+      · rw [ite_eq_left hbit, key, ← ZMod.val_mul, ← ZMod.val_mul]
         congr 1
         rw [← pow_add, ← pow_succ]
         congr 1
         omega
-      · rw [if_neg hbit, key, ← ZMod.val_mul]
+      · rw [ite_eq_right hbit, key, ← ZMod.val_mul]
         congr 1
         rw [← pow_add]
         congr 1

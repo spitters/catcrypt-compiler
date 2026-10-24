@@ -250,11 +250,11 @@ def BOp.shlImm (dst a : String) (i : Nat) : BOp :=
 
 /-- Below 64, `BOp.shrImm` is the `lsr` instruction with the same amount. -/
 theorem BOp.shrImm_of_lt (dst a : String) {i : Nat} (h : i < 64) :
-    BOp.shrImm dst a i = .lsr dst a ⟨i, h⟩ := dif_pos h
+    BOp.shrImm dst a i = .lsr dst a ⟨i, h⟩ := dite_eq_left h
 
 /-- Below 64, `BOp.shlImm` is the `lsl` instruction with the same amount. -/
 theorem BOp.shlImm_of_lt (dst a : String) {i : Nat} (h : i < 64) :
-    BOp.shlImm dst a i = .lsl dst a ⟨i, h⟩ := dif_pos h
+    BOp.shlImm dst a i = .lsl dst a ⟨i, h⟩ := dite_eq_left h
 
 /-- Lower a register-named bignum op to the machine `BInst` — one rule per
     constructor (the A64 analogue of `toAInst`). -/

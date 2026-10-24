@@ -152,7 +152,7 @@ theorem addCarryIn_toNat_decomp (a b cin : BitVec 64) :
           rw [show s1.toNat + cin01.toNat = 2^64 from heq] at hnu2
           simp at hnu2
           omega
-      simp only [if_pos h1, if_neg h2]
+      simp only [ite_eq_left h1, ite_eq_right h2]
       rw [BitVec.toNat_or, h1nat, h0nat]
       simp only [Nat.or_zero]
       omega
@@ -182,7 +182,7 @@ theorem addCarryIn_toNat_decomp (a b cin : BitVec 64) :
         · omega
       have hr_zero : r.toNat = 0 := by
         rw [hr_toNat, hsum_eq, Nat.mod_self]
-      simp only [if_neg h1, if_pos h2]
+      simp only [ite_eq_right h1, ite_eq_left h2]
       rw [BitVec.toNat_or, h1nat, h0nat]
       simp only [Nat.zero_or]
       omega
@@ -200,7 +200,7 @@ theorem addCarryIn_toNat_decomp (a b cin : BitVec 64) :
         omega
       have hr_eq : r.toNat = s1.toNat + cin01.toNat := by
         rw [hr_toNat, Nat.mod_eq_of_lt hsum_lt]
-      simp only [if_neg h1, if_neg h2, BitVec.or_self]
+      simp only [ite_eq_right h1, ite_eq_right h2, BitVec.or_self]
       omega
 
 /-! ## §2. Mathlib BitVec lemmas (re-exported under `bv_to_nat` simp set)

@@ -379,7 +379,7 @@ theorem symStep2P_sim {locs : List Loc} (hnd : locs.Nodup) {T T' : Tb} {S : SSt2
           exact hkl ((idxOf_of_getElem? hnd hh).symm.trans (idxOf_of_getElem? hnd hl))
         obtain ⟨rfl, rfl, hq⟩ := putP_sim hnd (hp.put hnd hl hlo) hh h
         exact ⟨{ S with base := (S.base.setR ld lo).setR hd hi },
-          by simp only [symStep2, if_neg hne, e1, e2, e3, e4], hq, hc, hz⟩
+          by simp only [symStep2, ite_eq_right hne, e1, e2, e3, e4], hq, hc, hz⟩
   case imul d src =>
     cases src with
     | imm _ => rcases ann with _ | ⟨_, _⟩ <;> simp [ops, annOK, symStep2P] at ha h
@@ -433,7 +433,7 @@ theorem symStep2P_sim {locs : List Loc} (hnd : locs.Nodup) {T T' : Tb} {S : SSt2
       rcases e2 : internN T₁ (.and (.nd x) (.lit 1)) with ⟨T₂, c⟩
       simp only [e1, e2, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h
-      exact ⟨{ S with cfw := some c }, by simp only [symStep2, if_pos hk, e1, e2], hp, rfl, hz⟩
+      exact ⟨{ S with cfw := some c }, by simp only [symStep2, ite_eq_left hk, e1, e2], hp, rfl, hz⟩
   case setc d =>
     rcases ann with _ | ⟨kd, _ | ⟨_, _⟩⟩ <;> simp [ops, annOK] at ha
     simp only [symStep2P, hc, hz] at h

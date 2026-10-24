@@ -212,7 +212,7 @@ theorem bubble_blockMaxTaint_eq :
   | case3 s1 s2 rest hcond ih =>
     have hindep : indep s1 s2 = true := by
       have := hcond; simp only [Bool.and_eq_true] at this; exact this.1
-    simp only [bubble, if_pos hcond]
+    simp only [bubble, ite_eq_left hcond]
     -- bubble (s1::s2::rest) = s2 :: bubble (s1::rest)
     show blockMaxTaint T (s2 :: bubble (s1 :: rest)) = _
     rw [show blockMaxTaint T (s2 :: bubble (s1 :: rest))
@@ -224,7 +224,7 @@ theorem bubble_blockMaxTaint_eq :
     simp only [blockMaxTaint] at hswap ⊢
     exact hswap.symm
   | case4 s1 s2 rest hcond ih =>
-    simp only [bubble, if_neg hcond]
+    simp only [bubble, ite_eq_right hcond]
     -- bubble (s1::s2::rest) = s1 :: bubble (s2::rest)
     show blockMaxTaint T (s1 :: bubble (s2 :: rest)) = _
     simp only [blockMaxTaint]

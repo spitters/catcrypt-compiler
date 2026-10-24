@@ -93,11 +93,11 @@ theorem foldl_toDigits : ∀ (k a : Nat),
     by_cases hk : k < 10
     · rw [Nat.toDigits_of_lt_base hk]
       obtain ⟨hd, hv⟩ := digitChar_ok k hk
-      simp only [List.foldl_cons, List.foldl_nil, dstep, hd, if_true, hv,
+      simp only [List.foldl_cons, List.foldl_nil, dstep, hd, ite_true, hv,
         List.length_cons, List.length_nil]
     · rw [toDigits_rec k (by omega), List.foldl_append, ih (k / 10) (by omega) a]
       obtain ⟨hd, hv⟩ := digitChar_ok (k % 10) (Nat.mod_lt _ (by decide))
-      simp only [List.foldl_cons, List.foldl_nil, dstep, hd, if_true,
+      simp only [List.foldl_cons, List.foldl_nil, dstep, hd, ite_true,
         List.length_append, List.length_cons, List.length_nil, Nat.pow_succ]
       generalize (10 : Nat) ^ (Nat.toDigits 10 (k / 10)).length = P
       congr 1
@@ -143,7 +143,7 @@ theorem splitChars_no_sep (L : List Char) (h : ∀ c ∈ L, c ≠ ':') :
     splitChars ':' L = [L] := by
   induction L with
   | nil => rfl
-  | cons a _ ih => rw [splitChars, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
+  | cons a _ ih => rw [splitChars, ite_eq_right (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
 
 /-- A separator-free prefix followed by a separator is the first `splitChars`
     group. -/
@@ -153,7 +153,7 @@ theorem splitChars_cons_sep (L R : List Char) (h : ∀ c ∈ L, c ≠ ':') :
   | nil => simp [splitChars]
   | cons a _ ih =>
       simp only [List.cons_append]
-      rw [splitChars, if_neg (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
+      rw [splitChars, ite_eq_right (h a (by simp)), ih (fun c hc => h c (by simp [hc]))]
 
 /-- A base-10 digit character passes `Char.isDigit`. -/
 theorem digitChar_isDigit : ∀ d < 10, (Nat.digitChar d).isDigit = true := by
@@ -187,14 +187,14 @@ theorem charsIsNatStep_digits (L : List Char) (hL : ∀ c ∈ L, c.isDigit = tru
     have hc := hL c (by simp)
     have hne : c ≠ '_' := by
       intro h; subst h; simp [Char.isDigit] at hc
-    rw [charsIsNatStep, if_neg hne, if_pos hc, ih (fun c hc => hL c (by simp [hc]))]
+    rw [charsIsNatStep, ite_eq_right hne, ite_eq_left hc, ih (fun c hc => hL c (by simp [hc]))]
     by_cases h : rest = [] <;> simp [h]
 
 /-- A non-empty digit list passes `charsIsNat`. -/
 theorem charsIsNat_digits (L : List Char) (hL : ∀ c ∈ L, c.isDigit = true) (hne : L ≠ []) :
     charsIsNat L = true := by
   unfold charsIsNat
-  rw [charsIsNatStep_digits L hL false, if_neg hne]
+  rw [charsIsNatStep_digits L hL false, ite_eq_right hne]
   rfl
 
 /-- The accumulator step of the `charsToNat?` fold. -/
@@ -218,12 +218,12 @@ theorem foldl_toDigits_cstep : ∀ (k a : Nat),
     by_cases hk : k < 10
     · rw [Nat.toDigits_of_lt_base hk]
       obtain ⟨_, hv⟩ := digitChar_ok k hk
-      simp only [List.foldl_cons, List.foldl_nil, cstep, if_neg (digitChar_ne_underscore k hk), hv,
+      simp only [List.foldl_cons, List.foldl_nil, cstep, ite_eq_right (digitChar_ne_underscore k hk), hv,
         List.length_cons, List.length_nil]
     · rw [toDigits_rec k (by omega), List.foldl_append, ih (k / 10) (by omega) a]
       obtain ⟨_, hv⟩ := digitChar_ok (k % 10) (Nat.mod_lt _ (by decide))
       simp only [List.foldl_cons, List.foldl_nil, cstep,
-        if_neg (digitChar_ne_underscore (k % 10) (Nat.mod_lt _ (by decide))), hv,
+        ite_eq_right (digitChar_ne_underscore (k % 10) (Nat.mod_lt _ (by decide))), hv,
         List.length_append, List.length_cons, List.length_nil, Nat.pow_succ]
       generalize (10 : Nat) ^ (Nat.toDigits 10 (k / 10)).length = P
       have hm : a * (P * 10) = a * P * 10 := (Nat.mul_assoc a P 10).symm
@@ -234,7 +234,7 @@ theorem foldl_toDigits_cstep : ∀ (k a : Nat),
 theorem charsToNat?_toString (k : Nat) : charsToNat? (toString k).toList = some k := by
   show charsToNat? (String.ofList (Nat.toDigits 10 k)).toList = some k
   rw [String.toList_ofList, charsToNat?,
-    if_pos (charsIsNat_digits _ (toDigits_isDigit k) (toDigits_ne_nil k))]
+    ite_eq_left (charsIsNat_digits _ (toDigits_isDigit k) (toDigits_ne_nil k))]
   show some ((Nat.toDigits 10 k).foldl cstep 0) = some k
   rw [foldl_toDigits_cstep k 0]
   simp
@@ -250,7 +250,7 @@ theorem hasSuffix_append (s pat : String) : hasSuffix (s ++ pat) pat = true := b
 theorem stripWidthTag_append64 (s : String) (hs : '^' ∉ s.toList) :
     stripWidthTag (s ++ ":64") = s := by
   unfold stripWidthTag
-  rw [if_neg (by simp [hs]), if_pos (hasSuffix_append s ":64"), String.toList_append,
+  rw [ite_eq_right (by simp [hs]), ite_eq_left (hasSuffix_append s ":64"), String.toList_append,
     show (":64" : String).toList = [':', '6', '4'] from by decide]
   simp
 
@@ -263,13 +263,13 @@ theorem stripWidthTag_withWidthTag_of_caret_free (w : Nat) (s : String)
     exact stripWidthTag_append64 s hs
   · unfold stripWidthTag
     rw [toList_withWidthTag_of_ne hw]
-    rw [if_pos (by simp)]; simp [List.takeWhile_append_of_pos (bne_at_of_not_mem hs)]
+    rw [ite_eq_left (by simp)]; simp [List.takeWhile_append_of_pos (bne_at_of_not_mem hs)]
 
 /-- `stripWidthTag` fixes a string without `^` that does not end in `:64`. -/
 theorem stripWidthTag_of_untagged (s : String) (h1 : '^' ∉ s.toList)
     (h2 : hasSuffix s ":64" = false) : stripWidthTag s = s := by
   unfold stripWidthTag
-  rw [if_neg (by simp [h1]), if_neg (by simp [h2])]
+  rw [ite_eq_right (by simp [h1]), ite_eq_right (by simp [h2])]
 
 /-! ## 2. The mnemonic decoder -/
 

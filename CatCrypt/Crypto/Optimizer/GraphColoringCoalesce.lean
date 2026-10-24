@@ -235,7 +235,7 @@ theorem runBlock_dropIdMovs (block : List (JInstr 64)) (s : JState 64) :
     rw [List.filter_cons]
     by_cases h : isIdMov i = true
     · -- dropped: i is an identity self-mov, a no-op
-      simp only [h, Bool.not_true, Bool.false_eq_true, if_false]
+      simp only [h, Bool.not_true, Bool.false_eq_true, ite_false]
       rw [runBlock_cons]
       -- i is `mov r (.reg r)`; evalInstr is a no-op
       match i, h with
@@ -248,7 +248,7 @@ theorem runBlock_dropIdMovs (block : List (JInstr 64)) (s : JState 64) :
         exact this
     · -- kept
       have hk : (! isIdMov i) = true := by simp [h]
-      rw [if_pos hk, runBlock_cons, runBlock_cons]
+      rw [ite_eq_left hk, runBlock_cons, runBlock_cons]
       have := ih' (evalInstr s i)
       unfold dropIdMovs at this
       exact this

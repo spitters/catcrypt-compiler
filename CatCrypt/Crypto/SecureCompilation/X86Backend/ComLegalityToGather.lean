@@ -198,7 +198,7 @@ theorem linstrRSupported_normLinstrR_export (op : JasminOp) (dst : String)
   unfold opCleanlyLowers at h
   split at h
   · -- op = `regConst 64 n`: export is `Lopn [reg dst] "MOV:64" [imm n]`.
-    simp only [opToLinstrR, withWidthTag, if_pos, normLinstrR, stripWidthTag_MOV]
+    simp only [opToLinstrR, withWidthTag, ite_eq_left, normLinstrR, stripWidthTag_MOV]
     -- The single `.imm` source rules out the LOAD/STORE arms; `split` resolves
     -- the mnemonic match (`"MOV"` vs `"LOAD"`/`"STORE"`), then `isAluMnemonic`.
     unfold linstrRSupported

@@ -195,7 +195,7 @@ theorem fuseMulHiAux_cons_out (s : Bool) (env : ScratchEnv) (pend : List (String
     · exact ⟨[i], _, _, rfl, Or.inl rfl⟩
     · rename_i hlo
       by_cases hhi : isMulHiMnem opn = true
-      · simp only [hhi, if_true]
+      · simp only [hhi, ite_true]
         split
         · split
           · split
@@ -239,7 +239,7 @@ theorem fuseMulHiAux_cons_out (s : Bool) (env : ScratchEnv) (pend : List (String
                   exact ⟨_, _, _, rfl, by simp, by simp [reloadScratch, reloadScratch2]⟩
                 · simp at h
         · exact ⟨[i], _, _, rfl, Or.inl rfl⟩
-      · simp only [hhi, if_false, Bool.false_eq_true]
+      · simp only [hhi, ite_false, Bool.false_eq_true]
         exact ⟨[i], _, _, rfl, Or.inl rfl⟩
   · exact ⟨[i], _, _, rfl, Or.inl rfl⟩
 
@@ -350,7 +350,7 @@ theorem opRw_rewriteOperand {facts : List MoveFact} (hf : ∀ f ∈ facts, isFac
   | reg u =>
     simp only [rewriteOperand]
     by_cases hc : (isPhysGP u && ds != some u) = true
-    · rw [if_pos hc]
+    · rw [ite_eq_left hc]
       cases hl : lookupFact facts u with
       | none => exact Or.inl rfl
       | some p =>
@@ -363,7 +363,7 @@ theorem opRw_rewriteOperand {facts : List MoveFact} (hf : ∀ f ∈ facts, isFac
           simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
           exact hc.2 (hds u hd hc.1)
         · exact Or.inl rfl
-    · rw [if_neg hc]; exact Or.inl rfl
+    · rw [ite_eq_right hc]; exact Or.inl rfl
   | _ => exact Or.inl rfl
 
 theorem mem_foldl_killFacts : ∀ (l : List String) (facts : List MoveFact) (f : MoveFact),
@@ -1270,7 +1270,7 @@ theorem legalizeInstr_arrImm (ok : Bool) (i : Linstr) (hai : isArrImmB i.li_i = 
       unfold TwoAddrLegalize.needsTie
       rw [Bool.or_eq_false_iff, Bool.and_eq_false_iff]
       rcases ho with rfl | rfl <;> exact ⟨by decide +kernel, Or.inl (by decide +kernel)⟩
-    simp only [ht, Bool.false_and, Bool.false_eq_true, if_false]
+    simp only [ht, Bool.false_and, Bool.false_eq_true, ite_false]
   · rfl
 
 /-- **`cellBaseFreeB_twoAddrBody`**: the x86 two-address legalisation keeps `cellBaseFreeB`. -/

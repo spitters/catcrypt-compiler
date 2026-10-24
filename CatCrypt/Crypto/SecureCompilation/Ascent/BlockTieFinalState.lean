@@ -301,7 +301,7 @@ theorem stateW_interp : JStateInterpG nmW valW stateW := by
   | .there .here =>
       show (if tieRegName 1 = tieRegName 0 then (7 : BitVec 64)
               else if tieRegName 1 = tieRegName 1 then 35 else 0) = 35
-      rw [if_neg (fun h => by simpa using tieRegName_inj h), if_pos rfl]
+      rw [ite_eq_right (fun h => by simpa using tieRegName_inj h), ite_eq_left rfl]
 
 /-- **Both slots of the two-op block are readable.** After `runBlock` of the
     lowered block, the first op's register holds the intermediate `7 + 35 = 42`

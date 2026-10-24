@@ -133,9 +133,9 @@ theorem pairCoeffs_halves {q N : ℕ} (a : Fin (2 * N) → ZMod q) :
     pairCoeffs (row1 (fstHalf a)) (row1 (sndHalf a)) = a := by
   funext j
   by_cases h : (j : ℕ) < N
-  · simp only [pairCoeffs, dif_pos h]
+  · simp only [pairCoeffs, dite_eq_left h]
     rfl
-  · simp only [pairCoeffs, dif_neg h]
+  · simp only [pairCoeffs, dite_eq_right h]
     show a ⟨N + (j - N), _⟩ = a j
     congr 1
     ext
@@ -193,13 +193,13 @@ theorem rowCoeffs_slices {q : ℕ} (k logN : ℕ) (a : Fin (2 * k * 2 ^ logN) �
   funext m
   have hm := m.2
   by_cases h : (m : ℕ) < k * 2 ^ logN
-  · simp only [rowCoeffs, if_pos h]
+  · simp only [rowCoeffs, ite_eq_left h]
     show finLanes a (m / 2 ^ logN * 2 ^ logN + m % 2 ^ logN) = a m
-    rw [Nat.div_add_mod', finLanes, dif_pos hm]
-  · simp only [rowCoeffs, if_neg h]
+    rw [Nat.div_add_mod', finLanes, dite_eq_left hm]
+  · simp only [rowCoeffs, ite_eq_right h]
     show finLanes a (k * 2 ^ logN + (m - k * 2 ^ logN) / 2 ^ logN * 2 ^ logN
       + (m - k * 2 ^ logN) % 2 ^ logN) = a m
-    rw [Nat.add_assoc, Nat.div_add_mod',Nat.add_sub_cancel' (by omega), finLanes, dif_pos hm]
+    rw [Nat.add_assoc, Nat.div_add_mod',Nat.add_sub_cancel' (by omega), finLanes, dite_eq_left hm]
 
 /-- The row accumulation as lane ops: op `(k, ψ, logN)` maps the two rows on
 `2 · k · 2 ^ logN` lanes to `∑_{j < k} basemulF` at `L = logN − 1`. -/

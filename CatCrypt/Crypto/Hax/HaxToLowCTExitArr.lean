@@ -393,7 +393,7 @@ theorem lookup_arr {rs : RustState} {y : String} {n n' : Nat} {v : RustVal (.TAr
 
 theorem lookup_self {rs : RustState} {y : String} {t : TowerType} {w : RustVal t}
     (hl : locatedLookup (rsSetTower rs y ⟨t, default⟩) ⟨y, t⟩ = some w) : w = default := by
-  simp only [locatedLookup, rsSetTower_same, dif_pos] at hl
+  simp only [locatedLookup, rsSetTower_same, dite_eq_left] at hl
   exact (Option.some.inj hl).symm
 
 theorem ifConvert_seq (flag : Option String) (S : List String) (k : Nat) (a b : LowCT) :
@@ -631,7 +631,7 @@ theorem exitArr_taken (V : ArrView L) {T : String → Prop} (hT : ∀ y, T y →
       cases h2 with
       | arrStore _ _ _ _ idx oldA srcV hidx hla hls =>
       subst hidx
-      simp only [locatedLookup, locatedUpdate, rsSetTower_same, dif_pos, Option.some.injEq]
+      simp only [locatedLookup, locatedUpdate, rsSetTower_same, dite_eq_left, Option.some.injEq]
         at hls
       subst hls
       simp only [locatedUpdate] at hla hrunS
@@ -827,7 +827,7 @@ theorem exitArrB_sound (Ts : List String) :
       obtain ⟨sv, st⟩ := s
       simp only at hn hs hsT
       subst hn
-      simp only [scalarizeArrIn, and_self, if_true]
+      simp only [scalarizeArrIn, and_self, ite_true]
       exact .load hc (srcName_of_srcNameB ha) haT hai (srcName_of_srcNameB hs) hsT
         (srcName_of_srcNameB hi) (ih hk)
   | case2 m l x arr i src =>
@@ -840,7 +840,7 @@ theorem exitArrB_sound (Ts : List String) :
       obtain ⟨av, at'⟩ := arr
       simp only at hn harr harrT
       subst hn
-      simp only [scalarizeArrIn, and_self, if_true]
+      simp only [scalarizeArrIn, and_self, ite_true]
       exact .store hm (srcName_of_srcNameB hx) (srcName_of_srcNameB harr) harrT
         (srcName_of_srcNameB hi)
   | case3 c dr k n c' b ih =>
@@ -1081,11 +1081,11 @@ theorem exitArrL_semG (V : ArrView L) {T : String → Prop} (hT : ∀ y, T y →
               ihb (boundG S a') (afterG B a') r1 rs' e₁ h2 (hrun.2 r1 h1) hr.2 hS₁ hb₁ hB₁
                 henv₁ hir₁ hA₁
             refine ⟨e₂, ?_, henv₂, hir₂, ?_, ?_, ?_, hA₂⟩
-            · simp only [semG, hf', Bool.false_eq_true, if_false, hs₁, Option.bind_some]
+            · simp only [semG, hf', Bool.false_eq_true, ite_false, hs₁, Option.bind_some]
               exact hs₂
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hb₂
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hS₂
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hB₂
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hb₂
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hS₂
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hB₂
   | @letU64Zero x b b' hx hxT hbb ih =>
       intro S B rs rs' env hexec hrun hr hS hb hB henv hir hA
       by_cases hf : loopFreeB b' = true
@@ -1108,11 +1108,11 @@ theorem exitArrL_semG (V : ArrView L) {T : String → Prop} (hT : ∀ y, T y →
               ih (x :: S) (fun y => B y ∨ y = x) _ rs' _ hbody hrun hr (srcList_cons hx hS) hb1
                 (sub_cons x hB) henv1 (scalarInRange_upd hir x (by norm_num)) hA1
             refine ⟨env3, ?_, henv3, hir3, ?_, ?_, ?_, hA3⟩
-            · simp only [semG, hf', Bool.false_eq_true, if_false, hs2, Option.bind_some]
+            · simp only [semG, hf', Bool.false_eq_true, ite_false, hs2, Option.bind_some]
               exact hs3
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hb3
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hS3
-            · simp only [boundG, hf', Bool.false_eq_true, if_false]; exact hB3
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hb3
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hS3
+            · simp only [boundG, hf', Bool.false_eq_true, ite_false]; exact hB3
   | @loop x bd body body' hx hxT hbd hrel =>
       intro S B rs rs' env hexec hrun hr hS hb hB henv hir hA
       have hcnt := boundVal_eq_evalState hbd hr.1 henv hir
@@ -1362,7 +1362,7 @@ theorem litPeel_nil {c : LowCT} (h : (litPeel c).1 = []) : (litPeel c).2 = c := 
   unfold litPeel at h ⊢
   split
   · split
-    · rename_i hx; simp only [hx, if_true] at h; cases h
+    · rename_i hx; simp only [hx, ite_true] at h; cases h
     · rfl
   · rfl
 

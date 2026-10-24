@@ -276,7 +276,7 @@ theorem or_neg_shr_63 (q : BitVec 64) :
     (q ||| (0 - q)) >>> 63 = if q = 0 then 0 else 1 := by
   by_cases hq : q = 0
   · subst hq; rfl
-  · rw [if_neg hq]
+  · rw [ite_eq_right hq]
     apply BitVec.eq_of_toNat_eq
     have hq' : q.toNat ≠ 0 := fun h => hq (BitVec.eq_of_toNat_eq (by simpa using h))
     have hlt := q.isLt
@@ -306,8 +306,8 @@ theorem maskChain_eq (D : BitVec 64) (e : Nat) :
   have h0 : BitVec.ofNat 64 0 = 0 := rfl
   rw [h63, h0, xor_xor_and_eq_or, or_neg_shr_63, eqMask]
   by_cases hq : D ^^^ BitVec.ofNat 64 e = 0
-  · rw [if_pos hq, if_pos (BitVec.xor_eq_zero_iff.mp hq)]; rfl
-  · rw [if_neg hq, if_neg (fun h => hq (BitVec.xor_eq_zero_iff.mpr h))]; rfl
+  · rw [ite_eq_left hq, ite_eq_left (BitVec.xor_eq_zero_iff.mp hq)]; rfl
+  · rw [ite_eq_right hq, ite_eq_right (fun h => hq (BitVec.xor_eq_zero_iff.mpr h))]; rfl
 
 /-! ## 5. Single-command steps of the waist semantics -/
 
@@ -406,7 +406,7 @@ theorem setE_run {x : String} {e : SExpr} {env : SEnvScalar} (hcl : srcClean e)
   · simp only [semScalar, h]
   · simp [SEnvScalar.upd]
   · intro s hs hne
-    simp only [SEnvScalar.upd, if_neg hne]
+    simp only [SEnvScalar.upd, ite_eq_right hne]
     exact semLowerSExpr_off_tmp e env env2 0 c nm s h hs
 
 /-- A dynamic-index load of a word out of a bound memref. -/
@@ -426,14 +426,14 @@ theorem arrStore_eq {arrN idxN srcN : String} {a : Fin 4 → BitVec 64}
       = some (env.upd arrN (t := .memref 4) (memSetDyn a i.toNat v)) := by
   have hty : encodeTy (Located.mk arrN (TowerType.TBytes 32)).locDst = CryptoTy.memref 4 :=
     rfl
-  simp only [semScalar, ha, hi, hv, dif_pos hty]
+  simp only [semScalar, ha, hi, hv, dite_eq_left hty]
   rfl
 
 theorem litClean {n : Nat} (h : n < 2 ^ 64) : srcClean (.SLit n) := h
 
 theorem upd_ne' {t : CryptoTy} {env : SEnvScalar} {y : String} {v : ⟦t⟧} {x : String}
     (h : x ≠ y) : (env.upd y v) x = env x := by
-  simp only [SEnvScalar.upd, if_neg h]
+  simp only [SEnvScalar.upd, ite_eq_right h]
 
 theorem readU64_of {env : SEnvScalar} {s : String} {w : BitVec 64}
     (h : env s = some ⟨.sword 64, w⟩) : (envReadU64 env s).isSome := by
@@ -557,7 +557,7 @@ theorem cellCmds_run {N : Nat} {T : Fin (4 * N) → BitVec 64} {D : BitVec 64}
     (.SLit (4 * e + k.val))).toNat) with he2
   have f2 : ∀ s, ¬ isTmpName s → s ≠ "l" → e2 s = e1 s := fun s _ hs => upd_ne' hs
   have v2 : e2 "l" = some ⟨.sword 64, memGetDyn T (4 * e + k.val)⟩ := by
-    rw [he2, SEnvScalar.upd, if_pos rfl]
+    rw [he2, SEnvScalar.upd, ite_eq_left rfl]
     simp only [SExpr.evalBV, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hi]
   have h2 := h1.frame f2 rfl
   have m2 := (f2 "m" nm (by decide)).trans m1
@@ -621,7 +621,7 @@ theorem foldCmd_run {N : Nat} {T : Fin (4 * N) → BitVec 64} {D : BitVec 64}
       rw [v1]
       simp [setLimb, SExpr.evalBV, reader_of (h.acc j), reader_of hc]
     · rw [f1 _ (accName_notTmp j) (accName_ne hj)]
-      simp only [setLimb, if_neg hj]
+      simp only [setLimb, ite_eq_right hj]
       exact h.acc j
 
 /-- The limbs after one entry: `a k ⊕ (T[4e + k] ∧ eqMask D e)`. -/
@@ -698,7 +698,7 @@ theorem scanVal_eq {N : Nat} (T : Fin (4 * N) → BitVec 64) (D : BitVec 64) (k 
         simp [hlt, hne, show D.toNat < n + 1 by omega]
       · by_cases heq : D.toNat = n
         · subst heq
-          rw [if_neg hlt, if_pos (hiff.mpr rfl), if_pos (Nat.lt_succ_self _)]
+          rw [ite_eq_right hlt, ite_eq_left (hiff.mpr rfl), ite_eq_left (Nat.lt_succ_self _)]
           simp only [BitVec.and_allOnes]; exact BitVec.zero_xor
         · have hne : ¬ D = BitVec.ofNat 64 n := fun h => heq (hiff.mp h)
           simp [hlt, hne, show ¬ D.toNat < n + 1 by omega]
@@ -1028,17 +1028,17 @@ theorem selTys_vmApprox (N : Nat) : VmApprox (selTys N) (selVM N) := by
   simp only [selTys] at hx
   by_cases h1 : x = "out"
   · subst h1
-    simp only [if_true, Option.some.injEq] at hx
+    simp only [ite_true, Option.some.injEq] at hx
     subst hx
     exact ⟨.here, by simp [selVM, VarMap.bind]; rfl⟩
   · by_cases h2 : x = "d"
     · subst h2
-      simp only [if_neg h1, if_true, Option.some.injEq] at hx
+      simp only [ite_eq_right h1, ite_true, Option.some.injEq] at hx
       subst hx
       exact ⟨.there .here, by simp [selVM, VarMap.bind]; rfl⟩
     · by_cases h3 : x = "tbl"
       · subst h3
-        simp only [if_neg h1, if_neg h2, if_true, Option.some.injEq] at hx
+        simp only [ite_eq_right h1, ite_eq_right h2, ite_true, Option.some.injEq] at hx
         subst hx
         exact ⟨.there (.there .here), by simp [selVM, VarMap.bind, VarMap.empty]; rfl⟩
       · simp [h1, h2, h3] at hx
@@ -1129,7 +1129,7 @@ theorem combSelectFront_denote_entry (N : Nat) (hN : 4 * N ≤ 2 ^ 64)
   obtain ⟨com, hf, -, hden⟩ := combSelectFront_denote N hN O D T
   refine ⟨com, hf, fun k => ?_⟩
   rw [hden]
-  simp only [if_pos hD]
+  simp only [ite_eq_left hD]
   exact memGetDyn_of_lt T (by omega)
 
 /-- The 16-entry select: `out[k] = T[4·D + k]` for every `D < 16`. -/

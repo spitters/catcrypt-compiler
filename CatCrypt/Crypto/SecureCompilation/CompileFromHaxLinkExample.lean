@@ -56,7 +56,7 @@ def outerSigma0Thir : Thir :=
 theorem outerSigma0Thir_lowers :
     (thirToJasmin (w := 32) (nIn := 1) [] (initFState 32 1) outerSigma0Thir).isSome := by
   simp only [outerSigma0Thir, thirToJasmin, rhsExpr, atomsToVarHV, Atom.toVar,
-    initFState, FState.push, inputVarRep, Option.map_some, if_true]
+    initFState, FState.push, inputVarRep, Option.map_some, ite_true]
   rfl
 
 /-- The outer `Com` (the front's output) at width 32. -/
@@ -70,7 +70,7 @@ noncomputable def outerSigma0Com : Com jasminDialect (frontCtxt 32 1 []) (rW 32)
 theorem sigma0Thir_lowers :
     (thirToJasmin (w := 32) (nIn := 1) [] (initFState 32 1) sigma0Thir).isSome := by
   simp only [sigma0Thir, thirToJasmin, rhsExpr, Atom.toVar, initFState, FState.push,
-    inputVarRep, if_true]
+    inputVarRep, ite_true]
   rfl
 
 /-- The front-compiled σ₀ kernel denotes the FIPS 180-4 σ₀ formula on every input

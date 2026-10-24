@@ -125,8 +125,8 @@ theorem loadMem_caseCF (flg : String → Prop) (cfN dst base : String) (off : In
         simp only [runBlock_cons, runBlock_nil, evalInstr, x86_MOV, JState.setReg, JState.load]
       rw [hrhs]
       by_cases hrd : r = dst
-      · subst hrd; rw [LstateN.getW_setReg_same, hV, if_pos rfl]
-      · rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, hcorr.regAgree r hr, if_neg hrd]
+      · subst hrd; rw [LstateN.getW_setReg_same, hV, ite_eq_left rfl]
+      · rw [LstateN.getW_setReg_other _ _ _ _ _ hrd, hcorr.regAgree r hr, ite_eq_right hrd]
     · intro base' off'
       show ((ls.setReg dst (ls.lmem base (Int.ofNat off.toNat))).nextPc).lmem base' off'
         = (runBlock s [.loadMem dst base off]).mem base' off'

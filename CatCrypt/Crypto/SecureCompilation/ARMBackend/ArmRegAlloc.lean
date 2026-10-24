@@ -286,7 +286,7 @@ def reindex (ρ : String → String) (ρinv : String → String) (s : AState) : 
 theorem reindex_get (ρ ρinv : String → String) (s : AState) (n : String)
     (h : ρinv (ρ n) = n) (hz : ρ n ≠ "wzr") :
     (reindex ρ ρinv s).get (ρ n) = s.get n := by
-  simp only [reindex, AState.get, hz, if_false, h]
+  simp only [reindex, AState.get, hz, ite_false, h]
 
 /-! ### The clean resident soundness: injective renaming preserves the computation
 
@@ -465,7 +465,7 @@ theorem evalReload_noop (m : AMemState) (off : Int) (r : String) (hr : r ≠ "wz
     congr 1
     cases st with
     | mk regs =>
-      simp only [AState.set, AState.get, hr, if_false]
+      simp only [AState.set, AState.get, hr, ite_false]
       congr 1
       funext r'
       by_cases h : r' = r <;> simp [h]

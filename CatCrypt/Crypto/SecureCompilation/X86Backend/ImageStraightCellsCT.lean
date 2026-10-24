@@ -625,7 +625,7 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
             have hsm : slotMov? (.Lopn [.reg D] o [.reg A]) = none := by
               have ho : ¬(o = "MOVQ" ∨ o = "MOV:64") := by
                 rintro (rfl | rfl) <;> simp [castTagW] at hw
-              simp only [slotMov?, if_neg ho]
+              simp only [slotMov?, ite_eq_right ho]
             rw [hpc]
             simp only [narrowSrc, hbk?, hclK, hl, List.mem_append, not_or]
             exact ⟨by simp, not_mem_bitSrc hget hsm A⟩)
@@ -765,7 +765,7 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           simp [zOk, hok.1, hb.1.1]
         have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
             = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg (some 1)) := by
-          rw [tagAt, if_pos hbit, hia, ImageAddrSimW.normA_movImm hmo]
+          rw [tagAt, ite_eq_left hbit, hia, ImageAddrSimW.normA_movImm hmo]
         rw [hli] at hst
         exact (sim_bmov P rsp D n hz sa s zf hc s' zf' hst).1
       | false =>
@@ -836,7 +836,7 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         have hc2 := hF.carry (k + 1) hkn
         unfold carryPrevB at hc2
         rw [hb] at hc2
-        simp only [if_true, Nat.add_sub_cancel, hbk?] at hc2
+        simp only [ite_true, Nat.add_sub_cancel, hbk?] at hc2
         simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
           Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
         obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, hDC⟩, hsa⟩, hss⟩, -⟩ := hc2
@@ -874,7 +874,7 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         have hc2 := hF.carry (k + 1) hkn
         unfold carryPrevB at hc2
         rw [hb] at hc2
-        simp only [if_true, Nat.add_sub_cancel, hbk?] at hc2
+        simp only [ite_true, Nat.add_sub_cancel, hbk?] at hc2
         simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
           Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
         obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, -⟩, hsa⟩, hss⟩, hsc⟩ := hc2
@@ -921,7 +921,7 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         have hc2 := hF.carry (k + 1) hkn
         unfold carryPrevB at hc2
         rw [hb] at hc2
-        simp only [if_true, Nat.add_sub_cancel, hbk?] at hc2
+        simp only [ite_true, Nat.add_sub_cancel, hbk?] at hc2
         simp only [Bool.and_eq_true, beq_iff_eq, bne_iff_ne, ne_eq,
           Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
         obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, hDC⟩, -⟩, -⟩, -⟩ := hc2
@@ -1533,7 +1533,7 @@ theorem run_simWL {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           have hb' : sa.view.condB cd = true := by rw [hcb, hzp]; simp
           refine ⟨sa', ?_⟩
           have := RunL.jcc (r := .doitm) (ok := fun _ _ => True) hj hcd
-            (by rw [hb', if_pos rfl]; exact hR)
+            (by rw [hb', ite_eq_left rfl]; exact hR)
           rw [hb'] at this
           simpa [hzp] using this
         · have hstep : stepA (frameP (Params.ofBody body) rsp) body s zf
@@ -1557,7 +1557,7 @@ theorem run_simWL {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
             rw [hcb]; cases zf <;> cases pol <;> simp_all
           refine ⟨sa', ?_⟩
           have := RunL.jcc (r := .doitm) (ok := fun _ _ => True) hj hcd
-            (by rw [hb', if_neg (by simp)]; simpa [nOf] using hR)
+            (by rw [hb', ite_eq_right (by simp)]; simpa [nOf] using hR)
           rw [hb'] at this
           have hzb : (zf == pol) = false := by cases zf <;> cases pol <;> simp_all
           simpa [hzb] using this
@@ -1591,9 +1591,9 @@ theorem tracedSimW_of_armLeaks {body : Lcmd} (h : printedAddrWB body = true)
   set sa1 := evalInstrA sa (leaFrame (-(Int.ofNat F)))
   have hc0 : ACorrW rsp sa1 s :=
     { regs := fun R hR => by
-        rw [hl1, if_neg (fun e => (gpFacts hR).physNe e)]
+        rw [hl1, ite_eq_right (fun e => (gpFacts hR).physNe e)]
         exact Or.inl (hent R hR)
-      sp := by rw [hl1, if_pos rfl, hrsp]; rfl
+      sp := by rw [hl1, ite_eq_left rfl, hrsp]; rfl
       mem := fun x _ => by rw [hmem, hm1] }
   have hz0 : isCondB (body[0]'hF.pos).li_i = true → sa1.flags.zf.getD false = zf := by
     intro hcnd
@@ -1837,12 +1837,12 @@ theorem leak_aarmW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
     have hB : readsI (AArm.zero B n).li.fst B := reg_reads (by simp)
     have hg := getW_widen (sa := sa) hw hB 64
     simp only [AArm.li] at hg ⊢
-    simp only [instrLeakA, zeroArrA?, if_true, hg]
+    simp only [instrLeakA, zeroArrA?, ite_true, hg]
   | simm d B V k =>
     have hB : readsI (AArm.simm d B V k).li.fst B := reg_reads (by simp)
     have hg := getW_widen (sa := sa) hw hB 64
     simp only [AArm.li] at hg ⊢
-    simp only [instrLeakA, storeImmStruct?, if_true, hg]
+    simp only [instrLeakA, storeImmStruct?, ite_true, hg]
 
 /-- The copy of an operand into an accumulator other than the stack register keeps the stack
     register. -/
@@ -1850,7 +1850,7 @@ theorem rsp_sMv (P : Params) (rsp : BitVec 64) (D A : String) (acc : Nat) (sa : 
     (hsp : sa.regs "%rsp" = rsp) (hne : "%rsp" ≠ SailX86Decoder.regName acc) :
     (aMachine.runBlock sa ((sMv P D A acc).map Prod.snd)).regs "%rsp" = rsp := by
   by_cases hlay : isSpillOrQsave A = true ∨ ¬ (A = D ∧ acc = gpNumU D)
-  · rw [(run_sMv P rsp D A acc sa hsp hlay).1, if_neg hne, hsp]
+  · rw [(run_sMv P rsp D A acc sa hsp hlay).1, ite_eq_right hne, hsp]
   · simp only [not_or, Bool.not_eq_true, not_not] at hlay
     obtain ⟨hAs, rfl, hacc⟩ := hlay
     have he : sMv P A A acc = [] := by simp [sMv, hAs, hacc]
@@ -1862,7 +1862,7 @@ theorem rsp_sMv (P : Params) (rsp : BitVec 64) (D A : String) (acc : Nat) (sa : 
 theorem rsp_sAd (P : Params) (rsp : BitVec 64) (S : String) (acc : Nat) (sa : AState)
     (hsp : sa.regs "%rsp" = rsp) (hne : "%rsp" ≠ SailX86Decoder.regName acc) :
     (aMachine.runBlock sa ((sAd P S acc).map Prod.snd)).regs "%rsp" = rsp := by
-  rw [(run_sAd P rsp S acc sa hsp).1, if_neg hne, hsp]
+  rw [(run_sAd P rsp S acc sa hsp).1, ite_eq_right hne, hsp]
 
 /-- **The events of the decoded instructions of a carry arm with frame-slot operands**:
     `sLeakW`. -/
@@ -1914,7 +1914,7 @@ theorem leak_sarm (P : Params) (rsp : BitVec 64) (c : SArm) (h : c.ok P = true) 
       rw [hjs, blockLeakA_append, blockLeakA_append, blockLeakA_append,
         leak_sMv P rsp D A _ _ hsp2 hA, leak_sAd P rsp S _ _ hsp3 hS]
       simp only [blockLeakA, opLeak_storeRsp, opLeak_loadRsp, hbt, r5, hsp4, hbtsp sa hsp,
-        sLeakW, hDs, if_true, fEv_slot hD hDs, List.nil_append, List.append_nil]
+        sLeakW, hDs, ite_true, fEv_slot hD hDs, List.nil_append, List.append_nil]
       simp [redW]
     · have hDg : gpOk D = true := kOk_gp hD (by simpa using hDs)
       have hRsp : "%rsp" ≠ SailX86Decoder.regName (gpNumU D) := fun e =>
@@ -1948,7 +1948,7 @@ theorem leak_stiWide (rsp : BitVec 64) (R : String) (v : Nat) (off : Int)
     R v
   have hsp2 : (evalInstrA (evalInstrA sa (.storeMem "%rsp" cmovRedZone (.reg R)))
       (.mov R (.imm v))).regs "%rsp" = rsp := by
-    rw [r2, if_neg hR, r1, hsp]
+    rw [r2, ite_eq_right hR, r1, hsp]
   obtain ⟨r3, -⟩ := evalInstrA_storeMem_eq
     (evalInstrA (evalInstrA sa (.storeMem "%rsp" cmovRedZone (.reg R))) (.mov R (.imm v)))
     "%rsp" R off

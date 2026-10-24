@@ -301,14 +301,14 @@ theorem lsemFuelMemF_of_runL (P : LprogM) :
       intro pre s t hbody hfn hpc _ hrun
       cases hrun
       refine I.lsemFuelMemF_halt P 0 s ?_
-      simp only [findInstrMem, hfn, if_true, hbody, List.append_nil, hpc,
+      simp only [findInstrMem, hfn, ite_true, hbody, List.append_nil, hpc,
         List.getElem?_eq_none (le_refl _)]
   | cons i rest ih =>
       intro pre s t hbody hfn hpc hstep hrun
       simp only [runL, Option.bind_eq_some_iff] at hrun
       obtain ⟨u, hu, hrun⟩ := hrun
       have hfetch : findInstrMem P s.prog = some i := by
-        simp only [findInstrMem, hfn, if_true, hbody, hpc, List.getElem?_append_right
+        simp only [findInstrMem, hfn, ite_true, hbody, hpc, List.getElem?_append_right
           (le_refl _), Nat.sub_self, List.getElem?_cons_zero]
       rw [List.length_cons, I.lsemFuelMemF_step P _ i s u hfetch hu]
       obtain ⟨hufn, hupc⟩ := hstep i (List.mem_cons_self ..) s u hu
@@ -463,7 +463,7 @@ def withCalls : Isa :=
     step_ctl := fun P i s h => by
       have hc : isCall i.fst = false := by
         cases hi : i.fst <;> simp_all [isCtl, isCall]
-      simp only [hc, Bool.false_eq_true, if_false]
+      simp only [hc, Bool.false_eq_true, ite_false]
       exact I.step_ctl P i s h }
 
 @[simp] theorem withCalls_toIsaData : I.withCalls.toIsaData = I.toIsaData := rfl
@@ -473,7 +473,7 @@ def withCalls : Isa :=
 /-- The step of an instruction other than a call or a return is the step of `I`. -/
 theorem withCalls_step_of_not_call (P : LprogM) (i : LinstrRM) (s : LstateMF)
     (h : isCall i.fst = false) : I.withCalls.step P i s = I.step P i s := by
-  simp only [withCalls, h, Bool.false_eq_true, if_false]
+  simp only [withCalls, h, Bool.false_eq_true, ite_false]
 
 /-- The step of a call through the stack: push the return address and jump within the
     function of the program, none otherwise. -/
@@ -531,7 +531,7 @@ def withKeep : Isa :=
   { I with
     step := fun P i s => if isKeep i.fst = true then some (keepStep s) else I.step P i s
     step_ctl := fun P i s h => by
-      simp only [isKeep_of_isCtl h, Bool.false_eq_true, if_false]
+      simp only [isKeep_of_isCtl h, Bool.false_eq_true, ite_false]
       exact I.step_ctl P i s h }
 
 @[simp] theorem withKeep_toIsaData : I.withKeep.toIsaData = I.toIsaData := rfl
@@ -542,12 +542,12 @@ def withKeep : Isa :=
     and changes nothing else. -/
 theorem withKeep_step_keep (P : LprogM) (i : LinstrRM) (s : LstateMF)
     (h : isKeep i.fst = true) : I.withKeep.step P i s = some (keepStep s) := by
-  simp only [withKeep, h, if_true]
+  simp only [withKeep, h, ite_true]
 
 /-- The step of an instruction other than a keep marker is the step of `I`. -/
 theorem withKeep_step_of_not_keep (P : LprogM) (i : LinstrRM) (s : LstateMF)
     (h : isKeep i.fst = false) : I.withKeep.step P i s = I.step P i s := by
-  simp only [withKeep, h, Bool.false_eq_true, if_false]
+  simp only [withKeep, h, Bool.false_eq_true, ite_false]
 
 /-- The step of `I.withKeep` on the keep marker `keepTouch ctr r`. -/
 theorem withKeep_step_keepTouch (P : LprogM) (ctr r : String) (tag : MemTag) (s : LstateMF) :
@@ -706,7 +706,7 @@ theorem loadStruct?_callShadow (dst f : String) (srcs : List LOperand) :
   · next heq =>
       simp only [LinstrR.Lopn.injEq] at heq
       obtain ⟨-, rfl, -⟩ := heq
-      exact if_neg (callMnem_ne (by decide))
+      exact ite_eq_right (callMnem_ne (by decide))
   · rfl
 
 /-- A shadow instruction of a call is no runtime-indexed store. -/
@@ -717,7 +717,7 @@ theorem storeStruct?_callShadow (dst f : String) (srcs : List LOperand) :
   · next heq =>
       simp only [LinstrR.Lopn.injEq] at heq
       obtain ⟨-, rfl, -⟩ := heq
-      exact if_neg (callMnem_ne (by decide))
+      exact ite_eq_right (callMnem_ne (by decide))
   · rfl
 
 /-- A control instruction is no shadow instruction of a call. -/
@@ -1040,7 +1040,7 @@ theorem withProcs_callLocal (T : ProcTable) (hk : ∀ f pr, T f = some pr → pr
         have haa : procArrArgs T f = pr'.arrArgs := by simp only [procArrArgs, hf]
         refine ⟨dst₀, f, srcs₀, x, hi, rfl, fun P' tag dst' srcs' s' hl hrd => ?_, ?_⟩
         · rw [I.withProcs_step_callShadow T hf P' dst' srcs' tag s', procStep,
-            if_pos (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hx, Option.map_some]
+            ite_eq_left (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hx, Option.map_some]
         · rw [ProcSummary.len_of_result (hk f pr' hf) hx, procOut, hf, Option.bind_some]
       · cases h
 
@@ -1073,7 +1073,7 @@ theorem withProcs_callLocalWord (T : ProcTable) (hR : ∀ f pr, T f = some pr �
         have haa : procArrArgs T f = pr'.arrArgs := by simp only [procArrArgs, hf]
         refine ⟨dst₀, f, srcs₀, r, hi, rfl, fun P' tag dst' srcs' s' hl hrd => ?_⟩
         rw [I.withProcs_step_callShadow T hf P' dst' srcs' tag s', procStep_of_retWord hrw,
-          if_pos (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hr, Option.map_some]
+          ite_eq_left (hl.trans hlen), ← haa, hrd, haa, hvs, Option.bind_some, hr, Option.map_some]
       · cases h
 
 /-- **At a table of summaries on words without word-array results, the steps of

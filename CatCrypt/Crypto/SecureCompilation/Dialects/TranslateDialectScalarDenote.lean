@@ -201,7 +201,7 @@ theorem scalar_stepWith (ls : SemLeafSpec) {Γ : Ctx} (vm : VarMap Γ)
     · subst hsd
       simp only [VarMap.bind, SEnvScalar.upd]
       rfl
-    · simp only [VarMap.bind, SEnvScalar.upd, if_neg hsd]
+    · simp only [VarMap.bind, SEnvScalar.upd, ite_eq_right hsd]
       rw [← hc s]
       cases hl : vm.lookup s with
       | none => rfl
@@ -289,13 +289,13 @@ theorem toDigitsCore_val (fuel : Nat) :
       intro n ds h
       simp only [Nat.toDigitsCore]
       by_cases hn' : n / 10 = 0
-      · rw [if_pos hn']
+      · rw [ite_eq_left hn']
         have hlt : n < 10 := by
           rcases Nat.lt_or_ge n 10 with h1 | h1
           · exact h1
           · exact absurd (Nat.div_eq_zero_iff.mp hn') (by omega)
         rw [dval_cons, digitChar_val (by omega : n % 10 < 10), Nat.mod_eq_of_lt hlt]
-      · rw [if_neg hn']
+      · rw [ite_eq_right hn']
         have hn10 : n / 10 < 10 ^ fuel := by rw [pow_succ] at h; omega
         rw [ih (n / 10) (Nat.digitChar (n % 10) :: ds) hn10, dval_cons,
           digitChar_val (by omega : n % 10 < 10)]
@@ -1225,7 +1225,7 @@ set_option linter.auxLemma false in
     reduces both by `rfl` in every case but `TU64 / memref / sword w`, where the
     `64` literal pattern compiles to a `dite (w = 64)` inside the two matchers:
     at `w = 64` both sides are again `rfl`, and at `w ≠ 64` unfolding the two
-    matcher constants exposes that `dite` on both sides and `dif_neg` closes
+    matcher constants exposes that `dite` on both sides and `dite_eq_right` closes
     it. The equation lemmas of the catch-all arm are not used, since generating
     them for the literal pattern exceeds the heartbeat budget. -/
 theorem arrLoadCont_eq {Γ : Ctx} (dty : TowerType)
@@ -1242,7 +1242,7 @@ theorem arrLoadCont_eq {Γ : Ctx} (dty : TowerType)
   · rfl
   · unfold arrLoadCont arrLoadExpr
     delta arrLoadCont.match_1 arrLoadExpr.match_1
-    simp only [dif_neg hw]
+    simp only [dite_eq_right hw]
 
 /-! ## 5c. `varBind`-factoring of the array **store** combinator
 
@@ -1327,9 +1327,9 @@ theorem arrStoreCont_eq {Γ : Ctx} (dty : TowerType)
          | (rcases eq_or_ne wi 64 with rfl | hwi
             · simp only [arrStoreCont, arrStoreExpr]
               by_cases hmem : encodeTy dty = .memref n
-              · simp only [dif_pos hmem]
+              · simp only [dite_eq_left hmem]
                 exact castCtx_varBind hmem.symm _ tail
-              · simp only [dif_neg hmem]
+              · simp only [dite_eq_right hmem]
             · simp [arrStoreCont, arrStoreExpr, CryptoTy.sword.injEq, hwi])
        · simp [arrStoreCont, arrStoreExpr, CryptoTy.sword.injEq, hws])
 
@@ -1466,7 +1466,7 @@ theorem onlyTmpBelow_upd {env e2 : SEnvScalar} {cnt c : Nat} {w : BitVec 64}
     rcases hs with h1 | ⟨k, hk, rfl⟩
     · exact ne_tmpName_of_not_isTmp h1 c
     · exact tmpName_ne (by omega)
-  simp only [SEnvScalar.upd, if_neg hne]
+  simp only [SEnvScalar.upd, ite_eq_right hne]
   exact h s hs
 
 theorem freshFrom_upd_succ {env : SEnvScalar} {c : Nat} {w : BitVec 64}
@@ -1475,7 +1475,7 @@ theorem freshFrom_upd_succ {env : SEnvScalar} {c : Nat} {w : BitVec 64}
   intro k hk
   have hne : TranslateDialectDirectArms.tmpName k ≠ TranslateDialectDirectArms.tmpName c :=
     tmpName_ne (by omega)
-  simp only [SEnvScalar.upd, if_neg hne]
+  simp only [SEnvScalar.upd, ite_eq_right hne]
   exact h k (by omega)
 
 /-- `ConsistentS` bridges the front's `lookupU64` to the env word-reader
@@ -1577,7 +1577,7 @@ theorem selectWord_mask (s a c : BitVec 64) :
   unfold selectWord
   by_cases hs : s = 0#64
   · subst hs; simp
-  · rw [if_neg hs]
+  · rw [ite_eq_right hs]
     have hb : BitVec.ushiftRight (s ||| (0 - s)) 63 = 1 := by
       apply BitVec.eq_of_toNat_eq
       have h1 : s.toNat ≠ 0 := fun h => hs (BitVec.eq_of_toNat_eq (by simpa using h))
@@ -2958,7 +2958,7 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
         case memrefW => exact absurd htr (by simp)
         iterate 5 (exact absurd htr (by simp))
         by_cases hlt : idx < n
-        · rw [if_pos hlt] at htr hsem
+        · rw [ite_eq_left hlt] at htr hsem
           simp only [Option.some.injEq] at htr hsem
           obtain rfl := htr
           obtain rfl := hsem
@@ -2979,7 +2979,7 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
           · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
             simp only [ComCont.comp, hcom2, hcom]
           · exact hden.trans hden2
-        · rw [if_neg hlt] at htr; simp at htr
+        · rw [ite_eq_right hlt] at htr; simp at htr
       · rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
         case memrefW => simp [translateDialectFull, hlk] at htr
         · simp [translateDialectFull, hlk] at htr
@@ -2989,12 +2989,12 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
         · simp [translateDialectFull, hlk] at htr
         · simp only [translateDialectFull, hlk] at htr
           by_cases hlt : idx < n
-          · rw [dif_pos hlt] at htr
+          · rw [dite_eq_left hlt] at htr
             simp only [Option.some.injEq] at htr
             obtain rfl := htr
             have henv : env loc.locVar = some ⟨.memref n, (toVIRVar arr).lookup V⟩ := by
               rw [← hc loc.locVar, hlk]; rfl
-            simp only [semScalarL, henv, dif_pos hlt] at hsem
+            simp only [semScalarL, henv, dite_eq_left hlt] at hsem
             obtain rfl := Option.some.inj hsem
             have hcw := consistentS_weaken vm V env hc
               (({ op := .bvConst 64 v, retTy_eq := rfl, args := .nil } :
@@ -3016,7 +3016,7 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
             · show ComCont.comp (ComCont.varBind _) (ComCont.varBind _) tail = some com
               simp only [ComCont.comp, hcom2, hcom]
             · exact hden.trans hden2
-          · rw [dif_neg hlt] at htr; simp at htr
+          · rw [dite_eq_right hlt] at htr; simp at htr
   | rCallN fname dests args =>
       intro Γ vm V env env' o hc htr hsem
       simp only [translateDialectFull] at htr
@@ -3118,9 +3118,9 @@ theorem translateDialectFull_denoteWith (ls : SemLeafSpec) {c : LowCT} (hcov : I
                        | (rcases eq_or_ne wi 64 with rfl | hwi
                           · simp only [arrStoreExpr]
                             by_cases hmem : encodeTy arr.locDst = .memref n
-                            · simp only [dif_pos hmem, expr_denote_castWith]
+                            · simp only [dite_eq_left hmem, expr_denote_castWith]
                               rfl
-                            · simp only [dif_neg hmem, extCallExpr_denoteWith, hargs]
+                            · simp only [dite_eq_right hmem, extCallExpr_denoteWith, hargs]
                           · simp_all [arrStoreExpr, extCallExpr_denoteWith, CryptoTy.sword.injEq])
                      · simp_all [arrStoreExpr, extCallExpr_denoteWith, CryptoTy.sword.injEq])
               exact Option.some.inj h2
@@ -3646,11 +3646,11 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
         case memrefW => exact absurd htr (by simp)
         iterate 5 (exact absurd htr (by simp))
         by_cases hlt : idx < n
-        · rw [if_pos hlt] at htr
+        · rw [ite_eq_left hlt] at htr
           simp only [Option.some.injEq] at htr
           obtain rfl := htr
           exact ⟨[.memref n, .sword 64], rfl, fun h => absurd h (by simp)⟩
-        · rw [if_neg hlt] at htr; simp at htr
+        · rw [ite_eq_right hlt] at htr; simp at htr
       · obtain ⟨mt, arr⟩ := p
         rcases mt with _ | _ | ⟨_, _⟩ | ⟨_, _⟩ | _ | n
         case memrefW => simp [translateDialectFull, hlk] at htr
@@ -3661,11 +3661,11 @@ theorem translateDialectFull_extWith (ls : SemLeafSpec) (c : LowCT) :
         · simp [translateDialectFull, hlk] at htr
         · simp only [translateDialectFull, hlk] at htr
           by_cases hlt : idx < n
-          · rw [dif_pos hlt] at htr
+          · rw [dite_eq_left hlt] at htr
             simp only [Option.some.injEq] at htr
             obtain rfl := htr
             exact ⟨[.memref n, .sword 64], rfl, fun h => absurd h (by simp)⟩
-          · rw [dif_neg hlt] at htr; simp at htr
+          · rw [dite_eq_right hlt] at htr; simp at htr
   case RCallN fname dests args =>
       simp only [translateDialectFull] at htr
       obtain ⟨Δ, hΔ, hnil⟩ := loopCallNDestsD_ext fname args dests vm o htr
@@ -4153,7 +4153,7 @@ theorem translateDialectControl_denote_ctlWith (ls : SemLeafSpec) {c : LowCT}
                   simp only [Option.some.injEq] at htr
                   obtain rfl := htr
                   simp only [hts, hes] at hsem
-                  rw [if_pos hname] at hsem
+                  rw [ite_eq_left hname] at hsem
                   obtain rfl := Option.some.inj hsem
                   have hc1 := consistentS_weaken vm V env hc
                     (t := CryptoTy.sword 64) (BitVec.ofNat 64 tS.val)

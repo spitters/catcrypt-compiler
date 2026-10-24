@@ -98,7 +98,7 @@ theorem x86_SHL_word_ofNat {n : Nat} (h : n < 64) (v : BitVec 64) :
   simp only [x86_SHL, shiftCount_ofNat_of_lt h]
   by_cases h0 : n = 0
   · subst h0; simp [rflags_None]
-  · simp only [if_neg h0, rflags_OF, wshl, hmin]
+  · simp only [ite_eq_right h0, rflags_OF, wshl, hmin]
 
 /-- The `x86_SHR` data word at an in-range immediate count is the plain logical
     right shift `v >>> n`. -/
@@ -108,7 +108,7 @@ theorem x86_SHR_word_ofNat {n : Nat} (h : n < 64) (v : BitVec 64) :
   simp only [x86_SHR, shiftCount_ofNat_of_lt h]
   by_cases h0 : n = 0
   · subst h0; simp [rflags_None]
-  · simp only [if_neg h0, rflags_OF, wshr, hmin]
+  · simp only [ite_eq_right h0, rflags_OF, wshr, hmin]
 
 /-- The `x86_SAR` data word at an in-range immediate count is the plain
     arithmetic right shift `BitVec.sshiftRight v n`. -/
@@ -118,7 +118,7 @@ theorem x86_SAR_word_ofNat {n : Nat} (h : n < 64) (v : BitVec 64) :
   simp only [x86_SAR, shiftCount_ofNat_of_lt h]
   by_cases h0 : n = 0
   · subst h0; simp [rflags_None]
-  · simp only [if_neg h0, rflags_OF, wsar, hmin]
+  · simp only [ite_eq_right h0, rflags_OF, wsar, hmin]
 
 /-! ## 3. The lsem-side value and step reductions -/
 

@@ -114,7 +114,7 @@ theorem emit_sbb_imm_cf (s : JState 64) (dst : String) (n : Nat) :
 /-- `SBB dst, n` writes only `dst`. -/
 theorem emit_sbb_imm_other (s : JState 64) (dst r : String) (n : Nat) (hr : r ≠ dst) :
     (evalInstr s (.sbb dst (.imm n))).get r = s.get r := by
-  simp only [evalInstr, JState.get, JState.writeB5W, if_neg hr]
+  simp only [evalInstr, JState.get, JState.writeB5W, ite_eq_right hr]
 
 /-- `CMOVB dst, src` writes `src` into `dst` when `CF` is set and preserves every
     other register. -/
@@ -155,7 +155,7 @@ theorem cmovbChain_other :
   | d :: ds, v :: vs, s, r, hr => by
       rw [cmovbChain, runBlock_cons, cmovbChain_other ds vs _ r
         (fun h => hr (List.mem_cons_of_mem _ h)), emit_cmovb_get,
-        if_neg (fun h => hr (by subst h; exact List.mem_cons_self))]
+        ite_eq_right (fun h => hr (by subst h; exact List.mem_cons_self))]
 
 /-- **The `CMOVB` chain selects.** With `ds` duplicate-free and disjoint from `vs`
     (equal lengths), the destinations hold `vs` when `CF` is set and keep their
@@ -177,14 +177,14 @@ theorem cmovbChain_regs :
       have hd : (runBlock s1 (cmovbChain ds vs)).get d = s1.get d :=
         cmovbChain_other ds vs s1 d hnd'.1
       have hs1d : s1.get d = if s.flagB (·.cf) then s.get v else s.get d := by
-        rw [hs1, emit_cmovb_get, if_pos rfl]
+        rw [hs1, emit_cmovb_get, ite_eq_left rfl]
       have hvs : vs.map s1.get = vs.map s.get := by
         apply List.map_congr_left; intro r hr
-        rw [hs1, emit_cmovb_get, if_neg (fun h => hdisj d List.mem_cons_self r
+        rw [hs1, emit_cmovb_get, ite_eq_right (fun h => hdisj d List.mem_cons_self r
           (List.mem_cons_of_mem _ hr) h.symm)]
       have hds : ds.map s1.get = ds.map s.get := by
         apply List.map_congr_left; intro r hr
-        rw [hs1, emit_cmovb_get, if_neg (fun h => hnd'.1 (by subst h; exact hr))]
+        rw [hs1, emit_cmovb_get, ite_eq_right (fun h => hnd'.1 (by subst h; exact hr))]
       rw [cmovbChain, runBlock_cons, List.map_cons, hd, htail, hcf1, hvs, hds, hs1d]
       split <;> simp
 
@@ -384,8 +384,8 @@ theorem condSubRoundN_val_lt_two (res q sav : List String) (rtop : String) (s : 
   rw [List.length_map, hq] at hP
   by_cases hlt : valLimbs (res.map s.get) + (2 ^ 64) ^ res.length * (s.get rtop).toNat
       < valLimbs (q.map s.get)
-  · rw [if_pos hlt, if_neg (by omega)]
-  · rw [if_neg hlt, if_pos (by omega), Nat.mod_eq_of_lt (by omega)]
+  · rw [ite_eq_left hlt, ite_eq_right (by omega)]
+  · rw [ite_eq_right hlt, ite_eq_left (by omega), Nat.mod_eq_of_lt (by omega)]
 
 /-- The round writes only `res` and `rtop`. -/
 theorem condSubRoundN_pres (res q sav : List String) (rtop : String) (s : JState 64)

@@ -368,11 +368,11 @@ theorem lazyLaneProgW_denote (ℓ : ℕ) (hl : ℓ < P.logN) (g : ℕ → BitVec
   generalize 2 ^ (P.logN - 1 - ℓ) = len at hpart ⊢
   split
   · next hlt =>
-    rw [montLaneProg_denote, if_pos rfl, laneVarG_lookup R64 g m i 0 (by omega),
+    rw [montLaneProg_denote, ite_eq_left rfl, laneVarG_lookup R64 g m i 0 (by omega),
       laneVarG_lookup R64 g m (i + len) 0 (by have := hpart hlt; omega)]
     simp only [Nat.zero_add]
   · next hlt =>
-    rw [montLaneProg_denote, if_neg (by simp), laneVarG_lookup R64 g m (i - len) 0 (by omega),
+    rw [montLaneProg_denote, ite_eq_right (by simp), laneVarG_lookup R64 g m (i - len) 0 (by omega),
       laneVarG_lookup R64 g m i 0 (by omega)]
     simp only [Nat.zero_add]
 
@@ -404,7 +404,7 @@ theorem semW_ofNat (hS : SchedOk P S) (hW : WordOk P S logR) (hq : 0 < P.q) (ℓ
   have hofn : ∀ j, (BitVec.ofNat 64 (f j)).toNat = f j := fun j => by
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hfw j)]
   apply BitVec.eq_of_toNat_eq
-  simp only [semW, lazyLayer, hred ℓ hl, Bool.false_eq_true, if_false]
+  simp only [semW, lazyLayer, hred ℓ hl, Bool.false_eq_true, ite_false]
   generalize 2 ^ ℓ + i / (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ)) = k
   generalize 2 ^ (P.logN - 1 - ℓ) = len
   have hmont : ∀ j, (montW P.q S.R S.qinv logR (zr P S k) (BitVec.ofNat 64 (f j))).toNat
@@ -603,11 +603,11 @@ theorem invLaneProgW_denote (s : ℕ) (st : Option ℕ) (hst : ∀ ℓ, st = som
     generalize 2 ^ (P.logN - 1 - ℓ) = len at hpart ⊢
     split
     · next hlt =>
-      rw [gsLaneProgW_denote, if_pos rfl, laneVarG_lookup R64 g m i 0 (by omega),
+      rw [gsLaneProgW_denote, ite_eq_left rfl, laneVarG_lookup R64 g m i 0 (by omega),
         laneVarG_lookup R64 g m (i + len) 0 (by have := hpart hlt; omega)]
       simp only [Nat.zero_add]
     · next hlt =>
-      rw [gsLaneProgW_denote, if_neg (by simp), laneVarG_lookup R64 g m (i - len) 0 (by omega),
+      rw [gsLaneProgW_denote, ite_eq_right (by simp), laneVarG_lookup R64 g m (i - len) 0 (by omega),
         laneVarG_lookup R64 g m i 0 (by omega)]
       simp only [Nat.zero_add]
 
@@ -1084,11 +1084,11 @@ theorem uLayerLaneProgW_denote (ℓ : ℕ) (hl : ℓ < P.logN) (g : ℕ → BitV
   generalize 2 ^ (P.logN - 1 - ℓ) = len at hpart ⊢
   split
   · next hlt =>
-    rw [uLaneProg_denote, if_pos rfl, laneVarG_lookup (Rw S.w) g m i 0 (by omega),
+    rw [uLaneProg_denote, ite_eq_left rfl, laneVarG_lookup (Rw S.w) g m i 0 (by omega),
       laneVarG_lookup (Rw S.w) g m (i + len) 0 (by have := hpart hlt; omega)]
     simp only [Nat.zero_add]
   · next hlt =>
-    rw [uLaneProg_denote, if_neg (by simp),
+    rw [uLaneProg_denote, ite_eq_right (by simp),
       laneVarG_lookup (Rw S.w) g m (i - len) 0 (by omega),
       laneVarG_lookup (Rw S.w) g m i 0 (by omega)]
     simp only [Nat.zero_add]
@@ -1122,7 +1122,7 @@ theorem redW_layer (hS : SchedOk P S) (hW : UWordOk P S logR) (hq : 0 < P.q) (�
     have : P.q ≤ S.off * P.q := Nat.le_mul_of_pos_left _ (by have := hS.1; omega)
     omega
   cases hr : S.red ℓ
-  · simp only [redW, Bool.false_eq_true, if_false, BitVec.toNat_ofNat]
+  · simp only [redW, Bool.false_eq_true, ite_false, BitVec.toNat_ofNat]
     rw [hWv, Nat.mod_eq_of_lt (a := v) (by omega)]
   · obtain ⟨hVm, he⟩ := hW.2.2 ℓ hl hr
     have hk2 : barK P S < 2 * S.w := by
@@ -1132,7 +1132,7 @@ theorem redW_layer (hS : SchedOk P S) (hW : UWordOk P S logR) (hq : 0 < P.q) (�
       have := (Nat.log2_lt hq.ne').2 hq2
       unfold barK
       omega
-    simp only [redW, if_true, BitVec.toNat_ofNat]
+    simp only [redW, ite_true, BitVec.toNat_ofNat]
     rw [ubarW_toNat S.w P.q (barK P S) (barM P S) _ W hq hqw (by rw [hWv]; exact hv) hVm
       (barM_mul_ge P S hq) he hk2, hWv,
       Nat.mod_eq_of_lt (a := v % P.q) (by have := Nat.mod_lt v hq; omega)]
@@ -1347,11 +1347,11 @@ theorem invLaneProgUW_denote (s : ℕ) (st : Option ℕ) (hst : ∀ ℓ, st = so
     generalize 2 ^ (P.logN - 1 - ℓ) = len at hpart ⊢
     split
     · next hlt =>
-      rw [uGsLaneProg_denote, if_pos rfl, laneVarG_lookup (Rw S.w) g m i 0 (by omega),
+      rw [uGsLaneProg_denote, ite_eq_left rfl, laneVarG_lookup (Rw S.w) g m i 0 (by omega),
         laneVarG_lookup (Rw S.w) g m (i + len) 0 (by have := hpart hlt; omega)]
       simp only [Nat.zero_add]
     · next hlt =>
-      rw [uGsLaneProg_denote, if_neg (by simp),
+      rw [uGsLaneProg_denote, ite_eq_right (by simp),
         laneVarG_lookup (Rw S.w) g m (i - len) 0 (by omega),
         laneVarG_lookup (Rw S.w) g m i 0 (by omega)]
       simp only [Nat.zero_add]

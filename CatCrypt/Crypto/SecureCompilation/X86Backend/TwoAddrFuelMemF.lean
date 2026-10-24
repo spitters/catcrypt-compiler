@@ -545,7 +545,7 @@ theorem runStraightF_scratch {opn m d s0 : String} {s1 : LOperand} {cd : Option 
     refine ⟨fun r hr => ?_, hA.arr, hA.mem, hA.cf, hA.of⟩
     have hrQ : r ≠ scratchSave := hr rfl
     simp only [u1, LstateM.reg_nextPc, LstateM.reg_setReg, LstateN.lvm_nextPc,
-      LstateN.lvm_setReg, hrQ, if_false]
+      LstateN.lvm_setReg, hrQ, ite_false]
     exact hA.reg r hr
   -- the operation from the saved state
   have hreads : ∀ r, readsI (.Lopn [.reg reloadScratch] opn [.reg s0, s1]) r → KeptT true r :=
@@ -732,13 +732,13 @@ theorem simT_legal {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {ok : Bool} 
             cases a with
             | reg y =>
                 have hy : mentionsScratch y = false := by simpa [opAvoids] using haa
-                simp only [if_true]
+                simp only [ite_true]
                 split
                 · rename_i hcb
                   simp only [Bool.and_eq_true, beq_iff_eq] at hcb
                   obtain ⟨hcb, rfl⟩ := hcb
                   simp only [twoAddrRouteWF, hr, hcb, Bool.true_and,
-                    List.contains_nil, Bool.not_false, beq_iff_eq, if_true] at hwf
+                    List.contains_nil, Bool.not_false, beq_iff_eq, ite_true] at hwf
                   simp only [List.map_cons, List.map_nil, hwf, hcd]
                   intro s s' t zf zt hA h
                   rw [fstepF_comm (OwnedLprogTV.opn_comm hm hcb)] at h
@@ -746,7 +746,7 @@ theorem simT_legal {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {ok : Bool} 
                     (OwnedLprogTV.opn_ne_cmp64 hc) hd hd (by simpa [opAvoids] using hy)
                     _ _ _ _ hA h
                 · rename_i hcb
-                  simp only [twoAddrRouteWF, hr, hcb, Bool.false_eq_true, if_false,
+                  simp only [twoAddrRouteWF, hr, hcb, Bool.false_eq_true, ite_false,
                     Bool.true_and, List.contains_nil, Bool.not_false, beq_iff_eq] at hwf
                   simp only [List.map_cons, List.map_nil, hwf, hcd]
                   intro s s' t zf zt hA h
