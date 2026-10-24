@@ -38,7 +38,11 @@ into the versions `copyName D 1, …, copyName D m` of the array `D`, with the i
   keeps.
 * `freshSite`, `retarget`, `freshE`, `freshenArr`: the sites, the replacement of the array
   operand, the expansion of one instruction and the pass.
-* `FrRel`, `freshRoots`: the relation of a source base and a freshened base.
+* `primarySite`: the primary sites, whose array is itself live after the instruction, with
+  an arm for the constant-index store `STOREIMM`.
+* `SiteRule`, `SiteShape`, `SiteOK`, `freshESel`, `freshenSel`: the pass at a site rule;
+  `freshenArr` is `freshenSel freshSite`.
+* `FrRel`, `freshRootsSel`, `freshRoots`: the relation of a source base and a freshened base.
 
 ## Main results
 
@@ -48,10 +52,12 @@ into the versions `copyName D 1, …, copyName D m` of the array `D`, with the i
 * `runStraightF_resCopy`: the copy on the straight-line fold.
 * `lsemFuelMemF_expI_callsPre`: halting runs under an index-dependent expansion whose calls
   are preceded by straight-line code, at an instruction set with local calls.
-* `lsemFuelMemF_freshenArr`: a halting run of a body is matched by a halting run of the
-  freshened body from a related entry state, into a related state.
-* `chainAliasO_freshenArr`: the coalescing renaming of the freshened body sends the
-  destination of a site to its fresh root.
+* `lsemFuelMemF_freshenSel`, `lsemFuelMemF_freshenArr`: a halting run of a body is matched
+  by a halting run of the freshened body from a related entry state, into a related state.
+* `chainAliasO_freshenSel_carried`, `chainAliasO_freshenArr`: the coalescing renaming of the
+  freshened body sends the destination of a site to its fresh root, when every later writer
+  of the destination keeps that image.
+* `freshenSel_eq_self`: a body with no site is its own freshening.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.FreshenArr
@@ -322,6 +328,14 @@ theorem fstepF_storeIdx (d b x v : String) (sc w n : Nat) (s : LstateM) (zf : Bo
           (·, zf) := by
   simp [fstepF, cmpArgs?, movRegArgs?, withWidthTag, stepMemF_of_quiet, aluFlagOp?,
     carryArgs?, wideArgs?]
+
+/-- The step of a constant-index store is the memory step, with the zero flag kept. -/
+theorem fstepF_storeImm (d b v : String) (c w n : Nat) (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm c], .storeImm w n) s zf
+      = (lsemStepMem (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm c], .storeImm w n) s).map
+          (·, zf) := by
+  simp only [fstepF, cmpArgs?, movRegArgs?]
+  rw [stepMemF_of_quiet rfl rfl rfl]
 
 /-- The step of the move of an immediate writes its word at width `64`. -/
 theorem fstepF_movImmI (d : String) (c : Nat) (s : LstateM) (zf : Bool) :
@@ -678,8 +692,50 @@ def freshSite (σ : String → String) (L : Nat → List String) (aa : String �
           else none
       | _, _ => none
 
-/-- The instruction `i` with its array operand replaced by `F`: the base of a `STOREIDX`, or
-    the operand at the destination position of a call of an out symbol. -/
+/-- The condition of a primary site with the destination `d` and the array `b` at position
+    `k`: some name live after it other than `d` shares the image of `d` under `σ`, and `b`
+    is itself live after it. -/
+def primaryB (σ : String → String) (L : Nat → List String) (k : Nat) (d b : String) : Bool :=
+  liveShareB σ (L (k + 1)) d && (L (k + 1)).contains b
+
+/-- **The primary site of the instruction `i` at position `k`**, for the coalescing renaming
+    `σ`, the liveness certificate `L`, the array positions `aa` and the out symbols `outs`:
+    the array to copy and its length, or `none`. A store-tagged `STOREIDX` or a
+    constant-index `STOREIMM` of `64`-bit words into `d` from the base `b` is a primary site
+    when `primaryB σ L k d b` holds; the array is `b`. A shadow instruction of a call of an out
+    symbol `f` with the destination position `p`, whose operand at `p` is the register `A` of
+    an array of `n` words, is a primary site when `primaryB σ L k dst A` holds for its
+    destination `dst`; the array is `A`. The length is below `2 ^ 64`. -/
+def primarySite (σ : String → String) (L : Nat → List String) (aa : String → Nat → Option Nat)
+    (outs : List (String × Nat)) (k : Nat) (i : LinstrRM) : Option (String × Nat) :=
+  match shadowCall? i.1 with
+  | some (dst, f, srcs) =>
+      match outs.lookup f with
+      | some p =>
+          match aa f p, srcs[p]? with
+          | some n, some (.reg A) =>
+              if primaryB σ L k dst A && decide (n < 2 ^ 64) then some (A, n) else none
+          | _, _ => none
+      | none => none
+  | none =>
+      match i.2 with
+      | .store w n =>
+          match storeStruct? i.1 with
+          | some (d, b, _, _) =>
+              if (w == 64) && primaryB σ L k d b && decide (n < 2 ^ 64) then some (b, n)
+              else none
+          | none => none
+      | .storeImm w n =>
+          match storeImmStruct? i.1 with
+          | some (d, b, _, _) =>
+              if (w == 64) && primaryB σ L k d b && decide (n < 2 ^ 64) then some (b, n)
+              else none
+          | none => none
+      | _ => none
+
+/-- The instruction `i` with its array operand replaced by `F`: the base of a `STOREIDX`, the
+    array source of a `STOREIMM`, or the operand at the destination position of a call of an
+    out symbol. -/
 def retarget (outs : List (String × Nat)) (F : String) (i : LinstrRM) : LinstrRM :=
   match shadowCall? i.1 with
   | some (dst, f, srcs) =>
@@ -690,25 +746,45 @@ def retarget (outs : List (String × Nat)) (F : String) (i : LinstrRM) : LinstrR
       match i.1 with
       | .Lopn [.reg d] opn [.arrIdx _ x sc, .reg v] =>
           (.Lopn [.reg d] opn [.arrIdx F x sc, .reg v], i.2)
+      | .Lopn [.reg d] opn [.reg _, .reg v, .imm c] =>
+          if opn = "STOREIMM" then (.Lopn [.reg d] opn [.reg F, .reg v, .imm c], i.2) else i
       | _ => i
 
-/-- **The expansion of the instruction `i` at position `k`**: at a site with the array `A`
-    of `n` words, the copy `resCopyCode A (freshName k) n` followed by `i` retargeted at the
-    last version `copyName (freshName k) n`; elsewhere `i`. -/
-def freshE (σ : String → String) (L : Nat → List String) (aa : String → Nat → Option Nat)
-    (outs : List (String × Nat)) (k : Nat) (i : LinstrRM) : List LinstrRM :=
-  match freshSite σ L aa outs k i with
+/-- **The expansion of the instruction `i` at position `k` under the site selector `sel`**:
+    at a site with the array `A` of `n` words, the copy `resCopyCode A (freshName k) n`
+    followed by `i` retargeted at the last version `copyName (freshName k) n`; elsewhere
+    `i`. -/
+def freshESel (outs : List (String × Nat)) (sel : Nat → LinstrRM → Option (String × Nat))
+    (k : Nat) (i : LinstrRM) : List LinstrRM :=
+  match sel k i with
   | some (A, n) =>
       resCopyCode A (freshName k) n ++ [retarget outs (copyName (freshName k) n) i]
   | none => [i]
 
-/-- **The freshening pass** on a body, for the liveness certificate `L` of the body, the
-    array positions `aa` and the out symbols `outs`: each site of the coalescing renaming
-    `chainAliasO outs body` is preceded by a copy of its array into a fresh array, and its
-    array operand is replaced by the copy. -/
+/-- **The expansion of the instruction `i` at position `k`** at the sites `freshSite`. -/
+def freshE (σ : String → String) (L : Nat → List String) (aa : String → Nat → Option Nat)
+    (outs : List (String × Nat)) (k : Nat) (i : LinstrRM) : List LinstrRM :=
+  freshESel outs (freshSite σ L aa outs) k i
+
+/-- A site rule: for the coalescing renaming, the liveness certificate, the array positions
+    and the out symbols, the array to copy at the instruction at a position and its length.
+    `freshSite` and `primarySite` are site rules. -/
+abbrev SiteRule : Type :=
+  (String → String) → (Nat → List String) → (String → Nat → Option Nat) →
+    List (String × Nat) → Nat → LinstrRM → Option (String × Nat)
+
+/-- **The freshening pass at the site rule `site`** on a body, for the liveness certificate
+    `L` of the body, the array positions `aa` and the out symbols `outs`: each site of `site`
+    at the coalescing renaming `chainAliasO outs body` is preceded by a copy of its array into
+    a fresh array, and its array operand is replaced by the copy. -/
+def freshenSel (site : SiteRule) (L : Nat → List String) (aa : String → Nat → Option Nat)
+    (outs : List (String × Nat)) (body : List LinstrRM) : List LinstrRM :=
+  expI (freshESel outs (site (chainAliasO outs body) L aa outs)) body 0
+
+/-- **The freshening pass** at the sites `freshSite`. -/
 def freshenArr (L : Nat → List String) (aa : String → Nat → Option Nat)
     (outs : List (String × Nat)) (body : List LinstrRM) : List LinstrRM :=
-  expI (freshE (chainAliasO outs body) L aa outs) body 0
+  freshenSel freshSite L aa outs body
 
 /-! ## 5. The names of the pass -/
 
@@ -765,6 +841,78 @@ theorem freshSite_some {σ : String → String} {L : Nat → List String}
         simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hc
         obtain ⟨⟨rfl, -⟩, hn⟩ := hc
         exact ⟨hn, Or.inr ⟨hsh, htag, d, x, v, hst⟩⟩
+      · cases h
+    · cases h
+
+/-- **The three kinds of site** of the instruction `i` with the array `A` of `n < 2 ^ 64`
+    words: a call of an out symbol whose operand at the destination position is the register
+    `A`, a store-tagged `STOREIDX` of `64`-bit words with base `A`, or a `STOREIMM` of
+    `64`-bit words with array source `A`. -/
+def SiteShape (aa : String → Nat → Option Nat) (outs : List (String × Nat)) (i : LinstrRM)
+    (A : String) (n : Nat) : Prop :=
+  n < 2 ^ 64 ∧
+    ((∃ dst f srcs p, shadowCall? i.1 = some (dst, f, srcs) ∧ outs.lookup f = some p
+        ∧ aa f p = some n ∧ srcs[p]? = some (.reg A))
+      ∨ (shadowCall? i.1 = none ∧ i.2 = .store 64 n
+          ∧ ∃ d x v, storeStruct? i.1 = some (d, A, x, v))
+      ∨ (shadowCall? i.1 = none ∧ i.2 = .storeImm 64 n
+          ∧ ∃ d v c, storeImmStruct? i.1 = some (d, A, v, c)))
+
+/-- A site selector selects sites of the three kinds only. -/
+def SiteOK (aa : String → Nat → Option Nat) (outs : List (String × Nat))
+    (sel : Nat → LinstrRM → Option (String × Nat)) : Prop :=
+  ∀ k i A n, sel k i = some (A, n) → SiteShape aa outs i A n
+
+/-- The sites `freshSite` are of the three kinds. -/
+theorem freshSite_ok (σ : String → String) (L : Nat → List String)
+    (aa : String → Nat → Option Nat) (outs : List (String × Nat)) :
+    SiteOK aa outs (freshSite σ L aa outs) := fun _ _ _ _ h => by
+  obtain ⟨hn, h1 | h2⟩ := freshSite_some h
+  exacts [⟨hn, Or.inl h1⟩, ⟨hn, Or.inr (Or.inl h2)⟩]
+
+/-- The primary sites `primarySite` are of the three kinds. -/
+theorem primarySite_ok (σ : String → String) (L : Nat → List String)
+    (aa : String → Nat → Option Nat) (outs : List (String × Nat)) :
+    SiteOK aa outs (primarySite σ L aa outs) := by
+  intro k i A n h
+  unfold primarySite at h
+  split at h
+  · rename_i dst f srcs hsh
+    split at h
+    · rename_i p hp
+      split at h
+      · rename_i n' A' hn hA
+        split at h
+        · rename_i hc
+          cases h
+          simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
+          exact ⟨hc.2, Or.inl ⟨dst, f, srcs, p, hsh, hp, hn, hA⟩⟩
+        · cases h
+      · cases h
+    · cases h
+  · rename_i hsh
+    split at h
+    · rename_i w n' htag
+      split at h
+      · rename_i d b x v hst
+        split at h
+        · rename_i hc
+          cases h
+          simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hc
+          obtain ⟨⟨rfl, -⟩, hn⟩ := hc
+          exact ⟨hn, Or.inr (Or.inl ⟨hsh, htag, d, x, v, hst⟩)⟩
+        · cases h
+      · cases h
+    · rename_i w n' htag
+      split at h
+      · rename_i d b v c hst
+        split at h
+        · rename_i hc
+          cases h
+          simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hc
+          obtain ⟨⟨rfl, -⟩, hn⟩ := hc
+          exact ⟨hn, Or.inr (Or.inr ⟨hsh, htag, d, v, c, hst⟩)⟩
+        · cases h
       · cases h
     · cases h
 
@@ -842,11 +990,16 @@ structure FrRel (Rt : Nat → Nat → Prop) (s s' : LstateM) : Prop where
   /-- Each fresh root holds an array of its length. -/
   root : ∀ k n, Rt k n → ∃ a : Fin n → BitVec 64, s'.getArr (freshName k) 64 n = some a
 
-/-- The fresh roots of a body: `freshName k` of `n` words at each site of the instruction at
-    position `k` with an array of `n` words. -/
+/-- The fresh roots of a body under the site selector `sel`: `freshName k` of `n` words at
+    each site of the instruction at position `k` with an array of `n` words. -/
+def freshRootsSel (sel : Nat → LinstrRM → Option (String × Nat)) (body : List LinstrRM)
+    (k n : Nat) : Prop :=
+  ∃ i A, body[k]? = some i ∧ sel k i = some (A, n)
+
+/-- The fresh roots of a body at the sites `freshSite`. -/
 def freshRoots (σ : String → String) (L : Nat → List String) (aa : String → Nat → Option Nat)
     (outs : List (String × Nat)) (body : List LinstrRM) (k n : Nat) : Prop :=
-  ∃ i A, body[k]? = some i ∧ freshSite σ L aa outs k i = some (A, n)
+  freshRootsSel (freshSite σ L aa outs) body k n
 
 /-- The empty name is kept. -/
 theorem keptF_empty : KeptF "" := by
@@ -884,6 +1037,20 @@ theorem storeStruct?_eq_some {w : LinstrR} {d b x v : String}
     · rename_i ho
       cases h
       exact ⟨sc, by rw [ho]⟩
+    · cases h
+  · cases h
+
+/-- The wire of a recognised `STOREIMM`. -/
+theorem storeImmStruct?_eq_some {w : LinstrR} {d b v : String} {c : Nat}
+    (h : storeImmStruct? w = some (d, b, v, c)) :
+    w = .Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm c] := by
+  unfold storeImmStruct? at h
+  split at h
+  · rename_i d' opn b' v' c'
+    split at h
+    · rename_i ho
+      cases h
+      rw [ho]
     · cases h
   · cases h
 
@@ -946,6 +1113,80 @@ theorem freshStore_sim {Rt : Nat → Nat → Prop} (outs : List (String × Nat))
     ?_, ?_, ?_, fun k' n' hk' => ?_⟩⟩
   · rw [JasminLsemAddrMem.runStraightF_append, hu, Option.bind_some, hret, runStraightF_cons,
       fstepF_storeIdx, hst']
+    rfl
+  · show (u.reg).lvm r = (s.reg).lvm r
+    rw [hureg r hr.1 hr.2.1, hQ.reg r hr]
+  · simp only [LstateM.larr_nextPc, LstateM.larr_setArr]
+    split
+    · rfl
+    · rw [huarr r (fun j _ => hr.ne_copy k (j + 1)), hQ.arr r hr]
+  · show u.lmem = s.lmem
+    rw [humem, hQ.mem]
+  · show u.cf = s.cf
+    rw [hucf, hQ.cf]
+  · show u.of = s.of
+    rw [huof, hQ.of]
+  · have hdk : freshName k' ≠ d := fun he => hkd.ne_copy k' 0 (by simp [copyName, he])
+    rw [LstateM.getArr_nextPc, LstateM.getArr_setArr_other _ _ _ _ _ _ hdk]
+    unfold LstateM.getArr
+    rw [huarr _ (fun j _ => (copyName_fresh_ne k j k').symm)]
+    exact hQ.root k' n' hk'
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames opNames) in
+/-- **A freshened constant-index store.** At a `STOREIMM` site of the instruction `i` at
+    position `k`, a store of `64`-bit words into `d` from the array `b` at the index `c` with
+    a fresh root `freshName k` of `n < 2 ^ 64` words, a step of `i` from `s` is matched, from a
+    related base, by the copy of `b` into the fresh root followed by the store retargeted at
+    the last version of the copy, into a related base. -/
+theorem freshStoreImm_sim {Rt : Nat → Nat → Prop} (outs : List (String × Nat)) {i : LinstrRM}
+    {k n : Nat} {d b v : String} {c : Nat} (hRt : Rt k n) (hn : n < 2 ^ 64)
+    (htag : i.2 = .storeImm 64 n) (hst : storeImmStruct? i.1 = some (d, b, v, c))
+    (hkept : ∀ r ∈ instrNames i.1, KeptF r) {s s' t : LstateM} {zf zt : Bool}
+    (hQ : FrRel Rt s s') (h : fstepF i s zf = some (t, zt)) :
+    ∃ t', runStraightF (resCopyCode b (freshName k) n
+        ++ [retarget outs (copyName (freshName k) n) i]) s' zf = some (t', zt)
+      ∧ FrRel Rt t t' := by
+  have hw := storeImmStruct?_eq_some hst
+  obtain ⟨w, tag⟩ := i
+  simp only at htag hw
+  subst htag hw
+  have hkb : KeptF b := hkept b (by simp [instrNames, opNames])
+  have hkd : KeptF d := hkept d (by simp [instrNames, opNames])
+  have hkv : KeptF v := hkept v (by simp [instrNames, opNames])
+  rw [fstepF_storeImm] at h
+  obtain ⟨t0, ht0, hzt⟩ := Option.map_eq_some_iff.mp h
+  simp only [Prod.mk.injEq] at hzt
+  obtain ⟨rfl, rfl⟩ := hzt
+  simp only [lsemStepMem, storeImmStruct?, if_true] at ht0
+  cases ha : s.getArr b 64 n with
+  | none => simp [ha] at ht0
+  | some arr =>
+  cases hv : s.reg.getW v 64 with
+  | none => simp [ha, hv] at ht0
+  | some vv =>
+  simp only [ha, hv, Option.some.injEq] at ht0
+  subst ht0
+  have ha' : s'.getArr b 64 n = some arr := by
+    unfold LstateM.getArr; rw [hQ.arr b hkb]; exact ha
+  obtain ⟨a0, ha0⟩ := hQ.root k n hRt
+  obtain ⟨u, hu, hcopy, hureg, huarr, humem, hucf, huof⟩ :=
+    runStraightF_resCopy hn s' zf ha' (by simpa [copyName] using ha0)
+      (fun j _ => hkb.ne_copy k (j + 1))
+  have hret : retarget outs (copyName (freshName k) n)
+      (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm c], .storeImm 64 n)
+      = (.Lopn [.reg d] "STOREIMM" [.reg (copyName (freshName k) n), .reg v, .imm c],
+          .storeImm 64 n) := by
+    simp [retarget, shadowCall?]
+  have hgw : ∀ r, KeptF r → u.reg.getW r 64 = s.reg.getW r 64 := by
+    intro r hr
+    unfold LstateN.getW
+    rw [hureg r hr.1 hr.2.1, hQ.reg r hr]
+  have hst' := lsemStepMem_storeImmC d (copyName (freshName k) n) v c 64 n u hcopy
+    (by rw [hgw v hkv]; exact hv)
+  refine ⟨(u.setArr d (stackSet arr c vv)).nextPc, ?_, ⟨fun r hr => ?_, fun r hr => ?_,
+    ?_, ?_, ?_, fun k' n' hk' => ?_⟩⟩
+  · rw [JasminLsemAddrMem.runStraightF_append, hu, Option.bind_some, hret, runStraightF_cons,
+      fstepF_storeImm, hst']
     rfl
   · show (u.reg).lvm r = (s.reg).lvm r
     rw [hureg r hr.1 hr.2.1, hQ.reg r hr]
@@ -1102,6 +1343,9 @@ theorem isLopn_retarget (outs : List (String × Nat)) (F : String) {i : LinstrRM
     · exact ⟨d, o, s, hd⟩
   · split
     · exact ⟨_, _, _, rfl⟩
+    · split
+      · exact ⟨_, _, _, rfl⟩
+      · exact ⟨d, o, s, hd⟩
     · exact ⟨d, o, s, hd⟩
 
 /-- The retargeted instruction of an instruction that is no shadow instruction of a call is
@@ -1115,6 +1359,11 @@ theorem shadowCall?_retarget (outs : List (String × Nat)) (F : String) {i : Lin
   · rename_i d opn b x sc v hw
     rw [hw] at hi
     simpa [shadowCall?] using hi
+  · rename_i d opn b v c hw
+    split
+    · rw [hw] at hi
+      simpa [shadowCall?] using hi
+    · exact hi
   · exact hi
 
 /-- An instruction that is no `Lopn` is no site. -/
@@ -1126,12 +1375,31 @@ theorem freshSite_of_not_lopn {σ : String → String} {L : Nat → List String}
   | Lopn d o s => exact absurd ⟨d, o, s, rfl⟩ hi
   | _ => simp [freshSite, shadowCall?, storeStruct?]
 
-/-- Every instruction of the expansion of an `Lopn` is an `Lopn`. -/
-theorem freshE_lopn {σ : String → String} {L : Nat → List String}
-    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i : LinstrRM}
-    (hi : IsLopn i) : ∀ j ∈ freshE σ L aa outs k i, IsLopn j := by
+/-- A site is an `Lopn`. -/
+theorem SiteShape.isLopn {aa : String → Nat → Option Nat} {outs : List (String × Nat)}
+    {i : LinstrRM} {A : String} {n : Nat} (h : SiteShape aa outs i A n) : IsLopn i := by
+  obtain ⟨-, ⟨dst, f, srcs, p, hsh, -⟩ | ⟨-, -, d, x, v, hst⟩ | ⟨-, -, d, v, c, hst⟩⟩ := h
+  · obtain ⟨dst', opn, srcs', hw, -⟩ := LprogIsaProcs.shadowCall?_wire
+      (by rw [hsh]; exact Option.some_ne_none _)
+    exact ⟨_, _, _, hw⟩
+  · obtain ⟨sc, hw⟩ := storeStruct?_eq_some hst
+    exact ⟨_, _, _, hw⟩
+  · exact ⟨_, _, _, storeImmStruct?_eq_some hst⟩
+
+/-- A selector of sites of the three kinds selects no instruction that is no `Lopn`. -/
+theorem SiteOK.none_of_not_lopn {aa : String → Nat → Option Nat} {outs : List (String × Nat)}
+    {sel : Nat → LinstrRM → Option (String × Nat)} (hsel : SiteOK aa outs sel) {k : Nat}
+    {i : LinstrRM} (hi : ¬ IsLopn i) : sel k i = none := by
+  cases h : sel k i with
+  | none => rfl
+  | some An => exact absurd (hsel k i An.1 An.2 h).isLopn hi
+
+/-- Every instruction of the expansion of an `Lopn` under a site selector is an `Lopn`. -/
+theorem freshESel_lopn {outs : List (String × Nat)}
+    {sel : Nat → LinstrRM → Option (String × Nat)} {k : Nat} {i : LinstrRM}
+    (hi : IsLopn i) : ∀ j ∈ freshESel outs sel k i, IsLopn j := by
   intro j hj
-  unfold freshE at hj
+  unfold freshESel at hj
   split at hj
   · rcases List.mem_append.mp hj with h | h
     · exact (resCopyCode_mem h).1
@@ -1140,13 +1408,13 @@ theorem freshE_lopn {σ : String → String} {L : Nat → List String}
   · rw [List.mem_singleton.mp hj]
     exact hi
 
-/-- No instruction of the expansion of an instruction that is no shadow instruction of a
-    call is a shadow instruction of a call. -/
-theorem freshE_noCall {σ : String → String} {L : Nat → List String}
-    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i : LinstrRM}
-    (hi : shadowCall? i.1 = none) : ∀ j ∈ freshE σ L aa outs k i, shadowCall? j.1 = none := by
+/-- No instruction of the expansion under a site selector of an instruction that is no shadow
+    instruction of a call is a shadow instruction of a call. -/
+theorem freshESel_noCall {outs : List (String × Nat)}
+    {sel : Nat → LinstrRM → Option (String × Nat)} {k : Nat} {i : LinstrRM}
+    (hi : shadowCall? i.1 = none) : ∀ j ∈ freshESel outs sel k i, shadowCall? j.1 = none := by
   intro j hj
-  unfold freshE at hj
+  unfold freshESel at hj
   split at hj
   · rcases List.mem_append.mp hj with h | h
     · exact (resCopyCode_mem h).2
@@ -1154,6 +1422,19 @@ theorem freshE_noCall {σ : String → String} {L : Nat → List String}
       exact shadowCall?_retarget outs _ hi
   · rw [List.mem_singleton.mp hj]
     exact hi
+
+/-- Every instruction of the expansion of an `Lopn` is an `Lopn`. -/
+theorem freshE_lopn {σ : String → String} {L : Nat → List String}
+    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i : LinstrRM}
+    (hi : IsLopn i) : ∀ j ∈ freshE σ L aa outs k i, IsLopn j :=
+  freshESel_lopn hi
+
+/-- No instruction of the expansion of an instruction that is no shadow instruction of a
+    call is a shadow instruction of a call. -/
+theorem freshE_noCall {σ : String → String} {L : Nat → List String}
+    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i : LinstrRM}
+    (hi : shadowCall? i.1 = none) : ∀ j ∈ freshE σ L aa outs k i, shadowCall? j.1 = none :=
+  freshESel_noCall hi
 
 /-! ## 8. The run of the freshened body -/
 
@@ -1177,6 +1458,48 @@ theorem fstepF_shadowCall {i : LinstrRM} (hl : IsLopn i) (hsh : shadowCall? i.1 
   rw [evalInstrPMemF_isLopn _ i S hl] at h1
   exact Option.map_eq_none_iff.mp h1
 
+/-- **The expansion conditions of the pass under a site selector.** For a body whose
+    instructions are `Lopn`s or control instructions, contain no `MULX` and name kept names
+    only, the expansion `freshESel outs sel` at a selector `sel` of sites of the three kinds
+    satisfies `ExpInv` for the relation `FrRel` at the fresh roots of the body and the trivial
+    invariant. -/
+theorem freshESel_expInv (aa : String → Nat → Option Nat) (outs : List (String × Nat))
+    {sel : Nat → LinstrRM → Option (String × Nat)} (hsel : SiteOK aa outs sel)
+    {body : List LinstrRM}
+    (hcls : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → IsLopn i ∨ CtlI i)
+    (hmx : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → mulxFree i = true)
+    (hkept : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → ∀ r ∈ instrNames i.1, KeptF r) :
+    ExpInv (FrRel (freshRootsSel sel body)) (fun _ => True) (fun _ _ _ => True)
+      (freshESel outs sel) body := by
+  refine ⟨fun k i hk => ?_, fun k i hk hl => ⟨freshESel_lopn hl, ?_⟩, fun _ _ _ _ => trivial,
+    fun _ _ _ => trivial, fun _ _ _ _ _ _ _ => trivial,
+    fun _ _ _ _ h => h.setLpc _ _⟩
+  · rcases hcls k i hk with hl | hc
+    · exact Or.inl hl
+    · refine Or.inr ⟨hc, ?_⟩
+      have hnl : ¬ IsLopn i := by
+        rintro ⟨d, o, s, hd⟩
+        rcases hc with ⟨kd, l, h⟩ | ⟨c, l, h, -⟩ | ⟨tgt, h⟩ <;> rw [h] at hd <;> cases hd
+      unfold freshESel
+      rw [hsel.none_of_not_lopn hnl]
+  · intro s s' t zf zt _ hQ h
+    refine ⟨trivial, ?_⟩
+    unfold freshESel
+    cases hsite : sel k i with
+    | none =>
+        obtain ⟨t', ht', hreg, harr, hmem, hcf, hof⟩ := fstepF_keep keptF_empty hl
+          (hkept k i hk) (hmx k i hk) hQ.reg hQ.arr hQ.mem hQ.cf hQ.of h
+        refine ⟨t', ?_, ⟨hreg, harr, hmem, hcf, hof, root_fstepF (hkept k i hk) ht' hQ.root⟩⟩
+        simp only [runStraightF_cons, ht', Option.bind_some, runStraightF_nil]
+    | some An =>
+        obtain ⟨A, n⟩ := An
+        obtain ⟨hn, ⟨dst, f, srcs, p, hsh, -⟩ | ⟨-, htag, d, x, v, hst⟩
+          | ⟨-, htag, d, v, c, hst⟩⟩ := hsel k i A n hsite
+        · rw [fstepF_shadowCall hl (by rw [hsh]; exact Option.some_ne_none _)] at h
+          cases h
+        · exact freshStore_sim outs ⟨i, A, hk, hsite⟩ hn htag hst (hkept k i hk) hQ h
+        · exact freshStoreImm_sim outs ⟨i, A, hk, hsite⟩ hn htag hst (hkept k i hk) hQ h
+
 /-- **The expansion conditions of the pass.** For a body whose instructions are `Lopn`s or
     control instructions, contain no `MULX` and name kept names only, the expansion `freshE`
     with the coalescing renaming `σ` satisfies `ExpInv` for the relation `FrRel` at the fresh
@@ -1187,33 +1510,8 @@ theorem freshE_expInv (σ : String → String) (L : Nat → List String)
     (hmx : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → mulxFree i = true)
     (hkept : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → ∀ r ∈ instrNames i.1, KeptF r) :
     ExpInv (FrRel (freshRoots σ L aa outs body)) (fun _ => True) (fun _ _ _ => True)
-      (freshE σ L aa outs) body := by
-  refine ⟨fun k i hk => ?_, fun k i hk hl => ⟨freshE_lopn hl, ?_⟩, fun _ _ _ _ => trivial,
-    fun _ _ _ => trivial, fun _ _ _ _ _ _ _ => trivial,
-    fun _ _ _ _ h => h.setLpc _ _⟩
-  · rcases hcls k i hk with hl | hc
-    · exact Or.inl hl
-    · refine Or.inr ⟨hc, ?_⟩
-      have hnl : ¬ IsLopn i := by
-        rintro ⟨d, o, s, hd⟩
-        rcases hc with ⟨kd, l, h⟩ | ⟨c, l, h, -⟩ | ⟨tgt, h⟩ <;> rw [h] at hd <;> cases hd
-      unfold freshE
-      rw [freshSite_of_not_lopn hnl]
-  · intro s s' t zf zt _ hQ h
-    refine ⟨trivial, ?_⟩
-    unfold freshE
-    cases hsite : freshSite σ L aa outs k i with
-    | none =>
-        obtain ⟨t', ht', hreg, harr, hmem, hcf, hof⟩ := fstepF_keep keptF_empty hl
-          (hkept k i hk) (hmx k i hk) hQ.reg hQ.arr hQ.mem hQ.cf hQ.of h
-        refine ⟨t', ?_, ⟨hreg, harr, hmem, hcf, hof, root_fstepF (hkept k i hk) ht' hQ.root⟩⟩
-        simp only [runStraightF_cons, ht', Option.bind_some, runStraightF_nil]
-    | some An =>
-        obtain ⟨A, n⟩ := An
-        obtain ⟨hn, ⟨dst, f, srcs, p, hsh, -⟩ | ⟨-, htag, d, x, v, hst⟩⟩ := freshSite_some hsite
-        · rw [fstepF_shadowCall hl (by rw [hsh]; exact Option.some_ne_none _)] at h
-          cases h
-        · exact freshStore_sim outs ⟨i, A, hk, hsite⟩ hn htag hst (hkept k i hk) hQ h
+      (freshE σ L aa outs) body :=
+  freshESel_expInv aa outs (freshSite_ok σ L aa outs) hcls hmx hkept
 
 /-- **A call under the pass.** Let the instruction `i` at position `k` of `body` be the call
     `callShadow dst f srcs` with kept names, and its argument words be readable at `s`. Its
@@ -1222,29 +1520,30 @@ theorem freshE_expInv (σ : String → String) (L : Nat → List String)
     of `srcs` at `s`, and the write of every result keeps the relation. At a site the segment
     is the copy of the destination array into its fresh root and the operand at the
     destination position is the last version of the copy; elsewhere the segment is empty. -/
-theorem freshE_call (σ : String → String) (L : Nat → List String)
-    (aa : String → Nat → Option Nat) (outs : List (String × Nat)) {body : List LinstrRM}
+theorem freshESel_call (aa : String → Nat → Option Nat) (outs : List (String × Nat))
+    {sel : Nat → LinstrRM → Option (String × Nat)} (hsel : SiteOK aa outs sel)
+    {body : List LinstrRM}
     {k : Nat} {i : LinstrRM} (hk : body[k]? = some i)
     (hkept : ∀ r ∈ instrNames i.1, KeptF r) {s s' : LstateMF} {dst f : String}
     {srcs : List LOperand} (x : CallRes) (hi : i.1 = callShadow dst f srcs)
     (harg : (argsRead (aa f) s.prog.base 0 srcs).isSome)
-    (hQ : FrRel (freshRoots σ L aa outs body) s.prog.base s'.prog.base) :
+    (hQ : FrRel (freshRootsSel sel body) s.prog.base s'.prog.base) :
     ∃ (pre : List LinstrRM) (srcs' : List LOperand) (b : LstateM),
-      freshE σ L aa outs k i = pre ++ [(callShadow dst f srcs', i.2)]
+      freshESel outs sel k i = pre ++ [(callShadow dst f srcs', i.2)]
       ∧ (∀ j ∈ pre, IsLopn j)
       ∧ (∀ j ∈ pre, shadowCall? j.1 = none)
       ∧ srcs'.length = srcs.length
       ∧ runStraightF pre s'.prog.base s'.zf = some (b, s'.zf)
       ∧ argsRead (aa f) b 0 srcs' = argsRead (aa f) s.prog.base 0 srcs
-      ∧ FrRel (freshRoots σ L aa outs body) (retRes dst x s).prog.base
+      ∧ FrRel (freshRootsSel sel body) (retRes dst x s).prog.base
           (retRes dst x { prog := { base := b, lfn := s'.prog.lfn }, zf := s'.zf }).prog.base := by
   have hnm : ∀ o ∈ srcs, ∀ r ∈ opNames o, KeptF r := fun o ho r hr =>
     hkept r (by rw [hi]; simp only [callShadow, instrNames, List.flatMap_append,
       List.mem_append]; exact Or.inr (List.mem_flatMap.mpr ⟨o, ho, hr⟩))
   have hd : KeptF dst := hkept dst (by rw [hi]; simp [callShadow, instrNames, opNames])
   have hsh : shadowCall? i.1 = some (dst, f, srcs) := by rw [hi, shadowCall?_callShadow]
-  unfold freshE
-  cases hsite : freshSite σ L aa outs k i with
+  unfold freshESel
+  cases hsite : sel k i with
   | none =>
       refine ⟨[], srcs, s'.prog.base, by rw [List.nil_append, ← hi], by simp, by simp, rfl, rfl,
         argsRead_congr srcs srcs 0 rfl (fun j o o' h1 h2 => ?_), hQ.retRes (a' := s') hd x⟩
@@ -1253,7 +1552,8 @@ theorem freshE_call (σ : String → String) (L : Nat → List String)
       exact argRead_kept hQ.reg hQ.arr _ (hnm o (List.mem_of_getElem? h1))
   | some An =>
       obtain ⟨A, n⟩ := An
-      obtain ⟨hn, ⟨dst', f', srcs0, p, hsh', hp, han, hA⟩ | ⟨hsh', -⟩⟩ := freshSite_some hsite
+      obtain ⟨hn, ⟨dst', f', srcs0, p, hsh', hp, han, hA⟩ | ⟨hsh', -⟩ | ⟨hsh', -⟩⟩ :=
+        hsel k i A n hsite
       · rw [hsh] at hsh'
         obtain ⟨rfl, rfl, rfl⟩ : dst = dst' ∧ f = f' ∧ srcs = srcs0 := by
           simp only [Option.some.injEq, Prod.mk.injEq] at hsh'
@@ -1286,6 +1586,29 @@ theorem freshE_call (σ : String → String) (L : Nat → List String)
             exact argRead_kept huQ.reg huQ.arr _ (hnm o (List.mem_of_getElem? h1))
       · rw [hsh] at hsh'
         cases hsh'
+      · rw [hsh] at hsh'
+        cases hsh'
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (argsRead CallRes retRes) in
+/-- **A call under the pass** at the sites `freshSite`: `freshESel_call` at the selector
+    `freshSite σ L aa outs`. -/
+theorem freshE_call (σ : String → String) (L : Nat → List String)
+    (aa : String → Nat → Option Nat) (outs : List (String × Nat)) {body : List LinstrRM}
+    {k : Nat} {i : LinstrRM} (hk : body[k]? = some i)
+    (hkept : ∀ r ∈ instrNames i.1, KeptF r) {s s' : LstateMF} {dst f : String}
+    {srcs : List LOperand} (x : CallRes) (hi : i.1 = callShadow dst f srcs)
+    (harg : (argsRead (aa f) s.prog.base 0 srcs).isSome)
+    (hQ : FrRel (freshRoots σ L aa outs body) s.prog.base s'.prog.base) :
+    ∃ (pre : List LinstrRM) (srcs' : List LOperand) (b : LstateM),
+      freshE σ L aa outs k i = pre ++ [(callShadow dst f srcs', i.2)]
+      ∧ (∀ j ∈ pre, IsLopn j)
+      ∧ (∀ j ∈ pre, shadowCall? j.1 = none)
+      ∧ srcs'.length = srcs.length
+      ∧ runStraightF pre s'.prog.base s'.zf = some (b, s'.zf)
+      ∧ argsRead (aa f) b 0 srcs' = argsRead (aa f) s.prog.base 0 srcs
+      ∧ FrRel (freshRoots σ L aa outs body) (retRes dst x s).prog.base
+          (retRes dst x { prog := { base := b, lfn := s'.prog.lfn }, zf := s'.zf }).prog.base :=
+  freshESel_call aa outs (freshSite_ok σ L aa outs) hk hkept x hi harg hQ
 
 /-- The expansion of one instruction is at most as long as the expanded body. -/
 theorem length_e_le_expI (e : Nat → LinstrRM → List LinstrRM) {body : List LinstrRM}
@@ -1294,6 +1617,52 @@ theorem length_e_le_expI (e : Nat → LinstrRM → List LinstrRM) {body : List L
   rw [expI_split e hk]
   simp only [List.length_append]
   omega
+
+/-- **The run of the body freshened at a site rule.** Let `I` be an instruction set whose
+    steps contain those of `x86Isa` and whose further steps are local calls at the array
+    positions `aa`, each from a state at which its argument words are readable. Let the
+    instructions of `body` be `Lopn`s or control instructions, contain no `MULX` and name kept
+    names only, and let the site rule `site` select, at the coalescing renaming of `body`,
+    sites of the three kinds only. Every halting run of `I` on `body` from the entry of the
+    function `fn` is matched by a halting run of `I` on `freshenSel site L aa outs body` from
+    every entry state with the same function name and zero flag that is related by `FrRel` at
+    the fresh roots of the body; the final states are related in the same way and have equal
+    zero flags. -/
+theorem lsemFuelMemF_freshenSel {I : Isa} {ao : String → Option Nat} (site : SiteRule)
+    (aa : String → Nat → Option Nat) (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
+    (hrd : ∀ (P : LprogM) (i : LinstrRM) (s t : LstateMF), I.step P i s = some t →
+      ∀ (dst f : String) (srcs : List LOperand), i.1 = callShadow dst f srcs →
+        (argsRead (aa f) s.prog.base 0 srcs).isSome)
+    (L : Nat → List String) (outs : List (String × Nat)) {fn : String}
+    {body : List LinstrRM} (hsel : SiteOK aa outs (site (chainAliasO outs body) L aa outs))
+    (hcls : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → IsLopn i ∨ CtlI i)
+    (hmx : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → mulxFree i = true)
+    (hkept : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → ∀ r ∈ instrNames i.1, KeptF r)
+    (fuel : Nat) {s s' t : LstateMF} (hfn : s'.prog.lfn = s.prog.lfn) (hz : s'.zf = s.zf)
+    (hpc : s.prog.base.lpc = 0) (hpc' : s'.prog.base.lpc = 0)
+    (hQ : FrRel (freshRootsSel (site (chainAliasO outs body) L aa outs) body) s.prog.base
+      s'.prog.base)
+    (hrun : I.lsemFuelMemF (singletonProgM fn body) fuel s = some t) :
+    ∃ fuel' t', I.lsemFuelMemF (singletonProgM fn (freshenSel site L aa outs body)) fuel' s'
+        = some t'
+      ∧ FrRel (freshRootsSel (site (chainAliasO outs body) L aa outs) body) t.prog.base
+          t'.prog.base
+      ∧ t'.zf = t.zf := by
+  set sel := site (chainAliasO outs body) L aa outs
+  have h := freshESel_expInv aa outs hsel hcls hmx hkept
+  have hR : RelI (FrRel (freshRootsSel sel body)) (fun _ _ _ => True) (freshESel outs sel)
+      body s s' := ⟨hfn, hz, by rw [hpc, hpc']; rfl, hQ, trivial⟩
+  obtain ⟨fuel', t', -, hrun', hRt⟩ := lsemFuelMemF_expI_callsPre hle hcl h
+    (fun k i _ hsh j hj P x => Isa.CallLocal.step_eq I hle hcl P (freshESel_noCall hsh j hj) x)
+    (fun k i hk _ s0 s0' dst f srcs x hi _ _ _ hQ0 hx => by
+      obtain ⟨pre, srcs', b, he, hlop, hnc, hlen, hrun0, hargs, hQ1⟩ :=
+        freshESel_call aa outs hsel hk (hkept k i hk) x hi
+          (hrd _ i s0 _ hx dst f srcs hi) hQ0
+      exact ⟨pre, srcs', b, he, hlop,
+        fun j hj P y => Isa.CallLocal.step_eq I hle hcl P (hnc j hj) y, hlen, hrun0, hargs,
+        trivial, hQ1⟩)
+    (fun k i hk => length_e_le_expI (freshESel outs sel) hk) fuel hR hrun
+  exact ⟨fuel', t', hrun', hRt.base, hRt.zf⟩
 
 /-- **The run of the freshened body.** Let `I` be an instruction set whose steps contain
     those of `x86Isa` and whose further steps are local calls at the array positions `aa`,
@@ -1323,22 +1692,9 @@ theorem lsemFuelMemF_freshenArr {I : Isa} {ao : String → Option Nat}
     ∃ fuel' t', I.lsemFuelMemF (singletonProgM fn (freshenArr L aa outs body)) fuel' s'
         = some t'
       ∧ FrRel (freshRoots (chainAliasO outs body) L aa outs body) t.prog.base t'.prog.base
-      ∧ t'.zf = t.zf := by
-  set σ := chainAliasO outs body
-  have h := freshE_expInv σ L aa outs hcls hmx hkept
-  have hR : RelI (FrRel (freshRoots σ L aa outs body)) (fun _ _ _ => True) (freshE σ L aa outs)
-      body s s' := ⟨hfn, hz, by rw [hpc, hpc']; rfl, hQ, trivial⟩
-  obtain ⟨fuel', t', -, hrun', hRt⟩ := lsemFuelMemF_expI_callsPre hle hcl h
-    (fun k i _ hsh j hj P x => Isa.CallLocal.step_eq I hle hcl P (freshE_noCall hsh j hj) x)
-    (fun k i hk _ s0 s0' dst f srcs x hi _ _ _ hQ0 hx => by
-      obtain ⟨pre, srcs', b, he, hlop, hnc, hlen, hrun0, hargs, hQ1⟩ :=
-        freshE_call σ L aa outs hk (hkept k i hk) x hi
-          (hrd _ i s0 _ hx dst f srcs hi) hQ0
-      exact ⟨pre, srcs', b, he, hlop,
-        fun j hj P y => Isa.CallLocal.step_eq I hle hcl P (hnc j hj) y, hlen, hrun0, hargs,
-        trivial, hQ1⟩)
-    (fun k i hk => length_e_le_expI (freshE σ L aa outs) hk) fuel hR hrun
-  exact ⟨fuel', t', hrun', hRt.base, hRt.zf⟩
+      ∧ t'.zf = t.zf :=
+  lsemFuelMemF_freshenSel freshSite aa hle hcl hrd L outs (freshSite_ok _ L aa outs) hcls hmx
+    hkept fuel hfn hz hpc hpc' hQ hrun
 
 end Run
 
@@ -1460,23 +1816,32 @@ theorem getD_foldl_aliasStepO (outs : List (String × Nat)) {r : String} :
       rw [List.foldl_cons, getD_foldl_aliasStepO outs xs _ (fun j' hj' => h j' (by simp [hj'])),
         getD_aliasStepO outs M (h j (by simp))]
 
-/-- **The alias map at a site.** Over the expansion of a site with the fresh root
-    `freshName k`, from an alias map that fixes the fresh root, the destination of the store or
-    of the call is sent to the fresh root. -/
-theorem getD_foldl_freshE {σ : String → String} {L : Nat → List String}
-    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i : LinstrRM}
-    {A : String} {n : Nat} (hsite : freshSite σ L aa outs k i = some (A, n))
+/-- The alias step of a store `STOREIMM d, [b]` sends `d` to the image of `b`. -/
+theorem aliasStepO_storeImm (outs : List (String × Nat)) (M : Std.HashMap String String)
+    (d b v : String) (c : Nat) (tag : MemTag) :
+    aliasStepO outs M (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm c], tag)
+      = M.insert d (M.getD b b) := by
+  simp [aliasStepO, shadowCall?]
+
+/-- **The alias map at a site under a site selector.** Over the expansion of a site of a
+    selector of sites of the three kinds with the fresh root `freshName k`, from an alias map
+    that fixes the fresh root, the destination of the store or of the call is sent to the
+    fresh root. -/
+theorem getD_foldl_freshESel {aa : String → Nat → Option Nat} {outs : List (String × Nat)}
+    {sel : Nat → LinstrRM → Option (String × Nat)} (hsel : SiteOK aa outs sel) {k : Nat}
+    {i : LinstrRM} {A : String} {n : Nat} (hsite : sel k i = some (A, n))
     (M : Std.HashMap String String) (hM : M.getD (freshName k) (freshName k) = freshName k) :
     ∀ d, d ∈ dstNames i.1 →
-      ((freshE σ L aa outs k i).foldl (aliasStepO outs) M).getD d d = freshName k := by
+      ((freshESel outs sel k i).foldl (aliasStepO outs) M).getD d d = freshName k := by
   intro d hd
   have hcopy : ((resCopyCode A (freshName k) n).foldl (aliasStepO outs) M).getD
       (copyName (freshName k) n) (copyName (freshName k) n) = freshName k := by
     rw [resCopyCode, getD_foldl_resCopy outs A (freshName k) n M n n (le_refl n), hM]
-  unfold freshE
+  unfold freshESel
   rw [hsite, List.foldl_append]
   generalize ((resCopyCode A (freshName k) n).foldl (aliasStepO outs) M) = M' at hcopy
-  obtain ⟨-, ⟨dst, f, srcs, p, hsh, hp, -, hA⟩ | ⟨hsh, -, d', x, v, hst⟩⟩ := freshSite_some hsite
+  obtain ⟨-, ⟨dst, f, srcs, p, hsh, hp, -, hA⟩ | ⟨hsh, -, d', x, v, hst⟩
+    | ⟨hsh, -, d', v, c, hst⟩⟩ := hsel k i A n hsite
   · have hdd : d = dst := by
       obtain ⟨dst', opn, srcs', hw, -⟩ := LprogIsaProcs.shadowCall?_wire
         (by rw [hsh]; exact Option.some_ne_none _)
@@ -1510,6 +1875,30 @@ theorem getD_foldl_freshE {σ : String → String} {L : Nat → List String}
     rw [hret]
     simp only [List.foldl_cons, List.foldl_nil, aliasStepO_store, Std.HashMap.getD_insert,
       beq_self_eq_true, if_true, hcopy]
+  · have hw := storeImmStruct?_eq_some hst
+    have hdd : d = d' := by
+      rw [hw] at hd
+      simpa [dstNames, JasminLsemExportRewrites.opNames] using hd
+    subst hdd
+    have hret : retarget outs (copyName (freshName k) n) i
+        = (.Lopn [.reg d] "STOREIMM" [.reg (copyName (freshName k) n), .reg v, .imm c], i.2) := by
+      unfold retarget
+      rw [hsh]
+      simp only [hw, if_true]
+    rw [hret]
+    simp only [List.foldl_cons, List.foldl_nil, aliasStepO_storeImm, Std.HashMap.getD_insert,
+      beq_self_eq_true, if_true, hcopy]
+
+/-- **The alias map at a site.** Over the expansion of a site with the fresh root
+    `freshName k`, from an alias map that fixes the fresh root, the destination of the store or
+    of the call is sent to the fresh root. -/
+theorem getD_foldl_freshE {σ : String → String} {L : Nat → List String}
+    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i : LinstrRM}
+    {A : String} {n : Nat} (hsite : freshSite σ L aa outs k i = some (A, n))
+    (M : Std.HashMap String String) (hM : M.getD (freshName k) (freshName k) = freshName k) :
+    ∀ d, d ∈ dstNames i.1 →
+      ((freshE σ L aa outs k i).foldl (aliasStepO outs) M).getD d d = freshName k :=
+  getD_foldl_freshESel (freshSite_ok σ L aa outs) hsite M hM
 
 /-- An instruction of an expanded body is in the expansion of an instruction of the body. -/
 theorem mem_expI (e : Nat → LinstrRM → List LinstrRM) {j : LinstrRM} :
@@ -1543,15 +1932,22 @@ theorem dstNames_retarget (outs : List (String × Nat)) (F : String) (i : Linstr
       simp only at hw ⊢
       rw [hw]
       rfl
+    · rename_i hw
+      split
+      · simp only at hw ⊢
+        rw [hw]
+        rfl
+      · rfl
     · rfl
 
-/-- The names an instruction of the expansion of `i` at `k` writes: names `i` writes, the
-    registers of the copy, and versions after the first word of the copy into `freshName k`. -/
-theorem dstNames_freshE {σ : String → String} {L : Nat → List String}
-    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i j : LinstrRM}
-    (hj : j ∈ freshE σ L aa outs k i) {r : String} (hr : r ∈ dstNames j.1) :
+/-- The names an instruction of the expansion of `i` at `k` under a site selector writes:
+    names `i` writes, the registers of the copy, and versions after the first word of the copy
+    into `freshName k`. -/
+theorem dstNames_freshESel {outs : List (String × Nat)}
+    {sel : Nat → LinstrRM → Option (String × Nat)} {k : Nat} {i j : LinstrRM}
+    (hj : j ∈ freshESel outs sel k i) {r : String} (hr : r ∈ dstNames j.1) :
     r ∈ dstNames i.1 ∨ r = copyIdx ∨ r = copyTmp ∨ ∃ t, r = copyName (freshName k) (t + 1) := by
-  unfold freshE at hj
+  unfold freshESel at hj
   split at hj
   · rename_i A n hsite
     rcases List.mem_append.mp hj with h | h
@@ -1569,10 +1965,92 @@ theorem dstNames_freshE {σ : String → String} {L : Nat → List String}
   · rw [List.mem_singleton.mp hj] at hr
     exact Or.inl hr
 
+/-- The names an instruction of the expansion of `i` at `k` writes: names `i` writes, the
+    registers of the copy, and versions after the first word of the copy into `freshName k`. -/
+theorem dstNames_freshE {σ : String → String} {L : Nat → List String}
+    {aa : String → Nat → Option Nat} {outs : List (String × Nat)} {k : Nat} {i j : LinstrRM}
+    (hj : j ∈ freshE σ L aa outs k i) {r : String} (hr : r ∈ dstNames j.1) :
+    r ∈ dstNames i.1 ∨ r = copyIdx ∨ r = copyTmp ∨ ∃ t, r = copyName (freshName k) (t + 1) :=
+  dstNames_freshESel hj hr
+
+/-- An alias fold keeps the image `v` of a name `r` when every instruction of the list keeps
+    it. -/
+theorem getD_foldl_aliasStepO_inv (outs : List (String × Nat)) {r v : String} :
+    ∀ (xs : List LinstrRM) (M : Std.HashMap String String),
+      (∀ j ∈ xs, ∀ M' : Std.HashMap String String, M'.getD r r = v →
+        (aliasStepO outs M' j).getD r r = v) →
+      M.getD r r = v → (xs.foldl (aliasStepO outs) M).getD r r = v
+  | [], _, _, hM => hM
+  | j :: xs, M, h, hM => by
+      rw [List.foldl_cons]
+      exact getD_foldl_aliasStepO_inv outs xs _ (fun j' hj' => h j' (by simp [hj']))
+        (h j (by simp) M hM)
+
 /-- A fresh root is neither register of the copy. -/
 theorem freshName_ne_copyRegs (k : Nat) : freshName k ≠ copyIdx ∧ freshName k ≠ copyTmp := by
   constructor <;> intro h <;> have := congrArg (fun s : String => s.toList.head?) h <;>
     simp [freshName, copyIdx, copyTmp] at this
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames) in
+/-- **A carried chain of the freshened body has the fresh root.** Let the instruction `i` at
+    position `k` of a body with kept names be a site of the site rule `site`, which selects
+    sites of the three kinds only, and let `d` be a destination of `i`. Let every later
+    instruction that writes `d` be no site and keep the image `freshName k` of `d` in every
+    alias map (an in-place store into `d` from `d`, or an instruction outside the alias steps,
+    such as a move on a back edge). The coalescing renaming of the freshened body sends `d` to
+    the fresh root `freshName k`. -/
+theorem chainAliasO_freshenSel_carried (site : SiteRule) (L : Nat → List String)
+    (aa : String → Nat → Option Nat) (outs : List (String × Nat)) {body : List LinstrRM}
+    {k : Nat} {i : LinstrRM} {A : String} {n : Nat}
+    (hsel : SiteOK aa outs (site (chainAliasO outs body) L aa outs))
+    (hk : body[k]? = some i)
+    (hsite : site (chainAliasO outs body) L aa outs k i = some (A, n))
+    (hkept : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → ∀ r ∈ instrNames i.1, KeptF r)
+    {d : String} (hd : d ∈ dstNames i.1)
+    (hcar : ∀ (k' : Nat) (i' : LinstrRM), body[k']? = some i' → k < k' → d ∈ dstNames i'.1 →
+      site (chainAliasO outs body) L aa outs k' i' = none
+        ∧ ∀ M : Std.HashMap String String, M.getD d d = freshName k →
+          (aliasStepO outs M i').getD d d = freshName k) :
+    chainAliasO outs (freshenSel site L aa outs body) d = freshName k := by
+  set sel := site (chainAliasO outs body) L aa outs
+  set e := freshESel outs sel
+  have hdk : KeptF d := hkept k i hk d (JasminLsemStepFrame.dstNames_sub hd)
+  unfold chainAliasO canonMemrefName freshenSel
+  rw [JasminLsemFuseMulHi.expI_split e hk, List.foldl_append, List.foldl_append]
+  refine getD_foldl_aliasStepO_inv outs _ _ ?suf ?mid
+  case suf =>
+    intro j hj M' hM'
+    obtain ⟨t, i', ht, hj'⟩ := mem_expI e _ _ hj
+    rw [List.getElem?_drop] at ht
+    by_cases hdj : d ∈ dstNames j.1
+    · rcases dstNames_freshESel hj' hdj with h | h | h | ⟨t', h⟩
+      · obtain ⟨hnone, hpres⟩ := hcar _ i' ht (by omega) h
+        have hji : j = i' := by
+          grind only [freshESel, = List.mem_cons, ← List.not_mem_nil]
+        subst hji
+        exact hpres M' hM'
+      · exact absurd h hdk.1
+      · exact absurd h hdk.2.1
+      · exact absurd h (hdk.ne_copy _ _)
+    · rw [getD_aliasStepO outs M' hdj, hM']
+  case mid =>
+    refine getD_foldl_freshESel hsel hsite _ ?_ d hd
+    rw [getD_foldl_aliasStepO outs _ _ ?pre]
+    case pre =>
+      intro j hj hdj
+      obtain ⟨t, i', ht, hj'⟩ := mem_expI e _ _ hj
+      have ht' : body[t]? = some i' := by
+        rw [List.getElem?_take] at ht
+        split at ht
+        · exact ht
+        · cases ht
+      rcases dstNames_freshESel hj' hdj with h | h | h | ⟨t', h⟩
+      · exact (hkept t i' ht' _ (JasminLsemStepFrame.dstNames_sub h)).2.2
+          (freshFam_freshName k)
+      · exact (freshName_ne_copyRegs k).1 h
+      · exact (freshName_ne_copyRegs k).2 h
+      · exact copyName_fresh_ne _ t' k h.symm
+    simp
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames) in
 /-- **The freshened chain has its own root.** Let the instruction `i` at position `k` of a
@@ -1586,39 +2064,37 @@ theorem chainAliasO_freshenArr (L : Nat → List String) (aa : String → Nat �
     (hkept : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i → ∀ r ∈ instrNames i.1, KeptF r)
     {d : String} (hd : d ∈ dstNames i.1)
     (honce : ∀ (k' : Nat) (i' : LinstrRM), body[k']? = some i' → k' ≠ k → d ∉ dstNames i'.1) :
-    chainAliasO outs (freshenArr L aa outs body) d = freshName k := by
-  set e := freshE (chainAliasO outs body) L aa outs
-  have hdk : KeptF d := hkept k i hk d (JasminLsemStepFrame.dstNames_sub hd)
-  unfold chainAliasO canonMemrefName freshenArr
-  rw [JasminLsemFuseMulHi.expI_split e hk, List.foldl_append, List.foldl_append,
-    getD_foldl_aliasStepO outs _ _ ?suf]
-  case suf =>
-    intro j hj hdj
-    obtain ⟨t, i', ht, hj'⟩ := mem_expI e _ _ hj
-    rw [List.getElem?_drop] at ht
-    rcases dstNames_freshE hj' hdj with h | h | h | ⟨t', h⟩
-    · exact honce _ i' ht (by omega) h
-    · exact hdk.1 h
-    · exact hdk.2.1 h
-    · exact hdk.ne_copy _ _ h
-  refine getD_foldl_freshE hsite _ ?_ d hd
-  rw [getD_foldl_aliasStepO outs _ _ ?pre]
-  case pre =>
-    intro j hj hdj
-    obtain ⟨t, i', ht, hj'⟩ := mem_expI e _ _ hj
-    have ht' : body[t]? = some i' := by
-      rw [List.getElem?_take] at ht
-      split at ht
-      · exact ht
-      · cases ht
-    rcases dstNames_freshE hj' hdj with h | h | h | ⟨t', h⟩
-    · exact (hkept t i' ht' _ (JasminLsemStepFrame.dstNames_sub h)).2.2
-        (freshFam_freshName k)
-    · exact (freshName_ne_copyRegs k).1 h
-    · exact (freshName_ne_copyRegs k).2 h
-    · exact copyName_fresh_ne _ t' k h.symm
-  simp
+    chainAliasO outs (freshenArr L aa outs body) d = freshName k :=
+  chainAliasO_freshenSel_carried freshSite L aa outs (freshSite_ok _ L aa outs) hk hsite hkept
+    hd (fun k' i' hk' hlt hdi => absurd hdi (honce k' i' hk' (by omega)))
 
 end Alias
+
+/-! ## 10. No site -/
+
+/-- An expansion that leaves every instruction of a list as it is leaves the list as it
+    is. -/
+theorem expI_eq_self (e : Nat → LinstrRM → List LinstrRM) :
+    ∀ (xs : List LinstrRM) (n0 : Nat), (∀ t i, xs[t]? = some i → e (n0 + t) i = [i]) →
+      expI e xs n0 = xs
+  | [], _, _ => rfl
+  | i :: xs, n0, h => by
+      have h0 := h 0 i rfl
+      rw [Nat.add_zero] at h0
+      rw [expI, h0, expI_eq_self e xs (n0 + 1) (fun t j hj => by
+        rw [show n0 + 1 + t = n0 + (t + 1) by omega]
+        exact h (t + 1) j (by simpa using hj))]
+      rfl
+
+/-- **No site, no change.** A body at which the site rule `site` selects no instruction is
+    its own freshening. -/
+theorem freshenSel_eq_self (site : SiteRule) (L : Nat → List String)
+    (aa : String → Nat → Option Nat) (outs : List (String × Nat)) {body : List LinstrRM}
+    (h : ∀ (k : Nat) (i : LinstrRM), body[k]? = some i →
+      site (chainAliasO outs body) L aa outs k i = none) :
+    freshenSel site L aa outs body = body :=
+  expI_eq_self _ body 0 (fun t i ht => by
+    unfold freshESel
+    rw [Nat.zero_add, h t i ht])
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.FreshenArr
