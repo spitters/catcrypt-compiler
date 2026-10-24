@@ -725,8 +725,10 @@ def renderAluViaScratch (frame spillW w : Nat) (m : String) (d s : LOperand)
             ++ [ "\tmovq -128(%rsp), " ++ gpReg64 scr ])
   | _, _ => none
 
-/-- Render one `Lopn dsts opn srcs` (not a carry-out / MULX-hi binding) to its
-    AT&T line(s). Handles the three arities the owned-RA body produces:
+/-- Render one `Lopn dsts opn srcs` (not a carry-out / MULX-hi binding) whose
+    mnemonic carries no `^` width tag to its AT&T line(s); `renderLopn` reads a
+    `^w` tag and calls this function. Handles the three arities the owned-RA body
+    produces:
 
     * **move** `Lopn [d] MOV/MOVQ/LOAD/STORE [s]` (one source) → `mov<sz> s, d`;
     * **two-address binop/shift** `Lopn [d] OP [d, s]` (two sources, `srcs[0] = d`
@@ -737,7 +739,7 @@ def renderAluViaScratch (frame spillW w : Nat) (m : String) (d s : LOperand)
       into CF via `bt $0, cin` (dropped only for the fused-flag sentinel, where
       the flag flows directly). The dst self-source is the implicit x86
       destination-source, not a printed operand. -/
-def renderLopn (frame spillW : Nat) (rvs : Bool := false)
+def renderLopnBody (frame spillW : Nat) (rvs : Bool := false)
     (dsts : List LOperand) (opn : String) (srcs : List LOperand)
     (qsaveB : Nat := qsaveBytes) : List String :=
   match dsts, opn, srcs with
@@ -1577,6 +1579,166 @@ def renderLopn (frame spillW : Nat) (rvs : Bool := false)
   | dsts, opn, srcs =>
       [ "\t# UNHANDLED-LOPN " ++ opn ++ " dsts=" ++ toString dsts.length
           ++ " srcs=" ++ toString srcs.length ]
+
+/-- The spelling of a body mnemonic without the `^` tag: a mnemonic with `^` is
+    its `stripWidthTag` body, followed by `:64` when the tag reads `64`; a
+    mnemonic without `^` is unchanged. The printer has no 8- or 16-bit ALU form,
+    so every op of a width other than `64` prints as the 32-bit op. -/
+def untagCaret (opn : String) : String :=
+  if opn.toList.contains '^' then
+    if wireWidth? opn = some 64 then stripWidthTag opn ++ ":64" else stripWidthTag opn
+  else opn
+
+/-- An arithmetic right shift or a rotate (`SAR`, `ROR`, `ROL`, by an immediate
+    count `B:k` or by a register) tagged at width `8` or `16`. Its 32-bit form
+    computes other low bits than the narrow op, so the printer refuses it. -/
+def narrowShiftRefused (opn : String) : Bool :=
+  (wireWidth? opn == some 8 || wireWidth? opn == some 16) &&
+    ["SAR", "ROR", "ROL"].contains
+      (String.ofList ((stripWidthTag opn).toList.takeWhile (· != ':')))
+
+/-- Render one `Lopn dsts opn srcs` (not a carry-out / MULX-hi binding) to its
+    AT&T line(s): `renderLopnBody` of the mnemonic without its `^` tag
+    (`untagCaret`), and a refusal comment for a `narrowShiftRefused` mnemonic. -/
+def renderLopn (frame spillW : Nat) (rvs : Bool := false)
+    (dsts : List LOperand) (opn : String) (srcs : List LOperand)
+    (qsaveB : Nat := qsaveBytes) : List String :=
+  if narrowShiftRefused opn then [ "\t# UNHANDLED-NARROW-SHIFT " ++ opn ]
+  else renderLopnBody frame spillW rvs dsts (untagCaret opn) srcs qsaveB
+
+/-- The width a mnemonic without `^` carries is `64` or none. -/
+theorem wireWidth?_of_caret_free {m : String} (hm : '^' ∉ m.toList) :
+    wireWidth? m = some 64 ∨ wireWidth? m = none := by
+  unfold wireWidth?
+  simp only [List.contains_iff_mem, hm, if_false]
+  split <;> simp
+
+/-- The width a `^`-tagged mnemonic carries, for a body without `^`. -/
+theorem wireWidth?_withWidthTag_of_caret_free (w : Nat) {m : String}
+    (hm : '^' ∉ m.toList) : wireWidth? (withWidthTag w m) = some w := by
+  by_cases hw : w = 64
+  · subst hw
+    unfold wireWidth?
+    dsimp only
+    rw [if_neg (by rw [toList_withWidthTag_64]; simp [hm]), if_pos (hasSuffix_withWidthTag_64 m)]
+  · unfold wireWidth?
+    dsimp only
+    rw [toList_withWidthTag_of_ne hw, if_pos (by simp),
+      List.dropWhile_append_of_pos (bne_at_of_not_mem hm)]
+    simpa [toString_toList_eq] using charsToNat?_toString_toList w
+
+/-- `stripWidthTag` removes a tag at a width other than `64` from a body without
+    `^`; the body may contain `:`. -/
+theorem stripWidthTag_withWidthTag_of_ne {w : Nat} (hw : w ≠ 64) {m : String}
+    (hm : '^' ∉ m.toList) : stripWidthTag (withWidthTag w m) = m := by
+  unfold stripWidthTag
+  rw [toList_withWidthTag_of_ne hw, if_pos (by simp)]
+  simp [List.takeWhile_append_of_pos (bne_at_of_not_mem hm)]
+
+/-- `untagCaret` of a tag at a width other than `64` is the body. -/
+theorem untagCaret_withWidthTag {w : Nat} (hw : w ≠ 64) {m : String}
+    (hm : '^' ∉ m.toList) : untagCaret (withWidthTag w m) = m := by
+  unfold untagCaret
+  rw [wireWidth?_withWidthTag_of_caret_free w hm, if_pos (by rw [toList_withWidthTag_of_ne hw]; simp),
+    if_neg (by simpa using hw), stripWidthTag_withWidthTag_of_ne hw hm]
+
+/-- `untagCaret` fixes a mnemonic without `^`. -/
+theorem untagCaret_of_caret_free {m : String} (hm : '^' ∉ m.toList) :
+    untagCaret m = m := by
+  unfold untagCaret
+  rw [if_neg (by simpa using hm)]
+
+/-- No mnemonic without `^` is refused. -/
+theorem narrowShiftRefused_of_caret_free {m : String} (hm : '^' ∉ m.toList) :
+    narrowShiftRefused m = false := by
+  unfold narrowShiftRefused
+  rcases wireWidth?_of_caret_free hm with h | h <;> simp [h]
+
+/-- A pattern containing `:` and no `^` does not end a mnemonic tagged at a width
+    other than `64`, whose tag ends in `^` followed by decimal digits. -/
+theorem hasSuffix_withWidthTag_of_ne {w : Nat} (hw : w ≠ 64) (m : String) {p : String}
+    (hc : ':' ∈ p.toList) (ha : '^' ∉ p.toList) : hasSuffix (withWidthTag w m) p = false := by
+  rw [Bool.eq_false_iff]
+  intro h
+  unfold hasSuffix at h
+  rw [toList_withWidthTag_of_ne hw, List.isSuffixOf_iff_suffix] at h
+  rcases List.suffix_or_suffix_of_suffix h (List.suffix_append _ _) with h1 | h1
+  · have hc' := h1.subset hc
+    simp only [List.mem_cons] at hc'
+    rcases hc' with hc' | hc'
+    · exact absurd hc' (by decide)
+    · exact (sep_not_mem_toString w).1 hc'
+  · exact ha (h1.subset List.mem_cons_self)
+
+/-- The printer width of a mnemonic tagged at a width other than `64` is `32`. -/
+theorem mnemWidth_withWidthTag_of_ne {w : Nat} (hw : w ≠ 64) (m : String) :
+    mnemWidth (withWidthTag w m) = 32 := by
+  have hq : withWidthTag w m ≠ "MOVQ" := by
+    intro h
+    have h2 := congrArg String.toList h
+    rw [toList_withWidthTag_of_ne hw] at h2
+    have h3 : '^' ∈ "MOVQ".toList := h2 ▸ (by simp)
+    exact absurd h3 (by decide)
+  unfold mnemWidth
+  rw [hasSuffix_withWidthTag_of_ne hw m (by decide) (by decide),
+    hasSuffix_withWidthTag_of_ne hw m (by decide) (by decide),
+    hasSuffix_withWidthTag_of_ne hw m (by decide) (by decide)]
+  simp [hq]
+
+/-- **Byte neutrality of the printer.** A `^w` tag at a width other than `64` on a
+    body without `^` that is not refused prints as the untagged body. -/
+theorem renderLopn_retag32 (frame spillW : Nat) (rvs : Bool) (dsts : List LOperand)
+    {w : Nat} (hw : w ≠ 64) {m : String} (hm : '^' ∉ m.toList)
+    (hr : narrowShiftRefused (withWidthTag w m) = false) (srcs : List LOperand)
+    (qsaveB : Nat) :
+    renderLopn frame spillW rvs dsts (withWidthTag w m) srcs qsaveB
+      = renderLopn frame spillW rvs dsts m srcs qsaveB := by
+  unfold renderLopn
+  simp only [hr, narrowShiftRefused_of_caret_free hm, Bool.false_eq_true, if_false,
+    untagCaret_withWidthTag hw hm, untagCaret_of_caret_free hm]
+
+/-- The tags `^32`, `^16` and `^8` on an ALU head (a body without a width-tag
+    separator other than `SAR`, `ROR`, `ROL`) print as the untagged head. -/
+theorem renderLopn_retag32_alu (frame spillW : Nat) (rvs : Bool) (dsts : List LOperand)
+    {w : Nat} (hw : w = 32 ∨ w = 16 ∨ w = 8) {m : String} (hm : tagSepFree m = true)
+    (hb : m ≠ "SAR" ∧ m ≠ "ROR" ∧ m ≠ "ROL") (srcs : List LOperand) (qsaveB : Nat) :
+    renderLopn frame spillW rvs dsts (withWidthTag w m) srcs qsaveB
+      = renderLopn frame spillW rvs dsts m srcs qsaveB := by
+  have hsep := (tagSepFree_iff m).mp hm
+  have ht : m.toList.takeWhile (· != ':') = m.toList := by
+    simpa using List.takeWhile_append_of_pos (p := (· != ':')) (l₂ := [])
+      (fun c hc => by simp only [bne_iff_ne, ne_eq]; rintro rfl; exact hsep.1 hc)
+  refine renderLopn_retag32 frame spillW rvs dsts (by omega) hsep.2 ?_ srcs qsaveB
+  unfold narrowShiftRefused
+  rw [wireWidth?_withWidthTag w hm, stripWidthTag_withWidthTag w hm, ht, String.ofList_toList]
+  rcases hw with rfl | rfl | rfl <;> simp [hb.1, hb.2.1, hb.2.2]
+
+/-- The printer refuses `SAR`, `ROR` and `ROL` at `^8` and `^16`, by an immediate
+    count (`B:k`) and by a register (`B`). -/
+theorem renderLopn_narrowShift_refused (frame spillW : Nat) (rvs : Bool)
+    (dsts : List LOperand) {w : Nat} (hw : w = 16 ∨ w = 8) {m : String}
+    (hm : m = "SAR" ∨ m = "ROR" ∨ m = "ROL") {b : String}
+    (hb : b = m ∨ ∃ k : Nat, b = m ++ ":" ++ toString k) (srcs : List LOperand)
+    (qsaveB : Nat) :
+    renderLopn frame spillW rvs dsts (withWidthTag w b) srcs qsaveB
+      = [ "\t# UNHANDLED-NARROW-SHIFT " ++ withWidthTag w b ] := by
+  have hmc : ':' ∉ m.toList ∧ '^' ∉ m.toList := by
+    rcases hm with rfl | rfl | rfl <;> decide
+  have hbc : '^' ∉ b.toList := by
+    rcases hb with rfl | ⟨k, rfl⟩
+    · exact hmc.2
+    · have hk := (sep_not_mem_toString k).2
+      rw [toString_toList_eq] at hk
+      simp [hmc.2, hk]
+  have hbase : String.ofList (b.toList.takeWhile (· != ':')) = m := by
+    rcases hb with rfl | ⟨k, rfl⟩ <;> rcases hm with rfl | rfl | rfl <;>
+      simp
+  unfold renderLopn
+  rw [if_pos]
+  unfold narrowShiftRefused
+  rw [wireWidth?_withWidthTag_of_caret_free w hbc, stripWidthTag_withWidthTag_of_ne (by omega) hbc,
+    hbase]
+  rcases hw with rfl | rfl <;> rcases hm with rfl | rfl | rfl <;> decide
 
 /-! ### Printer pins: batch8 YMM VEX arms
 

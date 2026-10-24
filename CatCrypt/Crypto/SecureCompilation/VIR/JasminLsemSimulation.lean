@@ -294,9 +294,8 @@ exactly the dialect denotation of the binding. -/
     kernel evaluation of the concrete `String.endsWith` per opcode (axiom-clean;
     `String.endsWith` is `Slice`-based and does not reduce by plain `rfl`). -/
 theorem stripWidthTag_withWidthTag_binOpName (w : Nat) (bop : JasminBinOp) :
-    stripWidthTag (withWidthTag w (binOpName bop)) = binOpName bop := by
-  unfold withWidthTag
-  split <;> cases bop <;> decide +kernel
+    stripWidthTag (withWidthTag w (binOpName bop)) = binOpName bop :=
+  stripWidthTag_withWidthTag w (by cases bop <;> decide +kernel)
 
 /-! ## 7. The core straight-line simulation
 

@@ -160,13 +160,63 @@ def castStruct? : LinstrR → Option (String × String)
       else none
   | _ => none
 
-/-- Recognise the untagged immediate move `Lopn [.reg dst] "MOV" [.imm n]`, the wire form
-    of a `regConst w n` at a width `w ≠ 64`, and return `(dst, n)`; `none` otherwise. The
-    width of the constant is absent from that wire; a typed instruction carries it as its
+/-- The mnemonic of an immediate move at a width other than `64`: `MOV` untagged, or
+    `withWidthTag w "MOV"` at a width `w ≠ 64` (`MOV^w`). -/
+def isMovImmMnem (opn : String) : Bool :=
+  opn == "MOV" ||
+    match wireWidth? opn with
+    | some w => w != 64 && opn == withWidthTag w "MOV"
+    | none => false
+
+theorem isMovImmMnem_iff {o : String} :
+    isMovImmMnem o = true ↔ o = "MOV" ∨ ∃ w, w ≠ 64 ∧ o = withWidthTag w "MOV" := by
+  unfold isMovImmMnem
+  constructor
+  · intro h
+    simp only [Bool.or_eq_true, beq_iff_eq] at h
+    rcases h with h | h
+    · exact Or.inl h
+    · split at h
+      · rename_i w _
+        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, beq_iff_eq] at h
+        exact Or.inr ⟨w, h.1, h.2⟩
+      · cases h
+  · rintro (rfl | ⟨w, hw, rfl⟩)
+    · decide
+    · simp [wireWidth?_withWidthTag w (by decide +kernel : tagSepFree "MOV" = true), hw]
+
+theorem stripWidthTag_of_isMovImm {o : String} (h : isMovImmMnem o = true) :
+    stripWidthTag o = "MOV" := by
+  rcases isMovImmMnem_iff.1 h with rfl | ⟨w, -, rfl⟩
+  · decide
+  · exact stripWidthTag_withWidthTag w (by decide +kernel)
+
+theorem wireWidth?_ne_64_of_isMovImm {o : String} (h : isMovImmMnem o = true) :
+    wireWidth? o ≠ some 64 := by
+  rcases isMovImmMnem_iff.1 h with rfl | ⟨w, hw, rfl⟩
+  · decide
+  · simpa [wireWidth?_withWidthTag w (by decide +kernel : tagSepFree "MOV" = true)] using hw
+
+/-- Recognise an immediate move `Lopn [.reg dst] opn [.imm n]` whose mnemonic is `MOV`
+    untagged or tagged at a width other than `64` (`MOV^w`, `isMovImmMnem`), the wire form
+    of a `regConst w n` at a width `w ≠ 64`, and return `(dst, n)`; `none` otherwise, the
+    `MOV:64` move included. A typed instruction carries the width of the constant as its
     descriptor. -/
 def movImmStruct? : LinstrR → Option (String × Nat)
-  | .Lopn [.reg dst] "MOV" [.imm n] => some (dst, n)
+  | .Lopn [.reg dst] opn [.imm n] => if isMovImmMnem opn then some (dst, n) else none
   | _ => none
+
+/-- The operand shape of an immediate move `movImmStruct?` reads. -/
+theorem movImmStruct?_spec {x : LinstrR} {d : String} {n : Nat}
+    (h : movImmStruct? x = some (d, n)) : ∃ opn, x = .Lopn [.reg d] opn [.imm n] := by
+  unfold movImmStruct? at h
+  split at h
+  · split at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨_, rfl⟩
+    · cases h
+  · cases h
 
 /-- The typed single-step semantics for the width-cast fragment. On a cast-tagged
     instruction (`castStruct?` recognises the `"ZEROEXT"/"TRUNC"` wire form *and*
@@ -219,7 +269,18 @@ theorem lsemStepCast_cmp (c : JasminCmp) (wOp : Nat) (dst a : String) (b : LOper
 theorem lsemStepCast_movImm (dst : String) (n w' : Nat) (s : LstateN) :
     lsemStepCast (.Lopn [.reg dst] "MOV" [.imm n], some w') s =
       some ((s.setReg dst (BitVec.ofNat w' n)).nextPc) := by
-  simp [lsemStepCast, castStruct?, movImmStruct?]
+  simp [lsemStepCast, castStruct?, movImmStruct?, isMovImmMnem_iff.2 (Or.inl rfl)]
+
+/-- The typed step of the immediate move tagged at a width `w ≠ 64` writes the constant at
+    the descriptor width. -/
+theorem lsemStepCast_movImm_withWidthTag (dst : String) (n w w' : Nat) (hw : w ≠ 64)
+    (s : LstateN) :
+    lsemStepCast (.Lopn [.reg dst] (withWidthTag w "MOV") [.imm n], some w') s =
+      some ((s.setReg dst (BitVec.ofNat w' n)).nextPc) := by
+  have hc : castStruct? (.Lopn [.reg dst] (withWidthTag w "MOV") [.imm n]) = none := rfl
+  have hi : movImmStruct? (.Lopn [.reg dst] (withWidthTag w "MOV") [.imm n]) = some (dst, n) := by
+    simp [movImmStruct?, isMovImmMnem_iff.2 (Or.inr ⟨w, hw, rfl⟩)]
+  simp only [lsemStepCast, hc, hi]
 
 /-- The descriptor of a `regConst w n` binding: none at the two widths the immediate move's
     width tag carries (`64`, and `32` for the untagged move), the width `w` otherwise. -/
@@ -576,8 +637,8 @@ theorem lsemStepCast_constD {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
   · have hd : regConstDescr w = some w := by simp [regConstDescr, hwn]
     have h64 : w ≠ 64 := fun h => hwn (Or.inl h)
     rw [hd]
-    simp only [opToLinstrR, withWidthTag, h64, if_false]
-    exact lsemStepCast_movImm _ n w st
+    simp only [opToLinstrR]
+    exact lsemStepCast_movImm_withWidthTag _ n w w h64 st
 
 theorem lsemStepCast_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateN} {w : Nat}

@@ -261,7 +261,7 @@ theorem stepI_lopn_reg (frame : String → Option (BitVec 64)) (c : Lcmd) (k : N
   simp only [stepI]
   rw [tagAt_of_ne (by simp [movImmStruct?])]
   rcases ho with rfl | rfl | rfl <;>
-    (rw [tagA_lopn (by decide) (by decide)]; simp +decide [normA, castTagW])
+    (rw [tagA_lopn (by decide) (by decide), normA_of_caret_free (by decide)]; simp +decide [castTagW])
 
 /-- The shape of a 64-bit move `MOV:64 n, S`: a store of `S` when `n` is a cell, a load into
     `n` when `S` is a cell, a register move otherwise. -/

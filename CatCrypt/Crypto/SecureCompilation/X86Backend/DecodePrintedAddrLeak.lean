@@ -896,19 +896,23 @@ theorem AArm.leak_length {P : Params} {a : AArm} (hok : a.ok P = true)
     (instrLeakA frame a.li s₁).length = (instrLeakA frame a.li s₂).length := by
   cases a with
   | ldx D B I =>
+    have hu : X86Backend.LprogAsmPrinter.untagCaret "LOADIDX" = "LOADIDX" :=
+      X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide)
     cases hB₁ : s₁.reg.getW B 64 with
-    | none => simp [AArm.li, fstepA, loadIdxA?, hB₁] at h₁
+    | none => simp [AArm.li, fstepA, loadIdxA?, hu, hB₁] at h₁
     | some p₁ =>
       cases hB₂ : s₂.reg.getW B 64 with
-      | none => simp [AArm.li, fstepA, loadIdxA?, hB₂] at h₂
-      | some p₂ => simp [AArm.li, instrLeakA, loadIdxA?, hB₁, hB₂]
+      | none => simp [AArm.li, fstepA, loadIdxA?, hu, hB₂] at h₂
+      | some p₂ => simp [AArm.li, instrLeakA, loadIdxA?, hu, hB₁, hB₂]
   | stx d B I V =>
+    have hu : X86Backend.LprogAsmPrinter.untagCaret "STOREIDX" = "STOREIDX" :=
+      X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide)
     cases hB₁ : s₁.reg.getW B 64 with
-    | none => simp [AArm.li, fstepA, storeIdxA?, hB₁] at h₁
+    | none => simp [AArm.li, fstepA, storeIdxA?, hu, hB₁] at h₁
     | some p₁ =>
       cases hB₂ : s₂.reg.getW B 64 with
-      | none => simp [AArm.li, fstepA, storeIdxA?, hB₂] at h₂
-      | some p₂ => simp [AArm.li, instrLeakA, storeIdxA?, hB₁, hB₂]
+      | none => simp [AArm.li, fstepA, storeIdxA?, hu, hB₂] at h₂
+      | some p₂ => simp [AArm.li, instrLeakA, storeIdxA?, hu, hB₁, hB₂]
   | reg a =>
     simp only [AArm.ok, Bool.and_eq_true] at hok
     simp only [AArm.li, AArm.instr]

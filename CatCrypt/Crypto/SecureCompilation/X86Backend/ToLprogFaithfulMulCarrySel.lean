@@ -129,26 +129,22 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopMov
 /-- The width-tagged `MULXHI` mnemonic strips to `MULXHI`. -/
 theorem stripWidthTag_withWidthTag_MULXHI (w : Nat) :
     stripWidthTag (withWidthTag w "MULXHI") = "MULXHI" := by
-  unfold withWidthTag
-  split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide +kernel)
 
 /-- The width-tagged `ADCX` mnemonic strips to `ADCX`. -/
 theorem stripWidthTag_withWidthTag_ADCX (w : Nat) :
     stripWidthTag (withWidthTag w "ADCX") = "ADCX" := by
-  unfold withWidthTag
-  split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide +kernel)
 
 /-- The width-tagged `ADCXHI` mnemonic strips to `ADCXHI`. -/
 theorem stripWidthTag_withWidthTag_ADCXHI (w : Nat) :
     stripWidthTag (withWidthTag w "ADCXHI") = "ADCXHI" := by
-  unfold withWidthTag
-  split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide +kernel)
 
 /-- The width-tagged `CMOV` mnemonic strips to `CMOV`. -/
 theorem stripWidthTag_withWidthTag_CMOV (w : Nat) :
     stripWidthTag (withWidthTag w "CMOV") = "CMOV" := by
-  unfold withWidthTag
-  split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide +kernel)
 
 /-- `MULXHI` is outside `physBody`'s two-address binop alphabet. -/
 theorem not_isBinop_MULXHI (w : Nat) :

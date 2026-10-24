@@ -292,9 +292,8 @@ theorem applyOpnN_MOV {w : Nat} (a : BitVec w) :
     over `JasminBinOp` discharges the per-opcode kernel evaluation once, so a
     consumer cites this instead of re-deciding the tag at each use site. -/
 theorem stripWidthTag_withWidthTag_binOpName' (w : Nat) (bop : JasminBinOp) :
-    stripWidthTag (withWidthTag w (binOpName bop)) = binOpName bop := by
-  unfold withWidthTag
-  split <;> cases bop <;> decide +kernel
+    stripWidthTag (withWidthTag w (binOpName bop)) = binOpName bop :=
+  stripWidthTag_withWidthTag w (by cases bop <;> decide +kernel)
 
 /-- The register name carried by an operand (the empty string for a
     non-register operand — never reached for the in-scope `.reg`-resolved
@@ -371,8 +370,8 @@ def applyImmShiftN (w : Nat) (m : String) (k : Nat) (a : BitVec w) : Option (Bit
 /-- The base mnemonic `"NEG"` round-trips through
     `stripWidthTag ∘ withWidthTag`. -/
 theorem stripWidthTag_withWidthTag_NEG (w : Nat) :
-    JasminLprogExport.stripWidthTag (JasminLprogExport.withWidthTag w "NEG") = "NEG" := by
-  unfold JasminLprogExport.withWidthTag; split <;> decide +kernel
+    JasminLprogExport.stripWidthTag (JasminLprogExport.withWidthTag w "NEG") = "NEG" :=
+  JasminLprogExport.stripWidthTag_withWidthTag w (by decide +kernel)
 
 /-- The relation of a base comparison mnemonic: `some c` on `cmpName c` (`SETE`, `SETNE`,
     `SETB`, `SETBE`, `SETA`, `SETAE`), `none` on every other mnemonic. -/
@@ -799,9 +798,8 @@ writes the binding's `Com`-denotation to `regName curDepth` and advances the pc.
 /-- The width tag round-trips on the `CMOV` mnemonic (kernel evaluation per width
     branch, as for `MOV`/binops). -/
 theorem stripWidthTag_withWidthTag_CMOV (w : Nat) :
-    stripWidthTag (withWidthTag w "CMOV") = "CMOV" := by
-  unfold withWidthTag
-  split <;> decide +kernel
+    stripWidthTag (withWidthTag w "CMOV") = "CMOV" :=
+  stripWidthTag_withWidthTag w (by decide)
 
 /-- The width tag round-trips on a binop mnemonic that is **not** `CMOV`: needed
     to know the `regArith` arm is taken (the `[a,b]` list never matches the

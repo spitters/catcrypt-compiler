@@ -883,13 +883,9 @@ theorem castStruct?_dst {o : String} {srcs : List LOperand} {dst a : String}
 omit s in
 theorem movImmStruct?_dst {o : String} {srcs : List LOperand} {dst : String} {n : Nat}
     (h : movImmStruct? (.Lopn [.reg d] o srcs) = some (dst, n)) : dst = d := by
-  unfold movImmStruct? at h
-  split at h
-  · next d' n' heq =>
-      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at heq
-      simp only [Option.some.injEq, Prod.mk.injEq] at h
-      exact h.1.symm.trans heq.1.symm
-  · cases h
+  obtain ⟨_, he⟩ := movImmStruct?_spec h
+  simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq] at he
+  exact he.1.1.symm
 
 theorem lsemStepCast_setReg_dst (hd0 : d ≠ "") (o : String) (srcs : List LOperand)
     (cd : Option Nat) (hs : ∀ x ∈ srcs, d ∉ srcNames x) :
@@ -1206,10 +1202,49 @@ theorem readsI_cases {i : LinstrR} {r : String} (h : readsI i r) :
 theorem isRecognizedOpn_of_readsRdx {ds : List LOperand} {o : String} {ss : List LOperand}
     (h : readsRdx (.Lopn ds o ss) = true) : isRecognizedOpn o = false := by
   simp only [readsRdx, rdxOp, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h
-  rcases h.1 with (rfl | rfl) | rfl <;>
-    exact isRecognizedOpn_MULX (by
-      rw [X86Backend.WellFormedX86.isPrefixOf_eq_hasPrefix]
-      decide +kernel)
+  have hu := h.1
+  by_cases hc : '^' ∈ o.toList
+  · have hT : ∃ rest, o.toList.takeWhile (· != '^') = 'M' :: 'U' :: 'L' :: 'X' :: rest := by
+      have hc' : o.toList.contains '^' = true := by simpa using hc
+      unfold X86Backend.LprogAsmPrinter.untagCaret stripWidthTag at hu
+      simp only [hc', if_true] at hu
+      generalize List.takeWhile (fun x => x != '^') o.toList = T at hu ⊢
+      split_ifs at hu
+      · rcases hu with (hu | hu) | hu <;> have h2 := congrArg String.toList hu <;>
+          simp only [String.toList_append, String.toList_ofList] at h2
+        · exfalso
+          rcases T with _ | ⟨c, _ | ⟨d, T⟩⟩ <;> simp at h2
+          have := congrArg List.length h2.2.2
+          simp at this
+        · rw [toList_withWidthTag_64] at h2
+          exact ⟨[], List.append_cancel_right h2⟩
+        · rw [toList_withWidthTag_64] at h2
+          exact ⟨['M', 'E', 'M'], by simpa using List.append_cancel_right h2⟩
+      · rcases hu with (hu | hu) | hu <;> have h2 := congrArg String.toList hu <;>
+          simp only [String.toList_ofList] at h2
+        · exact ⟨[], by simpa using h2⟩
+        · rw [toList_withWidthTag_64] at h2
+          exact ⟨[':', '6', '4'], by simpa using h2⟩
+        · rw [toList_withWidthTag_64] at h2
+          exact ⟨['M', 'E', 'M', ':', '6', '4'], by simpa using h2⟩
+    obtain ⟨rest, hT⟩ := hT
+    have hL : o.toList = 'M' :: 'U' :: 'L' :: 'X' ::
+        (rest ++ o.toList.dropWhile (· != '^')) := by
+      grind only [=_ List.cons_append, List.takeWhile_append_dropWhile]
+    refine isRecognizedOpn_MULX ?_
+    rw [X86Backend.WellFormedX86.isPrefixOf_eq_hasPrefix]
+    unfold X86Backend.LprogAsmPrinter.stripAbiTag
+    split
+    · rw [hL]
+      simp [hasPrefix, List.takeWhile]
+    · unfold stripWidthTag
+      rw [if_pos (by simpa using hc), hT]
+      simp [hasPrefix]
+  · rw [X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hc] at hu
+    rcases hu with (rfl | rfl) | rfl <;>
+      exact isRecognizedOpn_MULX (by
+        rw [X86Backend.WellFormedX86.isPrefixOf_eq_hasPrefix]
+        decide +kernel)
 
 /-- The check of an instruction for dead-move elimination. The instruction passes
     `cpRegOKB`. If it is an `Lopn` with a recognised mnemonic, every physical register

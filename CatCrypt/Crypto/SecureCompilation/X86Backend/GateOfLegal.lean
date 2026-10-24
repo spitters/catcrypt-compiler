@@ -268,9 +268,15 @@ theorem toList_tagMnem (b : String) (k : Nat) :
     show (":64" : String).toList = [':', '6', '4'] from by decide]
   simp
 
-theorem stripWidthTag_tagMnem (b : String) (k : Nat) :
-    stripWidthTag (tagMnem b k) = b ++ ":" ++ toString k :=
-  stripWidthTag_append64 _
+theorem stripWidthTag_tagMnem {b : String} (hb : b ∈ ["SHL", "SHR"]) (k : Nat) :
+    stripWidthTag (tagMnem b k) = b ++ ":" ++ toString k := by
+  have hbc : '^' ∉ b.toList := by
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
+    rcases hb with rfl | rfl <;> decide
+  have hkc : '^' ∉ Nat.toDigits 10 k := by
+    have := (sep_not_mem_toString k).2
+    rwa [toString_toList_eq] at this
+  exact stripWidthTag_append64 _ (by simp [hbc, hkc])
 
 theorem toList_tagBase (b : String) (k : Nat) :
     (b ++ ":" ++ toString k).toList = b.toList ++ ':' :: (toString k).toList := by
@@ -344,7 +350,7 @@ theorem tagMnem_facts {b : String} (hb : b ∈ ["SHL", "SHR"]) {k : Nat} (hk0 : 
   have h0 : tagMnem b k ≠ "SHL:0:64" := by
     intro h
     have h1 := congrArg (fun m => tagShiftCount (stripWidthTag m)) h
-    simp only [stripWidthTag_tagMnem] at h1
+    simp only [stripWidthTag_tagMnem hb] at h1
     have hl : b.toList.length = 3 := by
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
       rcases hb with rfl | rfl <;> decide
@@ -385,18 +391,19 @@ theorem tagMnem_facts {b : String} (hb : b ∈ ["SHL", "SHR"]) {k : Nat} (hk0 : 
       split <;> simp_all
     have hcount := tagShiftCount_tagBase hl k
     have hext := tagShiftExt_tagBase hb k
+    have hst := stripWidthTag_tagMnem hb k
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
     rcases hb with rfl | rfl
     · rw [if_pos rfl] at hext
       simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagShName,
-        stripWidthTag_tagMnem, mnemWidth_tagMnem, hcount, hext, hadx]
+        hst, mnemWidth_tagMnem, hcount, hext, hadx]
       simp only [Nat.toString_eq_repr, String.reduceAppend] at e1 e2 e3 e4 e5
       simp [beq_eq_false_iff_ne.2 e1, beq_eq_false_iff_ne.2 e2, beq_eq_false_iff_ne.2 e3,
         beq_eq_false_iff_ne.2 e4, beq_eq_false_iff_ne.2 e5, LprogBytes.rexW, withWidthTag, tagMnem,
         hk0, hk]
     · rw [if_neg (by decide)] at hext
       simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagShName,
-        stripWidthTag_tagMnem, mnemWidth_tagMnem, hcount, hext, hadx]
+        hst, mnemWidth_tagMnem, hcount, hext, hadx]
       simp only [Nat.toString_eq_repr, String.reduceAppend] at e1 e2 e3 e4 e5
       simp [beq_eq_false_iff_ne.2 e1, beq_eq_false_iff_ne.2 e2, beq_eq_false_iff_ne.2 e3,
         beq_eq_false_iff_ne.2 e4, beq_eq_false_iff_ne.2 e5, LprogBytes.rexW, withWidthTag, tagMnem,
@@ -609,7 +616,7 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
     refine .unary _ d s ?_ (isGp_of_gpOk hd) (isGp_of_gpOk hs)
     show x86Unary (tagMnem b k) = true
     have hx := tagShiftExt_tagBase hb k
-    simp only [x86Unary, stripWidthTag_tagMnem, hx]
+    simp only [x86Unary, stripWidthTag_tagMnem hb, hx]
     split <;> simp
   | shl0 d s hd hs => have := isGp_of_gpOk hd; have := isGp_of_gpOk hs; legal_simp
   | load d n b off hn hd hb hoff =>

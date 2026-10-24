@@ -78,16 +78,15 @@ def cmpName : JasminCmp → String
   | .ugt => "SETA"
   | .uge => "SETAE"
 
-/-- Append the U64 width tag to a body mnemonic when the op is 64-bit. The
-    32-bit ops (ChaCha20, SHA-256) carry no suffix and `read_linear`
-    materialises them at its `default_ws = U32`; the 64-bit ops (Keccak) carry
-    `":64"` and `read_linear` materialises them — and, because a Keccak body is
-    uniformly U64, every legalization-injected `MOV` of that function — at U64.
-    The width tag is the seam by which the U32 linear path extends
-    to a U64 kernel without per-instruction width plumbing through the
-    two-address legalizer. -/
+/-- Append the width tag of an op of width `w` to a body mnemonic: `":64"` at
+    width `64` and `"^" ++ toString w` at every other width. `read_linear`
+    materialises a `:64`-tagged op at U64 and every other op at its
+    `default_ws = U32`. The `^` separator occurs in no other mnemonic grammar,
+    external-call names included (they use `@`, as in `slice@256`), so a tag at a width other than `64` cannot be
+    read as a shift count (`SHR:16`), a vector count (`VPSLLD:8`) or an ABI
+    narrow move (`MOV:16`, `MOV:8`). -/
 def withWidthTag (w : Nat) (mnem : String) : String :=
-  if w = 64 then mnem ++ ":64" else mnem
+  if w = 64 then mnem ++ ":64" else mnem ++ "^" ++ toString w
 
 /-- Suffix test over the character list. The tag recognizers below are computed
     through by `decide` in the fidelity proofs, and `String.endsWith` does not
@@ -163,10 +162,13 @@ def strDropToNat? (s : String) (k : Nat) : Option Nat := charsToNat? (s.toList.d
     reduces in the kernel. -/
 def strToNat? (s : String) : Option Nat := charsToNat? s.toList
 
-/-- Strip the optional `":64"` width tag from a body mnemonic, recovering the
-    base opcode for the `isBinop` / `isShift` recognizers. -/
+/-- Strip the width tag from a body mnemonic, recovering the base opcode for the
+    `isBinop` / `isShift` recognizers: everything from the first `^` on when the
+    mnemonic contains an `^`, otherwise a trailing `":64"`. -/
 def stripWidthTag (mnem : String) : String :=
-  if hasSuffix mnem ":64" then
+  if mnem.toList.contains '^' then
+    String.ofList (mnem.toList.takeWhile (· != '^'))
+  else if hasSuffix mnem ":64" then
     String.ofList (mnem.toList.dropLast.dropLast.dropLast)
   else mnem
 
@@ -181,32 +183,350 @@ def immShiftAtt : List Char → Option String
   | ['S', 'A', 'R'] => some "sar"
   | _ => none
 
+/-- The AT&T direction, the count and the width `w` of an immediate shift whose
+    base is the character list `mn` and whose decimal count is `ds`; `none` when
+    `mn` is not a shift base or `ds` is not a decimal. -/
+def immShiftParts (mn ds : List Char) (w : Nat) : Option (String × Nat × Nat) :=
+  match immShiftAtt mn, charsToNat? ds with
+  | some a, some n => some (a, n, w)
+  | _, _ => none
+
 /-- Parse a count-tagged immediate shift/rotate mnemonic (`SHL:0`, `SHR:32`,
     `SAR:k`, `ROL:k`, `ROR:k`) into the AT&T direction, the compile-time count,
-    and the op width (`64` iff `:64`-tagged, else `32`). `none` for any
-    non-shift mnemonic.
+    and the op width. Three forms are read: the untagged two-part `B:k` at width
+    `32`, the three-part `B:k:64` at width `64`, and `B:k^w` at width `w`. `none`
+    for any other mnemonic.
 
-    This must read the count from the **raw** `opn`, NOT from a `stripWidthTag`-ed
-    base: the count separator is `:` (`SHR:16`), the same character the `:8`/`:16`/
-    `:64` ABI **width** tags use. `stripWidthTag`/`mnemWidth` (which the narrow-MOV
-    arm consults) would misread the count `8`/`16`/`64` as a width and strip it,
-    dropping the shift entirely (the Hawk `t1 >> 16` bug). A unary shift never
-    carries a narrow `:8`/`:16` width tag — only the optional `:64` — so the width
-    is unambiguous once the count is parsed off the front.
+    The count separator is `:`, the character of the ABI narrow-move tags
+    `:8`/`:16` and of the `:64` width tag, so the count is read from the raw
+    `opn` by splitting it into its `:`-separated parts, never from a
+    `stripWidthTag`-ed base.
 
     The split (`splitChars`) and the count read (`charsToNat?`) run over the
     character list, so a closed application reduces in the kernel;
     `String.splitOn` has no normal form there. -/
 def parseImmShiftMnem (opn : String) : Option (String × Nat × Nat) :=
-  let isU64 := hasSuffix opn ":64"
-  -- peel only the `:64` width tag, leaving `SHR:<count>`
-  let core := if isU64 then stripWidthTag opn else opn
-  match splitChars ':' core.toList with
-  | [mn, ds] =>
-      match immShiftAtt mn, charsToNat? ds with
-      | some a, some n => some (a, n, if isU64 then 64 else 32)
-      | _, _ => none
-  | _ => none
+  let l := opn.toList
+  if l.contains '^' then
+    match charsToNat? (l.dropWhile (· != '^')).tail with
+    | some w =>
+        match splitChars ':' (l.takeWhile (· != '^')) with
+        | [mn, ds] => immShiftParts mn ds w
+        | _ => none
+    | none => none
+  else
+    match splitChars ':' l with
+    | [mn, ds] => immShiftParts mn ds 32
+    | [mn, ds, ['6', '4']] => immShiftParts mn ds 64
+    | _ => none
+
+/-- The width a body mnemonic's tag carries: the decimal after the first `^`, or
+    `64` for a mnemonic without `^` ending in `":64"`; `none` for an untagged
+    mnemonic. -/
+def wireWidth? (mnem : String) : Option Nat :=
+  let l := mnem.toList
+  if l.contains '^' then charsToNat? (l.dropWhile (· != '^')).tail
+  else if hasSuffix mnem ":64" then some 64 else none
+
+/-- A body mnemonic carries neither of the width-tag separators `:` and `^`. -/
+def tagSepFree (s : String) : Bool := !(s.toList.contains ':') && !(s.toList.contains '^')
+
+/-! ### The width-tag grammar
+
+The lemmas of this section read a tagged mnemonic through its separator only. The
+decimal rendering of a width enters through the two facts `toString_toList_isDigit`
+and `charsToNat?_toString_toList`. -/
+
+/-- The character list of the decimal rendering of a `Nat`. -/
+theorem toString_toList_eq (k : Nat) : (toString k).toList = Nat.toDigits 10 k := by
+  rw [Nat.toString_eq_ofList_toDigits, String.toList_ofList]
+
+/-- Every character of the decimal rendering of a `Nat` is a digit. -/
+theorem toString_toList_isDigit (k : Nat) : ∀ c ∈ (toString k).toList, c.isDigit = true := by
+  rw [toString_toList_eq]
+  intro c hc
+  exact Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc
+
+/-- The `charsIsNat` scan over a digit list from a clean state ends in the digit
+    state, and leaves an empty list's state alone. -/
+theorem charsIsNatStep_of_isDigit (L : List Char) (hL : ∀ c ∈ L, c.isDigit = true)
+    (b : Bool) : charsIsNatStep L (none, b) = if L = [] then (none, b) else (none, true) := by
+  induction L generalizing b with
+  | nil => rfl
+  | cons c rest ih =>
+    have hc := hL c (by simp)
+    have hne : c ≠ '_' := by
+      intro h; subst h; simp [Char.isDigit] at hc
+    rw [charsIsNatStep, if_neg hne, if_pos hc, ih (fun c hc => hL c (by simp [hc]))]
+    by_cases h : rest = [] <;> simp [h]
+
+/-- The `charsToNat?` fold over the decimal digits of `k` from an accumulator `a`
+    scales `a` by the digit count and adds `k`. -/
+theorem foldl_toDigits_ten : ∀ (k a : Nat),
+    (Nat.toDigits 10 k).foldl
+        (fun n c => if c = '_' then n else n * 10 + (c.toNat - '0'.toNat)) a
+      = a * 10 ^ (Nat.toDigits 10 k).length + k := by
+  intro k
+  induction k using Nat.strongRecOn with
+  | ind k ih =>
+    intro a
+    by_cases hk : k < 10
+    · grind only [Nat.toDigits_eq_if, List.foldl_cons, = List.length_cons,
+        Nat.toNat_digitChar_sub_48_of_lt_ten, List.foldl_nil, = List.length_nil]
+    · rw [Nat.toDigits_of_base_le (by decide) (by omega), List.foldl_append, ih (k / 10) (by omega) a]
+      have hlt : k % 10 < 10 := Nat.mod_lt _ (by decide)
+      have hd : (k % 10).digitChar ≠ '_' := by
+        intro h
+        have := Nat.isDigit_digitChar (n := k % 10)
+        rw [h] at this
+        simp [hlt] at this
+      simp only [List.foldl_cons, List.foldl_nil, List.length_append, List.length_cons,
+        List.length_nil, Nat.pow_succ]
+      rw [if_neg hd, show '0'.toNat = 48 from rfl, Nat.toNat_digitChar_sub_48_of_lt_ten hlt]
+      generalize (10 : Nat) ^ (Nat.toDigits 10 (k / 10)).length = P
+      have hm : a * (P * 10) = a * P * 10 := (Nat.mul_assoc a P 10).symm
+      omega
+
+/-- The decimal rendering of a `Nat` evaluates back to it under `charsToNat?`. -/
+theorem charsToNat?_toString_toList (k : Nat) : charsToNat? (toString k).toList = some k := by
+  have hd := toString_toList_isDigit k
+  rw [toString_toList_eq] at hd ⊢
+  unfold charsToNat? charsIsNat
+  rw [charsIsNatStep_of_isDigit _ hd, if_neg Nat.toDigits_ne_nil]
+  grind only [Option.getD_none, foldl_toDigits_ten]
+
+/-- A digit is neither width-tag separator. -/
+theorem sep_not_mem_toString (k : Nat) :
+    ':' ∉ (toString k).toList ∧ '^' ∉ (toString k).toList := by
+  refine ⟨fun h => ?_, fun h => ?_⟩
+  · have := toString_toList_isDigit k _ h
+    revert this; decide
+  · have := toString_toList_isDigit k _ h
+    revert this; decide
+
+/-- The width-tag separators of a separator-free mnemonic. -/
+theorem tagSepFree_iff (s : String) :
+    tagSepFree s = true ↔ ':' ∉ s.toList ∧ '^' ∉ s.toList := by
+  simp [tagSepFree]
+
+/-- A character list without `sep` is one `splitChars` group. -/
+theorem splitChars_of_not_mem (sep : Char) (L : List Char) (h : sep ∉ L) :
+    splitChars sep L = [L] := by
+  induction L with
+  | nil => rfl
+  | cons a t ih =>
+    have ha : a ≠ sep := fun e => h (e ▸ List.mem_cons_self)
+    rw [splitChars, if_neg ha, ih (fun ht => h (List.mem_cons_of_mem _ ht))]
+
+/-- A prefix without `sep` followed by `sep` is the first `splitChars` group. -/
+theorem splitChars_append_cons (sep : Char) (L R : List Char) (h : sep ∉ L) :
+    splitChars sep (L ++ sep :: R) = L :: splitChars sep R := by
+  induction L with
+  | nil => simp [splitChars]
+  | cons a t ih =>
+    have ha : a ≠ sep := fun e => h (e ▸ List.mem_cons_self)
+    simp only [List.cons_append]
+    rw [splitChars, if_neg ha, ih (fun ht => h (List.mem_cons_of_mem _ ht))]
+
+/-- The character list of a width-64 tagged mnemonic. -/
+theorem toList_withWidthTag_64 (m : String) :
+    (withWidthTag 64 m).toList = m.toList ++ [':', '6', '4'] := by
+  grind only [withWidthTag.eq_def, String.toList_append]
+
+/-- The character list of a mnemonic tagged at a width other than `64`. -/
+theorem toList_withWidthTag_of_ne {w : Nat} (hw : w ≠ 64) (m : String) :
+    (withWidthTag w m).toList = m.toList ++ '^' :: (toString w).toList := by
+  grind only [withWidthTag.eq_def, String.toList_append, usr List.append_assoc, = List.cons_append]
+
+/-- A tagged mnemonic contains a width-tag separator. -/
+theorem tagSepFree_withWidthTag (w : Nat) (m : String) :
+    tagSepFree (withWidthTag w m) = false := by
+  by_cases hw : w = 64
+  · subst hw
+    simp [tagSepFree, toList_withWidthTag_64]
+  · simp [tagSepFree, toList_withWidthTag_of_ne hw]
+
+/-- A tagged mnemonic differs from every mnemonic without a width-tag separator. -/
+theorem withWidthTag_ne_of_tagSepFree (w : Nat) (m : String) {s : String}
+    (hs : tagSepFree s = true) : withWidthTag w m ≠ s := by
+  grind only [tagSepFree_withWidthTag]
+
+/-- `width_tag_ne` closes `withWidthTag w m ≠ s` and `s ≠ withWidthTag w m` for a
+    literal `s` without a width-tag separator. -/
+macro "width_tag_ne" : tactic =>
+  `(tactic| first
+    | exact withWidthTag_ne_of_tagSepFree _ _ (by decide +kernel)
+    | exact (withWidthTag_ne_of_tagSepFree _ _ (by decide +kernel)).symm)
+
+/-- A width-64 tagged mnemonic ends in `":64"`. -/
+theorem hasSuffix_withWidthTag_64 (m : String) : hasSuffix (withWidthTag 64 m) ":64" = true := by
+  unfold hasSuffix
+  rw [toList_withWidthTag_64, show (":64" : String).toList = [':', '6', '4'] from by decide,
+    List.isSuffixOf_iff_suffix]
+  exact List.suffix_append _ _
+
+/-- Every character of a list without `^` passes the test `· != '^'`. -/
+theorem bne_at_of_not_mem {L : List Char} (h : '^' ∉ L) : ∀ c ∈ L, (c != '^') = true := by
+  intro c hc
+  simp only [bne_iff_ne, ne_eq]
+  rintro rfl
+  exact h hc
+
+/-- **The strip inverts the tag.** For a mnemonic without a width-tag separator,
+    `stripWidthTag` removes the tag of every width. -/
+theorem stripWidthTag_withWidthTag (w : Nat) {m : String} (hm : tagSepFree m = true) :
+    stripWidthTag (withWidthTag w m) = m := by
+  have hat := ((tagSepFree_iff m).mp hm).2
+  by_cases hw : w = 64
+  · subst hw
+    unfold stripWidthTag
+    rw [if_neg (by rw [toList_withWidthTag_64]; simp [hat]), if_pos (hasSuffix_withWidthTag_64 m),
+      toList_withWidthTag_64]
+    simp
+  · unfold stripWidthTag
+    rw [if_pos (by rw [toList_withWidthTag_of_ne hw]; simp), toList_withWidthTag_of_ne hw,
+      List.takeWhile_append_of_pos (bne_at_of_not_mem hat)]
+    simp
+
+/-- **The tag carries its width.** -/
+theorem wireWidth?_withWidthTag (w : Nat) {m : String} (hm : tagSepFree m = true) :
+    wireWidth? (withWidthTag w m) = some w := by
+  have hat := ((tagSepFree_iff m).mp hm).2
+  by_cases hw : w = 64
+  · subst hw
+    unfold wireWidth?
+    dsimp only
+    rw [if_neg (by rw [toList_withWidthTag_64]; simp [hat]), if_pos (hasSuffix_withWidthTag_64 m)]
+  · unfold wireWidth?
+    dsimp only
+    rw [toList_withWidthTag_of_ne hw, if_pos (by simp),
+      List.dropWhile_append_of_pos (bne_at_of_not_mem hat)]
+    simpa [toString_toList_eq] using charsToNat?_toString_toList w
+
+/-- `immShiftParts` on a decimal rendering. -/
+theorem immShiftParts_toString (mn : List Char) (n w : Nat) :
+    immShiftParts mn (toString n).toList w = (immShiftAtt mn).map (fun a => (a, n, w)) := by
+  unfold immShiftParts
+  rw [charsToNat?_toString_toList]
+  cases immShiftAtt mn <;> rfl
+
+/-- **The shift parser on a tagged mnemonic.** For a base `m` without a width-tag
+    separator, every count `n` and every width `w`, `parseImmShiftMnem` reads the
+    direction of `m`, the count `n` and the width `w` off
+    `withWidthTag w (m ++ ":" ++ toString n)`. -/
+theorem parseImmShiftMnem_withWidthTag {m : String} (hm : tagSepFree m = true)
+    (w n : Nat) :
+    parseImmShiftMnem (withWidthTag w (m ++ ":" ++ toString n))
+      = (immShiftAtt m.toList).map (fun a => (a, n, w)) := by
+  obtain ⟨hcm, hat⟩ := (tagSepFree_iff m).mp hm
+  obtain ⟨hcs, has⟩ := sep_not_mem_toString n
+  have has' : '^' ∉ Nat.toDigits 10 n := by rwa [toString_toList_eq] at has
+  have hB : (m ++ ":" ++ toString n).toList = m.toList ++ ':' :: (toString n).toList := by
+    simp
+  have hatB : '^' ∉ m.toList ++ ':' :: (toString n).toList := by simp [hat, has']
+  by_cases hw : w = 64
+  · subst hw
+    unfold parseImmShiftMnem
+    dsimp only
+    rw [toList_withWidthTag_64, hB, if_neg (by simp [hat, has'])]
+    simp only [List.append_assoc, List.cons_append]
+    rw [splitChars_append_cons _ _ _ hcm, splitChars_append_cons _ _ _ hcs,
+      splitChars_of_not_mem _ _ (by decide)]
+    exact immShiftParts_toString _ _ _
+  · unfold parseImmShiftMnem
+    dsimp only
+    rw [toList_withWidthTag_of_ne hw, hB, if_pos (by simp),
+      List.dropWhile_append_of_pos (bne_at_of_not_mem hatB),
+      List.takeWhile_append_of_pos (bne_at_of_not_mem hatB)]
+    simp only [List.dropWhile_cons, List.takeWhile_cons, bne_self_eq_false, Bool.false_eq_true,
+      if_false, List.tail_cons, List.append_nil, charsToNat?_toString_toList]
+    rw [splitChars_append_cons _ _ _ hcm, splitChars_of_not_mem _ _ hcs]
+    exact immShiftParts_toString _ _ _
+
+/-- The shift parser on an untagged mnemonic reads the width `32`. -/
+theorem parseImmShiftMnem_untagged {m : String} (hm : tagSepFree m = true) (n : Nat) :
+    parseImmShiftMnem (m ++ ":" ++ toString n)
+      = (immShiftAtt m.toList).map (fun a => (a, n, 32)) := by
+  obtain ⟨hcm, hat⟩ := (tagSepFree_iff m).mp hm
+  obtain ⟨hcs, has⟩ := sep_not_mem_toString n
+  have has' : '^' ∉ Nat.toDigits 10 n := by rwa [toString_toList_eq] at has
+  have hB : (m ++ ":" ++ toString n).toList = m.toList ++ ':' :: (toString n).toList := by
+    simp
+  unfold parseImmShiftMnem
+  dsimp only
+  rw [hB, if_neg (by simp [hat, has']), splitChars_append_cons _ _ _ hcm,
+    splitChars_of_not_mem _ _ hcs]
+  exact immShiftParts_toString _ _ _
+
+/-- The body is a prefix of its tagged mnemonic. -/
+theorem toList_prefix_withWidthTag (w : Nat) (m : String) :
+    m.toList <+: (withWidthTag w m).toList := by
+  by_cases hw : w = 64
+  · subst hw
+    rw [toList_withWidthTag_64]
+    exact List.prefix_append _ _
+  · rw [toList_withWidthTag_of_ne hw]
+    exact List.prefix_append _ _
+
+/-- **Prefix tests on a tagged mnemonic.** For a body `m` and a word `q` without a
+    width-tag separator and `m ≠ q`, the tagged mnemonic does not start with
+    `q ++ ":"` (the shape of the `"CALL:"` test). -/
+theorem hasPrefix_withWidthTag_colon_eq_false (w : Nat) {m q : String}
+    (hm : tagSepFree m = true) (hq : tagSepFree q = true) (hne : m ≠ q) :
+    hasPrefix (withWidthTag w m) (q ++ ":") = false := by
+  obtain ⟨hcm, hat⟩ := (tagSepFree_iff m).mp hm
+  obtain ⟨hcq, haq⟩ := (tagSepFree_iff q).mp hq
+  have hne' : m.toList ≠ q.toList := fun h => hne (String.toList_inj.mp h)
+  unfold hasPrefix
+  rw [Bool.eq_false_iff]
+  intro hp
+  rw [List.isPrefixOf_iff_prefix, String.toList_append,
+    show (":" : String).toList = [':'] from by decide] at hp
+  obtain ⟨u, hu⟩ := hp
+  have key : ∀ T : List Char, (T.head? = some ':' ∨ T.head? = some '^') →
+      q.toList ++ ':' :: u ≠ m.toList ++ T := by
+    intro T hT he
+    rcases List.append_eq_append_iff.mp he with ⟨a', h1, h2⟩ | ⟨c', h1, h2⟩
+    · cases a' with
+      | nil => exact hne' (by simpa using h1)
+      | cons x xs =>
+        simp only [List.cons_append, List.cons.injEq] at h2
+        exact hcm (by rw [h1, ← h2.1]; simp)
+    · cases c' with
+      | nil => exact hne' (by simpa using h1.symm)
+      | cons x xs =>
+        simp only [List.cons_append] at h2
+        rw [h2] at hT
+        simp only [List.head?_cons, Option.some.injEq] at hT
+        rcases hT with rfl | rfl
+        · exact hcq (by rw [h1]; simp)
+        · exact haq (by rw [h1]; simp)
+  by_cases hw : w = 64
+  · subst hw
+    rw [toList_withWidthTag_64] at hu
+    exact key [':', '6', '4'] (Or.inl rfl) (by simpa using hu)
+  · rw [toList_withWidthTag_of_ne hw] at hu
+    exact key ('^' :: (toString w).toList) (Or.inr rfl) (by simpa using hu)
+
+/-- **Prefixes survive the strip.** A prefix without `^` followed by at least
+    three more characters is a prefix of the stripped mnemonic. -/
+theorem stripWidthTag_toList_prefix {s : String} {p r : List Char} (hp : '^' ∉ p)
+    (hr : 3 ≤ r.length) (h : s.toList = p ++ r) :
+    ∃ r', (stripWidthTag s).toList = p ++ r' := by
+  unfold stripWidthTag
+  split
+  · rw [String.toList_ofList, h, List.takeWhile_append_of_pos (bne_at_of_not_mem hp)]
+    exact ⟨_, rfl⟩
+  · split
+    · rw [String.toList_ofList, h]
+      have h1 : r ≠ [] := by intro e; simp [e] at hr
+      have h2 : r.dropLast ≠ [] := by
+        intro e; have := congrArg List.length e; simp at this; omega
+      have h3 : r.dropLast.dropLast ≠ [] := by
+        intro e; have := congrArg List.length e; simp at this; omega
+      exact ⟨_, by rw [List.dropLast_append_of_ne_nil h1, List.dropLast_append_of_ne_nil h2,
+        List.dropLast_append_of_ne_nil h3]⟩
+    · exact ⟨r, h⟩
 
 /-- The width-carrying mnemonic of a `castW w w'` between 16-, 32- and 64-bit GP
     registers. The two widths are separated by `_`, not `:`, so the `:8`/`:16`/
@@ -428,9 +748,10 @@ def opToLinstrR (op : JasminOp) (dst : String) (srcs : List LOperand) : LinstrR 
 /-! ### The operand widths of a general-purpose operation
 
 `opToLinstrR` writes the operand width of a general-purpose operation into its mnemonic
-only at width `64` (`withWidthTag`) and, for a cast, at the widths `16`, `32` and `64`
-(`castWMnem`). The printer and the encoder read every other mnemonic at 32 bits, so the
-text of an operation wider than a general-purpose register does not compute its value.
+(`withWidthTag`: `:64` at width `64`, `^w` at every other width) and, for a cast, the
+widths `16`, `32` and `64` (`castWMnem`). The printer and the encoder read a mnemonic
+without the `:64` tag at 32 bits, so the text of an operation wider than a
+general-purpose register does not compute its value.
 `opWidthOk` is the condition on an operation under which that reading is defined, and
 `comWidthsOk` is the condition on a program. -/
 

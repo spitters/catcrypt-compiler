@@ -166,8 +166,31 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 
 /-! ## The x86 instruction-set data -/
 
-/-- The base of a mnemonic: the characters before its first `:`. -/
-def tieBase (opn : String) : String := String.ofList (opn.toList.takeWhile (· != ':'))
+/-- The base of a mnemonic: the characters before its first `:` or `^`. -/
+def tieBase (opn : String) : String :=
+  String.ofList (opn.toList.takeWhile (fun c => c != ':' && c != '^'))
+
+/-- On a mnemonic without `^`, the base is the prefix before the first `:`. -/
+theorem tieBase_of_caret_free {opn : String} (h : '^' ∉ opn.toList) :
+    tieBase opn = String.ofList (opn.toList.takeWhile (· != ':')) := by
+  unfold tieBase
+  congr 1
+  generalize opn.toList = l at h ⊢
+  induction l with
+  | nil => rfl
+  | cons a t ih =>
+    simp only [List.mem_cons, not_or] at h
+    have ha : a ≠ '^' := fun e => h.1 e.symm
+    by_cases hc : a = ':' <;> simp [hc, ha, ih h.2]
+
+/-- The base of a mnemonic carries neither width-tag separator. -/
+theorem tagSepFree_tieBase (opn : String) : tagSepFree (tieBase opn) = true := by
+  rw [tagSepFree_iff]
+  unfold tieBase
+  rw [String.toList_ofList]
+  have hall := List.all_eq_true.mp
+    (List.all_takeWhile (p := fun c => c != ':' && c != '^') (l := opn.toList))
+  exact ⟨fun hc => by simpa using hall _ hc, fun hc => by simpa using hall _ hc⟩
 
 /-- The bases of the two-source mnemonics `LprogAsmPrinter.renderLopn` prints in the
     x86 two-address form `op b, d`. -/
@@ -187,11 +210,63 @@ def needsTie (opn : String) (b : LOperand) : Bool :=
 def commBases : List String := ["ADD", "MUL", "AND", "OR", "XOR"]
 
 /-- The copy at the width of `opn`: `MOV` for an untagged mnemonic, `MOV:64` for a
-    `:64`-tagged one, `none` for any other tag. -/
+    `:64`-tagged one, `withWidthTag w "MOV"` for a base tagged at width `w` by
+    `withWidthTag`, `none` for any other mnemonic. -/
 def movFor (opn : String) : Option String :=
   if opn == tieBase opn then some "MOV"
   else if opn == tieBase opn ++ ":64" then some "MOV:64"
-  else none
+  else match wireWidth? opn with
+    | some w => if opn == withWidthTag w (tieBase opn) then some (withWidthTag w "MOV") else none
+    | none => none
+
+/-- On a mnemonic without `^`, `movFor` reads only the untagged and the `:64` forms. -/
+theorem movFor_of_caret_free {opn : String} (h : '^' ∉ opn.toList) :
+    movFor opn = if opn == tieBase opn then some "MOV"
+      else if opn == tieBase opn ++ ":64" then some "MOV:64" else none := by
+  have hc : opn.toList.contains '^' = false := by simpa using h
+  have hw : wireWidth? opn = if hasSuffix opn ":64" then some 64 else none := by
+    unfold wireWidth?; simp [h]
+  unfold movFor
+  by_cases h1 : (opn == tieBase opn) = true
+  · rw [if_pos h1, if_pos h1]
+  rw [if_neg h1, if_neg h1]
+  by_cases h2 : (opn == tieBase opn ++ ":64") = true
+  · rw [if_pos h2, if_pos h2]
+  rw [if_neg h2, if_neg h2, hw]
+  split
+  · grind only [withWidthTag.eq_def]
+  · rfl
+
+/-- The three forms of a mnemonic with a copy at its width. -/
+theorem movFor_cases {opn m : String} (h : movFor opn = some m) :
+    (opn = tieBase opn ∧ m = "MOV") ∨ (opn = tieBase opn ++ ":64" ∧ m = "MOV:64")
+      ∨ (∃ w, opn = withWidthTag w (tieBase opn) ∧ m = withWidthTag w "MOV") := by
+  grind only [movFor]
+
+/-- `stripWidthTag` fixes a mnemonic without a width-tag separator. -/
+theorem stripWidthTag_of_tagSepFree {s : String} (hs : tagSepFree s = true) :
+    stripWidthTag s = s := by
+  obtain ⟨h1, h2⟩ := (tagSepFree_iff s).mp hs
+  unfold stripWidthTag
+  rw [if_neg (by simpa using h2), if_neg]
+  intro hsuf
+  unfold hasSuffix at hsuf
+  obtain ⟨l, hl⟩ := List.isSuffixOf_iff_suffix.mp hsuf
+  exact h1 (hl ▸ List.mem_append_right l (by decide))
+
+/-- A mnemonic with a copy at its width strips to its base, and the copy strips to
+    `MOV`. -/
+theorem stripWidthTag_movFor_spec {opn m : String} (h : movFor opn = some m) :
+    stripWidthTag opn = tieBase opn ∧ stripWidthTag m = "MOV" := by
+  have hs := tagSepFree_tieBase opn
+  have hM : tagSepFree "MOV" = true := by decide +kernel
+  rcases movFor_cases h with ⟨he, rfl⟩ | ⟨he, rfl⟩ | ⟨w, he, rfl⟩
+  · exact ⟨(congrArg stripWidthTag he).trans (stripWidthTag_of_tagSepFree hs),
+      stripWidthTag_of_tagSepFree hM⟩
+  · exact ⟨(congrArg stripWidthTag he).trans (stripWidthTag_withWidthTag 64 hs),
+      by decide +kernel⟩
+  · exact ⟨(congrArg stripWidthTag he).trans (stripWidthTag_withWidthTag w hs),
+      stripWidthTag_withWidthTag w hM⟩
 
 /-- The x86 operand positions that may be a frame slot or a `mem.*` cell, by mnemonic base,
     the positions numbering `dsts ++ srcs`: the address of a load or `LEA` (position `1`);

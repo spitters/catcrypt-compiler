@@ -4921,15 +4921,37 @@ theorem carryReq_label {body : Lcmd} {k : Nat} {ii : Nat} {kd : LabelKind} {l : 
 theorem readsRdx_normA (i : LinstrR) : readsRdx (normA i) = readsRdx i := by
   cases i with
   | Lopn ds o ss =>
-    by_cases h : o = "MULX"
-    · subst h
-      simp [normA, readsRdx, rdxOp]
-    · simp [normA, h]
+    simp only [normA, readsRdx, rdxOp]
+    by_cases h : LprogAsmPrinter.untagCaret o = "MULX"
+    · simp [h, LprogAsmPrinter.untagCaret_of_caret_free
+        (by decide +kernel : '^' ∉ (withWidthTag 64 "MULX").toList)]
+    · simp [h, VIR.JasminLsemAddrCongr.untagCaret_idem]
   | _ => rfl
 
 /-- The readsI of `normA i` are those of `i`. -/
 theorem readsI_normA (i : LinstrR) (r : String) : readsI (normA i) r ↔ readsI i r := by
   cases i <;> simp only [readsI, readsRdx_normA] <;> simp [normA]
+
+/-- The mnemonic of an address-machine arm whose conditions hold has no `^`. -/
+theorem AArm.caret_free_of_ok {P : Params} {a : AArm} (h : a.ok P = true)
+    {ds : List LOperand} {o : String} {ss : List LOperand}
+    (he : a.instr = .Lopn ds o ss) : '^' ∉ o.toList := by
+  cases a with
+  | reg a =>
+    simp only [AArm.ok, Bool.and_eq_true] at h
+    exact Arm.caret_free_of_ok h.1.2 he
+  | st m q S =>
+    simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h
+    simp only [AArm.instr, LinstrR.Lopn.injEq] at he
+    obtain ⟨-, rfl, -⟩ := he
+    rcases h.2 with rfl | rfl <;> decide
+  | ld m D q =>
+    simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h
+    simp only [AArm.instr, LinstrR.Lopn.injEq] at he
+    obtain ⟨-, rfl, -⟩ := he
+    rcases h.2 with rfl | rfl <;> decide
+  | _ =>
+    all_goals (simp only [AArm.instr, LinstrR.Lopn.injEq] at he; obtain ⟨-, rfl, -⟩ := he; decide)
 
 /-- An instruction on three register sources is no compare arm. -/
 theorem classifyA_three_not_cmp (d m : String) (a s c : String) :
@@ -5173,11 +5195,26 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
       split at hok
       · -- an untagged immediate move: a carry constant or a 32-bit constant
         rename_i D n hmv
-        have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] "MOV" [.imm n] := by
-          unfold movImmStruct? at hmv
-          split at hmv
-          · cases hmv; assumption
-          · cases hmv
+        obtain ⟨o', hia0⟩ := movImmStruct?_spec hmv
+        simp only [LinstrR.Lopn.injEq] at hia0
+        obtain ⟨hds, rfl, hss⟩ := hia0
+        have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] o [.imm n] := by rw [hds, hss]
+        have hmi : isMovImmMnem o = true := by simpa [movImmStruct?, hds, hss] using hmv
+        have hform := isMovImmMnem_iff.1 hmi
+        have hnA : normA (.Lopn [.reg D] o [.imm n]) = .Lopn [.reg D] "MOV" [.imm n] := by
+          rcases hform with rfl | ⟨w, hw, rfl⟩
+          · simp (config := { decide := true }) [normA]
+          · rw [normA_untag hw (by decide)]
+            simp (config := { decide := true }) [normA]
+        have htA : tagA (.Lopn [.reg D] o [.imm n]) = .reg none := by
+          rcases hform with rfl | ⟨w, hw, rfl⟩ <;>
+            simp (disch := decide +kernel) [tagA, withWidthTag_ne_of_tagSepFree]
+        have henc : encodeLopn P.frame P.spillW (.Lopn [.reg D] o [.imm n]) P.qsaveB
+            = encodeLopn P.frame P.spillW (.Lopn [.reg D] "MOV" [.imm n]) P.qsaveB := by
+          rcases hform with rfl | ⟨w, hw, rfl⟩
+          · rfl
+          · exact encodeLopn_retag32 _ _ _ hw (by decide) (by decide +kernel) (by decide +kernel)
+              _ _
         have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
         have hc' : ACorrW rsp (aMachine.runBlock sa ((zPieces D n).map Prod.snd)) s' := by
           cases hbit : bitMovB body k (.Lopn ds o ss) with
@@ -5189,15 +5226,13 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               simp [zOk, hok.1, hb.1.1]
             have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
                 = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg (some 1)) := by
-              rw [tagAt, if_pos hbit, hia]
-              simp (config := { decide := true }) [normA]
+              rw [tagAt, if_pos hbit, hia, hnA]
             rw [hli] at hst
             exact (sim_bmov P rsp D n hz sa s zf hc s' zf' hst).1
           | false =>
             have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
                 = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg none) := by
-              rw [tagAt_of_not hbit, hia]
-              simp (config := { decide := true }) [normA, tagA]
+              rw [tagAt_of_not hbit, hia, hnA, htA]
             rw [hli] at hst
             exact (sim_imov P rsp D n hok sa s zf hc s' zf' hst).1
         have hz' : isCondB (body[k + 1]'hkn).li_i = true →
@@ -5205,7 +5240,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           intro hcnd
           have hcm := hcondNext hcnd
           rw [hia] at hcm
-          simp [classifyA, classify] at hcm
+          simp only [classifyA, classify] at hcm
+          split at hcm <;> simp [cmpArmB] at hcm
         have hna : ∀ ii' d a s c, body[k]? ≠
             some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
           intro ii' d a s c h
@@ -5216,7 +5252,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
         refine ⟨sa', ?_, hC⟩
         obtain ⟨hb, hp⟩ := imm32Bytes P D n hok
         have hops : shs[k].ops' = (zPieces D n).map Prod.snd :=
-          shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+          shapeOf_lopn_ops _ (henc.trans hb) hp (by rw [← hia]; exact hshk)
         exact reaches_block a b hks hshk hops hR
       rename_i hmv
       rw [tagAt_of_ne hmv] at hst
@@ -5418,7 +5454,9 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             have hsafeM : ∀ p, s.reg.getW B 64 = some p →
                 Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
               hsafe.1.2.2.1 ii (.Lopn [.reg D] "LOAD:64" [.reg n]) D B off p
-                (by rw [hget, ← hia]) (by simp [cellA?, hn]) hp
+                (by rw [hget, ← hia])
+                (by simp [cellA?, hn, LprogAsmPrinter.untagCaret_of_caret_free
+                  (by decide : '^' ∉ "LOAD:64".toList)]) hp
             obtain ⟨hc', -⟩ := sim_ldm P rsp D n B off hok sa s zf hc hwB hsafeM s' zf' hst
             obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
               (hnoadd hnotadd _ _) hrun hsafe'
@@ -5465,7 +5503,9 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             have hsafeM : ∀ p, s.reg.getW B 64 = some p →
                 Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
               hsafe.1.2.2.1 ii (.Lopn [.reg D] "MOV:64" [.reg n]) D B off p
-                (by rw [hget, ← hia]) (by simp [cellA?, hn, cellParts?_gp hD]) hp
+                (by rw [hget, ← hia])
+                (by simp [cellA?, hn, cellParts?_gp hD, LprogAsmPrinter.untagCaret_of_caret_free
+                  (by decide : '^' ∉ "MOV:64".toList)]) hp
             obtain ⟨hc', -⟩ := sim_ldv P rsp D n B off hok sa s zf hc hwB hsafeM s' zf' hst
             obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
               (hnoadd hnotadd _ _) hrun hsafe'

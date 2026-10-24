@@ -130,9 +130,8 @@ concrete `String.endsWith` per width branch (same shape as
 /-- The width tag round-trips on the `MOV` mnemonic: `lsemStep` recovers `"MOV"`
     from the tagged mnemonic `opToLinstrR` emits for a `regConst`. -/
 theorem stripWidthTag_withWidthTag_MOV (w : Nat) :
-    stripWidthTag (withWidthTag w "MOV") = "MOV" := by
-  unfold withWidthTag
-  split <;> decide +kernel
+    stripWidthTag (withWidthTag w "MOV") = "MOV" :=
+  stripWidthTag_withWidthTag w (by decide)
 
 /-! ## 2. The widened source predicate `UniformScalarArith`
 

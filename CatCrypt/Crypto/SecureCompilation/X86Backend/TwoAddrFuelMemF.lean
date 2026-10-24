@@ -247,18 +247,32 @@ theorem withALUFlags_comm {opn d y : String} (hsub : opn ≠ withWidthTag 64 "SU
         aluB5_comm (by decide : AluOp.and ≠ .sub), aluB5_comm (by decide : AluOp.or ≠ .sub),
         aluB5_comm (by decide : AluOp.xor ≠ .sub)])
 
-/-- **Exchanged sources of a commutative operation.** For a mnemonic of `commOpns`, the
-    register-tagged `opn d, [y, d]` and `opn d, [d, y]` step alike. -/
-theorem fstepF_comm {opn d y : String} (hopn : opn ∈ commOpns) (cd : Option Nat)
-    (s : LstateM) (zf : Bool) :
+/-- **Exchanged sources of a commutative operation.** For a mnemonic of `commOpns`, or a base of
+    `commBases` tagged at a width other than `64`, the register-tagged `opn d, [y, d]` and
+    `opn d, [d, y]` step alike. -/
+theorem fstepF_comm {opn d y : String}
+    (hopn : opn ∈ commOpns ∨ ∃ w, w ≠ 64 ∧ ∃ b, b ∈ commBases ∧ opn = withWidthTag w b)
+    (cd : Option Nat) (s : LstateM) (zf : Bool) :
     fstepF (.Lopn [.reg d] opn [.reg y, .reg d], .reg cd) s zf
       = fstepF (.Lopn [.reg d] opn [.reg d, .reg y], .reg cd) s zf := by
   have hF : commBases.contains (stripWidthTag opn) = true ∧ stripWidthTag opn ≠ "MULXHI" ∧
       opn ≠ withWidthTag 64 "CMP" ∧ opn ≠ withWidthTag 64 "ADC" ∧ opn ≠ withWidthTag 64 "SBB" ∧
       opn ≠ withWidthTag 64 "ADCX" ∧ opn ≠ withWidthTag 64 "ADOX" ∧
       opn ≠ withWidthTag 64 "MOV" ∧ opn ≠ withWidthTag 64 "SUB" := by
-    simp only [commOpns, List.mem_cons, List.mem_nil_iff, or_false] at hopn
-    rcases hopn with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
+    rcases hopn with hopn | ⟨w, hw, b, hb, rfl⟩
+    · simp only [commOpns, List.mem_cons, List.mem_nil_iff, or_false] at hopn
+      rcases hopn with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
+    · have hsf : tagSepFree b = true := by
+        simp only [commBases, List.mem_cons, List.mem_nil_iff, or_false] at hb
+        rcases hb with rfl | rfl | rfl | rfl | rfl <;> decide +kernel
+      have hne : ∀ X : String, '^' ∉ (withWidthTag 64 X).toList → withWidthTag w b ≠ withWidthTag 64 X :=
+        fun X hX => (OwnedLprogTV.withWidthTag_eq_iff_false hw b hX).mp
+      rw [stripWidthTag_withWidthTag w hsf]
+      refine ⟨by simpa using hb, ?_, hne _ (by decide +kernel), hne _ (by decide +kernel),
+        hne _ (by decide +kernel), hne _ (by decide +kernel), hne _ (by decide +kernel),
+        hne _ (by decide +kernel), hne _ (by decide +kernel)⟩
+      simp only [commBases, List.mem_cons, List.mem_nil_iff, or_false] at hb
+      rcases hb with rfl | rfl | rfl | rfl | rfl <;> decide
   obtain ⟨hm, hmx, hcmp, hadc, hsbb, hadcx, hadox, hmov, hsub⟩ := hF
   have hmem : ∀ a b : String, lsemStepMem (.Lopn [.reg d] opn [.reg a, .reg b], .reg cd) s
       = (lsemStepN (.Lopn [.reg d] opn [.reg a, .reg b]) s.reg).map
@@ -278,12 +292,77 @@ theorem fstepF_comm {opn d y : String} (hopn : opn ∈ commOpns) (cd : Option Na
   simp only [fstepF, hc, hmv, stepMemF, hmem, hca, hwa, lsemStepN_comm (y := y) (d := d) hm,
     withALUFlags_comm hsub]
 
+/-- The two-source step of `lsemStepN` is stuck on a flag head `CMP` or `TEST`: neither has a
+    value (`applyOpnN`) nor a comparison-bit (`cmpOfName?`) arm. -/
+theorem lsemStepN_flag {opn : String} (hS : stripWidthTag opn = "CMP" ∨ stripWidthTag opn = "TEST")
+    (d : String) (a b : LOperand) (s : LstateN) :
+    lsemStepN (.Lopn [.reg d] opn [a, b]) s = none := by
+  rcases hS with hS | hS <;> simp only [lsemStepN, hS, applyOpnN, cmpOfName?, immFirstN] <;>
+    split <;> (try split) <;> simp_all <;> split <;> rfl
+
+/-- **A `^w`-tagged flag head does not step on the flag machine.** For `CMP` or `TEST` and a
+    width `w ≠ 64`, no arm of `fstepF` reads `withWidthTag w m`. -/
+theorem fstepF_withWidthTag_flag {w : Nat} (hw : w ≠ 64) {m : String}
+    (hm : m = "CMP" ∨ m = "TEST") (d : String) (a b : LOperand) (τ : MemTag) (s : LstateM)
+    (zf : Bool) :
+    fstepF (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) s zf = none := by
+  have hsf : tagSepFree m = true := by rcases hm with rfl | rfl <;> decide +kernel
+  have h1 : stripWidthTag (withWidthTag w m) = m := stripWidthTag_withWidthTag w hsf
+  have hne : ∀ s : String, '^' ∉ s.toList → (withWidthTag w m = s ↔ False) :=
+    fun s hs => OwnedLprogTV.withWidthTag_eq_iff_false hw m hs
+  have hw64 : ∀ X, withWidthTag 64 X = X ++ ":64" := fun X => by simp [withWidthTag]
+  have hN : ∀ r, lsemStepN (.Lopn [.reg d] (withWidthTag w m) [a, b]) r = none :=
+    lsemStepN_flag (by rw [h1]; exact hm) d a b
+  have hmx : m ≠ "MULXHI" ∧ m ≠ "SAR" := by rcases hm with rfl | rfl <;> decide
+  have hMC : ∀ r, lsemStepMC (.Lopn [.reg d] (withWidthTag w m) [a, b]) r = none := by
+    intro r
+    rw [lsemStepMC_of_delegate _ _ (by unfold mulhiStruct?; split <;> simp_all)
+      (by cases a <;> cases b <;> rfl) (by cases a <;> cases b <;> rfl)
+      (by cases a <;> cases b <;> rfl) (by cases a <;> cases b <;> rfl),
+      lsemStepSh_of_not_sar _ _ (by unfold sarStruct?; split <;> simp_all)]
+    exact hN r
+  have hCast : ∀ cd r, lsemStepCast (.Lopn [.reg d] (withWidthTag w m) [a, b], cd) r = none := by
+    intro cd r
+    rw [lsemStepCast_of_delegate _ _ (Or.inl ⟨by cases a <;> rfl, by cases a <;> cases b <;> rfl⟩)]
+    exact hMC r
+  have hc : cmpArgs? (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) = none := by
+    simp [cmpArgs?, hw64, hne]
+  have hmv : movRegArgs? (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) = none := by
+    cases a <;> cases b <;> rfl
+  have hca : carryArgs? (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) = none := by
+    simp [carryArgs?, hw64, hne]
+  have hwa : wideArgs? (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) = none := by
+    simp [wideArgs?, hw64, hne]
+  have l1 : loadStruct? (.Lopn [.reg d] (withWidthTag w m) [a, b]) = none := by
+    unfold loadStruct?; split <;> simp_all
+  have l2 : storeStruct? (.Lopn [.reg d] (withWidthTag w m) [a, b]) = none := by
+    unfold storeStruct?; split <;> simp_all
+  have l3 : loadCStruct? (.Lopn [.reg d] (withWidthTag w m) [a, b]) = none := by
+    unfold loadCStruct?; split <;> simp_all
+  have l4 : storeCStruct? (.Lopn [.reg d] (withWidthTag w m) [a, b]) = none := by
+    unfold storeCStruct?; split <;> simp_all
+  have l5 : zeroStruct? (.Lopn [.reg d] (withWidthTag w m) [a, b]) = none := by
+    unfold zeroStruct?; split <;> simp_all
+  have l6 : storeImmStruct? (.Lopn [.reg d] (withWidthTag w m) [a, b]) = none := by
+    unfold storeImmStruct?; split <;> simp_all
+  have hS : stepMemF (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) s = none := by
+    cases τ <;> simp only [stepMemF, lsemStepMem, hCast, Option.map_none, hca, hwa, l1, l2, l3,
+      l4, l5, l6]
+  simp only [fstepF, hc, hmv, hS, Option.map_none]
+
 /-- The flag operations `CMP` and `TEST` step alike at every destination. -/
 theorem fstepF_flag_dst {opn : String}
-    (hopn : opn = "CMP" ∨ opn = "CMP:64" ∨ opn = "TEST" ∨ opn = "TEST:64")
+    (hopn : opn = "CMP" ∨ opn = "CMP:64" ∨ opn = "TEST" ∨ opn = "TEST:64" ∨
+      ∃ w, w ≠ 64 ∧ (opn = withWidthTag w "CMP" ∨ opn = withWidthTag w "TEST"))
     (d d' : String) (a b : LOperand) (τ : MemTag) (s : LstateM) (zf : Bool) :
     fstepF (.Lopn [.reg d'] opn [a, b], τ) s zf = fstepF (.Lopn [.reg d] opn [a, b], τ) s zf := by
-  rcases hopn with rfl | rfl | rfl | rfl <;> cases τ <;> cases a <;> cases b <;> rfl
+  rcases hopn with h | h | h | h | ⟨w, hw, h | h⟩
+  rotate_left 4
+  · subst h
+    rw [fstepF_withWidthTag_flag hw (Or.inl rfl), fstepF_withWidthTag_flag hw (Or.inl rfl)]
+  · subst h
+    rw [fstepF_withWidthTag_flag hw (Or.inr rfl), fstepF_withWidthTag_flag hw (Or.inr rfl)]
+  all_goals (subst h; cases τ <;> cases a <;> cases b <;> rfl)
 
 /-! ## 3. Agreement off the save slot -/
 

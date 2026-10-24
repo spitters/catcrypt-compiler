@@ -75,10 +75,22 @@ theorem slotMov?_of_cellA {x : LinstrR} {c : CellOp} (h : cellA? x = some c)
   cases c with
   | ld D B off =>
     obtain ⟨m, n, rfl, hm, hn⟩ := cellA_ld h
-    rcases hm with rfl | rfl <;> simp [slotMov?, hn]
+    by_cases h1 : m = "MOVQ"
+    · subst h1
+      rw [LprogAsmPrinter.untagCaret_of_caret_free (by decide)] at hm
+      simp at hm
+    by_cases h2 : m = "MOV:64"
+    · subst h2; simp [slotMov?, hn]
+    · simp [slotMov?, h1, h2]
   | st B off S =>
     obtain ⟨m, n, rfl, hm, hn⟩ := cellA_st h
-    rcases hm with rfl | rfl <;> simp [slotMov?, hn]
+    by_cases h1 : m = "MOVQ"
+    · subst h1
+      rw [LprogAsmPrinter.untagCaret_of_caret_free (by decide)] at hm
+      simp at hm
+    by_cases h2 : m = "MOV:64"
+    · subst h2; simp [slotMov?, hn]
+    · simp [slotMov?, h1, h2]
   | lea D B off => exact absurd rfl (hc D B off)
 
 /-- **The cell body keeps the class.** When every array slot is a `qsave.` slot and no indexed

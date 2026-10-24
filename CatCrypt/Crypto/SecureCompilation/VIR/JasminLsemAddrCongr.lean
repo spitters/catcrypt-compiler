@@ -67,10 +67,43 @@ def cellBase : LOperand → Option String
   | .reg n => (cellParts? n).map Prod.fst
   | _ => none
 
-/-- The mnemonics of the widening multiply, whose step reads `RDX` implicitly: `MULX:64`,
-    `MULXMEM:64`, and the untagged `MULX` that `JasminLsemAddrRun.normA` tags as `MULX:64`. -/
+/-- The longest prefix without `^` has no `^`. -/
+theorem caret_not_mem_takeWhile (l : List Char) : '^' ∉ l.takeWhile (· != '^') := by
+  induction l with
+  | nil => simp
+  | cons c l ih =>
+    by_cases hc : c = '^'
+    · simp [List.takeWhile, hc]
+    · grind only [List.takeWhile_cons, = List.mem_cons]
+
+/-- The result of `untagCaret` has no `^`. -/
+theorem caret_free_untagCaret (o : String) :
+    '^' ∉ (X86Backend.LprogAsmPrinter.untagCaret o).toList := by
+  unfold X86Backend.LprogAsmPrinter.untagCaret
+  split
+  · rename_i h
+    have hs : '^' ∉ (stripWidthTag o).toList := by
+      unfold stripWidthTag
+      rw [if_pos h]
+      simpa using caret_not_mem_takeWhile o.toList
+    split
+    · simp [String.toList_append, hs]
+    · exact hs
+  · rename_i h
+    simpa using h
+
+/-- `untagCaret` is idempotent. -/
+theorem untagCaret_idem (o : String) :
+    X86Backend.LprogAsmPrinter.untagCaret (X86Backend.LprogAsmPrinter.untagCaret o)
+      = X86Backend.LprogAsmPrinter.untagCaret o :=
+  X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (caret_free_untagCaret o)
+
+/-- The mnemonics of the widening multiply, whose step reads `RDX` implicitly, read through
+    `untagCaret` as the bytes read them: `MULX:64`, `MULXMEM:64`, and the untagged `MULX`
+    that `JasminLsemAddrRun.normA` tags as `MULX:64`. -/
 def rdxOp (o : String) : Bool :=
-  o == "MULX" || o == withWidthTag 64 "MULX" || o == withWidthTag 64 "MULXMEM"
+  let u := X86Backend.LprogAsmPrinter.untagCaret o
+  u == "MULX" || u == withWidthTag 64 "MULX" || u == withWidthTag 64 "MULXMEM"
 
 /-- The operand shape of the widening multiply: two register destinations, one source. -/
 def rdxShape : List LOperand → List LOperand → Bool
@@ -86,7 +119,11 @@ def readsRdx : LinstrR → Bool
 theorem readsRdx_mulx {lo hi o : String} {b : LOperand}
     (h : o = withWidthTag 64 "MULX" ∨ o = withWidthTag 64 "MULXMEM") :
     readsRdx (.Lopn [.reg lo, .reg hi] o [b]) = true := by
-  rcases h with rfl | rfl <;> simp [readsRdx, rdxOp, rdxShape]
+  rcases h with rfl | rfl <;> simp [readsRdx, rdxOp, rdxShape,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free
+      (by decide +kernel : '^' ∉ (withWidthTag 64 "MULX").toList),
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free
+      (by decide +kernel : '^' ∉ (withWidthTag 64 "MULXMEM").toList)]
 
 /-- The names one step of `i` may read: the names of its source operands, the base
     registers of its cell operands, the implicit multiplicand `RDX` of a widening multiply
@@ -760,6 +797,7 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
           unfold cellA? at hcl
           split at hcl
           · rename_i d o n
+            dsimp only at hcl
             split_ifs at hcl with h1 h2 h3 h4
             · obtain ⟨⟨b, off⟩, hp, he⟩ := Option.map_eq_some_iff.1 hcl
               subst he
@@ -792,13 +830,12 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
               · exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1,
                   h.2.2.2, rfl⟩
               · exact ORel.none
-            · subst h4
-              split at hcl
+            · split at hcl
               · rename_i p hp
                 obtain ⟨b, off⟩ := p
                 cases hcl
-                have hb : readsI (.Lopn [.reg d] "MOV:64" [.reg n]) b := cell_reads (by simp) hp
-                have hv : readsI (.Lopn [.reg d] "MOV:64" [.reg n]) n := reg_reads (by simp)
+                have hb : readsI (.Lopn [.reg d] o [.reg n]) b := cell_reads (by simp) hp
+                have hv : readsI (.Lopn [.reg d] o [.reg n]) n := reg_reads (by simp)
                 simp only
                 rw [getW_congr hN hb, getW_congr hN hv, hM]
                 split
@@ -810,7 +847,7 @@ theorem fstepA_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
                 · exact ORel.none
               · obtain ⟨⟨b, off⟩, hp, he⟩ := Option.map_eq_some_iff.1 hcl
                 subst he
-                have hb : readsI (.Lopn [.reg d] "MOV:64" [.reg n]) b := cell_reads (by simp) hp
+                have hb : readsI (.Lopn [.reg d] o [.reg n]) b := cell_reads (by simp) hp
                 simp only
                 rw [getW_congr hN hb, hM]
                 split

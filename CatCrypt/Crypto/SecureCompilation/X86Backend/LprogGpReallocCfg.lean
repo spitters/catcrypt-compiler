@@ -371,14 +371,9 @@ theorem castStruct?_shape {p : String × String}
 theorem movImmStruct?_shape {p : String × Nat}
     (h : movImmStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.imm p.2] := by
-  unfold movImmStruct? at h
-  split at h
-  · next heq =>
-      simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq] at heq
-      obtain ⟨⟨rfl, -⟩, rfl, rfl⟩ := heq
-      cases h
-      simp
-  · cases h
+  obtain ⟨_, he⟩ := JasminLsemCast.movImmStruct?_spec (d := p.1) (n := p.2) h
+  simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at he
+  exact ⟨he.1.symm, he.2.2⟩
 
 /-- **`lsemStepSh` on a renamed instruction.** -/
 theorem lsemStepSh_val (hwf : ∀ o ∈ srcs, regOrImm o = true) (hA : SrcAgree σ srcs s s')

@@ -306,13 +306,16 @@ theorem regArithHeadMov_cover {w' : Nat} (body : Lcmd) (tbl : Array Nat)
     (hsrc : b.nSrc = resolveVarName curDepth nArgs a1) :
     (physBodyElem body tbl (regArithHead nArgs curDepth bop w a0 a1)).map (·.li_i)
       = b.block := by
-  have htag : withWidthTag w (binOpName bop) = binOpName bop := by
-    simp only [withWidthTag, if_neg hw]
+  have hsf : tagSepFree (binOpName bop) = true := by cases bop <;> decide +kernel
+  have htag : stripWidthTag (withWidthTag w (binOpName bop))
+      = stripWidthTag (binOpName bop) := by
+    rw [stripWidthTag_withWidthTag w hsf]
+    cases bop <;> decide +kernel
   rw [regArithHead,
     physBodyElem_binopTwoAddr body tbl 0 (.reg (regName curDepth))
       (.reg (resolveVarName curDepth nArgs a0)) (.reg (resolveVarName curDepth nArgs a1))
       [] [] (withWidthTag w (binOpName bop))
-      (by rw [htag]; exact binOpName_isBinop_of_nonshift bop hns)
+      (by unfold isTwoAddrBinop; rw [htag]; exact binOpName_isBinop_of_nonshift bop hns)
       (by rw [htag]; exact binOpName_not_isShift_of_nonshift bop hns)
       (withWidthTag_binOpName_not_hasSuffix64 w bop hw),
     BinopMovBinding.block, hdst, hopn, hS0, hsrc, remapOperand_reg, remapOperand_reg,

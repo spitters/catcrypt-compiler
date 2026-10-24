@@ -337,9 +337,13 @@ theorem strip_toList_of_sarCountOf {m : String} {n : Nat} (hs : sarCountOf m = s
   unfold sarCountOf at hs
   dsimp only at hs
   split_ifs at hs with hsuf hpre
-  have hsuf' : hasSuffix m ":64" = true := hsuf
   unfold stripWidthTag
-  rw [if_pos hsuf', String.toList_ofList]
+  split
+  · obtain ⟨t, ht⟩ := (List.isPrefixOf_iff_prefix.mp hpre).trans (List.take_prefix _ _)
+    rw [String.toList_ofList, ← ht,
+      List.takeWhile_append_of_pos (bne_at_of_not_mem (by decide))]
+    simp_all
+  rw [if_pos (show hasSuffix m ":64" = true from hsuf), String.toList_ofList]
   have hl : m.toList.dropLast.dropLast.dropLast = m.toList.take (m.toList.length - 3) := by
     simp only [List.dropLast_eq_take, List.take_take, List.length_take]
     congr 1

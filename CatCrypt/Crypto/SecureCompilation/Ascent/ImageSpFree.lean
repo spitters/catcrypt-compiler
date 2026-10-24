@@ -109,7 +109,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (notSlot_of
   eiOk eiInstr classifyR classifyR_instr rOk rInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (printedAddrB instrOKB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (isSpillOrQsave spillQsaveOff)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct? movImmStruct?_spec)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells (cellBody cellMove
   cellBody_getElem? cellBody_length cellA_ld cellA_st hasPrefix_memName hasPrefix_of_cellParts)
 
@@ -515,16 +515,6 @@ theorem rspFree_of_armOk {P : X86Backend.LprogBytesDecode.Params} {x : LinstrR} 
       simp [rspFreeB, operandNames, srcNames, AArm.instr, rspFreeNameB_gp h.1.1.1,
         rspFreeNameB_gp h.1.1.2, rspFreeNameB_gp h.2]
 
-/-- The untagged immediate move that `movImmStruct?` reads. -/
-theorem movImmStruct?_spec {x : LinstrR} {d : String} {n : Nat}
-    (h : movImmStruct? x = some (d, n)) : x = .Lopn [.reg d] "MOV" [.imm n] := by
-  unfold movImmStruct? at h
-  split at h
-  · simp only [Option.some.injEq, Prod.mk.injEq] at h
-    obtain ⟨rfl, rfl⟩ := h
-    rfl
-  · cases h
-
 /-- **An instruction of the covered fragment with carry chains passes `RspFreeUpToStore`**:
     every operand name is a general-purpose name, a frame-slot name, a condition code or a
     cell name of a general-purpose base, except the destination of an indexed store. -/
@@ -543,7 +533,8 @@ theorem rspFree_of_instrOKWB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Para
       split at h
       · rename_i d n hm
         simp only [imm32Ok, Bool.and_eq_true] at h
-        rw [movImmStruct?_spec hm]
+        obtain ⟨_, he⟩ := movImmStruct?_spec hm
+        rw [he]
         left
         simp [rspFreeB, operandNames, srcNames, rspFreeNameB_gp h.1]
       split at h

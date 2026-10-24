@@ -33,8 +33,8 @@ A label empties the map, because a branch may arrive there; a conditional branch
 ## Main definitions
 
 * `WMap`, `wmSet`, `wmDrop`: a width map, the entry of a written name, the removal of names.
-* `arithOp`, `srcWidth?`: the untagged instructions whose destination takes the width of the
-  first source.
+* `arithOp`, `srcWidth?`: the instructions whose destination takes the width of the first
+  source, untagged or tagged at a width other than `64`.
 * `typeStep`, `typeOut`, `typeIn`: one step of the pass, the map after the first `k`
   instructions, and the map before instruction `k`.
 * `WTyped`: every name with an entry before the program counter holds a value of that width.
@@ -101,7 +101,8 @@ theorem cellA?_dst {i : LinstrR} {d b : String} {off : Nat} (h : cellA? i = some
     d ∈ dstNames i := by
   unfold cellA? at h
   split at h
-  · split_ifs at h
+  · dsimp only at h
+    split_ifs at h
     all_goals try split at h
     all_goals first
       | cases h
@@ -115,7 +116,8 @@ theorem cellA?_lea_dst {i : LinstrR} {d b : String} {off : Nat}
     (h : cellA? i = some (.lea d b off)) : d ∈ dstNames i := by
   unfold cellA? at h
   split at h
-  · split_ifs at h
+  · dsimp only at h
+    split_ifs at h
     all_goals try split at h
     all_goals first
       | cases h
@@ -203,15 +205,33 @@ theorem stepA_lvm_of_not_dst {frame : String → Option (BitVec 64)} {body : Lcm
 
 /-- The untagged two-source mnemonics whose destination takes the width of the first
     source. -/
-def arithOp (o : String) : Bool :=
+def arithBase (o : String) : Bool :=
   o == "ADD" || o == "SUB" || o == "MUL" || o == "AND" || o == "OR" || o == "XOR"
+
+/-- The two-source mnemonics whose destination takes the width of the first source: an
+    `arithBase` mnemonic, untagged or tagged at a width other than `64` (read through
+    `LprogAsmPrinter.untagCaret`, as `normA` reads it). -/
+def arithOp (o : String) : Bool := arithBase (LprogAsmPrinter.untagCaret o)
+
+/-- A mnemonic whose `untagCaret` is `B` differs from every `L` whose `untagCaret` is not
+    `B`. -/
+theorem ne_of_untagCaret {o L B : String} (hu : LprogAsmPrinter.untagCaret o = B)
+    (h : LprogAsmPrinter.untagCaret L ≠ B) : o ≠ L :=
+  fun he => h (he ▸ hu)
+
+/-- `normA` of an `Lopn` whose `untagCaret` is a mnemonic `B` other than `MULX` is the
+    `Lopn` at `B`. -/
+theorem normA_of_untagCaret {ds : List LOperand} {o : String} {ss : List LOperand}
+    {B : String} (hu : LprogAsmPrinter.untagCaret o = B) (hB : B ≠ "MULX") :
+    normA (.Lopn ds o ss) = .Lopn ds B ss := by
+  simp [normA, hu, hB]
 
 /-- **Untagged arithmetic writes at the width of its first source.** -/
 theorem fstepA_arithWidth (frame : String → Option (BitVec 64)) (D A o : String) (b : LOperand)
-    (ho : arithOp o = true) (s s' : LstateA) (zf zf' : Bool)
+    (ho : arithBase o = true) (s s' : LstateA) (zf zf' : Bool)
     (h : fstepA frame (.Lopn [.reg D] o [.reg A, b], .reg none) s zf = some (s', zf')) :
     (s'.reg.lvm D).1 = (s.reg.lvm A).1 := by
-  simp only [arithOp, Bool.or_eq_true, beq_iff_eq] at ho
+  simp only [arithBase, Bool.or_eq_true, beq_iff_eq] at ho
   rcases ho with ((((rfl | rfl) | rfl) | rfl) | rfl) | rfl <;> cases b <;>
     simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?,
       slotImm?, slotCmov?, regStepA, VIR.JasminLsemMemFlagNestJoin.fstepF,
@@ -248,16 +268,18 @@ theorem fstepA_movWidth (frame : String → Option (BitVec 64)) (D A : String)
   obtain ⟨rfl, -⟩ := h
   simp [LstateN.setReg, LstateN.nextPc]
 
-/-- The instruction `o D, [A, b]` of `arithOp` or the untagged register move `MOV D, A`, as
-    `(D, A)`: the destination and the source whose width it takes. -/
+/-- The instruction `o D, [A, b]` of `arithOp` or the register move `MOV D, A` (untagged or
+    tagged at a width other than `64`), as `(D, A)`: the destination and the source whose
+    width it takes. -/
 def srcWidth? : LinstrR → Option (String × String)
   | .Lopn [.reg d] o [.reg a, _] => if arithOp o then some (d, a) else none
-  | .Lopn [.reg d] o [.reg a] => if o = "MOV" then some (d, a) else none
+  | .Lopn [.reg d] o [.reg a] =>
+      if LprogAsmPrinter.untagCaret o = "MOV" then some (d, a) else none
   | _ => none
 
 theorem srcWidth?_spec {i : LinstrR} {d a : String} (h : srcWidth? i = some (d, a)) :
     (∃ o b, i = .Lopn [.reg d] o [.reg a, b] ∧ arithOp o = true)
-      ∨ i = .Lopn [.reg d] "MOV" [.reg a] := by
+      ∨ ∃ o, i = .Lopn [.reg d] o [.reg a] ∧ LprogAsmPrinter.untagCaret o = "MOV" := by
   unfold srcWidth? at h
   split at h
   · split at h
@@ -268,31 +290,33 @@ theorem srcWidth?_spec {i : LinstrR} {d a : String} (h : srcWidth? i = some (d, 
   · split at h
     · rename_i ho
       cases h
-      subst ho
-      exact Or.inr rfl
+      exact Or.inr ⟨_, rfl, ho⟩
     · cases h
   · cases h
 
-/-- An instruction of `srcWidth?` is stepped unchanged at the register tag without a
-    descriptor. -/
+/-- An instruction of `srcWidth?` is stepped at the register tag without a descriptor. -/
 theorem srcWidth?_tag {i : LinstrR} {d a : String} (h : srcWidth? i = some (d, a))
-    (body : Lcmd) (k : Nat) : normA i = i ∧ tagAt body k i = .reg none := by
-  rcases srcWidth?_spec h with ⟨o, b, rfl, ho⟩ | rfl
-  · simp only [arithOp, Bool.or_eq_true, beq_iff_eq] at ho
-    rcases ho with ((((rfl | rfl) | rfl) | rfl) | rfl) | rfl <;>
-      simp (config := { decide := true }) [normA, tagAt, bitMovB, movImmStruct?, tagA]
-  · simp (config := { decide := true }) [normA, tagAt, bitMovB, movImmStruct?, tagA]
+    (body : Lcmd) (k : Nat) : tagAt body k i = .reg none := by
+  rcases srcWidth?_spec h with ⟨o, b, rfl, ho⟩ | ⟨o, rfl, hu⟩
+  · simp only [arithOp, arithBase, Bool.or_eq_true, beq_iff_eq] at ho
+    rcases ho with ((((hu | hu) | hu) | hu) | hu) | hu <;>
+      simp (disch := decide +kernel) [tagAt, bitMovB, movImmStruct?, tagA, ne_of_untagCaret hu]
+  · simp (disch := decide +kernel) [tagAt, bitMovB, movImmStruct?, tagA, ne_of_untagCaret hu]
 
 /-- **An instruction of `srcWidth?` writes its destination at the width of its source.** -/
 theorem fstepA_srcWidth {frame : String → Option (BitVec 64)} {i : LinstrR} {d a : String}
     (hi : srcWidth? i = some (d, a)) {s s' : LstateA} {zf zf' : Bool}
-    (h : fstepA frame (i, .reg none) s zf = some (s', zf')) :
+    (h : fstepA frame (normA i, .reg none) s zf = some (s', zf')) :
     (s'.reg.lvm d).1 = (s.reg.lvm a).1 ∧ dstNames i = [d] := by
-  rcases srcWidth?_spec hi with ⟨o, b, rfl, ho⟩ | rfl
-  · exact ⟨fstepA_arithWidth frame d a o b ho s s' zf zf' h,
-      by simp [dstNames, VIR.JasminLsemExportRewrites.opNames]⟩
-  · exact ⟨fstepA_movWidth frame d a s s' zf zf' h,
-      by simp [dstNames, VIR.JasminLsemExportRewrites.opNames]⟩
+  rcases srcWidth?_spec hi with ⟨o, b, rfl, ho⟩ | ⟨o, rfl, hu⟩
+  · refine ⟨?_, by simp [dstNames, VIR.JasminLsemExportRewrites.opNames]⟩
+    simp only [arithOp, arithBase, Bool.or_eq_true, beq_iff_eq] at ho
+    rcases ho with ((((hu | hu) | hu) | hu) | hu) | hu <;>
+      (rw [normA_of_untagCaret hu (by decide)] at h
+       exact fstepA_arithWidth frame d a _ b (by decide) s s' zf zf' h)
+  · refine ⟨?_, by simp [dstNames, VIR.JasminLsemExportRewrites.opNames]⟩
+    rw [normA_of_untagCaret hu (by decide)] at h
+    exact fstepA_movWidth frame d a s s' zf zf' h
 
 /-! ## 3. The width map -/
 
@@ -467,8 +491,7 @@ theorem wTyped_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s s' 
       | some q =>
         obtain ⟨d, a⟩ := q
         simp only [hsw] at hl'
-        obtain ⟨hn, ht⟩ := srcWidth?_tag hsw body s.reg.lpc
-        rw [hn, ht] at hst
+        rw [srcWidth?_tag hsw body s.reg.lpc] at hst
         obtain ⟨hwd, hdn⟩ := fstepA_srcWidth hsw hst
         rw [hdn] at hfr
         cases hla : (typeIn frame body s.reg.lpc).lookup a with
@@ -485,20 +508,27 @@ theorem wTyped_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s s' 
         | some q =>
           obtain ⟨d, n⟩ := q
           simp only [hmi] at hl'
-          have hi : LinstrR.Lopn ds o ss = .Lopn [.reg d] "MOV" [.imm n] := by
-            unfold movImmStruct? at hmi
-            split at hmi
-            · cases hmi; assumption
-            · cases hmi
+          obtain ⟨o', hi0⟩ := movImmStruct?_spec hmi
+          simp only [LinstrR.Lopn.injEq] at hi0
+          obtain ⟨hds, rfl, hss⟩ := hi0
+          have hi : LinstrR.Lopn ds o ss = .Lopn [.reg d] o [.imm n] := by rw [hds, hss]
+          have hform : o = "MOV" ∨ ∃ w, w ≠ 64 ∧ o = withWidthTag w "MOV" :=
+            VIR.JasminLsemCast.isMovImmMnem_iff.1 (by simpa [movImmStruct?, hds, hss] using hmi)
+          have hnA : normA (.Lopn [.reg d] o [.imm n]) = .Lopn [.reg d] "MOV" [.imm n] := by
+            rcases hform with rfl | ⟨w, hw, rfl⟩
+            · simp (config := { decide := true }) [normA]
+            · rw [normA_untag hw (by decide)]
+              simp (config := { decide := true }) [normA]
+          have htA : tagA (.Lopn [.reg d] o [.imm n]) = .reg none := by
+            rcases hform with rfl | ⟨w, hw, rfl⟩ <;>
+              simp (disch := decide +kernel) [tagA, withWidthTag_ne_of_tagSepFree]
           have hdn : dstNames (.Lopn ds o ss) = [d] := by
             rw [hi]; simp [dstNames, VIR.JasminLsemExportRewrites.opNames]
           rw [hdn] at hfr
           split_ifs at hl' with hfd hbm
           · rw [hi] at hst hbm
             have hD : frame d = none := by simpa using hfd
-            rw [show normA (.Lopn [.reg d] "MOV" [.imm n]) = .Lopn [.reg d] "MOV" [.imm n] from
-              by simp (config := { decide := true }) [normA],
-              show tagAt body s.reg.lpc (.Lopn [.reg d] "MOV" [.imm n]) = .reg (some 1) from
+            rw [hnA, show tagAt body s.reg.lpc (.Lopn [.reg d] o [.imm n]) = .reg (some 1) from
                 by simp [tagAt, hbm],
               fstepA_bitMov frame d n s zf hD] at hst
             obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hst)
@@ -506,10 +536,8 @@ theorem wTyped_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s s' 
               (fun x hx => hfr x (by simpa using hx)) hl'
           · rw [hi] at hst hbm
             have hD : frame d = none := by simpa using hfd
-            rw [show normA (.Lopn [.reg d] "MOV" [.imm n]) = .Lopn [.reg d] "MOV" [.imm n] from
-              by simp (config := { decide := true }) [normA],
-              show tagAt body s.reg.lpc (.Lopn [.reg d] "MOV" [.imm n]) = .reg none from
-                by simp (config := { decide := true }) [tagAt, hbm, tagA],
+            rw [hnA, show tagAt body s.reg.lpc (.Lopn [.reg d] o [.imm n]) = .reg none from
+                by simp [tagAt, hbm, htA],
               fstepA_immMov32 frame d n s zf hD] at hst
             obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hst)
             exact hset d r 32 w (by simp [LstateN.setReg, LstateN.nextPc])

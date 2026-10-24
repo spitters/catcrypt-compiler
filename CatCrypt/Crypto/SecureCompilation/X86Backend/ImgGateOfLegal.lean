@@ -91,12 +91,13 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 
 /-! ## 1. Evaluation of the symbolic step on register names -/
 
-/-- An instruction whose mnemonic is not `MOV` is no untagged immediate move. -/
+/-- An instruction whose mnemonic is no immediate-move mnemonic is no untagged immediate
+    move. -/
 theorem movImmStruct?_ne {ds : List LOperand} {o : String} {ss : List LOperand}
-    (h : o ≠ "MOV") : movImmStruct? (.Lopn ds o ss) = none := by
+    (h : VIR.JasminLsemCast.isMovImmMnem o = false) : movImmStruct? (.Lopn ds o ss) = none := by
   unfold movImmStruct?
   split
-  · rename_i heq; cases heq; exact absurd rfl h
+  · rename_i heq; cases heq; simp [h]
   · rfl
 
 /-- The sources of an operation whose first source is its destination are not exchanged. -/
@@ -215,9 +216,9 @@ theorem symN_tagShift {b : String} (hb : b ∈ ["SHL", "SHR"]) {n : Nat} (hn0 : 
   have hw : VIR.JasminLsemWidthN.widthFromTag (tagMnem b n) = 64 :=
     width_64 _ (VIR.JasminImmShiftMnem.hasSuffix_append _ _)
   have hneg : stripWidthTag (tagMnem b n) ≠ "NEG" := by
-    rw [stripWidthTag_tagMnem]; exact ne_of_take 2 (by rw [take2_tagBase hb]; decide)
+    rw [stripWidthTag_tagMnem hb]; exact ne_of_take 2 (by rw [take2_tagBase hb]; decide)
   have hmov : stripWidthTag (tagMnem b n) ≠ "MOV" := by
-    rw [stripWidthTag_tagMnem]; exact ne_of_take 2 (by rw [take2_tagBase hb]; decide)
+    rw [stripWidthTag_tagMnem hb]; exact ne_of_take 2 (by rw [take2_tagBase hb]; decide)
   have hsh : shOk b = true := by rcases hb' with rfl | rfl <;> rfl
   have hlt : n < 2 ^ 64 := lt_trans hn (by decide)
   dsimp only [symN]
@@ -258,7 +259,8 @@ theorem cellParts?_of_slot {q : String} (h : LprogBytes.isSpillOrQsave q = true)
 /-- The simplification set that evaluates the register gate `regGateBW` on an instruction of a
     concrete mnemonic over register names. -/
 macro "img_sym" : tactic => `(tactic|
-  simp only [regGateBW, regOkB, normA, symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?,
+  (try simp (disch := decide +kernel) only [VIR.JasminLsemAddrRun.normA_of_caret_free]) <;>
+  simp (disch := decide +kernel) only [regGateBW, regOkB, normA, symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?,
     wideArgs?, withWidthTag, ↓reduceIte, String.reduceAppend, String.reduceEq, symMem, liftR,
     symCast, castStruct?, movImmStruct?_ne, ne_eq, not_false_eq_true, or_self, or_false, symMC,
     mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?, symSh, sarStruct?,
@@ -321,8 +323,8 @@ macro "img_fin" : tactic => `(tactic|
 
 /-- The simplification set that evaluates the names `readNames` an instruction reads. -/
 macro "img_reads" : tactic => `(tactic|
-  simp [readOkB, carryIns, readNames, readsRdx, VIR.JasminLsemAddrCongr.rdxOp, srcNames,
-    cellBase, withWidthTag, *])
+  simp [readOkB, carryIns, readNames, readsRdx, VIR.JasminLsemAddrCongr.rdxOp,
+    VIR.JasminLsemAddrCongr.rdxShape, srcNames, cellBase, withWidthTag, *])
 
 /-! ## 2. The gate on the accepted forms -/
 
@@ -391,7 +393,7 @@ theorem gate_alu {frame : String → Option (BitVec 64)}
     · img_reads
     · rfl
     · img_icase
-    · exact movImmStruct?_ne (by decide)
+    · exact movImmStruct?_ne (by decide +kernel)
     · rfl
     · img_sym; img_fin
     · rfl
@@ -410,7 +412,7 @@ theorem gate_cmp {frame : String → Option (BitVec 64)}
   · rfl
   · img_icase
     simp [hfs]
-  · exact movImmStruct?_ne (by decide)
+  · exact movImmStruct?_ne (by decide +kernel)
   · rfl
   · img_sym; img_fin
   · rfl
@@ -431,7 +433,7 @@ theorem gate_movRR {frame : String → Option (BitVec 64)}
     · rfl
     · img_icase
       simp [hfd, hfs, hcd, hcs]
-    · exact movImmStruct?_ne (by decide)
+    · exact movImmStruct?_ne (by decide +kernel)
     · rfl
     · img_sym; img_fin
     · rfl
@@ -493,7 +495,7 @@ theorem gate_movImm64 {frame : String → Option (BitVec 64)}
   · img_reads
   · rfl
   · img_icase
-  · exact movImmStruct?_ne (by decide)
+  · exact movImmStruct?_ne (by decide +kernel)
   · simp [bitStore?, hgn]
   · img_sym
     simp only [width_64 "MOV:64" (by decide +kernel)]
@@ -513,7 +515,7 @@ theorem gate_movImmSlot {frame : String → Option (BitVec 64)}
     (W := W) (by img_reads)
   have hs : sImmB frame slotArr (.Lopn [.reg q] "MOV:64" [.imm v]) = true := by
     simp [sImmB, hfq, hsl]
-  simp only [gateAtW, carryI?, hi, hr, movImmStruct?_ne (show "MOV:64" ≠ "MOV" by decide),
+  simp only [gateAtW, carryI?, hi, hr, movImmStruct?_ne isMovImmMnem_mov64,
     hs, Bool.true_or, Bool.true_and]
   split <;> rfl
 
@@ -528,7 +530,7 @@ theorem gate_movImmBit {frame : String → Option (BitVec 64)}
   have hi : icase frame (.Lopn [.reg d] "MOV" [.imm n]) = .reg := by img_icase
   have hr := readOkB_of_forall (frame := frame) (x := .Lopn [.reg d] "MOV" [.imm n])
     (W := W) (by img_reads)
-  simp [gateAtW, carryI?, hi, hr, movImmStruct?, hbit, hd, hfd]
+  simp [gateAtW, carryI?, hi, hr, movImmStruct?, isMovImmMnem_mov, hbit, hd, hfd]
 
 /-- A name of `kOk` is no cell name. -/
 theorem cellParts?_of_kOk {P : Params} {x : String} (h : kOk P x = true) : cellParts? x = none := by
@@ -609,7 +611,7 @@ theorem gate_select {frame : String → Option (BitVec 64)}
   have hg : regGateBW frame W (normA (.Lopn [.reg d] "CMOV:64" [.reg c, .reg a, .reg b]))
       = true := by
     img_sym; img_fin
-  simp [gateAtW, carryI?, hi, hr, movImmStruct?_ne (show "CMOV:64" ≠ "MOV" by decide),
+  simp [gateAtW, carryI?, hi, hr, movImmStruct?_ne (o := "CMOV:64") (by decide +kernel),
     bitStore?, sImmB, hsc, hg, hcm]
 
 /-- **A materialised comparison of two general-purpose names passes the gate** when its names
@@ -629,7 +631,7 @@ theorem gate_setcc {frame : String → Option (BitVec 64)}
     · img_reads
     · rfl
     · img_icase
-    · exact movImmStruct?_ne (by decide)
+    · exact movImmStruct?_ne (by decide +kernel)
     · rfl
     · img_sym; img_fin
     · rfl
@@ -651,7 +653,7 @@ theorem gate_shiftReg {frame : String → Option (BitVec 64)}
     · img_reads
     · rfl
     · img_icase
-    · exact movImmStruct?_ne (by decide)
+    · exact movImmStruct?_ne (by decide +kernel)
     · rfl
     · img_sym; img_fin
     · rfl
@@ -677,7 +679,7 @@ theorem gate_aluImm {frame : String → Option (BitVec 64)}
     · img_reads
     · rfl
     · img_icase
-    · exact movImmStruct?_ne (by decide)
+    · exact movImmStruct?_ne (by decide +kernel)
     · rfl
     · img_sym
       simp only [hsym]
@@ -695,7 +697,7 @@ theorem gate_cmpImm {frame : String → Option (BitVec 64)}
   · img_reads
   · rfl
   · img_icase
-  · exact movImmStruct?_ne (by decide)
+  · exact movImmStruct?_ne (by decide +kernel)
   · rfl
   · img_sym; img_fin
   · rfl
@@ -721,7 +723,7 @@ theorem gate_shiftImm {frame : String → Option (BitVec 64)}
       · img_reads
       · rfl
       · img_icase
-      · exact movImmStruct?_ne (by decide)
+      · exact movImmStruct?_ne (by decide +kernel)
       · rfl
       · img_sym
         simp only [hsym]
@@ -734,7 +736,7 @@ theorem gate_shiftImm {frame : String → Option (BitVec 64)}
       · img_reads
       · rfl
       · img_icase
-      · exact movImmStruct?_ne (by decide)
+      · exact movImmStruct?_ne (by decide +kernel)
       · rfl
       · img_sym
         simp only [hsym]
@@ -763,7 +765,7 @@ theorem gate_setccImm {frame : String → Option (BitVec 64)}
     · img_reads
     · rfl
     · img_icase
-    · exact movImmStruct?_ne (by decide)
+    · exact movImmStruct?_ne (by decide +kernel)
     · rfl
     · img_sym
       simp only [hsym]
@@ -775,7 +777,7 @@ theorem gate_setccImm {frame : String → Option (BitVec 64)}
     · img_reads
     · rfl
     · img_icase
-    · exact movImmStruct?_ne (by decide)
+    · exact movImmStruct?_ne (by decide +kernel)
     · rfl
     · img_sym
       simp only [hsym]
@@ -815,7 +817,22 @@ theorem gate_tagShift {frame : String → Option (BitVec 64)}
   have e5 : tagMnem b n ≠ "STOREIDX" := by tag_ne hb
   have e6 : tagMnem b n ≠ "MOVQ" := by tag_ne hb
   have e7 : tagMnem b n ≠ "MOV:64" := by tag_ne hb
-  have e8 : tagMnem b n ≠ "MOV" := by tag_ne hb
+  have e8m : tagMnem b n ≠ "MOV" := by tag_ne hb
+  have e8 : VIR.JasminLsemCast.isMovImmMnem (tagMnem b n) = false := by
+    cases h : VIR.JasminLsemCast.isMovImmMnem (tagMnem b n)
+    · rfl
+    · rcases VIR.JasminLsemCast.isMovImmMnem_iff.1 h with h' | ⟨w, hw, h'⟩
+      · exact absurd h' e8m
+      · have h2 := congrArg (fun t => t.toList.take 2) h'
+        simp only [take2_tagMnem hb, toList_withWidthTag_of_ne hw] at h2
+        simp at h2
+  have hcar : '^' ∉ (tagMnem b n).toList := by
+    have hbc : '^' ∉ b.toList := by
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
+      rcases hb with rfl | rfl <;> decide
+    have hkc : '^' ∉ (toString n).toList := (sep_not_mem_toString n).2
+    rw [toList_tagMnem]
+    simp_all
   have e9 : tagMnem b n ≠ "ZEROARR" := by tag_ne hb
   have e10 : tagMnem b n ≠ "STOREIMM" := by tag_ne hb
   have hcast := (tagMnem_facts hb hn0 hn (Params.ofBody body) [] d s).2.1
@@ -831,8 +848,9 @@ theorem gate_tagShift {frame : String → Option (BitVec 64)}
     have hneM : (b ++ ":" ++ toString n = "MOV") = False :=
       eq_false (ne_of_take 2 (by rw [take2_tagBase hb]; decide))
     have hmi := movImmStruct?_ne (ds := [.reg d]) (ss := [.reg s]) e8
+    rw [VIR.JasminLsemAddrRun.normA_of_caret_free hcar]
     img_sym
-    simp only [if_neg e1, stripWidthTag_tagMnem, hneM, if_false, copyQ, beq_iff_eq,
+    simp only [if_neg e1, stripWidthTag_tagMnem hb, hneM, if_false, copyQ, beq_iff_eq,
       Bool.or_eq_true, hmi]
     simp only [hne "LOAD:64" (by decide), hne "STORE:64" (by decide), hne "LEA:64" (by decide),
       hne "MOVQ" (by decide), hne "MOV:64" (by decide), hne "ZEROEXT" (by decide),
@@ -1015,8 +1033,8 @@ theorem gateAtW_of_imgForm {frame : String → Option (BitVec 64)}
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
     rcases hm with h | h | h | h | h | h | rfl
     all_goals first
-      | exact gate_cmp hd hs hfd hfs hdW hsW
       | exact gate_alu (by subst h; simp) hd hs hfd hfs hdW hsW
+      | exact gate_cmp hd hs hfd hfs hdW hsW
   | aluImm m d v hm hd hv _ hfd hdW => exact gate_aluImm hm hd hfd hdW hv
   | cmpImm d v hd _ hfd hdW => exact gate_cmpImm hd hfd hdW
   | shiftImm m d n hm hd hn _ hfd hdW => exact gate_shiftImm hm hd hfd hdW hn

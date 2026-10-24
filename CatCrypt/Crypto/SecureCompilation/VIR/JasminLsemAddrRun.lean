@@ -51,7 +51,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (movImmStruct? movImmStruct?_spec)
 
 /-- The destination width of a width-carrying cast mnemonic `CASTW_<w>_<w'>` between the
     widths `16`, `32` and `64`; `none` for every other mnemonic. -/
@@ -243,19 +243,15 @@ theorem tagAt_castW (body : Lcmd) (k : Nat) {D A o : String} {w : Nat}
   obtain ⟨h3, h4⟩ := castTagW_ne_arr h
   rw [tagAt_of_ne (by simp [movImmStruct?]), tagA_lopn h1 h2 h3 h4, h]
 
-/-- A carry constant is the untagged move of `0` or `1` into a name that is no cell name. -/
+/-- A carry constant is an immediate move of `0` or `1` into a name that is no cell name. -/
 theorem bitMovB_spec {body : Lcmd} {k : Nat} {i : LinstrR} (h : bitMovB body k i = true) :
-    ∃ d n, i = .Lopn [.reg d] "MOV" [.imm n] ∧ n < 2 ∧ hasPrefix d "mem." = false
+    ∃ d n, (∃ o, i = .Lopn [.reg d] o [.imm n]) ∧ n < 2 ∧ hasPrefix d "mem." = false
       ∧ carryInNext body k d = true := by
   unfold bitMovB at h
   split at h
   · rename_i d n hm
     simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at h
-    refine ⟨d, n, ?_, h.1.1, h.1.2, h.2⟩
-    unfold movImmStruct? at hm
-    split at hm
-    · cases hm; rfl
-    · cases hm
+    exact ⟨d, n, movImmStruct?_spec hm, h.1.1, h.1.2, h.2⟩
   · cases h
 
 /-- **The carry constant on the address machine.** At the one-bit tag, the untagged move
@@ -270,17 +266,57 @@ theorem fstepA_bitMov (frame : String → Option (BitVec 64)) (D : String) (n : 
     JasminLsemCast.lsemStepCast, JasminLsemCast.castStruct?, movImmStruct?,
     JasminLsemMemFlagGuard.withALUFlags, JasminLsemMemFlagGuard.aluFlagOp?]
 
-/-- The widening multiply `MULX` read at its width `MULX:64`; every other instruction
-    unchanged. -/
+/-- **The carry constant on the address machine, at any copy mnemonic.** At the one-bit
+    tag, an immediate move `o D, #n` whose mnemonic is `MOV` or `MOV^w` at a width `w ≠ 64`
+    (`isMovImmMnem`) writes the bit `n` to the register `D`. -/
+theorem fstepA_bitMov_of (frame : String → Option (BitVec 64)) (D o : String) (n : Nat)
+    (s : LstateA) (zf : Bool) (hD : frame D = none) (hi : JasminLsemCast.isMovImmMnem o = true) :
+    fstepA frame (.Lopn [.reg D] o [.imm n], .reg (some 1)) s zf
+      = some ({ s with reg := (s.reg.setReg D (BitVec.ofNat 1 n)).nextPc }, zf) := by
+  simp (config := { decide := true }) [fstepA, slotMov?, slotCmp?, cellA?, slotCarry?,
+    slotImm?, slotCmov?, regStepA, hD, JasminLsemMemFlagNestJoin.fstepF, JasminLsemMemFlagGuard.cmpArgs?,
+    JasminLsemMemFlagGuard.movRegArgs?, JasminLsemMemFlagGuard.stepMemF, lsemStepMem,
+    JasminLsemCast.lsemStepCast, JasminLsemCast.castStruct?, movImmStruct?,
+    JasminLsemMemFlagGuard.withALUFlags, JasminLsemMemFlagGuard.aluFlagOp?, hi]
+
+/-- The mnemonic of an `Lopn` as the bytes read it: the `^w` tag removed
+    (`LprogAsmPrinter.untagCaret`, so an op of a width other than `64` is the untagged
+    32-bit op), and the widening multiply `MULX` read at its width `MULX:64`; every other
+    instruction unchanged. -/
 def normA : LinstrR → LinstrR
-  | .Lopn ds o ss => .Lopn ds (if o = "MULX" then withWidthTag 64 "MULX" else o) ss
+  | .Lopn ds o ss =>
+      .Lopn ds (if X86Backend.LprogAsmPrinter.untagCaret o = "MULX" then withWidthTag 64 "MULX"
+        else X86Backend.LprogAsmPrinter.untagCaret o) ss
   | i => i
+
+/-- `normA` of an `Lopn` whose mnemonic has no `^`. -/
+theorem normA_of_caret_free {ds : List LOperand} {o : String} {ss : List LOperand}
+    (hm : '^' ∉ o.toList) :
+    normA (.Lopn ds o ss) = .Lopn ds (if o = "MULX" then withWidthTag 64 "MULX" else o) ss := by
+  simp only [normA, X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hm]
+
+/-- `normA` reads an op tagged at a width other than `64` as the untagged op. -/
+theorem normA_untag {ds : List LOperand} {m : String} {ss : List LOperand} {w : Nat}
+    (hw : w ≠ 64) (hm : '^' ∉ m.toList) :
+    normA (.Lopn ds (withWidthTag w m) ss) = normA (.Lopn ds m ss) := by
+  simp only [normA, X86Backend.LprogAsmPrinter.untagCaret_withWidthTag hw hm,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hm]
+
+/-- A width-carrying cast mnemonic has no `^`. -/
+theorem castTagW_caret_free {o : String} {w : Nat} (h : castTagW o = some w) :
+    '^' ∉ o.toList := by
+  unfold castTagW at h
+  split_ifs at h with h1 h2 h3
+  · rcases h1 with rfl | rfl | rfl <;> decide
+  · rcases h2 with rfl | rfl | rfl <;> decide
+  · rcases h3 with rfl | rfl | rfl <;> decide
 
 /-- `normA` keeps an instruction with a width-carrying cast mnemonic. -/
 theorem normA_castW {ds : List LOperand} {o : String} {ss : List LOperand} {w : Nat}
     (h : castTagW o = some w) : normA (.Lopn ds o ss) = .Lopn ds o ss := by
   obtain ⟨-, -, h3, -⟩ := castTagW_ne h
-  simp [normA, h3]
+  rw [normA_of_caret_free (castTagW_caret_free h)]
+  simp [h3]
 
 /-- The instruction defines the label `l`. -/
 def isLabelB (l : LLabel) : LinstrR → Bool

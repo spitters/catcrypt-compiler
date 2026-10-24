@@ -54,7 +54,8 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ShiftMnemSymbolic
 
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (stripWidthTag hasPrefix hasSuffix natOfDigits?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (stripWidthTag hasPrefix hasSuffix natOfDigits?
+  stripWidthTag_toList_prefix)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LoweringExtended
 
@@ -90,35 +91,27 @@ theorem sw_mono (p r q : String) (h : hasPrefix p q = true) :
 
 /-! ## 2. `stripWidthTag` preserves the shift prefix over the `:64` tag
 
-`stripWidthTag mnem` drops a `":64"` suffix (3 chars) via `endsWith ":64"` plus
-three `dropLast`s. We do **not** reconstruct the (template-less) backward-pattern
-`endsWith` characterisation; instead we discharge *both* `if`-branches of
-`stripWidthTag`, each of which preserves the prefix when the un-tagged base
-starts with the prefix:
-
-* strip branch: `String.ofList ((p ++ ":64").toList.dropLast³) = p`
-  (the `:64` chars are removed exactly), and `p` starts with the prefix;
-* no-strip branch: the result is `p ++ ":64"`, which starts with the prefix by
-  `sw_mono` since `p` does. -/
+`stripWidthTag mnem` cuts at the first `^`, or else drops a `":64"` suffix. Each
+branch keeps a `^`-free prefix of a string with at least three further characters
+(`stripWidthTag_toList_prefix`). -/
 
 /-- Three `dropLast`s strip the `[':','6','4']` (`":64"`) tail off a char list. -/
 theorem dropLast3_append_64 (L : List Char) :
     (L ++ [':', '6', '4']).dropLast.dropLast.dropLast = L := by
   simp
 
-/-- `stripWidthTag (p ++ ":64")` starts with `q` whenever `p` does — for either
-    branch of `stripWidthTag`'s `endsWith` test. -/
-theorem stripWidthTag_startsWith_of_startsWith (p q : String)
+/-- `stripWidthTag (p ++ ":64")` starts with `q` whenever `p` does and `q` has no
+    `^` separator. -/
+theorem stripWidthTag_startsWith_of_startsWith (p q : String) (hq : '^' ∉ q.toList)
     (h : hasPrefix p q = true) :
     hasPrefix (stripWidthTag (p ++ ":64")) q = true := by
-  unfold stripWidthTag
-  split
-  · -- strip branch: the result is exactly `p`.
-    have h64 : (":64" : String).toList = [':', '6', '4'] := by decide
-    rw [String.toList_append, h64, dropLast3_append_64, String.ofList_toList]
-    exact h
-  · -- no-strip branch: the result is `p ++ ":64"`.
-    exact sw_mono p ":64" q h
+  obtain ⟨t, rfl⟩ := (sw_iff q p).mp h
+  have hl : (q ++ t ++ ":64").toList = q.toList ++ (t.toList ++ (":64" : String).toList) := by
+    simp
+  obtain ⟨r', hr'⟩ := stripWidthTag_toList_prefix hq (by simp) hl
+  unfold hasPrefix
+  rw [List.isPrefixOf_iff_prefix, hr']
+  exact List.prefix_append _ _
 
 /-! ## 3. `parseShiftMnem` accepts the symbolic-`n` export string
 
@@ -135,7 +128,7 @@ theorem parseShiftMnem_isSome_shr (n : Nat) :
   -- `bare := stripWidthTag` of the export `= ("SHR:" ++ toString n) ++ ":64"`
   -- (left-assoc `++`) starts with `"SHR:"`.
   have hSHR : hasPrefix (stripWidthTag ("SHR:" ++ toString n ++ ":64")) "SHR:" = true :=
-    stripWidthTag_startsWith_of_startsWith _ _ (sw_append_self "SHR:" (toString n))
+    stripWidthTag_startsWith_of_startsWith _ _ (by decide) (sw_append_self "SHR:" (toString n))
   unfold parseShiftMnem
   -- whichever `if`-arm fires, the result is `some`.
   by_cases hSHL : hasPrefix (stripWidthTag ("SHR:" ++ toString n ++ ":64")) "SHL:" = true
@@ -147,7 +140,7 @@ theorem parseShiftMnem_isSome_shr (n : Nat) :
 theorem parseShiftMnem_isSome_shl (n : Nat) :
     (parseShiftMnem ("SHL:" ++ toString n ++ ":64")).isSome = true := by
   have hSHL : hasPrefix (stripWidthTag ("SHL:" ++ toString n ++ ":64")) "SHL:" = true :=
-    stripWidthTag_startsWith_of_startsWith _ _ (sw_append_self "SHL:" (toString n))
+    stripWidthTag_startsWith_of_startsWith _ _ (by decide) (sw_append_self "SHL:" (toString n))
   unfold parseShiftMnem
   simp only [hSHL, if_true, Option.isSome_some]
 

@@ -17,7 +17,7 @@ set_option autoImplicit false
 # The checked encoder accepts no compare on a spilled first operand
 
 `CmpSpillReload.spillCmp?` matches `Lopn [.reg d] opn [.reg d, s]` with mnemonic base `CMP`
-(the mnemonics `CMP` and `CMP:64`), `d` a spill slot and `s` any operand other than the
+(the mnemonics `CMP`, `CMP:64` and `CMP^w`), `d` a spill slot and `s` any operand other than the
 reload scratch. The encoder `LprogBytes.encodeLopn` gives such an instruction no bytes at
 every second operand: at an immediate, `encImmOp` returns no bytes for a spill destination;
 at a register or a spill slot, the `CMP` arm requires a general-purpose first operand; at an
@@ -41,13 +41,24 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
 
-/-- A mnemonic whose base is `CMP` is `CMP` or `CMP:64`. -/
+/-- A mnemonic whose base is `CMP` is `CMP`, `CMP:64`, or `CMP^` followed by any
+    characters. -/
 theorem eq_cmp_of_stripWidthTag {opn : String} (h : stripWidthTag opn = "CMP") :
-    opn = "CMP" ∨ opn = "CMP:64" := by
+    opn = "CMP" ∨ opn = "CMP:64" ∨ ∃ rest, opn.toList = 'C' :: 'M' :: 'P' :: '^' :: rest := by
   unfold stripWidthTag at h
   split at h
+  · rename_i hc
+    right; right
+    have h' := congrArg String.toList h
+    rw [String.toList_ofList] at h'
+    revert hc h'
+    generalize opn.toList = l
+    intro hc h'
+    rcases l with _ | ⟨a, _ | ⟨b, _ | ⟨c, _ | ⟨e, rest⟩⟩⟩⟩ <;>
+      simp [List.takeWhile] at hc h' ⊢ <;> grind
+  split at h
   · rename_i hs
-    right
+    right; left
     obtain ⟨t, ht⟩ := List.isSuffixOf_iff_suffix.mp hs
     have h2 : opn.toList = t ++ [':', '6', '4'] := ht.symm
     rw [h2] at h
@@ -81,9 +92,9 @@ theorem encodableLinstrR_spillCmp (frame spillW qsaveB : Nat) {opn d : String} (
   have hg := isGpName_of_spill hk
   have hq : isSpillOrQsave d = true := by simp [isSpillOrQsave, hk]
   have h1 : (isCarryOutBinding opn || isMulHiBinding opn) = false := by
-    rcases eq_cmp_of_stripWidthTag ho with rfl | rfl <;> decide +kernel
+    unfold isCarryOutBinding isMulHiBinding; simp_all
   have h3 : (opn == "KEEP") = false := by
-    rcases eq_cmp_of_stripWidthTag ho with rfl | rfl <;> decide +kernel
+    rw [beq_eq_false_iff_ne]; rintro rfl; revert ho; decide +kernel
   have hm : isMulHiBinding opn = false := by simp at h1; simp [h1]
   have hc : carriesNoBytes (.Lopn [.reg d] opn [.reg d, s]) = false := by
     simp [carriesNoBytes, hm, h3]

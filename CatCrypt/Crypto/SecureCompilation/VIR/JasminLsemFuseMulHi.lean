@@ -710,13 +710,35 @@ theorem length_fuseLoAux : ∀ (pend : List (String × String)) (xs : List Linst
           · simp [length_fuseLoAux]
       · simp [length_fuseLoAux]
 
+/-- The widening multiply `MULX` read at its width `MULX:64`; every other instruction
+    unchanged. -/
+def normMulx : LinstrR → LinstrR
+  | .Lopn ds o ss => .Lopn ds (if o = "MULX" then withWidthTag 64 "MULX" else o) ss
+  | i => i
+
+/-- The address-machine reading `normA` absorbs `normMulx`. -/
+theorem normA_normMulx (i : LinstrR) :
+    JasminLsemAddrRun.normA (normMulx i) = JasminLsemAddrRun.normA i := by
+  cases i with
+  | Lopn ds o ss =>
+    by_cases ho : o = "MULX"
+    · subst ho
+      have h1 : X86Backend.LprogAsmPrinter.untagCaret (withWidthTag 64 "MULX") = "MULX:64" :=
+        X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide +kernel)
+      have h2 : X86Backend.LprogAsmPrinter.untagCaret "MULX" = "MULX" :=
+        X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide)
+      simp only [normMulx, if_true, JasminLsemAddrRun.normA, h1, h2]
+      rfl
+    · simp only [normMulx, ho, if_false]
+  | _ => rfl
+
 /-- The looped-body `MULX` fusion `fuseMulHiBody (saveRdx := true)` on a typed body: each
     output instruction at the tag of the input instruction it comes from, and the widening
-    multiply read at its width (`normA`). -/
+    multiply read at its width (`normMulx`). -/
 def fuseMulHiRM (c : List LinstrRM) : List LinstrRM :=
   let body : Lcmd := c.mapIdx fun k i => ⟨k, i.1⟩
   (fuseMulHiBody body true).map fun j =>
-    (JasminLsemAddrRun.normA j.li_i, ((c[j.li_ii]?).map (·.2)).getD (.reg none))
+    (normMulx j.li_i, ((c[j.li_ii]?).map (·.2)).getD (.reg none))
 
 /-- The low destination `fuseMulHiRM` assigns to each position of a typed body. -/
 def fuseLo (c : List LinstrRM) : List (Option String) := fuseLoAux [] (c.map Prod.fst)
@@ -738,8 +760,8 @@ def fuseE (L : List (Option String)) (k : Nat) (i : LinstrRM) : List LinstrRM :=
   | some (some d) => fuseSiteExp d i
   | _ => [i]
 
-theorem normA_of_wireOK {w : LinstrR} (h : wireOK w = true) : JasminLsemAddrRun.normA w = w := by
-  unfold JasminLsemAddrRun.normA
+theorem normMulx_of_wireOK {w : LinstrR} (h : wireOK w = true) : normMulx w = w := by
+  unfold normMulx
   split
   · rename_i ds o ss
     have : o ≠ "MULX" := by
@@ -753,7 +775,7 @@ theorem map_fuseL (c : List LinstrRM) (L : List (Option String))
     ∀ (xs : List LinstrRM) (n : Nat), (∀ k i, xs[k]? = some i → c[n + k]? = some i) →
       n + xs.length ≤ L.length →
       (fuseL (xs.mapIdx fun k i => ⟨n + k, i.1⟩) (L.drop n)).map
-          (fun j => (JasminLsemAddrRun.normA j.li_i, ((c[j.li_ii]?).map (·.2)).getD (.reg none)))
+          (fun j => (normMulx j.li_i, ((c[j.li_ii]?).map (·.2)).getD (.reg none)))
         = expI (fuseE L) xs n
   | [], n, _, _ => by
       cases h : L.drop n <;> simp [fuseL, expI]
@@ -776,12 +798,12 @@ theorem map_fuseL (c : List LinstrRM) (L : List (Option String))
       rw [List.getElem?_eq_getElem hn]
       obtain ⟨w, tag⟩ := i
       cases L[n] with
-      | none => simp [hcn, normA_of_wireOK hwi]
+      | none => simp [hcn, normMulx_of_wireOK hwi]
       | some d =>
           simp only [siteL, fuseSiteExp]
           split
-          · simp [hcn, JasminLsemAddrRun.normA, withWidthTag]
-          · simp [hcn, normA_of_wireOK hwi]
+          · simp [hcn, normMulx, withWidthTag]
+          · simp [hcn, normMulx_of_wireOK hwi]
 
 /-- **The fusion is an expansion by position.** On a typed body whose names the fusion
     leaves alone, `fuseMulHiRM` keeps every instruction except each matched `MULXHI`, which

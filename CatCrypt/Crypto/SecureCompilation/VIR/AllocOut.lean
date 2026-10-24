@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegi
 `AllocOut I P` is the form of the program `P` after register allocation over the
 instruction-set data `I`: every operand of an operation is resolved over `I`
 (`WellFormedX86.opResolvedI`), every operation printed in tied form by `I` has a mnemonic of
-the width alphabet (`WidthAlphabet`: untagged or `:64`-tagged), and no operand names a
+the width alphabet (`WidthAlphabet`: untagged or width-tagged), and no operand names a
 `tsave.*` slot or the liveness pin `%livepin`.
 
 `exportR_alphabet` proves the alphabet clause on the region export `exportR`: its operations
@@ -25,7 +25,7 @@ families, nor a vector mnemonic, nor a guard instruction outside the alphabet
 
 ## Main definitions
 
-* `WidthAlphabet`: an untagged or `:64`-tagged mnemonic.
+* `WidthAlphabet`: an untagged or width-tagged mnemonic.
 * `TiedInAlphabet I x`: an operation `x` printed in tied form by `I` has a mnemonic of the
   alphabet.
 * `AllocOutInstr I x`, `AllocOut I P`: the operand form of an instruction and of a program.
@@ -51,15 +51,15 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (tieBase x86Data needsTie
-  tiedBases)
+  tiedBases tieBase_of_caret_free)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.WellFormedX86 (opResolvedI)
 
 /-! ## 1. The width alphabet of the tied form -/
 
-/-- **The width alphabet**: a mnemonic that is its own base (untagged) or its base followed
-    by the width tag `:64`. -/
+/-- **The width alphabet**: a mnemonic that is its own base (untagged) or its base under the
+    width tag of some width (`withWidthTag w`). -/
 def WidthAlphabet (opn : String) : Prop :=
-  opn = tieBase opn ∨ opn = tieBase opn ++ ":64"
+  opn = tieBase opn ∨ ∃ w, opn = withWidthTag w (tieBase opn)
 
 /-- **An operation tied over `I` lies in the alphabet**: an operation
     `Lopn dsts opn [a, b]` that `I` prints in tied form has a mnemonic of `WidthAlphabet`.
@@ -77,35 +77,50 @@ theorem takeWhile_ne_colon_of_colonFree :
       rw [List.takeWhile_cons_of_pos (by simpa using hc),
         takeWhile_ne_colon_of_colonFree (fun hm => h (List.mem_cons_of_mem _ hm))]
 
-/-- The base of a mnemonic without `:` is the mnemonic. -/
-theorem tieBase_of_colonFree {s : String} (h : ':' ∉ s.toList) : tieBase s = s := by
-  unfold tieBase
-  rw [takeWhile_ne_colon_of_colonFree h, String.ofList_toList]
+/-- The base of a mnemonic without `:` and `^` is the mnemonic. -/
+theorem tieBase_of_colonFree {s : String} (h : ':' ∉ s.toList) (h' : '^' ∉ s.toList) :
+    tieBase s = s := by
+  rw [tieBase_of_caret_free h', takeWhile_ne_colon_of_colonFree h, String.ofList_toList]
 
-/-- The base of a mnemonic `s ++ ":" ++ t` with `s` without `:` is `s`. -/
-theorem tieBase_append_colon {s : String} (t : String) (h : ':' ∉ s.toList) :
-    tieBase (s ++ ":" ++ t) = s := by
+/-- Every character of a list without `:` and `^` passes the base test of `tieBase`. -/
+theorem tieBase_test_of_sepFree {l : List Char} (h : ':' ∉ l) (h' : '^' ∉ l) :
+    ∀ c ∈ l, (c != ':' && c != '^') = true := by
+  intro c hc
+  have h1 : c ≠ ':' := fun e => h (e ▸ hc)
+  have h2 : c ≠ '^' := fun e => h' (e ▸ hc)
+  simp [h1, h2]
+
+/-- The base of a mnemonic `s ++ ":" ++ t` with `s` without `:` and `^` is `s`. -/
+theorem tieBase_append_colon {s : String} (t : String) (h : ':' ∉ s.toList)
+    (h' : '^' ∉ s.toList) : tieBase (s ++ ":" ++ t) = s := by
   unfold tieBase
   rw [String.toList_append, String.toList_append, List.append_assoc,
-    List.takeWhile_append_of_pos (fun c hc => by
-      simp only [bne_iff_ne, ne_eq]; exact fun e => h (e ▸ hc))]
+    List.takeWhile_append_of_pos (tieBase_test_of_sepFree h h')]
   rw [show ":".toList = [':'] from rfl]
   simp
 
-/-- A width-tagged mnemonic over a base without `:` lies in the alphabet. -/
-theorem widthAlphabet_withWidthTag (w : Nat) {s : String} (h : ':' ∉ s.toList) :
-    WidthAlphabet (withWidthTag w s) := by
-  unfold WidthAlphabet withWidthTag
-  split
-  · right
-    have e : s ++ ":64" = s ++ ":" ++ "64" := by rw [String.append_assoc]; rfl
-    rw [e, tieBase_append_colon _ h]
-    exact e.symm
-  · left; exact (tieBase_of_colonFree h).symm
+/-- The base of a width-tagged mnemonic over a base without `:` and `^` is that base. -/
+theorem tieBase_withWidthTag (w : Nat) {s : String} (hs : tagSepFree s = true) :
+    tieBase (withWidthTag w s) = s := by
+  obtain ⟨h, h'⟩ := (tagSepFree_iff s).mp hs
+  unfold tieBase
+  by_cases hw : w = 64
+  · subst hw
+    rw [toList_withWidthTag_64, List.takeWhile_append_of_pos (tieBase_test_of_sepFree h h')]
+    simp
+  · rw [toList_withWidthTag_of_ne hw,
+      List.takeWhile_append_of_pos (tieBase_test_of_sepFree h h')]
+    simp
 
-/-- A mnemonic without `:` lies in the alphabet. -/
-theorem widthAlphabet_of_colonFree {s : String} (h : ':' ∉ s.toList) : WidthAlphabet s :=
-  Or.inl (tieBase_of_colonFree h).symm
+/-- A width-tagged mnemonic over a base without `:` and `^` lies in the alphabet. -/
+theorem widthAlphabet_withWidthTag (w : Nat) {s : String} (hs : tagSepFree s = true) :
+    WidthAlphabet (withWidthTag w s) :=
+  Or.inr ⟨w, by rw [tieBase_withWidthTag w hs]⟩
+
+/-- A mnemonic without `:` and `^` lies in the alphabet. -/
+theorem widthAlphabet_of_colonFree {s : String} (hs : tagSepFree s = true) :
+    WidthAlphabet s :=
+  Or.inl (tieBase_of_colonFree ((tagSepFree_iff s).mp hs).1 ((tagSepFree_iff s).mp hs).2).symm
 
 /-- An instruction whose two-source operations all have mnemonics of the alphabet is
     `TiedInAlphabet I` for every `I`. -/
@@ -189,12 +204,12 @@ structure ExportTieWF (I : IsaData) : Prop where
   zeroTripGuard : ∀ (ctr : String) (top endL : LLabel), ∀ x ∈ I.zeroTripGuard ctr top endL,
     TiedInAlphabet I x
 
-/-- The base of `s ++ ":" ++ t ++ u` with `s` without `:` is `s`. -/
-theorem tieBase_append_colon_append {s : String} (t u : String) (h : ':' ∉ s.toList) :
-    tieBase (s ++ ":" ++ t ++ u) = s := by
+/-- The base of `s ++ ":" ++ t ++ u` with `s` without `:` and `^` is `s`. -/
+theorem tieBase_append_colon_append {s : String} (t u : String) (h : ':' ∉ s.toList)
+    (h' : '^' ∉ s.toList) : tieBase (s ++ ":" ++ t ++ u) = s := by
   have e : s ++ ":" ++ t ++ u = s ++ ":" ++ (t ++ u) := by rw [String.append_assoc]
   rw [e]
-  exact tieBase_append_colon _ h
+  exact tieBase_append_colon _ h h'
 
 /-- An operation of the call or rotate family is `TiedInAlphabet I` under `ExportTieWF I`. -/
 theorem tiedInAlphabet_family {I : IsaData} (hI : ExportTieWF I) (dsts : List LOperand)
@@ -240,14 +255,17 @@ theorem ymmMnemonic_vector (op : YmmDialect.YmmOp) : VectorMnem op.jasminMnemoni
   unfold YmmDialect.YmmOp.jasminMnemonic
   split <;> simp [VectorMnem, String.toList_append]
 
-/-- The base of a mnemonic with the prefix `p ++ ":"`, `p` without `:`, is `p`, also under
-    the width tag. -/
-theorem tieBase_withWidthTag_colon (w : Nat) {p : String} (t : String) (h : ':' ∉ p.toList) :
-    tieBase (withWidthTag w (p ++ ":" ++ t)) = p := by
+/-- The base of a mnemonic with the prefix `p ++ ":"`, `p` without `:` and `^`, is `p`, also
+    under the width tag. -/
+theorem tieBase_withWidthTag_colon (w : Nat) {p : String} (t : String) (h : ':' ∉ p.toList)
+    (h' : '^' ∉ p.toList) : tieBase (withWidthTag w (p ++ ":" ++ t)) = p := by
   unfold withWidthTag
   split
-  · exact tieBase_append_colon_append _ _ h
-  · exact tieBase_append_colon _ h
+  · exact tieBase_append_colon_append _ _ h h'
+  · have e : p ++ ":" ++ t ++ "^" ++ toString w = p ++ ":" ++ (t ++ "^" ++ toString w) := by
+      simp only [String.append_assoc]
+    rw [e]
+    exact tieBase_append_colon _ h h'
 
 /-- **The mnemonics of `opToLinstrR`**: under `ExportTieWF I`, the operation `opToLinstrR`
     emits on as many sources as the operation has arguments is `TiedInAlphabet I`. -/
@@ -257,30 +275,31 @@ theorem opToLinstrR_tiedInAlphabet {I : IsaData} (hI : ExportTieWF I) (op : Jasm
     TiedInAlphabet I (opToLinstrR op dst srcs) := by
   cases op with
   | regArith bop w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w
-      (binOpName_colonFree bop))
-  | select w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide))
+      (by cases bop <;> decide +kernel))
+  | select w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide +kernel))
   | stackLoad w n =>
       dsimp only [opToLinstrR]; split <;>
-        exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
+        exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide +kernel))
   | stackStore w n =>
       dsimp only [opToLinstrR]; split <;>
-        exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
+        exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide +kernel))
   | castW w w' =>
       dsimp only [opToLinstrR]; split
-      · exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (castWMnem_colonFree w w'))
-      · exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by split <;> decide))
+      · exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by
+        unfold castWMnem; split_ifs <;> decide +kernel))
+      · exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by split <;> decide +kernel))
   | extCall name argTys retTy =>
       dsimp only [opToLinstrR]; split
-      · exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
+      · exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide +kernel))
       · split
         · apply tiedInAlphabet_family hI
           simp only [encodeCallW, String.append_assoc]
-          rw [show "CALLW:" = "CALLW" ++ ":" from rfl, tieBase_append_colon _ (by decide)]
+          rw [show "CALLW:" = "CALLW" ++ ":" from rfl, tieBase_append_colon _ (by decide) (by decide)]
           decide
         · apply tiedInAlphabet_family hI
-          rw [show "CALL:" = "CALL" ++ ":" from rfl, tieBase_append_colon _ (by decide)]
+          rw [show "CALL:" = "CALL" ++ ":" from rfl, tieBase_append_colon _ (by decide) (by decide)]
           decide
-  | regConst w n => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide))
+  | regConst w n => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide +kernel))
   | vpackZMM bop => exact tiedInAlphabet_vector hI _ _ (VectorMnem.append _ (by
       simp [VectorMnem]))
   | vpackZMMd bop => exact tiedInAlphabet_vector hI _ _ (VectorMnem.append _ (by
@@ -293,12 +312,12 @@ theorem opToLinstrR_tiedInAlphabet {I : IsaData} (hI : ExportTieWF I) (op : Jasm
       simp [VectorMnem]))
   | vsimd op => exact tiedInAlphabet_vector hI _ _ (simdMnemonic_vector op)
   | vymm op => exact tiedInAlphabet_vector hI _ _ (ymmMnemonic_vector op)
-  | mulhi w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide))
-  | addCarryLo w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide))
-  | addCarryHi w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide))
+  | mulhi w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide +kernel))
+  | addCarryLo w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide +kernel))
+  | addCarryHi w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w (by decide +kernel))
   | rorImm w n =>
       apply tiedInAlphabet_family hI
-      rw [show "ROR:" = "ROR" ++ ":" from rfl, tieBase_withWidthTag_colon _ _ (by decide)]
+      rw [show "ROR:" = "ROR" ++ ":" from rfl, tieBase_withWidthTag_colon _ _ (by decide) (by decide)]
       decide
   | shrImm w n =>
       exact tiedInAlphabet_Lopn_of_length I _ _ _ (by rw [hlen]; exact (by decide : 1 ≠ 2))
@@ -310,18 +329,18 @@ theorem opToLinstrR_tiedInAlphabet {I : IsaData} (hI : ExportTieWF I) (op : Jasm
       dsimp only [opToLinstrR]; split
       · apply tiedInAlphabet_family hI
         simp only [encodeCallW, String.append_assoc]
-        rw [show "CALLNW:" = "CALLNW" ++ ":" from rfl, tieBase_append_colon _ (by decide)]
+        rw [show "CALLNW:" = "CALLNW" ++ ":" from rfl, tieBase_append_colon _ (by decide) (by decide)]
         decide
       · apply tiedInAlphabet_family hI
-        rw [show "CALLN:" = "CALLN" ++ ":" from rfl, tieBase_append_colon _ (by decide)]
+        rw [show "CALLN:" = "CALLN" ++ ":" from rfl, tieBase_append_colon _ (by decide) (by decide)]
         decide
   | cmp c w => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w
-      (cmpName_colonFree c))
+      (by cases c <;> decide +kernel))
   | cmpImm c w n => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w
-      (cmpName_colonFree c))
-  | stackZero w n => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
+      (by cases c <;> decide +kernel))
+  | stackZero w n => exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide +kernel))
   | stackStoreImm w n i =>
-      exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
+      exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide +kernel))
 
 /-- The resolution of an argument vector has one operand for each argument. -/
 theorem exprArgs_go_length (d nArgs : Nat) (argNames : Nat → String)
@@ -345,7 +364,7 @@ theorem bindOps_tiedInAlphabet {I : IsaData} (hI : ExportTieWF I) (nArgs : Nat)
   rintro x rfl
   generalize exprArgs d nArgs argName (fun _ => none) e = src at hlen ⊢
   generalize e.op = op at hlen ⊢
-  have hshift : ∀ (m : String) (w n : Nat) (s : LOperand), ':' ∉ m.toList →
+  have hshift : ∀ (m : String) (w n : Nat) (s : LOperand), tagSepFree m = true →
       TiedInAlphabet I (JasminLsemShift.shiftLinstr m w (regName d) s n) := fun m w _ s hm =>
     tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag w hm)
   split
@@ -357,9 +376,9 @@ theorem bindOps_tiedInAlphabet {I : IsaData} (hI : ExportTieWF I) (nArgs : Nat)
   · exact opToLinstrR_tiedInAlphabet hI _ _ _ hlen
   · dsimp only
     split
-    · exact hshift _ _ _ _ (by decide)
-    · exact hshift _ _ _ _ (by decide)
-    · exact hshift _ _ _ _ (by decide)
+    · exact hshift _ _ _ _ (by decide +kernel)
+    · exact hshift _ _ _ _ (by decide +kernel)
+    · exact hshift _ _ _ _ (by decide +kernel)
     · exact opToLinstrR_tiedInAlphabet hI _ _ _ hlen
 
 /-! ## 4. The frames of the export -/
@@ -389,7 +408,7 @@ variable {I}
   simp [AllTied]
 
 @[simp] theorem movI_tied (dst : String) (src : LOperand) : TiedInAlphabet I (movI dst src).1 :=
-  tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag 64 (by decide))
+  tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag 64 (by decide +kernel))
 
 @[simp] theorem movImmI_tied (dst : String) (k : Nat) : TiedInAlphabet I (movImmI dst k).1 :=
   movI_tied dst _
@@ -425,8 +444,8 @@ theorem allTied_map_movI {α : Type} (l : List α) (f : α → String) (g : α �
 
 @[simp] theorem advanceOps_tied (idx ctr : String) : AllTied I (advanceOps idx ctr) := by
   simp only [advanceOps, allTied_cons, allTied_nil, and_true]
-  exact ⟨tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag 64 (by decide)),
-    tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag 64 (by decide))⟩
+  exact ⟨tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag 64 (by decide +kernel)),
+    tiedInAlphabet_Lopn I _ _ (widthAlphabet_withWidthTag 64 (by decide +kernel))⟩
 
 @[simp] theorem arrMoves_tied (z t : String) (mv : List ArrMove) :
     AllTied I (arrMoves z t mv) := by
@@ -434,7 +453,7 @@ theorem allTied_map_movI {α : Type} (l : List α) (f : α → String) (g : α �
   obtain ⟨a, -, hx⟩ := List.mem_flatMap.mp hx
   simp only [arrMove, List.mem_cons, List.not_mem_nil, or_false] at hx
   rcases hx with rfl | rfl <;>
-    exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide))
+    exact tiedInAlphabet_Lopn I _ _ (widthAlphabet_of_colonFree (by decide +kernel))
 
 @[simp] theorem typedMoves_tied (z t : String) (tp : List (JasminTy × String × String)) :
     AllTied I (typedMoves z t tp) := by
@@ -476,7 +495,7 @@ theorem callI_tied (hI : ExportTieWF I) (dst f : String) (srcs : List LOperand) 
     TiedInAlphabet I (ExportRegions.callI dst f srcs).1 := by
   apply tiedInAlphabet_family hI
   show tieBase ("CALL:" ++ f) ∈ colonFamilyBases
-  rw [show "CALL:" = "CALL" ++ ":" from rfl, tieBase_append_colon _ (by decide)]
+  rw [show "CALL:" = "CALL" ++ ":" from rfl, tieBase_append_colon _ (by decide) (by decide)]
   decide
 
 end Frames
@@ -567,12 +586,12 @@ theorem x86Data_exportTieWF : ExportTieWF x86Data where
   loopGuard ctr top x hx := by
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
     rcases hx with rfl | rfl
-    · exact tiedInAlphabet_Lopn _ _ _ (widthAlphabet_withWidthTag 64 (by decide))
+    · exact tiedInAlphabet_Lopn _ _ _ (widthAlphabet_withWidthTag 64 (by decide +kernel))
     · exact fun _ _ _ _ h => nomatch h
   zeroTripGuard ctr top endL x hx := by
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
     rcases hx with rfl | rfl
-    · exact tiedInAlphabet_Lopn _ _ _ (widthAlphabet_withWidthTag 64 (by decide))
+    · exact tiedInAlphabet_Lopn _ _ _ (widthAlphabet_withWidthTag 64 (by decide +kernel))
     · exact fun _ _ _ _ h => nomatch h
 
 /-- The x86 region export emits only tied mnemonics of the width alphabet. -/

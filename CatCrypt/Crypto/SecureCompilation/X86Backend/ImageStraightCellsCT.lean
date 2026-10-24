@@ -370,6 +370,40 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak (BytesT
   instrLeakA_cellLd)
 open CatCrypt.Crypto.SecureCompilation.CT (CTLeak ConstantTimeRel DoitRegime X86Mnem)
 
+/-- `untagCaret` fixes the cell mnemonics `LOAD:64`, `STORE:64`, `LEA:64` and `MOV:64`. -/
+private theorem untagCaret_load : LprogAsmPrinter.untagCaret "LOAD:64" = "LOAD:64" :=
+  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
+
+private theorem untagCaret_store : LprogAsmPrinter.untagCaret "STORE:64" = "STORE:64" :=
+  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
+
+private theorem untagCaret_lea : LprogAsmPrinter.untagCaret "LEA:64" = "LEA:64" :=
+  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
+
+private theorem untagCaret_mov64 : LprogAsmPrinter.untagCaret "MOV:64" = "MOV:64" :=
+  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
+
+attribute [local simp] untagCaret_load untagCaret_store untagCaret_lea untagCaret_mov64
+
+/-- An immediate move `o D, #n` at an immediate-move mnemonic `o` (`MOV` or `MOV^w`,
+    `w ≠ 64`) carries the register tag without width. -/
+private theorem tagA_movImm {D o : String} {n : Nat}
+    (h : JasminLsemCast.isMovImmMnem o = true) :
+    tagA (.Lopn [.reg D] o [.imm n]) = .reg none := by
+  rcases JasminLsemCast.isMovImmMnem_iff.1 h with rfl | ⟨w, -, rfl⟩
+  · simp (config := { decide := true }) [tagA]
+  · simp (disch := decide +kernel) [tagA, withWidthTag_ne_of_tagSepFree]
+
+/-- An immediate-move mnemonic (`MOV` or `MOV^w`, `w ≠ 64`) encodes to the bytes of `MOV`. -/
+private theorem encodeLopn_movImm_eq (frame spillW : Nat) (ds : List LOperand) {o : String}
+    (h : JasminLsemCast.isMovImmMnem o = true) (ss : List LOperand) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn ds o ss) qsaveB
+      = encodeLopn frame spillW (.Lopn ds "MOV" ss) qsaveB := by
+  rcases JasminLsemCast.isMovImmMnem_iff.1 h with rfl | ⟨w, hw, rfl⟩
+  · rfl
+  · exact encodeLopn_retag32 frame spillW ds hw (by decide) (by decide +kernel)
+      (by decide +kernel) ss qsaveB
+
 /-! ## 4. The step maps of the class with carry chains -/
 
 /-- The events of the decoded instructions of a carry arm with frame-slot operands: the
@@ -689,7 +723,9 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
       simp only [AArm.ok, Bool.and_eq_true] at h
       exact cellParts?_gp h.1.1.1.1
     have hcell : cellA? (AArm.st o q S).instr = none := by
-      rcases hm with rfl | rfl <;> simp [AArm.instr, cellA?, hcq, hcS]
+      rcases hm with rfl | rfl <;>
+        simp (disch := decide) [AArm.instr, cellA?, hcq, hcS,
+          LprogAsmPrinter.untagCaret_of_caret_free]
     have hlk : blockLeakA .doitm sa ((AArm.st o q S).js P)
         = gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf) := by
       rw [hgw, AArm.leak P rsp _ hok' sa (widenS sa s) hc.widen]
@@ -703,11 +739,21 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
   split at hok
   · -- an untagged immediate move: a carry constant or a 32-bit constant
     rename_i D n hmv
-    have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] "MOV" [.imm n] := by
+    have hmo : JasminLsemCast.isMovImmMnem o = true := by
       unfold movImmStruct? at hmv
       split at hmv
-      · cases hmv; assumption
+      · rename_i heq
+        simp only [LinstrR.Lopn.injEq] at heq
+        obtain ⟨-, rfl, -⟩ := heq
+        split at hmv
+        · assumption
+        · cases hmv
       · cases hmv
+    have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] o [.imm n] := by
+      obtain ⟨o', h'⟩ := JasminLsemCast.movImmStruct?_spec hmv
+      rw [h']
+      simp only [LinstrR.Lopn.injEq] at h'
+      rw [h'.2.1]
     have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
     have hc' : ACorrW rsp (aMachine.runBlock sa ((zPieces D n).map Prod.snd)) s' := by
       cases hbit : bitMovB body k (.Lopn ds o ss) with
@@ -719,23 +765,23 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           simp [zOk, hok.1, hb.1.1]
         have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
             = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg (some 1)) := by
-          rw [tagAt, if_pos hbit, hia]
-          simp (config := { decide := true }) [normA]
+          rw [tagAt, if_pos hbit, hia, ImageAddrSimW.normA_movImm hmo]
         rw [hli] at hst
         exact (sim_bmov P rsp D n hz sa s zf hc s' zf' hst).1
       | false =>
         have hli : (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss))
             = (.Lopn [.reg D] "MOV" [.imm n], MemTag.reg none) := by
-          rw [tagAt_of_not hbit, hia]
-          simp (config := { decide := true }) [normA, tagA]
+          rw [tagAt_of_not hbit, hia, ImageAddrSimW.normA_movImm hmo, tagA_movImm hmo]
         rw [hli] at hst
         exact (sim_imov P rsp D n hok sa s zf hc s' zf' hst).1
     have hz' : isCondB (body[k + 1]'hkn).li_i = true →
         (aMachine.runBlock sa ((zPieces D n).map Prod.snd)).flags.zf.getD false = zf' := by
       intro hcnd
       have hcm := hcondNext hcnd
+      have ho64 : o ≠ "MOV:64" := fun e => by
+        rw [e, ImageAddrSimW.isMovImmMnem_mov64] at hmo; cases hmo
       rw [hia] at hcm
-      simp [classifyA, classify] at hcm
+      simp [classifyA, classify, ho64] at hcm
     have hna : ∀ ii' d a s c, body[k]? ≠
         some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
       intro ii' d a s c h
@@ -743,7 +789,8 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
       simp at h
     obtain ⟨hb, hp⟩ := imm32Bytes P D n hok
     have hops : shs[k].ops' = (zPieces D n).map Prod.snd :=
-      shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
+      shapeOf_lopn_ops (ds := [.reg D]) (o := o) (ss := [.imm n]) _
+        ((encodeLopn_movImm_eq _ _ _ hmo _ _).trans hb) hp (by rw [← hia]; exact hshk)
     have hlk : blockLeakA .doitm sa ((zPieces D n).map Prod.snd)
         = gW P rsp (.Lopn ds o ss) (stepLeakA frame body s zf) := by
       rw [hAL.zmov]
@@ -1991,17 +2038,29 @@ theorem stepLenDetW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         have hs : o ≠ "STORE:64" := by rintro rfl; simp [castTagW] at hw
         have hle : o ≠ "LEA:64" := by rintro rfl; simp [castTagW] at hw
         have hmo : o ≠ "MOV:64" := by rintro rfl; simp [castTagW] at hw
-        simp [cellA?, hl, hs, hle, hmo]
+        simp [cellA?, LprogAsmPrinter.untagCaret_of_caret_free (castTagW_caret_free hw), hl, hs,
+          hle, hmo]
       split at hok
       · rename_i D n hmv
-        have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] "MOV" [.imm n] := by
+        have hmo : JasminLsemCast.isMovImmMnem o = true := by
           unfold movImmStruct? at hmv
           split at hmv
-          · cases hmv; assumption
+          · rename_i heq
+            simp only [LinstrR.Lopn.injEq] at heq
+            obtain ⟨-, rfl, -⟩ := heq
+            split at hmv
+            · assumption
+            · cases hmv
           · cases hmv
+        have hia : LinstrR.Lopn ds o ss = .Lopn [.reg D] o [.imm n] := by
+          obtain ⟨o', h'⟩ := JasminLsemCast.movImmStruct?_spec hmv
+          rw [h']
+          simp only [LinstrR.Lopn.injEq] at h'
+          rw [h'.2.1]
         rw [hia]
         exact instrLeakA_length_reg (y := .Lopn [.reg D] "MOV" [.imm n]) (t := none)
-          (by simp (config := { decide := true }) [normA, tagA]) (by simp [cellA?]) s₁ s₂
+          (by rw [ImageAddrSimW.normA_movImm hmo, tagA_movImm hmo])
+          (by simp [cellA?]) s₁ s₂
       rename_i hmv
       rw [tagAt_of_ne hmv] at h₁ h₂
       split at hok

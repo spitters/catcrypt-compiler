@@ -344,44 +344,21 @@ theorem readNames_kept (ok : Bool) (i : LinstrR) (hav : ok = true → instrAvoid
   | Lcond c _ => exact ne_scratchSave_of_opAvoids ha x hx
   | _ => simp [readNames] at hx
 
+/-- The three shapes of a mnemonic with a copy at its width: untagged, `:64`-tagged
+    and `^w`-tagged. -/
 theorem movFor_some {opn m : String} (h : movFor opn = some m) :
-    (opn = tieBase opn ∧ m = "MOV") ∨ (opn = tieBase opn ++ ":64" ∧ m = "MOV:64") := by
-  unfold movFor at h
-  split at h
-  · rename_i h1
-    exact Or.inl ⟨by simpa using h1, (Option.some.inj h).symm⟩
-  · split at h
-    · rename_i _ h2
-      exact Or.inr ⟨by simpa using h2, (Option.some.inj h).symm⟩
-    · cases h
+    (opn = tieBase opn ∧ m = "MOV") ∨ (opn = tieBase opn ++ ":64" ∧ m = "MOV:64")
+      ∨ (∃ w, opn = withWidthTag w (tieBase opn) ∧ m = withWidthTag w "MOV") :=
+  movFor_cases h
 
-/-- A mnemonic with a copy at its width is its base with the `:64` tag stripped. -/
+/-- A mnemonic with a copy at its width is its base with the width tag stripped. -/
 theorem stripWidthTag_of_movFor {opn m : String} (h : movFor opn = some m) :
-    stripWidthTag opn = tieBase opn := by
-  have hc : ':' ∉ (tieBase opn).toList := by
-    simp only [tieBase, String.toList_ofList]
-    intro hm
-    have h2 := List.all_eq_true.mp (List.all_takeWhile (p := (· != ':')) (l := opn.toList)) _ hm
-    simp at h2
-  have hs := movFor_some h
-  generalize tieBase opn = t at hc hs ⊢
-  rcases hs with ⟨rfl, -⟩ | ⟨rfl, -⟩
-  · unfold stripWidthTag hasSuffix
-    rw [if_neg]
-    intro hs
-    obtain ⟨l, hl⟩ := List.isSuffixOf_iff_suffix.mp hs
-    exact hc (hl ▸ List.mem_append_right l (by decide))
-  · unfold stripWidthTag hasSuffix
-    have e : (t ++ ":64").toList = t.toList ++ [':', '6', '4'] := by
-      rw [String.toList_append]; rfl
-    have hsuf : (":64".toList).isSuffixOf (t.toList ++ [':', '6', '4']) = true :=
-      List.isSuffixOf_iff_suffix.mpr (List.suffix_append _ _)
-    rw [e, if_pos hsuf]
-    simp
+    stripWidthTag opn = tieBase opn :=
+  (stripWidthTag_movFor_spec h).1
 
 theorem stripWidthTag_movFor {opn m : String} (h : movFor opn = some m) :
-    stripWidthTag m = "MOV" := by
-  rcases movFor_some h with ⟨-, rfl⟩ | ⟨-, rfl⟩ <;> decide +kernel
+    stripWidthTag m = "MOV" :=
+  (stripWidthTag_movFor_spec h).2
 
 theorem applyOpn_movFor {opn m : String} (h : movFor opn = some m) (v : BitVec w) :
     applyOpn (stripWidthTag m) [v] = some v := by
@@ -390,7 +367,10 @@ theorem applyOpn_movFor {opn m : String} (h : movFor opn = some m) (v : BitVec w
 
 theorem movFor_ne {opn m : String} (h : movFor opn = some m) :
     m ≠ "LOADIDX" ∧ m ≠ "STOREIDX" := by
-  rcases movFor_some h with ⟨-, rfl⟩ | ⟨-, rfl⟩ <;> decide
+  rcases movFor_some h with ⟨-, rfl⟩ | ⟨-, rfl⟩ | ⟨w, -, rfl⟩
+  · decide
+  · decide
+  · exact ⟨by width_tag_ne, by width_tag_ne⟩
 
 theorem needsTie_ne {opn : String} {b : LOperand} (h : needsTie opn b = true) :
     opn ≠ "LOADIDX" ∧ opn ≠ "STOREIDX" := by
@@ -405,33 +385,18 @@ theorem applyOpn_comm {opn m : String} (hm : movFor opn = some m)
     applyOpn (stripWidthTag opn) [x, y] = applyOpn (stripWidthTag opn) [y, x] := by
   simp only [commBases, List.contains_iff_mem, List.mem_cons, List.mem_nil_iff,
     or_false] at hc
-  rcases movFor_some hm with ⟨h1, -⟩ | ⟨h1, -⟩ <;>
-    rcases hc with hc | hc | hc | hc | hc <;> rw [hc] at h1 <;> subst h1 <;>
-    · first
-        | rw [show stripWidthTag "ADD" = "ADD" by decide +kernel]
-        | rw [show stripWidthTag "MUL" = "MUL" by decide +kernel]
-        | rw [show stripWidthTag "AND" = "AND" by decide +kernel]
-        | rw [show stripWidthTag "OR" = "OR" by decide +kernel]
-        | rw [show stripWidthTag "XOR" = "XOR" by decide +kernel]
-        | rw [show stripWidthTag ("ADD" ++ ":64") = "ADD" by decide +kernel]
-        | rw [show stripWidthTag ("MUL" ++ ":64") = "MUL" by decide +kernel]
-        | rw [show stripWidthTag ("AND" ++ ":64") = "AND" by decide +kernel]
-        | rw [show stripWidthTag ("OR" ++ ":64") = "OR" by decide +kernel]
-        | rw [show stripWidthTag ("XOR" ++ ":64") = "XOR" by decide +kernel]
-      simp only [applyOpn, BitVec.add_comm, BitVec.mul_comm, BitVec.and_comm,
-        BitVec.or_comm, BitVec.xor_comm]
+  rw [stripWidthTag_of_movFor hm]
+  rcases hc with hc | hc | hc | hc | hc <;> rw [hc] <;>
+    simp only [applyOpn, BitVec.add_comm, BitVec.mul_comm, BitVec.and_comm,
+      BitVec.or_comm, BitVec.xor_comm]
 
 /-- The flag-only compares are outside the word-op fragment of `applyOpn`. -/
 theorem applyOpn_cmp_none {opn m : String} (hm : movFor opn = some m)
     (hc : (tieBase opn == "CMP" || tieBase opn == "TEST") = true) (x y : BitVec w) :
     applyOpn (stripWidthTag opn) [x, y] = none := by
   simp only [Bool.or_eq_true, beq_iff_eq] at hc
-  rcases movFor_some hm with ⟨h1, -⟩ | ⟨h1, -⟩ <;>
-    rcases hc with hc | hc <;> rw [hc] at h1 <;> subst h1
-  · rw [show stripWidthTag "CMP" = "CMP" by decide +kernel]; rfl
-  · rw [show stripWidthTag "TEST" = "TEST" by decide +kernel]; rfl
-  · rw [show stripWidthTag ("CMP" ++ ":64") = "CMP" by decide +kernel]; rfl
-  · rw [show stripWidthTag ("TEST" ++ ":64") = "TEST" by decide +kernel]; rfl
+  rw [stripWidthTag_of_movFor hm]
+  rcases hc with hc | hc <;> rw [hc] <;> rfl
 
 theorem step_reg {d opn : String} {srcs : List LOperand} {s : Lstate w} {v : BitVec w}
     (hne : opn ≠ "LOADIDX" ∧ opn ≠ "STOREIDX")

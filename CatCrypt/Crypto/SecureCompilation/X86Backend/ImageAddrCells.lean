@@ -95,34 +95,58 @@ theorem cellMove_of_lea {slotArr : String → Option (String × Nat)} {body : Lc
 
 theorem cellA_some {x : LinstrR} {c : CellOp} (h : cellA? x = some c) :
     ∃ d o n, x = .Lopn [.reg d] o [.reg n] ∧
-      (o = "LOAD:64" ∨ o = "STORE:64" ∨ o = "LEA:64" ∨ o = "MOV:64") := by
+      (LprogAsmPrinter.untagCaret o = "LOAD:64" ∨ LprogAsmPrinter.untagCaret o = "STORE:64"
+        ∨ LprogAsmPrinter.untagCaret o = "LEA:64" ∨ LprogAsmPrinter.untagCaret o = "MOV:64") := by
   unfold cellA? at h
   split at h
   · rename_i d o n
-    split at h
-    · exact ⟨d, o, n, rfl, Or.inl (by assumption)⟩
-    · split at h
-      · exact ⟨d, o, n, rfl, Or.inr (Or.inl (by assumption))⟩
-      · split at h
-        · exact ⟨d, o, n, rfl, Or.inr (Or.inr (Or.inl (by assumption)))⟩
-        · split at h
-          · exact ⟨d, o, n, rfl, Or.inr (Or.inr (Or.inr (by assumption)))⟩
-          · cases h
+    dsimp only at h
+    split_ifs at h with h1 h2 h3 h4
+    · exact ⟨d, o, n, rfl, Or.inl h1⟩
+    · exact ⟨d, o, n, rfl, Or.inr (Or.inl h2)⟩
+    · exact ⟨d, o, n, rfl, Or.inr (Or.inr (Or.inl h3))⟩
+    · exact ⟨d, o, n, rfl, Or.inr (Or.inr (Or.inr h4))⟩
   · cases h
+
+/-- `cellA?` reads an `Lopn` and the `Lopn` at the `untagCaret` of its mnemonic alike. -/
+theorem cellA?_untagCaret (ds : List LOperand) (o : String) (ss : List LOperand) :
+    cellA? (.Lopn ds (LprogAsmPrinter.untagCaret o) ss) = cellA? (.Lopn ds o ss) := by
+  rcases ds with _ | ⟨d, _ | _⟩ <;> rcases ss with _ | ⟨s, _ | _⟩ <;> (try cases d) <;>
+    (try cases s) <;> simp only [cellA?, JasminLsemAddrCongr.untagCaret_idem]
+
+/-- The tag of an `Lopn` whose `untagCaret` is a cell mnemonic is the register tag. -/
+theorem tagAt_of_untagCaret_cell (body : Lcmd) (k : Nat) {d n o : String}
+    (ho : LprogAsmPrinter.untagCaret o = "LOAD:64" ∨ LprogAsmPrinter.untagCaret o = "STORE:64"
+      ∨ LprogAsmPrinter.untagCaret o = "LEA:64" ∨ LprogAsmPrinter.untagCaret o = "MOV:64") :
+    tagAt body k (.Lopn [.reg d] o [.reg n]) = .reg none := by
+  rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]
+  by_cases hcf : '^' ∈ o.toList
+  · have hne : ∀ L : String, '^' ∉ L.toList → o ≠ L := fun L hL h => hL (h ▸ hcf)
+    rw [tagA_lopn (hne _ (by decide)) (hne _ (by decide)) (hne _ (by decide))
+      (hne _ (by decide))]
+    cases hw : castTagW o with
+    | none => rfl
+    | some w => exact absurd hcf (castTagW_caret_free hw)
+  · rw [LprogAsmPrinter.untagCaret_of_caret_free hcf] at ho
+    rcases ho with rfl | rfl | rfl | rfl <;> simp [tagA]
 
 /-- A 64-bit move that `cellA?` reads as a cell access has a cell name among its operands. -/
 theorem cellA_mov64 {d n : String} {c : CellOp}
     (h : cellA? (.Lopn [.reg d] "MOV:64" [.reg n]) = some c) :
     ((cellParts? d).isSome || (cellParts? n).isSome) = true := by
-  cases hd : cellParts? d <;> cases hn : cellParts? n <;> simp_all [cellA?]
+  cases hd : cellParts? d <;> cases hn : cellParts? n <;>
+    simp_all [cellA?, LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOV:64".toList)]
 
 theorem slotMov_cell {x : LinstrR} {c : CellOp} (h : cellA? x = some c) : slotMov? x = none := by
   obtain ⟨d, o, n, rfl, ho⟩ := cellA_some h
-  rcases ho with rfl | rfl | rfl | rfl
-  · simp [slotMov?]
-  · simp [slotMov?]
-  · simp [slotMov?]
-  · simp [slotMov?, cellA_mov64 h]
+  by_cases hm : o = "MOV:64"
+  · subst hm
+    simp [slotMov?, cellA_mov64 h]
+  · have hq : o ≠ "MOVQ" := by
+      rintro rfl
+      rw [LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOVQ".toList)] at ho
+      simp at ho
+    simp [slotMov?, hm, hq]
 
 /-- The slot moves of the cell body name no array slot: each frame-word move of a cell has
     no array-slot operand. -/
@@ -131,48 +155,48 @@ def CellNoSlot (slotArr : String → Option (String × Nat)) (body : Lcmd) : Pro
     cellA? i.li_i ≠ none → slotArr d = none ∧ slotArr q = none
 
 theorem cellA_ld {x : LinstrR} {D B : String} {off : Nat} (h : cellA? x = some (.ld D B off)) :
-    ∃ m n, x = .Lopn [.reg D] m [.reg n] ∧ (m = "LOAD:64" ∨ m = "MOV:64")
+    ∃ m n, x = .Lopn [.reg D] m [.reg n] ∧
+      (LprogAsmPrinter.untagCaret m = "LOAD:64" ∨ LprogAsmPrinter.untagCaret m = "MOV:64")
       ∧ cellParts? n = some (B, off) := by
   unfold cellA? at h
   split at h
   · rename_i d o n
+    dsimp only at h
     split_ifs at h with h1 h2 h3 h4
-    · subst h1
-      obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+    · obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-      exact ⟨_, n, rfl, Or.inl rfl, hp⟩
+      exact ⟨_, n, rfl, Or.inl h1, hp⟩
     · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
       cases he
     · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-    · subst h4
-      split at h
+    · split at h
       · cases h
       · obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
         cases he
-        exact ⟨_, n, rfl, Or.inr rfl, hp⟩
+        exact ⟨_, n, rfl, Or.inr h4, hp⟩
   · cases h
 
 theorem cellA_st {x : LinstrR} {B S : String} {off : Nat} (h : cellA? x = some (.st B off S)) :
-    ∃ m n, x = .Lopn [.reg n] m [.reg S] ∧ (m = "STORE:64" ∨ m = "MOV:64")
+    ∃ m n, x = .Lopn [.reg n] m [.reg S] ∧
+      (LprogAsmPrinter.untagCaret m = "STORE:64" ∨ LprogAsmPrinter.untagCaret m = "MOV:64")
       ∧ cellParts? n = some (B, off) := by
   unfold cellA? at h
   split at h
   · rename_i d o n
+    dsimp only at h
     split_ifs at h with h1 h2 h3 h4
     · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-    · subst h2
-      obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+    · obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-      exact ⟨_, d, rfl, Or.inl rfl, hp⟩
+      exact ⟨_, d, rfl, Or.inl h2, hp⟩
     · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-    · subst h4
-      split at h
+    · split at h
       · rename_i p hp
         cases h
-        exact ⟨_, d, rfl, Or.inr rfl, hp⟩
+        exact ⟨_, d, rfl, Or.inr h4, hp⟩
       · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
         cases he
   · cases h
@@ -194,23 +218,26 @@ theorem fstepA_mov64_store (frame : String → Option (BitVec 64)) {n S : String
     {p : String × Nat} (hn : cellParts? n = some p) (sa : LstateA) (zf : Bool) :
     fstepA frame (.Lopn [.reg n] "MOV:64" [.reg S], .reg none) sa zf
       = fstepA frame (.Lopn [.reg n] "STORE:64" [.reg S], .reg none) sa zf := by
-  simp [fstepA, slotMov?, slotCmp?, cellA?, hn]
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOV:64".toList),
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STORE:64".toList)]
 
 theorem cellA_lea {x : LinstrR} {D B : String} {off : Nat}
     (h : cellA? x = some (.lea D B off)) :
-    ∃ n, x = .Lopn [.reg D] "LEA:64" [.reg n] ∧ cellParts? n = some (B, off) := by
+    ∃ m n, x = .Lopn [.reg D] m [.reg n] ∧ LprogAsmPrinter.untagCaret m = "LEA:64"
+      ∧ cellParts? n = some (B, off) := by
   unfold cellA? at h
   split at h
   · rename_i d o n
+    dsimp only at h
     split_ifs at h with h1 h2 h3
     · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
       cases he
     · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-    · subst h3
-      obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
+    · obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
       cases he
-      exact ⟨n, rfl, hp⟩
+      exact ⟨_, n, rfl, h3, hp⟩
     · split at h
       · cases h
       · obtain ⟨p, -, he⟩ := Option.map_eq_some_iff.mp h
@@ -414,17 +441,18 @@ theorem stepA_cellBody_ld {frame : String → Option (BitVec 64)}
   have hc' := hc
   rw [hx] at hc'
   rw [stepA_lopn frame hb hx, stepA_lopn frame hb2 rfl, hx]
-  have h1 : normA (.Lopn [.reg D] mm [.reg nm]) = .Lopn [.reg D] mm [.reg nm] := by
-    rcases hmm with rfl | rfl <;> simp [normA]
-  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg D] mm [.reg nm]) = .reg none := by
-    rcases hmm with rfl | rfl <;>
-      (rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA])
+  have h1 : normA (.Lopn [.reg D] mm [.reg nm])
+      = .Lopn [.reg D] (LprogAsmPrinter.untagCaret mm) [.reg nm] :=
+    NarrowTyping.normA_of_untagCaret rfl (by rcases hmm with h | h <;> rw [h] <;> decide)
+  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg D] mm [.reg nm]) = .reg none :=
+    tagAt_of_untagCaret_cell body _ (by rcases hmm with h | h <;> simp [h])
   have h3 : normA (.Lopn [.reg D] "MOVQ" [.reg (memName A off)])
-      = .Lopn [.reg D] "MOVQ" [.reg (memName A off)] := by simp [normA]
+      = .Lopn [.reg D] "MOVQ" [.reg (memName A off)] :=
+    normA_of_caret_free (by decide)
   have h4 : tagAt (cellBody slotArr body) sa.reg.lpc
       (.Lopn [.reg D] "MOVQ" [.reg (memName A off)]) = .reg none := by
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA]
-  rw [h1, h2, h3, h4, fstepA_cellLd frame hc' hp,
+  rw [h1, h2, h3, h4, fstepA_cellLd frame ((cellA?_untagCaret _ _ _).trans hc') hp,
     fstepA_slotLoad frame (d := D) (q := memName A off) (by simp [slotMov?]) hfr]
 
 /-- **A cell store on the address machine is its frame-word move** when its base holds the
@@ -444,18 +472,18 @@ theorem stepA_cellBody_st {frame : String → Option (BitVec 64)}
     rw [cellBody_getElem?, hb]
     simp [cellMove, hc, hacc]
   rw [stepA_lopn frame hb hx, stepA_lopn frame hb2 rfl, hx]
-  have h1 : normA (.Lopn [.reg nm] mm [.reg S]) = .Lopn [.reg nm] mm [.reg S] := by
-    rcases hmm with rfl | rfl <;> simp [normA]
-  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg nm] mm [.reg S]) = .reg none := by
-    rcases hmm with rfl | rfl <;>
-      (rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA])
-  have h0 : fstepA frame (.Lopn [.reg nm] mm [.reg S], .reg none) sa zf
+  have h1 : normA (.Lopn [.reg nm] mm [.reg S])
+      = .Lopn [.reg nm] (LprogAsmPrinter.untagCaret mm) [.reg S] :=
+    NarrowTyping.normA_of_untagCaret rfl (by rcases hmm with h | h <;> rw [h] <;> decide)
+  have h2 : tagAt body sa.reg.lpc (.Lopn [.reg nm] mm [.reg S]) = .reg none :=
+    tagAt_of_untagCaret_cell body _ (by rcases hmm with h | h <;> simp [h])
+  have h0 : fstepA frame (.Lopn [.reg nm] (LprogAsmPrinter.untagCaret mm) [.reg S], .reg none) sa zf
       = fstepA frame (.Lopn [.reg nm] "STORE:64" [.reg S], .reg none) sa zf := by
-    rcases hmm with rfl | rfl
-    · rfl
-    · exact fstepA_mov64_store frame hn sa zf
+    rcases hmm with h | h <;> rw [h]
+    exact fstepA_mov64_store frame hn sa zf
   have h3 : normA (.Lopn [.reg (memName A off)] "MOVQ" [.reg S])
-      = .Lopn [.reg (memName A off)] "MOVQ" [.reg S] := by simp [normA]
+      = .Lopn [.reg (memName A off)] "MOVQ" [.reg S] :=
+    normA_of_caret_free (by decide)
   have h4 : tagAt (cellBody slotArr body) sa.reg.lpc
       (.Lopn [.reg (memName A off)] "MOVQ" [.reg S]) = .reg none := by
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?])]; simp [tagA]
@@ -465,7 +493,8 @@ theorem stepA_cellBody_st {frame : String → Option (BitVec 64)}
       rw [fstepA_stm frame hn hp hv, fstepA_slotStore frame (by simp [slotMov?]) hS hfr sa zf hv]
   | none =>
       cases h1 : sa.reg.getW S 1 <;>
-        simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hp, hv, h1, hfr, hS]
+        simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hp, hv, h1, hfr, hS,
+          LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STORE:64".toList)]
 
 theorem cellMove_lret {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {i : Linstr} : (cellMove slotArr body k i).li_i = .Lret ↔ i.li_i = .Lret := by
@@ -920,11 +949,11 @@ theorem classifyK_cellMove (slotArr : String → Option (String × Nat)) (body :
     obtain ⟨d, o, n, hx, ho⟩ := cellA_some hca
     have h0 : classifyK i.li_i = none := by
       rw [hx]
-      rcases ho with rfl | rfl | rfl | rfl <;>
-        simp [classifyK, show LprogBytes.castMovBits "LOAD:64" = none from by decide,
-          show LprogBytes.castMovBits "STORE:64" = none from by decide,
-          show LprogBytes.castMovBits "LEA:64" = none from by decide,
-          show LprogBytes.castMovBits "MOV:64" = none from by decide]
+      cases hw : castTagW o with
+      | none => simp [classifyK, hw]
+      | some w =>
+        rw [LprogAsmPrinter.untagCaret_of_caret_free (castTagW_caret_free hw)] at ho
+        rcases ho with rfl | rfl | rfl | rfl <;> simp [castTagW] at hw
     have hm : ∀ a b : String, classifyK (.Lopn [.reg a] "MOVQ" [.reg b]) = none := fun a b => by
       simp [classifyK, show LprogBytes.castMovBits "MOVQ" = none from by decide]
     rw [h0]

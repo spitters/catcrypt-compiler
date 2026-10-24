@@ -31,10 +31,9 @@ rendering for every count.
   count `64`), over Lean's `Nat.toDigits`.
 * **§2** `immShiftMnem?`, the mnemonic decoder, and
   `immShiftMnem?_withWidthTag`, its agreement with `withWidthTag w (m ++ ":" ++
-  toString k)`.
-* **§3** the parse equations of the exporter's `parseImmShiftMnem` on the
-  exported mnemonic: `parseImmShiftMnem_tag64`, `parseImmShiftMnem_untagged`
-  and `parseImmShiftMnem_withWidthTag`.
+  toString k)` at every width.
+* **§3** `toString_eq_64` and `hasSuffix_countTag_eq_false`; the parse equations
+  of `parseImmShiftMnem` are in `JasminLprogExport`.
 * **§4** `immShiftWire?`, the instruction-level recogniser, and its agreement
   with `opToLinstrR` on the three immediate-shift ops.
 -/
@@ -246,20 +245,39 @@ theorem hasSuffix_append (s pat : String) : hasSuffix (s ++ pat) pat = true := b
   rw [String.toList_append, List.isSuffixOf_iff_suffix]
   exact List.suffix_append _ _
 
-/-- `stripWidthTag` removes the appended `:64` width tag exactly. -/
-theorem stripWidthTag_append64 (s : String) : stripWidthTag (s ++ ":64") = s := by
+/-- `stripWidthTag` removes an appended `:64` width tag exactly from a string
+    without `^`. -/
+theorem stripWidthTag_append64 (s : String) (hs : '^' ∉ s.toList) :
+    stripWidthTag (s ++ ":64") = s := by
   unfold stripWidthTag
-  rw [if_pos (hasSuffix_append s ":64"), String.toList_append,
+  rw [if_neg (by simp [hs]), if_pos (hasSuffix_append s ":64"), String.toList_append,
     show (":64" : String).toList = [':', '6', '4'] from by decide]
   simp
+
+/-- `stripWidthTag` inverts `withWidthTag` at every width on a string without
+    `^`; the string may contain `:`. -/
+theorem stripWidthTag_withWidthTag_of_caret_free (w : Nat) (s : String)
+    (hs : '^' ∉ s.toList) : stripWidthTag (withWidthTag w s) = s := by
+  by_cases hw : w = 64
+  · subst hw
+    exact stripWidthTag_append64 s hs
+  · unfold stripWidthTag
+    rw [toList_withWidthTag_of_ne hw]
+    rw [if_pos (by simp)]; simp [List.takeWhile_append_of_pos (bne_at_of_not_mem hs)]
+
+/-- `stripWidthTag` fixes a string without `^` that does not end in `:64`. -/
+theorem stripWidthTag_of_untagged (s : String) (h1 : '^' ∉ s.toList)
+    (h2 : hasSuffix s ":64" = false) : stripWidthTag s = s := by
+  unfold stripWidthTag
+  rw [if_neg (by simp [h1]), if_neg (by simp [h2])]
 
 /-! ## 2. The mnemonic decoder -/
 
 /-- The base mnemonic and the compile-time count of a count-in-mnemonic
-    immediate-shift mnemonic (`SHL:<k>`, `SHR:<k>`, `SAR:<k>`, with or without
-    the `:64` width tag); `none` for any other mnemonic. -/
+    immediate-shift mnemonic (`SHL:<k>`, `SHR:<k>`, `SAR:<k>`, untagged or with
+    a width tag); `none` for any other mnemonic. -/
 def immShiftMnem? (opn : String) : Option (String × Nat) :=
-  let core := if hasSuffix opn ":64" then stripWidthTag opn else opn
+  let core := stripWidthTag opn
   match splitChars ':' core.toList with
   | [mn, ds] =>
       let m := String.ofList mn
@@ -279,39 +297,48 @@ theorem base_no_colon {m : String} (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") 
     ∀ c ∈ m.toList, c ≠ ':' := by
   rcases hm with rfl | rfl | rfl <;> decide
 
-/-- **The decoder agrees with the width-64 rendering.** For a shift base `m` and
-    any count `k`, `immShiftMnem?` recovers `(m, k)` from the exported
-    mnemonic. -/
-theorem immShiftMnem?_withWidthTag64 {m : String}
-    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (k : Nat) :
-    immShiftMnem? (withWidthTag 64 (m ++ ":" ++ toString k)) = some (m, k) := by
-  have hw : withWidthTag 64 (m ++ ":" ++ toString k) = (m ++ ":" ++ toString k) ++ ":64" := rfl
+/-- A shift base, the separator and a decimal count carry no `^`. -/
+theorem mnem_no_caret {m : String} (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (k : Nat) :
+    '^' ∉ (m ++ ":" ++ toString k).toList := by
+  rw [toList_mnem]
+  rcases hm with rfl | rfl | rfl <;> simp only [List.mem_append, List.mem_cons, not_or] <;>
+    exact ⟨by decide, by decide, (sep_not_mem_toString k).2⟩
+
+/-- **The decoder agrees with the exported rendering.** For a shift base `m`,
+    every width `w` and every count `k`, `immShiftMnem?` recovers `(m, k)` from
+    `withWidthTag w (m ++ ":" ++ toString k)`. -/
+theorem immShiftMnem?_withWidthTag {m : String}
+    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (w k : Nat) :
+    immShiftMnem? (withWidthTag w (m ++ ":" ++ toString k)) = some (m, k) := by
   unfold immShiftMnem?
-  rw [hw, if_pos (hasSuffix_append _ ":64"), stripWidthTag_append64]
+  rw [stripWidthTag_withWidthTag_of_caret_free w _ (mnem_no_caret hm k)]
   simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
     splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
   rcases hm with rfl | rfl | rfl <;> rfl
 
-/-- **The decoder agrees with an untagged rendering.** At a width other than
-    `64` the exported mnemonic carries no width tag, and the decoder recovers
-    `(m, k)` whenever the rendering does not itself end in `:64`. -/
+/-- The decoder on the width-64 rendering. -/
+theorem immShiftMnem?_withWidthTag64 {m : String}
+    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (k : Nat) :
+    immShiftMnem? (withWidthTag 64 (m ++ ":" ++ toString k)) = some (m, k) :=
+  immShiftMnem?_withWidthTag hm 64 k
+
+/-- **The decoder agrees with an untagged rendering**, whenever the rendering
+    does not itself end in `:64`. -/
 theorem immShiftMnem?_untagged {m : String}
     (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (k : Nat)
     (hk : hasSuffix (m ++ ":" ++ toString k) ":64" = false) :
     immShiftMnem? (m ++ ":" ++ toString k) = some (m, k) := by
   unfold immShiftMnem?
-  rw [if_neg (by rw [hk]; exact Bool.false_ne_true)]
+  rw [stripWidthTag_of_untagged _ (mnem_no_caret hm k) hk]
   simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
     splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
   rcases hm with rfl | rfl | rfl <;> rfl
 
-/-! ## 3. The parse equations of `parseImmShiftMnem`
+/-! ## 3. The `:64` suffix of a count-tagged mnemonic
 
-`parseImmShiftMnem` is the parser `JasminLsem.applyOpn` runs on a one-source
-mnemonic. On the exported mnemonic `m ++ ":" ++ toString n`, with or without the
-`:64` width tag, it returns the AT&T direction `immShiftAtt m.toList` of the
-base, the count `n` and the width, for every base without a `:` and every
-count. -/
+The parse equations of `parseImmShiftMnem` on the exported mnemonic are
+`JasminLprogExport.parseImmShiftMnem_withWidthTag` and
+`JasminLprogExport.parseImmShiftMnem_untagged`. -/
 
 /-- A decimal rendering whose character list is `['6', '4']` renders `64`. -/
 theorem toString_eq_64 {n : Nat} (h : (toString n).toList = ['6', '4']) : n = 64 := by
@@ -357,45 +384,6 @@ theorem hasSuffix_countTag_eq_false (m : String) {n : Nat} (hn : n ≠ 64) :
     apply hnc c _ hc.symm
     have : c ∈ (toString n).toList.reverse := by rw [hds]; simp
     exact List.mem_reverse.mp this
-
-/-- **The parser on the width-64 rendering.** For a base `m` without `:` and any
-    count `n`, `parseImmShiftMnem` reads the direction of `m`, the count `n` and
-    the width `64` off `m ++ ":" ++ toString n ++ ":64"`. -/
-theorem parseImmShiftMnem_tag64 (m : String) (hm : ∀ c ∈ m.toList, c ≠ ':') (n : Nat) :
-    parseImmShiftMnem ((m ++ ":" ++ toString n) ++ ":64")
-      = (immShiftAtt m.toList).map (fun a => (a, n, 64)) := by
-  unfold parseImmShiftMnem
-  dsimp only
-  simp only [hasSuffix_append, if_true, stripWidthTag_append64, toList_mnem,
-    splitChars_cons_sep _ _ hm, splitChars_no_sep _ (toString_no_colon n), charsToNat?_toString]
-  cases immShiftAtt m.toList <;> rfl
-
-/-- **The parser on an untagged rendering.** For a base `m` without `:` and a
-    count `n` whose rendering does not end in `:64`, `parseImmShiftMnem` reads
-    the direction of `m`, the count `n` and the width `32` off
-    `m ++ ":" ++ toString n`. -/
-theorem parseImmShiftMnem_untagged (m : String) (hm : ∀ c ∈ m.toList, c ≠ ':') (n : Nat)
-    (hk : hasSuffix (m ++ ":" ++ toString n) ":64" = false) :
-    parseImmShiftMnem (m ++ ":" ++ toString n)
-      = (immShiftAtt m.toList).map (fun a => (a, n, 32)) := by
-  unfold parseImmShiftMnem
-  dsimp only
-  simp only [hk, Bool.false_eq_true, if_false, toList_mnem, splitChars_cons_sep _ _ hm,
-    splitChars_no_sep _ (toString_no_colon n), charsToNat?_toString]
-  cases immShiftAtt m.toList <;> rfl
-
-/-- **The parser on the exported mnemonic.** At every width `w` and every count
-    `n ≠ 64`, `parseImmShiftMnem` reads the direction of the base, the count
-    and the op width (`64` iff `w = 64`) off `withWidthTag w (m ++ ":" ++
-    toString n)`. -/
-theorem parseImmShiftMnem_withWidthTag (m : String) (hm : ∀ c ∈ m.toList, c ≠ ':')
-    (w : Nat) {n : Nat} (hn : n ≠ 64) :
-    parseImmShiftMnem (withWidthTag w (m ++ ":" ++ toString n))
-      = (immShiftAtt m.toList).map (fun a => (a, n, if w = 64 then 64 else 32)) := by
-  unfold withWidthTag
-  split
-  · exact parseImmShiftMnem_tag64 m hm n
-  · exact parseImmShiftMnem_untagged m hm n (hasSuffix_countTag_eq_false m hn)
 
 /-! ## 4. The instruction-level recogniser -/
 

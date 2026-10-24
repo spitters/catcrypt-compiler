@@ -1734,6 +1734,43 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
       | _, _ => []
   | _ => []
 
+/-- **Byte neutrality of the encoder.** A `^w` tag at a width other than `64` on a
+    body without `^` that `stripWidthTag` fixes and that the printer reads at width
+    `32` encodes to the bytes of the untagged body. -/
+theorem encodeLopn_retag32 (frame spillW : Nat) (dsts : List LOperand) {w : Nat}
+    (hw : w ≠ 64) {m : String} (hm : '^' ∉ m.toList) (hs : stripWidthTag m = m)
+    (hW : mnemWidth m = 32) (srcs : List LOperand) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn dsts (withWidthTag w m) srcs) qsaveB
+      = encodeLopn frame spillW (.Lopn dsts m srcs) qsaveB := by
+  have h1 : stripWidthTag (withWidthTag w m) = stripWidthTag m := by
+    rw [stripWidthTag_withWidthTag_of_ne hw hm, hs]
+  have h2 : mnemWidth (withWidthTag w m) = mnemWidth m := by
+    rw [mnemWidth_withWidthTag_of_ne hw, hW]
+  unfold encodeLopn
+  simp only [isCarryOutBinding, isMulHiBinding, h1, h2]
+  rfl
+
+/-- The tags `^32`, `^16` and `^8` on an ALU head (a body without a width-tag
+    separator other than `MOVQ`) encode to the bytes of the untagged head. -/
+theorem encodeLopn_retag32_alu (frame spillW : Nat) (dsts : List LOperand) {w : Nat}
+    (hw : w = 32 ∨ w = 16 ∨ w = 8) {m : String} (hm : tagSepFree m = true)
+    (hq : m ≠ "MOVQ") (srcs : List LOperand) (qsaveB : Nat) :
+    encodeLopn frame spillW (.Lopn dsts (withWidthTag w m) srcs) qsaveB
+      = encodeLopn frame spillW (.Lopn dsts m srcs) qsaveB := by
+  have hsep := (tagSepFree_iff m).mp hm
+  have hsuf : ∀ p : String, ':' ∈ p.toList → hasSuffix m p = false := by
+    intro p hp
+    rw [Bool.eq_false_iff]
+    intro h
+    unfold hasSuffix at h
+    rw [List.isSuffixOf_iff_suffix] at h
+    exact hsep.1 (h.subset hp)
+  refine encodeLopn_retag32 frame spillW dsts (by omega) hsep.2 ?_ ?_ srcs qsaveB
+  · exact TwoAddrLegalize.stripWidthTag_of_tagSepFree hm
+  · unfold mnemWidth
+    rw [hsuf ":64" (by decide), hsuf ":16" (by decide), hsuf ":8" (by decide)]
+    simp [hq]
+
 /-- Encode one `LinstrR` given a resolver `dispOf` from a label to the signed rel32
     displacement from the **end of the LONG form** of this instruction, and the
     long-form-relative-to-short adjustment is folded in by `branchDisp`. Straight-line

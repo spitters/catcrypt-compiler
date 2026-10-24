@@ -326,10 +326,78 @@ theorem chunk_of_symStep_eq {i j : LinstrRM} (h : ∀ ss, symStep j ss = symStep
   exact hc
 
 theorem opn_of_movFor {opn m : String} (hm : movFor opn = some m) (base : String)
-    (hb : tieBase opn = base) : opn = base ∨ opn = base ++ ":64" := by
-  rcases TwoAddrLegalize.movFor_some hm with ⟨h, -⟩ | ⟨h, -⟩
+    (hb : tieBase opn = base) :
+    opn = base ∨ opn = base ++ ":64" ∨ ∃ w, w ≠ 64 ∧ opn = withWidthTag w base := by
+  rcases TwoAddrLegalize.movFor_some hm with ⟨h, -⟩ | ⟨h, -⟩ | ⟨w, h, -⟩
   · exact Or.inl (h.trans hb)
-  · exact Or.inr (h.trans (by rw [hb]))
+  · exact Or.inr (Or.inl (h.trans (by rw [hb])))
+  · rw [hb] at h
+    by_cases hw : w = 64
+    · subst hw
+      exact Or.inr (Or.inl h)
+    · exact Or.inr (Or.inr ⟨w, hw, h⟩)
+
+/-- The two-source arm of `symN` reads its mnemonic through `stripWidthTag` and
+    `widthFromTag` only. -/
+theorem symN_two_congr {o o' : String} (h1 : stripWidthTag o = stripWidthTag o')
+    (h2 : JasminLsemWidthN.widthFromTag o = JasminLsemWidthN.widthFromTag o') (d : String)
+    (a b : LOperand) (R : String → STerm) :
+    symN (.Lopn [.reg d] o [a, b]) R = symN (.Lopn [.reg d] o' [a, b]) R := by
+  unfold symN commSwap
+  simp only [h1, h2]
+
+/-- A mnemonic tagged at a width other than `64` equals no string without `^`. -/
+theorem withWidthTag_eq_iff_false {w : Nat} (hw : w ≠ 64) (m : String) {s : String}
+    (hs : '^' ∉ s.toList) : withWidthTag w m = s ↔ False := by
+  refine ⟨fun h => hs ?_, False.elim⟩
+  rw [← h, toList_withWidthTag_of_ne hw]
+  simp
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift (sarStruct?) in
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
+  (mulhiStruct? adcxStruct? adcxhiStruct? sbbStruct? sbbhiStruct?) in
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (castStruct? movImmStruct?) in
+/-- **The symbolic step reads a `^w` tag as the untagged head.** For a flag or commutative
+    head `m` and a width `w ≠ 64`, the step of `withWidthTag w m` is the step of `m`. -/
+theorem symStep_withWidthTag {w : Nat} (hw : w ≠ 64) {m : String}
+    (hm : m = "CMP" ∨ m = "TEST" ∨ m = "ADD" ∨ m = "MUL" ∨ m = "AND" ∨ m = "OR" ∨ m = "XOR")
+    (d : String) (a b : LOperand) (τ : MemTag) (ss : SSt) :
+    symStep (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) ss
+      = symStep (.Lopn [.reg d] m [a, b], τ) ss := by
+  have hsf : tagSepFree m = true := by
+    rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
+  have h1 : stripWidthTag (withWidthTag w m) = m := stripWidthTag_withWidthTag w hsf
+  have h3 : hasSuffix (withWidthTag w m) ":64" = false :=
+    LprogAsmPrinter.hasSuffix_withWidthTag_of_ne hw m (by decide) (by decide)
+  have hne : ∀ s : String, '^' ∉ s.toList → (withWidthTag w m = s ↔ False) :=
+    fun s hs => withWidthTag_eq_iff_false hw m hs
+  have h2 : stripWidthTag m = m := TwoAddrLegalize.stripWidthTag_of_tagSepFree hsf
+  have h4 : hasSuffix m ":64" = false := by
+    rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+  have hw64 : ∀ X, withWidthTag 64 X = X ++ ":64" := fun X => by simp [withWidthTag]
+  have hC : ∀ cd, symCast (.Lopn [.reg d] (withWidthTag w m) [a, b], cd) ss.regs
+      = symCast (.Lopn [.reg d] m [a, b], cd) ss.regs := by
+    intro cd
+    have hmx : m ≠ "MULXHI" ∧ m ≠ "SAR" := by
+      rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+    cases a <;> cases b <;>
+      simp only [symCast, castStruct?, movImmStruct?, symMC, mulhiStruct?,
+        adcxStruct?, adcxhiStruct?, sbbStruct?, sbbhiStruct?, symSh, sarStruct?, h1, h2,
+        hmx.1, hmx.2, ↓reduceIte] <;>
+      exact symN_two_congr (by rw [h1, h2])
+        (by simp only [JasminLsemWidthN.widthFromTag, h3, h4]) _ _ _ _
+  have hM : symMem (.Lopn [.reg d] (withWidthTag w m) [a, b], τ) ss
+      = symMem (.Lopn [.reg d] m [a, b], τ) ss := by
+    obtain ⟨l2, l4⟩ : m ≠ "STOREIDX" ∧ m ≠ "ZEROARR" := by
+      rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> decide
+    cases τ <;> simp only [symMem, hC] <;> cases a <;> cases b <;>
+      simp (disch := decide) only [loadStruct?, storeStruct?, storeImmStruct?, hne, l2, l4,
+        ↓reduceIte]
+  rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;>
+  · simp (disch := decide) only [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?,
+      wideArgs?, aluFl, aluFlT, aluFlagOp?, hne, hw64, String.reduceAppend, String.reduceEq,
+      ↓reduceIte, hM]
+    cases a <;> rfl
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift (sarStruct?) in
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
@@ -337,24 +405,57 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast (castStruct? movImmStruct?) in
 /-- The symbolic step of a flag operation does not depend on its destination. -/
 theorem symStep_flag_dst {opn : String}
-    (hopn : opn = "CMP" ∨ opn = "CMP:64" ∨ opn = "TEST" ∨ opn = "TEST:64")
+    (hopn : opn = "CMP" ∨ opn = "CMP:64" ∨ opn = "TEST" ∨ opn = "TEST:64" ∨
+      ∃ w, w ≠ 64 ∧ (opn = withWidthTag w "CMP" ∨ opn = withWidthTag w "TEST"))
     (d d' : String) (a b : LOperand) (τ : MemTag) (ss : SSt) :
     symStep (.Lopn [.reg d'] opn [a, b], τ) ss = symStep (.Lopn [.reg d] opn [a, b], τ) ss := by
-  rcases hopn with rfl | rfl | rfl | rfl <;>
+  rcases hopn with rfl | rfl | rfl | rfl | ⟨w, hw, rfl | rfl⟩
+  any_goals (cases τ <;> cases a <;> cases b <;> rfl)
+  · rw [symStep_withWidthTag hw (Or.inl rfl), symStep_withWidthTag hw (Or.inl rfl)]
+    cases τ <;> cases a <;> cases b <;> rfl
+  · rw [symStep_withWidthTag hw (Or.inr (Or.inl rfl)),
+      symStep_withWidthTag hw (Or.inr (Or.inl rfl))]
     cases τ <;> cases a <;> cases b <;> rfl
 
 theorem opn_flag {opn m : String} (hm : movFor opn = some m)
     (h : tieBase opn = "CMP" ∨ tieBase opn = "TEST") :
-    opn = "CMP" ∨ opn = "CMP:64" ∨ opn = "TEST" ∨ opn = "TEST:64" := by
+    opn = "CMP" ∨ opn = "CMP:64" ∨ opn = "TEST" ∨ opn = "TEST:64" ∨
+      ∃ w, w ≠ 64 ∧ (opn = withWidthTag w "CMP" ∨ opn = withWidthTag w "TEST") := by
   rcases h with h | h
-  · rcases opn_of_movFor hm _ h with h' | h' <;> simp [h']
-  · rcases opn_of_movFor hm _ h with h' | h' <;> simp [h']
+  · rcases opn_of_movFor hm _ h with h' | h' | ⟨w, hw, h'⟩
+    · simp [h']
+    · simp [h']
+    · exact Or.inr (Or.inr (Or.inr (Or.inr ⟨w, hw, Or.inl h'⟩)))
+  · rcases opn_of_movFor hm _ h with h' | h' | ⟨w, hw, h'⟩
+    · simp [h']
+    · simp [h']
+    · exact Or.inr (Or.inr (Or.inr (Or.inr ⟨w, hw, Or.inr h'⟩)))
 
 theorem opn_comm {opn m : String} (hm : movFor opn = some m)
-    (h : commBases.contains (tieBase opn) = true) : opn ∈ commOpns := by
+    (h : commBases.contains (tieBase opn) = true) :
+    opn ∈ commOpns ∨ ∃ w, w ≠ 64 ∧ ∃ b, b ∈ commBases ∧ opn = withWidthTag w b := by
   simp only [commBases, List.contains_iff_mem, List.mem_cons, List.mem_nil_iff, or_false] at h
-  rcases h with h | h | h | h | h <;> rcases opn_of_movFor hm _ h with h' | h' <;>
-    (rw [h']; decide)
+  rcases h with h | h | h | h | h <;> rcases opn_of_movFor hm _ h with h' | h' | ⟨w, hw, h'⟩
+  all_goals first
+    | (left; rw [h']; decide)
+    | exact Or.inr ⟨w, hw, _, by decide, h'⟩
+
+/-- **Commuted sources have one description**, for an untagged, `:64`-tagged or
+    `^w`-tagged commutative mnemonic. -/
+theorem symStep_comm_tag {opn d x : String}
+    (hopn : opn ∈ commOpns ∨ ∃ w, w ≠ 64 ∧ ∃ b, b ∈ commBases ∧ opn = withWidthTag w b)
+    (hxd : x ≠ d) (τ : MemTag) (ss : SSt) :
+    symStep (.Lopn [.reg d] opn [.reg x, .reg d], τ) ss =
+      symStep (.Lopn [.reg d] opn [.reg d, .reg x], τ) ss := by
+  rcases hopn with h | ⟨w, hw, b, hb, rfl⟩
+  · exact symStep_comm h hxd τ ss
+  · have hb' : b = "CMP" ∨ b = "TEST" ∨ b = "ADD" ∨ b = "MUL" ∨ b = "AND" ∨ b = "OR" ∨
+        b = "XOR" := by
+      simp only [commBases, List.mem_cons, List.mem_nil_iff, or_false] at hb
+      rcases hb with h | h | h | h | h <;> simp [h]
+    rw [symStep_withWidthTag hw hb', symStep_withWidthTag hw hb']
+    exact symStep_comm (by simp only [commBases, List.mem_cons, List.mem_nil_iff, or_false] at hb
+                           rcases hb with rfl | rfl | rfl | rfl | rfl <;> decide) hxd τ ss
 
 theorem avoidsReg_of_contains {d : String} {b : LOperand}
     (h : (LprogLeak.opNames b).contains d = false) : avoidsReg d b := by
@@ -405,7 +506,7 @@ theorem chunk_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : Lis
             simp only [twoAddrRouteWF, hr, beq_iff_eq] at hw
             simp only [List.map_cons, List.map_nil, hw]
             have hyd' : y ≠ d := fun h => hyd (by rw [h])
-            exact chunk_of_symStep_eq (fun ss => (symStep_comm (opn_comm hm hc) hyd' _ ss).symm)
+            exact chunk_of_symStep_eq (fun ss => (symStep_comm_tag (opn_comm hm hc) hyd' _ ss).symm)
         | _ => simp [twoAddrRouteWF, hr] at hw
     | scratch m =>
         rw [hs m hr]
@@ -1325,7 +1426,7 @@ theorem chunkOn_route {tg : LinstrR → MemTag} (htg : TagFirstSrc tg) {outs : L
             have hyd' : y ≠ d := fun h => hyd (by rw [h])
             simp only [legalR, hm, ↓reduceIte, hcm, Bool.true_and, beq_self_eq_true,
               List.map_cons, List.map_nil, htag]
-            refine chunkOn_of_symStep_eq (fun ss => symStep_comm (opn_comm hmv hcm) hyd' _ ss) ?_
+            refine chunkOn_of_symStep_eq (fun ss => symStep_comm_tag (opn_comm hmv hcm) hyd' _ ss) ?_
             have hns1 : NoSwap opn d (.reg d) (.reg y) := by
               rintro ra rb hra hrb
               cases hra; cases hrb

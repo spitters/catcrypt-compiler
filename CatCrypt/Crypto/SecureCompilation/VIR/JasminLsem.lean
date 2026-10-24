@@ -256,7 +256,7 @@ def applyOpn {w : Nat} : String → List (BitVec w) → Option (BitVec w)
   -- `16` bits of the single evaluated source, clearing the rest (`BitVec.zeroExtend`
   -- of the narrow slice), which is exactly `movz{b,w}l`'s zero-extend on a load and
   -- the low-bits value a byte / word store deposits. `stripWidthTag` peels only the
-  -- `:64` tag, so the `:8` / `:16` tag survives to this arm.
+  -- `:64` and `^w` width tags, so the `:8` / `:16` tag survives to this arm.
   | "MOV:8", [a] => some (a &&& BitVec.ofNat w 0xFF)
   | "MOV:16", [a] => some (a &&& BitVec.ofNat w 0xFFFF)
   -- Runtime-indexed memory opcodes are modeled by `lsemStep`'s `.arrIdx` arm, not
@@ -460,9 +460,8 @@ as `SET<cc>[:64] dst, a, #n`; `applyOpn` models the mnemonic as the dialect's
 
 /-- `stripWidthTag` recovers the comparison mnemonic from its width-tagged form. -/
 theorem stripWidthTag_withWidthTag_cmpName (wOp : Nat) (c : JasminCmp) :
-    stripWidthTag (withWidthTag wOp (cmpName c)) = cmpName c := by
-  unfold withWidthTag
-  split <;> cases c <;> decide +kernel
+    stripWidthTag (withWidthTag wOp (cmpName c)) = cmpName c :=
+  stripWidthTag_withWidthTag wOp (by cases c <;> decide +kernel)
 
 /-- The exported `cmp` head writes the dialect's `cmpBit` of the two operand
     registers, widened to the word width, and advances the pc. -/

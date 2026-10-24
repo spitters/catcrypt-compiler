@@ -256,12 +256,20 @@ theorem isAccB_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
   simp [isAccB, h1, h2]
 
 theorem isAccB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
-    (h : o = "MOV" ∨ o = "MOV:64") : isAccB (.Lopn ds o ss) = false := by
-  rcases h with rfl | rfl <;> simp [isAccB]
+    (h : o = "MOV" ∨ o = "MOV:64" ∨ ∃ w, o = withWidthTag w "MOV") :
+    isAccB (.Lopn ds o ss) = false := by
+  rcases h with rfl | rfl | ⟨w, rfl⟩
+  · simp [isAccB]
+  · simp [isAccB]
+  · simp (disch := decide +kernel) [isAccB, withWidthTag_ne_of_tagSepFree]
 
 theorem isArrImmB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
-    (h : o = "MOV" ∨ o = "MOV:64") : isArrImmB (.Lopn ds o ss) = false := by
-  rcases h with rfl | rfl <;> simp [isArrImmB]
+    (h : o = "MOV" ∨ o = "MOV:64" ∨ ∃ w, o = withWidthTag w "MOV") :
+    isArrImmB (.Lopn ds o ss) = false := by
+  rcases h with rfl | rfl | ⟨w, rfl⟩
+  · simp [isArrImmB]
+  · simp [isArrImmB]
+  · simp (disch := decide +kernel) [isArrImmB, withWidthTag_ne_of_tagSepFree]
 
 /-! ## 3. The two-address legalisation -/
 
@@ -286,7 +294,7 @@ theorem legalizeInstr_shape (ok : Bool) (i : Linstr)
       x86Data.flagOnly (tieBase opn) = true → x = d) :
     legalizeInstr ok i = [i] ∨ ∃ d opn a c, i.li_i = .Lopn [.reg d] opn [a, c] ∧
       isRegOrImm a = true ∧ ∀ r ∈ legalizeInstr ok i, ∃ e o ss, r.li_i = .Lopn [.reg e] o ss ∧
-        (o = opn ∨ o = "MOV" ∨ o = "MOV:64") ∧
+        (o = opn ∨ o = "MOV" ∨ o = "MOV:64" ∨ ∃ w, o = withWidthTag w "MOV") ∧
         (e = d ∨ (ok = true ∧ (e = x86Data.tieScratch ∨ e = scratchSave))) := by
   generalize hL : legalizeInstr ok i = L
   unfold legalizeInstr at hL
@@ -297,10 +305,12 @@ theorem legalizeInstr_shape (ok : Bool) (i : Linstr)
       split at hL
       · exact Or.inl hL.symm
       · rename_i m hm
-        have hm' : m = "MOV" ∨ m = "MOV:64" := by
+        have hm' : m = "MOV" ∨ m = "MOV:64" ∨ ∃ w, m = withWidthTag w "MOV" := by
           change movFor opn = some m at hm
-          unfold movFor at hm
-          split_ifs at hm <;> (simp only [Option.some.injEq] at hm; subst hm; simp)
+          rcases movFor_cases hm with ⟨-, h⟩ | ⟨-, h⟩ | ⟨w, -, h⟩
+          · exact Or.inl h
+          · exact Or.inr (Or.inl h)
+          · exact Or.inr (Or.inr ⟨w, h⟩)
         split at hL
         · rename_i hfo
           split at hL
@@ -334,11 +344,11 @@ theorem legalizeInstr_shape (ok : Bool) (i : Linstr)
                   · intro r hr
                     simp only [scratchRoute, List.mem_cons, List.not_mem_nil, or_false] at hr
                     rcases hr with rfl | rfl | rfl | rfl | rfl
-                    · exact ⟨_, _, _, rfl, Or.inr (Or.inr rfl), Or.inr ⟨hok, Or.inr rfl⟩⟩
+                    · exact ⟨_, _, _, rfl, Or.inr (Or.inr (Or.inl rfl)), Or.inr ⟨hok, Or.inr rfl⟩⟩
                     · exact ⟨_, _, _, rfl, Or.inr hm', Or.inr ⟨hok, Or.inl rfl⟩⟩
                     · exact ⟨_, _, _, rfl, Or.inl rfl, Or.inr ⟨hok, Or.inl rfl⟩⟩
                     · exact ⟨_, _, _, rfl, Or.inr hm', Or.inl rfl⟩
-                    · exact ⟨_, _, _, rfl, Or.inr (Or.inr rfl), Or.inr ⟨hok, Or.inl rfl⟩⟩
+                    · exact ⟨_, _, _, rfl, Or.inr (Or.inr (Or.inl rfl)), Or.inr ⟨hok, Or.inl rfl⟩⟩
                 · intro r hr
                   simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
                   rcases hr with rfl
@@ -577,7 +587,9 @@ theorem physImgB_cmpReload
     rcases hmem with rfl | rfl
     · have hmv : movOf opn = "MOV" ∨ movOf opn = "MOV:64" := by
         unfold movOf; split_ifs <;> simp
-      exact ⟨isAccB_mov hmv, isArrImmB_mov hmv, slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
+      have hmv' : movOf opn = "MOV" ∨ movOf opn = "MOV:64" ∨ ∃ w, movOf opn = withWidthTag w "MOV" :=
+        hmv.elim Or.inl (fun h => Or.inr (Or.inl h))
+      exact ⟨isAccB_mov hmv', isArrImmB_mov hmv', slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
     · exact ⟨isAccB_lopn hn1 hn2, PhysImgFold.isArrImmB_of_ne ⟨hn3, hn4⟩ _ _,
         slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
   | none =>

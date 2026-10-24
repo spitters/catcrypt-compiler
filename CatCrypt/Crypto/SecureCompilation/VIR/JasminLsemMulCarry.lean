@@ -150,23 +150,23 @@ width branch, as for `MOV`/`CMOV`/`SHR`). -/
 
 theorem stripWidthTag_withWidthTag_MULXHI (w : Nat) :
     stripWidthTag (withWidthTag w "MULXHI") = "MULXHI" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 theorem stripWidthTag_withWidthTag_ADCX (w : Nat) :
     stripWidthTag (withWidthTag w "ADCX") = "ADCX" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 theorem stripWidthTag_withWidthTag_ADCXHI (w : Nat) :
     stripWidthTag (withWidthTag w "ADCXHI") = "ADCXHI" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 theorem stripWidthTag_withWidthTag_SBB (w : Nat) :
     stripWidthTag (withWidthTag w "SBB") = "SBB" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 theorem stripWidthTag_withWidthTag_SBBHI (w : Nat) :
     stripWidthTag (withWidthTag w "SBBHI") = "SBBHI" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 /-! ## 3. The mul/carry-aware step `lsemStepMC`
 

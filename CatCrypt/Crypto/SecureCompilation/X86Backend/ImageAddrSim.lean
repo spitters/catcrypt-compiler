@@ -593,7 +593,8 @@ theorem fstepA_loadIdx (frame : String → Option (BitVec 64)) (d b idx : String
       | some p, some vi => some ({ sa with reg := (sa.reg.setReg d
           (read64 sa.mem (p + BitVec.ofNat 64 (8 * vi.toNat)))).nextPc }, zf)
       | _, _ => none := by
-  simp only [fstepA, loadIdxA?, if_true]
+  simp only [fstepA, loadIdxA?,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList), if_true]
   cases sa.reg.getW b 64 <;> cases sa.reg.getW idx 64 <;> rfl
 
 /-- The address-machine step of an indexed store through the register `b`. -/
@@ -606,7 +607,8 @@ theorem fstepA_storeIdx (frame : String → Option (BitVec 64)) (d b idx v : Str
             reg := sa.reg.nextPc
             mem := write64 sa.mem (p + BitVec.ofNat 64 (8 * vi.toNat)) vv }, zf)
       | _, _, _ => none := by
-  simp only [fstepA, storeIdxA?, if_true]
+  simp only [fstepA, storeIdxA?,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STOREIDX".toList), if_true]
   cases sa.reg.getW b 64 <;> cases sa.reg.getW idx 64 <;> cases sa.reg.getW v 64 <;> rfl
 
 /-! ## 6. Labels and branches -/
@@ -1270,19 +1272,18 @@ theorem not_call_of_instrGateB {frame : String → Option (BitVec 64)}
   rintro rfl
   simp [instrGateB, icase] at h
 
-theorem slotMov?_normA (x : LinstrR) : slotMov? (normA x) = slotMov? x := by
-  cases x with
-  | Lopn ds o ss =>
-      simp only [normA]
-      split_ifs with ho
-      · subst ho
-        have h1 : ∀ o', o' ≠ "MOVQ" → o' ≠ "MOV:64" → slotMov? (.Lopn ds o' ss) = none := by
-          intro o' h1 h2
-          unfold slotMov?
-          split <;> simp_all
-        rw [h1 _ (by decide +kernel) (by decide +kernel), h1 _ (by decide) (by decide)]
-      · rfl
-  | _ => rfl
+/-- `normA` keeps a register move of `slotMov?`. -/
+theorem slotMov?_normA {x : LinstrR} {p : String × String} (h : slotMov? x = some p) :
+    slotMov? (normA x) = some p := by
+  have hx : ∃ d s, x = .Lopn [.reg d] "MOVQ" [.reg s] ∨ x = .Lopn [.reg d] "MOV:64" [.reg s] := by
+    unfold slotMov? at h
+    split at h
+    · rename_i d o s
+      split_ifs at h with h1
+      · rcases h1 with rfl | rfl
+        exacts [⟨d, s, Or.inl rfl⟩, ⟨d, s, Or.inr rfl⟩]
+    · cases h
+  obtain ⟨d, s, rfl | rfl⟩ := hx <;> exact h
 
 /-- The register a save copies has no frame word. -/
 theorem save_frame {frame : String → Option (BitVec 64)}
@@ -1363,7 +1364,7 @@ theorem rel_reg {frame : String → Option (BitVec 64)} {slotArr : String → Op
   obtain ⟨sa', hst, hmem, hregs', hkeepF, hcf, hof, hlpcA, hlpcI, hlarr, hwid'⟩ :=
     reg_step hl hg P s t sa zf hrel.regs hrel.zf hrel.cf hrel.of hrel.wid hs
   have hmovF : ∀ d src, slotMov? bi.li_i = some (d, src) → frame d = none ∧ frame src = none :=
-    fun d src hm => regGateB_slotMov hg (by rw [slotMov?_normA]; exact hm)
+    fun d src hm => regGateB_slotMov hg (slotMov?_normA hm)
   refine ⟨sa', hst, ⟨?_, hregs', ?_, rfl, hcf, hof, hwid', ?_, ?_, ?_, by
     rw [hmem]; exact hrel.held⟩⟩
   · rw [hlpcA, hlpcI, hrel.pc]
@@ -1388,7 +1389,7 @@ theorem rel_reg {frame : String → Option (BitVec 64)} {slotArr : String → Op
       obtain ⟨i', hi', hm'⟩ := hS
       have hent := (physImgB_slotStore hphys hi' hm' (by rw [hA]; rfl)).2
       obtain ⟨d, src, hm, hdR⟩ := entryRegB_spec hent (show sa.reg.lpc < k by omega) hb
-      have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
+      have ht := eval_slotMov P (slotMov?_normA hm) (MemTag.reg none) s
       rw [hs] at ht
       cases ht
       have e : sa'.reg.lvm R = sa.reg.lvm R := by
@@ -1402,12 +1403,12 @@ theorem rel_reg {frame : String → Option (BitVec 64)} {slotArr : String → Op
       (fun _ b hbf hbd => ?_) (fun _ _ _ _ _ _ _ _ => by rw [hmem])
     · rw [(hmovF _ _ hm).2] at hq
       cases hq
-    · have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
+    · have ht := eval_slotMov P (slotMov?_normA hm) (MemTag.reg none) s
       rw [hs] at ht
       cases ht
       rw [← hregs' b hbf, ← hrel.regs q (hmovF _ _ hm).2]
       simp [LstateM.setReg, LstateM.nextPc, LstateN.setReg, LstateN.nextPc]
-    · have ht := eval_slotMov P (by rw [slotMov?_normA]; exact hm) (MemTag.reg none) s
+    · have ht := eval_slotMov P (slotMov?_normA hm) (MemTag.reg none) s
       rw [hs] at ht
       cases ht
       rw [← hregs' b hbf, ← hrel.regs b hbf]
@@ -2107,7 +2108,8 @@ theorem cellA?_of_cellIdxStore {slotArr : String → Option (String × Nat)} {bo
     (h : cellIdxStore? slotArr body k i = some p) : (cellA? i).isSome = true ∧ normA i = i := by
   obtain ⟨A, n, q, v⟩ := p
   obtain ⟨c, D, -, -, -, -, -, -, -, rfl, hc, -⟩ := cellIdxStore?_spec h
-  simp [cellA?, hc, normA]
+  simp [cellA?, hc, normA_of_caret_free (show '^' ∉ "MOV:64".toList by decide),
+    LprogAsmPrinter.untagCaret_of_caret_free (show '^' ∉ "MOV:64".toList by decide)]
 
 /-- An instruction that is no cell access is no indexed store through a cell. -/
 theorem cellIdxStore?_of_cellA {slotArr : String → Option (String × Nat)} {body : Lcmd}

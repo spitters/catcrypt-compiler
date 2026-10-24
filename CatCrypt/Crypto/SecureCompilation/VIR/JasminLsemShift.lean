@@ -204,15 +204,15 @@ theorem applyOpnN_SHL {w n : Nat} (a : BitVec w) :
     (kernel evaluation per width branch, as for `MOV`/`CMOV`/binops). -/
 theorem stripWidthTag_withWidthTag_SHR (w : Nat) :
     stripWidthTag (withWidthTag w "SHR") = "SHR" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 theorem stripWidthTag_withWidthTag_SHL (w : Nat) :
     stripWidthTag (withWidthTag w "SHL") = "SHL" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 theorem stripWidthTag_withWidthTag_SAR (w : Nat) :
     stripWidthTag (withWidthTag w "SAR") = "SAR" := by
-  unfold withWidthTag; split <;> decide +kernel
+  exact stripWidthTag_withWidthTag w (by decide)
 
 /-! ## 3. Structured shift emission `straightOpsShift`
 

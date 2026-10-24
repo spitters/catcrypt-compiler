@@ -1723,7 +1723,9 @@ theorem latencyPrio_binOpName (bop : JasminBinOp) (w : Nat) (dsts srcs : List LO
         | .shl => 2
         | .shr => 2
         | _ => 1 := by
-  cases bop <;> unfold withWidthTag <;> split <;> simp only [latencyPrio] <;> decide +kernel
+  simp only [latencyPrio, keyStartsWith, mnemKey, stripWidthTag_withWidthTag w
+    (show tagSepFree (binOpName bop) = true by cases bop <;> decide +kernel)]
+  cases bop <;> decide +kernel
 
 /-- One bubble pass is the identity on a body whose instructions all carry the
     same latency priority: the swap branch is gated on a strict increase. -/

@@ -339,14 +339,16 @@ theorem cellA?_ld_names {w : LinstrR} {d b : String} {off : Nat}
     (h : cellA? w = some (.ld d b off)) : d ∈ dstNames w := by
   unfold cellA? at h
   split at h
-  · split_ifs at h <;> (try split at h) <;> simp_all [dstNames, opNames]
+  · dsimp only at h
+    split_ifs at h <;> (try split at h) <;> simp_all [dstNames, opNames]
   · simp at h
 
 theorem cellA?_lea_names {w : LinstrR} {d b : String} {off : Nat}
     (h : cellA? w = some (.lea d b off)) : d ∈ dstNames w := by
   unfold cellA? at h
   split at h
-  · split_ifs at h <;> (try split at h) <;> simp_all [dstNames, opNames]
+  · dsimp only at h
+    split_ifs at h <;> (try split at h) <;> simp_all [dstNames, opNames]
   · simp at h
 
 theorem slotCarry?_names {frame : String → Option (BitVec 64)} {w : LinstrR} {lo : Bool}
@@ -681,7 +683,8 @@ theorem cellA?_st_reads {w : LinstrR} {b : String} {off : Nat} {v : String}
     (h : cellA? w = some (.st b off v)) : readsI w b := by
   unfold cellA? at h
   split at h
-  · split_ifs at h
+  · dsimp only at h
+    split_ifs at h
     · simp at h
     · obtain ⟨⟨b', off'⟩, hp, he⟩ := Option.map_eq_some_iff.1 h
       cases he

@@ -1677,14 +1677,18 @@ theorem cmpRefines_mnOf {B : Lcmd} {i : Linstr} {ds : List LOperand} {o : String
   refine cmpRefines_ops (by simp [hi, isOpnB]) (fun r hr ha => ?_) (fun r hr hc => ?_)
   · obtain ⟨ds', o', ss', he, ho⟩ := h r hr
     rw [he] at ha
-    rcases ho with rfl | ho
+    rcases ho with rfl | ho | ⟨w, rfl⟩
     · rw [hi]; exact ha
     · rw [isMemB_of_movMnems ho] at ha; cases ha
+    · simp (disch := decide +kernel) [isMemB, isAccB, isArrImmB,
+        withWidthTag_ne_of_tagSepFree] at ha
   · obtain ⟨ds', o', ss', he, ho⟩ := h r hr
     rw [he] at hc
-    rcases ho with rfl | ho
+    rcases ho with rfl | ho | ⟨w, rfl⟩
     · rw [hi]; exact hc
     · rw [isCmpB_of_movMnems ho] at hc; cases hc
+    · simp [isCmpB, stripWidthTag_withWidthTag w (by decide +kernel : tagSepFree "MOV" = true)]
+        at hc
 
 /-- **The constant-shape base reload refines the body**: each reloaded write becomes a move
     and the write under its own mnemonic. -/
@@ -1855,17 +1859,30 @@ theorem instrModeled_noCmp {j : Linstr} (h : instrModeled j = true) :
   · exfalso
     rw [beq_iff_eq] at hc
     have hp : parseImmShiftMnem o = none := by
-      have hcore : (if hasSuffix o ":64" = true then stripWidthTag o else o) = "CMP" := by
-        split
-        · exact hc
-        · rename_i hs
+      by_cases hca : '^' ∈ o.toList
+      · have hT : o.toList.takeWhile (· != '^') = ['C', 'M', 'P'] := by
           unfold stripWidthTag at hc
-          simpa [hs] using hc
-      unfold parseImmShiftMnem
-      simp only [hcore]
-      generalize hasSuffix o ":64" = b
-      revert b
-      decide +kernel
+          rw [if_pos (by simpa using hca)] at hc
+          simpa using congrArg String.toList hc
+        unfold parseImmShiftMnem
+        rw [if_pos (by simpa using hca), hT]
+        split <;> rfl
+      · have hl : o.toList = ['C', 'M', 'P'] ∨ o.toList = ['C', 'M', 'P', ':', '6', '4'] := by
+          unfold stripWidthTag at hc
+          rw [if_neg (by simpa using hca)] at hc
+          split at hc
+          · right
+            rename_i hs
+            obtain ⟨t, ht⟩ := List.isSuffixOf_iff_suffix.mp hs
+            have h2 : o.toList = t ++ [':', '6', '4'] := ht.symm
+            rw [h2] at hc ⊢
+            have h3 : t = ['C', 'M', 'P'] := by
+              simpa [List.dropLast_append_cons] using congrArg String.toList hc
+            rw [h3]; rfl
+          · left; subst hc; rfl
+        unfold parseImmShiftMnem
+        rw [if_neg (by simpa using hca)]
+        rcases hl with hl | hl <;> rw [hl] <;> rfl
     unfold instrModeled at h
     rw [he] at h
     simp only [hc, hp] at h
@@ -2063,7 +2080,7 @@ theorem cmpRefines_twoAddrBody (b : Lcmd) : CmpRefines (twoAddrBody b) b := by
 theorem mnOf_of_armOut {ins : List LOperand} {o : String} {r : LinstrR} (h : ArmOut ins o r) :
     MnOf o r := by
   obtain ⟨ds, o', ss, rfl, ho, -⟩ := h
-  exact ⟨ds, o', ss, rfl, ho⟩
+  exact ⟨ds, o', ss, rfl, ho.elim Or.inl (fun h => Or.inr (Or.inl h))⟩
 
 /-- Every instruction of the expansion of an operation under `o` is an operation under `o` or
     a move mnemonic. -/

@@ -1148,7 +1148,8 @@ theorem sim_ldx (P : Params) (rsp : BitVec 64) (D B I : String)
       (fun x hx => by rw [hmem]; exact hc.mem x hx)
       (fun r hr => by rw [getW_setReg_nextPcN, if_neg hr])
       (by rw [getW_setReg_nextPcN, if_pos rfl, hrd])⟩
-  simp [AArm.li, fstepA, loadIdxA?, hc.regs B hB, hc.regs I hI, ha]
+  simp [AArm.li, fstepA, loadIdxA?, hc.regs B hB, hc.regs I hI, ha,
+    untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList)]
 
 /-- **The indexed store.** -/
 theorem sim_stx (P : Params) (rsp : BitVec 64) (d B I V : String)
@@ -1165,7 +1166,8 @@ theorem sim_stx (P : Params) (rsp : BitVec 64) (d B I V : String)
   refine ⟨⟨s.reg.nextPc, write64 s.mem a (sa.regs (phys V)), s.cf, s.of⟩, zf, ?_,
     hc.keep (sa' := evalInstrA sa _) hregs (fun r => LstateN.getW_nextPc _ _ _)
       (fun x hx => ?_)⟩
-  · simp [AArm.li, fstepA, storeIdxA?, hc.regs B hB, hc.regs I hI, hc.regs V hV, ha]
+  · simp [AArm.li, fstepA, storeIdxA?, hc.regs B hB, hc.regs I hI, hc.regs V hV, ha,
+      untagCaret_of_caret_free (by decide : '^' ∉ "STOREIDX".toList)]
   · show write64 s.mem a (sa.regs (phys V)) x = (evalInstrA sa _).mem x
     rw [hmem]
     exact agree_write64 hc.mem _ _ x hx
@@ -1542,6 +1544,29 @@ theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.
     · exact hm h
   · exact hm h
 
+/-- The mnemonic of an arm whose conditions hold has no `^`. -/
+theorem Arm.caret_free_of_ok {P : Params} {Q : List (String × Int)} {a : Arm}
+    (h : a.ok P Q = true) {ds : List LOperand} {o : String} {ss : List LOperand}
+    (he : a.instr = .Lopn ds o ss) : '^' ∉ o.toList := by
+  cases a <;> simp only [Arm.instr, LinstrR.Lopn.injEq] at he <;> obtain ⟨-, rfl, -⟩ := he <;>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+  · simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at h; rcases h.1.1 with rfl | rfl <;> decide
+  · decide
+  · obtain ⟨⟨⟨⟨⟨h1, -⟩, -⟩, -⟩, -⟩, -⟩ := h
+    simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at h1; rcases h1 with rfl | rfl <;> decide
+  · obtain ⟨⟨⟨⟨h1, -⟩, -⟩, -⟩, -⟩ := h
+    simp only [isMovM, Bool.or_eq_true, beq_iff_eq] at h1; rcases h1 with rfl | rfl <;> decide
+  · have h1 := h.1.1; unfold aluArm at h1; split at h1 <;> first | decide | simp at h1
+  · have h1 := h.1.1; unfold aluArm at h1; split at h1 <;> first | decide | simp at h1
+  · have h1 := h.2; simp only [beq_iff_eq] at h1; rw [h1, toList_withWidthTag_64]
+    simp only [tagShName, String.toList_append, List.mem_append, not_or]
+    refine ⟨⟨⟨?_, by decide⟩, (sep_not_mem_toString _).2⟩, by decide⟩; split <;> decide
+  · have h1 := h.2; simp only [beq_iff_eq] at h1; rw [h1, toList_withWidthTag_64]
+    simp only [String.toList_append, List.mem_append, not_or]
+    exact ⟨⟨⟨by decide, by decide⟩, (sep_not_mem_toString _).2⟩, by decide⟩
+  · simp only [isShI, Bool.or_eq_true, beq_iff_eq] at h; rcases h.1.1.1 with rfl | rfl <;> decide
+  · decide
+
 /-- The address machine steps an arm whose conditions hold as the tagged instruction
     `AArm.li`. -/
 theorem AArm.li_eq {P : Params} {a : AArm} (h : a.ok P = true) :
@@ -1557,7 +1582,8 @@ theorem AArm.li_eq {P : Params} {a : AArm} (h : a.ok P = true) :
       (tagA_lopn_of_length hp.1.1.2 hp.1.2 (by
         cases a <;> simp only [Arm.instr, LinstrR.Lopn.injEq] at he <;>
           obtain ⟨-, -, rfl⟩ := he <;> simp)).trans (congrArg MemTag.reg hp.2)
-    simp [AArm.li, AArm.instr, he, normA, ht, hp.1.1.1]
+    simp [AArm.li, AArm.instr, he, normA_of_caret_free (Arm.caret_free_of_ok h.1.2 he), ht,
+      hp.1.1.1]
   | st m q S =>
     simp only [AArm.ok, Bool.and_eq_true, isMovM, Bool.or_eq_true, beq_iff_eq] at h
     rcases h.2 with rfl | rfl <;>
@@ -1580,7 +1606,8 @@ theorem AArm.tagAt_eq (body : Lcmd) (k : Nat) (a : AArm) :
     tagAt body k a.instr = tagA a.instr := by
   apply tagAt_of_ne
   cases a with
-  | reg a => cases a <;> simp [AArm.instr, Arm.instr, JasminLsemCast.movImmStruct?]
+  | reg a => cases a <;> simp [AArm.instr, Arm.instr, JasminLsemCast.movImmStruct?,
+      show JasminLsemCast.isMovImmMnem "MOV:64" = false from by decide +kernel]
   | _ => simp [AArm.instr, JasminLsemCast.movImmStruct?]
 
 /-- The computed shape of an arm's instruction decodes to the arm's machine instructions. -/

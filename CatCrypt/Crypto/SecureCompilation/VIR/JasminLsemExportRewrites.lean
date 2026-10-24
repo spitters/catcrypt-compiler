@@ -472,10 +472,9 @@ theorem castStruct?_names {i : LinstrR} {p : String × String}
 
 theorem movImmStruct?_names {i : LinstrR} {p : String × Nat}
     (h : movImmStruct? i = some p) : p.1 ∈ instrNames i := by
-  unfold movImmStruct? at h
-  split at h
-  · cases h; simp [instrNames, opNames]
-  · simp at h
+  obtain ⟨d, n⟩ := p
+  obtain ⟨_, rfl⟩ := movImmStruct?_spec h
+  simp [instrNames, opNames]
 
 theorem loadStruct?_names {i : LinstrR} {p : String × String × String}
     (h : loadStruct? i = some p) :

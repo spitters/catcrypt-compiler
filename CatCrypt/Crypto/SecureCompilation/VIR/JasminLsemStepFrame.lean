@@ -91,10 +91,9 @@ theorem castStruct?_dst {i : LinstrR} {p : String × String}
 
 theorem movImmStruct?_dst {i : LinstrR} {p : String × Nat}
     (h : JasminLsemCast.movImmStruct? i = some p) : p.1 ∈ dstNames i := by
-  unfold JasminLsemCast.movImmStruct? at h
-  split at h
-  · cases h; simp [dstNames, opNames]
-  · simp at h
+  obtain ⟨d, n⟩ := p
+  obtain ⟨_, rfl⟩ := JasminLsemCast.movImmStruct?_spec h
+  simp [dstNames, opNames]
 
 theorem loadStruct?_dst {i : LinstrR} {p : String × String × String}
     (h : JasminLsemMem.loadStruct? i = some p) : p.1 ∈ dstNames i := by

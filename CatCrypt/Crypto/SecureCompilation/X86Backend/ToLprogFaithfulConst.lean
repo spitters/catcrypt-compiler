@@ -94,9 +94,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulAssembled
 
 /-- The width-tagged `MOV` mnemonic strips to `MOV`. -/
 theorem stripWidthTag_withWidthTag_MOV (w : Nat) :
-    stripWidthTag (withWidthTag w "MOV") = "MOV" := by
-  unfold withWidthTag
-  split <;> decide +kernel
+    stripWidthTag (withWidthTag w "MOV") = "MOV" :=
+  stripWidthTag_withWidthTag w (by decide +kernel)
 
 /-- A constant binding along the renaming `physRename body tbl`: the logical
     destination `nDst` receives the literal `n`, and no other logical name is
@@ -169,8 +168,8 @@ theorem isNativeShiftRotate_withWidthTag_MOV (w : Nat) :
 /-- The width-tagged `MOV` mnemonic is not a memory load. -/
 theorem isMemLoad_withWidthTag_MOV (w : Nat) :
     isMemLoad (withWidthTag w "MOV") = false := by
-  unfold withWidthTag
-  split <;> decide +kernel
+  simp only [isMemLoad, stripWidthTag_withWidthTag_MOV]
+  decide
 
 /-- `physBody` expands the constant head `MOV nDst, #n` to the single renamed
     instruction `MOV ρ nDst, #n`. -/

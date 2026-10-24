@@ -160,34 +160,63 @@ theorem lopn_plain (dsts : List LOperand) (opn : String) (srcs : List LOperand)
   · unfold movRegArgs?
     split <;> simp_all
 
+/-- A width-tagged separator-free mnemonic differs from every string that does not strip
+    to it. -/
+theorem withWidthTag_ne_of_strip_ne (w : Nat) {m s : String} (hm : tagSepFree m = true)
+    (h : stripWidthTag s ≠ m) : withWidthTag w m ≠ s :=
+  fun he => h (by rw [← he, stripWidthTag_withWidthTag w hm])
+
+/-- A width-tagged separator-free mnemonic other than `CMP`, `MOV`, `LOAD` and `STORE` is
+    plain under any descriptor. -/
+theorem lopn_plain_withWidthTag (dsts : List LOperand) (w : Nat) {m : String}
+    (srcs : List LOperand) (tag : MemTag) (hm : tagSepFree m = true) (hC : m ≠ "CMP")
+    (hM : m ≠ "MOV") (hL : m ≠ "LOAD") (hS : m ≠ "STORE") :
+    IsLopn (LinstrR.Lopn dsts (withWidthTag w m) srcs, tag)
+      ∧ cmpArgs? (LinstrR.Lopn dsts (withWidthTag w m) srcs, tag) = none
+      ∧ movRegArgs? (LinstrR.Lopn dsts (withWidthTag w m) srcs, tag) = none := by
+  have hcmp : stripWidthTag (withWidthTag 64 "CMP") = "CMP" :=
+    stripWidthTag_withWidthTag 64 (by decide +kernel)
+  refine lopn_plain _ _ _ _ (withWidthTag_ne_of_strip_ne w hm (by rw [hcmp]; exact hC.symm))
+    (by rw [stripWidthTag_withWidthTag w hm]; exact hM) ?_
+  simp only [copyQ, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
+  refine ⟨⟨withWidthTag_ne_of_tagSepFree w m (by decide +kernel), ?_⟩, ?_⟩
+  · exact withWidthTag_ne_of_strip_ne w hm
+      (by rw [show stripWidthTag "LOAD:64" = "LOAD" by decide +kernel]; exact hL.symm)
+  · exact withWidthTag_ne_of_strip_ne w hm
+      (by rw [show stripWidthTag "STORE:64" = "STORE" by decide +kernel]; exact hS.symm)
+
 /-- The first character of a width-tagged mnemonic is the mnemonic's first
     character. -/
 theorem head?_withWidthTag (w : Nat) (m : String) (hm : m.toList ≠ []) :
     (withWidthTag w m).toList.head? = m.toList.head? := by
-  unfold withWidthTag
+  obtain ⟨t, ht⟩ := toList_prefix_withWidthTag w m
+  rw [← ht]
+  obtain ⟨c, cs, hc⟩ := List.exists_cons_of_ne_nil hm
+  rw [hc]
+  rfl
+
+/-- A stripped mnemonic is a prefix of the mnemonic. -/
+theorem stripWidthTag_toList_prefix_self (x : String) :
+    (stripWidthTag x).toList <+: x.toList := by
+  unfold stripWidthTag
   split
-  · rw [String.toList_append]
-    obtain ⟨c, cs, hc⟩ := List.exists_cons_of_ne_nil hm
-    rw [hc]
-    rfl
-  · rfl
+  · rw [String.toList_ofList]
+    exact List.takeWhile_prefix _
+  · split
+    · rw [String.toList_ofList]
+      exact (List.dropLast_prefix _).trans ((List.dropLast_prefix _).trans (List.dropLast_prefix _))
+    · exact List.prefix_refl _
 
 /-- A mnemonic that strips to a nonempty `y` starts with `y`'s first character. -/
 theorem head?_of_stripWidthTag_eq (x y : String) (hy : y.toList ≠ [])
     (h : stripWidthTag x = y) : x.toList.head? = y.toList.head? := by
-  unfold stripWidthTag at h
-  split at h
-  · have h' := congrArg String.toList h
-    rw [String.toList_ofList] at h'
-    have hp : x.toList.dropLast.dropLast.dropLast <+: x.toList :=
-      (List.dropLast_prefix _).trans ((List.dropLast_prefix _).trans (List.dropLast_prefix _))
-    rw [h'] at hp
-    obtain ⟨t, ht⟩ := hp
-    rw [← ht]
-    obtain ⟨c, cs, hc⟩ := List.exists_cons_of_ne_nil hy
-    rw [hc]
-    rfl
-  · rw [h]
+  have hp := stripWidthTag_toList_prefix_self x
+  rw [h] at hp
+  obtain ⟨t, ht⟩ := hp
+  rw [← ht]
+  obtain ⟨c, cs, hc⟩ := List.exists_cons_of_ne_nil hy
+  rw [hc]
+  rfl
 
 /-- A mnemonic that strips to `MOV` starts with `M`. -/
 theorem head?_of_stripWidthTag_eq_MOV (x : String) (h : stripWidthTag x = "MOV") :
@@ -226,14 +255,14 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
       ∧ movRegArgs? (opToLinstrR op dst srcs, tag) = none := by
   cases op <;> simp only [OpPlain] at hop
   case regArith bop w =>
-    exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> cases bop <;> decide)
-      (by unfold withWidthTag; split <;> cases bop <;> decide)
-      (by unfold withWidthTag; split <;> cases bop <;> decide)
+    exact lopn_plain_withWidthTag _ _ _ _ (by cases bop <;> decide +kernel)
+      (by cases bop <;> decide) (by cases bop <;> decide) (by cases bop <;> decide)
+      (by cases bop <;> decide)
   case regConst w k =>
     refine ⟨⟨_, _, _, rfl⟩, ?_, ?_⟩ <;> simp [opToLinstrR, cmpArgs?, movRegArgs?]
   case select w =>
-    exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
+    exact lopn_plain_withWidthTag _ _ _ _ (by decide +kernel) (by decide) (by decide)
+      (by decide) (by decide)
   case shrImm w k =>
     obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("SHR:" ++ toString k) 'S'
       (by rw [String.toList_append]; rfl) (by decide) (by decide)
@@ -250,14 +279,14 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
     exact lopn_plain _ _ _ _ h1 h2
       (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))
   case mulhi w =>
-    exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
+    exact lopn_plain_withWidthTag _ _ _ _ (by decide +kernel) (by decide) (by decide)
+      (by decide) (by decide)
   case addCarryLo w =>
-    exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
+    exact lopn_plain_withWidthTag _ _ _ _ (by decide +kernel) (by decide) (by decide)
+      (by decide) (by decide)
   case addCarryHi w =>
-    exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
+    exact lopn_plain_withWidthTag _ _ _ _ (by decide +kernel) (by decide) (by decide)
+      (by decide) (by decide)
   case castW w w' =>
     simp only [opToLinstrR]
     split
@@ -297,8 +326,8 @@ theorem shiftLinstr_plain (mnem : String) (hm : mnem = "SHR" ∨ mnem = "SHL" �
       ∧ movRegArgs? (JasminLsemShift.shiftLinstr mnem w dst s k, tag) = none := by
   unfold JasminLsemShift.shiftLinstr
   rcases hm with rfl | rfl | rfl <;>
-    exact lopn_plain _ _ _ _ (by unfold withWidthTag; split <;> decide)
-      (by unfold withWidthTag; split <;> decide) (by unfold withWidthTag; split <;> decide)
+    exact lopn_plain_withWidthTag _ _ _ _ (by decide +kernel) (by decide) (by decide)
+      (by decide) (by decide)
 
 /-- **The emitted chain is plain.** Every instruction `straightOpsMem` emits for a
     `Com` whose ops lie in the stack-memory fragment's op set is an `Lopn` that is

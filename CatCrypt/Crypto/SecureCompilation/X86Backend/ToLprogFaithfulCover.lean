@@ -156,15 +156,22 @@ theorem binOpName_not_isShift_of_nonshift (bop : JasminBinOp)
   obtain ⟨h1, h2, h3⟩ := hns
   cases bop <;> first | decide +kernel | (exfalso; revert h1 h2 h3; decide)
 
-/-- At a width `w ≠ 64` the tagged mnemonic `withWidthTag w (binOpName bop)` is
-    just `binOpName bop`, which never ends with the `:64` width tag. (The default-
-    width arm of `physBody`'s `isShift`/`movFor` dispatch.) -/
+/-- At a width `w ≠ 64` the tagged mnemonic `withWidthTag w (binOpName bop)` ends
+    in the decimal digits of `w` and never ends with the `:64` width tag. (The
+    default-width arm of `physBody`'s `isShift`/`movFor` dispatch.) -/
 theorem withWidthTag_binOpName_not_hasSuffix64 (w : Nat) (bop : JasminBinOp)
     (hw : w ≠ 64) :
     ¬ hasSuffix (withWidthTag w (binOpName bop)) ":64" = true := by
-  rw [show withWidthTag w (binOpName bop) = binOpName bop from by
-    simp only [withWidthTag, if_neg hw]]
-  cases bop <;> decide
+  intro h
+  unfold hasSuffix at h
+  rw [toList_withWidthTag_of_ne hw, List.isSuffixOf_iff_suffix] at h
+  rcases List.suffix_or_suffix_of_suffix h (List.suffix_append _ _) with h1 | h1
+  · have hc := h1.subset (show ':' ∈ (":64" : String).toList by decide)
+    simp only [List.mem_cons] at hc
+    rcases hc with hc | hc
+    · exact absurd hc (by decide)
+    · exact (sep_not_mem_toString w).1 hc
+  · exact absurd (h1.subset List.mem_cons_self) (by decide)
 
 /-! ## The realization of a `comToBody` head by a `BinopBinding` -/
 
@@ -211,12 +218,16 @@ theorem regArithHead_realizes {w' : Nat} (body : Lcmd) (tbl : Array Nat)
     (hcol : physRename body tbl (resolveVarName curDepth nArgs a0)
         = physRename body tbl (regName curDepth)) :
     InstrRealizesBinding body tbl (regArithHead nArgs curDepth bop w a0 a1) b := by
-  have htag : withWidthTag w (binOpName bop) = binOpName bop := by
-    simp only [withWidthTag, if_neg hw]
+  have hsf : tagSepFree (binOpName bop) = true := by cases bop <;> decide +kernel
+  have htag : stripWidthTag (withWidthTag w (binOpName bop))
+      = stripWidthTag (binOpName bop) := by
+    rw [stripWidthTag_withWidthTag w hsf]
+    cases bop <;> decide +kernel
   refine ⟨resolveVarName curDepth nArgs a0, [], [], ?_, ?_, ?_, ?_, ?_⟩
   · -- the instruction shape: dst = b.nDst, opn = b.opn, srcs = [nS0, b.nSrc]
     simp only [regArithHead, hdst, hopn, hsrc]
-  · rw [hopn, htag]; exact binOpName_isBinop_of_nonshift bop hns
+  · rw [hopn]; unfold isTwoAddrBinop; rw [htag]
+    exact binOpName_isBinop_of_nonshift bop hns
   · rw [hopn, htag]; exact binOpName_not_isShift_of_nonshift bop hns
   · rw [hopn]; exact withWidthTag_binOpName_not_hasSuffix64 w bop hw
   · rw [hdst]; exact hcol

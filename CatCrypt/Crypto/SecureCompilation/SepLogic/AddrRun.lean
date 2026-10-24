@@ -297,12 +297,14 @@ theorem stepA_storeMoveBody_one {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 1) 
       = some (⟨(s.reg.setReg "D" (s.reg.lvm "S").2).nextPc, s.mem, s.cf, s.of⟩, zf) := by
   have hD : cellParts? "D" = none := by decide
   have hS : cellParts? "S" = none := by decide
+  have hu : X86Backend.LprogAsmPrinter.untagCaret "MOV:64" = "MOV:64" :=
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide)
   unfold stepA
   rw [hpc]
   simp only [storeMoveBody, List.getElem?_cons_succ, List.getElem?_cons_zero]
   rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
     tagA_lopn (by decide) (by decide)]
-  simp (config := { decide := true }) [normA, fstepA, slotMov?_mov64 hD hS,
+  simp (config := { decide := true }) [normA, hu, fstepA, slotMov?_mov64 hD hS,
     regStepA, JasminLsemMemFlagNestJoin.fstepF, JasminLsemMemFlagGuard.cmpArgs?,
     JasminLsemMemFlagGuard.movRegArgs?, JasminLsemWidthN.readReg, LstateM.setReg,
     LstateM.nextPc]
@@ -319,6 +321,8 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
   have hn : cellParts? "mem.B.0" = some ("B", 0) := by decide
   have hD : cellParts? "D" = none := by decide
   have hS : cellParts? "S" = none := by decide
+  have hu : X86Backend.LprogAsmPrinter.untagCaret "MOV:64" = "MOV:64" :=
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide)
   have hstep := stepA_storeMoveBody_zero zf hpc hB hV
   have hstep2 := stepA_storeMoveBody_one (s := ⟨s.reg.nextPc,
     write64 s.mem (p + BitVec.ofNat 64 0) v, s.cf, s.of⟩) zf
@@ -333,7 +337,7 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
     simp only [storeMoveBody, List.getElem?_cons_zero]
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
       tagA_lopn (by decide) (by decide)]
-    simp (config := { decide := true }) [normA, castTagW]
+    simp (config := { decide := true }) [normA, hu, castTagW]
   have w2 : ∀ t : LstateA, t.reg.lpc = 1 → stepWrites (fun _ => none) storeMoveBody t
       = writesA (fun _ => none) (.Lopn [.reg "D"] "MOV:64" [.reg "S"], .reg none) t := by
     intro t ht
@@ -342,10 +346,10 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
     simp only [storeMoveBody, List.getElem?_cons_succ, List.getElem?_cons_zero]
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
       tagA_lopn (by decide) (by decide)]
-    simp (config := { decide := true }) [normA, castTagW]
+    simp (config := { decide := true }) [normA, hu, castTagW]
   have s1 : storeA? (fun _ => none) (.Lopn [.reg "mem.B.0"] "MOV:64" [.reg "V"], .reg none)
       s.reg = some (p + BitVec.ofNat 64 0) := by
-    simp [storeA?, slotMov?, slotCmp?, cellA?, hn, hB]
+    simp [storeA?, slotMov?, slotCmp?, cellA?, hn, hB, hu]
   have s2 : ∀ r : LstateN,
       storeA? (fun _ => none) (.Lopn [.reg "D"] "MOV:64" [.reg "S"], .reg none) r = none := by
     intro r

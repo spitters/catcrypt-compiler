@@ -91,8 +91,11 @@ theorem stripWidthTag_callMnem {opn : String} (h : CallMnem opn) :
   split
   · rw [String.toList_ofList, ht]
     exact ⟨_, rfl⟩
-  · rw [ht]
-    exact ⟨_, rfl⟩
+  · split
+    · rw [String.toList_ofList, ht]
+      exact ⟨_, rfl⟩
+    · rw [ht]
+      exact ⟨_, rfl⟩
 
 /-- A mnemonic of `CallMnem` with its width tag removed differs from every mnemonic whose
     first two characters are not `CA`. -/
@@ -123,13 +126,9 @@ theorem splitChars_head (c : Char) (hc : c ≠ ':') (l : List Char) :
 
 /-- A mnemonic of `CallMnem` is no count-tagged immediate shift. -/
 theorem immShiftMnem?_callMnem {opn : String} (h : CallMnem opn) : immShiftMnem? opn = none := by
-  have hcore : ∃ r, (if hasSuffix opn ":64" then stripWidthTag opn else opn).toList
-      = 'C' :: r := by
-    split
-    · obtain ⟨r, hr⟩ := stripWidthTag_callMnem h
-      exact ⟨_, hr⟩
-    · obtain ⟨t, ht⟩ := h
-      exact ⟨_, ht⟩
+  have hcore : ∃ r, (stripWidthTag opn).toList = 'C' :: r := by
+    obtain ⟨r, hr⟩ := stripWidthTag_callMnem h
+    exact ⟨_, hr⟩
   obtain ⟨r, hr⟩ := hcore
   obtain ⟨g, gs, hg⟩ := splitChars_head 'C' (by decide) r
   unfold immShiftMnem?
@@ -219,7 +218,8 @@ theorem lsemStepCast_callMnem (h : CallMnem opn) (cd : Option Nat) (s : LstateN)
     split
     · next heq =>
       cases heq
-      exact absurd rfl (h.ne "MOV" (by decide))
+      exact if_neg (fun hc => h.strip_ne "MOV" (by decide)
+        (JasminLsemCast.stripWidthTag_of_isMovImm hc))
     · rfl
   simp only [lsemStepCast, e1, e2, lsemStepMC_callMnem h]
 

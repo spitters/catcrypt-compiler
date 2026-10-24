@@ -141,17 +141,19 @@ def slotCmp? : LinstrR → Option (String × String × String)
   | _ => none
 
 /-- The wire form `Lopn [.reg dst] "LOADIDX" [.arrIdx base idx sc]`, as
-    `(dst, base, idx, sc)`. -/
+    `(dst, base, idx, sc)`; the mnemonic is read through `untagCaret`. -/
 def loadIdxA? : LinstrR → Option (String × String × String × Nat)
   | .Lopn [.reg dst] opn [.arrIdx base idx sc] =>
-      if opn = "LOADIDX" then some (dst, base, idx, sc) else none
+      if X86Backend.LprogAsmPrinter.untagCaret opn = "LOADIDX" then some (dst, base, idx, sc)
+      else none
   | _ => none
 
 /-- The wire form `Lopn [.reg _] "STOREIDX" [.arrIdx base idx sc, .reg val]`, as
-    `(base, idx, sc, val)`. -/
+    `(base, idx, sc, val)`; the mnemonic is read through `untagCaret`. -/
 def storeIdxA? : LinstrR → Option (String × String × Nat × String)
   | .Lopn [.reg _] opn [.arrIdx base idx sc, .reg val] =>
-      if opn = "STOREIDX" then some (base, idx, sc, val) else none
+      if X86Backend.LprogAsmPrinter.untagCaret opn = "STOREIDX" then some (base, idx, sc, val)
+      else none
   | _ => none
 
 /-- The base register and the byte offset of a cell name `mem.<B>.<off>`
@@ -177,13 +179,14 @@ inductive CellOp where
     `Lopn [.reg d] "LEA:64" [.reg n]` with `n` a cell name, as their cell operation; a 64-bit
     move `Lopn [.reg n] "MOV:64" [.reg v]` into a cell name `n` is the store of `v`, and a move
     `Lopn [.reg d] "MOV:64" [.reg n]` out of a cell name `n` into a name `d` that is no cell
-    name is the load into `d`. -/
+    name is the load into `d`. The mnemonic is read through `untagCaret`. -/
 def cellA? : LinstrR → Option CellOp
   | .Lopn [.reg d] opn [.reg n] =>
-      if opn = "LOAD:64" then (cellParts? n).map fun p => .ld d p.1 p.2
-      else if opn = "STORE:64" then (cellParts? d).map fun p => .st p.1 p.2 n
-      else if opn = "LEA:64" then (cellParts? n).map fun p => .lea d p.1 p.2
-      else if opn = "MOV:64" then
+      let u := X86Backend.LprogAsmPrinter.untagCaret opn
+      if u = "LOAD:64" then (cellParts? n).map fun p => .ld d p.1 p.2
+      else if u = "STORE:64" then (cellParts? d).map fun p => .st p.1 p.2 n
+      else if u = "LEA:64" then (cellParts? n).map fun p => .lea d p.1 p.2
+      else if u = "MOV:64" then
         match cellParts? d with
         | some p => some (.st p.1 p.2 n)
         | none => (cellParts? n).map fun p => .ld d p.1 p.2
@@ -740,7 +743,8 @@ theorem fstepA_ldm (frame : String → Option (BitVec 64)) {D n B : String} {off
     fstepA frame (.Lopn [.reg D] "LOAD:64" [.reg n], .reg none) sa zf
       = some ({ sa with reg := (sa.reg.setReg D
           (read64 sa.mem (p + BitVec.ofNat 64 off))).nextPc }, zf) := by
-  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB]
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOAD:64".toList)]
 
 /-- **The cell store.** `STORE:64 n, S`, `n` the cell `[B + off]`, writes the value of `S`
     to the address in `B` plus `off`. -/
@@ -751,7 +755,8 @@ theorem fstepA_stm (frame : String → Option (BitVec 64)) {n S B : String} {off
       = some ({ sa with
           reg := sa.reg.nextPc
           mem := write64 sa.mem (p + BitVec.ofNat 64 off) v }, zf) := by
-  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB, hS]
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB, hS,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STORE:64".toList)]
 
 /-- **The address of a cell.** `LEA:64 D, n`, `n` the cell `[B + off]`, writes the address in
     `B` plus `off` to `D`; the memory and the flags are unchanged. -/
@@ -760,7 +765,8 @@ theorem fstepA_lea (frame : String → Option (BitVec 64)) {D n B : String} {off
     (hB : sa.reg.getW B 64 = some p) (zf : Bool) :
     fstepA frame (.Lopn [.reg D] "LEA:64" [.reg n], .reg none) sa zf
       = some ({ sa with reg := (sa.reg.setReg D (p + BitVec.ofNat 64 off)).nextPc }, zf) := by
-  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB]
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LEA:64".toList)]
 
 /-- **The move out of a cell.** `MOV:64 D, n`, `n` the cell `[B + off]` and `D` no cell name,
     writes the word at the address in `B` plus `off` to `D`. -/
@@ -770,7 +776,8 @@ theorem fstepA_movLdm (frame : String → Option (BitVec 64)) {D n B : String} {
     fstepA frame (.Lopn [.reg D] "MOV:64" [.reg n], .reg none) sa zf
       = some ({ sa with reg := (sa.reg.setReg D
           (read64 sa.mem (p + BitVec.ofNat 64 off))).nextPc }, zf) := by
-  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hD, hB]
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hD, hB,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOV:64".toList)]
 
 /-- **The move into a cell.** `MOV:64 n, S`, `n` the cell `[B + off]`, writes the value of `S`
     to the address in `B` plus `off`. -/
@@ -781,7 +788,8 @@ theorem fstepA_movStm (frame : String → Option (BitVec 64)) {n S B : String} {
       = some ({ sa with
           reg := sa.reg.nextPc
           mem := write64 sa.mem (p + BitVec.ofNat 64 off) v }, zf) := by
-  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB, hS]
+  simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB, hS,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOV:64".toList)]
 
 /-- **The constant-index store.** `STOREIMM d, [B, V, #k]` at the tag `.storeImm 64 n` with
     `k < n` writes the value of `V` to the address in `B` plus `8 k`. -/
@@ -1078,7 +1086,9 @@ theorem load_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : Str
       obtain rfl := Option.some.inj harr'
       have hvia : sa.reg.getW idx 64 = some vi := by rw [← hrel.regs.getW hidx, hvi]
       simp only [loadA, runStraightA, fstepA_reload frame scr q a hq, Option.bind_some]
-      simp only [fstepA, loadIdxA?, if_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
+      simp only [fstepA, loadIdxA?,
+        X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList),
+        if_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
         LstateN.getW_setReg_other _ _ _ _ _ hidx, hvia, Option.bind_some]
       refine ⟨_, rfl, ?_⟩
       · refine ⟨?_, ?_, ?_, hrel.flags⟩
@@ -1128,7 +1138,9 @@ theorem store_sim {L : Layout} {frame : String → Option (BitVec 64)} {scr : St
         have hvia : sa.reg.getW idx 64 = some vi := by rw [← hrel.regs.getW hidx, hvi]
         have hvva : sa.reg.getW val 64 = some vv := by rw [← hrel.regs.getW hval, hvv]
         simp only [storeA, runStraightA, fstepA_reload frame scr q a hq, Option.bind_some]
-        simp only [fstepA, storeIdxA?, if_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
+        simp only [fstepA, storeIdxA?,
+          X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STOREIDX".toList),
+          if_true, LstateN.getW_nextPc, LstateN.getW_setReg_same,
           LstateN.getW_setReg_other _ _ _ _ _ hidx, LstateN.getW_setReg_other _ _ _ _ _ hval,
           hvia, hvva, Option.bind_some]
         refine ⟨_, rfl, ?_⟩

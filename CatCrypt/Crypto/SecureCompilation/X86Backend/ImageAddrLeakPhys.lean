@@ -287,7 +287,8 @@ theorem instrLeakA_ldm (frame : String → Option (BitVec 64)) {D n B : String} 
     (hB : sa.reg.getW B 64 = some p) :
     instrLeakA frame (.Lopn [.reg D] "LOAD:64" [.reg n], .reg none) sa
       = [evA (p + BitVec.ofNat 64 off)] := by
-  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB]
+  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOAD:64".toList)]
 
 /-- The cell store `STORE:64 n, S`, `n` the cell `[B + off]`, accesses the address in `B`
     plus `off`. -/
@@ -296,7 +297,8 @@ theorem instrLeakA_stm (frame : String → Option (BitVec 64)) {n S B : String} 
     (hB : sa.reg.getW B 64 = some p) :
     instrLeakA frame (.Lopn [.reg n] "STORE:64" [.reg S], .reg none) sa
       = [evA (p + BitVec.ofNat 64 off)] := by
-  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB]
+  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STORE:64".toList)]
 
 /-- The move `MOV:64 n, S` into the cell `n = [B + off]` accesses the address in `B` plus
     `off`. -/
@@ -305,13 +307,15 @@ theorem instrLeakA_stv (frame : String → Option (BitVec 64)) {n S B : String} 
     (hB : sa.reg.getW B 64 = some p) :
     instrLeakA frame (.Lopn [.reg n] "MOV:64" [.reg S], .reg none) sa
       = [evA (p + BitVec.ofNat 64 off)] := by
-  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB]
+  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn, hB,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOV:64".toList)]
 
 /-- The address `LEA:64 D, n` of a cell `n` accesses no memory. -/
 theorem instrLeakA_lea (frame : String → Option (BitVec 64)) {D n B : String} {off : Nat}
     (hn : cellParts? n = some (B, off)) (sa : LstateA) :
     instrLeakA frame (.Lopn [.reg D] "LEA:64" [.reg n], .reg none) sa = [] := by
-  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn]
+  simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LEA:64".toList)]
 
 /-- The indexed load `LOADIDX d, (b, idx, sc)` accesses `b + sc · idx`. -/
 theorem instrLeakA_ldx (frame : String → Option (BitVec 64)) (d b idx : String) (sc : Nat)
@@ -319,7 +323,8 @@ theorem instrLeakA_ldx (frame : String → Option (BitVec 64)) (d b idx : String
     (hi : sa.reg.getW idx 64 = some vi) :
     instrLeakA frame (.Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc], .load w n) sa
       = [evA (p + BitVec.ofNat 64 (sc * vi.toNat))] := by
-  simp [instrLeakA, loadIdxA?, hb, idxVal_of_getW hi]
+  simp [instrLeakA, loadIdxA?, hb, idxVal_of_getW hi,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LOADIDX".toList)]
 
 /-- The indexed store `STOREIDX _, (b, idx, sc), v` accesses `b + sc · idx`. -/
 theorem instrLeakA_stx (frame : String → Option (BitVec 64)) (d b idx v : String) (sc : Nat)
@@ -327,7 +332,8 @@ theorem instrLeakA_stx (frame : String → Option (BitVec 64)) (d b idx v : Stri
     (hi : sa.reg.getW idx 64 = some vi) :
     instrLeakA frame (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v], .store w n) sa
       = [evA (p + BitVec.ofNat 64 (sc * vi.toNat))] := by
-  simp [instrLeakA, storeIdxA?, hb, idxVal_of_getW hi]
+  simp [instrLeakA, storeIdxA?, hb, idxVal_of_getW hi,
+    LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "STOREIDX".toList)]
 
 /-- A move from the frame word `q` accesses the frame address of `q`. -/
 theorem instrLeakA_slotLoad (frame : String → Option (BitVec 64)) {x : LinstrR} {d q : String}
@@ -516,7 +522,8 @@ theorem step_leak {frame : String → Option (BitVec 64)}
         rw [hrel.regs idx hidx]
       obtain rfl := icase_ldx hc
       rw [imgInstr_ldx slotArr body _ hacc]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, loadIdxA?, hp, instrLeakF,
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+        tagA, loadIdxA?, hp, instrLeakF,
         flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv]
       norm_cast
   | stx d b idx v =>
@@ -530,24 +537,28 @@ theorem step_leak {frame : String → Option (BitVec 64)}
         rw [hrel.regs idx hidx]
       obtain rfl := icase_stx hc
       rw [imgInstr_stx slotArr body _ hacc]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, storeIdxA?, hp, instrLeakF,
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+        tagA, storeIdxA?, hp, instrLeakF,
         flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv]
       norm_cast
   | sload d q =>
       obtain ⟨hm, -, hq⟩ := icase_sload hc
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
       rcases slotMov?_cases hm with rfl | rfl <;>
-        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, hm, ha]
+        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+          tagA, hm, ha]
   | sstore q S =>
       obtain ⟨hm, hS, hq⟩ := icase_sstore hc
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
       rcases slotMov?_cases hm with rfl | rfl <;>
-        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, hm, ha, hS]
+        simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+          tagA, hm, ha, hS]
   | scmp d y q =>
       obtain ⟨hm, hq⟩ := icase_scmp hc
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
       obtain rfl := slotCmp?_eq hm
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, slotMov?, slotCmp?, ha]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+        tagA, slotMov?, slotCmp?, ha]
   | zarr b n w =>
       rw [hc] at hg
       simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
@@ -559,7 +570,8 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hA hbf
       obtain rfl := icase_zarr hc
       rw [imgInstr_zeroArr slotArr body _ hA]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, zeroTagA, zeroArrA?, hp]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+        tagA, zeroTagA, zeroArrA?, hp]
   | simm d b v j =>
       rw [hc] at hg
       simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
@@ -571,7 +583,8 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hA hbf
       obtain rfl := icase_simm hc
       rw [imgInstr_storeImm slotArr body _ hA]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, tagA, storeImmTagA, storeImmStruct?, hp,
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+        tagA, storeImmTagA, storeImmStruct?, hp,
         storeImmAddr?_of_lt _ (Nat.lt_succ_self j)]
   | reg =>
       rw [hc] at hg

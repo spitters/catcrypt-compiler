@@ -588,22 +588,16 @@ theorem symStep_immMov {i : LinstrRM} {r : String} (h : immMov? i = some r) :
   have hc : ∀ cd, ∃ w, ∀ R, symCast (.Lopn [.reg r] opn [.imm n], cd) R =
       .set r (.immW w n) [] := by
     intro cd
-    by_cases ho : opn = "MOV"
-    · subst ho
-      cases cd with
+    by_cases ho : JasminLsemCast.isMovImmMnem opn = true
+    · cases cd with
       | none =>
-          exact ⟨widthFromTag "MOV", fun R => by
-            simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, hd]⟩
+          refine ⟨widthFromTag opn, fun R => ?_⟩
+          simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, if_pos ho, hd]
       | some w' =>
-          exact ⟨w', fun R => by
-            simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?]⟩
+          refine ⟨w', fun R => ?_⟩
+          simp only [symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, if_pos ho]
     · have hmi : JasminLsemCast.movImmStruct? (.Lopn [.reg r] opn [.imm n]) = none := by
-        unfold JasminLsemCast.movImmStruct?
-        split
-        · rename_i heq
-          injection heq with _ h2 _
-          exact absurd h2 ho
-        · rfl
+        simp only [JasminLsemCast.movImmStruct?, if_neg ho]
       exact ⟨widthFromTag opn, fun R => by simp only [symCast, JasminLsemCast.castStruct?, hmi, hd]⟩
   obtain ⟨w, hm'⟩ : ∃ w, ∀ ss : SSt, symMem (.Lopn [.reg r] opn [.imm n], tag) ss =
       .ok (ss.setR r (.immW w n)) [] := by

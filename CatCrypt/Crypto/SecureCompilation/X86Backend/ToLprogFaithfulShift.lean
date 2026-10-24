@@ -161,14 +161,13 @@ theorem ShiftKind.immShiftAtt_mnem (k : ShiftKind) :
 /-- The width tag strips off the exported shift mnemonic exactly, at every width
     and every count other than `64`. -/
 theorem stripWidthTag_countTag {m : String} (hm : ShiftBase m) (w : Nat) {n : Nat}
-    (hn : n ≠ 64) :
+    (_hn : n ≠ 64) :
     stripWidthTag (withWidthTag w (m ++ ":" ++ toString n)) = m ++ ":" ++ toString n := by
-  unfold withWidthTag
-  split
-  · exact stripWidthTag_append64 _
-  · unfold stripWidthTag
-    rw [hasSuffix_countTag_eq_false m hn]
-    rfl
+  apply stripWidthTag_withWidthTag_of_caret_free
+  have hm' : '^' ∉ m.toList := by rcases hm with rfl | rfl | rfl | rfl <;> decide
+  have hn' := (sep_not_mem_toString n).2
+  simp only [String.toList_append, List.mem_append, not_or]
+  exact ⟨⟨hm', by decide⟩, hn'⟩
 
 /-- A string starts with any of its own prefixes. -/
 theorem hasPrefix_append_self (p t : String) : hasPrefix (p ++ t) p = true := by
@@ -294,8 +293,7 @@ theorem applyOpn_countTag {w : Nat} (k : ShiftKind) (wOp : Nat) {n : Nat} (hn : 
     (a : BitVec w) :
     applyOpn (stripWidthTag (withWidthTag wOp (k.mnem ++ ":" ++ toString n))) [a]
       = some (k.val n a) := by
-  have hp := parseImmShiftMnem_untagged k.mnem (ShiftBase.no_colon k.shiftBase) n
-    (hasSuffix_countTag_eq_false _ hn)
+  have hp := parseImmShiftMnem_untagged (m := k.mnem) (by cases k <;> decide +kernel) n
   rw [k.immShiftAtt_mnem, Option.map_some] at hp
   rw [applyOpn_countTag_of_parse k.shiftBase wOp hn k.att n 32 hp]
   cases k <;> simp [ShiftKind.att, ShiftKind.val]

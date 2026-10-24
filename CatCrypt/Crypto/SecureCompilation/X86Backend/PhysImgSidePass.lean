@@ -992,24 +992,30 @@ theorem cellBaseFreeB_reallocBody {abi : IsaAbi} (res : List String)
 /-- A mnemonic whose ABI-stripped form is `ANDN` has no flag-only base. -/
 theorem flagOnly_of_stripAbiTag_andn {opn : String} (h : stripAbiTag opn = "ANDN") :
     x86Data.flagOnly (tieBase opn) = false := by
-  have key : tieBase opn ≠ "CMP" ∧ tieBase opn ≠ "TEST" := by
+  have hp : ['A', 'N', 'D', 'N'] <+: opn.toList := by
     unfold stripAbiTag at h
     split at h
-    · unfold tieBase; rw [h]; decide
+    · have hl : opn.toList.takeWhile (· != ':') = ['A', 'N', 'D', 'N'] := by
+        simpa using congrArg String.toList h
+      exact hl ▸ List.takeWhile_prefix _
     · unfold stripWidthTag at h
       split at h
-      · have hl : opn.toList.dropLast.dropLast.dropLast = ['A', 'N', 'D', 'N'] := by
-          have := congrArg String.toList h
-          simpa using this
-        have hp : ['A', 'N', 'D', 'N'] <+: opn.toList := hl ▸
-          ((List.dropLast_prefix _).trans ((List.dropLast_prefix _).trans
+      · have hl : opn.toList.takeWhile (· != '^') = ['A', 'N', 'D', 'N'] := by
+          simpa using congrArg String.toList h
+        exact hl ▸ List.takeWhile_prefix _
+      · split at h
+        · have hl : opn.toList.dropLast.dropLast.dropLast = ['A', 'N', 'D', 'N'] := by
+            have := congrArg String.toList h
+            simpa using this
+          exact hl ▸ ((List.dropLast_prefix _).trans ((List.dropLast_prefix _).trans
             (List.dropLast_prefix _)))
-        obtain ⟨t, ht⟩ := hp
-        have ht' : (tieBase opn).toList =
-            'A' :: 'N' :: 'D' :: 'N' :: t.takeWhile (· != ':') := by
-          unfold tieBase; rw [String.toList_ofList, ← ht]; rfl
-        constructor <;> intro he <;> rw [he] at ht' <;> simp at ht'
-      · subst h; decide
+        · subst h; exact List.prefix_refl _
+  have key : tieBase opn ≠ "CMP" ∧ tieBase opn ≠ "TEST" := by
+    obtain ⟨t, ht⟩ := hp
+    have ht' : (tieBase opn).toList =
+        'A' :: 'N' :: 'D' :: 'N' :: t.takeWhile (fun c => c != ':' && c != '^') := by
+      unfold tieBase; rw [String.toList_ofList, ← ht]; simp [List.takeWhile]
+    constructor <;> intro he <;> rw [he] at ht' <;> simp at ht'
   simp [key.1, key.2]
 
 /-- A re-allocated fragment instruction of a tied input is tied: the destination location `c`
@@ -1196,9 +1202,11 @@ theorem legalizeInstr_noIdxFst (ok : Bool) (i : Linstr) (I : IsaData) :
     · simp
   · simp
 
-/-- The instruction is an operation under the mnemonic `o` or a move mnemonic. -/
+/-- The instruction is an operation under the mnemonic `o`, a move mnemonic, or the move
+    `MOV` tagged at a width `w`. -/
 def MnOf (o : String) (r : LinstrR) : Prop :=
-  ∃ ds o' ss, r = .Lopn ds o' ss ∧ (o' = o ∨ o' ∈ PhysImgEmit.movMnems)
+  ∃ ds o' ss, r = .Lopn ds o' ss ∧
+    (o' = o ∨ o' ∈ PhysImgEmit.movMnems ∨ ∃ w, o' = withWidthTag w "MOV")
 
 /-- Every instruction of the two-address legalisation of an operation under `o` is an
     operation under `o` or a move mnemonic. -/
@@ -1206,10 +1214,13 @@ theorem legalizeInstr_mnOf (ok : Bool) (i : Linstr) {ds : List LOperand} {o : St
     {ss : List LOperand} (hi : i.li_i = .Lopn ds o ss) :
     ∀ r ∈ legalizeInstr ok i x86Data, MnOf o r.li_i := by
   have hself : MnOf o i.li_i := ⟨ds, o, ss, hi, Or.inl rfl⟩
-  have hmov : ∀ m, TwoAddrLegalize.movFor o = some m → m ∈ PhysImgEmit.movMnems := by
+  have hmov : ∀ m, TwoAddrLegalize.movFor o = some m →
+      m ∈ PhysImgEmit.movMnems ∨ ∃ w, m = withWidthTag w "MOV" := by
     intro m hm
-    unfold TwoAddrLegalize.movFor at hm
-    split_ifs at hm <;> cases hm <;> decide +kernel
+    rcases TwoAddrLegalize.movFor_cases hm with ⟨-, rfl⟩ | ⟨-, rfl⟩ | ⟨w, -, rfl⟩
+    · exact Or.inl (by decide +kernel)
+    · exact Or.inl (by decide +kernel)
+    · exact Or.inr ⟨w, rfl⟩
   intro r hr
   unfold legalizeInstr at hr
   split at hr
@@ -1220,7 +1231,7 @@ theorem legalizeInstr_mnOf (ok : Bool) (i : Linstr) {ds : List LOperand} {o : St
     · split at hr
       · simp only [List.mem_singleton] at hr; subst hr; exact hself
       · rename_i m hm
-        have hm' : m ∈ PhysImgEmit.movMnems := hmov m hm
+        have hm' := hmov m hm
         split at hr
         · split at hr
           · simp only [List.mem_singleton] at hr; subst hr; exact ⟨_, _, _, rfl, Or.inl rfl⟩
@@ -1242,7 +1253,7 @@ theorem legalizeInstr_mnOf (ok : Bool) (i : Linstr) {ds : List LOperand} {o : St
                       first
                       | exact Or.inl rfl
                       | exact Or.inr hm'
-                      | exact Or.inr (by simp [PhysImgEmit.movMnems])⟩
+                      | exact Or.inr (Or.inl (by simp [PhysImgEmit.movMnems]))⟩
                 · simp only [List.mem_singleton] at hr; subst hr; exact hself
     · simp only [List.mem_singleton] at hr; subst hr; exact hself
   · simp only [List.mem_singleton] at hr; subst hr; exact hself
@@ -1282,8 +1293,10 @@ theorem cellBaseFreeB_twoAddrBody {b : Lcmd} (h : cellBaseFreeB b = true) :
       rcases ho with rfl | ho
       · rw [hil] at hai
         simpa [isArrImmB] using hai
-      · simp only [PhysImgEmit.movMnems, List.mem_cons, List.not_mem_nil, or_false] at ho
-        rcases ho with rfl | rfl | rfl | rfl | rfl <;> simp [isArrImmB]
+      · rcases ho with ho | ⟨w, rfl⟩
+        · simp only [PhysImgEmit.movMnems, List.mem_cons, List.not_mem_nil, or_false] at ho
+          rcases ho with rfl | rfl | rfl | rfl | rfl <;> simp [isArrImmB]
+        · simp (disch := decide +kernel) [isArrImmB, withWidthTag_ne_of_tagSepFree]
     | _ =>
       have : ∀ ok, legalizeInstr ok i x86Data = [i] := fun ok => by unfold legalizeInstr; rw [hil]
       rw [this, List.mem_singleton] at hr

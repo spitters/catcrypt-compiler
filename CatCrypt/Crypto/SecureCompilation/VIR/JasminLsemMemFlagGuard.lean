@@ -172,10 +172,10 @@ theorem copyQ_withWidthTag (w : Nat) {m : String} {c₁ c₂ : Char} {t : List C
     (hm : m.toList = c₁ :: c₂ :: t)
     (h : ¬ (c₁ = 'M' ∧ c₂ = 'O') ∧ ¬ (c₁ = 'L' ∧ c₂ = 'O') ∧ ¬ (c₁ = 'S' ∧ c₂ = 'T')) :
     copyQ (withWidthTag w m) = false := by
-  unfold withWidthTag
-  split
-  · exact copyQ_eq_false_of_toList (by rw [String.toList_append, hm]; rfl) h
-  · exact copyQ_eq_false_of_toList hm h
+  by_cases hw : w = 64
+  · subst hw
+    exact copyQ_eq_false_of_toList (by rw [toList_withWidthTag_64, hm]; rfl) h
+  · exact copyQ_eq_false_of_toList (by rw [toList_withWidthTag_of_ne hw, hm]; rfl) h
 
 /-- The emitted register-copy recognizer: `Lopn [.reg dst] opn [.reg src]` with
     stripped mnemonic `"MOV"` — the accumulator seed (`MOV acc, a<k>`), runtime

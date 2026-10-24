@@ -80,9 +80,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
 
 /-! ## 1. Mnemonics the flag machine does not read -/
 
-/-- The first characters of the mnemonics the x86 flag machine reads, and the separator
-    `:` of a mnemonic. -/
-def usedHeads : List Char := ['A', 'C', 'L', 'M', 'N', 'O', 'S', 'T', 'X', 'Z', ':']
+/-- The first characters of the mnemonics the x86 flag machine reads, and the separators
+    `:` and `^` of a mnemonic. -/
+def usedHeads : List Char := ['A', 'C', 'L', 'M', 'N', 'O', 'S', 'T', 'X', 'Z', ':', '^']
 
 /-- A mnemonic whose first character is outside `usedHeads`. -/
 def FreshMnem (opn : String) : Prop :=
@@ -102,7 +102,14 @@ theorem FreshMnem.ne {opn : String} (h : FreshMnem opn) (lit : String)
     `:64` removed is a mnemonic of `FreshMnem`. -/
 theorem FreshMnem.strip {opn : String} (h : FreshMnem opn) : FreshMnem (stripWidthTag opn) := by
   obtain ⟨c, t, ht, hc⟩ := h
+  have hca : (c != '^') = true := by
+    simp only [bne_iff_ne, ne_eq]
+    rintro rfl
+    exact hc (by decide)
   unfold stripWidthTag
+  split
+  · refine ⟨c, t.takeWhile (fun x => x != '^'), ?_, hc⟩
+    rw [String.toList_ofList, ht, List.takeWhile_cons_of_pos (p := fun x => x != '^') hca]
   split
   · next hs =>
     unfold hasSuffix at hs
@@ -130,11 +137,7 @@ theorem applyOpnN_none_of_fresh {w : Nat} {m : String} (h : FreshMnem m)
 
 /-- A mnemonic of `FreshMnem` is no count-tagged immediate shift. -/
 theorem immShiftMnem?_fresh {opn : String} (h : FreshMnem opn) : immShiftMnem? opn = none := by
-  have hcore : FreshMnem (if hasSuffix opn ":64" then stripWidthTag opn else opn) := by
-    split
-    · exact h.strip
-    · exact h
-  obtain ⟨c, r, hr, hc⟩ := hcore
+  obtain ⟨c, r, hr, hc⟩ := h.strip
   obtain ⟨g, gs, hg⟩ := splitChars_head c (fun e => hc (e ▸ by decide)) r
   unfold immShiftMnem?
   simp only [hr, hg]
@@ -219,7 +222,8 @@ theorem lsemStepCast_fresh (h : FreshMnem opn) (cd : Option Nat) (s : LstateN) :
     split
     · next heq =>
       cases heq
-      exact absurd rfl (h.ne "MOV" (by decide))
+      exact if_neg (fun hc => h.strip.ne "MOV" (by decide)
+        (JasminLsemCast.stripWidthTag_of_isMovImm hc))
     · rfl
   simp only [lsemStepCast, e1, e2, lsemStepMC_fresh h]
 

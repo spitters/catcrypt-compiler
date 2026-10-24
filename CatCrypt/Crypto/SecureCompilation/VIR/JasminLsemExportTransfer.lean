@@ -333,23 +333,23 @@ def isShiftBase (m : String) : Bool := m == "SHR" || m == "SHL" || m == "SAR"
 /-- The count-in-mnemonic rendering of a structured shift mnemonic at count `n`,
     keeping the width tag of the structured form. -/
 def shiftCountMnem (opn : String) (n : Nat) : String :=
-  if hasSuffix opn ":64" then withWidthTag 64 (stripWidthTag opn ++ ":" ++ toString n)
-  else opn ++ ":" ++ toString n
+  match wireWidth? opn with
+  | some w => withWidthTag w (stripWidthTag opn ++ ":" ++ toString n)
+  | none => opn ++ ":" ++ toString n
+
+/-- A structured shift base carries no width-tag separator. -/
+theorem tagSepFree_shiftBase {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR") :
+    tagSepFree m = true := by
+  rcases hm with rfl | rfl | rfl <;> decide +kernel
 
 /-- `shiftCountMnem` of a width-tagged shift base is the width-tagged
     count-in-mnemonic rendering of the same base. -/
 theorem shiftCountMnem_withWidthTag {m : String}
     (hm : m = "SHR" ∨ m = "SHL" ∨ m = "SAR") (w n : Nat) :
     shiftCountMnem (withWidthTag w m) n = withWidthTag w (m ++ ":" ++ toString n) := by
+  have hs := tagSepFree_shiftBase hm
   unfold shiftCountMnem
-  by_cases hw : w = 64
-  · subst hw
-    have h64 : withWidthTag 64 m = m ++ ":64" := rfl
-    rw [h64, if_pos (JasminImmShiftMnem.hasSuffix_append m ":64"),
-      JasminImmShiftMnem.stripWidthTag_append64]
-  · have hnt : ∀ s : String, withWidthTag w s = s := by
-      intro s; simp only [withWidthTag, if_neg hw]
-    rw [hnt, hnt, if_neg (by rcases hm with rfl | rfl | rfl <;> decide)]
+  rw [wireWidth?_withWidthTag w hs, stripWidthTag_withWidthTag w hs]
 
 /-- `isShiftBase` accepts the stripped width-tagged shift bases. -/
 theorem isShiftBase_stripWidthTag {m : String}
@@ -451,13 +451,7 @@ theorem immShiftMnem?_shiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ 
     · exact Or.inr (Or.inl rfl)
     · exact Or.inl rfl
     · exact Or.inr (Or.inr rfl)
-  by_cases h64 : w = 64
-  · subst h64
-    exact JasminImmShiftMnem.immShiftMnem?_withWidthTag64 hm' n
-  · have hnt : withWidthTag w (m ++ ":" ++ toString n) = m ++ ":" ++ toString n := by
-      simp only [withWidthTag, if_neg h64]
-    rw [hnt]
-    exact JasminImmShiftMnem.immShiftMnem?_untagged hm' n (hw.resolve_left h64)
+  exact JasminImmShiftMnem.immShiftMnem?_withWidthTag hm' w n
 
 /-- The structured two-source wire of an immediate shift, reduced to the
     shift-aware step `lsemStepSh` over the register half. -/
@@ -466,21 +460,28 @@ theorem fstepF_immShiftStruct {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ m =
     fstepF (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n], MemTag.reg none) s zf
       = (lsemStepSh (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n]) s.reg).map
           (fun r => ({ s with reg := r }, zf)) := by
-  obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w m 'S'
-    (by rcases hm with rfl | rfl | rfl <;> rfl) (by decide) (by decide)
-  have h3 : copyQ (withWidthTag w m) = false := by
-    rcases hm with rfl | rfl | rfl <;> (unfold withWidthTag; split <;> decide)
-  obtain ⟨_, hc, hmv⟩ := lopn_plain [LOperand.reg dst] (withWidthTag w m)
-    [LOperand.reg src, LOperand.imm n] (.reg none) h1 h2 h3
+  have hs := tagSepFree_shiftBase hm
+  have hne : ∀ L : String, stripWidthTag L ≠ m → withWidthTag w m ≠ L :=
+    fun _ hL => withWidthTag_ne_of_strip_ne w hs hL
+  obtain ⟨_, hc, hmv⟩ := lopn_plain_withWidthTag [LOperand.reg dst] w
+    [LOperand.reg src, LOperand.imm n] (.reg none) hs
+    (by rcases hm with rfl | rfl | rfl <;> decide) (by rcases hm with rfl | rfl | rfl <;> decide)
+    (by rcases hm with rfl | rfl | rfl <;> decide) (by rcases hm with rfl | rfl | rfl <;> decide)
   have ha : aluFlagOp? (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
       MemTag.reg none) = none := by
-    rcases hm with rfl | rfl | rfl <;> simp only [aluFlagOp?, withWidthTag] <;> split <;> simp
+    simp only [aluFlagOp?]
+    split_ifs <;> first | rfl | (rename_i h; exact absurd h (hne _ (by
+      rcases hm with rfl | rfl | rfl <;> decide +kernel)))
   have hk : carryArgs? (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
       MemTag.reg none) = none := by
-    rcases hm with rfl | rfl | rfl <;> simp only [carryArgs?, withWidthTag] <;> split <;> simp
+    simp only [carryArgs?]
+    split_ifs <;> first | rfl | (rename_i h; exact absurd h (hne _ (by
+      rcases hm with rfl | rfl | rfl <;> decide +kernel)))
   have hw : wideArgs? (.Lopn [.reg dst] (withWidthTag w m) [.reg src, .imm n],
       MemTag.reg none) = none := by
-    rcases hm with rfl | rfl | rfl <;> simp only [wideArgs?, withWidthTag] <;> split <;> simp
+    simp only [wideArgs?]
+    split_ifs <;> first | rfl | (rename_i h; exact absurd h (hne _ (by
+      rcases hm with rfl | rfl | rfl <;> decide +kernel)))
   unfold fstepF
   rw [hc, hmv]
   simp only []
