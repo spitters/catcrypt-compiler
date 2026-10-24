@@ -174,7 +174,7 @@ def keyExpansion (key : Key128) : Fin 176 → UInt8 :=
   let init : Fin 176 → UInt8 := fun i =>
     if h : i.val < 16 then key ⟨i.val, h⟩ else 0
   -- Expand words 4..43 (each word is 4 bytes)
-  Fin.foldl 40 (init := init) fun (expanded : Fin 176 → UInt8) (wi : Fin 40) =>
+  Fin.foldl 40 (fun (expanded : Fin 176 → UInt8) (wi : Fin 40) =>
     let j := wi.val + 4  -- word index (4..43)
     let prev := getWord expanded ⟨j - 1, by have := wi.isLt; omega⟩
     let prevNk := getWord expanded ⟨j - 4, by have := wi.isLt; omega⟩
@@ -189,9 +189,9 @@ def keyExpansion (key : Key128) : Fin 176 → UInt8 :=
     let newWord : Fin 4 → UInt8 := fun i => prevNk i ^^^ temp i
     -- Write the new word into the expanded key
     -- j = wi.val + 4, so j ∈ [4, 43], and 4*43 + 3 = 175 < 176
-    Fin.foldl 4 (init := expanded) fun (exp : Fin 176 → UInt8) (bi : Fin 4) =>
+    Fin.foldl 4 (fun (exp : Fin 176 → UInt8) (bi : Fin 4) =>
       let idx : Fin 176 := ⟨4 * j + bi.val, by have := wi.isLt; omega⟩
-      Function.update exp idx (newWord bi)
+      Function.update exp idx (newWord bi)) expanded) init
 
 /-- Extract round key `r` (0..10) from the expanded key. -/
 def roundKey (expanded : Fin 176 → UInt8) (r : Fin 11) : Key128 := fun i =>
@@ -215,8 +215,8 @@ def aes128_encrypt (key : Key128) (block : State) : State :=
   let expanded := keyExpansion key
   let s0 := addRoundKey block (roundKey expanded ⟨0, by omega⟩)
   -- Rounds 1..9
-  let s9 := Fin.foldl 9 (init := s0) fun s (r : Fin 9) =>
-    aesRound s (roundKey expanded ⟨r.val + 1, by omega⟩)
+  let s9 := Fin.foldl 9 (fun s (r : Fin 9) =>
+    aesRound s (roundKey expanded ⟨r.val + 1, by omega⟩)) s0
   -- Final round 10
   aesFinalRound s9 (roundKey expanded ⟨10, by omega⟩)
 

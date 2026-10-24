@@ -49,7 +49,7 @@ theorem foldl_transfer {α : Type} {β : Type} (r : α → β) (s : β → α)
 /-- The 64 SHA-256 rounds run over a message schedule `w`, starting from `state`.
     Round `t` uses `w t` and the round constant `kConst t`. -/
 def compressRounds (w : Fin 64 → UInt32) (state : State256) : State256 :=
-  Fin.foldl 64 (init := state) fun s t => compressRound s (w t) (kConst t.val)
+  Fin.foldl 64 (fun s t => compressRound s (w t) (kConst t.val)) state
 
 unseal compress compressRound in
 /-- **`compress` is the 64-fold of `compressRound` plus the feed-forward.**

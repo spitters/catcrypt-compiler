@@ -75,8 +75,8 @@ def zeroBlock : Block := 0#128
 
 /-- Pack a 16-byte little-endian array into a `BitVec 128`. -/
 def fromBytes (b : Fin 16 → UInt8) : Block :=
-  Fin.foldl 16 (init := (0#128 : BitVec 128)) fun acc (i : Fin 16) =>
-    acc ||| (BitVec.ofNat 128 (b i).toNat <<< (8 * i.val))
+  Fin.foldl 16 (fun acc (i : Fin 16) =>
+    acc ||| (BitVec.ofNat 128 (b i).toNat <<< (8 * i.val))) (0#128 : BitVec 128)
 
 /-- Unpack a `BitVec 128` into a 16-byte little-endian array. -/
 def toBytes (v : Block) : Fin 16 → UInt8 := fun i =>

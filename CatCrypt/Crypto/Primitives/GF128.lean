@@ -53,8 +53,8 @@ def gf128_step (z v : BitVec 128) (xi : Bool) : BitVec 128 × BitVec 128 :=
     Multiplies `a` and `b` in GF(2^128) using the bit-reflected
     reduction polynomial. Iterates MSB-first over the bits of `a`. -/
 def gf128_mul (a b : BitVec 128) : BitVec 128 :=
-  let acc := Fin.foldl 128 (init := (0#128, b)) fun (z, v) (i : Fin 128) =>
-    gf128_step z v (a.getLsbD (127 - i.val))
+  let acc := Fin.foldl 128 (fun ((z, v) : BitVec 128 × BitVec 128) (i : Fin 128) =>
+    gf128_step z v (a.getLsbD (127 - i.val))) (0#128, b)
   acc.1
 
 /-- XOR two 128-bit blocks (convenience wrapper). -/

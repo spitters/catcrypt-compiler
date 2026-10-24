@@ -156,7 +156,7 @@ def clmul64Step (a : BitVec 64) (b : BitVec 128) (acc : BitVec 128) (i : Nat) : 
     schoolbook product the x86 `PCLMULQDQ` model computes). -/
 def clmul64 (a b : BitVec 64) : BitVec 128 :=
   let b128 : BitVec 128 := b.setWidth 128
-  Fin.foldl 64 (init := (0 : BitVec 128)) (fun acc i => clmul64Step a b128 acc i.val)
+  Fin.foldl 64 (fun acc i => clmul64Step a b128 acc i.val) (0 : BitVec 128)
 
 /-- `PMULL Vd.1Q, Vn.1D, Vm.1D`: carry-less product of the **low** 64-bit halves
     of `Vn` and `Vm` (the GF(2^128) GHASH multiply, low ⊗ low). -/

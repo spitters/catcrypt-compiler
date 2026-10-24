@@ -111,8 +111,8 @@ def keccakRound (a : KState) (rc : BitVec 64) : KState :=
 
 /-- Keccak-f[1600]: 24 rounds of the permutation. -/
 def keccakF (a : KState) : KState :=
-  Fin.foldl 24 (init := a) fun s (r : Fin 24) =>
-    keccakRound s (roundConstant r.val)
+  Fin.foldl 24 (fun s (r : Fin 24) =>
+    keccakRound s (roundConstant r.val)) a
 
 /-! ## State ↔ Byte Conversion -/
 
@@ -120,9 +120,9 @@ def keccakF (a : KState) : KState :=
     Input is padded/truncated to 200 bytes. -/
 def bytesToState (bytes : List UInt8) : KState := fun x y =>
   let laneIdx := 8 * (5 * y.val + x.val)
-  Fin.foldl 8 (init := (0 : BitVec 64)) fun acc (i : Fin 8) =>
+  Fin.foldl 8 (fun acc (i : Fin 8) =>
     let byte := (bytes.getD (laneIdx + i.val) 0).toNat
-    acc ||| ((BitVec.ofNat 64 byte) <<< (8 * i.val))
+    acc ||| ((BitVec.ofNat 64 byte) <<< (8 * i.val))) (0 : BitVec 64)
 
 /-- Convert a Keccak state to a byte list (200 bytes, little-endian). -/
 def stateToBytes (s : KState) : List UInt8 :=

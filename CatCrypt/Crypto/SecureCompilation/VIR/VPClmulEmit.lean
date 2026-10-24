@@ -119,8 +119,8 @@ def polyMul64Step (a : BitVec 64) (b : BitVec 128) (acc : BitVec 128) (i : Nat) 
     `imm8`-selected 64-bit halves. -/
 def polyMul64 (a b : BitVec 64) : BitVec 128 :=
   let b128 : BitVec 128 := b.setWidth 128
-  Fin.foldl 64 (init := (0 : BitVec 128))
-    (fun acc i => polyMul64Step a b128 acc i.val)
+  Fin.foldl 64
+    (fun acc i => polyMul64Step a b128 acc i.val) (0 : BitVec 128)
 
 /-! ### Sanity: zero absorbs.
 

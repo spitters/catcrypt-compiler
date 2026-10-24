@@ -177,18 +177,18 @@ def signBit (b : BitVec 8) : BitVec 1 :=
     of the input, take bit 7 → produce a 16-bit bitmask with byte `i`'s
     sign bit at output bit position `i`. -/
 def vpmovmskb_lane128 (v : BitVec 128) : BitVec 16 :=
-  Fin.foldl 16 (init := (0 : BitVec 16))
+  Fin.foldl 16
     (fun acc k =>
       let sb : BitVec 1 := signBit (bv128Byte v k)
-      acc ||| (sb.setWidth 16 <<< k.val))
+      acc ||| (sb.setWidth 16 <<< k.val)) (0 : BitVec 16)
 
 /-- **Per-256-bit denotation of `VPMOVMSKB`.** For each of 32 bytes of
     the input, take bit 7 → produce a 32-bit bitmask. -/
 def vpmovmskb_lane256 (v : BitVec 256) : BitVec 32 :=
-  Fin.foldl 32 (init := (0 : BitVec 32))
+  Fin.foldl 32
     (fun acc k =>
       let sb : BitVec 1 := signBit (bv256Byte v k)
-      acc ||| (sb.setWidth 32 <<< k.val))
+      acc ||| (sb.setWidth 32 <<< k.val)) (0 : BitVec 32)
 
 /-! ## 4. Sanity properties of `vpcmpeqq_lane` -/
 
@@ -259,18 +259,18 @@ theorem vpcmpeqq_eq_lane (a b : BitVec 64) :
     accumulator over 16 input bytes — definitional. -/
 theorem vpmovmskb_eq_signmask (v : BitVec 128) :
     vpmovmskb_lane128 v =
-      Fin.foldl 16 (init := (0 : BitVec 16))
+      Fin.foldl 16
         (fun acc k =>
           let sb : BitVec 1 := signBit (bv128Byte v k)
-          acc ||| (sb.setWidth 16 <<< k.val)) := rfl
+          acc ||| (sb.setWidth 16 <<< k.val)) (0 : BitVec 16) := rfl
 
 /-- Same for the 256-bit / 32-byte VPMOVMSKB variant. -/
 theorem vpmovmskb_eq_signmask256 (v : BitVec 256) :
     vpmovmskb_lane256 v =
-      Fin.foldl 32 (init := (0 : BitVec 32))
+      Fin.foldl 32
         (fun acc k =>
           let sb : BitVec 1 := signBit (bv256Byte v k)
-          acc ||| (sb.setWidth 32 <<< k.val)) := rfl
+          acc ||| (sb.setWidth 32 <<< k.val)) (0 : BitVec 32) := rfl
 
 /-! ## 7. Alignment lemma — multi-lane VPCMPEQQ via the lane-map lemma
 

@@ -113,10 +113,10 @@ def stateOfBv (v : BitVec 128) : State := fun i => bv128Byte v i
 /-- Reassemble 16 `UInt8` bytes into a `BitVec 128` little-endian.
     Inverse of `stateOfBv`. -/
 def bvOfState (s : State) : BitVec 128 :=
-  Fin.foldl 16 (init := (0 : BitVec 128))
+  Fin.foldl 16
     (fun acc k =>
       let b : BitVec 8 := BitVec.ofNat 8 (s k).toNat
-      acc ||| (b.setWidth 128 <<< (8 * k.val)))
+      acc ||| (b.setWidth 128 <<< (8 * k.val))) (0 : BitVec 128)
 
 /-! ## 3. The packed denotation
 

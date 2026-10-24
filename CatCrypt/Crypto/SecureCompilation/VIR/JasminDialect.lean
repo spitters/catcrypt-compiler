@@ -239,8 +239,8 @@ def vByteOfW (v : BitVec 128) (k : Fin 16) : BitVec 8 :=
 /-- Reassemble 16 `BitVec 8` lanes into a `BitVec 128` little-endian. Copied from
     `Vec128Model.vPackBytes`. -/
 def vPackBytesW (bs : Fin 16 → BitVec 8) : BitVec 128 :=
-  Fin.foldl 16 (init := (0 : BitVec 128))
-    (fun acc k => acc ||| ((bs k).setWidth 128 <<< (8 * k.val)))
+  Fin.foldl 16
+    (fun acc k => acc ||| ((bs k).setWidth 128 <<< (8 * k.val))) (0 : BitVec 128)
 
 /-- `GF2P8MULB a, b`: byte-wise GF(2^8) multiply across all 16 lanes. Copied from
     `Vec128Model.gf2p8mulb`. -/
@@ -267,7 +267,7 @@ def clmul64StepW (a : BitVec 64) (b : BitVec 128) (acc : BitVec 128) (i : Nat) :
     no modular reduction. Copied verbatim from `Vec128Model.clmul64`. -/
 def clmul64W (a b : BitVec 64) : BitVec 128 :=
   let b128 : BitVec 128 := b.setWidth 128
-  Fin.foldl 64 (init := (0 : BitVec 128)) (fun acc i => clmul64StepW a b128 acc i.val)
+  Fin.foldl 64 (fun acc i => clmul64StepW a b128 acc i.val) (0 : BitVec 128)
 
 /-- The `imm8`-selected 64-bit half of a 128-bit XMM value. Copied verbatim from
     `Vec128Model.clmulHalf`. -/
@@ -283,14 +283,14 @@ def clmul128W (a b : BitVec 128) (imm : Nat) : BitVec 128 :=
 /-- Parity (XOR-reduction) of a byte's 8 bits. Copied verbatim from
     `Vec128Model.byteParity`. -/
 def byteParityW (b : BitVec 8) : BitVec 1 :=
-  Fin.foldl 8 (init := (0 : BitVec 1)) (fun acc i => acc ^^^ ((b >>> i.val) &&& 1).setWidth 1)
+  Fin.foldl 8 (fun acc i => acc ^^^ ((b >>> i.val) &&& 1).setWidth 1) (0 : BitVec 1)
 
 /-- GF(2) affine transform on one byte. Copied verbatim from `Vec128Model.gfAffineByte`. -/
 def gfAffineByteW (aRows : Fin 8 → BitVec 8) (imm x : BitVec 8) : BitVec 8 :=
-  Fin.foldl 8 (init := (0 : BitVec 8)) (fun acc k =>
+  Fin.foldl 8 (fun acc k =>
     let rowIdx : Fin 8 := ⟨7 - k.val, by omega⟩
     let obit : BitVec 1 := byteParityW (aRows rowIdx &&& x) ^^^ ((imm >>> k.val) &&& 1).setWidth 1
-    acc ||| (obit.setWidth 8 <<< k.val))
+    acc ||| (obit.setWidth 8 <<< k.val)) (0 : BitVec 8)
 
 /-- `GF2P8AFFINEQB a, A, imm`: byte-wise GF(2) affine transform across all 16 lanes.
     Copied verbatim from `Vec128Model.gf2p8affineqb`. -/

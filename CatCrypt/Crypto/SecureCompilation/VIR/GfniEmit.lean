@@ -172,8 +172,8 @@ def lanesOf (v : BitVec 128) : Vec 16 8 := fun k => byteOf v k
     Mirrors the `JasmincWArrayAlignment.decodeAux` OR-of-shifted-bytes
     pattern, specialised to width 128 and length 16. -/
 def packBytes (bs : Fin 16 → BitVec 8) : BitVec 128 :=
-  Fin.foldl 16 (init := (0 : BitVec 128))
-    (fun acc k => acc ||| ((bs k).setWidth 128 <<< (8 * k.val)))
+  Fin.foldl 16
+    (fun acc k => acc ||| ((bs k).setWidth 128 <<< (8 * k.val))) (0 : BitVec 128)
 
 /-! ## 4. The packed denotation
 

@@ -44,11 +44,11 @@ def xorIn (s : KState) (block : List UInt8) : KState := fun x y =>
   let laneIdx := 5 * y.val + x.val
   let byteOff := 8 * laneIdx
   -- XOR in the bytes that fall within this lane
-  Fin.foldl 8 (init := s x y) fun acc (i : Fin 8) =>
+  Fin.foldl 8 (fun acc (i : Fin 8) =>
     let globalIdx := byteOff + i.val
     if globalIdx < block.length then
       acc ^^^ (BitVec.ofNat 64 (block.getD globalIdx 0).toNat <<< (8 * i.val))
-    else acc
+    else acc) (s x y)
 
 /-- Split message into rate-sized chunks. -/
 def chunkByRate (msg : List UInt8) : List (List UInt8) :=

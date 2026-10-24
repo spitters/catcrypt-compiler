@@ -97,7 +97,7 @@ def messageSchedule (block : Fin 64 → UInt8) : Fin 64 → UInt32 :=
       (b0 <<< (24 : UInt32)) ||| (b1 <<< (16 : UInt32)) |||
         (b2 <<< (8 : UInt32)) ||| b3
     else 0
-  let w := Fin.foldl 48 (init := w0) fun (w : Vector UInt32 64) (j : Fin 48) =>
+  let w := Fin.foldl 48 (fun (w : Vector UInt32 64) (j : Fin 48) =>
     have hj : j.val < 48 := j.isLt
     have h14 : j.val + 14 < 64 := by omega
     have h9 : j.val + 9 < 64 := by omega
@@ -108,7 +108,7 @@ def messageSchedule (block : Fin 64 → UInt8) : Fin 64 → UInt32 :=
               (w.get ⟨j.val + 9, h9⟩) +
               smallSigma0 (w.get ⟨j.val + 1, h1⟩) +
               (w.get ⟨j.val, h0⟩)
-    w.set (j.val + 16) wt h16
+    w.set (j.val + 16) wt h16) w0
   fun t => w[t]
 
 /-! ## Compression Function (FIPS 180-4, Section 6.2.2, Steps 2-4)
@@ -134,8 +134,8 @@ def compressRound (state : State256) (wt kt : UInt32) : State256 :=
 def compress (state : State256) (block : Fin 64 → UInt8) : State256 :=
   let w := messageSchedule block
   let s0 := Vector.ofFn state
-  let final := Fin.foldl 64 (init := s0) fun (s : Vector UInt32 8) (t : Fin 64) =>
-    compressRoundVec s (w t) (kConst t.val)
+  let final := Fin.foldl 64 (fun (s : Vector UInt32 8) (t : Fin 64) =>
+    compressRoundVec s (w t) (kConst t.val)) s0
   fun i => state i + final[i]
 
 /-! ## Padding and Hashing -/

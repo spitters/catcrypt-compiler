@@ -133,8 +133,8 @@ def blake2sCompress (h : Fin 8 → UInt32) (m : Fin 16 → UInt32)
   let v0 := v0.set 13 (v0[13] ^^^ tHi)
   let v0 := if f then v0.set 14 (v0[14] ^^^ 0xFFFFFFFF) else v0
   -- 10 rounds of mixing
-  let vFinal := Fin.foldl 10 (init := v0) fun (v : Vector UInt32 16) (r : Fin 10) =>
-    blake2sRound v m r
+  let vFinal := Fin.foldl 10 (fun (v : Vector UInt32 16) (r : Fin 10) =>
+    blake2sRound v m r) v0
   -- Finalize: h[i] ^= v[i] ^ v[i+8]
   fun (i : Fin 8) => h i ^^^ vFinal[i.val] ^^^ vFinal[i.val + 8]
 

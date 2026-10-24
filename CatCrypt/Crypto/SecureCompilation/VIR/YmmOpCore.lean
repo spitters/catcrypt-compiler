@@ -107,12 +107,12 @@ byte order). `yOfDwordsW` / `yOfQwordsW` reassemble lanes into a `BitVec 256`. -
 /-- Reassemble 8 dword lanes into a `BitVec 256` (lane `j` at bit `32·j`).
     Verbatim copy of `Avx2Ymm.yOfDwords`. -/
 def yOfDwordsW (f : Fin 8 → BitVec 32) : BitVec 256 :=
-  Fin.foldl 8 (init := (0 : BitVec 256)) (fun acc j => acc ||| ((f j).setWidth 256 <<< (32 * j.val)))
+  Fin.foldl 8 (fun acc j => acc ||| ((f j).setWidth 256 <<< (32 * j.val))) (0 : BitVec 256)
 
 /-- Reassemble 4 qword lanes into a `BitVec 256` (lane `j` at bit `64·j`).
     Verbatim copy of `Avx2Ymm.yOfQwords`. -/
 def yOfQwordsW (f : Fin 4 → BitVec 64) : BitVec 256 :=
-  Fin.foldl 4 (init := (0 : BitVec 256)) (fun acc j => acc ||| ((f j).setWidth 256 <<< (64 * j.val)))
+  Fin.foldl 4 (fun acc j => acc ||| ((f j).setWidth 256 <<< (64 * j.val))) (0 : BitVec 256)
 
 /-! ## 2. The per-lane ALU semantics (verbatim from `Avx2YmmModel`, `W` suffix)
 
@@ -194,7 +194,7 @@ is 8 bits. `yByteW` / `yOfBytesW` are the byte analogues of `yDwordW` /
 
 /-- Reassemble 32 byte lanes into a `BitVec 256` (lane `j` at bit `8·j`). -/
 def yOfBytesW (f : Fin 32 → BitVec 8) : BitVec 256 :=
-  Fin.foldl 32 (init := (0 : BitVec 256)) (fun acc j => acc ||| ((f j).setWidth 256 <<< (8 * j.val)))
+  Fin.foldl 32 (fun acc j => acc ||| ((f j).setWidth 256 <<< (8 * j.val))) (0 : BitVec 256)
 
 /-- One `vpmuludq` qword lane: UNSIGNED product of the even dwords `2j` of
     `a`,`b`. `BitVec.setWidth` widening a `BitVec 32` to `BitVec 64` is
@@ -326,7 +326,7 @@ byte-shift ops act on each 128-bit half separately, as the Intel SDM specifies;
 
 /-- Reassemble 16 word lanes into a `BitVec 256` (lane `j` at bit `16·j`). -/
 def yOfWordsW (f : Fin 16 → BitVec 16) : BitVec 256 :=
-  Fin.foldl 16 (init := (0 : BitVec 256)) (fun acc j => acc ||| ((f j).setWidth 256 <<< (16 * j.val)))
+  Fin.foldl 16 (fun acc j => acc ||| ((f j).setWidth 256 <<< (16 * j.val))) (0 : BitVec 256)
 
 /-- The `h`-th 128-bit half (`h < 2`). -/
 @[reducible] def yHalfW (v : BitVec 256) (h : Nat) : BitVec 128 := BitVec.extractLsb' (128 * h) 128 v
