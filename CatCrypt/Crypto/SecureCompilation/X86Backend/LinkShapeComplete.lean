@@ -112,6 +112,20 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable.Temp
     exact TemplateCover.append (h x List.mem_cons_self)
       (ih fun y hy => h y (List.mem_cons_of_mem _ hy))
 
+/-- A conditional of two covered byte strings is covered, each branch under its condition. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable.TemplateCover.ite
+    {c : Prop} {_ : Decidable c} {a b : List (BitVec 8)} (ha : c → TemplateCover a)
+    (hb : ¬ c → TemplateCover b) : TemplateCover (if c then a else b) := by
+  grind only
+
+/-- A dependent conditional of two covered byte strings is covered, each branch under its
+    condition. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable.TemplateCover.dite
+    {c : Prop} {_ : Decidable c} {a : c → List (BitVec 8)} {b : ¬ c → List (BitVec 8)}
+    (ha : ∀ h : c, TemplateCover (a h)) (hb : ∀ h : ¬ c, TemplateCover (b h)) :
+    TemplateCover (if h : c then a h else b h) := by
+  grind only
+
 /-! ## 2. Register names -/
 
 /-- `regNum?` inverts `regName` on the sixteen register numbers. -/
@@ -1207,27 +1221,37 @@ theorem ne_lea_of_beq {b c : String} (h : (b == c) = true) (hc : (c == "LEA") = 
   subst h
   exact hc
 
+/-- Splits a cover goal: a goal `TemplateCover (if c then a else b)` (or its dependent form)
+    by `TemplateCover.ite` (`TemplateCover.dite`), leaving the branch goals under an anonymous
+    hypothesis of the condition, and any other head by `split`. -/
+local syntax "cover_split" : tactic
+local macro_rules
+  | `(tactic| cover_split) => `(tactic| first
+      | with_reducible refine TemplateCover.ite (fun _ => ?_) (fun _ => ?_)
+      | with_reducible refine TemplateCover.dite (fun _ => ?_) (fun _ => ?_)
+      | split)
+
 /-- The cover of the bytes of a width cast at a cast base, whose other arms carry no
     bytes. -/
 local syntax "lopn_cast_cover" : tactic
 local macro_rules
   | `(tactic| lopn_cast_cover) => `(tactic|
-    (split
+    (cover_split
      · exact TemplateCover.nil
-     · split
-       · split
-         · split
+     · cover_split
+       · cover_split
+         · cover_split
            · rename_i hc
              simp only [Bool.and_eq_true] at hc
              exact absurd hc.2 (by decide)
            · exact cover_encImmOp_other _ _ (by decide) (by decide) (by decide) rfl rfl
          · exact cover_encImmOp_other _ _ (by decide) (by decide) (by decide) rfl rfl
-       · split
-         · split
+       · cover_split
+         · cover_split
            · exact cover_encCastW (gpNumU_lt_16 _) (gpNumU_lt_16 _)
            · exact TemplateCover.nil
          · exact TemplateCover.nil
-     · split
+     · cover_split
        · exact cover_encImmOp_other _ _ (by decide) (by decide) (by decide) rfl rfl
        · exact TemplateCover.nil
      · exact TemplateCover.nil
@@ -1252,19 +1276,19 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
             cases hax : adxPrefix (stripWidthTag o)
             · dsimp only
               have hR : dispOk32 (-128) = true := by decide
-              split
-              · split
+              cover_split
+              · cover_split
                 · exact cover_setc (gpNumU_lt_16 _)
                 · exact TemplateCover.nil
-              · split
-                · split
-                  · split
-                    · split
+              · cover_split
+                · cover_split
+                  · cover_split
+                    · cover_split
                       · exact TemplateCover.nil
-                      · split
+                      · cover_split
                         · rw [ite_self]
                           exact cover_encMovImmRspMem_any (disp_of_spill hopd ‹_› (by simp))
-                        · split
+                        · cover_split
                           · exact (((cover_encRspMem (Or.inr (Or.inl rfl)) (gpNumU_lt_16 _)
                               hR).append (cover_encMovImm64_of_not_fits (gpNumU_lt_16 _)
                               ‹_›)).append (cover_encRspMem (Or.inr (Or.inl rfl))
@@ -1273,42 +1297,42 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                           · exact TemplateCover.nil
                     · exact cover_encImmOp _ _ _
                   · exact cover_encImmOp _ _ _
-                · split
-                  · split
-                    · split
-                      · split
+                · cover_split
+                  · cover_split
+                    · cover_split
+                      · cover_split
                         · exact TemplateCover.nil
                         · exact cover_encAluRRw List.mem_cons_self (gpNumU_lt_16 _)
                             (gpNumU_lt_16 _)
                       · refine TemplateCover.append ?_
                           (cover_encTagShift (tagShiftExt_cases ‹_›) (gpNumU_lt_16 _))
-                        split
+                        cover_split
                         · exact TemplateCover.nil
                         · exact cover_encAluRRw List.mem_cons_self (gpNumU_lt_16 _)
                             (gpNumU_lt_16 _)
                     · exact TemplateCover.nil
-                  · split
+                  · cover_split
                     · exact cover_encTwoAddr_of F W Q _ _ ‹_› hopd (by simp) (by simp)
-                    · split
+                    · cover_split
                       · exact cover_twoByte ‹_› (gpNumU_lt_16 _) (gpNumU_lt_16 _)
-                      · split
-                        · split
-                          · split
-                            · split
+                      · cover_split
+                        · cover_split
+                          · cover_split
+                            · cover_split
                               · exact cover_encMemMovw (Or.inr (Or.inr rfl)) (gpNumU_lt_16 _)
                                   (parseMemNameGp_fst_lt ‹_›) (disp_of_mem hopd ‹_› (by simp))
                               · exact TemplateCover.nil
                             · exact TemplateCover.nil
-                          · split
+                          · cover_split
                             · rename_i hc
                               simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
                               exact cover_leaSib (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                 hc.1.2 hc.2
                             · exact TemplateCover.nil
                           · exact TemplateCover.nil
-                        · split
-                          · split
-                            · split
+                        · cover_split
+                          · cover_split
+                            · cover_split
                               · rename_i hc
                                 simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
                                 have hi4 := hc.2
@@ -1319,26 +1343,26 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                                   (gpNumU_lt_16 _)
                               · exact TemplateCover.nil
                             · exact TemplateCover.nil
-                          · split
-                            · split
-                              · split
+                          · cover_split
+                            · cover_split
+                              · cover_split
                                 · refine TemplateCover.append ?_ (cover_neg (gpNumU_lt_16 _))
-                                  split
+                                  cover_split
                                   · exact TemplateCover.nil
                                   · exact cover_encAluRRw List.mem_cons_self (gpNumU_lt_16 _)
                                       (gpNumU_lt_16 _)
                                 · exact TemplateCover.nil
                               · exact TemplateCover.nil
-                            · split
-                              · split
+                            · cover_split
+                              · cover_split
                                 · exact cover_encCastW (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                 · exact TemplateCover.nil
                               · exact TemplateCover.nil
-              · split
-                · split
+              · cover_split
+                · cover_split
                   · rename_i hse
-                    split
-                    · split
+                    cover_split
+                    · cover_split
                       · have hop : (setccCmpOp (stripWidthTag o)).getD 0x94 = 0x94
                             ∨ (setccCmpOp (stripWidthTag o)).getD 0x94 = 0x95 := by
                           simp only [Bool.or_eq_true, beq_iff_eq] at hse
@@ -1346,18 +1370,18 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                         exact cover_encSetccCmpImm hop (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                       · exact TemplateCover.nil
                     · exact TemplateCover.nil
-                  · split
+                  · cover_split
                     · exact cover_encZeroArrOp _ _ _
                     · exact cover_encImmOp _ _ _
-                · split
+                · cover_split
                   · exact cover_encTagShift (tagShiftExt_cases ‹_›) (gpNumU_lt_16 _)
-                  · split
+                  · cover_split
                     · exact cover_encTwoAddr_of F W Q _ _ ‹_› hopd (by simp) (by simp)
-                    · split
+                    · cover_split
                       · exact cover_twoByte ‹_› (gpNumU_lt_16 _) (gpNumU_lt_16 _)
-                      · split
-                        · split
-                          · split
+                      · cover_split
+                        · cover_split
+                          · cover_split
                             · rename_i hc
                               simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
                               have hi4 := hc.2
@@ -1367,72 +1391,72 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                                 (gpNumU_lt_16 _)
                             · exact TemplateCover.nil
                           · exact TemplateCover.nil
-                        · split
-                          · split
-                            · split
+                        · cover_split
+                          · cover_split
+                            · cover_split
                               · exact cover_encAluRRw (List.mem_cons_of_mem _ List.mem_cons_self)
                                   (gpNumU_lt_16 _) (gpNumU_lt_16 _)
-                              · split
-                                · split
+                              · cover_split
+                                · cover_split
                                   · exact cover_encRspMem (Or.inr (Or.inr rfl)) (gpNumU_lt_16 _)
                                       (disp_of_spill hopd ‹_› (by simp))
                                   · exact TemplateCover.nil
                                 · exact TemplateCover.nil
                             · exact TemplateCover.nil
-                          · split
-                            · split
-                              · split
-                                · split
+                          · cover_split
+                            · cover_split
+                              · cover_split
+                                · cover_split
                                   · exact cover_encShiftX (Or.inl rfl) (gpNumU_lt_16 _)
                                       (gpNumU_lt_16 _) (gpNumU_lt_16 _)
-                                  · split
+                                  · cover_split
                                     · exact cover_encShiftX (Or.inr (Or.inr rfl))
                                         (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                     · exact cover_encShiftX (Or.inr (Or.inl rfl))
                                         (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                 · exact TemplateCover.nil
                               · exact TemplateCover.nil
-                            · split
-                              · split
+                            · cover_split
+                              · cover_split
                                 · exact cover_encSetccCmp (setccCmpOp_cases ‹_›) (gpNumU_lt_16 _)
                                     (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                 · exact TemplateCover.nil
                               · exact TemplateCover.nil
-              · split
-                · split
-                  · split
+              · cover_split
+                · cover_split
+                  · cover_split
                     · exact cover_encCmovSelect (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                         (gpNumU_lt_16 _)
-                    · split
-                      · split
+                    · cover_split
+                      · cover_split
                         · exact cover_encCmovSelectMem (disp_of_spill hopd ‹_› (by simp))
                             (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                         · exact TemplateCover.nil
-                      · split
-                        · split
-                          · split
-                            · split
+                      · cover_split
+                        · cover_split
+                          · cover_split
+                            · cover_split
                               · exact cover_encCmovSelectSlotFE (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                   (disp_of_spill hopd ‹_› (by simp))
                               · exact cover_encCmovSelectSlotF (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                   (gpNumU_lt_16 _) (disp_of_spill hopd ‹_› (by simp))
-                            · split
+                            · cover_split
                               · exact cover_encCmovSelectSlotTF (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                   (disp_of_spill hopd ‹_› (by simp))
                                   (disp_of_spill hopd ‹_› (by simp))
                               · exact TemplateCover.nil
-                          · split
-                            · split
+                          · cover_split
+                            · cover_split
                               · exact cover_encCmovSelectSlotT (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                   (gpNumU_lt_16 _) (disp_of_spill hopd ‹_› (by simp))
                               · exact TemplateCover.nil
                             · exact TemplateCover.nil
                         · exact TemplateCover.nil
                   · exact TemplateCover.nil
-                · split
+                · cover_split
                   · exact cover_encStoreImmOp _ _ _
                   · exact TemplateCover.nil
-              · split
+              · cover_split
                 · exact cover_encZeroArrOp _ _ _
                 · exact TemplateCover.nil
               · exact TemplateCover.nil
@@ -1440,22 +1464,22 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
               dsimp only
               have hp := adxPrefix_cases hax
               have hR : dispOk32 (-128) = true := by decide
-              split
-              · split
+              cover_split
+              · cover_split
                 · exact TemplateCover.nil
-                · split
+                · cover_split
                   · exact TemplateCover.nil
-                  · split
-                    · split
+                  · cover_split
+                    · cover_split
                       · exact TemplateCover.nil
-                      · split
+                      · cover_split
                         · exact TemplateCover.nil
-                        · split
+                        · cover_split
                           · exact TemplateCover.nil
-                          · split
-                            · split
+                          · cover_split
+                            · cover_split
                               · exact TemplateCover.nil
-                              · split
+                              · cover_split
                                 · exact ((((((cover_encRspMem (Or.inr (Or.inl rfl))
                                     (gpNumU_lt_16 _) hR).append (cover_encRspMem (Or.inl rfl)
                                     (gpNumU_lt_16 _) (disp_of_spill hopd ‹_› (by simp)))).append
@@ -1468,7 +1492,7 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                                       (disp_of_spill hopd ‹_› (by simp)))).append
                                     (cover_encRspMem (Or.inl rfl) (gpNumU_lt_16 _) hR)
                                 · exact TemplateCover.nil
-                            · split
+                            · cover_split
                               · exact (((((cover_encRspMem (Or.inr (Or.inl rfl))
                                   (gpNumU_lt_16 _) hR).append (cover_encRspMem (Or.inl rfl)
                                   (gpNumU_lt_16 _) (disp_of_spill hopd ‹_› (by simp)))).append
@@ -1479,14 +1503,14 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                                   (cover_adxInto hp (gpNumU_lt_16 _)
                                     ‹_› (fun _ he => disp_of_spill hopd he (by simp)))
                               · exact TemplateCover.nil
-                    · split
-                      · split
+                    · cover_split
+                      · cover_split
                         · exact TemplateCover.nil
-                        · split
+                        · cover_split
                           · exact TemplateCover.nil
-                          · split
+                          · cover_split
                             · exact TemplateCover.nil
-                            · split
+                            · cover_split
                               · exact (((((cover_encBtImm (gpNumU_lt_16 _) (by decide)).append
                                   (cover_encRspMem (Or.inr (Or.inl rfl)) (gpNumU_lt_16 _)
                                     hR)).append
@@ -1498,7 +1522,7 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                                     (disp_of_spill hopd ‹_› (by simp)))).append
                                   (cover_encRspMem (Or.inl rfl) (gpNumU_lt_16 _) hR)
                               · exact TemplateCover.nil
-                      · split
+                      · cover_split
                         · exact ((cover_accInto (gpNumU_lt_16 _)
                             ‹_› (fun _ he => disp_of_spill hopd he (by simp))).append
                             (cover_encBtImm (gpNumU_lt_16 _) (by decide))).append
@@ -1509,29 +1533,29 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
               · exact cover_encAdxCarry hp (gpNumU_lt_16 _) (gpNumU_lt_16 _)
               · exact TemplateCover.nil
           · simp only [Bool.false_eq_true, if_false, if_true]
-            split
-            · split
+            cover_split
+            · cover_split
               · exact cover_encMulxMem (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                   (parseMemNameGp_fst_lt ‹_›) (disp_of_mem hopd ‹_› (by simp))
               · exact TemplateCover.nil
             · exact TemplateCover.nil
         · simp only [if_true]
-          split
+          cover_split
           · split_ifs
             · exact TemplateCover.nil
-            · split
+            · cover_split
               · exact cover_encMulxSameDstMem (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
                   (mulxSrcMem?_disp hopd ‹_› (by simp))
               · exact TemplateCover.nil
-            · split
+            · cover_split
               · exact cover_encMulxSameDstMem (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
                   (mulxSrcMem?_disp hopd ‹_› (by simp))
               · exact cover_encMulxSameDst (gpNumU_lt_16 _) (gpNumU_lt_16 _)
-            · split
+            · cover_split
               · exact cover_encMulxMem (gpNumU_lt_16 _) (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
                   (mulxSrcMem?_disp hopd ‹_› (by simp))
               · exact TemplateCover.nil
-            · split
+            · cover_split
               · exact cover_encMulxMem (gpNumU_lt_16 _) (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
                   (mulxSrcMem?_disp hopd ‹_› (by simp))
               · exact cover_encMulxRR (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
@@ -1539,10 +1563,10 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
       · simp only [Bool.or_true, if_true, Bool.false_eq_true, if_false]
         exact TemplateCover.nil
     · simp only [Bool.true_or, if_true, carryOutSetccOp_of_ne hadox]
-      split
+      cover_split
       · split_ifs
         · exact cover_setc (gpNumU_lt_16 _)
-        · split
+        · cover_split
           · exact cover_encCarryOutRspMem (disp_of_spill hopd ‹_› (by simp))
           · exact TemplateCover.nil
         · exact TemplateCover.nil
@@ -1555,10 +1579,10 @@ theorem encodeLopn_cover_carry {F W Q : Nat} {ds : List LOperand} {o : String}
     TemplateCover (encodeLopn F W (.Lopn ds o ss) Q) := by
   · unfold encodeLopn
     simp only [hcar, Bool.true_or, if_true, carryOutSetccOp_of_ne hadox]
-    split
+    cover_split
     · split_ifs
       · exact cover_setc (gpNumU_lt_16 _)
-      · split
+      · cover_split
         · exact cover_encCarryOutRspMem (disp_of_spill hopd ‹_› (by simp))
         · exact TemplateCover.nil
       · exact TemplateCover.nil
@@ -1583,44 +1607,44 @@ theorem encodeLopn_cover_free {F W Q : Nat} {ds : List LOperand} {o : String}
     · lopn_cast_cover
     · lopn_cast_cover
     · lopn_cast_cover
-    · split
+    · cover_split
       · split_ifs
         · exact TemplateCover.nil
-        · split
+        · cover_split
           · exact cover_encMulxSameDstMem (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
               (mulxSrcMem?_disp hopd ‹_› (by simp))
           · exact TemplateCover.nil
-        · split
+        · cover_split
           · exact cover_encMulxSameDstMem (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
               (mulxSrcMem?_disp hopd ‹_› (by simp))
           · exact cover_encMulxSameDst (gpNumU_lt_16 _) (gpNumU_lt_16 _)
-        · split
+        · cover_split
           · exact cover_encMulxMem (gpNumU_lt_16 _) (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
               (mulxSrcMem?_disp hopd ‹_› (by simp))
           · exact TemplateCover.nil
-        · split
+        · cover_split
           · exact cover_encMulxMem (gpNumU_lt_16 _) (gpNumU_lt_16 _) (mulxSrcMem?_fst_lt ‹_›)
               (mulxSrcMem?_disp hopd ‹_› (by simp))
           · exact cover_encMulxRR (gpNumU_lt_16 _) (gpNumU_lt_16 _) (gpNumU_lt_16 _)
       · exact TemplateCover.nil
-    · split
-      · split
+    · cover_split
+      · cover_split
         · exact cover_encMulxMem (gpNumU_lt_16 _) (gpNumU_lt_16 _)
             (parseMemNameGp_fst_lt ‹_›) (disp_of_mem hopd ‹_› (by simp))
         · exact TemplateCover.nil
       · exact TemplateCover.nil
-    · split
+    · cover_split
       · exact cover_setc (gpNumU_lt_16 _)
-      · split
-        · split
-          · split
+      · cover_split
+        · cover_split
+          · cover_split
             · rename_i hc
               simp only [Bool.and_eq_true] at hc
               exact absurd hc.2 (by decide)
             · exact cover_encImmOp_other _ _ (by decide) (by decide) (by decide) rfl rfl
           · exact cover_encImmOp_other _ _ (by decide) (by decide) (by decide) rfl rfl
         · exact TemplateCover.nil
-      · split
+      · cover_split
         · exact cover_encImmOp_other _ _ (by decide) (by decide) (by decide) rfl rfl
         · exact TemplateCover.nil
       · exact TemplateCover.nil
