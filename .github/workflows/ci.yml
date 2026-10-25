@@ -5,10 +5,11 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
-  # The heavy jobs run on this schedule, on demand, and on pull requests;
-  # a push to the default branch runs only the cheap gates (see each job's `if`).
-  schedule:
-    - cron: '0 3 * * 0'
+  # The heavy jobs run on demand and on pull requests; a push to the default
+  # branch runs only the cheap gates (see each job's `if`). There is no schedule:
+  # a weekly cold build of the private repository cost about 2 h of runner time
+  # (user, 2026-10-25: run CI with care, not on every push). Start the heavy
+  # jobs with workflow_dispatch at a milestone.
 # Cancel superseded runs on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
