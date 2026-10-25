@@ -65,12 +65,12 @@ signatures, with the chosen Veir target op-code:
 
 Type mapping (`CryptoTy → Veir.TypeAttr`):
 
-| CryptoTy   | TypeAttr                            |
-|------------|-------------------------------------|
-| `bit`      | `IntegerType.mk 1`                  |
-| `unit`     | `default` (== `IntegerType.mk 0`)   |
-| `sword n`  | `IntegerType.mk n`                  |
-| `pair _ _` | `default` (structural placeholder)  |
+| CryptoTy   | TypeAttr                                  |
+|------------|-------------------------------------------|
+| `bit`      | `IntegerType.signless 1`                  |
+| `unit`     | `default` (== `IntegerType.signless 0`)   |
+| `sword n`  | `IntegerType.signless n`                  |
+| `pair _ _` | `default` (no Veir pair type)             |
 | `sum _ _`  | `default` (structural placeholder)  |
 | `memref _` | `default` (structural placeholder)  |
 
@@ -279,9 +279,9 @@ def CatCryptOp.propsOfOp (o : CatCryptOp) :
     Veir.propertiesOf (CatCryptOp.toArithOpCode o) :=
   match o with
   | .bvConst w v =>
-      ({ value := ⟨v.toNat, Veir.IntegerType.mk w⟩ } : Veir.ArithConstantProperties)
+      ({ value := ⟨v.toNat, Veir.IntegerType.signless w⟩ } : Veir.ArithConstantProperties)
   | .constBit b =>
-      ({ value := ⟨if b then 1 else 0, Veir.IntegerType.mk 1⟩ } :
+      ({ value := ⟨if b then 1 else 0, Veir.IntegerType.signless 1⟩ } :
         Veir.ArithConstantProperties)
   | .extCall name _ _ => VeirPrinterShim.funcCallProps name
   | .eqBit => ({ predicate := .eq } : Veir.IcmpProperties)
@@ -300,16 +300,16 @@ def CatCryptOp.shiftSelectExpansion (shiftOp : Veir.Arith) (w : Nat) :
     VeirExpansion Veir.OpCode where
   steps :=
     [ { op := .arith .constant,
-        props := ({ value := ⟨(BitVec.ofNat w w).toNat, Veir.IntegerType.mk w⟩ } :
+        props := ({ value := ⟨(BitVec.ofNat w w).toNat, Veir.IntegerType.signless w⟩ } :
           Veir.ArithConstantProperties),
         operands := [], results := [none] },
       { op := .arith .cmpi, props := ({ predicate := .uge } : Veir.IcmpProperties),
         operands := [.arg 1, .res 0 0],
-        results := [some ((Veir.IntegerType.mk 1 : Veir.IntegerType) : Veir.TypeAttr)] },
+        results := [some ((Veir.IntegerType.signless 1 : Veir.IntegerType) : Veir.TypeAttr)] },
       { op := .arith shiftOp, props := default,
         operands := [.arg 0, .arg 1], results := [none] },
       { op := .arith .constant,
-        props := ({ value := ⟨0, Veir.IntegerType.mk w⟩ } : Veir.ArithConstantProperties),
+        props := ({ value := ⟨0, Veir.IntegerType.signless w⟩ } : Veir.ArithConstantProperties),
         operands := [], results := [none] },
       { op := .arith .select, props := default,
         operands := [.res 1 0, .res 3 0, .res 2 0], results := [none] } ]
@@ -349,9 +349,9 @@ def mkTextType (s : String) : Veir.TypeAttr :=
       `tuple<sum, a, b>`).
     * `unit` is the empty tuple. -/
 def CryptoTy.toVeirTy : CryptoTy → Veir.TypeAttr
-  | .bit => (Veir.IntegerType.mk 1 : Veir.IntegerType)
+  | .bit => (Veir.IntegerType.signless 1 : Veir.IntegerType)
   | .unit => mkTextType "tuple<>"
-  | .sword n => (Veir.IntegerType.mk n : Veir.IntegerType)
+  | .sword n => (Veir.IntegerType.signless n : Veir.IntegerType)
   | .pair a b =>
       mkTextType s!"tuple<{toVeirTy a}, {toVeirTy b}>"
   | .sum a b =>

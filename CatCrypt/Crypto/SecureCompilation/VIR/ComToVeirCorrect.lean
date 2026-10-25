@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Veir.IR.Basic
+import all Veir.IR.Mutators
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeir
 
 /-!
@@ -218,7 +219,7 @@ variable [ToVeirOp d]
 
 /-- `OperationPtr.get!` after `setNextOp!` on the SAME pointer
     yields the updated operation. Direct unfolding + HashMap. -/
-theorem get!_setNextOp!_self
+private theorem get!_setNextOp!_self
     (op : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.OperationPtr) :
@@ -229,7 +230,7 @@ theorem get!_setNextOp!_self
 
 /-- `OperationPtr.get!` after `setNextOp!` on a DIFFERENT pointer
     is unchanged. -/
-theorem get!_setNextOp!_other
+private theorem get!_setNextOp!_other
     (op op' : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.OperationPtr) (h : op ≠ op') :
@@ -240,7 +241,7 @@ theorem get!_setNextOp!_other
         show ¬ (op' = op) from fun he => h he.symm]
 
 /-- Same for `setPrevOp!` on a different pointer. -/
-theorem get!_setPrevOp!_other
+private theorem get!_setPrevOp!_other
     (op op' : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.OperationPtr) (h : op ≠ op') :
@@ -251,7 +252,7 @@ theorem get!_setPrevOp!_other
         show ¬ (op' = op) from fun he => h he.symm]
 
 /-- `setParent!` on the same pointer preserves `next`. -/
-theorem next_get!_setParent!_self
+private theorem next_get!_setParent!_self
     (op : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.BlockPtr) :
@@ -260,7 +261,7 @@ theorem next_get!_setParent!_self
         Veir.OperationPtr.get!]
 
 /-- `setParent!` on a different pointer is fully transparent. -/
-theorem get!_setParent!_other
+private theorem get!_setParent!_other
     (op op' : Veir.OperationPtr)
     (ctx : Veir.IRContext (ToVeirOp.Op (d := d)))
     (new : Option Veir.BlockPtr) (h : op ≠ op') :

@@ -83,10 +83,10 @@ hypothesis on the MLIR toolchain.
 
 | `JasminTy`       | TypeAttr                          |
 |------------------|-----------------------------------|
-| `reg w`          | `IntegerType.mk w`                |
+| `reg w`          | `IntegerType.signless w`          |
 | `stackArr w n`   | `memref<n×iW>` (textual)          |
 | `inlineInt`      | `index` (textual)                 |
-| `bool`           | `IntegerType.mk 1`                |
+| `bool`           | `IntegerType.signless 1`          |
 
 The table gives `toMlirOpCode`, the op-code of an op lowered as one operation. The
 `ToVeirOp jasminDialect` instance lowers the ops of `JasminOp.bridgeExpansion? false`
@@ -262,7 +262,7 @@ def JasminOp.propsOfOp (o : JasminOp) :
     Veir.propertiesOf (JasminOp.toMlirOpCode o) :=
   match o with
   | .regConst w n =>
-      ({ value := ⟨(BitVec.ofNat w n).toNat, Veir.IntegerType.mk w⟩ } :
+      ({ value := ⟨(BitVec.ofNat w n).toNat, Veir.IntegerType.signless w⟩ } :
         Veir.ArithConstantProperties)
   | .extCall name _ _ => VeirPrinterShim.funcCallProps name
   | .callN name _ _ => VeirPrinterShim.funcCallProps name
@@ -284,22 +284,22 @@ def JasminOp.shiftSelectExpansion (bop : JasminBinOp) (w : Nat) :
   steps :=
     [ { op := .arith .constant,
         props := ({ value := ⟨(BitVec.ofNat w (shiftMask w (2 ^ w - 1))).toNat,
-            Veir.IntegerType.mk w⟩ } : Veir.ArithConstantProperties),
+            Veir.IntegerType.signless w⟩ } : Veir.ArithConstantProperties),
         operands := [], results := [none] },
       { op := .arith .andi, props := default,
         operands := [.arg 1, .res 0 0], results := [none] },
       { op := .arith .constant,
-        props := ({ value := ⟨(BitVec.ofNat w w).toNat, Veir.IntegerType.mk w⟩ } :
+        props := ({ value := ⟨(BitVec.ofNat w w).toNat, Veir.IntegerType.signless w⟩ } :
           Veir.ArithConstantProperties),
         operands := [], results := [none] },
       { op := .arith .cmpi, props := ({ predicate := .uge } : Veir.IcmpProperties),
         operands := [.res 1 0, .res 2 0],
-        results := [some ((Veir.IntegerType.mk 1 : Veir.IntegerType) : Veir.TypeAttr)] },
+        results := [some ((Veir.IntegerType.signless 1 : Veir.IntegerType) : Veir.TypeAttr)] },
       { op := JasminOp.toMlirOpCode (.regArith bop w),
         props := JasminOp.propsOfOp (.regArith bop w),
         operands := [.arg 0, .res 1 0], results := [none] },
       { op := .arith .constant,
-        props := ({ value := ⟨0, Veir.IntegerType.mk w⟩ } : Veir.ArithConstantProperties),
+        props := ({ value := ⟨0, Veir.IntegerType.signless w⟩ } : Veir.ArithConstantProperties),
         operands := [], results := [none] },
       { op := .arith .select, props := default,
         operands := [.res 3 0, .res 5 0, .res 4 0], results := [none] } ]
@@ -321,12 +321,12 @@ section BridgeExpansions
 open Veir
 
 /-- The integer type of width `w`, as the result type of a step. -/
-def iTy (w : Nat) : Option TypeAttr := some ((IntegerType.mk w : IntegerType) : TypeAttr)
+def iTy (w : Nat) : Option TypeAttr := some ((IntegerType.signless w : IntegerType) : TypeAttr)
 
 /-- The step `arith.constant` of value `BitVec.ofNat w v` at width `w`. -/
 def stConst (w v : Nat) : VeirExpandStep OpCode :=
   { op := .arith .constant,
-    props := ({ value := ⟨v, IntegerType.mk w⟩ } : ArithConstantProperties),
+    props := ({ value := ⟨v, IntegerType.signless w⟩ } : ArithConstantProperties),
     operands := [], results := [iTy w] }
 
 /-- A step with op-code `op`, properties `props`, the given operands and one result
@@ -512,10 +512,10 @@ def mkTextType (s : String) : Veir.TypeAttr :=
     * `stackArr w n` prints as `memref<n×iW>`.
     * `inlineInt` prints as `index` (MLIR's compile-time-int type). -/
 def JasminTy.toVeirTy : JasminTy → Veir.TypeAttr
-  | .reg w => (Veir.IntegerType.mk w : Veir.IntegerType)
+  | .reg w => (Veir.IntegerType.signless w : Veir.IntegerType)
   | .stackArr w n => mkTextType s!"memref<{n}xi{w}>"
   | .inlineInt => mkTextType "index"
-  | .bool => (Veir.IntegerType.mk 1 : Veir.IntegerType)
+  | .bool => (Veir.IntegerType.signless 1 : Veir.IntegerType)
 
 instance : ToVeirTy jasminDialect where
   toTy := JasminTy.toVeirTy

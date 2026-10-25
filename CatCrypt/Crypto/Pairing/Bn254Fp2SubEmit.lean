@@ -146,9 +146,9 @@ def bn254SubLeaf : String × List JasminTy × JasminTy :=
 /-- The reg-ptr `.jazz` of `fp2SubCom` as the `export fn` `name`, printed by
     `JasminAbiJazz.emitAbiOrchJ .regPtr` with the leaf `bn254_sub` and the `require`
     lines `requires`. -/
-def emitRegPtr (name : String) (requires : List String := []) : Option String :=
+def emitRegPtr (name : String) («requires» : List String := []) : Option String :=
   fp2SubCom.bind fun c =>
-    JasminAbiJazz.emitAbiOrchJ .regPtr name c.2 [bn254SubLeaf] requires
+    JasminAbiJazz.emitAbiOrchJ .regPtr name c.2 [bn254SubLeaf] «requires»
 
 /-- The link form: `emitRegPtr` with the `require` line of the leaf `.jinc`. -/
 def emitRegPtrLink (name : String) : Option String :=
@@ -168,10 +168,10 @@ theorem fp2_sub_front_fires : fp2SubCom.isSome := by rfl
 
 /-- **A returned text parses to the unit**: a text of `emitRegPtr` parses to the erasure
     of the unit that `JasminAbiJazz.orchUnit .regPtr` builds from `fp2SubCom`. -/
-theorem emitRegPtr_parse {name : String} {requires : List String} {s : String}
-    (h : emitRegPtr name requires = some s) :
+theorem emitRegPtr_parse {name : String} {«requires» : List String} {s : String}
+    (h : emitRegPtr name «requires» = some s) :
     ∃ c, fp2SubCom = some c ∧ ∃ u,
-      JasminAbiJazz.orchUnit .regPtr name c.2 [bn254SubLeaf] requires = some u ∧
+      JasminAbiJazz.orchUnit .regPtr name c.2 [bn254SubLeaf] «requires» = some u ∧
       CatCrypt.Crypto.Jasmin.JazzToInstrR.parseUnit s = .ok u.erase := by
   obtain ⟨c, hc, hs⟩ := Option.bind_eq_some_iff.mp (by simpa only [emitRegPtr] using h)
   exact ⟨c, hc, JasminAbiJazz.emitAbiOrchJ_parse hs⟩
