@@ -339,7 +339,7 @@ def createRegionOp (ctx : Veir.WfIRContext O) (oc : O) (p : Veir.propertiesOf oc
     Option (Veir.WfIRContext O × Veir.OperationPtr × Veir.RegionPtr) := do
   let (ctx₁, reg) ← Veir.WfRewriter.createRegion ctx
   let (ctx₂, o) ← createOpAt ctx₁ oc p mb?
-  if h : o.InBounds ctx₂.raw ∧ reg.InBounds ctx₂.raw ∧ (reg.get! ctx₂.raw).parent = none then
+  if h : o.InBounds ctx₂.raw ∧ reg.InBounds ctx₂.raw ∧ reg.getParent! ctx₂.raw = none then
     pure (Veir.WfRewriter.pushRegion ctx₂ o reg h.1 h.2.1 h.2.2, o, reg)
   else none
 

@@ -948,7 +948,10 @@ theorem buildArgPtrMaterialize_resolved (virt : Lfundef) (tbl : Array Nat)
       simp only [lopnOperands, List.cons_append, List.nil_append, List.mem_cons,
         List.not_mem_nil, or_false] at ho <;>
       rcases ho with rfl | rfl <;>
-      first | assumption | exact habi abiReg hreg hs | exact abiSlotOfExt_resolved hs
+      first
+        | with_reducible assumption
+        | with_reducible exact habi abiReg hreg hs
+        | with_reducible exact abiSlotOfExt_resolved hs
 
 /-- `insertEpilogue` keeps resolvedness: the body without its last instruction, the
     epilogue and the final return. -/

@@ -7,6 +7,7 @@ module
 
 public meta import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
 public import CatCrypt.Crypto.Jasmin.JasminCoqSemMirror
+public import Mathlib.Logic.Function.Iterate
 
 /-!
 # A runtime-bound (`while`) loop lowering: emitted `Cwhile` run = condition-driven iteration

@@ -646,7 +646,8 @@ theorem arr_mem_imgStores {frame : String → Option (BitVec 64)}
   rw [Rng.mem_def] at hx
   refine cell_mem_imgStores (j := (x - base A).toNat / 8) hq (by simp only at hx; omega) x ?_
   rw [Rng.mem_def]
-  grind only [= BitVec.toNat_sub, = BitVec.toNat_add, BitVec.toNat_mod_cancel', = BitVec.toNat_ofNat]
+  simp only [cellAt] at hx ⊢
+  bv_omega
 
 /-- **The zeroing of a checked image step on the plain route** writes the words of an array:
     under `ImgRel`, at an array zeroing `ZEROARR` before the last instruction of a body that

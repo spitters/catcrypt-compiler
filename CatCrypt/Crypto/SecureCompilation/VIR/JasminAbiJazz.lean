@@ -240,7 +240,7 @@ the body is refused or the unit is not well formed, in particular when a called 
 not in `leaves`. -/
 def orchUnit (m : OrchMode) (name : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (leaves : List (String × List JasminTy × JasminTy))
-    (requires : List String := []) : Option JazzUnit :=
+    («requires» : List String := []) : Option JazzUnit :=
   (orchFn m name com).bind fun f =>
     let u : JazzUnit :=
       { externs := leaves.map (leafExtern m), fns := [{ f with requires := requires }] }
@@ -251,7 +251,7 @@ def orchUnit (m : OrchMode) (name : String) {Γ : Ctxt jasminDialect} {t : Jasmi
 /-- The text of an orchestration body: `orchUnit` followed by the checked printer. -/
 def emitAbiOrchJ (m : OrchMode) (name : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (leaves : List (String × List JasminTy × JasminTy))
-    (requires : List String := []) : Option String :=
+    («requires» : List String := []) : Option String :=
   (orchUnit m name com leaves requires).bind CatCrypt.Crypto.Jasmin.Jazz.printChecked
 
 /-- **A returned text parses to the unit**: to the erasure of the unit `orchUnit` builds. -/

@@ -111,9 +111,11 @@ theorem loadArr1?_denote {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasm
     rcases args with _ | ⟨s', _ | ⟨c, _ | _⟩⟩
     subst hty
     simp only [loadArr1?] at he
-    rcases Nat.decEq w 64 with hw | rfl
+    rcases eq_or_ne w 64 with rfl | hw
+    swap
     · split at he <;> simp_all
-    rcases Nat.decEq n 1 with hn | rfl
+    rcases eq_or_ne n 1 with rfl | hn
+    swap
     · split at he <;> simp_all
     simp only [Option.some.injEq, Subtype.mk.injEq] at he
     change s' = s at he
