@@ -106,10 +106,10 @@ theorem AlgebraicPrintCtx.withTower_unfixed (pc : AlgebraicPrintCtx) :
     pc.withTower .unfixed = pc := rfl
 
 /-- The integer type `iw`. -/
-def intTy (w : Nat) : Veir.TypeAttr := (Veir.IntegerType.mk w : Veir.IntegerType)
+def intTy (w : Nat) : Veir.TypeAttr := (Veir.IntegerType.signless w : Veir.IntegerType)
 
 /-- The integer attribute `v : iw`. -/
-def intAttr (v : Nat) (w : Nat) : Veir.IntegerAttr := ⟨v, Veir.IntegerType.mk w⟩
+def intAttr (v : Nat) (w : Nat) : Veir.IntegerAttr := ⟨v, Veir.IntegerType.signless w⟩
 
 /-- `!mod_arith.int<p : iw>`, and `!mod_arith.int<p : iw, true>` when `mont`. -/
 def modArithTy (p w : Nat) (mont : Bool := false) : Veir.TypeAttr :=
@@ -465,7 +465,20 @@ theorem modArithModuleAt_unfixed (pc : AlgebraicPrintCtx) {Γ : Ctxt modArithDia
     {t : ModArithTy} (com : Com modArithDialect Γ t) (name : String) :
     modArithModuleAt pc (annotateCom .unfixed com) name = modArithModule pc com name := rfl
 
-/-! ## MLIR text -/
+end CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirAlgebraic
+
+end
+
+/-! ## MLIR text
+
+The printer reads the IR through Veir's private `get!` accessors, so its bodies are not
+exposed. -/
+
+public section
+
+set_option autoImplicit false
+
+namespace CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirAlgebraic
 
 /-- `n` levels of two-space indentation. -/
 def indentText : Nat → String
