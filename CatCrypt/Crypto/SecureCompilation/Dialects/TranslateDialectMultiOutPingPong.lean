@@ -232,7 +232,7 @@ theorem xorSwap_swaps (sb db : BitVec 64) :
     let sb2 := sb1 ^^^ db1
     (sb2, db1) = (db, sb) := by
   simp only []
-  refine Prod.ext ?_ ?_ <;> bv_decide
+  refine Prod.ext ?_ ?_ <;> dsimp only <;> bv_decide
 
 /-! ## 7. Interpreter realises the `runBoundedLoopMem` fold (native_decide)
 

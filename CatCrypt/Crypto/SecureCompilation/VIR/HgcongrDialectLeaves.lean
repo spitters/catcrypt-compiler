@@ -281,14 +281,31 @@ the dependent peel — is a goal-shape obstruction shared by `gcongr`/`rcongr`/
 -- (On the *diagonal bare-variable* case `modNegF a = modNegF a`, `gcongr` does
 -- succeed via reducible unfolding; the separation is this
 -- differing-argument shape, which is the dialect leaf.)
-/-- error: gcongr did not make progress -/
+/--
+error: `gcongr` did not make progress.
+
+p : ℕ
+f : ZMod p → ZMod p
+a : ZMod p
+h : f a = a
+⊢ modNegF (f a) = modNegF a
+-/
 #guard_msgs in
 example {p : Nat} (f : ZMod p → ZMod p) (a : ZMod p) (h : f a = a) :
     modNegF (f a) = modNegF a := by gcongr
 
 -- **`gcongr` makes no progress on the binary dialect-leaf shape either.** Same
 -- differing-argument obstruction for `modAddF`.
-/-- error: gcongr did not make progress -/
+/--
+error: `gcongr` did not make progress.
+
+p : ℕ
+f : ZMod p → ZMod p
+a b : ZMod p
+h1 : f a = a
+h2 : f b = b
+⊢ modAddF (f a) (f b) = modAddF a b
+-/
 #guard_msgs in
 example {p : Nat} (f : ZMod p → ZMod p) (a b : ZMod p) (h1 : f a = a) (h2 : f b = b) :
     modAddF (f a) (f b) = modAddF a b := by gcongr
