@@ -18,15 +18,20 @@ and `call` nodes in it.
 
 * `NFToCatComplete.ilitOk` — the integer literals in `[0, 2^64)` at an integer, a `64`-bit
   word or an unsigned integer of at most `64` bits.
-* `opsNB`, `preOps` — every operation of a program (of a prefix) satisfies a predicate, and
-  the program has no exit-flag loop and no `call` node.
+* `opsNB`, `preOps` — every operation of a program (of a prefix) satisfies a predicate, every
+  exit-flag loop carries a tuple of types that a loop test accepts, and the program has no
+  `call` node; at the default loop test the program has no exit-flag loop.
 * `whileFree_of_opsNB` — a program of `opsNB P` has no exit-flag loop.
+* `opsNB_loop_of_opsNB`, `preOps_loop_of_preOps` — a program (a prefix) without exit-flag
+  loops satisfies `opsNB` (`preOps`) at every loop test.
 * `opsNB_rename?`, `opsNB_dce`, `opsNB_plug` — renaming, dead-binding elimination and
   plugging keep `opsNB`.
 * `frontOp` — the operations of the front at a call typing.
 * `impToNF_frontOp`, `impToNF_prog_frontOp` — every operation of the output of `impToNF S`
   on an expression without `whileFold` (`whileFoldFree`) satisfies `frontOp S`, and its
   program is a program of `opsNB (frontOp S)`.
+* `impToNF_frontOpLoop`, `impToNF_prog_frontOpLoop` — on every expression, the same at the
+  loop test `fun cs => cs.all whileCarryOkB`.
 -/
 
 @[expose] public section
@@ -60,19 +65,23 @@ section Generic
 variable {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
   [HasBoolBit d]
 
-/-- Every operation of a program, in every region and continuation, satisfies `P`, and the
-    program has no exit-flag loop and no `call` node. -/
-def opsNB (P : d.Op → Bool) : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts → Bool
-  | _, _, .ret _ => true
-  | _, _, .var e k => P e.op && opsNB P k
-  | _, _, .forLoop _ _ body k => opsNB P body && opsNB P k
-  | _, _, .ifThenElse _ thn els k => opsNB P thn && opsNB P els && opsNB P k
-  | _, _, .whileLoop .. => false
-  | _, _, .call .. => false
+/-- Every operation of a program, in every region and continuation, satisfies `P`, every
+    exit-flag loop carries a tuple of types that the loop test `W` accepts, and the program
+    has no `call` node. At the default loop test, which accepts no tuple, the program has no
+    exit-flag loop. -/
+def opsNB (P : d.Op → Bool) : {Γ : Ctxt d} → {ts : List d.Ty} → NFProg d Γ ts →
+    (W : List d.Ty → Bool := fun _ => false) → Bool
+  | _, _, .ret _, _ => true
+  | _, _, .var e k, W => P e.op && opsNB P k W
+  | _, _, .forLoop _ _ body k, W => opsNB P body W && opsNB P k W
+  | _, _, .ifThenElse _ thn els k, W => opsNB P thn W && opsNB P els W && opsNB P k W
+  | _, _, .whileLoop (cs := cs) _ body k, W => W cs && opsNB P body W && opsNB P k W
+  | _, _, .call .., _ => false
 
-/-- `opsNB` is monotone in the predicate on the operations. -/
-theorem opsNB_mono {P Q : d.Op → Bool} (h : ∀ o, P o = true → Q o = true) {Γ : Ctxt d}
-    {ts : List d.Ty} (p : NFProg d Γ ts) (hp : opsNB P p = true) : opsNB Q p = true := by
+/-- `opsNB` is monotone in the predicate on the operations and in the loop test. -/
+theorem opsNB_mono_loop {P Q : d.Op → Bool} {W W' : List d.Ty → Bool}
+    (h : ∀ o, P o = true → Q o = true) (hW : ∀ cs, W cs = true → W' cs = true) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) (hp : opsNB P p W = true) : opsNB Q p W' = true := by
   induction p with
   | ret => rfl
   | var e k ih =>
@@ -84,8 +93,21 @@ theorem opsNB_mono {P Q : d.Op → Bool} (h : ∀ o, P o = true → Q o = true) 
   | ifThenElse _ thn els k iht ihe ihk =>
       simp only [opsNB, Bool.and_eq_true] at hp ⊢
       exact ⟨⟨iht hp.1.1, ihe hp.1.2⟩, ihk hp.2⟩
-  | whileLoop => simp [opsNB] at hp
+  | whileLoop _ body k ihb ihk =>
+      simp only [opsNB, Bool.and_eq_true] at hp ⊢
+      exact ⟨⟨hW _ hp.1.1, ihb hp.1.2⟩, ihk hp.2⟩
   | call => simp [opsNB] at hp
+
+/-- `opsNB` is monotone in the predicate on the operations. -/
+theorem opsNB_mono {P Q : d.Op → Bool} (h : ∀ o, P o = true → Q o = true) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) (hp : opsNB P p = true) : opsNB Q p = true :=
+  opsNB_mono_loop h (fun _ h => h) p hp
+
+/-- A program of `opsNB P` without exit-flag loops is a program of `opsNB P` at every loop
+    test `W`. -/
+theorem opsNB_loop_of_opsNB {P : d.Op → Bool} (W : List d.Ty → Bool) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) (hp : opsNB P p = true) : opsNB P p W = true :=
+  opsNB_mono_loop (fun _ h => h) (fun _ h => absurd h Bool.false_ne_true) p hp
 
 /-- A program of `opsNB P` has no exit-flag loop. -/
 theorem whileFree_of_opsNB {P : d.Op → Bool} {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
@@ -115,9 +137,10 @@ theorem op_rename? {Γ Δ : Ctxt d} {t : d.Ty} {f : PRen Γ Δ} {e : Expr d Γ t
   rfl
 
 /-- Renaming keeps `opsNB`. -/
-theorem opsNB_rename? {P : d.Op → Bool} {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
+theorem opsNB_rename? {P : d.Op → Bool} {W : List d.Ty → Bool} {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) :
     ∀ {Δ : Ctxt d} {f : PRen Γ Δ} {p' : NFProg d Δ ts}, NFProg.rename? f p = some p' →
-      opsNB P p = true → opsNB P p' = true := by
+      opsNB P p W = true → opsNB P p' W = true := by
   induction p with
   | ret vs =>
       intro Δ f p' h _
@@ -142,12 +165,17 @@ theorem opsNB_rename? {P : d.Op → Bool} {Γ : Ctxt d} {ts : List d.Ty} (p : NF
       obtain ⟨_, _, t', ht, e', he, k', hk, rfl⟩ := h
       simp only [opsNB, Bool.and_eq_true] at hp ⊢
       exact ⟨⟨iht ht hp.1.1, ihe he hp.1.2⟩, ihk hk hp.2⟩
-  | whileLoop => intro _ _ _ _ hp; simp [opsNB] at hp
+  | whileLoop inits body k ihb ihk =>
+      intro Δ f p' h hp
+      simp only [NFProg.rename?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨_, _, b', hb, k', hk, rfl⟩ := h
+      simp only [opsNB, Bool.and_eq_true] at hp ⊢
+      exact ⟨⟨hp.1.1, ihb hb hp.1.2⟩, ihk hk hp.2⟩
   | call => intro _ _ _ _ hp; simp [opsNB] at hp
 
 /-- **Dead-binding elimination keeps `opsNB P`.** -/
-theorem opsNB_dce {P : d.Op → Bool} {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
-    (hp : opsNB P p = true) : opsNB P (NFProg.dce p) = true := by
+theorem opsNB_dce {P : d.Op → Bool} {W : List d.Ty → Bool} {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (hp : opsNB P p W = true) : opsNB P (NFProg.dce p) W = true := by
   induction p with
   | ret => rfl
   | var e k ih =>
@@ -166,37 +194,62 @@ theorem opsNB_dce {P : d.Op → Bool} {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg
       simp only [opsNB, Bool.and_eq_true] at hp
       simp only [NFProg.dce, opsNB, Bool.and_eq_true]
       exact ⟨⟨iht hp.1.1, ihe hp.1.2⟩, ihk hp.2⟩
-  | whileLoop => simp [opsNB] at hp
+  | whileLoop _ body k ihb ihk =>
+      simp only [opsNB, Bool.and_eq_true] at hp
+      simp only [NFProg.dce, opsNB, Bool.and_eq_true]
+      exact ⟨⟨hp.1.1, ihb hp.1.2⟩, ihk hp.2⟩
   | call => simp [opsNB] at hp
 
-/-- Every operation of a prefix, in every region and continuation, satisfies `P`, and its
-    regions have no exit-flag loop and no `call` node. -/
-def preOps (P : d.Op → Bool) : {Γ Δ : Ctxt d} → NFPre d Γ Δ → Bool
-  | _, _, .nil => true
-  | _, _, .var e p => P e.op && preOps P p
-  | _, _, .forLoop _ _ body p => opsNB P body && preOps P p
-  | _, _, .ifThenElse _ thn els p => opsNB P thn && opsNB P els && preOps P p
-  | _, _, .whileLoop .. => false
+/-- Every operation of a prefix, in every region and continuation, satisfies `P`, every
+    exit-flag loop carries a tuple of types that the loop test `W` accepts, and its regions
+    have no `call` node. At the default loop test, which accepts no tuple, the prefix has no
+    exit-flag loop. -/
+def preOps (P : d.Op → Bool) : {Γ Δ : Ctxt d} → NFPre d Γ Δ →
+    (W : List d.Ty → Bool := fun _ => false) → Bool
+  | _, _, .nil, _ => true
+  | _, _, .var e p, W => P e.op && preOps P p W
+  | _, _, .forLoop _ _ body p, W => opsNB P body W && preOps P p W
+  | _, _, .ifThenElse _ thn els p, W => opsNB P thn W && opsNB P els W && preOps P p W
+  | _, _, .whileLoop (cs := cs) _ body p, W => W cs && opsNB P body W && preOps P p W
+
+/-- A prefix of `preOps P` without exit-flag loops is a prefix of `preOps P` at every loop
+    test `W`. -/
+theorem preOps_loop_of_preOps {P : d.Op → Bool} (W : List d.Ty → Bool) {Γ Δ : Ctxt d}
+    (p : NFPre d Γ Δ) (hp : preOps P p = true) : preOps P p W = true := by
+  induction p with
+  | nil => rfl
+  | var e p ih =>
+      simp only [preOps, Bool.and_eq_true] at hp ⊢
+      exact ⟨hp.1, ih hp.2⟩
+  | forLoop _ _ body p ih =>
+      simp only [preOps, Bool.and_eq_true] at hp ⊢
+      exact ⟨opsNB_loop_of_opsNB W body hp.1, ih hp.2⟩
+  | ifThenElse _ thn els p ih =>
+      simp only [preOps, Bool.and_eq_true] at hp ⊢
+      exact ⟨⟨opsNB_loop_of_opsNB W thn hp.1.1, opsNB_loop_of_opsNB W els hp.1.2⟩, ih hp.2⟩
+  | whileLoop => simp [preOps] at hp
 
 /-- `preOps` of the concatenation of two prefixes. -/
-theorem preOps_append (P : d.Op → Bool) {Γ Δ Θ : Ctxt d} (p : NFPre d Γ Δ)
-    (q : NFPre d Δ Θ) : preOps P (p.append q) = (preOps P p && preOps P q) := by
+theorem preOps_append (P : d.Op → Bool) {W : List d.Ty → Bool} {Γ Δ Θ : Ctxt d}
+    (p : NFPre d Γ Δ) (q : NFPre d Δ Θ) :
+    preOps P (p.append q) W = (preOps P p W && preOps P q W) := by
   induction p with
   | nil => simp [NFPre.append, preOps]
   | var e p ih => simp [NFPre.append, preOps, ih, Bool.and_assoc]
   | forLoop _ _ body p ih => simp [NFPre.append, preOps, ih, Bool.and_assoc]
   | ifThenElse _ thn els p ih => simp [NFPre.append, preOps, ih, Bool.and_assoc]
-  | whileLoop _ body p ih => simp [NFPre.append, preOps]
+  | whileLoop _ body p ih => simp [NFPre.append, preOps, ih, Bool.and_assoc]
 
 /-- `opsNB` of a prefix plugged with a program. -/
-theorem opsNB_plug (P : d.Op → Bool) {Γ Δ : Ctxt d} {ts : List d.Ty} (p : NFPre d Γ Δ)
-    (k : NFProg d Δ ts) : opsNB P (p.plug k) = (preOps P p && opsNB P k) := by
+theorem opsNB_plug (P : d.Op → Bool) {W : List d.Ty → Bool} {Γ Δ : Ctxt d} {ts : List d.Ty}
+    (p : NFPre d Γ Δ) (k : NFProg d Δ ts) :
+    opsNB P (p.plug k) W = (preOps P p W && opsNB P k W) := by
   induction p with
   | nil => simp [NFPre.plug, preOps]
   | var e p ih => simp [NFPre.plug, preOps, opsNB, ih, Bool.and_assoc]
   | forLoop _ _ body p ih => simp [NFPre.plug, preOps, opsNB, ih, Bool.and_assoc]
   | ifThenElse _ thn els p ih => simp [NFPre.plug, preOps, opsNB, ih, Bool.and_assoc]
-  | whileLoop _ body p ih => simp [NFPre.plug, preOps, opsNB]
+  | whileLoop _ body p ih => simp [NFPre.plug, preOps, opsNB, ih, Bool.and_assoc]
 
 omit [TyDenote d.Ty] [HasWord64 d] [HasBoolBit d] in
 /-- `opsNB` of a program cast along equal contexts and result types. -/
@@ -353,33 +406,35 @@ theorem loopOut_frontOp {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String)
     (loV : Var Γ₃ NfTy.int) (tripV : Var Γ₃ (NfTy.word 64))
     (rev : Option (Var Γ₃ (NfTy.word 64))) (i : String) (xs : List String)
     (cs : List NfTy) (inits : HVector (fun t => Var Γ₃ t) cs)
-    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ))
-    (hpre : preOps (frontOp S) pre₀ = true)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) {W : List NfTy → Bool}
+    (hpre : preOps (frontOp S) pre₀ W = true)
     (hrec : ∀ {Δ : Ctxt nfDialect} (σ : NfEnv Δ) (o : Out Δ), rec σ = some o →
-      preOps (frontOp S) o.pre = true)
+      preOps (frontOp S) o.pre W = true)
     {o : Out Γ} (h : loopOut tgt pre₀ σ₃ loV tripV rev i xs cs inits rec = some o) :
-    preOps (frontOp S) o.pre = true := by
+    preOps (frontOp S) o.pre W = true := by
   simp only [loopOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨ob, hob, rets, -, rfl⟩ := h
-  simp [preOps_append, preOps, opsNB_plug, opsNB, hpre, ctrOut_frontOp, hrec _ _ hob,
-    preOps_bind1N, frontOp]
+  have hc := fun σB => preOps_loop_of_preOps W _ (ctrOut_frontOp S cs i σB loV rev)
+  simp [preOps_append, preOps, opsNB_plug, opsNB, hpre, hc, hrec _ _ hob,
+    bind1N, frontOp_mkEN, frontOp]
 
 /-- The conditional of the front satisfies `frontOp S` when its prefix and the translations
     of its arms do. -/
 theorem condOut_frontOp {Γ Γc : Ctxt nfDialect} (pre₀ : NFPre nfDialect Γ Γc)
     (σc : NfEnv Γc) (cV : Var Γc NfTy.bit) (xs : List String) (cs : List NfTy)
-    (recA recB : Option (Out Γc)) (hpre : preOps (frontOp S) pre₀ = true)
-    (hA : ∀ oa, recA = some oa → preOps (frontOp S) oa.pre = true)
-    (hB : ∀ ob, recB = some ob → preOps (frontOp S) ob.pre = true)
+    (recA recB : Option (Out Γc)) {W : List NfTy → Bool}
+    (hpre : preOps (frontOp S) pre₀ W = true)
+    (hA : ∀ oa, recA = some oa → preOps (frontOp S) oa.pre W = true)
+    (hB : ∀ ob, recB = some ob → preOps (frontOp S) ob.pre W = true)
     {o : Out Γ} (h : condOut pre₀ σc cV xs cs recA recB = some o) :
-    preOps (frontOp S) o.pre = true := by
+    preOps (frontOp S) o.pre W = true := by
   simp only [condOut, Option.bind_eq_some_iff] at h
   obtain ⟨oa, hoa, ob, hob, h⟩ := h
   split at h
   · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨ra, -, rb, -, h⟩ := h
     split at h <;> (subst h; simp [preOps_append, preOps, opsNB_plug, opsNB, hpre,
-      hA oa hoa, hB ob hob, preOps_bind1N, frontOp])
+      hA oa hoa, hB ob hob, bind1N, frontOp_mkEN, frontOp])
   · cases h
 
 /-- The binding of a lower bound `loOut` accepts satisfies `frontOp S`: an integer literal of
@@ -430,13 +485,32 @@ theorem bound_frontOp {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {hi : ImpExpr}
           · cases hs
         · cases hl
 
+/-- The `while` loop of the front satisfies `frontOp S` at the loop test
+    `fun cs => cs.all whileCarryOkB` when the translation of its body does. -/
+theorem whileOut_frontOp {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
+    (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ))
+    (hrec : ∀ {Δ : Ctxt nfDialect} (σ : NfEnv Δ) (o : Out Δ), rec σ = some o →
+      preOps (frontOp S) o.pre (fun cs => cs.all whileCarryOkB) = true)
+    {o : Out Γ} (h : whileOut tgt σ g xs cs inits rec = some o) :
+    preOps (frontOp S) o.pre (fun cs => cs.all whileCarryOkB) = true := by
+  have hc := whileOut_whileCarry tgt σ g xs cs inits rec h
+  simp only [whileOut, hc, ite_true, Option.bind_eq_some_iff] at h
+  obtain ⟨p, -, h⟩ := h
+  split at h
+  · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ob, hob, rets, -, rfl⟩ := h
+    simp [preOps, whileOutStep, opsNB_plug, opsNB, hc, hrec _ _ hob, bind1N, frontOp_mkEN,
+      frontOp]
+  · cases h
+
 /-- The prefix of `impArgsNF` satisfies `frontOp S` when the prefix of `impToNF` on each
     argument does. -/
-theorem impArgsNF_frontOp (args : List ImpExpr)
+theorem impArgsNF_frontOp (args : List ImpExpr) {W : List NfTy → Bool}
     (ih : ∀ e ∈ args, ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (o : Out Γ),
-      impToNF S tgt σ e = some o → preOps (frontOp S) o.pre = true) :
+      impToNF S tgt σ e = some o → preOps (frontOp S) o.pre W = true) :
     ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (oa : ArgsOut Γ),
-      impArgsNF S σ args = some oa → preOps (frontOp S) oa.pre = true := by
+      impArgsNF S σ args = some oa → preOps (frontOp S) oa.pre W = true := by
   induction args with
   | nil =>
       intro Γ σ oa h
@@ -566,6 +640,120 @@ theorem impToNF_prog_frontOp (e : ImpExpr) (tgt : Option String) {Γ : Ctxt nfDi
     (σ : NfEnv Γ) (o : Out Γ) (h : impToNF S tgt σ e = some o) (hw : whileFoldFree e = true) :
     opsNB (frontOp S) o.prog = true := by
   simp [Out.prog, opsNB_plug, impToNF_frontOp S e tgt σ o h hw, opsNB]
+
+/-- **The operations of the front's output, with its loops**: every operation of a prefix
+    `impToNF S` returns satisfies `frontOp S`, every exit-flag loop of it carries a tuple of
+    types of `whileCarryOkB`, and its regions have no `call` node. -/
+theorem impToNF_frontOpLoop (e : ImpExpr) :
+    ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (o : Out Γ),
+      impToNF S tgt σ e = some o →
+        preOps (frontOp S) o.pre (fun cs => cs.all whileCarryOkB) = true := by
+  induction e using ImpExpr.ind
+  case lit l =>
+    intro tgt Γ σ o h
+    exact preOps_loop_of_preOps _ _ (litOut_frontOp S tgt σ l h)
+  case var x =>
+    intro tgt Γ σ o h
+    exact preOps_loop_of_preOps _ _ (atomOut_frontOp S σ (.var x) h)
+  case unitVal =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.some.injEq] at h
+    subst h
+    simp [preOps, bind1N, frontOp_mkEN, frontOp]
+  case letBind x v b ihv ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨ov, hov, ob, hob, rfl⟩ := h
+    simp only [Out.comp, preOps_append, ihv _ _ _ hov, ihb _ _ _ hob, Bool.and_self]
+  case seq a b iha ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨oa, hoa, ob, hob, rfl⟩ := h
+    simp only [Out.comp, preOps_append, iha _ _ _ hoa, ihb _ _ _ hob, Bool.and_self]
+  case assign x r ih =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.map_eq_some_iff] at h
+    obtain ⟨o', ho', rfl⟩ := h
+    simp [Out.comp, preOps_append, ih _ _ _ ho', preOps, bind1N, frontOp_mkEN, frontOp]
+  case typeAscription e s ih =>
+    intro tgt Γ σ o h
+    simp only [impToNF] at h
+    exact ih _ _ _ h
+  case app f args iha =>
+    intro tgt Γ σ o h
+    rcases impToNF_app_cases S tgt σ h with ⟨x, N, -, h⟩ | ⟨-, oa, hoa, r, hr, rfl⟩
+    · simp only [repeatOut, Option.bind_eq_some_iff] at h
+      obtain ⟨ox, hox, h⟩ := h
+      split at h
+      · cases h
+        exact preOps_loop_of_preOps _ _ (by
+          simp [Out.comp, preOps_append, atomOut_frontOp S _ _ hox, preOps_bind1N, frontOp])
+      · cases h
+    · simp [preOps_append, preOps,
+        impArgsNF_frontOp S args (fun a ha tgt' _ σ' o' h' => iha a ha tgt' σ' o' h') _ _ hoa,
+        frontOp_mkEN, frontOp, hr]
+  case tuple es _ =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.map_eq_some_iff] at h
+    obtain ⟨oa, hoa, rfl⟩ := h
+    exact preOps_loop_of_preOps _ _ (by
+      simp only [preOps_append, argsOut_frontOp S es σ hoa, tupleOut_frontOp, Bool.and_self])
+  case proj e i ih =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+    obtain ⟨oe, hoe, op, hop, rfl⟩ := h
+    simp only [Out.comp, preOps_append, ih _ _ _ hoe,
+      preOps_loop_of_preOps _ _ (projOut_frontOp S tgt i _ _ _ hop), Bool.and_self]
+  case forFold i lo hi body _ _ ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff] at h
+    obtain ⟨eLo, hLo, oHi, hHi, h⟩ := h
+    split at h
+    · rename_i hb
+      have ht := bound_frontOp hHi hb
+      refine loopOut_frontOp S _ _ _ _ _ _ _ _ _ _ _ (preOps_loop_of_preOps _ _ ?_)
+        (fun σB o' ho' => ihb _ σB o' ho') h
+      simp only [preOps_append, preOps_bind1, atomOut_frontOp S _ _ hHi, loOut_frontOp S σ lo hLo,
+        frontOp, ht, Bool.and_self]
+    · cases h
+  case forFoldRev i lo hi body _ _ ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff] at h
+    obtain ⟨eLo, hLo, oHi, hHi, h⟩ := h
+    split at h
+    · rename_i hb
+      have ht := bound_frontOp hHi hb
+      refine loopOut_frontOp S _ _ _ _ _ _ _ _ _ _ _ (preOps_loop_of_preOps _ _ ?_)
+        (fun σB o' ho' => ihb _ σB o' ho') h
+      simp only [preOps_append, preOps_bind1, atomOut_frontOp S _ _ hHi, loOut_frontOp S σ lo hLo,
+        frontOp, ht, Bool.and_self]
+      decide
+    · cases h
+  case ifThenElse c a b ihc iha ihb =>
+    intro tgt Γ σ o h
+    simp only [impToNF, Option.bind_eq_some_iff] at h
+    obtain ⟨oc, hoc, h⟩ := h
+    split at h
+    · exact condOut_frontOp S _ _ _ _ _ _ _ (ihc _ _ _ hoc)
+        (fun oa ha => iha _ _ _ ha) (fun ob hb => ihb _ _ _ hb) h
+    · cases h
+  case whileFold c body _ ihb =>
+    intro tgt Γ σ o h
+    cases c with
+    | var g =>
+        exact whileOut_frontOp S tgt σ g _ _ _ _ (fun σ' o' h' => ihb none σ' o' h')
+          (by simpa only [impToNF] using h)
+    | _ => simp [impToNF] at h
+  all_goals
+    intro tgt Γ σ o h
+    simp [impToNF] at h
+
+/-- The program of an output of `impToNF S` is a program of `opsNB (frontOp S)` at the loop
+    test `fun cs => cs.all whileCarryOkB`. -/
+theorem impToNF_prog_frontOpLoop (e : ImpExpr) (tgt : Option String) {Γ : Ctxt nfDialect}
+    (σ : NfEnv Γ) (o : Out Γ) (h : impToNF S tgt σ e = some o) :
+    opsNB (frontOp S) o.prog (fun cs => cs.all whileCarryOkB) = true := by
+  simp [Out.prog, opsNB_plug, impToNF_frontOpLoop S e tgt σ o h, opsNB]
 
 /-- A prefix of `preOps P` denotes independently of the fuel. -/
 theorem PDen_fuel_of_preOps (bi : Builtins) {P : NfOp → Bool} {Γ Δ : Ctxt nfDialect}
