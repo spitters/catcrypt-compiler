@@ -520,10 +520,10 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
         unfold idxVal
         rw [hrel.regs idx hidx]
-      obtain rfl := icase_ldx hc
-      rw [imgInstr_ldx slotArr body _ hacc]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
-        tagA, loadIdxA?, hp, instrLeakF,
+      obtain ⟨o, ho, rfl⟩ := icase_ldx hc
+      rw [imgInstr_ldx_of_untagCaret slotArr body _ hacc ho]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, ho,
+        tagA, loadIdxA?, hp, instrLeakF, width_tag,
         flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv]
       norm_cast
   | stx d b idx v =>
@@ -535,10 +535,10 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
         unfold idxVal
         rw [hrel.regs idx hidx]
-      obtain rfl := icase_stx hc
-      rw [imgInstr_stx slotArr body _ hacc]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
-        tagA, storeIdxA?, hp, instrLeakF,
+      obtain ⟨o, ho, rfl⟩ := icase_stx hc
+      rw [imgInstr_stx_of_untagCaret slotArr body _ hacc ho]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, ho,
+        tagA, storeIdxA?, hp, instrLeakF, width_tag,
         flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv]
       norm_cast
   | sload d q =>
@@ -556,8 +556,8 @@ theorem step_leak {frame : String → Option (BitVec 64)}
   | scmp d y q =>
       obtain ⟨hm, hq⟩ := icase_scmp hc
       obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
-      obtain rfl := slotCmp?_eq hm
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+      obtain ⟨o, ho, rfl⟩ := eq_of_normA_lopn (slotCmp?_eq hm) (by simp [withWidthTag])
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, ho,
         tagA, slotMov?, slotCmp?, ha]
   | zarr b n w =>
       rw [hc] at hg
@@ -568,9 +568,9 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       | some An =>
       obtain ⟨A, m⟩ := An
       obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hA hbf
-      obtain rfl := icase_zarr hc
-      rw [imgInstr_zeroArr slotArr body _ hA]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+      obtain ⟨o, ho, rfl⟩ := icase_zarr hc
+      rw [imgInstr_zeroArr_of_untagCaret slotArr body _ hA ho]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, ho,
         tagA, zeroTagA, zeroArrA?, hp]
   | simm d b v j =>
       rw [hc] at hg
@@ -581,21 +581,20 @@ theorem step_leak {frame : String → Option (BitVec 64)}
       | some An =>
       obtain ⟨A, m⟩ := An
       obtain ⟨q, -, hp⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel hA hbf
-      obtain rfl := icase_simm hc
-      rw [imgInstr_storeImm slotArr body _ hA]
-      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, LprogAsmPrinter.untagCaret,
+      obtain ⟨o, ho, rfl⟩ := icase_simm hc
+      rw [imgInstr_storeImm_of_untagCaret slotArr body _ hA ho]
+      simp [stepLeakA, hb, posT, hc, instrLeakA, normA, ho,
         tagA, storeImmTagA, storeImmStruct?, hp,
         storeImmAddr?_of_lt _ (Nat.lt_succ_self j)]
   | reg =>
       rw [hc] at hg
-      obtain ⟨ds, o, ss, rfl, ho1, ho2, hk⟩ := icase_reg hc
+      obtain ⟨ds, o, ss, rfl, ho1, ho2, hk, hz1, hz2⟩ := icase_reg_untagCaret hc
       have hok : regOkB frame (normA (.Lopn ds o ss)) = true := by
         simp only [regGateB, Bool.and_eq_true] at hg
         first
           | exact hg.1
           | exact hg.1.1
           | exact hg.1.1.1
-      obtain ⟨hz1, hz2⟩ := icase_reg_arr hc ds o ss rfl
       have ht : tagA (.Lopn ds o ss) = .reg none := tagA_reg ho1 ho2 hk hz1 hz2
       simp only [stepLeakA, hb, posT, hc, ht]
       exact instrLeakA_regOk hok none sa
@@ -632,15 +631,18 @@ theorem imgInstr_nextPc {frame : String → Option (BitVec 64)}
     | other => rw [hc] at hg; cases hg
     | label => exact Or.inr (icase_label hc)
     | cond cc l => exact absurd (icase_cond hc) (hnc _ _)
-    | ldx d b idx => exact Or.inl ⟨_, _, _, icase_ldx hc⟩
-    | stx d b idx v => exact Or.inl ⟨_, _, _, icase_stx hc⟩
+    | ldx d b idx => obtain ⟨_, -, h⟩ := icase_ldx hc; exact Or.inl ⟨_, _, _, h⟩
+    | stx d b idx v => obtain ⟨_, -, h⟩ := icase_stx hc; exact Or.inl ⟨_, _, _, h⟩
     | sload d q =>
         rcases slotMov?_cases (icase_sload hc).1 with h | h <;> exact Or.inl ⟨_, _, _, h⟩
     | sstore q S =>
         rcases slotMov?_cases (icase_sstore hc).1 with h | h <;> exact Or.inl ⟨_, _, _, h⟩
-    | scmp d y q => exact Or.inl ⟨_, _, _, slotCmp?_eq (icase_scmp hc).1⟩
-    | zarr b n w => exact Or.inl ⟨_, _, _, icase_zarr hc⟩
-    | simm d b v j => exact Or.inl ⟨_, _, _, icase_simm hc⟩
+    | scmp d y q =>
+        obtain ⟨_, -, h⟩ := eq_of_normA_lopn (slotCmp?_eq (icase_scmp hc).1)
+          (by simp [withWidthTag])
+        exact Or.inl ⟨_, _, _, h⟩
+    | zarr b n w => obtain ⟨_, -, h⟩ := icase_zarr hc; exact Or.inl ⟨_, _, _, h⟩
+    | simm d b v j => obtain ⟨_, -, h⟩ := icase_simm hc; exact Or.inl ⟨_, _, _, h⟩
     | reg =>
         obtain ⟨ds, o, ss, h, -, -⟩ := icase_reg hc
         exact Or.inl ⟨_, _, _, h⟩

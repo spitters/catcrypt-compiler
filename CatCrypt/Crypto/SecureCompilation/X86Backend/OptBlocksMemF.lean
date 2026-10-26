@@ -441,9 +441,8 @@ theorem lsemStepMem_transport (i : LinstrRM) (hai : hasArrIdx i.1 = false) {s t 
     have hz : zeroStruct? w = none := by
       cases w with
       | Lopn ds opn srcs =>
-          have hne : (opn == "ZEROARR") = false := by
-            simp only [hasArrIdx, Bool.or_eq_false_iff] at hai
-            exact hai.1.1.1
+          have hne : (opn == "ZEROARR") = false :=
+            beq_false_of_ne (LprogScheduler.ne_of_hasArrIdx_false hai).1
           unfold zeroStruct?
           split <;> simp_all
       | _ => rfl
@@ -452,9 +451,8 @@ theorem lsemStepMem_transport (i : LinstrRM) (hai : hasArrIdx i.1 = false) {s t 
     have hz : storeImmStruct? w = none := by
       cases w with
       | Lopn ds opn srcs =>
-          have hne : (opn == "STOREIMM") = false := by
-            simp only [hasArrIdx, Bool.or_eq_false_iff] at hai
-            exact hai.1.1.2
+          have hne : (opn == "STOREIMM") = false :=
+            beq_false_of_ne (LprogScheduler.ne_of_hasArrIdx_false hai).2
           unfold storeImmStruct?
           split <;> simp_all
       | _ => rfl

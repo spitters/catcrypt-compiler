@@ -67,37 +67,6 @@ def cellBase : LOperand → Option String
   | .reg n => (cellParts? n).map Prod.fst
   | _ => none
 
-/-- The longest prefix without `^` has no `^`. -/
-theorem caret_not_mem_takeWhile (l : List Char) : '^' ∉ l.takeWhile (· != '^') := by
-  induction l with
-  | nil => simp
-  | cons c l ih =>
-    by_cases hc : c = '^'
-    · simp [List.takeWhile, hc]
-    · grind only [List.takeWhile_cons, = List.mem_cons]
-
-/-- The result of `untagCaret` has no `^`. -/
-theorem caret_free_untagCaret (o : String) :
-    '^' ∉ (X86Backend.LprogAsmPrinter.untagCaret o).toList := by
-  unfold X86Backend.LprogAsmPrinter.untagCaret
-  split
-  · rename_i h
-    have hs : '^' ∉ (stripWidthTag o).toList := by
-      unfold stripWidthTag
-      rw [ite_eq_left h]
-      simpa using caret_not_mem_takeWhile o.toList
-    split
-    · simp [String.toList_append, hs]
-    · exact hs
-  · rename_i h
-    simpa using h
-
-/-- `untagCaret` is idempotent. -/
-theorem untagCaret_idem (o : String) :
-    X86Backend.LprogAsmPrinter.untagCaret (X86Backend.LprogAsmPrinter.untagCaret o)
-      = X86Backend.LprogAsmPrinter.untagCaret o :=
-  X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (caret_free_untagCaret o)
-
 /-- The mnemonics of the widening multiply, whose step reads `RDX` implicitly, read through
     `untagCaret` as the bytes read them: `MULX:64`, `MULXMEM:64`, and the untagged `MULX`
     that `JasminLsemAddrRun.normA` tags as `MULX:64`. -/

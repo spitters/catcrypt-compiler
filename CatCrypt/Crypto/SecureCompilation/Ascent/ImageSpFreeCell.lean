@@ -114,8 +114,9 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
     obtain ⟨q, -, hq, -⟩ := accArr_spec h
     exact hsl q A n hq
   rcases hx with hf | ⟨d, b, i, v, rfl, hb, hi, hv⟩
-  · rcases imgInstr_cases slotArr body k x with h | ⟨d, b, idx, A, n, rfl, hA, h⟩ |
-      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ | ⟨ri, hri, h⟩
+  · rcases imgInstr_cases slotArr body k x with h | ⟨d, o, b, idx, A, n, -, rfl, hA, h⟩ |
+      ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ |
+      ⟨ri, hri, h⟩
     · rw [h]
       simp only [rspFreeB, operandNames_normA] at hf ⊢
       exact hf
@@ -160,8 +161,7 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
           simp [hf, harr hA]
         · cases hri
       · cases hri
-  · simp only [accOkB, ite_eq_right (show ¬ ("STOREIDX" = "LOADIDX") by decide), ite_true,
-      Bool.true_and] at hacc
+  · simp only [accOkB, Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
     rw [imgInstr_stx slotArr body k hA]
     simp [rspFreeB, operandNames, srcNames, harr hA, hi, hv]
@@ -191,8 +191,8 @@ theorem virtImg_noCall_of {slotArr : String → Option (String × Nat)} {body : 
     ((virtImg slotArr body).all fun i => !isCall i.fst) = true := by
   refine List.all_eq_true.mpr fun i hi => ?_
   obtain ⟨k, j, hk, hlt, rfl⟩ := mem_virtImg_lt hi
-  rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩
+  rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, _, -, -, -, h⟩ |
+    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩
   · rw [h, isCall_normA, hx k j hk hlt]
     rfl
   · rw [h]; rfl

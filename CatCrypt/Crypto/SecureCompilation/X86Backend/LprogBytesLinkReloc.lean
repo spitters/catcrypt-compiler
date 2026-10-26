@@ -1253,7 +1253,8 @@ theorem linked_step {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K
           cases ar with
           | ldx D B' I =>
             intro p vi hp hvi
-            exact hsafe ii D B' I (by rw [hb, ← hia]; rfl) p vi hp hvi
+            exact hsafe ii _ D B' I (by rw [hb, ← hia]) (by simp [AArm.instr, width_tag])
+              p vi hp hvi
           | _ => trivial
         obtain ⟨s', z', hst', hc', hzf'⟩ :=
           AArm.sim (Params.ofBody body) rsp ar hok sA sa zf hc hsafeA

@@ -1121,9 +1121,86 @@ theorem isAccB_of_wf {i : FI} (h : i.wf = true) (ds : List LOperand) (ss : List 
   simp only [FI.wf, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
   simp [isAccB, h.1.2, h.2]
 
-theorem isArrImmB_of_ne {o : String} (h : o ≠ "ZEROARR" ∧ o ≠ "STOREIMM")
+/-- An `Lopn` whose mnemonic reads as no `ZEROARR` or `STOREIMM` after `untagCaret` is no
+    constant-index array write. -/
+theorem isArrImmB_of_untagCaret_ne {o : String}
+    (h : LprogAsmPrinter.untagCaret o ≠ "ZEROARR" ∧ LprogAsmPrinter.untagCaret o ≠ "STOREIMM")
     (ds : List LOperand) (ss : List LOperand) : isArrImmB (.Lopn ds o ss) = false := by
   simp [isArrImmB, h.1, h.2]
+
+/-- An `Lopn` with an `AccUntagged` mnemonic other than `ZEROARR` and `STOREIMM` is no
+    constant-index array write. -/
+theorem isArrImmB_of_ne {o : String} (h : o ≠ "ZEROARR" ∧ o ≠ "STOREIMM") (ht : AccUntagged o)
+    (ds : List LOperand) (ss : List LOperand) : isArrImmB (.Lopn ds o ss) = false :=
+  isArrImmB_of_untagCaret_ne ⟨untagCaret_ne_of_accUntagged ht (by simp) h.1,
+    untagCaret_ne_of_accUntagged ht (by simp) h.2⟩ ds ss
+
+/-- A mnemonic that reads as `ZEROARR` or `STOREIMM` after `untagCaret` is outside the
+    recognized alphabet. -/
+theorem isRecognizedOpn_eq_false_of_untagCaret {o b : String}
+    (hu : LprogAsmPrinter.untagCaret o = b) (hb : b = "ZEROARR" ∨ b = "STOREIMM") :
+    isRecognizedOpn o = false := by
+  by_cases hc : '^' ∈ o.toList
+  · have hcc : o.toList.contains '^' = true := by simpa using hc
+    have hT : o.toList.takeWhile (· != '^') = b.toList := by
+      unfold LprogAsmPrinter.untagCaret at hu
+      simp only [hcc, ↓reduceIte] at hu
+      split at hu
+      · exfalso
+        have := congrArg (fun s => s.toList.getLast?) hu
+        rcases hb with rfl | rfl <;> simp at this
+      · unfold stripWidthTag at hu
+        simp only [hcc, ↓reduceIte] at hu
+        rw [← hu, String.toList_ofList]
+    have hP : b.toList <+: (LprogAsmPrinter.stripAbiTag o).toList := by
+      have hpre : b.toList <+: o.toList := hT ▸ List.takeWhile_prefix _
+      have hcol : ∀ c ∈ b.toList, (c != ':') = true := by
+        rcases hb with rfl | rfl <;> decide
+      unfold LprogAsmPrinter.stripAbiTag
+      split
+      · rw [String.toList_ofList]
+        obtain ⟨t, ht⟩ := hpre
+        rw [← ht, List.takeWhile_append_of_pos hcol]
+        exact List.prefix_append _ _
+      · unfold stripWidthTag
+        simp only [hcc, ↓reduceIte, String.toList_ofList, hT, List.prefix_refl]
+    have hS : parseImmShiftMnem o = none := by
+      unfold parseImmShiftMnem
+      simp only [hcc, ↓reduceIte, hT]
+      split
+      · rcases hb with rfl | rfl <;> rfl
+      · rfl
+    unfold isRecognizedOpn
+    rw [hS]
+    generalize LprogAsmPrinter.stripAbiTag o = s at hP ⊢
+    simp only [Option.isSome_none, Bool.false_or, Bool.and_eq_false_iff]
+    right
+    split <;> first | rfl | (rcases hb with rfl | rfl <;> revert hP <;> decide)
+  · have ho : o = b := by
+      grind only [WidthTagSimp.untagCaret_lit]
+    subst ho
+    rcases hb with rfl | rfl <;>
+      simp [isRecognizedOpn, LcmdCopyPropagate.implicitReads, LprogAsmPrinter.stripAbiTag,
+        isPrefixOf_list] <;> decide
+
+/-- An instruction of the fragment over the default alphabet reads as no `ZEROARR` or
+    `STOREIMM` after `untagCaret`. -/
+theorem fragOf?_untagCaret_ne {li : Linstr} {i : FI} (h : fragOf? li = some i) :
+    LprogAsmPrinter.untagCaret i.opn ≠ "ZEROARR" ∧
+      LprogAsmPrinter.untagCaret i.opn ≠ "STOREIMM" := by
+  unfold fragOf? at h
+  split at h
+  · dsimp only at h
+    split at h
+    · rename_i hc
+      cases h
+      simp only [Bool.and_eq_true] at hc
+      obtain ⟨hr, -⟩ := hc
+      dsimp only
+      constructor <;> intro h' <;>
+        simp [isRecognizedOpn_eq_false_of_untagCaret h' (by simp)] at hr
+    · cases h
+  · cases h
 
 /-- An instruction of the fragment over the default alphabet is no `ZEROARR` or `STOREIMM`. -/
 theorem fragOf?_opn_ne {li : Linstr} {i : FI} (h : fragOf? li = some i) :
@@ -1187,7 +1264,8 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
     ∀ (is done : List FI) (m : Cur) (cs : List String) (acc out : List FI)
       (f g : String → Option String),
       full = done ++ is → (∀ i ∈ is, i.wf = true) →
-      (∀ i ∈ is, i.opn ≠ "ZEROARR" ∧ i.opn ≠ "STOREIMM") →
+      (∀ i ∈ is, LprogAsmPrinter.untagCaret i.opn ≠ "ZEROARR" ∧
+        LprogAsmPrinter.untagCaret i.opn ≠ "STOREIMM") →
       goAcc lend m (annotate lend is).1 cs acc = some out →
       RelS slotArr m (annotate lend is).2 f g →
       EntryInv done acc m (annotate lend is).2 →
@@ -1225,7 +1303,8 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
     have hwfi : i.wf = true := hwf i (by simp)
     have hwfs : ∀ j ∈ is, j.wf = true := fun j hj => hwf j (by simp [hj])
     have himmi := himm i (by simp)
-    have himms : ∀ j ∈ is, j.opn ≠ "ZEROARR" ∧ j.opn ≠ "STOREIMM" :=
+    have himms : ∀ j ∈ is, LprogAsmPrinter.untagCaret j.opn ≠ "ZEROARR" ∧
+        LprogAsmPrinter.untagCaret j.opn ≠ "STOREIMM" :=
       fun j hj => himm j (by simp [hj])
     rw [annotate_cons] at hgo hR hE
     set la := (annotate lend is).2 with hla
@@ -1273,7 +1352,7 @@ theorem goAcc_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave.
         | zero =>
           simp only [List.getElem?_cons_zero, Option.some.injEq] at ht
           subst ht
-          refine ⟨isAccB_of_wf hwfi _ _, isArrImmB_of_ne himmi _ _, ?_⟩
+          refine ⟨isAccB_of_wf hwfi _ _, isArrImmB_of_untagCaret_ne himmi _ _, ?_⟩
           by_cases hdl : isLoc i.d = true
           · exact Or.inl (hcl hdl)
           · have hce := hcn (by simpa using hdl)
@@ -1506,14 +1585,16 @@ theorem entryInv_nil (L : List String) : EntryInv [] [] ({} : Cur) L :=
 /-- The source run itself: its instructions in the fragment, after the instructions in front of
     them. -/
 theorem outOk_self {P : Prop} {is : List FI} (hwf : ∀ i ∈ is, i.wf = true)
-    (himm : ∀ i ∈ is, i.opn ≠ "ZEROARR" ∧ i.opn ≠ "STOREIMM") (hin : SaveCond slotArr is P) {t : Nat} {j : FI} (ht : is[t]? = some j) :
+    (himm : ∀ i ∈ is, LprogAsmPrinter.untagCaret i.opn ≠ "ZEROARR" ∧
+      LprogAsmPrinter.untagCaret i.opn ≠ "STOREIMM")
+    (hin : SaveCond slotArr is P) {t : Nat} {j : FI} (ht : is[t]? = some j) :
     OutOk slotArr P (is.take t) j := by
   have htl : t < is.length := (List.getElem?_eq_some_iff.mp ht).1
   have hjt : is[t] = j := (List.getElem?_eq_some_iff.mp ht).2
   have hsplit : is = is.take t ++ j :: is.drop (t + 1) := by
     rw [← hjt, ← List.drop_eq_getElem_cons htl, List.take_append_drop]
   refine ⟨isAccB_of_wf (hwf j (List.mem_of_getElem? ht)) _ _,
-    isArrImmB_of_ne (himm j (List.mem_of_getElem? ht)) _ _, ?_⟩
+    isArrImmB_of_untagCaret_ne (himm j (List.mem_of_getElem? ht)) _ _, ?_⟩
   cases hs : slotArr j.d with
   | none => exact Or.inl rfl
   | some _ => exact Or.inr (hin _ j _ hsplit (by simp [hs]))
@@ -1526,7 +1607,8 @@ theorem run_img (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." 
     (res : List String) (hres : ∀ x ∈ res, isFrame x = false) (lf : Std.HashSet String)
     (ps : List Piece) (hadj : noAdjRuns ps = true) (j : Nat) (is : List FI)
     (hj : ps[j]? = some (.run is)) (hwf : ∀ i ∈ is, i.wf = true)
-    (himm : ∀ i ∈ is, i.opn ≠ "ZEROARR" ∧ i.opn ≠ "STOREIMM") {P : Prop}
+    (himm : ∀ i ∈ is, LprogAsmPrinter.untagCaret i.opn ≠ "ZEROARR" ∧
+      LprogAsmPrinter.untagCaret i.opn ≠ "STOREIMM") {P : Prop}
     (hin : SaveCond slotArr is P) {f g : String → Option String}
     (hD : DomOn slotArr (Need ps lf j) f g) :
     (∀ t j', (reallocRun (lendAt res lf ps j) is)[t]? = some j' →
@@ -1724,7 +1806,7 @@ theorem dom_pieces (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave
       simp only [Piece.toLcmd]
       rw [outSeg_run_eq, ← provI_eq, ← provI_eq]
       exact (run_img hq res hres _ _ (pieces_noAdjRuns body) j is hpj hwf
-        (fun i hi => fragOf?_opn_ne (hgood.2 i hi)) (saveCond_run h hpj) hD).2
+        (fun i hi => fragOf?_untagCaret_ne (hgood.2 i hi)) (saveCond_run h hpj) hD).2
 
 /-- **The register re-allocation keeps the class.** When every array slot is a `qsave.` slot and
     no result register is a frame cell, the re-allocation of a body in the class is in the
@@ -1821,7 +1903,7 @@ theorem physImgB_reallocBody
     have hel : outS[j][o] = out[o].toL := by simp only [hseg, List.getElem_map]
     rw [hel]
     have hok := (run_img hq res hres _ _ (pieces_noAdjRuns body) j is hpj hwf
-      (fun i hi => fragOf?_opn_ne (hgood.2 i hi)) (saveCond_run h hpj) hD).1 o out[o]
+      (fun i hi => fragOf?_untagCaret_ne (hgood.2 i hi)) (saveCond_run h hpj) hD).1 o out[o]
       (List.getElem?_eq_getElem ho')
     obtain ⟨hacc, hai, hsl | ⟨hj0, R, hmv, hdR, hpre⟩⟩ := hok
     · exact Or.inl ⟨hacc, hai, slotWriteB_of_dstOk (dstOk_single hsl) _ _⟩

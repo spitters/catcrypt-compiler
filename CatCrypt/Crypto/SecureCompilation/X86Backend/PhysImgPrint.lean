@@ -242,18 +242,29 @@ theorem physImgB_flatMap_of_dom {S : String → Prop} (hS : ∀ q, gpNameB q = t
     `accOkB` holds, is no indexed access. -/
 theorem accOkB_two {body : Lcmd} {k : Nat} {d opn : String} {a c : LOperand}
     (h : accOkB slotArr body k (.Lopn [.reg d] opn [a, c]) = true)
-    (ha : ∀ x y sc, a ≠ .arrIdx x y sc) : opn ≠ "LOADIDX" ∧ opn ≠ "STOREIDX" := by
-  constructor <;> rintro rfl <;> cases a <;> simp_all [accOkB]
+    (ha : ∀ x y sc, a ≠ .arrIdx x y sc) :
+    LprogAsmPrinter.untagCaret opn ≠ "LOADIDX" ∧ LprogAsmPrinter.untagCaret opn ≠ "STOREIDX" := by
+  constructor <;> intro hu <;> cases a <;> simp_all [accOkB]
 
 /-- An operation with two sources at which `accOkB` holds is no `ZEROARR` or `STOREIMM`. -/
 theorem accOkB_two_arrImm {body : Lcmd} {k : Nat} {d opn : String} {a c : LOperand}
     (h : accOkB slotArr body k (.Lopn [.reg d] opn [a, c]) = true) :
-    opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM" := by
-  constructor <;> rintro rfl <;> simp [accOkB, arrImmImg] at h
+    LprogAsmPrinter.untagCaret opn ≠ "ZEROARR" ∧ LprogAsmPrinter.untagCaret opn ≠ "STOREIMM" := by
+  constructor <;> intro hu <;> simp [accOkB, arrImmImg, hu] at h
 
 theorem isAccB_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
-    (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX") : isAccB (.Lopn ds o ss) = false := by
+    (h1 : LprogAsmPrinter.untagCaret o ≠ "LOADIDX")
+    (h2 : LprogAsmPrinter.untagCaret o ≠ "STOREIDX") : isAccB (.Lopn ds o ss) = false := by
   simp [isAccB, h1, h2]
+
+/-- `untagCaret` of a width-tagged `MOV` is `MOV` or `MOV:64`. -/
+theorem untagCaret_withWidthTag_mov (w : Nat) :
+    LprogAsmPrinter.untagCaret (withWidthTag w "MOV") = "MOV" ∨
+      LprogAsmPrinter.untagCaret (withWidthTag w "MOV") = "MOV:64" := by
+  by_cases hw : w = 64
+  · subst hw
+    exact .inr (LprogAsmPrinter.untagCaret_of_caret_free (by decide))
+  · exact .inl (LprogAsmPrinter.untagCaret_withWidthTag hw (by decide))
 
 theorem isAccB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
     (h : o = "MOV" ∨ o = "MOV:64" ∨ ∃ w, o = withWidthTag w "MOV") :
@@ -261,7 +272,7 @@ theorem isAccB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
   rcases h with rfl | rfl | ⟨w, rfl⟩
   · simp [isAccB]
   · simp [isAccB]
-  · simp (disch := decide +kernel) [isAccB, withWidthTag_ne_of_tagSepFree]
+  · rcases untagCaret_withWidthTag_mov w with h | h <;> simp [isAccB, h]
 
 theorem isArrImmB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
     (h : o = "MOV" ∨ o = "MOV:64" ∨ ∃ w, o = withWidthTag w "MOV") :
@@ -269,7 +280,7 @@ theorem isArrImmB_mov {ds : List LOperand} {o : String} {ss : List LOperand}
   rcases h with rfl | rfl | ⟨w, rfl⟩
   · simp [isArrImmB]
   · simp [isArrImmB]
-  · simp (disch := decide +kernel) [isArrImmB, withWidthTag_ne_of_tagSepFree]
+  · rcases untagCaret_withWidthTag_mov w with h | h <;> simp [isArrImmB, h]
 
 /-! ## 3. The two-address legalisation -/
 
@@ -403,7 +414,7 @@ theorem physImgB_twoAddrBody
         · exact isAccB_lopn hn1 hn2
         · exact isAccB_mov ho
       · rcases ho with rfl | ho
-        · exact PhysImgFold.isArrImmB_of_ne ⟨hn3, hn4⟩ _ _
+        · exact PhysImgFold.isArrImmB_of_untagCaret_ne ⟨hn3, hn4⟩ _ _
         · exact isArrImmB_mov ho
     · refine domOn_nonmove_block hm hi (fun x _ => ?_) hD
       by_cases hxd : x = d
@@ -590,7 +601,7 @@ theorem physImgB_cmpReload
       have hmv' : movOf opn = "MOV" ∨ movOf opn = "MOV:64" ∨ ∃ w, movOf opn = withWidthTag w "MOV" :=
         hmv.elim Or.inl (fun h => Or.inr (Or.inl h))
       exact ⟨isAccB_mov hmv', isArrImmB_mov hmv', slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
-    · exact ⟨isAccB_lopn hn1 hn2, PhysImgFold.isArrImmB_of_ne ⟨hn3, hn4⟩ _ _,
+    · exact ⟨isAccB_lopn hn1 hn2, PhysImgFold.isArrImmB_of_untagCaret_ne ⟨hn3, hn4⟩ _ _,
         slotWriteB_of_dstOk (dstOk_single hR) _ _⟩
   | none =>
     rw [cmpReloadI_of_none hs] at hr

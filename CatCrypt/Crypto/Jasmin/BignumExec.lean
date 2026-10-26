@@ -12,6 +12,7 @@ public import CatCrypt.Crypto.Jasmin.JasminAST
 public meta import CatCrypt.Crypto.Jasmin.MemoryModel
 public import CatCrypt.Crypto.Jasmin.MemoryModel
 public import Std.Do.Triple
+public import Std.WP
 public import Std.Tactic.Do
 public import Std.Tactic.BVDecide
 
@@ -2514,16 +2515,17 @@ example :
 
 end ControlFlowSmoke
 
-/-! ## §13. Monadic shape for mvcgen
+/-! ## §13. Monadic shape for verification-condition generation
 
 The functional `bignumExec : List InstrR → BignumState → Option BignumState`
 above is the definition that all of `BignumHoare.lean` proofs depend on.
 The monadic form below is a separate definition with a bridge lemma to it.
 
-`Std.Tactic.Do.mvcgen` walks `do`-shaped programs in standard monads
-(`StateM`, `StateT _ Option`, etc.). To plug bignum bodies into mvcgen
-we re-cast the same operational behavior into a `StateT BignumState
-Option Unit` shape, with a bridge lemma to the functional form.
+`vcgen` (on `Std.WP` triples) and `mvcgen` (on `Std.Do` triples) walk
+`do`-shaped programs in standard monads (`StateM`, `StateT _ Option`, etc.).
+The monadic form casts the same operational behavior into a `StateT BignumState
+Option Unit` shape, with a bridge lemma to the functional form. Both triple
+forms are provided below.
 
 See the toy smoke test
 in `MVCGenSmoke.lean`. -/
@@ -2669,13 +2671,73 @@ theorem triple_apply_run {α : Type}
     Q a s' := by
   simp only [Triple, WP.wp, PredTrans.apply_pushArg,
              PredTrans.apply_pushOption, PostCond.noThrow,
-             PredTrans.apply_pure, PredTrans.apply_Pure_pure,
+             PredTrans.apply_Pure_pure,
              OptionT.run, Option.instWP._aux_1,
              Id.run] at h_triple
   have := h_triple s h_pre
   -- Beta-reduce and apply h_run.
   simp only [StateT.run, h_run] at this
   exact this
+
+/-! ### Triples in `Std.WP`
+
+The `Std.WP` forms of the evaluation rule and of `triple_apply_run`, and the triple of one
+step of `stepInstrM`, for proofs by `vcgen`. A `Std.WP` triple `⦃fun s => P s⦄ x ⦃Q⦄` has
+the failure postcondition `⊥`: it states that the run succeeds. -/
+
+namespace StdWP
+
+open Std.WP
+
+/-- The weakest precondition of a `StateT σ Option` program at a state is its postcondition
+    at the result of the run, and the failure postcondition when the run fails. -/
+theorem wp_apply_stateT_option {σ α : Type} (x : StateT σ Option α) (Q : α → σ → Prop)
+    (E : Unit → Prop) (s : σ) :
+    wp x Q E s = (match x.run s with | some (a, s') => Q a s' | none => E ()) := by
+  rw [StateT.wp_apply_eq]
+  rcases x.run s with _ | ⟨a, s'⟩ <;> rfl
+
+/-- Triples over `BignumM` are statements on `run`: from every state satisfying `P` the run
+    returns a value and a state satisfying `Q`. -/
+theorem triple_iff_run {α : Type} (x : BignumM α) (P : BignumState → Prop)
+    (Q : α → BignumState → Prop) :
+    ⦃fun s => P s⦄ x ⦃fun a s => Q a s⦄ ↔
+      ∀ s, P s → ∃ a s', x.run s = some (a, s') ∧ Q a s' := by
+  rw [Triple.iff]
+  refine forall_congr' fun s => imp_congr Iff.rfl ?_
+  rw [wp_apply_stateT_option]
+  rcases x.run s with _ | ⟨a, s'⟩
+  · simp [Lean.Order.bot_apply]
+  · exact ⟨fun h => ⟨a, s', rfl, h⟩, fun ⟨_, _, h, hq⟩ => by cases h; exact hq⟩
+
+/-- The postcondition of a triple holds at the result of a run from a state satisfying the
+    precondition. -/
+theorem triple_apply_run {α : Type}
+    {x : BignumM α} {P : BignumState → Prop} {Q : α → BignumState → Prop}
+    (h_triple : ⦃fun s => P s⦄ x ⦃fun a s => Q a s⦄)
+    {s : BignumState} {a : α} {s' : BignumState}
+    (h_run : x s = some (a, s'))
+    (h_pre : P s) :
+    Q a s' := by
+  obtain ⟨a₁, s₁, h₁, hq⟩ := (triple_iff_run x P Q).1 h_triple s h_pre
+  have h₂ : x s = some (a₁, s₁) := h₁
+  rw [h_run] at h₂
+  simp only [Option.some.injEq, Prod.mk.injEq] at h₂
+  obtain ⟨rfl, rfl⟩ := h₂
+  exact hq
+
+/-- The triple of one step: the precondition is the postcondition at the state `execInstr`
+    returns, and the failure postcondition when it fails. -/
+theorem stepInstrM_spec (r : BignumRegistry) (i : InstrR) (Q : Unit → BignumState → Prop)
+    (E : Unit → Prop) :
+    ⦃fun s => match execInstr s i with | some s' => Q () s' | none => E ()⦄
+      stepInstrM r i ⦃Q; E⦄ := by
+  constructor
+  intro s h
+  rw [wp_apply_stateT_option]
+  cases hs : execInstr s i <;> simp only [hs] at h <;> simpa [StateT.run, stepInstrM, hs] using h
+
+end StdWP
 
 /-! ### `bv_normalize` simp set — kernel-proof closure pattern
 
@@ -2750,14 +2812,16 @@ theorem bignumExecM_iff_bignumExec (body : List InstrR) (s s' : BignumState) :
       rw [lhs_eq, rhs_eq]
       exact ih s1
 
-/-! ## §14. mvcgen smoke test
+/-! ## §14. `vcgen` smoke test
 
 A 2-instruction body with simple `Cassgn` shapes, written as a literal
-`do`-block in `BignumM`. Verifies that `mvcgen` walks through
-`stepInstrM` and that we can close the resulting VC by reducing the
-`execInstr` evaluation on a concrete InstrR.
+`do`-block in `BignumM`. `vcgen` walks the block through the triple
+`StdWP.stepInstrM_spec` of each step, and the resulting VC closes by
+reducing the `execInstr` evaluation on a concrete InstrR.
 
 This is the real-shape analog of `MVCGenSmoke.runToyDo`. -/
+
+set_option experimental.vcgen true
 
 namespace MVCGenSmoke
 
@@ -2785,32 +2849,34 @@ def smokeBodyM : BignumM Unit := do
   stepInstrM emptyRegistry setRTo42
   stepInstrM emptyRegistry copyRToT
 
-open Std.Do
+open Std.WP
 
-/-- mvcgen walks the `do`-block, reduces each `stepInstrM` to a
-    concrete state update, and the post-state has `r = 42` and
-    `t = 42`. -/
+/-- The post-state of the `do`-block has `r = 42` and `t = 42`. `vcgen` applies the
+    triple of the first `stepInstrM`; its VC, a `match` on `execInstr` with the weakest
+    precondition of the second step inside, closes by definitional unfolding. -/
 example :
-    ⦃fun s => ⌜s = initState⌝⦄
+    ⦃fun s => s = initState⦄
       smokeBodyM
-    ⦃⇓ _ => fun s => ⌜s.regs "r" = 42 ∧ s.regs "t" = 42⌝⦄ := by
-  mvcgen [smokeBodyM, stepInstrM, setRTo42, copyRToT, execInstr,
-          evalPExpr, setReg, initState]
+    ⦃fun _ s => s.regs "r" = 42 ∧ s.regs "t" = 42⦄ := by
+  simp only [smokeBodyM]
+  vcgen [StdWP.stepInstrM_spec]
+  exact ⟨rfl, rfl⟩
 
 /-- The same body, but written via `bignumExecM` (i.e., `forM` over a
     literal list). The `bignumExecM_cons` / `bignumExecM_nil` simp
     lemmas unroll the literal list into an explicit `do`-chain before
-    mvcgen runs. This is the recipe for real bignum bodies. -/
+    `vcgen` runs. This is the recipe for real bignum bodies. -/
 example :
-    ⦃fun s => ⌜s = initState⌝⦄
+    ⦃fun s => s = initState⦄
       bignumExecM emptyRegistry [setRTo42, copyRToT]
-    ⦃⇓ _ => fun s => ⌜s.regs "r" = 42 ∧ s.regs "t" = 42⌝⦄ := by
-  mvcgen [bignumExecM_cons, bignumExecM_nil, stepInstrM,
-          setRTo42, copyRToT, execInstr, evalPExpr, setReg, initState]
+    ⦃fun _ s => s.regs "r" = 42 ∧ s.regs "t" = 42⦄ := by
+  simp only [bignumExecM_cons, bignumExecM_nil]
+  vcgen [StdWP.stepInstrM_spec]
+  exact ⟨rfl, rfl⟩
 
 /-! ### `Copn` smoke: a SUB_64 intrinsic step
 
-Verifies that the same `mvcgen + simp` recipe handles the `Copn`
+Verifies that the same `vcgen + simp` recipe handles the `Copn`
 shape that bignum bodies use heavily (SUB / SBB / ADD / ADC / MULX /
 ADCX / ADOX / XOR). The body computes `r := 100 - 42 = 58`. -/
 
@@ -2828,25 +2894,25 @@ def subRTo58 : InstrR :=
 def initState2 : BignumState :=
   { regs := fun _ => 0, mem := Mem.empty }
 
-/-- mvcgen + simp handles the `Copn` shape too. -/
+/-- `vcgen + simp` handles the `Copn` shape too. -/
 example :
-    ⦃fun s => ⌜s = initState2⌝⦄
+    ⦃fun s => s = initState2⦄
       bignumExecM emptyRegistry [subRTo58]
-    ⦃⇓ _ => fun s => ⌜s.regs "r" = 58⌝⦄ := by
-  mvcgen [bignumExecM_cons, bignumExecM_nil, stepInstrM,
-          subRTo58, execInstr, evalPExpr, writeSubBundle,
-          subBorrow, setReg, initState2, lvN, lvCf, lvR]
+    ⦃fun _ s => s.regs "r" = 58⦄ := by
+  simp only [bignumExecM_cons, bignumExecM_nil]
+  vcgen [StdWP.stepInstrM_spec]
+  rfl
 
 /-! ### Pload limitation
 
-Direct mvcgen + simp does NOT close a `Pload` step against a literal
+Direct `vcgen + simp` does not close a `Pload` step against a literal
 `Mem.empty.store64 ...` state. The wp goal retains a chain of 8
 `Mem.loadByte` calls which simp can't reduce without per-byte simp
 lemmas connecting `loadByte ∘ store64`.
 
 Consequently, the kernel's `Hoare`-triple form must take the
 load values as preconditions (e.g., `load64Mem s.mem (base_a + 0) =
-some a0`) rather than starting from a literal `Mem` state. mvcgen
+some a0`) rather than starting from a literal `Mem` state. `vcgen`
 then walks only the post-load register-manipulation portion of the
 body. This matches the existing `bodyComputesAlgoNat` framing where
 `memNat4 base_a s.mem = some a_val` is given by hypothesis. -/
@@ -2855,7 +2921,7 @@ body. This matches the existing `bodyComputesAlgoNat` framing where
 
 Mirrors the first 8 instructions of `BignumModP25519_4.body`: 1
 zero-init + 4 const-loads + 3 const limbs of `p`. All `Cassgn`-with-
-`Pconst`. Verifies mvcgen scales to a body roughly 1/4 of the kernel. -/
+`Pconst`. Verifies `vcgen` scales to a body roughly 1/4 of the kernel. -/
 
 def stressBody : List InstrR :=
   [ .Cassgn (lvR "zero")    .AT_none (.sword .U64) (.Pconst 0)
@@ -2868,11 +2934,12 @@ def stressBody : List InstrR :=
   , .Cassgn (lvR "p3")      .AT_none (.sword .U64) (.Pconst 0x7FFFFFFFFFFFFFFF) ]
 
 example :
-    ⦃fun s => ⌜s = initState2⌝⦄
+    ⦃fun s => s = initState2⦄
       bignumExecM emptyRegistry stressBody
-    ⦃⇓ _ => fun s => ⌜s.regs "p3" = 0x7FFFFFFFFFFFFFFF⌝⦄ := by
-  mvcgen [bignumExecM_cons, bignumExecM_nil, stepInstrM,
-          stressBody, execInstr, evalPExpr, setReg, initState2, lvR]
+    ⦃fun _ s => s.regs "p3" = 0x7FFFFFFFFFFFFFFF⦄ := by
+  simp only [stressBody, bignumExecM_cons, bignumExecM_nil]
+  vcgen [StdWP.stepInstrM_spec]
+  rfl
 
 end MVCGenSmoke
 

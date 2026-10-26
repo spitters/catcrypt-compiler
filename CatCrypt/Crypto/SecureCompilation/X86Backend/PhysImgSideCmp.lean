@@ -1078,7 +1078,12 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
   simp only at hA hacc ⊢
   cases w with
   | Lopn ds o ss =>
-    have ho : o = "LOADIDX" ∨ o = "STOREIDX" := by simpa [isAccB] using hA
+    have ho : o = "LOADIDX" ∨ o = "STOREIDX" := by
+      have hu : LprogAsmPrinter.untagCaret o = "LOADIDX" ∨
+          LprogAsmPrinter.untagCaret o = "STOREIDX" := by
+        simpa [isAccB] using hA
+      rw [← (hacc ds o ss rfl).2.2.2.2 (by rcases hu with h | h <;> simp [h])]
+      exact hu
     obtain ⟨hL, hS, -⟩ := hacc ds o ss rfl
     rcases ho with rfl | rfl
     · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hL rfl
@@ -1279,7 +1284,8 @@ theorem noScratchBaseB_lfundefPhysAbiOfVirtCert
       cases hA : isAccB i.li_i
       · exact baseR14B_of_idxFree ⟨PhysImgSideAlloc.physExpand_idxFree _ _ rm mbr i
           (fun x hx => PhysImgSideAlloc.noIdxB_remapOperand _ _ hx) (hidx i hi hA) j hj,
-          PhysImgSideAlloc.physExpand_arrImmFree _ _ rm mbr i hne j hj⟩
+          PhysImgSideAlloc.physExpand_arrImmFree _ _ rm mbr i hne
+            (fun ds o ss h => (hshape i hi ds o ss h).2.2.2.2) j hj⟩
       · exact physExpand_acc_baseR14 _ _ rm mbr i (fun n => ⟨_, rfl⟩) (hshape i hi) hA j hj
   have hplain : ∀ j, PhysImgSideAlloc.PlainB j → baseNoScratchB j.li_i = true :=
     fun j h => baseNoScratchB_of_baseR14B (baseR14B_of_idxFree h.2.1)
@@ -1415,8 +1421,12 @@ theorem isMemB_of_isCmpB {r : LinstrR} (h : isCmpB r = true) : isMemB r = false 
     cases ha : isMemB (.Lopn ds o ss)
     · rfl
     · simp only [isMemB, isAccB, isArrImmB, Bool.or_eq_true, beq_iff_eq] at ha
-      simp only [isCmpB] at h
-      rcases ha with (rfl | rfl) | (rfl | rfl) <;> exact absurd h (by decide +kernel)
+      simp only [isCmpB, beq_iff_eq] at h
+      unfold LprogAsmPrinter.untagCaret at ha
+      split_ifs at ha <;>
+        first
+        | (rw [h] at ha; revert ha; decide)
+        | (rcases ha with (rfl | rfl) | (rfl | rfl) <;> exact absurd h (by decide +kernel))
   | _ => rfl
 
 theorem isCmpB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOperand}
@@ -1680,8 +1690,8 @@ theorem cmpRefines_mnOf {B : Lcmd} {i : Linstr} {ds : List LOperand} {o : String
     rcases ho with rfl | ho | ⟨w, rfl⟩
     · rw [hi]; exact ha
     · rw [isMemB_of_movMnems ho] at ha; cases ha
-    · simp (disch := decide +kernel) [isMemB, isAccB, isArrImmB,
-        withWidthTag_ne_of_tagSepFree] at ha
+    · rcases PhysImgPrint.untagCaret_withWidthTag_mov w with h' | h' <;>
+        simp [isMemB, isAccB, isArrImmB, h'] at ha
   · obtain ⟨ds', o', ss', he, ho⟩ := h r hr
     rw [he] at hc
     rcases ho with rfl | ho | ⟨w, rfl⟩
@@ -1934,7 +1944,9 @@ theorem cmpRefines_map (f : Linstr → Linstr) : ∀ (l : Lcmd),
 /-- An operation under a mnemonic that is neither a compare nor an access mnemonic (`isMemB`). -/
 theorem quiet_of_mn {ds : List LOperand} {o : String} {ss : List LOperand}
     (hc : (stripWidthTag o == "CMP") = false)
-    (ha : (o == "LOADIDX" || o == "STOREIDX" || (o == "ZEROARR" || o == "STOREIMM")) = false) :
+    (ha : (LprogAsmPrinter.untagCaret o == "LOADIDX" || LprogAsmPrinter.untagCaret o == "STOREIDX" ||
+      (LprogAsmPrinter.untagCaret o == "ZEROARR" || LprogAsmPrinter.untagCaret o == "STOREIMM")) =
+        false) :
     isCmpB (.Lopn ds o ss) = false ∧ isMemB (.Lopn ds o ss) = false :=
   ⟨hc, ha⟩
 
@@ -2053,7 +2065,7 @@ theorem cmpRefines_reallocBody (res : List String) (b : Lcmd) :
       · obtain ⟨k, hk, rfl⟩ := List.mem_map.mp hj
         obtain ⟨i, hi, he⟩ := PhysImgSidePass.reallocRun_opn _ is k hk
         have hw := hwf i hi
-        have hz := PhysImgFold.fragOf?_opn_ne (hg.2 i hi)
+        have hz := PhysImgFold.fragOf?_untagCaret_ne (hg.2 i hi)
         simp only [LprogGpRealloc.FI.wf, Bool.and_eq_true, bne_iff_ne, ne_eq] at hw
         simp [FI.toL, LprogGpRealloc.FI.toR, isMemB, isAccB, isArrImmB, he, hw.1.2, hw.2,
           hz.1, hz.2]

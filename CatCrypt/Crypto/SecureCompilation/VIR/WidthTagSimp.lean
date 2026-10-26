@@ -146,4 +146,23 @@ attribute [width_tag] CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrint
   CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.stripWidthTag_withWidthTag
   CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.withWidthTag_ne_of_tagSepFree
 
+/-! ## `untagCaret` on every literal without `^` -/
+
+/-- `untagCaret` fixes a string whose characters do not include `^`, stated with the decision
+    of the membership so that the kernel checks it by evaluation. -/
+theorem untagCaret_lit (s : String) (h : decide ('^' ∈ s.toList) = false) :
+    untagCaret s = s :=
+  untagCaret_of_caret_free (by simpa using h)
+
+/-- The simplification procedure that rewrites `untagCaret s` to `s` at a string literal `s`
+    without `^`, by `untagCaret_lit`; the membership is decided by the kernel. It is in the
+    default simp set and in `width_tag`, so a reader evaluated at a literal mnemonic reduces
+    without a per-literal lemma. -/
+simproc [simp, width_tag] reduceUntagCaret (untagCaret _) := fun e => do
+  let_expr untagCaret a ← e | return .continue
+  let some s := Lean.Meta.getStringValue? a | return .continue
+  if s.contains '^' then return .continue
+  return .done { expr := a, proof? := some (Lean.mkApp2 (Lean.mkConst ``untagCaret_lit) a
+    (Lean.mkApp2 (Lean.mkConst ``Eq.refl [1]) (Lean.mkConst ``Bool) (Lean.mkConst ``Bool.false))) }
+
 end CatCrypt.Crypto.SecureCompilation.VIR.WidthTagSimp

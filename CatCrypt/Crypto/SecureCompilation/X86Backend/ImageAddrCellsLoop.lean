@@ -271,13 +271,13 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
         simp only at hx
         subst hx
         simp only [stepA, hb, hpol, hp, Option.map_some]
-      refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), ?_⟩
+      refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]), ?_⟩
       by_cases hzp : s.zf = pol
       · rw [ite_eq_left hzp] at hstep hstepA
         cases hstep
         refine ⟨_, hstepA, Or.inr ⟨⟨body[p], ii', l, by simp [LstateA.setLpc], hli⟩,
           haltedA_of (bi := body[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
-          loadSafe_of (bi := body[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
+          loadSafe_of (bi := body[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp [normA]),
           sa.setLpc (p + 1), ?_, rel_jump hphys hrel hb hnm hbp (by rw [hli]; rfl)
             (fun ds o ss h => by rw [hli] at h; cases h)⟩⟩
         have hb' : body[p]? = some body[p] := hbp
@@ -315,7 +315,10 @@ theorem cell_cond {R : LstateMF → LstateA → Bool → Prop}
   have hsafe : ∀ {sx : LstateA} {bx : Linstr}, body[sx.reg.lpc]? = some bx →
       (∀ ds o ss, bx.li_i ≠ .Lopn ds o ss) → SafeW rsp body sx := by
     intro sx bx hbx hno
-    refine ⟨loadSafe_of hbx (fun D B I => hno _ _ _), fun ii ds o ss hb => ?_,
+    refine ⟨loadSafe_of hbx (fun D B I h => by
+        cases hl : bx.li_i with
+        | Lopn ds o ss => exact hno ds o ss hl
+        | _ => rw [hl] at h; simp [normA] at h), fun ii ds o ss hb => ?_,
       fun ii x D B off p hb hc => ?_⟩
     · rw [hbx] at hb; cases hb; exact absurd rfl (hno ds o ss)
     · rw [hbx] at hb; cases hb

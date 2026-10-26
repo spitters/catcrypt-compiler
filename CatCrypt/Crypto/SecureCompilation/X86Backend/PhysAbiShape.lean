@@ -205,7 +205,12 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
     (rmap : LOperand → LOperand) (memrefBaseReload : String → Option String) (i : Linstr)
     {r : Linstr} (hr : r ∈ physExpand shiftImm u64 rmap memrefBaseReload i)
     {ds : List LOperand} {o : String} {ss : List LOperand} (ho : r.li_i = .Lopn ds o ss)
-    (hz : o = "ZEROARR" ∨ o = "STOREIMM") : ∃ ds' ss', i.li_i = .Lopn ds' o ss' := by
+    (hz : LprogAsmPrinter.untagCaret o = "ZEROARR" ∨ LprogAsmPrinter.untagCaret o = "STOREIMM") :
+    ∃ ds' ss', i.li_i = .Lopn ds' o ss' := by
+  have hlit : ∀ m : String, '^' ∉ m.toList → m ≠ "ZEROARR" → m ≠ "STOREIMM" → o ≠ m := by
+    rintro m hm h1 h2 rfl
+    rw [LprogAsmPrinter.untagCaret_of_caret_free hm] at hz
+    exact hz.elim h1 h2
   obtain ⟨rii, rw⟩ := r
   obtain ⟨ii, w⟩ := i
   simp only at ho
@@ -216,12 +221,12 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
     by_contra hne
     have hne' : o ≠ o0 := fun h => hne (by rw [h])
     clear hne
-    have l1 : o ≠ "MOV" := by rcases hz with rfl | rfl <;> decide
-    have l2 : o ≠ "MOV:64" := by rcases hz with rfl | rfl <;> decide
-    have l3 : o ≠ "MOVQ" := by rcases hz with rfl | rfl <;> decide
-    have l4 : o ≠ "LEA:64" := by rcases hz with rfl | rfl <;> decide
-    have l5 : o ≠ "STORE:64" := by rcases hz with rfl | rfl <;> decide
-    have l6 : o ≠ withWidthTag 64 "MOV" := by rcases hz with rfl | rfl <;> decide
+    have l1 : o ≠ "MOV" := hlit _ (by decide) (by decide) (by decide)
+    have l2 : o ≠ "MOV:64" := hlit _ (by decide) (by decide) (by decide)
+    have l3 : o ≠ "MOVQ" := hlit _ (by decide) (by decide) (by decide)
+    have l4 : o ≠ "LEA:64" := hlit _ (by decide) (by decide) (by decide)
+    have l5 : o ≠ "STORE:64" := hlit _ (by decide) (by decide) (by decide)
+    have l6 : o ≠ withWidthTag 64 "MOV" := hlit _ (by decide) (by decide) (by decide)
     have hmf : ∀ s : String, o ≠ (if hasSuffix s ":64" = true then "MOV:64" else "MOV") :=
       fun s => by split <;> assumption
     have hMov : ∀ d s m, o ≠ m → ∀ x ∈ legalizeMov d s m, ∀ ds ss, x ≠ .Lopn ds o ss := by
@@ -961,7 +966,10 @@ theorem toLfundefPhysAbi_singleLoop (outArg : String) (inArgs : List String)
     intro r hr ds o ss ho
     obtain ⟨i, hi, hri⟩ := List.mem_flatMap.mp (List.mem_filter.mp hr).1
     refine not_or.mp fun hz => ?_
-    obtain ⟨ds', ss', hi'⟩ := physExpand_arrImm _ _ _ _ i hri ho hz
+    obtain ⟨ds', ss', hi'⟩ := physExpand_arrImm _ _ _ _ i hri ho (by
+      rcases hz with rfl | rfl
+      · exact .inl (LprogAsmPrinter.untagCaret_of_caret_free (by decide))
+      · exact .inr (LprogAsmPrinter.untagCaret_of_caret_free (by decide)))
     rw [hb1] at hi
     rw [List.mem_append, List.mem_append, List.mem_singleton] at hi
     rcases hi with hi | hi | rfl

@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.SepLogic.VC.Core
 public import CatCrypt.Crypto.SecureCompilation.SepLogic.AddrRunSafe
+public import Std.Tactic.Do
 
 /-!
 # The address machine in `RunM`
@@ -19,7 +20,7 @@ of at most `n` steps; `runAM_run` says that the state part of `runAM` is `runA`.
 `execAM frame c k i` takes the step of the instruction `i` at the position `k` from a state
 whose program counter is `k`, and `blockAM frame c k is` executes the instructions `is` from
 the position `k` in turn. These programs carry the instruction in their syntax, so the
-`@[spec]` triples of each instruction shape apply to them by `mvcgen`; `runAM_of_block`
+`@[spec]` triples of each instruction shape apply to them by `vcgen`; `runAM_of_block`
 turns a halting run of a block whose instructions are those of the body into a run of
 `runAM`.
 
@@ -39,17 +40,17 @@ turns a halting run of a block whose instructions are those of the body into a r
   a step from every non-halted state of the invariant, and a variant that every step
   decreases.
 * `VC.runA_storeMoveBody_frame_vc`, `VC.storeMoveBody_sContract`: the frame property of
-  `storeMoveBody` from a triple proved by `mvcgen`, and the contract of its run.
+  `storeMoveBody` from a triple proved by `vcgen`, and the contract of its run.
 -/
 
 @[expose] public section
 
 set_option autoImplicit false
-set_option mvcgen.warning false
+set_option experimental.vcgen true
 
 namespace CatCrypt.Crypto.SecureCompilation.SepLogic.VC
 
-open Std.Do
+open Std.WP
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
@@ -66,20 +67,7 @@ open Footprinted
 abbrev AM : Type → Type := RunM (LstateA × Bool) (List Nat)
 
 /-- The postconditions of `AM`. -/
-abbrev AMPost (α : Type) : Type :=
-  PostCond α (.arg ((LstateA × Bool) × List Nat) (.except PUnit .pure))
-
-set_option linter.auxLemma false in
-/-- The weakest precondition of an `AM` program at a state is its postcondition at the result
-    of the run, and the failure postcondition when the run fails. -/
-theorem wp_apply_run {α : Type} (x : AM α) (Q : AMPost α) (st : (LstateA × Bool) × List Nat) :
-    wp⟦x⟧ Q st =
-      (match x.run st with
-        | some (a, st') => Q.1 a st'
-        | none => Q.2.1 PUnit.unit) := by
-  simp only [wp, PredTrans.apply_pushArg, PredTrans.apply_pushOption, OptionT.run,
-    Option.instWP._aux_1, Id.run, StateT.run]
-  rcases x st with _ | ⟨a, st'⟩ <;> rfl
+abbrev AMPost (α : Type) : Type := α → (LstateA × Bool) × List Nat → Prop
 
 /-! ## The step of an instruction -/
 
@@ -243,9 +231,10 @@ theorem runAM_of_block (frame : String → Option (BitVec 64)) (c : Lcmd) :
 theorem execAM_spec_of {frame : String → Option (BitVec 64)} {c : Lcmd} {k : Nat}
     {i : LinstrR} (P : LstateA × Bool → Prop) (f : LstateA × Bool → LstateA × Bool)
     (h : ∀ s zf, s.reg.lpc = k → P (s, zf) → stepI frame c k i s zf = some (f (s, zf)))
-    (Q : AMPost Unit) :
-    ⦃spred(fun st => ⌜st.1.1.reg.lpc = k ∧ P st.1⌝ ∧ Q.1 () (f st.1, st.2 ++ [k]))⦄
-      execAM frame c k i ⦃Q⦄ := by
+    (Q : AMPost Unit) (E : Unit → Prop) :
+    ⦃fun st => (st.1.1.reg.lpc = k ∧ P st.1) ∧ Q () (f st.1, st.2 ++ [k])⦄
+      execAM frame c k i ⦃Q; E⦄ := by
+  constructor
   intro st hst
   rw [wp_apply_run]
   obtain ⟨⟨hk, hP⟩, hQ⟩ := hst
@@ -261,7 +250,7 @@ theorem stepI_lopn_reg (frame : String → Option (BitVec 64)) (c : Lcmd) (k : N
   simp only [stepI]
   rw [tagAt_of_ne (by simp [movImmStruct?])]
   rcases ho with rfl | rfl | rfl <;>
-    (rw [tagA_lopn (by decide) (by decide), normA_of_caret_free (by decide)]; simp +decide [castTagW])
+    (rw [tagA_lopn_of_caret_free (by decide) (by decide),normA_of_caret_free (by decide)]; simp +decide [castTagW])
 
 /-- The shape of a 64-bit move `MOV:64 n, S`: a store of `S` when `n` is a cell, a load into
     `n` when `S` is a cell, a register move otherwise. -/
@@ -315,11 +304,11 @@ theorem stepI_mov64 (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
     `n`, or moves `S` into `n`. -/
 @[spec]
 theorem execAM_mov64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
-    (n S : String) (Q : AMPost Unit) :
-    ⦃spred(fun st => ⌜st.1.1.reg.lpc = k ∧ movOk frame n S st.1⌝ ∧
-        Q.1 () (movNext n S st.1, st.2 ++ [k]))⦄
-      execAM frame c k (.Lopn [.reg n] "MOV:64" [.reg S]) ⦃Q⦄ :=
-  execAM_spec_of _ _ (fun s zf _ h => stepI_mov64 frame c k n S s zf h) Q
+    (n S : String) (Q : AMPost Unit) (E : Unit → Prop) :
+    ⦃fun st => (st.1.1.reg.lpc = k ∧ movOk frame n S st.1) ∧
+        Q () (movNext n S st.1, st.2 ++ [k])⦄
+      execAM frame c k (.Lopn [.reg n] "MOV:64" [.reg S]) ⦃Q; E⦄ :=
+  execAM_spec_of _ _ (fun s zf _ h => stepI_mov64 frame c k n S s zf h) Q E
 
 /-- The base register of the cell name `n` (`cellParts?`). -/
 def cellBaseName (n : String) : String := ((cellParts? n).getD ("", 0)).1
@@ -331,15 +320,15 @@ def cellOff (n : String) : Nat := ((cellParts? n).getD ("", 0)).2
     the address in `B` plus `off`. -/
 @[spec]
 theorem execAM_store64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
-    (n S : String) (Q : AMPost Unit) :
-    ⦃spred(fun st => ⌜st.1.1.reg.lpc = k ∧ ((cellParts? n).isSome ∧
-        (st.1.1.reg.getW (cellBaseName n) 64).isSome ∧ (st.1.1.reg.getW S 64).isSome)⌝ ∧
-        Q.1 () (({ st.1.1 with
+    (n S : String) (Q : AMPost Unit) (E : Unit → Prop) :
+    ⦃fun st => (st.1.1.reg.lpc = k ∧ ((cellParts? n).isSome ∧
+        (st.1.1.reg.getW (cellBaseName n) 64).isSome ∧ (st.1.1.reg.getW S 64).isSome)) ∧
+        Q () (({ st.1.1 with
           reg := st.1.1.reg.nextPc
           mem := write64 st.1.1.mem
             ((st.1.1.reg.getW (cellBaseName n) 64).getD 0 + BitVec.ofNat 64 (cellOff n))
-            ((st.1.1.reg.getW S 64).getD 0) }, st.1.2), st.2 ++ [k]))⦄
-      execAM frame c k (.Lopn [.reg n] "STORE:64" [.reg S]) ⦃Q⦄ :=
+            ((st.1.1.reg.getW S 64).getD 0) }, st.1.2), st.2 ++ [k])⦄
+      execAM frame c k (.Lopn [.reg n] "STORE:64" [.reg S]) ⦃Q; E⦄ :=
   execAM_spec_of (fun st => (cellParts? n).isSome ∧ (st.1.reg.getW (cellBaseName n) 64).isSome ∧
       (st.1.reg.getW S 64).isSome)
     (fun st => ({ st.1 with
@@ -354,19 +343,19 @@ theorem execAM_store64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (
     have ho : cellOff n = off := by simp [cellOff, hn]
     rw [hb] at hp
     rw [stepI_lopn_reg frame c k n S _ (Or.inr (Or.inl rfl)), fstepA_stm frame hn hp hv]
-    simp [hb, ho, hp, hv]) Q
+    simp [hb, ho, hp, hv]) Q E
 
 /-- **The cell load.** `LOAD:64 D, n`, `n` the cell `[B + off]`, writes the word at the
     address in `B` plus `off` to `D`. -/
 @[spec]
 theorem execAM_load64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
-    (D n : String) (Q : AMPost Unit) :
-    ⦃spred(fun st => ⌜st.1.1.reg.lpc = k ∧ ((cellParts? n).isSome ∧
-        (st.1.1.reg.getW (cellBaseName n) 64).isSome)⌝ ∧
-        Q.1 () (({ st.1.1 with reg := (st.1.1.reg.setReg D (read64 st.1.1.mem
+    (D n : String) (Q : AMPost Unit) (E : Unit → Prop) :
+    ⦃fun st => (st.1.1.reg.lpc = k ∧ ((cellParts? n).isSome ∧
+        (st.1.1.reg.getW (cellBaseName n) 64).isSome)) ∧
+        Q () (({ st.1.1 with reg := (st.1.1.reg.setReg D (read64 st.1.1.mem
           ((st.1.1.reg.getW (cellBaseName n) 64).getD 0 + BitVec.ofNat 64 (cellOff n)))).nextPc },
-          st.1.2), st.2 ++ [k]))⦄
-      execAM frame c k (.Lopn [.reg D] "LOAD:64" [.reg n]) ⦃Q⦄ :=
+          st.1.2), st.2 ++ [k])⦄
+      execAM frame c k (.Lopn [.reg D] "LOAD:64" [.reg n]) ⦃Q; E⦄ :=
   execAM_spec_of (fun st => (cellParts? n).isSome ∧ (st.1.reg.getW (cellBaseName n) 64).isSome)
     (fun st => ({ st.1 with reg := (st.1.reg.setReg D (read64 st.1.mem
       ((st.1.reg.getW (cellBaseName n) 64).getD 0 + BitVec.ofNat 64 (cellOff n)))).nextPc }, st.2))
@@ -377,15 +366,16 @@ theorem execAM_load64_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k
     have ho : cellOff n = off := by simp [cellOff, hn]
     rw [hb] at hp
     rw [stepI_lopn_reg frame c k D n _ (Or.inr (Or.inr rfl)), fstepA_ldm frame hn hp]
-    simp [hb, ho, hp]) Q
+    simp [hb, ho, hp]) Q E
 
 /-- **The label.** A label moves the program counter to the next instruction. -/
 @[spec]
 theorem execAM_label_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
-    (lk : LabelKind) (l : LLabel) (Q : AMPost Unit) :
-    ⦃spred(fun st => ⌜st.1.1.reg.lpc = k⌝ ∧
-        Q.1 () ((st.1.1.setLpc (k + 1), st.1.2), st.2 ++ [k]))⦄
-      execAM frame c k (.Llabel lk l) ⦃Q⦄ := by
+    (lk : LabelKind) (l : LLabel) (Q : AMPost Unit) (E : Unit → Prop) :
+    ⦃fun st => st.1.1.reg.lpc = k ∧
+        Q () ((st.1.1.setLpc (k + 1), st.1.2), st.2 ++ [k])⦄
+      execAM frame c k (.Llabel lk l) ⦃Q; E⦄ := by
+  constructor
   intro st hst
   rw [wp_apply_run]
   obtain ⟨hk, hQ⟩ := hst
@@ -398,13 +388,13 @@ theorem execAM_label_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k 
     instruction otherwise. -/
 @[spec]
 theorem execAM_cond_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k : Nat)
-    (cc : String) (l : LLabel) (Q : AMPost Unit) :
-    ⦃spred(fun st => ⌜st.1.1.reg.lpc = k ∧ (condPol cc).isSome ∧
-        (st.1.2 = (condPol cc).getD false → (labelAt c l).isSome)⌝ ∧
-        Q.1 () ((if st.1.2 = (condPol cc).getD false then
+    (cc : String) (l : LLabel) (Q : AMPost Unit) (E : Unit → Prop) :
+    ⦃fun st => (st.1.1.reg.lpc = k ∧ (condPol cc).isSome ∧
+        (st.1.2 = (condPol cc).getD false → (labelAt c l).isSome)) ∧
+        Q () ((if st.1.2 = (condPol cc).getD false then
             st.1.1.setLpc ((labelAt c l).getD 0) else st.1.1.setLpc (k + 1), st.1.2),
-          st.2 ++ [k]))⦄
-      execAM frame c k (.Lcond (.reg cc) l) ⦃Q⦄ :=
+          st.2 ++ [k])⦄
+      execAM frame c k (.Lcond (.reg cc) l) ⦃Q; E⦄ :=
   execAM_spec_of (fun st => (condPol cc).isSome ∧
       (st.2 = (condPol cc).getD false → (labelAt c l).isSome))
     (fun st => (if st.2 = (condPol cc).getD false then st.1.setLpc ((labelAt c l).getD 0)
@@ -415,7 +405,7 @@ theorem execAM_cond_spec (frame : String → Option (BitVec 64)) (c : Lcmd) (k :
     split_ifs with hz
     · obtain ⟨q, hq⟩ := Option.isSome_iff_exists.1 (hl hz)
       simp [hq]
-    · simp) Q
+    · simp) Q E
 
 /-! ## Runs from a step invariant -/
 
@@ -433,8 +423,8 @@ theorem runAM_spec_of_inv {frame : String → Option (BitVec 64)} {c : Lcmd}
       stepA frame c s zf = some (s', zf') → V s' zf' < V s zf)
     (hQ : ∀ s zf, I s zf → haltedA c s = true → Q (s, zf))
     (hP : ∀ s zf, I s zf → P s) (n : Nat) (s₀ : LstateA × Bool) :
-    ⦃fun st => ⌜st.1 = s₀ ∧ I s₀.1 s₀.2 ∧ V s₀.1 s₀.2 ≤ n⌝⦄ runAM frame c n
-      ⦃⇓ _ st => ⌜Q st.1 ∧ RunSafe frame c P n s₀.1 s₀.2⌝⦄ := by
+    ⦃fun st => st.1 = s₀ ∧ I s₀.1 s₀.2 ∧ V s₀.1 s₀.2 ≤ n⦄ runAM frame c n
+      ⦃fun _ st => Q st.1 ∧ RunSafe frame c P n s₀.1 s₀.2⦄ := by
   have H : ∀ (n : Nat) (s : LstateA) (zf : Bool) (t : List Nat), I s zf → V s zf ≤ n →
       ∃ st', (runAM frame c n).run ((s, zf), t) = some ((), st') ∧ Q st'.1 := by
     intro n
@@ -509,35 +499,38 @@ theorem agreeOn_storeMove (s : LstateA) (zf : Bool) (p v : BitVec 64) :
     show s.mem x = write64 s.mem (p + BitVec.ofNat 64 0) v x
     exact (write64_of_not_inRange _ _ _ _ fun hx => hw ⟨x, hx, rfl⟩).symm
 
-/-- **The block of `storeMoveBody` by `mvcgen`.** From the first instruction, with `B` and `V`
+/-- **The block of `storeMoveBody` by `vcgen`.** From the first instruction, with `B` and `V`
     holding words, the two instructions end at the program counter `2`, keep every location
     outside `storeMoveWrites`, and append `[0, 1]` to the trace. -/
 theorem blockAM_storeMoveBody_triple {p v : BitVec 64} (st₀ : (LstateA × Bool) × List Nat) :
-    ⦃fun st => ⌜st = st₀ ∧ st₀.1.1.reg.lpc = 0 ∧ st₀.1.1.reg.getW "B" 64 = some p ∧
-        st₀.1.1.reg.getW "V" 64 = some v⌝⦄
+    ⦃fun st => st = st₀ ∧ st₀.1.1.reg.lpc = 0 ∧ st₀.1.1.reg.getW "B" 64 = some p ∧
+        st₀.1.1.reg.getW "V" 64 = some v⦄
       blockAM (fun _ => none) storeMoveBody 0 storeMoveInstrs
-      ⦃⇓ _ st => ⌜st.1.1.reg.lpc = 2 ∧ AgreeOn (storeMoveWrites p)ᶜ st₀.1 st.1 ∧
-        st.2 = st₀.2 ++ [0, 1]⌝⦄ := by
+      ⦃fun _ st => st.1.1.reg.lpc = 2 ∧ AgreeOn (storeMoveWrites p)ᶜ st₀.1 st.1 ∧
+        st.2 = st₀.2 ++ [0, 1]⦄ := by
   have hn : cellParts? "mem.B.0" = some ("B", 0) := by decide
   have hD : cellParts? "D" = none := by decide
   have hS : cellParts? "S" = none := by decide
-  mvcgen [blockAM, storeMoveInstrs]
+  simp only [storeMoveInstrs, blockAM]
+  vcgen
   rename_i st h
   obtain ⟨rfl, hpc, hB, hV⟩ := h
   refine ⟨⟨hpc, by simp [movOk, hn, hB, hV]⟩, ?_⟩
-  mvcgen
+  simp only [binderNameHint]
+  vcgen
   refine ⟨⟨by simp [movNext, hn, hpc], by simp [movOk, hD, hS]⟩, ?_⟩
-  mvcgen
+  simp only [binderNameHint]
+  vcgen
   rw [movNext_store hn hB hV, movNext_move hD hS]
   exact ⟨by simp [hpc], agreeOn_storeMove _ _ _ _, by simp⟩
 
 /-- The triple of the run of two steps of `storeMoveBody`. -/
 theorem runAM_storeMoveBody_triple {p v : BitVec 64} (st₀ : (LstateA × Bool) × List Nat) :
-    ⦃fun st => ⌜st = st₀ ∧ st₀.1.1.reg.lpc = 0 ∧ st₀.1.1.reg.getW "B" 64 = some p ∧
-        st₀.1.1.reg.getW "V" 64 = some v⌝⦄
+    ⦃fun st => st = st₀ ∧ st₀.1.1.reg.lpc = 0 ∧ st₀.1.1.reg.getW "B" 64 = some p ∧
+        st₀.1.1.reg.getW "V" 64 = some v⦄
       runAM (fun _ => none) storeMoveBody 2
-      ⦃⇓ _ st => ⌜st.1.1.reg.lpc = 2 ∧ AgreeOn (storeMoveWrites p)ᶜ st₀.1 st.1 ∧
-        st.2 = st₀.2 ++ [0, 1]⌝⦄ := by
+      ⦃fun _ st => st.1.1.reg.lpc = 2 ∧ AgreeOn (storeMoveWrites p)ᶜ st₀.1 st.1 ∧
+        st.2 = st₀.2 ++ [0, 1]⦄ := by
   refine (triple_iff_run _ _ _).2 fun st hst => ?_
   obtain ⟨⟨⟩, st', hr, hq⟩ :=
     (triple_iff_run _ _ _).1 (blockAM_storeMoveBody_triple (p := p) (v := v) st₀) st hst
@@ -566,7 +559,7 @@ theorem arrPts_of_storeMove {p a : BitVec 64} {xs : List (BitVec (8 * 8))}
   · cases hxy
     exact Set.disjoint_left.1 hd hx hy
 
-/-- **The frame property of `storeMoveBody` by `mvcgen`.** Two steps of `storeMoveBody` from
+/-- **The frame property of `storeMoveBody` by `vcgen`.** Two steps of `storeMoveBody` from
     the first instruction halt, and an array of words disjoint from the stored word holds
     after them. -/
 theorem runA_storeMoveBody_frame_vc {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)

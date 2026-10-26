@@ -2148,7 +2148,9 @@ theorem typeBody_map_toL {tag : LinstrR → MemTag} {recog : String → Bool}
   refine List.map_congr_left (fun i hi => ?_)
   obtain ⟨hr, hw⟩ := h i hi
   simp only [FI.wf, Bool.and_eq_true, bne_iff_ne, ne_eq] at hw
-  simp only [Function.comp, FI.toL, tyF, FI.toR, htag i.d i.opn i.srcs hr hw.1.2 hw.2]
+  simp only [Function.comp, FI.toL, tyF, FI.toR, htag i.d i.opn i.srcs hr
+    (ne_of_apply_ne LprogAsmPrinter.untagCaret hw.1.2)
+    (ne_of_apply_ne LprogAsmPrinter.untagCaret hw.2)]
 
 /-- `String.isPrefixOf` is the list prefix test on the characters. -/
 theorem isPrefixOf_list (p s : String) : p.isPrefixOf s = p.toList.isPrefixOf s.toList := by

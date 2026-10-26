@@ -1411,7 +1411,7 @@ theorem fstepF_bitMov (D : String) (n : Nat) (m : LstateM) (zf : Bool) :
 theorem icase_movImm (frame : String → Option (BitVec 64)) (D : String) (n : Nat) :
     icase frame (.Lopn [.reg D] "MOV" [.imm n]) = .reg ∧
       carryI? (.Lopn [.reg D] "MOV" [.imm n]) = none := by
-  simp (config := { decide := true }) [icase, slotMov?, slotCmp?, carryI?]
+  simp [icase, slotMov?, slotCmp?, carryI?, width_tag, castTagW]
 
 /-- **A carry constant keeps `ImgRelW`.** The image and the address machine step the
     immediate move `om D, #n` (`om` is `MOV` or `MOV^w`, `w ≠ 64`), which `normA` reads as
@@ -1540,7 +1540,8 @@ theorem cast_facts (frame : String → Option (BitVec 64)) {x : LinstrR} {d a : 
   obtain ⟨o, rfl, hm, hw⟩ := classifyK_spec h
   have h1 : o ≠ "MOVQ" := by rintro rfl; simp [castTagW] at hw
   have h2 : o ≠ "MOV:64" := by rintro rfl; simp [castTagW] at hw
-  refine ⟨o, rfl, hm, hw, by simp [carryI?], by simp [icase, hw], by simp [movImmStruct?], ?_⟩
+  refine ⟨o, rfl, hm, hw, by simp [carryI?], by simp [icase, hw,
+    LprogAsmPrinter.untagCaret_of_caret_free (castTagW_caret_free hw)], by simp [movImmStruct?], ?_⟩
   simp [slotMov?, h1, h2]
 
 /-- **A width-carrying cast keeps `ImgRelW`.** The image and the address machine step the
@@ -2003,7 +2004,7 @@ theorem rel_stiW {frame : String → Option (BitVec 64)}
       fun h => ?_
     have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
     have hic : icase frame bi.li_i = .reg := by
-      rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?]
+      rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?, normA_of_caret_free]
     have hmi : movImmStruct? bi.li_i = none := by
       rw [hx]; simp [movImmStruct?, isMovImmMnem_mov64]
     simp only [LstateN.lpc_nextPc, hW1, oneBitStep_noCarry hci, hic, hmi, hnA]
@@ -2023,7 +2024,7 @@ theorem rel_stiW {frame : String → Option (BitVec 64)}
       refine (hrel.slots q' a' ha').of_eq rfl rfl fun h => ?_
       have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
       have hic : icase frame bi.li_i = .reg := by
-        rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?]
+        rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?, normA_of_caret_free]
       have hmi : movImmStruct? bi.li_i = none := by
         rw [hx]; simp [movImmStruct?, isMovImmMnem_mov64]
       simp only [LstateN.lpc_nextPc, hW1, oneBitStep_noCarry hci, hic, hmi, hnA]
@@ -2032,7 +2033,7 @@ theorem rel_stiW {frame : String → Option (BitVec 64)}
   · intro r hr hW
     have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
     have hic : icase frame bi.li_i = .reg := by
-      rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?]
+      rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?, normA_of_caret_free]
     have hmi : movImmStruct? bi.li_i = none := by
       rw [hx]; simp [movImmStruct?, isMovImmMnem_mov64]
     simp only [LstateN.lpc_nextPc, hW1, oneBitStep_noCarry hci, hic, hmi, hnA] at hW
@@ -2384,7 +2385,7 @@ theorem rel_scmovW {frame : String → Option (BitVec 64)}
   have hnm : slotMov? bi.li_i = none := by rw [hx]; simp [slotMov?]
   have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
   have hic : icase frame bi.li_i = .reg := by
-    rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?]
+    rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?, normA_of_caret_free]
   have hmi : movImmStruct? bi.li_i = none := by rw [hx]; simp [movImmStruct?]
   have hWD : ∀ r, r ≠ D → r ∈ oneBitAt frame body sa.reg.lpc →
       r ∈ oneBitAt frame body (sa.reg.lpc + 1) := by
@@ -2675,7 +2676,7 @@ theorem rel_scmovDstW {frame : String → Option (BitVec 64)}
   have hnm : slotMov? bi.li_i = none := by rw [hx]; simp [slotMov?]
   have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
   have hic : icase frame bi.li_i = .reg := by
-    rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?]
+    rw [hx]; simp (config := { decide := true }) [icase, slotMov?, slotCmp?, normA_of_caret_free]
   have hmi : movImmStruct? bi.li_i = none := by rw [hx]; simp [movImmStruct?]
   obtain ⟨hsv, hrl, hhd⟩ := saved_reload_nextW (sa' := { sa with
       reg := sa.reg.nextPc
@@ -2734,13 +2735,11 @@ theorem rel_scmpW {frame : String → Option (BitVec 64)}
       ∧ ImgRelW frame slotArr base body t sa' t.zf := by
   obtain ⟨hk, hq⟩ := icase_scmp hc
   obtain ⟨a, ha⟩ := Option.isSome_iff_exists.mp hq
-  have hW1 := oneBitAt_succ (frame := frame) hb (bitStore?_of_eq (slotCmp?_eq hk) (by simp))
-    (seedAt_of_eq (slotCmp?_eq hk) (by simp))
+  obtain ⟨o, -, hxr⟩ := eq_of_normA_lopn (slotCmp?_eq hk) (by simp [withWidthTag])
+  have hW1 := oneBitAt_succ (frame := frame) hb (bitStore?_of_eq hxr (by simp))
+    (seedAt_of_eq hxr (by simp))
   rw [oneBitStep_noCarry hci, hc] at hW1
-  have hx := slotCmp?_eq hk
-  have hn : normA bi.li_i = bi.li_i := by rw [hx]; rfl
-  have hnm : slotMov? bi.li_i = none := by rw [hx]; rfl
-  rw [hn] at hs ⊢
+  have hnm : slotMov? bi.li_i = none := by rw [hxr]; simp [slotMov?]
   rw [eval_slotCmp P hk] at hs
   have hqv : s.prog.base.reg.getW q 64 = some (read64 sa.mem a) := by
     rw [getW_eq, (hrel.slots q a ha).word hqW]; simp [castW]
@@ -2770,18 +2769,21 @@ theorem rel_ldxW {frame : String → Option (BitVec 64)}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
     (hgate : imgGateBW frame slotArr body = true) (P : LprogM) {s t : LstateMF}
     {sa : LstateA} {zf : Bool} (hrel : ImgRelW frame slotArr base body s sa zf) {bi : Linstr}
-    (hb : body[sa.reg.lpc]? = some bi) {d b idx A : String} {n : Nat}
-    (hx : bi.li_i = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx 8])
+    (hb : body[sa.reg.lpc]? = some bi) {d b idx A : String} {n : Nat} {o : String}
+    (hx : bi.li_i = .Lopn [.reg d] o [.arrIdx b idx 8])
     (hacc : accArr slotArr body sa.reg.lpc b = some (A, n)) (hgd : gpOk d = true)
     (hd : frame d = none) (hidx : frame idx = none) (hbf : frame b = none)
     (hidxW : idx ∉ oneBitAt frame body sa.reg.lpc)
     (hs : evalInstrPMemFk true P (.Lopn [.reg d] "LOADIDX" [.arrIdx A idx 8], .load 64 n) s
-      = some t) :
-    LoadSafeAt rsp body sa ∧ ∃ sa', fstepA frame (bi.li_i, .load 64 0) sa zf = some (sa', t.zf)
+      = some t) (ho : LprogAsmPrinter.untagCaret o = "LOADIDX" := by simp [width_tag]) :
+    LoadSafeAt rsp body sa
+      ∧ ∃ sa', fstepA frame (normA bi.li_i, .load 64 0) sa zf = some (sa', t.zf)
       ∧ ImgRelW frame slotArr base body t sa' t.zf := by
+  have hn : normA bi.li_i = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx 8] := by
+    rw [hx]; simp [normA, ho]
   have hW1 := oneBitAt_succ (frame := frame) hb (bitStore?_of_eq hx (by simp))
     (seedAt_of_eq hx (by simp))
-  rw [oneBitStep_noCarry (by rw [hx]; rfl), hx, icase_loadIdx] at hW1
+  rw [oneBitStep_noCarry (by rw [hx]; rfl), hx, icase_loadIdx_of_untagCaret ho] at hW1
   have hok := idxOkB_of_checked hs
   have hs' := evalInstrPMemF_of_k hs
   obtain ⟨q, hq, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
@@ -2802,19 +2804,20 @@ theorem rel_ldxW {frame : String → Option (BitVec 64)}
     rw [hcell vi.toNat hlt]
     exact (stackGet_id arr ⟨vi.toNat, hlt⟩).symm
   refine ⟨?_, ?_⟩
-  · intro ii D B I hbI p v hp' hv'
+  · intro ii x D B I hbI hnx p v hp' hv'
     rw [hb] at hbI
     have e := Option.some.inj hbI
     subst e
+    rw [hn] at hnx
     simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq,
-      LOperand.arrIdx.injEq, and_true] at hx
-    obtain ⟨-, -, rfl, rfl⟩ := hx
+      LOperand.arrIdx.injEq, and_true] at hnx
+    obtain ⟨-, -, rfl, rfl⟩ := hnx
     rw [hp] at hp'
     cases hp'
     rw [hvi] at hv'
     cases hv'
     exact hsep.red q A n vi.toNat hq hlt
-  rw [hx, fstepA_loadIdx, hp, hvi]
+  rw [hn, fstepA_loadIdx, hp, hvi]
   simp only
   obtain ⟨hsv, hrl, hhd⟩ := saved_reload_nextW (sa' := { sa with reg := (sa.reg.setReg d
       (read64 sa.mem (base A + BitVec.ofNat 64 (8 * vi.toNat)))).nextPc })
@@ -2855,18 +2858,22 @@ theorem rel_stxW {frame : String → Option (BitVec 64)}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
     (hgate : imgGateBW frame slotArr body = true) (P : LprogM) {s t : LstateMF}
     {sa : LstateA} {zf : Bool} (hrel : ImgRelW frame slotArr base body s sa zf) {bi : Linstr}
-    (hb : body[sa.reg.lpc]? = some bi) {d b idx v A : String} {n : Nat}
-    (hx : bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx 8, .reg v])
+    (hb : body[sa.reg.lpc]? = some bi) {d b idx v A : String} {n : Nat} {o : String}
+    (hx : bi.li_i = .Lopn [.reg d] o [.arrIdx b idx 8, .reg v])
     (hacc : accArr slotArr body sa.reg.lpc b = some (A, n))
     (hidx : frame idx = none) (hbf : frame b = none) (hv : frame v = none)
     (hidxW : idx ∉ oneBitAt frame body sa.reg.lpc) (hvW : v ∉ oneBitAt frame body sa.reg.lpc)
     (hs : evalInstrPMemFk true P
-      (.Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v], .store 64 n) s = some t) :
-    ∃ sa', fstepA frame (bi.li_i, .store 64 0) sa zf = some (sa', t.zf)
+      (.Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v], .store 64 n) s = some t)
+    (ho : LprogAsmPrinter.untagCaret o = "STOREIDX" := by simp [width_tag]) :
+    ∃ sa', fstepA frame (normA bi.li_i, .store 64 0) sa zf = some (sa', t.zf)
       ∧ ImgRelW frame slotArr base body t sa' t.zf := by
+  have hn : normA bi.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx 8, .reg v] := by
+    rw [hx]; simp [normA, ho]
+  have hic : icase frame bi.li_i = .stx d b idx v := by rw [hx]; simp [icase, ho]
   have hW1 := oneBitAt_succ (frame := frame) hb (bitStore?_of_eq hx (by simp))
     (seedAt_of_eq hx (by simp))
-  rw [oneBitStep_noCarry (by rw [hx]; rfl), hx] at hW1
+  rw [oneBitStep_noCarry (by rw [hx]; rfl), hic] at hW1
   have hok := idxOkB_of_checked hs
   have hs' := evalInstrPMemF_of_k hs
   obtain ⟨q, hq, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
@@ -2887,7 +2894,7 @@ theorem rel_stxW {frame : String → Option (BitVec 64)}
     simpa using hok
   have hz := hrel.zf
   subst hz
-  rw [hx, fstepA_storeIdx, hp, hvi, hvv]
+  rw [hn, fstepA_storeIdx, hp, hvi, hvv]
   simp only
   obtain ⟨hsv, hrl, hhd⟩ := saved_reload_nextW (sa' := { sa with
       reg := sa.reg.nextPc
@@ -2897,15 +2904,15 @@ theorem rel_stxW {frame : String → Option (BitVec 64)}
       (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)) (fun _ _ _ => rfl)
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => (hrel.regs r hr).of_eq (by simp [LstateM.setArr, LstateM.nextPc]) (by simp)
-      (fun h => by simpa [hW1, icase] using h), ?_, rfl,
+      (fun h => by simpa [hW1] using h), ?_, rfl,
     hrel.cf, hrel.of, fun r hr hW => ?_, ?_, hsv, hrl, hhd,
     fun r hr hc => by simpa using hrel.bits r hr hc⟩⟩
   · intro q' a ha
     simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
     rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)]
-    exact (hrel.slots q' a ha).of_eq rfl rfl fun h => by simpa [hW1, icase] using h
+    exact (hrel.slots q' a ha).of_eq rfl rfl fun h => by simpa [hW1] using h
   · simp only [LstateN.lpc_nextPc, hW1] at hW
-    simpa using hrel.wid r hr (by simpa [icase] using hW)
+    simpa using hrel.wid r hr hW
   · intro q' A' n' hq'
     obtain ⟨arr', harr', hcell'⟩ := hrel.cells q' A' n' hq'
     by_cases eA : A' = A
@@ -3406,14 +3413,16 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         rw [he.2.1] at hw
         simp [castTagW] at hw)]
       simp only
+      have hu := LprogAsmPrinter.untagCaret_of_caret_free (castTagW_caret_free hw)
       rw [normA_castW hw, tagAt_castW _ _ hw,
-        arrImmImg_of_ne slotArr c _ (castTagW_ne_arr hw).1 (castTagW_ne_arr hw).2]
+        arrImmImg_of_ne slotArr c _ (by rw [hu]; exact (castTagW_ne_arr hw).1)
+          (by rw [hu]; exact (castTagW_ne_arr hw).2)]
     rw [himg] at hstep
     have hstep' : evalInstrPMemF P (bi.li_i, .reg (some w)) s = some t := by
       simpa [evalInstrPMemFk, idxOkB] using hstep
     obtain ⟨sa', hst, hr⟩ := rel_castW hphys P hrel hb hkc hfD hfA hstep'
     refine ⟨haltedA_of hb (by rw [hx]; simp),
-      loadSafe_of hb (by intro D' B I e; rw [hx] at e; simp at e), sa', ?_, hr⟩
+      loadSafe_of hb (by intro D' B I e; rw [hx] at e; simp [normA] at e), sa', ?_, hr⟩
     rw [stepA_lopn frame hb hx, ← hst, hx, normA_castW hw, tagAt_castW _ _ hw]
   have hrd : readOkB (gateReadSet frame (oneBitAt frame c sa.reg.lpc) bi.li_i) bi.li_i = true := by
     simpa [castReadB, hkc] using hrd0
@@ -3450,17 +3459,19 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
     have hnA : normA bi.li_i = bi.li_i := by
       rw [hx0]; cases hi <;> simp (config := { decide := true }) [normA]
     have hsafe := loadSafe_of (rsp := rsp) hb (by
-      intro D B I e; rw [hx0] at e; cases hi <;> simp at e)
+      intro D B I e; rw [hnA, hx0] at e; cases hi <;> simp at e)
     have hnr : bi.li_i ≠ .Lret := by rw [hx0]; simp
     have h3 : bitMovB c sa.reg.lpc (.Lopn [.reg d] (if hi then "ADCXHI:64" else "ADCX:64")
         [.reg a, .reg s', .reg cc]) = false :=
       bitMovB_of_ne (by cases hi <;> simp [movImmStruct?])
-    rw [hx0, imgInstr_reg slotArr c _ hld hsd hkd h3 (bitStore?_of_ne (by cases hi <;> simp))
+    rw [hx0, imgInstr_reg_of_caret_free slotArr c _ hld hsd hkd h3
+      (bitStore?_of_ne (by cases hi <;> simp))
       (cellIdxStore?_of_ne slotArr (by cases hi <;> simp)) (by cases hi <;> decide)
-      (by cases hi <;> decide), evalInstrPMemFk_reg, ← hx0, hnA] at hstep
+      (by cases hi <;> decide) (by cases hi <;> decide), evalInstrPMemFk_reg, ← hx0,
+      hnA] at hstep
     have hstepA : stepA frame c sa s.zf = fstepA frame (bi.li_i, .reg none) sa s.zf := by
-      rw [stepA_lopn frame hb hx0, hnA, hx0, tagAt_reg hld hsd hkd h3 (by cases hi <;> decide)
-        (by cases hi <;> decide)]
+      rw [stepA_lopn frame hb hx0, hnA, hx0, tagAt_reg_of_caret_free hld hsd hkd h3
+        (by cases hi <;> decide) (by cases hi <;> decide) (by cases hi <;> decide)]
     obtain ⟨sa', hst, hr⟩ : ∃ sa', fstepA frame (bi.li_i, .reg none) sa s.zf = some (sa', t.zf)
         ∧ ImgRelW frame slotArr base c t sa' t.zf := by
       cases hi
@@ -3480,7 +3491,7 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
           rw [hx]; rfl
         rw [hi, evalInstrPMemFk_reg, hx, eval_label] at hstep
         cases hstep
-        refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp),
+        refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]),
           sa.setLpc (sa.reg.lpc + 1), ?_, rel_labelW hphys hrel hb hx⟩
         obtain ⟨ii0, li⟩ := bi
         simp only at hx
@@ -3492,33 +3503,37 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
         obtain ⟨⟨⟨⟨⟨An, hacc⟩, hgd⟩, hd⟩, hidx⟩, hbf⟩ := hg
         obtain ⟨A, n⟩ := An
-        have hx := icase_ldx hc
+        obtain ⟨o, ho, hx⟩ := icase_ldx hc
         have hidxW : idx ∉ oneBitAt frame c sa.reg.lpc :=
           readOkB_spec hrd (by rw [hx]; simp [readNames, srcNames]) (by rw [hx]; simp [carryIns])
-        rw [hx, imgInstr_ldx slotArr c _ hacc] at hstep
+        rw [hx, imgInstr_ldx_of_untagCaret slotArr c _ hacc ho] at hstep
         obtain ⟨hsafe, sa', hst, hr⟩ :=
-          rel_ldxW hsep hphys hgate P hrel hb hx hacc hgd hd hidx hbf hidxW hstep
+          rel_ldxW hsep hphys hgate P hrel hb hx hacc hgd hd hidx hbf hidxW hstep ho
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-        rw [stepA_lopn frame hb hx, ← hst, hx]
-        rfl
+        have ht : tagAt c sa.reg.lpc bi.li_i = .load 64 0 := by
+          rw [hx, tagAt_of_not (bitMovB_of_ne (by simp [movImmStruct?]))]
+          simp [tagA, ho]
+        rw [stepA_lopn frame hb hx, ← hst, ht]
     | stx d b idx v =>
         rw [hc] at hg
         simp only [gateReadSet, hc] at hrd
         simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
         obtain ⟨⟨⟨⟨An, hacc⟩, hidx⟩, hbf⟩, hv⟩ := hg
         obtain ⟨A, n⟩ := An
-        have hx := icase_stx hc
+        obtain ⟨o, ho, hx⟩ := icase_stx hc
         have hidxW : idx ∉ oneBitAt frame c sa.reg.lpc :=
           readOkB_spec hrd (by rw [hx]; simp [readNames, srcNames]) (by rw [hx]; simp [carryIns])
         have hvW : v ∉ oneBitAt frame c sa.reg.lpc :=
           readOkB_spec hrd (by rw [hx]; simp [readNames, srcNames]) (by rw [hx]; simp [carryIns])
-        rw [hx, imgInstr_stx slotArr c _ hacc] at hstep
+        rw [hx, imgInstr_stx_of_untagCaret slotArr c _ hacc ho] at hstep
         obtain ⟨sa', hst, hr⟩ :=
-          rel_stxW hsep hphys hgate P hrel hb hx hacc hidx hbf hv hidxW hvW hstep
-        refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), sa', ?_,
-          hr⟩
-        rw [stepA_lopn frame hb hx, ← hst, hx]
-        rfl
+          rel_stxW hsep hphys hgate P hrel hb hx hacc hidx hbf hv hidxW hvW hstep ho
+        refine ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]), sa',
+          ?_, hr⟩
+        have ht : tagAt c sa.reg.lpc bi.li_i = .store 64 0 := by
+          rw [hx, tagAt_of_not (bitMovB_of_ne (by simp [movImmStruct?]))]
+          simp [tagA, ho]
+        rw [stepA_lopn frame hb hx, ← hst, ht]
     | sload d q =>
         rw [hc] at hg
         simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
@@ -3532,12 +3547,13 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         have h5 : cellIdxStore? slotArr c sa.reg.lpc bi.li_i = none := cellIdxStore?_of_slotMov hm
         rcases slotMov?_cases hm with hx | hx <;>
         · rw [hx] at h3 h4 h5
-          rw [hx, imgInstr_reg slotArr c _ (by decide) (by decide) (by decide) h3 h4 h5,
-            evalInstrPMemFk_reg, ← hx] at hstep
+          rw [hx, imgInstr_reg_of_caret_free slotArr c _ (by decide) (by decide) (by decide) h3
+            h4 h5, evalInstrPMemFk_reg, ← hx] at hstep
           obtain ⟨sa', hst, hr⟩ := rel_sloadW_gen hsep hphys P hrel hb hc hci hgd
             (fun h => (hqN.resolve_left (fun h' => h' h)).1) hstep
           refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-          rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
+          rw [stepA_lopn frame hb hx, ← hst, hx,
+            tagAt_reg_of_caret_free (by decide) (by decide) (by decide) h3]
     | sstore q S =>
         rw [hc] at hg
         have hm := (icase_sstore hc).1
@@ -3553,34 +3569,36 @@ theorem img_stepW {frame : String → Option (BitVec 64)}
         have h5 : cellIdxStore? slotArr c sa.reg.lpc bi.li_i = none := cellIdxStore?_of_slotMov hm
         rcases slotMov?_cases hm with hx | hx <;>
         · rw [hx] at h3 h4 h5
-          rw [hx, imgInstr_reg slotArr c _ (by decide) (by decide) (by decide) h3 h4 h5,
-            evalInstrPMemFk_reg, ← hx] at hstep
+          rw [hx, imgInstr_reg_of_caret_free slotArr c _ (by decide) (by decide) (by decide) h3
+            h4 h5, evalInstrPMemFk_reg, ← hx] at hstep
           obtain ⟨sa', hst, hr⟩ := rel_sstoreW hsep hphys P hrel hb hc hci hgS hSW' hstep
           refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-          rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
+          rw [stepA_lopn frame hb hx, ← hst, hx,
+            tagAt_reg_of_caret_free (by decide) (by decide) (by decide) h3]
     | scmp d y q =>
         rw [hc] at hg
         simp only [gateReadSet, hc] at hrd
-        have hx := slotCmp?_eq (icase_scmp hc).1
+        have hn := slotCmp?_eq (icase_scmp hc).1
+        obtain ⟨o, ho, hx⟩ := eq_of_normA_lopn hn (by simp [withWidthTag])
         have hyW : y ∉ oneBitAt frame c sa.reg.lpc :=
           readOkB_spec hrd (by rw [hx]; simp [readNames, srcNames]) (by rw [hx]; simp [carryIns])
         have hsafe := loadSafe_of (rsp := rsp) hb
           (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
-        have h3 : bitMovB c sa.reg.lpc (.Lopn [.reg d] "CMP:64" [.reg y, .reg q]) = false :=
+        have h3 : bitMovB c sa.reg.lpc (.Lopn [.reg d] o [.reg y, .reg q]) = false :=
           bitMovB_of_ne (by simp [movImmStruct?])
-        rw [hx, imgInstr_reg slotArr c _ (by decide) (by decide) (by decide) h3
-          (bitStore?_of_ne (by simp)) (cellIdxStore?_of_ne slotArr (by simp)),
-          evalInstrPMemFk_reg, ← hx] at hstep
+        rw [hx, imgInstr_reg slotArr c _ (by simp [ho]) (by simp [ho]) (by simp [ho, castTagW])
+          h3 (bitStore?_of_ne (by simp)) (cellIdxStore?_of_ne slotArr (by simp)) (by simp [ho])
+          (by simp [ho]), evalInstrPMemFk_reg, ← hx] at hstep
         obtain ⟨sa', hst, hr⟩ := rel_scmpW hphys P hrel hb hc hci (by simpa using hg) hyW
           (readOkB_spec hrd (by rw [hx]; simp [readNames, srcNames])
             (by rw [hx]; simp [carryIns])) hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
-        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by decide) (by decide) (by decide) h3]
+        rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by simp [ho]) (by simp [ho])
+          (by simp [ho, castTagW]) h3 (by simp [ho]) (by simp [ho])]
     | reg =>
         rw [hc] at hg
         simp only [gateReadSet, hc] at hrd
-        obtain ⟨ds, o, ss, hx, ho1, ho2, hko⟩ := icase_reg hc
-        obtain ⟨hz1, hz2⟩ := icase_reg_arr hc _ _ _ hx
+        obtain ⟨ds, o, ss, hx, ho1, ho2, hko, hz1, hz2⟩ := icase_reg_untagCaret hc
         have hsafe := loadSafe_of (rsp := rsp) hb
           (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
         cases hmi : movImmStruct? bi.li_i with

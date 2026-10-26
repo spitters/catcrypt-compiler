@@ -4933,7 +4933,7 @@ theorem readsI_normA (i : LinstrR) (r : String) : readsI (normA i) r ↔ readsI 
   cases i <;> simp only [readsI, readsRdx_normA] <;> simp [normA]
 
 /-- The mnemonic of an address-machine arm whose conditions hold has no `^`. -/
-theorem AArm.caret_free_of_ok {P : Params} {a : AArm} (h : a.ok P = true)
+theorem AArm.instr_caret_free {P : Params} {a : AArm} (h : a.ok P = true)
     {ds : List LOperand} {o : String} {ss : List LOperand}
     (he : a.instr = .Lopn ds o ss) : '^' ∉ o.toList := by
   cases a with
@@ -5207,8 +5207,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           · rw [normA_untag hw (by decide)]
             simp (config := { decide := true }) [normA]
         have htA : tagA (.Lopn [.reg D] o [.imm n]) = .reg none := by
-          rcases hform with rfl | ⟨w, hw, rfl⟩ <;>
-            simp (disch := decide +kernel) [tagA, withWidthTag_ne_of_tagSepFree]
+          rcases hform with rfl | ⟨w, hw, rfl⟩
+          · simp (disch := decide +kernel) [tagA, width_tag]
+          · simp (disch := decide +kernel) [tagA, width_tag,
+              LprogAsmPrinter.untagCaret_withWidthTag hw (m := "MOV") (by decide +kernel)]
         have henc : encodeLopn P.frame P.spillW (.Lopn [.reg D] o [.imm n]) P.qsaveB
             = encodeLopn P.frame P.spillW (.Lopn [.reg D] "MOV" [.imm n]) P.qsaveB := by
           rcases hform with rfl | ⟨w, hw, rfl⟩
@@ -5774,7 +5776,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               cases ar with
               | ldx D B' I =>
                 intro p vi hp hvi
-                exact hsafe.1.1 ii D B' I (by rw [hget, ← hia]; rfl) p vi hp hvi
+                exact hsafe.1.1 ii _ D B' I (by rw [hget, ← hia]) (by simp [AArm.instr, width_tag])
+                  p vi hp hvi
               | _ => trivial
             have hw : WideAt s ar.li.fst := by
               intro r hr hg

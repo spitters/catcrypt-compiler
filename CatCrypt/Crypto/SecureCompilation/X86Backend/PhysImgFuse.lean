@@ -536,12 +536,12 @@ theorem scanStaysB_of_accLocal {c : Lcmd} (hacc : AccLocal slotArr c)
       refine scanExit_of_accArr ?_
       rcases hform _ (List.getElem_mem hlt) ds o x y ss hx with rfl | rfl
       · unfold accOkB at ha
-        simp only [ite_true] at ha
+        simp only [width_tag, ite_true] at ha
         split at ha
         · rename_i heq; cases heq; exact ha
         · cases ha
       · unfold accOkB at ha
-        simp only [ite_true] at ha
+        simp only [width_tag, ite_true] at ha
         simp at ha
         split at ha
         · rename_i heq; cases heq
@@ -554,9 +554,11 @@ theorem scanStaysB_of_accLocal {c : Lcmd} (hacc : AccLocal slotArr c)
     · simp
     · have ha := hacc k _ hget
       rw [hx] at ha hai
-      have ho : o = "ZEROARR" ∨ o = "STOREIMM" := by simpa [isArrImmB] using hai
-      have hl : o ≠ "LOADIDX" ∧ o ≠ "STOREIDX" := by
-        rcases ho with rfl | rfl <;> decide
+      have ho : LprogAsmPrinter.untagCaret o = "ZEROARR" ∨
+          LprogAsmPrinter.untagCaret o = "STOREIMM" := by simpa [isArrImmB] using hai
+      have hl : LprogAsmPrinter.untagCaret o ≠ "LOADIDX" ∧
+          LprogAsmPrinter.untagCaret o ≠ "STOREIDX" := by
+        rcases ho with h | h <;> simp [h]
       simp only [accOkB, hl.1, hl.2, ho, ite_false, ite_true] at ha
       simp only [Bool.not_true, Bool.false_or, Option.isNone_iff_eq_none]
       exact scanExit_of_accArr (accArr_of_arrImmImg ha)

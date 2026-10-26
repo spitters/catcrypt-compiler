@@ -79,61 +79,93 @@ def storeImmTagA : List LOperand → MemTag
     the zeroing tag of an array zeroing `ZEROARR` (`zeroTagA`), the constant-index store tag
     of a `STOREIMM` (`storeImmTagA`), the register tag at the destination width for a
     width-carrying cast mnemonic (`castTagW`), and the register tag without a descriptor
-    otherwise. -/
+    otherwise. The mnemonic is read through `untagCaret`, as `normA` reads it. -/
 def tagA : LinstrR → MemTag
   | .Lopn _ o ss =>
-      if o = "LOADIDX" then .load 64 0 else if o = "STOREIDX" then .store 64 0
-      else if o = "ZEROARR" then zeroTagA ss
-      else if o = "STOREIMM" then storeImmTagA ss
-      else if o = "CASTW_64_16" ∨ o = "CASTW_32_16" ∨ o = "CASTW_16_16" then .reg (some 16)
-      else if o = "CASTW_64_32" ∨ o = "CASTW_32_32" ∨ o = "CASTW_16_32" then .reg (some 32)
-      else if o = "CASTW_64_64" ∨ o = "CASTW_32_64" ∨ o = "CASTW_16_64" then .reg (some 64)
+      let u := X86Backend.LprogAsmPrinter.untagCaret o
+      if u = "LOADIDX" then .load 64 0 else if u = "STOREIDX" then .store 64 0
+      else if u = "ZEROARR" then zeroTagA ss
+      else if u = "STOREIMM" then storeImmTagA ss
+      else if u = "CASTW_64_16" ∨ u = "CASTW_32_16" ∨ u = "CASTW_16_16" then .reg (some 16)
+      else if u = "CASTW_64_32" ∨ u = "CASTW_32_32" ∨ u = "CASTW_16_32" then .reg (some 32)
+      else if u = "CASTW_64_64" ∨ u = "CASTW_32_64" ∨ u = "CASTW_16_64" then .reg (some 64)
       else .reg none
   | _ => .reg none
 
-/-- The tag of an `Lopn` that is no indexed access, no array zeroing and no constant-index
-    store is the register tag at `castTagW` of its mnemonic. -/
-theorem tagA_lopn {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "LOADIDX")
-    (h2 : o ≠ "STOREIDX") (h3 : o ≠ "ZEROARR" := by decide)
-    (h4 : o ≠ "STOREIMM" := by decide) : tagA (.Lopn ds o ss) = .reg (castTagW o) := by
+/-- The tag of an `Lopn` whose `untagCaret` is no indexed access, no array zeroing and no
+    constant-index store is the register tag at `castTagW` of that `untagCaret`. -/
+theorem tagA_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h1 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "LOADIDX")
+    (h2 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "STOREIDX")
+    (h3 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "ZEROARR")
+    (h4 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "STOREIMM") :
+    tagA (.Lopn ds o ss) = .reg (castTagW (X86Backend.LprogAsmPrinter.untagCaret o)) := by
   simp only [tagA, castTagW, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4]
   split_ifs <;> rfl
 
-/-- The tag of an `Lopn` with fewer than three sources that is no indexed access is the
-    register tag at `castTagW` of its mnemonic. -/
-theorem tagA_lopn_of_length {ds : List LOperand} {o : String} {ss : List LOperand}
-    (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX") (hl : ss.length < 3) :
+/-- `tagA_lopn` at a mnemonic without `^`, which `untagCaret` fixes. -/
+theorem tagA_lopn_of_caret_free {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX") (h3 : o ≠ "ZEROARR" := by decide)
+    (h4 : o ≠ "STOREIMM" := by decide) (hc : '^' ∉ o.toList := by decide) :
     tagA (.Lopn ds o ss) = .reg (castTagW o) := by
+  have hu := X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hc
+  rw [tagA_lopn (by rwa [hu]) (by rwa [hu]) (by rwa [hu]) (by rwa [hu]), hu]
+
+/-- The tag of an `Lopn` with fewer than three sources whose `untagCaret` is no indexed access
+    is the register tag at `castTagW` of that `untagCaret`. -/
+theorem tagA_lopn_of_length {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h1 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "LOADIDX")
+    (h2 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "STOREIDX") (hl : ss.length < 3) :
+    tagA (.Lopn ds o ss) = .reg (castTagW (X86Backend.LprogAsmPrinter.untagCaret o)) := by
   have hz : zeroTagA ss = .reg none := by unfold zeroTagA; split <;> simp_all
   have hs : storeImmTagA ss = .reg none := by unfold storeImmTagA; split <;> simp_all
   simp only [tagA, castTagW, ite_eq_right h1, ite_eq_right h2, hz, hs]
   split_ifs <;> simp_all
 
-/-- The tag of an `Lopn` that is no indexed access is the register tag at `castTagW` of its
-    mnemonic, a zeroing tag or a constant-index store tag. -/
+/-- `tagA_lopn_of_length` at a mnemonic without `^`. -/
+theorem tagA_lopn_of_length_of_caret_free {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX") (hl : ss.length < 3)
+    (hc : '^' ∉ o.toList := by decide) :
+    tagA (.Lopn ds o ss) = .reg (castTagW o) := by
+  have hu := X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hc
+  rw [tagA_lopn_of_length (by rwa [hu]) (by rwa [hu]) hl, hu]
+
+/-- The tag of an `Lopn` whose `untagCaret` is no indexed access is the register tag at
+    `castTagW` of that `untagCaret`, a zeroing tag or a constant-index store tag. -/
 theorem tagA_lopn_cases {ds : List LOperand} {o : String} {ss : List LOperand}
-    (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX") :
+    (h1 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "LOADIDX")
+    (h2 : X86Backend.LprogAsmPrinter.untagCaret o ≠ "STOREIDX") :
+    tagA (.Lopn ds o ss) = .reg (castTagW (X86Backend.LprogAsmPrinter.untagCaret o))
+      ∨ (∃ w n, tagA (.Lopn ds o ss) = .zero w n)
+      ∨ ∃ w n, tagA (.Lopn ds o ss) = .storeImm w n := by
+  by_cases h3 : X86Backend.LprogAsmPrinter.untagCaret o = "ZEROARR"
+  · simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_eq_left h3]
+    unfold zeroTagA
+    split <;> simp [h3, castTagW]
+  · by_cases h4 : X86Backend.LprogAsmPrinter.untagCaret o = "STOREIMM"
+    · simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_left h4]
+      unfold storeImmTagA
+      split <;> simp [h4, castTagW]
+    · exact Or.inl (tagA_lopn h1 h2 h3 h4)
+
+/-- `tagA_lopn_cases` at a mnemonic without `^`. -/
+theorem tagA_lopn_cases_of_caret_free {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h1 : o ≠ "LOADIDX") (h2 : o ≠ "STOREIDX") (hc : '^' ∉ o.toList := by decide) :
     tagA (.Lopn ds o ss) = .reg (castTagW o) ∨ (∃ w n, tagA (.Lopn ds o ss) = .zero w n)
       ∨ ∃ w n, tagA (.Lopn ds o ss) = .storeImm w n := by
-  by_cases h3 : o = "ZEROARR"
-  · subst h3
-    simp only [tagA, zeroTagA, ite_eq_right h1, ite_eq_right h2, ite_true]
-    split <;> simp [castTagW]
-  · by_cases h4 : o = "STOREIMM"
-    · subst h4
-      simp only [tagA, storeImmTagA, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_true]
-      split <;> simp [castTagW]
-    · exact Or.inl (tagA_lopn h1 h2 h3 h4)
+  have hu := X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hc
+  have h := tagA_lopn_cases (ds := ds) (ss := ss) (by rwa [hu]) (by rwa [hu])
+  rwa [hu] at h
 
 /-- The tag of the array zeroing `ZEROARR [], [b, #n, #w]` is `.zero w n`. -/
 theorem tagA_zeroArr (ds : List LOperand) (b : LOperand) (n w : Nat) :
     tagA (.Lopn ds "ZEROARR" [b, .imm n, .imm w]) = .zero w n := by
-  simp [tagA, zeroTagA]
+  simp [tagA, zeroTagA, width_tag]
 
 /-- The tag of the constant-index store `STOREIMM d, [b, v, #k]` is `.storeImm 64 (k + 1)`. -/
 theorem tagA_storeImm (ds : List LOperand) (b v : LOperand) (k : Nat) :
     tagA (.Lopn ds "STOREIMM" [b, v, .imm k]) = .storeImm 64 (k + 1) := by
-  simp [tagA, storeImmTagA]
+  simp [tagA, storeImmTagA, width_tag]
 
 /-- A width-carrying cast mnemonic has the destination width `16`, `32` or `64`. -/
 theorem castTagW_width {o : String} {w : Nat} (h : castTagW o = some w) :
@@ -150,6 +182,15 @@ theorem castTagW_ne {o : String} {w : Nat} (h : castTagW o = some w) :
 theorem castTagW_ne_arr {o : String} {w : Nat} (h : castTagW o = some w) :
     o ≠ "ZEROARR" ∧ o ≠ "STOREIMM" := by
   refine ⟨?_, ?_⟩ <;> rintro rfl <;> simp [castTagW] at h
+
+/-- A width-carrying cast mnemonic has no `^`. -/
+theorem castTagW_caret_free {o : String} {w : Nat} (h : castTagW o = some w) :
+    '^' ∉ o.toList := by
+  unfold castTagW at h
+  split_ifs at h with h1 h2 h3
+  · rcases h1 with rfl | rfl | rfl <;> decide
+  · rcases h2 with rfl | rfl | rfl <;> decide
+  · rcases h3 with rfl | rfl | rfl <;> decide
 
 /-- The operand names the register `d`: as a register, an array base, or the base or index
     of an indexed access. -/
@@ -226,13 +267,21 @@ theorem tagAt_of_ne {body : Lcmd} {k : Nat} {i : LinstrR} (h : movImmStruct? i =
     tagAt body k i = tagA i :=
   tagAt_of_not (bitMovB_of_ne h)
 
-/-- The tag of an `Lopn` other than `STOREIMM` at a position is no constant-index store tag. -/
+/-- The tag of an `Lopn` whose `untagCaret` is no `STOREIMM` at a position is no
+    constant-index store tag. -/
 theorem tagAt_ne_storeImm (body : Lcmd) (k : Nat) {ds : List LOperand} {o : String}
-    {ss : List LOperand} (ho : o ≠ "STOREIMM") (w n : Nat) :
-    tagAt body k (.Lopn ds o ss) ≠ .storeImm w n := by
+    {ss : List LOperand} (ho : X86Backend.LprogAsmPrinter.untagCaret o ≠ "STOREIMM")
+    (w n : Nat) : tagAt body k (.Lopn ds o ss) ≠ .storeImm w n := by
   unfold tagAt tagA
   simp only [zeroTagA, ite_eq_right ho]
   split_ifs <;> (try split) <;> simp
+
+/-- `tagAt_ne_storeImm` at a mnemonic without `^`. -/
+theorem tagAt_ne_storeImm_of_caret_free (body : Lcmd) (k : Nat) {ds : List LOperand}
+    {o : String} {ss : List LOperand} (ho : o ≠ "STOREIMM") (w n : Nat)
+    (hc : '^' ∉ o.toList := by decide) : tagAt body k (.Lopn ds o ss) ≠ .storeImm w n :=
+  tagAt_ne_storeImm body k
+    (by rwa [X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hc]) w n
 
 /-- A width-carrying cast `o D, A` between register names is tagged at any position with the
     register tag at its destination width. -/
@@ -241,7 +290,8 @@ theorem tagAt_castW (body : Lcmd) (k : Nat) {D A o : String} {w : Nat}
     tagAt body k (.Lopn [.reg D] o [.reg A]) = .reg (some w) := by
   obtain ⟨h1, h2, -, -⟩ := castTagW_ne h
   obtain ⟨h3, h4⟩ := castTagW_ne_arr h
-  rw [tagAt_of_ne (by simp [movImmStruct?]), tagA_lopn h1 h2 h3 h4, h]
+  rw [tagAt_of_ne (by simp [movImmStruct?]),
+    tagA_lopn_of_caret_free h1 h2 h3 h4 (castTagW_caret_free h), h]
 
 /-- A carry constant is an immediate move of `0` or `1` into a name that is no cell name. -/
 theorem bitMovB_spec {body : Lcmd} {k : Nat} {i : LinstrR} (h : bitMovB body k i = true) :
@@ -302,14 +352,16 @@ theorem normA_untag {ds : List LOperand} {m : String} {ss : List LOperand} {w : 
   simp only [normA, X86Backend.LprogAsmPrinter.untagCaret_withWidthTag hw hm,
     X86Backend.LprogAsmPrinter.untagCaret_of_caret_free hm]
 
-/-- A width-carrying cast mnemonic has no `^`. -/
-theorem castTagW_caret_free {o : String} {w : Nat} (h : castTagW o = some w) :
-    '^' ∉ o.toList := by
-  unfold castTagW at h
-  split_ifs at h with h1 h2 h3
-  · rcases h1 with rfl | rfl | rfl <;> decide
-  · rcases h2 with rfl | rfl | rfl <;> decide
-  · rcases h3 with rfl | rfl | rfl <;> decide
+/-- `normA` is idempotent. -/
+theorem normA_idem (x : LinstrR) : normA (normA x) = normA x := by
+  cases x with
+  | Lopn ds o ss =>
+    by_cases h : X86Backend.LprogAsmPrinter.untagCaret o = "MULX" <;>
+      simp [normA, h, JasminLsemAddrCongr.untagCaret_idem, withWidthTag,
+        X86Backend.LprogAsmPrinter.untagCaret_of_caret_free]
+  | _ => rfl
+
+attribute [width_tag] normA_of_caret_free normA_untag normA_idem
 
 /-- `normA` keeps an instruction with a width-carrying cast mnemonic. -/
 theorem normA_castW {ds : List LOperand} {o : String} {ss : List LOperand} {w : Nat}

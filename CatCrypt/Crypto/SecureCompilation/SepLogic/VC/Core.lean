@@ -6,15 +6,16 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.SepLogic.Contract
-public import Std.Do
+public import Std.WP
 
 /-!
-# `Std.Do` triples over machine runs and their contracts
+# `Std.WP` triples over machine runs and their contracts
 
 `RunM σ T := StateT (σ × T) Option` is the monad of runs over a machine state `σ` that
-accumulate a trace `T` and may fail. Its `Std.Do` weakest precondition is the total-correctness
-one: a triple `⦃fun st => ⌜P st⌝⦄ x ⦃⇓ a st => ⌜Q a st⌝⦄` says that from every state satisfying
-`P` the run returns a value and a state satisfying `Q` (`triple_iff_run`).
+accumulate a trace `T` and may fail. Its `Std.WP` assertions are predicates on `σ × T`, and its
+failure postcondition is a predicate on `Unit`. A triple `⦃fun st => P st⦄ x ⦃fun a st => Q a st⦄`
+has the failure postcondition `⊥` and is the total-correctness statement: from every state
+satisfying `P` the run returns a value and a state satisfying `Q` (`triple_iff_run`).
 
 `runRel x` is the run relation of `x` started on the empty trace, and `AppendOnly x` says that
 starting `x` on a trace `t₀` prefixes `t₀` to the trace of the run from the empty trace.
@@ -26,7 +27,9 @@ starting `x` on a trace `t₀` prefixes `t₀` to the trace of the run from the 
 
 ## Main results
 
-* `VC.triple_iff_run`: a triple over `RunM` with pure assertions is a statement on `run`.
+* `VC.wp_apply_run`: the weakest precondition of a `RunM` program at a state is its
+  postcondition at the result of the run, and its failure postcondition when the run fails.
+* `VC.triple_iff_run`: a triple over `RunM` is a statement on `run`.
 * `VC.triple_frame_conj`: the conjunctive frame rule; an assertion `F` whose footprint avoids
   the write set holds after the run when it holds before.
 * `VC.sContract_of_triple`: a fuel-indexed program meets the contract given by its triples,
@@ -75,7 +78,7 @@ theorem SContract.of_le_det {σ : Type u} {L : Type v} [Footprinted σ L] {T : T
 
 namespace VC
 
-open Std.Do
+open Std.WP
 
 /-- Runs over the machine state `σ` that accumulate a trace `T` and may fail. -/
 abbrev RunM (σ T : Type u) : Type u → Type u := StateT (σ × T) Option
@@ -84,22 +87,25 @@ section Run
 
 variable {σ T α : Type u}
 
-set_option linter.auxLemma false in
-/-- **Triples over `RunM` are statements on `run`.** With pure assertions, the `Std.Do`
-    triple says that from every state satisfying `P` the run returns a value and a state
-    satisfying `Q`. -/
+/-- The weakest precondition of a `RunM` program at a state is its postcondition at the result
+    of the run, and the failure postcondition when the run fails. -/
+theorem wp_apply_run (x : RunM σ T α) (Q : α → σ × T → Prop) (E : Unit → Prop) (st : σ × T) :
+    wp x Q E st = (match x.run st with | some (a, st') => Q a st' | none => E ()) := by
+  rw [StateT.wp_apply_eq]
+  rcases x.run st with _ | ⟨a, st'⟩ <;> rfl
+
+/-- **Triples over `RunM` are statements on `run`.** The triple with the failure
+    postcondition `⊥` says that from every state satisfying `P` the run returns a value and a
+    state satisfying `Q`. -/
 theorem triple_iff_run (x : RunM σ T α) (P : σ × T → Prop) (Q : α → σ × T → Prop) :
-    ⦃fun st => ⌜P st⌝⦄ x ⦃⇓ a st => ⌜Q a st⌝⦄ ↔
+    ⦃fun st => P st⦄ x ⦃fun a st => Q a st⦄ ↔
       ∀ st, P st → ∃ a st', x.run st = some (a, st') ∧ Q a st' := by
-  have hwp : ∀ st, (wp⟦x⟧ (⇓ a st => ⌜Q a st⌝) st).down ↔
-      (match x.run st with | some p => Q p.1 p.2 | none => False) := fun st => by
-    simp only [wp, Option.instWP._aux_1, Id.run, OptionT.run, StateT.run]
-    simp [ExceptConds.false, ExceptConds.const]
-    split <;> split <;> simp_all
-  rw [Triple.iff, SPred.entails_1]
+  rw [Triple.iff]
   refine forall_congr' fun st => imp_congr Iff.rfl ?_
-  rw [hwp st]
-  grind
+  rw [wp_apply_run]
+  rcases x.run st with _ | ⟨a, st'⟩
+  · simp [Lean.Order.bot_apply]
+  · exact ⟨fun h => ⟨a, st', rfl, h⟩, fun ⟨_, _, h, hq⟩ => by cases h; exact hq⟩
 
 /-- The run relation of `x` started on the empty trace: `runRel x s t s'` says that the run
     from `s` returns with final state `s'` and trace `t`. -/
@@ -139,9 +145,9 @@ def RunWritesIn (x : RunM σ T α) (W : σ → Set L) : Prop :=
     `F ⊓ wp x Q ⊑ wp x (F ⊓ Q)` on the states satisfying `P`. -/
 theorem triple_frame_conj {x : RunM σ T α} {W : σ → Set L} (hW : RunWritesIn x W)
     (F : SAssert σ L) {P : σ × T → Prop} {Q : α → σ × T → Prop}
-    (h : ⦃fun st => ⌜P st⌝⦄ x ⦃⇓ a st => ⌜Q a st⌝⦄)
+    (h : ⦃fun st => P st⦄ x ⦃fun a st => Q a st⦄)
     (hF : ∀ st, P st → Disjoint (W st.1) F.fp) :
-    ⦃fun st => ⌜P st ∧ F.holds st.1⌝⦄ x ⦃⇓ a st => ⌜Q a st ∧ F.holds st.1⌝⦄ := by
+    ⦃fun st => P st ∧ F.holds st.1⦄ x ⦃fun a st => Q a st ∧ F.holds st.1⦄ := by
   refine (triple_iff_run x _ _).2 ?_
   rintro st ⟨hp, hf⟩
   obtain ⟨a, st', hrun, hq⟩ := (triple_iff_run x _ _).1 h st hp
@@ -157,9 +163,9 @@ theorem sContract_of_triple {β γ : Type u} {Pub : Type w} [EmptyCollection T]
     (prog : ℕ → RunM σ T β) (fuel : σ → ℕ) (pubView : σ → Pub) (τ : Pub → T)
     {pre post : γ → SAssert σ L} {W : γ → σ → Set L}
     (h : ∀ a s₀, (pre a).holds s₀ →
-      ⦃fun st => ⌜st = (s₀, ∅)⌝⦄ prog (fuel s₀)
-        ⦃⇓ _ st => ⌜(post a).holds st.1 ∧ AgreeOn (W a s₀)ᶜ s₀ st.1 ∧
-          st.2 = τ (pubView s₀)⌝⦄) :
+      ⦃fun st => st = (s₀, ∅)⦄ prog (fuel s₀)
+        ⦃fun _ st => (post a).holds st.1 ∧ AgreeOn (W a s₀)ᶜ s₀ st.1 ∧
+          st.2 = τ (pubView s₀)⦄) :
     SContract (fun s => runRel (prog (fuel s)) s)
       ({ pre := pre, post := post, writes := W,
          pub := fun s₁ s₂ => pubView s₁ = pubView s₂ } : ContractSpec σ L γ) := by

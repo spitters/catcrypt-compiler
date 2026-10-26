@@ -679,10 +679,12 @@ theorem stackFreeB_of_instrOKB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Pa
 theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (x : LinstrR) :
     (imgInstr slotArr body k x).fst = normA x
-    ∨ (∃ d b idx A n, x = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx 8]
+    ∨ (∃ d o b idx A n, X86Backend.LprogAsmPrinter.untagCaret o = "LOADIDX"
+        ∧ x = .Lopn [.reg d] o [.arrIdx b idx 8]
         ∧ accArr slotArr body k b = some (A, n)
         ∧ (imgInstr slotArr body k x).fst = .Lopn [.reg d] "LOADIDX" [.arrIdx A idx 8])
-    ∨ (∃ d b idx v A n, x = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx 8, .reg v]
+    ∨ (∃ d o b idx v A n, X86Backend.LprogAsmPrinter.untagCaret o = "STOREIDX"
+        ∧ x = .Lopn [.reg d] o [.arrIdx b idx 8, .reg v]
         ∧ accArr slotArr body k b = some (A, n)
         ∧ (imgInstr slotArr body k x).fst
           = .Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v])
@@ -695,17 +697,15 @@ theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcm
   unfold imgInstr
   split
   · split_ifs with ho
-    · subst ho
-      split
+    · split
       · rename_i A n hA
-        exact Or.inr (Or.inl ⟨_, _, _, A, n, rfl, hA, rfl⟩)
+        exact Or.inr (Or.inl ⟨_, _, _, _, A, n, ho, rfl, hA, rfl⟩)
       · exact Or.inl rfl
     · exact Or.inl rfl
   · split_ifs with ho
-    · subst ho
-      split
+    · split
       · rename_i A n hA
-        exact Or.inr (Or.inr (Or.inl ⟨_, _, _, _, A, n, rfl, hA, rfl⟩))
+        exact Or.inr (Or.inr (Or.inl ⟨_, _, _, _, _, A, n, ho, rfl, hA, rfl⟩))
       · exact Or.inl rfl
     · exact Or.inl rfl
   · split
@@ -754,8 +754,9 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
     (hsl : ∀ q A n, slotArr q = some (A, n) → stackNameB A = false) :
     stackFreeB (imgInstr slotArr body k x).fst = true := by
   rcases stackFreeB_of_instrOKB hok with hf | ⟨d, b, i, v, rfl, hb, hi, hv⟩
-  · rcases imgInstr_cases slotArr body k x with h | ⟨d, b, idx, A, n, rfl, hA, h⟩ |
-      ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, -⟩ | ⟨ri, hri, h⟩
+  · rcases imgInstr_cases slotArr body k x with h | ⟨d, o, b, idx, A, n, -, rfl, hA, h⟩ |
+      ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, -⟩ |
+      ⟨ri, hri, h⟩
     · rw [h]
       simp only [stackFreeB, operandNames_normA] at hf ⊢
       exact hf
@@ -788,8 +789,7 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
           simp [hf, stackNameB_accArr hsl hA]
         · cases hri
       · cases hri
-  · simp only [accOkB, ite_eq_right (show ¬ ("STOREIDX" = "LOADIDX") by decide), ite_true,
-      Bool.true_and] at hacc
+  · simp only [accOkB, Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
     rw [imgInstr_stx slotArr body k hA]
     simp [stackFreeB, operandNames, srcNames, stackNameB_accArr hsl hA, hi, hv]
@@ -844,8 +844,8 @@ theorem virtImg_noCall (slotArr : String → Option (String × Nat)) {body : Lcm
   refine List.all_eq_true.mpr fun i hi => ?_
   obtain ⟨k, j, -, hj, rfl⟩ := mem_virtImg hi
   have hok := instrOKB_of_printedAddrB hp hj
-  rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩
+  rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, _, -, -, -, h⟩ |
+    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩
   · rw [h]
     cases hx : j.li_i <;> rw [hx] at hok <;> simp [instrOKB] at hok <;> rfl
   · rw [h]; rfl
@@ -901,8 +901,9 @@ theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd
     r ∈ (rdWr x).1 ∨ (∃ q n, slotArr q = some (r, n))
       ∨ ∃ A n v j i', cellIdxStore? slotArr body k x = some (A, n, r, v) ∧ j < k
         ∧ body[j]? = some i' ∧ r ∈ (rdWr i'.li_i).1 := by
-  rcases imgInstr_cases slotArr body k x with h | ⟨d, b, idx, A, n, rfl, hA, h⟩ |
-    ⟨d, b, idx, v, A, n, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ | ⟨ri, hri, h⟩
+  rcases imgInstr_cases slotArr body k x with h | ⟨d, o, b, idx, A, n, -, rfl, hA, h⟩ |
+    ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ |
+    ⟨ri, hri, h⟩
   rotate_left 4
   · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, -, -, -,
       hacc⟩ := cellIdxStore?_spec hc

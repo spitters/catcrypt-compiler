@@ -572,7 +572,8 @@ theorem run_simL {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) (rs
           cases ar with
           | ldx D B' I =>
             intro p vi hp hvi
-            exact hsafe.1 ii D B' I (by rw [hget, ← hia]; rfl) p vi hp hvi
+            exact hsafe.1 ii _ D B' I (by rw [hget, ← hia]) (by simp [AArm.instr, width_tag])
+              p vi hp hvi
           | _ => trivial
         obtain ⟨s', zf', hst, hc', hzf'⟩ := AArm.sim P rsp ar hok sa s zf hc hsafeA
         have hstep : stepA frame body s zf = some (s', zf') := by

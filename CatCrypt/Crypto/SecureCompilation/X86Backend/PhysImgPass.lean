@@ -273,7 +273,7 @@ theorem accOkB_of_base {b1 b2 : Lcmd} {k1 k2 : Nat} {i : LinstrR}
       obtain ⟨ds', o', ss', he⟩ := hx
       cases he
       refine ⟨_, _, _, rfl, ?_⟩
-      rcases h3 with rfl | rfl <;> rfl
+      rcases h3 with h | h <;> simp [isArrImmB, h]
     · simp
   · simp
 

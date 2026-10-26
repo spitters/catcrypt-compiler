@@ -1051,18 +1051,21 @@ theorem isMulHiMnem_acc (o : String) (h : o = "LOADIDX" ∨ o = "STOREIDX") :
     constant-index array write. -/
 theorem physExpand_arrImmFree (shiftImm : ShiftImmOracle) (u64 : Bool)
     (rmap : LOperand → LOperand) (mbr : String → Option String) (i : Linstr)
-    (hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM") :
+    (hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM")
+    (hu : ∀ ds o ss, i.li_i = .Lopn ds o ss → AccUntagged o) :
     ∀ r ∈ physExpand shiftImm u64 rmap mbr i, isArrImmB r.li_i = false := by
   intro r hr
   cases hr' : r.li_i with
   | Lopn ds o ss =>
     cases hai : isArrImmB (.Lopn ds o ss)
     · rfl
-    · have ho : o = "ZEROARR" ∨ o = "STOREIMM" := by simpa [isArrImmB] using hai
+    · have ho : LprogAsmPrinter.untagCaret o = "ZEROARR" ∨
+          LprogAsmPrinter.untagCaret o = "STOREIMM" := by simpa [isArrImmB] using hai
       obtain ⟨ds', ss', he⟩ := PhysAbiShape.physExpand_arrImm shiftImm u64 rmap mbr i hr hr' ho
-      rcases ho with rfl | rfl
-      · exact absurd rfl (hne ds' _ ss' he).1
-      · exact absurd rfl (hne ds' _ ss' he).2
+      rw [(hu ds' o ss' he) (by rcases ho with h | h <;> simp [h])] at ho
+      rcases ho with h | h
+      · exact ((hne ds' _ ss' he).1 h).elim
+      · exact ((hne ds' _ ss' he).2 h).elim
   | _ => rfl
 
 /-- **One expansion keeps the side conditions.** Let the expansion of `i` carry only its own
@@ -1092,7 +1095,8 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
   · -- no access: no indexed operand
     have hfree : ∀ r ∈ F, idxFreeB r.li_i = true ∧ isArrImmB r.li_i = false := fun r hr =>
       ⟨physExpand_idxFree shiftImm u64 rmap mbr i hrmI (hidx hA) r (hsub r hr),
-        physExpand_arrImmFree shiftImm u64 rmap mbr i hne r (hsub r hr)⟩
+        physExpand_arrImmFree shiftImm u64 rmap mbr i hne
+          (fun ds o ss h => (hacc ds o ss h).2.2.2.2) r (hsub r hr)⟩
     refine ⟨scanStays_of_idxFree hfree, siteStays_of_idxFree hfree, fun env he => ?_⟩
     by_cases hlow : ∃ ds o ss, i.li_i = .Lopn ds o ss ∧ stripWidthTag o = "MUL"
     · obtain ⟨ds, o, ss, hi, hm⟩ := hlow
@@ -1121,7 +1125,11 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
     cases w with
     | Lopn ds o ss =>
       have ho : o = "LOADIDX" ∨ o = "STOREIDX" := by
-        simpa [isAccB] using hA
+        have hu : LprogAsmPrinter.untagCaret o = "LOADIDX" ∨
+            LprogAsmPrinter.untagCaret o = "STOREIDX" := by
+          simpa [isAccB] using hA
+        rw [← (hacc ds o ss rfl).2.2.2.2 (by rcases hu with h | h <;> simp [h])]
+        exact hu
       obtain ⟨hmh, hml, hlp⟩ := isMulHiMnem_acc o ho
       have hF : F = physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn ds o ss⟩ :=
         filter_notLivePin_eq hmn (by simpa [opnOf] using hlp)
@@ -1163,10 +1171,10 @@ theorem reloadArrImmBody_physExpand_of_ne (shiftImm : ShiftImmOracle) (u64 : Boo
   refine reloadArrImmBody_eq_of_noArrImm mbr' fun r hr ds o ss ho =>
     ⟨fun h => ?_, fun h => ?_⟩
   · obtain ⟨ds', ss', he⟩ := PhysAbiShape.physExpand_arrImm shiftImm u64 rmap mbr i hr ho
-      (.inl h)
+      (.inl (by rw [h]; exact LprogAsmPrinter.untagCaret_of_caret_free (by decide)))
     exact (hne ds' o ss' he).1 h
   · obtain ⟨ds', ss', he⟩ := PhysAbiShape.physExpand_arrImm shiftImm u64 rmap mbr i hr ho
-      (.inr h)
+      (.inr (by rw [h]; exact LprogAsmPrinter.untagCaret_of_caret_free (by decide)))
     exact (hne ds' o ss' he).2 h
 
 /-- The expansion of a constant-index array write with one destination and at least two
@@ -1201,7 +1209,7 @@ theorem reloadArrImmBody_physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bo
             [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
               ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM"
                 [.reg reloadScratch2, .reg v', .imm k]⟩]) := by
-  obtain ⟨-, -, hZ, hS⟩ := hacc ds o ss rfl
+  obtain ⟨-, -, hZ, hS, -⟩ := hacc ds o ss rfl
   rcases hz with rfl | rfl
   · obtain ⟨b, n, w, rfl, rfl, b', q, hb', hq, hqs⟩ := hZ rfl
     refine ⟨b', q, hq, hqs, .inl ⟨n, w, ?_⟩⟩

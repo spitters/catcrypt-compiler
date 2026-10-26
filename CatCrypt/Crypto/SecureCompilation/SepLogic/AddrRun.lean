@@ -286,7 +286,7 @@ theorem stepA_storeMoveBody_zero {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
   rw [hpc]
   simp only [storeMoveBody, List.getElem?_cons_zero]
   rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
-    tagA_lopn (by decide) (by decide)]
+    tagA_lopn_of_caret_free (by decide) (by decide)]
   simp only [normA, castTagW]
   simp (config := { decide := true }) only [ite_false]
   exact fstepA_movStm _ hn hB hV zf
@@ -303,7 +303,7 @@ theorem stepA_storeMoveBody_one {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 1) 
   rw [hpc]
   simp only [storeMoveBody, List.getElem?_cons_succ, List.getElem?_cons_zero]
   rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
-    tagA_lopn (by decide) (by decide)]
+    tagA_lopn_of_caret_free (by decide) (by decide)]
   simp (config := { decide := true }) [normA, hu, fstepA, slotMov?_mov64 hD hS,
     regStepA, JasminLsemMemFlagNestJoin.fstepF, JasminLsemMemFlagGuard.cmpArgs?,
     JasminLsemMemFlagGuard.movRegArgs?, JasminLsemWidthN.readReg, LstateM.setReg,
@@ -336,7 +336,7 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
     rw [hpc]
     simp only [storeMoveBody, List.getElem?_cons_zero]
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
-      tagA_lopn (by decide) (by decide)]
+      tagA_lopn_of_caret_free (by decide) (by decide)]
     simp (config := { decide := true }) [normA, hu, castTagW]
   have w2 : ∀ t : LstateA, t.reg.lpc = 1 → stepWrites (fun _ => none) storeMoveBody t
       = writesA (fun _ => none) (.Lopn [.reg "D"] "MOV:64" [.reg "S"], .reg none) t := by
@@ -345,7 +345,7 @@ theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
     rw [ht]
     simp only [storeMoveBody, List.getElem?_cons_succ, List.getElem?_cons_zero]
     rw [tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
-      tagA_lopn (by decide) (by decide)]
+      tagA_lopn_of_caret_free (by decide) (by decide)]
     simp (config := { decide := true }) [normA, hu, castTagW]
   have s1 : storeA? (fun _ => none) (.Lopn [.reg "mem.B.0"] "MOV:64" [.reg "V"], .reg none)
       s.reg = some (p + BitVec.ofNat 64 0) := by

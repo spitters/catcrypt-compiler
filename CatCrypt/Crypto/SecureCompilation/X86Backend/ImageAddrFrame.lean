@@ -461,7 +461,7 @@ theorem icase_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (x : Linst
           cases e4 : frame' q <;> simp_all
     | none =>
         simp only
-        cases hk : slotCmp? (LinstrR.Lopn ds o ss) with
+        cases hk : slotCmp? (normA (LinstrR.Lopn ds o ss)) with
         | some p =>
             obtain ⟨d, y, q⟩ := p
             simp only [h q]

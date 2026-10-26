@@ -300,8 +300,8 @@ theorem srcWidth?_tag {i : LinstrR} {d a : String} (h : srcWidth? i = some (d, a
   rcases srcWidth?_spec h with ⟨o, b, rfl, ho⟩ | ⟨o, rfl, hu⟩
   · simp only [arithOp, arithBase, Bool.or_eq_true, beq_iff_eq] at ho
     rcases ho with ((((hu | hu) | hu) | hu) | hu) | hu <;>
-      simp (disch := decide +kernel) [tagAt, bitMovB, movImmStruct?, tagA, ne_of_untagCaret hu]
-  · simp (disch := decide +kernel) [tagAt, bitMovB, movImmStruct?, tagA, ne_of_untagCaret hu]
+      simp (disch := decide +kernel) [tagAt, bitMovB, movImmStruct?, tagA, hu]
+  · simp (disch := decide +kernel) [tagAt, bitMovB, movImmStruct?, tagA, hu]
 
 /-- **An instruction of `srcWidth?` writes its destination at the width of its source.** -/
 theorem fstepA_srcWidth {frame : String → Option (BitVec 64)} {i : LinstrR} {d a : String}
@@ -520,8 +520,10 @@ theorem wTyped_step {frame : String → Option (BitVec 64)} {body : Lcmd} {s s' 
             · rw [normA_untag hw (by decide)]
               simp (config := { decide := true }) [normA]
           have htA : tagA (.Lopn [.reg d] o [.imm n]) = .reg none := by
-            rcases hform with rfl | ⟨w, hw, rfl⟩ <;>
-              simp (disch := decide +kernel) [tagA, withWidthTag_ne_of_tagSepFree]
+            rcases hform with rfl | ⟨w, hw, rfl⟩
+            · simp (disch := decide +kernel) [tagA, width_tag]
+            · simp (disch := decide +kernel) [tagA, width_tag,
+                LprogAsmPrinter.untagCaret_withWidthTag hw (m := "MOV") (by decide +kernel)]
           have hdn : dstNames (.Lopn ds o ss) = [d] := by
             rw [hi]; simp [dstNames, VIR.JasminLsemExportRewrites.opNames]
           rw [hdn] at hfr

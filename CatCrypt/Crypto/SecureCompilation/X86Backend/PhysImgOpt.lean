@@ -71,6 +71,49 @@ theorem instrModeled_shape {i : Linstr} (h : instrModeled i = true) :
   · exact ⟨_, _, _, ‹_›⟩
   · cases h
 
+/-- A mnemonic that reads as a memory-operation base `b` after `untagCaret` has `b` as its
+    width-stripped base, parses as no immediate shift, and has `b` as a prefix of its
+    ABI-stripped form. -/
+theorem untagCaret_memOp_parts {o b : String} (hu : LprogAsmPrinter.untagCaret o = b)
+    (hb : b = "ZEROARR" ∨ b = "STOREIMM" ∨ b = "LOADIDX" ∨ b = "STOREIDX") :
+    stripWidthTag o = b ∧ parseImmShiftMnem o = none ∧
+      b.toList <+: (LprogAsmPrinter.stripAbiTag o).toList := by
+  by_cases hc : '^' ∈ o.toList
+  · have hcc : o.toList.contains '^' = true := by simpa using hc
+    have hT : o.toList.takeWhile (· != '^') = b.toList := by
+      unfold LprogAsmPrinter.untagCaret at hu
+      simp only [hcc, ↓reduceIte] at hu
+      split at hu
+      · exfalso
+        have := congrArg (fun s => s.toList.getLast?) hu
+        rcases hb with rfl | rfl | rfl | rfl <;> simp at this
+      · unfold stripWidthTag at hu
+        simp only [hcc, ↓reduceIte] at hu
+        rw [← hu, String.toList_ofList]
+    have hW : stripWidthTag o = b := by
+      unfold stripWidthTag
+      simp only [hcc, ↓reduceIte, hT, String.ofList_toList]
+    refine ⟨hW, ?_, ?_⟩
+    · unfold parseImmShiftMnem
+      simp only [hcc, ↓reduceIte, hT]
+      split
+      · rcases hb with rfl | rfl | rfl | rfl <;> rfl
+      · rfl
+    · have hpre : b.toList <+: o.toList := hT ▸ List.takeWhile_prefix _
+      have hcol : ∀ c ∈ b.toList, (c != ':') = true := by
+        rcases hb with rfl | rfl | rfl | rfl <;> decide
+      unfold LprogAsmPrinter.stripAbiTag
+      split
+      · rw [String.toList_ofList]
+        obtain ⟨t, ht⟩ := hpre
+        rw [← ht, List.takeWhile_append_of_pos hcol]
+        exact List.prefix_append _ _
+      · rw [hW]
+  · have ho : o = b := by
+      grind only [WidthTagSimp.untagCaret_lit]
+    subst ho
+    rcases hb with rfl | rfl | rfl | rfl <;> refine ⟨?_, ?_, ?_⟩ <;> decide +kernel
+
 /-- A modeled instruction is no `ZEROARR` or `STOREIMM`. -/
 theorem instrModeled_arrImm {i : Linstr} (h : instrModeled i = true) :
     isArrImmB i.li_i = false := by
@@ -79,11 +122,10 @@ theorem instrModeled_arrImm {i : Linstr} (h : instrModeled i = true) :
   · rename_i d opn srcs heq
     rw [heq]
     simp only [isArrImmB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
-    have e1 : stripWidthTag "ZEROARR" = "ZEROARR" := by simp [stripWidthTag, hasSuffix]; decide
-    have e2 : stripWidthTag "STOREIMM" = "STOREIMM" := by
-      simp [stripWidthTag, hasSuffix]; decide
-    constructor <;> rintro rfl <;> generalize srcs.length = n at h <;> revert h <;>
-      simp only [e1, e2] <;> split <;> simp_all <;> decide
+    constructor <;> intro hu <;>
+      obtain ⟨hs, hp, -⟩ := untagCaret_memOp_parts hu (by simp) <;>
+      rw [hs] at h <;> generalize srcs.length = n at h <;> revert h <;>
+      split <;> simp_all
   · cases h
 
 /-- The value the reload scan gives the destination of a move from `s` placed at position `k`:
@@ -1692,9 +1734,7 @@ theorem deDrop_not_acc {i : Linstr} {live : List String} {ds : List LOperand} {o
 theorem isRecognizedOpn_of_arrImm {ds : List LOperand} {o : String} {ss : List LOperand}
     (h : isArrImmB (.Lopn ds o ss) = true) : isRecognizedOpn o = false := by
   simp only [isArrImmB, Bool.or_eq_true, beq_iff_eq] at h
-  rcases h with rfl | rfl <;>
-    simp [isRecognizedOpn, implicitReads, LprogAsmPrinter.stripAbiTag,
-      LprogGpReallocCfg.isPrefixOf_list] <;> decide
+  rcases h with h | h <;> exact PhysImgFold.isRecognizedOpn_eq_false_of_untagCaret h (by simp)
 
 /-- A base (`AccBase`) of an instruction is live in front of it. -/
 theorem deLive_base {i : Linstr} {live : List String} {x : String} (hi : AccBase x i.li_i)
@@ -1976,6 +2016,16 @@ def PropInv (slotArr : String → Option (String × Nat)) (W W' P : Lcmd) (N : N
 
 theorem isImmFoldable_storeidx : isImmFoldable "STOREIDX" = false := by decide +kernel
 
+/-- A mnemonic that reads as `STOREIDX` after `untagCaret` folds no immediate. -/
+theorem isImmFoldable_of_untagCaret_storeidx {o : String}
+    (h : LprogAsmPrinter.untagCaret o = "STOREIDX") : isImmFoldable o = false := by
+  have hP := (untagCaret_memOp_parts h (by simp)).2.2
+  unfold isImmFoldable
+  generalize LprogAsmPrinter.stripAbiTag o = s at hP ⊢
+  simp only [Bool.and_eq_false_iff]
+  right
+  split <;> first | rfl | (revert hP; decide)
+
 theorem cellParts?_physGP {v : String} (h : isPhysGP v = true) : cellParts? v = none := by
   rw [PhysImgFold.isPhysGP_eq_gpNameB] at h
   simp [cellParts?, (PhysImgFold.gpNameB_prefix h).2]
@@ -2052,7 +2102,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
   obtain ⟨rw, ai, hrwc, hai, hps1, hps2⟩ : ∃ (rw : LOperand → LOperand) (ai : Bool),
       (∀ o', rw o' = o' ∨ ∃ u v fw, o' = .reg u ∧ (u, v, fw) ∈ facts ∧ isPhysGP u = true ∧
         (ai || !isImmOperand v) = true ∧ rw o' = v) ∧
-      (o = "STOREIDX" → ai = false) ∧
+      (LprogAsmPrinter.untagCaret o = "STOREIDX" → ai = false) ∧
       (propStep facts i).1 = ⟨i.li_ii, .Lopn [.reg d] o (ss.map rw)⟩ ∧
       (propStep facts i).2 =
         (match moveShape (⟨i.li_ii, .Lopn [.reg d] o (ss.map rw)⟩ : Linstr) with
@@ -2065,7 +2115,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
         (if isPhysGP d = true then some d else none),
       isImmFoldable o && (if isPhysGP d = true then some d else none).isSome,
       fun o' => rewriteOperand_cases _ _ _ _ o',
-      fun h => by subst h; simp [isImmFoldable_storeidx],
+      fun h => by simp [isImmFoldable_of_untagCaret_storeidx h],
       by simp only [propStep, hj, hrec, ite_true], by simp only [propStep, hj, hrec, ite_true]⟩
   have hj' : (propStep facts i).1.li_i = .Lopn [.reg d] o (ss.map rw) := by rw [hps1]
   -- a fact source for a name that a fact rewrites
@@ -2227,9 +2277,9 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
           simp only [isAccB, Bool.or_eq_false_iff, beq_eq_false_iff_ne, not_and_or,
             not_not] at hna
           rw [hj] at hacc
-          rcases hna with rfl | rfl
+          rcases hna with hna | hna
           · exfalso
-            simp only [accOkB, ite_true] at hacc
+            simp only [accOkB, hna, ite_true] at hacc
             split at hacc
             · rename_i heq
               simp only [LinstrR.Lopn.injEq] at heq
@@ -2240,14 +2290,14 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
               · exact h
               · cases h
             · cases hacc
-          · simp only [accOkB, show ("STOREIDX" = "LOADIDX") = False from by decide,
+          · simp only [accOkB, hna, show ("STOREIDX" = "LOADIDX") = False from by decide,
               ite_false, ite_true] at hacc
             split at hacc
             · rename_i b0 j0 v
               have hrv : ∃ v', rw (.reg v) = .reg v' := by
                 rcases hrwc (.reg v) with h | ⟨u, w0, fw, he, hm, -, hai', h⟩
                 · exact ⟨v, h⟩
-                · rw [hai rfl] at hai'
+                · rw [hai hna] at hai'
                   have hfs := (hall _ hm).2.1
                   cases w0 with
                   | reg v' => exact ⟨v', h⟩
@@ -2259,7 +2309,7 @@ theorem propInv_step {P : Lcmd} {facts : List MoveFact}
                 rcases hrwc (.arrIdx b0 j0 8) with h | ⟨_, _, _, h, _⟩
                 · exact h
                 · cases h
-              exact ⟨[.reg d], "STOREIDX", b0, j0, v, v', hj, by
+              exact ⟨[.reg d], o, b0, j0, v, v', hj, by
                 rw [hj']; simp [ha, hv']⟩
             · cases hacc
     · cases hm : slotMov? i.li_i with

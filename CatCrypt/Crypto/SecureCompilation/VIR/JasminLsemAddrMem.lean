@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagArrLoop
 public import CatCrypt.Crypto.SecureCompilation.Ascent.AddrMemIdx
+public import CatCrypt.Crypto.SecureCompilation.VIR.WidthTagSimp
 
 /-!
 # Address memory for the `Linstr` machine: lowering memrefs to pointers
@@ -192,6 +193,13 @@ def cellA? : LinstrR → Option CellOp
         | none => (cellParts? n).map fun p => .ld d p.1 p.2
       else none
   | _ => none
+
+/-- `cellA?` reads an `Lopn` and the `Lopn` at the `untagCaret` of its mnemonic alike. -/
+@[width_tag]
+theorem cellA?_untagCaret (ds : List LOperand) (o : String) (ss : List LOperand) :
+    cellA? (.Lopn ds (X86Backend.LprogAsmPrinter.untagCaret o) ss) = cellA? (.Lopn ds o ss) := by
+  rcases ds with _ | ⟨d, _ | _⟩ <;> rcases ss with _ | ⟨s, _ | _⟩ <;> (try cases d) <;>
+    (try cases s) <;> simp only [cellA?, JasminLsemAddrCongr.untagCaret_idem]
 
 /-- The wire form `Lopn [.reg dst] m [.reg src]` of a 64-bit move, `m` one of `MOVQ` and
     `MOV:64`, as `(dst, src)`; a `MOV:64` with a cell name among its operands is a cell access

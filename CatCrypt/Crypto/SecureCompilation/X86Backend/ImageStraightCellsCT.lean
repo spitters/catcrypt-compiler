@@ -370,29 +370,18 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak (BytesT
   instrLeakA_cellLd)
 open CatCrypt.Crypto.SecureCompilation.CT (CTLeak ConstantTimeRel DoitRegime X86Mnem)
 
-/-- `untagCaret` fixes the cell mnemonics `LOAD:64`, `STORE:64`, `LEA:64` and `MOV:64`. -/
-private theorem untagCaret_load : LprogAsmPrinter.untagCaret "LOAD:64" = "LOAD:64" :=
-  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
-
-private theorem untagCaret_store : LprogAsmPrinter.untagCaret "STORE:64" = "STORE:64" :=
-  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
-
-private theorem untagCaret_lea : LprogAsmPrinter.untagCaret "LEA:64" = "LEA:64" :=
-  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
-
-private theorem untagCaret_mov64 : LprogAsmPrinter.untagCaret "MOV:64" = "MOV:64" :=
-  LprogAsmPrinter.untagCaret_of_caret_free (by decide)
-
-attribute [local simp] untagCaret_load untagCaret_store untagCaret_lea untagCaret_mov64
+attribute [local simp] VIR.WidthTagSimp.untagCaret_load64 VIR.WidthTagSimp.untagCaret_store64
+  VIR.WidthTagSimp.untagCaret_lea64 VIR.WidthTagSimp.untagCaret_mov64
 
 /-- An immediate move `o D, #n` at an immediate-move mnemonic `o` (`MOV` or `MOV^w`,
     `w ≠ 64`) carries the register tag without width. -/
 private theorem tagA_movImm {D o : String} {n : Nat}
     (h : JasminLsemCast.isMovImmMnem o = true) :
     tagA (.Lopn [.reg D] o [.imm n]) = .reg none := by
-  rcases JasminLsemCast.isMovImmMnem_iff.1 h with rfl | ⟨w, -, rfl⟩
+  rcases JasminLsemCast.isMovImmMnem_iff.1 h with rfl | ⟨w, hw, rfl⟩
   · simp (config := { decide := true }) [tagA]
-  · simp (disch := decide +kernel) [tagA, withWidthTag_ne_of_tagSepFree]
+  · simp (disch := decide +kernel) [tagA, width_tag,
+      LprogAsmPrinter.untagCaret_withWidthTag hw (m := "MOV") (by decide +kernel)]
 
 /-- An immediate-move mnemonic (`MOV` or `MOV^w`, `w ≠ 64`) encodes to the bytes of `MOV`. -/
 private theorem encodeLopn_movImm_eq (frame spillW : Nat) (ds : List LOperand) {o : String}
@@ -1316,7 +1305,8 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
           cases ar with
           | ldx D B' I =>
             intro p vi hp hvi
-            exact hsafe.1 ii D B' I (by rw [hget, ← hia]; rfl) p vi hp hvi
+            exact hsafe.1 ii _ D B' I (by rw [hget, ← hia]) (by simp [AArm.instr, width_tag])
+              p vi hp hvi
           | _ => trivial
         have hw : WideAt s ar.li.fst := by
           intro r hr hg
@@ -2033,7 +2023,8 @@ theorem stepLenDetW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
         obtain ⟨h1, h2, -, -⟩ := castTagW_ne hw
         obtain ⟨h3, h4⟩ := castTagW_ne_arr hw
         refine instrLeakA_length_reg (y := .Lopn [.reg D] o [.reg A]) (t := castTagW o)
-          (by rw [normA_castW hw, tagA_lopn h1 h2 h3 h4]) ?_ s₁ s₂
+          (by rw [normA_castW hw, tagA_lopn_of_caret_free h1 h2 h3 h4 (castTagW_caret_free hw)])
+          ?_ s₁ s₂
         have hl : o ≠ "LOAD:64" := by rintro rfl; simp [castTagW] at hw
         have hs : o ≠ "STORE:64" := by rintro rfl; simp [castTagW] at hw
         have hle : o ≠ "LEA:64" := by rintro rfl; simp [castTagW] at hw

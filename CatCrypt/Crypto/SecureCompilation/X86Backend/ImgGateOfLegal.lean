@@ -312,8 +312,9 @@ theorem gateAtW_reg {frame : String → Option (BitVec 64)}
 /-- The simplification set that evaluates the kind `icase` of an instruction of a concrete
     mnemonic. -/
 macro "img_icase" : tactic => `(tactic|
-  simp only [icase, VIR.JasminLsemAddrRun.castTagW, String.reduceEq, ↓reduceIte, or_self,
-    slotMov?, slotCmp?, ne_eq, not_true_eq_false, or_false, false_or])
+  simp (disch := decide) only [icase, LprogAsmPrinter.untagCaret_of_caret_free,
+    VIR.JasminLsemAddrRun.normA, VIR.JasminLsemAddrRun.castTagW, String.reduceEq, ↓reduceIte,
+    or_self, slotMov?, slotCmp?, ne_eq, not_true_eq_false, or_false, false_or])
 
 /-- The simplification set that closes the conditions of `regGateBW` after `img_sym`. -/
 macro "img_fin" : tactic => `(tactic|
@@ -359,7 +360,7 @@ theorem gate_loadIdx {frame : String → Option (BitVec 64)}
     (x := .Lopn [.reg d] "LOADIDX" [.arrIdx b x 8]) (W := W) (by
       have := cellParts?_of_gpOk hd
       img_reads)
-  simp [gateAtW, carryI?, icase, hr, hacc, hd, hfd, hfb, hfx]
+  simp [gateAtW, carryI?, icase, hr, hacc, hd, hfd, hfb, hfx, width_tag]
 
 /-- **An indexed store at stride `8` passes the gate** when its base holds the pointer of an
     array, its names hold no frame word, the array name is no cell name, and the base, index
@@ -375,7 +376,7 @@ theorem gate_storeIdx {frame : String → Option (BitVec 64)}
     (x := .Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v]) (W := W) (by
       have := cellParts?_of_gpOk hv
       img_reads)
-  simp [gateAtW, carryI?, icase, hr, hacc, hfb, hfx, hfv]
+  simp [gateAtW, carryI?, icase, hr, hacc, hfb, hfx, hfv, width_tag]
 
 /-- **A two-address operation over general-purpose names passes the gate** when its names hold
     no frame word and lie outside the analysis. -/
@@ -840,7 +841,8 @@ theorem gate_tagShift {frame : String → Option (BitVec 64)}
   apply gateAtW_reg
   · img_reads
   · simp [carryI?]
-  · simp [icase, hcast, e4, e5, e6, e7, e9, e10, slotMov?, slotCmp?]
+  · simp [icase, VIR.JasminLsemAddrRun.normA, LprogAsmPrinter.untagCaret_of_caret_free hcar,
+      hcast, e1, e4, e5, e6, e7, e9, e10, slotMov?, slotCmp?]
   · exact movImmStruct?_ne e8
   · rfl
   · have hne : ∀ t : String, t.toList.take 2 ≠ ['S', 'H'] → (tagMnem b n = t) = False :=
@@ -1185,7 +1187,7 @@ theorem physImgB_of_savePrefix {slotArr : String → Option (String × Nat)} {pr
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
       rw [hj]
       rcases hm with rfl | rfl <;>
-        simp [accOkB, slotWriteB, slotMov?, hent,
+        simp [accOkB, slotWriteB, slotMov?, hent, width_tag,
           cellParts?_of_slot (isSpillOrQsave_slotOfReg R), cellParts?_of_gpOk hR]
     · refine ⟨hacc k i (by omega) hb, ?_⟩
       rw [List.getElem?_append_right (by omega)] at hb

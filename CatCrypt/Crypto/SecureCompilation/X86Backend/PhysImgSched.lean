@@ -265,6 +265,26 @@ theorem dstOk_of_indep_left {i i' : LinstrR} (hind : indep i i' = true)
     simp only [hasArrIdx, Bool.or_eq_false_iff, List.any_eq_false] at har
     exact absurd rfl (har.1.2 _ hx)
 
+/-- A mnemonic that reads as `ZEROARR` or `STOREIMM` after `untagCaret` has that base as its
+    part before the first `^`. -/
+theorem takeWhile_caret_of_untagCaret {o b : String} (hu : LprogAsmPrinter.untagCaret o = b)
+    (hb : b = "ZEROARR" ∨ b = "STOREIMM") :
+    String.ofList (o.toList.takeWhile (· != '^')) = b := by
+  by_cases hc : '^' ∈ o.toList
+  · have hcc : o.toList.contains '^' = true := by simpa using hc
+    unfold LprogAsmPrinter.untagCaret at hu
+    simp only [hcc, ↓reduceIte] at hu
+    split at hu
+    · exfalso
+      have := congrArg (fun s => s.toList.getLast?) hu
+      rcases hb with rfl | rfl <;> simp at this
+    · unfold stripWidthTag at hu
+      simp only [hcc, ↓reduceIte] at hu
+      exact hu
+  · rw [LprogAsmPrinter.untagCaret_of_caret_free hc] at hu
+    subst hu
+    rcases hb with h | h <;> rw [h] <;> decide +kernel
+
 /-- **The class under one transposition.** When every array slot is a frame slot, transposing
     two adjacent independent instructions keeps `physImgB`. -/
 theorem physImgB_schedSwap (hq : ∀ q, (slotArr q).isSome = true → hasPrefix q "qsave." = true)
@@ -291,7 +311,13 @@ theorem physImgB_schedSwap (hq : ∀ q, (slotArr q).isSome = true → hasPrefix 
       simp [hasArrIdx, opIsArrIdx] at hj
     · rw [he] at hj hai
       simp only [isArrImmB, Bool.or_eq_true, beq_iff_eq] at hai
-      rcases hai with rfl | rfl <;> simp [hasArrIdx] at hj
+      have hw : String.ofList (o.toList.takeWhile (· != '^')) = "ZEROARR" ∨
+          String.ofList (o.toList.takeWhile (· != '^')) = "STOREIMM" := by
+        rcases hai with h | h
+        · exact Or.inl (takeWhile_caret_of_untagCaret h (Or.inl rfl))
+        · exact Or.inr (takeWhile_caret_of_untagCaret h (Or.inr rfl))
+      rw [hasArrIdx_of_untag hw] at hj
+      cases hj
   refine physImgB_of_embed h fun k i hk => ?_
   rcases Nat.lt_or_ge k A.length with hlt | hge
   · -- in front of the pair

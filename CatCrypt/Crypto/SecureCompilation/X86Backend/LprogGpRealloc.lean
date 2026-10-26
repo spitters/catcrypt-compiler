@@ -183,9 +183,11 @@ def regOrImm : LOperand → Bool
   | .imm _ => true
   | _ => false
 
-/-- Register and immediate sources only, and not a runtime-indexed memory opcode. -/
+/-- Register and immediate sources only, and not a runtime-indexed memory opcode at any width
+    tag (the mnemonic is read through `untagCaret`). -/
 def FI.wf (i : FI) : Bool :=
-  i.srcs.all regOrImm && i.opn != "LOADIDX" && i.opn != "STOREIDX"
+  i.srcs.all regOrImm && LprogAsmPrinter.untagCaret i.opn != "LOADIDX"
+    && LprogAsmPrinter.untagCaret i.opn != "STOREIDX"
 
 /-- The fragment view of an instruction: a single-destination `Lopn` with register and
     immediate sources whose mnemonic the alphabet `recog` accepts. The default alphabet is
@@ -433,7 +435,8 @@ theorem semL_copy {w : Nat} (opn : String) (a : BitVec w) (h : isCopy64 opn = tr
 theorem lsemStep_toR {w : Nat} (i : FI) (hwf : i.wf = true) (s : Lstate w) :
     lsemStep i.toR s = stepWith semL i s := by
   simp only [FI.wf, Bool.and_eq_true, bne_iff_ne, ne_eq] at hwf
-  rw [FI.toR, lsemStep_reg_nonmem _ _ _ _ ⟨hwf.1.2, hwf.2⟩]
+  rw [FI.toR, lsemStep_reg_nonmem _ _ _ _ ⟨ne_of_apply_ne LprogAsmPrinter.untagCaret hwf.1.2,
+    ne_of_apply_ne LprogAsmPrinter.untagCaret hwf.2⟩]
   rfl
 
 theorem lsemStraight_map_toR {w : Nat} (is : List FI) (hwf : ∀ i ∈ is, i.wf = true)

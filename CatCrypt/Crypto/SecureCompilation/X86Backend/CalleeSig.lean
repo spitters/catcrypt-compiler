@@ -41,8 +41,15 @@ block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
   `leaq -F(%rsp), %rsp ; body ; leaq F(%rsp), %rsp ; ret`, under which every leaky run
   restores the stack register, keeps the registers outside a clobber set and keeps the
   bytes outside the `F` bytes below the entry stack register.
-* `calleeSpec_of_keepCheck`: `CalleeSpec` of the leaky run of a decoded block from the keep
-  check, a halting run with a postcondition and equality of traces.
+* `StorePol`, `KeepFoot`, `keepCheckWB`, `keepCheck_invW`, `keepCheck_soundW`: the keep
+  check under a store policy, which also admits stores to a red zone of at most `128` bytes
+  below the frame and to out windows at fixed displacements from base registers outside the
+  clobber set; every leaky run keeps the bytes outside the frame, the red zone and the out
+  windows at the entry values of their base registers. `keepCheckB` is its instance at the
+  policy `StorePol.frame` of the frame alone (`keepFoot_frame`).
+* `calleeSpec_of_keepCheck`, `calleeSpec_of_keepCheckW`: `CalleeSpec` of the leaky run of a
+  decoded block from the keep check, a halting run with a postcondition and equality of
+  traces.
 * `keptB`, `keepCands`, `keepPool`, `scratch_not_mem_keepPool`, `keepPool_eq_of_kept`,
   `keepPoolB`, `keepPoolB_spec`, `keepPoolB_keepPool`, `keepPoolB_keep`: the allocation pool
   of a caller, made of the general-purpose names kept across a call other than the reload
@@ -321,32 +328,86 @@ theorem eq_of_isLeaRsp {d : Int} {ri : RInstr} (h : isLeaRsp d ri = true) :
     rfl
   | _ => simp [isLeaRsp] at h
 
+/-- The store policy of a block: the stores it may make besides those to its frame. A store
+    at the stack register may reach `red` bytes below the frame (the red zone), and a store
+    at the base register `b` of an out window `(b, lo, hi)` is to a word at a displacement
+    `o` from `b` with `lo ≤ o` and `o + 8 ≤ hi`. -/
+structure StorePol where
+  /-- The size of the red zone below the frame. -/
+  red : Nat
+  /-- The out windows: a base register and the bounds of the displacements from it. -/
+  wins : List (String × Int × Int)
+
+/-- The store policy of the frame alone: no red zone and no out windows. -/
+def StorePol.frame : StorePol := ⟨0, []⟩
+
+/-- The address `x` lies in the window of the displacements `lo, …, hi - 1` from `a`. -/
+def InWin (a : BitVec 64) (lo hi : Int) (x : BitVec 64) : Prop :=
+  (x - (a + BitVec.ofInt 64 lo)).toNat < (hi - lo).toNat
+
+/-- The footprint of a block with a frame of `F` bytes under the store policy `P`, at the
+    register file `ρ` of the entry state: the `F + P.red` bytes below the stack register
+    (the frame and the red zone), and each out window of `P` at the value of its base
+    register. -/
+def KeepFoot (P : StorePol) (F : Nat) (ρ : String → BitVec 64) (x : BitVec 64) : Prop :=
+  InFrame (ρ "%rsp") (F + P.red) x ∨ ∃ w ∈ P.wins, InWin (ρ w.1) w.2.1 w.2.2 x
+
+/-- Under the policy of the frame alone, the footprint is the frame. -/
+theorem keepFoot_frame {F : Nat} {ρ : String → BitVec 64} {x : BitVec 64} :
+    KeepFoot .frame F ρ x ↔ InFrame (ρ "%rsp") F x := by
+  grind only [= KeepFoot.eq_def, = StorePol.frame.eq_def, = InFrame.eq_def, ← List.not_mem_nil]
+
+/-- A store at the base register `b` and the displacement `o` is to a word allowed by `P`
+    for a frame of `F` bytes: at the stack register with `-P.red ≤ o` and `o + 8 ≤ F`, or
+    inside an out window of `P` with base `b`. -/
+def storeWinB (F : Nat) (P : StorePol) (b : String) (o : Int) : Bool :=
+  (b == "%rsp" && decide (-(P.red : Int) ≤ o) && decide (o + 8 ≤ (F : Int)))
+    || P.wins.any (fun w => b == w.1 && decide (w.2.1 ≤ o) && decide (o + 8 ≤ w.2.2))
+
+/-- A store of the instruction, if any, is to a word allowed by `P` for a frame of `F`
+    bytes (`storeWinB`). An indexed store is refused. -/
+def storeOkWB (F : Nat) (P : StorePol) : JInstr 64 → Bool
+  | .storeMem b o _ => storeWinB F P b o
+  | .addToMem b o _ => storeWinB F P b o
+  | .storeMemIdx .. => false
+  | _ => true
+
 /-- A store of the instruction, if any, is to a word of the frame: the eight bytes at a
     displacement `o` from the stack register with `0 ≤ o` and `o + 8 ≤ F`. An indexed store
     is refused. -/
-def storeOkB (F : Nat) : JInstr 64 → Bool
-  | .storeMem b o _ => b == "%rsp" && decide (0 ≤ o) && decide (o + 8 ≤ (F : Int))
-  | .addToMem b o _ => b == "%rsp" && decide (0 ≤ o) && decide (o + 8 ≤ (F : Int))
-  | .storeMemIdx .. => false
-  | _ => true
+def storeOkB (F : Nat) : JInstr 64 → Bool := storeOkWB F .frame
+
+/-- The check of an instruction between the two frame instructions of a block of length
+    `n` under the store policy `P`: an `op` writes only registers of `clob` other than the
+    stack register and stores only as `P` allows; a branch has its target among the indices
+    `1, …, n - 2`; `ret`, `push`, `pop` and `call` are refused. -/
+def bodyOkWB (n : Nat) (clob : String → Bool) (F : Nat) (P : StorePol) : RInstr → Bool
+  | .op i => (dsts i).all (fun d => d != "%rsp" && clob d) && storeOkWB F P i
+  | .jcc _ t => decide (1 ≤ t) && decide (t + 2 ≤ n)
+  | _ => false
 
 /-- The check of an instruction between the two frame instructions of a block of length
     `n`: an `op` writes only registers of `clob` other than the stack register and stores
     only to the frame; a branch has its target among the indices `1, …, n - 2`; `ret`,
     `push`, `pop` and `call` are refused. -/
-def bodyOkB (n : Nat) (clob : String → Bool) (F : Nat) : RInstr → Bool
-  | .op i => (dsts i).all (fun d => d != "%rsp" && clob d) && storeOkB F i
-  | .jcc _ t => decide (1 ≤ t) && decide (t + 2 ≤ n)
-  | _ => false
+def bodyOkB (n : Nat) (clob : String → Bool) (F : Nat) : RInstr → Bool :=
+  bodyOkWB n clob F .frame
+
+/-- The check of the instruction at index `k` of a block of length `n` under the store
+    policy `P`: index `0` lowers the stack register by `F`, index `n - 2` raises it by `F`,
+    index `n - 1` is `ret`, and every other index satisfies `bodyOkWB`. -/
+def instrOkWB (n : Nat) (clob : String → Bool) (F : Nat) (P : StorePol) (k : Nat)
+    (ri : RInstr) : Bool :=
+  if k = 0 then isLeaRsp (-(F : Int)) ri
+  else if k + 2 = n then isLeaRsp (F : Int) ri
+  else if k + 1 = n then (match ri with | .ret => true | _ => false)
+  else bodyOkWB n clob F P ri
 
 /-- The check of the instruction at index `k` of a block of length `n`: index `0` lowers
     the stack register by `F`, index `n - 2` raises it by `F`, index `n - 1` is `ret`, and
     every other index satisfies `bodyOkB`. -/
 def instrOkB (n : Nat) (clob : String → Bool) (F : Nat) (k : Nat) (ri : RInstr) : Bool :=
-  if k = 0 then isLeaRsp (-(F : Int)) ri
-  else if k + 2 = n then isLeaRsp (F : Int) ri
-  else if k + 1 = n then (match ri with | .ret => true | _ => false)
-  else bodyOkB n clob F ri
+  instrOkWB n clob F .frame k ri
 
 /-- `f k x` for every instruction `x` of the list at index `k`, counted from `k₀`. -/
 def allFrom (f : Nat → RInstr → Bool) : Nat → List RInstr → Bool
@@ -367,13 +428,42 @@ theorem allFrom_getElem? {f : Nat → RInstr → Bool} :
     have := allFrom_getElem? l (k + 1) j ri hk.2 (by simpa using h)
     rwa [show k + 1 + j = k + (j + 1) by omega] at this
 
+/-- The store policy `P` is admissible for the clobber set `clob`: its red zone has at most
+    the `128` bytes of the System V red zone, and the base register of each out window is
+    neither the stack register nor in `clob`. -/
+def winsOkB (clob : String → Bool) (P : StorePol) : Bool :=
+  decide (P.red ≤ 128) && P.wins.all (fun w => w.1 != "%rsp" && !clob w.1)
+
+/-- **The keep check under a store policy.** The block `q` has the form
+    `leaq -F(%rsp), %rsp ; body ; leaq F(%rsp), %rsp ; ret`, the policy `P` satisfies
+    `winsOkB`, and every instruction of `body` satisfies `bodyOkWB`: it writes no register
+    outside `clob`, does not write the stack register, stores only to the `F` bytes of the
+    frame, the `P.red` bytes below it and the out windows of `P`, branches inside
+    `body ; leaq F(%rsp), %rsp`, and is not `ret`, `push`, `pop` or `call`. -/
+def keepCheckWB (q : List RInstr) (clob : String → Bool) (F : Nat) (P : StorePol) : Bool :=
+  decide (3 ≤ q.length) && winsOkB clob P && allFrom (instrOkWB q.length clob F P) 0 q
+
 /-- **The keep check.** The block `q` has the form
     `leaq -F(%rsp), %rsp ; body ; leaq F(%rsp), %rsp ; ret`, and every instruction of
     `body` satisfies `bodyOkB`: it writes no register outside `clob`, does not write the
     stack register, stores only to the `F` bytes of the frame, branches inside
     `body ; leaq F(%rsp), %rsp`, and is not `ret`, `push`, `pop` or `call`. -/
 def keepCheckB (q : List RInstr) (clob : String → Bool) (F : Nat) : Bool :=
-  decide (3 ≤ q.length) && allFrom (instrOkB q.length clob F) 0 q
+  keepCheckWB q clob F .frame
+
+/-- The invariant of a run of a block of length `n` checked under the store policy `P`,
+    entered in the state `e`: the stack register is that of `e` at index `0` and at the
+    `ret`, and `F` below it at every other index; a register outside `clob` other than the
+    stack register, and a byte outside the footprint `KeepFoot P F e.regs`, are those of
+    `e`. The base register of an out window is outside `clob` and is not the stack register
+    (`winsOkB`), so the invariant keeps it at its value in `e` (`KeepInvW.win_eq`), and the
+    out windows are at the same addresses at every index of the run. -/
+def KeepInvW (n : Nat) (clob : String → Bool) (F : Nat) (P : StorePol) (e : AState)
+    (pc : Nat) (s : AState) : Prop :=
+  s.regs "%rsp" = (if pc = 0 ∨ pc + 1 = n then e.regs "%rsp"
+      else e.regs "%rsp" + BitVec.ofInt 64 (-(F : Int)))
+    ∧ (∀ r, r ≠ "%rsp" → clob r = false → s.regs r = e.regs r)
+    ∧ ∀ x, ¬ KeepFoot P F e.regs x → s.mem x = e.mem x
 
 /-- The invariant of a run of a checked block of length `n` entered in the state `e`: the
     stack register is that of `e` at index `0` and at the `ret`, and `F` below it at every
@@ -381,48 +471,90 @@ def keepCheckB (q : List RInstr) (clob : String → Bool) (F : Nat) : Bool :=
     outside the frame, are those of `e`. -/
 def KeepInv (n : Nat) (clob : String → Bool) (F : Nat) (e : AState) (pc : Nat) (s : AState) :
     Prop :=
-  s.regs "%rsp" = (if pc = 0 ∨ pc + 1 = n then e.regs "%rsp"
-      else e.regs "%rsp" + BitVec.ofInt 64 (-(F : Int)))
-    ∧ (∀ r, r ≠ "%rsp" → clob r = false → s.regs r = e.regs r)
-    ∧ ∀ x, ¬ InFrame (e.regs "%rsp") F x → s.mem x = e.mem x
+  KeepInvW n clob F .frame e pc s
+
+/-- The base registers of the out windows of a policy accepted by `winsOkB` are neither the
+    stack register nor in `clob`. -/
+theorem winsOkB_spec {clob : String → Bool} {P : StorePol} (hP : winsOkB clob P = true)
+    {w : String × Int × Int} (hw : w ∈ P.wins) : w.1 ≠ "%rsp" ∧ clob w.1 = false := by
+  grind only [= winsOkB.eq_def, = List.all_eq]
+
+/-- Along a run that satisfies the invariant, the base register of an out window keeps its
+    value at the entry. -/
+theorem KeepInvW.win_eq {n : Nat} {clob : String → Bool} {F : Nat} {P : StorePol}
+    {e : AState} {pc : Nat} {s : AState} (hI : KeepInvW n clob F P e pc s)
+    (hP : winsOkB clob P = true) {w : String × Int × Int} (hw : w ∈ P.wins) :
+    s.regs w.1 = e.regs w.1 :=
+  hI.2.1 w.1 (winsOkB_spec hP hw).1 (winsOkB_spec hP hw).2
+
+/-- The eight bytes at the displacement `o` from `a` lie in the window of the displacements
+    `lo, …, hi - 1` from `a` when `lo ≤ o` and `o + 8 ≤ hi`. -/
+theorem inWin_of_inRange8 {a x : BitVec 64} {lo hi o : Int} (h0 : lo ≤ o) (h8 : o + 8 ≤ hi)
+    (hin : InRange8 (a + BitVec.ofInt 64 o) x) : InWin a lo hi x := by
+  have hsplit : x - (a + BitVec.ofInt 64 lo)
+      = (x - (a + BitVec.ofInt 64 o)) + BitVec.ofInt 64 (o - lo) := by
+    grind only [BitVec.ofInt_add, BitVec.ofInt_mul]
+  unfold InWin
+  unfold InRange8 at hin
+  rw [hsplit, BitVec.toNat_add, BitVec.toNat_ofInt]
+  grind
+
+/-- A store allowed by `P`, from a state whose stack register is `F` below that of the
+    register file `ρ` and whose window base registers are those of `ρ`, changes no byte
+    outside the footprint `KeepFoot P F ρ`. -/
+theorem evalInstrA_mem_of_storeOkW {F : Nat} {P : StorePol} {s : AState} {i : JInstr 64}
+    {ρ : String → BitVec 64} (hs : storeOkWB F P i = true)
+    (hb : s.regs "%rsp" = ρ "%rsp" + BitVec.ofInt 64 (-(F : Int)))
+    (hw : ∀ w ∈ P.wins, s.regs w.1 = ρ w.1)
+    (x : BitVec 64) (hx : ¬ KeepFoot P F ρ x) : (evalInstrA s i).mem x = s.mem x := by
+  have key : ∀ (b : String) (o : Int), storeWinB F P b o = true →
+      ¬ InRange8 (s.regs b + BitVec.ofInt 64 o) x := by
+    intro b o hok hin
+    apply hx
+    simp only [storeWinB, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq,
+      List.any_eq_true] at hok
+    rcases hok with ⟨⟨rfl, h0⟩, h8⟩ | ⟨w, hwm, ⟨rfl, h0⟩, h8⟩
+    · left
+      rw [hb, BitVec.add_assoc, ← BitVec.ofInt_add] at hin
+      have hw' := inWin_of_inRange8 (lo := -((F + P.red : Nat) : Int)) (hi := 0)
+        (by omega) (by omega) hin
+      unfold InWin at hw'
+      unfold InFrame
+      grind
+    · right
+      refine ⟨w, hwm, ?_⟩
+      rw [hw w hwm] at hin
+      exact inWin_of_inRange8 h0 h8 hin
+  cases i <;> simp only [storeOkWB, Bool.false_eq_true] at hs <;> try rfl
+  all_goals exact write64_of_not_inRange _ _ _ _ (key _ _ hs)
 
 /-- A store to a word of the frame changes no byte outside the frame. -/
 theorem evalInstrA_mem_of_storeOk {F : Nat} {s : AState} {i : JInstr 64} {e : BitVec 64}
     (hs : storeOkB F i = true) (hb : s.regs "%rsp" = e + BitVec.ofInt 64 (-(F : Int)))
     (x : BitVec 64) (hx : ¬ InFrame e F x) : (evalInstrA s i).mem x = s.mem x := by
-  have key : ∀ o : Int, 0 ≤ o → o + 8 ≤ (F : Int) →
-      ¬ InRange8 (s.regs "%rsp" + BitVec.ofInt 64 o) x := by
-    intro o h0 h8 hin
-    apply hx
-    rw [hb] at hin
-    unfold InRange8 at hin
-    unfold InFrame
-    generalize e + BitVec.ofInt 64 (-(F : Int)) = b at hin ⊢
-    have hb' := b.isLt
-    have hx' := x.isLt
-    simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofInt] at hin ⊢
-    omega
-  cases i <;> simp only [storeOkB, Bool.false_eq_true, Bool.and_eq_true, beq_iff_eq,
-    decide_eq_true_eq] at hs <;> try rfl
-  all_goals
-    obtain ⟨⟨rfl, h0⟩, h8⟩ := hs
-    exact write64_of_not_inRange _ _ _ _ (key _ h0 h8)
+  refine evalInstrA_mem_of_storeOkW (F := F) (P := .frame) (ρ := fun _ => e) ?_ ?_ ?_ x ?_
+  · exact hs
+  · exact hb
+  · intro _ hw
+    cases hw
+  · exact fun hf => hx ((keepFoot_frame (ρ := fun _ => e)).1 hf)
 
-/-- **The invariant along a run of a checked block.** A leaky run of a block accepted by
-    `keepCheckB`, from an index and a state that satisfy `KeepInv` for the entry state `e`,
-    returns in a state with the stack register of `e`, the registers of `e` outside `clob`
-    and the bytes of `e` outside the frame. -/
-theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
-    (hk : keepCheckB q clob F = true) {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
+/-- **The invariant along a run of a block checked under a store policy.** A leaky run of a
+    block accepted by `keepCheckWB` at the policy `P`, from an index and a state that
+    satisfy `KeepInvW` for the entry state `e`, returns in a state with the stack register
+    of `e`, the registers of `e` outside `clob` and the bytes of `e` outside the footprint
+    `KeepFoot P F e.regs`. -/
+theorem keepCheck_invW {q : List RInstr} {clob : String → Bool} {F : Nat} {P : StorePol}
+    (hk : keepCheckWB q clob F P = true) {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
     (e : AState) {pc : Nat} {s : AState} {t : List CTLeak} {s' : AState}
-    (h : RunL r ok q pc s t s') (hI : KeepInv q.length clob F e pc s) :
+    (h : RunL r ok q pc s t s') (hI : KeepInvW q.length clob F P e pc s) :
     s'.regs "%rsp" = e.regs "%rsp"
       ∧ (∀ r', r' ≠ "%rsp" → clob r' = false → s'.regs r' = e.regs r')
-      ∧ ∀ x, ¬ InFrame (e.regs "%rsp") F x → s'.mem x = e.mem x := by
-  simp only [keepCheckB, Bool.and_eq_true, decide_eq_true_eq] at hk
-  obtain ⟨hn, hall⟩ := hk
+      ∧ ∀ x, ¬ KeepFoot P F e.regs x → s'.mem x = e.mem x := by
+  simp only [keepCheckWB, Bool.and_eq_true, decide_eq_true_eq] at hk
+  obtain ⟨⟨hn, hP⟩, hall⟩ := hk
   have hat : ∀ {pc : Nat} {ri : RInstr}, q[pc]? = some ri →
-      instrOkB q.length clob F pc ri = true := fun {pc ri} hq => by
+      instrOkWB q.length clob F P pc ri = true := fun {pc ri} hq => by
     simpa using allFrom_getElem? q 0 pc ri hall hq
   induction h with
   | @ret pc s hq =>
@@ -431,7 +563,7 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
     have hpc : pc = 0 ∨ pc + 1 = q.length := by
       by_contra hne
       simp only [not_or] at hne
-      simp only [instrOkB, hne.1, hne.2, ite_false, isLeaRsp, bodyOkB] at hc
+      simp only [instrOkWB, hne.1, hne.2, ite_false, isLeaRsp, bodyOkWB] at hc
       split at hc <;> simp at hc
     rw [ite_eq_left hpc] at h1
     exact ⟨h1, h2, h3⟩
@@ -439,7 +571,7 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
     have hc := hat hq
     obtain ⟨h1, h2, h3⟩ := hI
     apply ih
-    unfold instrOkB at hc
+    unfold instrOkWB at hc
     by_cases h0 : pc = 0
     · rw [ite_eq_left h0] at hc
       have hi := eq_of_isLeaRsp hc
@@ -469,7 +601,7 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
         by_cases h1n : pc + 1 = q.length
         · rw [ite_eq_left h1n] at hc; simp at hc
         · rw [ite_eq_right h1n] at hc
-          simp only [bodyOkB, Bool.and_eq_true, List.all_eq_true, bne_iff_ne] at hc
+          simp only [bodyOkWB, Bool.and_eq_true, List.all_eq_true, bne_iff_ne] at hc
           obtain ⟨hd, hst⟩ := hc
           rw [ite_eq_right (by omega)] at h1
           have hreg : ∀ r', (evalInstrA s i).regs r' = (evalInstr s.view i).regs r' :=
@@ -481,12 +613,14 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
           · rw [hreg, evalInstr_regs_of_not_mem_dsts _ _ _ (fun hm => by
               have := (hd _ hm).2; rw [hcl] at this; cases this)]
             exact h2 r' hr' hcl
-          · rw [evalInstrA_mem_of_storeOk hst h1 x hx]; exact h3 x hx
+          · rw [evalInstrA_mem_of_storeOkW hst h1
+              (fun w hw => h2 w.1 (winsOkB_spec hP hw).1 (winsOkB_spec hP hw).2) x hx]
+            exact h3 x hx
   | @jcc pc s cc tgt c t s' hq _ _ ih =>
     have hc := hat hq
     obtain ⟨h1, h2, h3⟩ := hI
     apply ih
-    unfold instrOkB at hc
+    unfold instrOkWB at hc
     by_cases h0 : pc = 0
     · rw [ite_eq_left h0] at hc; simp [isLeaRsp] at hc
     · rw [ite_eq_right h0] at hc
@@ -496,7 +630,7 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
         by_cases h1n : pc + 1 = q.length
         · rw [ite_eq_left h1n] at hc; simp at hc
         · rw [ite_eq_right h1n] at hc
-          simp only [bodyOkB, Bool.and_eq_true, decide_eq_true_eq] at hc
+          simp only [bodyOkWB, Bool.and_eq_true, decide_eq_true_eq] at hc
           rw [ite_eq_right (by omega)] at h1
           refine ⟨?_, h2, h3⟩
           rw [h1]
@@ -505,12 +639,43 @@ theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
     have hc := hat hq
     exfalso
     cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq] at hops <;>
-      (unfold instrOkB at hc; split_ifs at hc <;> simp [isLeaRsp, bodyOkB] at hc)
+      (unfold instrOkWB at hc; split_ifs at hc <;> simp [isLeaRsp, bodyOkWB] at hc)
   | @call pc tgt s sc tc tr s' hq _ _ _ _ _ _ =>
     have hc := hat hq
     exfalso
-    unfold instrOkB at hc
-    split_ifs at hc <;> simp [isLeaRsp, bodyOkB] at hc
+    unfold instrOkWB at hc
+    split_ifs at hc <;> simp [isLeaRsp, bodyOkWB] at hc
+
+/-- **The invariant along a run of a checked block.** A leaky run of a block accepted by
+    `keepCheckB`, from an index and a state that satisfy `KeepInv` for the entry state `e`,
+    returns in a state with the stack register of `e`, the registers of `e` outside `clob`
+    and the bytes of `e` outside the frame. -/
+theorem keepCheck_inv {q : List RInstr} {clob : String → Bool} {F : Nat}
+    (hk : keepCheckB q clob F = true) {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
+    (e : AState) {pc : Nat} {s : AState} {t : List CTLeak} {s' : AState}
+    (h : RunL r ok q pc s t s') (hI : KeepInv q.length clob F e pc s) :
+    s'.regs "%rsp" = e.regs "%rsp"
+      ∧ (∀ r', r' ≠ "%rsp" → clob r' = false → s'.regs r' = e.regs r')
+      ∧ ∀ x, ¬ InFrame (e.regs "%rsp") F x → s'.mem x = e.mem x := by
+  obtain ⟨h1, h2, h3⟩ := keepCheck_invW hk e h hI
+  exact ⟨h1, h2, fun x hx => h3 x (fun hf => hx (keepFoot_frame.1 hf))⟩
+
+/-- **Soundness of the keep check under a store policy.** Every leaky run of a block
+    accepted by `keepCheckWB` at the policy `P`, from its first index to its `ret`,
+    restores the stack register, keeps every register outside `clob` and keeps every byte
+    outside the footprint `KeepFoot P F` of the entry register file. -/
+theorem keepCheck_soundW {q : List RInstr} {clob : String → Bool} {F : Nat} {P : StorePol}
+    (hk : keepCheckWB q clob F P = true) {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
+    {s : AState} {t : List CTLeak} {s' : AState} (h : RunL r ok q 0 s t s') :
+    s'.regs "%rsp" = s.regs "%rsp"
+      ∧ (∀ r', clob r' = false → s'.regs r' = s.regs r')
+      ∧ ∀ x, ¬ KeepFoot P F s.regs x → s'.mem x = s.mem x := by
+  obtain ⟨h1, h2, h3⟩ := keepCheck_invW hk s h
+    ⟨by rw [ite_eq_left (Or.inl rfl)], fun _ _ _ => rfl, fun _ _ => rfl⟩
+  refine ⟨h1, fun r' hcl => ?_, h3⟩
+  by_cases hr : r' = "%rsp"
+  · rw [hr, h1]
+  · exact h2 r' hr hcl
 
 /-- **Soundness of the keep check.** Every leaky run of a block accepted by `keepCheckB`,
     from its first index to its `ret`, restores the stack register, keeps every register
@@ -522,25 +687,53 @@ theorem keepCheck_sound {q : List RInstr} {clob : String → Bool} {F : Nat}
     s'.regs "%rsp" = s.regs "%rsp"
       ∧ (∀ r', clob r' = false → s'.regs r' = s.regs r')
       ∧ ∀ x, ¬ InFrame (s.regs "%rsp") F x → s'.mem x = s.mem x := by
-  obtain ⟨h1, h2, h3⟩ := keepCheck_inv hk s h
-    ⟨by rw [ite_eq_left (Or.inl rfl)], fun _ _ _ => rfl, fun _ _ => rfl⟩
-  refine ⟨h1, fun r' hcl => ?_, h3⟩
-  by_cases hr : r' = "%rsp"
-  · rw [hr, h1]
-  · exact h2 r' hr hcl
+  obtain ⟨h1, h2, h3⟩ := keepCheck_soundW hk h
+  exact ⟨h1, h2, fun x hx => h3 x (fun hf => hx (keepFoot_frame.1 hf))⟩
+
+/-- A block accepted by `keepCheckWB` holds no `call`. -/
+theorem not_call_mem_of_keepCheckW {q : List RInstr} {clob : String → Bool} {F : Nat}
+    {P : StorePol} (hk : keepCheckWB q clob F P = true) (tg : Nat) : RInstr.call tg ∉ q := by
+  simp only [keepCheckWB, Bool.and_eq_true, decide_eq_true_eq] at hk
+  intro hm
+  obtain ⟨j, hj⟩ := List.getElem?_of_mem hm
+  have hc : instrOkWB q.length clob F P j (.call tg) = true := by
+    simpa using allFrom_getElem? q 0 j _ hk.2 hj
+  unfold instrOkWB at hc
+  split_ifs at hc <;> simp [isLeaRsp, bodyOkWB] at hc
 
 /-- A block accepted by `keepCheckB` holds no `call`. -/
 theorem not_call_mem_of_keepCheck {q : List RInstr} {clob : String → Bool} {F : Nat}
-    (hk : keepCheckB q clob F = true) (tg : Nat) : RInstr.call tg ∉ q := by
-  simp only [keepCheckB, Bool.and_eq_true, decide_eq_true_eq] at hk
-  intro hm
-  obtain ⟨j, hj⟩ := List.getElem?_of_mem hm
-  have hc : instrOkB q.length clob F j (.call tg) = true := by
-    simpa using allFrom_getElem? q 0 j _ hk.2 hj
-  unfold instrOkB at hc
-  split_ifs at hc <;> simp [isLeaRsp, bodyOkB] at hc
+    (hk : keepCheckB q clob F = true) (tg : Nat) : RInstr.call tg ∉ q :=
+  not_call_mem_of_keepCheckW hk tg
 
 /-! ## 5. The specification of a compiled scalar kernel -/
+
+/-- **The specification of a compiled kernel under a store policy.** Let the decoded block
+    `q` be accepted by `keepCheckWB` with the clobber set of `c`, a frame of `F` bytes and
+    the policy `P`, with the footprint `KeepFoot P F` inside the footprint of `c`. Let `q`
+    halt from every entry state that satisfies the precondition, in a state that satisfies
+    the postcondition, and let the leaky runs of `q` from publicly related entry states that
+    satisfy the precondition have equal traces. Then the leaky run of `q` meets `c`. -/
+theorem calleeSpec_of_keepCheckW {r : DoitRegime} {q : List RInstr} {c : CalleeSig} {F : Nat}
+    {P : StorePol} (hk : keepCheckWB q c.clob F P = true)
+    (hfoot : ∀ s x, KeepFoot P F s.regs x → c.foot s x)
+    (hrun : ∀ s, c.pre s → ∃ s', Halts aMachine q 0 s s' ∧ c.post s s')
+    (hct : ConstantTimeRel (fun s₁ s₂ => c.pub s₁ s₂ ∧ c.pre s₁ ∧ c.pre s₂)
+      (fun s t => ∃ s', RunL r (fun _ _ => True) q 0 s t s')) :
+    CalleeSpec (runOf r q) c where
+  halts s hs := by
+    obtain ⟨s', hh, _⟩ := hrun s hs
+    obtain ⟨t, ht⟩ := halts_runL r hh
+    exact ⟨t, s', ht⟩
+  rsp _ _ _ _ hX := (keepCheck_soundW hk hX).1
+  keep _ _ _ _ hX := (keepCheck_soundW hk hX).2.1
+  frame _ _ _ _ hX x hx := (keepCheck_soundW hk hX).2.2 x (fun hf => hx (hfoot _ x hf))
+  post s t s' hs hX := by
+    obtain ⟨s₀, hh, hp⟩ := hrun s hs
+    obtain ⟨t₀, ht₀⟩ := halts_runL r hh
+    obtain ⟨_, rfl⟩ := runL_det ht₀ hX
+    exact hp
+  ct s₁ s₂ t₁ t₂ s₁' s₂' h₁ h₂ hp hX₁ hX₂ := hct s₁ s₂ t₁ t₂ ⟨hp, h₁, h₂⟩ ⟨s₁', hX₁⟩ ⟨s₂', hX₂⟩
 
 /-- **The specification of a compiled kernel from its three facts.** Let the decoded block
     `q` be accepted by `keepCheckB` with the clobber set of `c` and a frame of `F` bytes

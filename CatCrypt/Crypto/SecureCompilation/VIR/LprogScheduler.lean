@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
+import all Init.Data.String.TakeDrop
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsem
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
@@ -140,12 +141,42 @@ def opIsArrIdx : LOperand → Bool
     footprint model cannot track precisely (and, as a destination, also *reads* the index
     register the token model would mis-classify as a write); `ZEROARR` writes a whole
     array and `STOREIMM` writes a new array value from an array operand, which the token
-    model does not track. `indep` therefore treats every such op as a scheduling barrier:
-    it is never swapped, so nothing is reordered across it. -/
+    model does not track. The mnemonic is tested by prefix, so a width-tagged
+    `ZEROARR^w` or `STOREIMM^w` is a barrier as well. `indep` therefore treats every such
+    op as a scheduling barrier: it is never swapped, so nothing is reordered across it. -/
 def hasArrIdx : LinstrR → Bool
   | .Lopn dsts opn srcs =>
-      opn == "ZEROARR" || opn == "STOREIMM" || dsts.any opIsArrIdx || srcs.any opIsArrIdx
+      "ZEROARR".isPrefixOf opn || "STOREIMM".isPrefixOf opn ||
+        dsts.any opIsArrIdx || srcs.any opIsArrIdx
   | _                 => false
+
+/-- An `Lopn` whose mnemonic starts with `ZEROARR` or `STOREIMM` is a barrier. -/
+theorem hasArrIdx_of_prefix {dsts srcs : List LOperand} {opn : String}
+    (h : "ZEROARR".isPrefixOf opn = true ∨ "STOREIMM".isPrefixOf opn = true) :
+    hasArrIdx (.Lopn dsts opn srcs) = true := by
+  unfold hasArrIdx; simp_all
+
+/-- A mnemonic whose part before the first `^` is `p` starts with `p`. -/
+theorem isPrefixOf_of_takeWhile_caret {p opn : String}
+    (h : String.ofList (opn.toList.takeWhile (· != '^')) = p) : p.isPrefixOf opn = true := by
+  subst h
+  rw [String.isPrefixOf, Bool.eq_iff_iff, String.startsWith_string_iff]
+  simpa using List.takeWhile_prefix _
+
+/-- An `Lopn` whose mnemonic, up to the first `^`, is `ZEROARR` or `STOREIMM` is a
+    barrier. -/
+theorem hasArrIdx_of_untag {dsts srcs : List LOperand} {opn : String}
+    (h : String.ofList (opn.toList.takeWhile (· != '^')) = "ZEROARR" ∨
+      String.ofList (opn.toList.takeWhile (· != '^')) = "STOREIMM") :
+    hasArrIdx (.Lopn dsts opn srcs) = true := by
+  grind only [hasArrIdx_of_prefix, isPrefixOf_of_takeWhile_caret]
+
+/-- A non-barrier `Lopn` has a mnemonic other than `ZEROARR` and `STOREIMM`. -/
+theorem ne_of_hasArrIdx_false {dsts srcs : List LOperand} {opn : String}
+    (h : hasArrIdx (.Lopn dsts opn srcs) = false) :
+    opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM" := by
+  constructor <;> rintro rfl <;>
+    simp only [hasArrIdx, Bool.or_eq_false_iff, String.isPrefixOf] at h <;> simp_all
 
 /-! ## 1b. Mnemonic keys and the cells no operand names
 

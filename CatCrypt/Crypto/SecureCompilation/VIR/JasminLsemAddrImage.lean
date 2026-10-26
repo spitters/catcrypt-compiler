@@ -57,6 +57,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (untagCaret
+  untagCaret_of_caret_free)
 
 /-! ## 1. The image -/
 
@@ -296,28 +298,37 @@ theorem cellIdxStore?_spec {slotArr : String → Option (String × Nat)} {body :
     `ZEROARR [], [b, #n', #w']` is the name-keyed zeroing of `A` at the tag `.zero 64 n`, and
     the store `STOREIMM d, [b, v, #k]` is the name-keyed store `STOREIMM A, [A, v, #k]` at the
     tag `.storeImm 64 n`; `none` for every other instruction and for a base register without
-    an array. -/
+    an array. The mnemonic is read through `untagCaret`, as `tagA` reads it. -/
 def arrImmImg (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
     LinstrR → Option LinstrRM
   | .Lopn [] o [.reg b, .imm n', .imm w'] =>
-      if o = "ZEROARR" then
+      if untagCaret o = "ZEROARR" then
         match accArr slotArr body k b with
         | some (A, n) => some (.Lopn [.reg A] "ZEROARR" [.imm n', .imm w'], .zero 64 n)
         | none => none
       else none
   | .Lopn [.reg _] o [.reg b, .reg v, .imm j] =>
-      if o = "STOREIMM" then
+      if untagCaret o = "STOREIMM" then
         match accArr slotArr body k b with
         | some (A, n) => some (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm j], .storeImm 64 n)
         | none => none
       else none
   | _ => none
 
-/-- An instruction other than `ZEROARR` and `STOREIMM` has no image by `arrImmImg`. -/
+/-- An instruction whose `untagCaret` is neither `ZEROARR` nor `STOREIMM` has no image by
+    `arrImmImg`. -/
 theorem arrImmImg_of_ne (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
-    {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "ZEROARR")
-    (h2 : o ≠ "STOREIMM") : arrImmImg slotArr body k (.Lopn ds o ss) = none := by
+    {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : untagCaret o ≠ "ZEROARR")
+    (h2 : untagCaret o ≠ "STOREIMM") : arrImmImg slotArr body k (.Lopn ds o ss) = none := by
   grind only [= arrImmImg.eq_def]
+
+/-- `arrImmImg_of_ne` at a mnemonic without `^`. -/
+theorem arrImmImg_of_ne_of_caret_free (slotArr : String → Option (String × Nat)) (body : Lcmd)
+    (k : Nat) {ds : List LOperand} {o : String} {ss : List LOperand} (h1 : o ≠ "ZEROARR")
+    (h2 : o ≠ "STOREIMM") (hc : '^' ∉ o.toList := by decide) :
+    arrImmImg slotArr body k (.Lopn ds o ss) = none :=
+  arrImmImg_of_ne slotArr body k (by rwa [untagCaret_of_caret_free hc])
+    (by rwa [untagCaret_of_caret_free hc])
 
 /-- `arrImmImg` reads the body only through the array scan of the base register of the
     instruction. -/
@@ -343,18 +354,18 @@ theorem arrImmImg_lopn {slotArr : String → Option (String × Nat)} {body : Lcm
     array `A` of length `n` is the name-keyed store `STOREIDX A[q] := v` at the shape
     `(64, n)`; an array zeroing or a constant-index store through the pointer of an array is
     its image by `arrImmImg`; every other instruction is `normA` of it at the tag `tagAt` of
-    its position. -/
+    its position. The mnemonic of an indexed access is read through `untagCaret`. -/
 def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : LinstrRM :=
   match i with
   | .Lopn [.reg d] o [.arrIdx b idx 8] =>
-      if o = "LOADIDX" then
+      if untagCaret o = "LOADIDX" then
         match accArr slotArr body k b with
         | some (A, n) => (.Lopn [.reg d] "LOADIDX" [.arrIdx A idx 8], .load 64 n)
         | none => (normA i, .reg none)
       else (normA i, .reg none)
   | .Lopn [.reg _] o [.arrIdx b idx 8, .reg v] =>
-      if o = "STOREIDX" then
+      if untagCaret o = "STOREIDX" then
         match accArr slotArr body k b with
         | some (A, n) => (.Lopn [.reg A] "STOREIDX" [.arrIdx A idx 8, .reg v], .store 64 n)
         | none => (normA i, .reg none)
@@ -395,7 +406,7 @@ theorem imgInstr_zeroArr (slotArr : String → Option (String × Nat)) (body : L
     {b A : String} {n' w' n : Nat} (h : accArr slotArr body k b = some (A, n)) :
     imgInstr slotArr body k (.Lopn [] "ZEROARR" [.reg b, .imm n', .imm w'])
       = (.Lopn [.reg A] "ZEROARR" [.imm n', .imm w'], .zero 64 n) := by
-  simp [imgInstr, bitStore?, cellIdxStore?, arrImmImg, h]
+  simp [imgInstr, bitStore?, cellIdxStore?, arrImmImg, h, width_tag]
 
 /-- The image of the constant-index store `STOREIMM d, [b, v, #j]` through a register `b` that
     holds the pointer of the array `A` of length `n` is the store `STOREIMM A, [A, v, #j]` at
@@ -404,7 +415,7 @@ theorem imgInstr_storeImm (slotArr : String → Option (String × Nat)) (body : 
     {d b v A : String} {j n : Nat} (h : accArr slotArr body k b = some (A, n)) :
     imgInstr slotArr body k (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm j])
       = (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm j], .storeImm 64 n) := by
-  simp [imgInstr, bitStore?, cellIdxStore?, arrImmImg, h]
+  simp [imgInstr, bitStore?, cellIdxStore?, arrImmImg, h, width_tag]
 
 /-- **The image of a physical body**: `imgInstr` at each instruction of the body without its
     final instruction (the return of a printed body). -/
@@ -456,22 +467,23 @@ def slotWriteB (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : 
 /-- An indexed access of the body resolves to an array: an `LOADIDX` or `STOREIDX` is at
     scale `8` and its base register holds the pointer of an array (`accArr`), and a `ZEROARR`
     or `STOREIMM` has an image by `arrImmImg` (its form, with a base register that holds the
-    pointer of an array). -/
+    pointer of an array). The mnemonic is read through `untagCaret`. -/
 def accOkB (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : Bool :=
   match i with
   | .Lopn _ o srcs =>
-      if o = "LOADIDX" then
+      if untagCaret o = "LOADIDX" then
         match i with
         | .Lopn [.reg _] _ [.arrIdx b _ 8] => (accArr slotArr body k b).isSome
         | _ => false
-      else if o = "STOREIDX" then
+      else if untagCaret o = "STOREIDX" then
         match srcs with
         | [.arrIdx b _ 8, .reg _] =>
             (match i with | .Lopn [.reg _] _ _ => true | _ => false)
               && (accArr slotArr body k b).isSome
         | _ => false
-      else if o = "ZEROARR" ∨ o = "STOREIMM" then (arrImmImg slotArr body k i).isSome
+      else if untagCaret o = "ZEROARR" ∨ untagCaret o = "STOREIMM" then
+        (arrImmImg slotArr body k i).isSome
       else true
   | _ => true
 

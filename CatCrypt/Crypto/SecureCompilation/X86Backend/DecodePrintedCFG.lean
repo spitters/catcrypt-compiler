@@ -406,10 +406,12 @@ def printedAddrB (body : Lcmd) : Bool :=
     && body.dropLast.all (fun i => instrOKB body (Params.ofBody body) i.li_i)
     && (List.range body.length).all (condPrevB body)
 
-/-- An indexed load at the program counter of `s` reads an address whose eight bytes are
-    disjoint from the red-zone word at `rsp`. -/
+/-- An indexed load at the program counter of `s`, read through `normA` (so tagged or
+    untagged), reads an address whose eight bytes are disjoint from the red-zone word at
+    `rsp`. -/
 def LoadSafeAt (rsp : BitVec 64) (body : Lcmd) (s : LstateA) : Prop :=
-  ∀ ii D B I, body[s.reg.lpc]? = some ⟨ii, .Lopn [.reg D] "LOADIDX" [.arrIdx B I 8]⟩ →
+  ∀ ii x D B I, body[s.reg.lpc]? = some ⟨ii, x⟩ →
+    normA x = .Lopn [.reg D] "LOADIDX" [.arrIdx B I 8] →
     ∀ p vi, s.reg.getW B 64 = some p → s.reg.getW I 64 = some vi →
       Disjoint8 (redW rsp) (p + BitVec.ofNat 64 (8 * vi.toNat))
 
@@ -577,7 +579,8 @@ theorem run_sim {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) (rsp
           cases ar with
           | ldx D B' I =>
             intro p vi hp hvi
-            exact hsafe.1 ii D B' I (by rw [hget, ← hia]; rfl) p vi hp hvi
+            exact hsafe.1 ii _ D B' I hget
+              (by rw [← hia]; simp [AArm.instr, normA, width_tag]) p vi hp hvi
           | _ => trivial
         obtain ⟨s', zf', hst, hc', hzf'⟩ := AArm.sim P rsp ar hok sa s zf hc hsafeA
         have hstep : stepA frame body s zf = some (s', zf') := by

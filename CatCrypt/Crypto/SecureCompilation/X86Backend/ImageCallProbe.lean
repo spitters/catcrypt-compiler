@@ -347,10 +347,12 @@ theorem imgRel_call {frame : String → Option (BitVec 64)}
 theorem loadSafeAt_call {rsp : BitVec 64} {body : Lcmd} {sa : LstateA} {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {ra : Option String} {tgt : String × LLabel}
     (hbi : bi.li_i = .Lcall ra tgt) : LoadSafeAt rsp body sa := by
-  intro ii D B I h
+  intro ii x D B I h hn
   rw [hb] at h
   cases h
-  cases hbi
+  simp only at hbi
+  rw [hbi] at hn
+  simp [VIR.JasminLsemAddrRun.normA] at hn
 
 /-! ## 5. The byte correspondence across the call -/
 

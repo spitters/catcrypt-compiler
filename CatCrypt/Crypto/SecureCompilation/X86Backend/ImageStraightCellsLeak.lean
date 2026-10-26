@@ -303,7 +303,7 @@ theorem stepLeakA_cellBody_of_ptr {frame : String → Option (BitVec 64)}
               = .Lopn [.reg D] "MOVQ" [.reg (memName A off)] := by
             rw [normA_of_caret_free (by decide)]; simp
           have h4 : tagA (.Lopn [.reg D] "MOVQ" [.reg (memName A off)]) = .reg none := by
-            simp [tagA]
+            simp [tagA, width_tag]
           unfold stepLeakA
           rw [hbC, hb0, hm]
           simp only [h1, h2, h3, h4]
@@ -333,7 +333,7 @@ theorem stepLeakA_cellBody_of_ptr {frame : String → Option (BitVec 64)}
               = .Lopn [.reg (memName A off)] "MOVQ" [.reg S] := by
             rw [normA_of_caret_free (by decide)]; simp
           have h4 : tagA (.Lopn [.reg (memName A off)] "MOVQ" [.reg S]) = .reg none := by
-            simp [tagA]
+            simp [tagA, width_tag]
           unfold stepLeakA
           rw [hbC, hb0, hm]
           simp only [h1, h2, h3, h4]
@@ -557,95 +557,24 @@ theorem storeIdxA?_eq {x : LinstrR} {b idx v : String} {sc : Nat}
     exact ⟨_, _, ho, rfl⟩
   · cases h
 
-/-- The gate with carry chains refuses an indexed load whose mnemonic carries a width tag. -/
-theorem gateAtW_loadIdx_tagged {frame : String → Option (BitVec 64)}
-    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
-    {d b idx o : String} {sc : Nat} (hu : LprogAsmPrinter.untagCaret o = "LOADIDX")
-    (ho : o ≠ "LOADIDX") :
-    gateAtW frame slotArr body k W (.Lopn [.reg d] o [.arrIdx b idx sc]) = false := by
-  have hk : '^' ∈ o.toList := by
-    by_contra hk
-    rw [LprogAsmPrinter.untagCaret_of_caret_free hk] at hu
-    exact ho hu
-  have hne : ∀ s : String, '^' ∉ s.toList → o ≠ s := by
-    rintro s hs rfl
-    exact hs hk
-  have hct : castTagW o = none := by
-    cases hct : castTagW o with
-    | none => rfl
-    | some w => exact absurd hk (castTagW_caret_free hct)
-  have hn : normA (.Lopn [.reg d] o [.arrIdx b idx sc])
-      = .Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc] :=
-    NarrowTyping.normA_of_untagCaret hu (by decide)
-  have hic : icase frame (.Lopn [.reg d] o [.arrIdx b idx sc]) = .reg := by
-    have h1 := hne "LOADIDX" (by decide)
-    have h2 := hne "STOREIDX" (by decide)
-    have h3 := hne "ZEROARR" (by decide)
-    have h4 := hne "STOREIMM" (by decide)
-    have h5 := hne "MOVQ" (by decide)
-    have h6 := hne "MOV:64" (by decide)
-    by_cases hs : sc = 8 <;> simp_all [icase, slotMov?, slotCmp?]
-  have hr : ImageAddrSim.regOkB frame (.Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]) = false :=
-    rfl
-  simp [gateAtW, carryI?, hic, JasminLsemCast.movImmStruct?, JasminLsemAddrImage.bitStore?,
-    ImageAddrSimW.sImmB, ImageAddrSimW.sCmovB, ImageAddrSimW.regGateBW, hn, hr]
-
-/-- The gate with carry chains refuses an indexed store whose mnemonic carries a width tag. -/
-theorem gateAtW_storeIdx_tagged {frame : String → Option (BitVec 64)}
-    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
-    {d b idx v o : String} {sc : Nat} (hu : LprogAsmPrinter.untagCaret o = "STOREIDX")
-    (ho : o ≠ "STOREIDX") :
-    gateAtW frame slotArr body k W (.Lopn [.reg d] o [.arrIdx b idx sc, .reg v]) = false := by
-  have hk : '^' ∈ o.toList := by
-    by_contra hk
-    rw [LprogAsmPrinter.untagCaret_of_caret_free hk] at hu
-    exact ho hu
-  have hne : ∀ s : String, '^' ∉ s.toList → o ≠ s := by
-    rintro s hs rfl
-    exact hs hk
-  have hct : castTagW o = none := by
-    cases hct : castTagW o with
-    | none => rfl
-    | some w => exact absurd hk (castTagW_caret_free hct)
-  have hn : normA (.Lopn [.reg d] o [.arrIdx b idx sc, .reg v])
-      = .Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v] :=
-    NarrowTyping.normA_of_untagCaret hu (by decide)
-  have h1 := hne "LOADIDX" (by decide)
-  have h3 := hne "ZEROARR" (by decide)
-  have h4 := hne "STOREIMM" (by decide)
-  have h5 := hne "MOVQ" (by decide)
-  have h6 := hne "MOV:64" (by decide)
-  by_cases hs : sc = 8
-  · subst hs
-    have hic : icase frame (.Lopn [.reg d] o [.arrIdx b idx 8, .reg v]) = .other := by
-      simp [icase, ho]
-    simp [gateAtW, carryI?, hic, castGateB, classifyK]
-  · have hic : icase frame (.Lopn [.reg d] o [.arrIdx b idx sc, .reg v]) = .reg := by
-      simp_all [icase, slotMov?, slotCmp?]
-    have hr : ImageAddrSim.regOkB frame
-        (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v]) = false :=
-      rfl
-    simp [gateAtW, carryI?, hic, JasminLsemCast.movImmStruct?, JasminLsemAddrImage.bitStore?,
-      ImageAddrSimW.sImmB, ImageAddrSimW.sCmovB, ImageAddrSimW.regGateBW, hn, hr]
-
 /-- **The gate at an indexed load**: the scale is `8`, the base is reloaded from the slot of
     an array, and the index and the base have no frame word. -/
 theorem gateAtW_loadIdx {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
-    {d b idx : String} {sc : Nat}
-    (hg : gateAtW frame slotArr body k W (.Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]) = true) :
+    {d b idx o : String} {sc : Nat} (hu : LprogAsmPrinter.untagCaret o = "LOADIDX")
+    (hg : gateAtW frame slotArr body k W (.Lopn [.reg d] o [.arrIdx b idx sc]) = true) :
     sc = 8 ∧ (∃ A n, accArr slotArr body k b = some (A, n)) ∧ frame idx = none
       ∧ frame b = none := by
   simp only [gateAtW, Bool.and_eq_true] at hg
   obtain ⟨-, hg⟩ := hg
-  have hci : carryI? (.Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]) = none := rfl
+  have hci : carryI? (.Lopn [.reg d] o [.arrIdx b idx sc]) = none := rfl
   rw [hci] at hg
-  cases hc : icase frame (.Lopn [.reg d] "LOADIDX" [.arrIdx b idx sc]) with
+  cases hc : icase frame (.Lopn [.reg d] o [.arrIdx b idx sc]) with
   | ldx d' b' idx' =>
-      have hx := icase_ldx hc
+      obtain ⟨o', -, hx⟩ := icase_ldx hc
       simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, LOperand.arrIdx.injEq,
-        and_true, true_and] at hx
-      obtain ⟨rfl, rfl, rfl, rfl⟩ := hx
+        and_true] at hx
+      obtain ⟨rfl, -, rfl, rfl, rfl⟩ := hx
       rw [hc] at hg
       simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
       obtain ⟨⟨⟨⟨⟨An, hacc⟩, -⟩, -⟩, hidx⟩, hbf⟩ := hg
@@ -657,11 +586,14 @@ theorem gateAtW_loadIdx {frame : String → Option (BitVec 64)}
   | cond cc l => have hx := icase_cond hc; simp at hx
   | sload d' q => rcases slotMov?_cases (icase_sload hc).1 with hx | hx <;> simp at hx
   | sstore q S => rcases slotMov?_cases (icase_sstore hc).1 with hx | hx <;> simp at hx
-  | scmp d' y q => have hx := slotCmp?_eq (icase_scmp hc).1; simp at hx
+  | scmp d' y q =>
+      have hx := slotCmp?_eq (icase_scmp hc).1
+      rw [NarrowTyping.normA_of_untagCaret hu (by decide)] at hx
+      simp at hx
   | reg =>
-      obtain ⟨ds, o, ss, hx, ho, -, -⟩ := icase_reg hc
+      obtain ⟨ds, o', ss, hx, ho, -⟩ := ImageAddrSim.icase_reg_untagCaret hc
       simp only [LinstrR.Lopn.injEq] at hx
-      exact absurd hx.2.1.symm ho
+      exact (ho (hx.2.1 ▸ hu)).elim
   | other =>
       rw [hc] at hg
       simp [castGateB, classifyK] at hg
@@ -670,21 +602,21 @@ theorem gateAtW_loadIdx {frame : String → Option (BitVec 64)}
     an array, and the index and the base have no frame word. -/
 theorem gateAtW_storeIdx {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
-    {d b idx v : String} {sc : Nat}
+    {d b idx v o : String} {sc : Nat} (hu : LprogAsmPrinter.untagCaret o = "STOREIDX")
     (hg : gateAtW frame slotArr body k W
-      (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v]) = true) :
+      (.Lopn [.reg d] o [.arrIdx b idx sc, .reg v]) = true) :
     sc = 8 ∧ (∃ A n, accArr slotArr body k b = some (A, n)) ∧ frame idx = none
       ∧ frame b = none := by
   simp only [gateAtW, Bool.and_eq_true] at hg
   obtain ⟨-, hg⟩ := hg
-  have hci : carryI? (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v]) = none := rfl
+  have hci : carryI? (.Lopn [.reg d] o [.arrIdx b idx sc, .reg v]) = none := rfl
   rw [hci] at hg
-  cases hc : icase frame (.Lopn [.reg d] "STOREIDX" [.arrIdx b idx sc, .reg v]) with
+  cases hc : icase frame (.Lopn [.reg d] o [.arrIdx b idx sc, .reg v]) with
   | stx d' b' idx' v' =>
-      have hx := icase_stx hc
+      obtain ⟨o', -, hx⟩ := icase_stx hc
       simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, LOperand.arrIdx.injEq,
-        and_true, true_and] at hx
-      obtain ⟨rfl, ⟨rfl, rfl, rfl⟩, rfl⟩ := hx
+        and_true] at hx
+      obtain ⟨rfl, -, ⟨rfl, rfl, rfl⟩, rfl⟩ := hx
       rw [hc] at hg
       simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Option.isSome_iff_exists] at hg
       obtain ⟨⟨⟨⟨An, hacc⟩, hidx⟩, hbf⟩, -⟩ := hg
@@ -696,11 +628,14 @@ theorem gateAtW_storeIdx {frame : String → Option (BitVec 64)}
   | cond cc l => have hx := icase_cond hc; simp at hx
   | sload d' q => rcases slotMov?_cases (icase_sload hc).1 with hx | hx <;> simp at hx
   | sstore q S => rcases slotMov?_cases (icase_sstore hc).1 with hx | hx <;> simp at hx
-  | scmp d' y q => have hx := slotCmp?_eq (icase_scmp hc).1; simp at hx
+  | scmp d' y q =>
+      have hx := slotCmp?_eq (icase_scmp hc).1
+      rw [NarrowTyping.normA_of_untagCaret hu (by decide)] at hx
+      simp at hx
   | reg =>
-      obtain ⟨ds, o, ss, hx, -, ho, -⟩ := icase_reg hc
+      obtain ⟨ds, o', ss, hx, -, ho, -⟩ := ImageAddrSim.icase_reg_untagCaret hc
       simp only [LinstrR.Lopn.injEq] at hx
-      exact absurd hx.2.1.symm ho
+      exact (ho (hx.2.1 ▸ hu)).elim
   | other =>
       rw [hc] at hg
       simp [castGateB, classifyK] at hg
@@ -736,9 +671,10 @@ theorem cellA?_normA {x : LinstrR} (h : cellA? x = none) : cellA? (normA x) = no
 theorem gateAtW_arrImm (frame : String → Option (BitVec 64))
     (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (W : List String)
     {ds : List LOperand} {o : String} {ss : List LOperand}
-    (ho : o = "ZEROARR" ∨ o = "STOREIMM") :
+    (ho : LprogAsmPrinter.untagCaret o = "ZEROARR" ∨ LprogAsmPrinter.untagCaret o = "STOREIMM") :
     ImageAddrSimW.gateAtW frame slotArr body k W (.Lopn ds o ss) = false := by
-  have hne : ∀ {o' : String}, o = o' → o' ≠ "ZEROARR" → o' ≠ "STOREIMM" → False := by
+  have hne : ∀ {o' : String}, o = o' → LprogAsmPrinter.untagCaret o' ≠ "ZEROARR" →
+      LprogAsmPrinter.untagCaret o' ≠ "STOREIMM" → False := by
     intro o' h h1 h2
     subst h
     rcases ho with h | h
@@ -750,7 +686,12 @@ theorem gateAtW_arrImm (frame : String → Option (BitVec 64))
     · rename_i heq
       simp only [LinstrR.Lopn.injEq] at heq
       obtain ⟨-, rfl, -⟩ := heq
-      rcases ho with h | h <;> simp [h]
+      split_ifs with h1 h2
+      · subst h1
+        simp at ho
+      · subst h2
+        simp at ho
+      · rfl
     · rfl
   have hk : DecodePrintedAddrW.classifyK (.Lopn ds o ss) = none := by
     unfold DecodePrintedAddrW.classifyK
@@ -758,7 +699,7 @@ theorem gateAtW_arrImm (frame : String → Option (BitVec 64))
     · rename_i heq
       simp only [LinstrR.Lopn.injEq] at heq
       obtain ⟨-, rfl, -⟩ := heq
-      rcases ho with h | h <;> simp [h, castTagW]
+      grind only [LprogAsmPrinter.untagCaret_of_caret_free, castTagW_caret_free, castTagW_ne_arr]
     · rfl
   unfold ImageAddrSimW.gateAtW
   rw [hci]
@@ -771,28 +712,30 @@ theorem gateAtW_arrImm (frame : String → Option (BitVec 64))
       cases h
   | cond => cases ImageAddrSim.icase_cond hc
   | ldx =>
-      have h := ImageAddrSim.icase_ldx hc
+      obtain ⟨o', hu, h⟩ := ImageAddrSim.icase_ldx hc
       simp only [LinstrR.Lopn.injEq] at h
-      exact (hne h.2.1 (by decide) (by decide)).elim
+      exact (hne h.2.1 (by rw [hu]; decide) (by rw [hu]; decide)).elim
   | stx =>
-      have h := ImageAddrSim.icase_stx hc
+      obtain ⟨o', hu, h⟩ := ImageAddrSim.icase_stx hc
       simp only [LinstrR.Lopn.injEq] at h
-      exact (hne h.2.1 (by decide) (by decide)).elim
+      exact (hne h.2.1 (by rw [hu]; decide) (by rw [hu]; decide)).elim
   | sload =>
       rcases ImageAddrSim.slotMov?_cases (ImageAddrSim.icase_sload hc).1 with h | h <;>
         simp only [LinstrR.Lopn.injEq] at h <;>
-        exact (hne h.2.1 (by decide) (by decide)).elim
+        exact (hne h.2.1 (by simp [width_tag]) (by simp [width_tag])).elim
   | sstore =>
       rcases ImageAddrSim.slotMov?_cases (ImageAddrSim.icase_sstore hc).1 with h | h <;>
         simp only [LinstrR.Lopn.injEq] at h <;>
-        exact (hne h.2.1 (by decide) (by decide)).elim
+        exact (hne h.2.1 (by simp [width_tag]) (by simp [width_tag])).elim
   | scmp =>
-      have h := ImageAddrSim.slotCmp?_eq (ImageAddrSim.icase_scmp hc).1
+      obtain ⟨o', hu, h⟩ := ImageAddrSim.eq_of_normA_lopn
+        (ImageAddrSim.slotCmp?_eq (ImageAddrSim.icase_scmp hc).1) (by simp [withWidthTag])
       simp only [LinstrR.Lopn.injEq] at h
-      exact (hne h.2.1 (by decide) (by decide)).elim
+      exact (hne h.2.1 (by rw [hu]; decide) (by rw [hu]; decide)).elim
   | reg =>
-      obtain ⟨h1, h2⟩ := ImageAddrSim.icase_reg_arr hc ds o ss rfl
-      exact (hne rfl h1 h2).elim
+      obtain ⟨ds', o', ss', hx, -, -, -, h1, h2⟩ := ImageAddrSim.icase_reg_untagCaret hc
+      simp only [LinstrR.Lopn.injEq] at hx
+      exact (hne hx.2.1 h1 h2).elim
 
 /-- **The events of one step under the gate with carry chains.** From states related by
     `ImgRelW`, at an instruction `bi` of a body that passes the gate `imgGateBW`, whose only
@@ -825,25 +768,20 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
           obtain ⟨d, b, idx, sc⟩ := p
           obtain ⟨o', ho', hx⟩ := loadIdxA?_eq hld
           rw [hx] at hg hb ⊢
-          by_cases hlit : o' = "LOADIDX"
-          swap
-          · rw [gateAtW_loadIdx_tagged ho' hlit] at hg
-            cases hg
-          subst hlit
-          obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_loadIdx hg
+          obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_loadIdx ho' hg
           obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
           have hidxW := gateAtW_notW hg rfl (r := idx)
             (by simp [readNames, JasminLsemAddrCongr.srcNames])
             (by simp [DecodePrintedAddrW.carryIns])
-            (fun q h => by simp (config := { decide := true }) [icase] at h)
-            (fun q h => by simp (config := { decide := true }) [icase] at h)
+            (fun q h => by simp [icase, ho'] at h)
+            (fun q h => by simp [icase, ho'] at h)
           have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
             unfold idxVal
             rw [hrel.regsEq hidx hidxW]
-          rw [imgInstr_ldx slotArr body _ hacc]
-          simp [stepLeakA, hb, posTW, instrLeakA, normA_of_caret_free (o := "LOADIDX") (by decide),
-            tagA, loadIdxA?, hp, instrLeakF, flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv,
-            LprogAsmPrinter.untagCaret_of_caret_free (m := "LOADIDX") (by decide)]
+          rw [ImageAddrSim.imgInstr_ldx_of_untagCaret slotArr body _ hacc ho']
+          simp [stepLeakA, hb, posTW, instrLeakA, NarrowTyping.normA_of_untagCaret ho' (by decide),
+            tagA, loadIdxA?, hp, instrLeakF, flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv, ho',
+            width_tag]
           norm_cast
       | none =>
           cases hst : storeIdxA? (.Lopn ds o ss) with
@@ -851,40 +789,46 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
               obtain ⟨b, idx, sc, v⟩ := p
               obtain ⟨d, o', ho', hx⟩ := storeIdxA?_eq hst
               rw [hx] at hg hb ⊢
-              by_cases hlit : o' = "STOREIDX"
-              swap
-              · rw [gateAtW_storeIdx_tagged ho' hlit] at hg
-                cases hg
-              subst hlit
-              obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_storeIdx hg
+              obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_storeIdx ho' hg
               obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
               have hidxW := gateAtW_notW hg rfl (r := idx)
                 (by simp [readNames, JasminLsemAddrCongr.srcNames])
                 (by simp [DecodePrintedAddrW.carryIns])
-                (fun q h => by simp (config := { decide := true }) [icase] at h)
-                (fun q h => by simp (config := { decide := true }) [icase] at h)
+                (fun q h => by simp [icase, ho'] at h)
+                (fun q h => by simp [icase, ho'] at h)
               have hidxv : idxVal s.prog.base.reg idx = idxVal sa.reg idx := by
                 unfold idxVal
                 rw [hrel.regsEq hidx hidxW]
-              rw [imgInstr_stx slotArr body _ hacc]
+              rw [ImageAddrSim.imgInstr_stx_of_untagCaret slotArr body _ hacc ho']
               simp [stepLeakA, hb, posTW, instrLeakA,
-                normA_of_caret_free (o := "STOREIDX") (by decide), tagA, storeIdxA?, loadIdxA?, hp,
-                instrLeakF, flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv,
-                LprogAsmPrinter.untagCaret_of_caret_free (m := "STOREIDX") (by decide)]
+                NarrowTyping.normA_of_untagCaret ho' (by decide), tagA, storeIdxA?, loadIdxA?, hp,
+                instrLeakF, flagCondCC?, instrLeakB, opLeakF, hidxv, phiEv, ho', width_tag]
               norm_cast
           | none =>
               simp only [stepLeakA, hb, posTW, hld, hst, Option.isSome_none, Bool.or_self,
                 Bool.false_eq_true, ite_false]
-              by_cases h1 : o = "LOADIDX"
-              · subst h1
-                have hl' : loadIdxA? (normA (.Lopn ds "LOADIDX" ss)) = none := by
-                  simpa [normA_of_caret_free (o := "LOADIDX") (by decide)] using hld
-                simp [instrLeakA, tagA, hl']
-              · by_cases h2 : o = "STOREIDX"
-                · subst h2
-                  have hs' : storeIdxA? (normA (.Lopn ds "STOREIDX" ss)) = none := by
-                    simpa [normA_of_caret_free (o := "STOREIDX") (by decide)] using hst
-                  simp [instrLeakA, tagA, hs']
+              by_cases h1 : LprogAsmPrinter.untagCaret o = "LOADIDX"
+              · have hl' : loadIdxA? (normA (.Lopn ds o ss)) = none := by
+                  rw [NarrowTyping.normA_of_untagCaret h1 (by decide)]
+                  unfold loadIdxA? at hld ⊢
+                  split
+                  · rename_i heq
+                    simp only [LinstrR.Lopn.injEq] at heq
+                    obtain ⟨rfl, -, rfl⟩ := heq
+                    simp [h1] at hld
+                  · rfl
+                simp [instrLeakA, tagA, h1, hl']
+              · by_cases h2 : LprogAsmPrinter.untagCaret o = "STOREIDX"
+                · have hs' : storeIdxA? (normA (.Lopn ds o ss)) = none := by
+                    rw [NarrowTyping.normA_of_untagCaret h2 (by decide)]
+                    unfold storeIdxA? at hst ⊢
+                    split
+                    · rename_i heq
+                      simp only [LinstrR.Lopn.injEq] at heq
+                      obtain ⟨rfl, -, rfl⟩ := heq
+                      simp [h2] at hst
+                    · rfl
+                  simp [instrLeakA, tagA, h2, hs']
                 · rcases tagA_lopn_cases h1 h2 with ht | ⟨_, _, ht⟩ | ⟨_, _, ht⟩ <;> rw [ht]
                   · cases hc : cellA? (.Lopn ds o ss) with
                     | none => exact instrLeakA_reg_indep (cellA?_normA hc) _ sa s0
@@ -894,7 +838,7 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
                         rw [hx, NarrowTyping.normA_of_untagCaret hm (by decide)]
                         simp [instrLeakA, slotMov?, slotCmp?, cellA?, hn,
                           LprogAsmPrinter.untagCaret_of_caret_free (m := "LEA:64") (by decide)]
-                  · have ho : o = "ZEROARR" := by
+                  · have ho : LprogAsmPrinter.untagCaret o = "ZEROARR" := by
                       by_contra h3
                       simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3] at ht
                       split_ifs at ht
@@ -902,11 +846,12 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
                       split at ht <;> simp at ht
                     rw [gateAtW_arrImm _ _ _ _ _ (Or.inl ho)] at hg
                     cases hg
-                  · have ho : o = "STOREIMM" := by
+                  · have ho : LprogAsmPrinter.untagCaret o = "STOREIMM" := by
                       by_contra h4
-                      have h3 : o ≠ "ZEROARR" := by
-                        rintro rfl
-                        simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_true, zeroTagA] at ht
+                      have h3 : LprogAsmPrinter.untagCaret o ≠ "ZEROARR" := by
+                        intro h3
+                        simp only [tagA, h3, zeroTagA, String.reduceEq, ite_true,
+                          ite_false] at ht
                         split at ht <;> simp at ht
                       simp only [tagA, ite_eq_right h1, ite_eq_right h2, ite_eq_right h3, ite_eq_right h4] at ht
                       split_ifs at ht

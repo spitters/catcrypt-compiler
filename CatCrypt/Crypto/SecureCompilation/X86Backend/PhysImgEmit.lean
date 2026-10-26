@@ -173,14 +173,18 @@ theorem accArr_isSome_mono {slotArr : String → Option (String × Nat)} {b1 b2 
 
 /-! ## 2. Blocks whose accesses resolve locally -/
 
-/-- The instruction is an indexed access, an `LOADIDX` or a `STOREIDX`. -/
+/-- The instruction is an indexed access, an `LOADIDX` or a `STOREIDX`, read through
+    `untagCaret`. -/
 def isAccB : LinstrR → Bool
-  | .Lopn _ o _ => o == "LOADIDX" || o == "STOREIDX"
+  | .Lopn _ o _ =>
+      LprogAsmPrinter.untagCaret o == "LOADIDX" || LprogAsmPrinter.untagCaret o == "STOREIDX"
   | _ => false
 
-/-- The instruction is a constant-index array write, a `ZEROARR` or a `STOREIMM`. -/
+/-- The instruction is a constant-index array write, a `ZEROARR` or a `STOREIMM`, read
+    through `untagCaret`. -/
 def isArrImmB : LinstrR → Bool
-  | .Lopn _ o _ => o == "ZEROARR" || o == "STOREIMM"
+  | .Lopn _ o _ =>
+      LprogAsmPrinter.untagCaret o == "ZEROARR" || LprogAsmPrinter.untagCaret o == "STOREIMM"
   | _ => false
 
 theorem accOkB_of_not_acc (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
@@ -312,12 +316,12 @@ theorem accLocal_window {slotArr : String → Option (String × Nat)} {rl acc : 
         exact ⟨r, hr, (hmid r (List.mem_of_getElem? hr)).1⟩
       rcases hacc with h | ⟨d, y, h⟩ | ⟨d, y, v, h⟩ | ⟨n, w, h⟩ | ⟨v, j, h⟩
       · exact accOkB_of_not_acc _ _ _ h.1 h.2
-      · rw [h]; simp [accOkB, hA, hq]
-      · rw [h]; simp [accOkB, hA, hq]
+      · rw [h]; simp [accOkB, hA, hq, width_tag]
+      · rw [h]; simp [accOkB, hA, hq, width_tag]
       · obtain ⟨⟨A, nA⟩, hqA⟩ := Option.isSome_iff_exists.mp hq
-        rw [h]; simp [accOkB, arrImmImg, hA, hqA]
+        rw [h]; simp [accOkB, arrImmImg, hA, hqA, width_tag]
       · obtain ⟨⟨A, nA⟩, hqA⟩ := Option.isSome_iff_exists.mp hq
-        rw [h]; simp [accOkB, arrImmImg, hA, hqA]
+        rw [h]; simp [accOkB, arrImmImg, hA, hqA, width_tag]
     · rw [List.getElem?_append_right (by omega)] at hk
       obtain ⟨m, hm⟩ : ∃ m, k - mid.length = m + 1 := ⟨k - mid.length - 1, by omega⟩
       rw [hm, List.getElem?_cons_succ] at hk
@@ -609,7 +613,7 @@ theorem constIdxStore?_noAcc (k : Option Nat) (addr val : LOperand) (l : List Li
       split at h
       · split_ifs at h
         cases h
-        simp [isAccB]
+        simp [isAccB, width_tag]
       · cases h
   · cases h
 
@@ -622,7 +626,7 @@ theorem constIdxStore?_noArrImm (k : Option Nat) (addr val : LOperand) (l : List
       split at h
       · split_ifs at h
         cases h
-        simp [isArrImmB]
+        simp [isArrImmB, width_tag]
       · cases h
   · cases h
 
@@ -647,11 +651,11 @@ theorem loadIdx_accLocal {slotArr : String → Option (String × Nat)}
   · exact accLocal_window (mid := []) (post := []) hrl hq (by simp)
       (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp)
   · exact accLocal_window (mid := []) hrl hq (by simp)
-      (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB, isArrImmB])
+      (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB, isArrImmB, width_tag])
   · exact accLocal_window (mid := [_]) (post := []) hrl hq
-      (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp)
+      (by simp [isAccB, isArrImmB, hm15, width_tag]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp)
   · exact accLocal_window (mid := [_]) hrl hq
-      (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB, isArrImmB])
+      (by simp [isAccB, isArrImmB, hm15, width_tag]) (Or.inr (Or.inl ⟨_, _, rfl⟩)) (by simp [isAccB, isArrImmB, width_tag])
 
 /-- **The store arm after the base reload.** The reload `MOVQ R14, q` of the slot of an array
     followed by `legalizeMemStoreK` of an `STOREIDX` of a register to `R14` at stride `8`
@@ -688,12 +692,12 @@ theorem storeIdx_accLocal {slotArr : String → Option (String × Nat)}
     · exact accLocal_window (mid := []) (post := []) hrl hq (by simp)
         (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))) (by simp)
     · split
-      · exact accLocal_of_noAcc (by simp [isAccB]) (by simp [isArrImmB])
+      · exact accLocal_of_noAcc (by simp [isAccB, width_tag]) (by simp [isArrImmB, width_tag])
       · exact accLocal_window (mid := [_]) (post := []) hrl hq
-          (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))) (by simp)
+          (by simp [isAccB, isArrImmB, hm15, width_tag]) (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))) (by simp)
     · exact accLocal_window (mid := [_]) (post := []) hrl hq
-        (by simp [isAccB, isArrImmB, hm15]) (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))) (by simp)
-    · exact accLocal_of_noAcc (by simp [isAccB]) (by simp [isArrImmB])
+        (by simp [isAccB, isArrImmB, hm15, width_tag]) (Or.inr (Or.inr (Or.inl ⟨_, _, _, rfl⟩))) (by simp)
+    · exact accLocal_of_noAcc (by simp [isAccB, width_tag]) (by simp [isArrImmB, width_tag])
 
 /-! ## 6. One position of `physPositionEmit` -/
 
@@ -724,11 +728,25 @@ theorem isAccB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOperand
   simp only [movMnems, List.mem_cons, List.not_mem_nil, or_false] at h
   rcases h with rfl | rfl | rfl | rfl | rfl <;> rfl
 
+/-- The mnemonic `o` carries no tag when its `untagCaret` is an indexed access or a
+    constant-index array write mnemonic. -/
+def AccUntagged (o : String) : Prop :=
+  LprogAsmPrinter.untagCaret o = "LOADIDX" ∨ LprogAsmPrinter.untagCaret o = "STOREIDX" ∨
+    LprogAsmPrinter.untagCaret o = "ZEROARR" ∨ LprogAsmPrinter.untagCaret o = "STOREIMM" →
+    LprogAsmPrinter.untagCaret o = o
+
+theorem untagCaret_ne_of_accUntagged {o t : String} (ht : AccUntagged o)
+    (hm : t = "LOADIDX" ∨ t = "STOREIDX" ∨ t = "ZEROARR" ∨ t = "STOREIMM") (h : o ≠ t) :
+    LprogAsmPrinter.untagCaret o ≠ t := fun h' =>
+  h ((ht (by rcases hm with rfl | rfl | rfl | rfl <;> simp [h'])).symm.trans h')
+
 theorem isAccB_of_armOut {ins : List LOperand} {opn : String} {r : LinstrR}
-    (h : ArmOut ins opn r) (h1 : opn ≠ "LOADIDX") (h2 : opn ≠ "STOREIDX") :
-    isAccB r = false := by
+    (h : ArmOut ins opn r) (ht : AccUntagged opn) (h1 : opn ≠ "LOADIDX")
+    (h2 : opn ≠ "STOREIDX") : isAccB r = false := by
   obtain ⟨ds, o, ss, rfl, ho | ho, -⟩ := h
-  · subst ho; simp [isAccB, h1, h2]
+  · subst ho
+    simp [isAccB, untagCaret_ne_of_accUntagged ht (by simp) h1,
+      untagCaret_ne_of_accUntagged ht (by simp) h2]
   · exact isAccB_of_movMnems ho
 
 theorem isArrImmB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOperand}
@@ -737,10 +755,12 @@ theorem isArrImmB_of_movMnems {ds : List LOperand} {o : String} {ss : List LOper
   rcases h with rfl | rfl | rfl | rfl | rfl <;> rfl
 
 theorem isArrImmB_of_armOut {ins : List LOperand} {opn : String} {r : LinstrR}
-    (h : ArmOut ins opn r) (h34 : opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM") :
+    (h : ArmOut ins opn r) (ht : AccUntagged opn) (h34 : opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM") :
     isArrImmB r = false := by
   obtain ⟨ds, o, ss, rfl, ho | ho, -⟩ := h
-  · subst ho; simp [isArrImmB, h34.1, h34.2]
+  · subst ho
+    simp [isArrImmB, untagCaret_ne_of_accUntagged ht (by simp) h34.1,
+      untagCaret_ne_of_accUntagged ht (by simp) h34.2]
   · exact isArrImmB_of_movMnems ho
 
 theorem emitOk_of_armOut {slotArr : String → Option (String × Nat)} {i : LinstrR}
@@ -764,15 +784,15 @@ theorem blockOk_of_arm {slotArr : String → Option (String × Nat)} {i : Linstr
     {ins : List LOperand} {opn : String} {l : List LinstrR} (ii : Nat)
     (hs15 : slotArr reloadScratch = none) (hs14 : slotArr reloadScratch2 = none)
     (hmem : ∀ c, slotArr ("mem." ++ c) = none) (hins : ∀ x ∈ ins, OperandOk slotArr x)
-    (hopn : opnOf i = some opn) (h34 : opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM")
+    (hopn : opnOf i = some opn) (ht : AccUntagged opn) (h34 : opn ≠ "ZEROARR" ∧ opn ≠ "STOREIMM")
     (h1 : opn ≠ "LOADIDX") (h2 : opn ≠ "STOREIDX")
     (h : ∀ r ∈ l, ArmOut ins opn r) :
     BlockOk slotArr i (l.map fun r => (⟨ii, r⟩ : Linstr)) := by
   refine ⟨fun r hr => ?_, accLocal_of_noAcc (fun r hr => ?_) (fun r hr => ?_)⟩ <;>
     obtain ⟨r', hr', rfl⟩ := List.mem_map.mp hr
   · exact emitOk_of_armOut hs15 hs14 hmem hins hopn (h r' hr')
-  · exact isAccB_of_armOut (h r' hr') h1 h2
-  · exact isArrImmB_of_armOut (h r' hr') h34
+  · exact isAccB_of_armOut (h r' hr') ht h1 h2
+  · exact isArrImmB_of_armOut (h r' hr') ht h34
 
 theorem emitAll_of_arm {slotArr : String → Option (String × Nat)} {i : LinstrR}
     {ins : List LOperand} {opn : String} {l : List LinstrR} (ii : Nat)
@@ -835,7 +855,8 @@ def AccForm (slotArr : String → Option (String × Nat)) (rm : LOperand → LOp
     (o = "ZEROARR" → ∃ b n w, ds = [.reg b] ∧ ss = [.imm n, .imm w] ∧
       RegBaseReloaded slotArr rm mbr b) ∧
     (o = "STOREIMM" → ∃ d b v k, ds = [.reg d] ∧ ss = [.reg b, .reg v, .imm k] ∧
-      RegBaseReloaded slotArr rm mbr b)
+      RegBaseReloaded slotArr rm mbr b) ∧
+    AccUntagged o
 
 /-- A block of an instruction other than a constant-index array write is its own
     constant-shape base reload. -/
@@ -887,14 +908,14 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
       fun x hx => hok x (by simp [lopnOperands, hx])
     have hmapd : ∀ x ∈ ds.map rm, OperandOk slotArr x := by
       intro x hx; obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx; exact hokd y hy
-    obtain ⟨hL, hS, -, -⟩ := hacc ds o ss rfl
+    obtain ⟨hL, hS, -, -, ht⟩ := hacc ds o ss rfl
     have h34 := hne ds o ss rfl
     -- the generic single instruction
     have hsingle : o ≠ "LOADIDX" → o ≠ "STOREIDX" →
         BlockOk slotArr (.Lopn ds o ss)
           [⟨ii, .Lopn (ds.map rm) o (ss.map rm)⟩] := fun h1 h2 =>
       blockOk_of_arm (l := [.Lopn (ds.map rm) o (ss.map rm)]) ii hs15 hs14 hmem hmapd hopn
-        h34 h1 h2 (fun r hr => by
+        ht h34 h1 h2 (fun r hr => by
           simp only [List.mem_singleton] at hr
           subst hr
           exact ⟨_, _, _, rfl, Or.inl rfl, fun x hx => Or.inl hx⟩)
@@ -922,7 +943,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
           · rw [ite_eq_left hnat]
             have h1 : o ≠ "LOADIDX" := by
               rintro rfl; rw [isNativeShiftRotate_loadIdx] at hnat; cases hnat
-            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
+            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn ht h34 h1 h2
               (lowerNativeShiftRotate_armOut _ _ _ _ (movFor_ok o))
           rw [ite_eq_right hnat]
           by_cases hld : isMemLoad o = true
@@ -946,14 +967,14 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
               · subst hLo
                 exact loadIdx_accLocal hs15 hq ii _ n' y' _ rfl
             · exact blockOk_append
-                (blockOk_of_arm ii hs15 hs14 hmem hnil hopn h34 hLo h2
+                (blockOk_of_arm ii hs15 hs14 hmem hnil hopn ht h34 hLo h2
                   (reloadMemrefBase_armOut mbr (rm s0) o))
-                (blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 hLo h2
+                (blockOk_of_arm ii hs15 hs14 hmem hd hopn ht h34 hLo h2
                   (legalizeMemLoad_armOut _ _ _ _ (movFor_ok o)))
           · rw [ite_eq_right hld]
             have h1 : o ≠ "LOADIDX" := by
               rintro rfl; exact hld isMemLoad_loadIdx
-            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
+            exact blockOk_of_arm ii hs15 hs14 hmem hd hopn ht h34 h1 h2
               (legalizeOneSrc_armOut _ _ _ _)
         · have h1 : o ≠ "LOADIDX" := fun h => by
             obtain ⟨_, _, _, h', -⟩ := hL h; simp at h'
@@ -970,9 +991,9 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
           have h2 : o ≠ "STOREIDX" := by
             rintro rfl; rw [isTwoAddrBinop_storeIdx] at hbin; cases hbin
           split
-          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
+          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn ht h34 h1 h2
               (lowerTwoAddrShiftImm_armOut _ _ _ _ _ (movFor_ok o))
-          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
+          · exact blockOk_of_arm ii hs15 hs14 hmem hd hopn ht h34 h1 h2
               (lowerTwoAddr_armOut _ _ _ _ _ (movFor_ok o))
         · rw [ite_eq_right hbin]
           have hgen : (tail ≠ [] ∨ t ≠ []) → BlockOk slotArr (.Lopn (d :: tail) o (s0 :: s1 :: t))
@@ -985,7 +1006,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
               rcases hne with hne | hne
               · exact hne hds.2
               · exact hne hss.2.2
-            exact blockOk_of_arm ii hs15 hs14 hmem hmapd hopn h34 h1 h2
+            exact blockOk_of_arm ii hs15 hs14 hmem hmapd hopn ht h34 h1 h2
               (legalizeSpillDst_armOut _ _ _)
           rcases tail with _ | ⟨d2, tail2⟩ <;> rcases t with _ | ⟨s2, t2⟩
           · dsimp only
@@ -1011,14 +1032,14 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
                 · subst hSo
                   exact storeIdx_accLocal hs15 hq ii _ _ _ n' y' v' _ rfl rfl
               · exact blockOk_append
-                  (blockOk_of_arm ii hs15 hs14 hmem hnil hopn h34 h1 hSo
+                  (blockOk_of_arm ii hs15 hs14 hmem hnil hopn ht h34 h1 hSo
                     (reloadMemrefBase_armOut mbr (rm s0) o))
-                  (blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 hSo
+                  (blockOk_of_arm ii hs15 hs14 hmem hd hopn ht h34 h1 hSo
                     (legalizeMemStoreK_armOut _ _ _ _ _ _ (movFor_ok o)))
             · rw [ite_eq_right hms]
               have h2 : o ≠ "STOREIDX" := by
                 rintro rfl; exact hms isMemStore_storeIdx
-              exact blockOk_of_arm ii hs15 hs14 hmem hd hopn h34 h1 h2
+              exact blockOk_of_arm ii hs15 hs14 hmem hd hopn ht h34 h1 h2
                 (legalizeSpillDst_armOut _ _ _)
           · exact hgen (Or.inr (by simp))
           · exact hgen (Or.inl (by simp))
@@ -1064,7 +1085,7 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
     subst hx
     have himm : ∀ n, rm (.imm n) = .imm n := by
       intro n; subst hrm; split <;> rfl
-    obtain ⟨-, -, hZ, hS⟩ := hacc ds o ss rfl
+    obtain ⟨-, -, hZ, hS, -⟩ := hacc ds o ss rfl
     obtain ⟨hbin, hms, hcm, hset⟩ := arrImm_mnem_class hz
     have hemit : ss.length ≥ 2 → ds.length = 1 →
         physPositionEmit shiftImm body (fun _ => none) loadBase [] storeBase abiW mbr

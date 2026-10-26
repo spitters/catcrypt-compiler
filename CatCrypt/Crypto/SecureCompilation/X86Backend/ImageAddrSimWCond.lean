@@ -122,10 +122,10 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
   by_cases hzp : s.zf = pol
   · rw [ite_eq_left hzp] at hstep hstepA
     cases hstep
-    refine ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
+    refine ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]), _, hstepA,
       Or.inr ⟨⟨c[p], ii', l, by simp [LstateA.setLpc], hli⟩,
         haltedA_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
-        loadSafe_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
+        loadSafe_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp [normA]),
         sa.setLpc (p + 1), ?_,
         rel_jump hphys hrel hb hnm hbp (by rw [hli]; rfl)
           (fun ds o ss h => by rw [hli] at h; cases h)⟩⟩
@@ -137,7 +137,7 @@ theorem img_step_cond {frame : String → Option (BitVec 64)}
     simp [stepA, LstateA.setLpc, hb']
   · rw [ite_eq_right hzp] at hstep hstepA
     cases hstep
-    exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
+    exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]), _, hstepA,
       Or.inl (rel_label hphys hrel hb hnm)⟩
 
 /-- **The gate of a branch**: the branch is on a condition code with a polarity, its label is
@@ -194,10 +194,10 @@ theorem img_stepW_cond' {frame : String → Option (BitVec 64)}
   by_cases hzp : s.zf = pol
   · rw [ite_eq_left hzp] at hstep hstepA
     cases hstep
-    refine ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
+    refine ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]), _, hstepA,
       Or.inr ⟨⟨c[p], ii', l, by simp [LstateA.setLpc], hli⟩,
         haltedA_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
-        loadSafe_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp),
+        loadSafe_of (bi := c[p]) (by simp [LstateA.setLpc]) (by rw [hli]; simp [normA]),
         sa.setLpc (p + 1), ?_,
         rel_condJumpW hphys hrel hb hnm hbp (by rw [hli]; rfl)
           (fun ds o ss h => by rw [hli] at h; cases h) hW⟩⟩
@@ -209,7 +209,7 @@ theorem img_stepW_cond' {frame : String → Option (BitVec 64)}
     simp [stepA, LstateA.setLpc, hb']
   · rw [ite_eq_right hzp] at hstep hstepA
     cases hstep
-    exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp), _, hstepA,
+    exact ⟨rfl, haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]), _, hstepA,
       Or.inl (rel_condFallW hphys hrel hb hx)⟩
 
 /-- **One step of the image at a branch.** From states related by `ImgRelW`, a checked step

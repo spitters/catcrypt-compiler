@@ -966,7 +966,7 @@ theorem reallocBody_mem_arrImm {abi : IsaAbi} (res : List String) (body : Lcmd) 
         obtain ⟨j, hj, rfl⟩ := List.mem_map.1 hli
         obtain ⟨i, hi, he⟩ := reallocRun_opn _ is j hj
         obtain ⟨li', -, hf⟩ := hspec is List.mem_cons_self i hi
-        have hz := PhysImgFold.fragOf?_opn_ne hf
+        have hz := PhysImgFold.fragOf?_untagCaret_ne hf
         simp [FI.toL, FI.toR, isArrImmB, he, hz.1, hz.2]
       · exact ih' li hli
     · rename_i li'
@@ -1265,11 +1265,25 @@ theorem legalizeInstr_arrImm (ok : Bool) (i : Linstr) (hai : isArrImmB i.li_i = 
   split
   · rename_i d opn a b he
     rw [he] at hai
-    have ho : opn = "ZEROARR" ∨ opn = "STOREIMM" := by simpa [isArrImmB] using hai
+    have ho : LprogAsmPrinter.untagCaret opn = "ZEROARR" ∨
+        LprogAsmPrinter.untagCaret opn = "STOREIMM" := by simpa [isArrImmB] using hai
+    have hT := PhysImgSched.takeWhile_caret_of_untagCaret rfl ho
+    have htb : TwoAddrLegalize.tieBase opn = LprogAsmPrinter.untagCaret opn := by
+      have hl : opn.toList.takeWhile (· != '^') = (LprogAsmPrinter.untagCaret opn).toList := by
+        rw [← hT]; simp
+      have hw : ∀ l : List Char, l.takeWhile (fun c => c != ':' && c != '^') =
+          (l.takeWhile (· != '^')).takeWhile (fun c => c != ':' && c != '^') := by
+        intro l
+        induction l with
+        | nil => rfl
+        | cons c l ih => by_cases hc : c = '^' <;> simp [List.takeWhile_cons, hc, ih]
+      unfold TwoAddrLegalize.tieBase
+      rw [hw, hl]
+      rcases ho with h | h <;> rw [h] <;> decide +kernel
     have ht : TwoAddrLegalize.needsTie opn b = false := by
       unfold TwoAddrLegalize.needsTie
-      rw [Bool.or_eq_false_iff, Bool.and_eq_false_iff]
-      rcases ho with rfl | rfl <;> exact ⟨by decide +kernel, Or.inl (by decide +kernel)⟩
+      rw [Bool.or_eq_false_iff, Bool.and_eq_false_iff, htb]
+      rcases ho with h | h <;> rw [h] <;> exact ⟨by decide +kernel, Or.inl (by decide +kernel)⟩
     simp only [ht, Bool.false_and, Bool.false_eq_true, ite_false]
   · rfl
 
@@ -1296,7 +1310,7 @@ theorem cellBaseFreeB_twoAddrBody {b : Lcmd} (h : cellBaseFreeB b = true) :
       · rcases ho with ho | ⟨w, rfl⟩
         · simp only [PhysImgEmit.movMnems, List.mem_cons, List.not_mem_nil, or_false] at ho
           rcases ho with rfl | rfl | rfl | rfl | rfl <;> simp [isArrImmB]
-        · simp (disch := decide +kernel) [isArrImmB, withWidthTag_ne_of_tagSepFree]
+        · rcases PhysImgPrint.untagCaret_withWidthTag_mov w with h | h <;> simp [isArrImmB, h]
     | _ =>
       have : ∀ ok, legalizeInstr ok i x86Data = [i] := fun ok => by unfold legalizeInstr; rw [hil]
       rw [this, List.mem_singleton] at hr
@@ -1327,7 +1341,11 @@ theorem cellBaseFreeB_cmpReload {abi : IsaAbi} {b : Lcmd} (h : cellBaseFreeB b =
     · simp only [isArrImmB, CmpSpillReload.movOf]
       split_ifs <;> rfl
     · simp only [isArrImmB, Bool.or_eq_false_iff, beq_eq_false_iff_ne]
-      constructor <;> rintro rfl <;> revert hc <;> decide +kernel
+      constructor <;> intro hu <;> unfold LprogAsmPrinter.untagCaret at hu <;>
+        split_ifs at hu <;>
+        first
+        | (rw [hc] at hu; revert hu; decide)
+        | (subst hu; revert hc; decide +kernel)
   · rw [List.mem_singleton] at hr
     subst hr
     exact h0 r hi
