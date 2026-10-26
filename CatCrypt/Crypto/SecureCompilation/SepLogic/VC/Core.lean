@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.SepLogic.Contract
+public import CatCrypt.Crypto.Util.StateTOptionWP
 public import Std.WP
 
 /-!
@@ -15,7 +16,8 @@ public import Std.WP
 accumulate a trace `T` and may fail. Its `Std.WP` assertions are predicates on `σ × T`, and its
 failure postcondition is a predicate on `Unit`. A triple `⦃fun st => P st⦄ x ⦃fun a st => Q a st⦄`
 has the failure postcondition `⊥` and is the total-correctness statement: from every state
-satisfying `P` the run returns a value and a state satisfying `Q` (`triple_iff_run`).
+satisfying `P` the run returns a value and a state satisfying `Q` (`triple_iff_run` of
+`Util/StateTOptionWP`, at the state `σ × T`).
 
 `runRel x` is the run relation of `x` started on the empty trace, and `AppendOnly x` says that
 starting `x` on a trace `t₀` prefixes `t₀` to the trace of the run from the empty trace.
@@ -27,9 +29,6 @@ starting `x` on a trace `t₀` prefixes `t₀` to the trace of the run from the 
 
 ## Main results
 
-* `VC.wp_apply_run`: the weakest precondition of a `RunM` program at a state is its
-  postcondition at the result of the run, and its failure postcondition when the run fails.
-* `VC.triple_iff_run`: a triple over `RunM` is a statement on `run`.
 * `VC.triple_frame_conj`: the conjunctive frame rule; an assertion `F` whose footprint avoids
   the write set holds after the run when it holds before.
 * `VC.sContract_of_triple`: a fuel-indexed program meets the contract given by its triples,
@@ -79,6 +78,7 @@ theorem SContract.of_le_det {σ : Type u} {L : Type v} [Footprinted σ L] {T : T
 namespace VC
 
 open Std.WP
+open CatCrypt.Crypto.Util (wp_apply_run triple_iff_run)
 
 /-- Runs over the machine state `σ` that accumulate a trace `T` and may fail. -/
 abbrev RunM (σ T : Type u) : Type u → Type u := StateT (σ × T) Option
@@ -86,26 +86,6 @@ abbrev RunM (σ T : Type u) : Type u → Type u := StateT (σ × T) Option
 section Run
 
 variable {σ T α : Type u}
-
-/-- The weakest precondition of a `RunM` program at a state is its postcondition at the result
-    of the run, and the failure postcondition when the run fails. -/
-theorem wp_apply_run (x : RunM σ T α) (Q : α → σ × T → Prop) (E : Unit → Prop) (st : σ × T) :
-    wp x Q E st = (match x.run st with | some (a, st') => Q a st' | none => E ()) := by
-  rw [StateT.wp_apply_eq]
-  rcases x.run st with _ | ⟨a, st'⟩ <;> rfl
-
-/-- **Triples over `RunM` are statements on `run`.** The triple with the failure
-    postcondition `⊥` says that from every state satisfying `P` the run returns a value and a
-    state satisfying `Q`. -/
-theorem triple_iff_run (x : RunM σ T α) (P : σ × T → Prop) (Q : α → σ × T → Prop) :
-    ⦃fun st => P st⦄ x ⦃fun a st => Q a st⦄ ↔
-      ∀ st, P st → ∃ a st', x.run st = some (a, st') ∧ Q a st' := by
-  rw [Triple.iff]
-  refine forall_congr' fun st => imp_congr Iff.rfl ?_
-  rw [wp_apply_run]
-  rcases x.run st with _ | ⟨a, st'⟩
-  · simp [Lean.Order.bot_apply]
-  · exact ⟨fun h => ⟨a, st', rfl, h⟩, fun ⟨_, _, h, hq⟩ => by cases h; exact hq⟩
 
 /-- The run relation of `x` started on the empty trace: `runRel x s t s'` says that the run
     from `s` returns with final state `s'` and trace `t`. -/

@@ -2836,6 +2836,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.Secp256k1Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.Sha256Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.Sha512Verified,
+    Lake.Glob.one `CatCrypt.Crypto.Util.StateTOptionWP,
     Lake.Glob.one `CatCrypt.Crypto.Util.VestaPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.X25519Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.ZMod1024,

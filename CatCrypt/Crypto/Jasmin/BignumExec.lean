@@ -13,6 +13,7 @@ public meta import CatCrypt.Crypto.Jasmin.MemoryModel
 public import CatCrypt.Crypto.Jasmin.MemoryModel
 public import Std.Do.Triple
 public import Std.WP
+public import CatCrypt.Crypto.Util.StateTOptionWP
 public import Std.Tactic.Do
 public import Std.Tactic.BVDecide
 
@@ -2688,27 +2689,7 @@ the failure postcondition `⊥`: it states that the run succeeds. -/
 namespace StdWP
 
 open Std.WP
-
-/-- The weakest precondition of a `StateT σ Option` program at a state is its postcondition
-    at the result of the run, and the failure postcondition when the run fails. -/
-theorem wp_apply_stateT_option {σ α : Type} (x : StateT σ Option α) (Q : α → σ → Prop)
-    (E : Unit → Prop) (s : σ) :
-    wp x Q E s = (match x.run s with | some (a, s') => Q a s' | none => E ()) := by
-  rw [StateT.wp_apply_eq]
-  rcases x.run s with _ | ⟨a, s'⟩ <;> rfl
-
-/-- Triples over `BignumM` are statements on `run`: from every state satisfying `P` the run
-    returns a value and a state satisfying `Q`. -/
-theorem triple_iff_run {α : Type} (x : BignumM α) (P : BignumState → Prop)
-    (Q : α → BignumState → Prop) :
-    ⦃fun s => P s⦄ x ⦃fun a s => Q a s⦄ ↔
-      ∀ s, P s → ∃ a s', x.run s = some (a, s') ∧ Q a s' := by
-  rw [Triple.iff]
-  refine forall_congr' fun s => imp_congr Iff.rfl ?_
-  rw [wp_apply_stateT_option]
-  rcases x.run s with _ | ⟨a, s'⟩
-  · simp [Lean.Order.bot_apply]
-  · exact ⟨fun h => ⟨a, s', rfl, h⟩, fun ⟨_, _, h, hq⟩ => by cases h; exact hq⟩
+open CatCrypt.Crypto.Util (wp_apply_run triple_iff_run)
 
 /-- The postcondition of a triple holds at the result of a run from a state satisfying the
     precondition. -/
@@ -2734,7 +2715,7 @@ theorem stepInstrM_spec (r : BignumRegistry) (i : InstrR) (Q : Unit → BignumSt
       stepInstrM r i ⦃Q; E⦄ := by
   constructor
   intro s h
-  rw [wp_apply_stateT_option]
+  rw [wp_apply_run]
   cases hs : execInstr s i <;> simp only [hs] at h <;> simpa [StateT.run, stepInstrM, hs] using h
 
 end StdWP

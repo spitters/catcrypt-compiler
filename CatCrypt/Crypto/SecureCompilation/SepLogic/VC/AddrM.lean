@@ -51,6 +51,7 @@ set_option experimental.vcgen true
 namespace CatCrypt.Crypto.SecureCompilation.SepLogic.VC
 
 open Std.WP
+open CatCrypt.Crypto.Util (wp_apply_run triple_iff_run)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
