@@ -471,11 +471,15 @@ def kTable (q : List RInstr) (clob : String → Bool) (P : StorePol) : List (Lis
   let E0 : List KFact := P.wins.map fun w => (.reg w.1, w.1)
   kTableGo (E0.filter fun f => !clob f.2) (backTargets q) 0 q (some E0) []
 
+/-- The table of facts `kTable q clob P` as an array. -/
+def kArr (q : List RInstr) (clob : String → Bool) (P : StorePol) : Array (List KFact) :=
+  (kTable q clob P).toArray
+
 /-- The facts at the indices of `q` as a function; no fact under a policy without windows. -/
 def kFacts (q : List RInstr) (clob : String → Bool) (P : StorePol) : Nat → List KFact :=
   if P.wins.isEmpty then fun _ => []
   else
-    let a := (kTable q clob P).toArray
+    let a := kArr q clob P
     fun k => a.getD k []
 
 /-- A store at the base register `b` and the displacement `o` is to a word allowed by `P`
@@ -567,9 +571,16 @@ def winsOkB (_clob : String → Bool) (P : StorePol) : Bool :=
     register that holds the entry value of the window's base register, branches inside
     `body ; leaq F(%rsp), %rsp`, and is not `ret`, `push`, `pop` or `call`. -/
 def keepCheckWB (q : List RInstr) (clob : String → Bool) (F : Nat) (P : StorePol) : Bool :=
-  let T := kFacts q clob P
+  let a := kArr q clob P
+  let T : Nat → List KFact := if P.wins.isEmpty then fun _ => [] else fun k => a.getD k []
   decide (3 ≤ q.length) && winsOkB clob P && kFlowOkB q T
     && allFrom (instrOkWB q.length clob F P T) 0 q
+
+/-- The unfolding lemma of `keepCheckWB`, with its table of facts stated as `kFacts`. -/
+theorem keepCheckWB_eq (q : List RInstr) (clob : String → Bool) (F : Nat) (P : StorePol) :
+    keepCheckWB q clob F P
+      = (decide (3 ≤ q.length) && winsOkB clob P && kFlowOkB q (kFacts q clob P)
+        && allFrom (instrOkWB q.length clob F P (kFacts q clob P)) 0 q) := rfl
 
 /-- **The keep check.** `keepCheckWB` at the policy `StorePol.frame` of the frame alone: the
     block `q` has the form `leaq -F(%rsp), %rsp ; body ; leaq F(%rsp), %rsp ; ret`, and
@@ -590,7 +601,7 @@ theorem keepCheckB_eq (q : List RInstr) (clob : String → Bool) (F : Nat) :
     simp only [kFlowOkB, List.all_nil, Bool.true_and]
     exact allFrom_of_forall (fun _ ri => by cases ri <;> rfl) q 0
   have hw : winsOkB clob .frame = true := rfl
-  simp only [keepCheckB, keepCheckWB, hT, hfl, hw, Bool.and_true]
+  simp only [keepCheckB, keepCheckWB_eq, hT, hfl, hw, Bool.and_true]
 
 /-- The invariant of a run of a block of length `n` checked under the store policy `P` with
     the table of facts `T`, entered in the state `e`: the stack register is that of `e` at
@@ -741,7 +752,7 @@ theorem keepCheck_invW {q : List RInstr} {clob : String → Bool} {F : Nat} {P :
     s'.regs "%rsp" = e.regs "%rsp"
       ∧ (∀ r', r' ≠ "%rsp" → clob r' = false → s'.regs r' = e.regs r')
       ∧ ∀ x, ¬ KeepFoot P F e.regs x → s'.mem x = e.mem x := by
-  simp only [keepCheckWB, Bool.and_eq_true, decide_eq_true_eq] at hk
+  simp only [keepCheckWB_eq, Bool.and_eq_true, decide_eq_true_eq] at hk
   generalize kFacts q clob P = T at hk hI
   obtain ⟨⟨⟨hn, _⟩, hfl⟩, hall⟩ := hk
   simp only [kFlowOkB, Bool.and_eq_true] at hfl
@@ -864,7 +875,7 @@ theorem keepCheck_soundW {q : List RInstr} {clob : String → Bool} {F : Nat} {P
       ∧ (∀ r', clob r' = false → s'.regs r' = s.regs r')
       ∧ ∀ x, ¬ KeepFoot P F s.regs x → s'.mem x = s.mem x := by
   have h0 : ∀ f ∈ kFacts q clob P 0, f.Holds s s := by
-    simp only [keepCheckWB, kFlowOkB, Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at hk
+    simp only [keepCheckWB_eq, kFlowOkB, Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at hk
     intro f hf
     simp only [KFact.Holds, hk.1.2.1 f hf]
   obtain ⟨h1, h2, h3⟩ := keepCheck_invW hk s h
@@ -877,7 +888,7 @@ theorem keepCheck_soundW {q : List RInstr} {clob : String → Bool} {F : Nat} {P
 /-- A block accepted by `keepCheckWB` holds no `call`. -/
 theorem not_call_mem_of_keepCheckW {q : List RInstr} {clob : String → Bool} {F : Nat}
     {P : StorePol} (hk : keepCheckWB q clob F P = true) (tg : Nat) : RInstr.call tg ∉ q := by
-  simp only [keepCheckWB, Bool.and_eq_true, decide_eq_true_eq] at hk
+  simp only [keepCheckWB_eq, Bool.and_eq_true, decide_eq_true_eq] at hk
   intro hm
   obtain ⟨j, hj⟩ := List.getElem?_of_mem hm
   have hc : instrOkWB q.length clob F P (kFacts q clob P) j (.call tg) = true := by
