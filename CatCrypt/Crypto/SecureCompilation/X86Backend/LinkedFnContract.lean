@@ -59,6 +59,8 @@ the constant-time regime `.doitm` meet the contract. The interface `LinkedFn.con
 * `fp_arrPts`, `holds_arrPts`, `holds_arrOwn`, `resultAt_words_arrPts`: the footprints and
   predicates of the array assertions, and the result of an out layout as an array.
 * `holds_entryAt`: the facts of the precondition used by the adapters.
+* `not_ret_of_resRegion`: the locations of an out result in a pointer region lie outside the
+  return word.
 * `entryOf_popRet`: an entry state whose stack register addresses the return word `ret` is the
   entry state of a call with return index `ret`.
 * `meets_of_calleeSpec`, `meets_of_wordSig`: the contract from a specification of an
@@ -455,19 +457,38 @@ theorem entryAt_of_pre {l : LinkedFn} {a : CallVar} {s : AState}
 theorem sem_isSome_of_pre {l : LinkedFn} {a : CallVar} {s : AState}
     (h : (l.contractPre a).holds s) : (l.sem a.vals).isSome = true := h.2.2
 
+/-- **The out result lies outside the return word.** If the result of the layout is the `n`
+    words at the register `r` and `(r, n)` is a pointer region of the layout, then at a state
+    satisfying the resources at entry no byte of a result location lies in the return word
+    at the stack register. -/
+theorem not_ret_of_resRegion {l : LinkedFn} {a : CallVar} {s : AState}
+    (h : (l.entryAt a).holds s) {r : String} {n : Nat} (hres : l.layout.result = .words r n)
+    (hreg : (r, n) ∈ l.layout.regions) {x : BitVec 64}
+    (hx : Loc.mem x ∈ resLocs (entryRegs a.rv) l.layout.result) : ¬ InRange8 a.sp x := by
+  obtain ⟨⟨-, -, hd, -, -⟩, -⟩ := h
+  intro hr
+  refine Set.disjoint_left.1 hd ?_ (Or.inl ⟨x, hr, rfl⟩)
+  rw [hres] at hx
+  exact Or.inl (Or.inr (mem_fp_bigSep.2 ⟨arrOwn (a.rv r) n, List.mem_map.2
+    ⟨(r, n), List.mem_filter.2 ⟨hreg, by simp [isResRegion, hres]⟩, rfl⟩, hx⟩))
+
 /-! ## 4. The contract from a callee specification -/
 
 /-- **The contract from a specification of an interface.** Let the bytes of `l` decode to
     `q`, whose leaky runs meet an interface `c` whose precondition holds wherever the
     precondition of the contract does, whose clobbered registers are among those of `l`,
-    whose footprint is among the `frame` bytes below the entry stack register, whose
-    postcondition gives the result of the contract, and whose public relation follows from
-    agreement on the public data of the layout. Then `l` meets its contract. -/
+    whose footprint at an entry state satisfying the precondition of the contract is among
+    the `frame` bytes below the entry stack register and the result locations outside the
+    return word, whose postcondition gives the result of the contract, and whose public
+    relation follows from agreement on the public data of the layout. Then `l` meets its
+    contract. -/
 theorem meets_of_calleeSpec {l : LinkedFn} {q : List RInstr}
     (hq : decodeLprog l.bytes = some q) {c : CalleeSig} (hX : CalleeSpec (runOf .doitm q) c)
     (hpre : ∀ a s, (l.contractPre a).holds s → c.pre s)
     (hclob : ∀ r, c.clob r = true → r ∈ l.clob)
-    (hfoot : ∀ s x, c.pre s → c.foot s x → InFrame (s.regs "%rsp") l.frame x)
+    (hfoot : ∀ a s x, (l.contractPre a).holds s → c.foot s x →
+      InFrame (s.regs "%rsp") l.frame x ∨
+        (Loc.mem x ∈ resLocs (entryRegs a.rv) l.layout.result ∧ ¬ InRange8 a.sp x))
     (hpost : ∀ a s s', (l.contractPre a).holds s → c.post s s' →
       (resultAt l.layout l.sem a.rv a.vals).holds s')
     (hpub : ∀ s₁ s₂, l.layout.PubAgree s₁ s₂ → c.pub s₁ s₂) : l.Meets := by
@@ -479,7 +500,10 @@ theorem meets_of_calleeSpec {l : LinkedFn} {q : List RInstr}
     refine ⟨trivial, (hX.rsp s t s' hc hr).trans hsp, ?_, hpost a s s' hs (hX.post s t s' hc hr)⟩
     refine (retAt a.sp a.ret).supp s s' ?_ hret
     rintro _ ⟨x, hx, rfl⟩
-    exact (hX.frame s t s' hc hr x fun hf => hout x hx (hsp ▸ hfoot s x hc hf)).symm
+    refine (hX.frame s t s' hc hr x fun hf => ?_).symm
+    rcases hfoot a s x hs hf with hF | ⟨-, hn⟩
+    · exact hout x hx (hsp ▸ hF)
+    · exact hn hx
   · intro a s t s' hs hr
     have hc := hpre a s hs
     obtain ⟨-, hsp, -, -, -⟩ := holds_entryAt (entryAt_of_pre hs)
@@ -495,7 +519,10 @@ theorem meets_of_calleeSpec {l : LinkedFn} {q : List RInstr}
         · exact absurd ⟨hclob r h, hr'⟩ hl
     · exact absurd trivial hl
     · change ¬ (InFrame a.sp l.frame x ∨ _) at hl
-      exact (hX.frame s t s' hc hr x fun hf => hl (Or.inl (hsp ▸ hfoot s x hc hf))).symm
+      refine (hX.frame s t s' hc hr x fun hf => ?_).symm
+      rcases hfoot a s x hs hf with hF | ⟨hR, -⟩
+      · exact hl (Or.inl (hsp ▸ hF))
+      · exact hl (Or.inr hR)
   · intro a₁ a₂ s₁ s₂ t₁ t₂ s₁' s₂' h₁ h₂ hp hX₁ hX₂
     exact hX.ct s₁ s₂ t₁ t₂ s₁' s₂' (hpre a₁ s₁ h₁) (hpre a₂ s₂ h₂) (hpub s₁ s₂ hp) hX₁ hX₂
 
@@ -512,7 +539,7 @@ theorem meets_of_wordSig {l : LinkedFn} {ws : List String} {res : String}
     (hq : decodeLprog l.bytes = some q) (hX : CalleeSpec (runOf .doitm q) (wordSig l ws res))
     (hF : FootBelow (wordSig l ws res) l.frame) : l.Meets := by
   refine meets_of_calleeSpec hq hX (fun a s hs => ⟨hpre a s hs, ?_⟩) (fun r hr => ?_)
-    (fun s x _ hx => hF s x hx) (fun a s s' hs hp => ?_)
+    (fun _ s x _ hx => Or.inl (hF s x hx)) (fun a s s' hs hp => ?_)
     (fun s₁ s₂ hp => l.pub_of_regs s₁ s₂ hp.rsp hp.regs)
   · obtain ⟨-, -, hvals, -, -⟩ := holds_entryAt (entryAt_of_pre hs)
     obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (sem_isSome_of_pre hs)
