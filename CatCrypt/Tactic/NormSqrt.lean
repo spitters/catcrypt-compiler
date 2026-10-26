@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import Mathlib.Analysis.SpecialFunctions.Pow.Real
-public import Mathlib.Data.Complex.Basic
+public import Mathlib.Basic.Complex.Basic
 
 
 @[expose] public section

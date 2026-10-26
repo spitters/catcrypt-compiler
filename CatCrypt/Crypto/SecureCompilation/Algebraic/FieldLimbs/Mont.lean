@@ -1277,7 +1277,7 @@ theorem powVal_pow (x : ZMod P.p) : ∀ (bs : List Bool) (m : Nat),
   | b :: bs, m => by
       rw [powVal, bitsNum, ← powVal_pow x bs]
       congr 1
-      cases b <;> simp only [cond_true, cond_false, Bool.toNat_true, Bool.toNat_false] <;> ring
+      cases b <;> simp only [Bool.cond_true, Bool.cond_false, Bool.toNat_true, Bool.toNat_false] <;> ring
 
 theorem bitsNum_append_single : ∀ (l : List Bool) (b : Bool) (m : Nat),
     bitsNum (l ++ [b]) m = 2 * bitsNum l m + b.toNat
@@ -1321,7 +1321,7 @@ theorem powK_denote : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (bs : L
           (by rw [nv_map h₁, hx]) hsqv fun r₃ out W₃ h₃ hout hv =>
             hk _ out W₃ (Pres.comp h₁ h₃) hout hv
       | true =>
-        rw [cond_true]
+        rw [Bool.cond_true]
         refine mulMK_denote_enc P sq (xs.map (fun v => r₁ v)) _ W₁ G hsq (by simp [hxs]) (u * u) x hsqv
           (by rw [nv_map h₁, hx]) fun r₂ m W₂ h₂ hm hmv => ?_
         exact powK_denote bs _ m _ W₂ G x (u * u * x) (by simp [hxs]) hm

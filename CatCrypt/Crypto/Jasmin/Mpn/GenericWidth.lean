@@ -10,7 +10,7 @@ public meta import Std.Tactic.BVDecide.Reflect
 public import CatCrypt.Crypto.Jasmin.MemoryModel
 public import Mathlib.Algebra.Order.Ring.Star
 public import Mathlib.Analysis.Normed.Ring.Lemmas
-public import Mathlib.Data.Int.Star
+public import Mathlib.Algebra.Order.Star.Int
 public import Mathlib.Data.UInt
 
 

@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.Core
 public import CatCrypt.Crypto.SecureCompilation.VIR.CoreM
-public import Mathlib.Data.Real.Basic
+public import Mathlib.Basic.Real.Basic
 
 @[expose] public section
 

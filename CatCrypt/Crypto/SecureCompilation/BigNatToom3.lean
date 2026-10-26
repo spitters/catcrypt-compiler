@@ -102,17 +102,17 @@ theorem add_mag_length_le (x y : BigInt) :
     (BigInt.add x y).mag.length ≤ max x.mag.length y.mag.length + 1 := by
   unfold BigInt.add
   by_cases hs : (x.neg == y.neg) = true
-  · simp only [hs, cond_true, mkBigInt_mag]
+  · simp only [hs, Bool.cond_true, mkBigInt_mag]
     exact le_trans (norm_length_le _)
       (le_of_eq (BigNatKaratsuba.add_length x.mag y.mag))
   · rw [Bool.not_eq_true] at hs
-    simp only [hs, cond_false]
+    simp only [hs, Bool.cond_false]
     by_cases hb : BigNatCompare.ble x.mag y.mag = true
-    · simp only [hb, cond_true, mkBigInt_mag]
+    · simp only [hb, Bool.cond_true, mkBigInt_mag]
       refine le_trans (norm_length_le _) (le_trans (bnSub_length_le _ _) ?_)
       omega
     · rw [Bool.not_eq_true] at hb
-      simp only [hb, cond_false, mkBigInt_mag]
+      simp only [hb, Bool.cond_false, mkBigInt_mag]
       refine le_trans (norm_length_le _) (le_trans (bnSub_length_le _ _) ?_)
       omega
 
@@ -211,7 +211,7 @@ theorem mulBI_val (x y : BigInt) (prod : List (BitVec 64))
   rw [BigInt.intVal_eq, BigInt.intVal_eq x, BigInt.intVal_eq y]
   cases x.neg <;> cases y.neg <;>
     simp only [Bool.xor_false, Bool.xor_true, Bool.not_true, Bool.not_false,
-      cond_true, cond_false] <;>
+      Bool.cond_true, Bool.cond_false] <;>
     rw [h] <;> push_cast <;> ring
 
 /-- Division of a signed integer by a small `Nat` divisor, carrying the sign
@@ -225,12 +225,12 @@ theorem divRaw_val (x : BigInt) (d : Nat) (h : (d : Int) ∣ BigInt.intVal x) :
   rw [divRaw, BigInt.intVal_mkBigInt, BigNatDivMod.div_val, BigNat.toNat_ofNat,
     BigInt.intVal_eq]
   cases hx : x.neg with
-  | false => simp only [cond_false]; rw [Int.natCast_div]
+  | false => simp only [Bool.cond_false]; rw [Int.natCast_div]
   | true =>
       rw [BigInt.intVal_eq, hx] at h
-      simp only [cond_true] at h
+      simp only [Bool.cond_true] at h
       have hd : (d : Int) ∣ (bignumVal x.mag : Int) := (dvd_neg).mp h
-      simp only [cond_true]
+      simp only [Bool.cond_true]
       rw [Int.natCast_div, Int.neg_ediv_of_dvd hd]
 
 /-- The magnitude value equals the absolute value of the signed value. -/

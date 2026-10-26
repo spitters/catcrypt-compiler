@@ -394,11 +394,11 @@ theorem corresU_cond {fuel : Nat} {P : AState → Prop} {fb : AState → AState}
   by_cases hga : g a = true
   · obtain ⟨env', hstep, hSR'⟩ := hbody env a hSR (hP hga)
     refine ⟨env', ?_, ?_⟩
-    · simp only [semScalarCond, hgu, hga, cond_true, hstep]
+    · simp only [semScalarCond, hgu, hga, Bool.cond_true, hstep]
     · simp only [hga, ite_true]; exact hSR'
   · simp only [Bool.not_eq_true] at hga
     refine ⟨env, ?_, ?_⟩
-    · simp only [semScalarCond, hgu, hga, cond_false]
+    · simp only [semScalarCond, hgu, hga, Bool.cond_false]
     · simp only [hga, Bool.false_eq_true, ite_false]; exact hSR
 
 /-- The do-while `RWhileNz name body` at the unified waist, trip by trip: under the

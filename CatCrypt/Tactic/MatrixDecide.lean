@@ -8,7 +8,7 @@ module
 public import Mathlib.LinearAlgebra.Matrix.PosDef
 public import Mathlib.LinearAlgebra.Matrix.Trace
 public import Mathlib.Data.Fin.VecNotation
-public import Mathlib.Data.Complex.Basic
+public import Mathlib.Basic.Complex.Basic
 
 /-!
 # Matrix Decision Tactics

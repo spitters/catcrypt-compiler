@@ -286,7 +286,7 @@ theorem respects_emitRotL {t : JasminTy} (dst : Fin numSlots) (n : Nat)
     refine Respects.of_eq (h1.congr ?_) ?_
     · intro σ ι
       congr 1
-      simp only [srcVal, JasminBinOp.apply, rotLM, ite_eq_right hn, cond_true, cond_false,
+      simp only [srcVal, JasminBinOp.apply, rotLM, ite_eq_right hn, Bool.cond_true, Bool.cond_false,
         Function.update_of_ne hDst, Function.update_self,
         Function.update_of_ne (Ne.symm hDst), Function.update_idem]
     · intro Γ bs immV

@@ -251,7 +251,7 @@ theorem AliasInv.store {d : Nat} {out : String} {S : List Nat} {l : List (String
   · have hb : (n == loopReg d cd) = false := by simpa using hn
     show (List.lookup n ((loopReg d cd, out) :: l)).getD n = _
     rw [List.lookup_cons, hb]
-    dsimp only [cond_false]
+    dsimp only [Bool.cond_false]
     rw [show (List.lookup n l).getD n = _ from h.1 n]
     simp [hn]
 

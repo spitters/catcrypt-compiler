@@ -89,13 +89,13 @@ def semScalarCond (semBody : SEnvScalar → Option SEnvScalar) (guard : SEnvScal
 @[simp] theorem semScalarCond_false (semBody : SEnvScalar → Option SEnvScalar)
     (guard : SEnvScalar → Bool) (env : SEnvScalar) (hg : guard env = false) :
     semScalarCond semBody guard env = some env := by
-  simp only [semScalarCond, hg, cond_false]
+  simp only [semScalarCond, hg, Bool.cond_false]
 
 /-- The guard-true leg of `semScalarCond` runs the block. -/
 @[simp] theorem semScalarCond_true (semBody : SEnvScalar → Option SEnvScalar)
     (guard : SEnvScalar → Bool) (env : SEnvScalar) (hg : guard env = true) :
     semScalarCond semBody guard env = semBody env := by
-  simp only [semScalarCond, hg, cond_true]
+  simp only [semScalarCond, hg, Bool.cond_true]
 
 /-! ## 2. The guard-indexed front descent `condSkipD`
 
@@ -147,7 +147,7 @@ theorem condSkipD_denote (body : LowCT)
       -- Guard false: the descent is the identity and the run is env-preserving.
       intro Γ vm V env env' o hc htr hsem
       simp only [condSkipD] at htr
-      simp only [cond_false] at hsem
+      simp only [Bool.cond_false] at hsem
       obtain rfl := Option.some.inj htr
       obtain rfl := Option.some.inj hsem
       exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
@@ -155,7 +155,7 @@ theorem condSkipD_denote (body : LowCT)
       -- Guard true: the descent is the block descent; delegate to the body IH.
       intro Γ vm V env env' o hc htr hsem
       simp only [condSkipD] at htr
-      simp only [cond_true] at hsem
+      simp only [Bool.cond_true] at hsem
       exact ihBody vm V env env' o hc htr hsem
 
 /-- **Generic guard-case denote — the `rCond`-on-`IsCoveredSU` lift.**  The
@@ -192,14 +192,14 @@ theorem condSkipDEnv_denote {Γ0 : Ctx}
   | false =>
       intro env' o htr hsem
       simp only [condSkipD] at htr
-      simp only [cond_false] at hsem
+      simp only [Bool.cond_false] at hsem
       obtain rfl := Option.some.inj htr
       obtain rfl := Option.some.inj hsem
       exact ⟨V, hc, fun tail => ⟨tail, rfl, rfl⟩⟩
   | true =>
       intro env' o htr hsem
       simp only [condSkipD] at htr
-      simp only [cond_true] at hsem
+      simp only [Bool.cond_true] at hsem
       exact ihBody env' o htr hsem
 
 /-! ## 4. The whole-program conditional denote + coverage predicate -/

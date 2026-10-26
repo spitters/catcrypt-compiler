@@ -220,14 +220,14 @@ theorem corresU_condSet (fuel : Nat) (name nv : String) (v : Nat) (hname : ¬ is
   by_cases hz : a name = 0
   · refine ⟨env, ?_, ?_⟩
     · simp only [semU, Dialects.TranslateDialectScalar.semScalarCond, guardNz, hg,
-        Option.getD_some, hz, ne_eq, not_true_eq_false, decide_false, cond_false]
+        Option.getD_some, hz, ne_eq, not_true_eq_false, decide_false, Bool.cond_false]
     · intro s hs
       by_cases hsv : s = nv
       · simp only [ite_eq_left hsv, ite_eq_left hz]; exact hSR s hs
       · simp only [ite_eq_right hsv]; exact hSR s hs
   · refine ⟨env.upd nv (t := .sword 64) (BitVec.ofNat 64 v), ?_, ?_⟩
     · simp only [semU, Dialects.TranslateDialectScalar.semScalarCond, guardNz, hg,
-        Option.getD_some, ne_eq, hz, not_false_eq_true, decide_true, cond_true, semScalar]
+        Option.getD_some, ne_eq, hz, not_false_eq_true, decide_true, Bool.cond_true, semScalar]
     · intro s hs
       by_cases hsv : s = nv
       · subst hsv

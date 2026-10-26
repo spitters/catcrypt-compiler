@@ -324,7 +324,7 @@ theorem emitRotL_denote_pos {Γ : Ctxt jasminDialect} {t : JasminTy}
   -- (since `dst ≠ rotScr`) back to the original `bs.st dst`. Reads of `rotScr`
   -- after the second-layer `dst` write go through `_ne` (since `rotScr ≠ dst`)
   -- to the first layer where `_eq` fires.
-  simp only [readSrc_st, cond_true, cond_false,
+  simp only [readSrc_st, Bool.cond_true, Bool.cond_false,
     readSlot_bsAfterOp_eq,
     readSlot_bsAfterOp_ne _ _ _ _ _ hDst,
     readSlot_bsAfterOp_ne _ _ _ _ _ hDst.symm]

@@ -118,30 +118,30 @@ theorem add_val (x y : BigInt) : intVal (add x y) = intVal x + intVal y := by
   rw [intVal_eq x, intVal_eq y]
   have hle : bignumVal x.mag ≤ bignumVal y.mag ↔ BigNatCompare.ble x.mag y.mag = true :=
     (BigNatCompare.ble_eq_true_iff x.mag y.mag).symm
-  cases hx : x.neg <;> cases hy : y.neg <;> simp only [cond_true, cond_false]
+  cases hx : x.neg <;> cases hy : y.neg <;> simp only [Bool.cond_true, Bool.cond_false]
   · -- both nonneg: add magnitudes, same sign
-    rw [beq_self_eq_true, cond_true, intVal_mkBigInt, BigNat.add_val, cond_false]
+    rw [beq_self_eq_true, Bool.cond_true, intVal_mkBigInt, BigNat.add_val, Bool.cond_false]
     push_cast; ring
   · -- x nonneg, y negative: opposite signs
-    rw [show ((false : Bool) == true) = false from rfl, cond_false]
+    rw [show ((false : Bool) == true) = false from rfl, Bool.cond_false]
     cases hb : BigNatCompare.ble x.mag y.mag
-    · rw [cond_false, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, cond_false]
+    · rw [Bool.cond_false, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, Bool.cond_false]
       rw [Nat.cast_sub (by
         have hn : ¬ bignumVal x.mag ≤ bignumVal y.mag := by rw [hle, hb]; decide
         omega)]; ring
-    · rw [cond_true, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, cond_true]
+    · rw [Bool.cond_true, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, Bool.cond_true]
       rw [Nat.cast_sub (hle.mpr hb)]; ring
   · -- x negative, y nonneg: opposite signs
-    rw [show ((true : Bool) == false) = false from rfl, cond_false]
+    rw [show ((true : Bool) == false) = false from rfl, Bool.cond_false]
     cases hb : BigNatCompare.ble x.mag y.mag
-    · rw [cond_false, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, cond_true]
+    · rw [Bool.cond_false, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, Bool.cond_true]
       rw [Nat.cast_sub (by
         have hn : ¬ bignumVal x.mag ≤ bignumVal y.mag := by rw [hle, hb]; decide
         omega)]; ring
-    · rw [cond_true, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, cond_false]
+    · rw [Bool.cond_true, intVal_mkBigInt, BigNatKaratsuba.bnSub_val, Bool.cond_false]
       rw [Nat.cast_sub (hle.mpr hb)]; ring
   · -- both negative: add magnitudes, same sign
-    rw [beq_self_eq_true, cond_true, intVal_mkBigInt, BigNat.add_val, cond_true]
+    rw [beq_self_eq_true, Bool.cond_true, intVal_mkBigInt, BigNat.add_val, Bool.cond_true]
     push_cast; ring
 
 /-- Subtraction: `sub x y = add x (negate y)`. -/
@@ -163,7 +163,7 @@ theorem mul_val (x y : BigInt) : intVal (mul x y) = intVal x * intVal y := by
   rw [mul, intVal_mkBigInt, BigNatKaratsuba.mulDispatch_val, intVal_eq x, intVal_eq y]
   cases x.neg <;> cases y.neg <;>
     simp only [Bool.xor_false, Bool.xor_true, Bool.not_true, Bool.not_false,
-      cond_true, cond_false] <;>
+      Bool.cond_true, Bool.cond_false] <;>
     push_cast <;> ring
 
 /-! ## Scalar multiplication by a small constant -/
@@ -175,9 +175,9 @@ def ofInt (c : Int) : BigInt := mkBigInt (decide (c < 0)) (BigNat.ofNat c.natAbs
 theorem intVal_ofInt (c : Int) : intVal (ofInt c) = c := by
   rw [ofInt, intVal_mkBigInt, BigNat.toNat_ofNat]
   by_cases hc : c < 0
-  · simp only [hc, decide_true, cond_true]
+  · simp only [hc, decide_true, Bool.cond_true]
     rw [Int.ofNat_natAbs_of_nonpos (le_of_lt hc)]; ring
-  · simp only [hc, decide_false, cond_false]
+  · simp only [hc, decide_false, Bool.cond_false]
     exact Int.natAbs_of_nonneg (not_lt.mp hc)
 
 /-- Multiply by a small `Int` constant (e.g. Toom-3/Toom-4 interpolation
@@ -202,13 +202,13 @@ theorem divExactSmall_val (x : BigInt) (d : Nat) (h : (d : Int) ∣ intVal x) :
   rw [divExactSmall, intVal_mkBigInt, BigNatDivMod.div_val, BigNat.toNat_ofNat, intVal_eq]
   cases hx : x.neg with
   | false =>
-    simp only [cond_false]
+    simp only [Bool.cond_false]
     rw [Int.natCast_div]
   | true =>
     rw [intVal_eq, hx] at h
-    simp only [cond_true] at h
+    simp only [Bool.cond_true] at h
     have hd : (d : Int) ∣ (bignumVal x.mag : Int) := (dvd_neg).mp h
-    simp only [cond_true]
+    simp only [Bool.cond_true]
     rw [Int.natCast_div, Int.neg_ediv_of_dvd hd]
 
 /-- Sanity: `(-6) * 4 + 24 = 0` at the carrier level. -/

@@ -341,14 +341,14 @@ theorem rustExec_semU_agree {N : Nat} {leafSpec : LeafSpec} (fuel : Nat) {c : Lo
       | ifTrue _ _ _ _ _ v hveq hvne hct =>
           have hgt : guardNz name env = true := by
             rw [hg]; exact decide_eq_true (hveq ▸ hvne)
-          simp only [semU, semScalarCond, hgt, cond_true] at hsem
+          simp only [semU, semScalarCond, hgt, Bool.cond_true] at hsem
           obtain ⟨he', hi'⟩ := ih hct hsem henv hIR hrThen
           exact ⟨envBoundOn_mono he' (fun y hy => le_afterB thenBlk B y hy), hi'⟩
       | ifFalse _ _ _ _ _ hveq hcf =>
           cases hcf
           have hgf : guardNz name env = false := by
             rw [hg]; exact decide_eq_false (by simp [hveq])
-          simp only [semU, semScalarCond, hgf, cond_false, Option.some.injEq] at hsem
+          simp only [semU, semScalarCond, hgf, Bool.cond_false, Option.some.injEq] at hsem
           subst hsem
           exact ⟨henv, hIR⟩
   | @rFor x M body hM _ ih =>
@@ -527,14 +527,14 @@ theorem rustExec_semU_agree_arr {N : Nat} {leafSpec : LeafSpec} (fuel : Nat)
       | ifTrue _ _ _ _ _ v hveq hvne hct =>
           have hgt : guardNz name env = true := by
             rw [hg]; exact decide_eq_true (hveq ▸ hvne)
-          simp only [semU, semScalarCond, hgt, cond_true] at hsem
+          simp only [semU, semScalarCond, hgt, Bool.cond_true] at hsem
           obtain ⟨he', hw', hu', hi'⟩ := ih hct hsem henv htw hu hTW hdisj hir hrThen htok.1
           exact ⟨envBoundOn_mono he' (fun y hy => le_afterBW TW thenBlk B y hy), hw', hu', hi'⟩
       | ifFalse _ _ _ _ _ hveq hcf =>
           cases hcf
           have hgf : guardNz name env = false := by
             rw [hg]; exact decide_eq_false (by simp [hveq])
-          simp only [semU, semScalarCond, hgf, cond_false, Option.some.injEq] at hsem
+          simp only [semU, semScalarCond, hgf, Bool.cond_false, Option.some.injEq] at hsem
           subst hsem
           exact ⟨henv, htw, hu, hir⟩
   | @rFor x M body hM _ ih =>

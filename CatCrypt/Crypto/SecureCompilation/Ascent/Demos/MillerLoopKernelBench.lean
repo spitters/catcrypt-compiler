@@ -171,14 +171,14 @@ theorem millerBody_corres (ls : SemLeafSpec) (fuel : Nat)
   have hm := hL.mul _ _ _ _ hsq (hL.dbl n hn)
   cases hb : (es n).bit
   · rw [hb] at hbit
-    simp only [hbit, cond_false]
+    simp only [hbit, Bool.cond_false]
     refine ⟨_, rfl, ?_, _, rfl, ?_⟩
     · rintro m ⟨⟩
       simp only [SEnvScalar.upd, String.reduceEq, ite_false, hi']
     · simp only [stepM, millerStepEntry, hb]
       exact hm
   · rw [hb] at hbit
-    simp only [hbit, cond_true]
+    simp only [hbit, Bool.cond_true]
     refine ⟨_, rfl, ?_, _, rfl, ?_⟩
     · rintro m ⟨⟩
       simp only [SEnvScalar.upd, String.reduceEq, ite_false, hi']

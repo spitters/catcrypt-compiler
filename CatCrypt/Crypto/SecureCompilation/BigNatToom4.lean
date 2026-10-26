@@ -104,7 +104,7 @@ theorem mkBigInt_xor_val (x y : BigInt) (r : List (BitVec 64))
   rw [intVal_mkBigInt, hr, intVal_eq x, intVal_eq y]
   cases x.neg <;> cases y.neg <;>
     simp only [Bool.xor_false, Bool.xor_true, Bool.not_true, Bool.not_false,
-      cond_true, cond_false] <;>
+      Bool.cond_true, Bool.cond_false] <;>
     push_cast <;> ring
 
 /-! ## The four-way carrier split -/
