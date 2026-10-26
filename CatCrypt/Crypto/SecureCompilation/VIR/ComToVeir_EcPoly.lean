@@ -120,7 +120,7 @@ def pointTyOf (pc : AlgebraicPrintCtx) {p : Nat} (r : ECRepr p) (q : PointRepr) 
      curve :=
        match r.curve with
        | some D => curveAttr pc D
-       | none => .integerType (Veir.IntegerType.mk 0) } : Veir.EllipticCurvePointType)
+       | none => .integerType (Veir.IntegerType.signless 0) } : Veir.EllipticCurvePointType)
 
 /-! ## Side conditions on curves -/
 
@@ -335,7 +335,7 @@ def CmpOp.checkIn (pc : AlgebraicPrintCtx) (σ : ECReprMap) : CmpOp → Except S
 
 /-- `!ring.rq<[q], n : i32, iw>`, with `, eval` in the evaluation domain. -/
 def rqTy (q n w : Nat) (eval : Bool) : Veir.TypeAttr :=
-  ({ moduli := #[(q : Int)], ringDegree := intAttr n 32, storageType := Veir.IntegerType.mk w,
+  ({ moduli := #[(q : Int)], ringDegree := intAttr n 32, storageType := Veir.IntegerType.signless w,
      domain := if eval then .eval else .coeff } : Veir.RqType)
 
 /-- The VeIR type of a `PolyTy`: the coefficient or evaluation domain of `!ring.rq`. -/
