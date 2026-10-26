@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.DialectCategoryTemplate
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgJasmin
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminValTransport
 public import CatCrypt.Crypto.SecureCompilation.VIR.DialectCategoryTemplateCatToJasmin
+public import CatCrypt.Crypto.SecureCompilation.VIR.TransArgsLaws
 
 /-!
 # The category of dialects with certified template lowerings
@@ -64,8 +65,8 @@ they hold by reduction.
   valuation.
 * `Dial.Hom.map_denote` — `NFProg.map` along a morphism preserves denotation, for every
   program.
-* `Dial.transArgs_id_heq`, `Dial.transArgs_comp_heq` — the transport of an argument
-  vector along the identity and along a composite.
+* `Dial.transArgs_comp_heq` — the transport of an argument vector along a composite (the
+  identity case is `BlockLoweringExtend.transArgs_id_heq` of `TransArgsLaws`).
 -/
 
 @[expose] public section
@@ -77,7 +78,7 @@ namespace CatCrypt.Crypto.SecureCompilation.VIR
 open Ctxt (Var Valuation)
 open FieldDialectBlockDescent
   (BlockLoweringData TransTy MapVal VarTransports BlockOpTransports MapValExtends)
-open BlockLoweringExtend (transArgs)
+open BlockLoweringExtend (transArgs transArgs_id_heq)
 open BlockLoweringDataComp
 open DialectCategory
 open CategoryTheory
@@ -141,21 +142,6 @@ section TransArgs
 
 variable {T T' T'' : Type} [TyDenote T] [TyDenote T'] [TyDenote T'']
 
-/-- The transport of an argument vector along the identity type map and the identity
-    value transport is the vector. -/
-theorem transArgs_id_heq : {ts : List T} → (x : HVector (fun t => ⟦t⟧) ts) →
-    transArgs (fun t => t) (fun x => x) x ≍ x
-  | [], .nil => HEq.rfl
-  | t :: ts, .cons x xs => by
-      have ih := transArgs_id_heq xs
-      show HVector.cons x (transArgs (fun t => t) (fun x => x) xs) ≍ HVector.cons x xs
-      generalize transArgs (fun t => t) (fun x => x) xs = ys at ih
-      have hts : ts.map (fun t => t) = ts := List.map_id' ts
-      revert ys
-      rw [hts]
-      intro ys ih
-      rw [eq_of_heq ih]
-
 /-- The transport of an argument vector along a composite type map and the composite
     value transport is the transport by the first followed by the transport by the
     second. -/
@@ -176,25 +162,6 @@ theorem transArgs_comp_heq (f : T → T') (g : T' → T'') (tf : ∀ {t : T}, �
       rw [eq_of_heq ih]
 
 end TransArgs
-
-section Calls
-
-variable {d : Dialect.{0, 0}} [TyDenote d.Ty]
-
-/-- A call at a signature and an argument valuation equal to another signature and
-    argument valuation returns the same results, read along the equality of the result
-    types. -/
-theorem call_eq_map_of_heq (E : CallEnv d) (f : String) {as₁ as₂ rs₁ rs₂ : List d.Ty}
-    (has : as₁ = as₂) (hrs : rs₁ = rs₂) {x₁ : Valuation as₁} {x₂ : Valuation as₂}
-    (hx : x₁ ≍ x₂) {α : Type} (o : Option α) (T₁ : α → Valuation rs₁)
-    (T₂ : α → Valuation rs₂) (hT : ∀ r, T₁ r ≍ T₂ r)
-    (h : E.call f as₂ rs₂ x₂ = o.map T₂) : E.call f as₁ rs₁ x₁ = o.map T₁ := by
-  subst has hrs
-  obtain rfl := eq_of_heq hx
-  obtain rfl : T₁ = T₂ := funext fun r => eq_of_heq (hT r)
-  exact h
-
-end Calls
 
 /-! ## 2. Morphisms -/
 

@@ -226,8 +226,9 @@ theorem mapFunctor_id (a : Dial) : mapFunctor (𝟙 a : Dial.Hom a a) = 𝟭 (Re
   refine mk_heq_mk (List.map_id' (Γ : Ctxt a.dia)) (List.map_id' (ts : Ctxt a.dia))
     fun fuel W V hW => ?_
   obtain ⟨V₀, rfl⟩ := Dial.Hom.transArgs_surjective (𝟙 a : Dial.Hom a a) Γ W
-  obtain rfl : V₀ = V := eq_of_heq ((Dial.transArgs_id_heq V₀).symm.trans hW)
-  exact ⟨_, p.denote fuel V₀, _, fun r => r, fun r => Dial.transArgs_id_heq r,
+  obtain rfl : V₀ = V :=
+    eq_of_heq ((BlockLoweringExtend.transArgs_id_heq V₀).symm.trans hW)
+  exact ⟨_, p.denote fuel V₀, _, fun r => r, fun r => BlockLoweringExtend.transArgs_id_heq r,
     Dial.Hom.denote_mapProg (𝟙 a : Dial.Hom a a) fuel p V₀, Option.map_id'.symm⟩
 
 /-- **The action of a composite is the composite of the actions.** -/
