@@ -2423,7 +2423,8 @@ theorem lsound_whileOut (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Opt
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) body = true)
     (hcar : ∀ env V, EnvRel σ env V → CarriedRel env xs cs (Expr.lookupArgs inits V)) :
     LSound bi C fuel (.whileFold (.var g) body) σ o := by
-  simp only [whileOut, Option.bind_eq_some_iff] at h₀
+  have hc := whileOut_whileCarry tgt σ g xs cs inits rec h₀
+  simp only [whileOut, hc, ite_true, Option.bind_eq_some_iff] at h₀
   obtain ⟨⟨pt, pv⟩, hg, h₀⟩ := h₀
   split at h₀
   case isFalse => cases h₀

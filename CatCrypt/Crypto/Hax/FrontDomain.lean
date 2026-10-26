@@ -151,6 +151,9 @@ inductive Refusal where
   /-- A `whileFold` whose flag, after the carried names are bound, is a name of the type `t`
       other than the bit type (`whileOut`). -/
   | whileGuard (t : NfTy)
+  /-- A `whileFold` that carries a name of the type `t`, which fails `whileCarryOkB`
+      (`whileOut`). -/
+  | whileCarry (t : NfTy)
 
 /-- The rendering of a refusal. -/
 def Refusal.toString : Refusal → String
@@ -172,6 +175,7 @@ def Refusal.toString : Refusal → String
   | .armTypes a b => s!"arms of types {tyName a} and {tyName b}"
   | .armCarried x => s!"name {x} changes type in an arm"
   | .whileGuard t => s!"while flag of type {tyName t}"
+  | .whileCarry t => s!"while loop carrying a value of type {tyName t}"
   | .arrayFill => "array fill (call repeat)"
   | .projection t i => s!"projection {i} of a value of type {tyName t}"
 
@@ -339,32 +343,39 @@ theorem toOption_loopE {Γ Γ₃ : Ctxt nfDialect} (tgt : Option String)
       loopOut tgt pre₀ σ₃ loV tripV rev i xs cs inits fun σ => (rec σ).toOption := by
   simp only [loopE, loopOut, toOption_bind, toOption_orRefuse]
 
-/-- `whileOut` with the refusal: the unbound flag, the flag of a type other than the bit type,
-    that of the body `rec`, or the carried name the body leaves unbound or at another type. -/
+/-- `whileOut` with the refusal: the first carried type that fails `whileCarryOkB`, the unbound
+    flag, the flag of a type other than the bit type, that of the body `rec`, or the carried
+    name the body leaves unbound or at another type. -/
 def whileE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
     (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Except Refusal (Out Δ)) :
     Except Refusal (Out Γ) :=
   let σB : NfEnv (cs ++ Γ) := whileEnv σ xs cs (headVars cs) fun v => Var.shiftApp cs v
-  (orRefuse (.unbound g) (σB.lookup g)).bind fun p =>
-    if h : p.1 = NfTy.bit then
-      (rec σB).bind fun ob =>
-        orRefuse (.loopCarried (carriedMiss ob.σ xs cs)) <| (varsAt ob.σ xs cs).map fun rets =>
-          let oU := bind1N tgt σB .constUnit .nil
-          Out.mk oU.Δ oU.t (.whileLoop inits (whileOutStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
-    else .error (.whileGuard p.1)
+  if cs.all whileCarryOkB then
+    (orRefuse (.unbound g) (σB.lookup g)).bind fun p =>
+      if h : p.1 = NfTy.bit then
+        (rec σB).bind fun ob =>
+          orRefuse (.loopCarried (carriedMiss ob.σ xs cs)) <| (varsAt ob.σ xs cs).map fun rets =>
+            let oU := bind1N tgt σB .constUnit .nil
+            Out.mk oU.Δ oU.t (.whileLoop inits (whileOutStep cs (h ▸ p.2) ob rets) oU.pre)
+              oU.σ oU.res
+      else .error (.whileGuard p.1)
+  else .error (.whileCarry ((cs.find? fun t => !whileCarryOkB t).getD .unit))
 
 theorem toOption_whileE {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
     (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Except Refusal (Out Δ)) :
     (whileE tgt σ g xs cs inits rec).toOption =
       whileOut tgt σ g xs cs inits fun σ => (rec σ).toOption := by
-  simp only [whileE, whileOut, toOption_bind, toOption_orRefuse]
-  congr 1
-  funext p
-  split
-  · simp only [toOption_bind, toOption_orRefuse]
-  · rfl
+  by_cases hc : cs.all whileCarryOkB = true
+  · simp only [whileE, whileOut, hc, ite_true, toOption_bind, toOption_orRefuse]
+    congr 1
+    funext p
+    split
+    · simp only [toOption_bind, toOption_orRefuse]
+    · rfl
+  · simp only [whileE, whileOut, hc]
+    rfl
 
 /-- `condOut` with the refusal: that of the first arm, then that of the second, then the
     different result types of the arms, or the carried name an arm leaves unbound or at
@@ -797,7 +808,8 @@ theorem whileOut_ilitWord {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEn
       opsPre ilitWordOp o.pre = true)
     {o : Out Γ} (h : whileOut tgt σ g xs cs inits rec = some o) :
     opsPre ilitWordOp o.pre = true := by
-  simp only [whileOut, Option.bind_eq_some_iff] at h
+  have hc := whileOut_whileCarry tgt σ g xs cs inits rec h
+  simp only [whileOut, hc, ite_true, Option.bind_eq_some_iff] at h
   obtain ⟨p, -, h⟩ := h
   split at h
   · simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h

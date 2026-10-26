@@ -585,23 +585,44 @@ def whileOutStep {Γ : Ctxt nfDialect} (cs : List NfTy)
   .ifThenElse gV (ob.pre.plug (.ret (.cons (ob.pre.wk gV) rets)))
     (.ret (.cons gV (headVars cs))) (.ret (headVars (NfTy.bit :: cs)))
 
+/-- The types a `while` loop of the front may carry: a word of positive width, an unbounded
+    integer, an unsigned integer and a bit. Arrays, pairs, tuples, the unit type, signed
+    integers and slices are not carried. -/
+def whileCarryOkB : NfTy → Bool
+  | .word w => 0 < w
+  | .int => true
+  | .uint _ => true
+  | .bit => true
+  | _ => false
+
 /-- **The `while` loop of the front.** From the environment of names `σ`, the loop carrying the
     names `xs` at the types `cs` from the variables `inits`, on the flag held by the name `g`
     at the bit type: the step `whileOutStep` runs the translation `rec` of the source body when
     the flag is set and returns the flag after it; the continuation binds the unit value, with
-    the source name `tgt`. `none` when `g` is unbound or not a bit after the carried names are
-    bound, or the body leaves a name of `xs` unbound or at another type. -/
+    the source name `tgt`. `none` when a type of `cs` fails `whileCarryOkB`, when `g` is unbound
+    or not a bit after the carried names are bound, or when the body leaves a name of `xs`
+    unbound or at another type. -/
 def whileOut {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ) (g : String)
     (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) : Option (Out Γ) :=
   let σB : NfEnv (cs ++ Γ) := whileEnv σ xs cs (headVars cs) fun v => Var.shiftApp cs v
-  (σB.lookup g).bind fun p =>
-    if h : p.1 = NfTy.bit then
-      (rec σB).bind fun ob =>
-        (varsAt ob.σ xs cs).map fun rets =>
-          let oU := bind1N tgt σB .constUnit .nil
-          Out.mk oU.Δ oU.t (.whileLoop inits (whileOutStep cs (h ▸ p.2) ob rets) oU.pre) oU.σ oU.res
-    else none
+  if cs.all whileCarryOkB then
+    (σB.lookup g).bind fun p =>
+      if h : p.1 = NfTy.bit then
+        (rec σB).bind fun ob =>
+          (varsAt ob.σ xs cs).map fun rets =>
+            let oU := bind1N tgt σB .constUnit .nil
+            Out.mk oU.Δ oU.t (.whileLoop inits (whileOutStep cs (h ▸ p.2) ob rets) oU.pre)
+              oU.σ oU.res
+      else none
+  else none
+
+/-- The carried types of a loop of `whileOut` pass `whileCarryOkB`. -/
+theorem whileOut_whileCarry {Γ : Ctxt nfDialect} (tgt : Option String) (σ : NfEnv Γ)
+    (g : String) (xs : List String) (cs : List NfTy) (inits : HVector (fun t => Var Γ t) cs)
+    (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) {o : Out Γ}
+    (h : whileOut tgt σ g xs cs inits rec = some o) : cs.all whileCarryOkB = true := by
+  grind only [= whileOut.eq_def]
 
 /-- An expression containing no `whileFold` and no `whileFoldReturn`. -/
 def whileFoldFree : ImpExpr → Bool
@@ -3191,7 +3212,8 @@ theorem whileOut_sound (bi : Builtins) (fuel : Nat) (body : ImpExpr) (tgt : Opti
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) body = true)
     (hcar : ∀ env V, EnvRel σ env V → CarriedRel env xs cs (Expr.lookupArgs inits V)) :
     Sound bi fuel (.whileFold (.var g) body) σ o := by
-  simp only [whileOut, Option.bind_eq_some_iff] at h₀
+  have hc := whileOut_whileCarry tgt σ g xs cs inits rec h₀
+  simp only [whileOut, hc, ite_true, Option.bind_eq_some_iff] at h₀
   obtain ⟨⟨pt, pv⟩, hg, h₀⟩ := h₀
   split at h₀
   case isFalse => cases h₀
@@ -3313,6 +3335,17 @@ theorem impToNF_sound (bi : Builtins) (sigOf : String → List NfTy → Option N
           (fun env V hrel => CarriedRel.of_entries hrel _ (condCarried_lookup σ body body))
     | _ => simp [impToNF] at h
   all_goals intro tgt Γ σ o h; simp [impToNF] at h
+
+/-- **The front carries only `whileCarryOkB` types around a `while` loop**: when `impToNF`
+    translates `whileFold c body`, the types of the names the loop carries, those of
+    `condCarried σ body body`, pass `whileCarryOkB`. -/
+theorem impToNF_whileCarry (sigOf : String → List NfTy → Option NfTy) (tgt : Option String)
+    {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (c body : ImpExpr) {o : Out Γ}
+    (h : impToNF sigOf tgt σ (.whileFold c body) = some o) :
+    (entriesVars (condCarried σ body body)).1.all whileCarryOkB = true := by
+  cases c with
+  | var g => exact whileOut_whileCarry _ _ _ _ _ _ _ (by simpa only [impToNF] using h)
+  | _ => simp [impToNF] at h
 
 /-! ## 12. The readback -/
 
