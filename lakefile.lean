@@ -2864,9 +2864,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.P256FieldMulCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.P384FieldMul,
     Lake.Glob.one `CatCrypt.Crypto.Vale.P384FieldMulCoqAxioms,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.Pallas,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.Pallas,
     Lake.Glob.one `CatCrypt.Crypto.Vale.PallasFieldMul,
     Lake.Glob.one `CatCrypt.Crypto.Vale.PallasFieldMulCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.SafegcdBLS12_381,
