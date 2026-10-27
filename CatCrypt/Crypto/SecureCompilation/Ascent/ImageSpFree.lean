@@ -305,6 +305,13 @@ theorem rspFreeNameB_slot {r : String} (h : isSpillOrQsave r = true) :
   · exact rspFreeNameB_of_head (head?_of_hasPrefix (c := 'q') h (by simp)) (by decide)
       (by decide)
 
+/-- A frame-array name `fa.<o>.<n>` passes `rspFreeNameB`: it is no stack name. -/
+theorem rspFreeNameB_fa {r : String} (h : X86Backend.LprogAsmPrinter.faB r = true) :
+    rspFreeNameB r = true :=
+  rspFreeNameB_of_head
+    (head?_of_hasPrefix (c := 'f') (X86Backend.DecodePrintedAddr.hasPrefix_fa_of_faB h)
+      (by simp)) (by decide) (by decide)
+
 /-- A name with a frame offset passes `rspFreeNameB`. -/
 theorem rspFreeNameB_frame {F W : Nat} {r : String} {qB : Nat}
     (h : (spillQsaveOff F W r qB).isSome = true) : rspFreeNameB r = true := by
@@ -514,6 +521,11 @@ theorem rspFree_of_armOk {P : X86Backend.LprogBytesDecode.Params} {x : LinstrR} 
       left
       simp [rspFreeB, operandNames, srcNames, AArm.instr, rspFreeNameB_gp h.1.1.1,
         rspFreeNameB_gp h.1.1.2, rspFreeNameB_gp h.2]
+  | leaF d q =>
+      simp only [AArm.ok, Bool.and_eq_true] at h
+      left
+      simp [rspFreeB, operandNames, srcNames, AArm.instr, rspFreeNameB_gp h.1.1,
+        rspFreeNameB_fa h.1.2]
 
 /-- **An instruction of the covered fragment with carry chains passes `RspFreeUpToStore`**:
     every operand name is a general-purpose name, a frame-slot name, a condition code or a

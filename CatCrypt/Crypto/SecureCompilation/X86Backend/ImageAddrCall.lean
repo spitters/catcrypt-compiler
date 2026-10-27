@@ -421,13 +421,7 @@ theorem frameAbove_of_frameNonnegB {body : Lcmd} {G : Nat} (h : frameNonnegB bod
       (frameRsp body sa0) G := by
   intro q a ha
   simp only [frameNonnegB, Bool.and_eq_true] at h
-  have hfa : LprogAsmPrinter.faB q = false := by
-    unfold frameIn at ha
-    split at ha
-    · rename_i hq
-      simpa using List.all_eq_true.mp h.2 q hq
-    · cases ha
-  obtain ⟨hq, o, ho, rfl⟩ := frameIn_some ha hfa
+  obtain ⟨hq, o, ho, rfl⟩ := frameIn_some ha
   have hm : o ∈ frameOffs body :=
     List.mem_filterMap.mpr ⟨q, List.mem_eraseDups.mpr hq, ho⟩
   have hb := List.all_eq_true.mp h.1 o hm
@@ -2549,12 +2543,15 @@ theorem keepPoolB_clobN {c : CalleeSig} {pool : List String} (h : keepPoolB c po
     certificate**: the allocation `lfundefPhysAbiOfVirtCert` at the register file
     `poolAbi (keepPool c)` of the names kept across a call of `c`, with the shadow
     instructions expanded on the allocated body at the out symbols `outs`, whose calls copy
-    no result register, and the certificate of that allocation. -/
+    no result register, and the certificate of that allocation. The frame arrays
+    `frameArrs` are passed to the allocation. -/
 def lfundefPhysAbiOfVirtCCert (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
-    (outs : List String := []) : Lfundef × List (String × String) :=
+    (outs : List String := []) (frameArrs : List (String × Nat × Nat) := []) :
+    Lfundef × List (String × String) :=
   let fc := lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
     (abiTyin := abiTyin) (abi := VIR.LprogCallCut.poolAbi (keepPool c)) (posBind := posBind)
+    (frameArrs := frameArrs)
   ({ fc.1 with lfd_body := expandCallShadows fc.1.lfd_body outs }, fc.2)
 
 /-- **The allocation of a virtual function that calls `c`**: the function of

@@ -552,10 +552,13 @@ theorem wide_reloadMemrefBase (mbr : String → Option String) {o : LOperand} (h
   | arrIdx b y sc =>
     simp only [reloadMemrefBase]
     split
-    · refine ⟨?_, ⟨by decide +kernel, ho.2⟩⟩
+    · rename_i q _
+      refine ⟨?_, ⟨by decide +kernel, ho.2⟩⟩
       simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true,
         and_true]
-      exact wideOkR_movq_gp (by decide +kernel)
+      rcases ptrLoad_cases q with hp | hp <;> rw [hp]
+      · exact wideOkR_movq_gp (by decide +kernel)
+      · exact wideOkR_lopn_gp fun _ _ _ _ hm => by simp [isMov64Mnem] at hm
     · exact ⟨by simp, ho⟩
   | _ => exact ⟨by simp [reloadMemrefBase], by simp only [reloadMemrefBase]; exact ho⟩
 
@@ -777,7 +780,8 @@ theorem physExpand_noCell (shiftImm : ShiftImmOracle) (u64 : Bool) (rm : LOperan
   refine PhysImgSideOpt.physExpand_forall (slotArr := memSlots)
     (fun r => ∀ d opn s1 s2, r = .Lopn [.reg d] opn [.reg s1, .reg s2] →
       hasPrefix s1 "mem." = false ∧ hasPrefix s2 "mem." = false)
-    (fun ds o ss hss d opn s1 s2 he => ?_) (fun q d opn s1 s2 he => by simp at he)
+    (fun ds o ss hss d opn s1 s2 he => ?_)
+    (fun q d opn s1 s2 he => by rcases ptrLoad_cases q with hp | hp <;> simp [hp] at he)
     (fun r hr d opn s1 s2 he => absurd he (hr _ _ _)) shiftImm u64 rm mbr i (fun x => ?_)
     ((hn _).mpr (by decide +kernel)) ((hn _).mpr (by decide +kernel))
   · simp only [LinstrR.Lopn.injEq] at he
@@ -910,12 +914,13 @@ theorem reloadArrImm_loadGpOk {mbr : String → Option String} {x : LinstrR} {l 
   obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h <;>
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hj <;>
     rcases hj with hj | hj
+  all_goals try (rcases ptrLoad_cases q with hp | hp <;> rw [hp] at hj)
   all_goals first
     | exact loadGpOk_movq hj (wideOkR_movq_gp (by decide +kernel))
     | (refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
        unfold WideOk
        rw [hj]
-       exact wideOkR_lopn_gp fun d' s' h1 h2 _ => by simp at h1 h2)
+       exact wideOkR_lopn_gp fun _ _ _ _ hm => by simp [isMov64Mnem] at hm)
 
 /-- **`WideOk` on the fused export body.** Under the hypotheses of
     `PhysImgSideAlloc.lfundefPhysAbiOfVirtCert_body`, when every name the allocation table

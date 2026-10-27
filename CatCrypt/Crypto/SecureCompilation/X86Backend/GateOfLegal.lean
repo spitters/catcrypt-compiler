@@ -198,6 +198,10 @@ inductive GateForm (body : Lcmd) : LinstrR → Prop
       offset of word `k` admitted by `stackDispOk`. -/
   | storeImm (d b v : String) (k : Nat) : gpOk d = true → gpOk b = true → gpOk v = true →
       stackDispOk k = true → GateForm body (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k])
+  /-- The frame-array address `LEA:64 D, fa.<o>.<n>` into a general-purpose name, the base
+      offset `o` in `rel32` range. -/
+  | leaFa (d q : String) : gpOk d = true → faB q = true → dispOk32 (faOff q) = true →
+      GateForm body (.Lopn [.reg d] "LEA:64" [.reg q])
   /-- The 64-bit carry-chain add over general-purpose names whose carry-in is none of the word
       sources, and whose destination is the first source or none of the other sources. -/
   | adcx (d a s c : String) : gpOk d = true → gpOk a = true → gpOk s = true → gpOk c = true →
@@ -419,6 +423,32 @@ macro "gate_simp" : tactic => `(tactic|
     aluArm, gpOk_not_slot, withWidthTag_shl0, repr_zero_eq, withWidthTag, arm_shl0_ok, *] <;>
     first | omega | tauto | (intro h; exact ⟨by omega, h⟩))
 
+/-- A frame-array name is no general-purpose name. -/
+theorem not_gpOk_of_faB {q : String} (h : faB q = true) : gpOk q = false := by
+  cases hg : gpOk q
+  · rfl
+  · have hp := faParts?_gp hg
+    simp [faB, hp] at h
+
+/-- A frame-array name is no frame-slot name. -/
+theorem not_slot_of_faB {q : String} (h : faB q = true) : isSpillOrQsave q = false := by
+  have hq := hasPrefix_fa_of_faB h
+  unfold isSpillOrQsave
+  unfold VIR.JasminLprogExport.hasPrefix at hq ⊢
+  rcases hl : q.toList with _ | ⟨c, t⟩ <;> simp_all [List.isPrefixOf]
+  grind
+
+/-- **The frame-array address is covered**: `instrOKWB` accepts `LEA:64 D, q` for a
+    general-purpose `D` and a frame-array name `q` whose base offset is in `rel32` range. -/
+theorem instrOKWB_leaFa (body : Lcmd) (P : Params) {d q : String} (hd : gpOk d = true)
+    (hq : faB q = true) (hdisp : dispOk32 (faOff q) = true) :
+    instrOKWB body P (.Lopn [.reg d] "LEA:64" [.reg q]) = true := by
+  have hg := not_gpOk_of_faB hq
+  have hs := not_slot_of_faB hq
+  have hc := VIR.JasminLsemAddrMem.cellParts?_of_faB hq
+  have hcd := cellParts?_gp hd
+  gate_simp
+
 /-- **`instrOKWB` accepts every sub-form of `GateForm`** at the parameters of its body. -/
 theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) :
     instrOKWB body (Params.ofBody body) i = true := by
@@ -482,12 +512,13 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
     obtain ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11⟩ :=
       tagMnem_facts hb hk0 hk (Params.ofBody body) [] d s
     have hmv : tagMnem b k ≠ "MOV:64" := by tag_ne hb
+    have hlea : tagMnem b k ≠ "LEA:64" := by tag_ne hb
     simp (config := { decide := true }) only [instrOKWB, classifyK, h1, h2, movImmStruct?,
       classifyS, classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
       classifyEI, classifyR, classifyA, classify, AArm.ok, regArmB, plainB, h3, h5, h6, hmv,
-      withWidthTag_shl0, h11, hd, hs, Option.map_some, ite_false, Bool.false_and, Bool.true_and,
-      beq_iff_eq, h7, Bool.and_self]
-    simp [Arm.instr, h8, h9, h10, h2]
+      withWidthTag_shl0, hd, hs, Option.map_some, ite_false, Bool.false_and, beq_iff_eq, h7,
+      Bool.and_self]
+    simp [Arm.instr, h8, h9, h10, h2, hlea, h11, hd, hs]
   | shl0 d s hd hs => gate_simp
   | load d n b off hn hd hb hoff => gate_simp
   | store n b off s hn hs hb hoff => gate_simp
@@ -507,6 +538,7 @@ theorem instrOKWB_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
     gate_simp
   | zeroArr b n hb hn hk => gate_simp
   | storeImm d b v k hd hb hv hk => gate_simp
+  | leaFa d q hd hq hdisp => exact instrOKWB_leaFa body _ hd hq hdisp
   | adcx d a s c hd ha hs hc h1 h2 h3 =>
     have hd' := gpOk_not_slot hd
     have ha' := gpOk_not_slot ha
@@ -671,6 +703,9 @@ theorem legalForm_of_gateForm {body : Lcmd} {i : LinstrR} (h : GateForm body i) 
       (isGp_of_gpOk hb)
   | storeImm d b v k hd hb hv hk =>
     exact .storeImm _ b v k hk (isGp_of_gpOk hb) (isGp_of_gpOk hv)
+  | leaFa d q hd hq hdisp =>
+    exact .leaFa _ d q (show x86LeaFa "LEA:64" q = true by simp [x86LeaFa, hq])
+      (isGp_of_gpOk hd)
   | adcx d a s c hd ha hs hc h1 h2 h3 =>
     exact .carry3 _ d a s c (by decide +kernel) (isGp_of_gpOk hd) (isGp_of_gpOk ha)
       (isGp_of_gpOk hs) (isGp_of_gpOk hc)

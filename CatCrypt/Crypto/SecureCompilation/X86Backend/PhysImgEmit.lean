@@ -526,9 +526,9 @@ theorem legalizeSibElem_armOut (o : LOperand) (opn : String) :
 
 theorem reloadMemrefBase_armOut (mbr : String → Option String) (o : LOperand) (opn : String) :
     ∀ r ∈ (reloadMemrefBase mbr o).1, ArmOut [] opn r := by
-  unfold reloadMemrefBase
+  unfold reloadMemrefBase ptrLoad
   split
-  · split <;> simp [ArmOut, movMnems]
+  · split <;> (try split) <;> simp [ArmOut, movMnems]
   · simp
 
 theorem legalizeMemLoad_armOut (d s : LOperand) (opn mov : String)
@@ -829,17 +829,19 @@ theorem blockOk_append {slotArr : String → Option (String × Nat)} {i : Linstr
 
 /-- The base of a register-indexed access is reloaded from the slot of an array: the operand
     map sends `.arrIdx b y 8` to an address at stride `8` whose base the memref reload map
-    sends to an array slot. -/
+    sends to an array slot that is no frame-array name. -/
 def BaseReloaded (slotArr : String → Option (String × Nat)) (rm : LOperand → LOperand)
     (mbr : String → Option String) (b y : String) : Prop :=
-  ∃ b' y' q, rm (.arrIdx b y 8) = .arrIdx b' y' 8 ∧ mbr b' = some q ∧ (slotArr q).isSome = true
+  ∃ b' y' q, rm (.arrIdx b y 8) = .arrIdx b' y' 8 ∧ mbr b' = some q ∧
+    (slotArr q).isSome = true ∧ faB q = false
 
 /-- The register base `b` of a constant-index array write is reloaded from the slot of an
     array: the operand map sends `.reg b` to a register that the memref reload map sends to an
-    array slot. -/
+    array slot that is no frame-array name. -/
 def RegBaseReloaded (slotArr : String → Option (String × Nat)) (rm : LOperand → LOperand)
     (mbr : String → Option String) (b : String) : Prop :=
-  ∃ b' q, rm (.reg b) = .reg b' ∧ mbr b' = some q ∧ (slotArr q).isSome = true
+  ∃ b' q, rm (.reg b) = .reg b' ∧ mbr b' = some q ∧ (slotArr q).isSome = true ∧
+    faB q = false
 
 /-- The indexed accesses and the constant-index array writes of a virtual instruction have the
     forms the image reads, with a reloaded base: an `LOADIDX` is `[.reg d] [.arrIdx b y 8]`, an
@@ -949,19 +951,19 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
           by_cases hld : isMemLoad o = true
           · rw [ite_eq_left hld]
             by_cases hLo : o = "LOADIDX"
-            · obtain ⟨dn, b, y, hds, hss, b', y', q, hrmA, hmb, hq⟩ := hL hLo
+            · obtain ⟨dn, b, y, hds, hss, b', y', q, hrmA, hmb, hq, hfa⟩ := hL hLo
               simp only [List.cons.injEq, and_true] at hds hss
               subst hds hss
               obtain ⟨n', hn'⟩ := hreg dn
               have hd' : ∀ x ∈ [LOperand.reg n'], OperandOk slotArr x := by
                 rw [← hn']; exact hd
               rw [hrmA, hn']
-              simp only [reloadMemrefBase, hmb]
+              simp only [reloadMemrefBase, hmb, ptrLoad_qsave hfa]
               refine ⟨fun r hr => ?_, ?_⟩
               · rcases List.mem_append.mp hr with hr | hr
                 · exact emitAll_of_arm ii hs15 hs14 hmem hnil hopn
                     (reloadMemrefBase_armOut mbr (.arrIdx b' y' 8) o) r
-                    (by simpa [reloadMemrefBase, hmb] using hr)
+                    (by simpa [reloadMemrefBase, hmb, ptrLoad_qsave hfa] using hr)
                 · exact emitAll_of_arm ii hs15 hs14 hmem hd' hopn
                     (legalizeMemLoad_armOut _ _ _ _ (movFor_ok o)) r hr
               · subst hLo
@@ -1013,7 +1015,7 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
             by_cases hms : isMemStore o = true
             · rw [ite_eq_left hms]
               by_cases hSo : o = "STOREIDX"
-              · obtain ⟨dn, b, y, v, hds, hss, b', y', q, hrmA, hmb, hq⟩ := hS hSo
+              · obtain ⟨dn, b, y, v, hds, hss, b', y', q, hrmA, hmb, hq, hfa⟩ := hS hSo
                 simp only [List.cons.injEq, and_true] at hds hss
                 obtain ⟨rfl, rfl⟩ := hss
                 subst hds
@@ -1021,12 +1023,12 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
                 obtain ⟨v', hv'⟩ := hreg v
                 have hd' : ∀ x ∈ [LOperand.reg n'], OperandOk slotArr x := by
                   rw [← hn']; exact hd
-                simp only [hrmA, hn', hv', reloadMemrefBase, hmb]
+                simp only [hrmA, hn', hv', reloadMemrefBase, hmb, ptrLoad_qsave hfa]
                 refine ⟨fun r hr => ?_, ?_⟩
                 · rcases List.mem_append.mp hr with hr | hr
                   · exact emitAll_of_arm ii hs15 hs14 hmem hnil hopn
                       (reloadMemrefBase_armOut mbr (.arrIdx b' y' 8) o) r
-                      (by simpa [reloadMemrefBase, hmb] using hr)
+                      (by simpa [reloadMemrefBase, hmb, ptrLoad_qsave hfa] using hr)
                   · exact emitAll_of_arm ii hs15 hs14 hmem hd' hopn
                       (legalizeMemStoreK_armOut _ _ _ _ _ _ (movFor_ok o)) r hr
                 · subst hSo
@@ -1108,19 +1110,19 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
     have hrl : ∀ q, slotMov? (LinstrR.Lopn [.reg reloadScratch2] "MOVQ" [.reg q])
         = some (reloadScratch2, q) := fun q => by simp [slotMov?]
     rcases hz with rfl | rfl
-    · obtain ⟨b, n, w, rfl, rfl, b', q, hb', hq, hqs⟩ := hZ rfl
+    · obtain ⟨b, n, w, rfl, rfl, b', q, hb', hq, hqs, hfa⟩ := hZ rfl
       rw [hemit (by simp) rfl]
       simp only [List.map_cons, List.map_nil, hb', himm]
       rw [show reloadArrImmBody mbr [⟨ii, .Lopn [.reg b'] "ZEROARR" [.imm n, .imm w]⟩] =
           [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
             ⟨ii, .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]⟩] by
-        simp [reloadArrImmBody, reloadArrImm_zeroArr n w hq]]
+        simp [reloadArrImmBody, reloadArrImm_zeroArr n w hq hfa]]
       refine ⟨?_, accLocal_window (mid := []) (post := []) (hrl q) hqs (by simp)
         (Or.inr (Or.inr (Or.inr (Or.inl ⟨n, w, rfl⟩)))) (by simp)⟩
       intro r hr ds o ss he
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
       rcases hr with rfl | rfl <;> cases he <;> simp [OperandOk, hs14, movMnems, opnOf]
-    · obtain ⟨d, b, v, k, rfl, rfl, b', q, hb', hq, hqs⟩ := hS rfl
+    · obtain ⟨d, b, v, k, rfl, rfl, b', q, hb', hq, hqs, hfa⟩ := hS rfl
       obtain ⟨d', hd'⟩ := hreg d
       obtain ⟨v', hv'⟩ := hreg v
       rw [hemit (by simp) rfl]
@@ -1128,7 +1130,7 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
       rw [show reloadArrImmBody mbr [⟨ii, .Lopn [.reg d'] "STOREIMM" [.reg b', .reg v', .imm k]⟩] =
           [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
             ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v', .imm k]⟩] by
-        simp [reloadArrImmBody, reloadArrImm_storeImm d' v' k hq]]
+        simp [reloadArrImmBody, reloadArrImm_storeImm d' v' k hq hfa]]
       refine ⟨?_, accLocal_window (mid := []) (post := []) (hrl q) hqs (by simp)
         (Or.inr (Or.inr (Or.inr (Or.inr ⟨v', k, rfl⟩)))) (by simp)⟩
       intro r hr ds o ss he
@@ -1221,7 +1223,8 @@ theorem physBodyWithStores_physImg {slotArr : String → Option (String × Nat)}
     refine (reloadArrImmBody_filter _ _ fun i l' h x hx => ?_).symm
     obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some h <;>
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
-      rcases hx with rfl | rfl <;> simp [hi]
+      rcases ptrLoad_cases q with hp | hp <;>
+      rcases hx with rfl | rfl <;> simp [hi, hp]
   have hblk : ∀ p ∈ body.zipIdx, BlockOk slotArr p.1.li_i
       (reloadArrImmBody mbr (physPositionEmit shiftImm body (fun _ => none) loadBase []
         storeBase abiW mbr callArgBaseReload reservedVec p)) := by
@@ -1303,6 +1306,12 @@ theorem abiSaveOfExt_spec {r s : String} (h : abiSaveOfExt r = some s) :
   unfold abiSaveOfExt abiSaveOf at h
   split_ifs at h with h1 h2 h3 h4 h5 h6 <;> simp only [beq_iff_eq] at * <;> cases h <;>
     subst_vars <;> exact ⟨by decide +kernel, by simp⟩
+
+/-- A save slot of an argument register is no frame-array name. -/
+theorem abiSaveOfExt_faB {r s : String} (h : abiSaveOfExt r = some s) : faB s = false := by
+  obtain ⟨rfl, hr⟩ := abiSaveOfExt_spec h
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+  rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
 
 /-- The saves of the arguments after the first two other than `RDI` and `RSI` (the prologue
     tail of `lfundefPhysAbiOfVirtCert`, over `extraSaveRegs`). -/

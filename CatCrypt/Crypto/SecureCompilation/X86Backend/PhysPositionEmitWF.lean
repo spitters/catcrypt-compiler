@@ -251,7 +251,8 @@ theorem reloadMemrefBase_resolved (memrefBaseReload : String → Option String) 
       exact ⟨by simp, h⟩
     | some q =>
       simp only [reloadMemrefBase, hb]
-      exact ⟨by simp [hq b q hb], Or.inl (by decide), h.2.1, h.2.2⟩
+      exact ⟨by rcases ptrLoad_cases q with hp | hp <;> simp [hq b q hb, hp],
+        Or.inl (by decide), h.2.1, h.2.2⟩
   | _ => exact ⟨by simp [reloadMemrefBase], h⟩
 
 /-- `legalizeMemLoad` emits resolved operations on a resolved destination and an `AddrOk`
@@ -874,12 +875,14 @@ theorem reloadArrImmBody_resolved {mbr : String → Option String} {l : Lcmd}
   · have hiR := hl i hi
     obtain ⟨b, q, hq, ⟨n, w, -, rfl⟩ | ⟨d, v, k, hiEq, rfl⟩⟩ := reloadArrImm_eq_some hre
     · simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
-      rcases hx with hx | hx <;> rw [hx] <;> simp [hmbr b q hq]
+      rcases hx with hx | hx <;> rw [hx] <;> rcases ptrLoad_cases q with hp | hp <;>
+        simp [hmbr b q hq, hp]
     · rw [hiEq] at hiR
       simp only [opsResolved_Lopn, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
         forall_eq] at hiR
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
-      rcases hx with hx | hx <;> rw [hx] <;> simp [hmbr b q hq, hiR]
+      rcases hx with hx | hx <;> rw [hx] <;> rcases ptrLoad_cases q with hp | hp <;>
+        simp [hmbr b q hq, hiR, hp]
 
 /-! ## 8. The whole function -/
 

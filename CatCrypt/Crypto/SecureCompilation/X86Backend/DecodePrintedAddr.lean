@@ -615,6 +615,16 @@ inductive AArm where
   /-- The constant-index store `STOREIMM d, [B, V, #k]` of `V` at the word `k` from the address
       in `B`; the destination `d` names the array and is not a machine operand. -/
   | simm (d B V : String) (k : Nat)
+  /-- The frame-array address `LEA:64 d, q` of a frame-array name `q = fa.<o>.<n>`: `d`
+      receives the address `o` bytes above the stack register. -/
+  | leaF (d q : String)
+
+/-- The base offset `o` of a frame-array name `fa.<o>.<n>`, and `0` for every other name. -/
+def faOff (q : String) : Int := ((faParts? q).map fun p => (p.1 : Int)).getD 0
+
+theorem faOff_of_faParts? {q : String} {o n : Nat} (h : faParts? q = some (o, n)) :
+    faOff q = Int.ofNat o := by
+  simp [faOff, h]
 
 /-- The instruction of an arm. -/
 def AArm.instr : AArm → LinstrR
@@ -631,6 +641,7 @@ def AArm.instr : AArm → LinstrR
   | .mulx L H S => .Lopn [.reg L, .reg H] "MULX" [.reg S]
   | .zero B n => .Lopn [] "ZEROARR" [.reg B, .imm n, .imm 64]
   | .simm d B V k => .Lopn [.reg d] "STOREIMM" [.reg B, .reg V, .imm k]
+  | .leaF d q => .Lopn [.reg d] "LEA:64" [.reg q]
 
 /-- The register arms of `DecodePrinted`: every arm but the frame-word moves. -/
 def regArmB : Arm → Bool
@@ -672,6 +683,8 @@ def AArm.pieces (P : Params) : AArm → List (List (BitVec 8) × JInstr 64)
       .mulx (phys H) (phys L) (.reg "%rdx") (.reg (phys S)))]
   | .zero B n => zeroPieces B n
   | .simm _ B V k => stPieces B V k
+  | .leaF d q => [(encMemMovw 1 0x8d (gpNumU d) 4 (faOff q),
+      .lea (phys d) "%rsp" "%rsp" 0 (faOff q))]
 
 /-- The machine instructions of an arm. -/
 def AArm.js (P : Params) (a : AArm) : List (JInstr 64) := (a.pieces P).map Prod.snd
@@ -682,7 +695,8 @@ def AArm.js (P : Params) (a : AArm) : List (JInstr 64) := (a.pieces P).map Prod.
     the sign-extended `imm8` range; an indexed access whose index register is not
     `%rsp`; distinct destinations of the widening multiply `mulx`; a zeroing of a positive
     count whose last word offset and a constant-index store whose word offset `stackDispOk`
-    admits, the destination of the constant-index store a general-purpose name. -/
+    admits, the destination of the constant-index store a general-purpose name; a
+    frame-array address into a general-purpose name at a base offset in `rel32` range. -/
 def AArm.ok (P : Params) : AArm → Bool
   | .reg a => regArmB a && a.ok P [] && plainB a.instr
   | .st m q S => gpOk S && !gpOk q && (spillQsaveOff P.frame P.spillW q P.qsaveB).isSome
@@ -701,6 +715,7 @@ def AArm.ok (P : Params) : AArm → Bool
   | .mulx L H S => gpOk L && gpOk H && gpOk S && L != H
   | .zero B n => gpOk B && decide (0 < n) && stackDispOk (n - 1)
   | .simm d B V k => gpOk B && gpOk V && stackDispOk k && gpOk d
+  | .leaF d q => gpOk d && faB q && dispOk32 (faOff q)
 
 theorem pieceDec_single {q : List (BitVec 8) × JInstr 64} (h : PieceDec q) :
     ∀ p ∈ [q], PieceDec p := by
@@ -791,6 +806,15 @@ theorem AArm.bytes (P : Params) (a : AArm) (h : a.ok P = true) :
     simp only [AArm.ok, Bool.and_eq_true] at h
     exact stPieces_bytes P.frame P.spillW P.qsaveB (.reg d) B V k (gpFacts h.1.1.1).isGp
       (gpFacts h.1.1.2).isGp h.1.2
+  | leaF d q =>
+    simp only [AArm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨hd, hq⟩, hdisp⟩ := h
+    have hq' : (faParts? q).isSome = true := hq
+    obtain ⟨⟨o, n⟩, hp⟩ := Option.isSome_iff_exists.mp hq'
+    refine ⟨?_, pieceDec_single fun rest => ?_⟩
+    · simp [AArm.instr, AArm.pieces,
+        encodeLopn_leaFa _ _ _ _ _ _ _ (gpFacts hd).isGp hp, faOff_of_faParts? hp]
+    · exact decodeLinstr_leaRspR (gpNumU d) (faOff q) rest (gpNumU_lt_16 d) hdisp
 
 /-! ## 6. The simulation of one arm -/
 
@@ -1457,6 +1481,39 @@ theorem sim_simm (P : Params) (rsp : BitVec 64) (d B V : String) (k : Nat)
     show (AArm.simm d B V k).js P = (stPieces B V k).map Prod.snd from rfl, run_stPieces]
   exact hc.keep rfl (fun r => LstateN.getW_nextPc _ _ _) (agree_write64 hc.mem _ _)
 
+/-- The address load `lea off(%rsp), D` writes the stack register plus `off` to `D` and no
+    memory. -/
+theorem evalInstrA_leaRsp_eq (sa : AState) (D : String) (off : Int) :
+    (∀ r, (evalInstrA sa (.lea D "%rsp" "%rsp" 0 off)).regs r
+      = if r = D then sa.regs "%rsp" + BitVec.ofInt 64 off else sa.regs r)
+      ∧ (evalInstrA sa (.lea D "%rsp" "%rsp" 0 off)).mem = sa.mem := by
+  refine ⟨fun r => ?_, ?_⟩
+  · by_cases hr : r = D <;>
+      simp [evalInstrA, evalInstr, JState.setReg, JState.get, AState.view, hr, x86_LEA]
+  · simp [evalInstrA, evalInstr, JState.setReg, AState.view, writeAddr]
+
+/-- **The frame-array address.** The decoded `lea o(%rsp), D` writes the stack register plus
+    the base offset `o` of the frame-array name `q`, as the address machine writes the frame
+    address of `q` to `D`; the memory is unchanged. -/
+theorem sim_leaF (P : Params) (rsp : BitVec 64) (d q : String)
+    (h : (AArm.leaF d q).ok P = true) (sa : AState) (s : LstateA) (zf : Bool)
+    (hc : ACorr rsp sa s) :
+    ∃ s' zf', fstepA (frameP P rsp) (AArm.leaF d q).li s zf = some (s', zf')
+      ∧ ACorr rsp (aMachine.runBlock sa ((AArm.leaF d q).js P)) s' := by
+  simp only [AArm.ok, Bool.and_eq_true] at h
+  obtain ⟨⟨hd, hq⟩, -⟩ := h
+  have hq' : (faParts? q).isSome = true := hq
+  obtain ⟨⟨o, n⟩, hp⟩ := Option.isSome_iff_exists.mp hq'
+  have hjs : (AArm.leaF d q).js P = [.lea (phys d) "%rsp" "%rsp" 0 (Int.ofNat o)] := by
+    simp [AArm.js, AArm.pieces, faOff_of_faParts? hp]
+  rw [hjs]
+  obtain ⟨hregs, hmem⟩ := evalInstrA_leaRsp_eq sa (phys d) (Int.ofNat o)
+  refine ⟨_, zf, fstepA_leaFa (frameP P rsp) hq (frameP_fa hp) s zf,
+    hc.write (sa' := evalInstrA sa _) hd (rsp + BitVec.ofNat 64 o)
+      (fun r => by rw [hregs, hc.sp]; rfl) (fun x hx => by rw [hmem]; exact hc.mem x hx)
+      (fun r hr => by rw [getW_setReg_nextPcN, ite_eq_right hr])
+      (by rw [getW_setReg_nextPcN, ite_eq_left rfl])⟩
+
 /-- The address an indexed load of the arm `a` reads from the address state `s` is disjoint
     from the red-zone word. -/
 def AArm.LoadSafe (rsp : BitVec 64) (s : LstateA) : AArm → Prop
@@ -1518,6 +1575,9 @@ theorem AArm.sim (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) (
   | simm d B V k =>
     obtain ⟨s', zf', h1, h2⟩ := sim_simm P rsp d B V k h sa s zf hc
     exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
+  | leaF d q =>
+    obtain ⟨s', zf', h1, h2⟩ := sim_leaF P rsp d q h sa s zf hc
+    exact ⟨s', zf', h1, h2, fun hb => by simp [cmpArmB] at hb⟩
 
 /-! ## 7. Reading an instruction into an arm -/
 
@@ -1527,6 +1587,7 @@ def classifyA : LinstrR → Option AArm
   | .Lopn [.reg d] m [.reg s] =>
       if isMovM m && !gpOk d then some (.st m d s)
       else if isMovM m && !gpOk s then some (.ld m d s)
+      else if m == "LEA:64" && faB s then some (.leaF d s)
       else (classify (.Lopn [.reg d] m [.reg s])).map .reg
   | .Lopn [.reg d] m [.arrIdx b i sc] =>
       if m == "LOADIDX" && sc == 8 then some (.ldx d b i)
@@ -1560,9 +1621,12 @@ theorem classifyA_instr {i : LinstrR} {a : AArm} (h : classifyA i = some a) : a.
     exact classify_instr hb
   unfold classifyA at h
   split at h
-  · split_ifs at h with h1 h2
+  · split_ifs at h with h1 h2 h3
     · obtain rfl := Option.some.inj h; rfl
     · obtain rfl := Option.some.inj h; rfl
+    · obtain rfl := Option.some.inj h
+      simp only [Bool.and_eq_true, beq_iff_eq] at h3
+      obtain ⟨rfl, -⟩ := h3; rfl
     · exact hm h
   · split_ifs at h with h1
     · obtain rfl := Option.some.inj h

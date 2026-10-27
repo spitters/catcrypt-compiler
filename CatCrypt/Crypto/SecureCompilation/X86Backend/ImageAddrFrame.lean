@@ -241,10 +241,11 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState Disjoint8 disjoint
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (ImgSep cellAt)
 
 /-- The frame offset of a name in the printed body, from the stack pointer after the
-    prologue. -/
+    prologue: the spill or save offset, and the base offset `o` of a frame-array name
+    `fa.<o>.<n>`. -/
 def offOf (body : Lcmd) (q : String) : Option Int :=
-  spillQsaveOff (Params.ofBody body).frame (Params.ofBody body).spillW q
-    (Params.ofBody body).qsaveB
+  (spillQsaveOff (Params.ofBody body).frame (Params.ofBody body).spillW q
+    (Params.ofBody body).qsaveB).or ((faParts? q).map fun p => (p.1 : Int))
 
 /-- The frame offsets of the distinct names of a body that have one, from the stack pointer
     after the prologue. The frame size, spill width and save block are those of
@@ -253,7 +254,46 @@ def frameOffs (body : Lcmd) : List Int :=
   let F := frameSize body
   let W := if bodyIsU64 body then 64 else 32
   let Q := qsaveBytesFor body
+  (bodyNamesI body).eraseDups.filterMap fun q =>
+    (spillQsaveOff F W q Q).or ((faParts? q).map fun p => (p.1 : Int))
+
+/-- The spill and save offsets of the distinct names of a body, from the stack pointer after
+    the prologue: the frame offsets of the names that are no frame-array names. -/
+def wordOffs (body : Lcmd) : List Int :=
+  let F := frameSize body
+  let W := if bodyIsU64 body then 64 else 32
+  let Q := qsaveBytesFor body
   (bodyNamesI body).eraseDups.filterMap fun q => spillQsaveOff F W q Q
+
+/-- The offsets and word counts of the frame arrays named by the distinct names of a body. -/
+def faRanges (body : Lcmd) : List (Nat × Nat) :=
+  (bodyNamesI body).eraseDups.filterMap faParts?
+
+/-- The byte ranges `[a, a + la)` and `[b, b + lb)` are disjoint. -/
+def rangeSepB (a la b lb : Int) : Bool := decide (a + la ≤ b ∨ b + lb ≤ a)
+
+/-- Every two entries at distinct positions of a list of frame-array ranges are disjoint. -/
+def faPairB : List (Nat × Nat) → Bool
+  | [] => true
+  | p :: ps =>
+      ps.all (fun p' => rangeSepB p.1 (8 * p.2) p'.1 (8 * p'.2)) && faPairB ps
+
+/-- **The frame-array check.** Each frame array `fa.<o>.<n>` of the body has `0 < n`, its
+    words `[o, o + 8 n)` lie in the frame range of the layout after the frame size `F` is
+    subtracted, and its range is disjoint from the red-zone word and from the word of every
+    spill and save name. The ranges of two distinct frame-array names are disjoint, so two
+    frame-array names at one base are refused. A body with a frame array carries no
+    `FRAMEADD` buffer and no vector-spill cell `kv.N`, which share the bottom of the frame. -/
+def faRangesOkB (σ : AbiLayout) (body : Lcmd) : Bool :=
+  let F : Int := frameSize body
+  let rs := faRanges body
+  rs.all (fun p => decide (0 < p.2 ∧ σ.frameLo ≤ (p.1 : Int) - F
+      ∧ (p.1 : Int) + 8 * p.2 - 8 - F ≤ σ.frameHi)
+    && rangeSepB p.1 (8 * p.2) cmovRedZone 8
+    && (wordOffs body).all fun w => rangeSepB p.1 (8 * p.2) w 8)
+    && faPairB rs
+    && (rs.isEmpty || (LprogAsmPrinter.frameAddDirective body == 0
+      && (LprogAsmPrinter.maxVecSpillIdx body).isNone))
 
 /-- Two frame offsets are at least eight and at most `2 ^ 64 - 8` bytes apart. -/
 def sep8B (o o' : Int) : Bool := decide (8 ≤ (o - o').natAbs ∧ (o - o').natAbs ≤ 2 ^ 64 - 8)
@@ -265,17 +305,15 @@ def pairSepB : List Int → Bool
 
 /-- **The frame check.** The frame word of each name of the body and the red-zone word lie
     in the frame range of the layout, from the entry stack pointer; the frame words of two
-    distinct names of the body are at least eight bytes apart; and no name of the body is a
-    frame-array name (`faB`). Row F3 replaces the last conjunct by the frame-array range
-    check `faRangesOkB` (each frame-array range inside the frame, the ranges pairwise
-    disjoint). -/
+    distinct names of the body are at least eight bytes apart (a frame-array name has the
+    word at its base offset); and the frame arrays pass `faRangesOkB`. -/
 def frameOkB (σ : AbiLayout) (body : Lcmd) : Bool :=
   let F : Int := frameSize body
   let os := frameOffs body
   os.all (fun o => decide (σ.frameLo ≤ o - F ∧ o - F ≤ σ.frameHi))
     && decide (σ.frameLo ≤ cmovRedZone - F ∧ cmovRedZone - F ≤ σ.frameHi)
     && pairSepB os
-    && (bodyNamesI body).all fun q => !LprogAsmPrinter.faB q
+    && faRangesOkB σ body
 
 theorem sep8B_comm (o o' : Int) : sep8B o o' = sep8B o' o := by
   have h : (o - o').natAbs = (o' - o).natAbs := by rw [← Int.natAbs_neg, Int.neg_sub]
@@ -328,38 +366,87 @@ theorem frameOkB_pair {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = tr
     hp (List.mem_eraseDups.mpr hq) (List.mem_eraseDups.mpr hq') hne o ho o' ho'
   simpa only [sep8B, decide_eq_true_eq] using h
 
-/-- A name with a word under the restricted frame of a body accepted by the frame check is
-    no frame-array name. -/
-theorem frameOkB_faB {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = true)
-    {f : String → Option (BitVec 64)} {q : String} {a : BitVec 64}
-    (ha : frameIn body f q = some a) : LprogAsmPrinter.faB q = false := by
-  unfold frameIn at ha
-  split at ha
-  · rename_i hq
-    simp only [frameOkB, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hf
-    exact hf.2 q hq
-  · cases ha
+/-- The pairwise check of frame-array ranges gives disjointness at distinct positions. -/
+theorem faPairB_pairwise : ∀ {ps : List (Nat × Nat)}, faPairB ps = true →
+    ps.Pairwise (fun p p' => rangeSepB p.1 (8 * p.2) p'.1 (8 * p'.2) = true)
+  | [], _ => List.Pairwise.nil
+  | p :: ps, h => by
+    simp only [faPairB, Bool.and_eq_true, List.all_eq_true] at h
+    exact List.pairwise_cons.mpr ⟨h.1, faPairB_pairwise h.2⟩
 
-/-- The word of a name under the restricted frame of a body is its frame address. The
-    frame-array fact `hfa` is found from a frame check `frameOkB σ body = true` and the
-    hypothesis `h` in the context (`frameOkB_faB`). -/
+/-- **Soundness of the frame-array check.** For each frame-array name `fa.<o>.<n>` of a body
+    that passes `faRangesOkB`: `0 < n`; the words `[o, o + 8 n)` lie in the frame range of the
+    layout after the frame size is subtracted; the range is disjoint from the red-zone word
+    and from the word of every spill or save name of the body; and the body carries no
+    `FRAMEADD` buffer and no vector-spill cell. The ranges of two distinct frame-array names
+    of the body are disjoint. -/
+theorem faRangesOkB_sound {σ : AbiLayout} {body : Lcmd} (hf : faRangesOkB σ body = true) :
+    (∀ q ∈ bodyNamesI body, ∀ o n, faParts? q = some (o, n) →
+      0 < n ∧ σ.frameLo ≤ (o : Int) - (Params.ofBody body).frame
+        ∧ (o : Int) + 8 * n - 8 - (Params.ofBody body).frame ≤ σ.frameHi
+        ∧ ((o : Int) + 8 * n ≤ cmovRedZone ∨ cmovRedZone + 8 ≤ (o : Int))
+        ∧ (∀ q' ∈ bodyNamesI body, ∀ w, spillQsaveOff (Params.ofBody body).frame
+            (Params.ofBody body).spillW q' (Params.ofBody body).qsaveB = some w →
+            (o : Int) + 8 * n ≤ w ∨ w + 8 ≤ (o : Int))
+        ∧ LprogAsmPrinter.frameAddDirective body = 0
+        ∧ LprogAsmPrinter.maxVecSpillIdx body = none)
+    ∧ (∀ q ∈ bodyNamesI body, ∀ q' ∈ bodyNamesI body, q ≠ q' → ∀ o n o' n',
+      faParts? q = some (o, n) → faParts? q' = some (o', n') →
+      (o : Int) + 8 * n ≤ o' ∨ (o' : Int) + 8 * n' ≤ o) := by
+  simp only [faRangesOkB, Bool.and_eq_true, List.all_eq_true] at hf
+  obtain ⟨⟨hall, hpair⟩, hbot⟩ := hf
+  have hmem : ∀ q ∈ bodyNamesI body, ∀ o n, faParts? q = some (o, n) →
+      (o, n) ∈ faRanges body := fun q hq o n h =>
+    List.mem_filterMap.mpr ⟨q, List.mem_eraseDups.mpr hq, h⟩
+  refine ⟨fun q hq o n h => ?_, fun q hq q' hq' hne o n o' n' h h' => ?_⟩
+  · have hp := hall _ (hmem q hq o n h)
+    simp only [decide_eq_true_eq, rangeSepB] at hp
+    obtain ⟨⟨⟨hn, hlo, hhi⟩, hred⟩, hw⟩ := hp
+    have hne : (faRanges body).isEmpty = false := by
+      cases hr : faRanges body with
+      | nil => exact absurd (hr ▸ hmem q hq o n h) List.not_mem_nil
+      | cons _ _ => rfl
+    simp only [hne, Bool.false_or, Bool.and_eq_true, beq_iff_eq, Option.isNone_iff_eq_none]
+      at hbot
+    refine ⟨hn, hlo, hhi, hred, fun q' hq' w hw' => ?_, hbot.1, hbot.2⟩
+    have := hw w (List.mem_filterMap.mpr ⟨q', List.mem_eraseDups.mpr hq', hw'⟩)
+    simpa only [decide_eq_true_eq] using this
+  · have hp := faPairB_pairwise hpair
+    simp only [faRanges, List.pairwise_filterMap] at hp
+    have hr := pairwise_of_ne (fun a b hab x hx y hy => by
+        have := hab y hy x hx
+        simp only [rangeSepB, decide_eq_true_eq] at this ⊢
+        omega)
+      hp (List.mem_eraseDups.mpr hq) (List.mem_eraseDups.mpr hq') hne (o, n) h (o', n') h'
+    simpa only [rangeSepB, decide_eq_true_eq] using hr
+
+/-- The word of a name under the restricted frame of a body is its frame address: the spill
+    or save offset of the name, or the base offset of a frame-array name. -/
 theorem frameIn_some {body : Lcmd} {sa : AState} {q : String} {a : BitVec 64}
-    (h : frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a)
-    (hfa : LprogAsmPrinter.faB q = false := by
-      exact CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame.frameOkB_faB ‹_› ‹_›) :
+    (h : frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a) :
     q ∈ bodyNamesI body ∧ ∃ o, offOf body q = some o
       ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 (o - (Params.ofBody body).frame) := by
   unfold frameIn at h
   split at h
   · rename_i hq
     refine ⟨hq, ?_⟩
-    rw [DecodePrintedAddr.frameP_of_not_fa hfa] at h
-    obtain ⟨o, ho, rfl⟩ := Option.map_eq_some_iff.mp h
-    refine ⟨o, ho, ?_⟩
-    simp only [frameRsp, BitVec.add_assoc, ← BitVec.ofInt_add]
-    congr 2
-    simp only [Int.ofNat_eq_natCast]
-    omega
+    unfold frameP at h
+    unfold offOf
+    split at h
+    · rename_i o ho
+      cases h
+      refine ⟨o, by simp [ho], ?_⟩
+      simp only [frameRsp, BitVec.add_assoc, ← BitVec.ofInt_add]
+      congr 2
+      simp only [Int.ofNat_eq_natCast]
+      omega
+    · rename_i ho
+      obtain ⟨⟨o, n⟩, hp, rfl⟩ := Option.map_eq_some_iff.mp h
+      refine ⟨o, by simp [ho, hp], ?_⟩
+      simp only [frameRsp, BitVec.add_assoc, ← BitVec.ofInt_natCast, ← BitVec.ofInt_add]
+      congr 2
+      simp only [Int.ofNat_eq_natCast]
+      omega
   · cases h
 
 /-- **The separation from the layout.** At the entry state `sa` of a layout `σ` whose
@@ -531,7 +618,7 @@ def frameNames (body : Lcmd) : List String :=
   let W := if bodyIsU64 body then 64 else 32
   let Q := qsaveBytesFor body
   (bodyNamesI body).eraseDups.filter fun q =>
-    (spillQsaveOff F W q Q).isSome || LprogAsmPrinter.faB q
+    ((spillQsaveOff F W q Q).or ((faParts? q).map fun p => (p.1 : Int))).isSome
 
 /-- The frame map that gives the word `0` to the names of `N` and no word to other names. -/
 def frameMark (N : List String) (q : String) : Option (BitVec 64) :=
@@ -546,12 +633,11 @@ theorem frameMark_isSome (body : Lcmd) (r : BitVec 64) (q : String) :
   · have e2 : frameIn body (frameP (Params.ofBody body) r) q
         = frameP (Params.ofBody body) r q := ite_eq_left hq
     rw [e2]
-    have e3 : (frameP (Params.ofBody body) r q).isSome
-        = ((offOf body q).isSome || LprogAsmPrinter.faB q) := by
+    have e3 : (frameP (Params.ofBody body) r q).isSome = (offOf body q).isSome := by
       unfold frameP offOf
-      split <;> simp_all [LprogAsmPrinter.faB]
+      split <;> simp_all
     rw [e3]
-    by_cases ho : ((offOf body q).isSome || LprogAsmPrinter.faB q) = true
+    by_cases ho : (offOf body q).isSome = true
     · have h1 : q ∈ frameNames body := by
         simp only [frameNames, List.mem_filter, List.mem_eraseDups]
         exact ⟨hq, ho⟩

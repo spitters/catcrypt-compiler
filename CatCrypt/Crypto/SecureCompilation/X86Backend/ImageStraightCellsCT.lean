@@ -1833,6 +1833,11 @@ theorem leak_aarmW (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
     have hg := getW_widen (sa := sa) hw hB 64
     simp only [AArm.li] at hg ⊢
     simp only [instrLeakA, storeImmStruct?, ite_true, hg]
+  | leaF d q =>
+    have hq : X86Backend.LprogAsmPrinter.faB q = true := by
+      simp only [AArm.ok, Bool.and_eq_true] at h; exact h.1.2
+    simp only [AArm.li]
+    exact instrLeakA_reg_indep (by simp [AArm.instr, cellA?, cellParts?_of_faB hq]) none _ _
 
 /-- The copy of an operand into an accumulator other than the stack register keeps the stack
     register. -/

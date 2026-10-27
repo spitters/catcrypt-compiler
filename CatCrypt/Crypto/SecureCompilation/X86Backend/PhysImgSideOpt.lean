@@ -445,13 +445,13 @@ local macro "q_fin" : tactic => `(tactic|
       | (refine $(Lean.mkIdent `hQ) _ _ _ ?_; simp [*])))
 
 /-- **A property of every instruction of one expansion.** Let `Q` hold of every operation
-    whose sources name no array slot, of the memref base reload `MOVQ R14, q` and of every
+    whose sources name no array slot, of the memref base reload `ptrLoad q` and of every
     instruction that is no operation. When the operand map sends every operand to one naming
     no array slot and the reload scratches are no array slots, `Q` holds of every instruction
     of `physExpand`. -/
 theorem physExpand_forall (Q : LinstrR → Prop)
     (hQ : ∀ ds o ss, (∀ x ∈ ss, GoodOp slotArr x) → Q (.Lopn ds o ss))
-    (hR : ∀ q, Q (.Lopn [.reg reloadScratch2] "MOVQ" [.reg q]))
+    (hR : ∀ q, Q (ptrLoad q))
     (hO : ∀ r, (∀ ds o ss, r ≠ .Lopn ds o ss) → Q r)
     (shiftImm : ShiftImmOracle) (u64 : Bool) (rm : LOperand → LOperand)
     (mbr : String → Option String) (i : Linstr) (hg : ∀ x, GoodOp slotArr (rm x))
@@ -863,7 +863,9 @@ theorem pairs_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
       obtain ⟨i, -, hj⟩ := List.mem_flatMap.mp hj
       rcases mem_reloadArrImmBody (List.mem_of_mem_filter hj) with hj | ⟨i', -, l', hl, -, hx⟩
       · refine physExpand_forall (LoadOkR slotArr) (fun ds o ss hss x mn he => ?_)
-          (fun q => loadOkR_mov fun x hx _ => by subst hx; exact h14)
+          (fun q => by
+            rcases ptrLoad_cases q with hp | hp <;> rw [hp] <;>
+              exact loadOkR_mov fun x hx _ => by subst hx; exact h14)
           (fun r hr x mn he => absurd he (hr _ _ _)) _ _ _ mbr i hg hs15 hs14 j hj
         simp only [LinstrR.Lopn.injEq] at he
         obtain ⟨-, -, rfl⟩ := he
@@ -872,6 +874,7 @@ theorem pairs_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
         obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
           simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
           rcases hx with hx | hx <;> rw [hx]
+        all_goals try (rcases ptrLoad_cases q with hp | hp <;> rw [hp])
         all_goals first
           | exact loadOkR_mov fun x hx _ => by subst hx; exact h14
           | (intro x mn he; simp [LinstrR.Lopn.injEq] at he)

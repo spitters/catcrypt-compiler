@@ -138,7 +138,8 @@ theorem reloadArrImmBody_filter_flatMap (mbr : String → Option String) (f : Li
     intro i l' h x hx
     obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some h <;>
       simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
-      rcases hx with rfl | rfl <;> simp [notLivePin, hi]
+      rcases ptrLoad_cases q with hq | hq <;>
+      rcases hx with rfl | rfl <;> simp [notLivePin, hi, hq]
   rw [← reloadArrImmBody_filter notLivePin _ hp, reloadArrImmBody_flatMap, List.filter_flatMap]
 
 /-! ## 2. The reload scan is local -/
@@ -1141,16 +1142,18 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
       rw [hF]
       obtain ⟨hL, hS, -⟩ := hacc ds o ss rfl
       rcases ho with rfl | rfl
-      · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hL rfl
+      · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hL rfl
         obtain ⟨n', hn'⟩ := hreg dn
         simp only [physExpand, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
-          Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb]
+          Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb,
+          ptrLoad_qsave hfa]
         exact loadIdx_scanStays hs15 hq ii _ n' y' _ rfl
-      · obtain ⟨dn, b, y, v, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hS rfl
+      · obtain ⟨dn, b, y, v, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hS rfl
         obtain ⟨n', hn'⟩ := hreg dn
         obtain ⟨v', hv'⟩ := hreg v
         simp only [physExpand, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
-          Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb]
+          Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb,
+          ptrLoad_qsave hfa]
         exact storeIdx_scanStays hs15 hq ii _ _ _ n' y' v' _ rfl rfl
     | _ => simp [isAccB] at hA
 
@@ -1159,7 +1162,7 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
 theorem reloadArrImm_idxFree {mbr : String → Option String} {x : LinstrR} {l : List LinstrR}
     (h : reloadArrImm mbr x = some l) : ∀ y ∈ l, idxFreeB y = true := by
   obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h <;>
-    simp [idxFreeB]
+    rcases ptrLoad_cases q with hq | hq <;> simp [idxFreeB, hq]
 
 /-- The expansion of an instruction other than a constant-index array write is its own
     constant-shape base reload. -/
@@ -1211,16 +1214,16 @@ theorem reloadArrImmBody_physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bo
                 [.reg reloadScratch2, .reg v', .imm k]⟩]) := by
   obtain ⟨-, -, hZ, hS, -⟩ := hacc ds o ss rfl
   rcases hz with rfl | rfl
-  · obtain ⟨b, n, w, rfl, rfl, b', q, hb', hq, hqs⟩ := hZ rfl
+  · obtain ⟨b, n, w, rfl, rfl, b', q, hb', hq, hqs, hfa⟩ := hZ rfl
     refine ⟨b', q, hq, hqs, .inl ⟨n, w, ?_⟩⟩
     rw [physExpand_arrImm_eq _ _ _ _ _ _ _ _ _ _ (.inl rfl)]
-    simp [hb', himm, reloadArrImmBody, reloadArrImm_zeroArr n w hq]
-  · obtain ⟨d, b, v, k, rfl, rfl, b', q, hb', hq, hqs⟩ := hS rfl
+    simp [hb', himm, reloadArrImmBody, reloadArrImm_zeroArr n w hq hfa]
+  · obtain ⟨d, b, v, k, rfl, rfl, b', q, hb', hq, hqs, hfa⟩ := hS rfl
     obtain ⟨d', hd'⟩ := hreg d
     obtain ⟨v', hv'⟩ := hreg v
     refine ⟨b', q, hq, hqs, .inr ⟨v, v', k, by simp, hv', ?_⟩⟩
     rw [physExpand_arrImm_eq _ _ _ _ _ _ _ _ _ _ (.inr rfl)]
-    simp [hb', hd', hv', himm, reloadArrImmBody, reloadArrImm_storeImm d' v' k hq]
+    simp [hb', hd', hv', himm, reloadArrImmBody, reloadArrImm_storeImm d' v' k hq hfa]
 
 /-- **One reloaded expansion keeps the side conditions**: the conclusion of
     `physExpand_block` for the expansion of `i` under the constant-shape base reload, whose

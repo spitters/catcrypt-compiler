@@ -383,6 +383,12 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
     simp [AArm.js, AArm.pieces, stPieces, blockLeakA, opLeak, instrLeak, resolveEv, JInstr.mnem,
       DoitRegime.leaksOperands, X86Mnem.timing, evA, redLeak, AArm.li, instrLeakA,
       storeImmStruct?, hc.regs B hB, storeImmAddr?_of_lt _ (Nat.lt_succ_self k), ofInt_eight_mul]
+  | leaF d q =>
+    have hq : X86Backend.LprogAsmPrinter.faB q = true := by
+      simp only [AArm.ok, Bool.and_eq_true] at h; exact h.1.2
+    simp [AArm.js, AArm.pieces, blockLeakA, opLeak, instrLeak, JInstr.mnem,
+      DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, AArm.instr, instrLeakA, slotMov?,
+      slotCmp?, cellA?, cellParts?_of_faB hq, slotCarry?, slotImm?, slotCmov?, redLeak]
 
 /-! ## 3. The address machine with added events -/
 
@@ -964,6 +970,11 @@ theorem AArm.leak_length {P : Params} {a : AArm} (hok : a.ok P = true)
       | some p₂ =>
         simp [AArm.li, instrLeakA, storeImmStruct?, hB₁, hB₂,
           storeImmAddr?_of_lt _ (Nat.lt_succ_self k)]
+  | leaF d q =>
+    have hq : X86Backend.LprogAsmPrinter.faB q = true := by
+      simp only [AArm.ok, Bool.and_eq_true] at hok; exact hok.1.2
+    simp only [AArm.li]
+    rw [instrLeakA_reg_indep (by simp [AArm.instr, cellA?, cellParts?_of_faB hq]) none s₁ s₂]
 
 /-- The step event lengths of a covered body are functions of the program counter. -/
 theorem stepLenDet_of {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs)

@@ -392,7 +392,11 @@ theorem reloadMemrefBase_legal (mbr : String → Option String) (o : LOperand)
       intro i hi
       simp only [List.mem_singleton] at hi
       subst hi
-      exact lf_mov_res_left (by decide +kernel) isGpName_reloadScratch2 (hq b q hb)
+      cases hfa : faB q
+      · rw [ptrLoad_qsave hfa]
+        exact lf_mov_res_left (by decide +kernel) isGpName_reloadScratch2 (hq b q hb)
+      · rw [ptrLoad_fa hfa]
+        exact .leaFa _ _ _ (by simp [x86Enc, x86LeaFa, hfa]) isGpName_reloadScratch2
   | _ => exact ⟨by simp [reloadMemrefBase], fun h => by simpa [reloadMemrefBase] using h,
       fun _ _ => rfl⟩
 

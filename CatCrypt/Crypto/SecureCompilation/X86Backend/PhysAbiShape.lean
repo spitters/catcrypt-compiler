@@ -320,10 +320,10 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
     have hRel : ∀ a, ∀ x ∈ (reloadMemrefBase memrefBaseReload a).1, ∀ ds ss,
         x ≠ .Lopn ds o ss := by
       intro a x hx ds ss
-      unfold reloadMemrefBase at hx
+      unfold reloadMemrefBase ptrLoad at hx
       rintro rfl
       repeat' split at hx
-      all_goals simp [l3] at hx
+      all_goals simp [l3, l4] at hx
     have hSpill : ∀ dsts opn srcs, o ≠ opn →
         ∀ x ∈ legalizeSpillDst dsts opn srcs, ∀ ds ss, x ≠ .Lopn ds o ss := by
       intro dsts opn srcs ho x hx ds ss

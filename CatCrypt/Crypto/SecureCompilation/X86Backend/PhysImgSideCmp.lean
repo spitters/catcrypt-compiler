@@ -929,8 +929,9 @@ theorem reloadMemrefBase_scratch (mbr : String → Option String)
   · split
     · rename_i q hq
       refine ⟨?_, rfl⟩
-      simp [scratchPrevB, scratchMovFreeB_of_src (ss := [.reg q])
-        (by simpa [isScratchOp] using hmbr _ q hq)]
+      rcases ptrLoad_cases q with hp | hp <;>
+        simp [hp, scratchPrevB, scratchMovFreeB_of_src (ss := [.reg q])
+          (by simpa [isScratchOp] using hmbr _ q hq)]
     · exact ⟨rfl, ho⟩
   · exact ⟨rfl, ho⟩
 
@@ -1086,10 +1087,11 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
       exact hu
     obtain ⟨hL, hS, -⟩ := hacc ds o ss rfl
     rcases ho with rfl | rfl
-    · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hL rfl
+    · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hL rfl
       obtain ⟨n', hn'⟩ := hreg dn
       simp only [physExpand, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
-        Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb]
+        Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb,
+        ptrLoad_qsave hfa]
       have h := legalizeMemLoad_baseR14 n' y' (if hasSuffix "LOADIDX" ":64" then "MOV:64"
         else "MOV")
       intro r hr
@@ -1099,11 +1101,12 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
         subst hr'
         rfl
       · exact List.all_eq_true.mp h r' hr'
-    · obtain ⟨dn, b, y, v, rfl, rfl, b', y', q, hrmA, hmb, hq⟩ := hS rfl
+    · obtain ⟨dn, b, y, v, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hS rfl
       obtain ⟨n', hn'⟩ := hreg dn
       obtain ⟨v', hv'⟩ := hreg v
       simp only [physExpand, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
-        Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb]
+        Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb,
+        ptrLoad_qsave hfa]
       intro r hr
       simp only [List.mem_append, List.mem_map] at hr
       rcases hr with ⟨r', hr', rfl⟩ | ⟨r', hr', rfl⟩
@@ -1711,7 +1714,8 @@ theorem cmpRefines_reloadArrImmBody (mbr : String → Option String) (l : Lcmd) 
     obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
       refine cmpRefines_mnOf hi fun r hr => ?_ <;>
       simp only [List.map_cons, List.map_nil, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
-      rcases hr with rfl | rfl <;> simp [MnOf, movMnems]
+      rcases ptrLoad_cases q with hq | hq <;>
+      rcases hr with rfl | rfl <;> simp [MnOf, movMnems, hq]
   · exact CmpRefines.refl _
 
 /-! ### The free reload scratch at the compare-spill reload -/

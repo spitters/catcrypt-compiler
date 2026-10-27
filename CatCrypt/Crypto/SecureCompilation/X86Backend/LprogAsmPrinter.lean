@@ -237,28 +237,13 @@ def spillFrameOff (frame w idx : Nat) (qsaveB : Nat := qsaveBytes) : Int :=
 
 /-! ### Frame-array names
 
-A frame array of `n` words at byte offset `o` from the post-`leaq` `%rsp` is named
-`fa.<o>.<n>`. The name denotes the address of the array's cell 0; the only instruction that
-mentions it is the address load `LEA:64 d, fa.<o>.<n>`. -/
+The frame-array names `fa.<o>.<n>`, their parser and the frame-array region `faBytes` are
+defined in `VIR.JasminLprogExport.ExportPhys`, below the allocator that emits them; they are
+re-exported here under the printer's namespace. -/
 
-/-- The name `fa.<o>.<n>` of a frame array of `n` words at byte offset `o` from the
-    post-`leaq` `%rsp`. -/
-def faName (o n : Nat) : String := "fa." ++ toString o ++ "." ++ toString n
-
-/-- The offset and the word count of a frame-array name `fa.<o>.<n>`, read over the character
-    list; `none` for every other name. -/
-def faParts? (q : String) : Option (Nat × Nat) :=
-  if VIR.JasminLprogExport.hasPrefix q "fa." then
-    match (q.toList.drop 3).span (· != '.') with
-    | (os, '.' :: ns) =>
-        match VIR.JasminLprogExport.natOfDigits? os, VIR.JasminLprogExport.natOfDigits? ns with
-        | some o, some n => some (o, n)
-        | _, _ => none
-    | _ => none
-  else none
-
-/-- Whether a name is a frame-array name `fa.<o>.<n>`. -/
-def faB (q : String) : Bool := (faParts? q).isSome
+export CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (faName faParts? faB faOpBytes
+  faBytes faFreeOp faFree faOpBytes_of_faFreeOp foldl_faOpBytes_of_faFreeOp
+  faBytes_eq_zero_of_faFree)
 
 /-! ## 2. Operand resolution: `LOperand` (with name conventions) → AT&T text
 
@@ -2129,73 +2114,6 @@ def frameAddVecOverlap (body : VIR.JasminLprogExport.Lcmd) : Bool :=
 #guard frameAddVecOverlap
   [ ⟨0, .Lopn [] "FRAMEADD" [.imm 96]⟩
   , ⟨0, .Lopn [.reg "kv.0"] "VMOVDQU" [.reg "XMM0"]⟩ ] = true
-
-/-! ### The frame-array region
-
-The frame-array region occupies `[0, faBytes body)` at the bottom of the frame, below every
-other frame cell. -/
-
-/-- The end `o + 8 n` of the frame array an operand names, and `0` for an operand that names
-    no frame array. -/
-def faOpBytes : LOperand → Nat
-  | .reg q =>
-      match faParts? q with
-      | some (o, n) => o + 8 * n
-      | none => 0
-  | _ => 0
-
-/-- The bytes of the frame-array region of a body: the largest end `o + 8 n` over the
-    frame-array names `fa.<o>.<n>` of its instructions, and `0` for a body without them. -/
-def faBytes (body : VIR.JasminLprogExport.Lcmd) : Nat :=
-  body.foldl (fun acc i =>
-    match i.li_i with
-    | .Lopn dsts _ srcs => (dsts ++ srcs).foldl (fun a o => max a (faOpBytes o)) acc
-    | _ => acc) 0
-
-/-- Whether an operand names no frame array. -/
-def faFreeOp : LOperand → Bool
-  | .reg q => !faB q
-  | _ => true
-
-/-- Whether no instruction of a body names a frame array. -/
-def faFree (body : VIR.JasminLprogExport.Lcmd) : Bool :=
-  body.all fun i =>
-    match i.li_i with
-    | .Lopn dsts _ srcs => (dsts ++ srcs).all faFreeOp
-    | _ => true
-
-/-- An operand that names no frame array ends no frame array. -/
-theorem faOpBytes_of_faFreeOp {o : LOperand} (h : faFreeOp o = true) : faOpBytes o = 0 := by
-  cases o with
-  | reg q => grind [faFreeOp, faB, faOpBytes]
-  | _ => rfl
-
-/-- The fold of `faOpBytes` over operands that name no frame array returns its start. -/
-theorem foldl_faOpBytes_of_faFreeOp (l : List LOperand) (a : Nat)
-    (h : l.all faFreeOp = true) :
-    l.foldl (fun a o => max a (faOpBytes o)) a = a := by
-  induction l generalizing a with
-  | nil => rfl
-  | cons o l ih =>
-    simp only [List.all_cons, Bool.and_eq_true] at h
-    simp only [List.foldl_cons, faOpBytes_of_faFreeOp h.1, Nat.max_zero, ih _ h.2]
-
-/-- **A body without frame-array names has an empty frame-array region.** -/
-theorem faBytes_eq_zero_of_faFree {body : VIR.JasminLprogExport.Lcmd}
-    (h : faFree body = true) : faBytes body = 0 := by
-  unfold faBytes
-  generalize 0 = a
-  induction body generalizing a with
-  | nil => rfl
-  | cons i body ih =>
-    simp only [faFree, List.all_cons, Bool.and_eq_true] at h
-    simp only [List.foldl_cons]
-    split
-    · rename_i heq
-      simp only [heq] at h
-      rw [foldl_faOpBytes_of_faFreeOp _ _ h.1]
-      exact ih h.2 a
-    · exact ih h.2 a
 
 /-! ### Callee-saved GP park/restore for hand-built bodies
 

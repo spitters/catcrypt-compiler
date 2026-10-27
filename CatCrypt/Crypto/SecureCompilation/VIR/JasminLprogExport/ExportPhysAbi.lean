@@ -1909,6 +1909,12 @@ def resLivePin (retToRax : Bool) (outStoreMap : OutStoreMap) (res : List String)
     | none => []
   else []
 
+/-- The reload pairs of the frame arrays `(A, o, n)`: the register `key A` of the root maps to
+    the frame-array name `fa.<o>.<n>`. -/
+def faReloadPairs (key : String → String) (frameArrs : List (String × Nat × Nat)) :
+    List (String × String) :=
+  frameArrs.map fun e => (key e.1, faName e.2.1 e.2.2)
+
 /-- **The ABI-wrapping tail of `comToLfundefPhysAbi` with its allocation certificate**:
     the physical `lfundef` of an already-built virtual `Lfundef` and the certificate
     `allocCertOf` of the allocator input body over the table that `physBodyWithStores`
@@ -1925,7 +1931,8 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
     (forceLivePin : Bool := false)
     (forwarderBody? : Option Lcmd := none)
     (reserveVecScratch : Bool := false)
-    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) :
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi)
+    (frameArrs : List (String × Nat × Nat) := []) :
     Lfundef × List (String × String) :=
   -- `reserveVecScratch` (batch8 SoA path): cap the vector RA pool at
   -- `numVecRegs - 1`, reserving `%ymm15` as the printer's spill-legalization
@@ -2045,6 +2052,7 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
   -- unaffected.
   let memrefBaseReload : String → Option String :=
     let pairs : List (String × String) :=
+      faReloadPairs (fun A => physNameForBody virt.lfd_body tbl A abi) frameArrs ++
       (abiArgs.zipIdx).filterMap (fun ⟨abiReg, j⟩ =>
         match inLoadMap j with
         | some _ => none
@@ -2738,6 +2746,61 @@ theorem argBasePairs_false (outArg' : String) (inArgs' abiArgs : List String) :
     argBasePairs false outArg' inArgs' abiArgs
       = (outArg', abiArgs.headD "RDI") :: (inArgs'.zip (abiArgs.drop 1)) := rfl
 
+/-! ### The frame-array layout
+
+Each frame root `(A, n)` (an array root of `n` words without a parameter slot) is placed at
+a byte offset of the frame-array region; the roots are laid out one after the other from
+offset `o`, each taking `8 n` bytes. -/
+
+/-- The frame-array layout from byte offset `o`: each root `(A, n)` gets the entry
+    `(A, o', n)`, where `o'` is `o` plus the bytes of the roots before it. -/
+def faLayoutFrom : Nat → List (String × Nat) → List (String × Nat × Nat)
+  | _, [] => []
+  | o, (A, n) :: rest => (A, o, n) :: faLayoutFrom (o + 8 * n) rest
+
+/-- **The frame-array layout** of a list of frame roots `(A, n)`: the entries
+    `(A, o, n)` with cumulative byte offsets `o` from the bottom of the frame. -/
+def faLayout (roots : List (String × Nat)) : List (String × Nat × Nat) :=
+  faLayoutFrom 0 roots
+
+/-- Every entry of the layout from `o` starts at `o` or later and ends by `o` plus the bytes
+    of all roots. -/
+theorem faLayoutFrom_bounds (o : Nat) (roots : List (String × Nat)) :
+    ∀ e ∈ faLayoutFrom o roots,
+      o ≤ e.2.1 ∧ e.2.1 + 8 * e.2.2 ≤ o + 8 * (roots.map Prod.snd).sum := by
+  induction roots generalizing o with
+  | nil => simp [faLayoutFrom]
+  | cons r rest ih =>
+    obtain ⟨A, n⟩ := r
+    intro e he
+    simp only [faLayoutFrom, List.mem_cons] at he
+    rcases he with rfl | he
+    · simp only [List.map_cons, List.sum_cons]
+      omega
+    · have := ih (o + 8 * n) e he
+      simp only [List.map_cons, List.sum_cons]
+      omega
+
+/-- **The entries of a frame-array layout are disjoint**: each entry ends before every later
+    entry starts. -/
+theorem faLayout_disjoint (roots : List (String × Nat)) :
+    (faLayout roots).Pairwise fun a b => a.2.1 + 8 * a.2.2 ≤ b.2.1 := by
+  unfold faLayout
+  generalize 0 = o
+  induction roots generalizing o with
+  | nil => simp [faLayoutFrom]
+  | cons r rest ih =>
+    obtain ⟨A, n⟩ := r
+    simp only [faLayoutFrom, List.pairwise_cons]
+    exact ⟨fun e he => (faLayoutFrom_bounds _ rest e he).1, ih _⟩
+
+/-- **The frame-array layout fits its region**: every entry ends by `8` times the total
+    word count of the roots. -/
+theorem faLayout_bytes (roots : List (String × Nat)) :
+    ∀ e ∈ faLayout roots, e.2.1 + 8 * e.2.2 ≤ 8 * (roots.map Prod.snd).sum := by
+  intro e he
+  simpa using (faLayoutFrom_bounds 0 roots e he).2
+
 /-- **The 2-pointer-ABI physical `lfundef` of a virtual looped `lfundef` with its
     allocation certificate**: the physical `lfundef` of `lfundefPhysAbiOfVirt` and the
     certificate `allocCertOf` of the allocator input body over the table that
@@ -2748,7 +2811,7 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
     (shiftImm : ShiftImmOracle := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
-    (posBind : Bool := false) :
+    (posBind : Bool := false) (frameArrs : List (String × Nat × Nat) := []) :
     Lfundef × List (String × String) :=
   -- Argument-liveness pin (4+-argument looped signatures — the chained-phase
   -- kernels whose per-phase runtime bounds are read LATE, at each phase's loop
@@ -2816,7 +2879,10 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   -- out pointer's register — the byte-KAT-confirmed garbage (qruov/sdith). Each
   -- `(argNm, abiReg)` pair keys on the per-input phys base and yields the input's
   -- distinct slot, so the i-th input reloads from the i-th input's slot.
+  -- The frame arrays `(A, o, n)` come first: the register of each frame root maps to its
+  -- frame-array name, whose pointer load is `LEA:64 R14, fa.<o>.<n>` (`ptrLoad`).
   let reloadPairs : List (String × String) :=
+    faReloadPairs (fun A => physNameForBody virt.lfd_body tbl A abi) frameArrs ++
     argAbi.filterMap (fun (argNm, abiReg) =>
       match abiSaveOfExt abiReg with
       | some saveName =>
