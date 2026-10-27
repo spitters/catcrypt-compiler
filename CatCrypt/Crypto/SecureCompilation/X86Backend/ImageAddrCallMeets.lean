@@ -109,11 +109,12 @@ def callerCells (slotArr : String → Option (String × Nat)) (base : String →
     (passed : Set String) : SAssert AState Loc :=
   iSep fun c => own (cellLocsOff slotArr base passed c)
 
-/-- **The frame of the caller at a linked call**: the frame words, the cells of the slot
-    arrays whose names are outside `passed`, and the registers of `K`, separated. -/
+/-- **The frame of the caller at a linked call**: the frame words of the names that are no
+    frame-array names (`wordFrame`), the cells of the slot arrays whose names are outside
+    `passed`, and the registers of `K`, separated. -/
 def callerFrameA (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (base : String → BitVec 64) (passed K : Set String) : SAssert AState Loc :=
-  imgFrames frame ∗ callerCells slotArr base passed ∗ own (Loc.reg '' K)
+  imgFrames (wordFrame frame) ∗ callerCells slotArr base passed ∗ own (Loc.reg '' K)
 
 /-- A location of the frame words is a byte of a frame word. -/
 theorem mem_imgFrames_fp {frame : String → Option (BitVec 64)} {x : Loc}
@@ -146,7 +147,7 @@ theorem mem_callerCells_fp {slotArr : String → Option (String × Nat)}
 theorem mem_callerFrameA_fp {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64}
     {passed K : Set String} {x : Loc} (h : x ∈ (callerFrameA frame slotArr base passed K).fp) :
-    (∃ q a y, frame q = some a ∧ InRange8 a y ∧ x = Loc.mem y)
+    (∃ q a y, wordFrame frame q = some a ∧ InRange8 a y ∧ x = Loc.mem y)
       ∨ (∃ q A n j y, slotArr q = some (A, n) ∧ j < n ∧ A ∉ passed
           ∧ InRange8 (cellAt (base A) j) y ∧ x = Loc.mem y)
       ∨ ∃ r ∈ K, x = Loc.reg r := by
@@ -161,11 +162,12 @@ theorem callerFrameA_holds {frame : String → Option (BitVec 64)}
     (hsep : ImgSep frame slotArr base rsp) (passed K : Set String) (s : AState) :
     (callerFrameA frame slotArr base passed K).holds s := by
   have h := (imgSep_iff_sep frame slotArr base rsp s).1 hsep
-  have hcf : Disjoint (⋃ c, cellLocs slotArr base c) (⋃ q, optWordLocs (frame q)) :=
-    h.2.2.1.mono_right Set.subset_union_left
+  have hcf : Disjoint (⋃ c, cellLocs slotArr base c)
+      (⋃ q, optWordLocs (wordFrame frame q)) :=
+    h.2.2.1.1.mono_right Set.subset_union_left
   have hsub : ∀ c, cellLocsOff slotArr base passed c ⊆ cellLocs slotArr base c :=
     fun _ _ hl => hl.2
-  refine ⟨?_, h.2.2.2.2.1, ?_, ⟨fun i j hij => ?_, fun _ => trivial⟩, trivial⟩
+  refine ⟨?_, h.2.2.1.2.2.1, ?_, ⟨fun i j hij => ?_, fun _ => trivial⟩, trivial⟩
   · rw [Set.disjoint_left]
     intro x hx hx'
     obtain ⟨q, a, y, ha, hy, rfl⟩ := mem_imgFrames_fp hx
@@ -176,7 +178,7 @@ theorem callerFrameA_holds {frame : String → Option (BitVec 64)}
     rintro x hx ⟨r, -, hr⟩
     obtain ⟨q, A, n, j, y, -, -, -, -, rfl⟩ := mem_callerCells_fp hx
     cases hr
-  · exact (h.2.2.2.1.1 i j hij).mono (hsub i) (hsub j)
+  · exact (h.2.2.1.2.1.1 i j hij).mono (hsub i) (hsub j)
 
 /-! ## 2. The locations of the precondition -/
 
@@ -274,7 +276,7 @@ theorem callerFrameA_sep_pre {frame : String → Option (BitVec 64)}
     rcases mem_callerFrameA_fp hR with ⟨q, b, z, hb, hz, he⟩ |
       ⟨q, A, n, j, z, hq, hj, -, hz, he⟩ | ⟨_, _, he⟩
     · cases he
-      obtain ⟨o, h1, rfl⟩ := hS.frames q b hb
+      obtain ⟨o, h1, rfl⟩ := hS.frames q b (wordFrame_eq_some.1 hb).1
       exact above_not_retWord rsp y o (by omega) hz hy
     · cases he
       exact (hS.cells q A n j hq hj y hz).1 hy
@@ -284,7 +286,7 @@ theorem callerFrameA_sep_pre {frame : String → Option (BitVec 64)}
     rcases mem_callerFrameA_fp hR with ⟨q, b, z, hb, hz, he⟩ |
       ⟨q, A, n, j, z, hq, hj, -, hz, he⟩ | ⟨_, _, he⟩
     · cases he
-      obtain ⟨o, h1, rfl⟩ := hS.frames q b hb
+      obtain ⟨o, h1, rfl⟩ := hS.frames q b (wordFrame_eq_some.1 hb).1
       exact above_not_inFrame rsp y o l.frame h1 hz hy
     · cases he
       exact (hS.cells q A n j hq hj y hz).2 hy
@@ -369,9 +371,10 @@ theorem call_reestablishes_meets {frame : String → Option (BitVec 64)}
     exact Or.inl (Or.inl (Or.inr (Or.inr (Or.inl ⟨x, hr, rfl⟩))))
   obtain ⟨⟨-, -, d2, -⟩, -⟩ := entryAt_of_pre hpre.2.1
   refine ⟨acorr_callC _ ω hc hsp fun r hg hcl => hk _ (gpFacts hg).physNe hcl,
-    imgRel_callC hsep hphys _ _ hrel hb hbi (fun q b hb x hx => hframe x ?_)
+    imgRel_callC hsep hphys _ _ hrel hb hbi (fun q b hb hf x hx => hframe x ?_)
       (fun q' A n j hq' hj x hx => ?_), hpost⟩
-  · exact Or.inl (Set.mem_iUnion.2 ⟨q, by simp only [hb, fp_own, optWordLocs]; exact ⟨x, hx, rfl⟩⟩)
+  · exact Or.inl (Set.mem_iUnion.2 ⟨q, by
+      simp only [wordFrame_eq_some.2 ⟨hb, hf⟩, fp_own, optWordLocs]; exact ⟨x, hx, rfl⟩⟩)
   · by_cases hA : A ∈ passed
     · obtain ⟨hin, hnr⟩ := hpass q' A n j hq' hj hA x hx
       have hreg : Loc.mem x ∈ (conj (regionsOwn l.layout a.rv)
@@ -779,7 +782,8 @@ theorem framedPre_at_call {frame : String → Option (BitVec 64)}
   rcases mem_callerFrameA_fp hx with ⟨q', b, z, hb, hz, he⟩ |
     ⟨q', A', n', j', z, hq', hj', hA', hz, he⟩ | ⟨_, hr', -⟩
   · cases he
-    exact Set.disjoint_left.1 (disjoint_wordLocs_iff.2 (hsep.cellFrame q A n j hq hj q' b hb))
+    exact Set.disjoint_left.1 (disjoint_wordLocs_iff.2 (hsep.cellFrame q A n j hq hj q' b
+      (wordFrame_eq_some.1 hb).1 (wordFrame_eq_some.1 hb).2))
       ⟨y, hy, rfl⟩ ⟨y, hz, rfl⟩
   · cases he
     exact Set.disjoint_left.1 (disjoint_wordLocs_iff.2 (hsep.cells q' A' n' q A n j' j hq' hq
@@ -861,10 +865,11 @@ theorem call_reestablishes_meets_out {frame : String → Option (BitVec 64)}
   let ω : CallOut := ⟨fun _ => 0, false, false, false⟩
   refine ⟨hwr, _, rfl, acorr_callC _ ω hc hsp fun r hg hcl => hk _ (gpFacts hg).physNe hcl,
     _, _, agreeOffF_retArr _ (outOf _ ω) s A arr hw.res_none,
-    imgRel_callC_out hsep hphys _ (outOf _ ω) hrel hb hbi (fun q' b hb' x hx => hframe x ?_) hq
+    imgRel_callC_out hsep hphys _ (outOf _ ω) hrel hb hbi
+      (fun q' b hb' hf x hx => hframe x ?_) hq
       (fun q' A' n' j hq' hA' hj x hx => ?_) harr⟩
   · exact Or.inl (Set.mem_iUnion.2 ⟨q', by
-      simp only [hb', fp_own, optWordLocs]; exact ⟨x, hx, rfl⟩⟩)
+      simp only [wordFrame_eq_some.2 ⟨hb', hf⟩, fp_own, optWordLocs]; exact ⟨x, hx, rfl⟩⟩)
   · by_cases hAp : A' ∈ passed
     · obtain ⟨hin, hnr⟩ := hpass q' A' n' j hq' hj hAp hA' x hx
       have hreg : Loc.mem x ∈ (conj (regionsOwn l.layout a.rv)

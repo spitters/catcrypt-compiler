@@ -289,6 +289,42 @@ theorem cellParts?_of_gpOk {r : String} (h : gpOk r = true) : cellParts? r = non
   rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
     rfl | rfl <;> decide +kernel
 
+/-- A general-purpose name is no frame-array name. -/
+theorem faB_of_gpOk {r : String} (h : gpOk r = true) : faB r = false := by
+  have hm := DecodePrinted.mem_gpList h
+  simp only [DecodePrinted.gpList, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl <;> decide +kernel
+
+/-- A frame-slot name is no frame-array name. -/
+theorem faB_of_slot {q : String} (h : LprogBytes.isSpillOrQsave q = true) : faB q = false := by
+  have hp : hasPrefix q "fa." = false := by
+    simp only [LprogBytes.isSpillOrQsave, Bool.or_eq_true, hasPrefix] at h ⊢
+    have e1 : ("fa." : String).toList = ['f', 'a', '.'] := by decide +kernel
+    have e2 : ("k." : String).toList = ['k', '.'] := by decide +kernel
+    have e3 : ("qsave." : String).toList = ['q', 's', 'a', 'v', 'e', '.'] := by decide +kernel
+    rw [e1]
+    rw [e2, e3] at h
+    cases hq : q.toList with
+    | nil => rfl
+    | cons c t =>
+      rw [hq] at h
+      rcases h with h | h <;> simp only [List.isPrefixOf, Bool.and_eq_true, beq_iff_eq] at h <;>
+        simp [List.isPrefixOf, ← h.1]
+  simp [faB, faParts?, hp]
+
+/-- A name of `kOk` is no frame-array name. -/
+theorem faB_of_kOk {P : Params} {x : String} (h : kOk P x = true) : faB x = false := by
+  cases hs : LprogBytes.isSpillOrQsave x
+  · exact faB_of_gpOk (gpOk_of_kOk h hs)
+  · exact faB_of_slot hs
+
+/-- The simplification set that closes the frame-array conjunct of the gate on the names of
+    an instruction. -/
+macro "img_names" : tactic => `(tactic|
+  simp [VIR.JasminLsemExportRewrites.instrNames, VIR.JasminLsemExportRewrites.opNames,
+    faB_of_gpOk, faB_of_slot, faB_of_kOk, *])
+
 theorem readOkB_of_forall {frame : String → Option (BitVec 64)} {W : List String} {x : LinstrR}
     (h : ∀ r ∈ readNames x, r ∉ W) : readOkB (gateReadSet frame W x) x = true := by
   unfold readOkB
@@ -305,9 +341,10 @@ theorem gateAtW_reg {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
     {x : LinstrR} (hr : ∀ r ∈ readNames x, r ∉ W) (hc : carryI? x = none)
     (hi : icase frame x = .reg) (hm : movImmStruct? x = none) (hb : bitStore? body k x = none)
-    (hg : regGateBW frame W (normA x) = true) (hcm : cmovCondOkB W x = true) :
+    (hg : regGateBW frame W (normA x) = true) (hcm : cmovCondOkB W x = true)
+    (hnf : ∀ n ∈ VIR.JasminLsemExportRewrites.instrNames x, faB n = false) :
     gateAtW frame slotArr body k W x = true := by
-  simp [gateAtW, readOkB_of_forall hr, hc, hi, hm, hb, hg, hcm]
+  simpa [gateAtW, readOkB_of_forall hr, hc, hi, hm, hb, hg, hcm] using hnf
 
 /-- The simplification set that evaluates the kind `icase` of an instruction of a concrete
     mnemonic. -/
@@ -333,7 +370,7 @@ macro "img_reads" : tactic => `(tactic|
 theorem gate_label (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (body : Lcmd) (k : Nat) (W : List String) (kd : LabelKind) (l : LLabel) :
     gateAtW frame slotArr body k W (.Llabel kd l) = true := by
-  simp [gateAtW, carryI?, icase, readOkB, readNames]
+  simp [gateAtW, carryI?, icase, readOkB, readNames, VIR.JasminLsemExportRewrites.instrNames]
 
 /-- **A branch on a condition code with a polarity passes the gate** when every name of the
     analysis `W` lies in the analysis one past the target label. -/
@@ -343,7 +380,7 @@ theorem gate_cond {frame : String → Option (BitVec 64)}
     (hp : labelAt body l = some p) (hW : ∀ r ∈ W, r ∈ oneBitAt frame body (p + 1)) :
     gateAtW frame slotArr body k W (.Lcond (.reg cc) l) = true := by
   simp only [gateAtW, carryI?, icase, readOkB, readNames, List.all_nil, Bool.true_or,
-    Bool.true_and, hpol, hp, Option.any_some]
+    Bool.true_and, hpol, hp, Option.any_some, VIR.JasminLsemExportRewrites.instrNames]
   simp only [Bool.or_eq_true, List.isEmpty_iff, List.all_eq_true, List.contains_iff_mem]
   exact Or.inr hW
 
@@ -354,13 +391,15 @@ theorem gate_loadIdx {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
     {d b x : String} (hd : gpOk d = true) (hacc : (accArr slotArr body k b).isSome = true)
     (hfd : frame d = none) (hfb : frame b = none) (hfx : frame x = none) (hbW : b ∉ W)
-    (hxW : x ∉ W) :
+    (hxW : x ∉ W) (hb : gpOk b = true) (hx : gpOk x = true) :
     gateAtW frame slotArr body k W (.Lopn [.reg d] "LOADIDX" [.arrIdx b x 8]) = true := by
   have hr := readOkB_of_forall (frame := frame)
     (x := .Lopn [.reg d] "LOADIDX" [.arrIdx b x 8]) (W := W) (by
       have := cellParts?_of_gpOk hd
       img_reads)
-  simp [gateAtW, carryI?, icase, hr, hacc, hd, hfd, hfb, hfx, width_tag]
+  simp [gateAtW, carryI?, icase, hr, hacc, hd, hfd, hfb, hfx, width_tag,
+    VIR.JasminLsemExportRewrites.instrNames, VIR.JasminLsemExportRewrites.opNames,
+    faB_of_gpOk hd, faB_of_gpOk hb, faB_of_gpOk hx]
 
 /-- **An indexed store at stride `8` passes the gate** when its base holds the pointer of an
     array, its names hold no frame word, the array name is no cell name, and the base, index
@@ -369,14 +408,17 @@ theorem gate_storeIdx {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
     {a b x v : String} (ha : cellParts? a = none) (hv : gpOk v = true)
     (hacc : (accArr slotArr body k b).isSome = true) (hfb : frame b = none)
-    (hfx : frame x = none) (hfv : frame v = none) (hbW : b ∉ W) (hxW : x ∉ W) (hvW : v ∉ W) :
+    (hfx : frame x = none) (hfv : frame v = none) (hbW : b ∉ W) (hxW : x ∉ W) (hvW : v ∉ W)
+    (hb : gpOk b = true) (hx : gpOk x = true) (haf : faB a = false) :
     gateAtW frame slotArr body k W (.Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v])
       = true := by
   have hr := readOkB_of_forall (frame := frame)
     (x := .Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v]) (W := W) (by
       have := cellParts?_of_gpOk hv
       img_reads)
-  simp [gateAtW, carryI?, icase, hr, hacc, hfb, hfx, hfv, width_tag]
+  simp [gateAtW, carryI?, icase, hr, hacc, hfb, hfx, hfv, width_tag,
+    VIR.JasminLsemExportRewrites.instrNames, VIR.JasminLsemExportRewrites.opNames,
+    faB_of_gpOk hv, faB_of_gpOk hb, faB_of_gpOk hx, haf]
 
 /-- **A two-address operation over general-purpose names passes the gate** when its names hold
     no frame word and lie outside the analysis. -/
@@ -398,6 +440,7 @@ theorem gate_alu {frame : String → Option (BitVec 64)}
     · rfl
     · img_sym; img_fin
     · rfl
+    · img_names
 
 /-- **The compare of two general-purpose names passes the gate** when its names hold no frame
     word and lie outside the analysis. -/
@@ -417,6 +460,7 @@ theorem gate_cmp {frame : String → Option (BitVec 64)}
   · rfl
   · img_sym; img_fin
   · rfl
+  · img_names
 
 /-- **A 64-bit move between general-purpose names passes the gate** when its names hold no
     frame word and the source lies outside the analysis. -/
@@ -438,6 +482,7 @@ theorem gate_movRR {frame : String → Option (BitVec 64)}
     · rfl
     · img_sym; img_fin
     · rfl
+    · img_names
 
 /-- **A load of a frame slot into a general-purpose name passes the gate** when a slot of the
     analysis is no destination of an untagged immediate move of the body. -/
@@ -459,7 +504,9 @@ theorem gate_movLoad {frame : String → Option (BitVec 64)}
   · by_cases hW : q ∈ W
     · have := hqW hW
       img_reads
+      img_names
     · img_reads
+      img_names
 
 /-- **A store of a general-purpose name into a frame slot passes the gate** when a stored name
     of the analysis is no destination of a narrow cast of the body. -/
@@ -482,7 +529,9 @@ theorem gate_movStore {frame : String → Option (BitVec 64)}
   · by_cases hW : s ∈ W
     · have := hsW hW
       img_reads
+      img_names
     · img_reads
+      img_names
 
 /-- **A 64-bit move of an immediate into a general-purpose name passes the gate** when the
     name holds no frame word. -/
@@ -502,6 +551,7 @@ theorem gate_movImm64 {frame : String → Option (BitVec 64)}
     simp only [width_64 "MOV:64" (by decide +kernel)]
     img_fin
   · rfl
+  · img_names
 
 /-- **A 64-bit move of an immediate into a frame slot holding no array pointer passes the
     gate.** -/
@@ -517,8 +567,8 @@ theorem gate_movImmSlot {frame : String → Option (BitVec 64)}
   have hs : sImmB frame slotArr (.Lopn [.reg q] "MOV:64" [.imm v]) = true := by
     simp [sImmB, hfq, hsl]
   simp only [gateAtW, carryI?, hi, hr, movImmStruct?_ne isMovImmMnem_mov64,
-    hs, Bool.true_or, Bool.true_and]
-  split <;> rfl
+    hs, Bool.true_or]
+  split <;> img_names
 
 /-- **An untagged move of a carry constant into a general-purpose name passes the gate**: a
     move `MOV d, #n` that `bitMovB` accepts, into a name without a frame word. -/
@@ -531,7 +581,9 @@ theorem gate_movImmBit {frame : String → Option (BitVec 64)}
   have hi : icase frame (.Lopn [.reg d] "MOV" [.imm n]) = .reg := by img_icase
   have hr := readOkB_of_forall (frame := frame) (x := .Lopn [.reg d] "MOV" [.imm n])
     (W := W) (by img_reads)
-  simp [gateAtW, carryI?, hi, hr, movImmStruct?, isMovImmMnem_mov, hbit, hd, hfd]
+  simp [gateAtW, carryI?, hi, hr, movImmStruct?, isMovImmMnem_mov, hbit, hd, hfd,
+    VIR.JasminLsemExportRewrites.instrNames, VIR.JasminLsemExportRewrites.opNames,
+    faB_of_gpOk hd]
 
 /-- A name of `kOk` is no cell name. -/
 theorem cellParts?_of_kOk {P : Params} {x : String} (h : kOk P x = true) : cellParts? x = none := by
@@ -556,6 +608,7 @@ theorem gate_adcx {frame : String → Option (BitVec 64)}
   simp only [gateAtW, carryI?, ↓reduceIte, gateReadSet, hi]
   simp [carryOkB, hd, ha, hs, hc, hac, hsc]
   img_reads
+  img_names
 
 /-- **The carry-out binding of a carry-chain add passes the gate** when its destination is a
     general-purpose name, each source is a general-purpose name or a name with a frame word,
@@ -583,6 +636,8 @@ theorem gate_adcxhi {frame : String → Option (BitVec 64)}
     exact ⟨⟨⟨⟨hfc, hfa⟩, hfs⟩, hac⟩, hsc⟩
   rw [hco, Bool.and_true]
   img_reads
+  img_names
+  exact ⟨faB_of_kOk ha, faB_of_kOk hs, faB_of_kOk hc⟩
 
 /-- **The select over general-purpose names passes the gate** when its condition is none of
     the other operands, its names hold no frame word, and its two values lie outside the
@@ -613,7 +668,9 @@ theorem gate_select {frame : String → Option (BitVec 64)}
       = true := by
     img_sym; img_fin
   simp [gateAtW, carryI?, hi, hr, movImmStruct?_ne (o := "CMOV:64") (by decide +kernel),
-    bitStore?, sImmB, hsc, hg, hcm]
+    bitStore?, sImmB, hsc, hg, hcm, VIR.JasminLsemExportRewrites.instrNames,
+    VIR.JasminLsemExportRewrites.opNames, faB_of_gpOk hd, faB_of_gpOk hc, faB_of_gpOk ha,
+    faB_of_gpOk hb]
 
 /-- **A materialised comparison of two general-purpose names passes the gate** when its names
     hold no frame word and its sources lie outside the analysis. -/
@@ -636,6 +693,7 @@ theorem gate_setcc {frame : String → Option (BitVec 64)}
     · rfl
     · img_sym; img_fin
     · rfl
+    · img_names
 
 /-- **A three-register left or logical right shift passes the gate** when its names hold no
     frame word and its sources lie outside the analysis. -/
@@ -658,6 +716,7 @@ theorem gate_shiftReg {frame : String → Option (BitVec 64)}
     · rfl
     · img_sym; img_fin
     · rfl
+    · img_names
 
 /-- **A two-address operation against an immediate below `2^64` passes the gate** when its
     destination holds no frame word and lies outside the analysis. -/
@@ -686,6 +745,7 @@ theorem gate_aluImm {frame : String → Option (BitVec 64)}
       simp only [hsym]
       img_fin
     · rfl
+    · img_names
 
 /-- **The 64-bit compare of a general-purpose name against an immediate passes the gate**
     when the name holds no frame word and lies outside the analysis. -/
@@ -702,6 +762,7 @@ theorem gate_cmpImm {frame : String → Option (BitVec 64)}
   · rfl
   · img_sym; img_fin
   · rfl
+  · img_names
 
 /-- **A two-address left or logical right shift by an immediate below `64` passes the gate**
     when its destination holds no frame word and lies outside the analysis. -/
@@ -730,6 +791,7 @@ theorem gate_shiftImm {frame : String → Option (BitVec 64)}
         simp only [hsym]
         img_fin
       · rfl
+      · img_names
   · have hsym := fun R => symN_binRI d m d n R h1 (fun h => by omega)
       (by rw [width_64 m h3]; exact hn')
     rcases hm with rfl | rfl <;>
@@ -743,6 +805,7 @@ theorem gate_shiftImm {frame : String → Option (BitVec 64)}
         simp only [hsym]
         img_fin
       · rfl
+      · img_names
 
 /-- **A materialised comparison of a general-purpose name against an immediate passes the
     gate** when its names hold no frame word and its source lies outside the analysis. -/
@@ -772,6 +835,7 @@ theorem gate_setccImm {frame : String → Option (BitVec 64)}
       simp only [hsym]
       img_fin
     · rfl
+    · img_names
   · have hsym := fun R => symN_setccRI d "SETNE:64" a v R (by rw [strip_SETNE]; exact binOk_SETNE)
       (by rw [strip_SETNE]; exact cmp_SETNE) hv''
     apply gateAtW_reg
@@ -784,6 +848,7 @@ theorem gate_setccImm {frame : String → Option (BitVec 64)}
       simp only [hsym]
       img_fin
     · rfl
+    · img_names
 
 /-- **A width cast between general-purpose names passes the gate** when its names hold no
     frame word and its source lies outside the analysis. -/
@@ -799,7 +864,8 @@ theorem gate_cast {frame : String → Option (BitVec 64)}
     simp (config := { decide := true }) [gateAtW, carryI?, icase, castGateB, gateReadSet,
       readOkB, carryIns, readNames, readsRdx, VIR.JasminLsemAddrCongr.rdxOp, srcNames, cellBase,
       DecodePrintedAddrW.classifyK, LprogBytes.castMovBits, VIR.JasminLsemAddrRun.castTagW, hd,
-      ha, hfd, hfa, haW, hcd, hca]
+      ha, hfd, hfa, haW, hcd, hca, VIR.JasminLsemExportRewrites.instrNames,
+      VIR.JasminLsemExportRewrites.opNames, faB_of_gpOk hd, faB_of_gpOk ha]
 
 /-- **A count-in-mnemonic left or logical right shift by `1 … 63` passes the gate** when its
     names hold no frame word and its source lies outside the analysis. -/
@@ -863,6 +929,7 @@ theorem gate_tagShift {frame : String → Option (BitVec 64)}
       hne "CASTW_32_16" (by decide), or_self, ite_false, hsym]
     img_fin
   · simp [cmovCondOkB]
+  · img_names
 
 /-! ## 3. The accepted sub-family of the legal forms -/
 
@@ -962,7 +1029,7 @@ inductive ImgForm (frame : String → Option (BitVec 64)) (slotArr : String → 
       ImgForm frame slotArr body k W (.Lopn [.reg d] "LOADIDX" [.arrIdx b x 8])
   /-- The indexed store at stride `8` through a base holding an array pointer. -/
   | storeIdx (a b x v : String) : gpOk b = true → gpOk x = true → gpOk v = true →
-      cellParts? a = none → (accArr slotArr body k b).isSome = true →
+      cellParts? a = none → faB a = false → (accArr slotArr body k b).isSome = true →
       frame b = none → frame x = none → frame v = none → b ∉ W → x ∉ W → v ∉ W →
       ImgForm frame slotArr body k W (.Lopn [.reg a] "STOREIDX" [.arrIdx b x 8, .reg v])
   /-- The 64-bit carry-chain add over general-purpose names. -/
@@ -1042,10 +1109,10 @@ theorem gateAtW_of_imgForm {frame : String → Option (BitVec 64)}
   | shiftImm m d n hm hd hn _ hfd hdW => exact gate_shiftImm hm hd hfd hdW hn
   | shiftReg m d a b hm hd ha hb hfd hfa hfb haW hbW =>
     exact gate_shiftReg hm hd ha hb hfd hfa hfb haW hbW
-  | loadIdx d b x hd _ _ hacc hfd hfb hfx hbW hxW =>
-    exact gate_loadIdx hd hacc hfd hfb hfx hbW hxW
-  | storeIdx a b x v _ _ hv ha hacc hfb hfx hfv hbW hxW hvW =>
-    exact gate_storeIdx ha hv hacc hfb hfx hfv hbW hxW hvW
+  | loadIdx d b x hd hb hx hacc hfd hfb hfx hbW hxW =>
+    exact gate_loadIdx hd hacc hfd hfb hfx hbW hxW hb hx
+  | storeIdx a b x v hb hx hv ha haf hacc hfb hfx hfv hbW hxW hvW =>
+    exact gate_storeIdx ha hv hacc hfb hfx hfv hbW hxW hvW hb hx haf
   | adcx d a s c hd ha hs hc hac hsc _ haW hsW => exact gate_adcx hd ha hs hc hac hsc haW hsW
   | adcxhi o a s c ho ha hs hc hac hsc hfa hfs hfc haW hsW =>
     exact gate_adcxhi ho ha hs hc hfa hfs hfc hac hsc haW hsW

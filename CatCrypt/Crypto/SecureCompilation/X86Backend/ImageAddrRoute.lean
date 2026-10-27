@@ -276,14 +276,15 @@ def entryA (σ : AbiLayout) (sa : AState) : LstateA where
   mem := sa.mem
 
 /-- **The name-keyed state at entry** of the machine state `sa` under the frame map `fr` and
-    the name map `un`: a name with a frame word holds the word at it, every other name its
+    the name map `un`: a name with a frame address holds its value there (`frameVal`: the
+    address of a frame-array name, the word at it of any other), every other name its
     value in `entryA`; the name `x` holds the array of `abiEntryM` at `un x`; program counter
     `0`. -/
 def entryV (σ : AbiLayout) (fr : String → Option (BitVec 64)) (sa : AState)
     (un : String → String) : LstateM where
   reg :=
     { lvm := fun r => match fr r with
-        | some a => ⟨64, read64 sa.mem a⟩
+        | some a => ⟨64, ImageAddrSim.frameVal sa.mem r a⟩
         | none => (entryA σ sa).reg.lvm r
       lpc := 0 }
   larr := fun x => (abiEntryM σ sa).larr (un x)
@@ -372,7 +373,7 @@ theorem entryV_srcOf {σ : AbiLayout} {nm : String → String}
   · rw [srcOf_of_gpOk h1]
     simp only [entryV, entryA, h3, h1, ite_true, h2]
   · rw [srcOf_of_stack h1]
-    simp only [entryV, hw, hv]
+    simp only [entryV, hw, ImageAddrSim.frameVal_of_not_fa (ImageAddrSim.faB_slotOfReg _), hv]
 
 /-- **The copies of the parameter registers leave `entryV` unchanged** but for the program
     counter, when each parameter has its source (`ArgSrc`). -/
@@ -425,6 +426,13 @@ theorem slotArrOf_some {σ : AbiLayout} {nm : String → String} {q A : String} 
     · cases h
   · cases h
 
+/-- A slot of `slotArrOf` is no frame-array name. -/
+theorem slotArrOf_not_fa {σ : AbiLayout} {nm : String → String} :
+    ∀ q A n, slotArrOf σ nm q = some (A, n) → faB q = false := by
+  intro q A n h
+  obtain ⟨j, a, -, -, -, rfl⟩ := slotArrOf_some h
+  exact ImageAddrSim.faB_slotOfReg _
+
 /-- The slot map `sl` with its array names renamed by `ren`. -/
 def slotRen (sl : String → Option (String × Nat)) (ren : String → String) (q : String) :
     Option (String × Nat) :=
@@ -448,7 +456,8 @@ theorem imgSep_slotRen {fr : String → Option (BitVec 64)} {sl : String → Opt
     (hun : ∀ q A n, sl q = some (A, n) → un (ren A) = A) :
     ImageAddrSim.ImgSep fr (slotRen sl ren) (fun A => base (un A)) rsp := by
   refine ⟨h.frames, fun q A' n j hq hj q' a ha => ?_, fun q A' n q' B' n' j j' hq hq' hj hj' hne => ?_,
-    fun q q' A' n n' hq hq' => ?_, fun q A' n j hq hj => ?_, h.gp, fun q A' n hq => ?_⟩
+    fun q q' A' n n' hq hq' => ?_, fun q A' n j hq hj => ?_, h.gp, fun q A' n hq => ?_,
+    fun q A' n a hq hfa ha => ?_⟩
   · obtain ⟨A, hA, rfl⟩ := slotRen_some hq
     rw [hun q A n hA]
     exact h.cellFrame q A n j hA hj q' a ha
@@ -469,6 +478,9 @@ theorem imgSep_slotRen {fr : String → Option (BitVec 64)} {sl : String → Opt
     exact h.red q A n j hA hj
   · obtain ⟨A, hA, -⟩ := slotRen_some hq
     exact h.slotFrame q A n hA
+  · obtain ⟨A, hA, rfl⟩ := slotRen_some hq
+    rw [hun q A n hA]
+    exact h.faBase q A n a hA hfa ha
 
 /-- **The entry pair is related.** `entryV` at the name map `un` and `entryA` are related by
     the relation of the image simulation at the frame map `fr`, the slots of `slotArrOf σ nm`
@@ -1056,7 +1068,7 @@ theorem image_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd
   have hgate' : imgGateB fr (slotRen (slotArrOf σ nm) (renOf ps)) body = true := by
     rw [hfrdef, ImageAddrFrame.imgGateB_frameMark]; exact hgate
   have hsep := imgSep_slotRen (ren := renOf ps)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) hun
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot slotArrOf_not_fa) hun
   obtain ⟨prog, sa', hdec, hh, -, hcells⟩ := ImageAddrFrame.virt_bytes hck hpr hphys hgate'
     hsep fn _ t' rfl rfl (entryA σ sa) false (imgRel_entryS hS hent
       fun j hj => (R.unr j hj).2) rfl (fun R hR => by

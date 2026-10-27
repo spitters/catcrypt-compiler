@@ -190,8 +190,8 @@ theorem cell_route_reg_bytes {σ : AbiLayout} {nm : String → String} {body : L
       ∧ ∀ r, r ∈ outs → gpOk r = true → (frameMark (frameNames body) r).isNone = true →
         b.reg.getW r 64 = some (sa'.regs (phys r)) := by
   simp only [cellRouteB, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, hnc⟩, hns⟩, hlop⟩,
-    hfuse⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, hnc⟩, hns⟩, hlop⟩,
+    hfuse⟩, -⟩ := hg
   have N := cellNamesOkB_spec hN
   have E := entryB_spec hent sa
   have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrs σ) r = none := by
@@ -261,7 +261,8 @@ theorem cell_route_reg_bytes {σ : AbiLayout} {nm : String → String} {body : L
       exact h3
   have hok := runIdxOk_of_idxInvCheckB hidx "" _ _ rfl rfl (hents _) _ hrunB
   have hS0 := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+      ImageAddrRoute.slotArrOf_not_fa) fun _ _ _ _ => rfl
   have hword : ∀ q a, frameE body sa q = some a →
       ∃ o : Int, σ.frameLo ≤ o ∧ o ≤ σ.frameHi ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 o := by
     intro q a ha
@@ -539,7 +540,7 @@ theorem straightRegW_bytes_ct (Pj : JLeakParams) {σ : AbiLayout} {nm : String �
   have hpr : printedAddrWB body = true := by
     have h := hroute
     simp only [cellRouteB, Bool.and_eq_true] at h
-    exact h.1.1.1.1.1.1.1.1.1.2
+    exact h.1.1.1.1.1.1.1.1.1.1.2
   exact straightCell_bytes_ct hroute hlk' hN hfold hC (bytesTraceW_of_printedAddrWB hpr) ok hdec
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRegW

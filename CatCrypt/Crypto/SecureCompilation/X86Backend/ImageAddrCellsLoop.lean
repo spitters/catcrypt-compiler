@@ -651,7 +651,7 @@ theorem virt_bytesC' {frame : String → Option (BitVec 64)}
       s.reg.getW R 64 = some (sa.regs (DecodePrinted.phys R)))
     (hmem : s.mem = sa.mem) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel b = some t)
-    (hok : RunIdxOk (singletonProgM fn B) fuel b) :
+    (hok : RunIdxOk (singletonProgM fn B) fuel b) (hofa : ∀ r ∈ outs, faB r = false) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ ∀ r a, r ∈ outs → frame r = some a → Disjoint8 (redW (frameRsp body sa)) a →
         t.prog.base.reg.lvm r = ⟨64, read64 sa'.mem a⟩ := by
@@ -663,7 +663,8 @@ theorem virt_bytesC' {frame : String → Option (BitVec 64)}
     rcases Bool.or_eq_true_iff.mp hgate with hg | hg
     · obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
         image_addr_simB' hsep hphys hg hN hF fn f' b t' s zf hfn hrel hr'
-      exact ⟨fA, sA, zA, h1, fun q a _ ha => h2.slots q a ha, h3⟩
+      exact ⟨fA, sA, zA, h1, fun q a hq ha => by
+        rw [← frameVal_of_not_fa (hofa q hq)]; exact h2.slots q a ha, h3⟩
     · obtain ⟨hg, hro⟩ := Bool.and_eq_true_iff.mp hg
       obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
         image_addr_simBW' hsep hphys hg hN hF fn hcond f' b t' s zf hfn
@@ -671,8 +672,9 @@ theorem virt_bytesC' {frame : String → Option (BitVec 64)}
       have hh : haltedA (cellBody slotArr body) sA = true := by
         rw [haltedA_cellBody]
         exact JasminLsemAddrRun.haltedA_of_runA frame body fA s zf (sA, zA) h1
-      exact ⟨fA, sA, zA, h1, fun q a hq ha => (h2.slots q a ha).word
-        (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh
+      exact ⟨fA, sA, zA, h1, fun q a hq ha => by
+        rw [← frameVal_of_not_fa (hofa q hq)]
+        exact (h2.slots q a ha).word (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh
           (ImageAddrSimW.not_mem_of_retOutsB hro hq)), h3⟩
   obtain ⟨fA, sA, zA, hrA, hslots, hsafe⟩ := hsim
   rw [runA_congr hfr] at hrA

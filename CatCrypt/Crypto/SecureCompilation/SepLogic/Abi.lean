@@ -25,9 +25,10 @@ stack parameters lie in the stack words, so they are joined by the conjunction
 `SAssert.conj`, which takes the union of the footprints and requires no disjointness.
 
 `imgSepA` is the separation of the image simulation: the cells of the slot arrays are
-separated from the frame words and from the red-zone word, the frame words and the cells
-are each pairwise separated (`SAssert.iSep`, the separating conjunction of a family), and
-the length, general-purpose and slot conditions of `ImgSep` are pure.
+separated from the frame words of the names that are no frame-array names (`wordFrame`) and
+from the red-zone word, the frame words and the cells are each pairwise separated
+(`SAssert.iSep`, the separating conjunction of a family), and the length, general-purpose,
+slot and frame-array base conditions of `ImgSep` are pure.
 
 ## Main definitions
 
@@ -65,6 +66,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc (AbiLayout AbiArg ResultKind stackAr
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (ImgSep cellAt)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (redW)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (faB)
 
 /-! ## Word locations -/
 
@@ -364,18 +366,35 @@ def imgCells (slotArr : String → Option (String × Nat)) (base : String → Bi
     SAssert AState Loc :=
   iSep fun c => own (cellLocs slotArr base c)
 
-/-- The length, general-purpose and slot conditions of `ImgSep`. -/
-def ImgSide (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat)) :
-    Prop :=
+/-- The frame address of a frame name that is no frame-array name (`faB`), and `none` for a
+    frame-array name. -/
+def wordFrame (frame : String → Option (BitVec 64)) (q : String) : Option (BitVec 64) :=
+  if faB q then none else frame q
+
+/-- `wordFrame` gives the frame address of exactly the frame names that are no frame-array
+    names. -/
+theorem wordFrame_eq_some {frame : String → Option (BitVec 64)} {q : String}
+    {a : BitVec 64} : wordFrame frame q = some a ↔ frame q = some a ∧ faB q = false := by
+  unfold wordFrame
+  cases faB q <;> simp
+
+/-- The length, general-purpose, slot and frame-array base conditions of `ImgSep`. -/
+def ImgSide (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (base : String → BitVec 64) : Prop :=
   (∀ q q' A n n', slotArr q = some (A, n) → slotArr q' = some (A, n') → n = n')
     ∧ (∀ r, gpOk r = true → frame r = none)
-    ∧ ∀ q A n, slotArr q = some (A, n) → ∃ a, frame q = some a
+    ∧ (∀ q A n, slotArr q = some (A, n) → ∃ a, frame q = some a)
+    ∧ ∀ q A n a, slotArr q = some (A, n) → faB q = true → frame q = some a → base A = a
 
-/-- **The image separation as an assertion**: the side conditions as a pure fact, and the
-    cells of the slot arrays separated from the frame words and from the red-zone word. -/
+/-- **The image separation as an assertion**: the side conditions as a pure fact; the cells
+    of the slot arrays separated from the frame words of the names that are no frame-array
+    names (`wordFrame`) and from the red-zone word; and the frame words pairwise
+    separated. -/
 def imgSepA (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (base : String → BitVec 64) (rsp : BitVec 64) : SAssert AState Loc :=
-  ⌜ImgSide frame slotArr⌝ ∗ imgCells slotArr base ∗ conj (imgFrames frame) (own (wordLocs (redW rsp)))
+  ⌜ImgSide frame slotArr base⌝ ∗
+    conj (imgCells slotArr base ∗ conj (imgFrames (wordFrame frame)) (own (wordLocs (redW rsp))))
+      (imgFrames frame)
 
 theorem disjoint_optWordLocs_iff {a b : Option (BitVec 64)} :
     Disjoint (optWordLocs a) (optWordLocs b) ↔
@@ -400,20 +419,22 @@ section Projections
 variable {frame : String → Option (BitVec 64)} {slotArr : String → Option (String × Nat)}
   {base : String → BitVec 64} {rsp : BitVec 64} {s : AState}
 
-/-- The footprint of the cells is disjoint from those of the frame words and of the red-zone
-    word, at the cell `j` of an array `A` some slot holds. -/
+/-- The footprint of the cells is disjoint from those of the frame words of the names that are
+    no frame-array names and of the red-zone word, at the cell `j` of an array `A` some slot
+    holds. -/
 theorem imgSepA_cell_disj (h : (imgSepA frame slotArr base rsp).holds s) {q A : String}
     {n j : Nat} (hq : slotArr q = some (A, n)) (hj : j < n) :
-    (∀ q', Disjoint (wordLocs (cellAt (base A) j)) (optWordLocs (frame q'))) ∧
+    (∀ q', Disjoint (wordLocs (cellAt (base A) j)) (optWordLocs (wordFrame frame q'))) ∧
       Disjoint (wordLocs (cellAt (base A) j)) (wordLocs (redW rsp)) := by
   have h1 : Disjoint (⋃ c, cellLocs slotArr base c)
-      ((⋃ q, optWordLocs (frame q)) ∪ wordLocs (redW rsp)) := h.2.2.1
+      ((⋃ q, optWordLocs (wordFrame frame q)) ∪ wordLocs (redW rsp)) := h.2.2.1.1
   have h2 : Disjoint (cellLocs slotArr base (A, j))
-      ((⋃ q, optWordLocs (frame q)) ∪ wordLocs (redW rsp)) :=
+      ((⋃ q, optWordLocs (wordFrame frame q)) ∪ wordLocs (redW rsp)) :=
     h1.mono_left (Set.subset_iUnion (cellLocs slotArr base) (A, j))
   have h3 := disjoint_cellLocs_iff.1 h2 ⟨q, n, hq, hj⟩
   exact ⟨fun q' => h3.mono_right
-      ((Set.subset_iUnion (fun q => optWordLocs (frame q)) q').trans Set.subset_union_left),
+      ((Set.subset_iUnion (fun q => optWordLocs (wordFrame frame q)) q').trans
+        Set.subset_union_left),
     h3.mono_right Set.subset_union_right⟩
 
 /-- Distinct frame words of the image separation are `Disjoint8`. -/
@@ -421,16 +442,17 @@ theorem imgSepA_frames (h : (imgSepA frame slotArr base rsp).holds s) {q q' : St
     {a a' : BitVec 64} (ha : frame q = some a) (ha' : frame q' = some a') (hne : q ≠ q') :
     Disjoint8 a a' := by
   have h1 := iSep_disj (P := fun q => (own (optWordLocs (frame q)) : SAssert AState Loc))
-    h.2.2.2.2.1 hne
+    h.2.2.2 hne
   simp only [fp_own, ha, ha', optWordLocs] at h1
   exact disjoint_wordLocs_iff.1 h1
 
-/-- A cell of a slot array is `Disjoint8` from every frame word. -/
+/-- A cell of a slot array is `Disjoint8` from the frame word of every name that is no
+    frame-array name. -/
 theorem imgSepA_cellFrame (h : (imgSepA frame slotArr base rsp).holds s) {q A : String}
     {n j : Nat} (hq : slotArr q = some (A, n)) (hj : j < n) {q' : String} {a : BitVec 64}
-    (ha : frame q' = some a) : Disjoint8 (cellAt (base A) j) a := by
+    (ha : frame q' = some a) (hf : faB q' = false) : Disjoint8 (cellAt (base A) j) a := by
   have h1 := (imgSepA_cell_disj h hq hj).1 q'
-  rw [ha] at h1
+  rw [wordFrame_eq_some.2 ⟨ha, hf⟩] at h1
   exact disjoint_wordLocs_iff.1 h1
 
 /-- The red-zone word is `Disjoint8` from every cell of a slot array. -/
@@ -444,7 +466,7 @@ theorem imgSepA_cells (h : (imgSepA frame slotArr base rsp).holds s) {q q' A A' 
     (hj : j < n) (hj' : j' < n') (hne : A ≠ A' ∨ j ≠ j') :
     Disjoint8 (cellAt (base A) j) (cellAt (base A') j') := by
   have h1 := iSep_disj (P := fun c => (own (cellLocs slotArr base c) : SAssert AState Loc))
-    h.2.2.2.1 (i := (A, j)) (j := (A', j')) (by rintro ⟨⟩; rcases hne with h | h <;> exact h rfl)
+    h.2.2.1.2.1 (i := (A, j)) (j := (A', j')) (by rintro ⟨⟩; rcases hne with h | h <;> exact h rfl)
   simp only [fp_own] at h1
   rw [disjoint_cellLocs_iff] at h1
   have h2 := h1 ⟨q, n, hq, hj⟩
@@ -452,15 +474,17 @@ theorem imgSepA_cells (h : (imgSepA frame slotArr base rsp).holds s) {q q' A A' 
   exact disjoint_wordLocs_iff.1 (h2 ⟨q', n', hq', hj'⟩).symm
 
 /-- **A store into a frame word keeps the other words** of the image separation: every other
-    frame word and every cell of a slot array read the same after the store, the memory
-    step of `ImageAddrSim.rel_sstore`. -/
+    frame word and every cell of a slot array read the same after a store into the frame
+    word of a name that is no frame-array name, the memory step of
+    `ImageAddrSim.rel_sstore`. -/
 theorem imgSepA_store_frame (h : (imgSepA frame slotArr base rsp).holds s) {q : String}
-    {a : BitVec 64} (ha : frame q = some a) (mem : AMem) (v : BitVec 64) :
+    {a : BitVec 64} (ha : frame q = some a) (hf : faB q = false) (mem : AMem) (v : BitVec 64) :
     (∀ q' a', frame q' = some a' → q' ≠ q → read64 (write64 mem a v) a' = read64 mem a') ∧
       ∀ q' A n j, slotArr q' = some (A, n) → j < n →
         read64 (write64 mem a v) (cellAt (base A) j) = read64 mem (cellAt (base A) j) :=
   ⟨fun _ _ ha' hne => read64_write64_of_disjoint _ _ _ _ (imgSepA_frames h ha ha' (Ne.symm hne)),
-    fun _ _ _ _ hq hj => read64_write64_of_disjoint _ _ _ _ (imgSepA_cellFrame h hq hj ha).symm⟩
+    fun _ _ _ _ hq hj =>
+      read64_write64_of_disjoint _ _ _ _ (imgSepA_cellFrame h hq hj ha hf).symm⟩
 
 end Projections
 
@@ -470,19 +494,21 @@ theorem imgSep_iff_sep (frame : String → Option (BitVec 64))
     (s : AState) : ImgSep frame slotArr base rsp ↔ (imgSepA frame slotArr base rsp).holds s := by
   constructor
   · intro h
-    refine ⟨Set.empty_disjoint _, ⟨h.len, h.gp, h.slotFrame⟩, ?_, ⟨?_, fun _ => trivial⟩,
-      ⟨?_, fun _ => trivial⟩, trivial⟩
-    · show Disjoint (⋃ c, cellLocs slotArr base c)
-        ((⋃ q, optWordLocs (frame q)) ∪ wordLocs (redW rsp))
+    refine ⟨Set.empty_disjoint _, ⟨h.len, h.gp, h.slotFrame, h.faBase⟩,
+      ⟨?_, ⟨?_, fun _ => trivial⟩, ⟨?_, fun _ => trivial⟩, trivial⟩, ⟨?_, fun _ => trivial⟩⟩
+    · change Disjoint (⋃ c, cellLocs slotArr base c)
+        ((⋃ q, optWordLocs (wordFrame frame q)) ∪ wordLocs (redW rsp))
       rw [Set.disjoint_iUnion_left]
       rintro ⟨A, j⟩
       rw [disjoint_cellLocs_iff]
       rintro ⟨q, n, hq, hj⟩
       rw [Set.disjoint_union_right, Set.disjoint_iUnion_right]
       refine ⟨fun q' => ?_, (disjoint_wordLocs_iff.2 (h.red q A n j hq hj)).symm⟩
-      cases ha : frame q' with
+      cases ha : wordFrame frame q' with
       | none => exact Set.disjoint_empty _
-      | some a => exact disjoint_wordLocs_iff.2 (h.cellFrame q A n j hq hj q' a ha)
+      | some a =>
+        obtain ⟨ha', hf⟩ := wordFrame_eq_some.1 ha
+        exact disjoint_wordLocs_iff.2 (h.cellFrame q A n j hq hj q' a ha' hf)
     · rintro ⟨A, j⟩ ⟨A', j'⟩ hne
       show Disjoint (cellLocs slotArr base (A, j)) (cellLocs slotArr base (A', j'))
       rw [disjoint_cellLocs_iff]
@@ -495,15 +521,21 @@ theorem imgSep_iff_sep (frame : String → Option (BitVec 64))
         exact Or.inr fun e => hne (by rw [e])
       · exact Or.inl hA
     · intro q q' hne
-      show Disjoint (optWordLocs (frame q)) (optWordLocs (frame q'))
+      change Disjoint (optWordLocs (wordFrame frame q)) (optWordLocs (wordFrame frame q'))
+      rw [disjoint_optWordLocs_iff]
+      intro a a' ha ha'
+      exact h.frames q q' a a' (wordFrame_eq_some.1 ha).1 (wordFrame_eq_some.1 ha').1 hne
+    · intro q q' hne
+      change Disjoint (optWordLocs (frame q)) (optWordLocs (frame q'))
       rw [disjoint_optWordLocs_iff]
       intro a a' ha ha'
       exact h.frames q q' a a' ha ha' hne
   · intro h
     exact ⟨fun q q' a a' ha ha' hne => imgSepA_frames h ha ha' hne,
-      fun q A n j hq hj q' a ha => imgSepA_cellFrame h hq hj ha,
+      fun q A n j hq hj q' a ha hf => imgSepA_cellFrame h hq hj ha hf,
       fun q A n q' A' n' j j' hq hq' hj hj' hne => imgSepA_cells h hq hq' hj hj' hne,
-      h.2.1.1, fun q A n j hq hj => imgSepA_red h hq hj, h.2.1.2.1, h.2.1.2.2⟩
+      h.2.1.1, fun q A n j hq hj => imgSepA_red h hq hj, h.2.1.2.1, h.2.1.2.2.1,
+      h.2.1.2.2.2⟩
 
 /-! ## Instances -/
 
@@ -556,11 +588,11 @@ private def exSlot (q : String) : Option (String × Nat) :=
 private def exBase (A : String) : BitVec 64 := if A = "A" then 0x1000 else 0x2000
 
 private theorem exFrame_imgSepA : (imgSepA exFrame exSlot exBase 0x8000).holds exState := by
-  refine (imgSep_iff_sep _ _ _ _ _).1 ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine (imgSep_iff_sep _ _ _ _ _).1 ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro q q' a a' ha ha' hne
     simp only [exFrame] at ha ha'
     split_ifs at ha ha' <;> cases ha <;> cases ha' <;> simp_all [Disjoint8]
-  · intro q A n j hq hj q' a ha
+  · intro q A n j hq hj q' a ha _
     simp only [exFrame, exSlot] at ha hq
     split_ifs at ha hq <;> cases ha <;>
       simp only [Option.some.injEq, Prod.mk.injEq] at hq <;>
@@ -598,6 +630,13 @@ private theorem exFrame_imgSepA : (imgSepA exFrame exSlot exBase 0x8000).holds e
   · intro q A n hq
     simp only [exSlot, exFrame] at hq ⊢
     split_ifs at hq ⊢ <;> simp_all
+  · intro q A n a hq hf _
+    simp only [exSlot] at hq
+    split_ifs at hq with h1 h2
+    · subst h1
+      exact absurd hf (by decide)
+    · subst h2
+      exact absurd hf (by decide)
 
 end X86
 

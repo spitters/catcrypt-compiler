@@ -161,7 +161,7 @@ theorem imgSep_cells {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tru
     intro q A j h
     obtain ⟨n, hn, -, -⟩ := cellIdx_spec h
     exact ImageCellFold.isArrB_mem hn
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro q q' a a' ha ha' hne
     unfold frameC at ha ha'
     cases hc : cellIdx R q with
@@ -195,7 +195,7 @@ theorem imgSep_cells {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tru
         | none =>
             rw [hc'] at ha'
             exact hS.frames q q' a a' ha ha' hne
-  · intro q A n j hq hj q' a ha
+  · intro q A n j hq hj q' a ha hf
     obtain ⟨m, hsq, hcase⟩ := slotArrC_some hq
     rcases hcase with ⟨-, rfl⟩ | ⟨hA, rfl⟩
     · exact absurd hj (Nat.not_lt_zero j)
@@ -211,7 +211,7 @@ theorem imgSep_cells {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tru
           cases hA
       | none =>
           rw [hc] at ha
-          exact hS.cellFrame q A n j hsq hj q' a ha
+          exact hS.cellFrame q A n j hsq hj q' a ha hf
   · intro q A n q' A' n' j j' hq hq' hj hj' hne
     obtain ⟨m, hsq, hcase⟩ := slotArrC_some hq
     obtain ⟨m', hsq', hcase'⟩ := slotArrC_some hq'
@@ -249,6 +249,11 @@ theorem imgSep_cells {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tru
     unfold frameC
     rw [hslC q A m hsq]
     exact ha
+  · intro q A n a hq hfa ha
+    obtain ⟨m, hsq, -⟩ := slotArrC_some hq
+    unfold frameC at ha
+    rw [hslC q A m hsq] at ha
+    exact hS.faBase q A m a hsq hfa ha
 
 /-! ## 4. Decided conditions -/
 
@@ -477,7 +482,8 @@ theorem cellRel_entry {σ : AbiLayout} {body : Lcmd} {sa : AState}
       simp
     · have hc := cellIdx_memName hD hp hi
       simp only [afterArgsC, emptyArrs, entryV, frameC, hc]
-      rw [he, abiBase_argName hj]
+      rw [he, abiBase_argName hj,
+        ImageAddrSim.frameVal_of_not_fa (by simp [faB, faParts?, memName, hasPrefix])]
       rfl
 
 /-! ## 7. The copies of the parameter registers and the cell frames -/
@@ -728,12 +734,13 @@ def cellRouteB (σ : AbiLayout) (nm : String → String) (body : Lcmd) (outs : L
     && cellAccB sl R body && noCondB body && cellNoSlotB sl body && C2.all isLopnB
     && (!fuse || (fuseOKL (fuseRegs σ nm ++ cellNames R) (fuseLoPre (argBind σ nm) C2)
       (argBind σ nm ++ C2) && outs.all (· != "R15")))
+    && outs.all (fun r => !faB r)
 
 theorem cellRouteB_entryB {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {outs : List String} {C2 : List LinstrRM} {fuse : Bool}
     (h : cellRouteB σ nm body outs C2 fuse = true) : entryB σ nm body = true := by
   simp only [cellRouteB, Bool.and_eq_true] at h
-  exact h.1.1.1.1.1.2
+  exact h.1.1.1.1.1.1.2
 
 /-- No save of the cell body of a printed body that passes the entry check reads a
     stack-argument name. -/
@@ -775,8 +782,9 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         b.reg.lvm (memName A (8 * j))
           = ⟨64, read64 sa'.mem (cellAt (abiBase (abiReg σ) sa A) j)⟩ := by
   simp only [cellRouteB, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, hnc⟩, hns⟩, hlop⟩,
-    hfuse⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, hnc⟩, hns⟩, hlop⟩,
+    hfuse⟩, hof⟩ := hg
+  have hofa : ∀ r ∈ outs, faB r = false := by simpa using hof
   have N := cellNamesOkB_spec hN
   have E := entryB_spec hent sa
   have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrs σ) r = none := by
@@ -846,7 +854,8 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
       exact h3
   have hok := runIdxOk_of_idxInvCheckB hidx "" _ _ rfl rfl (hents _) _ hrunB
   have hS0 := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+      ImageAddrRoute.slotArrOf_not_fa) fun _ _ _ _ => rfl
   have hword : ∀ q a, frameE body sa q = some a →
       ∃ o : Int, σ.frameLo ≤ o ∧ o ≤ σ.frameHi ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 o := by
     intro q a ha
@@ -922,7 +931,7 @@ theorem cell_route_bytes {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         simp only [ImageAddrRoute.entryA, hR, ite_true]
       unfold JasminLsemWidthN.LstateN.getW
       rw [hl]
-      simp) rfl _ hrunB hok
+      simp) rfl _ hrunB hok hofa
   refine ⟨prog, sa', hdec, hh, fun A j hA hc => ?_⟩
   rw [← hagB _ hA]
   exact hobs _ _ hA (by simp only [frameC, hc]) (hred A j hc)

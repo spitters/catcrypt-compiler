@@ -313,7 +313,7 @@ theorem imgSep_cellsU {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tr
     intro q A j h
     obtain ⟨n, hn, -, -⟩ := cellIdx_spec h
     exact hrenR _ hn
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro q q' a a' ha ha' hne
     unfold frameC at ha ha'
     cases hc : cellIdx R q with
@@ -349,7 +349,7 @@ theorem imgSep_cellsU {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tr
         | none =>
             rw [hc'] at ha'
             exact hS.frames q q' a a' ha ha' hne
-  · intro q A n j hq hj q' a ha
+  · intro q A n j hq hj q' a ha hf
     obtain ⟨m, hsq, hcase⟩ := slotArrC_some hq
     rcases hcase with ⟨-, rfl⟩ | ⟨hA, rfl⟩
     · exact absurd hj (Nat.not_lt_zero j)
@@ -367,7 +367,7 @@ theorem imgSep_cellsU {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tr
           cases hA
       | none =>
           rw [hc] at ha
-          exact hS.cellFrame q A n j hsq hj q' a ha
+          exact hS.cellFrame q A n j hsq hj q' a ha hf
   · intro q A n q' A' n' j j' hq hq' hj hj' hne
     obtain ⟨m, hsq, hcase⟩ := slotArrC_some hq
     obtain ⟨m', hsq', hcase'⟩ := slotArrC_some hq'
@@ -405,6 +405,11 @@ theorem imgSep_cellsU {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tr
     unfold frameC
     rw [hslC q A m hsq]
     exact ha
+  · intro q A n a hq hfa ha
+    obtain ⟨m, hsq, -⟩ := slotArrC_some hq
+    unfold frameC at ha
+    rw [hslC q A m hsq] at ha
+    exact hS.faBase q A m a hsq hfa ha
 
 /-! ## 5. The cell arrays under the renaming -/
 
@@ -524,7 +529,7 @@ theorem cellRel_entryR {σ : AbiLayout} {ps : List (String × String)} {body : L
       have hb : baseR σ sa ps (renOf ps (argName j)) = sa.regs a.reg := by
         show abiBase (abiReg σ) sa (unren ps (renOf ps (argName j))) = _
         rw [hu, abiBase_argName hj]
-      rw [he, hb]
+      rw [he, hb, ImageAddrSim.frameVal_of_not_fa (by simp [faB, faParts?, memName, hasPrefix])]
       rfl
 
 /-- **The cell relation behind the prefix of the virtual body.** A straight run of the copies
@@ -610,7 +615,7 @@ theorem subCells_entry {σ : AbiLayout} {ps : List (String × String)} {body : L
       have hb : baseR σ sa ps (renOf ps (argName j)) = sa.regs a.reg := by
         show abiBase (abiReg σ) sa (unren ps (renOf ps (argName j))) = _
         rw [hu, abiBase_argName hj]
-      rw [he, hb]
+      rw [he, hb, ImageAddrSim.frameVal_of_not_fa (by simp [faB, faParts?, memName, hasPrefix])]
       rfl
 
 /-- **The cell relation behind the prefix of a virtual body, for a sublist of the cell

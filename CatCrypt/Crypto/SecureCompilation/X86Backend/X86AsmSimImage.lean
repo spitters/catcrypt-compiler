@@ -68,7 +68,7 @@ variable (frame : String → Option (BitVec 64)) (slotArr : String → Option (S
     with the observed names `outs`, the printed body is in the class `printedAddrWB`, the
     cell body is in the class `physImgB`, and it passes the gate `imgGateB`, or the gate
     with carry chains `imgGateBW` with no observed name in the width analysis at the
-    return. -/
+    return; and no observed name is a frame-array name (`faB`). -/
 def x86ImageGate (p : List LinstrRM × Lcmd) : Bool :=
   ownedCheckMC outs p.1 (JasminLsemAddrImage.virtImg slotArr (cellBody slotArr p.2))
     && printedAddrWB p.2
@@ -76,6 +76,7 @@ def x86ImageGate (p : List LinstrRM × Lcmd) : Bool :=
     && (imgGateB frame slotArr (cellBody slotArr p.2)
       || (imgGateBW frame slotArr (cellBody slotArr p.2)
         && ImageAddrSimW.retOutsB frame (cellBody slotArr p.2) outs))
+    && outs.all (fun r => !faB r)
 
 /-- **The entry relation of the image route.** The printed body has no slot move at a cell
     and no conditional branch; at the stack base of the machine state the frame map is
@@ -117,12 +118,13 @@ def x86ImageAsmSim :
     rintro ⟨B, body⟩ hg b sa t
       ⟨hN, hnc, hsep, hF, hfr, hfn, hbpc, s, zf, hrel, hpc, hent, hmem⟩ ⟨fuel, hrun, hok⟩
     simp only [x86ImageGate, Bool.and_eq_true] at hg
-    obtain ⟨⟨⟨hck, hpr⟩, hphys⟩, hgate⟩ := hg
+    obtain ⟨⟨⟨⟨hck, hpr⟩, hphys⟩, hgate⟩, hof⟩ := hg
+    have hofa : ∀ r ∈ outs, faB r = false := by simpa using hof
     rw [x86Isa_lsemFuelMemF] at hrun
     rw [x86Isa_RunIdxOk] at hok
     obtain ⟨prog, sa', hdec, hh, hobs⟩ :=
       virt_bytesC_noCall hck hpr hphys hgate hsep hN hF hnc hfr fn b t hfn hbpc s zf hrel hpc hent
-        hmem fuel hrun hok
+        hmem fuel hrun hok hofa
     exact ⟨prog, sa', hdec, (x86Mach_halts_iff r).mpr hh, hobs⟩
 
 /-- **An in-bounds halting run of `x86Isa` on a gated virtual body gives a halting run of

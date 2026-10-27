@@ -178,7 +178,9 @@ theorem ptrW_of_reload {frame : String → Option (BitVec 64)}
     (hA : slotArr (slotOfReg R) = some (A, n)) (ha : frame (slotOfReg R) = some a)
     (hb : frame b = none) (hS : SaveAt body k R) (hk : k < sa.reg.lpc) :
     sa.reg.getW b 64 = some (base A) := by
-  rw [getW_eq_some_iff, hrel.reload b _ a A n hre hA ha hb, (hrel.saved k R A n a hS hA ha).1 hk]
+  rw [getW_eq_some_iff, hrel.reload b _ a A n hre hA ha hb,
+    ImageAddrSim.frameVal_of_not_fa (ImageAddrSim.faB_slotOfReg R),
+    (hrel.saved k R A n a hS hA ha).1 hk]
 
 /-- **The summary input at the entry of a call.** Under `ImgSep`, `ImgRel`, `ACorr` and
     `CallerSep`, with the pointer name `pa` holding the base of the array `A` of a frame

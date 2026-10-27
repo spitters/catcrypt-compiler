@@ -776,6 +776,7 @@ def routeBW (σ : AbiLayout) (nm : String → String) (body : Lcmd) (seeds loop 
             (argBind σ nm ++ seeds ++ movesOf ps ++ L2)
           && (outCells (renOf ps out) m).all (· != "R15")))
         && (loopNames loop).contains out
+        && (outCells (renOf ps out) m).all (fun r => !faB r)
   | none => false
 
 /-- The facts of the entry and renaming checks behind `routeBW`. -/
@@ -786,7 +787,7 @@ theorem routeBW_checks {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   unfold routeBW at hg
   split at hg
   · simp only [Bool.and_eq_true] at hg
-    exact ⟨hg.1.1.1.1.1.1.1.1.1.2, hg.1.1.1.1.1.1.1.1.2⟩
+    exact ⟨hg.1.1.1.1.1.1.1.1.1.1.2, hg.1.1.1.1.1.1.1.1.1.2⟩
   · cases hg
 
 /-- Under the route check `routeBW`, `entryV` at the frame of the printed body is an ABI
@@ -823,8 +824,9 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
   rename_i L2 hfold
   simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
     decide_eq_true_eq] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, ⟨hgW, hro⟩⟩, hfr⟩, hent⟩, hren⟩, hacc⟩, hns⟩,
-    hN⟩, hlen⟩, hkeep⟩, hpsC⟩, hfuse⟩, hout⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hpr⟩, hphys⟩, ⟨hgW, hro⟩⟩, hfr⟩, hent⟩, hren⟩, hacc⟩, hns⟩,
+    hN⟩, hlen⟩, hkeep⟩, hpsC⟩, hfuse⟩, hout⟩, hof⟩ := hg
+  have hofa : ∀ r ∈ outCells (renOf ps out) m, faB r = false := by simpa using hof
   have E := entryB_spec hent sa
   have R := renB_spec hren
   have N := cellNamesRB_spec hN
@@ -930,7 +932,8 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     { prog := { base := entryC σ sa ps body, lfn := fn }, zf := false } tB rfl rfl (hents _) fuelB
     hrunB
   have hS0 := imgSep_slotRen (ren := renOf ps)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) hun
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+      ImageAddrRoute.slotArrOf_not_fa) hun
   have hword : ∀ q a, frameE body sa q = some a →
       ∃ o : Int, σ.frameLo ≤ o ∧ o ≤ σ.frameHi ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 o := by
     intro q a ha
@@ -1008,7 +1011,7 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
         simp only [entryA, hR, ite_true]
       unfold LstateN.getW
       rw [hl]
-      simp) rfl _ hrunB hok
+      simp) rfl _ hrunB hok hofa
   refine ⟨prog, sa', hdec, hh, arr, ?_, fun j hj => ?_⟩
   · rw [← harr]
     exact ha

@@ -34,9 +34,11 @@ registers and its arrays (`step_congr`).
 ## The relation
 
 `ImgRel` relates a state of the image to an address state: equal program counters, flags
-and names without a frame word; a frame-word name holds its frame word; each array holds the
+and names without a frame word; a frame name holds its value `frameVal` (the frame address of
+a frame-array name, the frame word of any other); each array holds the
 words at its base; the frame word of an array pointer holds the base once its save has run;
-after a reload the reloaded register holds the frame word; the frame word of the slot of a
+after a reload the reloaded register holds the value of the frame name; the frame word of the
+slot of a
 stack-argument name, which holds an array pointer from entry with no save, holds the base
 (`HeldAt`). `ImgSep` is the separation of
 frame words, array words and the red-zone word. `imgGateB` is the decided condition on the
@@ -889,7 +891,8 @@ theorem icase_cond {frame : String → Option (BitVec 64)} {x : LinstrR} {cc : S
     to a label of the body; an indexed load or store through a reloaded array pointer, with
     index, base, value and destination names without a frame word and a general-purpose
     destination of a load; a load of a frame word into a general-purpose name; a store of a
-    general-purpose name into a frame word; a compare against a frame word; an array zeroing
+    general-purpose name into a frame word; a compare against a frame word; the frame word of
+    a load, a store or a compare is no frame-array name (`faB`); an array zeroing
     at the word width through a reloaded pointer of an array whose length is the zeroed count,
     with a base without a frame word; a constant-index store through a reloaded pointer of an
     array whose length exceeds the index, with base and value names without a frame word; or
@@ -904,9 +907,9 @@ def instrGateB (frame : String → Option (BitVec 64)) (slotArr : String → Opt
       && (frame idx).isNone && (frame b).isNone
   | .stx _ b idx v => (accArr slotArr body k b).isSome && (frame idx).isNone
       && (frame b).isNone && (frame v).isNone
-  | .sload d _ => gpOk d
-  | .sstore _ S => gpOk S
-  | .scmp _ y _ => (frame y).isNone
+  | .sload d q => gpOk d && !faB q
+  | .sstore q S => gpOk S && !faB q
+  | .scmp _ y q => (frame y).isNone && !faB q
   | .zarr b n w =>
       (match accArr slotArr body k b with
         | some (_, m) => n == m
@@ -972,20 +975,52 @@ def imgGateB (frame : String → Option (BitVec 64)) (slotArr : String → Optio
 /-- The address of word `j` of the array at `p`. -/
 abbrev cellAt (p : BitVec 64) (j : Nat) : BitVec 64 := p + BitVec.ofNat 64 (8 * j)
 
+/-- **The value of the frame name `q` at the frame address `a`** in the memory `mem`: the
+    address `a` itself for a frame-array name (`faB`), which denotes the address of its cell
+    `0`, and the word `read64 mem a` for every other frame name. -/
+def frameVal (mem : Ascent.AddrMem.AMem) (q : String) (a : BitVec 64) : BitVec 64 :=
+  if faB q then a else read64 mem a
+
+/-- The value of a frame name that is no frame-array name is its frame word. -/
+theorem frameVal_of_not_fa {mem : Ascent.AddrMem.AMem} {q : String} {a : BitVec 64}
+    (h : faB q = false) : frameVal mem q a = read64 mem a := by
+  simp [frameVal, h]
+
+/-- The value of a frame-array name is its frame address. -/
+theorem frameVal_of_fa {mem : Ascent.AddrMem.AMem} {q : String} {a : BitVec 64}
+    (h : faB q = true) : frameVal mem q a = a := by
+  simp [frameVal, h]
+
+/-- Two memories that agree on the frame word of every frame name that is no frame-array
+    name give that name one value. -/
+theorem frameVal_congr {mem mem' : Ascent.AddrMem.AMem} {q : String} {a : BitVec 64}
+    (h : faB q = false → read64 mem' a = read64 mem a) :
+    frameVal mem' q a = frameVal mem q a := by
+  cases hq : faB q
+  · rw [frameVal_of_not_fa hq, frameVal_of_not_fa hq, h hq]
+  · rw [frameVal_of_fa hq, frameVal_of_fa hq]
+
+/-- The slot `qsave.R` of a register is no frame-array name. -/
+theorem faB_slotOfReg (R : String) : faB (slotOfReg R) = false := by
+  simp [faB, faParts?, slotOfReg, hasPrefix]
+
 /-- **The separation of the image simulation**: distinct frame words are disjoint; the
-    words of the arrays are disjoint from every frame word, from the red-zone word and from
-    each other; and an array name has one length. -/
+    words of the arrays are disjoint from every frame word of a name that is no frame-array
+    name (`faB`), from the red-zone word and from each other; an array name has one length;
+    and the frame address of a frame-array name that is the slot of an array is the base of
+    the array. -/
 structure ImgSep (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (base : String → BitVec 64) (rsp : BitVec 64) : Prop where
   frames : ∀ q q' a a', frame q = some a → frame q' = some a' → q ≠ q' → Disjoint8 a a'
   cellFrame : ∀ q A n j, slotArr q = some (A, n) → j < n → ∀ q' a, frame q' = some a →
-    Disjoint8 (cellAt (base A) j) a
+    faB q' = false → Disjoint8 (cellAt (base A) j) a
   cells : ∀ q A n q' A' n' j j', slotArr q = some (A, n) → slotArr q' = some (A', n') →
     j < n → j' < n' → (A ≠ A' ∨ j ≠ j') → Disjoint8 (cellAt (base A) j) (cellAt (base A') j')
   len : ∀ q q' A n n', slotArr q = some (A, n) → slotArr q' = some (A, n') → n = n'
   red : ∀ q A n j, slotArr q = some (A, n) → j < n → Disjoint8 (redW rsp) (cellAt (base A) j)
   gp : ∀ r, gpOk r = true → frame r = none
   slotFrame : ∀ q A n, slotArr q = some (A, n) → ∃ a, frame q = some a
+  faBase : ∀ q A n a, slotArr q = some (A, n) → faB q = true → frame q = some a → base A = a
 
 theorem ImgSep.slotFrameB {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
@@ -1014,20 +1049,30 @@ theorem HeldAt.of_frames {frame : String → Option (BitVec 64)}
     HeldAt frame slotArr base mem' :=
   fun R A n a hR hA ha => (hmem _ a ha).trans (h R A n a hR hA ha)
 
+/-- The entry-held frame words are kept by a step that keeps every frame word of a name that
+    is no frame-array name (`faB`). -/
+theorem HeldAt.of_wordFrames {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64}
+    {mem mem' : Ascent.AddrMem.AMem} (h : HeldAt frame slotArr base mem)
+    (hmem : ∀ q a, frame q = some a → faB q = false → read64 mem' a = read64 mem a) :
+    HeldAt frame slotArr base mem' :=
+  fun R A n a hR hA ha => (hmem _ a ha (faB_slotOfReg R)).trans (h R A n a hR hA ha)
+
 /-- **The relation of the image simulation** between a state `s` of the name-keyed machine
     on the image and a state `sa` of the address machine with zero flag `zf` on the body:
     the program counters, the names without a frame word, the zero, carry and overflow flags
-    are equal; a frame-word name holds its frame word; a general-purpose name has width `64`;
+    are equal; a frame name holds its value (`frameVal`: the frame address of a frame-array
+    name, the frame word of any other); a general-purpose name has width `64`;
     each array holds the words at its base; the frame word of an array pointer holds the
     base once its save has run, and the saved register holds it before; after a reload
-    the reloaded register holds the frame word; and the entry-held frame words hold their
-    bases (`HeldAt`). -/
+    the reloaded register holds the value of the reloaded frame name; and the entry-held
+    frame words hold their bases (`HeldAt`). -/
 structure ImgRel (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (base : String → BitVec 64) (body : Lcmd) (s : LstateMF) (sa : LstateA) (zf : Bool) :
     Prop where
   pc : sa.reg.lpc = s.prog.base.reg.lpc
   regs : ∀ r, frame r = none → s.prog.base.reg.lvm r = sa.reg.lvm r
-  slots : ∀ q a, frame q = some a → s.prog.base.reg.lvm q = ⟨64, read64 sa.mem a⟩
+  slots : ∀ q a, frame q = some a → s.prog.base.reg.lvm q = ⟨64, frameVal sa.mem q a⟩
   zf : s.zf = zf
   cf : sa.cf = s.prog.base.cf
   of : sa.of = s.prog.base.of
@@ -1040,7 +1085,7 @@ structure ImgRel (frame : String → Option (BitVec 64)) (slotArr : String → O
         ∧ (sa.reg.lpc ≤ k → sa.reg.getW R 64 = some (base A))
   reload : ∀ b q a A n, reloadOf slotArr body sa.reg.lpc b = some q →
     slotArr q = some (A, n) → frame q = some a → frame b = none →
-      sa.reg.lvm b = ⟨64, read64 sa.mem a⟩
+      sa.reg.lvm b = ⟨64, frameVal sa.mem q a⟩
   held : HeldAt frame slotArr base sa.mem
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames)
@@ -1082,12 +1127,12 @@ theorem reload_succ {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd} {sa sa' : LstateA} {bi : Linstr}
     (hrl : ∀ b q a A n, reloadOf slotArr body sa.reg.lpc b = some q →
       slotArr q = some (A, n) → frame q = some a → frame b = none →
-        sa.reg.lvm b = ⟨64, read64 sa.mem a⟩)
+        sa.reg.lvm b = ⟨64, frameVal sa.mem q a⟩)
     (hb : body[sa.reg.lpc]? = some bi) (hpc : sa'.reg.lpc = sa.reg.lpc + 1)
     (hgp : ∀ r, gpNameB r = true → frame r = none)
     (hsf : ∀ q A n, slotArr q = some (A, n) → (frame q).isSome = true)
     (hhit : ∀ b q a A n, slotMov? bi.li_i = some (b, q) → slotArr q = some (A, n) →
-      frame q = some a → frame b = none → sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩)
+      frame q = some a → frame b = none → sa'.reg.lvm b = ⟨64, frameVal sa'.mem q a⟩)
     (hcopy : ∀ b q, slotMov? bi.li_i = some (b, q) → gpNameB q = true → frame b = none →
       sa'.reg.lvm b = sa.reg.lvm q)
     (hreg : ∀ d q0 b, slotMov? bi.li_i = some (d, q0) → slotArr d = none → b ≠ d →
@@ -1100,7 +1145,7 @@ theorem reload_succ {frame : String → Option (BitVec 64)}
       q ∉ dstNames bi.li_i → read64 sa'.mem a = read64 sa.mem a) :
     ∀ b q a A n, reloadOf slotArr body sa'.reg.lpc b = some q →
       slotArr q = some (A, n) → frame q = some a → frame b = none →
-        sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩ := by
+        sa'.reg.lvm b = ⟨64, frameVal sa'.mem q a⟩ := by
   intro b q a A n h hq ha hbf
   rw [hpc] at h
   cases hm : slotMov? bi.li_i with
@@ -1108,7 +1153,7 @@ theorem reload_succ {frame : String → Option (BitVec 64)}
       obtain ⟨ds, o, ss, hx, hnd, h'⟩ := reloadOf_succ_none_eq hb hm b h
       have hbd : b ∉ dstNames bi.li_i := by rw [hx]; exact not_mem_dstNames_of_dstHit hnd
       have hqd : q ∉ dstNames bi.li_i := by rw [hx]; exact arrSlot_not_mem_dstNames hnd hq
-      rw [hregL hm b hbf hbd, hmemL hm q a A n hq ha hqd]
+      rw [hregL hm b hbf hbd, frameVal_congr fun _ => hmemL hm q a A n hq ha hqd]
       exact hrl b q a A n h' hq ha hbf
   | some p =>
       obtain ⟨d, q0⟩ := p
@@ -1120,13 +1165,14 @@ theorem reload_succ {frame : String → Option (BitVec 64)}
           cases hd : slotArr d with
           | none => rfl
           | some p => have := hsf d p.1 p.2 (by rw [hd]); rw [hbf] at this; cases this
-        rw [hcopy d q0 hm h3.2 hbf, hmem d q0 q a A n hm hdA hq ha]
+        rw [hcopy d q0 hm h3.2 hbf, frameVal_congr fun _ => hmem d q0 q a A n hm hdA hq ha]
         exact hrl q0 q a A n h hq ha (hgp q0 h3.2)
       · cases h
         subst h1
         exact hhit d q a A n hm hq ha hbf
       · have hd : slotArr d = none := Option.isNone_iff_eq_none.mp h2
-        rw [hreg d q0 b hm hd (Ne.symm h1) hbf, hmem d q0 q a A n hm hd hq ha]
+        rw [hreg d q0 b hm hd (Ne.symm h1) hbf,
+          frameVal_congr fun _ => hmem d q0 q a A n hm hd hq ha]
         exact hrl b q a A n h hq ha hbf
 
 /-! ## 8. Facts of the class `physImgB` and of the gate -/
@@ -1462,7 +1508,7 @@ theorem rel_sload {frame : String → Option (BitVec 64)} {slotArr : String → 
     (hphys : physImgB slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {d q : String} (hc : icase frame bi.li_i = .sload d q)
-    (hgd : gpOk d = true)
+    (hgd : gpOk d = true) (hfa : faB q = false)
     (hs : evalInstrPMemF P (normA bi.li_i, .reg none) s = some t) :
     ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa zf = some (sa', t.zf)
       ∧ ImgRel frame slotArr base body t sa' t.zf := by
@@ -1474,6 +1520,7 @@ theorem rel_sload {frame : String → Option (BitVec 64)} {slotArr : String → 
   have hz := hrel.zf
   subst hz
   have hsq := hrel.slots q a ha
+  rw [frameVal_of_not_fa hfa] at hsq
   refine ⟨{ sa with reg := (sa.reg.setReg d (read64 sa.mem a)).nextPc },
     fstepA_slotLoad frame hm ha sa _, ⟨?_, ?_, ?_, rfl, hrel.cf, hrel.of, ?_, ?_, ?_, ?_,
       hrel.held⟩⟩
@@ -1525,7 +1572,7 @@ theorem rel_sload {frame : String → Option (BitVec 64)} {slotArr : String → 
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
       rw [ha] at hq'
       cases hq'
-      simp
+      simp [frameVal_of_not_fa hfa]
     · rw [hm] at hm'
       obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj hm')
       simp [hbd]
@@ -1537,7 +1584,7 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
     (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {q S : String} (hc : icase frame bi.li_i = .sstore q S)
-    (hgS : gpOk S = true)
+    (hgS : gpOk S = true) (hfa : faB q = false)
     (hs : evalInstrPMemF P (normA bi.li_i, .reg none) s = some t) :
     ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa zf = some (sa', t.zf)
       ∧ ImgRel frame slotArr base body t sa' t.zf := by
@@ -1565,18 +1612,19 @@ theorem rel_sstore {frame : String → Option (BitVec 64)}
       rw [ha] at ha'
       cases ha'
       simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, ite_true,
-        read64_write64_same]
+        frameVal_of_not_fa hfa, read64_write64_same]
       rw [hSv]
     · simp only [LstateM.setReg, LstateM.nextPc, LstateN.lvm_nextPc, LstateN.lvm_setReg, e,
         ite_false]
-      rw [read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' ha ha' (Ne.symm e))]
+      rw [frameVal_congr fun _ =>
+        read64_write64_of_disjoint _ _ _ _ (hsep.frames q q' a a' ha ha' (Ne.symm e))]
       exact hrel.slots q' a' ha'
   · intro r hr
     simpa using hrel.wid r hr
   · intro q' A n hq'
     obtain ⟨arr, h1, h2⟩ := hrel.cells q' A n hq'
     refine ⟨arr, by simpa using h1, fun j hj => ?_⟩
-    rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q' A n j hq' hj q a ha).symm]
+    rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q' A n j hq' hj q a ha hfa).symm]
     exact h2 j hj
   · intro k R A n a' hS' hA ha'
     simp only [LstateN.lpc_nextPc]
@@ -1641,7 +1689,7 @@ theorem saved_reload_next {frame : String → Option (BitVec 64)}
     (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) (hnm : slotMov? bi.li_i = none)
     (hpc : sa'.reg.lpc = sa.reg.lpc + 1)
-    (hmem : ∀ q a, frame q = some a → read64 sa'.mem a = read64 sa.mem a)
+    (hmem : ∀ q a, frame q = some a → faB q = false → read64 sa'.mem a = read64 sa.mem a)
     (hreg : ∀ b, frame b = none → b ∉ dstNames bi.li_i → sa'.reg.lvm b = sa.reg.lvm b) :
     (∀ k R A n a, SaveAt body k R → slotArr (slotOfReg R) = some (A, n) →
       frame (slotOfReg R) = some a →
@@ -1649,9 +1697,9 @@ theorem saved_reload_next {frame : String → Option (BitVec 64)}
           ∧ (sa'.reg.lpc ≤ k → sa'.reg.getW R 64 = some (base A)))
     ∧ (∀ b q a A n, reloadOf slotArr body sa'.reg.lpc b = some q →
       slotArr q = some (A, n) → frame q = some a → frame b = none →
-        sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩) := by
+        sa'.reg.lvm b = ⟨64, frameVal sa'.mem q a⟩) := by
   refine ⟨fun k R A n a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩, fun b q a A n hbi _ _ _ => ?_⟩
-  · rw [hmem _ a ha]
+  · rw [hmem _ a ha (faB_slotOfReg R)]
     rw [hpc] at hk
     rcases Nat.lt_succ_iff_lt_or_eq.mp hk with hk | rfl
     · exact (hrel.saved k R A n a hS hA ha).1 hk
@@ -1671,7 +1719,7 @@ theorem saved_reload_next {frame : String → Option (BitVec 64)}
     rw [hpc] at hbi
     obtain ⟨ds, o, ss, hx, hnd, h'⟩ := reloadOf_succ_none_eq hb hnm b hbi
     have hbd : b ∉ dstNames bi.li_i := by rw [hx]; exact not_mem_dstNames_of_dstHit hnd
-    rw [hreg b hbf hbd, hmem q a ha]
+    rw [hreg b hbf hbd, frameVal_congr (hmem q a ha)]
     exact hrel.reload b q a A n h' hq ha hbf
 
 /-- **A compare against a frame word keeps the relation.** -/
@@ -1680,7 +1728,7 @@ theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → O
     (hphys : physImgB slotArr body = true) (P : LprogM) {s t : LstateMF} {sa : LstateA}
     {zf : Bool} (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {d y q : String} (hc : icase frame bi.li_i = .scmp d y q)
-    (hy : frame y = none)
+    (hy : frame y = none) (hfa : faB q = false)
     (hs : evalInstrPMemF P (normA bi.li_i, .reg none) s = some t) :
     ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa zf = some (sa', t.zf)
       ∧ ImgRel frame slotArr base body t sa' t.zf := by
@@ -1697,7 +1745,7 @@ theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → O
     | _ => rw [h] at hx; cases hx
   rw [eval_slotCmp P hk] at hs
   have hqv : s.prog.base.reg.getW q 64 = some (read64 sa.mem a) := by
-    rw [getW_eq, hrel.slots q a ha]; simp [castW]
+    rw [getW_eq, hrel.slots q a ha]; simp [castW, frameVal_of_not_fa hfa]
   rw [hqv, getW_congr (hrel.regs y hy)] at hs
   rw [fstepA_slotCmp frame hk ha]
   cases hva : sa.reg.getW y 64 with
@@ -1706,7 +1754,7 @@ theorem rel_scmp {frame : String → Option (BitVec 64)} {slotArr : String → O
     rw [hva] at hs
     cases hs
     obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := { sa with reg := sa.reg.nextPc }) hphys hrel
-      hb hnm rfl (fun _ _ _ => rfl) (fun _ _ _ => rfl)
+      hb hnm rfl (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
     exact ⟨_, rfl, ⟨by simp [LstateM.nextPc, hrel.pc],
       fun r hr => by simpa [LstateM.nextPc] using hrel.regs r hr,
       fun q' a' ha' => by simpa [LstateM.nextPc] using hrel.slots q' a' ha', rfl, hrel.cf,
@@ -1726,11 +1774,13 @@ theorem ptr_of_reload {frame : String → Option (BitVec 64)}
   obtain ⟨a, ha⟩ := hsep.slotFrame q A n hq
   have hrl := hrel.reload b q a A n hr hq ha hbf
   have hrs : reloadSavedB slotArr body = true := hgate.saved
-  have hp : read64 sa.mem a = base A := by
+  have hp : frameVal sa.mem q a = base A := by
     rcases reloadSavedB_spec hrs hi hm (by rw [hq]; rfl) with ⟨j, R, hj, hS, hqR⟩ | ⟨R, hqR, hR⟩
     · subst hqR
+      rw [frameVal_of_not_fa (faB_slotOfReg R)]
       exact (hrel.saved j R A n a hS hq ha).1 (by omega)
     · subst hqR
+      rw [frameVal_of_not_fa (faB_slotOfReg R)]
       exact hrel.held R A n a hR hq ha
   refine ⟨q, hq, ?_⟩
   rw [getW_eq, hrl]
@@ -1835,7 +1885,7 @@ theorem rel_ldx {frame : String → Option (BitVec 64)} {slotArr : String → Op
   simp only
   obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := { sa with reg := (sa.reg.setReg d
       (read64 sa.mem (base A + BitVec.ofNat 64 (8 * vi.toNat)))).nextPc })
-    hphys hrel hb (by rw [hx]; rfl) (by simp) (fun _ _ _ => rfl)
+    hphys hrel hb (by rw [hx]; rfl) (by simp) (fun _ _ _ _ => rfl)
     (fun r _ hr => by
       rw [hx] at hr
       have hrd : r ≠ d := fun e => hr (by simp [e, dstNames, opNames])
@@ -1901,16 +1951,17 @@ theorem rel_stx {frame : String → Option (BitVec 64)} {slotArr : String → Op
       reg := sa.reg.nextPc
       mem := write64 sa.mem (base A + BitVec.ofNat 64 (8 * vi.toNat)) vv })
     hphys hrel hb (by rw [hx]; rfl) rfl
-    (fun q' a ha => read64_write64_of_disjoint _ _ _ _
-      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)) (fun _ _ _ => rfl)
+    (fun q' a ha hf => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha hf)) (fun _ _ _ => rfl)
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
     hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl,
-    hrel.held.of_frames fun q' a ha => read64_write64_of_disjoint _ _ _ _
-      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)⟩⟩
+    hrel.held.of_wordFrames fun q' a ha hf => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha hf)⟩⟩
   · intro q' a ha
     simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
-    rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q A n vi.toNat hq hlt q' a ha)]
+    rw [frameVal_congr fun hf => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n vi.toNat hq hlt q' a ha hf)]
     exact hrel.slots q' a ha
   · intro q' A' n' hq'
     obtain ⟨arr', harr', hcell'⟩ := hrel.cells q' A' n' hq'
@@ -2004,10 +2055,10 @@ theorem rel_zarr {frame : String → Option (BitVec 64)} {slotArr : String → O
   have hz := hrel.zf
   subst hz
   rw [hn, fstepA_zeroArr frame hp]
-  have hmem : ∀ q' a, frame q' = some a →
+  have hmem : ∀ q' a, frame q' = some a → faB q' = false →
       read64 (zeroWords sa.mem (base A) n) a = read64 sa.mem a :=
-    fun q' a ha => read64_zeroWords_of_disjoint _ _ _ n fun i hi =>
-      hsep.cellFrame q A n i hq hi q' a ha
+    fun q' a ha hf => read64_zeroWords_of_disjoint _ _ _ n fun i hi =>
+      hsep.cellFrame q A n i hq hi q' a ha hf
   obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := { sa with
       reg := sa.reg.nextPc
       mem := zeroWords sa.mem (base A) n })
@@ -2015,10 +2066,10 @@ theorem rel_zarr {frame : String → Option (BitVec 64)} {slotArr : String → O
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
     hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl,
-    hrel.held.of_frames hmem⟩⟩
+    hrel.held.of_wordFrames hmem⟩⟩
   · intro q' a ha
     simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
-    rw [hmem q' a ha]
+    rw [frameVal_congr (hmem q' a ha)]
     exact hrel.slots q' a ha
   · intro q' A' n' hq'
     obtain ⟨arr', harr', hcell'⟩ := hrel.cells q' A' n' hq'
@@ -2071,16 +2122,17 @@ theorem rel_simm {frame : String → Option (BitVec 64)} {slotArr : String → O
       reg := sa.reg.nextPc
       mem := write64 sa.mem (base A + BitVec.ofNat 64 (8 * k)) vv })
     hphys hrel hb (by rw [hx]; rfl) rfl
-    (fun q' a ha => read64_write64_of_disjoint _ _ _ _
-      (hsep.cellFrame q A n k hq hk q' a ha)) (fun _ _ _ => rfl)
+    (fun q' a ha hf => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n k hq hk q' a ha hf)) (fun _ _ _ => rfl)
   refine ⟨_, rfl, ⟨by simp [LstateM.setArr, LstateM.nextPc, hrel.pc],
     fun r hr => by simpa [LstateM.setArr, LstateM.nextPc] using hrel.regs r hr, ?_, rfl,
     hrel.cf, hrel.of, fun r hr => by simpa using hrel.wid r hr, ?_, hsv, hrl,
-    hrel.held.of_frames fun q' a ha => read64_write64_of_disjoint _ _ _ _
-      (hsep.cellFrame q A n k hq hk q' a ha)⟩⟩
+    hrel.held.of_wordFrames fun q' a ha hf => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n k hq hk q' a ha hf)⟩⟩
   · intro q' a ha
     simp only [LstateM.setArr, LstateM.nextPc, LstateN.lvm_nextPc]
-    rw [read64_write64_of_disjoint _ _ _ _ (hsep.cellFrame q A n k hq hk q' a ha)]
+    rw [frameVal_congr fun hf => read64_write64_of_disjoint _ _ _ _
+      (hsep.cellFrame q A n k hq hk q' a ha hf)]
     exact hrel.slots q' a ha
   · intro q' A' n' hq'
     obtain ⟨arr', harr', hcell'⟩ := hrel.cells q' A' n' hq'
@@ -2117,7 +2169,7 @@ theorem rel_pc {frame : String → Option (BitVec 64)} {slotArr : String → Opt
           ∧ (sa'.reg.lpc ≤ k → sa'.reg.getW R 64 = some (base A)))
     (hrl : ∀ b q a A n, reloadOf slotArr body sa'.reg.lpc b = some q →
       slotArr q = some (A, n) → frame q = some a → frame b = none →
-        sa'.reg.lvm b = ⟨64, read64 sa'.mem a⟩) :
+        sa'.reg.lvm b = ⟨64, frameVal sa'.mem q a⟩) :
     ImgRel frame slotArr base body t sa' zf := by
   refine ⟨hpc, fun r hr => ?_, fun q a ha => ?_, by rw [hz, hrel.zf], by rw [hc', hc, hrel.cf],
     by rw [ho', ho, hrel.of], fun r hr => ?_, fun q A n hq => ?_, hsv, hrl,
@@ -2138,7 +2190,7 @@ theorem rel_label {frame : String → Option (BitVec 64)}
       { s with prog := { s.prog with base := s.prog.base.nextPc } }
       (sa.setLpc (sa.reg.lpc + 1)) zf := by
   obtain ⟨hsv, hrl⟩ := saved_reload_next (sa' := sa.setLpc (sa.reg.lpc + 1)) hphys hrel hb
-    hnm rfl (fun _ _ _ => rfl) (fun _ _ _ => rfl)
+    hnm rfl (fun _ _ _ _ => rfl) (fun _ _ _ => rfl)
   exact rel_pc hrel rfl rfl rfl rfl rfl rfl rfl rfl rfl
     (by simp [LstateA.setLpc, LstateM.nextPc, hrel.pc]) hsv hrl
 
@@ -2501,6 +2553,7 @@ theorem gate_step {frame : String → Option (BitVec 64)}
       rw [stepA_lopn frame hb hx, ← hst, ht]
   | sload d q =>
       rw [hc] at hg
+      have hg' : gpOk d = true ∧ faB q = false := by simpa using hg
       have hm := (icase_sload hc).1
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
@@ -2511,12 +2564,13 @@ theorem gate_step {frame : String → Option (BitVec 64)}
       · rw [hx] at h3 h4 h5
         rw [hx, imgInstr_reg_of_caret_free slotArr body _ (by decide) (by decide) (by decide) h3
           h4 h5, evalInstrPMemFk_reg, ← hx] at hstep
-        obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg hstep
+        obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg'.1 hg'.2 hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx,
           tagAt_reg_of_caret_free (by decide) (by decide) (by decide) h3]
   | sstore q S =>
       rw [hc] at hg
+      have hg' : gpOk S = true ∧ faB q = false := by simpa using hg
       have hm := (icase_sstore hc).1
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
@@ -2527,7 +2581,7 @@ theorem gate_step {frame : String → Option (BitVec 64)}
       · rw [hx] at h3 h4 h5
         rw [hx, imgInstr_reg_of_caret_free slotArr body _ (by decide) (by decide) (by decide) h3
           h4 h5, evalInstrPMemFk_reg, ← hx] at hstep
-        obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg hstep
+        obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg'.1 hg'.2 hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx,
           tagAt_reg_of_caret_free (by decide) (by decide) (by decide) h3]
@@ -2542,7 +2596,8 @@ theorem gate_step {frame : String → Option (BitVec 64)}
       rw [hx, imgInstr_reg slotArr body _ (by simp [ho]) (by simp [ho]) (by simp [ho, castTagW])
         h3 (bitStore?_of_ne (by simp)) (cellIdxStore?_of_ne slotArr (by simp)) (by simp [ho])
         (by simp [ho]), evalInstrPMemFk_reg, ← hx] at hstep
-      obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
+      have hg' : frame y = none ∧ faB q = false := by simpa using hg
+      obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc hg'.1 hg'.2 hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, hlfn, sa', t.zf, ?_, Or.inl hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by simp [ho]) (by simp [ho])
         (by simp [ho, castTagW]) h3 (by simp [ho]) (by simp [ho])]

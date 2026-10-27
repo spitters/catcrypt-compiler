@@ -252,7 +252,7 @@ theorem imgRel_callC {frame : String → Option (BitVec 64)}
     (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {ra : Option String} {tgt : String × LLabel}
     (hbi : bi.li_i = .Lcall ra tgt) {m : AMem}
-    (hfr : ∀ q a, frame q = some a → ∀ x, InRange8 a x → m x = sa.mem x)
+    (hfr : ∀ q a, frame q = some a → faB q = false → ∀ x, InRange8 a x → m x = sa.mem x)
     (hce : ∀ q A n j, slotArr q = some (A, n) → j < n →
       ∀ x, InRange8 (cellAt (base A) j) x → m x = sa.mem x) :
     ImgRel frame slotArr base body (callSumC c ω s) (callAC c ω m sa) ω.zf := by
@@ -268,8 +268,9 @@ theorem imgRel_callC {frame : String → Option (BitVec 64)}
       cases hg : gpOk q
       · rfl
       · rw [hsep.gp q hg] at ha; cases ha
-    show (callRegsC c ω s.prog.base.reg).lvm q = ⟨64, read64 m a⟩
-    rw [hlvm q hq, hrel.slots q a ha, read64_congr_range (hfr q a ha)]
+    show (callRegsC c ω s.prog.base.reg).lvm q = ⟨64, frameVal m q a⟩
+    rw [hlvm q hq, hrel.slots q a ha,
+      frameVal_congr fun hf => read64_congr_range (hfr q a ha hf)]
   · show ((callRegsC c ω sa.reg).lvm r).1 = 64
     simp only [callRegsC]
     split_ifs
@@ -289,7 +290,7 @@ theorem imgRel_callC {frame : String → Option (BitVec 64)}
         rw [hbi] at hm
         cases hm
     show read64 m a = base A
-    rw [read64_congr_range (hfr _ a ha)]
+    rw [read64_congr_range (hfr _ a ha (faB_slotOfReg R))]
     exact (hrel.saved k R A n a hS hA ha).1 hk'
   · have hk0 : sa.reg.lpc + 1 ≤ k := hk
     exact absurd (show sa.reg.lpc < k by omega) (not_saveAt_after_call hphys hb hbi hS hA)
@@ -297,7 +298,7 @@ theorem imgRel_callC {frame : String → Option (BitVec 64)}
     rw [reloadOf_call hb hbi] at e
     cases e
   · show read64 m a = base A
-    rw [read64_congr_range (hfr _ a ha)]
+    rw [read64_congr_range (hfr _ a ha (faB_slotOfReg R))]
     exact hrel.held R A n a hR hA ha
 
 /-- **The byte correspondence across the summary step.** If after the return the stack
@@ -359,7 +360,7 @@ theorem call_reestablishes {frame : String → Option (BitVec 64)}
       exact (hc.mem x hred).symm
   exact ⟨acorr_callC c ω hc hsp fun r hg hcl => hk _ (gpFacts hg).physNe hcl,
     imgRel_callC hsep hphys c (outOf _ ω) hrel hb hbi
-      (fun q a ha x hx => hmem x (hfoot.1 q a ha x hx))
+      (fun q a ha _ x hx => hmem x (hfoot.1 q a ha x hx))
       (fun q A n j hq hj x hx => hmem x (hfoot.2 q A n j hq hj x hx)), hpost⟩
 
 /-! ## 4. The frame words and the array words above the return word -/

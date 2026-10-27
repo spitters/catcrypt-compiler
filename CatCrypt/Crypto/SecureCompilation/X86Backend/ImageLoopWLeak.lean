@@ -753,8 +753,8 @@ theorem virtBW_gtr {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   rw [hfold] at hg
   simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
     decide_eq_true_eq] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, hren⟩, -⟩, -⟩,
-    hN⟩, -⟩, hkeep⟩, hpsC⟩, hfuse⟩, -⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, hren⟩, -⟩, -⟩,
+    hN⟩, -⟩, hkeep⟩, hpsC⟩, hfuse⟩, -⟩, -⟩ := hg
   have E := entryB_spec hent sa
   have R := renB_spec hren
   have N := cellNamesRB_spec hN
@@ -1039,8 +1039,8 @@ theorem routeBW_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   rename_i L2 hfold
   simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
     decide_eq_true_eq] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, hphys⟩, ⟨hgW, -⟩⟩, hfr⟩, hent⟩, hren⟩, hacc⟩, -⟩,
-    hN⟩, hlen⟩, -⟩, -⟩, -⟩, -⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, hphys⟩, ⟨hgW, -⟩⟩, hfr⟩, hent⟩, hren⟩, hacc⟩, -⟩,
+    hN⟩, hlen⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hg
   have E := entryB_spec hent sa
   have R := renB_spec hren
   have N := cellNamesRB_spec hN
@@ -1059,7 +1059,8 @@ theorem routeBW_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     obtain ⟨j, a, hj, -, rfl, -⟩ := slotArrOf_some h
     exact hunr j (List.getElem?_eq_some_iff.mp hj).1
   have hS0 := imgSep_slotRen (ren := renOf ps)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) hun
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+      ImageAddrRoute.slotArrOf_not_fa) hun
   have hword : ∀ q a, frameE body sa q = some a →
       ∃ o : Int, σ.frameLo ≤ o ∧ o ≤ σ.frameHi ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 o := by
     intro q a ha
@@ -1153,8 +1154,8 @@ theorem virtBW_checked_run {σ : AbiLayout} {nm : String → String} {body : Lcm
   rw [hfold] at hg
   simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
     decide_eq_true_eq] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hidx⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, -⟩, -⟩, -⟩,
-    hN⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hidx⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, -⟩, -⟩, -⟩,
+    hN⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hg
   have E := entryB_spec hent sa
   have N := cellNamesRB_spec hN
   have hgpN : ∀ r, gpOk r = true → cellIdx (cellArrsR σ ps) r = none := by
@@ -1222,8 +1223,8 @@ theorem loop_bytesW_ct {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   rw [hfold] at hg'
   simp only [Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true', List.contains_eq_mem,
     decide_eq_true_eq] at hg'
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, -⟩, hpr⟩, hphys⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hns⟩,
-    -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hg'
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, -⟩, hpr⟩, hphys⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hns⟩,
+    -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hg'
   have hrsp : frameRsp body sa₂ = frameRsp body sa₁ := by
     unfold frameRsp
     rw [hrspE]

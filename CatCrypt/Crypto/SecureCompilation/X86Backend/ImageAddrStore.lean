@@ -707,7 +707,7 @@ theorem idx_mem_of_imgStepW {frame : String → Option (BitVec 64)}
     rw [hb] at this
     simpa using this
   simp only [instrGateBW, gateAtW, Bool.and_eq_true] at hg
-  obtain ⟨hrd0, hg⟩ := hg
+  obtain ⟨⟨-, hrd0⟩, hg⟩ := hg
   have hkc : classifyK bi.li_i = none := by
     rcases hx with ⟨_, _, _, -, hx⟩ | ⟨_, _, -, hx⟩ <;> rw [hx] <;> simp [classifyK]
   have hci : carryI? bi.li_i = none := by

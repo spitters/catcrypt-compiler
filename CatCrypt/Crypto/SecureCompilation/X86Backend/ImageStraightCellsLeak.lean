@@ -1106,7 +1106,7 @@ theorem cellVirt_leak {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     (hr : FRun (singletonProgM fn (cellVirt σ nm C2 fuse)) (cellEntry σ body fn sa) ℓ) :
     ℓ = cellT C C2 (straightLeakFF C (afterArgs σ body sa) false) := by
   simp only [cellRouteB, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, -⟩, -⟩, -⟩, hlop⟩, hfuse⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, -⟩, -⟩, -⟩, hlop⟩, hfuse⟩, -⟩ := hg
   have N := cellNamesOkB_spec hN
   have E := entryB_spec hent sa
   obtain ⟨b, z⟩ := bz
@@ -1307,7 +1307,7 @@ theorem cellVirt_checked_run {σ : AbiLayout} {nm : String → String} {body : L
     ∃ f t, lsemFuelMemFk true (singletonProgM fn (cellVirt σ nm C2 fuse)) f
       (cellEntry σ body fn sa) = some t := by
   simp only [cellRouteB, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hidx⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, -⟩, -⟩, -⟩, hlop⟩, hfuse⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hidx⟩, -⟩, -⟩, -⟩, -⟩, hent⟩, -⟩, -⟩, -⟩, hlop⟩, hfuse⟩, -⟩ := hg
   have hst := hreg.stackIn
   have N := cellNamesOkB_spec hN
   have E := entryB_spec hent sa
@@ -1411,11 +1411,12 @@ theorem cellRoute_entry {σ : AbiLayout} {nm : String → String} {body : Lcmd}
         (cellBody (slotArrC (cellArrs σ) (slotRen (slotArrOf σ nm) fun x => x)) body)
         (cellEntry σ body fn sa) (entryA σ sa) false := by
   simp only [cellRouteB, Bool.and_eq_true] at hg
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, -⟩, -⟩, -⟩, -⟩ := hg
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, -⟩, hgate⟩, hfr⟩, hent⟩, hacc⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := hg
   have N := cellNamesOkB_spec hN
   have E := entryB_spec hent sa
   have hS0 := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+      ImageAddrRoute.slotArrOf_not_fa) fun _ _ _ _ => rfl
   have hword : ∀ q a, frameE body sa q = some a →
       ∃ o : Int, σ.frameLo ≤ o ∧ o ≤ σ.frameHi ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 o := by
     intro q a ha
@@ -1556,7 +1557,7 @@ theorem straightCell_bytes_ct {σ : AbiLayout} {nm : String → String} {body : 
   obtain ⟨-, -, -, -, hrel₂⟩ := cellRoute_entry hg hN sa₂ hreg₂ ""
   have hg' := hg
   simp only [cellRouteB, Bool.and_eq_true] at hg'
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, -⟩, -⟩, hphys⟩, -⟩, -⟩, -⟩, -⟩, hnc⟩, hns⟩, -⟩, -⟩ := hg'
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hck, -⟩, -⟩, hphys⟩, -⟩, -⟩, -⟩, -⟩, hnc⟩, hns⟩, -⟩, -⟩, -⟩ := hg'
   have hrsp : frameRsp body sa₂ = frameRsp body sa₁ := by
     unfold frameRsp
     rw [hrspE]

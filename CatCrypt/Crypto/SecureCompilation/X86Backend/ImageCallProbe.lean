@@ -308,8 +308,9 @@ theorem imgRel_call {frame : String → Option (BitVec 64)}
       cases hg : gpOk q
       · rfl
       · rw [hsep.gp q hg] at ha; cases ha
-    show (callRegs c ω s.prog.base.reg).lvm q = ⟨64, read64 m a⟩
-    rw [hlvm q hq, hrel.slots q a ha, read64_congr_range (hfr q a ha)]
+    show (callRegs c ω s.prog.base.reg).lvm q = ⟨64, frameVal m q a⟩
+    rw [hlvm q hq, hrel.slots q a ha,
+      frameVal_congr fun _ => read64_congr_range (hfr q a ha)]
   · show ((callRegs c ω sa.reg).lvm r).1 = 64
     simp only [callRegs]
     split_ifs
@@ -603,7 +604,7 @@ theorem relX_sload {frame : String → Option (BitVec 64)}
     (P : LprogM) {X : List String} {s t : LstateMF} {sa : LstateA} {zf : Bool}
     (hX : ImgRelX frame slotArr base body X s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {d q : String} (hc : icase frame bi.li_i = .sload d q)
-    (hgd : gpOk d = true) (hq : q ∉ X)
+    (hgd : gpOk d = true) (hfa : faB q = false) (hq : q ∉ X)
     (hs : evalInstrPMemF P (normA bi.li_i, .reg none) s = some t) :
     ∃ sa', fstepA frame (normA bi.li_i, .reg none) sa zf = some (sa', t.zf)
       ∧ ImgRelX frame slotArr base body (X.filter fun r => r != d) t sa' t.zf := by
@@ -612,7 +613,7 @@ theorem relX_sload {frame : String → Option (BitVec 64)}
   have hn := normA_of_slotMov hm
   have ht' := eval_slotMov P hm (.reg none) s'
   rw [← hn] at ht'
-  obtain ⟨sa', hst, hr'⟩ := rel_sload hsep hphys P hrel hb hc hgd ht'
+  obtain ⟨sa', hst, hr'⟩ := rel_sload hsep hphys P hrel hb hc hgd hfa ht'
   rw [hn, eval_slotMov P hm] at hs
   cases hs
   refine ⟨sa', ?_, { s' with prog := { s'.prog with

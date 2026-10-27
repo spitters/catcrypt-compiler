@@ -452,13 +452,16 @@ theorem frameIn_some {body : Lcmd} {sa : AState} {q : String} {a : BitVec 64}
 /-- **The separation from the layout.** At the entry state `sa` of a layout `σ` whose
     regions `rs` pass `rsOK`, under the entry precondition `σ.Regions sa` and the frame check,
     the restricted frame of the body, an array map whose arrays are the regions at their
-    lengths and have frame words, and the entry bases of the regions are separated. -/
+    lengths and have frame words at names that are no frame-array names (`faB`), and the
+    entry bases of the regions are separated. An array map with frame-array slots is
+    separated by `imgSep_of_frameOk`. -/
 theorem imgSep_of_regions {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = true)
     {sa : AState} (h : σ.Regions sa) {body : Lcmd} (hf : frameOkB σ body = true)
     {slotArr : String → Option (String × Nat)}
     (hsl : ∀ q A n, slotArr q = some (A, n) → regLen rs A = n)
     (hslf : ∀ q A n, slotArr q = some (A, n) →
-      ∃ a, frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a) :
+      ∃ a, frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a)
+    (hsfa : ∀ q A n, slotArr q = some (A, n) → faB q = false) :
     ImgSep (frameIn body (frameP (Params.ofBody body) (frameRsp body sa))) slotArr
       (abiBase (abiReg σ) sa) (frameRsp body sa) := by
   have hred := frameOkB_red hf
@@ -473,7 +476,7 @@ theorem imgSep_of_regions {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs 
     unfold regK
     rw [hsl q A n hq]
     exact hj
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, hslf⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, hslf, fun q A n a hq hfa _ => ?_⟩
   · intro q q' a a' ha ha' hne
     obtain ⟨hq, o, ho, rfl⟩ := frameIn_some ha
     obtain ⟨hq', o', ho', rfl⟩ := frameIn_some ha'
@@ -483,7 +486,7 @@ theorem imgSep_of_regions {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs 
     apply disjoint8_add_ofInt
     · rw [he]; exact hd.1
     · rw [he]; exact hd.2
-  · intro q A n j hq hj q' a ha
+  · intro q A n j hq hj q' a ha _
     obtain ⟨o, h1, h2, rfl⟩ := hword q' a ha
     exact (frameSep_of_regions hrs h A j (hcell q A n j hq hj) o h1 h2).symm
   · intro q A n q' A' n' j j' hq hq' hj hj' hne
@@ -506,6 +509,8 @@ theorem imgSep_of_regions {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs 
     split
     · exact frameP_gp hr
     · rfl
+  · rw [hsfa q A n hq] at hfa
+    cases hfa
 
 /-! ## 3. The relation at entry -/
 
@@ -517,8 +522,8 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (read64)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (ImgRel)
 
 /-- **The relation at entry.** At program counter `0`, a name-keyed state and an address
-    state are related when they agree off the frame words and on the flags, every frame-word
-    name holds its frame word, every general-purpose name of the address state has width
+    state are related when they agree off the frame words and on the flags, every frame
+    name holds its value (`frameVal`), every general-purpose name of the address state has width
     `64`, every array holds the words at its base, every register whose save into its frame
     word saves the pointer of an array holds the base of the array, and the entry-held frame
     words hold their bases. -/
@@ -527,7 +532,8 @@ theorem imgRel_entry {frame : String → Option (BitVec 64)}
     {s : LstateMF} {sa : LstateA} {zf : Bool} (hpc : sa.reg.lpc = 0)
     (hspc : s.prog.base.reg.lpc = 0)
     (hregs : ∀ r, frame r = none → s.prog.base.reg.lvm r = sa.reg.lvm r)
-    (hslots : ∀ q a, frame q = some a → s.prog.base.reg.lvm q = ⟨64, read64 sa.mem a⟩)
+    (hslots : ∀ q a, frame q = some a →
+      s.prog.base.reg.lvm q = ⟨64, ImageAddrSim.frameVal sa.mem q a⟩)
     (hz : s.zf = zf) (hc : sa.cf = s.prog.base.cf) (ho : sa.of = s.prog.base.of)
     (hwid : ∀ r, gpOk r = true → (sa.reg.lvm r).1 = 64)
     (hcells : ∀ q A n, slotArr q = some (A, n) →

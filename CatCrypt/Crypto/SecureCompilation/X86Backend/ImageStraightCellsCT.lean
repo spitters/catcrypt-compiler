@@ -2234,7 +2234,7 @@ theorem straightCell_bytes_ct_src (Pj : JLeakParams) {σ : AbiLayout}
     obtain ⟨m, rfl⟩ := straightCellB_ty hg
     obtain ⟨-, C2, -, hroute⟩ := straightCellB_spec hg
     simp only [cellRouteB, Bool.and_eq_true] at hroute
-    exact hroute.1.1.1.1.1.1.1.1.1.2
+    exact hroute.1.1.1.1.1.1.1.1.1.1.2
   exact straightCell_bytes_ct' Pj com hg hlk L hct (bytesTraceW_of_printedAddrWB hpr) ok hdec
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsCT

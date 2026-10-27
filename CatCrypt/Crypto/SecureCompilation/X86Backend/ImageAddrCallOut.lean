@@ -88,12 +88,12 @@ theorem footBelowOut_of_footBelow {c : CalleeSig} {G : Nat} (hF : FootBelow c G)
     (n : Nat) : FootBelowOut c G po n :=
   fun s x h => Or.inl (hF s x h)
 
-/-- The frame words and the words of every array other than `A` lie outside the set `T` of
-    addresses. -/
+/-- The frame words of the names that are no frame-array names (`faB`) and the words of every
+    array other than `A` lie outside the set `T` of addresses. -/
 def FootClearExcept (frame : String → Option (BitVec 64))
     (slotArr : String → Option (String × Nat)) (base : String → BitVec 64) (A : String)
     (T : BitVec 64 → Prop) : Prop :=
-  (∀ q a, frame q = some a → ∀ x, InRange8 a x → ¬ T x)
+  (∀ q a, frame q = some a → faB q = false → ∀ x, InRange8 a x → ¬ T x)
     ∧ ∀ q A' n j, slotArr q = some (A', n) → A' ≠ A → j < n →
         ∀ x, InRange8 (cellAt (base A') j) x → ¬ T x
 
@@ -124,13 +124,13 @@ theorem footClearExcept_of_callerSep {frame : String → Option (BitVec 64)}
   have hp : (entryOf ret sA).regs (phys po) = base A := by
     rw [entryOf_regs, ite_eq_right (gpFacts hpo).physNe, hptr]
   have hr : retWord sA = rsp + BitVec.ofInt 64 (-8) := by rw [retWord, hsp]
-  refine ⟨fun q a ha x hx hT => ?_, fun q A' n' j hq hA' hj x hx hT => ?_⟩
+  refine ⟨fun q a ha hf x hx hT => ?_, fun q A' n' j hq hA' hj x hx hT => ?_⟩
   · obtain ⟨o, h1, rfl⟩ := hS.frames q a ha
     rcases hT with hT | hT
     · rcases hF _ x hT with hT | ⟨i, hi, hT⟩
       · exact above_not_inFrame rsp x o G h1 hx (he ▸ hT)
       · rw [hp] at hT
-        exact hdis (hsep.cellFrame qA A n i hqA hi q _ ha) hx hT
+        exact hdis (hsep.cellFrame qA A n i hqA hi q _ ha hf) hx hT
     · exact above_not_retWord rsp x o (by omega) hx (hr ▸ hT)
   · obtain ⟨n1, n2⟩ := hS.cells q A' n' j hq hj x hx
     rcases hT with hT | hT
@@ -159,7 +159,7 @@ theorem imgRel_callC_out {frame : String → Option (BitVec 64)}
     (hrel : ImgRel frame slotArr base body s sa zf) {bi : Linstr}
     (hb : body[sa.reg.lpc]? = some bi) {ra : Option String} {tgt : String × LLabel}
     (hbi : bi.li_i = .Lcall ra tgt) {m : AMem}
-    (hfr : ∀ q a, frame q = some a → ∀ x, InRange8 a x → m x = sa.mem x)
+    (hfr : ∀ q a, frame q = some a → faB q = false → ∀ x, InRange8 a x → m x = sa.mem x)
     {qA A : String} {n : Nat} (hqA : slotArr qA = some (A, n))
     (hce : ∀ q A' n' j, slotArr q = some (A', n') → A' ≠ A → j < n' →
       ∀ x, InRange8 (cellAt (base A') j) x → m x = sa.mem x)
@@ -172,7 +172,7 @@ theorem imgRel_callC_out {frame : String → Option (BitVec 64)}
     fun r hr => ?_, fun q A' n' hq => ?_, fun k R A' n' a hS hA ha => ⟨fun hk => ?_, fun hk => ?_⟩,
     fun b q a A' n' hr => ?_, fun R A' n' a hR hA ha => by
       show read64 m a = base A'
-      rw [read64_congr_range (hfr _ a ha)]
+      rw [read64_congr_range (hfr _ a ha (faB_slotOfReg R))]
       exact hrel.held R A' n' a hR hA ha⟩
   · show (callRegsC c ω s.prog.base.reg).lvm r = (callRegsC c ω sa.reg).lvm r
     simp only [callRegsC, hrel.regs r hr]
@@ -180,8 +180,9 @@ theorem imgRel_callC_out {frame : String → Option (BitVec 64)}
       cases hg : gpOk q
       · rfl
       · rw [hsep.gp q hg] at ha; cases ha
-    show (callRegsC c ω s.prog.base.reg).lvm q = ⟨64, read64 m a⟩
-    rw [hlvm q hq, hrel.slots q a ha, read64_congr_range (hfr q a ha)]
+    show (callRegsC c ω s.prog.base.reg).lvm q = ⟨64, frameVal m q a⟩
+    rw [hlvm q hq, hrel.slots q a ha,
+      frameVal_congr fun hf => read64_congr_range (hfr q a ha hf)]
   · show ((callRegsC c ω sa.reg).lvm r).1 = 64
     simp only [callRegsC]
     split_ifs
@@ -214,7 +215,7 @@ theorem imgRel_callC_out {frame : String → Option (BitVec 64)}
         rw [hbi] at hm
         cases hm
     show read64 m a = base A'
-    rw [read64_congr_range (hfr _ a ha)]
+    rw [read64_congr_range (hfr _ a ha (faB_slotOfReg R))]
     exact (hrel.saved k R A' n' a hS hA ha).1 hk'
   · have hk0 : sa.reg.lpc + 1 ≤ k := hk
     exact absurd (show sa.reg.lpc < k by omega) (not_saveAt_after_call hphys hb hbi hS hA)
@@ -327,7 +328,7 @@ theorem call_reestablishes_out {frame : String → Option (BitVec 64)}
   exact ⟨hwr, _, rfl, acorr_callC c ω hc hsp fun r hg hcl => hk _ (gpFacts hg).physNe hcl,
     _, _, agreeOffF_retArr c (outOf _ ω) s A arr hw.res_none,
     imgRel_callC_out hsep hphys c (outOf _ ω) hrel hb hbi
-      (fun q a ha x hx => hmem x (hfoot.1 q a ha x hx)) hq
+      (fun q a ha hf x hx => hmem x (hfoot.1 q a ha hf x hx)) hq
       (fun q A' n' j hq' hA' hj x hx => hmem x (hfoot.2 q A' n' j hq' hA' hj x hx)) harr⟩
 
 /-- **The call step with the pointer reloaded from its saved frame word.** As

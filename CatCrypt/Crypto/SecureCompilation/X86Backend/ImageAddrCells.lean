@@ -652,6 +652,7 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       rw [stepA_lopn frame hb hx, ← hst, ht]
   | sload d q =>
       rw [hc] at hg
+      have hg' : DecodePrinted.gpOk d = true ∧ faB q = false := by simpa using hg
       have hm := (icase_sload hc).1
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
@@ -662,12 +663,13 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       · rw [hx] at h3 h4 h5
         rw [hx, imgInstr_reg_of_caret_free slotArr _ _ (by decide) (by decide) (by decide) h3 h4
           h5, evalInstrPMemFk_reg, ← hx] at hstep
-        obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg hstep
+        obtain ⟨sa', hst, hr⟩ := rel_sload hsep hphys P hrel hb hc hg'.1 hg'.2 hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx,
           tagAt_reg_of_caret_free (by decide) (by decide) (by decide) h3]
   | sstore q S =>
       rw [hc] at hg
+      have hg' : DecodePrinted.gpOk S = true ∧ faB q = false := by simpa using hg
       have hm := (icase_sstore hc).1
       have hsafe := loadSafe_of (rsp := rsp) hb
         (notLoad_of_icase (by intro d' b' idx'; rw [hc]; simp))
@@ -678,7 +680,7 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       · rw [hx] at h3 h4 h5
         rw [hx, imgInstr_reg_of_caret_free slotArr _ _ (by decide) (by decide) (by decide) h3 h4
           h5, evalInstrPMemFk_reg, ← hx] at hstep
-        obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg hstep
+        obtain ⟨sa', hst, hr⟩ := rel_sstore hsep hphys P hrel hb hc hg'.1 hg'.2 hstep
         refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
         rw [stepA_lopn frame hb hx, ← hst, hx,
           tagAt_reg_of_caret_free (by decide) (by decide) (by decide) h3]
@@ -693,7 +695,8 @@ theorem img_stepStraight {frame : String → Option (BitVec 64)}
       rw [hx, imgInstr_reg slotArr c _ (by simp [ho]) (by simp [ho]) (by simp [ho, castTagW])
         h3 (bitStore?_of_ne (by simp)) (cellIdxStore?_of_ne slotArr (by simp)) (by simp [ho])
         (by simp [ho]), evalInstrPMemFk_reg, ← hx] at hstep
-      obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc (by simpa using hg) hstep
+      have hg' : frame y = none ∧ faB q = false := by simpa using hg
+      obtain ⟨sa', hst, hr⟩ := rel_scmp hphys P hrel hb hc hg'.1 hg'.2 hstep
       refine ⟨haltedA_of hb (by rw [hx]; simp), hsafe, sa', ?_, hr⟩
       rw [stepA_lopn frame hb hx, ← hst, hx, tagAt_reg (by simp [ho]) (by simp [ho])
         (by simp [ho, castTagW]) h3 (by simp [ho]) (by simp [ho])]
@@ -1312,7 +1315,7 @@ theorem virt_bytesC_noCall {frame : String → Option (BitVec 64)}
     (hent : ∀ R, DecodePrinted.gpOk R = true → s.reg.getW R 64 = some (sa.regs (DecodePrinted.phys R)))
     (hmem : s.mem = sa.mem) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel b = some t)
-    (hok : RunIdxOk (singletonProgM fn B) fuel b) :
+    (hok : RunIdxOk (singletonProgM fn B) fuel b) (hofa : ∀ r ∈ outs, faB r = false) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog
       ∧ HaltsNoCall aMachine prog 0 sa sa'
       ∧ ∀ r a, r ∈ outs → frame r = some a → Disjoint8 (redW (frameRsp body sa)) a →
@@ -1325,7 +1328,8 @@ theorem virt_bytesC_noCall {frame : String → Option (BitVec 64)}
     rcases Bool.or_eq_true_iff.mp hgate with hg | hg
     · obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
         image_addr_simB hsep hphys hg hN hF hnc fn f' b t' s zf hfn hrel hr'
-      exact ⟨fA, sA, zA, h1, fun q a _ ha => h2.slots q a ha, h3⟩
+      exact ⟨fA, sA, zA, h1, fun q a hq ha => by
+        rw [← frameVal_of_not_fa (hofa q hq)]; exact h2.slots q a ha, h3⟩
     · obtain ⟨hg, hro⟩ := Bool.and_eq_true_iff.mp hg
       obtain ⟨fA, sA, zA, h1, h2, h3⟩ :=
         image_addr_simBW hsep hphys hg hN hF hnc fn f' b t' s zf hfn
@@ -1333,8 +1337,9 @@ theorem virt_bytesC_noCall {frame : String → Option (BitVec 64)}
       have hh : haltedA (cellBody slotArr body) sA = true := by
         rw [haltedA_cellBody]
         exact JasminLsemAddrRun.haltedA_of_runA frame body fA s zf (sA, zA) h1
-      exact ⟨fA, sA, zA, h1, fun q a hq ha => (h2.slots q a ha).word
-        (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh
+      exact ⟨fA, sA, zA, h1, fun q a hq ha => by
+        rw [← frameVal_of_not_fa (hofa q hq)]
+        exact (h2.slots q a ha).word (ImageAddrSimW.not_mem_oneBitAt_of_halted hg hh
           (ImageAddrSimW.not_mem_of_retOutsB hro hq)), h3⟩
   obtain ⟨fA, sA, zA, hrA, hslots, hsafe⟩ := hsim
   rw [runA_congr hfr] at hrA
@@ -1371,12 +1376,12 @@ theorem virt_bytesC {frame : String → Option (BitVec 64)}
       s.reg.getW R 64 = some (sa.regs (DecodePrinted.phys R)))
     (hmem : s.mem = sa.mem) (fuel : Nat)
     (hrun : lsemFuelMemF (singletonProgM fn B) fuel b = some t)
-    (hok : RunIdxOk (singletonProgM fn B) fuel b) :
+    (hok : RunIdxOk (singletonProgM fn B) fuel b) (hofa : ∀ r ∈ outs, faB r = false) :
     ∃ prog sa', decodeLprog (encodeLfundefBytes body) = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ ∀ r a, r ∈ outs → frame r = some a → Disjoint8 (redW (frameRsp body sa)) a →
         t.prog.base.reg.lvm r = ⟨64, read64 sa'.mem a⟩ := by
   obtain ⟨prog, sa', hdec, hh, hobs⟩ := virt_bytesC_noCall hck hpr hphys hgate hsep hN hF hnc
-    hfr fn b t hfn hbpc s zf hrel hpc hent hmem fuel hrun hok
+    hfr fn b t hfn hbpc s zf hrel hpc hent hmem fuel hrun hok hofa
   exact ⟨prog, sa', hdec, halts_of_haltsNoCall hh, hobs⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells

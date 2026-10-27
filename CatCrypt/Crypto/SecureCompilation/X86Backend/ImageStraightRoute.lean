@@ -451,7 +451,8 @@ theorem straight_image_bytes {σ : AbiLayout} {nm : String → String} {body : L
     rw [ImageAddrFrame.imgGateB_frameMark]
     exact hgate
   have hsep := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+      ImageAddrRoute.slotArrOf_not_fa) fun _ _ _ _ => rfl
   obtain ⟨prog, sa', hdec, hh, -, hcells⟩ := ImageAddrFrame.virt_bytes hck hpr hphys hgate'
     hsep fn _ _ rfl rfl (entryA σ sa) false (imgRel_entryS (E.argSrc hreg.stackIn) hent
       fun _ _ => rfl) rfl (fun R hR => by
@@ -825,7 +826,8 @@ theorem straight_image_reg_bytes {σ : AbiLayout} {nm : String → String} {body
     rw [ImageAddrFrame.imgGateB_frameMark]
     exact hgate
   have hsep := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
-    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot) fun _ _ _ _ => rfl
+    (ImageAddrFrame.imgSep_of_regions E.rs hreg hfr E.len E.slot
+      ImageAddrRoute.slotArrOf_not_fa) fun _ _ _ _ => rfl
   have hck' := JasminLsemMemChecked.lsemFuelMemFk_of_runIdxOk true _ _ _ _ hrun' hok
   obtain ⟨f', t', hr', hobs⟩ := OwnedLprogTVChecked.ownedCheckMC_sound hck fn _ _ rfl rfl _ hck'
   obtain ⟨fuel', s', zf', hrA, hrel', hsafe⟩ :=

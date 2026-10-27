@@ -304,7 +304,8 @@ theorem straight_imgBytePub {σ : AbiLayout} {nm : String → String} {body : Lc
     unfold frameE
     rw [hrsp]
   have hsep := imgSep_slotRen (ren := fun x => x) (un := fun x => x)
-    (imgSep_of_regions E₁.rs hreg₁ hfr E₁.len E₁.slot) fun _ _ _ _ => rfl
+    (imgSep_of_regions E₁.rs hreg₁ hfr E₁.len E₁.slot ImageAddrRoute.slotArrOf_not_fa)
+      fun _ _ _ _ => rfl
   have hk₁ := hck sa₁ V₁ hreg₁ hV₁
   have hk₂ := hck sa₂ V₂ hreg₂ hV₂
   have himg : ∀ sa, (∃ f t, lsemFuelMemFk true (singletonProgM fn (argBind σ nm ++ C)) f
