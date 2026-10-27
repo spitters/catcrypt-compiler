@@ -1510,8 +1510,10 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                   -- contributes the `[base + disp]` ModRM/SIB/displacement tail — the
                   -- shape `encMemMovw` builds, at opcode `0x8D`. The AT&T printer's
                   -- `LEA` arm resolves the same operand name to `<off>(%<base>)`. A
-                  -- source that is not a `mem.*` name over a tabulated GP base denotes
-                  -- no effective address and carries no bytes. `LEA` reaches this arm
+                  -- frame-array name `fa.<o>.<n>` denotes `o(%rsp)` (base 4). A source
+                  -- that is neither a `mem.*` name over a tabulated GP base nor a
+                  -- frame-array name denotes no effective address and carries no
+                  -- bytes. `LEA` reaches this arm
                   -- last: it is in none of `tagShiftExt` / `aluOpcode` /
                   -- `twoByteOpcode`, so the dispatch lemmas that enumerate those
                   -- tables are unaffected by it. The register-indexed source
@@ -1525,7 +1527,11 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                         if isGpName dn then
                           match parseMemNameGp mn with
                           | some (bb, off) => encMemMovw w 0x8d (gpNumU dn) bb off
-                          | none => []
+                          | none =>
+                            -- A frame-array name `fa.<o>.<n>` is the address `o(%rsp)`.
+                            match faParts? mn with
+                            | some (o, _) => encMemMovw w 0x8d (gpNumU dn) 4 (Int.ofNat o)
+                            | none => []
                         else []
                     | .reg dn, .arrIdx bn idxn scale =>
                         if isGpName dn && isGpName bn && isGpName idxn && gpNumU idxn != 4
@@ -3061,6 +3067,43 @@ theorem encodeLopn_zeroArr (frame spillW : Nat) (dn : String) (n qsaveB : Nat)
     show ("ZEROARR" == "ZEROARR") = true from by decide +kernel,
     Bool.false_eq_true, ite_false, ite_true]
   simp [encZeroArrOp, hd, hn, hk]
+
+/-- A frame-array name is not a `mem.<base>.<off>` name. -/
+theorem parseMemNameGp_of_faParts {q : String} {p : Nat × Nat} (h : faParts? q = some p) :
+    parseMemNameGp q = none := by
+  unfold faParts? at h
+  split at h
+  · rename_i hfa
+    have hm : hasPrefix q "mem." = false := by
+      simp only [hasPrefix] at hfa ⊢
+      rw [show "fa.".toList = ['f', 'a', '.'] from by decide] at hfa
+      rw [show "mem.".toList = ['m', 'e', 'm', '.'] from by decide]
+      generalize q.toList = l at hfa ⊢
+      rcases l with _ | ⟨c, l⟩ <;> simp [List.isPrefixOf] at hfa ⊢
+      grind
+    simp only [parseMemNameGp, hm, Bool.false_eq_true, ite_false]
+  · cases h
+
+/-- **The frame-array address load encodes to `lea o(%rsp), d`.**
+    `LEA:64 [d] <- [fa.<o>.<n>]` into a general-purpose register encodes to the `8D /r`
+    effective-address load from `%rsp` at displacement `o`. -/
+theorem encodeLopn_leaFa (frame spillW : Nat) (dn q : String) (o n qsaveB : Nat)
+    (hd : isGpName dn = true) (hq : faParts? q = some (o, n)) :
+    encodeLopn frame spillW (.Lopn [.reg dn] "LEA:64" [.reg q]) qsaveB
+      = encMemMovw 1 0x8d (gpNumU dn) 4 (Int.ofNat o) := by
+  simp only [encodeLopn,
+    show (isCarryOutBinding "LEA:64" || isMulHiBinding "LEA:64") = false from by
+      decide +kernel,
+    show stripWidthTag "LEA:64" = "LEA" from by decide +kernel,
+    show rexW (mnemWidth "LEA:64") = 1 from by decide +kernel,
+    show ("LEA" == "MULX") = false from by decide +kernel,
+    show ("LEA" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "LEA" = none from by decide +kernel,
+    show tagShiftExt "LEA" = none from by decide +kernel,
+    show aluOpcode "LEA" = none from by decide +kernel,
+    show twoByteOpcode "LEA" = none from by decide +kernel,
+    show ("LEA" == "LEA") = true from by decide +kernel,
+    hd, parseMemNameGp_of_faParts hq, hq, Bool.false_eq_true, ite_false, ite_true]
 
 /-- **The array zeroing in the source form encodes to its word stores.**
     `ZEROARR [] <- [base; imm n; imm 64]` over a general-purpose base, a positive count and a

@@ -87,7 +87,7 @@ theorem x86ExportData_vecSpillBytes (body : Lcmd) :
 theorem x86ExportData_frameSize (body : Lcmd) :
     frameSize body =
       (let E := x86ExportData
-       let frameAdd := frameAddDirective body
+       let frameAdd := frameAddDirective body + faBytes body
        let f16 :=
          match frameDirective body with
          | some f =>

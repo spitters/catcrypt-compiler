@@ -63,9 +63,11 @@ theorem maxVecSpillIdx_eq (body : Lcmd) : maxVecSpillIdx body = maxIdxL "kv." 3 
   rfl
 
 /-- The frame size of a body whose list-side spill scans find no `k.N` and no `kv.N`
-    name, from the frame size computed with both scans at `none`. -/
+    name and whose frame-array region is empty, from the frame size computed with both
+    scans at `none`. -/
 theorem frameSize_of_noSpill (body : Lcmd) (F : Nat)
     (hk : maxIdxL "k." 2 body = none) (hkv : maxIdxL "kv." 3 body = none)
+    (hfa : faBytes body = 0)
     (hF : (let frameAdd := frameAddDirective body
       let f16 :=
         match frameDirective body with
@@ -76,7 +78,8 @@ theorem frameSize_of_noSpill (body : Lcmd) (F : Nat)
       else f16) = F) :
     frameSize body = F := by
   rw [← hF]
-  simp only [frameSize, vecSpillBytes, maxSpillIdx_eq, maxVecSpillIdx_eq, hk, hkv]
+  simp only [frameSize, vecSpillBytes, maxSpillIdx_eq, maxVecSpillIdx_eq, hk, hkv, hfa,
+    Nat.add_zero]
   rfl
 
 /-- The count of the tag `"SHL:0"` is `0`. -/
@@ -89,14 +92,17 @@ theorem tagShiftCount_SHL0 : tagShiftCount "SHL:0" = 0 := by
 theorem frameSize_and :
     frameSize (binLoopBody (andMid "AND:64" "SHL:0:64") "SHL:0:64") = 64 :=
   frameSize_of_noSpill _ 64 (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel)
 
 theorem frameSize_xor :
     frameSize (binLoopBody (andMid "XOR:64" "SHL:0:64") "SHL:0:64") = 64 :=
   frameSize_of_noSpill _ 64 (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel)
 
 theorem frameSize_ior :
     frameSize (binLoopBody (iorMid "SHL:0:64") "SHL:0:64") = 64 :=
   frameSize_of_noSpill _ 64 (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by decide +kernel)
 
 /-- **`mpn_and_n_loop_owned`.** The function bytes the encoder lays down for the `and`
     loop decode to `binDecoded (andMidDecoded .and_)`. -/

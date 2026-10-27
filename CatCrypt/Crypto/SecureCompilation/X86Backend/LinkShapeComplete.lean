@@ -67,7 +67,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGen
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (LOperand LinstrR Linstr Lcmd)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter
-  (calleeSavedToSave mnemWidth isCarryOutBinding)
+  (calleeSavedToSave mnemWidth isCarryOutBinding faParts?)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport (stripWidthTag)
 
 /-! ## 1. Covers compose -/
@@ -664,10 +664,12 @@ theorem cover_encStoreImmOp (a s k : JasminLprogExport.LOperand) :
 
 /-! ## 6. Covers of the sub-encoders of `encodeLopn` -/
 
-/-- The displacement of an operand the encoder addresses as memory is in signed 32-bit
-    range. -/
+/-- The displacement of an operand the encoder addresses as memory, or as the address of a
+    frame array, is in signed 32-bit range. -/
 def opdDispB (F W Q : Nat) : LOperand → Bool
-  | .reg n => (spillQsaveOff F W n Q).all dispOk32 && (parseMemNameGp n).all (fun p => dispOk32 p.2)
+  | .reg n => (spillQsaveOff F W n Q).all dispOk32 &&
+      ((parseMemNameGp n).all (fun p => dispOk32 p.2) &&
+        (faParts? n).all (fun p => dispOk32 (Int.ofNat p.1)))
   | _ => true
 
 /-- The base register `parseMemNameGp` resolves is a register number. -/
@@ -1077,7 +1079,17 @@ theorem disp_of_mem {F W Q : Nat} {L : List LOperand} {n : String} {p : Nat × I
     (hn : LOperand.reg n ∈ L) : dispOk32 p.2 = true := by
   have := List.all_eq_true.mp hL _ hn
   simp only [opdDispB, he, Option.all_some, Bool.and_eq_true] at this
-  exact this.2
+  exact this.2.1
+
+/-- A frame-array name among operands of in-range displacements has an in-range offset. -/
+theorem disp_of_fa {F W Q : Nat} {L : List LOperand} {n : String} {o k : Nat}
+    (hL : L.all (opdDispB F W Q) = true) (he : faParts? n = some (o, k))
+    (hn : LOperand.reg n ∈ L) : dispOk32 (Int.ofNat o) = true := by
+  have := List.all_eq_true.mp hL _ hn
+  simp only [opdDispB, Bool.and_eq_true] at this
+  have h3 := this.2.2
+  rw [he, Option.all_some] at h3
+  exact h3
 
 /-- The carry-out opcode of a base other than `ADOXHI` is `setc`. -/
 theorem carryOutSetccOp_of_ne {b : String} (h : ¬ b = "ADOXHI") : carryOutSetccOp b = 0x92 := by
@@ -1321,7 +1333,10 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                             · cover_split
                               · exact cover_encMemMovw (Or.inr (Or.inr rfl)) (gpNumU_lt_16 _)
                                   (parseMemNameGp_fst_lt ‹_›) (disp_of_mem hopd ‹_› (by simp))
-                              · exact TemplateCover.nil
+                              · cover_split
+                                · exact cover_encMemMovw (Or.inr (Or.inr rfl)) (gpNumU_lt_16 _)
+                                    (by decide) (disp_of_fa hopd ‹_› (by simp))
+                                · exact TemplateCover.nil
                             · exact TemplateCover.nil
                           · cover_split
                             · rename_i hc

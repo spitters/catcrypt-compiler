@@ -163,6 +163,9 @@ structure IsaEncoder : Type 1 where
   /-- Whether the encoder builds the stack-array zeroing `ZEROARR` of this element count at
       this element width. -/
   zeroArr : Nat → Nat → Bool
+  /-- Whether the encoder builds the frame-array address load with this mnemonic from this
+      frame-array name. -/
+  leaFa : String → String → Bool
   /-- Whether the encoder accepts the instruction whatever its operands resolve to: the forms
       without bytes and the control transfers. -/
   fixed : LinstrR → Bool
@@ -273,6 +276,9 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
       with no destination, is encodable. -/
   zeroArrSrc_reg : ∀ (c : E.Ctx) (bn : String) (n w : Nat), E.zeroArr n w = true →
     E.reg bn = true → E.instr c (.Lopn [] "ZEROARR" [.reg bn, .imm n, .imm w]) = true
+  /-- A frame-array address load the encoder builds into an encoder register is encodable. -/
+  leaFa_reg : ∀ (c : E.Ctx) (opn dn q : String), E.leaFa opn q = true →
+    E.reg dn = true → E.instr c (.Lopn [.reg dn] opn [.reg q]) = true
   /-- A three-source carry-chain addition the encoder builds over encoder registers is
       encodable. -/
   carry3_reg : ∀ (c : E.Ctx) (opn dn an sn kn : String), E.carry3 opn = true →
@@ -302,7 +308,8 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
     store over encoder registers; a constant-index stack-array store and a stack-array
     zeroing over encoder registers; a three-source carry-chain addition; a flag
     materialisation into an encoder register; a widening multiplication into two encoder
-    registers; and an instruction the encoder accepts whatever its operands. -/
+    registers; a frame-array address load into an encoder register; and an instruction
+    the encoder accepts whatever its operands. -/
 inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
   /-- A register move between resolving names, at most one a memory name. -/
   | mov (mn d s : String) : isMovMnem mn = true → E.resolves c d → E.resolves c s →
@@ -355,6 +362,9 @@ inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
   /-- A stack-array zeroing from an encoder register holding the base. -/
   | zeroArrSrc (bn : String) (n w : Nat) : E.zeroArr n w = true → E.reg bn = true →
       LegalForm I E c (.Lopn [] "ZEROARR" [.reg bn, .imm n, .imm w])
+  /-- A frame-array address load into an encoder register. -/
+  | leaFa (opn dn q : String) : E.leaFa opn q = true → E.reg dn = true →
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg q])
   /-- A three-source carry-chain addition over encoder registers. -/
   | carry3 (opn dn an sn kn : String) : E.carry3 opn = true → E.reg dn = true →
       E.reg an = true → E.reg sn = true → E.reg kn = true →
@@ -401,6 +411,7 @@ theorem instr_of_legalForm {c : E.Ctx} {i : LinstrR} (hi : LegalForm I E c i) :
   | storeImm a bn vn k ho h1 h2 => exact h.storeImm_reg c a bn vn k ho h1 h2
   | zeroArr dn n w ho h1 => exact h.zeroArr_reg c dn n w ho h1
   | zeroArrSrc bn n w ho h1 => exact h.zeroArrSrc_reg c bn n w ho h1
+  | leaFa opn dn q ho h1 => exact h.leaFa_reg c opn dn q ho h1
   | carry3 opn dn an sn kn ho h1 h2 h3 h4 => exact h.carry3_reg c opn dn an sn kn ho h1 h2 h3 h4
   | flagOut opn dn srcs ho h1 => exact h.flagOut_reg c opn dn srcs ho h1
   | wideMul opn ln hn sn ho h1 h2 h3 => exact h.wideMul_reg c opn ln hn sn ho h1 h2 h3
