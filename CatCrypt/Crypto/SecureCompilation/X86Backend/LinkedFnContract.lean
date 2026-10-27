@@ -31,7 +31,10 @@ stack register at entry is `rv "%rsp"`.
 * The write set (`LinkedFn.contractWrites`): the clobbered registers other than `%rsp`, the
   flags, the `frame` bytes below the stack register and the memory locations of the result
   read-back.
-* The public relation: `AbiLayout.PubAgree` of the layout.
+* The public relation (`LinkedFn.pubRegsAgree`): agreement on the stack register and on the
+  register of each public parameter of the layout, the agreement a caller establishes at a
+  call. For a layout without public arrays it is `AbiLayout.PubAgree`
+  (`AbiLayout.pubAgree_iff_of_pubWords_nil`).
 
 The write set and the footprint of the postcondition lie in the footprint of the
 precondition (`contractWrites_subset`, `contractPost_fp_subset`), so `SContract.frame`
@@ -49,7 +52,7 @@ the constant-time regime `.doitm` meet the contract. The interface `LinkedFn.con
 * `arrPts`, `arrOwn`, `regionsOwn`: an array of cells in the memory of an address state, the
   words of a region with some contents, and the pointer regions of a layout.
 * `LinkedFn.entryAt`, `LinkedFn.contractPre`, `LinkedFn.contractPost`,
-  `LinkedFn.contractWrites`, `LinkedFn.contract`: the contract.
+  `LinkedFn.contractWrites`, `LinkedFn.pubRegsAgree`, `LinkedFn.contract`: the contract.
 * `LinkedFn.Meets`: the code of a linked function meets its contract.
 * `LinkedFn.contractSig`, `LinkedFn.Room`: the interface of the contract, and the entry
   states at which its precondition holds once the meaning is defined.
@@ -385,13 +388,19 @@ def contractWrites (l : LinkedFn) (a : CallVar) : Set Loc := fun x =>
   | .flag _ => True
   | .mem y => InFrame a.sp l.frame y ∨ Loc.mem y ∈ resLocs (entryRegs a.rv) l.layout.result
 
+/-- **The public relation of the contract**: two entry states agree on the stack register and
+    on the register of each public parameter of the layout. -/
+def pubRegsAgree (l : LinkedFn) (s₁ s₂ : AState) : Prop :=
+  s₁.regs "%rsp" = s₂.regs "%rsp" ∧
+    ∀ a ∈ l.layout.args, l.layout.argPub a = true → s₁.regs a.reg = s₂.regs a.reg
+
 /-- **The contract of a linked function**, derived from its layout, meaning, clobbered
     registers and frame size. -/
 def contract (l : LinkedFn) : ContractSpec AState Loc CallVar where
   pre := l.contractPre
   post := l.contractPost
   writes a _ := l.contractWrites a
-  pub := l.layout.PubAgree
+  pub := l.pubRegsAgree
 
 /-- **The code of a linked function meets its contract**: the bytes decode to a block whose
     leaky runs under the regime `.doitm` meet `LinkedFn.contract`. -/
@@ -411,7 +420,7 @@ def contractSig (l : LinkedFn) (args : List String) (res : Option String) : Call
   pre s := ∃ a, (l.contractPre a).holds s
   foot s x := ∃ a, (l.contractPre a).holds s ∧ l.contractWrites a (.mem x)
   post s s' := ∃ a, (l.contractPre a).holds s ∧ (l.contractPost a).holds s'
-  pub := l.layout.PubAgree
+  pub := l.pubRegsAgree
 
 /-- The entry states at which the resources of a call hold at some logical variables. -/
 def Room (l : LinkedFn) (s : AState) : Prop := ∃ a, (l.entryAt a).holds s
@@ -480,8 +489,8 @@ theorem not_ret_of_resRegion {l : LinkedFn} {a : CallVar} {s : AState}
     whose footprint at an entry state satisfying the precondition of the contract is among
     the `frame` bytes below the entry stack register and the result locations outside the
     return word, whose postcondition gives the result of the contract, and whose public
-    relation follows from agreement on the public data of the layout. Then `l` meets its
-    contract. -/
+    relation follows from agreement on the stack register and the registers of the public
+    parameters (`LinkedFn.pubRegsAgree`). Then `l` meets its contract. -/
 theorem meets_of_calleeSpec {l : LinkedFn} {q : List RInstr}
     (hq : decodeLprog l.bytes = some q) {c : CalleeSig} (hX : CalleeSpec (runOf .doitm q) c)
     (hpre : ∀ a s, (l.contractPre a).holds s → c.pre s)
@@ -491,7 +500,7 @@ theorem meets_of_calleeSpec {l : LinkedFn} {q : List RInstr}
         (Loc.mem x ∈ resLocs (entryRegs a.rv) l.layout.result ∧ ¬ InRange8 a.sp x))
     (hpost : ∀ a s s', (l.contractPre a).holds s → c.post s s' →
       (resultAt l.layout l.sem a.rv a.vals).holds s')
-    (hpub : ∀ s₁ s₂, l.layout.PubAgree s₁ s₂ → c.pub s₁ s₂) : l.Meets := by
+    (hpub : ∀ s₁ s₂, l.pubRegsAgree s₁ s₂ → c.pub s₁ s₂) : l.Meets := by
   refine ⟨q, hq, ⟨fun a s hs => hX.halts s (hpre a s hs), ?_, ?_, ?_⟩⟩
   · intro a s t s' hs hr
     have hc := hpre a s hs
@@ -540,7 +549,7 @@ theorem meets_of_wordSig {l : LinkedFn} {ws : List String} {res : String}
     (hF : FootBelow (wordSig l ws res) l.frame) : l.Meets := by
   refine meets_of_calleeSpec hq hX (fun a s hs => ⟨hpre a s hs, ?_⟩) (fun r hr => ?_)
     (fun _ s x _ hx => Or.inl (hF s x hx)) (fun a s s' hs hp => ?_)
-    (fun s₁ s₂ hp => l.pub_of_regs s₁ s₂ hp.rsp hp.regs)
+    (fun s₁ s₂ hp => l.pub_of_regs s₁ s₂ hp.1 hp.2)
   · obtain ⟨-, -, hvals, -, -⟩ := holds_entryAt (entryAt_of_pre hs)
     obtain ⟨v, hv⟩ := Option.isSome_iff_exists.mp (sem_isSome_of_pre hs)
     have hw : (l.sem ((ws.map fun a => s.regs (phys a)).map wordVal)) = some v := by
