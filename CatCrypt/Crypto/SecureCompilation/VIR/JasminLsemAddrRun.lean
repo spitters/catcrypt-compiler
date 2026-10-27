@@ -167,6 +167,11 @@ theorem tagA_storeImm (ds : List LOperand) (b v : LOperand) (k : Nat) :
     tagA (.Lopn ds "STOREIMM" [b, v, .imm k]) = .storeImm 64 (k + 1) := by
   simp [tagA, storeImmTagA, width_tag]
 
+/-- The tag of the address load `LEA:64 D, q` is the register tag without a descriptor. -/
+theorem tagA_lea (D q : String) :
+    tagA (.Lopn [.reg D] "LEA:64" [.reg q]) = .reg none := by
+  simp [tagA, width_tag]
+
 /-- A width-carrying cast mnemonic has the destination width `16`, `32` or `64`. -/
 theorem castTagW_width {o : String} {w : Nat} (h : castTagW o = some w) :
     w = 64 ∨ w = 32 ∨ w = 16 := by

@@ -903,8 +903,9 @@ theorem frameE_stack {body : Lcmd} (sa : AState) (off : Nat)
     rw [show frameE body sa (slotOfReg ("RSP+" ++ toString off)) = none from ite_eq_right hn] at h
     cases h
   show ImageAddrFrame.frameIn body _ _ = _
-  rw [ImageAddrFrame.frameIn, ite_eq_left hq, frameP, spillQsaveOff_rsp, Option.map_some,
-    frameRsp]
+  rw [ImageAddrFrame.frameIn, ite_eq_left hq, frameP, spillQsaveOff_rsp]
+  dsimp only
+  rw [frameRsp]
   congr 1
   rw [BitVec.add_assoc]
   congr 1

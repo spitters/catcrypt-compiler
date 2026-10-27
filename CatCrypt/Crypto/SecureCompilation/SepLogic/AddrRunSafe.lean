@@ -119,6 +119,17 @@ theorem storeIn_lopn_iff {M : Set (BitVec 64)} {frame : String → Option (BitVe
   rw [hc]
   exact ⟨fun h R hR x hx => h x ⟨R, hR, hx⟩, fun h x ⟨R, hR, hx⟩ => h R hR x hx⟩
 
+/-- At an address load `LEA:64 D, q`, `StoreIn` holds for every set of bytes. -/
+theorem storeIn_lea {M : Set (BitVec 64)} {frame : String → Option (BitVec 64)}
+    {c : Lcmd} {s : LstateA} {ii : Nat} {D q : String}
+    (hc : c[s.reg.lpc]? = some ⟨ii, .Lopn [.reg D] "LEA:64" [.reg q]⟩) :
+    StoreIn M frame c s := by
+  rw [storeIn_lopn_iff hc]
+  intro R hR
+  rw [normA_of_caret_free (by decide), tagAt_of_ne (by simp [JasminLsemCast.movImmStruct?]),
+    tagA_lea] at hR
+  simp [storeR?_lea] at hR
+
 /-- At a halted state the step footprints hold no memory location and the step fails. -/
 theorem halted_step {frame : String → Option (BitVec 64)} {c : Lcmd} {s : LstateA}
     (zf : Bool) (h : haltedA c s = true) :

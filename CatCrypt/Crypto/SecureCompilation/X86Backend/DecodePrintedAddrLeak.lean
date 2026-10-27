@@ -290,7 +290,7 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
       simp [AArm.js, AArm.pieces, Arm.pieces, hso, blockLeakA, opLeak, instrLeak, resolveEv,
         JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing, AArm.li, AArm.instr,
         instrLeakA, slotMov?, frameP, (gpFacts hS).off, hoff, hc.sp, evA, redLeak,
-        cellParts?_of_spillOff hsome, cellParts?_gp hS]
+        cellParts?_of_spillOff hsome, cellParts?_gp hS, faParts?_gp hS]
   | ld m D q =>
     simp only [AArm.ok, Bool.and_eq_true, Bool.not_eq_true'] at h
     obtain ⟨⟨⟨⟨⟨hD, -⟩, hsome⟩, -⟩, -⟩, hm⟩ := h

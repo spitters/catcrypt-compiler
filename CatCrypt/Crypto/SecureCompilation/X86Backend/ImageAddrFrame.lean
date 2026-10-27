@@ -108,6 +108,9 @@ theorem bitStepA_frame_congr {frame frame' : String → Option (BitVec 64)} {x :
     have hs := h s (by simp [instrNames, JasminLsemExportRewrites.opNames])
     have hc := h c (by simp [instrNames, JasminLsemExportRewrites.opNames])
     simp only [wordA, bitA, ha, hs, hc]
+  · rename_i d o q
+    have hq := h q (by simp [instrNames, JasminLsemExportRewrites.opNames])
+    simp only [hq]
   · rfl
 
 /-- The address machine reads the frame only at the names of the instruction it steps. -/
@@ -262,13 +265,17 @@ def pairSepB : List Int → Bool
 
 /-- **The frame check.** The frame word of each name of the body and the red-zone word lie
     in the frame range of the layout, from the entry stack pointer; the frame words of two
-    distinct names of the body are at least eight bytes apart. -/
+    distinct names of the body are at least eight bytes apart; and no name of the body is a
+    frame-array name (`faB`). Row F3 replaces the last conjunct by the frame-array range
+    check `faRangesOkB` (each frame-array range inside the frame, the ranges pairwise
+    disjoint). -/
 def frameOkB (σ : AbiLayout) (body : Lcmd) : Bool :=
   let F : Int := frameSize body
   let os := frameOffs body
   os.all (fun o => decide (σ.frameLo ≤ o - F ∧ o - F ≤ σ.frameHi))
     && decide (σ.frameLo ≤ cmovRedZone - F ∧ cmovRedZone - F ≤ σ.frameHi)
     && pairSepB os
+    && (bodyNamesI body).all fun q => !LprogAsmPrinter.faB q
 
 theorem sep8B_comm (o o' : Int) : sep8B o o' = sep8B o' o := by
   have h : (o - o').natAbs = (o' - o).natAbs := by rw [← Int.natAbs_neg, Int.neg_sub]
@@ -302,34 +309,51 @@ theorem frameOkB_range {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = t
     {q : String} {o : Int} (hq : q ∈ bodyNamesI body) (ho : offOf body q = some o) :
     σ.frameLo ≤ o - (Params.ofBody body).frame ∧ o - (Params.ofBody body).frame ≤ σ.frameHi := by
   simp only [frameOkB, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at hf
-  exact hf.1.1 o (mem_frameOffs hq ho)
+  exact hf.1.1.1 o (mem_frameOffs hq ho)
 
 theorem frameOkB_red {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = true) :
     σ.frameLo ≤ cmovRedZone - (Params.ofBody body).frame
       ∧ cmovRedZone - (Params.ofBody body).frame ≤ σ.frameHi := by
   simp only [frameOkB, Bool.and_eq_true, decide_eq_true_eq] at hf
-  exact hf.1.2
+  exact hf.1.1.2
 
 theorem frameOkB_pair {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = true)
     {q q' : String} {o o' : Int} (hq : q ∈ bodyNamesI body) (hq' : q' ∈ bodyNamesI body)
     (hne : q ≠ q') (ho : offOf body q = some o) (ho' : offOf body q' = some o') :
     8 ≤ (o - o').natAbs ∧ (o - o').natAbs ≤ 2 ^ 64 - 8 := by
   simp only [frameOkB, Bool.and_eq_true] at hf
-  have hp := pairSepB_pairwise hf.2
+  have hp := pairSepB_pairwise hf.1.2
   simp only [frameOffs, List.pairwise_filterMap] at hp
   have h := pairwise_of_ne (fun a b hab x hx y hy => by rw [sep8B_comm]; exact hab y hy x hx)
     hp (List.mem_eraseDups.mpr hq) (List.mem_eraseDups.mpr hq') hne o ho o' ho'
   simpa only [sep8B, decide_eq_true_eq] using h
 
+/-- A name with a word under the restricted frame of a body accepted by the frame check is
+    no frame-array name. -/
+theorem frameOkB_faB {σ : AbiLayout} {body : Lcmd} (hf : frameOkB σ body = true)
+    {f : String → Option (BitVec 64)} {q : String} {a : BitVec 64}
+    (ha : frameIn body f q = some a) : LprogAsmPrinter.faB q = false := by
+  unfold frameIn at ha
+  split at ha
+  · rename_i hq
+    simp only [frameOkB, Bool.and_eq_true, List.all_eq_true, Bool.not_eq_true'] at hf
+    exact hf.2 q hq
+  · cases ha
+
+/-- The word of a name under the restricted frame of a body is its frame address. The
+    frame-array fact `hfa` is found from a frame check `frameOkB σ body = true` and the
+    hypothesis `h` in the context (`frameOkB_faB`). -/
 theorem frameIn_some {body : Lcmd} {sa : AState} {q : String} {a : BitVec 64}
-    (h : frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a) :
+    (h : frameIn body (frameP (Params.ofBody body) (frameRsp body sa)) q = some a)
+    (hfa : LprogAsmPrinter.faB q = false := by
+      exact CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame.frameOkB_faB ‹_› ‹_›) :
     q ∈ bodyNamesI body ∧ ∃ o, offOf body q = some o
       ∧ a = sa.regs "%rsp" + BitVec.ofInt 64 (o - (Params.ofBody body).frame) := by
   unfold frameIn at h
   split at h
   · rename_i hq
     refine ⟨hq, ?_⟩
-    unfold frameP at h
+    rw [DecodePrintedAddr.frameP_of_not_fa hfa] at h
     obtain ⟨o, ho, rfl⟩ := Option.map_eq_some_iff.mp h
     refine ⟨o, ho, ?_⟩
     simp only [frameRsp, BitVec.add_assoc, ← BitVec.ofInt_add]
@@ -498,7 +522,7 @@ theorem frameIn_isSome (body : Lcmd) (r r' : BitVec 64) (q : String) :
     (frameIn body (frameP (Params.ofBody body) r) q).isSome
       = (frameIn body (frameP (Params.ofBody body) r') q).isSome := by
   unfold frameIn frameP
-  split <;> simp
+  split <;> (try split) <;> simp
 
 /-- The distinct names of a body that have a frame word. The frame size, spill width and
     save block are those of `Params.ofBody`, computed once. -/
@@ -506,7 +530,8 @@ def frameNames (body : Lcmd) : List String :=
   let F := frameSize body
   let W := if bodyIsU64 body then 64 else 32
   let Q := qsaveBytesFor body
-  (bodyNamesI body).eraseDups.filter fun q => (spillQsaveOff F W q Q).isSome
+  (bodyNamesI body).eraseDups.filter fun q =>
+    (spillQsaveOff F W q Q).isSome || LprogAsmPrinter.faB q
 
 /-- The frame map that gives the word `0` to the names of `N` and no word to other names. -/
 def frameMark (N : List String) (q : String) : Option (BitVec 64) :=
@@ -521,9 +546,12 @@ theorem frameMark_isSome (body : Lcmd) (r : BitVec 64) (q : String) :
   · have e2 : frameIn body (frameP (Params.ofBody body) r) q
         = frameP (Params.ofBody body) r q := ite_eq_left hq
     rw [e2]
-    unfold frameP
-    rw [Option.isSome_map]
-    by_cases ho : (offOf body q).isSome = true
+    have e3 : (frameP (Params.ofBody body) r q).isSome
+        = ((offOf body q).isSome || LprogAsmPrinter.faB q) := by
+      unfold frameP offOf
+      split <;> simp_all [LprogAsmPrinter.faB]
+    rw [e3]
+    by_cases ho : ((offOf body q).isSome || LprogAsmPrinter.faB q) = true
     · have h1 : q ∈ frameNames body := by
         simp only [frameNames, List.mem_filter, List.mem_eraseDups]
         exact ⟨hq, ho⟩

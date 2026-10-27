@@ -1284,6 +1284,15 @@ theorem kOk_cases {P : Params} {x : String} (h : kOk P x = true) :
       exact ⟨off, hoff, h.1, h.2⟩
     · cases h
 
+/-- At a name accepted by `kOk`, `frameP` is the frame address of the spill or save offset. -/
+theorem frameP_of_kOk {P : Params} {rsp : BitVec 64} {x : String} (h : kOk P x = true) :
+    frameP P rsp x
+      = (spillQsaveOff P.frame P.spillW x P.qsaveB).map fun o => rsp + BitVec.ofInt 64 o := by
+  rcases kOk_cases h with hg | ⟨off, hoff, -⟩
+  · rw [frameP_gp hg, (gpFacts hg).off]
+    rfl
+  · simp [frameP, hoff]
+
 /-- The facts of an operand the encoder reads: a general-purpose name, or a slot at its
     offset. -/
 theorem opnd_facts {P : Params} {x : String} (h : kOk P x = true) :
@@ -1955,7 +1964,7 @@ theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
     rfl
   · have hdisA : ∀ ax, frameP P rsp A = some ax → Disjoint8 aD ax := by
       intro ax hax
-      simp only [frameP, Option.map_eq_some_iff] at hax
+      simp only [frameP_of_kOk hA, Option.map_eq_some_iff] at hax
       obtain ⟨off, hoff, rfl⟩ := hax
       have hAs := (slot_facts hoff).1
       have hsep := hsA hAs
@@ -1964,7 +1973,7 @@ theorem sim_sadcx_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
       exact disjoint8_add_ofInt rsp offD off hsep.1 hsep.2
     have hdisS : ∀ ax, frameP P rsp S = some ax → Disjoint8 aD ax := by
       intro ax hax
-      simp only [frameP, Option.map_eq_some_iff] at hax
+      simp only [frameP_of_kOk hS, Option.map_eq_some_iff] at hax
       obtain ⟨off, hoff, rfl⟩ := hax
       have hSs := (slot_facts hoff).1
       have hsep := hsS hSs
@@ -2289,11 +2298,11 @@ theorem sim_sadcxc_reg (P : Params) (rsp : BitVec 64) (D A S C : String)
 
 /-- A frame address read off a slot whose frame word is disjoint from that of `D`. -/
 theorem frame_disj {P : Params} {rsp : BitVec 64} {D x : String} {offD : Int}
-    (hsD : slotOff P D = offD)
+    (hsD : slotOff P D = offD) (hk : kOk P x = true)
     (hsep : isSpillOrQsave x = true → sepB (slotOff P D) (slotOff P x) = true) :
     ∀ ax, frameP P rsp x = some ax → Disjoint8 (rsp + BitVec.ofInt 64 offD) ax := by
   intro ax hax
-  simp only [frameP, Option.map_eq_some_iff] at hax
+  simp only [frameP_of_kOk hk, Option.map_eq_some_iff] at hax
   obtain ⟨off, hoff, rfl⟩ := hax
   have h := hsep (slot_facts hoff).1
   rw [hsD, show slotOff P x = off by simp [slotOff, hoff]] at h
@@ -2436,12 +2445,12 @@ theorem sim_sadcxc_slot (P : Params) (rsp : BitVec 64) (D A S C : String)
   · show sa7.flags.cf = _
     rw [hsa7, hsa6, evalInstrA_loadMem_flags, evalInstrA_storeMem_flags, c5]
     rfl
-  · rw [wordA_write (frame_disj hsD hsA)] at ha
-    rw [wordA_write (frame_disj hsD hsS)] at hb
+  · rw [wordA_write (frame_disj hsD hA hsA)] at ha
+    rw [wordA_write (frame_disj hsD hS hsS)] at hb
     have hbC : bitA (frameP P rsp)
         { s with reg := s.reg.nextPc, mem := write64 s.mem aD (VIR.JasminDialect.addCarryWord va vb vc) } C
           = bitA (frameP P rsp) s C := by
-      have hdC := frame_disj (rsp := rsp) hsD (x := C) (fun _ => hsC)
+      have hdC := frame_disj (rsp := rsp) hsD (x := C) hC (fun _ => hsC)
       unfold bitA
       split
       · rename_i ax hax

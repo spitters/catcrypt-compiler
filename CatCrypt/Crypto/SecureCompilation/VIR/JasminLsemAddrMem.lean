@@ -365,9 +365,11 @@ theorem immWordA_mov_setWidth (ds ss : List LOperand) (old : BitVec 64) (v : Nat
 
 /-- The carry-chain add `ADCX:64 d, a, s, c`, its carry-out binding `ADCXHI:64 d, a, s, c`
     and the select `CMOV:64 d, [c, a, b]` with the carry-in or the condition read through
-    `bitA` and the word sources through `wordA`, writing the register `d`. The address
-    machine takes this step where the register-file step is undefined, so that a carry-in or
-    a condition reloaded as a 64-bit word below `2` is read as its low bit. -/
+    `bitA` and the word sources through `wordA`, writing the register `d`; and the address
+    load `LEA:64 d, q` of a frame array `q` (`faB`), writing the frame address of `q` to `d`
+    with no memory access. The address machine takes this step where the register-file step
+    is undefined, so that a carry-in or a condition reloaded as a 64-bit word below `2` is
+    read as its low bit. -/
 def bitStepA (frame : String → Option (BitVec 64)) (x : LinstrR) (sa : LstateA) (zf : Bool) :
     Option (LstateA × Bool) :=
   match x with
@@ -387,6 +389,12 @@ def bitStepA (frame : String → Option (BitVec 64)) (x : LinstrR) (sa : LstateA
         | some vc, some va, some vb =>
             some ({ sa with reg := (sa.reg.setReg d (selectW vc va vb)).nextPc }, zf)
         | _, _, _ => none
+      else none
+  | .Lopn [.reg d] o [.reg q] =>
+      if o = "LEA:64" ∧ X86Backend.LprogAsmPrinter.faB q = true then
+        match frame q with
+        | some a => some ({ sa with reg := (sa.reg.setReg d a).nextPc }, zf)
+        | none => none
       else none
   | _ => none
 
@@ -774,6 +782,43 @@ theorem fstepA_lea (frame : String → Option (BitVec 64)) {D n B : String} {off
     fstepA frame (.Lopn [.reg D] "LEA:64" [.reg n], .reg none) sa zf
       = some ({ sa with reg := (sa.reg.setReg D (p + BitVec.ofNat 64 off)).nextPc }, zf) := by
   simp [fstepA, slotMov?, slotCmp?, cellA?, hn, hB,
+    X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LEA:64".toList)]
+
+/-- A frame-array name `fa.<o>.<n>` is no cell name `mem.<B>.<off>`. -/
+theorem cellParts?_of_faB {q : String} (hq : X86Backend.LprogAsmPrinter.faB q = true) :
+    cellParts? q = none := by
+  have hfa : hasPrefix q "fa." = true := by
+    by_contra h
+    simp [X86Backend.LprogAsmPrinter.faB, X86Backend.LprogAsmPrinter.faParts?, h] at hq
+  have hm : hasPrefix q "mem." = false := by
+    unfold hasPrefix at hfa ⊢
+    rcases hl : q.toList with _ | ⟨c, t⟩ <;> simp_all [List.isPrefixOf]
+    grind
+  simp [cellParts?, hm]
+
+/-- The register-file step of the address load `LEA:64 D, q` of a name is undefined. -/
+theorem regStepA_leaReg (D q : String) (sa : LstateA) (zf : Bool) :
+    regStepA (.Lopn [.reg D] "LEA:64" [.reg q], .reg none) sa zf = none := by
+  have hsh : JasminImmShiftMnem.immShiftMnem? "LEA:64" = none := by decide
+  simp (config := { decide := true }) [regStepA, VIR.JasminLsemMemFlagNestJoin.fstepF,
+    VIR.JasminLsemMemFlagGuard.cmpArgs?, VIR.JasminLsemMemFlagGuard.movRegArgs?,
+    VIR.JasminLsemMemFlagGuard.stepMemF, VIR.JasminLsemMem.lsemStepMem,
+    JasminLsemCast.lsemStepCast, JasminLsemCast.castStruct?,
+    VIR.JasminLsemMemFlagGuard.carryArgs?, VIR.JasminLsemMemFlagGuard.wideArgs?,
+    JasminLsemMulCarry.lsemStepMC, JasminLsemMulCarry.mulhiStruct?,
+    JasminLsemMulCarry.adcxStruct?, JasminLsemMulCarry.adcxhiStruct?,
+    JasminLsemMulCarry.sbbStruct?, JasminLsemMulCarry.sbbhiStruct?,
+    VIR.JasminLsemShift.lsemStepSh, VIR.JasminLsemShift.sarStruct?, lsemStepN, hsh]
+
+/-- **The address of a frame array.** `LEA:64 D, q`, `q` a frame-array name (`faB`) at the
+    frame address `a`, writes `a` to `D`; the memory and the flags are unchanged. -/
+theorem fstepA_leaFa (frame : String → Option (BitVec 64)) {D q : String}
+    (hq : X86Backend.LprogAsmPrinter.faB q = true) {a : BitVec 64} (ha : frame q = some a)
+    (sa : LstateA) (zf : Bool) :
+    fstepA frame (.Lopn [.reg D] "LEA:64" [.reg q], .reg none) sa zf
+      = some ({ sa with reg := (sa.reg.setReg D a).nextPc }, zf) := by
+  simp [fstepA, slotMov?, slotCmp?, cellA?, cellParts?_of_faB hq, slotCarry?, slotImm?,
+    slotCmov?, regStepA_leaReg, bitStepA, hq, ha,
     X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LEA:64".toList)]
 
 /-- **The move out of a cell.** `MOV:64 D, n`, `n` the cell `[B + off]` and `D` no cell name,

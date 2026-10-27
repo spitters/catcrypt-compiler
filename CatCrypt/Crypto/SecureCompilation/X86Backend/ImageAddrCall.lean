@@ -407,9 +407,11 @@ theorem above_not_inFrame (r x : BitVec 64) (o G : Nat) (h1 : o + 16 + G ≤ 2 ^
 
 /-- **The frame check of a calling body**: every frame offset `o` of the body, from the
     stack register after the prologue, is non-negative with `o + 16 + G` at most
-    `2 ^ 64`. -/
+    `2 ^ 64`; and no name of the body is a frame-array name (`faB`), whose range row F3
+    checks. -/
 def frameNonnegB (body : Lcmd) (G : Nat) : Bool :=
-  (frameOffs body).all fun o => decide (0 ≤ o ∧ o.toNat + 16 + G ≤ 2 ^ 64)
+  (frameOffs body).all (fun o => decide (0 ≤ o ∧ o.toNat + 16 + G ≤ 2 ^ 64))
+    && (bodyNamesI body).all fun q => !LprogAsmPrinter.faB q
 
 /-- **Soundness of the frame check.** The restricted frame of a body accepted by
     `frameNonnegB` lies above the stack register after the prologue. -/
@@ -418,10 +420,17 @@ theorem frameAbove_of_frameNonnegB {body : Lcmd} {G : Nat} (h : frameNonnegB bod
     FrameAbove (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0)))
       (frameRsp body sa0) G := by
   intro q a ha
-  obtain ⟨hq, o, ho, rfl⟩ := frameIn_some ha
+  simp only [frameNonnegB, Bool.and_eq_true] at h
+  have hfa : LprogAsmPrinter.faB q = false := by
+    unfold frameIn at ha
+    split at ha
+    · rename_i hq
+      simpa using List.all_eq_true.mp h.2 q hq
+    · cases ha
+  obtain ⟨hq, o, ho, rfl⟩ := frameIn_some ha hfa
   have hm : o ∈ frameOffs body :=
     List.mem_filterMap.mpr ⟨q, List.mem_eraseDups.mpr hq, ho⟩
-  have hb := List.all_eq_true.mp h o hm
+  have hb := List.all_eq_true.mp h.1 o hm
   simp only [decide_eq_true_eq] at hb
   refine ⟨o.toNat, hb.2, ?_⟩
   rw [← BitVec.ofInt_natCast, Int.toNat_of_nonneg hb.1]

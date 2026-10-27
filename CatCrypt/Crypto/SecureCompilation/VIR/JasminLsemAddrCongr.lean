@@ -625,6 +625,10 @@ theorem bitStepA_congr (frame : String → Option (BitVec 64)) (w : LinstrR) {s 
     all_goals first
       | exact ORel.none
       | exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1, h.2.2.2, rfl⟩
+  · repeat' split
+    all_goals first
+      | exact ORel.none
+      | exact ORel.some ⟨((NStep.refl hN.1).setReg _ _).nextPc, hM, h.2.2.1, h.2.2.2, rfl⟩
   · exact ORel.none
 
 /-- The register-file step, and where it is undefined `bitStepA`, agree on agreeing states. -/

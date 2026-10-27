@@ -325,6 +325,11 @@ theorem bitStepA_mem (frame : String → Option (BitVec 64)) (w : LinstrR) (r : 
       | exact ORel.none
       | exact ORel.some ⟨rfl, rfl, rfl, rfl, fun x hx => by
           simp_all [dstNames, opNames, LstateN.setReg, LstateN.nextPc], rfl, rfl⟩
+  · repeat' split
+    all_goals first
+      | exact ORel.none
+      | exact ORel.some ⟨rfl, rfl, rfl, rfl, fun x hx => by
+          simp_all [dstNames, opNames, LstateN.setReg, LstateN.nextPc], rfl, rfl⟩
   · exact ORel.none
 
 /-! ### The names of the recognised forms -/
@@ -754,6 +759,22 @@ theorem storeR?_of_ne_zero {frame : String → Option (BitVec 64)} {i : LinstrRM
   cases tag with
   | zero wd n => exact absurd rfl (h wd n)
   | _ => rfl
+
+/-- The address load `LEA:64 D, q` stores nothing. -/
+theorem storeR?_lea (frame : String → Option (BitVec 64)) (D q : String) (r : LstateN) :
+    storeR? frame (.Lopn [.reg D] "LEA:64" [.reg q], .reg none) r = none := by
+  cases hc : cellA? (.Lopn [.reg D] "LEA:64" [.reg q]) with
+  | none => simp [storeR?, storeA?, slotMov?, slotCmp?, hc, slotCarry?, slotImm?, slotCmov?]
+  | some c =>
+      cases c <;> simp_all [storeR?, storeA?, slotMov?, slotCmp?, cellA?,
+        X86Backend.LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "LEA:64".toList)]
+
+/-- The address load `LEA:64 D, q` writes no memory location. -/
+theorem writesA_lea_mem (frame : String → Option (BitVec 64)) (D q : String) (s : LstateA)
+    (x : BitVec 64) :
+    Loc.mem x ∉ writesA frame (.Lopn [.reg D] "LEA:64" [.reg q], .reg none) s := by
+  rintro ⟨R, hR, -⟩
+  simp [storeR?_lea] at hR
 
 /-- The store range of a step depends only on the registers the step reads. -/
 theorem storeR?_congr (frame : String → Option (BitVec 64)) (i : LinstrRM) {r r' : LstateN}

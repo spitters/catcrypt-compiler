@@ -84,13 +84,56 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted
 /-! ## 1. The correspondence -/
 
 /-- The frame-slot addresses of a printed body under the body parameters `P`, with the stack
-    register at `rsp`: a spill or save name at its frame offset, no address otherwise. -/
+    register at `rsp`: a spill or save name at its frame offset, a frame-array name
+    `fa.<o>.<n>` at `rsp + o`, no address otherwise. -/
 def frameP (P : Params) (rsp : BitVec 64) (q : String) : Option (BitVec 64) :=
-  (spillQsaveOff P.frame P.spillW q P.qsaveB).map fun o => rsp + BitVec.ofInt 64 o
+  match spillQsaveOff P.frame P.spillW q P.qsaveB with
+  | some o => some (rsp + BitVec.ofInt 64 o)
+  | none => (faParts? q).map fun p => rsp + BitVec.ofNat 64 p.1
+
+/-- A name with the prefix `fa.` has no spill or save offset. -/
+theorem spillQsaveOff_of_fa {q : String} (hq : VIR.JasminLprogExport.hasPrefix q "fa." = true)
+    (F W qB : Nat) : spillQsaveOff F W q qB = none := by
+  have hk : VIR.JasminLprogExport.hasPrefix q "k." = false := by
+    unfold VIR.JasminLprogExport.hasPrefix at hq ⊢
+    rcases hl : q.toList with _ | ⟨c, t⟩ <;> simp_all [List.isPrefixOf]
+    grind
+  have hs : VIR.JasminLprogExport.hasPrefix q "qsave." = false := by
+    unfold VIR.JasminLprogExport.hasPrefix at hq ⊢
+    rcases hl : q.toList with _ | ⟨c, t⟩ <;> simp_all [List.isPrefixOf]
+    grind
+  simp [spillQsaveOff, hk, hs]
+
+/-- A frame-array name has the prefix `fa.`. -/
+theorem hasPrefix_fa_of_faB {q : String} (hq : faB q = true) :
+    VIR.JasminLprogExport.hasPrefix q "fa." = true := by
+  by_contra h
+  simp [faB, faParts?, h] at hq
+
+/-- Off frame-array names `frameP` is the frame address of the spill or save offset. -/
+theorem frameP_of_not_fa {P : Params} {rsp : BitVec 64} {q : String} (hq : faB q = false) :
+    frameP P rsp q
+      = (spillQsaveOff P.frame P.spillW q P.qsaveB).map fun o => rsp + BitVec.ofInt 64 o := by
+  have hp : faParts? q = none := by simpa [faB] using hq
+  unfold frameP
+  split <;> simp_all
+
+/-- A frame-array name `fa.<o>.<n>` has the frame address `rsp + o`. -/
+theorem frameP_fa {P : Params} {rsp : BitVec 64} {q : String} {o n : Nat}
+    (hq : faParts? q = some (o, n)) : frameP P rsp q = some (rsp + BitVec.ofNat 64 o) := by
+  have hb : faB q = true := by simp [faB, hq]
+  simp [frameP, spillQsaveOff_of_fa (hasPrefix_fa_of_faB hb), hq]
+
+/-- A general-purpose name is no frame-array name. -/
+theorem faParts?_gp {r : String} (h : gpOk r = true) : faParts? r = none := by
+  have hm := mem_gpList h
+  simp only [gpList, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl <;> decide
 
 theorem frameP_gp {P : Params} {rsp : BitVec 64} {r : String} (h : gpOk r = true) :
     frameP P rsp r = none := by
-  simp [frameP, (gpFacts h).off]
+  simp [frameP, (gpFacts h).off, faParts?_gp h]
 
 /-- The red-zone word: the eight bytes at `-128` from the stack register. -/
 def redW (rsp : BitVec 64) : BitVec 64 := rsp + BitVec.ofInt 64 cmovRedZone
@@ -903,6 +946,27 @@ theorem regArm_cell {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P [
   | load => simp [regArmB] at hr
   | _ => simp [Arm.instr, cellA?]
 
+/-- A register arm of `DecodePrintedAddr` has no `bitStepA` step. -/
+theorem regArm_bitStepA {P : Params} {a : Arm} (rsp : BitVec 64) (hr : regArmB a = true)
+    (h : a.ok P [] = true) (s : LstateA) (zf : Bool) :
+    bitStepA (frameP P rsp) a.instr s zf = none := by
+  cases a with
+  | shr m D S =>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
+    simp [Arm.instr, bitStepA, frameP_gp hS]
+  | shl0 m D S =>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
+    simp [Arm.instr, bitStepA, frameP_gp hS]
+  | movRR m D S =>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨-, -⟩, hS⟩ := h
+    simp [Arm.instr, bitStepA, frameP_gp hS]
+  | store => simp [regArmB] at hr
+  | load => simp [regArmB] at hr
+  | _ => simp [Arm.instr, bitStepA]
+
 /-- A register arm is no immediate move into a frame slot. -/
 theorem regArm_slotImm {P : Params} {a : Arm} (rsp : BitVec 64) (h : a.ok P [] = true) :
     slotImm? (frameP P rsp) a.instr = none := by
@@ -925,7 +989,7 @@ theorem sim_reg (P : Params) (rsp : BitVec 64) (a : Arm) (hr : regArmB a = true)
       (fun d x hs => ⟨frameP_gp (hslot d x hs).2, frameP_gp (hslot d x hs).1⟩)
       (fun d x q hk => frameP_gp (regArm_slotCmp h hk)) (regArm_cell hr h)
       (by cases a <;> simp [Arm.instr, slotCarry?]) (regArm_slotImm rsp h)
-      (by cases a <;> simp [Arm.instr, slotCmov?]) s zf (by cases a <;> simp [Arm.instr, bitStepA]))
+      (by cases a <;> simp [Arm.instr, slotCmov?]) s zf (regArm_bitStepA rsp hr h s zf))
     hjs hsim sa s zf hc
   exact ⟨s', zf', h1, h2⟩
 
@@ -983,7 +1047,7 @@ theorem sim_st (P : Params) (rsp : BitVec 64) (m q S : String)
     (fun x hx => ?_)⟩
   · have hcq : cellParts? q = none := cellParts?_of_spillOff hsome
     simp [AArm.li, AArm.instr, fstepA, slotMov?, hm', frameP, (gpFacts hS).off, hoff,
-      hc.regs S hS, hcq, cellParts?_gp hS]
+      hc.regs S hS, hcq, cellParts?_gp hS, faParts?_gp hS]
   · show write64 s.mem (rsp + BitVec.ofInt 64 off) (sa.regs (phys S)) x = _
     rw [hmem, hc.sp]
     exact agree_write64 hc.mem _ _ x hx
