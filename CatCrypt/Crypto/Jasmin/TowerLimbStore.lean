@@ -6,8 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public meta import CatCrypt.Crypto.Jasmin.LowCTExec
-public import CatCrypt.Crypto.Jasmin.LowCTExec
+public meta import CatCrypt.Crypto.Jasmin.LowCTState
+public import CatCrypt.Crypto.Jasmin.LowCTState
 
 /-!
 # Limb-level store on tower values
