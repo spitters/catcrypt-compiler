@@ -878,6 +878,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgCell
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgLoadGp
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgLoadOrder
+CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSem
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideCmp
 CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteX86
