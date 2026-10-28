@@ -428,6 +428,8 @@ CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitQ
 CatCrypt.Crypto.SecureCompilation.FieldWidenMulEmitCurve
 CatCrypt.Crypto.SecureCompilation.FrontJasminCT
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
+CatCrypt.Crypto.SecureCompilation.Haxc.NttFipsWord
+CatCrypt.Crypto.SecureCompilation.Haxc.RoundCodecSpec
 CatCrypt.Crypto.SecureCompilation.HetArrayStoreFront
 CatCrypt.Crypto.SecureCompilation.KaratsubaRingCore
 CatCrypt.Crypto.SecureCompilation.LoadU32LeVerbatim
