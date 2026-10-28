@@ -63,7 +63,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPass
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
 open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
-  (physExpand physRmap notLivePin physBodyWithStores_eq_physExpand
+  (physExpand physExpand_eq physRmap notLivePin physBodyWithStores_eq_physExpand
     physPositionEmit_eq_physExpand)
 
 /-! ## 1. The body of the export -/
@@ -525,7 +525,7 @@ theorem physExpand_idxFree (shiftImm : ShiftImmOracle) (u64 : Bool)
     have hx : ∀ x ∈ ds ++ ss, noIdxB (rmap x) = true :=
       fun x hx' => hrm x (h x (by simpa [lopnOperands] using hx'))
     simp only [List.mem_append] at hx
-    unfold physExpand
+    rw [physExpand_eq]
     dsimp only
     split
     · rename_i d _ opn s0 s1 _ heq
@@ -576,7 +576,7 @@ theorem physExpand_idxFree (shiftImm : ShiftImmOracle) (u64 : Bool)
       exact absurd rfl (hno _ _ _)
   | _ =>
     intro r hr
-    simp only [physExpand, List.mem_singleton] at hr
+    simp only [physExpand_eq, List.mem_singleton] at hr
     subst hr; rfl
 
 /-! ## 5. The reload windows of the access arms -/
@@ -986,15 +986,15 @@ theorem physExpand_lowMul_homeOkB (hs15 : slotArr reloadScratch = none)
   have hm2 : stripWidthTag o ≠ "MOVQ" := by rw [hlow]; decide
   rcases ds with _ | ⟨d, ds⟩
   · refine homeOkB_of_noLowMul ?_ _
-    rcases ss with _ | ⟨s0, _ | ⟨s1, ss⟩⟩ <;> simp [physExpand, noLowMulB]
+    rcases ss with _ | ⟨s0, _ | ⟨s1, ss⟩⟩ <;> simp [physExpand_eq, noLowMulB]
   · rcases ss with _ | ⟨s0, _ | ⟨s1, ss⟩⟩
     · refine homeOkB_of_noLowMul ?_ _
-      simp [physExpand, noLowMulB]
+      simp [physExpand_eq, noLowMulB]
     · refine homeOkB_of_noLowMul ?_ _
       rcases ds with _ | ⟨d2, ds⟩
-      · simp [physExpand, hnat, hml, legalizeOneSrc_of_ne _ _ hm1 hm2, noLowMulB]
-      · simp [physExpand, noLowMulB]
-    · simp only [physExpand, hbin, ite_true, hsh, Bool.false_eq_true, ite_false]
+      · simp [physExpand_eq, hnat, hml, legalizeOneSrc_of_ne _ _ hm1 hm2, noLowMulB]
+      · simp [physExpand_eq, noLowMulB]
+    · simp only [physExpand_eq, hbin, ite_true, hsh, Bool.false_eq_true, ite_false]
       exact homeOkB_lowerTwoAddr hs15 ii _ _ _ _ _ (fun n h => hrm d n h) env he
 
 /-- An instruction of no virtual mnemonic but `o`, and no move mnemonic. -/
@@ -1144,14 +1144,14 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
       rcases ho with rfl | rfl
       · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hL rfl
         obtain ⟨n', hn'⟩ := hreg dn
-        simp only [physExpand, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
+        simp only [physExpand_eq, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
           Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb,
           ptrLoad_qsave hfa]
         exact loadIdx_scanStays hs15 hq ii _ n' y' _ rfl
       · obtain ⟨dn, b, y, v, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hS rfl
         obtain ⟨n', hn'⟩ := hreg dn
         obtain ⟨v', hv'⟩ := hreg v
-        simp only [physExpand, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
+        simp only [physExpand_eq, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
           Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb,
           ptrLoad_qsave hfa]
         exact storeIdx_scanStays hs15 hq ii _ _ _ n' y' v' _ rfl rfl
@@ -1188,7 +1188,7 @@ theorem physExpand_arrImm_eq (shiftImm : ShiftImmOracle) (u64 : Bool)
     physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn [d] o (s0 :: s1 :: t)⟩ =
       [⟨ii, .Lopn [rmap d] o ((s0 :: s1 :: t).map rmap)⟩] := by
   obtain ⟨hbin, hms, hcm, hset⟩ := arrImm_mnem_class hz
-  unfold physExpand
+  rw [physExpand_eq]
   rcases t with _ | ⟨s2, t⟩ <;>
     simp only [hbin, Bool.false_eq_true, ite_false, hms, legalizeSpillDst,
       cmovSpillDst?_of_ne _ _ hcm, setccSpill?_of_ne _ _ hset, List.map_cons, List.map_nil]

@@ -67,7 +67,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline (bodyAllModel
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgFuse
 open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHi
-open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape (physExpand physRmap notLivePin)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+  (physExpand physExpand_eq physRmap notLivePin)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgOpt
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass (gpNameB_of_isSlotName)
@@ -605,7 +606,7 @@ theorem physExpand_forall (Q : LinstrR → Prop)
     exact hl r' hr'
   cases w with
   | Lopn ds o ss =>
-    unfold physExpand
+    rw [physExpand_eq]
     dsimp only
     split
     · rename_i d _ opn s0 s1 _ heq
@@ -655,7 +656,7 @@ theorem physExpand_forall (Q : LinstrR → Prop)
       exact absurd rfl (hno _ _ _)
   | _ =>
     intro r hr
-    simp only [physExpand, List.mem_singleton] at hr
+    simp only [physExpand_eq, List.mem_singleton] at hr
     subst hr
     exact hO _ (by intro ds o ss h; cases h)
 

@@ -8,6 +8,7 @@ module
 import all Init.Data.Repr
 import all Init.Data.String.TakeDrop
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnMul1DecodedNode
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowerCore
 
 @[expose] public section
 
@@ -84,6 +85,8 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LowerCore
+  (immOf renameOps withBaseReload lowerCore)
 
 /-! ## 1. The per-position expansion -/
 
@@ -100,10 +103,20 @@ def physRmap (body : Lcmd) (rv : List Nat) : LOperand → LOperand :=
     with the 64-bit move `spillImmMovMnem` selects for a small immediate stored to a
     spill slot of a body with 8-byte slots (`u64`), a copy between two spill slots
     through `R15` (`legalizeOneSrc`), and a `CMOV:64` or a comparison `SET<cc>` with
-    spilled operands computed on the scratch registers (`legalizeSpillDst`). -/
+    spilled operands computed on the scratch registers (`legalizeSpillDst`). It is the
+    composition of the immediate read off the virtual instruction (`immOf`), the operand
+    renaming (`renameOps`), the base reload (`withBaseReload`) and the lowering core
+    (`lowerCore`); `physExpand_eq` states it case by case. -/
 def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
     (memrefBaseReload : String → Option String) (i : Linstr) : Lcmd :=
-  let isBinop (opn : String) : Bool := isTwoAddrBinop opn
+  let p := withBaseReload memrefBaseReload (renameOps rmap i.li_i)
+  (p.1 ++ lowerCore (immOf shiftImm i.li_i) u64 p.2).map (fun r => (⟨i.li_ii, r⟩ : Linstr))
+
+/-- **The expansion case by case**: `physExpand` on each shape of instruction. -/
+theorem physExpand_eq (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
+    (memrefBaseReload : String → Option String) (i : Linstr) :
+    physExpand shiftImm u64 rmap memrefBaseReload i =
+  (let isBinop (opn : String) : Bool := isTwoAddrBinop opn
   let isShift (opn : String) : Bool :=
     stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR"
   let movFor (opn : String) : String :=
@@ -151,7 +164,23 @@ def physExpand (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOp
         (legalizeOneSrc u64 opn (rmap d) (rmap s)).map (fun r => ⟨i.li_ii, r⟩)
   | .Lopn dsts opn srcs =>
       [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
-  | other => [⟨i.li_ii, other⟩]
+  | other => [⟨i.li_ii, other⟩]) := by
+  obtain ⟨ii, w⟩ := i
+  cases w with
+  | Lopn ds o ss =>
+    rcases ds with _ | ⟨d, _ | ⟨d', ds⟩⟩ <;>
+      rcases ss with _ | ⟨s0, _ | ⟨s1, _ | ⟨s2, ss⟩⟩⟩ <;>
+      simp only [physExpand, withBaseReload, renameOps, immOf, lowerCore, List.map_cons,
+        List.map_nil, List.map_append, List.nil_append, Bool.not_eq_true',
+        Bool.and_eq_true] <;>
+      split_ifs <;>
+      first
+        | (simp_all; done)
+        | (simp only [Bool.or_eq_true, beq_iff_eq] at *
+           cases s1 with
+           | reg n => rcases h : shiftImm n with _ | v <;> simp_all
+           | _ => simp_all)
+  | _ => rfl
 
 /-- Without argument loads, output stores and calls, a position of
     `physBodyWithStores` contributes its register-allocated expansion, whatever its
@@ -165,6 +194,7 @@ theorem physPositionEmit_eq_physExpand (shiftImm : ShiftImmOracle) (body : Lcmd)
         memrefBaseReload callArgBaseReload rv (i, k)
       = physExpand shiftImm (LprogAsmPrinter.bodyIsU64 body) (physRmap body rv)
           memrefBaseReload i := by
+  rw [physExpand_eq]
   unfold physPositionEmit
   dsimp only
   rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
@@ -175,6 +205,24 @@ theorem physPositionEmit_eq_physExpand (shiftImm : ShiftImmOracle) (body : Lcmd)
   cases w with
   | Lopn ds o ss => cases ds <;> simp only [List.append_nil] <;> rfl
   | _ => rfl
+
+/-- **One position as base reload and lowering core.** Without argument loads, output
+    stores and calls, a position of `physBodyWithStores` contributes the base reload of its
+    renamed instruction followed by the lowering core at the immediate read off the virtual
+    instruction. -/
+theorem physPositionEmit_split (shiftImm : ShiftImmOracle) (body : Lcmd)
+    (loadBase storeBase : String) (abiW : Nat)
+    (memrefBaseReload : String → Option String)
+    (callArgBaseReload : List (String × String)) (rv : List Nat) (i : Linstr) (k : Nat)
+    (hi : ∀ a b, i.li_i ≠ .Lcall a b) :
+    physPositionEmit shiftImm body (fun _ => none) loadBase [] storeBase abiW
+        memrefBaseReload callArgBaseReload rv (i, k)
+      = ((withBaseReload memrefBaseReload (renameOps (physRmap body rv) i.li_i)).1 ++
+          lowerCore (immOf shiftImm i.li_i) (LprogAsmPrinter.bodyIsU64 body)
+            (withBaseReload memrefBaseReload (renameOps (physRmap body rv) i.li_i)).2).map
+          (fun r => (⟨i.li_ii, r⟩ : Linstr)) :=
+  physPositionEmit_eq_physExpand shiftImm body loadBase storeBase abiW memrefBaseReload
+    callArgBaseReload rv i k hi
 
 /-- **The register-allocated body is the flat map of the expansion.** Without
     argument loads, output stores and calls, `physBodyWithStores` is the
@@ -368,7 +416,7 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
         | exact hMov _ _ _ ho x hx ds ss
         | exact hMov _ _ _ l6 x hx ds ss
         | (rintro rfl; simp [ho, l6] at hx)
-    simp only [physExpand] at hr
+    simp only [physExpand_eq] at hr
     split at hr <;> (try split at hr) <;> (try split at hr) <;> (try split at hr)
     all_goals (try simp only [LinstrR.Lopn.injEq] at *)
     all_goals (try casesm* _ ∧ _)
@@ -412,7 +460,7 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
       simp only [LinstrR.Lopn.injEq] at h
       exact hne' h.2.1
   | _ =>
-    simp only [physExpand, List.mem_singleton, Linstr.mk.injEq] at hr
+    simp only [physExpand_eq, List.mem_singleton, Linstr.mk.injEq] at hr
     cases hr.2
 
 /-! ## 2. The components of the physical-ABI export -/
@@ -648,7 +696,7 @@ theorem physExpand_livepin (shiftImm : ShiftImmOracle) (u64 : Bool)
   have hc : ∀ ds ss, legalizeSpillDst ds "LIVEPIN" ss = [.Lopn ds "LIVEPIN" ss] := fun ds ss =>
     legalizeSpillDst_of_ne ds ss (by decide +kernel) (by decide +kernel)
   rcases ds with _ | ⟨d, _ | ⟨d', ds⟩⟩ <;> rcases ss with _ | ⟨s0, _ | ⟨s1, _ | ⟨s2, ss⟩⟩⟩ <;>
-    simp [physExpand, hs, hl, hb, hm, hc, isNativeShiftRotate_livepin, notLivePin]
+    simp [physExpand_eq, hs, hl, hb, hm, hc, isNativeShiftRotate_livepin, notLivePin]
 
 /-- The expansions of the argument-liveness pin are all dropped by the pin filter. -/
 theorem abiLivePin_flatMap_filter (shiftImm : ShiftImmOracle) (u64 : Bool)

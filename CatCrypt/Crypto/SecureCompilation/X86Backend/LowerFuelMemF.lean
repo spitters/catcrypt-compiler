@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrFuelMemF
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowerCore
 
 /-!
 # The post-allocation lowering on the flag machine, per instruction family
@@ -28,6 +29,7 @@ Both the source instruction and its lowering are typed with one tag function `tg
 
 * `SimS`: a straight segment simulates one instruction from bases agreeing off the scratches.
 * `RegTagOn`: the tag function gives every `Lopn` of a mnemonic a register tag.
+* `lowerCoreOKB`: the cases of `LowerCore.lowerCore` the simulations below cover.
 
 ## Main results
 
@@ -41,6 +43,7 @@ Both the source instruction and its lowering are typed with one tag function `tg
 * `simS_lowerTwoAddrShiftImm`: the two-address shift by an immediate.
 * `simS_cmovSpillSeq`, `simS_cmovSpillDst?`: the select with spilled operands.
 * `simS_setccSpill?`: the materialised comparison with spilled operands.
+* `simS_lowerCore`: the lowering core on the instructions `lowerCoreOKB` admits.
 -/
 
 @[expose] public section
@@ -453,10 +456,6 @@ theorem simS_cmovSpillDst? {tg : LinstrR → MemTag} (htg : RegTagOn tg "CMOV:64
   cases h
   exact simS_cmovSpillSeq htg hC hT hF
 
-/-- The move of a materialised comparison strips to `MOV`. -/
-theorem stripWidthTag_setccMov (opn : String) : stripWidthTag (setccMov opn) = "MOV" := by
-  unfold setccMov
-  split <;> decide +kernel
 
 /-- **The materialised comparison with spilled operands.** Where `setccSpill?` is defined on
     a register-tagged comparison `SET<cc> D, [A, B]`, its expansion simulates the comparison
@@ -478,5 +477,118 @@ theorem simS_setccSpill? {tg : LinstrR → MemTag} {c : JasminDialect.JasminCmp}
   rw [hcd] at hs
   simp only [List.map_cons, List.map_nil, hcd']
   exact fstepF_setccSpill c wOp D A B _ cd cd' _ _ _ (stripWidthTag_setccMov _) hA' hB' hA hs
+
+/-! ## 5. The lowering core -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LowerCore (lowerCore)
+
+/-- An operand that `materializeWideImm` keeps: no immediate of `2 ^ 31` or more. -/
+def immSmallB : LOperand → Bool
+  | .imm v => decide (v < 2 ^ 31)
+  | _ => true
+
+/-- The cases of `lowerCore imm u64 w` that the per-family simulations of this module
+    cover: a two-address binop `OP d, s0, s1` over register names, by the count `v` when `imm`
+    is `some v` and `s1` is the immediate `v`, otherwise when `s1` is neither `d`, a spill slot
+    nor a wide immediate; a non-store `Lopn` with one register destination and two sources
+    that `setccSpill?` leaves unchanged; a select `CMOV:64` over register names; an `Lopn` with
+    one destination and three or more sources that `cmovSpillDst?` leaves unchanged; a
+    one-source instruction that is no native shift or rotate and no load, whose move selection
+    keeps the mnemonic and whose copy mnemonic strips to `MOV` or is a `copyQ` mnemonic.
+    `false` on stores, loads, native shifts and rotates, binops with a spilled or wide second
+    source or with a count read from a register, materialised comparisons with spilled
+    operands, instructions with several destinations, and every instruction other than
+    `Lopn`. -/
+def lowerCoreOKB (imm : Option Nat) (u64 : Bool) : LinstrR → Bool
+  | .Lopn [.reg d] opn [.reg s0, s1] =>
+      if isTwoAddrBinop opn then
+        match imm with
+        | some v => s1 == .imm v
+        | none => s1 != .reg d && !s1.isSpill && immSmallB s1
+      else !isMemStore opn && (setccSpill? [.reg d] opn [.reg s0, s1]).isNone
+  | .Lopn [.reg _] opn [.reg _, .reg _, .reg _] =>
+      !isTwoAddrBinop opn && opn == "CMOV:64"
+  | .Lopn [d] opn (s0 :: s1 :: s2 :: ss) =>
+      !isTwoAddrBinop opn && (cmovSpillDst? [d] opn (s0 :: s1 :: s2 :: ss)).isNone
+  | .Lopn [d] opn [s] =>
+      !isNativeShiftRotate opn && !isMemLoad opn && spillImmMovMnem u64 opn d s == opn &&
+        (!(stripWidthTag opn == "MOV" || stripWidthTag opn == "MOVQ") ||
+          stripWidthTag opn == "MOV" || copyQ opn)
+  | _ => false
+
+/-- **The lowering core off the scratches.** On an instruction `w` that names no scratch and
+    on which `lowerCoreOKB imm u64` holds, `lowerCore imm u64 w` simulates `w` off the
+    scratches, when the tag function gives each two-address binop with a fixed second source
+    one register tag and every `CMOV:64` a register tag. -/
+theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool} {w : LinstrR}
+    (hok : lowerCoreOKB imm u64 w = true)
+    (htg : ∀ opn s1, isTwoAddrBinop opn = true →
+      ∃ cd, ∀ D X, tg (.Lopn [.reg D] opn [.reg X, s1]) = .reg cd)
+    (hcm : RegTagOn tg "CMOV:64") (hn : ∀ n ∈ instrNames w, KeptS n) :
+    SimS (w, tg w) ((lowerCore imm u64 w).map fun y => (y, tg y)) := by
+  unfold lowerCoreOKB at hok
+  split at hok
+  · rename_i d opn s0 s1
+    by_cases hb : isTwoAddrBinop opn = true
+    · obtain ⟨cd, hcd⟩ := htg opn s1 hb
+      simp only [hb, ↓reduceIte] at hok
+      cases imm with
+      | some v =>
+        have hs : s1 = .imm v := by simpa using hok
+        subst hs
+        simp only [lowerCore, hb, ite_true]
+        exact simS_lowerTwoAddrShiftImm hcd (stripWidthTag_setccMov opn)
+          (ne_cmp_of_isTwoAddrBinop hb) hn
+      | none =>
+        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true'] at hok
+        obtain ⟨⟨hd, hs⟩, hw⟩ := hok
+        have himm : materializeWideImm s1 (if hasSuffix opn ":64" then "MOV:64" else "MOV")
+            = ([], s1) := by
+          unfold materializeWideImm
+          split <;> simp_all [immSmallB]
+        simp only [lowerCore, hb, ite_true]
+        exact simS_lowerTwoAddr hcd hb (stripWidthTag_setccMov opn) hd hs himm hn
+    · simp only [Bool.not_eq_true] at hb
+      simp only [hb, Bool.false_eq_true, ite_false, Bool.and_eq_true, Bool.not_eq_true',
+        Option.isNone_iff_eq_none] at hok
+      obtain ⟨hst, hset⟩ := hok
+      have hl : lowerCore imm u64 (.Lopn [.reg d] opn [.reg s0, s1])
+          = [.Lopn [.reg d] opn [.reg s0, s1]] := by
+        simp only [lowerCore, hb, hst, Bool.false_eq_true, ite_false]
+        exact legalizeSpillDst_of_none rfl hset
+      rw [hl]
+      exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
+  · rename_i D opn C T F
+    simp only [Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at hok
+    obtain ⟨hb, rfl⟩ := hok
+    have hC : KeptS C := hn C (by simp [instrNames, opNames])
+    have hT : KeptS T := hn T (by simp [instrNames, opNames])
+    have hF : KeptS F := hn F (by simp [instrNames, opNames])
+    simp only [lowerCore, hb, Bool.false_eq_true, ite_false]
+    unfold legalizeSpillDst
+    cases h : cmovSpillDst? [.reg D] "CMOV:64" [.reg C, .reg T, .reg F] with
+    | some L => exact simS_cmovSpillDst? hcm h hC hT hF
+    | none =>
+      simpa [setccSpill?] using
+        simS_self (i := (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F],
+          tg (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F]))) ⟨_, _, _, rfl⟩ hn
+          (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
+  · rename_i d opn s0 s1 s2 ss _
+    simp only [Bool.and_eq_true, Bool.not_eq_true', Option.isNone_iff_eq_none] at hok
+    obtain ⟨hb, hc⟩ := hok
+    have hl : lowerCore imm u64 (.Lopn [d] opn (s0 :: s1 :: s2 :: ss))
+        = [.Lopn [d] opn (s0 :: s1 :: s2 :: ss)] := by
+      simp only [lowerCore, hb, Bool.false_eq_true, ite_false]
+      exact legalizeSpillDst_of_none hc (by cases s0 <;> cases s1 <;> rfl)
+    rw [hl]
+    exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
+  · rename_i d opn s
+    simp only [Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at hok
+    obtain ⟨⟨⟨hns, hld⟩, hmn⟩, hcp⟩ := hok
+    simp only [lowerCore, hns, hld, Bool.false_eq_true, ite_false]
+    refine simS_legalizeOneSrc hmn (fun h => ?_) hn
+    simp only [Bool.or_eq_true, beq_iff_eq, Bool.not_eq_true'] at hcp h ⊢
+    grind
+  · simp at hok
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LowerFuelMemF

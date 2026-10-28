@@ -53,7 +53,8 @@ open CatCrypt.Crypto.Optimizer.LoadCSE (asWideReload isMemName isMemToMemMov isM
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass (RwClosed OpRw memMovFreeB
   memMovFreeB_iff)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgOpt (wideMovB)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape (physExpand physRmap notLivePin)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+  (physExpand physExpand_eq physRmap notLivePin)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideAlloc
   (lfundefPhysAbiOfVirtCert_body)
@@ -706,7 +707,7 @@ theorem physExpand_wideOk (shiftImm : ShiftImmOracle) (u64 : Bool) (rm : LOperan
     exact hl r' hr'
   cases w with
   | Lopn ds o ss =>
-    unfold physExpand
+    rw [physExpand_eq]
     dsimp only
     split
     · rename_i d _ opn s0 s1 _ heq
@@ -760,7 +761,7 @@ theorem physExpand_wideOk (shiftImm : ShiftImmOracle) (u64 : Bool) (rm : LOperan
       exact absurd rfl (hno _ _ _)
   | _ =>
     intro r hr
-    simp only [physExpand, List.mem_singleton] at hr
+    simp only [physExpand_eq, List.mem_singleton] at hr
     subst hr
     exact wideOkR_of_not_lopn (by intro ds o ss h; cases h)
 

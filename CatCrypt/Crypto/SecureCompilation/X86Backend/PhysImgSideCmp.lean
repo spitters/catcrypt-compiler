@@ -77,7 +77,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPass
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgPrint
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
-open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape (physExpand physRmap)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
+  (physExpand physExpand_eq physRmap)
 open CatCrypt.Crypto.SecureCompilation.VIR.AllocForm (lopnOperands)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogAsmPrinter (x86Abi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSidePass (MnOf legalizeInstr_mnOf)
@@ -954,7 +955,7 @@ theorem physExpand_scratchPrev (shiftImm : ShiftImmOracle) (u64 : Bool)
   obtain ⟨ii, w⟩ := i
   cases w with
   | Lopn ds o ss =>
-    unfold physExpand
+    rw [physExpand_eq]
     dsimp only
     split
     · rename_i d _ opn s0 s1 _ heq
@@ -1001,7 +1002,7 @@ theorem physExpand_scratchPrev (shiftImm : ShiftImmOracle) (u64 : Bool)
     · rename_i hno
       exact absurd rfl (hno _ _ _)
   | _ =>
-    simp [physExpand, scratchPrevB, scratchMovFreeB, slotMov?]
+    simp [physExpand_eq, scratchPrevB, scratchMovFreeB, slotMov?]
 
 /-! ## 7. The bases of the expansion -/
 
@@ -1089,7 +1090,7 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
     rcases ho with rfl | rfl
     · obtain ⟨dn, b, y, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hL rfl
       obtain ⟨n', hn'⟩ := hreg dn
-      simp only [physExpand, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
+      simp only [physExpand_eq, isNativeShiftRotate_loadIdx, isMemLoad_loadIdx,
         Bool.false_eq_true, ite_false, ite_true, hrmA, hn', reloadMemrefBase, hmb,
         ptrLoad_qsave hfa]
       have h := legalizeMemLoad_baseR14 n' y' (if hasSuffix "LOADIDX" ":64" then "MOV:64"
@@ -1104,7 +1105,7 @@ theorem physExpand_acc_baseR14 (shiftImm : ShiftImmOracle) (u64 : Bool)
     · obtain ⟨dn, b, y, v, rfl, rfl, b', y', q, hrmA, hmb, hq, hfa⟩ := hS rfl
       obtain ⟨n', hn'⟩ := hreg dn
       obtain ⟨v', hv'⟩ := hreg v
-      simp only [physExpand, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
+      simp only [physExpand_eq, isTwoAddrBinop_storeIdx, isMemStore_storeIdx,
         Bool.false_eq_true, ite_false, ite_true, hrmA, hn', hv', reloadMemrefBase, hmb,
         ptrLoad_qsave hfa]
       intro r hr
@@ -2109,7 +2110,7 @@ theorem physExpand_mnOf (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperan
     intro ins L h r hr
     obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hr
     exact mnOf_of_armOut (h a ha)
-  unfold physExpand
+  rw [physExpand_eq]
   dsimp only
   split
   · rename_i d _ opn s0 s1 _ heq
@@ -2154,7 +2155,7 @@ theorem cmpRefines_physExpand (shiftImm : ShiftImmOracle) (u64 : Bool)
   obtain ⟨ii, w⟩ := i
   cases w with
   | Lopn ds o ss => exact cmpRefines_mnOf rfl (physExpand_mnOf shiftImm u64 rmap mbr ii ds o ss)
-  | _ => simp only [physExpand]; exact CmpRefines.refl _
+  | _ => simp only [physExpand_eq]; exact CmpRefines.refl _
 
 /-- The instruction is neither a compare nor an indexed access. -/
 def QuietI (j : Linstr) : Prop := isCmpB j.li_i = false ∧ isMemB j.li_i = false
