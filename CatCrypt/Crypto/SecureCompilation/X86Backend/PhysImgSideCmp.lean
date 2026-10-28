@@ -1248,12 +1248,18 @@ theorem noScratchBaseB_lfundefPhysAbiOfVirtCert
       obtain ⟨ii, w⟩ := i
       simp only at hx
       subst hx
-      obtain ⟨b, q, hb, -, ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩⟩ :=
+      obtain ⟨b, q, hb, -, ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩ | ⟨v, v', k, -, hv', he⟩⟩ :=
         PhysImgSideAlloc.reloadArrImmBody_physExpand_arrImm _ _ rm mbr ii ds o ss (hshape _ hi)
           hz (fun _ => rfl) (fun n => ⟨_, rfl⟩) <;>
         rw [he] <;> refine scratchPrevB_of_free fun r hr => ?_ <;>
         simp only [List.map_cons, List.map_nil, List.mem_cons, List.not_mem_nil,
-          or_false] at hr <;>
+          or_false] at hr
+      rotate_left 2
+      · rcases hr with rfl | rfl | rfl
+        · exact scratchMovFreeB_of_src (by simpa [isScratchOp] using hmq _ _ hb)
+        · exact scratchMovFreeB_of_src (by simpa [isScratchOp, hv'] using hrmS (.reg v))
+        · exact scratchMovFreeB_of_opn (by decide)
+      all_goals
         rcases hr with rfl | rfl
       all_goals first
         | exact scratchMovFreeB_of_opn (by decide)
@@ -1276,12 +1282,14 @@ theorem noScratchBaseB_lfundefPhysAbiOfVirtCert
       obtain ⟨ii, w⟩ := i
       simp only at hx
       subst hx
-      obtain ⟨b, q, hb, -, ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩⟩ :=
+      obtain ⟨b, q, hb, -, ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩ | ⟨v, v', k, -, -, he⟩⟩ :=
         PhysImgSideAlloc.reloadArrImmBody_physExpand_arrImm _ _ rm mbr ii ds o ss (hshape _ hi)
           hz (fun _ => rfl) (fun n => ⟨_, rfl⟩) <;>
         rw [he] at hj <;>
-        simp only [List.mem_cons, List.not_mem_nil, or_false] at hj <;>
-        rcases hj with rfl | rfl <;> simp [baseR14B, isArrImmB]
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
+      · rcases hj with rfl | rfl <;> simp [baseR14B, isArrImmB]
+      · rcases hj with rfl | rfl <;> simp [baseR14B, isArrImmB]
+      · rcases hj with rfl | rfl | rfl <;> simp [baseR14B, isArrImmB]
     · have hne : ∀ ds o ss, i.li_i = .Lopn ds o ss → o ≠ "ZEROARR" ∧ o ≠ "STOREIMM" :=
         fun ds o ss hx => not_or.mp fun hz' => hz ⟨ds, o, ss, hx, hz'⟩
       rw [PhysImgSideAlloc.reloadArrImmBody_physExpand_of_ne _ _ _ _ _ _ hne] at hj
@@ -1712,11 +1720,16 @@ theorem cmpRefines_reloadArrImmBody (mbr : String → Option String) (l : Lcmd) 
   refine cmpRefines_flatMap_single l fun i _ => ?_
   split
   · rename_i l' hl
-    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
-      refine cmpRefines_mnOf hi fun r hr => ?_ <;>
-      simp only [List.map_cons, List.map_nil, List.mem_cons, List.not_mem_nil, or_false] at hr <;>
+    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some hl
+    · refine cmpRefines_mnOf hi fun r hr => ?_
+      simp only [List.map_cons, List.map_nil, List.mem_cons, List.not_mem_nil, or_false] at hr
       rcases ptrLoad_cases q with hq | hq <;>
-      rcases hr with rfl | rfl <;> simp [MnOf, movMnems, hq]
+        rcases hr with rfl | rfl <;> simp [MnOf, movMnems, hq]
+    · refine cmpRefines_mnOf hi fun r hr => ?_
+      simp only [List.map_cons, List.mem_cons, List.mem_map] at hr
+      rcases hr with rfl | ⟨x, hx, rfl⟩
+      · rcases ptrLoad_cases q with hq | hq <;> simp [MnOf, movMnems, hq]
+      · rcases mem_storeImmVia hx with rfl | rfl | rfl <;> simp [MnOf, movMnems]
   · exact CmpRefines.refl _
 
 /-! ### The free reload scratch at the compare-spill reload -/

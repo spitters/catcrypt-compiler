@@ -912,16 +912,47 @@ theorem epilogue_loadGpOk : ∀ j ∈ calleeSaveRestoreEpilogue, LoadGpOk j := b
     and a write through `R14` with no two-register source list. -/
 theorem reloadArrImm_loadGpOk {mbr : String → Option String} {x : LinstrR} {l : List LinstrR}
     (h : reloadArrImm mbr x = some l) {j : Linstr} (hj : j.li_i ∈ l) : LoadGpOk j := by
-  obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h <;>
-    simp only [List.mem_cons, List.not_mem_nil, or_false] at hj <;>
+  have hmov : ∀ {v : String}, (LOperand.reg v).isSpill = true →
+      j.li_i = .Lopn [.reg reloadScratch] "MOV:64" [.reg v] → LoadGpOk j := by
+    intro v hs hj
+    refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
+    unfold WideOk
+    rw [hj]
+    refine wideOkR_lopn_gp fun d' s' h1 h2 _ => ?_
+    simp only [List.cons.injEq, LOperand.reg.injEq, and_true] at h1 h2
+    subst h1 h2
+    exact ⟨Or.inl gp_R15, by rw [isMemName_of_gp gp_R15]; rfl, fun _ _ =>
+      cellParts?_of_not_mem (hasPrefix_mem_of_k (by simpa [PhysAbiShape.isSpill_eq] using hs))⟩
+  obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
     rcases hj with hj | hj
-  all_goals try (rcases ptrLoad_cases q with hp | hp <;> rw [hp] at hj)
-  all_goals first
-    | exact loadGpOk_movq hj (wideOkR_movq_gp (by decide +kernel))
-    | (refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
-       unfold WideOk
-       rw [hj]
-       exact wideOkR_lopn_gp fun _ _ _ _ hm => by simp [isMov64Mnem] at hm)
+    all_goals try (rcases ptrLoad_cases q with hp | hp <;> rw [hp] at hj)
+    all_goals first
+      | exact loadGpOk_movq hj (wideOkR_movq_gp (by decide +kernel))
+      | (refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
+         unfold WideOk
+         rw [hj]
+         exact wideOkR_lopn_gp fun _ _ _ _ hm => by simp [isMov64Mnem] at hm)
+  rcases List.mem_cons.mp hj with hj | hj
+  · rcases ptrLoad_cases q with hp | hp <;> rw [hp] at hj
+    · exact loadGpOk_movq hj (wideOkR_movq_gp (by decide +kernel))
+    · refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
+      unfold WideOk
+      rw [hj]
+      exact wideOkR_lopn_gp fun _ _ _ _ hm => by simp [isMov64Mnem] at hm
+  unfold storeImmVia at hj
+  split at hj <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
+  · next hs =>
+    rcases hj with hj | hj
+    · exact hmov hs hj
+    · refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
+      unfold WideOk
+      rw [hj]
+      exact wideOkR_lopn_gp fun _ _ _ _ hm => by simp [isMov64Mnem] at hm
+  · refine ⟨?_, fun d' opn s1 s2 he => by rw [hj] at he; simp at he⟩
+    unfold WideOk
+    rw [hj]
+    exact wideOkR_lopn_gp fun _ _ _ _ hm => by simp [isMov64Mnem] at hm
 
 /-- **`WideOk` on the fused export body.** Under the hypotheses of
     `PhysImgSideAlloc.lfundefPhysAbiOfVirtCert_body`, when every name the allocation table

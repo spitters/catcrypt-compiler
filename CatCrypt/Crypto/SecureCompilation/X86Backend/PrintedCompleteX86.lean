@@ -138,6 +138,28 @@ theorem instrOKWB_of_arrShape (body : Lcmd) (P : Params) {i : LinstrR} (h : ArrS
   · exact instrOKWB_zeroArr body P hB hn hk
   · exact instrOKWB_storeImm body P hD hB hV hk
 
+/-- **The stack-array shape of the store through `R14`**: for an index `k` whose word offset
+    `stackDispOk` admits and a value `v` that is a general-purpose register of `x86Abi` unless
+    it is a spill slot, every instruction of `storeImmVia v k` is the move `MOV:64 R15, v` or
+    has a stack-array shape, whose value register is `R15` for a spilled value. -/
+theorem reloadArrImm_arrShapes {v : String} {k : Nat} (hk : stackDispOk k = true)
+    (hv : (LOperand.reg v).isSpill = false → x86Abi.IsGp v) :
+    ∀ r ∈ storeImmVia v k,
+      r = .Lopn [.reg reloadScratch] "MOV:64" [.reg v] ∨ ArrShape r := by
+  have h14 : x86Abi.IsGp reloadScratch2 := (gpOk_iff_isGp _).1 (by decide)
+  have h15 : x86Abi.IsGp reloadScratch := (gpOk_iff_isGp _).1 (by decide)
+  intro r hr
+  unfold storeImmVia at hr
+  split at hr
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+    rcases hr with rfl | rfl
+    · exact .inl rfl
+    · exact .inr (.inr ⟨_, _, _, k, h14, h14, h15, hk, rfl⟩)
+  · next hs =>
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+    subst hr
+    exact .inr (.inr ⟨_, _, _, k, h14, h14, hv (by simpa using hs), hk, rfl⟩)
+
 /-- **The instruction conjunct of `printedAddrWB` from the shapes and the stack-array
     shapes**: it holds of a body each of whose instructions before the last has a printed
     shape over `x86Abi`, has a stack-array shape, or passes `instrOKWB`. -/

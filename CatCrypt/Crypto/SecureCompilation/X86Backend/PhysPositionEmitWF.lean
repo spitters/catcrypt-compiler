@@ -880,9 +880,10 @@ theorem reloadArrImmBody_resolved {mbr : String → Option String} {l : Lcmd}
     · rw [hiEq] at hiR
       simp only [opsResolved_Lopn, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
         forall_eq] at hiR
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
-      rcases hx with hx | hx <;> rw [hx] <;> rcases ptrLoad_cases q with hp | hp <;>
-        simp [hmbr b q hq, hiR, hp]
+      rcases List.mem_cons.mp hx with hx | hx
+      · rw [hx]
+        rcases ptrLoad_cases q with hp | hp <;> simp [hmbr b q hq, hp]
+      · rcases mem_storeImmVia hx with hx | hx | hx <;> rw [hx] <;> simp [hiR]
 
 /-! ## 8. The whole function -/
 

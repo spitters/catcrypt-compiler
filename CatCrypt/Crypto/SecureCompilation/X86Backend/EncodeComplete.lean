@@ -942,6 +942,26 @@ theorem encodableLinstrR_storeImm {F W Q : Nat} {a : LOperand} {bn vn : String} 
   rw [encodeLopn_storeImm F W a bn vn k Q hb hv hk]
   simp [encMemMovw]
 
+/-- **The store through `R14` of the constant-shape base reload is encodable**: for an
+    index of `x86StoreImm` and an allocated value `v`, each instruction of `storeImmVia v k`
+    is encodable. A register value is stored directly; a spilled value is moved into `R15`
+    and the store reads `R15`. -/
+theorem reloadArrImm_storeImm_encodable {F W Q : Nat} {v : String} {k : Nat}
+    (hk : x86StoreImm k = true) (hv : AllocOp F W Q (.reg v)) :
+    ∀ r ∈ storeImmVia v k, encodableLinstrR F W r Q = true := by
+  intro r hr
+  unfold storeImmVia at hr
+  split at hr
+  · simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+    rcases hr with rfl | rfl
+    · exact encodableLinstrR_mov_gp_left (by decide +kernel) isGpName_R15 hv
+    · exact encodableLinstrR_storeImm hk isGpName_R14 isGpName_R15
+  · next hs =>
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+    subst hr
+    exact encodableLinstrR_storeImm hk isGpName_R14
+      (isGpName_of_allocOp_not_spill hv (by simpa using hs))
+
 /-- **A stack-array zeroing of `x86ZeroArr` into a general-purpose register is
     encodable.** -/
 theorem encodableLinstrR_zeroArr {F W Q : Nat} {dn : String} {n w : Nat}

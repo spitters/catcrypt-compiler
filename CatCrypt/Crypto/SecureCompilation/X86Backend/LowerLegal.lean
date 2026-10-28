@@ -1022,6 +1022,61 @@ theorem physBodyWithStores_legal (shiftImm : ShiftImmOracle) (body : Lcmd)
     memrefBaseReload callArgBaseReload reservedVec i virtIdx rm hrm habi hargs hsave hrdi hmbr
     hloadBase hstoreBase hcall (hout _ hp) (hpos _ hp) r hr
 
+/-- The pointer load of a resolving reload slot has a legal form. -/
+theorem ptrLoad_legal {q : String} (hq : OpResolves F W Q q) : LF F W Q (ptrLoad q) := by
+  cases hfa : faB q
+  · rw [ptrLoad_qsave hfa]
+    exact lf_mov_res_left (by decide +kernel) isGpName_reloadScratch2 hq
+  · rw [ptrLoad_fa hfa]
+    exact .leaFa _ _ _ (by simp [x86Enc, x86LeaFa, hfa]) isGpName_reloadScratch2
+
+/-- **Every instruction of the constant-shape base reload has a legal form** at the x86
+    encoder in the context `(F, W, Q)`. The hypotheses: the reload slots resolve (`hq`); every
+    instruction of `l` that `reloadArrImm` keeps has a legal form (`hone`); a zeroing whose
+    base has a reload slot has a count and width of `x86ZeroArr` (`hzero`); a constant-index
+    store whose base has a reload slot has an index of `x86StoreImm` and an allocated value
+    (`hstore`), which the store reads from a general-purpose register or, for a spilled value,
+    through `R15`. -/
+theorem reloadArrImmBody_legal (mbr : String → Option String) (l : Lcmd)
+    (hq : ∀ b q, mbr b = some q → OpResolves F W Q q)
+    (hone : ∀ r ∈ l, reloadArrImm mbr r.li_i = none → LF F W Q r.li_i)
+    (hzero : ∀ r ∈ l, ∀ b n w, r.li_i = .Lopn [.reg b] "ZEROARR" [.imm n, .imm w] →
+      (mbr b).isSome = true → x86ZeroArr n w = true)
+    (hstore : ∀ r ∈ l, ∀ d b v k,
+      r.li_i = .Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k] →
+      (mbr b).isSome = true → x86StoreImm k = true ∧ AllocOp F W Q (.reg v)) :
+    ∀ r ∈ reloadArrImmBody mbr l, LF F W Q r.li_i := by
+  intro r hr
+  simp only [reloadArrImmBody, List.mem_flatMap] at hr
+  obtain ⟨p, hp, hr⟩ := hr
+  split at hr
+  · next l' hl' =>
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.mp hr
+    obtain ⟨b, q, hbq, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some hl'
+    · have hz := hzero p hp b n w hi (by simp [hbq])
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
+      rcases hx with rfl | rfl
+      · exact ptrLoad_legal (hq b q hbq)
+      · exact .zeroArrSrc _ _ _ hz isGpName_reloadScratch2
+    · obtain ⟨hk, hv⟩ := hstore p hp d b v k hi (by simp [hbq])
+      rcases List.mem_cons.mp hx with rfl | hx
+      · exact ptrLoad_legal (hq b q hbq)
+      · unfold storeImmVia at hx
+        split at hx
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
+          rcases hx with rfl | rfl
+          · exact lf_mov_left (by decide +kernel) isGpName_reloadScratch hv
+          · exact .storeImm _ _ _ _ hk isGpName_reloadScratch2 isGpName_reloadScratch
+        · next hs =>
+          simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
+          subst hx
+          exact .storeImm _ _ _ _ hk isGpName_reloadScratch2
+            (gp_of_allocOp hv (by simpa using hs))
+  · next hn =>
+    simp only [List.mem_singleton] at hr
+    subst hr
+    exact hone _ hp hn
+
 /-- **Load forwarding preserves the legal forms of the lowering**: under the hypotheses of
     `physBodyWithStores_legal`, every instruction of `loadCSE` of `physBodyWithStores` has a
     legal form at the x86 encoder in the context `(F, W, Q)`. -/

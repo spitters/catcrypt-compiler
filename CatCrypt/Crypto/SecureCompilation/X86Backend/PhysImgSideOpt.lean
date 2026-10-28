@@ -872,13 +872,20 @@ theorem pairs_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String × N
         obtain ⟨-, -, rfl⟩ := he
         exact hss _ List.mem_cons_self
       · show LoadOkR slotArr j.li_i
-        obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
-          simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
+        obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some hl
+        · simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
           rcases hx with hx | hx <;> rw [hx]
-        all_goals try (rcases ptrLoad_cases q with hp | hp <;> rw [hp])
-        all_goals first
-          | exact loadOkR_mov fun x hx _ => by subst hx; exact h14
-          | (intro x mn he; simp [LinstrR.Lopn.injEq] at he)
+          all_goals try (rcases ptrLoad_cases q with hp | hp <;> rw [hp])
+          all_goals first
+            | exact loadOkR_mov fun x hx _ => by subst hx; exact h14
+            | (intro x mn he; simp [LinstrR.Lopn.injEq] at he)
+        · rcases List.mem_cons.mp hx with hx | hx
+          · rw [hx]
+            rcases ptrLoad_cases q with hp | hp <;> rw [hp] <;>
+              exact loadOkR_mov fun x hx _ => by subst hx; exact h14
+          · rcases mem_storeImmVia hx with hx | hx | hx <;> rw [hx]
+            · exact loadOkR_mov fun x hx _ => by subst hx; exact h15
+            all_goals (intro x mn he; simp [LinstrR.Lopn.injEq] at he)
     have hE : ∀ j ∈ calleeSaveRestoreEpilogue, LoadOk slotArr j := by
       intro j hj
       simp only [calleeSaveRestoreEpilogue, List.mem_cons, List.not_mem_nil, or_false] at hj

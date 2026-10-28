@@ -984,8 +984,10 @@ theorem reloadArrImmBody_lcmdDirect (mbr : String → Option String) {l : Lcmd}
   split
   · rename_i l' hl
     obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some hl <;>
-      rcases ptrLoad_cases q with hp | hp <;>
-      simp [lcmdDirect, linstrRDirect, isIndexed, hp]
+      rcases ptrLoad_cases q with hp | hp
+    all_goals try simp only [storeImmVia]
+    all_goals try split_ifs
+    all_goals simp [lcmdDirect, linstrRDirect, isIndexed, hp]
   · simpa [lcmdDirect] using h1
 
 /-- The ABI wrapping of the looped export around a register-allocated body whose

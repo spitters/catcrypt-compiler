@@ -1062,7 +1062,8 @@ theorem arrImm_mnem_class {o : String} (hz : o = "ZEROARR" ∨ o = "STOREIMM") :
 /-- **One position of `physPositionEmit` after the constant-shape base reload** is a block of
     the instruction. A constant-index array write is emitted as the single remapped
     instruction, whose reload (`reloadArrImmBody`) is the window `MOVQ R14, q` followed by the
-    write through `R14`; every other instruction is `physPositionEmit_blockOk`. -/
+    write through `R14`, with the move `MOV:64 R15, v` of a spilled stored value between
+    them; every other instruction is `physPositionEmit_blockOk`. -/
 theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
     (shiftImm : ShiftImmOracle) (body : Lcmd) (loadBase storeBase : String) (abiW : Nat)
     (mbr : String → Option String) (callArgBaseReload : List (String × String))
@@ -1127,15 +1128,32 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
       obtain ⟨v', hv'⟩ := hreg v
       rw [hemit (by simp) rfl]
       simp only [List.map_cons, List.map_nil, hb', hd', hv', himm]
-      rw [show reloadArrImmBody mbr [⟨ii, .Lopn [.reg d'] "STOREIMM" [.reg b', .reg v', .imm k]⟩] =
-          [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
-            ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v', .imm k]⟩] by
-        simp [reloadArrImmBody, reloadArrImm_storeImm d' v' k hq hfa]]
-      refine ⟨?_, accLocal_window (mid := []) (post := []) (hrl q) hqs (by simp)
-        (Or.inr (Or.inr (Or.inr (Or.inr ⟨v', k, rfl⟩)))) (by simp)⟩
-      intro r hr ds o ss he
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-      rcases hr with rfl | rfl <;> cases he <;> simp [OperandOk, hs14, movMnems, opnOf]
+      cases hsp : (LOperand.reg v').isSpill
+      · rw [show reloadArrImmBody mbr
+            [⟨ii, .Lopn [.reg d'] "STOREIMM" [.reg b', .reg v', .imm k]⟩] =
+            [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
+              ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM"
+                [.reg reloadScratch2, .reg v', .imm k]⟩] by
+          simp [reloadArrImmBody, reloadArrImm_storeImm d' v' k hq hfa hsp]]
+        refine ⟨?_, accLocal_window (mid := []) (post := []) (hrl q) hqs (by simp)
+          (Or.inr (Or.inr (Or.inr (Or.inr ⟨v', k, rfl⟩)))) (by simp)⟩
+        intro r hr ds o ss he
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+        rcases hr with rfl | rfl <;> cases he <;> simp [OperandOk, hs14, movMnems, opnOf]
+      · rw [show reloadArrImmBody mbr
+            [⟨ii, .Lopn [.reg d'] "STOREIMM" [.reg b', .reg v', .imm k]⟩] =
+            [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
+              ⟨ii, .Lopn [.reg reloadScratch] "MOV:64" [.reg v']⟩,
+              ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM"
+                [.reg reloadScratch2, .reg reloadScratch, .imm k]⟩] by
+          simp [reloadArrImmBody, reloadArrImm_storeImm_spill d' v' k hq hfa hsp]]
+        refine ⟨?_, accLocal_window (mid := [_]) (post := []) (hrl q) hqs
+          (by simp [dstHitB_r15_r14 hs15, isAccB, isArrImmB])
+          (Or.inr (Or.inr (Or.inr (Or.inr ⟨reloadScratch, k, rfl⟩)))) (by simp)⟩
+        intro r hr ds o ss he
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+        rcases hr with rfl | rfl | rfl <;> cases he <;>
+          simp [OperandOk, hs14, hs15, movMnems, opnOf]
   · refine blockOk_reload_of_ne mbr (physPositionEmit_blockOk shiftImm body loadBase storeBase
       abiW mbr callArgBaseReload reservedVec i virtIdx rm hrm hcall hs15 hs14 hmem hok hreg hacc
       fun ds o ss hx => ?_) fun o ho => ?_
@@ -1221,10 +1239,13 @@ theorem physBodyWithStores_physImg {slotArr : String → Option (String × Nat)}
     congr 1
     funext p
     refine (reloadArrImmBody_filter _ _ fun i l' h x hx => ?_).symm
-    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some h <;>
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
+    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some h
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
       rcases ptrLoad_cases q with hp | hp <;>
-      rcases hx with rfl | rfl <;> simp [hi, hp]
+        rcases hx with rfl | rfl <;> simp [hi, hp]
+    · rcases List.mem_cons.mp hx with rfl | hx
+      · rcases ptrLoad_cases q with hp | hp <;> simp [hi, hp]
+      · rcases mem_storeImmVia hx with rfl | rfl | rfl <;> simp [hi]
   have hblk : ∀ p ∈ body.zipIdx, BlockOk slotArr p.1.li_i
       (reloadArrImmBody mbr (physPositionEmit shiftImm body (fun _ => none) loadBase []
         storeBase abiW mbr callArgBaseReload reservedVec p)) := by

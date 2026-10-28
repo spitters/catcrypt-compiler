@@ -1167,13 +1167,48 @@ theorem reloadRegBase_mem {mbr : String → Option String} {b : String} {r : Lin
   | none => simp [reloadRegBase, h] at hr
   | some q => exact ⟨q, rfl, by simpa [reloadRegBase, h] using hr⟩
 
+/-- **The constant-index store through the base `R14`** of a value `v` at the constant `k`:
+    `STOREIMM [R14] [R14, v, #k]` for a register value, and `MOV:64 R15, v` followed by
+    `STOREIMM [R14] [R14, R15, #k]` for a value in a spill slot, whose store reads its value
+    from `R15` (`reloadScratch`). -/
+def storeImmVia (v : String) (k : Nat) : List LinstrR :=
+  if (LOperand.reg v).isSpill then
+    [.Lopn [.reg reloadScratch] "MOV:64" [.reg v],
+     .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg reloadScratch, .imm k]]
+  else [.Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]]
+
+/-- The store through `R14` of a register value is the single store of that value. -/
+theorem storeImmVia_of_not_spill {v : String} (k : Nat)
+    (hv : (LOperand.reg v).isSpill = false) :
+    storeImmVia v k =
+      [.Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]] := by
+  simp [storeImmVia, hv]
+
+/-- The store through `R14` of a spilled value is the move of the value into `R15` followed by
+    the store of `R15`. -/
+theorem storeImmVia_of_spill {v : String} (k : Nat) (hv : (LOperand.reg v).isSpill = true) :
+    storeImmVia v k = [.Lopn [.reg reloadScratch] "MOV:64" [.reg v],
+      .Lopn [.reg reloadScratch2] "STOREIMM"
+        [.reg reloadScratch2, .reg reloadScratch, .imm k]] := by
+  simp [storeImmVia, hv]
+
+/-- Every instruction of a store through `R14` is the move `MOV:64 R15, v` or a constant-index
+    store through `R14` of `v` or of `R15`. -/
+theorem mem_storeImmVia {v : String} {k : Nat} {r : LinstrR} (h : r ∈ storeImmVia v k) :
+    r = .Lopn [.reg reloadScratch] "MOV:64" [.reg v] ∨
+      r = .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k] ∨
+      r = .Lopn [.reg reloadScratch2] "STOREIMM"
+        [.reg reloadScratch2, .reg reloadScratch, .imm k] := by
+  unfold storeImmVia at h
+  split at h <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at h <;> tauto
+
 /-- **The base reload of a constant-shape array instruction**, the register-base form of
     `reloadMemrefBase`. A zeroing `ZEROARR [B] [#n, #w]`, whose base is its destination `B`,
     becomes the pointer load `ptrLoad q` of the reload slot `q` of `B` followed by the physical
     form `ZEROARR [] [R14, #n, #w]`, which reads its base as a source; a constant-index store
     `STOREIMM [D] [B, V, #k]` becomes `ptrLoad q` for the reload slot `q` of `B` followed by
-    `STOREIMM [R14] [R14, V, #k]`. The result is `none` for every other instruction and when
-    the base has no reload slot. -/
+    the store `storeImmVia V k` through `R14`, which routes a spilled value through `R15`. The
+    result is `none` for every other instruction and when the base has no reload slot. -/
 def reloadArrImm (memrefBaseReload : String → Option String) : LinstrR → Option (List LinstrR)
   | .Lopn [.reg b] opn [.imm n, .imm w] =>
       if opn = "ZEROARR" then
@@ -1182,9 +1217,7 @@ def reloadArrImm (memrefBaseReload : String → Option String) : LinstrR → Opt
       else none
   | .Lopn [.reg _] opn [.reg b, .reg v, .imm k] =>
       if opn = "STOREIMM" then
-        (memrefBaseReload b).map fun q =>
-          [ptrLoad q,
-           .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]]
+        (memrefBaseReload b).map fun q => ptrLoad q :: storeImmVia v k
       else none
   | _ => none
 
@@ -1195,13 +1228,24 @@ theorem reloadArrImm_zeroArr_ptrLoad {mbr : String → Option String} {b q : Str
       some [ptrLoad q, .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]] := by
   simp [reloadArrImm, h]
 
-/-- The reload of a constant-index store whose base has the reload slot `q`. -/
+/-- The reload of a constant-index store of a register value whose base has the reload
+    slot `q`. -/
 theorem reloadArrImm_storeImm_ptrLoad {mbr : String → Option String} {b q : String}
-    (d v : String) (k : Nat) (h : mbr b = some q) :
+    (d v : String) (k : Nat) (h : mbr b = some q) (hv : (LOperand.reg v).isSpill = false) :
     reloadArrImm mbr (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k]) =
       some [ptrLoad q,
         .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]] := by
-  simp [reloadArrImm, h]
+  simp [reloadArrImm, h, storeImmVia_of_not_spill k hv]
+
+/-- The reload of a constant-index store of a spilled value whose base has the reload slot
+    `q`: the pointer load, the move of the value into `R15` and the store of `R15`. -/
+theorem reloadArrImm_storeImm_ptrLoad_spill {mbr : String → Option String} {b q : String}
+    (d v : String) (k : Nat) (h : mbr b = some q) (hv : (LOperand.reg v).isSpill = true) :
+    reloadArrImm mbr (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k]) =
+      some [ptrLoad q, .Lopn [.reg reloadScratch] "MOV:64" [.reg v],
+        .Lopn [.reg reloadScratch2] "STOREIMM"
+          [.reg reloadScratch2, .reg reloadScratch, .imm k]] := by
+  simp [reloadArrImm, h, storeImmVia_of_spill k hv]
 
 /-- The reload of a zeroing whose base has the save slot `q`. -/
 theorem reloadArrImm_zeroArr {mbr : String → Option String} {b q : String} (n w : Nat)
@@ -1211,13 +1255,26 @@ theorem reloadArrImm_zeroArr {mbr : String → Option String} {b q : String} (n 
         .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]] := by
   simp [reloadArrImm, h, ptrLoad_qsave hq]
 
-/-- The reload of a constant-index store whose base has the save slot `q`. -/
+/-- The reload of a constant-index store of a register value whose base has the save
+    slot `q`. -/
 theorem reloadArrImm_storeImm {mbr : String → Option String} {b q : String} (d v : String)
-    (k : Nat) (h : mbr b = some q) (hq : faB q = false) :
+    (k : Nat) (h : mbr b = some q) (hq : faB q = false) (hv : (LOperand.reg v).isSpill = false) :
     reloadArrImm mbr (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k]) =
       some [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
         .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]] := by
-  simp [reloadArrImm, h, ptrLoad_qsave hq]
+  simp [reloadArrImm, h, ptrLoad_qsave hq, storeImmVia_of_not_spill k hv]
+
+/-- The reload of a constant-index store of a spilled value whose base has the save slot
+    `q`: the move `MOVQ R14, q`, the move of the value into `R15` and the store of `R15`. -/
+theorem reloadArrImm_storeImm_spill {mbr : String → Option String} {b q : String}
+    (d v : String) (k : Nat) (h : mbr b = some q) (hq : faB q = false)
+    (hv : (LOperand.reg v).isSpill = true) :
+    reloadArrImm mbr (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k]) =
+      some [.Lopn [.reg reloadScratch2] "MOVQ" [.reg q],
+        .Lopn [.reg reloadScratch] "MOV:64" [.reg v],
+        .Lopn [.reg reloadScratch2] "STOREIMM"
+          [.reg reloadScratch2, .reg reloadScratch, .imm k]] := by
+  simp [reloadArrImm, h, ptrLoad_qsave hq, storeImmVia_of_spill k hv]
 
 /-- An instruction other than `ZEROARR` and `STOREIMM` has no constant-shape base reload. -/
 theorem reloadArrImm_of_ne (mbr : String → Option String) {ds ss : List LOperand} {opn : String}
@@ -1234,19 +1291,23 @@ theorem reloadArrImm_of_noSlot {mbr : String → Option String} (h : ∀ b, mbr 
 
 /-- **The forms of a constant-shape base reload.** A reload `l` of `reloadArrImm` is the
     pointer load of the reload slot `q` of the base `b` into `R14` followed by the physical form
-    of a zeroing of `b` or of a constant-index store into `b`, both addressed through `R14`. -/
+    of a zeroing of `b` or the store `storeImmVia` of a constant-index store into `b`, both
+    addressed through `R14`. -/
 theorem reloadArrImm_eq_some {mbr : String → Option String} {i : LinstrR} {l : List LinstrR}
     (h : reloadArrImm mbr i = some l) :
     ∃ b q, mbr b = some q ∧
       ((∃ n w, i = .Lopn [.reg b] "ZEROARR" [.imm n, .imm w] ∧
           l = [ptrLoad q, .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]]) ∨
         (∃ d v k, i = .Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k] ∧
-          l = [ptrLoad q,
-            .Lopn [.reg reloadScratch2] "STOREIMM" [.reg reloadScratch2, .reg v, .imm k]])) := by
+          l = ptrLoad q :: storeImmVia v k)) := by
   unfold reloadArrImm at h
   split at h
   · grind only [Option.map_eq_some_iff]
-  · grind only [Option.map_eq_some_iff]
+  · split at h
+    · obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp h
+      subst_vars
+      exact ⟨_, q, hq, .inr ⟨_, _, _, rfl, rfl⟩⟩
+    · cases h
   · cases h
 
 /-- Legalize a two-address binop `op dst, src` (sources `[dst, src]`) so it

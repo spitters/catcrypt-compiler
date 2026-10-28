@@ -136,10 +136,13 @@ theorem reloadArrImmBody_filter_flatMap (mbr : String → Option String) (f : Li
   have hp : ∀ (i : Linstr) l', reloadArrImm mbr i.li_i = some l' →
       ∀ x ∈ l', notLivePin ⟨i.li_ii, x⟩ = notLivePin i := by
     intro i l' h x hx
-    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some h <;>
-      simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
+    obtain ⟨b, q, -, ⟨n, w, hi, rfl⟩ | ⟨d, v, k, hi, rfl⟩⟩ := reloadArrImm_eq_some h
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
       rcases ptrLoad_cases q with hq | hq <;>
-      rcases hx with rfl | rfl <;> simp [notLivePin, hi, hq]
+        rcases hx with rfl | rfl <;> simp [notLivePin, hi, hq]
+    · rcases List.mem_cons.mp hx with rfl | hx
+      · rcases ptrLoad_cases q with hq | hq <;> simp [notLivePin, hi, hq]
+      · rcases mem_storeImmVia hx with rfl | rfl | rfl <;> simp [notLivePin, hi]
   rw [← reloadArrImmBody_filter notLivePin _ hp, reloadArrImmBody_flatMap, List.filter_flatMap]
 
 /-! ## 2. The reload scan is local -/
@@ -1161,8 +1164,12 @@ theorem physExpand_block (hs15 : slotArr reloadScratch = none)
     source. -/
 theorem reloadArrImm_idxFree {mbr : String → Option String} {x : LinstrR} {l : List LinstrR}
     (h : reloadArrImm mbr x = some l) : ∀ y ∈ l, idxFreeB y = true := by
-  obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h <;>
-    rcases ptrLoad_cases q with hq | hq <;> simp [idxFreeB, hq]
+  obtain ⟨b, q, -, ⟨n, w, -, rfl⟩ | ⟨d, v, k, -, rfl⟩⟩ := reloadArrImm_eq_some h
+  · rcases ptrLoad_cases q with hq | hq <;> simp [idxFreeB, hq]
+  · intro y hy
+    rcases List.mem_cons.mp hy with rfl | hy
+    · rcases ptrLoad_cases q with hq | hq <;> simp [idxFreeB, hq]
+    · rcases mem_storeImmVia hy with rfl | rfl | rfl <;> simp [idxFreeB]
 
 /-- The expansion of an instruction other than a constant-index array write is its own
     constant-shape base reload. -/
@@ -1197,7 +1204,8 @@ theorem physExpand_arrImm_eq (shiftImm : ShiftImmOracle) (u64 : Bool)
     of the access form, under an operand map that keeps immediates and sends registers to
     registers, the expansion under the constant-shape base reload is the move `MOVQ R14, q` of
     the array slot `q` that the reload map assigns to the remapped base, followed by the write
-    through `R14`; the value register of a store is the image of a source register. -/
+    through `R14`; the value register of a store is the image `v'` of a source register, and a
+    store of a spilled `v'` moves it into `R15` by `MOV:64 R15, v'` and stores `R15`. -/
 theorem reloadArrImmBody_physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
     (rmap : LOperand → LOperand) (mbr : String → Option String) (ii : Nat)
     (ds : List LOperand) (o : String) (ss : List LOperand)
@@ -1207,11 +1215,17 @@ theorem reloadArrImmBody_physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bo
       ((∃ n w, reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn ds o ss⟩) =
           [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
             ⟨ii, .Lopn [] "ZEROARR" [.reg reloadScratch2, .imm n, .imm w]⟩]) ∨
-        ∃ v v' k, LOperand.reg v ∈ ss ∧ rmap (.reg v) = .reg v' ∧
+        (∃ v v' k, LOperand.reg v ∈ ss ∧ rmap (.reg v) = .reg v' ∧
           reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn ds o ss⟩) =
             [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
               ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM"
-                [.reg reloadScratch2, .reg v', .imm k]⟩]) := by
+                [.reg reloadScratch2, .reg v', .imm k]⟩]) ∨
+        ∃ v v' k, LOperand.reg v ∈ ss ∧ rmap (.reg v) = .reg v' ∧
+          reloadArrImmBody mbr (physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn ds o ss⟩) =
+            [⟨ii, .Lopn [.reg reloadScratch2] "MOVQ" [.reg q]⟩,
+              ⟨ii, .Lopn [.reg reloadScratch] "MOV:64" [.reg v']⟩,
+              ⟨ii, .Lopn [.reg reloadScratch2] "STOREIMM"
+                [.reg reloadScratch2, .reg reloadScratch, .imm k]⟩]) := by
   obtain ⟨-, -, hZ, hS, -⟩ := hacc ds o ss rfl
   rcases hz with rfl | rfl
   · obtain ⟨b, n, w, rfl, rfl, b', q, hb', hq, hqs, hfa⟩ := hZ rfl
@@ -1221,15 +1235,20 @@ theorem reloadArrImmBody_physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bo
   · obtain ⟨d, b, v, k, rfl, rfl, b', q, hb', hq, hqs, hfa⟩ := hS rfl
     obtain ⟨d', hd'⟩ := hreg d
     obtain ⟨v', hv'⟩ := hreg v
-    refine ⟨b', q, hq, hqs, .inr ⟨v, v', k, by simp, hv', ?_⟩⟩
     rw [physExpand_arrImm_eq _ _ _ _ _ _ _ _ _ _ (.inr rfl)]
-    simp [hb', hd', hv', himm, reloadArrImmBody, reloadArrImm_storeImm d' v' k hq hfa]
+    cases hsp : (LOperand.reg v').isSpill
+    · refine ⟨b', q, hq, hqs, .inr (.inl ⟨v, v', k, by simp, hv', ?_⟩)⟩
+      simp [hb', hd', hv', himm, reloadArrImmBody, reloadArrImm_storeImm d' v' k hq hfa hsp]
+    · refine ⟨b', q, hq, hqs, .inr (.inr ⟨v, v', k, by simp, hv', ?_⟩)⟩
+      simp [hb', hd', hv', himm, reloadArrImmBody,
+        reloadArrImm_storeImm_spill d' v' k hq hfa hsp]
 
 /-- **One reloaded expansion keeps the side conditions**: the conclusion of
     `physExpand_block` for the expansion of `i` under the constant-shape base reload, whose
     instructions carry only the mnemonic of `i` and moves, under an operand map that keeps
     immediates. A constant-index array write becomes the reload window of the move
-    `MOVQ R14, q` and the write through `R14`, neither of which is a site or a low `MUL`. -/
+    `MOVQ R14, q`, for a spilled stored value the move `MOV:64 R15, v`, and the write through
+    `R14`, none of which is a site or a low `MUL`. -/
 theorem physExpand_reload_block (hs15 : slotArr reloadScratch = none)
     (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
     (mbr : String → Option String) (i : Linstr)
@@ -1260,7 +1279,18 @@ theorem physExpand_reload_block (hs15 : slotArr reloadScratch = none)
       reloadArrImmBody_physExpand_arrImm shiftImm u64 rmap mbr ii ds o ss hacc hz himm hreg
     have hrl : slotMov? (LinstrR.Lopn [.reg reloadScratch2] "MOVQ" [.reg q]) =
         some (reloadScratch2, q) := by simp [slotMov?]
-    rcases hE with ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩
+    rcases hE with ⟨n, w, he⟩ | ⟨v, v', k, -, -, he⟩ | ⟨v, v', k, -, -, he⟩
+    rotate_left 2
+    · refine ⟨?_, ?_, hhome⟩
+      · simp only [F, he]
+        rw [List.filter_eq_self.mpr (by simp [notLivePin])]
+        exact scanStays_window (mid := [_]) (post := []) hrl hq
+          (by simp [idxFreeB, passes_mov_r15 hs15, isArrImmB])
+          (fun _ h => accBase_reg_eq h) (by simp)
+      · simp only [F, he]
+        refine SiteStays.of_noSite fun r hr => ?_
+        simp only [List.mem_filter, List.mem_cons, List.not_mem_nil, or_false] at hr
+        rcases hr.1 with rfl | rfl | rfl <;> rfl
     all_goals
       refine ⟨?_, ?_, hhome⟩
       · simp only [F, he]
