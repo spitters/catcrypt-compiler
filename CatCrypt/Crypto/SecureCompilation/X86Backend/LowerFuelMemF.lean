@@ -545,6 +545,71 @@ theorem simS_srcScratch {d x R S opn mov : String} {cd cd' : Option Nat} (τ : M
     fstepF_src2 d x R S opn cd cd' hcmp _ zf hu, ht']
   rfl
 
+/-- The step of the constant-index store `STOREIMM [d] [b, x, #k]` at the tag `.storeImm w n`
+    reads the array of `b` at shape `(w, n)` and the cell of `x` at width `w`, writes the
+    updated array to `d` and keeps the zero flag. -/
+theorem fstepF_storeImmCell (d b x : String) (k w n : Nat) (u : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg d] "STOREIMM" [.reg b, .reg x, .imm k], .storeImm w n) u zf
+      = (u.getArr b w n).bind fun arr => (u.reg.getW x w).map fun vv =>
+          ((u.setArr d (JasminDialect.stackSet arr k vv)).nextPc, zf) := by
+  simp only [fstepF, cmpArgs?, movRegArgs?]
+  rw [stepMemF_of_quiet rfl rfl rfl]
+  simp only [lsemStepMem, storeImmStruct?, ite_true]
+  cases u.getArr b w n <;> cases u.reg.getW x w <;> rfl
+
+/-- **A stored value read through a scratch.** For a value register `v` other than the
+    scratches, when the store `STOREIMM [d] [b, v, #k]` at the tag `.storeImm w n` steps from
+    a base `s`, the pair `MOV:64 R15, v ; STOREIMM [d] [b, R15, #k]` runs from every base
+    that agrees with `s` off the scratches and holds the array of `s` at `b`, to a base that
+    agrees with the result off the scratches, with the same zero flag. The base `b` may be the
+    scratch `R14`. -/
+theorem fstepF_storeImmScratch {d b v : String} (k w n : Nat) (τ : MemTag) (hv : KeptS v)
+    {s s' t : LstateM} {zf zt : Bool} (hA : AgreeS s s') (hb : s'.larr b = s.larr b)
+    (h : fstepF (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k], .storeImm w n) s zf
+      = some (t, zt)) :
+    ∃ t', runStraightF [(.Lopn [.reg reloadScratch] "MOV:64" [.reg v], τ),
+        (.Lopn [.reg d] "STOREIMM" [.reg b, .reg reloadScratch, .imm k], .storeImm w n)] s' zf
+        = some (t', zt) ∧ AgreeS t t' := by
+  let u := (s'.setReg reloadScratch (s'.reg.lvm v).2).nextPc
+  have hga : u.getArr b w n = s.getArr b w n := by
+    exact (fun (a c : LstateM) (h : a.larr b = c.larr b) =>
+      (by unfold LstateM.getArr; rw [h] : a.getArr b w n = c.getArr b w n)) u s hb
+  have hgv : u.reg.getW reloadScratch w = s.reg.getW v w := by
+    unfold LstateN.getW
+    rw [lvm_copy, hA.reg v hv]
+  rw [fstepF_storeImmCell] at h
+  cases ha : s.getArr b w n with
+  | none => rw [ha] at h; cases h
+  | some arr =>
+    cases hvv : s.reg.getW v w with
+    | none => rw [ha, hvv] at h; cases h
+    | some vv =>
+      rw [ha, hvv] at h
+      simp only [Option.bind_some, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      refine ⟨(u.setArr d (JasminDialect.stackSet arr k vv)).nextPc, ?_, ?_⟩
+      · rw [runStraightF_cons, show (LinstrR.Lopn [.reg reloadScratch] "MOV:64" [.reg v], τ)
+            = (movWire reloadScratch v "MOV:64", τ) from rfl,
+          fstepF_movWire reloadScratch v "MOV:64" τ stripWidthTag_mov64,
+          Option.bind_some, runStraightF_cons, fstepF_storeImmCell, hga, hgv, ha, hvv]
+        rfl
+      · refine ⟨fun r hr => ?_, fun r hr => ?_, hA.mem, hA.cf, hA.of⟩
+        · have hrS : r ≠ reloadScratch := hr.1
+          simp [u, LstateM.setReg, LstateM.nextPc, hrS, hA.reg r hr]
+        · by_cases hrd : r = d
+          · simp [u, LstateM.setArr, LstateM.setReg, LstateM.nextPc, hrd]
+          · simp [u, LstateM.setArr, LstateM.setReg, LstateM.nextPc, hrd, hA.arr r hr]
+
+/-- **The spilled-value store through a scratch.** For a base `b` and a value register `v`
+    other than the scratches, `MOV:64 R15, v ; STOREIMM [d] [b, R15, #k]` simulates
+    `STOREIMM [d] [b, v, #k]` at the tag `.storeImm w n` off the scratches. -/
+theorem simS_storeImmScratch {d b v : String} (k w n : Nat) (τ : MemTag) (hb : KeptS b)
+    (hv : KeptS v) :
+    SimS (.Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k], .storeImm w n)
+      [(.Lopn [.reg reloadScratch] "MOV:64" [.reg v], τ),
+        (.Lopn [.reg d] "STOREIMM" [.reg b, .reg reloadScratch, .imm k], .storeImm w n)] :=
+  fun _ _ _ _ _ hA h => fstepF_storeImmScratch k w n τ hv hA (hA.arr b hb) h
+
 /-- **The legalised binop with a spilled second source.** For a register `d` and a spill
     slot `S`, `legalizeBinop` simulates the register-tagged `OP d, d, S` off the scratches,
     when the binop names no scratch, every binop `OP D, X, R15` carries one register tag
