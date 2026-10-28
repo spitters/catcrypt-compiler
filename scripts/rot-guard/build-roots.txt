@@ -805,6 +805,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ScalarmultCovered
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttButterflyProbe
 CatCrypt.Crypto.SecureCompilation.X86Backend.FheNttLoopEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.FlagClassCmovLowering
+CatCrypt.Crypto.SecureCompilation.X86Backend.FrameFuelMemFCfg
 CatCrypt.Crypto.SecureCompilation.X86Backend.FrontCTBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.FullBodyByteIdentityClosed
 CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiFuel
@@ -868,6 +869,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogDirect
+CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogFuel
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVCompleteKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
