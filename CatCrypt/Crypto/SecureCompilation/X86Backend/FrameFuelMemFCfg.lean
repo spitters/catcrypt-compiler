@@ -30,7 +30,6 @@ by `Ascent.IsaCall.x86_steps_relocate`.
 
 ## Main definitions
 
-* `extraInputSaves`: the saves of the third and later argument registers.
 * `keptFB`, `frameInstrOKB`: the Boolean checks of a kept name and of an instruction the
   frame expansion covers.
 * `FrameQ`: agreement on the kept names, with the save slots of the target holding fixed
@@ -71,20 +70,11 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa)
 
 /-! ## 1. The saves of the further argument registers -/
 
-/-- The saves of the third and later argument registers that `lfundefPhysAbiOfVirtCert`
-    appends to `buildPrologue`: the copy of each register of `extraSaveRegs abiArgs` to its
-    save slot `abiSaveOfExt`. -/
-def extraInputSaves (abiArgs : List String) : Lcmd :=
-  (extraSaveRegs abiArgs).filterMap (fun abiReg =>
-    match abiSaveOfExt abiReg with
-    | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-    | none => none)
-
 /-- **The further saves are register copies.** -/
 theorem extraInputSaves_copies (abiArgs : List String) :
     ∀ i ∈ extraInputSaves abiArgs, IsCopyQ i.li_i := by
   intro i hi
-  simp only [extraInputSaves, List.mem_filterMap] at hi
+  simp only [extraInputSaves, argRegSaves, List.mem_filterMap] at hi
   obtain ⟨r, -, hi⟩ := hi
   unfold IsCopyQ
   grind
@@ -113,7 +103,7 @@ theorem abiSaveOfExt_mem {r n : String} (h : abiSaveOfExt r = some n) :
 theorem qsave_not_mem_copyDsts_extraInputSaves (abiArgs : List String) {X : String}
     (hX : X ∈ calleeSaved6) : "qsave." ++ X ∉ copyDsts (extraInputSaves abiArgs) := by
   intro hm
-  simp only [copyDsts, List.mem_flatMap, extraInputSaves, List.mem_filterMap] at hm
+  simp only [copyDsts, List.mem_flatMap, extraInputSaves, argRegSaves, List.mem_filterMap] at hm
   obtain ⟨i, ⟨r, -, hi⟩, hd⟩ := hm
   cases hs : abiSaveOfExt r with
   | none => simp [hs] at hi

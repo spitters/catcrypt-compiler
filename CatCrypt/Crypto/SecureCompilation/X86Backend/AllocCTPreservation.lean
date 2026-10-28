@@ -975,7 +975,7 @@ theorem comToLfundefPhysAbi_lcmdDirect {Γ : Ctxt jasminDialect} {t : JasminTy}
     rfl
   · refine lcmdDirect_of_mem ?_
     intro z hz
-    rw [List.mem_filterMap] at hz
+    rw [JasminLprogExport.argRegSaves, List.mem_filterMap] at hz
     obtain ⟨a, _, ha⟩ := hz
     split at ha <;> simp only [Option.some.injEq, reduceCtorEq] at ha
     subst_vars

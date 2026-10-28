@@ -347,6 +347,20 @@ theorem extraSaveRegs_eq_drop {abiArgs : List String}
   obtain ⟨h1, h2⟩ := h r hr
   simp [h1, h2]
 
+/-- **The saves of a list of argument registers**: for each register of `regs` with a save
+    slot `abiSaveOfExt`, the copy `MOVQ` of the register to that slot, in the order of `regs`;
+    a register without a slot contributes no instruction. -/
+def argRegSaves (regs : List String) : Lcmd :=
+  regs.filterMap (fun abiReg =>
+    match abiSaveOfExt abiReg with
+    | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
+    | none => none)
+
+/-- **The saves of the further argument registers** that `lfundefPhysAbiOfVirtCert` appends
+    to `buildPrologue`: the saves `argRegSaves` of the registers `extraSaveRegs abiArgs`. -/
+def extraInputSaves (abiArgs : List String) : Lcmd :=
+  argRegSaves (extraSaveRegs abiArgs)
+
 /-- **The stack offset of an argument name**: `off` for the export name `RSP+off` of a
     parameter that the caller passes in the stack word `[RSP + off]` (the seventh and later
     System V integer arguments), and `none` for every other name, among them every
@@ -2009,12 +2023,7 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
   -- fixed prologue, so the argument materialize / SIB-base reloads can source it
   -- from a stable slot. For ≤2-argument signatures `abiArgs.drop 2 = []`, so the
   -- prologue bytes are unchanged.
-  let extraInputSaves : Lcmd :=
-    (abiArgs.drop 2).filterMap (fun abiReg =>
-      match abiSaveOfExt abiReg with
-      | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-      | none => none)
-  let prologue := buildPrologue virt tbl inLoadMap ++ extraInputSaves
+  let prologue := buildPrologue virt tbl inLoadMap ++ argRegSaves (abiArgs.drop 2)
   -- Materialize the pointer arguments into the body's RA-assigned register/slot
   -- (the 2-pointer memref ABI: the body uses `aj` directly as a LOADIDX/STOREIDX
   -- SIB base, but the RA placed `aj` in a register/spill that the prologue never
@@ -2846,12 +2855,7 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   -- are unchanged. The save sources the live ABI register directly (it is still
   -- live at entry; `buildArgPtrMaterialize` only clobbers it afterwards).
   -- `RDI` and `RSI`, which the fixed prologue saves, are skipped (`extraSaveRegs`).
-  let extraInputSaves : Lcmd :=
-    (extraSaveRegs abiArgs).filterMap (fun abiReg =>
-      match abiSaveOfExt abiReg with
-      | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-      | none => none)
-  let prologue := buildPrologue virt tbl (fun _ => none) ++ extraInputSaves
+  let prologue := buildPrologue virt tbl (fun _ => none) ++ extraInputSaves abiArgs
   -- Materialize each SysV pointer arg into the RA-assigned register the body uses
   -- for its argument name (the 2-pointer memref ABI; `inLoadMap = none`).
   let argMat := buildArgPtrMaterialize virt tbl abiArgs (fun _ => none) abi
