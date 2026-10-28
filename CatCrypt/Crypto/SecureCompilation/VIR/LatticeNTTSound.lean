@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
-public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPolyConcrete
+public import CatCrypt.Crypto.Optimizer.Lattice.NTTPolyEncoding
 public import CompPoly.Univariate.NTT.FastMul
 public import CompPoly.Univariate.NTT.Forward
 public import CompPoly.Univariate.NTT.Inverse
@@ -71,7 +71,7 @@ here is the plumbing that pins the lattice-dialect agreement shape onto it.
   256` (ML-DSA-65): the byte-layout decision (little-endian packing,
   Montgomery vs. plain domain, NTT-domain caching) belongs to the protocol
   bridge, not the soundness framework, and
-  `NTTPolyMul_CompPolyConcrete.lean` does not fix it either; we keep the
+  `NTTPolyEncoding.lean` does not fix it either; we keep the
   encoding as a *parameter* so the theorem is statable and provable without
   inventing a layout.
 * The **negacyclic fold** (ML-KEM/ML-DSA work mod `X^n + 1`, CompPoly's cyclic
