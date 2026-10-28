@@ -8,7 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.S2nMontmulP384Framed
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519MulSqrProof
 public import CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Fe25519AddSubSelectProof
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllDirectRename
 
 /-!
 # The Curve25519 field kernels, carried to their encoded bytes

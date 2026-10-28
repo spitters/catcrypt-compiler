@@ -11,8 +11,8 @@ public meta import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
-public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.AllDirectRename
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllDirectRename
 
 /-!
 # Verified MOVE COALESCING (P4): the one register-allocator perf pass jasminc has

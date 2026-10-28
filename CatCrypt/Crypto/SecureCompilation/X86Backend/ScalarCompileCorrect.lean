@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 public import CatCrypt.Crypto.Optimizer.JInstrRegAllocScoped
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllDirectRename
 
 /-!
 # The verified-compiler theorem for the straight-line scalar fragment
@@ -22,10 +23,10 @@ the CT dimension.
 
 * `scalarCompile_correct` — semantics-preservation ∧ machine-CT for `lowerSeq`,
   with the real-`LowCT` source guarantee `cmdCT (seqToLowCT ps) = true` as hypothesis.
-* `allDirect_renameInstr` / `allDirect_renameBlock` — a register renaming preserves
-  `allDirect` (it rewrites register *names*, never opcodes; `IsDirect` is an
-  opcode property), so an aliasing-free allocation cannot turn a direct-addressed
-  block into a secret-indexed one.
+* `allDirect_renameInstr` / `allDirect_renameBlock` (module `AllDirectRename`, same
+  namespace) — a register renaming preserves `allDirect` (it rewrites register *names*,
+  never opcodes; `IsDirect` is an opcode property), so an aliasing-free allocation cannot
+  turn a direct-addressed block into a secret-indexed one.
 * `scalarCompileAlloc_constant_time` — the *allocated* lowered block is constant-time.
 
 * `scalarCompileAlloc_denote` — the two-pass `compile = allocate ∘ lower` semantics:
@@ -79,25 +80,6 @@ theorem scalarCompile_correct (ρ : RegMap) (hρ : Function.Injective ρ)
    fun s₁ s₂ => lowerSeq_constant_time ρ ps s₁ s₂⟩
 
 /-! ## 2. Constant-time survives register allocation -/
-
-open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc in
-/-- A renaming preserves `IsDirect`: it rewrites register *names*, never opcodes,
-    and `IsDirect` excludes exactly the two register-indexed opcodes
-    (`loadMemIdx`/`storeMemIdx`), whose constructor `renameInstr` preserves. -/
-theorem allDirect_renameInstr (ρ : String → String) (i : JInstr 64) :
-    IsDirect (renameInstr ρ i) ↔ IsDirect i := by
-  cases i <;> simp [renameInstr, IsDirect]
-
-open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc in
-/-- A renaming preserves `allDirect` of a whole block. -/
-theorem allDirect_renameBlock (ρ : String → String) (block : List (JInstr 64)) :
-    allDirect (renameBlock ρ block) = allDirect block := by
-  unfold allDirect renameBlock
-  induction block with
-  | nil => rfl
-  | cons i is ih =>
-    simp only [List.map_cons, List.all_cons, ih]
-    rw [decide_eq_decide.mpr (allDirect_renameInstr ρ i)]
 
 open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc in
 /-- **Constant-time after allocation.** The lowered block, after the validated
