@@ -29,6 +29,7 @@ Both the source instruction and its lowering are typed with one tag function `tg
 
 * `SimS`: a straight segment simulates one instruction from bases agreeing off the scratches.
 * `RegTagOn`: the tag function gives every `Lopn` of a mnemonic a register tag.
+* `sibPlainB`: an operand with no spilled SIB base or index.
 * `lowerCoreOKB`: the cases of `LowerCore.lowerCore` the simulations below cover.
 
 ## Main results
@@ -43,6 +44,11 @@ Both the source instruction and its lowering are typed with one tag function `tg
 * `simS_lowerTwoAddrShiftImm`: the two-address shift by an immediate.
 * `simS_cmovSpillSeq`, `simS_cmovSpillDst?`: the select with spilled operands.
 * `simS_setccSpill?`: the materialised comparison with spilled operands.
+* `fstepF_src2`, `simS_srcScratch`: a second source read by its cell, and through a scratch.
+* `simS_legalizeBinopSpill`, `simS_lowerTwoAddrSpill`: the two-address lowering of a binop
+  with a spilled second source and a register destination.
+* `fstepF_dst1`, `simS_loadScratch`, `simS_legalizeMemLoad`: the destination of a one-source
+  instruction, and the legalised load on a source with no spilled SIB base or index.
 * `simS_lowerCore`: the lowering core on the instructions `lowerCoreOKB` admits.
 -/
 
@@ -55,6 +61,9 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.LowerFuelMemF
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemShift
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMulCarry
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemCast
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
@@ -478,7 +487,291 @@ theorem simS_setccSpill? {tg : LinstrR → MemTag} {c : JasminDialect.JasminCmp}
   simp only [List.map_cons, List.map_nil, hcd']
   exact fstepF_setccSpill c wOp D A B _ cd cd' _ _ _ (stripWidthTag_setccMov _) hA' hB' hA hs
 
-/-! ## 5. The lowering core -/
+/-! ## 5. A second source read through a scratch -/
+
+/-- The register step of a two-source instruction reads its second register source by its
+    cell: under two names holding the same cell, the step is the same. -/
+theorem lsemStepMC_src2 (st : LstateN) (d x R S opn : String) (h : st.lvm R = st.lvm S) :
+    lsemStepMC (binopWire d x (.reg R) opn) st = lsemStepMC (binopWire d x (.reg S) opn) st := by
+  have hg : ∀ w, st.getW R w = st.getW S w := fun w => by unfold LstateN.getW; rw [h]
+  simp only [binopWire, lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?,
+    sbbhiStruct?, lsemStepSh, sarStruct?, lsemStepN, evalOperandN, hg]
+  by_cases hm : stripWidthTag opn = "MULXHI" <;> simp only [hm, ↓reduceIte, hg]
+
+/-- **The second source by its cell.** A register-tagged two-source instruction other than
+    the flag compare steps alike under two names of its second source that hold the same
+    cell, at any two register tags. -/
+theorem fstepF_src2 (d x R S opn : String) (cd cd' : Option Nat)
+    (hcmp : opn ≠ withWidthTag 64 "CMP") (s : LstateM) (zf : Bool)
+    (h : s.reg.lvm R = s.reg.lvm S) :
+    fstepF (binopWire d x (.reg R) opn, .reg cd') s zf
+      = fstepF (binopWire d x (.reg S) opn, .reg cd) s zf := by
+  have he : ∀ w, evalOperandN s.reg w (.reg R) = evalOperandN s.reg w (.reg S) := fun w => by
+    simp only [evalOperandN]; unfold LstateN.getW; rw [h]
+  rw [fstepF_binopWire _ _ _ _ _ hcmp, fstepF_binopWire _ _ _ _ _ hcmp]
+  unfold stepMemF
+  rw [lsemStepMem_binopWire, lsemStepMem_binopWire, lsemStepMC_src2 _ _ _ _ _ _ h]
+  cases lsemStepMC (binopWire d x (.reg S) opn) s.reg with
+  | some r =>
+      simp only [Option.map_some]
+      unfold withALUFlags aluFlagOp?
+      simp only [binopWire]
+      split_ifs <;> simp only [he]
+  | none =>
+      simp only [Option.map_none]
+      unfold carryArgs? carryStep wideArgs? wideStep
+      simp only [binopWire]
+      split_ifs <;> simp only [he]
+
+/-- **A second source read through a scratch.** For a scratch `R`, the pair
+    `MOV R, S ; OP d, x, R` simulates the register-tagged `OP d, x, S` off the scratches,
+    when the binop names no scratch and `OP` is not the flag compare. -/
+theorem simS_srcScratch {d x R S opn mov : String} {cd cd' : Option Nat} (τ : MemTag)
+    (hR : ¬ KeptS R) (hmov : stripWidthTag mov = "MOV") (hcmp : opn ≠ withWidthTag 64 "CMP")
+    (hn : ∀ n ∈ instrNames (binopWire d x (.reg S) opn), KeptS n) :
+    SimS (binopWire d x (.reg S) opn, .reg cd)
+      [(movWire R S mov, τ), (binopWire d x (.reg R) opn, .reg cd')] := by
+  intro s s' t zf zt hA h
+  have hS : KeptS S := hn S (by simp [instrNames, binopWire, opNames])
+  have hRS : R ≠ S := fun e => hR (e ▸ hS)
+  have hAu : AgreeS s (s'.setReg R (s'.reg.lvm S).2).nextPc := hA.setScratch hR _
+  have hu : ((s'.setReg R (s'.reg.lvm S).2).nextPc).reg.lvm R
+      = ((s'.setReg R (s'.reg.lvm S).2).nextPc).reg.lvm S :=
+    (lvm_copy s' R S).trans (lvm_copy_other s' S hRS.symm).symm
+  obtain ⟨t', ht', hAt⟩ := fstepF_agreeS ⟨_, _, _, rfl⟩ hn
+    (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩) hAu h
+  refine ⟨t', ?_, hAt⟩
+  rw [runStraightF_cons, fstepF_movWire R S mov τ hmov, Option.bind_some, runStraightF_cons,
+    fstepF_src2 d x R S opn cd cd' hcmp _ zf hu, ht']
+  rfl
+
+/-- **The legalised binop with a spilled second source.** For a register `d` and a spill
+    slot `S`, `legalizeBinop` simulates the register-tagged `OP d, d, S` off the scratches,
+    when the binop names no scratch, every binop `OP D, X, R15` carries one register tag
+    and `OP` is not the flag compare. -/
+theorem simS_legalizeBinopSpill {tg : LinstrR → MemTag} {d S opn mov : String}
+    {cd cd' : Option Nat}
+    (htg : ∀ D X, tg (.Lopn [.reg D] opn [.reg X, .reg reloadScratch]) = .reg cd')
+    (hmov : stripWidthTag mov = "MOV") (hcmp : opn ≠ withWidthTag 64 "CMP")
+    (hd : (LOperand.reg d).isSpill = false) (hS : (LOperand.reg S).isSpill = true)
+    (hn : ∀ n ∈ instrNames (.Lopn [.reg d] opn [.reg d, .reg S]), KeptS n) :
+    SimS (.Lopn [.reg d] opn [.reg d, .reg S], .reg cd)
+      ((legalizeBinop (.reg d) (.reg S) opn mov).map fun y => (y, tg y)) := by
+  unfold legalizeBinop
+  rw [hd, hS]
+  simp only [List.map_cons, List.map_nil, htg]
+  exact simS_srcScratch _ not_keptS_reloadScratch hmov hcmp hn
+
+/-- **The two-address lowering of a binop with a spilled second source.** For a binop
+    `OP d, s0, S` of the two-address alphabet with a register destination `d` and a spill
+    slot `S`, `lowerTwoAddr` simulates it off the scratches, when the binop names no scratch,
+    every binop `OP D, X, S` carries the register tag of the source and every binop
+    `OP D, X, R15` one register tag. -/
+theorem simS_lowerTwoAddrSpill {tg : LinstrR → MemTag} {d s0 S opn mov : String}
+    {cd cd' : Option Nat}
+    (htg : ∀ D X, tg (.Lopn [.reg D] opn [.reg X, .reg S]) = .reg cd)
+    (htg' : ∀ D X, tg (.Lopn [.reg D] opn [.reg X, .reg reloadScratch]) = .reg cd')
+    (hb : isTwoAddrBinop opn = true) (hmov : stripWidthTag mov = "MOV")
+    (hd : (LOperand.reg d).isSpill = false) (hS : (LOperand.reg S).isSpill = true)
+    (hn : ∀ n ∈ instrNames (.Lopn [.reg d] opn [.reg s0, .reg S]), KeptS n) :
+    SimS (.Lopn [.reg d] opn [.reg s0, .reg S], tg (.Lopn [.reg d] opn [.reg s0, .reg S]))
+      ((lowerTwoAddr (.reg d) (.reg s0) (.reg S) opn mov).map fun y => (y, tg y)) := by
+  have hcmp := ne_cmp_of_isTwoAddrBinop hb
+  have hkd : KeptS d := hn d (by simp [instrNames, opNames])
+  have hks0 : KeptS s0 := hn s0 (by simp [instrNames, opNames])
+  have hdS : LOperand.reg S ≠ .reg d := by
+    intro e; rw [e, hd] at hS; cases hS
+  have hn' : ∀ n ∈ instrNames (.Lopn [.reg d] opn [.reg d, .reg S]), KeptS n := by
+    intro n hn1
+    simp only [instrNames, opNames, List.flatMap_cons, List.flatMap_nil, List.append_nil,
+      List.cons_append, List.nil_append, List.mem_cons] at hn1
+    rcases hn1 with rfl | rfl | rfl | h1
+    · exact hkd
+    · exact hkd
+    · exact hn _ (by simp [instrNames, opNames])
+    · simp at h1
+  rw [htg]
+  unfold lowerTwoAddr
+  simp only [materializeWideImm]
+  by_cases hds : (LOperand.reg d) = .reg s0
+  · obtain rfl : d = s0 := by injection hds
+    simpa only [ite_true, List.nil_append] using
+      simS_legalizeBinopSpill (tg := tg) (mov := mov) htg' hmov hcmp hd hS hn'
+  · simp only [hds, ite_false, List.nil_append, List.append_nil, List.map_append]
+    exact simS_movThen hmov hcmp hdS hkd hks0
+      (simS_legalizeBinopSpill htg' hmov hcmp hd hS hn')
+
+/-! ## 6. One-source loads -/
+
+/-- The register step of a one-source instruction writes, at any destination `D'`, the word
+    it writes at `D`. -/
+theorem lsemStepMC_dst1 (opn : String) (a : LOperand) (D D' : String) (s : LstateN) :
+    lsemStepMC (.Lopn [.reg D'] opn [a]) s =
+      (lsemStepMC (.Lopn [.reg D] opn [a]) s).map
+        (fun t => (s.setReg D' (t.lvm D).2).nextPc) := by
+  cases a <;> simp only [lsemStepMC, mulhiStruct?, adcxStruct?, adcxhiStruct?, sbbStruct?,
+    sbbhiStruct?, lsemStepSh, sarStruct?, lsemStepN] <;> (repeat' split) <;>
+    simp_all [LstateN.setReg, LstateN.nextPc]
+
+/-- The typed register step of a one-source instruction writes, at any destination `D'`, the
+    word it writes at `D`. -/
+theorem lsemStepCast_dst1 (opn : String) (a : LOperand) (cd : Option Nat) (D D' : String)
+    (s : LstateN) :
+    lsemStepCast (.Lopn [.reg D'] opn [a], cd) s =
+      (lsemStepCast (.Lopn [.reg D] opn [a], cd) s).map
+        (fun t => (s.setReg D' (t.lvm D).2).nextPc) := by
+  have hMC := lsemStepMC_dst1 opn a D D' s
+  cases a <;> cases cd <;> simp only [lsemStepCast, castStruct?, movImmStruct?, hMC]
+  all_goals
+    split_ifs <;> (repeat' split) <;>
+      simp_all only [Option.map_some, Option.map_none, Option.some.injEq, Prod.mk.injEq,
+        reduceCtorEq, BitVec.truncate_eq_setWidth, Sigma.mk.injEq] <;>
+      (rw [TwoAddrFuelMemF.lvm_nextPc_setReg_self]; try (subst_vars; grind))
+
+/-- The memory step of a one-source instruction other than the array zeroing writes, at any
+    destination `D'`, the cell it writes at `D`. -/
+theorem lsemStepMem_dst1 (opn : String) (a : LOperand) (τ : MemTag) (D D' : String)
+    (hz : opn ≠ "ZEROARR") (s : LstateM) :
+    lsemStepMem (.Lopn [.reg D'] opn [a], τ) s =
+      (lsemStepMem (.Lopn [.reg D] opn [a], τ) s).map (TwoAddrFuelMemF.movDst s D D') := by
+  have hC := lsemStepCast_dst1 opn a none D D' s.reg
+  have hC' := fun cd => lsemStepCast_dst1 opn a cd D D' s.reg
+  cases τ <;> simp only [lsemStepMem, loadStruct?, storeStruct?, loadCStruct?, storeCStruct?,
+    zeroStruct?, storeImmStruct?, hz, ite_false]
+  all_goals first
+    | rfl
+    | (simp only [hC', Option.map_map]; rfl)
+    | (cases a <;> dsimp only <;> (try split_ifs) <;>
+        first
+          | (simp only [hC, Option.map_map]; rfl)
+          | ((repeat' split) <;>
+              (simp_all only [Int.ofNat_eq_natCast, Option.map_some, Option.map_none,
+                Option.some.injEq, Prod.mk.injEq, reduceCtorEq, TwoAddrFuelMemF.movDst,
+                LstateM.setReg, LstateM.nextPc]
+               try rw [TwoAddrFuelMemF.lvm_nextPc_setReg_self])))
+
+/-- **The destination of a one-source instruction.** A one-source instruction other than the
+    array zeroing steps, at any destination `D'` and any tag, to the state it steps to at `D`,
+    with the cell written at `D` written at `D'` and every other register as before the
+    step. -/
+theorem fstepF_dst1 (opn : String) (a : LOperand) (τ : MemTag) (D D' : String)
+    (hz : opn ≠ "ZEROARR") (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg D'] opn [a], τ) s zf =
+      (fstepF (.Lopn [.reg D] opn [a], τ) s zf).map
+        (fun p => (TwoAddrFuelMemF.movDst s D D' p.1, p.2)) := by
+  have hc : ∀ E, cmpArgs? (.Lopn [.reg E] opn [a], τ) = none := fun E => rfl
+  have hs : ∀ E, stepMemF (.Lopn [.reg E] opn [a], τ) s
+      = lsemStepMem (.Lopn [.reg E] opn [a], τ) s := fun E => by
+    unfold stepMemF withALUFlags
+    cases lsemStepMem (.Lopn [.reg E] opn [a], τ) s <;> rfl
+  have hm := lsemStepMem_dst1 opn a τ D D' hz s
+  unfold fstepF
+  simp only [hc, hs, hm]
+  cases a with
+  | reg x =>
+      simp only [movRegArgs?]
+      split_ifs
+      · clear hm hs hc
+        dsimp only
+        rcases h : readReg s.reg (.reg x) with _ | ⟨w, v⟩
+        · rfl
+        · simp only [TwoAddrFuelMemF.movDst, Option.map_some, LstateM.setReg, LstateM.nextPc]
+          rw [TwoAddrFuelMemF.lvm_nextPc_setReg_self]
+      · clear hm hs hc
+        dsimp only
+        rcases h : readReg s.reg (.reg x) with _ | ⟨w, v⟩
+        · rfl
+        · simp only [TwoAddrFuelMemF.movDst, Option.map_some, LstateM.setReg, LstateM.nextPc]
+          rw [TwoAddrFuelMemF.lvm_nextPc_setReg_self]
+      · cases lsemStepMem (.Lopn [.reg D] opn [.reg x], τ) s <;> rfl
+  | _ =>
+      simp only [movRegArgs?]
+      cases lsemStepMem (.Lopn [.reg D] opn [_], τ) s <;> rfl
+
+/-- **A load through the reload scratch.** The pair `opn R15, s ; mov d, R15` simulates the
+    one-source `opn d, s` off the scratches, when the instruction names no scratch and is no
+    array zeroing, and both loads carry one tag. -/
+theorem simS_loadScratch {d opn m : String} {a : LOperand} {τ τ2 : MemTag}
+    (hm : stripWidthTag m = "MOV") (hz : opn ≠ "ZEROARR")
+    (hn : ∀ n ∈ instrNames (.Lopn [.reg d] opn [a]), KeptS n) :
+    SimS (.Lopn [.reg d] opn [a], τ)
+      [(.Lopn [.reg reloadScratch] opn [a], τ), (.Lopn [.reg d] m [.reg reloadScratch], τ2)] := by
+  intro s s' t zf z hA h
+  obtain ⟨t1, ht1, hA1⟩ := fstepF_agreeS ⟨_, _, _, rfl⟩ hn
+    (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩) hA h
+  have h1 : fstepF (.Lopn [.reg reloadScratch] opn [a], τ) s' zf
+      = some (TwoAddrFuelMemF.movDst s' d reloadScratch t1, z) := by
+    rw [fstepF_dst1 opn a τ d reloadScratch hz, ht1]; rfl
+  have e2 := fstepF_movWire d reloadScratch m τ2 hm
+    (TwoAddrFuelMemF.movDst s' d reloadScratch t1) z
+  have hdst : ∀ r, r ≠ d → t1.reg.lvm r = s'.reg.lvm r := fun r hr =>
+    (JasminLsemStepFrame.fstepF_frame_dst ht1 (by simp [JasminLsemStepFrame.dstNames,
+      opNames, hr])).1
+  refine ⟨((TwoAddrFuelMemF.movDst s' d reloadScratch t1).setReg d
+      ((TwoAddrFuelMemF.movDst s' d reloadScratch t1).reg.lvm reloadScratch).2).nextPc,
+    ?_, AgreeS.trans hA1 ?_⟩
+  · rw [runStraightF_cons, h1, Option.bind_some, runStraightF_cons]
+    unfold movWire at e2
+    rw [e2]
+    rfl
+  · refine ⟨fun r hr => ?_, fun r _ => ?_, ?_, ?_, ?_⟩
+    · by_cases hrd : r = d
+      · subst hrd
+        simp [TwoAddrFuelMemF.movDst, LstateM.setReg, LstateM.nextPc]
+      · have hrR : r ≠ reloadScratch := hr.1
+        simp [TwoAddrFuelMemF.movDst, LstateM.setReg, LstateM.nextPc, hrd, hrR, hdst r hrd]
+    · simp [TwoAddrFuelMemF.movDst, LstateM.setReg, LstateM.nextPc]
+    · simp [TwoAddrFuelMemF.movDst, LstateM.setReg, LstateM.nextPc]
+    · simp [TwoAddrFuelMemF.movDst, LstateM.setReg, LstateM.nextPc]
+    · simp [TwoAddrFuelMemF.movDst, LstateM.setReg, LstateM.nextPc]
+
+/-- An operand that `legalizeSibElem` keeps: no SIB element with a spilled base or index. -/
+def sibPlainB : LOperand → Bool
+  | .arrIdx b i _ => !sibNameSpill b && !sibNameSpill i
+  | _ => true
+
+/-- `legalizeSibElem` keeps an operand that `sibPlainB` admits, with no prelude. -/
+theorem legalizeSibElem_of_plain {o : LOperand} (h : sibPlainB o = true) :
+    legalizeSibElem o = ([], o) := by
+  unfold legalizeSibElem
+  split <;> simp_all [sibPlainB]
+
+/-- A load mnemonic is no array zeroing. -/
+theorem ne_zeroArr_of_isMemLoad {opn : String} (hl : isMemLoad opn = true) :
+    opn ≠ "ZEROARR" := by
+  rintro rfl
+  revert hl
+  decide +kernel
+
+/-- **The legalised load.** On a source that `sibPlainB` admits, `legalizeMemLoad` simulates
+    the load `opn d, s` off the scratches, when the load names no scratch and the loads
+    `opn D, s` carry one tag at every register destination `D`. -/
+theorem simS_legalizeMemLoad {tg : LinstrR → MemTag} {d a : LOperand} {opn mov : String}
+    (hl : isMemLoad opn = true) (hsib : sibPlainB a = true) (hmov : stripWidthTag mov = "MOV")
+    (htl : ∀ D D', tg (.Lopn [.reg D] opn [a]) = tg (.Lopn [.reg D'] opn [a]))
+    (hn : ∀ n ∈ instrNames (.Lopn [d] opn [a]), KeptS n) :
+    SimS (.Lopn [d] opn [a], tg (.Lopn [d] opn [a]))
+      ((legalizeMemLoad d a opn mov).map fun y => (y, tg y)) := by
+  unfold legalizeMemLoad
+  simp only [legalizeSibElem_of_plain hsib, List.nil_append]
+  cases hd : d.isSpill
+  · simp only [Bool.false_eq_true, ite_false, List.map_cons, List.map_nil]
+    exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
+  · cases d with
+    | reg dn =>
+        simp only [ite_true, List.map_cons, List.map_nil]
+        rw [htl reloadScratch dn]
+        refine simS_loadScratch ?_ (ne_zeroArr_of_isMemLoad hl) hn
+        cases a with
+        | arrIdx _ _ sc =>
+            dsimp only
+            split_ifs
+            · exact stripWidthTag_mov64
+            · exact hmov
+        | _ => exact hmov
+    | _ => simp [LOperand.isSpill] at hd
+
+/-! ## 7. The lowering core -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LowerCore (lowerCore)
 
@@ -489,42 +782,51 @@ def immSmallB : LOperand → Bool
 
 /-- The cases of `lowerCore imm u64 w` that the per-family simulations of this module
     cover: a two-address binop `OP d, s0, s1` over register names, by the count `v` when `imm`
-    is `some v` and `s1` is the immediate `v`, otherwise when `s1` is neither `d`, a spill slot
-    nor a wide immediate; a non-store `Lopn` with one register destination and two sources
-    that `setccSpill?` leaves unchanged; a select `CMOV:64` over register names; an `Lopn` with
-    one destination and three or more sources that `cmovSpillDst?` leaves unchanged; a
-    one-source instruction that is no native shift or rotate and no load, whose move selection
-    keeps the mnemonic and whose copy mnemonic strips to `MOV` or is a `copyQ` mnemonic.
-    `false` on stores, loads, native shifts and rotates, binops with a spilled or wide second
-    source or with a count read from a register, materialised comparisons with spilled
-    operands, instructions with several destinations, and every instruction other than
-    `Lopn`. -/
+    is `some v` and `s1` is the immediate `v`, otherwise when `s1` is neither `d` nor a wide
+    immediate and is a spill slot only under a register destination `d`; a non-store `Lopn`
+    with one register destination and two sources that `setccSpill?` leaves unchanged; a
+    select `CMOV:64` over register names; an `Lopn` with one destination and three or more
+    sources that `cmovSpillDst?` leaves unchanged; a load whose source has no spilled SIB base
+    or index (`sibPlainB`); a one-source instruction that is no native shift or rotate and no
+    load, whose move selection keeps the mnemonic and whose copy mnemonic strips to `MOV` or is
+    a `copyQ` mnemonic. `false` on stores, loads through a spilled SIB base or index, native
+    shifts and rotates, binops with a wide second source, with a spilled second source under a
+    spilled destination or with a count read from a register, materialised comparisons with
+    spilled operands, instructions with several destinations, and every instruction other
+    than `Lopn`. -/
 def lowerCoreOKB (imm : Option Nat) (u64 : Bool) : LinstrR → Bool
   | .Lopn [.reg d] opn [.reg s0, s1] =>
       if isTwoAddrBinop opn then
         match imm with
         | some v => s1 == .imm v
-        | none => s1 != .reg d && !s1.isSpill && immSmallB s1
+        | none =>
+            s1 != .reg d && immSmallB s1 && (!s1.isSpill || !(LOperand.reg d).isSpill)
       else !isMemStore opn && (setccSpill? [.reg d] opn [.reg s0, s1]).isNone
   | .Lopn [.reg _] opn [.reg _, .reg _, .reg _] =>
       !isTwoAddrBinop opn && opn == "CMOV:64"
   | .Lopn [d] opn (s0 :: s1 :: s2 :: ss) =>
       !isTwoAddrBinop opn && (cmovSpillDst? [d] opn (s0 :: s1 :: s2 :: ss)).isNone
   | .Lopn [d] opn [s] =>
-      !isNativeShiftRotate opn && !isMemLoad opn && spillImmMovMnem u64 opn d s == opn &&
-        (!(stripWidthTag opn == "MOV" || stripWidthTag opn == "MOVQ") ||
-          stripWidthTag opn == "MOV" || copyQ opn)
+      !isNativeShiftRotate opn &&
+        if isMemLoad opn then sibPlainB s
+        else spillImmMovMnem u64 opn d s == opn &&
+          (!(stripWidthTag opn == "MOV" || stripWidthTag opn == "MOVQ") ||
+            stripWidthTag opn == "MOV" || copyQ opn)
   | _ => false
 
 /-- **The lowering core off the scratches.** On an instruction `w` that names no scratch and
     on which `lowerCoreOKB imm u64` holds, `lowerCore imm u64 w` simulates `w` off the
     scratches, when the tag function gives each two-address binop with a fixed second source
-    one register tag and every `CMOV:64` a register tag. -/
+    one register tag, every `CMOV:64` a register tag, and each load with a fixed source one
+    tag at every register destination. -/
 theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool} {w : LinstrR}
     (hok : lowerCoreOKB imm u64 w = true)
     (htg : ∀ opn s1, isTwoAddrBinop opn = true →
       ∃ cd, ∀ D X, tg (.Lopn [.reg D] opn [.reg X, s1]) = .reg cd)
-    (hcm : RegTagOn tg "CMOV:64") (hn : ∀ n ∈ instrNames w, KeptS n) :
+    (hcm : RegTagOn tg "CMOV:64")
+    (htl : ∀ opn s, isMemLoad opn = true →
+      ∀ D D', tg (.Lopn [.reg D] opn [s]) = tg (.Lopn [.reg D'] opn [s]))
+    (hn : ∀ n ∈ instrNames w, KeptS n) :
     SimS (w, tg w) ((lowerCore imm u64 w).map fun y => (y, tg y)) := by
   unfold lowerCoreOKB at hok
   split at hok
@@ -540,14 +842,22 @@ theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool}
         exact simS_lowerTwoAddrShiftImm hcd (stripWidthTag_setccMov opn)
           (ne_cmp_of_isTwoAddrBinop hb) hn
       | none =>
-        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.not_eq_true'] at hok
-        obtain ⟨⟨hd, hs⟩, hw⟩ := hok
+        simp only [Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.or_eq_true,
+          Bool.not_eq_true'] at hok
+        obtain ⟨⟨hd, hw⟩, hsp⟩ := hok
         have himm : materializeWideImm s1 (if hasSuffix opn ":64" then "MOV:64" else "MOV")
             = ([], s1) := by
           unfold materializeWideImm
           split <;> simp_all [immSmallB]
         simp only [lowerCore, hb, ite_true]
-        exact simS_lowerTwoAddr hcd hb (stripWidthTag_setccMov opn) hd hs himm hn
+        cases hs : s1.isSpill
+        · exact simS_lowerTwoAddr hcd hb (stripWidthTag_setccMov opn) hd hs himm hn
+        · have hds : (LOperand.reg d).isSpill = false := by simpa [hs] using hsp
+          cases s1 with
+          | reg S =>
+              obtain ⟨cd', hcd'⟩ := htg opn (.reg reloadScratch) hb
+              exact simS_lowerTwoAddrSpill hcd hcd' hb (stripWidthTag_setccMov opn) hds hs hn
+          | _ => simp [LOperand.isSpill] at hs
     · simp only [Bool.not_eq_true] at hb
       simp only [hb, Bool.false_eq_true, ite_false, Bool.and_eq_true, Bool.not_eq_true',
         Option.isNone_iff_eq_none] at hok
@@ -583,12 +893,19 @@ theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool}
     rw [hl]
     exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
   · rename_i d opn s
-    simp only [Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at hok
-    obtain ⟨⟨⟨hns, hld⟩, hmn⟩, hcp⟩ := hok
-    simp only [lowerCore, hns, hld, Bool.false_eq_true, ite_false]
-    refine simS_legalizeOneSrc hmn (fun h => ?_) hn
-    simp only [Bool.or_eq_true, beq_iff_eq, Bool.not_eq_true'] at hcp h ⊢
-    grind
+    simp only [Bool.and_eq_true, Bool.not_eq_true'] at hok
+    obtain ⟨hns, hok⟩ := hok
+    by_cases hld : isMemLoad opn = true
+    · simp only [hld, ite_true] at hok
+      simp only [lowerCore, hns, hld, Bool.false_eq_true, ite_false, ite_true]
+      exact simS_legalizeMemLoad hld hok (stripWidthTag_setccMov opn) (htl opn s hld) hn
+    · simp only [Bool.not_eq_true] at hld
+      simp only [hld, Bool.false_eq_true, ite_false, Bool.and_eq_true, beq_iff_eq] at hok
+      obtain ⟨hmn, hcp⟩ := hok
+      simp only [lowerCore, hns, hld, Bool.false_eq_true, ite_false]
+      refine simS_legalizeOneSrc hmn (fun h => ?_) hn
+      simp only [Bool.or_eq_true, beq_iff_eq, Bool.not_eq_true'] at hcp h ⊢
+      grind
   · simp at hok
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LowerFuelMemF
