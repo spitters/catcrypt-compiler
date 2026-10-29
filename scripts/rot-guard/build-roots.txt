@@ -141,6 +141,7 @@ CatCrypt.Crypto.Optimizer.Lattice.NTT8PointPass
 CatCrypt.Crypto.Optimizer.Lattice.NTTHoist_Model
 CatCrypt.Crypto.Optimizer.Lattice.NTTInverseGeneric
 CatCrypt.Crypto.Optimizer.Lattice.NTTLinearityGeneric
+CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_CompPolyConcrete
 CatCrypt.Crypto.Optimizer.Lattice.NTTPolyMul_Smoke
 CatCrypt.Crypto.Optimizer.Lattice.NTTRoundTripPass
 CatCrypt.Crypto.Optimizer.Lattice.NegacyclicNTTGeneric
@@ -497,6 +498,7 @@ CatCrypt.Crypto.SecureCompilation.SepLogic.FootprintBridge
 CatCrypt.Crypto.SecureCompilation.SepLogic.Transfer
 CatCrypt.Crypto.SecureCompilation.SepLogic.VC.AddrM
 CatCrypt.Crypto.SecureCompilation.SipHashRoundGoldenPath
+CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer
 CatCrypt.Crypto.SecureCompilation.Speck128GoldenPath
 CatCrypt.Crypto.SecureCompilation.SpeculativeCTStoreBufferPasses
 CatCrypt.Crypto.SecureCompilation.SqisignFieldMulMontFront
@@ -750,6 +752,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.X86VecMulRules
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
 CatCrypt.Crypto.SecureCompilation.VarShiftGoldenPath
+CatCrypt.Crypto.SecureCompilation.VartimeBignumInverse
 CatCrypt.Crypto.SecureCompilation.VectorVarShiftSupported
 CatCrypt.Crypto.SecureCompilation.Width32EmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
@@ -884,6 +887,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSem
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSideCmp
 CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteX86
+CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillLowerSeq
 CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch
 CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeMontMulBlock
 CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeShiftReg

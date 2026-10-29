@@ -11,6 +11,10 @@ public meta import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 public import CatCrypt.Crypto.Optimizer.GraphColoringRegAlloc
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
+public import Mathlib.Data.List.Dedup
+public import Mathlib.Data.List.Nodup
+public import Mathlib.Tactic.Ring
+public import Mathlib.Tactic.Linarith
 
 /-!
 # Spill-slot **reuse**: pack non-overlapping spilled names onto shared frame cells (P6)

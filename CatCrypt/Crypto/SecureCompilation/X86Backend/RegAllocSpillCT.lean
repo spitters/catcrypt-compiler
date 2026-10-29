@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.AllDirectRename
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 
@@ -16,7 +16,7 @@ public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 secure-compiler chain: that the source→machine lowering — including register
 allocation — carries a `NoSecretControl` source to a `CompilableCT` machine
 block. The register-resident half of allocation (a renaming) is proved
-CT-preserving in `ScalarCompileCorrect` (`allDirect_renameBlock`). This module
+CT-preserving in `AllDirectRename` (`allDirect_renameBlock`). This module
 proves the **spill** half. The `Optimizer/RegAllocLeakTrace.RALeak` leakage
 interface is instantiated only for the demonstrator (`DemoI`), so it does not
 connect real spill insertion to the machine leakage theorem.
@@ -49,20 +49,13 @@ for spilled writes), exactly the shape of `SpillingRegAlloc.spillRewriteInstr`.
   machine constant-time class.
 * `spillRewrite_constant_time` — hence the full rename+spill rewrite has a
   state-independent machine leakage trace.
-* `ourLowering_spill_CompilableCT` — composing with `lowerSeq_allDirect`: our
-  lowering followed by `spillRewrite` produces a `CompilableCT` block,
-  discharging the spill-path CT-preservation obligation that
-  `SecureCompileChain.LoweringCTPreserving` assumed.
+* `spillRewrite_CompilableCT` — the spilled block is `CompilableCT`.
 
 `CompilableCT b` is definitionally `allDirect b = true`
 (`CompilableCT.lean`), so the headline `allDirect` lemma yields `CompilableCT`
-directly.
-
-Combined with `allDirect_renameBlock` (resident rename) and `lowerSeq_allDirect`
-(lowering), the full **rename + spill + lowering** chain preserves constant-time.
-The `ImpExpr ↔ LowCT` source-IR bridge needed to plug this into
-`secure_compile_constant_time` *directly* (matching its `ImpExpr` lowering type)
-is outside this module.
+directly. The composition with the scalar-arith lowering `lowerSeq`
+(`ourLowering_spill_CompilableCT`, `ourLowering_spill_constant_time`) is in
+`RegAllocSpillLowerSeq`.
 -/
 
 @[expose] public section
@@ -75,7 +68,6 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CompilableCT
-open CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ScalarCompileCorrect
 open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc (renameInstr)
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc (readNames writtenNames)
@@ -237,40 +229,5 @@ theorem spillRewrite_CompilableCT (ρ : String → String) (frameBase : String)
     (hblock : allDirect block = true) :
     CompilableCT (spillRewrite ρ frameBase slots block) :=
   spillRewrite_allDirect ρ frameBase slots block hblock
-
-/-! ## 5. Discharging the spill half of `LoweringCTPreserving` for our lowering
-
-Our scalar-arith lowering `lowerSeq` always produces an `allDirect` block
-(`lowerSeq_allDirect` — the fragment is memory-free). Composing with
-`spillRewrite_allDirect`: lowering followed by the rename+spill rewrite produces
-a `CompilableCT` block. This is precisely the spill-path CT-preservation
-`SecureCompileChain.LoweringCTPreserving` assumed — that a (no-secret-control)
-source lowers, through register allocation *including spilling*, to a
-`CompilableCT` machine block. The remaining gap to plug directly into
-`secure_compile_constant_time` is the `ImpExpr ↔ LowCT`/`ArithSrc` source-IR
-bridge (the lowering there is typed `ImpExpr → Option (List (JInstr 64))`),
-which is separate wiring. -/
-
-/-- **Our lowering + spill is `CompilableCT`.** For any register map `ρmap`, any
-    resident-half renaming `ρ`, any frame base and slot map, the rename+spill
-    rewrite of the lowered scalar-arith block `lowerSeq ρmap ps` is in the
-    machine constant-time subset. Composes `lowerSeq_allDirect` (lowering is
-    direct) with `spillRewrite_allDirect` (spill insertion preserves direct). -/
-theorem ourLowering_spill_CompilableCT (ρmap : RegMap) (ρ : String → String)
-    (frameBase : String) (slots : String → Option Int) (ps : List ArithSrc) :
-    CompilableCT (spillRewrite ρ frameBase slots (lowerSeq ρmap ps)) :=
-  spillRewrite_CompilableCT ρ frameBase slots (lowerSeq ρmap ps) (lowerSeq_allDirect ρmap ps)
-
-/-- **Our lowering + spill is constant-time.** The end-to-end CT statement for
-    the spill-extended lowering: lower a scalar-arith source block, run the
-    rename+spill register allocation rewrite, and the resulting machine block has
-    a state-independent leakage trace. The lowering + resident-rename + spill
-    chain preserves constant-time. -/
-theorem ourLowering_spill_constant_time (ρmap : RegMap) (ρ : String → String)
-    (frameBase : String) (slots : String → Option Int) (ps : List ArithSrc)
-    (s₁ s₂ : JState 64) :
-    blockLeak s₁ (spillRewrite ρ frameBase slots (lowerSeq ρmap ps))
-      = blockLeak s₂ (spillRewrite ρ frameBase slots (lowerSeq ρmap ps)) :=
-  CompilableCT.constant_time (ourLowering_spill_CompilableCT ρmap ρ frameBase slots ps) s₁ s₂
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT
