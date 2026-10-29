@@ -15,6 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
 public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import Mathlib.Data.ZMod.Basic
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # The NIST P-256 base field ADD and MUL, realized relationally over a 5×64-bit carrier
@@ -89,6 +90,9 @@ def p256Q : Nat :=
 
 /-- `FpP256R` — the NIST P-256 base field as a residue ring. -/
 abbrev FpP256R : Type := ZMod p256Q
+
+-- grind reduces mod p in FpP256R: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpP256R
 
 /-- The P-256 base-field prime as a 5×64-bit little-endian limb vector
     (`limb0` = low, `limb4 = 0`). Matches the saturated 4×u64 LE wire format

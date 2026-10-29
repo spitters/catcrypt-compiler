@@ -9,6 +9,7 @@ public import Mathlib.Data.ZMod.Basic
 public meta import CatCrypt.Crypto.Util.Secp256k1PPrimeCert
 public import CatCrypt.Crypto.Util.Secp256k1PPrimeCert
 public import Mathlib.Tactic.Ring
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # Verified secp256k1 inner kernels over `ZMod (2^256 − 2^32 − 977)`
@@ -81,6 +82,9 @@ instance fact_prime_secp256k1 : Fact (Nat.Prime Secp256k1P) := ⟨secp256k1_prim
 /-- The secp256k1 prime field. An `abbrev` so the `ZMod` field/ring structure
     flows through transparently. -/
 abbrev FpSecp256k1 : Type := ZMod Secp256k1P
+
+-- grind reduces mod p in FpSecp256k1: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpSecp256k1
 
 namespace FpSecp256k1
 

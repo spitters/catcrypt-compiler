@@ -11,6 +11,7 @@ public meta import CatCrypt.Crypto.Jasmin.LeafSig
 public import CatCrypt.Crypto.Jasmin.LeafSig
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public import CatCryptCore.Tactics.GrindChar
 
 @[expose] public section
 
@@ -87,6 +88,9 @@ instance : NeZero bls12381Prime := ⟨by have := bls12381Prime_pos; omega⟩
 /-- A BLS12-381 `Fp` field element (Montgomery-form residue, 6×u64 = 48
     bytes on the wire). -/
 abbrev Bls12381Fp : Type := ZMod bls12381Prime
+
+-- grind reduces mod p in Bls12381Fp: a literal characteristic (grind_char_numeral).
+grind_char_numeral Bls12381Fp
 
 /-! ## §2. Montgomery radix and the leaf denotation -/
 

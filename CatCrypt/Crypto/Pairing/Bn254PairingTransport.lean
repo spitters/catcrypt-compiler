@@ -7,6 +7,7 @@ module
 
 import all Init.Data.Repr
 public import CatCrypt.Crypto.Pairing.Eip197Denote
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # BN254 pairing transport: the EIP-197 verifier under the AUCurves specs
@@ -88,6 +89,9 @@ def bn254BaseFieldPrime : Nat :=
 
 /-- The BN254 base field `F p`. -/
 abbrev Fp : Type := ZMod bn254BaseFieldPrime
+
+-- grind reduces mod p in Fp: a literal characteristic (grind_char_numeral).
+grind_char_numeral Fp
 
 /-- A decoded G1 point: affine `(x, y)` over `Fp`. -/
 abbrev G1Repr : Type := Fp × Fp

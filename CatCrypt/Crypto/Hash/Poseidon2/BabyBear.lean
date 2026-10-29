@@ -9,6 +9,7 @@ public meta import Mathlib.Data.Nat.Prime.Defs
 public import Mathlib.Data.ZMod.Basic
 public import Mathlib.Data.Fin.VecNotation
 public import Mathlib.Algebra.Field.Basic
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # Poseidon2 over Baby Bear (width 16)
@@ -76,6 +77,9 @@ instance : Fact (Nat.Prime babyBearPrime) :=
 
 /-- The Baby Bear field. We name it `F` for parity with the Plonky3 source. -/
 abbrev F : Type := ZMod babyBearPrime
+
+-- grind reduces mod p in F: a literal characteristic (grind_char_numeral).
+grind_char_numeral F
 
 /-! ## Width and round counts (Plonky3 / ePrint 2023/323 defaults) -/
 

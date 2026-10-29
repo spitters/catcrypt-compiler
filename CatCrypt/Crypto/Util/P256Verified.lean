@@ -10,6 +10,7 @@ public meta import CatCrypt.Crypto.Util.P256PrimeCert
 public import CatCrypt.Crypto.Util.P256PrimeCert
 public import Mathlib.Tactic.Group
 public import Mathlib.Tactic.Ring
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # Verified NIST P-256 inner kernels over `ZMod (2^256 - 2^224 + 2^192 + 2^96 - 1)`
@@ -88,6 +89,9 @@ instance fact_prime_p256 : Fact (Nat.Prime P256) := ⟨p256_prime⟩
 /-- The NIST P-256 prime field. An `abbrev` so the `ZMod` field/ring
     structure flows through transparently. -/
 abbrev Fp256 : Type := ZMod P256
+
+-- grind reduces mod p in Fp256: a literal characteristic (grind_char_numeral).
+grind_char_numeral Fp256
 
 namespace Fp256
 

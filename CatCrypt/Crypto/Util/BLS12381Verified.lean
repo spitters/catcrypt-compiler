@@ -10,6 +10,7 @@ public meta import CatCrypt.Crypto.Util.BLS12381PPrimeCert
 public import CatCrypt.Crypto.Util.BLS12381PPrimeCert
 public import Mathlib.Tactic.Group
 public import Mathlib.Tactic.Ring
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # Verified BLS12-381 inner kernels over `ZMod p_BLS`
@@ -87,6 +88,9 @@ instance fact_prime_bls12381 : Fact (Nat.Prime BLS12381) := ⟨bls12381_prime⟩
 /-- The BLS12-381 prime field. An `abbrev` so the `ZMod` field/ring structure
     flows through transparently. -/
 abbrev FpBLS : Type := ZMod BLS12381
+
+-- grind reduces mod p in FpBLS: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpBLS
 
 namespace FpBLS
 

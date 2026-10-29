@@ -12,6 +12,7 @@ public import CatCrypt.Crypto.Util.P256NPrimeCert
 public import CatCrypt.Crypto.Util.Secp256k1NPrimeCert
 public import Mathlib.Tactic.FieldSimp
 public import Mathlib.Tactic.Group
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # Verified scalar-field (`ZMod n`) references for ECDSA / EdDSA
@@ -89,6 +90,9 @@ instance fact_prime_secp256k1N : Fact (Nat.Prime Secp256k1N) := ⟨secp256k1N_pr
 /-- The secp256k1 scalar field. -/
 abbrev FnSecp256k1 : Type := ZMod Secp256k1N
 
+-- grind reduces mod n in FnSecp256k1: a literal characteristic (grind_char_numeral).
+grind_char_numeral FnSecp256k1
+
 /-! ## §2  NIST P-256 scalar field `ZMod n` -/
 
 /-- The NIST P-256 group order `n` (FIPS 186-4). -/
@@ -107,6 +111,9 @@ instance fact_prime_p256N : Fact (Nat.Prime P256N) := ⟨p256N_prime⟩
 
 /-- The P-256 scalar field. -/
 abbrev FnP256 : Type := ZMod P256N
+
+-- grind reduces mod n in FnP256: a literal characteristic (grind_char_numeral).
+grind_char_numeral FnP256
 
 /-! ## §3  Ed25519 scalar field `ZMod L` -/
 
@@ -128,6 +135,9 @@ instance fact_prime_ed25519L : Fact (Nat.Prime Ed25519L) := ⟨ed25519L_prime⟩
 
 /-- The Ed25519 scalar field. -/
 abbrev FnEd25519 : Type := ZMod Ed25519L
+
+-- grind reduces mod n in FnEd25519: a literal characteristic (grind_char_numeral).
+grind_char_numeral FnEd25519
 
 /-! ## §3b  Pasta Pallas scalar field `ZMod n` (the Pasta-cycle order)
 
@@ -161,6 +171,9 @@ instance fact_prime_pallasN : Fact (Nat.Prime PallasN) := ⟨pallasN_prime⟩
 
 /-- The Pasta Pallas scalar field. -/
 abbrev FnPallas : Type := ZMod PallasN
+
+-- grind reduces mod n in FnPallas: a literal characteristic (grind_char_numeral).
+grind_char_numeral FnPallas
 
 /-! ## §4  Generic scalar-field encoders + the ECDSA / EdDSA references
 

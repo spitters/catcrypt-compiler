@@ -10,6 +10,7 @@ public meta import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
 public import CatCrypt.Crypto.SecureCompilation.VIR.ChaChaEmit
 public meta import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
 public import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # ChaCha20-Poly1305 AEAD (RFC 8439) emitted through the verified front
@@ -116,6 +117,9 @@ def polyPrime : Nat := 2 ^ 130 - 5
     by `2¹³⁰ ≡ 5 (mod p)` (the `·5` high-limb fold); the additive structure
     carrying the proof is independent of that representation choice. -/
 abbrev Fp := ZMod polyPrime
+
+-- grind reduces mod p in Fp: a literal characteristic (grind_char_numeral).
+grind_char_numeral Fp
 
 /-- The number of Poly1305 message blocks the MAC kernel Horner-folds over
     (`NBLK = 10`: the exact block count of the RFC 8439 §2.8.2 message

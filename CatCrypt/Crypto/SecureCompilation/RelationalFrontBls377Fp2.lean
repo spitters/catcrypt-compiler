@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
 public import Mathlib.Data.ZMod.Basic
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # The `bls12_377` quadratic extension `Fp2 = Fp[u]/(u² − ξ)`, with KARATSUBA mul
@@ -76,6 +77,9 @@ instance : NeZero bls377Q := ⟨by unfold bls377Q; norm_num⟩
 
 /-- The `bls12_377` base field `FpBLS377 = ZMod bls377Q` (the relational carrier). -/
 abbrev FpBLS377 : Type := ZMod bls377Q
+
+-- grind reduces mod p in FpBLS377: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpBLS377
 
 /-! ## 1. The quadratic extension `Fp2_377 = FpBLS377[u]/(u² − ξ)`
 

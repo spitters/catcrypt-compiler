@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.FieldExpChainSemantics
 public import CatCrypt.Crypto.Jasmin.Ed25519.CompressEmit
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # `ed25519_compress` — chain-to-spec correctness
@@ -120,6 +121,9 @@ open CatCrypt.Crypto.Jasmin.Ed25519.InvP25519Algo
 
 /-- Spec-level field: `Fp25519 := ZMod (2^255 − 19)`. -/
 abbrev Fp25519 : Type := ZMod p25519
+
+-- grind reduces mod p in Fp25519: a literal characteristic (grind_char_numeral).
+grind_char_numeral Fp25519
 
 /-- The "y-encode" half of `fe25519_pack_sign`: encode a field element
     as a 32-byte little-endian sequence (we leave it as a parameter

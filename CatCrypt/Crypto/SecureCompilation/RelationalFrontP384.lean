@@ -15,6 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
 public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import Mathlib.Data.ZMod.Basic
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # The NIST P-384 base field ADD and MUL, realized relationally over a 7×64-bit carrier
@@ -93,6 +94,9 @@ def p384Q : Nat :=
 
 /-- `FpP384R` — the NIST P-384 base field as a residue ring. -/
 abbrev FpP384R : Type := ZMod p384Q
+
+-- grind reduces mod p in FpP384R: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpP384R
 
 /-- The P-384 base-field prime as a 7×64-bit little-endian limb vector
     (`limb0` = low, `limb6 = 0`). The six low limbs match the saturated 6×u64 LE wire

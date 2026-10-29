@@ -15,6 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
 public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import Mathlib.Data.ZMod.Basic
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # The Pallas base field ADD and MUL, realized relationally over a 4×64-bit carrier
@@ -79,6 +80,9 @@ def pallasQ : Nat :=
 
 /-- `FpPallas` — the Pallas base field as a residue ring. -/
 abbrev FpPallas : Type := ZMod pallasQ
+
+-- grind reduces mod p in FpPallas: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpPallas
 
 /-- The Pallas base-field prime as a 4×64-bit little-endian limb vector
     (`limb0` = low). Matches the AUCurves saturated 4×u64 LE wire format for Pallas

@@ -10,6 +10,7 @@ public meta import CatCrypt.Crypto.Util.BN254PrimeCert
 public import CatCrypt.Crypto.Util.BN254PrimeCert
 public import Mathlib.Tactic.Group
 public import Mathlib.Tactic.Ring
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # Verified BN254 (alt-bn128) inner kernels over `ZMod p_BN254`
@@ -88,6 +89,9 @@ instance fact_prime_bn254 : Fact (Nat.Prime BN254) := ⟨bn254_prime⟩
 /-- The BN254 prime field. An `abbrev` so the `ZMod` field/ring structure
     flows through transparently. -/
 abbrev FpBN254 : Type := ZMod BN254
+
+-- grind reduces mod p in FpBN254: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpBN254
 
 namespace FpBN254
 

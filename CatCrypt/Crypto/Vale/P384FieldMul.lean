@@ -11,6 +11,7 @@ public meta import CatCrypt.Crypto.Jasmin.LeafSig
 public import CatCrypt.Crypto.Jasmin.LeafSig
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.Curve6LimbTierA
+public import CatCryptCore.Tactics.GrindChar
 
 @[expose] public section
 
@@ -82,6 +83,9 @@ instance : NeZero p384Prime := ⟨by have := p384Prime_pos; omega⟩
 /-- A NIST P-384 `Fp` field element (Montgomery-form residue, 6×u64 = 48
     bytes on the wire). -/
 abbrev P384Fp : Type := ZMod p384Prime
+
+-- grind reduces mod p in P384Fp: a literal characteristic (grind_char_numeral).
+grind_char_numeral P384Fp
 
 /-! ## §2. Montgomery radix and the leaf denotation -/
 

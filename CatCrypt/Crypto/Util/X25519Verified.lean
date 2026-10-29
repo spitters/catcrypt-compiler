@@ -10,6 +10,7 @@ public meta import CatCrypt.Crypto.Util.P25519PrimeCert
 public import CatCrypt.Crypto.Util.P25519PrimeCert
 public import Mathlib.Tactic.Group
 public import Mathlib.Tactic.Ring
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # Verified Curve25519 inner kernels over `ZMod (2^255 - 19)`
@@ -91,6 +92,9 @@ instance fact_prime_p25519 : Fact (Nat.Prime P25519) := ⟨p25519_prime⟩
 /-- The Curve25519 prime field. An `abbrev` so the `ZMod` field/ring
     structure flows through transparently. -/
 abbrev Fp25519 : Type := ZMod P25519
+
+-- grind reduces mod p in Fp25519: a literal characteristic (grind_char_numeral).
+grind_char_numeral Fp25519
 
 namespace Fp25519
 

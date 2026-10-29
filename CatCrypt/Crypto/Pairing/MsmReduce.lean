@@ -12,6 +12,7 @@ public import Mathlib.Algebra.Field.ZMod
 public import CatCrypt.Crypto.SecureCompilation.VIR.VectorReduce
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 public import CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFront
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # The pairing-ZK shared hot kernel: multi-scalar multiplication (MSM) over an EC group
@@ -112,6 +113,9 @@ instance factP : Fact (Nat.Prime p) := ⟨p_prime⟩
 
 /-- The toy base field `Fp = ZMod 23` (a `Field` via `factP`). -/
 abbrev Fp : Type := ZMod p
+
+-- grind reduces mod p in Fp: a literal characteristic (grind_char_numeral).
+grind_char_numeral Fp
 
 /-- A short-Weierstrass curve `y² = x³ + a·x + b` over `Fp` (the `a₁=a₂=a₃=0`
     form), as a Mathlib `WeierstrassCurve`. -/

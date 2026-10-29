@@ -15,6 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
 public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import Mathlib.Data.ZMod.Basic
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # The BN254 base field ADD and MUL, realized relationally over a 4×64-bit carrier
@@ -78,6 +79,9 @@ def bn254Q : Nat :=
 
 /-- `FpBN254R` — the BN254 base field as a residue ring. -/
 abbrev FpBN254R : Type := ZMod bn254Q
+
+-- grind reduces mod p in FpBN254R: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpBN254R
 
 /-- The BN254 base-field prime as a 4×64-bit little-endian limb vector
     (`limb0` = low). `q = Σ bn254Limbsᵢ · 2^(64·i)`. -/

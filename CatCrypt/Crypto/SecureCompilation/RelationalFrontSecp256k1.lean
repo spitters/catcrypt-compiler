@@ -15,6 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Add
 public meta import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377Mul
 public import Mathlib.Data.ZMod.Basic
+public import CatCryptCore.Tactics.GrindChar
 
 /-!
 # The secp256k1 base field ADD and MUL, realized relationally over a 5×64-bit carrier
@@ -88,6 +89,9 @@ def secpQ : Nat :=
 
 /-- `FpSecp` — the secp256k1 base field as a residue ring. -/
 abbrev FpSecp : Type := ZMod secpQ
+
+-- grind reduces mod p in FpSecp: a literal characteristic (grind_char_numeral).
+grind_char_numeral FpSecp
 
 /-- The secp256k1 base-field prime as a 5×64-bit little-endian limb vector
     (`limb0` = low, `limb4 = 0`). Matches the saturated 4×u64 LE wire format
