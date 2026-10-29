@@ -247,13 +247,14 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCellsLeak (posTW 
   stepLeakA_cellBodyW cellA?_cellBody)
 
 /-- **The events of the address machine at an instruction of a body with conditional
-    branches under the gate with carry chains**, from the events `e` of its image: `e` at a
-    conditional branch, `posTW` of `e` at every other instruction. -/
+    branches under the gate with carry chains**, from its image instruction `i` and the events
+    `e` of `i`: `e` at a conditional branch, `posTW` of `i` and `e` at every other
+    instruction. -/
 def posTC (frame : String → Option (BitVec 64)) (base : String → BitVec 64) (s0 : LstateA)
-    (x : LinstrR) (e : List CTLeak) : List CTLeak :=
+    (x : LinstrR) (i : LinstrRM) (e : List CTLeak) : List CTLeak :=
   match x with
   | .Lcond _ _ => e
-  | _ => posTW frame base s0 x e
+  | _ => posTW frame base s0 x i e
 
 /-- **One step of the image of the cell body with the events of the address machine.** From
     states related by `ImgRelW`, a checked step of the image of the instruction `bi` of the
@@ -277,6 +278,7 @@ theorem cell_step_traceW {frame : String → Option (BitVec 64)}
       ∧ ∀ fuel r ℓ, runALeak frame body fuel sa' t.zf = some (r, ℓ) →
           ∃ fuel', runALeak frame body fuel' sa s.zf = some (r,
             posTC frame base s0 bi.li_i
+              (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i)
               (instrLeakF (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i) s)
               ++ ℓ) := by
   have hb' := hb
@@ -319,6 +321,7 @@ theorem cell_step_traceW {frame : String → Option (BitVec 64)}
       unfold decC
       rw [hcc]
     have hpT : posTC frame base s0 bi.li_i
+        (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i)
         (instrLeakF (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i) s)
         = [.branch (s.zf == pol)] := by
       rw [hev, hx]
@@ -365,10 +368,12 @@ theorem cell_step_traceW {frame : String → Option (BitVec 64)}
       exact hpA
     obtain ⟨-, he⟩ := stepA_cellBody hF hptr s.zf
     have hL : stepLeakA frame body sa s.zf = posTW frame base s0 bi.li_i
+        (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i)
         (instrLeakF (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i) s) := by
       rw [stepLeakA_cellBodyW hsep hgate hN hF hrel hb0]
       exact step_leakW hsep hgate hrel hlt hb (cellA?_cellBody hF hb) hnc' s0
-    have hpT : ∀ e, posTC frame base s0 bi.li_i e = posTW frame base s0 bi.li_i e := by
+    have hpT : ∀ i e, posTC frame base s0 bi.li_i i e = posTW frame base s0 bi.li_i i e := by
+      intro i
       intro e
       unfold posTC
       split
@@ -383,11 +388,12 @@ theorem cell_step_traceW {frame : String → Option (BitVec 64)}
 /-! ## 3. The run of the image of a cell body and constant time -/
 
 /-- The map of `GTr` for the address machine: `posTC` at the instruction of the cell body
-    `cb` at the program counter. -/
+    `cb` at the program counter and its image. -/
 def stepGC (frame : String → Option (BitVec 64)) (base : String → BitVec 64) (s0 : LstateA)
-    (cb : Lcmd) (k : Nat) (e : List CTLeak) : List CTLeak :=
+    (slotArr : String → Option (String × Nat)) (cb : Lcmd) (k : Nat) (e : List CTLeak) :
+    List CTLeak :=
   match cb[k]? with
-  | some bi => posTC frame base s0 bi.li_i e
+  | some bi => posTC frame base s0 bi.li_i (imgInstr slotArr cb k bi.li_i) e
   | none => []
 
 /-- **The traced image simulation of a cell body with carry chains and conditional
@@ -411,7 +417,7 @@ theorem cell_image_addr_gtrW {frame : String → Option (BitVec 64)}
       ∃ ℓ g fuel' r,
         lsemFuelMemFLeak (singletonProgM fn (virtImg slotArr (cellBody slotArr body))) fuel s
           = some (t, ℓ)
-        ∧ GTr (stepGC frame base s0 (cellBody slotArr body))
+        ∧ GTr (stepGC frame base s0 slotArr (cellBody slotArr body))
             (singletonProgM fn (virtImg slotArr (cellBody slotArr body))) s g
         ∧ runALeak frame body fuel' sa zf = some (r, g) := by
   set cb := cellBody slotArr body with hcb
@@ -419,7 +425,8 @@ theorem cell_image_addr_gtrW {frame : String → Option (BitVec 64)}
   have halt : ∀ (s : LstateMF) (sa : LstateA) (zf : Bool), s.prog.lfn = fn →
       ImgRelW frame slotArr base cb s sa zf → findInstrMem P s.prog = none →
       ∀ fuel, ∃ ℓ g fuel' r, lsemFuelMemFLeak P fuel s = some (s, ℓ)
-        ∧ GTr (stepGC frame base s0 cb) P s g ∧ runALeak frame body fuel' sa zf = some (r, g) := by
+        ∧ GTr (stepGC frame base s0 slotArr cb) P s g
+        ∧ runALeak frame body fuel' sa zf = some (r, g) := by
     intro s sa zf hfn hrel hf fuel
     have hh := haltedA_of_imgW hgate fn hfn hrel.pc hf
     rw [haltedA_cellBody] at hh
@@ -463,9 +470,9 @@ theorem cell_image_addr_gtrW {frame : String → Option (BitVec 64)}
                 cell_step_traceW hsep hphys hgate hN hF fn s0 hrel hb hlt he
               obtain ⟨ℓ', g', f', r, hl', hg', hr'⟩ := ih s1 t sa' s1.zf hfn1 hrel' hrun
               obtain ⟨f'', hr''⟩ := hcomp f' r g' hr'
-              have hG : stepGC frame base s0 cb s.prog.base.lpc
+              have hG : stepGC frame base s0 slotArr cb s.prog.base.lpc
                   (instrLeakF (imgInstr slotArr cb sa.reg.lpc bi.li_i) s)
-                  = posTC frame base s0 bi.li_i
+                  = posTC frame base s0 bi.li_i (imgInstr slotArr cb sa.reg.lpc bi.li_i)
                     (instrLeakF (imgInstr slotArr cb sa.reg.lpc bi.li_i) s) := by
                 have hpc : s.prog.base.lpc = sa.reg.lpc := hrel.pc.symm
                 unfold stepGC

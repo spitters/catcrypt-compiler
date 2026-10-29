@@ -753,6 +753,78 @@ theorem idx_mem_of_imgStepW {frame : String → Option (BitVec 64)}
     exact cell_mem_imgStores hq (idx_lt_of_checked hstep
       (.inr ⟨_, d, A, rfl, by simp [loadStruct?]⟩) (hidxe.trans hvi))
 
+/-- **The zeroing of an image step with carry chains** writes the words of an array:
+    `zarr_mem_of_imgStep` under `ImgRelW` and `imgGateBW`. -/
+theorem zarr_mem_of_imgStepW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {c : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hgate : imgGateBW frame slotArr c = true)
+    {s : LstateMF} {sa : LstateA} {zf : Bool}
+    (hrel : ImgRelW frame slotArr base c s sa zf) {bi : Linstr}
+    (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1) {b : String} {n w : Nat}
+    {p : BitVec 64} (hx : ∃ o, LprogAsmPrinter.untagCaret o = "ZEROARR"
+      ∧ bi.li_i = .Lopn [] o [.reg b, .imm n, .imm w])
+    (hp : sa.reg.getW b 64 = some p) :
+    ∀ x ∈ (⟨p, 8 * n⟩ : Rng 64), x ∈ imgStores frame slotArr base := by
+  have hg : instrGateBW frame slotArr c sa.reg.lpc bi.li_i = true := by
+    simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
+    have := hgate.1.1 sa.reg.lpc hlt
+    rw [hb] at this
+    simpa using this
+  obtain ⟨o, ho, hx⟩ := hx
+  simp only [instrGateBW, gateAtW, Bool.and_eq_true] at hg
+  obtain ⟨-, hg⟩ := hg
+  have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
+  have hc : icase frame bi.li_i = .zarr b n w := by rw [hx]; simp [icase, castTagW, ho]
+  rw [hci, hc] at hg
+  simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
+  obtain ⟨⟨hm, -⟩, hbf⟩ := hg
+  cases hacc : accArr slotArr c sa.reg.lpc b with
+  | none => rw [hacc] at hm; cases hm
+  | some An =>
+    obtain ⟨A, m⟩ := An
+    rw [hacc] at hm
+    obtain rfl : n = m := by simpa using hm
+    obtain ⟨q, hq, hpb⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
+    rw [hp] at hpb
+    cases hpb
+    exact arr_mem_imgStores hq
+
+/-- **The constant-index store of an image step with carry chains** writes a word of an
+    array: `simm_mem_of_imgStep` under `ImgRelW` and `imgGateBW`. -/
+theorem simm_mem_of_imgStepW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {c : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hgate : imgGateBW frame slotArr c = true)
+    {s : LstateMF} {sa : LstateA} {zf : Bool}
+    (hrel : ImgRelW frame slotArr base c s sa zf) {bi : Linstr}
+    (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1) {d b v : String}
+    {k : Nat} {p : BitVec 64} (hx : ∃ o, LprogAsmPrinter.untagCaret o = "STOREIMM"
+      ∧ bi.li_i = .Lopn [.reg d] o [.reg b, .reg v, .imm k])
+    (hp : sa.reg.getW b 64 = some p) :
+    ∀ x ∈ (⟨p + BitVec.ofNat 64 (8 * k), 8⟩ : Rng 64), x ∈ imgStores frame slotArr base := by
+  have hg : instrGateBW frame slotArr c sa.reg.lpc bi.li_i = true := by
+    simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
+    have := hgate.1.1 sa.reg.lpc hlt
+    rw [hb] at this
+    simpa using this
+  obtain ⟨o, ho, hx⟩ := hx
+  simp only [instrGateBW, gateAtW, Bool.and_eq_true] at hg
+  obtain ⟨-, hg⟩ := hg
+  have hci : carryI? bi.li_i = none := by rw [hx]; simp [carryI?]
+  have hc : icase frame bi.li_i = .simm d b v k := by rw [hx]; simp [icase, castTagW, ho]
+  rw [hci, hc] at hg
+  simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hg
+  obtain ⟨⟨hm, hbf⟩, -⟩ := hg
+  cases hacc : accArr slotArr c sa.reg.lpc b with
+  | none => rw [hacc] at hm; cases hm
+  | some An =>
+    obtain ⟨A, m⟩ := An
+    rw [hacc] at hm
+    have hk : k < m := by simpa using hm
+    obtain ⟨q, hq, hpb⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
+    rw [hp] at hpb
+    cases hpb
+    exact cell_mem_imgStores hq hk
+
 /-! ## 4. Bodies with cells -/
 
 /-- **The accesses of a step of a body with cells.** Where the base register of every cell
@@ -1048,12 +1120,6 @@ theorem image_addr_simBW'_access {frame : String → Option (BitVec 64)}
         have hb' := hb
         rw [cellBody_getElem?] at hb'
         obtain ⟨b0, hb0, he0⟩ := Option.map_eq_some_iff.mp hb'
-        have hgW : instrGateBW frame slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i
-            = true := by
-          simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
-          have := hgate.1.1 sa.reg.lpc hlt
-          rw [hb] at this
-          simpa using this
         refine accessIn_cellBody hF hptr hb0 (fun b idx sc p vi hx hp hvi => ?_)
           (fun b n w p hx hp => ?_) (fun d b v k p hx hp => ?_)
         · have hc0 : cellA? b0.li_i = none := by
@@ -1066,17 +1132,13 @@ theorem image_addr_simBW'_access {frame : String → Option (BitVec 64)}
             rw [hx]; simp [cellA?]
           rw [cellMove_of_none hc0] at he0
           subst he0
-          obtain ⟨_, ho, hx⟩ := hx
-          rw [hx] at hgW
-          simp [instrGateBW, gateAtW, carryI?, icase, castTagW, ho] at hgW
+          exact zarr_mem_of_imgStepW hsep hgate hrel hb hlt hx hp
         · have hc0 : cellA? b0.li_i = none := by
             obtain ⟨_, -, hx⟩ := hx
             rw [hx]; simp [cellA?]
           rw [cellMove_of_none hc0] at he0
           subst he0
-          obtain ⟨_, ho, hx⟩ := hx
-          rw [hx] at hgW
-          simp [instrGateBW, gateAtW, carryI?, icase, castTagW, ho] at hgW
+          exact simm_mem_of_imgStepW hsep hgate hrel hb hlt hx hp
       obtain ⟨hh, hsafe, sa1, hst, hc⟩ :=
         cell_stepW' hsep hphys hgate hN hF fn hcond hrel hb hlt he
       refine ⟨hh, ⟨hsafe, hS⟩, sa1, s1.zf, hst, ?_⟩
