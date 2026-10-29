@@ -55,7 +55,12 @@ work="$(mktemp -d)"; idx="$work/index"
 # are not tracked are added: those are other sessions' unregistered modules in progress,
 # and a generator reading `git ls-files` alone would drop their lines.
 committed=0
+added=()
 restore() {
+  # A refused commit leaves no intent-to-add entry of this script in the shared index.
+  if [ "$committed" = 0 ] && [ ${#added[@]} -gt 0 ]; then
+    git rm --cached -q -- "${added[@]}" 2>/dev/null || true
+  fi
   for l in "${lists[@]}"; do [ -f "$work/$(printf '%s' "$l" | tr / _)" ] && cp "$work/$(printf '%s' "$l" | tr / _)" "$l"; done
   if [ "$committed" = 1 ]; then
     idx2="$work/index-wt"; cp "$(git rev-parse --git-path index)" "$idx2"
@@ -73,7 +78,9 @@ trap restore EXIT
 for l in "${lists[@]}"; do [ -f "$l" ] && cp "$l" "$work/$(printf '%s' "$l" | tr / _)"; done
 
 for p in "${paths[@]}"; do
-  [ -e "$p" ] && ! git ls-files --error-unmatch -- "$p" >/dev/null 2>&1 && git add -N -- "$p"
+  if [ -e "$p" ] && ! git ls-files --error-unmatch -- "$p" >/dev/null 2>&1; then
+    git add -N -- "$p" && added+=("$p")
+  fi
 done
 head0="$(git rev-parse HEAD)"
 GIT_INDEX_FILE="$idx" git read-tree HEAD

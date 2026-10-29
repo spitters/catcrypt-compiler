@@ -18,7 +18,6 @@ CatCrypt.Crypto.Bridges.Transfer.ForallFoldTactic
 CatCrypt.Crypto.Hash.FullSecurity
 CatCrypt.Crypto.Hash.KangarooTwelve
 CatCrypt.Crypto.Hash.StateBytesCodec
-CatCrypt.Crypto.Hax.FrontDomain
 CatCrypt.Crypto.Hax.FrontTyping
 CatCrypt.Crypto.Hax.HaxToLowCTExitArrBounds
 CatCrypt.Crypto.Hax.HaxToLowCTSim_WhileTrue
@@ -121,11 +120,7 @@ CatCrypt.Crypto.Jasmin.SpartanSumCheckReflect
 CatCrypt.Crypto.Jasmin.TowerTupleLoad
 CatCrypt.Crypto.Jasmin.VaesReflect
 CatCrypt.Crypto.KeyAgreement.MontgomeryLadder
-CatCrypt.Crypto.MLDSA.NttTemplate
-CatCrypt.Crypto.MLDSA.Spec.Rounding
-CatCrypt.Crypto.MLKEM.Compress
 CatCrypt.Crypto.MLKEM.Libcrux.RqAlgebra
-CatCrypt.Crypto.MLKEM.NttTemplate
 CatCrypt.Crypto.MLKEM.Spec.Coeffs
 CatCrypt.Crypto.MultiQueryPRF
 CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
@@ -386,6 +381,7 @@ CatCrypt.Crypto.SecureCompilation.Dialects.MulHiFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.NFFlattenTuplesLeak
 CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakDeclass
 CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakLower
+CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakOfCom
 CatCrypt.Crypto.SecureCompilation.Dialects.NestedRuntimeLoopFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchLoopFront
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFrontValidate
@@ -663,7 +659,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 CatCrypt.Crypto.SecureCompilation.VIR.NFFwdLoad1
 CatCrypt.Crypto.SecureCompilation.VIR.NFPassLeakMC
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapRel
-CatCrypt.Crypto.SecureCompilation.VIR.NFRegionLaws
 CatCrypt.Crypto.SecureCompilation.VIR.NFToJasminSemFn
 CatCrypt.Crypto.SecureCompilation.VIR.NarrowFieldPlant64
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
@@ -708,7 +703,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.RcongrLeafAutomation
 CatCrypt.Crypto.SecureCompilation.VIR.RegPtrOutCallProbe
 CatCrypt.Crypto.SecureCompilation.VIR.RegisterAllocationReclassify
 CatCrypt.Crypto.SecureCompilation.VIR.RejUniformCovered
-CatCrypt.Crypto.SecureCompilation.VIR.RoundCodec
 CatCrypt.Crypto.SecureCompilation.VIR.RowLazy
 CatCrypt.Crypto.SecureCompilation.VIR.RustExecSimulatesUnified
 CatCrypt.Crypto.SecureCompilation.VIR.SDitHShakeCovered
@@ -752,7 +746,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.X86VecMulRules
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckCovered
 CatCrypt.Crypto.SecureCompilation.VIR.ZkSumCheckWholeProverEmitMain
 CatCrypt.Crypto.SecureCompilation.VarShiftGoldenPath
-CatCrypt.Crypto.SecureCompilation.VartimeBignumInverse
 CatCrypt.Crypto.SecureCompilation.VectorVarShiftSupported
 CatCrypt.Crypto.SecureCompilation.Width32EmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.X86Backend.Aes128CtrVsimdEmit
@@ -780,7 +773,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillEncodable
 CatCrypt.Crypto.SecureCompilation.X86Backend.ComLegalityShiftBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.CompileComToElfMultiPtr
 CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldCT
-CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFoldFuelMemF
 CatCrypt.Crypto.SecureCompilation.X86Backend.CryptoExtValidation
 CatCrypt.Crypto.SecureCompilation.X86Backend.Curve4DotProvenEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.CurveFieldMathlibSpec
@@ -820,9 +812,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
 CatCrypt.Crypto.SecureCompilation.X86Backend.IdxBaseGateKats
 CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheckIsa
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets
-CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRegW
@@ -841,7 +831,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LadderStepFrontOkProof
 CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdLea
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel
-CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable
+CatCrypt.Crypto.SecureCompilation.X86Backend.LinkShapeComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
@@ -869,7 +859,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
-CatCrypt.Crypto.SecureCompilation.X86Backend.OptBlocksComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT
@@ -920,9 +909,9 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCurve25519Fragment
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulDepthTrace
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
-CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrFuelMemF
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecAsmZmm
+CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelLinkedFn
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecLocalCheck
 CatCrypt.Crypto.SecureCompilation.X86Backend.VpackAdd8VpackZmmEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VsimdGraphColorRegAlloc
@@ -1076,14 +1065,17 @@ CatCrypt.Tactics.Triangle
 CatCrypt.Tactics.TryBij2
 CatCrypt.Tactics.UpToBad
 CatCrypt.Tactics.WP
+HaxAscent.Ascent.ArrStructs
 HaxAscent.Ascent.IfBreak
 HaxAscent.Ascent.LocalCalls
+HaxAscent.Ascent.StructTupleCorres
 HaxAscent.Calculus.CorresMCutPointRustM
 HaxAscent.Calculus.CorresMRRel
 HaxAscent.Calculus.RustMSquareSpec
 HaxAscent.RustSemantics
 HaxAscent.RustSemantics.AscendRustM
 HaxAscent.RustSemantics.BackendLoops
+HaxAscent.RustSemantics.ToRustMSBreak
 HaxAscent.RustSemantics.ToRustMSCongr
 HaxAscent.RustSemantics.ToRustMSContractDemo
 HaxAscent.RustSemantics.ToRustMSInv

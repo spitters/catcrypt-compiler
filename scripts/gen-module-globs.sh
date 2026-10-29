@@ -53,8 +53,19 @@ trap 'rm -rf "$work"' EXIT
 # naming a module the committed tree carries and `--check` fails on the next
 # push. `HEAD` alone is not enough either: a module added and not yet
 # committed has to be listed before it can build. The disk test keeps a
-# removed module out.
+# removed module out. The working-tree lists also name the untracked, not
+# ignored files, so that a new module builds with no entry in the shared index
+# (an intent-to-add entry there blocks the other sessions' commits); `--check`,
+# `GEN_TRACKED_ONLY=1` and a run under a private `GIT_INDEX_FILE`
+# (scripts/commit-own.sh) leave them out.
+untracked() {
+  if [ "${1:-}" = "--check" ] || [ "${GEN_TRACKED_ONLY:-0}" = 1 ] || [ -n "${GIT_INDEX_FILE:-}" ]; then
+    return 0
+  fi
+  git ls-files --others --exclude-standard 'CatCrypt/*.lean' 'CatCrypt/**/*.lean'
+}
 { { git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean'
+    untracked "${1:-}"
     git ls-tree -r --name-only HEAD -- CatCrypt 2>/dev/null | grep -E '\.lean$' || true
   } | LC_ALL=C sort -u | while IFS= read -r f; do [ -f "$f" ] && printf '%s\n' "$f"; done \
     | sed 's#\.lean$##; s#/#.#g'; } | LC_ALL=C sort -u > "$work/all"
