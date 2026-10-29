@@ -34,11 +34,13 @@ and the nested runners). The A3 **data-dependent while** had no source node:
    `ComL.whileNz update guard init invs (.ret .here)` denotes the
    `(guard.lookup V).toNat`-fold — the trip count the countdown guard exit
    realises.
-3. **`whileMem_export_faithful_comL`** (§3): the composed export theorem — the
+3. **`whileMem_export_faithful_denote`** (§3): the composed export theorem — the
    emitted `whileLinstrRM top gReg [] body` machine run (`lsemFuelMemLC`, fuel
    `whileTripsMem … * (fuelCostC … + 1)`, the trip read off the run) halts at a
-   state whose accumulator register decodes to **`ComL.whileNz`'s
-   `ComL.denote`**. The trip identification `htrip` (`whileTripsMem … =
+   state whose accumulator register decodes to the source fold
+   `JLoopBodyN.denote ⟨(guard.lookup V).toNat, update⟩`;
+   `whileMem_export_faithful_comL` states the same conclusion at
+   `ComL.whileNz`'s `ComL.denote`. The trip identification `htrip` (`whileTripsMem … =
    (guard.lookup V).toNat`) is the countdown-idiom content: the data-dependent
    trip equals the seed. Combined with the run-halting hypothesis it also
    excludes the `guard = 0` underflow entry (a halting do-while has trip
@@ -124,22 +126,61 @@ theorem comL_whileNz_ret_denote {Γ : Ctxt jasminDialect} {w : Nat}
       = JLoopBodyN.denote ⟨(guard.lookup V).toNat, update⟩
           (Expr.lookupArgs invs V) (init.lookup V) := rfl
 
-/-! ## 3. The composed export theorem: machine run decodes to `ComL.denote` -/
+/-! ## 3. The composed export theorem: machine run decodes to the source fold -/
 
-/-- **A3 export faithfulness, concluded at `ComL.denote`.** The composed
+/-- **A3 export faithfulness, concluded at the source fold.** The composed
     "emitted while executes as the source denotation" statement for the
     data-dependent do-while: for the emitted `whileLinstrRM top gReg [] body`
     run by `lsemFuelMemLC` from the loop top, if the do-while `runWhileMem`
-    halts within `fuel` (`hhalt` — the trip `whileTripsMem …` **read off the
-    run**, not supplied), the data-dependent trip equals the countdown seed
-    (`htrip` — the countdown-idiom identification; with `hhalt` it forces
-    `0 < guard.lookup V`, excluding the underflow entry), the seed decodes
+    halts within `fuel` (`hhalt`, the trip `whileTripsMem …` read off the run),
+    the data-dependent trip equals the countdown seed (`htrip`, the
+    countdown-idiom identification; with `hhalt` it forces
+    `0 < guardV.lookup V`, excluding the underflow entry), the seed decodes
     (`hinit`) and each trip computes one `JLoopBodyN.stepC` under the `decodeM`
     correspondence (`hsim`), then the machine run halts at a state whose
-    accumulator register decodes to the front node
-    `ComL.whileNz update guardV initV invsV (.ret .here)`'s **`ComL.denote`** —
-    the source semantics of the data-dependent while. Composes
-    `whileMem_export_faithful` (B3, never re-proved) with §1 and §2. -/
+    accumulator register decodes to
+    `JLoopBodyN.denote ⟨(guardV.lookup V).toNat, update⟩` over the looked-up
+    invariants and seed. Composes `whileMem_export_faithful` (B3) with §1. -/
+theorem whileMem_export_faithful_denote {Γ : Ctxt jasminDialect} {w : Nat}
+    (update : Com jasminDialect (JasminTy.reg w :: JasminTy.reg 64 :: invTys)
+      (JasminTy.reg w))
+    (guardV : Ctxt.Var Γ (JasminTy.reg 64)) (initV : Ctxt.Var Γ (JasminTy.reg w))
+    (invsV : HVector (fun ty => Ctxt.Var Γ ty) invTys) (V : Ctxt.Valuation Γ)
+    (env : LeafEnvM) (fn : String) (top : LLabel) (gReg : String)
+    (body : List LinstrRM)
+    (hok : ∀ i ∈ body, BodyStepOK env (singletonProgM fn (whileLinstrRM top gReg [] body)) i)
+    (s : LstatePMC) (hfn : s.lfn = fn) (hpc : s.base.lpc = 1)
+    (fuel : Nat) (bfin : LstateM)
+    (hhalt : runWhileMem env (fun b => condNZ b (.reg gReg)) body fuel s.base = some bfin)
+    (htrip : whileTripsMem env (fun b => condNZ b (.reg gReg)) body fuel s.base
+        = (guardV.lookup V).toNat)
+    (accReg : String)
+    (hinit : decodeM s.base accReg w = some (initV.lookup V))
+    (hsim : ∀ t, t < (guardV.lookup V).toNat → ∀ (bt : LstateM) (acct : BitVec w),
+      runBoundedLoopMemC env body t s.base = some bt →
+      decodeM bt accReg w = some acct →
+      ∃ bt', lsemStraightMemC env body bt = some bt'
+        ∧ decodeM bt' accReg w
+            = some (JLoopBodyN.stepC update (Expr.lookupArgs invsV V) t acct)) :
+    ∃ t : LstatePMC,
+      lsemFuelMemLC env (singletonProgM fn (whileLinstrRM top gReg [] body))
+          (whileTripsMem env (fun b => condNZ b (.reg gReg)) body fuel s.base
+            * (fuelCostC env body + 1)) s = some t
+        ∧ decodeM t.base accReg w
+            = some (JLoopBodyN.denote ⟨(guardV.lookup V).toNat, update⟩
+                (Expr.lookupArgs invsV V) (initV.lookup V)) := by
+  obtain ⟨t, ht, hdec⟩ := whileMem_export_faithful env fn top gReg body hok s hfn hpc
+    fuel bfin hhalt accReg w
+  refine ⟨t, ht, hdec.trans ?_⟩
+  rw [← htrip]
+  exact runWhileMem_decodes_denote env update (Expr.lookupArgs invsV V) body gReg
+    accReg s.base (initV.lookup V) hinit fuel bfin hhalt
+    (htrip ▸ hsim)
+
+/-- **A3 export faithfulness, concluded at `ComL.denote`.** The conclusion of
+    `whileMem_export_faithful_denote` stated at the front node
+    `ComL.whileNz update guardV initV invsV (.ret .here)`, whose denotation is
+    the source fold (`comL_whileNz_ret_denote`). -/
 theorem whileMem_export_faithful_comL {Γ : Ctxt jasminDialect} {w : Nat}
     (update : Com jasminDialect (JasminTy.reg w :: JasminTy.reg 64 :: invTys)
       (JasminTy.reg w))
@@ -167,12 +208,8 @@ theorem whileMem_export_faithful_comL {Γ : Ctxt jasminDialect} {w : Nat}
             * (fuelCostC env body + 1)) s = some t
         ∧ decodeM t.base accReg w
             = some ((ComL.whileNz update guardV initV invsV (.ret .here)).denote V) := by
-  obtain ⟨t, ht, hdec⟩ := whileMem_export_faithful env fn top gReg body hok s hfn hpc
-    fuel bfin hhalt accReg w
-  refine ⟨t, ht, hdec.trans ?_⟩
-  rw [comL_whileNz_ret_denote, ← htrip]
-  exact runWhileMem_decodes_denote env update (Expr.lookupArgs invsV V) body gReg
-    accReg s.base (initV.lookup V) hinit fuel bfin hhalt
-    (htrip ▸ hsim)
+  rw [comL_whileNz_ret_denote]
+  exact whileMem_export_faithful_denote update guardV initV invsV V env fn top gReg body
+    hok s hfn hpc fuel bfin hhalt htrip accReg hinit hsim
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhile

@@ -30,10 +30,13 @@ with the counter register *equal to the guard register* — the `SUB gReg ← gR
    `runBoundedLoopMem` — the trip-fold face of
    `lsemStraightMemC_allLopn`. This moves the while route's C-fold trip
    states into the counter family's trip invariant `loopBodyFullMN_inv`.
-2. **`whileMem_export_faithful_comL_uncond`** (§2): the composed export
+2. **`whileMem_export_faithful_denote_uncond`** (§2): the composed export
    theorem — same conclusion as the conditional form (the machine run of the
    emitted `whileLinstrRM top gReg [] (loopBodyFullMN update gReg)` decodes at
-   the accumulator argument to `ComL.whileNz`'s `ComL.denote`), with `hsim`
+   the accumulator argument to the source fold
+   `JLoopBodyN.denote ⟨(guardV.lookup V).toNat, update⟩`;
+   `whileMem_export_faithful_comL_uncond` states it at `ComL.whileNz`'s
+   `ComL.denote`), with `hsim`
    REPLACED by the hypothesis class of `JasminLsemMemSourceTieUncond`: the
    update-shape `hupd : ScalarMemN
    update`, the guard-register name hygiene (`hna`/`hnr`), the seed agreement
@@ -102,8 +105,8 @@ theorem runBoundedLoopMemC_allLopn (env : LeafEnvM) (body : List LinstrRM)
 
 /-! ## 2. The unconditional export theorem -/
 
-/-- **While export faithfulness at `ComL.denote`, UNCONDITIONAL per-trip.** The
-    `hsim`-free form of `whileMem_export_faithful_comL` for the countdown idiom: the body
+/-- **While export faithfulness at the source fold, UNCONDITIONAL per-trip.** The
+    `hsim`-free form of `whileMem_export_faithful_denote` for the countdown idiom: the body
     is the emitted `chain ++ writeback` pass `loopBodyFullMN update gReg` with
     the counter register equal to the guard register (its `SUB gReg ← gReg, #1`
     writeback is the countdown), and the per-trip simulation `hsim` is
@@ -115,7 +118,61 @@ theorem runBoundedLoopMemC_allLopn (env : LeafEnvM) (body : List LinstrRM)
     (`hhalt` — the do-while halts, trip read off the run; `htrip` — the
     data-dependent trip equals the countdown seed, the same trip
     identification the conditional form carries). No hypothesis quantifies
-    over internal machine states. -/
+    over internal machine states. The conclusion is
+    `JLoopBodyN.denote ⟨(guardV.lookup V).toNat, update⟩` over the looked-up
+    invariants and seed. -/
+theorem whileMem_export_faithful_denote_uncond {Γ : Ctxt jasminDialect} {w : Nat}
+    (update : Com jasminDialect (JasminTy.reg w :: JasminTy.reg 64 :: invTys)
+      (JasminTy.reg w))
+    (hupd : ScalarMemN update)
+    (guardV : Ctxt.Var Γ (JasminTy.reg 64)) (initV : Ctxt.Var Γ (JasminTy.reg w))
+    (invsV : HVector (fun ty => Ctxt.Var Γ ty) invTys) (V : Ctxt.Valuation Γ)
+    (env : LeafEnvM) (fn : String) (top : LLabel) (gReg : String)
+    (hna : ∀ j, gReg ≠ argName j) (hnr : ∀ k, gReg ≠ regName k)
+    (s : LstatePMC) (hfn : s.lfn = fn) (hpc : s.base.lpc = 1)
+    (hseed : StoreAgreesM (invTys.length + 2) (invTys.length + 2) s.base
+      (tripValMN (Expr.lookupArgs invsV V) 0 (initV.lookup V)))
+    (hn0 : (s.base.reg.getW gReg 64).isSome)
+    (fuel : Nat) (bfin : LstateM)
+    (hhalt : runWhileMem env (fun b => condNZ b (.reg gReg))
+      (loopBodyFullMN update gReg) fuel s.base = some bfin)
+    (htrip : whileTripsMem env (fun b => condNZ b (.reg gReg))
+        (loopBodyFullMN update gReg) fuel s.base = (guardV.lookup V).toNat) :
+    ∃ t : LstatePMC,
+      lsemFuelMemLC env
+          (singletonProgM fn (whileLinstrRM top gReg [] (loopBodyFullMN update gReg)))
+          (whileTripsMem env (fun b => condNZ b (.reg gReg))
+              (loopBodyFullMN update gReg) fuel s.base
+            * (fuelCostC env (loopBodyFullMN update gReg) + 1)) s = some t
+        ∧ decodeM t.base (accRegMN invTys) w
+            = some (JLoopBodyN.denote ⟨(guardV.lookup V).toNat, update⟩
+                (Expr.lookupArgs invsV V) (initV.lookup V)) := by
+  refine whileMem_export_faithful_denote update guardV initV invsV V env fn top gReg
+    (loopBodyFullMN update gReg)
+    (fun i hi => Or.inl (loopBodyFullMN_isLopn update gReg i hi))
+    s hfn hpc fuel bfin hhalt htrip (accRegMN invTys)
+    (tripAgree_getW_acc hseed) ?_
+  -- the per-trip simulation, DISCHARGED through the counter family's invariant
+  intro t _ bt acct hbt hdec
+  rw [runBoundedLoopMemC_allLopn env _ (loopBodyFullMN_isLopn update gReg)] at hbt
+  obtain ⟨hAgt, hnt⟩ := loopBodyFullMN_inv update hupd gReg hna hnr
+    (Expr.lookupArgs invsV V) s.base (initV.lookup V) hseed hn0 t bt hbt
+  obtain ⟨vn, hvn⟩ := Option.isSome_iff_exists.mp hnt
+  have hacct : decodeM bt (accRegMN invTys) w
+      = some (JLoopBodyN.denote ⟨t, update⟩ (Expr.lookupArgs invsV V)
+          (initV.lookup V)) := tripAgree_getW_acc hAgt
+  rw [hdec] at hacct
+  obtain rfl := Option.some.inj hacct
+  obtain ⟨bt', hbt', hAg', _⟩ := loopBodyFullMN_trip update hupd gReg hna hnr
+    (Expr.lookupArgs invsV V) t _ bt hAgt vn hvn
+  refine ⟨bt', ?_, tripAgree_getW_acc hAg'⟩
+  rw [lsemStraightMemC_allLopn env _ (loopBodyFullMN_isLopn update gReg)]
+  exact hbt'
+
+/-- **While export faithfulness at `ComL.denote`, UNCONDITIONAL per-trip.** The
+    conclusion of `whileMem_export_faithful_denote_uncond` stated at the front
+    node `ComL.whileNz update guardV initV invsV (.ret .here)`, whose
+    denotation is the source fold (`comL_whileNz_ret_denote`). -/
 theorem whileMem_export_faithful_comL_uncond {Γ : Ctxt jasminDialect} {w : Nat}
     (update : Com jasminDialect (JasminTy.reg w :: JasminTy.reg 64 :: invTys)
       (JasminTy.reg w))
@@ -141,27 +198,9 @@ theorem whileMem_export_faithful_comL_uncond {Γ : Ctxt jasminDialect} {w : Nat}
             * (fuelCostC env (loopBodyFullMN update gReg) + 1)) s = some t
         ∧ decodeM t.base (accRegMN invTys) w
             = some ((ComL.whileNz update guardV initV invsV (.ret .here)).denote V) := by
-  refine whileMem_export_faithful_comL update guardV initV invsV V env fn top gReg
-    (loopBodyFullMN update gReg)
-    (fun i hi => Or.inl (loopBodyFullMN_isLopn update gReg i hi))
-    s hfn hpc fuel bfin hhalt htrip (accRegMN invTys)
-    (tripAgree_getW_acc hseed) ?_
-  -- the per-trip simulation, DISCHARGED through the counter family's invariant
-  intro t _ bt acct hbt hdec
-  rw [runBoundedLoopMemC_allLopn env _ (loopBodyFullMN_isLopn update gReg)] at hbt
-  obtain ⟨hAgt, hnt⟩ := loopBodyFullMN_inv update hupd gReg hna hnr
-    (Expr.lookupArgs invsV V) s.base (initV.lookup V) hseed hn0 t bt hbt
-  obtain ⟨vn, hvn⟩ := Option.isSome_iff_exists.mp hnt
-  have hacct : decodeM bt (accRegMN invTys) w
-      = some (JLoopBodyN.denote ⟨t, update⟩ (Expr.lookupArgs invsV V)
-          (initV.lookup V)) := tripAgree_getW_acc hAgt
-  rw [hdec] at hacct
-  obtain rfl := Option.some.inj hacct
-  obtain ⟨bt', hbt', hAg', _⟩ := loopBodyFullMN_trip update hupd gReg hna hnr
-    (Expr.lookupArgs invsV V) t _ bt hAgt vn hvn
-  refine ⟨bt', ?_, tripAgree_getW_acc hAg'⟩
-  rw [lsemStraightMemC_allLopn env _ (loopBodyFullMN_isLopn update gReg)]
-  exact hbt'
+  rw [comL_whileNz_ret_denote]
+  exact whileMem_export_faithful_denote_uncond update hupd guardV initV invsV V env fn top
+    gReg hna hnr s hfn hpc hseed hn0 fuel bfin hhalt htrip
 
 /-! ## 3. The countdown termination characterization -/
 
