@@ -27,7 +27,7 @@ registers.
 ## Main definitions
 
 * `AgreeK`: agreement of two bases on the names of a predicate.
-* `FrameSlot`, `KeptF`: the save-slot names `qsave.<R>`, and the names that are neither a
+* `FrameSaveSlot`, `KeptF`: the save-slot names `qsave.<R>`, and the names that are neither a
   scratch nor a save slot.
 * `IsCopyQ`, `copyRunL`: a `MOVQ` register copy, and the base after a list of copies.
 
@@ -178,7 +178,7 @@ theorem runStraightF_frame : ∀ (B : List LinstrRM) {s t : LstateM} {zf zt : Bo
 def IsCopyQ (i : LinstrR) : Prop := ∃ d s, i = .Lopn [.reg d] "MOVQ" [.reg s]
 
 /-- The base after the register copy of the cell of `s` to `d`. -/
-def copyStep (a : LstateM) (d s : String) : LstateM := (a.setReg d (a.reg.lvm s).2).nextPc
+def regCopyStep (a : LstateM) (d s : String) : LstateM := (a.setReg d (a.reg.lvm s).2).nextPc
 
 /-- The base after a list of register copies; an instruction that is no register copy ends
     the list. -/
@@ -186,7 +186,7 @@ def copyRunL : Lcmd → LstateM → LstateM
   | [], a => a
   | i :: l, a =>
       match i.li_i with
-      | .Lopn [.reg d] _ [.reg s] => copyRunL l (copyStep a d s)
+      | .Lopn [.reg d] _ [.reg s] => copyRunL l (regCopyStep a d s)
       | _ => a
 
 /-- **A list of register copies runs to `copyRunL`**, under every tag function, with the
@@ -244,20 +244,20 @@ theorem copyRunL_frame : ∀ (l : Lcmd) (a : LstateM),
       unfold copyRunL
       split
       · rename_i d _ s _
-        obtain ⟨h1, h2, h3, h4⟩ := ih (copyStep a d s)
+        obtain ⟨h1, h2, h3, h4⟩ := ih (regCopyStep a d s)
         exact ⟨h1, h2, h3, h4⟩
       · exact ⟨rfl, rfl, rfl, rfl⟩
 
 /-! ## 3. Save slots, the prologue and the restore -/
 
 /-- A save-slot name `qsave.<R>`. -/
-def FrameSlot (r : String) : Prop := ∃ x, r = "qsave." ++ x
+def FrameSaveSlot (r : String) : Prop := ∃ x, r = "qsave." ++ x
 
 /-- A name that is neither a reload scratch nor a save slot. -/
-def KeptF (r : String) : Prop := KeptS r ∧ ¬ FrameSlot r
+def KeptF (r : String) : Prop := KeptS r ∧ ¬ FrameSaveSlot r
 
 /-- The empty name is kept. -/
-theorem keptF_empty : KeptF "" := by
+theorem frameKeptF_empty : KeptF "" := by
   refine ⟨LowerFuelMemF.keptS_empty, ?_⟩
   rintro ⟨x, hx⟩
   have := congrArg String.length hx
@@ -282,7 +282,7 @@ theorem copyRunL_buildPrologue_qsave (v : Lfundef) (tbl : Array Nat) (m : InLoad
     (copyRunL (buildPrologue v tbl m) a).reg.lvm ("qsave." ++ X) = a.reg.lvm X := by
   simp only [calleeSaved6, List.mem_cons, List.not_mem_nil, or_false] at hX
   rcases hX with rfl | rfl | rfl | rfl | rfl | rfl <;>
-    simp [buildPrologue, copyRunL, copyStep, abiSaveRdiName, abiSaveRsiName, reloadScratch2,
+    simp [buildPrologue, copyRunL, regCopyStep, abiSaveRdiName, abiSaveRsiName, reloadScratch2,
       LstateM.setReg, LstateM.nextPc]
 
 /-- **The restore loads each callee-saved register from its slot.** -/
@@ -290,7 +290,7 @@ theorem copyRunL_calleeSaveRestore (a : LstateM) {X : String} (hX : X ∈ callee
     (copyRunL calleeSaveRestoreEpilogue a).reg.lvm X = a.reg.lvm ("qsave." ++ X) := by
   simp only [calleeSaved6, List.mem_cons, List.not_mem_nil, or_false] at hX
   rcases hX with rfl | rfl | rfl | rfl | rfl | rfl <;>
-    simp [calleeSaveRestoreEpilogue, copyRunL, copyStep, LstateM.setReg, LstateM.nextPc]
+    simp [calleeSaveRestoreEpilogue, copyRunL, regCopyStep, LstateM.setReg, LstateM.nextPc]
 
 /-- The restore writes only the callee-saved registers. -/
 theorem copyDsts_calleeSaveRestore : copyDsts calleeSaveRestoreEpilogue = calleeSaved6 := by
@@ -333,7 +333,7 @@ theorem frame_runStraightF (tg : LinstrR → MemTag) {pre : Lcmd} {B : List Lins
         ++ (calleeSaveRestoreEpilogue.map fun i => (i.li_i, tg i.li_i))) e zf = some (t', zt)
       ∧ AgreeK (fun r => KeptF r ∧ r ∉ calleeSaved6) t t'
       ∧ ∀ X ∈ calleeSaved6, t'.reg.lvm X = (copyRunL pre e).reg.lvm ("qsave." ++ X) := by
-  obtain ⟨t1, ht1, hA1⟩ := runStraightF_agreeK keptF_empty B hl hn hm hA h
+  obtain ⟨t1, ht1, hA1⟩ := runStraightF_agreeK frameKeptF_empty B hl hn hm hA h
   obtain ⟨hla, hlm, hlc, hlo⟩ := copyRunL_frame calleeSaveRestoreEpilogue t1
   refine ⟨copyRunL calleeSaveRestoreEpilogue t1, ?_, ?_, fun X hX => ?_⟩
   · simp only [JasminLsemAddrMem.runStraightF_append, runStraightF_copies tg pre hpre,

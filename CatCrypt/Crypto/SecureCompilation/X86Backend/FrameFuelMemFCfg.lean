@@ -180,7 +180,7 @@ theorem instrOK_frame (c : LstateM) {i : LinstrRM} (h : frameInstrOKB i = true) 
         fun n hn => keptF_of_keptFB (h.2 n hn)
       refine Or.inl ⟨hl, fun j hj => by rw [List.mem_singleton.mp hj]; exact hl,
         fun s s' t zf zt hQ hst => ?_⟩
-      obtain ⟨t', ht', hA⟩ := fstepF_agreeK keptF_empty hl hn h.1.2 hQ.1 hst
+      obtain ⟨t', ht', hA⟩ := fstepF_agreeK frameKeptF_empty hl hn h.1.2 hQ.1 hst
       refine ⟨t', by rw [JasminLsemAddrMem.runStraightF_singleton]; exact ht', hA,
         fun X hX => ?_⟩
       rw [(JasminLsemStepFrame.fstepF_frame ht' (fun hm => (hn _ hm).2 ⟨X, rfl⟩)).1]
