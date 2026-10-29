@@ -7,7 +7,7 @@ module
 
 public import HaxLean.Secrecy
 public import CatCrypt.Crypto.Hax.HaxCallNames
-public import CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer
+public import CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer.Defs
 
 /-!
 # The level table of a function from its hax secrecy record

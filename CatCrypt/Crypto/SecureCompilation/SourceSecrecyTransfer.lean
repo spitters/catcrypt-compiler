@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 import all Init.Data.Repr
+public import CatCrypt.Crypto.SecureCompilation.SourceSecrecyTransfer.Defs
 public import CatCrypt.Crypto.SecureCompilation.VartimeBignumInverse
 
 /-!
@@ -47,34 +48,8 @@ open CatCrypt.Crypto.SecureCompilation.VartimeBignumInverse
 
 set_option autoImplicit false
 
-/-! ## §1. The source-declared secrecy table (phase-2 extraction output, modelled) -/
-
-/-- The per-binding secrecy a source secret-integer discipline declares, as
-    carried out of extraction. `secret` lists the bindings whose *source* type is
-    a secret integer; `declassified` lists the bindings produced by an explicit
-    `declassify()` downgrade — the audit surface. Any binding in neither list is
-    `Public` (the default). -/
-structure SourceSecrecy where
-  /-- Bindings whose source type is a secret integer. -/
-  secret : List String
-  /-- Bindings produced by an explicit `declassify()` — the trusted-downgrade
-      audit surface. Overrides `secret`. -/
-  declassified : List String
-
-/-- The `LevelTable` a `SourceSecrecy` induces: `Public` unless the binding is a
-    non-declassified secret. `declassify` wins over `secret` (a downgraded value
-    is public). This is the table `cmdCT` consumes, derived rather than hand-authored. -/
-def SourceSecrecy.toLevelTable (s : SourceSecrecy) : LevelTable :=
-  fun v =>
-    if s.declassified.contains v then .Public
-    else if s.secret.contains v then .Secret
-    else .Public
-
-/-- The source-level `declassify(v)`: mark binding `v` as downgraded to `Public`.
-    This is the *only* Secret → Public transition, and the site is recorded in
-    `declassified` for the phase-4 audit. -/
-def SourceSecrecy.declassify (s : SourceSecrecy) (v : String) : SourceSecrecy :=
-  { s with declassified := v :: s.declassified }
+/-! The source-declared secrecy table `SourceSecrecy`, its `toLevelTable` and
+`declassify` are defined in `SourceSecrecyTransfer/Defs.lean`. -/
 
 /-! ## §2. Worked sources tied to the variable-time modular inverse -/
 
