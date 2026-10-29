@@ -175,7 +175,7 @@ def varDecEq {d : Dialect} : {Γ : Ctxt d} → {t : d.Ty} →
 /-- Boolean operand-equality for the recognizer guards (routed through `varDecEq`
     so no `Decidable` instance metavariable is left under the dependent casts). -/
 def varBeq {d : Dialect} {Γ : Ctxt d} {t : d.Ty} (a b : Ctxt.Var Γ t) : Bool :=
-  decide (a = b) (h := varDecEq a b)
+  @decide (a = b) (varDecEq a b)
 
 /-- `varBeq` is reflexive — discharges the operand guards on a canonical subtree. -/
 theorem varBeq_self {d : Dialect} {Γ : Ctxt d} {t : d.Ty} (a : Ctxt.Var Γ t) :

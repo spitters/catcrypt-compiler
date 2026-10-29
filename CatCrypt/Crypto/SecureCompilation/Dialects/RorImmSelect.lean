@@ -211,7 +211,7 @@ def varDecEq {d : Dialect} : {Γ : Ctxt d} → {t : d.Ty} →
     explicit `varDecEq` (rather than a `Decidable` instance) so the guard never
     leaves an unresolved instance metavariable under the dependent `▸` casts. -/
 def varBeq {d : Dialect} {Γ : Ctxt d} {t : d.Ty} (a b : Ctxt.Var Γ t) : Bool :=
-  decide (a = b) (h := varDecEq a b)
+  @decide (a = b) (varDecEq a b)
 
 /-- `varBeq` is reflexive — used to discharge the recognizer's operand guards on a
     canonical subtree. -/
