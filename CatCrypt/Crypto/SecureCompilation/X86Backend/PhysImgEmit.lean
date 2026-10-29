@@ -1335,12 +1335,9 @@ theorem abiSaveOfExt_faB {r s : String} (h : abiSaveOfExt r = some s) : faB s = 
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
 
 /-- The saves of the arguments after the first two other than `RDI` and `RSI` (the prologue
-    tail of `lfundefPhysAbiOfVirtCert`, over `extraSaveRegs`). -/
+    tail `extraInputSaves` of `lfundefPhysAbiOfVirtCert`, over `extraSaveRegs`). -/
 abbrev extraSaves (abiArgs : List String) : Lcmd :=
-  (extraSaveRegs abiArgs).filterMap (fun abiReg =>
-    match abiSaveOfExt abiReg with
-    | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-    | none => none)
+  extraInputSaves abiArgs
 
 /-- **The saves of `extraSaves` repeat no save of the fixed prologue**: a save of `extraSaves`
     reads an argument register other than `RDI` and `RSI`, the two argument registers

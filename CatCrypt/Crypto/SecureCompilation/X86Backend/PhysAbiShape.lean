@@ -534,12 +534,9 @@ def abiCallReload : List (String × String) :=
     | none => none)
 
 /-- The saves of the third and later argument registers other than `RDI` and `RSI` to their
-    red-zone slots (`extraSaveRegs`). -/
+    red-zone slots (`extraInputSaves` over `extraSaveRegs`). -/
 def abiExtraSaves : Lcmd :=
-  (extraSaveRegs abiArgs).filterMap (fun abiReg =>
-    match abiSaveOfExt abiReg with
-    | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-    | none => none)
+  extraInputSaves abiArgs
 
 /-- A position that is not the argument-liveness pin. -/
 def notLivePin (i : Linstr) : Bool :=

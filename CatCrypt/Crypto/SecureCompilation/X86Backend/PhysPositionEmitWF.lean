@@ -909,11 +909,9 @@ theorem reg_resolved_of_abiSaveOfExt {reg q : String} (h : abiSaveOfExt reg = so
 
 /-- The prologue saves of a list of argument registers to their save slots are resolved. -/
 theorem extraInputSaves_resolved (regs : List String) :
-    ∀ r ∈ regs.filterMap (fun abiReg =>
-      match abiSaveOfExt abiReg with
-      | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-      | none => none), OpsResolved r.li_i := by
+    ∀ r ∈ argRegSaves regs, OpsResolved r.li_i := by
   intro r hr
+  rw [argRegSaves] at hr
   obtain ⟨abiReg, -, hf⟩ := List.mem_filterMap.mp hr
   split at hf
   · next s hs =>

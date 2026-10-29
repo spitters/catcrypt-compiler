@@ -57,8 +57,9 @@ concrete NTT-backed `LeafSpec` requires a thin reification layer, kept
   For NTT-friendly parameters (e.g. ML-KEM's `(q = 3329, n = 256)` with
   a 512-point NTT) this is a once-per-parameter numeric check.
 
-Both pieces live in `NTTPolyMul_CompPolyConcrete.lean`, which imports
-CompPoly directly.  This module keeps the link as a **prose
+`PolyEncoding` and the leaf-agreement theorem `polyMul_leaf_agreement` live in
+`NTTPolyEncoding.lean`, which imports CompPoly directly; the `Domain.fits` side
+condition is a hypothesis of `polyMul_leaf_agreement`.  This module keeps the link as a **prose
 pointer** so the optimizer's core build is not coupled to the
 CompPoly library.
 

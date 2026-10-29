@@ -161,12 +161,9 @@ theorem buildArgPtrMaterialize_straight (virt : Lfundef) (tbl : Array Nat)
 /-- The saves of a list of argument registers to their save slots, which a multi-input
     prologue appends, are straight-line. -/
 theorem extraInputSaves_straight (regs : List String) :
-    ∀ i ∈ regs.filterMap (fun abiReg =>
-      match abiSaveOfExt abiReg with
-      | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-      | none => none), isStraightL i = true := by
+    ∀ i ∈ argRegSaves regs, isStraightL i = true := by
   intro i hi
-  rw [List.mem_filterMap] at hi
+  rw [argRegSaves, List.mem_filterMap] at hi
   obtain ⟨a, -, ha⟩ := hi
   split at ha <;> simp only [Option.some.injEq, reduceCtorEq] at ha
   subst ha

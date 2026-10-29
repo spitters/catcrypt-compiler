@@ -13,7 +13,7 @@ public import Mathlib.Algebra.Field.ZMod
 /-!
 # Concrete `PolyEncoding 3329 256` for ML-KEM-768
 
-`Optimizer/Lattice/NTTPolyMul_CompPolyConcrete.lean` and the lattice
+`Optimizer/Lattice/NTTPolyEncoding.lean` and the lattice
 NTT-soundness file (`LatticeNTTSound.lean`) both carry the byte-layout decision
 as a *parameter* — an abstract `enc : PolyEncoding q n R` plus a `Domain R`. This
 file discharges the byte-layout half for ML-KEM-768 parameters
@@ -33,7 +33,7 @@ little-endian bytes; `⌈(Nat.log2 3329 + 1)/8⌉ = 2`). The encoding is:
   write each of the 256 folded coefficients as two little-endian bytes.
 
 `PolyEncoding` requires only that `encode`/`decode` *exist* (the round-trip
-discipline is the consumer's, per the `NTTPolyMul_CompPolyConcrete` structure docstring), so the
+discipline is the consumer's, per the `NTTPolyEncoding` structure docstring), so the
 layout above fully determines a concrete instance.
 
 ## The negacyclic fold
@@ -70,7 +70,7 @@ be eliminated** at these parameters: there is no closed `Domain (ZMod 3329)` to
 plug in. `D` (and `hfits`) are therefore hypotheses of the concrete
 agreement theorem below; what this module makes concrete is the **byte layout**
 `mlkem768Encoding`. The agreement is otherwise a one-line instantiation of the
-`NTTPolyMul_CompPolyConcrete` transport through
+`NTTPolyEncoding` transport `polyMul_leaf_agreement` through
 `fastMulImpl_eq_mul`.
 
 This obstruction is a property of the parameters, not a defect of either side;
@@ -163,7 +163,7 @@ noncomputable def mlkem768Encoding : PolyEncoding mlkemQ mlkemN MLKEMField where
 
 /-! ## 4. Concrete agreement theorem
 
-We instantiate the `NTTPolyMul_CompPolyConcrete` / `LatticeNTTSound` parametric agreement at
+We instantiate the `NTTPolyEncoding` / `LatticeNTTSound` parametric agreement at
 `mlkem768Encoding`. The `Domain` `D` and its `Domain.fits` witness remain
 hypotheses: as the module docstring explains, no closed `Domain (ZMod 3329)` of
 the required cyclic size exists (the radix-2 two-adicity of `ZMod 3329` is `8`,

@@ -103,12 +103,7 @@ def ComL.toLfundefPhysAbiScalarAcc {Γ : Ctxt jasminDialect} {t : JasminTy}
   let tbl := physTableOut virt.lfd_body []
   -- Extra qsave slots for the 3rd+ SysV registers (RDX/RCX/R8/R9), as in the
   -- array-accumulator looped export.
-  let extraInputSaves : Lcmd :=
-    (abiArgs.drop 2).filterMap (fun abiReg =>
-      match abiSaveOfExt abiReg with
-      | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-      | none => none)
-  let prologue := buildPrologue virt tbl (fun _ => none) ++ extraInputSaves
+  let prologue := buildPrologue virt tbl (fun _ => none) ++ argRegSaves (abiArgs.drop 2)
   let argMat := buildArgPtrMaterialize virt tbl abiArgs (fun _ => none)
   let movTbl : Array (Option Nat) := movImmTable virt.lfd_body
   let shiftImm' : ShiftImmOracle := fun nm =>

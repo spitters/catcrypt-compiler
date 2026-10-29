@@ -622,20 +622,17 @@ theorem abiSaveOfExt_slot {R : String} (h : R ∈ ["RDI", "RSI", "RDX", "RCX", "
 theorem saveFreshB_extraSaves :
     ∀ (l : List String) {Y : Lcmd} {S : List String}, ArgSeenOk slotArr S →
       ("RSI" ∈ l → slotArr "qsave.RSI" = none) → (∀ j ∈ Y, noSlotWriteB slotArr j = true) →
-      saveFreshB slotArr S (l.filterMap (fun abiReg =>
-        match abiSaveOfExt abiReg with
-        | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-        | none => none) ++ Y) = true
+      saveFreshB slotArr S (argRegSaves l ++ Y) = true
   | [], Y, S, _, _, hY => saveFreshB_of_noWrite S Y hY
   | a :: l, Y, S, hS, hrsi, hY => by
     have hrsi' : "RSI" ∈ l → slotArr "qsave.RSI" = none :=
       fun h => hrsi (List.mem_cons_of_mem _ h)
     cases hs : abiSaveOfExt a with
     | none =>
-      simp only [List.filterMap_cons, hs]
+      simp only [argRegSaves, List.filterMap_cons, hs]
       exact saveFreshB_extraSaves l hS hrsi' hY
     | some s =>
-      simp only [List.filterMap_cons, hs, List.cons_append]
+      simp only [argRegSaves, List.filterMap_cons, hs, List.cons_append]
       obtain ⟨rfl, ha⟩ := abiSaveOfExt_spec hs
       cases hsa : (slotArr (slotOfReg a)).isSome with
       | true =>

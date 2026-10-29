@@ -924,13 +924,10 @@ theorem aliasRegBody_lcmdDirect (from_ to_ : String) {body : Lcmd}
 /-- The saves of a list of argument registers to their save slots, which the multi-input
     prologue appends, use register operands only. -/
 theorem extraInputSaves_lcmdDirect (regs : List String) :
-    lcmdDirect (regs.filterMap (fun abiReg =>
-      match abiSaveOfExt abiReg with
-      | some saveName => some (⟨0, .Lopn [.reg saveName] "MOVQ" [.reg abiReg]⟩ : Linstr)
-      | none => none)) = true := by
+    lcmdDirect (argRegSaves regs) = true := by
   refine lcmdDirect_of_mem ?_
   intro z hz
-  rw [List.mem_filterMap] at hz
+  rw [argRegSaves, List.mem_filterMap] at hz
   obtain ⟨a, _, ha⟩ := hz
   split at ha <;> simp only [Option.some.injEq, reduceCtorEq] at ha
   subst ha
