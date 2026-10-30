@@ -435,21 +435,30 @@ elab_rules : term
     by the ascent generator on the literal `e`, the table `bi`, the leaf lemmas `lᵢ` and
     the surface function `s`, whose explicit binder names are the parameter names of the
     literal. The entry environment is `bindParams` of the parameter bindings; the goal is
-    closed when the generated statement is definitionally the goal. -/
-elab "ascend_reified " sur:term " using " "[" ls:ident,* "]" : tactic => withMainContext do
+    closed when the generated statement is definitionally the goal. With `guard G`, the
+    predicate `G` of the argument tuple is the precondition of the generator
+    (`FnSpec.pre?`): the side conditions of the leaves are proved from its conjuncts, and
+    the goal is `FnCorres bi e entry G f`. -/
+syntax "ascend_reified " term " using " "[" ident,* "]" (" guard " term)? : tactic
+
+elab_rules : tactic
+  | `(tactic| ascend_reified $sur:term using [$ls,*] $[guard $g?]?) => withMainContext do
   let goal ← instantiateMVars (← getMainTarget)
   unless goal.isAppOfArity ``Hax.Ascent.FnCorres 8 do
     throwError "ascend_reified: the goal is not a FnCorres statement"
   let bi := goal.getArg! 0
   let e ← whnf (goal.getArg! 4)
   let surface ← instantiateMVars (← Term.elabTermAndSynthesize sur none)
+  let pre? ← g?.mapM fun g => do
+    let gTy ← inferType (goal.getArg! 6)
+    instantiateMVars (← Term.elabTermAndSynthesize g gTy)
   let params ← forallTelescopeReducing (← inferType surface) fun xs _ => do
     let xs ← xs.filterM fun x => return !(← x.fvarId!.getBinderInfo).isInstImplicit
     xs.toList.mapM fun x => return nameStr (← x.fvarId!.getUserName)
   let lems ← ls.getElems.mapM fun l => realizeGlobalConstNoOverloadWithInfo l
   let leaves ← Hax.Ascent.Gen.indexLeaves {} lems
   let spec : Hax.Ascent.Gen.FnSpec := {
-    lit := e, surface, params, globals := [], bi, leaves, hints := {}
+    lit := e, surface, params, globals := [], bi, leaves, hints := {}, pre?
     entry := fun A Γ₀l => do
       let entry ← withLocalDeclD `a A fun a => do
         mkLambdaFVars #[a] (← mkAppM ``Hax.Ascent.bindParams #[Γ₀l.beta #[a]])
