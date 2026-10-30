@@ -1037,9 +1037,11 @@ theorem cover_encImmOp (b : String) (d : LOperand) (v : Nat) :
 /-! ## 7. The link forms and the cover of `encodeLopn` -/
 
 /-- The mnemonic bases whose bytes do not depend on the operand width: the width casts, the
-    widening multiplies and `SETC`. -/
+    widening multiplies, `SETC`, and the register-indexed element load and store, whose access
+    width is fixed by the stride (`encLoadIdx`, `encStoreIdx`). -/
 def widthFreeBase (b : String) : Bool :=
   (castMovBits b).isSome || b == "MULX" || b == "MULXMEM" || b == "SETC"
+    || b == "LOADIDX" || b == "STOREIDX"
 
 /-- The operation is a 64-bit one (`REX.W = 1`), a carry-out binding, or of a base whose bytes
     do not depend on the width. The 32-bit forms (`REX.W = 0`, a mnemonic without `:64`, and
@@ -1196,7 +1198,7 @@ theorem cover_encImmOp_other {w : Nat} {b : String} (d : LOperand) (v : Nat)
 theorem widthFreeBase_cases {b : String} (h : widthFreeBase b = true) :
     b = "CASTW_64_16" ∨ b = "CASTW_16_64" ∨ b = "CASTW_16_16" ∨ b = "CASTW_16_32"
       ∨ b = "CASTW_32_16" ∨ b = "CASTW_64_32" ∨ b = "CASTW_32_64" ∨ b = "CASTW_32_32"
-      ∨ b = "MULX" ∨ b = "MULXMEM" ∨ b = "SETC" := by
+      ∨ b = "MULX" ∨ b = "MULXMEM" ∨ b = "SETC" ∨ b = "LOADIDX" ∨ b = "STOREIDX" := by
   simp only [widthFreeBase, castMovBits, Bool.or_eq_true, beq_iff_eq] at h
   split at h
   · rename_i hc
@@ -1603,12 +1605,84 @@ theorem encodeLopn_cover_carry {F W Q : Nat} {ds : List LOperand} {o : String}
       · exact TemplateCover.nil
     · exact TemplateCover.nil
 
+/-- The cover of the bytes of a register-indexed element load or store of a link form, at any
+    width tag. -/
+theorem encodeLopn_cover_idx {F W Q : Nat} {ds : List LOperand} {o : String}
+    {ss : List LOperand} (hidx : narrowIdxFreeB (stripWidthTag o) ss = true)
+    (hb : stripWidthTag o = "LOADIDX" ∨ stripWidthTag o = "STOREIDX") :
+    TemplateCover (encodeLopn F W (.Lopn ds o ss) Q) := by
+  have himm : ∀ (b : String) (d : LOperand) (v : Nat), (b = "LOADIDX" ∨ b = "STOREIDX") →
+      TemplateCover (encImmOp (LprogBytes.rexW (mnemWidth o)) b d v) := by
+    rintro b d v (rfl | rfl) <;>
+      exact cover_encImmOp_other d v (by decide) (by decide) (by decide) rfl rfl
+  rcases hb with hb | hb
+  · unfold encodeLopn
+    simp (config := { decide := true }) only [hb, LprogAsmPrinter.isCarryOutBinding,
+      LprogAsmPrinter.isMulHiBinding, adxPrefix, aluOpcode, twoByteOpcode, tagShiftExt,
+      castMovBits, setccCmpOp, ite_false, ite_true]
+    simp only [show ("LOADIDX" == "MOV") = false by decide,
+      show ("LOADIDX" == "MOVQ") = false by decide, Bool.or_false, Bool.and_false,
+      Bool.false_eq_true, ite_false]
+    split
+    · exact TemplateCover.nil
+    · split
+      · split <;> exact himm _ _ _ (by simp)
+      · split
+        · split
+          · rename_i hc
+            simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
+            have hsc := idx_of_linkForm (by rw [hb]; decide) hidx (List.mem_singleton_self _)
+            exact cover_encLoadIdx hsc (gpNumU_lt_16 _) hc.2 (gpNumU_lt_16 _) (gpNumU_lt_16 _)
+          · exact TemplateCover.nil
+        · exact TemplateCover.nil
+    · split
+      · exact himm _ _ _ (by simp)
+      · exact TemplateCover.nil
+    · exact TemplateCover.nil
+    · exact TemplateCover.nil
+    · exact TemplateCover.nil
+  · unfold encodeLopn
+    simp (config := { decide := true }) only [hb, LprogAsmPrinter.isCarryOutBinding,
+      LprogAsmPrinter.isMulHiBinding, adxPrefix, aluOpcode, twoByteOpcode, tagShiftExt,
+      castMovBits, setccCmpOp, ite_false, ite_true]
+    simp only [show ("STOREIDX" == "MOV") = false by decide,
+      show ("STOREIDX" == "MOVQ") = false by decide, Bool.or_false, Bool.and_false,
+      Bool.false_eq_true, ite_false]
+    split
+    · exact TemplateCover.nil
+    · split
+      · split <;> exact himm _ _ _ (by simp)
+      · exact TemplateCover.nil
+    · split
+      · exact himm _ _ _ (by simp)
+      · split
+        · split
+          · rename_i hc
+            simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at hc
+            have hsc := idx_of_linkForm (by rw [hb]; decide) hidx List.mem_cons_self
+            exact cover_encStoreIdx hsc (gpNumU_lt_16 _) hc.2 (gpNumU_lt_16 _) (gpNumU_lt_16 _)
+          · exact TemplateCover.nil
+        · exact TemplateCover.nil
+    · exact TemplateCover.nil
+    · exact TemplateCover.nil
+    · exact TemplateCover.nil
+
 /-- The cover of the bytes of an instruction whose base does not depend on the width. -/
 theorem encodeLopn_cover_free {F W Q : Nat} {ds : List LOperand} {o : String}
     {ss : List LOperand} (hopd : (ds ++ ss).all (opdDispB F W Q) = true)
+    (hidx : narrowIdxFreeB (stripWidthTag o) ss = true)
     (hfree : widthFreeBase (stripWidthTag o) = true) :
     TemplateCover (encodeLopn F W (.Lopn ds o ss) Q) := by
-  · have hb := widthFreeBase_cases hfree
+  by_cases hi : stripWidthTag o = "LOADIDX" ∨ stripWidthTag o = "STOREIDX"
+  · exact encodeLopn_cover_idx hidx hi
+  · have hb : stripWidthTag o = "CASTW_64_16" ∨ stripWidthTag o = "CASTW_16_64"
+        ∨ stripWidthTag o = "CASTW_16_16" ∨ stripWidthTag o = "CASTW_16_32"
+        ∨ stripWidthTag o = "CASTW_32_16" ∨ stripWidthTag o = "CASTW_64_32"
+        ∨ stripWidthTag o = "CASTW_32_64" ∨ stripWidthTag o = "CASTW_32_32"
+        ∨ stripWidthTag o = "MULX" ∨ stripWidthTag o = "MULXMEM"
+        ∨ stripWidthTag o = "SETC" := by
+      have := widthFreeBase_cases hfree
+      grind
     unfold encodeLopn
     rcases hb with hb | hb | hb | hb | hb | hb | hb | hb | hb | hb | hb <;>
       simp (config := { decide := true }) only [hb, LprogAsmPrinter.isCarryOutBinding,
@@ -1676,7 +1750,7 @@ theorem encodeLopn_cover (F W Q : Nat) (ds : List LOperand) (o : String) (ss : L
   rcases hnar with (hw | hcar) | hfree
   · exact encodeLopn_cover_w1 hadox hopd hidx hw
   · exact encodeLopn_cover_carry hadox hopd hcar
-  · exact encodeLopn_cover_free hopd hfree
+  · exact encodeLopn_cover_free hopd hidx hfree
 
 /-- **Completeness of the piece decoder on the encoder's image.** An encodable instruction
     that is not an `Lgoto` and has a link form has a computed shape. -/
