@@ -70,6 +70,8 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 * `PilotCode`, `PilotCode.blocks`, `pilotResume`, `pilotFold`, `pilotCode`, `codeRunLean`,
   `codeRunImp` — a fold over the blocks of a closed code tree, each block read by a match
   with a catch-all arm (a sparse `casesOn`), and its literal
+* `pilotCodeL`, `pilotStepL`, `pilotFoldL`, `codeRunLLean`, `codeRunLImp` — a fold over the
+  blocks of a closed code tree computed over `40` positions, and its literal
 
 ## Main results
 
@@ -85,6 +87,9 @@ the goal; the obligation `G = f` is discharged by that definitional check.
   denotes `closedConstLean`
 * `codeRun_fnCorres` — the literal of the fold over the blocks of a code tree, with the
   matches over the reduced blocks reduced, denotes `codeRunLean`
+* `codeRunL_fnCorres` — the literal of `codeRunLLean` denotes it, the goal compared over
+  its function reduced by the clauses of the literal (`ascend_reified … unfolding …
+  reducing …`)
 -/
 
 @[expose] public section
@@ -483,11 +488,18 @@ elab_rules : term
     predicate `G` of the argument tuple is the precondition of the generator
     (`FnSpec.pre?`): the side conditions of the leaves are proved from its conjuncts, and
     the goal is `FnCorres bi e entry G f`. A guard given as a `def` hides its conjuncts
-    from the generator, so `G` is a lambda or an `abbrev`. -/
-syntax "ascend_reified " term " using " "[" ident,* "]" (" guard " term)? : tactic
+    from the generator, so `G` is a lambda or an `abbrev`. With `unfolding [g, …]`,
+    `reducing [h, …]` and `within N`, the clauses the literal was read with, the function
+    `f` of the goal is first reduced as the reifier reduced the body: the head constant of
+    `s` and the constants `g, …` unfolded and the closed applications of `h, …` reduced
+    (`unfoldNamed`); the generated statement is compared with the goal over that normal
+    form, which is definitionally `f`. -/
+syntax "ascend_reified " term " using " "[" ident,* "]" (" guard " term)?
+  (" unfolding " "[" ident,* "]")? (" reducing " "[" ident,* "]")? (" within " num)? : tactic
 
 elab_rules : tactic
-  | `(tactic| ascend_reified $sur:term using [$ls,*] $[guard $g?]?) => withMainContext do
+  | `(tactic| ascend_reified $sur:term using [$ls,*] $[guard $g?]? $[unfolding [$us?,*]]?
+      $[reducing [$rs?,*]]? $[within $b?]?) => withMainContext do
   let goal ← instantiateMVars (← getMainTarget)
   unless goal.isAppOfArity ``Hax.Ascent.FnCorres 8 do
     throwError "ascend_reified: the goal is not a FnCorres statement"
@@ -511,9 +523,24 @@ elab_rules : tactic
         mkLambdaFVars #[a, h] (← mkAppM ``Hax.Ascent.binds_bindParams #[Γ₀l.beta #[a]])
       return (entry, hentry) }
   let res ← Hax.Ascent.Gen.ascendFn spec
-  unless ← isDefEq res.thmTy goal do
+  let consts (xs? : Option (Syntax.TSepArray `ident ",")) : TacticM (Array Name) :=
+    match xs? with
+    | some xs => xs.getElems.mapM fun u => realizeGlobalConstNoOverloadWithInfo u
+    | none => pure #[]
+  let cs ← consts us?
+  let rs ← consts rs?
+  -- the goal over its function reduced as the reifier reduced the body
+  let goalN ← if cs.isEmpty && rs.isEmpty then pure goal else do
+    let some hd := surface.getAppFn.constName?
+      | throwError "ascend_reified: the surface{indentExpr surface}\nis not a constant application"
+    let maxSize := (b?.map (·.getNat)).getD 10000
+    let fN ← lambdaTelescope (goal.getArg! 7) fun xs body => do
+      mkLambdaFVars xs (← unfoldNamed (cs.push hd) body (rs := rs) (maxSize := maxSize))
+    pure (mkAppN goal.getAppFn (goal.getAppArgs.set! 7 fN))
+  unless ← isDefEq res.thmTy goalN do
     throwError "ascend_reified: the generated statement{indentExpr res.thmTy}\nis not the goal"
-  closeMainGoal `ascend_reified res.thm
+  closeMainGoal `ascend_reified
+    (← if goalN == goal then pure res.thm else mkExpectedTypeHint res.thm goalN)
 
 end CatCrypt.Hax.ReifyImp
 
@@ -889,6 +916,45 @@ theorem offset_fnCorres (mul add sub : Int → Int → Int) (double neg : Int �
       (fun a => bindParams [("x", enc a.1)]) (fun _ => True)
       (fun a => offsetLean add a.1) := by
   ascend_reified (offsetLean add) using [edBi_add]
+
+/-! ## The goal reduced as the literal was read -/
+
+/-- A closed code tree computed by a fold over `40` positions: an input node at each
+    multiple of `5`, a stuck node at each position `2` past one. -/
+def pilotCodeL : PilotCode :=
+  (List.range 40).foldr (fun i k => if i % 5 = 0 then .input i k else
+    if i % 5 = 2 then .stuck k else k) .halt
+
+/-- One step on the block `b`: `x` negated at an input node, unchanged at any other. -/
+def pilotStepL (neg : α → α) (b : PilotCode) (x : α) : α :=
+  match b with
+  | .input _ _ => neg x
+  | _ => x
+
+/-- The steps `pilotStepL` on the blocks in order, by structural recursion on the list. -/
+def pilotFoldL (neg : α → α) : List PilotCode → α → α
+  | [], x => x
+  | b :: bs, x => pilotFoldL neg bs (pilotStepL neg b x)
+
+/-- The steps on the blocks of `pilotCodeL` from `x`. -/
+def codeRunLLean (neg : α → α) (x : α) : α :=
+  pilotFoldL neg pilotCodeL.blocks x
+
+/-- The literal of `codeRunLLean` over `x`: the blocks of `pilotCodeL` reduced, the fold
+    unfolded on them and each match reduced on its block. -/
+def codeRunLImp : ImpExpr :=
+  reifyImp% 1 codeRunLLean unfolding [pilotFoldL, pilotStepL]
+    reducing [pilotCodeL, PilotCode.blocks] within 1000
+
+/-- From the entry environment binding `x`, the literal `codeRunLImp` returns the encoding
+    of `codeRunLLean neg`; the goal is compared over its function reduced by the clauses the
+    literal was read with. -/
+theorem codeRunL_fnCorres (mul add sub : α → α → α) (double neg : α → α) (d : α) :
+    FnCorres (edBi mul add sub double neg d) codeRunLImp (A := α × Unit)
+      (fun a => bindParams [("x", enc a.1)]) (fun _ => True)
+      (fun a => codeRunLLean neg a.1) := by
+  ascend_reified (codeRunLLean neg) using [edBi_neg]
+    unfolding [pilotFoldL, pilotStepL] reducing [pilotCodeL, PilotCode.blocks] within 1000
 
 end CatCrypt.Hax.ReifyImp
 
