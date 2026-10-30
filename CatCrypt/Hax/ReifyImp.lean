@@ -28,8 +28,11 @@ The fragment:
 * `Prod.fst (Prod.snd^k x)`, and `Prod.snd^k x` at the last component of `x`, read as
   `.proj x k`;
 * `if c then a else b` and `cond c a b`, with the condition a Bool term (`b = true`,
-  `decide p`, `!`, `&&`, `||`) or an `Int` comparison (`<`, `≤`, `=`, read as the calls
-  `lt`, `le`, `eq`);
+  `decide p`) or an `Int` comparison (`<`, `≤`, `=`, read as the calls `lt`, `le`, `eq`);
+* the Boolean connectives `!`, `&&`, `||`, and `¬`, `∧`, `∨` in a condition or under
+  `decide`, read as the calls `Not`, `&&`, `||` on both operands: the call names of the
+  hax extraction of Rust `!`, `&&`, `||` on `bool`, which the front's call typing
+  (`hax64BitTable`) types on bits;
 * `some x` and `none`, read as the calls `Some` and `None` of the constructors of the
   hax value `.option`;
 * `Int` and `Bool` literals.
@@ -53,6 +56,8 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 * `edwardsAddLean`, `edwardsAddImp` — the extended-coordinates addition of
   `Ristretto255.element_add` over named field operations, and its literal
 * `condNegLean`, `condNegImp` — a conditional negation, and its literal
+* `cmpBi` — the builtin table of the `Int` comparison `lt` and the connectives
+* `bandCondLean`, `propCondLean` — conditions with connectives on Bool and under `decide`
 
 ## Main results
 
@@ -60,6 +65,8 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 * `edwardsAdd_fnCorres` — the literal of the pilot denotes `edwardsAddLean`
 * `edwardsAdd_prints` — the literal of the pilot prints as a Rust function
 * `condNeg_fnCorres` — the literal of the conditional negation denotes `condNegLean`
+* `bandCond_fnCorres`, `propCond_fnCorres` — the literals with the calls `&&`, `||`, `Not`
+  denote `bandCondLean` and `propCondLean`
 -/
 
 @[expose] public section
@@ -238,13 +245,13 @@ partial def reifyRhs (ctx : Ctx) (e : Expr) : ReifyM (List (String × Expr) × E
             (mkApp (mkConst ``Hax.ImpLit.int) (toExpr (Int.ofNat k))))
     if e.isAppOfArity ``not 1 then
       let (bs, as) ← reifyAtoms ctx [e.appArg!]
-      return (bs, ← mkCall "not" as)
+      return (bs, ← mkCall "Not" as)
     if e.isAppOfArity ``and 2 then
       let (bs, as) ← reifyAtoms ctx [e.getArg! 0, e.getArg! 1]
-      return (bs, ← mkCall "and" as)
+      return (bs, ← mkCall "&&" as)
     if e.isAppOfArity ``or 2 then
       let (bs, as) ← reifyAtoms ctx [e.getArg! 0, e.getArg! 1]
-      return (bs, ← mkCall "or" as)
+      return (bs, ← mkCall "||" as)
     if e.isAppOfArity ``Decidable.decide 2 then return ← reifyCond ctx (e.getArg! 0)
     if let .fvar id := e.getAppFn then
       if let some s := ctx.ops[id]? then
@@ -285,11 +292,11 @@ partial def reifyCond (ctx : Ctx) (p : Expr) : ReifyM (List (String × Expr) × 
     return (bs, ← mkCall "le" as)
   if p.isAppOfArity ``Not 1 then
     let (bs, a) ← atomize (← reifyCond ctx p.appArg!)
-    return (bs, ← mkCall "not" [a])
+    return (bs, ← mkCall "Not" [a])
   if p.isAppOfArity ``And 2 || p.isAppOfArity ``Or 2 then
     let (bs, a) ← atomize (← reifyCond ctx (p.getArg! 0))
     let (bs', b) ← atomize (← reifyCond ctx (p.getArg! 1))
-    return (bs ++ bs', ← mkCall (if p.isAppOfArity ``And 2 then "and" else "or") [a, b])
+    return (bs ++ bs', ← mkCall (if p.isAppOfArity ``And 2 then "&&" else "||") [a, b])
   throwError "reifyImp: condition outside the fragment: {p}"
 
 end
@@ -512,6 +519,73 @@ theorem condNeg_fnCorres (mul add sub : α → α → α) (double neg : α → �
       (fun a => bindParams [("b", enc a.1), ("x", enc a.2.1)]) (fun _ => True)
       (fun a => condNegLean neg a.1 a.2.1) := by
   ascend_reified (condNegLean neg) using [edBi_neg]
+
+/-! ## Boolean connectives in a condition -/
+
+/-- The builtin table of the `Int` comparison `lt` and the Boolean connectives `&&`, `||`,
+    `Not`, at the call names the reifier emits. -/
+noncomputable def cmpBi : Builtins :=
+  Table.toBuiltins [("lt", leaf2 (Hax.lt : Int → Int → Bool)), ("&&", leaf2 Hax.band),
+    ("||", leaf2 Hax.bor), ("Not", leaf1 Hax.bnot)]
+
+theorem cmpBi_lt (x y : Int) : cmpBi "lt" [enc x, enc y] = some (enc (Hax.lt x y)) := by
+  rw [cmpBi, Table.toBuiltins_of_lookup rfl, leaf2_apply]
+
+theorem cmpBi_band (x y : Bool) : cmpBi "&&" [enc x, enc y] = some (enc (Hax.band x y)) := by
+  rw [cmpBi, Table.toBuiltins_of_lookup rfl, leaf2_apply]
+
+theorem cmpBi_bor (x y : Bool) : cmpBi "||" [enc x, enc y] = some (enc (Hax.bor x y)) := by
+  rw [cmpBi, Table.toBuiltins_of_lookup rfl, leaf2_apply]
+
+theorem cmpBi_not (x : Bool) : cmpBi "Not" [enc x] = some (enc (Hax.bnot x)) := by
+  rw [cmpBi, Table.toBuiltins_of_lookup rfl, leaf1_apply]
+
+/-- The indicator of `x < y` and `y < 10`, a conjunction of two Boolean comparisons. -/
+def bandCondLean (x y : Int) : Int := if x < y && y < 10 then 1 else 0
+
+/-- The literal of `bandCondLean` over the parameters `x`, `y`. -/
+def bandCondImp : ImpExpr := reifyImp% 2 bandCondLean
+
+/-- The literal of `bandCondLean`: the conjunction is the call `&&` on the two comparisons. -/
+theorem bandCondImp_eq : bandCondImp =
+    .letBind "t" (.app "lt" [.var "x", .var "y"])
+    (.letBind "t_1" (.lit (.int 10))
+    (.letBind "t_2" (.app "lt" [.var "y", .var "t_1"])
+    (.letBind "t_3" (.app "&&" [.var "t", .var "t_2"])
+    (.ifThenElse (.var "t_3") (.letBind "t_4" (.lit (.int 1)) (.var "t_4"))
+      (.letBind "t_5" (.lit (.int 0)) (.var "t_5")))))) := rfl
+
+/-- From the entry environment binding `x` and `y`, the literal `bandCondImp` returns the
+    encoding of `bandCondLean` under the table `cmpBi`. -/
+theorem bandCond_fnCorres :
+    FnCorres cmpBi bandCondImp (A := Int × Int × Unit)
+      (fun a => bindParams [("x", enc a.1), ("y", enc a.2.1)]) (fun _ => True)
+      (fun a => bandCondLean a.1 a.2.1) := by
+  ascend_reified bandCondLean using [cmpBi_lt, cmpBi_band]
+
+/-- The indicator of `¬ x < y` or `y < 10`, a proposition read under `decide`. -/
+def propCondLean (x y : Int) : Int := if decide (¬ x < y ∨ y < 10) then 1 else 0
+
+/-- The literal of `propCondLean` over the parameters `x`, `y`. -/
+def propCondImp : ImpExpr := reifyImp% 2 propCondLean
+
+/-- The literal of `propCondLean`: `¬` and `∨` are the calls `Not` and `||`. -/
+theorem propCondImp_eq : propCondImp =
+    .letBind "t" (.app "lt" [.var "x", .var "y"])
+    (.letBind "t_1" (.app "Not" [.var "t"])
+    (.letBind "t_2" (.lit (.int 10))
+    (.letBind "t_3" (.app "lt" [.var "y", .var "t_2"])
+    (.letBind "t_4" (.app "||" [.var "t_1", .var "t_3"])
+    (.ifThenElse (.var "t_4") (.letBind "t_5" (.lit (.int 1)) (.var "t_5"))
+      (.letBind "t_6" (.lit (.int 0)) (.var "t_6"))))))) := rfl
+
+/-- From the entry environment binding `x` and `y`, the literal `propCondImp` returns the
+    encoding of `propCondLean` under the table `cmpBi`. -/
+theorem propCond_fnCorres :
+    FnCorres cmpBi propCondImp (A := Int × Int × Unit)
+      (fun a => bindParams [("x", enc a.1), ("y", enc a.2.1)]) (fun _ => True)
+      (fun a => propCondLean a.1 a.2.1) := by
+  ascend_reified propCondLean using [cmpBi_lt, cmpBi_bor, cmpBi_not]
 
 end CatCrypt.Hax.ReifyImp
 
