@@ -539,17 +539,77 @@ def allElemFacts (facts : Array Expr) : MetaM (Array (Expr × Expr × Expr)) := 
     out := out.push (f, a, .lam n ty (body.lowerLooseBVars 1 1) bi)
   return out
 
+/-- A proof of `0 < t.size` through the writes `Hax.array_update` of `t`
+    (`ne_array_update`), with the nonemptiness of the array written to proved by `prove`. -/
+partial def neThroughUpdates (prove : Expr → Array Expr → MetaM Expr) (t : Expr) :
+    MetaM Expr := do
+  if let (``Hax.array_update, #[_, a, i, v]) := t.getAppFnArgs then
+    return ← mkAppM ``Hax.Ascent.ne_array_update #[i, v, ← neThroughUpdates prove a]
+  prove (← neProp t) #[]
+
+mutual
+
+/-- The predicates `P` with proofs of `AllP P t` that the facts `alls` (`allElemFacts`) give
+    for the array `t`: a fact about `t` itself, and at a write `Hax.array_update a i v` each
+    `AllP P a` for which `P v` is proved by `elemOf` (`allP_array_update`). The results are
+    kept in `cache` per array. -/
+partial def allPOf (alls : Array (Expr × Expr × Expr)) (prove : Expr → Array Expr → MetaM Expr)
+    (cache : IO.Ref (ExprMap (Array (Expr × Expr)))) (t : Expr) :
+    MetaM (Array (Expr × Expr)) := do
+  if let some r := (← cache.get)[t]? then return r
+  let isUpd := t.isAppOfArity ``Hax.array_update 4
+  let mut out := #[]
+  for (f, a', P) in alls do
+    -- a write is matched syntactically: unfolding it against a variable is costly
+    if a' == t || (!isUpd && (← isDefEqBounded a' t)) then out := out.push (P, f)
+  if out.isEmpty && isUpd then
+    let args := t.getAppArgs
+    let (a, i, v) := (args[1]!, args[2]!, args[3]!)
+    for (P, ha) in ← allPOf alls prove cache a do
+      let s ← saveState
+      try
+        let hv ← elemOf alls prove cache P v
+        out := out.push (P, ← mkAppOptM ``Hax.Ascent.allP_array_update
+          #[none, P, a, i, v, ha, hv])
+      catch _ => s.restore
+  cache.modify (·.insert t out)
+  return out
+
+/-- A proof of `P v`: by `prove` from the facts, together with the conjuncts of `P' v` for
+    each `AllP P' b` of `allPOf` when `v` is a read `Hax.index b k` (`of_index_allP`). -/
+partial def elemOf (alls : Array (Expr × Expr × Expr)) (prove : Expr → Array Expr → MetaM Expr)
+    (cache : IO.Ref (ExprMap (Array (Expr × Expr)))) (P v : Expr) : MetaM Expr := do
+  let goal := (P.beta #[v]).headBeta
+  let mut more := #[]
+  if let (``Hax.index, #[α, inst, b, k]) := v.getAppFnArgs then
+    for (P', hb) in ← allPOf alls prove cache b do
+      let s ← saveState
+      try
+        let h ← neThroughUpdates prove b
+        let pf ← mkAppOptM ``Hax.Ascent.of_index_allP #[α, inst, P', b, h, hb, k]
+        let pf ← mkExpectedTypeHint pf (P'.beta #[v]).headBeta
+        if P' == P then return pf
+        more := more ++ (← splitFacts pf)
+      catch _ => s.restore
+  prove goal more
+
+end
+
 /-- The bounds of the elements read by `Hax.index` in the terms `es`: for each subterm
-    `Hax.index a i` and each fact `∀ x ∈ a, P x` or `AllP P a` among `facts`, the proofs of
-    the conjuncts of `P (Hax.index a i)` (`of_index_allP`), with `0 < a.size` proved by
-    `prove`. -/
-def indexElemFacts (es facts : Array Expr) (prove : Expr → MetaM Expr) :
+    `Hax.index a i` and each `AllP P a` that `allPOf` derives from the facts
+    `∀ x ∈ a, P x` and `AllP P a` among `facts`, through the writes `Hax.array_update` of
+    `a`, the proofs of the conjuncts of `P (Hax.index a i)` (`of_index_allP`). The side
+    conditions (nonemptiness, the predicate at a written value) are proved by `prove` from
+    the facts and the extra facts given to it. -/
+def indexElemFacts (es facts : Array Expr) (prove : Expr → Array Expr → MetaM Expr) :
     MetaM (Array Expr) := do
   let mut idxs := #[]
   for e in es do
     idxs ← subtermsWhere (·.isAppOfArity ``Hax.index 4) (← instantiateMVars e) idxs
   if idxs.isEmpty then return #[]
   let alls ← allElemFacts facts
+  if alls.isEmpty then return #[]
+  let cache ← IO.mkRef ({} : ExprMap (Array (Expr × Expr)))
   let mut out := #[]
   let mut done : Array Expr := #[]
   for x in idxs do
@@ -557,11 +617,10 @@ def indexElemFacts (es facts : Array Expr) (prove : Expr → MetaM Expr) :
     done := done.push x
     let args := x.getAppArgs
     let a := args[2]!
-    for (f, a', P) in alls do
-      unless a' == a || (← isDefEqBounded a' a) do continue
+    for (P, f) in ← allPOf alls prove cache a do
       let s ← saveState
       try
-        let h ← prove (← neProp a)
+        let h ← neThroughUpdates prove a
         let pf ← mkAppOptM ``Hax.Ascent.of_index_allP
           #[args[0]!, args[1]!, P, a, h, f, args[3]!]
         out := out ++ (← splitFacts (← mkExpectedTypeHint pf (P.beta #[x]).headBeta))
@@ -595,8 +654,8 @@ partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
   let extra ← arithFacts facts
   let tys := #[p] ++ (← (facts ++ extra).mapM inferType)
   let elemFacts ← if elems then
-      indexElemFacts tys (facts ++ (← factsOf (← getLocalHyps))) fun q =>
-        proveArith q facts (elems := false)
+      indexElemFacts tys (facts ++ (← factsOf (← getLocalHyps))) fun q more =>
+        proveArith q (facts ++ more) (elems := false)
     else pure #[]
   let extra := extra ++ elemFacts
   let tys := tys ++ (← elemFacts.mapM inferType)

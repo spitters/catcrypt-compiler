@@ -482,7 +482,8 @@ elab_rules : term
     closed when the generated statement is definitionally the goal. With `guard G`, the
     predicate `G` of the argument tuple is the precondition of the generator
     (`FnSpec.pre?`): the side conditions of the leaves are proved from its conjuncts, and
-    the goal is `FnCorres bi e entry G f`. -/
+    the goal is `FnCorres bi e entry G f`. A guard given as a `def` hides its conjuncts
+    from the generator, so `G` is a lambda or an `abbrev`. -/
 syntax "ascend_reified " term " using " "[" ident,* "]" (" guard " term)? : tactic
 
 elab_rules : tactic
