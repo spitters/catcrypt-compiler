@@ -274,10 +274,12 @@ def tupleComps (x : Expr) : Nat → MetaM (List Expr)
 def isProdTy (ty : Expr) : MetaM Bool := do
   return (← whnfR ty).isAppOfArity ``Prod 2
 
-/-- Decide a proposition by evaluation, with `whnf` or with the kernel. -/
+/-- Decide a proposition by evaluation, with `whnf` or with the kernel. An evaluation that
+    exceeds the recursion depth or the heartbeats fails. -/
 def proveDecide (p : Expr) : MetaM Expr := do
   let d ← mkDecide p
-  let r ← withAtLeastTransparency .default <| whnf d
+  let r ← tryCatchRuntimeEx (withAtLeastTransparency .default <| whnf d) fun _ =>
+    throwError "side: cannot decide{shortExpr p}"
   if r.isConstOf ``Bool.true then return ← mkDecideProof p
   let p ← instantiateMVars p
   if p.hasExprMVar then throwError "side: cannot decide{shortExpr p}"
@@ -1462,9 +1464,13 @@ def matchLeaf (f : String) (vs : Array SVal) (hint? : Option Expr) (strict : Boo
           else
             let mty ← instantiateMVars (← inferType m')
             if ← isProp mty then
-              try m'.mvarId!.assign (← proveDecide mty)
-              catch ex =>
-                unless pend && (← isPendFact mty) do throw ex
+              -- an integer comparison over free variables is left to the caller: its
+              -- evaluation unfolds the subtraction from a large literal one step at a time
+              let openCmp := pend && mty.hasFVar && (← isPendFact mty)
+              unless openCmp do
+                try m'.mvarId!.assign (← proveDecide mty)
+                catch ex =>
+                  unless pend && (← isPendFact mty) do throw ex
       let pf ← instantiateMVars (mkAppN c mvs)
       if pf.hasExprMVar then
         unless pend do throwError "open"
