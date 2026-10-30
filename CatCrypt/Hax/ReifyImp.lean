@@ -358,10 +358,15 @@ def reduceClosed (t : Expr) (maxSize : Nat) : MetaM Expr := do
 /-- The term `e` with every application of one of the constants `cs` unfolded by
     `unfoldDefinition?` (smart unfolding for a definition by structural recursion) and its
     head reduced by `whnfCore`, again on the result, until no application of `cs` unfolds,
-    and every closed application (no free variable) of one of the constants `rs` replaced by
-    its normal form (`reduceClosed` with the bound `maxSize`). After the subterms of an
-    application are reduced, the application is reduced again (bottom-up): its head
-    beta-reduced, an application of `cs` unfolded, and an application of a matcher, a
+    and every closed full application (no free variable, at least as many arguments as the
+    constant has leading binders) of one of the constants `rs` replaced by its normal form
+    (`reduceClosed` with the bound `maxSize`); a partial application, such as the head
+    `@HAdd.hAdd ℕ ℕ ℕ instHAdd` of an application with open arguments, is not reduced.
+    After the subterms of an application are reduced, the application is reduced again
+    (bottom-up): its head beta-reduced; when it is closed, a full application of `rs`
+    replaced by its normal form, an application of an instance projection unfolded
+    (`unfoldProjInst?`), and a term of type `Nat` that `natLit?` evaluates replaced by its
+    numeral; an application of `cs` unfolded; and an application of a matcher, a
     recursor or a `casesOn` reduced by `whnfCore` (iota) when its scrutinee has become a
     constructor application. No other constant is unfolded. More than `fuel` unfoldings and
     reductions is an error. -/
@@ -378,16 +383,28 @@ def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array 
     let some t' ← unfoldDefinition? t | return none
     tick
     return some (← whnfCore t')
+  let closed (t : Expr) : Bool := !t.hasFVar && !t.hasMVar
+  let fullRs (t : Expr) : MetaM Bool := do
+    let some c := t.getAppFn.constName? | return false
+    unless rs.contains c do return false
+    return (← getConstInfo c).type.getForallArity ≤ t.getAppNumArgs
+  let fold? (t : Expr) : MetaM (Option (TransformStep)) := do
+    if !closed t || !t.isApp || t.nat?.isSome then return none
+    if ← fullRs t then return some (.done (← reduceClosed t maxSize))
+    if t.getAppFn.isProj then
+      if let some t' ← unfoldProjInst? t then return some (.visit t')
+    unless (← whnfR (← inferType t)).isConstOf ``Nat do return none
+    return (← natLit? t).map (.done ∘ mkNatLit)
   Meta.transform e
     (pre := fun t => do
-      let some c := t.getAppFn.constName? | return .continue
-      if rs.contains c && !t.hasFVar && !t.hasMVar then
+      if closed t && (← fullRs t) then
         return .done (← reduceClosed t maxSize)
       match ← unfold? t with
       | some t' => return .visit t'
       | none => return .continue)
     (post := fun t => do
       let t := t.headBeta
+      if let some s ← fold? t then return s
       let some c := t.getAppFn.constName? | return .done t
       if let some t' ← unfold? t then return .visit t'
       let env ← getEnv
@@ -829,6 +846,48 @@ theorem codeRun_fnCorres (mul add sub : α → α → α) (double neg : α → �
       (fun a => bindParams [("x", enc a.1)]) (fun _ => True)
       (fun a => codeRunLean add neg a.1) := by
   ascend_reified (codeRunLean add neg) using [edBi_add, edBi_neg]
+
+/-! ## Arithmetic closed after a match is reduced -/
+
+/-- A layout with one size field. -/
+structure PilotLayout where
+  /-- The size. -/
+  k : Nat
+
+/-- The layout of size `4`. -/
+def pilotLayout : PilotLayout := ⟨4⟩
+
+/-- One step on the block `b`: at an input node with datum `d`, `x` added to the integer
+    `d + 4 + length of the blocks of the continuation`; at any other node, `x`. -/
+def pilotOffset (add : Int → Int → Int) (b : PilotCode) (x : Int) : Int :=
+  match b with
+  | .input d k => add x (((d + pilotLayout.k + k.blocks.length : Nat) : Int))
+  | _ => x
+
+/-- The step `pilotOffset` on the input node with datum `3` whose continuation is a stuck
+    node. -/
+def offsetLean (add : Int → Int → Int) (x : Int) : Int :=
+  pilotOffset add (.input 3 (.stuck .halt)) x
+
+/-- The literal of `offsetLean` over `x`: the match reduced on the input node, after which
+    the sum `3 + 4 + 1` and its cast to `Int` are closed and read as the literal `8`. -/
+def offsetImp : ImpExpr :=
+  reifyImp% 1 offsetLean unfolding [pilotOffset]
+    reducing [pilotLayout, PilotLayout.k, PilotCode.blocks, List.length, HAdd.hAdd, instHAdd,
+      Add.add, Nat.add, Nat.cast, instNatCastInt] within 100
+
+/-- The literal of `offsetLean`: one addition of the integer literal `8`. -/
+theorem offsetImp_eq : offsetImp =
+    .letBind "t" (.lit (.int 8))
+    (.letBind "t_1" (.app "add" [.var "x", .var "t"]) (.var "t_1")) := rfl
+
+/-- From the entry environment binding `x`, the literal `offsetImp` returns the encoding of
+    `offsetLean add` under the table `edBi`. -/
+theorem offset_fnCorres (mul add sub : Int → Int → Int) (double neg : Int → Int) (d : Int) :
+    FnCorres (edBi mul add sub double neg d) offsetImp (A := Int × Unit)
+      (fun a => bindParams [("x", enc a.1)]) (fun _ => True)
+      (fun a => offsetLean add a.1) := by
+  ascend_reified (offsetLean add) using [edBi_add]
 
 end CatCrypt.Hax.ReifyImp
 
