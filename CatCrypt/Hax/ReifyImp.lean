@@ -67,6 +67,9 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 * `foldAddL`, `sumThreeLean`, `sumThreeImp` — a fold over a list literal, and its literal
 * `closedConstLean`, `closedConstImp` — additions of constants given by closed terms, and
   the literal read after `reducing`
+* `PilotCode`, `PilotCode.blocks`, `pilotResume`, `pilotFold`, `pilotCode`, `codeRunLean`,
+  `codeRunImp` — a fold over the blocks of a closed code tree, each block read by a match
+  with a catch-all arm (a sparse `casesOn`), and its literal
 
 ## Main results
 
@@ -80,6 +83,8 @@ the goal; the obligation `G = f` is discharged by that definitional check.
   denotes `sumThreeLean`
 * `closedConst_fnCorres` — the literal with the integer literals of reduced closed terms
   denotes `closedConstLean`
+* `codeRun_fnCorres` — the literal of the fold over the blocks of a code tree, with the
+  matches over the reduced blocks reduced, denotes `codeRunLean`
 -/
 
 @[expose] public section
@@ -354,21 +359,43 @@ def reduceClosed (t : Expr) (maxSize : Nat) : MetaM Expr := do
     `unfoldDefinition?` (smart unfolding for a definition by structural recursion) and its
     head reduced by `whnfCore`, again on the result, until no application of `cs` unfolds,
     and every closed application (no free variable) of one of the constants `rs` replaced by
-    its normal form (`reduceClosed` with the bound `maxSize`). No other constant is unfolded.
-    More than `fuel` unfoldings is an error. -/
+    its normal form (`reduceClosed` with the bound `maxSize`). After the subterms of an
+    application are reduced, the application is reduced again (bottom-up): its head
+    beta-reduced, an application of `cs` unfolded, and an application of a matcher, a
+    recursor or a `casesOn` reduced by `whnfCore` (iota) when its scrutinee has become a
+    constructor application. No other constant is unfolded. More than `fuel` unfoldings and
+    reductions is an error. -/
 def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array Name := #[])
     (maxSize : Nat := 10000) : MetaM Expr := do
   if cs.isEmpty && rs.isEmpty then return e
   let count ← IO.mkRef 0
-  Meta.transform e (pre := fun t => do
-    let some c := t.getAppFn.constName? | return .continue
-    if rs.contains c && !t.hasFVar && !t.hasMVar then
-      return .done (← reduceClosed t maxSize)
-    unless cs.contains c do return .continue
-    let some t' ← unfoldDefinition? t | return .continue
+  let tick : MetaM Unit := do
     count.modify (· + 1)
     if (← count.get) > fuel then throwError "reifyImp: more than {fuel} unfoldings"
-    return .visit (← whnfCore t'))
+  let unfold? (t : Expr) : MetaM (Option Expr) := do
+    let some c := t.getAppFn.constName? | return none
+    unless cs.contains c do return none
+    let some t' ← unfoldDefinition? t | return none
+    tick
+    return some (← whnfCore t')
+  Meta.transform e
+    (pre := fun t => do
+      let some c := t.getAppFn.constName? | return .continue
+      if rs.contains c && !t.hasFVar && !t.hasMVar then
+        return .done (← reduceClosed t maxSize)
+      match ← unfold? t with
+      | some t' => return .visit t'
+      | none => return .continue)
+    (post := fun t => do
+      let t := t.headBeta
+      let some c := t.getAppFn.constName? | return .done t
+      if let some t' ← unfold? t then return .visit t'
+      let env ← getEnv
+      unless (← isMatcher c) || isRecCore env c || isAuxRecursor env c do return .done t
+      let t' ← whnfCore t
+      if t' == t then return .done t
+      tick
+      return .visit t')
 
 /-- The literal of the definition `c` over its last `n` explicit parameters, the binders
     before them read as operations. The body is first reduced by `unfoldNamed cs` with the
@@ -747,6 +774,61 @@ theorem closedConst_fnCorres (mul add sub : Int → Int → Int) (double neg : I
       (fun a => bindParams [("x", enc a.1)]) (fun _ => True)
       (fun a => closedConstLean add a.1) := by
   ascend_reified (closedConstLean add) using [edBi_add]
+
+/-! ## Matches over a closed code tree -/
+
+/-- A code tree: an input node, a stuck node, a receive node with two continuations, a
+    sequence and the end. -/
+inductive PilotCode where
+  | input (d : Nat) (k : PilotCode)
+  | stuck (k : PilotCode)
+  | recv (d : Nat) (k kf : PilotCode)
+  | seq (k₁ k₂ : PilotCode)
+  | halt
+
+/-- The blocking nodes of a code tree in order, by structural recursion. -/
+def PilotCode.blocks : PilotCode → List PilotCode
+  | .input d k => .input d k :: k.blocks
+  | .stuck k => .stuck k :: k.blocks
+  | .recv d k kf => .recv d k kf :: (k.blocks ++ kf.blocks)
+  | .seq k₁ k₂ => k₁.blocks ++ k₂.blocks
+  | .halt => []
+
+/-- One step on the block `b`: `x` added to `x` at an input node, to `neg x` at a stuck
+    node, and to `add x x` at any other node (a match with a catch-all arm). -/
+def pilotResume (add : α → α → α) (neg : α → α) (b : PilotCode) (x : α) : α :=
+  add x (match b with
+    | .input _ _ => x
+    | .stuck _ => neg x
+    | _ => add x x)
+
+/-- The steps `pilotResume` on the blocks in order, by structural recursion on the list. -/
+def pilotFold (add : α → α → α) (neg : α → α) : List PilotCode → α → α
+  | [], x => x
+  | b :: bs, x => pilotFold add neg bs (pilotResume add neg b x)
+
+/-- A closed code tree computed by a fold: an input node at each even position below `3`
+    and a stuck node at each odd one. -/
+def pilotCode : PilotCode :=
+  (List.range 3).foldr (fun i k => if i % 2 = 0 then .input i k else .stuck k) .halt
+
+/-- The steps on the blocks of `pilotCode` from `x`. -/
+def codeRunLean (add : α → α → α) (neg : α → α) (x : α) : α :=
+  pilotFold add neg pilotCode.blocks x
+
+/-- The literal of `codeRunLean` over `x`: the blocks of `pilotCode` reduced, the fold
+    unfolded on them and each match reduced on its block. -/
+def codeRunImp : ImpExpr :=
+  reifyImp% 1 codeRunLean unfolding [pilotFold, pilotResume]
+    reducing [pilotCode, PilotCode.blocks] within 1000
+
+/-- From the entry environment binding `x`, the literal `codeRunImp` returns the encoding
+    of `codeRunLean add neg` under the table `edBi`. -/
+theorem codeRun_fnCorres (mul add sub : α → α → α) (double neg : α → α) (d : α) :
+    FnCorres (edBi mul add sub double neg d) codeRunImp (A := α × Unit)
+      (fun a => bindParams [("x", enc a.1)]) (fun _ => True)
+      (fun a => codeRunLean add neg a.1) := by
+  ascend_reified (codeRunLean add neg) using [edBi_add, edBi_neg]
 
 end CatCrypt.Hax.ReifyImp
 

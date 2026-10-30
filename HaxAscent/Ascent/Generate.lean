@@ -523,9 +523,59 @@ def arithFacts (facts : Array Expr) : MetaM (Array Expr) := do
     out := out.push (← mkAppM ``Int.min_le_right #[args[2]!, args[3]!])
   return out
 
+/-- The facts `∀ x ∈ a, P x` and `AllP P a` among `facts`, each with its array `a` and its
+    predicate `P`. -/
+def allElemFacts (facts : Array Expr) : MetaM (Array (Expr × Expr × Expr)) := do
+  let mut out := #[]
+  for f in facts do
+    let t ← instantiateMVars (← inferType f)
+    if t.isAppOfArity ``Hax.Ascent.AllP 3 then
+      out := out.push (f, t.getArg! 2, t.getArg! 1)
+      continue
+    let .forallE n ty (.forallE _ m body _) bi := t | continue
+    unless m.isAppOfArity ``Membership.mem 5 && m.getArg! 4 == .bvar 0 do continue
+    let a := m.getArg! 3
+    if a.hasLooseBVars || body.hasLooseBVar 0 then continue
+    out := out.push (f, a, .lam n ty (body.lowerLooseBVars 1 1) bi)
+  return out
+
+/-- The bounds of the elements read by `Hax.index` in the terms `es`: for each subterm
+    `Hax.index a i` and each fact `∀ x ∈ a, P x` or `AllP P a` among `facts`, the proofs of
+    the conjuncts of `P (Hax.index a i)` (`of_index_allP`), with `0 < a.size` proved by
+    `prove`. -/
+def indexElemFacts (es facts : Array Expr) (prove : Expr → MetaM Expr) :
+    MetaM (Array Expr) := do
+  let mut idxs := #[]
+  for e in es do
+    idxs ← subtermsWhere (·.isAppOfArity ``Hax.index 4) (← instantiateMVars e) idxs
+  if idxs.isEmpty then return #[]
+  let alls ← allElemFacts facts
+  let mut out := #[]
+  let mut done : Array Expr := #[]
+  for x in idxs do
+    if done.contains x then continue
+    done := done.push x
+    let args := x.getAppArgs
+    let a := args[2]!
+    for (f, a', P) in alls do
+      unless a' == a || (← isDefEqBounded a' a) do continue
+      let s ← saveState
+      try
+        let h ← prove (← neProp a)
+        let pf ← mkAppOptM ``Hax.Ascent.of_index_allP
+          #[args[0]!, args[1]!, P, a, h, f, args[3]!]
+        out := out ++ (← splitFacts (← mkExpectedTypeHint pf (P.beta #[x]).headBeta))
+        break
+      catch _ => s.restore
+  return out
+
 /-- A proof of an arithmetic proposition: by evaluation, from a fact, or by `omega` over
-    the facts, their arithmetic consequences and the local context. -/
-def proveArith (p : Expr) (facts : Array Expr) : MetaM Expr := do
+    the facts, their arithmetic consequences and the local context. With `elems`, the
+    bounds of the elements read by `Hax.index` that the facts over all elements of an array
+    give are added (`indexElemFacts`), their nonemptiness side conditions proved without
+    them. -/
+partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
+    MetaM Expr := do
   -- evaluation decides closed propositions only
   unless (← instantiateMVars p).hasFVar do
     if let some pf ← boundedTry? (proveDecide p) then return pf
@@ -544,6 +594,12 @@ def proveArith (p : Expr) (facts : Array Expr) : MetaM Expr := do
   let hyps ← g'.withContext getLocalHyps
   let extra ← arithFacts facts
   let tys := #[p] ++ (← (facts ++ extra).mapM inferType)
+  let elemFacts ← if elems then
+      indexElemFacts tys (facts ++ (← factsOf (← getLocalHyps))) fun q =>
+        proveArith q facts (elems := false)
+    else pure #[]
+  let extra := extra ++ elemFacts
+  let tys := tys ++ (← elemFacts.mapM inferType)
   let ops ← arithOpEqs tys
   let lens ← arrayLenEqs tys
   try
