@@ -35,7 +35,9 @@ The fragment:
   (`hax64BitTable`) types on bits;
 * `some x` and `none`, read as the calls `Some` and `None` of the constructors of the
   hax value `.option`;
-* `Int` and `Bool` literals.
+* `Int` and `Bool` literals, an integer literal in any of the forms a closed integer term
+  takes after `Meta.reduce`: `Int.ofNat k`, `Int.negSucc k`, the cast `((k : Nat) : Int)`
+  of a closed numeral and a negation (`intLit?`).
 
 The output is in A-normal form: every operand of a call, a projection, a tuple or a
 conditional is a variable, a compound operand is bound by a `let` to a fresh name, and the
@@ -52,7 +54,9 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 
 * `reifyImp%` — the reifier; `reifyImp% n f unfolding [g, …]` first unfolds the
   applications of `g, …` in the body (`unfoldNamed`), so that a definition by recursion on
-  a closed argument (a list literal) is read as the term it reduces to
+  a closed argument (a list literal) is read as the term it reduces to;
+  `reducing [h, …] within N` replaces each closed application of `h, …` by its normal form
+  under `Meta.reduce`, of at most `N` subterm objects (`reduceClosed`)
 * `ascend_reified` — the validation tactic
 * `edBi` — the builtin table of the field operations of the pilot
 * `edwardsAddLean`, `edwardsAddImp` — the extended-coordinates addition of
@@ -61,6 +65,8 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 * `cmpBi` — the builtin table of the `Int` comparison `lt` and the connectives
 * `bandCondLean`, `propCondLean` — conditions with connectives on Bool and under `decide`
 * `foldAddL`, `sumThreeLean`, `sumThreeImp` — a fold over a list literal, and its literal
+* `closedConstLean`, `closedConstImp` — additions of constants given by closed terms, and
+  the literal read after `reducing`
 
 ## Main results
 
@@ -72,6 +78,8 @@ the goal; the obligation `G = f` is discharged by that definitional check.
   denote `bandCondLean` and `propCondLean`
 * `sumThree_fnCorres` — the literal of a fold over a list literal, read after `unfolding`,
   denotes `sumThreeLean`
+* `closedConst_fnCorres` — the literal with the integer literals of reduced closed terms
+  denotes `closedConstLean`
 -/
 
 @[expose] public section
@@ -174,6 +182,34 @@ def atomize (p : List (String × Expr) × Expr) : ReifyM (List (String × Expr) 
   let t ← fresh base
   return (bs ++ [(t, r)], mkVar t)
 
+/-- The value of a closed natural numeral: a raw literal, `OfNat.ofNat` of one, or a closed
+    term of `Nat.succ`, `+`, `*` and `-` on such numerals (`Meta.evalNat`). -/
+def natLit? (e : Expr) : MetaM (Option Nat) := do
+  if e.hasFVar || e.hasMVar then return none
+  if let some k := e.rawNatLit? then return some k
+  (evalNat e).run
+
+/-- The value of an integer literal: `OfNat.ofNat` of a raw literal at `Int`, `Int.ofNat k`
+    and the cast `((k : Nat) : Int)` of a closed numeral `k` (`natLit?`), `Int.negSucc k`, and
+    the negation of an integer literal. These are the forms a closed integer term takes after
+    `Meta.reduce`. -/
+partial def intLit? (e : Expr) : MetaM (Option Int) := do
+  let isInt (t : Expr) : MetaM Bool := return (← whnfR t).isConstOf ``Int
+  if e.isAppOfArity ``OfNat.ofNat 3 then
+    if ← isInt (e.getArg! 0) then
+      if let some k := (e.getArg! 1).rawNatLit? then return some (Int.ofNat k)
+    return none
+  if e.isAppOfArity ``Int.ofNat 1 then
+    return (← natLit? e.appArg!).map Int.ofNat
+  if e.isAppOfArity ``Int.negSucc 1 then
+    return (← natLit? e.appArg!).map Int.negSucc
+  if e.isAppOfArity ``Nat.cast 3 || e.isAppOfArity ``NatCast.natCast 3 then
+    if ← isInt (e.getArg! 0) then return (← natLit? e.appArg!).map Int.ofNat
+    return none
+  if e.isAppOfArity ``Neg.neg 3 then
+    if ← isInt (e.getArg! 0) then return (← intLit? e.appArg!).map (- ·)
+  return none
+
 mutual
 
 /-- The A-normal literal of a term of the fragment in tail position: bindings followed by
@@ -243,11 +279,8 @@ partial def reifyRhs (ctx : Ctx) (e : Expr) : ReifyM (List (String × Expr) × E
     if e.isAppOfArity ``Option.none 1 then return ([], ← mkCall "None" [])
     if e.isConstOf ``Bool.true || e.isConstOf ``Bool.false then
       return ([], mkApp (mkConst ``Hax.ImpExpr.lit) (mkApp (mkConst ``Hax.ImpLit.bool) e))
-    if e.isAppOfArity ``OfNat.ofNat 3 then
-      if (← whnfR (e.getArg! 0)).isConstOf ``Int then
-        if let some k := (e.getArg! 1).rawNatLit? then
-          return ([], mkApp (mkConst ``Hax.ImpExpr.lit)
-            (mkApp (mkConst ``Hax.ImpLit.int) (toExpr (Int.ofNat k))))
+    if let some k ← intLit? e then
+      return ([], mkApp (mkConst ``Hax.ImpExpr.lit) (mkApp (mkConst ``Hax.ImpLit.int) (toExpr k)))
     if e.isAppOfArity ``not 1 then
       let (bs, as) ← reifyAtoms ctx [e.appArg!]
       return (bs, ← mkCall "Not" as)
@@ -306,15 +339,31 @@ partial def reifyCond (ctx : Ctx) (p : Expr) : ReifyM (List (String × Expr) × 
 
 end
 
+/-- The normal form of the closed term `t` under `Meta.reduce` at default transparency. Its
+    size is the number of distinct subterm objects (`Expr.numObjs`, shared subterms counted
+    once); a normal form of more than `maxSize` objects is an error that states the size. -/
+def reduceClosed (t : Expr) (maxSize : Nat) : MetaM Expr := do
+  let r ← withTransparency .default (Meta.reduce t)
+  let size ← r.numObjs
+  if size > maxSize then
+    throwError "reifyImp: the normal form of {t.getAppFn} has {size} subterm objects, \
+      more than the bound {maxSize}"
+  return r
+
 /-- The term `e` with every application of one of the constants `cs` unfolded by
     `unfoldDefinition?` (smart unfolding for a definition by structural recursion) and its
-    head reduced by `whnfCore`, again on the result, until no application of `cs` unfolds.
-    No other constant is unfolded. More than `fuel` unfoldings is an error. -/
-def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) : MetaM Expr := do
-  if cs.isEmpty then return e
+    head reduced by `whnfCore`, again on the result, until no application of `cs` unfolds,
+    and every closed application (no free variable) of one of the constants `rs` replaced by
+    its normal form (`reduceClosed` with the bound `maxSize`). No other constant is unfolded.
+    More than `fuel` unfoldings is an error. -/
+def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array Name := #[])
+    (maxSize : Nat := 10000) : MetaM Expr := do
+  if cs.isEmpty && rs.isEmpty then return e
   let count ← IO.mkRef 0
   Meta.transform e (pre := fun t => do
     let some c := t.getAppFn.constName? | return .continue
+    if rs.contains c && !t.hasFVar && !t.hasMVar then
+      return .done (← reduceClosed t maxSize)
     unless cs.contains c do return .continue
     let some t' ← unfoldDefinition? t | return .continue
     count.modify (· + 1)
@@ -322,12 +371,14 @@ def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) : MetaM Expr
     return .visit (← whnfCore t'))
 
 /-- The literal of the definition `c` over its last `n` explicit parameters, the binders
-    before them read as operations. The body is first reduced by `unfoldNamed cs`. -/
-def reifyConst (c : Name) (n : Nat) (cs : Array Name := #[]) : MetaM Expr := do
+    before them read as operations. The body is first reduced by `unfoldNamed cs` with the
+    closed applications of `rs` reduced under the bound `maxSize`. -/
+def reifyConst (c : Name) (n : Nat) (cs : Array Name := #[]) (rs : Array Name := #[])
+    (maxSize : Nat := 10000) : MetaM Expr := do
   let info ← getConstInfo c
   let some v := info.value? | throwError "reifyImp: {c} has no body"
   lambdaTelescope v fun xs body => do
-    let body ← unfoldNamed cs body
+    let body ← unfoldNamed cs body (rs := rs) (maxSize := maxSize)
     let mut rest : Array Expr := #[]
     for x in xs do
       let d ← x.fvarId!.getDecl
@@ -352,15 +403,23 @@ def reifyConst (c : Name) (n : Nat) (cs : Array Name := #[]) : MetaM Expr := do
     parameters; the explicit binders before them are the builtin operations, called by
     their binder names. Without `n`, every explicit binder is a parameter. With
     `unfolding [g, …]`, the applications of the constants `g, …` in the body are unfolded
-    before it is read (`unfoldNamed`). -/
-syntax "reifyImp% " (num)? ident (" unfolding " "[" ident,* "]")? : term
+    before it is read (`unfoldNamed`). With `reducing [h, …]`, each closed application of
+    one of the constants `h, …` is replaced by its normal form under `Meta.reduce`, of at
+    most `10000` subterm objects, or of the bound given by `within N` (`reduceClosed`). -/
+syntax "reifyImp% " (num)? ident (" unfolding " "[" ident,* "]")?
+  (" reducing " "[" ident,* "]")? (" within " num)? : term
 
 elab_rules : term
-  | `(reifyImp% $[$n?]? $f:ident $[unfolding [$us?,*]]?) => do
+  | `(reifyImp% $[$n?]? $f:ident $[unfolding [$us?,*]]? $[reducing [$rs?,*]]?
+      $[within $b?]?) => do
   let c ← realizeGlobalConstNoOverloadWithInfo f
-  let cs ← match us? with
-    | some us => us.getElems.mapM fun u => realizeGlobalConstNoOverloadWithInfo u
+  let consts (xs? : Option (Syntax.TSepArray `ident ",")) : TermElabM (Array Name) :=
+    match xs? with
+    | some xs => xs.getElems.mapM fun u => realizeGlobalConstNoOverloadWithInfo u
     | none => pure #[]
+  let cs ← consts us?
+  let rs ← consts rs?
+  let maxSize := (b?.map (·.getNat)).getD 10000
   let n ← match n? with
     | some n => pure n.getNat
     | none => do
@@ -370,7 +429,7 @@ elab_rules : term
           let d ← x.fvarId!.getDecl
           return !d.binderInfo.isInstImplicit && !(← whnfR d.type).isSort
         return ys.size
-  reifyConst c n cs
+  reifyConst c n cs rs maxSize
 
 /-- `ascend_reified s using [l₁, …]` closes a goal `FnCorres bi e entry (fun _ => True) f`
     by the ascent generator on the literal `e`, the table `bi`, the leaf lemmas `lᵢ` and
@@ -645,6 +704,40 @@ theorem sumThree_fnCorres (mul add sub : α → α → α) (double neg : α → 
       (fun a => bindParams [("x", enc a.1), ("y", enc a.2.1), ("z", enc a.2.2.1)])
       (fun _ => True) (fun a => sumThreeLean add a.1 a.2.1 a.2.2.1) := by
   ascend_reified (sumThreeLean add) using [edBi_add]
+
+/-! ## Closed terms reduced to integer literals -/
+
+/-- Three additions of constants given by closed terms: the position of `7` in a list
+    literal cast to `Int`, and the integer differences `2 - 5` and `5 - 2` of
+    `Int.subNatNat`. -/
+def closedConstLean (add : Int → Int → Int) (x : Int) : Int :=
+  add (add (add x ((List.idxOf 7 [2, 7, 5] : Nat) : Int)) (Int.subNatNat 2 5))
+    (Int.subNatNat 5 2)
+
+/-- The literal of `closedConstLean` over `x`, with the closed applications of `List.idxOf`
+    and `Int.subNatNat` reduced before the body is read. -/
+def closedConstImp : ImpExpr :=
+  reifyImp% 1 closedConstLean reducing [List.idxOf, Int.subNatNat] within 100
+
+/-- The literal of `closedConstLean`: the closed terms are the integer literals `1`, `-3`
+    and `3` (a test of the reduction pre-pass and of the literal forms `Nat.cast`,
+    `Int.negSucc` and `Int.ofNat`). -/
+theorem closedConstImp_eq : closedConstImp =
+    .letBind "t" (.lit (.int 1))
+    (.letBind "t_1" (.app "add" [.var "x", .var "t"])
+    (.letBind "t_2" (.lit (.int (-3)))
+    (.letBind "t_3" (.app "add" [.var "t_1", .var "t_2"])
+    (.letBind "t_4" (.lit (.int 3))
+    (.letBind "t_5" (.app "add" [.var "t_3", .var "t_4"]) (.var "t_5")))))) := rfl
+
+/-- From the entry environment binding `x`, the literal `closedConstImp` returns the
+    encoding of `closedConstLean add` under the table `edBi`. -/
+theorem closedConst_fnCorres (mul add sub : Int → Int → Int) (double neg : Int → Int)
+    (d : Int) :
+    FnCorres (edBi mul add sub double neg d) closedConstImp (A := Int × Unit)
+      (fun a => bindParams [("x", enc a.1)]) (fun _ => True)
+      (fun a => closedConstLean add a.1) := by
+  ascend_reified (closedConstLean add) using [edBi_add]
 
 end CatCrypt.Hax.ReifyImp
 

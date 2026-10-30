@@ -2682,6 +2682,16 @@ structure FnSpec where
   /-- The type a parameter or result of a surface type is encoded at: a struct type in
       its encoded form (`Boxed` last field). -/
   normTy : Expr → MetaM Expr := pure
+  /-- The precondition, a predicate of the argument tuple; `none` for `True`. Its
+      conjuncts are the first facts of the guard, so that every side condition of the
+      derivation is proved under them. -/
+  pre? : Option Expr := none
+
+/-- The conjuncts of a right-nested conjunction, read syntactically after
+    beta-reduction: `andList (conjuncts p)` is `p`. -/
+partial def conjuncts (p : Expr) : List Expr :=
+  let p := p.headBeta
+  if p.isAppOfArity ``_root_.And 2 then p.getArg! 0 :: conjuncts (p.getArg! 1) else [p]
 
 /-- The result of the generator on one function. -/
 structure FnResult where
@@ -2703,8 +2713,9 @@ structure FnResult where
   surfaceFn : Expr
   /-- The oracle: whether the generated function is definitionally the surface. -/
   oracle : Bool
-  /-- The guard of the correspondence, a predicate of the argument tuple: the
-      nonemptiness facts about the arguments the derivation asks for, `True` for none. -/
+  /-- The guard of the correspondence, a predicate of the argument tuple: the conjuncts of
+      the precondition `FnSpec.pre?`, followed by the nonemptiness facts about the arguments
+      the derivation asks for, `True` for none. -/
   guard : Expr
 
 /-- The right-nested argument tuple type `τ₁ × (… × (τₙ × Unit))`. -/
@@ -2737,7 +2748,11 @@ def ascendFn (spec : FnSpec) : TermElabM FnResult := do
       for (g, sv, _) in spec.globals do
         Γ₀ := Γ₀ ++ [(g, sv)]
       let st : StCtx := { stTy := A, vars := #[a], proj := fun t => pure #[t], stVal := a }
-      let need ← IO.mkRef (#[] : Array Expr)
+      -- the guard starts from the conjuncts of the precondition
+      let pre : Array Expr := match spec.pre? with
+        | some P => (conjuncts (P.beta #[a])).toArray
+        | none => #[]
+      let need ← IO.mkRef pre
       let base ← IO.mkRef 0
       let ints ← (comps.zip tys).filterMapM fun (c, t) => do
         return if ← isDefEq t intTy then some c else none
