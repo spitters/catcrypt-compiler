@@ -125,6 +125,7 @@ CatCrypt.Crypto.MLKEM.Spec.Coeffs
 CatCrypt.Crypto.MultiQueryPRF
 CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
 CatCrypt.Crypto.Optimizer.ComCanonical
+CatCrypt.Crypto.Optimizer.ComPassQuiet
 CatCrypt.Crypto.Optimizer.ComSStmtBridge
 CatCrypt.Crypto.Optimizer.FootprintSpill
 CatCrypt.Crypto.Optimizer.InOrderCostModel
@@ -597,7 +598,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripDivRem
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripMul1
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemArrTripShift
 CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWide
-CatCrypt.Crypto.SecureCompilation.VIR.JasminOutStageLeak
 CatCrypt.Crypto.SecureCompilation.VIR.JasminRegAllocPhase3Proper
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincSemAlignmentOpMem
 CatCrypt.Crypto.SecureCompilation.VIR.JasmincWArrayAlignment
