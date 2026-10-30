@@ -50,7 +50,9 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 
 ## Main definitions
 
-* `reifyImp%` — the reifier
+* `reifyImp%` — the reifier; `reifyImp% n f unfolding [g, …]` first unfolds the
+  applications of `g, …` in the body (`unfoldNamed`), so that a definition by recursion on
+  a closed argument (a list literal) is read as the term it reduces to
 * `ascend_reified` — the validation tactic
 * `edBi` — the builtin table of the field operations of the pilot
 * `edwardsAddLean`, `edwardsAddImp` — the extended-coordinates addition of
@@ -58,6 +60,7 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 * `condNegLean`, `condNegImp` — a conditional negation, and its literal
 * `cmpBi` — the builtin table of the `Int` comparison `lt` and the connectives
 * `bandCondLean`, `propCondLean` — conditions with connectives on Bool and under `decide`
+* `foldAddL`, `sumThreeLean`, `sumThreeImp` — a fold over a list literal, and its literal
 
 ## Main results
 
@@ -67,6 +70,8 @@ the goal; the obligation `G = f` is discharged by that definitional check.
 * `condNeg_fnCorres` — the literal of the conditional negation denotes `condNegLean`
 * `bandCond_fnCorres`, `propCond_fnCorres` — the literals with the calls `&&`, `||`, `Not`
   denote `bandCondLean` and `propCondLean`
+* `sumThree_fnCorres` — the literal of a fold over a list literal, read after `unfolding`,
+  denotes `sumThreeLean`
 -/
 
 @[expose] public section
@@ -301,12 +306,28 @@ partial def reifyCond (ctx : Ctx) (p : Expr) : ReifyM (List (String × Expr) × 
 
 end
 
+/-- The term `e` with every application of one of the constants `cs` unfolded by
+    `unfoldDefinition?` (smart unfolding for a definition by structural recursion) and its
+    head reduced by `whnfCore`, again on the result, until no application of `cs` unfolds.
+    No other constant is unfolded. More than `fuel` unfoldings is an error. -/
+def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) : MetaM Expr := do
+  if cs.isEmpty then return e
+  let count ← IO.mkRef 0
+  Meta.transform e (pre := fun t => do
+    let some c := t.getAppFn.constName? | return .continue
+    unless cs.contains c do return .continue
+    let some t' ← unfoldDefinition? t | return .continue
+    count.modify (· + 1)
+    if (← count.get) > fuel then throwError "reifyImp: more than {fuel} unfoldings"
+    return .visit (← whnfCore t'))
+
 /-- The literal of the definition `c` over its last `n` explicit parameters, the binders
-    before them read as operations. -/
-def reifyConst (c : Name) (n : Nat) : MetaM Expr := do
+    before them read as operations. The body is first reduced by `unfoldNamed cs`. -/
+def reifyConst (c : Name) (n : Nat) (cs : Array Name := #[]) : MetaM Expr := do
   let info ← getConstInfo c
   let some v := info.value? | throwError "reifyImp: {c} has no body"
   lambdaTelescope v fun xs body => do
+    let body ← unfoldNamed cs body
     let mut rest : Array Expr := #[]
     for x in xs do
       let d ← x.fvarId!.getDecl
@@ -329,9 +350,17 @@ def reifyConst (c : Name) (n : Nat) : MetaM Expr := do
 
 /-- `reifyImp% n f` is the `ImpExpr` literal of the body of `f` over its last `n` explicit
     parameters; the explicit binders before them are the builtin operations, called by
-    their binder names. Without `n`, every explicit binder is a parameter. -/
-elab "reifyImp% " n?:(num)? f:ident : term => do
+    their binder names. Without `n`, every explicit binder is a parameter. With
+    `unfolding [g, …]`, the applications of the constants `g, …` in the body are unfolded
+    before it is read (`unfoldNamed`). -/
+syntax "reifyImp% " (num)? ident (" unfolding " "[" ident,* "]")? : term
+
+elab_rules : term
+  | `(reifyImp% $[$n?]? $f:ident $[unfolding [$us?,*]]?) => do
   let c ← realizeGlobalConstNoOverloadWithInfo f
+  let cs ← match us? with
+    | some us => us.getElems.mapM fun u => realizeGlobalConstNoOverloadWithInfo u
+    | none => pure #[]
   let n ← match n? with
     | some n => pure n.getNat
     | none => do
@@ -341,7 +370,7 @@ elab "reifyImp% " n?:(num)? f:ident : term => do
           let d ← x.fvarId!.getDecl
           return !d.binderInfo.isInstImplicit && !(← whnfR d.type).isSort
         return ys.size
-  reifyConst c n
+  reifyConst c n cs
 
 /-- `ascend_reified s using [l₁, …]` closes a goal `FnCorres bi e entry (fun _ => True) f`
     by the ascent generator on the literal `e`, the table `bi`, the leaf lemmas `lᵢ` and
@@ -586,6 +615,36 @@ theorem propCond_fnCorres :
       (fun a => bindParams [("x", enc a.1), ("y", enc a.2.1)]) (fun _ => True)
       (fun a => propCondLean a.1 a.2.1) := by
   ascend_reified propCondLean using [cmpBi_lt, cmpBi_bor, cmpBi_not]
+
+/-! ## A body reduced before it is read -/
+
+/-- The left fold of `add` over a list from the accumulator `acc`, by structural recursion
+    on the list. -/
+def foldAddL (add : α → α → α) : List α → α → α
+  | [], acc => acc
+  | x :: xs, acc => foldAddL add xs (add acc x)
+
+/-- The fold of `add` over the list literal `[x, y, z]` from `x`. -/
+def sumThreeLean (add : α → α → α) (x y z : α) : α := foldAddL add [x, y, z] x
+
+/-- The literal of `sumThreeLean` over `x`, `y`, `z`, with `foldAddL` unfolded on the list
+    literal before the body is read. -/
+def sumThreeImp : ImpExpr := reifyImp% 3 sumThreeLean unfolding [foldAddL]
+
+/-- The literal of `sumThreeLean`: three calls of `add`, one per element of the list (a test
+    of the reduction pre-pass). -/
+theorem sumThreeImp_eq : sumThreeImp =
+    .letBind "t" (.app "add" [.var "x", .var "x"])
+    (.letBind "t_1" (.app "add" [.var "t", .var "y"])
+    (.letBind "t_2" (.app "add" [.var "t_1", .var "z"]) (.var "t_2"))) := rfl
+
+/-- From the entry environment binding `x`, `y`, `z`, the literal `sumThreeImp` returns the
+    encoding of `sumThreeLean add` under the table `edBi`. -/
+theorem sumThree_fnCorres (mul add sub : α → α → α) (double neg : α → α) (d : α) :
+    FnCorres (edBi mul add sub double neg d) sumThreeImp (A := α × α × α × Unit)
+      (fun a => bindParams [("x", enc a.1), ("y", enc a.2.1), ("z", enc a.2.2.1)])
+      (fun _ => True) (fun a => sumThreeLean add a.1 a.2.1 a.2.2.1) := by
+  ascend_reified (sumThreeLean add) using [edBi_add]
 
 end CatCrypt.Hax.ReifyImp
 
