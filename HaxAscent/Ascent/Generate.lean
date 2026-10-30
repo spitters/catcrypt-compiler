@@ -413,6 +413,51 @@ def arithOpEqs (es : Array Expr) : MetaM (Array Expr) := do
     out := out.push (← mkExpectedTypeHint (← mkEqRefl x) (← mkEq x rhs))
   return out
 
+/-- The length equations of the arrays in the terms, which `omega` reads: for each subterm
+    `Hax.array_len b` the equation `Hax.array_len b = b.size` (`array_len_eq`), and for `b`
+    built by the runtime the length of `b` in terms of the length of the array it is built
+    from (`array_len_array_update`, `array_len_push`, `array_len_vec_remove`), followed through
+    nested constructions. -/
+def arrayLenEqs (es : Array Expr) : MetaM (Array Expr) := do
+  let mut todo := #[]
+  for e in es do
+    todo ← subtermsWhere (·.isAppOfArity ``Hax.array_len 2) (← instantiateMVars e) todo
+  let mut seen : Array Expr := #[]
+  let mut out := #[]
+  while h : 0 < todo.size do
+    let x := todo[todo.size - 1]
+    todo := todo.pop
+    if seen.contains x then continue
+    seen := seen.push x
+    let b := x.getAppArgs[1]!
+    out := out.push (← mkAppM ``Hax.Ascent.array_len_eq #[b])
+    -- the array `b` is built from an array by the runtime: its length equation
+    let built? : Option (Name × Array Expr) :=
+      if b.isAppOfArity ``Hax.array_update 4 then
+        some (``Hax.Ascent.array_len_array_update, b.getAppArgs[1:4].toArray)
+      else if b.isAppOfArity ``Hax.push 3 then
+        some (``Hax.Ascent.array_len_push, b.getAppArgs[1:3].toArray)
+      else
+        let r? := match b with
+          | .proj ``Prod 1 r => some r
+          | _ => if b.isAppOfArity ``Prod.snd 3 then some b.getAppArgs[2]! else none
+        match r? with
+        | some r =>
+          if r.isAppOfArity ``Hax.vec_remove 4 then
+            some (``Hax.Ascent.array_len_vec_remove, #[r.getAppArgs[2]!, r.getAppArgs[3]!])
+          else none
+        | none => none
+    let some (lem, args) := built? | continue
+    let s ← saveState
+    try
+      let pf ← mkAppM lem args
+      let some (_, _, rhs) := (← inferType pf).eq? | s.restore; continue
+      -- stated at the subterm itself, so that `omega` reads one atom for it
+      out := out.push (← mkExpectedTypeHint pf (← mkEq x rhs))
+      todo ← subtermsWhere (·.isAppOfArity ``Hax.array_len 2) rhs todo
+    catch _ => s.restore
+  return out
+
 /-- The subterms `min x y` of `e`, added to `acc`. -/
 def minsOf (e : Expr) (acc : Array Expr) : MetaM (Array Expr) :=
   subtermsWhere (·.isAppOfArity ``Min.min 4) e acc
@@ -498,8 +543,12 @@ def proveArith (p : Expr) (facts : Array Expr) : MetaM Expr := do
   let some g' ← g.mvarId!.falseOrByContra | throwError "side: cannot prove{indentExpr p}"
   let hyps ← g'.withContext getLocalHyps
   let extra ← arithFacts facts
-  let ops ← arithOpEqs (#[p] ++ (← (facts ++ extra).mapM inferType))
-  try Lean.Elab.Tactic.Omega.omega (hyps.toList ++ facts.toList ++ extra.toList ++ ops.toList) g'
+  let tys := #[p] ++ (← (facts ++ extra).mapM inferType)
+  let ops ← arithOpEqs tys
+  let lens ← arrayLenEqs tys
+  try
+    Lean.Elab.Tactic.Omega.omega
+      (hyps.toList ++ facts.toList ++ extra.toList ++ ops.toList ++ lens.toList) g'
   catch _ => throwError "side: cannot prove{indentExpr p}"
   mkExpectedTypeHint (← instantiateMVars g) p₀
 
