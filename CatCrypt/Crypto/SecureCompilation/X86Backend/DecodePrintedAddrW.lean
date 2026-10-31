@@ -4750,7 +4750,7 @@ def printedAddrWBImpl (body : Lcmd) : Bool :=
   let a := body.toArray
   decodableLcmd body && body.getLast?.any (fun r => isRetB r.li_i)
     && body.dropLast.all (fun i => instrOKWB body P i.li_i)
-    && (List.range a.size).all (condPrevB body)
+    && (List.range a.size).all (condPrevBA a)
     && (List.range a.size).all (carryPrevBA P a)
     && (List.range a.size).all (castPosBA a (narrowTable body))
 
@@ -4758,7 +4758,7 @@ def printedAddrWBImpl (body : Lcmd) : Bool :=
 @[csimp] theorem printedAddrWB_eq_impl : @printedAddrWB = @printedAddrWBImpl := by
   funext body
   simp only [printedAddrWB, printedAddrWBImpl, List.size_toArray, carryPrevBA_toArray,
-    castPosBA_toArray, carryPrevB_eq_with]
+    castPosBA_toArray, carryPrevB_eq_with, condPrevBA_toArray]
 
 /-- **The count-`0` shift of a general-purpose name in place is covered**: `instrOKWB`
     accepts `SHL:64 R, R, #0`, the copy of `R` to itself, for every general-purpose name `R`,

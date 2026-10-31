@@ -258,7 +258,7 @@ theorem imgSep_cells {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = tru
 /-! ## 4. Decided conditions -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellA? CellOp slotMov?)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (accArr)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (accArr accArrA accArrA_toArray)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells (cellMove cellBody CellNoSlot)
 
 /-- The cell names of the cell arrays. -/
@@ -530,6 +530,29 @@ def cellAccB (sl : String → Option (String × Nat)) (R : Slots) (body : Lcmd) 
         | some (.lea _ B _) => B == "RSP"
         | none => true
     | none => true
+
+/-- `cellAccB` reading the instructions and the reloads (`accArrA`) off the array of the
+    body, built once. -/
+def cellAccBImpl (sl : String → Option (String × Nat)) (R : Slots) (body : Lcmd) : Bool :=
+  let a := body.toArray
+  (List.range a.size).all fun k =>
+    match a[k]? with
+    | some i =>
+        let arrOk : String → Nat → Bool := fun B off =>
+          match accArrA sl a k B with
+          | some (A, _) => off % 8 == 0 && cellIdx R (memName A off) == some (A, off / 8)
+          | none => false
+        match cellA? i.li_i with
+        | some (.ld _ B off) => gpOk B && arrOk B off
+        | some (.st B off S) => gpOk B && gpOk S && arrOk B off
+        | some (.lea _ B _) => B == "RSP"
+        | none => true
+    | none => true
+
+/-- The check `cellAccB` is evaluated as `cellAccBImpl`. -/
+@[csimp] theorem cellAccB_eq_impl : @cellAccB = @cellAccBImpl := by
+  funext sl R body
+  simp only [cellAccB, cellAccBImpl, List.size_toArray, List.getElem?_toArray, accArrA_toArray]
 
 /-- **The cell frames from the decided check.** At the frame map with the cells, the cell
     accesses of a body accepted by `cellAccB` have their arrays and frame words. -/
