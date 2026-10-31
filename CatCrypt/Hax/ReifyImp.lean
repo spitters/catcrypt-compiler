@@ -493,9 +493,23 @@ elab_rules : term
     `f` of the goal is first reduced as the reifier reduced the body: the head constant of
     `s` and the constants `g, …` unfolded and the closed applications of `h, …` reduced
     (`unfoldNamed`); the generated statement is compared with the goal over that normal
-    form, which is definitionally `f`. -/
+    form, which is definitionally `f`.
+
+    Under `set_option trace.ascend_reified true`, or `trace.profiler true` for the phases
+    above `trace.profiler.threshold`, each phase is a trace node with its time: the reading
+    of the goal (the literal, the surface, the guard, the leaves), the generator
+    (`ascendFn`, the derivation with its side conditions), the normalisation of the goal's
+    function, the comparison of the generated statement with the goal, and the closing
+    term. -/
 syntax "ascend_reified " term " using " "[" ident,* "]" (" guard " term)?
   (" unfolding " "[" ident,* "]")? (" reducing " "[" ident,* "]")? (" within " num)? : tactic
+
+initialize registerTraceClass `ascend_reified
+
+/-- The phase `x` of `ascend_reified` as a trace node named `phase`. -/
+def ascendPhase {α : Type} (phase : String) (x : TacticM α) : TacticM α :=
+  withTraceNode `ascend_reified
+    (fun r => return m!"{phase}{match r with | .ok _ => "" | .error _ => " (failed)"}") x
 
 elab_rules : tactic
   | `(tactic| ascend_reified $sur:term using [$ls,*] $[guard $g?]? $[unfolding [$us?,*]]?
@@ -504,16 +518,18 @@ elab_rules : tactic
   unless goal.isAppOfArity ``Hax.Ascent.FnCorres 8 do
     throwError "ascend_reified: the goal is not a FnCorres statement"
   let bi := goal.getArg! 0
-  let e ← whnf (goal.getArg! 4)
-  let surface ← instantiateMVars (← Term.elabTermAndSynthesize sur none)
-  let pre? ← g?.mapM fun g => do
-    let gTy ← inferType (goal.getArg! 6)
-    instantiateMVars (← Term.elabTermAndSynthesize g gTy)
-  let params ← forallTelescopeReducing (← inferType surface) fun xs _ => do
-    let xs ← xs.filterM fun x => return !(← x.fvarId!.getBinderInfo).isInstImplicit
-    xs.toList.mapM fun x => return nameStr (← x.fvarId!.getUserName)
-  let lems ← ls.getElems.mapM fun l => realizeGlobalConstNoOverloadWithInfo l
-  let leaves ← Hax.Ascent.Gen.indexLeaves {} lems
+  let (e, surface, pre?, params, leaves) ← ascendPhase "reading the goal" do
+    let e ← whnf (goal.getArg! 4)
+    let surface ← instantiateMVars (← Term.elabTermAndSynthesize sur none)
+    let pre? ← g?.mapM fun g => do
+      let gTy ← inferType (goal.getArg! 6)
+      instantiateMVars (← Term.elabTermAndSynthesize g gTy)
+    let params ← forallTelescopeReducing (← inferType surface) fun xs _ => do
+      let xs ← xs.filterM fun x => return !(← x.fvarId!.getBinderInfo).isInstImplicit
+      xs.toList.mapM fun x => return nameStr (← x.fvarId!.getUserName)
+    let lems ← ls.getElems.mapM fun l => realizeGlobalConstNoOverloadWithInfo l
+    let leaves ← Hax.Ascent.Gen.indexLeaves {} lems
+    return (e, surface, pre?, params, leaves)
   let spec : Hax.Ascent.Gen.FnSpec := {
     lit := e, surface, params, globals := [], bi, leaves, hints := {}, pre?
     entry := fun A Γ₀l => do
@@ -522,7 +538,7 @@ elab_rules : tactic
       let hentry ← withLocalDeclD `a A fun a => withLocalDeclD `h (mkConst ``True) fun h => do
         mkLambdaFVars #[a, h] (← mkAppM ``Hax.Ascent.binds_bindParams #[Γ₀l.beta #[a]])
       return (entry, hentry) }
-  let res ← Hax.Ascent.Gen.ascendFn spec
+  let res ← ascendPhase "ascendFn" (Hax.Ascent.Gen.ascendFn spec)
   let consts (xs? : Option (Syntax.TSepArray `ident ",")) : TacticM (Array Name) :=
     match xs? with
     | some xs => xs.getElems.mapM fun u => realizeGlobalConstNoOverloadWithInfo u
@@ -530,17 +546,19 @@ elab_rules : tactic
   let cs ← consts us?
   let rs ← consts rs?
   -- the goal over its function reduced as the reifier reduced the body
-  let goalN ← if cs.isEmpty && rs.isEmpty then pure goal else do
+  let goalN ← if cs.isEmpty && rs.isEmpty then pure goal else
+    ascendPhase "normalising the goal" do
     let some hd := surface.getAppFn.constName?
       | throwError "ascend_reified: the surface{indentExpr surface}\nis not a constant application"
     let maxSize := (b?.map (·.getNat)).getD 10000
     let fN ← lambdaTelescope (goal.getArg! 7) fun xs body => do
       mkLambdaFVars xs (← unfoldNamed (cs.push hd) body (rs := rs) (maxSize := maxSize))
     pure (mkAppN goal.getAppFn (goal.getAppArgs.set! 7 fN))
-  unless ← isDefEq res.thmTy goalN do
+  unless ← ascendPhase "comparing with the goal" (isDefEq res.thmTy goalN) do
     throwError "ascend_reified: the generated statement{indentExpr res.thmTy}\nis not the goal"
-  closeMainGoal `ascend_reified
-    (← if goalN == goal then pure res.thm else mkExpectedTypeHint res.thm goalN)
+  ascendPhase "closing the goal" do
+    closeMainGoal `ascend_reified
+      (← if goalN == goal then pure res.thm else mkExpectedTypeHint res.thm goalN)
 
 end CatCrypt.Hax.ReifyImp
 

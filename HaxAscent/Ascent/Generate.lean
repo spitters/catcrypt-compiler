@@ -42,7 +42,11 @@ The comparisons of two values that decide how a proof is built (the equal branch
 conditional, `ite_same`, the branch-selecting lemmas, and the oracle equation) are made at
 reducible transparency and then at default transparency within a twentieth of the
 heartbeat budget (`isDefEqBounded`); a comparison that exceeds it counts as unequal, so
-two branches are merged into a conditional value instead of being unfolded.
+two branches are merged into a conditional value instead of being unfolded. Two typed
+values of the same type are merged at reducible transparency only, into a conditional
+term otherwise (`mergeVal`), and a conditional value is first matched against every
+candidate lemma at reducible transparency (`proveIteEq`): comparing two different writes
+to one array at default transparency unfolds both and fails only at the bound.
 
 A step that finds no rule or cannot close a side condition fails with a message whose
 first word names the cause: `construct:`, `leaf:`, `type:`, `unbound:`, `loop:` or `side:`.
@@ -562,8 +566,9 @@ partial def allPOf (alls : Array (Expr × Expr × Expr)) (prove : Expr → Array
   let isUpd := t.isAppOfArity ``Hax.array_update 4
   let mut out := #[]
   for (f, a', P) in alls do
-    -- a write is matched syntactically: unfolding it against a variable is costly
-    if a' == t || (!isUpd && (← isDefEqBounded a' t)) then out := out.push (P, f)
+    -- a write is matched syntactically and any other array at reducible transparency:
+    -- unfolding it against a variable is costly
+    if a' == t || (!isUpd && (← withReducible (isDefEq a' t))) then out := out.push (P, f)
   if out.isEmpty && isUpd then
     let args := t.getAppArgs
     let (a, i, v) := (args[1]!, args[2]!, args[3]!)
@@ -1103,20 +1108,30 @@ partial def lookupExpr (l : Expr) (x : String) : MetaM (Option Expr) := do
 def proveIteEq (b v1 v2 v : Expr) (hyps : Array Expr) : MetaM Expr := do
   let lhs ← mkIteB b v1 v2
   let goal ← mkEq lhs v
-  if ← isDefEqBounded lhs v then return ← mkExpectedTypeHint (← mkEqRefl v) goal
-  let cands : List (MetaM Expr) :=
-    [ (do
-        unless ← isDefEqBounded v1 v2 do throwError "no"
-        mkAppM ``Hax.Ascent.ite_same #[b, v1]),
-      (do
-        let (``Hax.Ascent.HaxEnc.enc, #[_, _, t]) := v1.getAppFnArgs | throwError "no"
-        let (``Hax.Ascent.HaxEnc.enc, #[_, _, u]) := v2.getAppFnArgs | throwError "no"
-        mkAppM ``Hax.Ascent.ite_enc #[b, t, u]) ] ++
+  if ← withReducible (isDefEq lhs v) then return ← mkExpectedTypeHint (← mkEqRefl v) goal
+  let iteSame (eq : Expr → Expr → MetaM Bool) : MetaM Expr := do
+    unless ← eq v1 v2 do throwError "no"
+    mkAppM ``Hax.Ascent.ite_same #[b, v1]
+  let iteEnc : MetaM Expr := do
+    let (``Hax.Ascent.HaxEnc.enc, #[_, _, t]) := v1.getAppFnArgs | throwError "no"
+    let (``Hax.Ascent.HaxEnc.enc, #[_, _, u]) := v2.getAppFnArgs | throwError "no"
+    mkAppM ``Hax.Ascent.ite_enc #[b, t, u]
+  let exits : List (MetaM Expr) :=
     (hyps.toList.map fun h => mkAppM ``Hax.Ascent.ite_of_left_exit #[v1, v2, h]) ++
     (hyps.toList.map fun h => mkAppM ``Hax.Ascent.ite_of_right_exit #[v1, v2, h]) ++
     (hyps.toList.map fun h => mkAppM ``Hax.Ascent.ite_of_left_noexit #[v1, v2, h]) ++
     (hyps.toList.map fun h => mkAppM ``Hax.Ascent.ite_of_right_noexit #[v1, v2, h])
-  for c in cands do
+  -- every candidate at reducible transparency first
+  for c in [iteSame fun x y => withReducible (isDefEq x y), iteEnc] ++ exits do
+    let s ← saveState
+    try
+      let pf ← c
+      if ← withReducible (isDefEq (← inferType pf) goal) then return pf
+    catch _ => pure ()
+    s.restore
+  -- then at the ambient transparency, each comparison within its bound
+  if ← isDefEqBounded lhs v then return ← mkExpectedTypeHint (← mkEqRefl v) goal
+  for c in [iteSame isDefEqBounded, iteEnc] ++ exits do
     let s ← saveState
     let r ← boundedTry? do
       let pf ← c
@@ -1621,12 +1636,16 @@ def andE (a b : Expr) : Expr := mkApp2 (mkConst ``_root_.And) a b
 def trueE : Expr := mkConst ``Bool.true
 def falseE : Expr := mkConst ``Bool.false
 
-/-- Merge two values under a condition. -/
+/-- Merge two values under a condition: one of them when they are equal at reducible
+    transparency; for two typed values of the same type, the typed conditional of their
+    terms; otherwise one of them when they are equal within the bound of
+    `isDefEqBounded`, and the conditional value when not. -/
 def mergeVal (b : Expr) (vt ve : SVal) : MetaM SVal := do
-  if ← isDefEqBounded vt.val ve.val then return vt
+  if ← withReducible (isDefEq vt.val ve.val) then return vt
   if let (some tt, some te, some tyt, some tye) := (vt.ty?, ve.ty?, vt.tm?, ve.tm?) then
     if ← isDefEqBounded tt te then
       return ← typedV tt (← mkIteB b tyt tye)
+  if ← isDefEqBounded vt.val ve.val then return vt
   return { val := ← mkIteB b vt.val ve.val }
 
 /-- Merge two binding lists under a condition, on their common names. -/
