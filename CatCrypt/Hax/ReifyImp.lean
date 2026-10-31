@@ -349,11 +349,81 @@ partial def reifyCond (ctx : Ctx) (p : Expr) : ReifyM (List (String × Expr) × 
 
 end
 
-/-- The normal form of the closed term `t` under `Meta.reduce` at default transparency. Its
-    size is the number of distinct subterm objects (`Expr.numObjs`, shared subterms counted
-    once); a normal form of more than `maxSize` objects is an error that states the size. -/
-def reduceClosed (t : Expr) (maxSize : Nat) : MetaM Expr := do
-  let r ← withTransparency .default (Meta.reduce t)
+/-- The weak head normal form of `e` as `whnf` computes it (`whnfCore`, the `Nat` literal
+    operations `reduceNat?` and delta steps `unfoldDefinition?` at the
+    ambient transparency, until none applies), each delta step counted by `tick`. -/
+partial def whnfTicked (tick : MetaM Unit) (e : Expr) : MetaM Expr := do
+  let e' ← whnfCore e
+  if let some v ← reduceNat? e' then return v
+  let some e'' ← unfoldDefinition? e' | return e'
+  tick
+  whnfTicked tick e''
+
+/-- The state shared by the closed reductions of one run of `unfoldNamed`: the normal form of
+    each term already reduced, and the step counter of the run. -/
+structure ReduceCtx where
+  /-- The normal form of each reduced term. -/
+  cache : IO.Ref (Std.HashMap Expr Expr)
+  /-- Counts one step; an error once the steps exceed the fuel of the run. -/
+  tick : MetaM Unit
+
+/-- The normal form of `e` under `Meta.reduce` (explicit arguments only, types and proofs
+    skipped), computed by the same traversal: the weak head normal form (`whnfTicked`), then
+    the head and the explicit arguments of an application, the body of a binder and the
+    structure of a projection reduced in turn. A term already reduced is read from the cache
+    of `rc`; each term reduced anew counts one step (`rc.tick`); each result is passed to
+    `count`. -/
+partial def reduceVisit (rc : ReduceCtx) (count : Expr → MetaM Unit) (e : Expr) :
+    MetaM Expr := do
+  if let some r := (← rc.cache.get)[e]? then
+    count r
+    return r
+  rc.tick
+  let r ← Core.withIncRecDepth do
+    if ← isType e then return e
+    if ← isProof e then return e
+    let w ← whnfTicked rc.tick e
+    match w with
+    | .app .. =>
+      let f ← reduceVisit rc count w.getAppFn
+      let finfo ← getFunInfoNArgs f w.getAppNumArgs
+      let mut args := w.getAppArgs
+      for i in [0:args.size] do
+        if h : i < finfo.paramInfo.size then
+          if finfo.paramInfo[i].isExplicit then
+            args ← args.modifyM i (reduceVisit rc count)
+        else
+          args ← args.modifyM i (reduceVisit rc count)
+      if f.isConstOf ``Nat.succ && args.size == 1 && args[0]!.isRawNatLit then
+        return mkRawNatLit (args[0]!.rawNatLit?.get! + 1)
+      return mkAppN f args
+    | .lam .. => lambdaTelescope w fun xs b => do mkLambdaFVars xs (← reduceVisit rc count b)
+    | .forallE .. =>
+      forallTelescope w fun xs b => do mkForallFVars xs (← reduceVisit rc count b)
+    | .proj n i s => return mkProj n i (← reduceVisit rc count s)
+    | _ => return w
+  rc.cache.modify (·.insert e r)
+  count r
+  return r
+
+/-- The normal form of the closed term `t` under `Meta.reduce` at default transparency
+    (`reduceVisit`). Its size is the number of distinct subterm objects (`Expr.numObjs`,
+    shared subterms counted once); a normal form of more than `maxSize` objects is an error
+    that states the size. The bound is checked during the reduction against a lower bound
+    of the size, the spine nodes of the distinct closed results reduced so far, and the
+    reduction stops with an error as soon as that lower bound exceeds `maxSize`. -/
+def reduceClosed (rc : ReduceCtx) (t : Expr) (maxSize : Nat) : MetaM Expr := do
+  let seen ← IO.mkRef ({} : Std.HashSet Expr)
+  let size ← IO.mkRef 0
+  let count (r : Expr) : MetaM Unit := do
+    if r.hasFVar || (← seen.get).contains r then return
+    seen.modify (·.insert r)
+    size.modify (· + max 1 r.getAppNumArgs)
+    let n ← size.get
+    if n > maxSize then
+      throwError "reifyImp: the normal form of {t.getAppFn} has at least {n} subterm \
+        objects, more than the bound {maxSize}"
+  let r ← withTransparency .default (reduceVisit rc count t)
   let size ← r.numObjs
   if size > maxSize then
     throwError "reifyImp: the normal form of {t.getAppFn} has {size} subterm objects, \
@@ -363,10 +433,12 @@ def reduceClosed (t : Expr) (maxSize : Nat) : MetaM Expr := do
 /-- The term `e` with every application of one of the constants `cs` unfolded by
     `unfoldDefinition?` (smart unfolding for a definition by structural recursion) and its
     head reduced by `whnfCore`, again on the result, until no application of `cs` unfolds,
-    and every closed full application (no free variable, at least as many arguments as the
-    constant has leading binders) of one of the constants `rs` replaced by its normal form
-    (`reduceClosed` with the bound `maxSize`); a partial application, such as the head
-    `@HAdd.hAdd ℕ ℕ ℕ instHAdd` of an application with open arguments, is not reduced.
+    and every closed full application (no free variable, at least one argument and at least
+    as many arguments as the constant has leading binders) of one of the constants `rs`
+    replaced by its normal form (`reduceClosed` with the bound `maxSize`, the cache of
+    normal forms shared by the run); a partial application, such as the head
+    `@HAdd.hAdd ℕ ℕ ℕ instHAdd` of an application with open arguments, is not reduced, and a
+    constant of `rs` without arguments is reduced only inside such an application.
     After the subterms of an application are reduced, the application is reduced again
     (bottom-up): its head beta-reduced; when it is closed, a full application of `rs`
     replaced by its normal form, an application of an instance projection unfolded
@@ -374,7 +446,7 @@ def reduceClosed (t : Expr) (maxSize : Nat) : MetaM Expr := do
     numeral; an application of `cs` unfolded; and an application of a matcher, a
     recursor or a `casesOn` reduced by `whnfCore` (iota) when its scrutinee has become a
     constructor application. No other constant is unfolded. More than `fuel` unfoldings and
-    reductions is an error. -/
+    reductions, the steps of `reduceClosed` included, is an error. -/
 def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array Name := #[])
     (maxSize : Nat := 10000) : MetaM Expr := do
   if cs.isEmpty && rs.isEmpty then return e
@@ -388,14 +460,16 @@ def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array 
     let some t' ← unfoldDefinition? t | return none
     tick
     return some (← whnfCore t')
+  let rc : ReduceCtx := { cache := ← IO.mkRef {}, tick }
   let closed (t : Expr) : Bool := !t.hasFVar && !t.hasMVar
   let fullRs (t : Expr) : MetaM Bool := do
+    unless t.isApp do return false
     let some c := t.getAppFn.constName? | return false
     unless rs.contains c do return false
     return (← getConstInfo c).type.getForallArity ≤ t.getAppNumArgs
   let fold? (t : Expr) : MetaM (Option (TransformStep)) := do
     if !closed t || !t.isApp || t.nat?.isSome then return none
-    if ← fullRs t then return some (.done (← reduceClosed t maxSize))
+    if ← fullRs t then return some (.done (← reduceClosed rc t maxSize))
     if t.getAppFn.isProj then
       if let some t' ← unfoldProjInst? t then return some (.visit t')
     unless (← whnfR (← inferType t)).isConstOf ``Nat do return none
@@ -403,7 +477,7 @@ def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array 
   Meta.transform e
     (pre := fun t => do
       if closed t && (← fullRs t) then
-        return .done (← reduceClosed t maxSize)
+        return .done (← reduceClosed rc t maxSize)
       match ← unfold? t with
       | some t' => return .visit t'
       | none => return .continue)
