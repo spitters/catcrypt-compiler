@@ -1,0 +1,4 @@
+Source crate: mpn-hax (Rust), MIT license,
+Copyright (c) 2026 CatCrypt Contributors.
+The crate's functions follow the interface of the GMP `mpn` limb kernels
+(names, argument order, the `_mp_size` and `_mp_d` fields of `__mpz_struct`).

@@ -1,0 +1,1476 @@
+/-
+Copyright (c) 2026 CatCrypt Contributors. All rights reserved.
+Released under MIT license as described in the file LICENSE.
+Authors: CatCrypt Contributors
+-/
+module
+
+public import CatCrypt.Crypto.SecureCompilation.Haxc.CTPub
+
+@[expose] public section
+
+set_option autoImplicit false
+
+/-!
+# The constant-time gate without the separation side condition
+
+`AbiLayout.ctGateB_sound` states constant time for the runs of the decoded program whose
+steps satisfy `DecodedCT.FrameSep`: no store through a base other than `%rsp` overlaps a
+frame word of the certificate. This module discharges that condition for every run from an
+entry state satisfying `σ.Regions`, by a second Boolean check on the decoded program.
+
+## The region analysis
+
+An abstract state `RegionSep.MA` describes a machine state relative to the entry state
+`s0` of the run (`RegionSep.Inv`): the stack pointer is the entry stack pointer plus `sp`;
+a register holds the entry value of a register (`ent`) or the word `0` (`zero`); a stack
+word at offset `e` from the entry stack pointer, inside the frame range of `σ`, holds the
+entry value of a register (`slot`); for a pair of registers `(x, c)` the sum of their
+values is at most a bound (`le`); a register is nonzero (`nz`); the zero flag reports
+whether a register is zero (`zf`); a register holds a constant (`cst`). `RegionSep.trans`
+is the abstract effect of an instruction, under which a register copy (`RegionSep.copyOf`:
+a move, an operation with a register holding `0`, a shift by `0`) carries the facts of its
+source, the addition of `1`, of a register holding a constant or of a register with an upper bound
+(`RegionSep.ubOf`) raises the bounds of the sums with the destination, the multiplication
+`d := y · v` by an immediate `v ≥ 1` turns a fact `y + c ≤ B` into `d + c ≤ v · B`, or
+`d + c ≤ v · B - (v - 1)` for a nonzero `c` (`RegionSep.mulLe`), a register holding `0` and a register holding a constant `n`
+have a sum of at most `n` (`RegionSep.norm`), and
+`RegionSep.jccOut` is that of a branch. `RegionSep.cellAddrOK` checks that a store through a base other than `%rsp` writes a word of a pointer region of `σ`: the base
+holds the entry pointer of the region, and either the displacement is a word offset below
+the region length or the index register is below it by an `le` fact. `RegionSep.memCheck`
+checks a certificate (an abstract state per index) and `RegionSep.inferM` computes one by
+forward iteration.
+
+## The gate
+
+The certificate of the constant-time checker is trimmed (`RegionSep.trimCert`): a frame
+word is kept when, at every index that stores through another base, it lies inside the
+frame range of `σ`. `AbiLayout.ctCheckR` is the constant-time decision on the trimmed
+certificate (`DecodedCT.fastCheckWith`) together with `memCheck` for its frame words
+`AbiLayout.ctFrameR`; `AbiLayout.ctGateR` decodes the bytes first.
+
+## Main results
+
+* `RegionSep.memCheck_sound` — under a passing `memCheck`, every run from an entry state
+  satisfying `σ.Regions` satisfies `FrameSep F` at every step.
+* `RegionSep.fastCheckWith_sound` — soundness of the constant-time decision on any
+  certificate.
+* `AbiLayout.ctGateR_sound` — bytes that pass `ctGateR` decode to a program whose runs,
+  with no side condition, from entry states satisfying `σ.Regions` and agreeing on the
+  public data of `σ`, have equal leakage traces.
+-/
+
+namespace CatCrypt.Crypto.SecureCompilation.Haxc
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (decodeLprog RInstr)
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
+open CatCrypt.Crypto.SecureCompilation.CT
+
+namespace RegionSep
+
+/-! ## 1. Abstract states -/
+
+/-- An abstract machine state relative to the entry state of a run. -/
+structure MA where
+  /-- The offset of the stack pointer from its entry value. -/
+  sp : Int
+  /-- `(r, x)`: the register `r` holds the entry value of the register `x`. -/
+  ent : List (String × String)
+  /-- Registers holding the word `0`. -/
+  zero : List String
+  /-- `(e, x)`: the stack word at offset `e` from the entry stack pointer holds the entry
+      value of the register `x`. -/
+  slot : List (Int × String)
+  /-- `(x, c, B)`: the values of `x` and `c` sum to at most `B`. -/
+  le : List (String × String × Int)
+  /-- Registers holding a nonzero word. -/
+  nz : List String
+  /-- The register whose being zero the zero flag reports. -/
+  zf : Option String
+  /-- `(r, n)`: the register `r` holds the word `n`. -/
+  cst : List (String × Nat) := []
+  deriving DecidableEq, Repr, Inhabited
+
+/-- The offset `e` from the entry stack pointer lies in the frame range of `σ`. -/
+def inW (σ : AbiLayout) (e : Int) : Bool := decide (σ.frameLo ≤ e) && decide (e ≤ σ.frameHi)
+
+/-- The abstract state `m` describes the machine state `s` of a run from the entry state
+    `s0` under the layout `σ`. -/
+structure Inv (σ : AbiLayout) (s0 : AState) (m : MA) (s : AState) : Prop where
+  sp : s.regs "%rsp" = s0.regs "%rsp" + BitVec.ofInt 64 m.sp
+  ent : ∀ p ∈ m.ent, s.regs p.1 = s0.regs p.2
+  zero : ∀ r ∈ m.zero, s.regs r = 0
+  slot : ∀ e ∈ m.slot, inW σ e.1 = true ∧
+    read64 s.mem (s0.regs "%rsp" + BitVec.ofInt 64 e.1) = s0.regs e.2
+  le : ∀ f ∈ m.le, ((s.regs f.1).toNat : Int) + (s.regs f.2.1).toNat ≤ f.2.2
+  nz : ∀ r ∈ m.nz, s.regs r ≠ 0
+  zf : ∀ c, m.zf = some c → s.view.condB .e = decide (s.regs c = 0)
+  cst : ∀ p ∈ m.cst, s.regs p.1 = BitVec.ofNat 64 p.2
+
+/-- Every fact of `b` is a fact of `o`, at the same stack offset. -/
+def leM (b o : MA) : Bool :=
+  b.sp == o.sp && b.ent.all o.ent.contains && b.zero.all o.zero.contains
+    && b.slot.all o.slot.contains && b.le.all o.le.contains && b.nz.all o.nz.contains
+    && (b.zf.isNone || b.zf == o.zf) && b.cst.all o.cst.contains
+
+theorem Inv.of_leM {σ : AbiLayout} {s0 : AState} {b o : MA} {s : AState} (h : leM b o = true)
+    (hI : Inv σ s0 o s) : Inv σ s0 b s := by
+  simp only [leM, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.contains_iff_mem,
+    Bool.or_eq_true, Option.isNone_iff_eq_none] at h
+  obtain ⟨⟨⟨⟨⟨⟨⟨hsp, hent⟩, hzero⟩, hslot⟩, hle⟩, hnz⟩, hzf⟩, hcst⟩ := h
+  refine ⟨hsp ▸ hI.sp, fun p hp => hI.ent p (hent p hp), fun r hr => hI.zero r (hzero r hr),
+    fun e he => hI.slot e (hslot e he), fun f hf => hI.le f (hle f hf),
+    fun r hr => hI.nz r (hnz r hr), fun c hc => ?_, fun p hp => hI.cst p (hcst p hp)⟩
+  rcases hzf with hzf | hzf
+  · simp [hzf] at hc
+  · exact hI.zf c (hzf ▸ hc)
+
+/-! ## 2. The abstract effect of an instruction -/
+
+/-- Drop the facts about the registers `ds` and the zero-flag fact. -/
+def MA.kill (m : MA) (ds : List String) : MA :=
+  { m with
+    ent := m.ent.filter fun p => !ds.contains p.1
+    zero := m.zero.filter fun r => !ds.contains r
+    le := m.le.filter fun f => !ds.contains f.1 && !ds.contains f.2.1
+    nz := m.nz.filter fun r => !ds.contains r
+    zf := none
+    cst := m.cst.filter fun p => !ds.contains p.1 }
+
+/-- The `le` facts after `d := y`. -/
+def copyLe (d y : String) (f : String × String × Int) : Option (String × String × Int) :=
+  if f.1 = y ∧ f.2.1 ≠ d then some (d, f.2.1, f.2.2)
+  else if f.2.1 = y ∧ f.1 ≠ d then some (f.1, d, f.2.2)
+  else none
+
+/-- The `le` facts after `d := d + 1`. -/
+def incLe (d : String) (f : String × String × Int) : Option (String × String × Int) :=
+  if (f.1 = d ∨ f.2.1 = d) ∧ f.1 ≠ f.2.1 ∧ f.2.2 + 1 < 2 ^ 64 then some (f.1, f.2.1, f.2.2 + 1)
+  else none
+
+/-- The `le` facts after `d := d + n`. -/
+def incLeBy (d : String) (n : Nat) (f : String × String × Int) :
+    Option (String × String × Int) :=
+  if (f.1 = d ∨ f.2.1 = d) ∧ f.1 ≠ f.2.1 ∧ f.2.2 + n < 2 ^ 64 then some (f.1, f.2.1, f.2.2 + n)
+  else none
+
+/-- The `le` facts after `d := d - 1`, for a nonzero `d`. -/
+def decLe (d : String) (f : String × String × Int) : Option (String × String × Int) :=
+  if (f.1 = d ∨ f.2.1 = d) ∧ f.1 ≠ f.2.1 then some (f.1, f.2.1, f.2.2 - 1) else none
+
+/-- The partner and the bound of an `le` fact on `x`: `(c, B)` for a fact `(x, c, B)` or
+    `(c, x, B)` with `c ≠ x`. -/
+def partOf (x : String) (f : String × String × Int) : Option (String × Int) :=
+  if f.1 = x ∧ f.2.1 ≠ x then some (f.2.1, f.2.2)
+  else if f.2.1 = x ∧ f.1 ≠ x then some (f.1, f.2.2)
+  else none
+
+/-- The upper bound of the value of `y` that an `le` fact of `m` gives: `B - 1` for a fact
+    `(y, c, B)` or `(c, y, B)` with `c` nonzero, and `B` for such a fact with another `c`. -/
+def bndOf (m : MA) (y : String) (f : String × String × Int) : Option Int :=
+  if f.1 = y then some (if m.nz.contains f.2.1 then f.2.2 - 1 else f.2.2)
+  else if f.2.1 = y then some (if m.nz.contains f.1 then f.2.2 - 1 else f.2.2)
+  else none
+
+/-- The least upper bound of the value of `y` that the `le` facts of `m` give. -/
+def ubOf (m : MA) (y : String) : Option Int := (m.le.filterMap (bndOf m y)).min?
+
+/-- The `le` facts after `d := d + y` for a register `y ≠ d` whose value is at most `b`:
+    `(d, c, B + b)` for each fact on `d` with partner `c` and bound `B`. -/
+def addLeBy (d : String) (b : Int) (p : String × Int) : Option (String × String × Int) :=
+  if p.2 + b < 2 ^ 64 then some (d, p.1, p.2 + b) else none
+
+/-- The bound of `x · v + c` from a fact `x + c ≤ B`, for `1 ≤ v`: `v · B - (v - 1)` when
+    `c` is nonzero, and `v · B` otherwise. -/
+def mulBound (m : MA) (v : Nat) (p : String × Int) : Int :=
+  if m.nz.contains p.1 then (v : Int) * p.2 - ((v : Int) - 1) else (v : Int) * p.2
+
+/-- The `le` facts after `d := y · v`: `(d, c, mulBound m v (c, B))` for each fact
+    `y + c ≤ B` with `c ≠ d` and `v · B < 2 ^ 64`. -/
+def mulLe (m : MA) (d : String) (v : Nat) (p : String × Int) :
+    Option (String × String × Int) :=
+  if p.1 ≠ d ∧ (v : Int) * p.2 < 2 ^ 64 then some (d, p.1, mulBound m v p) else none
+
+/-- The stack-word facts after a store of `src` at offset `e` from the entry stack
+    pointer. -/
+def storeSlot (σ : AbiLayout) (m : MA) (e : Int) (src : JOperand) : List (Int × String) :=
+  (m.slot.filter fun q => far e q.1) ++
+    match src with
+    | .reg y => if inW σ e then (m.ent.filter fun p => p.1 = y).map fun p => (e, p.2) else []
+    | .imm _ => []
+
+/-- The stack-word facts after `i`. -/
+def slotAfter (σ : AbiLayout) (m : MA) : JInstr 64 → List (Int × String)
+  | .storeMem b off src => if b = "%rsp" then storeSlot σ m (m.sp + off) src else m.slot
+  | .storeMemIdx b _ _ _ => if b = "%rsp" then [] else m.slot
+  | .addToMem b _ _ => if b = "%rsp" then [] else m.slot
+  | _ => m.slot
+
+/-- The register copies: `copyOf m i = some (d, y)` when `i` writes only `d`, with the value
+    `y` held before it: a register move, or an operation with a register holding `0`, or a
+    shift by `0`, which keeps the value of `d`. -/
+def copyOf (m : MA) : JInstr 64 → Option (String × String)
+  | .mov d (.reg y) => some (d, y)
+  | .add d (.reg z) => if m.zero.contains z && z != d then some (d, d) else none
+  | .sub d (.reg z) => if m.zero.contains z && z != d then some (d, d) else none
+  | .or_ d (.reg z) => if m.zero.contains z && z != d then some (d, d) else none
+  | .xor_ d (.reg z) => if m.zero.contains z && z != d then some (d, d) else none
+  | .shl d (.imm 0) => some (d, d)
+  | .shr d (.imm 0) => some (d, d)
+  | .sar d (.imm 0) => some (d, d)
+  | _ => none
+
+/-- The `ent` facts `i` adds. -/
+def entAdd (m : MA) (i : JInstr 64) : List (String × String) :=
+  match copyOf m i with
+  | some (d, y) => (m.ent.filter fun p => p.1 = y).map fun p => (d, p.2)
+  | none =>
+    match i with
+    | .loadMem d b off =>
+        if b = "%rsp" then (m.slot.filter fun q => q.1 = m.sp + off).map fun q => (d, q.2)
+        else []
+    | _ => []
+
+/-- The `zero` facts `i` adds. -/
+def zeroAdd (m : MA) (i : JInstr 64) : List String :=
+  match copyOf m i with
+  | some (d, y) => if m.zero.contains y then [d] else []
+  | none =>
+    match i with
+    | .mov d (.imm 0) => [d]
+    | .xor_ d (.reg y) => if y = d then [d] else []
+    | _ => []
+
+/-- The `le` facts `i` adds. -/
+def leAdd (m : MA) (i : JInstr 64) : List (String × String × Int) :=
+  match copyOf m i with
+  | some (d, y) => m.le.filterMap (copyLe d y)
+  | none =>
+    match i with
+    | .add d (.imm 1) => m.le.filterMap (incLe d)
+    | .add d (.reg z) =>
+        if z != d then
+          match m.cst.lookup z with
+          | some n => m.le.filterMap (incLeBy d n)
+          | none =>
+              match ubOf m z with
+              | some b => (m.le.filterMap (partOf d)).filterMap (addLeBy d b)
+              | none => []
+        else []
+    | .sub d (.imm 1) => if m.nz.contains d then m.le.filterMap (decLe d) else []
+    | .imulri d y v =>
+        if 1 ≤ v ∧ v < 2 ^ 64 then (m.le.filterMap (partOf y)).filterMap (mulLe m d v)
+        else []
+    | _ => []
+
+/-- The `cst` facts `i` adds: a copy carries the constant of its source, and a move of an
+    immediate records it. -/
+def cstAdd (m : MA) (i : JInstr 64) : List (String × Nat) :=
+  match copyOf m i with
+  | some (d, y) => (m.cst.filter fun p => p.1 = y).map fun p => (d, p.2)
+  | none =>
+    match i with
+    | .mov d (.imm n) => [(d, n)]
+    | _ => []
+
+/-- The `nz` facts `i` adds. -/
+def nzAdd (m : MA) (i : JInstr 64) : List String :=
+  match copyOf m i with
+  | some (d, y) => if m.nz.contains y then [d] else []
+  | none => []
+
+/-- The zero-flag fact after `i`. -/
+def zfAfter : JInstr 64 → Option String
+  | .cmp c (.imm 0) => some c
+  | _ => none
+
+/-- Add the `le` facts `(r, c, b)` for a register `r` holding `0` and a register `c` holding
+    the entry value of a register with bound `b` in `σ`, and the `le` facts `(r, c, n)` for a
+    register `r` holding `0` and a register `c` holding the constant `n`. -/
+def norm (σ : AbiLayout) (m : MA) : MA :=
+  { m with
+    le := (m.le ++ (m.zero.flatMap fun r => m.ent.flatMap fun p =>
+      σ.bounds.filterMap fun b =>
+        if b.1 = p.2 ∧ r ≠ p.1 then some (r, p.1, (b.2 : Int)) else none)
+      ++ m.zero.flatMap fun r => m.cst.filterMap fun p =>
+        if r ≠ p.1 then some (r, p.1, (p.2 : Int)) else none).eraseDups }
+
+/-- The abstract state after an instruction that does not write `%rsp`. -/
+def step1 (σ : AbiLayout) (m : MA) (i : JInstr 64) : MA :=
+  let m0 := m.kill (dstRegs i)
+  { sp := m.sp
+    ent := entAdd m i ++ m0.ent
+    zero := zeroAdd m i ++ m0.zero
+    slot := slotAfter σ m i
+    le := leAdd m i ++ m0.le
+    nz := nzAdd m i ++ m0.nz
+    zf := zfAfter i
+    cst := cstAdd m i ++ m0.cst }
+
+/-- **The abstract effect of an instruction**: the frame adjustment `lea k(%rsp), %rsp`
+    moves the stack offset; another write of `%rsp` is refused. -/
+def trans (σ : AbiLayout) (m : MA) (i : JInstr 64) : Option MA :=
+  match rspShift i with
+  | some k => some { m.kill ["%rsp"] with sp := m.sp + k }
+  | none => if (dstRegs i).contains "%rsp" then none else some (norm σ (step1 σ m i))
+
+/-- The abstract state on an outcome of a branch on `c`. -/
+def jccOut (m : MA) (c : Condt) (taken : Bool) : MA :=
+  match m.zf with
+  | some r =>
+      if (c == .ne && taken) || (c == .e && !taken) then { m with nz := r :: m.nz } else m
+  | none => m
+
+/-! ## 3. The stores -/
+
+/-- A store through `b` at displacement `off` writes a word of a pointer region. -/
+def constCell (σ : AbiLayout) (m : MA) (b : String) (off : Int) : Bool :=
+  m.ent.any fun p => p.1 == b && σ.regions.any fun q =>
+    q.1 == p.2 && decide (0 ≤ off) && off % 8 == 0 && decide (off / 8 < q.2)
+
+/-- An indexed store through `b` with index `x` and scale `8` writes a word of a pointer
+    region. -/
+def idxCell (σ : AbiLayout) (m : MA) (b x : String) : Bool :=
+  m.ent.any fun p => p.1 == b && σ.regions.any fun q => q.1 == p.2 && m.le.any fun f =>
+    f.1 == x && ((m.nz.contains f.2.1 && decide (f.2.2 ≤ q.2)) || decide (f.2.2 < q.2))
+
+/-- A store of `i` through a base other than `%rsp` writes a word of a pointer region. -/
+def cellAddrOK (σ : AbiLayout) (m : MA) : JInstr 64 → Bool
+  | .storeMem b off _ => b == "%rsp" || constCell σ m b off
+  | .addToMem b off _ => b == "%rsp" || constCell σ m b off
+  | .storeMemIdx b x sc _ => b == "%rsp" || (sc == 8 && idxCell σ m b x)
+  | _ => true
+
+/-- Every frame word `o ∈ F` lies, at the stack offset of `m`, inside the frame range. -/
+def frameOK (σ : AbiLayout) (F : List Int) (m : MA) : Bool := F.all fun o => inW σ (m.sp + o)
+
+/-- The store check of `i`: a store through another base writes a pointer region, and the
+    frame words lie in the frame range. -/
+def safeW (σ : AbiLayout) (F : List Int) (m : MA) (i : JInstr 64) : Bool :=
+  cellAddrOK σ m i && (!sepWrite i || frameOK σ F m)
+
+/-! ## 4. The certificate check -/
+
+/-- The certificate assigns index `s` an abstract state below `o`. -/
+def succOkM (M : Array (Option MA)) (s : Nat) (o : MA) : Bool :=
+  match M.getD s none with
+  | some b => leM b o
+  | none => false
+
+/-- The check at index `pc`. -/
+def checkAtM (σ : AbiLayout) (F : List Int) (prog : List RInstr) (M : Array (Option MA))
+    (pc : Nat) : Bool :=
+  match M.getD pc none with
+  | none => true
+  | some m =>
+    match prog[pc]? with
+    | some (.op i) =>
+        safeW σ F m i && match trans σ m i with
+          | some o => succOkM M (pc + 1) o
+          | none => false
+    | some (.jcc cc t) =>
+        match condtOfNibble cc with
+        | some c => succOkM M t (jccOut m c true) && succOkM M (pc + 1) (jccOut m c false)
+        | none => false
+    | some .ret => true
+    | some _ => false
+    | none => true
+
+/-- The abstract entry state: each parameter register holds its entry value. -/
+def init (σ : AbiLayout) : MA :=
+  norm σ ⟨0, σ.args.map fun a => (a.reg, a.reg), [], [], [], [], none, []⟩
+
+/-- **The certificate check**: the entry index is below `init σ` and every index passes
+    `checkAtM`. -/
+def memCheck (σ : AbiLayout) (F : List Int) (prog : List RInstr) (M : Array (Option MA)) :
+    Bool :=
+  succOkM M 0 (init σ) && (List.range prog.length).all (checkAtM σ F prog M)
+
+/-! ## 5. Inference -/
+
+/-- The facts common to two abstract states at one stack offset. -/
+def meetM (a b : MA) : MA :=
+  if a.sp = b.sp then
+    { sp := a.sp
+      ent := a.ent.filter b.ent.contains
+      zero := a.zero.filter b.zero.contains
+      slot := a.slot.filter b.slot.contains
+      le := a.le.filter b.le.contains
+      nz := a.nz.filter b.nz.contains
+      zf := if a.zf = b.zf then a.zf else none
+      cst := a.cst.filter b.cst.contains }
+  else a
+
+/-- Meet `o` into the certificate at index `s`, reporting a change. -/
+def meetIntoM (M : Array (Option MA)) (s : Nat) (o : MA) : Array (Option MA) × Bool :=
+  if s < M.size then
+    match M.getD s none with
+    | none => (M.set! s (some o), true)
+    | some a => let a' := meetM a o; (M.set! s (some a'), a' != a)
+  else (M, false)
+
+/-- One forward sweep over the program. -/
+def sweepM (σ : AbiLayout) (prog : List RInstr) (M : Array (Option MA)) :
+    Array (Option MA) × Bool :=
+  (List.range prog.length).foldl (fun (acc : Array (Option MA) × Bool) pc =>
+    match acc.1.getD pc none, prog[pc]? with
+    | some m, some (.op i) =>
+        match trans σ m i with
+        | some o => let r := meetIntoM acc.1 (pc + 1) o; (r.1, acc.2 || r.2)
+        | none => acc
+    | some m, some (.jcc cc t) =>
+        match condtOfNibble cc with
+        | some c =>
+            let r1 := meetIntoM acc.1 t (jccOut m c true)
+            let r2 := meetIntoM r1.1 (pc + 1) (jccOut m c false)
+            (r2.1, acc.2 || r1.2 || r2.2)
+        | none => acc
+    | _, _ => acc) (M, false)
+
+/-- Sweeps until no change, at most `n` times. -/
+def fixM (σ : AbiLayout) (prog : List RInstr) : Nat → Array (Option MA) → Array (Option MA)
+  | 0, M => M
+  | n + 1, M =>
+    let r := sweepM σ prog M
+    if r.2 then fixM σ prog n r.1 else r.1
+
+/-- The inferred certificate of the region analysis. -/
+def inferM (σ : AbiLayout) (prog : List RInstr) : Array (Option MA) :=
+  fixM σ prog (prog.length + 2) ((Array.replicate prog.length none).set! 0 (some (init σ)))
+
+/-! ## 6. The trimmed constant-time certificate -/
+
+/-- The stack offsets of the certificate `M` at the indices that store through a base
+    other than `%rsp`. -/
+def storeSps (prog : List RInstr) (M : Array (Option MA)) : List Int :=
+  (List.range prog.length).filterMap fun pc =>
+    match prog[pc]?, M.getD pc none with
+    | some (RInstr.op i), some m => if sepWrite i then some m.sp else none
+    | _, _ => none
+
+/-- The certificate `A` with each frame word kept when it lies inside the frame range of
+    `σ` at every stack offset of `sps`. -/
+def trimCert (σ : AbiLayout) (sps : List Int) (A : Array (Option PubA)) :
+    Array (Option PubA) :=
+  A.map (Option.map fun a =>
+    { a with cells := a.cells.filter (fun o => sps.all (fun sp => inW σ (sp + o))) })
+
+/-! ## 7. Soundness of the region analysis -/
+
+section Soundness
+
+variable {σ : AbiLayout} {s0 : AState}
+
+theorem eval_mov_reg (s : AState) (d y : String) :
+    (evalInstrA s (.mov d (.reg y))).regs d = s.regs y := by
+  simp [evalInstrA, evalInstr, JState.setReg, x86_MOV, AState.view]
+
+theorem eval_mov_imm (s : AState) (d : String) (n : Nat) :
+    (evalInstrA s (.mov d (.imm n))).regs d = BitVec.ofNat 64 n := by
+  simp [evalInstrA, evalInstr, JState.setReg, x86_MOV, AState.view]
+
+theorem eval_loadMem (s : AState) (d b : String) (off : Int) :
+    (evalInstrA s (.loadMem d b off)).regs d
+      = read64 s.mem (s.regs b + BitVec.ofInt 64 off) := by
+  simp [evalInstrA, evalInstr, JState.setReg, x86_MOV, AState.view, JState.load]
+
+theorem eval_add_one (s : AState) (d : String) :
+    (evalInstrA s (.add d (.imm 1))).regs d = s.regs d + 1 := by
+  simp [evalInstrA, evalInstr, JState.writeB5W, x86_ADD, rflags_of_aluop, AState.view]
+
+theorem eval_add_reg (s : AState) (d y : String) :
+    (evalInstrA s (.add d (.reg y))).regs d = s.regs d + s.regs y := by
+  simp [evalInstrA, evalInstr, JState.writeB5W, x86_ADD, rflags_of_aluop, AState.view]
+
+theorem toNat_add_ofNat_of {x : BitVec 64} {n : Nat} (h : x.toNat + n < 2 ^ 64)
+    (hn : n < 2 ^ 64) : (x + BitVec.ofNat 64 n).toNat = x.toNat + n := by
+  rw [BitVec.toNat_add, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn]
+  omega
+
+theorem mem_of_lookup_cst {l : List (String × Nat)} {k : String} {v : Nat}
+    (h : l.lookup k = some v) : (k, v) ∈ l := by
+  induction l with
+  | nil => cases h
+  | cons p t ih =>
+    obtain ⟨a, b⟩ := p
+    by_cases hk : k = a
+    · subst hk
+      simp only [List.lookup, beq_self_eq_true, Option.some.injEq] at h
+      subst h
+      exact List.mem_cons_self
+    · have hb : (k == a) = false := by simp [hk]
+      simp only [List.lookup, hb] at h
+      exact List.mem_cons_of_mem _ (ih h)
+
+theorem eval_sub_one (s : AState) (d : String) :
+    (evalInstrA s (.sub d (.imm 1))).regs d = s.regs d - 1 := by
+  simp [evalInstrA, evalInstr, JState.writeB5W, x86_SUB, AState.view]
+
+theorem eval_cmp_zero (s : AState) (c : String) :
+    (evalInstrA s (.cmp c (.imm 0))).view.condB .e = decide (s.regs c = 0) := by
+  simp [evalInstrA, evalInstr, JState.writeB5, x86_CMP, x86_SUB, AState.view, JState.condB,
+    JState.flagB, x86_eval_cond, ZF_of_word]
+  constructor
+  · intro h
+    exact BitVec.eq_of_toNat_eq (by simpa using h)
+  · intro h
+    simp [h]
+
+theorem mem_of_writeAddr_none {s : AState} {i : JInstr 64} (h : writeAddr s i = none) :
+    (evalInstrA s i).mem = s.mem := by
+  simp [evalInstrA, h]
+
+theorem ofInt_add_assoc (p : BitVec 64) (a b : Int) :
+    p + BitVec.ofInt 64 a + BitVec.ofInt 64 b = p + BitVec.ofInt 64 (a + b) := by
+  rw [BitVec.add_assoc, ← BitVec.ofInt_add]
+
+theorem toNat_pos_of_ne {x : BitVec 64} (h : x ≠ 0) : 0 < x.toNat := by
+  rcases Nat.eq_zero_or_pos x.toNat with h0 | h0
+  · exact absurd (BitVec.eq_of_toNat_eq (by simpa using h0)) h
+  · exact h0
+
+/-- A store that `cellAddrOK` accepts, through a base other than `%rsp`, writes a word of a
+    pointer region of `σ`. -/
+theorem cell_of_cellAddrOK {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
+    (hc : cellAddrOK σ m i = true) (hfw : frameWrite i = false) {a : BitVec 64}
+    (ha : writeAddr s i = some a) :
+    ∃ q ∈ σ.regions, ∃ k, k < q.2 ∧ a = s0.regs q.1 + BitVec.ofNat 64 (8 * k) := by
+  have hconst : ∀ b off, constCell σ m b off = true →
+      ∃ q ∈ σ.regions, ∃ k, k < q.2 ∧ s.regs b + BitVec.ofInt 64 off
+        = s0.regs q.1 + BitVec.ofNat 64 (8 * k) := by
+    intro b off h
+    simp only [constCell, List.any_eq_true, Bool.and_eq_true, beq_iff_eq,
+      decide_eq_true_eq] at h
+    obtain ⟨p, hp, rfl, q, hq, ⟨⟨hq1, h0⟩, h8⟩, hlt⟩ := h
+    refine ⟨q, hq, (off / 8).toNat, by omega, ?_⟩
+    rw [hI.ent p hp, ← hq1]
+    congr 1
+    generalize hk : (off / 8).toNat = k
+    have h' : off = ((8 * k : Nat) : Int) := by omega
+    subst h'
+    rw [BitVec.ofInt_natCast]
+  cases i with
+  | storeMem b off src =>
+    simp only [frameWrite, beq_eq_false_iff_ne, ne_eq] at hfw
+    simp only [cellAddrOK, Bool.or_eq_true, beq_iff_eq, hfw, false_or] at hc
+    simp only [writeAddr, Option.some.injEq] at ha
+    subst ha
+    exact hconst b off hc
+  | addToMem b off src =>
+    simp only [frameWrite, beq_eq_false_iff_ne, ne_eq] at hfw
+    simp only [cellAddrOK, Bool.or_eq_true, beq_iff_eq, hfw, false_or] at hc
+    simp only [writeAddr, Option.some.injEq] at ha
+    subst ha
+    exact hconst b off hc
+  | storeMemIdx b x sc src =>
+    simp only [frameWrite, beq_eq_false_iff_ne, ne_eq] at hfw
+    simp only [cellAddrOK, Bool.or_eq_true, beq_iff_eq, hfw, false_or, Bool.and_eq_true]
+      at hc
+    obtain ⟨rfl, hc⟩ := hc
+    simp only [writeAddr, Option.some.injEq] at ha
+    subst ha
+    simp only [idxCell, List.any_eq_true, Bool.and_eq_true, beq_iff_eq, Bool.or_eq_true,
+      List.contains_iff_mem, decide_eq_true_eq] at hc
+    obtain ⟨p, hp, rfl, q, hq, hq1, f, hf, rfl, hb⟩ := hc
+    have hle := hI.le f hf
+    refine ⟨q, hq, (s.regs f.1).toNat, ?_, ?_⟩
+    · rcases hb with ⟨hnz, hB⟩ | hB
+      · have := toNat_pos_of_ne (hI.nz _ hnz)
+        omega
+      · omega
+    · rw [hI.ent p hp, ← hq1, BitVec.ofInt_natCast]
+  | _ => simp [writeAddr] at ha
+
+/-- A store that `cellAddrOK` accepts, through a base other than `%rsp`, writes a word
+    disjoint from every stack word in the frame range of `σ`. -/
+theorem disj_of_cellAddrOK {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
+    (hI : Inv σ s0 m s) (hc : cellAddrOK σ m i = true) (hfw : frameWrite i = false)
+    {a : BitVec 64} (ha : writeAddr s i = some a) {o : Int} (ho : inW σ o = true) :
+    Disjoint8 a (s0.regs "%rsp" + BitVec.ofInt 64 o) := by
+  obtain ⟨q, hq, k, hk, rfl⟩ := cell_of_cellAddrOK hI hc hfw ha
+  simp only [inW, Bool.and_eq_true, decide_eq_true_eq] at ho
+  exact (hR.2.2.1 q hq k hk o ho.1 ho.2).symm
+
+/-- **A checked step satisfies the separation condition.** -/
+theorem frameSep_of_safeW {F : List Int} {m : MA} {s : AState} {i : JInstr 64}
+    (hR : σ.Regions s0) (hI : Inv σ s0 m s) (hs : safeW σ F m i = true) : FrameSep F s i := by
+  intro hfw a ha o ho
+  simp only [safeW, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hs
+  obtain ⟨hc, hF⟩ := hs
+  have hsw := sepWrite_of_writeAddr ha hfw
+  rcases hF with hF | hF
+  · simp [hsw] at hF
+  · simp only [frameOK, List.all_eq_true] at hF
+    rw [hI.sp, ofInt_add_assoc]
+    exact disj_of_cellAddrOK hR hI hc hfw ha (hF o ho)
+
+theorem regs_ne {s : AState} {i : JInstr 64} {d x : String} (hd : dstRegs i = [d])
+    (hx : x ≠ d) : (evalInstrA s i).regs x = s.regs x :=
+  evalInstrA_regs_of_not_dst _ _ _ (by simp [hd, hx])
+
+theorem copyOf_sound {m : MA} {s : AState} {i : JInstr 64} {d y : String}
+    (hI : Inv σ s0 m s) (h : copyOf m i = some (d, y)) :
+    dstRegs i = [d] ∧ (evalInstrA s i).regs d = s.regs y := by
+  have hz : ∀ z d', (m.zero.contains z && z != d') = true → s.regs z = 0 := by
+    intro z d' hz
+    simp only [Bool.and_eq_true, List.contains_iff_mem] at hz
+    exact hI.zero z hz.1
+  cases i with
+  | mov d' src =>
+    cases src with
+    | reg y' =>
+      simp only [copyOf, Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨rfl, eval_mov_reg _ _ _⟩
+    | imm n => simp [copyOf] at h
+  | add d' src =>
+    cases src with
+    | reg z =>
+      simp only [copyOf] at h
+      split at h
+      · rename_i hc
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_⟩
+        simp [evalInstrA, evalInstr, JState.writeB5W, x86_ADD, rflags_of_aluop, AState.view,
+          hz _ _ hc]
+      · simp at h
+    | imm n => simp [copyOf] at h
+  | sub d' src =>
+    cases src with
+    | reg z =>
+      simp only [copyOf] at h
+      split at h
+      · rename_i hc
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_⟩
+        simp [evalInstrA, evalInstr, JState.writeB5W, x86_SUB, AState.view, hz _ _ hc]
+      · simp at h
+    | imm n => simp [copyOf] at h
+  | or_ d' src =>
+    cases src with
+    | reg z =>
+      simp only [copyOf] at h
+      split at h
+      · rename_i hc
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_⟩
+        simp [evalInstrA, evalInstr, JState.writeB5W, x86_OR, rflags_of_bwop, AState.view,
+          hz _ _ hc]
+      · simp at h
+    | imm n => simp [copyOf] at h
+  | xor_ d' src =>
+    cases src with
+    | reg z =>
+      simp only [copyOf] at h
+      split at h
+      · rename_i hc
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_⟩
+        simp [evalInstrA, evalInstr, JState.writeB5W, x86_XOR, rflags_of_bwop, AState.view,
+          hz _ _ hc]
+      · simp at h
+    | imm n => simp [copyOf] at h
+  | shl d' src =>
+    cases src with
+    | reg z => simp [copyOf] at h
+    | imm n =>
+      cases n with
+      | zero =>
+        simp only [copyOf, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_⟩
+        simp [evalInstrA, evalInstr, JState.writeB5W, x86_SHL, shiftCount, rflags_None,
+          AState.view]
+      | succ n => simp [copyOf] at h
+  | shr d' src =>
+    cases src with
+    | reg z => simp [copyOf] at h
+    | imm n =>
+      cases n with
+      | zero =>
+        simp only [copyOf, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_⟩
+        simp [evalInstrA, evalInstr, JState.writeB5W, x86_SHR, shiftCount, rflags_None,
+          AState.view]
+      | succ n => simp [copyOf] at h
+  | sar d' src =>
+    cases src with
+    | reg z => simp [copyOf] at h
+    | imm n =>
+      cases n with
+      | zero =>
+        simp only [copyOf, Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨rfl, rfl⟩ := h
+        refine ⟨rfl, ?_⟩
+        simp [evalInstrA, evalInstr, JState.writeB5W, x86_SAR, shiftCount, rflags_None,
+          AState.view]
+      | succ n => simp [copyOf] at h
+  | _ => simp [copyOf] at h
+
+theorem entAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
+    ∀ p ∈ entAdd m i, (evalInstrA s i).regs p.1 = s0.regs p.2 := by
+  intro p hp
+  unfold entAdd at hp
+  split at hp
+  · rename_i d y hcp
+    simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hp
+    obtain ⟨q, ⟨hq, hy⟩, rfl⟩ := hp
+    dsimp only
+    rw [(copyOf_sound hI hcp).2, ← hy, hI.ent q hq]
+  · cases i with
+    | loadMem d b off =>
+      simp only at hp
+      split at hp
+      · rename_i hb
+        subst hb
+        simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hp
+        obtain ⟨q, ⟨hq, he⟩, rfl⟩ := hp
+        dsimp only
+        rw [eval_loadMem, hI.sp, ofInt_add_assoc, ← he]
+        exact (hI.slot q hq).2
+      · simp at hp
+    | _ => simp at hp
+
+theorem zeroAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
+    ∀ r ∈ zeroAdd m i, (evalInstrA s i).regs r = 0 := by
+  intro r hr
+  unfold zeroAdd at hr
+  split at hr
+  · rename_i d y hcp
+    simp only [List.contains_iff_mem] at hr
+    split at hr
+    · rename_i hy
+      simp only [List.mem_singleton] at hr
+      subst hr
+      rw [(copyOf_sound hI hcp).2, hI.zero y hy]
+    · simp at hr
+  · cases i with
+    | mov d src =>
+      cases src with
+      | reg y => simp at hr
+      | imm n =>
+        cases n with
+        | zero =>
+          simp only [List.mem_singleton] at hr
+          subst hr
+          rw [eval_mov_imm]
+          rfl
+        | succ n => simp at hr
+    | xor_ d src =>
+      cases src with
+      | reg y =>
+        simp only at hr
+        split at hr
+        · rename_i hy
+          subst hy
+          simp only [List.mem_singleton] at hr
+          subst hr
+          simp [evalInstrA, evalInstr, JState.writeB5W, x86_XOR, rflags_of_bwop, AState.view]
+        · simp at hr
+      | imm n => simp at hr
+    | _ => simp at hr
+
+theorem nzAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
+    ∀ r ∈ nzAdd m i, (evalInstrA s i).regs r ≠ 0 := by
+  intro r hr
+  unfold nzAdd at hr
+  split at hr
+  · rename_i d y hcp
+    simp only [List.contains_iff_mem] at hr
+    split at hr
+    · rename_i hy
+      simp only [List.mem_singleton] at hr
+      subst hr
+      rw [(copyOf_sound hI hcp).2]
+      exact hI.nz y hy
+    · simp at hr
+  · simp at hr
+
+theorem cstAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
+    ∀ p ∈ cstAdd m i, (evalInstrA s i).regs p.1 = BitVec.ofNat 64 p.2 := by
+  intro p hp
+  unfold cstAdd at hp
+  split at hp
+  · rename_i d y hcp
+    simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hp
+    obtain ⟨q, ⟨hq, hqy⟩, rfl⟩ := hp
+    rw [(copyOf_sound hI hcp).2, ← hqy]
+    exact hI.cst q hq
+  · cases i with
+    | mov d src =>
+      cases src with
+      | reg y => simp at hp
+      | imm n =>
+        simp only [List.mem_singleton] at hp
+        subst hp
+        exact eval_mov_imm s d n
+    | _ => simp at hp
+
+theorem zfAfter_sound {s : AState} {i : JInstr 64} :
+    ∀ c, zfAfter i = some c → (evalInstrA s i).view.condB .e
+      = decide ((evalInstrA s i).regs c = 0) := by
+  intro c hc
+  cases i with
+  | cmp a src =>
+    cases src with
+    | reg y => simp [zfAfter] at hc
+    | imm n =>
+      cases n with
+      | zero =>
+        simp only [zfAfter, Option.some.injEq] at hc
+        subst hc
+        rw [eval_cmp_zero, evalInstrA_regs_of_not_dst _ _ _ (by simp [dstRegs])]
+      | succ n => simp [zfAfter] at hc
+  | _ => simp [zfAfter] at hc
+
+theorem toNat_add_one_of {x : BitVec 64} (h : x.toNat + 1 < 2 ^ 64) :
+    (x + 1).toNat = x.toNat + 1 := by
+  rw [BitVec.toNat_add]
+  rw [show (1 : BitVec 64).toNat = 1 from rfl]
+  omega
+
+theorem toNat_sub_one_of {x : BitVec 64} (h : x ≠ 0) : (x - 1).toNat = x.toNat - 1 := by
+  have := toNat_pos_of_ne h
+  have := x.isLt
+  rw [BitVec.toNat_sub]
+  rw [show (1 : BitVec 64).toNat = 1 from rfl]
+  omega
+
+theorem eval_imulri (s : AState) (d y : String) (v : Nat) :
+    (evalInstrA s (.imulri d y v)).regs d = s.regs y * BitVec.ofNat 64 v := by
+  simp [evalInstrA, evalInstr, JState.writeB5W, x86_IMULt, rflags_of_mul, AState.view]
+
+/-- A fact on `x` with partner `c` bounds the sum of the values of `x` and `c`. -/
+theorem partOf_sound {m : MA} {s : AState} (hI : Inv σ s0 m s) {x : String}
+    {f : String × String × Int} (hf : f ∈ m.le) {p : String × Int} (h : partOf x f = some p) :
+    p.1 ≠ x ∧ ((s.regs x).toNat : Int) + (s.regs p.1).toNat ≤ p.2 := by
+  have hle := hI.le f hf
+  unfold partOf at h
+  split at h
+  · rename_i hc
+    simp only [Option.some.injEq] at h
+    subst h
+    obtain ⟨h1, h2⟩ := hc
+    exact ⟨h2, h1 ▸ hle⟩
+  · split at h
+    · rename_i _ hc
+      simp only [Option.some.injEq] at h
+      subst h
+      obtain ⟨h1, h2⟩ := hc
+      refine ⟨h2, ?_⟩
+      rw [← h1]
+      dsimp only
+      omega
+    · simp at h
+
+/-- A bound of `bndOf` bounds the value of `y`. -/
+theorem bndOf_sound {m : MA} {s : AState} (hI : Inv σ s0 m s) {y : String}
+    {f : String × String × Int} (hf : f ∈ m.le) {b : Int} (h : bndOf m y f = some b) :
+    ((s.regs y).toNat : Int) ≤ b := by
+  have hle := hI.le f hf
+  unfold bndOf at h
+  split at h
+  · rename_i h1
+    simp only [Option.some.injEq] at h
+    subst h1
+    split at h
+    · rename_i hnz
+      have := toNat_pos_of_ne (hI.nz _ (List.contains_iff_mem.mp hnz))
+      omega
+    · omega
+  · split at h
+    · rename_i _ h1
+      simp only [Option.some.injEq] at h
+      subst h1
+      split at h
+      · rename_i hnz
+        have := toNat_pos_of_ne (hI.nz _ (List.contains_iff_mem.mp hnz))
+        omega
+      · omega
+    · simp at h
+
+/-- The bound `ubOf m y` bounds the value of `y`. -/
+theorem ubOf_sound {m : MA} {s : AState} (hI : Inv σ s0 m s) {y : String} {b : Int}
+    (h : ubOf m y = some b) : ((s.regs y).toNat : Int) ≤ b := by
+  have hm := List.min?_mem h
+  obtain ⟨f, hf, hfb⟩ := List.mem_filterMap.mp hm
+  exact bndOf_sound hI hf hfb
+
+theorem leAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
+    ∀ f ∈ leAdd m i, (((evalInstrA s i).regs f.1).toNat : Int)
+      + ((evalInstrA s i).regs f.2.1).toNat ≤ f.2.2 := by
+  intro f hf
+  unfold leAdd at hf
+  split at hf
+  · rename_i d y hcp
+    obtain ⟨hd, hv⟩ := copyOf_sound hI hcp
+    simp only [List.mem_filterMap] at hf
+    obtain ⟨g, hg, hgf⟩ := hf
+    have hle := hI.le g hg
+    unfold copyLe at hgf
+    split at hgf
+    · rename_i h
+      simp only [Option.some.injEq] at hgf
+      subst hgf
+      dsimp only
+      rw [hv, regs_ne hd h.2, ← h.1]
+      exact hle
+    · split at hgf
+      · rename_i _ h
+        simp only [Option.some.injEq] at hgf
+        subst hgf
+        dsimp only
+        rw [hv, regs_ne hd h.2, ← h.1]
+        exact hle
+      · simp at hgf
+  · cases i with
+    | add d src =>
+      cases src with
+      | reg y =>
+        simp only [bne_iff_ne, ne_eq, ite_not] at hf
+        split at hf
+        · simp at hf
+        · rename_i hyd
+          split at hf
+          · rename_i n hn
+            simp only [List.mem_filterMap] at hf
+            obtain ⟨g, hg, hgf⟩ := hf
+            have hle := hI.le g hg
+            have hyv : s.regs y = BitVec.ofNat 64 n := hI.cst (y, n) (mem_of_lookup_cst hn)
+            have hd : dstRegs (JInstr.add (w := 64) d (.reg y)) = [d] := rfl
+            unfold incLeBy at hgf
+            split at hgf
+            · rename_i h
+              simp only [Option.some.injEq] at hgf
+              subst hgf
+              dsimp only
+              obtain ⟨hor, hne, hB⟩ := h
+              have h0a := (s.regs g.1).isLt
+              have h0b := (s.regs g.2.1).isLt
+              have hn64 : n < 2 ^ 64 := by omega
+              rcases hor with h1 | h1
+              · subst h1
+                rw [eval_add_reg, regs_ne hd (Ne.symm hne), hyv,
+                  toNat_add_ofNat_of (by omega) hn64]
+                push_cast
+                omega
+              · subst h1
+                rw [eval_add_reg, regs_ne hd hne, hyv, toNat_add_ofNat_of (by omega) hn64]
+                push_cast
+                omega
+            · simp at hgf
+          · split at hf
+            · rename_i b hb
+              have hyb := ubOf_sound hI hb
+              simp only [List.mem_filterMap] at hf
+              obtain ⟨p, ⟨g, hg, hgp⟩, hpf⟩ := hf
+              obtain ⟨hcd, hle⟩ := partOf_sound hI hg hgp
+              have hd : dstRegs (JInstr.add (w := 64) d (.reg y)) = [d] := rfl
+              unfold addLeBy at hpf
+              split at hpf
+              · rename_i hB
+                simp only [Option.some.injEq] at hpf
+                subst hpf
+                dsimp only
+                have hC0 : (0 : Int) ≤ (s.regs p.1).toNat := Int.natCast_nonneg _
+                have hsum : (s.regs d + s.regs y).toNat = (s.regs d).toNat + (s.regs y).toNat := by
+                  rw [BitVec.toNat_add]
+                  apply Nat.mod_eq_of_lt
+                  omega
+                rw [eval_add_reg, regs_ne hd hcd, hsum]
+                push_cast
+                omega
+              · simp at hpf
+            · simp at hf
+      | imm n =>
+        cases n with
+        | zero => simp at hf
+        | succ n =>
+          cases n with
+          | succ n => simp at hf
+          | zero =>
+            simp only [List.mem_filterMap] at hf
+            obtain ⟨g, hg, hgf⟩ := hf
+            have hle := hI.le g hg
+            have hd : dstRegs (JInstr.add (w := 64) d (.imm 1)) = [d] := rfl
+            unfold incLe at hgf
+            split at hgf
+            · rename_i h
+              simp only [Option.some.injEq] at hgf
+              subst hgf
+              dsimp only
+              obtain ⟨hor, hne, hB⟩ := h
+              rcases hor with h1 | h1
+              · subst h1
+                rw [eval_add_one, regs_ne hd (Ne.symm hne), toNat_add_one_of (by omega)]
+                push_cast
+                omega
+              · subst h1
+                rw [eval_add_one, regs_ne hd hne, toNat_add_one_of (by omega)]
+                push_cast
+                omega
+            · simp at hgf
+    | sub d src =>
+      cases src with
+      | reg y => simp at hf
+      | imm n =>
+        cases n with
+        | zero => simp at hf
+        | succ n =>
+          cases n with
+          | succ n => simp at hf
+          | zero =>
+            simp only [List.contains_iff_mem] at hf
+            split at hf
+            · rename_i hnz
+              simp only [List.mem_filterMap] at hf
+              obtain ⟨g, hg, hgf⟩ := hf
+              have hle := hI.le g hg
+              have h0 := toNat_pos_of_ne (hI.nz d hnz)
+              have hd : dstRegs (JInstr.sub (w := 64) d (.imm 1)) = [d] := rfl
+              unfold decLe at hgf
+              split at hgf
+              · rename_i h
+                simp only [Option.some.injEq] at hgf
+                subst hgf
+                dsimp only
+                obtain ⟨hor, hne⟩ := h
+                rcases hor with h1 | h1
+                · subst h1
+                  rw [eval_sub_one, regs_ne hd (Ne.symm hne), toNat_sub_one_of (hI.nz _ hnz)]
+                  omega
+                · subst h1
+                  rw [eval_sub_one, regs_ne hd hne, toNat_sub_one_of (hI.nz _ hnz)]
+                  omega
+              · simp at hgf
+            · simp at hf
+    | imulri d y v =>
+      simp only at hf
+      split at hf
+      · rename_i hv
+        obtain ⟨hv1, hv64⟩ := hv
+        simp only [List.mem_filterMap] at hf
+        obtain ⟨p, ⟨g, hg, hgp⟩, hpf⟩ := hf
+        obtain ⟨hcy, hle⟩ := partOf_sound hI hg hgp
+        have hd : dstRegs (JInstr.imulri (w := 64) d y v) = [d] := rfl
+        unfold mulLe at hpf
+        split at hpf
+        · rename_i h
+          simp only [Option.some.injEq] at hpf
+          subst hpf
+          obtain ⟨hcd, hB⟩ := h
+          dsimp only
+          have hY := (s.regs y).isLt
+          have hC0 : (0 : Int) ≤ (s.regs p.1).toNat := Int.natCast_nonneg _
+          have hYB : ((s.regs y).toNat : Int) ≤ p.2 := by omega
+          have hprod : ((s.regs y).toNat : Int) * v ≤ p.2 * v :=
+            Int.mul_le_mul_of_nonneg_right hYB (Int.natCast_nonneg _)
+          have hlt : (s.regs y).toNat * v < 2 ^ 64 := by
+            have : (((s.regs y).toNat * v : Nat) : Int) < 2 ^ 64 := by
+              push_cast
+              rw [Int.mul_comm (v : Int) p.2] at hB
+              omega
+            exact_mod_cast this
+          have hmul : (s.regs y * BitVec.ofNat 64 v).toNat = (s.regs y).toNat * v := by
+            rw [BitVec.toNat_mul, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hv64,
+              Nat.mod_eq_of_lt hlt]
+          rw [eval_imulri, regs_ne hd hcd, hmul]
+          push_cast
+          unfold mulBound
+          split
+          · rename_i hnz
+            have h1 : (1 : Int) ≤ (s.regs p.1).toNat := by
+              have := toNat_pos_of_ne (hI.nz _ (List.contains_iff_mem.mp hnz))
+              omega
+            have hv1' : (1 : Int) ≤ v := by exact_mod_cast hv1
+            nlinarith
+          · have hv1' : (1 : Int) ≤ v := by exact_mod_cast hv1
+            nlinarith
+        · simp at hpf
+      · simp at hf
+    | _ => simp at hf
+
+theorem slot_keep {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
+    (hd : ∀ a, writeAddr s i = some a → ∀ e ∈ m.slot,
+      Disjoint8 a (s0.regs "%rsp" + BitVec.ofInt 64 e.1)) :
+    ∀ e ∈ m.slot, inW σ e.1 = true ∧
+      read64 (evalInstrA s i).mem (s0.regs "%rsp" + BitVec.ofInt 64 e.1) = s0.regs e.2 := by
+  intro e he
+  refine ⟨(hI.slot e he).1, ?_⟩
+  simp only [evalInstrA]
+  split
+  · rename_i a ha
+    rw [read64_write64_of_disjoint _ _ _ _ (hd a ha e he)]
+    exact (hI.slot e he).2
+  · exact (hI.slot e he).2
+
+theorem slotAfter_sound {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
+    (hI : Inv σ s0 m s) (hc : cellAddrOK σ m i = true) :
+    ∀ e ∈ slotAfter σ m i, inW σ e.1 = true ∧
+      read64 (evalInstrA s i).mem (s0.regs "%rsp" + BitVec.ofInt 64 e.1) = s0.regs e.2 := by
+  have hsep : frameWrite i = false → ∀ a, writeAddr s i = some a → ∀ e ∈ m.slot,
+      Disjoint8 a (s0.regs "%rsp" + BitVec.ofInt 64 e.1) := fun hfw a ha e he =>
+    disj_of_cellAddrOK hR hI hc hfw ha (hI.slot e he).1
+  cases i with
+  | storeMem b off src =>
+    simp only [slotAfter]
+    split
+    · rename_i hb
+      subst hb
+      have ha : writeAddr s (.storeMem "%rsp" off src)
+          = some (s0.regs "%rsp" + BitVec.ofInt 64 (m.sp + off)) := by
+        simp only [writeAddr, hI.sp, ofInt_add_assoc]
+      intro e he
+      simp only [storeSlot, List.mem_append, List.mem_filter] at he
+      rcases he with ⟨he, hfar⟩ | he
+      · refine ⟨(hI.slot e he).1, ?_⟩
+        simp only [far, Bool.and_eq_true, decide_eq_true_eq] at hfar
+        simp only [evalInstrA, ha]
+        rw [read64_write64_of_disjoint _ _ _ _
+          (disjoint8_add_ofInt _ _ _ hfar.1 hfar.2)]
+        exact (hI.slot e he).2
+      · cases src with
+        | imm n => simp at he
+        | reg y =>
+          simp only at he
+          split at he
+          · rename_i hw
+            simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at he
+            obtain ⟨p, ⟨hp, hpy⟩, rfl⟩ := he
+            refine ⟨hw, ?_⟩
+            simp only [evalInstrA, ha, read64_write64_same]
+            simp [writeVal, AState.view, ← hpy, hI.ent p hp]
+          · simp at he
+    · rename_i hb
+      exact slot_keep hI fun a ha => hsep (by simp [frameWrite, hb]) a ha
+  | addToMem b off src =>
+    simp only [slotAfter]
+    split
+    · simp
+    · rename_i hb
+      exact slot_keep hI fun a ha => hsep (by simp [frameWrite, hb]) a ha
+  | storeMemIdx b x sc src =>
+    simp only [slotAfter]
+    split
+    · simp
+    · rename_i hb
+      exact slot_keep hI fun a ha => hsep (by simp [frameWrite, hb]) a ha
+  | _ => exact slot_keep hI fun a ha => by simp [writeAddr] at ha
+
+theorem kill_mem {m : MA} {ds : List String} :
+    (∀ p ∈ (m.kill ds).ent, p ∈ m.ent ∧ p.1 ∉ ds) ∧ (∀ r ∈ (m.kill ds).zero, r ∈ m.zero ∧ r ∉ ds)
+      ∧ (∀ f ∈ (m.kill ds).le, f ∈ m.le ∧ f.1 ∉ ds ∧ f.2.1 ∉ ds)
+      ∧ (∀ r ∈ (m.kill ds).nz, r ∈ m.nz ∧ r ∉ ds) := by
+  refine ⟨fun p hp => ?_, fun r hr => ?_, fun f hf => ?_, fun r hr => ?_⟩ <;>
+    simp_all [MA.kill]
+
+/-- **Soundness of the abstract effect** of an instruction that does not write `%rsp`. -/
+theorem step1_sound {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
+    (hI : Inv σ s0 m s) (hrsp : "%rsp" ∉ dstRegs i) (hc : cellAddrOK σ m i = true) :
+    Inv σ s0 (step1 σ m i) (evalInstrA s i) := by
+  have hk := kill_mem (m := m) (ds := dstRegs i)
+  have hreg := evalInstrA_regs_of_not_dst s i
+  refine ⟨?_, ?_, ?_, slotAfter_sound hR hI hc, ?_, ?_, zfAfter_sound, ?_⟩
+  · rw [hreg _ hrsp]
+    exact hI.sp
+  · intro p hp
+    simp only [step1, List.mem_append] at hp
+    rcases hp with hp | hp
+    · exact entAdd_sound hI p hp
+    · obtain ⟨hp, hn⟩ := hk.1 p hp
+      rw [hreg _ hn]
+      exact hI.ent p hp
+  · intro r hr
+    simp only [step1, List.mem_append] at hr
+    rcases hr with hr | hr
+    · exact zeroAdd_sound hI r hr
+    · obtain ⟨hr, hn⟩ := hk.2.1 r hr
+      rw [hreg _ hn]
+      exact hI.zero r hr
+  · intro f hf
+    simp only [step1, List.mem_append] at hf
+    rcases hf with hf | hf
+    · exact leAdd_sound hI f hf
+    · obtain ⟨hf, hn1, hn2⟩ := hk.2.2.1 f hf
+      rw [hreg _ hn1, hreg _ hn2]
+      exact hI.le f hf
+  · intro r hr
+    simp only [step1, List.mem_append] at hr
+    rcases hr with hr | hr
+    · exact nzAdd_sound hI r hr
+    · obtain ⟨hr, hn⟩ := hk.2.2.2 r hr
+      rw [hreg _ hn]
+      exact hI.nz r hr
+  · intro p hp
+    simp only [step1, List.mem_append] at hp
+    rcases hp with hp | hp
+    · exact cstAdd_sound hI p hp
+    · simp only [MA.kill, List.mem_filter, Bool.not_eq_true'] at hp
+      have hn : p.1 ∉ dstRegs i := fun hm => by
+        rw [List.contains_iff_mem.mpr hm] at hp
+        exact Bool.noConfusion hp.2
+      rw [hreg _ hn]
+      exact hI.cst p hp.1
+
+theorem norm_sound {m : MA} {s : AState} (hR : σ.Regions s0) (hI : Inv σ s0 m s) :
+    Inv σ s0 (norm σ m) s := by
+  refine ⟨hI.sp, hI.ent, hI.zero, hI.slot, ?_, hI.nz, hI.zf, hI.cst⟩
+  intro f hf
+  simp only [norm, List.mem_eraseDups, List.mem_append, List.mem_flatMap,
+    List.mem_filterMap] at hf
+  rcases hf with (hf | ⟨r, hr, p, hp, b, hb, hbf⟩) | ⟨r, hr, p, hp, hpf⟩
+  · exact hI.le f hf
+  · split at hbf
+    · rename_i h
+      simp only [Option.some.injEq] at hbf
+      subst hbf
+      dsimp only
+      rw [hI.zero r hr, hI.ent p hp, ← h.1]
+      have := hR.1 b hb
+      rw [show (0 : BitVec 64).toNat = 0 from rfl]
+      omega
+    · simp at hbf
+  · split at hpf
+    · simp only [Option.some.injEq] at hpf
+      subst hpf
+      dsimp only
+      rw [hI.zero r hr, hI.cst p hp, BitVec.toNat_ofNat,
+        show (0 : BitVec 64).toNat = 0 from rfl]
+      have := Nat.mod_le p.2 (2 ^ 64)
+      omega
+    · simp at hpf
+
+/-- **Soundness of `trans`.** -/
+theorem trans_sound {m o : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
+    (hI : Inv σ s0 m s) (hc : cellAddrOK σ m i = true) (ht : trans σ m i = some o) :
+    Inv σ s0 o (evalInstrA s i) := by
+  unfold trans at ht
+  split at ht
+  · rename_i k hk
+    obtain ⟨x, rfl⟩ := rspShift_eq hk
+    simp only [Option.some.injEq] at ht
+    subst ht
+    have hk := kill_mem (m := m) (ds := ["%rsp"])
+    have hreg : ∀ y, y ≠ "%rsp" →
+        (evalInstrA s (.lea "%rsp" "%rsp" x 0 k)).regs y = s.regs y :=
+      fun y hy => regs_ne rfl hy
+    have hmem : (evalInstrA s (.lea "%rsp" "%rsp" x 0 k)).mem = s.mem :=
+      mem_of_writeAddr_none rfl
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    · rw [evalInstrA_rsp_lea, hI.sp, ofInt_add_assoc]
+    · intro p hp
+      obtain ⟨hp, hn⟩ := hk.1 p hp
+      rw [hreg _ (by simpa using hn)]
+      exact hI.ent p hp
+    · intro r hr
+      obtain ⟨hr, hn⟩ := hk.2.1 r hr
+      rw [hreg _ (by simpa using hn)]
+      exact hI.zero r hr
+    · intro e he
+      rw [hmem]
+      exact hI.slot e he
+    · intro f hf
+      obtain ⟨hf, hn1, hn2⟩ := hk.2.2.1 f hf
+      rw [hreg _ (by simpa using hn1), hreg _ (by simpa using hn2)]
+      exact hI.le f hf
+    · intro r hr
+      obtain ⟨hr, hn⟩ := hk.2.2.2 r hr
+      rw [hreg _ (by simpa using hn)]
+      exact hI.nz r hr
+    · intro c hc
+      simp [MA.kill] at hc
+    · intro p hp
+      simp only [MA.kill, List.mem_filter, Bool.not_eq_true', List.contains_cons,
+        List.contains_nil, Bool.or_false, beq_eq_false_iff_ne, ne_eq] at hp
+      rw [hreg _ hp.2]
+      exact hI.cst p hp.1
+  · split at ht
+    · simp at ht
+    · rename_i hrsp
+      simp only [Option.some.injEq] at ht
+      subst ht
+      exact norm_sound hR (step1_sound hR hI (by simpa using hrsp) hc)
+
+theorem condB_ne_eq (s : AState) : s.view.condB .ne = !s.view.condB .e := by
+  simp [JState.condB, x86_eval_cond]
+
+/-- **Soundness of the abstract branch.** -/
+theorem jccOut_sound {m : MA} {s : AState} {c : Condt} {b : Bool} (hI : Inv σ s0 m s)
+    (hb : s.view.condB c = b) : Inv σ s0 (jccOut m c b) s := by
+  unfold jccOut
+  split
+  · rename_i r hr
+    split
+    · rename_i hcond
+      refine ⟨hI.sp, hI.ent, hI.zero, hI.slot, hI.le, ?_, hI.zf, hI.cst⟩
+      intro x hx
+      simp only [List.mem_cons] at hx
+      rcases hx with rfl | hx
+      · have hz := hI.zf x hr
+        simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at hcond
+        intro h0
+        have he : s.view.condB .e = true := by simp [hz, h0]
+        rcases hcond with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+        · rw [condB_ne_eq, he] at hb
+          simp at hb
+        · rw [he] at hb
+          simp at hb
+      · exact hI.nz x hx
+    · exact hI
+  · exact hI
+
+theorem succOkM_spec {M : Array (Option MA)} {s : Nat} {o : MA} (h : succOkM M s o = true) :
+    ∃ b, M.getD s none = some b ∧ leM b o = true := by
+  unfold succOkM at h
+  split at h
+  · exact ⟨_, by assumption, h⟩
+  · simp at h
+
+/-- **Every step of a run satisfies the separation condition.** Under a passing check at
+    every index, a run from an index whose abstract state describes the current state, for
+    an entry state satisfying `σ.Regions`, is a run whose steps satisfy `FrameSep F`. -/
+theorem run_frameSep {r : DoitRegime} {F : List Int} {prog : List RInstr}
+    {M : Array (Option MA)} (hc : (List.range prog.length).all (checkAtM σ F prog M) = true)
+    (hR : σ.Regions s0) {pc : Nat} {s : AState} {t : List CTLeak} {s' : AState}
+    (h : RunL r (fun _ _ => True) prog pc s t s') :
+    ∀ m, M.getD pc none = some m → Inv σ s0 m s → RunL r (FrameSep F) prog pc s t s' := by
+  have hat : ∀ {pc : Nat} {x : RInstr}, prog[pc]? = some x → checkAtM σ F prog M pc = true :=
+    fun hx => List.all_eq_true.mp hc _
+      (List.mem_range.mpr (List.getElem?_eq_some_iff.mp hx).1)
+  induction h with
+  | ret h => exact fun _ _ _ => .ret h
+  | @op pc s i t s' h _ _ ih =>
+    intro m hm hI
+    have hck := hat h
+    simp only [checkAtM, hm, h, Bool.and_eq_true] at hck
+    obtain ⟨hs, ht⟩ := hck
+    split at ht
+    · rename_i o ho
+      obtain ⟨b, hb, hle⟩ := succOkM_spec ht
+      have hcell : cellAddrOK σ m i = true := by
+        simp only [safeW, Bool.and_eq_true] at hs
+        exact hs.1
+      exact .op h (frameSep_of_safeW hR hI hs)
+        (ih b hb (Inv.of_leM hle (trans_sound hR hI hcell ho)))
+    · simp at ht
+  | @jcc pc s cc tgt c t s' h hcc _ ih =>
+    intro m hm hI
+    have hck := hat h
+    simp only [checkAtM, hm, h, hcc, Bool.and_eq_true] at hck
+    refine .jcc h hcc ?_
+    cases hcb : s.view.condB c
+    · obtain ⟨b, hb, hle⟩ := succOkM_spec hck.2
+      have := ih b (by simpa [hcb] using hb) (Inv.of_leM hle (jccOut_sound hI hcb))
+      simpa [hcb] using this
+    · obtain ⟨b, hb, hle⟩ := succOkM_spec hck.1
+      have := ih b (by simpa [hcb] using hb) (Inv.of_leM hle (jccOut_sound hI hcb))
+      simpa [hcb] using this
+  | @stack pc s ri ops t s' h hops _ _ _ =>
+    intro m hm _
+    have hck := hat h
+    cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq] at hops <;>
+      simp [checkAtM, hm, h] at hck
+  | call h _ _ _ _ _ _ =>
+    intro m hm _
+    have hck := hat h
+    simp [checkAtM, hm, h] at hck
+
+theorem inv_init (hR : σ.Regions s0) : Inv σ s0 (init σ) s0 :=
+  norm_sound hR ⟨by simp, fun p hp => by
+    simp only [List.mem_map] at hp
+    obtain ⟨a, -, rfl⟩ := hp
+    rfl, by simp, by simp, by simp, by simp, by simp, by simp⟩
+
+/-- **Soundness of the certificate check.** Under a passing `memCheck σ F prog M`, every run
+    of `prog` from index `0` and an entry state satisfying `σ.Regions` satisfies `FrameSep F`
+    at every step. -/
+theorem memCheck_sound {r : DoitRegime} {F : List Int} {prog : List RInstr}
+    {M : Array (Option MA)} (hc : memCheck σ F prog M = true) (hR : σ.Regions s0)
+    {t : List CTLeak} {s' : AState} (h : RunL r (fun _ _ => True) prog 0 s0 t s') :
+    RunL r (FrameSep F) prog 0 s0 t s' := by
+  simp only [memCheck, Bool.and_eq_true] at hc
+  obtain ⟨b, hb, hle⟩ := succOkM_spec hc.1
+  exact run_frameSep hc.2 hR h b hb (Inv.of_leM hle (inv_init hR))
+
+end Soundness
+
+/-- **Soundness of the constant-time decision on a given certificate.** If
+    `fastCheckWith r P prog A K` holds, two runs of `prog` from index `0` from states
+    agreeing on `P`, whose steps satisfy `FrameSep (fastFrame prog A K)`, have equal leakage
+    traces. -/
+theorem fastCheckWith_sound {r : DoitRegime} {P : PubA} {prog : List RInstr}
+    {A : Array (Option PubA)} {K : PresCtx} (h : fastCheckWith r P prog A K = true) :
+    ConstantTimeRel P.Agree
+      (fun sa t => ∃ sa', RunL r (FrameSep (fastFrame prog A K)) prog 0 sa t sa') := by
+  intro s₁ s₂ t₁ t₂ hag ⟨_, h₁⟩ ⟨_, h₂⟩
+  simp only [fastCheckWith, Bool.and_eq_true, succOkA_eq, checkCertA_eq] at h
+  obtain ⟨⟨h0, hp⟩, hc⟩ := h
+  obtain ⟨b, hb, hle⟩ := succOk_spec h0
+  exact (checkCert_sound hc hp h₁ hb (PubA.agree_of_le hle hag) h₂).1
+
+end RegionSep
+
+namespace AbiLayout
+
+open RegionSep
+
+/-- The trimmed certificate of the gate on `prog`: the inferred constant-time certificate,
+    each frame word kept when it lies in the frame range of `σ` at every store through
+    another base. -/
+def ctCertR (σ : AbiLayout) (prog : List RInstr) : Array (Option PubA) :=
+  trimCert σ (storeSps prog (inferM σ prog)) (fastCert prog σ.pubA).1
+
+/-- The frame words of the trimmed certificate. -/
+def ctFrameR (σ : AbiLayout) (prog : List RInstr) : List Int :=
+  fastFrame prog (σ.ctCertR prog) (fastCert prog σ.pubA).2
+
+/-- **The constant-time decision with the region analysis**: the decision on the trimmed
+    certificate, and the region check for its frame words. -/
+def ctCheckR (σ : AbiLayout) (prog : List RInstr) : Bool :=
+  fastCheckWith ctRegime σ.pubA prog (σ.ctCertR prog) (fastCert prog σ.pubA).2
+    && memCheck σ (σ.ctFrameR prog) prog (inferM σ prog)
+
+/-- **The constant-time gate on bytes with the region analysis**: the bytes decode and
+    `ctCheckR` accepts the decoded program. -/
+def ctGateR (σ : AbiLayout) (bytes : List (BitVec 8)) : Bool :=
+  match decodeLprog bytes with
+  | some prog => σ.ctCheckR prog
+  | none => false
+
+/-- **Soundness of `ctCheckR`.** Two runs of `prog` from index `0`, with no side condition,
+    from entry states satisfying `σ.Regions` and agreeing on the public data of `σ`, have
+    equal leakage traces under `ctRegime`. -/
+theorem ctCheckR_sound {σ : AbiLayout} {prog : List RInstr} (h : σ.ctCheckR prog = true) :
+    ConstantTimeRel (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂)
+      (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
+  intro s₁ s₂ t₁ t₂ ⟨hag, hR₁, hR₂⟩ ⟨s₁', h₁⟩ ⟨s₂', h₂⟩
+  simp only [ctCheckR, Bool.and_eq_true] at h
+  exact fastCheckWith_sound h.1 s₁ s₂ t₁ t₂ (pubA_agree_of_pubAgree hag)
+    ⟨s₁', memCheck_sound h.2 hR₁ h₁⟩ ⟨s₂', memCheck_sound h.2 hR₂ h₂⟩
+
+/-- **Soundness of the gate.** Bytes that pass `σ.ctGateR` decode to a program `prog` whose
+    runs from index `0`, with no side condition, from entry states satisfying `σ.Regions` and
+    agreeing on the public data of `σ`, have equal leakage traces. -/
+theorem ctGateR_sound {σ : AbiLayout} {bytes : List (BitVec 8)} (h : σ.ctGateR bytes = true) :
+    ∃ prog, decodeLprog bytes = some prog ∧
+      ConstantTimeRel (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂)
+        (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
+  unfold ctGateR at h
+  split at h
+  · rename_i prog hd
+    exact ⟨prog, hd, ctCheckR_sound h⟩
+  · cases h
+
+end AbiLayout
+
+end CatCrypt.Crypto.SecureCompilation.Haxc
+
