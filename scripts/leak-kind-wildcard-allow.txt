@@ -23,6 +23,12 @@ CatCrypt/Crypto/SecureCompilation/VIR/SelDialect.lean:tileSelLeak
 # depend on the model.
 CatCrypt/Crypto/SecureCompilation/VIR/LaneMapNF.lean:quietModel
 
+# The constant model of the intermediate modArith stage, quiet on every operation by
+# definition. It instantiates the middle model of the two leak-parametric steps
+# fieldToModArithStep_leakRunC and modArithLimbsStep_leakRunC inside lowerBody_leakRunC,
+# whose statement relates jLeakModel runs at both ends and does not mention it.
+CatCrypt/Crypto/SecureCompilation/Haxc/FieldDialectStep.lean:quietModLeak
+
 # Every TileOp acts on values held in lane registers: no operation of tileDialect
 # addresses memory or branches (loads, stores and broadcasts from scalars are the bridge
 # dialect of TileBridge, with address classes in tileMemLeak).
