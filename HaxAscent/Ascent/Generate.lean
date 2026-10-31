@@ -30,7 +30,7 @@ sub-derivation or a closed side condition:
 * an equation between values, proved by `rfl`, `ite_same`, `ite_enc` or a lemma that selects
   a branch from an exit hypothesis;
 * a decidable proposition, proved by `decide` when `whnf` evaluates it and by the kernel
-  otherwise (`Kernel.isDefEq`);
+  otherwise (`kernelDefEqSliced`);
 * a call `bi f vs = some v`, proved by the first leaf lemma of `f` whose left side matches
   (`matchLeaf`), by the width-family lemmas for a tagged name (`matchTagged`), or by
   `array_lit_enc` (`matchArrayLit`);
@@ -47,6 +47,16 @@ values of the same type are merged at reducible transparency only, into a condit
 term otherwise (`mergeVal`), and a conditional value is first matched against every
 candidate lemma at reducible transparency (`proveIteEq`): comparing two different writes
 to one array at default transparency unfolds both and fails only at the bound.
+
+The reductions of the closers that can unfold definitions at default transparency (the
+evaluation of `decide`, the kernel comparisons, `omega`, the default-transparency `whnf` of a
+binding list and the comparisons that instantiate a preservation lemma) each run within a
+twentieth of the heartbeat budget, counted from their start (`withSlice`,
+`kernelDefEqSliced`); a step that exceeds its slice fails with an error naming it. Each
+obligation the closers prove (a side condition, an arithmetic goal, a premise of a leaf
+lemma, an array fact) is one node of the trace class `ascend_reified.leaf` (`obligation`),
+enabled with `trace.ascend_reified` and recorded by `trace.profiler`: its kind, the closer
+that proved it or the failure, and the head of its goal.
 
 A step that finds no rule or cannot close a side condition fails with a message whose
 first word names the cause: `construct:`, `leaf:`, `type:`, `unbound:`, `loop:` or `side:`.
@@ -278,19 +288,84 @@ def tupleComps (x : Expr) : Nat → MetaM (List Expr)
 def isProdTy (ty : Expr) : MetaM Bool := do
   return (← whnfR ty).isAppOfArity ``Prod 2
 
-/-- Decide a proposition by evaluation, with `whnf` or with the kernel. An evaluation that
-    exceeds the recursion depth or the heartbeats fails. -/
+/-! ### Bounded steps and obligation traces -/
+
+initialize registerTraceClass `ascend_reified.leaf (inherited := true)
+
+/-- The heartbeat slice of one bounded step: a twentieth of the budget `maxHeartbeats` of
+    the context, in heartbeats; `0`, no bound, when the budget is `0`. -/
+def sliceHeartbeats : CoreM Nat := return (← read).maxHeartbeats / 20
+
+/-- `x` within the heartbeat slice (`sliceHeartbeats`), counted from its start. A run that
+    exceeds the slice or the recursion depth fails, with the state restored, with the error
+    `side: <what> exceeded its heartbeat slice`, which `try … catch` handles. -/
+def withSlice {α : Type} (what : String) (x : MetaM α) : MetaM α := do
+  let hb ← sliceHeartbeats
+  let s ← saveState
+  tryCatchRuntimeEx
+    (withCurrHeartbeats <| withTheReader Core.Context (fun c => { c with maxHeartbeats := hb }) x)
+    fun ex => do
+      unless ex.isRuntime do throw ex
+      s.restore
+      throwError "side: {what} exceeded its heartbeat slice ({hb / 1000} × 1000 heartbeats)"
+
+/-- Whether the kernel accepts `Eq.refl a : a = b` within the heartbeat slice
+    (`sliceHeartbeats`): the theorem `∀ xs, a = b`, closed over the local context, is checked
+    by `Environment.addDeclCore` with that budget, and the extended environment discarded.
+    `false` when the terms have metavariables or the check fails or exceeds the slice. -/
+def kernelDefEqSliced (a b : Expr) : MetaM Bool := do
+  let a ← instantiateMVars a
+  let b ← instantiateMVars b
+  if a.hasMVar || b.hasMVar then return false
+  let fvars := (← getLCtx).foldl (init := #[]) fun acc d =>
+    if d.isImplementationDetail then acc else acc.push d.toExpr
+  let type ← instantiateMVars (← mkForallFVars fvars (← mkEq a b))
+  let val ← instantiateMVars (← mkLambdaFVars fvars (← mkEqRefl a))
+  if type.hasMVar || val.hasMVar then return false
+  let lps := (collectLevelParams (collectLevelParams {} type) val).params
+  let env ← getEnv
+  let name := env.asyncPrefix?.getD .anonymous ++ `_ascendKernelCheck
+  let decl := Declaration.thmDecl { name, levelParams := lps.toList, type, value := val }
+  let maxRec := (← readThe Core.Context).maxRecDepth
+  match env.addDeclCore (← sliceHeartbeats).toUSize maxRec.toUSize decl none with
+  | .ok _ => return true
+  | .error _ => return false
+
+/-- The goal head of an obligation `p`, for its trace node: the head constant, and for an
+    equation also the head constant of its left side. -/
+def goalHead (p : Expr) : MetaM MessageData := do
+  let p := (← instantiateMVars p).headBeta
+  let nm (e : Expr) : MessageData := match e.getAppFn with
+    | .const n _ => m!"{n}"
+    | .fvar _ => "a variable"
+    | _ => "a term"
+  if let some (_, lhs, _) := p.eq? then return m!"Eq, left side {nm lhs}"
+  return nm p
+
+/-- `x`, the closing of one proof obligation of kind `kind` with goal `p`, as one trace node
+    of the class `ascend_reified.leaf` with its time: the kind, the closer that succeeded (the
+    second component of the result of `x`) or the failure, and the head of the goal
+    (`goalHead`). -/
+def obligation {α : Type} (kind : String) (p : Expr) (x : MetaM (α × String)) : MetaM α := do
+  let hd ← goalHead p
+  let (a, _) ← withTraceNode `ascend_reified.leaf (fun r => match r with
+      | .ok (_, c) => return m!"{kind} by {c} [{hd}]"
+      | .error ex => return m!"{kind} failed [{hd}]: {← msgStr ex}") x
+  return a
+
+/-- Decide a proposition by evaluation, with `whnf` or with the kernel, each within the
+    heartbeat slice (`withSlice`, `kernelDefEqSliced`). An evaluation that fails or exceeds
+    its slice fails. -/
 def proveDecide (p : Expr) : MetaM Expr := do
   let d ← mkDecide p
-  let r ← tryCatchRuntimeEx (withAtLeastTransparency .default <| whnf d) fun _ =>
+  let r ← tryCatchRuntimeEx
+    (withSlice "whnf of decide" (withAtLeastTransparency .default <| whnf d)) fun _ =>
     throwError "side: cannot decide{shortExpr p}"
   if r.isConstOf ``Bool.true then return ← mkDecideProof p
   let p ← instantiateMVars p
   if p.hasExprMVar then throwError "side: cannot decide{shortExpr p}"
-  let ok := match Kernel.isDefEq (← getEnv) (← getLCtx) d (mkConst ``Bool.true) with
-    | .ok b => b
-    | .error _ => false
-  unless ok do throwError "side: cannot decide{shortExpr p}"
+  unless ← kernelDefEqSliced d (mkConst ``Bool.true) do
+    throwError "side: cannot decide{shortExpr p}"
   mkDecideProof p
 
 /-- Run `x` within a twentieth of the heartbeat budget, counted from its start: `none`
@@ -309,15 +384,13 @@ def isDefEqBounded (a b : Expr) : MetaM Bool := do
   if ← withReducible (isDefEq a b) then return true
   return (← boundedTry? (isDefEq a b)).getD false
 
-/-- A proof `rfl` of `lhs = rhs` that the kernel accepts. -/
+/-- A proof `rfl` of `lhs = rhs` that the kernel accepts within the heartbeat slice
+    (`kernelDefEqSliced`). -/
 def kernelRefl (p : Expr) : MetaM Expr := do
   let p ← instantiateMVars p
   let some (_, lhs, rhs) := p.eq? | throwError "side: not an equation"
   if p.hasExprMVar then throwError "side: open equation"
-  let ok := match Kernel.isDefEq (← getEnv) (← getLCtx) lhs rhs with
-    | .ok b => b
-    | .error _ => false
-  unless ok do throwError "side: not definitionally equal"
+  unless ← kernelDefEqSliced lhs rhs do throwError "side: not definitionally equal"
   mkExpectedTypeHint (← mkEqRefl lhs) p
 
 /-! ### Nonempty arrays -/
@@ -684,12 +757,14 @@ def arithPreKey (facts lhyps : Array Expr) (elems : Bool) :
     them. The part that depends on the facts only is computed once per fact set
     (`arithPreCache`), and the result once per fact set and goal (`arithProofCache`). -/
 partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
-    MetaM Expr := do
+    MetaM Expr := obligation "arith" p do
   -- evaluation decides closed propositions only
   unless (← instantiateMVars p).hasFVar do
-    if let some pf ← boundedTry? (proveDecide p) then return pf
+    -- `proveDecide` bounds its own steps (`withSlice`, `kernelDefEqSliced`)
+    let s ← saveState
+    try return (← proveDecide p, "decide") catch _ => s.restore
   for f in facts do
-    if ← isDefEqBounded (← inferType f) p then return f
+    if ← isDefEqBounded (← inferType f) p then return (f, "fact")
   -- `omega` reads the goal and the facts with the projections of pairs reduced, so that a
   -- state variable read through the state tuple is the variable
   let p₀ := p
@@ -702,7 +777,7 @@ partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
   if let some (keyR, hs) := keyR? then
     if let some r := (← arithProofCache.get)[keyR]? then
       let some pf := r | throwError "side: cannot prove{indentExpr p}"
-      return ← mkExpectedTypeHint (pf.instantiateRev hs) p₀
+      return (← mkExpectedTypeHint (pf.instantiateRev hs) p₀, "cache")
   let g ← mkFreshExprMVar p
   let some g' ← g.mvarId!.falseOrByContra | throwError "side: cannot prove{indentExpr p}"
   let hyps ← g'.withContext getLocalHyps
@@ -739,7 +814,7 @@ partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
   let ops ← arithOpEqs tys
   let lens ← arrayLenEqs tys
   let ok ← try
-      Lean.Elab.Tactic.Omega.omega
+      withSlice "omega" <| Lean.Elab.Tactic.Omega.omega
         (hyps.toList ++ pre.facts.toList ++ pre.extra.toList ++ pElems.toList ++
           pre.ops.toList ++ ops.toList ++ pre.lens.toList ++ lens.toList) g'
       pure true
@@ -749,7 +824,7 @@ partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
     if !ok || !pf.hasMVar then
       arithProofCache.modify (·.insert keyR (if ok then some (pf.abstract hs) else none))
   unless ok do throwError "side: cannot prove{indentExpr p}"
-  mkExpectedTypeHint pf p₀
+  return (← mkExpectedTypeHint pf p₀, "omega")
 
 /-- The array and the reading of the argument that reaches it through `Prod.fst` and
     `Prod.snd`. -/
@@ -1017,7 +1092,8 @@ partial def neOfFacts (t : Expr) (facts : Array Expr) : MetaM (Option Expr) := d
       let s ← saveState
       try
         let pf ← mkAppM lem #[f]
-        if ← isDefEq (← inferType pf) goal then return some pf
+        if ← withSlice "isDefEq of an emptiness fact" (isDefEq (← inferType pf) goal) then
+          return some pf
         s.restore
       catch _ => s.restore
   let mut lens : Array Expr := #[]
@@ -1102,8 +1178,10 @@ partial def provePres (req? : Option GuardReq) (t : Expr) (mkP : Expr → MetaM 
     let lty ← inferType c
     let (mvs, bis, concl) ← forallMetaTelescope lty
     let some iP := (binderNamesOf lty).findIdx? (· == `P) | throwError "side: {lem}"
-    unless ← isDefEq mvs[iP]! P do throwError "side: {lem} does not apply"
-    unless ← isDefEq concl (P.beta #[b]) do throwError "side: {lem} does not apply"
+    let fits ← withSlice s!"isDefEq of {lem}" do
+      unless ← isDefEq mvs[iP]! P do return false
+      isDefEq concl (P.beta #[b])
+    unless fits do throwError "side: {lem} does not apply"
     for m in mvs, bi in bis do
       let m' ← instantiateMVars m
       unless m'.isMVar do continue
@@ -1116,7 +1194,8 @@ partial def provePres (req? : Option GuardReq) (t : Expr) (mkP : Expr → MetaM 
       let pf ← forallTelescope ty fun xs body => do
         let fs := facts ++ (← factsOf xs)
         mkLambdaFVars xs (← proveArr req? body fs)
-      unless ← isDefEq m' pf do throwError "side: {lem}"
+      unless ← withSlice s!"isDefEq of a premise of {lem}" (isDefEq m' pf) do
+        throwError "side: {lem}"
     let e ← instantiateMVars (mkAppN c mvs)
     if e.hasExprMVar then throwError "side: {lem} open"
     return e
@@ -1299,7 +1378,7 @@ partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
         let pt ← proveLookup t x v hyps sel
         return ← mkExpectedTypeHint (← mkEqTrans (← mkEqTrans hc hn) pt) goal
   -- a list behind a definition: its head constructor at default transparency
-  let l'' ← whnfD l'
+  let l'' ← withSlice "whnf of a binding list" (whnfD l')
   if l'' != l' && (l''.isAppOfArity ``List.cons 3 || l''.isAppOfArity ``ite 5) then
     return ← mkExpectedTypeHint (← proveLookup l'' x v hyps sel) goal
   unless ← isDefEqBounded lhs rhs do throwError "side: {x} is not bound to{shortExpr v}"
@@ -1334,51 +1413,60 @@ partial def proveBindsSub (l m : Expr) (hyps : Array Expr)
     mkAppM ``Hax.Ascent.bindsSub_cons_intro #[pl, ps]
   | _ => throwError "side: binding list{shortExpr m'}"
 
+/-- `proveArr req? goal facts` as one trace node of `ascend_reified.leaf` (`obligation`) of
+    kind `kind`. -/
+def proveArrOb (kind : String) (req? : Option GuardReq) (goal : Expr) (facts : Array Expr) :
+    MetaM Expr :=
+  obligation kind goal do return (← proveArr req? goal facts, "proveArr")
+
 /-- A proof of a side condition, with the hypotheses of its telescope. An equation is
     closed by its lookup or by `rfl` at reducible transparency, then by the lemmas of its
     left side (`isControlFlow`, a conditional by `proveIteEq`), then by `rfl` within the
     bound of `isDefEqBounded`, by evaluation (`proveDecide`) and by the kernel
-    (`kernelRefl`). -/
+    (`kernelRefl`). Each side condition is one trace node of `ascend_reified.leaf`
+    (`obligation`) naming the closer that proved it. -/
 partial def closeProp (p : Expr) (hyps : Array Expr) : MetaM Expr := do
   let p := (← instantiateMVars p).headBeta
+  obligation "side" p do
+  let hint (pf : Expr) (closer : String) : MetaM (Expr × String) := do
+    return (← mkExpectedTypeHint pf p, closer)
   if !p.isConstOf ``True && (← isArrFact p) then
-    return ← mkExpectedTypeHint (← proveArr none p (← factsOf hyps)) p
+    return ← hint (← proveArr none p (← factsOf hyps)) "proveArr"
   match p.getAppFnArgs with
-  | (``Hax.Ascent.BindsSub, #[l, m]) =>
-    let pf ← proveBindsSub l m hyps
-    mkExpectedTypeHint pf p
-  | (``True, #[]) => return mkConst ``True.intro
+  | (``Hax.Ascent.BindsSub, #[l, m]) => hint (← proveBindsSub l m hyps) "proveBindsSub"
+  | (``True, #[]) => return (mkConst ``True.intro, "True.intro")
   | (``_root_.Eq, #[_, lhs, rhs]) =>
     if let (``Hax.Ascent.bindLookup, #[l, x]) := lhs.getAppFnArgs then
       if let some s := strOf? (← instantiateMVars x) then
         if let (``Option.some, #[_, v]) := rhs.getAppFnArgs then
-          return ← mkExpectedTypeHint (← proveLookup l s v hyps) p
+          return ← hint (← proveLookup l s v hyps) "proveLookup"
     if ← withReducible (isDefEq lhs rhs) then
-      return ← mkExpectedTypeHint (← mkEqRefl lhs) p
+      return ← hint (← mkEqRefl lhs) "rfl (reducible)"
     if let (``Hax.Value.isControlFlow, #[v]) := lhs.getAppFnArgs then
       let v ← instantiateMVars v
       match v.getAppFnArgs with
       | (``Hax.Ascent.cfVal, #[_, _, _, r]) =>
-        return ← mkExpectedTypeHint (← mkAppM ``Hax.Ascent.cfVal_isControlFlow #[r]) p
+        return ← hint (← mkAppM ``Hax.Ascent.cfVal_isControlFlow #[r]) "cfVal_isControlFlow"
       | (``Hax.Ascent.HaxEnc.enc, #[_, _, t]) =>
-        return ← mkExpectedTypeHint (← mkAppM ``Hax.Ascent.HaxEnc.Plain.not_cf #[t]) p
+        return ← hint (← mkAppM ``Hax.Ascent.HaxEnc.Plain.not_cf #[t]) "not_cf"
       | (``Hax.Ascent.rangeVal, #[lo, hi]) =>
-        return ← mkExpectedTypeHint (← mkAppM ``Hax.Ascent.rangeVal_isControlFlow #[lo, hi]) p
+        return ← hint (← mkAppM ``Hax.Ascent.rangeVal_isControlFlow #[lo, hi])
+          "rangeVal_isControlFlow"
       | _ => pure ()
     if lhs.isAppOfArity ``ite 5 then
       let args := lhs.getAppArgs
       if let some b := args[1]!.eq?.map (·.2.1) then
         let s ← saveState
-        try return ← mkExpectedTypeHint (← proveIteEq b args[3]! args[4]! rhs hyps) p
+        try return ← hint (← proveIteEq b args[3]! args[4]! rhs hyps) "proveIteEq"
         catch _ => s.restore
     if ← isDefEqBounded lhs rhs then
-      return ← mkExpectedTypeHint (← mkEqRefl lhs) p
-    try mkExpectedTypeHint (← proveDecide p) p
+      return ← hint (← mkEqRefl lhs) "rfl (bounded)"
+    try hint (← proveDecide p) "proveDecide"
     catch _ =>
-      try kernelRefl p
+      try return (← kernelRefl p, "kernelRefl")
       catch _ => throwError "side: cannot prove{shortExpr p}"
   | (fn, args) =>
-    try mkExpectedTypeHint (← proveDecide p) p
+    try hint (← proveDecide p) "proveDecide"
     catch _ => throwError "side: cannot prove{shortExpr p}\nhead {fn} with {args.size} arguments"
 
 /-- A proof of a side condition `∀ xs, P`. -/
@@ -1598,7 +1686,10 @@ def matchLeaf (f : String) (vs : Array SVal) (hint? : Option Expr) (strict : Boo
               -- evaluation unfolds the subtraction from a large literal one step at a time
               let openCmp := pend && mty.hasFVar && (← isPendFact mty)
               unless openCmp do
-                try m'.mvarId!.assign (← proveDecide mty)
+                try
+                  let pf ← obligation "leaf premise" mty do
+                    return (← proveDecide mty, "proveDecide")
+                  m'.mvarId!.assign pf
                 catch ex =>
                   unless pend && (← isPendFact mty) do throw ex
       let pf ← instantiateMVars (mkAppN c mvs)
@@ -1793,7 +1884,7 @@ def accFactCands (Gσ0 : Expr) (M : List (String × SVal)) (tys : List Expr)
   let holds (p : Expr) : MetaM Bool := withLocalDeclD `hG Gσ0 fun hG => do
     let s ← (Meta.saveState : MetaM Meta.SavedState)
     try
-      discard <| proveArr none p (← splitFacts hG)
+      discard <| proveArrOb "accumulator fact" none p (← splitFacts hG)
       pure true
     catch _ =>
       (s.restore : MetaM Unit)
@@ -2399,7 +2490,7 @@ partial def genApp (Γ : SEnv) (G _e f as : Expr) (hint? : Option Expr) : GenM G
         | some req => pure (← req.need.get).size
         | none => pure 0
       let p ← withLocalDeclD `hG Gσ fun hG => do
-        try mkLambdaFVars #[hG] (← proveArr req? ty (← splitFacts hG))
+        try mkLambdaFVars #[hG] (← proveArrOb "call premise" req? ty (← splitFacts hG))
         catch ex =>
           -- a hypothesis that asked for new guard facts is admitted, so that the
           -- derivation collects the other guard facts it asks for; `ascendFn` discards
@@ -2550,7 +2641,7 @@ partial def genForFold (Γ : SEnv) (G _e var lo hi body : Expr) (rev : Bool := f
         jc.filterM fun (j, _, _, P) => do
           let s ← (Meta.saveState : MetaM Meta.SavedState)
           try
-            discard <| proveArr none (P.beta #[tmsN[j]!]) fs
+            discard <| proveArrOb "loop element fact" none (P.beta #[tmsN[j]!]) fs
             pure false
           catch _ =>
             (s.restore : MetaM Unit)
@@ -2753,7 +2844,7 @@ partial def genWhile (Γ : SEnv) (G _e cond body : Expr) (jdrop : List (String �
           jc.filterM fun (j, _, _, P) => do
             let s ← (Meta.saveState : MetaM Meta.SavedState)
             try
-              discard <| proveArr none (P.beta #[tmsN[j]!]) fs
+              discard <| proveArrOb "loop element fact" none (P.beta #[tmsN[j]!]) fs
               pure false
             catch _ =>
               (s.restore : MetaM Unit)
