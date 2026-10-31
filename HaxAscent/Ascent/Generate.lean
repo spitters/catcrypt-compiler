@@ -1227,7 +1227,11 @@ partial def proveBindsSub (l m : Expr) (hyps : Array Expr)
     mkAppM ``Hax.Ascent.bindsSub_cons_intro #[pl, ps]
   | _ => throwError "side: binding list{shortExpr m'}"
 
-/-- A proof of a side condition, with the hypotheses of its telescope. -/
+/-- A proof of a side condition, with the hypotheses of its telescope. An equation is
+    closed by its lookup or by `rfl` at reducible transparency, then by the lemmas of its
+    left side (`isControlFlow`, a conditional by `proveIteEq`), then by `rfl` within the
+    bound of `isDefEqBounded`, by evaluation (`proveDecide`) and by the kernel
+    (`kernelRefl`). -/
 partial def closeProp (p : Expr) (hyps : Array Expr) : MetaM Expr := do
   let p := (← instantiateMVars p).headBeta
   if !p.isConstOf ``True && (← isArrFact p) then
@@ -1242,7 +1246,7 @@ partial def closeProp (p : Expr) (hyps : Array Expr) : MetaM Expr := do
       if let some s := strOf? (← instantiateMVars x) then
         if let (``Option.some, #[_, v]) := rhs.getAppFnArgs then
           return ← mkExpectedTypeHint (← proveLookup l s v hyps) p
-    if ← isDefEq lhs rhs then
+    if ← withReducible (isDefEq lhs rhs) then
       return ← mkExpectedTypeHint (← mkEqRefl lhs) p
     if let (``Hax.Value.isControlFlow, #[v]) := lhs.getAppFnArgs then
       let v ← instantiateMVars v
@@ -1257,7 +1261,11 @@ partial def closeProp (p : Expr) (hyps : Array Expr) : MetaM Expr := do
     if lhs.isAppOfArity ``ite 5 then
       let args := lhs.getAppArgs
       if let some b := args[1]!.eq?.map (·.2.1) then
-        return ← mkExpectedTypeHint (← proveIteEq b args[3]! args[4]! rhs hyps) p
+        let s ← saveState
+        try return ← mkExpectedTypeHint (← proveIteEq b args[3]! args[4]! rhs hyps) p
+        catch _ => s.restore
+    if ← isDefEqBounded lhs rhs then
+      return ← mkExpectedTypeHint (← mkEqRefl lhs) p
     try mkExpectedTypeHint (← proveDecide p) p
     catch _ =>
       try kernelRefl p
