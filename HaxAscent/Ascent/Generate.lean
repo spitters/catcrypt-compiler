@@ -24,8 +24,8 @@ applies one rule of `HaxAscent/Ascent/GenRules.lean` or `HaxAscent/Ascent/Ascend
 with every value and binding list given explicitly (`RApp`), so each premise is a
 sub-derivation or a closed side condition:
 
-* a lookup `bindLookup l x = some v`, proved by `rfl`, or through a conditional list by
-  `bindLookup_ite_of`;
+* a lookup `bindLookup l x = some v`, proved entry by entry by `bindLookup_cons`, or through
+  a conditional list by `bindLookup_ite_of`;
 * a `BindsSub` over explicit lists, proved entry by entry;
 * an equation between values, proved by `rfl`, `ite_same`, `ite_enc` or a lemma that selects
   a branch from an exit hypothesis;
@@ -635,11 +635,54 @@ def indexElemFacts (es facts : Array Expr) (prove : Expr → Array Expr → Meta
       catch _ => s.restore
   return out
 
+/-- The facts given to `omega` by `proveArith` that depend on its facts and not on its
+    goal. -/
+structure ArithPre where
+  /-- The facts with the projections of pairs reduced. -/
+  facts : Array Expr
+  /-- Their arithmetic consequences (`arithFacts`) and element bounds (`indexElemFacts`). -/
+  extra : Array Expr
+  /-- The equations of the integer operations in them (`arithOpEqs`). -/
+  ops : Array Expr
+  /-- The length equations of the arrays in them (`arrayLenEqs`). -/
+  lens : Array Expr
+
+/-- The terms of an `ArithPre` mapped by `f`. -/
+def ArithPre.mapE (pre : ArithPre) (f : Expr → Expr) : ArithPre :=
+  { facts := pre.facts.map f, extra := pre.extra.map f, ops := pre.ops.map f,
+    lens := pre.lens.map f }
+
+/-- The `ArithPre` of the fact sets met by `proveArith`, by `arithPreKey`, with the proof
+    variables of the key abstracted. -/
+initialize arithPreCache : IO.Ref (Std.HashMap (Array Expr) ArithPre) ← IO.mkRef {}
+
+/-- The results of `proveArith` met: by `arithPreKey` followed by the goal, the proof with
+    the proof variables of the key abstracted, or `none` when `omega` failed. -/
+initialize arithProofCache : IO.Ref (Std.HashMap (Array Expr) (Option Expr)) ← IO.mkRef {}
+
+/-- The key of a fact set of `proveArith` and its proof variables: the facts, the facts of
+    the local context `lhyps`, their types, the types of the proof variables they mention
+    and the flag `elems`, with those proof variables abstracted, so that the fact sets of
+    two hypotheses of the same proposition have the same key; `none` when a term has a
+    metavariable. -/
+def arithPreKey (facts lhyps : Array Expr) (elems : Bool) :
+    MetaM (Option (Array Expr × Array Expr)) := do
+  let fs := facts ++ lhyps
+  let tys ← fs.mapM fun f => do instantiateMVars (← inferType f)
+  if fs.any (·.hasMVar) || tys.any (·.hasMVar) then return none
+  let mut hs := #[]
+  for x in (fs.foldl collectFVars {}).fvarIds do
+    if ← isProp (← x.getType) then hs := hs.push (mkFVar x)
+  let hsTys ← hs.mapM fun h => do instantiateMVars (← inferType h)
+  if hsTys.any (·.hasMVar) then return none
+  return some ((fs ++ tys ++ hsTys).map (·.abstract hs) |>.push (toExpr elems), hs)
+
 /-- A proof of an arithmetic proposition: by evaluation, from a fact, or by `omega` over
     the facts, their arithmetic consequences and the local context. With `elems`, the
     bounds of the elements read by `Hax.index` that the facts over all elements of an array
     give are added (`indexElemFacts`), their nonemptiness side conditions proved without
-    them. -/
+    them. The part that depends on the facts only is computed once per fact set
+    (`arithPreCache`), and the result once per fact set and goal (`arithProofCache`). -/
 partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
     MetaM Expr := do
   -- evaluation decides closed propositions only
@@ -651,28 +694,62 @@ partial def proveArith (p : Expr) (facts : Array Expr) (elems : Bool := true) :
   -- state variable read through the state tuple is the variable
   let p₀ := p
   let p ← reduceProjs (← instantiateMVars p)
-  let facts ← facts.mapM fun f => do
-    let t ← instantiateMVars (← inferType f)
-    let t' ← reduceProjs t
-    if t' == t then pure f else mkExpectedTypeHint f t'
+  let lhyps ← factsOf (← getLocalHyps)
+  let key? ← arithPreKey facts lhyps elems
+  -- the result under the same facts and goal
+  let keyR? := key?.bind fun (key, hs) =>
+    if p.hasMVar then none else some (key.push (p.abstract hs), hs)
+  if let some (keyR, hs) := keyR? then
+    if let some r := (← arithProofCache.get)[keyR]? then
+      let some pf := r | throwError "side: cannot prove{indentExpr p}"
+      return ← mkExpectedTypeHint (pf.instantiateRev hs) p₀
   let g ← mkFreshExprMVar p
   let some g' ← g.mvarId!.falseOrByContra | throwError "side: cannot prove{indentExpr p}"
   let hyps ← g'.withContext getLocalHyps
-  let extra ← arithFacts facts
-  let tys := #[p] ++ (← (facts ++ extra).mapM inferType)
-  let elemFacts ← if elems then
-      indexElemFacts tys (facts ++ (← factsOf (← getLocalHyps))) fun q more =>
-        proveArith q (facts ++ more) (elems := false)
+  -- the part that depends on the facts only
+  let compute : MetaM ArithPre := do
+    let facts ← facts.mapM fun f => do
+      let t ← instantiateMVars (← inferType f)
+      let t' ← reduceProjs t
+      if t' == t then pure f else mkExpectedTypeHint f t'
+    let extra ← arithFacts facts
+    let tys ← (facts ++ extra).mapM inferType
+    let elemFacts ← if elems then
+        indexElemFacts tys (facts ++ lhyps) fun q more =>
+          proveArith q (facts ++ more) (elems := false)
+      else pure #[]
+    let extra := extra ++ elemFacts
+    let tys := tys ++ (← elemFacts.mapM inferType)
+    return { facts, extra, ops := ← arithOpEqs tys, lens := ← arrayLenEqs tys }
+  let pre ← match key? with
+    | none => compute
+    | some (key, hs) =>
+      match (← arithPreCache.get)[key]? with
+      | some pre => pure (pre.mapE (·.instantiateRev hs))
+      | none =>
+        let pre ← compute
+        arithPreCache.modify (·.insert key (pre.mapE (·.abstract hs)))
+        pure pre
+  -- the part of the goal
+  let pElems ← if elems then
+      indexElemFacts #[p] (pre.facts ++ lhyps) fun q more =>
+        proveArith q (pre.facts ++ more) (elems := false)
     else pure #[]
-  let extra := extra ++ elemFacts
-  let tys := tys ++ (← elemFacts.mapM inferType)
+  let tys := #[p] ++ (← pElems.mapM inferType)
   let ops ← arithOpEqs tys
   let lens ← arrayLenEqs tys
-  try
-    Lean.Elab.Tactic.Omega.omega
-      (hyps.toList ++ facts.toList ++ extra.toList ++ ops.toList ++ lens.toList) g'
-  catch _ => throwError "side: cannot prove{indentExpr p}"
-  mkExpectedTypeHint (← instantiateMVars g) p₀
+  let ok ← try
+      Lean.Elab.Tactic.Omega.omega
+        (hyps.toList ++ pre.facts.toList ++ pre.extra.toList ++ pElems.toList ++
+          pre.ops.toList ++ ops.toList ++ pre.lens.toList ++ lens.toList) g'
+      pure true
+    catch _ => pure false
+  let pf ← instantiateMVars g
+  if let some (keyR, hs) := keyR? then
+    if !ok || !pf.hasMVar then
+      arithProofCache.modify (·.insert keyR (if ok then some (pf.abstract hs) else none))
+  unless ok do throwError "side: cannot prove{indentExpr p}"
+  mkExpectedTypeHint pf p₀
 
 /-- The array and the reading of the argument that reaches it through `Prod.fst` and
     `Prod.snd`. -/
@@ -1169,7 +1246,11 @@ def selectBranch (l : Expr) (args : Array Expr) (hyps : Array Expr)
   sel.modify (·.push (l, res))
   return res
 
-/-- A proof of `bindLookup l x = some v`. `sel` keeps the branch selections of the
+/-- A proof of `bindLookup l x = some v`, by the shape of `l`: through a conditional list
+    (`bindLookup_ite_of`), entry by entry through an explicit list (`bindLookup_cons`, with
+    `if_neg` at a name that differs, by evaluation of `decide`, and `if_pos` at the name
+    `x`, whose value is compared with `v` by `isDefEqBounded`), and otherwise by `rfl`
+    within the bound of `isDefEqBounded`. `sel` keeps the branch selections of the
     conditional lists met (`selectBranch`). -/
 partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
     (sel? : Option (IO.Ref (Array (Expr × Option (Expr × Expr)))) := none) : MetaM Expr := do
@@ -1193,10 +1274,36 @@ partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
     let h2 ← proveLookup args[4]! x v2 hyps sel
     let h ← proveIteEq b v1 v2 v hyps
     return ← mkAppM ``Hax.Ascent.bindLookup_ite_of #[h1, h2, h]
-  let lhs := mkApp2 (mkConst ``Hax.Ascent.bindLookup) l (mkStrLit x)
+  let xe := mkStrLit x
+  let lhs := mkApp2 (mkConst ``Hax.Ascent.bindLookup) l xe
   let rhs ← mkAppM ``Option.some #[v]
-  unless ← isDefEq lhs rhs do throwError "side: {x} is not bound to{shortExpr v}"
-  mkExpectedTypeHint (← mkEqRefl rhs) (← mkEq lhs rhs)
+  let goal ← mkEq lhs rhs
+  if l'.isAppOfArity ``List.cons 3 then
+    let hd ← whnfR (l'.getArg! 1)
+    if let (``Prod.mk, #[_, _, k, v']) := hd.getAppFnArgs then
+      if let some s := strOf? (← instantiateMVars k) then
+        let t := l'.getArg! 2
+        -- `bindLookup ((k, v') :: t) x = if x = k then some v' else bindLookup t x`
+        let hc := mkApp4 (mkConst ``Hax.Ascent.bindLookup_cons) k v' t xe
+        let some (_, _, rc) := (← inferType hc).eq? | throwError "side: lookup of {x}"
+        let (``ite, #[α, c, inst, a, b]) := rc.getAppFnArgs | throwError "side: lookup of {x}"
+        let us := rc.getAppFn.constLevels!
+        if s == x then
+          unless ← isDefEqBounded v' v do throwError "side: {x} is not bound to{shortExpr v}"
+          let hp := mkApp6 (mkConst ``if_pos us) c inst (← mkEqRefl xe) α a b
+          return ← mkExpectedTypeHint (← mkEqTrans hc hp) goal
+        -- the names differ: `decide (x = k)` evaluates to `false`
+        let hne := mkApp3 (mkConst ``of_decide_eq_false) c inst
+          (mkApp2 (mkConst ``Eq.refl [Level.one]) (mkConst ``Bool) (mkConst ``Bool.false))
+        let hn := mkApp6 (mkConst ``if_neg us) c inst hne α a b
+        let pt ← proveLookup t x v hyps sel
+        return ← mkExpectedTypeHint (← mkEqTrans (← mkEqTrans hc hn) pt) goal
+  -- a list behind a definition: its head constructor at default transparency
+  let l'' ← whnfD l'
+  if l'' != l' && (l''.isAppOfArity ``List.cons 3 || l''.isAppOfArity ``ite 5) then
+    return ← mkExpectedTypeHint (← proveLookup l'' x v hyps sel) goal
+  unless ← isDefEqBounded lhs rhs do throwError "side: {x} is not bound to{shortExpr v}"
+  mkExpectedTypeHint (← mkEqRefl rhs) goal
 where
   /-- From `h : ite c a₁ a₂ = a` and a proof about `a`, the proof about the conditional
       list. -/
@@ -2878,8 +2985,10 @@ def argComps (a : Expr) : Nat → MetaM (List Expr)
 
 /-- **The generator on one function.** The argument tuple is the right-nested product of
     the parameter types of the surface; the entry bindings are the parameters followed by
-    the constants. -/
+    the constants. The caches of `proveArith` are emptied at the start. -/
 def ascendFn (spec : FnSpec) : TermElabM FnResult := do
+  arithPreCache.set {}
+  arithProofCache.set {}
   let sty ← inferType spec.surface
   forallTelescopeReducing sty fun xs retTy => do
     let xs ← xs.filterM fun (x : Expr) => return !(← x.fvarId!.getBinderInfo).isInstImplicit
