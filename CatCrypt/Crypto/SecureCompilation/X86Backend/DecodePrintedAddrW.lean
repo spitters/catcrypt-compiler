@@ -106,7 +106,8 @@ arms to the bodies of `DecodePrintedCFG`.
   of a body in `printedAddrWB` simulate its run on the address machine, by a halting run
   without a call.
 * `printedAddrWB_eq_impl` (`@[csimp]`): the gate is evaluated with the body parameters
-  computed once per body.
+  computed once per body, the carry-out and cast gates on the array of the body
+  (`carryPrevBA`, `castPosBA`) and the cast width analyses tabulated (`narrowTable`).
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
@@ -3952,6 +3953,34 @@ def castPosB (body : Lcmd) (k : Nat) : Bool :=
     | some (_, a, m, w) => m == min (((narrowIn body k).lookup a).getD 64) w
     | none => true
 
+/-- The cast width analyses `narrowIn body k` for `k ≤ body.length`, as an array indexed by
+    `k`: the prefix folds of `narrowStep` over the body. -/
+def narrowTable (body : Lcmd) : Array (List (String × Nat)) :=
+  (body.scanl (fun N i => narrowStep N i.li_i) []).toArray
+
+/-- Entry `k` of `narrowTable`, for `k ≤ body.length`, is the analysis `narrowIn body k`. -/
+theorem narrowTable_getElem? (body : Lcmd) {k : Nat} (hk : k ≤ body.length) :
+    (narrowTable body)[k]? = some (narrowIn body k) := by
+  grind [narrowTable, narrowIn]
+
+/-- `castPosB` over a body held as an array, with the cast width analyses read off the table
+    `T`. -/
+def castPosBA (body : Array Linstr) (T : Array (List (String × Nat))) (k : Nat) : Bool :=
+  (body[k]?).all fun j =>
+    match classifyK j.li_i with
+    | some (_, a, m, w) => m == min ((((T[k]?).getD []).lookup a).getD 64) w
+    | none => true
+
+/-- `castPosBA` at the array of a body and its `narrowTable` is `castPosB`. -/
+theorem castPosBA_toArray (body : Lcmd) :
+    castPosBA body.toArray (narrowTable body) = castPosB body := by
+  funext k
+  by_cases hk : k < body.length
+  · simp only [castPosBA, castPosB, List.getElem?_toArray, narrowTable_getElem? body hk.le,
+      Option.getD_some]
+  · have hn : body[k]? = none := List.getElem?_eq_none (by omega)
+    simp only [castPosBA, castPosB, List.getElem?_toArray, hn, Option.all_none]
+
 theorem lookup_filter_ne (N : List (String × Nat)) {d r : String} (hr : r ≠ d) :
     (N.filter (fun p => p.1 != d)).lookup r = N.lookup r := by
   induction N with
@@ -4693,20 +4722,43 @@ def carryPrevBWith (P : Params) (body : Lcmd) (k : Nat) : Bool :=
 theorem carryPrevB_eq_with (body : Lcmd) :
     carryPrevB body = carryPrevBWith (Params.ofBody body) body := rfl
 
+/-- `carryPrevBWith` over a body held as an array, indexed in constant time. -/
+def carryPrevBA (P : Params) (body : Array Linstr) (k : Nat) : Bool :=
+  match body[k]? with
+  | some ⟨_, .Lopn [.reg _] o [.reg a, .reg s, .reg c]⟩ =>
+      if o = "ADCXHI:64" then
+        k != 0 && (match body[k - 1]? with
+          | some ⟨_, .Lopn [.reg d] o' [.reg a', .reg s', .reg c']⟩ =>
+              o' == "ADCX:64" && a == a' && s == s' && c == c' && d != a && d != s && d != c
+                && slotSepB P d a && slotSepB P d s && slotSepB P d c
+          | _ => false)
+      else true
+  | _ => true
+
+/-- `carryPrevBA` at the array of a body is `carryPrevBWith`. -/
+theorem carryPrevBA_toArray (P : Params) (body : Lcmd) :
+    carryPrevBA P body.toArray = carryPrevBWith P body := by
+  funext k
+  simp only [carryPrevBA, carryPrevBWith, List.getElem?_toArray]
+
 /-- `printedAddrWB` evaluated with the body parameters `Params.ofBody body` computed once for
-    the instruction gates `instrOKWB` and the carry-out gates `carryPrevBWith`. -/
+    the instruction gates `instrOKWB` and the carry-out gates, the carry-out gates and the cast
+    gates read off the array of the body, and the cast width analyses read off
+    `narrowTable`. -/
 def printedAddrWBImpl (body : Lcmd) : Bool :=
   let P := Params.ofBody body
+  let a := body.toArray
   decodableLcmd body && body.getLast?.any (fun r => isRetB r.li_i)
     && body.dropLast.all (fun i => instrOKWB body P i.li_i)
-    && (List.range body.length).all (condPrevB body)
-    && (List.range body.length).all (carryPrevBWith P body)
-    && (List.range body.length).all (castPosB body)
+    && (List.range a.size).all (condPrevB body)
+    && (List.range a.size).all (carryPrevBA P a)
+    && (List.range a.size).all (castPosBA a (narrowTable body))
 
 /-- The gate `printedAddrWB` is evaluated as `printedAddrWBImpl`. -/
 @[csimp] theorem printedAddrWB_eq_impl : @printedAddrWB = @printedAddrWBImpl := by
   funext body
-  rfl
+  simp only [printedAddrWB, printedAddrWBImpl, List.size_toArray, carryPrevBA_toArray,
+    castPosBA_toArray, carryPrevB_eq_with]
 
 /-- **The count-`0` shift of a general-purpose name in place is covered**: `instrOKWB`
     accepts `SHL:64 R, R, #0`, the copy of `R` to itself, for every general-purpose name `R`,

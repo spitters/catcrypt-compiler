@@ -406,6 +406,34 @@ def printedAddrB (body : Lcmd) : Bool :=
     && body.dropLast.all (fun i => instrOKB body (Params.ofBody body) i.li_i)
     && (List.range body.length).all (condPrevB body)
 
+/-- `condPrevB` over a body held as an array, indexed in constant time. -/
+def condPrevBA (body : Array Linstr) (k : Nat) : Bool :=
+  match body[k]? with
+  | some ⟨_, .Lcond _ _⟩ =>
+      k != 0 && (match body[k - 1]? with
+        | some j => (classifyA j.li_i).any cmpArmB
+        | none => false)
+  | _ => true
+
+/-- `condPrevBA` at the array of a body is `condPrevB`. -/
+theorem condPrevBA_toArray (body : Lcmd) : condPrevBA body.toArray = condPrevB body := by
+  funext k
+  simp only [condPrevBA, condPrevB, List.getElem?_toArray]
+
+/-- `printedAddrB` evaluated with the body parameters `Params.ofBody body` computed once and
+    the compare checks `condPrevB` read off the array of the body. -/
+def printedAddrBImpl (body : Lcmd) : Bool :=
+  let P := Params.ofBody body
+  let a := body.toArray
+  decodableLcmd body && body.getLast?.any (fun r => isRetB r.li_i)
+    && body.dropLast.all (fun i => instrOKB body P i.li_i)
+    && (List.range a.size).all (condPrevBA a)
+
+/-- The gate `printedAddrB` is evaluated as `printedAddrBImpl`. -/
+@[csimp] theorem printedAddrB_eq_impl : @printedAddrB = @printedAddrBImpl := by
+  funext body
+  simp only [printedAddrB, printedAddrBImpl, List.size_toArray, condPrevBA_toArray]
+
 /-- An indexed load at the program counter of `s`, read through `normA` (so tagged or
     untagged), reads an address whose eight bytes are disjoint from the red-zone word at
     `rsp`. -/

@@ -1002,6 +1002,7 @@ CatCrypt.Deep.Tactics
 CatCrypt.EmitArtifacts.P384Rust
 CatCrypt.Hax.Ascent.SquareDouble
 CatCrypt.Hax.ClassBuiltinsTest
+CatCrypt.Hax.LoopFacts
 CatCrypt.Hax.ReifyField
 CatCrypt.Hax.ReifyImpDecodeEndToEnd
 CatCrypt.Hax.ReifyImpEmit

@@ -172,11 +172,57 @@ theorem reloadOf_spec {slotArr : String → Option (String × Nat)} {body : Lcmd
               · obtain ⟨j, i', b', hj, hi', hm'⟩ := reloadOf_spec h
                 exact ⟨j, i', b', Nat.lt_succ_of_lt hj, hi', hm'⟩
 
+/-- The scan `reloadOf` over a body held as an array, indexed in constant time. -/
+def reloadOfA (slotArr : String → Option (String × Nat)) (body : Array Linstr) : Nat → String →
+    Option String
+  | 0, _ => none
+  | k + 1, b =>
+      match body[k]? with
+      | some j =>
+          match slotMov? j.li_i with
+          | some (d, q) =>
+              if d = b then
+                (if (slotArr q).isNone && gpNameB q then reloadOfA slotArr body k q else some q)
+              else if (slotArr d).isNone then reloadOfA slotArr body k b else none
+          | none =>
+              match j.li_i with
+              | .Lopn ds _ _ =>
+                  if ds.any (dstHitB slotArr b) then none else reloadOfA slotArr body k b
+              | _ => none
+      | none => none
+
+/-- The array scan at the array of a body is the list scan. -/
+theorem reloadOfA_toArray (slotArr : String → Option (String × Nat)) (body : Lcmd) :
+    ∀ (k : Nat) (b : String), reloadOfA slotArr body.toArray k b = reloadOf slotArr body k b
+  | 0, _ => rfl
+  | k + 1, b => by
+      simp only [reloadOfA, reloadOf, List.getElem?_toArray, reloadOfA_toArray slotArr body k]
+
+/-- `reloadOf` evaluated on the array of the body. -/
+def reloadOfImpl (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    (b : String) : Option String :=
+  reloadOfA slotArr body.toArray k b
+
+/-- The scan `reloadOf` is evaluated as `reloadOfImpl`. -/
+@[csimp] theorem reloadOf_eq_impl : @reloadOf = @reloadOfImpl := by
+  funext slotArr body k b
+  exact (reloadOfA_toArray slotArr body k b).symm
+
 /-- The array, with its length, whose pointer the register `b` holds at instruction `k` of
     `body`: the array of the slot `q` from which `b` was last reloaded (`reloadOf`). -/
 def accArr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (b : String) :
     Option (String × Nat) :=
   (reloadOf slotArr body k b).bind slotArr
+
+/-- `accArr` over a body held as an array. -/
+def accArrA (slotArr : String → Option (String × Nat)) (body : Array Linstr) (k : Nat)
+    (b : String) : Option (String × Nat) :=
+  (reloadOfA slotArr body k b).bind slotArr
+
+/-- `accArrA` at the array of a body is `accArr`. -/
+theorem accArrA_toArray (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    (b : String) : accArrA slotArr body.toArray k b = accArr slotArr body k b := by
+  simp only [accArrA, accArr, reloadOfA_toArray]
 
 /-- The instruction at position `k` of `body` is a stored carry constant: a 64-bit immediate
     move `MOV:64 d, #n` with `n < 2` into a name `d` that is neither a cell name nor a
