@@ -196,7 +196,7 @@ CatCrypt.Crypto.Pairing.LeafProvenDenote
 CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.PrimeIR.Proof.FieldModelBridge
 CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow
-CatCrypt.Crypto.Primitives.HMAC
+CatCrypt.Crypto.Primitives.HMACMulti
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
 CatCrypt.Crypto.Primitives.Poly1305

@@ -35,7 +35,8 @@ other register and the flags, as `LprogIsa.retRes` does.
 
 * `x86IsaK`: the x86 instruction set with the bounds-checked step.
 * `segWalk`, `blockInvOkP`, `idxInvCheckPB`: the bounds check with calls.
-* `idxAnnotP`: an annotation for `idxInvCheckPB`, by restriction to a fixed point.
+* `idxAnnotP`: an annotation for `idxInvCheckPB`, by restriction of masks over the
+  candidates to a fixed point (`annPassP`, `annFixP`).
 
 ## Main results
 
@@ -861,34 +862,58 @@ def seedImmsP (T : ProcTable) (B : List LinstrRM) (G : CFG) (rs : List String) :
         | .immW w n => if w = 64 then some n else none
         | _ => none
 
-/-- One restriction pass with calls: for every block in order, the facts of each successor
-    that do not follow from the facts of the last segment of the block (with the condition
-    of the edge) are dropped. -/
-def annPassP (T : ProcTable) (B : List LinstrRM) (G : CFG) (ann : List (List IdxFact)) :
-    List (List IdxFact) :=
-  (List.range G.blocks.size).foldl (fun ann k =>
-    match segWalk T ann.flatten (startF (annAt ann k)) SSt.start
+/-- The candidates of `cs` at which the mask `m` is `true`, in the order of `cs`. -/
+def maskFacts (cs : Array IdxFact) (m : Array Bool) : List IdxFact :=
+  ((Array.range cs.size).filterMap fun i => if m.getD i false then cs[i]? else none).toList
+
+/-- The candidates of `cs` at which some mask of `ms` is `true`, each once, in the order of
+    `cs`. -/
+def maskUnion (cs : Array IdxFact) (ms : Array (Array Bool)) : List IdxFact :=
+  ((Array.range cs.size).filterMap fun i =>
+    if ms.any (fun m => m.getD i false) then cs[i]? else none).toList
+
+/-- One restriction pass with calls, on masks over the candidates `cs`, one mask per block:
+    for every block in order, the candidates of the mask of each successor that do not
+    follow from the facts of the last segment of the block (with the condition of the edge)
+    are dropped. The facts of a block are the candidates of its mask (`maskFacts`), and the
+    candidates after a call are those of some mask (`maskUnion`). -/
+def annPassP (T : ProcTable) (B : List LinstrRM) (G : CFG) (cs : Array IdxFact)
+    (ms : Array (Array Bool)) : Array (Array Bool) :=
+  (List.range G.blocks.size).foldl (fun ms k =>
+    match segWalk T (maskUnion cs ms) (startF (maskFacts cs (ms.getD k #[]))) SSt.start
         (bodyAt B (G.blk k) (G.blk k).term) with
     | .ok F ss =>
-        let keep (F' : List SFact) (ann : List (List IdxFact)) (j : Nat) :=
-          ann.set j ((annAt ann j).filter fun f => entails F' (f.toS ss.regs ss.arrs))
+        let keep (F' : List SFact) (ms : Array (Array Bool)) (j : Nat) :=
+          ms.modify j fun m => (Array.range m.size).map fun i =>
+            m.getD i false && entails F' ((cs.getD i default).toS ss.regs ss.arrs)
         match (G.blk k).term with
-        | .fall (some j) => keep F ann j
-        | .goto tg => keep F ann tg
+        | .fall (some j) => keep F ms j
+        | .goto tg => keep F ms tg
         | .cond tg nx =>
             match B[(G.blk k).stop - 1]? with
             | some (.Lcond c _, _) =>
-                let ann := keep (F ++ edgeFacts (symDec ss c) true) ann tg
+                let ms := keep (F ++ edgeFacts (symDec ss c) true) ms tg
                 match nx with
-                | some j => keep (F ++ edgeFacts (symDec ss c) false) ann j
-                | none => ann
-            | _ => ann
-        | _ => ann
-    | _ => ann) ann
+                | some j => keep (F ++ edgeFacts (symDec ss c) false) ms j
+                | none => ms
+            | _ => ms
+        | _ => ms
+    | _ => ms) ms
+
+/-- Restriction passes `annPassP` until a pass changes no mask, at most `fuel` of them. A pass
+    only drops candidates, so the masks reach a fixed point within one pass per candidate
+    and block. -/
+def annFixP (T : ProcTable) (B : List LinstrRM) (G : CFG) (cs : Array IdxFact) :
+    Nat → Array (Array Bool) → Array (Array Bool)
+  | 0, ms => ms
+  | fuel + 1, ms =>
+      let ms' := annPassP T B G cs ms
+      if ms' == ms then ms else annFixP T B G cs fuel ms'
 
 /-- **The annotation by restriction with calls**: `IdxInvCheck.idxAnnot` with the candidate
     registers, bounds and passes taken over the segments of the blocks (`segScan`,
-    `segWalk`). `idxInvCheckPB` checks the result. -/
+    `segWalk`), the facts of each block held as a mask over the candidates and the passes
+    stopped at a fixed point (`annFixP`). `idxInvCheckPB` checks the result. -/
 def idxAnnotP (T : ProcTable) (entry : List IdxFact) (B : List LinstrRM) :
     List (List IdxFact) :=
   match cfgOf (B.map Prod.fst) with
@@ -896,11 +921,11 @@ def idxAnnotP (T : ProcTable) (entry : List IdxFact) (B : List LinstrRM) :
       let rs := annRegsP T entry B G
       let bs := ((entry.filterMap fun | .le _ b => some b | _ => none)
         ++ oblLensP T B G ++ seedImmsP T B G rs).eraseDups
-      let cs := IdxInvCheck.annCands rs bs
-      let a0 := (List.range G.blocks.size).map fun k =>
-        if k = 0 then cs.filter fun f => entails (startF entry) (f.toS STerm.reg SArr.cell)
-        else cs
-      (List.range (G.blocks.size * cs.length + 1)).foldl (fun a _ => annPassP T B G a) a0
+      let cs := (IdxInvCheck.annCands rs bs).toArray
+      let m0 := (Array.range G.blocks.size).map fun k =>
+        if k = 0 then cs.map fun f => entails (startF entry) (f.toS STerm.reg SArr.cell)
+        else Array.replicate cs.size true
+      ((annFixP T B G cs (G.blocks.size * cs.size + 1) m0).map (maskFacts cs)).toList
   | none => []
 
 /-! ## 6. The linked image theorem at the bounds-checked instruction set -/
