@@ -2540,12 +2540,65 @@ theorem keepPoolB_clobN {c : CalleeSig} {pool : List String} (h : keepPoolB c po
   refine ⟨by simp [clobN, hk], fun hm => ?_⟩
   simp [exemptC, hk] at hm
 
+/-- The operand `o` names `q`: a register `q`, or an array element with base or index `q`. -/
+def operandNamesB (q : String) : LOperand → Bool
+  | .reg r => r == q
+  | .arr r _ => r == q
+  | .arrIdx r i _ => r == q || i == q
+  | _ => false
+
+/-- The number of instructions of `body` with a destination operand that names `q`. -/
+def writeCountOf (body : Lcmd) (q : String) : Nat :=
+  (body.filter fun i => match i.li_i with
+    | .Lopn ds _ _ => ds.any (operandNamesB q)
+    | _ => false).length
+
+/-- **The save slot whose value a frame word holds throughout a body.** The name `x` is
+    written by one instruction of `body`, at position `k + 1`, as `MOVQ x, R`; the instruction
+    at `k` is `MOVQ R, q` for a save slot `q` (a name with the prefix `qsave.`); the
+    instructions up to `k + 1` are operations; and `q` is written by one instruction of
+    `body`, before `k`. The result is `q`, or `none` when one of these fails. -/
+def entrySaveOf? (body : Lcmd) (x : String) : Option String :=
+  if writeCountOf body x != 1 then none else
+  match body.findIdx? (fun i => match i.li_i with
+      | .Lopn ds _ _ => ds.any (operandNamesB x)
+      | _ => false) with
+  | some (k + 1) =>
+      if (body.take (k + 2)).all (fun i => match i.li_i with
+          | .Lopn _ _ _ => true
+          | _ => false) then
+        match body[k]?, body[k + 1]? with
+        | some ⟨_, .Lopn [.reg r] "MOVQ" [.reg q]⟩, some ⟨_, .Lopn [.reg d] "MOVQ" [.reg r']⟩ =>
+            if d == x && r' == r && hasPrefix q "qsave." && writeCountOf body q == 1
+                && writeCountOf (body.take k) q == 1 then some q
+            else none
+        | _, _ => none
+      else none
+  | _ => none
+
+/-- **The argument moves of a calling body read the save slots of the array pointers.** Each
+    move `MOV:64 a, x` into an argument register `a` from a name `x` that is no
+    general-purpose name, whose value is the value of a save slot `q` throughout the body
+    (`entrySaveOf?`), becomes `MOV:64 a, q`; every other instruction is kept. The move reads
+    the same word, and the trace of an array argument (`JasminLsemAddrImage.accArr`) reaches
+    the save slot of its register, the slot the slot map of the image gives an array. -/
+def savedArgMoves (body : Lcmd) : Lcmd :=
+  body.map fun i => match i.li_i with
+    | .Lopn [.reg a] "MOV:64" [.reg x] =>
+        if sysvArgRegs.contains a && !gpNameB x then
+          match entrySaveOf? body x with
+          | some q => ⟨i.li_ii, .Lopn [.reg a] "MOV:64" [.reg q]⟩
+          | none => i
+        else i
+    | _ => i
+
 /-- **The allocation of a virtual function that calls `c`, with its allocation
     certificate**: the allocation `lfundefPhysAbiOfVirtCert` at the register file
     `poolAbi (keepPool c)` of the names kept across a call of `c`, with the shadow
     instructions expanded on the allocated body at the out symbols `outs`, whose calls copy
-    no result register, and the certificate of that allocation. The frame arrays
-    `frameArrs` are passed to the allocation. -/
+    no result register, and the argument moves from save slots `savedArgMoves`, and the
+    certificate of that allocation. The frame arrays `frameArrs` are passed to the
+    allocation. -/
 def lfundefPhysAbiOfVirtCCert (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
     (outs : List String := []) (frameArrs : List (String × Nat × Nat) := []) :
@@ -2553,11 +2606,11 @@ def lfundefPhysAbiOfVirtCCert (c : CalleeSig) (virt0 : Lfundef) (outArg' : Strin
   let fc := lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
     (abiTyin := abiTyin) (abi := VIR.LprogCallCut.poolAbi (keepPool c)) (posBind := posBind)
     (frameArrs := frameArrs)
-  ({ fc.1 with lfd_body := expandCallShadows fc.1.lfd_body outs }, fc.2)
+  ({ fc.1 with lfd_body := savedArgMoves (expandCallShadows fc.1.lfd_body outs) }, fc.2)
 
 /-- **The allocation of a virtual function that calls `c`**: the function of
     `lfundefPhysAbiOfVirtCCert`, which is `lfundefPhysAbiOfVirtAt` at the pool `keepPool c`
-    (`lfundefPhysAbiOfVirtC_eq_at`). -/
+    followed by `savedArgMoves` on its body (`lfundefPhysAbiOfVirtC_eq_at`). -/
 def lfundefPhysAbiOfVirtC (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
     (outs : List String := []) : Lfundef :=
@@ -2572,12 +2625,13 @@ theorem lfundefPhysAbiOfVirtCCert_fst (c : CalleeSig) (virt0 : Lfundef) (outArg'
   rfl
 
 /-- The allocation of a caller of `c` is `lfundefPhysAbiOfVirtAt` at the pool
-    `keepPool c`. -/
+    `keepPool c`, followed by `savedArgMoves` on its body. -/
 theorem lfundefPhysAbiOfVirtC_eq_at (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
     (outs : List String) :
     lfundefPhysAbiOfVirtC c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs
-      = lfundefPhysAbiOfVirtAt (keepPool c) virt0 outArg' inArgs' accRegs abiArgs abiTyin
-        posBind outs := rfl
+      = let f := lfundefPhysAbiOfVirtAt (keepPool c) virt0 outArg' inArgs' accRegs abiArgs
+          abiTyin posBind outs
+        { f with lfd_body := savedArgMoves f.lfd_body } := rfl
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
