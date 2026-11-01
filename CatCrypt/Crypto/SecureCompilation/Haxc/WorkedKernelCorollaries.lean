@@ -34,6 +34,10 @@ comparison `ltu` under the layout `ltuAbi`. The run hypotheses are `CTTotality.a
   `mpn_and_n` and on `ltu`.
 * `AndNCorrect.mpn_and_n_correct_auto_ct_regions` — the joint value and constant-time
   theorem on `mpn_and_n`.
+* `AndNCorrect.mpn_and_n_rc`, `AndNCorrect.mpn_and_n_correct_auto_ct`, `LtuCorrect.ltu_rc` —
+  the same theorems with the acceptance of `compileA` and the level check `haxToNFCTB`
+  discharged by evaluation (`and_compileA_isSome`, `and_haxToNFCTB`, `ltu_compileA_isSome`,
+  `ltu_haxToNFCTB`).
 -/
 
 /-! ## 1. `mpn_and_n` -/
@@ -120,6 +124,65 @@ theorem mpn_and_n_correct_auto_ct_regions (P : Lprog) (bytes : List (BitVec 8))
   exact ⟨prog, hd, hval, fun s₁ s₂ t₁ t₂ h h₁ h₂ =>
     hct s₁ s₂ t₁ t₂ ⟨h.1, h.2.1, h.2.2.1, trivial, trivial, h.2.2.2, .inl rfl⟩ h₁ h₂⟩
 
+/-- `compileA` succeeds on `mpn_and_n` under `andAbi4`. -/
+theorem and_compileA_isSome :
+    (compileA Mpn.mpn_and_n_texpr andAbi4 "mpn_and_n").isSome = true := by
+  native_decide
+
+/-- `compileA` on `mpn_and_n` under `andAbi4` returns a printed program and bytes. -/
+theorem and_compileA_exists :
+    ∃ P bytes, compileA Mpn.mpn_and_n_texpr andAbi4 "mpn_and_n" = some (P, bytes) := by
+  obtain ⟨⟨P, bytes⟩, h⟩ := Option.isSome_iff_exists.mp and_compileA_isSome
+  exact ⟨P, bytes, h⟩
+
+/-- `mpn_and_n` passes the level check of `haxToNFCTB` at `andSecrecy` under `andAbi4`. -/
+theorem and_haxToNFCTB : haxToNFCTB andSecrecy andAbi4 Mpn.mpn_and_n_texpr = true := by
+  native_decide
+
+/-- **Robust compilation on `mpn_and_n`**: `compileA` on `mpn_and_n` under `andAbi4` returns a
+    program and bytes, and every decoding of the bytes satisfies the gate conclusion and robust
+    compilation at the secrecy record `andSecrecy` (`mpn_and_n_rc_proved` with its acceptance
+    and level hypotheses discharged). -/
+theorem mpn_and_n_rc :
+    ∃ P bytes, compileA Mpn.mpn_and_n_texpr andAbi4 "mpn_and_n" = some (P, bytes) ∧
+      ∀ prog : List RInstr, decodeLprog bytes = some prog →
+        GateConclusion andAbi4.Regions andAbi4.PubAgree
+            (haxcSrcRun Mpn.mpn_and_n_texpr andAbi4) (haxcTgtRes andAbi4 prog)
+            (haxcLeakRun prog) ∧
+          RobustCompilation 0
+            (realObs (Pre := andAbi4.Regions) (srcRun := haxcSrcRun Mpn.mpn_and_n_texpr andAbi4)
+              (leakRun := haxcLeakRun prog) (haxcTgtRes andAbi4 prog))
+            (idealObs (pubOf andAbi4)) := by
+  obtain ⟨P, bytes, hc⟩ := and_compileA_exists
+  exact ⟨P, bytes, hc, fun _ hd => mpn_and_n_rc_proved P bytes hc and_haxToNFCTB hd⟩
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics (Halts) in
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT (RunL) in
+open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine) in
+open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState) in
+open CatCrypt.Crypto.SecureCompilation.CT (ConstantTimeRel) in
+open _root_.Hax (Value Env) in
+open _root_.Hax.InlineLocalClosures (denoteSpine) in
+open CatCrypt.Crypto.Hax (hax64WExit) in
+/-- **The joint value and constant-time theorem at `mpn_and_n`**: `compileA` on `mpn_and_n`
+    under `andAbi4` returns a program and bytes for which `mpn_and_n_correct_auto_ct_regions`
+    holds at every separated entry state with a source run. -/
+theorem mpn_and_n_correct_auto_ct :
+    ∃ P bytes, compileA Mpn.mpn_and_n_texpr andAbi4 "mpn_and_n" = some (P, bytes) ∧
+      ∀ (sa : AState), andAbi4.Regions sa → ∀ (env : Env), andAbi4.EnvOf sa env →
+      ∀ (fuel : Nat) (v : Value) (env' : Env),
+        (denoteSpine hax64WExit fuel Mpn.mpn_and_n_texpr.erase).run env = (.val v, env') →
+        ∃ prog, decodeLprog bytes = some prog
+          ∧ (∃ sa', Halts aMachine prog 0 sa sa' ∧ andAbi4.ResultOf sa sa' v)
+          ∧ ConstantTimeRel
+              (fun s₁ s₂ => andAbi4.PubAgree s₁ s₂ ∧ andAbi4.Regions s₁ ∧ andAbi4.Regions s₂
+                ∧ ∃ v, haxRuns andAbi4 Mpn.mpn_and_n_texpr s₁ v)
+              (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
+  obtain ⟨P, bytes, hc⟩ := and_compileA_exists
+  exact ⟨P, bytes, hc, fun sa hsep env henv fuel v env' hrun =>
+    mpn_and_n_correct_auto_ct_regions P bytes hc and_haxToNFCTB sa hsep env henv fuel v env'
+      hrun⟩
+
 end CatCrypt.Crypto.SecureCompilation.Haxc.AndNCorrect
 
 /-! ## 2. `ltu` -/
@@ -163,5 +226,35 @@ theorem ltu_rc_proved (P : Lprog) (bytes : List (BitVec 8))
         ((pairStage_linked _ _).trans rfl)]
       exact fun sa V hR hV => CTTotality.ltu_hterm (fun _ => True) 0 0 sa V hR trivial hV)
     (pubLabelsOK_of_pubLabelsB ltu_pubLabelsB) ltu_envNames_nodup hd
+
+/-- `compileA` succeeds on `ltu` under `ltuAbi`. -/
+theorem ltu_compileA_isSome : (compileA Mpn.ltu_texpr ltuAbi "ltu").isSome = true := by
+  native_decide
+
+/-- `compileA` on `ltu` under `ltuAbi` returns a printed program and bytes. -/
+theorem ltu_compileA_exists :
+    ∃ P bytes, compileA Mpn.ltu_texpr ltuAbi "ltu" = some (P, bytes) := by
+  obtain ⟨⟨P, bytes⟩, h⟩ := Option.isSome_iff_exists.mp ltu_compileA_isSome
+  exact ⟨P, bytes, h⟩
+
+/-- `ltu` passes the level check of `haxToNFCTB` at `ltuSecrecy` under `ltuAbi`. -/
+theorem ltu_haxToNFCTB : haxToNFCTB ltuSecrecy ltuAbi Mpn.ltu_texpr = true := by
+  native_decide
+
+/-- **Robust compilation on `ltu`**: `compileA` on `ltu` under `ltuAbi` returns a program and
+    bytes, and every decoding of the bytes satisfies the gate conclusion and robust compilation
+    at the secrecy record `ltuSecrecy` (`ltu_rc_proved` with its acceptance and level
+    hypotheses discharged). -/
+theorem ltu_rc :
+    ∃ P bytes, compileA Mpn.ltu_texpr ltuAbi "ltu" = some (P, bytes) ∧
+      ∀ prog : List RInstr, decodeLprog bytes = some prog →
+        GateConclusion ltuAbi.Regions ltuAbi.PubAgree (haxcSrcRun Mpn.ltu_texpr ltuAbi)
+            (haxcTgtRes ltuAbi prog) (haxcLeakRun prog) ∧
+          RobustCompilation 0
+            (realObs (Pre := ltuAbi.Regions) (srcRun := haxcSrcRun Mpn.ltu_texpr ltuAbi)
+              (leakRun := haxcLeakRun prog) (haxcTgtRes ltuAbi prog))
+            (idealObs (pubOf ltuAbi)) := by
+  obtain ⟨P, bytes, hc⟩ := ltu_compileA_exists
+  exact ⟨P, bytes, hc, fun _ hd => ltu_rc_proved P bytes hc ltu_haxToNFCTB hd⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.LtuCorrect
