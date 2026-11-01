@@ -30,8 +30,10 @@ general-purpose registers is a word callee of the image call step
 
 * `calleeCutB_congr`, `calleeCutB_of_domEq`: the cut checks `calleeCutB` are equal at
   tables that agree on the body, so they transfer to every such table.
-* `domEq_of_siteShapeB`, `calleeTab_domEq`: a body whose calls are calls of one symbol has
-  agreeing tables when the tables agree on that symbol.
+* `calleeTab_domEq`: a body whose calls are calls of the symbol of a callee has agreeing
+  tables when the tables agree on that symbol.
+* `shadowAt_img_of_calleeSegB`: a shadow instruction at a site of `ref` is one of the image
+  under the checks of the segments.
 * `calleeBody_imgRun_at`: `calleeBody_imgRun` at every table that gives the symbol of the
   callee a summary of its arity; `calleeBody_imgRun_wordSummary` at the summary
   `LinkedFnCallee.wordSummary` of a linked function.
@@ -86,35 +88,49 @@ theorem calleeCutB_of_domEq {T T' : ProcTable} {fin : LLabel} {B : List LinstrRM
 
 /-! ## 2. Tables that agree on the symbol of the callee -/
 
-/-- **A body whose calls are calls of `f` has agreeing tables when the tables agree on
-    `f`.** -/
-theorem domEq_of_siteShapeB {T T' : ProcTable} {f res : String} {args : List String}
-    {B : List LinstrRM} (h : X86Backend.ImageAddrCall.siteShapeB f res args B = true)
-    (hf : (T f).map (·.arity) = (T' f).map (·.arity)) : ProcTable.DomEq T T' B := by
-  intro i hi q hq
-  have hm := List.all_eq_true.mp h i hi
-  rw [hq] at hm
-  obtain rfl : q = (res, f, args.map LOperand.reg) := of_decide_eq_true hm
-  exact hf
-
 /-- **The table of a callee agrees with every table that gives its symbol a summary of its
     arity**, on a body whose calls are calls of that symbol. -/
 theorem calleeTab_domEq {c : CalleeData} {T : ProcTable} {pr : ProcSummary}
     (hT : T c.name = some pr) (ha : pr.arity = c.args.length) {B : List LinstrRM}
-    {res : String} {args : List String}
-    (h : X86Backend.ImageAddrCall.siteShapeB c.name res args B = true) :
+    (h : X86Backend.CalleeSegCheck.callSymsB c.name B = true) :
     ProcTable.DomEq c.tab T B :=
-  domEq_of_siteShapeB h (by simp [CalleeData.tab, hT, ha])
+  domEq_of_symsB h (by simp [CalleeData.tab, hT, ha])
+
+/-- **A shadow instruction at a site of `ref` is a shadow instruction of the image.** If
+    the checks of the segments `calleeSegB T₀` accept `ref` and `img`, every shadow
+    instruction of `ref` at a position `p` whose symbol has a summary in `T₀` is the shadow
+    instruction of `img` at some position. -/
+theorem shadowAt_img_of_calleeSegB {T₀ : ProcTable} {fn : String} {fin : LLabel}
+    {ins : Option Nat → List String} {outs : List String} {ref img : List LinstrRM}
+    (h : X86Backend.CalleeSegCheck.calleeSegB T₀ fn fin ins outs ref img = true) {p : Nat}
+    {x : String × String × List LOperand}
+    (hp : X86Backend.CalleeSegCheck.shadowAt ref p = some x) (hx : (T₀ x.2.1).isSome) :
+    ∃ q, X86Backend.CalleeSegCheck.shadowAt img q = some x := by
+  simp only [X86Backend.CalleeSegCheck.calleeSegB, Bool.and_eq_true, beq_iff_eq] at h
+  have hmem : p ∈ LprogCallCut.sites T₀ ref := by
+    simp only [LprogCallCut.sites, List.mem_filter, List.mem_range]
+    cases hr : ref[p]? with
+    | none => simp [X86Backend.CalleeSegCheck.shadowAt, hr] at hp
+    | some i =>
+      simp only [X86Backend.CalleeSegCheck.shadowAt, hr, Option.bind_some] at hp
+      refine ⟨(List.getElem?_eq_some_iff.mp hr).1, ?_⟩
+      simp [LprogCallCut.isProcB, LprogIsa.procCall?, hp, hx]
+  have hin : some x ∈ (LprogCallCut.sites T₀ img).map
+      (X86Backend.CalleeSegCheck.shadowAt img) := by
+    rw [← h.1.1]
+    exact hp ▸ List.mem_map_of_mem hmem
+  obtain ⟨q, -, hq⟩ := List.mem_map.mp hin
+  exact ⟨q, hq⟩
 
 /-- **The image run of a calling body at a table of the callee's arity.** If the printed
     body `body` passes the checks `calleeBodyB` against the reference `ref` at the function
     name `fn`, and the table `T` gives the symbol of `c` a summary `pr` of the arity of `c`
-    that has no word-array result or at whose call site `calleeSite` the destination is
+    that has no word-array result or at whose call sites `calleeSiteAt` the destination is
     among the operands,
     every halting run of `x86Isa.withProcs T` on `ref`, from a state of `fn` at pc `0` whose
     registers satisfy the entry facts `boundFacts σ nm`, is matched by a halting run of
     `CheckedIsaCall.x86IsaK.withProcs T` on the image `ImageAddrCall.callImg` of `body` at
-    that call site from
+    those call sites from
     the same state, the end states agreeing on the registers `outs`, the arrays and the word
     memory. -/
 theorem calleeBody_imgRun_at {σ : AbiLayout} {nm : String → String} {c : CalleeData}
@@ -126,22 +142,64 @@ theorem calleeBody_imgRun_at {σ : AbiLayout} {nm : String → String} {c : Call
     (hent : ∀ f ∈ boundFacts σ nm, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
     (hrun : (X86Backend.X86Isa.x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn ref)
       fuel s = some t)
-    (hres : pr.RetWord ∨ (calleeSite c sl body).1 ∈ (calleeSite c sl body).2 := by
+    (hres : pr.RetWord ∨
+      ∀ q, (calleeSiteAt c sl body q).1 ∈ (calleeSiteAt c sl body q).2 := by
       exact Or.inl rfl) :
     ∃ fuel' t', (X86Backend.CheckedIsaCall.x86IsaK.withProcs T).lsemFuelMemF
         (singletonProgM fn
-          (X86Backend.ImageAddrCall.callImg sl (calleeSite c sl body).1
-            ((calleeSite c sl body).2.map LOperand.reg) body))
+          (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body))
         fuel' s = some t'
       ∧ X86Backend.OwnedLprogTV.Obs outs t t' := by
-  simp only [calleeBodyB, Bool.and_eq_true] at h
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, hsr⟩, hsi⟩, hcr⟩, hci⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hidx⟩, hseg⟩, -⟩,
-    -⟩ := h
-  have hDr := calleeTab_domEq hT ha hsr
+  have hok := calleeBodyB_spec.mp h
+  have hsi : X86Backend.CalleeSegCheck.callSymsB c.name
+      (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true := by
+    simp only [X86Backend.CalleeSegCheck.callSymsB, List.all_eq_true]
+    intro i hi
+    obtain ⟨p, hp⟩ := List.mem_iff_getElem?.mp hi
+    have hm := List.all_eq_true.mp hok.shapeImg p
+      (List.mem_range.mpr (List.getElem?_eq_some_iff.mp hp).1)
+    rw [hp, Option.all_some] at hm
+    cases hs : LprogIsa.shadowCall? i.fst with
+    | none => rfl
+    | some q =>
+      rw [hs] at hm
+      obtain rfl := of_decide_eq_true hm
+      simp
+  have hDr := calleeTab_domEq hT ha hok.symsRef
   have hDi := calleeTab_domEq hT ha hsi
-  exact calleeSegB_soundK_of_domEq hT hsr hsi hseg hDr hDi
-    (calleeCutB_soundK (calleeCutB_of_domEq hcr hDr) (calleeCutB_of_domEq hci hDi) outs fn)
-    s t hfn hpc fuel (refRun_checked_of_domEq hidx hDr fn s t hfn hpc hent fuel hrun) hres
+  have hres' : ∀ (p : Nat) (d f : String) (xs : List String) (pr' : ProcSummary),
+      X86Backend.CalleeSegCheck.shadowAt ref p = some (d, f, xs.map LOperand.reg) →
+      T f = some pr' → pr'.RetWord ∨ d ∈ xs := by
+    intro p d f xs pr' hp hf
+    have hfc : f = c.name := by
+      unfold X86Backend.CalleeSegCheck.shadowAt at hp
+      cases hr : ref[p]? with
+      | none => simp [hr] at hp
+      | some i =>
+        simp only [hr, Option.bind_some] at hp
+        have hm := List.all_eq_true.mp hok.symsRef i (List.mem_of_getElem? hr)
+        simpa [hp] using hm
+    subst hfc
+    rw [hT] at hf
+    cases hf
+    refine hres.imp id fun hall => ?_
+    obtain ⟨q, hq⟩ := shadowAt_img_of_calleeSegB hok.seg hp (by simp [CalleeData.tab])
+    unfold X86Backend.CalleeSegCheck.shadowAt at hq
+    cases hr : (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body)[q]? with
+    | none => simp [hr] at hq
+    | some i =>
+      simp only [hr, Option.bind_some] at hq
+      have hm := List.all_eq_true.mp hok.shapeImg q
+        (List.mem_range.mpr (List.getElem?_eq_some_iff.mp hr).1)
+      rw [hr, Option.all_some] at hm
+      simp only [hq, decide_eq_true_eq, Prod.mk.injEq] at hm
+      obtain ⟨rfl, -, hxs⟩ := hm
+      rw [List.map_injective_iff.mpr (fun _ _ h => LOperand.reg.inj h) hxs]
+      exact hall q
+  exact calleeSegB_soundK_of_domEq hok.seg hDr hDi
+    (calleeCutB_soundK (calleeCutB_of_domEq hok.cutRef hDr)
+      (calleeCutB_of_domEq hok.cutImg hDi) outs fn)
+    s t hfn hpc fuel (refRun_checked_of_domEq hok.idx hDr fn s t hfn hpc hent fuel hrun) hres'
 
 /-- **The image run of a calling body at the word summary of a linked function.**
     `calleeBody_imgRun_at` at a table that gives the symbol of `c` the summary
@@ -159,8 +217,7 @@ theorem calleeBody_imgRun_wordSummary {σ : AbiLayout} {nm : String → String}
       fuel s = some t) :
     ∃ fuel' t', (X86Backend.CheckedIsaCall.x86IsaK.withProcs T).lsemFuelMemF
         (singletonProgM fn
-          (X86Backend.ImageAddrCall.callImg sl (calleeSite c sl body).1
-            ((calleeSite c sl body).2.map LOperand.reg) body))
+          (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body))
         fuel' s = some t'
       ∧ X86Backend.OwnedLprogTV.Obs outs t t' :=
   calleeBody_imgRun_at h hT hl s t hfn hpc hent fuel hrun

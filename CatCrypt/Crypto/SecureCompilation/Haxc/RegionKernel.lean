@@ -383,11 +383,13 @@ theorem haltsC_of_regionCallee
       (LprogBytes.encodeLfundefBytesReloc symBase body).length
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab}
-    (hdead : callDeadB (regionSig σk pk args (some res) clob F) res D.dead body = true)
+    (hdead : callDeadB (regionSig σk pk args (some res) clob F) (fun _ => (res, args)) D.dead
+      body = true)
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
     {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some pr)
-    (hshape : siteShapeB f res args (callImg slotArr res (args.map LOperand.reg) body) = true)
-    (hseg : deadSegB D (callImg slotArr res (args.map LOperand.reg) body) = true)
+    (hshape : siteShapeB f (fun _ => (res, args))
+      (callImg slotArr (fun _ => (res, args)) body) = true)
+    (hseg : deadSegB D (callImg slotArr (fun _ => (res, args)) body) = true)
     {Fin : LstateMF → AState → Prop}
     (hfin : ∀ t sa zf sA, ImgRel (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0)))
       slotArr (abiBase (abiReg σ) sa0) body t sa zf →
@@ -396,7 +398,7 @@ theorem haltsC_of_regionCallee
     (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
     (n : Nat) {s t : LstateMF}
     (hrun : (x86IsaK.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr res (args.map LOperand.reg) body)) n s = some t)
+      (singletonProgM fn (callImg slotArr (fun _ => (res, args)) body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0))) slotArr

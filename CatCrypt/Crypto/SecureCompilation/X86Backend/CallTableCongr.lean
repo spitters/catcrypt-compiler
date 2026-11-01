@@ -35,6 +35,7 @@ and the soundness theorems of the checks apply at that table.
   `blockInvOkP_congr`, `idxInvCheckPB_congr`, `calleeSegB_congr`: the checks are equal under
   agreeing tables.
 * `domEq_cutAt`: agreement on a body gives agreement on its cut programs.
+* `domEq_of_symsB`: tables that agree on a symbol agree on a body that calls only it.
 * `refRun_checked_of_domEq`, `calleeSegB_soundK_of_domEq`: `CheckedIsaCall.refRun_checked`
   and `CalleeSegCheck.calleeSegB_soundK` from checks passed at an agreeing table.
 -/
@@ -98,7 +99,6 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CheckedIsaCall
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegCheck
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall (siteShapeB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (IdxFact SFact)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (CFG Block Term)
 
@@ -248,12 +248,21 @@ theorem idxInvCheckPB_congr {entry : List IdxFact} {ann : List (List IdxFact)}
 
 /-- **The checks of the segments are the same under tables that agree on the reference and
     on the image.** -/
-theorem calleeSegB_congr {res : String} {args : List String} {fn : String} {fin : LLabel}
+theorem calleeSegB_congr {fn : String} {fin : LLabel}
     {ins : Option Nat → List String} {outs : List String} {ref img : List LinstrRM}
     (hr : ProcTable.DomEq T T' ref) (hi : ProcTable.DomEq T T' img) :
-    calleeSegB T res args fn fin ins outs ref img
-      = calleeSegB T' res args fn fin ins outs ref img := by
+    calleeSegB T fn fin ins outs ref img = calleeSegB T' fn fin ins outs ref img := by
   simp only [calleeSegB, siteMap, sites_congr hr, sites_congr hi]
+
+/-- **Tables that agree on the symbol `f` agree on a body whose every shadow instruction of
+    a call calls `f`.** -/
+theorem domEq_of_symsB {f : String} {B : List LinstrRM} (h : callSymsB f B = true)
+    (hf : (T f).map (·.arity) = (T' f).map (·.arity)) : ProcTable.DomEq T T' B := by
+  intro i hi q hq
+  have hm := List.all_eq_true.mp h i hi
+  rw [hq, Option.all_some, beq_iff_eq] at hm
+  rw [hm]
+  exact hf
 
 /-! ## 4. Soundness at an agreeing table -/
 
@@ -271,27 +280,24 @@ theorem refRun_checked_of_domEq {T₀ : ProcTable} {entry : List IdxFact}
     (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t :=
   refRun_checked ((idxInvCheckPB_congr hD).symm.trans h) fn s t hfn hpc hent fuel hrun
 
-/-- **`calleeSegB_soundK` from checks of the segments passed at an agreeing table.** For
-    bodies whose shadow instructions are calls of the symbol `f` of `T` on the registers
-    `args` with the destination `res`, where the summary of `f` has no word-array result or
-    `res` is among `args`, if `calleeSegB T₀` accepts and `T₀` agrees with `T`
+/-- **`calleeSegB_soundK` from checks of the segments passed at an agreeing table.** Where
+    at every site of `ref` the summary at `T` of the symbol has no word-array result or the
+    destination is among the operands, if `calleeSegB T₀` accepts and `T₀` agrees with `T`
     on `ref` and `img`, then under `CutCheckSoundI` at `T` every halting run of
     `x86IsaK.withProcs T` on `ref` from a state of `fn` at the counter `0` is matched by a
     halting run on `img` from the same state, the end states agreeing on `outs`, the arrays
     and the word memory. -/
-theorem calleeSegB_soundK_of_domEq {T₀ : ProcTable} {f res : String} {args : List String}
-    {pr : ProcSummary} (hT : T f = some pr) {fn : String} {fin : LLabel}
+theorem calleeSegB_soundK_of_domEq {T₀ : ProcTable} {fn : String} {fin : LLabel}
     {ins : Option Nat → List String} {outs : List String} {ref img : List LinstrRM}
-    (hsr : siteShapeB f res args ref = true) (hsi : siteShapeB f res args img = true)
-    (h : calleeSegB T₀ res args fn fin ins outs ref img = true)
+    (h : calleeSegB T₀ fn fin ins outs ref img = true)
     (hDr : ProcTable.DomEq T₀ T ref) (hDi : ProcTable.DomEq T₀ T img)
     (hsound : CutCheckSoundI x86IsaK T outs fn ref img (cutAt fn fin ref) (cutAt fn fin img))
     (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.lpc = 0) (fuel : Nat)
     (hrun : (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn ref) fuel s = some t)
-    (hres : pr.RetWord ∨ res ∈ args := by exact Or.inl rfl) :
+    (hres : ∀ (p : Nat) (d f : String) (xs : List String) (pr : ProcSummary),
+      shadowAt ref p = some (d, f, xs.map LOperand.reg) → T f = some pr → pr.RetWord ∨ d ∈ xs) :
     ∃ fuel' t', (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn img) fuel' s = some t'
       ∧ Obs outs t t' :=
-  calleeSegB_soundK hT hsr hsi ((calleeSegB_congr hDr hDi).symm.trans h) hsound s t hfn hpc
-    fuel hrun hres
+  calleeSegB_soundK ((calleeSegB_congr hDr hDi).symm.trans h) hsound s t hfn hpc fuel hrun hres
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CallTableCongr

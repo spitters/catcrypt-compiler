@@ -65,11 +65,11 @@ optional callee that is the stage above without one:
 * the allocation `calleeAlloc`: the pool of the names the callee keeps, the shadow
   instruction left in the input of the allocation and expanded on the allocated body;
 * the reference of the gate from the exported code on the common names of the callee
-  (`calleeCode`), checked against the image `calleeImg` of a calling body at the call site
-  `calleeSite` (as operands, the argument names at the scalar parameters and the arrays
-  whose frame slots the argument registers reload at the first call at the array parameters;
-  as destination, the result register for a word result and the operand at the destination
-  position for an out result), with the class and the gate `calleeImgB`;
+  (`calleeCode`), checked against the image `calleeImg` of a calling body at the call sites
+  `calleeSiteAt` (at each call, as operands, the argument names at the scalar parameters and
+  the arrays whose frame slots the argument registers reload before the call at the array
+  parameters; as destination, the result register for a word result and the operand at the
+  destination position for an out result), with the class and the gate `calleeImgB`;
 * two conjuncts of `regionCoB` of the form `callee.all _`: the rewriting onto the common
   names with its freshness check, and the checks `calleeBodyB` of the printed body (the
   check `calleeCodeB` of the code of the callee, the cut programs, the call sites, the table `deadTab` of dead names and live flags with the
@@ -368,11 +368,12 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   image.
 * `outDestB_iff`, `outDestB_of_callParamsB`: the check that the destination operand of an
   out callee is no other array operand, decided, and implied by `callParamsB`.
-* `callParamsB_forall₂`, `calleeSite_dest`: at a call of an out callee the operands of the
+* `callParamsB_forall₂`, `calleeSite_dest`: at a call of an out callee the operands of its
   call site pass the parameters of the callee (`LinkedFnCallee.ParamAt`), and its
   destination is an array of the slot map.
-* `calleeBodyB_nodup`: under the checks `calleeBodyB`, the operands of the call of a callee
-  whose code does not decode are pairwise distinct.
+* `calleeBodyB_spec`, `calleeBodyB_nodup`: the checks `calleeBodyB` are the fields of
+  `CalleeBodyOK`; under them the operands of each call of a callee whose code does not
+  decode are pairwise distinct.
 * `calleeBody_stackRoom`, `calleeBody_callerSep`: under the checks `calleeBodyB`, the stack
   room and frame checks at the frame of the callee, and the caller separation
   `ImageAddrCall.CallerSep` from the entry conditions of the layout.
@@ -2041,22 +2042,6 @@ def CalleeData.ins (c : CalleeData) : List (String × ArgKind) :=
 theorem CalleeData.ins_map_fst (c : CalleeData) : c.ins.map (·.1) = c.args := by
   unfold CalleeData.ins; apply List.ext_getElem <;> simp
 
-/-- The position of the first call instruction of a printed body; `none` without one. -/
-def firstCall (body : Lcmd) : Option Nat :=
-  (List.range body.length).find? fun p =>
-    (body[p]?).any fun bi => X86Backend.ImageAddrCall.isCallB bi.li_i
-
-/-- The position `firstCall` returns holds a call instruction. -/
-theorem firstCall_some {body : Lcmd} {p : Nat} (h : firstCall body = some p) :
-    ∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t := by
-  have hp := List.find?_some h
-  cases hb : body[p]? with
-  | none => simp [hb] at hp
-  | some bi =>
-      simp only [hb, Option.any_some] at hp
-      cases hi : bi.li_i <;> simp [hi, X86Backend.ImageAddrCall.isCallB] at hp
-      exact ⟨bi, _, _, rfl, hi⟩
-
 /-- **The operands of a call of `c` at the position `p` of a printed body** at the slot map
     `sl`: for a scalar parameter its name, and for an array parameter the array of the frame
     slot whose word the register of the parameter holds before position `p` (`accArr`), or
@@ -2067,26 +2052,37 @@ def CalleeData.siteArgs (c : CalleeData) (sl : String → Option (String × Nat)
     | .scalar => q.1
     | .words _ => ((VIR.JasminLsemAddrImage.accArr sl body p q.1).map Prod.fst).getD q.1
 
-/-- **The call site of `c` in a printed body** at the slot map `sl`: the destination name and
-    the operand names of the shadow instruction of its calls in the image. The operands are
-    `CalleeData.siteArgs` at the first call of the body; the destination is the result
+/-- The operands of a call of `c` at a position have one per parameter of `c`. -/
+theorem CalleeData.siteArgs_length (c : CalleeData) (sl : String → Option (String × Nat))
+    (body : Lcmd) (p : Nat) : (c.siteArgs sl body p).length = c.ins.length := by
+  simp [CalleeData.siteArgs]
+
+/-- **The call site of `c` at the position `p` of a printed body** at the slot map `sl`: the
+    destination name and the operand names of the shadow instruction of the call at `p` in
+    the image. The operands are `CalleeData.siteArgs` at `p`; the destination is the result
     register for a word result and the operand at the destination position `k`, the
     destination array, for an out result `.out n k`. -/
-def calleeSite (c : CalleeData) (sl : String → Option (String × Nat)) (body : Lcmd) :
-    String × List String :=
+def calleeSiteAt (c : CalleeData) (sl : String → Option (String × Nat)) (body : Lcmd)
+    (p : Nat) : String × List String :=
   match c.res with
-  | .reg _ => (c.resReg, c.siteArgs sl body ((firstCall body).getD 0))
+  | .reg _ => (c.resReg, c.siteArgs sl body p)
   | .out _ k =>
-      let ops := c.siteArgs sl body ((firstCall body).getD 0)
+      let ops := c.siteArgs sl body p
       (ops.getD k "", ops)
 
-/-- At a word result and scalar parameters the call site is the result register and the
-    argument names. -/
-theorem calleeSite_of_reg {c : CalleeData} {r : String} (h : c.res = .reg r)
+/-- The operands of the call site of `c` at `p` are `CalleeData.siteArgs` at `p`. -/
+theorem calleeSiteAt_snd (c : CalleeData) (sl : String → Option (String × Nat)) (body : Lcmd)
+    (p : Nat) : (calleeSiteAt c sl body p).2 = c.siteArgs sl body p := by
+  unfold calleeSiteAt; split <;> rfl
+
+/-- At a word result and scalar parameters the call site at every position is the result
+    register and the argument names. -/
+theorem calleeSiteAt_of_reg {c : CalleeData} {r : String} (h : c.res = .reg r)
     (haa : c.arrArgs = fun _ => none)
     (sl : String → Option (String × Nat)) (body : Lcmd) :
-    calleeSite c sl body = (c.resReg, c.args) := by
-  simp only [calleeSite, h, CalleeData.siteArgs, CalleeData.ins, haa, Prod.mk.injEq,
+    calleeSiteAt c sl body = fun _ => (c.resReg, c.args) := by
+  funext p
+  simp only [calleeSiteAt, h, CalleeData.siteArgs, CalleeData.ins, haa, Prod.mk.injEq,
     true_and]
   apply List.ext_getElem <;> simp
 
@@ -2147,61 +2143,71 @@ theorem outDestB_of_reg {c : CalleeData} {r : String} (hr : c.res = .reg r)
     (ops : List String) : outDestB c ops = true := by
   simp only [outDestB, hr]
 
-/-- **The check of the operands at the calls of a printed body**: the parameters of `c` and
-    the operands `ops` have one length, at each call instruction every parameter and its
-    operand pass `paramAtB`, and the destination operand of an out result is no other array
-    operand (`outDestB`). -/
-def callParamsB (c : CalleeData) (sl : String → Option (String × Nat)) (body : Lcmd)
-    (ops : List String) : Bool :=
-  c.ins.length == ops.length
-    && (List.range body.length).all (fun p => (body[p]?).all fun bi =>
-      !X86Backend.ImageAddrCall.isCallB bi.li_i
-        || (c.ins.zip ops).all fun q => paramAtB sl body p q.1 q.2)
-    && outDestB c ops
+/-- **The check of the operands at the calls of a printed body**: at each call instruction,
+    at the position `p`, every parameter of `c` and its operand among `c.siteArgs sl body p`
+    pass `paramAtB`, and the destination operand of an out result is no other array operand
+    (`outDestB`). -/
+def callParamsB (c : CalleeData) (sl : String → Option (String × Nat)) (body : Lcmd) :
+    Bool :=
+  (List.range body.length).all fun p => (body[p]?).all fun bi =>
+    !X86Backend.ImageAddrCall.isCallB bi.li_i
+      || ((c.ins.zip (c.siteArgs sl body p)).all (fun q => paramAtB sl body p q.1 q.2)
+        && outDestB c (c.siteArgs sl body p))
 
-/-- Operands that pass `callParamsB` pass `outDestB`. -/
+/-- **`callParamsB` at a call instruction**: the parameters and the operands at the position
+    `p` of a call pass `paramAtB`, and the operands pass `outDestB`. -/
+theorem callParamsB_spec {c : CalleeData} {sl : String → Option (String × Nat)}
+    {body : Lcmd} (h : callParamsB c sl body = true) {p : Nat} {bi : Linstr}
+    (hb : body[p]? = some bi) {ra : Option String} {t : String × LLabel}
+    (hbi : bi.li_i = .Lcall ra t) :
+    (∀ q ∈ c.ins.zip (c.siteArgs sl body p), paramAtB sl body p q.1 q.2 = true)
+      ∧ outDestB c (c.siteArgs sl body p) = true := by
+  simp only [callParamsB, List.all_eq_true, List.mem_range] at h
+  have hp := h p (List.getElem?_eq_some_iff.mp hb).1
+  rw [hb] at hp
+  simp only [Option.all_some, hbi, X86Backend.ImageAddrCall.isCallB, Bool.not_true,
+    Bool.false_or, Bool.and_eq_true, List.all_eq_true] at hp
+  exact hp
+
+/-- The operands of a call that pass `callParamsB` pass `outDestB`. -/
 theorem outDestB_of_callParamsB {c : CalleeData} {sl : String → Option (String × Nat)}
-    {body : Lcmd} {ops : List String} (h : callParamsB c sl body ops = true) :
-    outDestB c ops = true := by
-  simp only [callParamsB, Bool.and_eq_true] at h
-  exact h.2
+    {body : Lcmd} (h : callParamsB c sl body = true) {p : Nat} {bi : Linstr}
+    (hb : body[p]? = some bi) {ra : Option String} {t : String × LLabel}
+    (hbi : bi.li_i = .Lcall ra t) : outDestB c (c.siteArgs sl body p) = true :=
+  (callParamsB_spec h hb hbi).2
 
 /-- **The check of the dead names at the calls of a printed body against `c`**, at the slot
     map `sl` and the dead names `E`: for a word result `ImageAddrCall.callDeadB` at the
-    result register and at the interface of `c` with the operands of the call site
-    `calleeSite` as arguments, and the operands pass `callParamsB`; for an out result
-    `ImageAddrCallOutChain.callDeadOutB` at the operands of the call site, the body has a
-    call, and the operands pass `callParamsB`. -/
+    interface of `c` and the call sites `calleeSiteAt`, for an out result
+    `ImageAddrCallOutChain.callDeadOutB` at the call sites, and the operands pass
+    `callParamsB`. -/
 def calleeDeadB (c : CalleeData) (sl : String → Option (String × Nat)) (E : Nat → List String)
     (body : Lcmd) : Bool :=
   match c.res with
-  | .reg _ => X86Backend.ImageAddrCall.callDeadB { c.sig with args := (calleeSite c sl body).2 }
-        c.resReg E body
-      && callParamsB c sl body (calleeSite c sl body).2
+  | .reg _ => X86Backend.ImageAddrCall.callDeadB c.sig (calleeSiteAt c sl body) E body
+      && callParamsB c sl body
   | .out _ _ =>
-      X86Backend.ImageAddrCallOutChain.callDeadOutB c.sig (calleeSite c sl body).2 E body
-      && (firstCall body).isSome && callParamsB c sl body (calleeSite c sl body).2
+      X86Backend.ImageAddrCallOutChain.callDeadOutB c.sig (calleeSiteAt c sl body) E body
+      && callParamsB c sl body
 
 /-- At a word result and scalar parameters the check of the dead names is
-    `ImageAddrCall.callDeadB` at the interface of `c`, and the argument names pass
-    `callParamsB`. -/
+    `ImageAddrCall.callDeadB` at the interface of `c` and the constant site of the result
+    register and the argument names, and the operands pass `callParamsB`. -/
 theorem calleeDeadB_of_reg {c : CalleeData} {r : String} (h : c.res = .reg r)
     (haa : c.arrArgs = fun _ => none)
     (sl : String → Option (String × Nat)) (E : Nat → List String) (body : Lcmd) :
-    calleeDeadB c sl E body = (X86Backend.ImageAddrCall.callDeadB c.sig c.resReg E body
-      && callParamsB c sl body c.args) := by
-  simp only [calleeDeadB, h, calleeSite_of_reg h haa]
-  rfl
+    calleeDeadB c sl E body = (X86Backend.ImageAddrCall.callDeadB c.sig
+      (fun _ => (c.resReg, c.args)) E body && callParamsB c sl body) := by
+  simp only [calleeDeadB, h, calleeSiteAt_of_reg h haa]
 
 /-- **The image of a printed body at an optional callee**: the image `virtImg` without a
     callee, and the image `ImageAddrCall.callImg` of a calling body, with the shadow
-    instruction of the call on the call site `calleeSite` of the callee, with one. -/
+    instruction of each call on the call site `calleeSiteAt` of the callee, with one. -/
 def calleeImg (callee : Option CalleeData) (sl : String → Option (String × Nat))
     (body : Lcmd) : List LinstrRM :=
   match callee with
   | none => virtImg sl body
-  | some c => X86Backend.ImageAddrCall.callImg sl (calleeSite c sl body).1
-      ((calleeSite c sl body).2.map LOperand.reg) body
+  | some c => X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body
 
 /-- Without a callee the image of a printed body is `virtImg`. -/
 @[simp] theorem calleeImg_none (sl : String → Option (String × Nat)) (body : Lcmd) :
@@ -4492,24 +4498,27 @@ def insTab (B : List LinstrRM) (outs : List String) : Option Nat → List String
   fun e => (tabAt (liveRegTab B outs) (LprogCallCut.entryPos e)).filter
     fun r => !(arrNames B).contains r
 
-/-- **The check of the code of a callee** `c` at the operands `ops` of its call site: when
-    the code of `c` decodes (a scalar callee), the decoded block passes `Callee.keepCheckB`
-    at the clobber set and the frame of `c`; when it does not decode (a vector kernel, whose
-    contract is a hypothesis of its link theorem), the operands are pairwise distinct. -/
-def calleeCodeB (c : CalleeData) (ops : List String) : Bool :=
+/-- **The check of the code of a callee** `c` at the calls of a printed body `body` at the
+    slot map `sl`: when the code of `c` decodes (a scalar callee), the decoded block passes
+    `Callee.keepCheckB` at the clobber set and the frame of `c`; when it does not decode (a
+    vector kernel, whose contract is a hypothesis of its link theorem), the operands
+    `c.siteArgs sl body p` of the call at each position `p` are pairwise distinct. -/
+def calleeCodeB (c : CalleeData) (sl : String → Option (String × Nat)) (body : Lcmd) : Bool :=
   match decodeLprog c.bytes with
   | some q => X86Backend.Callee.keepCheckB q c.sig.clob c.frame
-  | none => decide ops.Nodup
+  | none => (List.range body.length).all fun p => (body[p]?).all fun bi =>
+      !X86Backend.ImageAddrCall.isCallB bi.li_i || decide (c.siteArgs sl body p).Nodup
 
 /-- **The checks of a calling body** against the callee `c`: of the printed body `body`,
     with the reference `ref` of the image check, the observed names `outs`, the slot map
-    `sl` and the function name `fn`. With `site` the call site `calleeSite c sl body`, `img`
-    the image `ImageAddrCall.callImg` of `body` at `site` and `D := deadTab img outs`:
+    `sl` and the function name `fn`. With `site` the call sites `calleeSiteAt c sl body`,
+    `img` the image `ImageAddrCall.callImg` of `body` at `site` and `D := deadTab img outs`:
 
     * the pool `Callee.keepPool` of `c` passes `Callee.keepPoolB`, and the code of `c`
-      passes `calleeCodeB` at the operands of `site`;
-    * every shadow instruction of `ref` and of `img` is the call of `c` at `site`
-      (`ImageAddrCall.siteShapeB`);
+      passes `calleeCodeB` at the calls of `body`;
+    * every shadow instruction of `ref` calls the symbol of `c`
+      (`CalleeSegCheck.callSymsB`), and every shadow instruction of `img`, at the position
+      `p`, is the call of `c` at `site p` (`ImageAddrCall.siteShapeB`);
     * the cut programs of `ref` and of `img` pass `calleeCutB` at the table of `c` and a
       label above their labels;
     * `body` passes `ImageAddrCall.callSitesB`;
@@ -4520,7 +4529,7 @@ def calleeCodeB (c : CalleeData) (ops : List String) : Bool :=
       of `c`, from the entry facts `boundFacts σ nm` of the layout, at the annotation
       `CheckedIsaCall.idxAnnotP`;
     * the segments of `ref` and of `img` pass `CalleeSegCheck.calleeSegB` at the table of
-      `c`, `site`, the function name `fn`, the label of the cut checks and the entry sets
+      `c`, the function name `fn`, the label of the cut checks and the entry sets
       `insTab ref outs`;
     * the frame range of `σ` covers the return word of the call and the frame of `c` below
       it (`CalleeStackRoom.stackRoomB` at the frame of `c`), and the frame offsets of `body`
@@ -4533,14 +4542,14 @@ def calleeCodeB (c : CalleeData) (ops : List String) : Bool :=
 def calleeBodyB (σ : AbiLayout) (nm : String → String) (c : CalleeData)
     (sl : String → Option (String × Nat)) (outs : List String) (body : Lcmd)
     (ref : List LinstrRM) (fn : String) : Bool :=
-  let site := calleeSite c sl body
-  let img := X86Backend.ImageAddrCall.callImg sl site.1 (site.2.map LOperand.reg) body
+  let site := calleeSiteAt c sl body
+  let img := X86Backend.ImageAddrCall.callImg sl site body
   let D := deadTab img outs
   let fin := freshLabel (ref ++ img)
   X86Backend.Callee.keepPoolB c.sig (X86Backend.Callee.keepPool c.sig)
-    && calleeCodeB c site.2
-    && X86Backend.ImageAddrCall.siteShapeB c.name site.1 site.2 ref
-    && X86Backend.ImageAddrCall.siteShapeB c.name site.1 site.2 img
+    && calleeCodeB c sl body
+    && X86Backend.CalleeSegCheck.callSymsB c.name ref
+    && X86Backend.ImageAddrCall.siteShapeB c.name site img
     && calleeCutB c.tab fin ref && calleeCutB c.tab fin img
     && X86Backend.ImageAddrCall.callSitesB sl body
     && calleeDeadB c sl D.dead body
@@ -4550,21 +4559,99 @@ def calleeBodyB (σ : AbiLayout) (nm : String → String) (c : CalleeData)
     && !D.live 0
     && X86Backend.CheckedIsaCall.idxInvCheckPB c.tab (boundFacts σ nm)
       (X86Backend.CheckedIsaCall.idxAnnotP c.tab (boundFacts σ nm) ref) ref
-    && X86Backend.CalleeSegCheck.calleeSegB c.tab site.1 site.2 fn fin (insTab ref outs) outs
-      ref img
+    && X86Backend.CalleeSegCheck.calleeSegB c.tab fn fin (insTab ref outs) outs ref img
     && X86Backend.CalleeStackRoom.stackRoomB σ body c.frame
     && X86Backend.ImageAddrCall.frameNonnegB body c.frame
 
-/-- **The operands of the call of a callee whose code does not decode are distinct**: under
+/-- **The checks of a calling body, as propositions**: the conjuncts of `calleeBodyB`, at the
+    image `ImageAddrCall.callImg` of `body` at the call sites `calleeSiteAt c sl body`, its
+    dead table `deadTab` and the label `freshLabel` of the cut checks. -/
+structure CalleeBodyOK (σ : AbiLayout) (nm : String → String) (c : CalleeData)
+    (sl : String → Option (String × Nat)) (outs : List String) (body : Lcmd)
+    (ref : List LinstrRM) (fn : String) : Prop where
+  /-- The pool of `c` passes `Callee.keepPoolB`. -/
+  keepPool : X86Backend.Callee.keepPoolB c.sig (X86Backend.Callee.keepPool c.sig) = true
+  /-- The code of `c` passes `calleeCodeB` at the calls of `body`. -/
+  code : calleeCodeB c sl body = true
+  /-- Every shadow instruction of `ref` calls the symbol of `c`. -/
+  symsRef : X86Backend.CalleeSegCheck.callSymsB c.name ref = true
+  /-- Every shadow instruction of the image is the call of `c` at its call site. -/
+  shapeImg : X86Backend.ImageAddrCall.siteShapeB c.name (calleeSiteAt c sl body)
+    (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true
+  /-- The cut program of `ref` passes `calleeCutB`. -/
+  cutRef : calleeCutB c.tab
+    (freshLabel (ref ++ X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body))
+    ref = true
+  /-- The cut program of the image passes `calleeCutB`. -/
+  cutImg : calleeCutB c.tab
+    (freshLabel (ref ++ X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body))
+    (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true
+  /-- `body` passes `ImageAddrCall.callSitesB`. -/
+  callSites : X86Backend.ImageAddrCall.callSitesB sl body = true
+  /-- The dead names of the image pass `calleeDeadB`. -/
+  dead : calleeDeadB c sl
+    (deadTab (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) outs).dead
+    body = true
+  /-- The dead table of the image passes `ImageAddrCall.callFlagsB`. -/
+  flags : X86Backend.ImageAddrCall.callFlagsB
+    (deadTab (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) outs)
+    body = true
+  /-- The dead table of the image passes `ImageAddrCall.condLiveB`. -/
+  condLive : X86Backend.ImageAddrCall.condLiveB
+    (deadTab (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) outs)
+    body = true
+  /-- The dead table of the image passes `ImageAddrCall.deadSegB`. -/
+  deadSeg : X86Backend.ImageAddrCall.deadSegB
+    (deadTab (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) outs)
+    (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true
+  /-- The dead table of the image holds no live flag at the position `0`. -/
+  live0 : (deadTab (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body)
+    outs).live 0 = false
+  /-- `ref` passes the bounds check with calls. -/
+  idx : X86Backend.CheckedIsaCall.idxInvCheckPB c.tab (boundFacts σ nm)
+    (X86Backend.CheckedIsaCall.idxAnnotP c.tab (boundFacts σ nm) ref) ref = true
+  /-- The segments of `ref` and of the image pass `CalleeSegCheck.calleeSegB`. -/
+  seg : X86Backend.CalleeSegCheck.calleeSegB c.tab fn
+    (freshLabel (ref ++ X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body))
+    (insTab ref outs) outs ref
+    (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true
+  /-- The frame range of `σ` covers the return word and the frame of `c`. -/
+  stackRoom : X86Backend.CalleeStackRoom.stackRoomB σ body c.frame = true
+  /-- The frame offsets of `body` pass `ImageAddrCall.frameNonnegB`. -/
+  frameNonneg : X86Backend.ImageAddrCall.frameNonnegB body c.frame = true
+
+/-- **The checks `calleeBodyB` are the fields of `CalleeBodyOK`.** -/
+theorem calleeBodyB_spec {σ : AbiLayout} {nm : String → String} {c : CalleeData}
+    {sl : String → Option (String × Nat)} {outs : List String} {body : Lcmd}
+    {ref : List LinstrRM} {fn : String} :
+    calleeBodyB σ nm c sl outs body ref fn = true ↔ CalleeBodyOK σ nm c sl outs body ref fn := by
+  simp only [calleeBodyB, Bool.and_eq_true, Bool.not_eq_true']
+  constructor
+  · rintro ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩, h9⟩, h10⟩, h11⟩, h12⟩, h13⟩,
+      h14⟩, h15⟩, h16⟩
+    exact ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16⟩
+  · rintro ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16⟩
+    exact ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩, h9⟩, h10⟩, h11⟩, h12⟩, h13⟩,
+      h14⟩, h15⟩, h16⟩
+
+/-- **The operands of each call of a callee whose code does not decode are distinct**: under
     the checks `calleeBodyB`, if the code of `c` does not decode, the operands of the call
-    site `calleeSite c sl body` are pairwise distinct (`calleeCodeB`). -/
+    site `calleeSiteAt c sl body p` of the call at each position `p` are pairwise distinct
+    (`calleeCodeB`). -/
 theorem calleeBodyB_nodup {σ : AbiLayout} {nm : String → String} {c : CalleeData}
     {sl : String → Option (String × Nat)} {outs : List String} {body : Lcmd}
     {ref : List LinstrRM} {fn : String} (h : calleeBodyB σ nm c sl outs body ref fn = true)
-    (hd : decodeLprog c.bytes = none) : (calleeSite c sl body).2.Nodup := by
-  simp only [calleeBodyB, Bool.and_eq_true] at h
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hk⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
-  simpa only [calleeCodeB, hd, decide_eq_true_eq] using hk
+    (hd : decodeLprog c.bytes = none) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
+    {ra : Option String} {t : String × LLabel} (hbi : bi.li_i = .Lcall ra t) :
+    (calleeSiteAt c sl body p).2.Nodup := by
+  have hk := (calleeBodyB_spec.mp h).code
+  simp only [calleeCodeB, hd, List.all_eq_true, List.mem_range] at hk
+  have hp := hk p (List.getElem?_eq_some_iff.mp hb).1
+  rw [hb] at hp
+  simp only [Option.all_some, hbi, X86Backend.ImageAddrCall.isCallB, Bool.not_true,
+    Bool.false_or, decide_eq_true_eq] at hp
+  rw [calleeSiteAt_snd]
+  exact hp
 
 /-- **The image run of a calling body.** If the printed body `body` passes the checks
     `calleeBodyB` against the reference `ref` at the function name `fn`, every halting run of
@@ -4582,17 +4669,14 @@ theorem calleeBody_imgRun {σ : AbiLayout} {nm : String → String} {c : CalleeD
       fuel s = some t) :
     ∃ fuel' t', (X86Backend.CheckedIsaCall.x86IsaK.withProcs c.tab).lsemFuelMemF
         (singletonProgM fn
-          (X86Backend.ImageAddrCall.callImg sl (calleeSite c sl body).1
-            ((calleeSite c sl body).2.map LOperand.reg) body))
+          (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body))
         fuel' s = some t'
       ∧ X86Backend.OwnedLprogTV.Obs outs t t' := by
-  simp only [calleeBodyB, Bool.and_eq_true] at h
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, hsr⟩, hsi⟩, hcr⟩, hci⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hidx⟩, hseg⟩, -⟩,
-    -⟩ := h
-  have hT : c.tab c.name = some { arity := c.args.length, run := fun _ => none } := by simp [CalleeData.tab]
-  exact X86Backend.CalleeSegCheck.calleeSegB_soundK hT hsr hsi hseg
-    (calleeCutB_soundK hcr hci outs fn) s t hfn hpc fuel
-    (X86Backend.CheckedIsaCall.refRun_checked hidx fn s t hfn hpc hent fuel hrun)
+  have hok := calleeBodyB_spec.mp h
+  exact X86Backend.CalleeSegCheck.calleeSegB_soundK hok.seg
+    (calleeCutB_soundK hok.cutRef hok.cutImg outs fn) s t hfn hpc fuel
+    (X86Backend.CheckedIsaCall.refRun_checked hok.idx fn s t hfn hpc hent fuel hrun)
+    (fun _ _ _ _ _ _ hf => .inl (by grind [CalleeData.tab, LprogIsa.ProcSummary.RetWord]))
 
 /-- **The stack room of a calling body.** A printed body `body` that passes the checks
     `calleeBodyB` against the callee `c` passes the stack room check
@@ -4603,8 +4687,8 @@ theorem calleeBody_stackRoom {σ : AbiLayout} {nm : String → String} {c : Call
     {ref : List LinstrRM} {fn : String} (h : calleeBodyB σ nm c sl outs body ref fn = true) :
     X86Backend.CalleeStackRoom.stackRoomB σ body c.frame = true
       ∧ X86Backend.ImageAddrCall.frameNonnegB body c.frame = true := by
-  simp only [calleeBodyB, Bool.and_eq_true] at h
-  exact ⟨h.1.2, h.2⟩
+  have hok := calleeBodyB_spec.mp h
+  exact ⟨hok.stackRoom, hok.frameNonneg⟩
 
 /-- **The caller separation of a calling body.** Let the printed body `body` pass the checks
     `calleeBodyB` against the callee `c` at the slot map `sl`, let the regions `rs` pass
@@ -4630,28 +4714,25 @@ theorem calleeBody_callerSep {σ : AbiLayout} {nm : String → String} {c : Call
 
 /-- **Soundness of `callParamsB`** at a call instruction. Under `ImgSep`, the positionwise
     gate `ImgGate` and `ImgRel`, at a call at the position of the address state, the operands
-    `ops` pass the parameters of `c` (`LinkedFnCallee.ParamAt`): a scalar parameter is its
-    operand, and the register of an array parameter holds the base of the array of its
-    operand, an array of the slot map of the length of the parameter
-    (`ImageAddrSim.ptr_of_reload`). -/
+    of the call site `calleeSiteAt` at that position pass the parameters of `c`
+    (`LinkedFnCallee.ParamAt`): a scalar parameter is its operand, and the register of an
+    array parameter holds the base of the array of its operand, an array of the slot map of
+    the length of the parameter (`ImageAddrSim.ptr_of_reload`). -/
 theorem callParamsB_forall₂ {c : CalleeData} {sl : String → Option (String × Nat)}
-    {body : Lcmd} {ops : List String} (h : callParamsB c sl body ops = true)
+    {body : Lcmd} (h : callParamsB c sl body = true)
     {frame : String → Option (BitVec 64)} {base : String → BitVec 64} {rsp : BitVec 64}
     (hsep : X86Backend.ImageAddrSim.ImgSep frame sl base rsp)
     (hgate : X86Backend.ImageAddrSim.ImgGate frame sl body)
     {s : LstateMF} {sa : VIR.JasminLsemAddrMem.LstateA} {zf : Bool}
     (hrel : X86Backend.ImageAddrSim.ImgRel frame sl base body s sa zf)
     (hcall : ∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) :
-    List.Forall₂ (X86Backend.LinkedFnCallee.ParamAt sl base sa) c.ins ops := by
+    List.Forall₂ (X86Backend.LinkedFnCallee.ParamAt sl base sa) c.ins
+      (calleeSiteAt c sl body sa.reg.lpc).2 := by
   obtain ⟨bi, ra, t, hb, hbi⟩ := hcall
-  simp only [callParamsB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true,
-    List.mem_range] at h
-  obtain ⟨⟨hlen, hall⟩, -⟩ := h
-  have hp := hall sa.reg.lpc (List.getElem?_eq_some_iff.mp hb).1
-  rw [hb] at hp
-  simp only [Option.all_some, hbi, X86Backend.ImageAddrCall.isCallB, Bool.not_true,
-    Bool.false_or, List.all_eq_true] at hp
-  refine List.forall₂_iff_zip.mpr ⟨hlen, fun {q x} hqx => ?_⟩
+  have hp := (callParamsB_spec h hb hbi).1
+  rw [calleeSiteAt_snd]
+  refine List.forall₂_iff_zip.mpr
+    ⟨(c.siteArgs_length sl body _).symm, fun {q x} hqx => ?_⟩
   have hq := hp (q, x) hqx
   simp only [paramAtB, Bool.and_eq_true] at hq
   obtain ⟨hgp, hk⟩ := hq
@@ -4667,29 +4748,22 @@ theorem callParamsB_forall₂ {c : CalleeData} {sl : String → Option (String �
 
 /-- **The destination of an out call is an array of the slot map.** If the dead names of a
     printed body pass `calleeDeadB` against `c` with an out result `.out n' k`, and the
-    parameter of `c` at the destination position `k` is an array of `n` words, then the
-    destination of the call site `calleeSite` is an array of the slot map `sl` of length
-    `n`. -/
+    parameter of `c` at the destination position `k` is an array of `n` words, then at a
+    call at the position `p` the destination of the call site `calleeSiteAt` at `p` is an
+    array of the slot map `sl` of length `n`. -/
 theorem calleeSite_dest {c : CalleeData} {sl : String → Option (String × Nat)}
     {E : Nat → List String} {body : Lcmd} {n' k : Nat} (hr : c.res = .out n' k)
-    (h : calleeDeadB c sl E body = true) {po : String} {n : Nat}
-    (hd : c.ins[k]? = some (po, .words n)) :
-    ∃ q, sl q = some ((calleeSite c sl body).1, n) := by
+    (h : calleeDeadB c sl E body = true) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
+    {ra : Option String} {t : String × LLabel} (hbi : bi.li_i = .Lcall ra t) {po : String}
+    {n : Nat} (hd : c.ins[k]? = some (po, .words n)) :
+    ∃ q, sl q = some ((calleeSiteAt c sl body p).1, n) := by
   simp only [calleeDeadB, hr, Bool.and_eq_true] at h
-  obtain ⟨⟨-, hfc⟩, hpar⟩ := h
-  obtain ⟨p0, hp0⟩ := Option.isSome_iff_exists.mp hfc
-  obtain ⟨bi, ra, t, hb, hbi⟩ := firstCall_some hp0
+  have hp := (callParamsB_spec h.2 hb hbi).1
   obtain ⟨hk, hik⟩ := List.getElem?_eq_some_iff.mp hd
-  simp only [callParamsB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hpar
-  have hp := hpar.1.2 p0 (List.getElem?_eq_some_iff.mp hb).1
-  rw [hb] at hp
-  simp only [Option.all_some, hbi, X86Backend.ImageAddrCall.isCallB, Bool.not_true,
-    Bool.false_or, List.all_eq_true] at hp
-  simp only [calleeSite, hr, hp0, Option.getD_some] at hp ⊢
-  have hlen : (c.siteArgs sl body p0).length = c.ins.length := by
-    simp [CalleeData.siteArgs]
-  have hk' : k < (c.siteArgs sl body p0).length := hlen ▸ hk
-  have hmem : (c.ins[k], (c.siteArgs sl body p0)[k]) ∈ c.ins.zip (c.siteArgs sl body p0) := by
+  simp only [calleeSiteAt, hr]
+  have hlen := c.siteArgs_length sl body p
+  have hk' : k < (c.siteArgs sl body p).length := hlen ▸ hk
+  have hmem : (c.ins[k], (c.siteArgs sl body p)[k]) ∈ c.ins.zip (c.siteArgs sl body p) := by
     rw [List.mem_iff_getElem]
     exact ⟨k, by simp [hlen, hk], by simp⟩
   have hh := hp _ hmem
@@ -9483,10 +9557,11 @@ theorem regionCoB_callee {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     X86Backend.ImageAddrCall.printedAddrCB c.frame body = true
       ∧ ∀ q, decodeLprog c.bytes = some q →
         ∀ tg, X86Backend.LprogBytesDecode.RInstr.call tg ∉ q := by
-  simp only [regionCoB, renImageB, calleeImgB, calleeBodyB, Option.all_some,
-    Bool.and_eq_true] at h
-  have hk := h.2.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.1.2
-  refine ⟨h.2.2.1.1.1.1.2.1, fun q hq => ?_⟩
+  simp only [regionCoB, renImageB, calleeImgB, Option.all_some, Bool.and_eq_true] at h
+  obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩,
+    ⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, ⟨hpr, -⟩⟩, -⟩, -⟩, -⟩, -⟩⟩⟩ := h
+  refine ⟨hpr, fun q hq => ?_⟩
+  have hk := (calleeBodyB_spec.mp hb).code
   simp only [calleeCodeB, hq] at hk
   exact X86Backend.Callee.not_call_mem_of_keepCheckW hk
 

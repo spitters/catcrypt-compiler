@@ -29,16 +29,19 @@ the corresponding site of `img`.
 ## Main definitions
 
 * `siteMap`: the `k`-th site of one body to the `k`-th site of another.
-* `segOuts`: the names two end states of segments agree on.
+* `shadowAt`: the destination, symbol and operands of the shadow instruction at a position.
+* `segOutsAt`: the names two end states of segments agree on, read from the shadow
+  instruction of `ref` at the exit.
 * `calleeSegB`: the checks of the segments.
 * `segSimI_of_checks`, `segSim_of_checks`: the simulation of the cut programs.
 
 ## Main results
 
 * `x86IsaK_lsemFuelMemF`: the runs of `x86IsaK` are the bounds-checked runs of `x86Isa`.
-* `siteMap_some`, `procStep_congr`, `glue_congr`.
+* `siteMap_some`, `siteMapL_index`, `procStep_congr`, `glue_congr`.
 * `calleeSegB_soundK`: under the soundness of the validation by segments, a halting run of
-  `x86IsaK.withProcs T` on `ref` is matched by a halting run on `img`.
+  `x86IsaK.withProcs T` on `ref` is matched by a halting run on `img`. Each site carries its
+  own destination, symbol and operands; the sites of `ref` and `img` agree in order.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegCheck
@@ -50,7 +53,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa ProcTable ProcSummary procCall? procStep
-  retWord)
+  retWord shadowCall?)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut
 open CatCrypt.Crypto.SecureCompilation.Ascent.IsaCfg (goto)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_step)
@@ -60,8 +63,6 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (ownedChec
   ownedCheckMCIn_sound_rel)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CheckedIsaCall (x86IsaK x86IsaK_step
   fnStable_x86IsaK)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall (siteShapeB
-  sitesOf_of_siteShapeB)
 
 /-- **The runs of the bounds-checked x86 instruction set are the bounds-checked runs of
     `x86Isa`.** -/
@@ -100,6 +101,20 @@ theorem siteMapL_some : ∀ {ps qs : List Nat} {x : Nat}, x ∈ ps → ps.length
       · exact ⟨q, rfl⟩
       · rename_i hx
         exact siteMapL_some ((List.mem_cons.mp h).resolve_left hx) (by simpa using hl)
+
+/-- **`siteMapL` pairs positions at a common index.** -/
+theorem siteMapL_index : ∀ {ps qs : List Nat} {x q : Nat}, siteMapL ps qs x = some q →
+    ∃ k : Nat, ps[k]? = some x ∧ qs[k]? = some q
+  | [], _, _, _, h => by simp [siteMapL] at h
+  | _ :: _, [], _, _, h => by simp [siteMapL] at h
+  | p :: ps, q' :: qs, x, q, h => by
+      unfold siteMapL at h
+      split at h
+      · rename_i hx
+        cases h
+        exact ⟨0, by simp [hx], rfl⟩
+      · obtain ⟨k, hk, hk'⟩ := siteMapL_index h
+        exact ⟨k + 1, hk, hk'⟩
 
 /-- **The site map of two bodies**: the entry `none` to `none`, and the position of the
     `k`-th shadow instruction of a call of a symbol of `T` in `B` to the position of the
@@ -162,33 +177,47 @@ theorem procStep_congr {pr : ProcSummary} {dst : String} {args : List String}
       exact ⟨w, rfl⟩
   · cases h
 
-/-- **The step of the summary at a site of `B` is matched at a site of `B'`** from a state
-    that agrees on the operands, for bodies whose shadow instructions are calls of `pr` on
-    the registers `args` with the destination `res`. The result `x` is a word when `pr` has
-    no word-array result. -/
-theorem glue_congr {T : ProcTable} {fn : String} {B B' : List LinstrRM} {pr : ProcSummary}
-    {res : String} {args : List String}
-    (hs : ∀ (p : Nat) (i : LinstrRM) (pr' : ProcSummary) (dst : String)
-      (srcs : List LOperand), B[p]? = some i → procCall? T i.fst = some (pr', dst, srcs) →
-      pr' = pr ∧ dst = res ∧ srcs = args.map LOperand.reg)
-    (hs' : ∀ (p : Nat) (i : LinstrRM) (pr' : ProcSummary) (dst : String)
-      (srcs : List LOperand), B'[p]? = some i → procCall? T i.fst = some (pr', dst, srcs) →
-      pr' = pr ∧ dst = res ∧ srcs = args.map LOperand.reg)
-    {p q : Nat} (hq : IsSite T B' (some q)) {u u' v : LstateMF}
+/-- The destination, the symbol and the operands of the shadow instruction of a call at the
+    position `p` of `B`, or `none` when `B` holds no such instruction at `p`. -/
+def shadowAt (B : List LinstrRM) (p : Nat) : Option (String × String × List LOperand) :=
+  B[p]?.bind (shadowCall? ·.fst)
+
+/-- **Every shadow instruction of a call in `B` calls the symbol `f`.** -/
+def callSymsB (f : String) (B : List LinstrRM) : Bool :=
+  B.all fun i => (shadowCall? i.fst).all fun q => q.2.1 == f
+
+/-- The register names of a list of operands. -/
+def regsOf (srcs : List LOperand) : List String := srcs.filterMap LOperand.regName?
+
+@[simp] theorem regsOf_map_reg (xs : List String) : regsOf (xs.map LOperand.reg) = xs := by
+  simp [regsOf, List.filterMap_map, Function.comp_def, LOperand.regName?]
+
+/-- **The step of the summary at a site of `B` is matched at a site of `B'`** whose shadow
+    instruction equals that of `B`, from a state that agrees on the operands and on the
+    arrays, when the operands are the registers `args`. The result `x` is a word when the
+    summary has no word-array result. -/
+theorem glue_congr {T : ProcTable} {fn : String} {B B' : List LinstrRM} {p q : Nat}
+    {dst f : String} {args : List String}
+    (hp : shadowAt B p = some (dst, f, args.map LOperand.reg))
+    (hpq : shadowAt B' q = shadowAt B p) {u u' v : LstateMF}
     (hag : ∀ r ∈ args, u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r)
     (hla : u'.prog.base.larr = u.prog.base.larr)
     (hg : Glue T (singletonProgM fn B) p u v) :
-    ∃ x, v = LprogIsa.retRes res x u
-      ∧ Glue T (singletonProgM fn B') q u' (LprogIsa.retRes res x u')
+    ∃ pr x, T f = some pr ∧ v = LprogIsa.retRes dst x u
+      ∧ Glue T (singletonProgM fn B') q u' (LprogIsa.retRes dst x u')
       ∧ (pr.RetWord → ∃ w, x = .word w) := by
-  obtain ⟨i, pr1, dst, srcs, hi, hpq, hstep⟩ := hg
-  obtain ⟨rfl, rfl, rfl⟩ := hs p i pr1 dst srcs hi hpq
+  obtain ⟨i, pr, dst1, srcs, hi, hpc, hstep⟩ := hg
+  have hsi : shadowCall? i.fst = some (dst, f, args.map LOperand.reg) := by
+    grind [shadowAt, singletonProgM]
+  have hT : T f = some pr ∧ dst = dst1 ∧ args.map LOperand.reg = srcs := by
+    simpa [procCall?, hsi] using hpc
+  obtain ⟨hT, rfl, rfl⟩ := hT
   obtain ⟨x, rfl, hstep', hxw⟩ := procStep_congr hag hla hstep
-  obtain ⟨j, hj, hjp⟩ := hq
-  simp only [isProcB] at hjp
-  obtain ⟨⟨pr2, dst2, srcs2⟩, hq'⟩ := Option.isSome_iff_exists.mp hjp
-  obtain ⟨rfl, rfl, rfl⟩ := hs' q j pr2 dst2 srcs2 hj hq'
-  exact ⟨x, rfl, ⟨j, _, _, _, hj, hq', hstep'⟩, hxw⟩
+  have hj : ∃ j, B'[q]? = some j ∧ shadowCall? j.fst = some (dst, f, args.map LOperand.reg) := by
+    rw [hp] at hpq
+    grind [shadowAt]
+  obtain ⟨j, hj, hsj⟩ := hj
+  exact ⟨pr, x, hT, rfl, ⟨j, pr, dst, _, hj, by simp [procCall?, hsj, hT], hstep'⟩, hxw⟩
 
 /-! ## 3. The checks of the segments -/
 
@@ -201,26 +230,31 @@ theorem cutRun_of_run {I : Isa} {fn : String} {C : List LinstrRM} {s t : LstateM
 theorem obs_goto {outs : List String} {u t : LstateMF} {q : Nat} :
     Obs outs (goto u q) t ↔ Obs outs u t := Iff.rfl
 
-/-- The names the end states of two segments with the exit `x` agree on: `outs` at the end
-    of the body, and at a shadow instruction the operands `args` and the names of `ins` at
-    the entry after it other than the destination `res`. -/
-def segOuts (res : String) (args : List String) (ins : Option Nat → List String)
-    (outs : List String) : Option Nat → List String
+/-- The names the end states of two segments of `ref` with the exit `x` agree on: `outs` at
+    the end of the body, and at a shadow instruction of `ref` the register names of its
+    operands and the names of `ins` at the entry after it other than its destination. -/
+def segOutsAt (ref : List LinstrRM) (ins : Option Nat → List String) (outs : List String) :
+    Option Nat → List String
   | none => outs
-  | some p => args ++ (ins (some p)).filter (· != res)
+  | some p =>
+      match shadowAt ref p with
+      | some (dst, _, srcs) => regsOf srcs ++ (ins (some p)).filter (· != dst)
+      | none => []
 
-/-- **The checks of the segments of a calling body**: `ref` and `img` have equally many
-    shadow instructions of calls of symbols of `T`, and for every entry `e` and every exit
-    `x` of `ref`, `ownedCheckMCIn` accepts the cut program of `ref` against the cut program
-    of `img` at the sites `siteMap T ref img`, at the function `fn` and the label `fin`, with
-    the entry set `ins e` and the observed names `segOuts res args ins outs x`. -/
-def calleeSegB (T : ProcTable) (res : String) (args : List String) (fn : String)
-    (fin : LLabel) (ins : Option Nat → List String) (outs : List String)
-    (ref img : List LinstrRM) : Bool :=
+/-- **The checks of the segments of a calling body**: the shadow instructions at the sites
+    of `ref` are, in order, those at the sites of `img`; the operands of every shadow
+    instruction at a site of `ref` are registers; and for every entry `e` and every exit `x`
+    of `ref`, `ownedCheckMCIn` accepts the cut program of `ref` against the cut program of
+    `img` at the sites `siteMap T ref img`, at the function `fn` and the label `fin`, with
+    the entry set `ins e` and the observed names `segOutsAt ref ins outs x`. -/
+def calleeSegB (T : ProcTable) (fn : String) (fin : LLabel) (ins : Option Nat → List String)
+    (outs : List String) (ref img : List LinstrRM) : Bool :=
   let es := none :: (sites T ref).map some
-  (sites T ref).length == (sites T img).length
+  (sites T ref).map (shadowAt ref) == (sites T img).map (shadowAt img)
+    && (sites T ref).all (fun p =>
+      (shadowAt ref p).all fun q => q.2.2 == (regsOf q.2.2).map LOperand.reg)
     && es.all fun e => es.all fun x =>
-      ownedCheckMCIn (ins e) (segOuts res args ins outs x) (cutAt fn fin ref e x)
+      ownedCheckMCIn (ins e) (segOutsAt ref ins outs x) (cutAt fn fin ref e x)
         (cutAt fn fin img (siteMap T ref img e) (siteMap T ref img x))
 
 /-- **The simulation of the cut programs from the checks of the segments**, on an
@@ -228,24 +262,20 @@ def calleeSegB (T : ProcTable) (res : String) (args : List String) (fn : String)
     stay in the function. A state at the entry `e` is related to the states that agree with
     it on the function, the names `ins e`, the arrays and the word memory; the end states of
     two segments with the exit `x` are related when they agree on the function, the names
-    `segOuts res args ins outs x`, the arrays and the word memory. The summary `pr` has no
-    word-array result, or the destination `res` is among the operands `args`. -/
+    `segOutsAt ref ins outs x`, the arrays and the word memory. At every site of `ref`, the
+    summary of the symbol has no word-array result, or the destination is among the
+    operands. -/
 def segSimI_of_checks {I : Isa} (hK : I.lsemFuelMemF = x86Isa.lsemFuelMemFk true)
-    (hS : FnStable I) {T : ProcTable} {pr : ProcSummary} {res : String}
-    {args : List String} (hres : pr.RetWord ∨ res ∈ args)
+    (hS : FnStable I) {T : ProcTable}
     {fn : String} {fin : LLabel} {ins : Option Nat → List String} {outs : List String}
     {ref img : List LinstrRM}
-    (hsr : ∀ (p : Nat) (i : LinstrRM) (pr' : ProcSummary) (dst : String)
-      (srcs : List LOperand), ref[p]? = some i → procCall? T i.fst = some (pr', dst, srcs) →
-      pr' = pr ∧ dst = res ∧ srcs = args.map LOperand.reg)
-    (hsi : ∀ (p : Nat) (i : LinstrRM) (pr' : ProcSummary) (dst : String)
-      (srcs : List LOperand), img[p]? = some i → procCall? T i.fst = some (pr', dst, srcs) →
-      pr' = pr ∧ dst = res ∧ srcs = args.map LOperand.reg)
-    (h : calleeSegB T res args fn fin ins outs ref img = true) :
+    (hres : ∀ (p : Nat) (d f : String) (xs : List String) (pr : ProcSummary),
+      shadowAt ref p = some (d, f, xs.map LOperand.reg) → T f = some pr → pr.RetWord ∨ d ∈ xs)
+    (h : calleeSegB T fn fin ins outs ref img = true) :
     CutSimI I T outs fn ref img (cutAt fn fin ref) (cutAt fn fin img) where
   site := siteMap T ref img
   R e s s' := Rel (ins e, false) s s'
-  Q x u u' := Obs (segOuts res args ins outs x) u u' ∧ u'.prog.lfn = u.prog.lfn
+  Q x u u' := Obs (segOutsAt ref ins outs x) u u' ∧ u'.prog.lfn = u.prog.lfn
   site_none := rfl
   init _ := ⟨rfl, rfl, rfl, fun _ _ => rfl, fun h => by cases h⟩
   seg := by
@@ -266,14 +296,39 @@ def segSimI_of_checks {I : Isa} (hK : I.lsemFuelMemF = x86Isa.lsemFuelMemFk true
   fin _ _ hQ := hQ.1
   glue := by
     intro p u u' v hQ hg
-    simp only [calleeSegB, Bool.and_eq_true, beq_iff_eq] at h
+    simp only [calleeSegB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at h
+    obtain ⟨⟨hmap, hregs⟩, -⟩ := h
     have hp : IsSite T ref (some p) := by
       obtain ⟨i, pr', dst, srcs, hi, hpq, -⟩ := hg
       exact ⟨i, hi, by simp only [isProcB, hpq, Option.isSome_some]⟩
-    obtain ⟨q, hq, hqs⟩ := siteMap_some h.1 hp
+    have hmem : p ∈ sites T ref := by simpa using mem_of_isSite hp
+    have hl : (sites T ref).length = (sites T img).length := by
+      simpa using congrArg List.length hmap
+    obtain ⟨q, hq, hqs⟩ := siteMap_some hl hp
+    have hpq : shadowAt img q = shadowAt ref p := by
+      obtain ⟨k, hk, hk'⟩ := siteMapL_index hq
+      have e := congrArg (·[k]?) hmap
+      simpa [hk, hk'] using e.symm
+    have hsh : ∃ d f srcs, shadowAt ref p = some (d, f, srcs) := by
+      obtain ⟨i, pr', dst, srcs, hi, hpc, -⟩ := hg
+      change ref[p]? = some i at hi
+      unfold procCall? at hpc
+      cases hs : shadowCall? i.fst with
+      | none => simp [hs] at hpc
+      | some r => exact ⟨r.1, r.2.1, r.2.2, by simp [shadowAt, hi, hs]⟩
+    obtain ⟨res, f, srcs, hsh⟩ := hsh
+    have hsrcs : srcs = (regsOf srcs).map LOperand.reg := by
+      simpa [hsh] using hregs p hmem
+    have hsh' : shadowAt ref p = some (res, f, (regsOf srcs).map LOperand.reg) := by
+      rw [hsh, ← hsrcs]
+    have hseg : segOutsAt ref ins outs (some p)
+        = regsOf srcs ++ (ins (some p)).filter (· != res) := by
+      simp only [segOutsAt, hsh]
     obtain ⟨hobs, hfn⟩ := hQ
-    obtain ⟨x, rfl, hg', hxw⟩ := glue_congr hsr hsi hqs
+    rw [hseg] at hobs
+    obtain ⟨pr, x, hT, rfl, hg', hxw⟩ := glue_congr hsh' hpq
       (fun r hr => hobs.1 r (List.mem_append_left _ hr)) hobs.2.1 hg
+    have hres := hres p res f (regsOf srcs) pr hsh' hT
     have hoff : ∀ r ∈ ins (some p), r ≠ res →
         u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r := fun r hr hrr =>
       hobs.1 r (List.mem_append_right _ (List.mem_filter.mpr ⟨hr, by simpa using hrr⟩))
@@ -289,56 +344,51 @@ def segSimI_of_checks {I : Isa} (hK : I.lsemFuelMemF = x86Isa.lsemFuelMemFk true
         rw [LprogIsa.retRes_word, e, e]
         exact hoff r hr hrr
     | arr a =>
-      have hmem : res ∈ args := by
+      have hmem : res ∈ regsOf srcs := by
         rcases hres with hrw | hm
         · obtain ⟨w, hw⟩ := hxw hrw
           cases hw
         · exact hm
       refine ⟨q, LprogIsa.retArr res a u', hq, hg', hfn, ?_, hobs.2.2, fun r hr => ?_,
         fun h => by cases h⟩
-      · show (u'.prog.base.setArr res a).larr = (u.prog.base.setArr res a).larr
+      · change (u'.prog.base.setArr res a).larr = (u.prog.base.setArr res a).larr
         unfold LstateM.setArr
         rw [hobs.2.1]
-      · show u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r
+      · change u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r
         by_cases hrr : r = res
         · subst hrr
           exact hobs.1 r (List.mem_append_left _ hmem)
         · exact hoff r hr hrr
 
 /-- **The simulation of the cut programs of a calling body by those of its image** on the
-    bounds-checked x86 instruction set, from the checks of the segments, for bodies whose
-    shadow instructions are calls of the symbol `f` of `T` on the registers `args` with the
-    destination `res`, where the summary of `f` has no word-array result or `res` is among
-    `args`. -/
-def segSim_of_checks {T : ProcTable} {f res : String} {args : List String} {pr : ProcSummary}
-    (hT : T f = some pr) (hres : pr.RetWord ∨ res ∈ args) {fn : String} {fin : LLabel}
-    {ins : Option Nat → List String}
-    {outs : List String} {ref img : List LinstrRM} (hsr : siteShapeB f res args ref = true)
-    (hsi : siteShapeB f res args img = true)
-    (h : calleeSegB T res args fn fin ins outs ref img = true) :
+    bounds-checked x86 instruction set, from the checks of the segments, where at every site
+    of `ref` the summary of the symbol has no word-array result or the destination is among
+    the operands. -/
+def segSim_of_checks {T : ProcTable} {fn : String} {fin : LLabel}
+    {ins : Option Nat → List String} {outs : List String} {ref img : List LinstrRM}
+    (hres : ∀ (p : Nat) (d f : String) (xs : List String) (pr : ProcSummary),
+      shadowAt ref p = some (d, f, xs.map LOperand.reg) → T f = some pr → pr.RetWord ∨ d ∈ xs)
+    (h : calleeSegB T fn fin ins outs ref img = true) :
     CutSimI x86IsaK T outs fn ref img (cutAt fn fin ref) (cutAt fn fin img) :=
-  segSimI_of_checks x86IsaK_lsemFuelMemF fnStable_x86IsaK hres (sitesOf_of_siteShapeB hsr hT)
-    (sitesOf_of_siteShapeB hsi hT) h
+  segSimI_of_checks x86IsaK_lsemFuelMemF fnStable_x86IsaK hres h
 
-/-- **Soundness of the checks of the segments.** For bodies whose shadow instructions are
-    calls of the symbol `f` of `T` on the registers `args` with the destination `res`, where
-    the summary of `f` has no word-array result or `res` is among `args`, under the
-    soundness `CutCheckSoundI` of the validation by segments of the cut programs `cutAt`
+/-- **Soundness of the checks of the segments.** Where at every site of `ref` the summary
+    of the symbol has no word-array result or the destination is among the operands, under
+    the soundness `CutCheckSoundI` of the validation by segments of the cut programs `cutAt`
     at the function `fn` and the label `fin`, every halting run of `x86IsaK.withProcs T` on
     `ref` from a state of `fn` at the counter `0` is matched by a halting run on `img` from
     the same state, the end states agreeing on the registers `outs`, the arrays and the word
     memory. -/
-theorem calleeSegB_soundK {T : ProcTable} {f res : String} {args : List String}
-    {pr : ProcSummary} (hT : T f = some pr) {fn : String} {fin : LLabel}
+theorem calleeSegB_soundK {T : ProcTable} {fn : String} {fin : LLabel}
     {ins : Option Nat → List String} {outs : List String} {ref img : List LinstrRM}
-    (hsr : siteShapeB f res args ref = true) (hsi : siteShapeB f res args img = true)
-    (h : calleeSegB T res args fn fin ins outs ref img = true)
+    (h : calleeSegB T fn fin ins outs ref img = true)
     (hsound : CutCheckSoundI x86IsaK T outs fn ref img (cutAt fn fin ref) (cutAt fn fin img))
     (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.lpc = 0) (fuel : Nat)
     (hrun : (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn ref) fuel s = some t)
-    (hres : pr.RetWord ∨ res ∈ args := by exact Or.inl rfl) :
+    (hres : ∀ (p : Nat) (d f : String) (xs : List String) (pr : ProcSummary),
+      shadowAt ref p = some (d, f, xs.map LOperand.reg) → T f = some pr → pr.RetWord ∨ d ∈ xs) :
     ∃ fuel' t', (x86IsaK.withProcs T).lsemFuelMemF (singletonProgM fn img) fuel' s = some t'
       ∧ Obs outs t t' :=
-  hsound (segSim_of_checks hT hres hsr hsi h) s t hfn hpc fuel hrun
+  hsound (segSim_of_checks hres h) s t hfn hpc fuel hrun
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegCheck

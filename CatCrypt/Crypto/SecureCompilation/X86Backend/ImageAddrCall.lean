@@ -1255,22 +1255,25 @@ def isCallB : LinstrR → Bool
   | .Lcall _ _ => true
   | _ => false
 
-/-- **The check of the dead names at the calls of a body**: at each call instruction, at
-    position `p`, no argument name of the callee is dead, and the names dead at `p` other
-    than the result name and the names `exemptC c` are dead at `p + 1`. -/
-def callDeadB (c : CalleeSig) (res : String) (E : Nat → List String) (body : Lcmd) : Bool :=
+/-- **The check of the dead names at the calls of a body**, at the destination and operand
+    names `site p` of the call at each position `p`: at each call instruction no operand
+    name of the site is dead, and the names dead at `p` other than the destination of the
+    site and the names `exemptC c` are dead at `p + 1`. -/
+def callDeadB (c : CalleeSig) (site : Nat → String × List String) (E : Nat → List String)
+    (body : Lcmd) : Bool :=
   (List.range body.length).all fun p => (body[p]?).all fun bi =>
     !isCallB bi.li_i ||
-      (c.args.all (fun a => !(E p).contains a)
-        && (((E p).filter fun r => r != res) ++ exemptC c).all
+      ((site p).2.all (fun a => !(E p).contains a)
+        && (((E p).filter fun r => r != (site p).1) ++ exemptC c).all
             (fun r => (E (p + 1)).contains r))
 
 /-- **Soundness of `callDeadB`** at a call instruction. -/
-theorem callDeadB_spec {c : CalleeSig} {res : String} {E : Nat → List String} {body : Lcmd}
-    (h : callDeadB c res E body = true) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
+theorem callDeadB_spec {c : CalleeSig} {site : Nat → String × List String}
+    {E : Nat → List String} {body : Lcmd}
+    (h : callDeadB c site E body = true) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
     {ra : Option String} {tgt : String × LLabel} (hbi : bi.li_i = .Lcall ra tgt) :
-    (∀ a ∈ c.args, a ∉ E p)
-      ∧ ∀ r ∈ ((E p).filter fun r => r != res) ++ exemptC c, r ∈ E (p + 1) := by
+    (∀ a ∈ (site p).2, a ∉ E p)
+      ∧ ∀ r ∈ ((E p).filter fun r => r != (site p).1) ++ exemptC c, r ∈ E (p + 1) := by
   simp only [callDeadB, List.all_eq_true, List.mem_range] at h
   have hp := h p (List.getElem?_eq_some_iff.mp hb).1
   rw [hb] at hp
@@ -1282,7 +1285,8 @@ theorem callDeadB_spec {c : CalleeSig} {res : String} {E : Nat → List String} 
     callee.** Let the segments `SegTo I T P` of a calling body have the simulation `SegSim`
     at the dead names `E` and the oracle of a callee `X` at `tgt`, with `CalleeSpec X c`, no
     flag be live after a call, and each step `Glue T P` at a call position `p` be a step of
-    the site (`SiteStep`) at the names `E p` and `E (p + 1)`. Then every chain
+    the site (`SiteStep`) at the names `E p` and `E (p + 1)` from a state at the counter
+    `p`. Then every chain
     `RunChain I T P` from an image state at a position where no flag is live, related, up to
     the dead names of its position and the flags, to an address state that corresponds to a
     byte state is matched by a run of `prog` under the oracle to a byte state that satisfies
@@ -1297,7 +1301,7 @@ theorem haltsO_of_runChainS {frame : String → Option (BitVec 64)}
     {Fin : LstateMF → AState → Prop}
     (hsim : SegSim frame slotArr base rsp body P.lfn E L (oracleAt tgt X) prog pos tgt
       (SegTo I T P) Fin)
-    (hStep : ∀ p u v, Glue T P p u v →
+    (hStep : ∀ p u v, Glue T P p u v → u.prog.base.reg.lpc = p →
       (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) →
       SiteStep frame slotArr base rsp body X c (E p) (E (p + 1)) u v)
     {s t : LstateMF} (hch : RunChain I T P s t) :
@@ -1311,10 +1315,10 @@ theorem haltsO_of_runChainS {frame : String → Option (BitVec 64)}
     intro sa sA hfn hlen hL hI hA
     obtain ⟨sa1, sA1, hI1, hc1, hpc1, ⟨bi, ra, tg, hb, hbi⟩, hprog, hk⟩ :=
       hsim.toCall _ sa sA p _ hfn hlen hL hI hA hseg
-    have hfu : u.prog.lfn = P.lfn := by
+    obtain ⟨hfu, hpu⟩ : u.prog.lfn = P.lfn ∧ u.prog.base.reg.lpc = p := by
       obtain ⟨_, _, hat, _⟩ := hseg
-      exact hat.1
-    have hst := hStep _ _ _ hcall ⟨bi, ra, tg, hb, hbi⟩
+      exact hat
+    have hst := hStep _ _ _ hcall hpu ⟨bi, ra, tg, hb, hbi⟩
     have hfv : v.prog.lfn = P.lfn := by
       obtain ⟨dst, x, rfl, -⟩ := hst
       exact (LprogIsa.lfn_retRes dst x u).trans hfu
@@ -1338,7 +1342,7 @@ theorem siteStep_word {frame : String → Option (BitVec 64)}
     {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
     {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
     (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
-    {E : Nat → List String} (hdead : callDeadB c res E body = true) {p : Nat}
+    {E : Nat → List String} (hdead : callDeadB c (fun _ => (res, c.args)) E body = true) {p : Nat}
     (hb : ∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) {u v : LstateMF}
     (hv : ∃ w, pr.run (c.args.map (argWord u.prog.base.reg)) = some w
       ∧ v = LprogIsa.retWord res w u) :
@@ -1372,7 +1376,7 @@ theorem haltsO_of_runChain {frame : String → Option (BitVec 64)}
     {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
     (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
     {prog : List RInstr} {pos : Nat → Nat} {tgt : Nat} {E : Nat → List String}
-    (hdead : callDeadB c res E body = true) {L : Nat → Bool}
+    (hdead : callDeadB c (fun _ => (res, c.args)) E body = true) {L : Nat → Bool}
     (hLc : ∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t → L (p + 1) = false)
     (hcl : ∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t → p + 1 < body.length)
     {I : LprogIsa.Isa} {T : LprogIsa.ProcTable} {P : LprogM}
@@ -1386,7 +1390,7 @@ theorem haltsO_of_runChain {frame : String → Option (BitVec 64)}
       ImgRelF frame slotArr base body (E sa.reg.lpc) s sa → ACorr rsp sA sa →
       ∃ sA', HaltsO aMachine (oracleAt tgt X) prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA' :=
   haltsO_of_runChainS hX hLc hcl hsim
-    (fun p u v hg hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb (hCall p u v hg))
+    (fun p u v hg _ hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb (hCall p u v hg))
     hch
 
 /-! ## 8a. The step of the summary at a shadow instruction -/
@@ -1421,29 +1425,32 @@ theorem procStep_regArgs {pr : LprogIsa.ProcSummary} (hwo : pr.WordOnly) (hrw : 
   · cases h
 
 /-- **The shadow instructions of the body `B` are calls of one summary on register
-    operands**: every shadow instruction of a call of a symbol of `T` has the summary `pr`,
-    the destination `res` and the operands `args` as registers. -/
+    operands at their sites**: every shadow instruction of a call of a symbol of `T`, at
+    position `p`, has the summary `pr`, the destination `(site p).1` and the operands
+    `(site p).2` as registers. -/
 def SitesOf (T : LprogIsa.ProcTable) (B : List LinstrRM) (pr : LprogIsa.ProcSummary)
-    (res : String) (args : List String) : Prop :=
+    (site : Nat → String × List String) : Prop :=
   ∀ (p : Nat) (i : LinstrRM) (pr' : LprogIsa.ProcSummary) (dst : String)
     (srcs : List LOperand), B[p]? = some i →
     LprogIsa.procCall? T i.fst = some (pr', dst, srcs) →
-    pr' = pr ∧ dst = res ∧ srcs = args.map LOperand.reg
+    pr' = pr ∧ dst = (site p).1 ∧ srcs = (site p).2.map LOperand.reg
 
-/-- **The check of the shadow instructions of a body**: every shadow instruction of a call
-    has the destination `res`, the symbol `f` and the operands `args` as registers. -/
-def siteShapeB (f res : String) (args : List String) (B : List LinstrRM) : Bool :=
-  B.all fun i =>
+/-- **The check of the shadow instructions of a body**: every shadow instruction of a call,
+    at position `p`, has the destination `(site p).1`, the symbol `f` and the operands
+    `(site p).2` as registers. -/
+def siteShapeB (f : String) (site : Nat → String × List String) (B : List LinstrRM) : Bool :=
+  (List.range B.length).all fun p => (B[p]?).all fun i =>
     match LprogIsa.shadowCall? i.fst with
     | none => true
-    | some q => decide (q = (res, f, args.map LOperand.reg))
+    | some q => decide (q = ((site p).1, f, (site p).2.map LOperand.reg))
 
 /-- **Soundness of `siteShapeB`** at a table that gives `f` the summary `pr`. -/
 theorem sitesOf_of_siteShapeB {T : LprogIsa.ProcTable} {B : List LinstrRM}
-    {pr : LprogIsa.ProcSummary} {f res : String} {args : List String}
-    (h : siteShapeB f res args B = true) (hT : T f = some pr) : SitesOf T B pr res args := by
+    {pr : LprogIsa.ProcSummary} {f : String} {site : Nat → String × List String}
+    (h : siteShapeB f site B = true) (hT : T f = some pr) : SitesOf T B pr site := by
   intro p i pr' dst srcs hi hq
-  have hm := List.all_eq_true.mp h i (List.mem_of_getElem? hi)
+  have hm := List.all_eq_true.mp h p (List.mem_range.mpr (List.getElem?_eq_some_iff.mp hi).1)
+  rw [hi, Option.all_some] at hm
   unfold LprogIsa.procCall? at hq
   cases hs : LprogIsa.shadowCall? i.fst with
   | none => rw [hs] at hq; cases hq
@@ -1455,14 +1462,14 @@ theorem sitesOf_of_siteShapeB {T : LprogIsa.ProcTable} {B : List LinstrRM}
       exact ⟨hq.1.symm, hq.2.1.symm, hq.2.2.symm⟩
 
 /-- **The step `Glue` at a shadow instruction is the step of the summary at the argument
-    words**, for a body whose shadow instructions are calls of `pr` on the registers
-    `args` with the destination `res`. -/
+    words of its site**, for a body whose shadow instructions are calls of `pr` on the
+    registers `(site p).2` with the destination `(site p).1`. -/
 theorem glue_regArgs {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
-    {pr : LprogIsa.ProcSummary} (hwo : pr.WordOnly) (hrw : pr.RetWord) {res : String}
-    {args : List String} (hsite : SitesOf T B pr res args) {p : Nat} {u v : LstateMF}
-    (hg : Glue T (singletonProgM fn B) p u v) :
-    ∃ w, pr.run (args.map (argWord u.prog.base.reg)) = some w
-      ∧ v = LprogIsa.retWord res w u := by
+    {pr : LprogIsa.ProcSummary} (hwo : pr.WordOnly) (hrw : pr.RetWord)
+    {site : Nat → String × List String} (hsite : SitesOf T B pr site) {p : Nat}
+    {u v : LstateMF} (hg : Glue T (singletonProgM fn B) p u v) :
+    ∃ w, pr.run ((site p).2.map (argWord u.prog.base.reg)) = some w
+      ∧ v = LprogIsa.retWord (site p).1 w u := by
   obtain ⟨i, pr', dst, srcs, hi, hq, hstep⟩ := hg
   obtain ⟨rfl, rfl, rfl⟩ := hsite p i pr' dst srcs hi hq
   exact procStep_regArgs hwo hrw hstep
@@ -1484,11 +1491,11 @@ theorem haltsO_of_withProcs_run {frame : String → Option (BitVec 64)}
     {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
     (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
     {prog : List RInstr} {pos : Nat → Nat} {tgt : Nat} {E : Nat → List String}
-    (hdead : callDeadB c res E body = true) {L : Nat → Bool}
+    (hdead : callDeadB c (fun _ => (res, c.args)) E body = true) {L : Nat → Bool}
     (hLc : ∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t → L (p + 1) = false)
     (hcl : ∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t → p + 1 < body.length)
     {I : LprogIsa.Isa} {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
-    {Fin : LstateMF → AState → Prop} (hsite : SitesOf T B pr res c.args)
+    {Fin : LstateMF → AState → Prop} (hsite : SitesOf T B pr fun _ => (res, c.args))
     (hsim : SegSim frame slotArr base rsp body fn E L (oracleAt tgt X) prog pos tgt
       (SegTo I T (singletonProgM fn B)) Fin)
     (n : Nat) {s t : LstateMF}
@@ -1498,7 +1505,8 @@ theorem haltsO_of_withProcs_run {frame : String → Option (BitVec 64)}
     (hI : ImgRelF frame slotArr base body (E sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
     ∃ sA', HaltsO aMachine (oracleAt tgt X) prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA' :=
   haltsO_of_runChain hsep hphys hX hw hS hF hroom hdead hLc hcl hsim
-    (fun _ _ _ hg => glue_regArgs hw.wordOnly hw.wordRet hsite hg) (runChain_of_run _ T _ n s t hrun) sa sA
+    (fun _ _ _ hg => glue_regArgs hw.wordOnly hw.wordRet hsite hg)
+    (runChain_of_run _ T _ n s t hrun) sa sA
     hfn hlen hL hI hA
 
 /-! ## 8b. The simulation of a segment up to dead names, from the simulation at the relation -/
@@ -1629,26 +1637,28 @@ theorem deadSteps_x86 {D : DeadTab} {fn : String} {B : List LinstrRM}
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel isLabel)
 
 /-- **The image of a calling body**: the image `virtImg`, with the instruction at each
-    position of a call `Lcall none (f, _)` of the body replaced by the shadow instruction
-    `callShadow res f args`. -/
-def callImg (slotArr : String → Option (String × Nat)) (res : String) (args : List LOperand)
+    position `k` of a call `Lcall none (f, _)` of the body replaced by the shadow
+    instruction `callShadow (site k).1 f ((site k).2.map LOperand.reg)` at the destination
+    and operand names `site k` of the call. -/
+def callImg (slotArr : String → Option (String × Nat)) (site : Nat → String × List String)
     (body : Lcmd) : List LinstrRM :=
   (virtImg slotArr body).mapIdx fun k i =>
     match body[k]? with
-    | some ⟨_, .Lcall none (f, _)⟩ => (LprogIsa.callShadow res f args, .reg none)
+    | some ⟨_, .Lcall none (f, _)⟩ =>
+        (LprogIsa.callShadow (site k).1 f ((site k).2.map LOperand.reg), .reg none)
     | _ => i
 
 /-- The image of a calling body has the length of the image. -/
-theorem callImg_length (slotArr : String → Option (String × Nat)) (res : String)
-    (args : List LOperand) (body : Lcmd) :
-    (callImg slotArr res args body).length = body.length - 1 := by
+theorem callImg_length (slotArr : String → Option (String × Nat))
+    (site : Nat → String × List String) (body : Lcmd) :
+    (callImg slotArr site body).length = body.length - 1 := by
   simp [callImg, virtImg_length]
 
 /-- At a position that holds no call, the image of a calling body is the image. -/
-theorem callImg_getElem?_of_ne (slotArr : String → Option (String × Nat)) (res : String)
-    (args : List LOperand) {body : Lcmd} {k : Nat} {bi : Linstr} (hb : body[k]? = some bi)
-    (hn : ∀ f l, bi.li_i ≠ .Lcall none (f, l)) :
-    (callImg slotArr res args body)[k]? = (virtImg slotArr body)[k]? := by
+theorem callImg_getElem?_of_ne (slotArr : String → Option (String × Nat))
+    (site : Nat → String × List String) {body : Lcmd} {k : Nat} {bi : Linstr}
+    (hb : body[k]? = some bi) (hn : ∀ f l, bi.li_i ≠ .Lcall none (f, l)) :
+    (callImg slotArr site body)[k]? = (virtImg slotArr body)[k]? := by
   simp only [callImg, List.getElem?_mapIdx, hb]
   cases hv : (virtImg slotArr body)[k]? with
   | none => rfl
@@ -1662,10 +1672,12 @@ theorem callImg_getElem?_of_ne (slotArr : String → Option (String × Nat)) (re
 
 /-- At the position of a call, the image of a calling body holds the shadow instruction of
     the call. -/
-theorem callImg_getElem?_call (slotArr : String → Option (String × Nat)) (res : String)
-    (args : List LOperand) {body : Lcmd} {k : Nat} {bi : Linstr} (hb : body[k]? = some bi)
-    (hk : k + 1 < body.length) {f : String} {l : LLabel} (hbi : bi.li_i = .Lcall none (f, l)) :
-    (callImg slotArr res args body)[k]? = some (LprogIsa.callShadow res f args, .reg none) := by
+theorem callImg_getElem?_call (slotArr : String → Option (String × Nat))
+    (site : Nat → String × List String) {body : Lcmd} {k : Nat} {bi : Linstr}
+    (hb : body[k]? = some bi) (hk : k + 1 < body.length) {f : String} {l : LLabel}
+    (hbi : bi.li_i = .Lcall none (f, l)) :
+    (callImg slotArr site body)[k]?
+      = some (LprogIsa.callShadow (site k).1 f ((site k).2.map LOperand.reg), .reg none) := by
   obtain ⟨ii, li⟩ := bi
   simp only at hbi
   subst hbi
@@ -1673,10 +1685,10 @@ theorem callImg_getElem?_call (slotArr : String → Option (String × Nat)) (res
   simp only [callImg, List.getElem?_mapIdx, hb, List.getElem?_eq_getElem hlt, Option.map_some]
 
 /-- **The labels of the image of a calling body are the labels of the image.** -/
-theorem findLabelMem_callImg (slotArr : String → Option (String × Nat)) (res : String)
-    (args : List LOperand) (body : Lcmd) (l : LLabel) :
-    findLabelMem l (callImg slotArr res args body) = findLabelMem l (virtImg slotArr body) := by
-  have hmap : ((callImg slotArr res args body).map Prod.fst).map (isLabel l)
+theorem findLabelMem_callImg (slotArr : String → Option (String × Nat))
+    (site : Nat → String × List String) (body : Lcmd) (l : LLabel) :
+    findLabelMem l (callImg slotArr site body) = findLabelMem l (virtImg slotArr body) := by
+  have hmap : ((callImg slotArr site body).map Prod.fst).map (isLabel l)
       = ((virtImg slotArr body).map Prod.fst).map (isLabel l) := by
     apply List.ext_getElem
     · simp [callImg]
@@ -2002,11 +2014,11 @@ theorem steps_callImg {frame : String → Option (BitVec 64)}
     {I : LprogIsa.Isa}
     (hI : ∀ P i s t, I.step P i s = some t →
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
-    (res : String) (args : List LOperand) (fn : String) :
+    (site : Nat → String × List String) (fn : String) :
     ∀ (n : Nat) (s u : LstateMF) (sa : LstateA) (zf : Bool) (sA : AState),
       s.prog.lfn = fn → ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
       CondFlag body sA sa zf →
-      Steps I (singletonProgM fn (callImg slotArr res args body)) n s u →
+      Steps I (singletonProgM fn (callImg slotArr site body)) n s u →
       ∃ sa' zf' sA', ImgRel frame slotArr base body u sa' zf' ∧ ACorr rsp sA' sa'
         ∧ u.prog.lfn = fn ∧ (0 < n → sa'.reg.lpc < body.length)
         ∧ ∀ s'', HaltsO aMachine O prog (pos sa'.reg.lpc) sA' s'' →
@@ -2019,7 +2031,7 @@ theorem steps_callImg {frame : String → Option (BitVec 64)}
       simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h
       obtain ⟨c, hc, h⟩ := h
       unfold LprogIsa.Isa.lsemStepPMemF at hc
-      cases hf : findInstrMem (singletonProgM fn (callImg slotArr res args body)) s.prog with
+      cases hf : findInstrMem (singletonProgM fn (callImg slotArr site body)) s.prog with
       | none => rw [hf] at hc; cases hc
       | some i =>
         rw [hf] at hc
@@ -2035,24 +2047,25 @@ theorem steps_callImg {frame : String → Option (BitVec 64)}
           intro ra tg e
           obtain rfl := callSitesB_call hsites hb hlt e
           obtain ⟨f, l⟩ := tg
-          rw [callImg_getElem?_call slotArr res args hb (by omega) e] at hf
+          rw [callImg_getElem?_call slotArr site hb (by omega) e] at hf
           obtain rfl := Option.some.inj hf
           have hn := LprogIsaProcs.evalInstrPMemF_shadowCall
-            (singletonProgM fn (callImg slotArr res args body))
-            (LprogIsa.callShadow res f args, .reg none) s
+            (singletonProgM fn (callImg slotArr site body))
+            (LprogIsa.callShadow (site sa.reg.lpc).1 f
+              ((site sa.reg.lpc).2.map LOperand.reg), .reg none) s
             (by rw [LprogIsa.shadowCall?_callShadow]; exact Option.some_ne_none _)
           rw [JasminLsemMemChecked.evalInstrPMemF_of_k hck] at hn
           cases hn
-        rw [callImg_getElem?_of_ne slotArr res args hb (fun f l => hnc none (f, l)),
+        rw [callImg_getElem?_of_ne slotArr site hb (fun f l => hnc none (f, l)),
           virtImg_getElem?, List.getElem?_dropLast, ite_eq_left hlt, hb, Option.map_some] at hf
         obtain rfl := Option.some.inj hf
         obtain ⟨-, hsafe, hfn1, sa1, z1, hst1, hcase⟩ :=
           gate_step hsep hphys hgate fn
-            (fun l => findLabelMem_callImg slotArr res args body l) hfn hrel hb hlt hnc hck
+            (fun l => findLabelMem_callImg slotArr site body l) hfn hrel hb hlt hnc hck
         obtain ⟨sA1, hA1, hlen1, hz1, hk1⟩ := hbytes.step sa zf sa1 z1 sA hsafe hst1 hA hz
         rcases hcase with hrel1 | ⟨-, hsafe1, sa2, z2, hst2, hrel2⟩
         · obtain ⟨sa', zf', sA', hrel', hA', hfn', hlen', hk⟩ :=
-            steps_callImg hsep hphys hgate hsites hbytes hI res args fn n c u sa1 z1 sA1
+            steps_callImg hsep hphys hgate hsites hbytes hI site fn n c u sa1 z1 sA1
               hfn1 hrel1 hA1 hz1 h
           refine ⟨sa', zf', sA', hrel', hA', hfn', fun _ => ?_, fun s'' hr => hk1 _ (hk _ hr)⟩
           rcases Nat.eq_zero_or_pos n with rfl | hn
@@ -2064,7 +2077,7 @@ theorem steps_callImg {frame : String → Option (BitVec 64)}
         · obtain ⟨sA2, hA2, hlen2, hz2, hk2⟩ :=
             hbytes.step sa1 z1 sa2 z2 sA1 hsafe1 hst2 hA1 hz1
           obtain ⟨sa', zf', sA', hrel', hA', hfn', hlen', hk⟩ :=
-            steps_callImg hsep hphys hgate hsites hbytes hI res args fn n c u sa2 z2 sA2
+            steps_callImg hsep hphys hgate hsites hbytes hI site fn n c u sa2 z2 sA2
               hfn1 hrel2 hA2 hz2 h
           refine ⟨sa', zf', sA', hrel', hA', hfn', fun _ => ?_,
             fun s'' hr => hk1 _ (hk2 _ (hk _ hr))⟩
@@ -2094,9 +2107,9 @@ theorem segExact_callImg {frame : String → Option (BitVec 64)}
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
     {Fin : LstateMF → AState → Prop}
     (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf → FinA sa sA → Fin t sA)
-    (res : String) (args : List LOperand) (T : LprogIsa.ProcTable) (fn : String) :
+    (site : Nat → String × List String) (T : LprogIsa.ProcTable) (fn : String) :
     SegExact frame slotArr base rsp body fn L O prog pos tgt
-      (SegTo I T (singletonProgM fn (callImg slotArr res args body))) Fin := by
+      (SegTo I T (singletonProgM fn (callImg slotArr site body))) Fin := by
   have hz0 : ∀ (sa : LstateA) (sA : AState) (zf : Bool), L sa.reg.lpc = false →
       CondFlag body sA sa zf := fun sa sA zf hL bi hb hc => by
     rw [hLc _ bi hb hc] at hL
@@ -2105,10 +2118,10 @@ theorem segExact_callImg {frame : String → Option (BitVec 64)}
     fun s sa zf sA t hfn hlen hL hrel hA hseg => ?_, hbytes.pos_call⟩
   · obtain ⟨n, hn, hat, i, hi, hproc⟩ := hseg
     obtain ⟨sa', zf', sA', hrel', hA', -, -, hk⟩ :=
-      steps_callImg hsep hphys hgate hsites hbytes hI res args fn n s u sa zf sA hfn hrel hA
+      steps_callImg hsep hphys hgate hsites hbytes hI site fn n s u sa zf sA hfn hrel hA
         (hz0 sa sA zf hL) hn
     have hpc : sa'.reg.lpc = p := hrel'.pc.trans hat.2
-    have hi' : (callImg slotArr res args body)[p]? = some i := hi
+    have hi' : (callImg slotArr site body)[p]? = some i := hi
     have hp : p < body.length - 1 := by
       have := (List.getElem?_eq_some_iff.mp hi').1
       rwa [callImg_length] at this
@@ -2116,7 +2129,7 @@ theorem segExact_callImg {frame : String → Option (BitVec 64)}
     have hcallp : ∃ ra t, bi.li_i = .Lcall ra t := by
       by_contra hne
       have hnc : ∀ ra t, bi.li_i ≠ .Lcall ra t := fun ra t e => hne ⟨ra, t, e⟩
-      rw [callImg_getElem?_of_ne slotArr res args hb (fun f l => hnc none (f, l)),
+      rw [callImg_getElem?_of_ne slotArr site hb (fun f l => hnc none (f, l)),
         virtImg_getElem?, List.getElem?_dropLast, ite_eq_left hp, hb, Option.map_some] at hi'
       obtain rfl := Option.some.inj hi'
       have hsh := callSitesB_other hsites hb hp hnc
@@ -2126,7 +2139,7 @@ theorem segExact_callImg {frame : String → Option (BitVec 64)}
     exact ⟨sa', zf', sA', hrel', hA', ⟨bi, ra, t, hb, hbi⟩, hbytes.call _ bi ra t hb hbi, hk⟩
   · obtain ⟨n, hn, hhalt⟩ := hseg
     obtain ⟨sa', zf', sA', hrel', hA', hfn', hlen', hk⟩ :=
-      steps_callImg hsep hphys hgate hsites hbytes hI res args fn n s t sa zf sA hfn hrel hA
+      steps_callImg hsep hphys hgate hsites hbytes hI site fn n s t sa zf sA hfn hrel hA
         (hz0 sa sA zf hL) hn
     have hlenE : sa'.reg.lpc < body.length := by
       rcases Nat.eq_zero_or_pos n with rfl | hn0
@@ -2136,7 +2149,7 @@ theorem segExact_callImg {frame : String → Option (BitVec 64)}
         exact hlen
       · exact hlen' hn0
     have hend : sa'.reg.lpc + 1 = body.length := by
-      have hh : findInstrMem (singletonProgM fn (callImg slotArr res args body)) t.prog
+      have hh : findInstrMem (singletonProgM fn (callImg slotArr site body)) t.prog
           = none := hhalt
       rw [OwnedLprogTV.findInstrMem_single hfn', List.getElem?_eq_none_iff, callImg_length,
         ← hrel'.pc] at hh
@@ -2149,10 +2162,10 @@ theorem segExact_callImg {frame : String → Option (BitVec 64)}
     byte simulation `ByteSeg` of the segments. Let the body pass `physImgB`, `imgGateCB` and
     `callSitesB`; let `callFlagsB` and `condLiveB` accept the table `D`; let the callee meet
     its specification; let every step of the instruction set `I` be a checked step of the
-    x86 instruction set and the steps of `I` on the image `callImg` at the destination `res`
-    and the operands `args` keep the agreement of `D` (`DeadSteps`); and let each step
-    `Glue` of the image at a call position `p` be a step of the site (`SiteStep`) at the dead
-    names of `p` and `p + 1`. Then every halting run of `I.withProcs T` on the image, from an
+    x86 instruction set and the steps of `I` on the image `callImg` at the destinations and
+    operands `site` keep the agreement of `D` (`DeadSteps`); and let each step `Glue` of the
+    image at a call position `p`, from a state at the counter `p`, be a step of the site
+    (`SiteStep`) at the dead names of `p` and `p + 1`. Then every halting run of `I.withProcs T` on the image, from an
     image state in `fn` at a position of the body where no flag is live, related up to the
     dead names of its position to an address state that corresponds to a byte state, is
     matched by a run of `prog` under the oracle to a byte state that satisfies `Fin` with the
@@ -2164,21 +2177,21 @@ theorem haltsO_of_deadChecksS {frame : String → Option (BitVec 64)}
     {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c)
     {prog : List RInstr} {pos : Nat → Nat} {tgt : Nat} {D : DeadTab}
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
-    {T : LprogIsa.ProcTable} {fn res : String} {args : List LOperand} {I : LprogIsa.Isa}
+    {T : LprogIsa.ProcTable} {fn : String} {site : Nat → String × List String} {I : LprogIsa.Isa}
     (hI : ∀ P i s t, I.step P i s = some t →
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
-    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr res args body)))
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr site body)))
     {FinA : LstateA → AState → Prop}
     (hbytes : ByteSeg frame rsp body (oracleAt tgt X) prog pos tgt FinA)
     {Fin : LstateMF → AState → Prop}
     (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf → FinA sa sA → Fin t sA)
     (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
-    (hStep : ∀ p u v, Glue T (singletonProgM fn (callImg slotArr res args body)) p u v →
-      (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) →
+    (hStep : ∀ p u v, Glue T (singletonProgM fn (callImg slotArr site body)) p u v →
+      u.prog.base.reg.lpc = p → (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) →
       SiteStep frame slotArr base rsp body X c (D.dead p) (D.dead (p + 1)) u v)
     (n : Nat) {s t : LstateMF}
     (hrun : (I.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr res args body)) n s = some t)
+      (singletonProgM fn (callImg slotArr site body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
@@ -2196,7 +2209,7 @@ theorem haltsO_of_deadChecksS {frame : String → Option (BitVec 64)}
     cases hret
   exact haltsO_of_runChainS hX (callFlagsB_spec hflags) hcl
     (segSim_of_segExact hD
-      (segExact_callImg hsep hphys hG hsites (condLiveB_spec hcond) hbytes hI hfin res args T
+      (segExact_callImg hsep hphys hG hsites (condLiveB_spec hcond) hbytes hI hfin site T
         fn) hFin)
     hStep (runChain_of_run _ T _ n s t hrun) sa sA hfn hlen hL hI0 hA
 
@@ -2223,16 +2236,17 @@ theorem haltsO_of_deadChecks {frame : String → Option (BitVec 64)}
     {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
     (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
     {prog : List RInstr} {pos : Nat → Nat} {tgt : Nat} {D : DeadTab}
-    (hdead : callDeadB c res D.dead body = true) (hflags : callFlagsB D body = true)
+    (hdead : callDeadB c (fun _ => (res, c.args)) D.dead body = true)
+    (hflags : callFlagsB D body = true)
     (hcond : condLiveB D body = true)
     {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some pr)
-    (hshape : siteShapeB f res c.args
-      (callImg slotArr res (c.args.map LOperand.reg) body) = true)
+    (hshape : siteShapeB f (fun _ => (res, c.args))
+      (callImg slotArr (fun _ => (res, c.args)) body) = true)
     {I : LprogIsa.Isa}
     (hI : ∀ P i s t, I.step P i s = some t →
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
     (hD : DeadSteps D I
-      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)))
+      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)))
     {FinA : LstateA → AState → Prop}
     (hbytes : ByteSeg frame rsp body (oracleAt tgt X) prog pos tgt FinA)
     {Fin : LstateMF → AState → Prop}
@@ -2240,13 +2254,13 @@ theorem haltsO_of_deadChecks {frame : String → Option (BitVec 64)}
     (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
     (n : Nat) {s t : LstateMF}
     (hrun : (I.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)) n s = some t)
+      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
     ∃ sA', HaltsO aMachine (oracleAt tgt X) prog (pos sa.reg.lpc) sA sA' ∧ Fin t sA' :=
   haltsO_of_deadChecksS hsep hphys hgate hsites hX hflags hcond hI hD hbytes hfin hFin
-    (fun _ _ _ hg hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb
+    (fun _ _ _ hg _ hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb
       (glue_regArgs hw.wordOnly hw.wordRet (sitesOf_of_siteShapeB hshape hT) hg))
     n hrun hfn hlen hL hI0 hA
 
@@ -2315,20 +2329,20 @@ theorem haltsO_of_linkedChecksS {frame : String → Option (BitVec 64)}
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) tgt L
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab} (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
-    {T : LprogIsa.ProcTable} {fn res : String} {args : List LOperand} {I : LprogIsa.Isa}
+    {T : LprogIsa.ProcTable} {fn : String} {site : Nat → String × List String} {I : LprogIsa.Isa}
     (hI : ∀ P i s t, I.step P i s = some t →
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
-    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr res args body)))
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr site body)))
     {Fin : LstateMF → AState → Prop}
     (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
       LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
     (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
-    (hStep : ∀ p u v, Glue T (singletonProgM fn (callImg slotArr res args body)) p u v →
-      (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) →
+    (hStep : ∀ p u v, Glue T (singletonProgM fn (callImg slotArr site body)) p u v →
+      u.prog.base.reg.lpc = p → (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) →
       SiteStep frame slotArr base rsp body X c (D.dead p) (D.dead (p + 1)) u v)
     (n : Nat) {s t : LstateMF}
     (hrun : (I.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr res args body)) n s = some t)
+      (singletonProgM fn (callImg slotArr site body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
@@ -2366,23 +2380,24 @@ theorem haltsO_of_linkedChecks {frame : String → Option (BitVec 64)}
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) tgt L
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab}
-    (hdead : callDeadB c res D.dead body = true) (hflags : callFlagsB D body = true)
+    (hdead : callDeadB c (fun _ => (res, c.args)) D.dead body = true)
+    (hflags : callFlagsB D body = true)
     (hcond : condLiveB D body = true)
     {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some pr)
-    (hshape : siteShapeB f res c.args
-      (callImg slotArr res (c.args.map LOperand.reg) body) = true)
+    (hshape : siteShapeB f (fun _ => (res, c.args))
+      (callImg slotArr (fun _ => (res, c.args)) body) = true)
     {I : LprogIsa.Isa}
     (hI : ∀ P i s t, I.step P i s = some t →
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
     (hD : DeadSteps D I
-      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)))
+      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)))
     {Fin : LstateMF → AState → Prop}
     (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
       LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
     (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
     (n : Nat) {s t : LstateMF}
     (hrun : (I.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)) n s = some t)
+      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
@@ -2391,7 +2406,7 @@ theorem haltsO_of_linkedChecks {frame : String → Option (BitVec 64)}
       ∧ Fin t sA' :=
   haltsO_of_linkedChecksS hsep hphys hgate hsites hX hcls hshapes hfr symBase hP hflags hcond
     hI hD hfin hFin
-    (fun _ _ _ hg hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb
+    (fun _ _ _ hg _ hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb
       (glue_regArgs hw.wordOnly hw.wordRet (sitesOf_of_siteShapeB hshape hT) hg))
     n hrun hfn hlen hL hI0 hA
 
@@ -2429,20 +2444,20 @@ theorem haltsC_of_linkedChecksS {frame : String → Option (BitVec 64)}
       (LprogBytes.encodeLfundefBytesReloc symBase body).length
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab} (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
-    {T : LprogIsa.ProcTable} {fn res : String} {args : List LOperand} {I : LprogIsa.Isa}
+    {T : LprogIsa.ProcTable} {fn : String} {site : Nat → String × List String} {I : LprogIsa.Isa}
     (hI : ∀ P i s t, I.step P i s = some t →
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
-    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr res args body)))
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr site body)))
     {Fin : LstateMF → AState → Prop}
     (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
       LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
     (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
-    (hStep : ∀ p u v, Glue T (singletonProgM fn (callImg slotArr res args body)) p u v →
-      (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) →
+    (hStep : ∀ p u v, Glue T (singletonProgM fn (callImg slotArr site body)) p u v →
+      u.prog.base.reg.lpc = p → (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) →
       SiteStep frame slotArr base rsp body (Callee.runOf r q) c (D.dead p) (D.dead (p + 1)) u v)
     (n : Nat) {s t : LstateMF}
     (hrun : (I.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr res args body)) n s = some t)
+      (singletonProgM fn (callImg slotArr site body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
@@ -2496,23 +2511,24 @@ theorem haltsC_of_linkedChecks {frame : String → Option (BitVec 64)}
       (LprogBytes.encodeLfundefBytesReloc symBase body).length
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab}
-    (hdead : callDeadB c res D.dead body = true) (hflags : callFlagsB D body = true)
+    (hdead : callDeadB c (fun _ => (res, c.args)) D.dead body = true)
+    (hflags : callFlagsB D body = true)
     (hcond : condLiveB D body = true)
     {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some pr)
-    (hshape : siteShapeB f res c.args
-      (callImg slotArr res (c.args.map LOperand.reg) body) = true)
+    (hshape : siteShapeB f (fun _ => (res, c.args))
+      (callImg slotArr (fun _ => (res, c.args)) body) = true)
     {I : LprogIsa.Isa}
     (hI : ∀ P i s t, I.step P i s = some t →
       JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
     (hD : DeadSteps D I
-      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)))
+      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)))
     {Fin : LstateMF → AState → Prop}
     (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
       LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
     (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
     (n : Nat) {s t : LstateMF}
     (hrun : (I.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr res (c.args.map LOperand.reg) body)) n s = some t)
+      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
     (hL : D.live sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
@@ -2523,7 +2539,7 @@ theorem haltsC_of_linkedChecks {frame : String → Option (BitVec 64)}
         ∧ Fin t sA' :=
   haltsC_of_linkedChecksS hsep hphys hgate hsites r hX hq hcls hshapes hfr symBase hcb hne hbr
     hP hflags hcond hI hD hfin hFin
-    (fun _ _ _ hg hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb
+    (fun _ _ _ hg _ hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb
       (glue_regArgs hw.wordOnly hw.wordRet (sitesOf_of_siteShapeB hshape hT) hg))
     n hrun hfn hlen hL hI0 hA
 

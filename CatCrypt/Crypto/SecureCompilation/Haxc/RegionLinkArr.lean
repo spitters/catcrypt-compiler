@@ -21,7 +21,8 @@ word in a register runs on its bytes through the call of the code of `l`, when t
 `l` meets the contract of `l` (`SContract (runOf ctRegime qk) l.contract`). The route is
 that of `RegionLinkCall.compileRegion_correct_linked_outO` with a word result: the reference
 run of the gate (`RegionLinkCompose.regionCo_bytes_callee`) at the array positions of the
-summary, the image run at the call site `calleeSite` (`RegionLinkCompose.calleeBody_imgRun_at`),
+summary, the image run at the call sites `calleeSiteAt`
+(`RegionLinkCompose.calleeBody_imgRun_at`),
 whose operands at the array parameters are the arrays whose frame slots the argument
 registers reload, and the run chain at the interface of the contract
 (`ImageAddrCallMeets.haltsC_of_contract_ins`, `ImageAddrCallMeets.haltsO_of_contract_ins`),
@@ -219,27 +220,32 @@ theorem compileRegion_correct_contract_ins
   have hcb0 : cellBody (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b = b :=
     cellBody_of_cellArrsOf_nil _ (cellArrsOf_nil_of_regionCells_nil (hcellsE ▸ hcells))
   rw [hcb0] at hphys hrelF
-  -- The destination of the call site is the result register.
-  have hs1 : (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).1 = c.resReg := by
-    simp only [calleeSite, hr0]
+  -- The destination of every call site is the result register.
+  have hs1 : ∀ p, (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b p).1
+      = c.resReg := by
+    intro p
+    simp only [calleeSiteAt, hr0]
   -- The checks of the calling body.
-  have hcb' := hcb
-  simp only [calleeBodyB, Bool.and_eq_true] at hcb'
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, hsi⟩, -⟩, -⟩, hsites⟩, hdead⟩, hflags⟩, hcond⟩, hseg⟩,
-    hlive⟩, -⟩, -⟩, hroomB⟩, hnn⟩ := hcb'
+  have hok := calleeBodyB_spec.mp hcb
+  have hsi := hok.shapeImg
+  have hsites := hok.callSites
+  have hdead := hok.dead
+  have hflags := hok.flags
+  have hcond := hok.condLive
+  have hseg := hok.deadSeg
+  have hlive := hok.live0
+  have hroomB := hok.stackRoom
+  have hnn := hok.frameNonneg
   have hdead2 := hdead
   simp only [calleeDeadB, hr0, Bool.and_eq_true] at hdead2
   obtain ⟨hdo, hparB⟩ := hdead2
-  rw [hs1] at hsi hdo hflags hcond hseg hlive
-  have hdead' : X86Backend.ImageAddrCallArrChain.callDeadInsB
-      (l.contractSig (c.ins.map (·.1)) (some c.resReg)) c.resReg
-      (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2
+  have hdead' : X86Backend.ImageAddrCall.callDeadB
+      (l.contractSig (c.ins.map (·.1)) (some c.resReg))
+      (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
       (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
-        c.resReg
-        ((calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.map LOperand.reg)
+        (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
         b) d.outs).dead b = true := by
-    unfold X86Backend.ImageAddrCallArrChain.callDeadInsB X86Backend.ImageAddrCall.exemptC
-    unfold X86Backend.ImageAddrCall.callDeadB X86Backend.ImageAddrCall.exemptC at hdo
+    unfold X86Backend.ImageAddrCall.callDeadB X86Backend.ImageAddrCall.exemptC at hdo ⊢
     simpa [CatCrypt.Crypto.Hax.LinkedFn.contractSig, CalleeData.sig, CalleeData.ins_map_fst,
       hcclob, hcsig] using hdo
   -- The bytes of the calling body.
@@ -249,7 +255,6 @@ theorem compileRegion_correct_contract_ins
     ⟨⟨X86Backend.ImageAddrRoute.entryV σ (X86Backend.ImageAddrRoute.frameE b sa) sa
       (X86Backend.ImageAddrRoute.unren d.ps), a.fname⟩, false⟩
     u rfl rfl hbnd k hu (.inl (insSummary_retWord l c.ins))
-  rw [hs1] at himgrun
   -- The caller separation at the renamed slot map.
   have RF := X86Backend.ImageAddrRoute.renB_spec hren
   have E := X86Backend.ImageAddrRoute.entryB_spec hent sa
@@ -283,7 +288,7 @@ theorem compileRegion_correct_contract_ins
       List.Forall₂ (X86Backend.LinkedFnCallee.ParamAt
         (slotRen (slotArrOf σ exportReg) (renOf d.ps))
         (X86Backend.ImageAddrRouteW.baseR σ sa d.ps) sa0) c.ins
-        (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2 :=
+        (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b sa0.reg.lpc).2 :=
     fun _ _ _ _ hrel _ hcall => callParamsB_forall₂ hparB hsep hgateI hrel hcall
   -- The end of the run: the words of the arrays of the slot map at their bases.
   let Fin : LstateMF → AState → Prop := fun t sA => ∀ q A n,
@@ -304,8 +309,7 @@ theorem compileRegion_correct_contract_ins
     exact h2 j hj
   have hFin : ∀ t1 t2 sA, X86Backend.ImageAddrCall.AgreeOffF
       ((deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
-        c.resReg
-        ((calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.map LOperand.reg)
+        (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
         b) d.outs).dead t1.prog.base.reg.lpc) t1 t2 →
       Fin t2 sA → Fin t1 sA := by
     intro t1 t2 sA hag hF2 q A n hq
@@ -318,8 +322,7 @@ theorem compileRegion_correct_contract_ins
     rw [hpc0]
     exact List.length_pos_iff.mpr hbne
   have hL0 : (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
-      (renOf d.ps)) c.resReg
-      ((calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.map LOperand.reg)
+      (renOf d.ps)) (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
       b) d.outs).live (X86Backend.ImageAddrRoute.entryA σ sa).reg.lpc = false := by
     rw [hpc0]
     simpa using hlive
@@ -328,7 +331,7 @@ theorem compileRegion_correct_contract_ins
   obtain ⟨hdec, sA', hhalt, hfinal⟩ :=
     X86Backend.ImageAddrCallMeets.haltsC_of_contract_ins hsep hphys
       ((imgGateCB_frameMark b _ _).trans hgate) hsites ctRegime hL hm hnc hnd hfb hS hparF
-      hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
+      (fun p _ => hs1 p) hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
       (calleeSym c b) hqk hne hbr hP hdead' hflags hcond hTc hsi
       X86Backend.CheckedIsaCall.x86IsaK_checked (X86Backend.CheckedIsaCall.deadSteps_x86K hseg)
       hfin hFin fuel' himgrun rfl hlen hL0 (hrelF _) hacorr
@@ -336,7 +339,7 @@ theorem compileRegion_correct_contract_ins
   obtain ⟨sO, hhaltO, hfinalO⟩ :=
     X86Backend.ImageAddrCallMeets.haltsO_of_contract_ins hsep hphys
       ((imgGateCB_frameMark b _ _).trans hgate) hsites hL
-      (sContract_guarded hm c.args (some c.resReg)) hnd hfb hS hparF
+      (sContract_guarded hm c.args (some c.resReg)) hnd hfb hS hparF (fun p _ => hs1 p)
       hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
       (calleeSym c b) hP hdead' hflags hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
       (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hL0
@@ -512,21 +515,30 @@ theorem compileRegion_correct_contract_out
     cellBody_of_cellArrsOf_nil _ (cellArrsOf_nil_of_regionCells_nil (hcellsE ▸ hcells))
   rw [hcb0] at hphys hrelF
   -- The checks of the calling body.
-  have hcb' := hcb
-  simp only [calleeBodyB, Bool.and_eq_true] at hcb'
-  obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, hsi⟩, -⟩, -⟩, hsites⟩, hdead⟩, hflags⟩, hcond⟩, hseg⟩,
-    hlive⟩, -⟩, -⟩, hroomB⟩, hnn⟩ := hcb'
+  have hok := calleeBodyB_spec.mp hcb
+  have hsi := hok.shapeImg
+  have hsites := hok.callSites
+  have hdead := hok.dead
+  have hflags := hok.flags
+  have hcond := hok.condLive
+  have hseg := hok.deadSeg
+  have hlive := hok.live0
+  have hroomB := hok.stackRoom
+  have hnn := hok.frameNonneg
   have hdead2 := hdead
   simp only [calleeDeadB, hcr, Bool.and_eq_true] at hdead2
-  obtain ⟨⟨hdo, -⟩, hparB⟩ := hdead2
-  -- The destination array and the dead names at the interface of the contract.
-  obtain ⟨qA, hqA⟩ := calleeSite_dest hcr hdead (po := po) (n := n) hdk
+  obtain ⟨hdo, hparB⟩ := hdead2
+  -- The destination array at every call and the dead names at the interface of the contract.
+  have hqA : ∀ i, (∃ bi ra t, b[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∃ qA, slotRen (slotArrOf σ exportReg) (renOf d.ps) qA
+        = some ((calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).1, n) := by
+    rintro i ⟨bi, ra, t, hb, hbi⟩
+    exact calleeSite_dest hcr hdead hb hbi hdk
   have hdead' : X86Backend.ImageAddrCallOutChain.callDeadOutB
       (l.contractSig (c.ins.map (·.1)) none)
-      (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2
+      (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
       (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
-        (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).1
-        ((calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.map LOperand.reg)
+        (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
         b) d.outs).dead b = true := by
     unfold X86Backend.ImageAddrCallOutChain.callDeadOutB X86Backend.ImageAddrCall.exemptC
       at hdo ⊢
@@ -534,43 +546,43 @@ theorem compileRegion_correct_contract_out
       hcclob, hcr, CalleeRes.reg?] using hdo
   -- The bytes of the calling body.
   obtain ⟨rfl, hne, ds, prog, hss, hbr, hP, hp0⟩ := calleeBytes_some hbs
-  -- The destination of the call site is the operand at the destination position.
-  have hsite : calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b
-      = ((calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.getD kd "",
-        (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2) := by
-    simp only [calleeSite, hcr]
-  have hlops : (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.length
-      = c.ins.length := by
-    simp [calleeSite, hcr, CalleeData.siteArgs]
+  -- The destination of every call site is the operand at the destination position.
   obtain ⟨hk, hik⟩ := List.getElem?_eq_some_iff.mp hdk
-  have hk2 : kd < (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.length :=
-    hlops ▸ hk
-  have hA : ((po, ArgKind.words n),
-      (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).1)
-      ∈ c.ins.zip (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2 := by
+  have hA : ∀ i, ((po, ArgKind.words n),
+      (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).1)
+      ∈ c.ins.zip (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).2 := by
+    intro i
+    have hsite : calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i
+        = ((calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).2.getD kd "",
+          (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).2) := by
+      simp only [calleeSiteAt, hcr]
+    have hk2 : kd < (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).2.length
+        := by
+      rw [calleeSiteAt_snd, CalleeData.siteArgs_length]
+      exact hk
     rw [List.mem_iff_getElem]
     refine ⟨kd, by simp [hk, hk2], ?_⟩
     simp only [List.getElem_zip, hik]
     conv_rhs => rw [hsite]
     rw [List.getD_eq_getElem _ _ hk2]
-  have hmem : (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).1
-      ∈ (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2 :=
-    (List.of_mem_zip hA).2
-  -- The image run at the table, at the call site, whose destination is an operand.
+  -- The image run at the table, at the call sites, whose destinations are operands.
   obtain ⟨fuel', t', himgrun, hobs⟩ := RegionLinkCompose.calleeBody_imgRun_at hcb hTc hpar
     ⟨⟨X86Backend.ImageAddrRoute.entryV σ (X86Backend.ImageAddrRoute.frameE b sa) sa
       (X86Backend.ImageAddrRoute.unren d.ps), a.fname⟩, false⟩
-    u rfl rfl hbnd k hu (.inr hmem)
-  -- The destination operand is no other array operand (`outDestB`).
-  have hdst : ∀ r n', l.layout.result = .words r n' → ∀ p x,
-      (p, x) ∈ c.ins.zip (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2 →
+    u rfl rfl hbnd k hu (.inr fun i => (List.of_mem_zip (hA i)).2)
+  -- The destination operand is no other array operand (`outDestB`), at every call.
+  have hdst : ∀ i, (∃ bi ra t, b[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∀ r n', l.layout.result = .words r n' → ∀ p x,
+      (p, x) ∈ c.ins.zip (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).2 →
       p.2 ≠ .scalar → X86Backend.DecodePrinted.phys p.1 ≠ r → ∀ p' x',
-      (p', x') ∈ c.ins.zip (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2 →
+      (p', x') ∈ c.ins.zip
+        (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b i).2 →
       X86Backend.DecodePrinted.phys p'.1 = r → x ≠ x' := by
-    intro r1 n1 hr1 p x hpx hs hpr p' x' hpx' hp'r
+    rintro i ⟨bi, ra, tg, hb, hbi⟩ r1 n1 hr1 p x hpx hs hpr p' x' hpx' hp'r
     rw [hL.result] at hr1
     cases hr1
-    have hod := (outDestB_iff hcr hdk).1 (outDestB_of_callParamsB hparB)
+    rw [calleeSiteAt_snd] at hpx hpx'
+    have hod := (outDestB_iff hcr hdk).1 (outDestB_of_callParamsB hparB hb hbi)
     exact hod p x hpx hs (fun he => hpr (by rw [he])) p' x' hpx'
       (X86Backend.DecodePrinted.phys_inj (hL.ins_gp p' (List.of_mem_zip hpx').1) hL.po_gp hp'r)
   -- The caller separation at the renamed slot map.
@@ -606,7 +618,7 @@ theorem compileRegion_correct_contract_out
       List.Forall₂ (X86Backend.LinkedFnCallee.ParamAt
         (slotRen (slotArrOf σ exportReg) (renOf d.ps))
         (X86Backend.ImageAddrRouteW.baseR σ sa d.ps) sa0) c.ins
-        (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2 :=
+        (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b sa0.reg.lpc).2 :=
     fun _ _ _ _ hrel _ hcall => callParamsB_forall₂ hparB hsep hgateI hrel hcall
   -- The end of the run: the words of the arrays of the slot map at their bases.
   let Fin : LstateMF → AState → Prop := fun t sA => ∀ q A n,
@@ -627,8 +639,7 @@ theorem compileRegion_correct_contract_out
     exact h2 j hj
   have hFin : ∀ t1 t2 sA, X86Backend.ImageAddrCall.AgreeOffF
       ((deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
-        (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).1
-        ((calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.map LOperand.reg)
+        (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
         b) d.outs).dead t1.prog.base.reg.lpc) t1 t2 →
       Fin t2 sA → Fin t1 sA := by
     intro t1 t2 sA hag hF2 q A n hq
@@ -641,8 +652,7 @@ theorem compileRegion_correct_contract_out
     rw [hpc0]
     exact List.length_pos_iff.mpr hbne
   have hL0 : (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
-      (renOf d.ps)) (calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).1
-      ((calleeSite c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b).2.map LOperand.reg)
+      (renOf d.ps)) (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
       b) d.outs).live (X86Backend.ImageAddrRoute.entryA σ sa).reg.lpc = false := by
     rw [hpc0]
     simpa using hlive
@@ -650,8 +660,8 @@ theorem compileRegion_correct_contract_out
   -- The run through the call.
   obtain ⟨hdec, sA', hhalt, hfinal⟩ :=
     X86Backend.ImageAddrCallMeets.haltsC_of_contract_out hsep hphys
-      ((imgGateCB_frameMark b _ _).trans hgate) hsites ctRegime hL hm hnc hnd hfb hS hqA hA
-      hparF hdst hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
+      ((imgGateCB_frameMark b _ _).trans hgate) hsites ctRegime hL hm hnc hnd hfb hS hqA
+      (fun i _ => hA i) hparF hdst hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
       (calleeSym c b) hqk hne hbr hP hdead' hflags hcond hTc hsi
       X86Backend.CheckedIsaCall.x86IsaK_checked (X86Backend.CheckedIsaCall.deadSteps_x86K hseg)
       hfin hFin fuel' himgrun rfl hlen hL0 (hrelF _) hacorr
@@ -659,7 +669,7 @@ theorem compileRegion_correct_contract_out
   obtain ⟨sO, hhaltO, hfinalO⟩ :=
     X86Backend.ImageAddrCallMeets.haltsO_of_contract_out hsep hphys
       ((imgGateCB_frameMark b _ _).trans hgate) hsites hL
-      (sContract_guarded hm c.args none) hnd hfb hS hqA hA hparF hdst
+      (sContract_guarded hm c.args none) hnd hfb hS hqA (fun i _ => hA i) hparF hdst
       hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
       (calleeSym c b) hP hdead' hflags hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
       (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hL0

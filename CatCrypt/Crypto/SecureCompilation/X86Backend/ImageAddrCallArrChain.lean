@@ -32,8 +32,6 @@ whose layout passes the parameters `ins` in registers and returns a word in a re
   on the parameters `ins` with a word result.
 * `InsCallee`: the reading of an interface as a procedure summary at a summary input `rd`
   with a word result in a register.
-* `callDeadInsB`: the check of the dead names at the calls of a body whose shadow
-  instructions have the operands `args` and the destination `res`.
 
 ## Main results
 
@@ -229,44 +227,20 @@ theorem procStep_ins {pr : LprogIsa.ProcSummary} (hrw : pr.RetWord) {dst : Strin
   · cases h
 
 /-- **The step `Glue` at a shadow instruction of a summary without a word-array result**,
-    for a body whose shadow instructions are calls of `pr` on the registers `args` with the
-    destination `res`. -/
+    for a body whose shadow instructions are calls of `pr` on the registers `(site p).2` with
+    the destination `(site p).1`. -/
 theorem glue_ins {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
-    {pr : LprogIsa.ProcSummary} (hrw : pr.RetWord) {res : String} {args : List String}
-    (hsite : SitesOf T B pr res args) {p : Nat} {u v : LstateMF}
+    {pr : LprogIsa.ProcSummary} (hrw : pr.RetWord) {site : Nat → String × List String}
+    (hsite : SitesOf T B pr site) {p : Nat} {u v : LstateMF}
     (hg : Glue T (singletonProgM fn B) p u v) :
-    ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 (args.map LOperand.reg) = some vs
-      ∧ pr.run vs = some w ∧ v = LprogIsa.retWord res w u := by
+    ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
+        = some vs
+      ∧ pr.run vs = some w ∧ v = LprogIsa.retWord (site p).1 w u := by
   obtain ⟨i, pr', dst, srcs, hi, hq, hstep⟩ := hg
   obtain ⟨rfl, rfl, rfl⟩ := hsite p i pr' dst srcs hi hq
   exact procStep_ins hrw hstep
 
-/-! ## 4. The dead names at the calls and the step of a call site -/
-
-/-- **The check of the dead names at the calls of a body on the operands `args`**: at each
-    call instruction, at position `p`, no name of `args` is dead, and the names dead at `p`
-    other than the result name `res` and the names `exemptC c` are dead at `p + 1`. -/
-def callDeadInsB (c : CalleeSig) (res : String) (args : List String) (E : Nat → List String)
-    (body : Lcmd) : Bool :=
-  (List.range body.length).all fun p => (body[p]?).all fun bi =>
-    !isCallB bi.li_i ||
-      (args.all (fun a => !(E p).contains a)
-        && (((E p).filter fun r => r != res) ++ exemptC c).all
-            (fun r => (E (p + 1)).contains r))
-
-/-- **Soundness of `callDeadInsB`** at a call instruction. -/
-theorem callDeadInsB_spec {c : CalleeSig} {res : String} {args : List String}
-    {E : Nat → List String} {body : Lcmd} (h : callDeadInsB c res args E body = true) {p : Nat}
-    {bi : Linstr} (hb : body[p]? = some bi) {ra : Option String} {tgt : String × LLabel}
-    (hbi : bi.li_i = .Lcall ra tgt) :
-    (∀ a ∈ args, a ∉ E p)
-      ∧ ∀ r ∈ ((E p).filter fun r => r != res) ++ exemptC c, r ∈ E (p + 1) := by
-  simp only [callDeadInsB, List.all_eq_true, List.mem_range] at h
-  have hp := h p (List.getElem?_eq_some_iff.mp hb).1
-  rw [hb] at hp
-  simp only [Option.all_some, hbi, isCallB, Bool.not_true, Bool.false_or, Bool.and_eq_true,
-    List.all_eq_true] at hp
-  exact ⟨fun a ha => by simpa using hp.1 a ha, fun r hr => by simpa using hp.2 r hr⟩
+/-! ## 4. The step of a call site -/
 
 /-- **The step of a call site of a callee on scalars and read-only arrays.** Let the callee
     meet its specification and have the reading `pr` at the summary input `rd` with the word
@@ -274,9 +248,10 @@ theorem callDeadInsB_spec {c : CalleeSig} {res : String} {args : List String}
     for a callee of `FootBelow`. Let, at every call of the body, from an image state related
     by `ImgRel` to an address state that corresponds to a byte state, the entry state of the
     call satisfy `room` and the summary input of the entry state be the argument words of the
-    operands `args`. Under `callDeadInsB` at a call position `p`, a step to the image state
-    after the word of the summary at the argument words of `args` is a step of the site
-    (`SiteStep`) at the dead names of `p` and `p + 1`. -/
+    operands of the site of the call. Under `callDeadB` at a call position `p` whose site has
+    the destination `res`, a step from an image state at the counter `p` to the image state
+    after the word of the summary at the argument words of `(site p).2` is a step of the
+    site (`SiteStep`) at the dead names of `p` and `p + 1`. -/
 theorem siteStep_ins {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
@@ -287,29 +262,32 @@ theorem siteStep_ins {frame : String → Option (BitVec 64)}
     (hroom : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
       (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
       ∀ ret, room (entryOf ret sA))
-    {args : List String}
+    {site : Nat → String × List String}
     (hentry : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
       (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
-      ∀ ret vs, LprogIsa.argsRead pr.arrArgs s.prog.base 0 (args.map LOperand.reg)
-        = some vs → rd (entryOf ret sA) = vs)
-    {E : Nat → List String} (hdead : callDeadInsB c res args E body = true) {p : Nat}
-    (hb : ∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) {u v : LstateMF}
-    (hv : ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 (args.map LOperand.reg)
-        = some vs ∧ pr.run vs = some w ∧ v = LprogIsa.retWord res w u) :
+      ∀ ret vs, LprogIsa.argsRead pr.arrArgs s.prog.base 0
+        ((site sa.reg.lpc).2.map LOperand.reg) = some vs → rd (entryOf ret sA) = vs)
+    {E : Nat → List String} (hdead : callDeadB c site E body = true) {p : Nat}
+    (hb : ∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) (hres : (site p).1 = res)
+    {u v : LstateMF} (hpc : u.prog.base.reg.lpc = p)
+    (hv : ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
+        = some vs ∧ pr.run vs = some w ∧ v = LprogIsa.retWord (site p).1 w u) :
     SiteStep frame slotArr base rsp body X c (E p) (E (p + 1)) u v := by
   obtain ⟨bi, ra, t, hb, hbi⟩ := hb
   obtain ⟨vs, w, hvs, hw', rfl⟩ := hv
-  obtain ⟨hargs, hsub⟩ := callDeadInsB_spec hdead hb hbi
+  obtain ⟨hargs, hsub⟩ := callDeadB_spec hdead hb hbi
+  rw [hres] at hsub ⊢
   refine ⟨res, .word w, rfl, fun u' hag => ?_, hsub⟩
-  have hvs' : LprogIsa.argsRead pr.arrArgs u'.prog.base 0 (args.map LOperand.reg)
+  have hvs' : LprogIsa.argsRead pr.arrArgs u'.prog.base 0 ((site p).2.map LOperand.reg)
       = some vs := by
     rw [LprogIsa.argsRead_regs_congr pr.arrArgs hag.arr.symm 0
       fun x hx => (hag.regs x (hargs x hx)).symm]
     exact hvs
   intro sa zf sA hrel hc hcall ret
+  have hsp : sa.reg.lpc = p := hrel.pc.trans (hag.pc.symm.trans hpc)
   obtain ⟨bi', ra', t', hb', hbi'⟩ := hcall
   obtain ⟨hpre, hall⟩ := call_reestablishes_ins hsep hphys hX hw hS hF hrel hc hb' hbi' ret
-    (hentry u' sa zf sA hrel hc ⟨bi', ra', t', hb', hbi'⟩ ret vs hvs')
+    (hentry u' sa zf sA hrel hc ⟨bi', ra', t', hb', hbi'⟩ ret vs (by rw [hsp]; exact hvs'))
     (hroom u' sa zf sA hrel hc ⟨bi', ra', t', hb', hbi'⟩ ret) hw'
   exact ⟨hpre, fun t sc hrun => (hall t sc hrun).2⟩
 
