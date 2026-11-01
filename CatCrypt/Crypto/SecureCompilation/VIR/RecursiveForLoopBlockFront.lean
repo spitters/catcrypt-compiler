@@ -284,15 +284,14 @@ theorem demoNested_two_backedges :
             | .Lcond (.reg "NZ") _ => true | _ => false)).length == 2))
       = some true := by native_decide
 
-/-- **The inner loop is a bottom-test do-while:** the inner `whileNz`
-    contributes its back-edge with no zero-trip top guard of its own — the only
-    `Lcond Z` in the lowering is the outer block's counted zero-trip skip (the
-    `forLoopBlock` frame), so there is exactly **one** `Lcond Z`, not two. -/
-theorem demoNested_inner_dowhile :
+/-- **Both loops are zero-trip guarded:** the outer block's counted skip (the
+    `forLoopBlock` frame) and the inner `whileNz`'s skip at a zero seed, so the
+    lowering carries exactly **two** `Lcond Z`. -/
+theorem demoNested_zero_trip_guards :
     ((demoNested ()).map (fun c =>
         let body := comLToBody 4 argName (fun _ => none) c 4
         (body.filter (fun i => match i.li_i with
-            | .Lcond (.reg "Z") _ => true | _ => false)).length == 1))
+            | .Lcond (.reg "Z") _ => true | _ => false)).length == 2))
       = some true := by native_decide
 
 /-- **The lowered nested body ends with `Lret`** — the two loop back-edges are

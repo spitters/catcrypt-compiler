@@ -79,7 +79,7 @@ return included — names an address the program text contains.
 ## Scope
 
 `OwnedCF.loop` carries a `Nat` trip count, so the runtime-trip exporters
-(`forLoopLcmdNRt`, `whileLcmdNz`, `forLoopLcmdNRtNested`, `blockLoopFrame`,
+(`forLoopLcmdNRt`, `forLoopLcmdNRtNested`, `blockLoopFrame`,
 `forLoopBlockLcmd`) are outside the recogniser: they seed the counter from an
 operand, and they wrap the loop in a zero-trip top guard whose guard is a
 condition code rather than a general-purpose register.

@@ -2148,7 +2148,7 @@ def physBodyRmap (rmap : LOperand → LOperand) (shiftImm : ShiftImmOracle)
           -- spill slots renders as an illegal `mov mem, mem`. This is the 3-deep
           -- block-loop failure mode: at that nesting the loop-carried scalars
           -- (accumulator / index / counter) all spill, so the loop-init and
-          -- accumulator-feedback `MOV`s (`whileLcmdNz`, `blockLoopFrame`) get
+          -- accumulator-feedback `MOV`s (`forLoopLcmdNRt`, `blockLoopFrame`) get
           -- both operands in the frame. `legalizeMov` routes one side through the
           -- reserved reload scratch `R15` (`mov R15, src; mov dst, R15`), exactly
           -- as the two-address binop's leading-`mov` legalizer does. It is the

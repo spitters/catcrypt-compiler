@@ -25,16 +25,17 @@ module is the source-node half, mirroring
 `TranslateDialectRuntimeLoop.rolledForLoopNRt`: the SAME `frontLoopBodyJ` body
 front-compile, wrapped in the `ComL.whileNz` node (`JasminLprogExport`) — the
 committed `RWhileNz` countdown idiom `while (n != 0) { …body…; n -= 1 }`, whose
-lowering `whileLcmdNz` is the do-while `whileLinstrRM` image (`Llabel; body;
-guard-compute; Lcond NZ` — one body copy, a bottom-test back-edge, NO zero-trip
-top guard) and whose source tie is
+lowering is the runtime counted loop `forLoopLcmdNRt` seeded from the guard (a
+zero-trip top guard, one body copy, a bottom-test back-edge) and whose source tie
+for the instruction-level `whileLinstrRM` shape is
 `JasminLsemMemSourceTieWhile.whileMem_export_faithful_comL`.
 
 ```
   bodyLowCT  (RArrLoad / RScalarSetExpr over the loop counter `idx`)
     --(frontLoopBodyJ)------------------------>  Com jasminDialect = JLoopBodyN.update
-    --(ComL.whileNz update guard init invs)--->  ComL   (do-while node, countdown seed `guard`)
-    --(comLToBody / whileLcmdNz)-------------->  Lcmd   (ONE body copy + bottom-test `Lcond NZ`)
+    --(ComL.whileNz update guard init invs)--->  ComL   (countdown node, seed `guard`)
+    --(comLToBody / forLoopLcmdNRt)----------->  Lcmd   (`Lcond Z` skip, ONE body copy,
+                                                          bottom-test `Lcond NZ`)
 ```
 
 ## Design: the guard-driven analogue of `rolledForLoopNRt`
@@ -42,14 +43,13 @@ top guard) and whose source tie is
 * no new `LowCT` constructor (`RWhileNz` already exists) and no new
   `catCryptDialect` op;
 * the loop body reuses `frontLoopBodyJ` verbatim (nothing hand-authored);
-* the export node `ComL.whileNz`, its denotation and its lowering `whileLcmdNz`
-  live in `JasminLprogExport`;
+* the export node `ComL.whileNz`, its denotation and its lowering arm live in
+  `JasminLprogExport`;
 * the **only** delta versus `rolledForLoopNRt` is: the count-driven
   `ComL.forLoopNRt update count` is replaced by the guard-driven
-  `ComL.whileNz update guard` — the countdown seed is re-read from the guard
-  register each pass and bottom-tested, so the machine trip is data-dependent
-  (A3's `whileTripsMem`, read off the run), and for the countdown idiom it
-  provably equals the seed — the count `denote` folds.
+  `ComL.whileNz update guard`, whose counter is seeded from the guard register;
+  the machine trip is data-dependent (A3's `whileTripsMem`, read off the run),
+  and for the countdown idiom it equals the seed, the count `denote` folds.
 
 ## Validation (`native_decide`)
 
@@ -66,9 +66,9 @@ over a 3-element array, countdown guard `n`):
   seed;
 * `whileAccum_trips_data_dependent` — the machine trip `whileTripsMem = 3` is
   read off the run (the initial `n`), not supplied;
-* `whileAccum_lowering_dowhile` — the `comLToBody` lowering carries exactly ONE
-  `Lcond NZ` back-edge and NO `Lcond Z` zero-trip guard — a bottom-test
-  do-while, not `forLoopNRt`'s top-guarded shape.
+* `whileAccum_lowering_guarded` — the `comLToBody` lowering carries exactly ONE
+  `Lcond NZ` back-edge and ONE `Lcond Z` zero-trip guard, `forLoopNRt`'s
+  top-guarded shape.
 
 **All goals closed; axioms ⊆ {propext, Classical.choice, Quot.sound} (+
 `Lean.ofReduceBool` for the `native_decide` validates).**
@@ -100,8 +100,8 @@ The continuation is the primitive parameter: `rolledWhileNzComL` is
     front-compiled loop body. Identical to
     `TranslateDialectRuntimeLoop.rolledForLoopNRtCont` except the wrapper: the
     count-driven `forLoopNRt` is replaced by the guard-driven `whileNz` (the
-    `RWhileNz` countdown idiom — the emitted counter is re-read and bottom-tested
-    each pass, `whileLcmdNz`).
+    `RWhileNz` countdown idiom, lowered through `forLoopLcmdNRt` with the counter
+    seeded from the guard).
 
     * `guard` is the in-scope runtime countdown seed (`.reg 64`) — the guard
       register's initial value, the data-dependent trip the run realises;
@@ -294,7 +294,7 @@ theorem whileAccum_trips_data_dependent :
         (whileMachineBody ()) 10 (whileMachineStart 3).base = 3 := by
   native_decide
 
-/-! ## 4. The lowering is a bottom-test do-while -/
+/-! ## 4. The lowering is the zero-trip-guarded counted loop -/
 
 /-- Collect the `Lcond` labels of an `Lcmd` by flag condition name. -/
 def condEdges (cc : String) (body : Lcmd) : List LLabel :=
@@ -304,13 +304,12 @@ def condEdges (cc : String) (body : Lcmd) : List LLabel :=
     | _ => none)
 
 /-- The `comLToBody` lowering of the while node carries exactly **one**
-    `Lcond NZ` back-edge (the bottom test at the loop top label) and **no**
-    `Lcond Z` — there is no zero-trip top guard: a do-while, not
-    `forLoopNRt`'s top-guarded counted loop. -/
-theorem whileAccum_lowering_dowhile :
+    `Lcond NZ` back-edge (the bottom test at the loop top label) and exactly
+    **one** `Lcond Z`, the zero-trip top guard that skips the loop at seed `0`. -/
+theorem whileAccum_lowering_guarded :
     ((whileAccum ()).map (fun c =>
         let body := comLToBody 3 argName (fun _ => none) c 3
-        (condEdges "NZ" body).length == 1 && (condEdges "Z" body).length == 0))
+        (condEdges "NZ" body).length == 1 && (condEdges "Z" body).length == 1))
       = some true := by native_decide
 
 end CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectWhileNode

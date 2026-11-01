@@ -72,8 +72,8 @@ forward conditionals, and straight-line runs, in any composition.
 
 Not recognised, and with no `OwnedCF` image:
 
-* a runtime trip count — `forLoopLcmdNRt`, `whileLcmdNz`,
-  `forLoopLcmdNRtNested` and `blockLoopFrame` seed the counter from an operand
+* a runtime trip count — `forLoopLcmdNRt`, `forLoopLcmdNRtNested` and
+  `blockLoopFrame` seed the counter from an operand
   (`MOV Lctr, countOp`), while `OwnedCF.loop` carries a `Nat`;
 * the zero-trip top guard `CMP ctr,#0 ; Lcond Z → .Lend … .Lend:` those four
   exporters wrap the loop in, whose guard is a condition code;

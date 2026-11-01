@@ -18,26 +18,21 @@ This module is the acceptance witness for the physical byte-deployment path of a
 `translateDialectControl` `RWhileNz` arm. The abstract arm provides the
 `whileNz` node; `JasminLprogExport` provides:
 
-* the `ComL.whileNz` export node (the countdown do-while `while (n != 0) { body; n -= 1 }`),
+* the `ComL.whileNz` export node (the countdown loop `while (n != 0) { body; n -= 1 }`),
 * its `ComL.denote` fold (the run-halting trip count = the countdown seed),
-* the per-node do-while lowering `whileLcmdNz` (the `Lcmd` image of
-  `whileLinstrRM`: `MOV`-seed the counter, one body copy, bottom-test back-edge
-  `CMP Lctr,0 ; Lcond NZ → top`, **no** zero-trip top guard),
+* the per-node lowering through the runtime counted loop `forLoopLcmdNRt`
+  (`MOV`-seed the counter from the guard, zero-trip top guard
+  `CMP Lctr,0 ; Lcond Z → end`, one body copy, bottom-test back-edge
+  `CMP Lctr,0 ; Lcond NZ → top`, end label),
 * the `comLToBody` / `comLRetReg` / `ComL.loopArgBaseNames` arms, so the full
-  `ComL.toLprog{Phys,PhysAbi}` export reaches bytes through the node,
-
-all **additively**: the other `ComL` nodes (`forLoop`/`forLoopN`/`forLoopNRt`/
-`forLoopNRtNested`) are unaffected by the `whileNz` constructor and its lowering
-case.
+  `ComL.toLprog{Phys,PhysAbi}` export reaches bytes through the node.
 
 This file exercises a concrete countdown `while (n != 0) { acc := acc·acc; n -= 1 }`
-end-to-end: it denotes to the expected fold, its lowered body carries the
-do-while back-edge (the `whileLcmd`/`whileLcmdNz` skeleton — one `Lcond NZ`, no
-top-guard skip), the trip counter is seeded from a runtime register (not an
-immediate), the body is emitted **once** (rolled, not unrolled), and the physical
-two-address export produces a single function. The raw per-node emission's
-control skeleton (`Llabel top … CMP Lctr,0 ; Lcond NZ top`) is exactly the tail
-`X86Backend.LprogControlFlow.whileLcmd` appends.
+end-to-end: it denotes to the expected fold (the empty fold at `n = 0`), its
+lowered body carries the zero-trip skip and the back-edge, the trip counter is
+seeded from a runtime register (not an immediate), the body is emitted **once**
+(rolled, not unrolled), and the physical two-address export produces a single
+function.
 -/
 
 @[expose] public section
@@ -57,12 +52,11 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 def whileNzBody : Com jasminDialect [JasminTy.reg 64, JasminTy.reg 64] (.reg 64) :=
   .var (.mk (.regArith .mul 64) rfl (.cons .here (.cons .here .nil))) (.ret .here)
 
-/-- A **data-dependent do-while** `while (n != 0) { acc := acc·acc; n -= 1 }`:
+/-- A **data-dependent countdown loop** `while (n != 0) { acc := acc·acc; n -= 1 }`:
     seed `acc` from arg `.here`, run `whileNzBody` a **runtime** number of times
     read from the in-scope countdown seed `.there .here`, return the accumulator.
     invTys = `[]`. Structurally identical to `loopSmokeRtProg` with `.forLoopNRt`
-    replaced by `.whileNz` — the do-while is the runtime-counted loop MINUS the
-    zero-trip top guard (the body runs at least once). -/
+    replaced by `.whileNz`. -/
 def loopSmokeNzProg : ComL [JasminTy.reg 64, JasminTy.reg 64] (.reg 64) :=
   .whileNz whileNzBody (.there .here) .here .nil (.ret .here)
 
@@ -82,24 +76,22 @@ theorem loopSmokeNzProg_denote_count3 :
 def loopSmokeNzBody : Lcmd := comLToBody 2 argName (fun _ => none) loopSmokeNzProg 2
 
 /-- **Real back-edge:** the data-dependent while lowers to a conditional jump
-    (`Lcond`, rendered `jne .L<d>`) — a rolled do-while, not an unrolled chain. -/
+    (`Lcond`, rendered `jne .L<d>`) — a rolled loop, not an unrolled chain. -/
 theorem loopSmokeNzBody_has_backedge :
     loopSmokeNzBody.any (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)
       = true := by decide
 
-/-- **Do-while, no zero-trip top guard.** Exactly ONE conditional jump
-    (the `Lcond NZ` bottom-test back-edge). A runtime *counted* loop
-    (`forLoopNRt`) instead emits TWO (`Lcond Z` skip + `Lcond NZ` back-edge); the
-    single `Lcond` here is the `whileNz` do-while signature. -/
-theorem loopSmokeNzBody_single_lcond :
+/-- **Zero-trip guard and back-edge.** Exactly two conditional jumps: the
+    `Lcond Z` skip of the zero-trip top guard and the `Lcond NZ` bottom-test
+    back-edge, the runtime counted loop's frame. -/
+theorem loopSmokeNzBody_two_lcond :
     (loopSmokeNzBody.filter
-      (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)).length = 1 := by decide
+      (fun i => match i.li_i with | .Lcond _ _ => true | _ => false)).length = 2 := by decide
 
-/-- The single conditional back-edge tests **non-zero** (`Lcond NZ`) — the do-while
-    bottom test, exactly `whileLcmd`'s back-edge. -/
-theorem loopSmokeNzBody_backedge_is_NZ :
-    loopSmokeNzBody.all (fun i => match i.li_i with
-      | .Lcond (.reg cc) _ => cc == "NZ" | .Lcond _ _ => false | _ => true) = true := by decide
+/-- The conditional jumps are, in order, the `Z` skip and the `NZ` back-edge. -/
+theorem loopSmokeNzBody_lcond_codes :
+    loopSmokeNzBody.filterMap (fun i => match i.li_i with
+      | .Lcond (.reg cc) _ => some cc | _ => none) = ["Z", "NZ"] := by decide
 
 /-- **Runtime countdown seed:** the trip counter `Lctr2` is initialised from a
     **register** (the resolved guard argument `a0`), i.e. `MOV Lctr2, a0` — NOT
@@ -123,42 +115,36 @@ theorem loopSmokeNzBody_one_body_copy :
 theorem loopSmokeNzBody_ends_Lret :
     loopSmokeNzBody.getLast?.map Linstr.li_i = some .Lret := rfl
 
-/-! ### The per-node emission is the backend `whileLcmd` do-while skeleton
+/-! ### The per-node emission is the runtime counted-loop frame
 
-`comLToBody`'s `whileNz` arm splices `whileLcmdNz` — a 3-instruction counted-loop
-seed prefix (`MOV acc,init ; MOV idx,0 ; MOV ctr,guard`) followed by the
-`whileLcmd`-shaped do-while: `Llabel top ; body ; guard-advance ; CMP ctr,0 ;
-Lcond NZ → top`. The witnesses below pin that the raw per-node emission opens
-(after the seed) with `whileLcmd`'s head (`whileLcmd_head`) and closes with
-`whileLcmd`'s control tail (`whileLcmd_last`). -/
+`comLToBody`'s `whileNz` arm splices `forLoopLcmdNRt` with the counter seeded from
+the guard: a 3-instruction seed prefix (`MOV acc,init ; MOV idx,0 ; MOV ctr,guard`),
+the zero-trip guard `CMP ctr,0 ; Lcond Z → end`, `Llabel top ; body ;
+guard-advance ; CMP ctr,0 ; Lcond NZ → top`, and the end label. -/
 
-/-- The raw per-node do-while emission `whileLcmdNz` for this program's node
-    (depth 2, accumulator `regName 2`, init operand `a1`, runtime guard `a0`,
-    invTys = `[]`). This is the exact `Lcmd` `comLToBody`'s `whileNz` arm splices. -/
+/-- The raw per-node emission for this program's node (depth 2, accumulator
+    `regName 2`, init operand `a1`, runtime guard `a0`, invTys = `[]`). This is
+    the exact `Lcmd` `comLToBody`'s `whileNz` arm splices. -/
 def whileNzRaw : Lcmd :=
-  whileLcmdNz 2 (regName 2) (.reg (argName 1)) (.reg (argName 0)) whileNzBody [] (fun _ => none)
+  forLoopLcmdNRt 2 (regName 2) (.reg (argName 1)) (.reg (argName 0)) whileNzBody []
+    (fun _ => none)
 
-/-- **`whileLcmd`-shaped tail:** the raw `whileNz` emission ends with the do-while
-    conditional back-edge `Lcond NZ → top` — exactly `whileLcmd_last`'s signature
-    (the `jne .L2` back-edge, taken iff the runtime counter is nonzero). -/
-theorem whileNzRaw_last_is_backedge :
-    whileNzRaw.getLast? = some ⟨0, .Lcond (.reg "NZ") 2⟩ := rfl
-
-/-- **`whileLcmd`-shaped head (after the counted-loop seed prefix):** dropping the
-    3-instruction seed (`MOV acc ; MOV idx ; MOV ctr`), the loop region opens with
-    `Llabel internal top` — exactly `whileLcmd_head`'s signature (the `.L2:`
-    branch target the encoder's label table records). -/
-theorem whileNzRaw_loop_head :
-    (whileNzRaw.drop 3).head? = some ⟨0, .Llabel .internal 2⟩ := rfl
-
-/-- **Guard-compute + back-edge = `whileLcmd`'s control tail.** The last two
-    instructions are `CMP Lctr2, 0 ; Lcond NZ → top` — the exact
-    `[CMP gReg 0, Lcond NZ top]` tail `whileLcmd` appends after the body and the
-    guard-advance. -/
-theorem whileNzRaw_control_tail :
-    whileNzRaw.drop (whileNzRaw.length - 2) =
+/-- **Zero-trip guard:** after the 3-instruction seed, the emission tests the
+    counter and jumps to the end label when it is zero, then opens the loop
+    region with `Llabel internal top`. -/
+theorem whileNzRaw_zero_trip_guard :
+    (whileNzRaw.drop 3).take 3 =
       [ ⟨0, .Lopn [.reg (loopCtr 2)] (withWidthTag 64 "CMP") [.reg (loopCtr 2), .imm 0]⟩
-      , ⟨0, .Lcond (.reg "NZ") 2⟩ ] := rfl
+      , ⟨0, .Lcond (.reg "Z") (2 + 0x40000000)⟩
+      , ⟨0, .Llabel .internal 2⟩ ] := rfl
+
+/-- **Back-edge and end label:** the last three instructions are
+    `CMP Lctr2, 0 ; Lcond NZ → top ; Llabel end`. -/
+theorem whileNzRaw_control_tail :
+    whileNzRaw.drop (whileNzRaw.length - 3) =
+      [ ⟨0, .Lopn [.reg (loopCtr 2)] (withWidthTag 64 "CMP") [.reg (loopCtr 2), .imm 0]⟩
+      , ⟨0, .Lcond (.reg "NZ") 2⟩
+      , ⟨0, .Llabel .internal (2 + 0x40000000)⟩ ] := rfl
 
 /-! ### Physical two-address export (the byte-deployment gate) -/
 

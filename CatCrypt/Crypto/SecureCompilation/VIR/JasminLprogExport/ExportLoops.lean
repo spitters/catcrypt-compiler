@@ -250,21 +250,14 @@ inductive ComL : Ctxt jasminDialect → JasminTy → Type _ where
       (outerCount : Ctxt.Var Γ (JasminTy.reg 64)) (init : Ctxt.Var Γ accTy)
       (invs : HVector (fun ty => Ctxt.Var Γ ty) invTys)
       (body : ComL (accTy :: Γ) s) : ComL Γ s
-  /-- A **data-dependent do-while** — the `RWhileNz` countdown idiom
-      (`while (n != 0) { …body…; n -= 1 }`), the A3 `whileLinstrRM` shape. The
-      loop body runs FIRST and the guard counter is bottom-tested (`Lcond NZ` on
-      the counter register), so the lowering is a do-while back-edge with
-      **no zero-trip top guard** — unlike `forLoopNRt`'s top-guarded skip. `guard`
-      is the in-scope runtime countdown seed: the emitted loop re-reads the
-      counter each pass and exits when it reaches `0`, so the trip count is fixed
-      only at run time (A3's `whileTripsMem`, read off the run); for this
-      committed countdown form the data-dependent trip provably equals the seed
-      value, and `denote` folds exactly that many trips — the fold at the trip
-      count the guard exit realises (a total denotation; no fuel parameter).
-      Entered with `guard = 0` the machine do-while underflows the counter (the
-      body runs at least once); the source tie
-      (`JasminLsemMemSourceTieWhile.whileMem_export_faithful_comL`) carries the
-      run-halting + trip-identification hypotheses that exclude that case.
+  /-- A **data-dependent countdown loop**, the `RWhileNz` idiom
+      (`while (n != 0) { …body…; n -= 1 }`). `guard` is the in-scope runtime
+      countdown seed, and `denote` folds `update` exactly `guard` times (a total
+      denotation; no fuel parameter). The export lowers the node through the
+      runtime counted loop `forLoopLcmdNRt` with the counter seeded from `guard`:
+      a zero-trip top guard (`Lcond Z` to the exit label) followed by the
+      bottom-tested back-edge (`Lcond NZ` on the counter register), so at
+      `guard = 0` the body is skipped, matching the empty fold.
       `update` has the `JLoopBodyN.update` shape (accumulator, up-counting index,
       invariants) — the front-compiled per-iteration body `frontLoopBodyJ`
       produces (`TranslateDialectWhileNode.rolledWhileNzComL`). -/
@@ -325,9 +318,9 @@ def ComL.denote : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
         (JLoopBodyN.nestedDenote innerCount innerUpdate (outerCount.lookup V).toNat
           (Expr.lookupArgs invs V) (init.lookup V)))
   | _, _, .whileNz update guard init invs body, V =>
-      -- The countdown do-while: the guard exit fires exactly when the counter —
-      -- seeded `guard`, decremented once per pass — reaches `0`, so the realised
-      -- trip count is the seed value and the denotation is that fold.
+      -- The countdown loop: the counter is seeded `guard` and decremented once per
+      -- pass, and the loop exits when it is `0` (before the first pass included),
+      -- so the trip count is the seed value and the denotation is that fold.
       body.denote (V.extend
         ((List.range (guard.lookup V).toNat).foldl
           (fun acc t => JLoopBodyN.stepC update (Expr.lookupArgs invs V) t acc)
@@ -1644,43 +1637,6 @@ def forLoopLcmdNRtNested (d : Nat) (accReg : String) (initOp outerCountOp : LOpe
   ++ outerInvTouch
   ++ ((I.loopGuard outerCtr outerTop).map (⟨0, ·⟩) ++ [ ⟨0, .Llabel .internal outerEnd⟩ ])
 
-/-- The inline **do-while** `Lcmd` for one `whileNz` node at depth `d` — the
-    `Lcmd` image of A3's `whileLinstrRM top gReg [] (body ++ tail)` shape
-    (`Llabel top; body; guard-compute; Lcond NZ top`, the
-    `TranslateDialectDataWhile.rolledWhileNz` emission): seed the accumulator,
-    the up-counting index and the countdown counter (`MOV Lctr<d>, guardOp` — a
-    runtime register read), then ONE body copy, the accumulator feedback, the
-    index advance, the counter decrement (the body's own `n -= 1` of the
-    countdown idiom), the invariant touches, and the **bottom-test** back-edge
-    `CMP Lctr,0; Lcond NZ top`. Identical to `forLoopLcmdNRt` MINUS the zero-trip
-    top guard (`CMP;Lcond Z endL` and the `endL` label): the body runs at least
-    once — a do-while, not a top-guarded counted loop. -/
-def whileLcmdNz (d : Nat) (accReg : String) (initOp guardOp : LOperand)
-    {accTy : JasminTy} {invTys : Ctxt jasminDialect}
-    (update : Com jasminDialect (accTy :: .reg 64 :: invTys) accTy)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap) (I : IsaData := x86Data) : Lcmd :=
-  let idxReg := loopIdx d
-  let invRegs : List String := invOps.filterMap (fun o =>
-    match o with | .reg n => some n | _ => none)
-  let (bodyW, retReg) := loopBodyWalkN d accReg idxReg invRegs immSlotMap update
-                            (2 + invTys.length)
-  let feedback : Lcmd :=
-    if retReg == accReg then []
-    else [⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [.reg retReg]⟩]
-  let ctr := loopCtr d
-  let top : LLabel := d
-  let invTouch : Lcmd := invRegs.map (fun r =>
-    ⟨0, I.invTouch ctr r⟩)
-  [ ⟨0, .Lopn [.reg accReg] (withWidthTag 64 "MOV") [initOp]⟩
-  , ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "MOV") [.imm 0]⟩
-  , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "MOV") [guardOp]⟩
-  , ⟨0, .Llabel .internal top⟩ ]
-  ++ bodyW ++ feedback
-  ++ [ ⟨0, .Lopn [.reg idxReg] (withWidthTag 64 "ADD") [.reg idxReg, .imm 1]⟩
-     , ⟨0, .Lopn [.reg ctr] (withWidthTag 64 "SUB") [.reg ctr, .imm 1]⟩ ]
-  ++ invTouch
-  ++ (I.loopGuard ctr top).map (⟨0, ·⟩)
-
 /-! ### 3b⁗′. Lowering the block-body runtime loop (`forLoopBlock`)
 
 The block-body loop's per-iteration body is a *recursive* `ComL` (not a
@@ -1814,7 +1770,7 @@ def comLLoopBodyWalk (immSlotMap : ImmSlotMap) :
       let guardOp := loopResolveVarN d accReg idxReg invRegs curDepth immSlotMap guard
       let invOps := loopExprArgsHVN d accReg idxReg invRegs curDepth immSlotMap invs
       let inner :=
-        whileLcmdNz d' (loopReg d curDepth) initOp guardOp update invOps immSlotMap I
+        forLoopLcmdNRt d' (loopReg d curDepth) initOp guardOp update invOps immSlotMap I
       let (rest, ret) := comLLoopBodyWalk immSlotMap body d accReg idxReg invRegs (curDepth + 1) I
       (inner ++ rest, ret)
   | _, _, .forLoopBlock loopBody count init invs body, d, accReg, idxReg, invRegs, curDepth, I =>
@@ -1902,10 +1858,10 @@ def comLToBody (nArgs : Nat) (argNames : Nat → String)
           (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I
         ++ comLToBody nArgs argNames immSlotMap body (curDepth + 1) I
   | _, _, .whileNz update guard init invs body, curDepth, I =>
-      -- Data-dependent do-while: the countdown counter is seeded from the
-      -- resolved `guard` operand and bottom-tested (`whileLcmdNz` — the
-      -- `whileLinstrRM` image, no zero-trip top guard).
-      whileLcmdNz curDepth (regName curDepth)
+      -- Data-dependent countdown loop: the runtime counted loop with the counter
+      -- seeded from the resolved `guard` operand (zero-trip top guard, then the
+      -- bottom-tested back-edge).
+      forLoopLcmdNRt curDepth (regName curDepth)
           (resolveVar curDepth nArgs argNames immSlotMap init)
           (resolveVar curDepth nArgs argNames immSlotMap guard) update
           (exprArgsHV curDepth nArgs argNames immSlotMap invs) immSlotMap I

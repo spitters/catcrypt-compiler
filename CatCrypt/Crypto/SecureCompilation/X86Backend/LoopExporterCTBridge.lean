@@ -15,7 +15,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow
 `ComToLfundefDirect.comToLfundef_lcmdDirect` covers the straight-line walk `comToBody`.
 This module covers the loop exporters of `VIR.JasminLprogExport` — `forLoopLcmd`,
 `forLoopLcmdN`, `forLoopLcmdNCall`, `forLoopLcmdNRt`, `forLoopLcmdNRtNested`,
-`whileLcmdNz`, `blockLoopFrame`, `forLoopBlockLcmd` — together with
+`blockLoopFrame`, `forLoopBlockLcmd` — together with
 `LprogControlFlow.loopLcmd`, the loop-aware body walk `comLToBody`, and the
 deployed looped export `ComL.toLfundefPhysAbi` / `ComL.toLprogPhysAbi`.
 
@@ -652,25 +652,6 @@ theorem forLoopLcmdNRt_lcmdDirect (d : Nat) (accReg : String)
     hinit hcount
     (loopBodyWalkN_lcmdDirect d accReg (loopIdx d) _ immSlotMap update _ hup)
 
-/-- `whileLcmdNz` emits no register-indexed operand when its accumulator seed and
-    countdown guard are registers or immediates and its loop body is
-    index-free. -/
-theorem whileLcmdNz_lcmdDirect (d : Nat) (accReg : String)
-    (initOp guardOp : LOperand) {accTy : JasminTy} {invTys : Ctxt jasminDialect}
-    (update : Com jasminDialect (accTy :: .reg 64 :: invTys) accTy)
-    (invOps : List LOperand) (immSlotMap : ImmSlotMap)
-    (hinit : isIndexed initOp = false) (hguard : isIndexed guardOp = false)
-    (hup : ComJasminCTByConstruction update) :
-    lcmdDirect (whileLcmdNz d accReg initOp guardOp update invOps immSlotMap)
-      = true :=
-  frameN_lcmdDirect accReg (loopIdx d) (loopCtr d) initOp guardOp d
-    (invOps.filterMap (fun o => match o with | .reg n => some n | _ => none))
-    (loopBodyWalkN d accReg (loopIdx d)
-      (invOps.filterMap (fun o => match o with | .reg n => some n | _ => none))
-      immSlotMap update (2 + invTys.length))
-    hinit hguard
-    (loopBodyWalkN_lcmdDirect d accReg (loopIdx d) _ immSlotMap update _ hup)
-
 /-- `forLoopLcmdNRtNested` emits no register-indexed operand when its accumulator
     seed and outer runtime trip count are registers or immediates and both the
     inner-count body and the inner loop body are index-free. -/
@@ -812,7 +793,7 @@ theorem comLLoopBodyWalk_lcmdDirect (immSlotMap : ImmSlotMap) :
   | _, _, .whileNz update guard init invs body, d, accReg, idxReg, invRegs,
       curDepth, h =>
       lcmdDirect_append_of
-        (whileLcmdNz_lcmdDirect _ _ _ _ update _ immSlotMap
+        (forLoopLcmdNRt_lcmdDirect _ _ _ _ update _ immSlotMap
           (loopResolveVarN_not_indexed d accReg idxReg invRegs curDepth immSlotMap init)
           (loopResolveVarN_not_indexed d accReg idxReg invRegs curDepth immSlotMap guard)
           h.1)
@@ -890,7 +871,7 @@ theorem comLToBody_lcmdDirect (nArgs : Nat) (argNames : Nat → String)
         (comLToBody_lcmdDirect nArgs argNames immSlotMap body (curDepth + 1) h.2.2)
   | _, _, .whileNz update guard init invs body, curDepth, h =>
       lcmdDirect_append_of
-        (whileLcmdNz_lcmdDirect _ _ _ _ update _ immSlotMap
+        (forLoopLcmdNRt_lcmdDirect _ _ _ _ update _ immSlotMap
           (resolveVar_not_indexed curDepth nArgs argNames immSlotMap init)
           (resolveVar_not_indexed curDepth nArgs argNames immSlotMap guard) h.1)
         (comLToBody_lcmdDirect nArgs argNames immSlotMap body (curDepth + 1) h.2)
@@ -1083,20 +1064,6 @@ theorem compileFromHax_forLoopLcmdNRt_lcmdDirect {k : Nat} {params : List String
       = true :=
   forLoopLcmdNRt_lcmdDirect d accReg initOp countOp update invOps immSlotMap hinit
     hcount (compileFromHax_ct hc)
-
-/-- The countdown do-while over a front-compiled body emits no register-indexed
-    operand. -/
-theorem compileFromHax_whileLcmdNz_lcmdDirect {k : Nat} {params : List String}
-    {e : ImpExpr} {update : Com jasminDialect (frontCtxt 64 (k + 2) []) (rW 64)}
-    (hc : compileFromHax (w := 64) (nIn := k + 2) params e = some update)
-    (d : Nat) (accReg : String) (initOp guardOp : LOperand) (invOps : List LOperand)
-    (immSlotMap : ImmSlotMap) (hinit : isIndexed initOp = false)
-    (hguard : isIndexed guardOp = false) :
-    lcmdDirect (whileLcmdNz d accReg initOp guardOp
-      (accTy := rW 64) (invTys := List.replicate k (rW 64)) update invOps immSlotMap)
-      = true :=
-  whileLcmdNz_lcmdDirect d accReg initOp guardOp update invOps immSlotMap hinit
-    hguard (compileFromHax_ct hc)
 
 /-- **The looped export of a front-compiled loop body uses direct addressing.**
     A `ComL.forLoopN` whose body is a `compileFromHax` output exports, through the
