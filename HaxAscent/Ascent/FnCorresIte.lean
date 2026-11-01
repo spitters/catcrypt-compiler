@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import HaxAscent.Ascent.Corres
+public import HaxAscent.Ascent.AscendHax
 
 /-!
 # A function correspondence of a conditional, branch by branch
@@ -22,11 +22,16 @@ by a chain of `let`s before it. A `let` whose bound expression leaves the enviro
 passed by extending the entry environment at its name, so the conditional below the chain
 is reached with an entry that holds the temporaries.
 
+The branch correspondences may bind their parameters in different orders; a parameter list
+with distinct names binds the same environment in every order, so the entries agree.
+
 ## Main results
 
 * `fnCorres_ifThenElse`: the correspondence of the conditional from those of its branches.
 * `fnCorres_letBind`: the correspondence of `let x := val; body` from that of `body` over
   the entry extended at `x`.
+* `bindParams_perm`: two orders of a parameter list with distinct names bind the same
+  environment.
 -/
 
 @[expose] public section
@@ -80,5 +85,32 @@ theorem fnCorres_letBind {x : String} {val body : ImpExpr} {V : A → Value} {f 
   refine ⟨max fuel₀ fuel₁, fun fuel hf => ?_⟩
   rw [denote'_letBind (h := hrun fuel (Nat.le_trans (Nat.le_max_left _ _) hf)) (hv := hplain a hG)]
   exact hb fuel (Nat.le_trans (Nat.le_max_right _ _) hf)
+
+/-- Two orders of a binding list with distinct names give the same lookup. -/
+theorem bindLookup_perm {ps qs : List (String × Value)} (hp : ps.Perm qs)
+    (hn : (ps.map Prod.fst).Nodup) : bindLookup ps = bindLookup qs := by
+  induction hp with
+  | nil => rfl
+  | cons p _ ih =>
+    obtain ⟨k, v⟩ := p
+    have ht := ih (List.nodup_cons.mp hn).2
+    funext x
+    simp only [bindLookup_cons, ht]
+  | swap p q l =>
+    obtain ⟨k, v⟩ := p
+    obtain ⟨k', v'⟩ := q
+    have hne : k ≠ k' := fun h => (List.nodup_cons.mp hn).1 (by simp [h])
+    funext x
+    simp only [bindLookup_cons]
+    by_cases h1 : x = k <;> by_cases h2 : x = k' <;> simp_all
+  | trans h₁ _ ih₁ ih₂ =>
+    rw [ih₁ hn, ih₂ ((h₁.map Prod.fst).nodup_iff.mp hn)]
+
+/-- **Parameter order.** Two orders of a parameter list with distinct names bind the same
+    environment. -/
+theorem bindParams_perm {ps qs : List (String × Value)} (hp : ps.Perm qs)
+    (hn : (ps.map Prod.fst).Nodup) : bindParams ps = bindParams qs := by
+  funext x
+  rw [bindParams_apply, bindParams_apply, bindLookup_perm hp hn]
 
 end Hax.Ascent
