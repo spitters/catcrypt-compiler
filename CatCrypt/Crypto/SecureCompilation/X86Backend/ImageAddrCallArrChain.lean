@@ -231,7 +231,7 @@ theorem procStep_ins {pr : LprogIsa.ProcSummary} (hrw : pr.RetWord) {dst : Strin
     the destination `(site p).1`. -/
 theorem glue_ins {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
     {pr : LprogIsa.ProcSummary} (hrw : pr.RetWord) {site : Nat → String × List String}
-    (hsite : SitesOf T B pr site) {p : Nat} {u v : LstateMF}
+    (hsite : SitesOf T B (fun _ => pr) site) {p : Nat} {u v : LstateMF}
     (hg : Glue T (singletonProgM fn B) p u v) :
     ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
         = some vs

@@ -35,7 +35,8 @@ and the soundness theorems of the checks apply at that table.
   `blockInvOkP_congr`, `idxInvCheckPB_congr`, `calleeSegB_congr`: the checks are equal under
   agreeing tables.
 * `domEq_cutAt`: agreement on a body gives agreement on its cut programs.
-* `domEq_of_symsB`: tables that agree on a symbol agree on a body that calls only it.
+* `domEq_of_symsB`: tables that agree on the symbols accepted by a predicate agree on a body
+  that calls only such symbols.
 * `refRun_checked_of_domEq`, `calleeSegB_soundK_of_domEq`: `CheckedIsaCall.refRun_checked`
   and `CalleeSegCheck.calleeSegB_soundK` from checks passed at an agreeing table.
 -/
@@ -254,15 +255,15 @@ theorem calleeSegB_congr {fn : String} {fin : LLabel}
     calleeSegB T fn fin ins outs ref img = calleeSegB T' fn fin ins outs ref img := by
   simp only [calleeSegB, siteMap, sites_congr hr, sites_congr hi]
 
-/-- **Tables that agree on the symbol `f` agree on a body whose every shadow instruction of
-    a call calls `f`.** -/
-theorem domEq_of_symsB {f : String} {B : List LinstrRM} (h : callSymsB f B = true)
-    (hf : (T f).map (·.arity) = (T' f).map (·.arity)) : ProcTable.DomEq T T' B := by
+/-- **Tables that agree on the symbols accepted by `ok` agree on a body whose every shadow
+    instruction of a call calls such a symbol.** -/
+theorem domEq_of_symsB {ok : String → Bool} {B : List LinstrRM} (h : callSymsB ok B = true)
+    (hf : ∀ f, ok f = true → (T f).map (·.arity) = (T' f).map (·.arity)) :
+    ProcTable.DomEq T T' B := by
   intro i hi q hq
   have hm := List.all_eq_true.mp h i hi
-  rw [hq, Option.all_some, beq_iff_eq] at hm
-  rw [hm]
-  exact hf
+  rw [hq, Option.all_some] at hm
+  exact hf _ hm
 
 /-! ## 4. Soundness at an agreeing table -/
 

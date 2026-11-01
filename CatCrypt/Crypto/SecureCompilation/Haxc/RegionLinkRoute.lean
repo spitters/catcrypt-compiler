@@ -626,7 +626,8 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
       (fun _ => (c.resReg, c.args))
       (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
         (fun _ => (c.resReg, c.args)) b) d.outs).dead b = true := by
-    unfold X86Backend.ImageAddrCall.callDeadB X86Backend.ImageAddrCall.exemptC at hdead ⊢
+    unfold X86Backend.ImageAddrCall.callDeadB X86Backend.ImageAddrCall.callDeadSymB
+      X86Backend.ImageAddrCall.deadOut X86Backend.ImageAddrCall.exemptC at hdead ⊢
     simpa [X86Backend.LinkedFnCallee.wordSig, CalleeData.sig, hcclob, hcsig] using hdead
   have hbne : b ≠ [] := by
     intro hb
@@ -912,8 +913,8 @@ theorem compileRegion_correct_linked_outO
       (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
         (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
         b) d.outs).dead b = true := by
-    unfold X86Backend.ImageAddrCallOutChain.callDeadOutB X86Backend.ImageAddrCall.exemptC
-      at hdo ⊢
+    unfold X86Backend.ImageAddrCallOutChain.callDeadOutB X86Backend.ImageAddrCall.callDeadSymB
+      X86Backend.ImageAddrCall.deadOut X86Backend.ImageAddrCall.exemptC at hdo ⊢
     simpa [X86Backend.LinkedFnCallee.outSig, CalleeData.sig, hcclob, hcr, CalleeRes.reg?]
       using hdo
   -- The bytes of the calling body.

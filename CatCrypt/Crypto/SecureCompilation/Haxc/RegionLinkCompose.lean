@@ -92,9 +92,11 @@ theorem calleeCutB_of_domEq {T T' : ProcTable} {fin : LLabel} {B : List LinstrRM
     arity**, on a body whose calls are calls of that symbol. -/
 theorem calleeTab_domEq {c : CalleeData} {T : ProcTable} {pr : ProcSummary}
     (hT : T c.name = some pr) (ha : pr.arity = c.args.length) {B : List LinstrRM}
-    (h : X86Backend.CalleeSegCheck.callSymsB c.name B = true) :
+    (h : X86Backend.CalleeSegCheck.callSymsB (· == c.name) B = true) :
     ProcTable.DomEq c.tab T B :=
-  domEq_of_symsB h (by simp [CalleeData.tab, hT, ha])
+  domEq_of_symsB h fun f hf => by
+    obtain rfl := beq_iff_eq.mp hf
+    simp [CalleeData.tab, hT, ha]
 
 /-- **A shadow instruction at a site of `ref` is a shadow instruction of the image.** If
     the checks of the segments `calleeSegB T₀` accept `ref` and `img`, every shadow
@@ -151,7 +153,7 @@ theorem calleeBody_imgRun_at {σ : AbiLayout} {nm : String → String} {c : Call
         fuel' s = some t'
       ∧ X86Backend.OwnedLprogTV.Obs outs t t' := by
   have hok := calleeBodyB_spec.mp h
-  have hsi : X86Backend.CalleeSegCheck.callSymsB c.name
+  have hsi : X86Backend.CalleeSegCheck.callSymsB (· == c.name)
       (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true := by
     simp only [X86Backend.CalleeSegCheck.callSymsB, List.all_eq_true]
     intro i hi

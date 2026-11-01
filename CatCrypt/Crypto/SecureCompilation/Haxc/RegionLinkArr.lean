@@ -245,7 +245,8 @@ theorem compileRegion_correct_contract_ins
       (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
         (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
         b) d.outs).dead b = true := by
-    unfold X86Backend.ImageAddrCall.callDeadB X86Backend.ImageAddrCall.exemptC at hdo ⊢
+    unfold X86Backend.ImageAddrCall.callDeadB X86Backend.ImageAddrCall.callDeadSymB
+      X86Backend.ImageAddrCall.deadOut X86Backend.ImageAddrCall.exemptC at hdo ⊢
     simpa [CatCrypt.Crypto.Hax.LinkedFn.contractSig, CalleeData.sig, CalleeData.ins_map_fst,
       hcclob, hcsig] using hdo
   -- The bytes of the calling body.
@@ -540,8 +541,8 @@ theorem compileRegion_correct_contract_out
       (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg) (renOf d.ps))
         (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
         b) d.outs).dead b = true := by
-    unfold X86Backend.ImageAddrCallOutChain.callDeadOutB X86Backend.ImageAddrCall.exemptC
-      at hdo ⊢
+    unfold X86Backend.ImageAddrCallOutChain.callDeadOutB X86Backend.ImageAddrCall.callDeadSymB
+      X86Backend.ImageAddrCall.deadOut X86Backend.ImageAddrCall.exemptC at hdo ⊢
     simpa [CatCrypt.Crypto.Hax.LinkedFn.contractSig, CalleeData.sig, CalleeData.ins_map_fst,
       hcclob, hcr, CalleeRes.reg?] using hdo
   -- The bytes of the calling body.

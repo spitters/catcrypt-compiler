@@ -182,9 +182,10 @@ theorem procStep_congr {pr : ProcSummary} {dst : String} {args : List String}
 def shadowAt (B : List LinstrRM) (p : Nat) : Option (String × String × List LOperand) :=
   B[p]?.bind (shadowCall? ·.fst)
 
-/-- **Every shadow instruction of a call in `B` calls the symbol `f`.** -/
-def callSymsB (f : String) (B : List LinstrRM) : Bool :=
-  B.all fun i => (shadowCall? i.fst).all fun q => q.2.1 == f
+/-- **Every shadow instruction of a call in `B` calls a symbol accepted by `ok`.** At one
+    symbol `g` the predicate is `(· == g)`. -/
+def callSymsB (ok : String → Bool) (B : List LinstrRM) : Bool :=
+  B.all fun i => (shadowCall? i.fst).all fun q => ok q.2.1
 
 /-- The register names of a list of operands. -/
 def regsOf (srcs : List LOperand) : List String := srcs.filterMap LOperand.regName?

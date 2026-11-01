@@ -27,8 +27,9 @@ function with an out layout (`LinkedFnCallee.OutLayout`) the callee reading is
 ## Main definitions
 
 * `callDeadOutB`: the check of the dead names at the calls of a body whose calls write an
-  array: no operand name is dead at a call, and the names dead at the call together with the
-  names `exemptC c` are dead after it.
+  array, the instance of `callDeadSymB` at one interface and an array result: no operand
+  name is dead at a call, and the names dead at the call together with the names `exemptC c`
+  are dead after it.
 
 ## Main results
 
@@ -72,29 +73,21 @@ open CatCrypt.Crypto.Hax (LinkedFn)
 
 /-! ## 1. The dead names at the calls -/
 
-/-- **The check of the dead names at the calls of a body whose calls write an array**, at the
-    destination and operand names `site p` of the call at each position `p`: at each call
-    instruction no operand name of the site is dead, and the names dead at `p` and the names
-    `exemptC c` are dead at `p + 1`. -/
-def callDeadOutB (c : CalleeSig) (site : Nat → String × List String) (E : Nat → List String)
-    (body : Lcmd) : Bool :=
-  (List.range body.length).all fun p => (body[p]?).all fun bi =>
-    !isCallB bi.li_i ||
-      ((site p).2.all (fun a => !(E p).contains a)
-        && (E p ++ exemptC c).all (fun r => (E (p + 1)).contains r))
+/-- **The check of the dead names at the calls of a body whose calls write an array**: the
+    check `callDeadSymB` at the interface `c` for every symbol and an array result. At each
+    call instruction no operand name of the site `site p` is dead, and the names dead at `p`
+    and the names `exemptC c` are dead at `p + 1`. -/
+abbrev callDeadOutB (c : CalleeSig) (site : Nat → String × List String)
+    (E : Nat → List String) (body : Lcmd) : Bool :=
+  callDeadSymB (fun _ => c) (fun _ => true) site E body
 
 /-- **Soundness of `callDeadOutB`** at a call instruction. -/
 theorem callDeadOutB_spec {c : CalleeSig} {site : Nat → String × List String}
     {E : Nat → List String} {body : Lcmd} (h : callDeadOutB c site E body = true) {p : Nat}
     {bi : Linstr} (hb : body[p]? = some bi) {ra : Option String} {tgt : String × LLabel}
     (hbi : bi.li_i = .Lcall ra tgt) :
-    (∀ a ∈ (site p).2, a ∉ E p) ∧ ∀ r ∈ E p ++ exemptC c, r ∈ E (p + 1) := by
-  simp only [callDeadOutB, List.all_eq_true, List.mem_range] at h
-  have hp := h p (List.getElem?_eq_some_iff.mp hb).1
-  rw [hb] at hp
-  simp only [Option.all_some, hbi, isCallB, Bool.not_true, Bool.false_or, Bool.and_eq_true,
-    List.all_eq_true] at hp
-  exact ⟨fun a ha => by simpa using hp.1 a ha, fun r hr => by simpa using hp.2 r hr⟩
+    (∀ a ∈ (site p).2, a ∉ E p) ∧ ∀ r ∈ E p ++ exemptC c, r ∈ E (p + 1) :=
+  callDeadSymB_spec h hb (f := tgt.1) (l := tgt.2) hbi
 
 /-! ## 2. The step of a summary with a word-array result -/
 
@@ -119,7 +112,7 @@ theorem procStep_out {pr : LprogIsa.ProcSummary} {n : Nat} (hout : pr.out = some
 theorem glue_out {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
     {pr : LprogIsa.ProcSummary} {n : Nat} (hout : pr.out = some n)
     (hrun : ∀ vs, pr.run vs = none) {site : Nat → String × List String}
-    (hsite : SitesOf T B pr site) {p : Nat} {u v : LstateMF}
+    (hsite : SitesOf T B (fun _ => pr) site) {p : Nat} {u v : LstateMF}
     (hg : Glue T (singletonProgM fn B) p u v) :
     ∃ vs arr, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
         = some vs
@@ -197,8 +190,8 @@ theorem siteStep_out {frame : String → Option (BitVec 64)}
     state be the argument words of the operands of that site. Under the other hypotheses of
     `haltsC_of_linkedChecksS`, at the frame size `l.frame`, the bytes of the relocated body
     followed by `cb` decode to `prog` followed by `q` with its targets raised, and this
-    program has a run through calls from the index of the position of the address state to a byte state that satisfies `Fin` with
-    the end state. -/
+    program has a run through calls from the index of the position of the address state to a
+    byte state that satisfies `Fin` with the end state. -/
 theorem haltsC_of_linkedChecks_out {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
@@ -261,7 +254,7 @@ theorem haltsC_of_linkedChecks_out {frame : String → Option (BitVec 64)}
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' :=
-  haltsC_of_linkedChecksS hsep hphys hgate hsites r hX hq hcls hshapes hfr symBase hcb hne hbr
+  haltsC_of_linkedChecksOne hsep hphys hgate hsites r hX hq hcls hshapes hfr symBase hcb hne hbr
     hP hflags hcond hI hD hfin hFin
     (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
       siteStep_out hsep hphys hX (outCallee_of_linkedFn hL) hS
@@ -327,7 +320,7 @@ theorem haltsO_of_linkedChecks_out {frame : String → Option (BitVec 64)}
     ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
         (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
       ∧ Fin t sA' :=
-  haltsO_of_linkedChecksS hsep hphys hgate hsites hX hcls hshapes hfr symBase hP hflags hcond
+  haltsO_of_linkedChecksOne hsep hphys hgate hsites hX hcls hshapes hfr symBase hP hflags hcond
     hI hD hfin hFin
     (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
       siteStep_out hsep hphys hX (outCallee_of_linkedFn hL) hS

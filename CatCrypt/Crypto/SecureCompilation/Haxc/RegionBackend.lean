@@ -4816,7 +4816,7 @@ def calleeBodyB (σ : AbiLayout) (nm : String → String) (c : CalleeData)
   let fin := freshLabel (ref ++ img)
   X86Backend.Callee.keepPoolB c.sig (X86Backend.Callee.keepPool c.sig)
     && calleeCodeB c sl body
-    && X86Backend.CalleeSegCheck.callSymsB c.name ref
+    && X86Backend.CalleeSegCheck.callSymsB (· == c.name) ref
     && (decodeSites c.lookup sl body).isSome
     && calleeCutB c.tab fin ref && calleeCutB c.tab fin img
     && X86Backend.ImageAddrCall.callSitesB sl body
@@ -4842,7 +4842,7 @@ structure CalleeBodyOK (σ : AbiLayout) (nm : String → String) (c : CalleeData
   /-- The code of `c` passes `calleeCodeB` at the calls of `body`. -/
   code : calleeCodeB c sl body = true
   /-- Every shadow instruction of `ref` calls the symbol of `c`. -/
-  symsRef : X86Backend.CalleeSegCheck.callSymsB c.name ref = true
+  symsRef : X86Backend.CalleeSegCheck.callSymsB (· == c.name) ref = true
   /-- `body` decodes into its call sites at the table of `c`. -/
   decode : (decodeSites c.lookup sl body).isSome = true
   /-- The cut program of `ref` passes `calleeCutB`. -/

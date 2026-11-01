@@ -985,8 +985,8 @@ theorem haltsC_of_contract_ins {frame : String → Option (BitVec 64)}
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' :=
-  haltsC_of_linkedChecksS hsep hphys hgate hsites r (calleeSpec_of_sContract hXc _ _) hq hcls
-    hshapes hfr symBase hcb hne hbr hP hflags hcond hI hD hfin hFin
+  haltsC_of_linkedChecksOne hsep hphys hgate hsites r (calleeSpec_of_sContract hXc _ _) hq
+    hcls hshapes hfr symBase hcb hne hbr hP hflags hcond hI hD hfin hFin
     (fun p _ _ hg hpc hb => siteStep_contract_ins hsep hphys hXc hL hnd hfb hS hpar hdead hb
       (hres p hb) hpc
       (glue_ins (insSummary_retWord l ins) (sitesOf_of_siteShapeB hshape hT) hg))
@@ -1043,7 +1043,7 @@ theorem haltsO_of_contract_ins {frame : String → Option (BitVec 64)}
     ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
         (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
       ∧ Fin t sA' :=
-  haltsO_of_linkedChecksS hsep hphys hgate hsites (calleeSpec_of_sContract hXc _ _) hcls
+  haltsO_of_linkedChecksOne hsep hphys hgate hsites (calleeSpec_of_sContract hXc _ _) hcls
     hshapes hfr symBase hP hflags hcond hI hD hfin hFin
     (fun p _ _ hg hpc hb => siteStep_contract_ins hsep hphys hXc hL hnd hfb hS hpar hdead hb
       (hres p hb) hpc
@@ -1169,8 +1169,8 @@ theorem haltsC_of_contract_out {frame : String → Option (BitVec 64)}
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' :=
-  haltsC_of_linkedChecksS hsep hphys hgate hsites r (calleeSpec_of_sContract hXc _ _) hq hcls
-    hshapes hfr symBase hcb hne hbr hP hflags hcond hI hD hfin hFin
+  haltsC_of_linkedChecksOne hsep hphys hgate hsites r (calleeSpec_of_sContract hXc _ _) hq
+    hcls hshapes hfr symBase hcb hne hbr hP hflags hcond hI hD hfin hFin
     (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
       siteStep_contract_out hsep hphys hXc hL hnd hfb hS hA hpar hdst hdead hb hqA' hpc
         (glue_out (pr := outSummary l ins n) rfl (fun _ => rfl)
@@ -1235,7 +1235,7 @@ theorem haltsO_of_contract_out {frame : String → Option (BitVec 64)}
     ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
         (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
       ∧ Fin t sA' :=
-  haltsO_of_linkedChecksS hsep hphys hgate hsites (calleeSpec_of_sContract hXc _ _) hcls
+  haltsO_of_linkedChecksOne hsep hphys hgate hsites (calleeSpec_of_sContract hXc _ _) hcls
     hshapes hfr symBase hP hflags hcond hI hD hfin hFin
     (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
       siteStep_contract_out hsep hphys hXc hL hnd hfb hS hA hpar hdst hdead hb hqA' hpc
