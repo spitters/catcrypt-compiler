@@ -125,6 +125,11 @@ Footprints over effective addresses (`Ascent/FootprintEA`, with `Ascent/Rng`):
 Uniqueness (`HaxAscent/Ascent/FnCorresUnique`): `fnCorres_val_unique`,
 `fnCorres_haxEval`, `fnCorres_enc_unique`.
 
+Case split (`HaxAscent/Ascent/FnCorresIte`): `fnCorres_ifThenElse` gives the function
+correspondence of a conditional from those of its branches, each under the guard
+strengthened by the value of the condition, so a step whose top is a conditional is ascended
+one branch at a time.
+
 | Weld | Declaration |
 |---|---|
 | refinement, correspondence and emission | `legWeld`: `RRefines spec c`, `Corres SRwordNT P fa c` and the emit leg, for a command that reads no entry variable |
