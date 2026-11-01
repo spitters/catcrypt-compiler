@@ -177,7 +177,14 @@ BASELINE_FILE="scripts/handcom-provenance-baseline.txt"
 # forLoopBlock GF(16) nest; mayo-solve-emit-kat). CAVEAT: step-composition is weaker
 # provenance than a high-level-source descent (schedule hand-authored in a verified DSL);
 # re-sourcing from a high-level source (like Poseidon2 via translBB) is a future strengthening.
-FRONT_RE='(reifyLowCT|translateDialectControl|cryptoDialectToJasminCom|rolledForLoopN|compileLoop|compileNested|compileBlock|FrontRoutePlan|FieldEmitGoldenPath|RelationalCompile|emitDialectOwnedArr|lowerThir|ThirToCom|CatCryptEmit\.|buildOrchCom|OrchestrationFront|OrchFront|toLfundefPhysFramedAbi|translBB|MpnAddFrontEmit|MpnLoopFrontEmit|serByteStore|QuerySampleBranchFront|Shake256SpongeFront|Fe25519UnifyingFront|MpnCmpEarlyExitFront|SolveGf16FrontGen|loweringL\.lowerMulti|fieldToJasminLimbs|fieldToJasminWord)'
+# The entry points of the hax compiler. `compileA` (`Haxc/ComposeV1.lean`) runs the
+# front `haxToNF` on a hax extraction and ends in the region back half; `compileARegion` is its
+# region route; `compileRegion` (`Haxc/RegionBackend.lean`) is that back half on a structured
+# `NFProg`, with `regionEncode_spec`; `frameCompile`, defined by the hash-template clients of this
+# package, is `compileRegion` at the frame of the kernel's own code. Each returns
+# the bytes it compiles. They are matched as whole words, so `compileAll` or `compileAbi` is not
+# read as `compileA`.
+FRONT_RE='(\bcompileA(Region)?\b|\bcompileRegion\b|\bframeCompile\b|reifyLowCT|translateDialectControl|cryptoDialectToJasminCom|rolledForLoopN|compileLoop|compileNested|compileBlock|FrontRoutePlan|FieldEmitGoldenPath|RelationalCompile|emitDialectOwnedArr|lowerThir|ThirToCom|CatCryptEmit\.|buildOrchCom|OrchestrationFront|OrchFront|toLfundefPhysFramedAbi|translBB|MpnAddFrontEmit|MpnLoopFrontEmit|serByteStore|QuerySampleBranchFront|Shake256SpongeFront|Fe25519UnifyingFront|MpnCmpEarlyExitFront|SolveGf16FrontGen|loweringL\.lowerMulti|fieldToJasminLimbs|fieldToJasminWord)'
 
 # The construction markers are split from the render markers. Building an IR node
 # (`Lopn` / `LinstrR` / `mkLinstr` / a de-Bruijn `Com` chain) is authorship;
