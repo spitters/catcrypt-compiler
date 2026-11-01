@@ -121,6 +121,10 @@ after a call (`ImageCallProbe.reloadOf_call`).
   `findLabelMem_callImg`: the image of a calling body has the positions and the labels of
   the image, the instruction of the image off the calls, and the shadow instruction at a
   call.
+* `callPos`, `bodyCallSymsB`, `callImg_congr_site`, `sitesOf_callImg`, `sites_callImg`: the
+  positions of the calls of a body, the check of their symbols, the image depends on the
+  site function only at those positions, the sites of the image, and the positions of its
+  shadow instructions are `callPos`.
 * `printedAddrCB_of_printedAddrB`, `printedAddrB_iff_of_callFree`, `imgGateCB_of_callFree`:
   on a body without calls the classes are the existing ones.
 * `printedAddrCB_reloc`, `printedAddrCB_remote`, `relocShapeOK_of_printedAddrCB`,
@@ -1942,6 +1946,155 @@ theorem callSitesB_other {slotArr : String → Option (String × Nat)} {body : L
   cases hx : bi.li_i with
   | Lcall ra t => exact absurd hx (hnc ra t)
   | _ => rw [hx] at this; simpa using this
+
+/-- A call instruction is `Lcall ra (f, l)`. -/
+theorem exists_lcall_of_isCallB {i : LinstrR} (h : isCallB i = true) :
+    ∃ ra f l, i = .Lcall ra (f, l) := by
+  cases i <;> first | exact ⟨_, _, _, rfl⟩ | simp [isCallB] at h
+
+/-- **The positions of the calls of a body**, before its last position, in increasing
+    order. -/
+def callPos (body : Lcmd) : List Nat :=
+  (List.range (body.length - 1)).filter fun p => (body[p]?).any (isCallB ·.li_i)
+
+/-- **Membership in `callPos`.** -/
+theorem mem_callPos {body : Lcmd} {p : Nat} :
+    p ∈ callPos body ↔ p < body.length - 1 ∧ (body[p]?).any (isCallB ·.li_i) = true := by
+  simp [callPos]
+
+/-- The positions of the calls of a body are strictly increasing. -/
+theorem callPos_pairwise (body : Lcmd) : (callPos body).Pairwise (· < ·) :=
+  List.pairwise_lt_range.filter _
+
+/-- **The check of the symbols of the calls of a body**: every call before the last
+    position names a symbol accepted by `ok`. -/
+def bodyCallSymsB (ok : String → Bool) (body : Lcmd) : Bool :=
+  (List.range (body.length - 1)).all fun p => (body[p]?).all fun bi =>
+    match bi.li_i with
+    | .Lcall _ (f, _) => ok f
+    | _ => true
+
+/-- **Soundness of `bodyCallSymsB`.** -/
+theorem bodyCallSymsB_spec {ok : String → Bool} {body : Lcmd}
+    (h : bodyCallSymsB ok body = true) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
+    (hp : p < body.length - 1) {ra : Option String} {f : String} {l : LLabel}
+    (hbi : bi.li_i = .Lcall ra (f, l)) : ok f = true := by
+  simp only [bodyCallSymsB, List.all_eq_true, List.mem_range] at h
+  have := h p hp
+  rw [hb] at this
+  simpa [hbi] using this
+
+/-- At a position before the last that holds no call, the image of a calling body holds the
+    image `imgInstr` of the instruction. -/
+theorem callImg_getElem?_imgInstr (slotArr : String → Option (String × Nat))
+    (site : Nat → String × List String) {body : Lcmd} {k : Nat} {bi : Linstr}
+    (hb : body[k]? = some bi) (hk : k < body.length - 1) (hn : isCallB bi.li_i = false) :
+    (callImg slotArr site body)[k]? = some (imgInstr slotArr body k bi.li_i) := by
+  rw [callImg_getElem?_of_ne slotArr site hb (fun f l e => by simp [e, isCallB] at hn),
+    virtImg_getElem?, List.getElem?_dropLast, ite_eq_left hk, hb, Option.map_some]
+
+/-- **The image of a calling body depends on the site function only at the calls**: site
+    functions that agree at the positions `callPos body` give the same image. -/
+theorem callImg_congr_site (slotArr : String → Option (String × Nat))
+    {site site' : Nat → String × List String} {body : Lcmd}
+    (h : ∀ p ∈ callPos body, site p = site' p) :
+    callImg slotArr site body = callImg slotArr site' body := by
+  apply List.ext_getElem?
+  intro k
+  simp only [callImg, List.getElem?_mapIdx]
+  cases hv : (virtImg slotArr body)[k]? with
+  | none => rfl
+  | some i =>
+      have hk : k < body.length - 1 := by
+        rw [← virtImg_length slotArr body]; exact (List.getElem?_eq_some_iff.mp hv).1
+      simp only [Option.map_some, Option.some.injEq]
+      cases hb : body[k]? with
+      | none => rfl
+      | some bi =>
+          obtain ⟨ii, li⟩ := bi
+          cases hc : isCallB li with
+          | false =>
+              cases li <;> simp_all [isCallB]
+          | true =>
+              obtain ⟨ra, f, l, rfl⟩ := exists_lcall_of_isCallB hc
+              have hs := h k (mem_callPos.mpr ⟨hk, by rw [hb]; rfl⟩)
+              cases ra <;> simp [hs]
+
+/-- At a position of `callPos body`, under `callSitesB`, the body holds a call
+    `Lcall none (f, l)` and the image of the calling body holds its shadow instruction at the
+    site `site p`. -/
+theorem callImg_getElem?_of_mem_callPos {slotArr : String → Option (String × Nat)}
+    (site : Nat → String × List String) {body : Lcmd} (hcs : callSitesB slotArr body = true)
+    {p : Nat} (hp : p ∈ callPos body) :
+    ∃ bi f l, body[p]? = some bi ∧ bi.li_i = .Lcall none (f, l) ∧
+      (callImg slotArr site body)[p]?
+        = some (LprogIsa.callShadow (site p).1 f ((site p).2.map LOperand.reg), .reg none) := by
+  obtain ⟨hlt, hany⟩ := mem_callPos.mp hp
+  cases hb : body[p]? with
+  | none => rw [hb] at hany; cases hany
+  | some bi =>
+      rw [hb, Option.any_some] at hany
+      obtain ⟨ra, f, l, e⟩ := exists_lcall_of_isCallB hany
+      obtain rfl := callSitesB_call hcs hb hlt e
+      exact ⟨bi, f, l, rfl, e, callImg_getElem?_call slotArr site hb (by omega) e⟩
+
+/-- **The shadow instructions of the image of a calling body have the shape of the sites**:
+    under `callSitesB`, with every call of the body naming `f`, the image passes
+    `siteShapeB f site`. -/
+theorem siteShapeB_callImg {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {f : String} (site : Nat → String × List String) (hcs : callSitesB slotArr body = true)
+    (hsym : bodyCallSymsB (· == f) body = true) :
+    siteShapeB f site (callImg slotArr site body) = true := by
+  simp only [siteShapeB, List.all_eq_true, List.mem_range, callImg_length]
+  intro p hp
+  obtain ⟨bi, hb⟩ : ∃ bi, body[p]? = some bi := ⟨_, List.getElem?_eq_getElem (by omega)⟩
+  cases hc : isCallB bi.li_i with
+  | false =>
+      rw [callImg_getElem?_imgInstr slotArr site hb hp hc, Option.all_some,
+        callSitesB_other hcs hb hp (fun ra t e => by simp [e, isCallB] at hc)]
+  | true =>
+      obtain ⟨ra, g, l, e⟩ := exists_lcall_of_isCallB hc
+      obtain rfl := callSitesB_call hcs hb hp e
+      have hg : g = f := by simpa using bodyCallSymsB_spec hsym hb hp e
+      subst hg
+      rw [callImg_getElem?_call slotArr site hb (by omega) e, Option.all_some,
+        LprogIsa.shadowCall?_callShadow]
+      simp
+
+/-- **The sites of the image of a calling body**: under `callSitesB`, with every call of the
+    body naming `f` and `T f = some pr`, the shadow instructions of the image are calls of
+    the summary `pr` at the sites `site`. -/
+theorem sitesOf_callImg {T : LprogIsa.ProcTable} {pr : LprogIsa.ProcSummary}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {f : String}
+    (site : Nat → String × List String) (hcs : callSitesB slotArr body = true)
+    (hsym : bodyCallSymsB (· == f) body = true) (hT : T f = some pr) :
+    SitesOf T (callImg slotArr site body) pr site :=
+  sitesOf_of_siteShapeB (siteShapeB_callImg site hcs hsym) hT
+
+/-- **The positions of the shadow instructions of the image are the calls of the body**:
+    under `callSitesB`, with every call of the body naming a symbol of `T`, the positions
+    `sites T` of the image of a calling body are `callPos body`, in order. -/
+theorem sites_callImg {T : LprogIsa.ProcTable} {slotArr : String → Option (String × Nat)}
+    {body : Lcmd} (site : Nat → String × List String) (hcs : callSitesB slotArr body = true)
+    (hsym : bodyCallSymsB (fun g => (T g).isSome) body = true) :
+    LprogCallCut.sites T (callImg slotArr site body) = callPos body := by
+  simp only [LprogCallCut.sites, callPos, callImg_length]
+  apply List.filter_congr
+  intro p hp
+  rw [List.mem_range] at hp
+  obtain ⟨bi, hb⟩ : ∃ bi, body[p]? = some bi := ⟨_, List.getElem?_eq_getElem (by omega)⟩
+  rw [hb, Option.any_some]
+  cases hc : isCallB bi.li_i with
+  | false =>
+      rw [callImg_getElem?_imgInstr slotArr site hb hp hc, Option.any_some]
+      simp [LprogCallCut.isProcB, LprogIsa.procCall?,
+        callSitesB_other hcs hb hp (fun ra t e => by simp [e, isCallB] at hc)]
+  | true =>
+      obtain ⟨ra, g, l, e⟩ := exists_lcall_of_isCallB hc
+      obtain rfl := callSitesB_call hcs hb hp e
+      rw [callImg_getElem?_call slotArr site hb (by omega) e, Option.any_some]
+      simpa [LprogCallCut.isProcB, LprogIsa.procCall?_callShadow] using
+        bodyCallSymsB_spec hsym hb hp e
 
 /-- **The check of the flags at the conditional branches of a body**: a flag is live at
     every conditional branch. -/
