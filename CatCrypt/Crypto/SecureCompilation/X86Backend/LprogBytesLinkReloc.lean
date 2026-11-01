@@ -59,13 +59,24 @@ instruction of `cb` starts at byte `L` and has index `k` in the decoded stream.
 * `haltsC_fundefReloc_linked`: a run of the decoded caller with the callee block as an
   oracle at the target `prog.length` is a run through calls of the program the linked
   bytes decode to.
-* `linkedProg_of_items`, `linkedProg_of_bytes`: the program of the relocated item list of
-  a body with the facts `CallFacts` satisfies `LinkedProg`: the decoded instructions of
-  each instruction of the covered fragment at the index `DecodePrintedCFG.posOf`, `call K`
-  at the index of a remote call, and the closing `lea` and `ret`.
+* `expectedRelocMap_congr`, `branchOKRelocMap_congr`: the program and the branch condition
+  depend on the target map only at the calls without target label;
+  `fundefItemsRelocL_sym`: each such call of a relocated function carries the symbol of a
+  remote transfer of its body.
+* `RegionBlocks cb fs o k q Q`: the callee region `cb` decodes once to `Q`
+  (`RegionDecode`), the block of `f ∈ fs` is entered at byte offset `o f` and index `k f`
+  and is the call-free block `q f` placed there. `regionBlocks_one` is the region of one
+  block; `regionBlocksB` is its Boolean check, sound by `regionBlocks_of_regionBlocksB` at
+  the blocks `regionBlock`.
+* `linkedProg_of_itemsMap`, `linkedProg_of_bytesSym`: the program of the relocated item
+  list of a body with the facts `CallFacts` satisfies `LinkedProgMap` at `K : String → Nat`:
+  the decoded instructions of each instruction of the covered fragment at the index
+  `DecodePrintedCFG.posOf`, `call (K f)` at the index of a remote call to `f`, and the
+  closing `lea` and `ret`. `LinkedProg`, `linkedProg_of_items` and `linkedProg_of_bytes`
+  are the instances at one callee block.
 * `linked_step`, `linked_halt`, `linked_call`, `linked_seg`: the byte simulation of a step
   of the address machine, of the closing return and of a call of such a body on a program
-  that satisfies `LinkedProg`, under every oracle.
+  that satisfies `LinkedProgMap`, under every oracle.
 -/
 
 @[expose] public section
@@ -640,7 +651,124 @@ theorem decodeLprog_items_linkedSym (items : List Item) (hok : ∀ it ∈ items,
       obtain ⟨f, -, hf⟩ := Option.bind_eq_some_iff.mp h
       exact hentry f j t hf) hbr hP
 
-/-! ## 4. The relocating function encoder in front of its callee -/
+/-! ## 4. A region of several callee blocks
+
+The callee region `cb` is decoded once, to the layout `xs₂` and the program `Q`. The block of
+the symbol `f` has its entry at byte offset `o f` and index `k f`, and is the block `q f`
+placed at index `k f` of `Q`. No decoding lemma for two appended byte streams is needed. -/
+
+/-- The callee region `cb` decodes, in one pass, to a layout whose resolution is `Q`, and the
+    entry of the block of each symbol `f` of `fs`, at byte offset `o f`, has index `k f`. -/
+def RegionDecode (cb : List (BitVec 8)) (fs : List String) (o k : String → Nat)
+    (Q : List RInstr) : Prop :=
+  ∃ xs₂, decodeAt cb.length 0 cb = some xs₂ ∧ resolveAll xs₂ xs₂ = some Q
+    ∧ ∀ f ∈ fs, xs₂.findIdx? (fun z => decide (z.1 = o f)) = some (k f)
+
+/-- **The blocks of a callee region.** The region `cb` decodes to `Q` with the entry of the
+    block of `f ∈ fs` at byte offset `o f` and index `k f` (`RegionDecode`); `Q` holds, from
+    index `k f`, the block `q f` with its targets raised by `k f`; and `q f` has no `call`. -/
+structure RegionBlocks (cb : List (BitVec 8)) (fs : List String) (o k : String → Nat)
+    (q : String → List RInstr) (Q : List RInstr) : Prop where
+  /-- One decode of the region, with the entry index of each block. -/
+  decode : RegionDecode cb fs o k Q
+  /-- The block of `f` sits at index `k f` of `Q`. -/
+  block : ∀ f ∈ fs, ∃ A B, Q = A ++ shiftProg A.length (q f) ++ B ∧ A.length = k f
+  /-- The block of `f` has no `call`. -/
+  callFree : ∀ f ∈ fs, ∀ tg, RInstr.call tg ∉ q f
+
+/-- A region that decodes to `Q` from a nonempty stream has its first instruction, at byte
+    offset `0`, at index `0`; every symbol has its entry there. -/
+theorem regionDecode_one (cb : List (BitVec 8)) (Q : List RInstr) (fs : List String)
+    (hcb : decodeLprog cb = some Q) (hne : cb ≠ []) :
+    RegionDecode cb fs (fun _ => 0) (fun _ => 0) Q := by
+  unfold decodeLprog at hcb
+  obtain ⟨xs₂, hd, hr⟩ := Option.bind_eq_some_iff.mp hcb
+  obtain ⟨e, x, tl, hxs⟩ := decodeAt_head_start _ _ _ _ hne hd
+  exact ⟨xs₂, hd, hr, fun _ _ => by simp [hxs, List.findIdx?_cons]⟩
+
+/-- **One callee block.** A nonempty stream that decodes to a block `q` without `call` is a
+    region in which every symbol has the block `q`, entered at offset `0` and index `0`. -/
+theorem regionBlocks_one (cb : List (BitVec 8)) (q : List RInstr) (fs : List String)
+    (hcb : decodeLprog cb = some q) (hne : cb ≠ []) (hq : ∀ tg, RInstr.call tg ∉ q) :
+    RegionBlocks cb fs (fun _ => 0) (fun _ => 0) (fun _ => q) q :=
+  ⟨regionDecode_one cb q fs hcb hne,
+    fun _ _ => ⟨[], [], by simp [shiftProg_zero], rfl⟩, fun _ _ => hq⟩
+
+/-- An instruction with its branch or call target lowered by `k`. -/
+def unshiftInstr (k : Nat) : RInstr → RInstr
+  | .jcc cc t => .jcc cc (t - k)
+  | .call t => .call (t - k)
+  | x => x
+
+/-- An instruction of a block placed at index `k`: no `call`, and a branch to index `k` or
+    later. -/
+def blockInstrB (k : Nat) : RInstr → Bool
+  | .jcc _ t => decide (k ≤ t)
+  | .call _ => false
+  | _ => true
+
+/-- Raising the lowered targets of the instructions of a block placed at index `k`
+    restores the block. -/
+theorem shiftProg_map_unshift (k : Nat) (p : List RInstr)
+    (h : ∀ x ∈ p, blockInstrB k x = true) :
+    shiftProg k (p.map (unshiftInstr k)) = p := by
+  unfold shiftProg
+  rw [List.map_map]
+  refine (List.map_congr_left fun x hx => ?_).trans (List.map_id p)
+  have hx' := h x hx
+  cases x <;> simp_all [blockInstrB, unshiftInstr, shiftInstr]
+
+/-- The block of the symbol `f` in the region program `Q`: the `n f` instructions from the
+    entry index `k f`, with their targets lowered by `k f`. -/
+def regionBlock (Q : List RInstr) (k n : String → Nat) (f : String) : List RInstr :=
+  ((Q.drop (k f)).take (n f)).map (unshiftInstr (k f))
+
+/-- The check of a callee region: `cb` decodes in one pass to a layout whose resolution is
+    some `Q`; for each `f ∈ fs` the entry at byte offset `o f` has index `k f`, the `n f`
+    instructions from `k f` lie in `Q`, and each of them is no `call` and branches to
+    index `k f` or later. -/
+def regionBlocksB (cb : List (BitVec 8)) (fs : List String) (o k n : String → Nat) : Bool :=
+  match decodeAt cb.length 0 cb with
+  | none => false
+  | some xs₂ =>
+    match resolveAll xs₂ xs₂ with
+    | none => false
+    | some Q => fs.all fun f =>
+        decide (xs₂.findIdx? (fun z => decide (z.1 = o f)) = some (k f))
+          && decide (k f + n f ≤ Q.length)
+          && ((Q.drop (k f)).take (n f)).all (blockInstrB (k f))
+
+/-- **Soundness of `regionBlocksB`.** A region that passes the check decodes to a program
+    `Q` whose blocks `regionBlock Q k n` satisfy `RegionBlocks`. -/
+theorem regionBlocks_of_regionBlocksB (cb : List (BitVec 8)) (fs : List String)
+    (o k n : String → Nat) (h : regionBlocksB cb fs o k n = true) :
+    ∃ Q, decodeLprog cb = some Q ∧ RegionBlocks cb fs o k (regionBlock Q k n) Q := by
+  unfold regionBlocksB at h
+  split at h
+  · cases h
+  · rename_i xs₂ hd
+    split at h
+    · cases h
+    · rename_i Q hr
+      have hall : ∀ f ∈ fs, xs₂.findIdx? (fun z => decide (z.1 = o f)) = some (k f)
+          ∧ k f + n f ≤ Q.length
+          ∧ ∀ x ∈ (Q.drop (k f)).take (n f), blockInstrB (k f) x = true := fun f hf => by
+        have := List.all_eq_true.mp h f hf
+        simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at this
+        exact ⟨this.1.1, this.1.2, this.2⟩
+      refine ⟨Q, by simp [decodeLprog, hd, hr], ⟨⟨xs₂, hd, hr, fun f hf => (hall f hf).1⟩,
+        fun f hf => ?_, fun f hf tg htg => ?_⟩⟩
+      · obtain ⟨-, hle, hblk⟩ := hall f hf
+        refine ⟨Q.take (k f), (Q.drop (k f)).drop (n f), ?_, by simp; omega⟩
+        have hl : (Q.take (k f)).length = k f := by simp; omega
+        rw [hl, regionBlock, shiftProg_map_unshift _ _ hblk, List.append_assoc,
+          List.take_append_drop, List.take_append_drop]
+      · obtain ⟨-, -, hblk⟩ := hall f hf
+        obtain ⟨x, hx, hxe⟩ := List.mem_map.mp htg
+        have := hblk x hx
+        cases x <;> simp_all [unshiftInstr, blockInstrB]
+
+/-! ## 5. The relocating function encoder in front of its callee -/
 
 /-- **Decoding of a relocated function followed by its callee.** Let `body` save no
     register by `push`, have a nonzero frame below `2 ^ 31`, and consist of remote calls
@@ -695,7 +823,7 @@ theorem decodeLprog_fundefReloc_append (symBase : String → Option Int) (body :
   decodeLprog_fundefRelocL_append symBase body _ cb q prog hsaves hF0 hF
     (relocDShapeOK_forall₂_one _ hsh) hcb hne hbr hP
 
-/-! ## 5. The run of the linked bytes -/
+/-! ## 6. The run of the linked bytes -/
 
 /-- **A caller linked with its callee, over bytes.** Under the hypotheses of
     `decodeLprog_fundefRelocL_append`, with `q` a block without `call`, a run of the
@@ -724,7 +852,7 @@ theorem haltsC_fundefReloc_linked (r : DoitRegime) (symBase : String → Option 
   ⟨_, (decodeLprog_fundefRelocL_append symBase body shs cb q prog hsaves hF0 hF hsh hcb hne
       hbr hP).2, haltsC_append_of_haltsO_runOf r prog q hq h⟩
 
-/-! ## 6. The decoded program of a relocated body, instruction by instruction -/
+/-! ## 7. The decoded program of a relocated body, instruction by instruction -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeGen
@@ -763,6 +891,59 @@ theorem expectedReloc_append (all : List Item) (k L : Nat) :
     ∀ (xs ys : List Item), expectedReloc all k L (xs ++ ys)
       = (expectedReloc all k L xs).bind fun a => (expectedReloc all k L ys).map (a ++ ·) :=
   expectedRelocMap_append all _
+
+/-- The target of a call item under two target maps that agree on it. -/
+theorem callTgtMap_congr (all : List Item) {tgt tgt' : Item → Option (Nat × Nat)}
+    (it : Item) (h : it.target = none → tgt it = tgt' it) :
+    callTgtMap all tgt it = callTgtMap all tgt' it := by
+  unfold callTgtMap
+  cases ht : it.target with
+  | none => exact h ht
+  | some l => rfl
+
+/-- **The program of an item list depends on the target map only at its calls without
+    target label.** -/
+theorem expectedRelocMap_congr (all : List Item) {tgt tgt' : Item → Option (Nat × Nat)} :
+    ∀ xs : List Item,
+      (∀ it ∈ xs, it.target = none → ∀ d, it.dec = some (.call d) → tgt it = tgt' it) →
+      expectedRelocMap all tgt xs = expectedRelocMap all tgt' xs := by
+  intro xs
+  induction xs with
+  | nil => intro _; rfl
+  | cons it xs ih =>
+    intro h
+    have ih' := ih fun i hi => h i (List.mem_cons_of_mem _ hi)
+    rw [expectedRelocMap, expectedRelocMap, ih']
+    cases hd : it.dec with
+    | none => rfl
+    | some x =>
+      cases x with
+      | call d =>
+        simp only
+        rw [callTgtMap_congr all it fun ht => h it List.mem_cons_self ht d hd]
+      | _ => rfl
+
+/-- **The branch condition of an item list depends on the target map only at its calls
+    without target label.** -/
+theorem branchOKRelocMap_congr (all : List Item) {tgt tgt' : Item → Option (Nat × Nat)} :
+    ∀ xs : List Item,
+      (∀ it ∈ xs, it.target = none → ∀ d, it.dec = some (.call d) → tgt it = tgt' it) →
+      ∀ off, branchOKRelocMap all tgt off xs = branchOKRelocMap all tgt' off xs := by
+  intro xs
+  induction xs with
+  | nil => intro _ _; rfl
+  | cons it xs ih =>
+    intro h off
+    have ih' := ih fun i hi => h i (List.mem_cons_of_mem _ hi)
+    rw [branchOKRelocMap, branchOKRelocMap, ih']
+    cases hd : it.dec with
+    | none => rfl
+    | some x =>
+      cases x with
+      | call d =>
+        simp only
+        rw [callTgtMap_congr all it fun ht => h it List.mem_cons_self ht d hd]
+      | _ => rfl
 
 /-- The program of an item list under a target map has one instruction for each item that
     decodes. -/
@@ -964,6 +1145,59 @@ theorem itemsFromReloc_noLabel (symBase : String → Option Int) (P : Params) (l
         · simp
         · exact ih ss _ (fun j hj => hb j (by simp [hj])) it hit
 
+/-- A call item without target label of the item list of a body carries a callee symbol,
+    the symbol of a remote transfer of the body. -/
+theorem itemsFromReloc_sym (symBase : String → Option Int) (P : Params) :
+    ∀ (b : Lcmd) (ss : List DShape) (off : Nat), ∀ it ∈ itemsFromReloc symBase P off b ss,
+      it.target = none → ∀ d, it.dec = some (.call d) →
+        ∃ f, it.sym = some f ∧ ∃ i ∈ b, remoteSym i.li_i = some f := by
+  intro b
+  induction b with
+  | nil => intro ss off it hit; simp [itemsFromReloc] at hit
+  | cons i b ih =>
+    intro ss off it hit ht d hd
+    cases ss with
+    | nil => simp [itemsFromReloc] at hit
+    | cons s ss =>
+      cases hr : remoteSym i.li_i with
+      | none =>
+        simp only [itemsFromReloc, hr, List.mem_append] at hit
+        rcases hit with hit | hit
+        · cases s with
+          | one sh =>
+            simp only [dItems, List.mem_singleton] at hit
+            subst hit
+            cases sh <;> simp_all [Shape.target, Shape.dec]
+          | ops pcs =>
+            simp only [dItems, List.mem_map] at hit
+            obtain ⟨p, -, rfl⟩ := hit
+            simp at hd
+        · obtain ⟨f, hf, j, hj, hjr⟩ := ih ss _ it hit ht d hd
+          exact ⟨f, hf, j, List.mem_cons_of_mem _ hj, hjr⟩
+      | some f =>
+        simp only [itemsFromReloc, hr, List.mem_cons] at hit
+        rcases hit with rfl | hit
+        · exact ⟨f, rfl, i, List.mem_cons_self, hr⟩
+        · obtain ⟨f, hf, j, hj, hjr⟩ := ih ss _ it hit ht d hd
+          exact ⟨f, hf, j, List.mem_cons_of_mem _ hj, hjr⟩
+
+/-- **A call item without target label of the relocated item list of a function carries a
+    callee symbol**, the symbol of a remote transfer of the body. -/
+theorem fundefItemsRelocL_sym (symBase : String → Option Int) (P : Params) (body : Lcmd)
+    (ds : List DShape) :
+    ∀ it ∈ fundefItemsRelocL symBase P body ds, it.target = none →
+      ∀ d, it.dec = some (.call d) →
+        ∃ f, it.sym = some f ∧ ∃ i ∈ body, remoteSym i.li_i = some f := by
+  intro it hit ht d hd
+  simp only [fundefItemsRelocL, List.mem_cons, List.mem_append] at hit
+  rcases hit with rfl | hit | rfl | hit
+  · simp [mkLea] at hd
+  · exact itemsFromReloc_sym symBase P body ds 0 it hit ht d hd
+  · simp [mkLea] at hd
+  · simp only [List.not_mem_nil, or_false] at hit
+    subst hit
+    simp [mkRet] at hd
+
 /-- **A label resolves, in the relocated item list, to the decoded index of its first
     definition.** -/
 theorem labelPos_fundefItemsReloc (symBase : String → Option Int) {body : Lcmd}
@@ -1019,32 +1253,42 @@ structure CallFacts (body : Lcmd) (ds : List DShape) : Prop where
   /-- Every conditional branch follows a compare. -/
   cond : ∀ k, k < body.length → condPrevB body k = true
 
-/-- The decoded program `prog` of a body with shapes `ds` in front of a callee block at
-    index `K`: around an instruction of the covered fragment, `prog` holds its decoded
-    instructions `DecodePrintedCFG.blkOf` from the index `DecodePrintedCFG.posOf`; the
-    index of a remote transfer holds `call K`; and the index of the closing return holds
-    the closing `lea` of the frame `F`, followed by `ret`. -/
-structure LinkedProg (body : Lcmd) (ds : List DShape) (K F : Nat) (prog : List RInstr) :
-    Prop where
+/-- The decoded program `prog` of a body with shapes `ds` in front of callee blocks whose
+    entries have the indices `K : String → Nat`: around an instruction of the covered
+    fragment, `prog` holds its decoded instructions `DecodePrintedCFG.blkOf` from the index
+    `DecodePrintedCFG.posOf`; the index of a remote transfer to the symbol `f` holds
+    `call (K f)`; and the index of the closing return holds the closing `lea` of the frame
+    `F`, followed by `ret`. -/
+structure LinkedProgMap (body : Lcmd) (ds : List DShape) (K : String → Nat) (F : Nat)
+    (prog : List RInstr) : Prop where
   /-- The decoded instructions of an instruction of the covered fragment. -/
   blk : ∀ k (hk : k < body.length) (hs : k < ds.length),
     instrOKB body (Params.ofBody body) body[k].li_i = true →
     ∃ A B, prog = A ++ blkOf body ds ds[k] ++ B ∧ A.length = posOf ds k
-  /-- The index of a remote transfer. -/
-  call : ∀ k (hk : k < body.length), remoteSym body[k].li_i ≠ none →
-    prog[posOf ds k]? = some (.call K)
+  /-- The index of a remote transfer to the symbol `f`. -/
+  call : ∀ k (hk : k < body.length) (f : String), remoteSym body[k].li_i = some f →
+    prog[posOf ds k]? = some (.call (K f))
   /-- The closing `lea` and `ret`. -/
   fin : prog[posOf ds (body.length - 1)]? = some (.op (leaFrame (Int.ofNat F)))
     ∧ prog[posOf ds (body.length - 1) + 1]? = some .ret
 
-/-- **The decoded program of a relocated body.** For a body with the facts `CallFacts`,
-    the program its relocated item list denotes in front of a callee block at index `K`
-    satisfies `LinkedProg` at `K`. -/
-theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds : List DShape}
-    (hF : CallFacts body ds) (K L : Nat) (prog : List RInstr)
-    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds) K L
+/-- `LinkedProgMap` in front of one callee block at index `K`: every remote transfer holds
+    `call K`. -/
+abbrev LinkedProg (body : Lcmd) (ds : List DShape) (K F : Nat) (prog : List RInstr) : Prop :=
+  LinkedProgMap body ds (fun _ => K) F prog
+
+/-- **The decoded program of a relocated body, under a target map.** For a body with the
+    facts `CallFacts`, the program its relocated item list denotes under a target map `tgt`
+    that gives each call without target label to the symbol `f` an index `K f` satisfies
+    `LinkedProgMap` at `K`. -/
+theorem linkedProg_of_itemsMap (symBase : String → Option Int) {body : Lcmd}
+    {ds : List DShape} (hF : CallFacts body ds) (tgt : Item → Option (Nat × Nat))
+    (K : String → Nat)
+    (hK : ∀ it f j t, it.target = none → it.sym = some f → tgt it = some (j, t) → j = K f)
+    (prog : List RInstr)
+    (hP : expectedRelocMap (fundefItemsRelocL symBase (Params.ofBody body) body ds) tgt
       (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
-    LinkedProg body ds K (Params.ofBody body).frame prog := by
+    LinkedProgMap body ds K (Params.ofBody body).frame prog := by
   have hR := shapesOf_forall₂_shapeOf _ body _ hF.shapes
   have hlen : body.length = ds.length := hR.length_eq
   have hshk : ∀ k (hk : k < body.length) (hs : k < ds.length),
@@ -1052,8 +1296,8 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
     (shapesOf_spec _ body _ hF.shapes).2
   -- the program around position `k`
   have hpos : ∀ k (hk : k < body.length) (hs : k < ds.length), ∃ off A X B,
-      expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds)
-          K L (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [ds[k]])
+      expectedRelocMap (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+          tgt (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [ds[k]])
           = some X
         ∧ prog = A ++ X ++ B ∧ A.length = posOf ds k := by
     intro k hk hs
@@ -1063,8 +1307,8 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
       (body[k] :: body.drop (k + 1)) (ds[k] :: ds.drop (k + 1)) off
     simp only [List.take_succ_cons, List.take_zero, List.drop_succ_cons, List.drop_zero]
       at h1
-    have hP' : expectedReloc
-        (fundefItemsRelocL symBase (Params.ofBody body) body ds) K L
+    have hP' : expectedRelocMap
+        (fundefItemsRelocL symBase (Params.ofBody body) body ds) tgt
         ((mkLea (-(Int.ofNat (Params.ofBody body).frame))
             :: itemsFromReloc symBase (Params.ofBody body) 0 (body.take k) (ds.take k))
           ++ (itemsFromReloc symBase (Params.ofBody body) off [body[k]] [ds[k]]
@@ -1075,19 +1319,20 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
       congr 1
       rw [fundefItemsRelocL, hsplit, h1]
       simp only [List.cons_append, List.append_assoc]
-    obtain ⟨A, X, B, hX, -, hprog, hA⟩ := expectedReloc_mid _ K L _ _ _ prog hP'
+    obtain ⟨A, X, B, hX, -, hprog, hA⟩ := expectedRelocMap_mid _ tgt _ _ _ prog hP'
     refine ⟨off, A, X, B, hX, hprog, ?_⟩
     rw [hA, decCount, decCount_itemsFromReloc symBase _ (List.forall₂_take k hR)]
     simp [posOf, mkLea]
   -- the program of a run of `op` pieces
   have hpcs : ∀ (all : List Item) (pcs : List (List (BitVec 8) × JInstr 64)),
-      expectedReloc all K L (pcs.map fun p => ({ bytes := p.1, dec := some (.op p.2) } : Item))
+      expectedRelocMap all tgt
+          (pcs.map fun p => ({ bytes := p.1, dec := some (.op p.2) } : Item))
         = some (pcs.map fun p => .op p.2) := by
     intro all pcs
     induction pcs with
     | nil => rfl
-    | cons p pcs ih => simp [expectedReloc, expectedRelocMap, ih]
-  refine ⟨fun k hk hs hok => ?_, fun k hk hr => ?_, ?_⟩
+    | cons p pcs ih => simp [expectedRelocMap, ih]
+  refine ⟨fun k hk hs hok => ?_, fun k hk f hf => ?_, ?_⟩
   · obtain ⟨off, A, X, B, hX, hprog, hA⟩ := hpos k hk hs
     have hsh := hshk k hk hs
     refine ⟨A, B, ?_, hA⟩
@@ -1135,20 +1380,23 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
     | _ => intro hok; simp [instrOKB] at hok
   · have hs' : k < ds.length := by omega
     obtain ⟨off, A, X, B, hX, hprog, hA⟩ := hpos k hk hs'
-    obtain ⟨f, hf⟩ := Option.ne_none_iff_exists'.mp hr
-    simp only [itemsFromReloc, hf, expectedRelocMap, callTgtMap, Option.map_some,
-      Option.some.injEq] at hX
-    rw [hprog, ← hX, ← hA]
-    simp
+    simp only [itemsFromReloc, hf, expectedRelocMap, callTgtMap] at hX
+    split at hX
+    · rename_i j t htg
+      rw [hK _ f j t rfl rfl htg] at hX
+      simp only [Option.map_some, Option.some.injEq] at hX
+      rw [hprog, ← hX, ← hA]
+      simp
+    · cases hX
   · have hn : body.length - 1 < ds.length := by have := hF.pos; omega
-    have hP' : expectedReloc
-        (fundefItemsRelocL symBase (Params.ofBody body) body ds) K L
+    have hP' : expectedRelocMap
+        (fundefItemsRelocL symBase (Params.ofBody body) body ds) tgt
         ((mkLea (-(Int.ofNat (Params.ofBody body).frame))
             :: itemsFromReloc symBase (Params.ofBody body) 0 body ds)
           ++ ([mkLea (Int.ofNat (Params.ofBody body).frame)] ++ [mkRet])) = some prog := by
       rw [← hP]
       rfl
-    obtain ⟨A, X, B, hX, hB, hprog, hA⟩ := expectedReloc_mid _ K L _ _ _ prog hP'
+    obtain ⟨A, X, B, hX, hB, hprog, hA⟩ := expectedRelocMap_mid _ tgt _ _ _ prog hP'
     have hlast : nOf (ds[body.length - 1]'hn) = 0 := by
       have h1 := hshk (body.length - 1) (by have := hF.pos; omega) hn
       rw [hF.last] at h1
@@ -1168,7 +1416,18 @@ theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds 
     rw [hposL, hprog, ← hX, ← hB]
     simp [leaFrame]
 
-/-! ## 7. The byte simulation of the steps of a relocated body -/
+/-- **The decoded program of a relocated body.** For a body with the facts `CallFacts`,
+    the program its relocated item list denotes in front of a callee block at index `K`
+    satisfies `LinkedProg` at `K`. -/
+theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds : List DShape}
+    (hF : CallFacts body ds) (K L : Nat) (prog : List RInstr)
+    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds) K L
+      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
+    LinkedProg body ds K (Params.ofBody body).frame prog :=
+  linkedProg_of_itemsMap symBase hF _ (fun _ => K)
+    (fun _ _ _ _ _ _ h => (Prod.mk.inj (Option.some.inj h)).1.symm) prog hP
+
+/-! ## 8. The byte simulation of the steps of a relocated body -/
 
 /-- A path of the machine followed by a run under an oracle is a run under the oracle. -/
 theorem haltsO_of_reaches {σ : Type} {M : Machine σ} {O : Nat → σ → σ → Prop}
@@ -1198,9 +1457,9 @@ theorem CallFacts.not_cond_next {body : Lcmd} {ds : List DShape} (hF : CallFacts
     state `sA'` with the zero flag of a conditional branch, and the machine has a path on
     `prog` from the index of the start on `sA` to the index of the reached position on
     `sA'`. -/
-theorem linked_step {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K : Nat}
-    {prog : List RInstr}
-    (hL : LinkedProg body ds K (Params.ofBody body).frame prog)
+theorem linked_step {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds)
+    {K : String → Nat} {prog : List RInstr}
+    (hL : LinkedProgMap body ds K (Params.ofBody body).frame prog)
     (rsp : BitVec 64) {frame : String → Option (BitVec 64)}
     (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
     (sa : LstateA) (zf : Bool) (sa' : LstateA) (zf' : Bool) (sA : AState)
@@ -1358,8 +1617,9 @@ theorem linked_step {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K
 
 /-- **The closing return of a relocated body, on the decoded program**: from the index of
     the last position, `prog` runs the closing `lea` of the frame and halts at `ret`. -/
-theorem linked_halt {body : Lcmd} {ds : List DShape} {K : Nat} {prog : List RInstr}
-    (hL : LinkedProg body ds K (Params.ofBody body).frame prog)
+theorem linked_halt {body : Lcmd} {ds : List DShape} {K : String → Nat}
+    {prog : List RInstr}
+    (hL : LinkedProgMap body ds K (Params.ofBody body).frame prog)
     (O : Nat → AState → AState → Prop) (sa : LstateA) (sA : AState)
     (hend : sa.reg.lpc + 1 = body.length) :
     HaltsO aMachine O prog (posOf ds sa.reg.lpc) sA
@@ -1368,14 +1628,15 @@ theorem linked_halt {body : Lcmd} {ds : List DShape} {K : Nat} {prog : List RIns
   rw [e]
   exact .go (aMachine_step_op prog _ sA _ hL.fin.1) (.ret hL.fin.2)
 
-/-- **A call of a relocated body, on the decoded program**: the index of a call holds
-    `call K`, and the index of the next position is the next index. -/
-theorem linked_call {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K : Nat}
-    {prog : List RInstr}
-    (hL : LinkedProg body ds K (Params.ofBody body).frame prog)
+/-- **A call of a relocated body, on the decoded program**: the index of a call to the
+    symbol `t.1` holds `call (K t.1)`, and the index of the next position is the next
+    index. -/
+theorem linked_call {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds)
+    {K : String → Nat} {prog : List RInstr}
+    (hL : LinkedProgMap body ds K (Params.ofBody body).frame prog)
     (p : Nat) (bi : Linstr) (ra : Option String) (t : String × LLabel)
     (hb : body[p]? = some bi) (hbi : bi.li_i = .Lcall ra t) :
-    prog[posOf ds p]? = some (.call K) ∧ posOf ds (p + 1) = posOf ds p + 1 := by
+    prog[posOf ds p]? = some (.call (K t.1)) ∧ posOf ds (p + 1) = posOf ds p + 1 := by
   obtain ⟨hk, hbk⟩ := List.getElem?_eq_some_iff.mp hb
   obtain ⟨hl, hsh⟩ := shapesOf_spec _ body _ hF.shapes
   have hkn : p + 1 < body.length := by
@@ -1389,7 +1650,14 @@ theorem linked_call {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K
     · exact h
     · rw [hbk, hbi] at h
       simp [instrOKB] at h
-  refine ⟨hL.call p hk hrem, ?_⟩
+  obtain ⟨f, hf⟩ := Option.ne_none_iff_exists'.mp hrem
+  have hft : f = t.1 := by
+    have hf' := hf
+    rw [hbk, hbi] at hf'
+    obtain ⟨f', l⟩ := t
+    simp only [remoteSym] at hf'
+    split at hf' <;> simp_all
+  refine ⟨hft ▸ hL.call p hk f hf, ?_⟩
   have h1 := hsh p hk (by omega)
   rw [hbk, hbi] at h1
   obtain ⟨f, l⟩ := t
@@ -1440,11 +1708,11 @@ def FinLea (rsp : BitVec 64) (F : Nat) (sa : LstateA) (sA' : AState) : Prop :=
       index of the start;
     * at the closing return there is a run under `O` to a byte state that satisfies
       `FinLea` with the address state;
-    * the index of a call holds `call K`, and the index of the position after a call is
-      the index after the call. -/
-theorem linked_seg {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K : Nat}
-    {prog : List RInstr}
-    (hL : LinkedProg body ds K (Params.ofBody body).frame prog)
+    * the index of a call to the symbol `t.1` holds `call (K t.1)`, and the index of the
+      position after a call is the index after the call. -/
+theorem linked_seg {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds)
+    {K : String → Nat} {prog : List RInstr}
+    (hL : LinkedProgMap body ds K (Params.ofBody body).frame prog)
     (rsp : BitVec 64) {frame : String → Option (BitVec 64)}
     (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
     (O : Nat → AState → AState → Prop) :
@@ -1461,7 +1729,7 @@ theorem linked_seg {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K 
           ∃ sA', HaltsO aMachine O prog (posOf ds sa.reg.lpc) sA sA'
             ∧ FinLea rsp (Params.ofBody body).frame sa sA')
       ∧ (∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t →
-          prog[posOf ds p]? = some (.call K))
+          prog[posOf ds p]? = some (.call (K t.1)))
       ∧ (∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t →
           posOf ds (p + 1) = posOf ds p + 1) := by
   refine ⟨fun sa zf sa' zf' sA hsafe hst hc hz => ?_, fun sa sA hend hc => ?_,
@@ -1471,10 +1739,70 @@ theorem linked_seg {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) {K 
     exact ⟨sA', hc', hlen, hz', fun s'' hr => haltsO_of_reaches hR hr⟩
   · exact ⟨_, linked_halt hL O sa sA hend, sA, hc, rfl⟩
 
+/-- The target map of a callee region placed after `n` instructions and `L` bytes: the
+    symbol `f ∈ fs` goes to the index `n + k f` and the byte offset `L + o f` of the entry of
+    its block, any other symbol to none. -/
+def regionTgt (fs : List String) (n L : Nat) (o k : String → Nat) (f : String) :
+    Option (Nat × Nat) :=
+  if f ∈ fs then some (n + k f, L + o f) else none
+
+/-- **The decoded program of a relocated body linked with a callee region.** Let the body
+    have the facts `CallFacts`, save no register by `push` and have a nonzero frame below
+    `2 ^ 31`, and let the region `cb` decode to `Q` with the entry of the block of `f ∈ fs`
+    at byte offset `o f` and index `k f` (`RegionDecode`). When the relocated item list
+    satisfies `branchOKRelocMap` and denotes `prog` under the target map `symTgt` of
+    `regionTgt`, the linked bytes decode to `prog` followed by `Q` with its targets raised by
+    `prog.length`, and `prog` satisfies `LinkedProgMap` at `fun f => prog.length + k f`. -/
+theorem linkedProg_of_bytesSym (symBase : String → Option Int) {body : Lcmd}
+    {ds : List DShape} (hF : CallFacts body ds) (cb : List (BitVec 8)) (fs : List String)
+    (o k : String → Nat) (Q prog : List RInstr)
+    (hsaves : calleeSavedToSave body = [])
+    (hF0 : frameSize body ≠ 0) (hFr : frameSize body < 2 ^ 31)
+    (hcb : RegionDecode cb fs o k Q)
+    (hbr : branchOKRelocMap (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (symTgt (regionTgt fs (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
+        (encodeLfundefBytesReloc symBase body).length o k)) 0
+      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
+    (hP : expectedRelocMap (fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (symTgt (regionTgt fs (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
+        (encodeLfundefBytesReloc symBase body).length o k))
+      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
+    decodeLprog (encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ shiftProg prog.length Q)
+      ∧ LinkedProgMap body ds (fun f => prog.length + k f) (Params.ofBody body).frame prog := by
+  have hsh := relocDShapeOK_of_shapes _ hF.shapes
+  have hbytes := encodeLfundefBytesReloc_eq_itemBytesL symBase body ds hsaves hsh
+  have hok := fundefItemsRelocL_ok symBase (Params.ofBody body) body ds hF0 hFr hsh
+  obtain ⟨xs₂, hd, hr, hent⟩ := hcb
+  rw [hbytes] at hbr hP ⊢
+  have hentry : ∀ f j t,
+      regionTgt fs (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
+        (itemBytes (fundefItemsRelocL symBase (Params.ofBody body) body ds)).length o k f
+        = some (j, t) →
+      ∃ o' k', t = (itemBytes (fundefItemsRelocL symBase (Params.ofBody body) body ds)).length
+          + o' ∧ j = decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds) + k'
+        ∧ xs₂.findIdx? (fun z => decide (z.1 = o')) = some k' := by
+    intro f j t hm
+    simp only [regionTgt] at hm
+    split at hm
+    · rename_i hf
+      simp only [Option.some.injEq, Prod.mk.injEq] at hm
+      exact ⟨o f, k f, hm.2.symm, hm.1.symm, hent f hf⟩
+    · cases hm
+  obtain ⟨hlen, hdec⟩ := decodeLprog_items_linkedSym _ hok cb xs₂ Q prog _ hd hr hentry hbr hP
+  refine ⟨hdec, linkedProg_of_itemsMap symBase hF _ _ (fun it f j t _ hs ht => ?_) prog hP⟩
+  simp only [symTgt, hs, Option.bind_some, regionTgt] at ht
+  split at ht
+  · simp only [Option.some.injEq, Prod.mk.injEq] at ht
+    omega
+  · cases ht
+
 /-- **The decoded program of the linked bytes of a relocated body.** Under the hypotheses
     of `decodeLprog_fundefRelocL_append` on a body with the facts `CallFacts`, the linked
     bytes decode to `prog` followed by the callee block, and `prog` satisfies `LinkedProg`
-    at the index `prog.length` of the first instruction of the callee. -/
+    at the index `prog.length` of the first instruction of the callee. This is
+    `linkedProg_of_bytesSym` at the region of one block, entered at offset `0` by every
+    symbol of the body. -/
 theorem linkedProg_of_bytes (symBase : String → Option Int) {body : Lcmd} {ds : List DShape}
     (hF : CallFacts body ds) (cb : List (BitVec 8)) (q prog : List RInstr)
     (hsaves : calleeSavedToSave body = [])
@@ -1491,10 +1819,20 @@ theorem linkedProg_of_bytes (symBase : String → Option Int) {body : Lcmd} {ds 
     decodeLprog (encodeLfundefBytesReloc symBase body ++ cb)
         = some (prog ++ shiftProg prog.length q)
       ∧ LinkedProg body ds prog.length (Params.ofBody body).frame prog := by
-  obtain ⟨hlen, hdec⟩ := decodeLprog_fundefRelocL_append symBase body ds cb q prog hsaves hF0
-    hFr (relocDShapeOK_of_shapes _ hF.shapes) hcb hne hbr hP
-  refine ⟨hdec, ?_⟩
-  rw [hlen]
-  exact linkedProg_of_items symBase hF _ _ prog hP
+  have hagree : ∀ it ∈ fundefItemsRelocL symBase (Params.ofBody body) body ds,
+      it.target = none → ∀ d, it.dec = some (.call d) →
+        (fun _ => some (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds),
+          (encodeLfundefBytesReloc symBase body).length)) it
+        = symTgt (regionTgt (body.filterMap fun i => remoteSym i.li_i)
+            (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
+            (encodeLfundefBytesReloc symBase body).length (fun _ => 0) (fun _ => 0)) it := by
+    intro it hit ht d hd
+    obtain ⟨f, hf, i, hi, hr⟩ := fundefItemsRelocL_sym symBase _ body ds it hit ht d hd
+    have hmem : f ∈ body.filterMap fun i => remoteSym i.li_i := List.mem_filterMap.mpr ⟨i, hi, hr⟩
+    simp [symTgt, hf, regionTgt, hmem]
+  exact linkedProg_of_bytesSym symBase hF cb _ (fun _ => 0) (fun _ => 0) q prog hsaves hF0 hFr
+    (regionDecode_one cb q _ hcb hne)
+    (by rw [← branchOKRelocMap_congr _ _ hagree]; exact hbr)
+    (by rw [← expectedRelocMap_congr _ _ hagree]; exact hP)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLinkReloc
