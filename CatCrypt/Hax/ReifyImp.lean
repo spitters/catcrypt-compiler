@@ -430,6 +430,90 @@ def reduceClosed (rc : ReduceCtx) (t : Expr) (maxSize : Nat) : MetaM Expr := do
       more than the bound {maxSize}"
   return r
 
+/-- The prefix of the binder name of a `let` that binds a shared argument (`shareName`). -/
+def shareTag : Name := `_reifyImp_share
+
+/-- The binder name of the `let` of a shared argument for the binder `n`: the string of `n`
+    under the prefix `shareTag`, so that `nameStr` reads it as the string of `n`. -/
+def shareName (n : Name) : Name := .str shareTag (nameStr n)
+
+/-- Whether `n` is the binder name of the `let` of a shared argument. -/
+def isShareName (n : Name) : Bool := n.getPrefix == shareTag
+
+/-- Whether the argument `a` of a beta-redex or of an unfolded application is bound by a
+    `let` instead of substituted: `a` is not a variable, a constant, a literal, a sort or a
+    binder, contains a free variable (a closed argument is left to the closed reductions),
+    is not a constructor application of a type other than `Prod` (data that the reductions
+    take apart), and is neither a function, a type nor a proof. -/
+def shareable (a : Expr) : MetaM Bool := do
+  match a.consumeMData with
+  | .fvar _ | .const .. | .lit _ | .sort _ | .lam .. | .forallE .. | .bvar _ | .mvar _ =>
+    return false
+  | a => do
+    if !a.hasFVar || a.hasLooseBVars || a.hasMVar then return false
+    if let some c := a.getAppFn.constName? then
+      if let some (.ctorInfo ci) := (← getEnv).find? c then
+        unless ci.induct == ``Prod do return false
+    let ty ← whnfR (← inferType a)
+    if ty.isForall || ty.isSort then return false
+    return !(← isProof a)
+
+/-- The number of occurrences of the loose bound variable `i` in `e`, counted up to `2`
+    from `acc`. -/
+partial def countBVar (i : Nat) (e : Expr) (acc : Nat := 0) : Nat :=
+  if acc ≥ 2 || e.looseBVarRange ≤ i then acc else
+  match e with
+  | .bvar j => if j == i then acc + 1 else acc
+  | .app f a => countBVar i a (countBVar i f acc)
+  | .lam _ t b _ | .forallE _ t b _ => countBVar (i + 1) b (countBVar i t acc)
+  | .letE _ t v b _ => countBVar (i + 1) b (countBVar i v (countBVar i t acc))
+  | .mdata _ b | .proj _ _ b => countBVar i b acc
+  | _ => acc
+
+/-- The `let` chain `e` with each `let` of a shared argument (`isShareName`) whose variable
+    occurs at most once in its body replaced by its body with the value substituted. -/
+partial def inlineShared (e : Expr) : Expr :=
+  match e with
+  | .letE n t v b nd =>
+    let b := inlineShared b
+    if isShareName n && countBVar 0 b ≤ 1 then b.instantiate1 v else .letE n t v b nd
+  | _ => e
+
+/-- The beta-reduction of `f` applied to `args`: each argument consumed by a binder of `f`
+    is substituted, or bound by a `let` named by `shareName` when it is `shareable`. -/
+partial def betaShare (f : Expr) (args : List Expr) : MetaM Expr := do
+  match f.consumeMData, args with
+  | .lam n ty b _, a :: rest =>
+    if ← shareable a then return .letE (shareName n) ty a (← betaShare b rest) false
+    betaShare (b.instantiate1 a) rest
+  | _, _ => return mkAppN f args.toArray
+
+/-- `k` of `args` with each `shareable` argument replaced by a `let` variable bound to it,
+    named by `shareName` of the binder name of `names` at its position, and of these
+    variables. -/
+partial def withShared {α : Type} (names : Array Name) (args : Array Expr)
+    (k : Array Expr → Array Expr → MetaM α) (i : Nat := 0) (acc fvs : Array Expr := #[]) :
+    MetaM α := do
+  if h : i < args.size then
+    let a := args[i]
+    if ← shareable a then
+      withLetDecl (shareName (names.getD i `x)) (← inferType a) a fun x =>
+        withShared names args k (i + 1) (acc.push x) (fvs.push x)
+    else withShared names args k (i + 1) (acc.push a) fvs
+  else k acc fvs
+
+/-- The binder names of the leading `∀` binders of `ty`. -/
+partial def binderNames (ty : Expr) (acc : Array Name := #[]) : Array Name :=
+  match ty with
+  | .forallE n _ b _ => binderNames b (acc.push n)
+  | _ => acc
+
+/-- `whnfCore` without zeta-reduction of `let` expressions, so that the `let`s of shared
+    arguments stay; `let` variables are still unfolded (zeta-delta), so that a match on one
+    reduces. -/
+def whnfCoreKeepLets (e : Expr) : MetaM Expr :=
+  withConfig (fun c => { c with zeta := false }) (whnfCore e)
+
 /-- The term `e` with every application of one of the constants `cs` unfolded by
     `unfoldDefinition?` (smart unfolding for a definition by structural recursion) and its
     head reduced by `whnfCore`, again on the result, until no application of `cs` unfolds,
@@ -446,7 +530,14 @@ def reduceClosed (rc : ReduceCtx) (t : Expr) (maxSize : Nat) : MetaM Expr := do
     numeral; an application of `cs` unfolded; and an application of a matcher, a
     recursor or a `casesOn` reduced by `whnfCore` (iota) when its scrutinee has become a
     constructor application. No other constant is unfolded. More than `fuel` unfoldings and
-    reductions, the steps of `reduceClosed` included, is an error. -/
+    reductions, the steps of `reduceClosed` included, is an error.
+
+    Arguments are shared: an argument of an unfolded application of `cs` (`withShared`) or
+    of a beta-redex (`betaShare`) that is `shareable` is bound once by a `let` around the
+    result instead of substituted into each occurrence, the `whnfCore` steps do not
+    zeta-reduce these `let`s (`whnfCoreKeepLets`), and once its body is reduced such a `let`
+    whose variable occurs at most once is substituted (`inlineShared`). A fold whose step
+    reads its state more than once thus yields a term linear in the number of steps. -/
 def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array Name := #[])
     (maxSize : Nat := 10000) : MetaM Expr := do
   if cs.isEmpty && rs.isEmpty then return e
@@ -457,9 +548,10 @@ def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array 
   let unfold? (t : Expr) : MetaM (Option Expr) := do
     let some c := t.getAppFn.constName? | return none
     unless cs.contains c do return none
-    let some t' ← unfoldDefinition? t | return none
-    tick
-    return some (← whnfCore t')
+    withShared (binderNames (← getConstInfo c).type) t.getAppArgs fun args fvs => do
+      let some t' ← unfoldDefinition? (mkAppN t.getAppFn args) | return none
+      tick
+      return some (← mkLetFVars fvs (← whnfCoreKeepLets t'))
   let rc : ReduceCtx := { cache := ← IO.mkRef {}, tick }
   let closed (t : Expr) : Bool := !t.hasFVar && !t.hasMVar
   let fullRs (t : Expr) : MetaM Bool := do
@@ -482,13 +574,17 @@ def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array 
       | some t' => return .visit t'
       | none => return .continue)
     (post := fun t => do
-      let t := t.headBeta
+      if t.isLet then return .done (inlineShared t)
+      let t ← if t.getAppFn.consumeMData.isLambda then
+          betaShare t.getAppFn t.getAppArgs.toList
+        else pure t
+      if t.isLet then return .visit t
       if let some s ← fold? t then return s
       let some c := t.getAppFn.constName? | return .done t
       if let some t' ← unfold? t then return .visit t'
       let env ← getEnv
       unless (← isMatcher c) || isRecCore env c || isAuxRecursor env c do return .done t
-      let t' ← whnfCore t
+      let t' ← whnfCoreKeepLets t
       if t' == t then return .done t
       tick
       return .visit t')
