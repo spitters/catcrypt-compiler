@@ -1325,18 +1325,39 @@ def selectBranch (l : Expr) (args : Array Expr) (hyps : Array Expr)
   sel.modify (·.push (l, res))
   return res
 
+mutual
+
 /-- A proof of `bindLookup l x = some v`, by the shape of `l`: through a conditional list
     (`bindLookup_ite_of`), entry by entry through an explicit list (`bindLookup_cons`, with
     `if_neg` at a name that differs, by evaluation of `decide`, and `if_pos` at the name
     `x`, whose value is compared with `v` by `isDefEqBounded`), and otherwise by `rfl`
     within the bound of `isDefEqBounded`. `sel` keeps the branch selections of the
-    conditional lists met (`selectBranch`). -/
+    conditional lists met (`selectBranch`), and `memo` the proofs made, by list, name and
+    value: the two branches of a conditional list often share a tail, which is then walked
+    once. -/
 partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
-    (sel? : Option (IO.Ref (Array (Expr × Option (Expr × Expr)))) := none) : MetaM Expr := do
+    (sel? : Option (IO.Ref (Array (Expr × Option (Expr × Expr)))) := none)
+    (memo? : Option (IO.Ref (Std.HashMap (Expr × String × Expr) Expr)) := none) :
+    MetaM Expr := do
   let sel ← match sel? with
     | some r => pure r
     | none => IO.mkRef #[]
-  let l' ← whnfR (← instantiateMVars l)
+  let memo ← match memo? with
+    | some r => pure r
+    | none => IO.mkRef {}
+  let l ← instantiateMVars l
+  let v ← instantiateMVars v
+  if let some pf := (← memo.get)[(l, x, v)]? then return pf
+  let pf ← proveLookupAt l x v hyps sel memo
+  memo.modify (·.insert (l, x, v) pf)
+  return pf
+
+/-- One step of `proveLookup` at the head constructor of `l`; its recursive calls go
+    through the memo of `proveLookup`. -/
+partial def proveLookupAt (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
+    (sel : IO.Ref (Array (Expr × Option (Expr × Expr))))
+    (memo : IO.Ref (Std.HashMap (Expr × String × Expr) Expr)) : MetaM Expr := do
+  let l' ← whnfR l
   if l'.isAppOfArity ``ite 5 then
     let args := l'.getAppArgs
     let some b := args[1]!.eq?.map (·.2.1) | throwError "side: condition of{shortExpr l'}"
@@ -1344,13 +1365,13 @@ partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
     if let some (eqPf, sub) ← selectBranch l' args hyps sel then
       let s ← saveState
       try
-        let pf ← proveLookup sub x v hyps sel
+        let pf ← proveLookup sub x v hyps sel memo
         return ← mkEqNDRec' eqPf pf x
       catch _ => s.restore
     let some v1 ← lookupExpr args[3]! x | throwError "side: {x} unbound in a branch"
     let some v2 ← lookupExpr args[4]! x | throwError "side: {x} unbound in a branch"
-    let h1 ← proveLookup args[3]! x v1 hyps sel
-    let h2 ← proveLookup args[4]! x v2 hyps sel
+    let h1 ← proveLookup args[3]! x v1 hyps sel memo
+    let h2 ← proveLookup args[4]! x v2 hyps sel memo
     let h ← proveIteEq b v1 v2 v hyps
     return ← mkAppM ``Hax.Ascent.bindLookup_ite_of #[h1, h2, h]
   let xe := mkStrLit x
@@ -1375,12 +1396,12 @@ partial def proveLookup (l : Expr) (x : String) (v : Expr) (hyps : Array Expr)
         let hne := mkApp3 (mkConst ``of_decide_eq_false) c inst
           (mkApp2 (mkConst ``Eq.refl [Level.one]) (mkConst ``Bool) (mkConst ``Bool.false))
         let hn := mkApp6 (mkConst ``if_neg us) c inst hne α a b
-        let pt ← proveLookup t x v hyps sel
+        let pt ← proveLookup t x v hyps sel memo
         return ← mkExpectedTypeHint (← mkEqTrans (← mkEqTrans hc hn) pt) goal
   -- a list behind a definition: its head constructor at default transparency
   let l'' ← withSlice "whnf of a binding list" (whnfD l')
   if l'' != l' && (l''.isAppOfArity ``List.cons 3 || l''.isAppOfArity ``ite 5) then
-    return ← mkExpectedTypeHint (← proveLookup l'' x v hyps sel) goal
+    return ← mkExpectedTypeHint (← proveLookup l'' x v hyps sel memo) goal
   unless ← isDefEqBounded lhs rhs do throwError "side: {x} is not bound to{shortExpr v}"
   mkExpectedTypeHint (← mkEqRefl rhs) goal
 where
@@ -1394,13 +1415,21 @@ where
       mkLambdaFVars #[L] (← mkEq (mkApp2 (mkConst ``Hax.Ascent.bindLookup) L (mkStrLit x)) r)
     mkEqNDRec motive pf (← mkEqSymm eqPf)
 
+end
+
 /-- A proof of `BindsSub l m` for an explicit list `m`. The branch selections of the
-    conditional lists in `l` are shared by the entries of `m`. -/
+    conditional lists in `l` and the memo of `proveLookup` are shared by the entries of
+    `m`. -/
 partial def proveBindsSub (l m : Expr) (hyps : Array Expr)
-    (sel? : Option (IO.Ref (Array (Expr × Option (Expr × Expr)))) := none) : MetaM Expr := do
+    (sel? : Option (IO.Ref (Array (Expr × Option (Expr × Expr)))) := none)
+    (memo? : Option (IO.Ref (Std.HashMap (Expr × String × Expr) Expr)) := none) :
+    MetaM Expr := do
   let sel ← match sel? with
     | some r => pure r
     | none => IO.mkRef #[]
+  let memo ← match memo? with
+    | some r => pure r
+    | none => IO.mkRef {}
   let m' ← whnfR (← instantiateMVars m)
   match m'.getAppFnArgs with
   | (``List.nil, _) => mkAppM ``Hax.Ascent.bindsSub_nil_intro #[l]
@@ -1408,8 +1437,8 @@ partial def proveBindsSub (l m : Expr) (hyps : Array Expr)
     let h ← whnfR h
     let (``Prod.mk, #[_, _, k, v]) := h.getAppFnArgs | throwError "side: binding{shortExpr h}"
     let some x := strOf? (← instantiateMVars k) | throwError "side: binding name{shortExpr k}"
-    let pl ← proveLookup l x v hyps sel
-    let ps ← proveBindsSub l t hyps sel
+    let pl ← proveLookup l x v hyps sel memo
+    let ps ← proveBindsSub l t hyps sel memo
     mkAppM ``Hax.Ascent.bindsSub_cons_intro #[pl, ps]
   | _ => throwError "side: binding list{shortExpr m'}"
 
