@@ -183,14 +183,20 @@ def applyNamed (goal : MVarId) (name : Name) (target : Expr) : M (List MVarId) :
     | throwError "{(← read).name}: {name} does not apply to{indentExpr target}"
   return gs
 
-/-- A proof of `p` by `decide`, cached by `p`. -/
+/-- A proof `of_decide_eq_true p inst rfl` of `p`, cached by `p`, where the kernel puts
+    `Decidable.decide p inst` in weak head normal form and obtains `true`. The kernel
+    evaluates `String` and `Char` equality, which `Meta.whnf` leaves stuck; a `p` with
+    metavariables is not decided. -/
 def decideCached (p : Expr) : M (Option Expr) := do
   if let some r := (← get).decided[p]? then return r
   let r ← try
+      let p ← instantiateMVars p
+      if p.hasMVar then pure none else
       let pf ← mkDecideProof p
       let inst := pf.appFn!.appArg!
-      let v ← withAtLeastTransparency .default <| whnf inst
-      pure (if v.isAppOf ``Decidable.isTrue then some pf else none)
+      let dec := mkApp2 (mkConst ``Decidable.decide) p inst
+      let v ← ofExceptKernelException (Kernel.whnf (← getEnv) (← getLCtx) dec)
+      pure (if v.isConstOf ``Bool.true then some pf else none)
     catch _ => pure none
   modify fun s => { s with decided := s.decided.insert p r }
   return r

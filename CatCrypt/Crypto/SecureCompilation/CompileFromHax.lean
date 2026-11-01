@@ -76,7 +76,7 @@ set_option linter.deprecated false in
 /-- Compile a hax `ImpExpr` to a `Com jasminDialect`, in one step:
     `ImpExpr → Thir` (the C2 translator) then `Thir → Com` (the C1 front),
     lowered at the empty local scope (`initFState w nIn`). Retired with the
-    THIR generator since 2026-10-18: new kernels compile through `compileA`
+    THIR generator: new kernels compile through `compileA`
     (`haxToNF`), and the kernel families built here move to the other kernel
     producers. -/
 def compileFromHax {w nIn : Nat} (params : List String) (e : ImpExpr) :

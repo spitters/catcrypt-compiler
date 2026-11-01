@@ -410,8 +410,8 @@ def emitPoseidon2SimdReduceBodyJazz : String :=
     `test_default_babybear_poseidon2_width_16`. -/
 def poseidon2SimdReduceJazz : String :=
   "/* Poseidon2 permutation over Baby Bear (width 16), SIMD-reduce\n" ++
-  " * emit (SIXTEENTH ABI mode, task #147) by CatCrypt's verified front.\n" ++
-  " * Builds on the FIFTEENTH ABI mode (#138, packed-u64 round-constant\n" ++
+  " * emit (SIXTEENTH ABI mode) by CatCrypt's verified front.\n" ++
+  " * Builds on the FIFTEENTH ABI mode (packed-u64 round-constant\n" ++
   " * lane-add): each external round's S-box layer now runs lane-parallel\n" ++
   " * across 4 packed-u64 quartets, with the Barrett 10-fold field reduce\n" ++
   " * realised as #VPSRL_4u64 / #VPAND_256 / #VPADD_4u64 / lane-spread\n" ++

@@ -635,9 +635,9 @@ theorem keccakF1600_stageInOuts_denote
 
 /-! ### Checks of the printed texts
 
-The texts `keccakRoundJazz` and `keccakF1600Jazz` are checked by the pinned jasminc in
-`bench/jazz_reparse/check.sh` (SSProve-lean), which compiles every text of the single
-printer; an evaluation of the whole round inside this module takes seconds. -/
+The texts `keccakRoundJazz` and `keccakF1600Jazz` are checked outside this package by
+compiling them with a pinned jasminc, as every text of the single printer is; an
+evaluation of the whole round inside this module takes seconds. -/
 
 /-- Binding count of a `Com` (one per `.var`). -/
 def comBindings : {Γ : Ctxt jasminDialect} → {t : JasminTy} →

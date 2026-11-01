@@ -3354,10 +3354,11 @@ lean_lib HaxAscent where
 -- `Crypto.{SDist,CryptoWord,UC,Advantage}`, `Deep.{RawCode,Eval}`,
 -- `Relational.Rules`, `Tactics.FieldClear` — each behind a re-export shim under
 -- `CatCrypt/`, so `import CatCrypt.…` paths keep resolving.
--- CatCrypt-core is pinned by commit on its `main` branch (the first commit with
--- `CatCryptCore.Crypto.RCGate`, which `Haxc.RCInstance` imports, or later).
+-- CatCrypt-core is pinned by commit on its `main` branch (a commit with
+-- `CatCryptCore.Crypto.RCGate`, which `Haxc.RCInstance` imports, and with the
+-- `CATCRYPT_KAT_MS_SCALE` factor of `#kat` that CI sets).
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "f85b1c2cc2b828ebe900d3538938d2b532db6cb7"
+  "https://github.com/spitters/CatCrypt-core.git" @ "791eab88a5988c10c81878efc15d63c98cb23bf8"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
@@ -3387,9 +3388,8 @@ meta if get_config? env = some "doc" then
 require «doc-gen4» from git
   "https://github.com/leanprover/doc-gen4" @ "v4.35.0"
 
--- Executables whose root modules live in this package; the dev tree ran them
--- before the 2026-09-12 restructure and still invokes them through `lake exe`,
--- which resolves executable targets across the workspace.
+-- Executables whose root modules live in this package. A dependent package invokes
+-- them through `lake exe`, which resolves executable targets across the workspace.
 
 lean_exe «reify-emit» where
   -- Writes the printed Rust function and the leaf stubs of each reifyImp% pilot.

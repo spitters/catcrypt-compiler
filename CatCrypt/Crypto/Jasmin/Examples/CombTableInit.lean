@@ -9,12 +9,11 @@ Computes the Ed25519 comb table: `T[i][d] = d · 16^i · B` for
 `i ∈ 0..63`, `d ∈ 0..15`.  Used by the wnaf_comb scalarmult_base body
 to do zero-doubling fixed-base multiplication.
 
-This is Phase 2 of the "extend the IR" plan, applied to the second
-hand-coded primitive in `curve25519-jasmin-rs/src/ed25519_rustcmd/leaves.rs`.
-Per the user's instruction (2026-05-12), we author the body in Lean
-using the **existing** `LowCT` constructors — no runtime-indexed slot
-access yet, so the 1024 cells become 1024 separately-named slots
-`cell_<i>_<d>`.  Generation is mechanical via Lean meta.
+The body is the Lean form of the hand-coded primitive in
+`curve25519-jasmin-rs/src/ed25519_rustcmd/leaves.rs`, written with the
+`LowCT` constructors that have no runtime-indexed slot access, so the
+1024 cells are 1024 separately named slots `cell_<i>_<d>`. Lean meta code
+generates them.
 
 The AST is large (~5000 nodes) but flat — pure sequencing of:
   * 1024 `RLetZero` slot declarations (1024 × `TBytes 200`)

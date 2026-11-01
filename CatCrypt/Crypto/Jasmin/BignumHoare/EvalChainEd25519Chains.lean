@@ -141,7 +141,7 @@ chain (for `1/Z` recovery) and the sqrt chain (for `x` from `y`
 in decompression).  With both chains in tree, the compress and
 decompress operations become composable evalChain expressions.
 
-The inv chain (commit `48ac1938`) and sqrt chain (this file)
+The inv chain and the sqrt chain (this file)
 together cover the *arithmetic* obligations of Ed25519
 serialisation.  The non-arithmetic parts (canonicality checks,
 sign-bit extraction) live at a different layer. -/

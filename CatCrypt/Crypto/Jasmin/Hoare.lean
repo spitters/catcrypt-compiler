@@ -257,7 +257,7 @@ theorem bignum_mod_p25519_4_correct
 This decomposes via `seq` into per-instruction VCs, the array_a
 preservation falls out via `frame_array64` against
 `array64Footprint base_op 4`, and the algorithmic content reduces
-to `BignumModP25519_4.algoNat_eq_specNat` (commit `5aef5df3`).
+to `BignumModP25519_4.algoNat_eq_specNat`.
 -/
 
 end CatCrypt.Crypto.Jasmin.Hoare

@@ -35,8 +35,8 @@ to. Montgomery radix `R = 2^256`, 4×u64 saturated limbs (32 bytes).
 
 | Status | Meaning |
 |---|---|
-| ✅ proved | fiat-crypto theorem already exists and is `Qed`-closed |
-| 📌 cite-only | citation is the cross-prover trust boundary |
+| proved | the cited fiat-crypto theorem is `Qed`-closed |
+| cited | the citation is the cross-prover trust boundary |
 
 ## Field arithmetic (Fp_{P-256})
 

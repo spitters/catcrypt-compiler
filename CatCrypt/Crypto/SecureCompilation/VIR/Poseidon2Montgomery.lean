@@ -942,8 +942,8 @@ def emitPoseidon2MontgomeryBodyJazz : String :=
     the same field operation as the scalar / SIMD-reduce emits). -/
 def poseidon2MontgomeryJazz : String :=
   "/* Poseidon2 permutation over Baby Bear (width 16), Montgomery + VPMULUDQ\n" ++
-  " * emit (SEVENTEENTH ABI mode, task #152) by CatCrypt's verified front.\n" ++
-  " * Builds on the SIMD-reduce SIXTEENTH ABI (#147): each external round's\n" ++
+  " * emit (SEVENTEENTH ABI mode) by CatCrypt's verified front.\n" ++
+  " * Builds on the SIMD-reduce SIXTEENTH ABI: each external round's\n" ++
   " * S-box layer runs lane-parallel across 4-slot quartets, with the field\n" ++
   " * multiply realised as Montgomery reduction on top of the AVX2 VPMULUDQ\n" ++
   " * packed 32x32 -> 64 multiply (the lever Plonky3's own AVX2 backend uses,\n" ++
@@ -1704,7 +1704,7 @@ def poseidon2MontgomeryResidentJazz : String :=
   " * the 4 S-box quartets all act reg-to-reg on vS0..vS3 -- no stack round-\n" ++
   " * trip through the s[] array between rounds. Stack only at the mds() /\n" ++
   " * internal_mat() boundary (they take stack u64[16] args) and at I/O.\n" ++
-  " * Analog of #111's SIXTEENTH-mode ChaCha20 4-way XMM-resident emit\n" ++
+  " * Analog of the SIXTEENTH-mode ChaCha20 4-way XMM-resident emit\n" ++
   " * (HACL* Vec256 pattern). Denotation: same as EIGHTEENTH mode --\n" ++
   " * Poseidon2Montgomery.MontIso.montPerm_sandwich_eq (storage class is a\n" ++
   " * denotation-irrelevant refinement; same SSA op sequence, different\n" ++

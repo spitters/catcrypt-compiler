@@ -17,8 +17,8 @@ backend, translated instruction by instruction. The file's producer is recorded 
 
 ## Provenance
 
-* Source: `crates/catcrypt-ed25519/asm/ed25519_invert_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
+* Source: the assembly file `ed25519_invert_x86_from_lean.s`, emitted from Lean in the
+  CatCrypt development tree (not public) at its commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
   `41f039989b89ed43973e5eeb0255708889484d659e2f7aa47e72a0cc912c5999`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction

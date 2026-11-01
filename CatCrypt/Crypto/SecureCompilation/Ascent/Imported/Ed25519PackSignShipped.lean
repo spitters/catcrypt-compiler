@@ -17,8 +17,8 @@ recorded in `PROVENANCE.md` next to it, where one exists.
 
 ## Provenance
 
-* Source: `crates/catcrypt-ed25519/asm/ed25519_compress_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
+* Source: the assembly file `ed25519_compress_x86_from_lean.s`, emitted from Lean in the
+  CatCrypt development tree (not public) at its commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
   `d5c8ce6b913faf2c354aa7a768acd78c7cac6441cfeafcbae736926402c80d32`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction

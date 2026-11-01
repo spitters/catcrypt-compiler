@@ -396,10 +396,11 @@ theorem nfChain_mapStep_isSome (Γ : Ctxt nfDialect) (ts : List NfTy)
     argument values. A call of a linked function of `m` is the value of the meaning `sem` of
     the linked function on the argument values (`HaxModule.linkTable`).
 
-    For a module with linked functions the relation holds of runs that call them. The
-    compiler `compileA` returns no result on a module whose translation keeps a call of a
-    linked function, so the compiler theorems stated at `haxRuns` say nothing about the
-    bytes of such a module. For a module without linked functions the table is the
+    For a module with linked functions the relation holds of runs that call them. For a
+    module whose translation keeps a call of a linked function, `compileA` returns a result
+    only when `compileRegion` finds the callee among the linked functions, and
+    `haxc_correct_auto` then gives its second disjunct (a run through the call). For a
+    module without linked functions the table is the
     reference table of its functions over `hax64WExit` (`HaxModule.table_of_linked_nil`). -/
 def haxRuns (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
   HaxModule.Runs CatCrypt.Crypto.Hax.hax64WExit σ m sa v

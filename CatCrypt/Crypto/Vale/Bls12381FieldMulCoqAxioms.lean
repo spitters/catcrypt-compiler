@@ -29,7 +29,7 @@ single `Qed` theorem covers the BLS12-381 base prime; the generated
 
 | Lean axiom | Status | Discharging fiat-crypto Rocq theorem |
 |---|---|---|
-| `Bls12381_fmul_denote` | ✅ proved | `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v::mulmod_correct` (`Qed`): `eval (from_montgomerymod (mulmod a b)) mod m = (eval (from_montgomerymod a) * eval (from_montgomerymod b)) mod m` for `valid a`, `valid b`, at `m = p_{BLS12-381}` = `0x1a0111ea…aaab`. C-operation form: `fiat-crypto/src/COperationSpecifications.v` module `WordByWordMontgomery`, `mul_correct`. Montgomery product `x · y · R⁻¹ mod p`, `R = 2^384`, 6×u64. |
+| `Bls12381_fmul_denote` | proved | `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v::mulmod_correct` (`Qed`): `eval (from_montgomerymod (mulmod a b)) mod m = (eval (from_montgomerymod a) * eval (from_montgomerymod b)) mod m` for `valid a`, `valid b`, at `m = p_{BLS12-381}` = `0x1a0111ea…aaab`. C-operation form: `fiat-crypto/src/COperationSpecifications.v` module `WordByWordMontgomery`, `mul_correct`. Montgomery product `x · y · R⁻¹ mod p`, `R = 2^384`, 6×u64. |
 | `Bls12381Fp`, `Bls12381Fp.default` | surface | opaque `Type` + inhabitant; no computational content. |
 
 ## Rocq sources (paths)

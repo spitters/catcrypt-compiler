@@ -43,14 +43,12 @@ keeps using the canonical `Vm`.
 * Pointwise agreement `VmFlat.get vmF v = Vm.get (vmF.toVm) v` is the
   bridge between the two representations.
 
-## Status (2026-05-28)
+## Status
 
-This file is a **deferred follow-up scaffold**: the type definitions
-and operations are in place, but the connector proofs that would
-take the MAYO `runFullBody` through `execCmdFlat` are deferred to a
-larger batch.  The `runFullBody = mayoQuadformJincModel` universal
-connector remains open; the per-row relational `SemFor` induction
-is the alternate path.
+The file gives the type definitions and operations. It contains no
+connector proof taking the MAYO `runFullBody` through `execCmdFlat`,
+and no proof of `runFullBody = mayoQuadformJincModel`; the per-row
+relational `SemFor` induction is the other route to that equation.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.VmFlatExec
@@ -457,7 +455,7 @@ theorem withVmReflat_toEstate_of_estate
   simp [Estate'.withVmReflat, Estate'.toEstate, VmFlat.toVm,
         VmFlat.get, VmFlat.ofVm]
 
-/-! Deferred-bridge note (2026-05-28):
+/-! Bridge note:
 
 A strict-equality bridge `execCmdFlat_toEstate_eq` would say:
 `(execCmdFlat ... s).toEstate = execCmd ... s.toEstate` up to a

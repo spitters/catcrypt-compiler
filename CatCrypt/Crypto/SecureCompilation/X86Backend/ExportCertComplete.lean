@@ -213,7 +213,7 @@ theorem resolvedB_nameAt {nArgs cd s : Nat} (hs : s < cd) :
     load reads the head or an invariant; an array store writes into the head and its result
     becomes the head; the body returns the head. A fresh array (`stackZero`) or a
     constant-index store (`stackStoreImm`) inside the thread is refused: the loop-body alias
-    walk follows `STOREIDX` only (C4-34 E). -/
+    walk follows `STOREIDX` only. -/
 def threadLinB (nInv : Nat) : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
     Com jasminDialect Γ t → (cd h : Nat) → Bool
   | _, _, .ret v, cd, h => slotOf cd v == h

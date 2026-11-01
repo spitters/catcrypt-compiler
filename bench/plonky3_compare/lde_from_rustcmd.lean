@@ -36,7 +36,7 @@ routed through the verified compiler.
 `reifyLowCT% ldeCosetFftLean256x4` would error. We feed `translate` the
 `LowCT` body the reifier *would* produce (`ldeCosetFftBody256x4`, built by
 hand in `Plonky3LdeReflect.lean`). The rest of the front runs unchanged. Same
-workaround as Falcon verify (#191), Plonky3 Merkle (Wave 1), ML-KEM jhash_mem.
+workaround as Falcon verify, Plonky3 Merkle, ML-KEM jhash_mem.
 
 ## RFor and the LDE chain
 

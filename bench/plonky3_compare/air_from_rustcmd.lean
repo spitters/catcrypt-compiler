@@ -23,10 +23,10 @@ modulo the named leaf's opaque semantics.
 `reifyLowCT%` doesn't consult the `LowCTPattern` registry, so
 `reifyLowCT% airTransitionLean3x8` would error. We feed `translate` the
 `LowCT` body the reifier *would* produce (`airTransitionBody3x8`, built by
-hand in `Plonky3AirReflect.lean`). Same workaround as Falcon verify (#191),
-Wave 1 Merkle.
+hand in `Plonky3AirReflect.lean`). Same workaround as Falcon verify and
+Merkle.
 
-## SELECTOR-INCLUSIVE degree=2 guard (#154)
+## SELECTOR-INCLUSIVE degree=2 guard
 
 This file emits the AIR transition orchestration only — the actual constraint
 field-arithmetic body lives behind the opaque `plonky3_air_transition_W_H`

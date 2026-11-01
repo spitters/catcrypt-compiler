@@ -27,14 +27,14 @@ radix `R = 2^384`, 6×u64 saturated limbs (48 bytes).
 
 | Status | Meaning |
 |---|---|
-| ✅ proved | fiat-crypto theorem already exists and is `Qed`-closed |
-| 📌 cite-only | citation is the cross-prover trust boundary |
+| proved | the cited fiat-crypto theorem is `Qed`-closed |
+| cited | the citation is the cross-prover trust boundary |
 
 ## Field arithmetic (Fp_{P-384})
 
 | Lean axiom | Status | fiat-crypto citation |
 |---|---|---|
-| `P384_fmul_denote` | ✅ proved | `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v::mulmod_correct` (`Qed`): `eval (from_montgomerymod (mulmod a b)) mod m = (eval (from_montgomerymod a) * eval (from_montgomerymod b)) mod m` for `valid a`, `valid b`, at `m = p_{P-384}`. C-operation form: `fiat-crypto/src/COperationSpecifications.v` module `WordByWordMontgomery`, `mul_correct`. Realized leaf: `fiat_p384_mul` in `fiat-crypto/fiat-rust/src/p384_64.rs`; Montgomery product `x · y · R⁻¹ mod p`, `R = 2^384`. |
+| `P384_fmul_denote` | proved | `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v::mulmod_correct` (`Qed`): `eval (from_montgomerymod (mulmod a b)) mod m = (eval (from_montgomerymod a) * eval (from_montgomerymod b)) mod m` for `valid a`, `valid b`, at `m = p_{P-384}`. C-operation form: `fiat-crypto/src/COperationSpecifications.v` module `WordByWordMontgomery`, `mul_correct`. Realized leaf: `fiat_p384_mul` in `fiat-crypto/fiat-rust/src/p384_64.rs`; Montgomery product `x · y · R⁻¹ mod p`, `R = 2^384`. |
 
 ## See also
 

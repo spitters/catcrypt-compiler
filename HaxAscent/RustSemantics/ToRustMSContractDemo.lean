@@ -62,12 +62,13 @@ open Hax.Ascent Hax.Ascent.Demo
     same fields, over `Aeneas.Std.RustM`. `requires` and `ensures` are the monadic clauses of the
     attributes; `pureRequires` and `pureEnsures` are their pure readings, and `contract`
     is the triple of `f` between them. -/
-structure Spec {α : Type} (requires : RustM Prop) (ensures : α → RustM Prop) (f : RustM α) where
+structure Spec {α : Type} («requires» : RustM Prop) («ensures» : α → RustM Prop) (f : RustM α)
+    where
   /-- The proposition the precondition clause returns. -/
-  pureRequires : {p : Prop // ⦃⌜True⌝⦄ requires ⦃⇓ r => ⌜r = p⌝⦄}
+  pureRequires : {p : Prop // ⦃⌜True⌝⦄ «requires» ⦃⇓ r => ⌜r = p⌝⦄}
   /-- The predicate the postcondition clause returns, under the precondition. -/
   pureEnsures :
-    {p : α → Prop // pureRequires.val → ∀ a, ⦃⌜True⌝⦄ ensures a ⦃⇓ r => ⌜r = p a⌝⦄}
+    {p : α → Prop // pureRequires.val → ∀ a, ⦃⌜True⌝⦄ «ensures» a ⦃⇓ r => ⌜r = p a⌝⦄}
   /-- The contract: from the precondition, `f` returns a value satisfying the
       postcondition. -/
   contract : ⦃⌜pureRequires.val⌝⦄ f ⦃⇓ r => ⌜pureEnsures.val r⌝⦄
@@ -94,8 +95,8 @@ theorem keyEqRun_contract {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) :
     emits for `#[requires(32 <= n)]` and `#[ensures(|r| r == key_eq(x, y))]`; the pure
     fields by `mvcgen`, the `contract` field by `keyEqRun_contract`. -/
 def keyEqRun.spec {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) :
-    Spec (requires := do pure (32 ≤ n.val))
-      (ensures := fun r => do pure (r.1.toValue = HaxEnc.enc (keyEq (keyArr x) (keyArr y))))
+    Spec («requires» := do pure (32 ≤ n.val))
+      («ensures» := fun r => do pure (r.1.toValue = HaxEnc.enc (keyEq (keyArr x) (keyArr y))))
       (keyEqRun x y) where
   pureRequires := ⟨32 ≤ n.val, by mvcgen⟩
   pureEnsures := ⟨fun r => r.1.toValue = HaxEnc.enc (keyEq (keyArr x) (keyArr y)),

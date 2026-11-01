@@ -286,7 +286,7 @@ def renderFriQuery : String :=
 
 /-- The full emitted `.jazz` for the Plonky3 FRI commit + query phases. -/
 def friJazz : String :=
-  "/* Plonky3 FRI commit + query — layer 3 of the STARK chain (#154),\n" ++
+  "/* Plonky3 FRI commit + query — layer 3 of the STARK chain,\n" ++
   " * emitted by CatCrypt's verified front\n" ++
   " * (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3FriEmit.lean).\n" ++
   " * Fold (commit) phase: per-coset fri_fold, lane-parallel over cosets.\n" ++

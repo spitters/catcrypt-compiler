@@ -68,7 +68,7 @@ def isStoreTagB : MemTag → Bool
 /-- Every store of a chain reads the current thread head `h`; a store's result becomes the
     head. Every array write of the chain is a runtime-indexed store (`isStoreTagB`): the
     alias walk `aliasStepL` follows `STOREIDX` only, so a constant-index `STOREIMM` is
-    refused (C4-34 row E extends the walk). -/
+    refused. -/
 def storeOnHeadB : List LinstrRM → String → Bool
   | [], _ => true
   | i :: is, h =>

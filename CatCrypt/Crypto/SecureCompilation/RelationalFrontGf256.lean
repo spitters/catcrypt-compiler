@@ -149,6 +149,7 @@ theorem encByte_injective : Function.Injective encByte := by
 theorem encByte_commutes (a b : BitVec 8) :
     encByte (gf256MulByte a b) = gf256Ref (encByte a) (encByte b) := by
   unfold encByte gf256MulByte gf256Ref gf256Step
+  dsimp only
   bv_decide
 
 /-- **The `EndoOpRealization` for `GF(2^8)` multiply via byte zero-extension.**

@@ -648,9 +648,9 @@ def renderProveDriver : String :=
     four kernel exports. The kernel bodies live in the four `gen/*.jazz`
     files; this driver sequences them in the `plonky3_prove` phase order. -/
 def proveJazz : String :=
-  "/* Plonky3 end-to-end prover orchestration (#162), emitted by CatCrypt's\n" ++
+  "/* Plonky3 end-to-end prover orchestration, emitted by CatCrypt's\n" ++
   " * verified front (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3ProveEmit.lean).\n" ++
-  " * Composes the four #154 kernels — merkle_build_root (layer 1),\n" ++
+  " * Composes the four STARK-chain kernels — merkle_build_root (layer 1),\n" ++
   " * lde_coset_fft (layer 2), fri_fold_layer + fri_query_verify (layer 3),\n" ++
   " * air_eval_fib (layer 4) — in the plonky3_prove phase order:\n" ++
   " *   commit-trace -> Fiat-Shamir -> quotient -> OOD -> DEEP -> FRI -> PoW.\n" ++

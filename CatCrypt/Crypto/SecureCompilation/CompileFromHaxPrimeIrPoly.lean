@@ -295,8 +295,7 @@ end Ties
 
 The `ImpExpr` literals below are copied verbatim from the `haxpipeT
 --emit-certified --name Primeir` extraction of `primeir-hax`
-(`primeir-hax/src/poly.rs` at SSProve-lean commit
-`3e6e6eee6746382f3230f76d649261812e6fdfb9`). A rename in the Rust changes the
+(its `src/poly.rs`). A rename in the Rust changes the
 head strings and the `rfl` pins below stop holding. -/
 
 /-- `poly_mul_demo`'s body as extracted: `ntt_mul(a, b)`. -/

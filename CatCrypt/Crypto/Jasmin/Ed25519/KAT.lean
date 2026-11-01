@@ -27,8 +27,8 @@ mapping is fixed by RFC 8032 §7.1. Owning the bytes here means:
 
 1. Any change to the bench KAT is audited against this file (versioned,
    diffable, signed-off).
-2. When AUCurves Phase 1.5 lands (Coq → Rust extraction), the same bytes
-   become the conformance gate for the certified path.
+2. The same bytes are the conformance check for a Rust implementation extracted
+   from AUCurves' Coq development.
 3. The bytes themselves are subject to structural sanity checks via
    `decide` (lengths, indices) at elaboration time — typos surface
    without rebuilding the bench.

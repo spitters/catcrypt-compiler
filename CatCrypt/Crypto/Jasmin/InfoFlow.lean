@@ -46,7 +46,7 @@ without writing full lambdas at every call site.
 
 ## References
 
-* Phase J (2026-05-03) — `LevelTable` lookup added to LowCT.
+* `LevelTable` lookup in LowCT.
 * CT analyser scaffolding — `CatCrypt/Crypto/SecureCompilation/LowCTCT.lean`.
 -/
 
@@ -110,10 +110,10 @@ def infoFlowOk (lt : LevelTable) : LowCT → Bool
   | .RFnDef _ _ _ body cont      => infoFlowOk lt body && infoFlowOk lt cont
   | .RFnCall _ _ _               => true
   | .RTupleLoad _ _ _            => true
-  -- Phase Ext (2026-05-12) / Ext2 (2026-05-13): no control-flow.
+  -- Array and scalar-expression forms: no control flow.
   | .RArrStore _ _ _             => true
   | .RArrLoad _ _ _              => true
-  -- Phase DD (2026-05-28): literal-index array load/store — constant-time
+  -- Literal-index array load/store, constant-time
   -- by construction (idx is compile-time, no scalar dependency).
   | .RArrStoreLit _ _ _          => true
   | .RArrLoadLit _ _ _           => true

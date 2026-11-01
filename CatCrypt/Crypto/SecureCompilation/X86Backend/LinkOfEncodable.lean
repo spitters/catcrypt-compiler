@@ -18,7 +18,7 @@ set_option autoImplicit false
 
 ## Diagnosis
 
-The region back end of dev (`Haxc/RegionBackend.lean`) links a callee `c : CalleeData`
+The region back end (`Haxc/RegionBackend.lean`) links a callee `c : CalleeData`
 through `calleeBytes`, which appends the code of `c` to the bytes of the relocating encoder
 when the check `calleeLinkB c b` accepts the printed body `b`. Its symbol map `calleeSym c b`
 is `VIR.LprogIsa.x86LinkSym c.name b`, so `calleeLinkB c b` is

@@ -289,11 +289,9 @@ theorem rustExecSoundInJasmin
     -- Runtime loop is excluded from the whileFree fragment.
     simp [whileFree] at hWf
   | call f dest args rs0 oldDestV argList hLk hArgs hArgsTyped =>
-    -- The typed-args hypothesis added to RustExec.call (Option A
-    -- side-condition `∀ a ∈ args, ∃ v, rs.rsTower a.locVar =
-    -- some ⟨a.locDst, v⟩`, see LowCT.lean) discharges directly
-    -- into jasminSem.call_oracle's matching premise.  No remaining
-    -- structural blocker as of 2026-05-03.
+    -- The typed-args hypothesis of RustExec.call (side condition
+    -- `∀ a ∈ args, ∃ v, rs.rsTower a.locVar = some ⟨a.locDst, v⟩`,
+    -- see LowCT.lean) discharges jasminSem.call_oracle's matching premise.
     simp only [toJasminCmd_RCall]
     exact jasminSem.call_oracle f dest args rs0 oldDestV argList hLk hArgs hArgsTyped
   | cloneCall cloneVar cloneTy oldDest innerF dest args
@@ -326,29 +324,29 @@ theorem rustExecSoundInJasmin
   | limbStore loc idx v rs0 oldDestV hLk =>
     simp only [toJasminCmd_RLimbStore]
     exact jasminSem.limb_store_oracle loc idx v rs0 oldDestV hLk
-  -- Phase R5: RLimbStoreExpr is gated out by `whileFree = false`.
+  -- RLimbStoreExpr is gated out by `whileFree = false`.
   | limbStoreExpr _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase F/G/H/L/M (2026-05-03): these constructors are gated out
+  -- These constructors are gated out
   -- of the simulation theorem by `whileFree = false`, so each case
   -- closes by contradiction with `hWf`.
   | callN _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | callDstThreaded _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectFalse _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | selectTrue _ _ _ _ _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase L.1: RAssert lowers to []; semantics is identity.
+  -- RAssert lowers to []; semantics is identity.
   | assert _ rs0 => grind [toJasminCmd_RAssert, jasminSem.nil]
-  -- Phase M.1: RBlock body — toJasminCmd inlines the body, so the
+  -- RBlock body — toJasminCmd inlines the body, so the
   -- bridge step is just the body IH.
   | block body rs0 rs0' _h ih =>
     simp only [whileFree] at hWf
     simp only [toJasminCmd_RBlock]
     exact ih hWf
   | tupleLoad _ _ _ _ => simp [whileFree] at hWf
-  -- Phase Ext (2026-05-12/14): whileFree-rejects these constructors.
+  -- whileFree rejects these constructors.
   | scalarSetExpr _ _ _ => simp [whileFree] at hWf
   | arrLoad _ _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrStore _ _ _ _ _ _ _ => simp [whileFree] at hWf
-  -- Phase DD (2026-05-28): literal-index variants — whileFree-rejected.
+  -- Literal-index variants, rejected by whileFree.
   | arrLoadLit _ _ _ _ _ _ => simp [whileFree] at hWf
   | arrStoreLit _ _ _ _ _ _ => simp [whileFree] at hWf
   | copy _ _ _ _ _ _ => simp [whileFree] at hWf

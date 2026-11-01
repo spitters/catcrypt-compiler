@@ -11,9 +11,8 @@ public import Mathlib.Data.ZMod.Basic
 /-!
 # Three verified algebraic rewrites that the pass library was missing
 
-A capability audit (2026-06-19) confirmed three semantics-preserving rewrites were
-ABSENT from the optimizer (`Optimizer/Rewrite/{Egraph,Peephole}.lean` had
-`x*1↦x`, `x+0↦x`, `x*2^k↦x<<<k`, `sub_self↦xor`, but not these). They are the
+Three semantics-preserving rewrites that `Optimizer/Rewrite/{Egraph,Peephole}.lean`
+do not contain (they carry `x*1↦x`, `x+0↦x`, `x*2^k↦x<<<k`, `sub_self↦xor`). They are the
 canonicalizations PrimeIR-style crypto compilers run; here each is proved as a
 denotation-preserving identity over its natural carrier.
 

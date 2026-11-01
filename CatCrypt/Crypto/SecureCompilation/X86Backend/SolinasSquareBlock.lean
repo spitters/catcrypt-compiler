@@ -20,8 +20,7 @@ terminator. The kernel reads four 64-bit input limbs at `[rsi + 0]`, `[rsi + 8]`
 `rsp`.
 
 The list is a literal so that proofs can unfold it: the parser runs on file text,
-which is not available to the kernel. `lake exe nasm-parse-kat`
-(`NasmParseKat.lean`) checks that `parseNasm` of the file is this list.
+which is not available to the kernel.
 
 ## Main results
 

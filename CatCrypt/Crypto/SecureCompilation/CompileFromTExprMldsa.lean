@@ -83,22 +83,11 @@ abbrev ty_59 : ImpType := .unknown
 /-! ## §2  The emitted ML-DSA typed literals, verbatim
 
 Each definition below is the body of the correspondingly named
-`Mldsa.<name>_texpr` of
-`CatCrypt/Crypto/MLDSA/Extraction/Mldsa_haxpipe.lean` in the SSProve-lean tree
-at commit `aaf71668a`, copied character for character. The extraction also
-carries `example : <name>_texpr.erase = <name>_impExpr := rfl` for each one, so
-the literal is tied to the untyped expression the rest of the extraction uses.
-
-To re-check a copy against the extraction:
-
-```
-grep -A 1 '^def add_mod_q_texpr' \
-  ../SSProve-lean/CatCrypt/Crypto/MLDSA/Extraction/Mldsa_haxpipe.lean
-```
-
-(and likewise for `Q`, `ZETA`, `QINV`, `INV_NTT_F`, `mod_q`, `sub_mod_q`,
-`mul_mod_q`, `mod_pm`, `power2round`, `mont_reduce`). The dev tree cannot be
-imported from this package: the Lake dependency runs dev → compiler. -/
+`Mldsa.<name>_texpr` of the `haxpipeT` extraction of the ML-DSA Rust crate,
+copied character for character. The extraction also carries
+`example : <name>_texpr.erase = <name>_impExpr := rfl` for each one, so the
+literal is tied to the untyped expression the rest of the extraction uses. The
+extraction module is not part of this package. -/
 
 /-- The emitted `Mldsa.Q_texpr`: the ML-DSA modulus `q = 8380417 = 2^23 - 2^13 + 1`
     (FIPS 204 §4). -/

@@ -24,8 +24,8 @@ Drives the Phase-2 extensions of the dalek-pipeline plan:
 
 Each reified pure-Lean function becomes one `func.func` in the emitted
 MLIR. Externs include the extended fp surface:
-- existing: `fp_add`, `fp_sub`, `fp_mul`, `fp_sqr`, `fp_opp`, `fp_mul_a24`
-- new (Phase 1.2): `fp_inv`, `fp_invsqrt`, `fp_sqrt_ratio_i`, `fp_cmov`,
+- the X25519 set: `fp_add`, `fp_sub`, `fp_mul`, `fp_sqr`, `fp_opp`, `fp_mul_a24`
+- the Ed25519 additions: `fp_inv`, `fp_invsqrt`, `fp_sqrt_ratio_i`, `fp_cmov`,
   `fp_is_neg`, `fp_is_zero`, `fp_sq2`, `fp_sq4`, `fp_sq8`.
 
 Output target is `$CATCRYPT_BENCH/src/ed25519_{madd,compress,decompress}.mlir`,

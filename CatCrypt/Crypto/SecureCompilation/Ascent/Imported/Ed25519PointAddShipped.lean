@@ -17,8 +17,8 @@ one exists.
 
 ## Provenance
 
-* Source: `crates/catcrypt-ed25519/asm/ed25519_point_add_x86_from_lean.s` in the
-  `SSProve-lean` repository at commit `b294647590404f72dd82b5404e326511f3c055eb`
+* Source: the assembly file `ed25519_point_add_x86_from_lean.s`, emitted from Lean in the
+  CatCrypt development tree (not public) at its commit `b294647590404f72dd82b5404e326511f3c055eb`
   (tracked and unchanged at that commit), file SHA-256
   `5b3cf92957bab88e115f700584ec50bd14a37bbe9e26f815076d2b95b856e022`.
 * Produced by `bench/s2n_import/import_owned.sh`, which translates each instruction

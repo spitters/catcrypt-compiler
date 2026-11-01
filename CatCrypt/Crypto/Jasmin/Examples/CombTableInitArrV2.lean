@@ -7,9 +7,8 @@ Authors: CatCrypt Contributors
 
 This is the rewrite of `CombTableInitArr.lean` using BOTH new IR
 features:
-  * `TArr 1024 (TBytes 200)` for the cell array (Phase Ext part 1)
-  * `RScalarSetExpr` + `SExpr` for runtime index arithmetic (Phase Ext
-    part 2, added 2026-05-12)
+  * `TArr 1024 (TBytes 200)` for the cell array
+  * `RScalarSetExpr` + `SExpr` for runtime index arithmetic
 
 With BOTH features, the algorithm collapses to ~10 IR nodes:
   * Row 0 init: `RFor d in 0..14 { k = d+2; load cells[k-1]; add B; store cells[k] }`

@@ -31,9 +31,9 @@ are one memory; the name-keyed memory of `JasminModel` keys them as two cells, s
 
 ## The source
 
-The source of the kernel is `maddLowCT` in `CatCrypt/Crypto/EdDSA/Ed25519CombEmit.lean`
-of the `SSProve-lean` tree, whose formula is `Ed25519CombEmit.maddSpec` over `Fp25519`.
-That module is not in this package's import closure; `maddSpecR` is the same formula
+The source of the kernel is `maddLowCT` of the CatCrypt development tree (not public),
+whose formula is `Ed25519CombEmit.maddSpec` over `Fp25519`.
+That module is not in this package; `maddSpecR` is the same formula
 over a commutative ring, and `maddSpecN_maddSpecR` relates the natural-number
 coordinates to it in `ZMod p25519`.
 

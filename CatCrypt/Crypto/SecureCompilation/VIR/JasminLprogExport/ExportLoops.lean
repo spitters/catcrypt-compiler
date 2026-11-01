@@ -344,7 +344,7 @@ def ComL.denote : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
               (.cons acc (.cons (BitVec.ofNat 64 t) (Expr.lookupArgs invs V))))
           (init.lookup V)))
 
-/-- **Multi-accumulator counted loop** (task #20): a runtime-trip loop carrying
+/-- **Multi-accumulator counted loop**: a runtime-trip loop carrying
     `N` loop-carried `w`-bit cells — an imperative kernel's several mutable
     scalars (MAYO/SolveGf16's `i, j, acc, prow, pivot, …`) threaded together
     across the back-edge, which the single-`accTy` loop nodes cannot hold.

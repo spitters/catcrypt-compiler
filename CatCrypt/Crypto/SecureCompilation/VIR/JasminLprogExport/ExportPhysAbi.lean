@@ -238,12 +238,9 @@ def abiSaveRsiName : String := "qsave.RSI"
     (so the body transiently writes them), we must restore the caller's
     values before `Lret`. Hence we save **all six** SysV callee-saved
     registers into the red zone here; the epilogue
-    (`calleeSaveRestoreEpilogue`) restores them. The pre-2026-05-27 prologue
-    saved only `RBX/RBP/R12/R13` and treated `R14/R15` as caller-saved
-    scratches — this was a correctness bug surfaced when a caller compiled
-    at `-O2 -march=native` hoisted a loop-invariant into `R14`/`R15` across
-    our call site (every prior bench passed by luck because the harnesses
-    never loaded state into those registers).
+    (`calleeSaveRestoreEpilogue`) restores them. A caller compiled at
+    `-O2 -march=native` may keep a loop invariant in `R14`/`R15` across the
+    call site.
 
     `inLoadMap` is taken as a parameter only for the legality lemmas (so
     `buildPrologue_all_MOV_or_MOVQ` doesn't change shape); the actual
@@ -263,8 +260,8 @@ def buildPrologue (_virt : Lfundef) (_tbl : Array Nat)
   --   [-104..-97]   callee-saved RBP
   --   [-96..-89]    callee-saved R12
   --   [-88..-81]    callee-saved R13
-  --   [-80..-73]    callee-saved R14   (added 2026-05-27 for ABI correctness)
-  --   [-72..-65]    callee-saved R15   (added 2026-05-27 for ABI correctness)
+  --   [-80..-73]    callee-saved R14
+  --   [-72..-65]    callee-saved R15
   --   k.0 = -4, k.1 = -8, ..., k.N at -4-4N (body's u32 spills)
   --
   -- Then save BOTH pointers and park RSI into R14 for the first inline load.
@@ -1683,7 +1680,7 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
     slots, restoring the caller's values before the function returns. Emitted
     just before the body's final `Lret`.
 
-    R14/R15 are added (2026-05-27) for SysV ABI correctness: although the
+    R14/R15 are included for SysV ABI correctness: although the
     body's reload pass uses them as scratches, they are callee-saved per the
     SysV x86-64 ABI and must be restored. -/
 def calleeSaveRestoreEpilogue : Lcmd :=

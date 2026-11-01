@@ -30,8 +30,8 @@ and by `allocCheck gpSig` over the run's one-block graph. The kernels are the fi
 
 Whole bodies. `bodyCheckE` checks the decisions the pass selects over the control-flow
 graph of the whole body. On the rolled Keccak-f1600 the decisions selected with the
-live-out computation of `reallocBody` pass; with the live-out computation before compiler
-commit `81d1d97` (no `labelLiveFrames`) they fail at instruction 57, the reload
+live-out computation of `reallocBody` pass; with a live-out computation without
+`labelLiveFrames` they fail at instruction 57, the reload
 `R15 := k.2` after the loop label: the spill store of `k.2` above the back-edge is
 dropped as dead, and the merge at the label removes `k.2` from its cell.
 

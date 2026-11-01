@@ -106,7 +106,7 @@ set_option linter.deprecated false in
     either stage rejects (the source is outside the supported subset, or an atom
     fails to resolve).
 
-    Retired with the THIR generator since 2026-10-18: new kernels compile
+    Retired with the THIR generator: new kernels compile
     through `compileA` (`haxToNF`). -/
 def impToJasmin (w nIn : Nat) (params : List String) (e : ImpExpr) :
     Option (Com jasminDialect (frontCtxt w nIn []) (rW w)) :=

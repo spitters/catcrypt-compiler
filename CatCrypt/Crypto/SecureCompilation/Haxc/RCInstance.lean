@@ -40,8 +40,8 @@ the public registers of `σ` and the words of its public array regions.
   source on the entry states under the table of the linked functions, through
   `haxc_ct_proved_all` and `haxc_correct_auto` of `ComposeCTStraight`. The robust
   compilation conjunct relates the target result and trace to the source value and a trace
-  simulated from `pubOf σ` (`RCGate.rc_of_gate`). UC preservation follows from the gate
-  conclusion by `HaxcRC.uc_of_gate`.
+  simulated from `pubOf σ` (`RCGate.rc_of_gate`); `RCGate.rhp_of_gate` gives the
+  hyperproperty-preservation form of the same conclusion.
 -/
 
 @[expose] public section
@@ -178,7 +178,9 @@ theorem haxc_gate_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
     the source run, and a trace simulated from `pubOf σ`) are at distance `0` in every
     context. The conjunct carries value correctness and constant time together; the
     constant-time part is `haxc_ct_proved_all`, and determinism of the target result is
-    `haxcTgtRes_det`. -/
+    `haxcTgtRes_det`. The ideal trace is chosen by the choice simulator `RCGate.simLeak`
+    (`Classical.epsilon`); the conjunct restates the gate conclusion and holds for every
+    compiler that satisfies it with a deterministic target. -/
 theorem haxc_rc_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiLayout)
     (fname : String) (P : Lprog) (bytes : List (BitVec 8))
     (hc : compileA m σ fname = some (P, bytes))

@@ -16,7 +16,7 @@ set_option autoImplicit false
 # Operational semantics for the new x86 opcodes used by `Curve25519CryptoptPort`
 
 The CryptOpt-tuned `carry_mul` / `carry_square` asms use seven BMI1/BMI2
-opcodes that are not yet in `BignumExec.lean`'s dispatcher. This file
+opcodes that are not in `BignumExec.lean`'s dispatcher. This file
 provides:
 
 1. **Pure functions** — `bzhi`, `shrdImm`, `imulImm`, `shlx`, `and64`,
@@ -29,23 +29,13 @@ provides:
    `bignumExecPlus` threads it over a body, identically to
    `bignumExec`.
 
-The wrapper avoids touching `BignumExec.lean` directly (which the
-active Lean terminal hot-lists). Folding these opcodes into the main
-dispatcher is mechanical and can happen when the active terminal
-releases the file — at which point this wrapper becomes redundant.
+## Audit boundary
 
-## Audit boundary moved (vs the leaf-only commit `c73b2182`)
-
-With these semantics:
-- `mulBody` / `sqrBody` from `Curve25519CryptoptPort.lean` become
-  *operationally interpretable* in Lean (modulo the spill-slot encoding
-  as synthetic locals, which is structural, not semantic).
-- An eventual proof of `bignumExecPlus mulBody ⊆ fiat_25519_carry_mul`
-  / `… sqrBody ⊆ fiat_25519_carry_square` would close the audit
-  boundary inside Lean — replacing "trust CryptOpt + linker" with
-  "trust the seven SDM-spec'd helpers below".
-- Such a proof (165 / 111 instructions of carry-chain reasoning) is
-  outside the scope of this module.
+With these semantics, `mulBody` / `sqrBody` of `Curve25519CryptoptPort.lean` are
+interpretable in Lean (the spill slots are encoded as synthetic locals). A proof of
+`bignumExecPlus mulBody ⊆ fiat_25519_carry_mul` / `… sqrBody ⊆ fiat_25519_carry_square`
+(165 / 111 instructions of carry-chain reasoning) would reduce the trusted base from
+CryptOpt and the linker to the seven helpers below; this module does not state it.
 -/
 
 namespace CatCrypt.Crypto.Jasmin.Curve25519CryptoptOps

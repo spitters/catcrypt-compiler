@@ -50,7 +50,7 @@ their builtin is `none` on calls of their kinds and `toOp` does not translate th
 heads, an integer `mul` and a field `mul` share a name, and `T.builtins p` reads every call of
 `"mul"` on two integers as the field product modulo `p`. The semantics of the table is the
 intended one only for functions whose integer-typed calls with these names are field calls.
-Qualified heads (`primeir_hax::Field::mul`, plan row PL-2) remove the ambiguity; the table
+Qualified heads (`primeir_hax::Field::mul`) remove the ambiguity; the table
 carries the same entries under these names.
 
 ## Main definitions

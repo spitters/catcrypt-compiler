@@ -46,9 +46,8 @@ A secret key is passed in the scalar form of `P384Reflect` (six little-endian
 `p384_scalar_mul`. RFC 9180 §7.1.2 serialises a P-384 private key as a
 48-byte big-endian octet string; conversion between the two is the caller's.
 
-These sizes are those of `dhkem_p384` in
-`SSProve-lean/CatCrypt/Crypto/HPKE/TestVectors.lean` (`Nsecret = 48`,
-`Nenc = 97`, `Npk = 97`, `Nsk = 48`), which RFC 9180 Table 2 fixes.
+These are the sizes RFC 9180 Table 2 fixes for DHKEM(P-384, HKDF-SHA384):
+`Nsecret = 48`, `Nenc = 97`, `Npk = 97`, `Nsk = 48`.
 
 `ppRustFunction` emits inputs as `&T` and outputs as `&mut T`, inputs first and
 outputs last. Inside a body, `.RCall f dest args` renders as `f(dest, args…)`

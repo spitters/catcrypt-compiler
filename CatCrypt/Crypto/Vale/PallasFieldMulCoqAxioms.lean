@@ -30,8 +30,9 @@ Montgomery radix `R = 2^256`, 4×u64 saturated limbs (32 bytes).
 
 | Status | Meaning |
 |---|---|
-| ✅ proved | fiat-crypto theorem already exists and is `Qed`-closed |
-| 📌 cite-only | citation is the cross-prover trust boundary |
+| Lean theorem | Lean theorem; the citation names the Lean lemmas it is proved from |
+| proved | the cited fiat-crypto theorem is `Qed`-closed |
+| cited | the citation is the cross-prover trust boundary |
 
 ## Field arithmetic (Fp_{Pallas})
 
@@ -43,8 +44,8 @@ fiat-crypto theorem below is the cross-prover citation for the linked C symbol.
 
 | Lean leaf | Status | citation |
 |---|---|---|
-| `Pallas_fmul_denote_spec` | ✅ proved (in Lean) | `Number.montgomeryMul_correct` at `pallasP = valLimbs pallasLimbs` (`pallasP_eq_twin`, `PastaBignumTierA.pallasLimbs_value`); range `< 2·p` and `out · 2^256 ≡ x · y (mod p)`. |
-| `Pallas_fmul_denote` (C symbol) | 📌 cite-only | `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v::mulmod_correct` (`Qed`): `eval (from_montgomerymod (mulmod a b)) mod m = (eval (from_montgomerymod a) * eval (from_montgomerymod b)) mod m` for `valid a`, `valid b`, at `m = p_{Pallas}`. C-operation form: `fiat-crypto/src/COperationSpecifications.v` module `WordByWordMontgomery`, `mul_correct`. Realized leaf: `fiat_pallas_mul` in `fiat-crypto/fiat-rust/src/pallas_64.rs`; Montgomery product `x · y · R⁻¹ mod p`, `R = 2^256`. |
+| `Pallas_fmul_denote_spec` | Lean theorem | `Number.montgomeryMul_correct` at `pallasP = valLimbs pallasLimbs` (`pallasP_eq_twin`, `PastaBignumTierA.pallasLimbs_value`); range `< 2·p` and `out · 2^256 ≡ x · y (mod p)`. |
+| `Pallas_fmul_denote` (C symbol) | cited | `fiat-crypto/src/Arithmetic/WordByWordMontgomery.v::mulmod_correct` (`Qed`): `eval (from_montgomerymod (mulmod a b)) mod m = (eval (from_montgomerymod a) * eval (from_montgomerymod b)) mod m` for `valid a`, `valid b`, at `m = p_{Pallas}`. C-operation form: `fiat-crypto/src/COperationSpecifications.v` module `WordByWordMontgomery`, `mul_correct`. Realized leaf: `fiat_pallas_mul` in `fiat-crypto/fiat-rust/src/pallas_64.rs`; Montgomery product `x · y · R⁻¹ mod p`, `R = 2^256`. |
 
 ## See also
 

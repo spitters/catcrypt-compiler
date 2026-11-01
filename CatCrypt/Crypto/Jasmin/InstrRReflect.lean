@@ -31,9 +31,9 @@ Lean value-level f : (BitVec 64)^k → (BitVec 64)^k
 List InstrR  (= the body of a `mpn_*` kernel)
 ```
 
-## MVP scope (2026-05-28)
+## Scope
 
-The MVP supports the **straight-line ADX idiom** of `MpnAddMul1AdxPrototype`:
+The reflection supports the **straight-line ADX idiom** of `MpnAddMul1AdxPrototype`:
 
 * `mulx a b : BitVec 64 × BitVec 64` — emits `Copn [hiName, loName] := MULX(a, b)`
 * `adcx dst src cf_in : BitVec 64 × BitVec 64` — emits `Copn [cfName, rName] := ADCX(...)`

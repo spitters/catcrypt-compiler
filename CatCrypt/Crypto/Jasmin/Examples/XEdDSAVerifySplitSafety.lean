@@ -14,10 +14,9 @@ Each of the four steps is a leaf call, so the whole body composes out
 of `rcall_AllSlots` and `rseq_AllSlots` from
 `EmittedASTCorrectness.lean` under three `RLetZero` binders.
 
-## Audit context (2026-05-13)
+## Context
 
-After this file lands, the IR-emitted bodies with `_memory_safe` Qed
-proofs are:
+The IR-emitted bodies with `_memory_safe` proofs are:
 
   * `EmittedASTCorrectness.lean`     — 9 bodies (Scalar25519Ops × 6,
                                        fe25519Invert, combTableInitArrV2,

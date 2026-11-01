@@ -896,10 +896,7 @@ theorem Com.toLprogPhysAbi_wf {Γ : Ctxt jasminDialect} {t : JasminTy}
 /-- The prologue is the 9-instruction pointer-save + callee-save + RSI-park
     prelude, all `MOVQ`s (save RDI/RSI to red zone, save the six SysV
     callee-saved GPRs RBX/RBP/R12/R13/R14/R15 to red zone, park RSI into R14).
-    The per-slot input loads have moved inside `physBodyWithStores`.
-
-    Updated 2026-05-27: now 9 instructions (was 7) — `R14` and `R15` are added
-    to the callee-save set per the SysV x86-64 ABI. -/
+    The per-slot input loads are inside `physBodyWithStores`. -/
 theorem buildPrologue_all_MOVQ (virt : Lfundef) (tbl : Array Nat)
     (inLoadMap : InLoadMap) :
     ∀ r ∈ buildPrologue virt tbl inLoadMap,

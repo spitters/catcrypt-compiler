@@ -20,8 +20,7 @@ register it reloads that pointer into. It saves and restores `rbx`, `rbp`, `r12`
 below `rsp`.
 
 The block is the concatenation of its segment literals, which proofs unfold segment
-by segment. `lake exe nasm-parse-kat` (`NasmParseKat.lean`) checks that `parseNasm` of
-the file is this list.
+by segment.
 
 ## Main results
 

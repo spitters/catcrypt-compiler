@@ -133,9 +133,8 @@ inductive QOp where
       concrete `Float` angle. Lowering paths that need an exact angle
       should use `rzReal` instead. -/
   | rz (θ : Float)
-  /-- `Rz(θ)` rotation, `ℝ`-parametrised (noncomputable, exact). Added
-      2026-05-14 alongside `rz` to replace the lossy `ℝ → Float`
-      collapse used by the Phase-2 bridge (`QSSAToVIR.toRzFloat`).
+  /-- `Rz(θ)` rotation, `ℝ`-parametrised (noncomputable, exact). It avoids
+      the lossy `ℝ → Float` collapse of `QSSAToVIR.toRzFloat`.
       Routes to `Quantum.Circuit.Gate.Rz : Fin n → ℝ → Gate n`. -/
   | rzReal (θ : ℝ)
   /-- CNOT. -/
@@ -163,8 +162,8 @@ The plan doc spec'd `rz (θ : ℝ)` to match `QuantumSSA.QOp.rz`. The
 original `rz` constructor uses `Float` so that `QOp` itself is
 computable (`decide`/`rfl` work on dialect programs).
 
-As of 2026-05-14 we ship an additional `rzReal (θ : ℝ)` constructor
-so the Phase-2 bridge (`QSSAToVIR.lean`) can route
+The additional `rzReal (θ : ℝ)` constructor lets the bridge
+`QSSAToVIR.lean` route
 `QuantumSSA.QOp.rz (θ : ℝ)` to `QuantumDialect.QOp.rzReal θ` without
 any conversion loss. `QOp` carries `Real`, which is noncomputable, but
 existing pattern matches over `QOp` that don't touch `rzReal` still

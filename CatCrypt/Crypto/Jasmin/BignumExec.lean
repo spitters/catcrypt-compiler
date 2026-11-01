@@ -50,10 +50,8 @@ correspondence.
 
 Correctness grounds at the **Jasmin-source level** via differential
 testing: the same body, run via this interpreter and via
-`JasminEmit ∘ jasminc ∘ link`, agrees on KAT inputs.
-
-The differential gate is in SSProve-lean's
-`CatCrypt/Crypto/Jasmin/BignumExecDiffTest.lean`.
+`JasminEmit ∘ jasminc ∘ link`, agrees on KAT inputs. The differential test is
+not part of this package.
 
 ## Coverage (only what `bignum_mod_p25519_4` needs)
 
@@ -1884,8 +1882,7 @@ theorem bignumExecFuel_seq
 
 A 2-instruction body that loads a u64 and stores it elsewhere.
 Verifies that `bignumExec` runs to completion (`isSome`) on a
-straight-line body. The full differential gate against compiled
-output lives in SSProve-lean's `CatCrypt/Crypto/Jasmin/BignumExecDiffTest.lean`. -/
+straight-line body. -/
 
 /-- Initial state: `ap` register points at address 16; memory holds
     a 64-bit value `0x42` packed at bytes 16..23. -/

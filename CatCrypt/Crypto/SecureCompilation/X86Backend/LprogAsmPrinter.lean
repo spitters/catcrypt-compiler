@@ -39,7 +39,7 @@ fixed name→`%rN` / `k.N`→`off(%rsp)` map. This is the SAME map the patched
 encoder. The trusted-but-unverified surface is then exactly `gas` (mnemonic+operands
 → bytes), the same final step every backend trusts.
 
-## Operand-name conventions (transcribed from SSProve-lean `patches/jasmin/read_linear.ml.patch`)
+## Operand-name conventions (those of the jasmin linear-program reader)
 
 * physical GP `RAX … R15` → `%rax … %r15` (32-bit subregister `%eax … %r15d`
   for U32 ops, full 64-bit register for U64 ops);

@@ -237,7 +237,7 @@ def renderFieldHelpers : String :=
     `TW` holds the coset domain elements. -/
 def ldeJazz : String :=
   "/* Plonky3 low-degree extension (coset FFT) — layer 2 of the STARK chain\n" ++
-  " * (#154), emitted by CatCrypt's verified front\n" ++
+  " * emitted by CatCrypt's verified front\n" ++
   " * (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3LdeEmit.lean).\n" ++
   " * Radix-2 decimation-in-time butterfly over Baby Bear; field arithmetic\n" ++
   " * is regArith-only (NO opaque leaf). Butterfly / domain / Horner reference:\n" ++

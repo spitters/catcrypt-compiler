@@ -248,7 +248,7 @@ def emitP256 : IO Unit := do
   IO.FS.createDirAll "bench/p256_fieldmul_compare/gen_com"
   IO.FS.writeFile
     "bench/p256_fieldmul_compare/gen_com/p256_mul_x86_from_lean.s" p256MulAsm
-  IO.println "wrote p256_mul_x86_from_lean.s (NIST Solinas reduce, #407)"
+  IO.println "wrote p256_mul_x86_from_lean.s (NIST Solinas reduce)"
 
 /-! ## Artifact generation at elaboration
 

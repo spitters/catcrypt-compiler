@@ -44,7 +44,6 @@ def rustTowerType : TowerType → String
   | .TU32 => "u32"
   | .TFp25519 => "Fp25519"
   | .TFp25519_64 => "Fp25519_64"
-  -- Phase D/E/I/K (2026-05-03):
   | .TFpL25519 => "FpL25519"
   | .TFpP256 => "FpP256"
   | .TFp25519_4Bounded _ => "Fp25519_4Bounded"
@@ -53,9 +52,7 @@ def rustTowerType : TowerType → String
   | .TTuple a b => "(" ++ rustTowerType a ++ ", " ++ rustTowerType b ++ ")"
   | .TBytes n => "[u8; " ++ toString n ++ "]"
   | .TArr n t => "[" ++ rustTowerType t ++ "; " ++ toString n ++ "]"
-  -- Phase L (2026-05-22): polynomial-mod-q surface forms.  Rust extraction
-  -- of these surfaces uses the libcrux poly-mod newtypes once available; for
-  -- now they emit named placeholders matching the convention in the
+  -- Polynomial-mod-q surface forms. They emit named placeholders matching the convention in the
   -- ml-kem / ml-dsa hax extractions.
   | .TPolyMod q n => s!"PolyMod<{q}, {n}>"
   | .TPolyVec q n k => s!"PolyVec<{q}, {n}, {k}>"
@@ -151,7 +148,7 @@ partial def ppLowCT (paramNames : List String) (resultNames : List String)
                         rustLocRefMut resultNames dest2 ++
                         (if args.isEmpty then "" else ", " ++ argStr) ++ ");")
   | .RCallDstThreaded f dest args =>
-      -- Phase E2 (2026-05-29): dst-threaded leaf call.  Same surface
+      -- Dst-threaded leaf call.  Same surface
       -- syntax as `RCall` — the single destination is passed `&mut`,
       -- followed by the by-ref arguments.
       let argStr := String.intercalate ", " (args.map (rustLocRef paramNames))
@@ -238,7 +235,7 @@ partial def ppLowCT (paramNames : List String) (resultNames : List String)
       rustIndent ind (dstExpr ++ " = " ++ rustLocName src ++ "[" ++
         idxVar ++ " as usize];")
   | .RArrStoreLit arr idx src =>
-      -- Phase DD (2026-05-28): literal-index array element store.
+      -- Literal-index array element store.
       -- Same as RArrStore except idx is a Nat literal — no `as usize` cast
       -- needed since `usize` accepts integer literals directly.
       let srcExpr :=
@@ -247,7 +244,7 @@ partial def ppLowCT (paramNames : List String) (resultNames : List String)
       rustIndent ind (rustLocName arr ++ "[" ++ toString idx ++ "] = " ++
         srcExpr ++ ";")
   | .RArrLoadLit dst src idx =>
-      -- Phase DD (2026-05-28): literal-index array element load.
+      -- Literal-index array element load.
       let dstExpr :=
         if resultNames.contains dst.locVar then "*" ++ rustLocName dst
         else rustLocName dst

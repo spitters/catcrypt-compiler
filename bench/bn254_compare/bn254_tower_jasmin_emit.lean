@@ -58,8 +58,7 @@ miller_loop, pairing) hit a calling-convention gap: the emit prints pointer args
 implicitly decay a `stack u64[N]` array to a `reg u64` when passing a temporary to a
 leaf. Closing it needs a `reg ptr u64[N]` emit convention (params + array-indexed
 access + return-value threading) for both the tower and the leaf signatures — a new
-emit path, not a reuse of the #218/#219 primitives. See
-`jasmin_tower/JASMIN_TOWER_222.md`.
+emit path, not a reuse of the existing Fp leaf primitives.
 
 KAT (`jasmin_tower/bn254_tower_kat.rs`): the compiling subset (Fp2_add/sub/copy) is
 byte-identical to the Rust tower on the published EIP-197 G2 generator coordinates.
@@ -114,7 +113,7 @@ def main : IO Unit := do
     IO.println "               native jasmin module from the verified bedrock2 program"
     IO.println "               (Core.tr_cmd_correct). The C/FFI shim remains only for the"
     IO.println "               leaf edge until the 39-function stackalloc convention gap"
-    IO.println "               (jasmin_tower/JASMIN_TOWER_222.md) is closed."
+    IO.println "               is closed."
   else
     IO.eprintln "  shape CHECK FAILED: emitted tower missing an expected entry point/leaf"
 

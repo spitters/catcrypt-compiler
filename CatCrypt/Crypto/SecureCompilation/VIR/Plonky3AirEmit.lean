@@ -192,7 +192,7 @@ sweep, each iteration the lane-parallel evaluation covered by
     the boundary check `trace[0] = [0, 1]`. -/
 def airJazz : String :=
   "/* Plonky3 AIR constraint evaluator (Fibonacci AIR) — layer 4 of the\n" ++
-  " * STARK chain (#154), emitted by CatCrypt's verified front\n" ++
+  " * STARK chain, emitted by CatCrypt's verified front\n" ++
   " * (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3AirEmit.lean).\n" ++
   " * Per-step transition sweep (lane-parallel over steps); field arithmetic\n" ++
   " * regArith-only, NO opaque leaf. Reference: plonky3-hax/src/air.rs.\n" ++

@@ -603,7 +603,7 @@ theorem rustExec_preserves_slot_type
       rw [rsSetTower_other rs0 dst.locVar x _ (fun h => hxd h.symm)]
       exact hv
   | arrStoreLit arr idx src rs0 oldV srcV hLookArr _hLookSrc =>
-    -- Phase DD (2026-05-28): literal-index store.  Same post-state shape
+    -- Literal-index store.  Same post-state shape
     -- as `arrStore` (`locatedUpdate rs0 arr (…)`), minus the runtime
     -- index lookup, so the type-preservation argument is identical.
     intro x t _ h
@@ -624,7 +624,7 @@ theorem rustExec_preserves_slot_type
       rw [rsSetTower_other rs0 arr.locVar x _ (fun h => hxa h.symm)]
       exact hv
   | arrLoadLit dst src idx rs0 oldV srcV hLookDst _hLookSrc =>
-    -- Phase DD (2026-05-28): literal-index load.  Same post-state shape
+    -- Literal-index load.  Same post-state shape
     -- as `arrLoad`, minus the runtime index lookup.
     intro x t _ h
     obtain ⟨vv, hv⟩ := h

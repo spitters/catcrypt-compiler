@@ -149,7 +149,7 @@ def TypeEnv.findOpt (env : TypeEnv) (name : String) : Option TowerType :=
   | [] => none
   | (n, t) :: rest => if n = name then some t else TypeEnv.findOpt rest name
 
-/-! ### §3.0.bis  Per-protocol leaf-call return-type dispatch (2026-05-23)
+/-! ### §3.0.bis  Per-protocol leaf-call return-type dispatch
 
 The default `towerOfCallName` falls back to `.TFp` for any leaf-call name
 it does not recognise by prefix.  That is wrong for MLKEM: `poly_add`
@@ -225,7 +225,7 @@ def mlkemLeafTable : LeafTable :=
     ("shake128",            .TBytes 504),
     ("shake256",            .TBytes 32),
     ("prf",                 .TBytes 128),
-    -- Phase L.1 (2026-05-23): width-casts emitted by the byte-packing
+    -- Width-casts emitted by the byte-packing
     -- kernels (`byte_encode_12`, `poly_compress_*`).  `cast#8` →
     -- u8 (`TU8`), `cast#16` → u16 (`TFp`), `cast#32` → u32 (`TU32`),
     -- `cast#64` → u64 (`TU64`).  Without these the cast result slot is
@@ -251,7 +251,7 @@ def mlkemZeroConstTable : LeafTable :=
 def mlkemZeroConst? (name : String) : Option TowerType :=
   (mlkemZeroConstTable.find? (fun p => p.1 = name)).map (·.2)
 
-/-- **Stage 1a (2026-07-01) — runtime-loop bound conversion.**
+/-- **Runtime-loop bound conversion.**
     Convert a `forFold` upper-bound `ImpExpr` into a scalar `SExpr` so the
     non-literal-bound case can lower to `RForRuntime`.  Handles the shapes the
     K-PKE / lattice extractions produce for a loop trip count: a scalar
@@ -587,7 +587,7 @@ def haxToLowCT : ImpExpr → Option LowCT
       match haxToLowCT body with
       | some bodyC => some (.RFor v (n % w.modulus) bodyC)
       | none => none
-  -- Stage 1a (2026-07-01): runtime-bound `forFold 0 hi body` with a
+  -- Runtime-bound `forFold 0 hi body` with a
   -- non-literal `hi` that `impBoundToSExpr` accepts lowers to `RForRuntime`.
   | .forFold v (.lit (.int 0)) hi body =>
       match impBoundToSExpr hi, haxToLowCT body with
@@ -909,7 +909,7 @@ def haxToLowCTEnv (env : TypeEnv) (leaves : LeafTable) :
       match haxToLowCTEnv envFor leaves body with
       | some bodyC => some (.RFor v (n % w.modulus) bodyC)
       | none => none
-  -- Stage 1a (2026-07-01): runtime-bound `forFold` (typed twin).
+  -- Runtime-bound `forFold` (typed twin).
   | .forFold v (.lit (.int 0)) hi body =>
       let envFor : TypeEnv := (v, .TU64) :: env
       match impBoundToSExpr hi, haxToLowCTEnv envFor leaves body with
@@ -1079,7 +1079,7 @@ def AnfShaped : ImpExpr → Bool
       decide (n ≥ 0) && AnfShaped body
   | .forFold _ (.lit (.int 0)) (.lit (.uintLit _ _)) body =>
       AnfShaped body
-  -- Stage 1a (2026-07-01): runtime-bound `forFold` — accepted iff the bound
+  -- Runtime-bound `forFold`, accepted iff the bound
   -- converts and the body is ANF-shaped.
   | .forFold _ (.lit (.int 0)) hi body =>
       (impBoundToSExpr hi).isSome && AnfShaped body
@@ -1443,10 +1443,10 @@ inductive Shape where
   | shIfNz (v : String)
   | shWhileNz (v : String)
   | shFor (v : String) (n : Nat)
-  -- Stage 1a (2026-07-01): runtime-bound for-loop.
+  -- Runtime-bound for-loop.
   | shForRuntime (x : String)
   | shLimbStore
-  -- Phase R5 (2026-06-01): runtime-valued limb store.
+  -- Runtime-valued limb store.
   | shLimbStoreExpr
   | shCallN
   | shSelect
@@ -1736,7 +1736,7 @@ A self-alias lowers to its body; a binding `let name = src` with
 
 end SmokeTests
 
-/-! ### Typed-pathway smoke tests (2026-05-23)
+/-! ### Typed-pathway smoke tests
 
 Minimal positive tests pinning that `haxToLowCTEnv` derives the right
 destination type when the env knows the array's container type — the
@@ -1799,7 +1799,7 @@ open CatCrypt.Crypto.Jasmin.LowCT (TowerType)
 #guard SmokeTests.shapeOfOpt (haxToLowCTEnv [] [] SmokeTests.simpleKernel) ==
   some (.shLetZero "t" .TFp)
 
-/-! ### MLKEM leaf-table dispatch (2026-05-23)
+/-! ### MLKEM leaf-table dispatch
 
 The `mlkemLeafTable` overrides the prefix-based `towerOfCallName` for
 protocol-specific leaf names: `poly_add` returns `TPolyMod 3329 256`,

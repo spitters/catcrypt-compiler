@@ -408,8 +408,8 @@ theorem above_not_inFrame (r x : BitVec 64) (o G : Nat) (h1 : o + 16 + G ≤ 2 ^
 
 /-- **The frame check of a calling body**: every frame offset `o` of the body, from the
     stack register after the prologue, is non-negative with `o + 16 + G` at most
-    `2 ^ 64`; and no name of the body is a frame-array name (`faB`), whose range row F3
-    checks. -/
+    `2 ^ 64`; and no name of the body is a frame-array name (`faB`), whose range
+    is checked separately. -/
 def frameNonnegB (body : Lcmd) (G : Nat) : Bool :=
   (frameOffs body).all (fun o => decide (0 ≤ o ∧ o.toNat + 16 + G ≤ 2 ^ 64))
     && (bodyNamesI body).all fun q => !LprogAsmPrinter.faB q

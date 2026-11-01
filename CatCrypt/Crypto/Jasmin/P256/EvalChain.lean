@@ -120,7 +120,7 @@ chain parameter: the evaluator is the identity on the empty chain, so
 only a named chain can satisfy the Fermat equation.  The soundness
 theorem for the libcrux `finv` chain literal is in §10. -/
 
-/-! ## §8  Worked examples — small concrete chains (✅ added 2026-05-01)
+/-! ## §8  Worked examples — small concrete chains
 
 Demonstrates that the generic evaluator computes correctly on
 P-256 with real (small) chains. These are not the full inverse
@@ -188,7 +188,7 @@ The framework is now demonstrated end-to-end at the small-chain
 level; only a real chain literal (cited from libcrux / openssl /
 RFC 5114) is needed to lift these to the full inverse claim. -/
 
-/-! ## §10  Concrete inverse chain — libcrux `finv` (✅ added 2026-05-01)
+/-! ## §10  Concrete inverse chain — libcrux `finv`
 
 Transcribed from `libcrux/p256/src/p256.rs::finv` (HACL-derived;
 verified upstream). 12-block chain computing `a^(q − 2) mod q`
@@ -267,7 +267,6 @@ theorem libcruxP256InvChain_correct (a : Nat) :
   libcruxP256InvChain_sound a
 
 /-! ## §11  Per-block instances for the libcrux P-256 chain
-    (✅ added 2026-05-01)
 
 12 individual block-level correctness lemmas, one per
 `repeatedSqrThenMul` op in `libcruxP256InvChain`. Each computes

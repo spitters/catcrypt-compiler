@@ -18,7 +18,7 @@ front, so the resulting `.jazz` is the denotation of the pure Lean
 `proveOrchestratorLean3x8` modulo the named orchestrator-level leaves'
 opaque semantics.
 
-## Cross-layer composition (the orchestration that #154 calls out)
+## Cross-layer composition
 
 The orchestrator emit composes the four layer kernels at **whole-layer
 granularity**: each layer is one opaque-leaf RCall in the orchestrator's
@@ -28,7 +28,7 @@ The orchestrator's `.jazz` carries the cross-layer wiring (LDE → Merkle →
 challenger → quotient → OOD/DEEP → FRI); the layer-N `.jazz` files carry the
 sub-layer machinery. Linker glue (`.jinc` includes) ties them at jasminc time.
 
-## SELECTOR-INCLUSIVE degree=2 guard (#154)
+## SELECTOR-INCLUSIVE degree=2 guard
 
 The orchestrator embeds the SELECTOR-INCLUSIVE quotient-degree convention as
 part of the `plonky3_quotient_compose_8` leaf's TowerType signature: the
@@ -233,7 +233,7 @@ def main : IO Unit := do
         "bench/plonky3_compare/gen_com/plonky3_prove_fib_from_rustcmd.jazz" s
       IO.FS.writeFile
         "bench/plonky3_compare/gen_com/plonky3_prove_fib_from_rustcmd_stub.jazz" sStub
-      -- Legacy-compat name (KAT byte-identity target referenced by #154):
+      -- Legacy-compat name (the KAT byte-identity target):
       IO.FS.writeFile
         "bench/plonky3_compare/gen/plonky3_prove_fib.jazz" s
       IO.println "wrote gen_com/plonky3_prove_fib_from_rustcmd{,_stub}.jazz"

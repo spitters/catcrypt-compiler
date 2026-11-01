@@ -29,9 +29,6 @@ the kernel computes `f`. This module states that transfer at two levels.
 
 * `corresJ_of_fnCorres`: the block-level transfer.
 * `corresIsa_x86_mov_of_fnCorres`: the transfer at `x86Isa`.
-
-The statement at the bytes for `compileA` output is `bytes_of_fnCorres` in the development
-repository (`Haxc/BytesOfFnCorres.lean`).
 -/
 
 @[expose] public section

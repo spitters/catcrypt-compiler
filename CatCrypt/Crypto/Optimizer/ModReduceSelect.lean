@@ -376,7 +376,7 @@ def emitSelected25519 : IO Unit := do
   IO.FS.createDirAll "bench/x25519_fieldmul_compare/gen_com"
   IO.FS.writeFile
     "bench/x25519_fieldmul_compare/gen_com/fe25519_mul_x86_from_lean.s" selectedFeMulAsm
-  IO.println "wrote gen_com/fe25519_mul_x86_from_lean.s (pass-selected reduce, #397)"
+  IO.println "wrote gen_com/fe25519_mul_x86_from_lean.s (pass-selected reduce)"
 
 /-- First-fit allocation over the secp256k1 (schoolbook ++ `2^256`-reduce) block. -/
 def selectedSecp256k1Alloc : GpAlloc := allocGp selectedFeMulPinned selectedFeMulSecp256k1
@@ -398,7 +398,7 @@ def emitSelectedSecp256k1 : IO Unit := do
   IO.FS.writeFile
     "bench/secp256k1_fieldmul_compare/gen_com/secp256k1_fe_mul_x86_from_lean.s"
     selectedSecp256k1Asm
-  IO.println "wrote secp256k1_fe_mul_x86_from_lean.s (pass-selected 2^256 reduce, #397)"
+  IO.println "wrote secp256k1_fe_mul_x86_from_lean.s (pass-selected 2^256 reduce)"
 
 /-! ## 10. Multi-term Solinas primes: the iterated-fold generalisation
 
@@ -860,7 +860,7 @@ def emitGoldilocks : IO Unit := do
   IO.FS.writeFile
     "bench/goldilocks_fieldmul_compare/gen_com/goldilocks_mul_x86_from_lean.s"
     goldilocksMulAsm
-  IO.println "wrote goldilocks_mul_x86_from_lean.s (multi-term reduce, #403)"
+  IO.println "wrote goldilocks_mul_x86_from_lean.s (multi-term reduce)"
 
 /-! ## 13. The signed-term view: `p = 2^k − Σᵢ εᵢ·2^tᵢ` as the pass's pattern
 

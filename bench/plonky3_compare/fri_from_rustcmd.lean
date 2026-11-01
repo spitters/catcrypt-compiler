@@ -2,7 +2,7 @@
 Compile the Plonky3 FRI commit + query layer **from a pure Lean function**,
 through the full verified compiler chain — the STARK-FRI analogue of
 `bench/plonky3_compare/merkle_from_rustcmd.lean` (Wave 1) and
-`../SSProve-lean/bench/fndsa_compare/verify_from_rustcmd.lean` (#191):
+`../SSProve-lean/bench/fndsa_compare/verify_from_rustcmd.lean`:
 
   friProverLean_N (pure Lean)                       -- spec
     --(reflect surface; Plonky3FriReflect)-->  LowCT  -- N=2/4/1024 unrolls
@@ -24,7 +24,7 @@ squeeze) from the opaque field arithmetic.
 `reifyLowCT%` doesn't consult the `LowCTPattern` registry, so
 `reifyLowCT% friProverLean1024` would error. We feed `translate` the
 `LowCT` body the reifier *would* produce (`friProverBody1024`, built by hand
-in `Plonky3FriReflect.lean`). Same workaround as Falcon verify (#191), Wave 1
+in `Plonky3FriReflect.lean`). Same workaround as Falcon verify,
 Merkle.
 
 ## RFor and the fold loop

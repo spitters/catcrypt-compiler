@@ -702,7 +702,7 @@ def registryPlacement : (List (String × Int)) ×
 def passRegistry : List RegisteredPass :=
   [ { toValidatedPass := storeToLoadForwardValidated
       name := "store-to-load-forward"
-      descr := "store-to-load forwarding (#372/#412); CT gated by a decidable allDirect-preservation implication" },
+      descr := "store-to-load forwarding; CT gated by a decidable allDirect-preservation implication" },
     { toValidatedPass := dropIdMovsValidated
       name := "drop-id-movs"
       descr := "deletion of the self-moves store-to-load forwarding leaves behind; semantics and CT both unconditional" },
@@ -714,11 +714,11 @@ def passRegistry : List RegisteredPass :=
       descr := "flag-liveness-guarded MUL→MULX fusion; semantics unconditional, CT gated by a decidable allDirect-preservation implication" },
     { toValidatedPass := mem2regValidated registryPlacement.1
       name := "mem2reg"
-      descr := "mem2reg / dead-store elimination (#415); fires on the forwarding-reducible sub-domain via storeToLoadForward_runBlock, CT gated by a decidable allDirect-preservation implication" },
+      descr := "mem2reg / dead-store elimination; fires on the forwarding-reducible sub-domain via storeToLoadForward_runBlock, CT gated by a decidable allDirect-preservation implication" },
     { toValidatedPass :=
         graphColorRAValidated registryPlacement.2.1 registryPlacement.2.2.1 registryPlacement.2.2.2
       name := "graph-color-ra"
-      descr := "graph-coloring register allocation (#414); no-op-gated pending SpillValid footprint-completeness" },
+      descr := "graph-coloring register allocation; no-op-gated pending SpillValid footprint-completeness" },
     { toValidatedPass :=
         spillSlotReuseValidated registryPlacement.2.1 registryPlacement.2.2.1 registryPlacement.2.2.2
       name := "spill-slot-reuse"

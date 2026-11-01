@@ -244,7 +244,7 @@ def emitP384 : IO Unit := do
   IO.FS.createDirAll "bench/p384_fieldmul_compare/gen_com"
   IO.FS.writeFile
     "bench/p384_fieldmul_compare/gen_com/p384_mul_x86_from_lean.s" p384MulAsm
-  IO.println "wrote p384_mul_x86_from_lean.s (derived Solinas reduce, #409)"
+  IO.println "wrote p384_mul_x86_from_lean.s (derived Solinas reduce)"
 
 /-! ## Artifact generation at elaboration
 

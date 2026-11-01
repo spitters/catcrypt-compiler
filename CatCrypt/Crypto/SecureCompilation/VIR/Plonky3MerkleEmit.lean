@@ -240,7 +240,7 @@ def renderHashLeaf : String :=
     the `merkle_build_root` halving loop; each level's inner loop is the
     lane-parallel map covered by `merkleLevel_denotation_preserves`. -/
 def merkleJazz : String :=
-  "/* Plonky3 Merkle-tree commitment (layer 1 of the STARK chain, #154),\n" ++
+  "/* Plonky3 Merkle-tree commitment (layer 1 of the STARK chain),\n" ++
   " * emitted by CatCrypt's verified front\n" ++
   " * (CatCrypt/Crypto/SecureCompilation/VIR/Plonky3MerkleEmit.lean).\n" ++
   " * Pure u8 byte arithmetic; NO opaque leaf. Hash byte-identical to the\n" ++

@@ -228,7 +228,7 @@ def adx : HardwareLeafFamily where
   tier := .sdmTranscribed
   witness :=
     "SailX86Lean.adcx_eq_sail₁₋₃ / adox_eq_sail₁₋₃ / adcx_adox_same_value \
-     (SDM-transcribed Sail; gas byte-validated; irreducible per #444)"
+     (SDM-transcribed Sail; gas byte-validated; irreducible)"
 
 /-- **BMI2** — `MULX` (widening multiply, no flags) / `RORX`.
     `Tier.sdmTranscribed` (**irreducible**): like ADX, absent from the
@@ -246,7 +246,7 @@ def bmi2 : HardwareLeafFamily where
   witness :=
     "SailX86Lean.mulx_eq_sail₁₋₄ (SDM-transcribed Sail; product cross-checked \
      via ACL2 mul_spec_64 in SailX86Validation.sail_mulx_via_mul_*; \
-     irreducible form per #444)"
+     irreducible form)"
 
 /-- The complete factored hardware-ISA trust surface: every instruction family
     the emit pipeline uses as a leaf, with its discharge tier and witness. -/

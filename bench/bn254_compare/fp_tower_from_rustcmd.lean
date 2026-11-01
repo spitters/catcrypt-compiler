@@ -17,8 +17,7 @@ ops (#260, the #219/#222 cast):
 
 ## Why this clears the wall the AUCurves direct emit hit
 
-`bench/bn254_compare/jasmin_tower/regptr/JASMIN_TOWER_259.md` records that the
-AUCurves OWN reg-ptr emit (`Core.v` `pp_regptr`) is blocked two ways: the
+The AUCurves OWN reg-ptr emit (`Core.v` `pp_regptr`) is blocked two ways: the
 verified `bn254_mul` / `bn254_square` leaves exhaust jasminc's register
 allocator when re-emitted reg-ptr-native, and the byte-pointer-leaf bridge via
 a scratch-array address segfaults (jasmin inlines the leaf and mis-resolves its

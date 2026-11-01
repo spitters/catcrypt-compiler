@@ -12,8 +12,8 @@ public import CatCrypt.Crypto.Jasmin.LowCTReflect
 /-!
 # `@[rust_cmd_pattern_computable]` — worked example
 
-Sibling to `CatCrypt.Crypto.Jasmin.LowCTReflect`.  Shows the new
-`@[rust_cmd_pattern_computable]` attribute (added 2026-05-28 to
+Sibling to `CatCrypt.Crypto.Jasmin.LowCTReflect`.  Shows the
+`@[rust_cmd_pattern_computable]` attribute (of
 `LowCTReflect.lean`) in action on a tiny computable-bodied leaf, and
 proves that the cross-side identity between the registered head and its
 verified body is `rfl`-provable.

@@ -846,7 +846,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminAbiEmit.Poseidon2Simd
     S-box. -/
 def poseidon2SimdJazz (_ : Unit) : String :=
   "/* Poseidon2 permutation over Baby Bear (width 16), SIMD-vectorized\n" ++
-  " * emit (FIFTEENTH ABI mode, #138) by CatCrypt's verified front\n" ++
+  " * emit (FIFTEENTH ABI mode) by CatCrypt's verified front\n" ++
   " * (JasminAbiEmit.Poseidon2Simd). The 16 BabyBear state slots pack into\n" ++
   " * 4 x __m256i tile registers (4 u64 lanes each); the round-constant\n" ++
   " * ADD phase runs as 4 packed-u64 lane-adds (#VPADDQ_256) per external\n" ++

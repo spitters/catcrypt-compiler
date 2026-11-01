@@ -17,8 +17,8 @@ turns a typed `Com jasminDialect` into a value-level mirror of jasmin's
 `Expr._uprog`, the **source-AST** uprog *before* any of the middle-end passes
 have run (live-range splitting, register allocation, stack allocation,
 linearization). The companion OCaml reader is `Read_uprog.load_marshal_file`
-(SSProve-lean `patches/jasmin/read_uprog.ml.patch`), and the driver consuming the
-produced blob is `drive_uprog` (SSProve-lean `patches/jasmin/drive_uprog.patch`).
+and the driver consuming the produced blob is `drive_uprog`, both patches to
+jasmin that are not part of this package.
 
 ## How this differs from `JasminLprogExport`
 
@@ -518,7 +518,7 @@ def Uprog.toText (p : Uprog) : String :=
      ++ p.p_funcs.map (fun (n, f) => f.toText n))
 
 /-- The OCaml-side magic header, prefixed to the serialized blob. Matches
-    `Read_uprog.magic` exactly (SSProve-lean `patches/jasmin/read_uprog.ml.patch`). -/
+    `Read_uprog.magic` of the OCaml reader exactly. -/
 def magic : String := "JASMIN-UPROG-MARSHAL-v1\n"
 
 /-- Serialize a `Com` to the textual uprog representation (magic + text). -/

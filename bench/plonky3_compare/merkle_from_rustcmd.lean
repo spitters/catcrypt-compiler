@@ -35,7 +35,7 @@ routed through the verified compiler.
 `reifyLowCT% merkleBuildRootLean1024` would error. We feed `translate` the
 `LowCT` body the reifier *would* produce (`merkleBuildRootBody1024`, built by
 hand in `Plonky3Reflect.lean`). The rest of the front runs unchanged. Same
-workaround as Falcon verify (#191), ML-KEM jhash_mem.
+workaround as Falcon verify, ML-KEM jhash_mem.
 
 ## RFor and the level loop
 
