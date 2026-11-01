@@ -503,11 +503,14 @@ def abiVirt : Lfundef :=
 def abiTbl : Array Nat := physTableOut (abiBody1 c outArg inArgs immSlotMap abiArgs) []
 
 /-- The shift-count oracle of the physical-ABI export: the caller's, then the
-    constant-move table of the virtual body. -/
-def abiShiftImm (shiftImm : ShiftImmOracle) : ShiftImmOracle := fun nm =>
-  match shiftImm nm with
-  | some v => some v
-  | none => movImmLookup (movImmTable (abiBody1 c outArg inArgs immSlotMap abiArgs)) nm
+    constant-move table of the virtual body, restricted by `sibIdxOracle` to the arrays the
+    virtual body accesses at constant indices only. -/
+def abiShiftImm (shiftImm : ShiftImmOracle) : ShiftImmOracle :=
+  sibIdxOracle (fun nm =>
+    match shiftImm nm with
+    | some v => some v
+    | none => movImmLookup (movImmTable (abiBody1 c outArg inArgs immSlotMap abiArgs)) nm)
+    (abiBody1 c outArg inArgs immSlotMap abiArgs)
 
 /-- The memref-base reload map of the physical-ABI export: each array argument's
     allocated register to its red-zone save slot. -/

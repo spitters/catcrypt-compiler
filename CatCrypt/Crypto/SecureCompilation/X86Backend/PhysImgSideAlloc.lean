@@ -69,11 +69,13 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysAbiShape
 /-! ## 1. The body of the export -/
 
 /-- The shift-count oracle of `lfundefPhysAbiOfVirtCert` on the allocator input `body1`: the
-    caller's, then the constant-move table of `body1`. -/
-def certShiftImm (shiftImm : ShiftImmOracle) (body1 : Lcmd) : ShiftImmOracle := fun nm =>
-  match shiftImm nm with
-  | some v => some v
-  | none => movImmLookup (movImmTable body1) nm
+    caller's, then the constant-move table of `body1`, restricted by `sibIdxOracle` to the
+    arrays `body1` accesses at constant indices only. -/
+def certShiftImm (shiftImm : ShiftImmOracle) (body1 : Lcmd) : ShiftImmOracle :=
+  sibIdxOracle (fun nm =>
+    match shiftImm nm with
+    | some v => some v
+    | none => movImmLookup (movImmTable body1) nm) body1
 
 /-- **The body of the call-free looped physical ABI export.** For the allocator input
     `body1` of `lfundefPhysAbiOfVirtCert` and its memref base reload map `mbr`, a body

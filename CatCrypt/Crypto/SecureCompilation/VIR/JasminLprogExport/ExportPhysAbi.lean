@@ -616,6 +616,58 @@ def idxConst (shiftImm : ShiftImmOracle) : LOperand → Option Nat
   | .arrIdx _ idx _ => shiftImm idx
   | _ => none
 
+/-- The base and index names `(b, j)` of the register-indexed operands `.arrIdx b j s`
+    among the destinations and sources of an instruction. -/
+def arrIdxPairs : LinstrR → List (String × String)
+  | .Lopn dsts _ srcs => (dsts ++ srcs).filterMap fun o =>
+      match o with
+      | .arrIdx b j _ => some (b, j)
+      | _ => none
+  | _ => []
+
+/-- The base and index names of the register-indexed operands of a body. -/
+def bodyIdxPairs (body : Lcmd) : List (String × String) :=
+  body.flatMap fun i => arrIdxPairs i.li_i
+
+/-- The bases a body indexes at run time: each base `b` of a register-indexed operand
+    `.arrIdx b j s` of `body` whose index `j` has no constant under `shiftImm`. -/
+def runIdxBases (shiftImm : ShiftImmOracle) (body : Lcmd) : List String :=
+  (bodyIdxPairs body).filterMap fun p => if (shiftImm p.2).isNone then some p.1 else none
+
+/-- The index oracle `shiftImm` restricted to the arrays `body` accesses at constant
+    indices only: `none` on each index name of a register-indexed operand of `body` whose
+    base `runIdxBases` lists, and `shiftImm` elsewhere. Under it an array the body indexes
+    at run time receives no constant-index store (`idxConst_sibIdxOracle`), so all its
+    accesses keep the register-indexed form. -/
+def sibIdxOracle (shiftImm : ShiftImmOracle) (body : Lcmd) : ShiftImmOracle :=
+  let rt := runIdxBases shiftImm body
+  let drop := ((bodyIdxPairs body).filter fun p => rt.contains p.1).map Prod.snd
+  fun nm => if drop.contains nm then none else shiftImm nm
+
+/-- **An array indexed at run time has no index constant.** For a register-indexed
+    operand `.arrIdx b j s` of `body` whose base `b` the body indexes at run time,
+    `idxConst` under `sibIdxOracle` is `none`. -/
+theorem idxConst_sibIdxOracle {shiftImm : ShiftImmOracle} {body : Lcmd} {b j : String}
+    (s : Nat) (hb : b ∈ runIdxBases shiftImm body) (hj : (b, j) ∈ bodyIdxPairs body) :
+    idxConst (sibIdxOracle shiftImm body) (.arrIdx b j s) = none := by
+  have hd : (((bodyIdxPairs body).filter fun p => (runIdxBases shiftImm body).contains p.1).map
+      Prod.snd).contains j = true := by
+    simp only [List.contains_iff_mem, List.mem_map, List.mem_filter]
+    exact ⟨(b, j), ⟨hj, by simpa using hb⟩, rfl⟩
+  simp only [idxConst, sibIdxOracle, hd, ite_true]
+
+/-- **Without a mixed array the oracle is unchanged.** When every index of a
+    register-indexed operand of `body` whose base the body indexes at run time has no
+    constant under `shiftImm`, `sibIdxOracle shiftImm body` is `shiftImm`. -/
+theorem sibIdxOracle_eq_of_unmixed {shiftImm : ShiftImmOracle} {body : Lcmd}
+    (h : ∀ p ∈ bodyIdxPairs body, p.1 ∈ runIdxBases shiftImm body → shiftImm p.2 = none) :
+    sibIdxOracle shiftImm body = shiftImm := by
+  funext nm
+  simp only [sibIdxOracle]
+  split
+  · grind
+  · rfl
+
 /-- The displacement store of a spilled value at a spilled index of known value.
 
     For a register-allocated address `arrIdx b i 8` whose index `i` is a spill
@@ -2856,12 +2908,14 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   -- Materialize each SysV pointer arg into the RA-assigned register the body uses
   -- for its argument name (the 2-pointer memref ABI; `inLoadMap = none`).
   let argMat := buildArgPtrMaterialize virt tbl abiArgs (fun _ => none) abi
-  -- Compose the caller's shift oracle with the dataflow `regConst`→imm resolver.
+  -- Compose the caller's shift oracle with the dataflow `regConst`→imm resolver, restricted
+  -- to the arrays the body accesses at constant indices only (`sibIdxOracle`): an array
+  -- indexed at run time somewhere in the body keeps the register-indexed store form.
   let movTbl : Array (Option Nat) := movImmTable virt.lfd_body
-  let shiftImm' : ShiftImmOracle := fun nm =>
+  let shiftImm' : ShiftImmOracle := sibIdxOracle (fun nm =>
     match shiftImm nm with
     | some v => some v
-    | none => movImmLookup movTbl nm
+    | none => movImmLookup movTbl nm) virt.lfd_body
   -- The memref-base reload map: each array argument `aj` (out + ins) maps its
   -- RA-assigned physical register to its red-zone qsave slot, so every SIB base
   -- is reloaded from memory into `R14` immediately before the access — never a
