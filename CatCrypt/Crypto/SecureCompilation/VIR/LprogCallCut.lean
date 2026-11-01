@@ -61,6 +61,13 @@ checks it for every pair of an entry and an exit of `cutAt`.
 * `movI`, `commonSeq`, `commonCall?`, `commonCalls?`: the form of a shadow instruction on
   the argument and result names of its callee (word operands copied, array operands and an
   out destination in place), and the rewriting of a body onto them.
+* `tabOne`, `commonCallT?`, `commonCallsT?`: a table of callees with the shape, the argument
+  names and the result name of each, its one-entry instance, and the rewriting of a body
+  onto the common names of the callee of each shadow instruction.
+* `commonNamesT`, `commonFreshT`: the union of the common names of a table, and the check of
+  `commonFreshB` at each entry and of `commonCongrB` at the union.
+* `expLenT`, `expPosT`, `CommonSimT`: the position map of the rewriting at a table, and the
+  side conditions of its simulation at a set of names.
 * `runI`, `regUpd`, `movesF`: the run of an instruction list without the counter, a state
   with a new register file and an advanced counter, and the state after a list of copies.
 * `offCongrB`, `commonCongrB`: the check that the described step of an instruction reads
@@ -96,12 +103,19 @@ checks it for every pair of an entry and an exit of `cutAt`.
   on common names, up to the argument names and the result name.
 * `commonFreshB_site`: a body that passes `commonFreshB` meets the side conditions of
   `commonCall_sim` at each of its shadow instructions.
-* `findLabelMem_commonCalls?`: a label of the body is declared in the rewritten body at the
-  image of its position.
+* `commonCallsT?_one`, `commonFreshT_one`, `expPosT_one`: the rewriting, the check and the
+  position map at the one-entry table are those of its entry.
+* `findLabelMem_commonCallsT?`: a label of the body is declared in the rewritten body at
+  the image of its position.
+* `step_commonT`, `steps_commonT`, `halted_commonT`: under `CommonSimT` at a set of names
+  `N` containing the common names of every entry, a run of the body is a run of its
+  rewriting at a table, the states related by `OffRel N` along `expPosT`; callees may share
+  common names.
 * `step_common`, `commonCalls_run`, `commonCalls_run_obs`: a halting run of the body on the
   x86 instruction set with procedures is a halting run of the rewritten body, the end states
   related by `OffRel`, under `OffCongr` for the operations and `CondCongr` for the branch
-  conditions of the body.
+  conditions of the body; the instance of the table statements at `tabOne`.
+* `run_onCommonNamesT`: the run statement for a body that passes `commonFreshT`.
 * `offCongr_of_offCongrB`, `commonCongrB_offCongr`, `commonCongrB_condCongr`: `OffCongr`
   and `CondCongr` from the checks.
 * `run_onCommonNames`, `obs_onCommonNames`: the two run statements for a body that passes
@@ -964,6 +978,65 @@ def commonCalls? (sh : CallShape) (f : String) (args : List String) (res : Strin
   | i :: B => (commonCall? sh f args res i).bind fun is =>
       (commonCalls? sh f args res B).map (is ++ ·)
 
+/-- **The one-entry table of common names**: the callee `f` with calls of the shape `sh` on
+    the argument names `args` and the result name `res`, and no entry at every other
+    symbol. -/
+def tabOne (sh : CallShape) (f : String) (args : List String) (res : String) :
+    String → Option (CallShape × List String × String) :=
+  fun g => if g = f then some (sh, args, res) else none
+
+/-- The one-entry table has its entry at its symbol only. -/
+theorem tabOne_some {sh : CallShape} {f : String} {args : List String} {res g : String}
+    {e : CallShape × List String × String} (h : tabOne sh f args res g = some e) :
+    g = f ∧ e = (sh, args, res) := by
+  unfold tabOne at h
+  split at h
+  · exact ⟨by assumption, (Option.some.inj h).symm⟩
+  · cases h
+
+/-- **The rewriting of one instruction onto the common names of a table** `tab`, which gives
+    at a symbol the shape of its calls, its argument names and its result name: an
+    instruction that is no shadow instruction is kept; a shadow instruction of a call of a
+    symbol `g` with an entry in `tab` on as many register operands as the argument names of
+    the entry becomes `commonSeq` at the entry; every other shadow instruction is
+    refused. -/
+def commonCallT? (tab : String → Option (CallShape × List String × String))
+    (i : LinstrRM) : Option (List LinstrRM) :=
+  match shadowCall? i.fst with
+  | none => some [i]
+  | some (d, g, srcs) =>
+      match tab g, regNames? srcs with
+      | some (sh, args, res), some xs =>
+          if xs.length = args.length then some (commonSeq sh g args res d xs) else none
+      | _, _ => none
+
+/-- **The rewriting of the shadow instructions of a body onto the common names of a
+    table**: `commonCallT?` at each instruction, in order. -/
+def commonCallsT? (tab : String → Option (CallShape × List String × String)) :
+    List LinstrRM → Option (List LinstrRM)
+  | [] => some []
+  | i :: B => (commonCallT? tab i).bind fun is => (commonCallsT? tab B).map (is ++ ·)
+
+/-- The rewriting of an instruction at the one-entry table is its rewriting onto the common
+    names of the entry. -/
+theorem commonCallT?_one (sh : CallShape) (f : String) (args : List String) (res : String)
+    (i : LinstrRM) : commonCallT? (tabOne sh f args res) i = commonCall? sh f args res i := by
+  unfold commonCallT? commonCall?
+  rcases shadowCall? i.fst with _ | ⟨d, g, srcs⟩
+  · rfl
+  · by_cases hg : g = f
+    · subst hg
+      cases hr : regNames? srcs <;> simp [tabOne, hr]
+    · cases hr : regNames? srcs <;> simp [tabOne, hg, hr]
+
+/-- **The rewriting of a body at the one-entry table is its rewriting onto the common names
+    of the entry.** -/
+theorem commonCallsT?_one (sh : CallShape) (f : String) (args : List String) (res : String) :
+    ∀ B : List LinstrRM, commonCallsT? (tabOne sh f args res) B = commonCalls? sh f args res B
+  | [] => rfl
+  | i :: B => by
+      simp only [commonCallsT?, commonCalls?, commonCallT?_one, commonCallsT?_one sh f args res B]
+
 theorem commonPairs_length (sh : CallShape) : ∀ (i : Nat) (as xs : List String),
     as.length = xs.length → (commonPairs sh i as xs).length = wordCount sh i as.length
   | _, [], [], _ => rfl
@@ -1346,6 +1419,26 @@ theorem commonCall_sim {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f
         | arr a => exact hU2 r hr
   · cases h
 
+/-- **`commonCall_sim` off a set of names that contains the common names of the call.** When
+    the names `res :: args` are names of `N` and no operand is a name of `N`, the register
+    file of the run of `commonSeq` agrees with the register file of the step of the summary
+    at every name outside `N`. -/
+theorem commonCallT_sim {T : ProcTable} {g : String} {pr : ProcSummary} (hT : T g = some pr)
+    {sh : CallShape} (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none)
+    (hro : sh.out = false → pr.RetWord) (P : LprogM) {args xs : List String}
+    {N : List String} (res d : String) (hN : ∀ n ∈ res :: args, n ∈ N)
+    (hlen : xs.length = args.length) (hnd : args.Nodup) (hx : ∀ x ∈ xs, x ∉ N)
+    {s v : LstateMF} (h : procStep pr d (xs.map LOperand.reg) s = some v) :
+    ∃ L' : String → Σ w, BitVec w,
+      runI (x86Isa.withProcs T) P (commonSeq sh g args res d xs) s
+        = some (regUpd (fun _ => L')
+            (wordCount sh 0 args.length + if sh.out then 0 else 1) v)
+      ∧ ∀ r, r ∉ N → L' r = v.prog.base.reg.lvm r := by
+  obtain ⟨L', hrun, hL'⟩ := commonCall_sim hT haa hro P res d hlen hnd
+    (fun x hx' ha => hx x hx' (hN x (List.mem_cons_of_mem _ ha))) h
+  exact ⟨L', hrun, fun r hr => hL' r (fun ha => hr (hN r (List.mem_cons_of_mem _ ha)))
+    (fun he => hr (hN r (he ▸ List.mem_cons_self)))⟩
+
 /-- The names of an operand. -/
 def opNames : LOperand → List String
   | .reg r => [r]
@@ -1443,6 +1536,65 @@ theorem commonFreshB_site_res {sh : CallShape} {args : List String} {res : Strin
       exact fun x hx => (hin x (by simp [instrNames, opNames, hx])).2
     · cases hs
   · cases hs
+
+/-- **The common names of a table at the symbols `names`**: the result name and the argument
+    names of the entry of each symbol of `names`. -/
+def commonNamesT (tab : String → Option (CallShape × List String × String))
+    (names : List String) : List String :=
+  names.flatMap fun g =>
+    match tab g with
+    | some (_, args, res) => res :: args
+    | none => []
+
+/-- **The check of the common names of a table against a body**: the body passes
+    `commonFreshB` at the entry of each symbol of `names`, and `commonCongrB` at the union
+    `commonNamesT tab names` of their common names. -/
+def commonFreshT (tab : String → Option (CallShape × List String × String))
+    (names : List String) (B : List LinstrRM) : Bool :=
+  names.all (fun g =>
+      match tab g with
+      | some (sh, args, res) => commonFreshB sh args res B
+      | none => true)
+    && commonCongrB (commonNamesT tab names) B
+
+/-- The names of the entry of a symbol of `names` are common names of the table. -/
+theorem mem_commonNamesT {tab : String → Option (CallShape × List String × String)}
+    {names : List String} {g : String} (hg : g ∈ names) {sh : CallShape} {args : List String}
+    {res : String} (htab : tab g = some (sh, args, res)) :
+    ∀ n ∈ res :: args, n ∈ commonNamesT tab names := fun n hn =>
+  List.mem_flatMap.mpr ⟨g, hg, by simpa [htab] using hn⟩
+
+/-- A common name of a table is a name of the entry of a symbol of `names`. -/
+theorem commonNamesT_mem {tab : String → Option (CallShape × List String × String)}
+    {names : List String} {n : String} (hn : n ∈ commonNamesT tab names) :
+    ∃ g ∈ names, ∃ sh args res, tab g = some (sh, args, res) ∧ n ∈ res :: args := by
+  obtain ⟨g, hg, hn⟩ := List.mem_flatMap.mp hn
+  revert hn
+  cases htab : tab g with
+  | none => simp
+  | some e =>
+      obtain ⟨sh, args, res⟩ := e
+      exact fun hn => ⟨g, hg, sh, args, res, htab, hn⟩
+
+/-- A body that passes `commonFreshT` passes `commonFreshB` at the entry of each symbol of
+    `names`. -/
+theorem commonFreshT_entry {tab : String → Option (CallShape × List String × String)}
+    {names : List String} {B : List LinstrRM} (h : commonFreshT tab names B = true)
+    {g : String} (hg : g ∈ names) {sh : CallShape} {args : List String} {res : String}
+    (htab : tab g = some (sh, args, res)) : commonFreshB sh args res B = true := by
+  simp only [commonFreshT, Bool.and_eq_true, List.all_eq_true] at h
+  simpa [htab] using h.1 g hg
+
+/-- **The check at the one-entry table is `commonFreshB` at its entry.** -/
+theorem commonFreshT_one (sh : CallShape) (f : String) (args : List String) (res : String)
+    (B : List LinstrRM) :
+    commonFreshT (tabOne sh f args res) [f] B = commonFreshB sh args res B := by
+  cases h : commonFreshB sh args res B
+  · simp [commonFreshT, tabOne, h]
+  · have hc : commonCongrB (res :: args) B = true := by
+      simp only [commonFreshB, Bool.and_eq_true] at h
+      exact h.2
+    simp [commonFreshT, commonNamesT, tabOne, h, hc]
 
 /-! ## 11. The run of a body rewritten onto common names -/
 
@@ -1606,47 +1758,72 @@ def expPos (n : Nat) (B : List LinstrRM) (p : Nat) : Nat := ((B.take p).map (exp
 theorem expPos_zero (n : Nat) (B : List LinstrRM) : expPos n B 0 = 0 := by
   simp [expPos]
 
-theorem expPos_cons_succ (n : Nat) (i : LinstrRM) (B : List LinstrRM) (p : Nat) :
-    expPos n (i :: B) (p + 1) = expLen n i + expPos n B p := by
-  simp [expPos]
+/-- The number of instructions of the form of `i` at the table `tab`: the length of
+    `commonSeq` at the entry of the symbol of a shadow instruction with an entry, and `1` at
+    every other instruction. -/
+def expLenT (tab : String → Option (CallShape × List String × String)) (i : LinstrRM) : Nat :=
+  match shadowCall? i.fst with
+  | some (_, g, _) =>
+      match tab g with
+      | some (sh, args, _) => commonLen sh args.length
+      | none => 1
+  | none => 1
 
-theorem expPos_succ (n : Nat) : ∀ {B : List LinstrRM} {p : Nat} {i : LinstrRM},
-    B[p]? = some i → expPos n B (p + 1) = expPos n B p + expLen n i
+/-- **The position map of the rewriting onto the common names of a table**: the number of
+    instructions of the forms of the instructions of `B` before the position `p`. -/
+def expPosT (tab : String → Option (CallShape × List String × String)) (B : List LinstrRM)
+    (p : Nat) : Nat :=
+  ((B.take p).map (expLenT tab)).sum
+
+theorem expPosT_zero (tab : String → Option (CallShape × List String × String))
+    (B : List LinstrRM) : expPosT tab B 0 = 0 := by
+  simp [expPosT]
+
+theorem expPosT_cons_succ (tab : String → Option (CallShape × List String × String))
+    (i : LinstrRM) (B : List LinstrRM) (p : Nat) :
+    expPosT tab (i :: B) (p + 1) = expLenT tab i + expPosT tab B p := by
+  simp [expPosT]
+
+theorem expPosT_succ (tab : String → Option (CallShape × List String × String)) :
+    ∀ {B : List LinstrRM} {p : Nat} {i : LinstrRM},
+    B[p]? = some i → expPosT tab B (p + 1) = expPosT tab B p + expLenT tab i
   | [], _, _, h => by simp at h
   | j :: B, 0, i, h => by
       simp only [List.getElem?_cons_zero, Option.some.injEq] at h
       subst h
-      simp [expPos]
+      simp [expPosT]
   | j :: B, p + 1, i, h => by
-      rw [expPos_cons_succ, expPos_cons_succ, expPos_succ n (B := B) (by simpa using h)]
+      rw [expPosT_cons_succ, expPosT_cons_succ, expPosT_succ tab (B := B) (by simpa using h)]
       omega
 
-theorem expPos_of_le (n : Nat) {B : List LinstrRM} {p : Nat} (h : B.length ≤ p) :
-    expPos n B p = expPos n B B.length := by
-  simp only [expPos, List.take_of_length_le h, List.take_length]
+theorem expPosT_of_le (tab : String → Option (CallShape × List String × String))
+    {B : List LinstrRM} {p : Nat} (h : B.length ≤ p) :
+    expPosT tab B p = expPosT tab B B.length := by
+  simp only [expPosT, List.take_of_length_le h, List.take_length]
 
 /-- The form of an instruction that is no shadow instruction is the instruction. -/
-theorem commonCall?_none {sh : CallShape} {f : String} {args : List String} {res : String}
-    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is)
+theorem commonCallT?_none {tab : String → Option (CallShape × List String × String)}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCallT? tab i = some is)
     (hn : shadowCall? i.fst = none) : is = [i] := by
-  unfold commonCall? at h
+  unfold commonCallT? at h
   rw [hn] at h
   exact (Option.some.inj h).symm
 
-/-- The form of a shadow instruction is `commonSeq` at its register operands. -/
-theorem commonCall?_some {sh : CallShape} {f : String} {args : List String} {res : String}
-    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is)
+/-- The form of a shadow instruction of a symbol `g` is `commonSeq` at the entry of `g` and
+    at its register operands. -/
+theorem commonCallT?_some {tab : String → Option (CallShape × List String × String)}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCallT? tab i = some is)
     {d g : String} {srcs : List LOperand} (hs : shadowCall? i.fst = some (d, g, srcs)) :
-    ∃ xs, regNames? srcs = some xs ∧ g = f ∧ xs.length = args.length ∧
-      is = commonSeq sh f args res d xs := by
-  unfold commonCall? at h
+    ∃ sh args res xs, tab g = some (sh, args, res) ∧ regNames? srcs = some xs ∧
+      xs.length = args.length ∧ is = commonSeq sh g args res d xs := by
+  unfold commonCallT? at h
   rw [hs] at h
   dsimp only at h
   split at h
-  · rename_i xs hxs
+  · rename_i sh args res xs htab hxs
     split at h
     · rename_i hc
-      exact ⟨xs, hxs, hc.1, hc.2, (Option.some.inj h).symm⟩
+      exact ⟨sh, args, res, xs, htab, hxs, hc, (Option.some.inj h).symm⟩
     · cases h
   · cases h
 
@@ -1657,24 +1834,24 @@ theorem commonSeq_length (sh : CallShape) (f : String) {args : List String} (res
     commonPairs_length sh 0 args xs hlen.symm, commonLen]
   cases sh.out <;> simp
 
-theorem commonCall?_length {sh : CallShape} {f : String} {args : List String} {res : String}
-    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is) :
-    is.length = expLen (commonLen sh args.length) i := by
+theorem commonCallT?_length {tab : String → Option (CallShape × List String × String)}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCallT? tab i = some is) :
+    is.length = expLenT tab i := by
   cases hs : shadowCall? i.fst with
-  | none => rw [commonCall?_none h hs, expLen, hs]; rfl
+  | none => rw [commonCallT?_none h hs, expLenT, hs]; rfl
   | some q =>
       obtain ⟨d, g, srcs⟩ := q
-      obtain ⟨xs, -, -, hlen, rfl⟩ := commonCall?_some h hs
-      rw [commonSeq_length sh f res d hlen, expLen, hs]
-      rfl
+      obtain ⟨sh, args, res, xs, htab, -, hlen, rfl⟩ := commonCallT?_some h hs
+      rw [commonSeq_length sh g res d hlen, expLenT, hs]
+      simp only [htab]
 
 /-- **The rewritten body at a position of the body**: the form of the instruction at `p`
     stands in the rewritten body at the image of `p`. -/
-theorem commonCalls?_split {sh : CallShape} {f : String} {args : List String} {res : String} :
-    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' →
+theorem commonCallsT?_split {tab : String → Option (CallShape × List String × String)} :
+    ∀ {B B' : List LinstrRM}, commonCallsT? tab B = some B' →
       ∀ {p : Nat} {i : LinstrRM}, B[p]? = some i →
-      ∃ is pre post, commonCall? sh f args res i = some is ∧ B' = pre ++ is ++ post ∧
-        pre.length = expPos (commonLen sh args.length) B p
+      ∃ is pre post, commonCallT? tab i = some is ∧ B' = pre ++ is ++ post ∧
+        pre.length = expPosT tab B p
   | [], _, _, _, _, hi => by simp at hi
   | j :: B, _, h, p, i, hi => by
       obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
@@ -1683,36 +1860,58 @@ theorem commonCalls?_split {sh : CallShape} {f : String} {args : List String} {r
       | zero =>
           simp only [List.getElem?_cons_zero, Option.some.injEq] at hi
           subst hi
-          exact ⟨js, [], B₁, hjs, rfl, by rw [expPos_zero]; rfl⟩
+          exact ⟨js, [], B₁, hjs, rfl, by rw [expPosT_zero]; rfl⟩
       | succ p =>
           obtain ⟨is, pre, post, his, rfl, hpre⟩ :=
-            commonCalls?_split hB₁ (p := p) (i := i) (by simpa using hi)
+            commonCallsT?_split hB₁ (p := p) (i := i) (by simpa using hi)
           refine ⟨is, js ++ pre, post, his, by simp only [List.append_assoc], ?_⟩
-          rw [List.length_append, expPos_cons_succ, hpre, commonCall?_length hjs]
+          rw [List.length_append, expPosT_cons_succ, hpre, commonCallT?_length hjs]
 
-theorem commonCalls?_length {sh : CallShape} {f : String} {args : List String} {res : String} :
-    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' →
-      B'.length = expPos (commonLen sh args.length) B B.length
+theorem commonCallsT?_length {tab : String → Option (CallShape × List String × String)} :
+    ∀ {B B' : List LinstrRM}, commonCallsT? tab B = some B' →
+      B'.length = expPosT tab B B.length
   | [], _, h => by cases h; rfl
   | j :: B, _, h => by
       obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
       obtain ⟨B₁, hB₁, rfl⟩ := Option.map_eq_some_iff.mp h
-      rw [List.length_append, List.length_cons, expPos_cons_succ, commonCalls?_length hB₁,
-        commonCall?_length hjs]
+      rw [List.length_append, List.length_cons, expPosT_cons_succ, commonCallsT?_length hB₁,
+        commonCallT?_length hjs]
+
+/-- At a body that the rewriting at the one-entry table accepts, the position map of the
+    table is the position map of the forms of `commonLen` instructions. -/
+theorem expPosT_one {sh : CallShape} {f : String} {args : List String} {res : String}
+    {B B' : List LinstrRM} (hB : commonCalls? sh f args res B = some B') :
+    expPosT (tabOne sh f args res) B = expPos (commonLen sh args.length) B := by
+  funext p
+  unfold expPosT expPos
+  congr 1
+  apply List.map_congr_left
+  intro i hi
+  obtain ⟨q, hq⟩ := List.mem_iff_getElem?.mp (List.mem_of_mem_take hi)
+  rw [← commonCallsT?_one] at hB
+  obtain ⟨is, -, -, his, -, -⟩ := commonCallsT?_split hB hq
+  cases hs : shadowCall? i.fst with
+  | none => simp [expLenT, expLen, hs]
+  | some e =>
+      obtain ⟨d, g, srcs⟩ := e
+      obtain ⟨sh', args', res', xs, htab, -, -, -⟩ := commonCallT?_some his hs
+      obtain ⟨rfl, he⟩ := tabOne_some htab
+      cases he
+      simp [expLenT, expLen, hs, htab]
 
 /-- The form of an instruction that does not declare the label `l` declares no label `l`. -/
-theorem commonCall?_noLabel {sh : CallShape} {f : String} {args : List String} {res : String}
-    {i : LinstrRM} {is : List LinstrRM} (h : commonCall? sh f args res i = some is) (l : LLabel)
+theorem commonCallT?_noLabel {tab : String → Option (CallShape × List String × String)}
+    {i : LinstrRM} {is : List LinstrRM} (h : commonCallT? tab i = some is) (l : LLabel)
     (hl : isLabel l i.fst = false) : ∀ j ∈ is, isLabel l j.fst = false := by
   cases hs : shadowCall? i.fst with
   | none =>
-      rw [commonCall?_none h hs]
+      rw [commonCallT?_none h hs]
       intro j hj
       rw [List.mem_singleton.mp hj]
       exact hl
   | some q =>
       obtain ⟨d, g, srcs⟩ := q
-      obtain ⟨xs, -, -, -, rfl⟩ := commonCall?_some h hs
+      obtain ⟨sh, args, res, xs, -, -, -, rfl⟩ := commonCallT?_some h hs
       intro j hj
       simp only [commonSeq, List.mem_append, List.mem_map] at hj
       rcases hj with ⟨p, -, rfl⟩ | hj
@@ -1724,11 +1923,11 @@ theorem commonCall?_noLabel {sh : CallShape} {f : String} {args : List String} {
 
 /-- **A label declared in the body at `q` is declared in the rewritten body at the image
     of `q`.** -/
-theorem findLabelMem_commonCalls? {sh : CallShape} {f : String} {args : List String}
-    {res : String} (l : LLabel) :
-    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' →
+theorem findLabelMem_commonCallsT? {tab : String → Option (CallShape × List String × String)}
+    (l : LLabel) :
+    ∀ {B B' : List LinstrRM}, commonCallsT? tab B = some B' →
       ∀ {q : Nat}, findLabelMem l B = some q →
-        findLabelMem l B' = some (expPos (commonLen sh args.length) B q)
+        findLabelMem l B' = some (expPosT tab B q)
   | [], _, _, _, hq => by simp [findLabelMem, findLabel] at hq
   | j :: B, _, h, q, hq => by
       obtain ⟨js, hjs, h⟩ := Option.bind_eq_some_iff.mp h
@@ -1741,37 +1940,37 @@ theorem findLabelMem_commonCalls? {sh : CallShape} {f : String} {args : List Str
           subst hq
           have hctl : isCtl j.fst = true := by
             cases hj : j.fst <;> simp_all [isLabel, isCtl]
-          rw [commonCall?_none hjs (shadowCall?_of_isCtl hctl), expPos_zero]
+          rw [commonCallT?_none hjs (shadowCall?_of_isCtl hctl), expPosT_zero]
           simp only [findLabelMem, findLabel, List.cons_append, List.nil_append, List.map_cons,
             List.findIdx?_cons, hl, ite_true]
       | false =>
           rw [hl] at hq
           simp only [Bool.false_eq_true, ite_false, Option.map_eq_some_iff] at hq
           obtain ⟨q₀, hq₀, rfl⟩ := hq
-          have ih := findLabelMem_commonCalls? l hB₁ (q := q₀) hq₀
+          have ih := findLabelMem_commonCallsT? l hB₁ (q := q₀) hq₀
           have hnone : (js.map Prod.fst).findIdx? (isLabel l) = none := by
             rw [List.findIdx?_eq_none_iff]
             intro x hx
             obtain ⟨y, hy, rfl⟩ := List.mem_map.mp hx
-            exact commonCall?_noLabel hjs l hl y hy
+            exact commonCallT?_noLabel hjs l hl y hy
           simp only [findLabelMem, findLabel] at ih
           simp only [findLabelMem, findLabel, List.map_append, List.findIdx?_append, hnone,
-            Option.none_or, ih, Option.map_some, List.length_map, expPos_cons_succ,
-            commonCall?_length hjs]
+            Option.none_or, ih, Option.map_some, List.length_map, expPosT_cons_succ,
+            commonCallT?_length hjs]
           rw [Nat.add_comm]
 
 /-- The image of the position after a label is the position after the image of the
     label. -/
-theorem expPos_label_succ (n : Nat) {l : LLabel} {B : List LinstrRM} {q : Nat}
-    (hl : findLabelMem l B = some q) : expPos n B (q + 1) = expPos n B q + 1 := by
+theorem expPosT_label_succ (tab : String → Option (CallShape × List String × String))
+    {l : LLabel} {B : List LinstrRM} {q : Nat}
+    (hl : findLabelMem l B = some q) : expPosT tab B (q + 1) = expPosT tab B q + 1 := by
   unfold findLabelMem at hl
   obtain ⟨k, hk, hlab⟩ := findLabel_sound l _ q hl
   rw [List.getElem?_map] at hk
   obtain ⟨i, hi, rfl⟩ := Option.map_eq_some_iff.mp hk
   have hctl : isCtl i.fst = true := by
     cases hi' : i.fst <;> simp_all [isLabel, isCtl]
-  rw [expPos_succ n hi, expLen, shadowCall?_of_isCtl hctl]
-  rfl
+  rw [expPosT_succ tab hi, expLenT, shadowCall?_of_isCtl hctl]
 
 /-- The step of a non-control instruction that commutes with a change of the names `N`,
     from a state with the counter `q`. -/
@@ -1882,27 +2081,41 @@ theorem runI_eq_runL (I : Isa) (P : LprogM) : ∀ (is : List LinstrRM) (s : Lsta
       | none => rfl
       | some u => exact runI_eq_runL I P is u
 
-/-- **One step of the body is a run of steps of the rewritten body.** Let `f` have a
-    summary in `T` whose word positions include those of the shape `sh` and which has no
-    word-array result when `sh` has no out result, the body `B` pass `commonFreshB`, `B'` be
-    its rewriting onto `args` and `res` with calls of the shape `sh`, every instruction of
-    `B` that is neither a control instruction nor a shadow instruction commute with a change
-    of the names `res :: args`, and no branch condition of `B` read them. From states related by `OffRel` along `expPos`, a step of the x86
-    instruction set with procedures on `B` is matched by a run of steps on `B'` to related
-    states. -/
-theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
-    {sh : CallShape}
-    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
-    {args : List String} {res fn : String} {B B' : List LinstrRM}
-    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
-    (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
-      OffCongr (res :: args) i)
-    (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
-    {s u s' : LstateMF}
+/-- **The side conditions of the simulation of a rewriting onto the common names of a
+    table**, at the names `N`: each symbol with an entry `(sh, args, res)` in `tab` has a
+    summary in `T` whose word positions include those of `sh` and which has no word-array
+    result when `sh` has no out result; its names `args` are distinct, and they and `res` are
+    names of `N`; no register operand of a shadow instruction of `B` is a name of `N`; every
+    instruction of `B` that is neither a control instruction nor a shadow instruction
+    commutes with a change of the names `N`, and no branch condition of `B` reads them. -/
+structure CommonSimT (T : ProcTable) (tab : String → Option (CallShape × List String × String))
+    (N : List String) (B : List LinstrRM) : Prop where
+  /-- The summary of each symbol with an entry meets the shape of the entry. -/
+  summ : ∀ g sh args res, tab g = some (sh, args, res) → ∃ pr, T g = some pr ∧
+    (∀ i, sh.arrArgs i = none → pr.arrArgs i = none) ∧ (sh.out = false → pr.RetWord)
+  /-- The names of each entry are names of `N`. -/
+  names : ∀ g sh args res, tab g = some (sh, args, res) → ∀ n ∈ res :: args, n ∈ N
+  /-- The argument names of each entry are distinct. -/
+  nodup : ∀ g sh args res, tab g = some (sh, args, res) → args.Nodup
+  /-- No register operand of a shadow instruction of the body is a name of `N`. -/
+  ops : ∀ i ∈ B, ∀ d g srcs xs, shadowCall? i.fst = some (d, g, srcs) →
+    regNames? srcs = some xs → ∀ x ∈ xs, x ∉ N
+  /-- The other instructions commute with a change of the names `N`. -/
+  congr : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none → OffCongr N i
+  /-- No branch condition reads a name of `N`. -/
+  cond : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr N c
+
+/-- **One step of the body is a run of steps of the body rewritten onto the common names of
+    a table.** Under `CommonSimT` at the names `N`, from states related by `OffRel N` along
+    `expPosT`, a step of the x86 instruction set with procedures on `B` is matched by a run
+    of steps on the rewriting `B'` to related states. -/
+theorem step_commonT {T : ProcTable} {tab : String → Option (CallShape × List String × String)}
+    {N : List String} {fn : String} {B B' : List LinstrRM} (hB : commonCallsT? tab B = some B')
+    (hc : CommonSimT T tab N B) {s u s' : LstateMF}
     (h : (x86Isa.withProcs T).lsemStepPMemF (singletonProgM fn B) s = some u)
-    (hr : OffRel (res :: args) (expPos (commonLen sh args.length) B) s s') :
+    (hr : OffRel N (expPosT tab B) s s') :
     ∃ k u', Steps (x86Isa.withProcs T) (singletonProgM fn B') k s' u' ∧
-      OffRel (res :: args) (expPos (commonLen sh args.length) B) u u' := by
+      OffRel N (expPosT tab B) u u' := by
   obtain ⟨L', hL, rfl⟩ := hr
   unfold Isa.lsemStepPMemF at h
   cases hfi : findInstrMem (singletonProgM fn B) s.prog with
@@ -1915,31 +2128,31 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
     · rename_i hfn
       replace hfi : B[s.prog.base.reg.lpc]? = some i := hfi
       have hmem : i ∈ B := List.mem_of_getElem? hfi
-      obtain ⟨is, pre, post, his, hB', hpre⟩ := commonCalls?_split hB hfi
-      have hsucc := expPos_succ (commonLen sh args.length) hfi
+      obtain ⟨is, pre, post, his, hB', hpre⟩ := commonCallsT?_split hB hfi
+      have hsucc := expPosT_succ tab hfi
       rw [← hpre] at hsucc ⊢
       have hat : atPc (singletonProgM fn B') pre.length (setRL L' pre.length s) := ⟨hfn, rfl⟩
       cases hs : shadowCall? i.fst with
       | none =>
         have hq : procCall? T i.fst = none := by simp only [procCall?, hs, Option.bind_none]
         rw [Isa.withProcs_step_of_none _ T _ i s hq] at h
-        have his' := commonCall?_none his hs
+        have his' := commonCallT?_none his hs
         subst his'
         have hget : (singletonProgM fn B').body[pre.length]? = some i := by
-          show B'[pre.length]? = some i
+          change B'[pre.length]? = some i
           rw [hB']
           simp
-        have hlen : expLen (commonLen sh args.length) i = 1 := by simp [expLen, hs]
+        have hlen : expLenT tab i = 1 := by simp [expLenT, hs]
         rw [hlen] at hsucc
         suffices hsuff : ∃ u', x86Isa.step (singletonProgM fn B') i (setRL L' pre.length s)
-            = some u' ∧ OffRel (res :: args) (expPos (commonLen sh args.length) B) u u' by
+            = some u' ∧ OffRel N (expPosT tab B) u u' by
           obtain ⟨u', hu', hrel⟩ := hsuff
           refine ⟨1, u', Steps.one ?_, hrel⟩
           rw [lsemStepPMemF_of_atPc _ hat hget, Isa.withProcs_step_of_none _ T _ i _ hq]
           exact hu'
         cases hctl : isCtl i.fst with
         | false =>
-          obtain ⟨L'', hL'', hstep⟩ := offCongr_step (hcg i hmem hctl hs) hctl _
+          obtain ⟨L'', hL'', hstep⟩ := offCongr_step (hc.congr i hmem hctl hs) hctl _
             (singletonProgM fn B') pre.length hL h
           have hpc : u.prog.base.reg.lpc = s.prog.base.reg.lpc + 1 := by
             have hu := x86Isa_pcFree.lpc_succ _ hctl h
@@ -1955,12 +2168,12 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
               simp only [ctlStep, Option.some.injEq] at h
               subst h
               refine ⟨_, rfl, L', hL, ?_⟩
-              show setRL L' (pre.length + 1) s
-                = setRL L' (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1)) s
+              change setRL L' (pre.length + 1) s
+                = setRL L' (expPosT tab B (s.prog.base.reg.lpc + 1)) s
               rw [hsucc]
           | Lcond c l =>
               simp only [ctlStep] at h ⊢
-              rw [hcd c l tag hmem s L' _ hL]
+              rw [hc.cond c l tag hmem s L' _ hL]
               split at h
               · rw [ite_eq_left (by assumption)]
                 unfold evalJumpMem at h ⊢
@@ -1969,20 +2182,18 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
                 | some q =>
                     rw [hl] at h
                     rw [show findLabelMem l (singletonProgM fn B').body
-                      = some (expPos (commonLen sh args.length) B q) from
-                        findLabelMem_commonCalls? l hB hl]
+                      = some (expPosT tab B q) from findLabelMem_commonCallsT? l hB hl]
                     simp only [Option.map_some, Option.some.injEq] at h
                     subst h
                     refine ⟨_, rfl, L', hL, ?_⟩
-                    show setRL L' (expPos (commonLen sh args.length) B q + 1) s
-                      = setRL L' (expPos (commonLen sh args.length) B (q + 1)) s
-                    rw [expPos_label_succ (commonLen sh args.length) (B := B) hl]
+                    change setRL L' (expPosT tab B q + 1) s = setRL L' (expPosT tab B (q + 1)) s
+                    rw [expPosT_label_succ tab (B := B) hl]
               · rw [ite_eq_right (by assumption)]
                 simp only [Option.some.injEq] at h
                 subst h
                 refine ⟨_, rfl, L', hL, ?_⟩
-                show setRL L' (pre.length + 1) s
-                  = setRL L' (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1)) s
+                change setRL L' (pre.length + 1) s
+                  = setRL L' (expPosT tab B (s.prog.base.reg.lpc + 1)) s
                 rw [hsucc]
           | Lgoto tgt =>
               obtain ⟨g, l⟩ := tgt
@@ -1995,69 +2206,172 @@ theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = 
                 | some q =>
                     rw [hl] at h
                     rw [show findLabelMem l (singletonProgM fn B').body
-                      = some (expPos (commonLen sh args.length) B q) from
-                        findLabelMem_commonCalls? l hB hl]
+                      = some (expPosT tab B q) from findLabelMem_commonCallsT? l hB hl]
                     simp only [Option.map_some, Option.some.injEq] at h
                     subst h
                     refine ⟨_, rfl, L', hL, ?_⟩
-                    show setRL L' (expPos (commonLen sh args.length) B q + 1) s
-                      = setRL L' (expPos (commonLen sh args.length) B (q + 1)) s
-                    rw [expPos_label_succ (commonLen sh args.length) (B := B) hl]
+                    change setRL L' (expPosT tab B q + 1) s = setRL L' (expPosT tab B (q + 1)) s
+                    rw [expPosT_label_succ tab (B := B) hl]
               · cases h
           | _ => simp [isCtl] at hctl
       | some q₃ =>
         obtain ⟨d, g, srcs⟩ := q₃
-        obtain ⟨xs, hxs, rfl, hlen, rfl⟩ := commonCall?_some his hs
+        obtain ⟨sh, args, res, xs, htab, hxs, hlen, rfl⟩ := commonCallT?_some his hs
+        obtain ⟨pr, hT, haa, hro⟩ := hc.summ g sh args res htab
+        have hN := hc.names g sh args res htab
+        have hxN := hc.ops i hmem d g srcs xs hs hxs
         have hsrcs := regNames?_eq hxs
         subst hsrcs
         have hq : procCall? T i.fst = some (pr, d, xs.map LOperand.reg) := by
           simp only [procCall?, hs, Option.bind_some, hT, Option.map_some]
         have h1 : procStep pr d (xs.map LOperand.reg) s = some u := by
           simpa only [Isa.withProcs, hq] using h
-        obtain ⟨hnd, hxa, hda, hdr⟩ := commonFreshB_site hf hmem hs hxs
-        have hxr := commonFreshB_site_res hf hmem hs hxs
-        obtain ⟨x, rfl, h2⟩ := procStep_setRL L' pre.length
-          (fun x hx => hL x (by
-            simp only [List.mem_cons, not_or]
-            exact ⟨hxr x hx, hxa x hx⟩)) h1
+        have hxa : ∀ x ∈ xs, x ∉ args := fun x hx ha =>
+          hxN x hx (hN x (List.mem_cons_of_mem _ ha))
+        obtain ⟨x, rfl, h2⟩ := procStep_setRL L' pre.length (fun x hx => hL x (hxN x hx)) h1
         obtain ⟨L₂, hrun, hL₂⟩ := commonCall_sim hT haa hro (singletonProgM fn B') res d hlen
-          hnd hxa h2
+          (hc.nodup g sh args res htab) hxa h2
         rw [runI_eq_runL] at hrun
         obtain ⟨hst, -⟩ := steps_of_runL (x86Isa.withProcs T) (singletonProgM fn B') _ pre post
           _ _ hB' hat (fun j hj a b hab => commonSeq_step_pc T _ hj hab) hrun
-        have hlenE : expLen (commonLen sh args.length) i = commonLen sh args.length := by
-          simp [expLen, hs]
+        have hlenE : expLenT tab i = commonLen sh args.length := by
+          simp [expLenT, hs, htab]
         rw [hlenE] at hsucc
         refine ⟨_, _, hst, L₂, fun r hr => ?_, ?_⟩
-        · simp only [List.mem_cons, not_or] at hr
-          rw [hL₂ r hr.2 hr.1, lvm_retRes, lvm_retRes]
-          have hLr := hL r (by simp only [List.mem_cons, not_or]; exact hr)
+        · have hra : r ∉ args := fun ha => hr (hN r (List.mem_cons_of_mem _ ha))
+          have hrr : r ≠ res := fun he => hr (hN r (he ▸ List.mem_cons_self))
+          rw [hL₂ r hra hrr, lvm_retRes, lvm_retRes]
+          have hLr := hL r hr
           cases x with
           | word w =>
-              show (if r = d then _ else L' r) = (if r = d then _ else s.prog.base.reg.lvm r)
+              change (if r = d then _ else L' r) = (if r = d then _ else s.prog.base.reg.lvm r)
               split
               · rfl
               · exact hLr
           | arr a => exact hLr
         · have hk : pre.length + 1
               + (wordCount sh 0 args.length + if sh.out then 0 else 1)
-              = expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1) := by
+              = expPosT tab B (s.prog.base.reg.lpc + 1) := by
             rw [hsucc, commonLen]
             omega
           cases x with
           | word w =>
-              show setRL L₂ (pre.length + 1
+              change setRL L₂ (pre.length + 1
                   + (wordCount sh 0 args.length + if sh.out then 0 else 1)) (retWord d w s)
-                = setRL L₂ (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1))
-                  (retWord d w s)
+                = setRL L₂ (expPosT tab B (s.prog.base.reg.lpc + 1)) (retWord d w s)
               rw [hk]
           | arr a =>
-              show setRL L₂ (pre.length + 1
+              change setRL L₂ (pre.length + 1
                   + (wordCount sh 0 args.length + if sh.out then 0 else 1)) (retArr d a s)
-                = setRL L₂ (expPos (commonLen sh args.length) B (s.prog.base.reg.lpc + 1))
-                  (retArr d a s)
+                = setRL L₂ (expPosT tab B (s.prog.base.reg.lpc + 1)) (retArr d a s)
               rw [hk]
     · cases hfi
+
+/-- **The side conditions at the one-entry table**: a summary of `f` that meets the shape
+    `sh`, a body that passes `commonFreshB`, and the commutation of its instructions with a
+    change of the names `res :: args` give `CommonSimT` at those names. -/
+theorem commonSimT_one {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
+    {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res : String} {B : List LinstrRM}
+    (hf : commonFreshB sh args res B = true)
+    (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
+      OffCongr (res :: args) i)
+    (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c) :
+    CommonSimT T (tabOne sh f args res) (res :: args) B where
+  summ g sh' args' res' h := by
+    obtain ⟨rfl, he⟩ := tabOne_some h
+    cases he
+    exact ⟨pr, hT, haa, hro⟩
+  names g sh' args' res' h := by
+    obtain ⟨rfl, he⟩ := tabOne_some h
+    cases he
+    exact fun n hn => hn
+  nodup g sh' args' res' h := by
+    obtain ⟨rfl, he⟩ := tabOne_some h
+    cases he
+    simp only [commonFreshB, Bool.and_eq_true, decide_eq_true_eq] at hf
+    exact hf.1.1.1
+  ops i hi d g srcs xs hs hxs x hx := by
+    obtain ⟨-, hxa, -, -⟩ := commonFreshB_site hf hi hs hxs
+    have hxr := commonFreshB_site_res hf hi hs hxs
+    simp only [List.mem_cons, not_or]
+    exact ⟨hxr x hx, hxa x hx⟩
+  congr := hcg
+  cond := hcd
+
+/-- **One step of the body is a run of steps of the rewritten body.** Let `f` have a
+    summary in `T` whose word positions include those of the shape `sh` and which has no
+    word-array result when `sh` has no out result, the body `B` pass `commonFreshB`, `B'` be
+    its rewriting onto `args` and `res` with calls of the shape `sh`, every instruction of
+    `B` that is neither a control instruction nor a shadow instruction commute with a change
+    of the names `res :: args`, and no branch condition of `B` read them. From states
+    related by `OffRel` along `expPos`, a step of the x86 instruction set with procedures on
+    `B` is matched by a run of steps on `B'` to related states. -/
+theorem step_common {T : ProcTable} {f : String} {pr : ProcSummary} (hT : T f = some pr)
+    {sh : CallShape}
+    (haa : ∀ i, sh.arrArgs i = none → pr.arrArgs i = none) (hro : sh.out = false → pr.RetWord)
+    {args : List String} {res fn : String} {B B' : List LinstrRM}
+    (hB : commonCalls? sh f args res B = some B') (hf : commonFreshB sh args res B = true)
+    (hcg : ∀ i ∈ B, isCtl i.fst = false → shadowCall? i.fst = none →
+      OffCongr (res :: args) i)
+    (hcd : ∀ c l tag, (LinstrR.Lcond c l, tag) ∈ B → CondCongr (res :: args) c)
+    {s u s' : LstateMF}
+    (h : (x86Isa.withProcs T).lsemStepPMemF (singletonProgM fn B) s = some u)
+    (hr : OffRel (res :: args) (expPos (commonLen sh args.length) B) s s') :
+    ∃ k u', Steps (x86Isa.withProcs T) (singletonProgM fn B') k s' u' ∧
+      OffRel (res :: args) (expPos (commonLen sh args.length) B) u u' := by
+  rw [← expPosT_one hB] at hr ⊢
+  exact step_commonT (by rwa [commonCallsT?_one]) (commonSimT_one hT haa hro hf hcg hcd) h hr
+
+/-- **A run of steps of the body is a run of steps of the body rewritten onto the common
+    names of a table**, between states related by `OffRel N` along `expPosT`. -/
+theorem steps_commonT {T : ProcTable}
+    {tab : String → Option (CallShape × List String × String)} {N : List String} {fn : String}
+    {B B' : List LinstrRM} (hB : commonCallsT? tab B = some B') (hc : CommonSimT T tab N B) :
+    ∀ (n : Nat) (s t s' : LstateMF),
+      Steps (x86Isa.withProcs T) (singletonProgM fn B) n s t →
+      OffRel N (expPosT tab B) s s' →
+      ∃ n' t', Steps (x86Isa.withProcs T) (singletonProgM fn B') n' s' t' ∧
+        OffRel N (expPosT tab B) t t'
+  | 0, s, t, s', h, hr => by
+      have hst : s = t := Option.some.inj h
+      subst hst
+      exact ⟨0, s', Steps.refl _ _ _, hr⟩
+  | n + 1, s, t, s', h, hr => by
+      simp only [Steps, Ascent.CutPoint.iter, Option.bind_eq_some_iff] at h
+      obtain ⟨m, hm, h⟩ := h
+      obtain ⟨k, m', hk, hr'⟩ := step_commonT hB hc hm hr
+      obtain ⟨n', t', hn', hr''⟩ := steps_commonT hB hc n m t m' h hr'
+      exact ⟨k + n', t', hk.trans hn', hr''⟩
+
+/-- A halted state of the body is related to halted states of the body rewritten onto the
+    common names of a table. -/
+theorem halted_commonT {tab : String → Option (CallShape × List String × String)} {fn : String}
+    {B B' : List LinstrRM} (hB : commonCallsT? tab B = some B') {N : List String}
+    {t t' : LstateMF} (ht : Halted (singletonProgM fn B) t)
+    (hr : OffRel N (expPosT tab B) t t') :
+    Halted (singletonProgM fn B') t' := by
+  obtain ⟨L', -, rfl⟩ := hr
+  unfold Halted findInstrMem at ht ⊢
+  split at ht
+  · rename_i hfn
+    rw [ite_eq_left (show (setRL L' _ t).prog.lfn = (singletonProgM fn B').lfn from hfn)]
+    have hle : B.length ≤ t.prog.base.reg.lpc := List.getElem?_eq_none_iff.mp ht
+    change B'[expPosT tab B t.prog.base.reg.lpc]? = none
+    rw [expPosT_of_le _ hle, ← commonCallsT?_length hB]
+    exact List.getElem?_eq_none (Nat.le_refl _)
+  · rename_i hfn
+    exact ite_eq_right hfn
+
+/-- A state at the counter `0` is related to itself along `expPosT`. -/
+theorem offRel_entryT (N : List String)
+    (tab : String → Option (CallShape × List String × String)) (B : List LinstrRM)
+    {s : LstateMF} (h0 : s.prog.base.reg.lpc = 0) : OffRel N (expPosT tab B) s s :=
+  ⟨s.prog.base.reg.lvm, fun _ _ => rfl, by
+    rw [h0, expPosT_zero]
+    calc s = setRL s.prog.base.reg.lvm s.prog.base.reg.lpc s := rfl
+      _ = setRL s.prog.base.reg.lvm 0 s := by rw [h0]⟩
 
 /-- **A run of steps of the body is a run of steps of the rewritten body**, between states
     related by `OffRel` along `expPos`. -/
@@ -2091,17 +2405,8 @@ theorem halted_common {sh : CallShape} {f : String} {args : List String} {res fn
     {t t' : LstateMF} (ht : Halted (singletonProgM fn B) t)
     (hr : OffRel N (expPos (commonLen sh args.length) B) t t') :
     Halted (singletonProgM fn B') t' := by
-  obtain ⟨L', -, rfl⟩ := hr
-  unfold Halted findInstrMem at ht ⊢
-  split at ht
-  · rename_i hfn
-    rw [ite_eq_left (show (setRL L' _ t).prog.lfn = (singletonProgM fn B').lfn from hfn)]
-    have hle : B.length ≤ t.prog.base.reg.lpc := List.getElem?_eq_none_iff.mp ht
-    show B'[expPos (commonLen sh args.length) B t.prog.base.reg.lpc]? = none
-    rw [expPos_of_le _ hle, ← commonCalls?_length hB]
-    exact List.getElem?_eq_none (Nat.le_refl _)
-  · rename_i hfn
-    exact ite_eq_right hfn
+  rw [← expPosT_one hB] at hr
+  exact halted_commonT (by rwa [commonCallsT?_one]) ht hr
 
 /-- A state at the counter `0` is related to itself. -/
 theorem offRel_entry (N : List String) (n : Nat) (B : List LinstrRM) {s : LstateMF}
@@ -2197,6 +2502,60 @@ theorem obs_onCommonNames {T : ProcTable} {f : String} {pr : ProcSummary}
       Obs outs t t' := by
   obtain ⟨fuel', t', h', hr⟩ := run_onCommonNames hT haa hro hB hf h0 hrun
   exact ⟨fuel', t', h', hr.obs ho⟩
+
+/-- **The side conditions from the check of a table**: when each symbol with an entry in
+    `tab` is a symbol of `names` and has a summary in `T` that meets the shape of its entry,
+    a body that passes `commonFreshT tab names` meets `CommonSimT` at the common names
+    `commonNamesT tab names`. -/
+theorem commonSimT_of_commonFreshT {T : ProcTable}
+    {tab : String → Option (CallShape × List String × String)}
+    (hT : ∀ g sh args res, tab g = some (sh, args, res) → ∃ pr, T g = some pr ∧
+      (∀ i, sh.arrArgs i = none → pr.arrArgs i = none) ∧ (sh.out = false → pr.RetWord))
+    {names : List String} (hn : ∀ g e, tab g = some e → g ∈ names) {B : List LinstrRM}
+    (hf : commonFreshT tab names B = true) : CommonSimT T tab (commonNamesT tab names) B where
+  summ := hT
+  names g _ _ _ htab := mem_commonNamesT (hn g _ htab) htab
+  nodup g _ _ _ htab := by
+    have h := commonFreshT_entry hf (hn g _ htab) htab
+    simp only [commonFreshB, Bool.and_eq_true, decide_eq_true_eq] at h
+    exact h.1.1.1
+  ops i hi d g srcs xs hs hxs x hx hxN := by
+    obtain ⟨g', hg', sh', args', res', htab', hmem⟩ := commonNamesT_mem hxN
+    have h' := commonFreshT_entry hf hg' htab'
+    obtain ⟨-, hxa, -, -⟩ := commonFreshB_site h' hi hs hxs
+    have hxr := commonFreshB_site_res h' hi hs hxs
+    rcases List.mem_cons.mp hmem with rfl | ha
+    · exact hxr x hx rfl
+    · exact hxa x hx ha
+  congr _ hi hc hs := by
+    simp only [commonFreshT, Bool.and_eq_true] at hf
+    exact commonCongrB_offCongr hf.2 hi hc hs
+  cond _ _ _ hi := by
+    simp only [commonFreshT, Bool.and_eq_true] at hf
+    exact commonCongrB_condCongr hf.2 hi
+
+/-- **The rewriting of a checked body onto the common names of a table preserves halting
+    runs.** Let each symbol with an entry in `tab` be a symbol of `names` and have a summary
+    in `T` that meets the shape of its entry, the body `B` pass `commonFreshT tab names`, and
+    `B'` be its rewriting at `tab`. A halting run of the x86 instruction set with procedures
+    on `B` from a state at the counter `0` to `t` is matched by a halting run on `B'` from the
+    same state to a state that is `t` up to the common names `commonNamesT tab names` and the
+    counter, which is at the image of the counter of `t`. -/
+theorem run_onCommonNamesT {T : ProcTable}
+    {tab : String → Option (CallShape × List String × String)}
+    (hT : ∀ g sh args res, tab g = some (sh, args, res) → ∃ pr, T g = some pr ∧
+      (∀ i, sh.arrArgs i = none → pr.arrArgs i = none) ∧ (sh.out = false → pr.RetWord))
+    {names : List String} (hn : ∀ g e, tab g = some e → g ∈ names) {fn : String}
+    {B B' : List LinstrRM} (hB : commonCallsT? tab B = some B')
+    (hf : commonFreshT tab names B = true)
+    {fuel : Nat} {s t : LstateMF} (h0 : s.prog.base.reg.lpc = 0)
+    (hrun : (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B) fuel s = some t) :
+    ∃ fuel' t', (x86Isa.withProcs T).lsemFuelMemF (singletonProgM fn B') fuel' s = some t' ∧
+      OffRel (commonNamesT tab names) (expPosT tab B) t t' := by
+  obtain ⟨n, -, hn', ht⟩ := steps_of_lsemFuelMemF (x86Isa.withProcs T) _ fuel s t hrun
+  obtain ⟨n', t', hn'', hr⟩ := steps_commonT hB (commonSimT_of_commonFreshT hT hn hf) n s t s
+    hn' (offRel_entryT _ _ _ h0)
+  exact ⟨n' + 0, t', lsemFuelMemF_of_steps _ _ hn'' (halted_commonT hB ht hr) 0, hr⟩
 
 /-! ## 12. A halting run of a cut program is a segment of the body -/
 
