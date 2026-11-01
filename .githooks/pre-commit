@@ -68,42 +68,4 @@ if git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -q '\.md$'
   bash scripts/check-doc-links.sh || exit 1
 fi
 
-# The next two checks are scripts of the dev tree (the sibling SSProve-lean
-# checkout); without it they are skipped.
-dev_scripts="../SSProve-lean/scripts"
-
-# A `by decide` or `decide +kernel` on a statement naming a compiler front or the
-# back half makes the kernel run the compiler by reduction; FRONT_DECIDE_OK=1
-# overrides.
-if [ -n "$staged_lean" ] && [ -f "$dev_scripts/front-decide-lint.sh" ]; then
-  bash "$dev_scripts/front-decide-lint.sh" || exit 1
-fi
-
-# Gate-coverage registry: when a staged file is a gate module of the back half,
-# the census runs from the dev tree (through the build lock) and every construct
-# probe its scripts/acceptance-registry.tsv records as accepted must still be
-# accepted; kernel rows are report-only. ACCEPTANCE_SKIP=1 skips the run.
-gate_re='^CatCrypt/Crypto/SecureCompilation/(X86Backend/(ImageStraight[^/]*|DecodePrinted[^/]*|OwnedLprogTV[^/]*|LprogBytes[^/]*|TwoAddrLegalize|LprogOptPipeline)|VIR/JasminLprogExport/ExportPhys[^/]*)\.lean$'
-if printf '%s\n' "$staged_lean" | grep -qE "$gate_re" \
-   && [ -f "$dev_scripts/acceptance-registry-check.sh" ]; then
-  bash "$dev_scripts/acceptance-registry-check.sh" || exit 1
-fi
-
-# Importers of the staged Lean files that Lake reports as not up to date, over every
-# repository of the workspace (the dev tree imports this one). The query is the dev
-# tree's scripts/agent-closure.py; without that sibling the step is skipped. It warns;
-# RDEPS_STRICT=1 refuses the commit, RDEPS_SKIP=1 skips the query. During a
-# build the check is queued and runs when the build wrapper finishes.
-rdeps_tool="../SSProve-lean/scripts/agent-closure.py"
-rdeps_staged=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep '\.lean$' || true)
-if [ -n "$rdeps_staged" ] && [ -f "$rdeps_tool" ] && [ "${RDEPS_SKIP:-0}" != "1" ]; then
-  # shellcheck disable=SC2086
-  if ! rdeps_out=$(python3 "$rdeps_tool" rdeps --unbuilt --queue --drain $(printf "$PWD/%s " $rdeps_staged) 2>&1); then
-    echo "pre-commit: importers of the staged Lean files are not up to date:" >&2
-    printf '%s\n' "$rdeps_out" | head -40 >&2
-    echo "Build them from the dev tree: scripts/heavy-run.sh lake build <modules>" >&2
-    [ "${RDEPS_STRICT:-0}" = "1" ] && exit 1
-  fi
-fi
-
 exit 0

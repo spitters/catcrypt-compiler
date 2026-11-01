@@ -17,8 +17,11 @@ with `CatCrypt/` or name a document at the package root.
 - [DEMO.md](../../../DEMO.md) and [EXAMPLES.md](../../../EXAMPLES.md): worked examples.
 - [CAPABILITIES.md](../../../CAPABILITIES.md): per-primitive modules and theorems.
 - [VIR/DIALECTS.md](VIR/DIALECTS.md): which dialect lowers to which, and which reach bytes.
-- [Hax/FrontDomain.lean](../Hax/FrontDomain.lean): `HaxModule.refusal?`, the domain of
-  the front `haxToNF` of `compileA` (listed in `DESIGN.md` "The domain of the front").
+- [PIPELINE.md](../../../PIPELINE.md): the compile line of `compileA`, with the check
+  and theorem of each stage.
+- [Hax/FrontDomain.lean](../Hax/FrontDomain.lean): `HaxModule.refusal?`, which names
+  the first construct of a module outside the domain of the front `haxToNF` of
+  `compileA`.
 - [Dialects/FrontRoutePlan.lean](Dialects/FrontRoutePlan.lean): the rolled-loop front
   indexed by loop shape, body front, continuation and post-pass; `analyse` classifies
   a `LowCT` source, `compile` dispatches, and an unsupported combination is reported
@@ -30,6 +33,7 @@ with `CatCrypt/` or name a document at the package root.
 
 | Directory | Contents | Index |
 |---|---|---|
+| `Haxc/` | The hax compiler `haxc`: the entry `compileA` (`ComposeV1.lean`), the linear route `nfChain` (`NFChain.lean`) and the chain `extChain` (`ExtChain.lean`, `NFChainCall.lean`), the field route `fieldRegionFront` (`FieldLowerChain.lean` and the other `Field*.lean` modules), the region back half `compileRegion` (`RegionBackend.lean` and the `Region*.lean` modules), the correctness theorems `haxc_correct_auto` (`RegionLinkCall.lean`) and `haxc_correct_auto_tuple` (`ComposeTuple.lean`), constant time (`haxc_ct_proved_all` in `ComposeCTStraight.lean`; `CT*.lean`), `haxc_gate_proved_all` (`RCInstance.lean`), Jasmin source of a compiled module `jasminOfA` (`ComposeJazz.lean`), and the root of the executable `haxc` (`HaxcMain.lean`) | [PIPELINE.md](../../../PIPELINE.md) |
 | `VIR/` | The `Com` framework (`Core.lean`), the dialects, dialect lowerings, the Jasmin linear semantics `lsem`, end-to-end compiler-correctness and robust-compilation theorems, and per-kernel emit modules | [VIR/AGENTS.md](VIR/AGENTS.md) |
 | `Dialects/` | The `LowCT → catCryptDialect` front (`translateDialectControl` and its extensions), its whole-program denotation theorems, the neutral `arith`/`memref`/`vector`/`func` dialects, instruction-selection passes, and dialect-level leakage and security | [Dialects/AGENTS.md](Dialects/AGENTS.md) |
 | `X86Backend/` | The x86-64 machine model, lowering, encoders, ELF writer, Sail-x86 decode round trips, register-allocation faithfulness, machine constant time, and x86 kernel emitters | [X86Backend/AGENTS.md](X86Backend/AGENTS.md) |
@@ -42,6 +46,11 @@ with `CatCrypt/` or name a document at the package root.
 | `Jasmin/` | Jasmin-to-SSA translation targeting `catCryptDialect` with its correctness, and s2n-bignum SSA results transported onto that dialect | none |
 | `AUCurvesImport/` | Cross-prover bridges from AUCurves field-multiply leaf specifications to `LeafSem`, and an importer pilot | none |
 | `LowCTExtensions/` | Extension lemmas for the `RFor`, `RArrLoad` and `RArrStore` constructors | none |
+| `Algebraic/` | Field expressions compiled to `fieldDialect` programs (`FieldExprCompile.lean`), their lowering to Jasmin limbs or words per reduction strategy (`FieldToJasminLimbs*.lean`, `FieldToJasminWord.lean`, `ModArithLimbTemplate*.lean`, `Algebraic/FieldLimbs/`, `Algebraic/FieldWord/`), and the curve-point, Poseidon and Poseidon2 kernels built on them | none |
+| `CT/` | The constant-time leakage model `CTLeak` at the machine and source levels (`Leakage.lean`, `LowCTLeakage.lean`), the per-ISA timing regimes (`IsaRegime.lean`, `X86Timing.lean`, `ArmTiming.lean`, `RiscvTiming.lean`) and the security levels of hax code (`HaxLevels.lean`) | none |
+| `SepLogic/` | Separation logic with footprints over total states (`Core.lean`), contracts of run relations (`Contract.lean`, `ContractX86.lean`) and their instances at the address machine and byte memory | none |
+| `SourceSecrecyTransfer/` | `SourceSecrecy` with `SourceSecrecy.toLevelTable` and `SourceSecrecy.declassify` (`Defs.lean`); the transfer theorems are in `SourceSecrecyTransfer.lean` | none |
+| `Generated/` | Generated `Hax.TExpr` literals; regenerate them, do not edit them by hand | none |
 
 The optimizer passes live in `CatCrypt/Crypto/Optimizer/`
 ([README](../Optimizer/README.md)); the source language `LowCT` in
@@ -128,10 +137,9 @@ fragment and hypotheses of each.
 
 ## Facts that are easy to misread
 
-- `Dialects.CryptoDialectLeakTraceNative`: `Com.isConstantTime c` unfolds to
-  `∀ _ _ _, Com.leakTrace c = Com.leakTrace c`, and `Com.all_com_ct` is
-  `fun _ _ _ => rfl`. The declarations constrain no program. Value-dependent leakage
-  on `Com` is `VIR.ComLevelCheck.Com.ctLeak` (at the dialect: `Dialects.CryptoDialectCTLeak.catCT`,
+- `Dialects.CryptoDialectLeakTrace.Com.leakTrace`
+  takes no valuation, so an equality of two such traces constrains no program and is
+  not constant-time evidence. Value-dependent leakage on `Com` is `VIR.ComLevelCheck.Com.ctLeak` (at the dialect: `Dialects.CryptoDialectCTLeak.catCT`,
   with the front theorem `Dialects.TranslateDialectCT.levelCheckF_ct`),
   `CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean` (`cmdCT`) and
   `X86Backend.MachineConstantTime.blockLeak`.
@@ -144,3 +152,86 @@ fragment and hypotheses of each.
   kept as a test-vector oracle or a measurement, not compiler output. Read the
   docstring before describing a kernel's provenance; a file name does not fix it
   (`ScalarLinX86Demo.lean` holds `com_x86_e2e`).
+
+## Rules for contributors
+
+Emit and output.
+- An emit kernel is generated: by the descent over a `LowCT` program written in Lean
+  (`reifyLowCT%`, `translateDialectControl`, `cryptoDialectToJasminCom`, the owned
+  backend), by relational compilation from a Lean specification
+  (`RelationalCompile.lean`), or by a field template. It is never hand-authored as
+  `Com`, `Lcmd`, `JInstr` or assembly text: a hand-authored kernel checked against a
+  hand-authored specification says nothing about generated code. If a front cannot
+  express a kernel, extend the front. The legacy hax fronts `compileFromHax` and
+  `haxToLowCT` are not kernel sources. `scripts/handcom-provenance-ratchet.sh` fails
+  when the number of hand-authored kernels rises.
+- The owned backend produces the artifact. Jasmin source is printed only by
+  `Jazz.print` (`CatCrypt/Crypto/Jasmin/JazzPrint.lean`) behind the round-trip gate
+  `printChecked` (`CatCrypt/Crypto/Jasmin/JazzRoundTrip.lean`), as `jasminOfA` does
+  for `compileA`; a new module does not render Jasmin text from string templates.
+- Before reporting that a construct is unsupported, run the domain check of the
+  front: `HaxModule.refusal?` for `compileA`, `analyse` of
+  `Dialects/FrontRoutePlan.lean` for the rolled-loop `LowCT` front. A dispatched or
+  generic capability shares no identifier with the monomorphic form a name search
+  looks for, so list the owning directory before concluding that a capability is
+  missing.
+- Do not claim a backend capability from a kernel docstring; read the printer or
+  encoder source.
+
+Register allocation is generic.
+- `CatCrypt/Crypto/Optimizer/GraphColoringGeneric.lean` holds the Chaitin-Briggs
+  allocator over `[MachineModel I]`, and `CatCrypt/Crypto/Optimizer/GenericRegAlloc.lean`
+  the spill soundness over `[MemMachine M]` and `RegMachine`. A new backend supplies
+  these instances, not a new allocator; `X86Backend/VsimdGraphColorRegAlloc.lean`,
+  `ARMBackend/ArmRegAllocGeneric.lean` and `RISCVBackend/RiscvRegAlloc.lean` are the
+  instances. `selectColors` advances spill offsets by its `stride` argument, `8` by
+  default: pass the register width for a vector pool, and allocate a vector pool
+  through an entry point that names the pool, since a `MachineModel` instance fixes
+  one register pool.
+
+Proof cost. Do not prove a property of a large term by reducing the term; state the
+property parametrically or structurally, so that the proof's cost does not grow with
+the object. The signs are a `set_option maxRecDepth` or `maxHeartbeats` beside a
+proof, `rfl` or `decide` on a concrete byte list, a rendered string or a builder at a
+concrete depth, and `native_decide` where the claim is a prefix, a length or a shape.
+The replacements:
+- a prefix of an object: one prefix lemma parametric in the rest, instantiated per
+  builder;
+- a builder's denotation at depth `n`: generalise over the counter and induct;
+- the length of a kernel: per-encoder length lemmas summed through
+  `List.length_append` (`CryptoExt.encAvx2Alu_length` in
+  `X86Backend/CryptoExtEncoder.lean`; `Chacha4WayQrObjectEmit.emit_length` and
+  `Chacha4WayTransposeObjectEmit.encodeTranspose4way_length` are worked examples);
+- success of a front (`.isSome`): for `compileFromHax`, the scope predicate
+  `Compiles` with `compileFromHax_isSome_of_compiles` (`CompileFromHaxScope.lean`); for
+  `translateDialectControl`, the shape interpreter of
+  `VIR/KeccakF1600FrontComposeShape.lean` (`shapeTranslate_sim`) with
+  `cryptoDialectToJasminCom_isSome_of_pureLower` for the backend;
+- a cast such as `(R : ZMod q) ≠ 0`: move the goal off the cast first
+  (`ZMod.natCast_eq_zero_iff`) instead of `decide`;
+- a property of every statement of a program: a per-statement lemma composed with
+  `List.forall_mem_cons`;
+- a recursive builder over a concrete carrier: make it parametric in the carrier;
+- a program assembled by `++` from list literals: write constructors out in full
+  (`RegStmt.mov`) instead of `.mov`, whose elaboration is postponed and redone along
+  the chain;
+- a membership side condition over names: an inductive over `List.Mem` discharged
+  by its constructors, instead of a `Bool` recursion over `String` equality;
+- a result threaded through several stages: one lemma per stage with a named
+  postcondition bundle (`FrameIdx`, `ConstVals`, `LoadFrame` in
+  `Secp256k1PointOpPrologue.lean`);
+- a large monolithic `Com` whose long-lived values are SSA bindings: keep the values
+  in a frame buffer at compile-time offsets and access them per operation, as
+  `X86Backend/Ed25519PointKernel.lean` does, since a variable at de Bruijn depth `d`
+  costs `d` cells in the lowering.
+
+`scripts/check-build-cost.sh <Module>` reports a module's elaboration time against
+`scripts/build-cost-baseline.tsv`; a module above one second states the reason in its
+docstring. A known-answer check in a Lean source is written only with `#kat` or
+`#kat_kernel`; vector batteries go to the external harness under `bench/`
+(`scripts/lean-kat-ratchet.sh`).
+
+Building. Build the narrowest target, `lake build <Module>`, which builds that
+module's import closure; [BUILDING.md](../../../BUILDING.md) gives the full build and
+the checks in `scripts/`. After adding or removing a module run
+`bash scripts/gen-module-globs.sh`.

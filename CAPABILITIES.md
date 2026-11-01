@@ -68,16 +68,20 @@ theorem.
 | Primitive | Modules | Theorems | Provenance |
 |---|---|---|---|
 | Field and word kernels | `SC/Ascent/` ([ASCENT.md](ASCENT.md)); `scripts/ascent-corpus.sh` | `feSub_endToEnd`, `feAdd_endToEnd`, `demo_source_to_bytes`: closed capstones from a `LowCT` kernel to its `Com jasminDialect` denotation. `bash scripts/ascent-corpus.sh` lists the kernels, the kernels with an ascent correspondence, and the kernels reached by a closed capstone. | `LowCT` terms written in Lean, with a front-translated `Com jasminDialect`. |
-| Imported s2n-bignum Ed25519 blocks | `SC/Ascent/Demos/Ed25519PointAddBytes.lean`, `Ed25519ScReduceShippedProof.lean`, `Ed25519ScMuladdShippedProof.lean` (same directory) | `paShippedBytes_correct`: the encoded `ed25519_point_add` bytes compute Edwards addition. `scReduceShipped_correct_addr`: `ed25519_sc_reduce` computes `x mod L`. `scMuladdShipped_correct_addr`: `ed25519_sc_muladd` computes `(a·b + c) mod L`. | Imported x86-64 blocks, proved at the address machine `runBlockA`. |
+| Transcribed Ed25519 blocks printed by the project's backend | `SC/Ascent/Demos/Ed25519PointAddBytes.lean`, `Ed25519ScReduceShippedProof.lean`, `Ed25519ScMuladdShippedProof.lean` (same directory) | `paShippedBytes_correct`: the bytes that the package's encoder writes for the transcribed `ed25519_point_add` block decode to a block that computes the extended-coordinate addition formula. `scReduceShipped_correct_addr`: `ed25519_sc_reduce` computes `x mod L`. `scMuladdShipped_correct_addr`: `ed25519_sc_muladd` computes `(a·b + c) mod L`. Each assumes disjoint cells (`Separated`). | Lean transcriptions of the backend's x86-64 text, proved at the address machine `runBlockA`; the bytes are the encoder's, not the assembler's. |
 
-## Out of scope
+## Kernels at the bytes through the region back half
 
-- Byte-level known-answer harnesses (`bench/*_compare/*.c`) live in the CatCrypt
-  development repository; [bench/PROVENANCE.md](bench/PROVENANCE.md) lists the
-  emitted artifacts this package ships.
-- Kernels from Rust bytes: the `compileFromHax` modules compile hax `ImpExpr`
-  sources written in the module. The simulations from hax source to LowCT
-  (`haxToLowCT_simulates_programT`, `haxToLowCT_simulates_programL`) end at
-  `RustExec`.
-- Leaf semantics of the pairing and group kernels, which take `leafSem` as a
-  parameter and denote through `jasminDenoteWith leafSem`.
+| Primitive | Modules | Theorems | Provenance |
+|---|---|---|---|
+| Montgomery field multiply, square, addition, subtraction at P-256, secp256k1, P-384, BN254, BLS12-381 | `SC/Algebraic/FieldLimbs/`; `SC/Haxc/FieldRoute.lean`; `SC/Haxc/FieldInstances.lean`; `SC/Haxc/FieldBlocksCT.lean` | `field_correct_bytes`: for every field record and every result of `compileRegion` on the multiply program, the decoded bytes halt in a state from which the layout reads back the Montgomery limbs of `x * y`. `<prime>_<op>_correct_bytes`: the same statement for each operation at each of the five primes. `nfChainF_ct_<prime>`: constant time of the field chain. | Template over a modulus record, lowered to limbs; [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md). |
+| `mpn_add_n`, `mpn_sub_n`, `mpn_mul_1`, `mpn_addmul_1` | `SC/Haxc/MpnBytes.lean` | `mpn_add_n_bytes_correct`, `mpn_sub_n_bytes_correct`, `mpn_mul_1_bytes_correct`, `mpn_addmul_1_bytes_correct`: at every limb count `n`, the decoded bytes of a result of `compileRegion` read back the `n + 1` result words. | Route program through the region back half. |
+
+[bench/PROVENANCE.md](bench/PROVENANCE.md) lists the emitted artifacts this package
+ships. The `compileFromHax` modules compile hax `ImpExpr` sources written in the
+module; the simulations from hax source to LowCT (`haxToLowCT_simulates_programT`,
+`haxToLowCT_simulates_programL`) end at `RustExec`. The pairing and group kernels take
+the leaf semantics `leafSem` as a parameter and denote through
+`jasminDenoteWith leafSem`. The hax compiler `compileA`, which compiles a hax module
+to x86-64 bytes with value, constant-time and robust-compilation theorems, is described
+in [PIPELINE.md](PIPELINE.md).

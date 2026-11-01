@@ -14,12 +14,13 @@
 # EIP-197 G2 generator coordinates (Montgomery form).  No fabricated vectors.
 #
 # The stackalloc-typing gap that limited the jasminc route to the 12 leaf-level
-# tower functions (see ../JASMIN_TOWER_222.md) is moot on this path; the
+# tower functions is moot on this path; the
 # heavier tower ops (Fp2_mul etc.) ride the #260 reg-ptr re-emit in the parent
 # bn254_compare bench.
 
 COMPILER := $(abspath $(CURDIR)/../../..)
-DEV      := $(abspath $(COMPILER)/../SSProve-lean)
+# Lake root: a sibling development checkout when present, this repository otherwise.
+DEV      := $(or $(wildcard $(abspath $(COMPILER)/../SSProve-lean)),$(COMPILER))
 # lake env/build from the dev root (one-root rule); the command runs in the compiler tree
 LEAN_IN_COMPILER := cd $(DEV) && lake env sh -c 'cd $(COMPILER) && exec "$$@"' sh
 

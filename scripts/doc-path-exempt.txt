@@ -9,7 +9,18 @@ CatCrypt/Crypto/SecureCompilation/AGENTS.md	AutoVectorize/	# relative to MLIR/Ve
 HAX_RUST.md	HaxLean/AST.lean	# file of the hax-lean package, named as such
 HAX_RUST.md	HaxLean/Semantics.lean	# file of the hax-lean package, named as such
 bench/p384_ecdsa_rust/PERF.md	p384-safe-rust/build.sh	# file of the AUCurves tree, named as such
-bench/p384_ecdsa_rust/PERF.md	bench/p384_safegcd_compare	# directory of the development repository, named as such
-bench/p384_ecdsa_rust/PERF.md	bench/AGENTS.md	# file of the development repository, named as such
-bench/p384_ecdsa_rust/PERF.md	bench/framework/geomean_ratios.tsv	# file of the development repository, named as such
-bench/p384_ecdsa_rust/PERF.md	bench/p384_fieldmul_compare/README.md	# file of the development repository, named as such
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	VIR/EcLadderSelectDialect.lean	# module of the development package, marked "(dev)"
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	VIR/EcLadderNF.lean	# module of the development package, marked "(dev)"
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	scripts/gen-lowering-graph.sh	# generator script of the development tree, named in the generated block
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	CatCrypt/Quantum	# directory of the development tree the generator excludes
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	VIR/Dialects/ArithToNatKernel.lean	# development-tree file, marked "(SSProve-lean)" in the generated block
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	CatCrypt/Crypto/Poseidon2/FieldDescentBB.lean	# development-tree file, marked "(SSProve-lean)" in the generated block
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	CatCrypt/Crypto/Poseidon2/FieldDescentBBMont32.lean	# development-tree file, marked "(SSProve-lean)" in the generated block
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	VIR/FieldDialectBlockDescentBB.lean	# development-tree file, marked "(SSProve-lean)" in the generated block
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	FieldDescent.lean	# development-tree file, marked "(SSProve-lean)" in the generated block
+CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md	VIR/ThirToFieldDialect.lean	# development-tree file, marked "(SSProve-lean)" in the generated block
+docs/CompilerManual.lean	bench/cryptopt_safegcd/README.md	# measurement record of the development repository, named as such
+docs/CompilerManual.lean	bench/slothy_perf/README.md	# measurement record of the development repository, named as such
+docs/CompilerManual.lean	bench/x25519_fieldmul_compare/README.md	# measurement record of the development repository, named as such
+third_party/mlkem-libjade/MODIFICATIONS.md	src/mlkem768_amd64_avx2/mlkem768_amd64_avx2.s	# upstream libjade file the document states is not distributed
+third_party/mlkem-libjade/README.md	MAINTAINERS.md	# file of the upstream libjade repository, named as such

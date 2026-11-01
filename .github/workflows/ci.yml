@@ -7,9 +7,8 @@ on:
   workflow_dispatch:
   # The heavy jobs run on demand and on pull requests; a push to the default
   # branch runs only the cheap gates (see each job's `if`). There is no schedule:
-  # a weekly cold build of the private repository cost about 2 h of runner time
-  # (user, 2026-10-25: run CI with care, not on every push). Start the heavy
-  # jobs with workflow_dispatch at a milestone.
+  # a weekly cold build costs about 2 h of runner time. Start the heavy jobs
+  # with workflow_dispatch at a milestone.
 # Cancel superseded runs on the same ref.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -143,6 +142,9 @@ jobs:
       # native_decide modules in the tail exceed the runner's memory. At 1 the build
       # runs ~3 concurrent workers, measured at ~8 GB peak.
       LEAN_NUM_THREADS: "1"
+      # The wall-clock budgets of `#kat` checks are set on a development machine; the
+      # runner is slower, so CI multiplies them (the heartbeat budgets are unscaled).
+      CATCRYPT_KAT_MS_SCALE: "4"
     steps:
       - uses: actions/checkout@v4
 

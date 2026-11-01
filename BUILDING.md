@@ -11,22 +11,32 @@ library), `Veir` (below), [`paramTransfer`](https://github.com/spitters/ParamTra
 ## The Veir dependency
 
 `lakefile.lean` requires `Veir` from the public repository
-`https://github.com/spitters/veir-catcrypt` at tag `v4.33.1-catcrypt.1`. That
-repository is a fork of [VeIR](https://github.com/opencompl/veir): VeIR `v4.29.0`
-with the CatCrypt opcode dialects and the toolchain updates to the Lean version this
-package uses, under VeIR's Apache-2.0 licence. Lake clones it over https together with
-the other dependencies, and no credentials are needed.
+[spitters/veir-catcrypt](https://github.com/spitters/veir-catcrypt) at tag
+`v4.35.0-catcrypt.1`. That repository is a fork of
+[VeIR](https://github.com/opencompl/veir): upstream VeIR at commit `ae4fa0a1` with five
+CatCrypt dialect folders (`Veir/Dialects/{Catcrypt,Memref,Polynomial,Vector,X86vector}`)
+and the toolchain updates to the Lean version this package uses, under VeIR's
+Apache-2.0 licence. Lake clones it over https together with the other dependencies,
+and no credentials are needed.
 
 ## What a build consists of
 
-`lakefile.lean` declares two libraries: `CatCryptCompiler`, the compiler and its
-theorems, and `CatCryptCompilerExamples`, the demos, probes, tests and benchmark
-drivers, which nothing in `CatCryptCompiler` imports. The default target
-(`lake build`) builds `CatCryptCompiler`; `lake build CatCryptCompilerExamples`
-builds the second. mathlib and the packages it requires come
-prebuilt from mathlib's cache; the other dependencies build from source. A single
-example needs only its import closure: `lake build <module>` builds that closure and
-nothing else, and [GETTING_STARTED.md](GETTING_STARTED.md) starts that way. Peak memory grows with the
+`lakefile.lean` declares four libraries:
+
+- `CatCryptCompiler`: the compiler and its theorems, including the hax compiler
+  `compileA` under `CatCrypt/Crypto/SecureCompilation/Haxc/`;
+- `HaxAscent`: the ascent from hax-extracted Rust to the `Corres` calculus, and the
+  Rust semantics it ascends to (`HaxAscent/`);
+- `CatCryptCompilerExamples`: demos, probes, tests and benchmark drivers;
+- `CatCryptCompilerVeir`: the bridge to VeIR.
+
+`CatCryptCompiler` and `HaxAscent` are the default targets of `lake build`; the other
+two build on request (`lake build CatCryptCompilerExamples`,
+`lake build CatCryptCompilerVeir`), and no module of `CatCryptCompiler` imports one of
+theirs. mathlib and the packages it requires come prebuilt from mathlib's cache; the
+other dependencies build from source. A single example needs only its import closure:
+`lake build <module>` builds that closure and nothing else, and
+[GETTING_STARTED.md](GETTING_STARTED.md) starts that way. Peak memory grows with the
 number of concurrent Lean workers, which `LEAN_NUM_THREADS` bounds (below). The CI
 build job (`.github/workflows/ci.yml`) runs at `LEAN_NUM_THREADS=1` in time-bounded
 batches and carries its progress from one run to the next through the build cache.
@@ -63,6 +73,21 @@ LEAN_NUM_THREADS=1 lake build     # the smallest footprint
 still starts the full set, time-sharing two cores. Lake has no `-j`/`--jobs` flag and
 `LAKE_JOBS` has no effect.
 
+## Run the hax compiler
+
+The executable `haxc` runs `compileA` on one function of a hax frontend export, the
+JSON file that `cargo hax json` writes in the Rust crate:
+
+```bash
+lake build haxc
+lake exe haxc EXPORT --fn NAME [--name CRATE]
+```
+
+Without `--fn` it compiles the last extracted function. On success it prints the
+x86-64 AT&T assembly on standard output and exits `0`; when `compileA` refuses the
+function it prints the first refusing stage and its construct on standard error and
+exits `2`. [PIPELINE.md](PIPELINE.md) lists the stages.
+
 ## Run the checks
 
 The gates in `scripts/` compare the package's sources with recorded baselines. They
@@ -70,33 +95,27 @@ read the sources and need no build, and CI runs each as its own step:
 
 ```bash
 bash scripts/check-doc-links.sh              # every relative Markdown file link resolves
+bash scripts/check-doc-paths.sh              # every file path in a document code span exists
 bash scripts/gen-module-globs.sh --check     # the module list in lakefile.lean is current
+bash scripts/ci-only-import-gate.sh          # only a CI-only module imports a CI-only module
 bash scripts/rot-guard-build.sh --check      # every compiler module is reached by a build root
 bash scripts/handcom-provenance-ratchet.sh   # no new hand-authored Com/Lcmd emit kernel
 bash scripts/front-callsite-ratchet.sh       # no new direct rolled-loop combinator call site
 bash scripts/audit_emit_provenance.sh        # no new untagged hand-written JInstr block
+bash scripts/emit-ct-obligation-ratchet.sh   # every artifact-writing module carries its CT obligation
 bash scripts/vacuous-theorem-ratchet.sh      # no new vacuous or assumption-shaped security theorem
-bash scripts/uc-plumbing-ratchet.sh          # no new plumbing-tagged security statement
+bash scripts/ascent-anchor-ratchet.sh        # no new ascent module untied to compiler output or bytes
+bash scripts/ascent-nonvacuity-ratchet.sh    # no new ascent judgment without a satisfiability witness
+bash scripts/dialect-lowering-ratchet.sh     # every Dialect is classified in scripts/dialect-manifest.txt
+bash scripts/leak-kind-wildcard-lint.sh      # no leak-kind function maps a wildcard to the quiet class
 bash scripts/proof-cost-ratchet.sh           # no rise in the recorded proof-cost counts
+bash scripts/lean-kat-ratchet.sh             # known-answer checks only through #kat and #kat_kernel
 bash scripts/lint-lean-prose.sh --docs       # the listed documents contain no banned phrasing
 ```
 
 Each ratchet compares against a baseline in `scripts/` and fails when its count
 rises. When a count falls the ratchet rewrites the baseline downward; commit the
 tightened file, which is what the final CI step checks.
-
-`python3 -I scripts/machine-boundary-ratchet.py` checks the import boundary of the
-machine library: the tiers of `scripts/machine-boundary-tiers.txt` (machine models,
-decoders, encoders, the flag and address machines, the ISA records, ascent, separation
-logic, constant time, the ARM and RISC-V back ends and the x86 back half), assigned by
-the families of the code map behind `NAVIGATION.md`. From the import headers of this
-package, CatCrypt-core and the dev tree it computes the edges from a machine module to a
-module outside the machine tiers and the Lean toolchain with Mathlib, the machine modules
-whose import closure leaves those tiers, and the imports of a machine module by an
-outside module that a machine module reaches (a cycle between tiers). It fails when an
-entry appears that `scripts/machine-boundary-baseline.txt` does not list, and it reports
-the entries that are gone; `--write` records the baseline, and `--report` ranks the edge
-targets by the lines their closure pulls into the library.
 
 `scripts/rot-guard-build.sh --build` builds every module in
 `scripts/rot-guard/build-roots.txt` as its own target, in batches, so a failure
@@ -173,34 +192,27 @@ bash scripts/check-build-cost.sh --record                   # build and record t
 `BUILD_COST_TIMEOUT`, `BUILD_COST_MEM_MB`, `BUILD_COST_CORES`, and `FRONT_RE`
 (the reflection/emit-front module regex) tune it.
 
-A few modules cost more than a development box has. `scripts/ci-only-modules.txt`
-records them, each line carrying the measurement that earned it: the peak resident
-memory of one `lean` process, or the `anon-rss` of the kernel's out-of-memory record
-when the process was killed before finishing. `check-build-cost.sh` reports a listed
-module instead of elaborating it, and fails on a line whose source file is gone.
-Lake reads nothing there, so a build that imports one of these still pays the cost —
-the list says where the cost is and keeps the gate from reproducing the kill. Add a
-line only with a figure behind it.
+`scripts/ci-only-modules.txt` lists modules that cost more memory than a development
+box has, each line carrying the measurement that earned it: the peak resident memory
+of one `lean` process, or the `anon-rss` of the kernel's out-of-memory record when the
+process was killed before finishing. `check-build-cost.sh` reports a listed module
+instead of elaborating it, and fails on a line whose source file is gone. Lake reads
+nothing there, so a build that imports a listed module still pays the cost. The list
+is empty at present; a line is added only with a figure behind it.
 
-The entries are the part checks of `ed25519_point_add`, `ed25519_sc_reduce` and
-`ed25519_sc_muladd`: `decide +kernel` over a symbolic run of a whole part, one of which
-alone reaches 4.84 GB. Splitting them into a module per check was measured and does not
-divide the cost, which is one declaration's reduction rather than an accumulation
-across a module; cutting a part into shorter runs at a boundary certificate does.
-
-A module that does not build locally still has to stay true. The part checks are
-statements about imported blocks, and a re-import can make one false with no build
-reporting it, since nothing elaborates the modules that hold them.
-`scripts/ed25519-part-check-gate.sh` evaluates all twenty-seven statements with the
-compiled evaluator, from the symbolic executor (`Ed25519SymExec`), the models and the
-part maps alone, and fails if any is false:
+The part checks of the imported Ed25519 blocks (`ed25519_point_add`,
+`ed25519_sc_reduce`, `ed25519_sc_muladd`) are `decide +kernel` statements over a
+symbolic run of each part of a block. `scripts/ed25519-part-check-gate.sh` evaluates
+all twenty-seven statements with the compiled evaluator, from the symbolic executor
+(`Ed25519SymExec`), the models and the part maps alone, and fails if any is false:
 
 ```bash
 bash scripts/ed25519-part-check-gate.sh
 ```
 
-CI runs it before the full build, so it reports even when the run ends before the build
-reaches the checks. It adds no trust; the kernel proofs remain the artefact.
+CI runs it before the full build, so a re-import that falsifies a part check is
+reported even when the run ends before the build reaches it. The gate adds no trust;
+the kernel proofs are the result.
 
 A memory cap on a cgroup whose working set is `.olean` mmaps is a pressure source,
 not a bound: those mapped pages are clean and reclaimable, so a build near the cap

@@ -61,9 +61,9 @@ Placement of the instruction-set results:
   concerns the stack pointer and its cell, in `CorresIsaStackFrame`.
 - A fact about the image of a class of printed bodies, independent of a compile gate,
   goes in `ImageSpFree` or `ImageSpFreeCell`.
-- A statement whose hypothesis is a compile gate of the hax compiler is in the
-  development tree, which defines the gates; this directory holds the general lemmas it
-  applies. [ASCENT_REFERENCE.md](../../../../ASCENT_REFERENCE.md#compiled-programs-at-the-instruction-set)
+- A statement whose hypothesis is a compile gate of the hax compiler goes in a module
+  that imports the gate from `../Haxc/`; no module of this directory imports `Haxc/`,
+  and this directory holds the general lemmas such a statement applies. [ASCENT_REFERENCE.md](../../../../ASCENT_REFERENCE.md#compiled-programs-at-the-instruction-set)
   lists both.
 - The congruence and inclusion lemmas for builtin tables and for readings of the calls
   are in `HaxAscent/Ascent/TableCongr.lean` and

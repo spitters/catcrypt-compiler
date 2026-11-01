@@ -106,8 +106,8 @@ The neutral `arith`, `memref`, `vector` and `func` dialects are in `../Dialects/
 | `CompileCorrectAllGenuine.compile_correct_all_genuine` | `ComBaseAlu com` and `AllReg64 Γ`; `GenuineModelChoice` ranges over RISC-V and ARM only. The first conjunct of the previous row, by case on the choice | `CompileCorrectAllGenuine.lean` |
 
 README.md, section "The guarantees", discusses the first four rows. The compiler
-`compileA` and its theorems (`haxc_correct_auto`, `haxc_ct_proved_all`) are in the
-development repository's `Haxc/` directory.
+`compileA` and its theorems (`haxc_correct_auto`, `haxc_ct_proved_all`) are in
+`../Haxc/` ([PIPELINE.md](../../../../PIPELINE.md)).
 `RustExecSimulatesUnified.lean` gives the `RustExec` leg for the unified front;
 `ExecAdequacy.lean` and `ExecCompleteness.lean` relate the fuel-bounded executor to
 the relational semantics.

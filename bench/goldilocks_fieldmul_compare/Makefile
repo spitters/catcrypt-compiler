@@ -19,7 +19,8 @@ PINCORE  ?= 3
 LEAN_S   := gen_com/goldilocks_mul_x86_from_lean.s
 
 COMPILER := $(abspath $(CURDIR)/../..)
-DEV      := $(abspath $(COMPILER)/../SSProve-lean)
+# Lake root: a sibling development checkout when present, this repository otherwise.
+DEV      := $(or $(wildcard $(abspath $(COMPILER)/../SSProve-lean)),$(COMPILER))
 # lake env/build from the dev root (one-root rule); the command runs in the compiler tree
 LEAN_IN_COMPILER := cd $(DEV) && lake env sh -c 'cd $(COMPILER) && exec "$$@"' sh
 

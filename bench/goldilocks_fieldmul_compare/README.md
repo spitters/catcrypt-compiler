@@ -5,7 +5,7 @@ Head-to-head for the Goldilocks base-field multiply
     goldilocks_mul(x, y) = (x · y) mod (2^64 − 2^32 + 1),
 
 a single 64-bit field element, emitted by the in-Lean x86 backend (MULX, no
-jasminc). This is the #403 application of the **multi-term** Solinas
+jasminc). This is the application of the **multi-term** Solinas
 modular-reduction selection pass (`ModReduceSelect`) to the Plonky3 64-bit field.
 
 ## The reduce is the verified multi-term `multiSolinasReduce`

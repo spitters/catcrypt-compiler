@@ -21,7 +21,8 @@ JASMINC ?= $(HOME)/.opam/rocq-9/bin/jasminc
 CC      ?= gcc
 
 COMPILER := $(abspath $(CURDIR)/../..)
-DEV      := $(abspath $(COMPILER)/../SSProve-lean)
+# Lake root: a sibling development checkout when present, this repository otherwise.
+DEV      := $(or $(wildcard $(abspath $(COMPILER)/../SSProve-lean)),$(COMPILER))
 # lake env/build from the dev root (one-root rule); the command runs in the compiler tree
 LEAN_IN_COMPILER := cd $(DEV) && lake env sh -c 'cd $(COMPILER) && exec "$$@"' sh
 # build a compiler-package exe from the dev root, then run it in the compiler tree
@@ -47,8 +48,7 @@ EXE_IN_COMPILER = cd $(DEV) && bash scripts/heavy-run.sh taskset -c 0-1 lake bui
 # constants the CatCrypt emitted Poseidon2 leaf KAT-matches — removing the
 # round-constant mismatch, and (b) prove->serialize->deserialize->verifies a
 # real p3 proof, dumping the exact `Proof<SC>` wire shape an emitted prover must
-# reproduce to be accepted by the genuine p3 verifier. See FULL_PROVER_VS_P3.md
-# "Gap 1".
+# reproduce to be accepted by the genuine p3 verifier.
 plonky3-p3-verifier-interop:
 	cd p3_ref && cargo build --release --bin p3-fib-interop
 	taskset -c 3 ./p3_ref/target/release/p3-fib-interop
@@ -94,7 +94,7 @@ plonky3-crate-whole-prover-kat:
 gen_com/compress_from_rustcmd_owned.s gen_com/hash_leaf_from_rustcmd_owned.s gen_com/ntt_layer_from_rustcmd_owned.s gen_com/fri_fold_from_rustcmd_owned.s:
 	$(call EXE_IN_COMPILER,plonky3owned)
 
-# Extension-field FRI kernels (FULL_PROVER_VS_P3 Gap 2 item 3): the deg-4
+# Extension-field FRI kernels: the deg-4
 # BinomialExtensionField<BabyBear,4> (x^4=11) multiply coords + base-field scale,
 # emitted owned (Plonky3ExtFieldEmit). One `.s` carries all 5 ext leaves.
 gen_com/ext4_from_rustcmd_owned.s:
@@ -107,7 +107,7 @@ plonky3-ext4-rustcmd-kat: gen_com/ext4_from_rustcmd_owned.s gen_com/fri_fold_fro
 	$(CC) -O2 -o ext4_from_rustcmd_kat ext4_from_rustcmd_kat.c gen_com/ext4_from_rustcmd_owned.s gen_com/fri_fold_from_rustcmd_owned.s
 	./ext4_from_rustcmd_kat
 
-# FULL_PROVER_VS_P3 Gap 2: the SINGLE-BINARY composing module. One owned `.s`
+# The SINGLE-BINARY composing module. One owned `.s`
 # (plonky3_whole_prover_owned.s) carrying ALL five prover field-kernels
 # (compress / hash_leaf / ntt_layer / fri_fold / bb_inv) under their own export
 # labels — the composition `Plonky3WholeProverOwnedEmit.wholeProverLprog`
@@ -130,7 +130,7 @@ plonky3-whole-prover-single-binary-kat: gen_com/plonky3_whole_prover_owned.s \
 	$(CC) -O2 -o /tmp/wp_frifold   fri_fold_from_rustcmd_kat.c  gen_com/plonky3_whole_prover_owned.s && /tmp/wp_frifold   | tail -1
 	@echo "single-binary composing module: all prover field-kernels in ONE verified-emitted .s, each byte-identical to reference"
 
-# FULL_PROVER_VS_P3 Gap 2 items 1-2: the ORCHESTRATION LOOPS as owned control
+# The ORCHESTRATION LOOPS as owned control
 # flow. One owned `.s` (plonky3_whole_prover_orch_owned.s) carrying the five
 # field-kernel leaves AND the five orchestration-loop drivers (Merkle leaf /
 # Merkle compress / FRI fold / query / PoW) as owned `loopLcmd` back-edges
@@ -152,7 +152,7 @@ plonky3-whole-prover-orch-loops-kat: gen_com/plonky3_whole_prover_orch_owned.s \
 	$(CC) -O2 -o /tmp/op_frifold  fri_fold_from_rustcmd_kat.c  gen_com/plonky3_whole_prover_orch_owned.s && /tmp/op_frifold  | tail -1
 	@echo "orchestration loops owned: Merkle/FRI/query/PoW control flow is owned loopLcmd back-edges, field leaves byte-identical"
 
-# FULL_PROVER_VS_P3 Gap 2 item 1 (#647): route the prover's Poseidon2 permute call
+# Route the prover's Poseidon2 permute call
 # to the OWNED AVX-512 (ZMM) Poseidon2 leaf. `Plonky3OrchLoopsOwnedEmit` emits a
 # second `.s` (plonky3_whole_prover_zmm_owned.s) whose owned permute driver
 # `p3_poseidon2_perm_zmm` `call`s the four owned-emitted ZMM half-kernels
@@ -175,7 +175,7 @@ plonky3-whole-prover-zmm-permute-kat: gen_com/plonky3_whole_prover_zmm_owned.s
 	@grep -E '\.Lp3_(merkle_leaf|merkle_compress|fri_query|pow_grind)_loop_0:|call p3_poseidon2_perm_zmm|jne \.Lp3_' gen_com/plonky3_whole_prover_zmm_owned.s | head -16
 	@echo "owned AVX-512 ZMM Poseidon2 permute is the prover's Merkle/FRI/FS/PoW permute (see poseidon2-avx512-zmmasm-kat for the leaf KAT, honest_prove_reroute GATE B for byte-identical proof)"
 
-# FULL_PROVER_VS_P3 Gap 2 item 2: the Proof<SC> bincode SERIALIZATION byte-packer.
+# The Proof<SC> bincode SERIALIZATION byte-packer.
 # `Plonky3SerializeOwnedEmit` emits the LE u64/u32/u8 writers + the digest writer
 # as owned loopLcmd/byte-store control flow (no field op — the proof byte layout).
 # The KAT links the owned byte-packer and checks each writer byte-for-byte against
@@ -189,7 +189,7 @@ plonky3-serialize-kat: gen_com/plonky3_serialize_owned.s serialize_from_rustcmd_
 	@echo "=== KAT: owned byte-packer == bincode reference (byte-identical) ==="
 	$(CC) -O2 -o /tmp/p3_ser_kat serialize_from_rustcmd_kat.c gen_com/plonky3_serialize_owned.s && /tmp/p3_ser_kat | tail -1
 
-# FULL_PROVER_VS_P3 Gap 2 item 1: the Fiat-Shamir DuplexChallenger<16,8> transcript
+# The Fiat-Shamir DuplexChallenger<16,8> transcript
 # bookkeeping (the duplexing step). `Plonky3FiatShamirOwnedEmit` emits the absorb
 # (inbuf->st) and squeeze (st->outbuf) buffer copies as owned loopLcmd word moves
 # around a `call hp_perm16` to the Poseidon2 permute leaf (no field op — the round
@@ -205,7 +205,7 @@ plonky3-fiat-shamir-kat: gen_com/plonky3_fiat_shamir_owned.s fiat_shamir_from_ru
 	@echo "=== KAT: owned duplex == reference ch_duplex over the same permute (byte-identical) ==="
 	$(CC) -O2 -o /tmp/p3_fs_kat fiat_shamir_from_rustcmd_kat.c gen_com/plonky3_fiat_shamir_owned.s && /tmp/p3_fs_kat | tail -1
 
-# FULL_PROVER_VS_P3 ext-FRI residual: the ExtensionMmcs fold (row-flatten + Merkle
+# The extension-field FRI residual: the ExtensionMmcs fold (row-flatten + Merkle
 # commit) + the barycentric OOD/DEEP, driven ENTIRELY by the emitted ext leaves
 # (ext4 mul/scale/add/sub + bb_inv) and the emitted base-field Merkle leaves.
 # Byte-identical to the p3 reference extension-FRI. (The ext4 owned `.s` is built
@@ -480,7 +480,7 @@ plonky3-prove-fib-tierc-bench: prove_fib_tierc.s bench_prove_fib_tierc.c
 # permutation (PaddingFreeSponge<16,8,8> leaf hash + TruncatedPermutation<2,8,16>
 # compress — no splitmix surrogate). Emits a serialized proof, KAT-gates
 # prove->verify ACCEPT / tamper REJECT, and benches whole-prove cyc/op vs the
-# real p3-* 0.5.3 reference in p3_ref/. See FULL_PROVER_VS_P3.md.
+# real p3-* 0.5.3 reference in p3_ref/.
 #
 # This rule is the sole producer of bench/plonky3_compare/plonky3_honest_prove.s:
 # jasminc lowers the hand-written .jinc, and no Lean module writes that path.

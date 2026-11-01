@@ -1,14 +1,9 @@
 # Field arithmetic: what Rust programmers do, and what the templates add
 
 This note states how finite-field arithmetic is produced in the Rust ecosystem
-today and where the compiler's field templates differ. It accompanies the
-benchmark `fiat_rust_compare` in the `bench` directory of the development
-repository, which measures the Rust the templates print against the `fiat-crypto`
-crate on the same inputs.
-
-[FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) states the scope of the template method and gives
-the per-instance status at the bytes as of 2026-10-05; for acceptance, read that table
-in place of the figures of 2026-10-03 below.
+today and where the compiler's field templates differ.
+[FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) states the template method and its theorems at
+the bytes per instance.
 
 ## What Rust programmers do
 
@@ -31,13 +26,11 @@ hand-written radix-2^51 code. The reasons are four.
    Rust's const generics cannot express them: a product of `N` limbs has `2N`
    limbs, and `generic_const_exprs` is unstable.
 2. Proof. The template crates are tested; fiat-crypto's output is proved in Coq.
-   A curve crate adopts a generated file for its proof pedigree, not a template
-   crate for its convenience.
+   Curve crates adopt the generated files because they are proved.
 3. Constant time. Rust gives no guarantee; a template written with `subtle`-style
    selects still leaves `rustc` free to branch. Straight-line generated code with
    mask arithmetic is the accepted compromise.
-4. The deliverable. A maintainer wants a `.rs` file to read, review and vendor,
-   not a type-level construction to trust.
+4. The deliverable. A maintainer reads, reviews and vendors a `.rs` file.
 
 So the ecosystem's answer to "generic field arithmetic" is generated code with a
 proof, and the generator is fiat-crypto.
@@ -61,25 +54,24 @@ generics.
 
 The two consumers carry different evidence.
 
-- The owned x86 back end. `field_correct_bytes` relates the decoded bytes to the
-  template's denotation for every program the back end accepts. Measured on
-  2026-10-03, the back end accepts template programs of up to two limbs, and at
-  four limbs the modular addition and subtraction at P-256 and the addition at
-  secp256k1, each with and without the fusion post-pass: 6 of the 24 probed cases
-  (multiply, square, add and sub at P-256, secp256k1 and P-384). The other 18
-  cases, among them every four-limb and six-limb multiply and square, are refused,
-  so no verified bytes and no constant-time statement at the bytes exist for them.
-  No instance of the theorem at a curve prime is stated.
-- The printed Rust. No theorem relates it to the `Com` program; its evidence is the
-  differential tests of the benchmark against the peer on shared inputs. Its
-  constant-time behaviour after `rustc` has the same caveat as fiat's output.
+- The owned x86 back end. `field_correct_bytes` (`Haxc/FieldBytes.lean`) states, at
+  every `LimbParams n`, that the decoded bytes of an accepted multiply program read back
+  the Montgomery limbs of the product. `Haxc/FieldInstances.lean` states the
+  corresponding theorems for the Montgomery multiply, square, addition and subtraction
+  at P-256, secp256k1, P-384, BN254 and BLS12-381
+  (`<prime>_<op>_correct_bytes`), and `Haxc/FieldBlocksCT.lean` states constant time
+  of the field chain at the same five primes (`nfChainF_ct_<prime>`).
+- The printed Rust. No theorem relates it to the `Com` program; its evidence is
+  differential testing against the peer on shared inputs. Its constant-time
+  behaviour after `rustc` is that of fiat's output: `rustc` gives no guarantee.
 
 ## Measured performance of the printed Rust
 
-The benchmark README records the figures with their peers (2026-10-03, AMD Ryzen 7
-PRO 7840U, one pinned core, turbo on, `rdtsc` ticks per operation in a dependent
-chain; an A/A run of fiat-crypto against itself gave ratios between 0.97 and 1.06,
-so a ratio inside that band is not a difference). Against fiat-crypto 0.3.0, the
+The figures were measured with the CatCrypt benchmark harness, which is not part of
+this package (2026-10-03, AMD Ryzen 7 PRO 7840U, one pinned core, turbo on, `rdtsc`
+ticks per operation in a dependent chain; an A/A run of fiat-crypto against itself gave
+ratios between 0.97 and 1.06, so a ratio inside that band is not a difference). Against
+fiat-crypto 0.3.0, the
 peer of the same artifact kind (generated straight-line Rust in the same
 representation), the ratios ours/fiat are:
 
@@ -89,8 +81,8 @@ representation), the ratios ours/fiat are:
 | secp256k1 (4 limbs) | 1.07 | 0.91 | 0.50 | 0.60 |
 | P-384 (6 limbs) | 1.18 | 1.01 | 0.55 | 0.60 |
 
-The remaining rows of the README compare against peers of another artifact kind
-and are context, not a like-for-like comparison: curve25519 in a saturated 4×64
+The same measurement compares against peers of another artifact kind, which are not
+like-for-like comparisons: curve25519 in a saturated 4×64
 representation against fiat's unsaturated 5×51 (mul 1.50, sqr 1.58), the 2048-bit
 Montgomery multiply against s2n-bignum's generic assembly `bignum_montmul`
 (1.27 median under load, 1.70 on a quiet core), and the record moduli against the

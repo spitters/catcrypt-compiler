@@ -3,8 +3,8 @@
 This file collects the detailed material behind [ASCENT.md](ASCENT.md): the results at
 the source and leaf boundaries, the layers of the calculus with their declarations,
 the loop rules, two worked paths traced step by step, the instruction-set judgement on
-compiled programs with their callee specifications, the join of the source readings
-with the compiled bytes, the closed capstones, the simulations from hax source, the
+compiled programs with their callee specifications, the congruence of source readings
+across builtin tables, the closed capstones, the simulations from hax source, the
 total abstraction, and the results on machine states and on hand-written assembly.
 Paths are relative to the repository root.
 
@@ -159,7 +159,8 @@ loop exits in `sumExit`, where `k` is `0` and `acc` has grown by `k (k + 1) / 2`
 [WhileFunEmit.lean](CatCrypt/Crypto/SecureCompilation/Ascent/WhileFunEmit.lean) carries
 the exit value to the front's jasmin program. The front compiles the node through the
 unified descent `transU fuel vm env` (`Dialects/TranslateDialectUnifiedDenote.lean`),
-which unrolls the loop to the trip count of the run from the entry environment `env`,
+which unrolls the loop to the trip count of the run from the entry environment `env`, so
+the emitted program is specific to `env`,
 and `transU_to_jasminCom_endToEnd` (`VIR/RustToJasminComWhile.lean`) carries a tracked
 output slot of the resulting `Com catCryptDialect` through `cryptoDialectToJasminCom`.
 `corresU_whileFun_jasminDenote` composes it with `corresU_whileFun`: under the node
@@ -255,7 +256,8 @@ second), closed at `r`.
    so the conclusion is stated at `vmAB`.
 4. Lowering. `cryptoDialectToJasminCom_denote_eq'` and
    `semScalarToJasminCom_denote_eq` are stated at an arbitrary entry map and valuation;
-   their `_topLevel` specialisations are the instances at the empty valuation.
+   `rustToJasminCom_endToEnd_topLevel` is the end-to-end statement for a translation that
+   starts from the empty map `VarMap.empty`, that is, for a program that reads no input.
 
 `feSub_symbolic_frontDenote` is the same result one lowering up,
 `feSubSymCom.denote (valAB a b) = a - b`. The source of this path is the `LowCT` term
@@ -268,46 +270,29 @@ second), closed at `r`.
 correspondence at the fuelled interpreter `Isa.lsemFuelMemF` of an instruction set, and
 `CorresIsaRun` is the form with the fuel chosen per initial state.
 [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) lists the generic rules of the
-judgement. This section records its instances at the programs the hax compiler emits and
-the callee specifications derived from them. A module cited as `Haxc/…` is in the CatCrypt
-development repository, under `CatCrypt/Crypto/SecureCompilation/Haxc/`; every other path
-is in this package. Every statement of this section is over `x86Isa`.
+judgement. This section records the judgement on the programs the hax compiler emits and
+the callee specifications derived from it. Every statement of this section is over
+`x86Isa`.
 
-### Arms of the compile gate
+### A node as a correspondence
 
-Each theorem below holds for every program its gate accepts; the gate is its hypothesis
-on the program.
-
-| Arm | Gate | Program in the square | Theorems | Module |
-|---|---|---|---|---|
-| runtime-count loop over an array | `v1LoopB` | the certified loop node | `v1Loop_corresIsa` | `Haxc/LoopCorresIsa.lean` |
-| the same | `v1LoopB` | the image of the printed body | `v1Loop_image_corresIsa` | `Haxc/ExportedBodyCorresIsa.lean` |
-| runtime-count loop with carry chains and cells | `v1LoopWB` | the certified loop node | `carriedLoop_corresIsa`, `carriedLoop_corresIsaRun` | `Haxc/LoopWideCorresIsa.lean` |
-| the same | `v1LoopWB` | the image of the cell body of the printed body | `carriedLoop_image_corresIsa`, `carriedLoop_image_corresIsaRun` | `Haxc/LoopWideCorresIsa.lean` |
-| straight-line programs | the four straight arms of `jGateB` | the typed chain of the source | `jGate_straight_corresIsa`, `compileJ_straight_corresIsa` | `Haxc/StraightCorresIsa.lean` |
-| straight-line programs returning a register, an array, or an array through cells | `v1StraightRB`, [`straightArrB`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightRoute.lean), [`straightCellB`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageStraightCells.lean) | the image of the printed body | `v1StraightR_image_corresIsa`, `straightArr_image_corresIsa`, `straightCell_image_corresIsa` | `Haxc/ExportedBodyCorresIsa.lean` |
-
-The gate `v1LoopWB` has the conditions of `v1LoopB` with the route check
-`CellFoldLReg.routeBW` in place of `ImageAddrRoute.routeB`: the constant-index array
-accesses of the printed body are cell accesses and its arithmetic uses carry chains. The
-certified node, its entry relation, precondition, specification and fuel are those of a
-loop accepted by `v1LoopB`. `carriedRoute_image_run_fuel` is the run statement behind the
-image form: under `routeBW`, a halting run of the node at fuel `f` is matched by a run of
-the image of the cell body that halts in one state at every fuel from `carriedRouteFuel`
-of `f` on, with the output array of the node held in the cell names of its renamed name.
-The fixed-fuel forms are at `nodeFuel` and `carriedLoopImageFuel`, each at a bound `N` on
-the count.
-
-In every row the image is the printed body up to its closing return, where a run of
-`x86Isa` halts; the next subsection treats the return.
-[ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) describes the squares of the rows for
-`v1LoopB` and the straight arms.
+A node is an `Lprog` program run by the flag machine `lsemFuelMemF` beside a decoded
+machine program run by the address machine.
+[CorresIsaNode](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaNode.lean) states the
+pair of runs as one correspondence at `x86Isa`, over the two-phase abstract state
+`PhaseAbs` (a machine entry state, then the output) with the relation `phaseSR`: before
+the run it is an entry relation; after it, the output is decoded from the flag-machine
+state and the address machine halts in a state satisfying the exit condition.
+`corresIsa_of_node_halts_fuel` gives `CorresIsa x86Isa` at a fixed fuel for a program with
+a two-machine run at bounded fuel, and `corresIsa_of_node_halts_spec` the same from a
+single two-machine run whose flag-machine end state decodes to the specification. A run of
+`x86Isa` halts at the closing return of a printed body; the next subsection treats the
+return.
 
 ### Compiled bodies as callees
 
-An image judgement of the previous subsection starts from the entry state of the image
-route, whose memory is zero, at the counter `0` of a program that consists of the body
-alone. A callee is entered by a call step, which writes
+A judgement of the previous subsection starts from an entry state at the counter `0` of a
+program that consists of the body alone. A callee is entered by a call step, which writes
 the stack pointer and the memory cell it addresses, at a label inside a larger program,
 and ends in a return. The following modules of this package derive the procedure
 specification `IsaCall.ProcSpec` at the instruction set with calls `isa.withCalls` from a
@@ -321,39 +306,15 @@ judgement on the body.
 | [CorresIsaStackFrame](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean) | [`spFrame`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean), [`SpFree`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean), [`x86_step_spFrame`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean), [`x86_lsemFuelMemF_atPc_length`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean), [`x86_exitFrame_of_spFree`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean), [`x86_procSpec_of_body_judgement`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean), [`x86_procSpec_of_image_judgement`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean), [`spRel_callEntry`](CatCrypt/Crypto/SecureCompilation/Ascent/CorresIsaStackFrame.lean) | the step of a body no instruction of which names the stack pointer commutes with a write of the stack pointer and its cell; a run from a counter within the body halts at the counter after its last instruction; the exit contract and the specification of a labelled body followed by a return, with "no call" and "does not name `RSP`" as Boolean checks on the body; the entry relation of the specification holds after a call step |
 | [ImageSpFree](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFree.lean), [ImageSpFreeCell](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFreeCell.lean) | [`virtImg_spFreeBodyB`](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFree.lean), [`virtImg_noCall`](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFree.lean), [`synthRen_target_mem`](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFree.lean); [`cellImage_spFreeBodyB`](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFreeCell.lean), [`cellImage_noCall`](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFreeCell.lean) | the two Boolean checks hold of the image of every covered printed body in the image class, at a slot map whose array names are no stack names, and of the image of the cell body of every covered printed body with carry chains |
 
-The instances at the compile gate are in the development repository.
-
-* `Haxc/ExportedProcSpec.lean` applies `x86_procSpec_of_image_judgement` to the five
-  image judgements: `loopImage_procSpec`, `carriedLoopImage_procSpec`,
-  `straightRegImage_procSpec`, `straightArrImage_procSpec` and `cellImage_procSpec`, each
-  with the two Boolean checks on the image as hypotheses.
-* `Haxc/ExportedProcSpecGated.lean` derives the two checks from the route check that each
-  gate contains: `gatedLoop_callee_procSpec` (`v1LoopB`),
-  `gatedStraightReg_callee_procSpec` (`v1StraightRB`), `gatedStraightArr_callee_procSpec`
-  (`straightArrB`), `gatedCarriedLoop_callee_procSpec` (`v1LoopWB`) and
-  `gatedCell_callee_procSpec` (`straightCellB`). For every program one of these five
-  gates accepts, its exported image placed after a label and followed by a return
-  satisfies a procedure specification
-  over `x86Isa.withCalls`, and the hypotheses are the gate and `LabelsFresh` for the
-  prefix with the label. The entry relation is the two-phase relation of the image
-  judgement up to the stack pointer and its cell (`spRel`), at the offset of the image in
-  the program (`relocRel`).
-* `Haxc/ExportedProcSpecInstances.lean` states the specification for the results of the
-  compiler under its route gates, with the instances `mpn_and_n_image_procSpec` (a
-  runtime-count loop) and `ltu_image_procSpec` (a straight-line comparison). Each takes
-  the compile equation and the gate equation as hypotheses; the gate equations are
-  Boolean evaluations of the compiler on a closed program, checked by evaluation.
-
 ## Source readings joined to compiled bytes
 
-The hax compiler's theorem `haxc_correct_auto` (development repository) relates the bytes
-`compileA` returns to a run of the source reading of the typed extraction under the
-compiler's builtin table `hax64WExit`. An ascent result `FnCorres bi e entry G f`, or a
-total `Std.Do` triple of the reading `toRustMS appRt` of the body in `RustM`, is stated
-under another reading of the calls. The results of this section carry such a result to
-the compiled bytes.
-
-In this package:
+The hax compiler's theorem `haxc_correct_auto`
+([RegionLinkCall](CatCrypt/Crypto/SecureCompilation/Haxc/RegionLinkCall.lean)) relates the
+bytes `compileA` returns to a run of the source reading of the module under the
+compiler's builtin table `hax64WExit` (`haxRuns`). An ascent result
+`FnCorres bi e entry G f`, or a total `Std.Do` triple of the reading `toRustMS appRt` of
+the body in `RustM`, is stated under another reading of the calls. The following results
+move such a result between readings.
 
 * [HaxAscent/Ascent/TableCongr.lean](HaxAscent/Ascent/TableCongr.lean). Let `bi'` return
   the value `bi` returns wherever `bi` returns one on a name accepted by `ok`, and let
@@ -366,43 +327,6 @@ In this package:
   `toRustMS_congr`: two readings of the calls that are the same function at every
   accepted name give the same reading of an expression whose calls are to accepted
   names, from every environment.
-
-In the development repository:
-
-* `CatCrypt/Crypto/Hax/Hax64WReading.lean`. `app64` is the restriction of `appRt` to the
-  names of `hax64Reads`, and `app64_ok` states `AppOk hax64WExit app64`: at those names
-  every value the reading returns is the value of the table.
-  `fnCorres_hax64WExit_of_triple`: for a program whose calls are to names of
-  `hax64Reads`, a total triple of the reading under `appRt` gives the function
-  correspondence at `hax64WExit`.
-* `Haxc/BytesOfFnCorres.lean`. `bytes_of_fnCorres`: for a typed extraction, a layout and
-  a Lean function `f`, when the table of the ascent result is `hax64WExit` on the called
-  names and the statement spine of the body binds no closure, the bytes decode to a
-  program that halts from an entry state laid out by the layout, and the layout reads
-  back `enc (f a)` from the exit state. `bytes_of_fnCorres_of_tableLE` has the same
-  conclusion for a table that includes `hax64WExit` on the called names, and takes a
-  value run of the source reading under `hax64WExit` as a hypothesis.
-  `bytes_of_toRustMS_triple` takes the specification as a triple of the reading, for a
-  body whose calls are to names of `hax64Reads`, and has no hypothesis on a source run.
-  `bytes_ct_of_fnCorres` and `bytes_ct_of_toRustMS_triple` add constant time: one
-  decoding of the bytes halts with the encoding of `f a` and has equal leakage traces on
-  any two entry states that satisfy the regions of the layout and agree on the public
-  data, under a secrecy record that the source constant-time check accepts.
-* `Haxc/CndCopyDemo.lean`, with `CatCrypt/Crypto/Mpn/CndCopySpec.lean` and
-  `CatCrypt/Crypto/Mpn/CndCopyReading.lean`, applies the route to the conditional copy
-  `mpn_cnd_copy_n`. `cndCopy_bytes_spec_ct`: from every entry state of the layout the
-  decoded bytes compute the closed form `cndCopySpec`, with equal leakage traces on entry
-  states that agree on the public registers. Its hypotheses are the compile equation and
-  gates that are Booleans checked by evaluation; the source run at the compiler's table
-  is obtained from the triple `cndCopy_triple` by `cndCopy_run_of_triple`.
-
-The reading and the compiler's table agree at these calls:
-
-| Calls | Statement |
-|---|---|
-| `index` and `array_update` at a `usize` index below the length; `BitAnd`, `BitOr`, `BitXor`, `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `Shr`, `Shl`, `rotate_right` at 8, 16, 32 and 64 bits; `BitAnd`, `BitOr`, `BitXor`, `Shr` at `usize`; `Not` at 8, 16, 32 and 64 bits | `app64_ok`, by the name of the call (`hax64Reads`) |
-| checked `Add`, `Sub`, `Mul`, `Div`, `Rem` on words of at most 64 bits, `usize` included | `hax64WExit_appArith`; bodies that use them reach the bytes through `fnCorres_hax64WExit_of_triple_arith` and `bytes_of_toRustMS_triple_arith`, from an entry environment whose words and arrays have at most 64 bits |
-| the nine word operations and `Not` at `usize` | `appHost_ok`, against the table at the host platform's width (`hax64WExitAt Platform.host`) |
 
 ## Closed capstones at the `Com jasminDialect` denotation
 
@@ -489,7 +413,7 @@ are `feSub_source_to_bytes_tower`.
 
 | What is proved | Programs | Lean name |
 |---|---|---|
-| the conjunction, at any builtin table, fuel and environment | every `Hax.ImpExpr` `e` whose form after local mutation and reference dropping satisfies `Hax.NoLoops` and `Hax.NoEarlyExit`, and whose reference run `Hax.denote bi fuel e env` returns a `uint` value with the word [`feSubSourceWord`](CatCrypt/Crypto/SecureCompilation/Ascent/FeSubSourceTower.lean) (`hBridge`, read by [`haxOutcomeWord`](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean)) | [`feSub_raw_source_to_bytes`](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean) |
+| the conjunction, at any builtin table, fuel and environment; the two parts are joined only through the constant `feSubSourceWord`, and the tower ends at the Jasmin-dialect denotation of the closed kernel, before bytes | every `Hax.ImpExpr` `e` whose form after local mutation and reference dropping satisfies `Hax.NoLoops` and `Hax.NoEarlyExit`, and whose reference run `Hax.denote bi fuel e env` returns a `uint` value with the word [`feSubSourceWord`](CatCrypt/Crypto/SecureCompilation/Ascent/FeSubSourceTower.lean) (`hBridge`, read by [`haxOutcomeWord`](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean)) | [`feSub_raw_source_to_bytes`](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean) |
 | the conjunction with the optimised program read by `denote'` through `pipeline_correct'`, at `Hax.defaultBuiltins` | every `e` with `Hax.NoCFConstructors` whose form after local mutation and reference dropping satisfies `Hax.NoEarlyExit`, from an environment with `Hax.Env.NoControlFlow`, with `hBridge` at `Hax.defaultBuiltins` | [`feSub_raw_source_to_bytes'`](CatCrypt/Crypto/SecureCompilation/Ascent/PipelineWeld.lean) |
 
 ## Simulations from hax source
@@ -507,7 +431,7 @@ the exit environment. The modules are under `CatCrypt/Crypto/Hax/`.
 
 | What is proved | Programs | Lean name |
 |---|---|---|
-| the simulation under [`envAgreesRustFull`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Quarta.lean), given [`FullSimPreconds`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Main_Full.lean) (whose field `leafScalar` states that no builtin result decodes as a scalar), [`ProjPreconds`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) and the array arms [`ProgramSimArms`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) | programs accepted by [`simScope`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) | [`haxToLowCT_simulates_program`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) |
+| the simulation under [`envAgreesRustFull`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Quarta.lean), given [`FullSimPreconds`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Main_Full.lean) (whose field `leafScalar` states that no builtin result decodes as a scalar, which no builtin table implementing hax arithmetic satisfies), [`ProjPreconds`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) and the array arms [`ProgramSimArms`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) | programs accepted by [`simScope`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) | [`haxToLowCT_simulates_program`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) |
 | [`ProgramSimArms`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) holds | builtin tables that implement neither `array_update` nor `index` | [`ProgramSimArms_of_vacuity`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) |
 | the simulation under [`envAgreesRustT`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean), which asks scalar agreement at the names without a tower binding, given [`LeafCallAgreesArgs`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean): when the argument values are related to the tower slots the call reads, the result of the builtin is related to the leaf output | programs accepted by [`simScope`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) whose `if` and `while` conditions are scalar-binding names ([`condsScalar`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean)), at a table implementing neither `array_update` nor `index` | [`haxToLowCT_simulates_programT`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramTower.lean) |
 | the same for `litTower T` of the lowering, which stores each literal bound to a name of `T` into a `.TFp` slot with `RLimbStore` so that a call reads a literal argument, given the leaf condition [`LitStoreAgrees`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean); [`litTower_nil`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean) and [`simScopeL_nil`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean) recover the lowering and [`simScope`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Program.lean) at `T = []` | programs accepted by [`simScopeL`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean) | [`haxToLowCT_simulates_programL`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLit.lean) |
@@ -515,14 +439,6 @@ the exit environment. The modules are under `CatCrypt/Crypto/Hax/`.
 | the same with counted loops, read as the `forLoop` of [`forToLoop`](CatCrypt/Crypto/Hax/ImpEval.lean) | programs with `forFold` over literal bounds | [`haxToLowCT_simulates_programF`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramFor.lean) |
 | the same with reverse loops, runtime-bound loops (lowered to `RForRuntime`) and data-dependent loops (lowered to `RWhileNz`), given [`ScalarCallsAgree`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLoops.lean) and [`LimbReadAgrees`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramArr.lean), under the environment invariant [`ScalarInv`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLoops.lean) | programs accepted by [`simScopeW`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLoops.lean): `forFoldRev` over literal bounds, `forFold` from a literal to a variable bound, `whileFold` on a scalar guard | [`haxToLowCT_simulates_programW`](CatCrypt/Crypto/Hax/HaxToLowCTSim_ProgramLoops.lean) |
 | the lowered function simulates `Hax.denote'`, given [`ScalarOpsSound`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Exit.lean), which [`scalarOpsSound_noOverflow64_width`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Exit.lean) proves for hax-lean's width tables with overflowing `add` and `sub` refused | the fragment [`exitSimOk`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Exit.lean) of the exit-flag lowering [`haxToLowCTK`](CatCrypt/Crypto/Hax/HaxToLowCTExit.lean) ([HaxToLowCTExit.lean](CatCrypt/Crypto/Hax/HaxToLowCTExit.lean)), which lowers `let x = op(a, b)` for `add`, `sub` and the unsigned comparisons to `RScalarSetExpr` and loops to `RWhileNz` | [`haxToLowCTFn_simulates`](CatCrypt/Crypto/Hax/HaxToLowCTSim_Exit.lean) |
-
-The instances of `haxToLowCT_simulates_programT` and `haxToLowCT_simulates_programL`
-at a builtin table with arithmetic, bitwise, shift and rotation builtins on `int`
-values below `2 ^ 64` (`arith_haxToLowCT_simulates_programT`,
-`arith_haxToLowCT_simulates_programL`), their composition with A-normalisation, and
-their application to the extracted SHA-256 functions `maj` and `big_sigma0` (`maj_runs`,
-`bigSigma0_runs`, each at one input) are in the CatCrypt development repository. They
-conclude a `RustExec` run of the lowered normal form.
 
 ### Array and loop source kernels
 
@@ -724,8 +640,7 @@ instructions declined for constant time (`DIV`, `IDIV`, `CQO`, `BSR`, `BSF`, `BS
 [JasminModel.lean](CatCrypt/Crypto/SecureCompilation/X86Backend/JasminModel.lean) lists them with the reason. The
 CryptOpt Curve25519 `solinas_square` kernel from fiat-crypto
 (`bench/cryptopt/fiat_curve25519_solinas_square.asm`) parses in full;
-`solinasSquareBlock` is its 99 instructions, and `lake exe nasm-parse-kat` fails unless
-parsing the file yields exactly that list.
+`solinasSquareBlock` is its 99 instructions.
 
 | What is proved | Programs | Lean name |
 |---|---|---|
@@ -744,8 +659,8 @@ form (`runBlock_loadMem_*_eq_*Mem`), with `CorresJ` leaves in
 `JInstr` also has BMI2 `bzhi` (`x86_BZHI`, following the Intel SDM), in the
 constant-time set. With it the CryptOpt Curve25519 `carry_mul` kernel
 (`bench/cryptopt/fiat_curve25519_carry_mul.asm`) parses in full: `carryMulBlock`
-([CarryMulBlock.lean](CatCrypt/Crypto/SecureCompilation/X86Backend/CarryMulBlock.lean)) is its 167 instructions,
-checked by the same `lake exe nasm-parse-kat`. The kernel writes registers it uses as
+([CarryMulBlock.lean](CatCrypt/Crypto/SecureCompilation/X86Backend/CarryMulBlock.lean)) is its 167 instructions.
+The kernel writes registers it uses as
 memory bases (`sub rsp`, `xchg rdx, rax`, `mov r10, [rsp - 0x50]`), and the proof splits
 the block at those instructions, with `SRmem` on one cell list per part; instructions
 1–4, 147 and 167 are stepped on the machine state directly.
@@ -797,18 +712,17 @@ Four modules are defined in this package, under
 | [`RelationalProductMvcgen`](CatCrypt/Crypto/SecureCompilation/Ascent/RelationalProductMvcgen.lean) | relational Hoare triples as unary `Std.Do` triples over a product program ([`relTriple_iff_stddo`](CatCrypt/Crypto/SecureCompilation/Ascent/RelationalProductMvcgen.lean)) |
 | [`RelationalExceptTMvcgen`](CatCrypt/Crypto/SecureCompilation/Ascent/RelationalExceptTMvcgen.lean) | the same over `ExceptT`, with leakage as the exception barrel ([`relExPostCond_except_leak`](CatCrypt/Crypto/SecureCompilation/Ascent/RelationalExceptTMvcgen.lean)) |
 
-The graded Dijkstra kernel and the relational modules it uses are defined in the core
-library. The modules of the same names under
-`CatCrypt/Crypto/SecureCompilation/Ascent/`, and `CatCrypt/Relational/Approx.lean` and
-`CatCrypt/Relational/SpanLifting.lean`, are one-line re-exports, kept so that existing
-imports resolve; new code imports the core module.
+The graded Dijkstra kernel and the relational modules it uses are defined in
+[CatCrypt-core](https://github.com/spitters/CatCrypt-core). The modules of the same names
+under `CatCrypt/Crypto/SecureCompilation/Ascent/`, and `CatCrypt/Relational/Approx.lean`
+and `CatCrypt/Relational/SpanLifting.lean`, are one-line re-exports of the core modules.
 
-| Module of the core library | Re-exported as | Content |
+| Module of CatCrypt-core | Re-exported as | Content |
 |---|---|---|
-| `CatCryptCore/XDijkstra/GradedWP.lean` | [`Ascent/GradedWP`](CatCrypt/Crypto/SecureCompilation/Ascent/GradedWP.lean) | a standalone graded predicate transformer with grade-additive sequencing (`seq`) |
-| `CatCryptCore/XDijkstra/` : `XPredCore`, `XPostShape`, `XMvcgen`, `XMvcgenControl`, `XMvcgenReg`, `XRelatorPMF`, `XHeapSoundness`, `XMorphismInstance`, `XDijkstraAll` | `Ascent/` under the same names | an extended `PostShape` framework fusing grades, separation logic, relational reasoning and monad-morphism transfer, with the VC generators `xmvcgen`, `xmvcgen_ctl` and `xmvcgen!` |
-| `CatCryptCore/XDijkstra/XAdvantageHybrid.lean` | [`Ascent/XAdvantageHybrid`](CatCrypt/Crypto/SecureCompilation/Ascent/XAdvantageHybrid.lean) | the advantage-triangle tactic `advmvcgen` over hybrid arguments |
-| `CatCryptCore/XDijkstra/XCostMonad.lean`, `Demo.lean`, `README.md` | none | a cost-counting program monad observed at a graded shape; a tutorial module; the description of the kernel |
-| `CatCryptCore/Crypto/UCMonad/LeakageExceptT.lean` | [`Ascent/LeakageExceptT`](CatCrypt/Crypto/SecureCompilation/Ascent/LeakageExceptT.lean) | a leakage channel as the exception branch, `leakEquiv` |
-| `CatCryptCore/Crypto/UCMonad/UCLeakageDecomp.lean` | [`Ascent/UCLeakageDecomp`](CatCrypt/Crypto/SecureCompilation/Ascent/UCLeakageDecomp.lean) | universal composability as a simulator existential over the leakage-transported relational judgment (`UCviaRel_iff_ExactUCEmulates`) |
-| `CatCryptCore/Relational/Approx.lean`, `CatCryptCore/Relational/SpanLifting.lean` | [`CatCrypt/Relational/Approx`](CatCrypt/Relational/Approx.lean), [`CatCrypt/Relational/SpanLifting`](CatCrypt/Relational/SpanLifting.lean) | approximate couplings and span liftings for the relational layer of the kernel |
+| [`XDijkstra/GradedWP`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/XDijkstra/GradedWP.lean) | [`Ascent/GradedWP`](CatCrypt/Crypto/SecureCompilation/Ascent/GradedWP.lean) | a standalone graded predicate transformer with grade-additive sequencing (`seq`) |
+| [`XDijkstra/`](https://github.com/spitters/CatCrypt-core/tree/main/CatCryptCore/XDijkstra): `XPredCore`, `XPostShape`, `XMvcgen`, `XMvcgenControl`, `XMvcgenReg`, `XRelatorPMF`, `XHeapSoundness`, `XMorphismInstance`, `XDijkstraAll` | `Ascent/` under the same names | an extended `PostShape` framework combining grades, separation logic, relational reasoning and monad-morphism transfer, with the VC generators `xmvcgen`, `xmvcgen_ctl` and `xmvcgen!` |
+| [`XDijkstra/XAdvantageHybrid`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/XDijkstra/XAdvantageHybrid.lean) | [`Ascent/XAdvantageHybrid`](CatCrypt/Crypto/SecureCompilation/Ascent/XAdvantageHybrid.lean) | the advantage-triangle tactic `advmvcgen` over hybrid arguments |
+| [`XDijkstra/XCostMonad`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/XDijkstra/XCostMonad.lean), [`Demo`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/XDijkstra/Demo.lean), [`README`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/XDijkstra/README.md) | none | a cost-counting program monad observed at a graded shape; a tutorial module; the description of the kernel |
+| [`UCMonad.LeakageExceptT`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/Crypto/UCMonad/LeakageExceptT.lean) | [`Ascent/LeakageExceptT`](CatCrypt/Crypto/SecureCompilation/Ascent/LeakageExceptT.lean) | a leakage channel as the exception branch, `leakEquiv` |
+| [`UCMonad.UCLeakageDecomp`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/Crypto/UCMonad/UCLeakageDecomp.lean) | [`Ascent/UCLeakageDecomp`](CatCrypt/Crypto/SecureCompilation/Ascent/UCLeakageDecomp.lean) | universal composability as a simulator existential over the leakage-transported relational judgment (`UCviaRel_iff_ExactUCEmulates`) |
+| [`Relational/Approx`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/Relational/Approx.lean), [`Relational/SpanLifting`](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/Relational/SpanLifting.lean) | [`CatCrypt/Relational/Approx`](CatCrypt/Relational/Approx.lean), [`CatCrypt/Relational/SpanLifting`](CatCrypt/Relational/SpanLifting.lean) | approximate couplings and span liftings for the relational layer of the kernel |

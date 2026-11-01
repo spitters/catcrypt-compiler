@@ -38,7 +38,7 @@ at x86-64 its conditions on the body are two Boolean checks, which hold of the i
 every covered printed body of the hax compiler
 ([ImageSpFree](CatCrypt/Crypto/SecureCompilation/Ascent/ImageSpFree.lean)).
 [ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-programs-at-the-instruction-set)
-lists these results with the instances at the compile gate.
+lists these results.
 [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md#1-the-problem-and-the-relation-to-descent)
 lists it with the Jasmin-source bridge
 ([BignumToJ](CatCrypt/Crypto/Jasmin/BignumToJ.lean),
@@ -82,7 +82,7 @@ concrete state related to `f a`. Squares compose sequentially (`corres_seq`,
 
 Every correspondence judgment of the ascent is an instance of one relational weakest
 precondition, `RRelPT` in CatCrypt-core
-([Refinement](https://github.com/spitters/CatCrypt-core/blob/master/CatCryptCore/Refinement/README.md)),
+([Refinement](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/Refinement/README.md)),
 which states Sebastian Graf's refinement weakest precondition `rwp` as Mathlib's arrow
 relation `Relator.LiftFun`. The instance lemmas are `corres_iff_rrelPT`,
 `fnCorres_iff_rrelPT`, `corresM_iff_rrelPT`, `corresJ_iff_rrel` and those of
@@ -109,11 +109,8 @@ theorem arithK_expr : Corres SRwordNT (fun _ => True) (asemWExpr arithK) arithK 
   ascend_expr!
 ```
 
-Build it with
-
-```
-lake build CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide
-```
+The module builds as the target `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Decide`;
+[BUILDING.md](BUILDING.md) gives the build commands.
 
 `ascend_expr!` decides that the kernel lies in the arithmetic fragment and closes the
 goal with the soundness theorem `ascend_expr_sound`. The specification `asemWExpr arithK`
@@ -183,7 +180,7 @@ specification written in Lean.
 | Kernel | Origin | Theorem | Statement |
 |---|---|---|---|
 | `bignum_montmul_p384`, 264 instructions | s2n-bignum, hand-written | `s2nMontmulP384_correct_addr` in [S2nMontmulP384Addr](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Addr.lean) | with `%rsi`, `%rdx`, `%rdi` pointing at `x`, `y` and the output, and `x · y ≤ 2^384 · p384`, the six output words are below `p384` and equal `x · y · (2^384)⁻¹` in `ZMod p384` |
-| `fiat_curve25519_carry_mul`, 167 instructions | CryptOpt | `carryMul_correct_addr` in [CryptOptAddr](CatCrypt/Crypto/SecureCompilation/Ascent/CryptOptAddr.lean) | for inputs with limbs below `2^54`, the five output limbs are congruent to the product modulo `2^255 - 19` (`CarryMulSpec`) |
+| `fiat_curve25519_carry_mul`, 167 instructions | CryptOpt | `carryMul_correct_addr` in [CryptOptAddr](CatCrypt/Crypto/SecureCompilation/Ascent/CryptOptAddr.lean) | for inputs with limbs below `2^54`, the five output limbs are congruent to the product modulo `2^255 - 19` (`CarryMulSpec`); no bound on the output limbs is stated |
 | `fiat_curve25519_solinas_square`, 99 instructions | CryptOpt | `solinasSquare_correct_addr` in the same module | the output limbs satisfy `SolinasSquareSpec` on the input limbs |
 
 The s2n-bignum theorem assumes no relation between the three buffers: they may overlap,
@@ -195,9 +192,8 @@ For `bignum_montmul_p384` there is also a statement at the bytes:
 `s2nMontmulP384_decode` shows that this package's encoding of the block decodes to the
 block, and `s2nMontmulP384Bytes_correct`
 ([S2nMontmulP384Bytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Bytes.lean))
-states the value over the decoded instructions on the name-keyed machine `runBlock`.
-The CryptOpt kernels have no statement at the bytes, because the decoder does not yet
-cover every instruction form they use.
+states the value over the decoded instructions on the name-keyed machine `runBlock`, which
+reads `y` from the bank named `%rcx` and keeps the three buffers apart.
 [CertifyThirdPartyDemo](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/CertifyThirdPartyDemo.lean)
 derives the form a caller uses, `s2nMontmulP384_correct_reduced`.
 
@@ -216,17 +212,22 @@ semantics is Jasmin's x86 semantics as transcribed in Lean (`runBlock`, or `runB
 with addressed memory). Each theorem states its own separation hypotheses between the
 buffers and the stack frame (`Separated`, `ChainSep`, `CrossIn` and `CrossOut`) and, where
 the algorithm needs it, that the inputs are reduced. `maddShipped_correct_cross` is
-stated relative to a model of the functions it calls (`MaddCallees`).
+stated relative to a model of the functions it calls (`MaddCallees`). `invertShipped_correct`,
+and `compress` through its inversion call, use call models that restore `%rsp` and the
+callee-saved registers on return, in place of the `pushq`/`popq` frames the transcription
+omits. The blocks are Lean transcriptions of the printed text, and the bytes in
+`paShippedBytes_correct` are this package's encoding of the transcription, not the
+assembler's output for the text.
 
 | Kernel | Result | Theorem | Module |
 |---|---|---|---|
-| `ed25519_point_add`, 4,909 instructions | the encoded bytes decode to a block that computes the extended-coordinate addition formula `paSpec` | `paShippedBytes_correct` | [Ed25519PointAddBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddBytes.lean) |
+| `ed25519_point_add`, 4,909 instructions | the package's encoding of the transcription decodes to a block that computes the extended-coordinate addition formula `paSpec` | `paShippedBytes_correct` | [Ed25519PointAddBytes](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddBytes.lean) |
 | `ed25519_madd` | mixed addition in `ZMod p25519` | `maddShipped_correct_cross` | [Ed25519MaddShippedProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519MaddShippedProof.lean) |
 | `ed25519_invert` | the inverse in `ZMod p25519` | `invertShipped_correct` | [Ed25519InvertShippedProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519InvertShippedProof.lean) |
 | `ed25519_compress` | the encoding `y + 2^255 · (x mod 2)` of the affine point | `compressShipped_correct_addr` | [Ed25519CompressShippedProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519CompressShippedProof.lean) |
 | `ed25519_sc_reduce` | `x mod L` | `scReduceShipped_correct_addr` | [Ed25519ScReduceShippedProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScReduceShippedProof.lean) |
 | `ed25519_sc_muladd` | `(a·b + c) mod L` | `scMuladdShipped_correct_addr` | [Ed25519ScMuladdShippedProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519ScMuladdShippedProof.lean) |
-| `mpn_and_n` loop | the exported Jasmin loop halts with the array its model denotes | `binAnd_export_machine_shipped` | [JasminLsemExportShippedAnd](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemExportShippedAnd.lean) |
+| `mpn_and_n` loop | the export node the compiler emits for the limb body halts on the flag machine `lsemFuelMemF` with the array that the source fold `JLoopBodyN.denote` of that body gives; no bytes are involved | `binAnd_export_machine_shipped` | [JasminLsemExportShippedAnd](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemExportShippedAnd.lean) |
 
 The Ed25519 proofs cut each block at boundary certificates and check each part in its
 own module ([Ed25519PointAddShippedProof](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519PointAddShippedProof.lean)
@@ -290,13 +291,13 @@ theorem feSub_symbolic_source_to_jasmin (a b : BitVec 64) :
     feSubSymJcom.denote (ctMapValD (valAB a b)) = ctTransTy (a - b)
 ```
 
-1. **Ascent.** `corres_solve_scalar` proves
+1. Ascent: `corres_solve_scalar` proves
    `Corres SRwordBV (fun _ => True) _ feSubSymC`; the abstract step sets `r` to the
    wrapping difference.
-2. **Weld.** `corresScalar_jasminDenote` carries the square through the compiler's
+2. Weld: `corresScalar_jasminDenote` carries the square through the compiler's
    front and its Jasmin lowering, at the entry environment the valuation `valAB a b`
    induces.
-3. **Entry map.** The front produces the same program at a map that resolves every
+3. Entry map: the front produces the same program at a map that resolves every
    name, which discharges the weld's side condition (`comSubAll_eq`, by `rfl`).
 
 [ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#a-worked-path-fesub_source_to_bytes_tower)

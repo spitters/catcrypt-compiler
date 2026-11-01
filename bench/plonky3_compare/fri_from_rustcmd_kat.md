@@ -81,5 +81,5 @@ the leaf-implementation library landing in `bench/plonky3_compare/include/`.
 
 * Structural KAT: PASS (all `native_decide` theorems axiom-clean).
 * Byte-level KAT vs Tier C `fri.jazz`: NOT APPLICABLE (different architectures).
-* Byte-level KAT vs plonky3-hax `fri.rs` Rust reference: PENDING (no hax
+* Byte-level KAT vs plonky3-hax `../../../hax-specs/plonky3-hax/src/fri.rs` Rust reference: PENDING (no hax
   extraction of FRI in the repo; see `fri_from_rustcmd.lean` §7).

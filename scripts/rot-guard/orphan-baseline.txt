@@ -4,11 +4,8 @@
 # added module in those namespaces must be imported by something, put in the
 # manifest, or recorded here with a reason. Regenerate with
 #   ROT_GUARD_WRITE_BASELINE=1 bash scripts/rot-guard-build.sh --check
-# Emptied by the honest-statement pass of 2026-10-18 (compiler 73cc8852, 0a801d80): docstring
-# only, deleted with the removal batch of the code survey.
-# Their identity passes and rfl preservation theorems were deleted on 2026-10-18 (0a801d80);
-# the analyses remain, no module imports them; keep or retire is decided with the cleanup list
-# (catcrypt-private/docs/compiler-cleanup-decisions-2026-10-18.md).
+# The modules below are analyses whose identity passes and preservation theorems
+# were removed; no module imports them.
 CatCrypt.Crypto.Optimizer.RegAllocLeakTrace
 CatCrypt.Crypto.SecureCompilation.VIR.CommonSubexprElim
 CatCrypt.Crypto.SecureCompilation.VIR.CrossBlockResidencyUnroll

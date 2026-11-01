@@ -1,4 +1,4 @@
-# Lemma families already defined in the workspace (review 2026-09-29).
+# Lemma families already defined in the workspace.
 # One short-name regex per line; scripts/duplicate-decl-guard.sh refuses a staged
 # file that adds a new definition matching one of them. `home=<path>` names the
 # module where the family's one definition belongs; that module may add it.

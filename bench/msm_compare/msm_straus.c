@@ -26,7 +26,7 @@
  * this one is too.
  *
  * KAT: the windowed result is checked byte-equal against the per-term ladder MSM
- * (msm_ladder, the #377/#370 oracle) over several scalar/point cases — the
+ * (msm_ladder, the per-term ladder oracle) over several scalar/point cases — the
  * bucket MSM must produce the same group element as the ladder.
  *
  * Build:
@@ -156,7 +156,7 @@ int main(void) {
     k[N + i] = bit ? 0 : 1;    /* a_R */
   }
 
-  /* ===== KAT: windowed MSM == per-term ladder MSM (the #377/#370 oracle) ===== */
+  /* ===== KAT: windowed MSM == per-term ladder MSM ===== */
   int kat_ok = 1;
   {
     uint64_t L[PT], S[PT];

@@ -41,7 +41,7 @@ module declares into `TileBackend.<ModuleName>`.
 | AVX-512 packed op and permute | `ZmmArithBridge.zmm_core_consolidates` | every `JasminBinOp`; the permute is `zmmPermXvar` | `ZmmArithBridge.lean` |
 | High multiply on three ISAs | `TileS16HighMul.tri_isa_mulhs_consolidates` | one instruction per ISA, at `Tile 8 16` | `TileS16HighMul.lean` |
 
-## What is not proved
+## Facts that are easy to misread
 
 - The three high-multiply bridges concern the high half `mulhs`, not
   `tileMontMulS16`.

@@ -1,9 +1,9 @@
 # Benchmarks
 
-The figures come from the benchmark harness of the CatCrypt development repository
-and cannot be reproduced from this package. "Owned" code is code that CatCrypt's own
-backend emits from the Jasmin dialect, as opposed to output of Jasmin's compiler
-`jasminc`.
+The figures are transcribed from the CatCrypt benchmark record; the timing harnesses
+and the reference builds that produced them are not part of this package. "Owned" code
+is code that CatCrypt's own backend emits from the Jasmin dialect, as opposed to output
+of Jasmin's compiler `jasminc`.
 
 Cycle counts are from one host (AMD Ryzen 7 PRO 7840U, `taskset`-pinned, `rdtsc`),
 each behind a byte-identical known-answer test. A ratio is our cycles divided by

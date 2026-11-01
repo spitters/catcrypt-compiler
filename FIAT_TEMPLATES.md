@@ -1,9 +1,8 @@
-# Templates with bounds certificates: method, instances, measurements
+# Templates with bounds certificates
 
 Companion to [FIELD_TEMPLATES_VS_RUST.md](FIELD_TEMPLATES_VS_RUST.md), which compares the
-printed Rust with the Rust ecosystem. Paths under `Haxc/`, `bench/` and `scripts/` are in
-the development repository; other paths are in this package, and a path under `VIR/`,
-`Algebraic/` or `X86Backend/` is relative to `CatCrypt/Crypto/SecureCompilation/`.
+printed Rust with the Rust ecosystem. A path under `Haxc/`, `VIR/`, `Algebraic/` or
+`X86Backend/` is relative to `CatCrypt/Crypto/SecureCompilation/`.
 
 ## Principle
 
@@ -30,9 +29,8 @@ statement that the word bounds hold:
   for the no-carry block, and `FieldTemplate.route_abi_denote` (`Haxc/FieldRoute.lean`)
   for the assembled route.
 
-At the bytes, the field and EC families have one theorem each over their records
-(`field_correct_bytes`, `Haxc/FieldBytes.lean`; `ec_correct_bytes`, `Haxc/EcBytes.lean`);
-the NTT families have no byte theorem. The per-instance hypothesis is acceptance by the
+At the bytes, the field family has one theorem over its records
+(`field_correct_bytes`, `Haxc/FieldBytes.lean`). The per-instance hypothesis is acceptance by the
 region back half `compileRegion` (`Haxc/RegionBackend.lean`), the back half of the compiler
 `compileA`, with the decided gate of `compileRegion_correct`. For a result `(P', bytes)` of
 `compileRegion` on the route program of the instance, the theorem gives a halting run of
@@ -42,16 +40,13 @@ gate.
 
 ## Instances at the bytes
 
-The tables `field-bytes-emit` and `mpn-bytes-emit` of the executable `catcrypt-emit`
-(`Haxc/EmitRegistry.lean`) run `compileRegion` on the route program of each instance; these
-calls are the hypotheses of the theorems named below. The instances are kernels: their rows
-in `scripts/acceptance-registry.tsv` have role `kernel` and are report-only, so a refusal or
-a change of size on them decides nothing, and the registry gates the construct probes of the
-census. With `--ct`, `catcrypt-emit` prints the result of the byte-level constant-time
-checker on the accepted bytes (`ctGateB`, `Haxc/CTPub.lean`), with `%rsp` and the array
+The hypothesis of each theorem below is that `compileRegion` returns a result on the
+route program of the instance. The instances are kernels, which programs compiled by
+`compileA` call as linked functions. The byte-level constant-time checker `ctGateB`
+(`Haxc/CTPub.lean`) decides constant time of accepted bytes with `%rsp` and the array
 pointers public and the limb contents and scalar words secret.
 
-### Fields (F1): Montgomery multiply, square, add, subtract
+### Fields: Montgomery multiply, square, add, subtract
 
 At each of the primes P-256, secp256k1, P-384, BN254 and BLS12-381, the theorem
 `<prime>_<op>_correct_bytes` in `Haxc/FieldInstances.lean` states that, for a result of the
@@ -65,11 +60,10 @@ template. The interleaved multiply `Mont.mulBlkRoute` selects `mulBlkI` from six
 denotes the Montgomery form of the product at every limb count
 ([`mulBlkRoute_denote`](CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/MontCIOS.lean)).
 
-### Lattice, symmetric, EC, mpn, towers (F3) and the prime-ir front (F4)
+### mpn, the prime-ir front, lattice, symmetric and towers
 
 Instances with an accepted program. Each theorem holds for a result of `compileRegion` on
-the route program of the instance, after the field front for the prime-ir row (the
-`catcrypt-emit` rows `mpn/mpn_<f>_<n>` and `primeir/fe_mul_add_p256`).
+the route program of the instance, after the field front for the prime-ir row.
 
 | Statement proved | Programs | Lean names |
 |---|---|---|
@@ -81,7 +75,6 @@ that `compileRegion` returns `(P', bytes)` on the route program named.
 
 | Statement proved | Programs | Lean names |
 |---|---|---|
-| The decoded bytes halt in a state from which the layout reads back the Montgomery limbs of one coordinate of the Jacobian sum, for affine, on-curve, distinct inputs, or of the Jacobian double | Jacobian addition and doubling at every Montgomery record and curve | `ec_correct_bytes`, `ec_dbl_correct_bytes` (`Haxc/EcBytes.lean`) |
 | Every value of a source run of the body is read back from a halting run of the decoded bytes | a function over the field accepted by the front `fieldChainFront`, at every limb count and modulus record | `fieldChain_correct_auto` (`Haxc/FieldLowerChain.lean`) |
 | The program of the front is constant time at every fuel when the level check `fieldFrontLeakCT` accepts the lowered program, which a counted loop passes when its trip count is public | a function over the field accepted by the front `fieldRegionFront` | `fieldRegionFront_nfCT` (`Haxc/FieldLoopCT.lean`) |
 
@@ -95,29 +88,26 @@ Results at the template level, over `Com` programs:
 | For a program rejected by the width gate `comWidthsOk`, the printer `renderOwnedCom` returns the one-line text `# UNHANDLED-WIDTH` and prints no instruction | every `Com jasminDialect` program handed to the owned exporter | [`renderOwnedCom_refuse`](CatCrypt/Crypto/SecureCompilation/X86Backend/LprogOptPipeline.lean) |
 
 Poseidon2 is a kernel: the compiler links it under the callee contract and does not
-compile it, and it has no byte theorem.
+compile it.
 
-Probes of the gate accept the multiply and square of the Solinas arm at 2^255−19
-(2452 B, 2399 B) and at 2^521−1 (10 018 B, 10 189 B). The dispatcher `fieldTemplateOf`
-tries the unsaturated arm (`unsatReprs`) first and selects it at 2^255−19; it selects
-the Solinas arm at 2^521−1.
+The dispatcher `fieldTemplateOf` (`Haxc/FieldCorrect.lean`) tries the unsaturated arm
+(`unsatReprs`, `Haxc/FieldRouteUnsat.lean`) before the Solinas arm.
 
 ## Printed Rust
 
-The printed Rust (`bench/fiat_rust_compare/README.md`) measures 0.68–1.18 of
-fiat-crypto's Rust for mul and sqr at P-256, secp256k1 and P-384
-([FIELD_TEMPLATES_VS_RUST.md](FIELD_TEMPLATES_VS_RUST.md)).
+[FIELD_TEMPLATES_VS_RUST.md](FIELD_TEMPLATES_VS_RUST.md) compares the printed Rust of the
+field templates with fiat-crypto's Rust and the other Rust field crates.
 
 ## Size of the template layer
 
-Line counts are those of `wc -l` over the files named, from each repository root:
+Line counts are those of `wc -l` over the files named:
 
 | part | files | lines |
 |---|---|---|
-| field templates | `CatCrypt/Crypto/SecureCompilation/Algebraic/FieldLimbs/*.lean` (13 files) | 8 227 |
-| other families | `VIR/{TowerDialect,TowerToLimbs,NegacyclicNttTemplate,NegacyclicNttWord,NegacyclicNttWordSigned,RoundCodec,NarrowField,BasemulWord,PointwiseAcc,Gf2Dialect,Gf2Aggregate,RowLazy,Poseidon2Word}.lean` | 12 241 |
-| limb lowering | `Algebraic/FieldToJasminLimbs*.lean` (4 files) | 1 324 |
-| routes (development repository) | `Haxc/{FieldRoute,FieldChain,RouteChain,LatticeRoute}.lean` | 1 705 |
-| instances (development repository) | `Haxc/{FieldInstances,MpnBytes,FieldFrontP256}.lean` | 1 103 |
+| field templates | `Algebraic/FieldLimbs/*.lean` (13 files) | 8 251 |
+| other families | `VIR/{TowerDialect,TowerToLimbs,NegacyclicNttTemplate,NegacyclicNttWord,NegacyclicNttWordSigned,RoundCodec,NarrowField,BasemulWord,PointwiseAcc,Gf2Dialect,Gf2Aggregate,RowLazy,Poseidon2Word}.lean` | 12 405 |
+| limb lowering | `Algebraic/FieldToJasminLimbs*.lean` (4 files) | 1 575 |
+| routes | `Haxc/{FieldRoute,RouteChain}.lean` | 669 |
+| instances | `Haxc/{FieldInstances,MpnBytes,FieldFrontP256}.lean` | 1 097 |
 
-Templates: 20 468 lines; with lowering and routes, 23 497.
+Templates: 20 656 lines; with lowering and routes, 22 900.

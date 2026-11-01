@@ -3,8 +3,8 @@
 # circomlib BN254 Poseidon permutation. See README.md for the ABI of each kernel.
 #
 # Targets:
-#   make gen         build the `zkfieldsowned` exe from the SSProve-lean dev
-#                    root (DEV) and render gen/*.s with it
+#   make gen         build the `zkfieldsowned` exe from the Lake root (DEV)
+#                    and render gen/*.s with it
 #   make kat         all four KATs
 #   make kat-gl      Goldilocks add/sub/mul/neg vs unsigned __int128 mod p
 #   make kat-kb      poseidon2_kb vs the Plonky3 KoalaBear width-16 vector
@@ -15,7 +15,10 @@
 CC     ?= cc
 CFLAGS ?= -O2 -Wall -Wextra
 COMPILER := $(abspath $(CURDIR)/../..)
-DEV      := $(abspath $(COMPILER)/../SSProve-lean)
+# Lake root: a sibling development checkout when present, this repository otherwise.
+DEV      := $(or $(wildcard $(abspath $(COMPILER)/../SSProve-lean)),$(COMPILER))
+# Build-lock wrapper of the development checkout, when there is one.
+HEAVY_RUN ?= $(if $(wildcard $(DEV)/scripts/heavy-run.sh),bash scripts/heavy-run.sh)
 GEN    := $(CURDIR)/gen
 
 GL_S := $(GEN)/gl_add.s $(GEN)/gl_sub.s $(GEN)/gl_mul.s $(GEN)/gl_neg.s
@@ -26,7 +29,7 @@ GL_S := $(GEN)/gl_add.s $(GEN)/gl_sub.s $(GEN)/gl_mul.s $(GEN)/gl_neg.s
 KERNELS := gl_add gl_sub gl_mul gl_neg poseidon2_kb poseidon2_m31 poseidon_bn254_t3
 
 gen:
-	cd $(DEV) && bash scripts/heavy-run.sh taskset -c 0-1 lake build zkfieldsowned
+	cd $(DEV) && $(HEAVY_RUN) taskset -c 0-1 lake build zkfieldsowned
 	cd $(COMPILER) && ulimit -s unlimited && for k in $(KERNELS); do \
 	  $(COMPILER)/.lake/build/bin/zkfieldsowned $(GEN) $$k || exit 1; done
 

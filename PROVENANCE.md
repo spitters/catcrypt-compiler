@@ -8,7 +8,7 @@ work. This file records the lineage.
 `LowCT` — the compiler's low-level constant-time command IR — and its `bedrockC` /
 `rust_cmd` command language are ported from
 [AUCurves](https://github.com/AU-COBRA/AUCurves), a Coq development that compiles
-elliptic-curve code through the **bedrock2** verified low-level language. Through
+elliptic-curve code through the bedrock2 verified low-level language. Through
 AUCurves the design inherits the command-language and semantics style of
 [bedrock2](https://github.com/mit-plv/bedrock2).
 
@@ -59,4 +59,10 @@ The `Com` IR — typed SSA dialects, each carrying a Lean denotation — follows
 structure of [lean-mlir](https://github.com/opencompl/lean-mlir), used via the
 Veir library. lean-mlir shapes the IR; code generation runs through CatCrypt's own
 backend and does not depend on it for emitting bytes. The `ComToVeir` path
-is an optional export to MLIR, not part of code generation.
+(library `CatCryptCompilerVeir`) is an optional export to MLIR outside code generation.
+
+## The hax compiler
+
+The front of `compileA` reads Rust through [hax](https://github.com/cryspen/hax): rustc's
+THIR as `cargo hax json` exports it, translated to typed literals by the hax-lean
+package ([`HaxLean`](https://github.com/spitters/hax-lean)).

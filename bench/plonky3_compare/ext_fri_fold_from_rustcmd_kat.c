@@ -8,7 +8,7 @@
  * BinomialExtensionField<BabyBear,4> arithmetic (x^4 = 11) transcribed verbatim
  * from p3_accept_prove.c.
  *
- * This closes the FULL_PROVER_VS_P3 ext-FRI residual: every ext-field operation
+ * This closes the extension-field FRI residual: every ext-field operation
  * the ExtensionMmcs fold and the barycentric evaluation perform (eadd/esub/emul/
  * escale/einv) runs through an emitted leaf. The row-flatten (16x2-ext -> 16x8
  * base) is structural marshalling; the Merkle commit of the flattened rows is the

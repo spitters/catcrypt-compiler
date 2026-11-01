@@ -4,8 +4,10 @@ The compiler is a Lean library. A program enters through a front (a hax-lean AST
 LowCT term, the `Thir` input of the scalar front, or a Lean specification), and
 compiling it means applying Lean functions to it and building the module. This page
 states the theorems behind two routes; [GETTING_STARTED.md](GETTING_STARTED.md) has
-the setup and the first run. Theorem names are relative to the namespace
-`CatCrypt.Crypto.SecureCompilation`.
+the setup and the first run. The hax compiler `compileA`, which compiles a hax module
+to x86-64 bytes, is described in [PIPELINE.md](PIPELINE.md), and
+[BUILDING.md](BUILDING.md#run-the-hax-compiler) runs its executable `haxc`. Theorem
+names are relative to the namespace `CatCrypt.Crypto.SecureCompilation`.
 
 ## Compiling a program to assembly
 
@@ -22,8 +24,8 @@ runs the module and shows the instructions it prints (`mul x2, x1, x0`,
 `add x3, x2, x1`, `orr x4, x3, x3`).
 
 `CompilerHelloDemo.srcArm_correct` states, for every input valuation `V` and machine
-state whose registers hold `V`, that running `srcArm` under `runBBlock` leaves
-`Com.denote srcCom V` in the result register. It instantiates `com_arm_e2e` with
+state whose virtual registers `v0 … v(n-1)` hold `V`, that running `srcArm` under
+`runBBlock` leaves `Com.denote srcCom V` in the virtual result register. It instantiates `com_arm_e2e` with
 `srcCom_ok : ComOK srcCom`.
 
 The front and the backend carry these general theorems:
@@ -33,14 +35,16 @@ The front and the backend carry these general theorems:
   denotation equals the denotation of the output `Com`.
 - `ScalarLinNeutralDemo.com_arm_e2e`: for a straight-line `Com` over the supported
   operations (`ComOK`) in a context of 64-bit registers, the block that the scalar
-  selection `ARMBackend.ComToArm.armTarget` compiles, run from registers holding the
-  inputs, leaves `Com.denote` in the result register.
+  selection `ARMBackend.ComToArm.armTarget` compiles, run in a register model whose
+  registers are named by strings from virtual registers holding the inputs, leaves
+  `Com.denote` in the virtual result register; no register is allocated.
 - `ARMBackend.ComToArmLsem.comToArmLsem_correct` restates the AArch64 result over the
   `runBBlock` machine model on the base arithmetic-logic subset (`ADD`, `SUB`, `AND`,
   `ORR`, `EOR`). `RISCVBackend.ComToRiscvLsem.comToRiscvLsem_correct` is the RISC-V
-  counterpart, and `RISCVBackend.ComToRiscvLsem.riscvStep64_sail_grounded` equates each
-  base instruction step with an `execute_RTYPE` clause copied from the
-  `sail-riscv-lean` model.
+  counterpart, and `RISCVBackend.ComToRiscvLsem.riscvStep64_sail_grounded` equates the
+  destination value of each base instruction step with that of an `execute_RTYPE` clause
+  copied from the `sail-riscv-lean` model, under an alignment of the string-named
+  register file with the 32 Sail registers.
 
 ## The relational front
 
@@ -70,11 +74,8 @@ scalar selection compiles from `fieldAddMod251Com`, run from registers holding t
 encoded operands. `addMod251_source_eq_riscv` is the RISC-V counterpart, and
 `gf256Mul_source_eq_arm` and `gf256Mul_source_eq_riscv` state the same for the
 GF(2⁸) multiply. `fieldAddMod251Com` is a `Com` written in Lean and proved to denote
-`bop` (`FieldEmitGoldenAddMod.fieldAddMod251Com_denote`). Build with:
-
-```bash
-lake build CatCrypt.Crypto.SecureCompilation.RelationalFrontMachine
-```
+`bop` (`FieldEmitGoldenAddMod.fieldAddMod251Com_denote`). The module is listed in
+[EXAMPLES.md](EXAMPLES.md), which gives the build command.
 
 `CatCrypt.Crypto.SecureCompilation.RelationalFrontCurve25519` states the value-level
 squares for a multi-limb field: `RelationalFront.c25519_add_commutes` and
@@ -86,7 +87,6 @@ functions `mlAddModK` and `mlMulMod`.
 
 [README.md](README.md#the-guarantees) tabulates the headline theorems with their
 level and fragment, and [HEADLINES.md](HEADLINES.md) states each with its
-hypotheses. `lake env lean AxiomAudit.lean` prints the axioms of the theorems that
-file lists, and [BUILDING.md](BUILDING.md#check-axioms) explains how to check another
-theorem. [BUILDING.md](BUILDING.md#generate-the-documentation) builds the
+hypotheses. [BUILDING.md](BUILDING.md#check-axioms) prints the axioms of a theorem, and
+[BUILDING.md](BUILDING.md#generate-the-documentation) builds the
 [manual](docs/CompilerManual.lean).

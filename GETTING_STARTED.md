@@ -41,6 +41,8 @@ the module and prints AArch64 assembly for the routine
 
 - [DEMO.md](DEMO.md): the theorems behind this run, and the relational front (a
   Lean specification related to compiled code).
+- [PIPELINE.md](PIPELINE.md): the hax compiler `compileA` from a hax module to x86-64
+  bytes, and [BUILDING.md](BUILDING.md#run-the-hax-compiler) to run it on a Rust crate.
 - [EXAMPLES.md](EXAMPLES.md): a set of buildable example modules.
 - [NAVIGATION.md](NAVIGATION.md): where each subsystem lives and its main theorem.
 - [bench.md](bench.md): performance ratios against production implementations.

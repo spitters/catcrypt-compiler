@@ -562,7 +562,7 @@ inline fn plonky3_ood_deep_8(stack u64[64] o, stack u64[64] q,
 // Merkle/FRI/Fiat-Shamir hash through the verified Poseidon2-BabyBear
 // permutation (PaddingFreeSponge<16,8,8> + TruncatedPermutation<2,8,16>) and
 // emits a verifiable serialized proof, see include/plonky3_honest_prover.jinc
-// (hp_prove / hp_verify) and FULL_PROVER_VS_P3.md.
+// (hp_prove / hp_verify).
 // Each fold layer uses the FRI fold formula
 //   q[i] = (p[i] + p[i+M]) + alpha_layer * (p[i] - p[i+M])
 // with a layer-dependent alpha (3, 5, 7, 11, 13, 17 — same constants as

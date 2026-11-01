@@ -9,9 +9,8 @@ This guide covers three uses of the hax bridge of this package:
    on `ImpExpr`).
 
 All three meet in hax-lean's `ImpExpr` (`HaxLean/AST.lean`) and its semantics
-`denote` (`HaxLean/Semantics.lean`); its value projection `evalImp` is defined in
-`CatCrypt/Crypto/Hax/HaxToLowCTSimulates.lean`, a module of the deprecated front
-`haxToLowCT`. The trusted base is rustc's
+`denote` (`HaxLean/Semantics.lean`), both in hax-lean; its value projection `evalImp` is
+defined in `CatCrypt/Crypto/Hax/ImpEval.lean`. The trusted base is rustc's
 THIR as exported by `cargo hax json`, hax-lean's JSON adapter, and the Rust
 bodies of the leaf operations.
 
@@ -19,8 +18,8 @@ bodies of the leaf operations.
 
 | Step | Entry point | File |
 |---|---|---|
-| `LowCT` → `ImpExpr` | `lowCTToImp : LowCT → Option ImpExpr` | `CatCrypt/Crypto/Hax/LowCTToHax.lean` |
-| inverse of the front | `lowCTToImp_roundTrip`: `haxToLowCT e = some (frontNF c)` | same |
+| `LowCT` → `ImpExpr` | `lowCTToImp : LowCT → Option ImpExpr` | `CatCrypt/Crypto/Hax/LowCTToImp.lean` |
+| inverse of the front | `lowCTToImp_roundTrip`: `haxToLowCT e = some (frontNF c)` | `CatCrypt/Crypto/Hax/LowCTToHax.lean` |
 | semantics | `lowCTToImp_simulates` | `CatCrypt/Crypto/Hax/LowCTToHaxSim.lean` |
 | `ImpExpr` → Rust text | `ppImpRustFnRet name params retTy ty body : Option String` | `CatCrypt/Crypto/Hax/ImpRustPrint.lean` |
 | printing is injective | `parse_ppImpRustFnRet` | same |
@@ -54,8 +53,8 @@ Lean function together with a proof that relates the two. The reifier `reifyImp%
 produces the `ImpExpr` program, the tactic `ascend_reified` proves the relation
 `FnCorres` between the program and the function, and the program is printed as Rust.
 The reifier is not trusted: the theorem is about the program it returned. The package's
-other relational front, which compiles a Lean specification to `LowCT` and from there to
-machine code, is in
+other relational front, which compiles a Lean specification to a Jasmin-dialect program
+and from there to machine code, is in
 [RelationalFront](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean).
 
 The reifier and the driver are in [`CatCrypt/Hax/`](CatCrypt/Hax/ReifyImp.lean), with the
@@ -98,7 +97,7 @@ two templates do.
 For class-generic extractions, a builtins table built from a class instance
 (`Table.toBuiltins` over the instance's methods) certifies each literal at every
 instance by `ascend_reified`. `CatCrypt/Hax/ClassBuiltinsTest.lean` does this for a
-two-method class. The ristretto255 instances are in the development repository.
+two-method class.
 
 The typed literals (`_texpr`) are checked by the judgement of
 `CatCrypt/Hax/TExprTypingCore.lean`: `check` with `check_sound`, stability under
@@ -113,10 +112,6 @@ Integer literals annotated at `usize` do not check, since `lit` types them as
 
 ## Building
 
-Build a module from the package root, as [BUILDING.md](BUILDING.md) describes:
-
-```bash
-lake build CatCrypt.Crypto.Hax.ImpRustHaxRoundTrip
-```
-
-`cargo hax` needs the hax frontend (`cargo-hax`) on the path.
+The modules named above build as [BUILDING.md](BUILDING.md) describes
+(`lake build <module>`). The round-trip scripts call `cargo hax`, which needs the hax
+frontend (`cargo-hax`) on the path.

@@ -16,14 +16,29 @@ hax-lean AST and its semantics `denote` / `evalImp` come from the `hax-lean` dep
 | [`HaxCallNames`](HaxCallNames.lean) | the call-name, width, scalar-value and slot-name tables, shared with `haxToLowCT` |
 | [`HaxSourceLeak`](HaxSourceLeak.lean) | the source leakage of a run of `denote'` |
 
-The import closure of `compileA` contains no `HaxToLowCT*` module; the development
-repository's CI checks this.
+The front prepares a body within `ImpExpr` before `impToNF` translates it; the chain of
+`compileA` that follows is in `SecureCompilation/Haxc/`.
+
+| Module | Contents |
+|---|---|
+| [`HaxFrontPrep`](HaxFrontPrep.lean) | the preparation steps on `ImpExpr` before A-normalisation, with their refinements of the source reading |
+| [`HaxFrontPrepShape`](HaxFrontPrepShape.lean) | `prepShapeB`, a shape on which the candidate rewritings of the front are the identity |
+| [`HaxFrontOracle`](HaxFrontOracle.lean) | `FrontOracle`, the acceptance tests that choose among the normal form and its rewritings |
+| [`ANormCore`](ANormCore.lean), [`ANormCoreDenote`](ANormCoreDenote.lean) | the total A-normaliser `aNormalizeTotal` and `aNormalizeTotal_denote'`, its refinement of `denote'` |
+| [`HaxRepeatCount`](HaxRepeatCount.lean) | `repeatCountInline`, the literal count of `repeat` read into the call, and `repeatCountInline_denote` |
+| [`HaxSpine`](HaxSpine.lean) | typing facts of a typed body (`texprFacts`) and the steps of the statement-spine reading `denoteSpine` |
+| [`Hax64Table`](Hax64Table.lean), [`Hax64Bridge`](Hax64Bridge.lean) | the `u64` builtin tables `hax64Exit` and `hax64WExit`, and the bridges and leaf semantics at them |
+| [`HaxFrontTResultType`](HaxFrontTResultType.lean), [`HaxFrontTResultWords`](HaxFrontTResultWords.lean) | result-type soundness of `denoteSpine` at `hax64WExit`, and its refinement to word results |
+
+The import closure of `compileA` contains no `HaxToLowCT*` module, and a change keeps
+it so; tables the two fronts share go in `HaxCallNames`, `HaxFrontOracle`,
+`Hax64Table` or `HaxSpine`.
 
 ## The deprecated front `haxToLowCT`
 
 `haxToLowCT` remains as the producer of the protocols' `*HaxLowCTBridge` modules and of
-the kernel producers. New code does not import it; the development repository's CI
-freezes the set of its importers.
+the kernel producers. New code does not import it, so the set of its importers does
+not grow.
 
 | Module | Contents |
 |---|---|

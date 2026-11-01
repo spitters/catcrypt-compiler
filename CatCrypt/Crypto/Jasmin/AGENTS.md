@@ -39,6 +39,8 @@ states what is proved about each primitive.
 | Directory | Contents |
 |---|---|
 | `AES/` | AES-128 specification, a Jasmin program and their equivalence |
+| `BignumHoare/` | reflective evaluators for field exponentiation chains, field-parametric in `EvalChainGeneric` and for chain-shaped LowCT in `LowCTReflectiveEval`, and the contract of the `bignum_montmul_p25519` call |
+| `BLS12_381/`, `P256/` | instances of `EvalChainGeneric` for BLS12-381 and P-256 |
 | `Ed25519/` | Ed25519 field-leaf chains, the compress leaf and its correctness |
 | `Mpn/` | width-parametric multi-precision kernels and the q̂ bound |
 | `Passes/` | constant folding, dead-code and no-op elimination on the Jasmin AST |

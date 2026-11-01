@@ -7,9 +7,9 @@
 #     DEF  the name of the generated Lean definition
 #     OUT  the generated Lean module, relative to this repository's root
 #
-# Lake runs from the development repository's root (CATCRYPT_DEV_ROOT, default
-# ../SSProve-lean), the one build root of the workspace; the files the script
-# reads and writes are in this repository.
+# Lake runs from the build root CATCRYPT_DEV_ROOT when that directory exists (a
+# workspace whose root package depends on this one), and from this repository's
+# root otherwise; the files the script reads and writes are in this repository.
 #
 # Pilots:
 #   scripts/reify-roundtrip.sh edwards_add edwardsAddExtracted \
@@ -43,6 +43,7 @@ ulimit -s unlimited 2>/dev/null || true
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEV="${CATCRYPT_DEV_ROOT:-$ROOT/../SSProve-lean}"
+[ -d "$DEV" ] || DEV="$ROOT"
 BENCH="$ROOT/bench/reify_roundtrip"
 CRATE="$BENCH/crate"
 FN="$1"

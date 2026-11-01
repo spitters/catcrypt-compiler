@@ -49,8 +49,9 @@ repository states it. Paths are relative to the root of this package.
   `fiat-amd64/fiat_curve25519_carry_mul/seed1667947554054692_ratio13465.asm`
   and `solinas_square` assembly
   `fiat-amd64/fiat_curve25519_solinas_square/seed0000000157692275_ratio13608.asm`
-  (fiat-crypto commit `8501773e604897ed3a482d89f9096cc49b73b690`), unmodified.
-  They are the inputs read by `CatCrypt/Crypto/SecureCompilation/X86Backend/NasmParseKat.lean`.
+  (fiat-crypto commit `8501773e604897ed3a482d89f9096cc49b73b690`), unmodified,
+  in `bench/cryptopt/`. The parser `CatCrypt/Crypto/SecureCompilation/X86Backend/NasmParse.lean`
+  reads them.
 - Files:
   - `CatCrypt/Crypto/Jasmin/EdwardsCurve.lean`
   - `CatCrypt/Crypto/Jasmin/Examples/Curve25519CryptoptPort.lean`
@@ -398,7 +399,7 @@ the package repository's `LICENSE` file.
 | Package | Repository | Licence |
 |---|---|---|
 | `catcryptCore` | <https://github.com/spitters/CatCrypt-core> | MIT, "Copyright (c) 2026 CatCrypt Contributors" |
-| `Veir` | <https://github.com/spitters/veir-catcrypt> (a public fork of <https://github.com/opencompl/veir> at `v4.29.0` with the CatCrypt opcode dialects and toolchain updates) | Apache-2.0 |
+| `Veir` | <https://github.com/spitters/veir-catcrypt> (a public fork of <https://github.com/opencompl/veir> at commit `ae4fa0a1` with five CatCrypt dialect folders and toolchain updates) | Apache-2.0 |
 | `paramTransfer` | <https://github.com/spitters/ParamTransfer> | LGPL-3.0 (`LICENSE`; the GPL-3.0 text it incorporates is in `COPYING`) |
 | `CompPoly` | <https://github.com/Verified-zkEVM/CompPoly> | Apache-2.0 |
 | `hax-lean` | <https://github.com/spitters/hax-lean> | MIT, "Copyright (c) 2026 CatCrypt Contributors" |

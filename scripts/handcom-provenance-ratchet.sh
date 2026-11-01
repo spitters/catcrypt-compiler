@@ -151,13 +151,13 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 BASELINE_FILE="scripts/handcom-provenance-baseline.txt"
 
-# Front markers: the original front API set, plus (2026-07-03 triage) the thir
+# Front markers: the front API set, plus the thir
 # front (`lowerThir` / `ThirToCom*` — the *ThirOwnedEmit families are
 # front-sourced Coms with an owned render tail) and references to a
 # `*CatCryptEmit.` module's Com (render-only modules whose Com is lowered from
 # the high catCryptDialect in a sibling front module).
 #
-# `translBB` (2026-07-05): the block-expanding whole-program field→jasmin
+# `translBB`: the block-expanding whole-program field→jasmin
 # translator (`FieldDescentBB.translBB : Com fieldDialect → Com jasminDialect`),
 # a VERIFIED Com-dialect descent — the same category as `cryptoDialectToJasminCom`
 # — with `translBB_denote` proving whole-program `bbEnc`-transport
@@ -165,7 +165,7 @@ BASELINE_FILE="scripts/handcom-provenance-baseline.txt"
 # unconditional). A module routing its kernel through `translBB` (e.g. the
 # Poseidon2-BabyBear `fieldFrontStagedCom = translBB fieldPermComAtInBodyStaged`,
 # 16-in/16-out, both ABI gaps closed) is front-sourced, not hand-authored.
-# 2026-07-06 session fronts (each a VERIFIED front producing owned `.s`, each flip
+# Further fronts (each a VERIFIED front producing owned `.s`, each flip
 # REFERENCE-KAT-validated): HIGH-LEVEL-SOURCE DESCENTS `MpnAddFrontEmit` (LowCT ->
 # translateDialectCarrySelect -> catCryptDialect -> RA; GMP conform), `MpnLoopFrontEmit`
 # (rolledForLoopNRt; GMP conform), `serByteStore` (memrefDialect byte store; bincode).
@@ -284,7 +284,7 @@ front_sourced() {
 # Com to exercise a front/backend arm (loop / call / vsimd / memref), not to
 # deploy a crypto kernel — the same category as the front *FrontValidate files.
 is_infra() {
-  # File-based exemption list (2026-07-03 triage of all 255 baseline modules):
+  # File-based exemption list (from a triage of the baseline modules):
   # compiler/proof infrastructure, fronts, optimizer passes, predicates,
   # drivers, and backend-arm demos with no deployable emit artifact. Each line
   # carries its justification; placeholder-leaf KERNELS are not exemptible.

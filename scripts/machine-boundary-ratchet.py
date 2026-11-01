@@ -433,6 +433,11 @@ def main():
     ap.add_argument('--annotations', default=ANNOTATIONS)
     args = ap.parse_args()
 
+    if not os.path.isfile(args.annotations):
+        print(f'machine-boundary: skipped, no family annotation file {args.annotations} '
+              '(it is part of the development tree; --annotations names another)')
+        return 0
+
     t0 = time.monotonic()
     mods = scan()
     labels = read_families(args.annotations, mods)

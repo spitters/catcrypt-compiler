@@ -1,7 +1,7 @@
 # jasminc + cargo build artifacts. The reg-ptr 12-function subset is
 # REGENERATED from the committed AUCurves bn254_tower_regptr.jazz by
-# `make compile-12`; only the harness sources, Makefile, build.rs, and
-# JASMIN_TOWER_227.md are tracked.
+# `make compile-12`; only the harness sources, the Makefiles and build.rs
+# are tracked.
 gen/
 target/
 Cargo.lock

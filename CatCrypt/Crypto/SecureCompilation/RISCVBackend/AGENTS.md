@@ -115,7 +115,7 @@ reads the descent theorem `com_riscv_e2e` as a `CorresR`. The demos are
 `../Ascent/Demos/LeanSourceRiscv.lean` (`add_descent_riscv`, a Lean function through
 the descent).
 
-## What is not proved
+## Facts that are easy to misread
 
 - The second conjunct of `comToRiscvLsem_correct` and `comToRiscvLsem_correct_mul` is
   membership in the instruction subset. The per-step Sail relation holds under its own

@@ -7,11 +7,11 @@ output against references that do not come from this repository.
 
 ## Producing the assembly
 
-The executable is run from the SSProve-lean dev root, which is the single build
-root of the workspace:
+The executable is built from this repository's root, or from the root of a sibling
+checkout of the CatCrypt development tree (not public) when one exists:
 
 ```sh
-make gen            # = cd ../../../SSProve-lean && lake exe zkfieldsowned $PWD/gen
+make gen            # builds zkfieldsowned and renders gen/*.s
 ```
 
 With no argument the executable writes to
@@ -23,15 +23,17 @@ with status 1 when a rendered file contains an `UNHANDLED` marker.
 Every kernel is `void f(uint64_t *out, const uint64_t *in)` under the SysV ABI and
 uses BMI1 (`andn`).
 
-| file                   | symbol              | `in`                                  | `out`                  |
-|------------------------|---------------------|---------------------------------------|------------------------|
-| `gl_add.s`             | `gl_add`            | `in[0] = x`, `in[1] = y`, both `< p`  | `out[0] = x + y mod p` |
-| `gl_sub.s`             | `gl_sub`            | as above                              | `out[0] = x - y mod p` |
-| `gl_mul.s`             | `gl_mul`            | as above                              | `out[0] = x * y mod p` |
-| `gl_neg.s`             | `gl_neg`            | `in[0] = x < p`                       | `out[0] = -x mod p`    |
-| `poseidon2_kb.s`       | `poseidon2_kb`      | `in[0..15]`, canonical KoalaBear lanes | `out[0..15]`          |
-| `poseidon2_m31.s`      | `poseidon2_m31`     | `in[0..15]`, canonical Mersenne-31 lanes | `out[0..15]`        |
-| `poseidon_bn254_t3.s`  | `poseidon_bn254_t3` | `in[4k..4k+3]`, lane `k` in Montgomery form | `out[4k..4k+3]`, same form |
+The kernel with symbol `f` is rendered to `gen/<f>.s`.
+
+| symbol              | `in`                                  | `out`                  |
+|---------------------|---------------------------------------|------------------------|
+| `gl_add`            | `in[0] = x`, `in[1] = y`, both `< p`  | `out[0] = x + y mod p` |
+| `gl_sub`            | as above                              | `out[0] = x - y mod p` |
+| `gl_mul`            | as above                              | `out[0] = x * y mod p` |
+| `gl_neg`            | `in[0] = x < p`                       | `out[0] = -x mod p`    |
+| `poseidon2_kb`      | `in[0..15]`, canonical KoalaBear lanes | `out[0..15]`          |
+| `poseidon2_m31`     | `in[0..15]`, canonical Mersenne-31 lanes | `out[0..15]`        |
+| `poseidon_bn254_t3` | `in[4k..4k+3]`, lane `k` in Montgomery form | `out[4k..4k+3]`, same form |
 
 * Goldilocks: `p = 2^64 - 2^32 + 1`; results are canonical.
 * Poseidon2: one lane per 64-bit word, lane `i` at `in[i]`; KoalaBear

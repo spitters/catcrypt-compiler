@@ -4,9 +4,8 @@ This file records which `VIR.Dialect` has a lowering path to bytes, which exists
 agree with an upstream IR, and how a program reaches x86. Read it before adding a
 dialect or routing a primitive through the compiler. Paths are relative to
 `CatCrypt/Crypto/SecureCompilation/`; declarations are cited by name. A dialect
-or module of the dev package is marked "(dev)"; the generated block names that tree
-`SSProve-lean`. An entry marked "(unbuilt)" describes source that no build had
-checked on 2026-10-05.
+or module of the sibling development package, which imports this one, is marked
+"(dev)"; the generated block names that tree `SSProve-lean`.
 
 The algebraic tier follows the crypto dialects of fractalyze/prime-ir, an MLIR IR
 for prime-field and elliptic-curve arithmetic. prime-ir stops at MLIR; CatCrypt
@@ -42,8 +41,8 @@ level, each on a fragment: `fieldDialect`, through `lowerK`
 and the composite `towerToLimbs P` (`VIR/TowerToLimbs.lean`) at a Montgomery record;
 and `gf2Dialect`, through the template lowering `gf2ToJasmin` (`VIR/Gf2Dialect.lean`).
 `towerDialect` carries the extension tower `Fp2`, `Fp6`, `Fp12` with its non-residues
-in the types; the extension operations that were `ext*` constructors of `FieldOp` are
-its operations, and `fieldDialect` carries the base field only (unbuilt).
+in the types and the extension operations as its operations; `fieldDialect` carries
+the base field only.
 `fpDialect` reaches bytes through `lowerFieldToModArith` into `modArithDialect`.
 `ringDialect`, `polyDialect`, `ecDialect`, `tensorExtDialect` and `ladderDialect`
 have no path. `laneDialect` (`VIR/LanesRepFamily.lean`) is the source dialect of lane
@@ -117,7 +116,7 @@ equivariance. `VIR/DialectCategory.lean`, `VIR/DialectCategoryTemplate.lean` and
 `VIR/DialectCategoryTemplateCatToJasmin.lean` are presentation: they state laws of
 the structured layer, and no pass of the compiler pipeline consumes them.
 
-Two further categories, as of 2026-10-06. `VIR/DialectRegionCategory.lean` gives, for a
+Two further categories. `VIR/DialectRegionCategory.lean` gives, for a
 dialect `d`, the category `Region d` (`Region.instCategory`) whose objects are the type
 lists of `d` and whose morphisms are structured programs `NFProg d Γ ts` up to equality
 of denotation at every fuel, with the denotation at a fuel as a functor to the Kleisli
@@ -201,7 +200,7 @@ denotation preservation of a structural lowering to three leaf obligations
 | `fieldDialect → modArithDialect` | `lowering` (`VIR/FieldToModArithMont.lean`), a `BlockLoweringData`; `loweringAt` between the representation-indexed variants `fieldDialectAt ρ` and `modArithDialectAt` | `fieldToModArithMont_denote`, `loweringAt_denote` |
 | `modArithDialect → jasminDialect` | `loweringA` (`Algebraic/ModArithToJasminLimbsMont4.lean`), a `MultiBlockLoweringData` over four 64-bit limbs at a `Mont4Prime` | `modArithToJasminLimbsMont4_denote` on the `GoodA` fragment; `fieldToJasminViaModArith_denote` for the two-stage descent from `fieldDialect` |
 | `towerDialect → fieldDialect` | `towerToField` (`VIR/TowerDialect.lean`), a `MultiBlockLoweringData`: an `Fp2`, `Fp6`, `Fp12` value is represented by its 2, 6, 12 base coordinates | `towerToField_fundamental`, for every program |
-| `towerDialect → jasminDialect` | `towerToLimbs P` (`VIR/TowerToLimbs.lean`), the composite `towerToField.comp (loweringL P)`, with the instances `bn254Tower`, `bls12381Tower` and the region form `towerLimbsR` (`VIR/MultiLoweringRegionTypes.lean`); `towerCom`, the straight-line program over limb arrays (unbuilt) | `towerToLimbs_fundamental` on `CoveredCom (TowerAt P.p)`; `towerCom_denoteB` under the decided check `towerGoodB` (`towerGoodB_sound`) |
+| `towerDialect → jasminDialect` | `towerToLimbs P` (`VIR/TowerToLimbs.lean`), the composite `towerToField.comp (loweringL P)`, with the instances `bn254Tower`, `bls12381Tower` and the region form `towerLimbsR` (`VIR/MultiLoweringRegionTypes.lean`); `towerCom`, the straight-line program over limb arrays | `towerToLimbs_fundamental` on `CoveredCom (TowerAt P.p)`; `towerCom_denoteB` under the decided check `towerGoodB` (`towerGoodB_sound`) |
 | `gf2Dialect → jasminDialect` | `gf2ToJasmin` (`VIR/Gf2Dialect.lean`), the template lowering `BlockLoweringData.ofTemplate gf2Frame gf2Template` | `gf2ToJasmin_denote`, for every program |
 | `laneDialect → jasminDialect` | `laneLowering` (`VIR/LanesRepFamily.lean`), a multi-value lowering of lane-count types to `Ctxs w n`; instances `bmLowering`, `accLowering` | `laneLowering_blockSquareRel`, a graded relational block square (`lanesFamily`) |
 | `fpDialect → modArithDialect` | `lowerFieldToModArith` (`VIR/FieldToModArithLowering.lean`), a `LoweringData` | `fpVarTransports`, `fpOpLowerTransports` and the `fundamental` lemma of `ComParametricityTransport` |
@@ -370,13 +369,13 @@ mathematical Tate or Weil pairing.
 
 - Structured route (the hax compiler): `hax ImpExpr → impToNF → NFProg nfDialect →
   nfToCat → NFProg catCryptDialect → nfChain → RouteProg → compileJ → bytes`
-  (dev `Haxc/NFFront.lean`, `Haxc/ComposeV1.lean`: `haxc_correct_auto`).
+  (`Haxc/NFFront.lean`, `Haxc/ComposeV1.lean`: `haxc_correct_auto`).
 - ANF scalar: `hax ImpExpr → impExprToThir → Thir → thirToJasmin → Com jasminDialect`
   (`ThirToComFront.lean`; `compileFromHax` in `CompileFromHax.lean`, with
   `compileFromHax_denote`).
 - Loops and arrays (older route): `hax ImpExpr → haxToLowCT → LowCT →
   catCryptDialect / ComL` (`CatCrypt/Crypto/Hax/HaxToLowCT.lean`;
-  the `Dialects/TranslateDialect*` translators). The dev compiler `Haxc.compileA`
+  the `Dialects/TranslateDialect*` translators). The hax compiler `Haxc.compileA`
   (`Haxc/ComposeV1.lean`, with `haxc_correct_auto`) takes a different route: its front
   `nfFront` (`Haxc/NFChain.lean`) translates the typed body to `NFProg` and lowers it by
   the chain `nfChain` to a route program.
@@ -405,7 +404,7 @@ below gives the edges this table rests on.
 |---|---|---|
 | `jasminDialect` | sink | `Com.toLprogPhysAbi`, `ComL.toLprogPhysAbi` |
 | `x86Dialect` | sink | machine level |
-| `nfDialect` | yes, through `NFProg` | `nfToCat`, then `nfToComLVia` or (dev) `nfChain` and `compileJ` (fragment: counted loops whose trip count is a variable, no branch or exit-flag loop) |
+| `nfDialect` | yes, through `NFProg` | `nfToCat`, then `nfToComLVia` or `nfChain` and `compileJ` (fragment: counted loops whose trip count is a variable, no branch or exit-flag loop) |
 | `catCryptDialect` | yes | `cryptoDialectToJasminCom` (partial); `nfToComLVia` for `NFProg catCryptDialect` |
 | `thirDialect` | yes | `lowerThir`, `thirToJasminViaCatCrypt` |
 | `latticeDialect` | yes | `lowerLatticeToJasmin`, `latticeLoweringData` |
@@ -416,10 +415,10 @@ below gives the edges this table rests on.
 | `fpDialect` | yes, on the fragment of `modArithDialect` | `lowerFieldToModArith`, then `loweringA` |
 | `derivedDialect` | yes, on the fragment of `fieldDialect` | `lowerDerivedToField`, then `fieldDialect` |
 | `fieldDialectAt`, `fieldDialectTower`, `modArithDialectAt` | as their base dialect | `unannotateFieldCom`, `unannotateTowerCom`, `unannotateCom` |
-| `towerDialect` | yes, on a fragment | `towerToLimbs P` on `TowerAt P.p`, or `towerToField` and then `fieldDialect`; the dev `towerRoute` runs `towerChain` to a route program (unbuilt), which the back half refuses (see `CORRECTNESS.md`) |
+| `towerDialect` | yes, on a fragment | `towerToLimbs P` on `TowerAt P.p`, or `towerToField` and then `fieldDialect` |
 | `gf2Dialect` | yes | `gf2ToJasmin` |
 | `laneDialect` | yes, relationally | `laneLowering`, graded by a bound per lane |
-| `nfFieldDialect` | on programs `sumToField` accepts, as `fieldDialect` | `sumToField`; the dev `lowerF` (`Haxc/FieldLower.lean`) lowers `NFProg nfFieldDialect` to `NFProg jasminDialect` |
+| `nfFieldDialect` | on programs `sumToField` accepts, as `fieldDialect` | `sumToField`; `lowerF` (`Haxc/FieldLower.lean`) lowers `NFProg nfFieldDialect` to `NFProg jasminDialect` |
 | `rowDialect` | no | ring level only; the word-level loop `rowLoopW` is a `jasminDialect` program, not a lowering of `rowDialect` |
 | `ringDialect` | no | none |
 | `ladderDialect` (dev) | no | none |
@@ -429,7 +428,7 @@ below gives the edges this table rests on.
 | `natKernelDialect` | no | its target is the Lean kernel: `natKernelFn%` emits a Lean term, validated per program against `FlatProg.run`; (dev) `arithDialect` lowers into it |
 | `mlirArithDialect`, `mlirMemrefDialect`, `mlirVectorDialect`, `mlirScfDialect`, `mlirPolynomialDialect`, `mlirArithScfDialect` | no | agreement layers |
 | `latticeDialectG`, `realLatticeDialect` | no | family and specification instance |
-| `toyDialect`, `smokeDialect`, `pilot`, `numDialect`, `flagDialect`, `mixedDialect`, `wordDialect`, `dwDialect`, `srcDialect`, `tgtDialect`, `testDialect`, `zpDialect`, `dblDialect` | no (`zpDialect` has the example edge `barLowering`) | scaffolding |
+| `toyDialect`, `smokeDialect`, `numDialect`, `flagDialect`, `mixedDialect`, `wordDialect`, `dwDialect`, `srcDialect`, `tgtDialect`, `testDialect`, `zpDialect`, `dblDialect` | no (`zpDialect` has the example edge `barLowering`) | scaffolding |
 | `ladderWordDialect` (dev) | no | none |
 
 ## Lowering graph
@@ -457,7 +456,6 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `arithDialect` | `natKernelDialect` | `lowering` | record | `VIR/Dialects/ArithToNatKernel.lean (SSProve-lean)` |
 | `catCryptDialect` | `jasminDialect` | `catFrame` | record | `VIR/DialectCategoryTemplateCatToJasmin.lean` |
 | `catCryptDialect` | `jasminDialect` | `catToJasmin` | record | `VIR/NFProgCatToJasmin.lean` |
-| `catCryptDialect` | `jasminDialect` | `catToRouteVia` | signature | `Haxc/NFToRouteVia.lean (SSProve-lean)` |
 | `catCryptDialect` | `jasminDialect` | `cryptoDialectToJasminCom` | signature | `VIR/DialectToJasminCom.lean` |
 | `catCryptDialect` | `jasminDialect` | `nfToComLVia` | signature | `VIR/NFProgCatToJasmin.lean` |
 | `catCryptDialect` | `jasminDialect` | `toJasmin4` | signature | `Secp256k1PointOpFront.lean` |
@@ -482,10 +480,6 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `fieldDialect` | `jasminDialect` | `bbBL` | record | `CatCrypt/Crypto/Poseidon2/FieldDescentBB.lean (SSProve-lean)` |
 | `fieldDialect` | `jasminDialect` | `bbMont32BL` | record | `CatCrypt/Crypto/Poseidon2/FieldDescentBBMont32.lean (SSProve-lean)` |
 | `fieldDialect` | `jasminDialect` | `blockL` | record | `VIR/FieldDialectBlockDescentBB.lean (SSProve-lean)` |
-| `fieldDialect` | `jasminDialect` | `compileField` | signature | `Haxc/FieldRoute.lean (SSProve-lean)` |
-| `fieldDialect` | `jasminDialect` | `compileFieldS` | signature | `Haxc/FieldRoute.lean (SSProve-lean)` |
-| `fieldDialect` | `jasminDialect` | `compileFieldU` | signature | `Haxc/FieldRouteUnsat.lean (SSProve-lean)` |
-| `fieldDialect` | `jasminDialect` | `compileFieldW` | signature | `Haxc/FieldRouteNarrow.lean (SSProve-lean)` |
 | `fieldDialect` | `jasminDialect` | `fieldCom` | signature | `Algebraic/FieldToJasminLimbs.lean` |
 | `fieldDialect` | `jasminDialect` | `fieldComOf` | signature | `Algebraic/FieldToJasminLimbs.lean` |
 | `fieldDialect` | `jasminDialect` | `fieldComToJasmin` | record | `FieldDescent.lean (SSProve-lean)` |
@@ -509,6 +503,26 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `funcDialect` | `jasminDialect` | `lowerFuncToJasmin` | signature | `Dialects/FuncToJasmin.lean` |
 | `gf2Dialect` | `jasminDialect` | `gf2Frame` | record | `VIR/Gf2Dialect.lean` |
 | `gf2Dialect` | `jasminDialect` | `gf2ToJasmin` | record | `VIR/Gf2Dialect.lean` |
+| `jasField` | `jasminDialect` | `lowerBody` | signature | `Haxc/FieldDialectStep.lean` |
+| `jasField` | `jasMod` | `fieldToModArithJ` | record | `VIR/FieldToModArithChain.lean` |
+| `jasminDialect` | `jasminSel` | `entrySel` | signature | `CatCrypt/Crypto/Optimizer/Rewrite/RangeAnnSyn.lean` |
+| `jasminDialect` | `jasminSel` | `ofScalar` | signature | `VIR/SelDialect.lean` |
+| `jasminDialect` | `jasminSel` | `rangeSel` | signature | `CatCrypt/Crypto/Optimizer/Rewrite/RangeSelNF.lean` |
+| `jasminDialect` | `jasminSel` | `selGo` | signature | `CatCrypt/Crypto/Optimizer/Rewrite/RangeSelNF.lean` |
+| `jasminDialect` | `jasminTileDialect` | `incl` | signature | `VIR/LaneStrip.lean` |
+| `jasminDialect` | `jasminTileDialect` | `laneLift` | signature | `VIR/LaneMapNF.lean` |
+| `jasminDialect` | `jasminTileDialect` | `liftP` | signature | `VIR/LaneMapNF.lean` |
+| `jasminDialect` | `jasminTileMem` | `laneBody` | signature | `VIR/LaneStripKernel.lean` |
+| `jasminDialect` | `jasminTileMem` | `stripLoops` | signature | `VIR/LaneStrip.lean` |
+| `jasminDialect` | `jasminTileMem` | `stripMine` | signature | `VIR/LaneStrip.lean` |
+| `jasminDialect` | `jasminVec` | `scalarProg` | signature | `VIR/X86VecEmbed.lean` |
+| `jasminDialect` | `jasPf` | `liftJ` | record | `Haxc/FieldRaise.lean` |
+| `jasminSel` | `vecTileSel` | `selLaneLift` | signature | `VIR/LaneMapSel.lean` |
+| `jasminTileMem` | `jasminVecMem` | `bridgeLegal` | record | `VIR/TileBridgeLegal.lean` |
+| `jasminTileMem` | `jasminVecMem` | `legaliseBridge` | signature | `VIR/TileBridgeLegal.lean` |
+| `jasminVec` | `jasminVecMem` | `memCom` | signature | `VIR/X86VecMem.lean` |
+| `jasMod` | `jasminDialect` | `modArithLimbsJ` | record | `Haxc/ModArithLimbs.lean` |
+| `jasPf` | `jasField` | `embed` | signature | `Haxc/FieldRaise.lean` |
 | `laneDialect` | `jasminDialect` | `laneLowering` | record | `VIR/LanesRepFamily.lean` |
 | `latticeDialect` | `jasminDialect` | `latticeLoweringData` | record | `VIR/CompilerGeneric.lean` |
 | `latticeDialect` | `jasminDialect` | `lowerLatticeToJasmin` | signature | `VIR/LatticeToJasmin.lean` |
@@ -521,11 +535,14 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `modArithDialect` | `jasminDialect` | `modArithToJasmin` | record | `FieldDescent.lean (SSProve-lean)` |
 | `modArithDialect` | `modArithDialectAt` | `annotateCom` | signature | `VIR/ModArithDialect.lean` |
 | `nfDialect` | `catCryptDialect` | `nfToCat` | signature | `CatCrypt/Crypto/Hax/NFToCat.lean` |
+| `nfDialect` | `catCryptDialect` | `nfToCatExt` | signature | `CatCrypt/Crypto/Hax/NFToCatCall.lean` |
 | `nfDialect` | `fieldDialect` | `fieldOfNF` | signature | `CatCrypt/Crypto/Hax/NFFieldSum.lean` |
-| `nfDialect` | `fieldDialect` | `nfToField` | signature | `Haxc/FieldCorrect.lean (SSProve-lean)` |
-| `nfDialect` | `jasminDialect` | `nfToRouteProgVia` | signature | `Haxc/NFToRouteVia.lean (SSProve-lean)` |
 | `nfDialect` | `nfFieldDialect` | `nfToSum` | signature | `CatCrypt/Crypto/Hax/NFFieldSum.lean` |
 | `nfFieldDialect` | `fieldDialect` | `sumToField` | signature | `CatCrypt/Crypto/Hax/NFFieldSum.lean` |
+| `nfFieldDialect` | `jasminDialect` | `lowerF` | signature | `Haxc/FieldLower.lean` |
+| `opsOver` | `opsVia` | `relabel` | signature | `VIR/X86VecEmbed.lean` |
+| `scalarTile` | `tileMem` | `embed` | signature | `VIR/TileBridge.lean` |
+| `scalarTile` | `tileSel` | `ofScalarTile` | signature | `VIR/SelDialect.lean` |
 | `scfDialect` | `x86Dialect` | `lowerScfFor` | op level | `X86Backend/ScfDialect.lean` |
 | `srcDialect` | `tgtDialect` | `lowering` | record | `VIR/BlockLoweringExtendWitness.lean` |
 | `thirDialect` | `catCryptDialect` | `lowerThirToCatCrypt` | signature | `VIR/ThirToCatCryptDialect.lean` |
@@ -539,8 +556,10 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `towerDialect` | `jasminDialect` | `bls12381Tower` | record | `VIR/TowerToLimbs.lean` |
 | `towerDialect` | `jasminDialect` | `bn254Tower` | record | `VIR/TowerToLimbs.lean` |
 | `towerDialect` | `jasminDialect` | `towerCom` | signature | `VIR/TowerToLimbs.lean` |
+| `towerDialect` | `jasminDialect` | `towerComOf` | signature | `VIR/TowerToLimbs.lean` |
 | `towerDialect` | `jasminDialect` | `towerLimbsR` | record | `VIR/MultiLoweringRegionTypes.lean` |
 | `towerDialect` | `jasminDialect` | `towerToLimbs` | record | `VIR/TowerToLimbs.lean` |
+| `towerDialect` | `jasminDialect` | `towerToLimbsOf` | record | `VIR/TowerToLimbs.lean` |
 | `vectorDialect` | `jasminDialect` | `lowerVectorToJasmin` | signature | `Dialects/VectorToJasmin.lean` |
 | `zpDialect` | `jasminDialect` | `barLowering` | record | `VIR/MultiBlockLoweringRel.lean` |
 
@@ -555,6 +574,9 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 - `fpDialect`
 - `funcDialect`
 - `gf2Dialect`
+- `jasField`
+- `jasMod`
+- `jasPf`
 - `laneDialect`
 - `latticeDialect`
 - `memrefDialect`
@@ -570,6 +592,9 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 
 ### No path to `jasminDialect` or `x86Dialect`
 
+- `arithExtDialect`
+- `bridge`
+- `castDialect`
 - `cmpDialect`
 - `dblDialect`
 - `dwDialect`
@@ -579,6 +604,14 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 - `edAffDialect`
 - `fieldCmpDialect`
 - `flagDialect`
+- `jasminBridge`
+- `jasminSel`
+- `jasminTileDialect`
+- `jasminTileMem`
+- `jasminTileSel`
+- `jasminVec`
+- `jasminVecMem`
+- `jasModArith`
 - `ladderDialect` (SSProve-lean)
 - `ladderWordDialect` (SSProve-lean)
 - `latticeDialectG`
@@ -590,22 +623,37 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 - `mlirScfDialect`
 - `mlirVectorDialect`
 - `modArithMontDialect`
+- `modWordCastDialect`
 - `natKernelDialect`
+- `nfTileDialect`
 - `numDialect`
+- `opsOver`
+- `opsVia`
 - `pairingCheckDialect`
-- `pilot`
+- `pfDialect`
 - `polyDialect`
 - `quantumDialect`
 - `realLatticeDialect`
 - `ringDialect`
 - `rowDialect`
+- `scalarTile`
+- `selOps`
+- `selTile`
 - `smokeDialect`
 - `srcDialect`
 - `tensorExtDialect`
 - `testDialect`
 - `tgtDialect`
 - `tileDialect`
+- `tileMem`
+- `tileSel`
+- `tileSide`
+- `tileVec`
+- `tileVecMem`
 - `toyDialect`
+- `vecMem`
+- `vecTileSel`
 - `wordDialect`
+- `x86vec`
 
 <!-- END GENERATED lowering-graph -->

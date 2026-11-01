@@ -9,10 +9,10 @@ the three correctness techniques (descent, ascent, transfer).
 |---|---|
 | [`BignumReason`](BignumReason.lean) | `bignum_reason`, one cascade for bignum obligations; `bignum_bridge`, `bignum_lib`, `bignum_step_trace` |
 | [`TowerRing377`](TowerRing377.lean) | `tower_ring_377`, coordinate equalities in the BLS12-377 `Fp6` tower |
-| [`ReprTransferAuto`](ReprTransferAuto.lean) | extraction ↔ reference agreement proofs |
+| [`ReprTransferAuto`](ReprTransferAuto.lean) | extraction ↔ reference agreement proofs: `fin_index`, `repr_norm`, `lane_step`, `fold_unroll` |
 | [`MatrixDecide`](MatrixDecide.lean) | `matrix_simp_core`, `matrix_simp_extended`, `matrix_decide` |
 | [`NormSqrt`](NormSqrt.lean) | `norm_sqrt` |
-| [`SDistrNorm`](SDistrNorm.lean) | `sdistr_norm`, normalization of `SDistr` do-blocks |
+| [`SDistrNorm`](SDistrNorm.lean) | `sdistr_norm` and `sdistr_norm [defs]`, normalization of `SDistr` do-blocks; `absdiff_hop h` |
 | [`Unitarity`](Unitarity.lean) | unitarity of Hermitian involutory exponentials |
 | [`Basic`](Basic.lean) | pRHL tactics `rsame`, `rbind`, `rret`, `rsample_same`, `rconseq` |
 | [`KernelRfl`](KernelRfl.lean) | `kernel_rfl`, an `Eq` goal closed by `Eq.refl` with the check left to the kernel |
@@ -30,8 +30,7 @@ and stay opaque.
 
 Use it for an equation whose two sides agree by evaluation of a closed program
 over symbolic inputs, such as the value of a `ScalarStraightRun.runProg` run
-against its specification (`FrodoMulAddSa.saBody_run`,
-`Secp256k1PointOpPrologue.constInit_run`). There the kernel finishes in under a
+against its specification (`Secp256k1PointOpPrologue.constInit_run`). There the kernel finishes in under a
 second, while `rfl` runs through the elaborator's `isDefEq` and exceeds its
 heartbeat budget. Use `rfl` when the elaborator's check is cheap, and
 `decide` when the goal is a decidable proposition over closed data.

@@ -27,8 +27,8 @@
 //!
 //! This is the FAEST-4506-grade bar made concrete: a real p3 verifier
 //! accepting a deserialized proof over the default-constant Poseidon2 that
-//! the emitted leaf computes. The remaining delta (an emitted prover writing
-//! THESE bytes) is documented in FULL_PROVER_VS_P3.md.
+//! the emitted leaf computes. The remaining delta is an emitted prover writing
+//! THESE bytes.
 
 use core::borrow::Borrow;
 
@@ -255,5 +255,5 @@ fn main() {
     );
     println!("\nThis proof IS accepted by the real p3 verifier. The emitted prover must");
     println!("produce these same bytes (DEEP-quotient phase + degree-4 extension FRI +");
-    println!("serde layout) to be p3-verifier-accepted. See FULL_PROVER_VS_P3.md.");
+    println!("serde layout) to be p3-verifier-accepted.");
 }

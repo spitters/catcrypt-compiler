@@ -108,7 +108,7 @@ computed values are checked by `native_decide` on worked vectors (`addp256_kat`,
 | Block lowering | `armBlock_lowering_denote`, `bignumBlock_lowering_denote`, `Neon.neonBlock_lowering_denote` | all blocks and states | `ArmLowering.lean`, `NeonLowering.lean` |
 | Decode round trip | `SailArmDecoder.roundtrip_binst_add` and the other `roundtrip_*` | per instruction, operand names in the register pool | `SailArmDecoder.lean` |
 
-## What is not proved
+## Facts that are easy to misread
 
 - The decode round trips are not conjuncts of `comToArmLsem_correct` or
   `regProgToArmBytes_spec`; no theorem composes the encoder, a decoder and

@@ -2,23 +2,19 @@
 
 The compiler's forward direction proves that the code it emits computes its source. This
 document describes the other direction: given machine code that the compiler did not produce
-(or whose production is not trusted), establish what it computes. The intended pipeline has
-three steps.
+(or whose production is not trusted), establish what it computes. The method has two parts.
 
-1. Extract a reference for the function from the Rust crate with hax. Its meaning is hax-lean's
-   reference semantics `denote'` over a builtin table.
-2. Run a differential oracle between the reference semantics and a machine run of the given
-   bytes on a battery of inputs. A disagreement is reported with the first pair of
-   semantic levels that differ, before any proof is attempted.
-3. On agreement, prove by the ascent that the bytes, run on the x86 machine model, compute the
-   specification.
+1. A reference for the function, extracted from the Rust crate with hax. Its meaning is
+   hax-lean's reference semantics `denote'` over a builtin table, and the ascent on `ImpExpr`
+   relates it to a Lean function.
+2. A proof by the ascent on x86 that the given code, run on the x86 machine model, computes a
+   Lean function, which is then equated with the specification.
 
-The components of each step exist. They have been joined end to end for no third-party kernel
-yet; the [Status](#status) section lists what is closed and what is planned.
+The certificates of [What a certificate states](#what-a-certificate-states) are proved by the
+second part against specifications written in Lean.
 
 Module paths below are relative to `CatCrypt/Crypto/SecureCompilation/` in this package unless
-another package is named. The dev tree is the CatCrypt development workspace that depends on
-this package.
+another package is named.
 
 ## The pipeline
 
@@ -26,7 +22,8 @@ this package.
 
 hax translates a Rust function to an `ImpExpr` program, and hax-lean gives it the evaluator
 `denote'` parameterised by a builtin table. For `u64` code the table is `hax64Builtins`
-(hax-lean `HaxLean/Semantics.lean`): `hax64WordOps` gives each width-tagged operation its Rust
+(hax-lean module
+[`HaxLean.Semantics`](https://github.com/spitters/hax-lean/blob/9c1a46530b44fd27dba98deb7df724d3db52ad15/HaxLean/Semantics.lean)): `hax64WordOps` gives each width-tagged operation its Rust
 meaning on integers in `[0, 2^64)` (`wrapping_add#64`, `wrapping_sub#64`, `wrapping_mul#64`,
 `mulhi#64`, the bitwise operations, shifts that are undefined for an amount of 64 or more,
 `Add` that is undefined on overflow, and the steps of the widening multiply through `u128`),
@@ -34,38 +31,8 @@ and `widthArrayOps` supplies `index`, `array_update` and `array_lit`. An operati
 table, or on an argument outside its domain, evaluates to `none`, where Rust would panic or
 the program is outside the table.
 
-### The oracle
+### Decoded bytes and the flag machine
 
-`CatCrypt/Crypto/Hax/HaxOracle.lean` in the dev tree runs one kernel, `mpn_mul_1`, through
-every executable semantics on its compiler route and reads back the output cells
-`rp[0], …, rp[n]` as natural numbers. `oracleRun` lists eight levels:
-
-| Level | Semantics |
-|---|---|
-| `hax-raw` | `denote'` of `Mpn.mpn_mul_1_impExpr` under hax-lean's runtime table `hax64Builtins` |
-| `hax-fused` | `denote'` of the fused, A-normalised program under `hax64Builtins` |
-| `front-pipeline` | the front's scalar semantics `semScalar` of the lowered loop body |
-| `front-pinned` | the same fold at the pinned body `mul1BodyLow NR` |
-| `coml` | the denotation of the front-compiled `ComL` loop |
-| `node-raw` | the flag machine `lsemFuelMemF` on the exported loop node |
-| `node-renamed` | the same node under the renaming `nodeRen` |
-| `machine` | `run aMachine` on `decodeLprog (encodeLfundefBytes mul1PhysBody)` |
-
-`diff` names the first two levels whose cells disagree. The front, node and machine levels
-model an output array of nine words, so they run for `n ≤ 8` and report larger inputs as out
-of model. `HaxOracleMain.lean` runs the fixed `battery` (edge cases at `n = 0`, `1`, `4`, and
-pseudo-random inputs at `n = 1`, `4`, `8`) and exits with status `1` at the first
-disagreement:
-
-```
-lake exe hax-oracle
-```
-
-The executable needs about 2.75 GB of memory at start-up, for the initialisation of the
-emitter's closed terms. The oracle's `machine` level runs the bytes of this compiler's own
-exporter; the byte blob is fixed in the module.
-
-The machine level uses the decoded-machine layer of this package.
 `X86Backend/DecodedLsemStep.lean` relates `aMachine` (`Ascent/RInstrAddrMem.lean`), which runs
 the `RInstr` list that `decodeLprog` returns on the address-memory state, to the flag machine
 `lsemFuelMemF`, one straight segment at a time (`DecSim`, with instances per instruction
@@ -113,19 +80,11 @@ generator.
   `Ns.HaxGen.f.corres_full` and a call lemma `Ns.HaxCall.f` for later callers;
   `#hax_coverage Ns` reports per function `proved`, `failed`, `timeout` or `excluded`.
 
-The generator's first whole-extraction user is ACME
-(`CatCrypt/Crypto/ACME/SurfaceCorresGen.lean` in the dev tree): `hax_ascend Acme` proves
-the correspondence of its 17 functions, and `key_eq_fnCorres_gen` carries a hand-written
-correspondence over to the generated table.
-
-These results relate a hax reference to a Lean function. The x86 ascent below relates
-machine code to a Lean function. A certificate that ties third-party bytes to a hax
-reference composes the two at a common Lean function. One such composition exists, for
-code this project's backend emits rather than third-party bytes: for the HashDRBG `maj`
-function, the hax ascent result is composed with the compiler's theorems into a
-correspondence over the x86 instruction-set interpreter, on the virtual-register program
-(the shipped, register-allocated body is not yet covered). For third-party bytes none
-exists.
+These results relate a hax reference to a Lean function, and the x86 ascent relates machine
+code to a Lean function. A certificate that ties given bytes to a hax reference composes the
+two at a common Lean function; `fnCorres_enc_unique` (`HaxAscent/Ascent/FnCorresUnique.lean`)
+states that two correspondences of the same extracted body, entry and guard have equal
+encoded results at every argument satisfying the guard.
 
 ### Machine code as input
 
@@ -166,8 +125,9 @@ overlapping input and output buffers.
 `decodeJStream` to a block `c` whose output coordinates `outValOf c sa k` (the four words at
 `%rdi + 32k`) are the components of `paSpec`, the extended-coordinates Edwards addition
 formula over the natural values of the inputs modulo `2^255 - 19`. The bytes in the statement
-are this package's encoding of the imported instruction list; the bytes of the original
-object file do not appear.
+are this package's encoding of the imported instruction list, a Lean transcription of the
+text that the project's backend printed; the bytes that an assembler produces for that
+text do not appear.
 
 ### A loop node on the flag machine
 
@@ -178,13 +138,13 @@ to `JLoopBodyN.denote ⟨m, binAndUpdate⟩ invs arr0`, the source fold of the l
 trips. The hypotheses fix the renaming on the store slot, require the seed state to agree
 with the loop's entry valuation, the invariant base registers to be readable, and the trip
 count register to hold `m < 2^64`. This result is stated at the linear Jasmin level, before
-encoding.
+encoding, and its specification is the denotation of the emitted body itself; the
+identification of that fold with elementwise conjunction is not part of it.
 
 ### The referent of each certificate
 
-Three of the four blocks were printed by this package's owned backend
-(`crates/catcrypt-ed25519/asm/*_x86_from_lean.s` in the dev tree) and are treated as foreign
-code: the proofs do not use the compiler's correctness theorems. The specifications are Lean
+Three of the four blocks were printed by this package's owned backend and are treated as
+foreign code: the proofs do not use the compiler's correctness theorems. The specifications are Lean
 functions written for the proof (`paSpec`, `x mod L`, `(a · b + c) mod L`) and the source fold
 of the limb body; none of the four is stated against a hax reference. The ascent has also been
 applied to code from other projects: s2n-bignum's `bignum_montmul_p384`
@@ -219,8 +179,8 @@ The demo adds the caller's form. `s2nMontmulP384_correct_reduced`: for every add
 whose entry registers `%rsi`, `%rdx`, `%rdi` hold `px`, `py`, `pz`, and whose six-word
 values `x` at `px` and `y` at `py` are below `p384`, the block run by `runBlockA` stores at
 `pz` a value `z < p384` with `z = x · y · (2^384)⁻¹` in `ZMod p384`. It derives
-s2n-bignum's precondition `x · y ≤ 2^384 · p384` from the reduced inputs and depends on the
-standard three axioms only. `s2nMontmulP384_bytes_decode` restates the decoding theorem.
+s2n-bignum's precondition `x · y ≤ 2^384 · p384` from the reduced inputs.
+`s2nMontmulP384_bytes_decode` restates the decoding theorem.
 
 The certificate assumes the machine model `runBlockA` as a description of the processor, the
 correspondence of the imported list with the object code s2n-bignum ships (checked by the
@@ -242,19 +202,10 @@ A certificate of this kind relies on the following, beyond Lean's kernel.
   calling convention beyond the entry-state hypotheses.
 - The entry-state hypotheses: separation of the cells (`Separated`), input ranges where the
   algorithm needs them, and for the loop node the seed and trip-count conditions.
-- For the planned hax-referenced certificates: hax's extraction of the Rust function, and
+- For a certificate against a hax reference: hax's extraction of the Rust function, and
   hax-lean's `denote'` with `hax64Builtins` as the meaning of the Rust source.
 
-The following are checked by testing only.
-
-- The importer, by `bench/s2n_import/compare_owned.sh`.
-- The oracle. Agreement on its battery shows that the levels agree on those inputs and
-  does not enter a certificate.
-- The reference semantics against rustc. The D1 runner `lake exe hax-run`
-  (`CatCrypt/Crypto/Hax/HaxRunMain.lean` in the dev tree) runs an extracted program under
-  `denote'`; `bench/hax_diff/diff_sha256.sh` feeds the same inputs to a rustc build of the
-  `sha256-hax` crate and diffs the outputs over its ten public functions. A mismatch is
-  treated as a bug in the extraction, the semantics or the builtin table.
+The importer is checked by testing, by `bench/s2n_import/compare_owned.sh`.
 
 ## Cost levers
 
@@ -272,37 +223,20 @@ The Ed25519 proofs are sized by two devices documented in their modules.
   symbolic state at the cut, generated outside the kernel by the same executor
   (`scripts/cutgen/Ed25519ScReduceCutAll.lean`); `Ed25519ScReduceCut01` … `Cut07` and
   `Ed25519ScMuladdCut01` … `Cut09` check the halves, which `mapHolds_cat` joins. The last
-  scalar-reduction part, a ten-instruction segment, is checked whole. The footprint checks
-  run by `native_decide`.
+  scalar-reduction part, a ten-instruction segment, is checked whole.
 
-[ASCENT.md](ASCENT.md) records the effect: with the blocks cut at boundary certificates and
-each part checked in its own module, every module elaborates within a few gigabytes.
+With the blocks cut at boundary certificates and each part checked in its own module, every
+module elaborates within a few gigabytes ([ASCENT.md](ASCENT.md)).
 
-## Status
+## Summary of results
 
-Closed:
-
-- the four certificates `paShippedBytes_correct`, `scReduceShipped_correct_addr`,
-  `scMuladdShipped_correct_addr` and `binAnd_export_machine_shipped`, stated above;
-- the decoded-machine layer `DecodedLsemStep`, `DecodedLsemLoop` relating `aMachine` on
-  decoded bytes to the flag machine;
-- the oracle `hax-oracle`, wired for `mpn_mul_1` only, over bytes of this package's own
-  exporter;
-- the surface generator `hax_ascend` with its rules, relating every function of an
-  extraction to a generated Lean function, used on the ACME extraction;
-- the worked example `Ascent/Demos/CertifyThirdPartyDemo.lean` on s2n-bignum's
-  `bignum_montmul_p384`;
-- the D1 differential runner against rustc for `sha256-hax`.
-
-Planned:
-
-- Generalise the oracle to take an extracted `ImpExpr`, a builtin table such as
-  `hax64Builtins`, a byte blob and an ABI and layout description, and to run the decoded bytes
-  on `aMachine` against `denote'`.
-- Add a hardware leg: run the same bytes natively in a subprocess, with the runner used by the
-  verified-evaluation tactic `verified_decide_hw`, and compare with `aMachine`. This tests the
-  machine model, which the certificates trust.
-- Apply the pipeline to one libcrux field kernel: the hax reference from the extraction
-  corpus, the bytes from the shipped object, and a proof by ascent against the same hax
-  reference, attempted only after the oracle agrees.
-- Write the cost levers above as a recipe for a new kernel.
+- The certificates `paShippedBytes_correct`, `scReduceShipped_correct_addr`,
+  `scMuladdShipped_correct_addr` and `binAnd_export_machine_shipped`, stated above.
+- The decoded-machine layer `DecodedLsemStep`, `DecodedLsemLoop`, relating `aMachine` on
+  decoded bytes to the flag machine.
+- The surface generator `hax_ascend` with its rules, relating every function of an
+  extraction that it proves to a generated Lean function.
+- The worked example `Ascent/Demos/CertifyThirdPartyDemo.lean` on s2n-bignum's
+  `bignum_montmul_p384`.
+- The certificates `solinasSquare_correct_addr` and `carryMul_correct_addr` of the CryptOpt
+  kernels `solinas_square` and `carry_mul` at the address machine.

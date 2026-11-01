@@ -46,7 +46,7 @@
 # On a machine whose builds share the heavy-run lock, take the lock per lake
 # invocation, through the prefix, and run this script UNWRAPPED:
 #
-#   ROT_GUARD_PREFIX="../SSProve-lean/scripts/heavy-run.sh env LEAN_NUM_THREADS=1" \
+#   ROT_GUARD_PREFIX="/path/to/heavy-run.sh env LEAN_NUM_THREADS=1" \
 #     bash scripts/rot-guard-build.sh --affected
 #
 # The lock is then released after every batch, so other builds get in between

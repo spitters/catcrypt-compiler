@@ -436,7 +436,7 @@ on GitHub.
 | `u1*G + u2*Q` | `ec_GFp_mont_mul_public_batch` (`wnaf.cc.inc`), interleaved wNAF, `EC_WNAF_WINDOW_BITS 4` |
 | scalar inverse | `ec_simple_scalar_inv0_montgomery` → `bn_mod_inverse0_prime_mont_small` (`bn/exponentiation.cc.inc`): Fermat |
 
-**BoringSSL's P-384 field is not fiat-crypto.** `third_party/fiat` at this
+**BoringSSL's P-384 field is not fiat-crypto.** `boringssl:third_party/fiat` at this
 commit carries `boringssl:third_party/fiat/p256_64.h`, `p256_field_64.br.c.inc` and the Curve25519
 files and nothing for P-384; the P-384 group is the generic Montgomery
 method above. So neither production library is the same field as the

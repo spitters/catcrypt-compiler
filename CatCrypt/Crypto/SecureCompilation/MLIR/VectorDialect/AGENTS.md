@@ -72,7 +72,7 @@ refer to the rendered text of the same module.
 | Packed field multiply | `RistrettoFieldVec.mul2625_decode` | integer limbs, no lane overflow | `RistrettoFieldVec.lean` |
 | Packed Edwards addition | `RistrettoFieldVec.edwardsAdd2625_decode` | the limb vector `dL` decodes to `d` | `RistrettoFieldVec.lean` |
 
-## What is not proved
+## Facts that are easy to misread
 
 - No theorem relates the text of `renderAVX512` to `denote512`; masking, memory
   operands and the EVEX encoding are not modelled.

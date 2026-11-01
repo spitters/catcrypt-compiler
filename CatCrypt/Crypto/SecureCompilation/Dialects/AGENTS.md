@@ -102,10 +102,9 @@ legality check consumed by `../X86Backend/ComLegalityToGather*.lean`.
 
 ## Leakage and security on `Com catCryptDialect`
 
-- `CryptoDialectLeakTrace.lean` defines `Com.leakTrace`, which takes no valuation.
-  Consequently `CryptoDialectLeakTraceNative.Com.isConstantTime` is
-  `∀ _ _ _, Com.leakTrace c = Com.leakTrace c` and `Com.all_com_ct` is
-  `fun _ _ _ => rfl`; neither constrains a program.
+- `CryptoDialectLeakTrace.lean` defines `Com.leakTrace`, which takes no valuation, so
+  an equality of two such traces constrains no program and is not constant-time
+  evidence.
 - `CryptoDialectCTLeak.lean`: the valued leakage `catCT` (branch, address and
   variable-time operand events of `VIR.ComLevelCheck.Com.ctLeak`) and
   `catLevelCheck_sound`; `TranslateDialectCT.lean`: the front check `levelCheckF`

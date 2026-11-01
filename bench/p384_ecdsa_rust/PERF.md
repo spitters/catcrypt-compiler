@@ -90,7 +90,7 @@ reproduces these three rows to within 1%.
 
 The two divstep inverses cost the same, as they should: identical limb
 count, identical iteration count, and a modulus that enters only as data.
-The development repository's `bench/p384_safegcd_compare` recorded `fp_inv` at 2333 ns/op on this box,
+An earlier P-384 safegcd inversion harness, not part of this package, recorded `fp_inv` at 2333 ns/op on this box,
 which is the same figure to 3%.
 
 Both are the half-delta variant. The safegcd core starts `zeta = -1`, the
@@ -261,7 +261,7 @@ micro-benchmarks are direct, and they are what the attribution rests on.
 These are whole-operation numbers for an orchestration the compiler emitted
 over our own verified leaves. They say nothing about the correctness of the emit;
 that is the Lean equivalence proof, and a passing KAT is not a substitute for
-it (the development repository's `bench/AGENTS.md`, "KAT vs correctness proof").
+it.
 
 ## Measured, the s2n-bignum backend
 
@@ -279,9 +279,9 @@ between them is quoted on every row.
 
 Before any configuration was built on our own field kernels, the two emitted
 P-384 field kernels in the tree were measured against s2n-bignum's. Neither
-had been measured against anything recorded: the development repository's `bench/framework/geomean_ratios.tsv`
-has no P-384 row, and the bench section of the development repository's `bench/p384_fieldmul_compare/README.md`
-is deferred.
+had been measured against anything recorded: the cross-primitive ratio table of the
+timing harnesses has no P-384 row, and the P-384 field-multiplication harness records no
+measurement.
 
 `src/bin/fieldbench.rs`, `--features s2n,emit-field`. Known-answer gate
 first, 100 361 operand pairs per arm — all pairs of corner operands plus
@@ -311,7 +311,7 @@ same six-limb layout and the same calling convention. Three runs gave 2.573,
 2.575 and 2.581 on the minima, so the figure is not noise. It is also slower
 than the fiat-crypto Rust it would replace, by a factor of 1.57.
 
-This is consistent with what the development repository's `bench/p384_fieldmul_compare/README.md` already
+This is consistent with what the documentation of the P-384 field-multiplication harness
 says of the other kernel: correctness-first, unscheduled emit, with no
 register-residence or scheduling pass applied. Nothing about the result is
 surprising and nothing about it is hidden.

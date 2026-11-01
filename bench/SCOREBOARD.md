@@ -1,12 +1,10 @@
 # Benchmark record
 
-Every figure below is transcribed from the owned-emit scoreboard of the CatCrypt
-development repository (bench/scoreboard/RESULTS.md there), at its last revision,
-dated 2026-08-11; it is the only source of figures here. That scoreboard was
-reconciled on 2026-09-15 against bench/framework/geomean_ratios.tsv in the same
-repository, the artifact-tied per-row record in which each row names the binary it
-measured and carries a dated note, and the figures below follow the reconciled
-scoreboard. Method, as the
+Every figure below is transcribed from the CatCrypt owned-emit scoreboard at its
+revision of 2026-08-11; it is the only source of figures here. That scoreboard was
+reconciled on 2026-09-15 against an artifact-tied per-row record in which each row
+names the binary it measured and carries a dated note, and the figures below
+follow the reconciled scoreboard. Method, as the
 scoreboard states it: core-pinned (`taskset`), `lfence;rdtsc`, min-of-N, on one
 host — AMD Ryzen 7 PRO 7840U (Zen 4), carrying GFNI, AVX2, AVX-512, SHA-NI, VAES
 and VPCLMULQDQ. Each cycle figure is printed only when the row's known-answer
@@ -18,8 +16,7 @@ reading of each row. "Owned x86 backend" is this package's own lowering and
 assembly printer, as distinct from Jasmin's compiler `jasminc`.
 
 No ratio here can be reproduced from this package: the timing harnesses, the
-reference builds and the emit-provenance audit are in the development repository,
-which is private. The "artifact" column names the file shipped under `bench/` for
+reference builds and the emit-provenance audit are not part of it. The "artifact" column names the file shipped under `bench/` for
 the row, or states that none is; [bench/PROVENANCE.md](bench/PROVENANCE.md)
 describes every shipped `.s` file and the declaration that writes it. Per the
 audit, the SNOVA, SDitH, MQOM and FrodoKEM benched objects descend from a `LowCT`

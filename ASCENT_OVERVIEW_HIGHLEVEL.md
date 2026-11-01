@@ -23,7 +23,9 @@ exists before the proof: third-party assembly, output of this project's backend 
 again, hand-written blocks, or Rust extracted by hax. Descent runs the other way: a
 verified compiler produces code from a specification.
 
-**Judgement.** Fix a set M of machine states, a set A of abstract states, a state
+### Judgement
+
+Fix a set M of machine states, a set A of abstract states, a state
 relation R ⊆ M × A, a precondition P ⊆ A, an abstract step f : A → A and a program c with
 a partial semantics ⟦c⟧ : M ⇀ M. The program c *corresponds to* f when
 
@@ -50,16 +52,20 @@ judgement is monotone in the fuel.
 A correspondence over x86 blocks transports to the fifth instance, at x86-64 for blocks
 of register arithmetic, loads and stores at compile-time offsets and the widening
 multiplication, and at AArch64 for the same blocks without that multiplication. The
-flags of the two machines are left unrelated, so blocks whose results depend on the carry
-flag are not covered. No transport is given at RV64.
+flags of the two machines are left unrelated, so the transported blocks are those whose
+results do not depend on the carry flag.
 
-**Function-level uniqueness.** A function-level correspondence for an extracted function
+### Function-level uniqueness
+
+A function-level correspondence for an extracted function
 fixes the value of every run that returns: from an entry satisfying the guard, a run that
 returns a value at some fuel returns the encoding of the abstract function at the
 argument. Two correspondences of one program, entry and guard therefore have equal
 encoded results.
 
-**Welds.** Ascent and descent compose at the following points.
+### Welds
+
+Ascent and descent compose at the following points.
 
 - A descent refinement of a specification by a scalar command, an ascent correspondence
   for the same command and the emission step compose to a statement about the denotation
@@ -67,28 +73,17 @@ encoded results.
 - A descent result yields a correspondence for the compiled x86 block.
 - The correctness theorem of the hax front-end pipeline composes with a tower of
   correspondences over the source, from Rust source to bytes.
-- For one extracted function, the SHA-256 bitwise majority of the Hash_DRBG extraction
-  (on the low 32 bits of three arguments below 2⁶⁴), the function-level correspondence composes with the compiler's theorems for its machine
-  code: every function that corresponds to the extracted body is computed by the block
-  decoded from the shipped bytes, and by the straight-line program of the export under
-  the instruction-set interpreter at x86-64. The second statement is over the program
-  before register allocation, on virtual registers; the allocated program contains
-  register-to-register moves outside the subset that the transport covers. The
-  composition is in the development tree.
 - In the other direction, the value lemmas of the backend's emitted subtract-with-borrow
   and add-with-carry chains are proved from correspondences of those chains.
 
-**Jasmin source.** Jasmin programs are imported as text: a parser reads the subset of
-Jasmin source used by the imported big-number kernels into the abstract syntax that the
-Jasmin interpreter of this project runs. A translation of straight-line kernels from that
-syntax to x86 instructions is proved to be a forward simulation into the x86 machine with
-byte-addressed memory, and runs succeed when the memory is total. For one kernel, the
-reduction of a four-limb number modulo 2²⁵⁵ − 19, the triple proved over the Jasmin
-interpreter transports to the translated block: with the pointer registers set, the
-input below 2p and the buffers disjoint, the output buffer holds the input modulo p. This
-instance is in the development tree; it has no statement at the bytes. The parser is
-checked by round trips against the printer and is not proved to agree with Jasmin's own
-parser.
+### Jasmin source
+
+Jasmin programs are imported as text: a parser reads the subset of Jasmin source used by
+the imported big-number kernels into the abstract syntax that the Jasmin interpreter of
+this project runs. A translation of straight-line kernels from that syntax to x86
+instructions is proved to be a forward simulation into the x86 machine with
+byte-addressed memory, and runs succeed when the memory is total. The parser is checked
+by round trips against the printer.
 
 ## 2. Provenance
 
@@ -110,7 +105,9 @@ theorems are this project's own.
 
 ## 3. Squares as a thin double category
 
-**Reminder: the double category Rel.** Its objects are sets. Its arrows in one direction
+### The double category Rel
+
+Its objects are sets. Its arrows in one direction
 are functions and in the other direction relations. A square with functions f, g and
 relations R, S
 
@@ -127,7 +124,9 @@ below have the same form, with relations in both directions.
 [Terminology and related constructions](#appendix-terminology-and-related-constructions)
 are at the end.
 
-**Definition.** A strict thin double category has a category of vertical arrows and a
+### Thin double categories
+
+A strict thin double category has a category of vertical arrows and a
 category of horizontal arrows on the same objects, and a predicate Sq(u, f, g, w) on
 boundaries
 
@@ -143,7 +142,9 @@ identity squares. A boundary carries at most one square, so every coherence law
 (interchange, associativity of both pastings, the unit laws, agreement of the two
 identity squares on an identity boundary) holds without further proof obligations.
 
-**Relational instance.** Assign to each object a a set X(a). Vertical arrows a → c are
+### Relational instance
+
+Assign to each object a a set X(a). Vertical arrows a → c are
 relations between X(a) and X(c), with equality as identity and relational composition.
 Horizontal arrows carry a functorial semantics ⟦−⟧ into relations. A square is a lax
 square
@@ -155,7 +156,7 @@ forward-simulates the bottom one. Pasting of squares is composition of simulatio
 content of an instance is the functoriality of its semantics and the identification of a
 correspondence judgement with a square.
 
-**Three instances.**
+### Three instances
 
 | Level | Objects | Horizontal arrows | Functoriality |
 |---|---|---|---|
@@ -183,7 +184,9 @@ interpreter or for the scalar language.
 
 ## 4. Verification-condition generation
 
-**Squares are families of triples.** Write {Q} c {Q'} for the Hoare triple over the
+### Squares are families of triples
+
+Write {Q} c {Q'} for the Hoare triple over the
 machine semantics. Then
 
     c corresponds to f under R, P   ⇔   ∀ a. P(a) ⇒ { R(−, a) } c { R(−, f(a)) }.
@@ -202,7 +205,9 @@ Three further statements connect the levels.
 - A function-level correspondence for extracted Rust is a triple over the partial
   program that guards the abstract function by its precondition.
 
-**Correspondences as specification lemmas.** For every postcondition Q,
+### Correspondences as specification lemmas
+
+For every postcondition Q,
 
     c corresponds to f under R, P   ⇔
       ∀ Q.  { m | ∃ a. R(m, a) ∧ P(a) ∧ ∀ m'. R(m', f(a)) ⇒ Q(m') }  c  { Q }.
@@ -215,7 +220,9 @@ verification-condition generator the useful form is the state-indexed family
 position of the caller. The form with arbitrary Q composes only when the callee comes
 last, because the generator does not continue under the existential.
 
-**Extracted Rust.** For a function-level correspondence of an extracted function e with
+### Extracted Rust
+
+For a function-level correspondence of an extracted function e with
 abstract function f, the monadic reading of e satisfies the partial-correctness triple
 "every returned value encodes f(a)". The total triple is equivalent to termination of
 the reading, which the correspondence does not imply: the correspondence constrains
@@ -240,7 +247,9 @@ arrays, a 32-step loop whose body is a conditional; its contract, in the form th
 Lean printer emits (a precondition, a postcondition and the triple between them), is
 closed from the correspondence, without a verification-condition proof over the body.
 
-**Loops.** The block-replication rule of section 6 is an instance of the invariant rule
+### Loops
+
+The block-replication rule of section 6 is an instance of the invariant rule
 of the program logic, at the invariant "the machine state is related to the i-fold
 step". The same holds at the monadic Rust level: for a loop whose body carries a counter
 i and continues while i < N, the square for the N-fold abstract step follows from the
@@ -249,7 +258,9 @@ equivalent to the corresponding total specification. The iteration that extracte
 loops use is equal, as a program, to such a counted loop, so the rule applies to them
 directly.
 
-**The two automations produce different objects.** The ascent takes a program and
+### The ascent and verification-condition generation compared
+
+The ascent takes a program and
 computes its abstract function, together with the correspondence. A
 verification-condition generator takes a program and a postcondition and returns proof
 obligations. Given the abstract function as an unknown, the generator does not
@@ -302,26 +313,28 @@ end at their entry values.
 
 Four kinds of automation close correspondence goals. They differ in what is trusted.
 
-- **Decision by reflection.** A decidable predicate delimits a fragment of scalar
+- Decision by reflection. A decidable predicate delimits a fragment of scalar
   commands; a soundness theorem gives, for each command c in the fragment, the
   correspondence of c with a computed word-level function, under the trivial
   precondition.
-- **Symbolic engine over an instruction table.** A worklist procedure composes proved
+- Symbolic engine over an instruction table. A worklist procedure composes proved
   leaf correspondences, indexed by state relation and instruction, using the composition
   and weakening rules. It produces an ordinary proof term; side conditions are decided
   or returned to the user.
-- **Verified symbolic executor.** A checker for one part of a block is proved sound: a
+- Verified symbolic executor. A checker for one part of a block is proved sound: a
   passing check yields an implication between symbolic location maps across the run of
   that part, and parts chain. The check is evaluated by the kernel. Cut certificates are
   generated by programs outside the proof assistant and are untrusted.
-- **Generator for extracted Rust.** A procedure produces, for each extracted function,
+- Generator for extracted Rust. A procedure produces, for each extracted function,
   its abstract function and the function-level correspondence. The same statement is
   provable through the generator and rule by rule. Trait-generic functions are covered
   by a monomorphisation equivalence.
 
 ## 8. Results and comparison
 
-**Example statement.** For the third-party Montgomery multiplication modulo the P-384
+### Example statement
+
+For the third-party Montgomery multiplication modulo the P-384
 prime p, with six-limb operands x, y read at the argument pointers and the result z read
 at the destination pointer after the run:
 
@@ -334,43 +347,35 @@ assumed.
 |---|---|---|---|
 | Montgomery multiplication mod p384, 264 instructions | s2n-bignum, third-party, hand-written | the statement above, over the instruction block and over its encoding | the source's precondition |
 | field multiplication (167 instructions) and squaring (99) | CryptOpt, third-party | the output limbs are congruent to x·y, respectively x², modulo 2²⁵⁵ − 19 (no z < p) | inputs disjoint from each other and from the stack frame; for squaring, input and output disjoint; multiplication limbs below 2⁵⁴; no byte statement |
-| Ed25519 point addition, 4,909 instructions | this project's backend, verified again | for the eight input coordinates below p, the decoded bytes compute the four output coordinates of the specification, which agrees in ℤ/p with the extended twisted-Edwards addition formulas | separated memory cells; inputs below p; eleven compiled-evaluation checks; no frame conclusion |
-| Ed25519 scalar reduction and multiply-add | this project's backend | the output is x mod L, respectively (a·b + c) mod L, below L, with L the group order | separated memory cells; eight and nine compiled-evaluation footprint checks |
+| Ed25519 point addition, 4,909 instructions | this project's backend, verified again | for the eight input coordinates below p, the decoded bytes compute the four output coordinates of the specification, which agrees in ℤ/p with the extended twisted-Edwards addition formulas | separated memory cells; inputs below p; no frame conclusion |
+| Ed25519 scalar reduction and multiply-add | this project's backend | the output is x mod L, respectively (a·b + c) mod L, below L, with L the group order | separated memory cells |
 | Ed25519 mixed addition, inversion, compression | this project's backend | mixed addition computes its specification; inversion computes z^(p−2) mod p, the inverse for z ≠ 0; compression outputs y + 2²⁵⁵·(x mod 2) for the affine coordinates x, y | inputs below p; buffer disjointness; the callees are discharged over the shipped blocks |
 | field multiplication mod 2²⁵⁵ − 19; comb-table selection | hand-written in this project | the product is (x·y) mod p; for an index D < 16, the selected words equal table entry D, with the table, the stack pointer and the callee-saved registers unchanged, at the bytes; the leakage trace is independent of the index | constant time for tables of at most 2²⁶ entries |
 | RV64 addition mod p256 | hand transcription | for x, y < p256, the result is (x + y) mod p256 | registers only; no memory, no bytes |
-| SHA-256 bitwise majority | Rust extracted by hax, compiled by this project's backend | every function corresponding to the extracted body is computed by the decoded shipped block, and by the export's straight-line program under the x86-64 instruction-set interpreter | the interpreter statement is over virtual registers; development tree |
-| reduction of four limbs mod 2²⁵⁵ − 19 | Jasmin source, translated by this project | for input below 2p, the output buffer holds the input mod p | address-level machine; pointer registers set; buffers disjoint; no bytes; development tree |
 
-**Scope.** A statement at the bytes says that this project's encoding of the block
-decodes, under this project's decoder, to instructions with the stated behaviour. No
-theorem concerns an object file; the assembler, the loader and the import of third-party
-text are covered by tests. The constant-time statement for point addition is over the
-block. One function-level correspondence for extracted Rust, that of the majority
-function of section 1, is composed with machine-level squares: at the block decoded from
-the shipped bytes, and under the instruction-set interpreter over virtual registers. No
-other extracted function has such a composition, and none has one for a loop. The
-reduction modulo 2²⁵⁵ − 19 of section 1 is the one kernel imported from Jasmin source with
-a correctness statement on the x86 machine; that statement is over the translated block
-on the address-level machine.
+### Statements at the bytes
+
+A statement at the bytes says that this project's encoding of the block decodes, under
+this project's decoder, to instructions with the stated behaviour. The assembler, the
+loader and the import of third-party text are checked by tests. The constant-time
+statement for point addition is over the block.
 
 | Approach | Relation established |
 |---|---|
 | AutoCorres | design source; word abstraction, type strengthening and guards have counterparts |
 | Graf's Lean port | design and vocabulary |
 | monadic verification-condition generation | x86 squares are families of triples of the standard logic; one leaf proved by the generator |
-| Jasmin | the x86 semantics transcribes Jasmin's; one weld ends at an emitted Jasmin program; straight-line Jasmin source is simulated by the x86 address-level machine, one kernel carried through |
+| Jasmin | the x86 semantics transcribes Jasmin's; one weld ends at an emitted Jasmin program; straight-line Jasmin source is simulated by the x86 address-level machine |
 | CryptOpt | two kernels proved correct over the imported text |
 | s2n-bignum | one kernel proved correct under its source precondition |
 | translation validation | the Ed25519 blocks are single backend outputs checked without the compiler's theorems |
 | Aeneas | the monadic level is the Kleisli instance over its result monad |
 
-The table is restricted to what is proved; comparisons of method, proof effort and
-trusted base need the literature and are not made here.
-
 ## Appendix: terminology and related constructions
 
-**Thin and flat.** A double category in which a square is determined by its boundary is
+### Thin and flat
+
+A double category in which a square is determined by its boundary is
 called *flat* by Grandis and Paré [GP99, §1.1]. This document says *thin*, by analogy
 with thin categories (preorders). In the double-category literature *thin* has another
 use: a *thin structure* on an edge-symmetric double category (Spencer; Brown and Mosa
@@ -378,7 +383,9 @@ use: a *thin structure* on an edge-symmetric double category (Spencer; Brown and
 selects the thin squares, and Brown and Mosa prove it equivalent to a connection pair.
 That notion is not meant here.
 
-**Quintets in Rel.** The relational instance of section 3 has relations in both
+### Quintets in Rel
+
+The relational instance of section 3 has relations in both
 directions, since programs are interpreted as relations. Ehresmann's quintet
 construction [Eh63] turns a 2-category K into a double category Q K whose arrows in both
 directions are the 1-cells of K; a square with top u, left f, right g and bottom w is a
@@ -390,7 +397,7 @@ double category pulled back along the semantics functor from programs to relatio
 double category Rel of the reminder is the part of it whose horizontal arrows are graphs
 of functions.
 
-**Related uses.**
+### Related uses
 
 - Data refinement. Take an abstraction relation R from abstract to concrete states as
   both vertical sides, the abstract operation A on top and the concrete operation C at
@@ -407,7 +414,7 @@ of functions.
   arrows in one direction are behaviours (trajectories, steady states, periodic orbits)
   and in the other wirings; its squares are commuting conditions.
 
-**References.**
+### References
 
 - [BM99] R. Brown, G. H. Mosa. Double categories, 2-categories, thin structures and
   connections. Theory Appl. Categ. 5(7):163–175, 1999.

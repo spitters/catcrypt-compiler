@@ -53,7 +53,7 @@ machine-back  family  X86: optional passes
 machine-back  family  X86: printers
 machine-back  family  VIR: post-allocation passes
 
-# Legacy routes inside the machine families; carve-plan row 6 keeps or retires them.
+# Legacy routes inside the machine families.
 machine-back  family  VIR: earlier lsem machines
 machine-back  family  X86: earlier route ends
 machine-back  family  X86: gather and JInstr ELF route

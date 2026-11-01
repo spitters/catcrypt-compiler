@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# commit-msg: gates that need the commit message.
-# Variant gate: no new variant of an existing declaration without a consolidation
-# row. The gate script lives in the development repository; without that sibling
-# the step is skipped.
-set -uo pipefail
-gate="../SSProve-lean/scripts/variant-gate.sh"
-if [ -f "$gate" ]; then
-  bash "$gate" "$1" || exit 1
-fi
+# commit-msg: this repository has no gate on the commit message; the per-file
+# checks are in pre-commit and the CI gates in pre-push.
 exit 0

@@ -131,6 +131,6 @@ test dblDialect
 # theory/test states its position: it has an emitter and emit traffic, and no path
 # to jasminDialect. DIALECTS.md carries the reason.
 review natKernelDialect
-# (empty — all dialects classified as of 2026-07-19.)
+# (empty: all dialects are classified.)
 test dwDialect
 test wordDialect

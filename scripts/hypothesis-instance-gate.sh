@@ -150,7 +150,7 @@
 #
 # Env:
 #   HYP_GATE_PREFIX   command prefix for the evaluator run, e.g.
-#                     "bash ../SSProve-lean/scripts/heavy-run.sh" to keep the Lean
+#                     "bash /path/to/heavy-run.sh" (a build-lock wrapper) to keep the Lean
 #                     process out of a memory-tight shell scope.
 #   LEAN_NUM_THREADS  bounds the concurrent Lean workers of the import build
 #                     (default 1 here).

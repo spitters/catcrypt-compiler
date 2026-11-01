@@ -22,8 +22,8 @@
 // (bn254_Fp2_mul etc.) on the published EIP-197 generator coordinates plus an
 // LCG-reproducible random sweep (fp2_kat.rs and its Fp6/Fp12 extension).
 //
-// Why this compiles where the AUCurves direct reg-ptr emit did not
-// (JASMIN_TOWER_259.md): there is no inlined byte-pointer multiply in the
+// Why this compiles where the AUCurves direct reg-ptr emit did not:
+// there is no inlined byte-pointer multiply in the
 // orchestration body (the field ops are typed-array reg-ptr leaf CALLS), so the
 // spilling-multiply register pressure stays in the leaf's own compile unit and
 // there is no address-of-stack-array → inlined-byte-pointer-leaf segfault

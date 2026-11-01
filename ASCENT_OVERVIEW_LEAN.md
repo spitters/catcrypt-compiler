@@ -20,10 +20,11 @@ extracted Rust is the library `HaxAscent` (lakefile `lean_lib HaxAscent`, module
   (`RustMSquare`, `RustMSquareSpec`, `RustMSquareLoop`);
 - `HaxAscent/Runtime`, `HaxAscent/ListBlocks`.
 
-Module paths moved; declaration namespaces did not (`Hax.Ascent`, `CatCrypt.Hax.RustSemantics`,
-`CatCrypt.Crypto.SecureCompilation.Ascent`). The two double-category leaves `SquareDouble`
-and `RustMSquareDouble` import CatCrypt-core and stay in the compiler library, as do the
-machine-level judgements, the engines and the kernel proofs, which import `HaxAscent`.
+The declarations of `HaxAscent` are in the namespaces `Hax.Ascent`,
+`CatCrypt.Hax.RustSemantics` and `CatCrypt.Crypto.SecureCompilation.Ascent`. The two
+double-category leaves `SquareDouble` and `RustMSquareDouble` import CatCrypt-core and are
+in the compiler library, as are the machine-level judgements, the engines and the kernel
+proofs, which import `HaxAscent`.
 
 ## 1. The problem and the relation to descent
 
@@ -94,32 +95,21 @@ a caller of a doubling procedure, twice, a simpler relative of the Kraken exampl
 `CallSwap`. A return through a link register has no step
 (`Ligoto`), and the three instance records are not extended: results with calls are
 stated over `isa.withCalls`. For a program without a call instruction the two machines
-give the same judgement (`corresIsa_withCalls_iff`, development tree).
+give the same judgement (`corresIsa_withCalls_iff`).
 
-Programs the compiler emits (development tree, `Haxc/`). The following hold for every
-program the compile gate accepts, with no hypothesis on the individual program beyond
-the gate; all are over `x86Isa`, and none has an AArch64 or RV64 counterpart.
-
-| theorem | module | program in the square | form |
-|---|---|---|---|
-| `v1Loop_corresIsa` | `LoopCorresIsa` | the certified loop node (flag-machine chain), for every loop with `v1LoopB = true` | `CorresIsa`, fuel `nodeFuel` at the trip-count bound |
-| `jGate_straight_corresIsa`, `compileJ_straight_corresIsa` | `StraightCorresIsa` | the source's typed chain, for the four straight arms of `jGateB` | `CorresIsa`, fuel the chain length |
-| `v1Loop_image_corresIsa`, `v1StraightR_image_corresIsa`, `straightArr_image_corresIsa`, `straightCell_image_corresIsa` | `ExportedBodyCorresIsa` | the image of the printed body that the encoder consumes, without its closing return | `CorresIsa`, with fuel `loopImageFuel`, `straightRegImageFuel`, `straightImageFuel`, `cellImageFuel` (computed from the virtual and printed bodies; the loop arm at a trip-count bound) |
-| `compileA_loop_corresIsa`, `compileA_straightReg_corresIsa` and their image forms; `mpn_and_n_corresIsa`, `ltu_corresIsa` | `GatedInstances` | as in the rows above, for the program the front returns | from the compile equation `compileA te σ fname = some (P, bytes)` and a route gate that is checked by evaluation |
-
-In each, the specification is the denotation of the source program and the exit clause
-of the state relation is a halting run of the decoded shipped bytes. In the first two
-rows the flag-machine run and the byte run are of different programs and meet at the
-denotation; in the third they are of the same program, joined by the checker's soundness
-theorem. The generic lemma behind the first row is `corresIsa_of_node_halts_fuel`
-(`Ascent/CorresIsaNode`). The carried-register loop arm has the same statements
-(`carriedLoop_corresIsa`, `carriedLoop_image_corresIsa` in `LoopWideCorresIsa`). `x86Isa` has
-no step at `Lret`; the body followed by its return is treated as a callee over
-`x86Isa.withCalls`: for every arm of the gate the exported image, placed after a label and
-followed by a return, satisfies a procedure specification from an entry state with a return
-address (`gatedLoop_callee_procSpec` and its four companions in `ExportedProcSpecGated`;
-[ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-bodies-as-callees)), for call-free
-bodies. The named instances take the compile equation as a hypothesis.
+Programs the compiler emits (`Ascent/CorresIsaNode`, `Ascent/CorresIsaStackFrame`,
+`Ascent/ImageSpFree`). A node is a program run by the flag machine `lsemFuelMemF` beside a
+decoded machine program run by the address machine. `corresIsa_of_node_halts_fuel` states
+the pair of runs as one `CorresIsa x86Isa` at a fixed fuel, over the two-phase abstract
+state `PhaseAbs` (the machine entry state, then the output): the specification is the
+output of the source, and the exit clause of the state relation is a halting run of the
+decoded program. `x86Isa` has no step at `Lret`; the body followed by its return is treated
+as a callee over `x86Isa.withCalls`. `x86_procSpec_of_image_judgement` gives, from such a
+judgement on a body that contains no call or return and names no stack pointer (two
+Boolean checks), the procedure specification of the body placed after a label and followed
+by a return, and `virtImg_spFreeBodyB` and `virtImg_noCall` prove the two checks for the
+image of every covered printed body of the hax compiler
+([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#compiled-bodies-as-callees)).
 
 Imported Jasmin with control flow (`Ascent/JasminJumpLevel`): `compileS` compiles a
 structured program to labelled code, `compileS_run` simulates a structured run on
@@ -137,10 +127,9 @@ Uniqueness (`HaxAscent/Ascent/FnCorresUnique`): `fnCorres_val_unique`,
 
 | Weld | Declaration |
 |---|---|
-| refinement, correspondence and emission | `legWeld`: `RRefines spec c`, `Corres SRwordNT P fa c` and the emit leg |
-| descent result to compiled x86 block | `corres_of_refines_x86` |
-| hax pipeline and source tower | `feSub_raw_source_to_bytes`, over hax-lean's `pipeline_correct` |
-| extracted `maj` with its machine code (development tree) | `maj_fnCorres`; `maj_corresJ_of_fnCorres` at the decoded shipped block; `maj_corresIsa_of_fnCorres` under `x86Isa` over the virtual-register chain; `maj_corresIsa_bytes_of_fnCorres` under `x86Isa` at the decoded shipped block |
+| refinement, correspondence and emission | `legWeld`: `RRefines spec c`, `Corres SRwordNT P fa c` and the emit leg, for a command that reads no entry variable |
+| descent result to compiled x86 block | `corres_of_refines_x86`: the result register of the `ScalarTarget` block under `xrun` holds one slot of the specification |
+| hax pipeline and source tower | `feSub_raw_source_to_bytes`: hax-lean's `pipeline_correct` for an `ImpExpr` whose output is the constant `feSubSourceWord`, beside the source tower, which ends at the Jasmin-dialect denotation |
 | emitted carry chains from correspondences | `emitSbbChain_runBlock`, `emitAdcChain_runBlock`, from `corresJ_sbbChain`, `corresJ_adcChain` (`Ascent/EcMultiLimbCapstone`) |
 
 Jasmin source (`CatCrypt/Crypto/Jasmin/`): `JazzToInstrR` parses `.jazz` text
@@ -148,9 +137,7 @@ Jasmin source (`CatCrypt/Crypto/Jasmin/`): `JazzToInstrR` parses `.jazz` text
 two `#kat` round trips against the printer. `BignumToJ` translates the straight-line
 fragment (`toJ`, `toJBlock`), relates the states by `BJCorr`, and proves
 `toJ_sim`, `bignumExec_runBlockA_sim` (simulation into `runBlockA`) and
-`bignumExec_progress`. The development tree instantiates it with
-`bignumTriple_to_runBlockA` and `runBlockA_modP25519_4_correct` for
-`bignum_mod_p25519_4`.
+`bignumExec_progress`.
 
 [CORRECTNESS.md](CORRECTNESS.md#composition-of-the-techniques) states the welds in full.
 
@@ -236,7 +223,7 @@ theorem corresJ_iff_triple {AState : Type} (SR : JState 64 → AState → Prop)
 | demo: a caller proved by `mvcgen` with an ascent result as callee specification | `sbb_then_sbb_triple`, `sbb_then_step_triple`, `step_then_sbb_triple` (`Ascent/Demos/CorresAsSpecDemo`) |
 | `FnCorres` and the `RustM` reading `toRustMS` | partial: `fnCorres_toRustMS_partialSpec`, `fnCorres_toRustMS_triple_partial`; total under termination: `fnCorres_toRustMS_spec`, `fnCorres_toRustMS_triple`, `fnCorres_toRustMS_triple_iff` (`HaxAscent/RustSemantics/ToRustMSSpec`) |
 | termination on the straight-line fragment | `straightOk`, `AppTotalOn`, `EnvOk`, `toRustMS_total`, `fnCorres_toRustMS_triple_of_straightOk` (`HaxAscent/RustSemantics/ToRustMSTotal`); `line_failApp` shows `AppOk` alone does not give termination (`ToRustMSSpecDemo`) |
-| termination with conditionals, loops and checked arithmetic | `kindOf`, `Kd`, `EnvTy`, `AppTyped`, `loopS_total`, `toRustMS_total_kind`, `fnCorres_toRustMS_triple_of_kindOf`; checked operations `appTyped_add` (kinds `WB`), `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem` (range kinds `WI`); instance `keyEqLit_triple` (`HaxAscent/RustSemantics/ToRustMSTotalCtl`). Loop bounds of index-range kind: `kindOfL`, `boundRange`, `toRustMS_total_kindL`, instance `varLoopLit` (`varLoopLit_kind`, `varLoopLit_total`). Tagged shifts: `appTyped_shl`, `appTyped_shr`; untagged shifts fail (`appRt_Shl_undef`, `appRt_Shr_undef`). Signed checked arithmetic has no total kind; `appTyped_intArith` types the unbounded integer operations. The straight-line theorems of `ToRustMSTotal` are instances of `toRustMS_total_kindL` through `kindOfL_of_straightOk` |
+| termination with conditionals, loops and checked arithmetic | `kindOf`, `Kd`, `EnvTy`, `AppTyped`, `loopS_total`, `toRustMS_total_kind`, `fnCorres_toRustMS_triple_of_kindOf`; checked operations `appTyped_add` (kinds `WB`), `appTyped_addI`, `appTyped_sub`, `appTyped_mul`, `appTyped_div`, `appTyped_rem` (range kinds `WI`); instance `keyEqLit_triple` (`HaxAscent/RustSemantics/ToRustMSTotalCtl`). Loop bounds of index-range kind: `kindOfL`, `boundRange`, `toRustMS_total_kindL`, instance `varLoopLit` (`varLoopLit_kind`, `varLoopLit_total`). Tagged shifts: `appTyped_shl`, `appTyped_shr`; untagged shifts fail (`appRt_Shl_undef`, `appRt_Shr_undef`). Signed checked arithmetic has no total kind, and arithmetic on two integer literals has no reading (`appRt_arith_int_undef`). The straight-line theorems of `ToRustMSTotal` are instances of `toRustMS_total_kindL` through `kindOfL_of_straightOk` |
 | a printed hax contract closed by an ascent result | `Spec` (the printer's structure restated over `Aeneas.Std.RustM`), `keyEqRun_contract`, `keyEqRun.spec` (`HaxAscent/RustSemantics/ToRustMSContractDemo`) |
 | loop rule from the invariant rule | x86: `runBlockM_loop_triple`, `corresJ_loop_of_triple` (`Ascent/RunBlockLoopTriple`); `RustM`, over hax-lean's `loop` with a `ControlFlow` body: `corresM_loop`, `corresM_loop_iff_spec`, `countedBody_spec`, `corresM_loopK` (`HaxAscent/Calculus/RustMSquareLoop`, from `loop.spec_decr_nat`); extracted `for` loops: `foldRangeK_eq_loopK` (hax-lean's `fold_range` equals the counted loop), `corresM_foldRange` |
 | `mvcgen` with the abstract function as a metavariable | `sbb1Synth_val`, `sbb2Synth_val`, `sbb2Synth_eq_sym`; failures recorded by `fail_if_success` (`Ascent/Demos/SchematicMvcgenProbe`) |
@@ -305,14 +292,11 @@ framed forms use `runBlock`. [ASCENT.md](ASCENT.md) has the full result tables.
 |---|---|---|
 | `bignum_montmul_p384` | `s2nMontmulP384_correct_addr`; bytes: `s2nMontmulP384Bytes_correct` | |
 | `carry_mul`, `solinas_square` | `carryMul_correct_addr`, `solinasSquare_correct_addr` | `RegionsApart` between the inputs and against the frame; for `solinas_square` also input against output |
-| `ed25519_point_add` | `paShippedBytes_correct`, `paSpec_addSpec` (agreement with the extended-coordinate formulas); `ed25519PointAdd_constant_time` over the block | `Separated`; inputs below p; eleven `native_decide` checks (ten in `Ed25519PointAddFootprint`, one in `Ed25519PointAddDecode`) |
-| `ed25519_sc_reduce`, `sc_muladd` | `scReduceShipped_correct_addr`, `scMuladdShipped_correct_addr` | `Separated` (`scrCells`, `scmCells`); eight and nine `native_decide` footprint checks |
+| `ed25519_point_add` | `paShippedBytes_correct`, `paSpec_addSpec` (agreement with the extended-coordinate formulas); `ed25519PointAdd_constant_time` over the block | `Separated`; inputs below p |
+| `ed25519_sc_reduce`, `sc_muladd` | `scReduceShipped_correct_addr`, `scMuladdShipped_correct_addr` | `Separated` (`scrCells`, `scmCells`) |
 | `ed25519_madd`, `invert`, `compress` | `maddShipped_correct` (callees discharged through `maddCallees_maddCallModel`; `maddShipped_correct_cross` is the form relative to `MaddCallees`), `invertShipped_correct`, `invertShipped_inv`, `compressShipped_correct` (`compressShipped_correct_addr` is the form relative to `CompressCallees`) | inputs below p; `ChainSep`, `RangeDisj`, `CompressSep` buffer disjointness |
 | `fe25519_mul`, comb select | `feMulBlock_mod`, `combSelectBytes_correct`, `selBytes_constant_time` | |
 | RV64 `(x + y) mod p256` | `addp256_correct` | |
-| extracted `maj` (development tree) | `maj_fnCorres`, `maj_corresJ_of_fnCorres`, `maj_corresIsa_of_fnCorres`, `maj_corresIsa_bytes_of_fnCorres` | result type `Int` (`arithBuiltins` computes on `.int`) |
-| shipped `mpn_mul_1` loop (development tree) | `mul1_corresIsaRun` | `CorresIsaRun x86Isa`: fuel chosen per state, because the loop simulation gives its fuel existentially; the precondition `mul1Regions` has no machine-checked witness |
-| `bignum_mod_p25519_4` from Jasmin source (development tree) | `runBlockA_modP25519_4_correct`, through `bignumTriple_to_runBlockA` and `bignumExec_runBlockA_sim` | `runBlockA` only; no byte statement |
 
 The example statement, in
 [S2nMontmulP384Addr](CatCrypt/Crypto/SecureCompilation/Ascent/Demos/S2nMontmulP384Addr.lean):
@@ -328,9 +312,10 @@ theorem s2nMontmulP384_correct_addr (sa : AState) (px py pz : BitVec 64)
 ```
 
 The encoder and decoder of the byte statements are `encodeJBlock` and `decodeJStream`.
-An ascent result or a total triple of the Rust reading composes with the correctness
-theorem of the hax compiler: the decoded bytes compute the function
-([ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#source-readings-joined-to-compiled-bytes)).
+The correctness theorem of the hax compiler, `haxc_correct_auto`, is stated at a run of
+the source reading under the compiler's builtin table; the congruence lemmas that move an
+ascent result between readings of the calls are listed in
+[ASCENT_REFERENCE.md](ASCENT_REFERENCE.md#source-readings-joined-to-compiled-bytes).
 In the comparison table, the Aeneas row refers to `CorresM` over `Aeneas.Std.RustM`
 (`MLevel`) and the Jasmin row to `runBlock` and `legWeld`.
 
