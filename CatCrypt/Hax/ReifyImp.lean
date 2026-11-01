@@ -470,12 +470,34 @@ partial def countBVar (i : Nat) (e : Expr) (acc : Nat := 0) : Nat :=
   | .mdata _ b | .proj _ _ b => countBVar i b acc
   | _ => acc
 
-/-- The `let` chain `e` with each `let` of a shared argument (`isShareName`) whose variable
-    occurs at most once in its body replaced by its body with the value substituted. -/
+/-- The body `e` of a `let` with value `v`, at `d` binders below the body's outermost level,
+    with each occurrence of `v` replaced by the variable of the `let` (`.bvar d`); `vd` is
+    `v` lifted over the `let` and the `d` binders. -/
+partial def abstractVal (vd : Expr) (d : Nat) (e : Expr) : Expr :=
+  if e == vd then .bvar d
+  else if e.approxDepth < vd.approxDepth then e
+  else
+    let under (b : Expr) : Expr := abstractVal (vd.liftLooseBVars 0 1) (d + 1) b
+    match e with
+    | .app f a => e.updateApp! (abstractVal vd d f) (abstractVal vd d a)
+    | .lam _ t b _ => e.updateLambdaE! (abstractVal vd d t) (under b)
+    | .forallE _ t b _ => e.updateForallE! (abstractVal vd d t) (under b)
+    | .letE _ t v b _ => e.updateLetE! (abstractVal vd d t) (abstractVal vd d v) (under b)
+    | .mdata _ b => e.updateMData! (abstractVal vd d b)
+    | .proj _ _ b => e.updateProj! (abstractVal vd d b)
+    | _ => e
+
+/-- The `let` chain `e` with each recurrence of the non-atomic value of a `let` in its body
+    read as the variable of the `let` (`abstractVal`), and then each `let` of a shared argument
+    (`isShareName`) whose variable occurs at most once in its body replaced by its body with
+    the value substituted. -/
 partial def inlineShared (e : Expr) : Expr :=
   match e with
   | .letE n t v b nd =>
     let b := inlineShared b
+    let b := match v.consumeMData with
+      | .fvar _ | .const .. | .lit _ | .sort _ | .bvar _ => b
+      | _ => abstractVal (v.liftLooseBVars 0 1) 0 b
     if isShareName n && countBVar 0 b ≤ 1 then b.instantiate1 v else .letE n t v b nd
   | _ => e
 
@@ -535,7 +557,8 @@ def whnfCoreKeepLets (e : Expr) : MetaM Expr :=
     Arguments are shared: an argument of an unfolded application of `cs` (`withShared`) or
     of a beta-redex (`betaShare`) that is `shareable` is bound once by a `let` around the
     result instead of substituted into each occurrence, the `whnfCore` steps do not
-    zeta-reduce these `let`s (`whnfCoreKeepLets`), and once its body is reduced such a `let`
+    zeta-reduce these `let`s (`whnfCoreKeepLets`), and once its body is reduced each
+    recurrence of the value of a `let` in its body is read as its variable and such a `let`
     whose variable occurs at most once is substituted (`inlineShared`). A fold whose step
     reads its state more than once thus yields a term linear in the number of steps. -/
 def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array Name := #[])
