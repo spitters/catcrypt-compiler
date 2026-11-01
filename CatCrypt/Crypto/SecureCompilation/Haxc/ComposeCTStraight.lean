@@ -459,6 +459,34 @@ theorem haxc_ct_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiL
   · exact .inl (hl.trans h)
   · exact .inr (hrun h)
 
+/-- **Constant time of the bytes of `compileA` from the level check of the translation.**
+    It is `haxc_ct_proved_all` with the decided Boolean level check `haxToNFCTBL` of the
+    translation of the pair stage in place of its constant time `HaxToNFCTLOn`
+    (`haxToNFCTL_of_haxToNFCTBL`, `haxToNFCTLOn_of_haxToNFCTL`). -/
+theorem haxc_ct_proved_all_of_check (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiLayout)
+    (fname : String) (P : Lprog) (bytes : List (BitVec 8))
+    (hc : compileA m σ fname = some (P, bytes))
+    (F fuelC : Nat) (Pre : AState → Prop)
+    (hck : haxToNFCTBL s (pairStage m σ).2 (pairStage m σ).1 = true)
+    (hterm : ∀ (sa : AState) (V : Ctxt.Valuation (entryCtx (abiEntry (pairStage m σ).2))),
+      (pairStage m σ).2.Regions sa → Pre sa → AbiValOf (pairStage m σ).2 sa
+        (VIR.DialectToJasminComCorrect.ctMapValD (CatCrypt.Crypto.Hax.NFToCat.mapVal V)) →
+      ∃ v env', (denote' (crateBi ((pairStage m σ).1.prepared nfBody)
+        ((pairStage m σ).1.linkTable hax64WExit) fuelC (pairStage m σ).1.depth)
+        F (nfBody (bindConsts (pairStage m σ).2.consts (pairStage m σ).1.entry))).run
+          (entryEnvOf (abiEntry (pairStage m σ).2) V) = (.val v, env'))
+    (hL : PubLabelsOK (pairStage m σ).2 (mapLabels (nfLabels s (abiEntry (pairStage m σ).2))))
+    (hnds : (pairStage m σ).2.envNames.Nodup) {prog : List RInstr}
+    (hd : decodeLprog bytes = some prog)
+    (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
+    ConstantTimeRel
+      (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
+        ∧ (∃ v, haxRuns σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRuns σ m s₂ v))
+      (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') :=
+  haxc_ct_proved_all s m σ fname P bytes hc F fuelC Pre
+    (haxToNFCTLOn_of_haxToNFCTL _ (haxToNFCTL_of_haxToNFCTBL s _ _ hck)) hterm hL hnds hd hnd hk
+
 end Linked
 
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall (LinkedKernel)
@@ -521,9 +549,8 @@ theorem haxc_correct_auto_ct_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModul
             ∧ (∃ v, haxRuns σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRuns σ m s₂ v))
           (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
   obtain ⟨prog, hd, hv⟩ := haxc_correct_auto m σ fname P bytes hc sa hsep v hrun hnd hk
-  refine ⟨prog, hd, ?_, haxc_ct_proved_all s m σ fname P bytes hc F fuelC Pre
-    (haxToNFCTLOn_of_haxToNFCTL _ (haxToNFCTL_of_haxToNFCTBL s _ _ hck)) hterm hL hnds hd
-    hnd hk⟩
+  refine ⟨prog, hd, ?_, haxc_ct_proved_all_of_check s m σ fname P bytes hc F fuelC Pre hck
+    hterm hL hnds hd hnd hk⟩
   rcases hv with ⟨sa', hh, hR, -⟩ | ⟨-, -, -, -, -, -, h, -⟩
   · exact ⟨sa', hh, hR⟩
   · exact h

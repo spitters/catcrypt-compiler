@@ -108,9 +108,10 @@ tables with the accepted programs.
     of the translation `haxToNF` (`HaxToNFCTLOn`, a semantic statement about the translated
     program), termination of the prepared source at one fuel on every such entry state
     (`hterm`), labels that agree with the public data of the layout (`PubLabelsOK`) and
-    distinct layout names. `haxc_correct_auto_ct_proved_all` takes the Boolean level check
-    `haxToNFCTBL … = true` in place of `HaxToNFCTLOn` and derives the latter through
-    `haxToNFCTL_of_haxToNFCTBL`.
+    distinct layout names. `haxc_ct_proved_all_of_check` is the same statement with the
+    Boolean level check `haxToNFCTBL … = true` in place of `HaxToNFCTLOn`, which it derives
+    through `haxToNFCTL_of_haxToNFCTBL`; `haxc_correct_auto_ct_proved_all` joins it with
+    value correctness.
   - `haxc_gate_proved_all` and `haxc_rc_proved_all` (`Haxc/RCInstance.lean`): from the
     level check `haxToNFCTBL` and termination of the source on every entry state satisfying
     the regions of `σ` (`hterm`), every decoding of the bytes satisfies the gate conclusion

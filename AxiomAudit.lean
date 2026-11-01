@@ -14,5 +14,6 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.RCInstance
 -- The hax compiler `haxc`: correctness, constant time, the gate, robust compilation.
 #print axioms CatCrypt.Crypto.SecureCompilation.Haxc.haxc_correct_auto
 #print axioms CatCrypt.Crypto.SecureCompilation.Haxc.haxc_ct_proved_all
+#print axioms CatCrypt.Crypto.SecureCompilation.Haxc.haxc_ct_proved_all_of_check
 #print axioms CatCrypt.Crypto.SecureCompilation.Haxc.haxc_gate_proved_all
 #print axioms CatCrypt.Crypto.SecureCompilation.Haxc.haxc_rc_proved_all

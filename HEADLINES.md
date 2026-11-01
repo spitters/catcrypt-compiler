@@ -44,7 +44,9 @@ the module (`HaxToNFCTLOn`, a semantic statement about the translated program, w
 the Boolean level check `haxToNFCTBL` implies by `haxToNFCTL_of_haxToNFCTBL`);
 termination of the prepared source at one fuel on every such entry state (`hterm`);
 public labels that agree with the public data of the layout (`PubLabelsOK`); distinct
-layout names; the linked-function hypotheses above.
+layout names; the linked-function hypotheses above. `Haxc.haxc_ct_proved_all_of_check`
+(same module) is the same statement with the Boolean level check
+`haxToNFCTBL … = true` in place of `HaxToNFCTLOn`.
 
 `Haxc.haxc_rc_proved_all` (`Haxc/RCInstance.lean`). Under the level check
 `haxToNFCTBL`, `hterm` on every entry state satisfying `σ.Regions`, `PubLabelsOK`,
