@@ -218,8 +218,8 @@ structured machine fold; the last is stated at the export node.
   `OwnedCF` built from conditionals with public guards and loops with literal trip
   counts leaks the same trace (branch events, without direction, and memory accesses as
   base-register name and offset) from any two states that agree on the public
-  registers. `OwnedCF` is not tied to the emitted `Lcmd` or to bytes, so no emitted
-  branch is covered.
+  registers. `OwnedCF` is not tied to the emitted `Lcmd` or to bytes, so
+  no emitted branch is covered.
 - `CatCrypt.Crypto.Jasmin.LowCT.cmdCT_sound` (`CatCrypt/Crypto/Jasmin/LowCTCTAnalysis.lean`):
   a program accepted by `cmdCT`, run from two public-equivalent states, reaches
   public-equivalent states (output noninterference; the statement has no leakage

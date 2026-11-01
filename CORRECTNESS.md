@@ -83,7 +83,8 @@ tables with the accepted programs.
   virtual registers without allocation. `robustCompilation_source_to_x86`
   (`VIR/RobustCompilationPipeline.lean`) takes the x86 step as the field `semRefine` of a
   `JasminVerifiedCompiler` record, and its source is the lattice dialect, whose NTT is the
-  identity; it is not a statement about an x86 compiler.
+  identity; it is not a statement about an x86 compiler, and it is not constant-time
+  evidence (it has no constant-time conjunct).
   [HEADLINES.md](HEADLINES.md) states each with its hypotheses.
 - The hax compiler `haxc` (`CatCrypt/Crypto/SecureCompilation/Haxc/`, executable
   `lake exe haxc`) composes the hax front, the route to the Jasmin dialect, the export to
