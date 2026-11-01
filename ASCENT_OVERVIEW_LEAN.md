@@ -128,7 +128,8 @@ Uniqueness (`HaxAscent/Ascent/FnCorresUnique`): `fnCorres_val_unique`,
 Case split (`HaxAscent/Ascent/FnCorresIte`): `fnCorres_ifThenElse` gives the function
 correspondence of a conditional from those of its branches, each under the guard
 strengthened by the value of the condition, so a step whose top is a conditional is ascended
-one branch at a time.
+one branch at a time; `fnCorres_letBind` passes the `let`s of the A-normal form before the
+conditional by extending the entry environment.
 
 | Weld | Declaration |
 |---|---|

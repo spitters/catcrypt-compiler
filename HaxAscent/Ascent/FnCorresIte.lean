@@ -17,9 +17,16 @@ strengthened by `cv a = true`, and `e` to `f₂` under the guard strengthened by
 `cv a = false`. The two branches are then separate function correspondences, so the ascent
 of a step whose top is a case split can be stated and proved one branch at a time.
 
+The reified literal is in A-normal form: the condition of a conditional is a variable bound
+by a chain of `let`s before it. A `let` whose bound expression leaves the environment is
+passed by extending the entry environment at its name, so the conditional below the chain
+is reached with an entry that holds the temporaries.
+
 ## Main results
 
 * `fnCorres_ifThenElse`: the correspondence of the conditional from those of its branches.
+* `fnCorres_letBind`: the correspondence of `let x := val; body` from that of `body` over
+  the entry extended at `x`.
 -/
 
 @[expose] public section
@@ -56,5 +63,22 @@ theorem fnCorres_ifThenElse {c t e : ImpExpr} {cv : A → Bool} {f₁ f₂ : A �
       simpa [hb] using hrun fuel (Nat.le_trans (Nat.le_max_left _ _) hf)
     rw [denote'_ifThenElse (h := hcr)]
     simpa [hb] using h₁ fuel (Nat.le_trans (Nat.le_max_right _ _) hf)
+
+/-- **`let`, over the extended entry.** If `val` returns `V a` from `entry a`, a value that
+    is not a control-flow value, and leaves the environment `entry a`, and `body`
+    corresponds to `f` from the entry extended by `x ↦ V a`, then `let x := val; body`
+    corresponds to `f` from `entry`. -/
+theorem fnCorres_letBind {x : String} {val body : ImpExpr} {V : A → Value} {f : A → β}
+    (hval : Corres bi (fun env a => env = entry a) G val V (fun env a => env = entry a))
+    (hplain : ∀ a, G a → (V a).isControlFlow = false)
+    (hbody : FnCorres bi body (fun a => (entry a).extend x (V a)) G f) :
+    FnCorres bi (.letBind x val body) entry G f := by
+  intro a hG
+  obtain ⟨fuel₀, env', henv, hrun⟩ := hval (entry a) a rfl hG
+  subst henv
+  obtain ⟨fuel₁, hb⟩ := hbody a hG
+  refine ⟨max fuel₀ fuel₁, fun fuel hf => ?_⟩
+  rw [denote'_letBind (h := hrun fuel (Nat.le_trans (Nat.le_max_left _ _) hf)) (hv := hplain a hG)]
+  exact hb fuel (Nat.le_trans (Nat.le_max_right _ _) hf)
 
 end Hax.Ascent
