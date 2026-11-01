@@ -371,9 +371,17 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 * `callParamsB_forall₂`, `calleeSite_dest`: at a call of an out callee the operands of its
   call site pass the parameters of the callee (`LinkedFnCallee.ParamAt`), and its
   destination is an array of the slot map.
-* `calleeBodyB_spec`, `calleeBodyB_nodup`: the checks `calleeBodyB` are the fields of
-  `CalleeBodyOK`; under them the operands of each call of a callee whose code does not
-  decode are pairwise distinct.
+* `decodeSites_spec`, `decodeSites_isSome`, `bodyCallSymsB_of_decodeSites`: the decode
+  `decodeSites` of a calling body lists, at the positions of its calls, the symbol, the
+  destination and the operands of each call, and succeeds exactly when every call names a
+  symbol of the table of callees.
+* `siteFn_lookup`, `shadows_callImg`: the site function `siteFn` at the table of one callee
+  is its call site at every call, and the shadow instructions of the image at `siteFn` are
+  the shadows of the decoded sites, in order.
+* `calleeBodyB_spec`, `CalleeBodyOK.shapeImg`, `calleeBodyB_nodup`: the checks `calleeBodyB`
+  are the fields of `CalleeBodyOK`; under them the image has the shape of the call sites,
+  and the operands of each call of a callee whose code does not decode are pairwise
+  distinct.
 * `calleeBody_stackRoom`, `calleeBody_callerSep`: under the checks `calleeBodyB`, the stack
   room and frame checks at the frame of the callee, and the caller separation
   `ImageAddrCall.CallerSep` from the entry conditions of the layout.
@@ -2085,6 +2093,265 @@ theorem calleeSiteAt_of_reg {c : CalleeData} {r : String} (h : c.res = .reg r)
   simp only [calleeSiteAt, h, CalleeData.siteArgs, CalleeData.ins, haa, Prod.mk.injEq,
     true_and]
   apply List.ext_getElem <;> simp
+
+/-- **A call site of a calling body**: the position `pos` of the call, the symbol `sym` it
+    calls, and the destination name `dst` and the operand names `ops` of its shadow
+    instruction in the image. -/
+structure CallSite where
+  /-- The position of the call in the body. -/
+  pos : Nat
+  /-- The symbol the call names. -/
+  sym : String
+  /-- The destination name of the shadow instruction. -/
+  dst : String
+  /-- The operand names of the shadow instruction. -/
+  ops : List String
+
+/-- The destination, the symbol and the operands of the shadow instruction of a call site,
+    in the form of `LprogIsa.shadowCall?`. -/
+def CallSite.shadow (s : CallSite) : String × String × List LOperand :=
+  (s.dst, s.sym, s.ops.map LOperand.reg)
+
+/-- **The table of one linked function**: `c` at its symbol and `none` at every other
+    symbol. -/
+def CalleeData.lookup (c : CalleeData) (g : String) : Option CalleeData :=
+  if g = c.name then some c else none
+
+/-- The table of one linked function holds exactly its symbol. -/
+theorem CalleeData.lookup_isSome (c : CalleeData) :
+    (fun g => (c.lookup g).isSome) = (· == c.name) := by
+  funext g
+  by_cases h : g = c.name <;> simp [CalleeData.lookup, h]
+
+/-- The symbol of the call at the position `p` of a body, `none` when `p` holds no call. -/
+def callSymAt (body : Lcmd) (p : Nat) : Option String :=
+  body[p]?.bind fun bi => match bi.li_i with
+    | .Lcall _ (f, _) => some f
+    | _ => none
+
+/-- `callSymAt body p` is `f` exactly when `p` holds a call of `f`. -/
+theorem callSymAt_eq_some {body : Lcmd} {p : Nat} {f : String} :
+    callSymAt body p = some f ↔
+      ∃ bi ra l, body[p]? = some bi ∧ bi.li_i = .Lcall ra (f, l) := by
+  constructor
+  · intro h
+    obtain ⟨bi, hb, h⟩ := Option.bind_eq_some_iff.mp h
+    obtain ⟨ii, li⟩ := bi
+    cases li with
+    | Lcall ra t =>
+        obtain ⟨g, l⟩ := t
+        simp only [Option.some.injEq] at h
+        exact ⟨_, ra, l, hb, by simp [h]⟩
+    | _ => simp at h
+  · rintro ⟨bi, ra, l, hb, hbi⟩
+    simp [callSymAt, hb, hbi]
+
+/-- **The decode of a calling body into its call sites** at the table of callees `cs` and the
+    slot map `sl`: at each position `p` of `ImageAddrCall.callPos body`, the symbol `f` of the
+    call and the destination and operands `calleeSiteAt c sl body p` of its callee
+    `cs f = some c`; `none` when a call names a symbol outside `cs`. -/
+def decodeSites (cs : String → Option CalleeData) (sl : String → Option (String × Nat))
+    (body : Lcmd) : Option (List CallSite) :=
+  (X86Backend.ImageAddrCall.callPos body).mapM fun p => do
+    let f ← callSymAt body p
+    let c ← cs f
+    let s := calleeSiteAt c sl body p
+    pure ⟨p, f, s.1, s.2⟩
+
+/-- **The site function of a body with several callees**: at a call of a symbol `f` with the
+    callee `cs f = some c`, the call site `calleeSiteAt c sl body p`; elsewhere the empty
+    destination and no operands. -/
+def siteFn (cs : String → Option CalleeData) (sl : String → Option (String × Nat))
+    (body : Lcmd) (p : Nat) : String × List String :=
+  match (callSymAt body p).bind cs with
+  | some c => calleeSiteAt c sl body p
+  | none => ("", [])
+
+/-- **Soundness of `decodeSites`**: the positions of the decoded sites are
+    `ImageAddrCall.callPos body`, and each site is a call of its symbol in the body, whose
+    callee in `cs` gives its destination and operands. -/
+theorem decodeSites_spec {cs : String → Option CalleeData}
+    {sl : String → Option (String × Nat)} {body : Lcmd} {ss : List CallSite}
+    (h : decodeSites cs sl body = some ss) :
+    ss.map CallSite.pos = X86Backend.ImageAddrCall.callPos body ∧
+      ∀ s ∈ ss, ∃ bi ra l c, body[s.pos]? = some bi ∧ bi.li_i = .Lcall ra (s.sym, l) ∧
+        cs s.sym = some c ∧ calleeSiteAt c sl body s.pos = (s.dst, s.ops) := by
+  unfold decodeSites at h
+  generalize X86Backend.ImageAddrCall.callPos body = l at h ⊢
+  induction l generalizing ss with
+  | nil =>
+      simp only [List.mapM_nil, pure, Option.some.injEq] at h
+      subst h
+      simp
+  | cons p l ih =>
+      simp only [List.mapM_cons, bind, pure] at h
+      obtain ⟨s, hs, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨ss', hss, hss'⟩ := Option.bind_eq_some_iff.mp h
+      obtain rfl := Option.some_inj.mp hss'
+      obtain ⟨f, hf, hs⟩ := Option.bind_eq_some_iff.mp hs
+      obtain ⟨c, hc, hs⟩ := Option.bind_eq_some_iff.mp hs
+      obtain ⟨bi, ra, l', hb, hbi⟩ := callSymAt_eq_some.mp hf
+      obtain ⟨ih1, ih2⟩ := ih hss
+      simp only [Option.some.injEq] at hs
+      subst hs
+      refine ⟨by simp [ih1], ?_⟩
+      rintro s (_ | ⟨_, hs⟩)
+      · exact ⟨bi, ra, l', c, hb, hbi, hc, rfl⟩
+      · exact ih2 s hs
+
+/-- **Completeness of `decodeSites`**: when every call of the body names a symbol of `cs`,
+    the decode succeeds. -/
+theorem decodeSites_isSome {cs : String → Option CalleeData}
+    {sl : String → Option (String × Nat)} {body : Lcmd}
+    (hsym : X86Backend.ImageAddrCall.bodyCallSymsB (fun g => (cs g).isSome) body = true) :
+    (decodeSites cs sl body).isSome = true := by
+  have key : ∀ (F : Nat → Option CallSite) (l : List Nat),
+      (∀ p ∈ l, (F p).isSome = true) → (l.mapM F).isSome = true := by
+    intro F l
+    induction l with
+    | nil => simp
+    | cons p l ih =>
+        intro hl
+        obtain ⟨s, hs⟩ := Option.isSome_iff_exists.mp (hl p List.mem_cons_self)
+        obtain ⟨ss, hss⟩ := Option.isSome_iff_exists.mp
+          (ih fun q hq => hl q (List.mem_cons_of_mem _ hq))
+        simp [List.mapM_cons, hs, hss]
+  apply key
+  intro p hp
+  obtain ⟨hlt, hany⟩ := X86Backend.ImageAddrCall.mem_callPos.mp hp
+  cases hb : body[p]? with
+  | none => rw [hb] at hany; cases hany
+  | some bi =>
+      rw [hb, Option.any_some] at hany
+      obtain ⟨ra, f, l, e⟩ := X86Backend.ImageAddrCall.exists_lcall_of_isCallB hany
+      obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp
+        (X86Backend.ImageAddrCall.bodyCallSymsB_spec hsym hb hlt e)
+      simp [callSymAt_eq_some.mpr ⟨bi, ra, l, hb, e⟩, hc]
+
+/-- **The calls of a decoded body name symbols of `cs`.** -/
+theorem bodyCallSymsB_of_decodeSites {cs : String → Option CalleeData}
+    {sl : String → Option (String × Nat)} {body : Lcmd}
+    (hd : (decodeSites cs sl body).isSome = true) :
+    X86Backend.ImageAddrCall.bodyCallSymsB (fun g => (cs g).isSome) body = true := by
+  obtain ⟨ss, hss⟩ := Option.isSome_iff_exists.mp hd
+  obtain ⟨hpos, hsite⟩ := decodeSites_spec hss
+  simp only [X86Backend.ImageAddrCall.bodyCallSymsB, List.all_eq_true, List.mem_range]
+  intro p hp
+  cases hb : body[p]? with
+  | none => rfl
+  | some bi =>
+      rw [Option.all_some]
+      cases hx : bi.li_i with
+      | Lcall ra t =>
+          obtain ⟨f, l⟩ := t
+          have hmem : p ∈ X86Backend.ImageAddrCall.callPos body :=
+            X86Backend.ImageAddrCall.mem_callPos.mpr
+              ⟨hp, by simp [hb, hx, X86Backend.ImageAddrCall.isCallB]⟩
+          rw [← hpos] at hmem
+          obtain ⟨s, hs, rfl⟩ := List.mem_map.mp hmem
+          obtain ⟨bi', ra', l', c, hb', hbi', hc, -⟩ := hsite s hs
+          rw [hb, Option.some_inj] at hb'
+          subst hb'
+          rw [hx, LinstrR.Lcall.injEq] at hbi'
+          obtain ⟨-, hf⟩ := hbi'
+          simp only [Prod.mk.injEq] at hf
+          simp [hf.1, hc]
+      | _ => rfl
+
+/-- **The site function at the table of one callee** is its call site at every call: when
+    the decode at `c.lookup` succeeds, `siteFn c.lookup sl body` agrees with
+    `calleeSiteAt c sl body` at the positions `ImageAddrCall.callPos body`. -/
+theorem siteFn_lookup {c : CalleeData} {sl : String → Option (String × Nat)} {body : Lcmd}
+    (hd : (decodeSites c.lookup sl body).isSome = true) {p : Nat}
+    (hp : p ∈ X86Backend.ImageAddrCall.callPos body) :
+    siteFn c.lookup sl body p = calleeSiteAt c sl body p := by
+  obtain ⟨hlt, hany⟩ := X86Backend.ImageAddrCall.mem_callPos.mp hp
+  cases hb : body[p]? with
+  | none => rw [hb] at hany; cases hany
+  | some bi =>
+      rw [hb, Option.any_some] at hany
+      obtain ⟨ra, f, l, e⟩ := X86Backend.ImageAddrCall.exists_lcall_of_isCallB hany
+      have hf : (c.lookup f).isSome = true :=
+        X86Backend.ImageAddrCall.bodyCallSymsB_spec (bodyCallSymsB_of_decodeSites hd) hb hlt e
+      have hfc : f = c.name := by
+        by_contra hne
+        simp [CalleeData.lookup, hne] at hf
+      subst hfc
+      simp [siteFn, callSymAt_eq_some.mpr ⟨bi, ra, l, hb, e⟩, CalleeData.lookup]
+
+/-- **The image at the site function of one callee** is the image at its call sites. -/
+theorem callImg_siteFn_lookup {c : CalleeData} {sl : String → Option (String × Nat)}
+    {body : Lcmd} (hd : (decodeSites c.lookup sl body).isSome = true) :
+    X86Backend.ImageAddrCall.callImg sl (siteFn c.lookup sl body) body
+      = X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body :=
+  X86Backend.ImageAddrCall.callImg_congr_site sl fun _ hp => siteFn_lookup hd hp
+
+/-- **The decode lists the shadow instructions of the image, in order**: under
+    `ImageAddrCall.callSitesB`, with every call of the body naming a symbol of `T`, the
+    shadow instructions at the positions `LprogCallCut.sites T` of the image at the site
+    function `siteFn cs sl body` are the shadows of the decoded sites. -/
+theorem shadows_callImg {T : LprogIsa.ProcTable} {cs : String → Option CalleeData}
+    {sl : String → Option (String × Nat)} {body : Lcmd} {ss : List CallSite}
+    (hd : decodeSites cs sl body = some ss)
+    (hcs : X86Backend.ImageAddrCall.callSitesB sl body = true)
+    (hsym : X86Backend.ImageAddrCall.bodyCallSymsB (fun g => (T g).isSome) body = true) :
+    (LprogCallCut.sites T (X86Backend.ImageAddrCall.callImg sl (siteFn cs sl body) body)).map
+        (X86Backend.CalleeSegCheck.shadowAt
+          (X86Backend.ImageAddrCall.callImg sl (siteFn cs sl body) body))
+      = ss.map (some ∘ CallSite.shadow) := by
+  obtain ⟨hpos, hsite⟩ := decodeSites_spec hd
+  rw [X86Backend.ImageAddrCall.sites_callImg _ hcs hsym, ← hpos, List.map_map]
+  apply List.map_congr_left
+  intro s hs
+  obtain ⟨bi, ra, l, c, hb, hbi, hc, hsc⟩ := hsite s hs
+  have hmem : s.pos ∈ X86Backend.ImageAddrCall.callPos body := hpos ▸ List.mem_map_of_mem hs
+  obtain ⟨bi', f, l', hb', hbi', himg⟩ :=
+    X86Backend.ImageAddrCall.callImg_getElem?_of_mem_callPos (siteFn cs sl body) hcs hmem
+  rw [hb, Option.some_inj] at hb'
+  subst hb'
+  rw [hbi] at hbi'
+  simp only [LinstrR.Lcall.injEq, Prod.mk.injEq] at hbi'
+  obtain ⟨-, rfl, -⟩ := hbi'
+  have hsf : siteFn cs sl body s.pos = (s.dst, s.ops) := by
+    simp [siteFn, callSymAt_eq_some.mpr ⟨bi, ra, l, hb, hbi⟩, hc, hsc]
+  simp [X86Backend.CalleeSegCheck.shadowAt, himg, hsf, LprogIsa.shadowCall?_callShadow,
+    CallSite.shadow]
+
+/-- **The decode accepts every body whose image has the shape of one callee**: under
+    `ImageAddrCall.callSitesB`, if the image at a site function `site` passes
+    `ImageAddrCall.siteShapeB c.name site`, the decode at `c.lookup` succeeds. -/
+theorem decodeSites_lookup_of_siteShapeB {c : CalleeData}
+    {sl : String → Option (String × Nat)} {body : Lcmd} {site : Nat → String × List String}
+    (hcs : X86Backend.ImageAddrCall.callSitesB sl body = true)
+    (hsh : X86Backend.ImageAddrCall.siteShapeB c.name site
+      (X86Backend.ImageAddrCall.callImg sl site body) = true) :
+    (decodeSites c.lookup sl body).isSome = true := by
+  apply decodeSites_isSome
+  rw [CalleeData.lookup_isSome]
+  simp only [X86Backend.ImageAddrCall.bodyCallSymsB, List.all_eq_true, List.mem_range]
+  intro p hp
+  cases hb : body[p]? with
+  | none => rfl
+  | some bi =>
+      rw [Option.all_some]
+      cases hx : bi.li_i with
+      | Lcall ra t =>
+          obtain ⟨f, l⟩ := t
+          have hmem : p ∈ X86Backend.ImageAddrCall.callPos body :=
+            X86Backend.ImageAddrCall.mem_callPos.mpr
+              ⟨hp, by simp [hb, hx, X86Backend.ImageAddrCall.isCallB]⟩
+          obtain ⟨bi', f', l', hb', hbi', himg⟩ :=
+            X86Backend.ImageAddrCall.callImg_getElem?_of_mem_callPos site hcs hmem
+          rw [hb, Option.some_inj] at hb'
+          subst hb'
+          rw [hx] at hbi'
+          simp only [LinstrR.Lcall.injEq, Prod.mk.injEq] at hbi'
+          obtain ⟨-, rfl, -⟩ := hbi'
+          have hm := List.all_eq_true.mp hsh p
+            (List.mem_range.mpr (by rw [X86Backend.ImageAddrCall.callImg_length]; exact hp))
+          rw [himg, Option.all_some, LprogIsa.shadowCall?_callShadow] at hm
+          simpa using hm
+      | _ => rfl
 
 /-- **The check of the operand `x` of the parameter `q` at the position `p`** of a printed
     body: the name of `q` is a general-purpose name; a scalar parameter is the operand
@@ -4517,8 +4784,9 @@ def calleeCodeB (c : CalleeData) (sl : String → Option (String × Nat)) (body 
     * the pool `Callee.keepPool` of `c` passes `Callee.keepPoolB`, and the code of `c`
       passes `calleeCodeB` at the calls of `body`;
     * every shadow instruction of `ref` calls the symbol of `c`
-      (`CalleeSegCheck.callSymsB`), and every shadow instruction of `img`, at the position
-      `p`, is the call of `c` at `site p` (`ImageAddrCall.siteShapeB`);
+      (`CalleeSegCheck.callSymsB`), and `body` decodes into its call sites at the table
+      `c.lookup` of `c` (`decodeSites`), so that every call of `body` names `c`; the shape
+      of the shadow instructions of `img` is then `CalleeBodyOK.shapeImg`;
     * the cut programs of `ref` and of `img` pass `calleeCutB` at the table of `c` and a
       label above their labels;
     * `body` passes `ImageAddrCall.callSitesB`;
@@ -4549,7 +4817,7 @@ def calleeBodyB (σ : AbiLayout) (nm : String → String) (c : CalleeData)
   X86Backend.Callee.keepPoolB c.sig (X86Backend.Callee.keepPool c.sig)
     && calleeCodeB c sl body
     && X86Backend.CalleeSegCheck.callSymsB c.name ref
-    && X86Backend.ImageAddrCall.siteShapeB c.name site img
+    && (decodeSites c.lookup sl body).isSome
     && calleeCutB c.tab fin ref && calleeCutB c.tab fin img
     && X86Backend.ImageAddrCall.callSitesB sl body
     && calleeDeadB c sl D.dead body
@@ -4575,9 +4843,8 @@ structure CalleeBodyOK (σ : AbiLayout) (nm : String → String) (c : CalleeData
   code : calleeCodeB c sl body = true
   /-- Every shadow instruction of `ref` calls the symbol of `c`. -/
   symsRef : X86Backend.CalleeSegCheck.callSymsB c.name ref = true
-  /-- Every shadow instruction of the image is the call of `c` at its call site. -/
-  shapeImg : X86Backend.ImageAddrCall.siteShapeB c.name (calleeSiteAt c sl body)
-    (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true
+  /-- `body` decodes into its call sites at the table of `c`. -/
+  decode : (decodeSites c.lookup sl body).isSome = true
   /-- The cut program of `ref` passes `calleeCutB`. -/
   cutRef : calleeCutB c.tab
     (freshLabel (ref ++ X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body))
@@ -4633,6 +4900,17 @@ theorem calleeBodyB_spec {σ : AbiLayout} {nm : String → String} {c : CalleeDa
   · rintro ⟨h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h12, h13, h14, h15, h16⟩
     exact ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩, h7⟩, h8⟩, h9⟩, h10⟩, h11⟩, h12⟩, h13⟩,
       h14⟩, h15⟩, h16⟩
+
+/-- **Every shadow instruction of the image is the call of `c` at its call site**: under the
+    checks `calleeBodyB`, the image of `body` at the call sites `calleeSiteAt c sl body`
+    passes `ImageAddrCall.siteShapeB c.name` (`ImageAddrCall.siteShapeB_callImg`). -/
+theorem CalleeBodyOK.shapeImg {σ : AbiLayout} {nm : String → String} {c : CalleeData}
+    {sl : String → Option (String × Nat)} {outs : List String} {body : Lcmd}
+    {ref : List LinstrRM} {fn : String} (h : CalleeBodyOK σ nm c sl outs body ref fn) :
+    X86Backend.ImageAddrCall.siteShapeB c.name (calleeSiteAt c sl body)
+      (X86Backend.ImageAddrCall.callImg sl (calleeSiteAt c sl body) body) = true :=
+  X86Backend.ImageAddrCall.siteShapeB_callImg _ h.callSites
+    (CalleeData.lookup_isSome c ▸ bodyCallSymsB_of_decodeSites h.decode)
 
 /-- **The operands of each call of a callee whose code does not decode are distinct**: under
     the checks `calleeBodyB`, if the code of `c` does not decode, the operands of the call
