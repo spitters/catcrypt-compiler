@@ -101,6 +101,27 @@ def shiftProg (k : Nat) (p : List RInstr) : List RInstr := p.map (shiftInstr k)
     (shiftProg k p).length = p.length := by
   simp [shiftProg]
 
+/-- The shift of a concatenation is the concatenation of the shifts. -/
+theorem shiftProg_append (k : Nat) (p q : List RInstr) :
+    shiftProg k (p ++ q) = shiftProg k p ++ shiftProg k q := by
+  simp [shiftProg]
+
+/-- Two shifts of an instruction are one shift by the sum. -/
+theorem shiftInstr_shiftInstr (k j : Nat) (x : RInstr) :
+    shiftInstr k (shiftInstr j x) = shiftInstr (k + j) x := by
+  cases x <;> simp [shiftInstr, Nat.add_assoc]
+
+/-- Two shifts of a program are one shift by the sum. -/
+theorem shiftProg_shiftProg (k j : Nat) (p : List RInstr) :
+    shiftProg k (shiftProg j p) = shiftProg (k + j) p := by
+  simp [shiftProg, Function.comp_def, shiftInstr_shiftInstr]
+
+/-- The shift by `0` is the identity. -/
+theorem shiftProg_zero (p : List RInstr) : shiftProg 0 p = p := by
+  have h : ∀ x, shiftInstr 0 x = x := fun x => by cases x <;> simp [shiftInstr]
+  unfold shiftProg
+  exact (List.map_congr_left fun x _ => h x).trans (List.map_id p)
+
 /-- A layout entry with its start and end offsets raised by `c`. -/
 def offsetEntry (c : Nat) (y : Nat × Nat × DInstr) : Nat × Nat × DInstr :=
   (y.1 + c, y.2.1 + c, y.2.2)

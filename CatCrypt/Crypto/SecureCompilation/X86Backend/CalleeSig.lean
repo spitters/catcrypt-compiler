@@ -158,6 +158,18 @@ def runOf (r : DoitRegime) (q : List RInstr) : CalleeRun :=
 def oracleAt (tgt : Nat) (X : CalleeRun) : Nat → AState → AState → Prop :=
   fun t s s' => t = tgt ∧ ∃ tr, X s tr s'
 
+/-- The oracle of the callees named `fs`: a call to the target `t` is answered by the
+    callee `X f` of a symbol `f` of `fs` with `tgt f = t`, forgetting the trace. -/
+def oracleOf (fs : List String) (tgt : String → Nat) (X : String → CalleeRun) :
+    Nat → AState → AState → Prop :=
+  fun t s s' => ∃ f ∈ fs, tgt f = t ∧ ∃ tr, X f s tr s'
+
+/-- **The oracle of one callee.** At one symbol, a constant target and a constant callee,
+    `oracleOf` answers as `oracleAt`. -/
+theorem oracleOf_one (f : String) (tgt : Nat) (X : CalleeRun) (t : Nat) (s s' : AState) :
+    oracleOf [f] (fun _ => tgt) (fun _ => X) t s s' ↔ oracleAt tgt X t s s' := by
+  simp [oracleOf, oracleAt, eq_comm]
+
 /-! ## 2. Runs with calls answered by an oracle -/
 
 variable {σ : Type}
@@ -227,6 +239,28 @@ theorem haltsO_of_haltsC {M : Machine σ} {prog : List RInstr} {pc : Nat} {s s' 
   | go h _ ih => exact .go h ih
   | call h hc _ _ ihr => exact .call h hc ihr
 
+/-- **The linked program of a run under an oracle, callees in blocks.** In
+    `pre ++ shiftProg pre.length Q ++ post`, let every answer of `O` at a target `t` be a
+    run from index `0` of a block `q` without `call` such that `Q` is
+    `A ++ shiftProg A.length q ++ B` and `t = pre.length + A.length`. A run of the linked
+    program under `O` is a run of it through calls. -/
+theorem haltsC_linked_of_haltsO_blocks (M : Machine σ) (pre Q post : List RInstr)
+    {O : Nat → σ → σ → Prop}
+    (hO : ∀ t s sc, O t s sc → ∃ A q B, Q = A ++ shiftProg A.length q ++ B ∧
+      t = pre.length + A.length ∧ (∀ tg, RInstr.call tg ∉ q) ∧ HaltsC M q 0 s sc)
+    {pc : Nat} {s s' : σ} (h : HaltsO M O (pre ++ shiftProg pre.length Q ++ post) pc s s') :
+    HaltsC M (pre ++ shiftProg pre.length Q ++ post) pc s s' := by
+  refine haltsC_of_haltsO (fun t s sc ho => ?_) h
+  obtain ⟨A, q, B, rfl, rfl, hq, hrun⟩ := hO t s sc ho
+  have e : pre ++ shiftProg pre.length (A ++ shiftProg A.length q ++ B) ++ post =
+      (pre ++ shiftProg pre.length A) ++ shiftProg (pre ++ shiftProg pre.length A).length q ++
+        (shiftProg pre.length B ++ post) := by
+    simp [shiftProg_append, shiftProg_shiftProg]
+  have hr := haltsC_relocated M (pre ++ shiftProg pre.length A) q
+    (shiftProg pre.length B ++ post) hq hrun
+  rw [e]
+  simpa using hr
+
 /-- **The linked program of a run under an oracle.** In
     `pre ++ shiftProg pre.length q ++ post` with `q` a block without `call`, let every
     answer of `O` be at the target `pre.length` and be a run of `q` from index `0`. A run
@@ -235,10 +269,10 @@ theorem haltsC_linked_of_haltsO (M : Machine σ) (pre q post : List RInstr)
     (hq : ∀ tg, RInstr.call tg ∉ q) {O : Nat → σ → σ → Prop}
     (hO : ∀ t s sc, O t s sc → t = pre.length ∧ HaltsC M q 0 s sc) {pc : Nat} {s s' : σ}
     (h : HaltsO M O (pre ++ shiftProg pre.length q ++ post) pc s s') :
-    HaltsC M (pre ++ shiftProg pre.length q ++ post) pc s s' := by
-  refine haltsC_of_haltsO (fun t s sc ho => ?_) h
-  obtain ⟨rfl, hrun⟩ := hO t s sc ho
-  exact haltsC_relocated M pre q post hq hrun
+    HaltsC M (pre ++ shiftProg pre.length q ++ post) pc s s' :=
+  haltsC_linked_of_haltsO_blocks M pre q post (fun t s sc ho => by
+    obtain ⟨rfl, hrun⟩ := hO t s sc ho
+    exact ⟨[], q, [], by simp [shiftProg_zero], by simp, hq, hrun⟩) h
 
 /-- A step of a program is a step of the program with instructions appended. -/
 theorem step_append_left (M : Machine σ) (p ext : List RInstr) {pc : Nat} {s : σ}
@@ -262,6 +296,20 @@ theorem HaltsO.append_left {M : Machine σ} {O : Nat → σ → σ → Prop} {p 
     exact .call (by rw [List.getElem?_append_left (List.getElem?_eq_some_iff.mp h).1]; exact h)
       hc ih
 
+/-- **Linking a caller with callees in blocks.** Let `pre` run under an oracle `O` whose
+    every answer at a target `t` is a run from index `0` of a block `q` without `call`,
+    where `Q` is `A ++ shiftProg A.length q ++ B` and `t = pre.length + A.length`. Then
+    `pre` followed by the relocated copy of `Q` runs through calls to the same state. -/
+theorem haltsC_of_haltsO_blocks (M : Machine σ) (pre Q : List RInstr)
+    {O : Nat → σ → σ → Prop}
+    (hO : ∀ t s sc, O t s sc → ∃ A q B, Q = A ++ shiftProg A.length q ++ B ∧
+      t = pre.length + A.length ∧ (∀ tg, RInstr.call tg ∉ q) ∧ HaltsC M q 0 s sc)
+    {pc : Nat} {s s' : σ} (h : HaltsO M O pre pc s s') :
+    HaltsC M (pre ++ shiftProg pre.length Q) pc s s' := by
+  have h' := haltsC_linked_of_haltsO_blocks M pre Q [] hO
+    (by simpa using h.append_left (shiftProg pre.length Q))
+  simpa using h'
+
 /-- **Linking a caller with its callee.** Let `p` run under an oracle `O` whose every
     answer is at the target `p.length` and is a run of the block `q` without `call`. Then
     `p` followed by the relocated copy of `q` runs through calls to the same state. The
@@ -269,10 +317,10 @@ theorem HaltsO.append_left {M : Machine σ} {O : Nat → σ → σ → Prop} {p 
 theorem haltsC_append_of_haltsO (M : Machine σ) (p q : List RInstr)
     (hq : ∀ tg, RInstr.call tg ∉ q) {O : Nat → σ → σ → Prop}
     (hO : ∀ t s sc, O t s sc → t = p.length ∧ HaltsC M q 0 s sc) {pc : Nat} {s s' : σ}
-    (h : HaltsO M O p pc s s') : HaltsC M (p ++ shiftProg p.length q) pc s s' := by
-  have h' := haltsC_linked_of_haltsO M p q [] hq hO
-    (by simpa using h.append_left (shiftProg p.length q))
-  simpa using h'
+    (h : HaltsO M O p pc s s') : HaltsC M (p ++ shiftProg p.length q) pc s s' :=
+  haltsC_of_haltsO_blocks M p q (fun t s sc ho => by
+    obtain ⟨rfl, hrun⟩ := hO t s sc ho
+    exact ⟨[], q, [], by simp [shiftProg_zero], by simp, hq, hrun⟩) h
 
 /-- **Linking a caller with a decoded callee block.** A run of `p` under the oracle of the
     leaky runs of `q` at the target `p.length` is a run through calls of `p` followed by
