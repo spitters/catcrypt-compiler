@@ -37,6 +37,9 @@ the same analysis (`ImageAddrSimW.rel_condFallW`).
   instruction.
 * `img_stepW_cond`: the step of `ImgRelW` at a branch.
 * `img_stepW'`: the step of `ImgRelW` at every instruction.
+* `ImgGateW.img_stepW_cond`, `ImgGateW.img_stepW'`: the same steps at the positionwise gate
+  `ImageAddrSimW.ImgGateW`, at a position outside its exempt set; `img_stepW_cond` and
+  `img_stepW'` are their instances at `imgGateBW`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimWCond
@@ -213,6 +216,25 @@ theorem img_stepW_cond' {frame : String → Option (BitVec 64)}
       Or.inl (rel_condFallW hphys hrel hb hx)⟩
 
 /-- **One step of the image at a branch.** From states related by `ImgRelW`, a checked step
+    of the image of a body passing `ImgGateW`, at a branch outside the exempt set, keeps the
+    zero flag and is matched by one step of the address machine when the branch falls through,
+    and by two when it is taken: to the label and over it. -/
+theorem ImgGateW.img_stepW_cond {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {c : Lcmd} {X : Nat → Prop} (hphys : physImgB slotArr c = true)
+    (hgate : ImgGateW frame slotArr c X) (fn : String) {s t : LstateMF} {sa : LstateA}
+    (hrel : ImgRelW frame slotArr base c s sa s.zf) {bi : Linstr}
+    (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1) (hX : ¬ X sa.reg.lpc)
+    {cnd : _} {l : LLabel} (hc : bi.li_i = .Lcond cnd l)
+    (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr c))
+      (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t) :
+    t.zf = s.zf ∧ StepOut frame rsp c (ImgRelW frame slotArr base c) s.zf sa t := by
+  have hg : instrGateBW frame slotArr c sa.reg.lpc bi.li_i = true :=
+    hgate.instr _ _ hb (by omega) hX
+  obtain ⟨cc, pol, p, rfl, hpol, hp, hW⟩ := gateAtW_cond hc hg
+  exact img_stepW_cond' (rsp := rsp) hphys hgate.last fn hrel hb hc hpol hp hW hstep
+
+/-- **One step of the image at a branch.** From states related by `ImgRelW`, a checked step
     of the image of a body that passes `imgGateBW` at a branch keeps the zero flag and is
     matched by one step of the address machine when the branch falls through, and by two when
     it is taken: to the label and over it. -/
@@ -225,15 +247,30 @@ theorem img_stepW_cond {frame : String → Option (BitVec 64)}
     {cnd : _} {l : LLabel} (hc : bi.li_i = .Lcond cnd l)
     (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr c))
       (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t) :
-    t.zf = s.zf ∧ StepOut frame rsp c (ImgRelW frame slotArr base c) s.zf sa t := by
-  have hg : instrGateBW frame slotArr c sa.reg.lpc bi.li_i = true := by
-    simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
-    have := hgate.1.1 sa.reg.lpc hlt
-    rw [hb] at this
-    simpa using this
-  obtain ⟨cc, pol, p, rfl, hpol, hp, hW⟩ := gateAtW_cond hc hg
-  exact img_stepW_cond' (rsp := rsp) hphys (imgGateBW_last hgate) fn hrel hb hc hpol hp hW
-    hstep
+    t.zf = s.zf ∧ StepOut frame rsp c (ImgRelW frame slotArr base c) s.zf sa t :=
+  ImgGateW.img_stepW_cond hphys (.of_imgGateBW hgate) fn hrel hb hlt not_false hc hstep
+
+/-- **One step of the image.** From states related by `ImgRelW`, a checked step of the image
+    of a body passing `ImgGateW`, at a position outside the exempt set, is matched by one step
+    of the address machine, or by two when the image takes a branch (the address machine
+    stops at the label); the address machine does not halt and reads outside the red-zone word
+    at each state it steps from. -/
+theorem ImgGateW.img_stepW' {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {c : Lcmd} {X : Nat → Prop} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : physImgB slotArr c = true)
+    (hgate : ImgGateW frame slotArr c X) (fn : String) {s t : LstateMF} {sa : LstateA}
+    (hrel : ImgRelW frame slotArr base c s sa s.zf) {bi : Linstr}
+    (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1) (hX : ¬ X sa.reg.lpc)
+    (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr c))
+      (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t) :
+    StepOut frame rsp c (ImgRelW frame slotArr base c) s.zf sa t := by
+  by_cases hc : ∃ cnd l, bi.li_i = .Lcond cnd l
+  · obtain ⟨cnd, l, hc⟩ := hc
+    exact (ImgGateW.img_stepW_cond hphys hgate fn hrel hb hlt hX hc hstep).2
+  · obtain ⟨hh, hs, sa1, hst, hr⟩ := ImgGateW.img_stepW hsep hphys hgate _ hrel hb hlt hX
+      (fun cc l h => hc ⟨cc, l, h⟩) hstep
+    exact ⟨hh, hs, sa1, hst, Or.inl hr⟩
 
 /-- **One step of the image.** From states related by `ImgRelW`, a checked step of the image
     of a body that passes `imgGateBW` is matched by one step of the address machine, or by
@@ -247,12 +284,7 @@ theorem img_stepW' {frame : String → Option (BitVec 64)}
     (hb : c[sa.reg.lpc]? = some bi) (hlt : sa.reg.lpc < c.length - 1)
     (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr c))
       (imgInstr slotArr c sa.reg.lpc bi.li_i) s = some t) :
-    StepOut frame rsp c (ImgRelW frame slotArr base c) s.zf sa t := by
-  by_cases hc : ∃ cnd l, bi.li_i = .Lcond cnd l
-  · obtain ⟨cnd, l, hc⟩ := hc
-    exact (img_stepW_cond hphys hgate fn hrel hb hlt hc hstep).2
-  · obtain ⟨hh, hs, sa1, hst, hr⟩ := img_stepW hsep hphys hgate _ hrel hb hlt
-      (fun cc l h => hc ⟨cc, l, h⟩) hstep
-    exact ⟨hh, hs, sa1, hst, Or.inl hr⟩
+    StepOut frame rsp c (ImgRelW frame slotArr base c) s.zf sa t :=
+  ImgGateW.img_stepW' hsep hphys (.of_imgGateBW hgate) fn hrel hb hlt not_false hstep
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimWCond
