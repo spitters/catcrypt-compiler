@@ -436,10 +436,33 @@ def loadLe (d : String) (e : Int) (f : Int × Int × Int) : Option (String × In
   else none
 
 /-- The upper bounds, exclusive, on the value of the register `x` that the facts of `m` give:
-    `B` for a fact `x + c ≤ B` with `c` a nonzero stack word or register. -/
+    `B` for a fact `x + c ≤ B` with `c` a nonzero stack word or register, and `n + 1` for a
+    register holding the constant `n`. -/
 def idxBounds (m : MA) (x : String) : List Nat :=
   ((m.w.rle.filter fun f => f.1 = x && m.w.nz.contains f.2.1).map fun f => f.2.2.toNat)
-    ++ (m.le.filter fun f => f.1 = x && m.nz.contains f.2.1).map fun f => f.2.2.toNat
+    ++ ((m.le.filter fun f => f.1 = x && m.nz.contains f.2.1).map fun f => f.2.2.toNat)
+    ++ (m.cst.filter fun p => p.1 = x).map fun p => p.2 + 1
+
+/-- The constant value of the operand `src` under the facts of `m`. -/
+def cstOf (m : MA) : JOperand → Option Nat
+  | .imm n => some n
+  | .reg y => m.cst.lookup y
+
+/-- The `rle` facts after `d := d + src`: a constant added to `d` raises the bound of each sum
+    over `d`, and a constant `d` plus a register `z` gives `d` the sums over `z` raised by
+    that constant. The second is the index `C + k` of a loop index `k`. -/
+def addRle (m : MA) (d : String) (src : JOperand) : List (String × Int × Int) :=
+  (match cstOf m src with
+    | some k => (m.w.rle.filter fun f => f.1 = d && decide (f.2.2 + (k : Int) < 2 ^ 64)).map
+        fun f => (d, f.2.1, f.2.2 + (k : Int))
+    | none => [])
+  ++ match src with
+    | .reg z =>
+      match m.cst.lookup d with
+      | some a => (m.w.rle.filter fun f => f.1 = z && decide (f.2.2 + (a : Int) < 2 ^ 64)).map
+          fun f => (d, f.2.1, f.2.2 + (a : Int))
+      | none => []
+    | .imm _ => []
 
 /-- The facts of `i` on stack words and on registers computed from them: a store through
     `%rsp`, a load through `%rsp`, a step of a register by one, and the computation
@@ -456,11 +479,7 @@ def genW (σ : AbiLayout) (m : MA) : JInstr 64 → MW
       { rle := m.w.le.filterMap (loadLe d (m.sp + off))
         same := [(d, m.sp + off)] }
     else {}
-  | .add d src =>
-    if src = .imm 1 then
-      { rle := (m.w.rle.filter fun f => f.1 = d && decide (f.2.2 + 1 < 2 ^ 64)).map
-          fun f => (d, f.2.1, f.2.2 + 1) }
-    else {}
+  | .add d src => { rle := addRle m d src }
   | .sub d src =>
     if src = .imm 1 ∧ m.nz.contains d = true then
       { rle := (m.w.rle.filter fun f => f.1 = d).map fun f => (d, f.2.1, f.2.2 - 1) }
@@ -476,10 +495,23 @@ def genW (σ : AbiLayout) (m : MA) : JInstr 64 → MW
 def stepW (σ : AbiLayout) (m : MA) (i : JInstr 64) : MW :=
   (genW σ m i).union ((m.kill (dstRegs i)).w.keepWords (wordKeep m.sp i))
 
-/-- The `cst` facts of a load of a stack word holding a constant. -/
+/-- The `cst` facts of a load of a stack word holding a constant, and of an addition, a
+    subtraction without borrow and a right shift of constants. -/
 def wCstAdd (m : MA) : JInstr 64 → List (String × Nat)
   | .loadMem d b off =>
     if b = "%rsp" then (m.w.cst.filter fun p => p.1 = m.sp + off).map fun p => (d, p.2) else []
+  | .add d src =>
+    match m.cst.lookup d, cstOf m src with
+    | some a, some k => [(d, a + k)]
+    | _, _ => []
+  | .sub d src =>
+    match m.cst.lookup d, cstOf m src with
+    | some a, some k => if k ≤ a then [(d, a - k)] else []
+    | _, _ => []
+  | .shr d src =>
+    match m.cst.lookup d, src with
+    | some a, .imm k => if k < 64 then [(d, (a % 2 ^ 64) >>> k)] else []
+    | _, _ => []
   | _ => []
 
 /-- The `nz` facts of a load of a nonzero stack word. -/
@@ -1496,6 +1528,36 @@ theorem wNzAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) 
     · simp at hr
   | _ => simp [wNzAdd] at hr
 
+theorem eval_add_op (s : AState) (d : String) (src : JOperand) :
+    (evalInstrA s (.add d src)).regs d = s.regs d + src.eval s.view := by
+  simp [evalInstrA, evalInstr, JState.writeB5W, x86_ADD, rflags_of_aluop, AState.view]
+
+theorem eval_sub_op (s : AState) (d : String) (src : JOperand) :
+    (evalInstrA s (.sub d src)).regs d = s.regs d - src.eval s.view := by
+  simp [evalInstrA, evalInstr, JState.writeB5W, x86_SUB, AState.view]
+
+theorem eval_shr_imm (s : AState) (d : String) {k : Nat} (hk : k < 64) :
+    (evalInstrA s (.shr d (.imm k))).regs d = s.regs d >>> k := by
+  have hc : shiftCount (BitVec.ofNat 64 k) = k := by
+    simp only [shiftCount, VIR.shiftMask, BitVec.toNat_ofNat]
+    grind
+  by_cases h0 : k = 0
+  · subst h0
+    simp [evalInstrA, evalInstr, JState.writeB5W, x86_SHR, AState.view, rflags_None, shiftCount,
+      VIR.shiftMask, JState.get]
+  · have hm : min 64 k = k := by omega
+    simp [evalInstrA, evalInstr, JState.writeB5W, x86_SHR, AState.view, hc, h0, rflags_OF, wshr,
+      hm, JState.get]
+
+theorem cstOf_sound {m : MA} {s : AState} (hI : Inv σ s0 m s) {src : JOperand} {k : Nat}
+    (h : cstOf m src = some k) : src.eval s.view = BitVec.ofNat 64 k := by
+  cases src with
+  | imm n =>
+    simp only [cstOf, Option.some.injEq] at h
+    subst h
+    rfl
+  | reg y => exact hI.cst (y, k) (mem_of_lookup_cst h)
+
 theorem wCstAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
     ∀ p ∈ wCstAdd m i, (evalInstrA s i).regs p.1 = BitVec.ofNat 64 p.2 := by
   intro p hp
@@ -1509,6 +1571,46 @@ theorem wCstAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
       obtain ⟨q, ⟨hq, hqe⟩, rfl⟩ := hp
       rw [eval_loadMem, read_rsp hI, ← hqe]
       exact (hI.w.cst q hq).2
+    · simp at hp
+  | add d src =>
+    simp only [wCstAdd] at hp
+    split at hp
+    · rename_i a k ha hk
+      simp only [List.mem_singleton] at hp
+      subst hp
+      rw [eval_add_op, hI.cst (d, a) (mem_of_lookup_cst ha), cstOf_sound hI hk]
+      exact (BitVec.ofNat_add _ _).symm
+    · simp at hp
+  | sub d src =>
+    simp only [wCstAdd] at hp
+    split at hp
+    · rename_i a k ha hk
+      split at hp
+      · rename_i hle
+        simp only [List.mem_singleton] at hp
+        subst hp
+        rw [eval_sub_op, hI.cst (d, a) (mem_of_lookup_cst ha), cstOf_sound hI hk]
+        have h : BitVec.ofNat 64 a = BitVec.ofNat 64 (a - k) + BitVec.ofNat 64 k := by
+          rw [← BitVec.ofNat_add, Nat.sub_add_cancel hle]
+        rw [h, BitVec.add_sub_cancel]
+      · simp at hp
+    · simp at hp
+  | shr d src =>
+    simp only [wCstAdd] at hp
+    split at hp
+    · rename_i a k ha
+      split at hp
+      · rename_i hk
+        simp only [List.mem_singleton] at hp
+        subst hp
+        rw [eval_shr_imm s d hk, hI.cst (d, a) (mem_of_lookup_cst ha)]
+        apply BitVec.eq_of_toNat_eq
+        have hlt : (a % 2 ^ 64) >>> k < 2 ^ 64 := by
+          rw [Nat.shiftRight_eq_div_pow]
+          exact lt_of_le_of_lt (Nat.div_le_self _ _) (Nat.mod_lt _ (by decide))
+        simp only [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat]
+        rw [Nat.mod_eq_of_lt hlt]
+      · simp at hp
     · simp at hp
   | _ => simp [wCstAdd] at hp
 
@@ -1579,13 +1681,15 @@ theorem idxBounds_sound {m : MA} {s : AState} (hI : Inv σ s0 m s) {x : String} 
     (hn : n ∈ idxBounds m x) : (s.regs x).toNat < n := by
   simp only [idxBounds, List.mem_append, List.mem_map, List.mem_filter, Bool.and_eq_true,
     decide_eq_true_eq, List.contains_iff_mem] at hn
-  rcases hn with ⟨f, ⟨hf, rfl, hnz⟩, rfl⟩ | ⟨f, ⟨hf, rfl, hnz⟩, rfl⟩
+  rcases hn with (⟨f, ⟨hf, rfl, hnz⟩, rfl⟩ | ⟨f, ⟨hf, rfl, hnz⟩, rfl⟩) | ⟨p, ⟨hp, rfl⟩, rfl⟩
   · have hv := (hI.w.rle f hf).2
     have := toNat_pos_of_ne (hI.w.nz _ hnz).2
     omega
   · have hv := hI.le f hf
     have := toNat_pos_of_ne (hI.nz _ hnz)
     omega
+  · rw [hI.cst p hp, BitVec.toNat_ofNat]
+    exact Nat.lt_succ_of_le (Nat.mod_le _ _)
 
 /-- **Soundness of the facts of `i` on stack words.** -/
 theorem genW_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
@@ -1690,21 +1794,42 @@ theorem genW_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
     · exact hempty _
   | add d src =>
     simp only [genW]
-    split
-    · rename_i h
-      subst h
-      have hw := fun e => wdAt_of_none (s0 := s0) (s := s) (i := .add d (.imm 1)) rfl e
-      refine ⟨by simp, by simp, by simp, ?_, by simp, by simp⟩
-      intro f hf
-      simp only [List.mem_map, List.mem_filter, Bool.and_eq_true, decide_eq_true_eq] at hf
-      obtain ⟨g, ⟨hg, rfl, hB⟩, rfl⟩ := hf
-      obtain ⟨h1, h2⟩ := hI.w.rle g hg
-      refine ⟨h1, ?_⟩
-      have hk : (s.regs g.1).toNat + 1 < 2 ^ 64 := by omega
-      rw [eval_add_one, toNat_add_one_of hk, hw]
-      push_cast
-      omega
-    · exact hempty _
+    have hw := fun e => wdAt_of_none (s0 := s0) (s := s) (i := .add d src) rfl e
+    refine ⟨by simp, by simp, by simp, ?_, by simp, by simp⟩
+    intro f hf
+    simp only [addRle, List.mem_append] at hf
+    rcases hf with hf | hf
+    · split at hf
+      · rename_i k hk
+        simp only [List.mem_map, List.mem_filter, Bool.and_eq_true, decide_eq_true_eq] at hf
+        obtain ⟨g, ⟨hg, rfl, hB⟩, rfl⟩ := hf
+        obtain ⟨h1, h2⟩ := hI.w.rle g hg
+        refine ⟨h1, ?_⟩
+        have hn : k < 2 ^ 64 := by omega
+        have hx : (s.regs g.1).toNat + k < 2 ^ 64 := by omega
+        rw [eval_add_op, cstOf_sound hI hk, toNat_add_ofNat_of hx hn, hw]
+        push_cast
+        omega
+      · simp at hf
+    · cases src with
+      | imm n => simp at hf
+      | reg z =>
+        simp only at hf
+        split at hf
+        · rename_i a ha
+          simp only [List.mem_map, List.mem_filter, Bool.and_eq_true, decide_eq_true_eq] at hf
+          obtain ⟨g, ⟨hg, rfl, hB⟩, rfl⟩ := hf
+          obtain ⟨h1, h2⟩ := hI.w.rle g hg
+          refine ⟨h1, ?_⟩
+          have hn : a < 2 ^ 64 := by omega
+          have hx : (s.regs g.1).toNat + a < 2 ^ 64 := by omega
+          have hval : (evalInstrA s (.add d (.reg g.1))).regs d
+              = s.regs g.1 + BitVec.ofNat 64 a := by
+            rw [eval_add_reg, hI.cst (d, a) (mem_of_lookup_cst ha), BitVec.add_comm]
+          rw [hval, toNat_add_ofNat_of hx hn, hw]
+          push_cast
+          omega
+        · simp at hf
   | sub d src =>
     simp only [genW]
     split
