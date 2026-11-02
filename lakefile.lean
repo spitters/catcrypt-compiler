@@ -2545,6 +2545,7 @@ def pkgModules13 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOut,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallX,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCellsLoop,
