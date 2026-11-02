@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck
 
 @[expose] public section
@@ -48,6 +49,7 @@ other register and the flags, as `LprogIsa.retRes` does.
 * `refRun_checked`: a halting run of `x86Isa.withProcs T` on a body accepted by
   `idxInvCheckPB` from pc `0` and a state satisfying the entry facts is a run of
   `x86IsaK.withProcs T`.
+* `haltsC_of_linkedChecksKW`: the same at the wide class `ImageAddrCallW.printedAddrCWB`.
 * `haltsC_of_linkedChecksK`: `ImageAddrCall.haltsC_of_linkedChecks` at `x86IsaK`, from the
   Boolean check `deadSegB`.
 -/
@@ -999,6 +1001,68 @@ theorem haltsC_of_linkedChecksK {frame : String → Option (BitVec 64)}
   haltsC_of_linkedChecks hsep hphys hgate hsites r hX hq hw hS hF hroom hcls hshapes hfr
     symBase hcb hne hbr hP hdead hflags hcond hT hshape x86IsaK_checked (deadSteps_x86K hseg)
     hfin hFin n hrun hfn hlen hL hI0 hA
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW
+  (printedAddrCWB imgGateCBW bitsDeadB liveW) in
+/-- **`haltsC_of_linkedChecksK` at the wide class**: a halting run of the image of a calling body
+    of the wide class `printedAddrCWB`, under the gate `imgGateCBW`, with the width analysis dead
+    at its calls and its return (`bitsDeadB`), from a position where `liveW` is false, is a run
+    through calls of the program its linked bytes decode to, at the bounds-checked instruction
+    set. -/
+theorem haltsC_of_linkedChecksKW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCBW frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    (r : CatCrypt.Crypto.SecureCompilation.CT.DoitRegime) {q : List RInstr} {c : CalleeSig}
+    (hX : CalleeSpec (Callee.runOf r q) c) (hq : ∀ tg, RInstr.call tg ∉ q) {res : String}
+    {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
+    {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
+    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB G body = true)
+    (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
+      = some ds)
+    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {cb : List (BitVec 8)} {prog : List RInstr}
+    (hcb : LprogBytesDecode.decodeLprog cb = some q) (hne : cb ≠ [])
+    (hbr : LprogBytesLinkReloc.branchOKReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
+    {D : DeadTab} (hbits : bitsDeadB frame D body = true)
+    (hdead : callDeadB c (fun _ => (res, c.args)) D.dead body = true)
+    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
+    {T : ProcTable} {f fn : String} (hT : T f = some pr)
+    (hshape : siteShapeB f (fun _ => (res, c.args))
+      (callImg slotArr (fun _ => (res, c.args)) body) = true)
+    (hseg : deadSegB D (callImg slotArr (fun _ => (res, c.args)) body) = true)
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (n : Nat) {s t : LstateMF}
+    (hrun : (x86IsaK.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)) n s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL : liveW D slotArr body sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
+    LprogBytesDecode.decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ LprogBytesLink.shiftProg prog.length q)
+      ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
+          (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
+        ∧ Fin t sA' :=
+  ImageAddrCallW.haltsC_of_linkedChecksOne hsep hphys hgate hsites r hX hq hcls hshapes hfr
+    symBase hcb hne hbr hP hbits hflags hcond x86IsaK_checked (deadSteps_x86K hseg) hfin hFin
+    (fun _ _ _ hg _ hb => siteStep_word hsep hphys hX hw hS hF hroom hdead hb
+      (glue_regArgs (sitesOf_of_siteShapeB hshape hT) hw.wordOnly hw.wordRet hg))
+    n hrun hfn hlen hL hI0 hA
 
 end Linked
 
