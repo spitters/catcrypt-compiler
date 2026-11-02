@@ -54,12 +54,14 @@ block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
   bytes below the entry stack register.
 * `calleeSpec_of_keepCheckW`: `CalleeSpec` of the leaky run of a decoded block from the
   keep check, a halting run with a postcondition and equality of traces.
-* `keptB`, `keepCands`, `keepPool`, `scratch_not_mem_keepPool`, `keepPool_eq_of_kept`,
-  `keepPoolB`, `keepPoolB_spec`, `keepPoolB_keepPool`, `keepPoolB_keep`: the allocation pool
-  of a caller, made of the general-purpose names kept across a call other than the reload
-  scratches of the allocator, with `RDX` at index `3` when the callee keeps it, its check
-  with soundness and completeness, and the preservation of the registers of a checked pool
-  by a specified callee.
+* `keptB`, `keepCandsBy`, `keepCands`, `keepPoolBy`, `keepPool`, `keepPoolT`,
+  `scratch_not_mem_keepPool`, `keepPool_eq_of_kept`, `keepPoolB`, `keepPoolB_spec`,
+  `keepPoolB_keepPoolBy`, `keepPoolB_keepPool`, `keepPoolB_keepPoolT`, `keepPoolT_singleton`,
+  `keepPoolB_keep`: the allocation pool of a caller of one callee or of several, made of the
+  general-purpose names kept across each call other than the reload scratches of the
+  allocator, with `RDX` at index `3` when it is kept, its check with soundness and
+  completeness, and the preservation of the registers of a checked pool by a specified
+  callee.
 * `PubSummary`, `CalleeSpec.kept_agree`, `pubSummary_of_ct`, `pubSummary_of_checkCert`: the
   leakage summary of a callee, what a specified callee keeps equal between two runs, and
   the summary of a decoded block from equality of traces or from a certificate of the
@@ -984,40 +986,60 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpList gpOk phy
 def keptB (c : CalleeSig) (r : String) : Bool :=
   gpOk r && !c.clob (phys r) && !c.args.contains r && (c.res != some r)
 
+/-- The candidates of an allocation pool at the predicate `kept`: the general-purpose names
+    satisfying `kept`, in the order of `gpList`, other than `RDX` and the reload scratches
+    `R14` and `R15`. -/
+def keepCandsBy (kept : String → Bool) : List String :=
+  gpList.filter fun r => kept r && r != "RDX" && r != "R14" && r != "R15"
+
 /-- The candidates of the allocation pool of a caller of `c`: the general-purpose names kept
     across a call of `c`, in the order of `gpList`, other than `RDX` and the reload scratches
     `R14` and `R15`. -/
 def keepCands (c : CalleeSig) : List String :=
-  gpList.filter fun r => keptB c r && r != "RDX" && r != "R14" && r != "R15"
+  keepCandsBy (keptB c)
 
-/-- **The allocation pool of a caller of `c`**: the general-purpose names kept across a
-    call of `c`, in the order of `gpList`, other than the reload scratches `R15` and `R14`
+/-- **The allocation pool at the predicate `kept`**: the general-purpose names satisfying
+    `kept`, in the order of `gpList`, other than the reload scratches `R15` and `R14`
     of the allocator (`JasminLprogExport.reloadScratch`, `JasminLprogExport.reloadScratch2`),
     which the reload of a spilled name and the load of an array base write. `RDX` sits at
     index `3`, the index the allocator withholds for a body with a high multiplication
-    (`JasminLprogExport.bodyReservedGP`), when `c` keeps it and at least three other names
-    are kept; otherwise the pool is `keepCands c`, which does not contain `RDX`. -/
-def keepPool (c : CalleeSig) : List String :=
-  if keptB c "RDX" && decide (3 ≤ (keepCands c).length) then
-    (keepCands c).take 3 ++ "RDX" :: (keepCands c).drop 3
-  else keepCands c
+    (`JasminLprogExport.bodyReservedGP`), when `kept` holds of it and of at least three other
+    names; otherwise the pool is `keepCandsBy kept`, which does not contain `RDX`. -/
+def keepPoolBy (kept : String → Bool) : List String :=
+  if kept "RDX" && decide (3 ≤ (keepCandsBy kept).length) then
+    (keepCandsBy kept).take 3 ++ "RDX" :: (keepCandsBy kept).drop 3
+  else keepCandsBy kept
 
-/-- A member of `keepCands c` is kept across a call of `c` and is none of `RDX`, `R14`,
-    `R15`. -/
-theorem mem_keepCands {c : CalleeSig} {x : String} (hx : x ∈ keepCands c) :
-    keptB c x = true ∧ x ≠ "RDX" ∧ x ≠ "R14" ∧ x ≠ "R15" := by
+/-- **The allocation pool of a caller of `c`**: `keepPoolBy` at the names kept across a call
+    of `c`. -/
+def keepPool (c : CalleeSig) : List String :=
+  keepPoolBy (keptB c)
+
+/-- A member of `keepCandsBy kept` satisfies `kept` and is none of `RDX`, `R14`, `R15`. -/
+theorem mem_keepCandsBy {kept : String → Bool} {x : String} (hx : x ∈ keepCandsBy kept) :
+    kept x = true ∧ x ≠ "RDX" ∧ x ≠ "R14" ∧ x ≠ "R15" := by
   have := (List.mem_filter.mp hx).2
   simp only [Bool.and_eq_true, bne_iff_ne, ne_eq] at this
   exact ⟨this.1.1.1, this.1.1.2, this.1.2, this.2⟩
 
-/-- `keepCands c` has no duplicate name. -/
-theorem keepCands_nodup (c : CalleeSig) : (keepCands c).Nodup :=
+/-- A member of `keepCands c` is kept across a call of `c` and is none of `RDX`, `R14`,
+    `R15`. -/
+theorem mem_keepCands {c : CalleeSig} {x : String} (hx : x ∈ keepCands c) :
+    keptB c x = true ∧ x ≠ "RDX" ∧ x ≠ "R14" ∧ x ≠ "R15" :=
+  mem_keepCandsBy hx
+
+/-- `keepCandsBy kept` has no duplicate name. -/
+theorem keepCandsBy_nodup (kept : String → Bool) : (keepCandsBy kept).Nodup :=
   List.Nodup.sublist List.filter_sublist (by decide)
 
-/-- A member of `keepPool c` is `RDX` or a member of `keepCands c`. -/
-theorem mem_keepPool {c : CalleeSig} {x : String} (hx : x ∈ keepPool c) :
-    x = "RDX" ∨ x ∈ keepCands c := by
-  unfold keepPool at hx
+/-- `keepCands c` has no duplicate name. -/
+theorem keepCands_nodup (c : CalleeSig) : (keepCands c).Nodup :=
+  keepCandsBy_nodup _
+
+/-- A member of `keepPoolBy kept` is `RDX` or a member of `keepCandsBy kept`. -/
+theorem mem_keepPoolBy {kept : String → Bool} {x : String} (hx : x ∈ keepPoolBy kept) :
+    x = "RDX" ∨ x ∈ keepCandsBy kept := by
+  unfold keepPoolBy at hx
   split at hx
   · rcases List.mem_append.mp hx with hx | hx
     · exact .inr (List.mem_of_mem_take hx)
@@ -1026,21 +1048,32 @@ theorem mem_keepPool {c : CalleeSig} {x : String} (hx : x ∈ keepPool c) :
       · exact .inr (List.mem_of_mem_drop hx)
   · exact .inr hx
 
+/-- A member of `keepPool c` is `RDX` or a member of `keepCands c`. -/
+theorem mem_keepPool {c : CalleeSig} {x : String} (hx : x ∈ keepPool c) :
+    x = "RDX" ∨ x ∈ keepCands c :=
+  mem_keepPoolBy hx
+
+/-- The pool `keepPoolBy kept` holds neither reload scratch of the allocator. -/
+theorem scratch_not_mem_keepPoolBy (kept : String → Bool) :
+    "R14" ∉ keepPoolBy kept ∧ "R15" ∉ keepPoolBy kept := by
+  constructor <;> intro hm <;> rcases mem_keepPoolBy hm with h | h
+  · exact absurd h (by decide)
+  · exact (mem_keepCandsBy h).2.2.1 rfl
+  · exact absurd h (by decide)
+  · exact (mem_keepCandsBy h).2.2.2 rfl
+
 /-- The pool `keepPool c` holds neither reload scratch of the allocator. -/
 theorem scratch_not_mem_keepPool (c : CalleeSig) :
-    "R14" ∉ keepPool c ∧ "R15" ∉ keepPool c := by
-  constructor <;> intro hm <;> rcases mem_keepPool hm with h | h
-  · exact absurd h (by decide)
-  · exact (mem_keepCands h).2.2.1 rfl
-  · exact absurd h (by decide)
-  · exact (mem_keepCands h).2.2.2 rfl
+    "R14" ∉ keepPool c ∧ "R15" ∉ keepPool c :=
+  scratch_not_mem_keepPoolBy _
 
 /-- **Where `c` keeps `RDX` and at least three other names, `keepPool c` places `RDX` at
     index `3` of `keepCands c`.** -/
 theorem keepPool_eq_of_kept {c : CalleeSig} (hk : keptB c "RDX" = true)
     (hl : 3 ≤ (keepCands c).length) :
     keepPool c = (keepCands c).take 3 ++ "RDX" :: (keepCands c).drop 3 := by
-  simp [keepPool, hk, hl]
+  simp only [keepCands] at hl ⊢
+  simp [keepPool, keepPoolBy, hk, hl]
 
 /-- **The check of an allocation pool against a callee**: every name of the pool is kept
     across a call of `c`, `RDX`, when it occurs, sits at index `3`, and no name occurs
@@ -1064,30 +1097,54 @@ theorem keepPoolB_spec {c : CalleeSig} {pool : List String} (h : keepPoolB c poo
   exact ⟨fun r hr => keptB_spec (h.1.1 r hr),
     fun hm => h.1.2.resolve_left (fun hc => by simp [hm] at hc), h.2⟩
 
-/-- **Completeness of `keepPoolB`**: the check accepts the pool `keepPool c` of every
-    signature `c`. -/
-theorem keepPoolB_keepPool (c : CalleeSig) : keepPoolB c (keepPool c) = true := by
-  have hR : "RDX" ∉ keepCands c := fun h => (mem_keepCands h).2.1 rfl
-  unfold keepPoolB keepPool
+/-- **Completeness of `keepPoolB` at a predicate**: the check of `c` accepts the pool
+    `keepPoolBy kept` when every name satisfying `kept` is kept across a call of `c`. -/
+theorem keepPoolB_keepPoolBy {c : CalleeSig} {kept : String → Bool}
+    (hk : ∀ r, kept r = true → keptB c r = true) : keepPoolB c (keepPoolBy kept) = true := by
+  have hR : "RDX" ∉ keepCandsBy kept := fun h => (mem_keepCandsBy h).2.1 rfl
+  unfold keepPoolB keepPoolBy
   split
   · rename_i hif
     simp only [Bool.and_eq_true, decide_eq_true_eq] at hif
-    have hlen : ((keepCands c).take 3).length = 3 := by simp [hif.2]
+    have hlen : ((keepCandsBy kept).take 3).length = 3 := by simp [hif.2]
     simp only [Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, Bool.or_eq_true,
       Bool.not_eq_true']
-    refine ⟨⟨fun x hx => ?_, .inr ?_⟩, ?_⟩
+    refine ⟨⟨fun x hx => hk x ?_, .inr ?_⟩, ?_⟩
     · rcases List.mem_append.mp hx with h | h
-      · exact (mem_keepCands (List.mem_of_mem_take h)).1
+      · exact (mem_keepCandsBy (List.mem_of_mem_take h)).1
       · rcases List.mem_cons.mp h with rfl | h
         · exact hif.1
-        · exact (mem_keepCands (List.mem_of_mem_drop h)).1
+        · exact (mem_keepCandsBy (List.mem_of_mem_drop h)).1
     · rw [List.getElem?_append_right (by omega), hlen]
       rfl
     · rw [List.perm_middle.nodup_iff, List.nodup_cons, List.take_append_drop]
-      exact ⟨hR, keepCands_nodup c⟩
+      exact ⟨hR, keepCandsBy_nodup kept⟩
   · simp only [Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq, Bool.or_eq_true,
       Bool.not_eq_true']
-    exact ⟨⟨fun x hx => (mem_keepCands hx).1, .inl (by simpa using hR)⟩, keepCands_nodup c⟩
+    exact ⟨⟨fun x hx => hk x (mem_keepCandsBy hx).1, .inl (by simpa using hR)⟩,
+      keepCandsBy_nodup kept⟩
+
+/-- **Completeness of `keepPoolB`**: the check accepts the pool `keepPool c` of every
+    signature `c`. -/
+theorem keepPoolB_keepPool (c : CalleeSig) : keepPoolB c (keepPool c) = true :=
+  keepPoolB_keepPoolBy fun _ h => h
+
+/-- **The allocation pool of a caller of the callees of `sigs`**: `keepPoolBy` at the names
+    kept across a call of every signature of `sigs`. -/
+def keepPoolT (sigs : List CalleeSig) : List String :=
+  keepPoolBy fun r => sigs.all fun c => keptB c r
+
+/-- The check of each signature of `sigs` accepts the pool `keepPoolT sigs`. -/
+theorem keepPoolB_keepPoolT {sigs : List CalleeSig} {c : CalleeSig} (hc : c ∈ sigs) :
+    keepPoolB c (keepPoolT sigs) = true :=
+  keepPoolB_keepPoolBy fun _ h => List.all_eq_true.mp h c hc
+
+/-- At one signature, `keepPoolT` is `keepPool`. -/
+theorem keepPoolT_singleton (c : CalleeSig) : keepPoolT [c] = keepPool c := by
+  have h : (fun r => [c].all fun c' => keptB c' r) = keptB c := by
+    funext r
+    simp
+  rw [keepPoolT, h, keepPool]
 
 /-- **A register of the pool holds its entry value at every return of a specified
     callee.** -/

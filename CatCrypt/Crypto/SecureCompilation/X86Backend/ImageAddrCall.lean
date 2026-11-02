@@ -141,9 +141,13 @@ after a call (`ImageCallProbe.reloadOf_call`).
   frame.
 * `keepPoolB_clobN`: a name of a checked allocation pool is not set by the summary step
   and is not exempted after a call.
-* `lfundefPhysAbiOfVirtCCert`, `lfundefPhysAbiOfVirtC`: the allocation of a caller of `c`
-  at the pool `keepPool c`, with the shadow instructions expanded after the allocation,
-  with and without its allocation certificate.
+* `savedArgMoveArm`, `savedArgMoves_of_noBaseSpill`: the argument-register arm of
+  `savedArgMoves`, which is all of it on a body without a spill copy of a saved pointer
+  before an address computation.
+* `lfundefPhysAbiOfVirtPoolCert`, `lfundefPhysAbiOfVirtPool`: the allocation at a pool, with
+  the shadow instructions expanded after the allocation, with and without its allocation
+  certificate; `lfundefPhysAbiOfVirtCCert`, `lfundefPhysAbiOfVirtC` are these at the pool
+  `keepPool c` of a caller of `c`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
@@ -463,6 +467,22 @@ structure CallerSep (frame : String → Option (BitVec 64))
 /-- The footprint of the callee is among the `G` bytes below its entry stack register. -/
 def FootBelow (c : CalleeSig) (G : Nat) : Prop :=
   ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x
+
+/-- `FootBelow` holds at every larger bound: the `F` bytes below an address are among the `G`
+    bytes below it for `F ≤ G`, and every byte is among them when `2 ^ 64 < G`. -/
+theorem FootBelow.mono {c : CalleeSig} {F G : Nat} (h : FootBelow c F) (hFG : F ≤ G) :
+    FootBelow c G := by
+  intro s x hx
+  have hf := h s x hx
+  unfold InFrame at hf ⊢
+  by_cases hG : G ≤ 2 ^ 64
+  · have e := (s.regs "%rsp").isLt
+    have hx' := x.isLt
+    have hF : (F : Int) ≤ 2 ^ 64 := by omega
+    simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofInt] at hf ⊢
+    omega
+  · have := (x - (s.regs "%rsp" + BitVec.ofInt 64 (-(G : Int)))).isLt
+    omega
 
 /-- **The footprint and the return word are clear of the caller.** Under `CallerSep` at the
     stack register of the byte state, for a callee whose footprint is among the `G` bytes
@@ -3035,29 +3055,99 @@ def savedArgMoves (body : Lcmd) : Lcmd :=
         else i
     | _ => i
 
-/-- **The allocation of a virtual function that calls `c`, with its allocation
+/-- The argument-register arm of `savedArgMoves` on one instruction: a move `MOV:64 a, x` from
+    a name `x` that is no general-purpose name to an argument register `a` reads the save slot
+    of `x` when `entrySaveOf?` gives one; every other instruction is kept. -/
+def savedArgMoveArm (body : Lcmd) (i : Linstr) : Linstr :=
+  match i.li_i with
+  | .Lopn [.reg a] "MOV:64" [.reg x] =>
+      if !gpNameB x && sysvArgRegs.contains a then
+        match entrySaveOf? body x with
+        | some q => ⟨i.li_ii, .Lopn [.reg a] "MOV:64" [.reg q]⟩
+        | none => i
+      else i
+  | _ => i
+
+/-- **Without a spill copy of a saved pointer before an address computation, `savedArgMoves` is
+    its argument-register arm.** If no move `MOV:64 a, x` of `body` from a name `x` that is no
+    general-purpose name, with `a` no argument register and the base of the address computation
+    two instructions later, has a save slot `entrySaveOf? body x`, the reload arm changes no
+    instruction. -/
+theorem savedArgMoves_of_noBaseSpill (body : Lcmd)
+    (h : ∀ (k : Nat) (i : Linstr) (a x q : String), body[k]? = some i →
+      i.li_i = .Lopn [.reg a] "MOV:64" [.reg x] → gpNameB x = false →
+      sysvArgRegs.contains a = false → leaBaseAt body k a = true →
+      entrySaveOf? body x ≠ some q) :
+    savedArgMoves body = body.map (savedArgMoveArm body) := by
+  refine List.ext_getElem (by simp [savedArgMoves]) fun k h₁ h₂ => ?_
+  have hlt : k < body.length := by simpa using h₂
+  have hk : body[k]? = some body[k] := by grind
+  have hs := h k body[k]
+  simp only [savedArgMoves, List.getElem_mapIdx, List.getElem_map, savedArgMoveArm]
+  grind
+
+/-- **The allocation of a virtual function at the pool `pool`, with its allocation
     certificate**: the allocation `lfundefPhysAbiOfVirtCert` at the register file
-    `poolAbi (keepPool c)` of the names kept across a call of `c`, with the shadow
-    instructions expanded on the allocated body at the out symbols `outs`, whose calls copy
-    no result register, and the argument moves from save slots `savedArgMoves`, and the
-    certificate of that allocation. The frame arrays `frameArrs` are passed to the
-    allocation. -/
-def lfundefPhysAbiOfVirtCCert (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
+    `poolAbi pool`, with the shadow instructions expanded on the allocated body at the out
+    symbols `outs`, whose calls copy no result register, and the argument moves from save
+    slots `savedArgMoves`, and the certificate of that allocation. The frame arrays
+    `frameArrs` are passed to the allocation. -/
+def lfundefPhysAbiOfVirtPoolCert (pool : List String) (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
     (outs : List String := []) (frameArrs : List (String × Nat × Nat) := []) :
     Lfundef × List (String × String) :=
   let fc := lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs (abiArgs := abiArgs)
-    (abiTyin := abiTyin) (abi := VIR.LprogCallCut.poolAbi (keepPool c)) (posBind := posBind)
+    (abiTyin := abiTyin) (abi := VIR.LprogCallCut.poolAbi pool) (posBind := posBind)
     (frameArrs := frameArrs)
   ({ fc.1 with lfd_body := savedArgMoves (expandCallShadows fc.1.lfd_body outs) }, fc.2)
 
-/-- **The allocation of a virtual function that calls `c`**: the function of
-    `lfundefPhysAbiOfVirtCCert`, which is `lfundefPhysAbiOfVirtAt` at the pool `keepPool c`
-    followed by `savedArgMoves` on its body (`lfundefPhysAbiOfVirtC_eq_at`). -/
+/-- **The allocation of a virtual function at the pool `pool`**: the function of
+    `lfundefPhysAbiOfVirtPoolCert`, which is `lfundefPhysAbiOfVirtAt` at `pool` followed by
+    `savedArgMoves` on its body (`lfundefPhysAbiOfVirtPool_eq_at`). -/
+def lfundefPhysAbiOfVirtPool (pool : List String) (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (outs : List String := []) : Lfundef :=
+  (lfundefPhysAbiOfVirtPoolCert pool virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+    outs).1
+
+/-- The function of `lfundefPhysAbiOfVirtPoolCert` is `lfundefPhysAbiOfVirtPool` (the unfolding
+    of `lfundefPhysAbiOfVirtPool`). -/
+theorem lfundefPhysAbiOfVirtPoolCert_fst (pool : List String) (virt0 : Lfundef)
+    (outArg' : String) (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat)
+    (posBind : Bool) (outs : List String) :
+    (lfundefPhysAbiOfVirtPoolCert pool virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+        outs).1
+      = lfundefPhysAbiOfVirtPool pool virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+          outs :=
+  rfl
+
+/-- The allocation at the pool `pool` is `lfundefPhysAbiOfVirtAt` at `pool`, followed by
+    `savedArgMoves` on its body (the unfolding of `lfundefPhysAbiOfVirtPool`). -/
+theorem lfundefPhysAbiOfVirtPool_eq_at (pool : List String) (virt0 : Lfundef)
+    (outArg' : String) (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat)
+    (posBind : Bool) (outs : List String) :
+    lfundefPhysAbiOfVirtPool pool virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs
+      = let f := lfundefPhysAbiOfVirtAt pool virt0 outArg' inArgs' accRegs abiArgs
+          abiTyin posBind outs
+        { f with lfd_body := savedArgMoves f.lfd_body } := rfl
+
+/-- **The allocation of a virtual function that calls `c`, with its allocation
+    certificate**: `lfundefPhysAbiOfVirtPoolCert` at the pool `keepPool c` of the names kept
+    across a call of `c`. -/
+def lfundefPhysAbiOfVirtCCert (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
+    (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
+    (outs : List String := []) (frameArrs : List (String × Nat × Nat) := []) :
+    Lfundef × List (String × String) :=
+  lfundefPhysAbiOfVirtPoolCert (keepPool c) virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+    outs frameArrs
+
+/-- **The allocation of a virtual function that calls `c`**: `lfundefPhysAbiOfVirtPool` at the
+    pool `keepPool c`. -/
 def lfundefPhysAbiOfVirtC (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
     (inArgs' accRegs abiArgs : List String) (abiTyin : List Nat) (posBind : Bool)
     (outs : List String := []) : Lfundef :=
-  (lfundefPhysAbiOfVirtCCert c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs).1
+  lfundefPhysAbiOfVirtPool (keepPool c) virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind
+    outs
 
 /-- The function of `lfundefPhysAbiOfVirtCCert` is `lfundefPhysAbiOfVirtC`. -/
 theorem lfundefPhysAbiOfVirtCCert_fst (c : CalleeSig) (virt0 : Lfundef) (outArg' : String)
@@ -3065,7 +3155,7 @@ theorem lfundefPhysAbiOfVirtCCert_fst (c : CalleeSig) (virt0 : Lfundef) (outArg'
     (outs : List String) :
     (lfundefPhysAbiOfVirtCCert c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs).1
       = lfundefPhysAbiOfVirtC c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs :=
-  rfl
+  lfundefPhysAbiOfVirtPoolCert_fst _ _ _ _ _ _ _ _ _
 
 /-- The allocation of a caller of `c` is `lfundefPhysAbiOfVirtAt` at the pool
     `keepPool c`, followed by `savedArgMoves` on its body. -/
@@ -3075,6 +3165,7 @@ theorem lfundefPhysAbiOfVirtC_eq_at (c : CalleeSig) (virt0 : Lfundef) (outArg' :
     lfundefPhysAbiOfVirtC c virt0 outArg' inArgs' accRegs abiArgs abiTyin posBind outs
       = let f := lfundefPhysAbiOfVirtAt (keepPool c) virt0 outArg' inArgs' accRegs abiArgs
           abiTyin posBind outs
-        { f with lfd_body := savedArgMoves f.lfd_body } := rfl
+        { f with lfd_body := savedArgMoves f.lfd_body } :=
+  lfundefPhysAbiOfVirtPool_eq_at _ _ _ _ _ _ _ _ _
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
