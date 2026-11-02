@@ -68,6 +68,9 @@ instruction of `cb` starts at byte `L` and has index `k` in the decoded stream.
   and is the call-free block `q f` placed there. `regionBlocks_one` is the region of one
   block; `regionBlocksB` is its Boolean check, sound by `regionBlocks_of_regionBlocksB` at
   the blocks `regionBlock`; `regionDecode_inj` is the injectivity of the entry indices.
+* `KernelItems`, `RegionEntry`, `regionBlocks_of_items`: a list of blocks whose bytes, but for
+  the last, are item streams is a region at the blocks `regionCode`, the offsets `regionOffset`
+  and the indices `regionIndex`, with the program `regionProg`.
 * `linkedProg_of_itemsMap`, `linkedProg_of_bytesSym`: the program of the relocated item
   list of a body with the facts `CallFacts` satisfies `LinkedProgMap` at `K : String → Nat`:
   the decoded instructions of each instruction of the covered fragment at the index
@@ -781,6 +784,132 @@ theorem regionBlocks_of_regionBlocksB (cb : List (BitVec 8)) (fs : List String)
         obtain ⟨x, hx, hxe⟩ := List.mem_map.mp htg
         have := hblk x hx
         cases x <;> simp_all [unshiftInstr, blockInstrB]
+
+/-- **The bytes of a block are an item stream**: they are the bytes of an `ItemOK` item list.
+    Decoding an appended stream (`decodeLprog_append`) needs this of its first part. -/
+def KernelItems (bs : List (BitVec 8)) : Prop :=
+  ∃ items, (∀ it ∈ items, ItemOK it) ∧ bs = itemBytes items
+
+/-- A block of a callee region: its symbol, its bytes and the program they decode to. -/
+structure RegionEntry where
+  /-- The symbol of the block. -/
+  sym : String
+  /-- The bytes of the block. -/
+  bytes : List (BitVec 8)
+  /-- The program of the block. -/
+  code : List RInstr
+
+/-- The program of a region: the program of each block with its targets raised by the
+    instruction count of the blocks before it. -/
+def regionProg : List RegionEntry → List RInstr
+  | [] => []
+  | e :: es => e.code ++ shiftProg e.code.length (regionProg es)
+
+/-- The byte offset of the block of a symbol: the first block with that symbol, and the last
+    block for a symbol that no earlier block has. -/
+def regionOffset : List RegionEntry → String → Nat
+  | [], _ => 0
+  | [_], _ => 0
+  | e :: e' :: es, f => if e.sym = f then 0 else e.bytes.length + regionOffset (e' :: es) f
+
+/-- The instruction index of the block of a symbol, as `regionOffset`. -/
+def regionIndex : List RegionEntry → String → Nat
+  | [], _ => 0
+  | [_], _ => 0
+  | e :: e' :: es, f => if e.sym = f then 0 else e.code.length + regionIndex (e' :: es) f
+
+/-- The program of the block of a symbol, as `regionOffset`. -/
+def regionCode : List RegionEntry → String → List RInstr
+  | [], _ => []
+  | [e], _ => e.code
+  | e :: e' :: es, f => if e.sym = f then e.code else regionCode (e' :: es) f
+
+/-- **The blocks of a region of item streams.** Let each block of a nonempty list decode to its
+    program, have bytes and no `call`, and let the bytes of each block but the last be an item
+    stream (`KernelItems`). The concatenation of the blocks is a region with the blocks of
+    `regionCode` at the offsets `regionOffset` and the indices `regionIndex` in the program
+    `regionProg`. At one block this is `regionBlocks_one`. -/
+theorem regionBlocks_of_items (fs : List String) : ∀ (es : List RegionEntry), es ≠ [] →
+    (∀ e ∈ es, decodeLprog e.bytes = some e.code) → (∀ e ∈ es, e.bytes ≠ []) →
+    (∀ e ∈ es, ∀ tg, RInstr.call tg ∉ e.code) → (∀ e ∈ es.dropLast, KernelItems e.bytes) →
+    RegionBlocks (es.flatMap (·.bytes)) fs (regionOffset es) (regionIndex es) (regionCode es)
+      (regionProg es)
+  | [], hne, _, _, _, _ => absurd rfl hne
+  | [e], _, hdec, hnb, hq, _ => by
+    have h := regionBlocks_one e.bytes e.code fs (hdec e (by simp)) (hnb e (by simp))
+      (hq e (by simp))
+    have hb : [e].flatMap (·.bytes) = e.bytes := by simp
+    have hp : regionProg [e] = e.code := by simp [regionProg, shiftProg]
+    rw [hb, hp]
+    exact h
+  | e :: e' :: es, _, hdec, hnb, hq, hit => by
+    have ih := regionBlocks_of_items fs (e' :: es) (by simp)
+      (fun x hx => hdec x (List.mem_cons_of_mem _ hx))
+      (fun x hx => hnb x (List.mem_cons_of_mem _ hx))
+      (fun x hx => hq x (List.mem_cons_of_mem _ hx))
+      (fun x hx => hit x (by simp only [List.dropLast_cons_cons]; exact List.mem_cons_of_mem _ hx))
+    obtain ⟨items, hok, hbytes⟩ := hit e (by simp)
+    have hdecE := hdec e (by simp)
+    have hneE := hnb e (by simp)
+    rw [hbytes] at hdecE hneE
+    generalize hR : (e' :: es).flatMap (·.bytes) = R at ih
+    obtain ⟨xs₂, hd, hr, hidx⟩ := ih.decode
+    have hRdec : decodeLprog R = some (regionProg (e' :: es)) := by
+      simp [decodeLprog, hd, hr]
+    have hQ := decodeLprog_append items hok R _ _ hdecE hRdec
+    have hd' : decodeAt R.length (0 + (itemBytes items).length) R
+        = some (offsetLayout (itemBytes items).length xs₂) := by
+      rw [decodeAt_offset, hd]; rfl
+    have hall := decodeAt_items_append items hok R R.length (itemBytes items ++ R).length 0 _ hd'
+      (by
+        rw [layoutAt_length, List.length_append]
+        have := decCount_le_length items hok
+        omega)
+    have hlen : (layoutAt 0 items).length = e.code.length := by
+      unfold decodeLprog at hdecE
+      rw [decodeAt_items items hok _ 0 (by
+        rw [layoutAt_length]; exact decCount_le_length items hok), Option.bind_some] at hdecE
+      exact ((resolveAll_eq_some_iff _ _ _).mp hdecE).length_eq
+    have hlt : ∀ z ∈ layoutAt 0 items, z.1 < (itemBytes items).length := fun z hz => by
+      simpa using layoutAt_start_lt items hok 0 z hz
+    have hfm : ((e :: e' :: es).flatMap (·.bytes)) = itemBytes items ++ R := by
+      rw [← hR, ← hbytes]; simp
+    have hres : resolveAll (layoutAt 0 items ++ offsetLayout (itemBytes items).length xs₂)
+        (layoutAt 0 items ++ offsetLayout (itemBytes items).length xs₂)
+        = some (regionProg (e :: e' :: es)) := by
+      unfold decodeLprog at hQ
+      rw [hall, Option.bind_some] at hQ
+      exact hQ
+    rw [hfm]
+    refine ⟨⟨_, hall, hres, fun f hf => ?_⟩, fun f hf => ?_, fun f hf => ?_⟩
+    · by_cases hs : e.sym = f
+      · obtain ⟨h, x, tl, hxs⟩ := decodeAt_head_start _ 0 _ _ (by simp [hneE]) hall
+        rw [hxs]
+        simp [regionOffset, regionIndex, hs, List.findIdx?_cons]
+      · have hi := findIdx?_offset_append (layoutAt 0 items) xs₂ (itemBytes items).length
+          (regionOffset (e' :: es) f) _ _ hlt rfl (hidx f hf)
+        have hp : (fun z : Nat × Nat × DInstr =>
+            decide ((z.1 : Int)
+              = (((itemBytes items).length + regionOffset (e' :: es) f : Nat) : Int)))
+            = fun z => decide (z.1 = (itemBytes items).length + regionOffset (e' :: es) f) := by
+          funext z
+          simp only [Int.natCast_inj]
+        rw [hp, hlen] at hi
+        simpa [regionOffset, regionIndex, hs, hbytes] using hi
+    · by_cases hs : e.sym = f
+      · refine ⟨[], shiftProg e.code.length (regionProg (e' :: es)), ?_, ?_⟩
+        · simp [regionProg, regionCode, hs, shiftProg_zero]
+        · simp [regionIndex, hs]
+      · obtain ⟨A, B, hQ', hA⟩ := ih.block f hf
+        refine ⟨e.code ++ shiftProg e.code.length A, shiftProg e.code.length B, ?_, ?_⟩
+        · rw [show regionProg (e :: e' :: es)
+            = e.code ++ shiftProg e.code.length (regionProg (e' :: es)) from rfl, hQ']
+          simp only [regionCode, hs, ite_false, shiftProg_append, shiftProg_shiftProg,
+            List.length_append, shiftProg_length, List.append_assoc, Nat.add_comm]
+        · simp [regionIndex, hs, hA]
+    · by_cases hs : e.sym = f
+      · simpa [regionCode, hs] using hq e (by simp)
+      · simpa [regionCode, hs] using ih.callFree f hf
 
 /-! ## 5. The relocating function encoder in front of its callee -/
 

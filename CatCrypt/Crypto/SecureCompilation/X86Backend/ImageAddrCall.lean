@@ -56,6 +56,8 @@ after a call (`ImageCallProbe.reloadOf_call`).
 * `WordCallee`: the reading of an interface as a procedure summary on words.
 * `FrameAbove`, `frameNonnegB`, `CallerSep`, `FootBelow`: the frame words and the array
   words above the return word and the frame of the callee.
+* `CallerSep.mono`, `FootBelow.mono`: the separation at a smaller bound and the footprint at a
+  larger one.
 * `AgreeOffF`, `ImgRelF`, `exemptC`: the image relation up to a list of names and the
   flags.
 * `remoteCallB`, `callFreeB`, `instrOKCB`, `relocFrameB`, `printedAddrCB`, `imgGateCB`: the
@@ -106,6 +108,8 @@ after a call (`ImageCallProbe.reloadOf_call`).
   `haltsO_of_runChain` is its word instance at `Callee.oracleAt`.
 * `procStep_regArgs`, `glue_regArgs`: the step `LprogCallCut.Glue` is the step of the
   summary at the argument words.
+* `oneRegion_of_checks`: the checks of a body in front of one callee block are the checks at
+  the target map of a region of one block.
 * `haltsO_of_withProcs_run`: a halting run on the machine with procedures is a run under
   the oracle, from `SegSim`.
 * `ctl_deadStep`, `steps_deadSeg`: a control step and a run of steps of a body that passes
@@ -468,21 +472,37 @@ structure CallerSep (frame : String → Option (BitVec 64))
 def FootBelow (c : CalleeSig) (G : Nat) : Prop :=
   ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x
 
-/-- `FootBelow` holds at every larger bound: the `F` bytes below an address are among the `G`
-    bytes below it for `F ≤ G`, and every byte is among them when `2 ^ 64 < G`. -/
-theorem FootBelow.mono {c : CalleeSig} {F G : Nat} (h : FootBelow c F) (hFG : F ≤ G) :
-    FootBelow c G := by
-  intro s x hx
-  have hf := h s x hx
-  unfold InFrame at hf ⊢
+/-- The `F` bytes below an address are among the `G` bytes below it for `F ≤ G`, and every byte
+    is among them when `2 ^ 64 < G`. -/
+theorem inFrame_mono_of_le {e x : BitVec 64} {F G : Nat} (hFG : F ≤ G) (h : InFrame e F x) :
+    InFrame e G x := by
+  unfold InFrame at h ⊢
   by_cases hG : G ≤ 2 ^ 64
-  · have e := (s.regs "%rsp").isLt
-    have hx' := x.isLt
+  · have := e.isLt
+    have := x.isLt
     have hF : (F : Int) ≤ 2 ^ 64 := by omega
-    simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofInt] at hf ⊢
+    simp only [BitVec.toNat_sub, BitVec.toNat_add, BitVec.toNat_ofInt] at h ⊢
     omega
-  · have := (x - (s.regs "%rsp" + BitVec.ofInt 64 (-(G : Int)))).isLt
+  · have := (x - (e + BitVec.ofInt 64 (-(G : Int)))).isLt
     omega
+
+/-- `FootBelow` holds at every larger bound. -/
+theorem FootBelow.mono {c : CalleeSig} {F G : Nat} (h : FootBelow c F) (hFG : F ≤ G) :
+    FootBelow c G :=
+  fun s x hx => inFrame_mono_of_le hFG (h s x hx)
+
+/-- `CallerSep` holds at every smaller bound: the frame words are above the stack register with
+    room for fewer bytes, and the `F` bytes below the return word are among the `G` bytes below
+    it. -/
+theorem CallerSep.mono {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {F G : Nat} (h : CallerSep frame slotArr base rsp G) (hFG : F ≤ G) :
+    CallerSep frame slotArr base rsp F where
+  frames q a hq := by
+    obtain ⟨o, ho, ha⟩ := h.frames q a hq
+    exact ⟨o, by omega, ha⟩
+  cells q A n j hq hj x hx :=
+    (h.cells q A n j hq hj x hx).imp_right fun h2 hF => h2 (inFrame_mono_of_le hFG hF)
 
 /-- **The footprint and the return word are clear of the caller.** Under `CallerSep` at the
     stack register of the byte state, for a callee whose footprint is among the `G` bytes
@@ -1402,6 +1422,30 @@ theorem haltsO_of_runChainS {frame : String → Option (BitVec 64)}
     rw [hpc2, hsim.pos_call _ bi ra _ hb hbi] at hrun
     exact ⟨sA', hk _ (hcont _ hrun), hfin⟩
 
+/-- **The step of a call of a word callee at dead names `E` and `E'`**: when no argument name of
+    `c` is in `E` and the names of `E` other than `res` and the names `exemptC c` are in `E'`, a
+    step to the image state after the word of the summary at the argument words is a step of
+    the site (`SiteStep`) at `E` and `E'`. -/
+theorem siteStepAt_word {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c) {res : String}
+    {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
+    {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
+    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
+    {E E' : List String} (hargs : ∀ a ∈ c.args, a ∉ E)
+    (hsub : ∀ r ∈ E.filter (fun r => r != res) ++ exemptC c, r ∈ E') {u v : LstateMF}
+    (hv : ∃ w, pr.run (c.args.map (argWord u.prog.base.reg)) = some w
+      ∧ v = LprogIsa.retWord res w u) :
+    SiteStep frame slotArr base rsp body X c E E' u v := by
+  obtain ⟨w, hw', rfl⟩ := hv
+  refine ⟨res, .word w, rfl, fun u' hag => ?_, hsub⟩
+  have hv' : pr.run (c.args.map (argWord u'.prog.base.reg)) = some w := by
+    rw [← hw']
+    congr 1
+    exact List.map_congr_left fun a ha => (argWord_congr (hag.regs a (hargs a ha))).symm
+  exact resStep_word hsep hphys hX hw hS hF hroom hv'
+
 /-- **The step of a call site of a word callee**: under `callDeadB` at a call position `p`,
     a step to the image state after the word of the summary at the argument words is a step
     of the site (`SiteStep`) at the dead names of `p` and `p + 1`. -/
@@ -1418,14 +1462,8 @@ theorem siteStep_word {frame : String → Option (BitVec 64)}
       ∧ v = LprogIsa.retWord res w u) :
     SiteStep frame slotArr base rsp body X c (E p) (E (p + 1)) u v := by
   obtain ⟨bi, ra, t, hb, hbi⟩ := hb
-  obtain ⟨w, hw', rfl⟩ := hv
   obtain ⟨hargs, hsub⟩ := callDeadB_spec hdead hb hbi
-  refine ⟨res, .word w, rfl, fun u' hag => ?_, hsub⟩
-  have hv' : pr.run (c.args.map (argWord u'.prog.base.reg)) = some w := by
-    rw [← hw']
-    congr 1
-    exact List.map_congr_left fun a ha => (argWord_congr (hag.regs a (hargs a ha))).symm
-  exact resStep_word hsep hphys hX hw hS hF hroom hv'
+  exact siteStepAt_word hsep hphys hX hw hS hF hroom hargs hsub hv
 
 /-- **A chain of segments is a run under the oracle of the callee.** Let the segments
     `SegTo I T P` of a calling body of the class `physImgB` have the simulation `SegSim` at
@@ -2800,6 +2838,84 @@ theorem haltsC_of_linkedChecksS {frame : String → Option (BitVec 64)}
   obtain ⟨f, hf, rfl, tr, hrunf⟩ := ho
   obtain ⟨A, B, hQ, hA⟩ := hR.block f hf
   exact ⟨A, q f, B, hQ, by rw [hA], hR.callFree f hf, DecodedCT.RunL.halts hrunf⟩
+
+/-- **The one-block region of the symbols of a body.** For a body of the class `printedAddrCB`
+    with its shapes, every call names a symbol of the remote symbols of the body, and the checks
+    `branchOKReloc` and `expectedReloc` at the instruction count and the byte length of the
+    function are the checks `branchOKRelocMap` and `expectedRelocMap` at the target map of the
+    region whose symbols all have offset and index `0`. -/
+theorem oneRegion_of_checks {G : Nat} {body : Lcmd} {ds : List PhysAbiShape.DShape}
+    (hcls : printedAddrCB G body = true)
+    (hshapes : DecodeGen.shapesOf (Params.ofBody body) body = some ds)
+    (symBase : String → Option Int) {prog : List RInstr}
+    (hbr : LprogBytesLinkReloc.branchOKReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
+    bodyCallSymsB (fun g => decide (g ∈ body.filterMap fun i => remoteSym i.li_i)) body = true
+      ∧ LprogBytesLinkReloc.branchOKRelocMap
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+        (LprogBytesLinkReloc.symTgt (LprogBytesLinkReloc.regionTgt
+          (body.filterMap fun i => remoteSym i.li_i)
+          (LprogBytesDecode.decCount
+            (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+          (LprogBytes.encodeLfundefBytesReloc symBase body).length (fun _ => 0) (fun _ => 0))) 0
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = true
+      ∧ LprogBytesLinkReloc.expectedRelocMap
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+        (LprogBytesLinkReloc.symTgt (LprogBytesLinkReloc.regionTgt
+          (body.filterMap fun i => remoteSym i.li_i)
+          (LprogBytesDecode.decCount
+            (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+          (LprogBytes.encodeLfundefBytesReloc symBase body).length (fun _ => 0) (fun _ => 0)))
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+        = some prog := by
+  have hCF := callFacts_of_printedAddrCB hcls hshapes
+  have hagree : ∀ it ∈ LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds,
+      it.target = none → ∀ d, it.dec = some (.call d) →
+        (fun _ => some (LprogBytesDecode.decCount
+            (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds),
+          (LprogBytes.encodeLfundefBytesReloc symBase body).length)) it
+        = LprogBytesLinkReloc.symTgt (LprogBytesLinkReloc.regionTgt
+            (body.filterMap fun i => remoteSym i.li_i)
+            (LprogBytesDecode.decCount
+              (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+            (LprogBytes.encodeLfundefBytesReloc symBase body).length
+            (fun _ => 0) (fun _ => 0)) it := by
+    intro it hit ht d hd
+    obtain ⟨f, hf, i, hi, hr⟩ :=
+      LprogBytesLinkReloc.fundefItemsRelocL_sym symBase _ body ds it hit ht d hd
+    have hmem : f ∈ body.filterMap fun i => remoteSym i.li_i :=
+      List.mem_filterMap.mpr ⟨i, hi, hr⟩
+    simp [LprogBytesLinkReloc.symTgt, hf, LprogBytesLinkReloc.regionTgt, hmem]
+  refine ⟨?_, by rw [← LprogBytesLinkReloc.branchOKRelocMap_congr _ _ hagree]; exact hbr,
+    by rw [← LprogBytesLinkReloc.expectedRelocMap_congr _ _ hagree]; exact hP⟩
+  simp only [bodyCallSymsB, List.all_eq_true, List.mem_range]
+  intro p hp
+  cases hb : body[p]? with
+  | none => rfl
+  | some bi =>
+    rw [Option.all_some]
+    split
+    · rename_i ra f l hbi
+      have hbk : body[p]'(by omega) = bi := (List.getElem?_eq_some_iff.mp hb).2
+      have hrem : remoteSym bi.li_i ≠ none := by
+        rcases hCF.instr p (by omega) with h | h
+        · rwa [hbk] at h
+        · rw [hbk, hbi] at h
+          simp [instrOKB] at h
+      rw [hbi] at hrem
+      exact decide_eq_true (List.mem_filterMap.mpr
+        ⟨bi, List.mem_of_getElem? hb, by rw [hbi]; simpa [remoteSym] using hrem⟩)
+    · rfl
 
 /-- **A halting run of the image of a calling body at the steps of its call sites, all of one
     callee, is a run through calls of the program its linked bytes decode to**:
