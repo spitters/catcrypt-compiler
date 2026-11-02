@@ -619,6 +619,11 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel isLabel)
 
+/-- The image of an indexed store through a cell is an `Lopn`. -/
+theorem cellStoreImg_lopn (A : String) (n : Nat) (idx : String ⊕ Nat) (v : String) :
+    ∃ ds o ss, (cellStoreImg A n idx v).1 = .Lopn ds o ss := by
+  cases idx <;> exact ⟨_, _, _, rfl⟩
+
 theorem isLabel_imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) (l : LLabel) :
     isLabel l (imgInstr slotArr body k i).1 = isLabelB l i := by
@@ -633,6 +638,7 @@ theorem isLabel_imgInstr (slotArr : String → Option (String × Nat)) (body : L
         repeat' split
         all_goals first
           | exact ⟨_, _, _, rfl⟩
+          | exact cellStoreImg_lopn _ _ _ _
           | (apply arrImmImg_lopn; assumption)
   | Llabel ii l' =>
       simp only [imgInstr, bitStore?, cellIdxStore?, arrImmImg, baseReload?, normA, isLabel,
@@ -2240,7 +2246,7 @@ theorem rel_jump {frame : String → Option (BitVec 64)}
 /-- An indexed store through a cell (`cellIdxStore?`) is a cell access (`cellA?`) that `normA`
     keeps. -/
 theorem cellA?_of_cellIdxStore {slotArr : String → Option (String × Nat)} {body : Lcmd}
-    {k : Nat} {i : LinstrR} {p : String × Nat × String × String}
+    {k : Nat} {i : LinstrR} {p : String × Nat × (String ⊕ Nat) × String}
     (h : cellIdxStore? slotArr body k i = some p) : (cellA? i).isSome = true ∧ normA i = i := by
   obtain ⟨A, n, q, v⟩ := p
   obtain ⟨c, D, -, -, -, -, -, -, -, rfl, hc, -⟩ := cellIdxStore?_spec h

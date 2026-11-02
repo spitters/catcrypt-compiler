@@ -653,6 +653,7 @@ theorem imgInstr_nextPc {frame : String → Option (BitVec 64)}
       repeat' split
       all_goals first
         | exact ⟨_, _, _, rfl⟩
+        | exact cellStoreImg_lopn _ _ _ _
         | (apply arrImmImg_lopn; assumption)
     rw [he] at h
     exact h

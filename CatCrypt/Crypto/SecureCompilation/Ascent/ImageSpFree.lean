@@ -79,7 +79,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg imgInstr accArr
   physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore? cellIdxStore?_spec
-  arrImmImg arrImmImg_lopn baseReload? baseReload?_spec)
+  arrImmImg arrImmImg_lopn baseReload? baseReload?_spec cellStoreImg cellOpMov?)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (normA condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts? slotMov?)
@@ -704,8 +704,7 @@ theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcm
     ∨ (∃ d n, x = .Lopn [.reg d] "MOV:64" [.imm n]
         ∧ (imgInstr slotArr body k x).fst = .Lopn [.reg d] "MOV" [.imm n])
     ∨ (∃ A n q v, cellIdxStore? slotArr body k x = some (A, n, q, v)
-        ∧ (imgInstr slotArr body k x).fst
-          = .Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v])
+        ∧ (imgInstr slotArr body k x).fst = (cellStoreImg A n q v).1)
     ∨ (∃ r, arrImmImg slotArr body k x = some r ∧ (imgInstr slotArr body k x).fst = r.1)
     ∨ ∃ b q, baseReload? slotArr body k x = some (b, q)
         ∧ (imgInstr slotArr body k x).fst = .Lopn [.reg b] "CASTW_64_64" [.reg q] := by
@@ -866,14 +865,14 @@ theorem virtImg_noCall (slotArr : String → Option (String × Nat)) {body : Lcm
   obtain ⟨k, j, -, hj, rfl⟩ := mem_virtImg hi
   have hok := instrOKB_of_printedAddrB hp hj
   rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, _, -, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩ |
+    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, q, _, -, h⟩ | ⟨_, hri, h⟩ |
     ⟨_, _, -, h⟩
   · rw [h]
     cases hx : j.li_i <;> rw [hx] at hok <;> simp [instrOKB] at hok <;> rfl
   · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
-  · rw [h]; rfl
+  · rw [h]; cases q <;> rfl
   · obtain ⟨ds, o, ss, he⟩ := arrImmImg_lopn hri
     rw [h, he]
     rfl
@@ -922,24 +921,37 @@ theorem read_of_slotMov {i : LinstrR} {d s : String} (h : slotMov? i = some (d, 
 theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {x : LinstrR} {r : String} (hr : r ∈ (rdWr (imgInstr slotArr body k x).fst).1) :
     r ∈ (rdWr x).1 ∨ (∃ q n, slotArr q = some (r, n))
-      ∨ ∃ A n v j i', cellIdxStore? slotArr body k x = some (A, n, r, v) ∧ j < k
+      ∨ ∃ A n v j i', cellIdxStore? slotArr body k x = some (A, n, .inl r, v) ∧ j < k
         ∧ body[j]? = some i' ∧ r ∈ (rdWr i'.li_i).1 := by
   rcases imgInstr_cases slotArr body k x with h | ⟨d, o, b, idx, A, n, -, rfl, hA, h⟩ |
     ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ |
     ⟨ri, hri, h⟩ | ⟨b', q', hbr, h⟩
   rotate_left 4
-  · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, -, -, -,
-      hacc⟩ := cellIdxStore?_spec hc
+  · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, hacc⟩ :=
+      cellIdxStore?_spec hc
     rw [h] at hr
-    simp only [rdWr, opNames, List.flatMap_cons, List.flatMap_nil, List.append_nil,
-      List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hr
-    rcases hr with (rfl | rfl) | rfl
-    · obtain ⟨q', -, hq', -⟩ := accArr_spec hacc
-      exact Or.inr (Or.inl ⟨q', n, hq'⟩)
-    · exact Or.inr (Or.inr ⟨A, n, v, k - 3, r', hc, by omega, hr', read_of_slotMov hm⟩)
-    · left
-      rw [hx]
-      simp [rdWr, opNames]
+    obtain ⟨q', -, hq', -⟩ := accArr_spec hacc
+    cases q with
+    | inl q =>
+        simp only [cellStoreImg, rdWr, opNames, List.flatMap_cons, List.flatMap_nil,
+          List.append_nil, List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hr
+        rcases hr with (rfl | rfl) | rfl
+        · exact Or.inr (Or.inl ⟨q', n, hq'⟩)
+        · have hs : slotMov? r'.li_i = some (X, r) := by
+            unfold cellOpMov? at hm
+            grind
+          exact Or.inr (Or.inr ⟨A, n, v, k - 3, r', hc, by omega, hr', read_of_slotMov hs⟩)
+        · left
+          rw [hx]
+          simp [rdWr, opNames]
+    | inr j =>
+        simp only [cellStoreImg, rdWr, opNames, List.flatMap_cons, List.flatMap_nil,
+          List.append_nil, List.mem_append, List.mem_cons, List.not_mem_nil, or_false] at hr
+        rcases hr with rfl | rfl
+        · exact Or.inr (Or.inl ⟨q', n, hq'⟩)
+        · left
+          rw [hx]
+          simp [rdWr, opNames]
   · rw [h] at hr
     unfold arrImmImg at hri
     split at hri

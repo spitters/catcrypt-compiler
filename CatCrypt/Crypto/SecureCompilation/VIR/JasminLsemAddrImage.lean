@@ -268,33 +268,49 @@ theorem bitStore?_of_bitStoreB {body : Lcmd} {k : Nat} {i : LinstrR}
     (h : bitStoreB body k i = false) : bitStore? body k i = none := by
   simpa [bitStoreB] using h
 
-/-- The load of the value of an indexed store through a cell: a move between names
-    (`slotMov?`) or a 64-bit immediate move, as its destination and its source operand. -/
-def cellValMov? (i : LinstrR) : Option (String × LOperand) :=
+/-- The load of an operand of an indexed store through a cell: a move between names
+    (`slotMov?`) or a 64-bit immediate move, as its destination and its source name or
+    literal. -/
+def cellOpMov? (i : LinstrR) : Option (String × (String ⊕ Nat)) :=
   match slotMov? i with
-  | some (d, s) => some (d, .reg s)
+  | some (d, s) => some (d, .inl s)
   | none =>
       match i with
-      | .Lopn [.reg d] o [.imm n] => if o = "MOV:64" then some (d, .imm n) else none
+      | .Lopn [.reg d] o [.imm n] => if o = "MOV:64" then some (d, .inr n) else none
       | _ => none
+
+/-- The index of an indexed store through a cell, with the address register `D` and the
+    destination `d1` of the load of the value: a frame slot `q` that is neither a
+    general-purpose name nor an array slot and is neither `D` nor `d1`, or a literal. -/
+def cellIdxOkB (slotArr : String → Option (String × Nat)) (D d1 : String) :
+    String ⊕ Nat → Bool
+  | .inl q => d1 != q && D != q && !gpNameB q && (slotArr q).isNone
+  | .inr _ => true
+
+/-- The image of an indexed store through a cell of `v` into the array `A` of length `n`: at
+    a frame slot `q` the name-keyed store `STOREIDX A[q] := v`, and at a literal `j` the
+    constant-index store `STOREIMM A, [A, v, #j]`. -/
+def cellStoreImg (A : String) (n : Nat) (idx : String ⊕ Nat) (v : String) : LinstrRM :=
+  match idx with
+  | .inl q => (.Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v], .store 64 n)
+  | .inr j => (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm j], .storeImm 64 n)
 
 /-- The instruction at position `k` of `body` is an indexed store through a cell: the store
     `MOV:64 mem.D.0, v` of a register `v` other than `D`, whose base `D` is written two
     instructions before by `LEA:64 D, (B, X, 8)` with `B` the pointer of the array `A` of
-    length `n` (`accArr` at the address), whose index register `X` is reloaded three
-    instructions before from the frame slot `q` by a move (`slotMov?`), `q` a name that is
-    neither a general-purpose name nor an array slot nor `D`, and whose instruction in
-    between is the load of the value (`cellValMov?`) into a name other than `D` and `q`; as
-    `(A, n, q, v)`. The store writes `v` at the word `8 · q` of `A`. -/
+    length `n` (`accArr` at the address), whose index register `X` is loaded three
+    instructions before from a frame slot or a literal `idx` (`cellOpMov?`, `cellIdxOkB`), and
+    whose instruction in between is the load of the value (`cellOpMov?`) into a name other
+    than `D`; as `(A, n, idx, v)`. The store writes `v` at the word `8 · idx` of `A`. -/
 def cellIdxStore? (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
-    LinstrR → Option (String × Nat × String × String)
+    LinstrR → Option (String × Nat × (String ⊕ Nat) × String)
   | .Lopn [.reg c] o [.reg v] =>
       match cellParts? c, body[k - 2]?, body[k - 3]?, body[k - 1]? with
       | some (D, off), some l, some r, some m =>
-          match l.li_i, slotMov? r.li_i, cellValMov? m.li_i with
+          match l.li_i, cellOpMov? r.li_i, cellOpMov? m.li_i with
           | .Lopn [.reg D'] o' [.arrIdx B X 8], some (X', q), some (d1, _) =>
               if o = "MOV:64" ∧ 3 ≤ k ∧ off = 0 ∧ v ≠ D ∧ o' = "LEA:64" ∧ D' = D ∧ X' = X
-                  ∧ d1 ≠ D ∧ d1 ≠ q ∧ D ≠ q ∧ gpNameB q = false ∧ (slotArr q).isNone = true then
+                  ∧ d1 ≠ D ∧ cellIdxOkB slotArr D d1 q = true then
                 (accArr slotArr body (k - 2) B).map fun p => (p.1, p.2, q, v)
               else none
           | _, _, _ => none
@@ -320,17 +336,17 @@ theorem cellIdxStore?_of_ne (slotArr : String → Option (String × Nat)) {body 
 
 /-- **The indexed store through a cell** (`cellIdxStore?`): the store `MOV:64 c, v` with `c`
     the cell `mem.D.0`, the address `LEA:64 D, (B, X, 8)` at `k - 2` with `B` the pointer of
-    `A`, the reload of `X` from `q` at `k - 3` and the load of the value into `d1` at
+    `A`, the load of `X` from `q` at `k - 3` and the load of the value into `d1` at
     `k - 1`. -/
 theorem cellIdxStore?_spec {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
-    {i : LinstrR} {A q v : String} {n : Nat}
+    {i : LinstrR} {A v : String} {q : String ⊕ Nat} {n : Nat}
     (h : cellIdxStore? slotArr body k i = some (A, n, q, v)) :
     ∃ c D B X d1 s l r m, i = .Lopn [.reg c] "MOV:64" [.reg v] ∧ cellParts? c = some (D, 0)
       ∧ 3 ≤ k ∧ v ≠ D
       ∧ body[k - 2]? = some l ∧ l.li_i = .Lopn [.reg D] "LEA:64" [.arrIdx B X 8]
-      ∧ body[k - 3]? = some r ∧ slotMov? r.li_i = some (X, q)
-      ∧ body[k - 1]? = some m ∧ cellValMov? m.li_i = some (d1, s)
-      ∧ d1 ≠ D ∧ d1 ≠ q ∧ D ≠ q ∧ gpNameB q = false ∧ slotArr q = none
+      ∧ body[k - 3]? = some r ∧ cellOpMov? r.li_i = some (X, q)
+      ∧ body[k - 1]? = some m ∧ cellOpMov? m.li_i = some (d1, s)
+      ∧ d1 ≠ D ∧ cellIdxOkB slotArr D d1 q = true
       ∧ accArr slotArr body (k - 2) B = some (A, n) := by
   unfold cellIdxStore? at h
   split at h
@@ -340,12 +356,12 @@ theorem cellIdxStore?_spec {slotArr : String → Option (String × Nat)} {body :
       split at h
       · rename_i D' o' B X X' q' d1 s hli hr' hm'
         split_ifs at h with hcond
-        obtain ⟨rfl, h3, rfl, hv, rfl, rfl, rfl, hd1, hd1q, hDq, hgp, hsl⟩ := hcond
+        obtain ⟨rfl, h3, rfl, hv, rfl, rfl, rfl, hd1, hok⟩ := hcond
         obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
         simp only [Prod.mk.injEq] at he
         obtain ⟨rfl, rfl, rfl, rfl⟩ := he
-        exact ⟨c, _, B, _, d1, s, l, r, m, rfl, hc, h3, hv, hl, hli, hr, hr', hm, hm', hd1,
-          hd1q, hDq, hgp, Option.isNone_iff_eq_none.mp hsl, hp⟩
+        exact ⟨c, _, B, _, d1, s, l, r, m, rfl, hc, h3, hv, hl, hli, hr, hr', hm, hm', hd1, hok,
+          hp⟩
       · cases h
     · cases h
   · cases h
@@ -450,13 +466,14 @@ theorem baseReload?_of_slot_none (slotArr : String → Option (String × Nat)) (
     register that holds the pointer of the array `A` of length `n` is the name-keyed load or
     store on `A` at the shape `(64, n)`; a stored carry constant `MOV:64 d, #n` (`bitStore?`)
     is the untagged move `MOV d, #n` at the one-bit tag `.reg (some 1)`, the write of the bit
-    `n`; an indexed store through a cell (`cellIdxStore?`) of `v` at the word `8 · q` of the
-    array `A` of length `n` is the name-keyed store `STOREIDX A[q] := v` at the shape
-    `(64, n)`; an array zeroing or a constant-index store through the pointer of an array is
-    its image by `arrImmImg`; the reload of the base of an address computation
-    (`baseReload?`) is the cast `CASTW_64_64 b, q` at the tag `.reg (some 64)`, which reads the
-    word of `q` as a word of width `64`, so the address computation has no width guard on a
-    name that only the image holds; every other instruction is `normA` of it at the tag
+    `n`; an indexed store through a cell (`cellIdxStore?`) of `v` at the index `q` of the
+    array `A` of length `n` is `cellStoreImg`, the name-keyed store at the shape `(64, n)`
+    at a frame slot and the constant-index store at a literal; an array zeroing or a
+    constant-index store through the pointer of an array is its image by `arrImmImg`; the
+    reload of the base of an address computation (`baseReload?`) is the cast
+    `CASTW_64_64 b, q` at the tag `.reg (some 64)`, which reads the word of `q` as a word of
+    width `64`, so the address computation has no width guard on a name that only the image
+    holds; every other instruction is `normA` of it at the tag
     `tagAt` of its position. The mnemonic of an indexed access is read through `untagCaret`. -/
 def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : LinstrRM :=
@@ -478,7 +495,7 @@ def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Na
       | some (d, n) => (.Lopn [.reg d] "MOV" [.imm n], .reg (some 1))
       | none =>
           match cellIdxStore? slotArr body k i with
-          | some (A, n, q, v) => (.Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v], .store 64 n)
+          | some (A, n, q, v) => cellStoreImg A n q v
           | none =>
               match arrImmImg slotArr body k i with
               | some r => r
@@ -503,13 +520,12 @@ theorem imgInstr_bitStore (slotArr : String → Option (String × Nat)) {body : 
   obtain ⟨rfl, -⟩ := bitStore?_spec h
   simp only [imgInstr, h]
 
-/-- The image of an indexed store through a cell (`cellIdxStore?`) of `v` at the word `8 · q`
-    of the array `A` of length `n` is the name-keyed store `STOREIDX A[q] := v`. -/
+/-- The image of an indexed store through a cell (`cellIdxStore?`) of `v` at the index `q` of
+    the array `A` of length `n` is `cellStoreImg`. -/
 theorem imgInstr_cellIdxStore (slotArr : String → Option (String × Nat)) {body : Lcmd}
-    {k : Nat} {i : LinstrR} {A q v : String} {n : Nat}
+    {k : Nat} {i : LinstrR} {A v : String} {q : String ⊕ Nat} {n : Nat}
     (h : cellIdxStore? slotArr body k i = some (A, n, q, v)) :
-    imgInstr slotArr body k i = (.Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v], .store 64 n)
-    := by
+    imgInstr slotArr body k i = cellStoreImg A n q v := by
   obtain ⟨c, -, -, -, -, -, -, -, -, rfl, -⟩ := cellIdxStore?_spec h
   have hb : bitStore? body k (.Lopn [.reg c] "MOV:64" [.reg v]) = none :=
     bitStore?_of_ne (by simp)

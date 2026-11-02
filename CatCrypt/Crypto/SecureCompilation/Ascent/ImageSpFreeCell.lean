@@ -50,7 +50,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg imgInstr accArr
   physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore?_spec arrImmImg
-  arrImmImg_lopn baseReload?_spec)
+  arrImmImg_lopn baseReload?_spec cellStoreImg cellOpMov?)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (normA condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts? slotMov?)
@@ -130,20 +130,28 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
       simp [hf, hA']
     · rw [h]
       simpa [rspFreeB, operandNames, srcNames] using hf
-    · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, -, -, -,
-        hacc'⟩ := cellIdxStore?_spec hc
+    · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, hacc'⟩ :=
+        cellIdxStore?_spec hc
       obtain ⟨q', -, hq', -⟩ := accArr_spec hacc'
-      have hqf : rspFreeNameB q = true := by
-        rcases hpre (k - 3) r' (by omega) hr' with hf' | ⟨_, _, _, _, he, -⟩
-        · have hn : ∀ r ∈ operandNames r'.li_i, rspFreeNameB r = true := by
-            simpa [rspFreeB] using hf'
-          exact hn q (rdWr_sub (read_of_slotMov hm))
-        · rw [he] at hm
-          simp [slotMov?] at hm
       rw [h]
       subst hx
-      simp [rspFreeB, operandNames, srcNames] at hf ⊢
-      simp [hf, hsl q' A n hq', hqf]
+      cases q with
+      | inl q =>
+          have hs : slotMov? r'.li_i = some (X, q) := by
+            unfold cellOpMov? at hm
+            grind
+          have hqf : rspFreeNameB q = true := by
+            rcases hpre (k - 3) r' (by omega) hr' with hf' | ⟨_, _, _, _, he, -⟩
+            · have hn : ∀ r ∈ operandNames r'.li_i, rspFreeNameB r = true := by
+                simpa [rspFreeB] using hf'
+              exact hn q (rdWr_sub (read_of_slotMov hs))
+            · rw [he] at hs
+              simp [slotMov?] at hs
+          simp [cellStoreImg, rspFreeB, operandNames, srcNames] at hf ⊢
+          simp [hf, hsl q' A n hq', hqf]
+      | inr j =>
+          simp [cellStoreImg, rspFreeB, operandNames, srcNames] at hf ⊢
+          simp [hf, hsl q' A n hq']
     · rw [h]
       unfold arrImmImg at hri
       split at hri
@@ -195,14 +203,14 @@ theorem virtImg_noCall_of {slotArr : String → Option (String × Nat)} {body : 
   refine List.all_eq_true.mpr fun i hi => ?_
   obtain ⟨k, j, hk, hlt, rfl⟩ := mem_virtImg_lt hi
   rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, _, -, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩ |
+    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, q, _, -, h⟩ | ⟨_, hri, h⟩ |
     ⟨_, _, -, h⟩
   · rw [h, isCall_normA, hx k j hk hlt]
     rfl
   · rw [h]; rfl
   · rw [h]; rfl
   · rw [h]; rfl
-  · rw [h]; rfl
+  · rw [h]; cases q <;> rfl
   · obtain ⟨_, _, _, he⟩ := arrImmImg_lopn hri
     rw [h, he]; rfl
   · rw [h]; rfl
