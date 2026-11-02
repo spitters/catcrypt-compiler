@@ -40,7 +40,8 @@ whose layout passes the parameters `ins` in registers and returns a word in a re
   word of the summary and the relaxed relation holds at the step of the summary.
 * `procStep_ins`, `glue_ins`: the step of a summary without a word-array result reads the
   argument words at its array positions and writes the word of `run`.
-* `siteStep_ins`: the step of a call site of such a callee.
+* `siteStepAt_ins`: the step of the call site at one position of such a callee.
+* `siteStep_ins`: its instance at the call positions of a body under `callDeadB`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
@@ -242,6 +243,48 @@ theorem glue_ins {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
 
 /-! ## 4. The step of a call site -/
 
+/-- **The step of the call site at position `p` of a callee on scalars and read-only arrays.**
+    Let the callee meet its specification with the reading `pr` at the summary input `rd`
+    (`InsCallee`), and the caller be separated (`CallerSep`) for a callee of `FootBelow`. Let,
+    from an image state related by `ImgRel` at position `p` to an address state that
+    corresponds to a byte state, the entry state of the call satisfy `room` and the summary
+    input of the entry state be the argument words of the operands of `site p`. Let no
+    operand name be dead in `E`, and the names dead after the word result be in `E'`. A step
+    from an image state at the counter `p` to the image state after the word of the summary is
+    a step of the site (`SiteStep`) at `E` and `E'`. -/
+theorem siteStepAt_ins {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c) {rd : AState → List (BitVec 64)}
+    {res : String} {pr : LprogIsa.ProcSummary} {room : AState → Prop}
+    (hw : InsCallee c rd res pr room) {G : Nat} (hS : CallerSep frame slotArr base rsp G)
+    (hF : FootBelow c G) {site : Nat → String × List String} {p : Nat}
+    (hroom : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      sa.reg.lpc = p → ∀ ret, room (entryOf ret sA))
+    (hentry : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      sa.reg.lpc = p → ∀ ret vs, LprogIsa.argsRead pr.arrArgs s.prog.base 0
+        ((site p).2.map LOperand.reg) = some vs → rd (entryOf ret sA) = vs)
+    {E E' : List String} (hargs : ∀ a ∈ (site p).2, a ∉ E)
+    (hsub : ∀ r ∈ E.filter (fun r => r != (site p).1) ++ exemptC c, r ∈ E')
+    (hres : (site p).1 = res) {u v : LstateMF} (hpc : u.prog.base.reg.lpc = p)
+    (hv : ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
+        = some vs ∧ pr.run vs = some w ∧ v = LprogIsa.retWord (site p).1 w u) :
+    SiteStep frame slotArr base rsp body X c E E' u v := by
+  obtain ⟨vs, w, hvs, hw', rfl⟩ := hv
+  rw [hres] at hsub ⊢
+  refine ⟨res, .word w, rfl, fun u' hag => ?_, hsub⟩
+  have hvs' : LprogIsa.argsRead pr.arrArgs u'.prog.base 0 ((site p).2.map LOperand.reg)
+      = some vs := by
+    rw [LprogIsa.argsRead_regs_congr pr.arrArgs hag.arr.symm 0
+      fun x hx => (hag.regs x (hargs x hx)).symm]
+    exact hvs
+  intro sa zf sA hrel hc hcall ret
+  have hsp : sa.reg.lpc = p := hrel.pc.trans (hag.pc.symm.trans hpc)
+  obtain ⟨bi', ra', t', hb', hbi'⟩ := hcall
+  obtain ⟨hpre, hall⟩ := call_reestablishes_ins hsep hphys hX hw hS hF hrel hc hb' hbi' ret
+    (hentry u' sa zf sA hrel hc hsp ret vs hvs') (hroom u' sa zf sA hrel hc hsp ret) hw'
+  exact ⟨hpre, fun t sc hrun => (hall t sc hrun).2⟩
+
 /-- **The step of a call site of a callee on scalars and read-only arrays.** Let the callee
     meet its specification and have the reading `pr` at the summary input `rd` with the word
     result in the register of `res` (`InsCallee`), and the caller be separated (`CallerSep`)
@@ -273,22 +316,13 @@ theorem siteStep_ins {frame : String → Option (BitVec 64)}
     (hv : ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
         = some vs ∧ pr.run vs = some w ∧ v = LprogIsa.retWord (site p).1 w u) :
     SiteStep frame slotArr base rsp body X c (E p) (E (p + 1)) u v := by
-  obtain ⟨bi, ra, t, hb, hbi⟩ := hb
-  obtain ⟨vs, w, hvs, hw', rfl⟩ := hv
-  obtain ⟨hargs, hsub⟩ := callDeadB_spec hdead hb hbi
-  rw [hres] at hsub ⊢
-  refine ⟨res, .word w, rfl, fun u' hag => ?_, hsub⟩
-  have hvs' : LprogIsa.argsRead pr.arrArgs u'.prog.base 0 ((site p).2.map LOperand.reg)
-      = some vs := by
-    rw [LprogIsa.argsRead_regs_congr pr.arrArgs hag.arr.symm 0
-      fun x hx => (hag.regs x (hargs x hx)).symm]
-    exact hvs
-  intro sa zf sA hrel hc hcall ret
-  have hsp : sa.reg.lpc = p := hrel.pc.trans (hag.pc.symm.trans hpc)
-  obtain ⟨bi', ra', t', hb', hbi'⟩ := hcall
-  obtain ⟨hpre, hall⟩ := call_reestablishes_ins hsep hphys hX hw hS hF hrel hc hb' hbi' ret
-    (hentry u' sa zf sA hrel hc ⟨bi', ra', t', hb', hbi'⟩ ret vs (by rw [hsp]; exact hvs'))
-    (hroom u' sa zf sA hrel hc ⟨bi', ra', t', hb', hbi'⟩ ret) hw'
-  exact ⟨hpre, fun t sc hrun => (hall t sc hrun).2⟩
+  obtain ⟨bi, ra, t, hbi, hbt⟩ := id hb
+  obtain ⟨hargs, hsub⟩ := callDeadB_spec hdead hbi hbt
+  refine siteStepAt_ins hsep hphys hX hw hS hF (fun s sa zf sA hrel hc hp => ?_)
+    (fun s sa zf sA hrel hc hp => ?_) hargs hsub hres hpc hv
+  · subst hp
+    exact hroom s sa zf sA hrel hc hb
+  · subst hp
+    exact hentry s sa zf sA hrel hc hb
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
