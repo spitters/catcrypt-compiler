@@ -4759,12 +4759,12 @@ theorem calleeCutB_soundK {T : LprogIsa.ProcTable} {ref img : List LinstrRM}
 
 /-- **The entry sets of the segments of a body** `B` with the names `outs` read after it: at
     the entry `e`, the names the register liveness table `liveRegTab B outs` holds at the
-    entry position of `e`, other than the array names `arrNames B`. The relation of states
-    at an entry compares the arrays as a whole, so an array name needs no register entry.
+    entry position of `e`. The name of an array can be among them: the operands of a later
+    call are read as registers, and registers and arrays are separate name spaces, so a
+    register merged onto the name of an array is a register like any other.
     `X86Backend.CalleeSegCheck.calleeSegB` checks them. -/
 def insTab (B : List LinstrRM) (outs : List String) : Option Nat → List String :=
-  fun e => (tabAt (liveRegTab B outs) (LprogCallCut.entryPos e)).filter
-    fun r => !(arrNames B).contains r
+  fun e => tabAt (liveRegTab B outs) (LprogCallCut.entryPos e)
 
 /-- **The check of the code of a callee** `c` at the calls of a printed body `body` at the
     slot map `sl`: when the code of `c` decodes (a scalar callee), the decoded block passes
