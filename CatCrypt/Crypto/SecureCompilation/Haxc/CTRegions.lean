@@ -55,6 +55,10 @@ certificate (`DecodedCT.fastCheckWith`) together with `memCheck` for its frame w
   satisfying `σ.Regions` satisfies `FrameSep F` at every step.
 * `RegionSep.fastCheckWith_sound` — soundness of the constant-time decision on any
   certificate.
+* `RegionSep.stepW_sound` — soundness of the facts on stack words (`RegionSep.MW`): constants,
+  sums and nonzero words of a loop whose index and count live in stack words, and pointers
+  `lea d (b, x, 8)` with a bounded index.
+* `AbiLayout.pubAS_agree` — the stack words of public stack parameters agree at entry.
 * `AbiLayout.ctGateR_sound` — bytes that pass `ctGateR` decode to a program whose runs,
   with no side condition, from entry states satisfying `σ.Regions` and agreeing on the
   public data of `σ`, have equal leakage traces.
@@ -73,6 +77,68 @@ open CatCrypt.Crypto.SecureCompilation.CT
 namespace RegionSep
 
 /-! ## 1. Abstract states -/
+
+/-- The facts on the stack words of the frame range, each word named by its offset from the
+    entry stack pointer, and on the registers a loop with spilled counters computes from them:
+    a loop that calls a callee clobbering every register keeps its index and its count in
+    stack words. -/
+structure MW where
+  /-- `(e, n)`: the stack word at offset `e` holds the word `n`. -/
+  cst : List (Int × Nat) := []
+  /-- Offsets of stack words holding a nonzero word. -/
+  nz : List Int := []
+  /-- `(e, e', B)`: the values of the stack words at the offsets `e` and `e'` sum to at most
+      `B`. -/
+  le : List (Int × Int × Int) := []
+  /-- `(r, e, B)`: the values of the register `r` and of the stack word at offset `e` sum to
+      at most `B`. -/
+  rle : List (String × Int × Int) := []
+  /-- `(r, e)`: the register `r` holds the value of the stack word at offset `e`. -/
+  same : List (String × Int) := []
+  /-- `(r, x, n)`: the register `r` holds the entry value of the register `x` plus `8 j` for
+      some `j < n`. -/
+  ptr : List (String × String × Nat) := []
+  deriving DecidableEq, Repr, Inhabited
+
+/-- The facts of `w` on the registers that satisfy `k`, with all the facts on stack words. -/
+def MW.keepRegs (w : MW) (k : String → Bool) : MW :=
+  { w with
+    rle := w.rle.filter fun f => k f.1
+    same := w.same.filter fun p => k p.1
+    ptr := w.ptr.filter fun p => k p.1 }
+
+/-- The facts of `w` on the stack words that satisfy `k`, with all the facts on registers
+    alone. -/
+def MW.keepWords (w : MW) (k : Int → Bool) : MW :=
+  { w with
+    cst := w.cst.filter fun p => k p.1
+    nz := w.nz.filter k
+    le := w.le.filter fun f => k f.1 && k f.2.1
+    rle := w.rle.filter fun f => k f.2.1
+    same := w.same.filter fun p => k p.2 }
+
+/-- The facts of `a` and the facts of `b`. -/
+def MW.union (a b : MW) : MW :=
+  { cst := a.cst ++ b.cst
+    nz := a.nz ++ b.nz
+    le := a.le ++ b.le
+    rle := a.rle ++ b.rle
+    same := a.same ++ b.same
+    ptr := a.ptr ++ b.ptr }
+
+/-- Every fact of `b` is a fact of `o`. -/
+def MW.leW (b o : MW) : Bool :=
+  b.cst.all o.cst.contains && b.nz.all o.nz.contains && b.le.all o.le.contains
+    && b.rle.all o.rle.contains && b.same.all o.same.contains && b.ptr.all o.ptr.contains
+
+/-- The facts common to `a` and `b`. -/
+def MW.meet (a b : MW) : MW :=
+  { cst := a.cst.filter b.cst.contains
+    nz := a.nz.filter b.nz.contains
+    le := a.le.filter b.le.contains
+    rle := a.rle.filter b.rle.contains
+    same := a.same.filter b.same.contains
+    ptr := a.ptr.filter b.ptr.contains }
 
 /-- An abstract machine state relative to the entry state of a run. -/
 structure MA where
@@ -93,10 +159,28 @@ structure MA where
   zf : Option String
   /-- `(r, n)`: the register `r` holds the word `n`. -/
   cst : List (String × Nat) := []
+  /-- The facts on stack words and on registers computed from them. -/
+  w : MW := {}
   deriving DecidableEq, Repr, Inhabited
 
 /-- The offset `e` from the entry stack pointer lies in the frame range of `σ`. -/
 def inW (σ : AbiLayout) (e : Int) : Bool := decide (σ.frameLo ≤ e) && decide (e ≤ σ.frameHi)
+
+/-- The stack word at offset `e` from the entry stack pointer of `s0`, in the state `s`. -/
+def wdAt (s0 s : AState) (e : Int) : BitVec 64 :=
+  read64 s.mem (s0.regs "%rsp" + BitVec.ofInt 64 e)
+
+/-- The facts `w` describe the machine state `s` of a run from the entry state `s0`; the
+    stack words they name lie in the frame range of `σ`. -/
+structure InvW (σ : AbiLayout) (s0 : AState) (w : MW) (s : AState) : Prop where
+  cst : ∀ p ∈ w.cst, inW σ p.1 = true ∧ wdAt s0 s p.1 = BitVec.ofNat 64 p.2
+  nz : ∀ e ∈ w.nz, inW σ e = true ∧ wdAt s0 s e ≠ 0
+  le : ∀ f ∈ w.le, inW σ f.1 = true ∧ inW σ f.2.1 = true ∧
+    ((wdAt s0 s f.1).toNat : Int) + (wdAt s0 s f.2.1).toNat ≤ f.2.2
+  rle : ∀ f ∈ w.rle, inW σ f.2.1 = true ∧
+    ((s.regs f.1).toNat : Int) + (wdAt s0 s f.2.1).toNat ≤ f.2.2
+  same : ∀ p ∈ w.same, inW σ p.2 = true ∧ s.regs p.1 = wdAt s0 s p.2
+  ptr : ∀ p ∈ w.ptr, ∃ j, j < p.2.2 ∧ s.regs p.1 = s0.regs p.2.1 + BitVec.ofNat 64 (8 * j)
 
 /-- The abstract state `m` describes the machine state `s` of a run from the entry state
     `s0` under the layout `σ`. -/
@@ -110,21 +194,30 @@ structure Inv (σ : AbiLayout) (s0 : AState) (m : MA) (s : AState) : Prop where
   nz : ∀ r ∈ m.nz, s.regs r ≠ 0
   zf : ∀ c, m.zf = some c → s.view.condB .e = decide (s.regs c = 0)
   cst : ∀ p ∈ m.cst, s.regs p.1 = BitVec.ofNat 64 p.2
+  w : InvW σ s0 m.w s
 
 /-- Every fact of `b` is a fact of `o`, at the same stack offset. -/
 def leM (b o : MA) : Bool :=
   b.sp == o.sp && b.ent.all o.ent.contains && b.zero.all o.zero.contains
     && b.slot.all o.slot.contains && b.le.all o.le.contains && b.nz.all o.nz.contains
-    && (b.zf.isNone || b.zf == o.zf) && b.cst.all o.cst.contains
+    && (b.zf.isNone || b.zf == o.zf) && b.cst.all o.cst.contains && MW.leW b.w o.w
+
+theorem InvW.of_leW {σ : AbiLayout} {s0 : AState} {b o : MW} {s : AState}
+    (h : MW.leW b o = true) (hI : InvW σ s0 o s) : InvW σ s0 b s := by
+  simp only [MW.leW, Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at h
+  obtain ⟨⟨⟨⟨⟨hc, hn⟩, hl⟩, hr⟩, hs⟩, hp⟩ := h
+  exact ⟨fun p h => hI.cst p (hc p h), fun p h => hI.nz p (hn p h), fun p h => hI.le p (hl p h),
+    fun p h => hI.rle p (hr p h), fun p h => hI.same p (hs p h), fun p h => hI.ptr p (hp p h)⟩
 
 theorem Inv.of_leM {σ : AbiLayout} {s0 : AState} {b o : MA} {s : AState} (h : leM b o = true)
     (hI : Inv σ s0 o s) : Inv σ s0 b s := by
   simp only [leM, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.contains_iff_mem,
     Bool.or_eq_true, Option.isNone_iff_eq_none] at h
-  obtain ⟨⟨⟨⟨⟨⟨⟨hsp, hent⟩, hzero⟩, hslot⟩, hle⟩, hnz⟩, hzf⟩, hcst⟩ := h
+  obtain ⟨⟨⟨⟨⟨⟨⟨⟨hsp, hent⟩, hzero⟩, hslot⟩, hle⟩, hnz⟩, hzf⟩, hcst⟩, hw⟩ := h
   refine ⟨hsp ▸ hI.sp, fun p hp => hI.ent p (hent p hp), fun r hr => hI.zero r (hzero r hr),
     fun e he => hI.slot e (hslot e he), fun f hf => hI.le f (hle f hf),
-    fun r hr => hI.nz r (hnz r hr), fun c hc => ?_, fun p hp => hI.cst p (hcst p hp)⟩
+    fun r hr => hI.nz r (hnz r hr), fun c hc => ?_, fun p hp => hI.cst p (hcst p hp),
+    InvW.of_leW hw hI.w⟩
   rcases hzf with hzf | hzf
   · simp [hzf] at hc
   · exact hI.zf c (hzf ▸ hc)
@@ -139,7 +232,8 @@ def MA.kill (m : MA) (ds : List String) : MA :=
     le := m.le.filter fun f => !ds.contains f.1 && !ds.contains f.2.1
     nz := m.nz.filter fun r => !ds.contains r
     zf := none
-    cst := m.cst.filter fun p => !ds.contains p.1 }
+    cst := m.cst.filter fun p => !ds.contains p.1
+    w := m.w.keepRegs fun x => !ds.contains x }
 
 /-- The `le` facts after `d := y`. -/
 def copyLe (d y : String) (f : String × String × Int) : Option (String × String × Int) :=
@@ -299,6 +393,95 @@ def norm (σ : AbiLayout) (m : MA) : MA :=
       ++ m.zero.flatMap fun r => m.cst.filterMap fun p =>
         if r ≠ p.1 then some (r, p.1, (p.2 : Int)) else none).eraseDups }
 
+/-- The stack words a store of `i` leaves unchanged, at the stack offset `sp`: a store through
+    `%rsp` at a displacement keeps the words far from its target; an indexed or accumulating
+    store through `%rsp` keeps none; a store through another base keeps the words of the frame
+    range, and the other instructions keep every word. -/
+def wordKeep (sp : Int) : JInstr 64 → Int → Bool
+  | .storeMem b off _, e => b != "%rsp" || far (sp + off) e
+  | .addToMem b _ _, _ => b != "%rsp"
+  | .storeMemIdx b _ _ _, _ => b != "%rsp"
+  | _, _ => true
+
+/-- The sums the store of the word `n` at offset `e` starts: with `n = 0`, the sum with each
+    stack word of `kw` holding a positive constant; with `n > 0`, the sum with each stack word
+    of `kw` holding `0`. These are the entry states of a loop with an index and a count. -/
+def seedLe (e : Int) (n : Nat) (kw : List (Int × Nat)) : List (Int × Int × Int) :=
+  (if n = 0 then (kw.filter fun p => 0 < p.2).map fun p => (e, p.1, (p.2 : Int)) else [])
+    ++ (if 0 < n then (kw.filter fun p => p.2 = 0).map fun p => (p.1, e, (n : Int)) else [])
+
+/-- The stack-word facts a store of the immediate `n` at offset `e` adds. -/
+def genStoreImm (m : MA) (e : Int) (n : Nat) : MW :=
+  { cst := [(e, n)]
+    le := seedLe e n (m.w.cst.filter fun p => far e p.1) }
+
+/-- The stack-word facts a store of the register `y` at offset `e` adds. -/
+def genStoreReg (m : MA) (e : Int) (y : String) : MW :=
+  { cst := (m.cst.filter fun p => p.1 = y).map fun p => (e, p.2)
+    nz := if m.nz.contains y then [e] else []
+    le := ((m.w.rle.filter fun f => f.1 = y && far e f.2.1).map fun f => (e, f.2.1, f.2.2))
+      ++ (m.cst.filter fun p => p.1 = y).flatMap fun p =>
+        seedLe e p.2 (m.w.cst.filter fun q => far e q.1)
+    same := [(y, e)] }
+
+/-- The `rle` fact of a load `d` of the stack word `e`, from a sum over that word. -/
+def loadLe (d : String) (e : Int) (f : Int × Int × Int) : Option (String × Int × Int) :=
+  if f.1 = e then some (d, f.2.1, f.2.2)
+  else if f.2.1 = e then some (d, f.1, f.2.2)
+  else none
+
+/-- The upper bounds, exclusive, on the value of the register `x` that the facts of `m` give:
+    `B` for a fact `x + c ≤ B` with `c` a nonzero stack word or register. -/
+def idxBounds (m : MA) (x : String) : List Nat :=
+  ((m.w.rle.filter fun f => f.1 = x && m.w.nz.contains f.2.1).map fun f => f.2.2.toNat)
+    ++ (m.le.filter fun f => f.1 = x && m.nz.contains f.2.1).map fun f => f.2.2.toNat
+
+/-- The facts of `i` on stack words and on registers computed from them: a store through
+    `%rsp`, a load through `%rsp`, a step of a register by one, and the computation
+    `lea d (b, x, 8)` of a pointer from a region base and a bounded index. -/
+def genW (σ : AbiLayout) (m : MA) : JInstr 64 → MW
+  | .storeMem b off src =>
+    if b = "%rsp" ∧ inW σ (m.sp + off) = true then
+      match src with
+      | .imm n => genStoreImm m (m.sp + off) n
+      | .reg y => genStoreReg m (m.sp + off) y
+    else {}
+  | .loadMem d b off =>
+    if b = "%rsp" ∧ inW σ (m.sp + off) = true then
+      { rle := m.w.le.filterMap (loadLe d (m.sp + off))
+        same := [(d, m.sp + off)] }
+    else {}
+  | .add d src =>
+    if src = .imm 1 then
+      { rle := (m.w.rle.filter fun f => f.1 = d && decide (f.2.2 + 1 < 2 ^ 64)).map
+          fun f => (d, f.2.1, f.2.2 + 1) }
+    else {}
+  | .sub d src =>
+    if src = .imm 1 ∧ m.nz.contains d = true then
+      { rle := (m.w.rle.filter fun f => f.1 = d).map fun f => (d, f.2.1, f.2.2 - 1) }
+    else {}
+  | .lea d b x sc k =>
+    if sc = 8 ∧ k = 0 then
+      { ptr := (m.ent.filter fun p => p.1 = b).flatMap fun p =>
+          (idxBounds m x).map fun n => (d, p.2, n) }
+    else {}
+  | _ => {}
+
+/-- The facts on stack words after `i`. -/
+def stepW (σ : AbiLayout) (m : MA) (i : JInstr 64) : MW :=
+  (genW σ m i).union ((m.kill (dstRegs i)).w.keepWords (wordKeep m.sp i))
+
+/-- The `cst` facts of a load of a stack word holding a constant. -/
+def wCstAdd (m : MA) : JInstr 64 → List (String × Nat)
+  | .loadMem d b off =>
+    if b = "%rsp" then (m.w.cst.filter fun p => p.1 = m.sp + off).map fun p => (d, p.2) else []
+  | _ => []
+
+/-- The `nz` facts of a load of a nonzero stack word. -/
+def wNzAdd (m : MA) : JInstr 64 → List String
+  | .loadMem d b off => if b = "%rsp" ∧ m.w.nz.contains (m.sp + off) = true then [d] else []
+  | _ => []
+
 /-- The abstract state after an instruction that does not write `%rsp`. -/
 def step1 (σ : AbiLayout) (m : MA) (i : JInstr 64) : MA :=
   let m0 := m.kill (dstRegs i)
@@ -307,9 +490,10 @@ def step1 (σ : AbiLayout) (m : MA) (i : JInstr 64) : MA :=
     zero := zeroAdd m i ++ m0.zero
     slot := slotAfter σ m i
     le := leAdd m i ++ m0.le
-    nz := nzAdd m i ++ m0.nz
+    nz := wNzAdd m i ++ (nzAdd m i ++ m0.nz)
     zf := zfAfter i
-    cst := cstAdd m i ++ m0.cst }
+    cst := wCstAdd m i ++ (cstAdd m i ++ m0.cst)
+    w := stepW σ m i }
 
 /-- **The abstract effect of an instruction**: the frame adjustment `lea k(%rsp), %rsp`
     moves the stack offset; another write of `%rsp` is refused. -/
@@ -322,7 +506,11 @@ def trans (σ : AbiLayout) (m : MA) (i : JInstr 64) : Option MA :=
 def jccOut (m : MA) (c : Condt) (taken : Bool) : MA :=
   match m.zf with
   | some r =>
-      if (c == .ne && taken) || (c == .e && !taken) then { m with nz := r :: m.nz } else m
+      if (c == .ne && taken) || (c == .e && !taken) then
+        { m with
+          nz := r :: m.nz
+          w := { m.w with nz := (m.w.same.filter fun p => p.1 = r).map (·.2) ++ m.w.nz } }
+      else m
   | none => m
 
 /-! ## 3. The stores -/
@@ -338,10 +526,16 @@ def idxCell (σ : AbiLayout) (m : MA) (b x : String) : Bool :=
   m.ent.any fun p => p.1 == b && σ.regions.any fun q => q.1 == p.2 && m.le.any fun f =>
     f.1 == x && ((m.nz.contains f.2.1 && decide (f.2.2 ≤ q.2)) || decide (f.2.2 < q.2))
 
+/-- A store through `b` at displacement `0` writes a word of a pointer region: `b` holds a
+    pointer into the region, with an index below its length. -/
+def ptrCell (σ : AbiLayout) (m : MA) (b : String) (off : Int) : Bool :=
+  off == 0 && m.w.ptr.any fun p => p.1 == b && σ.regions.any fun q =>
+    q.1 == p.2.1 && decide (p.2.2 ≤ q.2)
+
 /-- A store of `i` through a base other than `%rsp` writes a word of a pointer region. -/
 def cellAddrOK (σ : AbiLayout) (m : MA) : JInstr 64 → Bool
-  | .storeMem b off _ => b == "%rsp" || constCell σ m b off
-  | .addToMem b off _ => b == "%rsp" || constCell σ m b off
+  | .storeMem b off _ => b == "%rsp" || constCell σ m b off || ptrCell σ m b off
+  | .addToMem b off _ => b == "%rsp" || constCell σ m b off || ptrCell σ m b off
   | .storeMemIdx b x sc _ => b == "%rsp" || (sc == 8 && idxCell σ m b x)
   | _ => true
 
@@ -380,9 +574,24 @@ def checkAtM (σ : AbiLayout) (F : List Int) (prog : List RInstr) (M : Array (Op
     | some _ => false
     | none => true
 
-/-- The abstract entry state: each parameter register holds its entry value. -/
+/-- The stack words of the frame range holding a parameter of `σ` that passes `P` at entry:
+    `(8 k, a.reg)` for a parameter `a` with the carrier name `stackArgReg k`. -/
+def stackSlots (σ : AbiLayout) (P : AbiArg → Bool) : List (Int × String) :=
+  (List.range (σ.frameHi.toNat / 8 + 1)).flatMap fun k =>
+    (σ.args.filter fun a => a.reg == stackArgReg k && P a && inW σ (8 * (k : Int))).map
+      fun a => (8 * (k : Int), a.reg)
+
+/-- The abstract entry state: each parameter register holds its entry value, and each stack
+    word holding a stack parameter holds the entry value of its carrier name. -/
 def init (σ : AbiLayout) : MA :=
-  norm σ ⟨0, σ.args.map fun a => (a.reg, a.reg), [], [], [], [], none, []⟩
+  norm σ
+    { sp := 0
+      ent := σ.args.map fun a => (a.reg, a.reg)
+      zero := []
+      slot := stackSlots σ fun _ => true
+      le := []
+      nz := []
+      zf := none }
 
 /-- **The certificate check**: the entry index is below `init σ` and every index passes
     `checkAtM`. -/
@@ -402,7 +611,8 @@ def meetM (a b : MA) : MA :=
       le := a.le.filter b.le.contains
       nz := a.nz.filter b.nz.contains
       zf := if a.zf = b.zf then a.zf else none
-      cst := a.cst.filter b.cst.contains }
+      cst := a.cst.filter b.cst.contains
+      w := MW.meet a.w b.w }
   else a
 
 /-- Meet `o` into the certificate at index `s`, reporting a change. -/
@@ -539,33 +749,41 @@ theorem cell_of_cellAddrOK {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0
     (hc : cellAddrOK σ m i = true) (hfw : frameWrite i = false) {a : BitVec 64}
     (ha : writeAddr s i = some a) :
     ∃ q ∈ σ.regions, ∃ k, k < q.2 ∧ a = s0.regs q.1 + BitVec.ofNat 64 (8 * k) := by
-  have hconst : ∀ b off, constCell σ m b off = true →
+  have hconst : ∀ b off, (constCell σ m b off || ptrCell σ m b off) = true →
       ∃ q ∈ σ.regions, ∃ k, k < q.2 ∧ s.regs b + BitVec.ofInt 64 off
         = s0.regs q.1 + BitVec.ofNat 64 (8 * k) := by
     intro b off h
-    simp only [constCell, List.any_eq_true, Bool.and_eq_true, beq_iff_eq,
-      decide_eq_true_eq] at h
-    obtain ⟨p, hp, rfl, q, hq, ⟨⟨hq1, h0⟩, h8⟩, hlt⟩ := h
-    refine ⟨q, hq, (off / 8).toNat, by omega, ?_⟩
-    rw [hI.ent p hp, ← hq1]
-    congr 1
-    generalize hk : (off / 8).toNat = k
-    have h' : off = ((8 * k : Nat) : Int) := by omega
-    subst h'
-    rw [BitVec.ofInt_natCast]
+    rcases Bool.or_eq_true _ _ ▸ h with h | h
+    · simp only [constCell, List.any_eq_true, Bool.and_eq_true, beq_iff_eq,
+        decide_eq_true_eq] at h
+      obtain ⟨p, hp, rfl, q, hq, ⟨⟨hq1, h0⟩, h8⟩, hlt⟩ := h
+      refine ⟨q, hq, (off / 8).toNat, by omega, ?_⟩
+      rw [hI.ent p hp, ← hq1]
+      congr 1
+      generalize hk : (off / 8).toNat = k
+      have h' : off = ((8 * k : Nat) : Int) := by omega
+      subst h'
+      rw [BitVec.ofInt_natCast]
+    · simp only [ptrCell, List.any_eq_true, Bool.and_eq_true, beq_iff_eq,
+        decide_eq_true_eq] at h
+      obtain ⟨rfl, p, hp, rfl, q, hq, hq1, hle⟩ := h
+      obtain ⟨j, hj, hr⟩ := hI.w.ptr p hp
+      refine ⟨q, hq, j, by omega, ?_⟩
+      rw [hr, hq1]
+      simp
   cases i with
   | storeMem b off src =>
     simp only [frameWrite, beq_eq_false_iff_ne, ne_eq] at hfw
     simp only [cellAddrOK, Bool.or_eq_true, beq_iff_eq, hfw, false_or] at hc
     simp only [writeAddr, Option.some.injEq] at ha
     subst ha
-    exact hconst b off hc
+    exact hconst b off (by simpa only [Bool.or_eq_true] using hc)
   | addToMem b off src =>
     simp only [frameWrite, beq_eq_false_iff_ne, ne_eq] at hfw
     simp only [cellAddrOK, Bool.or_eq_true, beq_iff_eq, hfw, false_or] at hc
     simp only [writeAddr, Option.some.injEq] at ha
     subst ha
-    exact hconst b off hc
+    exact hconst b off (by simpa only [Bool.or_eq_true] using hc)
   | storeMemIdx b x sc src =>
     simp only [frameWrite, beq_eq_false_iff_ne, ne_eq] at hfw
     simp only [cellAddrOK, Bool.or_eq_true, beq_iff_eq, hfw, false_or, Bool.and_eq_true]
@@ -1173,13 +1391,356 @@ theorem kill_mem {m : MA} {ds : List String} :
   refine ⟨fun p hp => ?_, fun r hr => ?_, fun f hf => ?_, fun r hr => ?_⟩ <;>
     simp_all [MA.kill]
 
+/-- The facts of `w` on registers satisfying `kr` and stack words satisfying `kw` describe a
+    state `s'` in which those registers and those stack words of the frame range are
+    unchanged. -/
+theorem InvW.frame {w : MW} {s s' : AState} (h : InvW σ s0 w s) {kr : String → Bool}
+    {kw : Int → Bool} (hreg : ∀ x, kr x = true → s'.regs x = s.regs x)
+    (hw : ∀ e, kw e = true → inW σ e = true → wdAt s0 s' e = wdAt s0 s e) :
+    InvW σ s0 ((w.keepRegs kr).keepWords kw) s' := by
+  refine ⟨fun p hp => ?_, fun e he => ?_, fun f hf => ?_, fun f hf => ?_, fun p hp => ?_,
+    fun p hp => ?_⟩
+  · simp only [MW.keepWords, MW.keepRegs, List.mem_filter] at hp
+    obtain ⟨hin, hv⟩ := h.cst p hp.1
+    exact ⟨hin, by rw [hw _ hp.2 hin, hv]⟩
+  · simp only [MW.keepWords, MW.keepRegs, List.mem_filter] at he
+    obtain ⟨hin, hv⟩ := h.nz e he.1
+    exact ⟨hin, by rw [hw _ he.2 hin]; exact hv⟩
+  · simp only [MW.keepWords, MW.keepRegs, List.mem_filter, Bool.and_eq_true] at hf
+    obtain ⟨h1, h2, hv⟩ := h.le f hf.1
+    exact ⟨h1, h2, by rw [hw _ hf.2.1 h1, hw _ hf.2.2 h2]; exact hv⟩
+  · simp only [MW.keepWords, MW.keepRegs, List.mem_filter] at hf
+    obtain ⟨h1, hv⟩ := h.rle f hf.1.1
+    exact ⟨h1, by rw [hreg _ hf.1.2, hw _ hf.2 h1]; exact hv⟩
+  · simp only [MW.keepWords, MW.keepRegs, List.mem_filter] at hp
+    obtain ⟨h1, hv⟩ := h.same p hp.1.1
+    exact ⟨h1, by rw [hreg _ hp.1.2, hw _ hp.2 h1, hv]⟩
+  · simp only [MW.keepWords, MW.keepRegs, List.mem_filter] at hp
+    obtain ⟨j, hj, hv⟩ := h.ptr p hp.1
+    exact ⟨j, hj, by rw [hreg _ hp.2, hv]⟩
+
+/-- The facts of `w` on registers satisfying `kr` describe a state with the same memory in
+    which those registers are unchanged. -/
+theorem InvW.frameRegs {w : MW} {s s' : AState} (h : InvW σ s0 w s) {kr : String → Bool}
+    (hreg : ∀ x, kr x = true → s'.regs x = s.regs x) (hmem : s'.mem = s.mem) :
+    InvW σ s0 (w.keepRegs kr) s' := by
+  have := h.frame (kw := fun _ => true) hreg fun e _ _ => by simp only [wdAt, hmem]
+  simpa [MW.keepWords] using this
+
+/-- The union of two sets of facts describing a state describes it. -/
+theorem InvW.union {a b : MW} {s : AState} (ha : InvW σ s0 a s) (hb : InvW σ s0 b s) :
+    InvW σ s0 (a.union b) s := by
+  refine ⟨fun p hp => ?_, fun p hp => ?_, fun p hp => ?_, fun p hp => ?_, fun p hp => ?_,
+    fun p hp => ?_⟩ <;> simp only [MW.union, List.mem_append] at hp
+  · exact hp.elim (ha.cst p) (hb.cst p)
+  · exact hp.elim (ha.nz p) (hb.nz p)
+  · exact hp.elim (ha.le p) (hb.le p)
+  · exact hp.elim (ha.rle p) (hb.rle p)
+  · exact hp.elim (ha.same p) (hb.same p)
+  · exact hp.elim (ha.ptr p) (hb.ptr p)
+
+/-- The stack words that `wordKeep` keeps in the frame range are unchanged by `i`. -/
+theorem wdAt_keep {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0) (hI : Inv σ s0 m s)
+    (hc : cellAddrOK σ m i = true) {e : Int} (hk : wordKeep m.sp i e = true)
+    (he : inW σ e = true) : wdAt s0 (evalInstrA s i) e = wdAt s0 s e := by
+  simp only [wdAt, evalInstrA]
+  split
+  · rename_i a ha
+    refine read64_write64_of_disjoint _ _ _ _ ?_
+    cases hfw : frameWrite i
+    · exact disj_of_cellAddrOK hR hI hc hfw ha he
+    · cases i with
+      | storeMem b off src =>
+        simp only [frameWrite, beq_iff_eq] at hfw
+        subst hfw
+        simp only [wordKeep, bne_self_eq_false, Bool.false_or, far, Bool.and_eq_true,
+          decide_eq_true_eq] at hk
+        simp only [writeAddr, hI.sp, ofInt_add_assoc, Option.some.injEq] at ha
+        subst ha
+        exact disjoint8_add_ofInt _ _ _ hk.1 hk.2
+      | addToMem b off src =>
+        simp only [frameWrite, beq_iff_eq] at hfw
+        subst hfw
+        simp [wordKeep] at hk
+      | storeMemIdx b x sc src =>
+        simp only [frameWrite, beq_iff_eq] at hfw
+        subst hfw
+        simp [wordKeep] at hk
+      | _ => simp [writeAddr] at ha
+  · rfl
+
+/-- The word a load through `%rsp` reads is the stack word at the stack offset of `m` plus the
+    displacement. -/
+theorem read_rsp {m : MA} {s : AState} (hI : Inv σ s0 m s) (off : Int) :
+    read64 s.mem (s.regs "%rsp" + BitVec.ofInt 64 off) = wdAt s0 s (m.sp + off) := by
+  rw [hI.sp, ofInt_add_assoc, wdAt]
+
+theorem wNzAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
+    ∀ r ∈ wNzAdd m i, (evalInstrA s i).regs r ≠ 0 := by
+  intro r hr
+  cases i with
+  | loadMem d b off =>
+    simp only [wNzAdd] at hr
+    split at hr
+    · rename_i h
+      obtain ⟨rfl, hz⟩ := h
+      simp only [List.mem_singleton] at hr
+      subst hr
+      rw [eval_loadMem, read_rsp hI]
+      exact (hI.w.nz _ (List.contains_iff_mem.mp hz)).2
+    · simp at hr
+  | _ => simp [wNzAdd] at hr
+
+theorem wCstAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s) :
+    ∀ p ∈ wCstAdd m i, (evalInstrA s i).regs p.1 = BitVec.ofNat 64 p.2 := by
+  intro p hp
+  cases i with
+  | loadMem d b off =>
+    simp only [wCstAdd] at hp
+    split at hp
+    · rename_i h
+      subst h
+      simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hp
+      obtain ⟨q, ⟨hq, hqe⟩, rfl⟩ := hp
+      rw [eval_loadMem, read_rsp hI, ← hqe]
+      exact (hI.w.cst q hq).2
+    · simp at hp
+  | _ => simp [wCstAdd] at hp
+
+/-- A store through `%rsp` of a word at the offset `e`, with the word in the stack word at `e`
+    and the stack words far from `e` unchanged, makes the facts of `seedLe` hold. -/
+theorem seedLe_sound {e : Int} {n : Nat} {kw : List (Int × Nat)} {w : Int → BitVec 64}
+    {P : Int → Prop} (hPe : P e) (hPk : ∀ p ∈ kw, P p.1)
+    (hn : w e = BitVec.ofNat 64 n) (hk : ∀ p ∈ kw, w p.1 = BitVec.ofNat 64 p.2) :
+    ∀ f ∈ seedLe e n kw, P f.1 ∧ P f.2.1 ∧ ((w f.1).toNat : Int) + (w f.2.1).toNat ≤ f.2.2 := by
+  intro f hf
+  have hmod : ∀ k : Nat, (BitVec.ofNat 64 k).toNat ≤ k := fun k => by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_le _ _
+  simp only [seedLe, List.mem_append] at hf
+  rcases hf with hf | hf
+  · split at hf
+    · rename_i h0
+      simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hf
+      obtain ⟨p, ⟨hp, -⟩, rfl⟩ := hf
+      refine ⟨hPe, hPk p hp, ?_⟩
+      have := hmod p.2
+      simp only [hn, hk p hp, h0]
+      simp
+      omega
+    · simp at hf
+  · split at hf
+    · simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hf
+      obtain ⟨p, ⟨hp, hp0⟩, rfl⟩ := hf
+      refine ⟨hPk p hp, hPe, ?_⟩
+      have := hmod n
+      simp only [hn, hk p hp, hp0]
+      simp
+      omega
+    · simp at hf
+
+/-- The stack word at the target of a store through `%rsp` holds the stored word. -/
+theorem wdAt_store_same {m : MA} {s : AState} (hI : Inv σ s0 m s) (off : Int) (src : JOperand) :
+    wdAt s0 (evalInstrA s (.storeMem "%rsp" off src)) (m.sp + off)
+      = writeVal s.view (.storeMem "%rsp" off src) := by
+  simp only [wdAt, evalInstrA, writeAddr, hI.sp, ofInt_add_assoc, read64_write64_same]
+
+/-- A stack word far from the target of a store through `%rsp` is unchanged. -/
+theorem wdAt_store_far {m : MA} {s : AState} (hI : Inv σ s0 m s) (off : Int) (src : JOperand)
+    {e : Int} (he : far (m.sp + off) e = true) :
+    wdAt s0 (evalInstrA s (.storeMem "%rsp" off src)) e = wdAt s0 s e := by
+  simp only [far, Bool.and_eq_true, decide_eq_true_eq] at he
+  simp only [wdAt, evalInstrA, writeAddr, hI.sp, ofInt_add_assoc]
+  exact read64_write64_of_disjoint _ _ _ _ (disjoint8_add_ofInt _ _ _ he.1 he.2)
+
+/-- An instruction that writes no memory leaves every stack word unchanged. -/
+theorem wdAt_of_none {s : AState} {i : JInstr 64} (h : writeAddr s i = none) (e : Int) :
+    wdAt s0 (evalInstrA s i) e = wdAt s0 s e := by
+  simp only [wdAt, mem_of_writeAddr_none h]
+
+/-- The bounds of `idxBounds` are exclusive upper bounds on the register. -/
+theorem idxBounds_sound {m : MA} {s : AState} (hI : Inv σ s0 m s) {x : String} {n : Nat}
+    (hn : n ∈ idxBounds m x) : (s.regs x).toNat < n := by
+  simp only [idxBounds, List.mem_append, List.mem_map, List.mem_filter, Bool.and_eq_true,
+    decide_eq_true_eq, List.contains_iff_mem] at hn
+  rcases hn with ⟨f, ⟨hf, rfl, hnz⟩, rfl⟩ | ⟨f, ⟨hf, rfl, hnz⟩, rfl⟩
+  · have hv := (hI.w.rle f hf).2
+    have := toNat_pos_of_ne (hI.w.nz _ hnz).2
+    omega
+  · have hv := hI.le f hf
+    have := toNat_pos_of_ne (hI.nz _ hnz)
+    omega
+
+/-- **Soundness of the facts of `i` on stack words.** -/
+theorem genW_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
+    (hrsp : "%rsp" ∉ dstRegs i) : InvW σ s0 (genW σ m i) (evalInstrA s i) := by
+  have hempty : ∀ s' : AState, InvW σ s0 ({} : MW) s' := fun _ =>
+    ⟨by simp, by simp, by simp, by simp, by simp, by simp⟩
+  cases i with
+  | storeMem b off src =>
+    simp only [genW]
+    split
+    · rename_i h
+      obtain ⟨rfl, hin⟩ := h
+      have hval := wdAt_store_same hI off src
+      have hfar := fun e => wdAt_store_far (e := e) hI off src
+      have hkw : ∀ p ∈ m.w.cst.filter (fun p => far (m.sp + off) p.1),
+          inW σ p.1 = true ∧ wdAt s0 (evalInstrA s (.storeMem "%rsp" off src)) p.1
+            = BitVec.ofNat 64 p.2 := by
+        intro p hp
+        obtain ⟨hp, hf⟩ := List.mem_filter.mp hp
+        obtain ⟨h1, h2⟩ := hI.w.cst p hp
+        exact ⟨h1, by rw [hfar _ hf, h2]⟩
+      cases src with
+      | imm n =>
+        have hv : wdAt s0 (evalInstrA s (.storeMem "%rsp" off (.imm n))) (m.sp + off)
+            = BitVec.ofNat 64 n := by
+          rw [hval]
+          simp [writeVal]
+        refine ⟨?_, by simp [genStoreImm], ?_, by simp [genStoreImm], by simp [genStoreImm],
+          by simp [genStoreImm]⟩
+        · intro p hp
+          simp only [genStoreImm, List.mem_singleton] at hp
+          subst hp
+          exact ⟨hin, hv⟩
+        · exact seedLe_sound (P := fun e => inW σ e = true) hin (fun p hp => (hkw p hp).1) hv
+            fun p hp => (hkw p hp).2
+      | reg y =>
+        have hregs : ∀ x, (evalInstrA s (.storeMem "%rsp" off (.reg y))).regs x = s.regs x :=
+          fun x => evalInstrA_regs_of_not_dst _ _ _ (by simp [dstRegs])
+        have hv : wdAt s0 (evalInstrA s (.storeMem "%rsp" off (.reg y))) (m.sp + off)
+            = s.regs y := by
+          rw [hval]
+          simp [writeVal, AState.view, JState.get]
+        refine ⟨?_, ?_, ?_, by simp [genStoreReg], ?_, by simp [genStoreReg]⟩
+        · intro p hp
+          simp only [genStoreReg, List.mem_map, List.mem_filter, decide_eq_true_eq] at hp
+          obtain ⟨q, ⟨hq, hqy⟩, rfl⟩ := hp
+          exact ⟨hin, by rw [hv, ← hqy]; exact hI.cst q hq⟩
+        · intro e he
+          simp only [genStoreReg] at he
+          split at he
+          · rename_i hy
+            simp only [List.mem_singleton] at he
+            subst he
+            exact ⟨hin, by rw [hv]; exact hI.nz y (List.contains_iff_mem.mp hy)⟩
+          · simp at he
+        · intro f hf
+          simp only [genStoreReg, List.mem_append, List.mem_map, List.mem_filter,
+            Bool.and_eq_true, decide_eq_true_eq, List.mem_flatMap] at hf
+          rcases hf with ⟨g, ⟨hg, rfl, hfr⟩, rfl⟩ | ⟨q, ⟨hq, hqy⟩, hf⟩
+          · obtain ⟨h1, h2⟩ := hI.w.rle g hg
+            exact ⟨hin, h1, by rw [hv, hfar _ hfr]; exact h2⟩
+          · exact seedLe_sound (P := fun e => inW σ e = true) hin (fun p hp => (hkw p hp).1)
+              (by rw [hv, ← hqy]; exact hI.cst q hq) (fun p hp => (hkw p hp).2) f hf
+        · intro p hp
+          simp only [genStoreReg, List.mem_singleton] at hp
+          subst hp
+          exact ⟨hin, by rw [hregs, hv]⟩
+    · exact hempty _
+  | loadMem d b off =>
+    simp only [genW]
+    split
+    · rename_i h
+      obtain ⟨rfl, hin⟩ := h
+      have hd : (evalInstrA s (.loadMem d "%rsp" off)).regs d = wdAt s0 s (m.sp + off) := by
+        rw [eval_loadMem, read_rsp hI]
+      have hw := fun e => wdAt_of_none (s0 := s0) (s := s) (i := .loadMem d "%rsp" off) rfl e
+      refine ⟨by simp, by simp, by simp, ?_, ?_, by simp⟩
+      · intro f hf
+        simp only [List.mem_filterMap, loadLe] at hf
+        obtain ⟨g, hg, hf⟩ := hf
+        obtain ⟨h1, h2, h3⟩ := hI.w.le g hg
+        split at hf
+        · rename_i h
+          simp only [Option.some.injEq] at hf
+          subst hf
+          exact ⟨h2, by rw [hd, hw, ← h]; exact h3⟩
+        · split at hf
+          · rename_i h
+            simp only [Option.some.injEq] at hf
+            subst hf
+            refine ⟨h1, ?_⟩
+            rw [hd, hw, ← h]
+            dsimp only
+            omega
+          · simp at hf
+      · intro p hp
+        simp only [List.mem_singleton] at hp
+        subst hp
+        exact ⟨hin, by rw [hd, hw]⟩
+    · exact hempty _
+  | add d src =>
+    simp only [genW]
+    split
+    · rename_i h
+      subst h
+      have hw := fun e => wdAt_of_none (s0 := s0) (s := s) (i := .add d (.imm 1)) rfl e
+      refine ⟨by simp, by simp, by simp, ?_, by simp, by simp⟩
+      intro f hf
+      simp only [List.mem_map, List.mem_filter, Bool.and_eq_true, decide_eq_true_eq] at hf
+      obtain ⟨g, ⟨hg, rfl, hB⟩, rfl⟩ := hf
+      obtain ⟨h1, h2⟩ := hI.w.rle g hg
+      refine ⟨h1, ?_⟩
+      have hk : (s.regs g.1).toNat + 1 < 2 ^ 64 := by omega
+      rw [eval_add_one, toNat_add_one_of hk, hw]
+      push_cast
+      omega
+    · exact hempty _
+  | sub d src =>
+    simp only [genW]
+    split
+    · rename_i h
+      obtain ⟨rfl, hnz⟩ := h
+      have hw := fun e => wdAt_of_none (s0 := s0) (s := s) (i := .sub d (.imm 1)) rfl e
+      refine ⟨by simp, by simp, by simp, ?_, by simp, by simp⟩
+      intro f hf
+      simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hf
+      obtain ⟨g, ⟨hg, rfl⟩, rfl⟩ := hf
+      obtain ⟨h1, h2⟩ := hI.w.rle g hg
+      refine ⟨h1, ?_⟩
+      have hne := hI.nz _ (List.contains_iff_mem.mp hnz)
+      have hp := toNat_pos_of_ne hne
+      rw [eval_sub_one, toNat_sub_one_of hne, hw]
+      grind
+    · exact hempty _
+  | lea d b x sc k =>
+    simp only [genW]
+    split
+    · rename_i h
+      obtain ⟨rfl, rfl⟩ := h
+      refine ⟨by simp, by simp, by simp, by simp, by simp, ?_⟩
+      intro p hp
+      simp only [List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq] at hp
+      obtain ⟨q, ⟨hq, hqb⟩, n, hn, rfl⟩ := hp
+      refine ⟨(s.regs x).toNat, idxBounds_sound hI hn, ?_⟩
+      have hd : (evalInstrA s (.lea d b x 8 0)).regs d
+          = s.regs b + s.regs x * BitVec.ofNat 64 8 := by
+        simp [evalInstrA, evalInstr, JState.setReg, JState.get, x86_LEA, AState.view]
+      rw [hd, ← hqb, hI.ent q hq]
+      congr 1
+      apply BitVec.eq_of_toNat_eq
+      simp [BitVec.toNat_mul, Nat.mul_comm]
+    · exact hempty _
+  | _ => exact hempty _
+
+/-- **Soundness of the facts on stack words after `i`.** -/
+theorem stepW_sound {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
+    (hI : Inv σ s0 m s) (hc : cellAddrOK σ m i = true) (hrsp : "%rsp" ∉ dstRegs i) :
+    InvW σ s0 (stepW σ m i) (evalInstrA s i) := by
+  refine (genW_sound hI hrsp).union ?_
+  refine hI.w.frame (fun x hx => ?_) fun e hk he => wdAt_keep hR hI hc hk he
+  refine evalInstrA_regs_of_not_dst _ _ _ fun hm => ?_
+  simp only [Bool.not_eq_true', List.contains_eq_mem, decide_eq_false_iff_not] at hx
+  exact hx hm
+
 /-- **Soundness of the abstract effect** of an instruction that does not write `%rsp`. -/
 theorem step1_sound {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
     (hI : Inv σ s0 m s) (hrsp : "%rsp" ∉ dstRegs i) (hc : cellAddrOK σ m i = true) :
     Inv σ s0 (step1 σ m i) (evalInstrA s i) := by
   have hk := kill_mem (m := m) (ds := dstRegs i)
   have hreg := evalInstrA_regs_of_not_dst s i
-  refine ⟨?_, ?_, ?_, slotAfter_sound hR hI hc, ?_, ?_, zfAfter_sound, ?_⟩
+  refine ⟨?_, ?_, ?_, slotAfter_sound hR hI hc, ?_, ?_, zfAfter_sound, ?_, ?_⟩
   · rw [hreg _ hrsp]
     exact hI.sp
   · intro p hp
@@ -1205,14 +1766,16 @@ theorem step1_sound {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
       exact hI.le f hf
   · intro r hr
     simp only [step1, List.mem_append] at hr
-    rcases hr with hr | hr
+    rcases hr with hr | hr | hr
+    · exact wNzAdd_sound hI r hr
     · exact nzAdd_sound hI r hr
     · obtain ⟨hr, hn⟩ := hk.2.2.2 r hr
       rw [hreg _ hn]
       exact hI.nz r hr
   · intro p hp
     simp only [step1, List.mem_append] at hp
-    rcases hp with hp | hp
+    rcases hp with hp | hp | hp
+    · exact wCstAdd_sound hI p hp
     · exact cstAdd_sound hI p hp
     · simp only [MA.kill, List.mem_filter, Bool.not_eq_true'] at hp
       have hn : p.1 ∉ dstRegs i := fun hm => by
@@ -1220,10 +1783,11 @@ theorem step1_sound {m : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
         exact Bool.noConfusion hp.2
       rw [hreg _ hn]
       exact hI.cst p hp.1
+  · exact stepW_sound hR hI hc hrsp
 
 theorem norm_sound {m : MA} {s : AState} (hR : σ.Regions s0) (hI : Inv σ s0 m s) :
     Inv σ s0 (norm σ m) s := by
-  refine ⟨hI.sp, hI.ent, hI.zero, hI.slot, ?_, hI.nz, hI.zf, hI.cst⟩
+  refine ⟨hI.sp, hI.ent, hI.zero, hI.slot, ?_, hI.nz, hI.zf, hI.cst, hI.w⟩
   intro f hf
   simp only [norm, List.mem_eraseDups, List.mem_append, List.mem_flatMap,
     List.mem_filterMap] at hf
@@ -1265,7 +1829,10 @@ theorem trans_sound {m o : MA} {s : AState} {i : JInstr 64} (hR : σ.Regions s0)
       fun y hy => regs_ne rfl hy
     have hmem : (evalInstrA s (.lea "%rsp" "%rsp" x 0 k)).mem = s.mem :=
       mem_of_writeAddr_none rfl
-    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+    rotate_left 8
+    · exact hI.w.frameRegs (kr := fun x => !(List.contains ["%rsp"] x))
+        (fun y hy => hreg y (by simpa using hy)) hmem
     · rw [evalInstrA_rsp_lea, hI.sp, ofInt_add_assoc]
     · intro p hp
       obtain ⟨hp, hn⟩ := hk.1 p hp
@@ -1311,11 +1878,8 @@ theorem jccOut_sound {m : MA} {s : AState} {c : Condt} {b : Bool} (hI : Inv σ s
   · rename_i r hr
     split
     · rename_i hcond
-      refine ⟨hI.sp, hI.ent, hI.zero, hI.slot, hI.le, ?_, hI.zf, hI.cst⟩
-      intro x hx
-      simp only [List.mem_cons] at hx
-      rcases hx with rfl | hx
-      · have hz := hI.zf x hr
+      have hne : s.regs r ≠ 0 := by
+        have hz := hI.zf r hr
         simp only [Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq, Bool.not_eq_true'] at hcond
         intro h0
         have he : s.view.condB .e = true := by simp [hz, h0]
@@ -1324,7 +1888,19 @@ theorem jccOut_sound {m : MA} {s : AState} {c : Condt} {b : Bool} (hI : Inv σ s
           simp at hb
         · rw [he] at hb
           simp at hb
-      · exact hI.nz x hx
+      refine ⟨hI.sp, hI.ent, hI.zero, hI.slot, hI.le, ?_, hI.zf, hI.cst,
+        ⟨hI.w.cst, ?_, hI.w.le, hI.w.rle, hI.w.same, hI.w.ptr⟩⟩
+      · intro x hx
+        simp only [List.mem_cons] at hx
+        rcases hx with rfl | hx
+        · exact hne
+        · exact hI.nz x hx
+      · intro e he
+        simp only [List.mem_append, List.mem_map, List.mem_filter, decide_eq_true_eq] at he
+        rcases he with ⟨p, ⟨hp, hpr⟩, rfl⟩ | he
+        · obtain ⟨hin, hv⟩ := hI.w.same p hp
+          exact ⟨hin, by rw [← hv, hpr]; exact hne⟩
+        · exact hI.w.nz e he
     · exact hI
   · exact hI
 
@@ -1384,11 +1960,26 @@ theorem run_frameSep {r : DoitRegime} {F : List Int} {prog : List RInstr}
     have hck := hat h
     simp [checkAtM, hm, h] at hck
 
+/-- A stack word of `stackSlots` lies in the frame range and holds, at an entry state
+    satisfying `σ.Regions`, the entry value of its carrier name. -/
+theorem stackSlots_sound (hR : σ.Regions s0) {P : AbiArg → Bool} :
+    ∀ e ∈ stackSlots σ P, inW σ e.1 = true ∧
+      read64 s0.mem (s0.regs "%rsp" + BitVec.ofInt 64 e.1) = s0.regs e.2 := by
+  intro e he
+  simp only [stackSlots, List.mem_flatMap, List.mem_map, List.mem_filter, Bool.and_eq_true,
+    beq_iff_eq] at he
+  obtain ⟨k, -, a, ⟨ha, ⟨hk, -⟩, hin⟩, rfl⟩ := he
+  refine ⟨hin, ?_⟩
+  have h := hR.stackIn a ha k hk
+  rw [show (8 * (k : Int)) = ((8 * k : Nat) : Int) by push_cast; rfl, BitVec.ofInt_natCast]
+  exact h.symm
+
 theorem inv_init (hR : σ.Regions s0) : Inv σ s0 (init σ) s0 :=
   norm_sound hR ⟨by simp, fun p hp => by
     simp only [List.mem_map] at hp
     obtain ⟨a, -, rfl⟩ := hp
-    rfl, by simp, by simp, by simp, by simp, by simp, by simp⟩
+    rfl, by simp, stackSlots_sound hR, by simp, by simp, by simp, by simp,
+    ⟨by simp, by simp, by simp, by simp, by simp, by simp⟩⟩
 
 /-- **Soundness of the certificate check.** Under a passing `memCheck σ F prog M`, every run
     of `prog` from index `0` and an entry state satisfying `σ.Regions` satisfies `FrameSep F`
@@ -1422,6 +2013,28 @@ end RegionSep
 namespace AbiLayout
 
 open RegionSep
+
+/-- The public entry set of the checker with the stack words of the public stack parameters:
+    `pubA` with the frame word `8 k` for a public parameter with the carrier name
+    `stackArgReg k`. -/
+def pubAS (σ : AbiLayout) : PubA :=
+  { σ.pubA with cells := (stackSlots σ σ.argPub).map (·.1) }
+
+/-- Agreement on the public data of the layout, at entry states satisfying `σ.Regions`, implies
+    agreement on `pubAS`: a stack parameter's word is the entry value of its carrier name. -/
+theorem pubAS_agree {σ : AbiLayout} {s₁ s₂ : AState} (h : σ.PubAgree s₁ s₂)
+    (hR₁ : σ.Regions s₁) (hR₂ : σ.Regions s₂) : σ.pubAS.Agree s₁ s₂ := by
+  obtain ⟨hr, -, hf, hw⟩ := pubA_agree_of_pubAgree h
+  refine ⟨hr, fun o ho => ?_, hf, hw⟩
+  simp only [pubAS, List.mem_map] at ho
+  obtain ⟨e, he, rfl⟩ := ho
+  have h1 := (stackSlots_sound hR₁ e he).2
+  have h2 := (stackSlots_sound hR₂ e he).2
+  simp only [stackSlots, List.mem_flatMap, List.mem_map, List.mem_filter, Bool.and_eq_true] at he
+  obtain ⟨k, -, a, ⟨ha, ⟨-, hp⟩, -⟩, rfl⟩ := he
+  simp only [X86Backend.DecodedCT.cellAt]
+  rw [h1, h2]
+  exact h.regs a ha hp
 
 /-- The trimmed certificate of the gate on `prog`: the inferred constant-time certificate,
     each frame word kept when it lies in the frame range of `σ` at every store through

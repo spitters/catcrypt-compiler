@@ -152,7 +152,30 @@ theorem transCall_sound_out {G : Nat} {clob : String → Bool} {m : MA} {sa sc :
     · rw [retOps_regs _ hr, hP.keep x hx, hsc0, callOps_regs _ _ hr]
   have hreg' : ∀ x, (!clob x) = true → (runBlockA sc retOps).regs x = sa.regs x :=
     fun x hx => hreg x (by simpa using hx)
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  have hword : ∀ e, keptSlot G m.sp e = true → inW σ e = true →
+      wdAt s0 (runBlockA sc retOps) e = wdAt s0 sa e := by
+    intro e hk hin
+    simp only [keptSlot, Bool.and_eq_true, decide_eq_true_eq] at hk
+    obtain ⟨h1, h2⟩ := hk
+    simp only [inW, Bool.and_eq_true, decide_eq_true_eq] at hin
+    have hrsp0 : sc0.regs "%rsp" = s0.regs "%rsp" + BitVec.ofInt 64 m.sp
+        + BitVec.ofInt 64 (-8) := by
+      rw [hsc0, callOps_rsp, hI.sp]
+    have haddr : s0.regs "%rsp" + BitVec.ofInt 64 e
+        = sc0.regs "%rsp" + BitVec.ofInt 64 (e - m.sp + 8) := by
+      rw [hrsp0, ofInt_add_assoc, ofInt_add_assoc]
+      congr 2
+      omega
+    simp only [wdAt]
+    rw [retOps_mem, haddr]
+    have hm : ∀ x, InRange8 (sc0.regs "%rsp" + BitVec.ofInt 64 (e - m.sp + 8)) x →
+        sc.mem x = sc0.mem x := fun x hx =>
+      hP.frame x (not_inFrame_of_inRange8 (by omega) (by omega) hx)
+        (not_destAt_of_outRegOK hR hI hok hin.1 hin.2 (by rw [haddr]; exact hx))
+    rw [read64_congr hm, ← haddr, hsc0, callOps_read64]
+    rw [hI.sp, ofInt_add_assoc]
+    exact disjoint8_add_ofInt (s0.regs "%rsp") (m.sp + -8) e (by omega) (by omega)
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, hI.w.frame hreg' hword⟩
   · rw [hsp]; exact hI.sp
   · intro p hp
     simp only [transCall, List.mem_filter] at hp
@@ -343,7 +366,7 @@ open RegionSep
 def ctCertRXO (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List RInstr) :
     List (Option PubA) :=
   trimCertL σ (storeSps prog (inferMX σ clob G prog) ++ callSps prog (inferMX σ clob G prog))
-    (inferX clob G prog σ.pubA)
+    (inferX clob G prog σ.pubAS)
 
 /-- The frame words of the trimmed certificate with an out call arm. -/
 def ctFrameRXO (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List RInstr) :
@@ -353,13 +376,13 @@ def ctFrameRXO (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List 
 /-- **The constant-time decision with a call of a linked callee and an optional
     destination.** At `none` it is `ctCheckRX`. At `some w`, for a callee writing the `w.2`
     words from the register `w.1`, the trimmed certificate `ctCertRXO` assigns the entry a
-    set below the public data of `σ`, the caller passes `checkCertX` at the external entry
+    set below `σ.pubAS`, the caller passes `checkCertX` at the external entry
     `prog.length`, and the region check with the out call arm passes for the frame words. -/
 def ctCheckRXO (σ : AbiLayout) (clob : String → Bool) (pubRegs : List String) (G : Nat) :
     Option (String × Nat) → List RInstr → Bool
   | none, prog => σ.ctCheckRX clob pubRegs G prog
   | some w, prog =>
-    succOk (σ.ctCertRXO clob G prog) 0 σ.pubA
+    succOk (σ.ctCertRXO clob G prog) 0 σ.pubAS
       && checkCertX ctRegime (σ.ctFrameRXO clob G prog) prog.length pubRegs
         (keptRegsX clob (σ.ctCertRXO clob G prog)) (keptCellsX G (σ.ctCertRXO clob G prog))
         prog (σ.ctCertRXO clob G prog)
@@ -440,7 +463,7 @@ theorem ctCheckRXO_sound {σ : AbiLayout} {clob : String → Bool} {pubRegs : Li
     (hX.restrictEntry E) hc hR
     (fun s x hf => (hfoot s x hf.1).imp id fun hd => ⟨hd, hf.2⟩) hQ hQO
     (fun s₁ s₂ h₁ h₂ hp => hpub s₁ s₂ h₁.1 h₂.1 hp)
-    ⟨b, hb, PubA.agree_of_le hle (pubA_agree_of_pubAgree hag)⟩ (hH hR₁ h₁) (hH hR₂ h₂)
+    ⟨b, hb, PubA.agree_of_le hle (pubAS_agree hag hR₁ hR₂)⟩ (hH hR₁ h₁) (hH hR₂ h₂)
     (fun _ _ ho => hsep hR₁ ho) (fun _ _ ho => hsep hR₂ ho) hr₁ hr₂
 
 end AbiLayout
