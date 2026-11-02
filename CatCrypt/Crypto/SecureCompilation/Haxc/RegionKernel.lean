@@ -43,7 +43,7 @@ public relation `σ.PubAgree`.
 * `regionPost_sem`: the contract `post_sem` of `LinkedFn.ofRegion` for a meaning whose values
   are values of source runs, from the leg of a front that gives the program, without `call`
   and over a context of registers and stack arrays (`abiValOf_unique`, `denoteAt_fuel_mono`).
-* `haltsC_of_regionCallee`: `CheckedIsaCall.haltsC_of_linkedChecksK` at a region-compiled
+* `haltsC_of_regionCallee`: `CheckedIsaCall.haltsC_of_linkedChecksKW` at a region-compiled
   callee, with the callee specification from `calleeSpec_of_compileRegion`, the absence of
   `call` in the callee from the keep check, the caller separation from the layout of the
   caller (`CalleeStackRoom.callerSep_of_regions`) and the footprint bound from
@@ -317,7 +317,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
 open CatCrypt.Crypto.SecureCompilation.X86Backend
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
-open CatCrypt.Crypto.SecureCompilation.X86Backend.CheckedIsaCall (x86IsaK haltsC_of_linkedChecksK)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CheckedIsaCall (x86IsaK haltsC_of_linkedChecksKW)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW
+  (printedAddrCWB imgGateCBW bitsDeadB liveW)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeStackRoom
   (stackRoomB callerSep_of_regions footBelow_mono)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (ACorr frameP)
@@ -328,7 +330,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (bodyNamesI frameIn frameIn_eq)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe (entryOf)
 
-/-- **A linked call to a region-compiled callee.** `CheckedIsaCall.haltsC_of_linkedChecksK`
+/-- **A linked call to a region-compiled callee.** `CheckedIsaCall.haltsC_of_linkedChecksKW`
+    over the wide class `ImageAddrCallW.printedAddrCWB` and the gate `ImageAddrCallW.imgGateCBW`
     at the callee given by a result of `compileRegion σk ak pk` whose decoded block `q`
     passes `keepCheckB` at `clob` and `F`, under the interface
     `regionSig σk pk args (some res) clob F`, with:
@@ -354,7 +357,7 @@ theorem haltsC_of_regionCallee
     (hsep : ImgSep (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0))) slotArr
       (abiBase (abiReg σ) sa0) (frameRsp body sa0))
     (hphys : physImgB slotArr body = true)
-    (hgate : imgGateCB (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0)))
+    (hgate : imgGateCBW (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0)))
       slotArr body = true)
     (hsites : callSitesB slotArr body = true)
     {σk : AbiLayout} {ak : AbiNames} {Γk : Ctxt jasminDialect} {tk : JasminTy}
@@ -367,7 +370,7 @@ theorem haltsC_of_regionCallee
     {pr : LprogIsa.ProcSummary} {room : AState → Prop}
     (hw : WordCallee (regionSig σk pk args (some res) clob F) res pr room)
     (hroom : ∀ ret sA, sA.regs "%rsp" = frameRsp body sa0 → room (entryOf ret sA))
-    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCB G body = true)
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB G body = true)
     (hshapes : DecodeGen.shapesOf (Params.ofBody body) body = some ds)
     (symBase : String → Option Int) {prog : List RInstr}
     (hbr : LprogBytesLinkReloc.branchOKReloc
@@ -383,6 +386,8 @@ theorem haltsC_of_regionCallee
       (LprogBytes.encodeLfundefBytesReloc symBase body).length
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
     {D : DeadTab}
+    (hbits : bitsDeadB (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0))) D body
+      = true)
     (hdead : callDeadB (regionSig σk pk args (some res) clob F) (fun _ => (res, args)) D.dead
       body = true)
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
@@ -400,7 +405,7 @@ theorem haltsC_of_regionCallee
     (hrun : (x86IsaK.withProcs T).lsemFuelMemF
       (singletonProgM fn (callImg slotArr (fun _ => (res, args)) body)) n s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
-    (hL : D.live sa.reg.lpc = false)
+    (hL : liveW D slotArr body sa.reg.lpc = false)
     (hI0 : ImgRelF (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0))) slotArr
       (abiBase (abiReg σ) sa0) body (D.dead sa.reg.lpc) s sa)
     (hA : ACorr (frameRsp body sa0) sA sa) :
@@ -409,11 +414,12 @@ theorem haltsC_of_regionCallee
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' :=
-  haltsC_of_linkedChecksK hsep hphys hgate hsites ctRegime
+  haltsC_of_linkedChecksKW hsep hphys hgate hsites ctRegime
     (calleeSpec_of_compileRegion hc hcb hk Lk hsrc hLk) (not_call_mem_of_keepCheckW hk) hw
     (callerSep_of_regions hrs hreg0 hroomB hn hsl)
     (footBelow_mono (fun _ _ hx => keepFoot_frame.1 hx) hFG hG) hroom hcls hshapes frameIn_eq
-    symBase hcb hne hbr hP hdead hflags hcond hT hshape hseg hfin hFin n hrun hfn hlen hL hI0 hA
+    symBase hcb hne hbr hP hbits hdead hflags hcond hT hshape hseg hfin hFin n hrun hfn hlen hL
+    hI0 hA
 
 end Linked
 

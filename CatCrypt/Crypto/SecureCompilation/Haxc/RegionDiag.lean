@@ -38,6 +38,8 @@ the same arguments.
   cell access of `body`.
 * `printedWhy body`: the reason `body` is outside both classes of the printed-body check of
   the region back half, `narrowWhy body` followed by `wideWhy body`.
+* `callClassWhy G body`, `callGateWhy frame slotArr body`, `bitsDeadWhy frame D body`: the first
+  part refused of the class, the gate and the check of the width analysis of a calling body.
 * `exportableWhy p`: the first node of `p`, in the order of `regionExportableB`, at which
   the test is `false`: a binding with its operation, a `whileLoop` with a carried type that
   is an array, or a call.
@@ -1098,6 +1100,72 @@ def fuseOKWhy (E : List String) (L : List (Option String)) (c : List LinstrRM) :
 
 /-! ## 8. The reasons by stage -/
 
+open X86Backend.ImageAddrCall (relocFrameB remoteCallB callFreeB frameNonnegB) in
+/-- The first conjunct of `ImageAddrCallW.printedAddrCWB G body` that is `false`, in the order of
+    its definition. For the conjunct on calls and `instrOKWB`: the index and the rendering of the
+    first instruction refused. For the conjuncts on `condPrevB`, `carryPrevB` and `castPosB`: the
+    index of the first position refused. Empty when the class holds. -/
+def callClassWhy (G : Nat) (body : Lcmd) : String :=
+  let P := Params.ofBody body
+  if relocFrameB body = false then "relocFrameB"
+  else if (body.getLast?.any fun r => isRetB r.li_i) = false then
+    "the last instruction is no return"
+  else
+    match body.dropLast.zipIdx.find? fun p =>
+        !(remoteCallB p.1.li_i || instrOKWB body P p.1.li_i) with
+    | some (i, k) => s!"instrOKWB at instruction {k} of {body.length}: {instrStr i.li_i}"
+    | none =>
+        match (List.range body.length).find? fun k => !condPrevB body k with
+        | some k => s!"condPrevB at instruction {k}"
+        | none =>
+            match (List.range body.length).find? fun k => !carryPrevB body k with
+            | some k => s!"carryPrevB at instruction {k}"
+            | none =>
+                match (List.range body.length).find? fun k => !castPosB body k with
+                | some k => s!"castPosB at instruction {k}"
+                | none =>
+                    if callFreeB body || frameNonnegB body G then ""
+                    else s!"frameNonnegB at the frame {G}"
+
+/-- The frame map `frame` tabulated over the names of `body`. -/
+def bodyFrameTab (frame : String → Option (BitVec 64)) (body : Lcmd) :
+    String → Option (BitVec 64) :=
+  X86Backend.ImageAddrSimW.tabFrame frame
+    ((X86Backend.ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q))
+
+/-- The first part of `ImageAddrCallW.imgGateCBW frame slotArr body` that is `false`: the first
+    instruction the instruction gate refuses, with its position, its rendering, the width
+    analysis there and the conjunct of `gateAtW` that is `false` (`gateAtWWhy`), else a last
+    instruction that is no return, else the first reload `reloadSavedB` refuses
+    (`reloadSavedWhy`). Empty when the gate holds. -/
+def callGateWhy (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) : String :=
+  let fr := bodyFrameTab frame body
+  let tab := X86Backend.ImageAddrCallW.oneBitTab fr body
+  match body.dropLast.zipIdx.find? fun p =>
+      !X86Backend.ImageAddrCallW.gateAtTab fr slotArr body tab p.2 p.1.li_i with
+  | some (i, k) =>
+      let W := tab.getD k []
+      s!"gate at instruction {k} of {body.length}: {instrStr i.li_i}; width analysis \
+        [{boundedStr 8 "," W}]; gateAtW: {gateAtWWhy fr slotArr body k W i.li_i}"
+  | none =>
+      if (body.getLast?.any fun r => isRetB r.li_i) = false then
+        "the last instruction is no return"
+      else reloadSavedWhy slotArr body
+
+/-- The first position, of the last position and the call positions, at which
+    `ImageAddrCallW.bitsDeadB frame D body` is `false`, with the names of the width analysis not
+    dead there. Empty when the check holds. -/
+def bitsDeadWhy (frame : String → Option (BitVec 64)) (D : X86Backend.ImageAddrCall.DeadTab)
+    (body : Lcmd) : String :=
+  let tab := X86Backend.ImageAddrCallW.oneBitTab (bodyFrameTab frame body) body
+  let live (p : Nat) : List String := (tab.getD p []).filter fun r => !(D.dead p).contains r
+  match ((body.length - 1) :: X86Backend.ImageAddrCall.callPos body).find?
+      fun p => !(live p).isEmpty with
+  | some p => s!"bitsDeadB at position {p} of {body.length}: width analysis names not dead \
+      [{boundedStr 8 "," (live p)}]"
+  | none => ""
+
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi (fuseLoPre) in
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg) in
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (fuseRegs slotRen
@@ -1119,9 +1187,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (fuseRegs slotR
     of the parts against the image of the cell body of the printed body, observing the
     targets of the result copy and the cell names `cellOuts`.
     `regionPrintedB`: `printedWhy` on the printed body. `idxInvCheckB`: `idxWhy` on the
-    reference `ref` of the parts with the annotation `idxAnnot`. `regionImgB`: `imgWhy` at
-    the slot map renamed by the pairs of the parts, with the cell arrays of the parts at
-    length `0`, and the observed names of `ownedCheckMC`.
+    reference `ref` of the parts with the annotation `idxAnnot`. `regionImgB`: without a
+    table, `imgWhy` at the slot map renamed by the pairs of the parts, with the cell arrays of
+    the parts at length `0`, and the observed names of `ownedCheckMC`; at a table,
+    `callClassWhy` at its frame, then `callGateWhy`. `calleeBodyB`: at a table, `bitsDeadWhy`.
     The stages `coClass`, `coCfgB` and `coEntryFix` are read at the optional callee
     `callee` of `regionCoStage`: the code `calleeCodeT`, the alias map of `regionAliasTab`
     (the map `chainAliasO` at the out symbols `calleeOutsT`), and the liveness table
@@ -1190,9 +1259,29 @@ def regionCoWhy (stage : String) (σ : AbiLayout) (nm : String → String) (body
     let B := (regionCoParts σ nm body t code res cert).ref
     idxWhy (boundFacts σ nm) (idxAnnot (boundFacts σ nm) B) B
   else if stage == "regionImgB" then
-    let d := regionCoParts σ nm body t code res cert
-    imgWhy (X86Backend.ImageStraightCells.slotArrC d.cells
-      (slotRen (slotArrOf σ nm) (renOf d.ps))) d.cells (d.outs ++ d.cellOuts) body
+    match callee with
+    | none =>
+        let d := regionCoParts σ nm body t code res cert
+        imgWhy (X86Backend.ImageStraightCells.slotArrC d.cells
+          (slotRen (slotArrOf σ nm) (renOf d.ps))) d.cells (d.outs ++ d.cellOuts) body
+    | some T =>
+        let d := regionCoParts σ nm body t codeC res cert callee
+        let c := callClassWhy T.frame body
+        if c.isEmpty then
+          callGateWhy (X86Backend.ImageAddrFrame.frameMark
+              (X86Backend.ImageAddrFrame.frameNames body))
+            (X86Backend.ImageStraightCells.slotArrC d.cells
+              (slotRen (slotArrOf σ nm) (renOf d.ps))) body
+        else s!"class printedAddrCWB: {c}"
+  else if stage == "calleeBodyB" then
+    match callee with
+    | none => ""
+    | some T =>
+        let d := regionCoParts σ nm body t codeC res cert callee
+        let sl := slotRen (slotArrOf σ nm) (renOf d.ps)
+        let img := X86Backend.ImageAddrCall.callImg sl (siteFn T.lookup sl body) body
+        bitsDeadWhy (X86Backend.ImageAddrFrame.frameMark
+          (X86Backend.ImageAddrFrame.frameNames body)) (deadTab img d.outs) body
   else ""
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LinkShapeComplete (opdDispB

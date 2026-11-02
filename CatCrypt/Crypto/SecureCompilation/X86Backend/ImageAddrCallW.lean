@@ -50,6 +50,8 @@ per-symbol chains) apply unchanged.
 * `haltsO_of_deadChecksS`, `haltsO_of_linkedChecksS`, `haltsC_of_linkedChecksS`,
   `haltsO_of_linkedChecksOne`, `haltsC_of_linkedChecksOne`: the runs under an oracle and through
   calls of the program of the linked bytes, from Boolean checks.
+* `printedAddrCWB_eq_impl`, `imgGateCBW_eq_impl`, `bitsDeadB_eq_impl` (`@[csimp]`): the class and
+  the checks are evaluated in one pass, with the width analysis tabulated (`oneBitTab`).
 -/
 
 @[expose] public section
@@ -2020,5 +2022,119 @@ theorem imgGateCBW_of_narrow {frame : String → Option (BitVec 64)}
         (hfa i (List.mem_of_getElem? hb)) h
 
 end Narrow
+
+/-! ## 10. One-pass evaluation of the class and the gate -/
+
+section OnePass
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG
+  (condPrevBA condPrevBA_toArray)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
+  (carryPrevBA carryPrevBA_toArray carryPrevB_eq_with castPosBA castPosBA_toArray narrowTable)
+
+/-- `printedAddrCWB` with the body parameters computed once, the position checks read off the
+    array of the body and the cast width analyses read off `narrowTable`. -/
+def printedAddrCWBImpl (G : Nat) (body : Lcmd) : Bool :=
+  let P := Params.ofBody body
+  let a := body.toArray
+  let nt := narrowTable body
+  relocFrameB body && body.getLast?.any (fun r => isRetB r.li_i)
+    && body.dropLast.all (fun i => remoteCallB i.li_i || instrOKWB body P i.li_i)
+    && (List.range a.size).all (fun k =>
+      condPrevBA a k && carryPrevBA P a k && castPosBA a nt k)
+    && (callFreeB body || frameNonnegB body G)
+
+/-- The class `printedAddrCWB` is evaluated as `printedAddrCWBImpl`. -/
+@[csimp] theorem printedAddrCWB_eq_impl : @printedAddrCWB = @printedAddrCWBImpl := by
+  funext G body
+  simp only [printedAddrCWB, printedAddrCWBImpl, List.size_toArray, carryPrevBA_toArray,
+    castPosBA_toArray, carryPrevB_eq_with, condPrevBA_toArray]
+
+/-- The width analysis at each position of a body and one past its end, as an array indexed by
+    the position: the prefix folds of `oneBitStepAt` over the body. -/
+def oneBitTab (frame : String → Option (BitVec 64)) (body : Lcmd) : Array (List String) :=
+  (body.zipIdx.scanl (fun W p => oneBitStepAt frame body p.2 W p.1.li_i) []).toArray
+
+/-- Entry `k` of `oneBitTab`, for `k ≤ body.length`, is the analysis `oneBitAt frame body k`. -/
+theorem oneBitTab_getD (frame : String → Option (BitVec 64)) (body : Lcmd) {k : Nat}
+    (hk : k ≤ body.length) : (oneBitTab frame body).getD k [] = oneBitAt frame body k := by
+  have hz : body.zipIdx.take k = (body.take k).zipIdx := by
+    apply List.ext_getElem?
+    intro i
+    grind
+  simp only [oneBitTab, oneBitAt, Array.getD_eq_getD_getElem?, List.getElem?_toArray,
+    List.getElem?_scanl, List.length_zipIdx, hk, ite_true, hz, Option.getD_some]
+
+/-- The instruction gate of `imgGateCBW` at position `k`, read off the table `tab` of the width
+    analysis. -/
+def gateAtTab (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) (tab : Array (List String)) (k : Nat) (x : LinstrR) : Bool :=
+  remoteCallB x
+    || (cidxArmAt frame slotArr body k (tab.getD (k - 3) []) (tab.getD k []) x
+        && match x with
+          | .Lopn _ _ [.reg v] => (cellParts? v).isNone
+          | _ => false)
+    || gateAtW frame slotArr body k (tab.getD k []) x
+
+/-- At `oneBitTab`, `gateAtTab` is the instruction gate of `imgGateCBW`. -/
+theorem gateAtTab_oneBitTab (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) {k : Nat} (hk : k ≤ body.length)
+    (x : LinstrR) :
+    gateAtTab frame slotArr body (oneBitTab frame body) k x
+      = (remoteCallB x || cidxArmCW frame slotArr body k x
+          || instrGateBW frame slotArr body k x) := by
+  simp only [gateAtTab, oneBitTab_getD frame body hk,
+    oneBitTab_getD frame body (show k - 3 ≤ body.length by omega), cidxArmCW, cidxArmB,
+    instrGateBW]
+
+/-- `imgGateCBW` with the frame map tabulated over the names of the body and the width analysis
+    read off `oneBitTab`. -/
+def imgGateCBWImpl (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) : Bool :=
+  let fr := tabFrame frame ((ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q))
+  let a := body.toArray
+  let tab := oneBitTab fr body
+  (List.range (body.length - 1)).all (fun k => (a[k]?).all fun i =>
+      gateAtTab fr slotArr body tab k i.li_i)
+    && body.getLast?.any (fun r => isRetB r.li_i)
+    && reloadSavedB slotArr body
+
+/-- The gate `imgGateCBW` is evaluated as `imgGateCBWImpl`. -/
+@[csimp] theorem imgGateCBW_eq_impl : @imgGateCBW = @imgGateCBWImpl := by
+  funext frame slotArr body
+  have hall : (List.range (body.length - 1)).all (fun k => (body[k]?).all fun i =>
+        gateAtTab frame slotArr body (oneBitTab frame body) k i.li_i)
+      = (List.range (body.length - 1)).all (fun k => (body[k]?).all fun i =>
+        remoteCallB i.li_i || cidxArmCW frame slotArr body k i.li_i
+          || instrGateBW frame slotArr body k i.li_i) := by
+    rw [Bool.eq_iff_iff, List.all_eq_true, List.all_eq_true]
+    refine forall₂_congr fun k hk => ?_
+    have hle : k ≤ body.length := by
+      have := List.mem_range.mp hk
+      omega
+    simp only [gateAtTab_oneBitTab frame slotArr body hle]
+  simp only [imgGateCBW, imgGateCBWImpl, tabFrame_eq, List.getElem?_toArray, hall]
+
+/-- `bitsDeadB` with the frame map tabulated over the names of the body and the width analysis
+    read off `oneBitTab`. -/
+def bitsDeadBImpl (frame : String → Option (BitVec 64)) (D : DeadTab) (body : Lcmd) : Bool :=
+  let fr := tabFrame frame ((ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q))
+  let tab := oneBitTab fr body
+  ((body.length - 1) :: callPos body).all fun p => (tab.getD p []).all (D.dead p).contains
+
+/-- The check `bitsDeadB` is evaluated as `bitsDeadBImpl`. -/
+@[csimp] theorem bitsDeadB_eq_impl : @bitsDeadB = @bitsDeadBImpl := by
+  funext frame D body
+  simp only [bitsDeadB, bitsDeadBImpl, tabFrame_eq]
+  rw [Bool.eq_iff_iff, List.all_eq_true, List.all_eq_true]
+  refine forall₂_congr fun p hp => ?_
+  have hle : p ≤ body.length := by
+    rcases List.mem_cons.mp hp with rfl | h
+    · omega
+    · have := (mem_callPos.mp h).1
+      omega
+  rw [oneBitTab_getD frame body hle]
+
+end OnePass
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW

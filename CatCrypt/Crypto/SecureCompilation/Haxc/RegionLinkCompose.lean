@@ -778,7 +778,7 @@ theorem regionCo_bytes_callee {σ : AbiLayout} {nm : String → String} {fn : St
     exact hL' y hy
   obtain ⟨hsep, -, hacorr, hpc0, hbnd⟩ := renImage_entry_nil himg hU sa hreg fn []
   have hl : body.getLast?.any (fun r => X86Backend.DecodePrinted.isRetB r.li_i) = true := by
-    simp only [renImageB, calleeImgBT, X86Backend.ImageAddrCall.printedAddrCB,
+    simp only [renImageB, calleeImgBT, X86Backend.ImageAddrCallW.printedAddrCWB,
       Bool.and_eq_true] at himg
     grind
   refine ⟨kF, u, hu, calleeBodyB_of_one hcb hl, hsep,

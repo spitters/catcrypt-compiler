@@ -21,11 +21,12 @@ word kernel runs on its bytes through the call of the kernel code: the run of
 the reference of the gate at the procedure table (`RegionLinkCompose.regionCo_bytes_callee`)
 gives the run of the image of the calling body (`RegionLinkCompose.calleeBody_imgRun_at`),
 which the linked image theorem carries to the decoded bytes of the caller followed by the
-kernel block (`CheckedIsaCall.haltsC_of_linkedChecksK`), and to the caller program under
+kernel block (`CheckedIsaCall.haltsC_of_linkedChecksKW`), and to the caller program under
 the oracle of the kernel guarded by its precondition
-(`ImageAddrCall.haltsO_of_linkedChecks`). A kernel with an out result, which writes the
-array of one of its arguments, takes the same route through
-`ImageAddrCallOutChain.haltsO_of_linkedChecks_out` at the call sites `calleeSiteAt`.
+(`ImageAddrCallW.haltsO_of_linkedChecksOne`), over the wide class
+`ImageAddrCallW.printedAddrCWB` and the gate `ImageAddrCallW.imgGateCBW`. A kernel with an out
+result, which writes the array of one of its arguments, takes the same route through
+`ImageAddrCallOutChain.haltsO_of_linkedChecksW_out` at the call sites `calleeSiteAt`.
 
 The declarations lie in the namespace `Haxc.RegionLinkCall`; the module `RegionLinkCall`
 states the runs of the bytes of `compileA` and the compiler theorems over them.
@@ -36,8 +37,10 @@ states the runs of the bytes of `compileA` and the compiler theorems over them.
   slot map with renamed arrays.
 * `cellBody_of_cellArrsOf_nil`, `cellArrsOf_nil_of_regionCells_nil`: without a cell array of
   the region back half, the cell body of a printed body is the body.
-* `imgGateCB_congr`, `imgGateCB_frameMark`: the gate of a calling body reads only which
-  names have a frame word.
+* `imgGateCBW_congr`, `imgGateCBW_frameMark`, `bitsDeadB_congr`, `bitsDeadB_frameMark`: the
+  gate of a calling body and its width check read only which names have a frame word.
+* `callParamsB_forall₂W`: the operands of a call site pass the parameters of the callee under
+  the wide gate.
 * `compileRegion_spec_linked`: a result of `compileRegion σ a p [c]` on a program with a
   `call` has a word-array result, an export and a printed body that passes `regionCoB` at
   `c`, with bytes `calleeBytes`.
@@ -200,33 +203,96 @@ theorem cellArrsOf_nil_of_regionCells_nil {σ : AbiLayout} {nm : String → Stri
 
 /-! ## 2. The gate of a calling body at the frame of an entry state -/
 
-/-- The gate `imgGateCB` reads the frame map only through which names have a frame word. -/
-theorem imgGateCB_congr {frame frame' : String → Option (BitVec 64)}
+/-- The gate `imgGateCBW` reads the frame map only through which names have a frame word. -/
+theorem imgGateCBW_congr {frame frame' : String → Option (BitVec 64)}
     (h : ∀ q, (frame q).isSome = (frame' q).isSome)
     (slotArr : String → Option (String × Nat)) (body : Lcmd) :
-    X86Backend.ImageAddrCall.imgGateCB frame slotArr body
-      = X86Backend.ImageAddrCall.imgGateCB frame' slotArr body := by
+    X86Backend.ImageAddrCallW.imgGateCBW frame slotArr body
+      = X86Backend.ImageAddrCallW.imgGateCBW frame' slotArr body := by
   have hn : ∀ q, (frame q).isNone = (frame' q).isNone := fun q => by
     have := h q; cases e : frame q <;> cases e' : frame' q <;> simp_all
-  have hi : ∀ k x, X86Backend.ImageAddrSim.instrGateB frame slotArr body k x
-      = X86Backend.ImageAddrSim.instrGateB frame' slotArr body k x := by
+  have hi : ∀ k x, X86Backend.ImageAddrSimW.instrGateBW frame slotArr body k x
+      = X86Backend.ImageAddrSimW.instrGateBW frame' slotArr body k x := by
     intro k x
-    simp only [X86Backend.ImageAddrSim.instrGateB, X86Backend.ImageAddrFrame.icase_congr h,
-      X86Backend.ImageAddrFrame.regGateB_congr h, hn]
-  simp only [X86Backend.ImageAddrCall.imgGateCB, hi]
+    have hcg : X86Backend.ImageAddrSimW.castGateB frame x
+        = X86Backend.ImageAddrSimW.castGateB frame' x := by
+      simp only [X86Backend.ImageAddrSimW.castGateB, hn]
+    simp only [X86Backend.ImageAddrSimW.instrGateBW, X86Backend.ImageAddrSimW.gateAtW,
+      X86Backend.ImageAddrSimW.carryOkB, X86Backend.ImageAddrSimW.oneBitAt_congr h,
+      X86Backend.ImageAddrFrame.icase_congr h, X86Backend.ImageAddrSimW.gateReadSet_congr h,
+      X86Backend.ImageAddrSimW.regGateBW_congr h, X86Backend.ImageAddrSimW.sImmB_congr h,
+      X86Backend.ImageAddrSimW.sCmovB_congr h, hcg, hn, h]
+  have hc : ∀ k x, X86Backend.ImageAddrCallW.cidxArmCW frame slotArr body k x
+      = X86Backend.ImageAddrCallW.cidxArmCW frame' slotArr body k x := by
+    intro k x
+    simp only [X86Backend.ImageAddrCallW.cidxArmCW, X86Backend.ImageAddrCidx.cidxArmB,
+      X86Backend.ImageAddrCidx.cidxArmAt, X86Backend.ImageAddrSimW.oneBitAt_congr h, hn]
+  simp only [X86Backend.ImageAddrCallW.imgGateCBW, hi, hc]
 
 /-- The gate of a calling body at the restricted frame of the body at any stack pointer is
     the gate at `frameMark (frameNames body)`. -/
-theorem imgGateCB_frameMark (body : Lcmd) (r : BitVec 64)
+theorem imgGateCBW_frameMark (body : Lcmd) (r : BitVec 64)
     (slotArr : String → Option (String × Nat)) :
-    X86Backend.ImageAddrCall.imgGateCB (X86Backend.ImageAddrFrame.frameIn body
+    X86Backend.ImageAddrCallW.imgGateCBW (X86Backend.ImageAddrFrame.frameIn body
         (X86Backend.DecodePrintedAddr.frameP (X86Backend.LprogBytesDecode.Params.ofBody body) r))
         slotArr body
-      = X86Backend.ImageAddrCall.imgGateCB
+      = X86Backend.ImageAddrCallW.imgGateCBW
         (X86Backend.ImageAddrFrame.frameMark (X86Backend.ImageAddrFrame.frameNames body))
         slotArr body :=
-  imgGateCB_congr (fun q => (X86Backend.ImageAddrFrame.frameMark_isSome body r q).symm)
+  imgGateCBW_congr (fun q => (X86Backend.ImageAddrFrame.frameMark_isSome body r q).symm)
     slotArr body
+
+/-- The check `bitsDeadB` reads the frame map only through which names have a frame word. -/
+theorem bitsDeadB_congr {frame frame' : String → Option (BitVec 64)}
+    (h : ∀ q, (frame q).isSome = (frame' q).isSome) (D : X86Backend.ImageAddrCall.DeadTab)
+    (body : Lcmd) :
+    X86Backend.ImageAddrCallW.bitsDeadB frame D body
+      = X86Backend.ImageAddrCallW.bitsDeadB frame' D body := by
+  simp only [X86Backend.ImageAddrCallW.bitsDeadB, X86Backend.ImageAddrSimW.oneBitAt_congr h]
+
+/-- The check `bitsDeadB` at the restricted frame of the body at any stack pointer is the
+    check at `frameMark (frameNames body)`. -/
+theorem bitsDeadB_frameMark (body : Lcmd) (r : BitVec 64) (D : X86Backend.ImageAddrCall.DeadTab) :
+    X86Backend.ImageAddrCallW.bitsDeadB (X86Backend.ImageAddrFrame.frameIn body
+        (X86Backend.DecodePrintedAddr.frameP (X86Backend.LprogBytesDecode.Params.ofBody body) r))
+        D body
+      = X86Backend.ImageAddrCallW.bitsDeadB
+        (X86Backend.ImageAddrFrame.frameMark (X86Backend.ImageAddrFrame.frameNames body)) D body :=
+  bitsDeadB_congr (fun q => (X86Backend.ImageAddrFrame.frameMark_isSome body r q).symm) D body
+
+/-- **Soundness of `callParamsB` at the wide gate.** Under `ImgSep`, the positionwise gate
+    `ImageAddrSimW.ImgGateW` at any exempt set and `ImgRel`, at a call at the position of the
+    address state, the operands of the call site `calleeSiteAt` at that position pass the
+    parameters of `c` (`LinkedFnCallee.ParamAt`): a scalar parameter is its operand, and the
+    register of an array parameter holds the base of the array of its operand, an array of the
+    slot map of the length of the parameter (`ImageAddrSimW.ImgGateW.ptr_of_reloadW`). -/
+theorem callParamsB_forall₂W {c : CalleeData} {sl : String → Option (String × Nat)}
+    {body : Lcmd} (h : callParamsB c sl body = true)
+    {frame : String → Option (BitVec 64)} {base : String → BitVec 64} {rsp : BitVec 64}
+    (hsep : X86Backend.ImageAddrSim.ImgSep frame sl base rsp) {X : Nat → Prop}
+    (hgate : X86Backend.ImageAddrSimW.ImgGateW frame sl body X)
+    {s : JasminLsemMemFlagGuard.LstateMF} {sa : VIR.JasminLsemAddrMem.LstateA} {zf : Bool}
+    (hrel : X86Backend.ImageAddrSim.ImgRel frame sl base body s sa zf)
+    (hcall : ∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) :
+    List.Forall₂ (X86Backend.LinkedFnCallee.ParamAt sl base sa) c.ins
+      (calleeSiteAt c sl body sa.reg.lpc).2 := by
+  obtain ⟨bi, ra, t, hb, hbi⟩ := hcall
+  have hp := (callParamsB_spec h hb hbi).1
+  rw [calleeSiteAt_snd]
+  refine List.forall₂_iff_zip.mpr
+    ⟨(c.siteArgs_length sl body _).symm, fun {q x} hqx => ?_⟩
+  have hq := hp (q, x) hqx
+  simp only [paramAtB, Bool.and_eq_true] at hq
+  obtain ⟨hgp, hk⟩ := hq
+  refine ⟨hgp, ?_⟩
+  obtain ⟨pn, k⟩ := q
+  cases k with
+  | scalar => simpa using hk
+  | words m =>
+      simp only [beq_iff_eq] at hk
+      obtain ⟨q, hq, hptr⟩ := X86Backend.ImageAddrSimW.ImgGateW.ptr_of_reloadW hsep hgate
+        (X86Backend.ImageAddrSimW.imgRelW_of hrel) hk (hsep.gp pn hgp)
+      exact ⟨⟨q, hq⟩, hptr⟩
 
 /-! ## 3. The back half at one linked function -/
 
@@ -291,7 +357,7 @@ theorem compileRegion_spec_linked {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
     followed by the code of `c`, which is nonempty; the instructions of `b` have the shapes
     `ds`; and the items of `b` at that symbol map pass the branch check and denote a
     program `prog` whose first instruction is the prologue `leaFrame` of the frame of `b`.
-    These are the byte hypotheses of `CheckedIsaCall.haltsC_of_linkedChecksK`. -/
+    These are the byte hypotheses of `CheckedIsaCall.haltsC_of_linkedChecksKW`. -/
 theorem calleeBytes_some {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
     (h : calleeBytes (some (CalleeTab.one c)) b = some bytes) :
     bytes = X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym (CalleeTab.one c) b) b
@@ -344,7 +410,7 @@ theorem calleeBytes_some {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
   · cases h
 
 /-- **The bytes of a calling body as items.** Let the bytes `calleeBytes` at the callee `c`
-    of a printed body `b` of the class `ImageAddrCall.printedAddrCB` at the frame of `c` be
+    of a printed body `b` of the class `ImageAddrCallW.printedAddrCWB` at the frame of `c` be
     `bytes`, and let `prog` be the program `calleeProg (CalleeTab.one c) b` of the function. Then
     `bytes`
     are the bytes of an item list `items` (the items `fundefItemsRelocL` of `b`) followed by
@@ -355,7 +421,7 @@ theorem calleeBytes_some {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
     `LprogBytesLinkReloc.resolveAll_layout_reloc`). -/
 theorem calleeBytes_items {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
     (h : calleeBytes (some (CalleeTab.one c)) b = some bytes)
-    (hpr : X86Backend.ImageAddrCall.printedAddrCB c.frame b = true)
+    (hpr : X86Backend.ImageAddrCallW.printedAddrCWB c.frame b = true)
     {prog : List X86Backend.LprogBytesDecode.RInstr}
     (hprog : calleeProg (CalleeTab.one c) b = some prog) :
     ∃ items : List X86Backend.LprogBytesDecode.Item,
@@ -371,7 +437,7 @@ theorem calleeBytes_items {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
     rw [hP] at hprog
     exact Option.some.inj hprog
   subst hpp
-  obtain ⟨hsaves, hF0, hFr⟩ := X86Backend.ImageAddrCall.printedAddrCB_reloc hpr
+  obtain ⟨hsaves, hF0, hFr⟩ := X86Backend.ImageAddrCallW.printedAddrCWB_reloc hpr
   have hsh := X86Backend.LprogBytesLinkReloc.relocDShapeOK_of_shapes _ hss
   have hbytes := X86Backend.LprogBytesLinkReloc.encodeLfundefBytesReloc_eq_itemBytesL
     (calleeSym (CalleeTab.one c) b) b ds hsaves hsh
@@ -465,8 +531,9 @@ theorem calleeSpec_guard {X : X86Backend.Callee.CalleeRun} {c : X86Backend.Calle
 
     The reference run is `regionCo_bytes_callee`, the image run is
     `calleeBody_imgRun_at`, the run through the call is
-    `CheckedIsaCall.haltsC_of_linkedChecksK` and the run under the oracle is
-    `ImageAddrCall.haltsO_of_linkedChecks`, both at the interface `wordSig l c.args c.resReg`,
+    `CheckedIsaCall.haltsC_of_linkedChecksKW` and the run under the oracle is
+    `ImageAddrCallW.haltsO_of_linkedChecksOne` at the word site steps, both at the interface
+    `wordSig l c.args c.resReg`,
     with the end the words of the arrays of the slot map at their bases; the first step is
     the prologue `leaFrame` of the caller. -/
 theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
@@ -572,9 +639,10 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
   have hlive := hok.live0
   have hroomB := hok.stackRoom
   have hnn := hok.frameNonneg
+  have hbits0 := hok.bitsDead
   rw [calleeDeadB_of_reg hr0 hcaa, Bool.and_eq_true] at hdead
   replace hdead := hdead.1
-  rw [hsite] at hsi hdead hflags hcond hseg hlive
+  rw [hsite] at hsi hdead hflags hcond hseg hlive hbits0
   -- The bytes of the calling body.
   obtain ⟨rfl, hne, ds, prog, hss, hbr, hP, hp0⟩ := calleeBytes_some hbs
   -- The image run at the table.
@@ -636,30 +704,41 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
     simpa [X86Backend.LinkedFnCallee.wordSig, CalleeData.sig, hcclob, hcsig] using hdead
   have hbne : b ≠ [] := by
     intro hb
-    simp [X86Backend.ImageAddrCall.printedAddrCB, hb] at hcls
+    simp [X86Backend.ImageAddrCallW.printedAddrCWB, hb] at hcls
   have hlen : (X86Backend.ImageAddrRoute.entryA σ sa).reg.lpc < b.length := by
     rw [hpc0]
     exact List.length_pos_iff.mpr hbne
-  have hLv : (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
-      (renOf d.ps)) (fun _ => (c.resReg, c.args)) b) d.outs).live
+  have hLv : X86Backend.ImageAddrCallW.liveW
+      (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
+        (renOf d.ps)) (fun _ => (c.resReg, c.args)) b) d.outs)
+      (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b
       (X86Backend.ImageAddrRoute.entryA σ sa).reg.lpc = false := by
     rw [hpc0]
-    simpa using hlive
-  obtain ⟨hdec, sA', hhalt, hfinal⟩ := X86Backend.CheckedIsaCall.haltsC_of_linkedChecksK hsep
-    hphys ((imgGateCB_frameMark b _ _).trans hgate) hsites ctRegime hX hnc hw hS hF
+    exact X86Backend.ImageAddrCallW.liveW_zero (by simpa using hlive)
+      (X86Backend.ImageAddrCallW.callFacts_of_printedAddrCWB hcls hss).carry
+  have hbits : X86Backend.ImageAddrCallW.bitsDeadB (X86Backend.ImageAddrRoute.frameE b sa)
+      (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
+        (renOf d.ps)) (fun _ => (c.resReg, c.args)) b) d.outs) b = true :=
+    (bitsDeadB_frameMark b _ _).trans hbits0
+  have hgateW :=
+    (imgGateCBW_frameMark b (X86Backend.DecodePrintedCFG.frameRsp b sa) _).trans hgate
+  obtain ⟨hdec, sA', hhalt, hfinal⟩ := X86Backend.CheckedIsaCall.haltsC_of_linkedChecksKW hsep
+    hphys hgateW hsites ctRegime hX hnc hw hS hF
     (fun ret sA _ => hroom ret sA) hcls hss
     (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym (CalleeTab.one c) b)
-    hqk hne hbr hP hdead' hflags hcond hTc hsi hseg hfin hFin fuel' himgrun rfl
+    hqk hne hbr hP hbits hdead' hflags hcond hTc hsi hseg hfin hFin fuel' himgrun rfl
     hlen hLv (hrelF _) hacorr
   -- The run under the oracle of the guarded callee.
-  obtain ⟨sO, hhaltO, hfinalO⟩ := X86Backend.ImageAddrCall.haltsO_of_linkedChecks hsep
-    hphys ((imgGateCB_frameMark b _ _).trans hgate) hsites (calleeSpec_guard hX) hw hS hF
-    (fun ret sA _ => hroom ret sA) hcls hss
+  obtain ⟨sO, hhaltO, hfinalO⟩ := X86Backend.ImageAddrCallW.haltsO_of_linkedChecksOne hsep
+    hphys hgateW hsites (calleeSpec_guard hX) hcls hss
     (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym (CalleeTab.one c) b) hP
-    hdead' hflags
-    hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
-    (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hLv
-    (hrelF _) hacorr
+    hbits hflags hcond X86Backend.CheckedIsaCall.x86IsaK_checked
+    (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin
+    (fun _ _ _ hg _ hb => X86Backend.ImageAddrCall.siteStep_word hsep hphys
+      (calleeSpec_guard hX) hw hS hF (fun ret sA _ => hroom ret sA) hdead' hb
+      (X86Backend.ImageAddrCall.glue_regArgs (X86Backend.ImageAddrCall.sitesOf_of_siteShapeB hsi
+        hTc) hw.wordOnly hw.wordRet hg))
+    fuel' himgrun rfl hlen hLv (hrelF _) hacorr
   rw [← X86Backend.LprogBytesLinkReloc.expectedReloc_length _ _ _ _ _ hP] at hhaltO
   rw [hpc0] at hhalt hhaltO
   have hpos : X86Backend.DecodePrintedCFG.posOf ds 0
@@ -771,9 +850,9 @@ theorem linkedSummary_eq_outSummary {l : CatCrypt.Crypto.Hax.LinkedFn}
     The reference run is `regionCo_bytes_callee` at the array positions and the result
     length of `outSummary`, the image run is `calleeBody_imgRun_at` at the call sites
     `calleeSiteAt`, whose destinations are in their operands, and the run under the oracle is
-    `ImageAddrCallOutChain.haltsO_of_linkedChecks_out`, with the destination array of the
+    `ImageAddrCallOutChain.haltsO_of_linkedChecksW_out`, with the destination array of the
     slot map from `calleeSite_dest`, the summary input and the precondition at the entry of
-    a call from `callParamsB_forall₂`, `calleeBodyB_nodup` and
+    a call from `callParamsB_forall₂W`, `calleeBodyB_nodup` and
     `LinkedFnCallee.readIns_entry`, and the items from `calleeBytes_items`. -/
 theorem compileRegion_correct_linked_outO
     {l : CatCrypt.Crypto.Hax.LinkedFn} {c : CalleeData} (hc : l.calleeData = some c)
@@ -961,9 +1040,9 @@ theorem compileRegion_correct_linked_outO
     rw [hb] at hx
     exact hS0.cells q A n j hA hj x hx
   -- The operands at the entry of a call.
-  have hgateI : X86Backend.ImageAddrSim.ImgGate (X86Backend.ImageAddrRoute.frameE b sa)
-      (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b :=
-    X86Backend.ImageAddrCall.imgGate_of_imgGateCB ((imgGateCB_frameMark b _ _).trans hgate)
+  have hgateW :=
+    (imgGateCBW_frameMark b (X86Backend.DecodePrintedCFG.frameRsp b sa) _).trans hgate
+  have hgateI := X86Backend.ImageAddrCallW.imgGateW_of_imgGateCBW hgateW
   have hentry : ∀ s sa0 zf sA, X86Backend.ImageAddrSim.ImgRel
       (X86Backend.ImageAddrRoute.frameE b sa) (slotRen (slotArrOf σ exportReg) (renOf d.ps))
       (X86Backend.ImageAddrRouteW.baseR σ sa d.ps) b s sa0 zf →
@@ -978,7 +1057,7 @@ theorem compileRegion_correct_linked_outO
               sa0.reg.lpc).2.map LOperand.reg) = some vs →
           X86Backend.LinkedFnCallee.readIns ins (entryOf ret sA) = vs := by
     intro s sa0 zf sA hrel hac hcall
-    have hF2 := callParamsB_forall₂ hparB hsep hgateI hrel hcall
+    have hF2 := callParamsB_forall₂W hparB hsep hgateI hrel hcall
     rw [hins] at hF2
     refine ⟨?_, fun ret vs hvs =>
       X86Backend.LinkedFnCallee.readIns_entry hsep hS hrel hac ret hF2 hvs⟩
@@ -1023,16 +1102,24 @@ theorem compileRegion_correct_linked_outO
     exact ⟨arr, by rw [X86Backend.ImageAddrSim.getArr_congr hag.arr]; exact h1, h2⟩
   have hbne : b ≠ [] := by
     intro hb
-    simp [X86Backend.ImageAddrCall.printedAddrCB, hb] at hcls
+    simp [X86Backend.ImageAddrCallW.printedAddrCWB, hb] at hcls
   have hlen : (X86Backend.ImageAddrRoute.entryA σ sa).reg.lpc < b.length := by
     rw [hpc0]
     exact List.length_pos_iff.mpr hbne
-  have hL0 : (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
-      (renOf d.ps)) (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
-      b) d.outs).live (X86Backend.ImageAddrRoute.entryA σ sa).reg.lpc = false := by
+  have hL0 : X86Backend.ImageAddrCallW.liveW
+      (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
+        (renOf d.ps)) (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
+        b) d.outs) (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b
+      (X86Backend.ImageAddrRoute.entryA σ sa).reg.lpc = false := by
     rw [hpc0]
-    simpa using hlive
-  have hclsL : X86Backend.ImageAddrCall.printedAddrCB l.frame b = true := hcframe ▸ hcls
+    exact X86Backend.ImageAddrCallW.liveW_zero (by simpa using hlive)
+      (X86Backend.ImageAddrCallW.callFacts_of_printedAddrCWB hcls hss).carry
+  have hbits : X86Backend.ImageAddrCallW.bitsDeadB (X86Backend.ImageAddrRoute.frameE b sa)
+      (deadTab (X86Backend.ImageAddrCall.callImg (slotRen (slotArrOf σ exportReg)
+        (renOf d.ps)) (calleeSiteAt c (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b)
+        b) d.outs) b = true :=
+    (bitsDeadB_frameMark b _ _).trans hok.bitsDead
+  have hclsL : X86Backend.ImageAddrCallW.printedAddrCWB l.frame b = true := hcframe ▸ hcls
   -- The precondition at the entry of a call.
   have hpre : ∀ s sa0 zf sA, X86Backend.ImageAddrSim.ImgRel
       (X86Backend.ImageAddrRoute.frameE b sa) (slotRen (slotArrOf σ exportReg) (renOf d.ps))
@@ -1041,7 +1128,7 @@ theorem compileRegion_correct_linked_outO
       (∃ bi ra t, b[sa0.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
       ∀ ret, l.pre (entryOf ret sA) := by
     intro s sa0 zf sA hrel hac hcall ret
-    have hF2 := callParamsB_forall₂ hparB hsep hgateI hrel hcall
+    have hF2 := callParamsB_forall₂W hparB hsep hgateI hrel hcall
     rw [hins] at hF2
     obtain ⟨bi, ra, tg, hb, hbi⟩ := hcall
     have hnd : decodeLprog l.bytes = none →
@@ -1050,11 +1137,11 @@ theorem compileRegion_correct_linked_outO
       calleeBodyB_nodup hcb (by rw [hcbytes]; exact hd) hb hbi
     exact hroom _ _ _ _ sa0 sA _ hsep hS hac hF2 hnd ret
   -- The run under the oracle of the guarded callee.
-  obtain ⟨sO, hhaltO, hfinalO⟩ := X86Backend.ImageAddrCallOutChain.haltsO_of_linkedChecks_out
-    hsep hphys ((imgGateCB_frameMark b _ _).trans hgate) hsites hL (calleeSpec_guard hX) hS
+  obtain ⟨sO, hhaltO, hfinalO⟩ := X86Backend.ImageAddrCallOutChain.haltsO_of_linkedChecksW_out
+    hsep hphys hgateW hsites hL (calleeSpec_guard hX) hS
     hpre hqA hentry hclsL hss
     (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym (CalleeTab.one c) b) hP
-    hdead' hflags
+    hbits hdead' hflags
     hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
     (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hL0
     (hrelF _) hacorr
