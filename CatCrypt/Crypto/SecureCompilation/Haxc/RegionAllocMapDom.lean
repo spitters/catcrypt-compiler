@@ -1268,7 +1268,7 @@ theorem renNE_resAliasTab (outs : List (String × Nat)) {rr : Option (String × 
     · exact h0 x hx
 
 /-- The result buffer of the result alias of a region export is not empty. -/
-theorem resAliasOf_ne_empty {callee : Option CalleeData} {D? : Option String}
+theorem resAliasOf_ne_empty {callee : Option CalleeTab} {D? : Option String}
     {ts : List JasminTy} {res : List LOperand} :
     ∀ D src, resAliasOf callee D? ts res = some (D, src) → D ≠ "" := by
   intro D src h

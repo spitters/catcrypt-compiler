@@ -38,7 +38,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.AllocForm (AllocOut AllocOutInstr)
 /-- **The region allocation refuses nothing after the export**: `regionLprog` is defined
     exactly when the region export `exportR` of the program is. -/
 theorem regionLprog_isSome_iff_exportR (a : AbiNames) {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) (callee : Option CalleeData)
+    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) (callee : Option CalleeTab)
     (ex : List String) :
     (regionLprog a p callee ex).isSome = (exportR Γ.length a.fname p Γ.length 0).isSome := by
   unfold regionLprog regionLprogC regionAllocC exportRLfundef

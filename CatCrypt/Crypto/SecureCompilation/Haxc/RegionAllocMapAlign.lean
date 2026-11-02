@@ -156,7 +156,7 @@ theorem regionCoBody_names_alloc (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : 
     `nm RA` of a result register `RA` of the layout is one. -/
 theorem outs_hw_regionCoParts {σ : AbiLayout} {nm : String → String} (body : Lcmd)
     (t : JasminTy) (code : List LinstrRM) (res : List LOperand) (cert : List (String × String))
-    (callee : Option CalleeData)
+    (callee : Option CalleeTab)
     (hRA : ∀ RA, σ.result = .reg RA → isHwRegName (nm RA) = true) :
     ∀ y ∈ (regionCoParts σ nm body t code res cert callee).outs, isHwRegName y = true := by
   intro y hy
@@ -176,7 +176,7 @@ theorem outs_hw_regionCoParts {σ : AbiLayout} {nm : String → String} (body : 
     name: the merge keeps no hardware register name. -/
 theorem outs_regionCoParts {σ : AbiLayout} {nm : String → String} (body : Lcmd)
     (t : JasminTy) (code : List LinstrRM) (res : List LOperand) (cert : List (String × String))
-    (callee : Option CalleeData)
+    (callee : Option CalleeTab)
     (hRA : ∀ RA, σ.result = .reg RA → isHwRegName (nm RA) = true) :
     ∀ y ∈ (regionCoParts σ nm body t code res cert callee).outs,
       renOf (regionCoParts σ nm body t code res cert callee).tau y = y := by

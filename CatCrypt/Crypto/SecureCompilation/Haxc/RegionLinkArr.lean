@@ -156,7 +156,7 @@ theorem compileRegion_correct_contract_ins
   obtain ⟨⟨w, m, rfl⟩, hB, rx0, r, b, cert, hrx, hwb, hbs, hg, -⟩ :=
     compileRegion_spec_linked h hcf
   generalize hd : regionCoParts σ exportReg b (.stackArr w m) (calleeCode (some c) r.code) r.res
-    cert (some c) = d
+    cert (some (CalleeTab.one c)) = d
   obtain ⟨hcres, -, -, hcclob, hcframe, -, -, -, -, -, -, hcaa⟩ :=
     CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hc
   -- The word result of `c`.
@@ -207,12 +207,12 @@ theorem compileRegion_correct_contract_ins
       hao hTc sa V hV hreg fuel ((legalizeRegion_denoteAt Ec fuel p V).trans hv)
   -- The conjuncts of the gate.
   have hg' := hg
-  simp only [regionCoB, Option.all, Bool.and_eq_true] at hg'
+  simp only [regionCoB, Option.all, Bool.and_eq_true, calleeCodeT_one] at hg'
   rw [hd] at hg'
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hce⟩, hren⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, himg⟩⟩ := hg'
   have hcells : d.cells = [] := List.isEmpty_iff.mp hce
   rw [hcells] at himg
-  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgB,
+  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgBT, CalleeTab.frame_one,
     Bool.and_eq_true] at himg
   obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, hphys⟩, hcls, hgate⟩, -⟩, hent⟩, -⟩, -⟩ := himg
   have hcellsE : d.cells = regionCells σ exportReg d.ps b (d.fused.drop d.pre.length) := by
@@ -333,7 +333,7 @@ theorem compileRegion_correct_contract_ins
     X86Backend.ImageAddrCallMeets.haltsC_of_contract_ins hsep hphys
       ((imgGateCB_frameMark b _ _).trans hgate) hsites ctRegime hL hm hnc hnd hfb hS hparF
       (fun p _ => hs1 p) hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
-      (calleeSym c b) hqk hne hbr hP hdead' hflags hcond hTc hsi
+      (calleeSym (CalleeTab.one c) b) hqk hne hbr hP hdead' hflags hcond hTc hsi
       X86Backend.CheckedIsaCall.x86IsaK_checked (X86Backend.CheckedIsaCall.deadSteps_x86K hseg)
       hfin hFin fuel' himgrun rfl hlen hL0 (hrelF _) hacorr
   -- The run under the oracle of the callee guarded by the precondition of the contract.
@@ -342,7 +342,8 @@ theorem compileRegion_correct_contract_ins
       ((imgGateCB_frameMark b _ _).trans hgate) hsites hL
       (sContract_guarded hm c.args (some c.resReg)) hnd hfb hS hparF (fun p _ => hs1 p)
       hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
-      (calleeSym c b) hP hdead' hflags hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
+      (calleeSym (CalleeTab.one c) b) hP hdead' hflags hcond hTc hsi
+      X86Backend.CheckedIsaCall.x86IsaK_checked
       (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hL0
       (hrelF _) hacorr
   rw [← X86Backend.LprogBytesLinkReloc.expectedReloc_length _ _ _ _ _ hP] at hhaltO
@@ -435,7 +436,7 @@ theorem compileRegion_correct_contract_out
   obtain ⟨⟨w, m, rfl⟩, hB, rx0, r, b, cert, hrx, hwb, hbs, hg, -⟩ :=
     compileRegion_spec_linked h hcf
   generalize hd : regionCoParts σ exportReg b (.stackArr w m) (calleeCode (some c) r.code) r.res
-    cert (some c) = d
+    cert (some (CalleeTab.one c)) = d
   obtain ⟨hcres, -, -, hcclob, hcframe, -, -, -, -, -, -, hcaa⟩ :=
     CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hc
   -- The out result of `c`, at its destination position `kd`.
@@ -502,12 +503,12 @@ theorem compileRegion_correct_contract_out
       hao hTc sa V hV hreg fuel ((legalizeRegion_denoteAt Ec fuel p V).trans hv)
   -- The conjuncts of the gate.
   have hg' := hg
-  simp only [regionCoB, Option.all, Bool.and_eq_true] at hg'
+  simp only [regionCoB, Option.all, Bool.and_eq_true, calleeCodeT_one] at hg'
   rw [hd] at hg'
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hce⟩, hren⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, himg⟩⟩ := hg'
   have hcells : d.cells = [] := List.isEmpty_iff.mp hce
   rw [hcells] at himg
-  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgB,
+  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgBT, CalleeTab.frame_one,
     Bool.and_eq_true] at himg
   obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, hphys⟩, hcls, hgate⟩, -⟩, hent⟩, -⟩, -⟩ := himg
   have hcellsE : d.cells = regionCells σ exportReg d.ps b (d.fused.drop d.pre.length) := by
@@ -663,7 +664,7 @@ theorem compileRegion_correct_contract_out
     X86Backend.ImageAddrCallMeets.haltsC_of_contract_out hsep hphys
       ((imgGateCB_frameMark b _ _).trans hgate) hsites ctRegime hL hm hnc hnd hfb hS hqA
       (fun i _ => hA i) hparF hdst hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
-      (calleeSym c b) hqk hne hbr hP hdead' hflags hcond hTc hsi
+      (calleeSym (CalleeTab.one c) b) hqk hne hbr hP hdead' hflags hcond hTc hsi
       X86Backend.CheckedIsaCall.x86IsaK_checked (X86Backend.CheckedIsaCall.deadSteps_x86K hseg)
       hfin hFin fuel' himgrun rfl hlen hL0 (hrelF _) hacorr
   -- The run under the oracle of the callee guarded by the precondition of the contract.
@@ -672,7 +673,8 @@ theorem compileRegion_correct_contract_out
       ((imgGateCB_frameMark b _ _).trans hgate) hsites hL
       (sContract_guarded hm c.args none) hnd hfb hS hqA (fun i _ => hA i) hparF hdst
       hclsL hss (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq)
-      (calleeSym c b) hP hdead' hflags hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
+      (calleeSym (CalleeTab.one c) b) hP hdead' hflags hcond hTc hsi
+      X86Backend.CheckedIsaCall.x86IsaK_checked
       (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hL0
       (hrelF _) hacorr
   rw [← X86Backend.LprogBytesLinkReloc.expectedReloc_length _ _ _ _ _ hP] at hhaltO

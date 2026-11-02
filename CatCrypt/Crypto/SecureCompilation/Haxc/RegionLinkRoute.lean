@@ -233,7 +233,7 @@ theorem imgGateCB_frameMark (body : Lcmd) (r : BitVec 64)
 /-- A program for which `regionCallee` finds a callee has a word-array result. -/
 theorem regionCallee_some_stackArr {linked : List CalleeData} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {code : List JasminLsemMem.LinstrRM}
-    {c : CalleeData} (h : regionCallee linked p code = some (some c)) :
+    {T : CalleeTab} (h : regionCallee linked p code = some (some T)) :
     ∃ w m, t = .stackArr w m := by
   unfold regionCallee at h
   split at h
@@ -257,9 +257,9 @@ theorem compileRegion_spec_linked {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
     (∃ w m, t = .stackArr w m) ∧ regionExportableB (legalizeRegion p) = true
       ∧ ∃ r0 r b cert, exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
       ∧ regionWebs (regionWebsEx σ exportReg) r0 (calleeAA (some c)) (calleeAO (some c)) = r
-      ∧ calleeBytes (some c) b = some bytes
-      ∧ regionCoB σ exportReg b t r.code r.res cert (some c) a.fname = true
-      ∧ ∃ P0, regionLprogC a (legalizeRegion p) (some c) (regionWebsEx σ exportReg)
+      ∧ calleeBytes (some (CalleeTab.one c)) b = some bytes
+      ∧ regionCoB σ exportReg b t r.code r.res cert (some (CalleeTab.one c)) a.fname = true
+      ∧ ∃ P0, regionLprogC a (legalizeRegion p) (some (CalleeTab.one c)) (regionWebsEx σ exportReg)
           = some (P0, cert) := by
   unfold compileRegion at h
   split at h
@@ -272,8 +272,9 @@ theorem compileRegion_spec_linked {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
         | none =>
           rw [← legalizeRegion_callFree_eq, regionCallee_callFree hc] at hcf
           cases hcf
-        | some c' =>
-          obtain rfl : c' = c := List.mem_singleton.mp (regionCallee_mem hc)
+        | some T' =>
+          obtain ⟨c', hc', rfl⟩ := regionCallee_one hc
+          obtain rfl : c' = c := List.mem_singleton.mp hc'
           split at h
           · rename_i P0 cert hP
             obtain ⟨b, hbs, hg⟩ := regionEncode_spec_callee h
@@ -285,42 +286,44 @@ theorem compileRegion_spec_linked {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
   · cases h
 
 /-- **The bytes of a calling body.** The bytes `calleeBytes` at the callee `c` of a printed
-    body `b` are the bytes of the relocating encoder at the symbol map `calleeSym c b`
+    body `b` are the bytes of the relocating encoder at the symbol map
+    `calleeSym (CalleeTab.one c) b`
     followed by the code of `c`, which is nonempty; the instructions of `b` have the shapes
     `ds`; and the items of `b` at that symbol map pass the branch check and denote a
     program `prog` whose first instruction is the prologue `leaFrame` of the frame of `b`.
     These are the byte hypotheses of `CheckedIsaCall.haltsC_of_linkedChecksK`. -/
 theorem calleeBytes_some {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
-    (h : calleeBytes (some c) b = some bytes) :
-    bytes = X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym c b) b ++ c.bytes
+    (h : calleeBytes (some (CalleeTab.one c)) b = some bytes) :
+    bytes = X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym (CalleeTab.one c) b) b
+        ++ c.bytes
       ∧ c.bytes ≠ []
       ∧ ∃ ds prog,
         X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b = some ds
         ∧ X86Backend.LprogBytesLinkReloc.branchOKReloc
-          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
             (X86Backend.LprogBytesDecode.Params.ofBody b) b ds)
           (X86Backend.LprogBytesDecode.decCount
-            (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+            (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
               (X86Backend.LprogBytesDecode.Params.ofBody b) b ds))
-          (X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym c b) b).length 0
-          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+          (X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym (CalleeTab.one c) b) b).length 0
+          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
             (X86Backend.LprogBytesDecode.Params.ofBody b) b ds) = true
         ∧ X86Backend.LprogBytesLinkReloc.expectedReloc
-          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
             (X86Backend.LprogBytesDecode.Params.ofBody b) b ds)
           (X86Backend.LprogBytesDecode.decCount
-            (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+            (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
               (X86Backend.LprogBytesDecode.Params.ofBody b) b ds))
-          (X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym c b) b).length
-          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+          (X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym (CalleeTab.one c) b) b).length
+          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
             (X86Backend.LprogBytesDecode.Params.ofBody b) b ds) = some prog
         ∧ prog[0]? = some (.op (X86Backend.PhysAbiShape.leaFrame
           (-(Int.ofNat (X86Backend.LprogBytesDecode.Params.ofBody b).frame)))) := by
-  simp only [calleeBytes] at h
+  simp only [calleeBytes, CalleeTab.bytes_one] at h
   split at h
   · rename_i hc
     obtain rfl := (Option.some.inj h).symm
-    simp only [calleeLinkB, Bool.and_eq_true] at hc
+    simp only [calleeLinkB_one, Bool.and_eq_true] at hc
     obtain ⟨hne, hm⟩ := hc
     refine ⟨rfl, by simpa using hne, ?_⟩
     cases hss : X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b
@@ -342,7 +345,8 @@ theorem calleeBytes_some {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
 
 /-- **The bytes of a calling body as items.** Let the bytes `calleeBytes` at the callee `c`
     of a printed body `b` of the class `ImageAddrCall.printedAddrCB` at the frame of `c` be
-    `bytes`, and let `prog` be the program `calleeProg c b` of the function. Then `bytes`
+    `bytes`, and let `prog` be the program `calleeProg (CalleeTab.one c) b` of the function. Then
+    `bytes`
     are the bytes of an item list `items` (the items `fundefItemsRelocL` of `b`) followed by
     the code of `c`; every item of `items` passes `ItemOK`; and the layout of `items`
     resolves to `prog` inside the layout of `items` followed by any layout whose first
@@ -350,9 +354,10 @@ theorem calleeBytes_some {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
     (`LprogBytesLinkReloc.encodeLfundefBytesReloc_eq_itemBytesL`,
     `LprogBytesLinkReloc.resolveAll_layout_reloc`). -/
 theorem calleeBytes_items {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
-    (h : calleeBytes (some c) b = some bytes)
+    (h : calleeBytes (some (CalleeTab.one c)) b = some bytes)
     (hpr : X86Backend.ImageAddrCall.printedAddrCB c.frame b = true)
-    {prog : List X86Backend.LprogBytesDecode.RInstr} (hprog : calleeProg c b = some prog) :
+    {prog : List X86Backend.LprogBytesDecode.RInstr}
+    (hprog : calleeProg (CalleeTab.one c) b = some prog) :
     ∃ items : List X86Backend.LprogBytesDecode.Item,
       bytes = X86Backend.LprogBytesDecode.itemBytes items ++ c.bytes
       ∧ (∀ it ∈ items, X86Backend.LprogBytesDecode.ItemOK it)
@@ -362,15 +367,15 @@ theorem calleeBytes_items {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
           (X86Backend.LprogBytesDecode.layoutAt 0 items) = some prog := by
   obtain ⟨rfl, -, ds, prog', hss, hbr, hP, -⟩ := calleeBytes_some h
   have hpp : prog' = prog := by
-    simp only [calleeProg, hss] at hprog
+    simp only [calleeProg_one, hss] at hprog
     rw [hP] at hprog
     exact Option.some.inj hprog
   subst hpp
   obtain ⟨hsaves, hF0, hFr⟩ := X86Backend.ImageAddrCall.printedAddrCB_reloc hpr
   have hsh := X86Backend.LprogBytesLinkReloc.relocDShapeOK_of_shapes _ hss
   have hbytes := X86Backend.LprogBytesLinkReloc.encodeLfundefBytesReloc_eq_itemBytesL
-    (calleeSym c b) b ds hsaves hsh
-  have hok := X86Backend.LprogBytesLinkReloc.fundefItemsRelocL_ok (calleeSym c b)
+    (calleeSym (CalleeTab.one c) b) b ds hsaves hsh
+  have hok := X86Backend.LprogBytesLinkReloc.fundefItemsRelocL_ok (calleeSym (CalleeTab.one c) b)
     (X86Backend.LprogBytesDecode.Params.ofBody b) b ds hF0 hFr hsh
   refine ⟨_, by rw [hbytes], hok, fun e x tl => ?_⟩
   rw [hbytes] at hbr hP
@@ -378,17 +383,17 @@ theorem calleeBytes_items {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
     hbr]
   · exact hP
   · have hlt : ∀ z ∈ X86Backend.LprogBytesDecode.layoutAt 0
-          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
             (X86Backend.LprogBytesDecode.Params.ofBody b) b ds),
         z.1 < (X86Backend.LprogBytesDecode.itemBytes
-          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
             (X86Backend.LprogBytesDecode.Params.ofBody b) b ds)).length :=
       fun z hz => by simpa using X86Backend.LprogBytesLink.layoutAt_start_lt _ hok 0 z hz
     have hnone : (X86Backend.LprogBytesDecode.layoutAt 0
-        (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+        (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
           (X86Backend.LprogBytesDecode.Params.ofBody b) b ds)).findIdx?
         (fun z => decide (z.1 = (X86Backend.LprogBytesDecode.itemBytes
-          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym c b)
+          (X86Backend.LprogBytesLinkReloc.fundefItemsRelocL (calleeSym (CalleeTab.one c) b)
             (X86Backend.LprogBytesDecode.Params.ofBody b) b ds)).length)) = none := by
       rw [List.findIdx?_eq_none_iff]
       intro z hz
@@ -498,7 +503,7 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
   obtain ⟨⟨w, m, rfl⟩, hB, rx0, r, b, cert, hrx, hwb, hbs, hg, -⟩ :=
     compileRegion_spec_linked h hcf
   generalize hd : regionCoParts σ exportReg b (.stackArr w m) (calleeCode (some c) r.code) r.res
-    cert (some c) = d
+    cert (some (CalleeTab.one c)) = d
   -- The array positions and the result of `c`: word arguments and a word result.
   have hcaa : c.arrArgs = fun _ => none := by
     rw [(CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hc).2.2.2.2.2.2.2.2.2.2.2]
@@ -537,12 +542,12 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
       hreg fuel ((legalizeRegion_denoteAt Ec fuel p V).trans hv)
   -- The conjuncts of the gate.
   have hg' := hg
-  simp only [regionCoB, Option.all, Bool.and_eq_true] at hg'
+  simp only [regionCoB, Option.all, Bool.and_eq_true, calleeCodeT_one] at hg'
   rw [hd] at hg'
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hce⟩, hren⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, himg⟩⟩ := hg'
   have hcells : d.cells = [] := List.isEmpty_iff.mp hce
   rw [hcells] at himg
-  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgB,
+  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgBT, CalleeTab.frame_one,
     Bool.and_eq_true] at himg
   obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, hphys⟩, hcls, hgate⟩, -⟩, hent⟩, -⟩, -⟩ := himg
   -- The printed body has no cell access of an array of the slot map.
@@ -643,14 +648,15 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
   obtain ⟨hdec, sA', hhalt, hfinal⟩ := X86Backend.CheckedIsaCall.haltsC_of_linkedChecksK hsep
     hphys ((imgGateCB_frameMark b _ _).trans hgate) hsites ctRegime hX hnc hw hS hF
     (fun ret sA _ => hroom ret sA) hcls hss
-    (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym c b)
+    (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym (CalleeTab.one c) b)
     hqk hne hbr hP hdead' hflags hcond hTc hsi hseg hfin hFin fuel' himgrun rfl
     hlen hLv (hrelF _) hacorr
   -- The run under the oracle of the guarded callee.
   obtain ⟨sO, hhaltO, hfinalO⟩ := X86Backend.ImageAddrCall.haltsO_of_linkedChecks hsep
     hphys ((imgGateCB_frameMark b _ _).trans hgate) hsites (calleeSpec_guard hX) hw hS hF
     (fun ret sA _ => hroom ret sA) hcls hss
-    (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym c b) hP hdead' hflags
+    (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym (CalleeTab.one c) b) hP
+    hdead' hflags
     hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
     (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hLv
     (hrelF _) hacorr
@@ -805,7 +811,7 @@ theorem compileRegion_correct_linked_outO
   obtain ⟨⟨w, m, rfl⟩, hB, rx0, r, b, cert, hrx, hwb, hbs, hg, -⟩ :=
     compileRegion_spec_linked h hcf
   generalize hd : regionCoParts σ exportReg b (.stackArr w m) (calleeCode (some c) r.code) r.res
-    cert (some c) = d
+    cert (some (CalleeTab.one c)) = d
   obtain ⟨hcres, -, -, hcclob, hcframe, hcbytes, -, -, -, -, -, hcaa⟩ :=
     CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hc
   -- The out result of `c`, at its destination position `kd`.
@@ -874,12 +880,12 @@ theorem compileRegion_correct_linked_outO
       hTc sa V hV hreg fuel ((legalizeRegion_denoteAt _ fuel p V).trans hv)
   -- The conjuncts of the gate.
   have hg' := hg
-  simp only [regionCoB, Option.all, Bool.and_eq_true] at hg'
+  simp only [regionCoB, Option.all, Bool.and_eq_true, calleeCodeT_one] at hg'
   rw [hd] at hg'
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hce⟩, hren⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, himg⟩⟩ := hg'
   have hcells : d.cells = [] := List.isEmpty_iff.mp hce
   rw [hcells] at himg
-  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgB,
+  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgBT, CalleeTab.frame_one,
     Bool.and_eq_true] at himg
   obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, hphys⟩, hcls, hgate⟩, -⟩, hent⟩, -⟩, -⟩ := himg
   have hcellsE : d.cells = regionCells σ exportReg d.ps b (d.fused.drop d.pre.length) := by
@@ -1047,7 +1053,8 @@ theorem compileRegion_correct_linked_outO
   obtain ⟨sO, hhaltO, hfinalO⟩ := X86Backend.ImageAddrCallOutChain.haltsO_of_linkedChecks_out
     hsep hphys ((imgGateCB_frameMark b _ _).trans hgate) hsites hL (calleeSpec_guard hX) hS
     hpre hqA hentry hclsL hss
-    (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym c b) hP hdead' hflags
+    (fun q hq => X86Backend.ImageAddrFrame.frameIn_eq q hq) (calleeSym (CalleeTab.one c) b) hP
+    hdead' hflags
     hcond hTc hsi X86Backend.CheckedIsaCall.x86IsaK_checked
     (X86Backend.CheckedIsaCall.deadSteps_x86K hseg) hfin hFin fuel' himgrun rfl hlen hL0
     (hrelF _) hacorr
@@ -1077,8 +1084,8 @@ theorem compileRegion_correct_linked_outO
     · rw [houts] at hy
       simp [regionRet] at hy
   -- The decoding of the bytes when the bytes of the callee decode.
-  have hprog : calleeProg c b = some prog := by
-    simp only [calleeProg, hss]
+  have hprog : calleeProg (CalleeTab.one c) b = some prog := by
+    simp only [calleeProg_one, hss]
     exact hP
   obtain ⟨items, hbi, hok, hres⟩ := calleeBytes_items hbs hcls hprog
   refine ⟨prog, items, by rw [← hcbytes]; exact hbi, hok, hres, fun q hq => ?_, sO,
@@ -1128,7 +1135,7 @@ theorem compileRegion_correct_linked_out
   obtain ⟨-, hnc⟩ := regionCoB_callee hg
   have hcb : c.bytes = l.bytes := (CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hc).2.2.2.2.2.1
   exact ⟨pc, hdec qk hqk, sa', X86Backend.Callee.haltsC_append_of_haltsO_runOf ctRegime pc qk
-    (hnc qk (by rw [hcb]; exact hqk))
+    (hnc c (by simp [CalleeTab.one]) qk (by rw [hcb]; exact hqk))
     (hO.mono fun _ _ _ ho => ⟨ho.1, ho.2.imp fun _ hx => hx.2⟩), hR⟩
 
 /-! ## 6. The hax compiler on a module with linked word kernels -/
@@ -1149,14 +1156,16 @@ theorem compileRegion_singleton {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasmi
       · rename_i callee hc
         cases callee with
         | none => rw [← legalizeRegion_callFree_eq, regionCallee_callFree hc] at hcf; cases hcf
-        | some c =>
-            refine ⟨c, regionCallee_mem hc, ?_⟩
-            have hc1 : regionCallee [c] (legalizeRegion p) r'.code = some (some c) := by
+        | some T =>
+            obtain ⟨c, hcm, rfl⟩ := regionCallee_one hc
+            refine ⟨c, hcm, ?_⟩
+            have hc1 : regionCallee [c] (legalizeRegion p) r'.code
+                = some (some (CalleeTab.one c)) := by
               unfold regionCallee at hc ⊢
               rw [ite_eq_right (by rw [legalizeRegion_callFree_eq, hcf]; simp)] at hc ⊢
               split at hc
               · obtain ⟨c', hc', hcc⟩ := Option.map_eq_some_iff.mp hc
-                obtain rfl := Option.some.inj hcc
+                obtain rfl : c' = c := by simpa [CalleeTab.one] using hcc
                 simp [(List.find?_some hc')]
               · cases hc
             unfold compileRegion

@@ -68,8 +68,9 @@ the same arguments.
   `regionCoStage`.
 * `linkFormWhy b`: the first instruction of `b` without a link form
   (`LinkShapeComplete.linkFormB`) and the first conjunct of the link form it fails.
-* `calleeLinkWhy c b`: the first component of `calleeLinkB c b` that is `false`: the empty
-  code, the link forms (`linkFormWhy`), the first instruction without a computed shape, or
+* `calleeLinkWhy T b`: the first component of `calleeLinkB T b` that is `false`: a function of
+  the table with empty code, the link forms (`linkFormWhy`), the first instruction without a
+  computed shape, or
   the branch check and the program of the items.
 -/
 
@@ -1122,19 +1123,19 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute (fuseRegs slotR
     the slot map renamed by the pairs of the parts, with the cell arrays of the parts at
     length `0`, and the observed names of `ownedCheckMC`.
     The stages `coClass`, `coCfgB` and `coEntryFix` are read at the optional callee
-    `callee` of `regionCoStage`: the code `calleeCode`, the alias map of `regionAliasTab`
-    (the map `chainAliasO` at the out symbols `calleeOuts`), and the liveness table
-    `liveArrTab` at the array positions `calleeAA` and the result lengths `calleeAO`.
+    `callee` of `regionCoStage`: the code `calleeCodeT`, the alias map of `regionAliasTab`
+    (the map `chainAliasO` at the out symbols `calleeOutsT`), and the liveness table
+    `liveArrTab` at the array positions `calleeAAT` and the result lengths `calleeAOT`.
     Empty at every other stage. -/
 def regionCoWhy (stage : String) (σ : AbiLayout) (nm : String → String) (body : Lcmd)
     (t : JasminTy) (code : List LinstrRM) (res : List LOperand) (cert : List (String × String))
-    (callee : Option CalleeData := none) : String :=
-  let codeC := calleeCode callee code
+    (callee : Option CalleeTab := none) : String :=
+  let codeC := calleeCodeT callee code
   let cpC := regionCopy σ nm t callee codeC res
   let CC := regionCoCode σ nm t codeC res cpC
   let ρC := JasminLprogExport.canonMemrefName (regionAliasTab σ nm t callee res CC)
   let obsC := regionCoObs t (regionOut cpC res)
-  let LA := liveArrTab CC obsC (calleeAA callee) (calleeAO callee)
+  let LA := liveArrTab CC obsC (calleeAAT callee) (calleeAOT callee)
   let C := regionCoCodeN σ nm t code res
   let ρ := regionAliasN σ nm t res C
   let obs := regionCoObs t (regionOutN σ nm t code res)
@@ -1143,7 +1144,7 @@ def regionCoWhy (stage : String) (σ : AbiLayout) (nm : String → String) (body
     | some (i, k) => s!"at {k}: {taggedStr i}: clsB {clsB i}, mulxFree {mulxFree i}"
     | none => ""
   else if stage == "coCfgB" then
-    coCfgWhy ρC CC (tabAt LA) obsC (calleeAA callee) (calleeAO callee)
+    coCfgWhy ρC CC (tabAt LA) obsC (calleeAAT callee) (calleeAOT callee)
   else if stage == "coEntryFix" then
     s!"live at the entry and renamed: {imagesStr ρC (tabAt LA 0)}"
   else if stage == "renB" then
@@ -1219,17 +1220,20 @@ def linkFormWhy (b : Lcmd) : String :=
         linkFormConjWhy P.frame P.spillW P.qsaveB i.li_i
   | none => ""
 
-/-- The first component of `calleeLinkB c b` that is `false`, in the order of its definition,
-    with the link forms reported before the shapes: the empty code, the first instruction
-    without a link form (`linkFormWhy`), the first instruction without a computed shape, and
-    the branch check with the program of the items. The empty string when the check holds. -/
-def calleeLinkWhy (c : CalleeData) (b : Lcmd) : String :=
+/-- The first component of `calleeLinkB T b` that is `false`, in the order of its definition,
+    with the link forms reported before the shapes: the first function of the table with empty
+    code, the first instruction without a link form (`linkFormWhy`), the first instruction
+    without a computed shape, and the branch check with the program of the items. The empty
+    string when the check holds. -/
+def calleeLinkWhy (T : CalleeTab) (b : Lcmd) : String :=
   let P := Params.ofBody b
-  if c.bytes.isEmpty then "the callee code is empty"
-  else if linkFormWhy b != "" then linkFormWhy b
-  else
-    match b.zipIdx.find? fun p => (X86Backend.DecodeGen.shapeOf P p.1.li_i).isNone with
-    | some (i, k) => s!"no computed shape at instruction {k} of {b.length}: {instrStr i.li_i}"
-    | none => if calleeLinkB c b then "" else "the branch check or the program of the items"
+  match T.fns.find? (·.bytes.isEmpty) with
+  | some c => s!"the code of the callee {c.name} is empty"
+  | none =>
+    if linkFormWhy b != "" then linkFormWhy b
+    else
+      match b.zipIdx.find? fun p => (X86Backend.DecodeGen.shapeOf P p.1.li_i).isNone with
+      | some (i, k) => s!"no computed shape at instruction {k} of {b.length}: {instrStr i.li_i}"
+      | none => if calleeLinkB T b then "" else "the branch check or the program of the items"
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionDiag

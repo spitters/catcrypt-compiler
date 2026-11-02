@@ -531,8 +531,9 @@ theorem regionCo_bytes_callee {σ : AbiLayout} {nm : String → String} {fn : St
     (hr : exportR Γ.length fn p Γ.length 0 = some r0) {ex : List String} {c : CalleeData}
     (hw : regionWebs ex r0 (calleeAA (some c)) (calleeAO (some c)) = r) {body : Lcmd}
     {cert : List (String × String)}
-    (hg : regionCoB σ nm body t r.code r.res cert (some c) fn = true) {d : CoParts}
-    (hd : regionCoParts σ nm body t (calleeCode (some c) r.code) r.res cert (some c) = d)
+    (hg : regionCoB σ nm body t r.code r.res cert (some (CalleeTab.one c)) fn = true) {d : CoParts}
+    (hd : regionCoParts σ nm body t (calleeCode (some c) r.code) r.res cert
+      (some (CalleeTab.one c)) = d)
     {Ec : CallEnv jasminDialect} {T : ProcTable} (hT : ProcsAgree Ec T)
     (hk : ∀ f pr, T f = some pr → pr.Kinded)
     (haa : LprogIsa.Isa.procArrArgs T = calleeAA (some c))
@@ -568,9 +569,11 @@ theorem regionCo_bytes_callee {σ : AbiLayout} {nm : String → String} {fn : St
           u.prog.base.reg.getW y 64 = some (sa'.regs (phys y))) →
         σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
-  simp only [regionCoB, regionCopy_some_callee, regionOut, Option.all, Bool.and_eq_true] at hg
+  simp only [regionCoB, regionCopy_some_callee, regionOut, Option.all, Bool.and_eq_true,
+    CalleeTab.common_one, CalleeTab.names_one, LprogCallCut.commonCallsT?_one,
+    LprogCallCut.commonFreshT_one, calleeCodeT_one] at hg
   rw [hd] at hg
-  obtain ⟨⟨⟨⟨⟨hcs, hfresh⟩, hcls0⟩, hco⟩, hfix⟩,
+  obtain ⟨⟨⟨⟨⟨⟨-, hcs⟩, hfresh⟩, hcls0⟩, hco⟩, hfix⟩,
     ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hcb, hce⟩, hren⟩, hobs⟩, hret⟩, hres⟩, hmg⟩, hnop⟩, hsite⟩, -⟩, himg⟩⟩ := hg
   obtain ⟨codeC, hcode⟩ := Option.isSome_iff_exists.mp hcs
   have hcc : calleeCode (some c) r.code = codeC := by
@@ -654,7 +657,8 @@ theorem regionCo_bytes_callee {σ : AbiLayout} {nm : String → String} {fn : St
         (regionCoCode σ nm t codeC r.res) A) := by
     rw [← hd]; rfl
   have hpre : d.pre = argBind σ nm ++ movesOf d.ps := by rw [← hd]; rfl
-  have hren' : d.ren = (regionCoBody σ nm t codeC r.res (some c)).map (renRM (renOf d.ps)) := by
+  have hren' : d.ren
+      = (regionCoBody σ nm t codeC r.res (some (CalleeTab.one c))).map (renRM (renOf d.ps)) := by
     rw [← hd]; rfl
   have hmerged : d.merged = d.ren.map (renRM (renOf d.tau)) := by rw [← hd]; rfl
   have houts : d.outs = (regionRet σ nm t r.res).toList.map Prod.snd := by rw [← hd]; rfl
@@ -773,7 +777,12 @@ theorem regionCo_bytes_callee {σ : AbiLayout} {nm : String → String} {fn : St
     rw [hsh2.base, ht1]
     exact hL' y hy
   obtain ⟨hsep, -, hacorr, hpc0, hbnd⟩ := renImage_entry_nil himg hU sa hreg fn []
-  refine ⟨kF, u, hu, hcb, hsep, fun X => (renImage_entry_nil himg hU sa hreg fn X).2.1, hacorr,
+  have hl : body.getLast?.any (fun r => X86Backend.DecodePrinted.isRetB r.li_i) = true := by
+    simp only [renImageB, calleeImgBT, X86Backend.ImageAddrCall.printedAddrCB,
+      Bool.and_eq_true] at himg
+    grind
+  refine ⟨kF, u, hu, calleeBodyB_of_one hcb hl, hsep,
+    fun X => (renImage_entry_nil himg hU sa hreg fn X).2.1, hacorr,
     hpc0, hbnd, fun sa' hcellsB hregsB => ?_⟩
   cases t with
   | stackArr w m =>

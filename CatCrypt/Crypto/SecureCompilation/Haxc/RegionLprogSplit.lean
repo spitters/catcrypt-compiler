@@ -37,13 +37,13 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 /-- **The allocated program of a region export is the post-pass of the allocation stage**:
     `regionLprog` is `regionPostFuse` of the program of `regionAllocC`. -/
 theorem regionLprog_split (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    (p : NFProg jasminDialect Γ ts) (callee : Option CalleeData) (ex : List String) :
+    (p : NFProg jasminDialect Γ ts) (callee : Option CalleeTab) (ex : List String) :
     regionLprog a p callee ex = (regionAllocC a p callee ex).map fun x => regionPostFuse x.1 := by
   simp only [regionLprog, regionLprogC, Option.map_map]
   rfl
 
 /-- The program of a result of `regionEncode P` is the printed program of `P`. -/
-theorem regionEncode_fst {P : Lprog} {gate : Lcmd → Bool} {callee : Option CalleeData}
+theorem regionEncode_fst {P : Lprog} {gate : Lcmd → Bool} {callee : Option CalleeTab}
     {out : Lprog × List (BitVec 8)} (h : regionEncode P gate callee = some out) :
     out.1 = printedLprog P := by
   unfold regionEncode at h

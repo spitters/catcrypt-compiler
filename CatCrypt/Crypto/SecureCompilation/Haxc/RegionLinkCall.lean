@@ -94,7 +94,7 @@ theorem haxEntry_call_halts {m : HaxModule} {σ : AbiLayout} {fname : String} {P
     CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hlc
   -- The code of the callee has no `call`.
   obtain ⟨-, -, -, r, b, cert, -, -, -, hg, -⟩ := compileRegion_spec_linked h1 hcf
-  have hnc := (regionCoB_callee hg).2 qk hqk
+  have hnc := (regionCoB_callee hg).2 c (by simp [CalleeTab.one]) qk hqk
   -- The source run at the linked function `l` alone.
   obtain ⟨k, V, x, hV, hvx, hx⟩ := haxEntry_run_linkedEnv hq0 hp hsep hrun
   have hx' : p.denoteAt (linkedEnvAt m l.name) k V = some (HVector.cons x .nil) := by

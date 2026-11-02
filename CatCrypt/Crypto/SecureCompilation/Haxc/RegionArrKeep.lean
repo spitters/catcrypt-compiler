@@ -209,7 +209,7 @@ theorem lsemFuelMemF_lvm_keep {r : String} (P : JasminLsemMemLoop.LprogM)
     base of `A`. -/
 theorem emptiedEntry_getArr {σ : AbiLayout} {nm : String → String}
     {ps : List (String × String)} {R : Slots} {outs : List String} {body : Lcmd}
-    {B : List LinstrRM} {callee : Option CalleeData}
+    {B : List LinstrRM} {callee : Option CalleeTab}
     (hg : renImageB σ nm ps R outs body B callee = true)
     (hU : ∀ j, j < σ.args.length → unren ps (renOf ps (argName j)) = argName j) (sa : AState)
     (hreg : σ.Regions sa) {q A : String} {n : Nat} (hq : slotArrOf σ nm q = some (A, n))
@@ -263,7 +263,7 @@ theorem renImage_cellKeep {σ : AbiLayout} {nm : String → String} {ps : List (
       ∧ ∀ j, j < n → read64 sa'.mem (cellAt (abiBase (abiReg σ) sa (unren ps A)) j)
         = read64 sa.mem (cellAt (abiBase (abiReg σ) sa (unren ps A)) j) := by
   obtain ⟨hsep, hrel, hents⟩ := renImage_entry hg hU sa hreg fn
-  simp only [renImageB, calleeImg_none, calleeImgB_none, Bool.and_eq_true, List.all_eq_true,
+  simp only [renImageB, calleeImgT_none, calleeImgBT_none, Bool.and_eq_true, List.all_eq_true,
     beq_iff_eq] at hg
   obtain ⟨⟨⟨⟨⟨⟨⟨hck, hidx⟩, hphys⟩, -⟩, hfr⟩, hent⟩, hN⟩, hlen⟩ := hg
   simp only [cellKeepB, Bool.and_eq_true, List.all_eq_true] at hk

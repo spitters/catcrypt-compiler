@@ -76,16 +76,18 @@ theorem compileRegion_spec_callee {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
       · rename_i callee hc
         cases callee with
         | none => rw [← legalizeRegion_callFree_eq,regionCallee_callFree hc] at hcf; cases hcf
-        | some c =>
+        | some T =>
+          obtain ⟨c, hcm, rfl⟩ := regionCallee_one hc
           split at h
           · obtain ⟨b, hbs, hg⟩ := regionEncode_spec_callee h
             rw [Bool.and_eq_true] at hg
             obtain ⟨hpr, hqc⟩ := regionCoB_callee hg.1
-            obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp (hdec c (regionCallee_mem hc))
+            rw [CalleeTab.frame_one] at hpr
+            obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp (hdec c hcm)
             obtain ⟨pr, hp, hd⟩ := calleeBytes_decode hbs hpr hq
             have hct := hg.2
-            simp only [calleeCtB, hp] at hct
-            exact ⟨c, regionCallee_mem hc, pr, q, hq, hqc q hq, hd, hct⟩
+            simp only [calleeCtB_one, hp] at hct
+            exact ⟨c, hcm, pr, q, hq, hqc c (by simp [CalleeTab.one]) q hq, hd, hct⟩
           · cases h
       · cases h
     · cases h

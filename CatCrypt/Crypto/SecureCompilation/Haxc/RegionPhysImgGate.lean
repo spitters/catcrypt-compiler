@@ -368,19 +368,19 @@ theorem physImgB_printed (fname : String) (σ : AbiLayout) {ts : List JasminTy}
 
 /-- **The region gate names `physImgB` only when the image conjunct fails**: when
     `physImgB sl (cellBody sl body)` holds at the slot map of the parts
-    `regionCoParts σ nm body t (calleeCode callee code) res cert callee`, the stage function
+    `regionCoParts σ nm body t (calleeCodeT callee code) res cert callee`, the stage function
     `regionCoStage` does not name `physImgB`. -/
 theorem regionCoStage_ne_physImgB_of (σ : AbiLayout) (nm : String → String) (body : Lcmd)
     (t : JasminTy) (code : List LinstrRM) (res : List LOperand)
-    (cert : List (String × String)) (callee : Option CalleeData) (fn : String)
+    (cert : List (String × String)) (callee : Option CalleeTab) (fn : String)
     (h : physImgB
-      (slotArrC (regionCoParts σ nm body t (calleeCode callee code) res cert callee).cells
+      (slotArrC (regionCoParts σ nm body t (calleeCodeT callee code) res cert callee).cells
         (slotRen (slotArrOf σ nm)
-          (renOf (regionCoParts σ nm body t (calleeCode callee code) res cert callee).ps)))
+          (renOf (regionCoParts σ nm body t (calleeCodeT callee code) res cert callee).ps)))
       (cellBody
-        (slotArrC (regionCoParts σ nm body t (calleeCode callee code) res cert callee).cells
+        (slotArrC (regionCoParts σ nm body t (calleeCodeT callee code) res cert callee).cells
           (slotRen (slotArrOf σ nm)
-            (renOf (regionCoParts σ nm body t (calleeCode callee code) res cert callee).ps)))
+            (renOf (regionCoParts σ nm body t (calleeCodeT callee code) res cert callee).ps)))
         body) = true) :
     regionCoStage σ nm body t code res cert callee fn ≠ some "physImgB" := by
   unfold regionCoStage

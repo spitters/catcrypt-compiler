@@ -501,7 +501,7 @@ theorem regionMergeB_of_cover {d : CoParts} (h0 : renOf d.tau "" = "")
     at the end by `liveRegTab_end`. -/
 theorem regionMergeB_regionCoParts_of_cover (σ : AbiLayout) (nm : String → String)
     (body : Lcmd) (t : JasminTy) (code : List LinstrRM) (res : List LOperand)
-    (cert : List (String × String)) (callee : Option CalleeData)
+    (cert : List (String × String)) (callee : Option CalleeTab)
     (h0 : renOf (regionCoParts σ nm body t code res cert callee).tau "" = "")
     (hAN : ∀ a ∈ (regionCoParts σ nm body t code res cert callee).arrs,
       renOf (regionCoParts σ nm body t code res cert callee).tau a = a)

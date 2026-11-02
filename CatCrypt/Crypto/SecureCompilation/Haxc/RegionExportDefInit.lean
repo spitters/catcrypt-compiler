@@ -2636,7 +2636,7 @@ theorem isLopn_resCopyCode (src Dn : String) (M : Nat) :
     buffer of the copy decided by `resCopyOf` are in `D` at the end of `code` or in `E`. -/
 theorem Cert.regionLprogCopy {E : String → Prop} {code : List LinstrRM}
     {D : Nat → String → Prop} (hC : Cert E code D) (a : AbiNames)
-    (callee : Option CalleeData) (ts : List JasminTy) (res : List LOperand)
+    (callee : Option CalleeTab) (ts : List JasminTy) (res : List LOperand)
     (hcp : ∀ t src Dn m, callee = none → ts = [t] → resCopyOf a.outArg t code res = some (src, Dn, m) →
       (D code.length src ∨ E src) ∧ (D code.length Dn ∨ E Dn)) :
     ∃ D', Cert E (code ++ regionLprogCopy a callee ts code res) D' ∧
@@ -3537,7 +3537,7 @@ theorem renRM_nest_noGoto_regDsts {C : List LinstrRM} (σ : String → String) (
 /-- The names of a renamed set. -/
 def img (σ : String → String) (P : String → Prop) (x : String) : Prop := ∃ y, P y ∧ x = σ y
 
-theorem isLopn_regionLprogCopy (a : AbiNames) (callee : Option CalleeData) (ts : List JasminTy)
+theorem isLopn_regionLprogCopy (a : AbiNames) (callee : Option CalleeTab) (ts : List JasminTy)
     (code : List LinstrRM) (res : List LOperand) :
     ∀ i ∈ Haxc.regionLprogCopy a callee ts code res, IsLopn i := by
   intro i hi
@@ -3548,7 +3548,7 @@ theorem isLopn_regionLprogCopy (a : AbiNames) (callee : Option CalleeData) (ts :
     · simp at hi
   · simp at hi
 
-theorem regShape_regionLprogCopy (a : AbiNames) (callee : Option CalleeData)
+theorem regShape_regionLprogCopy (a : AbiNames) (callee : Option CalleeTab)
     (ts : List JasminTy) (code : List LinstrRM) (res : List LOperand) :
     ∀ i ∈ Haxc.regionLprogCopy a callee ts code res, RegShape i := by
   intro i hi

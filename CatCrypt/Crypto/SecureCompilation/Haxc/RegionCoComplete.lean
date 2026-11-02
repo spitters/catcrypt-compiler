@@ -56,8 +56,8 @@ at this table accepts every admitted body and renaming without real aliasing.
 * `regionCoStage_coalesce_of`: `regionCoStage` refuses neither at `coCfgB` nor at
   `coEntryFix` on such code without real aliasing.
 * `HaxModule.refusal?_eq_none_imp_coalesce`: the same on the webs `regionWebsAt` of the
-  export of the output of the chain, on every module that `refusal?` accepts, at a callee
-  and on the call-free arm.
+  export of the output of the chain, on every module that `refusal?` accepts, at a table and
+  on the call-free arm.
 * `noRealAlias_of_storageDisjoint`: disjoint storage classes (`StorageDisjoint`) give no real
   aliasing under the alias map of `resAliasTab` of the code, at every result alias; without
   one the map is `chainAliasO`. The alias map of the gate is the map of `regionAliasTab`,
@@ -711,18 +711,18 @@ theorem ite_ne_some {c : Prop} [Decidable c] {s s' : String} {x : Option String}
     neither at the coalescing check `coCfgB` nor at the entry condition `coEntryFix`. -/
 theorem regionCoStage_coalesce (σ : AbiLayout) (nm : String → String) (body : Lcmd)
     (t : JasminTy) (code : List LinstrRM) (res : List LOperand)
-    (cert : List (String × String)) (callee : Option CalleeData) (fn : String)
+    (cert : List (String × String)) (callee : Option CalleeTab) (fn : String)
     (hc : ClassOK (canonMemrefName (regionAliasTab σ nm t callee res (regionCoCode σ nm t
-        (calleeCode callee code) res (regionCopy σ nm t callee (calleeCode callee code) res))))
-      (regionCoCode σ nm t (calleeCode callee code) res
-        (regionCopy σ nm t callee (calleeCode callee code) res))
-      (calleeAA callee) (calleeAO callee))
+        (calleeCodeT callee code) res (regionCopy σ nm t callee (calleeCodeT callee code) res))))
+      (regionCoCode σ nm t (calleeCodeT callee code) res
+        (regionCopy σ nm t callee (calleeCodeT callee code) res))
+      (calleeAAT callee) (calleeAOT callee))
     (ha : NoRealAlias (canonMemrefName (regionAliasTab σ nm t callee res (regionCoCode σ nm t
-        (calleeCode callee code) res (regionCopy σ nm t callee (calleeCode callee code) res))))
-      (regionCoCode σ nm t (calleeCode callee code) res
-        (regionCopy σ nm t callee (calleeCode callee code) res))
-      (calleeAA callee) (calleeAO callee)
-      (regionCoObs t (regionOut (regionCopy σ nm t callee (calleeCode callee code) res) res))) :
+        (calleeCodeT callee code) res (regionCopy σ nm t callee (calleeCodeT callee code) res))))
+      (regionCoCode σ nm t (calleeCodeT callee code) res
+        (regionCopy σ nm t callee (calleeCodeT callee code) res))
+      (calleeAAT callee) (calleeAOT callee)
+      (regionCoObs t (regionOut (regionCopy σ nm t callee (calleeCodeT callee code) res) res))) :
     regionCoStage σ nm body t code res cert callee fn ≠ some "coCfgB" ∧
       regionCoStage σ nm body t code res cert callee fn ≠ some "coEntryFix" := by
   have h1 := coCfgB_liveArrTab hc ha
@@ -1393,7 +1393,7 @@ theorem exportR_noShadow {I : IsaData} (hI : GuardsNoShadow I) (nArgs : Nat) (fn
 /-! ## 10. The coalesced code of a region export -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute (aliasStepO)
-open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (CallShape commonCalls? commonCall?
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (CallShape commonCallsT? commonCallT?
   commonSeq commonOps commonFreshB shadowCall?_movI)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (shadowCall?_callShadow)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (mulxFree)
@@ -1456,22 +1456,24 @@ theorem noShadow_regionCoCode (σ : AbiLayout) (nm : String → String) (t : Jas
       · exact noShadow_movesOf _ i hi
     · exact noShadow_resCopyCode _ _ _ i hi
 
-/-- **The instructions of a body rewritten onto common names**: an instruction of the body
-    that is no shadow instruction, a copy, or the shadow instruction of a call of `f` on the
-    operands `commonOps`, whose destination is the destination of a call of the body at an
-    out result and `res` at a word result. -/
-theorem mem_commonCalls? {sh : CallShape} {f : String} {args : List String} {res : String} :
-    ∀ {B B' : List LinstrRM}, commonCalls? sh f args res B = some B' → ∀ j ∈ B',
+/-- **The instructions of a body rewritten onto the common names of a table**: an instruction
+    of the body that is no shadow instruction, a copy, or the shadow instruction of a call of
+    a symbol `g` with an entry `(sh, args, res)` in `tab` on the operands `commonOps`, whose
+    destination is the destination of a call of `g` in the body at an out result and `res` at
+    a word result. -/
+theorem mem_commonCallsT? {tab : String → Option (CallShape × List String × String)} :
+    ∀ {B B' : List LinstrRM}, commonCallsT? tab B = some B' → ∀ j ∈ B',
       (j ∈ B ∧ shadowCall? j.1 = none) ∨ (∃ x y, j = LprogCallCut.movI x y) ∨
-        ∃ d xs, j = (callShadow d f ((commonOps sh 0 args xs).map LOperand.reg), .reg none) ∧
-          (sh.out = true → ∃ j0 ∈ B, ∃ srcs, shadowCall? j0.1 = some (d, f, srcs)) ∧
+        ∃ d g sh args res xs, tab g = some (sh, args, res) ∧
+          j = (callShadow d g ((commonOps sh 0 args xs).map LOperand.reg), .reg none) ∧
+          (sh.out = true → ∃ j0 ∈ B, ∃ srcs, shadowCall? j0.1 = some (d, g, srcs)) ∧
           (sh.out = false → d = res)
   | [], _, h, j, hj => by cases h; cases hj
   | i :: B, _, h, j, hj => by
       obtain ⟨is, his, h⟩ := Option.bind_eq_some_iff.mp h
       obtain ⟨B₁, hB₁, rfl⟩ := Option.map_eq_some_iff.mp h
       rcases List.mem_append.mp hj with hj | hj
-      · unfold commonCall? at his
+      · unfold commonCallT? at his
         split at his
         · rename_i hn
           cases his
@@ -1479,32 +1481,56 @@ theorem mem_commonCalls? {sh : CallShape} {f : String} {args : List String} {res
           exact Or.inl ⟨List.mem_cons_self, hn⟩
         · rename_i d g srcs hs
           split at his
-          · rename_i xs hxs
+          · rename_i sh args res xs htab hxs
             split at his
-            · rename_i hc
-              cases his
-              obtain ⟨rfl, -⟩ := hc
+            · cases his
               simp only [commonSeq, List.mem_append, List.mem_map] at hj
               rcases hj with ⟨p, -, rfl⟩ | hj
               · exact Or.inr (Or.inl ⟨_, _, rfl⟩)
               · split at hj
                 · rename_i ho
                   rw [List.mem_singleton.mp hj]
-                  exact Or.inr (Or.inr ⟨d, xs, rfl, fun _ => ⟨i, List.mem_cons_self, srcs, hs⟩,
-                    fun h' => by simp [ho] at h'⟩)
+                  exact Or.inr (Or.inr ⟨d, g, sh, args, res, xs, htab, rfl,
+                    fun _ => ⟨i, List.mem_cons_self, srcs, hs⟩, fun h' => by simp [ho] at h'⟩)
                 · rename_i ho
                   simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
                   rcases hj with rfl | rfl
-                  · exact Or.inr (Or.inr ⟨res, xs, rfl, fun h' => absurd h' ho, fun _ => rfl⟩)
+                  · exact Or.inr (Or.inr ⟨res, g, sh, args, res, xs, htab, rfl,
+                      fun h' => absurd h' ho, fun _ => rfl⟩)
                   · exact Or.inr (Or.inl ⟨_, _, rfl⟩)
             · cases his
           · cases his
-      · rcases mem_commonCalls? hB₁ j hj with ⟨h1, h2⟩ | h | ⟨d, xs, h1, h2, h3⟩
+      · rcases mem_commonCallsT? hB₁ j hj with ⟨h1, h2⟩ | h |
+          ⟨d, g, sh, args, res, xs, ht, h1, h2, h3⟩
         · exact Or.inl ⟨List.mem_cons_of_mem _ h1, h2⟩
         · exact Or.inr (Or.inl h)
-        · refine Or.inr (Or.inr ⟨d, xs, h1, fun ho => ?_, h3⟩)
+        · refine Or.inr (Or.inr ⟨d, g, sh, args, res, xs, ht, h1, fun ho => ?_, h3⟩)
           obtain ⟨j0, hj0, hs⟩ := h2 ho
           exact ⟨j0, List.mem_cons_of_mem _ hj0, hs⟩
+
+/-- The function a table holds at a symbol is a function of the table with that name. -/
+theorem calleeTab_lookup_some {T : CalleeTab} {g : String} {c : CalleeData}
+    (h : T.lookup g = some c) : c ∈ T.fns ∧ c.name = g := by
+  unfold CalleeTab.lookup at h
+  exact ⟨List.mem_of_find?_eq_some h, by simpa using List.find?_some h⟩
+
+/-- An entry of the common names of a table is the shape, the argument names and the result
+    register of the function the table holds at the symbol. -/
+theorem calleeTab_common_some {T : CalleeTab} {g : String} {sh : CallShape}
+    {args : List String} {res : String} (h : T.common g = some (sh, args, res)) :
+    ∃ c, T.lookup g = some c ∧ c.shape = sh ∧ c.args = args ∧ c.resReg = res := by
+  simp only [CalleeTab.common, Option.map_eq_some_iff, Prod.mk.injEq] at h
+  exact h
+
+/-- **The out symbols of a table with distinct names**: a symbol at which the table holds a
+    function with a word result is no out symbol. -/
+theorem calleeTab_outs_lookup {T : CalleeTab} (hnd : T.names.Nodup) {g : String}
+    {c : CalleeData} (hc : T.lookup g = some c) (ho : c.shape.out = false) :
+    T.outs.lookup g = none := by
+  have hinj : ∀ x ∈ T.fns, ∀ y ∈ T.fns, x.name = y.name → x = y :=
+    fun x hx y hy h => List.inj_on_of_nodup_map hnd hx hy h
+  obtain ⟨hm, hn⟩ := calleeTab_lookup_some hc
+  grind [CalleeTab.outs, CalleeData.shape]
 
 theorem getD_aliasStepO_of_call (outs : List (String × Nat)) (M : Std.HashMap String String)
     {i : LinstrRM} {d f : String} {srcs : List LOperand} {r : String}
@@ -1588,41 +1614,45 @@ theorem callOpsFix_commonOps {σ : String → String} (sh : CallShape) {args : L
       · simp_all
       · simp [hσ a (ha a (by simp))]
 
-theorem tagOK_calleeCode (callee : Option CalleeData) (code : List LinstrRM)
-    (h : ∀ i ∈ code, TagOK i) : ∀ i ∈ calleeCode callee code, TagOK i := by
+theorem tagOK_calleeCode (callee : Option CalleeTab) (code : List LinstrRM)
+    (h : ∀ i ∈ code, TagOK i) : ∀ i ∈ calleeCodeT callee code, TagOK i := by
   intro i hi
   cases callee with
   | none => exact h i hi
-  | some c =>
-    simp only [calleeCode] at hi
-    rcases hB : commonCalls? c.shape c.name c.args c.resReg code with _ | B'
+  | some T =>
+    simp only [calleeCodeT] at hi
+    rcases hB : commonCallsT? T.common code with _ | B'
     · simp only [hB, Option.getD_none] at hi
       exact h i hi
     · simp only [hB, Option.getD_some] at hi
-      rcases mem_commonCalls? hB i hi with ⟨h1, -⟩ | ⟨x, y, rfl⟩ | ⟨d, xs, rfl, -, -⟩
+      rcases mem_commonCallsT? hB i hi with ⟨h1, -⟩ | ⟨x, y, rfl⟩ |
+        ⟨d, g, sh, args, r, xs, -, rfl, -, -⟩
       · exact h i h1
       · simp [TagOK, LprogCallCut.movI]
       · simp [TagOK]
 
 /-- **`ClassOK` on the coalesced code of a region export.** For code without a
     compile-time-offset tag, without a shadow instruction of a call when there is no
-    callee, which passes the stage `commonCalls` of `regionCoStage` and whose coalesced code
+    table, which passes the stage `commonCalls` of `regionCoStage` and whose coalesced code
     passes the class check `clsB`, the coalesced code is admitted under the alias map of
-    `regionAliasTab`, the map `chainAliasO` of its out symbols at a callee. At a callee the common names of the callee are fresh
-    in the code, so the alias map fixes them, and every call of the rewritten code reads its
-    word operands from those names and returns a word result in its result name. -/
+    `regionAliasTab`, the map `chainAliasO` of its out symbols at a table. The stage makes the
+    symbols of a table distinct, so a symbol with a word result is no out symbol. The common
+    names of each function are fresh in the code, so the alias map fixes them, and every call
+    of the rewritten code reads its word operands from those names and returns a word result
+    in its result name. -/
 theorem regionCo_classOK {σ : AbiLayout} {nm : String → String} {t : JasminTy}
-    {code : List LinstrRM} {res : List LOperand} {callee : Option CalleeData}
+    {code : List LinstrRM} {res : List LOperand} {callee : Option CalleeTab}
     (htag : ∀ i ∈ code, TagOK i) (hsh : callee = none → ∀ i ∈ code, NoShadow i)
-    (hcc : callee.all (fun c => (commonCalls? c.shape c.name c.args c.resReg code).isSome
-      && commonFreshB c.shape c.args c.resReg (regionCoCode σ nm t code res)) = true)
-    (hcls : ∀ i ∈ regionCoCode σ nm t (calleeCode callee code) res
-      (regionCopy σ nm t callee (calleeCode callee code) res), clsB i = true) :
+    (hcc : callee.all (fun T => decide T.names.Nodup
+      && (commonCallsT? T.common code).isSome
+      && LprogCallCut.commonFreshT T.common T.names (regionCoCode σ nm t code res)) = true)
+    (hcls : ∀ i ∈ regionCoCode σ nm t (calleeCodeT callee code) res
+      (regionCopy σ nm t callee (calleeCodeT callee code) res), clsB i = true) :
     ClassOK (canonMemrefName (regionAliasTab σ nm t callee res (regionCoCode σ nm t
-        (calleeCode callee code) res (regionCopy σ nm t callee (calleeCode callee code) res))))
-      (regionCoCode σ nm t (calleeCode callee code) res
-        (regionCopy σ nm t callee (calleeCode callee code) res))
-      (calleeAA callee) (calleeAO callee) := by
+        (calleeCodeT callee code) res (regionCopy σ nm t callee (calleeCodeT callee code) res))))
+      (regionCoCode σ nm t (calleeCodeT callee code) res
+        (regionCopy σ nm t callee (calleeCodeT callee code) res))
+      (calleeAAT callee) (calleeAOT callee) := by
   refine classOK_of hcls (tagOK_regionCoCode _ _ _ _ _ _ (tagOK_calleeCode _ _ htag)) ?_
   cases callee with
   | none =>
@@ -1630,47 +1660,56 @@ theorem regionCo_classOK {σ : AbiLayout} {nm : String → String} {t : JasminTy
     have h0 : NoShadow i := noShadow_regionCoCode σ nm t code res _ (hsh rfl) i hi
     rw [show shadowCall? i.1 = none from h0] at hs
     cases hs
-  | some c =>
-    simp only [Option.all_some, Bool.and_eq_true, Option.isSome_iff_exists] at hcc
-    obtain ⟨⟨B', hB⟩, hfr⟩ := hcc
-    have hcode : calleeCode (some c) code = B' := by simp [calleeCode, hB]
+  | some T =>
+    simp only [Option.all_some, Bool.and_eq_true, Option.isSome_iff_exists,
+      decide_eq_true_eq] at hcc
+    obtain ⟨⟨hnd, B', hB⟩, hfr⟩ := hcc
+    have hcode : calleeCodeT (some T) code = B' := by simp [calleeCodeT, hB]
     rw [hcode, regionCopy_some_callee]
-    have hfresh : ∀ j ∈ regionCoCode σ nm t code res, ∀ r ∈ c.resReg :: c.args,
-        r ∉ LprogCallCut.instrNames j.1 := by
-      intro j hj r hr hn
-      simp only [commonFreshB, Bool.and_eq_true, List.all_eq_true] at hfr
-      have := hfr.1.2 j hj r hn
+    have hfresh : ∀ j ∈ regionCoCode σ nm t code res, ∀ g c, T.lookup g = some c →
+        ∀ r ∈ c.resReg :: c.args, r ∉ LprogCallCut.instrNames j.1 := by
+      intro j hj g c hc r hr hn
+      have hg : g ∈ T.names := by
+        obtain ⟨hm, hname⟩ := calleeTab_lookup_some hc
+        exact List.mem_map.mpr ⟨c, hm, hname⟩
+      have hent : T.common g = some (c.shape, c.args, c.resReg) := by
+        simp [CalleeTab.common, hc]
+      have hfb := LprogCallCut.commonFreshT_entry hfr hg hent
+      simp only [commonFreshB, Bool.and_eq_true, List.all_eq_true] at hfb
+      have := hfb.1.2 j hj r hn
       simp only [Bool.not_eq_true', List.contains_eq_mem, decide_eq_false_iff_not, bne_iff_ne,
         ne_eq] at this
       rcases List.mem_cons.mp hr with rfl | hr
       · exact this.2 rfl
       · exact this.1 hr
-    have hfix : ∀ r ∈ c.resReg :: c.args,
-        chainAliasO (calleeOuts (some c)) (regionCoCode σ nm t B' res none) r = r := by
-      intro r hr
+    have hfix : ∀ g c, T.lookup g = some c → ∀ r ∈ c.resReg :: c.args,
+        chainAliasO (calleeOutsT (some T)) (regionCoCode σ nm t B' res none) r = r := by
+      intro g0 c0 hc0 r hr
       unfold chainAliasO canonMemrefName
       rw [getD_foldl_aliasStepO_of _ _ ?_]
       · simp
       intro j hj M
       unfold regionCoCode at hj
       rcases List.mem_append.mp hj with hj | hj
-      · rcases mem_commonCalls? hB j hj with ⟨h1, -⟩ | ⟨x, y, rfl⟩ | ⟨d, xs, rfl, hout, -⟩
-        · exact getD_aliasStepO_fresh _ _ (hfresh j (List.mem_append_left _ h1) r hr)
+      · rcases mem_commonCallsT? hB j hj with ⟨h1, -⟩ | ⟨x, y, rfl⟩ |
+          ⟨d, g, sh, args, r', xs, htab, rfl, hout, -⟩
+        · exact getD_aliasStepO_fresh _ _ (hfresh j (List.mem_append_left _ h1) g0 c0 hc0 r hr)
         · rw [aliasStepO_movI]
-        · cases ho : c.shape.out
-          · have hnil : calleeOuts (some c) = [] := by
-              cases hc : c.res <;> simp_all [calleeOuts, CalleeData.shape]
-            rw [hnil, aliasStepO_of_lookup _ _ (shadowCall?_callShadow _ _ _) rfl]
+        · obtain ⟨c, hc, rfl, rfl, rfl⟩ := calleeTab_common_some htab
+          cases ho : c.shape.out
+          · rw [aliasStepO_of_lookup (calleeOutsT (some T)) _ (shadowCall?_callShadow _ _ _)
+              (calleeTab_outs_lookup hnd hc ho)]
           · obtain ⟨j0, hj0, srcs, hs0⟩ := hout ho
             refine getD_aliasStepO_of_call _ _ (shadowCall?_callShadow _ _ _) fun hd =>
-              hfresh j0 (List.mem_append_left _ hj0) r hr ?_
+              hfresh j0 (List.mem_append_left _ hj0) g0 c0 hc0 r hr ?_
             rw [eq_callShadow_of_shadowCall? hs0, hd]
             simp [callShadow, LprogCallCut.instrNames, LprogCallCut.opNames]
-      · exact getD_aliasStepO_fresh _ _ (hfresh j (List.mem_append_right _ hj) r hr)
+      · exact getD_aliasStepO_fresh _ _ (hfresh j (List.mem_append_right _ hj) g0 c0 hc0 r hr)
     intro i hi dst f srcs hs
     unfold regionCoCode at hi
     rcases List.mem_append.mp hi with hi | hi
-    · rcases mem_commonCalls? hB i hi with ⟨-, h0⟩ | ⟨x, y, rfl⟩ | ⟨d, xs, rfl, -, hres⟩
+    · rcases mem_commonCallsT? hB i hi with ⟨-, h0⟩ | ⟨x, y, rfl⟩ |
+        ⟨d, g, sh, args, r', xs, htab, rfl, -, hres⟩
       · rw [h0] at hs
         cases hs
       · rw [shadowCall?_movI] at hs
@@ -1678,47 +1717,49 @@ theorem regionCo_classOK {σ : AbiLayout} {nm : String → String} {t : JasminTy
       · rw [shadowCall?_callShadow] at hs
         simp only [Option.some.injEq, Prod.mk.injEq] at hs
         obtain ⟨rfl, rfl, rfl⟩ := hs
+        obtain ⟨c, hc, rfl, rfl, rfl⟩ := calleeTab_common_some htab
         refine ⟨rfl, ?_, fun hao => ?_⟩
-        · have haa : calleeAA (some c) c.name = c.shape.arrArgs := by
-            simp [calleeAA, CalleeData.shape]
+        · have haa : calleeAAT (some T) g = c.shape.arrArgs := by
+            simp [calleeAAT, hc, CalleeData.shape]
           rw [haa]
-          exact callOpsFix_commonOps c.shape (fun a ha => hfix a (List.mem_cons_of_mem _ ha))
+          exact callOpsFix_commonOps c.shape (fun a ha => hfix g c hc a (List.mem_cons_of_mem _ ha))
             0 c.args (fun a h => h) xs
         · have ho : c.shape.out = false := by
-            cases hc : c.res <;> simp_all [calleeAO, CalleeData.shape]
+            cases hr : c.res <;> simp_all [calleeAOT, CalleeData.shape]
           rw [hres ho]
-          exact hfix _ List.mem_cons_self
+          exact hfix g c hc _ List.mem_cons_self
     · rw [show shadowCall? i.1 = none from noShadow_movesOf _ i hi] at hs
       cases hs
 
 /-- **The coalescing stage of the region gate accepts code without real aliasing** that has
-    no compile-time-offset tag and, without a callee, no shadow instruction of a call:
+    no compile-time-offset tag and, without a table, no shadow instruction of a call:
     `regionCoStage` refuses neither at `coCfgB` nor at `coEntryFix`. -/
 theorem regionCoStage_coalesce_of (σ : AbiLayout) (nm : String → String) (body : Lcmd)
     (t : JasminTy) (code : List LinstrRM) (res : List LOperand)
-    (cert : List (String × String)) (callee : Option CalleeData) (fn : String)
+    (cert : List (String × String)) (callee : Option CalleeTab) (fn : String)
     (htag : ∀ i ∈ code, TagOK i) (hsh : callee = none → ∀ i ∈ code, NoShadow i)
     (ha : NoRealAlias (canonMemrefName (regionAliasTab σ nm t callee res (regionCoCode σ nm t
-        (calleeCode callee code) res (regionCopy σ nm t callee (calleeCode callee code) res))))
-      (regionCoCode σ nm t (calleeCode callee code) res
-        (regionCopy σ nm t callee (calleeCode callee code) res))
-      (calleeAA callee) (calleeAO callee)
-      (regionCoObs t (regionOut (regionCopy σ nm t callee (calleeCode callee code) res) res))) :
+        (calleeCodeT callee code) res (regionCopy σ nm t callee (calleeCodeT callee code) res))))
+      (regionCoCode σ nm t (calleeCodeT callee code) res
+        (regionCopy σ nm t callee (calleeCodeT callee code) res))
+      (calleeAAT callee) (calleeAOT callee)
+      (regionCoObs t (regionOut (regionCopy σ nm t callee (calleeCodeT callee code) res) res))) :
     regionCoStage σ nm body t code res cert callee fn ≠ some "coCfgB" ∧
       regionCoStage σ nm body t code res cert callee fn ≠ some "coEntryFix" := by
-  by_cases hcc : callee.all (fun c => (commonCalls? c.shape c.name c.args c.resReg code).isSome
-      && commonFreshB c.shape c.args c.resReg (regionCoCode σ nm t code res)) = false
+  by_cases hcc : callee.all (fun T => decide T.names.Nodup
+      && (commonCallsT? T.common code).isSome
+      && LprogCallCut.commonFreshT T.common T.names (regionCoCode σ nm t code res)) = false
   · unfold regionCoStage
     simp only [hcc, ↓reduceIte]
     simp
-  by_cases hcls : (regionCoCode σ nm t (calleeCode callee code) res
-      (regionCopy σ nm t callee (calleeCode callee code) res)).all
+  by_cases hcls : (regionCoCode σ nm t (calleeCodeT callee code) res
+      (regionCopy σ nm t callee (calleeCodeT callee code) res)).all
         (fun i => clsB i && mulxFree i) = false
   · unfold regionCoStage
     simp only [hcc, hcls, ↓reduceIte]
     simp
-  have hcls' : ∀ i ∈ regionCoCode σ nm t (calleeCode callee code) res
-      (regionCopy σ nm t callee (calleeCode callee code) res), clsB i = true := fun i hi => by
+  have hcls' : ∀ i ∈ regionCoCode σ nm t (calleeCodeT callee code) res
+      (regionCopy σ nm t callee (calleeCodeT callee code) res), clsB i = true := fun i hi => by
     have h' := hcls
     simp only [Bool.not_eq_false, List.all_eq_true, Bool.and_eq_true] at h'
     exact (h' i hi).1
@@ -1730,11 +1771,11 @@ theorem renArr_snd (σ : String → String) (i : LinstrRM) : (renArr σ i).2 = i
   split <;> rfl
 
 /-- The webs of the export keep the tags. -/
-theorem tagOK_regionWebsAt (ex : List String) (callee : Option CalleeData) (r : Exported)
+theorem tagOK_regionWebsAt (ex : List String) (callee : Option CalleeTab) (r : Exported)
     (h : ∀ i ∈ r.code, TagOK i) : ∀ i ∈ (regionWebsAt ex callee r).code, TagOK i := by
   cases callee with
   | none => exact h
-  | some c =>
+  | some T =>
     intro i hi
     simp only [regionWebsAt_some] at hi
     unfold regionWebs at hi
@@ -1874,9 +1915,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
     module `refusal?` accepts, the front returns a program `p`, at every table `bi` the chain
     `extChain` returns a program `q` on `p`, and the export `exportR` returns code `r` on `q`
     at every number of arguments, name, depth, label and instruction set. Take the webs
-    `regionWebsAt ex callee r` of `r` at the names `ex` and an optional callee (`r` itself
-    without a callee). Without a callee, let the guards and the select of the instruction set
-    contain no shadow instruction of a call (`GuardsNoShadow`) and `q` pass
+    `regionWebsAt ex callee r` of `r` at the names `ex` and an optional table of callees (`r`
+    itself without a table). Without a table, let the guards and the select of the instruction
+    set contain no shadow instruction of a call (`GuardsNoShadow`) and `q` pass
     `regionExportableB` and have no `call`, as on the call-free arm of `compileRegion`. When
     the alias map of the coalesced code of the webs has no real aliasing, `regionCoStage` on
     the webs refuses neither at `coCfgB` nor at `coEntryFix`, at every printed body, result
@@ -1888,21 +1929,21 @@ theorem CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_coalesce
       ∀ bi, ∃ q, (extChain (linkedDecls m bi) _ t).run p = some q ∧
         ∀ nArgs fn d n I, ∃ r, exportR nArgs fn q d n I = some r ∧
           ∀ (ex : List String) (nm : String → String) (body : Lcmd) (t' : JasminTy)
-            (cert : List (String × String)) (callee : Option CalleeData) (fn' : String),
+            (cert : List (String × String)) (callee : Option CalleeTab) (fn' : String),
             (callee = none →
               GuardsNoShadow I ∧ regionExportableB q = true ∧ q.callFree = true) →
             NoRealAlias (canonMemrefName (regionAliasTab σ nm t' callee
                 (regionWebsAt ex callee r).res (regionCoCode σ nm t'
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))))
-              (regionCoCode σ nm t' (calleeCode callee (regionWebsAt ex callee r).code)
+              (regionCoCode σ nm t' (calleeCodeT callee (regionWebsAt ex callee r).code)
                 (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))
-              (calleeAA callee) (calleeAO callee)
+              (calleeAAT callee) (calleeAOT callee)
               (regionCoObs t' (regionOut (regionCopy σ nm t' callee
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
                 (regionWebsAt ex callee r).res)) →
             regionCoStage σ nm body t' (regionWebsAt ex callee r).code
                 (regionWebsAt ex callee r).res cert callee fn' ≠ some "coCfgB" ∧
@@ -1930,20 +1971,20 @@ theorem CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_coalesce_x86
       ∀ bi, ∃ q, (extChain (linkedDecls m bi) _ t).run p = some q ∧
         ∀ nArgs fn d n I, ∃ r, exportR nArgs fn q d n I = some r ∧
           ∀ (ex : List String) (nm : String → String) (body : Lcmd) (t' : JasminTy)
-            (cert : List (String × String)) (callee : Option CalleeData) (fn' : String),
+            (cert : List (String × String)) (callee : Option CalleeTab) (fn' : String),
             (callee = none → I = x86Data ∧ regionExportableB q = true ∧ q.callFree = true) →
             NoRealAlias (canonMemrefName (regionAliasTab σ nm t' callee
                 (regionWebsAt ex callee r).res (regionCoCode σ nm t'
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))))
-              (regionCoCode σ nm t' (calleeCode callee (regionWebsAt ex callee r).code)
+              (regionCoCode σ nm t' (calleeCodeT callee (regionWebsAt ex callee r).code)
                 (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))
-              (calleeAA callee) (calleeAO callee)
+              (calleeAAT callee) (calleeAOT callee)
               (regionCoObs t' (regionOut (regionCopy σ nm t' callee
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
                 (regionWebsAt ex callee r).res)) →
             regionCoStage σ nm body t' (regionWebsAt ex callee r).code
                 (regionWebsAt ex callee r).res cert callee fn' ≠ some "coCfgB" ∧
@@ -1970,21 +2011,21 @@ theorem CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_coalesce_of_disjoint
       ∀ bi, ∃ q, (extChain (linkedDecls m bi) _ t).run p = some q ∧
         ∀ nArgs fn d n I, ∃ r, exportR nArgs fn q d n I = some r ∧
           ∀ (ex : List String) (nm : String → String) (body : Lcmd) (t' : JasminTy)
-            (cert : List (String × String)) (callee : Option CalleeData) (fn' : String),
+            (cert : List (String × String)) (callee : Option CalleeTab) (fn' : String),
             (callee = none →
               GuardsNoShadow I ∧ regionExportableB q = true ∧ q.callFree = true) →
             StorageDisjoint (canonMemrefName (regionAliasTab σ nm t' callee
                 (regionWebsAt ex callee r).res (regionCoCode σ nm t'
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))))
-              (regionCoCode σ nm t' (calleeCode callee (regionWebsAt ex callee r).code)
+              (regionCoCode σ nm t' (calleeCodeT callee (regionWebsAt ex callee r).code)
                 (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))
-              (calleeAA callee) (calleeAO callee)
+              (calleeAAT callee) (calleeAOT callee)
               (regionCoObs t' (regionOut (regionCopy σ nm t' callee
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
                 (regionWebsAt ex callee r).res)) →
             regionCoStage σ nm body t' (regionWebsAt ex callee r).code
                 (regionWebsAt ex callee r).res cert callee fn' ≠ some "coCfgB" ∧
@@ -2007,20 +2048,20 @@ theorem CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_coalesce_of_disjoint_
       ∀ bi, ∃ q, (extChain (linkedDecls m bi) _ t).run p = some q ∧
         ∀ nArgs fn d n I, ∃ r, exportR nArgs fn q d n I = some r ∧
           ∀ (ex : List String) (nm : String → String) (body : Lcmd) (t' : JasminTy)
-            (cert : List (String × String)) (callee : Option CalleeData) (fn' : String),
+            (cert : List (String × String)) (callee : Option CalleeTab) (fn' : String),
             (callee = none → I = x86Data ∧ regionExportableB q = true ∧ q.callFree = true) →
             StorageDisjoint (canonMemrefName (regionAliasTab σ nm t' callee
                 (regionWebsAt ex callee r).res (regionCoCode σ nm t'
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))))
-              (regionCoCode σ nm t' (calleeCode callee (regionWebsAt ex callee r).code)
+              (regionCoCode σ nm t' (calleeCodeT callee (regionWebsAt ex callee r).code)
                 (regionWebsAt ex callee r).res
-                (regionCopy σ nm t' callee (calleeCode callee (regionWebsAt ex callee r).code)
+                (regionCopy σ nm t' callee (calleeCodeT callee (regionWebsAt ex callee r).code)
                   (regionWebsAt ex callee r).res))
-              (calleeAA callee) (calleeAO callee)
+              (calleeAAT callee) (calleeAOT callee)
               (regionCoObs t' (regionOut (regionCopy σ nm t' callee
-                (calleeCode callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
+                (calleeCodeT callee (regionWebsAt ex callee r).code) (regionWebsAt ex callee r).res)
                 (regionWebsAt ex callee r).res)) →
             regionCoStage σ nm body t' (regionWebsAt ex callee r).code
                 (regionWebsAt ex callee r).res cert callee fn' ≠ some "coCfgB" ∧

@@ -312,7 +312,7 @@ theorem coShape_regionCoCode (σ : AbiLayout) (nm : String → String) (t : Jasm
     renaming of the array positions and of the register names keeps the shape. -/
 theorem coShape_regionCoParts_ren (σ : AbiLayout) (nm : String → String) (body : Lcmd)
     (t : JasminTy) {code : List LinstrRM} (res : List LOperand) (cert : List (String × String))
-    (callee : Option CalleeData) (hc : ∀ i ∈ code, CoShape i) :
+    (callee : Option CalleeTab) (hc : ∀ i ∈ code, CoShape i) :
     ∀ i ∈ (regionCoParts σ nm body t code res cert callee).ren, CoShape i := by
   intro i hi
   have hi' : i ∈ (regionCoBody σ nm t code res callee).map
@@ -403,7 +403,7 @@ theorem certMergeKeep_of_mem_arrs {σ : AbiLayout} {arrs X : List String} {x : S
     first component is an array name of the parts. -/
 theorem renOf_tau_arrs (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy)
     (code : List LinstrRM) (res : List LOperand) (cert : List (String × String))
-    (callee : Option CalleeData) :
+    (callee : Option CalleeTab) :
     ∀ a ∈ (regionCoParts σ nm body t code res cert callee).arrs,
       renOf (regionCoParts σ nm body t code res cert callee).tau a = a := by
   intro a ha

@@ -1664,7 +1664,7 @@ theorem isLopn_map_resCopyCode (src Dn : String) (M : Nat) :
     `resCopyOf` are in `D` at the end of `code` or in `E`. -/
 theorem Cert.regionLprogCopyS {E : String → Prop} {code : List LinstrRM}
     {D : Nat → String → Prop} (hC : Cert E (code.map (renArr tagA)) D) (a : AbiNames)
-    (callee : Option CalleeData) (ts : List JasminTy) (res : List LOperand)
+    (callee : Option CalleeTab) (ts : List JasminTy) (res : List LOperand)
     (hcp : ∀ t src Dn m, callee = none → ts = [t] →
       resCopyOf a.outArg t code res = some (src, Dn, m) →
       (D code.length (tagA src) ∨ E (tagA src)) ∧ (D code.length (tagA Dn) ∨ E (tagA Dn))) :
