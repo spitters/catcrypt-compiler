@@ -24,10 +24,9 @@ the zero-flag fact, and keeps a stack-word fact only for a word at or above the 
 stack register, which neither the return-address word written by
 `LprogBytesDecode.callOps` nor the callee's footprint overlaps.
 
-The constant-time decision `AbiLayout.ctCheckRX` joins the byte check with a call arm
-`DecodedCTCall.checkCertX`, on a certificate inferred by `RegionSep.inferX` and trimmed
-as in `AbiLayout.ctCheckR`, with the region check `RegionSep.memCheckX` for its frame
-words.
+The inference `RegionSep.inferMX` of the region certificate and `RegionSep.inferX` of the
+constant-time certificate carry the call arm. The certificate checks and the constant-time
+decision on them are in `Haxc.CTRegionsCallOut`.
 
 ## Main results
 
@@ -36,13 +35,6 @@ words.
 * `RegionSep.transCallO_sound`: the same for a callee that also writes an out region inside a
   static window of the caller's frame (`RegionSep.CallPresO`), whose effect
   `RegionSep.transCallO` also drops the stack-word facts meeting the window.
-* `RegionSep.run_frameSepX`, `RegionSep.memCheckX_sound`: under a passing `memCheckX`,
-  every run under an oracle whose answers satisfy `CallPres`, from an entry state
-  satisfying `σ.Regions`, satisfies `FrameSep F` at every step.
-* `AbiLayout.ctCheckRX_sound`: two runs of the linked program `p ++ shiftProg p.length q`
-  from entry states satisfying `σ.Regions` and agreeing on the public data of `σ`, for a
-  caller `p` passing `ctCheckRX` that halts under the guarded oracle of a specified callee
-  `q`, have equal leakage traces.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc
@@ -357,25 +349,7 @@ theorem transCallO_sound {G : Nat} {clob : String → Bool} {O : AState → BitV
 
 end Soundness
 
-/-! ## 2. The certificate check with a call arm -/
-
-/-- The check at index `pc`: a `call` passes when the certificate assigns the next index
-    an abstract state below `transCall G clob m`; the other instructions are checked by
-    `checkAtM`. -/
-def checkAtMX (σ : AbiLayout) (clob : String → Bool) (G : Nat) (F : List Int)
-    (prog : List RInstr) (M : Array (Option MA)) (pc : Nat) : Bool :=
-  match M.getD pc none with
-  | none => true
-  | some m =>
-    match prog[pc]? with
-    | some (.call _) => succOkM M (pc + 1) (transCall G clob m)
-    | _ => checkAtM σ F prog M pc
-
-/-- **The certificate check with a call arm**: the entry index is below `init σ` and every
-    index passes `checkAtMX`. -/
-def memCheckX (σ : AbiLayout) (clob : String → Bool) (G : Nat) (F : List Int)
-    (prog : List RInstr) (M : Array (Option MA)) : Bool :=
-  succOkM M 0 (init σ) && (List.range prog.length).all (checkAtMX σ clob G F prog M)
+/-! ## 2. Inference of the region certificate with a call arm -/
 
 /-- One forward sweep of the region analysis with the call arm. -/
 def sweepMX (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List RInstr)
@@ -411,86 +385,7 @@ def inferMX (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List RIn
   fixMX σ clob G prog (prog.length + 2)
     ((Array.replicate prog.length none).set! 0 (some (init σ)))
 
-/-! ## 3. Soundness of the check -/
-
-section Soundness
-
-variable {σ : AbiLayout} {s0 : AState}
-
-/-- **Every step of a run under an oracle satisfies the separation condition.** Under a
-    passing check at every index, a run under an oracle whose answers satisfy
-    `CallPres clob G`, from an index whose abstract state describes the current state, for
-    an entry state satisfying `σ.Regions`, is a run whose steps satisfy `FrameSep F`. -/
-theorem run_frameSepX {r : DoitRegime} {clob : String → Bool} {G : Nat} {F : List Int}
-    {prog : List RInstr} {M : Array (Option MA)} {O : Nat → CalleeRun}
-    (hc : (List.range prog.length).all (checkAtMX σ clob G F prog M) = true)
-    (hR : σ.Regions s0) (hO : ∀ tg sc0 tc sc, O tg sc0 tc sc → CallPres clob G sc0 sc)
-    {pc : Nat} {s : AState} {t : List CTLeak} {s' : AState}
-    (h : OracleRun r (fun _ _ => True) O prog pc s t s') :
-    ∀ m, M.getD pc none = some m → Inv σ s0 m s → OracleRun r (FrameSep F) O prog pc s t s' := by
-  have hat : ∀ {pc : Nat} {x : RInstr}, prog[pc]? = some x →
-      checkAtMX σ clob G F prog M pc = true :=
-    fun hx => List.all_eq_true.mp hc _
-      (List.mem_range.mpr (List.getElem?_eq_some_iff.mp hx).1)
-  induction h with
-  | ret h => exact fun _ _ _ => .ret h
-  | @op pc s i t s' h _ _ ih =>
-    intro m hm hI
-    have hck := hat h
-    simp only [checkAtMX, hm, h, checkAtM, Bool.and_eq_true] at hck
-    obtain ⟨hs, ht⟩ := hck
-    split at ht
-    · rename_i o ho
-      obtain ⟨b, hb, hle⟩ := succOkM_spec ht
-      have hcell : cellAddrOK σ m i = true := by
-        simp only [safeW, Bool.and_eq_true] at hs
-        exact hs.1
-      exact .op h (frameSep_of_safeW hR hI hs)
-        (ih b hb (Inv.of_leM hle (trans_sound hR hI hcell ho)))
-    · simp at ht
-  | @jcc pc s cc tgt c t s' h hcc _ ih =>
-    intro m hm hI
-    have hck := hat h
-    simp only [checkAtMX, hm, h, checkAtM, hcc, Bool.and_eq_true] at hck
-    refine .jcc h hcc ?_
-    cases hcb : s.view.condB c
-    · obtain ⟨b, hb, hle⟩ := succOkM_spec hck.2
-      have := ih b (by simpa [hcb] using hb) (Inv.of_leM hle (jccOut_sound hI hcb))
-      simpa [hcb] using this
-    · obtain ⟨b, hb, hle⟩ := succOkM_spec hck.1
-      have := ih b (by simpa [hcb] using hb) (Inv.of_leM hle (jccOut_sound hI hcb))
-      simpa [hcb] using this
-  | @stack pc s ri ops t s' h hops _ _ _ =>
-    intro m hm _
-    have hck := hat h
-    cases ri <;> simp only [RInstr.stackOps?, reduceCtorEq] at hops <;>
-      simp [checkAtMX, checkAtM, hm, h] at hck
-  | @call pc tgt sa sc tc tr sa' h _ hcall _ _ ih =>
-    intro m hm hI
-    have hck := hat h
-    simp only [checkAtMX, hm, h] at hck
-    obtain ⟨b, hb, hle⟩ := succOkM_spec hck
-    exact .call h (blockOk_frameSep_callOps F sa (pc + 1)) hcall
-      (blockOk_frameSep_retOps F sc)
-      (ih b hb (Inv.of_leM hle (transCall_sound hI (hO _ _ _ _ hcall))))
-
-/-- **Soundness of the certificate check with a call arm.** Under a passing
-    `memCheckX σ clob G F prog M`, every run of `prog` from index `0` and an entry state
-    satisfying `σ.Regions`, under an oracle whose answers satisfy `CallPres clob G`,
-    satisfies `FrameSep F` at every step. -/
-theorem memCheckX_sound {r : DoitRegime} {clob : String → Bool} {G : Nat} {F : List Int}
-    {prog : List RInstr} {M : Array (Option MA)} {O : Nat → CalleeRun}
-    (hc : memCheckX σ clob G F prog M = true) (hR : σ.Regions s0)
-    (hO : ∀ tg sc0 tc sc, O tg sc0 tc sc → CallPres clob G sc0 sc)
-    {t : List CTLeak} {s' : AState} (h : OracleRun r (fun _ _ => True) O prog 0 s0 t s') :
-    OracleRun r (FrameSep F) O prog 0 s0 t s' := by
-  simp only [memCheckX, Bool.and_eq_true] at hc
-  obtain ⟨b, hb, hle⟩ := succOkM_spec hc.1
-  exact run_frameSepX hc.2 hR hO h b hb (Inv.of_leM hle (inv_init hR))
-
-end Soundness
-
-/-! ## 4. Inference of the constant-time certificate with a call arm -/
+/-! ## 3. Inference of the constant-time certificate with a call arm -/
 
 /-- The offset `q` above the callee's entry stack register lies outside its `G`-byte
     footprint: `0 ≤ q` and `q + 8 + G ≤ 2 ^ 64`. -/
@@ -559,73 +454,5 @@ def keptCellsX (G : Nat) (A : List (Option PubA)) : List Int :=
   ((certCells A).map (· + 8)).filter (qOk G)
 
 end RegionSep
-
-namespace AbiLayout
-
-open RegionSep
-
-/-- The trimmed certificate of the gate with a call arm on `prog`. -/
-def ctCertRX (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List RInstr) :
-    List (Option PubA) :=
-  trimCertL σ (storeSps prog (inferMX σ clob G prog)) (inferX clob G prog σ.pubAS)
-
-/-- The frame words of the trimmed certificate with a call arm. -/
-def ctFrameRX (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List RInstr) :
-    List Int :=
-  (certCells (σ.ctCertRX clob G prog)).eraseDups
-
-/-- **The constant-time decision with a call of a linked callee**: the trimmed certificate
-    assigns the entry a set below `σ.pubAS`, the caller passes `checkCertX`
-    at the external entry `prog.length` with the registers outside `clob` and the frame
-    words outside the callee's `G`-byte footprint kept across the call, and the region
-    check with the call arm passes for the frame words. -/
-def ctCheckRX (σ : AbiLayout) (clob : String → Bool) (pubRegs : List String) (G : Nat)
-    (prog : List RInstr) : Bool :=
-  succOk (σ.ctCertRX clob G prog) 0 σ.pubAS
-    && checkCertX ctRegime (σ.ctFrameRX clob G prog) (extOne prog.length pubRegs)
-      (keptRegsX clob (σ.ctCertRX clob G prog)) (keptCellsX G (σ.ctCertRX clob G prog))
-      prog (σ.ctCertRX clob G prog)
-    && memCheckX σ clob G (σ.ctFrameRX clob G prog) prog (inferMX σ clob G prog)
-
-/-- **Soundness of `ctCheckRX`.** Let `q` be a block without `call` whose leaky runs meet
-    the interface `c`, with clobber set inside `clob`, footprint in the `G` bytes below
-    the entry stack register, and agreement on `callPub pubRegs` between entry states
-    satisfying the precondition giving `c.pub`. Let the caller `p` pass
-    `σ.ctCheckRX clob pubRegs G` and halt under the guarded oracle of `q` from two entry
-    states satisfying `σ.Regions` and agreeing on the public data of `σ`. Then every two
-    runs with leakage of `p ++ shiftProg p.length q` from these states have equal
-    traces. -/
-theorem ctCheckRX_sound {σ : AbiLayout} {clob : String → Bool} {pubRegs : List String}
-    {G : Nat} {p q : List RInstr} (h : σ.ctCheckRX clob pubRegs G p = true)
-    (hq : ∀ tg, RInstr.call tg ∉ q) {c : CalleeSig} (hX : CalleeSpec (runOf ctRegime q) c)
-    (hclob : ∀ x, clob x = false → c.clob x = false)
-    (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x)
-    (hpub : ∀ s₁ s₂, c.pre s₁ → c.pre s₂ → (callPub pubRegs).Agree s₁ s₂ → c.pub s₁ s₂)
-    {s₁ s₂ s₁' s₂' : AState} (hag : σ.PubAgree s₁ s₂) (hR₁ : σ.Regions s₁)
-    (hR₂ : σ.Regions s₂)
-    (h₁ : HaltsO aMachine (oracleAt p.length (guarded c (runOf ctRegime q))) p 0 s₁ s₁')
-    (h₂ : HaltsO aMachine (oracleAt p.length (guarded c (runOf ctRegime q))) p 0 s₂ s₂')
-    {ok₁ ok₂ : AState → JInstr 64 → Prop} {t₁ t₂ : List CTLeak} {e₁ e₂ : AState}
-    (hr₁ : RunL ctRegime ok₁ (p ++ shiftProg p.length q) 0 s₁ t₁ e₁)
-    (hr₂ : RunL ctRegime ok₂ (p ++ shiftProg p.length q) 0 s₂ t₂ e₂) : t₁ = t₂ := by
-  simp only [ctCheckRX, Bool.and_eq_true] at h
-  obtain ⟨⟨h0, hc⟩, hm⟩ := h
-  have hO : ∀ tg sc0 tc sc, tracedAt p.length (guarded c (runOf ctRegime q)) tg sc0 tc sc →
-      CallPres clob G sc0 sc := fun _ _ _ _ ho => callPres_of_guarded hX hclob hfoot ho.2
-  have hR : ∀ x ∈ keptRegsX clob (σ.ctCertRX clob G p), c.clob x = false := by
-    intro x hx
-    simp only [keptRegsX, List.mem_filter, Bool.not_eq_true'] at hx
-    exact hclob x hx.2
-  have hQ : ∀ q ∈ keptCellsX G (σ.ctCertRX clob G p), 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64 := by
-    intro q hq
-    simp only [keptCellsX, qOk, List.mem_filter, Bool.and_eq_true, decide_eq_true_eq] at hq
-    exact hq.2
-  obtain ⟨b, hb, hle⟩ := succOk_spec h0
-  exact linkedRunX_trace_eq hq hX hc hR hfoot hQ hpub
-    ⟨b, hb, PubA.agree_of_le hle (pubAS_agree hag hR₁ hR₂)⟩ h₁ h₂
-    (fun _ _ ho => memCheckX_sound hm hR₁ hO ho) (fun _ _ ho => memCheckX_sound hm hR₂ hO ho)
-    hr₁ hr₂
-
-end AbiLayout
 
 end CatCrypt.Crypto.SecureCompilation.Haxc
