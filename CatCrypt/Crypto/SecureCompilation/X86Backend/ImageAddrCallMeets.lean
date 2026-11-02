@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallOutChain
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract
 
 @[expose] public section
@@ -54,20 +55,25 @@ reads.
   of the layout, the resources of the call hold at the entry state, and the precondition of
   the contract holds there separated from the frame of the caller.
 * `call_reestablishes_meets_out`: the call step of an out layout by the frame rule.
-* `siteStepAt_ins`, `siteStepAt_out`, `siteStepAt_contract_ins`, `siteStepAt_contract_out`: the
-  step of the call site at one position, from hypotheses at that position.
+* `siteStepAt_contract_ins`, `siteStepAt_contract_out`: the step of the call site at one
+  position at the interface of the contract, from hypotheses at that position.
 * `CalleeKind`, `CalleeKind.Ok`, `CalleeKind.siteStep`: the kinds of a linked callee, the
   hypotheses of the calls of a symbol at a kind, and the site step dispatched on the kind.
-* `haltsC_of_contracts`, `haltsO_of_contracts`: the linked run chains of a body whose symbols
-  have callees of several kinds.
-* `siteStep_contract_ins`, `siteStep_contract_out`, `haltsC_of_contract_ins`,
-  `haltsO_of_contract_ins`, `haltsC_of_contract_out`, `haltsO_of_contract_out`: the site
-  steps and the linked run chains for a run relation that meets the contract, the chains as
-  instances of `haltsC_of_contracts` and `haltsO_of_contracts` at a constant kind.
+* `haltsC_of_contracts`, `haltsO_of_contracts`: the linked run chains of a body of the wide class
+  `ImageAddrCallW.printedAddrCWB` whose symbols have callees of several kinds.
+* `siteStep_contract_ins`, `siteStep_contract_out`: the site steps for a run relation that meets
+  the contract.
+* `haltsC_of_contractW_ins`, `haltsO_of_contractW_ins`, `haltsC_of_contractW_out`,
+  `haltsO_of_contractW_out`: the linked run chains of a body of the wide class whose call sites
+  call one such callee.
+* `haltsC_of_contract_ins`, `haltsO_of_contract_ins`, `haltsC_of_contract_out`,
+  `haltsO_of_contract_out`: the same chains at the narrow class `ImageAddrCall.printedAddrCB`.
 
 The chains `ImageAddrCall.haltsO_of_linkedChecks` and
-`ImageAddrCallOutChain.haltsO_of_linkedChecks_out` lie below this module; they and
-`haltsO_of_contracts` are instances of `ImageAddrCall.haltsO_of_linkedChecksS`.
+`ImageAddrCallOutChain.haltsO_of_linkedChecks_out` lie below this module and are instances of
+`ImageAddrCall.haltsO_of_linkedChecksS`; `haltsO_of_contracts` and
+`ImageAddrCallOutChain.haltsO_of_linkedChecksW_out` are instances of
+`ImageAddrCallW.haltsO_of_linkedChecksS`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets
@@ -87,6 +93,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpFacts evalIns
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (ACorr read64_eq_of_agree)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCall
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW
+  (printedAddrCWB imgGateCBW bitsDeadB liveW)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe
   (retWord entryOf entryOf_regs entryOf_mem retOps_eq CallOut outOf memAfter argWord
     argWord_congr)
@@ -920,93 +928,6 @@ theorem glue_at {T : LprogIsa.ProcTable} {fn : String} {B : List LinstrRM}
   obtain ⟨rfl, rfl, rfl⟩ := hsite p i pr' dst srcs hi hq
   exact hstep
 
-/-- **The step of the call site at position `p` of a callee on scalars and read-only arrays.**
-    Let the callee meet its specification with the reading `pr` at the summary input `rd`
-    (`InsCallee`), and the caller be separated (`CallerSep`) for a callee of `FootBelow`. Let,
-    from an image state related by `ImgRel` at position `p` to an address state that
-    corresponds to a byte state, the entry state of the call satisfy `room` and the summary
-    input of the entry state be the argument words of the operands of `site p`. Let no
-    operand name be dead in `E`, and the names dead after the word result be in `E'`. A step
-    from an image state at the counter `p` to the image state after the word of the summary is
-    a step of the site (`SiteStep`) at `E` and `E'`. -/
-theorem siteStepAt_ins {frame : String → Option (BitVec 64)}
-    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
-    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c) {rd : AState → List (BitVec 64)}
-    {res : String} {pr : LprogIsa.ProcSummary} {room : AState → Prop}
-    (hw : InsCallee c rd res pr room) {G : Nat} (hS : CallerSep frame slotArr base rsp G)
-    (hF : FootBelow c G) {site : Nat → String × List String} {p : Nat}
-    (hroom : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
-      sa.reg.lpc = p → ∀ ret, room (entryOf ret sA))
-    (hentry : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
-      sa.reg.lpc = p → ∀ ret vs, LprogIsa.argsRead pr.arrArgs s.prog.base 0
-        ((site p).2.map LOperand.reg) = some vs → rd (entryOf ret sA) = vs)
-    {E E' : List String} (hargs : ∀ a ∈ (site p).2, a ∉ E)
-    (hsub : ∀ r ∈ E.filter (fun r => r != (site p).1) ++ exemptC c, r ∈ E')
-    (hres : (site p).1 = res) {u v : LstateMF} (hpc : u.prog.base.reg.lpc = p)
-    (hv : ∃ vs w, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
-        = some vs ∧ pr.run vs = some w ∧ v = LprogIsa.retWord (site p).1 w u) :
-    SiteStep frame slotArr base rsp body X c E E' u v := by
-  obtain ⟨vs, w, hvs, hw', rfl⟩ := hv
-  rw [hres] at hsub ⊢
-  refine ⟨res, .word w, rfl, fun u' hag => ?_, hsub⟩
-  have hvs' : LprogIsa.argsRead pr.arrArgs u'.prog.base 0 ((site p).2.map LOperand.reg)
-      = some vs := by
-    rw [LprogIsa.argsRead_regs_congr pr.arrArgs hag.arr.symm 0
-      fun x hx => (hag.regs x (hargs x hx)).symm]
-    exact hvs
-  intro sa zf sA hrel hc hcall ret
-  have hsp : sa.reg.lpc = p := hrel.pc.trans (hag.pc.symm.trans hpc)
-  obtain ⟨bi', ra', t', hb', hbi'⟩ := hcall
-  obtain ⟨hpre, hall⟩ := call_reestablishes_ins hsep hphys hX hw hS hF hrel hc hb' hbi' ret
-    (hentry u' sa zf sA hrel hc hsp ret vs hvs') (hroom u' sa zf sA hrel hc hsp ret) hw'
-  exact ⟨hpre, fun t sc hrun => (hall t sc hrun).2⟩
-
-/-- **The step of the call site at position `p` of an out callee.** Let the callee meet its
-    specification with the reading `pr` whose array result is written at the pointer `po`
-    (`OutCallee`), and the caller be separated (`CallerSep`) for a callee of `FootBelowOut`.
-    Let, from an image state related by `ImgRel` at position `p` to an address state that
-    corresponds to a byte state, the entry state of the call satisfy `room`, the pointer name
-    hold the base of the destination of `site p`, and the summary input of the entry state be
-    the argument words of the operands of `site p`. Let no operand name be dead in `E`, the
-    names of `E` and `exemptC c` be in `E'`, and the destination be the array of a frame slot
-    of length `n`. A step from an image state at the counter `p` to the image state after the
-    array result is a step of the site (`SiteStep`) at `E` and `E'`. -/
-theorem siteStepAt_out {frame : String → Option (BitVec 64)}
-    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
-    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c) {rd : AState → List (BitVec 64)}
-    {po : String} {n : Nat} {pr : LprogIsa.ProcSummary} {room : AState → Prop}
-    (hw : OutCallee c rd po n pr room) {G : Nat} (hS : CallerSep frame slotArr base rsp G)
-    (hF : FootBelowOut c G po n) {site : Nat → String × List String} {p : Nat}
-    (hroom : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
-      sa.reg.lpc = p → ∀ ret, room (entryOf ret sA))
-    (hentry : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
-      sa.reg.lpc = p → sa.reg.getW po 64 = some (base (site p).1)
-        ∧ ∀ ret vs, LprogIsa.argsRead pr.arrArgs s.prog.base 0
-            ((site p).2.map LOperand.reg) = some vs → rd (entryOf ret sA) = vs)
-    {E E' : List String} (hargs : ∀ a ∈ (site p).2, a ∉ E)
-    (hsub : ∀ r ∈ E ++ exemptC c, r ∈ E')
-    {qA : String} (hqA : slotArr qA = some ((site p).1, n)) {u v : LstateMF}
-    (hpc : u.prog.base.reg.lpc = p)
-    (hv : ∃ vs arr, LprogIsa.argsRead pr.arrArgs u.prog.base 0 ((site p).2.map LOperand.reg)
-        = some vs ∧ pr.runOut n vs = some arr ∧ v = LprogIsa.retArr (site p).1 arr u) :
-    SiteStep frame slotArr base rsp body X c E E' u v := by
-  obtain ⟨vs, arr, hvs, harr, rfl⟩ := hv
-  refine ⟨(site p).1, .arr arr, rfl, fun u' hag => ?_, hsub⟩
-  have hvs' : LprogIsa.argsRead pr.arrArgs u'.prog.base 0 ((site p).2.map LOperand.reg)
-      = some vs := by
-    rw [LprogIsa.argsRead_regs_congr pr.arrArgs hag.arr.symm 0
-      fun x hx => (hag.regs x (hargs x hx)).symm]
-    exact hvs
-  intro sa zf sA hrel hc hcall ret
-  have hsp : sa.reg.lpc = p := hrel.pc.trans (hag.pc.symm.trans hpc)
-  obtain ⟨bi', ra', t', hb', hbi'⟩ := hcall
-  obtain ⟨hptr, hrd⟩ := hentry u' sa zf sA hrel hc hsp
-  obtain ⟨hpre, hall⟩ := call_reestablishes_out hsep hphys hX hw hS hF hrel hc hb' hbi' hqA
-    hptr ret (hrd ret vs hvs') (hroom u' sa zf sA hrel hc hsp ret) harr
-  exact ⟨hpre, fun t sc hrun => (hall t sc hrun).2⟩
-
 /-- **The step of the call site at position `p` of a linked function on scalars and read-only
     arrays, at the interface of the contract.** `siteStepAt_ins` for a run relation `X` that
     meets the contract of `l`: the room at the call is the resources at its entry
@@ -1250,24 +1171,24 @@ theorem CalleeKind.siteStep {frame : String → Option (BitVec 64)}
       (hdst p hcall) hargs hsub hqA' hpc
       (procStep_out (pr := outSummary l ins n) rfl (fun _ => rfl) hstep)
 
-/-- **A halting run of the image of a calling body whose call sites call callees of several
-    kinds is a run of the program of its relocated item list under an oracle that answers its
-    callees.** `ImageAddrCall.haltsO_of_linkedChecksS` with the step of each site given by the
-    kind `kind f` of the symbol `f` of the call (`CalleeKind.siteStep`): the callee of each
-    called symbol meets the specification of its kind and the hypotheses of its calls at its
-    kind, the caller is separated at the frame bound `G` of the class `printedAddrCB`, the dead
+/-- **A halting run of the image of a calling body of the wide class whose call sites call callees
+    of several kinds is a run of the program of its relocated item list under an oracle that
+    answers its callees.** `ImageAddrCallW.haltsO_of_linkedChecksS` with the step of each site
+    given by the kind `kind f` of the symbol `f` of the call (`CalleeKind.siteStep`): the callee of
+    each called symbol meets the specification of its kind and the hypotheses of its calls at its
+    kind, the caller is separated at the frame bound `G` of the class `printedAddrCWB`, the dead
     names pass `callDeadSymB` at the interfaces and the result kinds, and the shadow instruction
     at each position `p` has the summary `pr p`, the summary of the kind of the symbol of the
     call at `p`. -/
 theorem haltsO_of_contracts {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    (hgate : imgGateCB frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    (hgate : imgGateCBW frame slotArr body = true) (hsites : callSitesB slotArr body = true)
     {kind : String → CalleeKind} {X : String → CalleeRun}
     (hXk : ∀ f, CalledIn body f → (kind f).Spec (X f)) {G : Nat}
     (hS : CallerSep frame slotArr base rsp G) {site : Nat → String × List String}
     (hOk : ∀ f, CalledIn body f → (kind f).Ok frame slotArr base rsp body site f G)
-    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCB G body = true)
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB G body = true)
     (hshapes : DecodeGen.shapesOf (LprogBytesDecode.Params.ofBody body) body = some ds)
     (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
       frame q = DecodePrintedAddr.frameP (LprogBytesDecode.Params.ofBody body) rsp q)
@@ -1281,7 +1202,7 @@ theorem haltsO_of_contracts {frame : String → Option (BitVec 64)}
         body ds) = some prog)
     {O : Nat → AState → AState → Prop}
     (hCall : ∀ f, CalledIn body f → ∀ s tr s', X f s tr s' → O (K f) s s')
-    {D : DeadTab}
+    {D : DeadTab} (hbits : bitsDeadB frame D body = true)
     (hdead : callDeadSymB (fun f => (kind f).sig) (fun f => (kind f).isOut) site D.dead body
       = true)
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
@@ -1301,13 +1222,13 @@ theorem haltsO_of_contracts {frame : String → Option (BitVec 64)}
     (hrun : (I.withProcs T).lsemFuelMemF
       (singletonProgM fn (callImg slotArr site body)) k s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
-    (hL0 : D.live sa.reg.lpc = false)
+    (hL0 : liveW D slotArr body sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA0 : ACorr rsp sA sa) :
     ∃ sA', Callee.HaltsO aMachine O prog (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
       ∧ Fin t sA' :=
-  haltsO_of_linkedChecksS hsep hphys hgate hsites (c := fun f => (kind f).sig)
+  ImageAddrCallW.haltsO_of_linkedChecksS hsep hphys hgate hsites (c := fun f => (kind f).sig)
     (fun f hf => CalleeKind.calleeSpec (hXk f hf)) hcls hshapes hfr symBase tgtI K hK hP hCall
-    hflags hcond hI hD hfin hFin
+    hbits hflags hcond hI hD hfin hFin
     (fun p _ _ hg hpc bi ra f l hb hbi =>
       CalleeKind.siteStep hsep hphys (hXk f ⟨p, bi, ra, l, hb, hbi⟩) hS
         (hOk f ⟨p, bi, ra, l, hb, hbi⟩) ⟨bi, ra, l, hb, hbi⟩
@@ -1315,15 +1236,15 @@ theorem haltsO_of_contracts {frame : String → Option (BitVec 64)}
         (hpr p f ⟨bi, ra, l, hb, hbi⟩) hpc hg)
     k hrun hfn hlen hL0 hI0 hA0
 
-/-- **A halting run of the image of a calling body whose call sites call callees of several
-    kinds is a run through calls of the program its linked bytes decode to.**
-    `ImageAddrCall.haltsC_of_linkedChecksS` with the step of each site given by the kind
+/-- **A halting run of the image of a calling body of the wide class whose call sites call callees
+    of several kinds is a run through calls of the program its linked bytes decode to.**
+    `ImageAddrCallW.haltsC_of_linkedChecksS` with the step of each site given by the kind
     `kind f` of the symbol `f` of the call, the blocks of the callees in the region `cb`
     (`RegionBlocks`) and the other hypotheses of `haltsO_of_contracts`. -/
 theorem haltsC_of_contracts {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    (hgate : imgGateCB frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    (hgate : imgGateCBW frame slotArr body = true) (hsites : callSitesB slotArr body = true)
     (r : CatCrypt.Crypto.SecureCompilation.CT.DoitRegime) {fs : List String}
     {cb : List (BitVec 8)} {o j : String → Nat} {q : String → List RInstr} {Q : List RInstr}
     (hR : LprogBytesLinkReloc.RegionBlocks cb fs o j q Q) {kind : String → CalleeKind}
@@ -1331,7 +1252,7 @@ theorem haltsC_of_contracts {frame : String → Option (BitVec 64)}
     (hfs : bodyCallSymsB (fun g => decide (g ∈ fs)) body = true) {G : Nat}
     (hS : CallerSep frame slotArr base rsp G) {site : Nat → String × List String}
     (hOk : ∀ f, CalledIn body f → (kind f).Ok frame slotArr base rsp body site f G)
-    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCB G body = true)
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB G body = true)
     (hshapes : DecodeGen.shapesOf (LprogBytesDecode.Params.ofBody body) body = some ds)
     (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
       frame q = DecodePrintedAddr.frameP (LprogBytesDecode.Params.ofBody body) rsp q)
@@ -1356,7 +1277,7 @@ theorem haltsC_of_contracts {frame : String → Option (BitVec 64)}
         (LprogBytes.encodeLfundefBytesReloc symBase body).length o j))
       (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
         body ds) = some prog)
-    {D : DeadTab}
+    {D : DeadTab} (hbits : bitsDeadB frame D body = true)
     (hdead : callDeadSymB (fun f => (kind f).sig) (fun f => (kind f).isOut) site D.dead body
       = true)
     (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
@@ -1376,16 +1297,16 @@ theorem haltsC_of_contracts {frame : String → Option (BitVec 64)}
     (hrun : (I.withProcs T).lsemFuelMemF
       (singletonProgM fn (callImg slotArr site body)) k s = some t)
     {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
-    (hL0 : D.live sa.reg.lpc = false)
+    (hL0 : liveW D slotArr body sa.reg.lpc = false)
     (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA0 : ACorr rsp sA sa) :
     LprogBytesDecode.decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
         = some (prog ++ LprogBytesLink.shiftProg prog.length Q)
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length Q)
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' :=
-  haltsC_of_linkedChecksS hsep hphys hgate hsites r hR (c := fun f => (kind f).sig)
-    (fun f hf => CalleeKind.calleeSpec (hXk f hf)) hfs hcls hshapes hfr symBase hbr hP hflags hcond
-    hI hD hfin hFin
+  ImageAddrCallW.haltsC_of_linkedChecksS hsep hphys hgate hsites r hR (c := fun f => (kind f).sig)
+    (fun f hf => CalleeKind.calleeSpec (hXk f hf)) hfs hcls hshapes hfr symBase hbr hP hbits hflags
+    hcond hI hD hfin hFin
     (fun p _ _ hg hpc bi ra f l hb hbi =>
       CalleeKind.siteStep hsep hphys (hXk f ⟨p, bi, ra, l, hb, hbi⟩) hS
         (hOk f ⟨p, bi, ra, l, hb, hbi⟩) ⟨bi, ra, l, hb, hbi⟩
@@ -1460,16 +1381,14 @@ theorem haltsC_of_contract_ins {frame : String → Option (BitVec 64)}
         = some (prog ++ LprogBytesLink.shiftProg prog.length q)
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
-        ∧ Fin t sA' := by
-  obtain ⟨hfs, hbr', hP'⟩ := ImageAddrCall.oneRegion_of_checks hcls hshapes symBase hbr hP
-  exact haltsC_of_contracts hsep hphys hgate hsites r
-    (LprogBytesLinkReloc.regionBlocks_one cb q _ hcb hne hq)
-    (kind := fun _ => .ins l ins res) (fun _ _ => hXc) hfs hS
-    (fun _ _ => ⟨hL, hnd, hfb, le_rfl,
-      fun s sa zf sA hrel hc hcall => hpar s sa zf sA hrel hc hcall.isCall,
-      fun p hp => hres p hp.isCall⟩)
-    hcls hshapes hfr symBase hbr' hP' hdead hflags hcond (sitesOf_of_siteShapeB hshape hT)
-    (fun _ _ _ => rfl) hI hD hfin hFin k hrun hfn hlen hL0 hI0 hA0
+        ∧ Fin t sA' :=
+  haltsC_of_linkedChecksOne hsep hphys hgate hsites r
+    (c := l.contractSig (ins.map (·.1)) (some res)) (calleeSpec_of_sContract hXc _ _) hq hcls
+    hshapes hfr symBase hcb hne hbr hP hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => siteStep_contract_ins hsep hphys hXc hL hnd hfb hS hpar hdead hb
+      (hres p hb) hpc
+      (glue_ins (insSummary_retWord l ins) (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
 
 /-- **A halting run of the image of a calling body whose call sites call one linked function
     on scalars and read-only arrays is a run of the program of its relocated item list under
@@ -1522,15 +1441,13 @@ theorem haltsO_of_contract_ins {frame : String → Option (BitVec 64)}
     ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
         (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
       ∧ Fin t sA' :=
-  haltsO_of_contracts hsep hphys hgate hsites (kind := fun _ => .ins l ins res)
-    (X := fun _ => X) (fun _ _ => hXc) hS
-    (fun _ _ => ⟨hL, hnd, hfb, le_rfl,
-      fun s sa zf sA hrel hc hcall => hpar s sa zf sA hrel hc hcall.isCall,
-      fun p hp => hres p hp.isCall⟩)
-    hcls hshapes hfr symBase _ (fun _ => tgt)
-    (fun _ _ _ _ _ _ h => (Prod.mk.inj (Option.some.inj h)).1.symm) hP
-    (fun _ _ _ tr _ h => ⟨rfl, tr, h⟩) hdead hflags hcond (sitesOf_of_siteShapeB hshape hT)
-    (fun _ _ _ => rfl) hI hD hfin hFin k hrun hfn hlen hL0 hI0 hA0
+  haltsO_of_linkedChecksOne hsep hphys hgate hsites
+    (c := l.contractSig (ins.map (·.1)) (some res)) (calleeSpec_of_sContract hXc _ _) hcls hshapes
+    hfr symBase hP hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => siteStep_contract_ins hsep hphys hXc hL hnd hfb hS hpar hdead hb
+      (hres p hb) hpc
+      (glue_ins (insSummary_retWord l ins) (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
 
 /-- **The step of a call site of a linked function with an out layout, at the interface of
     the contract.** `siteStepAt_contract_out` at a call position `p` under `callDeadOutB`, with
@@ -1570,12 +1487,9 @@ theorem siteStep_contract_out {frame : String → Option (BitVec 64)}
 
 /-- **A halting run of the image of a calling body whose call sites call one linked function
     with an out layout is a run through calls of the program its linked bytes decode to**, for
-    a callee block whose code `q` meets the contract of `l`. The hypotheses are those of
-    `ImageAddrCallOutChain.haltsC_of_linkedChecks_out` with the specification of the out
-    interface replaced by the contract, and the precondition and the entry hypotheses at the
-    calls replaced by the parameters passed by the operands of the site of each call
-    (`hpar`), the destination parameter passing the destination of the site (`hA`) and
-    separated from the other arrays of the site (`hdst`). -/
+    a callee block whose code `q` meets the contract of `l`, at the narrow class `printedAddrCB`.
+    The hypotheses are those of `haltsC_of_contractW_out` at the class `printedAddrCB` and the gate
+    `imgGateCB`, without `bitsDeadB`, from a position where `D.live` is false. -/
 theorem haltsC_of_contract_out {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
@@ -1645,16 +1559,15 @@ theorem haltsC_of_contract_out {frame : String → Option (BitVec 64)}
         = some (prog ++ LprogBytesLink.shiftProg prog.length q)
       ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
-        ∧ Fin t sA' := by
-  obtain ⟨hfs, hbr', hP'⟩ := ImageAddrCall.oneRegion_of_checks hcls hshapes symBase hbr hP
-  exact haltsC_of_contracts hsep hphys hgate hsites r
-    (LprogBytesLinkReloc.regionBlocks_one cb q _ hcb hne hq)
-    (kind := fun _ => .outC l ins po n) (fun _ _ => hXc) hfs hS
-    (fun _ _ => ⟨hL, hnd, hfb, le_rfl, fun p hp => hqA p hp.isCall, fun p hp => hA p hp.isCall,
-      fun s sa zf sA hrel hc hcall => hpar s sa zf sA hrel hc hcall.isCall,
-      fun p hp => hdst p hp.isCall⟩)
-    hcls hshapes hfr symBase hbr' hP' hdead hflags hcond (sitesOf_of_siteShapeB hshape hT)
-    (fun _ _ _ => rfl) hI hD hfin hFin k hrun hfn hlen hL0 hI0 hA0
+        ∧ Fin t sA' :=
+  haltsC_of_linkedChecksOne hsep hphys hgate hsites r
+    (c := l.contractSig (ins.map (·.1)) none) (calleeSpec_of_sContract hXc _ _) hq hcls
+    hshapes hfr symBase hcb hne hbr hP hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
+      siteStep_contract_out hsep hphys hXc hL hnd hfb hS hA hpar hdst hdead hb hqA' hpc
+        (glue_out (pr := outSummary l ins n) rfl (fun _ => rfl)
+          (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
 
 /-- **A halting run of the image of a calling body whose call sites call one linked function
     with an out layout is a run of the program of its relocated item list under the oracle
@@ -1714,14 +1627,306 @@ theorem haltsO_of_contract_out {frame : String → Option (BitVec 64)}
     ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
         (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
       ∧ Fin t sA' :=
-  haltsO_of_contracts hsep hphys hgate hsites (kind := fun _ => .outC l ins po n)
-    (X := fun _ => X) (fun _ _ => hXc) hS
-    (fun _ _ => ⟨hL, hnd, hfb, le_rfl, fun p hp => hqA p hp.isCall, fun p hp => hA p hp.isCall,
-      fun s sa zf sA hrel hc hcall => hpar s sa zf sA hrel hc hcall.isCall,
-      fun p hp => hdst p hp.isCall⟩)
-    hcls hshapes hfr symBase _ (fun _ => tgt)
-    (fun _ _ _ _ _ _ h => (Prod.mk.inj (Option.some.inj h)).1.symm) hP
-    (fun _ _ _ tr _ h => ⟨rfl, tr, h⟩) hdead hflags hcond (sitesOf_of_siteShapeB hshape hT)
-    (fun _ _ _ => rfl) hI hD hfin hFin k hrun hfn hlen hL0 hI0 hA0
+  haltsO_of_linkedChecksOne hsep hphys hgate hsites
+    (c := l.contractSig (ins.map (·.1)) none) (calleeSpec_of_sContract hXc _ _) hcls hshapes
+    hfr symBase hP hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
+      siteStep_contract_out hsep hphys hXc hL hnd hfb hS hA hpar hdst hdead hb hqA' hpc
+        (glue_out (pr := outSummary l ins n) rfl (fun _ => rfl)
+          (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
+
+/-! ## 9. The chains of one callee at the wide class -/
+
+/-- **A halting run of the image of a calling body of the wide class whose call sites call one
+    linked function on scalars and read-only arrays is a run through calls of the program its
+    linked bytes decode to**, for a callee block whose code `q` meets the contract of `l`. The
+    calls are specified by the contract, the site `site p` of each call at position `p` has the
+    destination `res` (`hres`), and the precondition and the entry hypotheses at the calls are
+    the parameters passed by the operands of the site of each call (`hpar`). The width analysis
+    is dead at the calls and the return (`bitsDeadB`), and the run starts where `liveW` is
+    false. -/
+theorem haltsC_of_contractW_ins {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCBW frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    (r : CatCrypt.Crypto.SecureCompilation.CT.DoitRegime) {q : List RInstr} {l : LinkedFn}
+    {ins : List (String × ArgKind)} {res : String} (hL : InsLayout l ins res)
+    (hXc : SContract (Callee.runOf r q) l.contract) (hq : ∀ tg, RInstr.call tg ∉ q)
+    (hnd : (l.layout.args.map (·.reg)).Nodup) (hfb : l.frame + 8 ≤ 2 ^ 64)
+    (hS : CallerSep frame slotArr base rsp l.frame) {site : Nat → String × List String}
+    (hpar : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      List.Forall₂ (ParamAt slotArr base sa) ins (site sa.reg.lpc).2)
+    (hres : ∀ p, (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) → (site p).1 = res)
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB l.frame body = true)
+    (hshapes : DecodeGen.shapesOf (LprogBytesDecode.Params.ofBody body) body = some ds)
+    (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
+      frame q = DecodePrintedAddr.frameP (LprogBytesDecode.Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {cb : List (BitVec 8)} {prog : List RInstr}
+    (hcb : LprogBytesDecode.decodeLprog cb = some q) (hne : cb ≠ [])
+    (hbr : LprogBytesLinkReloc.branchOKReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+          body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) = true)
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+          body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) = some prog)
+    {D : DeadTab} (hbits : bitsDeadB frame D body = true)
+    (hdead : callDeadB (l.contractSig (ins.map (·.1)) (some res)) site D.dead body = true)
+    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some (insSummary l ins))
+    (hshape : siteShapeB f site (callImg slotArr site body) = true)
+    {I : LprogIsa.Isa}
+    (hI : ∀ P i s t, I.step P i s = some t →
+      JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr site body)))
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (LprogBytesDecode.Params.ofBody body).frame sa sA →
+        Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (k : Nat) {s t : LstateMF}
+    (hrun : (I.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr site body)) k s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL0 : liveW D slotArr body sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA0 : ACorr rsp sA sa) :
+    LprogBytesDecode.decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ LprogBytesLink.shiftProg prog.length q)
+      ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
+          (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
+        ∧ Fin t sA' :=
+  ImageAddrCallW.haltsC_of_linkedChecksOne hsep hphys hgate hsites r
+    (c := l.contractSig (ins.map (·.1)) (some res)) (calleeSpec_of_sContract hXc _ _) hq hcls
+    hshapes hfr symBase hcb hne hbr hP hbits hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => siteStep_contract_ins hsep hphys hXc hL hnd hfb hS hpar hdead hb
+      (hres p hb) hpc
+      (glue_ins (insSummary_retWord l ins) (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
+
+/-- **A halting run of the image of a calling body of the wide class whose call sites call one
+    linked function on scalars and read-only arrays is a run of the program of its relocated item
+    list under the oracle of the callee**, for a run relation `X` that meets the contract of `l`.
+    The hypotheses are those of `haltsC_of_contractW_ins` with the bytes of the callee replaced by
+    the program `prog` of the relocated item list in front of a callee block at the index
+    `tgt`. -/
+theorem haltsO_of_contractW_ins {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCBW frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    {X : CalleeRun} {l : LinkedFn} {ins : List (String × ArgKind)} {res : String}
+    (hL : InsLayout l ins res) (hXc : SContract X l.contract)
+    (hnd : (l.layout.args.map (·.reg)).Nodup) (hfb : l.frame + 8 ≤ 2 ^ 64)
+    (hS : CallerSep frame slotArr base rsp l.frame) {site : Nat → String × List String}
+    (hpar : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      List.Forall₂ (ParamAt slotArr base sa) ins (site sa.reg.lpc).2)
+    (hres : ∀ p, (∃ bi ra t, body[p]? = some bi ∧ bi.li_i = .Lcall ra t) → (site p).1 = res)
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB l.frame body = true)
+    (hshapes : DecodeGen.shapesOf (LprogBytesDecode.Params.ofBody body) body = some ds)
+    (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
+      frame q = DecodePrintedAddr.frameP (LprogBytesDecode.Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {prog : List RInstr} {tgt L : Nat}
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) tgt L
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) = some prog)
+    {D : DeadTab} (hbits : bitsDeadB frame D body = true)
+    (hdead : callDeadB (l.contractSig (ins.map (·.1)) (some res)) site D.dead body = true)
+    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some (insSummary l ins))
+    (hshape : siteShapeB f site (callImg slotArr site body) = true)
+    {I : LprogIsa.Isa}
+    (hI : ∀ P i s t, I.step P i s = some t →
+      JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr site body)))
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (LprogBytesDecode.Params.ofBody body).frame sa sA →
+        Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (k : Nat) {s t : LstateMF}
+    (hrun : (I.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr site body)) k s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL0 : liveW D slotArr body sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA0 : ACorr rsp sA sa) :
+    ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
+        (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
+      ∧ Fin t sA' :=
+  ImageAddrCallW.haltsO_of_linkedChecksOne hsep hphys hgate hsites
+    (c := l.contractSig (ins.map (·.1)) (some res)) (calleeSpec_of_sContract hXc _ _) hcls hshapes
+    hfr symBase hP hbits hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => siteStep_contract_ins hsep hphys hXc hL hnd hfb hS hpar hdead hb
+      (hres p hb) hpc
+      (glue_ins (insSummary_retWord l ins) (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
+
+/-- **A halting run of the image of a calling body of the wide class whose call sites call one
+    linked function with an out layout is a run through calls of the program its linked bytes
+    decode to**, for a callee block whose code `q` meets the contract of `l`. The hypotheses are
+    those of `ImageAddrCallOutChain.haltsC_of_linkedChecks_out` with the specification of the out
+    interface replaced by the contract, and the precondition and the entry hypotheses at the
+    calls replaced by the parameters passed by the operands of the site of each call
+    (`hpar`), the destination parameter passing the destination of the site (`hA`) and
+    separated from the other arrays of the site (`hdst`). -/
+theorem haltsC_of_contractW_out {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCBW frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    (r : CatCrypt.Crypto.SecureCompilation.CT.DoitRegime) {q : List RInstr} {l : LinkedFn}
+    {ins : List (String × ArgKind)} {po : String} {n : Nat} (hL : OutLayout l ins po n)
+    (hXc : SContract (Callee.runOf r q) l.contract) (hq : ∀ tg, RInstr.call tg ∉ q)
+    (hnd : (l.layout.args.map (·.reg)).Nodup) (hfb : l.frame + 8 ≤ 2 ^ 64)
+    (hS : CallerSep frame slotArr base rsp l.frame)
+    {site : Nat → String × List String}
+    (hqA : ∀ i, (∃ bi ra t, body[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∃ qA, slotArr qA = some ((site i).1, n))
+    (hA : ∀ i, (∃ bi ra t, body[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ((po, ArgKind.words n), (site i).1) ∈ ins.zip (site i).2)
+    (hpar : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      List.Forall₂ (ParamAt slotArr base sa) ins (site sa.reg.lpc).2)
+    (hdst : ∀ i, (∃ bi ra t, body[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∀ r n, l.layout.result = .words r n → ∀ p x, (p, x) ∈ ins.zip (site i).2 →
+        p.2 ≠ .scalar → phys p.1 ≠ r → ∀ p' x', (p', x') ∈ ins.zip (site i).2 →
+          phys p'.1 = r → x ≠ x')
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB l.frame body = true)
+    (hshapes : DecodeGen.shapesOf (LprogBytesDecode.Params.ofBody body) body = some ds)
+    (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
+      frame q = DecodePrintedAddr.frameP (LprogBytesDecode.Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {cb : List (BitVec 8)} {prog : List RInstr}
+    (hcb : LprogBytesDecode.decodeLprog cb = some q) (hne : cb ≠ [])
+    (hbr : LprogBytesLinkReloc.branchOKReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+          body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) = true)
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+          body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) = some prog)
+    {D : DeadTab} (hbits : bitsDeadB frame D body = true)
+    (hdead : callDeadOutB (l.contractSig (ins.map (·.1)) none) site D.dead body = true)
+    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some (outSummary l ins n))
+    (hshape : siteShapeB f site (callImg slotArr site body) = true)
+    {I : LprogIsa.Isa}
+    (hI : ∀ P i s t, I.step P i s = some t →
+      JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr site body)))
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (LprogBytesDecode.Params.ofBody body).frame sa sA →
+        Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (k : Nat) {s t : LstateMF}
+    (hrun : (I.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr site body)) k s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL0 : liveW D slotArr body sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA0 : ACorr rsp sA sa) :
+    LprogBytesDecode.decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ LprogBytesLink.shiftProg prog.length q)
+      ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
+          (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
+        ∧ Fin t sA' :=
+  ImageAddrCallW.haltsC_of_linkedChecksOne hsep hphys hgate hsites r
+    (c := l.contractSig (ins.map (·.1)) none) (calleeSpec_of_sContract hXc _ _) hq hcls
+    hshapes hfr symBase hcb hne hbr hP hbits hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
+      siteStep_contract_out hsep hphys hXc hL hnd hfb hS hA hpar hdst hdead hb hqA' hpc
+        (glue_out (pr := outSummary l ins n) rfl (fun _ => rfl)
+          (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
+
+/-- **A halting run of the image of a calling body of the wide class whose call sites call one
+    linked function with an out layout is a run of the program of its relocated item list under
+    the oracle of the callee**, for a run relation `X` that meets the contract of `l`. The
+    hypotheses are those of `haltsC_of_contractW_out` with the bytes of the callee replaced by the
+    program `prog` of the relocated item list in front of a callee block at the index `tgt`. -/
+theorem haltsO_of_contractW_out {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCBW frame slotArr body = true) (hsites : callSitesB slotArr body = true)
+    {X : CalleeRun} {l : LinkedFn} {ins : List (String × ArgKind)} {po : String} {n : Nat}
+    (hL : OutLayout l ins po n) (hXc : SContract X l.contract)
+    (hnd : (l.layout.args.map (·.reg)).Nodup) (hfb : l.frame + 8 ≤ 2 ^ 64)
+    (hS : CallerSep frame slotArr base rsp l.frame)
+    {site : Nat → String × List String}
+    (hqA : ∀ i, (∃ bi ra t, body[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∃ qA, slotArr qA = some ((site i).1, n))
+    (hA : ∀ i, (∃ bi ra t, body[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ((po, ArgKind.words n), (site i).1) ∈ ins.zip (site i).2)
+    (hpar : ∀ s sa zf sA, ImgRel frame slotArr base body s sa zf → ACorr rsp sA sa →
+      (∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      List.Forall₂ (ParamAt slotArr base sa) ins (site sa.reg.lpc).2)
+    (hdst : ∀ i, (∃ bi ra t, body[i]? = some bi ∧ bi.li_i = .Lcall ra t) →
+      ∀ r n, l.layout.result = .words r n → ∀ p x, (p, x) ∈ ins.zip (site i).2 →
+        p.2 ≠ .scalar → phys p.1 ≠ r → ∀ p' x', (p', x') ∈ ins.zip (site i).2 →
+          phys p'.1 = r → x ≠ x')
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB l.frame body = true)
+    (hshapes : DecodeGen.shapesOf (LprogBytesDecode.Params.ofBody body) body = some ds)
+    (hfr : ∀ q ∈ ImageAddrFrame.bodyNamesI body,
+      frame q = DecodePrintedAddr.frameP (LprogBytesDecode.Params.ofBody body) rsp q)
+    (symBase : String → Option Int) {prog : List RInstr} {tgt L : Nat}
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) tgt L
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (LprogBytesDecode.Params.ofBody body)
+        body ds) = some prog)
+    {D : DeadTab} (hbits : bitsDeadB frame D body = true)
+    (hdead : callDeadOutB (l.contractSig (ins.map (·.1)) none) site D.dead body = true)
+    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some (outSummary l ins n))
+    (hshape : siteShapeB f site (callImg slotArr site body) = true)
+    {I : LprogIsa.Isa}
+    (hI : ∀ P i s t, I.step P i s = some t →
+      JasminLsemMemChecked.evalInstrPMemFk true P i s = some t)
+    (hD : DeadSteps D I (singletonProgM fn (callImg slotArr site body)))
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
+      LprogBytesLinkReloc.FinLea rsp (LprogBytesDecode.Params.ofBody body).frame sa sA →
+        Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (k : Nat) {s t : LstateMF}
+    (hrun : (I.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr site body)) k s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL0 : liveW D slotArr body sa.reg.lpc = false)
+    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA0 : ACorr rsp sA sa) :
+    ∃ sA', Callee.HaltsO aMachine (Callee.oracleAt tgt X) prog
+        (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
+      ∧ Fin t sA' :=
+  ImageAddrCallW.haltsO_of_linkedChecksOne hsep hphys hgate hsites
+    (c := l.contractSig (ins.map (·.1)) none) (calleeSpec_of_sContract hXc _ _) hcls hshapes
+    hfr symBase hP hbits hflags hcond hI hD hfin hFin
+    (fun p _ _ hg hpc hb => (hqA p hb).elim fun _ hqA' =>
+      siteStep_contract_out hsep hphys hXc hL hnd hfb hS hA hpar hdst hdead hb hqA' hpc
+        (glue_out (pr := outSummary l ins n) rfl (fun _ => rfl)
+          (sitesOf_of_siteShapeB hshape hT) hg))
+    k hrun hfn hlen hL0 hI0 hA0
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets
