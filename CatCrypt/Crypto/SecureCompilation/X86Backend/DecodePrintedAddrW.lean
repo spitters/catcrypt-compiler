@@ -102,9 +102,12 @@ arms to the bodies of `DecodePrintedCFG`.
   `0 < k < 64` is printed as `sar $k`, whose run writes the arithmetic shift the address step
   writes; `instrOKWB` accepts every such instruction.
 * `narrowInv_step`, `runSafe_narrow`: every step of the address machine keeps `NarrowInv`.
+* `BodyFactsCW`, `step_simWN`: one step of the address machine at a covered instruction is
+  matched by a path on any program holding the decoded instructions of the position
+  (`blkOf`), in a body that may hold remote transfers.
 * `run_simWN`, `run_simW`, `printedAddr_simW_noCall`, `printedAddr_simW`: the decoded bytes
   of a body in `printedAddrWB` simulate its run on the address machine, by a halting run
-  without a call.
+  without a call; the induction iterates `step_simWN`.
 * `printedAddrWB_eq_impl` (`@[csimp]`): the gate is evaluated with the body parameters
   computed once per body, the carry-out and cast gates on the array of the body
   (`carryPrevBA`, `castPosBA`) and the cast width analyses tabulated (`narrowTable`).
@@ -4937,6 +4940,32 @@ structure BodyFactsW (body : Lcmd) (shs : List DShape) : Prop where
   /-- Every cast keeps the low bits its source and destination widths give. -/
   cast : ∀ k, k < body.length → castPosB body k = true
 
+/-- The facts of a printed body with carry chains that may hold remote transfers, which the
+    per-step simulation `step_simWN` reads: those of `BodyFactsW`, with every instruction before
+    the last either a remote transfer (`remoteSym`) or covered. -/
+structure BodyFactsCW (body : Lcmd) (shs : List DShape) : Prop where
+  /-- The shapes of the body. -/
+  shapes : shapesOf (Params.ofBody body) body = some shs
+  /-- The body is not empty. -/
+  pos : 0 < body.length
+  /-- The last instruction is the return. -/
+  last : (body[body.length - 1]'(by omega)).li_i = .Lret
+  /-- Every other instruction is a remote transfer or covered. -/
+  instr : ∀ k (hk : k + 1 < body.length),
+    remoteSym (body[k]'(by omega)).li_i ≠ none
+      ∨ instrOKWB body (Params.ofBody body) (body[k]'(by omega)).li_i = true
+  /-- Every conditional branch follows a compare. -/
+  cond : ∀ k, k < body.length → condPrevB body k = true
+  /-- Every carry-out binding follows its add. -/
+  carry : ∀ k, k < body.length → carryPrevB body k = true
+  /-- Every cast keeps the low bits its source and destination widths give. -/
+  cast : ∀ k, k < body.length → castPosB body k = true
+
+/-- A body with the facts `BodyFactsW` has the facts `BodyFactsCW`. -/
+theorem BodyFactsW.toCW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) :
+    BodyFactsCW body shs :=
+  ⟨hF.shapes, hF.pos, hF.last, fun k hk => .inr (hF.instr k hk), hF.cond, hF.carry, hF.cast⟩
+
 theorem acorrW_setLpc {rsp : BitVec 64} {sa : AState} {s : LstateA} (h : ACorrW rsp sa s)
     (p : Nat) : ACorrW rsp sa (s.setLpc p) :=
   ⟨h.regs, h.sp, h.mem⟩
@@ -4951,8 +4980,9 @@ theorem haltedA_eq_falseW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW bod
   rcases body[k] with ⟨ii, li⟩
   cases li <;> simp [instrOKWB]
 
-/-- The instruction after one that is no add is no carry-out binding. -/
-theorem no_carryReq {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) {k : Nat}
+/-- The instruction after one that is no add is no carry-out binding, in a body that may hold
+    remote transfers. -/
+theorem no_carryReqC {body : Lcmd} {shs : List DShape} (hF : BodyFactsCW body shs) {k : Nat}
     (hk : k + 1 < body.length) (h : ∀ ii d a s c, body[k]? ≠
       some ⟨ii, .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩)
     (frame : String → Option (BitVec 64)) (sa : AState) (s : LstateA) :
@@ -4969,6 +4999,14 @@ theorem no_carryReq {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
     subst ho
     exact absurd heq (h ii' d a' s' c')
   · simp at hc
+
+/-- The instruction after one that is no add is no carry-out binding. -/
+theorem no_carryReq {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) {k : Nat}
+    (hk : k + 1 < body.length) (h : ∀ ii d a s c, body[k]? ≠
+      some ⟨ii, .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩)
+    (frame : String → Option (BitVec 64)) (sa : AState) (s : LstateA) :
+    CarryReq frame body (k + 1) sa s :=
+  no_carryReqC hF.toCW hk h frame sa s
 
 /-- A carry-out binding is required at a label. -/
 theorem carryReq_label {body : Lcmd} {k : Nat} {ii : Nat} {kd : LabelKind} {l : LLabel}
@@ -5019,6 +5057,26 @@ theorem classifyA_three_not_cmp (d m : String) (a s c : String) :
     (classifyA (.Lopn [.reg d] m [.reg a, .reg s, .reg c])).any cmpArmB = false := by
   simp [classifyA, cmpArmB, Option.any_map]
 
+/-- The decoded instructions of an `Lopn` at position `k`, in any program that holds them from
+    the index of `k`, run from that index to the decoded index of `k + 1`. -/
+theorem reaches_blockP {body : Lcmd} {shs : List DShape} {prog : List RInstr} {k : Nat}
+    (hks : k < shs.length)
+    (hP : ∃ A B, prog = A ++ blkOf body shs shs[k] ++ B ∧ A.length = posOf shs k)
+    {ds : List LOperand} {o : String} {ss : List LOperand}
+    (hshk : shapeOf (Params.ofBody body) (.Lopn ds o ss) = some shs[k]) {js : List (JInstr 64)}
+    (hops : shs[k].ops' = js) (sa : AState) :
+    Reaches aMachine prog (posOf shs k) sa (posOf shs (k + 1)) (aMachine.runBlock sa js) := by
+  obtain ⟨A, B, hsplit, hA⟩ := hP
+  obtain ⟨hblk, hn⟩ := blkOf_lopn (body := body) (shs := shs) hshk
+  have hprog : prog = A ++ js.map RInstr.op ++ B := by
+    rw [hsplit, hblk, hops]
+  have h0 := reaches_ops aMachine A js B sa
+  rw [← hprog, hA] at h0
+  have hpos : posOf shs (k + 1) = posOf shs k + js.length := by
+    rw [posOf_succ shs k hks, hn, hops]
+  rw [hpos]
+  exact h0
+
 /-- The decoded instructions of an `Lopn` at position `k` run from its decoded index to the
     decoded index of `k + 1`. -/
 theorem reaches_block {body : Lcmd} {shs : List DShape} (a b : JInstr 64) {k : Nat}
@@ -5028,115 +5086,80 @@ theorem reaches_block {body : Lcmd} {shs : List DShape} (a b : JInstr 64) {k : N
     (hR : Reaches aMachine (.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))
       (posOf shs (k + 1)) (aMachine.runBlock sa js) e sa') :
     Reaches aMachine (.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))
-      (posOf shs k) sa e sa' := by
-  obtain ⟨A, B, hsplit, hA⟩ := prog_split body shs a b k hks
-  obtain ⟨hblk, hn⟩ := blkOf_lopn (body := body) (shs := shs) hshk
-  have hprog : (RInstr.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))
-      = A ++ js.map RInstr.op ++ B := by
-    rw [hsplit, hblk, hops]
-  have h0 := reaches_ops aMachine A js B sa
-  rw [← hprog, hA] at h0
-  have hpos : posOf shs (k + 1) = posOf shs k + js.length := by
-    rw [posOf_succ shs k hks, hn, hops]
-  rw [hpos] at hR
-  exact h0.trans hR
+      (posOf shs k) sa e sa' :=
+  (reaches_blockP hks (prog_split body shs a b k hks) hshk hops sa).trans hR
 
 /-- The instruction at position `k` of a body. -/
 theorem body_get {body : Lcmd} {k : Nat} (hk : k < body.length) :
     body[k]? = some (body[k]'hk) := List.getElem?_eq_getElem hk
 
-/-- **The run on both machines, with carry chains.** From states related by `ACorrW` at
-    instruction `k` of a body in `printedAddrWB`, with the machine zero flag equal to the
-    flag at a conditional branch and the machine carry flag holding the carry-out at a
-    carry-out binding, every terminating run of the address machine whose indexed loads
-    avoid the red-zone word and whose instructions read every general-purpose name besides a
-    carry-in at width `64` is matched by a path of the machine on the decoded program from the index of `k` to the
-    index of the closing return, ending in states related by `ACorrW`. -/
-theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (rsp : BitVec 64)
-    (a b : JInstr 64) :
-    ∀ (fuel k : Nat) (sa : AState) (s : LstateA) (zf : Bool) (t : LstateA × Bool),
-      s.reg.lpc = k → (hk : k < body.length) → ACorrW rsp sa s →
-      (isCondB (body[k]'hk).li_i = true → sa.flags.zf.getD false = zf) →
-      CarryReq (frameP (Params.ofBody body) rsp) body k sa s →
-      runA (frameP (Params.ofBody body) rsp) body fuel s zf = some t →
-      RunSafe (frameP (Params.ofBody body) rsp) body
-        (SafeWN rsp body) fuel s zf →
-      ∃ sa', Reaches aMachine (.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))
-          (posOf shs k) sa (posOf shs (body.length - 1)) sa' ∧ ACorrW rsp sa' t.1 := by
+/-- **One step on both machines, with carry chains.** Let `prog` hold the decoded instructions
+    of position `k` of a body with the facts `BodyFactsCW` from the decoded index of `k`. A
+    step of the address machine at `k`, from states related by `ACorrW`, with the machine zero
+    flag equal to the flag at a conditional branch, the machine carry flag holding the
+    carry-out at a carry-out binding, and the safety `SafeWN` of the start state, is matched by
+    a path of the machine on `prog` from the index of `k` to the index of the reached position.
+    The reached states are related by `ACorrW`, and the zero and carry conditions hold at the
+    reached position. A remote transfer takes no step of the address machine. -/
+theorem step_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsCW body shs)
+    (rsp : BitVec 64) {prog : List RInstr} {k : Nat}
+    (hprog : ∀ hs : k < shs.length,
+      ∃ A B, prog = A ++ blkOf body shs shs[k] ++ B ∧ A.length = posOf shs k)
+    (sa : AState) (s : LstateA) (zf : Bool) (s' : LstateA) (zf' : Bool)
+    (hpc : s.reg.lpc = k) (hk : k < body.length) (hkn : k + 1 < body.length)
+    (hc : ACorrW rsp sa s)
+    (hz : isCondB (body[k]'hk).li_i = true → sa.flags.zf.getD false = zf)
+    (hcy : CarryReq (frameP (Params.ofBody body) rsp) body k sa s)
+    (hsafe : SafeWN rsp body s)
+    (hst : stepA (frameP (Params.ofBody body) rsp) body s zf = some (s', zf')) :
+    ∃ sb, Reaches aMachine prog (posOf shs k) sa (posOf shs s'.reg.lpc) sb ∧ ACorrW rsp sb s'
+      ∧ ∃ hl : s'.reg.lpc < body.length,
+        (isCondB (body[s'.reg.lpc]'hl).li_i = true → sb.flags.zf.getD false = zf')
+          ∧ CarryReq (frameP (Params.ofBody body) rsp) body s'.reg.lpc sb s' := by
   set P := Params.ofBody body with hP
   set frame := frameP P rsp
-  set prog : List RInstr := .op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret])
   obtain ⟨hl, hsh⟩ := shapesOf_spec P body shs hF.shapes
-  -- the halt at the return
-  have hhalt : ∀ (fuel : Nat) (sa : AState) (s : LstateA) (zf : Bool) (t : LstateA × Bool),
-      s.reg.lpc = body.length - 1 → ACorrW rsp sa s →
-      runA frame body fuel s zf = some t →
-      ∃ sa', Reaches aMachine prog (posOf shs (body.length - 1)) sa
-          (posOf shs (body.length - 1)) sa' ∧ ACorrW rsp sa' t.1 := by
-    intro fuel sa s zf t hpc hc hrun
-    have hh : haltedA body s = true := by
-      unfold haltedA
-      rw [hpc, List.getElem?_eq_getElem (by have := hF.pos; omega)]
-      have := hF.last
-      revert this
-      rcases body[body.length - 1]'(by have := hF.pos; omega) with ⟨ii, li⟩
-      intro h
-      simp only at h
-      subst h
-      rfl
-    rw [runA_halt _ _ _ _ _ hh] at hrun
-    obtain rfl := Option.some.inj hrun
-    exact ⟨sa, .refl _ _, hc⟩
-  intro fuel
-  induction fuel with
-  | zero =>
-    intro k sa s zf t hpc hk hc _ _ hrun _
-    by_cases hkn : k + 1 < body.length
-    · simp [runA, haltedA_eq_falseW hF hpc hkn] at hrun
-    · have hk' : k = body.length - 1 := by omega
-      subst hk'
-      exact hhalt 0 sa s zf t hpc hc hrun
-  | succ f ih =>
-    intro k sa s zf t hpc hk hc hz hcy hrun hsafe
-    by_cases hkn : k + 1 < body.length
-    swap
-    · have hk' : k = body.length - 1 := by omega
-      subst hk'
-      exact hhalt (f + 1) sa s zf t hpc hc hrun
-    rw [runA_step _ _ _ _ _ (haltedA_eq_falseW hF hpc hkn)] at hrun
-    have hok := hF.instr k hkn
-    have hget : body[s.reg.lpc]? = some (body[k]'hk) := by
-      rw [hpc]; exact List.getElem?_eq_getElem hk
-    have hks : k < shs.length := by omega
-    have hshk := hsh k hk hks
-    -- the step of the address machine
-    cases hst : stepA frame body s zf with
-    | none => rw [hst] at hrun; cases hrun
-    | some p =>
-    obtain ⟨s', zf'⟩ := p
-    rw [hst, Option.bind_some] at hrun
-    have hsafe' := hsafe.2 s' zf' hst
-    -- an instruction other than an add leaves no carry-out binding next
-    have hnoadd : (∀ ii d a s c, body[k]? ≠
-        some ⟨ii, .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩) →
-        ∀ sa s, CarryReq frame body (k + 1) sa s :=
-      fun h sa s => no_carryReq hF hkn h frame sa s
-    -- a conditional branch next follows a compare arm
-    have hcondNext : isCondB (body[k + 1]'hkn).li_i = true →
-        ((classifyA (body[k]'hk).li_i).any cmpArmB) = true := by
-      intro hcnd
-      have hc2 := hF.cond (k + 1) hkn
-      unfold condPrevB at hc2
-      rw [List.getElem?_eq_getElem hkn] at hc2
-      revert hc2 hcnd
-      rcases body[k + 1] with ⟨ii', li'⟩
-      cases li' <;> simp [isCondB, List.getElem?_eq_getElem hk]
-    rcases hbk : body[k]'hk with ⟨ii, li⟩
-    rw [hbk] at hok hget hshk hz hcondNext
-    simp only at hok hshk hz hcondNext
-    have hbk? : body[k]? = some ⟨ii, li⟩ := by rw [body_get hk, hbk]
-    cases li with
+  have hok0 := hF.instr k hkn
+  have hget : body[s.reg.lpc]? = some (body[k]'hk) := by
+    rw [hpc]; exact List.getElem?_eq_getElem hk
+  have hks : k < shs.length := by omega
+  have hshk := hsh k hk hks
+  have hblk := hprog hks
+  -- an instruction other than an add leaves no carry-out binding next
+  have hnoadd : (∀ ii d a s c, body[k]? ≠
+      some ⟨ii, .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩) →
+      ∀ sa s, CarryReq frame body (k + 1) sa s :=
+    fun h sa s => no_carryReqC hF hkn h frame sa s
+  -- a conditional branch next follows a compare arm
+  have hcondNext : isCondB (body[k + 1]'hkn).li_i = true →
+      ((classifyA (body[k]'hk).li_i).any cmpArmB) = true := by
+    intro hcnd
+    have hc2 := hF.cond (k + 1) hkn
+    unfold condPrevB at hc2
+    rw [List.getElem?_eq_getElem hkn] at hc2
+    revert hc2 hcnd
+    rcases body[k + 1] with ⟨ii', li'⟩
+    cases li' <;> simp [isCondB, List.getElem?_eq_getElem hk]
+  rcases hbk : body[k]'hk with ⟨ii, li⟩
+  rw [hbk] at hok0 hget hshk hz hcondNext
+  simp only at hok0 hshk hz hcondNext
+  have hbk? : body[k]? = some ⟨ii, li⟩ := by rw [body_get hk, hbk]
+  cases li with
     | Lopn ds o ss =>
+      have hok : instrOKWB body P (.Lopn ds o ss) = true := hok0.resolve_left (fun h => h rfl)
+      -- the decoded block of the instruction and the conditions at the next position
+      have hnext : ∀ js : List (JInstr 64), shs[k].ops' = js → s'.reg.lpc = k + 1 →
+          ACorrW rsp (aMachine.runBlock sa js) s' →
+          (isCondB (body[k + 1]'hkn).li_i = true →
+            (aMachine.runBlock sa js).flags.zf.getD false = zf') →
+          CarryReq frame body (k + 1) (aMachine.runBlock sa js) s' →
+          ∃ sb, Reaches aMachine prog (posOf shs k) sa (posOf shs s'.reg.lpc) sb
+            ∧ ACorrW rsp sb s' ∧ ∃ hl : s'.reg.lpc < body.length,
+              (isCondB (body[s'.reg.lpc]'hl).li_i = true → sb.flags.zf.getD false = zf')
+                ∧ CarryReq frame body s'.reg.lpc sb s' := by
+        intro js hops hp' hc' hz' hcy'
+        simp only [hp']
+        exact ⟨_, reaches_blockP hks hblk hshk hops sa, hc', hkn, hz', hcy'⟩
       have hstepEq : stepA frame body s zf
           = fstepA frame (normA (.Lopn ds o ss), tagAt body k (.Lopn ds o ss)) s zf := by
         simp only [stepA, hget]
@@ -5157,7 +5180,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           cases hl : (narrowIn body k).lookup A with
           | none =>
             rw [hl] at hcp
-            have h64 := hsafe.1.2.1 ii _ _ _ (by rw [hget]) A (reg_reads (by simp)) hok.2
+            have h64 := hsafe.2.1 ii _ _ _ (by rw [hget]) A (reg_reads (by simp)) hok.2
               (by simp [carryIns]) (by
                 have hsm : slotMov? (.Lopn [.reg D] o [.reg A]) = none := by
                   have ho : ¬(o = "MOVQ" ∨ o = "MOV:64") := by
@@ -5170,7 +5193,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             simpa using hcp
           | some w0 =>
             rw [hl] at hcp
-            have hw0 := hsafe.1.2.2.2 _ hget (by rw [hclK]; rfl) A w0 (by rw [hpc]; exact hl)
+            have hw0 := hsafe.2.2.2 _ hget (by rw [hclK]; rfl) A w0 (by rw [hpc]; exact hl)
             rw [hw0]
             simpa using hcp
         obtain ⟨hc', -⟩ := sim_castW_bytes P rsp o D A w' m hm hok.1 hok.2 (castTagW_width hw)
@@ -5188,13 +5211,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           intro ii' d a s c h
           rw [hbk?] at h
           simp at h
-        obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz' (hnoadd hna _ _) hrun
-          hsafe'
-        refine ⟨sa', ?_, hC⟩
         obtain ⟨hb, hp⟩ := castBytes P o D A m hm hok.1 hok.2
         have hops : shs[k].ops' = (castPieces m D A).map Prod.snd :=
           shapeOf_lopn_ops _ hb hp hshk
-        exact reaches_block a b hks hshk hops hR
+        exact hnext _ hops hpc' hc' hz' (hnoadd hna _ _)
       rename_i hclK
       by_cases h1b : bitSrc body s = []
       swap
@@ -5245,14 +5265,11 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           rw [hbk?] at h
           simp only [Option.some.injEq, Linstr.mk.injEq, LinstrR.Lopn.injEq] at h
           rcases hm with rfl | rfl <;> simp at h
-        obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz' (hnoadd hna _ _) hrun
-          hsafe'
-        refine ⟨sa', ?_, hC⟩
         have hops : shs[k].ops' = (AArm.st o q S).js P := AArm.shape_ops hok' hshk
-        exact reaches_block a b hks hshk hops hR
+        exact hnext _ hops hpc' hc' hz' (hnoadd hna _ _)
       have hws : ∀ r, readsI (.Lopn ds o ss) r → gpOk r = true →
           r ∉ carryIns (.Lopn ds o ss) → (s.reg.lvm r).1 = 64 := fun r h1 h2 h3 =>
-        hsafe.1.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK, h1b])
+        hsafe.2.1 ii ds o ss (by rw [hget]) r h1 h2 h3 (by simp [narrowSrc, hget, hclK, h1b])
       split at hok
       · -- an untagged immediate move: a carry constant or a 32-bit constant
         rename_i D n hmv
@@ -5310,13 +5327,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           intro ii' d a s c h
           rw [hbk?, hia] at h
           simp at h
-        obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz' (hnoadd hna _ _) hrun
-          hsafe'
-        refine ⟨sa', ?_, hC⟩
         obtain ⟨hb, hp⟩ := imm32Bytes P D n hok
         have hops : shs[k].ops' = (zPieces D n).map Prod.snd :=
           shapeOf_lopn_ops _ (henc.trans hb) hp (by rw [← hia]; exact hshk)
-        exact reaches_block a b hks hshk hops hR
+        exact hnext _ hops hpc' hc' hz' (hnoadd hna _ _)
       rename_i hmv
       rw [tagAt_of_ne hmv] at hst
       split at hok
@@ -5358,8 +5372,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
             obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, hDC⟩, hsa⟩, hss⟩, -⟩ := hc2
             exact hcyo hDA hDS hDC hsa hss
-          obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _) hcy' hrun hsafe'
-          exact ⟨sa', reaches_block a b hks hshk hops hR, hC⟩
+          exact hnext _ hops hpc' hc' (hz' _) hcy'
         | adcxhi O A S C =>
           have hok' := hok
           simp only [SArm.ok, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
@@ -5376,8 +5389,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           have hcy' := hnoadd (fun ii' d a' s'' c' h => by
             rw [hbk?] at h
             simp at h) (aMachine.runBlock sa ((SArm.adcxhi O A S C).js P)) s'
-          obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _) hcy' hrun hsafe'
-          exact ⟨sa', reaches_block a b hks hshk hops hR, hC⟩
+          exact hnext _ hops hpc' hc' (hz' _) hcy'
         | adcxc D A S C =>
           obtain ⟨hCs, -, -, -, -, -⟩ := adcxc_facts hok
           simp only [SArm.instr] at hia
@@ -5398,8 +5410,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
             obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, -⟩, hsa⟩, hss⟩, hsc⟩ := hc2
             exact hcyo hDA hDS hsa hss hsc
-          obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _) hcy' hrun hsafe'
-          exact ⟨sa', reaches_block a b hks hshk hops hR, hC⟩
+          exact hnext _ hops hpc' hc' (hz' _) hcy'
       rename_i hclS
       split at hok
       · -- a carry arm
@@ -5442,11 +5453,9 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               Nat.add_one_ne_zero, not_false_eq_true, true_and] at hc2
             obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨-, rfl⟩, rfl⟩, rfl⟩, hDA⟩, hDS⟩, hDC⟩, -⟩, -⟩, -⟩ := hc2
             exact hcyo hDA hDS hDC
-          obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf t hpc' hkn hc' hz' hcy' hrun hsafe'
-          refine ⟨sa', ?_, hC⟩
           have hops := CArm.shape_ops hok (by rw [show (CArm.adcx D A S C).instr
             = .Lopn [.reg D] "ADCX:64" [.reg A, .reg S, .reg C] from rfl]; exact hshk)
-          exact reaches_block a b hks hshk hops hR
+          exact hnext _ hops hpc' hc' hz' hcy'
         | adcxhi O A S C =>
           simp only [CArm.instr] at hia
           simp only [← hia] at hst hws hshk hbk? hcondNext
@@ -5477,11 +5486,9 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
           have hcy' := hnoadd (fun ii' d a' s'' c' h => by
             rw [hbk?] at h
             simp at h) (aMachine.runBlock sa (CArm.adcxhi O A S C).js) s'
-          obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf t hpc' hkn hc' hz' hcy' hrun hsafe'
-          refine ⟨sa', ?_, hC⟩
           have hops := CArm.shape_ops hok (by rw [show (CArm.adcxhi O A S C).instr
             = .Lopn [.reg O] "ADCXHI:64" [.reg A, .reg S, .reg C] from rfl]; exact hshk)
-          exact reaches_block a b hks hshk hops hR
+          exact hnext _ hops hpc' hc' hz' hcy'
       · rename_i hclC
         have hnotadd : ∀ ii' d a' s'' c', body[k]? ≠
             some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a', .reg s'', .reg c']⟩ := by
@@ -5495,7 +5502,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
         · -- a cell arm
           rename_i m hclM
           have hia := classifyM_instr hclM
-          have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss)) = (m.instr, MemTag.reg none) := by
+          have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
+              = (m.instr, MemTag.reg none) := by
             rw [← hia]
             cases m <;> simp (config := { decide := true }) [normA, tagA, MArm.instr]
           rw [hli] at hst
@@ -5516,16 +5524,13 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               hB (by rw [← hia]; simp [carryIns])
             have hsafeM : ∀ p, s.reg.getW B 64 = some p →
                 Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
-              hsafe.1.2.2.1 ii (.Lopn [.reg D] "LOAD:64" [.reg n]) D B off p
+              hsafe.2.2.1 ii (.Lopn [.reg D] "LOAD:64" [.reg n]) D B off p
                 (by rw [hget, ← hia])
                 (by simp [cellA?, hn, LprogAsmPrinter.untagCaret_of_caret_free
                   (by decide : '^' ∉ "LOAD:64".toList)]) hp
             obtain ⟨hc', -⟩ := sim_ldm P rsp D n B off hok sa s zf hc hwB hsafeM s' zf' hst
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
           | stm n B off S =>
             have hok' := hok
             simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok'
@@ -5536,11 +5541,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             have hwS : (s.reg.lvm S).1 = 64 := hws S (by rw [← hia]; exact reg_reads (by simp))
               hS (by rw [← hia]; simp [carryIns])
             obtain ⟨hc', -⟩ := sim_stm P rsp n B off S hok sa s zf hc hwB hwS s' zf' hst
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
           | stv n B off S =>
             have hok' := hok
             simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok'
@@ -5551,11 +5553,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             have hwS : (s.reg.lvm S).1 = 64 := hws S (by rw [← hia]; exact reg_reads (by simp))
               hS (by rw [← hia]; simp [carryIns])
             obtain ⟨hc', -⟩ := sim_stv P rsp n B off S hok sa s zf hc hwB hwS s' zf' hst
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
           | ldv D n B off =>
             have hok' := hok
             simp only [MArm.ok, Bool.and_eq_true, beq_iff_eq] at hok'
@@ -5565,16 +5564,13 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               hB (by rw [← hia]; simp [carryIns])
             have hsafeM : ∀ p, s.reg.getW B 64 = some p →
                 Disjoint8 (redW rsp) (p + BitVec.ofNat 64 off) := fun p hp =>
-              hsafe.1.2.2.1 ii (.Lopn [.reg D] "MOV:64" [.reg n]) D B off p
+              hsafe.2.2.1 ii (.Lopn [.reg D] "MOV:64" [.reg n]) D B off p
                 (by rw [hget, ← hia])
                 (by simp [cellA?, hn, cellParts?_gp hD, LprogAsmPrinter.untagCaret_of_caret_free
                   (by decide : '^' ∉ "MOV:64".toList)]) hp
             obtain ⟨hc', -⟩ := sim_ldv P rsp D n B off hok sa s zf hc hwB hsafeM s' zf' hst
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             have hops := MArm.shape_ops hok (by simp only [MArm.instr]; rw [hia]; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
         · split at hok
           · -- an immediate store into a frame slot
             rename_i q v hclI
@@ -5592,13 +5588,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               have hcm := hcondNext hcnd
               rw [hia] at hcm
               simp [classifyA, classify, cmpArmB] at hcm
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             obtain ⟨hb, hp⟩ := iBytes P q v hok
             have hops : shs[k].ops' = (iPieces P q v).map Prod.snd :=
               shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' hz' (hnoadd hnotadd _ _)
           split at hok
           · -- a wide immediate
             rename_i D v hclL
@@ -5616,13 +5609,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               have hcm := hcondNext hcnd
               rw [hia] at hcm
               simp [classifyA, classify, cmpArmB] at hcm
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             obtain ⟨hb, hp⟩ := lBytes P D v hok
             have hops : shs[k].ops' = (lPieces D v).map Prod.snd :=
               shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' hz' (hnoadd hnotadd _ _)
           split at hok
           · -- a register select
             rename_i D C A B hclV
@@ -5648,13 +5638,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               have hwB : (s.reg.lvm B).1 = 64 := hws B (reg_reads (by simp)) hB
                 (by simp [carryIns, hBC])
               obtain ⟨hc', -⟩ := sim_cmov P rsp D C A B hok sa s zf hc hwA hwB s' zf' hst
-              obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-                (hnoadd hnotadd _ _) hrun hsafe'
-              refine ⟨sa', ?_, hC⟩
               obtain ⟨hb, hp⟩ := vBytes P D C A B hok
               have hops : shs[k].ops' = (vPieces D C A B).map Prod.snd :=
                 shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
-              exact reaches_block a b hks hshk hops hR
+              exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
             rcases Bool.or_eq_true_iff.mp hok with hok | hok
             · -- a select with a slot true value
               have hok' := hok
@@ -5663,13 +5650,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               have hwB : (s.reg.lvm B).1 = 64 := hws B (reg_reads (by simp)) hB
                 (by simp [carryIns, hBC])
               obtain ⟨hc', -⟩ := sim_cmovSlot P rsp D C A B hok sa s zf hc hwB s' zf' hst
-              obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-                (hnoadd hnotadd _ _) hrun hsafe'
-              refine ⟨sa', ?_, hC⟩
               obtain ⟨hb, hp⟩ := vtBytes P D C A B hok
               have hops : shs[k].ops' = (vtPieces P D C A B).map Prod.snd :=
                 shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
-              exact reaches_block a b hks hshk hops hR
+              exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
             · -- a select with a slot false value
               have hok' := hok
               simp only [vfOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at hok'
@@ -5679,21 +5663,15 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               by_cases hAD : A = D
               · subst hAD
                 obtain ⟨hc', -⟩ := sim_cmovSlotFE P rsp A C B hok sa s zf hc (hwA hDg) s' zf' hst
-                obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-                  (hnoadd hnotadd _ _) hrun hsafe'
-                refine ⟨sa', ?_, hC⟩
                 obtain ⟨hb, hp⟩ := veBytes P A C B hok
                 have hops : shs[k].ops' = (vePieces P A C B).map Prod.snd :=
                   shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
-                exact reaches_block a b hks hshk hops hR
+                exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
               obtain ⟨hc', -⟩ := sim_cmovSlotF P rsp D C A B hok hAD sa s zf hc hwA s' zf' hst
-              obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' (hz' _)
-                (hnoadd hnotadd _ _) hrun hsafe'
-              refine ⟨sa', ?_, hC⟩
               obtain ⟨hb, hp⟩ := vfBytes P D C A B hok hAD
               have hops : shs[k].ops' = (vfPieces P D C A B).map Prod.snd :=
                 shapeOf_lopn_ops _ hb hp (by rw [← hia]; exact hshk)
-              exact reaches_block a b hks hshk hops hR
+              exact hnext _ hops hpc' hc' (hz' _) (hnoadd hnotadd _ _)
           rename_i hclV
           split at hok
           · -- a materialised comparison
@@ -5721,13 +5699,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               rw [hia] at hcm
               cases n <;> simp [eInstr, eMnem, classifyA, classify] at hcm <;>
                 split_ifs at hcm <;> simp [cmpArmB] at hcm
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             obtain ⟨hb, hp⟩ := eBytes P n D A B hok
             have hops : shs[k].ops' = (ePieces n D A B).map Prod.snd :=
               shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' hz' (hnoadd hnotadd _ _)
           rename_i hclE
           split at hok
           · -- a register-count shift
@@ -5755,13 +5730,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               rw [hia] at hcm
               cases l <;> simp [xInstr, xMnem, classifyA, classify] at hcm <;>
                 split_ifs at hcm <;> simp [cmpArmB] at hcm
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             obtain ⟨hb, hp⟩ := xBytes P l D A B hok
             have hops : shs[k].ops' = (xPieces l D A B).map Prod.snd :=
               shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' hz' (hnoadd hnotadd _ _)
           rename_i hclX
           split at hok
           · -- a materialised comparison with an immediate
@@ -5769,7 +5741,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             have hia := classifyEI_instr hclEI
             have hli : (normA (.Lopn ds o ss), tagA (.Lopn ds o ss))
                 = (eiInstr n D A v, MemTag.reg none) := by
-              rw [hia]; cases n <;> simp (config := { decide := true }) [eiInstr, eMnem, normA, tagA]
+              rw [hia]
+              cases n <;> simp (config := { decide := true }) [eiInstr, eMnem, normA, tagA]
             rw [hli] at hst
             rw [hia] at hws
             have hok' := hok
@@ -5787,13 +5760,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               rw [hia] at hcm
               cases n <;> simp [eiInstr, eMnem, classifyA, classify] at hcm <;>
                 split_ifs at hcm <;> simp [cmpArmB] at hcm
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             obtain ⟨hb, hp⟩ := eiBytes P n D A v hok
             have hops : shs[k].ops' = (eiPieces n D A v).map Prod.snd :=
               shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' hz' (hnoadd hnotadd _ _)
           rename_i hclEI
           split at hok
           · -- an arithmetic right shift by an immediate
@@ -5819,13 +5789,10 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               rw [hia] at hcm
               simp [rInstr, classifyA, classify] at hcm
               split_ifs at hcm <;> simp [cmpArmB] at hcm
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             obtain ⟨hb, hp⟩ := rBytes_encode P D kc hok
             have hops : shs[k].ops' = (rPieces D kc).map Prod.snd :=
               shapeOf_lopn_ops _ hb hp (by rw [hia] at hshk; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' hz' (hnoadd hnotadd _ _)
           rename_i hclR
           -- an arm of `DecodePrintedAddr`
           split at hok
@@ -5837,7 +5804,7 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               cases ar with
               | ldx D B' I =>
                 intro p vi hp hvi
-                exact hsafe.1.1 ii _ D B' I (by rw [hget, ← hia]) (by simp [AArm.instr, width_tag])
+                exact hsafe.1 ii _ D B' I (by rw [hget, ← hia]) (by simp [AArm.instr, width_tag])
                   p vi hp hvi
               | _ => trivial
             have hw : WideAt s ar.li.fst := by
@@ -5853,11 +5820,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
               have hcm := hcondNext hcnd
               rw [hcl] at hcm
               exact hzf' (by simpa using hcm)
-            obtain ⟨sa', hR, hC⟩ := ih (k + 1) _ s' zf' t hpc' hkn hc' hz'
-              (hnoadd hnotadd _ _) hrun hsafe'
-            refine ⟨sa', ?_, hC⟩
             have hops : shs[k].ops' = ar.js P := AArm.shape_ops hok (by rw [hia]; exact hshk)
-            exact reaches_block a b hks hshk hops hR
+            exact hnext _ hops hpc' hc' hz' (hnoadd hnotadd _ _)
           · cases hok
     | Llabel kd l =>
       have hstep : stepA frame body s zf = some (s.setLpc (k + 1), zf) := by
@@ -5872,25 +5836,27 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
         simp [classifyA, cmpArmB, Option.any_map] at this
       have hcy' := hnoadd (fun ii' d a' s'' c' h => by rw [hbk?] at h; simp at h) sa
         (s.setLpc (k + 1))
-      obtain ⟨sa', hR, hC⟩ := ih (k + 1) sa (s.setLpc (k + 1)) zf t rfl hkn (acorrW_setLpc hc _)
-        hz' hcy' hrun hsafe'
-      refine ⟨sa', ?_, hC⟩
-      rw [posOf_succ shs k hks] at hR
       have hsk : shs[k] = .one .skip := by
         simp [shapeOf] at hshk; exact hshk.symm
-      rw [hsk] at hR
-      simpa [nOf] using hR
+      have hpos : posOf shs (k + 1) = posOf shs k := by
+        rw [posOf_succ shs k hks, hsk]
+        simp [nOf]
+      refine ⟨sa, ?_, acorrW_setLpc hc _, hkn, hz', hcy'⟩
+      change Reaches aMachine prog (posOf shs k) sa (posOf shs (k + 1)) sa
+      rw [hpos]
+      exact .refl _ _
     | Lcond c l =>
       cases c with
       | reg cc =>
+        have hok : instrOKWB body P (.Lcond (.reg cc) l) = true :=
+          hok0.resolve_left (fun h => h rfl)
         simp only [instrOKWB, Bool.and_eq_true, Option.isSome_iff_exists] at hok
         obtain ⟨⟨pol, hpol⟩, ⟨p, hp⟩⟩ := hok
         obtain ⟨hpl, hlabp, -⟩ := labelAt_spec hp
         have hsk : shs[k] = .one (.jcc (ccNibble cc) l) := by
           simp [shapeOf] at hshk; exact hshk.symm
-        obtain ⟨A, B, hsplit, hA⟩ := prog_split body shs a b k hks
+        obtain ⟨A, B, hsplit, hA⟩ := hblk
         have hj : prog[posOf shs k]? = some (.jcc (ccNibble cc) (posOf shs p)) := by
-          show (RInstr.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))[posOf shs k]? = _
           rw [hsplit, hsk, ← hA, List.append_assoc, List.getElem?_append_right (by omega)]
           simp [blkOf, hp]
         have hzf : sa.flags.zf.getD false = zf := hz rfl
@@ -5913,10 +5879,8 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             rw [List.getElem?_eq_getElem hpl] at hb
             rw [Option.some.inj hb] at hlabp
             simp [isLabelB] at hlabp
-          obtain ⟨sa', hR, hC⟩ := ih p sa (s.setLpc p) zf t rfl hpl (acorrW_setLpc hc _) hz'
-            hcy' hrun hsafe'
           rw [ite_eq_left hzp] at hms
-          exact ⟨sa', .next hms hR, hC⟩
+          exact ⟨sa, .single hms, acorrW_setLpc hc _, hpl, hz', hcy'⟩
         · have hstep : stepA frame body s zf = some (s.setLpc (k + 1), zf) := by
             unfold stepA
             rw [hget]
@@ -5929,13 +5893,83 @@ theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (
             simp [classifyA, cmpArmB, Option.any_map] at this
           have hcy' := hnoadd (fun ii' d a' s'' c' h => by rw [hbk?] at h; simp at h) sa
             (s.setLpc (k + 1))
-          obtain ⟨sa', hR, hC⟩ := ih (k + 1) sa (s.setLpc (k + 1)) zf t rfl hkn
-            (acorrW_setLpc hc _) hz' hcy' hrun hsafe'
           rw [ite_eq_right hzp] at hms
-          rw [posOf_succ shs k hks, hsk] at hR
-          exact ⟨sa', .next hms (by simpa [nOf] using hR), hC⟩
-      | _ => simp [instrOKWB] at hok
-    | _ => simp [instrOKWB] at hok
+          refine ⟨sa, ?_, acorrW_setLpc hc _, hkn, hz', hcy'⟩
+          change Reaches aMachine prog (posOf shs k) sa (posOf shs (k + 1)) sa
+          rw [posOf_succ shs k hks, hsk]
+          exact .single hms
+      | _ => simp [stepA, hget] at hst
+    | _ => simp [stepA, hget] at hst
+
+/-- **The run on both machines, with carry chains.** From states related by `ACorrW` at
+    instruction `k` of a body in `printedAddrWB`, with the machine zero flag equal to the
+    flag at a conditional branch and the machine carry flag holding the carry-out at a
+    carry-out binding, every terminating run of the address machine whose indexed loads
+    avoid the red-zone word and whose instructions read every general-purpose name besides a
+    carry-in at width `64` is matched by a path of the machine on the decoded program from the
+    index of `k` to the index of the closing return, ending in states related by `ACorrW`. Each
+    step of the run is `step_simWN`. -/
+theorem run_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs) (rsp : BitVec 64)
+    (a b : JInstr 64) :
+    ∀ (fuel k : Nat) (sa : AState) (s : LstateA) (zf : Bool) (t : LstateA × Bool),
+      s.reg.lpc = k → (hk : k < body.length) → ACorrW rsp sa s →
+      (isCondB (body[k]'hk).li_i = true → sa.flags.zf.getD false = zf) →
+      CarryReq (frameP (Params.ofBody body) rsp) body k sa s →
+      runA (frameP (Params.ofBody body) rsp) body fuel s zf = some t →
+      RunSafe (frameP (Params.ofBody body) rsp) body
+        (SafeWN rsp body) fuel s zf →
+      ∃ sa', Reaches aMachine (.op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret]))
+          (posOf shs k) sa (posOf shs (body.length - 1)) sa' ∧ ACorrW rsp sa' t.1 := by
+  set P := Params.ofBody body with hP
+  set frame := frameP P rsp
+  set prog : List RInstr := .op a :: (shs.flatMap (blkOf body shs) ++ [.op b, .ret])
+  -- the halt at the return
+  have hhalt : ∀ (fuel : Nat) (sa : AState) (s : LstateA) (zf : Bool) (t : LstateA × Bool),
+      s.reg.lpc = body.length - 1 → ACorrW rsp sa s →
+      runA frame body fuel s zf = some t →
+      ∃ sa', Reaches aMachine prog (posOf shs (body.length - 1)) sa
+          (posOf shs (body.length - 1)) sa' ∧ ACorrW rsp sa' t.1 := by
+    intro fuel sa s zf t hpc hc hrun
+    have hh : haltedA body s = true := by
+      unfold haltedA
+      rw [hpc, List.getElem?_eq_getElem (by have := hF.pos; omega)]
+      have := hF.last
+      revert this
+      rcases body[body.length - 1]'(by have := hF.pos; omega) with ⟨ii, li⟩
+      intro h
+      simp only at h
+      subst h
+      rfl
+    rw [runA_halt _ _ _ _ _ hh] at hrun
+    obtain rfl := Option.some.inj hrun
+    exact ⟨sa, .refl _ _, hc⟩
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro k sa s zf t hpc hk hc _ _ hrun _
+    by_cases hkn : k + 1 < body.length
+    · simp [runA, haltedA_eq_falseW hF hpc hkn] at hrun
+    · have hk' : k = body.length - 1 := by omega
+      subst hk'
+      exact hhalt 0 sa s zf t hpc hc hrun
+  | succ f ih =>
+    intro k sa s zf t hpc hk hc hz hcy hrun hsafe
+    by_cases hkn : k + 1 < body.length
+    swap
+    · have hk' : k = body.length - 1 := by omega
+      subst hk'
+      exact hhalt (f + 1) sa s zf t hpc hc hrun
+    rw [runA_step _ _ _ _ _ (haltedA_eq_falseW hF hpc hkn)] at hrun
+    cases hst : stepA frame body s zf with
+    | none => rw [hst] at hrun; cases hrun
+    | some p =>
+    obtain ⟨s', zf'⟩ := p
+    rw [hst, Option.bind_some] at hrun
+    obtain ⟨sb, hR, hc', hl, hz', hcy'⟩ := step_simWN hF.toCW rsp
+      (fun hs => prog_split body shs a b k hs) sa s zf s' zf' hpc hk hkn hc hz hcy hsafe.1 hst
+    obtain ⟨sa', hR', hC⟩ := ih s'.reg.lpc sb s' zf' t rfl hl hc' hz' hcy' hrun
+      (hsafe.2 s' zf' hst)
+    exact ⟨sa', hR.trans hR', hC⟩
 
 /-- **The run on both machines, with carry chains and casts.** `run_simWN` from a run that is
     safe in the sense of `SafeW` and a start state satisfying the cast width analysis
