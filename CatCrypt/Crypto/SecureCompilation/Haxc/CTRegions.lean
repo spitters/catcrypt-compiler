@@ -403,12 +403,17 @@ def wordKeep (sp : Int) : JInstr 64 → Int → Bool
   | .storeMemIdx b _ _ _, _ => b != "%rsp"
   | _, _ => true
 
+/-- The fact that the stack words at `e` and `e'` sum to at most `B`, with the lesser offset
+    first: a sum has one form, so the meet at a loop head compares the facts of its two
+    edges whatever the order of the stores that made them. -/
+def leCanon (e e' B : Int) : Int × Int × Int := if e ≤ e' then (e, e', B) else (e', e, B)
+
 /-- The sums the store of the word `n` at offset `e` starts: with `n = 0`, the sum with each
     stack word of `kw` holding a positive constant; with `n > 0`, the sum with each stack word
     of `kw` holding `0`. These are the entry states of a loop with an index and a count. -/
 def seedLe (e : Int) (n : Nat) (kw : List (Int × Nat)) : List (Int × Int × Int) :=
-  (if n = 0 then (kw.filter fun p => 0 < p.2).map fun p => (e, p.1, (p.2 : Int)) else [])
-    ++ (if 0 < n then (kw.filter fun p => p.2 = 0).map fun p => (p.1, e, (n : Int)) else [])
+  (if n = 0 then (kw.filter fun p => 0 < p.2).map fun p => leCanon e p.1 p.2 else [])
+    ++ (if 0 < n then (kw.filter fun p => p.2 = 0).map fun p => leCanon p.1 e n else [])
 
 /-- The stack-word facts a store of the immediate `n` at offset `e` adds. -/
 def genStoreImm (m : MA) (e : Int) (n : Nat) : MW :=
@@ -419,7 +424,7 @@ def genStoreImm (m : MA) (e : Int) (n : Nat) : MW :=
 def genStoreReg (m : MA) (e : Int) (y : String) : MW :=
   { cst := (m.cst.filter fun p => p.1 = y).map fun p => (e, p.2)
     nz := if m.nz.contains y then [e] else []
-    le := ((m.w.rle.filter fun f => f.1 = y && far e f.2.1).map fun f => (e, f.2.1, f.2.2))
+    le := ((m.w.rle.filter fun f => f.1 = y && far e f.2.1).map fun f => leCanon e f.2.1 f.2.2)
       ++ (m.cst.filter fun p => p.1 = y).flatMap fun p =>
         seedLe e p.2 (m.w.cst.filter fun q => far e q.1)
     same := [(y, e)] }
@@ -1507,6 +1512,17 @@ theorem wCstAdd_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
     · simp at hp
   | _ => simp [wCstAdd] at hp
 
+/-- A sum over two stack words holds in the form `leCanon` gives it. -/
+theorem leCanon_spec {P : Int → Prop} {w : Int → BitVec 64} {e e' B : Int} (h1 : P e) (h2 : P e')
+    (h : ((w e).toNat : Int) + (w e').toNat ≤ B) :
+    P (leCanon e e' B).1 ∧ P (leCanon e e' B).2.1 ∧
+      ((w (leCanon e e' B).1).toNat : Int) + (w (leCanon e e' B).2.1).toNat
+        ≤ (leCanon e e' B).2.2 := by
+  unfold leCanon
+  split
+  · exact ⟨h1, h2, h⟩
+  · exact ⟨h2, h1, by dsimp only; omega⟩
+
 /-- A store through `%rsp` of a word at the offset `e`, with the word in the stack word at `e`
     and the stack words far from `e` unchanged, makes the facts of `seedLe` hold. -/
 theorem seedLe_sound {e : Int} {n : Nat} {kw : List (Int × Nat)} {w : Int → BitVec 64}
@@ -1523,7 +1539,7 @@ theorem seedLe_sound {e : Int} {n : Nat} {kw : List (Int × Nat)} {w : Int → B
     · rename_i h0
       simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hf
       obtain ⟨p, ⟨hp, -⟩, rfl⟩ := hf
-      refine ⟨hPe, hPk p hp, ?_⟩
+      refine leCanon_spec hPe (hPk p hp) ?_
       have := hmod p.2
       simp only [hn, hk p hp, h0]
       simp
@@ -1532,7 +1548,7 @@ theorem seedLe_sound {e : Int} {n : Nat} {kw : List (Int × Nat)} {w : Int → B
   · split at hf
     · simp only [List.mem_map, List.mem_filter, decide_eq_true_eq] at hf
       obtain ⟨p, ⟨hp, hp0⟩, rfl⟩ := hf
-      refine ⟨hPk p hp, hPe, ?_⟩
+      refine leCanon_spec (hPk p hp) hPe ?_
       have := hmod n
       simp only [hn, hk p hp, hp0]
       simp
@@ -1630,7 +1646,9 @@ theorem genW_sound {m : MA} {s : AState} {i : JInstr 64} (hI : Inv σ s0 m s)
             Bool.and_eq_true, decide_eq_true_eq, List.mem_flatMap] at hf
           rcases hf with ⟨g, ⟨hg, rfl, hfr⟩, rfl⟩ | ⟨q, ⟨hq, hqy⟩, hf⟩
           · obtain ⟨h1, h2⟩ := hI.w.rle g hg
-            exact ⟨hin, h1, by rw [hv, hfar _ hfr]; exact h2⟩
+            exact leCanon_spec (P := fun e => inW σ e = true)
+              (w := wdAt s0 (evalInstrA s (.storeMem "%rsp" off (.reg g.1)))) hin h1
+              (by rw [hv, hfar _ hfr]; exact h2)
           · exact seedLe_sound (P := fun e => inW σ e = true) hin (fun p hp => (hkw p hp).1)
               (by rw [hv, ← hqy]; exact hI.cst q hq) (fun p hp => (hkw p hp).2) f hf
         · intro p hp
