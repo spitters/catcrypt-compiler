@@ -383,7 +383,7 @@ def ctCheckRXO (σ : AbiLayout) (clob : String → Bool) (pubRegs : List String)
   | none, prog => σ.ctCheckRX clob pubRegs G prog
   | some w, prog =>
     succOk (σ.ctCertRXO clob G prog) 0 σ.pubAS
-      && checkCertX ctRegime (σ.ctFrameRXO clob G prog) prog.length pubRegs
+      && checkCertX ctRegime (σ.ctFrameRXO clob G prog) (extOne prog.length pubRegs)
         (keptRegsX clob (σ.ctCertRXO clob G prog)) (keptCellsX G (σ.ctCertRXO clob G prog))
         prog (σ.ctCertRXO clob G prog)
       && memCheckXO σ clob G w (σ.ctFrameRXO clob G prog) prog (inferMX σ clob G prog)

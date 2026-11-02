@@ -582,7 +582,7 @@ def ctFrameRX (σ : AbiLayout) (clob : String → Bool) (G : Nat) (prog : List R
 def ctCheckRX (σ : AbiLayout) (clob : String → Bool) (pubRegs : List String) (G : Nat)
     (prog : List RInstr) : Bool :=
   succOk (σ.ctCertRX clob G prog) 0 σ.pubAS
-    && checkCertX ctRegime (σ.ctFrameRX clob G prog) prog.length pubRegs
+    && checkCertX ctRegime (σ.ctFrameRX clob G prog) (extOne prog.length pubRegs)
       (keptRegsX clob (σ.ctCertRX clob G prog)) (keptCellsX G (σ.ctCertRX clob G prog))
       prog (σ.ctCertRX clob G prog)
     && memCheckX σ clob G (σ.ctFrameRX clob G prog) prog (inferMX σ clob G prog)

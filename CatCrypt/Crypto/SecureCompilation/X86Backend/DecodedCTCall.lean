@@ -26,7 +26,8 @@ certificate's set at index `0` have equal traces as runs of the linked program.
 
 ## Main results
 
-* `callPub`, `checkAtX`, `checkCertX`: the check with an external call arm.
+* `callPub`, `extOne`, `checkAtX`, `checkCertX`: the check with an external call arm, at a map
+  from entries to public argument registers; `checkAtX_one` is its call arm at one entry.
 * `segRun_certX_sound`: two segments of a checked caller from states agreeing on the
   certificate have equal traces and stop at related ends.
 * `presPost_of_calleeSpec`: a specified callee whose footprint lies in the `G` bytes below
@@ -36,6 +37,8 @@ certificate's set at index `0` have equal traces as runs of the linked program.
   `O`, for frame words outside `O`.
 * `OracleRun.mono_oracle`: a run under an oracle is a run under every oracle with more
   answers.
+* `linkedRunX_trace_eq_blocks`: equal traces of the linked program for two runs of a checked
+  caller that halt under the guarded oracles of several callees at injective entries.
 * `linkedRunX_trace_eq`: equal traces of the linked program for two runs of a checked
   caller that halt under the guarded oracle of the callee.
 * `linkedRunX_trace_eq_out`: the same for a callee with an out region `O`, when the frame
@@ -74,13 +77,20 @@ def rspPub : PubA := ⟨["%rsp"], [], false, []⟩
 theorem blockOkA_rspPub_retOps_doitm (F : List Int) : blockOkA .doitm F rspPub retOps = true :=
   rfl
 
-/-- The check at index `pc` of a caller whose calls target the external entry `ext`. The
-    arms other than `call` are those of `DecodedCT.checkAt` without owners; a `ret` ends a
-    segment and is not checked. A `call t` needs `t = ext`, the block check of `callOps`,
-    the public set `callPub pubRegs` below the set after `callOps`, the block check of
-    `retOps` from `rspPub`, and the successor below `keepA R Q a`. -/
-def checkAtX (r : DoitRegime) (F : List Int) (ext : Nat) (pubRegs R : List String)
-    (Q : List Int) (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) : Bool :=
+/-- The map of external entries with one entry `e`, whose public argument registers are
+    `pubRegs`. -/
+def extOne (e : Nat) (pubRegs : List String) : Nat → Option (List String) :=
+  fun t => if t == e then some pubRegs else none
+
+/-- The check at index `pc` of a caller whose calls target the external entries of `ext`,
+    which assigns each entry its public argument registers. The arms other than `call` are
+    those of `DecodedCT.checkAt` without owners; a `ret` ends a segment and is not checked.
+    A `call t` needs `ext t = some pubRegs`, the block check of `callOps`, the public set
+    `callPub pubRegs` below the set after `callOps`, the block check of `retOps` from
+    `rspPub`, and the successor below `keepA R Q a`. -/
+def checkAtX (r : DoitRegime) (F : List Int) (ext : Nat → Option (List String))
+    (R : List String) (Q : List Int) (prog : List RInstr) (A : List (Option PubA)) (pc : Nat) :
+    Bool :=
   match certAt A pc with
   | none => true
   | some a => a.cells.all F.contains &&
@@ -94,23 +104,53 @@ def checkAtX (r : DoitRegime) (F : List Int) (ext : Nat) (pubRegs R : List Strin
         blockOkA r F a (popOps x) && succOk A (pc + 1) (stepBlock a (popOps x))
     | some .ret => true
     | some (.call t) =>
-        t == ext && blockOkA r F a (callOps (pc + 1))
-          && (callPub pubRegs).le (stepBlock a (callOps (pc + 1)))
-          && blockOkA r F rspPub retOps
-          && succOk A (pc + 1) (keepA R Q a)
+        match ext t with
+        | some pubRegs =>
+            blockOkA r F a (callOps (pc + 1))
+              && (callPub pubRegs).le (stepBlock a (callOps (pc + 1)))
+              && blockOkA r F rspPub retOps
+              && succOk A (pc + 1) (keepA R Q a)
+        | none => false
     | none => true
 
-/-- The check at every index of `prog`. -/
-def checkCertX (r : DoitRegime) (F : List Int) (ext : Nat) (pubRegs R : List String)
-    (Q : List Int) (prog : List RInstr) (A : List (Option PubA)) : Bool :=
-  (List.range prog.length).all (checkAtX r F ext pubRegs R Q prog A)
+/-- **The call arm at one external entry.** Under `extOne e pubRegs`, a `call t` needs
+    `t = e` and the conjuncts of the call arm at the registers `pubRegs`. -/
+theorem checkAtX_one {r : DoitRegime} {F : List Int} {e : Nat} {pubRegs R : List String}
+    {Q : List Int} {prog : List RInstr} {A : List (Option PubA)} {pc t : Nat} {a : PubA}
+    (hA : certAt A pc = some a) (hp : prog[pc]? = some (.call t)) :
+    checkAtX r F (extOne e pubRegs) R Q prog A pc =
+      (a.cells.all F.contains && (t == e && blockOkA r F a (callOps (pc + 1))
+        && (callPub pubRegs).le (stepBlock a (callOps (pc + 1)))
+        && blockOkA r F rspPub retOps
+        && succOk A (pc + 1) (keepA R Q a))) := by
+  by_cases ht : t = e <;> simp [checkAtX, extOne, hA, hp, ht, Bool.and_assoc]
 
-theorem checkAtX_of_checkCertX {r : DoitRegime} {F : List Int} {ext : Nat}
-    {pubRegs R : List String} {Q : List Int} {prog : List RInstr} {A : List (Option PubA)}
-    (hc : checkCertX r F ext pubRegs R Q prog A = true) {pc : Nat} {x : RInstr}
-    (hx : prog[pc]? = some x) : checkAtX r F ext pubRegs R Q prog A pc = true := by
+/-- The check at every index of `prog`. -/
+def checkCertX (r : DoitRegime) (F : List Int) (ext : Nat → Option (List String))
+    (R : List String) (Q : List Int) (prog : List RInstr) (A : List (Option PubA)) : Bool :=
+  (List.range prog.length).all (checkAtX r F ext R Q prog A)
+
+theorem checkAtX_of_checkCertX {r : DoitRegime} {F : List Int}
+    {ext : Nat → Option (List String)} {R : List String} {Q : List Int} {prog : List RInstr}
+    {A : List (Option PubA)} (hc : checkCertX r F ext R Q prog A = true) {pc : Nat} {x : RInstr}
+    (hx : prog[pc]? = some x) : checkAtX r F ext R Q prog A pc = true := by
   have hlt : pc < prog.length := (List.getElem?_eq_some_iff.mp hx).1
   exact List.all_eq_true.mp hc pc (List.mem_range.mpr hlt)
+
+/-- At a `call t` of a checked caller whose target has the public registers `pubRegs`, the
+    conjuncts of the call arm hold at them. -/
+theorem checkAtX_call {r : DoitRegime} {F : List Int} {ext : Nat → Option (List String)}
+    {R : List String} {Q : List Int} {prog : List RInstr} {A : List (Option PubA)} {pc t : Nat}
+    {a : PubA} {pubRegs : List String} (hc : checkCertX r F ext R Q prog A = true)
+    (hA : certAt A pc = some a) (hp : prog[pc]? = some (.call t))
+    (he : ext t = some pubRegs) :
+    blockOkA r F a (callOps (pc + 1)) = true
+      ∧ (callPub pubRegs).le (stepBlock a (callOps (pc + 1))) = true
+      ∧ blockOkA r F rspPub retOps = true
+      ∧ succOk A (pc + 1) (keepA R Q a) = true := by
+  have hck := checkAtX_of_checkCertX hc hp
+  simp only [checkAtX, hA, hp, he, Bool.and_eq_true] at hck
+  grind
 
 /-- Two states agree on the public set the certificate assigns to `pc`. -/
 def CertRel (A : List (Option PubA)) (pc : Nat) (s₁ s₂ : AState) : Prop :=
@@ -127,9 +167,9 @@ def SiteRel (prog : List RInstr) (A : List (Option PubA)) (pc tgt : Nat) (s₁ s
     `checkCertX`, whose steps satisfy `FrameSep F`, from states agreeing on the set the
     certificate assigns to `pc`, have equal traces and stop at related ends: both at a
     `ret`, or both at the same call site in states agreeing on the certificate. -/
-theorem segRun_certX_sound {r : DoitRegime} {F : List Int} {ext : Nat}
-    {pubRegs R : List String} {Q : List Int} {prog : List RInstr} {A : List (Option PubA)}
-    (hc : checkCertX r F ext pubRegs R Q prog A = true) {pc : Nat} {s₁ : AState}
+theorem segRun_certX_sound {r : DoitRegime} {F : List Int} {ext : Nat → Option (List String)}
+    {R : List String} {Q : List Int} {prog : List RInstr} {A : List (Option PubA)}
+    (hc : checkCertX r F ext R Q prog A = true) {pc : Nat} {s₁ : AState}
     {t₁ : List CTLeak} {e₁ : SegEnd} (h₁ : SegRun r (FrameSep F) prog pc s₁ t₁ e₁) :
     ∀ {a : PubA} {s₂ : AState} {t₂ : List CTLeak} {e₂ : SegEnd}, certAt A pc = some a →
       a.Agree s₁ s₂ → SegRun r (FrameSep F) prog pc s₂ t₂ e₂ →
@@ -327,6 +367,92 @@ theorem pubSummary_guarded {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c)
       hX.ct _ _ _ _ _ _ hX₁.1 hX₂.1 (hpub _ _ hX₁.1 hX₂.1 hp) hX₁.2 hX₂.2,
     fun _ _ _ _ _ _ _ _ _ _ _ => trivial⟩
 
+/-- **Equal leakage of the linked program under the guarded oracles of several callees.** Let
+    the region `B` hold at index `k f` the block `q f` without `call`, for each symbol `f` of
+    `fs`, with distinct symbols at distinct indices, and let `CalleeSpec (runOf r (q f)) (c f)`
+    hold with a footprint in the `G` bytes below the entry stack register or in the out region
+    `O f` of the entry state. Let the caller `p` pass `checkCertX` at an entry map assigning
+    the target `p.length + k f` the registers `pub f`, with agreement on `callPub (pub f)`
+    giving `(c f).pub`, with registers `R` outside every clobber set and offsets `Q` as in
+    `presPostO_of_calleeSpec` for every callee. Let `p` halt under the oracle of the guarded
+    callees from two states agreeing on the certificate's set at index `0`, with the runs under
+    the oracle satisfying `FrameSep F`. Then every two runs with leakage of
+    `p ++ shiftProg p.length B` from these states have equal traces. -/
+theorem linkedRunX_trace_eq_blocks {r : DoitRegime} {F : List Int}
+    {ext : Nat → Option (List String)} {R : List String} {Q : List Int}
+    {A : List (Option PubA)} {p B : List RInstr} {fs : List String} {k : String → Nat}
+    {q : String → List RInstr} {c : String → CalleeSig}
+    (hblock : ∀ f ∈ fs, ∃ A' B', B = A' ++ shiftProg A'.length (q f) ++ B' ∧ A'.length = k f)
+    (hfree : ∀ f ∈ fs, ∀ tg, RInstr.call tg ∉ q f)
+    (hinj : ∀ f ∈ fs, ∀ g ∈ fs, k f = k g → f = g)
+    (hX : ∀ f ∈ fs, CalleeSpec (runOf r (q f)) (c f))
+    (hc : checkCertX r F ext R Q p A = true)
+    (hR : ∀ f ∈ fs, ∀ x ∈ R, (c f).clob x = false) {G : Nat}
+    {O : String → AState → BitVec 64 → Prop}
+    (hfoot : ∀ f ∈ fs, ∀ s x, (c f).foot s x → InFrame (s.regs "%rsp") G x ∨ O f s x)
+    (hQ : ∀ q ∈ Q, 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64)
+    (hQO : ∀ f ∈ fs, ∀ s, ∀ q ∈ Q, ∀ x,
+      InRange8 (s.regs "%rsp" + BitVec.ofInt 64 q) x → ¬ O f s x)
+    {pub : String → List String} (hext : ∀ f ∈ fs, ext (p.length + k f) = some (pub f))
+    (hpub : ∀ f ∈ fs, ∀ s₁ s₂, (c f).pre s₁ → (c f).pre s₂ →
+      (callPub (pub f)).Agree s₁ s₂ → (c f).pub s₁ s₂)
+    {s₁ s₂ s₁' s₂' : AState} (hI : CertRel A 0 s₁ s₂)
+    (h₁ : HaltsO aMachine (oracleOf fs (fun f => p.length + k f)
+      (fun f => guarded (c f) (runOf r (q f)))) p 0 s₁ s₁')
+    (h₂ : HaltsO aMachine (oracleOf fs (fun f => p.length + k f)
+      (fun f => guarded (c f) (runOf r (q f)))) p 0 s₂ s₂')
+    (hsep₁ : ∀ t s', OracleRun r (fun _ _ => True) (tracedOf fs (fun f => p.length + k f)
+        (fun f => guarded (c f) (runOf r (q f)))) p 0 s₁ t s' →
+      OracleRun r (FrameSep F) (tracedOf fs (fun f => p.length + k f)
+        (fun f => guarded (c f) (runOf r (q f)))) p 0 s₁ t s')
+    (hsep₂ : ∀ t s', OracleRun r (fun _ _ => True) (tracedOf fs (fun f => p.length + k f)
+        (fun f => guarded (c f) (runOf r (q f)))) p 0 s₂ t s' →
+      OracleRun r (FrameSep F) (tracedOf fs (fun f => p.length + k f)
+        (fun f => guarded (c f) (runOf r (q f)))) p 0 s₂ t s')
+    {ok₁ ok₂ : AState → JInstr 64 → Prop} {t₁ t₂ : List CTLeak} {e₁ e₂ : AState}
+    (hr₁ : RunL r ok₁ (p ++ shiftProg p.length B) 0 s₁ t₁ e₁)
+    (hr₂ : RunL r ok₂ (p ++ shiftProg p.length B) 0 s₂ t₂ e₂) : t₁ = t₂ := by
+  have hans : ∀ t s tr sc, tracedOf fs (fun f => p.length + k f)
+      (fun f => guarded (c f) (runOf r (q f))) t s tr sc →
+      ∃ A' q' B', B = A' ++ shiftProg A'.length q' ++ B' ∧ t = p.length + A'.length ∧
+        (∀ tg, RInstr.call tg ∉ q') ∧ RunL r (fun _ _ => True) q' 0 s tr sc := by
+    rintro t s tr sc ⟨f, hf, rfl, -, hrun⟩
+    obtain ⟨A', B', hB, hlen⟩ := hblock f hf
+    exact ⟨A', q f, B', hB, by rw [hlen], hfree f hf, hrun⟩
+  obtain ⟨u₁, ho₁⟩ := oracleRun_of_haltsO_oracleOf r h₁
+  obtain ⟨u₂, ho₂⟩ := oracleRun_of_haltsO_oracleOf r h₂
+  obtain ⟨rfl, _⟩ := runL_det (runL_append_blocks_of_oracleRun p B hans ho₁) hr₁
+  obtain ⟨rfl, _⟩ := runL_det (runL_append_blocks_of_oracleRun p B hans ho₂) hr₂
+  refine oracleRun_trace_eqMap (c := fun f => guardedSig (c f) (pub f))
+    (out := fun _ _ _ => True) (fun f hf g hg ht => hinj f hf g hg (by omega))
+    (fun f hf => pubSummary_guarded (hX f hf) (hpub f hf)) (I := CertRel A) (E := SiteRel p A)
+    (fun pc s₁ s₂ t₁ t₂ e₁ e₂ ⟨a, hA, hag⟩ hs₁ hs₂ => segRun_certX_sound hc hs₁ hA hag hs₂)
+    (fun pc f hf a b ⟨hcall, x, hA, hag⟩ => ?_)
+    (fun pc f hf a b t₁ t₂ sc₁ sc₂ ⟨hcall, x, hA, hag⟩ hX₁ hX₂ _ => ?_)
+    hI (hsep₁ _ _ ho₁) (hsep₂ _ _ ho₂)
+  · obtain ⟨hbk, hle, -, -⟩ := checkAtX_call hc hA hcall (hext f hf)
+    obtain ⟨hl, hag'⟩ := blockOkA_sound _ x hbk hag (blockOk_frameSep_callOps F a (pc + 1))
+      (blockOk_frameSep_callOps F b (pc + 1))
+    exact ⟨trivial, trivial, PubA.agree_of_le hle hag', hl⟩
+  · obtain ⟨hbk, hle, hbr, hsucc⟩ := checkAtX_call hc hA hcall (hext f hf)
+    obtain ⟨_, hag'⟩ := blockOkA_sound _ x hbk hag (blockOk_frameSep_callOps F a (pc + 1))
+      (blockOk_frameSep_callOps F b (pc + 1))
+    have hpk := PubA.agree_of_le hle hag'
+    have hrsp : sc₁.regs "%rsp" = sc₂.regs "%rsp" := by
+      rw [(hX f hf).rsp _ _ _ hX₁.1 hX₁.2, (hX f hf).rsp _ _ _ hX₂.1 hX₂.2]
+      exact hpk.1 "%rsp" (by simp [callPub])
+    have hra : rspPub.Agree sc₁ sc₂ :=
+      ⟨fun y hy => by simp only [rspPub, List.mem_singleton] at hy; subst hy; exact hrsp,
+        fun o ho => by simp [rspPub] at ho, fun hf => by simp [rspPub] at hf,
+        fun q hq => by simp [rspPub] at hq⟩
+    obtain ⟨hl, _⟩ := blockOkA_sound _ _ hbr hra (blockOk_frameSep_retOps F sc₁)
+      (blockOk_frameSep_retOps F sc₂)
+    have hkeep := keepA_agree hag
+      (presPostO_of_calleeSpec (hX f hf) (hR f hf) (hfoot f hf) hQ (hQO f hf) hX₁.1 hX₁.2)
+      (presPostO_of_calleeSpec (hX f hf) (hR f hf) (hfoot f hf) hQ (hQO f hf) hX₂.1 hX₂.2)
+    obtain ⟨b', hb', hle'⟩ := succOk_spec hsucc
+    exact ⟨hl, b', hb', PubA.agree_of_le hle' hkeep⟩
+
 /-- **Equal leakage of the linked program under the guarded oracle of a callee with an out
     region.** Let `q` be a block without `call` with `CalleeSpec (runOf r q) c`, whose
     footprint lies in the `G` bytes below the entry stack register or in the out region
@@ -340,7 +466,7 @@ theorem pubSummary_guarded {X : CalleeRun} {c : CalleeSig} (hX : CalleeSpec X c)
 theorem linkedRunX_trace_eq_out {r : DoitRegime} {F : List Int} {pubRegs R : List String}
     {Q : List Int} {A : List (Option PubA)} {p q : List RInstr}
     (hq : ∀ tg, RInstr.call tg ∉ q) {c : CalleeSig} (hX : CalleeSpec (runOf r q) c)
-    (hc : checkCertX r F p.length pubRegs R Q p A = true)
+    (hc : checkCertX r F (extOne p.length pubRegs) R Q p A = true)
     (hR : ∀ x ∈ R, c.clob x = false) {G : Nat} {O : AState → BitVec 64 → Prop}
     (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x ∨ O s x)
     (hQ : ∀ q ∈ Q, 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64)
@@ -358,43 +484,24 @@ theorem linkedRunX_trace_eq_out {r : DoitRegime} {F : List Int} {pubRegs R : Lis
     {ok₁ ok₂ : AState → JInstr 64 → Prop} {t₁ t₂ : List CTLeak} {e₁ e₂ : AState}
     (hr₁ : RunL r ok₁ (p ++ shiftProg p.length q) 0 s₁ t₁ e₁)
     (hr₂ : RunL r ok₂ (p ++ shiftProg p.length q) 0 s₂ t₂ e₂) : t₁ = t₂ := by
-  have hdrop : ∀ tg s tr sc, tracedAt p.length (guarded c (runOf r q)) tg s tr sc →
-      tracedAt p.length (fun s t s' => RunL r (fun _ _ => True) q 0 s t s') tg s tr sc :=
-    fun _ _ _ _ ho => ⟨ho.1, ho.2.2⟩
-  obtain ⟨u₁, ho₁⟩ := oracleRun_of_haltsO_oracleAt r h₁
-  obtain ⟨u₂, ho₂⟩ := oracleRun_of_haltsO_oracleAt r h₂
-  obtain ⟨rfl, _⟩ := runL_det (runL_append_of_oracleRun p q hq (ho₁.mono_oracle hdrop)) hr₁
-  obtain ⟨rfl, _⟩ := runL_det (runL_append_of_oracleRun p q hq (ho₂.mono_oracle hdrop)) hr₂
-  refine oracleRun_trace_eq (pubSummary_guarded hX hpub) (I := CertRel A) (E := SiteRel p A)
-    (fun pc s₁ s₂ t₁ t₂ e₁ e₂ ⟨a, hA, hag⟩ hs₁ hs₂ => segRun_certX_sound hc hs₁ hA hag hs₂)
-    (fun pc tg a b ⟨hcall, x, hA, hag⟩ => ?_)
-    (fun pc tg a b t₁ t₂ sc₁ sc₂ ⟨hcall, x, hA, hag⟩ hX₁ hX₂ _ => ?_)
-    hI (hsep₁ _ _ ho₁) (hsep₂ _ _ ho₂)
-  · have hck := checkAtX_of_checkCertX hc hcall
-    simp only [checkAtX, hA, hcall, Bool.and_eq_true] at hck
-    obtain ⟨_, ⟨⟨⟨_, hbk⟩, hle⟩, _⟩, _⟩ := hck
-    obtain ⟨hl, hag'⟩ := blockOkA_sound _ x hbk hag (blockOk_frameSep_callOps F a (pc + 1))
-      (blockOk_frameSep_callOps F b (pc + 1))
-    exact ⟨trivial, trivial, PubA.agree_of_le hle hag', hl⟩
-  · have hck := checkAtX_of_checkCertX hc hcall
-    simp only [checkAtX, hA, hcall, Bool.and_eq_true] at hck
-    obtain ⟨_, ⟨⟨⟨_, hbk⟩, hle⟩, hbr⟩, hsucc⟩ := hck
-    obtain ⟨_, hag'⟩ := blockOkA_sound _ x hbk hag (blockOk_frameSep_callOps F a (pc + 1))
-      (blockOk_frameSep_callOps F b (pc + 1))
-    have hpk := PubA.agree_of_le hle hag'
-    have hrsp : sc₁.regs "%rsp" = sc₂.regs "%rsp" := by
-      rw [hX.rsp _ _ _ hX₁.1 hX₁.2, hX.rsp _ _ _ hX₂.1 hX₂.2]
-      exact hpk.1 "%rsp" (by simp [callPub])
-    have hra : rspPub.Agree sc₁ sc₂ :=
-      ⟨fun y hy => by simp only [rspPub, List.mem_singleton] at hy; subst hy; exact hrsp,
-        fun o ho => by simp [rspPub] at ho, fun hf => by simp [rspPub] at hf,
-        fun q hq => by simp [rspPub] at hq⟩
-    obtain ⟨hl, _⟩ := blockOkA_sound _ _ hbr hra (blockOk_frameSep_retOps F sc₁)
-      (blockOk_frameSep_retOps F sc₂)
-    have hkeep := keepA_agree hag (presPostO_of_calleeSpec hX hR hfoot hQ hQO hX₁.1 hX₁.2)
-      (presPostO_of_calleeSpec hX hR hfoot hQ hQO hX₂.1 hX₂.2)
-    obtain ⟨b', hb', hle'⟩ := succOk_spec hsucc
-    exact ⟨hl, b', hb', PubA.agree_of_le hle' hkeep⟩
+  have e : tracedOf [""] (fun _ => p.length + 0) (fun _ => guarded c (runOf r q)) =
+      tracedAt p.length (guarded c (runOf r q)) := tracedOf_one "" p.length _
+  have hdn : ∀ tg s tr sc, tracedOf [""] (fun _ => p.length + 0)
+      (fun _ => guarded c (runOf r q)) tg s tr sc →
+      tracedAt p.length (guarded c (runOf r q)) tg s tr sc := fun _ _ _ _ h => e ▸ h
+  have hup : ∀ tg s tr sc, tracedAt p.length (guarded c (runOf r q)) tg s tr sc →
+      tracedOf [""] (fun _ => p.length + 0) (fun _ => guarded c (runOf r q)) tg s tr sc :=
+    fun _ _ _ _ h => e ▸ h
+  have hO : ∀ t s s', oracleAt p.length (guarded c (runOf r q)) t s s' →
+      oracleOf [""] (fun _ => p.length + 0) (fun _ => guarded c (runOf r q)) t s s' :=
+    fun t s s' ho => (oracleOf_one "" p.length _ t s s').2 ho
+  exact linkedRunX_trace_eq_blocks (fs := [""]) (k := fun _ => 0) (q := fun _ => q)
+    (c := fun _ => c) (O := fun _ => O) (pub := fun _ => pubRegs)
+    (fun _ _ => ⟨[], [], by simp [shiftProg_zero], rfl⟩) (fun _ _ => hq)
+    (fun _ hf _ hg _ => by simp_all) (fun _ _ => hX) hc (fun _ _ => hR) (fun _ _ => hfoot) hQ
+    (fun _ _ => hQO) (fun _ _ => by simp [extOne]) (fun _ _ => hpub) hI (h₁.mono hO) (h₂.mono hO)
+    (fun _ _ ho => (hsep₁ _ _ (ho.mono_oracle hdn)).mono_oracle hup)
+    (fun _ _ ho => (hsep₂ _ _ (ho.mono_oracle hdn)).mono_oracle hup) hr₁ hr₂
 
 /-- **Equal leakage of the linked program under the guarded oracle.** Let `q` be a block
     without `call` with `CalleeSpec (runOf r q) c`, whose footprint lies in the `G` bytes
@@ -408,7 +515,7 @@ theorem linkedRunX_trace_eq_out {r : DoitRegime} {F : List Int} {pubRegs R : Lis
 theorem linkedRunX_trace_eq {r : DoitRegime} {F : List Int} {pubRegs R : List String}
     {Q : List Int} {A : List (Option PubA)} {p q : List RInstr}
     (hq : ∀ tg, RInstr.call tg ∉ q) {c : CalleeSig} (hX : CalleeSpec (runOf r q) c)
-    (hc : checkCertX r F p.length pubRegs R Q p A = true)
+    (hc : checkCertX r F (extOne p.length pubRegs) R Q p A = true)
     (hR : ∀ x ∈ R, c.clob x = false) {G : Nat}
     (hfoot : ∀ s x, c.foot s x → InFrame (s.regs "%rsp") G x)
     (hQ : ∀ q ∈ Q, 0 ≤ q ∧ q + 8 + G ≤ 2 ^ 64)
