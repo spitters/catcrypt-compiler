@@ -79,7 +79,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg imgInstr accArr
   physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore? cellIdxStore?_spec
-  arrImmImg arrImmImg_lopn)
+  arrImmImg arrImmImg_lopn baseReload? baseReload?_spec)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (normA condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts? slotMov?)
@@ -686,8 +686,9 @@ theorem stackFreeB_of_instrOKB {body : Lcmd} {P : X86Backend.LprogBytesDecode.Pa
 /-- **The shapes of the image of an instruction**: the instruction with the widening
     multiply read at its width; an indexed load or an indexed store on the array of a
     resolved access; the one-bit move of a stored carry constant; the indexed store of an
-    indexed store through a cell (`cellIdxStore?`); or the name-keyed zeroing or
-    constant-index store of an array zeroing or a constant-index store (`arrImmImg`). -/
+    indexed store through a cell (`cellIdxStore?`); the name-keyed zeroing or
+    constant-index store of an array zeroing or a constant-index store (`arrImmImg`); or the
+    cast of the reload of the base of an address computation (`baseReload?`). -/
 theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (x : LinstrR) :
     (imgInstr slotArr body k x).fst = normA x
@@ -705,7 +706,9 @@ theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcm
     ∨ (∃ A n q v, cellIdxStore? slotArr body k x = some (A, n, q, v)
         ∧ (imgInstr slotArr body k x).fst
           = .Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v])
-    ∨ ∃ r, arrImmImg slotArr body k x = some r ∧ (imgInstr slotArr body k x).fst = r.1 := by
+    ∨ (∃ r, arrImmImg slotArr body k x = some r ∧ (imgInstr slotArr body k x).fst = r.1)
+    ∨ ∃ b q, baseReload? slotArr body k x = some (b, q)
+        ∧ (imgInstr slotArr body k x).fst = .Lopn [.reg b] "CASTW_64_64" [.reg q] := by
   unfold imgInstr
   split
   · split_ifs with ho
@@ -728,8 +731,11 @@ theorem imgInstr_cases (slotArr : String → Option (String × Nat)) (body : Lcm
         exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨A, n, q, v, hc, rfl⟩))))
       · split
         · rename_i r hr
-          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨r, hr, rfl⟩))))
-        · exact Or.inl rfl
+          exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inl ⟨r, hr, rfl⟩)))))
+        · split
+          · rename_i b q hbr
+            exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inr (Or.inr ⟨b, q, hbr, rfl⟩)))))
+          · exact Or.inl rfl
 
 /-- An instruction of the covered fragment is no indexed store through a cell: the fragment
     stores to a frame slot only, and a cell name is no frame slot. -/
@@ -768,7 +774,7 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
   rcases stackFreeB_of_instrOKB hok with hf | ⟨d, b, i, v, rfl, hb, hi, hv⟩
   · rcases imgInstr_cases slotArr body k x with h | ⟨d, o, b, idx, A, n, -, rfl, hA, h⟩ |
       ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, -⟩ |
-      ⟨ri, hri, h⟩
+      ⟨ri, hri, h⟩ | ⟨b', q', hbr, h⟩
     · rw [h]
       simp only [stackFreeB, operandNames_normA] at hf ⊢
       exact hf
@@ -801,6 +807,9 @@ theorem stackFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body 
           simp [hf, stackNameB_accArr hsl hA]
         · cases hri
       · cases hri
+    · obtain ⟨hi, -⟩ := baseReload?_spec hbr
+      rw [h]
+      rcases hi with rfl | rfl <;> simpa [stackFreeB, operandNames, srcNames] using hf
   · simp only [accOkB, Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
     rw [imgInstr_stx slotArr body k hA]
@@ -857,7 +866,8 @@ theorem virtImg_noCall (slotArr : String → Option (String × Nat)) {body : Lcm
   obtain ⟨k, j, -, hj, rfl⟩ := mem_virtImg hi
   have hok := instrOKB_of_printedAddrB hp hj
   rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, _, -, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩
+    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩ |
+    ⟨_, _, -, h⟩
   · rw [h]
     cases hx : j.li_i <;> rw [hx] at hok <;> simp [instrOKB] at hok <;> rfl
   · rw [h]; rfl
@@ -867,6 +877,7 @@ theorem virtImg_noCall (slotArr : String → Option (String × Nat)) {body : Lcm
   · obtain ⟨ds, o, ss, he⟩ := arrImmImg_lopn hri
     rw [h, he]
     rfl
+  · rw [h]; rfl
 
 /-! ## 5. The names an instruction of the image reads -/
 
@@ -915,7 +926,7 @@ theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd
         ∧ body[j]? = some i' ∧ r ∈ (rdWr i'.li_i).1 := by
   rcases imgInstr_cases slotArr body k x with h | ⟨d, o, b, idx, A, n, -, rfl, hA, h⟩ |
     ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ |
-    ⟨ri, hri, h⟩
+    ⟨ri, hri, h⟩ | ⟨b', q', hbr, h⟩
   rotate_left 4
   · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, -, -, -,
       hacc⟩ := cellIdxStore?_spec hc
@@ -948,6 +959,10 @@ theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd
         · simp
       · cases hri
     · cases hri
+  · rw [h] at hr
+    obtain ⟨hi, -⟩ := baseReload?_spec hbr
+    left
+    rcases hi with rfl | rfl <;> simpa [rdWr, opNames] using hr
   · rw [h] at hr
     left
     cases x <;> exact hr

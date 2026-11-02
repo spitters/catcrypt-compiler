@@ -50,7 +50,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg imgInstr accArr
   physImgB accOkB bitStore? bitStore?_spec virtImg_getElem? cellIdxStore?_spec arrImmImg
-  arrImmImg_lopn)
+  arrImmImg_lopn baseReload?_spec)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (normA condPol)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrCongr (srcNames cellBase)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellParts? slotMov?)
@@ -116,7 +116,7 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
   rcases hx with hf | ⟨d, b, i, v, rfl, hb, hi, hv⟩
   · rcases imgInstr_cases slotArr body k x with h | ⟨d, o, b, idx, A, n, -, rfl, hA, h⟩ |
       ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ |
-      ⟨ri, hri, h⟩
+      ⟨ri, hri, h⟩ | ⟨b', q', hbr, h⟩
     · rw [h]
       simp only [rspFreeB, operandNames_normA] at hf ⊢
       exact hf
@@ -161,6 +161,9 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
           simp [hf, harr hA]
         · cases hri
       · cases hri
+    · obtain ⟨hi, -⟩ := baseReload?_spec hbr
+      rw [h]
+      rcases hi with rfl | rfl <;> simpa [rspFreeB, operandNames, srcNames] using hf
   · simp only [accOkB, Bool.true_and] at hacc
     obtain ⟨⟨A, n⟩, hA⟩ := Option.isSome_iff_exists.mp hacc
     rw [imgInstr_stx slotArr body k hA]
@@ -192,7 +195,8 @@ theorem virtImg_noCall_of {slotArr : String → Option (String × Nat)} {body : 
   refine List.all_eq_true.mpr fun i hi => ?_
   obtain ⟨k, j, hk, hlt, rfl⟩ := mem_virtImg_lt hi
   rcases imgInstr_cases slotArr body k j.li_i with h | ⟨_, _, _, _, _, _, -, -, -, h⟩ |
-    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩
+    ⟨_, _, _, _, _, _, _, -, -, -, h⟩ | ⟨_, _, -, h⟩ | ⟨_, _, _, _, -, h⟩ | ⟨_, hri, h⟩ |
+    ⟨_, _, -, h⟩
   · rw [h, isCall_normA, hx k j hk hlt]
     rfl
   · rw [h]; rfl
@@ -201,6 +205,7 @@ theorem virtImg_noCall_of {slotArr : String → Option (String × Nat)} {body : 
   · rw [h]; rfl
   · obtain ⟨_, _, _, he⟩ := arrImmImg_lopn hri
     rw [h, he]; rfl
+  · rw [h]; rfl
 
 /-! ## 2. The covered printed bodies with carry chains and their cell bodies -/
 

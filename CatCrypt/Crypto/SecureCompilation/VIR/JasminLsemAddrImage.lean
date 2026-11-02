@@ -392,6 +392,49 @@ theorem arrImmImg_lopn {slotArr : String → Option (String × Nat)} {body : Lcm
     ∃ ds o ss, r.1 = .Lopn ds o ss := by
   grind only [= arrImmImg.eq_def]
 
+/-- **The reload of the base of an address computation**: the instruction at position `k` of
+    `body` is a move `MOVQ b, q` or `MOV:64 b, q` from a name `q` that holds an array pointer
+    (`slotArr q` is defined), and the instruction at `k + 2` is `LEA:64 D, (b, X, 8)`; as
+    `(b, q)`. Such a move is the source of the width guard on `q` that the address
+    computation reads. -/
+def baseReload? (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
+    LinstrR → Option (String × String)
+  | .Lopn [.reg b] o [.reg q] =>
+      match body[k + 2]? with
+      | some l =>
+          match l.li_i with
+          | .Lopn [.reg _] o' [.arrIdx B _ 8] =>
+              if (o = "MOVQ" ∨ o = "MOV:64") ∧ o' = "LEA:64" ∧ B = b ∧ (slotArr q).isSome = true
+              then some (b, q) else none
+          | _ => none
+      | none => none
+  | _ => none
+
+/-- Off the shape of a move between names the instruction is no reload of a base. -/
+theorem baseReload?_of_ne (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    {i : LinstrR} (h : ∀ b o q, i ≠ .Lopn [.reg b] o [.reg q]) :
+    baseReload? slotArr body k i = none := by
+  grind only [= baseReload?.eq_def]
+
+/-- A reload of a base is a move from a name that holds an array pointer. -/
+theorem baseReload?_spec {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {i : LinstrR} {b q : String} (h : baseReload? slotArr body k i = some (b, q)) :
+    (i = .Lopn [.reg b] "MOVQ" [.reg q] ∨ i = .Lopn [.reg b] "MOV:64" [.reg q])
+      ∧ (slotArr q).isSome = true := by
+  unfold baseReload? at h
+  grind
+
+/-- A move from a name that holds no array pointer is no reload of a base. -/
+theorem baseReload?_of_slot_none (slotArr : String → Option (String × Nat)) (body : Lcmd)
+    (k : Nat) {b o q : String} (h : slotArr q = none) :
+    baseReload? slotArr body k (.Lopn [.reg b] o [.reg q]) = none := by
+  cases hr : baseReload? slotArr body k (.Lopn [.reg b] o [.reg q]) with
+  | none => rfl
+  | some p =>
+      obtain ⟨b', q'⟩ := p
+      have ⟨h1, h2⟩ := baseReload?_spec hr
+      grind
+
 /-- The image of instruction `k` of `body`: an indexed load or store at scale `8` through a
     register that holds the pointer of the array `A` of length `n` is the name-keyed load or
     store on `A` at the shape `(64, n)`; a stored carry constant `MOV:64 d, #n` (`bitStore?`)
@@ -399,8 +442,11 @@ theorem arrImmImg_lopn {slotArr : String → Option (String × Nat)} {body : Lcm
     `n`; an indexed store through a cell (`cellIdxStore?`) of `v` at the word `8 · q` of the
     array `A` of length `n` is the name-keyed store `STOREIDX A[q] := v` at the shape
     `(64, n)`; an array zeroing or a constant-index store through the pointer of an array is
-    its image by `arrImmImg`; every other instruction is `normA` of it at the tag `tagAt` of
-    its position. The mnemonic of an indexed access is read through `untagCaret`. -/
+    its image by `arrImmImg`; the reload of the base of an address computation
+    (`baseReload?`) is the cast `CASTW_64_64 b, q` at the tag `.reg (some 64)`, which reads the
+    word of `q` as a word of width `64`, so the address computation has no width guard on a
+    name that only the image holds; every other instruction is `normA` of it at the tag
+    `tagAt` of its position. The mnemonic of an indexed access is read through `untagCaret`. -/
 def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     (i : LinstrR) : LinstrRM :=
   match i with
@@ -425,7 +471,19 @@ def imgInstr (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Na
           | none =>
               match arrImmImg slotArr body k i with
               | some r => r
-              | none => (normA i, tagAt body k i)
+              | none =>
+                  match baseReload? slotArr body k i with
+                  | some (b, q) => (.Lopn [.reg b] "CASTW_64_64" [.reg q], .reg (some 64))
+                  | none => (normA i, tagAt body k i)
+
+/-- The image of a reload of the base of an address computation is the cast of the word. -/
+theorem imgInstr_baseReload (slotArr : String → Option (String × Nat)) {body : Lcmd} {k : Nat}
+    {i : LinstrR} {b q : String} (h : baseReload? slotArr body k i = some (b, q))
+    (h1 : bitStore? body k i = none) (h2 : cellIdxStore? slotArr body k i = none)
+    (h3 : arrImmImg slotArr body k i = none) :
+    imgInstr slotArr body k i = (.Lopn [.reg b] "CASTW_64_64" [.reg q], .reg (some 64)) := by
+  obtain ⟨hi, -⟩ := baseReload?_spec h
+  rcases hi with rfl | rfl <;> simp only [imgInstr, h1, h2, h3, h]
 
 /-- The image of a stored carry constant `MOV:64 d, #n` is the one-bit move `MOV d, #n`. -/
 theorem imgInstr_bitStore (slotArr : String → Option (String × Nat)) {body : Lcmd} {k : Nat}
