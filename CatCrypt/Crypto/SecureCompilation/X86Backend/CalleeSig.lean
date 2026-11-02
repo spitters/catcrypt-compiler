@@ -64,13 +64,15 @@ block `q` it gives `RInstrSemantics.HaltsC` of the program linked with `q`
   leakage summary of a callee, what a specified callee keeps equal between two runs, and
   the summary of a decoded block from equality of traces or from a certificate of the
   byte check.
-* `OracleRun`, `tracedAt`, `oracleRun_of_haltsO`, `runL_append_of_oracleRun`: runs with
-  leakage in which a call is answered by an oracle with traces, and the run with leakage
-  of the linked program with the same trace.
+* `OracleRun`, `tracedAt`, `tracedOf`, `oracleRun_of_haltsO`, `oracleRun_of_haltsO_oracleOf`,
+  `runL_append_of_oracleRun`, `runL_append_blocks_of_oracleRun`: runs with leakage in which a
+  call is answered by an oracle with traces, at one target or at the targets of several
+  symbols, and the run with leakage of the linked program with the same trace.
 * `SegRun`, `SegChain`, `segChain_of_oracleRun`, `segChain_trace_eq`: the segments of a
   caller between calls, and equality of the traces of two chains of segments.
-* `oracleRun_trace_eq`, `linkedRun_trace_eq`, `linkedRun_constantTime`: equal leakage of a
-  caller of a summarised callee under the oracle, and constant time of the linked program.
+* `oracleRun_trace_eqMap`, `oracleRun_trace_eq`, `linkedRun_trace_eq`,
+  `linkedRun_constantTime`: equal leakage of a caller of summarised callees under the oracle,
+  and constant time of the linked program.
 -/
 
 @[expose] public section
@@ -1170,6 +1172,19 @@ theorem pubSummary_of_checkCert {r : DoitRegime} {F : List Int} {own : Nat → N
 def tracedAt (tgt : Nat) (X : CalleeRun) : Nat → CalleeRun :=
   fun t s tr s' => t = tgt ∧ X s tr s'
 
+/-- The oracle with traces of the callees named `fs`: a call to the target `t` is answered by
+    the callee `X f` of a symbol `f` of `fs` with `tgt f = t`. -/
+def tracedOf (fs : List String) (tgt : String → Nat) (X : String → CalleeRun) :
+    Nat → CalleeRun :=
+  fun t s tr s' => ∃ f ∈ fs, tgt f = t ∧ X f s tr s'
+
+/-- **The oracle with traces of one callee.** At one symbol, a constant target and a constant
+    callee, `tracedOf` is `tracedAt`. -/
+theorem tracedOf_one (f : String) (tgt : Nat) (X : CalleeRun) :
+    tracedOf [f] (fun _ => tgt) (fun _ => X) = tracedAt tgt X := by
+  funext t s tr s'
+  simp [tracedOf, tracedAt, eq_comm]
+
 /-- A halting run of `prog` with leakage in which a `call t` is answered by the relation
     `O t`: the trace of the call is the leakage of `callOps`, the trace of the answer and
     the leakage of `retOps`. The other steps are those of `DecodedCT.RunL`; index `t` need
@@ -1264,13 +1279,22 @@ theorem oracleRun_of_haltsO (r : DoitRegime) {O : Nat → CalleeRun} {prog : Lis
       exact ⟨_, .stack hx rfl (blockOk_true _ _) ht⟩
     · simp at hs
 
+/-- A run under the oracle of the callees named `fs` has a leakage trace under the oracle with
+    traces of these callees. -/
+theorem oracleRun_of_haltsO_oracleOf (r : DoitRegime) {fs : List String} {tgt : String → Nat}
+    {X : String → CalleeRun} {prog : List RInstr} {pc : Nat} {sa sa' : AState}
+    (h : HaltsO aMachine (oracleOf fs tgt X) prog pc sa sa') :
+    ∃ t, OracleRun r (fun _ _ => True) (tracedOf fs tgt X) prog pc sa t sa' :=
+  oracleRun_of_haltsO r (h.mono fun _ _ _ ⟨f, hf, ht, tr, hx⟩ => ⟨tr, f, hf, ht, hx⟩)
+
 /-- A run under the oracle of one target has a leakage trace under the oracle with
-    traces of that target. -/
+    traces of that target: `oracleRun_of_haltsO_oracleOf` at one symbol. -/
 theorem oracleRun_of_haltsO_oracleAt (r : DoitRegime) {tgt : Nat} {X : CalleeRun}
     {prog : List RInstr} {pc : Nat} {sa sa' : AState}
     (h : HaltsO aMachine (oracleAt tgt X) prog pc sa sa') :
-    ∃ t, OracleRun r (fun _ _ => True) (tracedAt tgt X) prog pc sa t sa' :=
-  oracleRun_of_haltsO r (h.mono fun _ _ _ ho => ho.2.elim fun tr hx => ⟨tr, ho.1, hx⟩)
+    ∃ t, OracleRun r (fun _ _ => True) (tracedAt tgt X) prog pc sa t sa' := by
+  rw [← tracedOf_one ""]
+  exact oracleRun_of_haltsO_oracleOf r (h.mono fun t s s' ho => (oracleOf_one "" tgt X t s s').2 ho)
 
 /-- **An oracle whose answers are runs of the program.** If every answer of `O` at a
     target is a run with leakage of `prog` from that target, a run under `O` is a run with
@@ -1303,19 +1327,41 @@ theorem OracleRun.append_left {r : DoitRegime} {ok : AState → JInstr 64 → Pr
   | stack h hops hok _ ih => exact .stack (hat h) hops hok ih
   | call h hok hc hokr _ ih => exact .call (hat h) hok hc hokr ih
 
+/-- **The trace of the linked program, callees in blocks.** Let every answer of `O` at a target
+    `t` be a leaky run from index `0` of a block `q` without `call` such that `Q` is
+    `A ++ shiftProg A.length q ++ B` and `t = p.length + A.length`. A run with leakage of `p`
+    under `O` is a run with leakage of `p` followed by the relocated copy of `Q`, with the same
+    trace. -/
+theorem runL_append_blocks_of_oracleRun {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
+    (p Q : List RInstr) {O : Nat → CalleeRun}
+    (hO : ∀ t s tr sc, O t s tr sc → ∃ A q B, Q = A ++ shiftProg A.length q ++ B ∧
+      t = p.length + A.length ∧ (∀ tg, RInstr.call tg ∉ q) ∧ RunL r ok q 0 s tr sc)
+    {pc : Nat} {s : AState} {t : List CTLeak} {s' : AState}
+    (h : OracleRun r ok O p pc s t s') :
+    RunL r ok (p ++ shiftProg p.length Q) pc s t s' := by
+  refine runL_of_oracleRun (fun t s tr sc ho => ?_) (h.append_left _)
+  obtain ⟨A, q, B, rfl, rfl, hq, hrun⟩ := hO t s tr sc ho
+  have e : p ++ shiftProg p.length (A ++ shiftProg A.length q ++ B) =
+      (p ++ shiftProg p.length A) ++ shiftProg (p ++ shiftProg p.length A).length q ++
+        shiftProg p.length B := by
+    simp [shiftProg_append, shiftProg_shiftProg]
+  have hr := runL_relocated (p ++ shiftProg p.length A) q (shiftProg p.length B) hq hrun
+  rw [e]
+  simpa using hr
+
 /-- **The trace of the linked program.** A run with leakage of `p` under the oracle of the
     leaky runs of a block `q` without `call`, at the target `p.length`, is a run with
     leakage of `p` followed by the relocated copy of `q`, with the same trace: the leakage
-    of the caller with the trace of the callee at each call. -/
+    of the caller with the trace of the callee at each call. This is
+    `runL_append_blocks_of_oracleRun` at the one-block region `q`. -/
 theorem runL_append_of_oracleRun {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
     (p q : List RInstr) (hq : ∀ tg, RInstr.call tg ∉ q) {pc : Nat} {s : AState}
     {t : List CTLeak} {s' : AState}
     (h : OracleRun r ok (tracedAt p.length (fun s t s' => RunL r ok q 0 s t s')) p pc s t s') :
     RunL r ok (p ++ shiftProg p.length q) pc s t s' := by
-  refine runL_of_oracleRun (fun tg s tr sc ho => ?_) (h.append_left _)
+  refine runL_append_blocks_of_oracleRun p q (fun t s tr sc ho => ?_) h
   obtain ⟨rfl, hrun⟩ := ho
-  have hrel := runL_relocated p q [] hq hrun
-  simpa using hrel
+  exact ⟨[], q, [], by simp [shiftProg_zero], rfl, hq, hrun⟩
 
 /-- Under the regime `doitm`, the stack operations of a call from two states with equal
     stack registers have equal leakage. -/
@@ -1449,6 +1495,51 @@ theorem segChain_trace_eq {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
       obtain ⟨e₁, rfl, e₃, hI'⟩ := hcall _ _ _ _ _ _ _ _ hE hc hc'
       rw [e₁, e₃, ih hI' hr']
 
+/-- **Composition of leakage for a caller of several summarised callees.** Let distinct symbols
+    of `fs` have distinct targets, let the callee `X f` of each symbol `f` of `fs` have the
+    leakage summary `PubSummary (X f) (c f) (out f)`, and let the caller `prog` satisfy:
+
+    * `hseg`: two segments from states related by `I` have equal traces and stop at
+      related ends;
+    * `hsite`: at a call site with target `tgt f` and states related by `E`, the states after
+      the stack operations of the call satisfy the precondition of `c f` and are related by
+      `(c f).pub`, and those operations have equal leakage;
+    * `hback`: two returns of `X f` from such states, related by `out f`, give equal leakage
+      of the stack operation of the return and states related by `I` at the next index.
+
+    Then two runs with leakage of `prog` under the oracle of the callees, from states related
+    by `I`, have equal traces. -/
+theorem oracleRun_trace_eqMap {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
+    {fs : List String} {tgt : String → Nat} {X : String → CalleeRun} {c : String → CalleeSig}
+    {out : String → AState → AState → Prop}
+    (hinj : ∀ f ∈ fs, ∀ g ∈ fs, tgt f = tgt g → f = g)
+    (hsum : ∀ f ∈ fs, PubSummary (X f) (c f) (out f))
+    {prog : List RInstr} {I : Nat → AState → AState → Prop}
+    {E : Nat → Nat → AState → AState → Prop}
+    (hseg : ∀ pc s₁ s₂ t₁ t₂ e₁ e₂, I pc s₁ s₂ → SegRun r ok prog pc s₁ t₁ e₁ →
+      SegRun r ok prog pc s₂ t₂ e₂ → t₁ = t₂ ∧ SegEnd.Rel E e₁ e₂)
+    (hsite : ∀ pc, ∀ f ∈ fs, ∀ a b, E pc (tgt f) a b →
+      (c f).pre (runBlockA a (callOps (pc + 1))) ∧ (c f).pre (runBlockA b (callOps (pc + 1)))
+        ∧ (c f).pub (runBlockA a (callOps (pc + 1))) (runBlockA b (callOps (pc + 1)))
+        ∧ blockLeakA r a (callOps (pc + 1)) = blockLeakA r b (callOps (pc + 1)))
+    (hback : ∀ pc, ∀ f ∈ fs, ∀ a b t₁ t₂ sc₁ sc₂, E pc (tgt f) a b →
+      X f (runBlockA a (callOps (pc + 1))) t₁ sc₁ →
+      X f (runBlockA b (callOps (pc + 1))) t₂ sc₂ → out f sc₁ sc₂ →
+      blockLeakA r sc₁ retOps = blockLeakA r sc₂ retOps
+        ∧ I (pc + 1) (runBlockA sc₁ retOps) (runBlockA sc₂ retOps))
+    {pc : Nat} {s₁ s₂ s₁' s₂' : AState} {t₁ t₂ : List CTLeak} (hI : I pc s₁ s₂)
+    (h₁ : OracleRun r ok (tracedOf fs tgt X) prog pc s₁ t₁ s₁')
+    (h₂ : OracleRun r ok (tracedOf fs tgt X) prog pc s₂ t₂ s₂') : t₁ = t₂ := by
+  refine segChain_trace_eq hseg (fun pc tg a b tc₁ tc₂ sc₁ sc₂ hE ho₁ ho₂ => ?_)
+    (segChain_of_oracleRun h₁) hI (segChain_of_oracleRun h₂)
+  obtain ⟨f, hf, rfl, hx₁⟩ := ho₁
+  obtain ⟨g, hg, hgf, hx₂⟩ := ho₂
+  obtain rfl := hinj g hg f hf hgf
+  obtain ⟨hp₁, hp₂, hpub, hl⟩ := hsite pc g hf a b hE
+  obtain ⟨hb₁, hb₂⟩ := hback pc g hf a b tc₁ tc₂ sc₁ sc₂ hE hx₁ hx₂
+    ((hsum g hf).exit _ _ _ _ _ _ hp₁ hp₂ hpub hx₁ hx₂)
+  exact ⟨hl, (hsum g hf).trace _ _ _ _ _ _ hp₁ hp₂ hpub hx₁ hx₂, hb₁, hb₂⟩
+
 /-- **Composition of leakage for a caller of one summarised callee.** Let the callee `X`
     have the leakage summary `PubSummary X c out`, and let the caller `prog` satisfy:
 
@@ -1462,7 +1553,7 @@ theorem segChain_trace_eq {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
       index.
 
     Then two runs with leakage of `prog` under the oracle of `X`, from states related by
-    `I`, have equal traces. -/
+    `I`, have equal traces. This is `oracleRun_trace_eqMap` at one symbol. -/
 theorem oracleRun_trace_eq {r : DoitRegime} {ok : AState → JInstr 64 → Prop} {X : CalleeRun}
     {c : CalleeSig} {out : AState → AState → Prop} (hsum : PubSummary X c out)
     {prog : List RInstr} {tgt : Nat} {I : Nat → AState → AState → Prop}
@@ -1481,12 +1572,11 @@ theorem oracleRun_trace_eq {r : DoitRegime} {ok : AState → JInstr 64 → Prop}
     {pc : Nat} {s₁ s₂ s₁' s₂' : AState} {t₁ t₂ : List CTLeak} (hI : I pc s₁ s₂)
     (h₁ : OracleRun r ok (tracedAt tgt X) prog pc s₁ t₁ s₁')
     (h₂ : OracleRun r ok (tracedAt tgt X) prog pc s₂ t₂ s₂') : t₁ = t₂ := by
-  refine segChain_trace_eq hseg (fun pc tg a b tc₁ tc₂ sc₁ sc₂ hE ho₁ ho₂ => ?_)
-    (segChain_of_oracleRun h₁) hI (segChain_of_oracleRun h₂)
-  obtain ⟨hp₁, hp₂, hpub, hl⟩ := hsite pc tg a b hE
-  obtain ⟨hb₁, hb₂⟩ := hback pc tg a b tc₁ tc₂ sc₁ sc₂ hE ho₁.2 ho₂.2
-    (hsum.exit _ _ _ _ _ _ hp₁ hp₂ hpub ho₁.2 ho₂.2)
-  exact ⟨hl, hsum.trace _ _ _ _ _ _ hp₁ hp₂ hpub ho₁.2 ho₂.2, hb₁, hb₂⟩
+  rw [← tracedOf_one ""] at h₁ h₂
+  exact oracleRun_trace_eqMap (fs := [""]) (tgt := fun _ => tgt) (X := fun _ => X)
+    (c := fun _ => c) (out := fun _ => out) (fun _ hf _ hg _ => by simp_all) (fun _ _ => hsum)
+    hseg (fun pc _ _ a b hE => hsite pc _ a b hE)
+    (fun pc _ _ a b _ _ _ _ hE hx₁ hx₂ ho => hback pc _ a b _ _ _ _ hE hx₁ hx₂ ho) hI h₁ h₂
 
 /-- **Equal leakage of the linked program.** Let `q` be a block without `call` whose leaky
     run has the leakage summary `PubSummary (runOf r q) c out`, and let the caller `p`

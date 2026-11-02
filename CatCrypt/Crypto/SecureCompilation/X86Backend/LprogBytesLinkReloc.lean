@@ -67,7 +67,7 @@ instruction of `cb` starts at byte `L` and has index `k` in the decoded stream.
   (`RegionDecode`), the block of `f ∈ fs` is entered at byte offset `o f` and index `k f`
   and is the call-free block `q f` placed there. `regionBlocks_one` is the region of one
   block; `regionBlocksB` is its Boolean check, sound by `regionBlocks_of_regionBlocksB` at
-  the blocks `regionBlock`.
+  the blocks `regionBlock`; `regionDecode_inj` is the injectivity of the entry indices.
 * `linkedProg_of_itemsMap`, `linkedProg_of_bytesSym`: the program of the relocated item
   list of a body with the facts `CallFacts` satisfies `LinkedProgMap` at `K : String → Nat`:
   the decoded instructions of each instruction of the covered fragment at the index
@@ -675,6 +675,20 @@ structure RegionBlocks (cb : List (BitVec 8)) (fs : List String) (o k : String �
   block : ∀ f ∈ fs, ∃ A B, Q = A ++ shiftProg A.length (q f) ++ B ∧ A.length = k f
   /-- The block of `f` has no `call`. -/
   callFree : ∀ f ∈ fs, ∀ tg, RInstr.call tg ∉ q f
+
+/-- **Injectivity of the entries of a region.** Symbols of `fs` told apart by their entry
+    offsets are told apart by their entry indices: the entry index of a symbol determines the
+    layout element at it, whose offset is the entry offset of the symbol. -/
+theorem regionDecode_inj {cb : List (BitVec 8)} {fs : List String} {o k : String → Nat}
+    {Q : List RInstr} (h : RegionDecode cb fs o k Q)
+    (ho : ∀ f ∈ fs, ∀ g ∈ fs, o f = o g → f = g) :
+    ∀ f ∈ fs, ∀ g ∈ fs, k f = k g → f = g := by
+  intro f hf g hg hk
+  obtain ⟨xs₂, -, -, hx⟩ := h
+  have hf' := List.findIdx?_eq_some_iff_getElem.mp (hx f hf)
+  have hg' := List.findIdx?_eq_some_iff_getElem.mp (hx g hg)
+  refine ho f hf g hg ?_
+  grind
 
 /-- A region that decodes to `Q` from a nonempty stream has its first instruction, at byte
     offset `0`, at index `0`; every symbol has its entry there. -/
