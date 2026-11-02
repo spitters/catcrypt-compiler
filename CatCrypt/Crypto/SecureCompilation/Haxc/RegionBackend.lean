@@ -172,7 +172,8 @@ reference of the gate is therefore the renamed code with its remaining names mer
 machine registers by a second renaming `renOf ts` that need not be injective:
 `argBind σ nm ++ movesOf ps ++ ((C.map (renArr ρ)).map (renRM (renOf ps))).map (renRM (renOf ts))`.
 The merge pairs `certMerge` are the allocation certificate at the other names that some
-block reads before it writes them (`crossNames`), and the
+block, or some piece of a block between two calls, reads before it writes them
+(`crossNames`), and the
 register liveness table `liveRegTab` is synthesised; neither carries trust. `regCoB`
 checks them: the names an instruction reads are
 live before it, a name live after a write is the written name or has an image other than
@@ -5394,13 +5395,37 @@ def isArgNameB (σ : AbiLayout) (x : String) : Bool :=
 def certArgs (σ : AbiLayout) (cert : List (String × String)) : List (String × String) :=
   cert.filter fun p => isArgNameB σ p.1
 
-/-- The names some block of `src` reads as registers before it writes them. -/
+/-- **The pieces of a list of instructions between the calls**: each piece ends at a shadow
+    instruction of a call (`LprogIsa.shadowCall?`), and the last piece holds the instructions
+    after the last call. -/
+def callPieces (l : List LinstrRM) : List (List LinstrRM) :=
+  l.foldr (fun i acc =>
+    if (LprogIsa.shadowCall? i.1).isSome then [i] :: acc
+    else match acc with
+      | p :: ps => (i :: p) :: ps
+      | [] => [[i]]) [[]]
+
+/-- A list of instructions without a call is one piece. -/
+theorem callPieces_of_noCall {l : List LinstrRM}
+    (h : ∀ i ∈ l, LprogIsa.shadowCall? i.1 = none) : callPieces l = [l] := by
+  induction l with
+  | nil => rfl
+  | cons i t ih =>
+      have ht := ih fun j hj => h j (List.mem_cons_of_mem i hj)
+      unfold callPieces at ht ⊢
+      simp [List.foldr_cons, ht, h i List.mem_cons_self]
+
+/-- **The names whose location an image check compares at a boundary**: the names some piece
+    `callPieces` of a block of `src` reads as registers before it writes them. A block
+    boundary and a call are the boundaries: the check of a calling body compares the names
+    live at a call at the end of one segment and the start of the next. -/
 def crossNames (src : List LinstrRM) : List String :=
   match cfgOf (src.map Prod.fst) with
   | some G =>
       ((List.range G.blocks.size).flatMap fun k =>
-        regExposed (((src.drop (G.blk k).start).take
-          ((G.blk k).stop - (G.blk k).start)).map Prod.fst)).eraseDups
+        (callPieces ((src.drop (G.blk k).start).take
+          ((G.blk k).stop - (G.blk k).start))).flatMap fun p =>
+            regExposed (p.map Prod.fst)).eraseDups
   | none => []
 
 /-- **The merge pairs from an allocation certificate**: the pairs of `cert` whose first
