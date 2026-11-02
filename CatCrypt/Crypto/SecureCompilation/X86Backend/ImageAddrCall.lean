@@ -2982,7 +2982,9 @@ def writeCountOf (body : Lcmd) (q : String) : Nat :=
     written by one instruction of `body`, at position `k + 1`, as `MOVQ x, R`; the instruction
     at `k` is `MOVQ R, q` for a save slot `q` (a name with the prefix `qsave.`); the
     instructions up to `k + 1` are operations; and `q` is written by one instruction of
-    `body`, before `k`. The result is `q`, or `none` when one of these fails. -/
+    `body`, before `k`, or is the entry-held slot of a stack argument
+    (`ImageAddrSim.heldReg?`), which no instruction of `body` writes. The result is `q`, or
+    `none` when one of these fails. -/
 def entrySaveOf? (body : Lcmd) (x : String) : Option String :=
   if writeCountOf body x != 1 then none else
   match body.findIdx? (fun i => match i.li_i with
@@ -2994,26 +2996,42 @@ def entrySaveOf? (body : Lcmd) (x : String) : Option String :=
           | _ => false) then
         match body[k]?, body[k + 1]? with
         | some ⟨_, .Lopn [.reg r] "MOVQ" [.reg q]⟩, some ⟨_, .Lopn [.reg d] "MOVQ" [.reg r']⟩ =>
-            if d == x && r' == r && hasPrefix q "qsave." && writeCountOf body q == 1
-                && writeCountOf (body.take k) q == 1 then some q
+            if d == x && r' == r && hasPrefix q "qsave."
+                && ((writeCountOf body q == 1 && writeCountOf (body.take k) q == 1)
+                  || (writeCountOf body q == 0 && (ImageAddrSim.heldReg? q).isSome)) then some q
             else none
         | _, _ => none
       else none
   | _ => none
 
-/-- **The argument moves of a calling body read the save slots of the array pointers.** Each
-    move `MOV:64 a, x` into an argument register `a` from a name `x` that is no
-    general-purpose name, whose value is the value of a save slot `q` throughout the body
-    (`entrySaveOf?`), becomes `MOV:64 a, q`; every other instruction is kept. The move reads
-    the same word, and the trace of an array argument (`JasminLsemAddrImage.accArr`) reaches
-    the save slot of its register, the slot the slot map of the image gives an array. -/
+/-- The instruction at position `k + 2` of `body` is an address computation
+    `LEA:64 D, (a, X, 8)` with the base `a`. -/
+def leaBaseAt (body : Lcmd) (k : Nat) (a : String) : Bool :=
+  match body[k + 2]? with
+  | some ⟨_, .Lopn [.reg _] o [.arrIdx B _ 8]⟩ => o == "LEA:64" && B == a
+  | _ => false
+
+/-- **The argument moves and the base loads of a calling body read the save slots of the array
+    pointers.** A move `MOV:64 a, x` from a name `x` that is no general-purpose name, whose value
+    is the value of a save slot `q` throughout the body (`entrySaveOf?`), becomes `MOV:64 a, q`
+    when `a` is an argument register, and the reload `MOVQ a, q` when `a` is the base of the
+    address computation two instructions later (`leaBaseAt`); every other instruction is kept.
+    The move reads the same word, and the trace of an array pointer
+    (`JasminLsemAddrImage.accArr`) reaches the save slot of its register, the slot the slot map
+    of the image gives an array. -/
 def savedArgMoves (body : Lcmd) : Lcmd :=
-  body.map fun i => match i.li_i with
+  body.mapIdx fun k i => match i.li_i with
     | .Lopn [.reg a] "MOV:64" [.reg x] =>
-        if sysvArgRegs.contains a && !gpNameB x then
-          match entrySaveOf? body x with
-          | some q => ⟨i.li_ii, .Lopn [.reg a] "MOV:64" [.reg q]⟩
-          | none => i
+        if !gpNameB x then
+          if sysvArgRegs.contains a then
+            match entrySaveOf? body x with
+            | some q => ⟨i.li_ii, .Lopn [.reg a] "MOV:64" [.reg q]⟩
+            | none => i
+          else if leaBaseAt body k a then
+            match entrySaveOf? body x with
+            | some q => ⟨i.li_ii, .Lopn [.reg a] "MOVQ" [.reg q]⟩
+            | none => i
+          else i
         else i
     | _ => i
 
