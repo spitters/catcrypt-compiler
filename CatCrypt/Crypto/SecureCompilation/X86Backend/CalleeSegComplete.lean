@@ -35,6 +35,19 @@ entry sets; at the entry sets of the register liveness table (`RegionBackend.ins
 names include the array names of the body, it states that array names no body writes as
 registers add no refusal.
 
+It proves further that the live names the checker finds at the entry of a cut program lie in
+every table of names closed along the cut program (`liveIter_entry_sub`,
+`ownedCheckMCIn_of_tab`). The names of such a table at the starts of the blocks, with the
+flags live, are a post-fixpoint of `liveRound` (`livePost_tab`): the needs of a block
+(`blockNeed`) read the cached registers of the shared term table, which the substitution of
+the table bounds from above (`VarsUB`, kept by interning, `tRun_validU`), so they are
+registers that the words of the symbolic run read, and these lie in the table at the start of
+the block by the transfer of the table along the run (`symRun_tab`). The image enters only
+through its guards, which the block checks place among the reference guards (`GuardsIn`). A
+table closed along a body gives, along the inverse `cutBack` of `LprogCallCut.cutPos`, a
+table closed along each of its cut programs (`tabClosed_cutAt`); the module
+`Haxc.RegionCalleeNames` instantiates it at the liveness table and `insTab`.
+
 ## Main definitions
 
 * `KeepsReg`: the symbolic step of every instruction of a body keeps the word of a register.
@@ -42,6 +55,14 @@ registers add no refusal.
 * `RunsOk`, `RunsOkAt`: the block pairs that the checker checks.
 * `liveIt`: the iterate of `liveRound` from the empty sets.
 * `Yit`: the names the iteration propagates from the observed names of a halt.
+* `VarsUB`, `TValidU`: a substitution bounds the cached registers of a table from above.
+* `StepTr`, `TabClosed`: a table of names over the positions of a body transfers every step
+  and is closed along the jumps, the conditional jumps and the end.
+* `tabLive`: the names of a table at the starts of the blocks, with the flags live.
+* `GuardsIn`: the image guards of a block pair are among its reference guards.
+* `LabelsOnce`, `FinFree`: labels declared once; a label neither declared nor jumped to.
+* `cutBack`, `cutIns`, `cutTab`: the positions, instructions and table of a body along a cut
+  program.
 
 ## Main results
 
@@ -59,8 +80,18 @@ registers add no refusal.
   both bodies keep.
 * `calleeSegB_mono`: the checks of the segments are monotone in the entry sets at names that
   neither body writes.
+* `STerm.varsT_sub_subst`, `tRun_validU`: the registers a word reads over the shared table
+  are registers of its substitution instance, for a substitution that interning keeps.
+* `SG.norm_vars`: a normal form of a guard reads only registers of the guard.
+* `runs_fp`: the reads of the reference run of a block pair over the shared table.
+* `livePost_tab`: a closed table at the starts of the blocks is a post-fixpoint of
+  `liveRound`.
+* `liveIter_entry_sub`, `ownedCheckMCIn_of_tab`: the live names at the entry lie in a
+  closed table, so the entry set needs no name outside it.
+* `cutAt_getElem?`, `tabClosed_cutAt`: the instructions of a cut program, and the table of a
+  body along a cut program.
 
-Elaboration takes about ten seconds.
+Elaboration takes about twenty seconds.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegComplete
@@ -1145,5 +1176,1203 @@ theorem calleeSegB_mono {T : LprogIsa.ProcTable} {fn : String} {fin : LLabel}
         · exact Or.inl hv
 
 end Seg
+
+/-! ## 9. The cached registers of a term table, bounded from above
+
+`TblOK σ E` bounds the cached registers of an entry from below by the registers of the word
+`σ` gives it. The needs of the checker (`blockNeed`) read the cached registers, so their
+bound needs the converse, `VarsUB`: the cached registers of every entry are registers of
+its word. Interning keeps both bounds for one substitution (`tRun_validU`). -/
+
+section Upper
+
+/-- **The cached registers of the entries of `E` are registers of the words `σ` gives
+    them.** -/
+def VarsUB (σ : Nat → STerm) (E : Array TEnt) : Prop :=
+  ∀ k (h : k < E.size), ∀ v ∈ E[k].vars, v ∈ (σ k).vars
+
+variable {σ : Nat → STerm} {E : Array TEnt}
+
+mutual
+/-- The registers a word over a table reads are registers of its substitution instance. -/
+theorem STerm.varsT_sub_subst (h : VarsUB σ E) :
+    ∀ (t : STerm), ∀ v ∈ t.varsT E, v ∈ (t.subst σ).vars
+  | .reg _, v, hv => by simpa [STerm.subst, STerm.vars, STerm.varsT] using hv
+  | .immW _ _, v, hv => by simp [STerm.varsT] at hv
+  | .immAt _ x, v, hv => STerm.varsT_sub_subst h x v (by simpa [STerm.varsT] using hv)
+  | .bin _ x y, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v)
+  | .un _ x, v, hv => STerm.varsT_sub_subst h x v (by simpa [STerm.varsT] using hv)
+  | .shImm _ _ x, v, hv => STerm.varsT_sub_subst h x v (by simpa [STerm.varsT] using hv)
+  | .aget a _ _ i, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (SArr.varsT_sub_subst h a v) (STerm.varsT_sub_subst h i v)
+  | .cin _, v, hv => by simp [STerm.varsT] at hv
+  | .aluF _ _ x y o, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v))
+        (STerm.varsT_sub_subst h o v)
+  | .carryW _ x y c, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v))
+        (STerm.varsT_sub_subst h c v)
+  | .carryF _ _ x y c, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v))
+        (STerm.varsT_sub_subst h c v)
+  | .mulx _ x y, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v)
+  | .cout _ x y c, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v))
+        (STerm.varsT_sub_subst h c v)
+  | .sel x y c, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (Or.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v))
+        (STerm.varsT_sub_subst h c v)
+  | .setcc _ x y, v, hv => by
+      simp only [STerm.varsT, List.mem_append] at hv
+      simp only [STerm.subst, STerm.vars, List.mem_append]
+      exact hv.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v)
+  | .ref k, v, hv => by
+      simp only [STerm.varsT, STerm.subst] at hv ⊢
+      rcases Nat.lt_or_ge k E.size with hk | hk
+      · rw [Array.getElem?_eq_getElem hk, Option.map_some, Option.getD_some] at hv
+        exact h k hk v hv
+      · rw [Array.getElem?_eq_none hk] at hv
+        simp at hv
+
+/-- The registers an array over a table reads are registers of its substitution
+    instance. -/
+theorem SArr.varsT_sub_subst (h : VarsUB σ E) :
+    ∀ (a : SArr), ∀ v ∈ a.varsT E, v ∈ (a.subst σ).vars
+  | .cell _, v, hv => by simp [SArr.varsT] at hv
+  | .aset a _ _ i x, v, hv => by
+      simp only [SArr.varsT, List.mem_append] at hv
+      simp only [SArr.subst, SArr.vars, List.mem_append]
+      exact hv.imp (Or.imp (SArr.varsT_sub_subst h a v) (STerm.varsT_sub_subst h i v))
+        (STerm.varsT_sub_subst h x v)
+  | .zero _ _, v, hv => by simp [SArr.varsT] at hv
+end
+
+theorem SFlag.varsT_sub_subst (h : VarsUB σ E) (f : SFlag) :
+    ∀ v ∈ f.varsT E, v ∈ (f.subst σ).vars := by
+  intro v hv
+  cases f with
+  | init => simp [SFlag.varsT] at hv
+  | cmp x y =>
+      simp only [SFlag.varsT, List.mem_append] at hv
+      simp only [SFlag.subst, SFlag.vars, List.mem_append]
+      exact hv.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v)
+
+theorem SG.varsT_sub_subst (h : VarsUB σ E) (g : SG) :
+    ∀ v ∈ g.varsT E, v ∈ (g.subst σ).vars := by
+  intro v hv
+  cases g with
+  | wid t w => exact STerm.varsT_sub_subst h t v hv
+  | eqW x y =>
+      simp only [SG.varsT, List.mem_append] at hv
+      simp only [SG.subst, SG.vars, List.mem_append]
+      exact hv.imp (STerm.varsT_sub_subst h x v) (STerm.varsT_sub_subst h y v)
+  | shp a w n => exact SArr.varsT_sub_subst h a v hv
+
+mutual
+/-- The registers of a word are registers it reads over every table. -/
+theorem STerm.vars_sub_varsT (E : Array TEnt) :
+    ∀ (t : STerm), ∀ v ∈ t.vars, v ∈ t.varsT E
+  | .reg _, v, hv => hv
+  | .immW _ _, v, hv => by simp [STerm.vars] at hv
+  | .immAt _ x, v, hv => STerm.vars_sub_varsT E x v hv
+  | .bin _ x y, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v)
+  | .un _ x, v, hv => STerm.vars_sub_varsT E x v hv
+  | .shImm _ _ x, v, hv => STerm.vars_sub_varsT E x v hv
+  | .aget a _ _ i, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (SArr.vars_sub_varsT E a v) (STerm.vars_sub_varsT E i v)
+  | .cin _, v, hv => by simp [STerm.vars] at hv
+  | .aluF _ _ x y o, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v))
+        (STerm.vars_sub_varsT E o v)
+  | .carryW _ x y c, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v))
+        (STerm.vars_sub_varsT E c v)
+  | .carryF _ _ x y c, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v))
+        (STerm.vars_sub_varsT E c v)
+  | .mulx _ x y, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v)
+  | .cout _ x y c, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v))
+        (STerm.vars_sub_varsT E c v)
+  | .sel x y c, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (Or.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v))
+        (STerm.vars_sub_varsT E c v)
+  | .setcc _ x y, v, hv => by
+      simp only [STerm.vars, List.mem_append] at hv
+      simp only [STerm.varsT, List.mem_append]
+      exact hv.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v)
+  | .ref _, v, hv => by simp [STerm.vars] at hv
+
+/-- The registers of an array are registers it reads over every table. -/
+theorem SArr.vars_sub_varsT (E : Array TEnt) :
+    ∀ (a : SArr), ∀ v ∈ a.vars, v ∈ a.varsT E
+  | .cell _, v, hv => by simp [SArr.vars] at hv
+  | .aset a _ _ i x, v, hv => by
+      simp only [SArr.vars, List.mem_append] at hv
+      simp only [SArr.varsT, List.mem_append]
+      exact hv.imp (Or.imp (SArr.vars_sub_varsT E a v) (STerm.vars_sub_varsT E i v))
+        (STerm.vars_sub_varsT E x v)
+  | .zero _ _, v, hv => by simp [SArr.vars] at hv
+end
+
+theorem SFlag.vars_sub_varsT (E : Array TEnt) (f : SFlag) :
+    ∀ v ∈ f.vars, v ∈ f.varsT E := by
+  intro v hv
+  cases f with
+  | init => simp [SFlag.vars] at hv
+  | cmp x y =>
+      simp only [SFlag.vars, List.mem_append] at hv
+      simp only [SFlag.varsT, List.mem_append]
+      exact hv.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v)
+
+theorem SG.vars_sub_varsT (E : Array TEnt) (g : SG) :
+    ∀ v ∈ g.vars, v ∈ g.varsT E := by
+  intro v hv
+  cases g with
+  | wid t w => exact STerm.vars_sub_varsT E t v hv
+  | eqW x y =>
+      simp only [SG.vars, List.mem_append] at hv
+      simp only [SG.varsT, List.mem_append]
+      exact hv.imp (STerm.vars_sub_varsT E x v) (STerm.vars_sub_varsT E y v)
+  | shp a w n => exact SArr.vars_sub_varsT E a v hv
+
+/-- The width base of a word reads only registers the word reads. -/
+theorem STerm.wbase_vars : ∀ (t : STerm), ∀ v ∈ t.wbase.vars, v ∈ t.vars
+  | .immAt _ x, v, hv => STerm.wbase_vars x v hv
+  | .bin _ x _, v, hv => by
+      simp only [STerm.vars, List.mem_append]
+      exact Or.inl (STerm.wbase_vars x v hv)
+  | .un _ x, v, hv => STerm.wbase_vars x v hv
+  | .shImm _ _ x, v, hv => STerm.wbase_vars x v hv
+  | .sel x _ _, v, hv => by
+      simp only [STerm.vars, List.mem_append]
+      exact Or.inl (Or.inl (STerm.wbase_vars x v hv))
+  | .reg _, _, hv => hv
+  | .immW _ _, _, hv => hv
+  | .aget _ _ _ _, _, hv => hv
+  | .cin _, _, hv => hv
+  | .aluF _ _ _ _ _, _, hv => hv
+  | .carryW _ _ _ _, _, hv => hv
+  | .carryF _ _ _ _ _, _, hv => hv
+  | .mulx _ _ _, _, hv => hv
+  | .cout _ _ _ _, _, hv => hv
+  | .setcc _ _ _, _, hv => hv
+  | .ref _, _, hv => hv
+
+/-- **A normal form of a guard reads only registers the guard reads.** -/
+theorem SG.norm_vars (g : SG) : ∀ g' ∈ g.norm, ∀ v ∈ g'.vars, v ∈ g.vars := by
+  intro g' hg' v hv
+  cases g with
+  | wid t w =>
+      simp only [SG.norm] at hg'
+      split at hg'
+      · split at hg'
+        · simp at hg'
+        · simp only [List.mem_singleton] at hg'
+          subst hg'
+          simp [SG.falseG, SG.vars, STerm.vars] at hv
+      · simp only [List.mem_singleton] at hg'
+        subst hg'
+        exact STerm.wbase_vars t v hv
+  | eqW x y =>
+      simp only [SG.norm] at hg'
+      split at hg'
+      · split at hg'
+        · simp at hg'
+        · simp only [List.mem_singleton] at hg'
+          subst hg'
+          simp [SG.falseG, SG.vars, STerm.vars] at hv
+      · simp only [List.mem_singleton] at hg'
+        subst hg'
+        simp only [SG.vars, List.mem_append] at hv ⊢
+        exact hv.imp (STerm.wbase_vars x v) (STerm.wbase_vars y v)
+  | shp a w n =>
+      simp only [SG.norm, List.mem_singleton] at hg'
+      subst hg'
+      exact hv
+
+/-- A table that some substitution agrees with and bounds from above (`VarsUB`), and whose
+    entries read only its own entries. -/
+def TValidU (E : Array TEnt) : Prop := (∃ σ, TblOK σ E ∧ VarsUB σ E) ∧ TBnd E
+
+theorem tValidU_empty : TValidU #[] :=
+  ⟨⟨fun k => .ref k, fun k h => by simp at h, fun k h => by simp at h⟩,
+    fun k h => by simp at h⟩
+
+theorem TValidU.valid {E : Array TEnt} (h : TValidU E) : TValid E :=
+  ⟨h.1.elim fun σ hσ => ⟨σ, hσ.1⟩, h.2⟩
+
+theorem TValidU.push {E : Array TEnt} (hv : TValidU E) {n : STerm}
+    (hn : n.refsLt E.size = true) : TValidU (E.push (mkEnt E n)) := by
+  obtain ⟨⟨σ, hσ, hU⟩, hb⟩ := hv
+  let σ' : Nat → STerm := fun j => if j = E.size then n.subst σ else σ j
+  have hag : ∀ k, k < E.size → σ k = σ' k := fun k hk => by
+    simp only [σ', ite_eq_right (Nat.ne_of_lt hk)]
+  have hwb := STerm.wbT_refsLt hb n hn
+  have e : σ' E.size = n.subst σ := by simp [σ']
+  refine ⟨⟨σ', fun k hk => ?_, fun k hk v hv => ?_⟩, (TValid.push ⟨⟨σ, hσ⟩, hb⟩ hn).2⟩
+  · rw [Array.size_push] at hk
+    rcases Nat.lt_or_ge k E.size with hk' | hk'
+    · rw [Array.getElem_push_lt hk']
+      obtain ⟨h1, h2, h3, h4, h5⟩ := hσ k hk'
+      have e' : σ' k = σ k := (hag k hk').symm
+      refine ⟨?_, ?_, ?_, ?_, ?_⟩
+      · rw [e', h1]; exact STerm.subst_congr hag _ (hb k hk').1
+      · rw [e']; exact h2
+      · rw [e']; exact h3
+      · rw [e', h4]; exact STerm.subst_congr hag _ (hb k hk').2
+      · rw [e']; exact h5
+    · have hk2 : k = E.size := by omega
+      subst hk2
+      rw [Array.getElem_push_eq]
+      obtain ⟨w1, w2⟩ := STerm.wbT_spec hσ n hn
+      refine ⟨?_, ?_, ?_, ?_, ?_⟩
+      · rw [e]; exact STerm.subst_congr hag _ hn
+      · intro v hv
+        rw [e] at hv
+        exact List.mem_eraseDups.mpr (STerm.varsT_spec hσ n hn v hv)
+      · intro hf
+        rw [e] at hf
+        exact STerm.readsFT_spec hσ n hn hf
+      · rw [e, w1]; exact STerm.subst_congr hag _ hwb
+      · rw [e]; exact w2
+  · rw [Array.size_push] at hk
+    rcases Nat.lt_or_ge k E.size with hk' | hk'
+    · rw [Array.getElem_push_lt hk'] at hv
+      rw [← hag k hk']
+      exact hU k hk' v hv
+    · have hk2 : k = E.size := by omega
+      subst hk2
+      rw [Array.getElem_push_eq] at hv
+      rw [e]
+      exact STerm.varsT_sub_subst hU n v (List.mem_eraseDups.mp hv)
+
+theorem Tbl.push_validU {T : Tbl} (hv : TValidU T.ents) (n : STerm) :
+    TValidU (T.push n).1.ents := by
+  unfold Tbl.push
+  split
+  · exact hv.push (by assumption)
+  · exact hv
+
+theorem Tbl.share_validU {T : Tbl} (hv : TValidU T.ents) (n : STerm) :
+    TValidU (T.share n).1.ents := by
+  unfold Tbl.share
+  split
+  · split
+    · exact hv
+    · exact Tbl.push_validU hv n
+  · exact Tbl.push_validU hv n
+
+theorem Tbl.intern_validU : ∀ (T : Tbl) (t : STerm), TValidU T.ents →
+    TValidU (T.intern t).1.ents
+  | T, .immAt _ x, hv => Tbl.share_validU (Tbl.intern_validU T x hv) _
+  | T, .bin _ x y, hv =>
+      Tbl.share_validU (Tbl.intern_validU _ y (Tbl.intern_validU T x hv)) _
+  | T, .un _ x, hv => Tbl.share_validU (Tbl.intern_validU T x hv) _
+  | T, .shImm _ _ x, hv => Tbl.share_validU (Tbl.intern_validU T x hv) _
+  | T, .aget _ _ _ i, hv => Tbl.share_validU (Tbl.intern_validU T i hv) _
+  | T, .aluF _ _ x y o, hv =>
+      Tbl.share_validU
+        (Tbl.intern_validU _ o (Tbl.intern_validU _ y (Tbl.intern_validU T x hv))) _
+  | T, .carryW _ x y c, hv =>
+      Tbl.share_validU
+        (Tbl.intern_validU _ c (Tbl.intern_validU _ y (Tbl.intern_validU T x hv))) _
+  | T, .carryF _ _ x y c, hv =>
+      Tbl.share_validU
+        (Tbl.intern_validU _ c (Tbl.intern_validU _ y (Tbl.intern_validU T x hv))) _
+  | T, .mulx _ x y, hv =>
+      Tbl.share_validU (Tbl.intern_validU _ y (Tbl.intern_validU T x hv)) _
+  | T, .cout _ x y c, hv =>
+      Tbl.share_validU
+        (Tbl.intern_validU _ c (Tbl.intern_validU _ y (Tbl.intern_validU T x hv))) _
+  | T, .sel x y c, hv =>
+      Tbl.share_validU
+        (Tbl.intern_validU _ c (Tbl.intern_validU _ y (Tbl.intern_validU T x hv))) _
+  | T, .setcc _ x y, hv =>
+      Tbl.share_validU (Tbl.intern_validU _ y (Tbl.intern_validU T x hv)) _
+  | _, .reg _, hv => hv
+  | _, .immW _ _, hv => hv
+  | _, .cin _, hv => hv
+  | _, .ref _, hv => hv
+
+theorem Tbl.internRegs_validU : ∀ (T : Tbl) (ss : SSt) (ds : List String), TValidU T.ents →
+    TValidU (T.internRegs ss ds).1.ents
+  | _, _, [], hv => hv
+  | T, ss, d :: ds, hv => Tbl.internRegs_validU _ _ ds (Tbl.intern_validU T (ss.regs d) hv)
+
+theorem Tbl.internSt_validU {T : Tbl} (hv : TValidU T.ents) (ss : SSt) (ds : List String) :
+    TValidU (T.internSt ss ds).1.ents :=
+  Tbl.intern_validU _ _ (Tbl.intern_validU _ _ (Tbl.internRegs_validU T ss ds hv))
+
+/-- **The shared run keeps a substitution that bounds the table from both sides.** -/
+theorem tRun_validU (sym : LinstrRM → SSt → SOut) :
+    ∀ (is : List LinstrRM) (ss : SSt) (T : Tbl), TValidU T.ents →
+    TValidU (tRun is ss T sym).1.ents
+  | [], _, _, hv => hv
+  | i :: is, ss, T, hv => by
+      simp only [tRun]
+      split
+      · rename_i ss1 _ _
+        have := tRun_validU sym is
+          (T.internSt ss1 (ss1.newWr ss)).2 _
+          (Tbl.internSt_validU hv ss1 (ss1.newWr ss))
+        split <;> exact this
+      · exact hv
+      · exact hv
+
+end Upper
+
+/-! ## 10. A table of names closed along a body bounds the live sets
+
+A table `A` of names over the positions of a body `C` is closed (`TabClosed`) when it
+transfers every symbolic step from the names at a position to the names at the next one,
+covers the names at the target of every jump, the names after every conditional jump (which
+tests the zero flag), and the observed names at the end. The names of `A` at the starts of
+the blocks, with the flags live, are then a post-fixpoint of `liveRound` on the shared runs
+(`livePost_tab`) as soon as the image guards of every block are among its reference guards,
+so the live sets of the checker lie below them (`liveIter_entry_sub`). -/
+
+section Closed
+
+open SymFootprint (ReadsIn)
+
+/-- **The table `A` over the positions of `C` transfers the symbolic step at `j`**: a
+    successful step of the instruction at `j` from a state whose words at the names of
+    `A j`, arrays and flags read within `X` ends in a state whose words at the names of
+    `A (j + 1)`, arrays and flags read within `X`, with guards that read within `X`. -/
+def StepTr (C : List LinstrRM) (A : Nat → List String) (j : Nat) : Prop :=
+  ∀ i, C[j]? = some i → ∀ (E : Array TEnt) (X : String → Prop) (ss s : SSt) (gs : List SG),
+    symStep i ss = .ok s gs → ReadsIn E X (· ∈ A j) ss →
+      ReadsIn E X (· ∈ A (j + 1)) s ∧ ∀ g ∈ gs, ∀ v ∈ g.varsT E, X v
+
+/-- **The table `A` of names over the positions of `C` is closed for the observed names
+    `O`**: it transfers every symbolic step; the names at the label of a jump are names at
+    the jump; a conditional jump tests the zero flag and the names after it are names at
+    it; and the names `O` are names at the end of `C`. -/
+structure TabClosed (C : List LinstrRM) (O : List String) (A : Nat → List String) : Prop where
+  /-- Every step transfers. -/
+  step : ∀ j, StepTr C A j
+  /-- The names at the label of a jump. -/
+  jump : ∀ j i l p, C[j]? = some i → JasminLsemExportRegAlloc.jumpLabel? i.1 = some l →
+    JasminLsemMemLoop.findLabelMem l C = some p → ∀ y ∈ A p, y ∈ A j
+  /-- A conditional jump tests the zero flag and keeps the names after it. -/
+  cond : ∀ j c l tag, C[j]? = some (.Lcond c l, tag) →
+    (ccPol c).isSome = true ∧ ∀ y ∈ A (j + 1), y ∈ A j
+  /-- The observed names at the end. -/
+  out : ∀ y ∈ O, y ∈ A C.length
+
+/-- **A run along a closed table**: the run of the instructions of `C` from position `a`
+    reads, at the names of the table at its end, only start registers that the words at the
+    names of the table at `a` read. -/
+theorem symRun_tab {C : List LinstrRM} {A : Nat → List String} {E : Array TEnt}
+    {X : String → Prop} (hT : ∀ j, StepTr C A j) :
+    ∀ (is : List LinstrRM) (a : Nat) {ss s : SSt} {gs : List SG},
+      (∀ j (hj : j < is.length), C[a + j]? = some is[j]) →
+      ReadsIn E X (· ∈ A a) ss → symRun is ss = .ok s gs →
+      ReadsIn E X (· ∈ A (a + is.length)) s ∧ ∀ g ∈ gs, ∀ v ∈ g.varsT E, X v
+  | [], a, ss, s, gs, _, hX, h => by
+      simp only [symRun, SOut.ok.injEq] at h
+      obtain ⟨rfl, rfl⟩ := h
+      exact ⟨by simpa using hX, fun g hg => by simp at hg⟩
+  | i :: is, a, ss, s, gs, hC, hX, h => by
+      simp only [symRun] at h
+      split at h
+      · rename_i ss1 g1 h1
+        split at h
+        · rename_i ss2 g2 h2
+          simp only [SOut.ok.injEq] at h
+          obtain ⟨rfl, rfl⟩ := h
+          have h0 : C[a]? = some i := by
+            have := hC 0 (by simp)
+            rwa [Nat.add_zero, List.getElem_cons_zero] at this
+          have hX1 := hT a i h0 E X ss ss1 g1 h1 hX
+          have ih := symRun_tab hT is (a + 1) (fun j hj => by
+              have := hC (j + 1) (by simp only [List.length_cons]; omega)
+              rw [show a + 1 + j = a + (j + 1) by omega, this, List.getElem_cons_succ]) hX1.1 h2
+          have e : a + (i :: is).length = a + 1 + is.length := by
+            simp only [List.length_cons]; omega
+          rw [e]
+          refine ⟨ih.1, fun g hg => ?_⟩
+          rcases List.mem_append.mp hg with hg | hg
+          · exact hX1.2 g hg
+          · exact ih.2 g hg
+        · cases h
+        · cases h
+      · cases h
+      · cases h
+
+/-- The start of a block with facts reads, at every name of a list, only that name. -/
+theorem readsIn_startC (E : Array TEnt) (N : List String) (fs : List CFact) :
+    ReadsIn E (· ∈ N) (· ∈ N) (startC fs) := by
+  refine ⟨fun r hr v hv => ?_, fun a v hv => ?_, fun v hv => ?_, fun v hv => ?_,
+    fun v hv => ?_⟩
+  · rw [startC_regs] at hv
+    split at hv
+    · simp [STerm.varsT] at hv
+    · simp only [STerm.varsT, List.mem_singleton] at hv
+      subst hv
+      exact hr
+  · simp [startC, SArr.varsT] at hv
+  · simp [startC, SFlag.varsT] at hv
+  · simp [startC, STerm.varsT] at hv
+  · simp [startC, STerm.varsT] at hv
+
+/-- **The reads of the reference run of a block pair, over the shared table**: when the
+    table `A` transfers every step and the reference run of block `b` succeeds, the words
+    of its final state at the names of the table at the end of the body of the block, its
+    arrays, its flags and its normalised guards read, over the shared table, only names of
+    the table at the start of the block. -/
+theorem runs_fp {fs fs' : List CFact} {C C' : List LinstrRM} {b b' : Block} {T : Term}
+    {A : Nat → List String} (hT : ∀ j, StepTr C A j) (hle : bstopOf T b ≤ C.length)
+    (hst : b.start ≤ bstopOf T b) {ss : SSt} {gs : List SG}
+    (h : (blockRunsS (startC fs) (startC fs') C C' b b' T).2.1 = .ok ss gs) :
+    (∀ r ∈ A (bstopOf T b), ∀ v ∈ (ss.regs r).varsT
+        (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents, v ∈ A b.start) ∧
+    (∀ q, ∀ v ∈ (ss.arrs q).varsT
+        (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents, v ∈ A b.start) ∧
+    (∀ v ∈ ss.zf.varsT (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents,
+        v ∈ A b.start) ∧
+    (∀ v ∈ ss.cf.varsT (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents,
+        v ∈ A b.start) ∧
+    (∀ v ∈ ss.of.varsT (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents,
+        v ∈ A b.start) ∧
+    (gs.all (SG.refsLt (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents.size) = true →
+      ∀ g ∈ normGT (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents gs,
+        ∀ v ∈ g.varsT (blockRunsS (startC fs) (startC fs') C C' b b' T).1.ents,
+          v ∈ A b.start) := by
+  generalize hR : blockRunsS (startC fs) (startC fs') C C' b b' T = R at h ⊢
+  have hv : TValidU R.1.ents := by
+    rw [← hR]
+    exact tRun_validU symStep _ _ _ (tRun_validU symStep _ _ _ tValidU_empty)
+  obtain ⟨⟨σ, hσ, hU⟩, -⟩ := hv
+  have e1 : symRun (bodyAt C b T) (startC fs) = R.2.1.subst σ := by
+    have h1 := tRun_subst hσ (bodyAt C b T) (startC fs) Tbl.empty
+      (by rw [← hR]; exact tRun_ext_at symStep _ _ _)
+    rw [startC_subst σ] at h1
+    rw [← hR]
+    exact h1.symm
+  rw [h] at e1
+  simp only [SOut.subst] at e1
+  have hlen : b.start + (bodyAt C b T).length = bstopOf T b := by
+    simp only [bodyAt, List.length_take, List.length_drop]
+    omega
+  have fp := symRun_tab (E := #[]) (X := (· ∈ A b.start)) hT (bodyAt C b T) b.start
+    (fun j hj => by
+      simp only [bodyAt, List.getElem_take, List.getElem_drop]
+      rw [List.getElem?_eq_getElem])
+    (readsIn_startC #[] (A b.start) fs) e1
+  rw [hlen] at fp
+  obtain ⟨⟨fr, fa, fz, fc, fo⟩, fg⟩ := fp
+  refine ⟨fun r hr v hv => ?_, fun q v hv => ?_, fun v hv => ?_, fun v hv => ?_,
+    fun v hv => ?_, fun hb g hg v hv => ?_⟩
+  · have h1 := STerm.varsT_sub_subst hU _ v hv
+    rw [← SSt.subst_regs_apply] at h1
+    exact fr r hr v (STerm.vars_sub_varsT #[] _ v h1)
+  · exact fa q v (SArr.vars_sub_varsT #[] _ v (SArr.varsT_sub_subst hU _ v hv))
+  · exact fz v (SFlag.vars_sub_varsT #[] _ v (SFlag.varsT_sub_subst hU _ v hv))
+  · exact fc v (STerm.vars_sub_varsT #[] _ v (STerm.varsT_sub_subst hU _ v hv))
+  · exact fo v (STerm.vars_sub_varsT #[] _ v (STerm.varsT_sub_subst hU _ v hv))
+  · have h1 := SG.varsT_sub_subst hU g v hv
+    have hm : g.subst σ ∈ normG (gs.map (SG.subst σ)) := by
+      rw [← normGT_subst hσ gs hb]
+      exact List.mem_map_of_mem hg
+    simp only [normG, List.mem_flatMap] at hm
+    obtain ⟨g0, hg0, hn⟩ := hm
+    exact fg g0 hg0 v (SG.vars_sub_varsT #[] g0 v (SG.norm_vars g0 _ hn v h1))
+
+/-- The live sets of the table `A` at the starts of the blocks of `G`, with the flags
+    live. -/
+def tabLive (G : CFG) (A : Nat → List String) : Array (List String × Bool) :=
+  (Array.range G.blocks.size).map fun k => (A (G.blk k).start, true)
+
+theorem tabLive_getD (G : CFG) (A : Nat → List String) {k : Nat} (hk : k < G.blocks.size) :
+    (tabLive G A).getD k ([], false) = (A (G.blk k).start, true) := by
+  rw [tabLive, getD_map_range, ite_eq_left hk]
+
+/-- **The image guards of the shared runs `r` are among the reference guards**, and all
+    guards read only entries of the table. -/
+def GuardsIn (r : Tbl × SOut × SOut) : Prop :=
+  ∀ ss gs ss' gs', r.2.1 = .ok ss gs → r.2.2 = .ok ss' gs' →
+    (gs ++ gs').all (SG.refsLt r.1.ents.size) = true ∧
+      ∀ g ∈ normGT r.1.ents gs', g ∈ normGT r.1.ents gs
+
+/-- The block check gives the guard containment. -/
+theorem guardsIn_of_blockOkR {O : List String} {L : Nat → List String × Bool} {k : Nat}
+    {T : Term} {r : Tbl × SOut × SOut} {C C' : List LinstrRM} {b b' : Block}
+    (h : blockOkR O L k T r C C' b b' = true) (hT : T ≠ .ret) : GuardsIn r := by
+  intro ss gs ss' gs' h1 h2
+  unfold blockOkR at h
+  split at h
+  · exact absurd rfl hT
+  · rw [h1, h2] at h
+    simp only [Bool.and_eq_true] at h
+    have hg := h.1.1
+    simp only [guardsT, Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at hg
+    exact ⟨List.all_eq_true.mpr hg.1, fun g hgm => (hg.2 g hgm).1⟩
+
+/-- **The block structure against a closed table**: the body of block `k` lies in `C`;
+    the names at the start of every successor are names at the end of the body; at a halt
+    the observed names are names at the end of the body; and a conditional terminator
+    tests the zero flag. -/
+theorem block_tab {C : List LinstrRM} {O : List String} {G : CFG}
+    (hG : cfgOf (C.map Prod.fst) = some G) {A : Nat → List String} (hA : TabClosed C O A)
+    {k : Nat} (hk : k < G.blocks.size) :
+    bstopOf (G.blk k).term (G.blk k) ≤ C.length ∧
+    (G.blk k).start ≤ bstopOf (G.blk k).term (G.blk k) ∧
+    (∀ j ∈ (G.blk k).term.succs, j < G.blocks.size ∧
+      ∀ y ∈ A (G.blk j).start, y ∈ A (bstopOf (G.blk k).term (G.blk k))) ∧
+    ((G.blk k).term.halts = true → ∀ y ∈ O, y ∈ A (bstopOf (G.blk k).term (G.blk k))) ∧
+    (∀ t nx c l tag, (G.blk k).term = .cond t nx →
+      C[(G.blk k).stop - 1]? = some (.Lcond c l, tag) → (ccPol c).isSome = true) := by
+  have bf := blockFacts hG hk
+  have hlen : (C.map Prod.fst).length = C.length := List.length_map _
+  have hs1 : (G.blk k).stop - 1 < C.length := by
+    have := bf.lt; have := bf.le; omega
+  obtain ⟨i, hi⟩ : ∃ i, C[(G.blk k).stop - 1]? = some i :=
+    ⟨_, List.getElem?_eq_getElem hs1⟩
+  have hiw : (C.map Prod.fst)[(G.blk k).stop - 1]? = some i.1 := by
+    rw [List.getElem?_map, hi]; rfl
+  have ht := bf.term
+  rw [hiw] at ht
+  have hnx : ∀ j, G.next k = some j → j < G.blocks.size ∧ (G.blk j).start = (G.blk k).stop := by
+    intro j hj
+    have e := bf.stop_eq
+    unfold CFG.next at hj
+    split at hj
+    · cases hj
+      refine ⟨by assumption, ?_⟩
+      rw [e, CFG.nextStart, CFG.next, ite_eq_left (by assumption)]
+    · cases hj
+  have hnone : G.next k = none → (G.blk k).stop = C.length := by
+    intro hj
+    rw [bf.stop_eq, CFG.nextStart, hj, hlen]
+  have hlt := bf.lt
+  have hle := bf.le
+  rw [hlen] at hle
+  rcases termOk_spec ht with ⟨nx, hT, -, hn⟩ | ⟨t, x, l, hT, hiT, htl, hf⟩ |
+      ⟨t, nx, c, l, hT, hiT, htl, hf, hn⟩ | ⟨hT, -⟩
+  · rw [hT]
+    simp only [bstopOf]
+    refine ⟨hle, by omega, fun j hj => ?_, fun hh y hy => ?_, fun _ _ _ _ _ he => by cases he⟩
+    · cases nx with
+      | none => simp [Term.succs] at hj
+      | some j' =>
+          simp only [Term.succs, Option.toList_some, List.mem_singleton] at hj
+          subst hj
+          obtain ⟨h1, h2⟩ := hnx _ hn.symm
+          exact ⟨h1, fun y hy => by rw [← h2]; exact hy⟩
+    · cases nx with
+      | none => rw [hnone hn.symm]; exact hA.out y hy
+      | some _ => simp [Term.halts] at hh
+  · rw [hT]
+    simp only [bstopOf, Term.succs, List.mem_singleton, Term.halts]
+    refine ⟨by omega, by omega, fun j hj => ?_, (fun hh => by cases hh),
+      fun _ _ _ _ _ he => by cases he⟩
+    subst hj
+    refine ⟨htl, fun y hy => hA.jump _ i l _ hi (by rw [hiT]; rfl) hf y hy⟩
+  · rw [hT]
+    obtain ⟨w, tag⟩ := i
+    simp only at hiT
+    subst hiT
+    have hc := hA.cond _ c l tag hi
+    have hst : (G.blk k).stop - 1 + 1 = (G.blk k).stop := by omega
+    rw [hst] at hc
+    simp only [bstopOf, Term.succs, List.mem_cons]
+    refine ⟨by omega, by omega, fun j hj => ?_, fun hh y hy => ?_, fun _ _ c' l' tag' _ he => ?_⟩
+    · rcases hj with rfl | hj
+      · exact ⟨htl, fun y hy => hA.jump _ _ l _ hi rfl hf y hy⟩
+      · cases nx with
+        | none => simp at hj
+        | some j' =>
+            simp only [Option.toList_some, List.mem_singleton] at hj
+            subst hj
+            obtain ⟨h1, h2⟩ := hnx _ hn.symm
+            exact ⟨h1, fun y hy => hc.2 y (by rw [← h2]; exact hy)⟩
+    · cases nx with
+      | none => exact hc.2 y (by rw [hnone hn.symm]; exact hA.out y hy)
+      | some _ => simp [Term.halts] at hh
+    · rw [hi] at he
+      cases he
+      exact hc.1
+  · rw [hT]
+    simp only [bstopOf, Term.succs, List.not_mem_nil, Term.halts]
+    exact ⟨by omega, by omega, fun j hj => hj.elim, (fun hh => by cases hh),
+      fun _ _ _ _ _ he => by cases he⟩
+
+/-- **The table at the starts of the blocks is a post-fixpoint of `liveRound`.** For a
+    table `A` closed along `C` for the observed names `O`, and shared runs whose image
+    guards are among their reference guards at every block that does not return, the names
+    of `A` at the starts of the blocks of `G`, with the flags live, cover what every block
+    needs. -/
+theorem livePost_tab {C C' : List LinstrRM} {O : List String} {G G' : CFG}
+    (hG : cfgOf (C.map Prod.fst) = some G) {A : Nat → List String} (hA : TabClosed C O A)
+    {F F' : Nat → List CFact}
+    (hgd : ∀ k r, (runsOfC F F' C C' G G' symStep)[k]? = some r → (G.blk k).term ≠ .ret →
+      GuardsIn r) :
+    LivePost O C G (runsOfC F F' C C' G G' symStep) (tabLive G A) := by
+  intro k hk
+  rw [tabLive_getD G A hk]
+  obtain ⟨hle, hst, hsucc, hhalt, hcond⟩ := block_tab hG hA hk
+  have hRk : (runsOfC F F' C C' G G' symStep)[k]? = some (blockRunsS (startC (F k))
+      (startC (F' k)) C C' (G.blk k) (G'.blk k) (G.blk k).term) := by
+    simp [runsOfC, hk]
+  have hgk := hgd k _ hRk
+  unfold needAt
+  rw [hRk]
+  dsimp only
+  refine ⟨fun v hv => ?_, fun _ => rfl⟩
+  generalize hR : blockRunsS (startC (F k)) (startC (F' k)) C C' (G.blk k) (G'.blk k)
+    (G.blk k).term = R at hv hgk
+  have fp := fun ss gs (h : R.2.1 = .ok ss gs) =>
+    runs_fp (fs' := F' k) (C' := C') (b' := G'.blk k) hA.step hle hst (hR ▸ h)
+  unfold blockNeed at hv
+  split at hv
+  · simp at hv
+  · rename_i hT
+    split at hv
+    · rename_i ss gs1 ss' gs' h1 h2
+      obtain ⟨fr, fa, fz, fc, fo, fg⟩ := fp ss gs1 h1
+      rw [hR] at fr fa fz fc fo fg
+      obtain ⟨hgb, hgc⟩ := hgk hT ss gs1 ss' gs' h1 h2
+      simp only [List.mem_append, List.mem_flatMap] at hv
+      rcases hv with ((((⟨g, hg, hv⟩ | hv) | ⟨j, hj, hv⟩) | hv) | ⟨q, -, hv⟩)
+      · exact fg (by simp only [List.all_append, Bool.and_eq_true] at hgb; exact hgb.1) g
+          (hgc g hg) v hv
+      · revert hv
+        split
+        · rename_i t nx c l tag hT' hc
+          intro hv
+          have hp := hcond t nx c l tag hT' hc
+          simp only [Option.map_some, Option.getD_some, symDec] at hv
+          obtain ⟨pol, hpol⟩ := Option.isSome_iff_exists.mp hp
+          rw [hpol] at hv
+          exact fz v hv
+        · simp
+      · obtain ⟨hjs, hjA⟩ := hsucc j hj
+        simp only [tabLive_getD G A hjs, ite_true, List.mem_append] at hv
+        rcases hv with ⟨r, hr, hv⟩ | ((hv | hv) | hv)
+        · exact fr r (hjA r hr) v hv
+        · exact fz v hv
+        · exact fc v hv
+        · exact fo v hv
+      · split at hv
+        · rename_i hh
+          simp only [List.mem_flatMap] at hv
+          obtain ⟨r, hr, hv⟩ := hv
+          exact fr r (hhalt hh r hr) v hv
+        · simp at hv
+      · exact fa q v hv
+    · simp at hv
+
+/-- **The live sets of the checker lie below a closed table**: the names the iteration of
+    `ownedCheckMC` finds live at the entry block are names of the table at position `0`. -/
+theorem liveIter_entry_sub {C C' : List LinstrRM} {O : List String} {G G' : CFG}
+    (hG : cfgOf (C.map Prod.fst) = some G) (hne : C ≠ []) {A : Nat → List String}
+    (hA : TabClosed C O A) {F F' : Nat → List CFact}
+    (hgd : ∀ k r, (runsOfC F F' C C' G G' symStep)[k]? = some r → (G.blk k).term ≠ .ret →
+      GuardsIn r) (n : Nat) :
+    ∀ v ∈ ((liveIter O C G (runsOfC F F' C C' G G' symStep) n
+      (Array.replicate G.blocks.size ([], false))).getD 0 ([], false)).1, v ∈ A 0 := by
+  intro v hv
+  have hle := liveIter_le_post O C G _ (livePost_tab hG hA hgd) n _ (fun k => by
+    have : (Array.replicate G.blocks.size (([] : List String), false)).getD k ([], false) =
+        ([], false) := by
+      by_cases hk : k < G.blocks.size <;> simp [Array.getD, hk]
+    rw [this]
+    exact LiveCov.nil _)
+  have h0 := cfgOf_start_zero hG (by simpa using hne)
+  have := (hle 0).1 v hv
+  rw [tabLive_getD G A h0.1, h0.2] at this
+  exact this
+
+/-- **The checker with an entry set needs no entry name outside a closed table.** If
+    `ownedCheckMCIn ins O` accepts `C` against `C'`, and the table `A` is closed along `C`
+    for `O`, then `ownedCheckMCIn ins' O` accepts them for every entry set `ins'` that holds
+    the names of `A` at position `0`. The image enters only through the checks themselves:
+    the guard containment of the accepted block checks. -/
+theorem ownedCheckMCIn_of_tab {ins ins' O : List String} {C C' : List LinstrRM}
+    {A : Nat → List String} (hA : TabClosed C O A) (hins : ∀ v ∈ A 0, v ∈ ins')
+    (h : ownedCheckMCIn ins O C C' = true) : ownedCheckMCIn ins' O C C' = true := by
+  unfold ownedCheckMCIn at h ⊢
+  cases hG : cfgOf (C.map Prod.fst) with
+  | none => simp [hG] at h
+  | some G =>
+  cases hG' : cfgOf (C'.map Prod.fst) with
+  | none => simp [hG, hG'] at h
+  | some G' =>
+  simp only [hG, hG'] at h ⊢
+  simp only [Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true,
+    List.contains_iff_mem] at h ⊢
+  obtain ⟨⟨⟨⟨⟨hW, hObl⟩, hf1⟩, hf2⟩, -⟩, hFl⟩ := h
+  refine ⟨⟨⟨⟨⟨hW, hObl⟩, hf1⟩, hf2⟩, fun v hv => hins v ?_⟩, hFl⟩
+  have hW' := hW
+  unfold ownedCheckWithR at hW'
+  simp only [Bool.and_eq_true, List.all_eq_true, List.mem_range, Bool.not_eq_true'] at hW'
+  obtain ⟨⟨⟨hne, -⟩, -⟩, hall⟩ := hW'
+  refine liveIter_entry_sub hG (by simpa using hne) hA (fun k r hr hT => ?_) _ v hv
+  have hk : k < G.blocks.size := by
+    have := (Array.getElem?_eq_some_iff.mp hr).1
+    simpa [runsOfC] using this
+  have hb := (hall k hk).2
+  rw [hr] at hb
+  exact guardsIn_of_blockOkR hb hT
+
+end Closed
+
+/-! ## 11. A table of a body along its cut programs
+
+The cut program `cutAt fn fin B e x` holds, at position `c ≤ B.length`, the instruction of
+the body at the position `cutBack B e c` (the inverse of `LprogCallCut.cutPos`), with the
+exit replaced by the jump to `fin`, and the instruction of the end of the body at the image
+of `B.length`; it ends with the declaration of `fin`. A table of names over the positions of
+`B` that is closed along `B` gives, along `cutBack`, a table closed along the cut program
+(`tabClosed_cutAt`). The seams of the rotation are positions whose instruction is a jump or
+a shadow instruction of a call: the first has no symbolic step and the second has no
+successful one (`SymFootprint.symStep_shadowCall`), so no transfer is asked there. -/
+
+section Cut
+
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (cutAt exitI finI stopPos entryPos)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (findLabel isLabel findLabel_sound)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAlloc (jumpLabel?)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop (findLabelMem)
+
+/-- The position of the body `B` that position `c` of a cut program for the entry `e`
+    comes from: the inverse of `LprogCallCut.cutPos B e` on the positions up to
+    `B.length`. -/
+def cutBack (B : List LinstrRM) : Option Nat → Nat → Nat
+  | none, c => c
+  | some p, c => if c ≤ B.length - p - 1 then c + p + 1 else c - (B.length - p)
+
+/-- The instruction of a cut program for the exit `x` that comes from position `q` of the
+    body `B`: the jump to `fin` at the exit, the instruction of `B` at every other position
+    of `B`, and the instruction of the end of the body at `B.length`. -/
+def cutIns (fn : String) (fin : LLabel) (B : List LinstrRM) (x : Option Nat) (q : Nat) :
+    LinstrRM :=
+  if x = some q then exitI fn fin
+  else match B[q]? with
+    | some i => i
+    | none =>
+        match x with
+        | none => exitI fn fin
+        | some p => (B[p]?).getD (exitI fn fin)
+
+/-- **The positions of a site**: `e` is the end of the body or a position of `B` that holds
+    a shadow instruction of a call. -/
+def SiteOk (B : List LinstrRM) (e : Option Nat) : Prop :=
+  ∀ p, e = some p → ∃ i, B[p]? = some i ∧ LprogIsa.shadowCall? i.1 ≠ none
+
+theorem SiteOk.lt {B : List LinstrRM} {e : Option Nat} (h : SiteOk B e) {p : Nat}
+    (hp : e = some p) : p < B.length := by
+  obtain ⟨i, hi, -⟩ := h p hp
+  exact (List.getElem?_eq_some_iff.mp hi).1
+
+theorem cutAt_length (fn : String) (fin : LLabel) (B : List LinstrRM) {e : Option Nat}
+    (x : Option Nat) (he : SiteOk B e) : (cutAt fn fin B e x).length = B.length + 2 := by
+  unfold cutAt
+  cases x <;> cases e with
+  | none => simp
+  | some p =>
+      have := he.lt rfl
+      simp only [List.length_append, List.length_drop, List.length_cons, List.length_take,
+        List.length_nil, List.length_set]
+      omega
+
+theorem cutBack_zero (B : List LinstrRM) {e : Option Nat} (he : SiteOk B e) :
+    cutBack B e 0 = entryPos e := by
+  cases e with
+  | none => rfl
+  | some p =>
+      simp only [cutBack, entryPos]
+      rw [ite_eq_left (by omega)]
+      omega
+
+theorem cutBack_le (B : List LinstrRM) {e : Option Nat} (he : SiteOk B e) {c : Nat}
+    (hc : c ≤ B.length) : cutBack B e c ≤ B.length := by
+  cases e with
+  | none => exact hc
+  | some p =>
+      have := he.lt rfl
+      simp only [cutBack]
+      split <;> omega
+
+private theorem getElem?_append_two (L : List LinstrRM) (o d : LinstrRM) {c : Nat}
+    (hc : c ≤ L.length) : (L ++ [o, d])[c]? = some ((L[c]?).getD o) := by
+  rcases Nat.lt_or_ge c L.length with h | h
+  · rw [List.getElem?_append_left h, List.getElem?_eq_getElem h]
+    rfl
+  · obtain rfl : c = L.length := by omega
+    rw [List.getElem?_append_right (Nat.le_refl _), Nat.sub_self,
+      List.getElem?_eq_none (Nat.le_refl _)]
+    rfl
+
+private theorem getElem?_rot (L : List LinstrRM) (o d : LinstrRM) {p c : Nat}
+    (hp : p < L.length) (hc : c ≤ L.length) :
+    (L.drop (p + 1) ++ [o] ++ L.take p ++ [(L[p]?).getD o, d])[c]? =
+      some ((L[if c ≤ L.length - p - 1 then c + p + 1 else c - (L.length - p)]?).getD o) := by
+  simp only [List.getElem?_append, List.length_append, List.length_drop, List.length_take,
+    List.length_singleton, List.getElem?_drop, List.getElem?_take]
+  repeat' split
+  all_goals first
+    | omega
+    | (rw [List.getElem?_eq_getElem (by omega), List.getElem?_eq_getElem (by omega)]
+       simp only [Option.getD_some, Option.some.injEq]
+       congr 1
+       omega)
+    | (rw [List.getElem?_eq_none (l := L) (by omega),
+          show c - (L.length - (p + 1)) = 0 by omega]
+       rfl)
+    | (rw [show c - (L.length - (p + 1) + 1 + min p L.length) = 0 by omega,
+          show c - (L.length - p) = p by omega]
+       rfl)
+
+theorem cutIns_none (fn : String) (fin : LLabel) (B : List LinstrRM) (q : Nat) :
+    cutIns fn fin B none q = (B[q]?).getD (exitI fn fin) := by
+  unfold cutIns
+  simp only [reduceCtorEq, ite_false]
+  cases B[q]? <;> rfl
+
+theorem cutIns_some (fn : String) (fin : LLabel) (B : List LinstrRM) {p : Nat}
+    (hp : p < B.length) (q : Nat) :
+    cutIns fn fin B (some p) q =
+      ((B.set p (exitI fn fin))[q]?).getD ((B[p]?).getD (exitI fn fin)) := by
+  unfold cutIns
+  by_cases hpq : p = q
+  · subst hpq
+    simp [hp]
+  · rw [ite_eq_right (by simpa using hpq), List.getElem?_set_ne hpq]
+    cases B[q]? <;> rfl
+
+/-- The instruction at position `c ≤ B.length` of a cut program. -/
+theorem cutAt_getElem? (fn : String) (fin : LLabel) (B : List LinstrRM) {e x : Option Nat}
+    (he : SiteOk B e) (hx : SiteOk B x) {c : Nat} (hc : c ≤ B.length) :
+    (cutAt fn fin B e x)[c]? = some (cutIns fn fin B x (cutBack B e c)) := by
+  unfold cutAt
+  cases x with
+  | none =>
+      cases e with
+      | none =>
+          dsimp only
+          rw [getElem?_append_two B _ _ hc, cutIns_none]
+          rfl
+      | some p =>
+          dsimp only
+          rw [getElem?_rot B _ _ (he.lt rfl) hc, cutIns_none]
+          rfl
+  | some p' =>
+      have hp' := hx.lt rfl
+      have hl : (B.set p' (exitI fn fin)).length = B.length := List.length_set ..
+      cases e with
+      | none =>
+          dsimp only
+          rw [getElem?_append_two _ _ _ (by rw [hl]; exact hc), cutIns_some fn fin B hp']
+          rfl
+      | some p =>
+          dsimp only
+          rw [getElem?_rot _ _ _ (by rw [hl]; exact he.lt rfl) (by rw [hl]; exact hc),
+            cutIns_some fn fin B hp', hl]
+          rfl
+
+/-- A cut program ends with the declaration of `fin`. -/
+theorem cutAt_last (fn : String) (fin : LLabel) (B : List LinstrRM) (e x : Option Nat) :
+    ∃ L, cutAt fn fin B e x = L ++ [finI fin] := by
+  unfold cutAt
+  cases x <;> cases e
+  · exact ⟨B ++ [exitI fn fin], by simp⟩
+  · rename_i p
+    exact ⟨B.drop (p + 1) ++ [exitI fn fin] ++ B.take p ++ [(B[p]?).getD (exitI fn fin)],
+      by simp⟩
+  · rename_i p'
+    exact ⟨B.set p' (exitI fn fin) ++ [(B[p']?).getD (exitI fn fin)], by simp⟩
+  · rename_i p' p
+    exact ⟨(B.set p' (exitI fn fin)).drop (p + 1) ++ [(B[p']?).getD (exitI fn fin)] ++
+      (B.set p' (exitI fn fin)).take p ++
+      [((B.set p' (exitI fn fin))[p]?).getD ((B[p']?).getD (exitI fn fin))], by simp⟩
+
+theorem cutAt_getElem?_fin (fn : String) (fin : LLabel) (B : List LinstrRM)
+    {e : Option Nat} (x : Option Nat) (he : SiteOk B e) :
+    (cutAt fn fin B e x)[B.length + 1]? = some (finI fin) := by
+  obtain ⟨L, hL⟩ := cutAt_last fn fin B e x
+  have hl := cutAt_length fn fin B x he
+  rw [hL] at hl ⊢
+  simp only [List.length_append, List.length_singleton] at hl
+  rw [List.getElem?_append_right (by omega), show B.length + 1 - L.length = 0 by omega]
+  rfl
+
+/-- The instruction of a cut program that comes from a position of the body is the jump to
+    `fin` at the exit, an instruction of the body at a position other than the exit, or a
+    shadow instruction of a call. -/
+theorem cutIns_cases {fn : String} {fin : LLabel} {B : List LinstrRM} {x : Option Nat}
+    (hx : SiteOk B x) {q : Nat} (hq : q ≤ B.length) :
+    (cutIns fn fin B x q = exitI fn fin ∧ q = stopPos B x) ∨
+    (x ≠ some q ∧ B[q]? = some (cutIns fn fin B x q)) ∨
+    LprogIsa.shadowCall? (cutIns fn fin B x q).1 ≠ none := by
+  unfold cutIns
+  by_cases hxq : x = some q
+  · subst hxq
+    exact Or.inl ⟨by simp, rfl⟩
+  · rw [ite_eq_right hxq]
+    split
+    · rename_i i hi
+      exact Or.inr (Or.inl ⟨hxq, hi⟩)
+    · rename_i hn
+      have hqn : q = B.length := by
+        rcases Nat.lt_or_ge q B.length with h | h
+        · rw [List.getElem?_eq_getElem h] at hn; cases hn
+        · omega
+      cases x with
+      | none => exact Or.inl ⟨rfl, hqn⟩
+      | some p =>
+          obtain ⟨i, hi, hs⟩ := hx p rfl
+          refine Or.inr (Or.inr ?_)
+          simp only [hi, Option.getD_some]
+          exact hs
+
+theorem cutBack_succ (B : List LinstrRM) {e : Option Nat} (he : SiteOk B e) {c : Nat}
+    (hc : c ≤ B.length) (hq : cutBack B e c < B.length) (hne : e ≠ some (cutBack B e c)) :
+    c + 1 ≤ B.length ∧ cutBack B e (c + 1) = cutBack B e c + 1 := by
+  cases e with
+  | none => exact ⟨by simp only [cutBack] at hq; omega, rfl⟩
+  | some p =>
+      have hp := he.lt rfl
+      simp only [cutBack, ne_eq, Option.some.injEq] at hq hne ⊢
+      by_cases h1 : c ≤ B.length - p - 1
+      · rw [ite_eq_left h1] at hq hne
+        rw [ite_eq_left h1, ite_eq_left (by omega)]
+        omega
+      · rw [ite_eq_right h1] at hq hne
+        rw [ite_eq_right h1, ite_eq_right (by omega)]
+        omega
+
+theorem isLabel_shadow {i : LinstrRM} (h : LprogIsa.shadowCall? i.1 ≠ none) (l : LLabel) :
+    isLabel l i.1 = false ∧ jumpLabel? i.1 = none ∧ ∀ c l', i.1 ≠ .Lcond c l' := by
+  obtain ⟨dst, opn, srcs, he, -⟩ := LprogIsaProcs.shadowCall?_wire h
+  rw [he]
+  exact ⟨rfl, rfl, fun _ _ e => by cases e⟩
+
+/-- **The labels of `B` are declared once**: two positions that declare one label are
+    equal. -/
+def LabelsOnce (B : List LinstrRM) : Prop :=
+  ∀ (q q' : Nat) (i i' : LinstrRM) (l : LLabel), B[q]? = some i → B[q']? = some i' →
+    isLabel l i.1 = true → isLabel l i'.1 = true → q = q'
+
+/-- **The label `fin` is free in `B`**: no instruction of `B` declares it or jumps to it. -/
+def FinFree (fin : LLabel) (B : List LinstrRM) : Prop :=
+  ∀ i ∈ B, isLabel fin i.1 = false ∧ jumpLabel? i.1 ≠ some fin
+
+/-- **The first declaration of a label declared once**: a label declared at `q` and at no
+    other position is found at `q`. -/
+theorem findLabelMem_of_unique {B : List LinstrRM}
+    (huniq : LabelsOnce B)
+    {q : Nat} {i : LinstrRM} {l : LLabel} (hq : B[q]? = some i)
+    (hl : isLabel l i.1 = true) : findLabelMem l B = some q := by
+  cases hf : findLabelMem l B with
+  | none =>
+      exfalso
+      unfold findLabelMem findLabel at hf
+      rw [List.findIdx?_eq_none_iff] at hf
+      have := hf i.1 (List.mem_map.mpr ⟨i, List.mem_of_getElem? hq, rfl⟩)
+      rw [hl] at this
+      cases this
+  | some q' =>
+      obtain ⟨k, hk, hlk⟩ := findLabel_sound l _ q' hf
+      rw [List.getElem?_map] at hk
+      obtain ⟨i', hi', rfl⟩ := Option.map_eq_some_iff.mp hk
+      exact congrArg some (huniq q' q i' i l hi' hq hlk hl)
+
+/-- The table of a body `B` along the cut programs for the entry `e`, with the names `O` at
+    the declaration of the label of the end and after it. -/
+def cutTab (B : List LinstrRM) (TB : Nat → List String) (O : List String) (e : Option Nat)
+    (c : Nat) : List String :=
+  if c ≤ B.length then TB (cutBack B e c) else O
+
+/-- **A table closed along a body is closed along its cut programs.** For an entry `e` and
+    an exit `x` that are the end of the body or shadow instructions of calls, a body with no
+    declaration of and no jump to the label `fin` (`FinFree`), and labels declared once
+    (`LabelsOnce`), a table `TB` closed along `B` gives the table `cutTab B TB O e`, closed
+    along the cut program `cutAt fn fin B e x` for observed names `O` that are names of
+    `TB` at the exit. -/
+theorem tabClosed_cutAt {fn : String} {fin : LLabel} {B : List LinstrRM} {e x : Option Nat}
+    {outs O : List String} {TB : Nat → List String} (he : SiteOk B e) (hx : SiteOk B x)
+    (hfin : FinFree fin B)
+    (huniq : LabelsOnce B)
+    (hTB : TabClosed B outs TB) (hO : ∀ y ∈ O, y ∈ TB (stopPos B x)) :
+    TabClosed (cutAt fn fin B e x) O (cutTab B TB O e) := by
+  have hlen := cutAt_length fn fin B x he
+  have hfinI := cutAt_getElem?_fin fn fin B x he
+  have hget := fun c (hc : c ≤ B.length) => cutAt_getElem? fn fin B he hx hc
+  have hcases := fun c (hc : c ≤ B.length) =>
+    cutIns_cases (fn := fn) (fin := fin) hx (cutBack_le B he hc)
+  have hTc : ∀ c, c ≤ B.length → cutTab B TB O e c = TB (cutBack B e c) :=
+    fun c hc => ite_eq_left hc
+  have hTO : ∀ c, B.length < c → cutTab B TB O e c = O := fun c hc => ite_eq_right (by omega)
+  have hsymX : ∀ ss, symStep (exitI fn fin) ss = .unk := fun ss => by
+    simp [symStep, exitI, cmpArgs?, movRegArgs?, flagCondCC?]
+  -- the labels of a cut program up to the end of the body are labels of the body
+  have hlab : ∀ c l, c ≤ B.length → isLabel l (cutIns fn fin B x (cutBack B e c)).1 = true →
+      x ≠ some (cutBack B e c) ∧
+        B[cutBack B e c]? = some (cutIns fn fin B x (cutBack B e c)) := by
+    intro c l hc hl
+    rcases hcases c hc with ⟨h1, -⟩ | h1 | h1
+    · rw [h1] at hl
+      simp [exitI, isLabel] at hl
+    · exact h1
+    · rw [(isLabel_shadow h1 l).1] at hl
+      cases hl
+  refine ⟨fun c => ?_, fun c i l pc hi hl hpc => ?_, fun c c' l tag hi => ?_,
+    fun y hy => ?_⟩
+  · intro i hi E X ss s gs hs hX
+    rcases Nat.lt_or_ge c (B.length + 1) with hc | hc
+    · rw [hget c (by omega), Option.some.injEq] at hi
+      subst hi
+      rcases hcases c (by omega) with ⟨h1, -⟩ | ⟨hxq, hq⟩ | h1
+      · rw [h1, hsymX] at hs; cases hs
+      · by_cases heq : e = some (cutBack B e c)
+        · obtain ⟨i', hi', hsh⟩ := he _ heq
+          rw [hq, Option.some.injEq] at hi'
+          rw [hi'] at hs
+          exact absurd hs (SymFootprint.symStep_shadowCall hsh _ _ _)
+        · have hqlt : cutBack B e c < B.length := (List.getElem?_eq_some_iff.mp hq).1
+          obtain ⟨hc1, hb1⟩ := cutBack_succ B he (by omega) hqlt heq
+          rw [hTc c (by omega)] at hX
+          rw [hTc (c + 1) hc1, hb1]
+          exact hTB.step _ _ hq E X ss s gs hs hX
+      · exact absurd hs (SymFootprint.symStep_shadowCall h1 _ _ _)
+    · rcases Nat.lt_or_ge c (B.length + 2) with hc2 | hc2
+      · have hcn : c = B.length + 1 := by omega
+        subst hcn
+        rw [hfinI, Option.some.injEq] at hi
+        subst hi
+        rw [symStep_label (by rfl)] at hs
+        simp only [SOut.ok.injEq] at hs
+        obtain ⟨rfl, rfl⟩ := hs
+        rw [hTO _ (by omega)] at hX
+        rw [hTO _ (by omega)]
+        exact ⟨hX, fun g hg => by simp at hg⟩
+      · rw [List.getElem?_eq_none (by omega)] at hi
+        cases hi
+  · -- jumps
+    have hc : c ≤ B.length := by
+      rcases Nat.lt_or_ge c (B.length + 1) with hc | hc
+      · omega
+      · rcases Nat.lt_or_ge c (B.length + 2) with hc2 | hc2
+        · rw [show c = B.length + 1 by omega, hfinI, Option.some.injEq] at hi
+          subst hi
+          cases hl
+        · rw [List.getElem?_eq_none (by omega)] at hi
+          cases hi
+    rw [hget c hc, Option.some.injEq] at hi
+    subst hi
+    obtain ⟨ins, hpc1, hpcl⟩ := findLabel_sound l _ pc hpc
+    rw [List.getElem?_map] at hpc1
+    obtain ⟨j, hj, rfl⟩ := Option.map_eq_some_iff.mp hpc1
+    rcases hcases c hc with ⟨h1, hq⟩ | ⟨hxq, hq⟩ | h1
+    · -- the jump to the end
+      rw [h1] at hl
+      simp only [exitI, jumpLabel?, Option.some.injEq] at hl
+      subst hl
+      have hpcn : pc = B.length + 1 := by
+        rcases Nat.lt_or_ge pc (B.length + 1) with h2 | h2
+        · exfalso
+          rw [hget pc (by omega), Option.some.injEq] at hj
+          subst hj
+          obtain ⟨-, hq'⟩ := hlab pc _ (by omega) hpcl
+          exact absurd hpcl (by rw [(hfin _ (List.mem_of_getElem? hq')).1]; simp)
+        · have := (List.getElem?_eq_some_iff.mp hj).1
+          omega
+      intro y hy
+      rw [hpcn, hTO _ (by omega)] at hy
+      rw [hTc c hc, hq]
+      exact hO y hy
+    · -- a jump of the body
+      have hfl := hfin _ (List.mem_of_getElem? hq)
+      have hpcn : pc ≤ B.length := by
+        rcases Nat.lt_or_ge pc (B.length + 1) with h2 | h2
+        · omega
+        · exfalso
+          have hpc2 : pc = B.length + 1 := by
+            have := (List.getElem?_eq_some_iff.mp hj).1
+            omega
+          rw [hpc2, hfinI, Option.some.injEq] at hj
+          subst hj
+          have hlf : l = fin := by simpa [finI, isLabel] using hpcl
+          subst hlf
+          exact hfl.2 hl
+      rw [hget pc hpcn, Option.some.injEq] at hj
+      subst hj
+      obtain ⟨-, hq'⟩ := hlab pc l hpcn hpcl
+      have hfB := findLabelMem_of_unique huniq hq' hpcl
+      intro y hy
+      rw [hTc pc hpcn] at hy
+      rw [hTc c hc]
+      exact hTB.jump _ _ l _ hq hl hfB y hy
+    · rw [(isLabel_shadow h1 l).2.1] at hl
+      cases hl
+  · -- conditional jumps
+    have hc : c ≤ B.length := by
+      rcases Nat.lt_or_ge c (B.length + 1) with hc | hc
+      · omega
+      · rcases Nat.lt_or_ge c (B.length + 2) with hc2 | hc2
+        · rw [show c = B.length + 1 by omega, hfinI, Option.some.injEq] at hi
+          cases hi
+        · rw [List.getElem?_eq_none (by omega)] at hi
+          cases hi
+    rw [hget c hc, Option.some.injEq] at hi
+    rcases hcases c hc with ⟨h1, -⟩ | ⟨hxq, hq⟩ | h1
+    · rw [h1] at hi; cases hi
+    · rw [hi] at hq
+      have heq : e ≠ some (cutBack B e c) := by
+        intro heq
+        obtain ⟨i', hi', hsh⟩ := he _ heq
+        rw [hq, Option.some.injEq] at hi'
+        exact (isLabel_shadow hsh 0).2.2 c' l (by rw [← hi'])
+      have hqlt : cutBack B e c < B.length := (List.getElem?_eq_some_iff.mp hq).1
+      obtain ⟨hc1, hb1⟩ := cutBack_succ B he hc hqlt heq
+      have h2 := hTB.cond _ c' l tag hq
+      refine ⟨h2.1, fun y hy => ?_⟩
+      rw [hTc (c + 1) hc1, hb1] at hy
+      rw [hTc c hc]
+      exact h2.2 y hy
+    · exact absurd (by rw [hi]) ((isLabel_shadow h1 0).2.2 c' l)
+  · rw [hlen, hTO _ (by omega)]
+    exact hy
+
+end Cut
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegComplete

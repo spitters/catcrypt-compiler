@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapPins
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegComplete
 
 @[expose] public section
 
@@ -35,10 +36,20 @@ indexed operand outside a load and a store, the load-effective-address
 the region export, an indexed operand occurs only in the load `LOADIDX` and the store
 `STOREIDX` with the memory tags `.load` and `.store`, and every compare is `CMP r, [r, 0]`.
 
+Section 4 bounds the entry live sets of the checks of the segments by the same table (step
+S2 of that completeness): on a reference of the shape `RefShape`, the live names the checker
+finds at the entry of a cut program lie in `insTab`, so the entry inclusion of the checks adds
+no refusal there.
+
 ## Main definitions
 
 * `PieceStart`: the start of a block or the position after a shadow instruction of a call.
 * `ReadCover`, `WriteCover`: the conditions on the instructions.
+* `RefShape`: the shape of an instruction of a reference: conditional jumps on the zero flag,
+  operations with one register destination or widening multiplies after a write of their
+  implicit source.
+* `mulxReads`, `liveTabX`: the implicit source of a widening multiply, and the liveness table
+  extended by it.
 
 ## Main results
 
@@ -52,6 +63,14 @@ the region export, an indexed operand occurs only in the load `LOADIDX` and the 
 * `mem_crossNames_of_liveRegTab_ren`: the same for a body renamed by a map of names, through
   `RegionAllocMapPins.pLiveR_renRM`: a name of the liveness table of the renamed body is the
   image of such a name of the body.
+* `tabClosed_liveTabX`: on a reference of the shape `RefShape`, the liveness table with the
+  implicit source of each widening multiply is closed along the body.
+* `livePost_cutAt`: that table along the cut positions is a post-fixpoint of `liveRound` on
+  every cut program.
+* `entry_live_sub_insTab`: the live names the checker finds at the entry of a cut program lie
+  in `insTab`.
+* `ownedCheckMCIn_insTab`, `calleeSegB_insTab_iff`: the entry inclusion adds no refusal at
+  `insTab`; `calleeSegB` at `insTab` is the check with the entry inclusion removed.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
@@ -533,5 +552,408 @@ theorem mem_crossNames_of_liveRegTab_ren {L : List LinstrRM} {τ : String → St
   exact ⟨z, hz, mem_crossNames_of_liveRegTab hG hR hW hk (mem_liveRegTab_iff.mpr hl)⟩
 
 end Live
+
+/-! ## 4. The entry sets of the liveness table bound the live sets of the segments
+
+On a reference of the shape `RefShape` (the export shape `CoShape`, or a widening multiply
+after a write of its implicit source), the liveness table `liveRegTab B outs`, extended at
+each widening multiply by its implicit source `mulxSrc` (`liveTabX`), is closed along the
+body (`tabClosed_liveTabX`): the symbolic step reads within the names the instruction reads
+and writes within `regDefs` (`SymFootprint.symStep_readsIn`,
+`SymFootprint.symStep_readsIn_mulx`), which is the transfer of the table. The extension is
+empty at the entries of the segments, so along the cut programs the table at the entry of a
+segment is the entry set `insTab B outs e`, and the observed names of an exit are names of
+the table at the exit (`segOutsAt_sub`). Hence the live names the checker finds at the entry
+of a segment lie in `insTab B outs e` (`entry_live_sub_insTab`), and the entry inclusion of
+`ownedCheckMCIn` adds no refusal at `insTab` (`ownedCheckMCIn_insTab`,
+`calleeSegB_insTab_iff`). -/
+
+section Entry
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (ownedCheckMCIn runsOfC
+  startC CFact)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegComplete
+open CatCrypt.Crypto.SecureCompilation.X86Backend.SymFootprint (OneDst MulxShape)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard (wideArgs? mulxSrc)
+open CatCrypt.Crypto.SecureCompilation.VIR.LprogCallCut (cutAt stopPos entryPos sites)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemLabeled (isLabel)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegCheck (segOutsAt shadowAt regsOf
+  calleeSegB siteMap)
+
+variable {B : List LinstrRM} {outs : List String}
+
+theorem regDefs_sub_defNames (i : LinstrRM) :
+    ∀ y ∈ regDefs i, y ∈ JasminLsemExportRegAlloc.defNames i.1 := by
+  intro y hy
+  unfold regDefs JasminLsemExportRegAlloc.memRegDefs at hy
+  split_ifs at hy <;> simp_all
+
+theorem shadowCall?_eq_some {w : LinstrR} {dst f : String} {srcs : List LOperand}
+    (h : LprogIsa.shadowCall? w = some (dst, f, srcs)) :
+    ∃ opn, w = .Lopn [.reg dst] opn srcs := by
+  unfold LprogIsa.shadowCall? at h
+  split at h
+  · split at h
+    · cases h
+      exact ⟨_, rfl⟩
+    · cases h
+  · cases h
+
+theorem mem_opNames_of_regName {o : LOperand} {y : String} (h : o.regName? = some y) :
+    y ∈ JasminLsemExportRewrites.opNames o := by
+  cases o <;> simp_all [LOperand.regName?, JasminLsemExportRewrites.opNames]
+
+/-- **The shape of the instruction `i` at position `q` of a reference `B`**: a conditional
+    jump on the zero flag, and an operation with one register destination or a widening
+    multiply whose predecessor is no shadow instruction of a call and writes the implicit
+    source `mulxSrc`. -/
+def RefShape (B : List LinstrRM) (q : Nat) (i : LinstrRM) : Prop :=
+  (∀ c l, i.1 = .Lcond c l → c = .reg "Z" ∨ c = .reg "NZ") ∧
+    (OneDst i ∨ ∃ lo hi b, MulxShape i lo hi b ∧
+      ∃ p i', q = p + 1 ∧ B[p]? = some i' ∧ LprogIsa.shadowCall? i'.1 = none ∧
+        mulxSrc ∈ regDefs i')
+
+/-- An instruction of the export shape has the shape of a reference at every position. -/
+theorem refShape_of_coShape {q : Nat} {i : LinstrRM} (h : CoShape i) : RefShape B q i :=
+  ⟨h.2.1, Or.inl h.2.2⟩
+
+/-- An instruction with a successful symbolic step is no unconditional jump. -/
+theorem not_goto_of_symStep {i : LinstrRM} {ss s : SSt} {gs : List SG}
+    (h : symStep i ss = .ok s gs) : ∀ x, i.1 ≠ .Lgoto x := by
+  intro x hx
+  obtain ⟨w, tag⟩ := i
+  simp only at hx
+  subst hx
+  simp [symStep, JasminLsemMemFlagGuard.cmpArgs?, JasminLsemMemFlagGuard.movRegArgs?,
+    JasminLsemMemFlagGuard.flagCondCC?] at h
+
+/-- The implicit source of a widening multiply. -/
+def mulxReads (i : LinstrRM) : List String :=
+  match wideArgs? i with
+  | some (.mulx _ _ _) => [mulxSrc]
+  | _ => []
+
+theorem mulxReads_cases (i : LinstrRM) :
+    mulxReads i = [] ∨ (∃ lo hi b, MulxShape i lo hi b) ∧ mulxReads i = [mulxSrc] := by
+  unfold mulxReads
+  split
+  · rename_i lo hi b h
+    exact Or.inr ⟨⟨lo, hi, b, X86Backend.SymFootprint.mulxShape_of_wideArgs h⟩, rfl⟩
+  · exact Or.inl rfl
+
+theorem mulxReads_oneDst {i : LinstrRM} (h : OneDst i) : mulxReads i = [] := by
+  rcases mulxReads_cases i with h1 | ⟨⟨lo, hi, b, opn, he, -⟩, -⟩
+  · exact h1
+  · obtain ⟨x, hx⟩ := h _ _ _ he
+    cases hx
+
+theorem mulxReads_not_lopn {i : LinstrRM} (h : ∀ ds o ss, i.1 ≠ .Lopn ds o ss) :
+    mulxReads i = [] := by
+  rcases mulxReads_cases i with h1 | ⟨⟨lo, hi, b, opn, he, -⟩, -⟩
+  · exact h1
+  · exact absurd he (h _ _ _)
+
+theorem regDefs_not_lopn {i : LinstrRM} (h : ∀ ds o ss, i.1 ≠ .Lopn ds o ss) :
+    regDefs i = [] := by
+  refine List.eq_nil_iff_forall_not_mem.mpr fun y hy => ?_
+  have := regDefs_sub_defNames i y hy
+  obtain ⟨w, tag⟩ := i
+  cases w <;> simp_all [JasminLsemExportRegAlloc.defNames]
+
+/-- The liveness table of `B` with the implicit source of the widening multiply at each of
+    its positions. -/
+def liveTabX (B : List LinstrRM) (outs : List String) (q : Nat) : List String :=
+  tabAt (liveRegTab B outs) q ++ ((B[q]?).map mulxReads).getD []
+
+theorem mem_liveTabX {q : Nat} {y : String} :
+    y ∈ liveTabX B outs q ↔
+      y ∈ tabAt (liveRegTab B outs) q ∨ ∃ i, B[q]? = some i ∧ y ∈ mulxReads i := by
+  unfold liveTabX
+  cases B[q]? <;> simp
+
+/-- **The names live at a label are live after it.** -/
+theorem pLiveR_label {p : Nat} {j : LinstrRM} {l : LLabel} (hj : B[p]? = some j)
+    (hl : isLabel l j.1 = true) {y : String} (h : PLiveR B outs p y) :
+    PLiveR B outs (p + 1) y := by
+  obtain ⟨w, tag⟩ := j
+  cases w <;> simp only [isLabel, Bool.false_eq_true] at hl
+  cases h with
+  | read hi hy =>
+      rw [hj, Option.some.injEq] at hi
+      subst hi
+      simp [useNames] at hy
+  | next hi _ _ h' => exact h'
+  | jump hi hl' _ _ =>
+      rw [hj, Option.some.injEq] at hi
+      subst hi
+      simp [jumpLabel?] at hl'
+  | out _ => simp at hj
+
+/-- The predecessor of a widening multiply writes its implicit source. -/
+theorem mulx_pred (hB : ∀ q i, B[q]? = some i → RefShape B q i) {q : Nat} {i : LinstrRM}
+    (hi : B[q]? = some i) {y : String} (hy : y ∈ mulxReads i) :
+    y = mulxSrc ∧ ∃ p i', q = p + 1 ∧ B[p]? = some i' ∧ LprogIsa.shadowCall? i'.1 = none ∧
+      mulxSrc ∈ regDefs i' := by
+  rcases (hB q i hi).2 with h1 | ⟨lo, hi', b, hm, hp⟩
+  · rw [mulxReads_oneDst h1] at hy
+    cases hy
+  · rcases mulxReads_cases i with h2 | ⟨-, h2⟩
+    · rw [h2] at hy; cases hy
+    · rw [h2, List.mem_singleton] at hy
+      exact ⟨hy, hp⟩
+
+/-- **The liveness table, with the implicit sources of the widening multiplies, is closed
+    along a reference of the shape `RefShape`.** -/
+theorem tabClosed_liveTabX (hB : ∀ q i, B[q]? = some i → RefShape B q i) :
+    TabClosed B outs (liveTabX B outs) := by
+  -- a name of the table after a position that the instruction there does not write
+  have hnext : ∀ q i r, B[q]? = some i → (∀ x, i.1 ≠ .Lgoto x) →
+      r ∈ liveTabX B outs (q + 1) → r ∉ regDefs i →
+      r ∈ tabAt (liveRegTab B outs) q ∨ r = mulxSrc := by
+    intro q i r hi hg hr hd
+    rcases mem_liveTabX.mp hr with hr | ⟨i1, hi1, hr⟩
+    · exact Or.inl (mem_liveRegTab_iff.mpr
+        (.next hi hg (fun _ _ _ _ => hd) (mem_liveRegTab_iff.mp hr)))
+    · obtain ⟨rfl, p, i', hp, hi', -, hd'⟩ := mulx_pred hB hi1 hr
+      exact Or.inr rfl
+  refine ⟨fun q i hi E X ss s gs hs hX => ?_, fun q i l p hi hl hp y hy => ?_,
+    fun q c l tag hi => ?_, fun y hy => ?_⟩
+  · rcases (hB q i hi).2 with h1 | ⟨lo, hi', b, hm, -⟩
+    · refine X86Backend.SymFootprint.symStep_readsIn h1 hs (hX.mono fun r hr => ?_)
+      refine mem_liveTabX.mpr (Or.inl ?_)
+      rcases hr with hr | ⟨hr1, hr2⟩
+      · exact mem_liveRegTab_iff.mpr (.read hi hr)
+      · rcases mem_liveTabX.mp hr1 with hr1 | ⟨i1, hi1, hr1⟩
+        · exact mem_liveRegTab_iff.mpr
+            (.next hi (not_goto_of_symStep hs) (fun _ _ _ _ => hr2)
+              (mem_liveRegTab_iff.mp hr1))
+        · obtain ⟨rfl, p, i', hp, hi', -, hd'⟩ := mulx_pred hB hi1 hr1
+          obtain rfl : p = q := by omega
+          rw [hi, Option.some.injEq] at hi'
+          subst hi'
+          exact absurd hd' hr2
+    · have hmx : mulxSrc ∈ liveTabX B outs q := by
+        refine mem_liveTabX.mpr (Or.inr ⟨i, hi, ?_⟩)
+        rcases mulxReads_cases i with h2 | ⟨-, h2⟩
+        · unfold mulxReads at h2
+          obtain ⟨opn, he, ho⟩ := hm
+          obtain ⟨w, tag⟩ := i
+          simp only at he
+          subst he
+          simp [wideArgs?, ho] at h2
+        · rw [h2]; exact List.mem_singleton_self _
+      refine X86Backend.SymFootprint.symStep_readsIn_mulx hm hs (hX.mono fun r hr => ?_)
+      rcases hr with hr | rfl | ⟨hr1, hr2⟩
+      · exact mem_liveTabX.mpr (Or.inl (mem_liveRegTab_iff.mpr (.read hi hr)))
+      · exact hmx
+      · rcases hnext q i r hi (not_goto_of_symStep hs) hr1 hr2 with h3 | rfl
+        · exact mem_liveTabX.mpr (Or.inl h3)
+        · exact hmx
+  · obtain ⟨k, hk, hkl⟩ := JasminLsemLabeled.findLabel_sound l _ p hp
+    rw [List.getElem?_map] at hk
+    obtain ⟨j, hj, rfl⟩ := Option.map_eq_some_iff.mp hk
+    rcases mem_liveTabX.mp hy with hy | ⟨i1, hi1, hy⟩
+    · exact mem_liveTabX.mpr (Or.inl (mem_liveRegTab_iff.mpr
+        (.jump hi hl hp (pLiveR_label hj hkl (mem_liveRegTab_iff.mp hy)))))
+    · rw [hj, Option.some.injEq] at hi1
+      subst hi1
+      rw [mulxReads_not_lopn fun ds o ss he => by rw [he] at hkl; simp [isLabel] at hkl] at hy
+      cases hy
+  · have hc := hB q _ hi
+    refine ⟨?_, fun y hy => ?_⟩
+    · rcases hc.1 c l rfl with rfl | rfl <;> rfl
+    · rcases mem_liveTabX.mp hy with hy' | ⟨i1, hi1, hy'⟩
+      · exact mem_liveTabX.mpr (Or.inl (mem_liveRegTab_iff.mpr (.next hi
+          (fun _ e => by cases e) (fun _ _ _ e => by cases e) (mem_liveRegTab_iff.mp hy'))))
+      · obtain ⟨-, p, i', hp, hi', -, hd'⟩ := mulx_pred hB hi1 hy'
+        obtain rfl : p = q := by omega
+        rw [hi, Option.some.injEq] at hi'
+        subst hi'
+        rw [regDefs_not_lopn (fun _ _ _ e => by cases e)] at hd'
+        cases hd'
+  · exact mem_liveTabX.mpr (Or.inl (mem_liveRegTab_iff.mpr (.out hy)))
+
+/-- **The observed names of an exit are names of the liveness table at the exit**: the names
+    read after the body at its end, and at a shadow instruction its register operands and the
+    names of the table after it other than its destination. -/
+theorem segOutsAt_sub {x : Option Nat} :
+    ∀ y ∈ segOutsAt B (insTab B outs) outs x, y ∈ tabAt (liveRegTab B outs) (stopPos B x) := by
+  intro y hy
+  cases x with
+  | none => exact mem_liveRegTab_iff.mpr (.out hy)
+  | some p =>
+      simp only [segOutsAt] at hy
+      split at hy
+      · rename_i dst f srcs hsh
+        simp only [shadowAt] at hsh
+        cases hi : B[p]? with
+        | none => rw [hi] at hsh; cases hsh
+        | some i =>
+            rw [hi, Option.bind_some] at hsh
+            obtain ⟨opn, he⟩ := shadowCall?_eq_some hsh
+            rw [mem_liveRegTab_iff]
+            simp only [List.mem_append, List.mem_filter, bne_iff_ne, ne_eq] at hy
+            rcases hy with hy | ⟨hy1, hy2⟩
+            · refine .read hi ?_
+              rw [he]
+              simp only [regsOf, List.mem_filterMap] at hy
+              obtain ⟨o, ho, hoy⟩ := hy
+              exact List.mem_flatMap.mpr ⟨o, ho, mem_opNames_of_regName hoy⟩
+            · refine .next hi (fun z => by rw [he]; exact fun e => by cases e)
+                (fun _ _ _ _ hd => hy2 ?_) (mem_liveRegTab_iff.mp hy1)
+              have := regDefs_sub_defNames i y hd
+              rw [he] at this
+              simpa [JasminLsemExportRegAlloc.defNames, JasminLsemExportRewrites.opNames]
+                using this
+      · simp at hy
+
+/-- At the entry of a segment, the extended table is the liveness table. -/
+theorem liveTabX_entry (hB : ∀ q i, B[q]? = some i → RefShape B q i) {e : Option Nat}
+    (he : SiteOk B e) : ∀ y ∈ liveTabX B outs (entryPos e), y ∈ insTab B outs e := by
+  intro y hy
+  rcases mem_liveTabX.mp hy with hy | ⟨i, hi, hy⟩
+  · exact hy
+  · exfalso
+    obtain ⟨-, p, i', hp, hi', hsh, -⟩ := mulx_pred hB hi hy
+    cases e with
+    | none => simp [entryPos] at hp
+    | some p0 =>
+        obtain rfl : p0 = p := by simpa [entryPos] using hp
+        obtain ⟨i'', hi'', hsh'⟩ := he p0 rfl
+        rw [hi', Option.some.injEq] at hi''
+        subst hi''
+        exact hsh' hsh
+
+theorem tabClosed_cutAt_ref {fn : String} {fin : LLabel} {e x : Option Nat}
+    (hB : ∀ q i, B[q]? = some i → RefShape B q i)
+    (hfin : FinFree fin B)
+    (huniq : LabelsOnce B)
+    (he : SiteOk B e) (hx : SiteOk B x) :
+    TabClosed (cutAt fn fin B e x) (segOutsAt B (insTab B outs) outs x)
+      (cutTab B (liveTabX B outs) (segOutsAt B (insTab B outs) outs x) e) :=
+  tabClosed_cutAt he hx hfin huniq (tabClosed_liveTabX hB)
+    (fun y hy => mem_liveTabX.mpr (Or.inl (segOutsAt_sub y hy)))
+
+/-- **The table along the cut positions is a post-fixpoint of `liveRound` on a cut
+    program.** For a reference `B` of the shape `RefShape` with labels declared once and no
+    use of the label `fin`, an entry `e` and an exit `x` that are the end of the body or
+    shadow instructions of calls, the extended liveness table `liveTabX B outs` read along
+    `cutBack B e`, at the starts of the blocks of the cut program and with the flags live,
+    covers what every block needs given it, for shared runs whose image guards are among
+    their reference guards at every block that does not return. -/
+theorem livePost_cutAt {fn : String} {fin : LLabel} {e x : Option Nat}
+    (hB : ∀ q i, B[q]? = some i → RefShape B q i) (hfin : FinFree fin B)
+    (huniq : LabelsOnce B) (he : SiteOk B e) (hx : SiteOk B x) {C' : List LinstrRM}
+    {G G' : CFG} (hG : cfgOf ((cutAt fn fin B e x).map Prod.fst) = some G)
+    {F F' : Nat → List CFact}
+    (hgd : ∀ k r, (runsOfC F F' (cutAt fn fin B e x) C' G G' symStep)[k]? = some r →
+      (G.blk k).term ≠ .ret → GuardsIn r) :
+    LivePost (segOutsAt B (insTab B outs) outs x) (cutAt fn fin B e x) G
+      (runsOfC F F' (cutAt fn fin B e x) C' G G' symStep)
+      (tabLive G (cutTab B (liveTabX B outs) (segOutsAt B (insTab B outs) outs x) e)) :=
+  livePost_tab hG (tabClosed_cutAt_ref hB hfin huniq he hx) hgd
+
+/-- **The live names at the entry of a cut program lie in the entry set of the liveness
+    table.** For a reference `B` of the shape `RefShape` with labels declared once and no use
+    of the label `fin`, an entry `e` and an exit `x` that are the end of the body or shadow
+    instructions of calls, and the observed names `segOutsAt B (insTab B outs) outs x`, the
+    names that the live-set iteration of the checker finds live at the entry of the cut
+    program `cutAt fn fin B e x` are names of `insTab B outs e`. The image enters through one
+    assumption, `hgd`: at every block that does not return, the normalised image guards are
+    among the normalised reference guards. -/
+theorem entry_live_sub_insTab {fn : String} {fin : LLabel} {e x : Option Nat}
+    (hB : ∀ q i, B[q]? = some i → RefShape B q i)
+    (hfin : FinFree fin B)
+    (huniq : LabelsOnce B)
+    (he : SiteOk B e) (hx : SiteOk B x) {C' : List LinstrRM} {G G' : CFG}
+    (hG : cfgOf ((cutAt fn fin B e x).map Prod.fst) = some G) {F F' : Nat → List CFact}
+    (hgd : ∀ k r, (runsOfC F F' (cutAt fn fin B e x) C' G G' symStep)[k]? = some r →
+      (G.blk k).term ≠ .ret → GuardsIn r) (n : Nat) :
+    ∀ v ∈ ((liveIter (segOutsAt B (insTab B outs) outs x) (cutAt fn fin B e x) G
+      (runsOfC F F' (cutAt fn fin B e x) C' G G' symStep) n
+      (Array.replicate G.blocks.size ([], false))).getD 0 ([], false)).1,
+        v ∈ insTab B outs e := by
+  intro v hv
+  have hne : cutAt fn fin B e x ≠ [] := by
+    intro h0
+    have := cutAt_length fn fin B x he
+    rw [h0] at this
+    simp at this
+  have := liveIter_entry_sub hG hne (tabClosed_cutAt_ref hB hfin huniq he hx) hgd n v hv
+  unfold cutTab at this
+  rw [ite_eq_left (Nat.zero_le _), cutBack_zero B he] at this
+  exact liveTabX_entry hB he v this
+
+/-- **The entry inclusion adds no refusal at the entry sets of the liveness table.** Under
+    the hypotheses of `entry_live_sub_insTab` on `B`, a cut program pair that
+    `ownedCheckMCIn` accepts at some entry set is accepted at `insTab B outs e`. -/
+theorem ownedCheckMCIn_insTab {fn : String} {fin : LLabel} {e x : Option Nat}
+    {ins : List String} {C' : List LinstrRM} (hB : ∀ q i, B[q]? = some i → RefShape B q i)
+    (hfin : FinFree fin B)
+    (huniq : LabelsOnce B)
+    (he : SiteOk B e) (hx : SiteOk B x)
+    (h : ownedCheckMCIn ins (segOutsAt B (insTab B outs) outs x) (cutAt fn fin B e x) C' =
+      true) :
+    ownedCheckMCIn (insTab B outs e) (segOutsAt B (insTab B outs) outs x)
+      (cutAt fn fin B e x) C' = true := by
+  refine ownedCheckMCIn_of_tab (tabClosed_cutAt_ref hB hfin huniq he hx) (fun v hv => ?_) h
+  unfold cutTab at hv
+  rw [ite_eq_left (Nat.zero_le _), cutBack_zero B he] at hv
+  exact liveTabX_entry hB he v hv
+
+theorem siteOk_of_mem {T : LprogIsa.ProcTable} {e : Option Nat}
+    (h : e ∈ none :: (sites T B).map some) : SiteOk B e := by
+  intro p hp
+  subst hp
+  simp only [List.mem_cons, reduceCtorEq, List.mem_map, Option.some.injEq, exists_eq_right,
+    false_or, sites, List.mem_filter, List.mem_range] at h
+  obtain ⟨hp, hany⟩ := h
+  rw [List.getElem?_eq_getElem hp] at hany ⊢
+  refine ⟨_, rfl, fun hn => ?_⟩
+  simp [LprogCallCut.isProcB, LprogIsa.procCall?, hn] at hany
+
+/-- **The checks of the segments at the entry sets of the liveness table are the checks
+    with the entry inclusion removed.** For a reference `ref` of the shape `RefShape` with
+    labels declared once and no use of the label `fin`, `calleeSegB` at `insTab ref outs`
+    holds exactly when its two conditions on the shadow instructions hold and every cut
+    program pair is accepted by `ownedCheckMCIn` at some entry set, with the observed names
+    of `insTab ref outs`. -/
+theorem calleeSegB_insTab_iff {T : LprogIsa.ProcTable} {fn : String} {fin : LLabel}
+    {ref img : List LinstrRM} (hB : ∀ q i, ref[q]? = some i → RefShape ref q i)
+    (hfin : FinFree fin ref)
+    (huniq : LabelsOnce ref) :
+    calleeSegB T fn fin (insTab ref outs) outs ref img = true ↔
+      ((sites T ref).map (shadowAt ref) == (sites T img).map (shadowAt img) &&
+        (sites T ref).all (fun p =>
+          (shadowAt ref p).all fun q => q.2.2 == (regsOf q.2.2).map LOperand.reg)) = true ∧
+      ∀ e ∈ none :: (sites T ref).map some, ∀ x ∈ none :: (sites T ref).map some,
+        ∃ ins, ownedCheckMCIn ins (segOutsAt ref (insTab ref outs) outs x)
+          (cutAt fn fin ref e x)
+          (cutAt fn fin img (siteMap T ref img e) (siteMap T ref img x)) = true := by
+  unfold calleeSegB
+  simp only [Bool.and_eq_true, List.all_eq_true]
+  constructor
+  · rintro ⟨h1, h2⟩
+    exact ⟨h1, fun e he x hx => ⟨_, h2 e he x hx⟩⟩
+  · rintro ⟨h1, h2⟩
+    refine ⟨h1, fun e he x hx => ?_⟩
+    obtain ⟨ins, hi⟩ := h2 e he x hx
+    exact ownedCheckMCIn_insTab hB hfin huniq (siteOk_of_mem he) (siteOk_of_mem hx) hi
+
+/-- The label `freshLabel A` is neither declared nor named by a jump in a body `B` of
+    instructions of `A` whose jumps name labels declared in `B`. -/
+theorem freshLabel_free {A : List LinstrRM} (hsub : ∀ i ∈ B, i ∈ A)
+    (hdecl : ∀ i ∈ B, ∀ l, jumpLabel? i.1 = some l → ∃ j ∈ B, isLabel l j.1 = true) :
+    FinFree (freshLabel A) B := by
+  intro i hi
+  refine ⟨?_, fun hj => ?_⟩
+  · cases hl : isLabel (freshLabel A) i.1 with
+    | false => rfl
+    | true => exact absurd (lt_freshLabel (hsub i hi) hl) (lt_irrefl _)
+  · obtain ⟨j, hj, hl⟩ := hdecl i hi _ hj
+    exact absurd (lt_freshLabel (hsub j hj) hl) (lt_irrefl _)
+
+end Entry
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames

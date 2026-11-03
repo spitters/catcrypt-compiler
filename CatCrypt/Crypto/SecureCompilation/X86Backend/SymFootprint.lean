@@ -28,7 +28,8 @@ the footprint condition C1 of the completeness of the checks of a calling body.
 The statements hold for an instruction with one register destination when it is an operation
 (`OneDst`), the third conjunct of the export shape `RegionAllocMapComplete.CoShape`. The only
 instruction the symbolic step knows with an implicit source, the widening multiply `MULX`
-(source `mulxSrc`), has two destinations. The base of an indexed operand is a name of
+(source `mulxSrc`), has two destinations; section 7 gives its transfer, with `mulxSrc` among
+the names read. The base of an indexed operand is a name of
 `useNames`, so the load-effective-address `LEA d, [b + x · sc]`, which reads `b` as a
 register, is covered without a hypothesis on the operands.
 
@@ -38,6 +39,7 @@ words from the words of the state without new table entries.
 ## Main definitions
 
 * `OneDst`: an operation has one register destination.
+* `MulxShape`: the two-destination widening multiply.
 * `ReadsIn`: the words of a symbolic state at a set of names, its arrays and its flags read
   only start registers of a set.
 * `RWithin`, `SWithin`: a step description writes within the destinations and reads
@@ -55,6 +57,8 @@ words from the words of the state without new table entries.
 * `symRun_readsIn`: the transfer across a run of a list of instructions.
 * `symStep_shadowCall`: the step of a shadow instruction of a call has no description, so a
   block holding one has no successful run.
+* `symStep_readsIn_mulx`: the transfer of `ReadsIn` across the two-destination widening
+  multiply `MULX lo, hi, b` (`MulxShape`), which reads its implicit source `mulxSrc`.
 
 Elaboration takes about ten seconds, spent in the case splits over the recognisers of the
 step (`symN_within`, `symStep_within`, `symStep_shadowCall`).
@@ -1128,6 +1132,101 @@ theorem symStep_shadowCall {i : LinstrRM} (h : LprogIsa.shadowCall? i.1 ≠ none
   unfold symStep
   simp only [e1, e2, e3, e4, flagCondCC?]
   rcases eMem with e | e <;> rw [e] <;> simp [aluFl]
+
+/-! ## 7. The widening multiply
+
+The fused reference holds the two-destination widening multiply `MULX lo, hi, b`
+(`JasminLsemFuseMulHi.fuseMulHiRM`), which reads the implicit source `mulxSrc` besides its
+operand. Its step writes the two names of `regDefs` and reads within `useNames` and
+`mulxSrc` (`symStep_readsIn_mulx`). -/
+
+/-- **The widening multiply** `MULX lo, hi, b` (or `MULXMEM`): two register destinations and
+    one source operand. -/
+def MulxShape (i : LinstrRM) (lo hi : String) (b : LOperand) : Prop :=
+  ∃ opn, i.1 = .Lopn [.reg lo, .reg hi] opn [b] ∧
+    (opn = withWidthTag 64 "MULX" ∨ opn = withWidthTag 64 "MULXMEM")
+
+theorem mulxShape_of_wideArgs {i : LinstrRM} {lo hi : String} {b : LOperand}
+    (h : wideArgs? i = some (.mulx lo hi b)) : MulxShape i lo hi b := by
+  unfold wideArgs? at h
+  split at h
+  · split at h <;> cases h
+  · rename_i lo' hi' opn b' he
+    split at h
+    · rename_i ho
+      cases h
+      exact ⟨opn, he, ho⟩
+    · cases h
+  · cases h
+
+/-- A widening multiply writes its two destinations. -/
+theorem regDefs_mulx {i : LinstrRM} {lo hi : String} {b : LOperand}
+    (h : MulxShape i lo hi b) : regDefs i = [lo, hi] := by
+  obtain ⟨opn, he, -⟩ := h
+  obtain ⟨w, tag⟩ := i
+  simp only at he
+  subst he
+  cases tag <;> simp [regDefs, cmpArgs?, movRegArgs?, memRegDefs, storeHit?,
+    JasminLsemMem.storeStruct?, JasminLsemMem.zeroStruct?, JasminLsemMem.storeImmStruct?,
+    defNames, opNames]
+
+theorem symStep_mulx {i : LinstrRM} {lo hi : String} {b : LOperand}
+    (h : MulxShape i lo hi b) (ss : SSt) : symStep i ss = symWide (.mulx lo hi b) ss := by
+  obtain ⟨opn, he, ho⟩ := h
+  obtain ⟨w, tag⟩ := i
+  simp only at he
+  subst he
+  have hw : wideArgs? (LinstrR.Lopn [.reg lo, .reg hi] opn [b], tag) =
+      some (.mulx lo hi b) := by
+    simp only [wideArgs?, ite_eq_left ho]
+  simp [symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, hw]
+
+/-- **The transfer of `ReadsIn` across a widening multiply**: when the words of `ss` at the
+    names the instruction reads, at its implicit source `mulxSrc` and at the names of `N` it
+    does not write read within `X`, the words of the state after the step at the names of
+    `N` read within `X`, and so do its guards. -/
+theorem symStep_readsIn_mulx {i : LinstrRM} {lo hi : String} {b : LOperand}
+    (hm : MulxShape i lo hi b) {ss s : SSt} {gs : List SG} (h : symStep i ss = .ok s gs)
+    {N : String → Prop}
+    (hX : ReadsIn E X (fun r => r ∈ useNames i.1 ∨ r = mulxSrc ∨ (N r ∧ r ∉ regDefs i)) ss) :
+    ReadsIn E X N s ∧ ∀ g ∈ gs, ∀ v ∈ g.varsT E, X v := by
+  have hu : ∀ u ∈ opNames b, u ∈ useNames i.1 := by
+    obtain ⟨opn, he, -⟩ := hm
+    intro u hu
+    rw [he]
+    simpa [useNames] using hu
+  have hd := regDefs_mulx hm
+  rw [symStep_mulx hm, symWide] at h
+  split at h
+  · rename_i tx gx tb gb h1 h2
+    simp only [SOut.ok.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    have v1 := symOp64_vars (E := E) h1
+    have v2 := symOp64_vars (E := E) h2
+    have hx : ∀ v ∈ tx.varsT E, X v := fun v hv => by
+      obtain ⟨u, hu', hv'⟩ := v1.1 v hv
+      simp only [opNames, List.mem_singleton] at hu'
+      subst hu'
+      exact hX.regs _ (Or.inr (Or.inl rfl)) v hv'
+    have hb : ∀ v ∈ tb.varsT E, X v := fun v hv => by
+      obtain ⟨u, hu', hv'⟩ := v2.1 v hv
+      exact hX.regs u (Or.inl (hu u hu')) v hv'
+    refine ⟨⟨fun r hr v hv => ?_, hX.arrs, hX.zf, hX.cf, hX.of⟩, fun g hg v hv => ?_⟩
+    · rw [SSt.setR_regs, SSt.setR_regs] at hv
+      split_ifs at hv with e1 e2
+      · simp only [STerm.varsT, List.mem_append] at hv
+        exact hv.elim (hx v) (hb v)
+      · simp only [mulLoT, STerm.varsT, List.mem_append, List.not_mem_nil, or_false] at hv
+        exact hv.elim (hx v) (hb v)
+      · exact hX.regs r (Or.inr (Or.inr ⟨hr, by rw [hd]; simp [e1, e2]⟩)) v hv
+    · rcases List.mem_append.mp hg with hg | hg
+      · obtain ⟨u, hu', hv'⟩ := v1.2 g hg v hv
+        simp only [opNames, List.mem_singleton] at hu'
+        subst hu'
+        exact hX.regs _ (Or.inr (Or.inl rfl)) v hv'
+      · obtain ⟨u, hu', hv'⟩ := v2.2 g hg v hv
+        exact hX.regs u (Or.inl (hu u hu')) v hv'
+  · cases h
 
 end Layers
 
