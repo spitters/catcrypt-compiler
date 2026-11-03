@@ -46,8 +46,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesDecode (decodeLprog RInstr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics (Halts HaltsC)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (HaltsO oracleAt runOf)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTCall (guarded)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (HaltsO)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLink (shiftProg)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionKernel (regionPre regionPost)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall
@@ -458,7 +457,8 @@ theorem compileModule_eq {m : HaxModule} {σ : AbiLayout} {fname : String}
     * the linked functions of the module with `ls` linked in turn have distinct names and
       are linked kernels (`LinkedKernel`; a region-compiled callee with a `u64` result is
       one by `LinkedWordKernel.toKernel`, with the call-site precondition
-      `callSitePre_ofRegion`), and
+      `callSitePre_ofRegion`), the code of each but the last being an item stream
+      (`LprogBytesLinkReloc.KernelItems`), and
     * the meaning of each function of `ls` returns the values of the reference meaning of the
       function it replaces at each step (`LinkSteps`),
 
@@ -476,19 +476,28 @@ theorem compileModule_correct {m : HaxModule} {σ : AbiLayout} {fname : String}
       ∧ ∀ ls : List LinkedFn, List.Forall₂ SameData ks ls →
         ((ls.foldl HaxModule.linkFn m).linked.map (·.name)).Nodup →
         (∀ l ∈ (ls.foldl HaxModule.linkFn m).linked, LinkedKernel l) →
+        (∀ l ∈ (ls.foldl HaxModule.linkFn m).linked.dropLast,
+          X86Backend.LprogBytesLinkReloc.KernelItems l.bytes) →
         LinkSteps CatCrypt.Crypto.Hax.hax64WExit m ls →
         ∀ (sa : AState), σ.Regions sa → ∀ v, haxRuns σ m sa v →
           ∃ prog, decodeLprog bytes = some prog ∧
             ((∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
-            ∨ ∃ c ∈ (ls.foldl HaxModule.linkFn m).linked.filterMap LinkedFn.calleeData,
-              ∃ pc q, decodeLprog c.bytes = some q ∧ prog = pc ++ shiftProg pc.length q
+            ∨ ∃ cs : List CalleeData,
+              cs.Sublist ((ls.foldl HaxModule.linkFn m).linked.filterMap LinkedFn.calleeData)
+              ∧ cs ≠ [] ∧ (cs.map (·.name)).Nodup
+              ∧ ∃ (pc Q : List RInstr) (k : String → Nat) (q : String → List RInstr),
+                (∀ c ∈ cs, decodeLprog c.bytes = some (q c.name))
+                ∧ decodeLprog (cs.flatMap (·.bytes)) = some Q
+                ∧ (∀ c ∈ cs, ∃ A B, Q = A ++ shiftProg A.length (q c.name) ++ B
+                  ∧ A.length = k c.name)
+                ∧ prog = pc ++ shiftProg pc.length Q
                 ∧ (∃ sa', HaltsC aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
-                ∧ ∃ sa', HaltsO aMachine (oracleAt pc.length (guarded c.sig (runOf ctRegime q)))
-                    pc 0 sa sa' ∧ σ.ResultOf sa sa' v) := by
+                ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
+                  ∧ σ.ResultOf sa sa' v) := by
   obtain ⟨order, ks, ho, hks, hc⟩ := compileModule_eq h
-  refine ⟨order, ks, ho, hks, fun ls hls hnd hk hsteps sa hsep v hrun => ?_⟩
+  refine ⟨order, ks, ho, hks, fun ls hls hnd hk hit hsteps sa hsep v hrun => ?_⟩
   obtain ⟨prog, hd, h⟩ := haxc_correct_auto _ σ fname P bytes (hc ls hls) sa hsep v
-    (runs_foldl_linkFn _ σ ls m hsteps hrun) hnd hk
+    (runs_foldl_linkFn _ σ ls m hsteps hrun) hnd hk hit
   rcases h with ⟨sa', hh, hR, -⟩ | h
   · exact ⟨prog, hd, .inl ⟨sa', hh, hR⟩⟩
   · exact ⟨prog, hd, .inr h⟩

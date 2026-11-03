@@ -102,10 +102,11 @@ theorem haxc_correct_auto_tuple (te : TExpr) (σ : AbiLayout) (fname : String) (
     (hrun : (denoteSpine hax64WExit fuel te.erase).run env = (.val v, env')) :
     ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ σ.ResultOf sa sa' v := by
-  obtain ⟨prog, hd, ⟨sa', hh, hR, -⟩ | ⟨c, hcm, -⟩⟩ := haxc_correct_auto te σ fname P bytes hc sa
-    hsep v ((haxRuns_single σ te sa v).mpr ⟨env, fuel, env', henv, hrun,
-      isControlFlow_false_of_pairTail hpt hres hsep henv hrun⟩)
+  obtain ⟨prog, hd, ⟨sa', hh, hR, -⟩ | ⟨cs, hsub, hne, -⟩⟩ :=
+    haxc_correct_auto te σ fname P bytes hc sa hsep v
+      ((haxRuns_single σ te sa v).mpr ⟨env, fuel, env', henv, hrun,
+        isControlFlow_false_of_pairTail hpt hres hsep henv hrun⟩)
   · exact ⟨prog, sa', hd, hh, hR⟩
-  · nomatch hcm
+  · exact absurd (List.sublist_nil.mp hsub) hne
 
 end CatCrypt.Crypto.SecureCompilation.Haxc

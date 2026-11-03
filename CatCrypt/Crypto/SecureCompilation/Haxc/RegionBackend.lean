@@ -58,9 +58,9 @@ or a check refuses. The stages are, in order:
 ## A calling body
 
 `compileRegion` takes a list of linked functions (`CalleeData`), empty by default. A program
-with a `call` whose shadow instructions name one symbol of the list, with a word-array
-result, is compiled at that callee (`regionCallee`), and each stage is a function of the
-optional callee that is the stage above without one:
+with a `call` whose shadow instructions name symbols of the list, with a word-array result,
+is compiled at the table of the linked functions of these symbols (`regionCallee`), and each
+stage is a function of the optional table that is the stage above without one:
 
 * the allocation `calleeAlloc`: the pool of the names the callee keeps, the shadow
   instruction left in the input of the allocation and expanded on the allocated body;
@@ -79,13 +79,19 @@ optional callee that is the stage above without one:
   validation by segments at every function name (`calleeCutB_soundK`), and the checks of
   the segments give the simulation it takes (`calleeBody_imgRun`);
 * the bytes `calleeBytes`: the relocating encoder at the symbol map `calleeSym`, under the
-  checks `calleeLinkB`, followed by the code of the callee;
-* the constant-time check `calleeCtB`: the decision with a call and an optional destination
-  `AbiLayout.ctCheckRXO` on the program `calleeProg` of the function, at the destination
-  `CalleeData.outDst?` of an out result.
+  checks `calleeLinkB`, followed by the code of the table; the entry of each function after
+  the first is an instruction of the decoded code of the table (`CalleeTab.regionB`), and
+  when the code of each function but the last is an item stream the code of the table is a
+  region of the blocks of the functions (`CalleeTab.regionBlocks`, `calleeBytes_decode`);
+* the constant-time check `calleeCtB`: the decision with calls of linked callees
+  `AbiLayout.ctCheckRXT` on the program `calleeProg` of the function, at the clobber set
+  `CalleeTab.clobB`, the public argument registers `CalleeTab.ctIfc` and the destinations
+  `CalleeTab.ctDst` at the call targets, and the frame of the table; at one function this is
+  the decision `AbiLayout.ctCheckRXO` at the data of that function (`calleeCtB_one`).
 
-The callee of these stages is an optional table `CalleeTab`; `regionCallee` gives the table of
-one function. Without a table each reduces by `rfl` (`calleeImgT_none`, `calleeCodeT_none`,
+The callee of these stages is an optional table `CalleeTab` (`regionCallee_tab`); the
+constant-time check `calleeCtB` accepts a table of one function. Without a table each
+reduces by `rfl` (`calleeImgT_none`, `calleeCodeT_none`,
 `calleeImgBT_none`, `calleeAlloc_none`, `calleeBytes_none`, `calleeCtB_none`,
 `regionCoB_none`), and a program without `call` has no callee at every list
 (`compileRegion_of_callFree`). The result of a calling body is gated; no correctness
@@ -399,6 +405,20 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   first function is at offset and index `0`, read without decoding the code.
 * `calleeLinkB_one`, `calleeProg_one`, `calleeCtB_one`, `calleeSym_one`: the bytes stages at the
   table of one function.
+* `CalleeTab.tgtPos?`, `CalleeTab.ctIfc`, `CalleeTab.ctDst`, `CalleeTab.clobB`: the interface of
+  a table at the call targets behind a caller, with their forms at one function
+  (`CalleeTab.ctIfc_one`, `CalleeTab.ctDst_one`, `CalleeTab.clobB_one`).
+* `CalleeTab.regionB`, `CalleeTab.regionB_spec`: the check that the entries of the functions of
+  a table are instructions of the decoded code of the table.
+* `CalleeTab.regionEntries`, `CalleeTab.regionBlocks`, `CalleeTab.regionCode_lookup`: the code
+  of a table whose functions but the last are item streams is a region of their blocks, at
+  the entry offsets and indices of the table.
+* `codeCallSyms`, `regionCallee_tab`, `regionCallee_some_stackArr`, `regionCallee_sublist`,
+  `regionCallee_self`, `regionCallee_singleton`: the called symbols of an exported code and the
+  table `regionCallee` finds, the linked functions of these symbols.
+* `symTgt_linkMap_regionTgt`, `calleeBytes_decode`, `calleeBytes_decode_one`: the bytes of a
+  calling body at a table decode to the program of the function followed by the region of the
+  code of the table.
 * `calleeChecksB`, `CalleeChecksOK`, `calleeChecksB_spec`: the checks of a calling body at the
   data its callees give. `calleeBodyB`, `CalleeBodyOK` take that data from one function and
   `calleeBodyBT`, `CalleeBodyOKT` from a table; `calleeBodyBT_one`, `calleeBodyB_of_one` relate
@@ -2082,6 +2102,12 @@ def CalleeTab.lookup (T : CalleeTab) (g : String) : Option CalleeData :=
   · have h' : ¬ c.name = g := fun e => h e.symm
     simp [CalleeTab.lookup, CalleeTab.one, h, h']
 
+/-- The function of a table at a symbol is a function of the table with that symbol. -/
+theorem CalleeTab.lookup_spec {T : CalleeTab} {g : String} {c : CalleeData}
+    (h : T.lookup g = some c) : c ∈ T.fns ∧ c.name = g := by
+  unfold CalleeTab.lookup at h
+  exact ⟨List.mem_of_find?_eq_some h, by simpa using List.find?_some h⟩
+
 /-- The symbols of a table, in order. -/
 def CalleeTab.names (T : CalleeTab) : List String := T.fns.map (·.name)
 
@@ -2324,6 +2350,14 @@ def siteFn (cs : String → Option CalleeData) (sl : String → Option (String �
   match (callSymAt body p).bind cs with
   | some c => calleeSiteAt c sl body p
   | none => ("", [])
+
+/-- At a call of a symbol `f` whose callee in `cs` is `c`, the site function is the call
+    site of `c`. -/
+theorem siteFn_of_callSym {cs : String → Option CalleeData}
+    {sl : String → Option (String × Nat)} {body : Lcmd} {p : Nat} {f : String}
+    {c : CalleeData} (hs : callSymAt body p = some f) (hc : cs f = some c) :
+    siteFn cs sl body p = calleeSiteAt c sl body p := by
+  simp [siteFn, hs, hc]
 
 /-- **Soundness of `decodeSites`**: the positions of the decoded sites are
     `ImageAddrCall.callPos body`, and each site is a call of its symbol in the body, whose
@@ -2613,6 +2647,30 @@ def callParamsB (c : CalleeData) (sl : String → Option (String × Nat)) (body 
 def callParamsBT (T : CalleeTab) (sl : String → Option (String × Nat)) (body : Lcmd) : Bool :=
   callParamsSelB (fun p => (callSymAt body p).bind T.lookup) sl body
 
+/-- **`callParamsBT` at a call**: the operands of a call of a symbol of the table pass
+    `callParamsAtB` at the function of that symbol. -/
+theorem callParamsAtB_of_tab {T : CalleeTab} {sl : String → Option (String × Nat)}
+    {body : Lcmd} (h : callParamsBT T sl body = true) {p : Nat} {bi : Linstr}
+    (hb : body[p]? = some bi) {ra : Option String} {f : String} {l : LLabel}
+    (hbi : bi.li_i = .Lcall ra (f, l)) {c : CalleeData} (hc : T.lookup f = some c) :
+    callParamsAtB c sl body p = true := by
+  simp only [callParamsBT, callParamsSelB, List.all_eq_true, List.mem_range] at h
+  have hp := h p (List.getElem?_eq_some_iff.mp hb).1
+  have hs : callSymAt body p = some f := by simp [callSymAt, hb, hbi]
+  rw [hb] at hp
+  simp only [Option.all_some, hbi, X86Backend.ImageAddrCall.isCallB, Bool.not_true,
+    Bool.false_or, hs, Option.bind_some, hc] at hp
+  exact hp
+
+/-- **`callParamsAtB` at a position**: the parameters and the operands at the position `p`
+    pass `paramAtB`, and the operands pass `outDestB`. -/
+theorem callParamsAtB_spec {c : CalleeData} {sl : String → Option (String × Nat)}
+    {body : Lcmd} {p : Nat} (h : callParamsAtB c sl body p = true) :
+    (∀ q ∈ c.ins.zip (c.siteArgs sl body p), paramAtB sl body p q.1 q.2 = true)
+      ∧ outDestB c (c.siteArgs sl body p) = true := by
+  simp only [callParamsAtB, Bool.and_eq_true, List.all_eq_true] at h
+  exact h
+
 /-- **`callParamsB` at a call instruction**: the parameters and the operands at the position
     `p` of a call pass `paramAtB`, and the operands pass `outDestB`. -/
 theorem callParamsB_spec {c : CalleeData} {sl : String → Option (String × Nat)}
@@ -2694,13 +2752,14 @@ theorem callParamsBT_one {c : CalleeData} {sl : String → Option (String × Nat
     callParamsBT (CalleeTab.one c) sl body = callParamsB c sl body :=
   callParamsSelB_congr fun _ _ _ _ hb hbi => callSym_lookup_one hb hbi (hsym hb hbi)
 
-/-- `ImageAddrCall.callDeadSymB` reads the interface, the kind and the site at the calls
-    only. -/
-theorem callDeadSymB_congr {sig sig' : String → X86Backend.Callee.CalleeSig}
+/-- `ImageAddrCall.callDeadSymB` reads, at the calls only, the exempted names
+    `ImageAddrCall.exemptC` of the interface, the kind and the site. -/
+theorem callDeadSymB_congr_exempt {sig sig' : String → X86Backend.Callee.CalleeSig}
     {out out' : String → Bool} {site site' : Nat → String × List String}
     {E : Nat → List String} {body : Lcmd}
     (h : ∀ p bi ra f l, body[p]? = some bi → bi.li_i = .Lcall ra (f, l) →
-      sig f = sig' f ∧ out f = out' f ∧ site p = site' p) :
+      X86Backend.ImageAddrCall.exemptC (sig f) = X86Backend.ImageAddrCall.exemptC (sig' f)
+        ∧ out f = out' f ∧ site p = site' p) :
     X86Backend.ImageAddrCall.callDeadSymB sig out site E body
       = X86Backend.ImageAddrCall.callDeadSymB sig' out' site' E body := by
   unfold X86Backend.ImageAddrCall.callDeadSymB
@@ -2717,6 +2776,19 @@ theorem callDeadSymB_congr {sig sig' : String → X86Backend.Callee.CalleeSig}
           obtain ⟨h1, h2, h3⟩ := h p _ ra f l hb rfl
           simp only [X86Backend.ImageAddrCall.deadOut, h1, h2, h3]
       | _ => rfl
+
+/-- `ImageAddrCall.callDeadSymB` reads the interface, the kind and the site at the calls
+    only. -/
+theorem callDeadSymB_congr {sig sig' : String → X86Backend.Callee.CalleeSig}
+    {out out' : String → Bool} {site site' : Nat → String × List String}
+    {E : Nat → List String} {body : Lcmd}
+    (h : ∀ p bi ra f l, body[p]? = some bi → bi.li_i = .Lcall ra (f, l) →
+      sig f = sig' f ∧ out f = out' f ∧ site p = site' p) :
+    X86Backend.ImageAddrCall.callDeadSymB sig out site E body
+      = X86Backend.ImageAddrCall.callDeadSymB sig' out' site' E body :=
+  callDeadSymB_congr_exempt fun p bi ra f l hb hbi => by
+    obtain ⟨h1, h2, h3⟩ := h p bi ra f l hb hbi
+    exact ⟨by rw [h1], h2, h3⟩
 
 /-- **The check of the dead names at the calls of a printed body against a table**, at the slot
     map `sl` and the dead names `E`: `ImageAddrCall.callDeadSymB` at the interface and the
@@ -5241,6 +5313,21 @@ theorem calleeCodeBT_sound {T : CalleeTab} {sl : String → Option (String × Na
             s'.mem x = s.mem x :=
   X86Backend.Callee.keepCheckAtB_sound (calleeCodeBT_keep h hc hq)
 
+/-- **The operands of each call of a function of a table whose code does not decode are
+    distinct**: under `calleeCodeBT`, at a call of a symbol `f` whose function `c` has code
+    that does not decode, the operands `CalleeData.siteArgs` of the call are pairwise
+    distinct. -/
+theorem calleeCodeBT_nodup {T : CalleeTab} {sl : String → Option (String × Nat)} {body : Lcmd}
+    (h : calleeCodeBT T sl body = true) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
+    {ra : Option String} {f : String} {l : LLabel} (hbi : bi.li_i = .Lcall ra (f, l))
+    {c : CalleeData} (hc : T.lookup f = some c) (hd : decodeLprog c.bytes = none) :
+    (c.siteArgs sl body p).Nodup := by
+  simp only [calleeCodeBT, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+  have hp := h.2 p (List.getElem?_eq_some_iff.mp hb).1
+  have hs : callSymAt body p = some f := by simp [callSymAt, hb, hbi]
+  rw [hb] at hp
+  simpa [hbi, X86Backend.ImageAddrCall.isCallB, hs, hc, hd] using hp
+
 /-- **The checks of a calling body**, of the printed body `body` at the slot map `sl`, with the
     reference `ref` of the image check, the observed names `outs` and the function name `fn`,
     against the data the callees give: the Boolean `keep` of their pools, the Boolean `codeOk`
@@ -5555,19 +5642,17 @@ theorem calleeBody_callerSep {σ : AbiLayout} {nm : String → String} {c : Call
   have hr := calleeBody_stackRoom h
   X86Backend.CalleeStackRoom.callerSep_of_regions hrs hreg hr.1 hr.2 hsl
 
-/-- **The destination of an out call is an array of the slot map.** If the dead names of a
-    printed body pass `calleeDeadB` against `c` with an out result `.out n' k`, and the
-    parameter of `c` at the destination position `k` is an array of `n` words, then at a
-    call at the position `p` the destination of the call site `calleeSiteAt` at `p` is an
-    array of the slot map `sl` of length `n`. -/
-theorem calleeSite_dest {c : CalleeData} {sl : String → Option (String × Nat)}
-    {E : Nat → List String} {body : Lcmd} {n' k : Nat} (hr : c.res = .out n' k)
-    (h : calleeDeadB c sl E body = true) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
-    {ra : Option String} {t : String × LLabel} (hbi : bi.li_i = .Lcall ra t) {po : String}
+/-- **The destination of an out call at a position is an array of the slot map.** If the
+    operands at the position `p` pass `callParamsAtB` against `c` with an out result
+    `.out n' k`, and the parameter of `c` at the destination position `k` is an array of `n`
+    words, the destination of the call site `calleeSiteAt` at `p` is an array of the slot map
+    `sl` of length `n`. -/
+theorem calleeSite_destAt {c : CalleeData} {sl : String → Option (String × Nat)}
+    {body : Lcmd} {n' k : Nat} (hr : c.res = .out n' k) {p : Nat}
+    (h : callParamsAtB c sl body p = true) {po : String}
     {n : Nat} (hd : c.ins[k]? = some (po, .words n)) :
     ∃ q, sl q = some ((calleeSiteAt c sl body p).1, n) := by
-  simp only [calleeDeadB, hr, Bool.and_eq_true] at h
-  have hp := (callParamsB_spec h.2 hb hbi).1
+  have hp := (callParamsAtB_spec h).1
   obtain ⟨hk, hik⟩ := List.getElem?_eq_some_iff.mp hd
   simp only [calleeSiteAt, hr]
   have hlen := c.siteArgs_length sl body p
@@ -5581,6 +5666,24 @@ theorem calleeSite_dest {c : CalleeData} {sl : String → Option (String × Nat)
   obtain ⟨q, -, hq⟩ := Option.bind_eq_some_iff.mp hh.2
   refine ⟨q, ?_⟩
   rw [hq, List.getD_eq_getElem _ _ hk']
+
+/-- **The destination of an out call is an array of the slot map.** If the dead names of a
+    printed body pass `calleeDeadB` against `c` with an out result `.out n' k`, and the
+    parameter of `c` at the destination position `k` is an array of `n` words, then at a
+    call at the position `p` the destination of the call site `calleeSiteAt` at `p` is an
+    array of the slot map `sl` of length `n` (`calleeSite_destAt`). -/
+theorem calleeSite_dest {c : CalleeData} {sl : String → Option (String × Nat)}
+    {E : Nat → List String} {body : Lcmd} {n' k : Nat} (hr : c.res = .out n' k)
+    (h : calleeDeadB c sl E body = true) {p : Nat} {bi : Linstr} (hb : body[p]? = some bi)
+    {ra : Option String} {t : String × LLabel} (hbi : bi.li_i = .Lcall ra t) {po : String}
+    {n : Nat} (hd : c.ins[k]? = some (po, .words n)) :
+    ∃ q, sl q = some ((calleeSiteAt c sl body p).1, n) := by
+  simp only [calleeDeadB, hr, Bool.and_eq_true] at h
+  refine calleeSite_destAt hr ?_ hd
+  simp only [callParamsB, callParamsSelB, List.all_eq_true, List.mem_range] at h
+  have hp := h.2 p (List.getElem?_eq_some_iff.mp hb).1
+  rw [hb] at hp
+  simpa [hbi, X86Backend.ImageAddrCall.isCallB] using hp
 
 /-- **The footprint bound of a callee whose footprint is its frame.** A callee `c` whose
     footprint is the `c.frame` bytes below the entry stack register satisfies
@@ -7700,6 +7803,187 @@ def CalleeTab.linkMap (T : CalleeTab) (n L : Nat) (g : String) : Option (Nat × 
     (CalleeTab.one c).linkMap n L g = some (n, L) := by
   simp [CalleeTab.linkMap]
 
+/-- **The region check of a table**: the entry of each function after the first, at the byte
+    offset `CalleeTab.entryOff`, starts an instruction of the one decode of the code
+    `CalleeTab.bytes`, so that `CalleeTab.entryIdx` is the index of that instruction. A table
+    of one function has no such entry; its code is a region of one block
+    (`LprogBytesLinkReloc.regionBlocks_one`). -/
+def CalleeTab.regionB (T : CalleeTab) : Bool :=
+  (List.range (T.fns.length - 1)).all fun i =>
+    ((X86Backend.LprogBytesDecode.decodeAt T.bytes.length 0 T.bytes).bind fun xs =>
+      xs.findIdx? fun z => decide (z.1 = T.entryOff (i + 1))).isSome
+
+/-- The table of one linked function passes the region check. -/
+@[simp] theorem CalleeTab.regionB_one (c : CalleeData) : (CalleeTab.one c).regionB = true := by
+  simp [CalleeTab.regionB, CalleeTab.one]
+
+/-- **Soundness of the region check**: in a table that passes `CalleeTab.regionB`, the entry of
+    the function at each position `i > 0` is the instruction of index `CalleeTab.entryIdx T i`
+    in the decoded layout of the code of the table. -/
+theorem CalleeTab.regionB_spec {T : CalleeTab} (h : T.regionB = true) {i : Nat} (h0 : 0 < i)
+    (hi : i < T.fns.length) :
+    ∃ xs, X86Backend.LprogBytesDecode.decodeAt T.bytes.length 0 T.bytes = some xs
+      ∧ xs.findIdx? (fun z => decide (z.1 = T.entryOff i)) = some (T.entryIdx i) := by
+  obtain ⟨j, rfl⟩ : ∃ j, i = j + 1 := ⟨i - 1, by omega⟩
+  have hj := List.all_eq_true.mp h j (List.mem_range.mpr (by omega))
+  obtain ⟨k, hk⟩ := Option.isSome_iff_exists.mp hj
+  obtain ⟨xs, hxs, hf⟩ := Option.bind_eq_some_iff.mp hk
+  have he : T.entryIdx (j + 1) = k := by simp only [CalleeTab.entryIdx, hk, Option.getD_some]
+  exact ⟨xs, hxs, he ▸ hf⟩
+
+/-- **The blocks of a table as the entries of a callee region**: the symbol, the code and the
+    program `q c` of each function `c`, in order. -/
+def CalleeTab.regionEntries (T : CalleeTab)
+    (q : CalleeData → List X86Backend.LprogBytesDecode.RInstr) :
+    List X86Backend.LprogBytesLinkReloc.CalleeBlock :=
+  T.fns.map fun c => ⟨c.name, c.bytes, q c⟩
+
+/-- The bytes of the entries of a table are the code of the table. -/
+theorem CalleeTab.flatMap_regionEntries (T : CalleeTab)
+    (q : CalleeData → List X86Backend.LprogBytesDecode.RInstr) :
+    (T.regionEntries q).flatMap (·.bytes) = T.bytes := by
+  simp [CalleeTab.regionEntries, CalleeTab.bytes, List.flatMap_map]
+
+/-- The byte offset of the first function with the symbol `f` among `fns` is the offset of the
+    block of `f` in the region of their entries. -/
+theorem regionOffset_entries (q : CalleeData → List X86Backend.LprogBytesDecode.RInstr) :
+    ∀ (fns : List CalleeData) (f : String), f ∈ fns.map (·.name) →
+      ((fns.take ((fns.findIdx? (·.name == f)).getD 0)).flatMap (·.bytes)).length
+        = X86Backend.LprogBytesLinkReloc.regionOffset
+            (fns.map fun c => (⟨c.name, c.bytes, q c⟩ :
+              X86Backend.LprogBytesLinkReloc.CalleeBlock)) f
+  | [], _, h => by simp at h
+  | [c], f, h => by
+      have hc : c.name = f := by simpa [eq_comm] using h
+      simp [List.findIdx?_cons, hc, X86Backend.LprogBytesLinkReloc.regionOffset]
+  | c :: c' :: cs, f, h => by
+      by_cases hc : c.name = f
+      · simp [List.findIdx?_cons, hc, X86Backend.LprogBytesLinkReloc.regionOffset]
+      · have h' : f ∈ (c' :: cs).map (·.name) := by
+          simp only [List.map_cons, List.mem_cons] at h ⊢
+          rcases h with h | h
+          · exact absurd h.symm hc
+          · exact h
+        have ih := regionOffset_entries q (c' :: cs) f h'
+        obtain ⟨i, hi⟩ : ∃ i, (c' :: cs).findIdx? (·.name == f) = some i := by
+          obtain ⟨d, hd, rfl⟩ := List.mem_map.mp h'
+          apply Option.isSome_iff_exists.mp
+          rw [List.findIdx?_isSome]
+          exact List.any_eq_true.mpr ⟨d, hd, by simp⟩
+        rw [hi, Option.getD_some] at ih
+        have hcf : (c.name == f) = false := by simpa using hc
+        simp only [List.findIdx?_cons, hcf, Bool.false_eq_true, ↓reduceIte, hi, Option.map_some,
+          Option.getD_some, List.take_succ_cons, List.flatMap_cons, List.length_append,
+          List.map_cons, X86Backend.LprogBytesLinkReloc.regionOffset, hc]
+        simp only [List.map_cons] at ih
+        rw [← ih]
+
+/-- The function of the symbol `f` (`CalleeTab.lookup`) has the block of `f` in the region of
+    the entries of a list of functions. -/
+theorem regionCode_entries (q : CalleeData → List X86Backend.LprogBytesDecode.RInstr) :
+    ∀ (fns : List CalleeData) (f : String) (c : CalleeData),
+      fns.find? (·.name == f) = some c →
+      X86Backend.LprogBytesLinkReloc.regionCode
+          (fns.map fun c => (⟨c.name, c.bytes, q c⟩ :
+            X86Backend.LprogBytesLinkReloc.CalleeBlock)) f = q c
+  | [], _, _, h => by simp at h
+  | [d], f, c, h => by
+      simp only [List.find?_cons, List.find?_nil] at h
+      split at h
+      · obtain rfl := Option.some.inj h
+        simp [X86Backend.LprogBytesLinkReloc.regionCode]
+      · cases h
+  | d :: d' :: ds, f, c, h => by
+      simp only [List.find?_cons] at h
+      by_cases hd : d.name = f
+      · simp only [hd, beq_self_eq_true, Option.some.injEq] at h
+        subst h
+        simp [X86Backend.LprogBytesLinkReloc.regionCode, hd]
+      · have hdf : (d.name == f) = false := by simpa using hd
+        rw [hdf] at h
+        have ih := regionCode_entries q (d' :: ds) f c (by simpa [List.find?_cons] using h)
+        simp only [List.map_cons, X86Backend.LprogBytesLinkReloc.regionCode, hd, ↓reduceIte]
+        simpa using ih
+
+/-- **The region of the code of a table whose blocks are item streams.** Let each function of a
+    nonempty table `T` have nonempty code that decodes to the program `q c` without `call`, and
+    let the code of each function but the last be an item stream (`KernelItems`). For symbols
+    `fs` of the table, the code `CalleeTab.bytes` is a region with the block of `f` at the byte
+    offset `CalleeTab.entryOff` and the index `CalleeTab.entryIdx` of the first function of
+    `f` (`LprogBytesLinkReloc.regionBlocks_of_items`); the block of `f` is the program of that
+    function (`regionCode_entries`). -/
+theorem CalleeTab.regionBlocks (T : CalleeTab) (hT : T.fns ≠ [])
+    (q : CalleeData → List X86Backend.LprogBytesDecode.RInstr)
+    (hdec : ∀ c ∈ T.fns, decodeLprog c.bytes = some (q c))
+    (hne : ∀ c ∈ T.fns, c.bytes ≠ [])
+    (hq : ∀ c ∈ T.fns, ∀ tg, X86Backend.LprogBytesDecode.RInstr.call tg ∉ q c)
+    (hit : ∀ c ∈ T.fns.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems c.bytes)
+    (fs : List String) (hfs : ∀ f ∈ fs, f ∈ T.names) :
+    X86Backend.LprogBytesLinkReloc.RegionBlocks T.bytes fs (fun g => T.entryOff (T.symPos g))
+      (fun g => T.entryIdx (T.symPos g))
+      (X86Backend.LprogBytesLinkReloc.regionCode (T.regionEntries q))
+      (X86Backend.LprogBytesLinkReloc.regionProg (T.regionEntries q)) := by
+  have R := X86Backend.LprogBytesLinkReloc.regionBlocks_of_items fs (T.regionEntries q)
+    (by simpa [CalleeTab.regionEntries] using hT)
+    (fun e he => by
+      obtain ⟨c, hc, rfl⟩ := List.mem_map.mp he
+      exact hdec c hc)
+    (fun e he => by
+      obtain ⟨c, hc, rfl⟩ := List.mem_map.mp he
+      exact hne c hc)
+    (fun e he => by
+      obtain ⟨c, hc, rfl⟩ := List.mem_map.mp he
+      exact hq c hc)
+    (fun e he => by
+      rw [CalleeTab.regionEntries, ← List.map_dropLast] at he
+      obtain ⟨c, hc, rfl⟩ := List.mem_map.mp he
+      exact hit c hc)
+  rw [CalleeTab.flatMap_regionEntries] at R
+  have hO : ∀ f ∈ fs, T.entryOff (T.symPos f)
+      = X86Backend.LprogBytesLinkReloc.regionOffset (T.regionEntries q) f := fun f hf =>
+    regionOffset_entries q T.fns f (hfs f hf)
+  obtain ⟨xs₂, hd, hr, hidx⟩ := R.decode
+  have hK : ∀ f ∈ fs, T.entryIdx (T.symPos f)
+      = X86Backend.LprogBytesLinkReloc.regionIndex (T.regionEntries q) f := by
+    intro f hf
+    cases hs : T.symPos f with
+    | zero =>
+        -- The first function has the symbol `f`.
+        obtain ⟨c, cs, hcs⟩ := List.exists_cons_of_ne_nil hT
+        have hc : c.name = f := by
+          have hmem := hfs f hf
+          simp only [CalleeTab.names, hcs, List.map_cons, List.mem_cons] at hmem
+          simp only [CalleeTab.symPos, hcs, List.findIdx?_cons] at hs
+          by_contra hne'
+          have hcf : (c.name == f) = false := by simpa using hne'
+          simp only [hcf, Bool.false_eq_true, ↓reduceIte] at hs
+          rcases hmem with h | h
+          · exact hne' h.symm
+          · obtain ⟨d, hd, rfl⟩ := List.mem_map.mp h
+            have hsome : (cs.findIdx? (·.name == d.name)).isSome = true := by
+              rw [List.findIdx?_isSome]
+              exact List.any_eq_true.mpr ⟨d, hd, by simp⟩
+            obtain ⟨i, hi⟩ := Option.isSome_iff_exists.mp hsome
+            simp [hi] at hs
+        simp only [CalleeTab.entryIdx_zero, CalleeTab.regionEntries, hcs, List.map_cons]
+        cases cs with
+        | nil => simp [X86Backend.LprogBytesLinkReloc.regionIndex]
+        | cons _ _ => simp [X86Backend.LprogBytesLinkReloc.regionIndex, hc]
+    | succ i =>
+        have h1 := hO f hf
+        rw [hs] at h1
+        simp only [CalleeTab.entryIdx, hd, Option.bind_some, h1, hidx f hf, Option.getD_some]
+  exact ⟨⟨xs₂, hd, hr, fun f hf => by simp only [hO f hf, hK f hf]; exact hidx f hf⟩,
+    fun f hf => by rw [hK f hf]; exact R.block f hf, R.callFree⟩
+
+/-- The block of a symbol of a table in the region of its entries is the program of the
+    function of that symbol. -/
+theorem CalleeTab.regionCode_lookup (T : CalleeTab)
+    (q : CalleeData → List X86Backend.LprogBytesDecode.RInstr) {f : String} {c : CalleeData}
+    (h : T.lookup f = some c) :
+    X86Backend.LprogBytesLinkReloc.regionCode (T.regionEntries q) f = q c :=
+  regionCode_entries q T.fns f c h
+
 /-- **The symbol map of a caller of the functions of `T` with the printed body `b`**: a symbol
     of `T` at the byte length of the function of `b` and the offset `CalleeTab.entryOff` of the
     entry of its function, less the bytes `LprogBytes.prologueLen` in front of the body, and no
@@ -7725,13 +8009,15 @@ theorem calleeSym_one (c : CalleeData) (b : Lcmd) (g : String) :
   by_cases h : g = c.name <;> simp [calleeSym, h]
 
 /-- **The checks of the relocating encoder** on the printed body `b` of a caller of the
-    functions of `T`: the code of each function is nonempty; the instructions of `b` have
-    shapes (`DecodeGen.shapesOf`); and the items `LprogBytesLinkReloc.fundefItemsRelocL` of `b`
-    at the shapes and the symbol map `calleeSym` pass `LprogBytesLinkReloc.branchOKRelocMap` and
-    denote a program (`LprogBytesLinkReloc.expectedRelocMap`) under the target map
-    `CalleeTab.linkMap` at the instruction count and the byte length of the function. -/
+    functions of `T`: the code of each function is nonempty; the entries of the functions are
+    instructions of the decoded code of the table (`CalleeTab.regionB`); the instructions of
+    `b` have shapes (`DecodeGen.shapesOf`); and the items
+    `LprogBytesLinkReloc.fundefItemsRelocL` of `b` at the shapes and the symbol map `calleeSym`
+    pass `LprogBytesLinkReloc.branchOKRelocMap` and denote a program
+    (`LprogBytesLinkReloc.expectedRelocMap`) under the target map `CalleeTab.linkMap` at the
+    instruction count and the byte length of the function. -/
 def calleeLinkB (T : CalleeTab) (b : Lcmd) : Bool :=
-  T.fns.all (fun c => !c.bytes.isEmpty) &&
+  T.fns.all (fun c => !c.bytes.isEmpty) && T.regionB &&
     match X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b with
     | none => false
     | some ds =>
@@ -7779,7 +8065,7 @@ theorem calleeLinkB_one (c : CalleeData) (b : Lcmd) :
   unfold calleeLinkB
   have hall : (CalleeTab.one c).fns.all (fun d => !d.bytes.isEmpty) = !c.bytes.isEmpty := by
     simp [CalleeTab.one]
-  rw [hall]
+  rw [hall, CalleeTab.regionB_one, Bool.and_true]
   cases X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b with
   | none => rfl
   | some ds =>
@@ -7883,23 +8169,30 @@ theorem regionEncode_spec {P : Lprog} {gate : Lcmd → Bool}
     · cases h
   · cases h
 
-/-- **The callee of a structured program** `p` with the exported code `code`, among the
-    linked functions `linked`: no callee for a program without `call`
-    (`NFProg.callFree`); for a program with a `call` and a word-array result whose shadow
-    instructions name one symbol, the table of the first linked function of that symbol. The
-    outer `none` is a refusal, in three cases.
+/-- **The symbols the shadow instructions of the exported code `code` call**, each once, in the
+    order of their first call. -/
+def codeCallSyms (code : List LinstrRM) : List String :=
+  (code.filterMap fun i => (LprogIsa.shadowCall? i.fst).map (·.2.1)).eraseDups
+
+/-- **The callee table of a structured program** `p` with the exported code `code`, among the
+    linked functions `linked`: no table for a program without `call` (`NFProg.callFree`); for
+    a program with a `call` and a word-array result, the table of the linked functions whose
+    symbols the shadow instructions call (`codeCallSyms`), in the order of `linked`. The outer
+    `none` is a refusal, in two cases.
 
     * The result is a register: the register-result allocation
       `comToLfundefPhysAbiFromVirt` expands the shadow instructions before it allocates,
       which gives a value live across the call a register the callee may change.
-    * The shadow instructions name two symbols or more.
-    * No linked function has the symbol. -/
+    * A called symbol is the symbol of no linked function. -/
 def regionCallee (linked : List CalleeData) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (code : List LinstrRM) : Option (Option CalleeTab) :=
   if p.callFree = true then some none
   else
-    match t, (code.filterMap fun i => (LprogIsa.shadowCall? i.fst).map (·.2.1)).eraseDups with
-    | .stackArr _ _, [f] => (linked.find? fun c => c.name == f).map fun c => some (CalleeTab.one c)
+    match t, codeCallSyms code with
+    | .stackArr _ _, f :: fs =>
+        if (f :: fs).all fun g => linked.any (·.name == g) then
+          some (some ⟨linked.filter fun c => (f :: fs).contains c.name⟩)
+        else none
     | _, _ => none
 
 /-- A program without `call` has no callee, at every list of linked functions. -/
@@ -7909,16 +8202,90 @@ theorem regionCallee_of_callFree {Γ : Ctxt jasminDialect} {t : JasminTy}
   unfold regionCallee
   rw [ite_eq_left h]
 
+/-- **The table `regionCallee` finds**: the called symbols of the code are nonempty, each is the
+    symbol of a linked function, and the table holds the linked functions with these symbols,
+    in the order of `linked`. -/
+theorem regionCallee_tab {linked : List CalleeData} {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM} {T : CalleeTab}
+    (h : regionCallee linked p code = some (some T)) :
+    p.callFree = false ∧ codeCallSyms code ≠ []
+      ∧ (∀ f ∈ codeCallSyms code, ∃ c ∈ linked, c.name = f)
+      ∧ T = ⟨linked.filter fun c => (codeCallSyms code).contains c.name⟩ := by
+  unfold regionCallee at h
+  split at h
+  · cases h
+  · rename_i hcf
+    split at h
+    · rename_i f fs hfs
+      split at h
+      · rename_i hall
+        obtain rfl := (Option.some.inj (Option.some.inj h)).symm
+        refine ⟨by simpa using hcf, by simp [hfs], fun g hg => ?_, by rw [hfs]⟩
+        rw [hfs] at hg
+        obtain ⟨c, hc, hcg⟩ := List.any_eq_true.mp (List.all_eq_true.mp hall g hg)
+        exact ⟨c, hc, beq_iff_eq.mp hcg⟩
+      · cases h
+    · cases h
+
+/-- A program for which `regionCallee` finds a callee table has a word-array result. -/
+theorem regionCallee_some_stackArr {linked : List CalleeData} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM}
+    {T : CalleeTab} (h : regionCallee linked p code = some (some T)) :
+    ∃ w m, t = .stackArr w m := by
+  unfold regionCallee at h
+  split at h
+  · cases h
+  · split at h
+    · exact ⟨_, _, rfl⟩
+    · cases h
+
+/-- The functions of the table `regionCallee` finds are a sublist of the linked functions. -/
+theorem regionCallee_sublist {linked : List CalleeData} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM} {T : CalleeTab}
+    (h : regionCallee linked p code = some (some T)) : T.fns.Sublist linked := by
+  obtain ⟨-, -, -, rfl⟩ := regionCallee_tab h
+  exact List.filter_sublist
+
+/-- **The table `regionCallee` finds is its own table**: at the functions of the table found
+    among `linked`, `regionCallee` finds the same table. -/
+theorem regionCallee_self {linked : List CalleeData} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM} {T : CalleeTab}
+    (h : regionCallee linked p code = some (some T)) :
+    regionCallee T.fns p code = some (some T) := by
+  obtain ⟨w, m, rfl⟩ := regionCallee_some_stackArr h
+  obtain ⟨hcf, hne, hall, rfl⟩ := regionCallee_tab h
+  unfold regionCallee
+  rw [ite_eq_right (by simp [hcf])]
+  obtain ⟨f, fs, hfs⟩ := List.exists_cons_of_ne_nil hne
+  simp only [hfs]
+  rw [ite_eq_left]
+  · simp only [List.filter_filter, Bool.and_self]
+  · refine List.all_eq_true.mpr fun g hg => ?_
+    obtain ⟨c, hc, rfl⟩ := hall g (hfs ▸ hg)
+    refine List.any_eq_true.mpr ⟨c, List.mem_filter.mpr ⟨hc, ?_⟩, beq_self_eq_true _⟩
+    simpa [hfs] using hg
+
+/-- At one linked function the table `regionCallee` finds is the table of that function. -/
+theorem regionCallee_singleton {c : CalleeData} {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM} {T : CalleeTab}
+    (h : regionCallee [c] p code = some (some T)) : T = CalleeTab.one c := by
+  obtain ⟨-, hne, hall, rfl⟩ := regionCallee_tab h
+  obtain ⟨f, fs, hfs⟩ := List.exists_cons_of_ne_nil hne
+  obtain ⟨d, hd, hdf⟩ := hall f (by simp [hfs])
+  obtain rfl := List.mem_singleton.mp hd
+  simp [CalleeTab.one, hfs, hdf]
+
 /-- Without linked functions a program has no callee. -/
 theorem regionCallee_nil {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM} {c : Option CalleeTab}
     (h : regionCallee [] p code = some c) : c = none := by
-  unfold regionCallee at h
-  split at h
-  · exact (Option.some.inj h).symm
-  · split at h
-    · cases h
-    · cases h
+  cases c with
+  | none => rfl
+  | some T =>
+      obtain ⟨-, hne, hall, -⟩ := regionCallee_tab h
+      obtain ⟨f, fs, hfs⟩ := List.exists_cons_of_ne_nil hne
+      obtain ⟨d, hd, -⟩ := hall f (by simp [hfs])
+      cases hd
 
 /-! ## 8. The leakage of the virtual body and of the reference -/
 
@@ -10306,24 +10673,77 @@ theorem regionCtB_spec {σ : AbiLayout} {nm : String → String} {body : Lcmd} {
   simp only [regionCtB, Bool.and_eq_true] at h
   exact ⟨h.1.1, h.1.2, h.2⟩
 
-/-- **The constant-time check at an optional table**: `regionCtB` without a table. With a
-    table of one function `c`, the constant-time decision with a call and an optional
-    destination `AbiLayout.ctCheckRXO` on the program `calleeProg T body` of the function, at
-    the clobber set of `c`, the registers of its public arguments, its frame and its destination
-    `c.outDst?`; `false` when the function has no program and at every other table, since the
-    decision reads the data of one called function. -/
+/-- **The position of the function entered at a call target** behind a caller of `n`
+    instructions: the first position `i` of `T` whose entry `n + T.entryIdx i` is the target,
+    and `none` at a target that is the entry of no function of `T`. -/
+def CalleeTab.tgtPos? (T : CalleeTab) (n tg : Nat) : Option Nat :=
+  (List.range T.fns.length).find? fun i => n + T.entryIdx i == tg
+
+/-- **The public argument registers at the call targets of a table** behind a caller of `n`
+    instructions (the map `ext` of `AbiLayout.ctCheckRXT`): at the entry of a function of `T`
+    the registers of its public arguments, and `none` at every other target, where the
+    decision refuses a call. -/
+def CalleeTab.ctIfc (T : CalleeTab) (n : Nat) : Nat → Option (List String) :=
+  fun tg => (T.tgtPos? n tg).bind fun i => T.fns[i]?.map (·.pubRegs)
+
+/-- **The destinations at the call targets of a table** behind a caller of `n` instructions
+    (the map `w` of `AbiLayout.ctCheckRXT`): at the entry of a function of `T` the destination
+    `CalleeData.outDst?` of that function, and at every other target that of the first
+    function, as `CalleeTab.symPos` places a symbol outside the table at the first function. -/
+def CalleeTab.ctDst (T : CalleeTab) (n : Nat) : Nat → Option (String × Nat) :=
+  fun tg => T.fns[(T.tgtPos? n tg).getD 0]?.bind (·.outDst?)
+
+/-- **The clobber set of a table**: the registers that some function of `T` clobbers. -/
+def CalleeTab.clobB (T : CalleeTab) (x : String) : Bool :=
+  T.fns.any fun c => c.clob.contains x
+
+/-- At the table of one function the call target `n` is its entry and every other target is
+    no entry. -/
+theorem CalleeTab.tgtPos?_one (c : CalleeData) (n tg : Nat) :
+    (CalleeTab.one c).tgtPos? n tg = if tg = n then some 0 else none := by
+  by_cases h : tg = n
+  · simp [CalleeTab.tgtPos?, CalleeTab.one, h]
+  · simp [CalleeTab.tgtPos?, CalleeTab.one, h, Ne.symm h]
+
+/-- The public argument registers at the call targets of the table of one function are those
+    of the one external entry `n`. -/
+theorem CalleeTab.ctIfc_one (c : CalleeData) (n : Nat) :
+    (CalleeTab.one c).ctIfc n = X86Backend.DecodedCTCall.extOne n c.pubRegs := by
+  funext tg
+  simp only [CalleeTab.ctIfc, CalleeTab.tgtPos?_one, X86Backend.DecodedCTCall.extOne]
+  by_cases h : tg = n <;> simp [h, CalleeTab.one]
+
+/-- The destinations at the call targets of the table of one function are its
+    destination. -/
+theorem CalleeTab.ctDst_one (c : CalleeData) (n : Nat) :
+    (CalleeTab.one c).ctDst n = fun _ => c.outDst? := by
+  funext tg
+  simp only [CalleeTab.ctDst, CalleeTab.tgtPos?_one]
+  by_cases h : tg = n <;> simp [h, CalleeTab.one]
+
+/-- The clobber set of the table of one function is its clobber set. -/
+theorem CalleeTab.clobB_one (c : CalleeData) :
+    (CalleeTab.one c).clobB = fun x => c.clob.contains x := by
+  funext x
+  simp [CalleeTab.clobB, CalleeTab.one]
+
+/-- **The constant-time check at an optional table**: `regionCtB` without a table. At a table
+    `T` of one function, the constant-time decision with calls of linked callees
+    `AbiLayout.ctCheckRXT` on the program `calleeProg T body` of the function, at the clobber
+    set `T.clobB`, the public argument registers `T.ctIfc` and the destinations `T.ctDst` at the
+    call targets behind the program, and the frame `T.frame`; at the data of the function this
+    is `AbiLayout.ctCheckRXO` (`calleeCtB_one`). `false` when the function has no program, and
+    at a table of several functions, whose constant time needs the blocks of the region of
+    callee codes (`LprogBytesLinkReloc.RegionBlocks`). -/
 def calleeCtB (σ : AbiLayout) (nm : String → String) (callee : Option CalleeTab)
     (body : Lcmd) (t : JasminTy) (code : List LinstrRM) (res : List LOperand)
     (cert : List (String × String)) : Bool :=
   match callee with
   | none => regionCtB σ nm body t code res cert
   | some T =>
-      match T.fns with
-      | [c] =>
-          match calleeProg T body with
-          | some p => σ.ctCheckRXO (fun x => c.clob.contains x) c.pubRegs c.frame c.outDst? p
-          | none => false
-      | _ => false
+      match T.fns, calleeProg T body with
+      | [_], some p => σ.ctCheckRXT T.clobB (T.ctIfc p.length) T.frame (T.ctDst p.length) p
+      | _, _ => false
 
 /-- Without a table the constant-time check is `regionCtB`. -/
 @[simp] theorem calleeCtB_none (σ : AbiLayout) (nm : String → String) (body : Lcmd)
@@ -10331,13 +10751,32 @@ def calleeCtB (σ : AbiLayout) (nm : String → String) (callee : Option CalleeT
     calleeCtB σ nm none body t code res cert = regionCtB σ nm body t code res cert := rfl
 
 /-- **The constant-time check at the table of one linked function** is the decision at the data
-    of that function (unfolding lemma of `calleeCtB`). -/
+    of that function: the interface of the table is that of the function
+    (`CalleeTab.clobB_one`, `CalleeTab.ctIfc_one`, `CalleeTab.ctDst_one`). -/
 theorem calleeCtB_one (σ : AbiLayout) (nm : String → String) (c : CalleeData) (body : Lcmd)
     (t : JasminTy) (code : List LinstrRM) (res : List LOperand) (cert : List (String × String)) :
     calleeCtB σ nm (some (CalleeTab.one c)) body t code res cert =
       match calleeProg (CalleeTab.one c) body with
       | some p => σ.ctCheckRXO (fun x => c.clob.contains x) c.pubRegs c.frame c.outDst? p
-      | none => false := rfl
+      | none => false := by
+  dsimp only [calleeCtB]
+  rw [show (CalleeTab.one c).fns = [c] from rfl]
+  cases calleeProg (CalleeTab.one c) body with
+  | none => rfl
+  | some p =>
+      dsimp only
+      rw [CalleeTab.clobB_one, CalleeTab.ctIfc_one, CalleeTab.ctDst_one, CalleeTab.frame_one]
+
+/-- A table at which the constant-time check holds is the table of one linked function. -/
+theorem calleeCtB_some {σ : AbiLayout} {nm : String → String} {T : CalleeTab} {body : Lcmd}
+    {t : JasminTy} {code : List LinstrRM} {res : List LOperand} {cert : List (String × String)}
+    (h : calleeCtB σ nm (some T) body t code res cert = true) : ∃ c, T = CalleeTab.one c := by
+  obtain ⟨fns⟩ := T
+  simp only [calleeCtB] at h
+  match fns, h with
+  | [c], _ => exact ⟨c, rfl⟩
+  | [], h => simp at h
+  | _ :: _ :: _, h => simp at h
 
 /-- **The back half on a region-exported program** with one result, a word array or a
     register: the region legalisation `legalizeRegion`, then, on the legalised program, the test
@@ -10496,25 +10935,11 @@ theorem compileRegion_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminD
 
 /-! ## 12. The bytes of a calling body -/
 
-/-- The table `regionCallee` finds is the table of one of the linked functions. -/
-theorem regionCallee_one {linked : List CalleeData} {Γ : Ctxt jasminDialect} {t : JasminTy}
-    {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM} {T : CalleeTab}
-    (h : regionCallee linked p code = some (some T)) : ∃ c ∈ linked, T = CalleeTab.one c := by
-  unfold regionCallee at h
-  split at h
-  · cases h
-  · split at h
-    · simp only [Option.map_eq_some_iff, Option.some.injEq] at h
-      obtain ⟨c', hc', rfl⟩ := h
-      exact ⟨c', List.mem_of_find?_eq_some hc', rfl⟩
-    · cases h
-
 /-- The functions of the table `regionCallee` finds are among the linked functions. -/
 theorem regionCallee_mem {linked : List CalleeData} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} {code : List LinstrRM} {T : CalleeTab}
-    (h : regionCallee linked p code = some (some T)) : ∀ c ∈ T.fns, c ∈ linked := by
-  obtain ⟨c', hc', rfl⟩ := regionCallee_one h
-  simpa [CalleeTab.one] using hc'
+    (h : regionCallee linked p code = some (some T)) : ∀ c ∈ T.fns, c ∈ linked :=
+  fun _ hc => (regionCallee_sublist h).subset hc
 
 /-- A program for which `regionCallee` finds no callee has no `call`. -/
 theorem regionCallee_callFree {linked : List CalleeData} {Γ : Ctxt jasminDialect}
@@ -10524,7 +10949,9 @@ theorem regionCallee_callFree {linked : List CalleeData} {Γ : Ctxt jasminDialec
   split at h
   · assumption
   · split at h
-    · simp at h
+    · split at h
+      · simp at h
+      · cases h
     · cases h
 
 /-- A result of `regionEncode` at an optional table has a printed body whose bytes at that
@@ -10561,36 +10988,89 @@ theorem regionCoB_callee {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     (X86Backend.Callee.keepCheckAtB_sound (calleeCodeBT_keep (calleeBodyBT_spec.mp hb).code hc
       hq)).1⟩
 
-/-- **The bytes of a calling body.** The bytes `calleeBytes` at the table of one linked function
-    `c` of a body `b` of the class `ImageAddrCallW.printedAddrCWB` decode to the program
-    `calleeProg (CalleeTab.one c) b` of the function followed by the code `q` of `c` with its
-    targets raised by the length of the program. -/
-theorem calleeBytes_decode {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
-    (h : calleeBytes (some (CalleeTab.one c)) b = some bytes)
-    (hpr : X86Backend.ImageAddrCallW.printedAddrCWB c.frame b = true)
-    {q : List X86Backend.LprogBytesDecode.RInstr} (hq : decodeLprog c.bytes = some q) :
-    ∃ pr, calleeProg (CalleeTab.one c) b = some pr
-      ∧ decodeLprog bytes = some (pr ++ X86Backend.LprogBytesLink.shiftProg pr.length q) := by
-  simp only [calleeBytes, CalleeTab.bytes_one] at h
+/-- **The target map of the symbols of a table as the target map of a region**: at each call of
+    the items of a relocated function `b` whose remote symbols lie in `fs`, the target map
+    `CalleeTab.linkMap` is the target map `LprogBytesLinkReloc.regionTgt` of the region of
+    `fs` at the entry offsets and indices of the functions of the table. -/
+theorem symTgt_linkMap_regionTgt (T : CalleeTab) (symBase : String → Option Int)
+    (P : X86Backend.LprogBytesDecode.Params) (b : Lcmd) (ds : List X86Backend.PhysAbiShape.DShape)
+    {fs : List String}
+    (hfs : ∀ i ∈ b, ∀ f, X86Backend.LprogBytes.remoteSym i.li_i = some f → f ∈ fs)
+    (n L : Nat) :
+    ∀ it ∈ X86Backend.LprogBytesLinkReloc.fundefItemsRelocL symBase P b ds, it.target = none →
+      ∀ d, it.dec = some (.call d) →
+        X86Backend.LprogBytesLinkReloc.symTgt (T.linkMap n L) it
+          = X86Backend.LprogBytesLinkReloc.symTgt (X86Backend.LprogBytesLinkReloc.regionTgt fs
+              n L (fun g => T.entryOff (T.symPos g)) (fun g => T.entryIdx (T.symPos g))) it := by
+  intro it hit ht d hd
+  obtain ⟨f, hf, i, hi, hr⟩ :=
+    X86Backend.LprogBytesLinkReloc.fundefItemsRelocL_sym symBase P b ds it hit ht d hd
+  simp [X86Backend.LprogBytesLinkReloc.symTgt, hf, X86Backend.LprogBytesLinkReloc.regionTgt,
+    hfs i hi f hr, CalleeTab.linkMap]
+
+/-- **The bytes of a calling body at a table.** Let the bytes `calleeBytes` at the table `T` of
+    a body `b` of the class `ImageAddrCallW.printedAddrCWB` at the frame of `T` be `bytes`, let
+    every remote symbol of `b` lie in `fs`, and let the code of `T` decode in one pass to `Q`
+    with the entry of each symbol of `fs` at the byte offset and the index of the entry of its
+    function (`LprogBytesLinkReloc.RegionDecode`). Then the bytes decode to the program
+    `calleeProg T b` of the function followed by `Q` with its targets raised by the length of
+    the program (`LprogBytesLinkReloc.linkedProg_of_bytesSymL`). -/
+theorem calleeBytes_decode {T : CalleeTab} {b : Lcmd} {bytes : List (BitVec 8)}
+    (h : calleeBytes (some T) b = some bytes)
+    (hpr : X86Backend.ImageAddrCallW.printedAddrCWB T.frame b = true) {fs : List String}
+    (hfs : ∀ i ∈ b, ∀ f, X86Backend.LprogBytes.remoteSym i.li_i = some f → f ∈ fs)
+    {Q : List X86Backend.LprogBytesDecode.RInstr}
+    (hR : X86Backend.LprogBytesLinkReloc.RegionDecode T.bytes fs
+      (fun g => T.entryOff (T.symPos g)) (fun g => T.entryIdx (T.symPos g)) Q) :
+    ∃ pr, calleeProg T b = some pr
+      ∧ decodeLprog bytes = some (pr ++ X86Backend.LprogBytesLink.shiftProg pr.length Q) := by
+  simp only [calleeBytes] at h
   split at h
   · rename_i hc
     obtain rfl := Option.some.inj h
-    simp only [calleeLinkB_one, Bool.and_eq_true] at hc
-    obtain ⟨hne, hm⟩ := hc
-    rw [calleeProg_one]
+    simp only [calleeLinkB, Bool.and_eq_true] at hc
+    obtain ⟨-, hm⟩ := hc
+    unfold calleeProg
     cases hss : X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b with
     | none => simp only [hss] at hm; cases hm
     | some ds =>
       simp only [hss, Bool.and_eq_true] at hm ⊢
       obtain ⟨hbr, hP⟩ := hm
       obtain ⟨pr, hpr'⟩ := Option.isSome_iff_exists.mp hP
-      obtain ⟨hsaves, hF0, hF⟩ := X86Backend.ImageAddrCallW.printedAddrCWB_reloc hpr
       refine ⟨pr, hpr', ?_⟩
-      exact (X86Backend.LprogBytesLinkReloc.decodeLprog_fundefRelocL_append
-        (calleeSym (CalleeTab.one c) b) b ds
-        c.bytes q pr hsaves hF0 hF
-        (X86Backend.LprogBytesLinkReloc.relocDShapeOK_of_shapes _ hss)
-        hq (by simpa using hne) hbr hpr').2
+      have hag := symTgt_linkMap_regionTgt T (calleeSym T b)
+        (X86Backend.LprogBytesDecode.Params.ofBody b) b ds hfs
+      rw [X86Backend.LprogBytesLinkReloc.branchOKRelocMap_congr _ _ (hag _ _)] at hbr
+      rw [X86Backend.LprogBytesLinkReloc.expectedRelocMap_congr _ _ (hag _ _)] at hpr'
+      obtain ⟨hsaves, hF0, hFr⟩ := X86Backend.ImageAddrCallW.printedAddrCWB_reloc hpr
+      exact (X86Backend.LprogBytesLinkReloc.linkedProg_of_bytesSymL (calleeSym T b)
+        (X86Backend.ImageAddrCallW.callFacts_of_printedAddrCWB hpr hss).toLinkFacts T.bytes fs
+        _ _ Q pr hsaves hF0 hFr hR hbr hpr').1
   · cases h
+
+/-- **The bytes of a calling body at one linked function.** The bytes `calleeBytes` at the table
+    of one linked function `c` of a body `b` of the class `ImageAddrCallW.printedAddrCWB`
+    decode to the program `calleeProg (CalleeTab.one c) b` of the function followed by the
+    code `q` of `c` with its targets raised by the length of the program: `calleeBytes_decode`
+    at the region of one block (`LprogBytesLinkReloc.regionDecode_one`). -/
+theorem calleeBytes_decode_one {c : CalleeData} {b : Lcmd} {bytes : List (BitVec 8)}
+    (h : calleeBytes (some (CalleeTab.one c)) b = some bytes)
+    (hpr : X86Backend.ImageAddrCallW.printedAddrCWB c.frame b = true)
+    {q : List X86Backend.LprogBytesDecode.RInstr} (hq : decodeLprog c.bytes = some q) :
+    ∃ pr, calleeProg (CalleeTab.one c) b = some pr
+      ∧ decodeLprog bytes = some (pr ++ X86Backend.LprogBytesLink.shiftProg pr.length q) := by
+  have hne : c.bytes ≠ [] := by
+    simp only [calleeBytes] at h
+    split at h
+    · rename_i hc
+      simp only [calleeLinkB_one, Bool.and_eq_true, Bool.not_eq_true',
+        List.isEmpty_eq_false_iff] at hc
+      exact hc.1
+    · cases h
+  have hR := X86Backend.LprogBytesLinkReloc.regionDecode_one c.bytes q
+    (b.filterMap fun i => X86Backend.LprogBytes.remoteSym i.li_i) hq hne
+  exact calleeBytes_decode h (by rwa [CalleeTab.frame_one])
+    (fun i hi f hf => List.mem_filterMap.mpr ⟨i, hi, hf⟩)
+    (by simpa [CalleeTab.bytes_one] using hR)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc

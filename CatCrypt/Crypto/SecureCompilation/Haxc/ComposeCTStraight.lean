@@ -513,8 +513,9 @@ theorem haxToNFCTBL_of_haxToNFCTB {s : _root_.Hax.FnSecrecy} {σ : AbiLayout} {m
     constant time of the translation given by the level check `haxToNFCTBL` in the leakage
     model with quiet declared calls (`haxToNFCTL_of_haxToNFCTBL`), the run hypothesis
     `hterm` at the table `linkTable hax64WExit` of the linked functions, and the linked
-    functions of `m` of distinct names (`hnd`) and linked kernels (`hk`), both automatic on a
-    module without linked functions. For a result of `compileA`, one decoding of the bytes
+    functions of `m` of distinct names (`hnd`) and linked kernels (`hk`), each but the last
+    with code that is an item stream (`hit`), all automatic on a module without linked
+    functions. For a result of `compileA`, one decoding of the bytes
     halts from `sa` in a state from which `σ` reads back `v` (both cases of
     `haxc_correct_auto`: `Halts` is the halting run through calls `HaltsC`), and two runs
     of it under `ctRegime` have equal leakage traces from entry states that satisfy
@@ -541,17 +542,19 @@ theorem haxc_correct_auto_ct_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModul
     (hnds : (pairStage m σ).2.envNames.Nodup)
     (sa : AState) (hsep : σ.Regions sa) (v : Value) (hrun : haxRuns σ m sa v)
     (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
-    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h)
+    (hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes := by
+      exact fun _ h => nomatch h) :
     ∃ prog, decodeLprog bytes = some prog
       ∧ (∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
       ∧ ConstantTimeRel
           (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
             ∧ (∃ v, haxRuns σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRuns σ m s₂ v))
           (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
-  obtain ⟨prog, hd, hv⟩ := haxc_correct_auto m σ fname P bytes hc sa hsep v hrun hnd hk
+  obtain ⟨prog, hd, hv⟩ := haxc_correct_auto m σ fname P bytes hc sa hsep v hrun hnd hk hit
   refine ⟨prog, hd, ?_, haxc_ct_proved_all_of_check s m σ fname P bytes hc F fuelC Pre hck
     hterm hL hnds hd hnd hk⟩
-  rcases hv with ⟨sa', hh, hR, -⟩ | ⟨-, -, -, -, -, -, h, -⟩
+  rcases hv with ⟨sa', hh, hR, -⟩ | ⟨-, -, -, -, -, -, -, -, -, -, -, -, h, -⟩
   · exact ⟨sa', hh, hR⟩
   · exact h
 

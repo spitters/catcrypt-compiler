@@ -238,12 +238,13 @@ theorem haxc_contract (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lpr
           (∀ p ∈ σ.regions, Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
           sa'.mem x = sa.mem x := by
     rintro ⟨rv, v⟩ sa ⟨⟨⟨hA, -, hrun⟩, -⟩, -⟩
-    obtain ⟨prog', hd', ⟨sa', hh, hR, hsp, hkeep, -⟩ | ⟨c, hcm, -⟩⟩ :=
+    obtain ⟨prog', hd', ⟨sa', hh, hR, hsp, hkeep, -⟩ | ⟨cs, hsub, hne, -⟩⟩ :=
       haxc_correct_auto m σ fname P bytes hc sa ((regions_iff_abiPre σ sa).2 ⟨rv, hA⟩) v hrun
-        (by simp [hlink]) (by simp [hlink])
+        (by simp [hlink]) (by simp [hlink]) (by simp [hlink])
     · obtain rfl : prog' = prog := Option.some.inj (hd'.symm.trans hd)
       exact ⟨sa', hh, hR, hsp, hkeep⟩
-    · simp [hlink] at hcm
+    · simp [hlink] at hsub
+      exact absurd hsub hne
   refine ⟨fun p sa hs => ?_, fun p sa t sa₁ hs hX => ?_, fun p sa t sa₁ hs hX => ?_,
     fun _ _ _ _ t₁ t₂ _ _ _ _ _ _ _ => rfl⟩
   · obtain ⟨sa', hh, -⟩ := key p sa hs

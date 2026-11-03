@@ -130,7 +130,8 @@ open CatCrypt.Crypto.Hax (HaxModule)
     `linkTable hax64WExit` of the linked functions to a value from the environment of every
     valuation that the layout of the stage reads off an entry state satisfying its regions,
     and let the linked functions of `m` have distinct names (`hnd`) and be linked kernels
-    (`hk`), both automatic on a module without linked functions. For every decoding `prog`
+    (`hk`), each but the last with code that is an item stream (`hit`), all automatic on a
+    module without linked functions. For every decoding `prog`
     of the bytes of a result, value correctness relative to `haxcSrcRun m σ` holds (both
     cases of `haxc_correct_auto`), and constant time from entry states satisfying
     `σ.Regions` from each of which the module has a source run holds by
@@ -150,7 +151,9 @@ theorem haxc_gate_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
     (hnds : (pairStage m σ).2.envNames.Nodup)
     {prog : List RInstr} (hd : decodeLprog bytes = some prog)
     (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
-    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h)
+    (hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes := by
+      exact fun _ h => nomatch h) :
     GateConclusion σ.Regions σ.PubAgree (haxcSrcRun m σ) (haxcTgtRes σ prog)
       (haxcLeakRun prog) := by
   refine ⟨fun sa v hpre hsrc' => ?_,
@@ -159,10 +162,10 @@ theorem haxc_gate_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
         (haxToNFCTLOn_of_haxToNFCTL _ (haxToNFCTL_of_haxToNFCTBL s _ _ hck))
         (fun sa V hR _ hV => hterm sa V hR hV) hL hnds hd hnd hk s₁ s₂ t₁ t₂
         ⟨h.1, h.2.1, h.2.2.1, trivial, trivial, h.2.2.2.1, .inr h.2.2.2.2⟩ h₁ h₂⟩
-  obtain ⟨prog', hd', hv⟩ := haxc_correct_auto m σ fname P bytes hc sa hpre v hsrc' hnd hk
+  obtain ⟨prog', hd', hv⟩ := haxc_correct_auto m σ fname P bytes hc sa hpre v hsrc' hnd hk hit
   rw [hd] at hd'
   cases hd'
-  rcases hv with ⟨sa', hh, hR, -⟩ | ⟨-, -, -, -, -, -, h, -⟩
+  rcases hv with ⟨sa', hh, hR, -⟩ | ⟨-, -, -, -, -, -, -, -, -, -, -, -, h, -⟩
   · exact ⟨sa', hh, hR⟩
   · exact h
 
@@ -196,14 +199,16 @@ theorem haxc_rc_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiL
     (hnds : (pairStage m σ).2.envNames.Nodup)
     {prog : List RInstr} (hd : decodeLprog bytes = some prog)
     (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
-    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h)
+    (hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes := by
+      exact fun _ h => nomatch h) :
     GateConclusion σ.Regions σ.PubAgree (haxcSrcRun m σ) (haxcTgtRes σ prog)
         (haxcLeakRun prog) ∧
       RobustCompilation 0
         (realObs (Pre := σ.Regions) (srcRun := haxcSrcRun m σ) (leakRun := haxcLeakRun prog)
           (haxcTgtRes σ prog))
         (idealObs (pubOf σ)) := by
-  have g := haxc_gate_proved_all s m σ fname P bytes hc hck F fuelC hterm hL hnds hd hnd hk
+  have g := haxc_gate_proved_all s m σ fname P bytes hc hck F fuelC hterm hL hnds hd hnd hk hit
   exact ⟨g, rc_of_gate g (pubOf σ) (pubAgree_of_pubOf_eq σ)
     fun sa v w _ => haxcTgtRes_det σ prog sa v w⟩
 

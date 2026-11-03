@@ -111,11 +111,9 @@ theorem callFree_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
   · split at h
     · split at h
       · rename_i callee hc
-        unfold regionCallee at hc
-        split at hc
-        · rename_i hcf
-          rwa [legalizeRegion_callFree_eq] at hcf
-        · split at hc <;> cases hc
+        obtain rfl := regionCallee_nil hc
+        rw [← legalizeRegion_callFree_eq]
+        exact regionCallee_callFree hc
       · cases h
     · cases h
   · cases h

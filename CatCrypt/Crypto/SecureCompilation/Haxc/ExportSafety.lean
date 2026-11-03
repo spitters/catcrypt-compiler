@@ -83,11 +83,12 @@ theorem haxc_safe (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lprog)
       ∧ haltedA body s = true
       ∧ RunSafe frame body (AccessIn (abiMem σ rv) frame body) fuel (entryA σ sa) false := by
   have hregs := ((holds_abiPre σ rv sa).1 hpre).1
-  obtain ⟨-, -, ⟨-, -, -, -, -, body, frame, fuel, s, zf, hrA, hacc⟩ | ⟨c, hcm, -⟩⟩ :=
+  obtain ⟨-, -, ⟨-, -, -, -, -, body, frame, fuel, s, zf, hrA, hacc⟩ | ⟨cs, hsub, hne, -⟩⟩ :=
     haxc_correct_auto m σ fname P bytes hc sa ((regions_iff_abiPre σ sa).2 ⟨rv, hpre⟩) v hrun
-      (by simp [hlink]) (by simp [hlink])
+      (by simp [hlink]) (by simp [hlink]) (by simp [hlink])
   swap
-  · simp [hlink] at hcm
+  · simp [hlink] at hsub
+    exact absurd hsub hne
   have hsub := layoutMem_subset_abiMem (σ := σ) (sa := sa) hregs
   exact ⟨body, frame, fuel, s, zf, hrA,
     haltedA_of_runA _ body fuel (entryA σ sa) false (s, zf) hrA,

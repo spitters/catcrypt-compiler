@@ -54,6 +54,12 @@ general-purpose registers is a word callee of the image call step
 * `regionCo_bytes_callee`: for a calling body accepted by `regionCoB` at a callee, a
   halting run of the reference at the table, the image entry facts and the read-back of the
   result; stated for bodies without a site of the multiplication fusion.
+* `shadowCall?_callImg`, `callSymsB_callImg`, `calleeTab_domEqT`, `calleeBody_imgRun_tab`:
+  the shadow instructions of the image of a calling body are the calls of its sites, and the
+  image run at a table of callees.
+* `commonCallsT?_append`, `commonCallsT?_movesOf`, `regionCo_bytes_tab`: the rewriting onto
+  the common names of a table, and the reference of a calling body at a table of callees with
+  a word-array result.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCompose
@@ -224,6 +230,156 @@ theorem calleeBody_imgRun_wordSummary {σ : AbiLayout} {nm : String → String}
       ∧ X86Backend.OwnedLprogTV.Obs outs t t' :=
   calleeBody_imgRun_at h hT hl s t hfn hpc hent fuel hrun
 
+/-! ## 2b. The image run at a table of callees -/
+
+/-- **A shadow instruction of the image of a calling body is the call of its site.** Under
+    `ImageAddrCall.callSitesB`, a shadow instruction `x` of the image `callImg sl site body` at
+    the position `q` sits at a call of the symbol `x.2.1` in `body`, and its destination and
+    operands are those of `site q`. -/
+theorem shadowCall?_callImg {sl : String → Option (String × Nat)} {body : Lcmd}
+    (site : Nat → String × List String)
+    (hcs : X86Backend.ImageAddrCall.callSitesB sl body = true) {q : Nat} {i : LinstrRM}
+    (hi : (X86Backend.ImageAddrCall.callImg sl site body)[q]? = some i)
+    {x : String × String × List LOperand} (hx : LprogIsa.shadowCall? i.fst = some x) :
+    (∃ bi ra l, body[q]? = some bi ∧ bi.li_i = .Lcall ra (x.2.1, l))
+      ∧ x = ((site q).1, x.2.1, (site q).2.map LOperand.reg) := by
+  have hq : q < body.length - 1 := by
+    have := (List.getElem?_eq_some_iff.mp hi).1
+    rwa [X86Backend.ImageAddrCall.callImg_length] at this
+  obtain ⟨bi, hb⟩ : ∃ bi, body[q]? = some bi := ⟨_, List.getElem?_eq_getElem (by omega)⟩
+  cases hc : X86Backend.ImageAddrCall.isCallB bi.li_i with
+  | false =>
+      rw [X86Backend.ImageAddrCall.callImg_getElem?_imgInstr sl site hb hq hc] at hi
+      obtain rfl := Option.some.inj hi
+      rw [X86Backend.ImageAddrCall.callSitesB_other hcs hb hq
+        (fun ra t e => by simp [e, X86Backend.ImageAddrCall.isCallB] at hc)] at hx
+      cases hx
+  | true =>
+      obtain ⟨ra, g, l, e⟩ := X86Backend.ImageAddrCall.exists_lcall_of_isCallB hc
+      obtain rfl := X86Backend.ImageAddrCall.callSitesB_call hcs hb hq e
+      rw [X86Backend.ImageAddrCall.callImg_getElem?_call sl site hb (by omega) e] at hi
+      obtain rfl := Option.some.inj hi
+      rw [LprogIsa.shadowCall?_callShadow] at hx
+      obtain rfl := Option.some.inj hx
+      exact ⟨⟨bi, none, l, hb, e⟩, rfl⟩
+
+/-- **The shadow instructions of the image call the symbols of the calls of the body**: under
+    `ImageAddrCall.callSitesB`, when every call of `body` names a symbol accepted by `ok`, so
+    does every shadow instruction of the image. -/
+theorem callSymsB_callImg {sl : String → Option (String × Nat)} {body : Lcmd}
+    (site : Nat → String × List String) {ok : String → Bool}
+    (hcs : X86Backend.ImageAddrCall.callSitesB sl body = true)
+    (hsym : X86Backend.ImageAddrCall.bodyCallSymsB ok body = true) :
+    X86Backend.CalleeSegCheck.callSymsB ok
+      (X86Backend.ImageAddrCall.callImg sl site body) = true := by
+  simp only [X86Backend.CalleeSegCheck.callSymsB, List.all_eq_true]
+  intro i hi
+  obtain ⟨q, hq⟩ := List.mem_iff_getElem?.mp hi
+  cases hs : LprogIsa.shadowCall? i.fst with
+  | none => rfl
+  | some x =>
+      obtain ⟨⟨bi, ra, l, hb, hbi⟩, -⟩ := shadowCall?_callImg site hcs hq hs
+      have hlt : q < body.length - 1 := by
+        have := (List.getElem?_eq_some_iff.mp hq).1
+        rwa [X86Backend.ImageAddrCall.callImg_length] at this
+      rw [Option.all_some]
+      exact X86Backend.ImageAddrCall.bodyCallSymsB_spec hsym hb hlt hbi
+
+/-- **The table of procedures of a table of callees agrees with every table that gives each
+    of its symbols a summary of the arity of its function**, on a body whose calls are calls
+    of symbols of the table. -/
+theorem calleeTab_domEqT {T : CalleeTab} {PT : ProcTable}
+    (hT : ∀ f c, T.lookup f = some c → ∃ pr, PT f = some pr ∧ pr.arity = c.args.length)
+    {B : List LinstrRM}
+    (h : X86Backend.CalleeSegCheck.callSymsB (fun g => T.names.contains g) B = true) :
+    ProcTable.DomEq T.tab PT B :=
+  domEq_of_symsB h fun f hf => by
+    have hs : (T.lookup f).isSome = true := by
+      have h1 := congrFun T.lookup_isSome f
+      rw [h1]
+      exact hf
+    obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp hs
+    obtain ⟨pr, hpr, ha⟩ := hT f c hc
+    simp [CalleeTab.tab, hc, hpr, ha]
+
+/-- **The image run of a calling body at a table of callees.** If the printed body `body`
+    passes the checks `calleeBodyBT` at the table `T` against the reference `ref` at the
+    function name `fn`, and the procedure table `PT` gives each symbol of `T` a summary of the
+    arity of its function that has no word-array result or at whose call sites the
+    destination is among the operands, every halting run of `x86Isa.withProcs PT` on `ref`,
+    from a state of `fn` at pc `0` whose registers satisfy the entry facts `boundFacts σ nm`,
+    is matched by a halting run of `CheckedIsaCall.x86IsaK.withProcs PT` on the image
+    `ImageAddrCall.callImg` of `body` at the site function `siteFn T.lookup` from the same
+    state, the end states agreeing on the registers `outs`, the arrays and the word memory.
+    At the table of one function this is `calleeBody_imgRun_at`. -/
+theorem calleeBody_imgRun_tab {σ : AbiLayout} {nm : String → String} {T : CalleeTab}
+    {sl : String → Option (String × Nat)} {outs : List String} {body : Lcmd}
+    {ref : List LinstrRM} {fn : String} (h : calleeBodyBT σ nm T sl outs body ref fn = true)
+    {PT : ProcTable}
+    (hT : ∀ f c, T.lookup f = some c → ∃ pr, PT f = some pr ∧ pr.arity = c.args.length
+      ∧ (pr.RetWord ∨ ∀ q, callSymAt body q = some f →
+        (calleeSiteAt c sl body q).1 ∈ (calleeSiteAt c sl body q).2))
+    (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
+    (hent : ∀ f ∈ boundFacts σ nm, f.holds s.prog.base.reg.lvm s.prog.base.larr) (fuel : Nat)
+    (hrun : (X86Backend.X86Isa.x86Isa.withProcs PT).lsemFuelMemF (singletonProgM fn ref)
+      fuel s = some t) :
+    ∃ fuel' t', (X86Backend.CheckedIsaCall.x86IsaK.withProcs PT).lsemFuelMemF
+        (singletonProgM fn
+          (X86Backend.ImageAddrCall.callImg sl (siteFn T.lookup sl body) body))
+        fuel' s = some t'
+      ∧ X86Backend.OwnedLprogTV.Obs outs t t' := by
+  have hok := calleeBodyBT_spec.mp h
+  have hsymB : X86Backend.ImageAddrCall.bodyCallSymsB (fun g => T.names.contains g) body
+      = true := by
+    have h1 := bodyCallSymsB_of_decodeSites hok.decode
+    rwa [CalleeTab.lookup_isSome] at h1
+  have hsi := callSymsB_callImg (siteFn T.lookup sl body) hok.callSites hsymB
+  have hT' : ∀ f c, T.lookup f = some c → ∃ pr, PT f = some pr ∧ pr.arity = c.args.length :=
+    fun f c hc => let ⟨pr, hpr, ha, _⟩ := hT f c hc; ⟨pr, hpr, ha⟩
+  have hDr := calleeTab_domEqT hT' hok.symsRef
+  have hDi := calleeTab_domEqT hT' hsi
+  have hres' : ∀ (p : Nat) (d f : String) (xs : List String) (pr' : ProcSummary),
+      X86Backend.CalleeSegCheck.shadowAt ref p = some (d, f, xs.map LOperand.reg) →
+      PT f = some pr' → pr'.RetWord ∨ d ∈ xs := by
+    intro p d f xs pr' hp hf
+    have hfT : T.names.contains f = true := by
+      unfold X86Backend.CalleeSegCheck.shadowAt at hp
+      cases hr : ref[p]? with
+      | none => simp [hr] at hp
+      | some i =>
+        simp only [hr, Option.bind_some] at hp
+        have hm := List.all_eq_true.mp hok.symsRef i (List.mem_of_getElem? hr)
+        simpa [hp] using hm
+    have hs : (T.lookup f).isSome = true := by
+      have h1 := congrFun T.lookup_isSome f
+      rw [h1]
+      exact hfT
+    obtain ⟨c, hc⟩ := Option.isSome_iff_exists.mp hs
+    obtain ⟨pr, hpr, -, hres⟩ := hT f c hc
+    rw [hpr] at hf
+    cases hf
+    refine hres.imp id fun hall => ?_
+    obtain ⟨q, hq⟩ := shadowAt_img_of_calleeSegB hok.seg hp (by simp [CalleeTab.tab, hc])
+    unfold X86Backend.CalleeSegCheck.shadowAt at hq
+    cases hr : (X86Backend.ImageAddrCall.callImg sl (siteFn T.lookup sl body) body)[q]? with
+    | none => simp [hr] at hq
+    | some i =>
+      simp only [hr, Option.bind_some] at hq
+      obtain ⟨⟨bi, ra, l, hb, hbi⟩, hx⟩ := shadowCall?_callImg _ hok.callSites hr hq
+      have hcs : callSymAt body q = some f := callSymAt_eq_some.mpr ⟨bi, ra, l, hb, hbi⟩
+      have hsite : siteFn T.lookup sl body q = calleeSiteAt c sl body q := by
+        simp [siteFn, hcs, hc]
+      simp only [Prod.mk.injEq, hsite] at hx
+      obtain ⟨hd, -, hxs⟩ := hx
+      have hxs' : xs = (calleeSiteAt c sl body q).2 :=
+        List.map_injective_iff.mpr (fun _ _ h => LOperand.reg.inj h) hxs
+      rw [hxs', hd]
+      exact hall q hcs
+  exact calleeSegB_soundK_of_domEq hok.seg hDr hDi
+    (calleeCutB_soundK (calleeCutB_of_domEq hok.cutRef hDr)
+      (calleeCutB_of_domEq hok.cutImg hDi) outs fn)
+    s t hfn hpc fuel (refRun_checked_of_domEq hok.idx hDr fn s t hfn hpc hent fuel hrun) hres'
+
 /-! ## 3. A region-compiled linked function as a word callee -/
 
 section OfRegion
@@ -383,6 +539,42 @@ theorem commonCalls?_movesOf {sh : LprogCallCut.CallShape} {f : String} {args : 
       have h := commonCalls?_movesOf (sh := sh) (f := f) (args := args) (res := res) ps
       simp only [movesOf, List.map_cons] at h ⊢
       simp only [LprogCallCut.commonCalls?, LprogCallCut.commonCall?, h]
+      rfl
+
+/-- **The rewriting onto the common names of a table of a concatenation** is the
+    concatenation of the rewritings. -/
+theorem commonCallsT?_append
+    {tab : String → Option (LprogCallCut.CallShape × List String × String)} :
+    ∀ (A B : List LinstrRM), LprogCallCut.commonCallsT? tab (A ++ B)
+      = (LprogCallCut.commonCallsT? tab A).bind fun A' =>
+          (LprogCallCut.commonCallsT? tab B).map (A' ++ ·)
+  | [], B => by
+      simp only [List.nil_append, LprogCallCut.commonCallsT?, Option.bind_some]
+      cases LprogCallCut.commonCallsT? tab B <;> rfl
+  | i :: A, B => by
+      simp only [List.cons_append, LprogCallCut.commonCallsT?, commonCallsT?_append A B]
+      cases LprogCallCut.commonCallT? tab i with
+      | none => rfl
+      | some is =>
+          simp only [Option.bind_some]
+          cases LprogCallCut.commonCallsT? tab A with
+          | none => rfl
+          | some A' =>
+              cases LprogCallCut.commonCallsT? tab B with
+              | none => rfl
+              | some B' => simp
+
+/-- **The copies of a list of pairs are unchanged by the rewriting onto the common names of a
+    table.** -/
+theorem commonCallsT?_movesOf
+    {tab : String → Option (LprogCallCut.CallShape × List String × String)} :
+    ∀ ps : List (String × String),
+      LprogCallCut.commonCallsT? tab (movesOf ps) = some (movesOf ps)
+  | [] => rfl
+  | p :: ps => by
+      have h := commonCallsT?_movesOf (tab := tab) ps
+      simp only [movesOf, List.map_cons] at h ⊢
+      simp only [LprogCallCut.commonCallsT?, LprogCallCut.commonCallT?, h]
       rfl
 
 /-- A step of the x86 instruction set with procedure summaries stays in the function of its
@@ -869,6 +1061,318 @@ theorem regionCo_bytes_callee {σ : AbiLayout} {nm : String → String} {fn : St
         rfl
       · cases hres
   | _ => simp [regionResultB] at hres
+
+
+/-- **The reference of a calling body at a table of callees.** `regionCo_bytes_callee` at a
+    table `T` of linked functions and a word-array result: let `p` be a program of
+    `RegionExportable` with the export `r0` and its webs
+    `r = regionWebs ex r0 (calleeAAT (some T)) (calleeAOT (some T))`, and let the code and
+    returned operands of `r` pass `regionCoB` at `T` and the function name `fn` against the
+    printed body `body`, with the parts `d` of the reference. Let the procedure table `PT`
+    agree with the call environment `Ec`, hold summaries of their declared result kinds whose
+    array positions and result lengths are those of `T` (`calleeAAT`, `calleeAOT`), and give
+    each symbol of `T` a summary. Then the reference halts at `x86Isa.withProcs PT`, the
+    printed body passes the checks `calleeBodyBT` at `T`, the entry facts of
+    `renImage_entry_nil` hold, and every machine state whose words at the entry base of each
+    array parameter `A` are the array of `renOf d.ps A` at the end of the reference reads
+    back the source value of the result through `σ`. The rewriting onto common names is
+    `LprogCallCut.run_onCommonNamesT` at the common names `CalleeTab.common` of `T`. -/
+theorem regionCo_bytes_tab {σ : AbiLayout} {nm : String → String} {fn : String}
+    {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]}
+    (hp : RegionExportable p) {r0 r : Exported}
+    (hr : exportR Γ.length fn p Γ.length 0 = some r0) (ht : ∃ w m, t = .stackArr w m)
+    {ex : List String} {T : CalleeTab}
+    (hw : regionWebs ex r0 (calleeAAT (some T)) (calleeAOT (some T)) = r) {body : Lcmd}
+    {cert : List (String × String)}
+    (hg : regionCoB σ nm body t r.code r.res cert (some T) fn = true) {d : CoParts}
+    (hd : regionCoParts σ nm body t (calleeCodeT (some T) r.code) r.res cert (some T) = d)
+    {Ec : CallEnv jasminDialect} {PT : ProcTable} (hT : ProcsAgree Ec PT)
+    (hk : ∀ f pr, PT f = some pr → pr.Kinded)
+    (haa : LprogIsa.Isa.procArrArgs PT = calleeAAT (some T))
+    (hao : LprogIsa.Isa.procOut PT = calleeAOT (some T))
+    (hc : ∀ f c, T.lookup f = some c → (PT f).isSome)
+    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (hreg : σ.Regions sa)
+    (fuel : Nat) {v : Ctxt.Valuation (d := jasminDialect) [t]}
+    (hv : p.denoteAt Ec fuel V = some v) :
+    ∃ (k : Nat) (u : LstateMF),
+      (x86Isa.withProcs PT).lsemFuelMemF (singletonProgM fn d.ref) k
+        { prog := { base := entryV σ (frameE body sa) sa (unren d.ps), lfn := fn },
+          zf := false } = some u
+      ∧ calleeBodyBT σ nm T (slotRen (slotArrOf σ nm) (renOf d.ps)) d.outs body d.ref fn = true
+      ∧ X86Backend.ImageAddrSim.ImgSep (frameE body sa) (slotRen (slotArrOf σ nm) (renOf d.ps))
+        (baseR σ sa d.ps) (X86Backend.DecodePrintedCFG.frameRsp body sa)
+      ∧ (∀ X : List String, X86Backend.ImageAddrCall.ImgRelF (frameE body sa)
+        (slotRen (slotArrOf σ nm) (renOf d.ps)) (baseR σ sa d.ps)
+        (cellBody (slotRen (slotArrOf σ nm) (renOf d.ps)) body) X
+        { prog := { base := entryV σ (frameE body sa) sa (unren d.ps), lfn := fn }, zf := false }
+        (entryA σ sa))
+      ∧ X86Backend.DecodePrintedAddr.ACorr (X86Backend.DecodePrintedCFG.frameRsp body sa)
+        (Ascent.AddrMem.evalInstrA sa (X86Backend.PhysAbiShape.leaFrame
+          (-(Int.ofNat (X86Backend.LprogBytesDecode.Params.ofBody body).frame))))
+        (entryA σ sa)
+      ∧ (entryA σ sa).reg.lpc = 0
+      ∧ (∀ f ∈ boundFacts σ nm, f.holds (entryV σ (frameE body sa) sa (unren d.ps)).reg.lvm
+          (entryV σ (frameE body sa) sa (unren d.ps)).larr)
+      ∧ ∀ sa' : AState,
+        (∀ q A n, slotArrOf σ nm q = some (A, n) →
+          ∃ arr, u.prog.base.getArr (renOf d.ps A) 64 n = some arr
+            ∧ ∀ j (hj : j < n), read64 sa'.mem (cellAt (abiBase (abiReg σ) sa A) j) = arr ⟨j, hj⟩) →
+        (∀ y ∈ d.outs, gpOk y = true → (frameMark (frameNames body) y).isNone = true →
+          u.prog.base.reg.getW y 64 = some (sa'.regs (phys y))) →
+        σ.ResultOf sa sa' (denVal t
+          (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
+  simp only [regionCoB, regionCopy_some_callee, regionOut, Option.all, Bool.and_eq_true] at hg
+  rw [hd] at hg
+  obtain ⟨⟨⟨⟨⟨⟨-, hcs⟩, hfresh⟩, hcls0⟩, hco⟩, hfix⟩,
+    ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hcb, hce⟩, hren⟩, hobs⟩, -⟩, hres⟩, hmg⟩, hnop⟩, hsite⟩, -⟩, himg⟩⟩ := hg
+  obtain ⟨codeC, hcode⟩ := Option.isSome_iff_exists.mp hcs
+  have hcc : calleeCodeT (some T) r.code = codeC := by
+    simp only [calleeCodeT, hcode, Option.getD_some]
+  rw [hcc] at hd hcls0 hco hfix hren hobs hres
+  have hcells : d.cells = [] := List.isEmpty_iff.mp hce
+  have hcellOuts : d.cellOuts = [] := by
+    have h1 : d.cellOuts = d.cells.flatMap fun p =>
+        if d.obs.contains p.1 then X86Backend.ImageAddrRouteW.outCells p.1 p.2 else [] := by
+      rw [← hd]; rfl
+    rw [h1, hcells]
+    rfl
+  rw [hcells, hcellOuts, List.append_nil] at himg
+  have RF := renB_spec hren
+  have E := entryB_spec (renImageB_entryB himg) sa
+  have hSrc := E.argSrc hreg.stackIn
+  have hU : ∀ j, j < σ.args.length → unren d.ps (renOf d.ps (argName j)) = argName j :=
+    fun j hj => (RF.unr j hj).2
+  have hle : x86Isa.StepLe (x86Isa.withProcs PT) :=
+    x86Isa.withProcs_stepLe (x86Isa_refusesProcs PT)
+  have hcl : (x86Isa.withProcs PT).CallLocal x86Isa (calleeAAT (some T)) (calleeAOT (some T)) := by
+    rw [← haa, ← hao]
+    exact x86Isa.withProcs_callLocal PT hk
+  -- The summaries of the symbols of the table meet the shapes of their calls.
+  have hTab : ∀ g sh args res, T.common g = some (sh, args, res) → ∃ pr, PT g = some pr ∧
+      (∀ i, sh.arrArgs i = none → pr.arrArgs i = none) ∧ (sh.out = false → pr.RetWord) := by
+    intro g sh args res hg'
+    obtain ⟨c, hc', he⟩ := Option.map_eq_some_iff.mp hg'
+    simp only [Prod.mk.injEq] at he
+    obtain ⟨rfl, rfl, rfl⟩ := he
+    obtain ⟨pr, hpr⟩ := Option.isSome_iff_exists.mp (hc g c hc')
+    refine ⟨pr, hpr, fun i hi => ?_, fun ho => ?_⟩
+    · have h1 := congrFun haa g
+      simp only [LprogIsa.Isa.procArrArgs, hpr, calleeAAT, Option.bind_some, hc'] at h1
+      rw [h1]
+      exact hi
+    · have h1 := congrFun hao g
+      cases hcr : c.res with
+      | reg r =>
+          simpa [LprogIsa.Isa.procOut, hpr, calleeAOT, hc', hcr, ProcSummary.RetWord] using h1
+      | out n => simp [CalleeData.shape, hcr] at ho
+  have hnames : ∀ g e, T.common g = some e → g ∈ T.names := by
+    intro g e hg'
+    obtain ⟨c, hc', -⟩ := Option.map_eq_some_iff.mp hg'
+    have h1 := congrFun T.lookup_isSome g
+    simp only [hc', Option.isSome_some] at h1
+    simpa using h1.symm
+  have hdaa : d.aa = calleeAAT (some T) := by rw [← hd]; rfl
+  have hdao : d.ao = calleeAOT (some T) := by rw [← hd]; rfl
+  -- The run of the exported code with the result copy.
+  have hres0 : r0.res = r.res := by rw [← hw]; simp
+  obtain ⟨k0, tv, t0, _, hrunV, hag, -, harrO, hnone, -⟩ := regionVirt_run_procs σ nm fn
+    hp hr ex (regionRet σ nm t r.res) E (unren d.ps) (fun j hj => (RF.unr j hj).1) sa V hV hT
+    hcl fuel v hv
+  rw [hw] at hrunV
+  rw [hres0] at hag
+  have h0 : (entryV σ (frameE body sa) sa (unren d.ps)).lpc = 0 := rfl
+  -- The rewriting onto the common names of the callee.
+  have hB : LprogCallCut.commonCallsT? T.common (regionCoCode σ nm t r.code r.res)
+      = some (regionCoCode σ nm t codeC r.res) := by
+    simp only [regionCoCode, commonCallsT?_append, hcode, commonCallsT?_movesOf,
+      Option.bind_some, Option.map_some]
+  obtain ⟨f1, t1, hrun1, hrel1⟩ := LprogCallCut.run_onCommonNamesT hTab hnames hB hfresh h0
+    hrunV
+  -- The copies of the parameter registers in front.
+  have hclsC : ∀ i ∈ regionCoCode σ nm t codeC r.res, CtlOK i := fun i hi =>
+    (clsB_ctl_cond (Bool.and_eq_true_iff.mp (List.all_eq_true.mp hcls0 i hi)).1
+      (Bool.and_eq_true_iff.mp (List.all_eq_true.mp hcls0 i hi)).2).1
+  have hlopA : ∀ i ∈ argBind σ nm, IsLopn i := movesOf_isLopn _
+  obtain ⟨t2, hrun2, hsh2⟩ := JasminLsemMemFlagPrefix.lsemFuelMemF_prepend_calls hle
+    hcl fn (argBind σ nm) (regionCoCode σ nm t codeC r.res) hlopA hclsC _ _ false
+    false h0 (argBind_entryV E.argF E.argG hSrc false) f1 t1 hrun1
+  -- The coalesced and renamed reference.
+  obtain ⟨k1, s1, hrun3, harrs, -⟩ := regionRef_run_calls hle hcl E sa hSrc hclsC hco
+    (fun x hx => by simpa using List.all_eq_true.mp hfix x hx) RF _ t2 hrun2
+  have hnopE : d.nop = selfNop d.pre.length
+      (liveAt (tabAt d.liveM) (d.pre ++ d.merged).length) (d.pre ++ d.merged) := by
+    rw [← hd]; rfl
+  have hrefF : d.ref = d.fused := by
+    have h1 : d.ref = if d.cells.isEmpty then d.fused
+        else d.pre ++ (X86Backend.CellFoldLReg.cellFoldLR d.cells []
+          (d.fused.drop d.pre.length)).getD (d.fused.drop d.pre.length) := by
+      rw [← hd]; rfl
+    rw [h1, hce, ite_eq_left rfl]
+  have hfusedE : d.fused
+      = if d.sites then d.pre ++ fuseMulHiRM (d.nop.drop d.pre.length) else d.nop := by
+    rw [← hd]; rfl
+  have hsplit : d.nop = d.pre ++ d.nop.drop d.pre.length := by
+    conv_lhs => rw [← List.take_append_drop d.pre.length d.nop]
+    rw [hnopE, selfNop_take, List.take_left']
+    rfl
+  have hobsE : d.obs = (regionCoObs t r.res).map fun A =>
+      renOf d.ps (chainAliasO (calleeOutsT (some T))
+        (regionCoCode σ nm t codeC r.res) A) := by
+    rw [← hd]; rfl
+  have hpre : d.pre = argBind σ nm ++ movesOf d.ps := by rw [← hd]; rfl
+  have hren' : d.ren
+      = (regionCoBody σ nm t codeC r.res (some T)).map (renRM (renOf d.ps)) := by
+    rw [← hd]; rfl
+  have hmerged : d.merged = d.ren.map (renRM (renOf d.tau)) := by rw [← hd]; rfl
+  have harrsM : ∀ A ∈ regionCoObs t r.res,
+      renOf d.ps (chainAliasO (calleeOutsT (some T)) (regionCoCode σ nm t codeC r.res) A)
+          ∈ d.arrs
+        ∧ renOf d.ps (chainAliasO (calleeOutsT (some T))
+          (regionCoCode σ nm t codeC r.res) A) ∈ d.arrsM := by
+    intro A hA
+    rw [← hd]
+    exact ⟨List.mem_append_right _ (List.mem_map.mpr ⟨A, hA, rfl⟩),
+      List.mem_append_right _ (List.mem_map.mpr ⟨A, hA, rfl⟩)⟩
+  have hlop : ∀ i ∈ d.pre, IsLopn i := fun i hi => by
+    rw [hpre] at hi
+    exact (List.mem_append.mp hi).elim (movesOf_isLopn _ i) (movesOf_isLopn _ i)
+  have hagP : ∀ i ∈ d.pre, ∀ (Q : JasminLsemMemLoop.LprogM) (s : LstateMF),
+      (x86Isa.withProcs PT).step Q i s = x86Isa.step Q i s := fun i hi => by
+    rw [hpre] at hi
+    rcases List.mem_append.mp hi with hi | hi
+    · exact X86Backend.ImageAddrSrcFuel.movesOf_agree hle hcl _ i hi
+    · exact X86Backend.ImageAddrSrcFuel.movesOf_agree hle hcl _ i hi
+  have h : (x86Isa.withProcs PT).lsemFuelMemF (singletonProgM fn (d.pre ++ d.ren)) k1
+      { prog := { base := entryV σ (frameE body sa) sa (unren d.ps), lfn := fn }, zf := false }
+        = some s1 := by
+    rw [hpre, hren']
+    exact hrun3
+  -- The register merge.
+  have hrun : ∃ s' : LstateMF,
+      (x86Isa.withProcs PT).lsemFuelMemF (singletonProgM fn (d.pre ++ d.merged)) k1
+        { prog := { base := entryV σ (frameE body sa) sa (unren d.ps), lfn := fn },
+          zf := false } = some s'
+      ∧ (∀ a ∈ d.arrs, s'.prog.base.larr a = s1.prog.base.larr a)
+      ∧ ∀ y ∈ d.outs, s'.prog.base.reg.lvm y = s1.prog.base.reg.lvm y := by
+    simp only [regionMergeB, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq] at hmg
+    rcases hmg with hnil | ⟨hck, hout⟩
+    · refine ⟨s1, ?_, fun _ _ => rfl, fun _ _ => rfl⟩
+      rw [hmerged, hnil, map_renRM_renOf_nil]
+      exact h
+    · rw [hdaa, hdao] at hck
+      obtain ⟨s', hs', hrg, har⟩ := regCo_run_calls hle hcl hlop hagP hck _ rfl false k1 s1 h
+      rw [← hmerged] at hs'
+      refine ⟨s', hs', har, fun y hy => ?_⟩
+      have hy' := List.all_eq_true.mp hout y hy
+      simp only [Bool.and_eq_true, List.contains_eq_mem, decide_eq_true_eq, beq_iff_eq] at hy'
+      have := hrg y hy'.1
+      rwa [hy'.2] at this
+  obtain ⟨s', hs', har, hrg⟩ := hrun
+  -- The array self-moves.
+  simp only [regionNopB, Bool.and_eq_true] at hnop
+  obtain ⟨hck, hout⟩ := hnop
+  rw [hdaa, hdao] at hck
+  obtain ⟨u0, hu0, hrg2, har2⟩ := selfNop_run_calls hle hcl hlop hagP hck _ rfl false k1 s' hs'
+  rw [← hnopE] at hu0
+  have hA0 : ∀ A ∈ regionCoObs t r.res, ∀ w n,
+      u0.prog.base.getArr (renOf d.ps (chainAliasO (calleeOutsT (some T))
+          (regionCoCode σ nm t codeC r.res) A)) w n
+        = s1.prog.base.getArr (renOf d.ps (chainAliasO (calleeOutsT (some T))
+          (regionCoCode σ nm t codeC r.res) A)) w n := by
+    intro A hA w n
+    unfold LstateM.getArr
+    rw [har2 _ (harrsM A hA).2, har _ (harrsM A hA).1]
+  have hY0 : ∀ y ∈ d.outs, u0.prog.base.reg.lvm y = s1.prog.base.reg.lvm y := by
+    intro y hy
+    have hy' := List.all_eq_true.mp hout y hy
+    rw [List.contains_eq_mem, decide_eq_true_eq] at hy'
+    rw [hrg2 y hy', hrg y hy]
+  -- The multiplication fusion.
+  obtain ⟨kF, u, hu, hA2, -⟩ : ∃ (kF : Nat) (u : LstateMF),
+      (x86Isa.withProcs PT).lsemFuelMemF (singletonProgM fn d.ref) kF
+        { prog := { base := entryV σ (frameE body sa) sa (unren d.ps), lfn := fn },
+          zf := false } = some u
+      ∧ (∀ A ∈ regionCoObs t r.res, ∀ w n,
+        u.prog.base.getArr (renOf d.ps (chainAliasO (calleeOutsT (some T))
+            (regionCoCode σ nm t codeC r.res) A)) w n
+          = s1.prog.base.getArr (renOf d.ps (chainAliasO (calleeOutsT (some T))
+            (regionCoCode σ nm t codeC r.res) A)) w n)
+      ∧ ∀ y ∈ d.outs, u.prog.base.reg.lvm y = s1.prog.base.reg.lvm y := by
+    rw [hrefF, hfusedE]
+    cases hS : d.sites with
+    | false => exact ⟨k1, u0, hu0, hA0, hY0⟩
+    | true =>
+        simp only [regionSitesB, hS, Bool.not_true, Bool.false_or, Bool.and_eq_true] at hsite
+        obtain ⟨⟨hfuse, hk1⟩, hk2⟩ := hsite
+        rw [hsplit] at hu0
+        have habi := entryV_abiEntry (sa := sa) (un := unren d.ps) E.argF E.argG
+          fun j hj => (RF.unr j hj).1
+        obtain ⟨k', u', -, hrun', hag, -, -⟩ := fuseMulHi_lsemFuelMemF_pre_calls hle
+          hcl hfuse fn _ u0 rfl
+          (fun x hx => by
+            rcases List.mem_append.mp hx with hx | hx
+            · exact e64_of_abiEntryM habi x hx
+            · obtain ⟨a, ha, rfl⟩ := List.mem_map.mp hx
+              exact congrArg (·.1) (entryV_srcOf (un := unren d.ps) hSrc ha)) k1 hu0
+        refine ⟨k', u', hrun', fun A hA w n => ?_, fun y hy => ?_⟩
+        · have hkept : KeptN (renOf d.ps (chainAliasO (calleeOutsT (some T))
+              (regionCoCode σ nm t codeC r.res) A)) := by
+            have hm : renOf d.ps (chainAliasO (calleeOutsT (some T))
+                (regionCoCode σ nm t codeC r.res) A) ∈ d.obs := by
+              rw [hobsE]
+              exact List.mem_map.mpr ⟨A, hA, rfl⟩
+            simpa [KeptN] using List.all_eq_true.mp hk1 _ hm
+          rw [← hA0 A hA w n]
+          unfold LstateM.getArr
+          rw [hag.arr _ hkept]
+        · rw [← hY0 y hy]
+          exact hag.reg y (by simpa [KeptN] using List.all_eq_true.mp hk2 y hy)
+  -- The states before the reference: the copies in front and the common names.
+  obtain ⟨_, -, ht1⟩ := hrel1
+  have hArr : ∀ A w n, t2.prog.base.getArr A w n = tv.prog.base.getArr A w n := by
+    intro A w n
+    unfold LstateM.getArr
+    rw [hsh2.base, ht1]
+    rfl
+  obtain ⟨hsep, -, hacorr, hpc0, hbnd⟩ := renImage_entry_nil himg hU sa hreg fn []
+  refine ⟨kF, u, hu, hcb, hsep,
+    fun X => (renImage_entry_nil himg hU sa hreg fn X).2.1, hacorr,
+    hpc0, hbnd, fun sa' hcellsB _ => ?_⟩
+  obtain ⟨w, m, rfl⟩ := ht
+  obtain rfl : tv = t0 := hnone rfl
+  obtain ⟨op, hop, harr⟩ := hag.decodeArrM_single
+  replace harr := (getArr_of_larr_eq _ _
+    (harrO _ (by simp [regionWebsObs, hres0, hop]))).trans harr
+  have hmem : operandName op ∈ regionCoObs (.stackArr w m) r.res := by
+    simp [regionCoObs, hop]
+  have hN := List.all_eq_true.mp hobs _ hmem
+  rw [List.contains_eq_mem, decide_eq_true_eq] at hN
+  rw [hop] at hres
+  simp only [regionResultB, List.map] at hres
+  split at hres
+  · rename_i RA k' op' hσ hop'
+    obtain rfl := (List.cons.inj hop').1
+    simp only [Bool.and_eq_true, beq_iff_eq] at hres
+    obtain ⟨⟨⟨rfl, hk⟩, hA⟩, hslot⟩ := hres
+    obtain ⟨arr, harr', hw⟩ := hcellsB _ _ _ hslot
+    have hgo := (hA2 _ hmem 64 m).trans ((harrs _ hmem hN 64 m).trans (hArr _ 64 m))
+    rw [hop] at hgo
+    have h2 : tv.prog.base.getArr (operandName op) 64 m = some _ := harr
+    have harr2 : u.prog.base.getArr (renOf d.ps (chainAliasO (calleeOutsT (some T))
+        (regionCoCode σ nm (.stackArr 64 m) codeC [op]) (operandName op))) 64 m = some arr :=
+      harr'
+    rw [hgo, h2] at harr2
+    obtain rfl := Option.some.inj harr2
+    have hbase : abiBase (abiReg σ) sa
+        (chainAliasO (calleeOutsT (some T))
+          (regionCoCode σ nm (.stackArr 64 m) codeC [op]) (operandName op))
+          = sa.regs RA := by
+      have hA' : abiReg σ (chainAliasO (calleeOutsT (some T))
+          (regionCoCode σ nm (.stackArr 64 m) codeC [op]) (operandName op)) = some RA := hA
+      simp only [abiBase, hA']
+    exact resultOf_words (σ := σ) (sa' := sa') (by rw [hσ, hk])
+      fun j hj => by rw [← hbase]; exact hw j hj
+  · cases hres
 
 end Calling
 
