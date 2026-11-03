@@ -577,6 +577,184 @@ theorem stepA_cellBody_of_fix {frame : String → Option (BitVec 64)}
   | Lcond c l => exact absurd rfl (hnc c l)
   | _ => simp only [tagAt_cellBody]
 
+/-- The frame-word move of an instruction is the instruction itself or a `MOVQ` between
+    names. -/
+theorem cellMove_eq_or (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
+    (i : Linstr) :
+    cellMove slotArr body k i = i ∨
+      ∃ D S, (cellMove slotArr body k i).li_i = .Lopn [.reg D] "MOVQ" [.reg S] := by
+  unfold cellMove
+  split
+  · split
+    · exact Or.inr ⟨_, _, rfl⟩
+    · exact Or.inl rfl
+  · split
+    · exact Or.inr ⟨_, _, rfl⟩
+    · exact Or.inl rfl
+  · exact Or.inl rfl
+
+/-- Past a move into a name other than `b`, or past an `Lopn` that is no move, the scan
+    `reloadOf` stops with `none` or continues one instruction back. -/
+theorem reloadOf_succ_pass {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
+    {j : Linstr} (hb : body[k]? = some j) {b : String}
+    (hj : (∃ d q, slotMov? j.li_i = some (d, q) ∧ d ≠ b) ∨
+      (slotMov? j.li_i = none ∧ ∃ ds o ss, j.li_i = .Lopn ds o ss)) :
+    reloadOf slotArr body (k + 1) b = none
+      ∨ reloadOf slotArr body (k + 1) b = reloadOf slotArr body k b := by
+  rcases hj with ⟨d, q, hm, hd⟩ | ⟨hm, ds, o, ss, hx⟩
+  · rw [reloadOf_succ_some hb hm]
+    simp only [hd, ↓reduceIte]
+    split_ifs <;> simp
+  · rw [reloadOf_succ_lopn hb hm hx]
+    split_ifs <;> simp
+
+/-- **The base of an indexed store through a cell holds no array pointer.** At an indexed
+    store through a cell of the cell body (`cellIdxStore?`), the base register of the store
+    is reloaded from no array slot in the body: the address `LEA:64 D, (B, X, 8)` two
+    instructions before writes it, and the load of the value in between writes another
+    name. -/
+theorem accArr_of_cellIdxStore {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {k : Nat} {i : LinstrR} {p : String × Nat × (String ⊕ Nat) × String}
+    (h : cellIdxStore? slotArr (cellBody slotArr body) k i = some p) {B S : String} {off : Nat}
+    (hc : cellA? i = some (.st B off S)) : accArr slotArr body k B = none := by
+  obtain ⟨A, n, q, v⟩ := p
+  obtain ⟨c, D, B', X, d1, s, l, r, m, rfl, hcD, h3, -, hl, hli, -, -, hm, hm', hd1, -, -⟩ :=
+    JasminLsemAddrImage.cellIdxStore?_spec h
+  have hcB : cellA? (.Lopn [.reg c] "MOV:64" [.reg v]) = some (.st D 0 v) := by
+    simp [cellA?, hcD, LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOV:64".toList)]
+  rw [hcB] at hc
+  cases hc
+  have hk1 : k = (k - 1) + 1 := by omega
+  have hk2 : k - 1 = (k - 2) + 1 := by omega
+  rw [cellBody_getElem?] at hl hm
+  obtain ⟨x, hx, hxm⟩ := Option.map_eq_some_iff.mp hm
+  obtain ⟨y, hy, hyl⟩ := Option.map_eq_some_iff.mp hl
+  have hyli : y.li_i = .Lopn [.reg B] "LEA:64" [.arrIdx B' X 8] := by
+    rcases cellMove_eq_or slotArr body (k - 2) y with he | ⟨D0, S0, he⟩
+    · rw [← hyl, he] at hli; exact hli
+    · rw [hyl, hli] at he; simp at he
+  have hym : slotMov? y.li_i = none := by rw [hyli]; simp [slotMov?]
+  have hy0 : reloadOf slotArr body (k - 2 + 1) B = none := by
+    rw [reloadOf_succ_lopn hy hym hyli]; simp [dstHitB]
+  have hx0 := reloadOf_succ_pass (slotArr := slotArr) (b := B) hx (by
+    cases hcx : cellA? x.li_i with
+    | some op =>
+        obtain ⟨d, o, n, hxe, -⟩ := cellA_some hcx
+        exact Or.inr ⟨slotMov_cell hcx, _, _, _, hxe⟩
+    | none =>
+        rw [cellMove_of_none hcx] at hxm
+        subst hxm
+        unfold JasminLsemAddrImage.cellOpMov? at hm'
+        cases hsm : slotMov? x.li_i with
+        | some ds =>
+            obtain ⟨d, q0⟩ := ds
+            rw [hsm] at hm'
+            simp only [Option.some.injEq, Prod.mk.injEq] at hm'
+            exact Or.inl ⟨d, q0, rfl, hm'.1 ▸ hd1⟩
+        | none =>
+            rw [hsm] at hm'
+            refine Or.inr ⟨rfl, ?_⟩
+            obtain ⟨ii, li⟩ := x
+            cases li with
+            | Lopn ds o ss => exact ⟨ds, o, ss, rfl⟩
+            | _ => simp at hm')
+  have h0 : reloadOf slotArr body k B = none := by
+    rw [← hk1] at hx0
+    rcases hx0 with h0 | h0
+    · exact h0
+    · rw [h0, hk2]; exact hy0
+  simp [accArr, h0]
+
+/-- **An indexed store through a cell is its own frame-word move**: its base register holds
+    no array pointer (`accArr_of_cellIdxStore`). -/
+theorem cellMove_of_cellIdxStore {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {k : Nat} {i : Linstr} {p : String × Nat × (String ⊕ Nat) × String}
+    (h : cellIdxStore? slotArr (cellBody slotArr body) k i.li_i = some p) :
+    cellMove slotArr body k i = i := by
+  obtain ⟨A, n, q, v⟩ := p
+  obtain ⟨c, D, -, -, -, -, -, -, -, hi, hcD, -⟩ := JasminLsemAddrImage.cellIdxStore?_spec h
+  have hcB : cellA? i.li_i = some (.st D 0 v) := by
+    rw [hi]
+    simp [cellA?, hcD, LprogAsmPrinter.untagCaret_of_caret_free (by decide : '^' ∉ "MOV:64".toList)]
+  simp only [cellMove, hcB, accArr_of_cellIdxStore h hcB]
+
+/-- At a position whose frame-word move is checked to be no indexed store through a cell,
+    the instruction of the body is none either: an indexed store through a cell is its own
+    frame-word move. -/
+theorem cellIdxStore?_of_cellBody {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    {k : Nat} {b0 : Linstr} (hb0 : body[k]? = some b0)
+    (hg : ∀ i, (cellBody slotArr body)[k]? = some i →
+      cellIdxStore? slotArr (cellBody slotArr body) k i.li_i = none) :
+    cellIdxStore? slotArr (cellBody slotArr body) k b0.li_i = none := by
+  cases hw : cellIdxStore? slotArr (cellBody slotArr body) k b0.li_i with
+  | none => rfl
+  | some p =>
+      have hbC : (cellBody slotArr body)[k]? = some b0 := by
+        rw [cellBody_getElem?, hb0, Option.map_some, cellMove_of_cellIdxStore hw]
+      rw [← hw]
+      exact hg b0 hbC
+
+/-- An indexed store through a cell is a register instruction of the gate (`icase`). -/
+theorem icase_of_cellIdxStore (frame : String → Option (BitVec 64))
+    {slotArr : String → Option (String × Nat)} {c : Lcmd} {k : Nat} {x : LinstrR}
+    {p : String × Nat × (String ⊕ Nat) × String}
+    (h : cellIdxStore? slotArr c k x = some p) : icase frame x = .reg := by
+  obtain ⟨A, n, q, v⟩ := p
+  obtain ⟨cc, D, -, -, -, -, -, -, -, rfl, hcD, -⟩ := JasminLsemAddrImage.cellIdxStore?_spec h
+  simp [icase, slotMov?, hcD, LprogAsmPrinter.untagCaret_of_caret_free
+    (by decide : '^' ∉ "MOV:64".toList), castTagW, slotCmp?,
+    normA_of_caret_free (show '^' ∉ "MOV:64".toList by decide)]
+
+/-- **The gate `imgGateB` refuses an indexed store through a cell.** -/
+theorem cellIdxStore?_of_imgGateB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {c : Lcmd}
+    (hg : imgGateB frame slotArr c = true) {k : Nat} {i : Linstr} (hb : c[k]? = some i) :
+    cellIdxStore? slotArr c k i.li_i = none := by
+  cases hs : cellIdxStore? slotArr c k i.li_i with
+  | none => rfl
+  | some p =>
+      have hnr : i.li_i ≠ .Lret := by
+        obtain ⟨A, n, q, v⟩ := p
+        obtain ⟨cc, -, -, -, -, -, -, -, -, hx, -⟩ := JasminLsemAddrImage.cellIdxStore?_spec hs
+        rw [hx]; simp
+      have hg' := (imgGateB_at hg hb hnr).2
+      simp only [instrGateB, icase_of_cellIdxStore frame hs, Bool.and_eq_true] at hg'
+      rw [cellIdxStore?_of_regGateB hg'.1.1] at hs
+      cases hs
+
+/-- **The instruction gate `instrGateBW` refuses an indexed store through a cell.** -/
+theorem cellIdxStore?_of_instrGateBW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {c : Lcmd} {k : Nat} {x : LinstrR}
+    (hg : ImageAddrSimW.instrGateBW frame slotArr c k x = true) :
+    cellIdxStore? slotArr c k x = none := by
+  cases hs : cellIdxStore? slotArr c k x with
+  | none => rfl
+  | some p =>
+      obtain ⟨A, n, q, v⟩ := p
+      obtain ⟨cc, D, -, -, -, -, -, -, -, hx, hcD, -⟩ := JasminLsemAddrImage.cellIdxStore?_spec hs
+      have hic := icase_of_cellIdxStore frame hs
+      subst hx
+      simp only [ImageAddrSimW.instrGateBW, ImageAddrSimW.gateAtW, hic, Bool.and_eq_true] at hg
+      rw [show ImageAddrSimW.carryI? (.Lopn [.reg cc] "MOV:64" [.reg v]) = none by
+          simp [ImageAddrSimW.carryI?],
+        show JasminLsemCast.movImmStruct? (.Lopn [.reg cc] "MOV:64" [.reg v]) = none by
+          simp [JasminLsemCast.movImmStruct?], bitStore?_of_ne (by simp)] at hg
+      rw [ImageAddrSimW.cellIdxStore?_of_regArmW hg.2] at hs
+      cases hs
+
+/-- **The gate `imgGateBW` refuses an indexed store through a cell.** -/
+theorem cellIdxStore?_of_imgGateBW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {c : Lcmd}
+    (hg : ImageAddrSimW.imgGateBW frame slotArr c = true) {k : Nat} {i : Linstr}
+    (hb : c[k]? = some i) : cellIdxStore? slotArr c k i.li_i = none := by
+  cases hs : cellIdxStore? slotArr c k i.li_i with
+  | none => rfl
+  | some p =>
+      obtain ⟨A, n, q, v⟩ := p
+      obtain ⟨cc, -, -, -, -, -, -, -, -, hx, -⟩ := JasminLsemAddrImage.cellIdxStore?_spec hs
+      rw [← hs]
+      exact cellIdxStore?_of_instrGateBW (ImageAddrSimW.imgGateBW_at hg hb (by rw [hx]; simp)).2
+
 /-! ## 2. One step of a straight body -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop (LprogM singletonProgM)
@@ -773,10 +951,12 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV (findInstrMem_sin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (evalInstrPMemF_next)
 
 /-- **The cell accesses of a body have their arrays and frame words**: the base register of
-    each cell access is reloaded from the slot of an array `A` (`accArr`) and has no frame
-    word, the cell name `memName A off` has the frame word `base A + off`, a loaded word is
-    disjoint from the red-zone word, a stored register has no frame word, and the base
-    register is a general-purpose name. -/
+    each cell access other than an indexed store through a cell (`cellIdxStore?` on the cell
+    body) is reloaded from the slot of an array `A` (`accArr`) and has no frame word, the cell
+    name `memName A off` has the frame word `base A + off`, a loaded word is disjoint from the
+    red-zone word, a stored register has no frame word, and the base register is a
+    general-purpose name. An indexed store through a cell is its own frame-word move
+    (`cellMove_of_cellIdxStore`). -/
 structure CellFrames (frame : String → Option (BitVec 64))
     (slotArr : String → Option (String × Nat)) (base : String → BitVec 64) (rsp : BitVec 64)
     (body : Lcmd) : Prop where
@@ -785,12 +965,14 @@ structure CellFrames (frame : String → Option (BitVec 64))
       ∧ frame (memName A off) = some (base A + BitVec.ofNat 64 off)
       ∧ Disjoint8 (redW rsp) (base A + BitVec.ofNat 64 off)
   st : ∀ k bi B off S, body[k]? = some bi → cellA? bi.li_i = some (.st B off S) →
+    cellIdxStore? slotArr (cellBody slotArr body) k bi.li_i = none →
     ∃ A n, accArr slotArr body k B = some (A, n) ∧ frame B = none ∧ frame S = none
       ∧ frame (memName A off) = some (base A + BitVec.ofNat 64 off)
   ldGp : ∀ (k : Nat) (bi : Linstr) D B off, body[k]? = some bi →
     cellA? bi.li_i = some (.ld D B off) → DecodePrinted.gpOk B = true
   stGp : ∀ (k : Nat) (bi : Linstr) B off S, body[k]? = some bi →
-    cellA? bi.li_i = some (.st B off S) → DecodePrinted.gpOk B = true
+    cellA? bi.li_i = some (.st B off S) →
+    cellIdxStore? slotArr (cellBody slotArr body) k bi.li_i = none → DecodePrinted.gpOk B = true
 
 /-- **One step of a straight body with cells through its cell body.** -/
 theorem cell_step {frame : String → Option (BitVec 64)}
@@ -861,11 +1043,17 @@ theorem cell_step {frame : String → Option (BitVec 64)}
             rw [stepA_cellBody_ld hb0 hc hacc hpA hfr]
             exact hst
         | st B off S =>
-            obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
-            obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
-              (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb0 hc)) hacc) hBf
-            rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
-            exact hst
+            cases hw : cellIdxStore? slotArr (cellBody slotArr body) sa.reg.lpc b0.li_i with
+            | some p =>
+                rw [stepA_cellBody_of_fix hb0 (cellMove_of_cellIdxStore hw) (hnc _ _ hb0)]
+                exact hst
+            | none =>
+                obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc hw
+                obtain ⟨q, -, hpA⟩ := ptr_of_reload hsep (.of_imgGateB hgate) hrel
+                  (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb0 hc hw)) hacc)
+                  hBf
+                rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
+                exact hst
         | lea D B off =>
             rw [stepA_cellBody_of_fix hb0 (cellMove_of_lea hc) (hnc _ _ hb0)]
             exact hst
@@ -1006,18 +1194,19 @@ theorem narrowSrc_cellBody (slotArr : String → Option (String × Nat)) (body :
     simp only [Option.map_none, Option.map_some, classifyK_cellMove, narrowIn_cellBody]
 
 /-- **The width safety of a body from that of its cell body.** At a relation of the image
-    simulation with carry chains on the cell body that passes `imgGateBW`, the body is width
-    safe: the names a cell access reads beyond its frame-word move are the base register,
-    which holds an array pointer, and the cell name, which is no general-purpose name. -/
-theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
+    simulation with carry chains on the cell body that passes the positionwise gate
+    `ImgGateW` at a position outside its exempt set, the body is width safe: the names a cell
+    access reads beyond its frame-word move are the base register, which holds an array
+    pointer, and the cell name, which is no general-purpose name. -/
+theorem wideSafe_cellBodyW {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
-    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
-    (hgate : imgGateBW frame slotArr (cellBody slotArr body) = true)
+    {body : Lcmd} {X : Nat → Prop} (hsep : ImgSep frame slotArr base rsp)
+    (hG : ImageAddrSimW.ImgGateW frame slotArr (cellBody slotArr body) X)
     (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
     {s : LstateMF} {sa : LstateA} {zf : Bool}
-    (hrel : ImgRelW frame slotArr base (cellBody slotArr body) s sa zf) :
+    (hrel : ImgRelW frame slotArr base (cellBody slotArr body) s sa zf) (hX : ¬ X sa.reg.lpc) :
     WideSafeAt body sa := by
-  have hW := wideSafe_of_gateW hgate hrel
+  have hW := hG.wideSafe_of_gateW hrel hX
   intro ii ds o ss hb r hr hg hc hn
   have hnN : r ∉ narrowSrc (cellBody slotArr body) sa.reg.lpc := by
     rw [narrowSrc_cellBody]; exact fun h => hn (List.mem_append_left _ h)
@@ -1083,12 +1272,17 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
                 ⟨.reg D, by simp, hab⟩)))) hg hcar hn'
             · simp only [cellBase, hn, Option.map_some, Option.some.injEq] at hab
               subst hab
-              obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel
+              obtain ⟨q, -, hp⟩ := ImageAddrSimW.ImgGateW.ptr_of_reloadW hsep hG hrel
                 (accArr_cellBody hN (hasPrefix_gpName (hF.ldGp _ _ D B off hb hca)) hacc) hBf
               exact width_of_getW hp
       | st B off S =>
+        cases hw : cellIdxStore? slotArr (cellBody slotArr body) sa.reg.lpc (.Lopn ds o ss) with
+        | some p =>
+          rw [cellMove_of_cellIdxStore (i := ⟨ii, .Lopn ds o ss⟩) hw] at hbC
+          exact hW ii ds o ss hbC r hr hg hc (hn' (hsame hbC))
+        | none =>
           obtain ⟨_, n, hx, -, hn⟩ := cellA_st hca
-          obtain ⟨A, m, hacc, hBf, -, -⟩ := hF.st _ _ B off S hb hca
+          obtain ⟨A, m, hacc, hBf, -, -⟩ := hF.st _ _ B off S hb hca hw
           have hmv : cellMove slotArr body sa.reg.lpc ⟨ii, .Lopn ds o ss⟩
               = ⟨ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by
             simp only [cellMove, hca, hacc]
@@ -1117,14 +1311,26 @@ theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
             rcases ha with rfl | rfl
             · simp only [cellBase, hn, Option.map_some, Option.some.injEq] at hab
               subst hab
-              obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel
-                (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb hca)) hacc) hBf
+              obtain ⟨q, -, hp⟩ := ImageAddrSimW.ImgGateW.ptr_of_reloadW hsep hG hrel
+                (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb hca hw)) hacc) hBf
               exact width_of_getW hp
             · exact hW' (Or.inr (Or.inr (Or.inr (List.mem_filterMap.mpr
                 ⟨.reg S, by simp, hab⟩)))) hg hcar hn'
       | lea D B off =>
           rw [cellMove_of_lea (i := ⟨ii, .Lopn ds o ss⟩) hca] at hbC
           exact hW ii ds o ss hbC r hr hg hc (hn' (hsame hbC))
+
+/-- **The width safety of a body from that of its cell body**, at a cell body that passes
+    `imgGateBW`: `wideSafe_cellBodyW` with no exempt position. -/
+theorem wideSafe_cellBody {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hgate : imgGateBW frame slotArr (cellBody slotArr body) = true)
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
+    {s : LstateMF} {sa : LstateA} {zf : Bool}
+    (hrel : ImgRelW frame slotArr base (cellBody slotArr body) s sa zf) :
+    WideSafeAt body sa :=
+  wideSafe_cellBodyW hsep (.of_imgGateBW hgate) hN hF hrel not_false
 
 /-- **One step of a straight body with cells and carry chains through its cell body.** -/
 theorem cell_stepW {frame : String → Option (BitVec 64)}
@@ -1193,11 +1399,17 @@ theorem cell_stepW {frame : String → Option (BitVec 64)}
             rw [stepA_cellBody_ld hb0 hc hacc hpA hfr]
             exact hst
         | st B off S =>
-            obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
-            obtain ⟨q, -, hpA⟩ := ptr_of_reloadW hsep hgate hrel
-              (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb0 hc)) hacc) hBf
-            rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
-            exact hst
+            cases hw : cellIdxStore? slotArr (cellBody slotArr body) sa.reg.lpc b0.li_i with
+            | some p =>
+                rw [stepA_cellBody_of_fix hb0 (cellMove_of_cellIdxStore hw) (hnc _ _ hb0)]
+                exact hst
+            | none =>
+                obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc hw
+                obtain ⟨q, -, hpA⟩ := ptr_of_reloadW hsep hgate hrel
+                  (accArr_cellBody hN (hasPrefix_gpName (hF.stGp _ _ B off S hb0 hc hw)) hacc)
+                  hBf
+                rw [stepA_cellBody_st hb0 hc hacc hpA hfr hSf]
+                exact hst
         | lea D B off =>
             rw [stepA_cellBody_of_fix hb0 (cellMove_of_lea hc) (hnc _ _ hb0)]
             exact hst

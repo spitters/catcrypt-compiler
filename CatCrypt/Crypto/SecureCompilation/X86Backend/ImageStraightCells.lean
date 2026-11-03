@@ -514,8 +514,10 @@ theorem runStraightF_argBind_empty {σ : AbiLayout} {nm : String → String} {R 
 
 /-- A decision of the cell frames of a body: the base of every cell access, and the stored
     register of every cell store, are general-purpose names; the base is reloaded from the
-    slot of an array `A`; the offset is `8 j` with `memName A (8 j)` a cell of `A`. The base
-    of the address `LEA:64 d, mem.B.off` of a cell is the stack pointer `RSP`. -/
+    slot of an array `A`; the offset is `8 j` with `memName A (8 j)` a cell of `A`. A cell
+    store that is an indexed store through a cell of the cell body (`cellIdxStore?`) passes
+    as it is. The base of the address `LEA:64 d, mem.B.off` of a cell is the stack pointer
+    `RSP`. -/
 def cellAccB (sl : String → Option (String × Nat)) (R : Slots) (body : Lcmd) : Bool :=
   (List.range body.length).all fun k =>
     match body[k]? with
@@ -527,6 +529,7 @@ def cellAccB (sl : String → Option (String × Nat)) (R : Slots) (body : Lcmd) 
         match cellA? i.li_i with
         | some (.ld _ B off) => gpOk B && arrOk B off
         | some (.st B off S) => gpOk B && gpOk S && arrOk B off
+            || (VIR.JasminLsemAddrImage.cellIdxStore? sl (ImageAddrCells.cellBody sl body) k i.li_i).isSome
         | some (.lea _ B _) => B == "RSP"
         | none => true
     | none => true
@@ -545,6 +548,7 @@ def cellAccBImpl (sl : String → Option (String × Nat)) (R : Slots) (body : Lc
         match cellA? i.li_i with
         | some (.ld _ B off) => gpOk B && arrOk B off
         | some (.st B off S) => gpOk B && gpOk S && arrOk B off
+            || (VIR.JasminLsemAddrImage.cellIdxStore? sl (ImageAddrCells.cellBody sl body) k i.li_i).isSome
         | some (.lea _ B _) => B == "RSP"
         | none => true
     | none => true
@@ -594,6 +598,7 @@ theorem cellFrames_of {sl : String → Option (String × Nat)} {R : Slots} {body
         | some (.st B off S) => gpOk B && gpOk S && (match accArr sl body k B with
             | some (A, _) => off % 8 == 0 && cellIdx R (memName A off) == some (A, off / 8)
             | none => false)
+            || (VIR.JasminLsemAddrImage.cellIdxStore? sl (ImageAddrCells.cellBody sl body) k i.li_i).isSome
         | some (.lea _ B _) => B == "RSP"
         | none => true) = true) := by
     intro k i hb
@@ -601,8 +606,8 @@ theorem cellFrames_of {sl : String → Option (String × Nat)} {R : Slots} {body
     have := List.all_eq_true.mp h k (List.mem_range.mpr hk)
     rw [hb] at this
     exact this
-  refine ⟨fun k bi D B off hb hc => ?_, fun k bi B off S hb hc => ?_,
-    fun k bi D B off hb hc => ?_, fun k bi B off S hb hc => ?_⟩
+  refine ⟨fun k bi D B off hb hc => ?_, fun k bi B off S hb hc hw => ?_,
+    fun k bi D B off hb hc => ?_, fun k bi B off S hb hc hw => ?_⟩
   · have := hat k bi hb
     rw [hc] at this
     simp only [Bool.and_eq_true] at this
@@ -617,7 +622,7 @@ theorem cellFrames_of {sl : String → Option (String × Nat)} {R : Slots} {body
         exact ⟨A, n, rfl, hgpN B hB, h1, h2⟩
   · have := hat k bi hb
     rw [hc] at this
-    simp only [Bool.and_eq_true] at this
+    simp only [hw, Option.isSome_none, Bool.or_false, Bool.and_eq_true] at this
     obtain ⟨⟨hB, hS⟩, ha⟩ := this
     cases hacc : accArr sl body k B with
     | none => rw [hacc] at ha; cases ha
@@ -633,7 +638,7 @@ theorem cellFrames_of {sl : String → Option (String × Nat)} {R : Slots} {body
     exact this.1
   · have := hat k bi hb
     rw [hc] at this
-    simp only [Bool.and_eq_true] at this
+    simp only [hw, Option.isSome_none, Bool.or_false, Bool.and_eq_true] at this
     exact this.1.1
 
 /-! ## 8. The names of the cells -/

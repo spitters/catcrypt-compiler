@@ -1027,6 +1027,51 @@ theorem loop_image_bytesW {σ : AbiLayout} {nm : String → String} {body : Lcmd
     rw [hb] at h4
     exact (eq_of_heq (Sigma.mk.inj h4).2).symm
 
+/-! ## 7. Completeness of the cell check -/
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem (cellA? CellOp)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (accArr cellIdxStore?)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCells (cellAccB cellIdx)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells (cellBody)
+
+/-- **Completeness of the cell check `cellAccB`.** A body passes `cellAccB` when the base of
+    every cell load is a general-purpose name reloaded from the slot of an array `A` at an
+    offset `8 j` of a cell of `A`; every cell store is an indexed store through a cell of the
+    cell body (`cellIdxStore?`), or its base and its stored register are general-purpose
+    names and its base is reloaded from the slot of an array `A` at an offset of a cell of
+    `A`; and the base of the address of a cell is `RSP`. -/
+theorem cellAccB_of {sl : String → Option (String × Nat)} {R : Slots} {body : Lcmd}
+    (h : ∀ k i, body[k]? = some i →
+      (∀ D B off, cellA? i.li_i = some (.ld D B off) → gpOk B = true ∧ ∃ A n,
+        accArr sl body k B = some (A, n) ∧ off % 8 = 0
+          ∧ cellIdx R (memName A off) = some (A, off / 8))
+      ∧ (∀ B off S, cellA? i.li_i = some (.st B off S) →
+        (cellIdxStore? sl (cellBody sl body) k i.li_i).isSome = true
+          ∨ (gpOk B = true ∧ gpOk S = true ∧ ∃ A n, accArr sl body k B = some (A, n)
+            ∧ off % 8 = 0 ∧ cellIdx R (memName A off) = some (A, off / 8)))
+      ∧ (∀ D B off, cellA? i.li_i = some (.lea D B off) → B = "RSP")) :
+    cellAccB sl R body = true := by
+  unfold cellAccB
+  rw [List.all_eq_true]
+  intro k _
+  cases hb : body[k]? with
+  | none => rfl
+  | some i =>
+    obtain ⟨hld, hst, hlea⟩ := h k i hb
+    simp only
+    cases hc : cellA? i.li_i with
+    | none => rfl
+    | some op =>
+      cases op with
+      | ld D B off =>
+          obtain ⟨hB, A, n, hacc, h8, hcell⟩ := hld D B off hc
+          simp [hB, hacc, h8, hcell]
+      | st B off S =>
+          rcases hst B off S hc with hw | ⟨hB, hS, A, n, hacc, h8, hcell⟩
+          · simp [hw]
+          · simp [hB, hS, hacc, h8, hcell]
+      | lea D B off => simp [hlea D B off hc]
+
 end CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldLReg
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldL

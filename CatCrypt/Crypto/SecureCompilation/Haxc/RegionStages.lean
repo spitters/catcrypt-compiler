@@ -50,7 +50,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfgLeak (leakFixC
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (printedAddrWB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells (cellBody)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (frameOkB)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (imgGateBW)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx (imgGateCW)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (ownedCheckMC)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedTVLeak (ownedCheckML)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (idxInvCheckB idxAnnot
@@ -140,7 +140,7 @@ def gateTrace (σ : AbiLayout) (b : Lcmd) (t : JasminTy) (code : List LinstrRM)
     length of the reference) and the cell body `cellBody`. The conjuncts of `regionCoB` are
     named and ordered as in `regionCoStage`; those of `regionCtB` follow, with the
     conjuncts of `regionLeakB` named `leakFixCfgB`, `constArrFreeB`, `regLeakB`,
-    `regLeakBMerged` and `ownedCheckML`, then `printedAddrWB` and `imgGateBW`. -/
+    `regLeakBMerged` and `ownedCheckML`, then `printedAddrWB` and `imgGateCW`. -/
 def gateTraceFine (σ : AbiLayout) (b : Lcmd) (t : JasminTy) (code : List LinstrRM)
     (res : List LOperand) (cert : List (String × String)) : StageTrace :=
   let nm := exportReg
@@ -226,8 +226,8 @@ def gateTraceFine (σ : AbiLayout) (b : Lcmd) (t : JasminTy) (code : List Linstr
   .stage "ownedCheckML" none fun _ =>
   if printedAddrWB b = false then .refused "printedAddrWB" else
   .stage "printedAddrWB" none fun _ =>
-  if imgGateBW (frameMarkC d.cells b) sl cb = false then .refused "imgGateBW" else
-  .stage "imgGateBW" none fun _ => .accepted
+  if imgGateCW (frameMarkC d.cells b) sl cb = false then .refused "imgGateCW" else
+  .stage "imgGateCW" none fun _ => .accepted
 
 /-- The stages of `compileRegion σ a p` on the structured program `p` with one result, in
     the order of its definition: `regionExportableB`, `callFree`, the export `exportR` (size:

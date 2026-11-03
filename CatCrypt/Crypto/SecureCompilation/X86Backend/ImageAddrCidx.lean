@@ -24,7 +24,7 @@ by the program counter. The relation of a wide simulation segment is `ImgRelW` a
 
 ## Main definitions
 
-* `cidxArmAt`, `cidxArmB`: the arm of the gate of a calling body at such a store.
+* `cidxArmAt`, `cidxArmB`: the arm of the gate at such a store.
 * `cidxRegs`: the address register and the index register of a window.
 * `idxSrcVal`: the value of the index of a window on an image register file.
 * `CidxInv`: the invariant of the window.
@@ -40,6 +40,10 @@ by the program counter. The relation of a wide simulation segment is `ImgRelW` a
 * `cidxInv_store`: the invariant after the store.
 * `img_stepCW`: the step of the image at a store passing `cidxArmB`, into `ImgRelW` and the
   invariant.
+* `cidxArmCW`, `gateCW`, `imgGateCW`: the gate of the wide image simulation with indexed stores
+  through a cell; `imgGateW_of_imgGateCW`, its positionwise form, and `imgGateCW_of_imgGateBW`,
+  `cidxInv_of_imgGateBW`, the gate `imgGateBW` as an instance.
+* `safeAt_of_cidxArmCW`: the safety of the address machine at such a store.
 -/
 
 @[expose] public section
@@ -762,5 +766,288 @@ theorem img_stepCW {frame : String → Option (BitVec 64)}
   obtain ⟨sa1, h1, h2⟩ := rel_cidxStoreW hsep hphys P hrel hinv hb harm hst hstep
   exact ⟨haltedA_of hb (by rw [hx]; simp), loadSafe_of hb (by rw [hx]; simp [normA]), sa1, h1,
     Or.inl ⟨h2, cidxInv_store P hb hrel.pc.symm hst hstep⟩⟩
+
+/-! ## 6. The gate with indexed stores through a cell -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (isRetB)
+
+/-- The stored name of an `Lopn` with one register source is no cell name. -/
+def srcNoCellB : LinstrR → Bool
+  | .Lopn _ _ [.reg v] => (cellParts? v).isNone
+  | _ => false
+
+/-- The arm of an indexed store through a cell in the gate: `cidxArmB`, with a stored name that
+    is no cell name (`srcNoCellB`), so that the store reads no base besides its address
+    register. -/
+def cidxArmCW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) (k : Nat) (x : LinstrR) : Bool :=
+  cidxArmB frame slotArr body k x && srcNoCellB x
+
+/-- **The gate of an instruction with indexed stores through a cell**: the arm `cidxArmCW` of
+    such a store, or the gate `instrGateBW`. -/
+def gateCW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) (k : Nat) (x : LinstrR) : Bool :=
+  cidxArmCW frame slotArr body k x || instrGateBW frame slotArr body k x
+
+/-- **The gate of the wide image simulation with indexed stores through a cell**: every
+    instruction but the last passes `gateCW`, the last is the return, and every array-pointer
+    reload follows a save. -/
+def imgGateCW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) : Bool :=
+  (List.range (body.length - 1)).all (fun k =>
+      (body[k]?).all fun i => gateCW frame slotArr body k i.li_i)
+    && body.getLast?.any (fun r => isRetB r.li_i)
+    && reloadSavedB slotArr body
+
+/-- The positions of a body exempt from `instrGateBW` under `imgGateCW`: an indexed store
+    through a cell passing `cidxArmCW`. -/
+def exemptC (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) (k : Nat) : Prop :=
+  (body[k]?).any (fun i => cidxArmCW frame slotArr body k i.li_i) = true
+
+/-- A body that passes `imgGateCW` passes the positionwise gate at the exempt positions
+    `exemptC`. -/
+theorem imgGateW_of_imgGateCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (h : imgGateCW frame slotArr body = true) :
+    ImgGateW frame slotArr body (exemptC frame slotArr body) := by
+  simp only [imgGateCW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+  obtain ⟨⟨h1, h2⟩, h3⟩ := h
+  refine ⟨fun k i hi hk hX => ?_, ?_, h3⟩
+  · have := h1 k (by omega)
+    rw [hi] at this
+    simp only [Option.all_some, gateCW, Bool.or_eq_true] at this
+    simp only [exemptC, hi, Option.any_some] at hX
+    exact this.resolve_left hX
+  · cases hl : body.getLast? with
+    | none => rw [hl] at h2; cases h2
+    | some r =>
+        rw [hl] at h2
+        simp only [Option.any_some] at h2
+        refine ⟨r, rfl, ?_⟩
+        revert h2
+        unfold isRetB
+        split <;> simp_all
+
+/-- **A body of the gate `imgGateBW` passes `imgGateCW`**: `instrGateBW` is a disjunct of
+    `gateCW`. -/
+theorem imgGateCW_of_imgGateBW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (h : imgGateBW frame slotArr body = true) : imgGateCW frame slotArr body = true := by
+  simp only [imgGateBW, imgGateCW, Bool.and_eq_true, List.all_eq_true] at h ⊢
+  obtain ⟨⟨h1, h2⟩, h3⟩ := h
+  refine ⟨⟨fun k hk => ?_, h2⟩, h3⟩
+  have := h1 k hk
+  cases hb : body[k]? with
+  | none => rfl
+  | some i =>
+      rw [hb, Option.all_some] at this
+      simp [gateCW, this]
+
+/-- **On a body of the gate `imgGateBW` the invariant of the window holds at every state**: the
+    gate refuses every indexed store through a cell (`ImageAddrCells.cellIdxStore?_of_imgGateBW`),
+    so that the body has no window. -/
+theorem cidxInv_of_imgGateBW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (h : imgGateBW frame slotArr body = true) (base : String → BitVec 64) (s : LstateMF) :
+    CidxInv slotArr base body s := by
+  refine ⟨fun k i A n idx v D X hi hst _ _ => ?_, fun k i A n idx v D X hi hst _ _ => ?_⟩
+  · rw [ImageAddrCells.cellIdxStore?_of_imgGateBW h hi] at hst
+    cases hst
+  · rw [ImageAddrCells.cellIdxStore?_of_imgGateBW h hi] at hst
+    cases hst
+
+/-- **The safety of the address machine at an indexed store through a cell.** At the program
+    counter of a state related by `ImgRelW` on `c`, where the instruction of `c` passes
+    `cidxArmCW`, every body with the same instruction at the program counter reads its
+    general-purpose names at width `64` (`WideSafeAt`), and loads no cell (`CellSafeAt`). -/
+theorem safeAt_of_cidxArmCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {c : Lcmd} {s : LstateMF} {sa : LstateA} {zf : Bool}
+    (hrel : ImgRelW frame slotArr base c s sa zf) {bi : Linstr}
+    (harm : cidxArmCW frame slotArr c sa.reg.lpc bi.li_i = true) {body : Lcmd}
+    (hb : body[sa.reg.lpc]? = some bi) :
+    DecodePrintedAddrW.WideSafeAt body sa ∧ DecodePrintedAddrW.CellSafeAt rsp body sa := by
+  simp only [cidxArmCW, Bool.and_eq_true] at harm
+  obtain ⟨harm, hvc⟩ := harm
+  obtain ⟨A, n, idx, v, c0, D, -, hx, hcp, -, -, -, hDW, hvW, -⟩ := cidxArmB_spec harm
+  rw [hx] at hvc
+  simp only [srcNoCellB, Option.isNone_iff_eq_none] at hvc
+  refine ⟨fun ii ds o ss hb' r hr hg _ _ => ?_, fun ii x D' B off p hb' hc _ => ?_⟩
+  · rw [hb] at hb'
+    obtain rfl := Option.some.inj hb'
+    simp only at hx
+    cases hx
+    have hrr : r = v ∨ r = D := by
+      rcases hr with rfl | ⟨-, hx⟩ | hr' | hr'
+      · exact absurd hg (by decide)
+      · simp [JasminLsemAddrCongr.readsRdx, JasminLsemAddrCongr.rdxShape] at hx
+      · left; simpa [JasminLsemAddrCongr.srcNames] using hr'
+      · right
+        simpa [JasminLsemAddrCongr.cellBase, hcp, hvc] using hr'
+    rcases hrr with rfl | rfl
+    · exact hrel.wid r hg hvW
+    · exact hrel.wid r hg hDW
+  · rw [hb] at hb'
+    obtain rfl := Option.some.inj hb'
+    simp only at hx
+    subst hx
+    simp (config := { decide := true }) [cellA?, hcp] at hc
+
+/-- **At an indexed store through a cell, the gate `imgGateCW` is its arm `cidxArmCW`**: the
+    gate `instrGateBW` refuses the store (`ImageAddrCells.cellIdxStore?_of_instrGateBW`). -/
+theorem cidxArmCW_of_imgGateCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {c : Lcmd}
+    (hg : imgGateCW frame slotArr c = true) {k : Nat} {i : Linstr} (hb : c[k]? = some i)
+    (hk : k < c.length - 1) (hs : cellIdxStore? slotArr c k i.li_i ≠ none) :
+    cidxArmCW frame slotArr c k i.li_i = true := by
+  simp only [imgGateCW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hg
+  have := hg.1.1 k hk
+  rw [hb, Option.all_some] at this
+  simp only [gateCW, Bool.or_eq_true] at this
+  exact this.resolve_right fun h => hs (ImageAddrCells.cellIdxStore?_of_instrGateBW h)
+
+/-- **The address of an indexed store through a cell.** At the store of a window passing
+    `cidxArmB`, with the invariant of the window at the position, a checked step of the image of
+    the store has an index `w` below the array length, and the address register `D` of the cell
+    `mem.D.0` holds the address of the word `w` of the array. -/
+theorem cidxStore_addr {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
+    (P : LprogM) {s t : LstateMF} {sa : LstateA} {zf : Bool}
+    (hrel : ImgRelW frame slotArr base body s sa zf) (hinv : CidxInv slotArr base body s)
+    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi)
+    (harm : cidxArmB frame slotArr body sa.reg.lpc bi.li_i = true) {A v : String}
+    {idx : String ⊕ Nat} {n : Nat}
+    (hst : cellIdxStore? slotArr body sa.reg.lpc bi.li_i = some (A, n, idx, v))
+    (hs : evalInstrPMemFk true P (cellStoreImg A n idx v) s = some t) :
+    ∃ c D w, bi.li_i = .Lopn [.reg c] "MOV:64" [.reg v] ∧ cellParts? c = some (D, 0)
+      ∧ w.toNat < n ∧ idxSrcVal s.prog.base.reg idx = ⟨64, w⟩
+      ∧ sa.reg.getW D 64 = some (base A + BitVec.ofNat 64 (8 * w.toNat)) := by
+  obtain ⟨A', n', idx', v', c, D, hst', hx, hcp, hcW, hfD, hfv, hDW, hvW, hj⟩ :=
+    cidxArmB_spec harm
+  rw [hst] at hst'
+  simp only [Option.some.injEq, Prod.mk.injEq] at hst'
+  obtain ⟨rfl, rfl, rfl, rfl⟩ := hst'
+  obtain ⟨c0, D0, B, X, d1, src, l, r, m, hx0, hc0, -, -, hl, hli, -, -, -, -, -, -, hac⟩ :=
+    cellIdxStore?_spec hst
+  have hc0e : c0 = c := by
+    rw [hx] at hx0
+    simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at hx0
+    exact hx0.symm
+  subst hc0e
+  have hD0 : D0 = D := by
+    rw [hc0] at hcp
+    exact (Prod.mk.inj (Option.some.inj hcp)).1
+  subst hD0
+  have hreg : cidxRegs body sa.reg.lpc = some (D0, X) := by
+    obtain ⟨ii, li⟩ := l
+    simp only at hli
+    subst hli
+    simp [cidxRegs, hl]
+  obtain ⟨w, hDv, hidxv⟩ := hinv.at1 _ bi A n idx v D0 X hb hst hreg (Or.inr hrel.pc.symm)
+  have hDs : sa.reg.getW D0 64 = some (base A + BitVec.ofNat 64 (8 * w.toNat)) := by
+    rw [getW_eq_some_iff, ← hrel.regsEq hfD hDW, hDv]
+  refine ⟨c0, D0, w, hx, hc0, ?_, hidxv, hDs⟩
+  cases idx with
+  | inl q' =>
+    have hq' : s.prog.base.reg.getW q' 64 = some w := getW_eq_some_iff.2 hidxv
+    simp only [cellStoreImg] at hs
+    have hok := idxOkB_of_checked hs
+    simp only [idxOkB, storeStruct?, ite_true, idxBelowB, hq'] at hok
+    simpa using hok
+  | inr j =>
+    have hw : w = BitVec.ofNat 64 j := by simpa [idxSrcVal] using hidxv.symm
+    subst hw
+    have := hj j rfl
+    simp only [BitVec.toNat_ofNat]
+    exact lt_of_le_of_lt (Nat.mod_le _ _) this
+
+/-! ## 7. Facts of the gate `imgGateCW` -/
+
+/-- At the program counter `0` the invariant of the window holds: a window stands at a
+    position of at least `3`. -/
+theorem CidxInv.of_lpc_zero {slotArr : String → Option (String × Nat)}
+    {base : String → BitVec 64} {body : Lcmd} {s : LstateMF} (h : s.prog.base.reg.lpc = 0) :
+    CidxInv slotArr base body s :=
+  CidxInv.of_outside fun j hj i _ => by
+    cases hs : cellIdxStore? slotArr body (s.prog.base.reg.lpc + j) i.li_i with
+    | none => rfl
+    | some p =>
+        obtain ⟨A, n, q, v⟩ := p
+        obtain ⟨_, _, _, _, _, _, _, _, _, _, _, h3, _⟩ := cellIdxStore?_spec hs
+        omega
+
+/-- `imgGateCW` reads only which names have a frame word. -/
+theorem imgGateCW_congr {frame frame' : String → Option (BitVec 64)}
+    (h : ∀ q, (frame q).isSome = (frame' q).isSome)
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) :
+    imgGateCW frame slotArr body = imgGateCW frame' slotArr body := by
+  have hn : ∀ q, (frame q).isNone = (frame' q).isNone := fun q => by
+    have := h q; cases e : frame q <;> cases e' : frame' q <;> simp_all
+  have hi : ∀ k x, instrGateBW frame slotArr body k x = instrGateBW frame' slotArr body k x := by
+    intro k x
+    have hcg : castGateB frame x = castGateB frame' x := by simp only [castGateB, hn]
+    simp only [instrGateBW, gateAtW, carryOkB, oneBitAt_congr h,
+      ImageAddrFrame.icase_congr h, gateReadSet_congr h, regGateBW_congr h, sImmB_congr h,
+      sCmovB_congr h, hcg, hn, h]
+  have hc : ∀ k x, cidxArmCW frame slotArr body k x = cidxArmCW frame' slotArr body k x := by
+    intro k x
+    simp only [cidxArmCW, cidxArmB, cidxArmAt, oneBitAt_congr h, hn]
+  simp only [imgGateCW, gateCW, hi, hc]
+
+/-- Under `imgGateCW` no instruction before the last is the return. -/
+theorem not_ret_of_imgGateCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hg : imgGateCW frame slotArr body = true) {k : Nat} {bi : Linstr}
+    (hk : k + 1 < body.length) (hb : body[k]? = some bi) : bi.li_i ≠ .Lret := by
+  intro hr
+  simp only [imgGateCW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hg
+  have := hg.1.1 k (by omega)
+  rw [hb] at this
+  simp [gateCW, cidxArmCW, cidxArmB, cidxArmAt, srcNoCellB, hr, cellIdxStore?, instrGateBW,
+    gateAtW, carryI?, icase, castGateB, DecodePrintedAddrW.classifyK] at this
+
+/-- **At a halt of the address machine on a body of `imgGateCW`, the width analysis is that of
+    the last position**: a name outside the analysis at the last position is outside it at
+    the program counter. -/
+theorem not_mem_oneBitAt_of_haltedCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hgate : imgGateCW frame slotArr body = true) {sa : LstateA}
+    (hh : haltedA body sa = true) {q : String}
+    (hW : q ∉ oneBitAt frame body (body.length - 1)) :
+    q ∉ oneBitAt frame body sa.reg.lpc := by
+  obtain ⟨r, hr, hret⟩ := (imgGateW_of_imgGateCW hgate).last
+  have hlen : 0 < body.length := by
+    cases body with
+    | nil => cases hr
+    | cons _ _ => simp
+  have hlast : body[body.length - 1]? = some r := by
+    rw [← List.getLast?_eq_getElem?]; exact hr
+  have hge : body.length - 1 ≤ sa.reg.lpc := by
+    by_contra hlt
+    have hk : sa.reg.lpc < body.length := by omega
+    obtain ⟨bi, hb⟩ : ∃ bi, body[sa.reg.lpc]? = some bi :=
+      ⟨_, List.getElem?_eq_getElem hk⟩
+    have hbr : bi.li_i = .Lret := by
+      unfold haltedA at hh
+      rw [hb] at hh
+      obtain ⟨ii, li⟩ := bi
+      cases li <;> simp_all
+    exact not_ret_of_imgGateCW hgate (by omega) hb hbr
+  rcases Nat.lt_or_ge sa.reg.lpc body.length with hk | hk
+  · rwa [show sa.reg.lpc = body.length - 1 by omega]
+  · have e : oneBitAt frame body sa.reg.lpc = oneBitAt frame body (body.length - 1) := by
+      have e1 : oneBitAt frame body sa.reg.lpc = oneBitAt frame body body.length := by
+        simp only [oneBitAt, oneBitSt, List.take_of_length_le hk,
+          List.take_of_length_le (le_refl _)]
+      have e2 : oneBitAt frame body (body.length - 1 + 1)
+          = oneBitAt frame body (body.length - 1) := by
+        rw [oneBitAt_succ_at hlast, hret]
+        simp [oneBitStepAt, oneBitStepAtB, seedB, fwdJoin, bitStore?, oneBitStep, carryI?, icase,
+          castOut, DecodePrintedAddrW.classifyK]
+      rw [show body.length - 1 + 1 = body.length by omega] at e2
+      rw [e1, e2]
+    rw [e]
+    exact hW
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx

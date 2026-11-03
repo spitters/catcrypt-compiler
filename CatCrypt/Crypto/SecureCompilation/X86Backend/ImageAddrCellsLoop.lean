@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx
 
 @[expose] public section
 
@@ -36,10 +36,14 @@ at a conditional branch is a parameter, `ImgStepWCond`.
   base register of a cell access holds the pointer of its array.
 * `img_step_cond`: `CondStep` at the relation `ImageAddrSim.ImgRel`, for a body that passes
   `imgGateB`.
-* `cell_step'`, `cell_stepW'`: one step of the image of the cell body on the body.
+* `cell_step'`, `cell_stepCW'`, `cell_stepW'`: one step of the image of the cell body on the
+  body; `cell_stepCW'` at the gate `ImageAddrCidx.imgGateCW` with indexed stores through a cell
+  and the invariant of the window, `cell_stepW'` its instance at `imgGateBW`.
 * `runA_of_steps_pred`, `runA_of_steps`: a run of the address machine from its steps, every
   state it steps from satisfying a state predicate.
-* `image_addr_simB'`, `image_addr_simBW'`: the run of the image of the cell body on the body.
+* `image_addr_simB'`, `image_addr_simCW'`, `image_addr_simBW'`: the run of the image of the
+  cell body on the body; `image_addr_simCW'` at `imgGateCW` with the invariant of the window,
+  `image_addr_simBW'` its instance at `imgGateBW`.
 * `virt_bytesC'`: a virtual body on the decoded bytes of a body with cells, labels and
   conditional branches.
 -/
@@ -179,9 +183,17 @@ theorem stepA_cellBody {frame : String → Option (BitVec 64)}
                 exact stepA_cellBody_ld hb0 hc hacc
                   (hptr B A m hacc (hF.ldGp _ _ D B off hb0 hc) hBf) hfr
             | st B off S =>
-                obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
-                exact stepA_cellBody_st hb0 hc hacc
-                  (hptr B A m hacc (hF.stGp _ _ B off S hb0 hc) hBf) hfr hSf
+                cases hw : JasminLsemAddrImage.cellIdxStore? slotArr (cellBody slotArr body)
+                    sa.reg.lpc b0.li_i with
+                | some p =>
+                    unfold stepA
+                    rw [hbC, hb0, cellMove_of_cellIdxStore hw]
+                    obtain ⟨ii, li⟩ := b0
+                    cases li <;> simp only [tagAt_cellBody, labelAt_cellBody]
+                | none =>
+                    obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc hw
+                    exact stepA_cellBody_st hb0 hc hacc
+                      (hptr B A m hacc (hF.stGp _ _ B off S hb0 hc hw) hBf) hfr hSf
             | lea D B off =>
                 unfold stepA
                 rw [hbC, hb0, cellMove_of_lea hc]
@@ -401,9 +413,92 @@ theorem cell_step' {frame : String → Option (BitVec 64)}
       ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe, hwide, hcell⟩, sa1,
       by rw [he]; exact hst, Or.inl hr⟩
 
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx (CidxInv imgGateCW exemptC
+  imgGateW_of_imgGateCW imgGateCW_of_imgGateBW cidxInv_of_imgGateBW cidxInv_step cidxInv_store
+  rel_cidxStoreW cidxArmB_spec safeAt_of_cidxArmCW)
+
+/-- **One step of a body with cells, carry chains and indexed stores through a cell, through
+    its cell body.** For a cell body that passes `imgGateCW`, from states related by `ImgRelW`
+    with the invariant of the window `CidxInv`: at an indexed store through a cell passing
+    `cidxArmCW`, the store of the image (`ImageAddrCidx.rel_cidxStoreW`) is the step of the
+    address machine on the body, which keeps the store; at a conditional branch, the step
+    `ImgStepWCond`; at every other instruction, the step of the positionwise gate outside its
+    exempt set (`ImageAddrSimW.ImgGateW.img_stepW`). The invariant of the window holds after
+    the step. -/
+theorem cell_stepCW' {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : imgGateCW frame slotArr (cellBody slotArr body) = true)
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
+    (fn : String) (hcond : ImgStepWCond frame slotArr base rsp (cellBody slotArr body) fn)
+    {s t : LstateMF} {sa : LstateA}
+    (hrel : ImgRelW frame slotArr base (cellBody slotArr body) s sa s.zf)
+    (hinv : CidxInv slotArr base (cellBody slotArr body) s) {bi : Linstr}
+    (hb : (cellBody slotArr body)[sa.reg.lpc]? = some bi)
+    (hlt : sa.reg.lpc < (cellBody slotArr body).length - 1)
+    (hstep : evalInstrPMemFk true (singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
+      (imgInstr slotArr (cellBody slotArr body) sa.reg.lpc bi.li_i) s = some t) :
+    haltedA body sa = false ∧ SafeW rsp body sa
+      ∧ ∃ sa1, stepA frame body sa s.zf = some (sa1, t.zf)
+        ∧ ((ImgRelW frame slotArr base (cellBody slotArr body) t sa1 t.zf
+            ∧ CidxInv slotArr base (cellBody slotArr body) t)
+          ∨ (haltedA body sa1 = false ∧ SafeW rsp body sa1
+            ∧ ∃ sa2, stepA frame body sa1 t.zf = some (sa2, t.zf)
+              ∧ ImgRelW frame slotArr base (cellBody slotArr body) t sa2 t.zf
+              ∧ CidxInv slotArr base (cellBody slotArr body) t)) := by
+  have hG := imgGateW_of_imgGateCW hgate
+  have hbC := hb
+  rw [cellBody_getElem?] at hb
+  obtain ⟨b0, hb0, hbe⟩ := Option.map_eq_some_iff.mp hb
+  by_cases hX : exemptC frame slotArr (cellBody slotArr body) sa.reg.lpc
+  · simp only [exemptC, hbC, Option.any_some] at hX
+    have harm := (Bool.and_eq_true_iff.mp hX).1
+    obtain ⟨A, n, idx, v, c0, D, hst, hx, -, -⟩ := cidxArmB_spec harm
+    have hfix : cellMove slotArr body sa.reg.lpc b0 = b0 := by
+      rcases cellMove_eq_or slotArr body sa.reg.lpc b0 with h | ⟨D', S', h⟩
+      · exact h
+      · rw [hbe, hx] at h; simp at h
+    rw [hfix] at hbe
+    subst hbe
+    have hnc : ∀ cc l, b0.li_i ≠ .Lcond cc l := by rw [hx]; simp
+    have he := stepA_cellBody_of_fix (frame := frame) (zf := s.zf) hb0 hfix hnc
+    obtain ⟨hws, hcs⟩ := safeAt_of_cidxArmCW (rsp := rsp) hrel hX hb0
+    rw [JasminLsemAddrImage.imgInstr_cellIdxStore slotArr hst] at hstep
+    obtain ⟨sa1, h1, h2⟩ := rel_cidxStoreW hsep hphys _ hrel hinv hbC harm hst hstep
+    exact ⟨haltedA_of hb0 (by rw [hx]; simp),
+      ⟨loadSafe_of hb0 (by rw [hx]; simp [normA]), hws, hcs⟩, sa1, by rw [he]; exact h1,
+      Or.inl ⟨h2, cidxInv_store _ hbC hrel.pc.symm hst hstep⟩⟩
+  · have hinv' := cidxInv_step hsep hG fn hrel hinv hbC hlt hX hstep
+    by_cases hcnd : ∃ cc l, b0.li_i = .Lcond cc l
+    · obtain ⟨cc, l, hx⟩ := hcnd
+      rw [cellMove_lcond slotArr body _ hx] at hbe
+      subst hbe
+      obtain ⟨hh, hs, sa1, hst1, hc⟩ := cell_cond hcond hrel hb0 hx hlt hstep
+      refine ⟨hh, hs, sa1, hst1, ?_⟩
+      rcases hc with h | ⟨h1, h2, sa2, h3, h4⟩
+      · exact Or.inl ⟨h, hinv'⟩
+      · exact Or.inr ⟨h1, h2, sa2, h3, h4, hinv'⟩
+    · have hnc' : ∀ cc l, bi.li_i ≠ .Lcond cc l :=
+        fun cc l he => hcnd ⟨cc, l, lcond_of_cellMove (by rw [hbe]; exact he)⟩
+      obtain ⟨hh, hsafe, sa1, hst, hr⟩ :=
+        ImageAddrSimW.ImgGateW.img_stepW hsep hphys hG _ hrel hbC hlt hX hnc' hstep
+      have hptr : ∀ B A m, accArr slotArr body sa.reg.lpc B = some (A, m) →
+          DecodePrinted.gpOk B = true → frame B = none → sa.reg.getW B 64 = some (base A) := by
+        intro B A m hacc hg hBf
+        obtain ⟨q, -, hpA⟩ := ImageAddrSimW.ImgGateW.ptr_of_reloadW hsep hG hrel
+          (accArr_cellBody hN (hasPrefix_gpName hg) hacc) hBf
+        exact hpA
+      obtain ⟨hcell, he⟩ := stepA_cellBody hF hptr s.zf
+      exact ⟨by rw [← haltedA_cellBody slotArr]; exact hh,
+        ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe,
+          wideSafe_cellBodyW hsep hG hN hF hrel hX, hcell⟩, sa1,
+        by rw [he]; exact hst, Or.inl ⟨hr, hinv'⟩⟩
+
 /-- **One step of a body with cells and carry chains through its cell body.**
-    `ImageAddrCells.cell_stepW` at every instruction, with the step of the image at a
-    conditional branch as the hypothesis `ImgStepWCond`. -/
+    `cell_stepCW'` at a cell body that passes `imgGateBW`, which has no indexed store through a
+    cell, so that the invariant of the window holds at every state
+    (`ImageAddrCidx.cidxInv_of_imgGateBW`). -/
 theorem cell_stepW' {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
@@ -423,30 +518,12 @@ theorem cell_stepW' {frame : String → Option (BitVec 64)}
           ∨ (haltedA body sa1 = false ∧ SafeW rsp body sa1
             ∧ ∃ sa2, stepA frame body sa1 t.zf = some (sa2, t.zf)
               ∧ ImgRelW frame slotArr base (cellBody slotArr body) t sa2 t.zf)) := by
-  rw [cellBody_getElem?] at hb
-  obtain ⟨b0, hb0, rfl⟩ := Option.map_eq_some_iff.mp hb
-  by_cases hcnd : ∃ cc l, b0.li_i = .Lcond cc l
-  · obtain ⟨cc, l, hx⟩ := hcnd
-    rw [cellMove_lcond slotArr body _ hx] at hstep
-    exact cell_cond hcond hrel hb0 hx hlt hstep
-  · have hnc' : ∀ cc l, (cellMove slotArr body sa.reg.lpc b0).li_i ≠ .Lcond cc l :=
-      fun cc l he => hcnd ⟨cc, l, lcond_of_cellMove he⟩
-    have hbC : (cellBody slotArr body)[sa.reg.lpc]?
-        = some (cellMove slotArr body sa.reg.lpc b0) := by
-      rw [cellBody_getElem?, hb0]; rfl
-    obtain ⟨hh, hsafe, sa1, hst, hr⟩ :=
-      img_stepW hsep hphys hgate _ hrel hbC hlt hnc' hstep
-    have hptr : ∀ B A m, accArr slotArr body sa.reg.lpc B = some (A, m) →
-        DecodePrinted.gpOk B = true → frame B = none → sa.reg.getW B 64 = some (base A) := by
-      intro B A m hacc hg hBf
-      obtain ⟨q, -, hpA⟩ := ptr_of_reloadW hsep hgate hrel
-        (accArr_cellBody hN (hasPrefix_gpName hg) hacc) hBf
-      exact hpA
-    obtain ⟨hcell, he⟩ := stepA_cellBody hF hptr s.zf
-    exact ⟨by rw [← haltedA_cellBody slotArr]; exact hh,
-      ⟨(loadSafeAt_cellBody slotArr rsp body sa).mp hsafe,
-        wideSafe_cellBody hsep hgate hN hF hrel, hcell⟩, sa1,
-      by rw [he]; exact hst, Or.inl hr⟩
+  obtain ⟨hh, hs, sa1, hst, hc⟩ := cell_stepCW' hsep hphys (imgGateCW_of_imgGateBW hgate) hN hF
+    fn hcond hrel (cidxInv_of_imgGateBW hgate base s) hb hlt hstep
+  refine ⟨hh, hs, sa1, hst, ?_⟩
+  rcases hc with h | ⟨h1, h2, sa2, h3, h4, -⟩
+  · exact Or.inl h.1
+  · exact Or.inr ⟨h1, h2, sa2, h3, h4⟩
 
 /-! ## 4. The run of a body with cells -/
 
@@ -577,9 +654,76 @@ theorem image_addr_simB' {frame : String → Option (BitVec 64)}
     fuel s t sa zf ⟨hfn, hrel⟩ hrun
   exact ⟨f, sa', zf', h1, h2, h3⟩
 
+/-- **The step of the image with carry chains at a conditional branch of a body that passes
+    `imgGateCW`**: a conditional branch is outside the exempt set of the gate, where
+    `ImageAddrSimWCond.ImgGateW.img_stepW_cond` steps. -/
+theorem imgStepWCond_of_gateCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} (rsp : BitVec 64)
+    {c : Lcmd} (hphys : physImgB slotArr c = true) (hgate : imgGateCW frame slotArr c = true)
+    (fn : String) : ImgStepWCond frame slotArr base rsp c fn :=
+  fun _ _ _ _ _ _ hrel hb hlt hc hstep =>
+    (ImageAddrSimWCond.ImgGateW.img_stepW_cond hphys (imgGateW_of_imgGateCW hgate) fn hrel hb
+      hlt (by
+        simp only [exemptC, hb, Option.any_some, hc, ImageAddrCidx.cidxArmCW,
+          ImageAddrCidx.cidxArmB, ImageAddrCidx.cidxArmAt, JasminLsemAddrImage.cellIdxStore?]
+        simp) hc hstep).2
+
+/-- **The image of the cell body simulated on the body, with carry chains and indexed stores
+    through a cell.** For a cell body that passes `imgGateCW` and `physImgB`, with the step of
+    the image at a conditional branch as the hypothesis `ImgStepWCond`: every halting checked
+    run of the image of the cell body from a state related by `ImgRelW`, with the invariant of
+    the window `CidxInv`, is matched by a halting run of the address machine on the body, whose
+    final state is related to the final state of the image with the invariant, and which is
+    safe in the sense of `SafeW`. -/
+theorem image_addr_simCW' {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hphys : physImgB slotArr (cellBody slotArr body) = true)
+    (hgate : imgGateCW frame slotArr (cellBody slotArr body) = true)
+    (hN : CellNoSlot slotArr body) (hF : CellFrames frame slotArr base rsp body)
+    (fn : String) (hcond : ImgStepWCond frame slotArr base rsp (cellBody slotArr body) fn)
+    (fuel : Nat) (s t : LstateMF) (sa : LstateA) (zf : Bool) (hfn : s.prog.lfn = fn)
+    (hrel : ImgRelW frame slotArr base (cellBody slotArr body) s sa zf)
+    (hinv : CidxInv slotArr base (cellBody slotArr body) s)
+    (hrun : lsemFuelMemFk true (singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
+      fuel s = some t) :
+    ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
+      ∧ ImgRelW frame slotArr base (cellBody slotArr body) t sa' zf'
+      ∧ CidxInv slotArr base (cellBody slotArr body) t
+      ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf := by
+  obtain ⟨f, sa', zf', h1, ⟨-, h2, h2'⟩, h3⟩ := runA_of_steps (frame := frame) (rsp := rsp)
+    (body := body) (P := singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
+    (R := fun s sa zf => s.prog.lfn = fn
+      ∧ ImgRelW frame slotArr base (cellBody slotArr body) s sa zf
+      ∧ CidxInv slotArr base (cellBody slotArr body) s)
+    (fun s sa zf h hf => by
+      have hh := ImageAddrSimW.ImgGateW.haltedA_of_imgW (imgGateW_of_imgGateCW hgate) fn h.1
+        h.2.1.pc hf
+      rwa [haltedA_cellBody] at hh)
+    (fun s s1 sa zf i h hf he => by
+      obtain ⟨hfn, hrel, hinv⟩ := h
+      have hlfn : s1.prog.lfn = fn :=
+        (evalInstrPMemF_next _ i s s1 (JasminLsemMemChecked.evalInstrPMemF_of_k he)).1.trans hfn
+      have hz := hrel.zf
+      subst hz
+      rw [findInstrMem_single hfn, JasminLsemAddrImage.virtImg_getElem?, ← hrel.pc,
+        List.getElem?_dropLast] at hf
+      split at hf
+      case isFalse => cases hf
+      rename_i hlt
+      obtain ⟨bi, hb, rfl⟩ := Option.map_eq_some_iff.mp hf
+      obtain ⟨hh, hsafe, sa1, hst, hc⟩ :=
+        cell_stepCW' hsep hphys hgate hN hF fn hcond hrel hinv hb hlt he
+      refine ⟨hh, hsafe, sa1, s1.zf, hst, ?_⟩
+      rcases hc with ⟨hr, hi⟩ | ⟨hh1, hsafe1, sa2, hst2, hr, hi⟩
+      · exact Or.inl ⟨hlfn, hr, hi⟩
+      · exact Or.inr ⟨hh1, hsafe1, sa2, s1.zf, hst2, hlfn, hr, hi⟩)
+    fuel s t sa zf ⟨hfn, hrel, hinv⟩ hrun
+  exact ⟨f, sa', zf', h1, h2, h2', h3⟩
+
 /-- **The image of the cell body simulated on the body, with carry chains.**
-    `ImageAddrCells.image_addr_simBW` for a body with labels and conditional branches, with
-    the step of the image at a conditional branch as the hypothesis `ImgStepWCond`. -/
+    `image_addr_simCW'` at a cell body that passes `imgGateBW`, at which the invariant of the
+    window holds at every state (`ImageAddrCidx.cidxInv_of_imgGateBW`). -/
 theorem image_addr_simBW' {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
@@ -594,32 +738,9 @@ theorem image_addr_simBW' {frame : String → Option (BitVec 64)}
     ∃ fuel' sa' zf', runA frame body fuel' sa zf = some (sa', zf')
       ∧ ImgRelW frame slotArr base (cellBody slotArr body) t sa' zf'
       ∧ RunSafe frame body (SafeW rsp body) fuel' sa zf := by
-  obtain ⟨f, sa', zf', h1, ⟨-, h2⟩, h3⟩ := runA_of_steps (frame := frame) (rsp := rsp)
-    (body := body) (P := singletonProgM fn (virtImg slotArr (cellBody slotArr body)))
-    (R := fun s sa zf => s.prog.lfn = fn
-      ∧ ImgRelW frame slotArr base (cellBody slotArr body) s sa zf)
-    (fun s sa zf h hf => by
-      have hh := haltedA_of_imgW hgate fn h.1 h.2.pc hf
-      rwa [haltedA_cellBody] at hh)
-    (fun s s1 sa zf i h hf he => by
-      obtain ⟨hfn, hrel⟩ := h
-      have hlfn : s1.prog.lfn = fn :=
-        (evalInstrPMemF_next _ i s s1 (JasminLsemMemChecked.evalInstrPMemF_of_k he)).1.trans hfn
-      have hz := hrel.zf
-      subst hz
-      rw [findInstrMem_single hfn, JasminLsemAddrImage.virtImg_getElem?, ← hrel.pc,
-        List.getElem?_dropLast] at hf
-      split at hf
-      case isFalse => cases hf
-      rename_i hlt
-      obtain ⟨bi, hb, rfl⟩ := Option.map_eq_some_iff.mp hf
-      obtain ⟨hh, hsafe, sa1, hst, hc⟩ :=
-        cell_stepW' hsep hphys hgate hN hF fn hcond hrel hb hlt he
-      refine ⟨hh, hsafe, sa1, s1.zf, hst, ?_⟩
-      rcases hc with hr | ⟨hh1, hsafe1, sa2, hst2, hr⟩
-      · exact Or.inl ⟨hlfn, hr⟩
-      · exact Or.inr ⟨hh1, hsafe1, sa2, s1.zf, hst2, hlfn, hr⟩)
-    fuel s t sa zf ⟨hfn, hrel⟩ hrun
+  obtain ⟨f, sa', zf', h1, h2, -, h3⟩ := image_addr_simCW' hsep hphys
+    (imgGateCW_of_imgGateBW hgate) hN hF fn hcond fuel s t sa zf hfn hrel
+    (cidxInv_of_imgGateBW hgate base s) hrun
   exact ⟨f, sa', zf', h1, h2, h3⟩
 
 /-! ## 5. A virtual body on the decoded bytes of a body with cells -/

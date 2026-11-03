@@ -884,9 +884,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (instrGateBW one
     `imgGateB`: the index and the rendering of the first
     instruction `instrGateB` refuses, else the last instruction that is no return, else
     `reloadSavedB`. For a body outside `printedAddrB` or with cells, before it the values
-    of `cellAccB` and `cellNoSlotB`, and after it the part of the gate with
-    carry chains: the index and the rendering of the first instruction `instrGateBW`
-    refuses with the width analysis `oneBitAt` there and the value of `readOkB`, else the
+    of `cellAccB` and `cellNoSlotB`, and after it the part of the gate with carry chains
+    and indexed stores through a cell: the index and the rendering of the first instruction
+    `ImageAddrCidx.gateCW` refuses with the width analysis `oneBitAt` there and the value of
+    `readOkB`, else the
     last instruction that is no return, else `reloadSavedB`, else the observed names that
     `retOutsB` finds in the width analysis at the return. Empty when the gate holds. -/
 def imgWhy (sl : String → Option (String × Nat)) (R : X86Backend.ImageCellFold.Slots)
@@ -910,10 +911,10 @@ def imgWhy (sl : String → Option (String × Nat)) (R : X86Backend.ImageCellFol
   else
     let wide : String :=
       match (List.range (body.length - 1)).find? fun k =>
-          !((body[k]?).all fun i => instrGateBW fr sl body k i.li_i) with
+          !((body[k]?).all fun i => X86Backend.ImageAddrCidx.gateCW fr sl body k i.li_i) with
       | some k =>
           let W := oneBitAt fr body k
-          s!"instrGateBW at instruction {k} of {body.length}: {at' k}; width analysis \
+          s!"gateCW at instruction {k} of {body.length}: {at' k}; width analysis \
             [{boundedStr 8 "," W}]; readOkB \
             {(body[k]?).all fun i => readOkB W i.li_i}"
       | none =>

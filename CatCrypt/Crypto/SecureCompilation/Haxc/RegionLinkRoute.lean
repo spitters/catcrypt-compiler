@@ -252,12 +252,12 @@ theorem imgGateCBW_congr {frame frame' : String → Option (BitVec 64)}
       X86Backend.ImageAddrFrame.icase_congr h, X86Backend.ImageAddrSimW.gateReadSet_congr h,
       X86Backend.ImageAddrSimW.regGateBW_congr h, X86Backend.ImageAddrSimW.sImmB_congr h,
       X86Backend.ImageAddrSimW.sCmovB_congr h, hcg, hn, h]
-  have hc : ∀ k x, X86Backend.ImageAddrCallW.cidxArmCW frame slotArr body k x
-      = X86Backend.ImageAddrCallW.cidxArmCW frame' slotArr body k x := by
+  have hc : ∀ k x, X86Backend.ImageAddrCidx.cidxArmCW frame slotArr body k x
+      = X86Backend.ImageAddrCidx.cidxArmCW frame' slotArr body k x := by
     intro k x
-    simp only [X86Backend.ImageAddrCallW.cidxArmCW, X86Backend.ImageAddrCidx.cidxArmB,
+    simp only [X86Backend.ImageAddrCidx.cidxArmCW, X86Backend.ImageAddrCidx.cidxArmB,
       X86Backend.ImageAddrCidx.cidxArmAt, X86Backend.ImageAddrSimW.oneBitAt_congr h, hn]
-  simp only [X86Backend.ImageAddrCallW.imgGateCBW, hi, hc]
+  simp only [X86Backend.ImageAddrCallW.imgGateCBW, X86Backend.ImageAddrCidx.gateCW, hi, hc]
 
 /-- The gate of a calling body at the restricted frame of the body at any stack pointer is
     the gate at `frameMark (frameNames body)`. -/

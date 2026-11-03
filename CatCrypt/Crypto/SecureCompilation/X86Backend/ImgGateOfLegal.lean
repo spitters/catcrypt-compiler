@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LowerLegal
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.GateOfLegal
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx
 
 @[expose] public section
 
@@ -65,6 +66,10 @@ forms in their one-instruction body, each for want of a simulation case:
   ends with the return and opens with the saves of its array slots passes `imgGateBW`.
 * `physImgB_of_savePrefix`: a body that opens with saves of general-purpose registers, writes
   no array slot after them and resolves every indexed access is in the class `physImgB`.
+* `ImgFormCW`, `gateForm_of_imgFormCW`, `gateCW_of_imgFormCW`, `gateCW_of_legalForm`,
+  `imgGateCW_of_legal`: the sub-forms of `ImgForm` with the indexed store through a cell, legal
+  forms that the gate `ImageAddrCidx.gateCW` accepts, and a body of them with a save prefix in
+  `ImageAddrCidx.imgGateCW`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.ImgGateOfLegal
@@ -1290,5 +1295,75 @@ theorem physImgB_of_savePrefix {slotArr : String → Option (String × Nat)} {pr
         | arrIdx q j sc => simp [h3 q j sc rfl]
         | imm _ => rfl
       · rfl
+
+/-! ## 6. The indexed store through a cell -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx (cidxArmCW gateCW imgGateCW)
+
+/-- **The sub-forms of the legal forms that the gate `ImageAddrCidx.gateCW` accepts** at
+    instruction `k` of `body`: the sub-forms of `ImgForm`, and the indexed store through a
+    cell, the move `MOV:64 c, v` of a general-purpose name into the cell `mem.D.0` of a
+    general-purpose address register, at which the arm `cidxArmCW` holds. -/
+inductive ImgFormCW (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (W : List String) :
+    LinstrR → Prop
+  /-- A sub-form of `ImgForm`. -/
+  | form {i : LinstrR} : ImgForm frame slotArr body k W i → ImgFormCW frame slotArr body k W i
+  /-- The indexed store through a cell passing `cidxArmCW`. -/
+  | cidxStore (c D v : String) : cellParts? c = some (D, 0) → gpOk v = true → gpOk D = true →
+      cidxArmCW frame slotArr body k (.Lopn [.reg c] "MOV:64" [.reg v]) = true →
+      ImgFormCW frame slotArr body k W (.Lopn [.reg c] "MOV:64" [.reg v])
+
+/-- Every sub-form of `ImgFormCW` is a sub-form of `GateForm`: the store through a cell is the
+    move into a cell `GateForm.storeMov`. -/
+theorem gateForm_of_imgFormCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {W : List String}
+    {i : LinstrR} (h : ImgFormCW frame slotArr body k W i) : GateForm body i := by
+  cases h with
+  | form h => exact gateForm_of_imgForm h
+  | cidxStore c D v hc hv hD _ => exact .storeMov c D 0 v hc hv hD (by decide)
+
+/-- **`gateCW` accepts every sub-form of `ImgFormCW`** at the width analysis of the body. -/
+theorem gateCW_of_imgFormCW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {i : LinstrR}
+    (h : ImgFormCW frame slotArr body k (oneBitAt frame body k) i) :
+    gateCW frame slotArr body k i = true := by
+  cases h with
+  | form h =>
+      have := gateAtW_of_imgForm h
+      simp only [gateCW, instrGateBW, this, Bool.or_true]
+  | cidxStore c D v _ _ _ ha => simp only [gateCW, ha, Bool.true_or]
+
+/-- **The gate with indexed stores through a cell accepts the legal forms of `ImgFormCW`**:
+    every sub-form of `ImgFormCW` at the width analysis `oneBitAt frame body k` is a legal form
+    of the x86 encoder in the context of `body`, and `gateCW` accepts it at position `k`. -/
+theorem gateCW_of_legalForm {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {i : LinstrR}
+    (h : ImgFormCW frame slotArr body k (oneBitAt frame body k) i) :
+    LegalForm X86Isa.x86Isa x86Enc (x86Enc.ctx body) i ∧ gateCW frame slotArr body k i = true :=
+  ⟨legalForm_of_gateForm (gateForm_of_imgFormCW h), gateCW_of_imgFormCW h⟩
+
+/-- **`imgGateCW` holds of a body of the legal forms of `ImgFormCW` with a save prefix**: the
+    hypotheses of `imgGateBW_of_legal` at `ImgFormCW`. -/
+theorem imgGateCW_of_legal {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {pre rest : Lcmd}
+    (hform : ∀ k i, k + 1 < (pre ++ rest).length → (pre ++ rest)[k]? = some i →
+      ImgFormCW frame slotArr (pre ++ rest) k (oneBitAt frame (pre ++ rest) k) i.li_i)
+    (hret : ∃ ii, (pre ++ rest).getLast? = some ⟨ii, .Lret⟩)
+    (hpre : ∀ j ∈ pre, isSaveB j.li_i = true ∧
+      ∀ d q, slotMov? j.li_i = some (d, q) → slotArr q = none)
+    (hcover : ∀ q, (slotArr q).isSome = true → (heldReg? q).isSome = true ∨
+      ∃ j ∈ pre, (slotMov? j.li_i).map Prod.fst = some q) :
+    imgGateCW frame slotArr (pre ++ rest) = true
+      ∧ ∀ k i, k + 1 < (pre ++ rest).length → (pre ++ rest)[k]? = some i →
+        LegalForm X86Isa.x86Isa x86Enc (x86Enc.ctx (pre ++ rest)) i.li_i := by
+  refine ⟨?_, fun k i hk hi => (gateCW_of_legalForm (hform k i hk hi)).1⟩
+  obtain ⟨ii, hl⟩ := hret
+  simp only [imgGateCW, Bool.and_eq_true, List.all_eq_true, List.mem_range]
+  refine ⟨⟨fun k hk => ?_, by simp [hl, isRetB]⟩, reloadSavedB_of_savePrefix hpre hcover⟩
+  cases hi : (pre ++ rest)[k]? with
+  | none => rfl
+  | some i =>
+    simpa using (gateCW_of_legalForm (hform k i (by omega) hi)).2
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ImgGateOfLegal

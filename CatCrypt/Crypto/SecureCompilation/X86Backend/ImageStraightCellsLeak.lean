@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightLeak
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCells
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx
 
 @[expose] public section
 
@@ -232,7 +233,7 @@ section CellStep
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (accArr)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (accArr cellIdxStore?)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (ImgSep ImgRel imgGateB
   ptr_of_reload)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (ImgRelW imgGateBW
@@ -310,8 +311,13 @@ theorem stepLeakA_cellBody_of_ptr {frame : String → Option (BitVec 64)}
           rw [instrLeakA_cellLd frame hc' hp,
             instrLeakA_slotLoad frame (d := D) (q := memName A off) (by simp [slotMov?]) hfr]
       | st B off S =>
-          obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc
-          have hp := hptr B A m hacc hBf (hF.stGp _ _ B off S hb0 hc)
+        cases hw : cellIdxStore? slotArr (cellBody slotArr body) sa.reg.lpc b0.li_i with
+        | some p =>
+          unfold stepLeakA
+          rw [hbC, hb0, cellMove_of_cellIdxStore hw]
+        | none =>
+          obtain ⟨A, m, hacc, hBf, hSf, hfr⟩ := hF.st _ _ B off S hb0 hc hw
+          have hp := hptr B A m hacc hBf (hF.stGp _ _ B off S hb0 hc hw)
           obtain ⟨mm, nm, hx, hmm, hn⟩ := cellA_st hc
           obtain ⟨ii, li⟩ := b0
           simp only at hx
@@ -527,7 +533,7 @@ theorem cell_image_addr_ct {frame : String → Option (BitVec 64)}
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (icase icase_ldx icase_stx
   icase_zarr icase_simm icase_label icase_cond icase_sload icase_sstore icase_scmp icase_reg slotMov?_cases
   slotCmp?_eq imgInstr_ldx imgInstr_stx)
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (gateAtW instrGateBW carryI?
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (gateAtW instrGateBW carryI? ImgGateW
   castGateB gateAtW_notW readNames)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (classifyK)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrLeak (instrLeakA_reg_indep)
@@ -652,11 +658,29 @@ def posTWBase (frame : String → Option (BitVec 64)) (base : String → BitVec 
     | .Lopn ds o ss => instrLeakA frame (normA (.Lopn ds o ss), tagA (.Lopn ds o ss)) s0
     | _ => []
 
+/-- The image instruction is the store into an array of an indexed store through a cell
+    (`JasminLsemAddrImage.cellStoreImg`): `STOREIDX` at an index name or `STOREIMM` at a
+    literal index. -/
+def storeImgB (i : LinstrRM) : Bool :=
+  match i.fst with
+  | .Lopn [.reg _] "STOREIDX" [.arrIdx _ _ 8, .reg _] => true
+  | .Lopn [.reg _] "STOREIMM" [.reg _, .reg _, .imm _] => true
+  | _ => false
+
+/-- The physical events at an indexed store through a cell, from its image `i` and the events
+    `e` of `i`: the event of word `j` of the array `A` that `i` stores into at a literal index
+    `j`, and `phiEv base` of `e` at an index name. -/
+def cellStoreTW (base : String → BitVec 64) (i : LinstrRM) (e : List CTLeak) : List CTLeak :=
+  match i.fst with
+  | .Lopn [.reg A] "STOREIMM" [.reg _, .reg _, .imm j] => [evA (base A + BitVec.ofNat 64 (8 * j))]
+  | _ => e.map (phiEv base)
+
 /-- **The physical events at an instruction under the gate with carry chains**, from its
     image instruction `i` and the events `e` of `i`: at an array zeroing of `n` words the
     events of the words of the array `A` that `i` zeroes, at a constant-index store at the
-    index `j` the event of word `j` of the array `A` that `i` stores into, and `posTWBase` of
-    `e` at every other instruction. -/
+    index `j` the event of word `j` of the array `A` that `i` stores into, at a register
+    instruction whose image is the store of an indexed store through a cell (`storeImgB`)
+    `cellStoreTW` of `i` and `e`, and `posTWBase` of `e` at every other instruction. -/
 def posTW (frame : String → Option (BitVec 64)) (base : String → BitVec 64) (s0 : LstateA)
     (x : LinstrR) (i : LinstrRM) (e : List CTLeak) : List CTLeak :=
   match icase frame x with
@@ -668,18 +692,22 @@ def posTW (frame : String → Option (BitVec 64)) (base : String → BitVec 64) 
       match i.fst with
       | .Lopn [.reg A] _ _ => [evA (base A + BitVec.ofNat 64 (8 * j))]
       | _ => []
+  | .reg => if storeImgB i then cellStoreTW base i e else posTWBase frame base s0 x e
   | _ => posTWBase frame base s0 x e
 
-/-- Away from an array zeroing and a constant-index store, `posTW` is `posTWBase`. -/
+/-- Away from an array zeroing, a constant-index store and the store of an indexed store
+    through a cell, `posTW` is `posTWBase`. -/
 theorem posTW_of_ne {frame : String → Option (BitVec 64)} {base : String → BitVec 64}
     {s0 : LstateA} {x : LinstrR} (i : LinstrRM) (e : List CTLeak)
     (hz : ∀ b n w, icase frame x ≠ .zarr b n w)
-    (hs : ∀ d b v j, icase frame x ≠ .simm d b v j) :
+    (hs : ∀ d b v j, icase frame x ≠ .simm d b v j)
+    (hr : icase frame x = .reg → storeImgB i = false) :
     posTW frame base s0 x i e = posTWBase frame base s0 x e := by
   unfold posTW
   split
   · rename_i h; exact absurd h (hz _ _ _)
   · rename_i h; exact absurd h (hs _ _ _ _)
+  · rename_i h; rw [hr h]; rfl
   · rfl
 
 /-- `normA` keeps the absence of a cell access. -/
@@ -770,27 +798,73 @@ theorem gateAtW_arrImm (frame : String → Option (BitVec 64))
       simp only [LinstrR.Lopn.injEq] at hx
       exact (hne hx.2.1 h1 h2).elim
 
-/-- **The events of one step under the gate with carry chains.** From states related by
-    `ImgRelW`, at an instruction `bi` of a body that passes the gate `imgGateBW`, whose only
-    cell operation is the address `LEA:64` of a cell and which is no conditional branch, a
-    step of the address machine emits `posTW` of the image instruction and its events, at
+/-- An `Lopn` whose mnemonic is neither `STOREIDX` nor `STOREIMM` is no store of an indexed
+    store through a cell. -/
+theorem storeImgB_of_op {ds ss : List LOperand} {o : String} (t : JasminLsemMem.MemTag)
+    (h1 : o ≠ "STOREIDX") (h2 : o ≠ "STOREIMM") : storeImgB (.Lopn ds o ss, t) = false := by
+  unfold storeImgB
+  split <;> simp_all
+
+/-- **The image of a register instruction that is no indexed store through a cell is no store
+    of one** (`storeImgB`). -/
+theorem storeImgB_imgInstr {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {c : Lcmd} {k : Nat} {x : LinstrR}
+    (hic : icase frame x = .reg) (hw : cellIdxStore? slotArr c k x = none) :
+    storeImgB (imgInstr slotArr c k x) = false := by
+  obtain ⟨ds, o, ss, rfl, h1, h2, -, hz1, hz2⟩ := ImageAddrSim.icase_reg_untagCaret hic
+  have ha := JasminLsemAddrImage.arrImmImg_of_ne slotArr c k (ds := ds) (ss := ss) hz1 hz2
+  have hop : ∀ t, storeImgB (normA (.Lopn ds o ss), t) = false := fun t => by
+    simp only [normA]
+    apply storeImgB_of_op
+    · split_ifs
+      · decide
+      · exact h2
+    · split_ifs
+      · decide
+      · exact hz2
+  unfold imgInstr
+  split
+  · rename_i heq
+    simp only [LinstrR.Lopn.injEq] at heq
+    obtain ⟨-, rfl, -⟩ := heq
+    rw [if_neg h1]; exact hop _
+  · rename_i heq
+    simp only [LinstrR.Lopn.injEq] at heq
+    obtain ⟨-, rfl, -⟩ := heq
+    rw [if_neg h2]; exact hop _
+  · split
+    · exact storeImgB_of_op _ (by decide) (by decide)
+    · rw [hw]
+      simp only
+      rw [ha]
+      simp only
+      split
+      · exact storeImgB_of_op _ (by decide) (by decide)
+      · exact hop _
+
+/-- **The events of one step under the positionwise gate with carry chains.** From states
+    related by `ImgRelW`, at an instruction `bi` of a body that passes the positionwise gate
+    `ImgGateW` at a position outside its exempt set, whose only cell operation is the address
+    `LEA:64` of a cell or an indexed store through a cell, and which is no conditional branch,
+    a step of the address machine emits `posTW` of the image instruction and its events, at
     every fixed state `s0`. -/
-theorem step_leakW {frame : String → Option (BitVec 64)}
+theorem step_leakWG {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
-    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
-    (hgate : imgGateBW frame slotArr body = true) {s : LstateMF} {sa : LstateA} {zf : Bool}
+    {body : Lcmd} {X : Nat → Prop} (hsep : ImgSep frame slotArr base rsp)
+    (hG : ImgGateW frame slotArr body X) {s : LstateMF} {sa : LstateA} {zf : Bool}
     (hrel : ImgRelW frame slotArr base body s sa zf) (hlt : sa.reg.lpc < body.length - 1)
-    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi)
-    (hcell : ∀ c, cellA? bi.li_i = some c → ∃ D B off, c = .lea D B off)
+    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi) (hX : ¬ X sa.reg.lpc)
+    (hcell : ∀ c, cellA? bi.li_i = some c → (∃ D B off, c = .lea D B off)
+      ∨ (cellIdxStore? slotArr body sa.reg.lpc bi.li_i).isSome)
     (hnc : ∀ c l, bi.li_i ≠ .Lcond c l) (s0 : LstateA) :
     stepLeakA frame body sa zf
       = posTW frame base s0 bi.li_i (imgInstr slotArr body sa.reg.lpc bi.li_i)
           (instrLeakF (imgInstr slotArr body sa.reg.lpc bi.li_i) s) := by
-  have hg : instrGateBW frame slotArr body sa.reg.lpc bi.li_i = true := by
-    simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hgate
-    have := hgate.1.1 sa.reg.lpc hlt
-    rw [hb] at this
-    simpa using this
+  have hg : instrGateBW frame slotArr body sa.reg.lpc bi.li_i = true :=
+    hG.instr _ _ hb (by omega) hX
+  replace hcell : ∀ c, cellA? bi.li_i = some c → ∃ D B off, c = .lea D B off := fun c hc =>
+    (hcell c hc).resolve_right (by rw [cellIdxStore?_of_instrGateBW hg]; simp)
+  have hwN := cellIdxStore?_of_instrGateBW hg
   unfold instrGateBW at hg
   by_cases hz : ∃ b n w, icase frame bi.li_i = .zarr b n w
   · obtain ⟨b, n, w, hc⟩ := hz
@@ -804,7 +878,7 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
     | none => rw [hA] at hacc; cases hacc
     | some An =>
     obtain ⟨A, m⟩ := An
-    obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hA hbf
+    obtain ⟨q, -, hp⟩ := ImgGateW.ptr_of_reloadW hsep hG hrel hA hbf
     rw [posTW, hc, hx, ImageAddrSim.imgInstr_zeroArr_of_untagCaret slotArr body _ hA ho]
     obtain ⟨ii0, x⟩ := bi
     simp only at hx hb
@@ -823,7 +897,7 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
     | none => rw [hA] at hacc; cases hacc
     | some An =>
     obtain ⟨A, m⟩ := An
-    obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hA hbf
+    obtain ⟨q, -, hp⟩ := ImgGateW.ptr_of_reloadW hsep hG hrel hA hbf
     rw [posTW, hc, hx, ImageAddrSim.imgInstr_storeImm_of_untagCaret slotArr body _ hA ho]
     obtain ⟨ii0, x⟩ := bi
     simp only at hx hb
@@ -831,7 +905,8 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
     simp [stepLeakA, hb, instrLeakA, NarrowTyping.normA_of_untagCaret ho (by decide), tagA,
       ho, storeImmTagA, JasminLsemMem.storeImmStruct?, hp,
       storeImmAddr?_of_lt _ (Nat.lt_succ_self j)]
-  rw [posTW_of_ne _ _ (fun b n w h => hz ⟨b, n, w, h⟩) (fun d b v j h => hs ⟨d, b, v, j, h⟩)]
+  rw [posTW_of_ne _ _ (fun b n w h => hz ⟨b, n, w, h⟩) (fun d b v j h => hs ⟨d, b, v, j, h⟩)
+    (fun hic => storeImgB_imgInstr hic hwN)]
   obtain ⟨ii0, x⟩ := bi
   simp only at hg hcell hnc hz hs ⊢
   cases x with
@@ -842,7 +917,7 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
           obtain ⟨o', ho', hx⟩ := loadIdxA?_eq hld
           rw [hx] at hg hb ⊢
           obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_loadIdx ho' hg
-          obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
+          obtain ⟨q, -, hp⟩ := ImgGateW.ptr_of_reloadW hsep hG hrel hacc hbf
           have hidxW := gateAtW_notW hg rfl (r := idx)
             (by simp [readNames, JasminLsemAddrCongr.srcNames])
             (by simp [DecodePrintedAddrW.carryIns])
@@ -863,7 +938,7 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
               obtain ⟨d, o', ho', hx⟩ := storeIdxA?_eq hst
               rw [hx] at hg hb ⊢
               obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_storeIdx ho' hg
-              obtain ⟨q, -, hp⟩ := ptr_of_reloadW hsep hgate hrel hacc hbf
+              obtain ⟨q, -, hp⟩ := ImgGateW.ptr_of_reloadW hsep hG hrel hacc hbf
               have hidxW := gateAtW_notW hg rfl (r := idx)
                 (by simp [readNames, JasminLsemAddrCongr.srcNames])
                 (by simp [DecodePrintedAddrW.carryIns])
@@ -935,13 +1010,93 @@ theorem step_leakW {frame : String → Option (BitVec 64)}
   | Lcond c l => exact absurd rfl (hnc c l)
   | _ => simp [stepLeakA, hb, posTWBase, loadIdxA?, storeIdxA?]
 
+/-- **The events of one step under the gate with carry chains**: `step_leakWG` at a body that
+    passes `imgGateBW`. -/
+theorem step_leakW {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
+    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp)
+    (hgate : imgGateBW frame slotArr body = true) {s : LstateMF} {sa : LstateA} {zf : Bool}
+    (hrel : ImgRelW frame slotArr base body s sa zf) (hlt : sa.reg.lpc < body.length - 1)
+    {bi : Linstr} (hb : body[sa.reg.lpc]? = some bi)
+    (hcell : ∀ c, cellA? bi.li_i = some c → (∃ D B off, c = .lea D B off)
+      ∨ (cellIdxStore? slotArr body sa.reg.lpc bi.li_i).isSome)
+    (hnc : ∀ c l, bi.li_i ≠ .Lcond c l) (s0 : LstateA) :
+    stepLeakA frame body sa zf
+      = posTW frame base s0 bi.li_i (imgInstr slotArr body sa.reg.lpc bi.li_i)
+          (instrLeakF (imgInstr slotArr body sa.reg.lpc bi.li_i) s) :=
+  step_leakWG hsep (.of_imgGateBW hgate) hrel hlt hb not_false hcell hnc s0
+
+/-- **The events of an indexed store through a cell.** From states related by `ImgRelW` with
+    the invariant of the window `CidxInv`, at a store passing `cidxArmB` whose image takes a
+    checked step: the address machine writes through the address register, which holds the
+    address of the word of the index (`ImageAddrCidx.cidxStore_addr`), and emits the event of
+    that address, which is `posTW` of the store into the array and its events. -/
+theorem step_leakCidx {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {body : Lcmd}
+    {s t : LstateMF} {sa : LstateA} {zf : Bool} (hrel : ImgRelW frame slotArr base body s sa zf)
+    (hinv : ImageAddrCidx.CidxInv slotArr base body s) {bi : Linstr}
+    (hb : body[sa.reg.lpc]? = some bi)
+    (harm : ImageAddrCidx.cidxArmB frame slotArr body sa.reg.lpc bi.li_i = true)
+    (P : JasminLsemMemLoop.LprogM)
+    (hstep : JasminLsemMemChecked.evalInstrPMemFk true P
+      (imgInstr slotArr body sa.reg.lpc bi.li_i) s = some t) (s0 : LstateA) :
+    stepLeakA frame body sa zf
+      = posTW frame base s0 bi.li_i (imgInstr slotArr body sa.reg.lpc bi.li_i)
+          (instrLeakF (imgInstr slotArr body sa.reg.lpc bi.li_i) s) := by
+  obtain ⟨A, n, idx, v, -, -, hst, -⟩ := ImageAddrCidx.cidxArmB_spec harm
+  have hic := icase_of_cellIdxStore frame hst
+  rw [JasminLsemAddrImage.imgInstr_cellIdxStore slotArr hst] at hstep ⊢
+  obtain ⟨c, D, w, hx, hcp, hw, hidx, hD⟩ :=
+    ImageAddrCidx.cidxStore_addr P hrel hinv hb harm hst hstep
+  have hsb : storeImgB (JasminLsemAddrImage.cellStoreImg A n idx v) = true := by
+    cases idx <;> simp [JasminLsemAddrImage.cellStoreImg, storeImgB]
+  rw [posTW, hic]
+  simp only [hsb, ite_true]
+  have hcl : cellA? bi.li_i = some (.st D 0 v) := by
+    rw [hx]
+    simp [cellA?, hcp, LprogAsmPrinter.untagCaret_of_caret_free
+      (by decide : '^' ∉ "MOV:64".toList)]
+  obtain ⟨ii, x⟩ := bi
+  simp only at hx hcl
+  subst hx
+  have hL : stepLeakA frame body sa zf = [evA (base A + BitVec.ofNat 64 (8 * w.toNat)
+      + BitVec.ofNat 64 0)] := by
+    unfold stepLeakA
+    rw [hb]
+    simp only
+    rw [show normA (.Lopn [.reg c] "MOV:64" [.reg v]) = .Lopn [.reg c] "MOV:64" [.reg v] by
+        simp (config := { decide := true }) [normA],
+      show tagA (.Lopn [.reg c] "MOV:64" [.reg v]) = .reg none by
+        simp (config := { decide := true }) [tagA]]
+    exact instrLeakA_cellSt frame hcl hD
+  rw [hL]
+  cases idx with
+  | inl q =>
+      have hq : idxVal s.prog.base.reg q = w.toNat := by
+        simp only [ImageAddrCidx.idxSrcVal] at hidx
+        simp only [idxVal]
+        rw [hidx]
+      simp [JasminLsemAddrImage.cellStoreImg, cellStoreTW, instrLeakF, flagCondCC?, instrLeakB,
+        opLeakF, phiEv, width_tag, hq]
+      norm_cast
+  | inr j =>
+      have hw' : w = BitVec.ofNat 64 j := by
+        simpa [ImageAddrCidx.idxSrcVal] using hidx.symm
+      subst hw'
+      have hadr : BitVec.ofNat 64 (8 * (BitVec.ofNat 64 j).toNat) = BitVec.ofNat 64 (8 * j) := by
+        apply BitVec.eq_of_toNat_eq
+        simp [Nat.mul_mod]
+      rw [hadr, BitVec.add_zero]
+      simp [JasminLsemAddrImage.cellStoreImg, cellStoreTW]
+
 /-- The only cell operation of an instruction of the cell body of a body with cell frames is
     the address `LEA:64` of a cell. -/
 theorem cellA?_cellBody {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
     {body : Lcmd} (hF : CellFrames frame slotArr base rsp body) {k : Nat} {bi : Linstr}
     (hb : (cellBody slotArr body)[k]? = some bi) :
-    ∀ c, cellA? bi.li_i = some c → ∃ D B off, c = .lea D B off := by
+    ∀ c, cellA? bi.li_i = some c → (∃ D B off, c = .lea D B off)
+      ∨ (cellIdxStore? slotArr (cellBody slotArr body) k bi.li_i).isSome := by
   rw [cellBody_getElem?] at hb
   obtain ⟨b0, hb0, rfl⟩ := Option.map_eq_some_iff.mp hb
   intro c hc'
@@ -958,7 +1113,12 @@ theorem cellA?_cellBody {frame : String → Option (BitVec 64)}
           simp [cellA?, LprogAsmPrinter.untagCaret_of_caret_free
             (by decide : '^' ∉ "MOVQ".toList)] at hc'
       | st B off S =>
-          obtain ⟨A, m, hacc, -⟩ := hF.st _ _ B off S hb0 hc
+        cases hw : cellIdxStore? slotArr (cellBody slotArr body) k b0.li_i with
+        | some p =>
+          rw [cellMove_of_cellIdxStore hw, hw]
+          exact Or.inr rfl
+        | none =>
+          obtain ⟨A, m, hacc, -⟩ := hF.st _ _ B off S hb0 hc hw
           have hm : cellMove slotArr body k b0
               = ⟨b0.li_ii, .Lopn [.reg (memName A off)] "MOVQ" [.reg S]⟩ := by
             simp [cellMove, hc, hacc]
@@ -967,7 +1127,7 @@ theorem cellA?_cellBody {frame : String → Option (BitVec 64)}
             (by decide : '^' ∉ "MOVQ".toList)] at hc'
       | lea D B off =>
           rw [cellMove_of_lea hc, hc] at hc'
-          exact ⟨D, B, off, (Option.some.inj hc').symm⟩
+          exact Or.inl ⟨D, B, off, (Option.some.inj hc').symm⟩
 
 /-- **The physical trace of the image simulation under the gate with carry chains** along
     the instructions `xs` of `body` from position `k`: at each instruction `x`, `posTW` of

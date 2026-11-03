@@ -27,8 +27,8 @@ per-symbol chains) apply unchanged.
 
 ## Main definitions
 
-* `printedAddrCWB`, `imgGateCBW`, `cidxArmCW`: the printed class and the image gate of a calling
-  body, and the arm of its gate at an indexed store through a cell.
+* `printedAddrCWB`, `imgGateCBW`: the printed class and the image gate of a calling body; the
+  arm of its gate at an indexed store through a cell is `ImageAddrCidx.cidxArmCW`.
 * `bitsDeadB`: the width analysis is dead at each call and at the return.
 * `liveW`: the positions at which no segment of the wide simulation starts.
 * `ByteSegW`: the byte simulation of the segments at `ACorrW`.
@@ -113,24 +113,14 @@ def printedAddrCWB (G : Nat) (body : Lcmd) : Bool :=
       condPrevB body k && carryPrevB body k && castPosB body k)
     && (callFreeB body || frameNonnegB body G)
 
-/-- The arm of an indexed store through a cell in the gate of a calling body: `cidxArmB`, with a
-    stored name that is no cell name, so that the store reads no base besides its address
-    register. -/
-def cidxArmCW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
-    (body : Lcmd) (k : Nat) (x : LinstrR) : Bool :=
-  cidxArmB frame slotArr body k x
-    && match x with
-      | .Lopn _ _ [.reg v] => (cellParts? v).isNone
-      | _ => false
-
 /-- **The gate of the wide image simulation of a calling body**: every instruction but the
-    last is a call of a named symbol, an indexed store through a cell passing `cidxArmCW`, or
-    passes `instrGateBW`; the last is the return; every array-pointer reload follows a save. -/
+    last is a call of a named symbol or passes the gate `ImageAddrCidx.gateCW` (an indexed
+    store through a cell passing `cidxArmCW`, or `instrGateBW`); the last is the return; every
+    array-pointer reload follows a save. -/
 def imgGateCBW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
     (body : Lcmd) : Bool :=
   (List.range (body.length - 1)).all (fun k => (body[k]?).all fun i =>
-      remoteCallB i.li_i || cidxArmCW frame slotArr body k i.li_i
-        || instrGateBW frame slotArr body k i.li_i)
+      remoteCallB i.li_i || gateCW frame slotArr body k i.li_i)
     && body.getLast?.any (fun r => isRetB r.li_i)
     && reloadSavedB slotArr body
 
@@ -143,9 +133,7 @@ def imgGateCBWB (frame : String → Option (BitVec 64)) (slotArr : String → Op
       remoteCallB i.li_i
         || (cidxArmAt frame slotArr body k (oneBitAtB frame body (k - 3))
               (oneBitAtB frame body k) i.li_i
-            && match i.li_i with
-              | .Lopn _ _ [.reg v] => (cellParts? v).isNone
-              | _ => false)
+            && srcNoCellB i.li_i)
         || instrGateBWB frame slotArr body k i.li_i)
     && body.getLast?.any (fun r => isRetB r.li_i)
     && reloadSavedB slotArr body
@@ -164,9 +152,9 @@ theorem imgGateCBW_of_back {frame : String → Option (BitVec 64)}
     oneBitAt_eq_oneBitAtB (fwdIncl_of_instrGateBWB hlast fun q bi c l hlt hq hc => by
       have := hall q hlt
       rw [hq, Option.all_some, hc] at this
-      simpa [remoteCallB] using this)
+      simpa [remoteCallB, srcNoCellB] using this)
   refine ⟨?_, he⟩
-  simp only [imgGateCBW, Bool.and_eq_true, List.all_eq_true, List.mem_range]
+  simp only [imgGateCBW, gateCW, ← Bool.or_assoc, Bool.and_eq_true, List.all_eq_true, List.mem_range]
   refine ⟨⟨fun k hk => ?_, hlast⟩, hrs⟩
   have := hall k hk
   cases hb : body[k]? with
@@ -277,6 +265,65 @@ theorem callFacts_of_printedAddrCWB {G : Nat} {body : Lcmd} {ds : List PhysAbiSh
     simp only [Bool.or_eq_true] at this
     exact this.imp remoteSym_of_remoteCallB id
 
+/-! ## 2a. The class, the gate and the image at a body without a call -/
+
+/-- At a body without a call no instruction is a call of a named symbol. -/
+theorem remoteCallB_of_callFree {body : Lcmd} (h : callFreeB body = true) {i : Linstr}
+    (hi : i ∈ body) : remoteCallB i.li_i = false := by
+  have := List.all_eq_true.mp h i hi
+  revert this
+  cases i.li_i <;> simp [isCallB, remoteCallB]
+
+/-- **At a body without a call the gate of a calling body is `ImageAddrCidx.imgGateCW`.** -/
+theorem imgGateCBW_of_callFree {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} (h : callFreeB body = true) :
+    imgGateCBW frame slotArr body = imgGateCW frame slotArr body := by
+  have hk : ∀ k, (body[k]?).all (fun i => remoteCallB i.li_i || gateCW frame slotArr body k i.li_i)
+      = (body[k]?).all (fun i => gateCW frame slotArr body k i.li_i) := by
+    intro k
+    cases hb : body[k]? with
+    | none => rfl
+    | some i => simp [remoteCallB_of_callFree h (List.mem_of_getElem? hb)]
+  simp only [imgGateCBW, imgGateCW, hk]
+
+/-- **A body of the wide class without a call is in the wide calling class**: the decodable
+    class `decodableLcmd` gives the frame conditions of the relocating encoder (`relocFrameB`),
+    and a body without a call needs no frame check below the return word. -/
+theorem printedAddrCWB_of_printedAddrWB (G : Nat) {body : Lcmd}
+    (h : DecodePrintedAddrW.printedAddrWB body = true) (hcf : callFreeB body = true) :
+    printedAddrCWB G body = true := by
+  simp only [DecodePrintedAddrW.printedAddrWB, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨hd, hl⟩, ho⟩, hc⟩, hy⟩, hp⟩ := h
+  have hr : relocFrameB body = true := by
+    simp only [DecodeLayout.decodableLcmd, Bool.and_eq_true] at hd
+    obtain ⟨⟨⟨⟨⟨-, h1⟩, h2⟩, h3⟩, -⟩, -⟩ := hd
+    simp only [relocFrameB, h1, Bool.true_and, Bool.and_eq_true, decide_eq_true_eq]
+    refine ⟨h2, ?_⟩
+    have h3' : Int.ofNat (Params.ofBody body).frame < 2 ^ 31 := by
+      simp only [SailX86Decoder.dispOk32, decide_eq_true_eq, Bool.and_eq_true] at h3
+      exact h3.2
+    have : (Params.ofBody body).frame = frameSize body := rfl
+    rw [this, Int.ofNat_eq_coe] at h3'
+    omega
+  simp only [printedAddrCWB, hr, hl, hcf, Bool.true_and, Bool.true_or, Bool.and_true,
+    Bool.and_eq_true, List.all_eq_true]
+  refine ⟨fun i hi => ?_, fun k hk => ?_⟩
+  · simp [List.all_eq_true.mp ho i hi]
+  · simp [List.all_eq_true.mp hc k hk, List.all_eq_true.mp hy k hk, List.all_eq_true.mp hp k hk]
+
+/-- **At a body without a call the image of a calling body is the image `virtImg`.** -/
+theorem callImg_of_callFree (slotArr : String → Option (String × Nat))
+    (site : Nat → String × List String) {body : Lcmd} (h : callFreeB body = true) :
+    callImg slotArr site body = virtImg slotArr body := by
+  unfold callImg
+  refine List.ext_getElem (by simp) fun k h1 h2 => ?_
+  simp only [List.getElem_mapIdx]
+  split
+  · rename_i heq
+    have := List.all_eq_true.mp h _ (List.mem_of_getElem? heq)
+    simp [isCallB] at this
+  · rfl
+
 /-! ## 3. The facts of the gate -/
 
 /-- The positions of a body exempt from `instrGateBW` under `imgGateCBW`: a call of a named symbol
@@ -291,7 +338,7 @@ theorem imgGateW_of_imgGateCBW {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd}
     (h : imgGateCBW frame slotArr body = true) :
     ImgGateW frame slotArr body (exemptCW frame slotArr body) := by
-  simp only [imgGateCBW, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+  simp only [imgGateCBW, gateCW, ← Bool.or_assoc, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
   obtain ⟨⟨h1, h2⟩, h3⟩ := h
   refine ⟨fun k i hi hk hX => ?_, ?_, h3⟩
   · have := h1 k (by omega)
@@ -640,31 +687,7 @@ theorem safeAt_of_imgGateCBW {frame : String → Option (BitVec 64)}
     · cases hx : bi.li_i with
       | Lcall ra t => exact absurd hx (hnc ra t)
       | _ => rw [hx] at hr; simp [remoteCallB] at hr
-    · simp only [cidxArmCW, Bool.and_eq_true] at harm
-      obtain ⟨harm, hvc⟩ := harm
-      obtain ⟨A, n, idx, v, c, D, -, hx, hcp, -, -, -, hDW, hvW, -⟩ := cidxArmB_spec harm
-      rw [hx] at hvc
-      simp only [Option.isNone_iff_eq_none] at hvc
-      refine ⟨fun ii ds o ss hb' r hr hg _ _ => ?_, fun ii x D' B off p hb' hc _ => ?_⟩
-      · rw [hb] at hb'
-        obtain rfl := Option.some.inj hb'
-        simp only at hx
-        cases hx
-        have hrr : r = v ∨ r = D := by
-          rcases hr with rfl | ⟨-, hx⟩ | hr' | hr'
-          · exact absurd hg (by decide)
-          · simp [JasminLsemAddrCongr.readsRdx, JasminLsemAddrCongr.rdxShape] at hx
-          · left; simpa [JasminLsemAddrCongr.srcNames] using hr'
-          · right
-            simpa [JasminLsemAddrCongr.cellBase, hcp, hvc] using hr'
-        rcases hrr with rfl | rfl
-        · exact hrel.wid r hg hvW
-        · exact hrel.wid r hg hDW
-      · rw [hb] at hb'
-        obtain rfl := Option.some.inj hb'
-        simp only at hx
-        subst hx
-        simp (config := { decide := true }) [cellA?, hcp] at hc
+    · exact safeAt_of_cidxArmCW hrel harm hb
   · refine ⟨hG.wideSafe_of_gateW hrel hX, fun ii x D' B off p hb' hc _ => ?_⟩
     rw [hb] at hb'
     obtain rfl := Option.some.inj hb'
@@ -1539,9 +1562,7 @@ def gateAtTab (frame : String → Option (BitVec 64)) (slotArr : String → Opti
     (body : Lcmd) (tab : Array (List String)) (k : Nat) (x : LinstrR) : Bool :=
   remoteCallB x
     || (cidxArmAt frame slotArr body k (tab.getD (k - 3) []) (tab.getD k []) x
-        && match x with
-          | .Lopn _ _ [.reg v] => (cellParts? v).isNone
-          | _ => false)
+        && srcNoCellB x)
     || gateAtW frame slotArr body k (tab.getD k []) x
 
 /-- At `oneBitTab`, `gateAtTab` is the instruction gate of `imgGateCBW`. -/
@@ -1581,7 +1602,51 @@ def imgGateCBWImpl (frame : String → Option (BitVec 64))
       have := List.mem_range.mp hk
       omega
     simp only [gateAtTab_oneBitTab frame slotArr body hle]
-  simp only [imgGateCBW, imgGateCBWImpl, tabFrame_eq, List.getElem?_toArray, hall]
+  simp only [imgGateCBW, gateCW, ← Bool.or_assoc, imgGateCBWImpl, tabFrame_eq,
+    List.getElem?_toArray, hall]
+
+/-- The instruction gate `ImageAddrCidx.gateCW` at position `k`, read off the table `tab` of the
+    width analysis. -/
+def gateCWTab (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) (tab : Array (List String)) (k : Nat) (x : LinstrR) : Bool :=
+  (cidxArmAt frame slotArr body k (tab.getD (k - 3) []) (tab.getD k []) x && srcNoCellB x)
+    || gateAtW frame slotArr body k (tab.getD k []) x
+
+/-- At `oneBitTab`, `gateCWTab` is `ImageAddrCidx.gateCW`. -/
+theorem gateCWTab_oneBitTab (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) {k : Nat} (hk : k ≤ body.length)
+    (x : LinstrR) :
+    gateCWTab frame slotArr body (oneBitTab frame body) k x = gateCW frame slotArr body k x := by
+  simp only [gateCWTab, gateCW, oneBitTab_getD frame body hk,
+    oneBitTab_getD frame body (show k - 3 ≤ body.length by omega), cidxArmCW, cidxArmB,
+    instrGateBW]
+
+/-- `ImageAddrCidx.imgGateCW` with the frame map tabulated over the names of the body and the
+    width analysis read off `oneBitTab`. -/
+def imgGateCWImpl (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) : Bool :=
+  let fr := tabFrame frame ((ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q))
+  let a := body.toArray
+  let tab := oneBitTab fr body
+  (List.range (body.length - 1)).all (fun k => (a[k]?).all fun i =>
+      gateCWTab fr slotArr body tab k i.li_i)
+    && body.getLast?.any (fun r => isRetB r.li_i)
+    && reloadSavedB slotArr body
+
+/-- The gate `ImageAddrCidx.imgGateCW` is evaluated as `imgGateCWImpl`. -/
+@[csimp] theorem imgGateCW_eq_impl : @imgGateCW = @imgGateCWImpl := by
+  funext frame slotArr body
+  have hall : (List.range (body.length - 1)).all (fun k => (body[k]?).all fun i =>
+        gateCWTab frame slotArr body (oneBitTab frame body) k i.li_i)
+      = (List.range (body.length - 1)).all (fun k => (body[k]?).all fun i =>
+        gateCW frame slotArr body k i.li_i) := by
+    rw [Bool.eq_iff_iff, List.all_eq_true, List.all_eq_true]
+    refine forall₂_congr fun k hk => ?_
+    have hle : k ≤ body.length := by
+      have := List.mem_range.mp hk
+      omega
+    simp only [gateCWTab_oneBitTab frame slotArr body hle]
+  simp only [imgGateCW, imgGateCWImpl, tabFrame_eq, List.getElem?_toArray, hall]
 
 /-- `bitsDeadB` with the frame map tabulated over the names of the body and the width analysis
     read off `oneBitTab`. -/
