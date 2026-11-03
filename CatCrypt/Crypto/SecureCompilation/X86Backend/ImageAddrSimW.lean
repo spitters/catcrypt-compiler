@@ -62,10 +62,19 @@ enters the analysis at the destination widths `16` and `32` and leaves it at `64
 ## Main results
 
 * `oneBitAt_succ`: the analysis at the next instruction.
-* `oneBitAt_succ_label`: one past a label the analysis joins the names that the analysis
-  without a join `oneBitAt0` has at the later branches to the label (`backNames`).
-* `oneBitAt_eq_oneBitAt0`, `imgGateBW_of_old`: without a seed the analysis is `oneBitAt0`,
-  and a body with an empty `oneBitAt0` at every branch (`imgGateBW0`) passes `imgGateBW`.
+* `oneBitAt_succ_label`, `mem_oneBitAt_succ_label`: one past a label the analysis joins the
+  names that the analysis without a join `oneBitAt0` has at the later branches to the label
+  (`backNames`) and, at the first definition of the label, the names that the analysis has at
+  the earlier branches to it (`fwdNames`, `mem_fwdNames`), carried by the fold `oneBitSt` in a
+  table of forward branches.
+* `oneBitAt_fwd`: every name of the analysis at a forward branch is in the analysis one past
+  its label, so that the gate's branch check holds of every forward branch.
+* `oneBitAt_eq_oneBitAtB`, `imgGateBW_of_back`: where the analysis without the join of forward
+  branches `oneBitAtB` already includes each forward branch at its label, the two analyses are
+  equal; a body that the gate at `oneBitAtB` accepts (`imgGateBWB`) passes `imgGateBW`.
+* `oneBitAt_eq_oneBitAt0`, `imgGateBW_of_old`: with an empty `oneBitAt0` at every branch the
+  analysis is `oneBitAt0`, and a body with an empty `oneBitAt0` at every branch
+  (`imgGateBW0`) passes `imgGateBW`.
 * `rel_condFallW`, `rel_condJumpW`, `gateAtW_condIncl`: a branch keeps `ImgRelW` where the
   analysis at the branch is included in the analysis one past the label, which the gate
   checks.
@@ -274,12 +283,88 @@ def backNames (frame : String → Option (BitVec 64)) (body : Lcmd) (p : Nat) (l
     | .Lcond _ l' => if l' = l then oneBitAt0 frame body q.2 else []
     | _ => []
 
-/-- **The seed of the width analysis at instruction `k`**: at a label, the names of
+/-- The seed of the backward branches at instruction `k`: at a label, the names of
     `oneBitAt0` at the later branches that target it (`backNames`); no name at any other
+    instruction. -/
+def seedB (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat) :
+    LinstrR → List String
+  | .Llabel _ l => backNames frame body k l
+  | _ => []
+
+/-- **One step of the width analysis without the join of forward branches**: the destination
+    of a stored carry constant (`bitStore?`) enters it; every other instruction steps by
+    `oneBitStep`, and a label adds the seed of the backward branches `seedB`. -/
+def oneBitStepAtB (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat)
+    (W : List String) (x : LinstrR) : List String :=
+  match bitStore? body k x with
+  | some (d, _) => d :: W
+  | none => oneBitStep frame W x ++ seedB frame body k x
+
+/-- **The width analysis without the join of forward branches** at instruction `k`: the fold
+    of `oneBitStepAtB` over the prefix of the body. A label joins only the names that the
+    analysis without a join has at the later branches to it. -/
+def oneBitAtB (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat) : List String :=
+  ((body.take k).zipIdx).foldl (fun W p => oneBitStepAtB frame body p.2 W p.1.li_i) []
+
+/-- A table of forward branches: for each conditional branch passed, its target label and the
+    width analysis at the branch. -/
+abbrev FwdTab := List (LLabel × List String)
+
+/-- The names of the entries of the table `F` at the label `l`. -/
+def fwdLookup (F : FwdTab) (l : LLabel) : List String :=
+  (F.filter fun e => e.1 == l).flatMap Prod.snd
+
+theorem fwdLookup_nil (l : LLabel) : fwdLookup [] l = [] := rfl
+
+theorem mem_fwdLookup_cons {l l' : LLabel} {W : List String} {F : FwdTab} {r : String} :
+    r ∈ fwdLookup ((l', W) :: F) l ↔ (l' = l ∧ r ∈ W) ∨ r ∈ fwdLookup F l := by
+  unfold fwdLookup
+  by_cases h : l' = l
+  · subst h
+    simp
+  · simp [h]
+
+/-- **The names the forward branches add at instruction `k`**: at the first definition of
+    a label `l` (`labelAt`), the names of the table `F` at `l` that are not in `W`; no name at
+    any other instruction. -/
+def fwdJoin (body : Lcmd) (k : Nat) (W : List String) (F : FwdTab) : LinstrR → List String
+  | .Llabel _ l =>
+      if labelAt body l = some k then (fwdLookup F l).filter fun r => !W.contains r else []
+  | _ => []
+
+/-- The table of forward branches past an instruction at the analysis `W`: a branch to `l`
+    adds the entry `(l, W)`. -/
+def fwdPush (W : List String) (F : FwdTab) : LinstrR → FwdTab
+  | .Lcond _ l => (l, W) :: F
+  | _ => F
+
+/-- **One step of the width analysis with its table of forward branches**: the analysis
+    steps by `oneBitStepAtB` and joins the names `fwdJoin` of the table; the table records a
+    branch with the analysis at it (`fwdPush`). -/
+def oneBitStepF (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat)
+    (S : List String × FwdTab) (x : LinstrR) : List String × FwdTab :=
+  let W := oneBitStepAtB frame body k S.1 x
+  (W ++ fwdJoin body k W S.2 x, fwdPush S.1 S.2 x)
+
+/-- The width analysis with its table of forward branches at instruction `k` of a body: the
+    fold of `oneBitStepF` over the prefix of the body. -/
+def oneBitSt (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat) :
+    List String × FwdTab :=
+  ((body.take k).zipIdx).foldl (fun S p => oneBitStepF frame body p.2 S p.1.li_i) ([], [])
+
+/-- The names of the width analysis at the branches before position `p` that target the label
+    `l` (`mem_fwdNames`). -/
+def fwdNames (frame : String → Option (BitVec 64)) (body : Lcmd) (p : Nat) (l : LLabel) :
+    List String :=
+  fwdLookup (oneBitSt frame body p).2 l
+
+/-- **The seed of the width analysis at instruction `k`**: at a label, the names of
+    `oneBitAt0` at the later branches that target it (`backNames`) and the names of the
+    analysis at the earlier branches that target it (`fwdNames`); no name at any other
     instruction. -/
 def seedAt (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat) :
     LinstrR → List String
-  | .Llabel _ l => backNames frame body k l
+  | .Llabel _ l => backNames frame body k l ++ fwdNames frame body k l
   | _ => []
 
 /-- An instruction equal to one that is no label has no seed. -/
@@ -298,44 +383,179 @@ theorem seedAt_of_slotMov {frame : String → Option (BitVec 64)} {body : Lcmd} 
 /-- **One step of the width analysis at instruction `k` of a body.** The destination of a
     stored carry constant (`bitStore?`, a one-bit write on the image) enters the names
     possibly holding a one-bit value; every other instruction steps by `oneBitStep`, and a
-    label adds its seed `seedAt`. -/
+    label adds the names of the backward branches to it and, at its first definition, the
+    names of the forward branches to it (`fwdJoin`) not yet in the analysis. -/
 def oneBitStepAt (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat)
     (W : List String) (x : LinstrR) : List String :=
-  match bitStore? body k x with
-  | some (d, _) => d :: W
-  | none => oneBitStep frame W x ++ seedAt frame body k x
+  let W' := oneBitStepAtB frame body k W x
+  W' ++ fwdJoin body k W' (oneBitSt frame body k).2 x
 
 /-- **The width analysis** at instruction `k` of a body: the names that may hold a one-bit
-    value there, the fold of `oneBitStepAt` over the prefix of the body. A label joins the
-    names that the analysis without a join has at the later branches to it. -/
+    value there, the first component of the fold `oneBitSt`. A label joins the names that the
+    analysis without a join has at the later branches to it, and at its first definition the
+    names that the analysis has at the earlier branches to it. -/
 def oneBitAt (frame : String → Option (BitVec 64)) (body : Lcmd) (k : Nat) : List String :=
-  ((body.take k).zipIdx).foldl (fun W p => oneBitStepAt frame body p.2 W p.1.li_i) []
+  (oneBitSt frame body k).1
+
+theorem oneBitSt_zero (frame : String → Option (BitVec 64)) (body : Lcmd) :
+    oneBitSt frame body 0 = ([], []) := by
+  simp [oneBitSt]
 
 theorem oneBitAt_zero (frame : String → Option (BitVec 64)) (body : Lcmd) :
     oneBitAt frame body 0 = [] := by
-  simp [oneBitAt]
+  simp [oneBitAt, oneBitSt_zero]
 
-/-- Without a seed at any instruction the width analysis is the analysis without a join. -/
-theorem oneBitAt_eq_oneBitAt0 {frame : String → Option (BitVec 64)} {body : Lcmd}
-    (h : ∀ k x, seedAt frame body k x = []) (k : Nat) :
-    oneBitAt frame body k = oneBitAt0 frame body k := by
-  have hs : ∀ j W x, oneBitStepAt frame body j W x = oneBitStepAt0 frame body j W x := by
-    intro j W x
-    unfold oneBitStepAt oneBitStepAt0
-    split
-    · rfl
-    · rw [h, List.append_nil]
-  simp only [oneBitAt, oneBitAt0, hs]
+/-- The analysis with its table at the next instruction: one step of `oneBitStepF`. -/
+theorem oneBitSt_succ {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    {bi : Linstr} (hb : body[k]? = some bi) :
+    oneBitSt frame body (k + 1) = oneBitStepF frame body k (oneBitSt frame body k) bi.li_i := by
+  have hk : k < body.length := (List.getElem?_eq_some_iff.mp hb).1
+  unfold oneBitSt
+  rw [List.take_add_one, hb, Option.toList_some, List.zipIdx_append, List.foldl_append,
+    List.length_take, Nat.min_eq_left hk.le]
+  simp
+
+/-- Past the end of the body the analysis with its table does not change. -/
+theorem oneBitSt_succ_none {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    (hb : body[k]? = none) : oneBitSt frame body (k + 1) = oneBitSt frame body k := by
+  have hk : body.length ≤ k := List.getElem?_eq_none_iff.mp hb
+  unfold oneBitSt
+  simp only [List.take_of_length_le hk, List.take_of_length_le (show body.length ≤ k + 1 by omega)]
 
 /-- The analysis at the next instruction: one step of `oneBitStepAt`. -/
 theorem oneBitAt_succ_at {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
     {bi : Linstr} (hb : body[k]? = some bi) :
     oneBitAt frame body (k + 1) = oneBitStepAt frame body k (oneBitAt frame body k) bi.li_i := by
-  have hk : k < body.length := (List.getElem?_eq_some_iff.mp hb).1
-  unfold oneBitAt
-  rw [List.take_add_one, hb, Option.toList_some, List.zipIdx_append, List.foldl_append,
-    List.length_take, Nat.min_eq_left hk.le]
-  simp
+  rw [oneBitAt, oneBitSt_succ hb]
+  rfl
+
+/-- **The table of forward branches**: a name is in `fwdNames frame body p l` exactly when it
+    is in the width analysis at a conditional branch to `l` before `p`. -/
+theorem mem_fwdNames {frame : String → Option (BitVec 64)} {body : Lcmd} {l : LLabel}
+    {r : String} : ∀ {p : Nat}, r ∈ fwdNames frame body p l ↔
+      ∃ q < p, ∃ bi c, body[q]? = some bi ∧ bi.li_i = .Lcond c l ∧ r ∈ oneBitAt frame body q
+  | 0 => by simp [fwdNames, oneBitSt_zero, fwdLookup_nil]
+  | p + 1 => by
+      have ih := @mem_fwdNames frame body l r p
+      cases hb : body[p]? with
+      | none =>
+          rw [fwdNames, oneBitSt_succ_none hb, ← fwdNames, ih]
+          constructor
+          · rintro ⟨q, hq, h⟩
+            exact ⟨q, by omega, h⟩
+          · rintro ⟨q, hq, bi, c, hqb, h⟩
+            refine ⟨q, ?_, bi, c, hqb, h⟩
+            rcases Nat.lt_succ_iff_lt_or_eq.mp hq with hq | rfl
+            · exact hq
+            · rw [hb] at hqb
+              cases hqb
+      | some bi =>
+          have hstep : (oneBitSt frame body (p + 1)).2
+              = fwdPush (oneBitAt frame body p) (oneBitSt frame body p).2 bi.li_i := by
+            rw [oneBitSt_succ hb]
+            rfl
+          rw [fwdNames, hstep]
+          have hlt : ∀ q, q < p + 1 ↔ q < p ∨ q = p := fun q => by omega
+          cases hx : bi.li_i with
+          | Lcond c l' =>
+              simp only [fwdPush, mem_fwdLookup_cons]
+              rw [← fwdNames, ih]
+              constructor
+              · rintro (⟨rfl, hr⟩ | ⟨q, hq, h⟩)
+                · exact ⟨p, by omega, bi, c, hb, hx, hr⟩
+                · exact ⟨q, by omega, h⟩
+              · rintro ⟨q, hq, bi', c', hqb, hc, hr⟩
+                rcases (hlt q).1 hq with hq | rfl
+                · exact Or.inr ⟨q, hq, bi', c', hqb, hc, hr⟩
+                · rw [hb] at hqb
+                  cases hqb
+                  rw [hx] at hc
+                  cases hc
+                  exact Or.inl ⟨rfl, hr⟩
+          | _ =>
+              simp only [fwdPush]
+              rw [← fwdNames, ih]
+              constructor
+              · rintro ⟨q, hq, h⟩
+                exact ⟨q, by omega, h⟩
+              · rintro ⟨q, hq, bi', c', hqb, hc, hr⟩
+                rcases (hlt q).1 hq with hq | rfl
+                · exact ⟨q, hq, bi', c', hqb, hc, hr⟩
+                · rw [hb] at hqb
+                  cases hqb
+                  rw [hx] at hc
+                  cases hc
+
+/-- Without a seed, the join of forward branches adds no name. -/
+theorem fwdJoin_of_seed {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    {x : LinstrR} (hl : seedAt frame body k x = []) (W : List String) :
+    fwdJoin body k W (oneBitSt frame body k).2 x = [] ∧ seedB frame body k x = [] := by
+  cases x with
+  | Llabel ii l =>
+      simp only [seedAt, List.append_eq_nil_iff, fwdNames] at hl
+      simp [fwdJoin, seedB, hl.1, hl.2]
+  | _ => exact ⟨rfl, rfl⟩
+
+/-- Without a seed, one step of the width analysis is one step of the analysis without a
+    join. -/
+theorem oneBitStepAt_of_seed {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    {x : LinstrR} (hl : seedAt frame body k x = []) (W : List String) :
+    oneBitStepAt frame body k W x = oneBitStepAt0 frame body k W x := by
+  unfold oneBitStepAt oneBitStepAtB oneBitStepAt0
+  have hj := fun W => (fwdJoin_of_seed hl W).1
+  have hs := (fwdJoin_of_seed hl []).2
+  simp only [hj, hs, List.append_nil]
+
+/-- **Without a seed at a branch the width analysis is the analysis without a join**: when the
+    analysis without a join `oneBitAt0` is empty at every conditional branch, no label has a
+    seed and the two analyses agree. -/
+theorem oneBitAt_eq_oneBitAt0 {frame : String → Option (BitVec 64)} {body : Lcmd}
+    (hc : ∀ q bi c l, body[q]? = some bi → bi.li_i = .Lcond c l → oneBitAt0 frame body q = [])
+    (k : Nat) : oneBitAt frame body k = oneBitAt0 frame body k := by
+  have hb : ∀ k l, backNames frame body k l = [] := by
+    intro k l
+    simp only [backNames, List.flatMap_eq_nil_iff]
+    intro q hq
+    obtain ⟨a, j⟩ := q
+    have hj : body[j]? = some a := by
+      simpa [List.mem_zipIdx_iff_getElem?] using List.mem_of_mem_drop hq
+    split
+    · rename_i c l' hx
+      split
+      · exact hc j a c l' hj hx
+      · rfl
+    · rfl
+  induction k using Nat.strong_induction_on with
+  | _ k ih =>
+    cases k with
+    | zero => simp [oneBitAt_zero, oneBitAt0]
+    | succ k =>
+      have h0 : ∀ bi, body[k]? = some bi →
+          oneBitAt0 frame body (k + 1) = oneBitStepAt0 frame body k (oneBitAt0 frame body k)
+            bi.li_i := by
+        intro bi hbi
+        have hk : k < body.length := (List.getElem?_eq_some_iff.mp hbi).1
+        unfold oneBitAt0
+        rw [List.take_add_one, hbi, Option.toList_some, List.zipIdx_append, List.foldl_append,
+          List.length_take, Nat.min_eq_left hk.le]
+        simp
+      cases hbk : body[k]? with
+      | none =>
+          have hk : body.length ≤ k := List.getElem?_eq_none_iff.mp hbk
+          rw [oneBitAt, oneBitSt_succ_none hbk, ← oneBitAt, ih k (by omega)]
+          unfold oneBitAt0
+          simp only [List.take_of_length_le hk, List.take_of_length_le (show body.length ≤ k + 1 by omega)]
+      | some bi =>
+          have hs : seedAt frame body k bi.li_i = [] := by
+            cases hx : bi.li_i with
+            | Llabel ii l =>
+                simp only [seedAt, hb, List.nil_append, List.eq_nil_iff_forall_not_mem]
+                intro r hr
+                obtain ⟨q, hq, bq, c, hqb, hqc, hrq⟩ := mem_fwdNames.mp hr
+                rw [ih q (by omega), hc q bq c l hqb hqc] at hrq
+                cases hrq
+            | _ => rfl
+          rw [oneBitAt_succ_at hbk, oneBitStepAt_of_seed hs, ih k (by omega), h0 bi hbk]
 
 /-- The analysis at the next instruction, past an instruction that is no stored carry
     constant: one step of `oneBitStep`. -/
@@ -343,8 +563,7 @@ theorem oneBitAt_succ {frame : String → Option (BitVec 64)} {body : Lcmd} {k :
     {bi : Linstr} (hb : body[k]? = some bi) (hs : bitStore? body k bi.li_i = none)
     (hl : seedAt frame body k bi.li_i = []) :
     oneBitAt frame body (k + 1) = oneBitStep frame (oneBitAt frame body k) bi.li_i := by
-  rw [oneBitAt_succ_at hb, oneBitStepAt, hs]
-  simp only [hl, List.append_nil]
+  rw [oneBitAt_succ_at hb, oneBitStepAt_of_seed hl, oneBitStepAt0, hs]
 
 /-- The analysis one past a call is the analysis at the call. -/
 theorem oneBitAt_succ_call {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
@@ -352,15 +571,127 @@ theorem oneBitAt_succ_call {frame : String → Option (BitVec 64)} {body : Lcmd}
     (hx : bi.li_i = .Lcall ra t) :
     oneBitAt frame body (k + 1) = oneBitAt frame body k := by
   rw [oneBitAt_succ_at hb, hx]
-  simp [oneBitStepAt, seedAt, bitStore?, oneBitStep, carryI?, icase, castOut, classifyK]
+  simp [oneBitStepAt, oneBitStepAtB, seedB, fwdJoin, bitStore?, oneBitStep, carryI?, icase,
+    castOut, classifyK]
 
-/-- The analysis one past a label: the analysis at the label and the seed of the label. -/
+/-- The analysis one past a label: the analysis at the label with the names of the backward
+    branches to it, and the names `fwdJoin` of the forward branches to it. -/
 theorem oneBitAt_succ_label {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
     {bi : Linstr} (hb : body[k]? = some bi) {ii : _} {l : LLabel}
     (hx : bi.li_i = .Llabel ii l) :
-    oneBitAt frame body (k + 1) = oneBitAt frame body k ++ backNames frame body k l := by
+    oneBitAt frame body (k + 1) = oneBitAt frame body k ++ backNames frame body k l
+      ++ fwdJoin body k (oneBitAt frame body k ++ backNames frame body k l)
+        (oneBitSt frame body k).2 (.Llabel ii l) := by
   rw [oneBitAt_succ_at hb, hx]
   rfl
+
+/-- **The names one past a label**: those of the analysis at the label, of the backward
+    branches to it, and, at its first definition, of the analysis at the forward branches to
+    it. -/
+theorem mem_oneBitAt_succ_label {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    {bi : Linstr} (hb : body[k]? = some bi) {ii : _} {l : LLabel}
+    (hx : bi.li_i = .Llabel ii l) {r : String} :
+    r ∈ oneBitAt frame body (k + 1) ↔ r ∈ oneBitAt frame body k ∨ r ∈ backNames frame body k l
+      ∨ (labelAt body l = some k ∧ r ∈ fwdNames frame body k l) := by
+  rw [oneBitAt_succ_label hb hx]
+  simp only [fwdJoin, fwdNames]
+  split
+  · rename_i hp
+    rw [List.mem_append, List.mem_append]
+    constructor
+    · rintro ((h | h) | h)
+      · exact Or.inl h
+      · exact Or.inr (Or.inl h)
+      · exact Or.inr (Or.inr ⟨hp, (List.mem_filter.1 h).1⟩)
+    · rintro (h | h | ⟨-, h⟩)
+      · exact Or.inl (Or.inl h)
+      · exact Or.inl (Or.inr h)
+      · by_cases hm : r ∈ oneBitAt frame body k ++ backNames frame body k l
+        · exact Or.inl (List.mem_append.1 hm)
+        · exact Or.inr (List.mem_filter.2 ⟨h, by simpa using hm⟩)
+  · rename_i hp
+    simp [hp]
+
+/-- Every name of the analysis at a label is in the analysis one past it. -/
+theorem oneBitAt_sub_succ_label {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    {bi : Linstr} (hb : body[k]? = some bi) {ii : _} {l : LLabel}
+    (hx : bi.li_i = .Llabel ii l) {r : String} (h : r ∈ oneBitAt frame body k) :
+    r ∈ oneBitAt frame body (k + 1) :=
+  (mem_oneBitAt_succ_label hb hx).2 (Or.inl h)
+
+/-- **A forward branch is joined at its label**: every name of the analysis at a conditional
+    branch to `l` before the first definition `p` of `l` is in the analysis one past `p`. -/
+theorem oneBitAt_fwd {frame : String → Option (BitVec 64)} {body : Lcmd} {q p : Nat}
+    {bi : Linstr} {c : LOperand} {l : LLabel} (hq : body[q]? = some bi)
+    (hc : bi.li_i = .Lcond c l) (hp : labelAt body l = some p) (hlt : q < p) {r : String}
+    (hr : r ∈ oneBitAt frame body q) : r ∈ oneBitAt frame body (p + 1) := by
+  obtain ⟨hpl, hlab, -⟩ := labelAt_spec hp
+  have hbp : body[p]? = some body[p] := List.getElem?_eq_getElem hpl
+  generalize hx : body[p].li_i = x at hlab
+  cases x with
+  | Llabel kd l' =>
+      have hl' : l' = l := by simpa [isLabelB] using hlab
+      subst hl'
+      exact (mem_oneBitAt_succ_label hbp hx).2
+        (Or.inr (Or.inr ⟨hp, mem_fwdNames.2 ⟨q, hlt, bi, c, hq, hc, hr⟩⟩))
+  | _ => simp [isLabelB] at hlab
+
+/-- The analysis without the join of forward branches at the next instruction: one step of
+    `oneBitStepAtB`. -/
+theorem oneBitAtB_succ_at {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    {bi : Linstr} (hb : body[k]? = some bi) :
+    oneBitAtB frame body (k + 1) = oneBitStepAtB frame body k (oneBitAtB frame body k) bi.li_i := by
+  have hk : k < body.length := (List.getElem?_eq_some_iff.mp hb).1
+  unfold oneBitAtB
+  rw [List.take_add_one, hb, Option.toList_some, List.zipIdx_append, List.foldl_append,
+    List.length_take, Nat.min_eq_left hk.le]
+  simp
+
+theorem oneBitAtB_succ_none {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    (hb : body[k]? = none) : oneBitAtB frame body (k + 1) = oneBitAtB frame body k := by
+  have hk : body.length ≤ k := List.getElem?_eq_none_iff.mp hb
+  unfold oneBitAtB
+  simp only [List.take_of_length_le hk, List.take_of_length_le (show body.length ≤ k + 1 by omega)]
+
+/-- **The join of forward branches adds no name where they are already included**: when, for
+    every conditional branch before the first definition of its label, the analysis without
+    the join `oneBitAtB` at the branch is included in `oneBitAtB` one past the label, the width
+    analysis is `oneBitAtB` at every position, as a list. -/
+theorem oneBitAt_eq_oneBitAtB {frame : String → Option (BitVec 64)} {body : Lcmd}
+    (h : ∀ q p bi c l, body[q]? = some bi → bi.li_i = .Lcond c l → labelAt body l = some p →
+      q < p → ∀ r ∈ oneBitAtB frame body q, r ∈ oneBitAtB frame body (p + 1))
+    (k : Nat) : oneBitAt frame body k = oneBitAtB frame body k := by
+  induction k using Nat.strong_induction_on with
+  | _ k ih =>
+    cases k with
+    | zero => simp [oneBitAt_zero, oneBitAtB]
+    | succ k =>
+      cases hbk : body[k]? with
+      | none =>
+          rw [oneBitAt, oneBitSt_succ_none hbk, ← oneBitAt, ih k (by omega),
+            oneBitAtB_succ_none hbk]
+      | some bi =>
+          rw [oneBitAt_succ_at hbk, oneBitAtB_succ_at hbk, ih k (by omega)]
+          suffices hj : fwdJoin body k (oneBitStepAtB frame body k (oneBitAtB frame body k)
+              bi.li_i) (oneBitSt frame body k).2 bi.li_i = [] by
+            simp only [oneBitStepAt, hj, List.append_nil]
+          have hW := oneBitAtB_succ_at (frame := frame) hbk
+          generalize bi.li_i = x at hW ⊢
+          cases x with
+          | Llabel ii l =>
+              simp only [fwdJoin]
+              split
+              · rename_i hp
+                rw [List.filter_eq_nil_iff]
+                intro r hr
+                obtain ⟨q, hq, bq, c, hqb, hqc, hrq⟩ :=
+                  mem_fwdNames.mp (show r ∈ fwdNames frame body k l from hr)
+                rw [ih q (by omega)] at hrq
+                have := h q k bq c l hqb hqc hp hq r hrq
+                rw [hW] at this
+                simpa using this
+              · rfl
+          | _ => rfl
 
 /-- An instruction equal to one of another form than a 64-bit immediate move is no stored
     carry constant. -/
@@ -375,7 +706,12 @@ theorem oneBitAt_succ_store {frame : String → Option (BitVec 64)} {body : Lcmd
     {bi : Linstr} (hb : body[k]? = some bi) {d : String} {n : Nat}
     (hs : bitStore? body k bi.li_i = some (d, n)) :
     oneBitAt frame body (k + 1) = d :: oneBitAt frame body k := by
-  rw [oneBitAt_succ_at hb, oneBitStepAt, hs]
+  rw [oneBitAt_succ_at hb]
+  have hj : ∀ W F, fwdJoin body k W F bi.li_i = [] := by
+    intro W F
+    revert hs
+    cases bi.li_i <;> intro hs <;> first | rfl | simp [bitStore?] at hs
+  simp only [oneBitStepAt, oneBitStepAtB, hs, hj, List.append_nil]
 
 theorem regOut_slotImm (W : List String) (q : String) (v : Nat) {r : String} (hr : r ≠ q)
     (h : r ∉ regOut W (.Lopn [.reg q] "MOV:64" [.imm v])) : r ∉ W := by
@@ -786,22 +1122,128 @@ theorem not_mem_of_retOutsB {frame : String → Option (BitVec 64)} {body : Lcmd
   have := List.all_eq_true.mp h r hr
   simp [hm] at this
 
+/-- **The gate at a branch splits into its parts**: the conjuncts of `gateAtW` at the empty
+    analysis, and the inclusion of the analysis `W` in the analysis one past the label. -/
+theorem gateAtW_cond_split (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (W : List String)
+    (c : LOperand) (l : LLabel) :
+    gateAtW frame slotArr body k W (.Lcond c l) =
+      (gateAtW frame slotArr body k [] (.Lcond c l) && (labelAt body l).any fun p =>
+        W.isEmpty || W.all fun r => (oneBitAt frame body (p + 1)).contains r) := by
+  cases c <;> cases hp : labelAt body l <;>
+    simp [gateAtW, carryI?, icase, readOkB, gateReadSet, readNames, castGateB, classifyK, hp]
+  cases (condPol _).isSome <;> simp
+
+/-- **The instruction gate without the join of forward branches**: `instrGateBW` at the
+    analysis `oneBitAtB`, whose branch arm asks for every name of `oneBitAtB` at the branch in
+    `oneBitAtB` one past the label (the form of `gateAtW_cond_split`). -/
+def instrGateBWB (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) : LinstrR → Bool
+  | .Lcond c l =>
+      gateAtW frame slotArr body k [] (.Lcond c l) && (labelAt body l).any fun p =>
+        (oneBitAtB frame body k).isEmpty
+          || (oneBitAtB frame body k).all fun r => (oneBitAtB frame body (p + 1)).contains r
+  | x => gateAtW frame slotArr body k (oneBitAtB frame body k) x
+
+/-- **The gate without the join of forward branches**: `imgGateBW` with `instrGateBWB` at
+    every instruction but the last. -/
+def imgGateBWB (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) : Bool :=
+  (List.range (body.length - 1)).all (fun k =>
+      (body[k]?).all fun i => instrGateBWB frame slotArr body k i.li_i)
+    && body.getLast?.any (fun r => isRetB r.li_i)
+    && reloadSavedB slotArr body
+
+/-- Where the two analyses agree, `instrGateBWB` is `instrGateBW`. -/
+theorem instrGateBWB_eq {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (he : ∀ k, oneBitAt frame body k = oneBitAtB frame body k) (k : Nat) (x : LinstrR) :
+    instrGateBWB frame slotArr body k x = instrGateBW frame slotArr body k x := by
+  cases x with
+  | Lcond c l => rw [instrGateBW, gateAtW_cond_split]; simp only [instrGateBWB, he]
+  | _ => simp only [instrGateBWB, instrGateBW, he]
+
+/-- At a branch, `instrGateBWB` includes the analysis without the join of forward branches
+    at the branch in that analysis one past the label. -/
+theorem incl_of_instrGateBWB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {q p : Nat} {c : LOperand}
+    {l : LLabel} (h : instrGateBWB frame slotArr body q (.Lcond c l) = true)
+    (hp : labelAt body l = some p) :
+    ∀ r ∈ oneBitAtB frame body q, r ∈ oneBitAtB frame body (p + 1) := by
+  intro r hr
+  simp only [instrGateBWB, hp, Option.any_some, Bool.and_eq_true, Bool.or_eq_true,
+    List.isEmpty_iff, List.all_eq_true, List.contains_iff_mem] at h
+  rcases h.2 with h0 | h1
+  · rw [h0] at hr
+    cases hr
+  · exact h1 r hr
+
+/-- **The inclusion of forward branches from the gates of the branches**: if every conditional
+    branch of a body ending in a return passes `instrGateBWB`, the hypothesis of
+    `oneBitAt_eq_oneBitAtB` holds. -/
+theorem fwdIncl_of_instrGateBWB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hlast : body.getLast?.any (fun r => isRetB r.li_i) = true)
+    (hg : ∀ q bi c l, q < body.length - 1 → body[q]? = some bi → bi.li_i = .Lcond c l →
+      instrGateBWB frame slotArr body q (.Lcond c l) = true) :
+    ∀ q p bi c l, body[q]? = some bi → bi.li_i = .Lcond c l → labelAt body l = some p →
+      q < p → ∀ r ∈ oneBitAtB frame body q, r ∈ oneBitAtB frame body (p + 1) := by
+  intro q p bi c l hq hc hp _
+  have hql : q < body.length := (List.getElem?_eq_some_iff.mp hq).1
+  have hlt : q < body.length - 1 := by
+    by_contra hge
+    have hg' : body.getLast? = some bi := by
+      rw [List.getLast?_eq_getElem?, ← hq]
+      congr 1
+      omega
+    rw [hg'] at hlast
+    simp [hc, isRetB] at hlast
+  exact incl_of_instrGateBWB (hg q bi c l hlt hq hc) hp
+
+/-- **No body the gate accepted without the join of forward branches is refused**: a body
+    passing `imgGateBWB` passes `imgGateBW`, and its width analysis is `oneBitAtB` at every
+    position, so that `retOutsB` and every other check reading the analysis keep their
+    value. -/
+theorem imgGateBW_of_back {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (h : imgGateBWB frame slotArr body = true) :
+    imgGateBW frame slotArr body = true
+      ∧ ∀ k, oneBitAt frame body k = oneBitAtB frame body k := by
+  simp only [imgGateBWB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+  obtain ⟨⟨hall, hlast⟩, hrs⟩ := h
+  have he : ∀ k, oneBitAt frame body k = oneBitAtB frame body k :=
+    oneBitAt_eq_oneBitAtB (fwdIncl_of_instrGateBWB hlast fun q bi c l hlt hq hc => by
+      have := hall q hlt
+      rw [hq, Option.all_some, hc] at this
+      exact this)
+  refine ⟨?_, he⟩
+  simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range]
+  refine ⟨⟨fun k hk => ?_, hlast⟩, hrs⟩
+  have := hall k hk
+  cases hb : body[k]? with
+  | none => rfl
+  | some i =>
+      rw [hb, Option.all_some] at this
+      rw [Option.all_some, ← instrGateBWB_eq he]
+      exact this
+
 /-- The instruction gates of `imgGateBW` in one pass: from position `k` with the width
-    analysis `W` at `k` and the remaining instructions, the gate `gateAtW` of at most `n`
-    instructions, the analysis advanced by `oneBitStepAt` after each. -/
+    analysis and its table of forward branches `S` at `k` and the remaining instructions, the
+    gate `gateAtW` of at most `n` instructions, the analysis and the table advanced by
+    `oneBitStepF` after each. -/
 def gateLoop (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
-    (body : Lcmd) : Nat → Nat → List String → Lcmd → Bool
+    (body : Lcmd) : Nat → Nat → List String × FwdTab → Lcmd → Bool
   | 0, _, _, _ => true
   | _ + 1, _, _, [] => true
-  | n + 1, k, W, i :: rest =>
-      gateAtW frame slotArr body k W i.li_i && gateLoop frame slotArr body n (k + 1)
-        (oneBitStepAt frame body k W i.li_i) rest
+  | n + 1, k, S, i :: rest =>
+      gateAtW frame slotArr body k S.1 i.li_i && gateLoop frame slotArr body n (k + 1)
+        (oneBitStepF frame body k S i.li_i) rest
 
-/-- From position `k` at the width analysis `oneBitAt frame body k`, the one-pass loop
+/-- From position `k` at the width analysis with its table `oneBitSt frame body k`, the one-pass loop
     decides the instruction gates `instrGateBW` at positions `k` to `k + n - 1`. -/
 theorem gateLoop_eq (frame : String → Option (BitVec 64))
     (slotArr : String → Option (String × Nat)) (body : Lcmd) :
-    ∀ n k, gateLoop frame slotArr body n k (oneBitAt frame body k) (body.drop k)
+    ∀ n k, gateLoop frame slotArr body n k (oneBitSt frame body k) (body.drop k)
       = (List.range' k n).all (fun j =>
           (body[j]?).all fun i => instrGateBW frame slotArr body j i.li_i) := by
   intro n
@@ -825,7 +1267,7 @@ theorem gateLoop_eq (frame : String → Option (BitVec 64))
           have hr : body.drop (k + 1) = rest := by
             rw [← List.drop_drop, hd]; rfl
           rw [List.range'_succ, List.all_cons, hi, Option.all_some, gateLoop, ← ih (k + 1),
-            hr, oneBitAt_succ_at hi]
+            hr, oneBitSt_succ hi]
           rfl
 
 /-- The frame map read through the table `T`: the entry of `T` at `q` when there is one,
@@ -856,7 +1298,7 @@ theorem tabFrame_eq (frame : String → Option (BitVec 64)) (N : List String) :
 def imgGateBWImpl (frame : String → Option (BitVec 64))
     (slotArr : String → Option (String × Nat)) (body : Lcmd) : Bool :=
   let fr := tabFrame frame ((ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q))
-  gateLoop fr slotArr body (body.length - 1) 0 [] body
+  gateLoop fr slotArr body (body.length - 1) 0 ([], []) body
     && body.getLast?.any (fun r => isRetB r.li_i)
     && reloadSavedB slotArr body
 
@@ -864,7 +1306,7 @@ def imgGateBWImpl (frame : String → Option (BitVec 64))
 @[csimp] theorem imgGateBW_eq_impl : @imgGateBW = @imgGateBWImpl := by
   funext frame slotArr body
   have h := gateLoop_eq frame slotArr body (body.length - 1) 0
-  simp only [oneBitAt_zero, List.drop_zero] at h
+  simp only [oneBitSt_zero, List.drop_zero] at h
   simp only [imgGateBWImpl, tabFrame_eq]
   rw [imgGateBW, h, List.range_eq_range']
 
@@ -1208,31 +1650,14 @@ theorem oneBitAt_of_old {frame : String → Option (BitVec 64)}
       omega
     rw [hg] at hlast
     simp [hc, isRetB] at hlast
-  have hseed : ∀ k x, seedAt frame body k x = [] := by
-    intro k x
-    cases x with
-    | Llabel ii l =>
-        simp only [seedAt, backNames, List.flatMap_eq_nil_iff]
-        intro q hq
-        have hq' := List.mem_of_mem_drop hq
-        obtain ⟨a, j⟩ := q
-        have hj : body[j]? = some a := by
-          simpa [List.mem_zipIdx_iff_getElem?] using hq'
-        split
-        · rename_i c l' hc
-          split
-          · by_cases hjl : j < body.length - 1
-            · have := hall j hjl
-              rw [hj] at this
-              simp only [Option.all_some, Bool.and_eq_true] at this
-              simp only at hc
-              rw [hc] at this
-              simpa using this.2
-            · exact absurd hc (hret j a hj hjl _ _)
-          · rfl
-        · rfl
-    | _ => rfl
-  exact oneBitAt_eq_oneBitAt0 hseed k0
+  refine oneBitAt_eq_oneBitAt0 (fun j a c l hj hc => ?_) k0
+  by_cases hjl : j < body.length - 1
+  · have := hall j hjl
+    rw [hj] at this
+    simp only [Option.all_some, Bool.and_eq_true] at this
+    rw [hc] at this
+    simpa using this.2
+  · exact absurd hc (hret j a hj hjl _ _)
 
 /-- The check `retOutsB` over the analysis without a join `oneBitAt0`. -/
 def retOutsB0 (frame : String → Option (BitVec 64)) (body : Lcmd) (outs : List String) : Bool :=
@@ -1317,12 +1742,13 @@ theorem not_mem_oneBitAt_of_halted {frame : String → Option (BitVec 64)}
   · rwa [show sa.reg.lpc = body.length - 1 by omega]
   · have e : oneBitAt frame body sa.reg.lpc = oneBitAt frame body (body.length - 1) := by
       have e1 : oneBitAt frame body sa.reg.lpc = oneBitAt frame body body.length := by
-        unfold oneBitAt
-        rw [List.take_of_length_le hk, List.take_of_length_le (le_refl _)]
+        simp only [oneBitAt, oneBitSt, List.take_of_length_le hk,
+          List.take_of_length_le (le_refl _)]
       have e2 : oneBitAt frame body (body.length - 1 + 1)
           = oneBitAt frame body (body.length - 1) := by
         rw [oneBitAt_succ_at hlast, hret]
-        simp [oneBitStepAt, seedAt, bitStore?, oneBitStep, carryI?, icase, castOut, classifyK]
+        simp [oneBitStepAt, oneBitStepAtB, seedB, fwdJoin, bitStore?, oneBitStep, carryI?, icase,
+          castOut, classifyK]
       rw [show body.length - 1 + 1 = body.length by omega] at e2
       rw [e1, e2]
     rw [e]
@@ -3309,19 +3735,19 @@ theorem rel_labelW {frame : String → Option (BitVec 64)}
       { s with prog := { s.prog with base := s.prog.base.nextPc } }
       (sa.setLpc (sa.reg.lpc + 1)) zf := by
   have hnm : slotMov? bi.li_i = none := by rw [hx]; rfl
-  have hW1 := oneBitAt_succ_label (frame := frame) hb hx
+  have hW1 : ∀ {r}, r ∈ oneBitAt frame body sa.reg.lpc → r ∈ oneBitAt frame body (sa.reg.lpc + 1) :=
+    oneBitAt_sub_succ_label hb hx
   obtain ⟨hsv, hrl, hhd⟩ := saved_reload_nextW (sa' := sa.setLpc (sa.reg.lpc + 1)) hphys hrel hb
     hnm rfl (fun _ _ _ _ _ => rfl) (fun _ _ _ => rfl)
   refine ⟨by simp [LstateA.setLpc, LstateM.nextPc, hrel.pc],
     fun r hr => (hrel.regs r hr).of_eq (by simp [LstateM.nextPc]) rfl fun h => by
-      simp only [LstateA.setLpc]; rw [hW1]; exact List.mem_append_left _ h,
+      simp only [LstateA.setLpc]; exact hW1 h,
     fun q a ha => (hrel.slots q a ha).of_eq (by simp [LstateM.nextPc]) rfl fun h => by
-      simp only [LstateA.setLpc]; rw [hW1]; exact List.mem_append_left _ h,
+      simp only [LstateA.setLpc]; exact hW1 h,
     hrel.zf, hrel.cf, hrel.of, fun r hr hW => ?_,
     fun q A n hq => hrel.cells q A n hq, hsv, hrl, hhd, fun r hr hc => hrel.bits r hr hc⟩
   simp only [LstateA.setLpc] at hW ⊢
-  rw [hW1] at hW
-  exact hrel.wid r hr fun h => hW (List.mem_append_left _ h)
+  exact hrel.wid r hr fun h => hW (hW1 h)
 
 /-- **A branch not taken keeps `ImgRelW`.** -/
 theorem rel_condFallW {frame : String → Option (BitVec 64)}
@@ -4409,13 +4835,21 @@ theorem oneBitAt0_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body 
     (k : Nat) : oneBitAt0 frame body k = oneBitAt0 frame' body k := by
   simp only [oneBitAt0, oneBitStepAt0, oneBitStep_congr h]
 
+theorem seedB_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body : Lcmd)
+    (k : Nat) (x : LinstrR) : seedB frame body k x = seedB frame' body k x := by
+  cases x <;> simp only [seedB, backNames, oneBitAt0_congr h]
+
+theorem oneBitSt_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body : Lcmd)
+    (k : Nat) : oneBitSt frame body k = oneBitSt frame' body k := by
+  simp only [oneBitSt, oneBitStepF, oneBitStepAtB, oneBitStep_congr h, seedB_congr h]
+
 theorem seedAt_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body : Lcmd)
     (k : Nat) (x : LinstrR) : seedAt frame body k x = seedAt frame' body k x := by
-  cases x <;> simp only [seedAt, backNames, oneBitAt0_congr h]
+  cases x <;> simp only [seedAt, backNames, fwdNames, oneBitAt0_congr h, oneBitSt_congr h]
 
 theorem oneBitAt_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (body : Lcmd)
     (k : Nat) : oneBitAt frame body k = oneBitAt frame' body k := by
-  simp only [oneBitAt, oneBitStepAt, oneBitStep_congr h, seedAt_congr h]
+  simp only [oneBitAt, oneBitSt_congr h]
 
 theorem gateReadSet_congr (h : ∀ q, (frame q).isSome = (frame' q).isSome) (W : List String)
     (x : LinstrR) : gateReadSet frame W x = gateReadSet frame' W x := by

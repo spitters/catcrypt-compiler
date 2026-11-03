@@ -384,6 +384,18 @@ theorem gate_cond {frame : String → Option (BitVec 64)}
   simp only [Bool.or_eq_true, List.isEmpty_iff, List.all_eq_true, List.contains_iff_mem]
   exact Or.inr hW
 
+/-- **A forward branch passes the gate at its width analysis**: a branch at `k` on a condition
+    code with a polarity, whose label is first defined after `k`, passes `gateAtW` at
+    `oneBitAt frame body k`, the analysis one past the label joining that at the branch
+    (`oneBitAt_fwd`). -/
+theorem gate_cond_fwd {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k p : Nat} {bi : Linstr}
+    {cc : String} {l : LLabel} (hpol : (condPol cc).isSome = true)
+    (hp : labelAt body l = some p) (hlt : k < p) (hb : body[k]? = some bi)
+    (hx : bi.li_i = .Lcond (.reg cc) l) :
+    gateAtW frame slotArr body k (oneBitAt frame body k) (.Lcond (.reg cc) l) = true :=
+  gate_cond hpol hp fun _ hr => oneBitAt_fwd hb hx hp hlt hr
+
 /-- **An indexed load at stride `8` passes the gate** when its base holds the pointer of an
     array (`accArr`), its names hold no frame word, and the base and index lie outside the
     analysis. -/
@@ -1049,6 +1061,11 @@ inductive ImgForm (frame : String → Option (BitVec 64)) (slotArr : String → 
   | cond (cc : String) (l : LLabel) (p : Nat) : (condPol cc).isSome = true →
       labelAt body l = some p → (∀ r ∈ W, r ∈ oneBitAt frame body (p + 1)) →
       ImgForm frame slotArr body k W (.Lcond (.reg cc) l)
+  /-- A forward branch on a condition code with a polarity: the instruction at `k`, at the
+      width analysis `W = oneBitAt frame body k`, to a label first defined after `k`. -/
+  | condFwd (cc : String) (l : LLabel) (p : Nat) (bi : Linstr) : (condPol cc).isSome = true →
+      labelAt body l = some p → k < p → body[k]? = some bi → bi.li_i = .Lcond (.reg cc) l →
+      W = oneBitAt frame body k → ImgForm frame slotArr body k W (.Lcond (.reg cc) l)
 
 /-- Every sub-form of `ImgForm` is a sub-form of `GateForm`. -/
 theorem gateForm_of_imgForm {frame : String → Option (BitVec 64)}
@@ -1077,6 +1094,7 @@ theorem gateForm_of_imgForm {frame : String → Option (BitVec 64)}
   | adcxhi o a s c ho ha hs hc h1 h2 => exact .adcxhi o a s c ho ha hs hc h1 h2
   | label kd l => exact .label kd l
   | cond cc l p hpol hp => exact .cond cc l hpol (by simp [hp])
+  | condFwd cc l p bi hpol hp => exact .cond cc l hpol (by simp [hp])
 
 /-- **`gateAtW` accepts every sub-form of `ImgForm`.** -/
 theorem gateAtW_of_imgForm {frame : String → Option (BitVec 64)}
@@ -1118,6 +1136,7 @@ theorem gateAtW_of_imgForm {frame : String → Option (BitVec 64)}
     exact gate_adcxhi ho ha hs hc hfa hfs hfc hac hsc haW hsW
   | label kd l => exact gate_label frame slotArr body k W kd l
   | cond cc l p hpol hp hW => exact gate_cond hpol hp hW
+  | condFwd cc l p bi hpol hp hlt hb hx hW => subst hW; exact gate_cond_fwd hpol hp hlt hb hx
 
 /-- **The image gate accepts the legal forms of `ImgForm`**: every sub-form of `ImgForm` at the
     width analysis `oneBitAt frame body k` is a legal form of the x86 encoder in the context of

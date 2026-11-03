@@ -134,6 +134,49 @@ def imgGateCBW (frame : String → Option (BitVec 64)) (slotArr : String → Opt
     && body.getLast?.any (fun r => isRetB r.li_i)
     && reloadSavedB slotArr body
 
+/-- **The gate of a calling body without the join of forward branches**: `imgGateCBW` with the
+    analysis `oneBitAtB` in place of `oneBitAt`, and `instrGateBWB` in place of
+    `instrGateBW`. -/
+def imgGateCBWB (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
+    (body : Lcmd) : Bool :=
+  (List.range (body.length - 1)).all (fun k => (body[k]?).all fun i =>
+      remoteCallB i.li_i
+        || (cidxArmAt frame slotArr body k (oneBitAtB frame body (k - 3))
+              (oneBitAtB frame body k) i.li_i
+            && match i.li_i with
+              | .Lopn _ _ [.reg v] => (cellParts? v).isNone
+              | _ => false)
+        || instrGateBWB frame slotArr body k i.li_i)
+    && body.getLast?.any (fun r => isRetB r.li_i)
+    && reloadSavedB slotArr body
+
+/-- **No calling body the gate accepted without the join of forward branches is refused**: a
+    body passing `imgGateCBWB` passes `imgGateCBW`, and its width analysis is `oneBitAtB` at
+    every position, so that `bitsDeadB` keeps its value. -/
+theorem imgGateCBW_of_back {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (h : imgGateCBWB frame slotArr body = true) :
+    imgGateCBW frame slotArr body = true
+      ∧ ∀ k, oneBitAt frame body k = oneBitAtB frame body k := by
+  simp only [imgGateCBWB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at h
+  obtain ⟨⟨hall, hlast⟩, hrs⟩ := h
+  have he : ∀ k, oneBitAt frame body k = oneBitAtB frame body k :=
+    oneBitAt_eq_oneBitAtB (fwdIncl_of_instrGateBWB hlast fun q bi c l hlt hq hc => by
+      have := hall q hlt
+      rw [hq, Option.all_some, hc] at this
+      simpa [remoteCallB] using this)
+  refine ⟨?_, he⟩
+  simp only [imgGateCBW, Bool.and_eq_true, List.all_eq_true, List.mem_range]
+  refine ⟨⟨fun k hk => ?_, hlast⟩, hrs⟩
+  have := hall k hk
+  cases hb : body[k]? with
+  | none => rfl
+  | some i =>
+      rw [hb, Option.all_some] at this
+      rw [Option.all_some, ← instrGateBWB_eq he]
+      simp only [cidxArmCW, cidxArmB, he]
+      exact this
+
 /-- **The width analysis is dead at each call and at the return**: at the last position and at
     each call position, every name of `oneBitAt` is a dead name of `D`. -/
 def bitsDeadB (frame : String → Option (BitVec 64)) (D : DeadTab) (body : Lcmd) : Bool :=
@@ -1474,9 +1517,11 @@ def printedAddrCWBImpl (G : Nat) (body : Lcmd) : Bool :=
     castPosBA_toArray, carryPrevB_eq_with, condPrevBA_toArray]
 
 /-- The width analysis at each position of a body and one past its end, as an array indexed by
-    the position: the prefix folds of `oneBitStepAt` over the body. -/
+    the position: the first components of the prefix folds of `oneBitStepF` over the body,
+    which carry the table of forward branches. -/
 def oneBitTab (frame : String → Option (BitVec 64)) (body : Lcmd) : Array (List String) :=
-  (body.zipIdx.scanl (fun W p => oneBitStepAt frame body p.2 W p.1.li_i) []).toArray
+  ((body.zipIdx.scanl (fun S p => oneBitStepF frame body p.2 S p.1.li_i) ([], [])).map
+    Prod.fst).toArray
 
 /-- Entry `k` of `oneBitTab`, for `k ≤ body.length`, is the analysis `oneBitAt frame body k`. -/
 theorem oneBitTab_getD (frame : String → Option (BitVec 64)) (body : Lcmd) {k : Nat}
@@ -1485,8 +1530,8 @@ theorem oneBitTab_getD (frame : String → Option (BitVec 64)) (body : Lcmd) {k 
     apply List.ext_getElem?
     intro i
     grind
-  simp only [oneBitTab, oneBitAt, Array.getD_eq_getD_getElem?, List.getElem?_toArray,
-    List.getElem?_scanl, List.length_zipIdx, hk, ite_true, hz, Option.getD_some]
+  simp only [oneBitTab, oneBitAt, oneBitSt, Array.getD_eq_getD_getElem?, List.getElem?_toArray,
+    List.getElem?_map, Option.map_some, List.getElem?_scanl, List.length_zipIdx, hk, ite_true, hz, Option.getD_some]
 
 /-- The instruction gate of `imgGateCBW` at position `k`, read off the table `tab` of the width
     analysis. -/

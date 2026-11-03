@@ -1000,19 +1000,20 @@ def gateAtWWhy (frame : String → Option (BitVec 64)) (slotArr : String → Opt
         | .other => s!"castGateB {castGateB frame x}: no width-carrying cast between \
             general-purpose names without a frame word"
 
-open X86Backend.ImageAddrSimW (gateAtW oneBitStepAt) in
+open X86Backend.ImageAddrSimW (gateAtW oneBitStepF FwdTab) in
 /-- The first instruction that the one-pass loop `gateLoop` refuses: from position `k` with
-    the width analysis `W` at `k` and the remaining instructions, at most `n` instructions,
-    the analysis advanced by `oneBitStepAt` after each; the position, the analysis there and
-    the instruction. -/
+    the width analysis and its table of forward branches `S` at `k` and the remaining
+    instructions, at most `n` instructions, the analysis and the table advanced by
+    `oneBitStepF` after each; the position, the analysis there and the instruction. -/
 def gateFirstW (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
-    (body : Lcmd) : Nat → Nat → List String → Lcmd → Option (Nat × List String × LinstrR)
+    (body : Lcmd) : Nat → Nat → List String × FwdTab → Lcmd →
+      Option (Nat × List String × LinstrR)
   | 0, _, _, _ => none
   | _ + 1, _, _, [] => none
-  | n + 1, k, W, i :: rest =>
-      if gateAtW frame slotArr body k W i.li_i then
-        gateFirstW frame slotArr body n (k + 1) (oneBitStepAt frame body k W i.li_i) rest
-      else some (k, W, i.li_i)
+  | n + 1, k, S, i :: rest =>
+      if gateAtW frame slotArr body k S.1 i.li_i then
+        gateFirstW frame slotArr body n (k + 1) (oneBitStepF frame body k S i.li_i) rest
+      else some (k, S.1, i.li_i)
 
 open X86Backend.ImageAddrSim (heldReg?) in
 /-- The first position at which `reloadSavedB slotArr body` is `false`: a reload of the
@@ -1046,7 +1047,7 @@ def imgGateWhyW (frame : String → Option (BitVec 64)) (slotArr : String → Op
     (body : Lcmd) : String :=
   let fr := X86Backend.ImageAddrSimW.tabFrame frame
     ((X86Backend.ImageAddrFrame.bodyNamesI body).eraseDups.map fun q => (q, frame q))
-  match gateFirstW fr slotArr body (body.length - 1) 0 [] body with
+  match gateFirstW fr slotArr body (body.length - 1) 0 ([], []) body with
   | some (k, W, x) =>
       s!"instrGateBW at instruction {k} of {body.length}: {instrStr x}; width analysis \
         [{boundedStr 8 "," W}]; {gateAtWWhy fr slotArr body k W x}"
