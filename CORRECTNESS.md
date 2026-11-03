@@ -145,7 +145,14 @@ tables with the accepted programs.
   checks `regionCtB`. `haxc_correct_auto` is `correct_of_compileARegion` at the pair stage,
   through `compileRegion_correct`. The compile line is
   `compileA = haxToNF → extChain → compileRegion`, and `compileRegion` is the only back
-  half; the field modules compile through it as well.
+  half; the field modules compile through it as well. On a module with linked functions,
+  `compileRegion` reads the table of their data (`CalleeTab`) and checks the calling body
+  in one class of printed bodies: `printedAddrCWB` with the gate `imgGateCBW`
+  (`X86Backend/ImageAddrCallW.lean`), which admits one-bit and cell-indexed instructions,
+  and the width conjunct `bitsDeadB` of `calleeChecksB`. The segments between calls pass
+  `calleeSegB` (`X86Backend/CalleeSegCheck.lean`, `calleeSegB_soundK`), and the decoded
+  code of each linked kernel passes `keepCheckAtB` at the frame of its code and the store
+  policy `StorePol` it declares (`calleeCodeB`, `calleeCodeBT`).
 - The image route `CellFoldLReg.routeBW` (`X86Backend/CellFoldLReg.lean`,
   `loop_image_bytesW`) covers loops with carry chains and cell accesses, with a width
   analysis that joins one-bit names at labels (`seedAt`, `imgGateBW_of_old` in
@@ -172,7 +179,8 @@ tables with the accepted programs.
   (`regionImage_memFCT`) and the bytes (`regionChain_bytes_ct`); `compileRegion` returns
   bytes only if the leakage checks `regionCtB` accept the printed body.
   On a module with linked functions, the calls of the calling body are covered by the
-  leakage check `calleeCtB` and `ctCheckRX_sound`. The instances `mpn_and_n_rc_proved` and
+  leakage check `calleeCtB`, which runs `ctCheckRXO` on the calling body, and
+  `ctCheckRXO_sound` (`Haxc/CTRegionsCallOut.lean`). The instances `mpn_and_n_rc_proved` and
   `ltu_rc_proved` (`Haxc.WorkedKernelCorollaries`) are `haxc_rc_proved_all` at `mpn_and_n`
   (layout `andAbi4`) and at `ltu`, with the acceptance by `compileA` and the level check as
   hypotheses. For a loop of field multiplications, `fieldRegionFront_nfCT` (`Haxc.FieldLoopCT`) derives
@@ -257,16 +265,20 @@ In the table, a name given with a `Haxc.*` module is in
 | Every halting run of `lsemFuelMemF` from a state whose registers satisfy the entry facts is in bounds | bodies accepted by the abstract interpretation `idxInvCheckB` | `idxInvCheckB`, D | [`runIdxOk_of_idxInvCheckB`](CatCrypt/Crypto/SecureCompilation/X86Backend/IdxInvCheck.lean) |
 | The decoded function bytes of the printed body are constant time when the source events of the single-loop program are | printed bodies accepted by the route check `routeB` with `ownedCheckML`, with the branches of the loop guard and back edge | `routeB`, D, with `ownedCheckML`, V | [`route_bytes_ct_loop`](CatCrypt/Crypto/SecureCompilation/Haxc/ComposeCTProved.lean) |
 | The bytes decode to a program whose runs from entry states that satisfy the regions of the layout, agree on its public data and from which the source runs have equal leakage traces | a source accepted by the level check, and a printed body accepted by `regionCtB` in the gate of `compileRegion` | preservation along the region chain, with translation validation at allocation and printing | `regionChain_bytes_ct` (`Haxc.ComposeCTStraight`) |
+| A block holds no `call`, and every leaky run of it from its first index to its `ret`, from an entry state whose out windows are disjoint from the `G` bytes below its stack register, restores the stack register, keeps every register outside the clobber set and keeps every byte outside those `G` bytes and the out windows | the decoded code of a linked kernel, at its clobber set, the frame of its code (`blockFrame`) with the red zone within the kernel's frame, and the store policy `StorePol` the kernel declares (`Hax.LinkedFn.pol`): a red zone and out windows, each a base register with the bounds of its displacements | `keepCheckAtB` in `calleeCodeB` and `calleeCodeBT`, D | [`keepCheckAtB_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/CalleeSig.lean), [`keepCheckAtB_of_keepCheckSWB`](CatCrypt/Crypto/SecureCompilation/X86Backend/CalleeSig.lean) |
 
-On the image routes `ImageAddrRoute.routeB` and `ImageStraightCells.straightCellB`, which
-are not stages of `compileA`, one
-call of `ownedCheckMC` compares the reference chain with the image of the printed body. The
-printed body is the output of the export, the post-pass `fuseMulHiLprog` and the owned
-back end `ownedLprog`. For a pair accepted by this call, `ownedCheckMC_sound` therefore
-gives the simulation across the block optimiser, the constant-index fold, the
-two-address form, the post-pass and register allocation together. The reference side
-applies the fusion as `fuseMulHiRM`; for a typed body accepted by `fuseOKL`,
-`fuseMulHi_lsemFuelMemF_pre` gives its run.
+In `compileRegion` one pair is validated. The call of `ownedCheckMC` in the gate conjunct
+`renImageB` (`Haxc.RegionBackend`) compares the reference chain with the image of the
+printed body; `ownedCheckML` in `regionLeakB` is the same comparison on traced runs, and on
+a calling body `calleeSegB` compares the segments between calls. The printed body is
+`printedLprog (regionPostFuse P0)` for the allocation `P0` (`regionImage_split`): the
+output of allocation, lowering, frame expansion, the post-pass, the owned back end
+`ownedLprog` and the compare reload. For a pair accepted by these checks,
+`ownedCheckMC_sound` gives the simulation across all of these passes together. The
+reference side applies the fusion as `fuseMulHiRM`; for a typed body accepted by
+`fuseOKL`, `fuseMulHi_lsemFuelMemF_pre` gives its run. The image routes
+`ImageAddrRoute.routeB` and `ImageStraightCells.straightCellB`, which are not stages of
+`compileA`, make the same comparison with one call of `ownedCheckMC`.
 
 For a result of `compileA`, under the hypotheses listed for them above (constant time of
 the translation or the level check `haxToNFCTBL`, termination of the source at one fuel,
