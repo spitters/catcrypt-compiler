@@ -1174,7 +1174,7 @@ theorem lfundefPhysAbiOfVirt_allocOut_resolved (virt0 : Lfundef) (outArg' : Stri
           (List.find? (fun p => p.1 == b)
             (List.filterMap
               (fun x =>
-                match abiSaveOfExt x.2 with
+                match abiSlotOfExt x.2 with
                 | some saveName =>
                   some
                     (physNameForBody (ofVirtAllocBody virt0 outArg' accRegs abiArgs)
@@ -1188,7 +1188,7 @@ theorem lfundefPhysAbiOfVirt_allocOut_resolved (virt0 : Lfundef) (outArg' : Stri
         obtain ⟨⟨argNm, abiReg⟩, -, hf⟩ := List.mem_filterMap.mp hp
         simp only at hf
         split at hf
-        · next s hs => cases hf; exact abiSaveOfExt_resolved hs
+        · next s hs => cases hf; exact abiSlotOfExt_resolved hs
         · cases hf
       refine reloadArrImmBody_resolved hmbr ?_
       intro r' hr'

@@ -28,8 +28,8 @@ body to a run and from the run through `elimReloads`, `reloadElimBody`, `schedul
 
 ## Main results
 
-* `regionSl_slotOfReg`: the slot map of the gate has no slot at the save slot of a register
-  without an ABI save slot.
+* `regionSl_slotOfReg`: the slot map of the gate has no slot at the slot `qsave.R` of a name
+  `R` without a frame slot.
 * `hasPrefix_exportReg`: an export register name has no prefix `qsave.`.
 * `physRegName_nameOk`: a physical index below `vectorBase` renders as a general-purpose
   register or a spill slot.
@@ -87,10 +87,10 @@ open RegionAllocMapDom (ShapeB bodyHasCall_of_shapeB bodyStraightCall_of_shapeB
 
 /-! ## 1. The slot map and the names of the export -/
 
-/-- **The slot map of the gate has no slot at the save slot `qsave.R` of a register `R`
-    without an ABI save slot**, at a layout whose word-array parameters have save slots. -/
+/-- **The slot map of the gate has no slot at the slot `qsave.R` of a name `R` without a
+    frame slot** (`abiSlotOfExt`), at a layout whose word-array parameters have frame slots. -/
 theorem regionSl_slotOfReg {σ : AbiLayout} (hσ : RegionPhysImgArg.wordsSlotB σ = true)
-    (R : Slots) (ps : List (String × String)) {Rg : String} (hRg : abiSaveOfExt Rg = none) :
+    (R : Slots) (ps : List (String × String)) {Rg : String} (hRg : abiSlotOfExt Rg = none) :
     slotArrC R (slotRen (slotArrOf σ exportReg) (renOf ps)) (slotOfReg Rg) = none := by
   have hi := RegionPhysImg.regionSl_isSome R (slotArrOf σ exportReg) (renOf ps) (slotOfReg Rg)
   cases hsl : slotArrC R (slotRen (slotArrOf σ exportReg) (renOf ps)) (slotOfReg Rg) with

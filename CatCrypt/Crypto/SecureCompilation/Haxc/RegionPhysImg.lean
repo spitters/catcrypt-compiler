@@ -185,12 +185,12 @@ theorem mem_argBasePairsPos_iff {names abiArgs : List String} {p : String × Str
 
 /-- **The save slot of every reload pair of the export is an array slot** of the slot map of
     the gate. At the export names `nfAbiNames fname σ` and `posBind := true`, when the export
-    registers of the parameters of `σ` are distinct, the save slot `abiSaveOfExt R` of a pair
+    registers of the parameters of `σ` are distinct, the save slot `abiSlotOfExt R` of a pair
     `(argName j, R)` is the slot of the word-array parameter `j`. -/
 theorem nfAbiNames_pairSave (fname : String) (σ : AbiLayout)
     (hnd : (σ.args.map fun a => exportReg a.reg).Nodup) (R : Slots) (ren : String → String) :
     ∀ p ∈ argBasePairs true (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
-        (nfAbiNames fname σ).abiArgs, ∀ q, abiSaveOfExt p.2 = some q →
+        (nfAbiNames fname σ).abiArgs, ∀ q, abiSlotOfExt p.2 = some q →
       (slotArrC R (slotRen (slotArrOf σ exportReg) ren) q).isSome = true := by
   intro p hp q hq
   obtain ⟨j, r, hnm, hr, rfl⟩ := mem_argBasePairsPos_iff.mp hp
@@ -199,7 +199,7 @@ theorem nfAbiNames_pairSave (fname : String) (σ : AbiLayout)
     simp only [nfAbiNames, List.getElem?_map, hj, Option.map_some, Option.some.injEq] at hr
     exact hr.symm
   subst hra
-  obtain ⟨rfl, -⟩ := abiSaveOfExt_spec hq
+  obtain ⟨rfl, -⟩ := abiSlotOfExt_spec hq
   rw [regionSl_isSome, slotArrOf_slotOfReg hnd hj hk]
   rfl
 
@@ -233,15 +233,15 @@ theorem baseReloaded_of_pair {slotArr : String → Option (String × Nat)} {body
     {posBind : Bool} {outArg' : String} {inArgs' abiArgs : List String}
     (hcf : bodyHasCall body1 = false)
     (hsave : ∀ p ∈ argBasePairs posBind outArg' inArgs' abiArgs, ∀ q,
-      abiSaveOfExt p.2 = some q → (slotArr q).isSome = true)
+      abiSlotOfExt p.2 = some q → (slotArr q).isSome = true)
     {b y : String} (hfr : isFrameSlotName b = false)
     (hb : ∃ p ∈ argBasePairs posBind outArg' inArgs' abiArgs,
-      p.1 = b ∧ (abiSaveOfExt p.2).isSome = true) :
+      p.1 = b ∧ (abiSlotOfExt p.2).isSome = true) :
     BaseReloaded slotArr
       (fun o => remapOperand body1 (straightCallComposeTable body1 (physTableOut body1 [] [])) o)
       (fun base =>
         (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-          match abiSaveOfExt p.2 with
+          match abiSlotOfExt p.2 with
           | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
           | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
       b y := by
@@ -255,7 +255,7 @@ theorem baseReloaded_of_pair {slotArr : String → Option (String × Nat)} {body
     simp [physNameForBody, hfr, hcf, straightCallComposeTable, hst]
   have hmem : (physNameForBody body1 (physTableOut body1 []) p.1, s) ∈
       (argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-        match abiSaveOfExt p.2 with
+        match abiSlotOfExt p.2 with
         | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
         | none => none) :=
     List.mem_filterMap.mpr ⟨p, hp, by simp [hs]⟩
@@ -263,13 +263,13 @@ theorem baseReloaded_of_pair {slotArr : String → Option (String × Nat)} {body
     ((List.find?_isSome (p := fun e : String × String =>
       e.1 == physNameForBody body1 (physTableOut body1 []) p.1)).mpr ⟨_, hmem, by simp⟩)
   obtain ⟨p', hp', hf⟩ := List.mem_filterMap.mp (List.mem_of_find?_eq_some he)
-  have hq : ∃ q, abiSaveOfExt p'.2 = some q ∧ e.2 = q := by
+  have hq : ∃ q, abiSlotOfExt p'.2 = some q ∧ e.2 = q := by
     revert hf
-    cases abiSaveOfExt p'.2 with
+    cases abiSlotOfExt p'.2 with
     | none => intro hf; cases hf
     | some q => intro hf; cases hf; exact ⟨q, rfl, rfl⟩
   obtain ⟨q, hq, hqe⟩ := hq
-  refine ⟨_, _, q, rfl, ?_, hsave p' hp' q hq, abiSaveOfExt_faB hq⟩
+  refine ⟨_, _, q, rfl, ?_, hsave p' hp' q hq, abiSlotOfExt_faB hq⟩
   rw [← hkey]
   simp only [he, Option.map_some, hqe]
 
@@ -279,15 +279,15 @@ theorem regBaseReloaded_of_pair {slotArr : String → Option (String × Nat)} {b
     {posBind : Bool} {outArg' : String} {inArgs' abiArgs : List String}
     (hcf : bodyHasCall body1 = false)
     (hsave : ∀ p ∈ argBasePairs posBind outArg' inArgs' abiArgs, ∀ q,
-      abiSaveOfExt p.2 = some q → (slotArr q).isSome = true)
+      abiSlotOfExt p.2 = some q → (slotArr q).isSome = true)
     {b : String} (hfr : isFrameSlotName b = false)
     (hb : ∃ p ∈ argBasePairs posBind outArg' inArgs' abiArgs,
-      p.1 = b ∧ (abiSaveOfExt p.2).isSome = true) :
+      p.1 = b ∧ (abiSlotOfExt p.2).isSome = true) :
     RegBaseReloaded slotArr
       (fun o => remapOperand body1 (straightCallComposeTable body1 (physTableOut body1 [] [])) o)
       (fun base =>
         (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-          match abiSaveOfExt p.2 with
+          match abiSlotOfExt p.2 with
           | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
           | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
       b := by
@@ -297,10 +297,10 @@ theorem regBaseReloaded_of_pair {slotArr : String → Option (String × Nat)} {b
 
 /-! ## 3. The export body of the region route -/
 
-/-- The parameter `j` of `σ` is a word array whose register has a save slot: one of the six
-    System V argument registers (`abiSaveOfExt`). -/
+/-- The parameter `j` of `σ` is a word array whose register has a frame slot
+    (`abiSlotOfExt`): one of the six System V argument registers, or a stack word. -/
 def ArgSlot (σ : AbiLayout) (j : Nat) : Prop :=
-  ∃ a n, σ.args[j]? = some a ∧ a.kind = .words n ∧ (abiSaveOfExt (exportReg a.reg)).isSome = true
+  ∃ a n, σ.args[j]? = some a ∧ a.kind = .words n ∧ (abiSlotOfExt (exportReg a.reg)).isSome = true
 
 /-- **The array accesses of an instruction are at the array parameters of `σ`**: an
     `LOADIDX` is `[.reg d] [.arrIdx (argName j) y 8]`, an `STOREIDX` is
@@ -335,7 +335,7 @@ theorem arrImmFree_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String
     (mbr : String → Option String)
     (hmbr : mbr = fun base =>
       (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-        match abiSaveOfExt p.2 with
+        match abiSlotOfExt p.2 with
         | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
         | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
     (hcf : bodyHasCall body1 = false)
@@ -430,7 +430,7 @@ theorem arrImmFree_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String
     `nfAbiNames fname σ` with a save slot. -/
 theorem argPair_nfAbiNames (fname : String) (σ : AbiLayout) (j : Nat) (hj : ArgSlot σ j) :
     ∃ q ∈ argBasePairs true (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
-      (nfAbiNames fname σ).abiArgs, q.1 = argName j ∧ (abiSaveOfExt q.2).isSome = true := by
+      (nfAbiNames fname σ).abiArgs, q.1 = argName j ∧ (abiSlotOfExt q.2).isSome = true := by
   obtain ⟨a', n, hj, hk, hsv⟩ := hj
   refine ⟨(argName j, exportReg a'.reg), mem_argBasePairsPos_iff.mpr
     ⟨j, _, (mem_nfAbiNames_names_iff fname σ j).mpr ⟨a', n, hj, hk⟩, ?_, rfl⟩, rfl, hsv⟩
@@ -444,15 +444,15 @@ theorem accForm_of_accArg {σ : AbiLayout} {slotArr : String → Option (String 
     {body1 : Lcmd} {outArg' : String} {inArgs' abiArgs : List String}
     (hcf : bodyHasCall body1 = false)
     (hsave : ∀ p ∈ argBasePairs true outArg' inArgs' abiArgs, ∀ q,
-      abiSaveOfExt p.2 = some q → (slotArr q).isSome = true)
+      abiSlotOfExt p.2 = some q → (slotArr q).isSome = true)
     (hpair : ∀ j, ArgSlot σ j → ∃ q ∈ argBasePairs true outArg' inArgs' abiArgs,
-      q.1 = argName j ∧ (abiSaveOfExt q.2).isSome = true)
+      q.1 = argName j ∧ (abiSlotOfExt q.2).isSome = true)
     {w : LinstrR} (h : AccArg σ w) :
     AccForm slotArr
       (fun o => remapOperand body1 (straightCallComposeTable body1 (physTableOut body1 [] [])) o)
       (fun base =>
         (((argBasePairs true outArg' inArgs' abiArgs).filterMap (fun p =>
-          match abiSaveOfExt p.2 with
+          match abiSlotOfExt p.2 with
           | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
           | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
       w := by
@@ -538,7 +538,7 @@ theorem physImgB_regionExport (fname : String) (σ : AbiLayout)
         (fun base =>
           (((argBasePairs true (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
             (nfAbiNames fname σ).abiArgs).filterMap (fun p =>
-            match abiSaveOfExt p.2 with
+            match abiSlotOfExt p.2 with
             | some saveName => some (physNameForBody
                 (regionAllocBody (nfAbiNames fname σ) Γ.length ts r)
                 (physTableOut (regionAllocBody (nfAbiNames fname σ) Γ.length ts r) []) p.1,

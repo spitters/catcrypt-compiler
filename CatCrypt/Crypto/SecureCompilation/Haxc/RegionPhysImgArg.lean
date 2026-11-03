@@ -2405,10 +2405,11 @@ theorem idxOk_regionLprogCopy {S : String → Prop} (a : AbiNames) (ts : List Ja
     · trivial
   · trivial
 
-/-- The parameters of a word array of `σ` have a save slot: a decision. -/
+/-- The parameters of a word array of `σ` have a frame slot (`abiSlotOfExt`): a save slot of
+    an argument register or a stack word. A decision. -/
 def wordsSlotB (σ : AbiLayout) : Bool :=
   σ.args.all fun a => match a.kind with
-    | .words _ => (abiSaveOfExt (exportReg a.reg)).isSome
+    | .words _ => (abiSlotOfExt (exportReg a.reg)).isSome
     | .scalar => true
 
 theorem argSlot_of_wordsSlotB {σ : AbiLayout} (hσ : wordsSlotB σ = true) {j : Nat}

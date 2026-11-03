@@ -275,8 +275,8 @@ theorem physImgB_printedBody {sl : String → Option (String × Nat)}
 /-! ## 3. The slot map of the gate -/
 
 /-- **The slot map of the gate has no slot at `scratchSave`** at a layout whose word-array
-    parameters have save slots: the register of such a parameter is one of `RDI`, `RSI`,
-    `RDX`, `RCX`, `R8`, `R9`, never the scratch register `R15`. -/
+    parameters have frame slots: the register of such a parameter is one of `RDI`, `RSI`,
+    `RDX`, `RCX`, `R8`, `R9` or a stack word, never the scratch register `R15`. -/
 theorem regionSl_scratchSave {σ : AbiLayout} (hσ : RegionPhysImgArg.wordsSlotB σ = true)
     (R : Slots) (ps : List (String × String)) :
     slotArrC R (slotRen (slotArrOf σ exportReg) (renOf ps)) scratchSave = none := by

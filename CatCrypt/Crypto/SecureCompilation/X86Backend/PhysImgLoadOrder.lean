@@ -740,7 +740,7 @@ theorem saveFreshB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String
     (mbr : String → Option String)
     (hmbr : mbr = fun base =>
       (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-        match abiSaveOfExt p.2 with
+        match abiSlotOfExt p.2 with
         | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
         | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
     (hcf : bodyHasCall body1 = false)

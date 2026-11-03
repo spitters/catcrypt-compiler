@@ -1334,6 +1334,55 @@ theorem abiSaveOfExt_faB {r s : String} (h : abiSaveOfExt r = some s) : faB s = 
   simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
   rcases hr with rfl | rfl | rfl | rfl | rfl | rfl <;> decide +kernel
 
+/-- The frame slot an argument is read from is its `qsave.` slot, and the argument is one of
+    the six System V argument registers or a stack argument `RSP+off`. -/
+theorem abiSlotOfExt_spec {r s : String} (h : abiSlotOfExt r = some s) :
+    s = slotOfReg r ∧ (r ∈ ["RDI", "RSI", "RDX", "RCX", "R8", "R9"] ∨
+      (abiStackOff? r).isSome = true) := by
+  unfold abiSlotOfExt at h
+  cases h1 : abiSaveOfExt r with
+  | some s' =>
+    rw [h1] at h
+    cases h
+    exact ⟨(abiSaveOfExt_spec h1).1, Or.inl (abiSaveOfExt_spec h1).2⟩
+  | none =>
+    rw [h1] at h
+    obtain ⟨off, hoff, rfl⟩ := Option.map_eq_some_iff.mp h
+    exact ⟨rfl, Or.inr (by simp [hoff])⟩
+
+/-- The save slot of an argument register is its frame slot. -/
+theorem abiSlotOfExt_of_abiSaveOfExt {r s : String} (h : abiSaveOfExt r = some s) :
+    abiSlotOfExt r = some s := by
+  simp [abiSlotOfExt, h]
+
+/-- An argument without a stack offset is read from its save slot. -/
+theorem abiSlotOfExt_of_stackOff_none {r : String} (h : abiStackOff? r = none) :
+    abiSlotOfExt r = abiSaveOfExt r := by
+  unfold abiSlotOfExt
+  cases abiSaveOfExt r <;> simp [h]
+
+/-- **The reload pairs of `lfundefPhysAbiOfVirtCert` at frame slots are its reload pairs at
+    save slots when no array base lies in a stack word.** For pairs `(argNm, abiReg)` whose
+    argument names have no stack offset `abiStackOff?`, the pairs keyed on `P argNm` with the
+    frame slot `abiSlotOfExt abiReg` are those with the save slot `abiSaveOfExt abiReg`; the
+    reload map, and with it the allocated body, is then the one read through `abiSaveOfExt`. -/
+theorem reloadPairs_slot_eq_save (argAbi : List (String × String)) (P : String → String)
+    (h : ∀ p ∈ argAbi, abiStackOff? p.2 = none) :
+    argAbi.filterMap (fun p =>
+        match abiSlotOfExt p.2 with
+        | some s => some (P p.1, s)
+        | none => none)
+      = argAbi.filterMap (fun p =>
+        match abiSaveOfExt p.2 with
+        | some s => some (P p.1, s)
+        | none => none) :=
+  List.filterMap_congr fun p hp => by rw [abiSlotOfExt_of_stackOff_none (h p hp)]
+
+/-- A frame slot of an argument is no frame-array name. -/
+theorem abiSlotOfExt_faB {r s : String} (h : abiSlotOfExt r = some s) : faB s = false := by
+  obtain ⟨rfl, -⟩ := abiSlotOfExt_spec h
+  simp [faB, faParts?, slotOfReg, hasPrefix]
+
 /-- The saves of the arguments after the first two other than `RDI` and `RSI` (the prologue
     tail `extraInputSaves` of `lfundefPhysAbiOfVirtCert`, over `extraSaveRegs`). -/
 abbrev extraSaves (abiArgs : List String) : Lcmd :=
@@ -1701,7 +1750,7 @@ theorem physImgB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (String �
     (mbr : String → Option String)
     (hmbr : mbr = fun base =>
       (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-        match abiSaveOfExt p.2 with
+        match abiSlotOfExt p.2 with
         | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
         | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
     (hcf : bodyHasCall body1 = false)

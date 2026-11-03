@@ -364,7 +364,7 @@ theorem cellBaseFreeB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (Str
     (mbr : String → Option String)
     (hmbr : mbr = fun base =>
       (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-        match abiSaveOfExt p.2 with
+        match abiSlotOfExt p.2 with
         | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
         | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
     (hcf : bodyHasCall body1 = false)
@@ -542,7 +542,7 @@ theorem mulHiNoSlotB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (Stri
     (mbr : String → Option String)
     (hmbr : mbr = fun base =>
       (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-        match abiSaveOfExt p.2 with
+        match abiSlotOfExt p.2 with
         | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
         | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
     (hcf : bodyHasCall body1 = false)
@@ -676,7 +676,7 @@ theorem copyNoSlotB_lfundefPhysAbiOfVirtCert {slotArr : String → Option (Strin
     (mbr : String → Option String)
     (hmbr : mbr = fun base =>
       (((argBasePairs posBind outArg' inArgs' abiArgs).filterMap (fun p =>
-        match abiSaveOfExt p.2 with
+        match abiSlotOfExt p.2 with
         | some saveName => some (physNameForBody body1 (physTableOut body1 []) p.1, saveName)
         | none => none)).find? (fun p => p.1 == base)).map Prod.snd)
     (hcf : bodyHasCall body1 = false)
@@ -792,7 +792,7 @@ theorem regionAllocFn_exportHyps (fname : String) (σ : AbiLayout) {ts : List Ja
           (fun base =>
             (((argBasePairs true (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
               (nfAbiNames fname σ).abiArgs).filterMap (fun p =>
-              match abiSaveOfExt p.2 with
+              match abiSlotOfExt p.2 with
               | some saveName => some (physNameForBody
                   (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r)
                   (physTableOut (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r) [])
@@ -851,7 +851,7 @@ theorem regionAllocFn_exportHyps (fname : String) (σ : AbiLayout) {ts : List Ja
         (fun base =>
           (((argBasePairs true (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
             (nfAbiNames fname σ).abiArgs).filterMap (fun p =>
-            match abiSaveOfExt p.2 with
+            match abiSlotOfExt p.2 with
             | some saveName => some (physNameForBody
                 (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r)
                 (physTableOut (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r) [])

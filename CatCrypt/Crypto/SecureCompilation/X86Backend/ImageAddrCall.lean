@@ -131,9 +131,8 @@ after a call (`ImageCallProbe.reloadOf_call`).
   shadow instructions are `callPos`.
 * `keepPoolB_clobN`: a name of a checked allocation pool is not set by the summary step
   and is not exempted after a call.
-* `savedArgMoveArm`, `savedArgMoves_of_noBaseSpill`: the argument-register arm of
-  `savedArgMoves`, which is all of it on a body without a spill copy of a saved pointer
-  before an address computation.
+* `savedArgMoveArm`, `savedArgMoves`: the argument moves of a calling body from the save
+  slots of the array pointers, one instruction at a time.
 * `lfundefPhysAbiOfVirtPoolCert`, `lfundefPhysAbiOfVirtPool`: the allocation at a pool, with
   the shadow instructions expanded after the allocation, with and without its allocation
   certificate; `lfundefPhysAbiOfVirtCCert`, `lfundefPhysAbiOfVirtC` are these at the pool
@@ -2118,37 +2117,6 @@ def entrySaveOf? (body : Lcmd) (x : String) : Option String :=
       else none
   | _ => none
 
-/-- The instruction at position `k + 2` of `body` is an address computation
-    `LEA:64 D, (a, X, 8)` with the base `a`. -/
-def leaBaseAt (body : Lcmd) (k : Nat) (a : String) : Bool :=
-  match body[k + 2]? with
-  | some ⟨_, .Lopn [.reg _] o [.arrIdx B _ 8]⟩ => o == "LEA:64" && B == a
-  | _ => false
-
-/-- **The argument moves and the base loads of a calling body read the save slots of the array
-    pointers.** A move `MOV:64 a, x` from a name `x` that is no general-purpose name, whose value
-    is the value of a save slot `q` throughout the body (`entrySaveOf?`), becomes `MOV:64 a, q`
-    when `a` is an argument register, and the reload `MOVQ a, q` when `a` is the base of the
-    address computation two instructions later (`leaBaseAt`); every other instruction is kept.
-    The move reads the same word, and the trace of an array pointer
-    (`JasminLsemAddrImage.accArr`) reaches the save slot of its register, the slot the slot map
-    of the image gives an array. -/
-def savedArgMoves (body : Lcmd) : Lcmd :=
-  body.mapIdx fun k i => match i.li_i with
-    | .Lopn [.reg a] "MOV:64" [.reg x] =>
-        if !gpNameB x then
-          if sysvArgRegs.contains a then
-            match entrySaveOf? body x with
-            | some q => ⟨i.li_ii, .Lopn [.reg a] "MOV:64" [.reg q]⟩
-            | none => i
-          else if leaBaseAt body k a then
-            match entrySaveOf? body x with
-            | some q => ⟨i.li_ii, .Lopn [.reg a] "MOVQ" [.reg q]⟩
-            | none => i
-          else i
-        else i
-    | _ => i
-
 /-- The argument-register arm of `savedArgMoves` on one instruction: a move `MOV:64 a, x` from
     a name `x` that is no general-purpose name to an argument register `a` reads the save slot
     of `x` when `entrySaveOf?` gives one; every other instruction is kept. -/
@@ -2162,23 +2130,16 @@ def savedArgMoveArm (body : Lcmd) (i : Linstr) : Linstr :=
       else i
   | _ => i
 
-/-- **Without a spill copy of a saved pointer before an address computation, `savedArgMoves` is
-    its argument-register arm.** If no move `MOV:64 a, x` of `body` from a name `x` that is no
-    general-purpose name, with `a` no argument register and the base of the address computation
-    two instructions later, has a save slot `entrySaveOf? body x`, the reload arm changes no
-    instruction. -/
-theorem savedArgMoves_of_noBaseSpill (body : Lcmd)
-    (h : ∀ (k : Nat) (i : Linstr) (a x q : String), body[k]? = some i →
-      i.li_i = .Lopn [.reg a] "MOV:64" [.reg x] → gpNameB x = false →
-      sysvArgRegs.contains a = false → leaBaseAt body k a = true →
-      entrySaveOf? body x ≠ some q) :
-    savedArgMoves body = body.map (savedArgMoveArm body) := by
-  refine List.ext_getElem (by simp [savedArgMoves]) fun k h₁ h₂ => ?_
-  have hlt : k < body.length := by simpa using h₂
-  have hk : body[k]? = some body[k] := by grind
-  have hs := h k body[k]
-  simp only [savedArgMoves, List.getElem_mapIdx, List.getElem_map, savedArgMoveArm]
-  grind
+/-- **The argument moves of a calling body read the save slots of the array pointers.** A
+    move `MOV:64 a, x` to an argument register `a` from a name `x` that is no general-purpose
+    name, whose value is the value of a save slot `q` throughout the body (`entrySaveOf?`),
+    becomes `MOV:64 a, q` (`savedArgMoveArm`); every other instruction is kept. The move reads
+    the same word, and the trace of an array pointer (`JasminLsemAddrImage.accArr`) reaches
+    the save slot of its register, the slot the slot map of the image gives an array. A base
+    of an address computation needs no arm: the reload map of `lfundefPhysAbiOfVirtCert`
+    reloads every array base from its frame slot `abiSlotOfExt`, a stack word among them. -/
+def savedArgMoves (body : Lcmd) : Lcmd :=
+  body.map (savedArgMoveArm body)
 
 /-- **The allocation of a virtual function at the pool `pool`, with its allocation
     certificate**: the allocation `lfundefPhysAbiOfVirtCert` at the register file

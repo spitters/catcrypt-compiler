@@ -513,13 +513,14 @@ def abiShiftImm (shiftImm : ShiftImmOracle) : ShiftImmOracle :=
     (abiBody1 c outArg inArgs immSlotMap abiArgs)
 
 /-- The memref-base reload map of the physical-ABI export: each array argument's
-    allocated register to its red-zone save slot. -/
+    allocated register to its frame slot `abiSlotOfExt`: the red-zone save slot of an argument
+    register, or the caller's stack word of a stack argument. -/
 def abiReload : String → Option String := fun base =>
   let d := abiDerived c outArg inArgs immSlotMap
   let argAbi : List (String × String) := (d.1, abiArgs.headD "RDI") :: (d.2.zip (abiArgs.drop 1))
   let reloadPairs : List (String × String) :=
     argAbi.filterMap (fun (argNm, abiReg) =>
-      match abiSaveOfExt abiReg with
+      match abiSlotOfExt abiReg with
       | some saveName =>
           some (physNameForBody (abiBody1 c outArg inArgs immSlotMap abiArgs)
             (abiTbl c outArg inArgs immSlotMap abiArgs) argNm, saveName)

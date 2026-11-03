@@ -2927,6 +2927,9 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   -- not shift the array bases to the right of it onto the following ABI register.
   -- By slot (`posBind = true`) each base `argName j` takes `abiArgs[j]`.
   let argAbi : List (String × String) := argBasePairs posBind outArg' inArgs' abiArgs
+  -- `abiSlotOfExt`: an argument passed in the stack word `RSP+off` is reloaded from
+  -- `qsave.RSP+off`, as `buildArgPtrMaterialize` reads it; an argument register from its save
+  -- slot `abiSaveOfExt`.
   -- `abiSaveOfExt` (not `abiSaveOf`): each input base — including the 3rd+ ABI
   -- register (`RDX`/`RCX`/…) — maps to its OWN qsave slot. With plain `abiSaveOf`
   -- the 2nd input (`RDX`) returned `none`, dropping its pair, so its `LOADIDX`
@@ -2939,7 +2942,7 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   let reloadPairs : List (String × String) :=
     faReloadPairs (fun A => physNameForBody virt.lfd_body tbl A abi) frameArrs ++
     argAbi.filterMap (fun (argNm, abiReg) =>
-      match abiSaveOfExt abiReg with
+      match abiSlotOfExt abiReg with
       | some saveName =>
           -- Key on the barrier-resolved phys base (`physNameForBody`): a
           -- call-containing body relocated the array-base register, so the
