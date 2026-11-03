@@ -42,6 +42,8 @@ width, and `map?` keeps the operations of the blocks it splices.
   and its result types of positive width.
 * `catToJasmin_allOps_of_catMemB` — the conversion of a program with operations in
   `catMemB` has its operations in `opMemB`, at result types of positive width.
+* `bvShiftR_mem`, `divLoop_mem`, `divChain_mem` — the bindings of unsigned division and
+  remainder have their operations in `catMemB`.
 * `scalarBinOf_width` — the widths of the binary scalar calls lie in `(0, 64]`.
 * `nfToCatExt_allOps_catMemB` — the translation of a unit-free program has its operations
   in `catMemB`.
@@ -604,6 +606,28 @@ theorem tripSub_mem {Δ : Ctxt catCryptDialect} {rlo : Rd Δ .int} {rhi : Rd Δ 
     exact (rfl : catMemB (.bvConst 64 _) = true)
   · exact withVar2_mem (fun x y _ hk => by cases hk; exact satSubRes_mem x y) h
 
+/-- The immediate shift right of a `64`-bit word by an amount of at most `64` is in
+    `catMemB`. -/
+theorem bvShiftR_mem {n : Nat} (hn : n ≤ 64) : catMemB (.bvShiftR 64 n) = true := by
+  simp only [catMemB, Bool.and_eq_true, decide_eq_true_eq]
+  exact ⟨by omega, rfl⟩
+
+/-- Every binding of `divLoop` at `64` bits over at most `64` bits has an operation in
+    `catMemB`. -/
+theorem divLoop_mem (u : Bool) : ∀ (n : Nat), n ≤ 64 → ∀ {Δ : Ctxt catCryptDialect}
+    (a b one nb q r : Ctxt.Var Δ (.sword 64)) (cin : Ctxt.Var Δ (.sword 1)),
+    OpResMem (divLoop 64 u n a b one nb q r cin)
+  | 0, _, _, _, _, _, _, _, _, _ => trivial
+  | n + 1, hn, _, _, _, _, _, _, _, _ =>
+    ⟨rfl, rfl, rfl, bvShiftR_mem (by omega), rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl,
+      divLoop_mem u n (by omega) _ _ _ _ _ _ _⟩
+
+/-- Every binding of `divChain` at `64` bits has an operation in `catMemB`. -/
+theorem divChain_mem (u : Bool) {Δ : Ctxt catCryptDialect} (a b : Ctxt.Var Δ (.sword 64)) :
+    OpResMem (divChain 64 u a b) := by
+  unfold divChain
+  exact ⟨rfl, rfl, rfl, rfl, rfl, divLoop_mem u 64 le_rfl _ _ _ _ _ _ _⟩
+
 /-- Every expression of the translation `catOp` of an operation whose result type is not
     `unit` has an operation in `catMemB`. -/
 theorem catOp_mem {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ)
@@ -645,7 +669,10 @@ theorem catOp_mem {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ
       split at h
       · obtain ⟨rfl, rfl⟩ := ‹_ ∧ _›
         exact withVar2_mem (fun _ _ _ hk => binChain_mem hk) h
-      · cases h
+      · split at h
+        · obtain ⟨-, rfl⟩ := ‹_ ∧ _›
+          exact withVar2_mem (fun x y _ hk => by cases hk; exact divChain_mem _ x y) h
+        · cases h
   | constBit b =>
       cases h
       exact (rfl : catMemB (.constBit b) = true)

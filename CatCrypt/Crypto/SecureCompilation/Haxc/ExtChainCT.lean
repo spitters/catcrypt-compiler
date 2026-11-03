@@ -26,8 +26,9 @@ quiet, with one leaf per step:
 2. `dce`: `dceCTStep`;
 3. `nfToCatExt` at the declarations `fieldDeclsFor D p`: `nfToCatExt_leakD`, at valuations in
    range and their mapped valuations; the events of the translation are the source events
-   without the variable-time leaf calls of tagged field heads and of the declared names
-   (`stripDecl`), at the call environment `catEnvOf (fieldEnv E')`;
+   without the variable-time leaf calls of tagged field heads and of the declared names and
+   without the events of division (`stripDeclDiv`), at the call environment
+   `catEnvOf (fieldEnv E')`;
 4. `aegraph` at `catRules`: `aegraphOptNF_ctRelC` at that call environment;
 5. `map?` along `catToJasmin`: `catToJasmin_map?_ctLeakC`, from `catEnvOf (fieldEnv E')` to
    `fieldEnv E'`;
@@ -332,7 +333,7 @@ theorem stripDecl_fieldDeclsFor (D : List ExtDecl) {Γ : Ctxt nfDialect} {ts : L
     in range to its mapped valuation `mapVal`, and the events of the translation are the
     source events without the variable-time leaf calls of tagged field heads and of the
     declared names (`stripDecl (fieldDeclsFor D p)`, which is `stripDecl D` by
-    `stripDecl_fieldDeclsFor`). -/
+    `stripDecl_fieldDeclsFor`) and without the events of division (`stripDiv`). -/
 def extCallCTStep {P : CatLeakParams} (hP : NoVT P) {bi : Builtins} (hbi : SubTable bi)
     (hF : FieldLevel.FieldCalls bi) (hW : FieldLevel.FieldCallsWideEq bi) {D : List ExtDecl}
     {E' : CallEnv jasminDialect} (hD : ExtAgree bi (catEnvOf E') D)
@@ -359,7 +360,9 @@ def extCallCTStep {P : CatLeakParams} (hP : NoVT P) {bi : Builtins} (hbi : SubTa
       obtain ⟨c₂, hc₂, e₂, -⟩ := H TRd.id q hf' V₂ (mapVal V₂) u₂ (TRd.agree_id V₂ hin₂) hu₂
       exact ⟨c₁.2, c₂.2, by simp only [leakSemNFC, hc₁, Option.map_some],
         by simp only [leakSemNFC, hc₂, Option.map_some], fun he => by
-          rw [e₁, e₂, stripDecl_fieldDeclsFor, stripDecl_fieldDeclsFor, ← hs₁, ← hs₂, he]⟩
+          rw [e₁, e₂]
+          unfold stripDeclDiv
+          rw [stripDecl_fieldDeclsFor, stripDecl_fieldDeclsFor, ← hs₁, ← hs₂, he]⟩
 
 /-! ## The conversion and the inlining -/
 

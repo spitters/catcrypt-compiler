@@ -65,9 +65,13 @@ kernels `mpn_and_n` and `ltu` are in `WorkedKernelCorollaries`.
   module whose linked functions are linked kernels with distinct names, from the level check
   `haxToNFCTBL` (`haxToNFCTL_of_haxToNFCTBL`) and termination of the source on the entry
   states under the table of the linked functions.
+* `NFEntry.compileR_ct` — constant time of the bytes of the compiler `NFEntry.compileR` at an
+  entry, at the data of the linked functions of the source program, from constant time of the
+  translation `E.toNF` at the table `E.bi s k` modulo the field calls and the declared calls
+  `E.decls s`, and its termination at NF.
 * `ct_of_compileARegion` — constant time of the bytes of the region line
-  `compileARegion`; `haxc_ct_proved_all` is that theorem at
-  the module and the layout of the pair stage `pairStage` of `compileA`.
+  `compileARegion`, `NFEntry.compileR_ct` at `haxEntry`; `haxc_ct_proved_all` is that theorem
+  at the module and the layout of the pair stage `pairStage` of `compileA`.
 * `haxc_correct_auto_tuple_ct_regions` — the joint theorem for `compileA` on a function with
   a pair tail, from a run of the source reading.
 -/
@@ -216,108 +220,107 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall
 open CatCrypt.Crypto.Hax (LinkedFn)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (phys)
 
-/-- **Constant time of the bytes of the region line from constant time of the translation.**
-    Let `compileARegion` return `(P, bytes)` on a module `m` whose linked functions have distinct
-    names (`hnd`) and are linked kernels (`hk`, `LinkedKernel`), with a register result or
-    an out result. Let the program
-    of the translation `haxToNF σ m`, in which the calls of the functions of the module are
-    inlined to the depth of the module, be constant time for the parameter labels of the
-    secrecy record `s` modulo the field calls and the calls of the linked functions
-    (`HaxToNFCTLOn`: a tagged field head is compiled to a field body and a linked function
-    to its code, whose constant time is proved separately), on the valuations of the
+/-- **Constant time of the bytes of the compiler at an entry from constant time of the
+    translation.** Let `E.compileR` return `(P, bytes)` on a source program `s` at the data of
+    its linked functions, which have distinct names (`hnd`) and are linked kernels (`hk`,
+    `LinkedKernel`). Fix a fuel `k` of the callees, at whose table `E.bi s k` the translation
+    is read. Let the program `q` the translation `E.toNF σ s` returns be constant time for the
+    parameter labels of the secrecy record `sec` in the leakage model `nfLeakModelL` at the
+    declared procedures `E.decls s` (a call of a tagged field head or of a declared procedure
+    is quiet: the first is compiled to a field body, the second to a call of the code of a
+    linked function, whose constant time is proved separately), on the valuations of the
     parameters whose lowered valuation the layout reads off a machine state satisfying
-    `σ.Regions` and a precondition `Pre` on machine states. Let the body
-    `nfBody (bindConsts σ.consts m.entry)` the front reads run at one fuel `F`, at the
-    builtins that answer a call of a function of the module by the run of its prepared body
-    at the fuel `fuelC` and a call of a linked function by its meaning, to a value from the
-    environment of every valuation of the parameters whose lowered valuation the layout
-    reads off a machine state satisfying `σ.Regions` and `Pre`. Let the labels of `s` agree
-    with the public data of `σ` and the names of `σ` be pairwise distinct (`hnds`). Then
-    every decoding of `bytes` is constant time under `ctRegime`, with no side condition on
-    the steps, between entry states that satisfy
-    `σ.Regions` and `Pre`, agree on the public data of `σ`, from the first of which the
-    module has a source run, and from the second of which it has one when it has linked
-    functions.
-
-    On a module without linked functions, such as a single function, `hnd` and `hk` hold
-    vacuously (the default arguments close them when `m.linked` reduces to `[]`), the
-    hypothesis `HaxToNFCTLOn` follows from `HaxToNFCT` (`haxToNFCTL_of_linked_nil`,
-    `haxToNFCTLOn_of_haxToNFCTL`), the
-    table `m.linkTable hax64WExit` is `hax64WExit` (`HaxModule.linkTable_of_linked_nil`),
-    and the source run from the second state is not required. For a single function the
-    constant time of the translation follows from source constant time `SourceCTNF`
-    (`haxToNFCT_of_sourceCT`).
+    `σ.Regions` and a precondition `Pre`, relative to the runs that succeed (`hct`); let `q`
+    terminate on these valuations at the table `E.bi s k` at every target fuel from some fuel
+    on (`hterm`, termination at NF). Let the table `E.bi s k` agree with the `u64` table
+    (`hsub`), no declared procedure be named `index` or `array_update` (`hN`), the labels of
+    `sec` agree with the public data of `σ` and the names of `σ` be pairwise distinct
+    (`hnds`). Then every decoding of `bytes` is constant time under `ctRegime`, with no side
+    condition on the steps, between entry states that satisfy `σ.Regions` and `Pre`, agree
+    on the public data of `σ`, from the first of which `s` has a source run, and from the
+    second of which it has one when it has linked functions.
 
     On a program of the chain without `call` the proof is `nfCT_of_haxToNFCTL` at the
-    declared procedures of `m` and `regionChain_bytes_ct`. On a program with a `call` it is
-    `compileRegion_call_bytes_ct` at the table `T` that `regionCallee` finds, at the
-    interfaces of the kinds `kernelKind l c` of the linked kernels `l` of the functions `c` of
-    `T`: the interface of the contract of `l` (`LinkedFn.contractSig`), which the code of `c`
-    meets (`LinkedKernel.kind_facts`), whose footprint lies in the frame of `c` at a register
-    result (`footBelow_contractSig`) and in its frame and the destination `c.outDst?` at an
-    out result (`footBelowOut_contractSig`), and whose public relation
-    `LinkedFn.pubRegsAgree` is agreement on the stack register and the public argument
-    registers, which the check establishes at each call. Its premise, the halting of the
-    calling body under the oracle of the blocks of `T` guarded by the preconditions of these
-    interfaces from both entry states, is `haxEntry_call_halts_tab` at the same table. -/
-theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiLayout)
-    (fname : String) (P : Lprog) (bytes : List (BitVec 8))
-    (hc : compileARegion m σ fname = some (P, bytes))
-    (F fuelC : Nat) (Pre : AState → Prop)
-    (hct : HaxToNFCTLOn s σ m (fun V => ∃ sa, σ.Regions sa ∧ Pre sa ∧
-      AbiValOf σ sa (VIR.DialectToJasminComCorrect.ctMapValD
-        (CatCrypt.Crypto.Hax.NFToCat.mapVal V))))
-    (hterm : ∀ (sa : AState) (V : Ctxt.Valuation (entryCtx (abiEntry σ))), σ.Regions sa →
-      Pre sa → AbiValOf σ sa
-        (VIR.DialectToJasminComCorrect.ctMapValD (CatCrypt.Crypto.Hax.NFToCat.mapVal V)) →
-      ∃ v env', (denote' (crateBi (m.prepared nfBody) (m.linkTable hax64WExit) fuelC m.depth)
-        F (nfBody (bindConsts σ.consts m.entry))).run (entryEnvOf (abiEntry σ) V) =
-          (.val v, env'))
-    (hL : PubLabelsOK σ (mapLabels (nfLabels s (abiEntry σ))))
+    declared procedures with their functions read off `E.bi s k`, which the environment of
+    the linked functions alone implements (`NFEntry.linkedAgree`), and
+    `regionChain_bytes_ct`. On a program with a `call` it is `compileRegion_call_bytes_ct` at
+    the table `T` that `regionCallee` finds, at the interfaces of the kinds `kernelKind l c`
+    of the linked kernels `l` of the functions `c` of `T`: the interface of the contract of
+    `l` (`LinkedFn.contractSig`), which the code of `c` meets (`LinkedKernel.kind_facts`),
+    whose footprint lies in the frame of `c` at a register result (`footBelow_contractSig`)
+    and in its frame and the destination `c.outDst?` at an out result
+    (`footBelowOut_contractSig`), and whose public relation `LinkedFn.pubRegsAgree` is
+    agreement on the stack register and the public argument registers, which the check
+    establishes at each call. Its premise, the halting of the calling body under the oracle
+    of the blocks of `T` guarded by the preconditions of these interfaces from both entry
+    states, is `NFEntry.call_halts_tab` at the same table. The hax instance is
+    `ct_of_compileARegion`; the Aeneas instance is stated at `aeneasEntry` (branch
+    `work/aeneas-entry`). -/
+theorem NFEntry.compileR_ct (E : NFEntry) (sec : _root_.Hax.FnSecrecy) (s : E.Src)
+    (σ : AbiLayout) (fname : String) (P : Lprog) (bytes : List (BitVec 8))
+    (hc : E.compileR s σ fname ((E.linked s).filterMap LinkedFn.calleeData) = some (P, bytes))
+    (k : Nat) (Pre : AState → Prop)
+    (hsub : ∀ q : (Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
+      E.toNF σ s = some q → SubTable (E.bi s k))
+    (hN : ∀ q : (Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
+      E.toNF σ s = some q → ∀ d ∈ E.decls s, d.name ≠ "index" ∧ d.name ≠ "array_update")
+    (hct : ∀ q : (Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
+      E.toNF σ s = some q →
+      ∀ (tf : Nat) (V₁ V₂ : Ctxt.Valuation (entryCtx (abiEntry σ)))
+        (r₁ r₂ : Ctxt.Valuation (d := nfDialect) [q.1] × List CT.CTLeak),
+        (∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa
+          (VIR.DialectToJasminComCorrect.ctMapValD (mapVal V₁))) →
+        (∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa
+          (VIR.DialectToJasminComCorrect.ctMapValD (mapVal V₂))) →
+        PubEqV (CatCrypt.Crypto.Hax.ImpToNF.entryLabels
+          (CatCrypt.Crypto.Hax.ImpToNF.paramLevelOf sec) (abiEntry σ)) V₁ V₂ →
+        nfLeakRunL (E.decls s) (E.bi s k) tf q.2 V₁ = some r₁ →
+        nfLeakRunL (E.decls s) (E.bi s k) tf q.2 V₂ = some r₂ → r₁.2 = r₂.2)
+    (hterm : ∀ q : (Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
+      E.toNF σ s = some q → ∀ (sa : AState) (V : Ctxt.Valuation (entryCtx (abiEntry σ))),
+        σ.Regions sa → Pre sa →
+        AbiValOf σ sa (VIR.DialectToJasminComCorrect.ctMapValD (mapVal V)) →
+        ∃ N, ∀ tf, N ≤ tf → ∃ r, nfLeakRun (E.bi s k) tf q.2 V = some r)
+    (hL : PubLabelsOK σ (mapLabels (nfLabels sec (abiEntry σ))))
     (hnds : σ.envNames.Nodup) {prog : List RInstr} (hd : decodeLprog bytes = some prog)
-    (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
-    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
+    (hnd : ((E.linked s).map (·.name)).Nodup := by exact List.nodup_nil)
+    (hk : ∀ l ∈ E.linked s, LinkedKernel l := by exact fun _ h => nomatch h) :
     ConstantTimeRel
       (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
-        ∧ (∃ v, haxRuns σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRuns σ m s₂ v))
+        ∧ (∃ v, E.Runs σ s s₁ v) ∧ (E.linked s = [] ∨ ∃ v, E.Runs σ s s₂ v))
       (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
-  unfold compileARegion at hc
-  erw [NFEntry.compileR_eq_bind] at hc
+  rw [NFEntry.compileR_eq_bind] at hc
   obtain ⟨q, hq, hc⟩ := Option.bind_eq_some_iff.mp hc
   obtain ⟨pj, hpj, hJ⟩ := Option.bind_eq_some_iff.mp hc
   cases hcf : pj.callFree with
   | true =>
       rw [compileRegion_of_callFree _ _ hcf] at hJ
       have hf0 := NFEntry.frontR_of_compileRegion hq hpj hJ
-      have hq' : haxToNF σ m = some q := hq
-      obtain ⟨-, -, hlkn, -⟩ := haxToNF_eq_some hq'
-      have hnc : ∀ l ∈ m.linked, ¬ CatName l.name :=
-        fun l hl => not_catName_of_linkNameOk (hlkn l hl)
-      have hpj' : (extChain (linkedDecls m (m.linkTable hax64WExit)) _ q.1).run q.2 =
+      have hpj' : (extChain ((E.decls s).map (·.atTable (E.bi s k))) _ q.1).run q.2 =
           some pj := by
-        rw [extChain_congr (declared_linkedDecls m (m.linkTable hax64WExit) hax64WExit)]
+        rw [extChain_congr (declared_map_atTable (E.decls s) (E.bi s k))]
         exact hpj
-      have hLL : ∀ tf V, nfLeakRunL (linkedDecls m (m.linkTable hax64WExit))
-          (m.linkTable hax64WExit) tf q.2 V =
-          nfLeakRunL (linkedDecls m hax64WExit) (m.linkTable hax64WExit) tf q.2 V := by
+      have hLL : ∀ tf V, nfLeakRunL ((E.decls s).map (·.atTable (E.bi s k))) (E.bi s k) tf q.2 V
+          = nfLeakRunL (E.decls s) (E.bi s k) tf q.2 V := by
         intro tf V
         rw [nfLeakRunL_eq, nfLeakRunL_eq]
-        simp only [stripDecl_linkedDecls m (m.linkTable hax64WExit) hax64WExit]
-      have hctC := nfCT_of_haxToNFCTL s σ q.2
+        simp only [stripDecl_map_atTable]
+      have hctC := nfCT_of_haxToNFCTL sec σ q.2
         (fun W => ∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa W)
-        (subTable_linkBi _ CatCrypt.Crypto.Hax.hax64WExit_subTable hnc)
-        (haxEntry.fieldCalls σ m q hq 0) (haxEntry.fieldCallsWide σ m q hq 0)
+        (hsub q hq) (E.fieldCalls σ s q hq k) (E.fieldCallsWide σ s q hq k)
         (fun V hQ => by
           obtain ⟨sa, hR, hP, hV⟩ := hQ
-          exact haxToNF_leakRunL σ F fuelC hq' V (hterm sa V hR hP hV))
-        (fun tf V₁ V₂ r₁ r₂ hQ₁ hQ₂ hp h₁ h₂ => hct q hq' tf V₁ V₂ r₁ r₂ hQ₁ hQ₂ hp
+          exact hterm q hq sa V hR hP hV)
+        (fun tf V₁ V₂ r₁ r₂ hQ₁ hQ₂ hp h₁ h₂ => hct q hq tf V₁ V₂ r₁ r₂ hQ₁ hQ₂ hp
           ((hLL tf V₁).symm.trans h₁) ((hLL tf V₂).symm.trans h₂))
-        (tableEnv (m.linkTable hax64WExit)) (extAgree_linkedDecls m _)
-        (linkedDecls_ne_index hlkn _) hpj'
+        (linkedEnv (E.linked s)) (E.linkedAgree σ s q hq k)
+        (fun d hd => by
+          obtain ⟨d', hd', rfl⟩ := List.mem_map.mp hd
+          exact hN q hq d' hd') hpj'
       have hct' : ∀ W₁ W₂ : Ctxt.Valuation (nfCtx σ),
           (∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa W₁) →
           (∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa W₂) →
-          PubEqV (mapLabels (nfLabels s (abiEntry σ))) W₁ W₂ →
+          PubEqV (mapLabels (nfLabels sec (abiEntry σ))) W₁ W₂ →
           ∃ N, ∀ fuel, N ≤ fuel →
             (Dialects.NFLeak.NFProg.leakRun (jLeakModel JLeakParams.owned) fuel pj W₁).map
                 Prod.snd
@@ -332,25 +335,25 @@ theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
           Dialects.NFLeak.NFProg.leakRunM_eq_leakRun,
           Dialects.NFLeak.NFProg.leakRunM_eq_leakRun] at H
         exact H
-      have H := regionChain_bytes_ct σ (haxEntry.names fname σ) pj hcf hJ _ Pre hct' hL
+      have H := regionChain_bytes_ct σ (E.names fname σ) pj hcf hJ _ Pre hct' hL
         (regArrCtxB_nfCtx σ) (fun sa _ => exists_abiValOf σ hnds sa) hd
       rintro sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, ⟨v, hrun⟩, -⟩ hb₁ hb₂
-      obtain ⟨V, fuel, x, hV, hx, -⟩ := haxEntry.toFrontLegOfR.leg σ m _ hf0 sa₁ v h₁ hrun
+      obtain ⟨V, fuel, x, hV, hx, -⟩ := E.toFrontLegOfR.leg σ s _ hf0 sa₁ v h₁ hrun
       rw [RouteProgJ.envDenote_regions_of_callFree _ fuel pj hcf] at hx
       obtain ⟨y, hy, -⟩ := Option.map_eq_some_iff.mp hx
       exact H sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, V, fuel, hV, by rw [hy]; rfl⟩ hb₁ hb₂
   | false =>
       obtain ⟨T, ⟨r0, hr0, hcT⟩, hsub, hne, -, pr, hCT⟩ := compileRegion_call_bytes_ct hJ hcf
       obtain ⟨T', ⟨r0', hr0', hcT'⟩, -, -, -, -, hdq, -, sg, hsg, H⟩ :=
-        haxEntry_call_halts_tab hnd hk hq hpj hcf hJ
+        E.call_halts_tab hnd hk hq hpj hcf hJ
       rw [hr0, Option.some.injEq] at hr0'
       subst hr0'
       rw [hcT, Option.some.injEq, Option.some.injEq] at hcT'
       subst hcT'
-      obtain ⟨hdB, hct⟩ := hCT (moduleBlock m) hdq
+      obtain ⟨hdB, hct⟩ := hCT (moduleBlock (E.linked s)) hdq
       -- The interface of the kind of each function of the table.
       have hfacts : ∀ c ∈ T.fns, X86Backend.Callee.CalleeSpec
-            (X86Backend.Callee.runOf ctRegime (moduleBlock m c.name)) (sg c.name)
+            (X86Backend.Callee.runOf ctRegime (moduleBlock (E.linked s) c.name)) (sg c.name)
           ∧ (∀ x, c.clob.contains x = false → (sg c.name).clob x = false)
           ∧ (∀ s x, (sg c.name).foot s x → X86Backend.Callee.InFrame (s.regs "%rsp") c.frame x
             ∨ ∃ w ∈ c.outDst?, RegionSep.destAt w.1 w.2 s x)
@@ -362,7 +365,7 @@ theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
           LinkedFn.calleeData_eq hlc
         obtain ⟨-, hspec, -, -⟩ := (hk l hl).kind_facts hlc
         obtain ⟨qk, hqk, hm⟩ := (hk l hl).contract_code hlc
-        have hqm : moduleBlock m c.name = qk := by
+        have hqm : moduleBlock (E.linked s) c.name = qk := by
           rw [hdq c hc, Option.some.injEq] at hqk
           exact hqk
         obtain ⟨args, res, hks⟩ : ∃ args res, (kernelKind l c).sig = l.contractSig args res := by
@@ -414,7 +417,7 @@ theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
             fun a ha hp => hpa.1 _ (List.mem_cons_of_mem _ ?_)⟩
           rw [hcpubRegs]
           exact List.mem_map.mpr ⟨a, List.mem_filter.mpr ⟨ha, hp⟩, rfl⟩
-      have hlnn : m.linked ≠ [] := fun h =>
+      have hlnn : E.linked s ≠ [] := fun h =>
         hne (List.eq_nil_of_sublist_nil (by simpa [h] using hsub))
       rintro sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, -, -, ⟨v₁, hr₁⟩, hr₂⟩ ⟨e₁, hb₁⟩ ⟨e₂, hb₂⟩
       obtain ⟨v₂, hr₂⟩ := hr₂.resolve_left hlnn
@@ -426,6 +429,86 @@ theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
       rw [hd, Option.some.injEq] at hdB
       subst hdB
       exact hct sg hfacts hag h₁ h₂ hO₁ hO₂ hb₁ hb₂
+
+
+/-- **Constant time of the bytes of the region line from constant time of the translation.**
+    Let `compileARegion` return `(P, bytes)` on a module `m` whose linked functions have distinct
+    names (`hnd`) and are linked kernels (`hk`, `LinkedKernel`), with a register result or
+    an out result. Let the program
+    of the translation `haxToNF σ m`, in which the calls of the functions of the module are
+    inlined to the depth of the module, be constant time for the parameter labels of the
+    secrecy record `s` modulo the field calls and the calls of the linked functions
+    (`HaxToNFCTLOn`: a tagged field head is compiled to a field body and a linked function
+    to its code, whose constant time is proved separately), on the valuations of the
+    parameters whose lowered valuation the layout reads off a machine state satisfying
+    `σ.Regions` and a precondition `Pre` on machine states. Let the body
+    `nfBody (bindConsts σ.consts m.entry)` the front reads run at one fuel `F`, at the
+    builtins that answer a call of a function of the module by the run of its prepared body
+    at the fuel `fuelC` and a call of a linked function by its meaning, to a value from the
+    environment of every valuation of the parameters whose lowered valuation the layout
+    reads off a machine state satisfying `σ.Regions` and `Pre`. Let the labels of `s` agree
+    with the public data of `σ` and the names of `σ` be pairwise distinct (`hnds`). Then
+    every decoding of `bytes` is constant time under `ctRegime`, with no side condition on
+    the steps, between entry states that satisfy
+    `σ.Regions` and `Pre`, agree on the public data of `σ`, from the first of which the
+    module has a source run, and from the second of which it has one when it has linked
+    functions.
+
+    On a module without linked functions, such as a single function, `hnd` and `hk` hold
+    vacuously (the default arguments close them when `m.linked` reduces to `[]`), the
+    hypothesis `HaxToNFCTLOn` follows from `HaxToNFCT` (`haxToNFCTL_of_linked_nil`,
+    `haxToNFCTLOn_of_haxToNFCTL`), the
+    table `m.linkTable hax64WExit` is `hax64WExit` (`HaxModule.linkTable_of_linked_nil`),
+    and the source run from the second state is not required. For a single function the
+    constant time of the translation follows from source constant time `SourceCTNF`
+    (`haxToNFCT_of_sourceCT`).
+
+    It is `NFEntry.compileR_ct` at the hax entry `haxEntry` and the fuel `0`, whose table is
+    `m.linkTable hax64WExit` at every fuel: the table agrees with the `u64` table and no
+    declared procedure is named `index` or `array_update`, since the names of the linked
+    functions pass `linkNameOk` (`haxToNF_eq_some`), and the run of the source reading at
+    `F` gives the termination of the translation (`haxToNF_leakRunL`). There, on a program of
+    the chain without `call` the proof is `nfCT_of_haxToNFCTL` at the declared procedures of
+    `m` and `regionChain_bytes_ct`. On a program with a `call` it is
+    `compileRegion_call_bytes_ct` at the table `T` that `regionCallee` finds, at the
+    interfaces of the kinds `kernelKind l c` of the linked kernels `l` of the functions `c` of
+    `T`: the interface of the contract of `l` (`LinkedFn.contractSig`), which the code of `c`
+    meets (`LinkedKernel.kind_facts`), whose footprint lies in the frame of `c` at a register
+    result (`footBelow_contractSig`) and in its frame and the destination `c.outDst?` at an
+    out result (`footBelowOut_contractSig`), and whose public relation
+    `LinkedFn.pubRegsAgree` is agreement on the stack register and the public argument
+    registers, which the check establishes at each call. Its premise, the halting of the
+    calling body under the oracle of the blocks of `T` guarded by the preconditions of these
+    interfaces from both entry states, is `NFEntry.call_halts_tab` at the same table. -/
+theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiLayout)
+    (fname : String) (P : Lprog) (bytes : List (BitVec 8))
+    (hc : compileARegion m σ fname = some (P, bytes))
+    (F fuelC : Nat) (Pre : AState → Prop)
+    (hct : HaxToNFCTLOn s σ m (fun V => ∃ sa, σ.Regions sa ∧ Pre sa ∧
+      AbiValOf σ sa (VIR.DialectToJasminComCorrect.ctMapValD
+        (CatCrypt.Crypto.Hax.NFToCat.mapVal V))))
+    (hterm : ∀ (sa : AState) (V : Ctxt.Valuation (entryCtx (abiEntry σ))), σ.Regions sa →
+      Pre sa → AbiValOf σ sa
+        (VIR.DialectToJasminComCorrect.ctMapValD (CatCrypt.Crypto.Hax.NFToCat.mapVal V)) →
+      ∃ v env', (denote' (crateBi (m.prepared nfBody) (m.linkTable hax64WExit) fuelC m.depth)
+        F (nfBody (bindConsts σ.consts m.entry))).run (entryEnvOf (abiEntry σ) V) =
+          (.val v, env'))
+    (hL : PubLabelsOK σ (mapLabels (nfLabels s (abiEntry σ))))
+    (hnds : σ.envNames.Nodup) {prog : List RInstr} (hd : decodeLprog bytes = some prog)
+    (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
+    ConstantTimeRel
+      (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
+        ∧ (∃ v, haxRuns σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRuns σ m s₂ v))
+      (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
+  have hq' : ∀ q, haxEntry.toNF σ m = some q → ∀ l ∈ m.linked, linkNameOk l.name = true :=
+    fun q hq => (haxToNF_eq_some hq).2.2.1
+  exact haxEntry.compileR_ct s m σ fname P bytes hc 0 Pre
+    (fun q hq => subTable_linkBi _ CatCrypt.Crypto.Hax.hax64WExit_subTable
+      fun l hl => not_catName_of_linkNameOk (hq' q hq l hl))
+    (fun q hq => linkedDecls_ne_index (hq' q hq) _) hct
+    (fun q hq sa V hR hP hV => haxToNF_leakRunL σ F fuelC hq V (hterm sa V hR hP hV))
+    hL hnds hd hnd hk
 
 /-- **Constant time of the bytes of `compileA` from constant time of the translation.** Let
     `compileA` return `(P, bytes)` on a module `m` under `σ`. The hypotheses on the

@@ -21,7 +21,8 @@ with one leaf per step, each an existing leakage lemma of the stage:
 
 0. `outTy`: the identity;
 1. `dce`: `NFProg.dce_ctRel`;
-2. `nfToCat`: `nfToCat_leak_id`, at valuations in range and their mapped valuations;
+2. `nfToCat`: `nfToCat_leak_id`, at valuations in range and their mapped valuations; the
+   events of the translation are the source events without those of division (`stripDiv`);
 3. `aegraph` at `catRules`: `aegraphOptNF_ctRel` under `catRules_indep`;
 4. `map?` along `catToJasmin`: `catToJasmin_map?_ctLeak` under `LeakCompat`;
 5. `lowerSelects`: `lowerSelects_ctRel`; the lowering speculates only the ops `jasminQuiet`
@@ -271,7 +272,8 @@ def dceCTStep (bi : _root_.Hax.Builtins) (fuel : Nat) (Γ : Ctxt nfDialect) (ts 
 
 /-- The constant-time step certificate of `nfToCat`, from `nfToCat_leak_id`: the input
     relation relates a valuation in range to its mapped valuation `mapVal`, and the events are
-    those of the source. -/
+    those of the source without those of division (`stripDiv`), a function of the source
+    events. -/
 def nfToCatCTStep {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
     (hbi : SubTable bi) (fuel : Nat) (Γ : Ctxt nfDialect) (ts : List NfTy) :
     StepCert (nfToCatStep Γ ts).run (srcLeakSem bi fuel Γ ts).twoRun

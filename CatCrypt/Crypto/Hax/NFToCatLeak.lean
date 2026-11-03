@@ -18,18 +18,27 @@ the binary word operations `udiv`, `urem`, `sdiv`, `srem` and `ashr` leak their 
 those of a variable-time instruction (`nfBinKind`); a call of a name outside the scalar tables
 of the front (`quietCall`) other than `index` and `array_update` leaks its arguments as those
 of a variable-time leaf call; every other operation is quiet. A word, an
-integer and a bit read as natural numbers; every other value reads as `0`. `nfToCat`
-translates no binary word operation, so the model is compared with `catLeakModel P` at
-parameters `P` with no variable-time operation (`NoVT P`), which the owned parameters satisfy.
+integer and a bit read as natural numbers; every other value reads as `0`. The model is
+compared with `catLeakModel P` at parameters `P` with no variable-time operation (`NoVT P`),
+which the owned parameters satisfy.
+
+Unsigned division and remainder are variable time in this model: their event `.vt .div`
+carries the values of both operands, so a source program is constant time relative to its
+runs (`NFCTRel`) only if every division it runs has operands that agree on any two valuations
+that agree on the public positions, which holds when the operands are public. This is the
+model of the source; nothing here states that a division is constant time.
 
 `nfToCat` translates each operation to no binding (a literal, a loop counter or a trip count,
 all quiet), to one binding, to a quiet `bvConst` binding followed by one binding, or, for a
-call of the scalar table, to a sequence of quiet bindings (`scalarRes_quiet`). The
-binding of `index` is `memrefGetDyn` and that of `array_update` is `memrefSetDyn`, which leak
-the word of the index; the values are related by `VRel`. The leakage transformer is therefore
-the identity: a run of the source that succeeds from `V` is matched by a run of the
-translated program from every valuation the readings relate to `V`, with the same events
-(`nfToCat_leak`).
+call of the scalar table, and for an unsigned division or remainder (`divChain`), to a
+sequence of quiet bindings (`scalarRes_quiet`, `divChain_quiet`). The binding of `index` is
+`memrefGetDyn` and that of `array_update` is `memrefSetDyn`, which leak the word of the
+index; the values are related by `VRel`. The leakage transformer is therefore `stripDiv`,
+which removes the events of the instruction `div`: a run of the source that succeeds from `V`
+is matched by a run of the translated program from every valuation the readings relate to
+`V`, whose events are the source events without those of division (`nfToCat_leak`). Since
+`stripDiv` is a function of the source events, equal source events give equal target events,
+which is what the constant-time certificates of the chain use.
 
 ## Main definitions
 
@@ -39,6 +48,7 @@ translated program from every valuation the readings relate to `V`, with the sam
 * `nfLeakRun` — the leakage run of a program of `nfDialect` over the leaf table of a builtin
   table.
 * `NoVT` — parameters of `catCryptDialect` with no variable-time operation.
+* `isDivEvent`, `stripDiv` — the events of the instruction `div`, and the events without them.
 
 ## Main results
 
@@ -47,9 +57,14 @@ translated program from every valuation the readings relate to `V`, with the sam
   typing `hax64SigOf` of the front types is a name of `quietCall`, `index` or `array_update`.
 * `scalarRes_quiet`, `bitRes2_quiet`, `bitRes1_quiet` — the translation of a call of the
   scalar table, and of a Boolean connective, is quiet.
-* `catOp_leak` — the events of an operation are the events of its translation.
+* `stripDiv_opLeak_of_kind`, `nfKind_call_ne_vt` — `stripDiv` keeps the events of an
+  operation that is not a variable-time instruction, which no call is.
+* `divLoop_quiet`, `divChain_quiet` — the translation of unsigned division and remainder is
+  quiet.
+* `catOp_leak` — the events of the translation of an operation are its events without those
+  of division.
 * `emitRes_leak` — the events of the bindings of a translated operation.
-* `nfToCat_leak` — the leakage transformer of `nfToCat` is the identity.
+* `nfToCat_leak` — the leakage transformer of `nfToCat` is `stripDiv`.
 -/
 
 @[expose] public section
@@ -236,6 +251,52 @@ abbrev nfLeakRun (bi : _root_.Hax.Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {
     (p : NFProg nfDialect Γ ts) (V : Valuation Γ) :
     Option (Valuation (d := nfDialect) ts × List CTLeak) :=
   @NFProg.leakRunM nfDialect _ _ _ _ (nfDenote (ImpToNF.tableOf bi)) nfLeakModel fuel _ _ p V
+
+/-- Whether an event is the event of the variable-time instruction `div`, the event class of
+    unsigned division and remainder (`nfBinKind`). -/
+def isDivEvent : CTLeak → Bool
+  | .vt .div _ => true
+  | _ => false
+
+/-- The events without those of the variable-time instruction `div`. `nfToCat` translates
+    unsigned division and remainder to quiet bindings (`divChain`), so the events of a
+    translation are the source events without these (`nfToCat_leak`). -/
+def stripDiv (l : List CTLeak) : List CTLeak :=
+  l.filter fun e => !isDivEvent e
+
+@[simp] theorem stripDiv_nil : stripDiv [] = [] := rfl
+
+@[simp] theorem stripDiv_append (l₁ l₂ : List CTLeak) :
+    stripDiv (l₁ ++ l₂) = stripDiv l₁ ++ stripDiv l₂ :=
+  List.filter_append ..
+
+@[simp] theorem stripDiv_branch (b : Bool) (l : List CTLeak) :
+    stripDiv (.branch b :: l) = .branch b :: stripDiv l := by
+  simp [stripDiv, isDivEvent]
+
+@[simp] theorem stripDiv_trip (n : Nat) (l : List CTLeak) :
+    stripDiv (.trip n :: l) = .trip n :: stripDiv l := by
+  simp [stripDiv, isDivEvent]
+
+/-- The events of an operation whose class is not a variable-time instruction are kept by
+    `stripDiv`. -/
+theorem stripDiv_opLeak_of_kind {op : NfOp} (h : ∀ m, nfKind op ≠ .vt m)
+    (xs : HVector (fun t => t.denote) (DialectSignature.sig (d := nfDialect) op)) :
+    stripDiv (opLeak nfLeakModel op xs) = opLeak nfLeakModel op xs := by
+  unfold opLeak
+  split
+  · rfl
+  · simp [stripDiv, isDivEvent]
+  · rename_i m hm
+    exact absurd hm (h m)
+  · simp [stripDiv, isDivEvent]
+
+/-- The class of a call is not a variable-time instruction. -/
+theorem nfKind_call_ne_vt (f : String) (as : List NfTy) (r : NfTy) :
+    ∀ m, nfKind (.call f as r) ≠ .vt m := by
+  intro m
+  simp only [nfKind]
+  split_ifs <;> simp
 
 /-- Parameters of `catCryptDialect` with no operation lowered to a variable-time
     instruction. -/
@@ -659,6 +720,22 @@ theorem withVar2_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
           obtain ⟨res', hres', rfl⟩ := Option.map_eq_some_iff.mp h
           exact ⟨hc _, hc _, hk _ _ res' hres'⟩
 
+/-- The bindings of `divLoop` at `64` bits are quiet. -/
+theorem divLoop_quiet {P : CatLeakParams} (hP : NoVT P) (u : Bool) : ∀ (n : Nat)
+    {Δ : Ctxt catCryptDialect} (a b one nb q r : Var Δ (.sword 64)) (cin : Var Δ (.sword 1)),
+    (divLoop 64 u n a b one nb q r cin).Quiet P
+  | 0, _, _, _, _, _, _, _, _ => trivial
+  | n + 1, _, _, _, _, _, _, _, _ => by
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+      divLoop_quiet hP u n _ _ _ _ _ _ _⟩ <;> simp [catKind, opVT_none hP]
+
+/-- The bindings of `divChain` at `64` bits are quiet. -/
+theorem divChain_quiet {P : CatLeakParams} (hP : NoVT P) (u : Bool) {Δ : Ctxt catCryptDialect}
+    (a b : Var Δ (.sword 64)) : (divChain 64 u a b).Quiet P := by
+  unfold divChain
+  refine ⟨?_, ?_, ?_, ?_, ?_, divLoop_quiet hP u 64 _ _ _ _ _ _ _⟩ <;>
+    simp [catKind, opVT_none hP]
+
 /-- The loop counter `ctrRes` is quiet. -/
 theorem ctrRes_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}
     {rlo : Rd Δ .int} {ri : Rd Δ (.word 64)} {res : OpRes Δ (.word 64)}
@@ -840,13 +917,15 @@ theorem catCallRd_leak {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDial
         from rfl, nfKind_call_quiet (by decide)]
 
 /-- **The events of a translated operation.** Under readings that relate `V` to `W`, the
-    translation `catOp` of an operation emits the events of the operation. -/
+    translation `catOp` of an operation emits the events of the operation without those of
+    division (`stripDiv`): a division emits `.vt .div` on its operands, its translation
+    `divChain` emits none. -/
 theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
     {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) {V : Valuation Γ} {W : Valuation Δ}
     (hag : σ.Agree V W) :
     ∀ (op : NfOp) (args : HVector (fun t => Var Γ t) op.sig) (res : OpRes Δ op.ret),
       catOp σ op args = some res →
-      resLeak P W res = opLeak nfLeakModel op (Expr.lookupArgs args V) := by
+      resLeak P W res = stripDiv (opLeak nfLeakModel op (Expr.lookupArgs args V)) := by
   intro op
   induction op with
   | named n op ih =>
@@ -854,6 +933,7 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       exact ih args res h
   | call f as r =>
       intro args res h
+      rw [stripDiv_opLeak_of_kind (nfKind_call_ne_vt f as r)]
       exact catCallRd_leak hP W f as r (σ.rds args) res (Expr.lookupArgs args V) h
         (TRd.rdRelL_rds hag args)
   | ilit t v =>
@@ -912,7 +992,12 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
       · obtain ⟨rfl, rfl⟩ := ‹_ ∧ _›
         rw [resLeak_quiet W res (withVar2_quiet hP (fun _ _ _ hk => binChain_quiet hP hk) h)]
         rfl
-      · cases h
+      · split at h
+        · obtain ⟨ho, rfl⟩ := ‹_ ∧ _›
+          rw [resLeak_quiet W res (withVar2_quiet hP
+            (fun x y _ hk => by cases hk; exact divChain_quiet hP _ x y) h)]
+          rcases ho with rfl | rfl <;> rfl
+        · cases h
   | constBit b =>
       intro args res h
       cases h
@@ -942,14 +1027,16 @@ theorem catOp_leak {P : CatLeakParams} (hP : NoVT P) {Γ : Ctxt nfDialect}
 
 /-- The leakage transformer statement of the translation of the program `p`: a leakage run of
     `p` that succeeds from a valuation related to `W` by the readings is matched by a leakage
-    run of the translated program from `W`, with the same events and related results. -/
+    run of the translated program from `W`, with the events of the source without those of
+    division (`stripDiv`) and related results. -/
 def NFLeakSound (P : CatLeakParams) (bi : _root_.Hax.Builtins) (fuel : Nat)
     {Γ : Ctxt nfDialect} {ts : List NfTy} (p : NFProg nfDialect Γ ts) : Prop :=
   ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ)
     (p' : NFProg catCryptDialect Δ (ts.map catTy)), nfToCat p σ = some p' →
     ∀ (V : Valuation Γ) (W : Valuation Δ) (r : Valuation (d := nfDialect) ts × List CTLeak),
     σ.Agree V W → nfLeakRun bi fuel p V = some r →
-    ∃ r', NFProg.leakRun (catLeakModel P) fuel p' W = some r' ∧ r'.2 = r.2 ∧ VRelL ts r.1 r'.1
+    ∃ r', NFProg.leakRun (catLeakModel P) fuel p' W = some r' ∧ r'.2 = stripDiv r.2 ∧
+      VRelL ts r.1 r'.1
 
 /-- **The events of the bindings of a translated operation.** When the continuation `cont`
     is matched from every reading that relates `V.extend y`, the bindings `emitRes` builds for
@@ -1066,9 +1153,10 @@ theorem pinAll_leak {P : CatLeakParams} (hP : NoVT P) (fuel : Nat) {Γ : Ctxt nf
       exact congrArg (Option.map _) hr'
     · rw [h0, List.nil_append, he]
 
-/-- **The leakage transformer of `nfToCat` is the identity.** Under `SubTable bi` and at
+/-- **The leakage transformer of `nfToCat` is `stripDiv`.** Under `SubTable bi` and at
     parameters with no variable-time operation, a leakage run of a translated program that
-    succeeds is matched by a leakage run of the translation with the same events. -/
+    succeeds is matched by a leakage run of the translation whose events are the source
+    events without those of division. -/
 theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
     (hbi : SubTable bi) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     (p : NFProg nfDialect Γ ts) : NFLeakSound P bi fuel p := by
@@ -1091,11 +1179,12 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
       obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.mp hr
       have hrel := catOp_sound hbi σ hag op args res y hres hy
       have hlk := catOp_leak hP σ hag op args res hres
-      change resLeak P W res = Expr.ctLeak nfLeakModel ⟨op, rfl, args⟩ V at hlk
-      obtain ⟨q', hq', he, hR⟩ := emitRes_leak hP fuel (fun σ' => nfToCat k σ') V y q
+      change resLeak P W res = stripDiv (Expr.ctLeak nfLeakModel ⟨op, rfl, args⟩ V) at hlk
+      obtain ⟨q', hq', he, hR⟩ := emitRes_leak hP fuel (fun σ' => nfToCat k σ') V y
+        (q.1, stripDiv q.2)
         (fun σ' p'' W' hk hag' => ih σ' p'' hk (V.extend y) W' q hag' hq) res σ W p' h hag hrel
       refine ⟨q', hq', ?_, hR⟩
-      rw [he, hlk]
+      rw [he, hlk, stripDiv_append]
   | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
       intro Δ σ p' h V W r hag hr
       change (forIterLeak
@@ -1114,7 +1203,7 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
           nfToCat k (TRd.liftApp cs σ') = some k' →
           ∃ r', NFProg.leakRun (catLeakModel P) fuel
               (NFProg.forLoop (cs := cs.map catTy) c is body' k') W' = some r' ∧
-            r'.2 = .trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2) ∧
+            r'.2 = stripDiv (.trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2)) ∧
             VRelL ts₀ q.1 r'.1 := by
         intro Δ' σ' W' c is body' k' hag' hcnt his hb' hk'
         have key : ∀ (l : List Nat) (acc : Valuation (d := nfDialect) cs)
@@ -1125,7 +1214,7 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
               some a →
             ∃ a', forIterLeak (fun i acc => NFProg.leakRun (catLeakModel P) fuel body'
               (hvAppend acc (HVector.cons (t := CryptoTy.sword 64) (BitVec.ofNat 64 i) W')))
-              l acc' = some a' ∧ a'.2 = a.2 ∧ VRelL cs a.1 a'.1 := by
+              l acc' = some a' ∧ a'.2 = stripDiv a.2 ∧ VRelL cs a.1 a'.1 := by
           intro l
           induction l with
           | nil =>
@@ -1147,7 +1236,7 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
               · simp only [forIterLeak]
                 erw [ha1']
                 rw [Option.bind_some, ha2', Option.map_some]
-              · simp only [he1, he2]
+              · simp only [he1, he2, stripDiv_append]
         obtain ⟨a', ha', he, hrA⟩ := key _ _ _ a his ha
         obtain ⟨q', hq', heq, hR⟩ := ihk (TRd.liftApp cs σ') k' hk' (hvAppend a.1 V)
           (hvAppend a'.1 W') q (TRd.agree_liftApp hag' cs a.1 a'.1 hrA) hq
@@ -1159,10 +1248,11 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
           rw [hc2]
           erw [ha']
           rw [Option.bind_some, hq', Option.map_some, ← hcnt]
-        · simp only [he, heq, ← hcnt]
+        · simp only [he, heq, ← hcnt, stripDiv_trip, stripDiv_append]
       refine pinAll_leak hP fuel (ts := .word 64 :: cs) _ V
         (Expr.lookupArgs (HVector.cons count inits) V)
-        (q.1, .trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2)) ?_ σ _ p' W h hag
+        (q.1, stripDiv (.trip (count.lookup V : BitVec 64).toNat :: (a.2 ++ q.2))) ?_ σ _ p' W h
+        hag
         (TRd.rdRelL_rds hag (HVector.cons count inits))
       intro Δ' σ' ws p'' W' hk hag' hrel
       rcases ws with _ | ⟨c, is⟩
@@ -1190,7 +1280,7 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
             HasBoolBit.toBool (d := nfDialect) (cond.lookup V) := hcond.symm
         obtain ⟨a', ha', hea, hrA⟩ : ∃ a', (if HasBoolBit.toBool (d := catCryptDialect)
             (c.lookup W) = true then NFProg.leakRun (catLeakModel P) fuel thn' W
-            else NFProg.leakRun (catLeakModel P) fuel els' W) = some a' ∧ a'.2 = a.2 ∧
+            else NFProg.leakRun (catLeakModel P) fuel els' W) = some a' ∧ a'.2 = stripDiv a.2 ∧
             VRelL rs a.1 a'.1 := by
           rw [hcb]
           cases hb : HasBoolBit.toBool (d := nfDialect) (cond.lookup V)
@@ -1205,7 +1295,7 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
         · simp only [NFProg.leakRun]
           erw [ha']
           rw [Option.bind_some, hq', Option.map_some]
-        · simp only [hea, heq, hcb]
+        · simp only [hea, heq, hcb, stripDiv_branch, stripDiv_append]
       · cases h
   | whileLoop inits body k _ _ =>
       intro Δ σ p' h
@@ -1216,14 +1306,14 @@ theorem nfToCat_leak {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins
 
 /-- **The leakage transformer of `nfToCat` at the entry.** A leakage run of `p` that succeeds
     from a valuation `V` in range is matched by the leakage run of the translation from the
-    mapped valuation `mapVal V`, with the same events. -/
+    mapped valuation `mapVal V`, with the source events without those of division. -/
 theorem nfToCat_leak_id {P : CatLeakParams} (hP : NoVT P) {bi : _root_.Hax.Builtins}
     (hbi : SubTable bi) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
     {p : NFProg nfDialect Γ ts} {p' : NFProg catCryptDialect (Γ.map catTy) (ts.map catTy)}
     (hp : nfToCat p TRd.id = some p') (V : Valuation Γ)
     (hin : ∀ (t : NfTy) (v : Var Γ t), InRange t (v.lookup V))
     {r : Valuation (d := nfDialect) ts × List CTLeak} (hr : nfLeakRun bi fuel p V = some r) :
-    ∃ r', NFProg.leakRun (catLeakModel P) fuel p' (mapVal V) = some r' ∧ r'.2 = r.2 := by
+    ∃ r', NFProg.leakRun (catLeakModel P) fuel p' (mapVal V) = some r' ∧ r'.2 = stripDiv r.2 := by
   obtain ⟨s, hs, he, -⟩ := nfToCat_leak hP hbi fuel p TRd.id p' hp V (mapVal V) r
     (TRd.agree_id V hin) hr
   exact ⟨s, hs, he⟩

@@ -32,6 +32,8 @@ e-graph pass at `catRules` keeps this property, and a program with this property
 
 * `isSome_map?_catToJasmin_iff` — `map?` along `catToJasmin` is `some` exactly on the
   `Convertible` programs.
+* `divLoop_image`, `divChain_image` — the bindings of unsigned division and remainder have
+  images.
 * `nfToCat_opsHaveImages` — every operation of a program `nfToCat` returns has an image.
 * `nfGo_covered`, `catRules_opsIn`, `aegraphOptNF_catRules_opsHaveImages` — the e-graph
   traversal keeps coverage by an operation predicate that the rules keep; the rules of
@@ -436,6 +438,23 @@ theorem tripSub_image {Δ : Ctxt catCryptDialect} {rlo : Rd Δ .int} {rhi : Rd �
     exact (by image_op : HasImage (.bvConst 64 _))
   · exact withVar2_image (fun x y _ hk => by cases hk; exact satSubRes_image x y) h
 
+/-- Every binding of `divLoop` at `64` bits has an operation with an image. -/
+theorem divLoop_image (u : Bool) : ∀ (n : Nat) {Δ : Ctxt catCryptDialect}
+    (a b one nb q r : Var Δ (.sword 64)) (cin : Var Δ (.sword 1)),
+    OpResImages (divLoop 64 u n a b one nb q r cin)
+  | 0, _, _, _, _, _, _, _, _ => trivial
+  | n + 1, _, a, b, one, nb, q, r, cin =>
+    ⟨by image_op, by image_op, by image_op, by image_op, by image_op, by image_op, by image_op,
+      by image_op, by image_op, by image_op, by image_op, by image_op, by image_op, by image_op,
+      divLoop_image u n _ _ _ _ _ _ _⟩
+
+/-- Every binding of `divChain` at `64` bits has an operation with an image. -/
+theorem divChain_image (u : Bool) {Δ : Ctxt catCryptDialect} (a b : Var Δ (.sword 64)) :
+    OpResImages (divChain 64 u a b) := by
+  unfold divChain
+  exact ⟨by image_op, by image_op, by image_op, by image_op, by image_op,
+    divLoop_image u 64 _ _ _ _ _ _ _⟩
+
 /-- Every expression of the translation `catOp` of an operation has an operation with an
     image. -/
 theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ)
@@ -477,7 +496,10 @@ theorem catOp_image {Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd 
       split at h
       · obtain ⟨rfl, rfl⟩ := ‹_ ∧ _›
         exact withVar2_image (fun _ _ _ hk => binChain_image hk) h
-      · cases h
+      · split at h
+        · obtain ⟨-, rfl⟩ := ‹_ ∧ _›
+          exact withVar2_image (fun x y _ hk => by cases hk; exact divChain_image _ x y) h
+        · cases h
   | constBit b =>
       cases h
       exact (by image_op : HasImage (.constBit b))

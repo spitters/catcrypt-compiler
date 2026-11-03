@@ -750,6 +750,39 @@ theorem implementedBy_tableEnv (bi : Builtins) (f : String) (as : List NfTy) (r 
     rw [hx, hv, Option.bind_some, hd]
     rfl
 
+/-- **The call environment of linked functions alone**: `tableEnv` at the table of the linked
+    functions `ls` over the table that answers no call. A call of a linked function is answered
+    by its meaning `LinkedFn.sem`; every other call refuses. -/
+def linkedEnv (ls : List CatCrypt.Crypto.Hax.LinkedFn) : CallEnv jasminDialect :=
+  tableEnv (CatCrypt.Crypto.Hax.linkBi ls fun _ _ => none)
+
+/-- **A declaration at a table**: the name and the signature of `d`, with the call of the leaf
+    table of `bi` at them as its function. -/
+def _root_.CatCrypt.Crypto.Hax.NFToCat.ExtDecl.atTable (bi : Builtins) (d : ExtDecl) :
+    ExtDecl :=
+  ⟨d.name, d.args, d.ret, (tableOf bi).call d.name d.args d.ret⟩
+
+/-- Reading the functions of declarations off a table keeps the declared names and
+    signatures. -/
+theorem declared_map_atTable (D : List ExtDecl) (bi : Builtins) (f : String) (as : List NfTy)
+    (r : NfTy) : declared (D.map (·.atTable bi)) f as r = declared D f as r := by
+  simp only [declared, List.any_map]
+  rfl
+
+/-- Reading the functions of declarations off a table keeps the events of the declared
+    names. -/
+theorem stripDecl_map_atTable (D : List ExtDecl) (bi : Builtins)
+    (l : List CatCrypt.Crypto.SecureCompilation.CT.CTLeak) :
+    stripDecl (D.map (·.atTable bi)) l = stripDecl D l := by
+  unfold stripDecl
+  congr 1
+  funext e
+  cases e with
+  | vtCall f _ =>
+      simp only [isDeclEvent, List.any_map]
+      rfl
+  | _ => rfl
+
 /-! ## Entries into `NFProg nfDialect` -/
 
 /-- **An entry into `NFProg nfDialect`**: source programs `Src` with a source semantics
@@ -772,7 +805,16 @@ theorem implementedBy_tableEnv (bi : Builtins) (f : String) (as : List NfTy) (r 
     functions of the declarations of `D` may depend on `k`; the translation reads the names
     and signatures only. At a source program the translation accepts, the table of every
     fuel answers the tagged field heads by their arms (`fieldCalls`) and is the `u64` table at
-    the wide tagged heads (`fieldCallsWide`). -/
+    the wide tagged heads (`fieldCallsWide`).
+
+    Linked functions: an entry gives each source program its linked functions `linked s`
+    (none unless given), each with its machine code (`LinkedFn.calleeData`) and its meaning
+    `LinkedFn.sem`, and the environment `linkedEnv (linked s)` that answers their calls by
+    their meanings implements the declared procedures, with their functions read off the
+    table of every fuel (`linkedAgree`). The compiler theorem with linked functions is
+    `NFEntry.compileR_correct_linked`, its constant-time theorem `NFEntry.compileR_ct`. The
+    instances are `haxEntry` (below) and `aeneasEntry`, whose linked functions are the opaque
+    callees of the Aeneas output (branch `work/aeneas-entry`). -/
 structure NFEntry where
   /-- The source programs. -/
   Src : Type
@@ -818,6 +860,18 @@ structure NFEntry where
   fieldCallsWide : ∀ (σ : AbiLayout) (s : Src)
     (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
     toNF σ s = some q → ∀ k, FieldLevel.FieldCallsWideEq (bi s k)
+  /-- The linked functions of a source program: functions given by their code, whose calls the
+      chain keeps and the region back half links to that code. -/
+  linked : Src → List CatCrypt.Crypto.Hax.LinkedFn := fun _ => []
+  /-- At a source program the translation accepts, the call environment of its linked
+      functions alone implements its declared procedures, with their functions read off the
+      table of every fuel. Without declared procedures this holds vacuously. -/
+  linkedAgree : ∀ (σ : AbiLayout) (s : Src)
+    (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
+    toNF σ s = some q → ∀ k,
+      ExtAgree (bi s k) (catEnvOf (linkedEnv (linked s))) ((decls s).map (·.atTable (bi s k))) := by
+    intro _ _ _ _ _
+    exact CatCrypt.Crypto.Hax.NFToCat.extAgree_nil _ _
 
 /-- **The front of an entry**: the translation `toNF` followed by the chain `nfChain`. -/
 def NFEntry.front (E : NFEntry) (σ : AbiLayout) (s : E.Src) : Option AnyRouteProgJ :=
@@ -1057,6 +1111,51 @@ theorem extAgree_linkedDecls (m : HaxModule) (bi : Builtins) :
     exact this.2
   exact ⟨fun _ => rfl, implementedBy_tableEnv bi l.name as l.res hr
     (List.all_eq_true.mp (List.mem_filter.mp has).2)⟩
+
+/-- The declared procedures of a module at a table, with their functions read off another
+    table, are its declared procedures at the other table. -/
+theorem linkedDecls_map_atTable (m : HaxModule) (bi bi' : Builtins) :
+    (linkedDecls m bi).map (·.atTable bi') = linkedDecls m bi' := by
+  simp only [linkedDecls, List.map_flatMap, List.map_map]
+  rfl
+
+/-- At the name of a linked function of `ls`, the tables of the linked functions of `ls` over
+    any two base tables are equal. -/
+theorem linkBi_name_eq {ls : List CatCrypt.Crypto.Hax.LinkedFn} {l : CatCrypt.Crypto.Hax.LinkedFn}
+    (hl : l ∈ ls) (bi bi' : Builtins) :
+    CatCrypt.Crypto.Hax.linkBi ls bi l.name = CatCrypt.Crypto.Hax.linkBi ls bi' l.name := by
+  cases hf : ls.find? (·.name == l.name) with
+  | none => exact absurd (List.find?_eq_none.mp hf l hl) (by simp)
+  | some l' =>
+      funext vals
+      rw [CatCrypt.Crypto.Hax.linkBi_of_find_some _ _ hf,
+        CatCrypt.Crypto.Hax.linkBi_of_find_some _ _ hf]
+
+/-- **The declared procedures of a module agree with the environment of its linked functions
+    over every base table.** The function of each declaration at the table
+    `m.linkTable bi` is the call of that table at the name of a linked function, which is the
+    call of `m.linkTable bi'` (`linkBi_name_eq`); the environment of that table implements
+    it (`implementedBy_tableEnv`). -/
+theorem extAgree_linkedDecls_linkTable (m : HaxModule) (bi bi' : Builtins) :
+    ExtAgree (m.linkTable bi)
+      (catEnvOf (tableEnv (m.linkTable bi'))) (linkedDecls m (m.linkTable bi)) := by
+  intro d hd
+  obtain ⟨l, hl, hd⟩ := List.mem_flatMap.mp hd
+  obtain ⟨as, has, rfl⟩ := List.mem_map.mp hd
+  have hr : linkResOk l.res = true := by
+    have := (List.mem_filter.mp hl).2
+    simp only [Bool.and_eq_true] at this
+    exact this.2
+  have he : (tableOf (m.linkTable bi)).call l.name as l.res =
+      (tableOf (m.linkTable bi')).call l.name as l.res := by
+    funext xs
+    show (m.linkTable bi l.name _).bind _ = (m.linkTable bi' l.name _).bind _
+    rw [HaxModule.linkTable, HaxModule.linkTable,
+      linkBi_name_eq (List.mem_filter.mp hl).1 bi bi']
+  refine ⟨fun _ => rfl, ?_⟩
+  rw [he]
+  exact implementedBy_tableEnv _ l.name as l.res hr
+    (List.all_eq_true.mp (List.mem_filter.mp has).2)
 
 /-- **A signature of words and word arrays**: the type of every parameter of the linked
     function `l` and its result type pass `linkResOk` (the `64`-bit word or an array of
@@ -1387,6 +1486,11 @@ def haxEntry : NFEntry where
     obtain ⟨-, -, hlk, -⟩ := haxToNF_eq_some hq
     exact fieldCallsWideEq_linkBi _ fieldCallsWideEq_hax64WExit
       (fun l hl => fieldTag?_of_linkNameOk (hlk l hl))
+  linked m := m.linked
+  linkedAgree σ m q hq k := by
+    show ExtAgree _ _ ((linkedDecls m _).map _)
+    rw [linkedDecls_map_atTable]
+    exact extAgree_linkedDecls_linkTable m _ _
 
 /-- **The table of the hax entry is the `u64` table at the wide tagged heads**: the field
     `NFEntry.fieldCallsWide` of `haxEntry`. -/

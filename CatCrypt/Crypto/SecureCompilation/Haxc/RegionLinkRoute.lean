@@ -84,8 +84,8 @@ states the runs of the bytes of `compileA` and the compiler theorems over them.
   whose code meets its word interface halt through the call, and the caller halts under the
   oracle of the guarded kernel, in a state from which the layout reads back the source value
   of the result.
-* `linkedEnv`, `extAgree_linkedDecls_linkTable`, `haxEntry_run_linkedEnv`: the source run of
-  a module as a run of the chain's program at the environment of its linked functions alone.
+* `NFEntry.run_linkedEnv`: the source run of an entry as a run of the chain's program at the
+  environment `linkedEnv` of its linked functions alone.
 * `find?_name_of_nodup`: the linked function of a name among functions with distinct names.
 * `wordCallee_linkedSummary`, `LinkedFn.CallSitePre`, `LinkedWordKernel`: the summary of a
   linked word kernel, the precondition of a linked function under the resources of its
@@ -717,12 +717,6 @@ theorem calleeSpec_guard {X : X86Backend.Callee.CalleeRun} {c : X86Backend.Calle
 
 /-! ## 5. The source run at the functions of a table -/
 
-/-- **The call environment of the linked functions of a module alone**: `tableEnv` at the
-    table of the linked functions of `m` over the table that answers no call. A call of a
-    linked function is answered by its meaning `LinkedFn.sem`; every other call refuses. -/
-def linkedEnv (m : CatCrypt.Crypto.Hax.HaxModule) : CallEnv jasminDialect :=
-  tableEnv (m.linkTable fun _ _ => none)
-
 /-- At the name of a function of a list with distinct names, the first function with that
     name is the function. -/
 theorem find?_name_of_nodup {ls : List CatCrypt.Crypto.Hax.LinkedFn} (hnd : (ls.map (·.name)).Nodup)
@@ -816,10 +810,11 @@ theorem callsToAny_of_regionCallee {fn : String} {Γ : Ctxt jasminDialect} {t : 
   rw [hT]
   exact List.mem_map.mpr ⟨d, List.mem_filter.mpr ⟨hd, by simp [hdv, hmem]⟩, hdv⟩
 
-/-- **The environment of the linked functions of `m` restricted to the names `fs`.** -/
-def linkedEnvOn (m : CatCrypt.Crypto.Hax.HaxModule) (fs : List String) :
+/-- **The environment of the linked functions `ls` restricted to the names `fs`.** -/
+def linkedEnvOn (ls : List CatCrypt.Crypto.Hax.LinkedFn) (fs : List String) :
     CallEnv jasminDialect :=
-  tableEnv fun g vals => if g ∈ fs then m.linkTable (fun _ _ => none) g vals else none
+  tableEnv fun g vals => if g ∈ fs then CatCrypt.Crypto.Hax.linkBi ls (fun _ _ => none) g vals
+    else none
 
 /-- **The table of the summaries of the linked functions `ls`**: the summary `linkedSummary`
     of the first function of `ls` with a name. -/
@@ -828,10 +823,10 @@ def summaryTableL (ls : List CatCrypt.Crypto.Hax.LinkedFn) : LprogIsa.ProcTable 
 
 /-- **A program whose calls name symbols of `fs` denotes the same at the environment restricted
     to `fs`**: the two environments answer every call of a symbol of `fs` alike. -/
-theorem denoteAt_linkedEnvOn {m : CatCrypt.Crypto.Hax.HaxModule} {fs : List String}
+theorem denoteAt_linkedEnvOn {ls : List CatCrypt.Crypto.Hax.LinkedFn} {fs : List String}
     {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
     (hp : callsToAny fs p = true) (k : Nat) (V : Ctxt.Valuation Γ) :
-    p.denoteAt (linkedEnvOn m fs) k V = p.denoteAt (linkedEnv m) k V := by
+    p.denoteAt (linkedEnvOn ls fs) k V = p.denoteAt (linkedEnv ls) k V := by
   unfold NFProg.denoteAt
   induction p with
   | ret vs => rfl
@@ -851,20 +846,20 @@ theorem denoteAt_linkedEnvOn {m : CatCrypt.Crypto.Hax.HaxModule} {fs : List Stri
       obtain ⟨hg, hk⟩ := hp
       simp only [NFProg.denote, ih hk, linkedEnvOn, linkedEnv, tableEnv, hg, ↓reduceIte]
 
-/-- **The table of the summaries of linked functions of a module agrees with the environment of
-    these functions alone.** For linked functions `ls` of a module whose linked functions have
-    distinct names, whose meanings return values only on arguments of their parameter kinds
-    and whose result types are no slice, `summaryTableL ls` agrees with
-    `linkedEnvOn m (ls.map (·.name))`: both are the table and the environment of the module with
-    the functions of `ls` as its linked functions (`procsAgree_tableEnv_linkTable`). -/
-theorem procsAgree_summaryTableL {m : CatCrypt.Crypto.Hax.HaxModule}
-    (hnd : (m.linked.map (·.name)).Nodup) {ls : List CatCrypt.Crypto.Hax.LinkedFn}
-    (hls : ∀ l ∈ ls, l ∈ m.linked)
+/-- **The table of the summaries of linked functions agrees with the environment of these
+    functions alone.** For linked functions `ls` among linked functions `ls₀` with distinct
+    names, whose meanings return values only on arguments of their parameter kinds and whose
+    result types are no slice, `summaryTableL ls` agrees with `linkedEnvOn ls₀ (ls.map (·.name))`:
+    both are the table and the environment of a module with the functions of `ls` as its
+    linked functions (`procsAgree_tableEnv_linkTable`). -/
+theorem procsAgree_summaryTableL {ls₀ : List CatCrypt.Crypto.Hax.LinkedFn}
+    (hnd : (ls₀.map (·.name)).Nodup) {ls : List CatCrypt.Crypto.Hax.LinkedFn}
+    (hls : ∀ l ∈ ls, l ∈ ls₀)
     (hargs : ∀ l ∈ ls, ∀ vals v, l.sem vals = some v → vals.map valKind = linkedKinds l)
     (hres : ∀ l ∈ ls, ∀ t, l.res ≠ .slice t) :
-    ProcsAgree (linkedEnvOn m (ls.map (·.name))) (summaryTableL ls) := by
+    ProcsAgree (linkedEnvOn ls₀ (ls.map (·.name))) (summaryTableL ls) := by
   have hfind : ∀ g, g ∈ ls.map (·.name) → ∃ l ∈ ls,
-      m.linked.find? (·.name == g) = some l ∧ ls.find? (·.name == g) = some l := by
+      ls₀.find? (·.name == g) = some l ∧ ls.find? (·.name == g) = some l := by
     intro g hg
     obtain ⟨l, hl, rfl⟩ := List.mem_map.mp hg
     refine ⟨l, hl, find?_name_of_nodup hnd (hls l hl), ?_⟩
@@ -879,8 +874,8 @@ theorem procsAgree_summaryTableL {m : CatCrypt.Crypto.Hax.HaxModule}
     refine List.find?_eq_none.mpr fun l hl hlg => hg ?_
     exact List.mem_map.mpr ⟨l, hl, by simpa using hlg⟩
   have hbi : (fun g vals => if g ∈ ls.map (·.name)
-        then m.linkTable (fun _ _ => none) g vals else none)
-      = ({ m with linked := ls } : CatCrypt.Crypto.Hax.HaxModule).linkTable
+        then CatCrypt.Crypto.Hax.linkBi ls₀ (fun _ _ => none) g vals else none)
+      = ({ CatCrypt.Crypto.Hax.HaxModule.single default with linked := ls }).linkTable
           (fun _ _ => none) := by
     funext g vals
     by_cases hg : g ∈ ls.map (·.name)
@@ -889,7 +884,7 @@ theorem procsAgree_summaryTableL {m : CatCrypt.Crypto.Hax.HaxModule}
     · simp [CatCrypt.Crypto.Hax.HaxModule.linkTable, CatCrypt.Crypto.Hax.linkBi, hg,
         hnone g hg]
   have htab : summaryTableL ls
-      = procTableOf ({ m with linked := ls } : CatCrypt.Crypto.Hax.HaxModule)
+      = procTableOf ({ CatCrypt.Crypto.Hax.HaxModule.single default with linked := ls })
           LprogIsa.ProcTable.empty := by
     funext g
     simp only [summaryTableL, procTableOf]
@@ -1884,73 +1879,38 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCTCall (guarded)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLink (shiftProg)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics (Halts)
 
-/-- At the name of a linked function of `ls`, the tables of the linked functions of `ls` over
-    any two base tables are equal. -/
-theorem linkBi_name_eq {ls : List LinkedFn} {l : LinkedFn} (hl : l ∈ ls)
-    (bi bi' : _root_.Hax.Builtins) : linkBi ls bi l.name = linkBi ls bi' l.name := by
-  cases hf : ls.find? (·.name == l.name) with
-  | none => exact absurd (List.find?_eq_none.mp hf l hl) (by simp)
-  | some l' =>
-      funext vals
-      rw [linkBi_of_find_some _ _ hf, linkBi_of_find_some _ _ hf]
-
-/-- **The declared procedures of a module agree with the environment of its linked functions
-    over every base table.** The function of each declaration at the table
-    `m.linkTable bi` is the call of that table at the name of a linked function, which is the
-    call of `m.linkTable bi'` (`linkBi_name_eq`); the environment of that table implements
-    it (`implementedBy_tableEnv`). -/
-theorem extAgree_linkedDecls_linkTable (m : HaxModule) (bi bi' : _root_.Hax.Builtins) :
-    CatCrypt.Crypto.Hax.NFToCat.ExtAgree (m.linkTable bi)
-      (catEnvOf (tableEnv (m.linkTable bi'))) (linkedDecls m (m.linkTable bi)) := by
-  intro d hd
-  obtain ⟨l, hl, hd⟩ := List.mem_flatMap.mp hd
-  obtain ⟨as, has, rfl⟩ := List.mem_map.mp hd
-  have hr : linkResOk l.res = true := by
-    have := (List.mem_filter.mp hl).2
-    simp only [Bool.and_eq_true] at this
-    exact this.2
-  have he : (CatCrypt.Crypto.Hax.ImpToNF.tableOf (m.linkTable bi)).call l.name as l.res =
-      (CatCrypt.Crypto.Hax.ImpToNF.tableOf (m.linkTable bi')).call l.name as l.res := by
-    funext xs
-    show (m.linkTable bi l.name _).bind _ = (m.linkTable bi' l.name _).bind _
-    rw [HaxModule.linkTable, HaxModule.linkTable,
-      linkBi_name_eq (List.mem_filter.mp hl).1 bi bi']
-  refine ⟨fun _ => rfl, ?_⟩
-  rw [he]
-  exact implementedBy_tableEnv _ l.name as l.res hr
-    (List.all_eq_true.mp (List.mem_filter.mp has).2)
-
-/-- **A source run of a module is a run of the chain's program at the linked functions
-    alone.** Let the translation of the hax entry return `q` on the module `m` and the chain
-    with the declared procedures of `m` return `p` on `q`. For every value `v` of a source
-    run from an entry state `sa` satisfying `σ.Regions` there are a fuel `k`, a valuation
-    `V` that `σ` reads off `sa` and a value `x` with source value `v` such that `p` denotes
-    `x` at `V` and the fuel `k` in the environment `linkedEnv m`, which answers the calls of
-    the linked functions of `m` by their meanings and refuses every other call. The chain is
-    sound at every environment that implements the declared procedures (`extChain_entry`),
-    and `linkedEnv m` implements them (`extAgree_linkedDecls_linkTable`). -/
-theorem haxEntry_run_linkedEnv {σ : AbiLayout} {m : HaxModule}
+/-- **A source run of an entry is a run of the chain's program at the linked functions
+    alone.** Let the translation of the entry `E` return `q` on the source program `s` and the
+    chain with the declared procedures of `s` return `p` on `q`. For every value `v` of a source
+    run from an entry state `sa` satisfying `σ.Regions` there are a fuel `k`, a valuation `V`
+    that `σ` reads off `sa` and a value `x` with source value `v` such that `p` denotes `x` at
+    `V` and the fuel `k` in the environment `linkedEnv (E.linked s)`, which answers the calls of
+    the linked functions of `s` by their meanings and refuses every other call. The chain is
+    sound at every environment that implements the declared procedures (`extChain_entry`), and
+    `linkedEnv (E.linked s)` implements them with their functions read off the table of the
+    fuel of the run (`NFEntry.linkedAgree`), which declare the same names and signatures
+    (`declared_map_atTable`). -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.run_linkedEnv (E : NFEntry)
+    {σ : AbiLayout} {s : E.Src}
     {q : Σ t : NFDialect.NfTy,
       NFProg NFDialect.nfDialect (CatCrypt.Crypto.Hax.ImpToNF.entryCtx (NFToRoute.abiEntry σ)) [t]}
-    (hq : haxEntry.toNF σ m = some q)
+    (hq : E.toNF σ s = some q)
     {p : NFProg jasminDialect (nfCtx σ)
       [CryptoToJasminCom.mapTy (CatCrypt.Crypto.Hax.NFToCat.catTy q.1)]}
-    (hp : (extChain (haxEntry.decls m) _ q.1).run q.2 = some p)
-    {sa : AState} {v : _root_.Hax.Value} (hreg : σ.Regions sa) (hrun : haxRuns σ m sa v) :
+    (hp : (extChain (E.decls s) _ q.1).run q.2 = some p)
+    {sa : AState} {v : _root_.Hax.Value} (hreg : σ.Regions sa) (hrun : E.Runs σ s sa v) :
     ∃ (k : Nat) (V : Ctxt.Valuation (nfCtx σ)) (x : _),
       AbiValOf σ sa V
       ∧ v = denVal (CryptoToJasminCom.mapTy (CatCrypt.Crypto.Hax.NFToCat.catTy q.1)) x
-      ∧ p.denoteAt (linkedEnv m) k V = some (HVector.cons x .nil) := by
+      ∧ p.denoteAt (linkedEnv (E.linked s)) k V = some (HVector.cons x .nil) := by
   obtain ⟨k, -, env, V, y, -, hsub, -, henv, hV, ⟨tf, hle, hden⟩, hv⟩ :=
-    haxEntry.sound σ m q hq sa v hreg hrun
-  replace hp : (extChain (linkedDecls m (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) _
-      q.1).run q.2 = some p := by
-    rw [extChain_congr (declared_linkedDecls m
-      (m.linkTable CatCrypt.Crypto.Hax.hax64WExit) CatCrypt.Crypto.Hax.hax64WExit)]
+    E.sound σ s q hq sa v hreg hrun
+  replace hp : (extChain ((E.decls s).map (·.atTable (E.bi s k))) _ q.1).run q.2 = some p := by
+    rw [extChain_congr (declared_map_atTable (E.decls s) (E.bi s k))]
     exact hp
-  obtain ⟨hA, x, hx, hxv⟩ := extChain_entry hsub (haxEntry.fieldCalls σ m q hq k)
-    (haxEntry.fieldCallsWide σ m q hq k) tf k (linkedEnv m)
-    (extAgree_linkedDecls_linkTable m _ _) henv q.2 hp V hV hden hle
+  obtain ⟨hA, x, hx, hxv⟩ := extChain_entry hsub (E.fieldCalls σ s q hq k)
+    (E.fieldCallsWide σ s q hq k) tf k (linkedEnv (E.linked s)) (E.linkedAgree σ s q hq k)
+    henv q.2 hp V hV hden hle
   exact ⟨k, _, x, hA, hv.trans hxv.symm, hx⟩
 
 /-- The argument values `insVals` at scalar kinds, one per word, are the words as source
@@ -2240,10 +2200,10 @@ theorem LinkedWordKernel.wordCallee {l : LinkedFn} (K : LinkedWordKernel l) {c :
 
 /-! ## 10. The source run at the table of the callee alone -/
 
-/-- The environment of the linked functions of `m` restricted to the name `f`: `linkedEnvOn` at
+/-- The environment of the linked functions `ls` restricted to the name `f`: `linkedEnvOn` at
     `[f]`. -/
-abbrev linkedEnvAt (m : HaxModule) (f : String) : CallEnv jasminDialect :=
-  linkedEnvOn m [f]
+abbrev linkedEnvAt (ls : List LinkedFn) (f : String) : CallEnv jasminDialect :=
+  linkedEnvOn ls [f]
 
 /-- The table with the summary of `l` alone: `summaryTableL` at `[l]`. -/
 abbrev summaryTable (l : LinkedFn) : LprogIsa.ProcTable := summaryTableL [l]
@@ -2260,11 +2220,11 @@ theorem callsTo_legalizeRegion (f : String) {Γ : Ctxt jasminDialect} {t : Jasmi
 
 /-- **The table of the callee alone agrees with the environment of the callee alone**:
     `procsAgree_summaryTableL` at the one linked function `l`. -/
-theorem procsAgree_summaryTable {m : HaxModule} (hnd : (m.linked.map (·.name)).Nodup)
-    {l : LinkedFn} (hl : l ∈ m.linked)
+theorem procsAgree_summaryTable {ls₀ : List LinkedFn} (hnd : (ls₀.map (·.name)).Nodup)
+    {l : LinkedFn} (hl : l ∈ ls₀)
     (hargs : ∀ vals v, l.sem vals = some v → vals.map valKind = linkedKinds l)
     (hres : ∀ t, l.res ≠ .slice t) :
-    ProcsAgree (linkedEnvAt m l.name) (summaryTable l) :=
+    ProcsAgree (linkedEnvAt ls₀ l.name) (summaryTable l) :=
   procsAgree_summaryTableL (ls := [l]) hnd
     (fun l' hl' => by rw [List.mem_singleton.mp hl']; exact hl)
     (fun l' hl' => by rw [List.mem_singleton.mp hl']; exact hargs)
@@ -2295,10 +2255,10 @@ theorem callsTo_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasm
 
 /-- **A program whose calls name `f` denotes the same at the environment restricted to
     `f`** (`denoteAt_linkedEnvOn`). -/
-theorem denoteAt_linkedEnvAt {m : HaxModule} {f : String} {Γ : Ctxt jasminDialect}
+theorem denoteAt_linkedEnvAt {ls : List LinkedFn} {f : String} {Γ : Ctxt jasminDialect}
     {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} (hp : callsTo f p = true)
     (k : Nat) (V : Ctxt.Valuation Γ) :
-    p.denoteAt (linkedEnvAt m f) k V = p.denoteAt (linkedEnv m) k V :=
+    p.denoteAt (linkedEnvAt ls f) k V = p.denoteAt (linkedEnv ls) k V :=
   denoteAt_linkedEnvOn hp k V
 
 end Linked

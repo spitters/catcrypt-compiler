@@ -30,7 +30,12 @@ The operations of the fragment are the scalar calls of `hax64NFScalar`, `index` 
 unsigned integer type of at most `64` bits (`uintLit?`, bound by `bvConst`), the bit and unit
 constants (`constBit`, `constUnit`), the subtraction
 `bin .sub 64` of `64`-bit words (`binRes?`, by `binChain`), which computes the counter of a
-reverse loop, and the loop operations `ctr` and `trip`. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
+reverse loop, the unsigned division and remainder `bin .udiv 64` and `bin .urem 64`
+(`binRes?`, by `divChain`), and the loop operations `ctr` and `trip`. Division and remainder
+are restoring division, one step per bit of the dividend, on the existing word operations,
+the carry of an addition and the selection `ite`; the source fails on a zero divisor, so the
+target is only related to runs on a divisor other than zero, and the target code has no
+instruction that faults. A shift `Shr#64` or `Shl#64` by a literal below `64` is the shift by an
 immediate. Every scalar is a `64`-bit word of the target: a call of the scalar table at a
 width below `64` computes on `64`-bit words and reduces modulo `2 ^ w` by a mask, and a
 comparison is a bit (`scalarRes?`); such a translation is a sequence of bindings
@@ -55,8 +60,11 @@ times.
   translation of a literal of an unsigned integer type.
 * `ctrRes`, `satSubRes`, `tripSub` — the loop counter and the trip count on a lower bound
   other than the literal `0`.
+* `wk7`, `divStepR`, `divLoop`, `divChain` — a variable under seven bindings, one step of
+  restoring division on words, its bindings over the remaining bits, and unsigned division
+  and remainder as bindings.
 * `catCallRd`, `binRes?`, `catOp`, `emitRes`, `nfToCat` — the translation of a call, of a
-  word subtraction, of an operation,
+  word subtraction, division and remainder, of an operation,
   of the bindings of a translated operation and of a program.
 * `pinAll` — the `bvConst` bindings of the literals among a vector of readings, in front of
   a program on their variables.
@@ -73,6 +81,8 @@ times.
   related to its value.
 * `satSub_eq`, `ctrRes_sound`, `tripSub_sound` — the loop counter and the trip count on any
   lower bound simulate.
+* `divStep_spec`, `divLoop_rel`, `divChain_rel` — restoring division computes the quotient
+  and the remainder, at every width, on a divisor other than zero.
 * `catOp_sound` — a translated operation is related to the value of the source operation.
 * `emitRes_sound` — the bindings of a translated operation simulate.
 * `pinAll_of_pinVars`, `pinAll_elim`, `pinAll_sound` — `pinAll` binds nothing on readings
@@ -959,13 +969,92 @@ def tripSub {Δ : Ctxt catCryptDialect} (rlo : Rd Δ .int) (rhi : Rd Δ (.word 6
   | .lit k _, .lit m _ => some (.expr (cstE (BitVec.ofNat 64 (m - k))))
   | rlo, rhi => withVar2 (.word 64) .int rhi rlo fun x y => some (satSubRes x y)
 
+/-- One step of restoring division at the width `w` on the bit `n` of the dividend `a`, with
+    the word `one`, the complement `nb` of the divisor and the carry-in `cin`: the next
+    quotient and remainder from the quotient `q` and the remainder `r`. -/
+def divStepR {w : Nat} (n : Nat) (a one nb q r : BitVec w) (cin : BitVec 1) :
+    BitVec w × BitVec w :=
+  let r2 := r + r + (BitVec.ushiftRight a (shiftMask w n) &&& one)
+  let ge := decide (carryOutBitC r2 nb cin = cin) ||
+    decide (BitVec.ushiftRight r (shiftMask w (w - 1)) = one)
+  (if ge then q + q + one else q + q, if ge then addCarryWordC r2 nb cin else r2)
+
+/-- A variable under seven more bindings. -/
+def wk7 {Δ : Ctxt catCryptDialect} {t c₁ c₂ c₃ c₄ c₅ c₆ c₇ : CryptoTy} (v : Var Δ t) :
+    Var (c₇ :: c₆ :: c₅ :: c₄ :: c₃ :: c₂ :: c₁ :: Δ) t :=
+  v.there.there.there.there.there.there.there
+
+/-- The remaining `n` steps of restoring division at the width `w`, on the variables of the
+    dividend `a`, the divisor `b`, the constant `1`, the complement `nb` of `b`, the carry-in
+    `cin` (the bit `1`), the partial quotient `q` and the partial remainder `r`: each step binds
+    the top bit of `r`, twice `r` plus the bit `n - 1` of `a`, its sum with `nb` and `cin`
+    (the difference with `b`) and the carry of that sum, as two adjacent bindings on the same
+    operands, the selection of the difference on the carry or the top bit, and the quotient
+    doubled plus the selected bit; after the last step the result reads `r` when
+    `urem` and `q` otherwise. -/
+def divLoop (w : Nat) (urem : Bool) : (n : Nat) → {Δ : Ctxt catCryptDialect} →
+    (a b one nb q r : Var Δ (.sword w)) → Var Δ (.sword 1) → OpRes Δ (.word w)
+  | 0, _, _, _, _, _, q, r, _ => .rd (.var (if urem then r else q))
+  | n + 1, _, a, b, one, nb, q, r, cin =>
+    .bind (.sword w) ⟨.bvShiftR w (w - 1), rfl, .cons r .nil⟩
+    (.bind .bit ⟨.bvEq w, rfl, .cons .here (.cons one.there .nil)⟩
+    (.bind (.sword w) ⟨.bvAdd w, rfl, .cons r.there.there (.cons r.there.there .nil)⟩
+    (.bind (.sword w) ⟨.bvShiftR w n, rfl, .cons a.there.there.there .nil⟩
+    (.bind (.sword w) ⟨.bvAnd w, rfl, .cons .here (.cons one.there.there.there.there .nil)⟩
+    (.bind (.sword w) ⟨.bvAdd w, rfl, .cons (Var.there (Var.there .here)) (.cons .here .nil)⟩
+    (.bind (.sword w) ⟨.bvAddCarryLo w, rfl, .cons .here
+        (.cons nb.there.there.there.there.there.there
+          (.cons cin.there.there.there.there.there.there .nil))⟩
+    (.bind (.sword 1) ⟨.bvAddCarryHi w, rfl, .cons (Var.there .here)
+        (.cons nb.there.there.there.there.there.there.there
+          (.cons cin.there.there.there.there.there.there.there .nil))⟩
+    (.bind .bit ⟨.bvEq 1, rfl, .cons .here
+        (.cons cin.there.there.there.there.there.there.there.there .nil)⟩
+    (.bind .bit ⟨.or, rfl, .cons .here
+        (.cons (Var.there (Var.there (Var.there (Var.there (Var.there (Var.there
+          (Var.there .here))))))) .nil)⟩
+    (.bind (.sword w) ⟨.ite (.sword w), rfl, .cons .here
+        (.cons (Var.there (Var.there (Var.there .here)))
+          (.cons (Var.there (Var.there (Var.there (Var.there .here)))) .nil))⟩
+    (.bind (.sword w) ⟨.bvAdd w, rfl,
+        .cons q.there.there.there.there.there.there.there.there.there.there.there
+          (.cons q.there.there.there.there.there.there.there.there.there.there.there .nil)⟩
+    (.bind (.sword w) ⟨.bvAdd w, rfl, .cons .here
+        (.cons one.there.there.there.there.there.there.there.there.there.there.there.there
+          .nil)⟩
+    (.bind (.sword w) ⟨.ite (.sword w), rfl,
+        .cons (Var.there (Var.there (Var.there .here)))
+          (.cons .here (.cons (Var.there .here) .nil))⟩
+    (divLoop w urem n (wk7 (wk7 a)) (wk7 (wk7 b)) (wk7 (wk7 one)) (wk7 (wk7 nb)) .here
+      (Var.there (Var.there (Var.there .here))) (wk7 (wk7 cin))))))))))))))))
+
+/-- **Unsigned division and remainder** of two words of the width `w` as a sequence of
+    bindings of quiet operations (restoring division, one step per bit of the dividend): the
+    constants `1`, all ones and the bit `1`, the complement of `b`, the word `0` as the initial
+    quotient and remainder, and `divLoop` over the `w` bits; the remainder when `urem`, the
+    quotient otherwise. The definition is irreducible, so that unification at a fixed width
+    does not unfold the `w` steps; `divChain_rel` and `divChain_image` unfold it once. -/
+@[irreducible] def divChain (w : Nat) (urem : Bool) {Δ : Ctxt catCryptDialect}
+    (a b : Var Δ (.sword w)) : OpRes Δ (.word w) :=
+  .bind (.sword w) ⟨.bvConst w 1, rfl, .nil⟩
+  (.bind (.sword w) ⟨.bvConst w (BitVec.allOnes w), rfl, .nil⟩
+  (.bind (.sword w) ⟨.bvXor w, rfl, .cons b.there.there (.cons .here .nil)⟩
+  (.bind (.sword 1) ⟨.bvConst 1 1, rfl, .nil⟩
+  (.bind (.sword w) ⟨.bvConst w 0, rfl, .nil⟩
+  (divLoop w urem w a.there.there.there.there.there b.there.there.there.there.there
+    (Var.there (Var.there (Var.there (Var.there .here)))) (Var.there (Var.there .here))
+    .here .here (Var.there .here))))))
+
 /-- The translation of a binary word operation of `nfDialect` on two readings: the
-    subtraction of `64`-bit words by `binChain`, on word variables (`withVar2`); `none` on
-    every other operation. -/
+    subtraction of `64`-bit words by `binChain`, and their unsigned division and remainder by
+    `divChain`, on word variables (`withVar2`); `none` on every other operation. -/
 def binRes? {Δ : Ctxt catCryptDialect} (o : NfBinOp) (w : Nat) (a b : Rd Δ (.word w)) :
     Option (OpRes Δ (.word w)) :=
   if h : o = .sub ∧ w = 64 then
     h.2 ▸ withVar2 (.word 64) (.word 64) (h.2 ▸ a) (h.2 ▸ b) fun x y => binChain .sub 64 x y
+  else if h : (o = .udiv ∨ o = .urem) ∧ w = 64 then
+    h.2 ▸ withVar2 (.word 64) (.word 64) (h.2 ▸ a) (h.2 ▸ b) fun x y =>
+      some (divChain 64 (decide (o = .urem)) x y)
   else none
 
 /-- The translation of the literal `v` at an unsigned integer type of at most `64` bits: the
@@ -979,11 +1068,11 @@ def uintLit? {Δ : Ctxt catCryptDialect} : (t : NfTy) → Int → Option (OpRes 
 /-- **The translation of an operation** of the fragment on the readings `σ` of its
     arguments: a call by `catCallRd`; an integer literal in `[0, 2^64)` as a literal reading,
     and a literal of an unsigned integer type by `uintLit?`; a bit constant and the unit
-    constant by `constBit` and `constUnit`; the subtraction of `64`-bit words
-    by `binRes?`; `ctr` and `trip` on a lower bound that reads as the literal `0` as the
-    reading of the index and of the upper bound (`Rd.toCount`), and on every other lower
-    bound by `ctrRes` and `tripSub`; `boundInt` as the reading of its argument as a
-    `64`-bit word (`Rd.toCount`). -/
+    constant by `constBit` and `constUnit`; the subtraction, the unsigned division and the
+    unsigned remainder of `64`-bit words by `binRes?`; `ctr` and `trip` on a lower bound that
+    reads as the literal `0` as the reading of the index and of the upper bound
+    (`Rd.toCount`), and on every other lower bound by `ctrRes` and `tripSub`; `boundInt` as
+    the reading of its argument as a `64`-bit word (`Rd.toCount`). -/
 def catOp{Γ : Ctxt nfDialect} {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
     (op : NfOp) → HVector (fun t => Var Γ t) op.sig → Option (OpRes Δ op.ret)
   | .named _ op, args => catOp σ op args
@@ -2630,6 +2719,182 @@ theorem ctrRes_sound {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {rlo : Rd Δ
   simp only [BitVec.toNat_ofNat]
   omega
 
+/-- **One step of restoring division.** When `q` and `r` are the quotient and the remainder
+    of the dividend shifted right by `n + 1` bits, the step on the bit `n` gives the quotient
+    and the remainder of the dividend shifted right by `n` bits. -/
+theorem divStep_spec {w n : Nat} (hn : n < w) (a b one nb q r : BitVec w) (cin : BitVec 1)
+    (hb : b ≠ 0) (hone : one = 1) (hnb : nb = b ^^^ BitVec.allOnes w) (hcin : cin = 1)
+    (hq : q.toNat = a.toNat / 2 ^ (n + 1) / b.toNat)
+    (hr : r.toNat = a.toNat / 2 ^ (n + 1) % b.toNat) :
+    (divStepR n a one nb q r cin).1.toNat = a.toNat / 2 ^ n / b.toNat ∧
+      (divStepR n a one nb q r cin).2.toNat = a.toNat / 2 ^ n % b.toNat := by
+  subst hone hnb hcin
+  have hbp : 0 < b.toNat := by
+    rcases Nat.eq_zero_or_pos b.toNat with h | h
+    · exact absurd (BitVec.eq_of_toNat_eq (by simpa using h)) hb
+    · exact h
+  have hblt := b.isLt
+  have hrlt := r.isLt
+  have hpw : 2 ^ w = 2 * 2 ^ (w - 1) := by
+    rw [← Nat.pow_succ']; congr 1; omega
+  -- the quotient and the remainder of the shifted dividend
+  set A := a.toNat / 2 ^ (n + 1) with hA
+  set A' := a.toNat / 2 ^ n with hA'
+  set bit := A' % 2 with hbit
+  have hAA : A' = 2 * A + bit := by
+    have : A = A' / 2 := by
+      rw [hA, hA', Nat.div_div_eq_div_mul, Nat.pow_succ]
+    omega
+  have hbit2 : bit < 2 := Nat.mod_lt _ (by decide)
+  have hdm := Nat.div_add_mod A b.toNat
+  set Q := A / b.toNat
+  set R := A % b.toNat
+  have hRlt : R < b.toNat := Nat.mod_lt _ hbp
+  have hA'lt : A' < 2 ^ w := lt_of_le_of_lt (Nat.div_le_self _ _) a.isLt
+  have hw : 0 < w := by omega
+  have h1w : (1 : BitVec w).toNat = 1 := by
+    simp [Nat.one_mod_two_pow, hw]
+  have hai : (BitVec.ushiftRight a (shiftMask w n) &&& 1).toNat = bit := by
+    rw [shiftMask_of_lt hn, BitVec.toNat_and, h1w, Nat.and_one_is_mod]
+    show (a >>> n).toNat % 2 = bit
+    rw [BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, hbit, hA']
+  have hr2 : (r + r + (BitVec.ushiftRight a (shiftMask w n) &&& 1)).toNat =
+      (2 * R + bit) % 2 ^ w := by
+    rw [BitVec.toNat_add, BitVec.toNat_add, hai, hr, Nat.mod_add_mod]
+    congr 1; omega
+  have hc : BitVec.ushiftRight r (shiftMask w (w - 1)) = 1 ↔ 2 ^ (w - 1) ≤ R := by
+    rw [shiftMask_of_lt (by omega), ← BitVec.toNat_inj, h1w]
+    simp only [BitVec.ushiftRight_eq, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow]
+    rw [hr]
+    constructor
+    · intro h
+      by_contra hlt
+      rw [Nat.div_eq_of_lt (by omega)] at h
+      omega
+    · intro h
+      have h2 : R / 2 ^ (w - 1) < 2 := by
+        rw [Nat.div_lt_iff_lt_mul (by positivity)]; omega
+      have h3 : 1 ≤ R / 2 ^ (w - 1) := (Nat.le_div_iff_mul_le (by positivity)).mpr (by omega)
+      omega
+  have hcar : ∀ x : BitVec w, carryOutBitC x (b ^^^ BitVec.allOnes w) (1 : BitVec 1) = 1 ↔
+      b.toNat ≤ x.toNat := by
+    intro x
+    have hx := x.isLt
+    unfold carryOutBitC
+    rw [BitVec.xor_allOnes, BitVec.toNat_not]
+    have h11 : (1 : BitVec 1).toNat = 1 := rfl
+    rw [h11]
+    split
+    · simp only [true_iff]; omega
+    · simp only [show (0 : BitVec 1) ≠ 1 by decide, false_iff]; omega
+  have hbq : b.toNat * (2 * Q + 1) = 2 * (b.toNat * Q) + b.toNat := by ring
+  have hbq0 : b.toNat * (2 * Q) = 2 * (b.toNat * Q) := by ring
+  have hle1 : 2 * Q + 1 ≤ b.toNat * (2 * Q + 1) := Nat.le_mul_of_pos_left _ hbp
+  have hle0 : 2 * Q ≤ b.toNat * (2 * Q) := Nat.le_mul_of_pos_left _ hbp
+  have hqq : q.toNat = Q := hq
+  have hsub : ∀ x : BitVec w,
+      addCarryWordC x (b ^^^ BitVec.allOnes w) (1 : BitVec 1) = x - b := by
+    intro x
+    change x + (b ^^^ BitVec.allOnes w) + 1 = x - b
+    rw [BitVec.xor_allOnes, BitVec.sub_eq_add_neg, BitVec.neg_eq_not_add, BitVec.add_assoc]
+    rfl
+  simp only [divStepR, hcar, hc, hr2, hsub]
+  by_cases h1 : 2 ^ (w - 1) ≤ R
+  · have hm : (2 * R + bit) % 2 ^ w = 2 * R + bit - 2 ^ w := by
+      rw [Nat.mod_eq_sub_mod (by omega), Nat.mod_eq_of_lt (by omega)]
+    have hd : A' / b.toNat = 2 * Q + 1 ∧ A' % b.toNat = 2 * R + bit - b.toNat :=
+      (Nat.div_mod_unique hbp).mpr ⟨by omega, by omega⟩
+    simp only [h1, decide_true, Bool.or_true, ite_true]
+    refine And.symm ⟨?_, ?_⟩
+    · rw [BitVec.toNat_sub, hr2, hm, hd.2, Nat.mod_eq_of_lt (by omega)]
+      omega
+    · rw [BitVec.toNat_add, BitVec.toNat_add, h1w, hqq, hd.1,
+        Nat.mod_eq_of_lt (by omega : Q + Q < 2 ^ w), Nat.mod_eq_of_lt (by omega)]
+      omega
+  · have hm : (2 * R + bit) % 2 ^ w = 2 * R + bit := Nat.mod_eq_of_lt (by omega)
+    rw [hm]
+    by_cases h2 : b.toNat ≤ 2 * R + bit
+    · have hd : A' / b.toNat = 2 * Q + 1 ∧ A' % b.toNat = 2 * R + bit - b.toNat :=
+        (Nat.div_mod_unique hbp).mpr ⟨by omega, by omega⟩
+      simp only [h2, decide_true, Bool.true_or, ite_true]
+      refine And.symm ⟨?_, ?_⟩
+      · rw [BitVec.toNat_sub, hr2, hm, hd.2, Nat.mod_eq_sub_mod (by omega),
+          Nat.mod_eq_of_lt (by omega)]
+        omega
+      · rw [BitVec.toNat_add, BitVec.toNat_add, h1w, hqq, hd.1,
+          Nat.mod_eq_of_lt (by omega : Q + Q < 2 ^ w), Nat.mod_eq_of_lt (by omega)]
+        omega
+    · have hd : A' / b.toNat = 2 * Q ∧ A' % b.toNat = 2 * R + bit :=
+        (Nat.div_mod_unique hbp).mpr ⟨by omega, by omega⟩
+      simp only [h1, h2, decide_false, Bool.or_false, Bool.false_eq_true, ite_false]
+      refine And.symm ⟨?_, ?_⟩
+      · rw [hr2, hm, hd.2]
+      · rw [BitVec.toNat_add, hqq, hd.1, Nat.mod_eq_of_lt (by omega)]
+        omega
+
+/-- **`divLoop` computes the quotient and the remainder.** When `q` and `r` hold the quotient
+    and the remainder of the dividend shifted right by `n` bits, the remaining `n` steps give
+    the remainder of the dividend and the divisor when `urem`, and their quotient otherwise. -/
+theorem divLoop_rel {w : Nat} (urem : Bool) : ∀ (n : Nat) {Δ : Ctxt catCryptDialect}
+    (W : Valuation Δ) (a b one nb q r : Var Δ (.sword w)) (cin : Var Δ (.sword 1)),
+    n ≤ w → (show BitVec w from b.lookup W) ≠ 0 →
+    (show BitVec w from one.lookup W) = 1 →
+    (show BitVec w from nb.lookup W) = (show BitVec w from b.lookup W) ^^^ BitVec.allOnes w →
+    (show BitVec 1 from cin.lookup W) = 1 →
+    (show BitVec w from q.lookup W).toNat =
+      (show BitVec w from a.lookup W).toNat / 2 ^ n / (show BitVec w from b.lookup W).toNat →
+    (show BitVec w from r.lookup W).toNat =
+      (show BitVec w from a.lookup W).toNat / 2 ^ n % (show BitVec w from b.lookup W).toNat →
+    OpResRel W (.word w)
+      (if urem then (show BitVec w from a.lookup W) % (show BitVec w from b.lookup W)
+        else (show BitVec w from a.lookup W) / (show BitVec w from b.lookup W))
+      (divLoop w urem n a b one nb q r cin) := by
+  intro n
+  induction n with
+  | zero =>
+      intro Δ W a b one nb q r cin _ _ _ _ _ hq hr
+      cases urem
+      · show (show BitVec w from a.lookup W) / (show BitVec w from b.lookup W) = q.lookup W
+        apply BitVec.eq_of_toNat_eq
+        rw [BitVec.toNat_udiv, hq]; simp
+      · show (show BitVec w from a.lookup W) % (show BitVec w from b.lookup W) = r.lookup W
+        apply BitVec.eq_of_toNat_eq
+        rw [BitVec.toNat_umod, hr]; simp
+  | succ n ih =>
+      intro Δ W a b one nb q r cin hn hb hone hnb hcin hq hr
+      have hs := divStep_spec (by omega : n < w) (show BitVec w from a.lookup W)
+        (show BitVec w from b.lookup W) (show BitVec w from one.lookup W)
+        (show BitVec w from nb.lookup W) (show BitVec w from q.lookup W)
+        (show BitVec w from r.lookup W) (show BitVec 1 from cin.lookup W) hb hone hnb hcin hq hr
+      simp only [divLoop, OpResRel]
+      exact ih _ (wk7 (wk7 a)) (wk7 (wk7 b)) (wk7 (wk7 one)) (wk7 (wk7 nb)) .here
+        (Var.there (Var.there (Var.there .here))) (wk7 (wk7 cin)) (by omega) hb hone hnb hcin
+        hs.1 hs.2
+
+/-- **`divChain` computes unsigned division and remainder.** On a divisor that is not zero,
+    the result of `divChain w urem a b` is the remainder of the words of `a` and `b` when
+    `urem`, and their quotient otherwise. -/
+theorem divChain_rel {w : Nat} (urem : Bool) {Δ : Ctxt catCryptDialect} (W : Valuation Δ)
+    (a b : Var Δ (.sword w)) (hb : (show BitVec w from b.lookup W) ≠ 0) :
+    OpResRel W (.word w)
+      (if urem then (show BitVec w from a.lookup W) % (show BitVec w from b.lookup W)
+        else (show BitVec w from a.lookup W) / (show BitVec w from b.lookup W))
+      (divChain w urem a b) := by
+  have h0 : (show BitVec w from a.lookup W).toNat / 2 ^ w = 0 :=
+    Nat.div_eq_of_lt (BitVec.isLt _)
+  simp only [divChain, OpResRel]
+  exact divLoop_rel urem w _ a.there.there.there.there.there b.there.there.there.there.there
+    (Var.there (Var.there (Var.there (Var.there .here)))) (Var.there (Var.there .here)) .here
+    .here (Var.there .here) (le_refl w) hb rfl rfl rfl
+    (by
+      change (0 : BitVec w).toNat = (show BitVec w from a.lookup W).toNat / 2 ^ w /
+        (show BitVec w from b.lookup W).toNat
+      simp [h0])
+    (by
+      change (0 : BitVec w).toNat = (show BitVec w from a.lookup W).toNat / 2 ^ w %
+        (show BitVec w from b.lookup W).toNat
+      simp [h0])
+
 /-- **An operation of the fragment simulates.** Under `SubTable bi`, the result `catOp`
     builds from readings relating the valuations is related to the value of the
     operation. -/
@@ -2825,7 +3090,41 @@ theorem catOp_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi) {Γ : Ctxt nf
         have h2 := (b.lookup V : BitVec 64).isLt
         simp only [BitVec.toNat_sub, BitVec.toNat_ofNat]
         omega
-      · cases h
+      · split at h
+        · obtain ⟨ho, rfl⟩ := ‹_ ∧ _›
+          have hd : (show BitVec 64 from b.lookup V) ≠ 0 ∧
+              y = (if decide (o = .urem) then
+                (show BitVec 64 from a.lookup V) % (show BitVec 64 from b.lookup V)
+              else (show BitVec 64 from a.lookup V) / (show BitVec 64 from b.lookup V)) := by
+            rcases ho with rfl | rfl
+            · change (if (show BitVec 64 from b.lookup V) = 0 then none
+                else some ((show BitVec 64 from a.lookup V) /
+                  (show BitVec 64 from b.lookup V))) = some y at hy
+              split at hy
+              · cases hy
+              · exact ⟨‹_›, (Option.some.inj hy).symm⟩
+            · change (if (show BitVec 64 from b.lookup V) = 0 then none
+                else some ((show BitVec 64 from a.lookup V) %
+                  (show BitVec 64 from b.lookup V))) = some y at hy
+              split at hy
+              · cases hy
+              · exact ⟨‹_›, (Option.some.inj hy).symm⟩
+          obtain ⟨hb0, rfl⟩ := hd
+          refine withVar2_sound W (hag _ a) (hag _ b) _ _ h ?_
+          intro Δ' W' x z res' hk ha hb
+          have ha' : (show BitVec 64 from a.lookup V) = x.lookup W' := by
+            change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at ha
+            exact BitVec.eq_of_toNat_eq (by exact_mod_cast _root_.Hax.Value.int.inj ha)
+          have hb' : (show BitVec 64 from b.lookup V) = z.lookup W' := by
+            change _root_.Hax.Value.int _ = _root_.Hax.Value.int _ at hb
+            exact BitVec.eq_of_toNat_eq (by exact_mod_cast _root_.Hax.Value.int.inj hb)
+          cases hk
+          rw [ha', hb']
+          have hz : (show BitVec 64 from z.lookup W') ≠ 0 := by rw [← hb']; exact hb0
+          generalize decide (o = NfBinOp.urem) = u
+          have hr := divChain_rel (w := 64) u W' x z hz
+          exact hr
+        · cases h
   | arrRepeat n t =>
       intro args res y h hy
       rcases args with _ | ⟨a, _ | _⟩
