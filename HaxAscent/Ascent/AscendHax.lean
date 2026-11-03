@@ -441,11 +441,6 @@ def unfoldArg (goal : MVarId) (target : Expr) (i : Nat) (what : String) : M (Lis
   let target' ← shareCommonInc (mkAppN target.getAppFn (target.getAppArgs.set! i arg'))
   return [← goal.replaceTargetDefEq target']
 
-/-- The binder names of a `∀` telescope. -/
-partial def binderNames : Expr → Array Name
-  | .forallE n _ b _ => #[n] ++ binderNames b
-  | _ => #[]
-
 /-- Apply `corresB_forFold` with the next loop specification. -/
 def applyForFold (goal : MVarId) (target : Expr) : M (List MVarId) := do
   let spec :: rest := (← get).loops
@@ -453,7 +448,7 @@ def applyForFold (goal : MVarId) (target : Expr) : M (List MVarId) := do
   modify fun s => { s with loops := rest }
   let c ← mkConstWithFreshMVarLevels ``corresB_forFold
   let cty ← Meta.inferType c
-  let names := binderNames cty
+  let names := cty.getForallBinderNames.toArray
   let (mvs, _, concl) ← forallMetaTelescope cty
   let pick (n : Name) : M Expr := do
     let some i := names.findIdx? (· == n) | throwError "hax_corres: no binder {n}"
@@ -549,7 +544,7 @@ def prepare (goal : MVarId) (Γ₀? : Option Expr) : MetaM (MVarId × List MVarI
   let c ← mkConstWithFreshMVarLevels ``corres_of_corresB
   let cty ← Meta.inferType c
   let (mvs, _, concl) ← forallMetaTelescope cty
-  let names := binderNames cty
+  let names := cty.getForallBinderNames.toArray
   let some iΓ := names.findIdx? (· == `Γ₀) | throwError "hax_corres: internal"
   unless ← isDefEq mvs[iΓ]! Γ₀ do throwError "hax_corres: the entry bindings do not fit"
   unless ← isDefEq concl target do throwError "hax_corres: internal: conclusion mismatch"

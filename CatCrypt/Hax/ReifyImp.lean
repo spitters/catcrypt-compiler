@@ -524,12 +524,6 @@ partial def withShared {α : Type} (names : Array Name) (args : Array Expr)
     else withShared names args k (i + 1) (acc.push a) fvs
   else k acc fvs
 
-/-- The binder names of the leading `∀` binders of `ty`. -/
-partial def binderNames (ty : Expr) (acc : Array Name := #[]) : Array Name :=
-  match ty with
-  | .forallE n _ b _ => binderNames b (acc.push n)
-  | _ => acc
-
 /-- `whnfCore` without zeta-reduction of `let` expressions, so that the `let`s of shared
     arguments stay; `let` variables are still unfolded (zeta-delta), so that a match on one
     reduces. -/
@@ -571,7 +565,7 @@ def unfoldNamed (cs : Array Name) (e : Expr) (fuel : Nat := 100000) (rs : Array 
   let unfold? (t : Expr) : MetaM (Option Expr) := do
     let some c := t.getAppFn.constName? | return none
     unless cs.contains c do return none
-    withShared (binderNames (← getConstInfo c).type) t.getAppArgs fun args fvs => do
+    withShared (← getConstInfo c).type.getForallBinderNames.toArray t.getAppArgs fun args fvs => do
       let some t' ← unfoldDefinition? (mkAppN t.getAppFn args) | return none
       tick
       return some (← mkLetFVars fvs (← whnfCoreKeepLets t'))

@@ -19,7 +19,7 @@ set_option autoImplicit false
 `x86IsaK` is the x86 instruction set whose step is the bounds-checked step
 `JasminLsemMemChecked.evalInstrPMemFk true`. With the summaries of a procedure table `T`,
 its runs are the checked runs of `x86Isa.withProcs T`. This module discharges, for
-`x86IsaK`, the two instruction-set hypotheses of `ImageAddrCall.haltsC_of_linkedChecks`:
+`x86IsaK`, the two instruction-set hypotheses of `ImageAddrCallW.haltsC_of_linkedChecksOne`:
 every step is a checked step, and the steps of a body that passes `deadSegB` keep the
 agreement of the dead table.
 
@@ -49,9 +49,8 @@ other register and the flags, as `LprogIsa.retRes` does.
 * `refRun_checked`: a halting run of `x86Isa.withProcs T` on a body accepted by
   `idxInvCheckPB` from pc `0` and a state satisfying the entry facts is a run of
   `x86IsaK.withProcs T`.
-* `haltsC_of_linkedChecksKW`: the same at the wide class `ImageAddrCallW.printedAddrCWB`.
-* `haltsC_of_linkedChecksK`: `ImageAddrCall.haltsC_of_linkedChecks` at `x86IsaK`, from the
-  Boolean check `deadSegB`.
+* `haltsC_of_linkedChecksKW`: `ImageAddrCallW.haltsC_of_linkedChecksOne` at `x86IsaK`, at the
+  class `ImageAddrCallW.printedAddrCWB`, from the Boolean check `deadSegB`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CheckedIsaCall
@@ -104,7 +103,7 @@ theorem x86IsaK_step : x86IsaK.step = JasminLsemMemChecked.evalInstrPMemFk true 
 theorem x86IsaK_condEval : x86IsaK.condEval = decC := rfl
 
 /-- Every step of `x86IsaK` is a bounds-checked step: the hypothesis `hI` of
-    `ImageAddrCall.haltsC_of_linkedChecks`. -/
+    `ImageAddrCallW.haltsC_of_linkedChecksOne`. -/
 theorem x86IsaK_checked : ∀ (P : LprogM) (i : LinstrRM) (s t : LstateMF),
     x86IsaK.step P i s = some t → JasminLsemMemChecked.evalInstrPMemFk true P i s = some t :=
   fun _ _ _ _ h => h
@@ -318,7 +317,7 @@ theorem steps_deadSegK {D : DeadTab} {fn : String} {B : List LinstrRM}
           exact ⟨u', ⟨c', hc', hu'⟩, hagu⟩
 
 /-- **At `x86IsaK`, the steps of a body that passes `deadSegB` keep the agreement of the
-    table**: the hypothesis `hD` of `ImageAddrCall.haltsC_of_linkedChecks`. -/
+    table**: the hypothesis `hD` of `ImageAddrCallW.haltsC_of_linkedChecksOne`. -/
 theorem deadSteps_x86K {D : DeadTab} {fn : String} {B : List LinstrRM}
     (hD : deadSegB D B = true) : DeadSteps D x86IsaK (singletonProgM fn B) :=
   steps_deadSegK hD
@@ -946,65 +945,10 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (CalleeSig CalleeSpec)
 open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem
 open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 
-/-- **`ImageAddrCall.haltsC_of_linkedChecks` at the bounds-checked instruction set**: the
-    hypothesis `hI` is `x86IsaK_checked`, and the hypothesis `hD` follows from the Boolean
-    check `deadSegB` of the image of the calling body (`deadSteps_x86K`). -/
-theorem haltsC_of_linkedChecksK {frame : String → Option (BitVec 64)}
-    {slotArr : String → Option (String × Nat)} {base : String → BitVec 64} {rsp : BitVec 64}
-    {body : Lcmd} (hsep : ImgSep frame slotArr base rsp) (hphys : physImgB slotArr body = true)
-    (hgate : imgGateCB frame slotArr body = true) (hsites : callSitesB slotArr body = true)
-    (r : CatCrypt.Crypto.SecureCompilation.CT.DoitRegime) {q : List RInstr} {c : CalleeSig}
-    (hX : CalleeSpec (Callee.runOf r q) c) (hq : ∀ tg, RInstr.call tg ∉ q) {res : String}
-    {pr : LprogIsa.ProcSummary} {room : AState → Prop} (hw : WordCallee c res pr room)
-    {G : Nat} (hS : CallerSep frame slotArr base rsp G) (hF : FootBelow c G)
-    (hroom : ∀ ret sA, sA.regs "%rsp" = rsp → room (entryOf ret sA))
-    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCB G body = true)
-    (hshapes : DecodeGen.shapesOf (Params.ofBody body) body
-      = some ds)
-    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
-    (symBase : String → Option Int) {cb : List (BitVec 8)} {prog : List RInstr}
-    (hcb : LprogBytesDecode.decodeLprog cb = some q) (hne : cb ≠ [])
-    (hbr : LprogBytesLinkReloc.branchOKReloc
-      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
-      (LprogBytesDecode.decCount
-        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
-      (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
-      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
-    (hP : LprogBytesLinkReloc.expectedReloc
-      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
-      (LprogBytesDecode.decCount
-        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
-      (LprogBytes.encodeLfundefBytesReloc symBase body).length
-      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
-    {D : DeadTab}
-    (hdead : callDeadB c (fun _ => (res, c.args)) D.dead body = true)
-    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
-    {T : ProcTable} {f fn : String} (hT : T f = some pr)
-    (hshape : siteShapeB f (fun _ => (res, c.args))
-      (callImg slotArr (fun _ => (res, c.args)) body) = true)
-    (hseg : deadSegB D (callImg slotArr (fun _ => (res, c.args)) body) = true)
-    {Fin : LstateMF → AState → Prop}
-    (hfin : ∀ t sa zf sA, ImgRel frame slotArr base body t sa zf →
-      LprogBytesLinkReloc.FinLea rsp (Params.ofBody body).frame sa sA → Fin t sA)
-    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
-    (n : Nat) {s t : LstateMF}
-    (hrun : (x86IsaK.withProcs T).lsemFuelMemF
-      (singletonProgM fn (callImg slotArr (fun _ => (res, c.args)) body)) n s = some t)
-    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
-    (hL : D.live sa.reg.lpc = false)
-    (hI0 : ImgRelF frame slotArr base body (D.dead sa.reg.lpc) s sa) (hA : ACorr rsp sA sa) :
-    LprogBytesDecode.decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
-        = some (prog ++ LprogBytesLink.shiftProg prog.length q)
-      ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
-          (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
-        ∧ Fin t sA' :=
-  haltsC_of_linkedChecks hsep hphys hgate hsites r hX hq hw hS hF hroom hcls hshapes hfr
-    symBase hcb hne hbr hP hdead hflags hcond hT hshape x86IsaK_checked (deadSteps_x86K hseg)
-    hfin hFin n hrun hfn hlen hL hI0 hA
-
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallW
   (printedAddrCWB imgGateCBW bitsDeadB liveW) in
-/-- **`haltsC_of_linkedChecksK` at the wide class**: a halting run of the image of a calling body
+/-- **The linked image theorem at the bounds-checked instruction set**: a halting run of the
+    image of a calling body
     of the wide class `printedAddrCWB`, under the gate `imgGateCBW`, with the width analysis dead
     at its calls and its return (`bitsDeadB`), from a position where `liveW` is false, is a run
     through calls of the program its linked bytes decode to, at the bounds-checked instruction

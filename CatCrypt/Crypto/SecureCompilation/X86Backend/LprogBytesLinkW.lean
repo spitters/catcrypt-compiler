@@ -11,12 +11,10 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW
 /-!
 # The byte simulation of a relocated body with carry chains and remote calls
 
-`LprogBytesLinkReloc.linked_step` and `linked_seg` simulate the address machine on the decoded
-program of a relocated body whose instructions are remote transfers or lie in the narrow class
-`DecodePrintedCFG.instrOKB`, at the correspondence `DecodePrintedAddr.ACorr`. This module states
-them for the wide class `DecodePrintedAddrW.instrOKWB` of carry chains, casts, cells and one-bit
-names, at the correspondence `DecodePrintedAddrW.ACorrW`. The decoded program is the same object,
-`LprogBytesLinkReloc.LinkedProgMap`: a multi-callee calling body of either class reaches its
+This module simulates the address machine on the decoded program of a relocated body whose
+instructions are remote transfers or lie in the wide class `DecodePrintedAddrW.instrOKWB` of carry
+chains, casts, cells and one-bit names, at the correspondence `DecodePrintedAddrW.ACorrW`. The
+decoded program is `LprogBytesLinkReloc.LinkedProgMap`: a multi-callee calling body reaches its
 linked callee blocks through the target map `K`.
 
 A step of the address machine at a position of such a body is `DecodePrintedAddrW.step_simWN`,

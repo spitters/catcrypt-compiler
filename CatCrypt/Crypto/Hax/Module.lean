@@ -11,6 +11,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
 public import HaxLean.Phase.InlineLocalClosures
 public import HaxLean.TExpr
 public import HaxAscent.Ascent.TableCongr
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.StorePol
 
 /-!
 # Modules of the hax compiler
@@ -675,7 +676,9 @@ theorem typedCalls_refBi (P : TExpr → ImpExpr) (fs : List ModFn) {bi : Builtin
     result read-back of the layout, the value of `sem` at the arguments the layout reads
     (`post_sem`), the value-level contract of `ProtocolEmitRealizes.KernelRealizes` at the
     layout. Its machine code is `bytes`, which may change the registers `clob` and uses a
-    stack frame of `frame` bytes. -/
+    stack frame of `frame` bytes, and whose stores outside its frame follow the store policy
+    `pol` (`X86Backend.Callee.StorePol`): a red zone below its frame and out windows at the
+    entry values of their base registers. -/
 structure LinkedFn where
   /-- The name the callers call it by. -/
   name : String
@@ -712,6 +715,9 @@ structure LinkedFn where
   frame : Nat
   /-- The machine code. -/
   bytes : List (BitVec 8)
+  /-- The store policy of the code: the red zone below its frame and the out windows it may
+      store to; the frame alone by default. -/
+  pol : CatCrypt.Crypto.SecureCompilation.X86Backend.Callee.StorePol := .frame
 
 namespace LinkedFn
 

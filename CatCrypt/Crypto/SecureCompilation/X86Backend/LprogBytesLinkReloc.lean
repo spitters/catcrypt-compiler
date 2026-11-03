@@ -68,20 +68,17 @@ instruction of `cb` starts at byte `L` and has index `k` in the decoded stream.
   and is the call-free block `q f` placed there. `regionBlocks_one` is the region of one
   block; `regionBlocksB` is its Boolean check, sound by `regionBlocks_of_regionBlocksB` at
   the blocks `regionBlock`; `regionDecode_inj` is the injectivity of the entry indices.
-* `KernelItems`, `RegionEntry`, `regionBlocks_of_items`: a list of blocks whose bytes, but for
+* `KernelItems`, `CalleeBlock`, `regionBlocks_of_items`: a list of blocks whose bytes, but for
   the last, are item streams is a region at the blocks `regionCode`, the offsets `regionOffset`
   and the indices `regionIndex`, with the program `regionProg`.
 * `linkedProg_of_itemsMapL`, `linkedProg_of_bytesSymL`: the program of the relocated item
   list of a body with the facts `LinkFacts` satisfies `LinkedProgMap` at `K : String → Nat`:
   the decoded instructions of each instruction of the shape `blkOK` at the index
   `DecodePrintedCFG.posOf`, `call (K f)` at the index of a remote call to `f`, and the
-  closing `lea` and `ret`. `linkedProg_of_itemsMap` and `linkedProg_of_bytesSym` are their
-  forms at the facts `CallFacts`. `LinkedProg`, `linkedProg_of_items` and
-  `linkedProg_of_bytes` are the instances at one callee block.
-* `linked_step`, `linked_halt`, `linked_call`, `linked_seg`: the byte simulation of a step
-  of the address machine, of the closing return and of a call of such a body on a program
-  that satisfies `LinkedProgMap`, under every oracle. `LprogBytesLinkW` states it for the
-  wide class with carry chains.
+  closing `lea` and `ret`. `LinkedProg` is the instance at one callee block.
+* `linked_halt`, `linked_callL`: the byte simulation of the closing return and of a call of
+  such a body on a program that satisfies `LinkedProgMap`, under every oracle. The step of the
+  address machine at a position of the body and the segments are `LprogBytesLinkW`.
 -/
 
 @[expose] public section
@@ -793,7 +790,7 @@ def KernelItems (bs : List (BitVec 8)) : Prop :=
   ∃ items, (∀ it ∈ items, ItemOK it) ∧ bs = itemBytes items
 
 /-- A block of a callee region: its symbol, its bytes and the program they decode to. -/
-structure RegionEntry where
+structure CalleeBlock where
   /-- The symbol of the block. -/
   sym : String
   /-- The bytes of the block. -/
@@ -803,25 +800,25 @@ structure RegionEntry where
 
 /-- The program of a region: the program of each block with its targets raised by the
     instruction count of the blocks before it. -/
-def regionProg : List RegionEntry → List RInstr
+def regionProg : List CalleeBlock → List RInstr
   | [] => []
   | e :: es => e.code ++ shiftProg e.code.length (regionProg es)
 
 /-- The byte offset of the block of a symbol: the first block with that symbol, and the last
     block for a symbol that no earlier block has. -/
-def regionOffset : List RegionEntry → String → Nat
+def regionOffset : List CalleeBlock → String → Nat
   | [], _ => 0
   | [_], _ => 0
   | e :: e' :: es, f => if e.sym = f then 0 else e.bytes.length + regionOffset (e' :: es) f
 
 /-- The instruction index of the block of a symbol, as `regionOffset`. -/
-def regionIndex : List RegionEntry → String → Nat
+def regionIndex : List CalleeBlock → String → Nat
   | [], _ => 0
   | [_], _ => 0
   | e :: e' :: es, f => if e.sym = f then 0 else e.code.length + regionIndex (e' :: es) f
 
 /-- The program of the block of a symbol, as `regionOffset`. -/
-def regionCode : List RegionEntry → String → List RInstr
+def regionCode : List CalleeBlock → String → List RInstr
   | [], _ => []
   | [e], _ => e.code
   | e :: e' :: es, f => if e.sym = f then e.code else regionCode (e' :: es) f
@@ -831,7 +828,7 @@ def regionCode : List RegionEntry → String → List RInstr
     stream (`KernelItems`). The concatenation of the blocks is a region with the blocks of
     `regionCode` at the offsets `regionOffset` and the indices `regionIndex` in the program
     `regionProg`. At one block this is `regionBlocks_one`. -/
-theorem regionBlocks_of_items (fs : List String) : ∀ (es : List RegionEntry), es ≠ [] →
+theorem regionBlocks_of_items (fs : List String) : ∀ (es : List CalleeBlock), es ≠ [] →
     (∀ e ∈ es, decodeLprog e.bytes = some e.code) → (∀ e ∈ es, e.bytes ≠ []) →
     (∀ e ∈ es, ∀ tg, RInstr.call tg ∉ e.code) → (∀ e ∈ es.dropLast, KernelItems e.bytes) →
     RegionBlocks (es.flatMap (·.bytes)) fs (regionOffset es) (regionIndex es) (regionCode es)
@@ -1382,27 +1379,13 @@ theorem labelPos_fundefItemsReloc (symBase : String → Option Int) {body : Lcmd
 
 /-- The instructions whose decoded block a program with the map `LinkedProgMap` holds, read off
     their shape: an `Lopn`, a label, and a conditional branch on a register condition to a label
-    the body defines. Each instruction of the narrow class `DecodePrintedCFG.instrOKB`
-    (`blkOK_of_instrOKB`) and of the wide class `DecodePrintedAddrW.instrOKWB` has this shape. -/
+    the body defines. Each instruction of the wide class `DecodePrintedAddrW.instrOKWB` has this
+    shape. -/
 def blkOK (body : Lcmd) : LinstrR → Prop
   | .Lopn _ _ _ => True
   | .Llabel _ _ => True
   | .Lcond (.reg _) l => (labelAt body l).isSome = true
   | _ => False
-
-/-- An instruction of the narrow class has the shape `blkOK`. -/
-theorem blkOK_of_instrOKB {body : Lcmd} {P : Params} {i : LinstrR}
-    (h : instrOKB body P i = true) : blkOK body i := by
-  cases i with
-  | Lopn ds o ss => trivial
-  | Llabel kd l => trivial
-  | Lcond c l =>
-    cases c with
-    | reg cc =>
-      simp only [instrOKB, Bool.and_eq_true] at h
-      exact h.2
-    | _ => simp [instrOKB] at h
-  | _ => simp [instrOKB] at h
 
 /-- The facts of a printed body that the map of its decoded program reads, for each class of
     instructions: the list-valued shapes `ds` and the closing return. -/
@@ -1413,29 +1396,6 @@ structure LinkFacts (body : Lcmd) (ds : List DShape) : Prop where
   pos : 0 < body.length
   /-- The last instruction is the return. -/
   last : (body[body.length - 1]'(by omega)).li_i = .Lret
-
-/-- The facts of a printed body with remote calls that the byte simulation reads: the
-    list-valued shapes `ds`, the closing return, every other instruction a remote transfer
-    or in the covered fragment `DecodePrintedCFG.instrOKB`, and every conditional branch
-    directly after a compare. Single shapes `ss` are the case `ds = ss.map DShape.one`. -/
-structure CallFacts (body : Lcmd) (ds : List DShape) : Prop where
-  /-- The shapes of the body are `ds`. -/
-  shapes : shapesOf (Params.ofBody body) body = some ds
-  /-- The body is not empty. -/
-  pos : 0 < body.length
-  /-- The last instruction is the return. -/
-  last : (body[body.length - 1]'(by omega)).li_i = .Lret
-  /-- Every other instruction is a remote transfer or in the covered fragment. -/
-  instr : ∀ k (hk : k + 1 < body.length),
-    remoteSym (body[k]'(by omega)).li_i ≠ none
-      ∨ instrOKB body (Params.ofBody body) (body[k]'(by omega)).li_i = true
-  /-- Every conditional branch follows a compare. -/
-  cond : ∀ k, k < body.length → condPrevB body k = true
-
-/-- The facts `CallFacts` give the facts `LinkFacts`. -/
-theorem CallFacts.toLinkFacts {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds) :
-    LinkFacts body ds :=
-  ⟨hF.shapes, hF.pos, hF.last⟩
 
 /-- The decoded program `prog` of a body with shapes `ds` in front of callee blocks whose
     entries have the indices `K : String → Nat`: around an instruction of the shape `blkOK`,
@@ -1600,28 +1560,6 @@ theorem linkedProg_of_itemsMapL (symBase : String → Option Int) {body : Lcmd}
     rw [hposL, hprog, ← hX, ← hB]
     simp [leaFrame]
 
-/-- `linkedProg_of_itemsMapL` for a body with the facts `CallFacts`. -/
-theorem linkedProg_of_itemsMap (symBase : String → Option Int) {body : Lcmd}
-    {ds : List DShape} (hF : CallFacts body ds) (tgt : Item → Option (Nat × Nat))
-    (K : String → Nat)
-    (hK : ∀ it f j t, it.target = none → it.sym = some f → tgt it = some (j, t) → j = K f)
-    (prog : List RInstr)
-    (hP : expectedRelocMap (fundefItemsRelocL symBase (Params.ofBody body) body ds) tgt
-      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
-    LinkedProgMap body ds K (Params.ofBody body).frame prog :=
-  linkedProg_of_itemsMapL symBase hF.toLinkFacts tgt K hK prog hP
-
-/-- **The decoded program of a relocated body.** For a body with the facts `CallFacts`,
-    the program its relocated item list denotes in front of a callee block at index `K`
-    satisfies `LinkedProg` at `K`. -/
-theorem linkedProg_of_items (symBase : String → Option Int) {body : Lcmd} {ds : List DShape}
-    (hF : CallFacts body ds) (K L : Nat) (prog : List RInstr)
-    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds) K L
-      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
-    LinkedProg body ds K (Params.ofBody body).frame prog :=
-  linkedProg_of_itemsMap symBase hF _ (fun _ => K)
-    (fun _ _ _ _ _ _ h => (Prod.mk.inj (Option.some.inj h)).1.symm) prog hP
-
 /-! ## 8. The byte simulation of the steps of a relocated body -/
 
 /-- A path of the machine followed by a run under an oracle is a run under the oracle. -/
@@ -1631,186 +1569,6 @@ theorem haltsO_of_reaches {σ : Type} {M : Machine σ} {O : Nat → σ → σ �
   induction h with
   | refl => exact hr
   | next hs _ ih => exact .go hs (ih hr)
-
-/-- The instruction after a label or a branch is no conditional branch. -/
-theorem CallFacts.not_cond_next {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds)
-    {k : Nat} (hk : k + 1 < body.length) (h : classifyA (body[k]'(by omega)).li_i = none) :
-    isCondB (body[k + 1]'hk).li_i = false := by
-  have hc := hF.cond (k + 1) hk
-  unfold condPrevB at hc
-  rw [List.getElem?_eq_getElem hk] at hc
-  revert hc
-  rcases hb : body[k + 1] with ⟨ii, li⟩
-  cases li <;> simp [isCondB, List.getElem?_eq_getElem (show k < body.length by omega), h]
-
-/-- **One step of the address machine on a relocated body, on the decoded program.** Let
-    the body have the facts `CallFacts` and `prog` satisfy `LinkedProg`, and let `frame`
-    agree with the frame of the body parameters at the names of the body. A step of the
-    address machine, from an address state that corresponds to a byte state `sA` with the
-    zero flag of a conditional branch and whose indexed load reads outside the red-zone
-    word, reaches an address state at a position of the body that corresponds to a byte
-    state `sA'` with the zero flag of a conditional branch, and the machine has a path on
-    `prog` from the index of the start on `sA` to the index of the reached position on
-    `sA'`. -/
-theorem linked_step {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds)
-    {K : String → Nat} {prog : List RInstr}
-    (hL : LinkedProgMap body ds K (Params.ofBody body).frame prog)
-    (rsp : BitVec 64) {frame : String → Option (BitVec 64)}
-    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
-    (sa : LstateA) (zf : Bool) (sa' : LstateA) (zf' : Bool) (sA : AState)
-    (hsafe : LoadSafeAt rsp body sa)
-    (hst : VIR.JasminLsemAddrRun.stepA frame body sa zf = some (sa', zf'))
-    (hc : ACorr rsp sA sa)
-    (hz : ∀ bi, body[sa.reg.lpc]? = some bi → isCondB bi.li_i = true →
-      sA.flags.zf.getD false = zf) :
-    ∃ sA', ACorr rsp sA' sa' ∧ sa'.reg.lpc < body.length
-      ∧ (∀ bi, body[sa'.reg.lpc]? = some bi → isCondB bi.li_i = true →
-          sA'.flags.zf.getD false = zf')
-      ∧ Reaches aMachine prog (posOf ds sa.reg.lpc) sA (posOf ds sa'.reg.lpc) sA' := by
-  rw [stepA_congr hfr] at hst
-  obtain ⟨hl, hsh⟩ := shapesOf_spec _ body _ hF.shapes
-  cases hb : body[sa.reg.lpc]? with
-  | none => simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
-  | some bi =>
-    obtain ⟨hk, hbk⟩ := List.getElem?_eq_some_iff.mp hb
-    have hkn : sa.reg.lpc + 1 < body.length := by
-      by_contra hn
-      have e : sa.reg.lpc = body.length - 1 := by omega
-      have h1 := hF.last
-      rw [(List.getElem?_eq_some_iff.mp (e ▸ hb)).2] at h1
-      obtain ⟨ii, li⟩ := bi
-      simp only at h1
-      subst h1
-      simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
-    have hok0 := hF.instr sa.reg.lpc hkn
-    have hshk := hsh sa.reg.lpc hk (by omega)
-    rw [hbk] at hok0 hshk
-    have hnext : ∀ (sA' : AState) (bi' : Linstr),
-        classifyA bi.li_i = none → body[sa.reg.lpc + 1]? = some bi' →
-        isCondB bi'.li_i = true → sA'.flags.zf.getD false = zf' := by
-      intro sA' bi' hcl hb' hcnd
-      have := hF.not_cond_next hkn (by rw [hbk]; exact hcl)
-      rw [(List.getElem?_eq_some_iff.mp hb').2, hcnd] at this
-      cases this
-    obtain ⟨ii, li⟩ := bi
-    cases li with
-    | Lopn dsts o srcs =>
-      have hokI : instrOKB body (Params.ofBody body) (.Lopn dsts o srcs) = true :=
-        hok0.resolve_left (fun h => h rfl)
-      have hok := hokI
-      simp only [instrOKB] at hok
-      split at hok
-      · rename_i ar hcl
-        have hia := classifyA_instr hcl
-        have hli := AArm.li_eq hok
-        have hsafeA : ar.LoadSafe rsp sa := by
-          cases ar with
-          | ldx D B' I =>
-            intro p vi hp hvi
-            exact hsafe ii _ D B' I (by rw [hb, ← hia]) (by simp [AArm.instr, width_tag])
-              p vi hp hvi
-          | _ => trivial
-        obtain ⟨s', z', hst', hc', hzf'⟩ :=
-          AArm.sim (Params.ofBody body) rsp ar hok sA sa zf hc hsafeA
-        have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
-            = some (s', z') := by
-          simp only [VIR.JasminLsemAddrRun.stepA, hb]
-          rw [← hia, AArm.tagAt_eq, hli]
-          exact hst'
-        obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
-        subst e1
-        subst e2
-        have hpc' : s'.reg.lpc = sa.reg.lpc + 1 := fstepA_lpc _ _ _ _ _ _ hst'
-        refine ⟨aMachine.runBlock sA (ar.js (Params.ofBody body)), hc',
-          by rw [hpc']; exact hkn, ?_, ?_⟩
-        · intro bi' hb' hcnd
-          rw [hpc'] at hb'
-          have hc2 := hF.cond (sa.reg.lpc + 1) hkn
-          unfold condPrevB at hc2
-          rw [hb'] at hc2
-          obtain ⟨ii', li'⟩ := bi'
-          revert hc2 hcnd
-          cases li' <;> simp [isCondB, hb, hcl]
-          exact hzf'
-        · obtain ⟨A, B, hsplit, hA⟩ := hL.blk sa.reg.lpc hk (by omega)
-            (by rw [hbk]; exact blkOK_of_instrOKB hokI)
-          obtain ⟨hblk, hn⟩ := blkOf_lopn (body := body) (shs := ds) hshk
-          have hops : (ds[sa.reg.lpc]'(by omega)).ops'
-              = ar.js (Params.ofBody body) := AArm.shape_ops hok (by rw [hia]; exact hshk)
-          rw [hblk, hops] at hsplit
-          have h0 := reaches_ops aMachine A (ar.js (Params.ofBody body)) B sA
-          rw [← hsplit, hA] at h0
-          rw [hpc', posOf_succ _ sa.reg.lpc (by omega), hn, hops]
-          exact h0
-      · cases hok
-    | Llabel kd l =>
-      have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
-          = some (sa.setLpc (sa.reg.lpc + 1), zf) := by
-        unfold VIR.JasminLsemAddrRun.stepA
-        rw [hb]
-      obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
-      subst e1
-      subst e2
-      refine ⟨sA, acorr_setLpc hc _, hkn, fun bi' hb' hcnd => hnext sA bi' rfl hb' hcnd, ?_⟩
-      show Reaches aMachine prog (posOf ds sa.reg.lpc) sA (posOf ds (sa.reg.lpc + 1)) sA
-      have hsk : ds[sa.reg.lpc]'(by omega) = .one .skip := by
-        simp only [shapeOf, Option.some.injEq] at hshk
-        exact hshk.symm
-      rw [posOf_succ _ sa.reg.lpc (by omega), hsk]
-      exact .refl _ _
-    | Lcond c l =>
-      cases c with
-      | reg cc =>
-        have hokI : instrOKB body (Params.ofBody body) (.Lcond (.reg cc) l) = true :=
-          hok0.resolve_left (fun h => h rfl)
-        have hok := hokI
-        simp only [instrOKB, Bool.and_eq_true, Option.isSome_iff_exists] at hok
-        obtain ⟨⟨pol, hpol⟩, ⟨p, hp⟩⟩ := hok
-        obtain ⟨hpl, hlabp, -⟩ := labelAt_spec hp
-        have hsk : ds[sa.reg.lpc]'(by omega)
-            = .one (.jcc (ccNibble cc) l) := by
-          simp only [shapeOf, Option.some.injEq] at hshk
-          exact hshk.symm
-        obtain ⟨A, B, hsplit, hA⟩ := hL.blk sa.reg.lpc hk (by omega)
-          (by rw [hbk]; exact blkOK_of_instrOKB hokI)
-        have hj : prog[posOf ds sa.reg.lpc]?
-            = some (.jcc (ccNibble cc) (posOf ds p)) := by
-          rw [hsplit, hsk, ← hA, List.append_assoc, List.getElem?_append_right (by omega)]
-          simp [blkOf, hp]
-        have hzf : sA.flags.zf.getD false = zf := hz _ hb rfl
-        have hms := step_jcc_pol prog _ _ sA cc pol hpol hj
-        rw [hzf] at hms
-        by_cases hzp : zf = pol
-        · have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
-              = some (sa.setLpc p, zf) := by
-            unfold VIR.JasminLsemAddrRun.stepA
-            rw [hb]
-            simp [hpol, hzp, hp]
-          obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
-          subst e1
-          subst e2
-          rw [ite_eq_left hzp] at hms
-          refine ⟨sA, acorr_setLpc hc _, hpl, fun bi' hb' hcnd => ?_, .single hms⟩
-          have hb'' : body[p]? = some bi' := hb'
-          rw [← (List.getElem?_eq_some_iff.mp hb'').2] at hcnd
-          revert hlabp hcnd
-          rcases body[p] with ⟨ii', li'⟩
-          cases li' <;> simp [isCondB, isLabelB]
-        · have hstep : VIR.JasminLsemAddrRun.stepA (frameP (Params.ofBody body) rsp) body sa zf
-              = some (sa.setLpc (sa.reg.lpc + 1), zf) := by
-            unfold VIR.JasminLsemAddrRun.stepA
-            rw [hb]
-            simp [hpol, hzp]
-          obtain ⟨e1, e2⟩ := Prod.mk.inj (Option.some.inj (hstep.symm.trans hst))
-          subst e1
-          subst e2
-          rw [ite_eq_right hzp] at hms
-          refine ⟨sA, acorr_setLpc hc _, hkn, fun bi' hb' hcnd => hnext sA bi' rfl hb' hcnd, ?_⟩
-          show Reaches aMachine prog (posOf ds sa.reg.lpc) sA (posOf ds (sa.reg.lpc + 1)) sA
-          rw [posOf_succ _ sa.reg.lpc (by omega), hsk]
-          exact .single hms
-      | _ => simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
-    | _ => simp [VIR.JasminLsemAddrRun.stepA, hb] at hst
 
 /-- **The closing return of a relocated body, on the decoded program**: from the index of
     the last position, `prog` runs the closing `lea` of the frame and halts at `ret`. -/
@@ -1852,101 +1610,10 @@ theorem linked_callL {body : Lcmd} {ds : List DShape} (hF : LinkFacts body ds)
   rw [posOf_succ _ p (by omega), ← h1]
   rfl
 
-/-- **A call of a relocated body, on the decoded program**: the index of a call to the
-    symbol `t.1` holds `call (K t.1)`, and the index of the next position is the next
-    index. -/
-theorem linked_call {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds)
-    {K : String → Nat} {prog : List RInstr}
-    (hL : LinkedProgMap body ds K (Params.ofBody body).frame prog)
-    (p : Nat) (bi : Linstr) (ra : Option String) (t : String × LLabel)
-    (hb : body[p]? = some bi) (hbi : bi.li_i = .Lcall ra t) :
-    prog[posOf ds p]? = some (.call (K t.1)) ∧ posOf ds (p + 1) = posOf ds p + 1 := by
-  obtain ⟨hk, hbk⟩ := List.getElem?_eq_some_iff.mp hb
-  have hkn : p + 1 < body.length := by
-    by_contra hn
-    have e : p = body.length - 1 := by omega
-    have h1 := hF.last
-    rw [(List.getElem?_eq_some_iff.mp (e ▸ hb)).2, hbi] at h1
-    cases h1
-  refine linked_callL hF.toLinkFacts hL p bi ra t hb hbi ?_
-  rcases hF.instr p hkn with h | h
-  · rwa [hbk] at h
-  · rw [hbk, hbi] at h
-    simp [instrOKB] at h
-
-/-- The facts `CallFacts` of a body from its shapes, its closing return, the condition on
-    every other instruction, and the check of the conditional branches. -/
-theorem callFacts_of_checks {body : Lcmd} {ds : List DShape}
-    (hs : shapesOf (Params.ofBody body) body = some ds)
-    (hlast : body.getLast?.any (fun r => isRetB r.li_i) = true)
-    (hall : ∀ i ∈ body.dropLast,
-      remoteSym i.li_i ≠ none ∨ instrOKB body (Params.ofBody body) i.li_i = true)
-    (hcond : (List.range body.length).all (condPrevB body) = true) : CallFacts body ds := by
-  simp only [Option.any_eq_true] at hlast
-  obtain ⟨r, hlast, hret⟩ := hlast
-  have hpos : 0 < body.length := by
-    cases body with
-    | nil => simp at hlast
-    | cons _ _ => simp
-  refine ⟨hs, hpos, ?_, fun k hk => ?_, fun k hk => ?_⟩
-  · rw [List.getLast?_eq_getElem?, List.getElem?_eq_getElem (by omega)] at hlast
-    obtain rfl := Option.some.inj hlast
-    revert hret
-    unfold isRetB
-    split <;> simp_all
-  · exact hall _ (by
-      rw [List.mem_iff_getElem]
-      exact ⟨k, by simp; omega, by simp⟩)
-  · exact List.all_eq_true.mp hcond k (List.mem_range.mpr hk)
-
 /-- The end of the run of a relocated body: the byte state is the state after the closing
     `lea` of the frame `F`, from a byte state that corresponds to the address state. -/
 def FinLea (rsp : BitVec 64) (F : Nat) (sa : LstateA) (sA' : AState) : Prop :=
   ∃ sA, ACorr rsp sA sa ∧ sA' = evalInstrA sA (leaFrame (Int.ofNat F))
-
-/-- **The byte simulation of the segments of a relocated body.** Let the body have the
-    facts `CallFacts`, `prog` satisfy `LinkedProg` at the index `K`, and `frame` agree
-    with the frame of the body parameters at the names of the body. Under every oracle
-    `O`, with the index `DecodePrintedCFG.posOf` of a position:
-
-    * a step of the address machine, from an address state that corresponds to a byte
-      state with the zero flag of a conditional branch and whose indexed load reads
-      outside the red-zone word, reaches an address state at a position of the body that
-      corresponds to a byte state with the zero flag of a conditional branch, and every
-      run under `O` from the index of the reached position extends to a run from the
-      index of the start;
-    * at the closing return there is a run under `O` to a byte state that satisfies
-      `FinLea` with the address state;
-    * the index of a call to the symbol `t.1` holds `call (K t.1)`, and the index of the
-      position after a call is the index after the call. -/
-theorem linked_seg {body : Lcmd} {ds : List DShape} (hF : CallFacts body ds)
-    {K : String → Nat} {prog : List RInstr}
-    (hL : LinkedProgMap body ds K (Params.ofBody body).frame prog)
-    (rsp : BitVec 64) {frame : String → Option (BitVec 64)}
-    (hfr : ∀ q ∈ bodyNamesI body, frame q = frameP (Params.ofBody body) rsp q)
-    (O : Nat → AState → AState → Prop) :
-    (∀ sa zf sa' zf' sA, LoadSafeAt rsp body sa →
-        VIR.JasminLsemAddrRun.stepA frame body sa zf = some (sa', zf') → ACorr rsp sA sa →
-        (∀ bi, body[sa.reg.lpc]? = some bi → isCondB bi.li_i = true →
-          sA.flags.zf.getD false = zf) →
-        ∃ sA', ACorr rsp sA' sa' ∧ sa'.reg.lpc < body.length
-          ∧ (∀ bi, body[sa'.reg.lpc]? = some bi → isCondB bi.li_i = true →
-              sA'.flags.zf.getD false = zf')
-          ∧ ∀ s'', HaltsO aMachine O prog (posOf ds sa'.reg.lpc) sA' s'' →
-              HaltsO aMachine O prog (posOf ds sa.reg.lpc) sA s'')
-      ∧ (∀ sa sA, sa.reg.lpc + 1 = body.length → ACorr rsp sA sa →
-          ∃ sA', HaltsO aMachine O prog (posOf ds sa.reg.lpc) sA sA'
-            ∧ FinLea rsp (Params.ofBody body).frame sa sA')
-      ∧ (∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t →
-          prog[posOf ds p]? = some (.call (K t.1)))
-      ∧ (∀ p bi ra t, body[p]? = some bi → bi.li_i = .Lcall ra t →
-          posOf ds (p + 1) = posOf ds p + 1) := by
-  refine ⟨fun sa zf sa' zf' sA hsafe hst hc hz => ?_, fun sa sA hend hc => ?_,
-    fun p bi ra t hb hbi => (linked_call hF hL p bi ra t hb hbi).1,
-    fun p bi ra t hb hbi => (linked_call hF hL p bi ra t hb hbi).2⟩
-  · obtain ⟨sA', hc', hlen, hz', hR⟩ := linked_step hF hL rsp hfr sa zf sa' zf' sA hsafe hst hc hz
-    exact ⟨sA', hc', hlen, hz', fun s'' hr => haltsO_of_reaches hR hr⟩
-  · exact ⟨_, linked_halt hL O sa sA hend, sA, hc, rfl⟩
 
 /-- The target map of a callee region placed after `n` instructions and `L` bytes: the
     symbol `f ∈ fs` goes to the index `n + k f` and the byte offset `L + o f` of the entry of
@@ -2005,63 +1672,5 @@ theorem linkedProg_of_bytesSymL (symBase : String → Option Int) {body : Lcmd}
   · simp only [Option.some.injEq, Prod.mk.injEq] at ht
     omega
   · cases ht
-
-/-- `linkedProg_of_bytesSymL` for a body with the facts `CallFacts`. -/
-theorem linkedProg_of_bytesSym (symBase : String → Option Int) {body : Lcmd}
-    {ds : List DShape} (hF : CallFacts body ds) (cb : List (BitVec 8)) (fs : List String)
-    (o k : String → Nat) (Q prog : List RInstr)
-    (hsaves : calleeSavedToSave body = [])
-    (hF0 : frameSize body ≠ 0) (hFr : frameSize body < 2 ^ 31)
-    (hcb : RegionDecode cb fs o k Q)
-    (hbr : branchOKRelocMap (fundefItemsRelocL symBase (Params.ofBody body) body ds)
-      (symTgt (regionTgt fs (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
-        (encodeLfundefBytesReloc symBase body).length o k)) 0
-      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
-    (hP : expectedRelocMap (fundefItemsRelocL symBase (Params.ofBody body) body ds)
-      (symTgt (regionTgt fs (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
-        (encodeLfundefBytesReloc symBase body).length o k))
-      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
-    decodeLprog (encodeLfundefBytesReloc symBase body ++ cb)
-        = some (prog ++ shiftProg prog.length Q)
-      ∧ LinkedProgMap body ds (fun f => prog.length + k f) (Params.ofBody body).frame prog :=
-  linkedProg_of_bytesSymL symBase hF.toLinkFacts cb fs o k Q prog hsaves hF0 hFr hcb hbr hP
-
-/-- **The decoded program of the linked bytes of a relocated body.** Under the hypotheses
-    of `decodeLprog_fundefRelocL_append` on a body with the facts `CallFacts`, the linked
-    bytes decode to `prog` followed by the callee block, and `prog` satisfies `LinkedProg`
-    at the index `prog.length` of the first instruction of the callee. This is
-    `linkedProg_of_bytesSym` at the region of one block, entered at offset `0` by every
-    symbol of the body. -/
-theorem linkedProg_of_bytes (symBase : String → Option Int) {body : Lcmd} {ds : List DShape}
-    (hF : CallFacts body ds) (cb : List (BitVec 8)) (q prog : List RInstr)
-    (hsaves : calleeSavedToSave body = [])
-    (hF0 : frameSize body ≠ 0) (hFr : frameSize body < 2 ^ 31)
-    (hcb : decodeLprog cb = some q) (hne : cb ≠ [])
-    (hbr : branchOKReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds)
-      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
-      (encodeLfundefBytesReloc symBase body).length 0
-      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
-    (hP : expectedReloc (fundefItemsRelocL symBase (Params.ofBody body) body ds)
-      (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
-      (encodeLfundefBytesReloc symBase body).length
-      (fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog) :
-    decodeLprog (encodeLfundefBytesReloc symBase body ++ cb)
-        = some (prog ++ shiftProg prog.length q)
-      ∧ LinkedProg body ds prog.length (Params.ofBody body).frame prog := by
-  have hagree : ∀ it ∈ fundefItemsRelocL symBase (Params.ofBody body) body ds,
-      it.target = none → ∀ d, it.dec = some (.call d) →
-        (fun _ => some (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds),
-          (encodeLfundefBytesReloc symBase body).length)) it
-        = symTgt (regionTgt (body.filterMap fun i => remoteSym i.li_i)
-            (decCount (fundefItemsRelocL symBase (Params.ofBody body) body ds))
-            (encodeLfundefBytesReloc symBase body).length (fun _ => 0) (fun _ => 0)) it := by
-    intro it hit ht d hd
-    obtain ⟨f, hf, i, hi, hr⟩ := fundefItemsRelocL_sym symBase _ body ds it hit ht d hd
-    have hmem : f ∈ body.filterMap fun i => remoteSym i.li_i := List.mem_filterMap.mpr ⟨i, hi, hr⟩
-    simp [symTgt, hf, regionTgt, hmem]
-  exact linkedProg_of_bytesSym symBase hF cb _ (fun _ => 0) (fun _ => 0) q prog hsaves hF0 hFr
-    (regionDecode_one cb q _ hcb hne)
-    (by rw [← branchOKRelocMap_congr _ _ hagree]; exact hbr)
-    (by rw [← expectedRelocMap_congr _ _ hagree]; exact hP)
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLinkReloc

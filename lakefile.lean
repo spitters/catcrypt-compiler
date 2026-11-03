@@ -2868,6 +2868,7 @@ def pkgModules14 : Array Lake.Glob := #[
 def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.StackArrDecode,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.StackZeroize,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.StorePol,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.SymFootprint,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulAssembled,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopMov,
@@ -3065,9 +3066,9 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Deep.ReflectTactic,
     Lake.Glob.one `CatCrypt.Deep.ReflectUCHelpers,
     Lake.Glob.one `CatCrypt.Deep.Strategy,
-    Lake.Glob.one `CatCrypt.Deep.Tactics,
   ]
 def pkgModules16 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Deep.Tactics,
     Lake.Glob.one `CatCrypt.EmitArtifacts.P384Rust,
     Lake.Glob.one `CatCrypt.Hax.Ascent.SquareDouble,
     Lake.Glob.one `CatCrypt.Hax.BitScan,

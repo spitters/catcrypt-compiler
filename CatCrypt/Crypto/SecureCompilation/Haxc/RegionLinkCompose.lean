@@ -524,7 +524,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.FuseMulHiAbi (e64_of_abiEntryM
     code has a site of the multiplication fusion, `fuseMulHi_lsemFuelMemF_pre_calls` carries
     the run to the fused reference. These are the
     reference run of `calleeBody_imgRun_at` and the entry hypotheses of
-    `CheckedIsaCall.haltsC_of_linkedChecksK`. -/
+    `CheckedIsaCall.haltsC_of_linkedChecksKW`. -/
 theorem regionCo_bytes_callee {σ : AbiLayout} {nm : String → String} {fn : String}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]}
     (hp : RegionExportable p) {r0 r : Exported}

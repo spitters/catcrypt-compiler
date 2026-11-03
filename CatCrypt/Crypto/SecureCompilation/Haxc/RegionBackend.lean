@@ -306,7 +306,7 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   bytes of its printed body, under a renaming of the array names of the slot map.
 * `renImage_entry`, `renImage_entry_nil`, `entryA_acorr`: the separation, the entry relation
   of the image and the entry correspondence after the prologue, at any callee; at no cell
-  array in the form of the hypotheses of `CheckedIsaCall.haltsC_of_linkedChecksK`.
+  array in the form of the hypotheses of `CheckedIsaCall.haltsC_of_linkedChecksKW`.
 * `regionImgB_of_cellFreeB`, `renImageB_of_cellFreeB`, `regionCoParts_of_cellFreeB`,
   `regionCoB_of_cellFreeB`: on a printed body with no cell access the image gate, the image
   check, the parts and the gate are those without cells.
@@ -370,9 +370,9 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   image.
 * `outDestB_iff`, `outDestB_of_callParamsB`: the check that the destination operand of an
   out callee is no other array operand, decided, and implied by `callParamsB`.
-* `callParamsB_forall₂`, `calleeSite_dest`: at a call of an out callee the operands of its
-  call site pass the parameters of the callee (`LinkedFnCallee.ParamAt`), and its
-  destination is an array of the slot map.
+* `calleeSite_dest`: at a call of an out callee the destination of its call site is an array
+  of the slot map; that the operands pass the parameters of the callee is
+  `RegionLinkRoute.callParamsB_forall₂W`.
 * `decodeSites_spec`, `decodeSites_isSome`, `bodyCallSymsB_of_decodeSites`: the decode
   `decodeSites` of a calling body lists, at the positions of its calls, the symbol, the
   destination and the operands of each call, and succeeds exactly when every call names a
@@ -388,6 +388,11 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   table. `calleeAA`, `calleeAO`, `calleeOuts`, `callParamsB` are applications of these forms
   at one function; `calleeImgT_one`, `calleeCodeT_one`, `calleeImgBT_one`, `calleeDeadBT_one`,
   `calleeCodeBT_one` relate the others.
+* `calleeCodeBT_keep`, `calleeCodeBT_sound`: the code of each function of a table passes the
+  keep check `Callee.keepCheckAtB` at its clobber set, its frame and its declared store policy
+  (`CalleeData.pol`), so it holds no `call` and, from an entry state whose out windows are
+  separate from its frame, keeps the stack register, the registers outside its clobber set and
+  the bytes outside its frame and its out windows.
 * `CalleeTab.bytes`, `.symPos`, `.entryOff`, `.entryIdx`, `.linkMap`: the code of a table, the
   position of a symbol, the byte offset and the instruction index of the entry of a function
   in that code, and the target map of the symbols of a table behind a caller; the entry of the
@@ -2014,6 +2019,9 @@ structure CalleeData where
   /-- The length in words of the array argument at a position; `none` at a word
       argument. -/
   arrArgs : Nat → Option Nat := fun _ => none
+  /-- The store policy of the code: the red zone below its frame and the out windows it may
+      store to; the frame alone by default. -/
+  pol : X86Backend.Callee.StorePol := .frame
 
 /-- **The shape of a call of a linked function on common names**: its array positions, and
     an out result at an out result of the function. -/
@@ -3640,7 +3648,7 @@ theorem entryA_acorr (σ : AbiLayout) (body : Lcmd) (sa : AState) :
     `entryA σ sa` on the cell body `cellBody sl body`; the machine state after the prologue
     and `entryA σ sa` are related by `ACorr`; the address state is at position `0`; and the
     registers of the entry state satisfy the register bounds `boundFacts σ nm`. These are the
-    entry hypotheses of `CheckedIsaCall.haltsC_of_linkedChecksK`. -/
+    entry hypotheses of `CheckedIsaCall.haltsC_of_linkedChecksKW`. -/
 theorem renImage_entry_nil {σ : AbiLayout} {nm : String → String}
     {ps : List (String × String)} {outs : List String} {body : Lcmd} {B : List LinstrRM}
     {callee : Option CalleeTab}
@@ -5153,22 +5161,24 @@ def insTab (B : List LinstrRM) (outs : List String) : Option Nat → List String
 
 /-- **The check of the code of a callee** `c` at the calls of a printed body `body` at the
     slot map `sl`: when the code of `c` decodes (a scalar callee), the decoded block passes
-    `Callee.keepCheckB` at the clobber set and the frame of `c`; when it does not decode (a
+    `Callee.keepCheckAtB` at the clobber set, the frame and the store policy of `c`: the keep
+    check at the frame of the code (`Callee.blockFrame`) and the declared policy, with that
+    frame and the red zone of the policy within the frame of `c`; when it does not decode (a
     vector kernel, whose contract is a hypothesis of its link theorem), the operands
     `c.siteArgs sl body p` of the call at each position `p` are pairwise distinct. -/
 def calleeCodeB (c : CalleeData) (sl : String → Option (String × Nat)) (body : Lcmd) : Bool :=
   match decodeLprog c.bytes with
-  | some q => X86Backend.Callee.keepCheckB q c.sig.clob c.frame
+  | some q => X86Backend.Callee.keepCheckAtB q c.sig.clob c.frame c.pol
   | none => (List.range body.length).all fun p => (body[p]?).all fun bi =>
       !X86Backend.ImageAddrCall.isCallB bi.li_i || decide (c.siteArgs sl body p).Nodup
 
 /-- **The check of the code of the functions of a table** at the calls of a printed body: the
-    decoded block of each function whose code decodes passes `Callee.keepCheckB` at its
-    clobber set and its frame, and at each call of a function whose code does not decode the
-    operands of the call are pairwise distinct. -/
+    decoded block of each function whose code decodes passes `Callee.keepCheckAtB` at its
+    clobber set, its frame and its store policy, and at each call of a function whose code
+    does not decode the operands of the call are pairwise distinct. -/
 def calleeCodeBT (T : CalleeTab) (sl : String → Option (String × Nat)) (body : Lcmd) : Bool :=
   T.fns.all (fun c => (decodeLprog c.bytes).all fun q =>
-      X86Backend.Callee.keepCheckB q c.sig.clob c.frame)
+      X86Backend.Callee.keepCheckAtB q c.sig.clob c.frame c.pol)
     && (List.range body.length).all fun p => (body[p]?).all fun bi =>
       !X86Backend.ImageAddrCall.isCallB bi.li_i
         || ((callSymAt body p).bind T.lookup).all fun c =>
@@ -5196,11 +5206,40 @@ theorem calleeCodeBT_one {c : CalleeData} {sl : String → Option (String × Nat
             obtain ⟨ra, f, l, e⟩ := X86Backend.ImageAddrCall.exists_lcall_of_isCallB hc
             simp only [callSym_lookup_one hb e (hsym hb e), Option.all_some]
   have hall : (CalleeTab.one c).fns.all (fun d => (decodeLprog d.bytes).all fun q =>
-        X86Backend.Callee.keepCheckB q d.sig.clob d.frame)
-      = (decodeLprog c.bytes).all fun q => X86Backend.Callee.keepCheckB q c.sig.clob c.frame := by
+        X86Backend.Callee.keepCheckAtB q d.sig.clob d.frame d.pol)
+      = (decodeLprog c.bytes).all fun q =>
+          X86Backend.Callee.keepCheckAtB q c.sig.clob c.frame c.pol := by
     simp [CalleeTab.one]
   simp only [calleeCodeBT, calleeCodeB, hall, hcall]
   cases hq : decodeLprog c.bytes <;> simp
+
+/-- The block the code of a function of a table decodes to passes `Callee.keepCheckAtB` at the
+    clobber set, the frame and the store policy of the function, under `calleeCodeBT`. -/
+theorem calleeCodeBT_keep {T : CalleeTab} {sl : String → Option (String × Nat)} {body : Lcmd}
+    (h : calleeCodeBT T sl body = true) {c : CalleeData} (hc : c ∈ T.fns)
+    {q : List X86Backend.LprogBytesDecode.RInstr} (hq : decodeLprog c.bytes = some q) :
+    X86Backend.Callee.keepCheckAtB q c.sig.clob c.frame c.pol = true := by
+  simp only [calleeCodeBT, Bool.and_eq_true, List.all_eq_true] at h
+  have hkc := h.1 c hc
+  simp only [hq, Option.all_some] at hkc
+  exact hkc
+
+/-- **Soundness of the code check of a table.** Under `calleeCodeBT`, the block that the code
+    of a function `c` of the table decodes to holds no `call`, and every leaky run of it from
+    its first index to its `ret`, from an entry state whose out windows of the store policy of
+    `c` are disjoint from the frame of `c` below its stack register, restores the stack
+    register, keeps every register outside the clobber set of `c`, and keeps every byte outside
+    that frame and those out windows (`Callee.keepCheckAtB_sound`). -/
+theorem calleeCodeBT_sound {T : CalleeTab} {sl : String → Option (String × Nat)} {body : Lcmd}
+    (h : calleeCodeBT T sl body = true) {c : CalleeData} (hc : c ∈ T.fns)
+    {q : List X86Backend.LprogBytesDecode.RInstr} (hq : decodeLprog c.bytes = some q) :
+    (∀ tg, X86Backend.LprogBytesDecode.RInstr.call tg ∉ q)
+      ∧ ∀ {r ok s t s'}, X86Backend.DecodedCT.RunL r ok q 0 s t s' →
+        X86Backend.Callee.WinSep c.pol c.frame s.regs →
+        s'.regs "%rsp" = s.regs "%rsp" ∧ (∀ r', c.sig.clob r' = false → s'.regs r' = s.regs r')
+          ∧ ∀ x, ¬ X86Backend.Callee.KeepFoot ⟨0, c.pol.wins⟩ c.frame s.regs x →
+            s'.mem x = s.mem x :=
+  X86Backend.Callee.keepCheckAtB_sound (calleeCodeBT_keep h hc hq)
 
 /-- **The checks of a calling body**, of the printed body `body` at the slot map `sl`, with the
     reference `ref` of the image check, the observed names `outs` and the function name `fn`,
@@ -5230,7 +5269,7 @@ theorem calleeCodeBT_one {c : CalleeData} {sl : String → Option (String × Nat
     * the width analysis at the frame names of `body` is dead at each call and at the return
       (`ImageAddrCallW.bitsDeadB`).
 
-    These are the Boolean hypotheses of `ImageAddrCall.haltsO_of_deadChecks`, of
+    These are the Boolean hypotheses of `ImageAddrCallW.haltsO_of_deadChecksS`, of
     `calleeCutB_soundK`, of `CheckedIsaCall.refRun_checked` and of
     `CalleeSegCheck.calleeSegB_soundK` (`calleeBody_imgRun`), and of
     `CalleeStackRoom.callerSep_of_regions` (`calleeBody_callerSep`). -/
@@ -5515,40 +5554,6 @@ theorem calleeBody_callerSep {σ : AbiLayout} {nm : String → String} {c : Call
       (X86Backend.DecodePrintedCFG.frameRsp body sa0) c.frame :=
   have hr := calleeBody_stackRoom h
   X86Backend.CalleeStackRoom.callerSep_of_regions hrs hreg hr.1 hr.2 hsl
-
-/-- **Soundness of `callParamsB`** at a call instruction. Under `ImgSep`, the positionwise
-    gate `ImgGate` and `ImgRel`, at a call at the position of the address state, the operands
-    of the call site `calleeSiteAt` at that position pass the parameters of `c`
-    (`LinkedFnCallee.ParamAt`): a scalar parameter is its operand, and the register of an
-    array parameter holds the base of the array of its operand, an array of the slot map of
-    the length of the parameter (`ImageAddrSim.ptr_of_reload`). -/
-theorem callParamsB_forall₂ {c : CalleeData} {sl : String → Option (String × Nat)}
-    {body : Lcmd} (h : callParamsB c sl body = true)
-    {frame : String → Option (BitVec 64)} {base : String → BitVec 64} {rsp : BitVec 64}
-    (hsep : X86Backend.ImageAddrSim.ImgSep frame sl base rsp)
-    (hgate : X86Backend.ImageAddrSim.ImgGate frame sl body)
-    {s : LstateMF} {sa : VIR.JasminLsemAddrMem.LstateA} {zf : Bool}
-    (hrel : X86Backend.ImageAddrSim.ImgRel frame sl base body s sa zf)
-    (hcall : ∃ bi ra t, body[sa.reg.lpc]? = some bi ∧ bi.li_i = .Lcall ra t) :
-    List.Forall₂ (X86Backend.LinkedFnCallee.ParamAt sl base sa) c.ins
-      (calleeSiteAt c sl body sa.reg.lpc).2 := by
-  obtain ⟨bi, ra, t, hb, hbi⟩ := hcall
-  have hp := (callParamsB_spec h hb hbi).1
-  rw [calleeSiteAt_snd]
-  refine List.forall₂_iff_zip.mpr
-    ⟨(c.siteArgs_length sl body _).symm, fun {q x} hqx => ?_⟩
-  have hq := hp (q, x) hqx
-  simp only [paramAtB, Bool.and_eq_true] at hq
-  obtain ⟨hgp, hk⟩ := hq
-  refine ⟨hgp, ?_⟩
-  obtain ⟨pn, k⟩ := q
-  cases k with
-  | scalar => simpa using hk
-  | words m =>
-      simp only [beq_iff_eq] at hk
-      obtain ⟨q, hq, hptr⟩ :=
-        X86Backend.ImageAddrSim.ptr_of_reload hsep hgate hrel hk (hsep.gp pn hgp)
-      exact ⟨⟨q, hq⟩, hptr⟩
 
 /-- **The destination of an out call is an array of the slot map.** If the dead names of a
     printed body pass `calleeDeadB` against `c` with an out result `.out n' k`, and the
@@ -10552,12 +10557,9 @@ theorem regionCoB_callee {σ : AbiLayout} {nm : String → String} {body : Lcmd}
   simp only [regionCoB, renImageB, calleeImgBT, Option.all_some, Bool.and_eq_true] at h
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩,
     ⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, ⟨hpr, -⟩⟩, -⟩, -⟩, -⟩, -⟩⟩⟩ := h
-  refine ⟨hpr, fun c hc q hq => ?_⟩
-  have hk := (calleeBodyBT_spec.mp hb).code
-  simp only [calleeCodeBT, Bool.and_eq_true, List.all_eq_true] at hk
-  have hkc := hk.1 c hc
-  simp only [hq, Option.all_some] at hkc
-  exact X86Backend.Callee.not_call_mem_of_keepCheckW hkc
+  exact ⟨hpr, fun c hc q hq =>
+    (X86Backend.Callee.keepCheckAtB_sound (calleeCodeBT_keep (calleeBodyBT_spec.mp hb).code hc
+      hq)).1⟩
 
 /-- **The bytes of a calling body.** The bytes `calleeBytes` at the table of one linked function
     `c` of a body `b` of the class `ImageAddrCallW.printedAddrCWB` decode to the program
