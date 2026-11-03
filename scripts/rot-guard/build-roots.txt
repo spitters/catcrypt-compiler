@@ -208,6 +208,8 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.EncoderDiffAudit
 CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonCryptoModel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
+CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Reified
+CatCrypt.Crypto.SecureCompilation.AeneasFront.Entry
 CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
@@ -433,7 +435,8 @@ CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.NttFipsWord
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
-CatCrypt.Crypto.SecureCompilation.Haxc.RegionExportForms
+CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
+CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoStorage
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionKernelSem
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
@@ -812,8 +815,8 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.GatherLsemTieExt
 CatCrypt.Crypto.SecureCompilation.X86Backend.GenericEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.HardwareISAAxioms
 CatCrypt.Crypto.SecureCompilation.X86Backend.HawkNttEmitMain
+CatCrypt.Crypto.SecureCompilation.X86Backend.IdxAnnotFix
 CatCrypt.Crypto.SecureCompilation.X86Backend.IdxBaseGateKats
-CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheckComplete
 CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheckIsa
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrWBack
 CatCrypt.Crypto.SecureCompilation.X86Backend.ImgGateOfLegal
@@ -1068,7 +1071,6 @@ HaxAscent.Calculus.CorresMRRel
 HaxAscent.Calculus.RustMSquareSpec
 HaxAscent.RustSemantics
 HaxAscent.RustSemantics.AscendRustM
-HaxAscent.RustSemantics.BackendLoops
 HaxAscent.RustSemantics.ToRustMSBreak
 HaxAscent.RustSemantics.ToRustMSCongr
 HaxAscent.RustSemantics.ToRustMSContractDemo
