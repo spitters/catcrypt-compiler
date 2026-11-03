@@ -269,7 +269,11 @@ theorem hax64WExit_respect : RespectW Hax64Ty Hax64Sig hax64WExit := by
         obtain ⟨⟨a, rest, rfl⟩, -⟩ := hax64Builtins_wideHead hw hv
         have := hsc (.array a) (List.mem_cons_self ..)
         simp [scalarVB] at this
-      rw [hax64WExit_of_ne hne1 hne2 h1 h2 hw] at hv
+      by_cases hs : f = "select"
+      · subst hs
+        obtain ⟨k, x, y, rfl, -, -, rfl⟩ := hax64WExit_select_some hv
+        split <;> exact hsc _ (by simp)
+      rw [hax64WExit_of_ne hne1 hne2 h1 h2 hw hs] at hv
       obtain ⟨-, -, hsh⟩ := hax64Exit_some hv
       rcases hsh with hA | hA
       · obtain ⟨a, rest, rfl⟩ := hax64ArrShape_head hA

@@ -280,8 +280,8 @@ theorem haxFrontShape_of_impToNF (O : FrontOracle)
   exact ⟨haxFrontOkP_shapeAccepts O e hc hok hs, haxFrontBodyP_shapeAccepts O e hc hs⟩
 
 /-- **The table `hax64WExit` at the calls of the translation.** At the names `CatName` the
-    translation to `catCryptDialect` admits, `hax64WExit` returns only values the `u64` table
-    returns. -/
+    translation to `catCryptDialect` admits, `select` among them, `hax64WExit` returns only
+    values the `u64` table with `select` returns. -/
 theorem hax64WExit_subTable : NFToCat.SubTable hax64WExit := by
   intro f vals v hf hv
   by_cases hl : f = "array_lit"
@@ -299,7 +299,10 @@ theorem hax64WExit_subTable : NFToCat.SubTable hax64WExit := by
   by_cases hw : hax64WideHead f
   · rw [hax64WExit_wide hw] at hv
     exact ImpToNF.withSelect_hax64Builtins_of_base hv
-  rw [hax64WExit_of_ne hn.1 hn.2.1 hn.2.2.1 hn.2.2.2 hw] at hv
+  by_cases hs : f = "select"
+  · subst hs
+    exact ImpToNF.withSelect_hax64Builtins_of_base (hax64WExit_sub hv)
+  rw [hax64WExit_of_ne hn.1 hn.2.1 hn.2.2.1 hn.2.2.2 hw hs] at hv
   exact ImpToNF.withSelect_hax64Builtins_of_base (hax64Exit_sub hv)
 
 end CatCrypt.Crypto.Hax
