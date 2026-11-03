@@ -599,10 +599,12 @@ theorem mulLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
     · cases h
   · cases h
 
-/-- The upper bound the first fact of `F` on the single term `t` states. -/
+/-- The least upper bound the single-term facts `.le [t] b` of `F` state for the term `t`,
+    when `F` has one. The value does not depend on the order of `F` and does not grow when
+    facts are added (`IdxInvCheckComplete.ubOf_mono`). -/
 def ubOf : List SFact → STerm → Option Nat
   | [], _ => none
-  | .le [t'] b :: F, t => if t' = t then some b else ubOf F t
+  | .le [t'] b :: F, t => if t' = t then some (min b ((ubOf F t).getD b)) else ubOf F t
   | _ :: F, t => ubOf F t
 
 theorem ubOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} :
@@ -615,8 +617,14 @@ theorem ubOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
       · rename_i he
         subst he
         cases h
-        have := hF (.le [t'] b) List.mem_cons_self
-        simpa [SFact.holds, tsum] using this
+        have h0 := hF (.le [t'] b) List.mem_cons_self
+        simp only [SFact.holds, tsum, List.map_cons, List.map_nil, List.sum_cons,
+          List.sum_nil, add_zero] at h0
+        cases hu : ubOf F t' with
+        | none => simpa using h0
+        | some v =>
+            have := ubOf_sound F t' v (fun g hg => hF g (List.mem_cons_of_mem _ hg)) hu
+            simpa using le_min h0 this
       · exact ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
   | .le [] _ :: F, t, u, hF, h =>
       ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h

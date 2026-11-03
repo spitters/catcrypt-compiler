@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComToVeirSemantics
 import all Veir.Interpreter.Basic
 import all Veir.Data.LLVM.Int.Basic
 import all Veir.IR.Attribute
+import all Veir.Dialects.Arith.OpInfo
 
 /-!
 # The scalar fragment of `jasminDialect` in VeIR, with bare shifts under `ComShiftSafe`
@@ -511,7 +512,7 @@ value. -/
 def veirRunExpansion (x : VeirExpansion OpCode) (resTy : TypeAttr) (args : List RuntimeValue)
     (mem : MemoryState) : Interp (RuntimeValue × MemoryState) := do
   let (done, mem') ← veirRunSteps args resTy x.steps [] mem
-  let some r := VeirSrc.resolveVal args done x.value | .fail
+  let some r := VeirSrc.resolveVal args done x.value | .fail none
   pure (r, mem')
 
 /-- The operations the lowering emits under the expansions `ex` for a binding of
@@ -524,7 +525,7 @@ def veirRunBindingWith (ex : JasminOp → Option (VeirExpansion OpCode)) (o : Ja
   | some x => veirRunExpansion x (JasminTy.toVeirTy t) args mem
   | none => do
       let (vals, mem', _) ← veirRunOp o t args mem
-      let some r := vals[(JasminOp.resultSlotOfOp o).2]? | .fail
+      let some r := vals[(JasminOp.resultSlotOfOp o).2]? | .fail none
       pure (r, mem')
 
 /-- The op-by-op VeIR interpretation of a `Com` under the expansions `ex`: each
@@ -576,7 +577,8 @@ theorem veirRunComWith_expandVeir? : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy
 /-- Evaluation of `veirRunExpansion` on a closed list of steps: unfolds the step
 runner, the operand resolution and the `arith` arms of `Veir.interpretOp'`. -/
 macro "veir_run_simp" "[" ls:Lean.Parser.Tactic.simpLemma,* "]" : tactic => `(tactic|
-  simp only [veirRunExpansion, aliasExpansion, stConst, stOp, stAddExt, iTy, veirRunSteps,
+  simp only [TypeAttr.of_val, Attribute.of_def, IsAttr.inject, IntegerType.signless,
+    veirRunExpansion, aliasExpansion, stConst, stOp, stAddExt, iTy, veirRunSteps,
     List.mapM_nil, Option.pure_def, interpretOp', Arith.interpretOp', List.map_cons,
     Option.getD_some, Option.getD_none, List.map_nil, List.size_toArray, List.length_cons,
     List.length_nil, Nat.zero_add, zero_lt_one, getElem?_pos, List.getElem_toArray,

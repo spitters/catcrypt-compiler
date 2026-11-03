@@ -426,6 +426,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldLoopCT
 CatCrypt.Crypto.SecureCompilation.Haxc.FrontTysPos
 CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
+CatCrypt.Crypto.SecureCompilation.Haxc.HtermOfKinds
 CatCrypt.Crypto.SecureCompilation.Haxc.LeanFront
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes

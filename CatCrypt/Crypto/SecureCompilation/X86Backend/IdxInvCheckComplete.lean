@@ -34,6 +34,17 @@ for the counter `c` of a counted loop.
   `affHi` is at most the combination of the bounds.
 * `affLe_of_bounds`, `oblsOk_of_bounds`, `oblsOk_of_facts`: the affine check and the
   obligation check accept such an index.
+* `ubOf_le_of_mem`, `ubOf_mem`, `ubOf_mono`, `ubSum_mono`: `ubOf` is the least bound of the
+  single-term facts on a term, so it is at most the bound of the first such fact (the value
+  `ubOf` read before it took the minimum) and does not grow when facts are added.
+* `lbOf_cases`, `lbOf_mono`, `lbSum_mono`, `widOk_mono`: the lower bounds and the width test
+  are monotone in the fact list.
+
+These monotonicity facts are steps toward the completeness of the annotation `idxAnnot` by a
+greatest-fixed-point argument, which needs `entails`, `oblsOk` and `succOk` monotone in the
+fact list. The forms `linOf` (its subtraction arm reads `lbOf`), `splitAdd` (it reads
+`widOk`) and `affOf` (its arms read `widOk`, `affHi` and `affLo`) change shape when facts are
+added, so those checks are not monotone as defined.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck
@@ -142,6 +153,131 @@ theorem affLe_of_bounds {F : List SFact} {t : STerm} {b' : Nat} (u : STerm → N
   have := affHi_le_of_bounds F u h
   simp only [affLe, decide_eq_true_eq]
   omega
+
+/-! ## Monotonicity of the bounds in the fact list -/
+
+/-- **`ubOf` is at most every single-term bound**: a fact `.le [t] b` of `F` gives `ubOf F t`
+    a value at most `b`. In particular the value is at most the bound of the first such fact,
+    so a check that reads `ubOf` as an upper bound compared by `≤` accepts whatever it
+    accepted when `ubOf` read the first fact. -/
+theorem ubOf_le_of_mem : ∀ {F : List SFact} {t : STerm} {b : Nat}, SFact.le [t] b ∈ F →
+    ∃ u, ubOf F t = some u ∧ u ≤ b
+  | [], _, _, h => by cases h
+  | f :: F, t, b, h => by
+      rcases List.mem_cons.mp h with rfl | h
+      · refine ⟨min b ((ubOf F t).getD b), by simp [ubOf], min_le_left _ _⟩
+      · obtain ⟨u, hu, hb⟩ := ubOf_le_of_mem h
+        match f with
+        | .le [t'] b' =>
+            simp only [ubOf]
+            split
+            · rename_i he
+              subst he
+              exact ⟨_, rfl, (min_le_right _ _).trans (by simp [hu, hb])⟩
+            · exact ⟨u, hu, hb⟩
+        | .le [] _ | .le (_ :: _ :: _) _ | .ge _ _ | .w64 _ | .ne _ _ | .ale _ _ =>
+            exact ⟨u, by simpa [ubOf] using hu, hb⟩
+
+/-- **`ubOf` is attained**: its value is the bound of a single-term fact of `F` on `t`. -/
+theorem ubOf_mem : ∀ {F : List SFact} {t : STerm} {u : Nat}, ubOf F t = some u →
+    SFact.le [t] u ∈ F
+  | [], _, _, h => by cases h
+  | f :: F, t, u, h => by
+      match f with
+      | .le [t'] b' =>
+          simp only [ubOf] at h
+          split at h
+          · rename_i he
+            subst he
+            cases h
+            cases hu : ubOf F t' with
+            | none => simp
+            | some v =>
+                have hv := ubOf_mem hu
+                simp only [Option.getD_some]
+                rcases min_choice b' v with he | he <;> rw [he]
+                · exact List.mem_cons_self
+                · exact List.mem_cons_of_mem _ hv
+          · exact List.mem_cons_of_mem _ (ubOf_mem h)
+      | .le [] _ | .le (_ :: _ :: _) _ | .ge _ _ | .w64 _ | .ne _ _ | .ale _ _ =>
+          exact List.mem_cons_of_mem _ (ubOf_mem (by simpa [ubOf] using h))
+
+/-- **`ubOf` does not grow when facts are added.** -/
+theorem ubOf_mono {F F' : List SFact} (hF : ∀ f ∈ F, f ∈ F') {t : STerm} {u : Nat}
+    (h : ubOf F t = some u) : ∃ u', ubOf F' t = some u' ∧ u' ≤ u :=
+  ubOf_le_of_mem (hF _ (ubOf_mem h))
+
+/-- **`ubSum` does not grow when facts are added.** -/
+theorem ubSum_mono {F F' : List SFact} (hF : ∀ f ∈ F, f ∈ F') :
+    ∀ {ts : List STerm} {u : Nat}, ubSum F ts = some u → ∃ u', ubSum F' ts = some u' ∧ u' ≤ u
+  | [], u, h => ⟨0, rfl, by simp only [ubSum, Option.some.injEq] at h; omega⟩
+  | t :: ts, u, h => by
+      simp only [ubSum] at h
+      split at h
+      · rename_i a b ha hb
+        cases h
+        obtain ⟨a', ha', hle⟩ := ubOf_mono hF ha
+        obtain ⟨b', hb', hle'⟩ := ubSum_mono hF hb
+        exact ⟨a' + b', by simp [ubSum, ha', hb'], by omega⟩
+      · cases h
+
+/-- **`lbOf` is at least its immediate bound.** -/
+theorem immLb_le_lbOf : ∀ (F : List SFact) (t : STerm), immLb t ≤ lbOf F t
+  | [], _ => le_rfl
+  | .ge t' k :: F, t => by
+      simp only [lbOf]
+      split
+      · exact (immLb_le_lbOf F t).trans (le_max_right _ _)
+      · exact immLb_le_lbOf F t
+  | .le _ _ :: F, t | .w64 _ :: F, t | .ne _ _ :: F, t | .ale _ _ :: F, t =>
+      immLb_le_lbOf F t
+
+/-- **`lbOf` is attained**: it is the immediate bound of `t` or the bound of a lower-bound fact
+    of `F` on `t`. -/
+theorem lbOf_cases : ∀ (F : List SFact) (t : STerm),
+    lbOf F t = immLb t ∨ SFact.ge t (lbOf F t) ∈ F
+  | [], _ => Or.inl rfl
+  | .ge t' k :: F, t => by
+      simp only [lbOf]
+      split
+      · rename_i he
+        subst he
+        rcases max_choice k (lbOf F t') with he | he <;> rw [he]
+        · exact Or.inr List.mem_cons_self
+        · rcases lbOf_cases F t' with h | h
+          · exact Or.inl h
+          · exact Or.inr (List.mem_cons_of_mem _ h)
+      · rcases lbOf_cases F t with h | h
+        · exact Or.inl h
+        · exact Or.inr (List.mem_cons_of_mem _ h)
+  | .le _ _ :: F, t | .w64 _ :: F, t | .ne _ _ :: F, t | .ale _ _ :: F, t => by
+      rcases lbOf_cases F t with h | h
+      · exact Or.inl h
+      · exact Or.inr (List.mem_cons_of_mem _ h)
+
+/-- **`lbOf` does not decrease when facts are added.** -/
+theorem lbOf_mono {F F' : List SFact} (hF : ∀ f ∈ F, f ∈ F') (t : STerm) :
+    lbOf F t ≤ lbOf F' t := by
+  rcases lbOf_cases F t with h | h
+  · rw [h]
+    exact immLb_le_lbOf F' t
+  · exact lbOf_ge_of_mem (hF _ h)
+
+/-- **`lbSum` does not decrease when facts are added.** -/
+theorem lbSum_mono {F F' : List SFact} (hF : ∀ f ∈ F, f ∈ F') :
+    ∀ ts : List STerm, lbSum F ts ≤ lbSum F' ts
+  | [] => le_rfl
+  | t :: ts => by
+      have h1 := lbOf_mono hF t
+      have h2 := lbSum_mono hF ts
+      simp only [lbSum, List.map_cons, List.sum_cons] at h2 ⊢
+      omega
+
+/-- **`widOk` holds after facts are added.** -/
+theorem widOk_mono {F F' : List SFact} (hF : ∀ f ∈ F, f ∈ F') {t : STerm}
+    (h : widOk F t = true) : widOk F' t = true := by
+  simp only [widOk, Bool.or_eq_true, decide_eq_true_eq] at h ⊢
+  exact h.imp id (hF _)
 
 /-- **The obligation check accepts an index of a non-empty array whose affine form is
     bounded** below the length `n`. -/

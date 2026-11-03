@@ -11,7 +11,8 @@ public import Veir.Interpreter.Lemmas
 import all Veir.Interpreter.Basic
 import all Veir.Data.LLVM.Int.Basic
 import all Veir.IR.Attribute
-import all Veir.RuntimeValue.Conforms
+import all Veir.Dialects.Arith.OpInfo
+import all Veir.Interpreter.RuntimeValue.Conforms
 import all Veir.Rewriter.WfRewriter.Basic
 import all Veir.Rewriter.Basic
 import all Veir.IR.Basic
@@ -735,7 +736,7 @@ theorem steps_sim {C : WfIRContext OpCode} {args : List ValuePtr} {argV : List R
 /-! ## The expansions of the `arith` fragment -/
 
 theorem conforms_int_integerType {w : Nat} (v : LLVM.Int w) (h) :
-    (RuntimeValue.int w v).Conforms ((Attribute.integerType ⟨w⟩).asType h) := by
+    (RuntimeValue.int w v).Conforms ((Attribute.integerType (IntegerType.signless w)).asType h) := by
   simp [Attribute.asType, RuntimeValue.Conforms]
 
 theorem veirRunStepsC_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat) (x y : LLVM.Int w)
