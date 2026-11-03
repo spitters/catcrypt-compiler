@@ -735,13 +735,15 @@ def callWhy (σ : String → String) (L : Nat → List String) (k : Nat)
     `coInstrB` that reads `i`: `callWhy` on a shadow instruction of a call, `plainArrB` on
     an instruction with an array position or on its renaming, `coArrStepB`, the inclusion
     of the names the operation needs in those live at `k`, the inclusion of the names live
-    at `k + 1` in those live at `k`, `jumpB`, or the refused instruction kind. -/
+    at `k + 1` in those live at `k` (not checked at a constant-taken guard), `jumpB`, or the
+    refused instruction kind. -/
 def coInstrWhy (σ : String → String) (body : List LinstrRM) (L : Nat → List String) (k : Nat)
     (i : LinstrRM) (aa : String → Nat → Option Nat := fun _ _ => none)
     (ao : String → Option Nat := fun _ => none) : String :=
   let liveW :=
     if subB (L (k + 1)) (L k) then ""
     else s!"live at {k + 1}, not at {k}: {outsideStr (L (k + 1)) (L k)}"
+  let guardW := if X86Backend.ConstGuard.constTakenB body k then "" else liveW
   let need := arrReads i ++ (L (k + 1)).filter fun r => some r != arrWrite i
   let needW :=
     if subB need (L k) then "" else s!"needed, not live at {k}: {outsideStr need (L k)}"
@@ -756,11 +758,11 @@ def coInstrWhy (σ : String → String) (body : List LinstrRM) (L : Nat → List
         (joinWhy (coStepWhy σ i (L (k + 1))) needW))
   else if (cmpArgs? i).isSome || (movRegArgs? i).isSome then liveW
   else match flagCondCC? i with
-    | some (_, lbl) => joinWhy liveW (jumpWhy body L k lbl)
+    | some (_, lbl) => joinWhy guardW (jumpWhy body L k lbl)
     | none =>
       match i.1 with
       | .Llabel _ _ => liveW
-      | .Lcond _ lbl => joinWhy liveW (jumpWhy body L k lbl)
+      | .Lcond _ lbl => joinWhy guardW (jumpWhy body L k lbl)
       | .Lgoto (_, lbl) => jumpWhy body L k lbl
       | .Lopn _ _ _ =>
           if (carryArgs? i).isSome || (wideArgs? i).isSome then liveW

@@ -273,26 +273,26 @@ theorem tabOracle_one (c : CalleeData) (n : Nat) (q : List RInstr) :
   · rintro ⟨rfl, tr, hx⟩
     exact ⟨c.name, rfl, rfl, tr, hsig.symm ▸ hx⟩
 
-/-- **The runs of the bytes of `compileA` on a program with calls of several linked kernels.**
-    Let the linked functions of `m` have distinct names and each be a linked kernel, let the code
-    of each but the last be an item stream (`LprogBytesLinkReloc.KernelItems`), let the
-    translation of the hax entry return `q0` on `m`, the chain with the declared procedures of
-    `m` return a program `p` with a `call`, and `compileRegion` at the data of the linked
-    functions of `m` return `(P, bytes)` on `p`. There is a nonempty sublist `cs` of these data
-    with distinct names, the table the back half finds, whose code decodes to the region `Q` of
-    the blocks `q f` at the entry indices `k f`, such that from every entry state `sa` satisfying
-    `σ.Regions` with a source run of `m` to `v` the bytes decode to `pc` followed by `Q` with its
-    targets raised by `pc.length`, the program halts through the calls (`HaltsC`) in a state
-    from which `σ` reads back `v`, and `pc` halts with its calls answered by the oracle
-    `tabOracle cs pc.length k q` in such a state. The source run denotes the source value at the
-    environment of the functions of `cs` alone (`denoteAt_linkedEnvOn`), whose table of
-    summaries agrees with it (`procsAgree_summaryTableL`), and the runs are
-    `compileRegion_correct_linked_multi` at the kinds `kernelKind` of the linked kernels. At
-    one linked function this is `haxEntry_call_halts`. -/
-theorem haxEntry_call_halts_multi {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lprog}
+/-- **The runs of the bytes of `compileA` at the table of a calling body.** Let the linked
+    functions of `m` have distinct names and each be a linked kernel, let the translation of
+    the hax entry return `q0` on `m`, the chain with the declared procedures of `m` return a
+    program `p` with a `call`, and `compileRegion` at the data of the linked functions of `m`
+    return `(P, bytes)` on `p`. The table `T` that `regionCallee` finds at the export `r0` of
+    the legalised program is a nonempty sublist of these data with distinct names, whose code
+    is nonempty and decodes, at each function `c`, to the block `moduleBlock m c.name` without
+    `call`. At the interfaces `sg` of the kinds `kernelKind` of the linked kernels, from every
+    entry state `sa` satisfying `σ.Regions` with a source run of `m` to `v`, the bytes decode to
+    a caller `pc` followed by the region of the blocks of `T` with its targets raised by
+    `pc.length`, the program halts through the calls (`HaltsC`) in a state from which `σ` reads
+    back `v`, and `pc` halts in such a state with its calls answered by the oracle of the
+    blocks guarded by the preconditions of `sg`, at the entries of the functions of `T`. The
+    source run denotes the source value at the environment of the functions of `T` alone
+    (`denoteAt_linkedEnvOn`), whose table of summaries agrees with it
+    (`procsAgree_summaryTableL`), and the runs are `compileRegion_correct_linked_multi` at the
+    kinds `kernelKind` of the linked kernels. -/
+theorem haxEntry_call_halts_tab {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lprog}
     {bytes : List (BitVec 8)} (hnd : (m.linked.map (·.name)).Nodup)
     (hk : ∀ l ∈ m.linked, LinkedKernel l)
-    (hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes)
     {q0 : Σ t : NFDialect.NfTy,
       NFProg NFDialect.nfDialect (CatCrypt.Crypto.Hax.ImpToNF.entryCtx (NFToRoute.abiEntry σ))
         [t]}
@@ -301,19 +301,33 @@ theorem haxEntry_call_halts_multi {m : HaxModule} {σ : AbiLayout} {fname : Stri
       [CryptoToJasminCom.mapTy (CatCrypt.Crypto.Hax.NFToCat.catTy q0.1)]}
     (hp : (extChain (haxEntry.decls m) _ q0.1).run q0.2 = some p) (hcf : p.callFree = false)
     (h1 : compileRegion σ (haxEntry.names fname σ) p (m.linked.filterMap LinkedFn.calleeData)
-      = some (P, bytes))
-    (sa : AState) (hsep : σ.Regions sa) (v : _root_.Hax.Value) (hrun : haxRuns σ m sa v) :
-    ∃ cs : List CalleeData, cs.Sublist (m.linked.filterMap LinkedFn.calleeData) ∧ cs ≠ []
-      ∧ (cs.map (·.name)).Nodup
-      ∧ ∃ (pc Q : List RInstr) (k : String → Nat) (q : String → List RInstr),
-        (∀ c ∈ cs, decodeLprog c.bytes = some (q c.name))
-        ∧ decodeLprog (cs.flatMap (·.bytes)) = some Q
-        ∧ (∀ c ∈ cs, ∃ A B, Q = A ++ shiftProg A.length (q c.name) ++ B ∧ A.length = k c.name)
-        ∧ decodeLprog bytes = some (pc ++ shiftProg pc.length Q)
-        ∧ (∃ sa', HaltsC aMachine (pc ++ shiftProg pc.length Q) 0 sa sa' ∧ σ.ResultOf sa sa' v)
-        ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
-          ∧ σ.ResultOf sa sa' v := by
-  obtain ⟨T, hsub, hne, hndT, hcalls, hnoc, hrest⟩ := compileRegion_correct_linked_multi h1 hcf
+      = some (P, bytes)) :
+    ∃ T : CalleeTab, (∃ r0, exportR (nfCtx σ).length (haxEntry.names fname σ).fname
+          (legalizeRegion p) (nfCtx σ).length 0 = some r0
+        ∧ regionCallee (m.linked.filterMap LinkedFn.calleeData) (legalizeRegion p) r0.code
+          = some (some T))
+      ∧ T.fns.Sublist (m.linked.filterMap LinkedFn.calleeData) ∧ T.fns ≠ [] ∧ T.names.Nodup
+      ∧ (∀ c ∈ T.fns, c.bytes ≠ [])
+      ∧ (∀ c ∈ T.fns, decodeLprog c.bytes = some (moduleBlock m c.name))
+      ∧ (∀ c ∈ T.fns, ∀ tg, RInstr.call tg ∉ moduleBlock m c.name)
+      ∧ ∃ sg : String → X86Backend.Callee.CalleeSig,
+        (∀ c ∈ T.fns, ∃ l ∈ m.linked, l.calleeData = some c
+          ∧ sg c.name = (kernelKind l c).sig)
+        ∧ ∀ (sa : AState), σ.Regions sa → ∀ (v : _root_.Hax.Value), haxRuns σ m sa v →
+          ∃ pc : List RInstr,
+            decodeLprog bytes = some (pc ++ shiftProg pc.length
+              (X86Backend.LprogBytesLinkReloc.regionProg
+                (T.regionEntries fun c => moduleBlock m c.name)))
+            ∧ (∃ sa', HaltsC aMachine (pc ++ shiftProg pc.length
+                (X86Backend.LprogBytesLinkReloc.regionProg
+                  (T.regionEntries fun c => moduleBlock m c.name))) 0 sa sa'
+              ∧ σ.ResultOf sa sa' v)
+            ∧ ∃ sa', HaltsO aMachine (oracleOf T.names
+                (fun f => pc.length + T.entryIdx (T.symPos f))
+                (fun f => guarded (sg f) (runOf ctRegime (moduleBlock m f)))) pc 0 sa sa'
+              ∧ σ.ResultOf sa sa' v := by
+  obtain ⟨T, hpin, hsub, hne, hndT, hcalls, hnoc, hrest⟩ :=
+    compileRegion_correct_linked_multi h1 hcf
   -- The linked function of each function of the table, the first with its name.
   have hlc : ∀ c ∈ T.fns, ∃ l ∈ m.linked, l.calleeData = some c ∧
       m.linked.find? (·.name == c.name) = some l := by
@@ -339,7 +353,6 @@ theorem haxEntry_call_halts_multi {m : HaxModule} {σ : AbiLayout} {fname : Stri
     rw [hb, hq]
     rfl
   -- The source run at the functions of the table alone.
-  obtain ⟨k, V, x, hV, hvx, hx⟩ := haxEntry_run_linkedEnv hq0 hp hsep hrun
   let ls := m.linked.filter fun l => T.names.contains l.name
   have hmemls : ∀ g, g ∈ ls.map (·.name) ↔ g ∈ T.names := by
     intro g
@@ -366,9 +379,6 @@ theorem haxEntry_call_halts_multi {m : HaxModule} {σ : AbiLayout} {fname : Stri
     exact procsAgree_summaryTableL hnd (fun l hl => (List.mem_filter.mp hl).1)
       (fun l hl => (hk l (List.mem_filter.mp hl).1).sem_kinds)
       (fun l hl => (hk l (List.mem_filter.mp hl).1).res_slice)
-  have hx' : p.denoteAt (linkedEnvOn m T.names) k V = some (HVector.cons x .nil) := by
-    rw [denoteAt_linkedEnvOn hcalls]
-    exact hx
   -- The summaries of the table of the functions of `T`.
   have hwo : ∀ f pr, f ∉ T.names → summaryTableL ls f = some pr → pr.WordOnly ∧ pr.RetWord := by
     intro f pr hf ht
@@ -406,87 +416,94 @@ theorem haxEntry_call_halts_multi {m : HaxModule} {σ : AbiLayout} {fname : Stri
     rw [hq] at this
     rw [← Option.some.inj this]
     exact hm
-  obtain ⟨pc, ⟨b, hbs, -, -⟩, ⟨sO, hO, hRO⟩, hC⟩ :=
+  have hneB : ∀ c ∈ T.fns, c.bytes ≠ [] := by
+    obtain ⟨r0, hr0, hcT⟩ := hpin
+    obtain ⟨T', r0', hr0', hcT', -, -, r, b, cert, -, hbs, -⟩ := compileRegion_spec_tab h1 hcf
+    rw [hr0, Option.some.injEq] at hr0'
+    subst hr0'
+    rw [hcT, Option.some.injEq, Option.some.injEq] at hcT'
+    subst hcT'
+    exact (calleeBytes_tab hbs).2.1
+  refine ⟨T, hpin, hsub, hne, hndT, hneB, hdecq, fun c hc => hnoc c hc _ (hdecq c hc),
+    fun f => (moduleKind m (.ins l0 [] "") f).sig, fun c hc => ?_, fun sa hsep v hrun => ?_⟩
+  · obtain ⟨l, hl, hlc, hkk, -⟩ := hkind c hc
+    exact ⟨l, hl, hlc, by simp only [hkk]⟩
+  obtain ⟨k, V, x, hV, hvx, hx⟩ := haxEntry_run_linkedEnv hq0 hp hsep hrun
+  have hx' : p.denoteAt (linkedEnvOn m T.names) k V = some (HVector.cons x .nil) := by
+    rw [denoteAt_linkedEnvOn hcalls]
+    exact hx
+  obtain ⟨pc, -, ⟨sO, hO, hRO⟩, hC⟩ :=
     hrest (moduleKind m (.ins l0 [] "")) (fun f => runOf ctRegime (moduleBlock m f)) hK hT hwo hTc
       sa V hV hsep k hx'
-  -- The region of the blocks of the table.
-  have hit' : ∀ c ∈ T.fns.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems c.bytes := by
-    intro c hc
-    have hsubD : T.fns.dropLast.Sublist (m.linked.filterMap LinkedFn.calleeData).dropLast := by
-      have key : ∀ {l₁ l₂ : List CalleeData}, l₁.Sublist l₂ → l₁.dropLast.Sublist l₂.dropLast := by
-        intro l₁ l₂ h
-        induction h with
-        | slnil => exact List.Sublist.slnil
-        | cons a h ih =>
-            rename_i l₁' l₂'
-            cases l₂' with
-            | nil => simp_all
-            | cons b l₂'' =>
-                rw [List.dropLast_cons_cons]
-                exact ih.cons a
-        | cons_cons a h ih =>
-            rename_i l₁' l₂'
-            cases l₁' with
-            | nil => simp
-            | cons b l₁'' =>
-                cases l₂' with
-                | nil => simp at h
-                | cons e l₂'' =>
-                    rw [List.dropLast_cons_cons, List.dropLast_cons_cons]
-                    exact ih.cons_cons a
-      exact key hsub
-    have hfd : ∀ {L : List LinkedFn} {d : CalleeData},
-        d ∈ (L.filterMap LinkedFn.calleeData).dropLast →
-          ∃ l ∈ L.dropLast, l.calleeData = some d := by
-      intro L d h
-      rcases List.eq_nil_or_concat L with rfl | ⟨L', a, rfl⟩
-      · simp at h
-      · rw [List.concat_eq_append, List.filterMap_append] at h
-        rw [List.concat_eq_append, List.dropLast_concat]
-        apply List.mem_filterMap.mp
-        cases hfa : a.calleeData with
-        | none =>
-            simp only [List.filterMap_cons_none hfa, List.filterMap_nil, List.append_nil] at h
-            exact List.dropLast_subset _ h
-        | some y =>
-            simpa [List.filterMap_cons_some hfa] using h
-    obtain ⟨l, hl, hlc⟩ := hfd (hsubD.subset hc)
-    rw [(CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hlc).2.2.2.2.2.1]
-    exact hit l hl
-  have hneB := (calleeBytes_tab hbs).2.1
-  have hR := T.regionBlocks hne (fun c => moduleBlock m c.name) hdecq hneB
-    (fun c hc => hnoc c hc _ (hdecq c hc)) hit' T.names (fun _ h => h)
   obtain ⟨hdecB, sC, hhC, hRC⟩ := hC (fun c => moduleBlock m c.name) hdecq
-    (fun c hc => hnoc c hc _ (hdecq c hc)) hit' (fun _ _ => rfl)
+    (fun c hc => hnoc c hc _ (hdecq c hc)) (fun _ _ => rfl)
+  exact ⟨pc, hdecB, ⟨sC, hhC, by rw [hvx]; exact hRC⟩, sO, hO, by rw [hvx]; exact hRO⟩
+
+/-- **The runs of the bytes of `compileA` on a program with calls of several linked kernels.**
+    Let the linked functions of `m` have distinct names and each be a linked kernel, let the
+    translation of the hax entry return `q0` on `m`, the chain with the declared procedures of
+    `m` return a program `p` with a `call`, and `compileRegion` at the data of the linked
+    functions of `m` return `(P, bytes)` on `p`. There is a nonempty sublist `cs` of these data
+    with distinct names, the table the back half finds, whose code decodes to the region `Q` of
+    the blocks `q f` at the entry indices `k f`, such that from every entry state `sa` satisfying
+    `σ.Regions` with a source run of `m` to `v` the bytes decode to `pc` followed by `Q` with its
+    targets raised by `pc.length`, the program halts through the calls (`HaltsC`) in a state
+    from which `σ` reads back `v`, and `pc` halts with its calls answered by the oracle
+    `tabOracle cs pc.length k q` in such a state. It is `haxEntry_call_halts_tab`, whose oracle
+    answers within `tabOracle` since the precondition of the interface of each kind gives that
+    of the data (`LinkedKernel.kind_facts`). At one linked function this is
+    `haxEntry_call_halts`. -/
+theorem haxEntry_call_halts_multi {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lprog}
+    {bytes : List (BitVec 8)} (hnd : (m.linked.map (·.name)).Nodup)
+    (hk : ∀ l ∈ m.linked, LinkedKernel l)
+    {q0 : Σ t : NFDialect.NfTy,
+      NFProg NFDialect.nfDialect (CatCrypt.Crypto.Hax.ImpToNF.entryCtx (NFToRoute.abiEntry σ))
+        [t]}
+    (hq0 : haxEntry.toNF σ m = some q0)
+    {p : NFProg jasminDialect (nfCtx σ)
+      [CryptoToJasminCom.mapTy (CatCrypt.Crypto.Hax.NFToCat.catTy q0.1)]}
+    (hp : (extChain (haxEntry.decls m) _ q0.1).run q0.2 = some p) (hcf : p.callFree = false)
+    (h1 : compileRegion σ (haxEntry.names fname σ) p (m.linked.filterMap LinkedFn.calleeData)
+      = some (P, bytes))
+    (sa : AState) (hsep : σ.Regions sa) (v : _root_.Hax.Value) (hrun : haxRuns σ m sa v) :
+    ∃ cs : List CalleeData, cs.Sublist (m.linked.filterMap LinkedFn.calleeData) ∧ cs ≠ []
+      ∧ (cs.map (·.name)).Nodup
+      ∧ ∃ (pc Q : List RInstr) (k : String → Nat) (q : String → List RInstr),
+        (∀ c ∈ cs, decodeLprog c.bytes = some (q c.name))
+        ∧ decodeLprog (cs.flatMap (·.bytes)) = some Q
+        ∧ (∀ c ∈ cs, ∃ A B, Q = A ++ shiftProg A.length (q c.name) ++ B ∧ A.length = k c.name)
+        ∧ decodeLprog bytes = some (pc ++ shiftProg pc.length Q)
+        ∧ (∃ sa', HaltsC aMachine (pc ++ shiftProg pc.length Q) 0 sa sa' ∧ σ.ResultOf sa sa' v)
+        ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
+          ∧ σ.ResultOf sa sa' v := by
+  obtain ⟨T, -, hsub, hne, hndT, hneB, hdecq, hnoq, sg, hsg, H⟩ :=
+    haxEntry_call_halts_tab hnd hk hq0 hp hcf h1
+  obtain ⟨pc, hdecB, hCC, sO, hO, hRO⟩ := H sa hsep v hrun
+  have hR := T.regionBlocks hne (fun c => moduleBlock m c.name) hdecq hneB hnoq T.names
+    (fun _ h => h)
   obtain ⟨xs₂, hd, hr, -⟩ := hR.decode
   refine ⟨T.fns, hsub, hne, hndT, pc,
     X86Backend.LprogBytesLinkReloc.regionProg (T.regionEntries fun c => moduleBlock m c.name),
     fun f => T.entryIdx (T.symPos f), moduleBlock m, hdecq,
     by show decodeLprog T.bytes = _; simp [decodeLprog, hd, hr], fun c hc => ?_, hdecB,
-    ⟨sC, hhC, by rw [hvx]; exact hRC⟩, sO, hO.mono fun t s s' ho => ?_, by rw [hvx]; exact hRO⟩
-  · obtain ⟨c', hc'⟩ : ∃ c', T.lookup c.name = some c' := by
-      have h1 := congrFun T.lookup_isSome c.name
-      exact Option.isSome_iff_exists.mp
-        (by rw [h1]; simpa [CalleeTab.names] using List.mem_map_of_mem (f := (·.name)) hc)
+    hCC, sO, hO.mono fun t s s' ho => ?_, hRO⟩
+  · obtain ⟨c', hc'⟩ := T.lookup_of_mem (List.mem_map_of_mem (f := (·.name)) hc)
     obtain ⟨A, B, hQ, hA⟩ := hR.block c.name (List.mem_map_of_mem hc)
     rw [CalleeTab.regionCode_lookup T _ hc', (CalleeTab.lookup_spec hc').2] at hQ
     exact ⟨A, B, hQ, hA⟩
   · obtain ⟨f, hf, ht, tr, hgx⟩ := ho
     refine ⟨f, hf, ht, tr, ?_, hgx.2⟩
     obtain ⟨c, hc, rfl⟩ := List.mem_map.mp hf
-    obtain ⟨l, hl, hlc, hkk, -⟩ := hkind c hc
+    obtain ⟨l, hl, hlc, hsgc⟩ := hsg c hc
     obtain ⟨-, -, -, hpre⟩ := (hk l hl).kind_facts hlc
     have hsig : CalleeTab.sigOf ⟨T.fns⟩ c.name = c.sig := by
-      obtain ⟨c', hc'⟩ : ∃ c', T.lookup c.name = some c' := by
-        have h1 := congrFun T.lookup_isSome c.name
-        exact Option.isSome_iff_exists.mp
-          (by rw [h1]; simpa [CalleeTab.names] using List.mem_map_of_mem (f := (·.name)) hc)
+      obtain ⟨c', hc'⟩ := T.lookup_of_mem (List.mem_map_of_mem (f := (·.name)) hc)
       obtain ⟨hcm', hn'⟩ := CalleeTab.lookup_spec hc'
       have hcc : c' = c := List.inj_on_of_nodup_map hndT hcm' hc hn'
       subst hcc
       simp [CalleeTab.sigOf, show CalleeTab.lookup ⟨T.fns⟩ c'.name = some c' from hc']
     rw [hsig]
-    exact hpre s (hkk ▸ hgx.1)
+    exact hpre s (hsgc ▸ hgx.1)
 
 end Linked
 
@@ -511,8 +528,7 @@ open CatCrypt.Crypto.SecureCompilation.SepLogic.Addr (AccessIn)
 open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords regionWords)
 
 /-- **The compiler theorem of the region line, on a module.** Let the linked functions of `m`
-    have distinct names (`hnd`), each be a linked kernel (`hk`, `LinkedKernel`), and each but
-    the last have code that is an item stream (`hit`, `LprogBytesLinkReloc.KernelItems`). For
+    have distinct names (`hnd`) and each be a linked kernel (`hk`, `LinkedKernel`). For
     the result of `compileARegion` on `m`, the bytes decode to a program `prog`, and from every
     entry state `sa` satisfying `σ.Regions`, every value `v` of a source run of `m` from `sa`
     (`haxRuns σ m sa v`: a run of the source reading of the entry, from a hax environment `σ`
@@ -537,9 +553,9 @@ open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords region
 
     A call of a function of the module in the source run is the run of the source reading
     of the extraction of the callee under the table of the module. On a module without
-    linked functions, such as a single function (`te : HaxModule`), `hnd`, `hk` and `hit`
-    hold vacuously (the default arguments close them when `m.linked` reduces to `[]`, and
-    `hit` also at one linked function) and only the first case occurs, since
+    linked functions, such as a single function (`te : HaxModule`), `hnd` and `hk` hold
+    vacuously (the default arguments close them when `m.linked` reduces to `[]`) and only the
+    first case occurs, since
     `m.linked.filterMap LinkedFn.calleeData` is empty; on a single function the source run is
     a run of the source reading of `te` at `hax64WExit` (`haxRuns_single`). A program without
     `call` is the case of `NFEntry.compileR_correct`; a program with a `call` is that of
@@ -548,9 +564,7 @@ theorem correct_of_compileARegion (m : HaxModule) (σ : AbiLayout) (fname : Stri
     (bytes : List (BitVec 8)) (hc : compileARegion m σ fname = some (P, bytes))
     (sa : AState) (hsep : σ.Regions sa) (v : _root_.Hax.Value) (hrun : haxRuns σ m sa v)
     (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
-    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h)
-    (hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes := by
-      exact fun _ h => nomatch h) :
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
     ∃ prog, decodeLprog bytes = some prog ∧
       ((∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v
         ∧ sa'.regs "%rsp" = sa.regs "%rsp"
@@ -585,12 +599,12 @@ theorem correct_of_compileARegion (m : HaxModule) (σ : AbiLayout) (fname : Stri
       exact ⟨prog, hd, .inl ⟨sa', h⟩⟩
   | false =>
       obtain ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, hdec, hC, hO⟩ :=
-        haxEntry_call_halts_multi hnd hk hit hq0 hp hcf hc sa hsep v hrun
+        haxEntry_call_halts_multi hnd hk hq0 hp hcf hc sa hsep v hrun
       exact ⟨_, hdec, .inr ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, rfl, hC, hO⟩⟩
 
 /-- **The general compiler theorem with no witness, on a module.** Let the linked functions of
-    `m` have distinct names (`hnd`), each be a linked kernel (`hk`, `LinkedKernel`), and each
-    but the last have code that is an item stream (`hit`). For the result of `compileA` on `m`,
+    `m` have distinct names (`hnd`) and each be a linked kernel (`hk`, `LinkedKernel`). For the
+    result of `compileA` on `m`,
     the bytes decode to a program `prog`, and from every entry state `sa` satisfying
     `σ.Regions`, every value `v` of a source run of `m` from `sa` (`haxRuns σ m sa v`) is read
     back by `σ`, either from a state at which `prog` halts from `sa`, with the entry stack
@@ -611,9 +625,7 @@ theorem haxc_correct_auto (m : HaxModule) (σ : AbiLayout) (fname : String) (P :
     (bytes : List (BitVec 8)) (hc : compileA m σ fname = some (P, bytes))
     (sa : AState) (hsep : σ.Regions sa) (v : _root_.Hax.Value) (hrun : haxRuns σ m sa v)
     (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
-    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h)
-    (hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes := by
-      exact fun _ h => nomatch h) :
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
     ∃ prog, decodeLprog bytes = some prog ∧
       ((∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v
         ∧ sa'.regs "%rsp" = sa.regs "%rsp"
@@ -637,7 +649,7 @@ theorem haxc_correct_auto (m : HaxModule) (σ : AbiLayout) (fname : String) (P :
   have hl := pairStage_linked m σ
   obtain ⟨hlo, hhi, hrg⟩ := pairStage_frame m σ
   obtain ⟨prog, hd, h⟩ := correct_of_compileARegion _ _ fname P bytes hc sa
-    ((pairStage_regions m σ sa).2 hsep) x hrun' (hl ▸ hnd) (hl ▸ hk) (hl ▸ hit)
+    ((pairStage_regions m σ sa).2 hsep) x hrun' (hl ▸ hnd) (hl ▸ hk)
   rw [hl] at h
   refine ⟨prog, hd, ?_⟩
   rcases h with ⟨sa', hh, hR, hsp, hkeep, hA⟩
@@ -678,12 +690,7 @@ theorem haxc_correct_auto_one (m : HaxModule) (σ : AbiLayout) (fname : String) 
     match m.linked, h1 with
     | [], _ => exact List.nodup_nil
     | [_], _ => exact List.nodup_singleton _
-  have hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes := by
-    intro l hl
-    have := List.length_pos_of_mem hl
-    simp only [List.length_dropLast] at this
-    omega
-  obtain ⟨prog, hd, h⟩ := haxc_correct_auto m σ fname P bytes hc sa hsep v hrun hnd hk hit
+  obtain ⟨prog, hd, h⟩ := haxc_correct_auto m σ fname P bytes hc sa hsep v hrun hnd hk
   refine ⟨prog, hd, ?_⟩
   rcases h with h | ⟨cs, hsub, hne, -, pc, Q, k, q, hq, hQ, hB, hp, hC, sa', hO, hR⟩
   · exact .inl h

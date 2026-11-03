@@ -3817,12 +3817,14 @@ theorem defNames_renArr_arrWrite (σ : String → String) {i : LinstrRM} {d : St
     simp_all [storeStruct?, zeroStruct?, storeImmStruct?, defNames,
       JasminLsemExportRewrites.opNames]
 
-/-- A position of `webSuccs` is a successor of the arm of an instruction that passes the
-    coalescing check. -/
+/-- A position of `webSuccs` other than the fall-through of a constant-taken guard is a
+    successor of the arm of an instruction that passes the coalescing check. -/
 theorem succ_of_mem_webSuccs {σ : String → String} {code : List LinstrRM}
     {L : Nat → List String} {k k' : Nat} {i : LinstrRM} {aa : String → Nat → Option Nat}
     {ao : String → Option Nat} (hc : coInstrB σ code L k i aa ao = true)
-    (hs : k' ∈ webSuccs code k i) : Succ code k i k' := by
+    (hs : k' ∈ webSuccs code k i)
+    (hg : ¬ (X86Backend.ConstGuard.constTakenB code k = true ∧ k' = k + 1)) :
+    Succ code k i k' := by
   obtain ⟨w, tag⟩ := i
   have hA := ((coInstrB_iff _ _ _ _ _ _ _).mp hc).1
   unfold Succ
@@ -3847,14 +3849,14 @@ theorem succ_of_mem_webSuccs {σ : String → String} {code : List LinstrRM}
     rw [ha]
     simp only [webSuccs, List.mem_cons, List.mem_map, Option.mem_toList] at hs
     rcases hs with rfl | ⟨p, hp, rfl⟩
-    · exact Or.inl rfl
+    · exact Or.inl ⟨rfl, Bool.eq_false_iff.mpr fun h => hg ⟨h, rfl⟩⟩
     · exact Or.inr ⟨p, hp, rfl⟩
   have hk : k' = k + 1 := by
     cases w <;> simp [webSuccs] at hs <;>
       first | exact hs | exact absurd ⟨_, _, rfl⟩ hg | exact absurd ⟨_, _, rfl⟩ hcnd
   subst hk
   rcases ha : armOf (w, tag) with ⟨dst, f, srcs⟩ | _ | _ | lbl | lbl | _ | _
-  all_goals first | rfl | exact Or.inl rfl | skip
+  all_goals first | rfl | exact Or.inl ⟨rfl, Bool.eq_false_iff.mpr fun h => hg ⟨h, rfl⟩⟩ | skip
   · exfalso
     unfold armOf at ha
     repeat' (first | split at ha | split_ifs at ha)
@@ -3872,8 +3874,13 @@ theorem mem_L_of_webSuccs {w : Nat → String → String} {code : List LinstrRM}
   have h := webB_instr hc hi
   unfold webInstrB at h
   simp only [Bool.and_eq_true] at h
-  exact ((coInstrB_iff _ _ _ _ _ _ _).mp h.1.1).2.1.2 k' r (succ_of_mem_webSuccs h.1.1 hs)
-    (fun e => hw e.symm) hr
+  by_cases hg : X86Backend.ConstGuard.constTakenB code k = true ∧ k' = k + 1
+  · obtain ⟨hg, rfl⟩ := hg
+    have h2 := h.2
+    simp only [hg, Bool.not_true, Bool.false_or] at h2
+    exact X86Backend.ImageCoalesceCfg.subB_spec h2 r hr
+  · exact ((coInstrB_iff _ _ _ _ _ _ _).mp h.1.1.1).2.1.2 k' r
+      (succ_of_mem_webSuccs h.1.1.1 hs hg) (fun e => hw e.symm) hr
 
 /-- The array an instruction writes is written under its renaming. -/
 theorem defNames_renArr_wr {σ : String → String} {code : List LinstrRM}
@@ -3939,7 +3946,7 @@ theorem webB_path {w : Nat → String → String} {code : List LinstrRM}
         have hc' := webB_instr hc hi
         unfold webInstrB at hc'
         simp only [Bool.and_eq_true] at hc'
-        have h1 := defNames_renArr_wr hc'.1.1 hw
+        have h1 := defNames_renArr_wr hc'.1.1.1 hw
         rw [← hlp.2 hw]
         simpa [stepRen, hw] using h1
       · have hyk := mem_L_of_webSuccs hc hi hs hy hw
@@ -3965,7 +3972,7 @@ theorem writtenOn_webRen {w : Nat → String → String} {code : List LinstrRM}
   unfold webInstrB at hwj
   simp only [Bool.and_eq_true] at hwj
   exact ⟨j, hj, _, by rw [getElem?_webRen, hij]; rfl,
-    defNames_renArr_keep hwj.1.1 hy (hn j hj ij hij)⟩
+    defNames_renArr_keep hwj.1.1.1 hy (hn j hj ij hij)⟩
 
 /-- The name `r` is written at one of the positions `ks` other than as the array the
     instruction there writes (`wrArr`). -/
@@ -3983,7 +3990,7 @@ theorem regWrittenOn_webRen {w : Nat → String → String} {code : List LinstrR
   have hwj := webB_instr hc hij
   unfold webInstrB at hwj
   simp only [Bool.and_eq_true] at hwj
-  exact ⟨j, hj, _, by rw [getElem?_webRen, hij]; rfl, defNames_renArr_keep hwj.1.1 hy hn⟩
+  exact ⟨j, hj, _, by rw [getElem?_webRen, hij]; rfl, defNames_renArr_keep hwj.1.1.1 hy hn⟩
 
 /-- **The register reads of a code are written as registers on every path**: under every
     renaming `σ` of the shape conditions `ClassA`, a name read by the renamed instruction at
@@ -4012,12 +4019,12 @@ theorem DefInit.webRen {E : String → Prop} {w : Nat → String → String}
   have hwi := webB_instr hc hi
   unfold webInstrB at hwi
   simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at hwi
-  have hcls := (coInstrB_iff _ _ _ _ _ _ _).mp hwi.1.1
+  have hcls := (coInstrB_iff _ _ _ _ _ _ _).mp hwi.1.1.1
   rcases hR k i hi _ hcls.1 x hx with hE | hW | ⟨y, hy, hyu, rfl⟩
   · exact Or.inl hE
   · exact Or.inr (regWrittenOn_webRen hc (hW ks hp0))
   · have hyL : y ∈ L k := hcls.2.1.1 y hy
-    rw [hwi.1.2 y hyL]
+    rw [hwi.1.1.2 y hyL]
     rcases webB_path hc hp0 hyL with ⟨h1, h2⟩ | h1
     · rw [h1]
       rcases h k ks i hp0 hi y hyu with h3 | h3
@@ -4092,7 +4099,7 @@ theorem symReads_renArr_eq (σ : String → String) (i : LinstrRM) :
     code and the names `regionWebsObs ex r`. -/
 theorem regionWebs_webB (ex : List String) (r : Exported) :
     regionWebs ex r = r ∨ ∃ w, webB w r.code
-        (tabAt (liveArrTab r.code (regionWebsObs ex r) (fun _ _ => none) (fun _ => none)))
+        (tabAt (liveArrTab r.code (regionWebsObs ex r) (fun _ _ => none) (fun _ => none) false))
         (regionWebsObs ex r) (fun _ _ => none) (fun _ => none) = true
       ∧ regionWebs ex r = { r with code := webRen w (fun _ => none) r.code } := by
   unfold regionWebs

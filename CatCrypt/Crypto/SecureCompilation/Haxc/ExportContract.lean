@@ -240,7 +240,7 @@ theorem haxc_contract (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lpr
     rintro ⟨rv, v⟩ sa ⟨⟨⟨hA, -, hrun⟩, -⟩, -⟩
     obtain ⟨prog', hd', ⟨sa', hh, hR, hsp, hkeep, -⟩ | ⟨cs, hsub, hne, -⟩⟩ :=
       haxc_correct_auto m σ fname P bytes hc sa ((regions_iff_abiPre σ sa).2 ⟨rv, hA⟩) v hrun
-        (by simp [hlink]) (by simp [hlink]) (by simp [hlink])
+        (by simp [hlink]) (by simp [hlink])
     · obtain rfl : prog' = prog := Option.some.inj (hd'.symm.trans hd)
       exact ⟨sa', hh, hR, hsp, hkeep⟩
     · simp [hlink] at hsub

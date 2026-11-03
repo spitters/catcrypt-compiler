@@ -250,17 +250,16 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (phys)
 
     On a program of the chain without `call` the proof is `nfCT_of_haxToNFCTL` at the
     declared procedures of `m` and `regionChain_bytes_ct`. On a program with a `call` it is
-    `AbiLayout.ctCheckRXO_sound_opt` at the interface of the contract
-    `l.contractSig c.args c.res.reg?` of the linked function `l` whose data `c`
-    `regionCallee` finds (`compileRegion_singleton`, `compileRegion_spec_callee`), whose
-    code meets that interface (`LinkedKernel.calleeSpec_code`), whose footprint lies in its
-    frame at a register result (`footBelow_contractSig`) and in its frame and the destination
-    `c.outDst?` at an out result (`footBelowOut_contractSig`), and whose public relation
+    `compileRegion_call_bytes_ct` at the table `T` that `regionCallee` finds, at the
+    interfaces of the kinds `kernelKind l c` of the linked kernels `l` of the functions `c` of
+    `T`: the interface of the contract of `l` (`LinkedFn.contractSig`), which the code of `c`
+    meets (`LinkedKernel.kind_facts`), whose footprint lies in the frame of `c` at a register
+    result (`footBelow_contractSig`) and in its frame and the destination `c.outDst?` at an
+    out result (`footBelowOut_contractSig`), and whose public relation
     `LinkedFn.pubRegsAgree` is agreement on the stack register and the public argument
-    registers, which the check establishes at the call; its premise, the halting of the
-    calling body
-    under the oracle of the code of `c` guarded by the precondition of that interface from
-    both entry states, is `haxEntry_call_halts` at the same `l`. -/
+    registers, which the check establishes at each call. Its premise, the halting of the
+    calling body under the oracle of the blocks of `T` guarded by the preconditions of these
+    interfaces from both entry states, is `haxEntry_call_halts_tab` at the same table. -/
 theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiLayout)
     (fname : String) (P : Lprog) (bytes : List (BitVec 8))
     (hc : compileARegion m σ fname = some (P, bytes))
@@ -341,72 +340,92 @@ theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
       obtain ⟨y, hy, -⟩ := Option.map_eq_some_iff.mp hx
       exact H sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, V, fuel, hV, by rw [hy]; rfl⟩ hb₁ hb₂
   | false =>
-      obtain ⟨c, hcm, h1⟩ := compileRegion_singleton hJ hcf
-      obtain ⟨l, hl, hlc⟩ := List.mem_filterMap.mp hcm
-      obtain ⟨qk, hqk, hX⟩ := (hk l hl).calleeSpec_code hlc c.args c.res.reg?
-      obtain ⟨c', hc', pr, q', hq', hnc, hdec, hct⟩ := compileRegion_spec_callee h1 hcf
-        (fun c'' h'' => by rw [List.mem_singleton.mp h'', hqk]; rfl)
-      obtain rfl : c = c' := (List.mem_singleton.mp hc').symm
-      rw [hqk, Option.some.injEq] at hq'
-      subst hq'
-      rw [hd, Option.some.injEq] at hdec
-      subst hdec
-      obtain ⟨hcres, -, -, hcclob, hcframe, -, -, -, -, -, hcpubRegs, -⟩ :=
-        LinkedFn.calleeData_eq hlc
-      -- The footprint of the interface: the frame, and the destination of an out result.
-      have hfoot : ∀ s x, (l.contractSig c.args c.res.reg?).foot s x →
-          X86Backend.Callee.InFrame (s.regs "%rsp") c.frame x
-            ∨ ∃ w ∈ c.outDst?, RegionSep.destAt w.1 w.2 s x := by
-        rw [hcframe]
-        rcases ((hk l hl).code c hlc).1 with ⟨hL, -⟩ | ⟨po, n, hL, -⟩
-        · exact fun s x hf =>
-            .inl (X86Backend.LinkedFnContract.footBelow_contractSig hL.result _ _ s x hf)
-        · obtain ⟨n0, kd, hcr⟩ : ∃ n0 kd, c.res = .out n0 kd := by
-            cases h' : c.res with
-            | reg r =>
-                rw [h'] at hcres
-                simp [LinkedFn.calleeRes, hL.result] at hcres
-            | out n0 kd => exact ⟨n0, kd, rfl⟩
-          obtain ⟨r0, a0, hres0, hak, har, -⟩ := LinkedFn.calleeRes_out (hcr ▸ hcres)
-          rw [hL.result] at hres0
-          cases hres0
-          have hmap : c.args.map phys = l.layout.args.map (·.reg) := by
-            have h2 := congrArg (List.map Prod.fst) hL.args
-            rw [← CalleeData.ins_map_fst]
-            simpa [List.map_map, Function.comp_def] using h2.symm
-          have hrd : phys c.resReg = phys po := by
-            have h3 := congrArg (·[kd]?) hmap
-            simp only [List.getElem?_map, hak, Option.map_some] at h3
-            obtain ⟨y, hy, hyp⟩ := Option.map_eq_some_iff.mp h3
-            simp only [CalleeData.resReg, hcr, List.getD_eq_getElem?_getD, hy, Option.getD_some]
-            rw [hyp, har]
-          intro s x hf
-          rcases X86Backend.LinkedFnContract.footBelowOut_contractSig hL _ _ s x hf with
-            h | ⟨j, hj, hx⟩
-          · exact .inl h
-          · refine .inr ⟨(phys c.resReg, n), by simp [CalleeData.outDst?, hcr], j, hj, ?_⟩
-            rw [hrd]
-            exact hx
+      obtain ⟨T, ⟨r0, hr0, hcT⟩, hsub, hne, -, pr, hCT⟩ := compileRegion_call_bytes_ct hJ hcf
+      obtain ⟨T', ⟨r0', hr0', hcT'⟩, -, -, -, -, hdq, -, sg, hsg, H⟩ :=
+        haxEntry_call_halts_tab hnd hk hq hpj hcf hJ
+      rw [hr0, Option.some.injEq] at hr0'
+      subst hr0'
+      rw [hcT, Option.some.injEq, Option.some.injEq] at hcT'
+      subst hcT'
+      obtain ⟨hdB, hct⟩ := hCT (moduleBlock m) hdq
+      -- The interface of the kind of each function of the table.
+      have hfacts : ∀ c ∈ T.fns, X86Backend.Callee.CalleeSpec
+            (X86Backend.Callee.runOf ctRegime (moduleBlock m c.name)) (sg c.name)
+          ∧ (∀ x, c.clob.contains x = false → (sg c.name).clob x = false)
+          ∧ (∀ s x, (sg c.name).foot s x → X86Backend.Callee.InFrame (s.regs "%rsp") c.frame x
+            ∨ ∃ w ∈ c.outDst?, RegionSep.destAt w.1 w.2 s x)
+          ∧ ∀ s₁ s₂, (sg c.name).pre s₁ → (sg c.name).pre s₂ →
+            (X86Backend.DecodedCTCall.callPub c.pubRegs).Agree s₁ s₂ → (sg c.name).pub s₁ s₂ := by
+        intro c hc
+        obtain ⟨l, hl, hlc, hsgc⟩ := hsg c hc
+        obtain ⟨hcres, -, -, hcclob, hcframe, -, -, -, -, -, hcpubRegs, -⟩ :=
+          LinkedFn.calleeData_eq hlc
+        obtain ⟨-, hspec, -, -⟩ := (hk l hl).kind_facts hlc
+        obtain ⟨qk, hqk, hm⟩ := (hk l hl).contract_code hlc
+        have hqm : moduleBlock m c.name = qk := by
+          rw [hdq c hc, Option.some.injEq] at hqk
+          exact hqk
+        obtain ⟨args, res, hks⟩ : ∃ args res, (kernelKind l c).sig = l.contractSig args res := by
+          unfold kernelKind
+          cases c.res <;> exact ⟨_, _, rfl⟩
+        have hX := X86Backend.ImageAddrCallMeets.CalleeKind.calleeSpec_of_spec (hspec _ hm)
+        rw [hsgc, hqm]
+        refine ⟨hX, fun x hx => ?_, ?_, fun s₁ s₂ _ _ hpa => ?_⟩
+        · rw [hks]
+          change l.clob.contains x = false
+          rw [← hcclob]
+          exact hx
+        · rw [hks]
+          change ∀ s x, (l.contractSig c.args c.res.reg?).foot s x → _
+          rw [hcframe]
+          rcases ((hk l hl).code c hlc).1 with ⟨hL, -⟩ | ⟨po, n, hL, -⟩
+          · exact fun s x hf =>
+              .inl (X86Backend.LinkedFnContract.footBelow_contractSig hL.result _ _ s x hf)
+          · obtain ⟨n0, kd, hcr⟩ : ∃ n0 kd, c.res = .out n0 kd := by
+              cases h' : c.res with
+              | reg r =>
+                  rw [h'] at hcres
+                  simp [LinkedFn.calleeRes, hL.result] at hcres
+              | out n0 kd => exact ⟨n0, kd, rfl⟩
+            obtain ⟨r0, a0, hres0, hak, har, -⟩ := LinkedFn.calleeRes_out (hcr ▸ hcres)
+            rw [hL.result] at hres0
+            cases hres0
+            have hmap : c.args.map phys = l.layout.args.map (·.reg) := by
+              have h2 := congrArg (List.map Prod.fst) hL.args
+              rw [← CalleeData.ins_map_fst]
+              simpa [List.map_map, Function.comp_def] using h2.symm
+            have hrd : phys c.resReg = phys po := by
+              have h3 := congrArg (·[kd]?) hmap
+              simp only [List.getElem?_map, hak, Option.map_some] at h3
+              obtain ⟨y, hy, hyp⟩ := Option.map_eq_some_iff.mp h3
+              simp only [CalleeData.resReg, hcr, List.getD_eq_getElem?_getD, hy,
+                Option.getD_some]
+              rw [hyp, har]
+            intro s x hf
+            rcases X86Backend.LinkedFnContract.footBelowOut_contractSig hL _ _ s x hf with
+              h | ⟨j, hj, hx⟩
+            · exact .inl h
+            · refine .inr ⟨(phys c.resReg, n), by simp [CalleeData.outDst?, hcr], j, hj, ?_⟩
+              rw [hrd]
+              exact hx
+        · rw [hks]
+          change l.pubRegsAgree s₁ s₂
+          refine ⟨hpa.1 _ List.mem_cons_self,
+            fun a ha hp => hpa.1 _ (List.mem_cons_of_mem _ ?_)⟩
+          rw [hcpubRegs]
+          exact List.mem_map.mpr ⟨a, List.mem_filter.mpr ⟨ha, hp⟩, rfl⟩
+      have hlnn : m.linked ≠ [] := fun h =>
+        hne (List.eq_nil_of_sublist_nil (by simpa [h] using hsub))
       rintro sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, -, -, ⟨v₁, hr₁⟩, hr₂⟩ ⟨e₁, hb₁⟩ ⟨e₂, hb₂⟩
-      obtain ⟨v₂, hr₂⟩ := hr₂.resolve_left fun h => by simp [h] at hcm
-      obtain ⟨pc₁, qk₁, hqk₁, hd₁, -, sa₁', hO₁, -⟩ :=
-        haxEntry_call_halts hnd hk hq hpj hcf hl hlc h1 sa₁ h₁ v₁ hr₁
-      obtain ⟨pc₂, qk₂, hqk₂, hd₂, -, sa₂', hO₂, -⟩ :=
-        haxEntry_call_halts hnd hk hq hpj hcf hl hlc h1 sa₂ h₂ v₂ hr₂
-      rw [hqk, Option.some.injEq] at hqk₁ hqk₂
-      subst hqk₁ hqk₂
-      rw [hd, Option.some.injEq] at hd₁ hd₂
-      obtain rfl := eq_of_append_shiftProg hd₁
-      obtain rfl := eq_of_append_shiftProg hd₂
-      refine AbiLayout.ctCheckRXO_sound_opt hct hnc hX (fun x hx => ?_) hfoot
-        (fun s₁ s₂ _ _ hpa => ?_) hag h₁ h₂ hO₁ hO₂ hb₁ hb₂
-      · change l.clob.contains x = false
-        rw [← hcclob]
-        exact hx
-      · change l.pubRegsAgree s₁ s₂
-        refine ⟨hpa.1 _ List.mem_cons_self, fun a ha hp => hpa.1 _ (List.mem_cons_of_mem _ ?_)⟩
-        rw [hcpubRegs]
-        exact List.mem_map.mpr ⟨a, List.mem_filter.mpr ⟨ha, hp⟩, rfl⟩
+      obtain ⟨v₂, hr₂⟩ := hr₂.resolve_left hlnn
+      obtain ⟨pc₁, hd₁, -, sa₁', hO₁, -⟩ := H sa₁ h₁ v₁ hr₁
+      obtain ⟨pc₂, hd₂, -, sa₂', hO₂, -⟩ := H sa₂ h₂ v₂ hr₂
+      rw [hdB, Option.some.injEq] at hd₁ hd₂
+      obtain rfl := eq_of_append_shiftProg hd₁.symm
+      obtain rfl := eq_of_append_shiftProg hd₂.symm
+      rw [hd, Option.some.injEq] at hdB
+      subst hdB
+      exact hct sg hfacts hag h₁ h₂ hO₁ hO₂ hb₁ hb₂
 
 /-- **Constant time of the bytes of `compileA` from constant time of the translation.** Let
     `compileA` return `(P, bytes)` on a module `m` under `σ`. The hypotheses on the
@@ -513,9 +532,8 @@ theorem haxToNFCTBL_of_haxToNFCTB {s : _root_.Hax.FnSecrecy} {σ : AbiLayout} {m
     constant time of the translation given by the level check `haxToNFCTBL` in the leakage
     model with quiet declared calls (`haxToNFCTL_of_haxToNFCTBL`), the run hypothesis
     `hterm` at the table `linkTable hax64WExit` of the linked functions, and the linked
-    functions of `m` of distinct names (`hnd`) and linked kernels (`hk`), each but the last
-    with code that is an item stream (`hit`), all automatic on a module without linked
-    functions. For a result of `compileA`, one decoding of the bytes
+    functions of `m` of distinct names (`hnd`) and linked kernels (`hk`), both automatic on a
+    module without linked functions. For a result of `compileA`, one decoding of the bytes
     halts from `sa` in a state from which `σ` reads back `v` (both cases of
     `haxc_correct_auto`: `Halts` is the halting run through calls `HaltsC`), and two runs
     of it under `ctRegime` have equal leakage traces from entry states that satisfy
@@ -542,16 +560,14 @@ theorem haxc_correct_auto_ct_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModul
     (hnds : (pairStage m σ).2.envNames.Nodup)
     (sa : AState) (hsep : σ.Regions sa) (v : Value) (hrun : haxRuns σ m sa v)
     (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
-    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h)
-    (hit : ∀ l ∈ m.linked.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems l.bytes := by
-      exact fun _ h => nomatch h) :
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
     ∃ prog, decodeLprog bytes = some prog
       ∧ (∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
       ∧ ConstantTimeRel
           (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
             ∧ (∃ v, haxRuns σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRuns σ m s₂ v))
           (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
-  obtain ⟨prog, hd, hv⟩ := haxc_correct_auto m σ fname P bytes hc sa hsep v hrun hnd hk hit
+  obtain ⟨prog, hd, hv⟩ := haxc_correct_auto m σ fname P bytes hc sa hsep v hrun hnd hk
   refine ⟨prog, hd, ?_, haxc_ct_proved_all_of_check s m σ fname P bytes hc F fuelC Pre hck
     hterm hL hnds hd hnd hk⟩
   rcases hv with ⟨sa', hh, hR, -⟩ | ⟨-, -, -, -, -, -, -, -, -, -, -, -, h, -⟩

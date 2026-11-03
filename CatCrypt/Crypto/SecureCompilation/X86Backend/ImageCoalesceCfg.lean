@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstGuard
 
 @[expose] public section
 
@@ -82,6 +83,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (Isa callShadow retWord retA
   shadowCall? shadowCall?_callShadow eq_callShadow_of_shadowCall?)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaProcs (evalInstrPMemF_shadowCall)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa x86Isa_lsemFuelMemF)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstGuard (constTakenB GuardInv TakenAt
+  takenAt_of_guardInv guardInv_step guardInv_isaStep)
 
 /-! ## 1. The check -/
 
@@ -257,8 +260,10 @@ def callB (σ : String → String) (L : Nat → List String) (k : Nat)
     flag machine, before and after the renaming, passes `coArrStepB` against the names live
     after it, and the names it reads and the later-live names it does not write are live
     before it. For a compare, a register move, a carry-family operation and a flag-quiet
-    lift instruction, the names live after them are live before them. A label and a
-    conditional jump pass the names live at each successor. An unconditional jump passes
+    lift instruction, the names live after them are live before them. A label passes the
+    names live after it. A conditional jump passes the names live at its target, and the
+    names live after it unless it is a constant-taken guard (`ConstGuard.constTakenB`),
+    whose fall-through no run from the entry takes. An unconditional jump passes
     the names live at its target. Every other operation passes `coArrStepB` against the
     names live after it, and the names it reads and the later-live names it does not write
     are live before it. Every other instruction is refused. -/
@@ -273,11 +278,11 @@ def coInstrB (σ : String → String) (body : List LinstrRM) (L : Nat → List S
       && subB (arrReads i ++ (L (k + 1)).filter fun r => some r != arrWrite i) (L k)
   else if (cmpArgs? i).isSome || (movRegArgs? i).isSome then subB (L (k + 1)) (L k)
   else match flagCondCC? i with
-  | some (_, lbl) => subB (L (k + 1)) (L k) && jumpB body L k lbl
+  | some (_, lbl) => (constTakenB body k || subB (L (k + 1)) (L k)) && jumpB body L k lbl
   | none =>
     match i.1 with
     | .Llabel _ _ => subB (L (k + 1)) (L k)
-    | .Lcond _ lbl => subB (L (k + 1)) (L k) && jumpB body L k lbl
+    | .Lcond _ lbl => (constTakenB body k || subB (L (k + 1)) (L k)) && jumpB body L k lbl
     | .Lgoto (_, lbl) => jumpB body L k lbl
     | .Lopn _ _ _ =>
         if (carryArgs? i).isSome || (wideArgs? i).isSome then subB (L (k + 1)) (L k)
@@ -822,7 +827,7 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
     {aa : String → Nat → Option Nat} {ao : String → Option Nat}
     {i : LinstrRM} {s s' t : LstateMF}
     (hc : coInstrB σ body L s.prog.base.lpc i aa ao = true)
-    (hlt : s.prog.base.lpc < body.length)
+    (hlt : s.prog.base.lpc < body.length) (htk : TakenAt body i s)
     (hR : CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base)
     (hfn : s'.prog.lfn = s.prog.lfn) (hz : s'.zf = s.zf)
     (h : evalInstrPMemF (singletonProgM fn body) i s = some t) :
@@ -915,7 +920,14 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         exact ⟨{ prog := q', zf := s.zf }, by rw [hq']; rfl, hRq, hfq, hfs, rfl, hle⟩
       · rw [ite_eq_right hp] at h ⊢
         cases h
-        exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc.1)), hfn, rfl, rfl, hlt⟩
+        have hsub : subB (L (s.prog.base.lpc + 1)) (L s.prog.base.lpc) = true := by
+          cases ht : constTakenB body s.prog.base.lpc
+          · simpa [ht] using hc.1
+          · obtain ⟨lbl', hl⟩ := htk ht
+            rw [h3] at hl
+            simp only [Option.some.injEq, Prod.mk.injEq] at hl
+            exact absurd hl.1.symm hp
+        exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hsub)), hfn, rfl, rfl, hlt⟩
   | none =>
   simp only [h3] at hc
   have key : carryArgs? (w, tag) = none → wideArgs? (w, tag) = none →
@@ -967,7 +979,13 @@ theorem evalInstrPMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat �
         exact evalJumpMem_coalesce hc.2 hR hfn hq
       · rw [ite_eq_right (by assumption)]
         cases hq
-        exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hc.1)), hfn, rfl, hlt⟩
+        have hsub : subB (L (s.prog.base.lpc + 1)) (L s.prog.base.lpc) = true := by
+          cases ht : constTakenB body s.prog.base.lpc
+          · simpa [ht] using hc.1
+          · obtain ⟨lbl', hl⟩ := htk ht
+            rw [h3] at hl
+            cases hl
+        exact ⟨_, rfl, coRel_nextPc (hR.mono (subB_spec hsub)), hfn, rfl, hlt⟩
   | Lgoto tgt =>
       obtain ⟨f, lbl⟩ := tgt
       refine key rfl rfl fun q hq => ?_
@@ -1133,7 +1151,7 @@ theorem step_coalesce_calls {I : Isa} {aa : String → Nat → Option Nat}
     {ao : String → Option Nat} (hle : x86Isa.StepLe I) (hcl : I.CallLocal x86Isa aa ao)
     {fn : String} {body : List LinstrRM} {L : Nat → List String} {i : LinstrRM}
     {s s' t : LstateMF} (hc : coInstrB σ body L s.prog.base.lpc i aa ao = true)
-    (hlt : s.prog.base.lpc < body.length)
+    (hlt : s.prog.base.lpc < body.length) (htk : TakenAt body i s)
     (hR : CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base)
     (hfn : s'.prog.lfn = s.prog.lfn) (hz : s'.zf = s.zf)
     (h : I.step (singletonProgM fn body) i s = some t) :
@@ -1142,7 +1160,7 @@ theorem step_coalesce_calls {I : Isa} {aa : String → Nat → Option Nat}
       ∧ t'.prog.lfn = t.prog.lfn ∧ t.prog.lfn = s.prog.lfn ∧ t'.zf = t.zf
       ∧ t.prog.base.lpc ≤ body.length := by
   rcases hcl _ i s t h with hx | ⟨dst, f, srcs, x, hi, rfl, hfwd, hlen⟩
-  · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_coalesce hc hlt hR hfn hz hx
+  · obtain ⟨t', ht', hrest⟩ := evalInstrPMemF_coalesce hc hlt htk hR hfn hz hx
     exact ⟨t', hle _ _ _ _ ht', hrest⟩
   · obtain ⟨w, tag⟩ := i
     simp only at hi
@@ -1167,7 +1185,8 @@ theorem step_coalesce_calls {I : Isa} {aa : String → Nat → Option Nat}
     `coCfgB σ body L obs aa ao` and an instruction set `I` whose steps contain those of
     `x86Isa` and whose further steps are local calls at the array positions `aa` and the
     result lengths `ao`, a halting run of `I` on `body`, from a state `s` of the function `fn`
-    at a position at most `body.length`, is matched with the same fuel by a halting run of
+    at a position at most `body.length` that satisfies the invariant `ConstGuard.GuardInv`
+    of the constant guards of `body`, is matched with the same fuel by a halting run of
     `I` on the coalesced body `body.map (renArr σ)` from every state `s'` that has the
     registers, word memory, flags and function name of `s` and whose arrays agree with those
     of `s` through `σ` on the names `L` gives the position of `s`. The final states have equal
@@ -1177,6 +1196,7 @@ theorem lsemFuelMemF_coalesce_calls {I : Isa} {aa : String → Nat → Option Na
     {fn : String} {body : List LinstrRM} {L : Nat → List String} {obs : List String}
     (hc : coCfgB σ body L obs aa ao = true) :
     ∀ (fuel : Nat) {s s' t : LstateMF}, s.prog.lfn = fn → s.prog.base.lpc ≤ body.length →
+      GuardInv body s →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
       s'.zf = s.zf → I.lsemFuelMemF (singletonProgM fn body) fuel s = some t →
       ∃ t', I.lsemFuelMemF (singletonProgM fn (body.map (renArr σ))) fuel s' = some t'
@@ -1201,7 +1221,7 @@ theorem lsemFuelMemF_coalesce_calls {I : Isa} {aa : String → Nat → Option Na
   intro fuel
   induction fuel with
   | zero =>
-      intro s s' t hf hpc hR hfn hz h
+      intro s s' t hf hpc hg hR hfn hz h
       obtain ⟨e1, e2⟩ := hfetch hf hR hfn
       unfold Isa.lsemFuelMemF at h ⊢
       rw [e1] at h
@@ -1213,7 +1233,7 @@ theorem lsemFuelMemF_coalesce_calls {I : Isa} {aa : String → Nat → Option Na
           exact ⟨_, rfl, hhalt hpc hR hb, hz⟩
       | some i => simp [hb] at h
   | succ n ih =>
-      intro s s' t hf hpc hR hfn hz h
+      intro s s' t hf hpc hg hR hfn hz h
       obtain ⟨e1, e2⟩ := hfetch hf hR hfn
       unfold Isa.lsemFuelMemF at h ⊢
       rw [e1] at h
@@ -1230,20 +1250,23 @@ theorem lsemFuelMemF_coalesce_calls {I : Isa} {aa : String → Nat → Option Na
           | some u =>
               simp only [he] at h
               obtain ⟨u', hu', hRu, hfu, hfs, hzu, hleu⟩ := step_coalesce_calls hle hcl
-                (coCfgB_instr hc hb) (List.getElem?_eq_some_iff.mp hb).1 hR hfn hz he
+                (coCfgB_instr hc hb) (List.getElem?_eq_some_iff.mp hb).1
+                (takenAt_of_guardInv hg hb) hR hfn hz he
               simp only [hu']
-              exact ih (hfs.trans hf) hleu hRu hfu hzu h
+              exact ih (hfs.trans hf) hleu (guardInv_isaStep hcl hg hb he) hRu hfu hzu h
 
 /-- **The coalesced body.** For a body accepted by `coCfgB σ body L obs`, a halting run of
     the flag machine on `body`, from a state `s` of the function `fn` at a position at most
-    `body.length`, is matched with the same fuel by a halting run on the coalesced body
-    `body.map (renArr σ)` from every state `s'` that has the registers, word memory, flags
-    and function name of `s` and whose arrays agree with those of `s` through `σ` on the
-    names `L` gives the position of `s`. The final states have equal registers, word memory
-    and flags, and their arrays agree through `σ` on `obs`. -/
+    `body.length` that satisfies `ConstGuard.GuardInv`, is matched with the same fuel by a
+    halting run on the coalesced body `body.map (renArr σ)` from every state `s'` that has
+    the registers, word memory, flags and function name of `s` and whose arrays agree with
+    those of `s` through `σ` on the names `L` gives the position of `s`. The final states
+    have equal registers, word memory and flags, and their arrays agree through `σ` on
+    `obs`. -/
 theorem lsemFuelMemF_coalesce {fn : String} {body : List LinstrRM} {L : Nat → List String}
     {obs : List String} (hc : coCfgB σ body L obs = true) :
     ∀ (fuel : Nat) {s s' t : LstateMF}, s.prog.lfn = fn → s.prog.base.lpc ≤ body.length →
+      GuardInv body s →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
       s'.zf = s.zf → lsemFuelMemF (singletonProgM fn body) fuel s = some t →
       ∃ t', lsemFuelMemF (singletonProgM fn (body.map (renArr σ))) fuel s' = some t'

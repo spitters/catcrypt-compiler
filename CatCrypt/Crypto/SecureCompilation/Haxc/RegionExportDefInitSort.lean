@@ -2076,7 +2076,7 @@ theorem defInit_webRen_tagA {E₀ E₁ : String → Prop} {w : Nat → String �
   have hwi := webB_instr hc hi
   unfold webInstrB at hwi
   simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at hwi
-  have hcls := (coInstrB_iff _ _ _ _ _ _ _).mp hwi.1.1
+  have hcls := (coInstrB_iff _ _ _ _ _ _ _).mp hwi.1.1.1
   rw [(names_renArr_factor _ hsp).1] at hx
   obtain ⟨z, hz, rfl⟩ := List.mem_map.mp hx
   by_cases hzt : IsTag z
@@ -2092,7 +2092,7 @@ theorem defInit_webRen_tagA {E₀ E₁ : String → Prop} {w : Nat → String �
         ((hN i2 (List.mem_of_getElem? h2)).names _ (List.mem_append_left _ h3))
     have hyL : y ∈ L k := hcls.2.1.1 y hy
     have hσ : (tagA ∘ stepRen w ao k i) y = tagA (w k y) := by
-      rw [Function.comp_apply, hwi.1.2 y hyL]
+      rw [Function.comp_apply, hwi.1.1.2 y hyL]
     rw [hxy, hσ]
     rcases webB_path_wrArr hc hp0 hyL with ⟨h1, h2⟩ | ⟨j, hj, i2, d, h1, h2, h3⟩
     · rw [h1]

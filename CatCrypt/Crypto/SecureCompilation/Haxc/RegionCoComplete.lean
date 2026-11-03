@@ -215,9 +215,11 @@ theorem need_of_mem_liveArrNeed {body : List LinstrRM} {A : Array (List String)}
     · simp at hr
   | Lcond c l =>
     simp only [liveArrNeed, rdArr, wrArr, Succ, armOf_cond, rdArrA, wrArrA, SuccA, JumpTo,
-      tabAt] at hr ⊢
+      tabAt, Bool.true_and] at hr ⊢
     rcases List.mem_append.mp hr with h | h
-    · exact Or.inr ⟨_, Or.inl rfl, by simp, h⟩
+    · cases hg : X86Backend.ConstGuard.constTakenB body k
+      · exact Or.inr ⟨_, Or.inl ⟨rfl, rfl⟩, by simp, by simpa [hg] using h⟩
+      · simp [hg] at h
     · split at h
       · exact Or.inr ⟨_, Or.inr ⟨_, ‹_›, rfl⟩, by simp, h⟩
       · simp at h
@@ -277,10 +279,10 @@ theorem mem_liveArrNeed_of_need (body : List LinstrRM) (A : Array (List String))
     simpa [hp] using h
   | Lcond c l =>
     simp only [liveArrNeed, rdArr, wrArr, Succ, armOf_cond, rdArrA, wrArrA, SuccA, JumpTo,
-      tabAt]
+      tabAt, Bool.true_and]
     refine ⟨fun r h => by simp at h, ?_⟩
-    rintro k' r (rfl | ⟨p, hp, rfl⟩) - h
-    · exact List.mem_append_left _ h
+    rintro k' r (⟨rfl, hg⟩ | ⟨p, hp, rfl⟩) - h
+    · exact List.mem_append_left _ (by simpa [hg] using h)
     · exact List.mem_append_right _ (by simpa [hp] using h)
   | Llabel kd l =>
     simp only [liveArrNeed, rdArr, wrArr, Succ, armOf_label, rdArrA, wrArrA, SuccA,
@@ -309,7 +311,9 @@ theorem mem_liveArrNeed_cases {body : List LinstrRM} {A : Array (List String)} {
     · exact Or.inl ⟨_, hr⟩
     · simp at hr
   · rcases List.mem_append.mp hr with h | h
-    · exact Or.inl ⟨_, h⟩
+    · split at h
+      · simp at h
+      · exact Or.inl ⟨_, h⟩
     · split at h
       · exact Or.inl ⟨_, h⟩
       · simp at h

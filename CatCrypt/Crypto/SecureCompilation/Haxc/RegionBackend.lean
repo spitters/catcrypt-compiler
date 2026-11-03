@@ -81,16 +81,19 @@ stage is a function of the optional table that is the stage above without one:
 * the bytes `calleeBytes`: the relocating encoder at the symbol map `calleeSym`, under the
   checks `calleeLinkB`, followed by the code of the table; the entry of each function after
   the first is an instruction of the decoded code of the table (`CalleeTab.regionB`), and
-  when the code of each function but the last is an item stream the code of the table is a
-  region of the blocks of the functions (`CalleeTab.regionBlocks`, `calleeBytes_decode`);
+  the code of the table is a region of the blocks of the functions
+  (`CalleeTab.regionBlocks`, `calleeBytes_decode`);
 * the constant-time check `calleeCtB`: the decision with calls of linked callees
   `AbiLayout.ctCheckRXT` on the program `calleeProg` of the function, at the clobber set
   `CalleeTab.clobB`, the public argument registers `CalleeTab.ctIfc` and the destinations
   `CalleeTab.ctDst` at the call targets, and the frame of the table; at one function this is
-  the decision `AbiLayout.ctCheckRXO` at the data of that function (`calleeCtB_one`).
+  the decision `AbiLayout.ctCheckRXO` at the data of that function (`calleeCtB_one`). At
+  distinct entry indices (`CalleeTab.entryIdx_inj`) the interface at the entry of the
+  function of a symbol is that of the function (`CalleeTab.ctIfc_entry`,
+  `CalleeTab.ctDst_entry`, `CalleeTab.clob_of_clobB`).
 
-The callee of these stages is an optional table `CalleeTab` (`regionCallee_tab`); the
-constant-time check `calleeCtB` accepts a table of one function. Without a table each
+The callee of these stages is an optional table `CalleeTab` (`regionCallee_tab`). Without a
+table each
 reduces by `rfl` (`calleeImgT_none`, `calleeCodeT_none`,
 `calleeImgBT_none`, `calleeAlloc_none`, `calleeBytes_none`, `calleeCtB_none`,
 `regionCoB_none`), and a program without `call` has no callee at every list
@@ -407,12 +410,16 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   table of one function.
 * `CalleeTab.tgtPos?`, `CalleeTab.ctIfc`, `CalleeTab.ctDst`, `CalleeTab.clobB`: the interface of
   a table at the call targets behind a caller, with their forms at one function
-  (`CalleeTab.ctIfc_one`, `CalleeTab.ctDst_one`, `CalleeTab.clobB_one`).
+  (`CalleeTab.ctIfc_one`, `CalleeTab.ctDst_one`, `CalleeTab.clobB_one`) and at the entry of
+  the function of a symbol (`CalleeTab.entryIdx_inj`, `CalleeTab.tgtPos?_entry`,
+  `CalleeTab.ctIfc_entry`, `CalleeTab.ctDst_entry`, `CalleeTab.clob_of_clobB`).
+* `calleeCtB_tab`: a table at which the constant-time check holds gives the program of the
+  function, which passes `AbiLayout.ctCheckRXT` at the interface of the table.
 * `CalleeTab.regionB`, `CalleeTab.regionB_spec`: the check that the entries of the functions of
   a table are instructions of the decoded code of the table.
 * `CalleeTab.regionEntries`, `CalleeTab.regionBlocks`, `CalleeTab.regionCode_lookup`: the code
-  of a table whose functions but the last are item streams is a region of their blocks, at
-  the entry offsets and indices of the table.
+  of a table is a region of the blocks of its functions, at the entry offsets and indices of
+  the table.
 * `codeCallSyms`, `regionCallee_tab`, `regionCallee_some_stackArr`, `regionCallee_sublist`,
   `regionCallee_self`, `regionCallee_singleton`: the called symbols of an exported code and the
   table `regionCallee` finds, the linked functions of these symbols.
@@ -3018,16 +3025,21 @@ def callArrOps (a : Nat → Option Nat) : Nat → List LOperand → List String
     shadow instruction of a call its array operands and the names at `k + 1` other than
     its destination at an array result, for every other operation the names it reads and
     the names at `k + 1` other than the name it writes, and the names at `k + 1` for every
-    other instruction. -/
+    other instruction. When `feas` holds, a constant-taken guard
+    (`ConstGuard.constTakenB`) needs only the names at the position after its label: no run
+    from the entry falls through it. The webs read the table without `feas`, since their
+    definite-assignment theorems are stated over every edge of `ArrWebs.webSuccs`. -/
 def liveArrNeed (body : List LinstrRM) (A : Array (List String)) (k : Nat) (i : LinstrRM)
     (aa : String → Nat → Option Nat := fun _ _ => none)
-    (ao : String → Option Nat := fun _ => none) : List String :=
+    (ao : String → Option Nat := fun _ => none) (feas : Bool := true) : List String :=
   let tgt := fun (l : LLabel) => match findLabelMem l body with
     | some p => A.getD (p + 1) []
     | none => []
   match i.1 with
   | .Lgoto (_, l) => tgt l
-  | .Lcond _ l => A.getD (k + 1) [] ++ tgt l
+  | .Lcond _ l =>
+      (if feas && X86Backend.ConstGuard.constTakenB body k then [] else A.getD (k + 1) [])
+        ++ tgt l
   | .Lopn _ _ _ =>
       match LprogIsa.shadowCall? i.1 with
       | some (dst, f, srcs) =>
@@ -3039,36 +3051,39 @@ def liveArrNeed (body : List LinstrRM) (A : Array (List String)) (k : Nat) (i : 
 /-- One backward pass over `body`: each position's list is extended by `liveArrNeed`. -/
 def liveArrPass (body : List LinstrRM) (A : Array (List String))
     (aa : String → Nat → Option Nat := fun _ _ => none)
-    (ao : String → Option Nat := fun _ => none) : Array (List String) :=
+    (ao : String → Option Nat := fun _ => none) (feas : Bool := true) : Array (List String) :=
   (List.range body.length).foldr (fun k A =>
     match body[k]? with
-    | some i => A.setIfInBounds k (A.getD k [] ++ liveArrNeed body A k i aa ao).eraseDups
+    | some i =>
+        A.setIfInBounds k (A.getD k [] ++ liveArrNeed body A k i aa ao feas).eraseDups
     | none => A) A
 
 /-- `liveArrPass` reading the instructions off the array of the body. -/
 def liveArrPassImpl (body : List LinstrRM) (A : Array (List String))
     (aa : String → Nat → Option Nat := fun _ _ => none)
-    (ao : String → Option Nat := fun _ => none) : Array (List String) :=
+    (ao : String → Option Nat := fun _ => none) (feas : Bool := true) : Array (List String) :=
   let a := body.toArray
   (List.range a.size).foldr (fun k A =>
     match a[k]? with
-    | some i => A.setIfInBounds k (A.getD k [] ++ liveArrNeed body A k i aa ao).eraseDups
+    | some i =>
+        A.setIfInBounds k (A.getD k [] ++ liveArrNeed body A k i aa ao feas).eraseDups
     | none => A) A
 
 /-- The pass `liveArrPass` is evaluated as `liveArrPassImpl`. -/
 @[csimp] theorem liveArrPass_eq_impl : @liveArrPass = @liveArrPassImpl := by
-  funext body A aa ao
+  funext body A aa ao feas
   simp only [liveArrPass, liveArrPassImpl, List.size_toArray, List.getElem?_toArray]
 
 /-- Backward passes until no list grows, at most `fuel` of them. -/
 def liveArrIter (body : List LinstrRM) (aa : String → Nat → Option Nat := fun _ _ => none)
-    (ao : String → Option Nat := fun _ => none) :
-    Nat → Array (List String) → Array (List String)
-  | 0, A => A
-  | fuel + 1, A =>
-      let A' := liveArrPass body A aa ao
+    (ao : String → Option Nat := fun _ => none) (fuel : Nat) (A : Array (List String))
+    (feas : Bool := true) : Array (List String) :=
+  match fuel with
+  | 0 => A
+  | fuel + 1 =>
+      let A' := liveArrPass body A aa ao feas
       if A'.toList.map List.length == A.toList.map List.length then A
-      else liveArrIter body aa ao fuel A'
+      else liveArrIter body aa ao fuel A' feas
 
 /-- The list of the table `A` at position `k`; the empty list outside the table. -/
 def tabAt (A : Array (List String)) (k : Nat) : List String := A.getD k []
@@ -3088,12 +3103,13 @@ def liveArrNames (body : List LinstrRM) (obs : List String)
     array positions `aa` and the result lengths `ao` of the called symbols; the limit of
     the backward passes from `obs` at the end. Each pass that changes the table adds a name
     of `liveArrNames` to the list of a position before the end, so the fuel
-    `(body.length + 1) * (liveArrNames body obs aa).length + 2` reaches the fixpoint. -/
+    `(body.length + 1) * (liveArrNames body obs aa).length + 2` reaches the fixpoint. With
+    `feas`, the fall-through of a constant-taken guard is no edge (`liveArrNeed`). -/
 def liveArrTab (body : List LinstrRM) (obs : List String)
     (aa : String → Nat → Option Nat := fun _ _ => none)
-    (ao : String → Option Nat := fun _ => none) : Array (List String) :=
+    (ao : String → Option Nat := fun _ => none) (feas : Bool := true) : Array (List String) :=
   liveArrIter body aa ao ((body.length + 1) * (liveArrNames body obs aa).length + 2)
-    ((Array.replicate (body.length + 1) []).setIfInBounds body.length obs)
+    ((Array.replicate (body.length + 1) []).setIfInBounds body.length obs) feas
 
 /-- **The liveness certificate of a body**: the table `liveArrTab` read by `tabAt`.
     `coCfgB` checks the result. -/
@@ -3117,13 +3133,13 @@ def regionWebs (ex : List String) (r : Exported)
     (ao : String → Option Nat := fun _ => none) : Exported :=
   if X86Backend.ArrWebs.webB
       (X86Backend.ArrWebs.webLook (X86Backend.ArrWebs.webTab ao
-        (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao)) (regionWebsObs ex r) r.code))
-      r.code (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao)) (regionWebsObs ex r)
+        (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao false)) (regionWebsObs ex r) r.code))
+      r.code (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao false)) (regionWebsObs ex r)
       aa ao then
     { r with
       code := X86Backend.ArrWebs.webRen
         (X86Backend.ArrWebs.webLook (X86Backend.ArrWebs.webTab ao
-          (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao)) (regionWebsObs ex r) r.code))
+          (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao false)) (regionWebsObs ex r) r.code))
         ao r.code }
   else r
 
@@ -3929,7 +3945,8 @@ theorem regionRef_run_calls {I : LprogIsa.Isa} {aa : String → Nat → Option N
   obtain ⟨tl1, htl1, hco1, -⟩ := X86Backend.ImageCoalesceCfg.lsemFuelMemF_coalesce_calls hle hcl
     hco f
     (s' := { prog := { base := entryV σ fr sa (unren ps), lfn := fn }, zf := false }) rfl
-    (Nat.zero_le _) ⟨rfl, rfl, rfl, rfl, fun r hr => by rw [hfix r hr]⟩ rfl rfl htl
+    (Nat.zero_le _) (X86Backend.ConstGuard.guardInv_zero _ rfl)
+    ⟨rfl, rfl, rfl, rfl, fun r hr => by rw [hfix r hr]⟩ rfl rfl htl
   have hcls1 : ∀ i ∈ C.map (renArr ρ), CtlOK i := fun i hi => by
     obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hi
     exact ctlOK_renArr _ (hcls j hj)
@@ -7905,25 +7922,23 @@ theorem regionCode_entries (q : CalleeData → List X86Backend.LprogBytesDecode.
         simp only [List.map_cons, X86Backend.LprogBytesLinkReloc.regionCode, hd, ↓reduceIte]
         simpa using ih
 
-/-- **The region of the code of a table whose blocks are item streams.** Let each function of a
-    nonempty table `T` have nonempty code that decodes to the program `q c` without `call`, and
-    let the code of each function but the last be an item stream (`KernelItems`). For symbols
-    `fs` of the table, the code `CalleeTab.bytes` is a region with the block of `f` at the byte
-    offset `CalleeTab.entryOff` and the index `CalleeTab.entryIdx` of the first function of
-    `f` (`LprogBytesLinkReloc.regionBlocks_of_items`); the block of `f` is the program of that
+/-- **The region of the code of a table.** Let each function of a nonempty table `T` have
+    nonempty code that decodes to the program `q c` without `call`. For symbols `fs` of the
+    table, the code `CalleeTab.bytes` is a region with the block of `f` at the byte offset
+    `CalleeTab.entryOff` and the index `CalleeTab.entryIdx` of the first function of `f`
+    (`LprogBytesLinkReloc.regionBlocks_of_decodes`); the block of `f` is the program of that
     function (`regionCode_entries`). -/
 theorem CalleeTab.regionBlocks (T : CalleeTab) (hT : T.fns ≠ [])
     (q : CalleeData → List X86Backend.LprogBytesDecode.RInstr)
     (hdec : ∀ c ∈ T.fns, decodeLprog c.bytes = some (q c))
     (hne : ∀ c ∈ T.fns, c.bytes ≠ [])
     (hq : ∀ c ∈ T.fns, ∀ tg, X86Backend.LprogBytesDecode.RInstr.call tg ∉ q c)
-    (hit : ∀ c ∈ T.fns.dropLast, X86Backend.LprogBytesLinkReloc.KernelItems c.bytes)
     (fs : List String) (hfs : ∀ f ∈ fs, f ∈ T.names) :
     X86Backend.LprogBytesLinkReloc.RegionBlocks T.bytes fs (fun g => T.entryOff (T.symPos g))
       (fun g => T.entryIdx (T.symPos g))
       (X86Backend.LprogBytesLinkReloc.regionCode (T.regionEntries q))
       (X86Backend.LprogBytesLinkReloc.regionProg (T.regionEntries q)) := by
-  have R := X86Backend.LprogBytesLinkReloc.regionBlocks_of_items fs (T.regionEntries q)
+  have R := X86Backend.LprogBytesLinkReloc.regionBlocks_of_decodes fs (T.regionEntries q)
     (by simpa [CalleeTab.regionEntries] using hT)
     (fun e he => by
       obtain ⟨c, hc, rfl⟩ := List.mem_map.mp he
@@ -7934,10 +7949,6 @@ theorem CalleeTab.regionBlocks (T : CalleeTab) (hT : T.fns ≠ [])
     (fun e he => by
       obtain ⟨c, hc, rfl⟩ := List.mem_map.mp he
       exact hq c hc)
-    (fun e he => by
-      rw [CalleeTab.regionEntries, ← List.map_dropLast] at he
-      obtain ⟨c, hc, rfl⟩ := List.mem_map.mp he
-      exact hit c hc)
   rw [CalleeTab.flatMap_regionEntries] at R
   have hO : ∀ f ∈ fs, T.entryOff (T.symPos f)
       = X86Backend.LprogBytesLinkReloc.regionOffset (T.regionEntries q) f := fun f hf =>
@@ -8634,7 +8645,7 @@ def regionWebsLeakB (ex : List String) (r : Exported)
     (ao : String → Option Nat := fun _ => none) : Bool :=
   X86Backend.ArrWebsLeak.webLeakB
     (X86Backend.ArrWebs.webLook (X86Backend.ArrWebs.webTab ao
-      (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao)) (regionWebsObs ex r) r.code))
+      (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao false)) (regionWebsObs ex r) r.code))
     ao r.code
 
 /-- **The event check of an exported code**: an exported code `r` of `p` that differs from
@@ -10727,23 +10738,161 @@ theorem CalleeTab.clobB_one (c : CalleeData) :
   funext x
   simp [CalleeTab.clobB, CalleeTab.one]
 
+/-- The function a table finds at a symbol sits at the position of the symbol. -/
+theorem CalleeTab.lookup_symPos {T : CalleeTab} {g : String} {c : CalleeData}
+    (h : T.lookup g = some c) : T.fns[T.symPos g]? = some c := by
+  have key : ∀ (l : List CalleeData), l.find? (·.name == g) = some c →
+      ∃ i, l.findIdx? (·.name == g) = some i ∧ l[i]? = some c := by
+    intro l hl
+    induction l with
+    | nil => simp at hl
+    | cons a l ih =>
+      by_cases ha : (a.name == g) = true
+      · simp only [List.find?_cons, ha] at hl
+        cases hl
+        exact ⟨0, by simp [List.findIdx?_cons, ha], rfl⟩
+      · simp only [List.find?_cons, ha] at hl
+        obtain ⟨i, hi, hc⟩ := ih hl
+        exact ⟨i + 1, by simp [List.findIdx?_cons, ha, hi], by simpa using hc⟩
+  obtain ⟨i, hi, hc⟩ := key T.fns h
+  simp [CalleeTab.symPos, hi, hc]
+
+/-- A symbol of a table has a function, at the position of the symbol. -/
+theorem CalleeTab.lookup_of_mem {T : CalleeTab} {g : String} (h : g ∈ T.names) :
+    ∃ c, T.lookup g = some c := by
+  have h1 := congrFun T.lookup_isSome g
+  exact Option.isSome_iff_exists.mp (by rw [h1]; simpa using h)
+
+/-- In a table with distinct symbols, the position of the symbol of the function at position
+    `i` is `i`. -/
+theorem CalleeTab.symPos_getElem {T : CalleeTab} (hnd : T.names.Nodup) {i : Nat}
+    (hi : i < T.fns.length) : T.symPos T.fns[i].name = i := by
+  obtain ⟨c, hc⟩ := T.lookup_of_mem (List.mem_map_of_mem (List.getElem_mem hi))
+  have h1 := CalleeTab.lookup_symPos hc
+  obtain ⟨hcm, hcn⟩ := CalleeTab.lookup_spec hc
+  have hj : T.symPos T.fns[i].name < T.fns.length := (List.getElem?_eq_some_iff.mp h1).1
+  have h2 : T.fns[T.symPos T.fns[i].name].name = T.fns[i].name := by
+    rw [List.getElem?_eq_some_iff] at h1
+    rw [h1.2, hcn]
+  have hnd' : (T.fns.map (·.name)).Nodup := hnd
+  refine (List.Nodup.getElem_inj_iff hnd' (hi := by simpa using hj)
+    (hj := by simpa using hi)).mp ?_
+  rw [List.getElem_map, List.getElem_map]
+  exact h2
+
+/-- With nonempty codes, the entry offsets of a table grow strictly with the position. -/
+theorem CalleeTab.entryOff_lt {T : CalleeTab} (hne : ∀ c ∈ T.fns, c.bytes ≠ []) {i j : Nat}
+    (hij : i < j) (hj : j ≤ T.fns.length) : T.entryOff i < T.entryOff j := by
+  unfold CalleeTab.entryOff
+  obtain ⟨d, rfl⟩ : ∃ d, j = i + (d + 1) := ⟨j - i - 1, by omega⟩
+  have hi : i < T.fns.length := by omega
+  rw [List.take_add, List.flatMap_append, List.length_append,
+    List.drop_eq_getElem_cons hi, List.take_succ_cons, List.flatMap_cons, List.length_append]
+  have := List.length_pos_of_ne_nil (hne T.fns[i] (List.getElem_mem hi))
+  omega
+
+/-- With nonempty codes, distinct positions of a table have distinct entry offsets. -/
+theorem CalleeTab.entryOff_inj {T : CalleeTab} (hne : ∀ c ∈ T.fns, c.bytes ≠ []) {i j : Nat}
+    (hi : i ≤ T.fns.length) (hj : j ≤ T.fns.length) (h : T.entryOff i = T.entryOff j) :
+    i = j := by
+  rcases Nat.lt_trichotomy i j with hij | hij | hij
+  · exact absurd h (Nat.ne_of_lt (T.entryOff_lt hne hij hj))
+  · exact hij
+  · exact absurd h.symm (Nat.ne_of_lt (T.entryOff_lt hne hij hi))
+
+/-- **The entry indices of a table are distinct.** In a table with distinct symbols and
+    nonempty codes whose code decodes as a region at its entry offsets and indices
+    (`LprogBytesLinkReloc.RegionDecode`), distinct positions have distinct entry indices. -/
+theorem CalleeTab.entryIdx_inj {T : CalleeTab} (hnd : T.names.Nodup)
+    (hne : ∀ c ∈ T.fns, c.bytes ≠ []) {Q : List X86Backend.LprogBytesDecode.RInstr}
+    (hR : X86Backend.LprogBytesLinkReloc.RegionDecode T.bytes T.names
+      (fun g => T.entryOff (T.symPos g)) (fun g => T.entryIdx (T.symPos g)) Q)
+    {i j : Nat} (hi : i < T.fns.length) (hj : j < T.fns.length)
+    (h : T.entryIdx i = T.entryIdx j) : i = j := by
+  have hpos : ∀ g ∈ T.names, T.symPos g < T.fns.length ∧ ∃ c, T.lookup g = some c
+      ∧ T.fns[T.symPos g]? = some c := fun g hg => by
+    obtain ⟨c, hc⟩ := T.lookup_of_mem hg
+    have h1 := CalleeTab.lookup_symPos hc
+    exact ⟨(List.getElem?_eq_some_iff.mp h1).1, c, hc, h1⟩
+  have key := X86Backend.LprogBytesLinkReloc.regionDecode_inj hR (fun f hf g hg ho => by
+    obtain ⟨hf1, c, hc, hc'⟩ := hpos f hf
+    obtain ⟨hg1, d, hd, hd'⟩ := hpos g hg
+    have he := T.entryOff_inj hne hf1.le hg1.le ho
+    rw [he, hd'] at hc'
+    cases hc'
+    exact (CalleeTab.lookup_spec hc).2.symm.trans (CalleeTab.lookup_spec hd).2)
+  have hmi : T.fns[i].name ∈ T.names := List.mem_map_of_mem (List.getElem_mem hi)
+  have hmj : T.fns[j].name ∈ T.names := List.mem_map_of_mem (List.getElem_mem hj)
+  have hn := key _ hmi _ hmj (by
+    simp only [CalleeTab.symPos_getElem hnd hi, CalleeTab.symPos_getElem hnd hj]
+    exact h)
+  have hnd' : (T.fns.map (·.name)).Nodup := hnd
+  refine (List.Nodup.getElem_inj_iff hnd' (hi := by simpa using hi)
+    (hj := by simpa using hj)).mp ?_
+  rw [List.getElem_map, List.getElem_map]
+  exact hn
+
+/-- At distinct entry indices, the call target behind a caller of `n` instructions at the
+    entry of the function at position `i` is that position. -/
+theorem CalleeTab.tgtPos?_entry {T : CalleeTab}
+    (hinj : ∀ i < T.fns.length, ∀ j < T.fns.length, T.entryIdx i = T.entryIdx j → i = j)
+    (n : Nat) {i : Nat} (hi : i < T.fns.length) : T.tgtPos? n (n + T.entryIdx i) = some i := by
+  unfold CalleeTab.tgtPos?
+  rw [List.find?_eq_some_iff_getElem]
+  refine ⟨by simp, i, by simpa using hi, by simp, fun j hj => ?_⟩
+  have hjl : j < T.fns.length := by omega
+  rw [Bool.not_eq_true', beq_eq_false_iff_ne]
+  intro h
+  exact absurd (hinj j hjl i hi (by simpa using h)) (by omega)
+
+/-- At distinct entry indices, the public argument registers at the entry of the function of a
+    symbol are those of the function. -/
+theorem CalleeTab.ctIfc_entry {T : CalleeTab}
+    (hinj : ∀ i < T.fns.length, ∀ j < T.fns.length, T.entryIdx i = T.entryIdx j → i = j)
+    (n : Nat) {g : String} {c : CalleeData} (hc : T.lookup g = some c) :
+    T.ctIfc n (n + T.entryIdx (T.symPos g)) = some c.pubRegs := by
+  have h1 := CalleeTab.lookup_symPos hc
+  have hlt := (List.getElem?_eq_some_iff.mp h1).1
+  simp [CalleeTab.ctIfc, T.tgtPos?_entry hinj n hlt, h1]
+
+/-- At distinct entry indices, the destination at the entry of the function of a symbol is
+    that of the function. -/
+theorem CalleeTab.ctDst_entry {T : CalleeTab}
+    (hinj : ∀ i < T.fns.length, ∀ j < T.fns.length, T.entryIdx i = T.entryIdx j → i = j)
+    (n : Nat) {g : String} {c : CalleeData} (hc : T.lookup g = some c) :
+    T.ctDst n (n + T.entryIdx (T.symPos g)) = c.outDst? := by
+  have h1 := CalleeTab.lookup_symPos hc
+  have hlt := (List.getElem?_eq_some_iff.mp h1).1
+  simp [CalleeTab.ctDst, T.tgtPos?_entry hinj n hlt, h1]
+
+/-- A register outside the clobber set of a table is outside the clobber set of each of its
+    functions. -/
+theorem CalleeTab.clob_of_clobB {T : CalleeTab} {c : CalleeData} (hc : c ∈ T.fns) {x : String}
+    (h : T.clobB x = false) : c.clob.contains x = false := by
+  simp only [CalleeTab.clobB, List.any_eq_false] at h
+  simpa using h c hc
+
+/-- The interface of a table at the symbol of one of its functions is that of the function. -/
+theorem CalleeTab.sigOf_lookup {T : CalleeTab} {g : String} {c : CalleeData}
+    (hc : T.lookup g = some c) : T.sigOf g = c.sig := by
+  simp [CalleeTab.sigOf, hc]
+
 /-- **The constant-time check at an optional table**: `regionCtB` without a table. At a table
-    `T` of one function, the constant-time decision with calls of linked callees
-    `AbiLayout.ctCheckRXT` on the program `calleeProg T body` of the function, at the clobber
-    set `T.clobB`, the public argument registers `T.ctIfc` and the destinations `T.ctDst` at the
-    call targets behind the program, and the frame `T.frame`; at the data of the function this
-    is `AbiLayout.ctCheckRXO` (`calleeCtB_one`). `false` when the function has no program, and
-    at a table of several functions, whose constant time needs the blocks of the region of
-    callee codes (`LprogBytesLinkReloc.RegionBlocks`). -/
+    `T`, the constant-time decision with calls of linked callees `AbiLayout.ctCheckRXT` on the
+    program `calleeProg T body` of the function, at the clobber set `T.clobB`, the public
+    argument registers `T.ctIfc` and the destinations `T.ctDst` at the call targets behind the
+    program, and the frame `T.frame`; at the table of one function this is
+    `AbiLayout.ctCheckRXO` at the data of that function (`calleeCtB_one`). `false` when the
+    function has no program. -/
 def calleeCtB (σ : AbiLayout) (nm : String → String) (callee : Option CalleeTab)
     (body : Lcmd) (t : JasminTy) (code : List LinstrRM) (res : List LOperand)
     (cert : List (String × String)) : Bool :=
   match callee with
   | none => regionCtB σ nm body t code res cert
   | some T =>
-      match T.fns, calleeProg T body with
-      | [_], some p => σ.ctCheckRXT T.clobB (T.ctIfc p.length) T.frame (T.ctDst p.length) p
-      | _, _ => false
+      match calleeProg T body with
+      | some p => σ.ctCheckRXT T.clobB (T.ctIfc p.length) T.frame (T.ctDst p.length) p
+      | none => false
 
 /-- Without a table the constant-time check is `regionCtB`. -/
 @[simp] theorem calleeCtB_none (σ : AbiLayout) (nm : String → String) (body : Lcmd)
@@ -10760,23 +10909,23 @@ theorem calleeCtB_one (σ : AbiLayout) (nm : String → String) (c : CalleeData)
       | some p => σ.ctCheckRXO (fun x => c.clob.contains x) c.pubRegs c.frame c.outDst? p
       | none => false := by
   dsimp only [calleeCtB]
-  rw [show (CalleeTab.one c).fns = [c] from rfl]
   cases calleeProg (CalleeTab.one c) body with
   | none => rfl
   | some p =>
       dsimp only
       rw [CalleeTab.clobB_one, CalleeTab.ctIfc_one, CalleeTab.ctDst_one, CalleeTab.frame_one]
 
-/-- A table at which the constant-time check holds is the table of one linked function. -/
-theorem calleeCtB_some {σ : AbiLayout} {nm : String → String} {T : CalleeTab} {body : Lcmd}
+/-- **The constant-time check at a table**: a table at which the check holds gives the program
+    of the function, which passes `AbiLayout.ctCheckRXT` at the interface of the table. -/
+theorem calleeCtB_tab {σ : AbiLayout} {nm : String → String} {T : CalleeTab} {body : Lcmd}
     {t : JasminTy} {code : List LinstrRM} {res : List LOperand} {cert : List (String × String)}
-    (h : calleeCtB σ nm (some T) body t code res cert = true) : ∃ c, T = CalleeTab.one c := by
-  obtain ⟨fns⟩ := T
+    (h : calleeCtB σ nm (some T) body t code res cert = true) :
+    ∃ p, calleeProg T body = some p
+      ∧ σ.ctCheckRXT T.clobB (T.ctIfc p.length) T.frame (T.ctDst p.length) p = true := by
   simp only [calleeCtB] at h
-  match fns, h with
-  | [c], _ => exact ⟨c, rfl⟩
-  | [], h => simp at h
-  | _ :: _ :: _, h => simp at h
+  split at h
+  · exact ⟨_, ‹_›, h⟩
+  · cases h
 
 /-- **The back half on a region-exported program** with one result, a word array or a
     register: the region legalisation `legalizeRegion`, then, on the legalised program, the test

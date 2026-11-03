@@ -68,9 +68,13 @@ instruction of `cb` starts at byte `L` and has index `k` in the decoded stream.
   and is the call-free block `q f` placed there. `regionBlocks_one` is the region of one
   block; `regionBlocksB` is its Boolean check, sound by `regionBlocks_of_regionBlocksB` at
   the blocks `regionBlock`; `regionDecode_inj` is the injectivity of the entry indices.
-* `KernelItems`, `CalleeBlock`, `regionBlocks_of_items`: a list of blocks whose bytes, but for
-  the last, are item streams is a region at the blocks `regionCode`, the offsets `regionOffset`
-  and the indices `regionIndex`, with the program `regionProg`.
+* `decodeLinstr_ext`: the prefix property of the one-instruction decoder; an instruction read
+  off a stream is read off every extension of it. `decodeAt_append` and
+  `decodeLprog_append_streams`: a stream that decodes on its own decodes in front of any
+  stream that decodes, with the offsets of the second raised by the length of the first.
+* `CalleeBlock`, `regionBlocks_of_decodes`: a list of blocks that each decode is a region at
+  the blocks `regionCode`, the offsets `regionOffset` and the indices `regionIndex`, with the
+  program `regionProg`.
 * `linkedProg_of_itemsMapL`, `linkedProg_of_bytesSymL`: the program of the relocated item
   list of a body with the facts `LinkFacts` satisfies `LinkedProgMap` at `K : String → Nat`:
   the decoded instructions of each instruction of the shape `blkOK` at the index
@@ -784,10 +788,920 @@ theorem regionBlocks_of_regionBlocksB (cb : List (BitVec 8)) (fs : List String)
         have := hblk x hx
         cases x <;> simp_all [unshiftInstr, blockInstrB]
 
-/-- **The bytes of a block are an item stream**: they are the bytes of an `ItemOK` item list.
-    Decoding an appended stream (`decodeLprog_append`) needs this of its first part. -/
-def KernelItems (bs : List (BitVec 8)) : Prop :=
-  ∃ items, (∀ it ∈ items, ItemOK it) ∧ bs = itemBytes items
+/-! ### The prefix property of the decoder
+
+`decodeLinstr` reads an instruction off the front of a stream. Every arm reads a number of
+bytes fixed by the bytes it has read, and an arm tried after another succeeds only on streams
+the earlier arm rejects with any continuation. So an instruction read off a stream is read off
+every extension of it (`decodeLinstr_ext`), and a stream that decodes on its own decodes in
+front of any stream (`decodeAt_append`, `decodeLprog_append_streams`). The bytes of a callee
+code need not come from an item list. -/
+
+/-- A one-instruction decoder that is stable under extension. -/
+def ExtStable {α : Type} (f : List (BitVec 8) → Option (α × List (BitVec 8))) : Prop :=
+  ∀ bs x r e, f bs = some (x, r) → f (bs ++ e) = some (x, r ++ e)
+
+/-- `decodeDisp` is stable under extension of its input (`ExtStable`). -/
+theorem decodeDisp_ext (n : Nat) : ExtStable (decodeDisp n) := by
+  intro bs x r e h
+  unfold decodeDisp at h
+  split at h <;> simp_all [decodeDisp]
+
+/-- `decodeMemTail` is stable under extension of its input. -/
+theorem decodeMemTail_ext (xb : Nat) {bs r : List (BitVec 8)} {a b : Nat}
+    {c : Option (Nat × Nat)} {d : Int} (e : List (BitVec 8))
+    (h : decodeMemTail xb bs = some (a, b, c, d, r)) :
+    decodeMemTail xb (bs ++ e) = some (a, b, c, d, r ++ e) := by
+  unfold decodeMemTail at h
+  split at h
+  · rename_i modrm rest
+    simp only [List.cons_append, decodeMemTail]
+    split at h
+    · simp at h
+    · rename_i h3
+      simp only [h3, ite_false]
+      split at h
+      · rename_i h4
+        simp only [h4, ite_true]
+        split at h
+        · rename_i sib rest1
+          simp only [List.cons_append]
+          split at h
+          · simp at h
+          · rename_i h5
+            simp only [h5, ite_false]
+            cases hd : decodeDisp (modField modrm) rest1 with
+            | none => simp [hd] at h
+            | some p =>
+              obtain ⟨d', r'⟩ := p
+              rw [decodeDisp_ext _ _ _ _ e hd]
+              simp_all
+        · simp at h
+      · rename_i h4
+        simp only [h4, ite_false]
+        split at h
+        · simp at h
+        · rename_i h5
+          simp only [h5, ite_false]
+          cases hd : decodeDisp (modField modrm) rest with
+          | none => simp [hd] at h
+          | some p =>
+            obtain ⟨d', r'⟩ := p
+            rw [decodeDisp_ext _ _ _ _ e hd]
+            simp_all
+  · simp at h
+
+/-- `decodeMovzbq` is stable under extension of its input (`ExtStable`). -/
+theorem decodeMovzbq_ext (n : Nat) : ExtStable (decodeMovzbq n) := by
+  intro bs x r e h
+  unfold decodeMovzbq at h
+  split at h
+  · simp only [List.cons_append, decodeMovzbq]
+    split at h
+    · simp_all
+    · simp at h
+  · simp at h
+
+/-- `decodeRex` is stable under extension of its input (`ExtStable`). -/
+theorem decodeRex_ext (rx : BitVec 8) : ExtStable (decodeRex rx) := by
+  intro bs x r e h
+  fun_cases decodeRex rx bs
+  all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeRex])
+  all_goals try (exact decodeMovzbq_ext _ _ _ _ e h)
+  all_goals (split at h <;> first | (exfalso; omega) | simp_all)
+
+/-- `decodeAdx` is stable under extension of its input (`ExtStable`). -/
+theorem decodeAdx_ext (b : Bool) : ExtStable (decodeAdx b) := by
+  intro bs x r e h
+  fun_cases decodeAdx b bs
+  all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeAdx])
+
+/-- `decodeSetcBare` is stable under extension of its input (`ExtStable`). -/
+theorem decodeSetcBare_ext : ExtStable decodeSetcBare := by
+  intro bs x r e h
+  fun_cases decodeSetcBare bs
+  all_goals (try simp_all [decodeSetcBare])
+  all_goals first
+    | exact decodeMovzbq_ext _ _ _ _ e h
+    | (exfalso; rw [ite_eq_right (by omega), ite_eq_right (by omega)] at h; simp at h)
+
+/-- `decodeMulx` is stable under extension of its input (`ExtStable`). -/
+theorem decodeMulx_ext : ExtStable decodeMulx := by
+  intro bs x r e h
+  fun_cases decodeMulx bs
+  all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeMulx])
+
+/-- `decodeRexW0` is stable under extension of its input (`ExtStable`). -/
+theorem decodeRexW0_ext (rx : BitVec 8) : ExtStable (decodeRexW0 rx) := by
+  intro bs x r e h
+  fun_cases decodeRexW0 rx bs
+  all_goals (try simp_all [decodeRexW0])
+  all_goals try (exact decodeMovzbq_ext _ _ _ _ e h)
+  all_goals (split at h <;> simp_all)
+
+/-- `decodeJ1` is stable under extension of its input (`ExtStable`). -/
+theorem decodeJ1_ext : ExtStable decodeJ1 := by
+  intro bs x r e h
+  fun_cases decodeJ1 bs
+  all_goals (try simp_all [decodeJ1])
+  all_goals first
+    | exact decodeAdx_ext _ _ _ _ e h
+    | exact decodeMulx_ext _ _ _ e h
+    | exact decodeRex_ext _ _ _ _ e h
+    | exact decodeRexW0_ext _ _ _ _ e h
+    | exact decodeSetcBare_ext _ _ _ e h
+
+/-- `decodeShift1` is stable under extension of its input (`ExtStable`). -/
+theorem decodeShift1_ext : ExtStable decodeShift1 := by
+  intro bs x r e h
+  fun_cases decodeShift1 bs
+  all_goals (try simp_all [decodeShift1])
+
+/-- `decodeCmp` is stable under extension of its input (`ExtStable`). -/
+theorem decodeCmp_ext : ExtStable decodeCmp := by
+  intro bs x r e h
+  fun_cases decodeCmp bs
+  all_goals (try simp_all [decodeCmp])
+
+/-- Off a byte that is no `REX` prefix, `decodeShift1` decodes nothing. -/
+theorem decodeShift1_nonrex {b0 : BitVec 8} (t : List (BitVec 8)) (hr : isRex b0 = false) :
+    decodeShift1 (b0 :: t) = none := by
+  unfold decodeShift1; split <;> simp_all
+
+/-- Off a byte that is no `REX` prefix, `decodeCmp` decodes nothing. -/
+theorem decodeCmp_nonrex {b0 : BitVec 8} (t : List (BitVec 8)) (hr : isRex b0 = false) :
+    decodeCmp (b0 :: t) = none := by
+  unfold decodeCmp; split <;> simp_all
+
+/-- Off a `REX` prefix, `decodeJ1` is `decodeRex` at `REX.W = 1` and `decodeRexW0`
+    otherwise. -/
+theorem decodeJ1_rex {b : BitVec 8} (t : List (BitVec 8)) (hr : isRex b = true) :
+    decodeJ1 (b :: t) = if rexW b = 1 then decodeRex b t else decodeRexW0 b t := by
+  have hb : 0x40 ≤ b.toNat ∧ b.toNat ≤ 0x4f := by simpa [isRex] using hr
+  simp only [decodeJ1, show ¬ b.toNat = 0x66 by omega, show ¬ b.toNat = 0xf3 by omega,
+    show ¬ b.toNat = 0xc4 by omega, hr, ↓reduceIte]
+
+/-- A stream `decodeShift1` decodes is, with any continuation, rejected by `decodeJ1`. -/
+theorem decodeJ1_none_of_shift1 {bs r : List (BitVec 8)} {x : JInstr 64}
+    (e : List (BitVec 8)) (h : decodeShift1 bs = some (x, r)) : decodeJ1 (bs ++ e) = none := by
+  fun_cases decodeShift1 bs
+  all_goals (try simp_all [decodeShift1])
+  all_goals simp_all [decodeJ1_rex, decodeRex, aluMnemonic]
+
+/-- A stream `decodeCmp` decodes is, with any continuation, rejected by `decodeJ1` and by
+    `decodeShift1`. -/
+theorem decodeJ1_none_of_cmp {bs r : List (BitVec 8)} {x : JInstr 64}
+    (e : List (BitVec 8)) (h : decodeCmp bs = some (x, r)) :
+    decodeJ1 (bs ++ e) = none ∧ decodeShift1 (bs ++ e) = none := by
+  fun_cases decodeCmp bs
+  all_goals (try simp_all [decodeCmp])
+  all_goals simp_all [decodeJ1_rex, decodeRex, aluMnemonic, aluImmMnemonic, decodeShift1]
+
+/-- `decodeJ1_6` is stable under extension of its input (`ExtStable`). -/
+theorem decodeJ1_6_ext : ExtStable decodeJ1_6 := by
+  intro bs x r e h
+  unfold decodeJ1_6 at h ⊢
+  cases h1 : decodeJ1 bs with
+  | some p =>
+    obtain ⟨i, r'⟩ := p
+    simp only [h1, Option.some.injEq] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+    rw [decodeJ1_ext _ _ _ e h1]
+  | none =>
+    simp only [h1] at h
+    cases h2 : decodeShift1 bs with
+    | some p =>
+      obtain ⟨i, r'⟩ := p
+      simp only [h2, Option.some_or, Option.some.injEq] at h
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+      rw [decodeJ1_none_of_shift1 e h2, decodeShift1_ext _ _ _ e h2]
+      rfl
+    | none =>
+      simp only [h2, Option.none_or] at h
+      obtain ⟨hj, hs⟩ := decodeJ1_none_of_cmp e h
+      rw [hj, hs, decodeCmp_ext _ _ _ e h]
+      rfl
+
+/-- Off a leading byte that is no `REX` prefix and none of `66`, `F3`, `C4`, `0F`,
+    `decodeJ1_6` decodes nothing. -/
+theorem decodeJ1_6_plain {b0 : BitVec 8} (t : List (BitVec 8)) (hr : isRex b0 = false)
+    (h66 : b0.toNat ≠ 0x66) (hf3 : b0.toNat ≠ 0xf3) (hc4 : b0.toNat ≠ 0xc4)
+    (h0f : b0.toNat ≠ 0x0f) : decodeJ1_6 (b0 :: t) = none := by
+  have h1 : decodeJ1 (b0 :: t) = none := by simp [decodeJ1, h66, hf3, hc4, h0f, hr]
+  simp [decodeJ1_6, h1, decodeShift1_nonrex t hr, decodeCmp_nonrex t hr]
+
+/-- `decodeShiftX` is stable under extension of its input (`ExtStable`). -/
+theorem decodeShiftX_ext : ExtStable decodeShiftX := by
+  intro bs x r e h
+  fun_cases decodeShiftX bs
+  all_goals (try simp_all [decodeShiftX])
+
+/-- `decodeRexExt` is stable under extension of its input (`ExtStable`). -/
+theorem decodeRexExt_ext (rx : BitVec 8) : ExtStable (decodeRexExt rx) := by
+  intro bs x r e h
+  fun_cases decodeRexExt rx bs
+  all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeRexExt])
+  all_goals (try simp_all [decodeMemTail])
+  all_goals (repeat' (split at h))
+  all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
+  all_goals simp_all [decodeMemTail]
+
+/-- `decodeRexPushPop` is stable under extension of its input (`ExtStable`). -/
+theorem decodeRexPushPop_ext (rx : BitVec 8) : ExtStable (decodeRexPushPop rx) := by
+  intro bs x r e h
+  fun_cases decodeRexPushPop rx bs
+  all_goals (try simp_all [decodeRexPushPop, decodePushPop])
+  all_goals (split at h <;> simp_all)
+
+/-- `decodeRexMov32` is stable under extension of its input (`ExtStable`). -/
+theorem decodeRexMov32_ext (rx : BitVec 8) : ExtStable (decodeRexMov32 rx) := by
+  intro bs x r e h
+  fun_cases decodeRexMov32 rx bs
+  all_goals (try simp_all [decodeRexMov32])
+
+/-- After `C4`, a stream `decodeShiftX` decodes is, with any continuation, rejected by
+    `decodeJ1_6`: its opcode byte `F7` is not the `F6` of `decodeMulx`. -/
+theorem decodeJ1_6_c4 {b0 : BitVec 8} {t r : List (BitVec 8)} {x : JInstr 64}
+    (e : List (BitVec 8)) (hb : b0.toNat = 0xc4) (h : decodeShiftX t = some (x, r)) :
+    decodeJ1_6 (b0 :: (t ++ e)) = none := by
+  fun_cases decodeShiftX t
+  all_goals (try simp_all [decodeShiftX])
+  all_goals simp_all [decodeJ1_6, decodeJ1, decodeMulx, decodeShift1, decodeCmp, isRex]
+
+/-- After `0F`, a byte of `80`..`8F` (the second opcode byte of `jcc rel32`) is rejected by
+    `decodeJ1_6`. -/
+theorem decodeJ1_6_0f {b0 o : BitVec 8} (t : List (BitVec 8)) (hb : b0.toNat = 0x0f)
+    (ho : 0x80 ≤ o.toNat ∧ o.toNat ≤ 0x8f) : decodeJ1_6 (b0 :: o :: t) = none := by
+  have h1 : decodeSetcBare (o :: t) = none := by
+    unfold decodeSetcBare
+    split
+    · rename_i heq
+      obtain ⟨rfl, -⟩ := List.cons.inj heq
+      simp only [show ¬ o.toNat = 0x92 by omega, false_and, ↓reduceIte, setccCond?,
+        show ¬ o.toNat = 0x94 by omega, show ¬ o.toNat = 0x95 by omega, Option.map_none]
+      split <;> rfl
+    · rfl
+  have hr : isRex b0 = false := by simp [isRex, hb]
+  simp [decodeJ1_6, decodeJ1, hb, h1, decodeShift1_nonrex _ hr, decodeCmp_nonrex _ hr, hr]
+
+/-- The ModRM byte of `decodeMemTail` at `mod = 00` with a SIB byte whose base field is not
+    `101`: the operand decodes with displacement `0`, whatever follows. -/
+theorem decodeMemTail_sib0 (xb : Nat) {modrm sib : BitVec 8} (t : List (BitVec 8))
+    (hmod : modField modrm = 0) (hrm : rmField modrm = 4) (hsib : rmField sib ≠ 5) :
+    ∃ c, decodeMemTail xb (modrm :: sib :: t) = some (regField modrm, rmField sib, c, 0, t) := by
+  simp [decodeMemTail, hmod, hrm, hsib, decodeDisp]
+
+/-- `decodeRex` decodes the `8B`/`89` forms at `mod = 00` with a SIB byte whose base field is
+    not `101`, whatever follows. -/
+theorem decodeRex_sib0_ne_none {b0 op modrm sib : BitVec 8} (t : List (BitVec 8))
+    (hop : op.toNat = 0x8b ∨ op.toNat = 0x89) (hmod : modField modrm = 0)
+    (hrm : rmField modrm = 4)
+    (hsib : rmField sib ≠ 5) : decodeRex b0 (op :: modrm :: sib :: t) ≠ none := by
+  obtain ⟨c, hc⟩ := decodeMemTail_sib0 (rexX b0) t hmod hrm hsib
+  rcases hop with hop | hop
+  · cases c <;> simp [decodeRex, hop, hc]
+  · cases c <;> simp [decodeRex, hop, hc, hmod]
+
+/-- `decodeRex` at `0F` followed by a byte of `40`..`4F` and a register-direct ModRM byte does
+    not read past the ModRM byte. -/
+theorem decodeRex_cmov_reg {b0 op modrm m : BitVec 8} (t e : List (BitVec 8))
+    (hop : op.toNat = 0x0f) (hc : 0x40 ≤ modrm.toNat ∧ modrm.toNat ≤ 0x4f)
+    (hm : modField m = 3)
+    (hn : decodeRex b0 (op :: modrm :: m :: t) = none) :
+    decodeRex b0 (op :: modrm :: m :: (t ++ e)) = none := by
+  by_cases h44 : modrm.toNat = 0x44
+  · simp [decodeRex, hop, hm, h44] at hn
+  by_cases h45 : modrm.toNat = 0x45
+  · simp [decodeRex, hop, hm, h45] at hn
+  by_cases h42 : modrm.toNat = 0x42
+  · simp [decodeRex, hop, hm, h42] at hn
+  simp [decodeRex, hop, hm, h44, h45, h42, show ¬ modrm.toNat = 0xaf by omega,
+    show ¬ modrm.toNat = 0xb6 by omega, show ¬ modrm.toNat = 0xb7 by omega,
+    show ¬ modrm.toNat = 0x92 by omega, show ¬ modrm.toNat = 0xba by omega]
+
+/-- `decodeRex` at `0F` followed by a ModRM byte of a memory operand decodes nothing. -/
+theorem decodeRex_0f_mem {b0 op modrm m : BitVec 8} (t : List (BitVec 8))
+    (hop : op.toNat = 0x0f) (hm : modField m ≠ 3) :
+    decodeRex b0 (op :: modrm :: m :: t) = none := by
+  simp [decodeRex, hop, hm]
+
+/-- A stream that `decodeMemTail` decodes starts with a ModRM byte of a memory operand. -/
+theorem decodeMemTail_cons {xb : Nat} {bs r : List (BitVec 8)} {a b : Nat}
+    {c : Option (Nat × Nat)} {d : Int} (h : decodeMemTail xb bs = some (a, b, c, d, r)) :
+    ∃ m t, bs = m :: t ∧ modField m ≠ 3 := by
+  rcases bs with _ | ⟨m, t⟩
+  · simp [decodeMemTail] at h
+  · refine ⟨m, t, rfl, fun hm => ?_⟩
+    simp [decodeMemTail, hm] at h
+
+/-- Off a `REX.W` prefix followed by an opcode byte other than `D1`, `39` and `81`,
+    `decodeJ1_6` is `decodeRex`. -/
+theorem decodeJ1_6_rexW1 {b0 op : BitVec 8} (t : List (BitVec 8)) (hrex : isRex b0 = true)
+    (hw : SailX86Decoder.rexW b0 = 1) (h1 : op.toNat ≠ 0xd1) (h2 : op.toNat ≠ 0x39)
+    (h3 : op.toNat ≠ 0x81) : decodeJ1_6 (b0 :: op :: t) = decodeRex b0 (op :: t) := by
+  have hs : decodeShift1 (b0 :: op :: t) = none := by
+    unfold decodeShift1; split <;> simp_all
+  have hc : decodeCmp (b0 :: op :: t) = none := by
+    unfold decodeCmp; split <;> simp_all
+  unfold decodeJ1_6
+  rw [decodeJ1_rex _ hrex]
+  simp only [hw, ↓reduceIte]
+  cases decodeRex b0 (op :: t) <;> simp [hs, hc]
+
+/-- Off a `REX` prefix, a stream `decodeRexExt` decodes and `decodeJ1_6` rejects is, with any
+    continuation, still rejected by `decodeJ1_6`. -/
+theorem decodeJ1_6_rexExt {b0 : BitVec 8} {t r : List (BitVec 8)} {x : JInstr 64}
+    (e : List (BitVec 8)) (hrex : isRex b0 = true) (h : decodeRexExt b0 t = some (x, r))
+    (hn : decodeJ1_6 (b0 :: t) = none) : decodeJ1_6 (b0 :: (t ++ e)) = none := by
+  fun_cases decodeRexExt b0 t
+  all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeRexExt])
+  all_goals
+    rw [decodeJ1_6_rexW1 _ hrex (by assumption) (by omega) (by omega) (by omega)] at hn ⊢
+  case case2 => clear h hn; simp_all [decodeRex, aluMnemonic]
+  case case4 => clear h hn; simp_all [decodeRex, aluMnemonic]
+  case case12 => clear h hn; simp_all [decodeRex]
+  case case18 => clear h hn; simp_all [decodeRex]
+  case case14 => clear h hn; simp_all [decodeRex]
+  case case16 => clear h hn; simp_all [decodeRex]
+  case case7 =>
+    obtain ⟨m, t, heq, hm⟩ := decodeMemTail_cons ‹decodeMemTail _ _ = some _›
+    rw [heq]
+    exact decodeRex_0f_mem _ ‹_› hm
+  case case8 => exact decodeRex_cmov_reg _ _ ‹_› ‹_› ‹_› hn
+  case case11 =>
+    obtain ⟨hc, h⟩ := h
+    split at h
+    · rename_i hmt
+      obtain ⟨m, t, rfl, hm⟩ := decodeMemTail_cons hmt
+      exact decodeRex_0f_mem _ ‹_› hm
+    · split at h
+      · split at h
+        · exact decodeRex_cmov_reg _ _ ‹_› hc ‹_› hn
+        · simp at h
+      · simp at h
+  case case20 => exact absurd ‹_ = 4› h.1.1
+  case case21 =>
+    exact absurd hn
+      (decodeRex_sib0_ne_none _ (Or.inl ‹_›) ‹_ ∧ _›.1 ‹_ ∧ _›.2 ‹_ ∧ _›.2)
+  case case22 =>
+    exact absurd hn
+      (decodeRex_sib0_ne_none _ (Or.inr ‹_›) ‹_ ∧ _›.1 ‹_ ∧ _›.2 ‹_ ∧ _›.2)
+
+/-- Off a `REX` prefix with `REX.W = 0`, `decodeJ1_6` is `decodeRexW0`. -/
+theorem decodeJ1_6_rexW0 {b0 : BitVec 8} (t : List (BitVec 8)) (hrex : isRex b0 = true)
+    (hw : SailX86Decoder.rexW b0 = 0) : decodeJ1_6 (b0 :: t) = decodeRexW0 b0 t := by
+  have hs : decodeShift1 (b0 :: t) = none := by
+    unfold decodeShift1; split <;> simp_all
+  have hc : decodeCmp (b0 :: t) = none := by
+    unfold decodeCmp; split <;> simp_all
+  unfold decodeJ1_6
+  rw [decodeJ1_rex _ hrex]
+  simp only [hw, zero_ne_one, ↓reduceIte]
+  cases decodeRexW0 b0 t <;> simp [hs, hc]
+
+/-- Off a `REX` prefix with `REX.W = 0`, `decodeRexExt` decodes nothing. -/
+theorem decodeRexExt_w0 {b0 : BitVec 8} (t : List (BitVec 8))
+    (hw : SailX86Decoder.rexW b0 = 0) : decodeRexExt b0 t = none := by
+  unfold decodeRexExt; split <;> simp_all
+
+/-- Off the prefix `41`, a stream `decodeRexPushPop` decodes is, with any continuation,
+    rejected by `decodeJ1_6` and by `decodeRexExt`. -/
+theorem decodeJ1_6_rexPushPop {b0 : BitVec 8} {t r : List (BitVec 8)} {x : DInstr}
+    (e : List (BitVec 8)) (h : decodeRexPushPop b0 t = some (x, r)) :
+    decodeJ1_6 (b0 :: (t ++ e)) = none ∧ decodeRexExt b0 (t ++ e) = none := by
+  fun_cases decodeRexPushPop b0 t
+  · rename_i op rest hb
+    have hrex : isRex b0 = true := by simp [isRex, hb]
+    have hw : SailX86Decoder.rexW b0 = 0 := by simp [SailX86Decoder.rexW, hb]
+    have hop : 0x50 ≤ op.toNat ∧ op.toNat ≤ 0x5f := by
+      simp only [hb, ↓reduceIte, decodeRexPushPop, decodePushPop] at h
+      split at h
+      · simp at h
+      · split at h
+        · omega
+        · split at h
+          · omega
+          · simp at h
+    refine ⟨?_, decodeRexExt_w0 _ hw⟩
+    rw [decodeJ1_6_rexW0 _ hrex hw]
+    simp [decodeRexW0, show ¬ op.toNat = 0x0f by omega, show ¬ (0xb8 ≤ op.toNat) by omega]
+  · simp_all [decodeRexPushPop]
+  · simp [decodeRexPushPop] at h
+
+/-- Off a `REX` prefix, a stream `decodeRexMov32` decodes is, with any continuation, rejected
+    by `decodeJ1_6`, `decodeRexExt` and `decodeRexPushPop`. -/
+theorem decodeJ1_6_rexMov32 {b0 : BitVec 8} {t r : List (BitVec 8)} {x : DInstr}
+    (e : List (BitVec 8)) (hrex : isRex b0 = true) (h : decodeRexMov32 b0 t = some (x, r)) :
+    decodeJ1_6 (b0 :: (t ++ e)) = none ∧ decodeRexExt b0 (t ++ e) = none
+      ∧ decodeRexPushPop b0 (t ++ e) = none := by
+  fun_cases decodeRexMov32 b0 t
+  · rename_i op modrm rest hc
+    obtain ⟨hw, hop, -⟩ := hc
+    refine ⟨?_, decodeRexExt_w0 _ hw, ?_⟩
+    · rw [decodeJ1_6_rexW0 _ hrex hw]
+      simp [decodeRexW0, hop]
+    · simp [decodeRexPushPop, decodePushPop, hop]
+  · simp_all [decodeRexMov32]
+  · simp [decodeRexMov32] at h
+
+/-- **Prefix property of the one-instruction decoder.** An instruction that `decodeLinstr`
+    reads off the front of a stream is read off the front of every extension of that stream,
+    with the extension appended to the remaining bytes. Each arm of the decoder reads a fixed
+    number of bytes once its leading bytes are fixed, and an arm tried after another succeeds
+    only on streams that the earlier arm rejects whatever follows (`decodeJ1_6_plain`,
+    `decodeJ1_6_0f`, `decodeJ1_6_c4`, `decodeJ1_6_rexExt`, `decodeJ1_6_rexPushPop`,
+    `decodeJ1_6_rexMov32`). -/
+theorem decodeLinstr_ext : ExtStable decodeLinstr := by
+  intro bs x r e h
+  rcases bs with _ | ⟨b0, t⟩
+  · simp [decodeLinstr] at h
+  cases hj : decodeJ1_6 (b0 :: t) with
+  | some p =>
+    obtain ⟨i, r'⟩ := p
+    simp only [decodeLinstr, hj, Option.some.injEq] at h
+    obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+    have := decodeJ1_6_ext _ _ _ e hj
+    simp only [List.cons_append] at this
+    simp only [List.cons_append, decodeLinstr, this]
+  | none =>
+    simp only [decodeLinstr, hj] at h
+    simp only [List.cons_append, decodeLinstr]
+    have hplain : isRex b0 = false → b0.toNat ≠ 0x66 → b0.toNat ≠ 0xf3 →
+        b0.toNat ≠ 0xc4 → b0.toNat ≠ 0x0f → decodeJ1_6 (b0 :: (t ++ e)) = none :=
+      fun a b c d f => decodeJ1_6_plain _ a b c d f
+    have hrexB : isRex b0 = true ↔ 0x40 ≤ b0.toNat ∧ b0.toNat ≤ 0x4f := by simp [isRex]
+    by_cases h1 : b0.toNat = 0xc3
+    · rw [hplain (by simp [isRex, h1]) (by omega) (by omega) (by omega) (by omega)]
+      simp only [h1, ↓reduceIte, Option.some.injEq] at h ⊢
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+      rfl
+    by_cases h2 : 0x70 ≤ b0.toNat ∧ b0.toNat ≤ 0x7f
+    · rw [hplain (by simp [isRex]; omega) (by omega) (by omega) (by omega) (by omega)]
+      simp only [h1, h2, ↓reduceIte, and_self] at h ⊢
+      rcases t with _ | ⟨d, t⟩
+      · simp at h
+      · simp only [Option.some.injEq] at h
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+        rfl
+    by_cases h3 : b0.toNat = 0x0f
+    · simp only [h1, h2, ↓reduceIte] at h ⊢
+      simp only [h3, ↓reduceIte] at h ⊢
+      split at h
+      · rename_i o d0 d1 d2 d3 t'
+        by_cases ho : 0x80 ≤ o.toNat ∧ o.toNat ≤ 0x8f
+        · rw [List.cons_append, decodeJ1_6_0f _ h3 ho]
+          simp only [List.cons_append, ho, and_self, ↓reduceIte, Option.some.injEq] at h ⊢
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+          rfl
+        · simp [ho] at h
+      · simp at h
+    by_cases h4 : b0.toNat = 0xc4
+    · simp only [h1, h2, h3, ↓reduceIte] at h ⊢
+      simp only [h4, ↓reduceIte] at h ⊢
+      obtain ⟨⟨i, r'⟩, hs, he⟩ := Option.map_eq_some_iff.mp h
+      simp only [Prod.mk.injEq] at he
+      obtain ⟨rfl, rfl⟩ := he
+      rw [decodeJ1_6_c4 e h4 hs, decodeShiftX_ext _ _ _ e hs]
+      rfl
+    simp only [h1, h2, h3, h4, ↓reduceIte] at h ⊢
+    by_cases h5 : isRex b0 = true
+    · simp only [h5, ↓reduceIte] at h ⊢
+      cases ha : decodeRexExt b0 t with
+      | some p =>
+        obtain ⟨i, r'⟩ := p
+        simp only [ha, Option.map_some, Option.some_or, Option.some.injEq] at h
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+        rw [decodeJ1_6_rexExt e h5 ha hj, decodeRexExt_ext _ _ _ _ e ha]
+        rfl
+      | none =>
+        cases hb : decodeRexPushPop b0 t with
+        | some p =>
+          obtain ⟨y, r'⟩ := p
+          simp only [ha, hb, Option.map_none, Option.none_or, Option.some_or,
+            Option.some.injEq] at h
+          obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+          obtain ⟨k1, k2⟩ := decodeJ1_6_rexPushPop e hb
+          rw [k1, k2, decodeRexPushPop_ext _ _ _ _ e hb]
+          rfl
+        | none =>
+          simp only [ha, hb, Option.map_none, Option.none_or] at h
+          obtain ⟨k1, k2, k3⟩ := decodeJ1_6_rexMov32 e h5 h
+          rw [k1, k2, k3, decodeRexMov32_ext _ _ _ _ e h]
+          rfl
+    have h5' : isRex b0 = false := by simpa using h5
+    simp only [h5', Bool.false_eq_true, ↓reduceIte] at h ⊢
+    by_cases h6 : 0x50 ≤ b0.toNat ∧ b0.toNat ≤ 0x5f
+    · rw [hplain h5' (by omega) (by omega) h4 h3]
+      simp only [h6, and_self, ↓reduceIte] at h ⊢
+      unfold decodePushPop at h ⊢
+      split_ifs at h ⊢ <;> simp_all
+    simp only [h6, ↓reduceIte] at h ⊢
+    by_cases h7 : 0xb8 ≤ b0.toNat ∧ b0.toNat ≤ 0xbf
+    · rw [hplain h5' (by omega) (by omega) h4 h3]
+      simp only [h7, and_self, ↓reduceIte] at h ⊢
+      split at h
+      · simp only [List.cons_append, Option.some.injEq] at h ⊢
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+        rfl
+      · simp at h
+    simp only [h7, ↓reduceIte] at h ⊢
+    by_cases h8 : b0.toNat = 0xe8
+    · rw [hplain h5' (by omega) (by omega) h4 h3]
+      simp only [h8, ↓reduceIte] at h ⊢
+      split at h
+      · simp only [List.cons_append, Option.some.injEq] at h ⊢
+        obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+        rfl
+      · simp at h
+    simp [h8] at h
+
+/-- A one-instruction decoder whose remaining bytes are at most as many as its input bytes. -/
+def NoLonger {α : Type} (f : List (BitVec 8) → Option (α × List (BitVec 8))) : Prop :=
+  ∀ bs x r, f bs = some (x, r) → r.length ≤ bs.length
+
+/-- `decodeDisp` leaves no more bytes than it reads. -/
+theorem decodeDisp_len (n : Nat) : NoLonger (decodeDisp n) := by
+  intro bs x r h
+  unfold decodeDisp at h
+  split at h <;> simp_all
+  omega
+
+/-- `decodeMemTail` leaves no more bytes than it reads. -/
+theorem decodeMemTail_len (xb : Nat) {bs r : List (BitVec 8)} {a b : Nat}
+    {c : Option (Nat × Nat)} {d : Int} (h : decodeMemTail xb bs = some (a, b, c, d, r)) :
+    r.length ≤ bs.length := by
+  unfold decodeMemTail at h
+  split at h
+  · rename_i modrm rest
+    split at h
+    · simp at h
+    · split at h
+      · split at h
+        · rename_i sib rest1
+          split at h
+          · simp at h
+          · obtain ⟨p, hp, hpe⟩ := Option.map_eq_some_iff.mp h
+            have := decodeDisp_len _ _ _ _ hp
+            simp only [Prod.mk.injEq] at hpe
+            rw [← hpe.2.2.2.2]
+            simp only [List.length_cons]
+            omega
+        · simp at h
+      · split at h
+        · simp at h
+        · obtain ⟨p, hp, hpe⟩ := Option.map_eq_some_iff.mp h
+          have := decodeDisp_len _ _ _ _ hp
+          simp only [Prod.mk.injEq] at hpe
+          rw [← hpe.2.2.2.2]
+          simp only [List.length_cons]
+          omega
+  · simp at h
+
+/-- `decodeMovzbq` leaves no more bytes than it reads. -/
+theorem decodeMovzbq_len (n : Nat) : NoLonger (decodeMovzbq n) := by
+  intro bs x r h
+  fun_cases decodeMovzbq n bs
+  all_goals (try simp_all [decodeMovzbq])
+  omega
+
+/-- `decodeAdx` leaves no more bytes than it reads. -/
+theorem decodeAdx_len (b : Bool) : NoLonger (decodeAdx b) := by
+  intro bs x r h
+  fun_cases decodeAdx b bs
+  all_goals try (have := decodeMemTail_len _ ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeAdx])
+  all_goals try omega
+
+/-- `decodeSetcBare` leaves no more bytes than it reads. -/
+theorem decodeSetcBare_len : NoLonger decodeSetcBare := by
+  intro bs x r h
+  fun_cases decodeSetcBare bs
+  all_goals (try simp_all [decodeSetcBare])
+  all_goals try (have := decodeMovzbq_len _ _ _ _ ‹decodeMovzbq _ _ = some _›; simp; omega)
+  all_goals try (split at h <;> simp_all <;> omega)
+  all_goals try (obtain ⟨_, _, _, rfl⟩ := h; omega)
+
+/-- `decodeMulx` leaves no more bytes than it reads. -/
+theorem decodeMulx_len : NoLonger decodeMulx := by
+  intro bs x r h
+  fun_cases decodeMulx bs
+  all_goals try (have := decodeMemTail_len _ ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeMulx])
+  all_goals try omega
+
+/-- `decodeRex` leaves no more bytes than it reads. -/
+theorem decodeRex_len (rx : BitVec 8) : NoLonger (decodeRex rx) := by
+  intro bs x r h
+  fun_cases decodeRex rx bs
+  all_goals try (have := decodeMemTail_len _ ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeRex])
+  all_goals try omega
+  all_goals try (have := decodeMovzbq_len _ _ _ _ ‹decodeMovzbq _ _ = some _›; simp; omega)
+  all_goals try (split at h <;> simp_all <;> omega)
+
+/-- `decodeRexW0` leaves no more bytes than it reads. -/
+theorem decodeRexW0_len (rx : BitVec 8) : NoLonger (decodeRexW0 rx) := by
+  intro bs x r h
+  fun_cases decodeRexW0 rx bs
+  all_goals (try simp_all [decodeRexW0])
+  all_goals try omega
+  all_goals try (have := decodeMovzbq_len _ _ _ _ ‹decodeMovzbq _ _ = some _›; simp; omega)
+  all_goals try (split at h <;> simp_all; omega)
+  all_goals try (obtain ⟨_, _, _, rfl⟩ := h; omega)
+
+/-- `decodeShiftX` leaves no more bytes than it reads. -/
+theorem decodeShiftX_len : NoLonger decodeShiftX := by
+  intro bs x r h
+  fun_cases decodeShiftX bs
+  all_goals (try simp_all [decodeShiftX])
+  all_goals try (obtain ⟨_, _, _, rfl⟩ := h; omega)
+
+/-- `decodeRexExt` leaves no more bytes than it reads. -/
+theorem decodeRexExt_len (rx : BitVec 8) : NoLonger (decodeRexExt rx) := by
+  intro bs x r h
+  fun_cases decodeRexExt rx bs
+  all_goals try (have := decodeMemTail_len _ ‹decodeMemTail _ _ = some _›)
+  all_goals (try simp_all [decodeRexExt])
+  all_goals try omega
+  all_goals try (obtain ⟨_, _, _, rfl⟩ := h; omega)
+  all_goals
+    obtain ⟨-, h⟩ := h
+    split at h
+    · rename_i hm
+      have := decodeMemTail_len _ hm
+      simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+      obtain ⟨_, _, _, rfl⟩ := h
+      omega
+    · split at h
+      · split at h
+        · simp only [Option.map_eq_some_iff, Prod.mk.injEq] at h
+          obtain ⟨_, _, _, rfl⟩ := h
+          simp only [List.length_cons]
+          omega
+        · simp at h
+      · simp at h
+
+/-- `decodeRexPushPop` leaves no more bytes than it reads. -/
+theorem decodeRexPushPop_len (rx : BitVec 8) : NoLonger (decodeRexPushPop rx) := by
+  intro bs x r h
+  fun_cases decodeRexPushPop rx bs
+  all_goals (try simp_all [decodeRexPushPop])
+  all_goals
+    simp only [decodePushPop] at h
+    split_ifs at h <;> simp only [Option.some.injEq, Prod.mk.injEq] at h
+    all_goals (obtain ⟨-, rfl⟩ := h; simp)
+
+/-- `decodeRexMov32` leaves no more bytes than it reads. -/
+theorem decodeRexMov32_len (rx : BitVec 8) : NoLonger (decodeRexMov32 rx) := by
+  intro bs x r h
+  fun_cases decodeRexMov32 rx bs
+  all_goals (try simp_all [decodeRexMov32])
+  all_goals try omega
+
+/-- A one-instruction decoder that consumes at least one byte. -/
+def Shorter {α : Type} (f : List (BitVec 8) → Option (α × List (BitVec 8))) : Prop :=
+  ∀ bs x r, f bs = some (x, r) → r.length < bs.length
+
+/-- `decodeJ1` consumes at least one byte. -/
+theorem decodeJ1_len : Shorter decodeJ1 := by
+  intro bs x r h
+  fun_cases decodeJ1 bs
+  all_goals (try simp_all [decodeJ1])
+  all_goals first
+    | (have := decodeAdx_len _ _ _ _ h; omega)
+    | (have := decodeMulx_len _ _ _ h; omega)
+    | (have := decodeRex_len _ _ _ _ h; omega)
+    | (have := decodeRexW0_len _ _ _ _ h; omega)
+    | (have := decodeSetcBare_len _ _ _ h; omega)
+
+/-- `decodeShift1` consumes at least one byte. -/
+theorem decodeShift1_len : Shorter decodeShift1 := by
+  intro bs x r h
+  fun_cases decodeShift1 bs
+  all_goals (try simp_all [decodeShift1])
+  all_goals omega
+
+/-- `decodeCmp` consumes at least one byte. -/
+theorem decodeCmp_len : Shorter decodeCmp := by
+  intro bs x r h
+  fun_cases decodeCmp bs
+  all_goals (try simp_all [decodeCmp])
+  all_goals (try omega)
+
+/-- `decodeJ1_6` consumes at least one byte. -/
+theorem decodeJ1_6_len : Shorter decodeJ1_6 := by
+  intro bs x r h
+  unfold decodeJ1_6 at h
+  split at h
+  · rename_i p hp
+    simp only [Option.some.injEq] at h
+    subst h
+    exact decodeJ1_len _ _ _ hp
+  · cases hs : decodeShift1 bs with
+    | some p =>
+      obtain ⟨i, r'⟩ := p
+      simp only [hs, Option.some_or, Option.some.injEq] at h
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj h
+      exact decodeShift1_len _ _ _ hs
+    | none =>
+      simp only [hs, Option.none_or] at h
+      exact decodeCmp_len _ _ _ h
+
+/-- `decodeLinstr` consumes at least one byte. -/
+theorem decodeLinstr_len : Shorter decodeLinstr := by
+  intro bs x r h
+  rcases bs with _ | ⟨b0, t⟩
+  · simp [decodeLinstr] at h
+  suffices r.length ≤ t.length by simp only [List.length_cons]; omega
+  cases hj : decodeJ1_6 (b0 :: t) with
+  | some p =>
+    obtain ⟨i, r'⟩ := p
+    simp only [decodeLinstr, hj, Option.some.injEq] at h
+    obtain ⟨-, rfl⟩ := Prod.mk.inj h
+    have := decodeJ1_6_len _ _ _ hj
+    simp only [List.length_cons] at this
+    omega
+  | none =>
+    simp only [decodeLinstr, hj] at h
+    split_ifs at h
+    · simp only [Option.some.injEq, Prod.mk.injEq] at h
+      obtain ⟨-, rfl⟩ := h
+      exact le_rfl
+    · split at h
+      · simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        simp only [List.length_cons]
+        omega
+      · simp at h
+    · split at h
+      · split at h
+        · simp only [Option.some.injEq, Prod.mk.injEq] at h
+          obtain ⟨-, rfl⟩ := h
+          simp only [List.length_cons]
+          omega
+        · simp at h
+      · simp at h
+    · obtain ⟨⟨i, r'⟩, hs, he⟩ := Option.map_eq_some_iff.mp h
+      simp only [Prod.mk.injEq] at he
+      obtain ⟨-, rfl⟩ := he
+      exact decodeShiftX_len _ _ _ hs
+    · cases ha : decodeRexExt b0 t with
+      | some p =>
+        obtain ⟨i, r'⟩ := p
+        simp only [ha, Option.map_some, Option.some_or, Option.some.injEq] at h
+        obtain ⟨-, rfl⟩ := Prod.mk.inj h
+        exact decodeRexExt_len _ _ _ _ ha
+      | none =>
+        cases hb : decodeRexPushPop b0 t with
+        | some p =>
+          obtain ⟨y, r'⟩ := p
+          simp only [ha, hb, Option.map_none, Option.none_or, Option.some_or,
+            Option.some.injEq] at h
+          obtain ⟨-, rfl⟩ := Prod.mk.inj h
+          exact decodeRexPushPop_len _ _ _ _ hb
+        | none =>
+          simp only [ha, hb, Option.map_none, Option.none_or] at h
+          exact decodeRexMov32_len _ _ _ _ h
+    · simp only [decodePushPop] at h
+      split_ifs at h <;> simp only [Option.some.injEq, Prod.mk.injEq, ] at h
+      all_goals (obtain ⟨-, rfl⟩ := h; exact le_rfl)
+    · split at h
+      · simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        simp only [List.length_cons]
+        omega
+      · simp at h
+    · split at h
+      · simp only [Option.some.injEq, Prod.mk.injEq] at h
+        obtain ⟨-, rfl⟩ := h
+        simp only [List.length_cons]
+        omega
+      · simp at h
+
+/-- **Decoding of an appended stream.** When `b₁` decodes from `off` to `xs₁` and `b₂`
+    decodes from the end of `b₁` to `xs₂`, their concatenation decodes from `off` to
+    `xs₁ ++ xs₂`. -/
+theorem decodeAt_append :
+    ∀ (n off : Nat) (b₁ : List (BitVec 8)) (xs₁ : List (Nat × Nat × DInstr)),
+      decodeAt n off b₁ = some xs₁ → ∀ (m : Nat) (b₂ : List (BitVec 8))
+      (xs₂ : List (Nat × Nat × DInstr)), decodeAt m (off + b₁.length) b₂ = some xs₂ →
+      decodeAt (n + m) off (b₁ ++ b₂) = some (xs₁ ++ xs₂) := by
+  intro n
+  induction n with
+  | zero =>
+    intro off b₁ xs₁ h m b₂ xs₂ h₂
+    simp only [decodeAt] at h
+    split at h
+    · rename_i he
+      have : b₁ = [] := List.isEmpty_iff.mp he
+      subst this
+      simp only [Option.some.injEq] at h
+      subst h
+      simpa using h₂
+    · simp at h
+  | succ n ih =>
+    intro off b₁ xs₁ h m b₂ xs₂ h₂
+    rw [decodeAt] at h
+    split at h
+    · rename_i he
+      have : b₁ = [] := List.isEmpty_iff.mp he
+      subst this
+      simp only [Option.some.injEq] at h
+      subst h
+      simp only [List.length_nil, Nat.add_zero] at h₂
+      simpa using decodeAt_fuel_mono h₂ (by omega)
+    · rename_i he
+      cases hd : decodeLinstr b₁ with
+      | none => simp [hd] at h
+      | some q =>
+        obtain ⟨x, r⟩ := q
+        simp only [hd] at h
+        obtain ⟨ys, hys, rfl⟩ := Option.map_eq_some_iff.mp h
+        have hlt := decodeLinstr_len _ _ _ hd
+        have hext := decodeLinstr_ext _ _ _ b₂ hd
+        have hne : (b₁ ++ b₂).isEmpty = false := by
+          cases b₁ with
+          | nil => simp at he
+          | cons _ _ => rfl
+        rw [show n + 1 + m = (n + m) + 1 by omega, decodeAt, hne]
+        simp only [Bool.false_eq_true, ↓reduceIte, hext]
+        have hl : (b₁ ++ b₂).length - (r ++ b₂).length = b₁.length - r.length := by
+          simp only [List.length_append]; omega
+        have h₂' : decodeAt m (off + (b₁.length - r.length) + r.length) b₂ = some xs₂ := by
+          rw [show off + (b₁.length - r.length) + r.length = off + b₁.length by omega]
+          exact h₂
+        rw [hl, ih _ _ _ hys m b₂ xs₂ h₂']
+        rfl
+
+/-- Every entry of a decoded stream starts before the end of the stream. -/
+theorem decodeAt_start_lt :
+    ∀ (n off : Nat) (bs : List (BitVec 8)) (xs : List (Nat × Nat × DInstr)),
+      decodeAt n off bs = some xs → ∀ z ∈ xs, z.1 < off + bs.length := by
+  intro n
+  induction n with
+  | zero =>
+    intro off bs xs h z hz
+    simp only [decodeAt] at h
+    split at h
+    · simp only [Option.some.injEq] at h; subst h; simp at hz
+    · simp at h
+  | succ n ih =>
+    intro off bs xs h z hz
+    rw [decodeAt] at h
+    split at h
+    · simp only [Option.some.injEq] at h; subst h; simp at hz
+    · rename_i he
+      cases hd : decodeLinstr bs with
+      | none => simp [hd] at h
+      | some q =>
+        obtain ⟨x, r⟩ := q
+        simp only [hd] at h
+        obtain ⟨ys, hys, rfl⟩ := Option.map_eq_some_iff.mp h
+        have hlt := decodeLinstr_len _ _ _ hd
+        rcases List.mem_cons.mp hz with rfl | hz
+        · have : bs.length ≠ 0 := by
+            cases bs with
+            | nil => simp at he
+            | cons _ _ => simp
+          simp only
+          omega
+        · have := ih _ _ _ hys z hz
+          omega
+
+/-- **Decoding of an appended stream.** When `b₁` decodes to `p₁` and `b₂` decodes to `p₂`,
+    their concatenation decodes to `p₁` followed by `p₂` with every branch and call target
+    raised by the length of `p₁`, and the layout of the concatenation is that of `b₁`
+    followed by that of `b₂` with its offsets raised by the length of `b₁`. -/
+theorem decodeLprog_append_streams {b₁ b₂ : List (BitVec 8)}
+    {xs₁ xs₂ : List (Nat × Nat × DInstr)}
+    {p₁ p₂ : List RInstr} (hd₁ : decodeAt b₁.length 0 b₁ = some xs₁)
+    (hr₁ : resolveAll xs₁ xs₁ = some p₁) (hd₂ : decodeAt b₂.length 0 b₂ = some xs₂)
+    (hr₂ : resolveAll xs₂ xs₂ = some p₂) :
+    decodeAt (b₁ ++ b₂).length 0 (b₁ ++ b₂) = some (xs₁ ++ offsetLayout b₁.length xs₂)
+      ∧ resolveAll (xs₁ ++ offsetLayout b₁.length xs₂)
+          (xs₁ ++ offsetLayout b₁.length xs₂) = some (p₁ ++ shiftProg p₁.length p₂)
+      ∧ xs₁.length = p₁.length ∧ ∀ z ∈ xs₁, z.1 < b₁.length := by
+  have hd₂' : decodeAt b₂.length (0 + b₁.length) b₂
+      = some (offsetLayout b₁.length xs₂) := by
+    rw [decodeAt_offset, hd₂]; rfl
+  have hall := decodeAt_append _ _ _ _ hd₁ _ _ _ hd₂'
+  rw [← List.length_append] at hall
+  have hlt : ∀ z ∈ xs₁, z.1 < b₁.length := fun z hz => by
+    simpa using decodeAt_start_lt _ _ _ _ hd₁ z hz
+  have hlen : xs₁.length = p₁.length :=
+    ((resolveAll_eq_some_iff _ _ _).mp hr₁).length_eq
+  refine ⟨hall, ?_, hlen, hlt⟩
+  rw [resolveAll_eq_some_iff] at hr₁ hr₂ ⊢
+  refine List.rel_append (hr₁.imp fun y r hy => resolveEntry_append_left _ _ y r hy)
+    (List.forall₂_map_left_iff.mpr (List.forall₂_map_right_iff.mpr
+      (hr₂.imp fun y r hy => ?_)))
+  rw [← hlen]
+  exact resolveEntry_append_right _ _ _ y r hlt hy
 
 /-- A block of a callee region: its symbol, its bytes and the program they decode to. -/
 structure CalleeBlock where
@@ -823,78 +1737,52 @@ def regionCode : List CalleeBlock → String → List RInstr
   | [e], _ => e.code
   | e :: e' :: es, f => if e.sym = f then e.code else regionCode (e' :: es) f
 
-/-- **The blocks of a region of item streams.** Let each block of a nonempty list decode to its
-    program, have bytes and no `call`, and let the bytes of each block but the last be an item
-    stream (`KernelItems`). The concatenation of the blocks is a region with the blocks of
+/-- **The blocks of a region.** Let each block of a nonempty list decode to its program, have
+    bytes and no `call`. The concatenation of the blocks is a region with the blocks of
     `regionCode` at the offsets `regionOffset` and the indices `regionIndex` in the program
     `regionProg`. At one block this is `regionBlocks_one`. -/
-theorem regionBlocks_of_items (fs : List String) : ∀ (es : List CalleeBlock), es ≠ [] →
+theorem regionBlocks_of_decodes (fs : List String) : ∀ (es : List CalleeBlock), es ≠ [] →
     (∀ e ∈ es, decodeLprog e.bytes = some e.code) → (∀ e ∈ es, e.bytes ≠ []) →
-    (∀ e ∈ es, ∀ tg, RInstr.call tg ∉ e.code) → (∀ e ∈ es.dropLast, KernelItems e.bytes) →
+    (∀ e ∈ es, ∀ tg, RInstr.call tg ∉ e.code) →
     RegionBlocks (es.flatMap (·.bytes)) fs (regionOffset es) (regionIndex es) (regionCode es)
       (regionProg es)
-  | [], hne, _, _, _, _ => absurd rfl hne
-  | [e], _, hdec, hnb, hq, _ => by
+  | [], hne, _, _, _ => absurd rfl hne
+  | [e], _, hdec, hnb, hq => by
     have h := regionBlocks_one e.bytes e.code fs (hdec e (by simp)) (hnb e (by simp))
       (hq e (by simp))
     have hb : [e].flatMap (·.bytes) = e.bytes := by simp
     have hp : regionProg [e] = e.code := by simp [regionProg, shiftProg]
     rw [hb, hp]
     exact h
-  | e :: e' :: es, _, hdec, hnb, hq, hit => by
-    have ih := regionBlocks_of_items fs (e' :: es) (by simp)
+  | e :: e' :: es, _, hdec, hnb, hq => by
+    have ih := regionBlocks_of_decodes fs (e' :: es) (by simp)
       (fun x hx => hdec x (List.mem_cons_of_mem _ hx))
       (fun x hx => hnb x (List.mem_cons_of_mem _ hx))
       (fun x hx => hq x (List.mem_cons_of_mem _ hx))
-      (fun x hx => hit x (by simp only [List.dropLast_cons_cons]; exact List.mem_cons_of_mem _ hx))
-    obtain ⟨items, hok, hbytes⟩ := hit e (by simp)
     have hdecE := hdec e (by simp)
     have hneE := hnb e (by simp)
-    rw [hbytes] at hdecE hneE
     generalize hR : (e' :: es).flatMap (·.bytes) = R at ih
     obtain ⟨xs₂, hd, hr, hidx⟩ := ih.decode
-    have hRdec : decodeLprog R = some (regionProg (e' :: es)) := by
-      simp [decodeLprog, hd, hr]
-    have hQ := decodeLprog_append items hok R _ _ hdecE hRdec
-    have hd' : decodeAt R.length (0 + (itemBytes items).length) R
-        = some (offsetLayout (itemBytes items).length xs₂) := by
-      rw [decodeAt_offset, hd]; rfl
-    have hall := decodeAt_items_append items hok R R.length (itemBytes items ++ R).length 0 _ hd'
-      (by
-        rw [layoutAt_length, List.length_append]
-        have := decCount_le_length items hok
-        omega)
-    have hlen : (layoutAt 0 items).length = e.code.length := by
-      unfold decodeLprog at hdecE
-      rw [decodeAt_items items hok _ 0 (by
-        rw [layoutAt_length]; exact decCount_le_length items hok), Option.bind_some] at hdecE
-      exact ((resolveAll_eq_some_iff _ _ _).mp hdecE).length_eq
-    have hlt : ∀ z ∈ layoutAt 0 items, z.1 < (itemBytes items).length := fun z hz => by
-      simpa using layoutAt_start_lt items hok 0 z hz
-    have hfm : ((e :: e' :: es).flatMap (·.bytes)) = itemBytes items ++ R := by
-      rw [← hR, ← hbytes]; simp
-    have hres : resolveAll (layoutAt 0 items ++ offsetLayout (itemBytes items).length xs₂)
-        (layoutAt 0 items ++ offsetLayout (itemBytes items).length xs₂)
-        = some (regionProg (e :: e' :: es)) := by
-      unfold decodeLprog at hQ
-      rw [hall, Option.bind_some] at hQ
-      exact hQ
+    obtain ⟨xs₁, hd₁, hr₁⟩ := Option.bind_eq_some_iff.mp hdecE
+    obtain ⟨hall, hres, hlen, hlt⟩ := decodeLprog_append_streams hd₁ hr₁ hd hr
+    have hfm : ((e :: e' :: es).flatMap (·.bytes)) = e.bytes ++ R := by
+      rw [← hR]; simp
     rw [hfm]
     refine ⟨⟨_, hall, hres, fun f hf => ?_⟩, fun f hf => ?_, fun f hf => ?_⟩
     · by_cases hs : e.sym = f
       · obtain ⟨h, x, tl, hxs⟩ := decodeAt_head_start _ 0 _ _ (by simp [hneE]) hall
         rw [hxs]
         simp [regionOffset, regionIndex, hs, List.findIdx?_cons]
-      · have hi := findIdx?_offset_append (layoutAt 0 items) xs₂ (itemBytes items).length
+      · have hi := findIdx?_offset_append xs₁ xs₂ e.bytes.length
           (regionOffset (e' :: es) f) _ _ hlt rfl (hidx f hf)
         have hp : (fun z : Nat × Nat × DInstr =>
             decide ((z.1 : Int)
-              = (((itemBytes items).length + regionOffset (e' :: es) f : Nat) : Int)))
-            = fun z => decide (z.1 = (itemBytes items).length + regionOffset (e' :: es) f) := by
+              = ((e.bytes.length + regionOffset (e' :: es) f : Nat) : Int)))
+            = fun z => decide (z.1 = e.bytes.length + regionOffset (e' :: es) f) := by
           funext z
           simp only [Int.natCast_inj]
         rw [hp, hlen] at hi
-        simpa [regionOffset, regionIndex, hs, hbytes] using hi
+        simpa [regionOffset, regionIndex, hs] using hi
     · by_cases hs : e.sym = f
       · refine ⟨[], shiftProg e.code.length (regionProg (e' :: es)), ?_, ?_⟩
         · simp [regionProg, regionCode, hs, shiftProg_zero]

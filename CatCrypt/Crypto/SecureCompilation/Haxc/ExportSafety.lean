@@ -85,7 +85,7 @@ theorem haxc_safe (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lprog)
   have hregs := ((holds_abiPre σ rv sa).1 hpre).1
   obtain ⟨-, -, ⟨-, -, -, -, -, body, frame, fuel, s, zf, hrA, hacc⟩ | ⟨cs, hsub, hne, -⟩⟩ :=
     haxc_correct_auto m σ fname P bytes hc sa ((regions_iff_abiPre σ sa).2 ⟨rv, hpre⟩) v hrun
-      (by simp [hlink]) (by simp [hlink]) (by simp [hlink])
+      (by simp [hlink]) (by simp [hlink])
   swap
   · simp [hlink] at hsub
     exact absurd hsub hne

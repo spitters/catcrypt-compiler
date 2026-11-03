@@ -65,6 +65,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfgLeak (leakFixB
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageLoopWLeak (GTr gTr_eq)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (evalInstrPMemF_next)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebs
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstGuard (GuardInv guardInv_zero
+  takenAt_of_guardInv guardInv_step)
 
 /-! ## 1. The check and the computed trace -/
 
@@ -98,7 +100,7 @@ def webG (w : Nat → String → String) (ao : String → Option Nat) (body : Li
 /-- **The traced run of the renamed body.** For a body accepted by `webB w body L obs aa ao`
     and by `webLeakB w ao body`, a halting traced run of the flag machine on `body` with
     trace `ℓ`, from a state `s` of the function `fn` at a position `k` at most
-    `body.length`, is matched with the same fuel by a halting traced run on the renamed
+    `body.length` that satisfies `ConstGuard.GuardInv`, is matched with the same fuel by a halting traced run on the renamed
     body `webRen w ao body` from every state `s'` that has the registers, word memory, flags,
     function name and zero flag of `s` and whose arrays agree with those of `s` through
     `w k` on `L k`. The trace of the renamed run is the trace computed by `webG w ao body`
@@ -110,7 +112,7 @@ theorem lsemFuelMemFLeak_webs {aa : String → Nat → Option Nat} {ao : String 
     {w : Nat → String → String} (hc : webB w body L obs aa ao = true)
     (hx : webLeakB w ao body = true) :
     ∀ (fuel : Nat) {s s' t : LstateMF} {ℓ : List CTLeak}, s.prog.lfn = fn →
-      s.prog.base.lpc ≤ body.length →
+      s.prog.base.lpc ≤ body.length → GuardInv body s →
       CoRel (w s.prog.base.lpc) (L s.prog.base.lpc) s.prog.base s'.prog.base →
       s'.prog.lfn = s.prog.lfn → s'.zf = s.zf →
       lsemFuelMemFLeak (singletonProgM fn body) fuel s = some (t, ℓ) →
@@ -152,14 +154,14 @@ theorem lsemFuelMemFLeak_webs {aa : String → Nat → Option Nat} {ao : String 
   intro fuel
   induction fuel with
   | zero =>
-      intro s s' t ℓ hf hle hR hfn hz h
+      intro s s' t ℓ hf hle hgi hR hfn hz h
       cases hb : body[s.prog.base.lpc]? with
       | none => exact hhalt 0 hf hle hR hfn hz hb h
       | some i =>
           obtain ⟨e1, -⟩ := hfetch hf hR hfn
           simp [lsemFuelMemFLeak, e1, hb] at h
   | succ n ih =>
-      intro s s' t ℓ hf hle hR hfn hz h
+      intro s s' t ℓ hf hle hgi hR hfn hz h
       cases hb : body[s.prog.base.lpc]? with
       | none => exact hhalt (n + 1) hf hle hR hfn hz hb h
       | some i =>
@@ -174,14 +176,14 @@ theorem lsemFuelMemFLeak_webs {aa : String → Nat → Option Nat} {ao : String 
               have hci := webB_instr hc hb
               unfold webInstrB at hci
               simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at hci
-              obtain ⟨⟨hco, hpre⟩, hsucc⟩ := hci
+              obtain ⟨⟨⟨hco, hpre⟩, hsucc⟩, -⟩ := hci
               have hRσ := coRel_congr hR (fun r hr => (hpre r hr).symm)
               have hn : shadowCall? i.1 = none := by
                 by_contra hne
                 rw [evalInstrPMemF_shadowCall _ i s hne] at he
                 cases he
               obtain ⟨u', hu', hRu, hfu, hfs, hzu, hleu⟩ :=
-                evalInstrPMemF_coalesce hco hlt hRσ hfn hz he
+                evalInstrPMemF_coalesce hco hlt (takenAt_of_guardInv hgi hb) hRσ hfn hz he
               have hnext := (evalInstrPMemF_next _ i s u he).2
               have hRu' := coRel_congr hRu (hsucc _ (mem_webSuccs_of_nextPc hnext))
               have hu'' : evalInstrPMemF (singletonProgM fn (webRen w ao body))
@@ -190,7 +192,8 @@ theorem lsemFuelMemFLeak_webs {aa : String → Nat → Option Nat} {ao : String 
                   (b2 := body.map (renArr (stepRen w ao s.prog.base.lpc i)))
                   (fun l => by rw [findLabelMem_webRen, findLabelMem_map_renArr])]
                 exact hu'
-              obtain ⟨t', g, ht', hg, hRt, hzt, hlt'⟩ := ih (hfs.trans hf) hleu hRu' hfu hzu hq
+              obtain ⟨t', g, ht', hg, hRt, hzt, hlt'⟩ := ih (hfs.trans hf) hleu
+                (guardInv_step hgi hb he) hRu' hfu hzu hq
               refine ⟨t', webG w ao body s.prog.base.lpc (instrLeakF i s) ++ g, ?_,
                 GTr.step s u i g (e1.trans hb) he hg, hRt, hzt, hlt'⟩
               rw [lsemFuelMemFLeak_step _ _ _ s' u' (by rw [e2, hb]; rfl) hu'', ht',
@@ -220,7 +223,7 @@ theorem lsemFuelMemFLeak_webs_entry {aa : String → Nat → Option Nat}
     rw [hpc]
     exact coRel_congr hR (fun r hr => (webB_entry hc r hr).symm)
   obtain ⟨t', g, ht', hg, hRt, hzt, hlt⟩ :=
-    lsemFuelMemFLeak_webs hc hx fuel hf (by omega) hR0 hfn hz h
+    lsemFuelMemFLeak_webs hc hx fuel hf (by omega) (guardInv_zero body hpc) hR0 hfn hz h
   exact ⟨t', g, ht', hg, coRel_congr hRt (webB_exit hc), hzt, hlt⟩
 
 /-! ## 3. Constant time -/

@@ -140,7 +140,8 @@ theorem compileRegion_correct_contract_ins
           pc 0 sa sa'
         ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
-  obtain ⟨T, hsub, hne, -, -, -, hrest⟩ := RegionLinkCall.compileRegion_correct_linked_multi h hcf
+  obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ :=
+    RegionLinkCall.compileRegion_correct_linked_multi h hcf
   obtain rfl := CalleeTab.eq_one_of_sublist hsub hne
   have hmem : ∀ c' ∈ (CalleeTab.one c).fns, c' = c := fun c' hc' => List.mem_singleton.mp hc'
   rw [linkedSummary_eq_insSummary hk hn] at hTc
@@ -155,7 +156,7 @@ theorem compileRegion_correct_contract_ins
       (fun c' hc' => by obtain rfl := hmem c' hc'; exact hTc) sa V hV hreg fuel hv
   obtain ⟨hdec, sC, hhC, hRC⟩ := hC (fun _ => qk)
     (fun c' hc' => by obtain rfl := hmem c' hc'; exact hqk)
-    (fun c' hc' => by obtain rfl := hmem c' hc'; exact hnc) (by simp [CalleeTab.one])
+    (fun c' hc' => by obtain rfl := hmem c' hc'; exact hnc)
     (fun _ _ => rfl)
   have hQ : X86Backend.LprogBytesLinkReloc.regionProg
       ((CalleeTab.one c).regionEntries fun _ => qk) = qk := by
@@ -220,7 +221,8 @@ theorem compileRegion_correct_contract_out
         ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
   subst hins
-  obtain ⟨T, hsub, hne, -, -, -, hrest⟩ := RegionLinkCall.compileRegion_correct_linked_multi h hcf
+  obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ :=
+    RegionLinkCall.compileRegion_correct_linked_multi h hcf
   obtain rfl := CalleeTab.eq_one_of_sublist hsub hne
   have hmem : ∀ c' ∈ (CalleeTab.one c).fns, c' = c := fun c' hc' => List.mem_singleton.mp hc'
   obtain ⟨pc, -, ⟨sO, hO, hRO⟩, hC⟩ :=
@@ -234,7 +236,7 @@ theorem compileRegion_correct_contract_out
       (fun c' hc' => by obtain rfl := hmem c' hc'; exact hTc) sa V hV hreg fuel hv
   obtain ⟨hdec, sC, hhC, hRC⟩ := hC (fun _ => qk)
     (fun c' hc' => by obtain rfl := hmem c' hc'; exact hqk)
-    (fun c' hc' => by obtain rfl := hmem c' hc'; exact hnc) (by simp [CalleeTab.one])
+    (fun c' hc' => by obtain rfl := hmem c' hc'; exact hnc)
     (fun _ _ => rfl)
   have hQ : X86Backend.LprogBytesLinkReloc.regionProg
       ((CalleeTab.one c).regionEntries fun _ => qk) = qk := by

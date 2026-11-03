@@ -463,6 +463,7 @@ theorem fRun_coalesce_prefix {ρ : String → String} {fn : String} {pre C : Lis
   obtain ⟨tl', htl', -, -⟩ := lsemFuelMemFLeak_coalesce (fn := fn) hc hx f
     (s := { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 })
     (s' := { prog := { base := b1.setLpc 0, lfn := fn }, zf := z1 }) rfl (Nat.zero_le _)
+    (X86Backend.ConstGuard.guardInv_zero _ (LstateM.lpc_setLpc _ _))
     ⟨rfl, rfl, rfl, rfl, fun r hr => by rw [hfix r hr]⟩ rfl rfl hql
   have hcl' : ∀ i ∈ C.map (renArr ρ), CtlOK i := fun i hi => by
     obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hi

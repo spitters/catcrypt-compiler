@@ -140,7 +140,7 @@ theorem haxc_gate_proved_all_of_check (s : _root_.Hax.FnSecrecy) (m : HaxModule)
     (fun _ V _ _ => run_val_of_check
       (by unfold pairStage; split <;> exact hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl V)
-    hL hnds hd (by simp [hlk]) (by simp [hlk]) (by simp [hlk])
+    hL hnds hd (by simp [hlk]) (by simp [hlk])
 
 /-- **Robust compilation for the hax compiler from the kind checker.** `haxc_rc_proved_all` at
     a module without callees and linked functions, with the run hypothesis `hterm` replaced
@@ -165,7 +165,7 @@ theorem haxc_rc_proved_all_of_check (s : _root_.Hax.FnSecrecy) (m : HaxModule)
     (fun _ V _ _ => run_val_of_check
       (by unfold pairStage; split <;> exact hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl V)
-    hL hnds hd (by simp [hlk]) (by simp [hlk]) (by simp [hlk])
+    hL hnds hd (by simp [hlk]) (by simp [hlk])
 
 /-- **Value correctness and constant time of `compileA` from the kind checker.**
     `haxc_correct_auto_ct_proved_all` at a module without callees and linked functions, with
@@ -192,6 +192,6 @@ theorem haxc_correct_auto_ct_proved_all_of_check (s : _root_.Hax.FnSecrecy) (m :
     (fun _ V _ _ _ => run_val_of_check
       (by unfold pairStage; split <;> exact hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl V)
-    hL hnds sa hsep v hrun (by simp [hlk]) (by simp [hlk]) (by simp [hlk])
+    hL hnds sa hsep v hrun (by simp [hlk]) (by simp [hlk])
 
 end CatCrypt.Crypto.SecureCompilation.Haxc

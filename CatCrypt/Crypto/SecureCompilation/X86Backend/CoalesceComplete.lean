@@ -64,6 +64,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute (arrReads arrWrite)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (shadowCall?)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstGuard (constTakenB)
 
 /-! ## 1. The arms of the check -/
 
@@ -106,7 +107,7 @@ def armCheck (σ : String → String) (body : List LinstrRM) (L : Nat → List S
   | .arr => plainArrB i && plainArrB (renArr σ i) && coArrStepB σ i (L (k + 1))
       && subB (arrReads i ++ (L (k + 1)).filter fun r => some r != arrWrite i) (L k)
   | .seq => subB (L (k + 1)) (L k)
-  | .cc lbl => subB (L (k + 1)) (L k) && jumpB body L k lbl
+  | .cc lbl => (constTakenB body k || subB (L (k + 1)) (L k)) && jumpB body L k lbl
   | .goto lbl => jumpB body L k lbl
   | .op => coArrStepB σ i (L (k + 1))
       && subB (arrReads i ++ (L (k + 1)).filter fun r => some r != arrWrite i) (L k)
@@ -183,10 +184,12 @@ def JumpTo (body : List LinstrRM) (lbl : LLabel) (k' : Nat) : Prop :=
 def JumpOK (body : List LinstrRM) (lbl : LLabel) : Prop :=
   ∀ p, findLabelMem lbl body = some p → p + 1 ≤ body.length
 
-/-- The control-flow successors of an instruction at position `k`, by its arm. -/
+/-- The control-flow successors of an instruction at position `k`, by its arm. A conditional
+    jump falls through to `k + 1` unless it is a constant-taken guard
+    (`ConstGuard.constTakenB`), whose fall-through no run from the entry takes. -/
 def SuccA (body : List LinstrRM) (k : Nat) : CoArm → Nat → Prop
   | .call _ _ _ | .arr | .seq | .op => fun k' => k' = k + 1
-  | .cc lbl => fun k' => k' = k + 1 ∨ JumpTo body lbl k'
+  | .cc lbl => fun k' => (k' = k + 1 ∧ constTakenB body k = false) ∨ JumpTo body lbl k'
   | .goto lbl => JumpTo body lbl
   | .bad => fun _ => False
 

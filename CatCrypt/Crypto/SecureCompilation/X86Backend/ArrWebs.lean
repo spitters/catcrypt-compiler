@@ -87,6 +87,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
 open CatCrypt.Crypto.SecureCompilation.X86Backend.CoalesceComplete (wrArr)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (NextPc
   evalInstrPMemF_next)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstGuard (constTakenB GuardInv TakenAt
+  guardInv_zero takenAt_of_guardInv guardInv_isaStep)
 
 /-! ## 1. The renaming by a position map -/
 
@@ -115,13 +117,16 @@ def webSuccs (body : List LinstrRM) (k : Nat) (i : LinstrRM) : List Nat :=
 /-- **The check of the instruction `i` at position `k`** for the position map `w` and the
     liveness certificate `L`: `i` passes the coalescing check `coInstrB` under its step
     renaming, which agrees with `w k` on the names live before `i` and with `w k'` on the
-    names live at each successor `k'`. -/
+    names live at each successor `k'`; at a constant-taken guard (`ConstGuard.constTakenB`),
+    which `coInstrB` exempts, the names live after `i` are live before it, so that `L` is
+    closed along every edge of `webSuccs`. -/
 def webInstrB (w : Nat → String → String) (body : List LinstrRM) (L : Nat → List String)
     (k : Nat) (i : LinstrRM) (aa : String → Nat → Option Nat) (ao : String → Option Nat) :
     Bool :=
   coInstrB (stepRen w ao k i) body L k i aa ao
     && (L k).all (fun r => stepRen w ao k i r == w k r)
-    && (webSuccs body k i).all fun k' => (L k').all fun r => stepRen w ao k i r == w k' r
+    && ((webSuccs body k i).all fun k' => (L k').all fun r => stepRen w ao k i r == w k' r)
+    && (!constTakenB body k || subB (L (k + 1)) (L k))
 
 /-- **The check of a position map** `w` for `body`, against the liveness certificate `L`,
     the names `obs` read after the body, the array positions `aa` and the result lengths
@@ -183,7 +188,7 @@ theorem webB_live_pred {w : Nat → String → String} {body : List LinstrRM}
   have h := webB_instr hc hi
   unfold webInstrB at h
   simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at h
-  have e := h.2 k' hk' r hr
+  have e := h.1.2 k' hk' r hr
   unfold stepRen at e
   constructor <;> intro hw <;> simpa [hw] using e
 
@@ -295,7 +300,7 @@ theorem step_webs {I : Isa} {aa : String → Nat → Option Nat}
     {fn : String} {body : List LinstrRM} {L : Nat → List String} {w : Nat → String → String}
     {i : LinstrRM} {s s' t : LstateMF}
     (hc : webInstrB w body L s.prog.base.lpc i aa ao = true)
-    (hlt : s.prog.base.lpc < body.length)
+    (hlt : s.prog.base.lpc < body.length) (htk : TakenAt body i s)
     (hR : CoRel (w s.prog.base.lpc) (L s.prog.base.lpc) s.prog.base s'.prog.base)
     (hfn : s'.prog.lfn = s.prog.lfn) (hz : s'.zf = s.zf)
     (h : I.step (singletonProgM fn body) i s = some t) :
@@ -306,13 +311,13 @@ theorem step_webs {I : Isa} {aa : String → Nat → Option Nat}
       ∧ t.prog.base.lpc ≤ body.length := by
   unfold webInstrB at hc
   simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at hc
-  obtain ⟨⟨hco, hpre⟩, hsucc⟩ := hc
+  obtain ⟨⟨⟨hco, hpre⟩, hsucc⟩, -⟩ := hc
   have hRσ := coRel_congr hR (fun r hr => (hpre r hr).symm)
   have hpost : ∀ k', NextPc (body.map Prod.fst) i.1 s.prog.base.lpc k' →
       ∀ r ∈ L k', stepRen w ao s.prog.base.lpc i r = w k' r :=
     fun k' hn => hsucc k' (mem_webSuccs_of_nextPc hn)
   rcases hcl _ i s t h with hx | ⟨dst, f, srcs, x, hi, rfl, hfwd, hlen⟩
-  · obtain ⟨t', ht', hRt, hfn', hfs, hz', hle'⟩ := evalInstrPMemF_coalesce hco hlt hRσ hfn hz hx
+  · obtain ⟨t', ht', hRt, hfn', hfs, hz', hle'⟩ := evalInstrPMemF_coalesce hco hlt htk hRσ hfn hz hx
     have hnext := (evalInstrPMemF_next _ i s t hx).2
     refine ⟨t', hle _ _ _ _ ?_, coRel_congr hRt (hpost _ hnext), hfn', hfs, hz', hle'⟩
     show evalInstrPMemF _ _ s' = some t'
@@ -343,7 +348,8 @@ theorem step_webs {I : Isa} {aa : String → Nat → Option Nat}
     `webB w body L obs aa ao` and an instruction set `I` whose steps contain those of
     `x86Isa` and whose further steps are local calls at the array positions `aa` and the
     result lengths `ao`, a halting run of `I` on `body`, from a state `s` of the function
-    `fn` at a position `k` at most `body.length`, is matched with the same fuel by a halting
+    `fn` at a position `k` at most `body.length` that satisfies the invariant
+    `ConstGuard.GuardInv` of the constant guards of `body`, is matched with the same fuel by a halting
     run of `I` on the renamed body `webRen w ao body` from every state `s'` that has the
     registers, word memory, flags and function name of `s` and whose arrays agree with those
     of `s` through `w k` on `L k`. The final states have equal registers, word memory and
@@ -354,6 +360,7 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
     {fn : String} {body : List LinstrRM} {L : Nat → List String} {obs : List String}
     {w : Nat → String → String} (hc : webB w body L obs aa ao = true) :
     ∀ (fuel : Nat) {s s' t : LstateMF}, s.prog.lfn = fn → s.prog.base.lpc ≤ body.length →
+      GuardInv body s →
       CoRel (w s.prog.base.lpc) (L s.prog.base.lpc) s.prog.base s'.prog.base →
       s'.prog.lfn = s.prog.lfn → s'.zf = s.zf →
       I.lsemFuelMemF (singletonProgM fn body) fuel s = some t →
@@ -383,7 +390,7 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
   intro fuel
   induction fuel with
   | zero =>
-      intro s s' t hf hpc hR hfn hz h
+      intro s s' t hf hpc hg hR hfn hz h
       obtain ⟨e1, e2⟩ := hfetch hf hR hfn
       unfold Isa.lsemFuelMemF at h ⊢
       rw [e1] at h
@@ -396,7 +403,7 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
             by have := List.getElem?_eq_none_iff.mp hb; omega⟩
       | some i => simp [hb] at h
   | succ n ih =>
-      intro s s' t hf hpc hR hfn hz h
+      intro s s' t hf hpc hg hR hfn hz h
       obtain ⟨e1, e2⟩ := hfetch hf hR hfn
       unfold Isa.lsemFuelMemF at h ⊢
       rw [e1] at h
@@ -414,9 +421,10 @@ theorem lsemFuelMemF_webs {I : Isa} {aa : String → Nat → Option Nat}
           | some u =>
               simp only [he] at h
               obtain ⟨u', hu', hRu, hfu, hfs, hzu, hleu⟩ := step_webs hle hcl
-                (webB_instr hc hb) (List.getElem?_eq_some_iff.mp hb).1 hR hfn hz he
+                (webB_instr hc hb) (List.getElem?_eq_some_iff.mp hb).1
+                (takenAt_of_guardInv hg hb) hR hfn hz he
               simp only [hu']
-              exact ih (hfs.trans hf) hleu hRu hfu hzu h
+              exact ih (hfs.trans hf) hleu (guardInv_isaStep hcl hg hb he) hRu hfu hzu h
 
 /-- **The renamed body from its entry.** For a body accepted by `webB w body L obs aa ao`, a
     halting run of `I` on `body` from a state `s` of the function `fn` at position `0` is
@@ -439,7 +447,7 @@ theorem lsemFuelMemF_webs_entry {I : Isa} {aa : String → Nat → Option Nat}
     rw [hpc]
     exact coRel_congr hR (fun r hr => (webB_entry hc r hr).symm)
   obtain ⟨t', ht', hRt, hzt, hlt⟩ :=
-    lsemFuelMemF_webs hle hcl hc fuel hf (by omega) hR0 hfn hz h
+    lsemFuelMemF_webs hle hcl hc fuel hf (by omega) (guardInv_zero body hpc) hR0 hfn hz h
   exact ⟨t', ht', coRel_congr hRt (webB_exit hc), hzt, hlt⟩
 
 /-! ## 5. The renamed body in a larger program -/

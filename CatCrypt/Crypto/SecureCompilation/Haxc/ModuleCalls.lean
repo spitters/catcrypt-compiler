@@ -457,8 +457,7 @@ theorem compileModule_eq {m : HaxModule} {σ : AbiLayout} {fname : String}
     * the linked functions of the module with `ls` linked in turn have distinct names and
       are linked kernels (`LinkedKernel`; a region-compiled callee with a `u64` result is
       one by `LinkedWordKernel.toKernel`, with the call-site precondition
-      `callSitePre_ofRegion`), the code of each but the last being an item stream
-      (`LprogBytesLinkReloc.KernelItems`), and
+      `callSitePre_ofRegion`), and
     * the meaning of each function of `ls` returns the values of the reference meaning of the
       function it replaces at each step (`LinkSteps`),
 
@@ -476,8 +475,6 @@ theorem compileModule_correct {m : HaxModule} {σ : AbiLayout} {fname : String}
       ∧ ∀ ls : List LinkedFn, List.Forall₂ SameData ks ls →
         ((ls.foldl HaxModule.linkFn m).linked.map (·.name)).Nodup →
         (∀ l ∈ (ls.foldl HaxModule.linkFn m).linked, LinkedKernel l) →
-        (∀ l ∈ (ls.foldl HaxModule.linkFn m).linked.dropLast,
-          X86Backend.LprogBytesLinkReloc.KernelItems l.bytes) →
         LinkSteps CatCrypt.Crypto.Hax.hax64WExit m ls →
         ∀ (sa : AState), σ.Regions sa → ∀ v, haxRuns σ m sa v →
           ∃ prog, decodeLprog bytes = some prog ∧
@@ -495,9 +492,9 @@ theorem compileModule_correct {m : HaxModule} {σ : AbiLayout} {fname : String}
                 ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
                   ∧ σ.ResultOf sa sa' v) := by
   obtain ⟨order, ks, ho, hks, hc⟩ := compileModule_eq h
-  refine ⟨order, ks, ho, hks, fun ls hls hnd hk hit hsteps sa hsep v hrun => ?_⟩
+  refine ⟨order, ks, ho, hks, fun ls hls hnd hk hsteps sa hsep v hrun => ?_⟩
   obtain ⟨prog, hd, h⟩ := haxc_correct_auto _ σ fname P bytes (hc ls hls) sa hsep v
-    (runs_foldl_linkFn _ σ ls m hsteps hrun) hnd hk hit
+    (runs_foldl_linkFn _ σ ls m hsteps hrun) hnd hk
   rcases h with ⟨sa', hh, hR, -⟩ | h
   · exact ⟨prog, hd, .inl ⟨sa', hh, hR⟩⟩
   · exact ⟨prog, hd, .inr h⟩

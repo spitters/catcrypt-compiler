@@ -64,6 +64,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightRoute (CoRel)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (shadowCall?)
 open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsaProcs (evalInstrPMemF_shadowCall)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstGuard (GuardInv takenAt_of_guardInv
+  guardInv_step)
 
 variable {σ : String → String}
 
@@ -242,7 +244,8 @@ theorem instrLeakF_coalesce {i : LinstrRM} (hfix : leakFixB σ i = true)
 
 /-- **The traced run of the coalesced body.** For a body accepted by `coCfgB σ body L obs`
     and by `leakFixCfgB σ`, a halting traced run of the flag machine on `body` with trace
-    `ℓ`, from a state `s` of the function `fn` at a position at most `body.length`, is
+    `ℓ`, from a state `s` of the function `fn` at a position at most `body.length` that
+    satisfies `ConstGuard.GuardInv`, is
     matched with the same fuel by a halting traced run on the coalesced body
     `body.map (renArr σ)` from every state `s'` that has the registers, word memory, flags
     and function name of `s` and whose arrays agree with those of `s` through `σ` on the
@@ -253,7 +256,7 @@ theorem instrLeakF_coalesce {i : LinstrRM} (hfix : leakFixB σ i = true)
 theorem lsemFuelMemFLeak_coalesce {fn : String} {body : List LinstrRM} {L : Nat → List String}
     {obs : List String} (hc : coCfgB σ body L obs = true) (hx : leakFixCfgB σ body = true) :
     ∀ (fuel : Nat) {s s' t : LstateMF} {ℓ : List CTLeak}, s.prog.lfn = fn →
-      s.prog.base.lpc ≤ body.length →
+      s.prog.base.lpc ≤ body.length → GuardInv body s →
       CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base → s'.prog.lfn = s.prog.lfn →
       s'.zf = s.zf → lsemFuelMemFLeak (singletonProgM fn body) fuel s = some (t, ℓ) →
       ∃ t', lsemFuelMemFLeak (singletonProgM fn (body.map (renArr σ))) fuel s'
@@ -287,14 +290,14 @@ theorem lsemFuelMemFLeak_coalesce {fn : String} {body : List LinstrRM} {L : Nat 
   intro fuel
   induction fuel with
   | zero =>
-      intro s s' t ℓ hf hle hR hfn hz h
+      intro s s' t ℓ hf hle hg hR hfn hz h
       cases hb : body[s.prog.base.lpc]? with
       | none => exact hhalt 0 hf hle hR hfn hz hb h
       | some i =>
           obtain ⟨e1, -⟩ := hfetch hf hR hfn
           simp [lsemFuelMemFLeak, e1, hb] at h
   | succ n ih =>
-      intro s s' t ℓ hf hle hR hfn hz h
+      intro s s' t ℓ hf hle hg hR hfn hz h
       cases hb : body[s.prog.base.lpc]? with
       | none => exact hhalt (n + 1) hf hle hR hfn hz hb h
       | some i =>
@@ -306,8 +309,10 @@ theorem lsemFuelMemFLeak_coalesce {fn : String} {body : List LinstrRM} {L : Nat 
               obtain ⟨q, hq, hqe⟩ := Option.map_eq_some_iff.mp h
               obtain ⟨rfl, rfl⟩ := Prod.mk.inj hqe
               obtain ⟨u', hu', hRu, hfu, hfs, hzu, hleu⟩ := evalInstrPMemF_coalesce
-                (coCfgB_instr hc hb) (List.getElem?_eq_some_iff.mp hb).1 hR hfn hz he
-              obtain ⟨t', ht', hRt, hzt⟩ := ih (hfs.trans hf) hleu hRu hfu hzu hq
+                (coCfgB_instr hc hb) (List.getElem?_eq_some_iff.mp hb).1
+                (takenAt_of_guardInv hg hb) hR hfn hz he
+              obtain ⟨t', ht', hRt, hzt⟩ := ih (hfs.trans hf) hleu (guardInv_step hg hb he) hRu
+                hfu hzu hq
               refine ⟨t', ?_, hRt, hzt⟩
               rw [lsemFuelMemFLeak_step _ _ (renArr σ i) s' u' (by rw [e2, hb]; rfl) hu', ht',
                 Option.map_some, List.map_append,
@@ -321,21 +326,24 @@ theorem lsemFuelMemFLeak_coalesce {fn : String} {body : List LinstrRM} {L : Nat 
 /-! ## 3. Constant time -/
 
 /-- **The entry states of the coalescing.** `s` is a state of the function `fn` at a
-    position at most `body.length`, and `s'` has the registers, word memory, flags, function
+    position at most `body.length` that satisfies the invariant `ConstGuard.GuardInv` of the
+    constant guards of `body`, and `s'` has the registers, word memory, flags, function
     name and zero flag of `s`, with arrays that agree with those of `s` through `σ` on the
     names `L` gives the position of `s`. -/
 def CoStart (σ : String → String) (fn : String) (body : List LinstrRM) (L : Nat → List String)
     (s s' : LstateMF) : Prop :=
-  s.prog.lfn = fn ∧ s.prog.base.lpc ≤ body.length
+  s.prog.lfn = fn ∧ s.prog.base.lpc ≤ body.length ∧ GuardInv body s
     ∧ CoRel σ (L s.prog.base.lpc) s.prog.base s'.prog.base ∧ s'.prog.lfn = s.prog.lfn
     ∧ s'.zf = s.zf
 
 /-- A state of the function `fn` at a position at most `body.length` is an entry state of
-    the coalescing with itself when `σ` fixes the names `L` gives its position. -/
+    the coalescing with itself when it satisfies `ConstGuard.GuardInv` and `σ` fixes the
+    names `L` gives its position. -/
 theorem coStart_refl {fn : String} {body : List LinstrRM} {L : Nat → List String}
     {s : LstateMF} (hf : s.prog.lfn = fn) (hle : s.prog.base.lpc ≤ body.length)
-    (hfix : ∀ r ∈ L s.prog.base.lpc, σ r = r) : CoStart σ fn body L s s :=
-  ⟨hf, hle, ⟨rfl, rfl, rfl, rfl, fun r hr => by rw [hfix r hr]⟩, rfl, rfl⟩
+    (hg : GuardInv body s) (hfix : ∀ r ∈ L s.prog.base.lpc, σ r = r) :
+    CoStart σ fn body L s s :=
+  ⟨hf, hle, hg, ⟨rfl, rfl, rfl, rfl, fun r hr => by rw [hfix r hr]⟩, rfl, rfl⟩
 
 /-- **A terminating run of the coalesced body.** For a body accepted by `coCfgB` and
     `leakFixCfgB`, a terminating run of `body` from `s` with trace `ℓ` gives a terminating
@@ -347,8 +355,8 @@ theorem fRun_coalesce {fn : String} {body : List LinstrRM} {L : Nat → List Str
     (h : FRun (singletonProgM fn body) s ℓ) :
     FRun (singletonProgM fn (body.map (renArr σ))) s' (ℓ.map (renEv σ)) := by
   obtain ⟨fuel, t, h⟩ := h
-  obtain ⟨hf, hle, hR, hfn, hz⟩ := hs
-  obtain ⟨t', ht', -, -⟩ := lsemFuelMemFLeak_coalesce hc hx fuel hf hle hR hfn hz h
+  obtain ⟨hf, hle, hg, hR, hfn, hz⟩ := hs
+  obtain ⟨t', ht', -, -⟩ := lsemFuelMemFLeak_coalesce hc hx fuel hf hle hg hR hfn hz h
   exact ⟨fuel, t', ht'⟩
 
 /-- **The public-equality relation of the coalesced body.** Two states are related when

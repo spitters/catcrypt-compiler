@@ -179,8 +179,12 @@ tables with the accepted programs.
   (`regionImage_memFCT`) and the bytes (`regionChain_bytes_ct`); `compileRegion` returns
   bytes only if the leakage checks `regionCtB` accept the printed body.
   On a module with linked functions, the calls of the calling body are covered by the
-  leakage check `calleeCtB`, which runs `ctCheckRXO` on the calling body, and
-  `ctCheckRXO_sound` (`Haxc/CTRegionsCallOut.lean`). The instances `mpn_and_n_rc_proved` and
+  leakage check `calleeCtB`, which runs `ctCheckRXT` on the calling body at the interface of
+  the table of called functions, and `ctCheckRXT_sound` (`Haxc/CTRegionsCallOut.lean`) at
+  the blocks of the region of their codes (`compileRegion_call_bytes_ct`,
+  `Haxc/RegionCallCT.lean`); the region is the decode of the concatenated codes by the
+  prefix property of the decoder (`decodeLinstr_ext`, `regionBlocks_of_decodes`,
+  `X86Backend/LprogBytesLinkReloc.lean`). The instances `mpn_and_n_rc_proved` and
   `ltu_rc_proved` (`Haxc.WorkedKernelCorollaries`) are `haxc_rc_proved_all` at `mpn_and_n`
   (layout `andAbi4`) and at `ltu`, with the acceptance by `compileA` and the level check as
   hypotheses. For a loop of field multiplications, `fieldRegionFront_nfCT` (`Haxc.FieldLoopCT`) derives
