@@ -773,7 +773,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrRoute
 /-- The reason for a refusal of `compileRegion σ a p` at the stage `stage`, one of
     `regionExportableB`, `regionPrintedB`, `ownedCheckMC` and the stages `regionCoStages`:
     `RegionDiag.exportableWhy` on `p`, or `RegionDiag.regionCoWhy` on the arguments of
-    `regionCoB` at the printed body and the allocation certificate of `regionLprogC`. The empty string at every other stage and when the
+    `regionCoB` (the code and returned operands of the webs `regionWebsAt` of the export) at
+    the printed body and the allocation certificate of `regionLprogC`. The empty string at every other stage and when the
     export or the printed body does not exist. -/
 def regionWhyBody (stage : String) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (p : NFProg jasminDialect Γ [t]) : String :=
@@ -782,7 +783,8 @@ def regionWhyBody (stage : String) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt ja
       || regionCoStages.contains stage then
     match exportR Γ.length a.fname p Γ.length 0,
         regionLprogC a p none (regionWebsEx σ exportReg) with
-    | some r, some (P, cert) =>
+    | some r0, some (P, cert) =>
+        let r := regionWebsAt (regionWebsEx σ exportReg) none r0
         match firstBody (printedLprog P) with
         | none => ""
         | some b => RegionDiag.regionCoWhy stage σ exportReg b t r.code r.res cert
