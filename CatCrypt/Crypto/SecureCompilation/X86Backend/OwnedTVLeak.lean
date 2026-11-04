@@ -492,8 +492,8 @@ def ownedCheckML (outs : List String) (B B' : List LinstrRM)
     (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
-      let A := constAnnot B G sym
-      let A' := constAnnot B' G' sym
+      let A := annotAt (constAnnotArr B G sym)
+      let A' := annotAt (constAnnotArr B' G' sym)
       let R := runsOfC A A' B B' G G' sym
       let L := liveIter outs B G R (4 * G.blocks.size + 64)
         (Array.replicate G.blocks.size ([], false)) dec

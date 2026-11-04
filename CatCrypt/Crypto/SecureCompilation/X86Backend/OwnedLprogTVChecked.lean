@@ -526,35 +526,39 @@ def exitsOf (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut)
   (Array.range G.blocks.size).map fun k =>
     symRun (bodyAt B (G.blk k) (G.blk k).term) (startC (ann.getD k [])) sym
 
+/-- The predecessors of each block of `G`, in increasing order: entry `j` lists the blocks
+    `k` with `j` among the successors of the terminator of `k`, once per such successor. -/
+def predsOf (G : CFG) : Array (Array Nat) :=
+  (List.range G.blocks.size).foldl (fun P k =>
+    (G.blk k).term.succs.foldl (fun P j => P.modify j (·.push k)) P)
+    (Array.replicate G.blocks.size #[])
+
 /-- One widening round of the candidates: each block other than `0` adds the facts the runs
-    of its predecessors give. -/
+    of its predecessors `P` give. -/
 def constGrow (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut)
-    (ann : Array (List CFact)) : Array (List CFact) :=
+    (P : Array (Array Nat)) (ann : Array (List CFact)) : Array (List CFact) :=
   let E := exitsOf B G sym ann
   (Array.range G.blocks.size).map fun j =>
     if j = 0 then []
     else
-      (ann.getD j [] ++ (List.range G.blocks.size).flatMap fun k =>
-        if (G.blk k).term.succs.contains j then
-          match E[k]? with
-          | some (.ok ss _) => constExit ss
-          | _ => []
-        else []).eraseDups
+      (ann.getD j [] ++ (P.getD j #[]).toList.flatMap fun k =>
+        match (E[k]? : Option SOut) with
+        | some (.ok ss _) => constExit ss
+        | _ => []).eraseDups
 
 /-- One restriction round: a fact of a block other than `0` is kept when the run of every
-    predecessor from its facts gives it. -/
+    predecessor in `P` from its facts gives it. -/
 def constPass (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut)
-    (ann : Array (List CFact)) : Array (List CFact) :=
+    (P : Array (Array Nat)) (ann : Array (List CFact)) : Array (List CFact) :=
   let E := exitsOf B G sym ann
   (Array.range G.blocks.size).map fun j =>
     if j = 0 then []
     else
       (ann.getD j []).filter fun f =>
-        (List.range G.blocks.size).all fun k =>
-          !(G.blk k).term.succs.contains j ||
-            match E[k]? with
-            | some (.ok ss _) => ss.regs f.1 == .immW f.2.1 f.2.2
-            | _ => true
+        (P.getD j #[]).all fun k =>
+          match (E[k]? : Option SOut) with
+          | some (.ok ss _) => ss.regs f.1 == .immW f.2.1 f.2.2
+          | _ => true
 
 /-- The iteration of `f` from `a`, stopped at a fixed point or after `n` rounds. -/
 def constFix (f : Array (List CFact) → Array (List CFact)) :
@@ -564,18 +568,30 @@ def constFix (f : Array (List CFact) → Array (List CFact)) :
       let a' := f a
       if a' == a then a else constFix f n a'
 
-/-- **The annotation of must-constant facts** of the graph `G` of `B`: no fact on a graph of
-    at most one block; otherwise the candidates of `G.blocks.size + 1` widening rounds from
-    no fact, restricted by `constPass` to a fixed point. The annotation is untrusted:
-    `factCheck` checks it. -/
+/-- **The table of must-constant facts** of the graph `G` of `B`, one entry per block: no
+    entry on a graph of at most one block; otherwise the candidates of `G.blocks.size + 1`
+    widening rounds from no fact, restricted by `constPass` to a fixed point, both over the
+    predecessors `predsOf G`. The table is untrusted: `factCheck` checks the facts it
+    gives. -/
+def constAnnotArr (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut := symStep) :
+    Array (List CFact) :=
+  if G.blocks.size ≤ 1 then #[]
+  else
+    let P := predsOf G
+    let a0 := constFix (constGrow B G sym P) (G.blocks.size + 1)
+      (Array.replicate G.blocks.size [])
+    constFix (constPass B G sym P) ((a0.toList.map List.length).sum + 1) a0
+
+/-- The facts of block `k` in the table `a`, none past its end. -/
+def annotAt (a : Array (List CFact)) (k : Nat) : List CFact := a.getD k []
+
+/-- **The annotation of must-constant facts** of the graph `G` of `B`: the facts of each block
+    in the table `constAnnotArr`. The checks bind the table once and read it through
+    `annotAt`, so that the fixed point is computed once per graph and not once per block
+    read. -/
 def constAnnot (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut := symStep) :
     Nat → List CFact :=
-  if G.blocks.size ≤ 1 then fun _ => []
-  else
-    let a0 := constFix (constGrow B G sym) (G.blocks.size + 1)
-      (Array.replicate G.blocks.size [])
-    let a1 := constFix (constPass B G sym) ((a0.toList.map List.length).sum + 1) a0
-    fun k => a1.getD k []
+  annotAt (constAnnotArr B G sym)
 
 /-! ## 4. The checks -/
 
@@ -820,9 +836,9 @@ theorem oblCheckWith_spec {L : Nat → List String × Bool} {B B' : List LinstrR
   rw [hG, hG'] at h
   simpa only [List.all_eq_true, List.mem_range] using h
 
-/-- **The checker on bounds-checked runs.** The must-constant facts `constAnnot` are
-    computed on each of the two graphs and checked as its invariant (`factCheck`); each block
-    pair runs once over a shared term table from the facts of its two blocks (`runsOfC`);
+/-- **The checker on bounds-checked runs.** The must-constant facts are computed once on each
+    of the two graphs as the table `constAnnotArr`, read through `annotAt`, and checked as
+    its invariant (`factCheck`); each block pair runs once over a shared term table from the facts of its two blocks (`runsOfC`);
     the live sets are computed from these runs by `liveIter` and the runs checked by
     `ownedCheckWithR`, and so are the index obligations (`oblCheckWith`). The symbolic step
     `sym` and the symbolic branch condition `dec` default to the x86 ones, `symStep` and
@@ -831,8 +847,8 @@ def ownedCheckMC (outs : List String) (B B' : List LinstrRM)
     (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
-      let A := constAnnot B G sym
-      let A' := constAnnot B' G' sym
+      let A := annotAt (constAnnotArr B G sym)
+      let A' := annotAt (constAnnotArr B' G' sym)
       let R := runsOfC A A' B B' G G' sym
       let L := liveIter outs B G R (4 * G.blocks.size + 64)
         (Array.replicate G.blocks.size ([], false)) dec
@@ -871,8 +887,8 @@ def ownedCheckMCIn (ins outs : List String) (B B' : List LinstrRM)
     (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | some G, some G' =>
-      let A := constAnnot B G sym
-      let A' := constAnnot B' G' sym
+      let A := annotAt (constAnnotArr B G sym)
+      let A' := annotAt (constAnnotArr B' G' sym)
       let R := runsOfC A A' B B' G G' sym
       let L := liveIter outs B G R (4 * G.blocks.size + 64)
         (Array.replicate G.blocks.size ([], false)) dec

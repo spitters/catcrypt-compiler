@@ -332,8 +332,8 @@ theorem getD_map_range {α : Type} (n k : Nat) (f : Nat → α) (d : α) :
     ((Array.range n).map f).getD k d = if k < n then f k else d := by
   by_cases hk : k < n <;> simp [Array.getD, hk]
 
-theorem constGrow_free (hk : KeepsReg y B) {ann : Array (List CFact)} (ha : FactFree y ann) :
-    FactFree y (constGrow B G symStep ann) := by
+theorem constGrow_free (hk : KeepsReg y B) {P : Array (Array Nat)} {ann : Array (List CFact)}
+    (ha : FactFree y ann) : FactFree y (constGrow B G symStep P ann) := by
   intro k f hf
   unfold constGrow at hf
   rw [getD_map_range] at hf
@@ -342,18 +342,16 @@ theorem constGrow_free (hk : KeepsReg y B) {ann : Array (List CFact)} (ha : Fact
   · rw [List.mem_eraseDups, List.mem_append] at hf
     rcases hf with hf | hf
     · exact ha k f hf
-    · simp only [List.mem_flatMap, List.mem_range] at hf
+    · simp only [List.mem_flatMap] at hf
       obtain ⟨j, -, hj⟩ := hf
       split at hj
-      · split at hj
-        · rename_i ss g he
-          exact constExit_free (exitsOf_free hk ha he) f hj
-        · simp at hj
+      · rename_i ss g he
+        exact constExit_free (exitsOf_free hk ha he) f hj
       · simp at hj
   · simp at hf
 
-theorem constPass_free {ann : Array (List CFact)} (ha : FactFree y ann) :
-    FactFree y (constPass B G symStep ann) := by
+theorem constPass_free {P : Array (Array Nat)} {ann : Array (List CFact)}
+    (ha : FactFree y ann) : FactFree y (constPass B G symStep P ann) := by
   intro k f hf
   unfold constPass at hf
   rw [getD_map_range] at hf
@@ -375,7 +373,7 @@ theorem constFix_free {F : Array (List CFact) → Array (List CFact)}
 /-- **The must-constant facts of a body name no register the body keeps.** -/
 theorem constAnnot_free (hk : KeepsReg y B) (k : Nat) :
     ∀ f ∈ constAnnot B G symStep k, f.1 ≠ y := by
-  unfold constAnnot
+  unfold constAnnot annotAt constAnnotArr
   split
   · simp
   · intro f hf
@@ -1004,7 +1002,8 @@ theorem ownedCheckMCIn_obs_mono {ins₁ ins₂ O₁ O₂ : List String} {Yp : St
   | none => simp [hG, hG'] at h
   | some G' =>
   simp only [hG, hG'] at h ⊢
-  set R := runsOfC (constAnnot C G symStep) (constAnnot C' G' symStep) C C' G G' symStep
+  set R := runsOfC (annotAt (constAnnotArr C G symStep)) (annotAt (constAnnotArr C' G' symStep))
+    C C' G G' symStep
     with hRdef
   have hsz : (Array.replicate G.blocks.size (([] : List String), false)).size =
       G.blocks.size := by simp
