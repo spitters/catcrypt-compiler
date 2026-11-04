@@ -43,6 +43,9 @@ by moves (`slotMov?`) none of which writes `R`, so `R` still holds its entry val
 
 * `slotOfReg`, `reloadOf`, `accArr`, `imgInstr`, `virtImg`: the array of an access and the
   image.
+* `keepsB`, `idxKeepB`, `lastDefBelow`, `cidxStart`, `idxKeepRunB`: the load of the index
+  register of an indexed store through a cell, found as the last earlier instruction that
+  writes the register, and the instructions between it and the address computation.
 * `cellIdxStore?`, `cellIdxStore?_spec`, `imgInstr_cellIdxStore`: the indexed store through
   a cell `mem.D.0` whose base `D` is the address `LEA:64 D, (B, X, 8)` of a word of an array,
   and its image, the name-keyed store at the frame slot from which `X` was reloaded.
@@ -295,22 +298,59 @@ def cellStoreImg (A : String) (n : Nat) (idx : String ⊕ Nat) (v : String) : Li
   | .inl q => (.Lopn [.reg A] "STOREIDX" [.arrIdx A q 8, .reg v], .store 64 n)
   | .inr j => (.Lopn [.reg A] "STOREIMM" [.reg A, .reg v, .imm j], .storeImm 64 n)
 
+/-- The instruction is an `Lopn` none of whose destination operands names `r`: its step
+    writes no word of `r`. -/
+def keepsB (r : String) : LinstrR → Bool
+  | .Lopn ds _ _ => !ds.any (opNamesB r)
+  | _ => false
+
+/-- The instruction keeps the index register `X` and a frame-slot index `q` (`keepsB`). -/
+def idxKeepB (X : String) (idx : String ⊕ Nat) (i : LinstrR) : Bool :=
+  keepsB X i && (match idx with
+    | .inl q => keepsB q i
+    | .inr _ => true)
+
+/-- The last position below `n` whose instruction does not keep `X` (`keepsB`): the last
+    instruction before `n` that writes `X`, or a label, branch, call or return before `n`. -/
+def lastDefBelow (X : String) (body : Lcmd) : Nat → Option Nat
+  | 0 => none
+  | n + 1 => if (body[n]?).all (fun i => keepsB X i.li_i) then lastDefBelow X body n else some n
+
+/-- The position of the load of the index register of the window of an indexed store through a
+    cell at position `k`: the last position below `k - 2` whose instruction does not keep the
+    index register `X` of the address computation at `k - 2` (`lastDefBelow`); `0` without
+    such an address computation or such a position. -/
+def cidxStart (body : Lcmd) (k : Nat) : Nat :=
+  match body[k - 2]? with
+  | some ⟨_, .Lopn _ _ [.arrIdx _ X _]⟩ => (lastDefBelow X body (k - 2)).getD 0
+  | _ => 0
+
+/-- Every instruction at the positions `a`, ..., `b - 1` of `body` keeps the index register `X`
+    and the index `idx` (`idxKeepB`). -/
+def idxKeepRunB (X : String) (idx : String ⊕ Nat) (body : Lcmd) (a b : Nat) : Bool :=
+  (List.range (b - a)).all fun t => (body[a + t]?).any fun i => idxKeepB X idx i.li_i
+
 /-- The instruction at position `k` of `body` is an indexed store through a cell: the store
     `MOV:64 mem.D.0, v` of a register `v` other than `D`, whose base `D` is written two
     instructions before by `LEA:64 D, (B, X, 8)` with `B` the pointer of the array `A` of
-    length `n` (`accArr` at the address), whose index register `X` is loaded three
-    instructions before from a frame slot or a literal `idx` (`cellOpMov?`, `cellIdxOkB`), and
-    whose instruction in between is the load of the value (`cellOpMov?`) into a name other
-    than `D`; as `(A, n, idx, v)`. The store writes `v` at the word `8 · idx` of `A`. -/
+    length `n` (`accArr` at the address), whose instruction in between is the load of the value
+    (`cellOpMov?`) into a name other than `D`, and whose index register `X` is loaded at
+    `cidxStart body k`, the last earlier instruction that writes `X`, from a frame slot or a
+    literal `idx` (`cellOpMov?`, `cellIdxOkB`) by a move that is no stored carry constant
+    (`bitStore?`), with every instruction between the load and the address computation an
+    `Lopn` that writes neither `X` nor a frame-slot index (`idxKeepRunB`); as `(A, n, idx, v)`.
+    The store writes `v` at the word `8 · idx` of `A`. -/
 def cellIdxStore? (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
     LinstrR → Option (String × Nat × (String ⊕ Nat) × String)
   | .Lopn [.reg c] o [.reg v] =>
-      match cellParts? c, body[k - 2]?, body[k - 3]?, body[k - 1]? with
+      match cellParts? c, body[k - 2]?, body[cidxStart body k]?, body[k - 1]? with
       | some (D, off), some l, some r, some m =>
           match l.li_i, cellOpMov? r.li_i, cellOpMov? m.li_i with
           | .Lopn [.reg D'] o' [.arrIdx B X 8], some (X', q), some (d1, _) =>
               if o = "MOV:64" ∧ 3 ≤ k ∧ off = 0 ∧ v ≠ D ∧ o' = "LEA:64" ∧ D' = D ∧ X' = X
-                  ∧ d1 ≠ D ∧ cellIdxOkB slotArr D d1 q = true then
+                  ∧ d1 ≠ D ∧ cellIdxOkB slotArr D d1 q = true ∧ cidxStart body k + 3 ≤ k
+                  ∧ bitStore? body (cidxStart body k) r.li_i = none
+                  ∧ idxKeepRunB X q body (cidxStart body k + 1) (k - 2) = true then
                 (accArr slotArr body (k - 2) B).map fun p => (p.1, p.2, q, v)
               else none
           | _, _, _ => none
@@ -336,18 +376,22 @@ theorem cellIdxStore?_of_ne (slotArr : String → Option (String × Nat)) {body 
 
 /-- **The indexed store through a cell** (`cellIdxStore?`): the store `MOV:64 c, v` with `c`
     the cell `mem.D.0`, the address `LEA:64 D, (B, X, 8)` at `k - 2` with `B` the pointer of
-    `A`, the load of `X` from `q` at `k - 3` and the load of the value into `d1` at
-    `k - 1`. -/
+    `A`, the load of `X` from `q` at `cidxStart body k`, at most `k - 3`, which is no stored
+    carry constant, the load of the value into `d1` at `k - 1`, and between the load of `X` and
+    the address computation only instructions that keep `X` and `q` (`idxKeepB`). -/
 theorem cellIdxStore?_spec {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
     {i : LinstrR} {A v : String} {q : String ⊕ Nat} {n : Nat}
     (h : cellIdxStore? slotArr body k i = some (A, n, q, v)) :
     ∃ c D B X d1 s l r m, i = .Lopn [.reg c] "MOV:64" [.reg v] ∧ cellParts? c = some (D, 0)
       ∧ 3 ≤ k ∧ v ≠ D
       ∧ body[k - 2]? = some l ∧ l.li_i = .Lopn [.reg D] "LEA:64" [.arrIdx B X 8]
-      ∧ body[k - 3]? = some r ∧ cellOpMov? r.li_i = some (X, q)
+      ∧ body[cidxStart body k]? = some r ∧ cellOpMov? r.li_i = some (X, q)
       ∧ body[k - 1]? = some m ∧ cellOpMov? m.li_i = some (d1, s)
       ∧ d1 ≠ D ∧ cellIdxOkB slotArr D d1 q = true
-      ∧ accArr slotArr body (k - 2) B = some (A, n) := by
+      ∧ accArr slotArr body (k - 2) B = some (A, n)
+      ∧ cidxStart body k + 3 ≤ k ∧ bitStore? body (cidxStart body k) r.li_i = none
+      ∧ ∀ p, cidxStart body k < p → p < k - 2 →
+          ∃ x, body[p]? = some x ∧ idxKeepB X q x.li_i = true := by
   unfold cellIdxStore? at h
   split at h
   · rename_i c o v'
@@ -356,12 +400,18 @@ theorem cellIdxStore?_spec {slotArr : String → Option (String × Nat)} {body :
       split at h
       · rename_i D' o' B X X' q' d1 s hli hr' hm'
         split_ifs at h with hcond
-        obtain ⟨rfl, h3, rfl, hv, rfl, rfl, rfl, hd1, hok⟩ := hcond
+        obtain ⟨rfl, h3, rfl, hv, rfl, rfl, rfl, hd1, hok, hj3, hbs, hrun⟩ := hcond
         obtain ⟨p, hp, he⟩ := Option.map_eq_some_iff.mp h
         simp only [Prod.mk.injEq] at he
         obtain ⟨rfl, rfl, rfl, rfl⟩ := he
-        exact ⟨c, _, B, _, d1, s, l, r, m, rfl, hc, h3, hv, hl, hli, hr, hr', hm, hm', hd1, hok,
-          hp⟩
+        refine ⟨c, _, B, _, d1, s, l, r, m, rfl, hc, h3, hv, hl, hli, hr, hr', hm, hm', hd1, hok,
+          hp, hj3, hbs, fun p hp1 hp2 => ?_⟩
+        simp only [idxKeepRunB, List.all_eq_true, List.mem_range] at hrun
+        have := hrun (p - (cidxStart body k + 1)) (by omega)
+        rw [show cidxStart body k + 1 + (p - (cidxStart body k + 1)) = p by omega] at this
+        cases hx : body[p]? with
+        | none => rw [hx] at this; cases this
+        | some x => rw [hx] at this; exact ⟨x, rfl, by simpa using this⟩
       · cases h
     · cases h
   · cases h
