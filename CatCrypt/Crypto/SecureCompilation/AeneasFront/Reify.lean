@@ -28,9 +28,19 @@ lemma proved once:
 * a bind `m >>= k`: `Reify.bind`, `Reify.bindLit` (a literal operand is bound first);
 * a value `ok x`, `ok (op x y)`: `Reify.okVar`, `Reify.okExpr`, `Reify.okLit`;
 * a branch `if x < y then a else b` (and `≤`, `>`, `≥`, `=`): `Reify.iteCmp`;
+* a panic guard, `massert b` on a Boolean variable, `massert (x < y)` and
+  `if x < y then fail e else k`: `Reify.assertBit`, `Reify.assertLt`, `Reify.iteFailLt`, each
+  the branch to the aborting arm `abortArm` that `NFProg.abortElim` eliminates (`Reify.guard`);
 * an operation: the `ReifyE` instances of the checked arithmetic, the lifted bitwise
   operations, the wrapping operations, `Array.index_usize` and `Array.update`;
-* a variable: `Lookup`, the position of a value in the valuation.
+* a variable: `Lookup`, the position of a value in the valuation;
+* an exit-flag loop `loop b init`: `Reify.loop`, a `whileLoop`;
+* a range loop `loop F (⟨0, n⟩, acc)` whose body steps the range by `IteratorRange.next`:
+  `Reify.loopRange`, a counted `forLoop` with the bound `n` as trip count and the range index
+  as trip index. Its hypothesis on the body is `range_body` (through `next_usize`) with the
+  step of the body split off its final continuation by `tailCont_bind` and `tailCont_ok`; the
+  loop is `foldRangeAux` of the step by `loop_range`, and the fold is the counted loop by
+  `foldRange_reify`.
 
 Instance resolution follows the syntax of the body, and the proof term it returns is the
 composition of these lemmas. The elaborator unfolds only the equation lemma `f.eq_1` of the
@@ -42,6 +52,14 @@ function. There is no definitional check of the whole term.
 * `Lookup`, `ReifyE`, `Reify`: the judgements
 * `Reified`: an NF program with its soundness statement
 * `reifyAeneas%`: the elaborator
+
+## Main results
+
+* `Reify.bind`, `Reify.bindLit`, `Reify.okLit`, `Reify.iteLt`, `Reify.loop`: the congruence
+  steps
+* `Reify.guard`, `Reify.assertBit`, `Reify.assertLt`, `Reify.iteFailLt`: the guards
+* `foldRange_reify`, `range_body`, `Reify.loopRange`: the range loop
+* `Reify.toDenote`: from the reading to the compiler's semantics
 -/
 
 @[expose] public section
@@ -474,6 +492,100 @@ theorem Reify.iteLt {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfD
       rw [ite_eq_right (fun h => hxy (hiff.mp h)), extend_eq, hb', bind_tc_ok, nfToRustM,
         lookupArgs_prefixVars]
 
+/-! ## Guards
+
+A panic guard of the source is read as the branch `ifThenElse c abortArm (ret []) k` on the bit
+`c` of the failing case, whose first arm aborts at once and whose second arm returns at once:
+the form that the elimination of aborting branches `NFProg.abortElim` replaces by `k`. The
+three readings are an assertion `massert b` on a Boolean variable (the bit `!b`), an assertion
+`massert (x < y)` (the bit of `x ≥ y`), and a branch `if x < y then fail e else k` (the bit of
+`x < y`); each is an instance of `Reify.guard`. -/
+
+/-- The aborting arm of a guard: the abort at the unit type, then the empty return. -/
+def abortArm {Γ : Ctxt nfDialect} : NFProg nfDialect Γ [] :=
+  .var ⟨.abort .unit, rfl, .nil⟩ (.ret .nil)
+
+/-- **The reading of an abort fails.** -/
+theorem nfToRustM_abortArm {Γ : Ctxt nfDialect} (V : Valuation Γ) :
+    nfToRustM (abortArm (Γ := Γ)) V = .fail .undef := by
+  rw [abortArm, nfToRustM]
+  rfl
+
+/-- The bit negation of a variable as an NF expression. -/
+def notE {Γ : Ctxt nfDialect} (v : Var Γ .bit) : Expr nfDialect Γ .bit :=
+  ⟨.notB, rfl, .cons v .nil⟩
+
+theorem aeExpr_notE {Γ : Ctxt nfDialect} (v : Var Γ .bit) (V : Valuation Γ) (b : Bool)
+    (h : v.lookup V = b) : aeExpr (notE v) V = .ok (!b) := by
+  change aeOp .notB (.cons (v.lookup V) .nil) = _
+  unfold aeOp
+  rw [nfDenoteOp, h]
+  rfl
+
+/-- **A guard.** When the expression `e` reads the bit `c` and every value of `m` is a value of
+    `k` at the bit `false`, the branch on `c` to the aborting arm, followed by the reading of
+    `k`, reads `m`. -/
+theorem Reify.guard {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {Γ : Ctxt nfDialect} {e : Expr nfDialect Γ .bit} {pk : NFProg nfDialect (.bit :: Γ) ts}
+    (m k : RustM α) (c : Bool) (V : Valuation Γ) (he : aeExpr e V = .ok c)
+    (hm : ∀ y, m = .ok y → c = false ∧ k = .ok y) (hk : ReifyG E k (vCons c V) pk) :
+    ReifyG E m V (.var e (.ifThenElse .here abortArm (.ret .nil) pk)) where
+  sound y hy := by
+    obtain ⟨hc, hky⟩ := hm y hy
+    subst hc
+    rw [nfToRustM, he, bind_tc_ok, extend_eq, nfToRustM]
+    exact hk.sound y hky
+
+/-- **An assertion on a Boolean variable**: the guard on its negation. -/
+theorem Reify.assertBit {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {Γ : Ctxt nfDialect} {v : Var Γ .bit} {pk : NFProg nfDialect (.bit :: Γ) ts}
+    (b : Bool) (k : Unit → RustM α) (V : Valuation Γ) [hb : Lookup V (AeVal.emb b) v]
+    (hk : ReifyG E (k ()) (vCons (!b) V) pk) :
+    ReifyG E (massert (b = true) >>= k) V
+      (.var (notE v) (.ifThenElse .here abortArm (.ret .nil) pk)) :=
+  Reify.guard _ (k ()) (!b) V (aeExpr_notE v V b hb.eq) (fun y hy => by
+    cases b
+    · cases hy
+    · exact ⟨rfl, hy⟩) hk
+
+/-- **An assertion `x < y`**: the guard on the bit of `x ≥ y`. -/
+theorem Reify.assertLt {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {Γ : Ctxt nfDialect} {ty : UScalarTy} [Le64 ty] {va vb : Var Γ (.word 64)}
+    {pk : NFProg nfDialect (.bit :: Γ) ts}
+    (x y : UScalar ty) (k : Unit → RustM α) (V : Valuation Γ)
+    [hx : Lookup V (embW x) va] [hy : Lookup V (embW y) vb]
+    (hk : ReifyG E (k ()) (vCons (CmpOp.aen .ge x y) V) pk) :
+    ReifyG E (massert (x < y) >>= k) V
+      (.var (callE2 (CmpOp.name .ge) .bit va vb)
+        (.ifThenElse .here abortArm (.ret .nil) pk)) :=
+  Reify.guard _ (k ()) (CmpOp.aen .ge x y) V
+    (aeExpr_callE2 _ _ va vb V x y hx.eq hy.eq (aeCall2_cmp .ge x y) rfl) (fun z hz => by
+      by_cases hxy : x < y
+      · have hlt : x.val < y.val := hxy
+        simp only [massert, hxy, ite_true] at hz
+        exact ⟨by simp only [CmpOp.aen, decide_eq_false_iff_not, Nat.not_le]; exact hlt, hz⟩
+      · simp only [massert, hxy, ite_false] at hz
+        cases hz) hk
+
+/-- **A branch `if x < y then fail e else k`**: the guard on the bit of `x < y`. -/
+theorem Reify.iteFailLt {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {Γ : Ctxt nfDialect} {ty : UScalarTy} [Le64 ty] {va vb : Var Γ (.word 64)}
+    {pk : NFProg nfDialect (.bit :: Γ) ts}
+    (x y : UScalar ty) (err : Error) (k : RustM α) (V : Valuation Γ)
+    [hx : Lookup V (embW x) va] [hy : Lookup V (embW y) vb]
+    (hk : ReifyG E k (vCons (CmpOp.aen .lt x y) V) pk) :
+    ReifyG E (if x < y then .fail err else k) V
+      (.var (callE2 (CmpOp.name .lt) .bit va vb)
+        (.ifThenElse .here abortArm (.ret .nil) pk)) :=
+  Reify.guard _ k (CmpOp.aen .lt x y) V
+    (aeExpr_callE2 _ _ va vb V x y hx.eq hy.eq (aeCall2_cmp .lt x y) rfl) (fun z hz => by
+      by_cases hxy : x < y
+      · simp only [hxy, ite_true] at hz
+        cases hz
+      · simp only [hxy, ite_false] at hz
+        have hlt : ¬ x.val < y.val := hxy
+        exact ⟨by simp only [CmpOp.aen, decide_eq_false_iff_not]; exact hlt, hz⟩) hk
+
 /-! ## Loops -/
 
 /-- The NF results of a step of a loop body: the bit `true` and the next state for
@@ -579,6 +691,131 @@ theorem Reify.loop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeV
     rw [bind_tc_ok, nfToRustM]
     rfl
 
+/-! ## Range loops
+
+The Aeneas backend prints a loop `for i in 0..n` as `loop F (⟨0, n⟩, acc)` with a body `F`
+that steps the range by `IteratorRange.next` and continues with the stepped range and the
+new state. `loop_range` makes such a loop the hax backend's `foldRangeAux` of the step `f`
+of the body; the fold is the counted loop `forLoop` of NF, whose trip index is the range
+index. -/
+
+/-- The range index of the trip `i` of a counted loop is its trip index: below `2 ^ 64`
+    the NF word of the trip is the word of the `usize` index. -/
+theorem embW_usize_ofNat {i : Nat} (hi : i < 2 ^ UScalarTy.Usize.numBits) :
+    embW (⟨BitVec.ofNat _ i⟩ : Usize) = HasWord64.ofNat (d := nfDialect) i := by
+  change BitVec.ofNat 64 (BitVec.ofNat _ i).toNat = BitVec.ofNat 64 i
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hi]
+
+/-- **The fold of a range against the counted loop.** If every step `f acc i` is read by
+    `pb` at the state and the index, a value of `foldRangeAux f k s` is the value of the
+    fold of the reading of `pb` over the trip indices `s, …, s + k - 1`. -/
+theorem foldRange_reify {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} (V : Valuation Γ)
+    (pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: Γ) [AeVal.nty σ])
+    (f : σ → Usize → RustM σ)
+    (hb : ∀ (i : Usize) (acc : σ), ReifyG single (f acc i) (vCons acc (vCons i V)) pb) :
+    ∀ (k s : Nat) (acc y : σ), s + k ≤ 2 ^ UScalarTy.Usize.numBits →
+      HaxBackend.foldRangeAux f k s acc = .ok y →
+      (List.range' s k).foldlM
+          (fun a i => nfToRustM pb (hvAppend a (.cons (HasWord64.ofNat (d := nfDialect) i) V)))
+          (single acc) = .ok (single y)
+  | 0, _, acc, y, _, h => by
+    cases h
+    rfl
+  | k + 1, s, acc, y, hk, h => by
+    rw [HaxBackend.foldRangeAux] at h
+    obtain ⟨acc', h1, h2⟩ := rustM_bind_ok h
+    have hs := (hb ⟨BitVec.ofNat _ s⟩ acc).sound acc' h1
+    have he : AeVal.emb (⟨BitVec.ofNat _ s⟩ : Usize) = HasWord64.ofNat (d := nfDialect) s :=
+      embW_usize_ofNat (by omega)
+    rw [show vCons acc (vCons (⟨BitVec.ofNat _ s⟩ : Usize) V) =
+      hvAppend (single acc) (.cons (HasWord64.ofNat (d := nfDialect) s) V) by
+        unfold vCons
+        rw [he]
+        rfl] at hs
+    rw [List.range'_succ, List.foldlM_cons, hs, bind_tc_ok]
+    exact foldRange_reify V pb f hb k (s + 1) acc' y (by omega) h2
+
+/-- **The body of a range loop.** A body that steps the range `⟨s, n⟩` by `IteratorRange.next`
+    and, at an index `i` and the stepped range `r`, continues with `r` and a value of
+    `f acc i`, and is done with `acc` at the end of the range, is the body that `loop_range`
+    takes. -/
+theorem range_body {σ : Type} (n s : Usize) (acc : σ)
+    (K : Option Usize × core.ops.range.Range Usize →
+      RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
+    (f : σ → Usize → RustM σ)
+    (hnone : ∀ r, K (none, r) = .ok (.done acc))
+    (hsome : ∀ i r, K (some i, r) = f acc i >>= fun a => .ok (.cont (r, a))) :
+    (core.iter.range.IteratorRange.next core.iter.range.StepUsize
+        ({ start := s, «end» := n } : core.ops.range.Range Usize) >>= K) =
+      if s.val < n.val then
+        f acc s >>= fun a =>
+          .ok (.cont ({ start := ⟨BitVec.ofNat _ (s.val + 1)⟩, «end» := n }, a))
+      else .ok (.done acc) := by
+  rw [next_usize]
+  split
+  · rw [bind_tc_ok, hsome]
+  · rw [bind_tc_ok, hnone]
+
+/-- A continuation at the end of a bind chain: the computation is the chain `g` followed by
+    continuing with the range `r` and the value of `g`. The last step. -/
+theorem tailCont_ok {σ R : Type} (r : R) (a : σ) :
+    (RustM.ok (Aeneas.Std.ControlFlow.cont (r, a)) :
+        RustM (Aeneas.Std.ControlFlow (R × σ) σ)) =
+      (RustM.ok a >>= fun a => .ok (.cont (r, a))) := by
+  rw [bind_tc_ok]
+
+/-- A continuation at the end of a bind chain: the bind step. -/
+theorem tailCont_bind {α σ R : Type} (r : R) (m : RustM α)
+    (k : α → RustM (Aeneas.Std.ControlFlow (R × σ) σ)) (g : α → RustM σ)
+    (h : ∀ x, k x = g x >>= fun a => .ok (.cont (r, a))) :
+    (m >>= k) = ((m >>= g) >>= fun a => .ok (.cont (r, a))) := by
+  cases m with
+  | ok x => rw [bind_tc_ok, bind_tc_ok, h]
+  | fail e => rfl
+  | div => rfl
+
+/-- **A range loop.** An Aeneas `loop` over the range `⟨0, n⟩` whose body steps the range and
+    runs `f` (`hF`), with each step `f acc i` read by `pb` at the state, the index and the
+    bound, is the counted loop of `pb`: the bound `n` is bound as a literal and is the trip
+    count, the trip index is the range index. The proof is `loop_range` and
+    `foldRange_reify`. -/
+theorem Reify.loopRange {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeVal.nty σ)}
+    {pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: .word 64 :: Γ) [AeVal.nty σ]}
+    (F : core.ops.range.Range Usize × σ →
+      RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
+    (n : Usize) (init : σ) (f : σ → Usize → RustM σ) (V : Valuation Γ)
+    [hi : Lookup V (AeVal.emb init) v]
+    (hF : ∀ (s : Usize) (acc : σ), F ({ start := s, «end» := n }, acc) =
+      if s.val < n.val then
+        f acc s >>= fun acc' =>
+          .ok (.cont ({ start := ⟨BitVec.ofNat _ (s.val + 1)⟩, «end» := n }, acc'))
+      else .ok (.done acc))
+    (hb : ∀ (i : Usize) (acc : σ), ReifyG single (f acc i) (vCons acc (vCons i (vCons n V))) pb) :
+    ReifyG single (Aeneas.Std.loop F ({ start := 0#usize, «end» := n }, init)) V
+      (.var (litE n) (.forLoop .here (.cons v.there .nil) pb (.ret (.cons .here .nil)))) where
+  sound y hy := by
+    have h0 : (0#usize : Usize).val = 0 := rfl
+    rw [loop_range F f n hF (n.val - (0#usize : Usize).val) 0#usize init rfl, h0,
+      Nat.sub_zero] at hy
+    have hn : n.val < 2 ^ 64 := lt64 n
+    have hfold := foldRange_reify (vCons n V) pb f hb n.val 0 init y
+      (by have := n.bv.isLt; simp only [UScalar.val] at this ⊢; omega) hy
+    rw [nfToRustM, aeExpr_litE, bind_tc_ok, nfToRustM]
+    have hc : HasWord64.toNat (d := nfDialect)
+        ((Ctxt.Var.here (Γ := Γ)).lookup (Valuation.extend (t := NfTy.word 64) V (embW n))) = n.val := by
+      change (BitVec.ofNat 64 n.val).toNat = n.val
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn]
+    have hinit : Expr.lookupArgs (HVector.cons v.there HVector.nil)
+        (Valuation.extend (t := NfTy.word 64) V (embW n)) = single init := by
+      change HVector.cons (v.lookup V) HVector.nil = _
+      rw [hi.eq]
+    rw [hc, hinit, List.range_eq_range', extend_eq]
+    refine (congrArg (fun z => z >>= fun acc =>
+      nfToRustM (NFProg.ret (HVector.cons Var.here HVector.nil))
+        (hvAppend acc (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (embW n) V))) hfold).trans ?_
+    rw [bind_tc_ok, nfToRustM]
+    rfl
+
 /-! ## The elaborator -/
 
 /-- An NF program with its soundness statement `S`. -/
@@ -640,6 +877,69 @@ meta def litOf (m : Expr) : MetaM (Option Expr) := do
 meta def progOf (prf : Expr) : MetaM Expr := do
   return (← instantiateMVars (← inferType prf)).appArg!
 
+/-- The chain `g` and the proof of `M = g >>= fun a => ok (cont (r, a))` for a bind chain `M`
+    that ends in continuing with the range `r`: one step `tailCont_bind` per bind and the last
+    step `tailCont_ok`. -/
+meta partial def tailCont (r M : Expr) : MetaM (Expr × Expr) := do
+  let M := (← instantiateMVars M).headBeta
+  if M.isAppOfArity ``Bind.bind 6 then
+    let m := M.getArg! 4
+    let k := M.getArg! 5
+    let α ← resTy m
+    return ← withLocalDeclD `x α fun x => do
+      let (gx, px) ← tailCont r (mkApp k x).headBeta
+      let g ← mkLambdaFVars #[x] gx
+      let h ← mkLambdaFVars #[x] px
+      let g' ← mkAppM ``Bind.bind #[m, g]
+      let pg ← mkAppM ``tailCont_bind #[r, m, k, g, h]
+      return (g', pg)
+  let M ← whnfR M
+  if M.isAppOfArity ``Aeneas.Std.RustM.ok 2 then
+    let c := M.getArg! 1
+    if c.isAppOfArity ``Aeneas.Std.ControlFlow.cont 3 then
+      let pr := c.getArg! 2
+      if pr.isAppOfArity ``Prod.mk 4 then
+        if ← isDefEq (pr.getArg! 2) r then
+          let a := pr.getArg! 3
+          let g ← mkAppM ``Aeneas.Std.RustM.ok #[a]
+          let pg ← mkAppM ``tailCont_ok #[r, a]
+          return (g, pg)
+  throwError "reifyAeneas%: the step of the range loop does not end in continuing with the \
+    stepped range{indentExpr M}"
+
+/-- The step `f` of the body `F` of a range loop over `⟨_, n⟩` with states of type `σ`, and the
+    proof of the hypothesis `hF` of `Reify.loopRange`: the body at `(⟨s, n⟩, acc)` is unfolded by
+    the equation lemma of the definition it calls, its bind of `IteratorRange.next` is
+    `range_body`, whose continuation at `none` is done with `acc` and at `some i` and the
+    stepped range `r` is the chain `f acc i` continued with `r` (`tailCont`). -/
+meta def rangeStep (F n σ : Expr) : MetaM (Expr × Expr) := do
+  let usize := Lean.mkConst ``Aeneas.Std.Usize
+  withLocalDeclD `s usize fun sv => withLocalDeclD `acc σ fun acc => do
+    let rng ← mkAppM ``core.ops.range.Range.mk #[sv, n]
+    let lhs ← whnfCore (mkApp F (← mkAppM ``Prod.mk #[rng, acc]))
+    let some c := lhs.getAppFn.constName? |
+      throwError "reifyAeneas%: no reading of the range loop body{indentExpr lhs}"
+    let some eqns ← getEqnsFor? c |
+      throwError "reifyAeneas%: no equation lemma for the range loop body {c}"
+    let eq1 := mkAppN (mkConst eqns[0]! lhs.getAppFn.constLevels!) lhs.getAppArgs
+    let B := (← whnfR (← inferType eq1)).appArg!
+    unless B.isAppOfArity ``Bind.bind 6 do
+      throwError "reifyAeneas%: the range loop body does not step its range{indentExpr B}"
+    let K := B.getArg! 5
+    let rTy ← mkAppM ``core.ops.range.Range #[usize]
+    let (f, hsome) ← withLocalDeclD `i usize fun i => withLocalDeclD `r rTy fun r => do
+      let Ki := (← whnfCore (mkApp K (← mkAppM ``Prod.mk #[← mkAppM ``Option.some #[i], r])))
+      let (g, pg) ← tailCont r Ki
+      if g.containsFVar r.fvarId! || g.containsFVar sv.fvarId! then
+        throwError "reifyAeneas%: the step of the range loop reads the range"
+      return (← mkLambdaFVars #[acc, i] g, ← mkLambdaFVars #[i, r] pg)
+    let hnone ← withLocalDeclD `r rTy fun r => do
+      let Kn := mkApp K (← mkAppM ``Prod.mk #[← mkAppOptM ``Option.none #[usize], r])
+      mkLambdaFVars #[r] (← mkEqRefl Kn)
+    let rb ← mkAppM ``range_body #[n, sv, acc, K, f, hnone, hsome]
+    let hF ← mkLambdaFVars #[sv, acc] (← mkEqTrans eq1 rb)
+    return (f, hF)
+
 /-- **The reader.** Reads the computation `m` at the valuation `V` with the result map `E`
     and returns a proof of `ReifyG E m V p`; each step applies the congruence lemma of the
     construct at the head of `m`. A call of a definition of the crate `crate` (the root
@@ -656,6 +956,20 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
   if m.isAppOfArity ``Bind.bind 6 then
     let m1 := m.getArg! 4
     let k := m.getArg! 5
+    if m1.isAppOfArity ``Aeneas.Std.massert 2 then
+      let c := m1.getArg! 0
+      let k1 := (mkApp k (mkConst ``Unit.unit)).headBeta
+      if c.isAppOfArity ``Eq 3 && (c.getArg! 2).isConstOf ``Bool.true then
+        let b := c.getArg! 1
+        let Vb ← mkAppM ``vCons #[← mkAppM ``not #[b], V]
+        return ← mkAppM ``Reify.assertBit #[b, k, V, ← reify crate E k1 Vb]
+      if c.isAppOfArity ``LT.lt 4 then
+        let x := c.getArg! 2
+        let y := c.getArg! 3
+        let bit ← mkAppM ``CmpOp.aen #[mkConst ``CmpOp.ge, x, y]
+        let Vb ← mkAppM ``vCons #[bit, V]
+        return ← mkAppM ``Reify.assertLt #[x, y, k, V, ← reify crate E k1 Vb]
+      throwError "reifyAeneas%: no reading of the assertion{indentExpr c}"
     let α ← resTy m1
     if (← synthE m1 V).isSome then
       return ← mkAppM ``Reify.bind #[m1, k, V, ← readUnder α E k V]
@@ -673,18 +987,52 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
       let y := c.getArg! 3
       let bit ← mkAppM ``CmpOp.aen #[mkConst ``CmpOp.lt, x, y]
       let Vb ← mkAppM ``vCons #[bit, V]
+      let a' ← whnfR a
+      if a'.isAppOfArity ``Aeneas.Std.RustM.fail 2 then
+        return ← mkAppM ``Reify.iteFailLt #[x, y, a'.getArg! 1, b, V, ← reify crate E b Vb]
       return ← mkAppM ``Reify.iteLt #[x, y, a, b, V, ← reify crate E a Vb, ← reify crate E b Vb]
     throwError "reifyAeneas%: no reading of the condition{indentExpr c}"
   if m.isAppOfArity ``Aeneas.Std.loop 4 then
     let σ := m.getArg! 0
     let body := m.getArg! 2
     let init := m.getArg! 3
+    let σw ← whnfR σ
+    if init.isAppOfArity ``Prod.mk 4 && σw.isAppOfArity ``Prod 2 then
+      let rng ← whnfR (init.getArg! 2)
+      if rng.isAppOfArity ``core.ops.range.Range.mk 3 then
+        let s := rng.getArg! 1
+        let n := rng.getArg! 2
+        unless ← isDefEq (← mkAppM ``UScalar.val #[s]) (mkNatLit 0) do
+          throwError "reifyAeneas%: a range loop whose range does not start at 0{indentExpr rng}"
+        let σ' := σw.getArg! 1
+        let acc0 := init.getArg! 3
+        let (f, hF) ← rangeStep body n σ'
+        let E' ← mkAppOptM ``single #[some σ', none]
+        let hb ← withLocalDeclD `i (Lean.mkConst ``Aeneas.Std.Usize) fun i =>
+          withLocalDeclD `acc σ' fun acc => do
+            let V' ← mkAppM ``vCons #[acc, ← mkAppM ``vCons #[i, ← mkAppM ``vCons #[n, V]]]
+            let prf ← reify crate E' (mkApp2 f acc i).headBeta V'
+            let p ← progOf prf
+            if p.containsFVar i.fvarId! || p.containsFVar acc.fvarId! then
+              throwError "reifyAeneas%: the program of the range loop step depends on its state"
+            mkLambdaFVars #[i, acc] prf
+        return ← mkAppM ``Reify.loopRange #[body, n, acc0, f, V, hF, hb]
     let Es ← mkAppOptM ``stepVal #[some σ, none]
     return ← mkAppM ``Reify.loop #[body, init, V, ← readUnder σ Es body V]
   if let some c ← litOf m then
     let Vc ← mkAppM ``vCons #[c, V]
     if (← synthE m Vc).isSome then
-      return ← mkAppM ``Reify.okLit #[c, m, V]
+      let α ← resTy m
+      let some ainst ← synthInstance? (mkApp (mkConst ``AeVal) α) |
+        throwError "reifyAeneas%: no NF type of{indentExpr α}"
+      let Γ ← ctxOf V
+      let w64 := mkApp (mkConst ``NfTy.word) (mkNatLit 64)
+      let out ← mkFreshExprMVar none
+      let ty := mkAppN (mkConst ``ReifyE)
+        #[α, ainst, m, ← mkAppM ``List.cons #[w64, Γ], Vc, out]
+      if let some inst ← synthInstance? ty then
+        return ← mkAppOptM ``Reify.okLit #[some α, some ainst, some Γ, none, none,
+          some (← instantiateMVars out), some c, some m, some V, some inst]
   if let some c := m.getAppFn.constName? then
     if c.getRoot == crate then
       if let some eqns ← getEqnsFor? c then

@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.ExtChain
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFChainCT
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFPassLeakMC
 public import CatCrypt.Crypto.Hax.ImpToNFLeak
+public import CatCrypt.Crypto.SecureCompilation.Dialects.NFAbortElimLeak
 
 /-!
 # Constant time through the chain with declarations
@@ -52,6 +53,8 @@ a property of the callee.
 * `nfLeakModelL`, `nfLeakRunL` — the leakage model of `nfDialect` with quiet calls of
   tagged field heads and of declared names, and its leakage run.
 * `flatSameCTStep` — the constant-time step certificate of tuple flattening.
+* `abortElimCTStep` — the constant-time step certificate of the elimination of aborting
+  branches (`NFProg.abortElim_ctRel`).
 * `aegraphCTStepC`, `extCallCTStep`, `mapCTStepC`, `montifyCTStep`, `fieldDialectCTStep`,
   `lowerSelectsCTStepC`, `rangeCTStepC` — the constant-time step certificates of the e-graph
   pass, of the translation with declarations, of the conversion `map?`, of the montify step,
@@ -565,6 +568,36 @@ def flatSameCTStep (bi : Builtins) (fuel : Nat) (Γ : Ctxt nfDialect) (ts : List
       (flatSame_leakRunM M hM (CatCrypt.Crypto.Hax.ImpToNF.tableOf bi) fuel hf _).trans h₂,
       _root_.id⟩
 
+/-- **The constant-time step certificate of the elimination of aborting branches**, at the
+    source leakage semantics of the leakage model `M`: the events of the eliminated program are
+    the erasure `NFProg.abortErase` of the source events, a function of them
+    (`NFProg.abortElim_ctRel` with `nfDenote_isAbort`). -/
+def abortElimCTStep (bi : Builtins) (fuel : Nat) (Γ : Ctxt nfDialect) (ts : List NfTy)
+    (M : LeakModel nfDialect) :
+    StepCert (abortElimStep NfOp.isAbort Γ ts).run (srcLeakSem bi fuel Γ ts M).twoRun
+      (srcLeakSem bi fuel Γ ts M).twoRun :=
+  stepCertOfLeak _ _ Eq fun {p q V₁ V₂ _ _ _ _} hf hV₁ hV₂ h₁ h₂ => by
+    let _ := nfDenote (CatCrypt.Crypto.Hax.ImpToNF.tableOf bi)
+    have hab : ∀ {Γ : Ctxt nfDialect} {t : NfTy} (e : Expr nfDialect Γ t) (V : Valuation Γ),
+        NfOp.isAbort e.op = true → e.denoteM V = none := fun e V h =>
+      nfDenote_isAbort (CatCrypt.Crypto.Hax.ImpToNF.tableOf bi) e V h
+    cases hf
+    subst hV₁ hV₂
+    obtain ⟨r₁, hr₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
+    obtain ⟨r₂, hr₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
+    obtain ⟨s₁, -, hs₁, -⟩ := NFProg.abortElim_ctRel NfOp.isAbort hab M fuel p V₁ V₁ r₁ r₁ hr₁
+      hr₁ rfl
+    obtain ⟨s₂, -, hs₂, -⟩ := NFProg.abortElim_ctRel NfOp.isAbort hab M fuel p V₂ V₂ r₂ r₂ hr₂
+      hr₂ rfl
+    refine ⟨s₁.2, s₂.2, ?_, ?_, fun he => ?_⟩
+    · exact congrArg (Option.map Prod.snd) hs₁
+    · exact congrArg (Option.map Prod.snd) hs₂
+    · obtain ⟨t₁, t₂, ht₁, ht₂, -, -, het⟩ :=
+        NFProg.abortElim_ctRel NfOp.isAbort hab M fuel p V₁ V₂ r₁ r₂ hr₁ hr₂ he
+      rw [hs₁, Option.some.injEq] at ht₁
+      rw [hs₂, Option.some.injEq] at ht₂
+      rw [ht₁, ht₂, het]
+
 /-- **The constant-time certificate of the chain with declarations**, at the leakage
     parameters `P` of `catCryptDialect` with no variable-time operation, the parameters `Pj`
     of `jasminDialect` compatible with them and with no variable-time operation, a builtin
@@ -587,6 +620,7 @@ def extChainCTCert {P : CatLeakParams} {Pj : JLeakParams} (hP : NoVT P)
       (leakSemNFC (jLeakModel Pj) E' fuel (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) :=
   have hq := regArith_quiet_of_opVT hV
   have hK := regConst_quiet_of_opVT hV
+  .cons (abortElimCTStep bi fuel Γ [t] (nfLeakModelL D)) (fun _ _ h => h) <|
   .cons (flatSameCTStep bi fuel Γ [t] (nfLeakModelL D) (tupleQuiet_nfLeakModelL D))
     (fun _ _ h => h) <|
   .cons (outTyCTStep bi fuel Γ t (nfLeakModelL D)) (fun _ _ h => h) <|
@@ -636,7 +670,7 @@ theorem extChain_ctC {P : CatLeakParams} {Pj : JLeakParams} (hP : NoVT P)
   obtain ⟨m₁, m₂, hm₁, hm₂, hm⟩ :=
     (extChainCTCert hP hc hV hbi hF hW E' hD hN fuel Γ t).ct
     (W₁ := ctMapValD (mapVal V₁)) (W₂ := ctMapValD (mapVal V₂)) h
-    ⟨(V₁, V₂), ⟨rfl, rfl⟩, (V₁, V₂), ⟨rfl, rfl⟩, (V₁, V₂), ⟨rfl, rfl⟩,
+    ⟨(V₁, V₂), ⟨rfl, rfl⟩, (V₁, V₂), ⟨rfl, rfl⟩, (V₁, V₂), ⟨rfl, rfl⟩, (V₁, V₂), ⟨rfl, rfl⟩,
       (mapVal V₁, mapVal V₂),
       ⟨⟨rfl, hin₁⟩, ⟨rfl, hin₂⟩⟩, (mapVal V₁, mapVal V₂), ⟨rfl, rfl⟩,
       (ctMapValD (mapVal V₁), ctMapValD (mapVal V₂)), ⟨rfl, rfl⟩,

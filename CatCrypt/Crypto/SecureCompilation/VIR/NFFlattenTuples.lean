@@ -138,7 +138,7 @@ def tupleHom? (ren : Ctxt.Hom (flatCtx Γ) Δ) :
   | .cast _ _, _ | .scast _ _, _ | .cmp _ _, _ | .andB, _ | .orB, _ | .xorB, _ | .eqB, _
   | .notB, _ | .index _ _, _ | .update _ _, _ | .arrLit _ _, _ | .arrRepeat _ _, _
   | .mkPair _ _, _ | .fst _ _, _ | .snd _ _, _ | .call _ _ _, _ | .ilit _ _, _ | .ctr, _
-  | .trip _, _ | .boundInt _, _ => none
+  | .trip _, _ | .boundInt _, _ | .abort _, _ => none
 
 /-- The variable of a value of a type that is neither a tuple type nor `unit`, from the
     renaming of its one component; `none` at a tuple type and at `unit`. -/
@@ -562,7 +562,7 @@ def opIsTuple : NfOp → Bool
   | .const _ _ | .constBit _ | .bin _ _ | .un _ _ | .cast _ _ | .scast _ _
   | .cmp _ _ | .andB | .orB | .xorB | .eqB | .notB | .index _ _ | .update _ _ | .arrLit _ _
   | .arrRepeat _ _ | .mkPair _ _ | .fst _ _ | .snd _ _ | .call _ _ _ | .ilit _ _ | .ctr
-  | .trip _ | .boundInt _ => false
+  | .trip _ | .boundInt _ | .abort _ => false
 
 /-- No type of a list is a tuple type or `unit` (`tyIsTuple`). -/
 def NoTuple (ss : List NfTy) : Prop :=

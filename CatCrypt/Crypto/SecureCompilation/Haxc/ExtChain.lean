@@ -8,11 +8,13 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFChainCall
 public import CatCrypt.Crypto.SecureCompilation.Haxc.ChainTotalJ
 public import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDialectStep
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFAbortElim
 
 /-!
 # The extended NF chain, its certificates and its completeness
 
-`extChain D Γ t` is the tuple flattening `flatSameStep` followed by `extChainCore D Γ t`,
+`extChain D Γ t` is the elimination of aborting branches `abortElimStep NfOp.isAbort`, then
+the tuple flattening `flatSameStep`, followed by `extChainCore D Γ t`,
 the chain `nfChainPre Γ t` with the translation `nfToCatExt` in place of `nfToCat`, the
 montify step `montifyStep` and the field dialect step `fieldDialectStep` after the conversion
 to `jasminDialect`, and the select lowering, the range stage and the e-graph pass at
@@ -29,6 +31,8 @@ flattening lies in `ChainTotal.extDomNB` or `ChainTotal.extDomNBD` (the domains 
 
 * `extChainCore`, `extChain`, `extChainCert` — the steps after flattening, the chain and
   its certificate.
+* `nfDenote_isAbort` — an aborting operation of `nfDialect` denotes no value, the hypothesis of
+  the certificate `abortElimCert` of the first step.
 * `NFEntry.frontR`, `NFEntry.toFrontLegOfR` — the region front of an entry (`toNF`,
   `extChain` at the declared procedures of the source program, the region export
   `exportRegion` at their signatures `declSigs`) and the front `FrontLegOfJ` it gives.
@@ -39,6 +43,8 @@ flattening lies in `ChainTotal.extDomNB` or `ChainTotal.extDomNBD` (the domains 
   translates after `dce`, the steps after flattening return what `nfChainPre` returns: such
   a program has no `call`, and the field dialect step keeps a program without `call`; the chain
   returns what `nfChainPre` returns on the flattened program.
+* `extChain_run_of_abortFree` — on a program without aborting operation the chain is the chain
+  without its first step (`NFProg.abortElim_of_abortFree`).
 * `extChain_congr` — the chain reads the declared names and signatures only.
 * `extChain_outTyB` — a program the chain accepts has a result type that passes `outTyB`.
 * `extChain_denote`, `extChain_entry` — a run of the source program at the builtin table
@@ -134,12 +140,32 @@ def extChainCore (D : List ExtDecl) (Γ : Ctxt nfDialect) (t : NfTy) :
     .cons (aegraphStep jasminRules (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <| .nil _
 
 /-- **The linear route with the declared procedures `D`, up to the structured program of
-    `jasminDialect`**: tuple flattening `flatSameStep`, followed by the steps
-    `extChainCore D Γ t`. -/
+    `jasminDialect`**: the elimination of aborting branches `abortElimStep NfOp.isAbort`
+    (a branch on a panic guard of the source is replaced by its continuation), tuple
+    flattening `flatSameStep`, followed by the steps `extChainCore D Γ t`. -/
 def extChain (D : List ExtDecl) (Γ : Ctxt nfDialect) (t : NfTy) :
     Chain (NFProg nfDialect Γ [t])
       (NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) :=
-  .cons (flatSameStep Γ [t]) (extChainCore D Γ t)
+  .cons (abortElimStep NfOp.isAbort Γ [t]) (.cons (flatSameStep Γ [t]) (extChainCore D Γ t))
+
+/-- **An aborting operation of `nfDialect` denotes no value**, at every leaf table: the
+    hypothesis of `abortElimCert` at `NfOp.isAbort`. -/
+theorem nfDenote_isAbort (T : NfLeafTable) {Γ : Ctxt nfDialect} {t : NfTy}
+    (e : Expr nfDialect Γ t) (V : Valuation Γ) (h : e.op.isAbort = true) :
+    @Expr.denoteM nfDialect Option _ _ (nfDenote T) Γ t e V = none := by
+  obtain ⟨op, rfl, args⟩ := e
+  change nfDenoteOp T op (Expr.lookupArgs args V) = none
+  exact nfDenoteOp_of_isAbort T h _
+
+/-- **On a program without aborting operation the chain is the chain without its first
+    step**: the elimination of aborting branches is the identity on it
+    (`NFProg.abortElim_of_abortFree`). -/
+theorem extChain_run_of_abortFree (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
+    (p : NFProg nfDialect Γ [t]) (h : NFProg.abortFree NfOp.isAbort p = true) :
+    (extChain D Γ t).run p = ((flatSameStep Γ [t]).run p).bind (extChainCore D Γ t).run := by
+  show ((flatSameStep Γ [t]).run (NFProg.abortElim NfOp.isAbort p)).bind
+    (extChainCore D Γ t).run = _
+  rw [NFProg.abortElim_of_abortFree _ p h]
 
 /-- **On a program that `nfToCat` translates after `dce`, the steps after flattening return
     what `nfChainPre` returns.** The translation `nfToCat` keeps no `call`
@@ -196,14 +222,17 @@ theorem extChainCore_run_of_nfToCat (D : List ExtDecl) {Γ : Ctxt nfDialect} {t 
                 ((aegraphStep jasminRules (mapCtx (Γ.map catTy)) [mapTy (catTy t)]).run p).bind
                   some) h5
 
-/-- **On a program whose flattening `nfToCat` translates after `dce`, the chain returns what
-    `nfChainPre` returns on the flattened program** (`extChainCore_run_of_nfToCat`). -/
+/-- **On a program whose flattening after the elimination of aborting branches `nfToCat`
+    translates after `dce`, the chain returns what `nfChainPre` returns on that program**
+    (`extChainCore_run_of_nfToCat`). -/
 theorem extChain_run_of_nfToCat (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
-    (p q : NFProg nfDialect Γ [t]) (hq : (flatSameStep Γ [t]).run p = some q)
+    (p q : NFProg nfDialect Γ [t])
+    (hq : (flatSameStep Γ [t]).run (NFProg.abortElim NfOp.isAbort p) = some q)
     {p' : NFProg catCryptDialect (Γ.map catTy) [catTy t]}
     (hp' : nfToCat (NFProg.dce q) TRd.id = some p') :
     (extChain D Γ t).run p = (nfChainPre Γ t).run q := by
-  show ((flatSameStep Γ [t]).run p).bind (extChainCore D Γ t).run = _
+  show ((flatSameStep Γ [t]).run (NFProg.abortElim NfOp.isAbort p)).bind
+    (extChainCore D Γ t).run = _
   rw [hq, Option.bind_some]
   exact extChainCore_run_of_nfToCat D q hp'
 
@@ -230,8 +259,9 @@ theorem extChain_congr {D D' : List ExtDecl}
     environment `E'` and a fuel `cf` at least `tf`, under `SubTable bi`,
     `FieldLevel.FieldCalls bi`, `FieldLevel.FieldCallsWideEq bi` and the agreement
     `ExtAgree bi (catEnvOf E') D` of the table, the declarations and the
-    environment of `catCryptDialect` read off `E'`. Tuple flattening is certified at equal
-    inputs and outputs (`flatSameCert`). The steps up to the montify step are
+    environment of `catCryptDialect` read off `E'`. The elimination of aborting branches
+    (`abortElimCert` with `nfDenote_isAbort`) and tuple flattening (`flatSameCert`) are
+    certified at equal inputs and outputs. The steps up to the montify step are
     certified at `fieldEnv E'`, the field dialect step from `fieldEnv E'` to `E'`, and the later
     steps at `E'`. -/
 def extChainCert {bi : Builtins} (hbi : SubTable bi) (hF : FieldLevel.FieldCalls bi)
@@ -240,6 +270,8 @@ def extChainCert {bi : Builtins} (hbi : SubTable bi) (hF : FieldLevel.FieldCalls
     (hD : ExtAgree bi (catEnvOf E') D) (Γ : Ctxt nfDialect) (t : NfTy) :
     Cert (extChain D Γ t) (nfSemB bi tf Γ [t])
       (nfSemE E' cf (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) :=
+  .cons (@abortElimCert nfDialect _ _ _ _ NfOp.isAbort (nfDenote (tableOf bi)) _
+    (fun e V h => nfDenote_isAbort (tableOf bi) e V h) tf Γ [t]) <|
   .cons (flatSameCert bi tf Γ [t]) <|
   .cons (outTyCert bi tf Γ t) <|
     .cons (@dceCert nfDialect _ _ _ _ (nfDenote (tableOf bi)) _ tf Γ [t]) <|
@@ -262,7 +294,7 @@ theorem extChain_outTyB {D : List ExtDecl} {Γ : Ctxt nfDialect} {t : NfTy}
     {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (h : (extChain D Γ t).run p = some q) : outTyB t = true := by
   simp only [extChain, extChainCore, Chain.run, Option.bind_eq_some_iff] at h
-  obtain ⟨_, -, _, hq, -⟩ := h
+  obtain ⟨_, -, _, -, _, hq, -⟩ := h
   exact outTyStep_run_isSome hq
 
 /-- **The chain with declarations simulates the source program.** Under `SubTable bi`,
@@ -284,11 +316,12 @@ theorem extChain_denote {bi : Builtins} (hbi : SubTable bi) (hF : FieldLevel.Fie
   have ht := outTy_of_outTyB t (extChain_outTyB h)
   obtain ⟨o', ho', hrel⟩ := (extChainCert hbi hF hW tf cf hle E' hD Γ t).sound (V := V)
     (W := ctMapValD (mapVal V)) h
-    ⟨V, rfl, V, rfl, V, rfl, mapVal V, ⟨rfl, hin⟩, mapVal V, rfl, ctMapValD (mapVal V), rfl,
+    ⟨V, rfl, V, rfl, V, rfl, V, rfl, mapVal V, ⟨rfl, hin⟩, mapVal V, rfl,
+      ctMapValD (mapVal V), rfl,
       ctMapValD (mapVal V), rfl, ctMapValD (mapVal V), rfl, ctMapValD (mapVal V), rfl,
       ctMapValD (mapVal V), rfl, ctMapValD (mapVal V), rfl, rfl⟩
     hp
-  obtain ⟨_, rfl, _, rfl, _, rfl, x2, hx2, _, rfl, _, rfl, _, rfl, _, rfl, _, rfl, _, rfl, _, rfl,
+  obtain ⟨_, rfl, _, rfl, _, rfl, _, rfl, x2, hx2, _, rfl, _, rfl, _, rfl, _, rfl, _, rfl, _, rfl, _, rfl,
     rfl⟩ := hrel
   rcases x2 with _ | ⟨x, _ | _⟩
   have hx : VRel t y x := hx2.1
@@ -535,18 +568,23 @@ theorem extChainCore_completeOn_NB (D : List ExtDecl) (Γ : Ctxt nfDialect) (t :
     Chain.completeOn_cons (hT _ (rangeNFStep_isSome _ _)) <|
     Chain.completeOn_cons (hT _ (aegraphStep_isSome _ _ _)) <| Chain.completeOn_nil _
 
-/-- **`extChain` is complete on the programs whose flattening lies in `extDomNB`.** -/
+/-- **`extChain` is complete on the programs whose flattening after the elimination of
+    aborting branches lies in `extDomNB`.** -/
 theorem extChain_completeOn_NB (D : List ExtDecl) (Γ : Ctxt nfDialect) (t : NfTy) :
     (extChain D Γ t).CompleteOn
-      (fun p => ∃ q, (flatSameStep Γ [t]).run p = some q ∧ extDomNB t q = true)
+      (fun p => ∃ q, (flatSameStep Γ [t]).run (NFProg.abortElim NfOp.isAbort p) = some q ∧
+        extDomNB t q = true)
       (fun _ => True) :=
-  Chain.completeOn_cons (flatSameStep_completeOn Γ [t] _) (extChainCore_completeOn_NB D Γ t)
+  Chain.completeOn_cons (fun _ hp => ⟨_, rfl, hp⟩) <|
+    Chain.completeOn_cons (flatSameStep_completeOn Γ [t] _) (extChainCore_completeOn_NB D Γ t)
 
 /-- **`extChain` runs to `some` on every program at a result type that passes `outTyB` whose
-    flattening has a dead-code-eliminated form that satisfies `NB`**, at every list of
+    flattening after the elimination of aborting branches has a dead-code-eliminated form that
+    satisfies `NB`**, at every list of
     declarations. -/
 theorem extChain_isSome_of_NB (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
-    {p q : NFProg nfDialect Γ [t]} (hq : (flatSameStep Γ [t]).run p = some q)
+    {p q : NFProg nfDialect Γ [t]}
+    (hq : (flatSameStep Γ [t]).run (NFProg.abortElim NfOp.isAbort p) = some q)
     (ht : outTyB t = true) (hp : NB (NFProg.dce q) = true) :
     ((extChain D Γ t).run p).isSome = true :=
   Chain.run_isSome (extChain_completeOn_NB D Γ t) ⟨q, hq, by simp only [extDomNB, ht, hp,
@@ -608,18 +646,23 @@ theorem extChainCore_completeOn_NBD (D : List ExtDecl) (Γ : Ctxt nfDialect) (t 
     Chain.completeOn_cons (hT _ (rangeNFStep_isSome _ _)) <|
     Chain.completeOn_cons (hT _ (aegraphStep_isSome _ _ _)) <| Chain.completeOn_nil _
 
-/-- **`extChain` is complete on the programs whose flattening lies in `extDomNBD`.** -/
+/-- **`extChain` is complete on the programs whose flattening after the elimination of
+    aborting branches lies in `extDomNBD`.** -/
 theorem extChain_completeOn_NBD (D : List ExtDecl) (Γ : Ctxt nfDialect) (t : NfTy) :
     (extChain D Γ t).CompleteOn
-      (fun p => ∃ q, (flatSameStep Γ [t]).run p = some q ∧ extDomNBD D t q = true)
+      (fun p => ∃ q, (flatSameStep Γ [t]).run (NFProg.abortElim NfOp.isAbort p) = some q ∧
+        extDomNBD D t q = true)
       (fun _ => True) :=
-  Chain.completeOn_cons (flatSameStep_completeOn Γ [t] _) (extChainCore_completeOn_NBD D Γ t)
+  Chain.completeOn_cons (fun _ hp => ⟨_, rfl, hp⟩) <|
+    Chain.completeOn_cons (flatSameStep_completeOn Γ [t] _) (extChainCore_completeOn_NBD D Γ t)
 
 /-- **`extChain` runs to `some` on every program at a result type that passes `outTyB` whose
-    flattening has a dead-code-eliminated form that satisfies `NBD` at its declarations and
+    flattening after the elimination of aborting branches has a dead-code-eliminated form that
+    satisfies `NBD` at its declarations and
     has a template for every tagged call**, at every list of declarations. -/
 theorem extChain_isSome_of_NBD (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
-    {p q : NFProg nfDialect Γ [t]} (hq : (flatSameStep Γ [t]).run p = some q)
+    {p q : NFProg nfDialect Γ [t]}
+    (hq : (flatSameStep Γ [t]).run (NFProg.abortElim NfOp.isAbort p) = some q)
     (ht : outTyB t = true)
     (hp : NBD (fieldDeclsFor D (NFProg.dce q)) (NFProg.dce q) = true)
     (hT : fieldTemplsB (NFProg.dce q) = true) :

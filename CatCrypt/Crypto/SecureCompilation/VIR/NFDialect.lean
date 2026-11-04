@@ -42,10 +42,12 @@ The structured programs over the dialect are `NFProg nfDialect` (`VIR/NFProg.lea
 * `NfTy.ofLit?`, `NfTy.toInt?` — a typed integer literal and the reading of a loop
   bound.
 * `nfDenoteOp`, `nfDenote` — the `Option`-valued denotation of each operation.
+* `NfOp.isAbort` — the test of the aborting operations.
 
 ## Main results
 
 * `nfDenote_denoteM` — `nfDenote T` denotes an operation by `nfDenoteOp T`.
+* `nfDenoteOp_of_isAbort` — an aborting operation denotes no value.
 -/
 
 @[expose] public section
@@ -194,6 +196,9 @@ inductive NfOp where
   /-- The operation `op` with the source name `n` of the value it binds; the name does not
       change the denotation. -/
   | named (n : String) (op : NfOp)
+  /-- The abort at the result type `t`, the reading of a panic of the source: it takes no
+      argument and denotes no value. -/
+  | abort (t : NfTy)
   deriving Repr
 
 /-- The argument types of an operation. -/
@@ -210,7 +215,7 @@ inductive NfOp where
   | .mkPair a b => [a, b]
   | .fst a b | .snd a b => [.pair a b]
   | .call _ args _ => args
-  | .ilit _ _ | .tnilV => []
+  | .ilit _ _ | .tnilV | .abort _ => []
   | .ctr => [.int, .word 64]
   | .trip t => [.int, t]
   | .boundInt t => [t]
@@ -239,6 +244,7 @@ inductive NfOp where
   | .thead h _ => h
   | .ttail _ t => t
   | .named _ op => op.ret
+  | .abort t => t
 
 /-- The dialect of the normal form: value-semantic words, bits, arrays and pairs, and
     typed leaf calls. -/
@@ -387,6 +393,7 @@ def nfDenoteOp (T : NfLeafTable) : (op : NfOp) → HVector NfTy.denote op.sig �
   | .thead _ _, args => some args.head.1
   | .ttail _ _, args => some args.head.2
   | .named _ op, args => nfDenoteOp T op args
+  | .abort _, _ => none
 
 /-- The `Option`-valued denotation of `nfDialect` with the leaves of `T`. -/
 @[instance_reducible] def nfDenote (T : NfLeafTable) : DialectDenoteM nfDialect Option where
@@ -396,5 +403,13 @@ def nfDenoteOp (T : NfLeafTable) : (op : NfOp) → HVector NfTy.denote op.sig �
 @[simp] theorem nfDenote_denoteM (T : NfLeafTable) (op : NfOp)
     (args : HVector NfTy.denote op.sig) :
     (nfDenote T).denoteM op args = nfDenoteOp T op args := rfl
+
+/-- The test of the aborting operations. -/
+def NfOp.isAbort (op : NfOp) : Bool := op matches .abort _
+
+/-- **An aborting operation denotes no value**, with every leaf table. -/
+theorem nfDenoteOp_of_isAbort (T : NfLeafTable) {op : NfOp} (h : op.isAbort = true)
+    (args : HVector NfTy.denote op.sig) : nfDenoteOp T op args = none := by
+  cases op <;> first | rfl | simp [NfOp.isAbort] at h
 
 end CatCrypt.Crypto.SecureCompilation.VIR.NFDialect

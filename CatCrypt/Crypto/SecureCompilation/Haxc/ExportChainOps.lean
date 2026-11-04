@@ -1179,15 +1179,18 @@ theorem regLoop_of_whileCarry {cs : List NfTy}
 theorem extChain_callsLoopsAll (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
     {p : NFProg nfDialect Γ [t]} {q : NFProg jasminDialect (mapCtx (Γ.map catTy))
       [mapTy (catTy t)]} (h : (extChain D Γ t).run p = some q)
-    (hw : ∀ p1, flatSame p = some p1 → callsLoopsAll (fun _ _ _ => true)
-      (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true) :
+    (hw : ∀ p1, flatSame (NFProg.abortElim NfOp.isAbort p) = some p1 →
+      callsLoopsAll (fun _ _ _ => true)
+        (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true) :
     callsLoopsAll (fun _ as rs => wordSig as rs)
       (fun cs => cs.all fun s => isRegTy s && widthPos s) q = true := by
   simp only [extChain, extChainCore, Chain.run, Option.bind_eq_some_iff] at h
-  obtain ⟨p1, hp1, p2, hp2, p3, hp3, r, hr, r1, hr1, j, hj, j1, hj1, j2, hj2, j3, hj3, j4,
-    hj4, j5, hj5, hq⟩ := h
+  obtain ⟨p0, hp0, p1, hp1, p2, hp2, p3, hp3, r, hr, r1, hr1, j, hj, j1, hj1, j2, hj2, j3, hj3,
+    j4, hj4, j5, hj5, hq⟩ := h
   obtain rfl := Option.some.inj hq
-  change flatSame p = some p1 at hp1
+  change some (NFProg.abortElim NfOp.isAbort p) = some p0 at hp0
+  cases hp0
+  change flatSame (NFProg.abortElim NfOp.isAbort p) = some p1 at hp1
   change (if outTyB t then some p1 else none) = some p2 at hp2
   change some (NFProg.dce p2) = some p3 at hp3
   change nfToCatExt (fieldDeclsFor D p3) p3 TRd.id = some r at hr
@@ -1220,8 +1223,9 @@ theorem extChain_callsLoopsAll (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfT
 theorem extChain_whileRegB (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
     {p : NFProg nfDialect Γ [t]} {q : NFProg jasminDialect (mapCtx (Γ.map catTy))
       [mapTy (catTy t)]} (h : (extChain D Γ t).run p = some q)
-    (hw : ∀ p1, flatSame p = some p1 → callsLoopsAll (fun _ _ _ => true)
-      (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true) :
+    (hw : ∀ p1, flatSame (NFProg.abortElim NfOp.isAbort p) = some p1 →
+      callsLoopsAll (fun _ _ _ => true)
+        (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true) :
     whileRegB q = true :=
   whileRegB_of_callsLoopsAll _ (fun cs hc => by
       simp only [List.all_eq_true, Bool.and_eq_true] at hc ⊢
@@ -1232,8 +1236,9 @@ theorem extChain_whileRegB (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
 theorem extChain_wordCalls (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
     {p : NFProg nfDialect Γ [t]} {q : NFProg jasminDialect (mapCtx (Γ.map catTy))
       [mapTy (catTy t)]} (h : (extChain D Γ t).run p = some q)
-    (hw : ∀ p1, flatSame p = some p1 → callsLoopsAll (fun _ _ _ => true)
-      (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true) :
+    (hw : ∀ p1, flatSame (NFProg.abortElim NfOp.isAbort p) = some p1 →
+      callsLoopsAll (fun _ _ _ => true)
+        (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true) :
     wordCalls q = true :=
   wordCalls_of_callsLoopsAll _ q (extChain_callsLoopsAll D h hw)
 
@@ -2424,10 +2429,12 @@ theorem extChain_allOps (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
     (hΓ : ∀ s ∈ mapCtx (Γ.map catTy), widthPos s = true) :
     q.allOps (opMemPos) = true := by
   simp only [extChain, extChainCore, Chain.run, Option.bind_eq_some_iff] at h
-  obtain ⟨p1, hp1, p2, hp2, p3, hp3, r, hr, r1, hr1, j, hj, j1, hj1, j2, hj2, j3, hj3, j4,
-    hj4, j5, hj5, hq⟩ := h
+  obtain ⟨p0, hp0, p1, hp1, p2, hp2, p3, hp3, r, hr, r1, hr1, j, hj, j1, hj1, j2, hj2, j3, hj3,
+    j4, hj4, j5, hj5, hq⟩ := h
   obtain rfl := Option.some.inj hq
-  change flatSame p = some p1 at hp1
+  change some (NFProg.abortElim NfOp.isAbort p) = some p0 at hp0
+  cases hp0
+  change flatSame (NFProg.abortElim NfOp.isAbort p) = some p1 at hp1
   change (if outTyB t then some p1 else none) = some p2 at hp2
   change some (NFProg.dce p2) = some p3 at hp3
   change nfToCatExt (fieldDeclsFor D p3) p3 TRd.id = some r at hr
@@ -2500,10 +2507,14 @@ theorem CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_export_isSome
   obtain ⟨t, p, hp, h⟩ := CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_extChain_isSome hr
   refine ⟨t, p, hp, fun bi => ?_⟩
   obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp (h bi)
-  have hw : ∀ p1, CatCrypt.Crypto.SecureCompilation.Haxc.flatSame p = some p1 →
+  have hw : ∀ p1, CatCrypt.Crypto.SecureCompilation.Haxc.flatSame
+      (NFProg.abortElim CatCrypt.Crypto.SecureCompilation.VIR.NFDialect.NfOp.isAbort p) =
+        some p1 →
       callsLoopsAll (fun _ _ _ => true)
-        (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true :=
-    fun p1 h1 => callsLoopsAll_of_opsNB _ _ p1
+        (fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB) p1 = true := by
+    rw [NFProg.abortElim_of_abortFree _ p
+      (CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete.haxToNF_abortFree hp)]
+    exact fun p1 h1 => callsLoopsAll_of_opsNB _ _ p1
       (CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete.haxToNF_flatSame_opsNBLoop hp h1)
   have h3 := extChain_whileRegB _ hq hw
   have h4 := extChain_wordCalls _ hq hw

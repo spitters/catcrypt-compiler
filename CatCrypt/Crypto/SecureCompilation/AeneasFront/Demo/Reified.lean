@@ -9,13 +9,14 @@ public import CatCrypt.Crypto.SecureCompilation.AeneasFront.ReifyArrays
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestScalars
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestArrays
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestLoops
+public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestIterators
 
 /-!
 # `reifyAeneas%` on Aeneas test outputs
 
-Five functions of the Aeneas test outputs (`TestScalars`, `TestArrays`, `TestLoops`, copied
-unchanged from Aeneas commit `b08bf81`) read as NF programs by `reifyAeneas%`, each with the
-statement that a value of the Aeneas function is, embedded, the denotation of its program in
+Six functions of the Aeneas test outputs (`TestScalars`, `TestArrays`, `TestLoops`,
+`TestIterators`, copied unchanged from Aeneas commit `b08bf81`) read as NF programs by
+`reifyAeneas%`, each with the statement that a value of the Aeneas function is, embedded, the denotation of its program in
 the compiler's semantics `PDenP hax64WExit` from some fuel on (`Reify.toDenote`, the reifier's
 proof by construction composed with `nfToRustM_sim`).
 
@@ -24,12 +25,15 @@ proof by construction composed with `nfToRustM_sim`).
 * arrays: `arrays.index_array_u32` (`Array.index_usize`) and `arrays.incr_array` (an index, a
   checked `+` and an update at literal operands);
 * a loop: `loops.iter_loop`, the Aeneas `loop` over `loops.iter_loop.body` (a branch on `<`,
-  a checked `+` of a literal, `cont` and `done`), read as an exit-flag `whileLoop`.
+  a checked `+` of a literal, `cont` and `done`), read as an exit-flag `whileLoop`;
+* a range loop: `iterators.copy_arrays`, the Aeneas `loop` over the range `0..256` stepped by
+  `IteratorRange.next`, whose step reads `src[i]` and writes it to `dst[i]`, read as a counted
+  `forLoop` (`Reify.loopRange`, through `loop_range` and `foldRangeAux`).
 
 ## Main results
 
 * `addAnd_denote`, `useWrappingAdd_denote`, `indexArrayU32_denote`, `incrArray_denote`,
-  `iterLoop_denote`
+  `iterLoop_denote`, `copyArrays_denote`
 -/
 
 @[expose] public section
@@ -95,5 +99,17 @@ theorem iterLoop_denote (max i z : U32) (h : loops.iter_loop max i = .ok z) :
       PDenP hax64WExit fuel iterLoop.prog (vCons max (vCons i vNil)) =
         some (.cons (embW z) .nil) :=
   Reify.toDenote (iterLoop.sound max i) h
+
+/-- `iterators.copy_arrays`, an Aeneas `loop` over the range `0..256`, read as an NF program
+    with a counted loop. -/
+def copyArrays := reifyAeneas% iterators.copy_arrays
+
+/-- A value of `iterators.copy_arrays` is the denotation of its NF program. -/
+theorem copyArrays_denote (src dst y : Aeneas.Std.Array U8 256#usize)
+    (h : iterators.copy_arrays src dst = .ok y) :
+    ∃ N, ∀ fuel, N ≤ fuel →
+      PDenP hax64WExit fuel copyArrays.prog (vCons src (vCons dst vNil)) =
+        some (.cons (embA y) .nil) :=
+  Reify.toDenote (copyArrays.sound src dst) h
 
 end CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo

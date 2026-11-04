@@ -875,6 +875,64 @@ theorem crateOp_frontOp (fs : List CrateFn) (base : String → List NfTy → Opt
   | named _ o ih => exact ih
   | _ => intro b hb; cases hb
 
+/-- **The output of the front has the operations of the front that are no calls of the crate**,
+    at a loop test `W` that the source programs of the front pass. -/
+theorem haxToNF_opsNB_of {W : List NfTy → Bool}
+    (hsrc : ∀ {fs : List CrateFn} {σ : AbiLayout} {te : _root_.Hax.TExpr}
+      {q : Σ t : NfTy, NFProg nfDialect (entryCtx (NFToRoute.abiEntry σ)) [t]},
+      nfSrcProgC fs σ te = some q → opsNB (frontOp (crateSigOf fs hax64SigOf)) q.2 W = true)
+    {σ : AbiLayout} {m : CatCrypt.Crypto.Hax.HaxModule} {t : NfTy}
+    {p : NFProg nfDialect (entryCtx (NFToRoute.abiEntry σ)) [t]}
+    (hh : haxToNF σ m = some ⟨t, p⟩) :
+    opsNB (fun o => frontOp (crateSigOf (m.prepared nfBody) m.linkSig) o
+      && !crateCallOp (m.prepared nfBody) o) p W = true := by
+  obtain ⟨-, -, -, p0, hp0, hinl⟩ := haxToNF_eq_some hh
+  have h0 := hsrc hp0
+  rw [crateSigOf_append] at h0
+  unfold CatCrypt.Crypto.Hax.HaxModule.inline? at hinl
+  obtain ⟨hok, hpe⟩ := crateInline?_eq_some hinl
+  have h1 := opsNB_inlineIter (L := crateLib (m.prepared nfBody) m.linkSig)
+    (fun o b hb => opsNB_loop_of_opsNB W b (crateOp_frontOp _ _ o b hb)) m.depth p0 h0
+  have h2 := opsNB_and_allOps _ h1 (crateInlineOk_noCrateCall hok)
+  rw [← hpe] at h2
+  exact h2
+
+/-- A program whose operations satisfy a test that marks no operation `ab` marks is free of
+    the operations `ab` marks. -/
+theorem abortFree_of_opsNB {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty]
+    [HasWord64 d] [HasBoolBit d] {P ab : d.Op → Bool}
+    (h : ∀ o, P o = true → ab o = false) {W : List d.Ty → Bool} :
+    ∀ {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts), opsNB P p W = true →
+      NFProg.abortFree ab p = true
+  | _, _, .ret _, _ => rfl
+  | _, _, .var e k, hp => by
+      simp only [opsNB, Bool.and_eq_true] at hp
+      simp only [NFProg.abortFree, h _ hp.1, Bool.not_false, Bool.true_and]
+      exact abortFree_of_opsNB h k hp.2
+  | _, _, .forLoop _ _ body k, hp => by
+      simp only [opsNB, Bool.and_eq_true] at hp
+      simp only [NFProg.abortFree, abortFree_of_opsNB h body hp.1,
+        abortFree_of_opsNB h k hp.2, Bool.and_self]
+  | _, _, .ifThenElse _ thn els k, hp => by
+      simp only [opsNB, Bool.and_eq_true] at hp
+      simp only [NFProg.abortFree, abortFree_of_opsNB h thn hp.1.1,
+        abortFree_of_opsNB h els hp.1.2, abortFree_of_opsNB h k hp.2, Bool.and_self]
+  | _, _, .whileLoop _ body k, hp => by
+      simp only [opsNB, Bool.and_eq_true] at hp
+      simp only [NFProg.abortFree, abortFree_of_opsNB h body hp.1.2,
+        abortFree_of_opsNB h k hp.2, Bool.and_self]
+  | _, _, .call .., hp => by simp [opsNB] at hp
+
+/-- **The front of a module emits no aborting operation**: its operations satisfy `frontOp`
+    (`haxToNF_opsNB_of`), which marks no abort. -/
+theorem haxToNF_abortFree {σ : AbiLayout} {m : CatCrypt.Crypto.Hax.HaxModule} {t : NfTy}
+    {p : NFProg nfDialect (entryCtx (NFToRoute.abiEntry σ)) [t]}
+    (hh : haxToNF σ m = some ⟨t, p⟩) : NFProg.abortFree NfOp.isAbort p = true := by
+  have h := haxToNF_opsNB_of (W := fun cs => cs.all CatCrypt.Crypto.Hax.ImpToNF.whileCarryOkB)
+    nfSrcProgC_frontOp hh
+  refine abortFree_of_opsNB (fun o ho => ?_) p h
+  cases o <;> first | rfl | simp [frontOp] at ho
+
 /-- **The flattened output of the front has the operations `outOp m`**, at a loop test `W`
     that the source programs of the front pass and that accepts the flattening of every tuple
     it accepts. When `haxToNF σ m` returns the program `p` and the tuple flattening
@@ -890,15 +948,7 @@ theorem haxToNF_flatSame_opsNB_of {W : List NfTy → Bool}
     (hh : haxToNF σ m = some ⟨t, p⟩) {q : NFProg nfDialect (entryCtx (NFToRoute.abiEntry σ)) [t]}
     (hq : (flatSameStep (entryCtx (NFToRoute.abiEntry σ)) [t]).run p = some q) :
     opsNB (outOp m) q W = true := by
-  obtain ⟨-, -, -, p0, hp0, hinl⟩ := haxToNF_eq_some hh
-  have h0 := hsrc hp0
-  rw [crateSigOf_append] at h0
-  unfold CatCrypt.Crypto.Hax.HaxModule.inline? at hinl
-  obtain ⟨hok, hpe⟩ := crateInline?_eq_some hinl
-  have h1 := opsNB_inlineIter (L := crateLib (m.prepared nfBody) m.linkSig)
-    (fun o b hb => opsNB_loop_of_opsNB W b (crateOp_frontOp _ _ o b hb)) m.depth p0 h0
-  have h2 := opsNB_and_allOps _ h1 (crateInlineOk_noCrateCall hok)
-  rw [← hpe] at h2
+  have h2 := haxToNF_opsNB_of hsrc hh
   have hq' : flatSame _ = some q := hq
   exact opsNB_flatSame (P := fun o => frontOp (crateSigOf (m.prepared nfBody) m.linkSig) o
       && !crateCallOp (m.prepared nfBody) o) hW hq'
@@ -1254,7 +1304,10 @@ theorem CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_extChain_isSome_of_ou
   obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp
     (CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete.haxToNF_flatSame_isSome hp)
   obtain ⟨hN, hT⟩ := CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete.haxToNF_imp_NBD hp hq bi
-  exact CatCrypt.Crypto.SecureCompilation.Haxc.ChainTotal.extChain_isSome_of_NBD _ hq ht hN hT
+  refine CatCrypt.Crypto.SecureCompilation.Haxc.ChainTotal.extChain_isSome_of_NBD _ ?_ ht hN hT
+  rw [CatCrypt.Crypto.SecureCompilation.VIR.NFProg.abortElim_of_abortFree _ p
+    (CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete.haxToNF_abortFree hp)]
+  exact hq
 
 /-- **A module the translation refuses nothing on runs through the chain.** When
     `m.refusal? σ` is `none`, `haxToNF σ m` returns a program `p` at a result type `t`, and

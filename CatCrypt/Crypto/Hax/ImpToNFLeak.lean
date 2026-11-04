@@ -951,7 +951,7 @@ theorem CallLeak.nf_opEv : ∀ (op : NfOp) (x : HVector (fun t : NfTy => ⟦t⟧
   | .scast _ _, _ | .cmp _ _, _ | .andB, _ | .orB, _ | .xorB, _ | .eqB, _ | .notB, _
   | .index _ _, _ | .update _ _, _ | .arrLit _ _, _ | .arrRepeat _ _, _ | .mkPair _ _, _
   | .fst _ _, _ | .snd _ _, _ | .ilit _ _, _ | .ctr, _ | .trip _, _ | .tnilV, _
-  | .tconsV _ _, _ | .thead _ _, _ | .ttail _ _, _ | .boundInt _, _ => rfl
+  | .tconsV _ _, _ | .thead _ _, _ | .ttail _ _, _ | .boundInt _, _ | .abort _, _ => rfl
 
 /-- **The run with the call leakage of the front** is the leakage run `nfLeakRun`. -/
 theorem nfLeakRunE_nf (bi : Builtins) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}

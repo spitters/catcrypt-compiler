@@ -141,7 +141,7 @@ def nfKind : NfOp → LeakKind
   | .const _ _ | .constBit _ | .constUnit | .un _ _ | .cast _ _ | .scast _ _ | .cmp _ _
   | .andB | .orB | .xorB | .eqB | .notB | .arrLit _ _ | .arrRepeat _ _
   | .mkPair _ _ | .fst _ _ | .snd _ _ | .ilit _ _ | .ctr | .trip _ | .boundInt _
-  | .tnilV | .tconsV _ _ | .thead _ _ | .ttail _ _ => .quiet
+  | .tnilV | .tconsV _ _ | .thead _ _ | .ttail _ _ | .abort _ => .quiet
 
 /-- The call `index` leaks its index argument. -/
 @[simp] theorem nfKind_call_index (as : List NfTy) (r : NfTy) :
