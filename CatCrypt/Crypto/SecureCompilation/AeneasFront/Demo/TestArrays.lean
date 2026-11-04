@@ -2,7 +2,7 @@
 Definitions of the Aeneas test output `tests/lean/Arrays.lean` of the Aeneas repository
 (https://github.com/AeneasVerif/aeneas) at commit b08bf81f2524ee295a8c37444893acfc9c5f4dde,
 Apache License 2.0, copied unchanged: the file header with `import Aeneas` replaced by
-`import HaxLean.AeneasBackendPrelude` and the Mathlib linter options removed, and the
+`import HaxLean.AeneasBackendPrelude` and the Mathlib linter, `maxHeartbeats` and `maxRecDepth` options removed, and the
 definitions at the source lines 79-84 402-409. The other definitions of the file are not
 copied: they use names the prelude does not define.
 -/
@@ -21,12 +21,6 @@ demonstrations of `reifyAeneas%` in `AeneasFront.Demo.Reified`. The module state
 
 @[expose] public section
 open Aeneas Aeneas.Std Result ControlFlow Error
-
-/- You can set the `maxHeartbeats` value with the `-max-heartbeats` CLI option -/
-set_option maxHeartbeats 1000000
-
-/- You can set the `maxRecDepth` value with the `-max-recdepth` CLI option -/
-set_option maxRecDepth 2048
 
 namespace arrays
 
