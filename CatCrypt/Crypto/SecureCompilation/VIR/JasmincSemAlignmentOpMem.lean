@@ -48,6 +48,7 @@ theorem opcode_alignment_opMemB : ∀ op, opMemB op = true → OpAligned op := b
   case addCarryHi => exact addCarryHi_agrees_jasmin
   case shrImm => exact shrImm_agrees_jasmin h
   case sarImm => exact fun hn => sarImm_agrees_jasmin hn
+  case rorImm => exact fun hn => rorImm_agrees_jasmin hn
   case shlImm => exact shlImm_agrees_jasmin h
   case select => exact select_agrees_jasmin
   case cmp => exact cmp_agrees_jasmin _

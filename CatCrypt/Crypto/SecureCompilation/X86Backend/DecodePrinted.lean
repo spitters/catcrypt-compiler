@@ -489,16 +489,22 @@ theorem pieceDec_tagShr (D : String) (k : Nat) (hD : gpOk D = true) (hk0 : k ≠
 /-- A count-in-mnemonic shift is a left shift: its group-2 opcode extension is `4`. -/
 def tagShl (m : String) : Bool := tagShiftExt (stripWidthTag m) == some 4
 
-/-- The group-2 opcode extension of a count-in-mnemonic shift: `4` for a left shift, `5`
-    otherwise. -/
-def tagShExt (m : String) : Nat := if tagShl m then 4 else 5
+/-- A count-in-mnemonic shift is a right rotate: its group-2 opcode extension is `1`. -/
+def tagRor (m : String) : Bool := tagShiftExt (stripWidthTag m) == some 1
 
-/-- The mnemonic stem of a count-in-mnemonic shift: `SHL` for a left shift, `SHR` otherwise. -/
-def tagShName (m : String) : String := if tagShl m then "SHL" else "SHR"
+/-- The group-2 opcode extension of a count-in-mnemonic shift: `4` for a left shift, `1` for a
+    right rotate, `5` otherwise. -/
+def tagShExt (m : String) : Nat := if tagShl m then 4 else if tagRor m then 1 else 5
 
-/-- The machine shift of a count-in-mnemonic shift: `shl` for a left shift, `shr` otherwise. -/
+/-- The mnemonic stem of a count-in-mnemonic shift: `SHL` for a left shift, `ROR` for a right
+    rotate, `SHR` otherwise. -/
+def tagShName (m : String) : String :=
+  if tagShl m then "SHL" else if tagRor m then "ROR" else "SHR"
+
+/-- The machine shift of a count-in-mnemonic shift: `shl` for a left shift, `ror` for a right
+    rotate, `shr` otherwise. -/
 def tagShMk (m : String) : String → JOperand → JInstr 64 :=
-  if tagShl m then JInstr.shl else JInstr.shr
+  if tagShl m then JInstr.shl else if tagRor m then JInstr.ror else JInstr.shr
 
 /-- The count-in-mnemonic shift of a general-purpose name by a count `0 < k < 64` decodes to
     the machine shift of its register, in the direction of the mnemonic. -/
@@ -516,8 +522,18 @@ theorem pieceDec_tagShift (m D : String) (k : Nat) (hD : gpOk D = true) (hk0 : k
         decodeLinstr_shift1 4 (gpNumU D) rest (Or.inl rfl) (gpNumU_lt_16 D)
     · simpa [phys, h1] using
         decodeLinstr_shiftImm8 4 (gpNumU D) k rest (Or.inl rfl) (gpNumU_lt_16 D) (by omega)
-  · simp only [tagShExt, tagShMk, hs, Bool.false_eq_true, ite_false]
-    exact pieceDec_tagShr D k hD hk0 hk base hc
+  · by_cases hr : tagRor m = true
+    · simp only [tagShExt, tagShMk, hs, hr, Bool.false_eq_true, ite_false, ite_true]
+      unfold encTagShift
+      rw [hc]
+      intro rest
+      by_cases h1 : k = 1
+      · subst h1
+        simpa [phys] using decodeLinstr_ror1 (gpNumU D) rest (gpNumU_lt_16 D)
+      · simpa [phys, h1] using
+          decodeLinstr_rorImm8 (gpNumU D) k rest (gpNumU_lt_16 D) (by omega)
+    · simp only [tagShExt, tagShMk, hs, hr, Bool.false_eq_true, ite_false]
+      exact pieceDec_tagShr D k hD hk0 hk base hc
 
 /-! ## 5. The covered arms -/
 
@@ -1157,7 +1173,39 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
             split <;> rfl) rfl
           (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
           (by rw [getW_setReg_nextPc, ite_eq_left rfl])
-    · simp only [tagShName, tagShMk, hs, Bool.false_eq_true, ite_false] at hm ⊢
+    by_cases hr : tagRor m = true
+    · simp only [tagShName, tagShMk, hs, hr, Bool.false_eq_true, ite_false, ite_true] at hm ⊢
+      generalize shrK m = k at hk0 hk hm ⊢
+      have hi : ((Arm.shr m D S).instr, MemTag.reg none) = immShiftI "ROR" D S k := by
+        rw [Arm.instr, immShiftI, ← hm]
+      rw [hi]
+      intro sa b zf hc
+      have hst := fstepF_rorImmI D S k b zf _ (hc.regs S hS)
+      refine ⟨_, zf, (by rw [runStraightF_singleton]; exact hst), ?_⟩
+      have hw : ∀ v : BitVec 64, (x86_ROR v (BitVec.ofNat 64 k)).word = v.rotateRight k :=
+        fun v => x86_ROR_word_imm v k (by omega) hk
+      by_cases hDS : D = S
+      · subst hDS
+        rw [ite_eq_left rfl, List.nil_append]
+        show PCorr Q rsp (evalInstrA sa (.ror (phys D) (.imm k))) _ zf
+        exact hc.write hD _ (fun r => by
+            show (if r = phys D then (x86_ROR (sa.regs (phys D)) (BitVec.ofNat 64 k)).word
+              else sa.regs r) = _
+            rw [hw]) rfl
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])
+      · rw [ite_eq_right hDS, List.singleton_append]
+        show PCorr Q rsp (evalInstrA (evalInstrA sa (.mov (phys D) (.reg (phys S))))
+          (.ror (phys D) (.imm k))) _ zf
+        exact hc.write hD _ (fun r => by
+            show (if r = phys D then (x86_ROR (if phys D = phys D then sa.regs (phys S)
+              else sa.regs (phys D)) (BitVec.ofNat 64 k)).word
+              else (if r = phys D then sa.regs (phys S) else sa.regs r)) = _
+            rw [hw, ite_eq_left rfl]
+            split <;> rfl) rfl
+          (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+          (by rw [getW_setReg_nextPc, ite_eq_left rfl])
+    · simp only [tagShName, tagShMk, hs, hr, Bool.false_eq_true, ite_false] at hm ⊢
       generalize shrK m = k at hk0 hk hm ⊢
       have hi : ((Arm.shr m D S).instr, MemTag.reg none) = immShiftI "SHR" D S k := by
         rw [Arm.instr, immShiftI, ← hm]

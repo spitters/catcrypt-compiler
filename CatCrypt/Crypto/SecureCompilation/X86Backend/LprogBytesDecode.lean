@@ -541,6 +541,31 @@ theorem decodeLinstr_shiftImm8 (ext d k : Nat) (rest : List (BitVec 8))
     ite_false, ite_true, hk8]
   rcases hext with rfl | rfl | rfl <;> simp
 
+/-- The rotate of a register by an `imm8` count (`REX.W C1 /1 ib`) decodes to the machine
+    rotate. -/
+theorem decodeLinstr_rorImm8 (d k : Nat) (rest : List (BitVec 8)) (hd : d < 16) (hk : k < 256) :
+    decodeLinstr (encShiftImmw 1 1 d k ++ rest)
+      = some (.op (JInstr.ror (regName d) (.imm k)), rest) := by
+  have hk8 : (k &&& 0xff) % 2 ^ 8 = k := by
+    simp only [show (0xff : Nat) = 2 ^ 8 - 1 from rfl, Nat.and_two_pow_sub_one_eq_mod]
+    omega
+  apply decodeLinstr_of_decodeJ1
+  simp only [encShiftImmw, rexOpt_w1, List.cons_append, List.nil_append,
+    decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat,
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right
+      (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg, show (1 : Nat) &&& 7 = 1 by decide,
+    rexB_rex _ _ _ (bit_le_one _ _), bitsplit _ hd, ne_eq, not_true_eq_false,
+    ite_false, ite_true, hk8]
+  simp
+
 /-! ## 3. Round trips of the shapes outside `decodeJ1` -/
 
 /-- On a stream whose first byte is not a `REX` prefix, `decodeJ1_6` is `decodeJ1`:
@@ -875,6 +900,25 @@ theorem decodeLinstr_shift1 (ext d : Nat) (rest : List (BitVec 8))
     rexB_rex _ _ _ (bit_le_one _ _), BitVec.toNat_ofNat, modField_modRMReg,
     regField_modRMReg, rmField_modRMReg, he7, bitsplit _ hd, true_and]
   rcases hext with rfl | rfl | rfl <;> simp
+
+/-- The rotate of a register by one (`REX.W D1 /1`) decodes to the machine rotate by `1`. -/
+theorem decodeLinstr_ror1 (d : Nat) (rest : List (BitVec 8)) (hd : d < 16) :
+    decodeLinstr (encShift1 1 1 d ++ rest)
+      = some (.op (JInstr.ror (regName d) (.imm 1)), rest) := by
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 0 0 (bit d 3)))
+      (BitVec.ofNat 8 0xd1 :: BitVec.ofNat 8 (modRMReg 1 d) :: rest) = none := by
+    simp [decodeRex, modField_modRMReg, aluMnemonic]
+  apply decodeLinstr_of_decodeJ1_6
+  simp only [encShift1, rexOpt_w1, List.cons_append, List.nil_append]
+  rw [decodeJ1_6_of_none _ (by
+    rw [decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _)]; exact hnone)]
+  simp only [decodeShift1,
+    isRex_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexW_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _), BitVec.toNat_ofNat, modField_modRMReg,
+    regField_modRMReg, rmField_modRMReg, show (1 : Nat) &&& 7 = 1 by decide, bitsplit _ hd,
+    true_and]
+  simp
 
 /-- The 32-bit `MOV $imm32, %r32` without a prefix (`B8+rd id`), for a destination
     below `r8` and a value below `2 ^ 32`, decodes to the 64-bit `MOV` of the value:

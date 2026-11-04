@@ -35,9 +35,9 @@ set_option autoImplicit false
 to the printed `Lprog` and the `.text` bytes of its function, or `none` when a stage declines
 or a check refuses. The stages are, in order:
 
-0. the region legalisation `legalizeRegion`, which rewrites each rotate by an immediate into
-   its shift-or block (`legalizeRor`) and each and-not into its and-xor block
-   (`legalizeAndn`), and keeps the denotation and the leakage run;
+0. the region legalisation `legalizeRegion`, which rewrites each and-not into its and-xor
+   block (`legalizeAndn`), and keeps the denotation and the leakage run; a rotate by an
+   immediate is kept and compiled to the machine rotate;
 1. the test `regionExportableB` of the legalised program, and the test `NFProg.callFree` that
    it has no `call`;
 2. the region export `exportR` from the depth `Γ.length` and the label `0`, and its virtual
@@ -10896,39 +10896,6 @@ def compileRegion (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t :
         | none => none
     | none => none
   else none
-
-/-- An operation of the stack-memory fragment `opMemB` is no rotate. -/
-theorem isRorB_of_opMemB {op : JasminOp}
-    (h : X86Backend.ExportCertFragment.opMemB op = true) : isRorB op = false := by
-  cases op <;> simp_all [X86Backend.ExportCertFragment.opMemB, isRorB]
-
-/-- A program that passes `regionExportableB` has no rotate. -/
-theorem allOps_noRor_of_regionExportableB {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    {p : NFProg jasminDialect Γ ts} (h : regionExportableB p = true) :
-    p.allOps (fun op => !isRorB op) = true := by
-  induction p with
-  | ret => rfl
-  | var e k ih =>
-      simp only [regionExportableB, Bool.and_eq_true] at h
-      simp only [NFProg.allOps, isRorB_of_opMemB h.1, ih h.2, Bool.not_false, Bool.and_self]
-  | forLoop _ _ _ _ ihb ihk =>
-      simp only [regionExportableB, Bool.and_eq_true] at h
-      simp only [NFProg.allOps, ihb h.1, ihk h.2, Bool.and_self]
-  | ifThenElse _ _ _ _ iht ihe ihk =>
-      simp only [regionExportableB, Bool.and_eq_true] at h
-      simp only [NFProg.allOps, iht h.1.1, ihe h.1.2, ihk h.2, Bool.and_self]
-  | whileLoop _ _ _ ihb ihk =>
-      simp only [regionExportableB, Bool.and_eq_true] at h
-      simp only [NFProg.allOps, ihb h.1.2, ihk h.2, Bool.and_self]
-  | call _ _ _ ih =>
-      simp only [regionExportableB, Bool.and_eq_true] at h
-      exact ih h.2
-
-/-- **On a program that passes `regionExportableB` the rotate legalisation is the
-    identity.** -/
-theorem legalizeRor_eq_of_regionExportableB {Γ : Ctxt jasminDialect} {t : JasminTy}
-    {p : NFProg jasminDialect Γ [t]} (h : regionExportableB p = true) : legalizeRor p = p :=
-  legalizeRor_eq_of_noRor (allOps_noRor_of_regionExportableB h)
 
 /-- The public relation of the bytes of the legalised program is that of the program. -/
 theorem regionBytePub_legalizeRegion (σ : AbiLayout) (fuel : Nat) {Γ : Ctxt jasminDialect}

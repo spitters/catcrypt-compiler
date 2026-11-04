@@ -837,14 +837,15 @@ emitted count is the same `n` the gather's `lowerShiftImmJ` lowers. -/
 
     The SDM group-2 `/ext` table (Vol 2B, `SAL/SAR/SHL/SHR`) is `ROL = /0`,
     `ROR = /1`, `RCL = /2`, `RCR = /3`, `SHL/SAL = /4`, `SHR = /5`, `SAR = /7`
-    (`/6` is reserved). The rotates `ROL`/`ROR` are not in this table: an
-    `Lopn` over them reaches no arm, so `encodableLinstrR` reads `false` on it
-    and the gate declines the body (§5a). -/
+    (`/6` is reserved). The right rotate `"ROR:<n>"` is `/1`. The left rotate `ROL` is
+    not in this table: an `Lopn` over it reaches no arm, so `encodableLinstrR` reads
+    `false` on it and the gate declines the body (§5a). -/
 def tagShiftExt (base : String) : Option Nat :=
   let p := base.toList.take 4
   if p == "SHL:".toList then some 4
   else if p == "SHR:".toList then some 5
   else if p == "SAR:".toList then some 7
+  else if p == "ROR:".toList then some 1
   else none
 
 /-- The shift count of a count-in-tag base (`"SHR:19"` → `19`), the decimal suffix
@@ -2245,7 +2246,7 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "ADCXHI:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "MULXHI:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
-  , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], false)
+  , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], true)
   , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false)
   -- the two-source materialised comparison the compare-and-select export emits,
   -- `LprogAsmPrinter.renderSetcc`'s `cmp b, a ; mov $0, d ; set<cc> d8`, encoded by

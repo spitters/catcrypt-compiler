@@ -74,6 +74,6 @@ theorem regionExportableB_legalizeAndn {Γ : Ctxt jasminDialect} {t : JasminTy}
 theorem regionExportableB_legalizeRegion {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} (hp : regionExportableRorB p = true) :
     regionExportableB (legalizeRegion p) = true :=
-  regionExportableB_legalizeAndn (regionExportableB_legalizeRor hp)
+  regionExportableB_legalizeAndn ((regionExportableRorB_eq p).symm.trans hp)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc

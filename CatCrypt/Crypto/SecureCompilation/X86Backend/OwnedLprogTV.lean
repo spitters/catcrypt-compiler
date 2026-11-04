@@ -703,7 +703,7 @@ def binOk (m : String) : Bool :=
     m == "SHL" || m == "SHR" || m == "ANDN"
 
 /-- The mnemonics of `applyImmShiftN`. -/
-def shOk (m : String) : Bool := m == "SAR" || m == "SHL" || m == "SHR"
+def shOk (m : String) : Bool := m == "SAR" || m == "SHL" || m == "SHR" || m == "ROR"
 
 theorem applyOpnN_bin_some {w : Nat} {m : String} (h : binOk m = true) (a b : BitVec w) :
     (applyOpnN w m [a, b]).isSome := by
@@ -727,17 +727,18 @@ theorem binW_of_binOk {w : Nat} {m : String} (h : binOk m = true) (a b : BitVec 
 theorem applyImmShiftN_zero {w : Nat} {m : String} (h : shOk m = true) (a : BitVec w) :
     applyImmShiftN w m 0 a = some a := by
   simp only [shOk, Bool.or_eq_true, beq_iff_eq] at h
-  rcases h with (h | h) | h <;> subst h <;> simp [applyImmShiftN, applyOpnN]
+  rcases h with ((h | h) | h) | h <;> subst h <;>
+    simp [applyImmShiftN, applyOpnN, BitVec.rotateRight, BitVec.rotateRightAux]
 
 theorem applyImmShiftN_some {w : Nat} {m : String} (h : shOk m = true) (k : Nat) (a : BitVec w) :
     (applyImmShiftN w m k a).isSome := by
   simp only [shOk, Bool.or_eq_true, beq_iff_eq] at h
-  rcases h with (h | h) | h <;> subst h <;> simp [applyImmShiftN, applyOpnN]
+  rcases h with ((h | h) | h) | h <;> subst h <;> simp [applyImmShiftN, applyOpnN]
 
 theorem applyImmShiftN_none {w : Nat} {m : String} (h : shOk m = false) (k : Nat)
     (a : BitVec w) : applyImmShiftN w m k a = none := by
   simp only [shOk, Bool.or_eq_false_iff, beq_eq_false_iff_ne] at h
-  simp [applyImmShiftN, h.1.1, h.1.2, h.2]
+  simp [applyImmShiftN, h.1.1.1, h.1.1.2, h.1.2, h.2]
 
 /-- The sources of the register operation `opn d, [a, b]` are described in exchanged order:
     the base of `opn` is commutative (`TwoAddrLegalize.commBases`), `b` is the destination and

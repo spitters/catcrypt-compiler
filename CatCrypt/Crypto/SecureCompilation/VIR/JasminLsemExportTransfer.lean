@@ -297,6 +297,31 @@ theorem fstepF_immShiftWire (m : String) (hm : m = "SHR" ∨ m = "SHL" ∨ m = "
   cases lsemStepN (.Lopn [.reg dst] (withWidthTag w (m ++ ":" ++ toString k)) [.reg a]) s.reg <;>
     rfl
 
+/-- The count-in-mnemonic wire of a rotate, reduced to the base step `lsemStepN` over the
+    register half. -/
+theorem fstepF_rorWire (w k : Nat) (dst a : String) (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg dst] (withWidthTag w ("ROR" ++ ":" ++ toString k)) [.reg a],
+        MemTag.reg none) s zf
+      = (lsemStepN (.Lopn [.reg dst] (withWidthTag w ("ROR" ++ ":" ++ toString k)) [.reg a])
+          s.reg).map (fun r => ({ s with reg := r }, zf)) := by
+  obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("ROR" ++ ":" ++ toString k) 'R'
+    (by rw [String.toList_append, String.toList_append]; rfl) (by decide) (by decide)
+  have h3 : copyQ (withWidthTag w ("ROR" ++ ":" ++ toString k)) = false :=
+    copyQ_withWidthTag w (by rw [String.toList_append, String.toList_append]; rfl)
+      (by decide)
+  obtain ⟨_, hc, hmv⟩ := lopn_plain [LOperand.reg dst]
+    (withWidthTag w ("ROR" ++ ":" ++ toString k)) [LOperand.reg a] (.reg none) h1 h2 h3
+  unfold fstepF
+  rw [hc, hmv]
+  simp only []
+  rw [stepMemF_of_quiet rfl rfl rfl]
+  rw [lsemStepMem_reg, lsemStepCast_of_delegate _ _ (Or.inr rfl),
+    lsemStepMC_of_delegate _ _ rfl rfl rfl rfl rfl, lsemStepSh_of_not_sar _ _ rfl]
+  simp only [Option.map_map]
+  cases lsemStepN (.Lopn [.reg dst] (withWidthTag w ("ROR" ++ ":" ++ toString k)) [.reg a])
+      s.reg <;>
+    rfl
+
 /-! ### The expansion carrying the model chain to the body walk -/
 
 /-- Under the trivial immediate-slot map, every operand a variable vector
@@ -446,11 +471,11 @@ theorem immShiftMnem?_shiftCount {m : String} (hm : m = "SHR" ∨ m = "SHL" ∨ 
     (w n : Nat) (hw : w = 64 ∨ hasSuffix (m ++ ":" ++ toString n) ":64" = false) :
     JasminImmShiftMnem.immShiftMnem? (withWidthTag w (m ++ ":" ++ toString n))
       = some (m, n) := by
-  have hm' : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" := by
+  have hm' : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR" := by
     rcases hm with rfl | rfl | rfl
     · exact Or.inr (Or.inl rfl)
     · exact Or.inl rfl
-    · exact Or.inr (Or.inr rfl)
+    · exact Or.inr (Or.inr (Or.inl rfl))
   exact JasminImmShiftMnem.immShiftMnem?_withWidthTag hm' w n
 
 /-- The structured two-source wire of an immediate shift, reduced to the

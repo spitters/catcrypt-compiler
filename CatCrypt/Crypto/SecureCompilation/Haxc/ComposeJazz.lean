@@ -215,10 +215,8 @@ theorem NFEntry.jasminOfChain_sem {E : NFEntry} {s : E.Src} {σ : AbiLayout}
   cases hparse
   have hprog' : translateUnit u0 = some prog := hprog
   have honly := hchain x hx
-  have hexL : regionExportableB (legalizeRegion x.2) = true := by
-    unfold legalizeRegion
-    rw [legalizeRor_eq_of_regionExportableB hex]
-    exact regionExportableB_legalizeAndn hex
+  have hexL : regionExportableB (legalizeRegion x.2) = true :=
+    regionExportableB_legalizeRegion ((regionExportableRorB_eq x.2).trans hex)
   have hf : E.frontR σ s = some ⟨nfCtx σ, x.1, .regions x.2⟩ := by
     unfold NFEntry.chainNF at hx
     obtain ⟨q, hq, hx⟩ := Option.bind_eq_some_iff.mp hx

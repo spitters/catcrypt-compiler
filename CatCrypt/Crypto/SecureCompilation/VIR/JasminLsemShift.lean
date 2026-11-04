@@ -660,6 +660,32 @@ theorem lsemStepSh_var {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
   rw [lsemStepSh_of_not_sar _ _ (sarStruct?_regArith _ _ _)]
   exact lsemStepN_var bop heq args hagree
 
+/-- The `rorImm` `opToLinstrR` image is never a structured `SAR`. -/
+theorem sarStruct?_ror {w k : Nat} (dst : String) (srcs : List LOperand) :
+    sarStruct? (opToLinstrR (JasminOp.rorImm w k) dst srcs) = none := by
+  rw [opToLinstrR]
+  exact sarStruct?_of_ne (by
+    rw [JasminLsemWidthN.stripWidthTag_withWidthTag_ROR]
+    exact JasminLsemWidthN.ror_core_ne_of_head k (by decide))
+
+/-- The `rorImm` binding steps via `lsemStepSh` to its denotation (`lsemStepN_ror`). -/
+theorem lsemStepSh_ror {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
+    {V : Ctxt.Valuation Γ} {st : LstateN} {w k : Nat}
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w k) = .reg w)
+    (args : HVector (fun ty => Ctxt.Var Γ ty)
+      (DialectSignature.sig (d := jasminDialect) (JasminOp.rorImm w k)))
+    (hagree : StoreAgreesN nArgs curDepth st V) :
+    lsemStepSh
+        (opToLinstrR (JasminOp.rorImm w k) (regName curDepth)
+          (exprArgs curDepth nArgs argName (fun _ => none)
+            (⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w))))
+        st =
+      some ((st.setReg (regName curDepth)
+        ((⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote
+          V)).nextPc) := by
+  rw [lsemStepSh_of_not_sar _ _ (sarStruct?_ror _ _)]
+  exact JasminLsemWidthN.lsemStepN_ror heq args hagree
+
 /-- The `select` binding steps via `lsemStepSh` to its denotation (increment 5's
     `lsemStepN_sel`, transferred through `lsemStepSh = lsemStepN`). -/
 theorem lsemStepSh_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}

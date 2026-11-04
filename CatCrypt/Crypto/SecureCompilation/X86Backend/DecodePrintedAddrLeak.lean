@@ -264,8 +264,9 @@ theorem AArm.leak (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true) 
       · rfl
     | shr m D S =>
       by_cases hDS : D = S <;> by_cases hl : tagShl m = true <;>
-        simp [AArm.js, AArm.pieces, Arm.pieces, tagShMk, hDS, hl, blockLeakA, opLeak, instrLeak,
-          JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing]
+        by_cases hro : tagRor m = true <;>
+        simp [AArm.js, AArm.pieces, Arm.pieces, tagShMk, hDS, hl, hro, blockLeakA, opLeak,
+          instrLeak, JInstr.mnem, DoitRegime.leaksOperands, X86Mnem.timing]
     | shl0 m D S =>
       by_cases hDS : D = S <;>
         simp [AArm.js, AArm.pieces, Arm.pieces, hDS, blockLeakA, opLeak, instrLeak,

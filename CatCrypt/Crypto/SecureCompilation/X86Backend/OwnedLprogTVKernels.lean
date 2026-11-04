@@ -35,8 +35,9 @@ whole 1058-instruction X25519 ladder step `Fe25519LfundefBridge.monoStepLprog` r
 symbolically over a shared term table and is accepted. The step writes its results to the
 cells `mem.RDI.<off>`, which `ownedCheckTy` observes (`OwnedLprogTV.resOuts`), so the
 acceptance compares their values; the step with one instruction removed (`monoStepDrop`) is
-rejected. The entry and loop blocks of the rolled Keccak-f1600 fail at `LOADSYM` and
-`ROR:63:64`, which `lsemFuelMemF` does not step.
+rejected. The entry block of the rolled Keccak-f1600 fails at `LOADSYM`, which `lsemFuelMemF`
+does not step. Its loop block, whose rotates `ROR:63:64` the flag machine steps, is compared,
+and the check rejects the pair.
 
 ## Main definitions
 
@@ -136,7 +137,7 @@ set_option kat.ms 1500 in
 set_option kat.ms 1500 in
 #kat ownedCheckTy tyWire Fe25519LfundefBridge.monoStepLprog (monoStepDrop 500) == false
 set_option kat.ms 2500 in
-#kat ownedResult tyWire keccakRolledPre == some (true, 2, 3)
+#kat ownedResult tyWire keccakRolledPre == some (false, 1, 3)
 
 /-! ## The check on a carry chain
 

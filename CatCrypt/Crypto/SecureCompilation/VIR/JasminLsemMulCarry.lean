@@ -743,6 +743,41 @@ theorem lsemStepMC_var {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
   rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
   exact lsemStepSh_var bop heq args hagree
 
+/-- The `rorImm` `opToLinstrR` image is recognised by none of the multiply and carry
+    heads. -/
+theorem struct?_ror {w k : Nat} (dst : String) (srcs : List LOperand) :
+    mulhiStruct? (opToLinstrR (JasminOp.rorImm w k) dst srcs) = none ∧
+    adcxStruct? (opToLinstrR (JasminOp.rorImm w k) dst srcs) = none ∧
+    adcxhiStruct? (opToLinstrR (JasminOp.rorImm w k) dst srcs) = none ∧
+    sbbStruct? (opToLinstrR (JasminOp.rorImm w k) dst srcs) = none ∧
+    sbbhiStruct? (opToLinstrR (JasminOp.rorImm w k) dst srcs) = none := by
+  rw [opToLinstrR]
+  refine ⟨mulhiStruct?_of_ne ?_, adcxStruct?_of_ne ?_, adcxhiStruct?_of_ne ?_,
+      sbbStruct?_of_ne ?_, sbbhiStruct?_of_ne ?_⟩ <;>
+    · rw [JasminLsemWidthN.stripWidthTag_withWidthTag_ROR]
+      exact JasminLsemWidthN.ror_core_ne_of_head k (by decide)
+
+/-- The `rorImm` binding steps via `lsemStepMC` to its denotation. -/
+theorem lsemStepMC_ror {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
+    {V : Ctxt.Valuation Γ} {st : LstateN} {w k : Nat}
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w k) = .reg w)
+    (args : HVector (fun ty => Ctxt.Var Γ ty)
+      (DialectSignature.sig (d := jasminDialect) (JasminOp.rorImm w k)))
+    (hagree : StoreAgreesN nArgs curDepth st V) :
+    lsemStepMC
+        (opToLinstrR (JasminOp.rorImm w k) (regName curDepth)
+          (exprArgs curDepth nArgs argName (fun _ => none)
+            (⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w))))
+        st =
+      some ((st.setReg (regName curDepth)
+        ((⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote
+          V)).nextPc) := by
+  obtain ⟨hm, ha, hh, hs, hsh⟩ := struct?_ror (w := w) (k := k) (regName curDepth)
+    (exprArgs curDepth nArgs argName (fun _ => none)
+      (⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w)))
+  rw [lsemStepMC_of_delegate _ _ hm ha hh hs hsh]
+  exact lsemStepSh_ror heq args hagree
+
 /-- The `select` binding steps via `lsemStepMC` to its denotation. -/
 theorem lsemStepMC_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateN} {w : Nat}

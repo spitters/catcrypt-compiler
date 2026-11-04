@@ -135,7 +135,7 @@ immediate source, which the register-copy recogniser rejects. -/
     (`SET<cc>`). -/
 def OpPlain : JasminOp → Prop
   | .regArith _ _ | .regConst _ _ | .select _ | .shrImm _ _ | .shlImm _ _
-  | .sarImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
+  | .sarImm _ _ | .rorImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
   | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _
   | .stackZero _ _ | .stackStoreImm _ _ _ => True
   | _ => False
@@ -275,6 +275,11 @@ theorem opToLinstrR_plain (op : JasminOp) (hop : OpPlain op) (dst : String)
       (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))
   case sarImm w k =>
     obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("SAR:" ++ toString (sarCount w k)) 'S'
+      (by rw [String.toList_append]; rfl) (by decide) (by decide)
+    exact lopn_plain _ _ _ _ h1 h2
+      (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))
+  case rorImm w k =>
+    obtain ⟨h1, h2⟩ := withWidthTag_plain_of_head w ("ROR:" ++ toString k) 'R'
       (by rw [String.toList_append]; rfl) (by decide) (by decide)
     exact lopn_plain _ _ _ _ h1 h2
       (copyQ_withWidthTag w (by rw [String.toList_append]; rfl) (by decide))

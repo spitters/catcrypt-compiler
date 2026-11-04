@@ -83,6 +83,16 @@ theorem opMemB_of_opMemRorB {op : JasminOp} (h : opMemRorB op = true)
     (hn : isRorB op = false) : opMemB op = true := by
   cases op <;> simp_all [opMemRorB, rorInRangeB, isRorB]
 
+/-- Every in-range rotate is an operation of `opMemB`, so `opMemRorB` is `opMemB`. -/
+theorem opMemRorB_eq_opMemB : opMemRorB = opMemB := by
+  funext op
+  cases op <;> simp [opMemRorB, rorInRangeB, opMemB]
+
+/-- The test `regionExportableRorB` is the test `regionExportableB`. -/
+theorem regionExportableRorB_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) : regionExportableRorB p = regionExportableB p := by
+  rw [regionExportableRorB, opMemRorB_eq_opMemB, regionExportableByB_opMemB]
+
 /-- **Completeness of the region export test after the rotate legalisation.** A program
     whose bindings are operations of `opMemB` or in-range rotates, with the structural
     conditions of `regionExportableB` (`regionExportableRorB`), passes `regionExportableB`

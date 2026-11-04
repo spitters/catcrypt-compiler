@@ -19,14 +19,14 @@ The stage `legalizeAndn` rewrites every binding of the BMI1 and-not `regArith .a
 `regArith .and w` and `regArith .xor w` (`andXorBlock`), in every region: it is the
 legalisation `legalizeBy isAndnB andnBlock`. A program with no and-not binding is returned
 unchanged (`legalizeAndn_eq_of_noAndn`). The region legalisation `legalizeRegion` of the
-region back half is the rotate legalisation `legalizeRor` followed by `legalizeAndn`.
+region back half is `legalizeAndn`; a rotate by an immediate is compiled natively.
 
 ## Main definitions
 
 * `isAndnB` — the test of an and-not.
 * `andXorBlock`, `andnBlock` — the and-xor block of an and-not, and the block of a binding.
 * `legalizeAndn` — the stage on a program with one result.
-* `legalizeRegion` — the rotate legalisation followed by the and-not legalisation.
+* `legalizeRegion` — the region legalisation, the and-not legalisation.
 
 ## Main results
 
@@ -190,24 +190,25 @@ theorem legalizeAndn_callFree {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 /-! ## 3. The region legalisation -/
 
-/-- **The region legalisation** of a program with one result: the rotate legalisation
-    `legalizeRor` followed by the and-not legalisation `legalizeAndn`. -/
+/-- **The region legalisation** of a program with one result: the and-not legalisation
+    `legalizeAndn`. A rotate by an immediate is compiled natively, so the rotate legalisation
+    `legalizeRor` is not a stage. -/
 def legalizeRegion {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDialect Γ [t]) :
     NFProg jasminDialect Γ [t] :=
-  legalizeAndn (legalizeRor p)
+  legalizeAndn p
 
 /-- **The region legalisation keeps the denotation** at every call environment and fuel. -/
 theorem legalizeRegion_denoteAt (E : CallEnv jasminDialect) (fuel : Nat)
     {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDialect Γ [t])
     (V : Valuation Γ) :
     (legalizeRegion p).denoteAt E fuel V = p.denoteAt E fuel V :=
-  (legalizeAndn_denoteAt E fuel _ V).trans (legalizeRor_denoteAt E fuel p V)
+  legalizeAndn_denoteAt E fuel p V
 
 /-- **The region legalisation keeps the denotation**, at every fuel. -/
 theorem legalizeRegion_denote [CallDenote jasminDialect] (fuel : Nat) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (p : NFProg jasminDialect Γ [t]) :
     (legalizeRegion p).denote fuel = p.denote fuel :=
-  (legalizeAndn_denote fuel _).trans (legalizeRor_denote fuel p)
+  legalizeAndn_denote fuel p
 
 /-- **The region legalisation keeps the leakage run** at leakage parameters with no
     variable-time operation, at every fuel. -/
@@ -216,7 +217,7 @@ theorem legalizeRegion_leakRun {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = non
     (V : Valuation Γ) :
     Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel (legalizeRegion p) V
       = Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel p V :=
-  (legalizeAndn_leakRun hV fuel _ V).trans (legalizeRor_leakRun hV fuel p V)
+  legalizeAndn_leakRun hV fuel p V
 
 /-- **The region legalisation keeps constant time at the source events** at leakage
     parameters with no variable-time operation. -/
@@ -225,14 +226,14 @@ theorem nfct_legalizeRegion {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
     {L : ComLevelCheck.Labels Γ} {fuel : Nat}
     (h : Dialects.NFLeak.NFCT (jLeakModel Pj) L fuel p) :
     Dialects.NFLeak.NFCT (jLeakModel Pj) L fuel (legalizeRegion p) :=
-  nfct_legalizeAndn hV (nfct_legalizeRor hV h)
+  nfct_legalizeAndn hV h
 
 /-- **The region legalisation keeps the value of every test that reads only the calls.** -/
 theorem legalizeRegion_callTest {c : String → Bool}
     {F : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts → Bool}
     (hF : CallTest c F) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : F (legalizeRegion p) = F p :=
-  (legalizeAndn_callTest hF _).trans (legalizeRor_callTest hF p)
+  legalizeAndn_callTest hF p
 
 /-- **The region legalisation keeps the absence of `call` and its presence.** -/
 theorem legalizeRegion_callFree_eq {Γ : Ctxt jasminDialect} {t : JasminTy}

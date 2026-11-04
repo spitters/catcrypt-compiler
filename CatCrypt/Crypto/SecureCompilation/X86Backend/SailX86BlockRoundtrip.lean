@@ -355,6 +355,7 @@ def decodeRex (r : BitVec 8) : List (BitVec 8) → Option (JInstr 64 × List (Bi
                   if regField modrm = 4 then some (.shl dst (.imm ib.toNat), rest2)
                   else if regField modrm = 5 then some (.shr dst (.imm ib.toNat), rest2)
                   else if regField modrm = 7 then some (.sar dst (.imm ib.toNat), rest2)
+                  else if regField modrm = 1 then some (.ror dst (.imm ib.toNat), rest2)
                   else none
               | [] => none
             else if op.toNat = 0xf7 then
@@ -439,6 +440,7 @@ def decodeShift1 : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
         if regField modrm = 4 then some (.shl dst (.imm 1), rest)
         else if regField modrm = 5 then some (.shr dst (.imm 1), rest)
         else if regField modrm = 7 then some (.sar dst (.imm 1), rest)
+        else if regField modrm = 1 then some (.ror dst (.imm 1), rest)
         else none
       else none
   | _ => none
@@ -613,6 +615,7 @@ def decodableJ : JInstr 64 → Bool
   | .shl _ (.imm v) => v < 256
   | .shr _ (.imm v) => v < 256
   | .sar _ (.imm v) => v < 256
+  | .ror _ (.imm v) => decide (v < 256) && v != 1
   | .cmove _ (.reg _) => true
   | .cmovne _ (.reg _) => true
   | .cmovb _ (.reg _) => true
@@ -654,6 +657,8 @@ def blockCovered : JInstr 64 → Bool := decodableJ
 #kat_kernel ! blockCovered (.loadMemIdx "a" "b" "c" 8)
 #kat_kernel ! blockCovered (.storeMemIdx "a" "c" 8 (.reg "b"))
 #kat_kernel blockCovered (.shl "a" (.imm 13))
+#kat_kernel blockCovered (.ror "a" (.imm 3))
+#kat_kernel ! blockCovered (.ror "a" (.imm 1))
 #kat_kernel blockCovered (.loadMem "a" "b" (-8))
 #kat_kernel blockCovered (.setc "a")
 #kat_kernel blockCovered (.test "a" (.reg "b"))
@@ -680,7 +685,6 @@ def blockCovered : JInstr 64 → Bool := decodableJ
 #kat_kernel ! blockCovered (.not_ "a")
 #kat_kernel ! blockCovered (.andn "a" "b" "c")
 #kat_kernel ! blockCovered (.rol "a" (.imm 3))
-#kat_kernel ! blockCovered (.ror "a" (.imm 3))
 #kat_kernel ! blockCovered (.rorx "a" "b" (.imm 3))
 #kat_kernel ! blockCovered (.shlx "a" "b" "c")
 #kat_kernel ! blockCovered (.shrx "a" "b" "c")
@@ -1593,6 +1597,35 @@ theorem roundtrip_sar (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (Bit
     ite_eq_right (show ¬((7 : Nat) = 4) by decide), ite_eq_right (show ¬((7 : Nat) = 5) by decide),
     renameJ, operandOf, imm8_recompose_mod v hv]
 
+/-- `ROR $imm8, %dst` (`REX.W C1 /1 ib`) decodes back to itself, at a count other than `1`
+    (the count `1` is encoded in the shift-by-one form `D1 /1`). -/
+theorem roundtrip_ror (alloc : GpAlloc) (d : String) (v : Nat) (rest : List (BitVec 8))
+    (hv : v < 256) (h1 : v ≠ 1) :
+    decodeJ1 (encodeJInstr alloc (.ror d (.imm v)) ++ rest)
+      = some (renameJ alloc (.ror d (.imm v)), rest) := by
+  have he : encodeJInstr alloc (.ror d (.imm v)) = encShiftImm 1 (gpNum (regOf alloc d)) v := by
+    simp only [encodeJInstr]
+  rw [he]
+  simp only [encShiftImm, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append,
+    decodeJ1_rex _ _ _ (Nat.zero_le 1) (Nat.zero_le 1) (bit_le_one _ _),
+    decodeRex, BitVec.toNat_ofNat,
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x0f) by decide),
+    ite_eq_right
+      (show ¬(0xb8 ≤ (0xc1 : Nat) % 2 ^ 8 ∧ (0xc1 : Nat) % 2 ^ 8 ≤ 0xbf) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x8b) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x89) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x81) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0xc7) by decide),
+    ite_eq_right (show ¬((0xc1 : Nat) % 2 ^ 8 = 0x69) by decide),
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg,
+    rexB_rex _ _ _ (bit_le_one _ _), regName_split, ne_eq, not_true_eq_false,
+    ite_false, ite_true, show (1 : Nat) &&& 7 = 1 by decide,
+    ite_eq_right (show ¬((1 : Nat) = 4) by decide),
+    ite_eq_right (show ¬((1 : Nat) = 5) by decide),
+    ite_eq_right (show ¬((1 : Nat) = 7) by decide),
+    renameJ, operandOf, imm8_recompose_mod v hv]
+
 /-- `NEG %dst` (`REX.W F7 /3`) decodes back to itself. -/
 theorem roundtrip_neg (alloc : GpAlloc) (d : String) (rest : List (BitVec 8)) :
     decodeJ1 (encodeJInstr alloc (.neg d) ++ rest)
@@ -1853,7 +1886,12 @@ theorem roundtrip_decodeJ1 (alloc : GpAlloc) (i : JInstr 64) (rest : List (BitVe
   | not_ d => simp [decodableJ] at hd
   | andn d a b => simp [decodableJ] at hd
   | rol d amt => simp [decodableJ] at hd
-  | ror d amt => simp [decodableJ] at hd
+  | ror d amt =>
+      cases amt with
+      | reg r => simp [decodableJ] at hd
+      | imm v =>
+          simp only [decodableJ, Bool.and_eq_true, decide_eq_true_eq, bne_iff_ne, ne_eq] at hd
+          exact roundtrip_ror _ _ _ _ hd.1 hd.2
   | rorx d src amt => simp [decodableJ] at hd
   | shlx d src cnt => simp [decodableJ] at hd
   | shrx d src cnt => simp [decodableJ] at hd

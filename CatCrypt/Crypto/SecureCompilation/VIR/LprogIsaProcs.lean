@@ -144,7 +144,7 @@ theorem immShiftMnem?_callMnem {opn : String} (h : CallMnem opn) : immShiftMnem?
       rw [String.toList_ofList] at hl
       exact hl rfl
     simp only [hne "SHL" (by decide), hne "SHR" (by decide), hne "SAR" (by decide),
-      Bool.or_self, Bool.false_eq_true, ite_false]
+      hne "ROR" (by decide), Bool.or_self, Bool.false_eq_true, ite_false]
   · rfl
 
 /-! ## 2. The straight-line steps -/

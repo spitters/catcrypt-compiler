@@ -656,6 +656,25 @@ theorem lsemStepCast_sel {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
   rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
   exact lsemStepMC_sel heq args hagree
 
+/-- The `rorImm` binding, tagged with no cast descriptor, steps via `lsemStepCast` to its
+    denotation. -/
+theorem lsemStepCast_ror {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
+    {V : Ctxt.Valuation Γ} {st : LstateN} {w k : Nat}
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w k) = .reg w)
+    (args : HVector (fun ty => Ctxt.Var Γ ty)
+      (DialectSignature.sig (d := jasminDialect) (JasminOp.rorImm w k)))
+    (hagree : StoreAgreesN nArgs curDepth st V) :
+    lsemStepCast
+        (opToLinstrR (JasminOp.rorImm w k) (regName curDepth)
+          (exprArgs curDepth nArgs argName (fun _ => none)
+            (⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w))), none)
+        st =
+      some ((st.setReg (regName curDepth)
+        ((⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote
+          V)).nextPc) := by
+  rw [lsemStepCast_of_delegate _ _ (Or.inr rfl)]
+  exact lsemStepMC_ror heq args hagree
+
 theorem lsemStepCast_shr {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateN} {w n : Nat} (hn : n < 2 ^ w)
     (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.shrImm w n) = .reg w)

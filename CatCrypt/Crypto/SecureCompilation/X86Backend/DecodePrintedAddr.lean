@@ -896,7 +896,8 @@ theorem regArm_facts {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P 
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩ := h
     refine ⟨?_, fun d s hs => ?_, rfl⟩
     · by_cases hDS : D = S <;> by_cases hl : tagShl m = true <;>
-        simp [Arm.js, Arm.pieces, tagShMk, hDS, hl, noWriteB]
+        by_cases hro : tagRor m = true <;>
+        simp [Arm.js, Arm.pieces, tagShMk, hDS, hl, hro, noWriteB]
     · simp only [Arm.instr, slotMov?] at hs
       split_ifs at hs; cases hs
       exact ⟨hD, hS⟩
@@ -1688,7 +1689,8 @@ theorem Arm.caret_free_of_ok {P : Params} {Q : List (String × Int)} {a : Arm}
   · have h1 := h.1.1; unfold aluArm at h1; split at h1 <;> first | decide | simp at h1
   · have h1 := h.2; simp only [beq_iff_eq] at h1; rw [h1, toList_withWidthTag_64]
     simp only [tagShName, String.toList_append, List.mem_append, not_or]
-    refine ⟨⟨⟨?_, by decide⟩, (sep_not_mem_toString _).2⟩, by decide⟩; split <;> decide
+    refine ⟨⟨⟨?_, by decide⟩, (sep_not_mem_toString _).2⟩, by decide⟩
+    split <;> [decide; (split <;> decide)]
   · have h1 := h.2; simp only [beq_iff_eq] at h1; rw [h1, toList_withWidthTag_64]
     simp only [String.toList_append, List.mem_append, not_or]
     exact ⟨⟨⟨by decide, by decide⟩, (sep_not_mem_toString _).2⟩, by decide⟩

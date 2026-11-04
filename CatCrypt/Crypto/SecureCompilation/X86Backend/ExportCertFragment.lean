@@ -44,19 +44,22 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieArrUncond
 /-! ## 1. The op set -/
 
 /-- The ops of the stack-memory fragment with the side conditions `ScalarMemN` asks: a
-    constant at a positive width, an immediate shift by less than `2 ^ w`. -/
+    constant at a positive width, an immediate shift by less than `2 ^ w`. A rotate by an
+    immediate is admitted at a count `0 < k < w`, the counts the machine rotate encodes
+    with no reduction. -/
 def opMemB : JasminOp → Bool
   | .regArith _ _ | .select _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
   | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _
   | .stackZero _ _ | .stackStoreImm _ _ _ => true
   | .regConst w _ => decide (0 < w)
   | .shrImm w m | .shlImm w m | .sarImm w m => decide (m < 2 ^ w)
+  | .rorImm w k => decide (0 < k ∧ k < w)
   | _ => false
 
 /-- A decision of `OpPlain`. -/
 def opPlainB : JasminOp → Bool
   | .regArith _ _ | .regConst _ _ | .select _ | .shrImm _ _ | .shlImm _ _
-  | .sarImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
+  | .sarImm _ _ | .rorImm _ _ | .mulhi _ | .addCarryLo _ | .addCarryHi _ | .castW _ _
   | .stackLoad _ _ | .stackStore _ _ | .cmp _ _ | .cmpImm _ _ _
   | .stackZero _ _ | .stackStoreImm _ _ _ => true
   | _ => false
@@ -102,6 +105,7 @@ theorem scalarMemNB_sound : {Γ : Ctxt jasminDialect} → {t : JasminTy} →
         | cases heq; exact ScalarMemN.shr hop rfl args ih
         | cases heq; exact ScalarMemN.shl hop rfl args ih
         | cases heq; exact ScalarMemN.sar hop rfl args ih
+        | cases heq; exact ScalarMemN.ror rfl args ih
         | cases heq; exact ScalarMemN.mulhi rfl args ih
         | cases heq; exact ScalarMemN.addLo rfl args ih
         | cases heq; exact ScalarMemN.addHi rfl args ih

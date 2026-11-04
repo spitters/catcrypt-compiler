@@ -420,6 +420,7 @@ theorem scalarMemN_rename {Γ : Ctxt jasminDialect} {u : JasminTy}
   | shr hm heq args _ ih => intro _ h; exact .shr hm heq _ (ih h.lift)
   | shl hm heq args _ ih => intro _ h; exact .shl hm heq _ (ih h.lift)
   | sar hm heq args _ ih => intro _ h; exact .sar hm heq _ (ih h.lift)
+  | ror heq args _ ih => intro _ h; exact .ror heq _ (ih h.lift)
   | mulhi heq args _ ih => intro _ h; exact .mulhi heq _ (ih h.lift)
   | addLo heq args _ ih => intro _ h; exact .addLo heq _ (ih h.lift)
   | addHi heq args _ ih => intro _ h; exact .addHi heq _ (ih h.lift)

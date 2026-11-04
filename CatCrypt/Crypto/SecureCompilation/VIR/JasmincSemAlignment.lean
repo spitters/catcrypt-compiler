@@ -338,6 +338,7 @@ flag it reads is defined.
 | `shrImm w n`          | `x = x >> n` (`x86_SHR`)                                    | `shrImm_agrees_jasmin` |
 | `shlImm w n`          | `x = x << n` (`x86_SHL`)                                    | `shlImm_agrees_jasmin` |
 | `sarImm w n`          | `x = x >>s n` (`x86_SAR`), for `n < w`                      | `sarImm_agrees_jasmin` |
+| `rorImm w n`          | `x = x >>r n` (`x86_ROR`), for `0 < n < w`   | `rorImm_agrees_jasmin` |
 | `select w`            | `b ^ ((a ^ b) & -c)`                                        | `select_agrees_jasmin` |
 | `mulhi w`             | the high word of `#MULX` (`x86_MULX_lo_hi`)                 | `mulhi_agrees_jasmin` |
 | `addCarryLo w`        | `#ADD_w(c, -1)`; `#ADC_w(a, b, cf)`                         | `addCarryLo_agrees_jasmin` |
@@ -351,7 +352,7 @@ flag it reads is defined.
 proves it for every op of `opMemB`. -/
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
-  (wreprN B5W x86_ADD x86_ADC x86_NEG x86_CMP x86_SHR x86_SHL x86_SAR x86_MULX_lo_hi)
+  (wreprN B5W x86_ADD x86_ADC x86_NEG x86_CMP x86_SHR x86_SHL x86_SAR x86_ROR x86_MULX_lo_hi)
 
 /-- A `reg 1` value as the `0`/`1` word of width `w` that holds it in a register. -/
 def jBitWord {w : Nat} (v : BitVec 1) : BitVec w := BitVec.ofNat w v.toNat
@@ -479,6 +480,17 @@ theorem sarImm_agrees_jasmin {w n : Nat} (hn : n < w) (a : BitVec w) :
   · simp only [X86Backend.Jasmin.rflags_OF, X86Backend.Jasmin.wsar,
       Nat.min_eq_right (Nat.le_of_lt hn)]
 
+/-- **`rorImm` row.** At a count `0 < n < w` the dialect's right rotate is the word of the
+    machine rotate `x86_ROR` by the count as a width-`w` word. -/
+theorem rorImm_agrees_jasmin {w n : Nat} (hn : 0 < n ∧ n < w) (a : BitVec w) :
+    a.rotateRight n = (x86_ROR a (BitVec.ofNat w n)).word := by
+  have h0 : (BitVec.ofNat w n).toNat = n := by
+    simp [Nat.mod_eq_of_lt (lt_trans hn.2 (Nat.lt_two_pow_self))]
+  have hne : n ≠ 0 := by omega
+  simp only [x86_ROR, X86Backend.Jasmin.shiftCount, h0, shiftMask_of_lt hn.2, hne, ite_false,
+    X86Backend.Jasmin.wror]
+  rw [rorImm_denote_eq_shiftOr n hn.2]
+
 /-- **`select` row.** `selectW` is the mask select `b ^ ((a ^ b) & -c)`. -/
 theorem select_agrees_jasmin {w : Nat} (c : BitVec 1) (a b : BitVec w) :
     selectW c a b = jSelectMask c a b :=
@@ -598,6 +610,8 @@ def OpAligned : JasminOp → Prop
   | .shlImm w n => ∀ a : BitVec w, a <<< shiftMask w n = (x86_SHL a (BitVec.ofNat w n)).word
   | .sarImm w n => n < w → ∀ a : BitVec w,
       BitVec.sshiftRight a n = (x86_SAR a (BitVec.ofNat w n)).word
+  | .rorImm w n => 0 < n ∧ n < w → ∀ a : BitVec w,
+      a.rotateRight n = (x86_ROR a (BitVec.ofNat w n)).word
   | .select w => ∀ (c : BitVec 1) (a b : BitVec w), selectW c a b = jSelectMask c a b
   | .mulhi w => ∀ a b : BitVec w, mulHiW a b = (x86_MULX_lo_hi a b).2
   | .addCarryLo w => ∀ (a b : BitVec w) (c : BitVec 1),

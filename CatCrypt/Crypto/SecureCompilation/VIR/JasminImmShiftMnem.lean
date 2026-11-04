@@ -18,7 +18,8 @@ set_option autoImplicit false
 `opToLinstrR` exports an immediate shift `shrImm w k` / `shlImm w k` /
 `sarImm w k` as the one-source instruction
 `Lopn [.reg dst] (withWidthTag w ("SHR:" ++ toString k)) [src]`, carrying the
-compile-time count in the mnemonic. This module decodes that mnemonic back into
+compile-time count in the mnemonic, and a rotate `rorImm w k` likewise under the base
+`ROR`. This module decodes that mnemonic back into
 its base and its count, and states the decoder's agreement with the exporter's
 rendering for every count.
 
@@ -274,14 +275,15 @@ theorem stripWidthTag_of_untagged (s : String) (h1 : '^' ∉ s.toList)
 /-! ## 2. The mnemonic decoder -/
 
 /-- The base mnemonic and the compile-time count of a count-in-mnemonic
-    immediate-shift mnemonic (`SHL:<k>`, `SHR:<k>`, `SAR:<k>`, untagged or with
-    a width tag); `none` for any other mnemonic. -/
+    immediate-shift or rotate mnemonic (`SHL:<k>`, `SHR:<k>`, `SAR:<k>`, `ROR:<k>`,
+    untagged or with a width tag); `none` for any other mnemonic. -/
 def immShiftMnem? (opn : String) : Option (String × Nat) :=
   let core := stripWidthTag opn
   match splitChars ':' core.toList with
   | [mn, ds] =>
       let m := String.ofList mn
-      if m == "SHL" || m == "SHR" || m == "SAR" then (natOfDigits? ds).map (fun k => (m, k))
+      if m == "SHL" || m == "SHR" || m == "SAR" || m == "ROR" then
+        (natOfDigits? ds).map (fun k => (m, k))
       else none
   | _ => none
 
@@ -293,46 +295,48 @@ theorem toList_mnem (m : String) (k : Nat) :
   simp
 
 /-- A shift base carries no separator. -/
-theorem base_no_colon {m : String} (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") :
+theorem base_no_colon {m : String}
+    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR") :
     ∀ c ∈ m.toList, c ≠ ':' := by
-  rcases hm with rfl | rfl | rfl <;> decide
+  rcases hm with rfl | rfl | rfl | rfl <;> decide
 
 /-- A shift base, the separator and a decimal count carry no `^`. -/
-theorem mnem_no_caret {m : String} (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (k : Nat) :
+theorem mnem_no_caret {m : String} (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR")
+    (k : Nat) :
     '^' ∉ (m ++ ":" ++ toString k).toList := by
   rw [toList_mnem]
-  rcases hm with rfl | rfl | rfl <;> simp only [List.mem_append, List.mem_cons, not_or] <;>
+  rcases hm with rfl | rfl | rfl | rfl <;> simp only [List.mem_append, List.mem_cons, not_or] <;>
     exact ⟨by decide, by decide, (sep_not_mem_toString k).2⟩
 
 /-- **The decoder agrees with the exported rendering.** For a shift base `m`,
     every width `w` and every count `k`, `immShiftMnem?` recovers `(m, k)` from
     `withWidthTag w (m ++ ":" ++ toString k)`. -/
 theorem immShiftMnem?_withWidthTag {m : String}
-    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (w k : Nat) :
+    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR") (w k : Nat) :
     immShiftMnem? (withWidthTag w (m ++ ":" ++ toString k)) = some (m, k) := by
   unfold immShiftMnem?
   rw [stripWidthTag_withWidthTag_of_caret_free w _ (mnem_no_caret hm k)]
   simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
     splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
-  rcases hm with rfl | rfl | rfl <;> rfl
+  rcases hm with rfl | rfl | rfl | rfl <;> rfl
 
 /-- The decoder on the width-64 rendering. -/
 theorem immShiftMnem?_withWidthTag64 {m : String}
-    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (k : Nat) :
+    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR") (k : Nat) :
     immShiftMnem? (withWidthTag 64 (m ++ ":" ++ toString k)) = some (m, k) :=
   immShiftMnem?_withWidthTag hm 64 k
 
 /-- **The decoder agrees with an untagged rendering**, whenever the rendering
     does not itself end in `:64`. -/
 theorem immShiftMnem?_untagged {m : String}
-    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR") (k : Nat)
+    (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR") (k : Nat)
     (hk : hasSuffix (m ++ ":" ++ toString k) ":64" = false) :
     immShiftMnem? (m ++ ":" ++ toString k) = some (m, k) := by
   unfold immShiftMnem?
   rw [stripWidthTag_of_untagged _ (mnem_no_caret hm k) hk]
   simp only [toList_mnem, splitChars_cons_sep _ _ (base_no_colon hm),
     splitChars_no_sep _ (toString_no_colon k), String.ofList_toList, natOfDigits?_toString]
-  rcases hm with rfl | rfl | rfl <;> rfl
+  rcases hm with rfl | rfl | rfl | rfl <;> rfl
 
 /-! ## 3. The `:64` suffix of a count-tagged mnemonic
 
@@ -425,8 +429,17 @@ theorem immShiftWire?_sarImm (k : Nat) (dst src : String) :
     immShiftWire? (opToLinstrR (JasminOp.sarImm 64 k) dst [.reg src])
       = some (dst, src, "SAR", sarCount 64 k) := by
   simp only [opToLinstrR, immShiftWire?, sar_mnem,
-    immShiftMnem?_withWidthTag64 (m := "SAR") (Or.inr (Or.inr rfl)) (sarCount 64 k),
+    immShiftMnem?_withWidthTag64 (m := "SAR") (Or.inr (Or.inr (Or.inl rfl))) (sarCount 64 k),
     Option.map_some]
+
+/-- The `ROR` export string, associated as the decoder reads it. -/
+theorem ror_mnem (k : Nat) : ("ROR:" ++ toString k) = "ROR" ++ ":" ++ toString k := rfl
+
+/-- **The decoder reads back a `rorImm` export** at every width. -/
+theorem immShiftMnem?_ror (w k : Nat) :
+    immShiftMnem? (withWidthTag w ("ROR:" ++ toString k)) = some ("ROR", k) := by
+  rw [ror_mnem]
+  exact immShiftMnem?_withWidthTag (Or.inr (Or.inr (Or.inr rfl))) w k
 
 /-- The recogniser declines an instruction that is not a one-source register
     `Lopn`. -/

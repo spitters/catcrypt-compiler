@@ -363,6 +363,7 @@ theorem mnemOK_opToLinstrR {op : JasminOp} (hop : opMemB op = true) (dst : Strin
     | (rename_i c _ _; cases c <;> exact mnemOK_withWidthTag_of_tagSepFree (by decide +kernel)
         (by decide) (by decide +kernel) (by decide +kernel))
     | exact mnemOK_shift _ 'S' _ rfl (by decide) (by decide) _ _
+    | exact mnemOK_shift _ 'R' _ rfl (by decide) (by decide) _ _
     | (unfold MnemOK MnemB castWMnem; repeat' split
        all_goals decide)
 

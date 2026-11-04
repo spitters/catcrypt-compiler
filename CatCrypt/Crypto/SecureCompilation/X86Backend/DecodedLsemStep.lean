@@ -449,6 +449,26 @@ theorem x86_SHR_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64)
   simp only [x86_SHR, shiftCount, hkn, shiftMask_of_lt hk, ite_eq_right hk0, rflags_OF, wshr,
     Nat.min_eq_right hk.le]
 
+/-- The count-in-mnemonic rotate `ROR:k:64 d, a` steps the flag machine to the right rotate
+    of the source by `k`, keeping the flags. -/
+theorem fstepF_rorImmI (d a : String) (k : Nat) (b : LstateM) (zf : Bool)
+    (va : BitVec 64) (hva : b.reg.getW a 64 = some va) :
+    fstepF (immShiftI "ROR" d a k) b zf = some ((b.setReg d (va.rotateRight k)).nextPc, zf) := by
+  rw [immShiftI, JasminLsemExportTransfer.fstepF_rorWire 64 k d a b zf,
+    ← JasminImmShiftMnem.ror_mnem]
+  simp only [lsemStepN, stripWidthTag_withWidthTag_ROR, (ror_core_ne k).1, (ror_core_ne k).2,
+    ite_false, JasminImmShiftMnem.immShiftMnem?_ror, readReg_of_getW hva, applyImmShiftN,
+    Option.map_some]
+  rfl
+
+/-- The word of the machine rotate by an immediate count `0 < k < 64` is the right rotate. -/
+theorem x86_ROR_word_imm (v : BitVec 64) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) :
+    (x86_ROR v (BitVec.ofNat 64 k)).word = v.rotateRight k := by
+  have hkn : (BitVec.ofNat 64 k).toNat = k := by
+    rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
+  simp only [x86_ROR, shiftCount, hkn, shiftMask_of_lt hk, hk0, ite_false, wror]
+  rw [rorImm_denote_eq_shiftOr k hk]
+
 /-- `SHR:k:64 d, a` against `shr $k, %d` with `d` and `a` in one register, `0 < k < 64`. -/
 theorem decSim_shrImm (d a : String) (k : Nat) (hk0 : k ≠ 0) (hk : k < 64) (ha : L a)
     (hda : π d = π a) (hL : Survives π L L' d) :

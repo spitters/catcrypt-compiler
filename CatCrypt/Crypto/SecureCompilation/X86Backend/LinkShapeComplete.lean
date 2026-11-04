@@ -319,7 +319,7 @@ theorem cover_encAluImm8 {dig d v : Nat} (hdig : dig < 8) (hd : d < 16)
       (by simp [hg]) (by
         simp only [tmplImm, hv, List.mem_append, List.mem_filterMap, Option.map_eq_some_iff,
           List.mem_range, List.mem_singleton, ite_true]
-        exact Or.inl (Or.inl (Or.inr (Or.inl ⟨dig, hdig, mk, hmk, rfl⟩)))))
+        exact Or.inl (Or.inl (Or.inl (Or.inl (Or.inr (Or.inl ⟨dig, hdig, mk, hmk, rfl⟩)))))))
   interval_cases dig
   · exact hm JInstr.add rfl rfl
   · exact hm JInstr.or_ rfl rfl
@@ -350,6 +350,12 @@ theorem cover_encShift1 {ext d : Nat} (hext : ext = 4 ∨ ext = 5 ∨ ext = 7) (
   · exact TemplateCover.single (j := .sar (regName d) (.imm 1))
       (mem_pieceTemplates_imm (v := 1) (mem_nums_of hd (by simp [guess])) (by simp [guess, opImms])
         (by simp [tmplImm]))
+
+/-- The rotate by one. -/
+theorem cover_encRor1 {d : Nat} (hd : d < 16) : TemplateCover (encShift1 1 1 d) :=
+  TemplateCover.single (j := .ror (regName d) (.imm 1))
+    (mem_pieceTemplates_imm (v := 1) (mem_nums_of hd (by simp [guess])) (by simp [guess, opImms])
+      (by simp [tmplImm]))
 
 /-- `neg`. -/
 theorem cover_neg {d : Nat} (hd : d < 16) : TemplateCover (ScalarEncoder.encUnaryF7 3 d) :=
@@ -964,15 +970,25 @@ theorem cover_encShiftImmw {ext d v : Nat} (hext : ext = 4 ∨ ext = 5 ∨ ext =
       (by simp [renameJ, operandOf, nameOf_canon hd])
       (by simp [encodeJInstr, regOf_canon hd, gpNum_regName hd])
 
+/-- The rotate by an immediate count, whose encoding keeps the low byte of the count. -/
+theorem cover_encRorImmw {d v : Nat} (hd : d < 16) : TemplateCover (encShiftImmw 1 1 d v) := by
+  have hlt : v &&& 0xff < 256 := Nat.lt_of_le_of_lt Nat.and_le_right (by decide)
+  have e : encShiftImmw 1 1 d v = encShiftImmw 1 1 d (v &&& 0xff) := by
+    simp [encShiftImmw, Nat.and_assoc]
+  rw [e]
+  exact TemplateCover.single (j := .ror (regName d) (.imm (v &&& 0xff)))
+    (mem_pieceTemplates_imm (v := v &&& 0xff) (mem_nums_of hd (by simp [guess]))
+      (by simp [guess, opImms]) (by simp [tmplImm, hlt]))
+
 /-- The group-2 extension `shiftImmExt` names is `4`, `5` or `7`. -/
 theorem shiftImmExt_cases {b : String} {ext : Nat} (h : shiftImmExt b = some ext) :
     ext = 4 ∨ ext = 5 ∨ ext = 7 := by
   unfold shiftImmExt at h
   split at h <;> simp_all
 
-/-- The group-2 extension `tagShiftExt` names is `4`, `5` or `7`. -/
+/-- The group-2 extension `tagShiftExt` names is `4`, `5`, `7` or `1`. -/
 theorem tagShiftExt_cases {b : String} {ext : Nat} (h : tagShiftExt b = some ext) :
-    ext = 4 ∨ ext = 5 ∨ ext = 7 := by
+    ext = 4 ∨ ext = 5 ∨ ext = 7 ∨ ext = 1 := by
   simp only [tagShiftExt] at h
   split_ifs at h <;> simp_all
 
@@ -982,12 +998,23 @@ theorem aluImmDigit_lt {b : String} {dig : Nat} (h : aluImmDigit b = some dig) :
   split at h <;> simp only [Option.some.injEq, reduceCtorEq] at h <;> omega
 
 /-- The count-in-tag shift at `REX.W = 1`. -/
-theorem cover_encTagShift {ext dn : Nat} {b : String} (hext : ext = 4 ∨ ext = 5 ∨ ext = 7)
-    (hd : dn < 16) : TemplateCover (encTagShift 1 ext dn b) := by
+theorem cover_encTagShift {ext dn : Nat} {b : String}
+    (hext : ext = 4 ∨ ext = 5 ∨ ext = 7 ∨ ext = 1) (hd : dn < 16) :
+    TemplateCover (encTagShift 1 ext dn b) := by
   simp only [encTagShift]
-  split
-  · exact cover_encShift1 hext hd
-  · exact cover_encShiftImmw hext hd
+  rcases hext with h | h | h | rfl
+  · split
+    · exact cover_encShift1 (Or.inl h) hd
+    · exact cover_encShiftImmw (Or.inl h) hd
+  · split
+    · exact cover_encShift1 (Or.inr (Or.inl h)) hd
+    · exact cover_encShiftImmw (Or.inr (Or.inl h)) hd
+  · split
+    · exact cover_encShift1 (Or.inr (Or.inr h)) hd
+    · exact cover_encShiftImmw (Or.inr (Or.inr h)) hd
+  · split
+    · exact cover_encRor1 hd
+    · exact cover_encRorImmw hd
 
 /-- The `movabs` of a value outside the sign-extended `imm32` range. -/
 theorem cover_encMovImm64_of_not_fits {d v : Nat} (hd : d < 16)

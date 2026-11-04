@@ -78,7 +78,7 @@ Constant time of the shipped bytes is `DecodedCT.bytesCTCheck_sound`.
 
 ## Op set now covered
 
-`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
+`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ rorImm ∪ mulhi ∪ addCarryLo ∪
 addCarryHi ∪ castW ∪ stackLoad ∪ stackStore` — the `ScalarMemN` predicate, which
 subsumes increment 8's `ScalarCastN` (`ScalarMemN.of_scalarCastN`).
 `stackLoad`/`stackStore` are the **first memory ops**: they read/write the array
@@ -792,6 +792,20 @@ theorem straightOpsMem_sar {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
   match args with
   | .cons _ .nil => rfl
 
+theorem straightOpsMem_ror {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
+    {s : JasminTy} {w m : Nat}
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w m) = .reg w)
+    (args : HVector (fun ty => Ctxt.Var Γ ty)
+      (DialectSignature.sig (d := jasminDialect) (JasminOp.rorImm w m)))
+    (body : Com jasminDialect (.reg w :: Γ) s) :
+    straightOpsMem nArgs (.var ⟨JasminOp.rorImm w m, heq, args⟩ body) curDepth =
+      (opToLinstrR (JasminOp.rorImm w m) (regName curDepth)
+        (exprArgs curDepth nArgs argName (fun _ => none)
+          (⟨JasminOp.rorImm w m, heq, args⟩ : Expr jasminDialect Γ (.reg w))), .reg none)
+      :: straightOpsMem nArgs body (curDepth + 1) := by
+  match args with
+  | .cons _ .nil => rfl
+
 theorem straightOpsMem_mulhi {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {s : JasminTy} {w : Nat}
     (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.mulhi w) = .reg w)
@@ -1200,6 +1214,22 @@ theorem lsemStepMem_sar {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
           Expr jasminDialect Γ (.reg w)).denote V)).nextPc) :=
   lsemStepMem_of_reg _ (lsemStepCast_sar hm heq args hagree.reg)
 
+theorem lsemStepMem_ror {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
+    {V : Ctxt.Valuation Γ} {st : LstateM} {w m : Nat}
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w m) = .reg w)
+    (args : HVector (fun ty => Ctxt.Var Γ ty)
+      (DialectSignature.sig (d := jasminDialect) (JasminOp.rorImm w m)))
+    (hagree : StoreAgreesM nArgs curDepth st V) :
+    lsemStepMem
+        (opToLinstrR (JasminOp.rorImm w m) (regName curDepth)
+          (exprArgs curDepth nArgs argName (fun _ => none)
+            (⟨JasminOp.rorImm w m, heq, args⟩ : Expr jasminDialect Γ (.reg w))),
+          .reg none) st =
+      some ((st.setReg (regName curDepth)
+        ((⟨JasminOp.rorImm w m, heq, args⟩ :
+          Expr jasminDialect Γ (.reg w)).denote V)).nextPc) :=
+  lsemStepMem_of_reg _ (lsemStepCast_ror heq args hagree.reg)
+
 theorem lsemStepMem_mulhi {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     {V : Ctxt.Valuation Γ} {st : LstateM} {w : Nat}
     (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.mulhi w) = .reg w)
@@ -1468,7 +1498,8 @@ def lsemLeakMem : List LinstrRM → LstateM → List JasminLsemRobust.LLeak
 /-! ## 9. The stack-memory source fragment `ScalarMemN` -/
 
 /-- The straight-line **stack-memory-fragment** scalar source: every binding is an
-    increment-8 register head (`regArith`/`select`/shifts/the trio/`castW`) or a
+    increment-8 register head (`regArith`/`select`/shifts/the trio/`castW`), a rotate by an
+    immediate (`rorImm`, exported as the one-source count-in-mnemonic `ROR:<k>`), or a
     memory op (`stackLoad`/`stackStore`), or a word compare (`cmp`/`cmpImm`, binding the
     `.reg 1` comparison bit through the `SET<cc>` step). This subsumes increment 8's
     `ScalarCastN`. The `load` arm binds a `.reg w`; the `store` arm binds a
@@ -1521,6 +1552,13 @@ inductive ScalarMemN :
       {body : Com jasminDialect (.reg w :: Γ) s}
       (hbody : ScalarMemN body) :
       ScalarMemN (.var ⟨JasminOp.sarImm w m, heq, args⟩ body)
+  | ror {Γ : Ctxt jasminDialect} {s : JasminTy} {w m : Nat}
+      (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w m) = .reg w)
+      (args : HVector (fun ty => Ctxt.Var Γ ty)
+        (DialectSignature.sig (d := jasminDialect) (JasminOp.rorImm w m)))
+      {body : Com jasminDialect (.reg w :: Γ) s}
+      (hbody : ScalarMemN body) :
+      ScalarMemN (.var ⟨JasminOp.rorImm w m, heq, args⟩ body)
   | mulhi {Γ : Ctxt jasminDialect} {s : JasminTy} {w : Nat}
       (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.mulhi w) = .reg w)
       (args : HVector (fun ty => Ctxt.Var Γ ty)
@@ -1627,6 +1665,7 @@ theorem ScalarMemN.ret_reg {Γ : Ctxt jasminDialect} {t : JasminTy}
   | shr _ _ _ _ ih => exact ih
   | shl _ _ _ _ ih => exact ih
   | sar _ _ _ _ ih => exact ih
+  | ror _ _ _ ih => exact ih
   | mulhi _ _ _ ih => exact ih
   | addLo _ _ _ ih => exact ih
   | addHi _ _ _ ih => exact ih
@@ -1739,6 +1778,17 @@ theorem lsemStraightMem_straightOps {Γ : Ctxt jasminDialect} {t : JasminTy}
       obtain ⟨st', hrun, hret⟩ := ih hw (by simp [List.length_cons, hlen]) (by omega) hagree'
       refine ⟨st', ?_, ?_⟩
       · rw [straightOpsMem_sar, lsemStraightMem_cons, hstep]; exact hrun
+      · simp only [comRetReg]; exact hret
+  | ror heq args hbody ih =>
+      intro nArgs curDepth st V w hw hlen harg hagree
+      have hstep := lsemStepMem_ror (V := V) (st := st) (nArgs := nArgs) (curDepth := curDepth)
+        heq args hagree
+      have hagree' := StoreAgreesM.stepReg
+        ((⟨JasminOp.rorImm _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      obtain ⟨st', hrun, hret⟩ := ih hw (by simp [List.length_cons, hlen]) (by omega) hagree'
+      refine ⟨st', ?_, ?_⟩
+      · rw [straightOpsMem_ror, lsemStraightMem_cons, hstep]; exact hrun
       · simp only [comRetReg]; exact hret
   | mulhi heq args hbody ih =>
       intro nArgs curDepth st V w hw hlen harg hagree
@@ -2057,6 +2107,15 @@ theorem lsemLeakMem_straightOps_state_independent {Γ : Ctxt jasminDialect}
       refine congrArg (JasminLsemRobust.linstrLeak _ ++ ·) ?_
       exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
         (StoreAgreesM.stepReg _ hlen harg hag1) (StoreAgreesM.stepReg _ hlen harg hag2)
+  | ror heq args hbody ih =>
+      intro nArgs curDepth V₁ V₂ s₁ s₂ hlen harg hag1 hag2
+      have hstep1 := lsemStepMem_ror (V := V₁) heq args hag1
+      have hstep2 := lsemStepMem_ror (V := V₂) heq args hag2
+      rw [straightOpsMem_ror]
+      simp only [lsemLeakMem_cons, hstep1, hstep2]
+      refine congrArg (JasminLsemRobust.linstrLeak _ ++ ·) ?_
+      exact ih _ _ (by simp [List.length_cons, hlen]) (by omega)
+        (StoreAgreesM.stepReg _ hlen harg hag1) (StoreAgreesM.stepReg _ hlen harg hag2)
   | mulhi heq args hbody ih =>
       intro nArgs curDepth V₁ V₂ s₁ s₂ hlen harg hag1 hag2
       have hstep1 := lsemStepMem_mulhi (V := V₁) heq args hag1
@@ -2153,7 +2212,7 @@ theorem lsemLeakMem_straightOps_state_independent {Γ : Ctxt jasminDialect}
 /-! ## 13. Functional correctness of `straightOpsMem` -/
 
 /-- **Functional correctness for the stack-memory fragment
-    (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ mulhi ∪ addCarryLo ∪
+    (`regArith ∪ select ∪ shrImm ∪ shlImm ∪ sarImm ∪ rorImm ∪ mulhi ∪ addCarryLo ∪
     addCarryHi ∪ castW ∪ stackLoad ∪ stackStore`).** For a stack-memory-fragment
     scalar straight-line `Com` with return type `.reg w`, running the
     linearizer-emitted `.var`-chain `straightOpsMem` on the encoded argument
@@ -2387,6 +2446,17 @@ theorem lsemStraightMem_straightOps_store {Γ : Ctxt jasminDialect} {t : JasminT
       obtain ⟨st', hrun, hAg, hFr⟩ := ih (by simp [List.length_cons, hlen]) (by omega) hagree'
       refine ⟨st', ?_, ?_, WriteFrame.stepReg _ hFr⟩
       · rw [straightOpsMem_sar, lsemStraightMem_cons, hstep]; exact hrun
+      · exact storeAgrees_shift_depth hAg
+  | ror heq args hbody ih =>
+      intro nArgs curDepth st V hlen harg hagree
+      have hstep := lsemStepMem_ror (V := V) (st := st) (nArgs := nArgs)
+        (curDepth := curDepth) heq args hagree
+      have hagree' := StoreAgreesM.stepReg
+        ((⟨JasminOp.rorImm _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      obtain ⟨st', hrun, hAg, hFr⟩ := ih (by simp [List.length_cons, hlen]) (by omega) hagree'
+      refine ⟨st', ?_, ?_, WriteFrame.stepReg _ hFr⟩
+      · rw [straightOpsMem_ror, lsemStraightMem_cons, hstep]; exact hrun
       · exact storeAgrees_shift_depth hAg
   | mulhi heq args hbody ih =>
       intro nArgs curDepth st V hlen harg hagree

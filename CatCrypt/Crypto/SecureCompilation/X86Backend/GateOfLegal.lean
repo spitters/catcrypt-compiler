@@ -399,15 +399,15 @@ theorem tagMnem_facts {b : String} (hb : b ∈ ["SHL", "SHR"]) {k : Nat} (hk0 : 
     simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
     rcases hb with rfl | rfl
     · rw [ite_eq_left rfl] at hext
-      simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagShName,
-        hst, mnemWidth_tagMnem, hcount, hext, hadx]
+      simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagRor,
+        tagShName, hst, mnemWidth_tagMnem, hcount, hext, hadx]
       simp only [Nat.toString_eq_repr, String.reduceAppend] at e1 e2 e3 e4 e5
       simp [beq_eq_false_iff_ne.2 e1, beq_eq_false_iff_ne.2 e2, beq_eq_false_iff_ne.2 e3,
         beq_eq_false_iff_ne.2 e4, beq_eq_false_iff_ne.2 e5, LprogBytes.rexW, withWidthTag, tagMnem,
         hk0, hk]
     · rw [ite_eq_right (by decide)] at hext
-      simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagShName,
-        hst, mnemWidth_tagMnem, hcount, hext, hadx]
+      simp only [Arm.ok, isCarryOutBinding, isMulHiBinding, shrK, tagShExt, tagShl, tagRor,
+        tagShName, hst, mnemWidth_tagMnem, hcount, hext, hadx]
       simp only [Nat.toString_eq_repr, String.reduceAppend] at e1 e2 e3 e4 e5
       simp [beq_eq_false_iff_ne.2 e1, beq_eq_false_iff_ne.2 e2, beq_eq_false_iff_ne.2 e3,
         beq_eq_false_iff_ne.2 e4, beq_eq_false_iff_ne.2 e5, LprogBytes.rexW, withWidthTag, tagMnem,

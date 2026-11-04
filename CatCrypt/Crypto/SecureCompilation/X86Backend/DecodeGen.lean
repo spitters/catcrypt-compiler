@@ -123,7 +123,7 @@ def tmplMemAdd (r b : Nat) (off : Int) : List (List (BitVec 8) × JInstr 64) :=
   else []
 
 /-- The immediate templates on register `d` and value `v`: the two `MOV` immediate forms,
-    the sign-extended `imm8` group-1 forms and `IMUL`, the `D1` shifts by one, and the
+    the sign-extended `imm8` group-1 forms and `IMUL`, the `D1` shifts and rotate by one, and the
     compare with a sign-extended `imm32` (`REX.W 81 /7 id`). -/
 def tmplImm (d v : Nat) : List (List (BitVec 8) × JInstr 64) :=
   (if decide (v < 2 ^ 64) && fitsImm32S v then [(encMovImmw 1 d v, .mov (regName d) (.imm v))]
@@ -137,6 +137,9 @@ def tmplImm (d v : Nat) : List (List (BitVec 8) × JInstr 64) :=
   ++ (if v == 1 then [4, 5, 7].map (fun ext => (encShift1 1 ext d,
       (if ext = 4 then JInstr.shl else if ext = 5 then JInstr.shr else JInstr.sar)
         (regName d) (.imm 1))) else [])
+  ++ (if v == 1 then [(encShift1 1 1 d, JInstr.ror (regName d) (.imm 1))] else [])
+  ++ (if decide (v < 256) then [(encShiftImmw 1 1 d v, JInstr.ror (regName d) (.imm v))]
+      else [])
   ++ (if decide (v < 2 ^ 64) && fitsImm32S v then
       [(encAluImmw 1 7 d v, .cmp (regName d) (.imm v))] else [])
 
@@ -211,7 +214,7 @@ def opImms : JOperand → List Nat
     instruction equals the decoded one. -/
 def guess : JInstr 64 → List String × List Nat × List Int
   | .mov d s | .add d s | .sub d s | .adc d s | .sbb d s | .imul d s | .and_ d s
-  | .or_ d s | .xor_ d s | .cmp d s | .shl d s | .shr d s | .sar d s =>
+  | .or_ d s | .xor_ d s | .cmp d s | .shl d s | .shr d s | .sar d s | .ror d s =>
       (d :: opNames s, opImms s, [])
   | .neg d | .setcc _ d => ([d], [], [])
   | .imulri d s v => ([d, s], [v], [])
@@ -304,7 +307,7 @@ theorem decodeLinstr_cmpImm32 (d v : Nat) (rest : List (BitVec 8)) (hd : d < 16)
 theorem tmplImm_sound (d v : Nat) (hd : d < 16) : ∀ q ∈ tmplImm d v, PieceDec q := by
   intro q hq rest
   simp only [tmplImm, List.mem_append] at hq
-  rcases hq with (((hq | hq) | hq) | hq) | hq
+  rcases hq with (((((hq | hq) | hq) | hq) | hq) | hq) | hq
   · split at hq
     · rename_i hc
       simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
@@ -336,6 +339,21 @@ theorem tmplImm_sound (d v : Nat) (hd : d < 16) : ∀ q ∈ tmplImm d v, PieceDe
       simp only [List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at hq
       obtain ⟨ext, hext, rfl⟩ := hq
       exact decodeLinstr_shift1 ext d rest hext hd
+    · simp at hq
+  · split at hq
+    · rename_i hc
+      simp only [beq_iff_eq] at hc
+      subst hc
+      simp only [List.mem_singleton] at hq
+      subst hq
+      exact decodeLinstr_ror1 d rest hd
+    · simp at hq
+  · split at hq
+    · rename_i hc
+      simp only [decide_eq_true_eq] at hc
+      simp only [List.mem_singleton] at hq
+      subst hq
+      exact decodeLinstr_rorImm8 d v rest hd hc
     · simp at hq
   · split at hq
     · rename_i hc

@@ -82,7 +82,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Isa (x86Isa)
 
 /-- The first characters of the mnemonics the x86 flag machine reads, and the separators
     `:` and `^` of a mnemonic. -/
-def usedHeads : List Char := ['A', 'C', 'L', 'M', 'N', 'O', 'S', 'T', 'X', 'Z', ':', '^']
+def usedHeads : List Char :=
+  ['A', 'C', 'L', 'M', 'N', 'O', 'R', 'S', 'T', 'X', 'Z', ':', '^']
 
 /-- A mnemonic whose first character is outside `usedHeads`. -/
 def FreshMnem (opn : String) : Prop :=
@@ -149,7 +150,7 @@ theorem immShiftMnem?_fresh {opn : String} (h : FreshMnem opn) : immShiftMnem? o
         (String.ofList (c :: g) == lit) = false := fun lit hl =>
       beq_eq_false_iff_ne.mpr (hf.ne lit hl)
     simp only [hne "SHL" (by decide), hne "SHR" (by decide), hne "SAR" (by decide),
-      Bool.or_self, Bool.false_eq_true, ite_false]
+      hne "ROR" (by decide), Bool.or_self, Bool.false_eq_true, ite_false]
   · rfl
 
 variable {dst opn : String} {srcs : List LOperand}

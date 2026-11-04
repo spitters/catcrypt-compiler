@@ -357,14 +357,17 @@ def zeroextLinstr (dst src : String) : LinstrR :=
 def movImmLinstr (w : Nat) (dst : String) (n : Nat) : LinstrR :=
   .Lopn [.reg dst] (JasminLprogExport.withWidthTag w "MOV") [.imm n]
 
-/-- The width-`w` word an immediate shift with base mnemonic `m` (`"SHL"`,
-    `"SHR"` or `"SAR"`) and compile-time count `k` writes. `"SHL"` and `"SHR"`
+/-- The width-`w` word an immediate shift or rotate with base mnemonic `m` (`"SHL"`,
+    `"SHR"`, `"SAR"` or `"ROR"`) and compile-time count `k` writes. `"SHL"` and `"SHR"`
     are the `applyOpnN` shifts at the count materialised as a width-`w` word;
     `"SAR"` is the arithmetic right shift by the masked count `shiftMask w k`, which
-    `applyOpnN` does not carry. Any other mnemonic is `none`. -/
+    `applyOpnN` does not carry; `"ROR"` is the right rotate by `k`, which reduces the
+    count modulo `w` (the count masking of x86 `ROR` at widths 32 and 64). Any other
+    mnemonic is `none`. -/
 def applyImmShiftN (w : Nat) (m : String) (k : Nat) (a : BitVec w) : Option (BitVec w) :=
   if m = "SAR" then some (BitVec.sshiftRight a (shiftMask w k))
   else if m = "SHL" || m = "SHR" then applyOpnN w m [a, BitVec.ofNat w k]
+  else if m = "ROR" then some (a.rotateRight k)
   else none
 
 /-- The base mnemonic `"NEG"` round-trips through
@@ -895,6 +898,55 @@ theorem lsemStepN_const {w nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
     CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemScalar.stripWidthTag_withWidthTag_MOV, ite_eq_left]
   rw [widthFromTag_withWidthTag_MOV hwn]
   rfl
+
+/-- The core of a rotate export carries no width tag of its own: `stripWidthTag` of the
+    tagged `ROR:<k>` is `ROR:<k>`. -/
+theorem stripWidthTag_withWidthTag_ROR (w k : Nat) :
+    stripWidthTag (withWidthTag w ("ROR:" ++ toString k)) = "ROR:" ++ toString k :=
+  JasminImmShiftMnem.stripWidthTag_withWidthTag_of_caret_free w _
+    (JasminImmShiftMnem.mnem_no_caret (Or.inr (Or.inr (Or.inr rfl))) k)
+
+/-- A rotate core `ROR:<k>` differs from every string that does not begin with `R`. -/
+theorem ror_core_ne_of_head (k : Nat) {lit : String} (h : lit.toList.head? ≠ some 'R') :
+    ("ROR:" ++ toString k) ≠ lit := by
+  rintro rfl
+  apply h
+  rw [String.toList_append, show ("ROR:" : String).toList = ['R', 'O', 'R', ':'] from by decide]
+  rfl
+
+/-- A rotate core `ROR:<k>` is neither `NEG` nor `MOV`. -/
+theorem ror_core_ne (k : Nat) :
+    ("ROR:" ++ toString k) ≠ "NEG" ∧ ("ROR:" ++ toString k) ≠ "MOV" :=
+  ⟨ror_core_ne_of_head k (by decide), ror_core_ne_of_head k (by decide)⟩
+
+/-- **`rorImm` per-binding step.** From a store agreeing with `V`, a rotate `rorImm w k`
+    binding, exported as the one-source `ROR:<k>` wire, `lsemStepN`s to the state that
+    writes its denotation, the right rotate of the source by `k`, and advances the pc. -/
+theorem lsemStepN_ror {nArgs curDepth : Nat} {Γ : Ctxt jasminDialect}
+    {V : Ctxt.Valuation Γ} {st : LstateN} {w k : Nat}
+    (heq : DialectSignature.ret (d := jasminDialect) (JasminOp.rorImm w k) = .reg w)
+    (args : HVector (fun ty => Ctxt.Var Γ ty)
+      (DialectSignature.sig (d := jasminDialect) (JasminOp.rorImm w k)))
+    (hagree : StoreAgreesN nArgs curDepth st V) :
+    lsemStepN
+        (opToLinstrR (JasminOp.rorImm w k) (regName curDepth)
+          (exprArgs curDepth nArgs argName (fun _ => none)
+            (⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w))))
+        st =
+      some ((st.setReg (regName curDepth)
+        ((⟨JasminOp.rorImm w k, heq, args⟩ : Expr jasminDialect Γ (.reg w)).denote
+          V)).nextPc) := by
+  match args with
+  | .cons s .nil =>
+    have hargs : exprArgs curDepth nArgs argName (fun _ => none)
+        (⟨JasminOp.rorImm w k, heq, .cons s .nil⟩ : Expr jasminDialect Γ (.reg w))
+        = [resolveVar curDepth nArgs argName (fun _ => none) s] := rfl
+    have hs := readReg_resolveVar s hagree
+    rw [resolveVar_isReg s] at hs
+    rw [opToLinstrR, hargs, resolveVar_isReg s]
+    simp only [lsemStepN, stripWidthTag_withWidthTag_ROR, (ror_core_ne k).1, (ror_core_ne k).2,
+      ite_false, JasminImmShiftMnem.immShiftMnem?_ror, hs, applyImmShiftN]
+    rfl
 
 /-! ## 8. The core width-mixed straight-line simulation
 

@@ -638,6 +638,18 @@ theorem straightLeakF_straightOps (Pj : JLeakParams) {Γ : Ctxt jasminDialect}
         straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
       convert List.nil_append _ using 2
       exact instrLeakB_shift _ _ _ _ _ _ _ (exprArgs_leak _ _ _ _)
+  | ror heq args hbody ih =>
+      intro nArgs d st V hlen harg hagree
+      have hstep := lsemStepMem_ror (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
+        heq args hagree
+      have hagree' := StoreAgreesM.stepReg
+        ((⟨JasminOp.rorImm _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
+        hlen harg hagree
+      rw [straightOpsMem_ror, straightLeakF_cons_of_step hstep, comCtLeak_var,
+        straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
+      convert List.nil_append _ using 2
+      simp only [opToLinstrR]
+      exact instrLeakB_quiet _ _ _ _ _ (exprArgs_leak _ _ _ _)
   | mulhi heq args hbody ih =>
       intro nArgs d st V hlen harg hagree
       have hstep := lsemStepMem_mulhi (V := V) (st := st) (nArgs := nArgs) (curDepth := d)

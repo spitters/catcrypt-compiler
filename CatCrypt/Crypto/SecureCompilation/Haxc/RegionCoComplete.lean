@@ -1146,6 +1146,7 @@ theorem shadowCall?_opToLinstrR {op : JasminOp} (hop : opMemB op = true) (dst : 
   · exact callPre_withWidthTag_lit _ (by decide) (by decide)
   · exact callPre_withWidthTag_lit _ (by decide) (by decide)
   · exact callPre_withWidthTag_lit _ (by decide) (by decide)
+  · exact callPre_imm (show "ROR:".toList = ['R', 'O', 'R', ':'] from by decide) (by decide) _ _
   · exact callPre_imm (show "SHR:".toList = ['S', 'H', 'R', ':'] from by decide) (by decide) _ _
   · exact callPre_imm (show "SAR:".toList = ['S', 'A', 'R', ':'] from by decide) (by decide) _ _
   · exact callPre_imm (show "SHL:".toList = ['S', 'H', 'L', ':'] from by decide) (by decide) _ _
