@@ -231,7 +231,9 @@ def gateTraceFine (σ : AbiLayout) (b : Lcmd) (t : JasminTy) (code : List Linstr
 
 /-- The stages of `compileRegion σ a p` on the structured program `p` with one result, in
     the order of its definition: `regionExportableB`, `callFree`, the export `exportR` (size:
-    the length of its code), the allocated program `regionLprog` with its allocation
+    the length of its code), its webs `regionWebsAt` at the result buffer
+    `regionWebsEx σ exportReg` (size: the length of their code), whose code and returned
+    operands the gate reads, the allocated program `regionLprog` with its allocation
     certificate (`regionLprogC`; size: the number of instructions of its functions), the
     first function body of the printed program
     `firstBody` (size: its length), the gated encoder
@@ -245,8 +247,10 @@ def regionTraceBody (fine : Bool) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jas
   .stage "callFree" none fun _ =>
   match exportR Γ.length a.fname p Γ.length 0 with
   | none => .refused "exportR"
-  | some r =>
-  .stage "exportR" (some r.code.length) fun _ =>
+  | some r0 =>
+  .stage "exportR" (some r0.code.length) fun _ =>
+  let r := regionWebsAt (regionWebsEx σ exportReg) none r0
+  .stage "regionWebsAt" (some r.code.length) fun _ =>
   match regionLprogC a p none (regionWebsEx σ exportReg) with
   | none => .refused "regionLprog"
   | some (P, cert) =>

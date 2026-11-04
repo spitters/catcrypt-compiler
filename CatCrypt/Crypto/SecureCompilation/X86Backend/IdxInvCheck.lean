@@ -1646,6 +1646,225 @@ theorem guardW64_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} 
         · simp at hfg
   | shp _ _ _ => simp [guardW64] at hfg
 
+/-! ## 2a. Thresholds of upper bounds
+
+The entailment of an upper bound `.le ts b` holds exactly from a threshold on `b` on: each of
+its readers `leLin`, `mulLe` and `hiLe` compares a value computed from `F` and `ts` with `b`.
+`entLeThr` computes the least such value, so the bounds `b` of the facts with the same terms
+are decided by one computation (`entails_le_thr`). -/
+
+/-- An optional threshold at a bound: `some v` passes the bounds of at least `v`, `none`
+    passes no bound. -/
+def thrOk : Option Int → Nat → Bool
+  | some v, b => decide (v ≤ (b : Int))
+  | none, _ => false
+
+/-- The lesser of two optional thresholds, `none` the greatest. -/
+def thrMin : Option Int → Option Int → Option Int
+  | some v, some w => some (min v w)
+  | some v, none => some v
+  | none, o => o
+
+theorem thrOk_thrMin (o o' : Option Int) (b : Nat) :
+    thrOk (thrMin o o') b = (thrOk o b || thrOk o' b) := by
+  cases o <;> cases o' <;> simp only [thrOk, thrMin, Bool.or_false, Bool.false_or]
+  rw [Bool.eq_iff_iff]
+  simp only [decide_eq_true_eq, Bool.or_eq_true]
+  omega
+
+/-- The least of the thresholds `g x` over the members `x` of a list. -/
+def thrAny {α : Type} (g : α → Option Int) (l : List α) : Option Int :=
+  l.foldr (fun x o => thrMin (g x) o) none
+
+theorem thrOk_thrAny {α : Type} (g : α → Option Int) (b : Nat) :
+    ∀ l : List α, thrOk (thrAny g l) b = l.any fun x => thrOk (g x) b
+  | [] => rfl
+  | x :: l => by
+      rw [thrAny, List.foldr_cons, thrOk_thrMin, List.any_cons, ← thrOk_thrAny g b l]
+      rfl
+
+/-- The threshold of `leBy`: the bound of an upper-bound fact on a sum containing the atoms
+    `as`, less the lower bounds of the other terms, plus `K`. -/
+def leByThr (F : List SFact) (as : List STerm) (K : Int) : SFact → Option Int
+  | .le ts b =>
+      match eraseAll ts as with
+      | some R => some ((b : Int) - (lbSum F R : Int) + K)
+      | none => none
+  | .ge _ _ => none
+  | .w64 _ => none
+  | .ne _ _ => none
+  | .ale _ _ => none
+
+theorem thrOk_leByThr (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) (f : SFact) :
+    thrOk (leByThr F as K f) b' = leBy F as K b' f := by
+  cases f with
+  | le ts b =>
+      simp only [leByThr, leBy]
+      split <;> rfl
+  | _ => rfl
+
+/-- The threshold of `leForm`: the constant of a form without atoms, and the thresholds
+    `leByThr` of the facts. -/
+def leFormThr (F : List SFact) (p : List STerm × Int) : Option Int :=
+  thrMin (if p.1 = [] then some p.2 else none) (thrAny (leByThr F p.1 p.2) F)
+
+theorem thrOk_leFormThr (F : List SFact) (b' : Nat) (p : List STerm × Int) :
+    thrOk (leFormThr F p) b' = leForm F b' p := by
+  rw [leFormThr, thrOk_thrMin, thrOk_thrAny, leForm]
+  congr 1
+  · by_cases h : p.1 = [] <;> simp [h, thrOk]
+  · simp only [thrOk_leByThr]
+
+/-- The threshold of `leLin`: the least threshold `leFormThr` of the linear forms. -/
+def leLinThr (F : List SFact) (ts : List STerm) : Option Int :=
+  thrAny (leFormThr F) (sumAlts F ts)
+
+theorem thrOk_leLinThr (F : List SFact) (ts : List STerm) (b' : Nat) :
+    thrOk (leLinThr F ts) b' = leLin F ts b' := by
+  rw [leLinThr, thrOk_thrAny, leLin]
+  simp only [thrOk_leFormThr]
+
+/-- The threshold of `mulForm`: for a form `c * x + K` with `x` from the threshold `v` of
+    `leLin` on, the bounds from `K + v * c` on (from `K` on when `c = 0` and `v ≤ 0`). -/
+def mulFormThr (F : List SFact) (p : List STerm × Int) : Option Int :=
+  match p.1 with
+  | [a] =>
+      match mulParts F a with
+      | some (c, x) =>
+          match leLinThr F [x] with
+          | some v =>
+              if c = 0 then (if v ≤ 0 then some p.2 else none)
+              else some (p.2 + ((v.toNat * c : Nat) : Int))
+          | none => none
+      | none => none
+  | _ => none
+
+theorem thrOk_mulFormThr (F : List SFact) (b' : Nat) (p : List STerm × Int) :
+    thrOk (mulFormThr F p) b' = mulForm F b' p := by
+  unfold mulFormThr mulForm
+  split
+  · split
+    · rename_i c x _
+      rw [← thrOk_leLinThr]
+      cases leLinThr F [x] with
+      | none => simp [thrOk]
+      | some v =>
+          dsimp only
+          rw [Bool.eq_iff_iff]
+          by_cases hc : c = 0
+          · subst hc
+            by_cases hv : v ≤ 0 <;> simp [hv, thrOk]
+          · simp only [hc, ite_false, thrOk, Bool.and_eq_true, decide_eq_true_eq]
+            have hc' : 0 < c := Nat.pos_of_ne_zero hc
+            constructor
+            · intro h
+              refine ⟨by omega, ?_⟩
+              have h1 : v.toNat * c ≤ ((b' : Int) - p.2).toNat := by omega
+              have h2 := (Nat.le_div_iff_mul_le hc').mpr h1
+              omega
+            · rintro ⟨h0, h1⟩
+              have h2 : v.toNat ≤ ((b' : Int) - p.2).toNat / c := by
+                generalize ((b' : Int) - p.2).toNat / c = m at h1 ⊢
+                omega
+              have h3 := (Nat.le_div_iff_mul_le hc').mp h2
+              omega
+    · rfl
+  · rfl
+
+/-- The threshold of `mulLe`: the least threshold `mulFormThr` of the linear forms. -/
+def mulLeThr (F : List SFact) (ts : List STerm) : Option Int :=
+  thrAny (mulFormThr F) (sumAlts F ts)
+
+theorem thrOk_mulLeThr (F : List SFact) (ts : List STerm) (b' : Nat) :
+    thrOk (mulLeThr F ts) b' = mulLe F ts b' := by
+  rw [mulLeThr, thrOk_thrAny, mulLe]
+  simp only [thrOk_mulFormThr]
+
+/-- **The threshold of an upper bound** on the sum of `ts` under the facts `F`: the least of
+    the thresholds of `leLin`, `mulLe` and `hiLe`. -/
+def entLeThr (F : List SFact) (ts : List STerm) : Option Int :=
+  thrMin (leLinThr F ts) (thrMin (mulLeThr F ts) (some ((ts.map (hiNe F)).sum : Int)))
+
+/-- **The entailment of an upper bound is its threshold.** -/
+theorem entails_le_thr (F : List SFact) (ts : List STerm) (b : Nat) :
+    entails F (.le ts b) = thrOk (entLeThr F ts) b := by
+  rw [entLeThr, thrOk_thrMin, thrOk_thrMin, thrOk_leLinThr, thrOk_mulLeThr, entails,
+    Bool.or_assoc]
+  simp only [thrOk, hiLe]
+  congr 2
+  exact decide_eq_decide.mpr Int.ofNat_le.symm
+
+/-- The register lists of the upper-bound facts of `fs`, without repetition. -/
+def leKeys (fs : List IdxFact) : List (List String) :=
+  (fs.filterMap fun
+    | .le rs _ => some rs
+    | _ => none).eraseDups
+
+/-- The thresholds `entLeThr` of the register lists `ks` read through `R`, under `F`. -/
+def thrTab (F : List SFact) (R : String → STerm) (ks : List (List String)) :
+    List (List String × Option Int) :=
+  ks.map fun rs => (rs, entLeThr F (rs.map R))
+
+theorem lookup_thrTab {F : List SFact} {R : String → STerm} {rs : List String}
+    {o : Option Int} : ∀ {ks : List (List String)}, (thrTab F R ks).lookup rs = some o →
+      o = entLeThr F (rs.map R)
+  | [], h => by simp [thrTab] at h
+  | k :: ks, h => by
+      simp only [thrTab, List.map_cons, List.lookup_cons] at h
+      split at h
+      · rename_i hk
+        rw [beq_iff_eq] at hk
+        subst hk
+        exact (Option.some.inj h).symm
+      · exact lookup_thrTab h
+
+/-- The entailment of the fact `f` read through `R` and `Ar` from `F`, an upper bound
+    decided by its threshold in the table `tab` when the table has its register list. -/
+def entailsT (F : List SFact) (R : String → STerm) (Ar : String → SArr)
+    (tab : List (List String × Option Int)) (f : IdxFact) : Bool :=
+  match f with
+  | .le rs b =>
+      match tab.lookup rs with
+      | some o => thrOk o b
+      | none => entails F (f.toS R Ar)
+  | _ => entails F (f.toS R Ar)
+
+theorem entailsT_thrTab (F : List SFact) (R : String → STerm) (Ar : String → SArr)
+    (ks : List (List String)) (f : IdxFact) :
+    entailsT F R Ar (thrTab F R ks) f = entails F (f.toS R Ar) := by
+  cases f with
+  | le rs b =>
+      simp only [entailsT]
+      split
+      · rename_i o ho
+        rw [lookup_thrTab ho, IdxFact.toS, entails_le_thr]
+      · rfl
+  | _ => rfl
+
+/-- **The facts of `fs` that follow from `F`** read through `R` and `Ar`: `fs` filtered by
+    `entailsT` at the thresholds of the register lists of its upper bounds, computed once. -/
+def filterEnt (F : List SFact) (R : String → STerm) (Ar : String → SArr)
+    (fs : List IdxFact) : List IdxFact :=
+  fs.filter (entailsT F R Ar (thrTab F R (leKeys fs)))
+
+theorem filterEnt_eq (F : List SFact) (R : String → STerm) (Ar : String → SArr)
+    (fs : List IdxFact) : filterEnt F R Ar fs = fs.filter fun f => entails F (f.toS R Ar) := by
+  rw [filterEnt]
+  exact List.filter_congr fun f _ => entailsT_thrTab F R Ar _ f
+
+/-- Every fact of `fs` follows from `F` read through `R` and `Ar`, decided by `entailsT` at
+    the thresholds of the register lists of its upper bounds, computed once. -/
+def allEnt (F : List SFact) (R : String → STerm) (Ar : String → SArr)
+    (fs : List IdxFact) : Bool :=
+  fs.all (entailsT F R Ar (thrTab F R (leKeys fs)))
+
+theorem allEnt_eq (F : List SFact) (R : String → STerm) (Ar : String → SArr)
+    (fs : List IdxFact) : allEnt F R Ar fs = fs.all fun f => entails F (f.toS R Ar) := by
+  rw [allEnt]
+  congr 1
+  funext f
+  exact entailsT_thrTab F R Ar _ f
+
 /-! ## 3. Edge facts -/
 
 /-- The facts a comparison of the term `x` with the value `c` gives: on equality the bounds
@@ -1758,6 +1977,15 @@ theorem startF_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
     `ss`, from the facts `F`. -/
 def succOk (F : List SFact) (ss : SSt) (fs : List IdxFact) : Bool :=
   fs.all fun f => entails F (f.toS ss.regs ss.arrs)
+
+/-- `succOk` with the upper bounds decided by their thresholds (`allEnt`). -/
+def succOkT (F : List SFact) (ss : SSt) (fs : List IdxFact) : Bool :=
+  allEnt F ss.regs ss.arrs fs
+
+/-- The compiled code of `succOk` is `succOkT`. -/
+@[csimp] theorem succOk_eq_succOkT : @succOk = @succOkT := by
+  funext F ss fs
+  rw [succOk, succOkT, allEnt_eq]
 
 theorem succOk_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O Z : Bool}
     {F : List SFact} {ss : SSt} {fs : List IdxFact} (h : succOk F ss fs = true)
@@ -2243,6 +2471,24 @@ def annVisit (F : List SFact) (es : List (Nat × List SFact × SSt))
       if pend.getD j false then (a.set! j new, pend, q)
       else (a.set! j new, pend.set! j true, q.enqueue j)
     else (a, pend, q)) st
+
+/-- `annVisit` with the successor facts filtered by `filterEnt`: the thresholds of the upper
+    bounds of each successor are computed once per edge. -/
+def annVisitT (F : List SFact) (es : List (Nat × List SFact × SSt))
+    (st : Array (List IdxFact) × Array Bool × Std.Queue Nat) :
+    Array (List IdxFact) × Array Bool × Std.Queue Nat :=
+  es.foldl (fun (a, pend, q) (j, ex, ss) =>
+    let old := a.getD j []
+    let new := filterEnt (F ++ ex) ss.regs ss.arrs old
+    if new.length < old.length then
+      if pend.getD j false then (a.set! j new, pend, q)
+      else (a.set! j new, pend.set! j true, q.enqueue j)
+    else (a, pend, q)) st
+
+/-- The compiled code of `annVisit` is `annVisitT`. -/
+@[csimp] theorem annVisit_eq_annVisitT : @annVisit = @annVisitT := by
+  funext F es st
+  simp only [annVisit, annVisitT, filterEnt_eq]
 
 /-- The restriction by a worklist, within `fuel` visits: a block is visited when it is
     dequeued, and queued again only when its facts shrank. -/
