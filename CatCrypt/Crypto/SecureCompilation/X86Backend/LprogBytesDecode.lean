@@ -103,11 +103,13 @@ def shiftXOf (pp : Nat) : Option (String → String → String → JInstr 64) :=
   if pp = 1 then some JInstr.shlx else if pp = 3 then some JInstr.shrx
   else if pp = 2 then some JInstr.sarx else none
 
-/-- `SHLX`/`SHRX`/`SARX r64a, r64, r64b` after the leading `C4` of its three-byte VEX
-    prefix (`VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r`, register-direct): the destination is
-    `ModRM.reg` extended by `R̄`, the shifted value `ModRM.rm` extended by `B̄`, the
-    count the inverted `vvvv`. -/
-def decodeShiftX : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
+/-- The register-direct three-operand instructions of the VEX map `0F38` at `W = 1`, `L = 0`,
+    after the leading `C4` of the three-byte VEX prefix. `SHLX`/`SHRX`/`SARX r64a, r64, r64b`
+    (`VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r`): the destination is `ModRM.reg` extended by `R̄`, the
+    shifted value `ModRM.rm` extended by `B̄`, the count the inverted `vvvv`. The BMI1
+    and-not `ANDN r64a, r64b, r64` (`VEX.LZ.0F38.W1 F2 /r`, `pp = 00`): the destination is
+    `ModRM.reg`, the complemented source the inverted `vvvv`, the other source `ModRM.rm`. -/
+def decodeVex3 : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
   | v1 :: v2 :: op :: modrm :: rest =>
       if op.toNat = 0xf7 ∧ v1.toNat &&& 31 = 2 ∧ (v2.toNat >>> 7) &&& 1 = 1
           ∧ (v2.toNat >>> 2) &&& 1 = 0 ∧ modField modrm = 3 then
@@ -117,6 +119,12 @@ def decodeShiftX : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
         (shiftXOf (v2.toNat &&& 3)).map fun mk =>
           (mk (regName (rBit * 8 + regField modrm)) (regName (bBit * 8 + rmField modrm)) cnt,
             rest)
+      else if op.toNat = 0xf2 ∧ v1.toNat &&& 31 = 2 ∧ (v2.toNat >>> 7) &&& 1 = 1
+          ∧ (v2.toNat >>> 2) &&& 1 = 0 ∧ v2.toNat &&& 3 = 0 ∧ modField modrm = 3 then
+        let rBit := 1 - ((v1.toNat >>> 7) &&& 1)
+        let bBit := 1 - ((v1.toNat >>> 5) &&& 1)
+        some (.andn (regName (rBit * 8 + regField modrm)) (regName (15 - ((v2.toNat >>> 3) &&& 15)))
+          (regName (bBit * 8 + rmField modrm)), rest)
       else none
   | _ => none
 
@@ -266,7 +274,7 @@ def decodeLinstr : List (BitVec 8) → Option (DInstr × List (BitVec 8))
               else none
           | _ => none
         else if b0.toNat = 0xc4 then
-          (decodeShiftX rest).map fun p => (.op p.1, p.2)
+          (decodeVex3 rest).map fun p => (.op p.1, p.2)
         else if isRex b0 then
           (((decodeRexExt b0 rest).map fun p => (.op p.1, p.2)).or
             (decodeRexPushPop b0 rest)).or (decodeRexMov32 b0 rest)
@@ -1271,11 +1279,30 @@ theorem decodeLinstr_shiftX (ext dst src cnt : Nat) (rest : List (BitVec 8))
   simp only [encShiftX, encVex3RR, List.map_cons, List.map_nil, List.cons_append,
     List.nil_append] at hj ⊢
   simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, BitVec.toNat_ofNat,
-    decodeShiftX, vex1_map, vex2g_w _ _ hpp, vex2g_l _ _ hpp, vex2g_pp _ _ hpp,
+    decodeVex3, vex1_map, vex2g_w _ _ hpp, vex2g_l _ _ hpp, vex2g_pp _ _ hpp,
     vex2g_vvvv _ _ hc hpp, vex1_rbar _ _ (bit_le_one _ _) (bit_le_one _ _),
     vex1_bbar _ _ (bit_le_one _ _) (bit_le_one _ _), one_sub_one_sub_bit,
     modField_modRMReg, regField_modRMReg, rmField_modRMReg, bitsplit _ hd, bitsplit _ hs]
   rcases hext with rfl | rfl | rfl <;> simp [shiftXpp, shiftXOf]
+
+/-- The BMI1 and-not `ANDN d, a, b` (`encVex3RR 0b00010 0b00 0xf2 d a b`,
+    `VEX.LZ.0F38.W1 F2 /r`, register-direct) decodes to `andn` of `d`, `a`, `b`. -/
+theorem decodeLinstr_andn (d a b : Nat) (rest : List (BitVec 8)) (hd : d < 16) (ha : a < 16)
+    (hb : b < 16) :
+    decodeLinstr (encVex3RR 0b00010 0b00 0xf2 d a b ++ rest)
+      = some (.op (.andn (regName d) (regName a) (regName b)), rest) := by
+  have hj : decodeJ1 (encVex3RR 0b00010 0b00 0xf2 d a b ++ rest) = none := by
+    simp [encVex3RR, decodeJ1, decodeMulx]
+  have hnr : isRex (BitVec.ofNat 8 0xc4) = false := by decide
+  simp only [encVex3RR, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append] at hj ⊢
+  simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, BitVec.toNat_ofNat,
+    decodeVex3, vex1_map, vex2g_w _ _ (show 0 < 4 by decide), vex2g_l _ _ (show 0 < 4 by decide),
+    vex2g_pp _ _ (show 0 < 4 by decide), vex2g_vvvv _ _ ha (show 0 < 4 by decide),
+    vex1_rbar _ _ (bit_le_one _ _) (bit_le_one _ _),
+    vex1_bbar _ _ (bit_le_one _ _) (bit_le_one _ _), one_sub_one_sub_bit,
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg, bitsplit _ hd, bitsplit _ hb]
+  simp
 
 /-- `SETE`/`SETNE %d8` (`encSetccReg`, `0F 94`/`95 /0` with the byte-register `REX`)
     decodes to `setcc` of `d`, which writes the low byte and keeps the rest of the

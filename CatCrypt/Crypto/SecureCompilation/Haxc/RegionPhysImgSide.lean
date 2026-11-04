@@ -462,6 +462,7 @@ theorem physExpand_mulHiOk {slotArr : String → Option (String × Nat)}
   have hld : isMemLoad o = false := by simp [isMemLoad, hs]
   have hc : o ≠ "CMOV:64" := fun e => by subst e; revert hs; decide
   have hse : isSetccMnem o = false := by simp [isSetccMnem, hs]
+  have han : o ≠ "ANDN:64" := fun e => by subst e; revert hs; decide
   have hmv : stripWidthTag o ≠ "MOV" := by rw [hs]; decide
   have hmq : stripWidthTag o ≠ "MOVQ" := by rw [hs]; decide
   intro r hr
@@ -476,14 +477,14 @@ theorem physExpand_mulHiOk {slotArr : String → Option (String × Nat)}
     · next _ d' opn' addr val heq' =>
       simp only [LinstrR.Lopn.injEq] at heq'
       obtain ⟨-, rfl, -⟩ := heq'
-      simp only [hst, Bool.false_eq_true, ite_false, legalizeSpillDst_of_ne _ _ hc hse,
+      simp only [hst, Bool.false_eq_true, ite_false, legalizeSpillDst_of_ne _ _ hc hse han,
         List.map_cons, List.map_nil, List.mem_singleton] at hr
       subst hr
       exact mulHiOk_map hrmR [_] [_, _] _
     · next _ dsts opn' srcs _ heq' =>
       simp only [LinstrR.Lopn.injEq] at heq'
       obtain ⟨-, rfl, -⟩ := heq'
-      simp only [legalizeSpillDst_of_ne _ _ hc hse, List.map_cons, List.map_nil,
+      simp only [legalizeSpillDst_of_ne _ _ hc hse han, List.map_cons, List.map_nil,
         List.mem_singleton] at hr
       subst hr
       exact mulHiOk_map hrmR _ _ _

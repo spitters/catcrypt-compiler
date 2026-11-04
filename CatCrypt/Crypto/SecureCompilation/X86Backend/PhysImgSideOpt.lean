@@ -601,10 +601,20 @@ theorem physExpand_forall (Q : LinstrR → Prop)
             split_ifs <;> q_fin
           · cases h
         · cases h
-      · intro r hr
-        simp only [List.mem_singleton] at hr
-        subst hr
-        exact hQ _ _ _ hs
+      · split
+        · rename_i h
+          unfold andnSpill? at h
+          split at h
+          · split at h
+            · cases h
+              simp only [List.forall_mem_cons, List.mem_singleton, forall_eq] at hd hs
+              q_fin
+            · cases h
+          · cases h
+        · intro r hr
+          simp only [List.mem_singleton] at hr
+          subst hr
+          exact hQ _ _ _ hs
   obtain ⟨ii, w⟩ := i
   have hmap : ∀ (l : List LinstrR), (∀ r ∈ l, Q r) →
       ∀ r ∈ l.map (fun r => (⟨ii, r⟩ : Linstr)), Q r.li_i := by

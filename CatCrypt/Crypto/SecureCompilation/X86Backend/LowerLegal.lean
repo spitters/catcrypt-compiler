@@ -664,6 +664,8 @@ structure SpillDstOk (F W Q : Nat) (dsts : List LOperand) (opn : String)
   /-- The scratch comparison. -/
   cmp : ∀ l, setccSpill? dsts opn srcs = some l → isSetccEncMnem opn = true ∧
     (∀ o ∈ dsts, AllocOp F W Q o) ∧ ∀ o ∈ srcs, AllocOp F W Q o
+  /-- No scratch and-not: the legal forms do not contain the BMI1 `ANDN`. -/
+  andn : andnSpill? dsts opn srcs = none
   /-- The single instruction. -/
   one : cmovSpillDst? dsts opn srcs = none → setccSpill? dsts opn srcs = none →
     LF F W Q (.Lopn dsts opn srcs)
@@ -696,6 +698,7 @@ theorem legalizeSpillDst_legal {dsts : List LOperand} {opn : String} {srcs : Lis
         (fun o ho => allocOp_iff_allocOpI.1 (hd o ho)) (fun o ho => allocOp_iff_allocOpI.1 (hs o ho))
         i hi
     · next hs =>
+      rw [h.andn] at hi
       simp only [List.mem_singleton] at hi
       subst hi
       exact h.one hc hs
@@ -710,6 +713,7 @@ theorem spillDstOk_storeImm {a : LOperand} {bn vn : String} {k : Nat}
     rw [cmovSpillDst?_of_ne (opn := "STOREIMM") _ _ (by decide +kernel)] at hl; cases hl
   cmp l hl := by
     rw [setccSpill?_of_ne (opn := "STOREIMM") _ _ (by decide +kernel)] at hl; cases hl
+  andn := andnSpill?_of_ne _ _ (by decide +kernel)
   one _ _ := .storeImm a bn vn k hk hb hv
 
 /-- **The stack-array zeroing meets `SpillDstOk`** into a general-purpose register at a count
@@ -722,6 +726,7 @@ theorem spillDstOk_zeroArr {dn : String} {n w : Nat} (ho : x86ZeroArr n w = true
     rw [cmovSpillDst?_of_ne (opn := "ZEROARR") _ _ (by decide +kernel)] at hl; cases hl
   cmp l hl := by
     rw [setccSpill?_of_ne (opn := "ZEROARR") _ _ (by decide +kernel)] at hl; cases hl
+  andn := andnSpill?_of_ne _ _ (by decide +kernel)
   one _ _ := .zeroArr dn n w ho hd
 
 /-! ## One position of `physPositionEmit` -/

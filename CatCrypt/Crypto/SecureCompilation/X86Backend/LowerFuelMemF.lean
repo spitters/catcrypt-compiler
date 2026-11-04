@@ -873,6 +873,7 @@ def lowerCoreOKB (imm : Option Nat) (u64 : Bool) : LinstrR → Bool
         | none =>
             s1 != .reg d && immSmallB s1 && (!s1.isSpill || !(LOperand.reg d).isSpill)
       else !isMemStore opn && (setccSpill? [.reg d] opn [.reg s0, s1]).isNone
+        && (andnSpill? [.reg d] opn [.reg s0, s1]).isNone
   | .Lopn [.reg _] opn [.reg _, .reg _, .reg _] =>
       !isTwoAddrBinop opn && opn == "CMOV:64"
   | .Lopn [d] opn (s0 :: s1 :: s2 :: ss) =>
@@ -932,11 +933,11 @@ theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool}
     · simp only [Bool.not_eq_true] at hb
       simp only [hb, Bool.false_eq_true, ite_false, Bool.and_eq_true, Bool.not_eq_true',
         Option.isNone_iff_eq_none] at hok
-      obtain ⟨hst, hset⟩ := hok
+      obtain ⟨⟨hst, hset⟩, hand⟩ := hok
       have hl : lowerCore imm u64 (.Lopn [.reg d] opn [.reg s0, s1])
           = [.Lopn [.reg d] opn [.reg s0, s1]] := by
         simp only [lowerCore, hb, hst, Bool.false_eq_true, ite_false]
-        exact legalizeSpillDst_of_none rfl hset
+        exact legalizeSpillDst_of_none rfl hset hand
       rw [hl]
       exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
   · rename_i D opn C T F
@@ -950,7 +951,7 @@ theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool}
     cases h : cmovSpillDst? [.reg D] "CMOV:64" [.reg C, .reg T, .reg F] with
     | some L => exact simS_cmovSpillDst? hcm h hC hT hF
     | none =>
-      simpa [setccSpill?] using
+      simpa [setccSpill?, andnSpill?] using
         simS_self (i := (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F],
           tg (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F]))) ⟨_, _, _, rfl⟩ hn
           (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
@@ -961,6 +962,7 @@ theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool}
         = [.Lopn [d] opn (s0 :: s1 :: s2 :: ss)] := by
       simp only [lowerCore, hb, Bool.false_eq_true, ite_false]
       exact legalizeSpillDst_of_none hc (by cases s0 <;> cases s1 <;> rfl)
+        (by cases s0 <;> cases s1 <;> rfl)
     rw [hl]
     exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
   · rename_i d opn s

@@ -527,7 +527,16 @@ theorem legalizeSpillDst_armOut (dsts : List LOperand) (opn : String) (srcs : Li
           simp_all [ArmOut]
         · cases h
       · cases h
-    · simp +contextual [ArmOut]
+    · split
+      · rename_i h
+        unfold andnSpill? at h
+        split at h
+        · split at h
+          · cases h
+            simp_all [ArmOut, movMnems]
+          · cases h
+        · cases h
+      · simp +contextual [ArmOut]
 
 theorem legalizeSibElem_armOut (o : LOperand) (opn : String) :
     ∀ r ∈ (legalizeSibElem o).1, ArmOut [] opn r := by
@@ -1102,6 +1111,7 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
       intro n; subst hrm; split <;> rfl
     obtain ⟨-, -, hZ, hS, -⟩ := hacc ds o ss rfl
     obtain ⟨hbin, hms, hcm, hset⟩ := arrImm_mnem_class hz
+    have han : o ≠ "ANDN:64" := by rcases hz with rfl | rfl <;> decide
     have hemit : ss.length ≥ 2 → ds.length = 1 →
         physPositionEmit shiftImm body (fun _ => none) loadBase [] storeBase abiW mbr
           callArgBaseReload reservedVec (⟨ii, .Lopn ds o ss⟩, virtIdx) =
@@ -1119,7 +1129,8 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
       simp only [hst, ite_false, hbin, Bool.false_eq_true, legalizeSpillDst]
       rcases t with _ | ⟨s2, t⟩ <;>
         simp only [hms, Bool.false_eq_true, ite_false, cmovSpillDst?_of_ne _ _ hcm,
-          setccSpill?_of_ne _ _ hset, List.map_cons, List.map_nil, List.append_nil]
+          setccSpill?_of_ne _ _ hset, andnSpill?_of_ne _ _ han, List.map_cons, List.map_nil,
+          List.append_nil]
     have hrl : ∀ q, slotMov? (LinstrR.Lopn [.reg reloadScratch2] "MOVQ" [.reg q])
         = some (reloadScratch2, q) := fun q => by simp [slotMov?]
     rcases hz with rfl | rfl

@@ -486,7 +486,16 @@ theorem legalizeSpillDst_idxFree (dsts : List LOperand) (opn : String) (srcs : L
           simp_all [idxFreeB]
         · cases h
       · cases h
-    · simpa [idxFreeB] using hs
+    · split
+      · rename_i h
+        unfold andnSpill? at h
+        split at h
+        · split at h
+          · cases h
+            simp_all [idxFreeB]
+          · cases h
+        · cases h
+      · simpa [idxFreeB] using hs
 
 theorem legalizeSibElem_of_noIdx {o : LOperand} (h : noIdxB o = true) :
     legalizeSibElem o = ([], o) := by
@@ -1256,10 +1265,12 @@ theorem physExpand_arrImm_eq (shiftImm : ShiftImmOracle) (u64 : Bool)
     physExpand shiftImm u64 rmap mbr ⟨ii, .Lopn [d] o (s0 :: s1 :: t)⟩ =
       [⟨ii, .Lopn [rmap d] o ((s0 :: s1 :: t).map rmap)⟩] := by
   obtain ⟨hbin, hms, hcm, hset⟩ := arrImm_mnem_class hz
+  have han : o ≠ "ANDN:64" := by rcases hz with rfl | rfl <;> decide
   rw [physExpand_eq]
   rcases t with _ | ⟨s2, t⟩ <;>
     simp only [hbin, Bool.false_eq_true, ite_false, hms, legalizeSpillDst,
-      cmovSpillDst?_of_ne _ _ hcm, setccSpill?_of_ne _ _ hset, List.map_cons, List.map_nil]
+      cmovSpillDst?_of_ne _ _ hcm, setccSpill?_of_ne _ _ hset, andnSpill?_of_ne _ _ han,
+      List.map_cons, List.map_nil]
 
 /-- **The reloaded expansion of a constant-index array write.** For a `ZEROARR` or `STOREIMM`
     of the access form, under an operand map that keeps immediates and sends registers to

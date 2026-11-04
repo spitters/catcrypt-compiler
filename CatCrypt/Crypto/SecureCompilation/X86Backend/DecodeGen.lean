@@ -167,11 +167,12 @@ def tmplIdx (r b i : Nat) : List (List (BitVec 8) × JInstr 64) :=
      (encMemMovSibw 1 0x89 r b i 8, .storeMemIdx (regName b) (regName i) 8 (.reg (regName r)))]
   else []
 
-/-- The three-register templates: the BMI2 variable shifts. -/
+/-- The three-register templates: the BMI2 variable shifts and the BMI1 and-not. -/
 def tmpl3 (d s c : Nat) : List (List (BitVec 8) × JInstr 64) :=
   [4, 5, 7].map (fun ext => (encShiftX ext d s c,
     (if ext = 4 then JInstr.shlx else if ext = 5 then JInstr.shrx else JInstr.sarx)
       (regName d) (regName s) (regName c)))
+  ++ [(encVex3RR 0b00010 0b00 0xf2 d s c, .andn (regName d) (regName s) (regName c))]
 
 /-- The width-cast templates on registers `d` (the destination) and `s`: the zero-extending
     moves of the low 16 and the low 32 bits behind a `REX` prefix at `REX.W = 0`. -/
@@ -225,7 +226,7 @@ def guess : JInstr 64 → List String × List Nat × List Int
   | .addToMem b off s => (b :: opNames s, [], [off])
   | .loadMemIdx d b i _ => ([d, b, i], [], [])
   | .storeMemIdx b i _ s => (b :: i :: opNames s, [], [])
-  | .shlx d s c | .shrx d s c | .sarx d s c => ([d, s, c], [], [])
+  | .shlx d s c | .shrx d s c | .sarx d s c | .andn d s c => ([d, s, c], [], [])
   | .movzx d _ s => ([d, s], [], [])
   | _ => ([], [], [])
 
@@ -449,9 +450,11 @@ theorem tmplIdx_sound (r b i : Nat) (hr : r < 16) (hb : b < 16) (hi : i < 16) :
 theorem tmpl3_sound (d s c : Nat) (hd : d < 16) (hs : s < 16) (hc : c < 16) :
     ∀ q ∈ tmpl3 d s c, PieceDec q := by
   intro q hq rest
-  simp only [tmpl3, List.mem_map, List.mem_cons, List.not_mem_nil, or_false] at hq
-  obtain ⟨ext, hext, rfl⟩ := hq
-  exact decodeLinstr_shiftX ext d s c rest hext hd hs hc
+  simp only [tmpl3, List.mem_append, List.mem_map, List.mem_cons, List.not_mem_nil,
+    or_false] at hq
+  rcases hq with ⟨ext, hext, rfl⟩ | rfl
+  · exact decodeLinstr_shiftX ext d s c rest hext hd hs hc
+  · exact decodeLinstr_andn d s c rest hd hs hc
 
 theorem tmplCast_sound (d s : Nat) (hd : d < 16) (hs : s < 16) :
     ∀ q ∈ tmplCast d s, PieceDec q := by

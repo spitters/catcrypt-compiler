@@ -581,6 +581,7 @@ theorem physExpand_tiedI (shiftImm : ShiftImmOracle) (u64 : Bool) (rm : LOperand
     have hse : isSetccMnem "CMP:64" = false := by decide
     simp only [physExpand_eq, hb, hst, Bool.false_eq_true, ite_false, hc', legalizeSpillDst,
       cmovSpillDst?_of_ne _ _ (by decide : "CMP:64" ≠ "CMOV:64"), setccSpill?_of_ne _ _ hse,
+      andnSpill?_of_ne _ _ (by decide : "CMP:64" ≠ "ANDN:64"),
       List.map_cons, List.map_nil, List.mem_singleton]
     rintro r rfl d opn x c0 he _
     simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq] at he

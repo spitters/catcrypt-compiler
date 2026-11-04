@@ -231,7 +231,16 @@ theorem legalizeSpillDst_resolved (dsts : List LOperand) (opn : String) (srcs : 
           simp_all
         · cases h
       · cases h
-    · simp_all
+    · split
+      · rename_i h
+        unfold andnSpill? at h
+        split at h
+        · split at h
+          · cases h
+            simp_all
+          · cases h
+        · cases h
+      · simp_all
 
 /-! ## 3. The address legalisers -/
 

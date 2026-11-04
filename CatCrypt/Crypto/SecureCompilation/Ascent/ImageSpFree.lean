@@ -464,6 +464,10 @@ theorem rspFree_of_armOk {P : X86Backend.LprogBytesDecode.Params} {x : LinstrR} 
           simp [rspFreeB, operandNames, srcNames, AArm.instr, Arm.instr,
             rspFreeNameB_gp hok.1.1.1.1, rspFreeNameB_gp hok.1.1.1.2,
             rspFreeNameB_gp hok.1.1.2]
+      | andn D A S =>
+          simp only [Arm.ok, Bool.and_eq_true] at hok
+          simp [rspFreeB, operandNames, srcNames, AArm.instr, Arm.instr,
+            rspFreeNameB_gp hok.1.1, rspFreeNameB_gp hok.1.2, rspFreeNameB_gp hok.2]
   | st m q S =>
       simp only [AArm.ok, Bool.and_eq_true] at h
       left

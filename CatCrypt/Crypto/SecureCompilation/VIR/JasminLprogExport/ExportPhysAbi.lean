@@ -813,10 +813,30 @@ def setccSpill? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
       else none
   | _, _ => none
 
+/-- The and-not with spilled operands through the scratch registers.
+
+    For a single destination `d`, the mnemonic `ANDN:64` and two register-named sources
+    `a`, `b`, one of the three a spill slot, the and-not is
+    `MOV:64 R15, a; MOV:64 R14, b; ANDN:64 R15, [R15, R14]; MOV:64 d, R15`: the BMI1
+    `ANDN` takes register operands only in the fragment of the encoder. `none` in every
+    other case. -/
+def andnSpill? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    Option (List LinstrR) :=
+  match dsts, srcs with
+  | [d], [.reg a, .reg b] =>
+      if (d.isSpill || (LOperand.reg a).isSpill || (LOperand.reg b).isSpill)
+          && opn == "ANDN:64" then
+        some [.Lopn [.reg reloadScratch] "MOV:64" [.reg a],
+              .Lopn [.reg reloadScratch2] "MOV:64" [.reg b],
+              .Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg reloadScratch2],
+              .Lopn [d] "MOV:64" [.reg reloadScratch]]
+      else none
+  | _, _ => none
+
 /-- The instructions of a register-allocated `Lopn` with destinations `dsts`,
-    mnemonic `opn` and sources `srcs`: the scratch select `cmovSpillDst?` or the
-    scratch comparison `setccSpill?` when one is defined, and the single instruction
-    `Lopn dsts opn srcs` otherwise. -/
+    mnemonic `opn` and sources `srcs`: the scratch select `cmovSpillDst?`, the
+    scratch comparison `setccSpill?` or the scratch and-not `andnSpill?` when one is
+    defined, and the single instruction `Lopn dsts opn srcs` otherwise. -/
 def legalizeSpillDst (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     List LinstrR :=
   match cmovSpillDst? dsts opn srcs with
@@ -824,7 +844,10 @@ def legalizeSpillDst (dsts : List LOperand) (opn : String) (srcs : List LOperand
   | none =>
       match setccSpill? dsts opn srcs with
       | some l => l
-      | none => [.Lopn dsts opn srcs]
+      | none =>
+          match andnSpill? dsts opn srcs with
+          | some l => l
+          | none => [.Lopn dsts opn srcs]
 
 /-- A mnemonic other than `CMOV:64` has no scratch select. -/
 theorem cmovSpillDst?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
@@ -838,6 +861,14 @@ theorem cmovSpillDst?_of_ne (dsts : List LOperand) {opn : String} (srcs : List L
 theorem setccSpill?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
     (h : isSetccMnem opn = false) : setccSpill? dsts opn srcs = none := by
   unfold setccSpill?
+  split
+  · simp [h]
+  · rfl
+
+/-- A mnemonic other than `ANDN:64` has no scratch and-not. -/
+theorem andnSpill?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
+    (h : opn ≠ "ANDN:64") : andnSpill? dsts opn srcs = none := by
+  unfold andnSpill?
   split
   · simp [h]
   · rfl
@@ -863,19 +894,33 @@ theorem setccSpill?_of_not_spill {dsts : List LOperand} (opn : String)
     simp [h _ (List.mem_singleton_self _), ha, hb]
   · rfl
 
-/-- Where there is neither a scratch select nor a scratch comparison,
-    `legalizeSpillDst` is the single instruction. -/
-theorem legalizeSpillDst_of_none {dsts : List LOperand} {opn : String} {srcs : List LOperand}
-    (h : cmovSpillDst? dsts opn srcs = none) (h' : setccSpill? dsts opn srcs = none) :
-    legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] := by
-  simp [legalizeSpillDst, h, h']
+/-- Operands none of which is a spill slot have no scratch and-not. -/
+theorem andnSpill?_of_not_spill {dsts : List LOperand} (opn : String)
+    {srcs : List LOperand} (h : ∀ d ∈ dsts, d.isSpill = false)
+    (hs : ∀ s ∈ srcs, s.isSpill = false) : andnSpill? dsts opn srcs = none := by
+  unfold andnSpill?
+  split
+  · rename_i a b
+    have ha := hs (.reg a) (by simp)
+    have hb := hs (.reg b) (by simp)
+    simp [h _ (List.mem_singleton_self _), ha, hb]
+  · rfl
 
-/-- On a mnemonic other than `CMOV:64` and the comparison mnemonics,
+/-- Where there is neither a scratch select nor a scratch comparison nor a scratch
+    and-not, `legalizeSpillDst` is the single instruction. -/
+theorem legalizeSpillDst_of_none {dsts : List LOperand} {opn : String} {srcs : List LOperand}
+    (h : cmovSpillDst? dsts opn srcs = none) (h' : setccSpill? dsts opn srcs = none)
+    (h'' : andnSpill? dsts opn srcs = none) :
+    legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] := by
+  simp [legalizeSpillDst, h, h', h'']
+
+/-- On a mnemonic other than `CMOV:64`, the comparison mnemonics and `ANDN:64`,
     `legalizeSpillDst` is the single instruction. -/
 theorem legalizeSpillDst_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
-    (h : opn ≠ "CMOV:64") (h' : isSetccMnem opn = false) :
+    (h : opn ≠ "CMOV:64") (h' : isSetccMnem opn = false) (h'' : opn ≠ "ANDN:64") :
     legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
   legalizeSpillDst_of_none (cmovSpillDst?_of_ne dsts srcs h) (setccSpill?_of_ne dsts srcs h')
+    (andnSpill?_of_ne dsts srcs h'')
 
 /-- On operands none of which is a spill slot, `legalizeSpillDst` is the single
     instruction. -/
@@ -884,7 +929,7 @@ theorem legalizeSpillDst_of_not_spill {dsts : List LOperand} (opn : String)
     (hs : ∀ s ∈ srcs, s.isSpill = false) :
     legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
   legalizeSpillDst_of_none (cmovSpillDst?_of_not_spill opn h hs)
-    (setccSpill?_of_not_spill opn h hs)
+    (setccSpill?_of_not_spill opn h hs) (andnSpill?_of_not_spill opn h hs)
 
 /-- **The scratch select.** A `CMOV:64` whose destination or condition is a spill slot
     is `cmovSpillSeq "CMOV:64" d c t f`. -/
@@ -940,6 +985,22 @@ theorem legalizeSpillDst_setcc {d : LOperand} {opn a b : String}
   have hc : cmovSpillDst? [d] opn [.reg a, .reg b] = none := rfl
   simp only [legalizeSpillDst, hc, setccSpill?, h, ho, Bool.and_self, ite_true]
 
+/-- **The scratch and-not.** An and-not `ANDN:64 d, [a, b]` over register names, one of the
+    three a spill slot, is `MOV:64 R15, a; MOV:64 R14, b; ANDN:64 R15, [R15, R14];
+    MOV:64 d, R15`. -/
+theorem legalizeSpillDst_andn {d : LOperand} {a b : String}
+    (h : (d.isSpill || (LOperand.reg a).isSpill || (LOperand.reg b).isSpill) = true) :
+    legalizeSpillDst [d] "ANDN:64" [.reg a, .reg b]
+      = [.Lopn [.reg reloadScratch] "MOV:64" [.reg a],
+         .Lopn [.reg reloadScratch2] "MOV:64" [.reg b],
+         .Lopn [.reg reloadScratch] "ANDN:64" [.reg reloadScratch, .reg reloadScratch2],
+         .Lopn [d] "MOV:64" [.reg reloadScratch]] := by
+  have hc : cmovSpillDst? [d] "ANDN:64" [.reg a, .reg b] = none := rfl
+  have hs : setccSpill? [d] "ANDN:64" [.reg a, .reg b] = none :=
+    setccSpill?_of_ne _ _ (by decide +kernel)
+  simp only [legalizeSpillDst, hc, hs, andnSpill?, h, Bool.true_and, beq_self_eq_true,
+    ite_true]
+
 /-- Every instruction of `legalizeSpillDst dsts opn srcs` is an `Lopn` each of whose
     operands is a destination in `dsts`, a source in `srcs`, or one of the scratch
     registers `R15` (`reloadScratch`) and `R14` (`reloadScratch2`). -/
@@ -974,11 +1035,22 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
             exact ⟨_, _, _, rfl, by intro x hx; simp at hx; rcases hx with rfl | rfl <;> simp⟩
         · cases hl
       · cases hl
-    · obtain rfl := List.mem_singleton.mp h
-      exact ⟨_, _, _, rfl, fun x hx => by
-        rcases List.mem_append.mp hx with hx | hx
-        · exact Or.inl hx
-        · exact Or.inr (Or.inl hx)⟩
+    · split at h
+      · rename_i l _ _ hl
+        unfold andnSpill? at hl
+        split at hl
+        · split at hl
+          · cases hl
+            simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+            rcases h with rfl | rfl | rfl | rfl <;>
+              exact ⟨_, _, _, rfl, by intro x hx; simp at hx; rcases hx with rfl | rfl <;> simp⟩
+          · cases hl
+        · cases hl
+      · obtain rfl := List.mem_singleton.mp h
+        exact ⟨_, _, _, rfl, fun x hx => by
+          rcases List.mem_append.mp hx with hx | hx
+          · exact Or.inl hx
+          · exact Or.inr (Or.inl hx)⟩
 
 /-! ### The allocator's decision -/
 

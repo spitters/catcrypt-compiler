@@ -1679,6 +1679,22 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                         if isGpName dn && isGpName an && isGpName sn then
                           encSetccCmp w op (gpNumU dn) (gpNumU an) (gpNumU sn)
                         else []
+                    -- BMI1 and-not `ANDN:64 [d] [a, b]` (`regArith .andn`, `d := ~a & b`):
+                    -- the non-destructive three-operand `andn %b, %a, %d` the printer
+                    -- renders, `VEX.LZ.0F38.W1 F2 /r` with `d` in `ModRM.reg`, `a` in the
+                    -- inverted `vvvv` and `b` in `ModRM.rm` (`ScalarEncoder.encVex3RR`).
+                    -- U64 and register operands only; any other operand is left as the
+                    -- visible empty byte list. Reached last: `ANDN` is in none of
+                    -- `tagShiftExt`, `aluOpcode`, `twoByteOpcode` and `setccCmpOp`.
+                    | none, _, _, _ =>
+                        if base == "ANDN" then
+                          match d, a, s with
+                          | .reg dn, .reg an, .reg sn =>
+                              if w = 1 && isGpName dn && isGpName an && isGpName sn then
+                                encVex3RR 0b00010 0b00 0xf2 (gpNumU dn) (gpNumU an) (gpNumU sn)
+                              else []
+                          | _, _, _ => []
+                        else []
                     | _, _, _, _ => []
       -- Branchless constant-time select `CMOV:<w> [cond, t, f]` (§3c): the byte
       -- image of `renderLopn`'s CMOV arm, with the same aliasing-driven choice
@@ -2247,7 +2263,7 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "MULXHI:64" [.reg "RAX", .reg "RBX"], true)
   , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], true)
-  , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], false)
+  , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], true)
   -- the two-source materialised comparison the compare-and-select export emits,
   -- `LprogAsmPrinter.renderSetcc`'s `cmp b, a ; mov $0, d ; set<cc> d8`, encoded by
   -- `encSetccCmp` over registers; with a memory operand it is declined.

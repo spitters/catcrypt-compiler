@@ -621,13 +621,14 @@ theorem setccSpillI?_encodable {c : E.Ctx} {dsts : List LOperand} {opn : String}
     mnemonic of the instruction set is `CMOV`: each has a legal form (the scratch select when
     its selected values are encoder registers, the scratch comparison when the encoder builds
     it), or it is the unlegalised instruction, emitted when neither the select nor the
-    comparison applies. -/
+    comparison applies, on an instruction without a scratch and-not (`andnSpillI?`). -/
 theorem legalizeSpillDstI_cases (hsel' : I.selectMnemonic = some "CMOV") {c : E.Ctx}
     {dsts : List LOperand} {opn : String} {srcs : List LOperand}
     (hd : ∀ o ∈ dsts, AllocOpI E c o) (hs : ∀ o ∈ srcs, AllocOpI E c o)
     (hsel : ∀ cnd t f, srcs = [cnd, t, f] → opn = "CMOV:64" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ E.reg tn = true ∧ E.reg fn = true)
-    (hcmp : isSetccMnem opn = true → E.setcc opn = true) :
+    (hcmp : isSetccMnem opn = true → E.setcc opn = true)
+    (handn : andnSpillI? I.toIsaAbi dsts opn srcs = none) :
     ∀ i ∈ legalizeSpillDstI I.toIsaAbi dsts opn srcs, LegalForm I E c i ∨
       (cmovSpillDstI? I.toIsaAbi dsts opn srcs = none ∧
         setccSpillI? I.toIsaAbi dsts opn srcs = none ∧ i = .Lopn dsts opn srcs) := by
@@ -660,7 +661,7 @@ theorem legalizeSpillDstI_cases (hsel' : I.selectMnemonic = some "CMOV") {c : E.
         · cases hs'
       exact fun i hi => Or.inl (h.setccSpillI?_legal hs' (hcmp hset) hd hs i hi)
     | none =>
-      simp only [List.mem_cons, List.not_mem_nil, or_false]
+      simp only [handn, List.mem_cons, List.not_mem_nil, or_false]
       rintro i rfl
       exact Or.inr ⟨trivial, trivial, rfl⟩
 
@@ -674,12 +675,13 @@ theorem legalizeSpillDstI_legal (hsel' : I.selectMnemonic = some "CMOV") {c : E.
     (hsel : ∀ cnd t f, srcs = [cnd, t, f] → opn = "CMOV:64" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ E.reg tn = true ∧ E.reg fn = true)
     (hcmp : isSetccMnem opn = true → E.setcc opn = true)
+    (handn : andnSpillI? I.toIsaAbi dsts opn srcs = none)
     (hone : cmovSpillDstI? I.toIsaAbi dsts opn srcs = none →
       setccSpillI? I.toIsaAbi dsts opn srcs = none →
       LegalForm I E c (.Lopn dsts opn srcs)) :
     ∀ i ∈ legalizeSpillDstI I.toIsaAbi dsts opn srcs, LegalForm I E c i := by
   intro i hi
-  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp i hi with hl | ⟨hc, hs', rfl⟩
+  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp handn i hi with hl | ⟨hc, hs', rfl⟩
   · exact hl
   · exact hone hc hs'
 
@@ -693,12 +695,13 @@ theorem legalizeSpillDstI_encodable (hsel' : I.selectMnemonic = some "CMOV") {c 
     (hsel : ∀ cnd t f, srcs = [cnd, t, f] → opn = "CMOV:64" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ E.reg tn = true ∧ E.reg fn = true)
     (hcmp : isSetccMnem opn = true → E.setcc opn = true)
+    (handn : andnSpillI? I.toIsaAbi dsts opn srcs = none)
     (hone : cmovSpillDstI? I.toIsaAbi dsts opn srcs = none →
       setccSpillI? I.toIsaAbi dsts opn srcs = none →
       E.instr c (.Lopn dsts opn srcs) = true) :
     ∀ i ∈ legalizeSpillDstI I.toIsaAbi dsts opn srcs, E.instr c i = true := by
   intro i hi
-  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp i hi with hl | ⟨hc, hs', rfl⟩
+  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp handn i hi with hl | ⟨hc, hs', rfl⟩
   · exact h.instr_of_legalForm hl
   · exact hone hc hs'
 

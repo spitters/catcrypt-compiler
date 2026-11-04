@@ -410,6 +410,13 @@ theorem cover_encShiftX {ext d s c : Nat} (hext : ext = 4 ∨ ext = 5 ∨ ext = 
       (mem_pieceTemplates_three (mem_nums_of hd (by simp [guess]))
         (mem_nums_of hs (by simp [guess])) (mem_nums_of hc (by simp [guess])) (by simp [tmpl3]))
 
+/-- The BMI1 and-not. -/
+theorem cover_encAndn {d a b : Nat} (hd : d < 16) (ha : a < 16) (hb : b < 16) :
+    TemplateCover (encVex3RR 0b00010 0b00 0xf2 d a b) :=
+  TemplateCover.single (j := .andn (regName d) (regName a) (regName b))
+    (mem_pieceTemplates_three (mem_nums_of hd (by simp [guess]))
+      (mem_nums_of ha (by simp [guess])) (mem_nums_of hb (by simp [guess])) (by simp [tmpl3]))
+
 /-- The width casts. -/
 theorem cover_encCastW {m d s : Nat} (hd : d < 16) (hs : s < 16) :
     TemplateCover (encCastW m d s) := by
@@ -1465,7 +1472,12 @@ theorem encodeLopn_cover_w1 {F W Q : Nat} {ds : List LOperand} {o : String}
                                 · exact cover_encSetccCmp (setccCmpOp_cases ‹_›) (gpNumU_lt_16 _)
                                     (gpNumU_lt_16 _) (gpNumU_lt_16 _)
                                 · exact TemplateCover.nil
-                              · exact TemplateCover.nil
+                              all_goals first
+                                | exact TemplateCover.nil
+                                | ((repeat' cover_split) <;> first
+                                    | exact cover_encAndn (gpNumU_lt_16 _) (gpNumU_lt_16 _)
+                                        (gpNumU_lt_16 _)
+                                    | exact TemplateCover.nil)
               · cover_split
                 · cover_split
                   · cover_split

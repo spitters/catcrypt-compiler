@@ -20,7 +20,8 @@ program `p` it accepts (`regionExportableB_legalizeAndn`, an instance of
 `regionExportableB_legalizeBy`): the block of an and-not binds two operations
 `regArith .and w` and `regArith .xor w` of the stack-memory fragment `opMemB`, and every other
 binding is kept. The region legalisation `legalizeRegion` of every program of
-`regionExportableRorB` passes the test (`regionExportableB_legalizeRegion`).
+`regionExportableRorB` passes the test (`regionExportableB_legalizeRegion`): the region
+legalisation is the identity.
 
 ## Main results
 
@@ -74,6 +75,6 @@ theorem regionExportableB_legalizeAndn {Γ : Ctxt jasminDialect} {t : JasminTy}
 theorem regionExportableB_legalizeRegion {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} (hp : regionExportableRorB p = true) :
     regionExportableB (legalizeRegion p) = true :=
-  regionExportableB_legalizeAndn ((regionExportableRorB_eq p).symm.trans hp)
+  (regionExportableRorB_eq p).symm.trans hp
 
 end CatCrypt.Crypto.SecureCompilation.Haxc

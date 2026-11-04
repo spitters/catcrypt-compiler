@@ -453,6 +453,33 @@ theorem encodeLopn_leaIdx (F W : Nat) (D B X : String) (sc qB : Nat) (hD : gpOk 
     LprogBytes.rexW, fD.isGp, fB.isGp, fX.isGp, Bool.false_eq_true, ite_false, ite_true]
   simp [h4, hs]
 
+/-- The and-not `ANDN:64 D, A, S` over general-purpose names is the three-byte-VEX form
+    `VEX.LZ.0F38.W1 F2 /r`. -/
+theorem encodeLopn_andn (F W : Nat) (D A S : String) (qB : Nat) (hD : gpOk D = true)
+    (hA : gpOk A = true) (hS : gpOk S = true) :
+    encodeLopn F W (.Lopn [.reg D] "ANDN:64" [.reg A, .reg S]) qB
+      = ScalarEncoder.encVex3RR 0b00010 0b00 0xf2 (gpNumU D) (gpNumU A) (gpNumU S) := by
+  have fD := gpFacts hD
+  have fA := gpFacts hA
+  have fS := gpFacts hS
+  simp only [encodeLopn,
+    show (isCarryOutBinding "ANDN:64" || isMulHiBinding "ANDN:64") = false from by decide +kernel,
+    show stripWidthTag "ANDN:64" = "ANDN" from by decide +kernel,
+    show mnemWidth "ANDN:64" = 64 from by decide +kernel,
+    show ("ANDN" == "MULX") = false from by decide +kernel,
+    show ("ANDN" == "MULXMEM") = false from by decide +kernel,
+    show adxPrefix "ANDN" = none from by decide +kernel,
+    show tagShiftExt "ANDN" = none from by decide +kernel,
+    show aluOpcode "ANDN" = none from by decide +kernel,
+    show twoByteOpcode "ANDN" = none from by decide +kernel,
+    show ("ANDN" == "STOREIDX") = false from by decide +kernel,
+    show ("ANDN" == "CMP") = false from by decide +kernel,
+    show ("ANDN" == "SHL" || "ANDN" == "SHR" || "ANDN" == "SAR") = false from by decide +kernel,
+    show setccCmpOp "ANDN" = none from by decide +kernel,
+    show ("ANDN" == "ANDN") = true from by decide +kernel,
+    LprogBytes.rexW, fD.isGp, fA.isGp, fS.isGp, Bool.false_eq_true, ite_false, ite_true]
+  simp
+
 /-! ## 4. The decoded pieces of the covered arms -/
 
 /-- `SHR $k, %d` (`REX.W C1 /5 ib`) on a general-purpose name decodes to the shift of its
@@ -562,6 +589,8 @@ inductive Arm where
   | shI (m D : String) (k : Nat)
   /-- The load-effective-address `LEA:64 D, [B + X · sc]` over the SIB form. -/
   | lea (D B X : String) (sc : Nat)
+  /-- The three-operand and-not `ANDN:64 D, A, S`, `D := ~A & S`. -/
+  | andn (D A S : String)
 
 /-- The instruction of an arm. -/
 def Arm.instr : Arm → LinstrR
@@ -575,6 +604,7 @@ def Arm.instr : Arm → LinstrR
   | .shl0 m D S => .Lopn [.reg D] m [.reg S]
   | .shI m D k => .Lopn [.reg D] m [.reg D, .imm k]
   | .lea D B X sc => .Lopn [.reg D] "LEA:64" [.arrIdx B X sc]
+  | .andn D A S => .Lopn [.reg D] "ANDN:64" [.reg A, .reg S]
 
 /-- The arm of an instruction, read off its operand shape and mnemonic; `none` outside the
     covered shapes. -/
@@ -587,7 +617,9 @@ def classify : LinstrR → Option Arm
       else if m == withWidthTag 64 ("SHL" ++ ":" ++ toString 0) then some (.shl0 m d s)
       else some (.shr m d s)
   | .Lopn [.reg d] m [.imm v] => if m == "MOV:64" then some (.movRI d v) else none
-  | .Lopn [.reg d] m [.reg a, .reg s] => if d == a then some (.alu m d s) else none
+  | .Lopn [.reg d] m [.reg a, .reg s] =>
+      if m == "ANDN:64" then some (.andn d a s)
+      else if d == a then some (.alu m d s) else none
   | .Lopn [.reg d] m [.reg a, .imm v] =>
       if d == a then (if isShI m then some (.shI m d v) else some (.aluI m d v)) else none
   | .Lopn [.reg d] m [.arrIdx b x sc] => if m == "LEA:64" then some (.lea d b x sc) else none
@@ -602,11 +634,8 @@ theorem classify_instr {i : LinstrR} {a : Arm} (h : classify i = some a) : a.ins
     simp only [beq_iff_eq] at hm
     subst hm
     rfl
-  · split_ifs at h with hm
-    obtain rfl := Option.some.inj h
-    simp only [beq_iff_eq] at hm
-    subst hm
-    rfl
+  · split_ifs at h <;> obtain rfl := Option.some.inj h <;>
+      simp only [beq_iff_eq] at * <;> subst_vars <;> rfl
   · split_ifs at h with hm <;> obtain rfl := Option.some.inj h <;>
       simp only [beq_iff_eq] at hm <;> subst hm <;> rfl
   · split_ifs at h with hm
@@ -659,6 +688,9 @@ def Arm.pieces (P : Params) : Arm → List (List (BitVec 8) × JInstr 64)
   | .lea D B X sc =>
       [(encMemMovSibw 1 0x8d (gpNumU D) (gpNumU B) (gpNumU X) sc,
         .lea (phys D) (phys B) (phys X) sc 0)]
+  | .andn D A S =>
+      [(ScalarEncoder.encVex3RR 0b00010 0b00 0xf2 (gpNumU D) (gpNumU A) (gpNumU S),
+        .andn (phys D) (phys A) (phys S))]
 
 /-- The machine instructions of an arm. -/
 def Arm.js (P : Params) (a : Arm) : List (JInstr 64) := (a.pieces P).map Prod.snd
@@ -699,6 +731,7 @@ def Arm.ok (P : Params) (Q : List (String × Int)) : Arm → Bool
         && m == withWidthTag 64 ("SHL" ++ ":" ++ toString 0)
   | .shI m D k => isShI m && gpOk D && (decide (0 < k) || m == "SHL:64") && decide (k < 64)
   | .lea D B X sc => gpOk D && gpOk B && gpOk X && gpNumU X != 4 && ScalarEncoder.scaleOk sc
+  | .andn D A S => gpOk D && gpOk A && gpOk S
 
 /-- The frame words written after an arm. -/
 def Arm.post (P : Params) (Q : List (String × Int)) : Arm → List (String × Int)
@@ -801,6 +834,14 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
       rintro p rfl rest
       exact decodeLinstr_leaIdx _ _ _ sc rest (gpNumU_lt_16 D) (gpNumU_lt_16 B)
         (gpNumU_lt_16 X) h4 hs
+  | andn D A S =>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨hD, hA⟩, hS⟩ := h
+    refine ⟨?_, ?_⟩
+    · simp [Arm.instr, Arm.pieces, encodeLopn_andn _ _ _ _ _ _ hD hA hS]
+    · simp only [Arm.pieces, List.mem_singleton]
+      rintro p rfl rest
+      exact decodeLinstr_andn _ _ _ rest (gpNumU_lt_16 D) (gpNumU_lt_16 A) (gpNumU_lt_16 S)
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq,
       Option.isNone_iff_eq_none, Bool.or_eq_false_iff] at h
@@ -1110,6 +1151,19 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
     exact hc.write hD _ hregs hmem
       (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
       (by rw [getW_setReg_nextPc, ite_eq_left rfl])
+  | andn D A S =>
+    simp only [Arm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨hD, hA⟩, hS⟩ := h
+    show DecSim _ _ [binRegI "ANDN:64" D A S] [.andn (phys D) (phys A) (phys S)]
+    refine DecSim.single fun sa b zf hc =>
+      ⟨withALUFlags (binRegI "ANDN:64" D A S) b
+        ((b.setReg D (~~~(sa.regs (phys A)) &&& sa.regs (phys S))).nextPc),
+      zf, ?_, hc.write hD (~~~(sa.regs (phys A)) &&& sa.regs (phys S)) (fun _ => rfl) rfl
+        (fun r hr => by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_right hr])
+        (by rw [withALUFlags_reg, getW_setReg_nextPc, ite_eq_left rfl])⟩
+    rw [fstepF_binRegI "ANDN:64" "ANDN" D A S (by decide +kernel) (by decide +kernel)
+      (by decide) (by decide) (by decide) b zf _ (hc.regs A hA), hc.regs S hS, Option.bind_some]
+    rfl
   | shl0 m D S =>
     simp only [Arm.ok, Bool.and_eq_true, beq_iff_eq] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hm⟩ := h

@@ -651,10 +651,21 @@ theorem wide_legalizeSpillDst {dsts srcs : List LOperand} (opn : String)
           w_fin
         · cases h
       · cases h
-    · intro r hr
-      simp only [List.mem_singleton] at hr
-      subst hr
-      exact wideOkR_multiSrc hn
+    · split
+      · rename_i h
+        unfold andnSpill? at h
+        split at h
+        · split at h
+          · cases h
+            simp only [List.forall_mem_cons, List.not_mem_nil, IsEmpty.forall_iff, implies_true,
+              and_true] at hd hs
+            w_fin
+          · cases h
+        · cases h
+      · intro r hr
+        simp only [List.mem_singleton] at hr
+        subst hr
+        exact wideOkR_multiSrc hn
 
 /-- The store of `R15` into the cell `mem.R14.0`: a move into a memory name that is no
     general-purpose name, from a general-purpose name. -/

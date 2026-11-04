@@ -1544,19 +1544,20 @@ theorem setccSpill?_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String
 /-- **Every instruction of `legalizeSpillDst` is encodable**, for allocated operands:
     the scratch select when its selected values are registers, the scratch comparison
     when it is `SETE` or `SETNE`, and the single instruction when it is itself
-    encodable. -/
+    encodable, on an instruction without a scratch and-not. -/
 theorem legalizeSpillDst_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String}
     {srcs : List LOperand}
     (hd : ∀ o ∈ dsts, AllocOp F W Q o) (hs : ∀ o ∈ srcs, AllocOp F W Q o)
     (hsel : ∀ c t f, srcs = [c, t, f] → opn = "CMOV:64" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ isGpName tn = true ∧ isGpName fn = true)
     (hcmp : isSetccMnem opn = true → isSetccEncMnem opn = true)
+    (handn : andnSpill? dsts opn srcs = none)
     (hone : cmovSpillDst? dsts opn srcs = none → setccSpill? dsts opn srcs = none →
       encodableLinstrR F W (.Lopn dsts opn srcs) Q = true) :
     ∀ i ∈ legalizeSpillDst dsts opn srcs, encodableLinstrR F W i Q = true :=
   x86Enc_complete.legalizeSpillDstI_encodable (c := (F, W, Q)) x86Isa_selectMnemonic
     (fun o ho => allocOp_iff_allocOpI.1 (hd o ho)) (fun o ho => allocOp_iff_allocOpI.1 (hs o ho))
-    hsel hcmp hone
+    hsel hcmp handn hone
 
 /-! ## Load forwarding -/
 

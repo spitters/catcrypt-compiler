@@ -924,7 +924,20 @@ theorem legalizeSpillDst_scratchPrev (dsts : List LOperand) (opn : String)
         simp_all [scratchPrevB, scratchMovFreeB_of_src, scratchMovFreeB_two,
           writesScratchB_r15 hm hl]
       · cases h
-    · simp [scratchPrevB, scratchMovFreeB_of_src hs]
+    · split
+      · rename_i h
+        unfold andnSpill? at h
+        split at h
+        · split_ifs at h with hc
+          cases h
+          simp only [Bool.and_eq_true, beq_iff_eq] at hc
+          obtain ⟨-, rfl⟩ := hc
+          have hm : slotMov? (.Lopn [.reg reloadScratch] "ANDN:64"
+              [.reg reloadScratch, .reg reloadScratch2]) = none := by simp [slotMov?]
+          simp_all [scratchPrevB, scratchMovFreeB_of_src, scratchMovFreeB_two,
+            writesScratchB_r15 hm (by decide : "ANDN:64" ≠ "LIVEPIN")]
+        · cases h
+      · simp [scratchPrevB, scratchMovFreeB_of_src hs]
 
 theorem reloadMemrefBase_scratch (mbr : String → Option String)
     (hmbr : ∀ b q, mbr b = some q → q ≠ reloadScratch) (o : LOperand)

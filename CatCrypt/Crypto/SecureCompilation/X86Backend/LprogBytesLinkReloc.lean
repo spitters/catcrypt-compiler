@@ -993,11 +993,12 @@ theorem decodeJ1_6_plain {b0 : BitVec 8} (t : List (BitVec 8)) (hr : isRex b0 = 
   have h1 : decodeJ1 (b0 :: t) = none := by simp [decodeJ1, h66, hf3, hc4, h0f, hr]
   simp [decodeJ1_6, h1, decodeShift1_nonrex t hr, decodeCmp_nonrex t hr]
 
-/-- `decodeShiftX` is stable under extension of its input (`ExtStable`). -/
-theorem decodeShiftX_ext : ExtStable decodeShiftX := by
+/-- `decodeVex3` is stable under extension of its input (`ExtStable`). -/
+theorem decodeVex3_ext : ExtStable decodeVex3 := by
   intro bs x r e h
-  fun_cases decodeShiftX bs
-  all_goals (try simp_all [decodeShiftX])
+  fun_cases decodeVex3 bs
+  all_goals (try simp_all [decodeVex3])
+  all_goals (split_ifs at h <;> simp_all)
 
 /-- `decodeRexExt` is stable under extension of its input (`ExtStable`). -/
 theorem decodeRexExt_ext (rx : BitVec 8) : ExtStable (decodeRexExt rx) := by
@@ -1023,13 +1024,14 @@ theorem decodeRexMov32_ext (rx : BitVec 8) : ExtStable (decodeRexMov32 rx) := by
   fun_cases decodeRexMov32 rx bs
   all_goals (try simp_all [decodeRexMov32])
 
-/-- After `C4`, a stream `decodeShiftX` decodes is, with any continuation, rejected by
+/-- After `C4`, a stream `decodeVex3` decodes is, with any continuation, rejected by
     `decodeJ1_6`: its opcode byte `F7` is not the `F6` of `decodeMulx`. -/
 theorem decodeJ1_6_c4 {b0 : BitVec 8} {t r : List (BitVec 8)} {x : JInstr 64}
-    (e : List (BitVec 8)) (hb : b0.toNat = 0xc4) (h : decodeShiftX t = some (x, r)) :
+    (e : List (BitVec 8)) (hb : b0.toNat = 0xc4) (h : decodeVex3 t = some (x, r)) :
     decodeJ1_6 (b0 :: (t ++ e)) = none := by
-  fun_cases decodeShiftX t
-  all_goals (try simp_all [decodeShiftX])
+  fun_cases decodeVex3 t
+  all_goals (try simp_all [decodeVex3])
+  all_goals (try split_ifs at h)
   all_goals simp_all [decodeJ1_6, decodeJ1, decodeMulx, decodeShift1, decodeCmp, isRex]
 
 /-- After `0F`, a byte of `80`..`8F` (the second opcode byte of `jcc rel32`) is rejected by
@@ -1266,7 +1268,7 @@ theorem decodeLinstr_ext : ExtStable decodeLinstr := by
       obtain ⟨⟨i, r'⟩, hs, he⟩ := Option.map_eq_some_iff.mp h
       simp only [Prod.mk.injEq] at he
       obtain ⟨rfl, rfl⟩ := he
-      rw [decodeJ1_6_c4 e h4 hs, decodeShiftX_ext _ _ _ e hs]
+      rw [decodeJ1_6_c4 e h4 hs, decodeVex3_ext _ _ _ e hs]
       rfl
     simp only [h1, h2, h3, h4, ↓reduceIte] at h ⊢
     by_cases h5 : isRex b0 = true
@@ -1414,11 +1416,12 @@ theorem decodeRexW0_len (rx : BitVec 8) : NoLonger (decodeRexW0 rx) := by
   all_goals try (split at h <;> simp_all; omega)
   all_goals try (obtain ⟨_, _, _, rfl⟩ := h; omega)
 
-/-- `decodeShiftX` leaves no more bytes than it reads. -/
-theorem decodeShiftX_len : NoLonger decodeShiftX := by
+/-- `decodeVex3` leaves no more bytes than it reads. -/
+theorem decodeVex3_len : NoLonger decodeVex3 := by
   intro bs x r h
-  fun_cases decodeShiftX bs
-  all_goals (try simp_all [decodeShiftX])
+  fun_cases decodeVex3 bs
+  all_goals (try simp_all [decodeVex3])
+  all_goals try (split_ifs at h <;> simp_all)
   all_goals try (obtain ⟨_, _, _, rfl⟩ := h; omega)
 
 /-- `decodeRexExt` leaves no more bytes than it reads. -/
@@ -1549,7 +1552,7 @@ theorem decodeLinstr_len : Shorter decodeLinstr := by
     · obtain ⟨⟨i, r'⟩, hs, he⟩ := Option.map_eq_some_iff.mp h
       simp only [Prod.mk.injEq] at he
       obtain ⟨-, rfl⟩ := he
-      exact decodeShiftX_len _ _ _ hs
+      exact decodeVex3_len _ _ _ hs
     · cases ha : decodeRexExt b0 t with
       | some p =>
         obtain ⟨i, r'⟩ := p

@@ -916,6 +916,8 @@ theorem regArm_facts {P : Params} {a : Arm} (hr : regArmB a = true) (h : a.ok P 
     split_ifs <;> rfl
   | lea D B X sc => exact ⟨by simp [Arm.js, Arm.pieces, noWriteB], fun d s hs => by
       simp [Arm.instr, slotMov?] at hs, rfl⟩
+  | andn D A S => exact ⟨by simp [Arm.js, Arm.pieces, noWriteB], fun d s hs => by
+      simp [Arm.instr, slotMov?] at hs, rfl⟩
 
 /-- A register arm whose conditions hold compares against a general-purpose name only. -/
 theorem regArm_slotCmp {P : Params} {a : Arm} (h : a.ok P [] = true) {d x q : String}
@@ -1695,6 +1697,7 @@ theorem Arm.caret_free_of_ok {P : Params} {Q : List (String × Int)} {a : Arm}
     simp only [String.toList_append, List.mem_append, not_or]
     exact ⟨⟨⟨by decide, by decide⟩, (sep_not_mem_toString _).2⟩, by decide⟩
   · simp only [isShI, Bool.or_eq_true, beq_iff_eq] at h; rcases h.1.1.1 with rfl | rfl <;> decide
+  · decide
   · decide
 
 /-- The address machine steps an arm whose conditions hold as the tagged instruction

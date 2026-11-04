@@ -418,7 +418,19 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
           · cases hs
         | none =>
           simp only [hs] at hx
-          simp [ho] at hx
+          cases ha : andnSpill? dsts opn srcs with
+          | some l =>
+            simp only [ha] at hx
+            unfold andnSpill? at ha
+            split at ha
+            · split at ha
+              · cases ha
+                simp [ho, l2] at hx
+              · cases ha
+            · cases ha
+          | none =>
+            simp only [ha] at hx
+            simp [ho] at hx
     have hOne : ∀ opn d s, o ≠ opn →
         ∀ x ∈ legalizeOneSrc u64 opn d s, ∀ ds ss, x ≠ .Lopn ds o ss := by
       intro opn d s ho x hx ds ss
@@ -707,7 +719,7 @@ theorem physExpand_livepin (shiftImm : ShiftImmOracle) (u64 : Bool)
   have hm : ∀ d s, legalizeOneSrc u64 "LIVEPIN" d s = [.Lopn [d] "LIVEPIN" [s]] := fun d s =>
     legalizeOneSrc_of_ne d s (by decide +kernel) (by decide +kernel)
   have hc : ∀ ds ss, legalizeSpillDst ds "LIVEPIN" ss = [.Lopn ds "LIVEPIN" ss] := fun ds ss =>
-    legalizeSpillDst_of_ne ds ss (by decide +kernel) (by decide +kernel)
+    legalizeSpillDst_of_ne ds ss (by decide +kernel) (by decide +kernel) (by decide +kernel)
   rcases ds with _ | ⟨d, _ | ⟨d', ds⟩⟩ <;> rcases ss with _ | ⟨s0, _ | ⟨s1, _ | ⟨s2, ss⟩⟩⟩ <;>
     simp [physExpand_eq, hs, hl, hb, hm, hc, isNativeShiftRotate_livepin, notLivePin]
 

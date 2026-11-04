@@ -1469,6 +1469,7 @@ theorem noWideArm_of_ok {P : Params} {a : AArm} (h : a.ok P = true) : NoWideArm 
       simp only [Arm.ok, Bool.and_eq_true, isShI, Bool.or_eq_true, beq_iff_eq] at hok
       rcases hok.1.1.1 with rfl | rfl <;> exact noWideArm_twoI (by decide) (by decide)
     | lea D B X sc => exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    | andn D A S => exact noWideArm_two (by decide) (by decide)
   | st m q S =>
     simp only [AArm.ok, Bool.and_eq_true] at h
     exact noWideArm_mov h.2 (cellParts?_of_spillOff h.1.1.2) (cellParts?_gp h.1.1.1.1)
@@ -1697,6 +1698,10 @@ theorem regOut_nil_of_ok {P : Params} {a : AArm} (h : a.ok P = true) :
       refine regOut_nil_of_mc rfl (fun p hp => by simp [movRegArgs?] at hp) rfl rfl
         (fun d' t g hs => ?_)
       regout_key
+    | andn D A S =>
+      simp (config := { decide := true }) only [AArm.instr, Arm.instr,
+        JasminLsemAddrRun.normA, LprogAsmPrinter.untagCaret, ↓reduceIte]
+      regout_arm
   | st m q S => exact hone _ _ _
   | ld m D q => exact hone _ _ _
   | leaF d q => exact hone _ _ _

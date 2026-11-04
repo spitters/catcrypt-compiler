@@ -30,13 +30,15 @@ register file each is the x86 legalisation, by `rfl`.
   routed through `I.reload` and `I.reloadSnd`.
 * `setccSpillI?`: the materialised comparison with spilled operands routed through the two
   scratch registers.
-* `legalizeSpillDstI`: the scratch select, the scratch comparison, or the single
-  instruction.
+* `andnSpillI?`: the and-not with spilled operands routed through the two scratch
+  registers.
+* `legalizeSpillDstI`: the scratch select, the scratch comparison, the scratch and-not, or
+  the single instruction.
 
 ## Main results
 
 * `legalizeMovI_x86`, `legalizeOneSrcI_x86`, `cmovSpillSeqI_x86`, `cmovSpillDstI?_x86`,
-  `setccSpillI?_x86`, `legalizeSpillDstI_x86`: at the x86 register file the legalisations
+  `setccSpillI?_x86`, `andnSpillI?_x86`, `legalizeSpillDstI_x86`: at the x86 register file the legalisations
   are the x86 ones.
 -/
 
@@ -143,9 +145,27 @@ def setccSpillI? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
       else none
   | _, _ => none
 
+/-- **The and-not with spilled operands over a register file**: for a single destination
+    `d`, the mnemonic `ANDN:64` and two register sources `a`, `b`, one of the three a spill
+    slot, `MOV:64 I.reload, a; MOV:64 I.reloadSnd, b; ANDN:64 I.reload, [I.reload,
+    I.reloadSnd]; MOV:64 d, I.reload`; `none` in every other case. -/
+def andnSpillI? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    Option (List LinstrR) :=
+  match dsts, srcs with
+  | [d], [.reg a, .reg b] =>
+      if (d.isSpill || (LOperand.reg a).isSpill || (LOperand.reg b).isSpill)
+          && opn == "ANDN:64" then
+        some [.Lopn [.reg I.reload] "MOV:64" [.reg a],
+              .Lopn [.reg I.reloadSnd] "MOV:64" [.reg b],
+              .Lopn [.reg I.reload] opn [.reg I.reload, .reg I.reloadSnd],
+              .Lopn [d] "MOV:64" [.reg I.reload]]
+      else none
+  | _, _ => none
+
 /-- **The spill legalisation of an instruction over a register file**: the scratch select
-    `cmovSpillDstI?` or the scratch comparison `setccSpillI?` when one is defined, and the
-    single instruction `Lopn dsts opn srcs` otherwise. -/
+    `cmovSpillDstI?`, the scratch comparison `setccSpillI?` or the scratch and-not
+    `andnSpillI?` when one is defined, and the single instruction `Lopn dsts opn srcs`
+    otherwise. -/
 def legalizeSpillDstI (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     List LinstrR :=
   match cmovSpillDstI? I dsts opn srcs with
@@ -153,7 +173,10 @@ def legalizeSpillDstI (dsts : List LOperand) (opn : String) (srcs : List LOperan
   | none =>
       match setccSpillI? I dsts opn srcs with
       | some l => l
-      | none => [.Lopn dsts opn srcs]
+      | none =>
+          match andnSpillI? I dsts opn srcs with
+          | some l => l
+          | none => [.Lopn dsts opn srcs]
 
 /-! ## The x86 register file -/
 
@@ -173,6 +196,9 @@ theorem cmovSpillDstI?_x86 (dsts : List LOperand) (opn : String) (srcs : List LO
 
 theorem setccSpillI?_x86 (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     setccSpillI? x86Data.toIsaAbi dsts opn srcs = setccSpill? dsts opn srcs := rfl
+
+theorem andnSpillI?_x86 (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    andnSpillI? x86Data.toIsaAbi dsts opn srcs = andnSpill? dsts opn srcs := rfl
 
 theorem legalizeSpillDstI_x86 (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     legalizeSpillDstI x86Data.toIsaAbi dsts opn srcs = legalizeSpillDst dsts opn srcs := rfl
