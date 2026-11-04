@@ -70,7 +70,10 @@ stage is a function of the optional table that is the stage above without one:
   `calleeSiteAt` (at each call, as operands, the argument names at the scalar parameters and
   the arrays whose frame slots the argument registers reload before the call at the array
   parameters; as destination, the result register for a word result and the operand at the
-  destination position for an out result), with the class and the gate `calleeImgB`;
+  destination position for an out result), with the one image check `calleeImgBT` of both
+  routes: `regionImgCB` at the frame and the symbols of the table, which adds to the
+  conjuncts of `regionImgB` that every call names a symbol of the table (`callsTabB`) and
+  admits calls of these symbols in the class and the gate;
 * two conjuncts of `regionCoB` of the form `callee.all _`: the rewriting onto the common
   names with its freshness check, and the checks `calleeBodyB` of the printed body (the
   check `calleeCodeB` of the code of the callee, the cut programs, the call sites, the table `deadTab` of dead names and live flags with the
@@ -95,9 +98,9 @@ stage is a function of the optional table that is the stage above without one:
 
 The callee of these stages is an optional table `CalleeTab` (`regionCallee_tab`). Without a
 table each
-reduces by `rfl` (`calleeImgT_none`, `calleeCodeT_none`,
-`calleeImgBT_none`, `calleeAlloc_none`, `calleeBytes_none`, `calleeCtB_none`,
-`regionCoB_none`), and a program without `call` has no callee at every list
+reduces by `rfl` (`calleeImgT_none`, `calleeCodeT_none`, `calleeAlloc_none`, `calleeBytes_none`, `calleeCtB_none`,
+`regionCoB_none`), except the image check, which is `regionImgB` by `calleeImgBT_none`
+(`regionImgCB_nil`), and a program without `call` has no callee at every list
 (`compileRegion_of_callFree`). The result of a calling body is gated; no correctness
 theorem of this module covers it.
 
@@ -238,6 +241,11 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   body, the gate with carry chains `imgGateCW` with the observed names outside its width
   analysis at the return (`retOutsB`).
 * `regionImgB`: `regionImgCoreB` and `restoreB` on the image of the cell body.
+* `callsTabB`: every call of a body names a symbol of a list.
+* `regionImgCB`: the image check at a table, at its frame and its symbols: `callsTabB`, the
+  class `decodableLcmd` with `ImageAddrCallW.printedAddrCWB`, the cell checks, the gate of a
+  calling body `ImageAddrCallW.imgGateCBW` and `retOutsB` at the cell body, `restoreB`, and
+  no observed frame-array name.
 * `emptiedEntry`: the entry state of a virtual body with cells.
 * `regionFoldB`: the check of the cell fold of the parts.
 * `liveArrTab`, `liveArrCert`: the synthesised liveness table of the array names and the
@@ -299,6 +307,11 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 * `regionPrintedB_of_regionImgB`: a body that passes `regionImgB` is in `regionPrintedB`.
 * `regionImgCoreB_of_narrowB`: a body of the narrow class `printedAddrB` with no cell access
   that passes `imgGateB` and names no frame array passes `regionImgCoreB` at no cell array.
+* `callsTabB_iff`: `callsTabB` holds exactly when every call names a symbol of the list.
+* `printedAddrWB_eq`: `printedAddrWB` is `callsTabB []` with `decodableLcmd` and the calling
+  class `printedAddrCWB` at every frame.
+* `regionImgCB_nil`: at no symbol the image check `regionImgCB` is `regionImgB`, at every
+  frame.
 * `halts_det`: a halting run of a decoded program has one final state.
 * `imgStores_export`: the accesses of the image simulation lie in `layoutMem`, the stack
   words and the pointer regions of the layout.
@@ -395,8 +408,8 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   at the table `CalleeTab.one c` of one function.
 * `calleeImgT`, `calleeCodeT`, `calleeAAT`, `calleeAOT`, `calleeOutsT`, `calleeImgBT`,
   `callParamsBT`, `calleeDeadBT`, `calleeCodeBT`: the callee-dependent functions at an optional
-  table. `calleeAA`, `calleeAO`, `calleeOuts`, `callParamsB` are applications of these forms
-  at one function; `calleeImgT_one`, `calleeCodeT_one`, `calleeImgBT_one`, `calleeDeadBT_one`,
+  table. `calleeAA`, `calleeAO`, `calleeOuts`, `callParamsB`, `calleeImgB` are applications
+  of these forms at one function; `calleeImgT_one`, `calleeCodeT_one`, `calleeDeadBT_one`,
   `calleeCodeBT_one` relate the others.
 * `calleeCodeBT_keep`, `calleeCodeBT_sound`: the code of each function of a table passes the
   keep check `Callee.keepCheckAtB` at its clobber set, its frame and its declared store policy
@@ -1212,6 +1225,172 @@ theorem regionImgCoreB_of_narrowB (sl : String → Option (String × Nat)) (outs
     X86Backend.ImageAddrCidx.imgGateCW_of_imgGateBW
       (X86Backend.ImageAddrCallW.imgGateBW_of_imgGateB hcls hgate hfa)]
   rfl
+
+/-! ### The image check at a table -/
+
+/-- **Every call of a body names a symbol of a list**: the symbol of every `call` instruction
+    of `body` is in `ns`. At the empty list the body has no call
+    (`callFreeB_of_callsTabB_nil`). -/
+def callsTabB (ns : List String) (body : Lcmd) : Bool :=
+  body.all fun i => match i.li_i with
+    | .Lcall _ (f, _) => ns.contains f
+    | _ => true
+
+/-- **Soundness of `callsTabB`**: `callsTabB ns body` holds exactly when every call of `body`
+    names a symbol of `ns`. -/
+theorem callsTabB_iff {ns : List String} {body : Lcmd} :
+    callsTabB ns body = true
+      ↔ ∀ i ∈ body, ∀ ra f l, i.li_i = .Lcall ra (f, l) → f ∈ ns := by
+  simp only [callsTabB, List.all_eq_true]
+  refine ⟨fun h i hi ra f l hx => ?_, fun h i hi => ?_⟩
+  · have := h i hi
+    rw [hx] at this
+    simpa using this
+  · split
+    · rename_i ra f l hx
+      simpa using h i hi ra f l hx
+    · rfl
+
+/-- At the empty list `callsTabB` gives a body with no call. -/
+theorem callFreeB_of_callsTabB_nil {body : Lcmd} (h : callsTabB [] body = true) :
+    X86Backend.ImageAddrCall.callFreeB body = true := by
+  simp only [X86Backend.ImageAddrCall.callFreeB, List.all_eq_true]
+  intro i hi
+  cases hx : i.li_i with
+  | Lcall ra t => exact absurd (callsTabB_iff.mp h i hi ra t.1 t.2 hx) (by simp)
+  | _ => rfl
+
+/-- A body of `printedAddrWB` has no call. -/
+theorem callsTabB_nil_of_printedAddrWB {body : Lcmd} (h : printedAddrWB body = true) :
+    callsTabB [] body = true := by
+  rw [callsTabB_iff]
+  intro i hi ra f l hx
+  simp only [printedAddrWB, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨-, hlast⟩, hall⟩, -⟩, -⟩, -⟩ := h
+  rcases List.eq_nil_or_concat body with rfl | ⟨L, b, rfl⟩
+  · cases hi
+  · simp only [List.concat_eq_append, List.dropLast_concat, List.getLast?_concat,
+      Option.any_some, List.all_eq_true] at hlast hall
+    simp only [List.concat_eq_append, List.mem_append, List.mem_singleton] at hi
+    rcases hi with hi | rfl
+    · have := hall i hi
+      rw [hx] at this
+      simp [X86Backend.DecodePrintedAddrW.instrOKWB] at this
+    · rw [hx] at hlast
+      simp [X86Backend.DecodePrinted.isRetB] at hlast
+
+/-- The frame conditions of the relocating encoder hold on a decodable body. -/
+theorem relocFrameB_of_decodableLcmd {body : Lcmd}
+    (h : X86Backend.DecodeLayout.decodableLcmd body = true) :
+    X86Backend.ImageAddrCall.relocFrameB body = true := by
+  simp only [X86Backend.DecodeLayout.decodableLcmd, Bool.and_eq_true] at h
+  obtain ⟨⟨⟨⟨⟨-, hs⟩, hF0⟩, hF⟩, -⟩, -⟩ := h
+  simp only [X86Backend.ImageAddrCall.relocFrameB, hs, Bool.true_and, Bool.and_eq_true]
+  simp only [X86Backend.LprogBytesDecode.Params.ofBody, X86Backend.SailX86Decoder.dispOk32,
+    decide_eq_true_eq, bne_iff_ne, ne_eq, Int.ofNat_eq_natCast] at hF0 hF ⊢
+  have := of_decide_eq_true hF
+  omega
+
+/-- A call-free body has no call of a named symbol. -/
+theorem remoteCallB_of_callFreeB {body : Lcmd}
+    (h : X86Backend.ImageAddrCall.callFreeB body = true) {i : Linstr} (hi : i ∈ body) :
+    X86Backend.ImageAddrCall.remoteCallB i.li_i = false := by
+  simp only [X86Backend.ImageAddrCall.callFreeB, List.all_eq_true] at h
+  have := h i hi
+  cases hx : i.li_i <;> simp_all [X86Backend.ImageAddrCall.remoteCallB,
+    X86Backend.ImageAddrCall.isCallB]
+
+/-- **The class `printedAddrWB` is the calling class at no call**: a body is in
+    `printedAddrWB` exactly when it has no call, is decodable and is in
+    `ImageAddrCallW.printedAddrCWB` at any frame `G`. -/
+theorem printedAddrWB_eq (G : Nat) (body : Lcmd) :
+    printedAddrWB body = (callsTabB [] body && X86Backend.DecodeLayout.decodableLcmd body
+      && X86Backend.ImageAddrCallW.printedAddrCWB G body) := by
+  cases hc : callsTabB [] body
+  · cases hp : printedAddrWB body
+    · rfl
+    · rw [callsTabB_nil_of_printedAddrWB hp] at hc
+      cases hc
+  · have hcf := callFreeB_of_callsTabB_nil hc
+    have hnr := fun i (hi : i ∈ body) => remoteCallB_of_callFreeB hcf hi
+    apply Bool.eq_iff_iff.mpr
+    simp only [printedAddrWB, X86Backend.ImageAddrCallW.printedAddrCWB, Bool.and_eq_true,
+      Bool.true_and, List.all_eq_true, hcf, Bool.true_or, Bool.and_true]
+    constructor
+    · rintro ⟨⟨⟨⟨⟨hd, hl⟩, ho⟩, h1⟩, h2⟩, h3⟩
+      refine ⟨hd, ⟨⟨relocFrameB_of_decodableLcmd hd, hl⟩, fun i hi => ?_⟩, fun k hk => ?_⟩
+      · simp [ho i hi]
+      · simp [h1 k hk, h2 k hk, h3 k hk]
+    · rintro ⟨hd, ⟨⟨-, hl⟩, ho⟩, h⟩
+      refine ⟨⟨⟨⟨⟨hd, hl⟩, fun i hi => ?_⟩, fun k hk => (h k hk).1.1⟩,
+        fun k hk => (h k hk).1.2⟩, fun k hk => (h k hk).2⟩
+      have := ho i hi
+      rwa [hnr i (List.mem_of_mem_dropLast hi), Bool.false_or] at this
+
+/-- The cell body of a call-free body is call-free. -/
+theorem callFreeB_cellBody (sl : String → Option (String × Nat)) {body : Lcmd}
+    (h : X86Backend.ImageAddrCall.callFreeB body = true) :
+    X86Backend.ImageAddrCall.callFreeB (cellBody sl body) = true := by
+  simp only [X86Backend.ImageAddrCall.callFreeB, List.all_eq_true] at h ⊢
+  intro i hi
+  obtain ⟨k, hk⟩ := List.mem_iff_getElem?.mp hi
+  rw [cellBody_getElem?] at hk
+  obtain ⟨j, hj, rfl⟩ := Option.map_eq_some_iff.mp hk
+  have := h j (List.mem_of_getElem? hj)
+  unfold X86Backend.ImageAddrCells.cellMove
+  split
+  · split
+    · rfl
+    · exact this
+  · split
+    · rfl
+    · exact this
+  · exact this
+
+/-- On a call-free body the gate of a calling body is `imgGateCW`. -/
+theorem imgGateCBW_of_callFreeB (frame : String → Option (BitVec 64))
+    (sl : String → Option (String × Nat)) {body : Lcmd}
+    (h : X86Backend.ImageAddrCall.callFreeB body = true) :
+    X86Backend.ImageAddrCallW.imgGateCBW frame sl body = imgGateCW frame sl body := by
+  have hk : ∀ k, (body[k]?).all (fun i => X86Backend.ImageAddrCall.remoteCallB i.li_i
+      || X86Backend.ImageAddrCidx.gateCW frame sl body k i.li_i)
+      = (body[k]?).all (fun i => X86Backend.ImageAddrCidx.gateCW frame sl body k i.li_i) := by
+    intro k
+    cases hk : body[k]? with
+    | none => rfl
+    | some i => simp [remoteCallB_of_callFreeB h (List.mem_of_getElem? hk)]
+  unfold X86Backend.ImageAddrCallW.imgGateCBW imgGateCW
+  simp only [hk]
+
+/-- **The image check of a body at a table**, at the frame `G` and the symbols `ns` of the
+    table and the wire `w` of the image of the cell body: every call of the body names a
+    symbol of `ns` (`callsTabB`), the body is decodable and in the calling class
+    `ImageAddrCallW.printedAddrCWB` at `G`, its cell accesses pass `cellAccB` and
+    `cellNoSlotB`, its cell body passes the gate of a calling body `ImageAddrCallW.imgGateCBW`
+    and `retOutsB` at the frame marks with the cells, the wire passes the restoration check,
+    and no observed name is a frame-array name. At no symbol and the wire of the image
+    `virtImg` it is `regionImgB` (`regionImgCB_nil`). -/
+def regionImgCB (G : Nat) (ns : List String) (w : List LinstrR)
+    (sl : String → Option (String × Nat)) (R : Slots) (outs : List String) (body : Lcmd) :
+    Bool :=
+  callsTabB ns body && X86Backend.DecodeLayout.decodableLcmd body
+    && X86Backend.ImageAddrCallW.printedAddrCWB G body
+    && cellAccB sl R body && cellNoSlotB sl body
+    && X86Backend.ImageAddrCallW.imgGateCBW (frameMarkC R body) sl (cellBody sl body)
+    && retOutsB (frameMarkC R body) (cellBody sl body) outs
+    && restoreB w && outs.all (fun r => !faB r)
+
+/-- **At no symbol the image check is `regionImgB`**, at every frame, on the wire of the image
+    `virtImg` of the cell body. -/
+theorem regionImgCB_nil (G : Nat) (sl : String → Option (String × Nat)) (R : Slots)
+    (outs : List String) (body : Lcmd) :
+    regionImgCB G [] ((virtImg sl (cellBody sl body)).map Prod.fst) sl R outs body
+      = regionImgB sl R outs body := by
+  unfold regionImgCB regionImgB regionImgCoreB
+  rw [printedAddrWB_eq G body]
+  cases hc : callsTabB [] body
+  · simp
+  · rw [imgGateCBW_of_callFreeB _ _ (callFreeB_cellBody sl (callFreeB_of_callsTabB_nil hc))]
 
 /-- **A halting run of a decoded program has one final state.** -/
 theorem halts_det {prog : List X86Backend.LprogBytesDecode.RInstr} {pc : Nat}
@@ -2895,44 +3074,47 @@ def calleeOuts (callee : Option CalleeData) : List (String × Nat) :=
 /-- Without a table there is no out symbol. -/
 @[simp] theorem calleeOutsT_none : calleeOutsT none = [] := rfl
 
-/-- **The printed class of a body with the gate of its image simulation, at an optional
-    callee**: `regionImgB` at the cell arrays `R` without a callee; with one, the class
-    `ImageAddrCallW.printedAddrCWB` of the printed bodies with calls, at the frame of the
-    callee below the return word, and the gate `ImageAddrCallW.imgGateCBW` of the wide image
-    simulation of a calling body, which do not read `R`. -/
-def calleeImgB (callee : Option CalleeData) (sl : String → Option (String × Nat))
-    (R : Slots) (outs : List String) (body : Lcmd) : Bool :=
-  match callee with
-  | none => regionImgB sl R outs body
-  | some c => X86Backend.ImageAddrCallW.printedAddrCWB c.frame body
-      && X86Backend.ImageAddrCallW.imgGateCBW (frameMark (frameNames body)) sl body
-
-/-- Without a callee the class and the gate are `regionImgB`. -/
-@[simp] theorem calleeImgB_none (sl : String → Option (String × Nat)) (R : Slots)
-    (outs : List String) (body : Lcmd) :
-    calleeImgB none sl R outs body = regionImgB sl R outs body := rfl
-
-/-- **The printed class of a body with the gate of its image simulation, at an optional
-    table**: `regionImgB` without a table; with one, the class
-    `ImageAddrCallW.printedAddrCWB` at the frame of the table and the gate
-    `ImageAddrCallW.imgGateCBW`. -/
+/-- **The image check of a body at an optional table**: the one image check
+    `regionImgCB` of both routes, at the frame of the table below the return word, the
+    symbols of the table and the wire of the image `calleeImgT` of the cell body at the table,
+    and at the frame `0`, no symbol and the wire of `virtImg` without a table. Without a
+    table it is `regionImgB` (`calleeImgBT_none`); at a table it gives the calling class and
+    the gate of a calling body (`calleeImgBT_some`). -/
 def calleeImgBT (callee : Option CalleeTab) (sl : String → Option (String × Nat))
     (R : Slots) (outs : List String) (body : Lcmd) : Bool :=
-  match callee with
-  | none => regionImgB sl R outs body
-  | some T => X86Backend.ImageAddrCallW.printedAddrCWB T.frame body
-      && X86Backend.ImageAddrCallW.imgGateCBW (frameMark (frameNames body)) sl body
+  regionImgCB ((callee.map CalleeTab.frame).getD 0) ((callee.map CalleeTab.names).getD [])
+    ((calleeImgT callee sl (cellBody sl body)).map Prod.fst) sl R outs body
 
-/-- Without a table the class and the gate are `regionImgB`. -/
+/-- Without a table the image check is `regionImgB`. -/
 @[simp] theorem calleeImgBT_none (sl : String → Option (String × Nat)) (R : Slots)
     (outs : List String) (body : Lcmd) :
-    calleeImgBT none sl R outs body = regionImgB sl R outs body := rfl
+    calleeImgBT none sl R outs body = regionImgB sl R outs body :=
+  regionImgCB_nil 0 sl R outs body
 
-/-- `calleeImgBT` at the table of one linked function is `calleeImgB` at that function. -/
-theorem calleeImgBT_one (c : CalleeData) (sl : String → Option (String × Nat)) (R : Slots)
+/-- **The image check at a table**: every call of the body names a symbol of the table, the
+    body is decodable and in the class `ImageAddrCallW.printedAddrCWB` at the frame of the
+    table, and its cell body passes the gate `ImageAddrCallW.imgGateCBW` at the frame marks
+    with the cells. -/
+theorem calleeImgBT_some {T : CalleeTab} {sl : String → Option (String × Nat)} {R : Slots}
+    {outs : List String} {body : Lcmd} (h : calleeImgBT (some T) sl R outs body = true) :
+    callsTabB T.names body = true ∧ X86Backend.DecodeLayout.decodableLcmd body = true
+      ∧ X86Backend.ImageAddrCallW.printedAddrCWB T.frame body = true
+      ∧ X86Backend.ImageAddrCallW.imgGateCBW (frameMarkC R body) sl (cellBody sl body)
+        = true := by
+  simp only [calleeImgBT, Option.map_some, Option.getD_some, regionImgCB,
+    Bool.and_eq_true] at h
+  exact ⟨h.1.1.1.1.1.1.1.1, h.1.1.1.1.1.1.1.2, h.1.1.1.1.1.1.2, h.1.1.1.2⟩
+
+/-- **The image check at an optional callee**: `calleeImgBT` at the table of the callee. -/
+def calleeImgB (callee : Option CalleeData) (sl : String → Option (String × Nat))
+    (R : Slots) (outs : List String) (body : Lcmd) : Bool :=
+  calleeImgBT (callee.map CalleeTab.one) sl R outs body
+
+/-- Without a callee the image check is `regionImgB`. -/
+@[simp] theorem calleeImgB_none (sl : String → Option (String × Nat)) (R : Slots)
     (outs : List String) (body : Lcmd) :
-    calleeImgBT (some (CalleeTab.one c)) sl R outs body = calleeImgB (some c) sl R outs body := by
-  simp only [calleeImgBT, calleeImgB, CalleeTab.frame_one]
+    calleeImgB none sl R outs body = regionImgB sl R outs body :=
+  calleeImgBT_none sl R outs body
 
 /-- The names of the register operands of a call at the array positions `a`, from the
     argument position `j`. -/
@@ -6427,7 +6609,7 @@ theorem regionCoB_of_cellFreeB (σ : AbiLayout) (nm : String → String) {body :
     rw [hc]
     rfl
   rw [regionCoB_none, hf, hc, ho, List.append_nil, renImageB_of_cellFreeB σ nm _ _ _ none h,
-    Bool.and_true]
+    calleeImgBT_none, Bool.and_true]
   rfl
 
 /-- The first conjunct of `regionCoB σ nm body t code res cert` that is `false`, in the order of
@@ -11027,10 +11209,10 @@ theorem regionCoB_callee {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     X86Backend.ImageAddrCallW.printedAddrCWB T.frame body = true
       ∧ ∀ c ∈ T.fns, ∀ q, decodeLprog c.bytes = some q →
         ∀ tg, X86Backend.LprogBytesDecode.RInstr.call tg ∉ q := by
-  simp only [regionCoB, renImageB, calleeImgBT, Option.all_some, Bool.and_eq_true] at h
+  simp only [regionCoB, renImageB, Option.all_some, Bool.and_eq_true] at h
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩,
-    ⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, ⟨hpr, -⟩⟩, -⟩, -⟩, -⟩, -⟩⟩⟩ := h
-  exact ⟨hpr, fun c hc q hq =>
+    ⟨⟨⟨⟨⟨⟨⟨-, -⟩, -⟩, himg⟩, -⟩, -⟩, -⟩, -⟩⟩⟩ := h
+  exact ⟨(calleeImgBT_some himg).2.2.1, fun c hc q hq =>
     (X86Backend.Callee.keepCheckAtB_sound (calleeCodeBT_keep (calleeBodyBT_spec.mp hb).code hc
       hq)).1⟩
 

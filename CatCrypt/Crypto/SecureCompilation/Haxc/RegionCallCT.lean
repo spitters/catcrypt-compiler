@@ -73,7 +73,7 @@ theorem regionCoB_remoteSym {σ : AbiLayout} {nm : String → String} {body : Lc
     {T : CalleeTab} {fn : String} (h : regionCoB σ nm body t code res cert (some T) fn = true) :
     ∀ i ∈ body, ∀ f, X86Backend.LprogBytes.remoteSym i.li_i = some f → f ∈ T.names := by
   have hpr := (regionCoB_callee h).1
-  simp only [regionCoB, renImageB, calleeImgBT, Option.all_some, Bool.and_eq_true] at h
+  simp only [regionCoB, renImageB, Option.all_some, Bool.and_eq_true] at h
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hb, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩⟩ := h
   exact remoteSym_mem_names hpr (calleeBodyBT_spec.mp hb).decode
 

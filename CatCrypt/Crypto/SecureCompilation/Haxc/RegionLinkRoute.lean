@@ -61,6 +61,9 @@ states the runs of the bytes of `compileA` and the compiler theorems over them.
   functions is found at its own functions, with the same result.
 * `calleeBytes_tab`, `lookup_of_call`, `remoteSym_mem_names`: the bytes of a calling body at a
   table, and every call of a calling body names a function of the table.
+* `callsTabB_of_decodeSites`, `callsTabB_of_calleeBodyBT`: a calling body whose call sites
+  decode at the table, as the checks `calleeBodyBT` before the image check give, passes the
+  conjunct `callsTabB` of the image check `calleeImgBT` at the symbols of the table.
 * `callsToAny`, `callsToAny_of_exportR`, `callsToAny_of_regionCallee`, `linkedEnvOn`,
   `summaryTableL`, `denoteAt_linkedEnvOn`, `procsAgree_summaryTableL`: every `call` of a program
   the back half compiles at a table names a function of the table, and such a program denotes
@@ -678,6 +681,36 @@ theorem remoteSym_mem_names {T : CalleeTab} {sl : String → Option (String × N
   obtain ⟨c, hc⟩ := lookup_of_call hd hl hp hli
   obtain ⟨hcm, rfl⟩ := CalleeTab.lookup_spec hc
   exact List.mem_map_of_mem hcm
+
+/-- **Every call of a body whose call sites decode names a symbol of the table**: when the
+    call sites of `b` decode at the table `T` and `b` ends in the return, `b` passes the
+    conjunct `callsTabB` of the image check at the symbols of `T`. -/
+theorem callsTabB_of_decodeSites {T : CalleeTab} {sl : String → Option (String × Nat)}
+    {b : Lcmd} (hd : (decodeSites T.lookup sl b).isSome = true)
+    (hl : b.getLast?.any (fun r => X86Backend.DecodePrinted.isRetB r.li_i) = true) :
+    callsTabB T.names b = true := by
+  rw [callsTabB_iff]
+  intro i hi ra f l hx
+  obtain ⟨p, hp⟩ := List.mem_iff_getElem?.mp hi
+  obtain ⟨c, hc⟩ := lookup_of_call hd hl hp hx
+  obtain ⟨hcm, rfl⟩ := CalleeTab.lookup_spec hc
+  exact List.mem_map_of_mem hcm
+
+/-- **Completeness of the conjunct `callsTabB` at a table**: a body of the calling class
+    `ImageAddrCallW.printedAddrCWB` that passes the checks `calleeBodyBT` of the stage before
+    the image check, whose call sites decode at the table, passes `callsTabB` at the symbols
+    of the table. The image check therefore refuses no calling body on account of this
+    conjunct that the stages before it accept. -/
+theorem callsTabB_of_calleeBodyBT {σ : AbiLayout} {nm : String → String} {T : CalleeTab}
+    {sl : String → Option (String × Nat)} {outs : List String} {body : Lcmd}
+    {ref : List VIR.JasminLsemMem.LinstrRM} {fn : String} {G : Nat}
+    (hb : calleeBodyBT σ nm T sl outs body ref fn = true)
+    (hpr : X86Backend.ImageAddrCallW.printedAddrCWB G body = true) :
+    callsTabB T.names body = true := by
+  have hl : body.getLast?.any (fun r => X86Backend.DecodePrinted.isRetB r.li_i) = true := by
+    simp only [X86Backend.ImageAddrCallW.printedAddrCWB, Bool.and_eq_true] at hpr
+    exact hpr.1.1.1.2
+  exact callsTabB_of_decodeSites (calleeBodyBT_spec.mp hb).decode hl
 
 /-! ## 4. Guarded callees -/
 
@@ -1402,14 +1435,17 @@ theorem compileRegion_correct_linked_multi {σ : AbiLayout} {a : AbiNames}
   obtain ⟨-, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨-, hce⟩, hren⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, himg⟩⟩ := hg'
   have hcells : d.cells = [] := List.isEmpty_iff.mp hce
   rw [hcells] at himg
-  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, calleeImgBT,
-    Bool.and_eq_true] at himg
-  obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, hphys⟩, hcls, hgate⟩, -⟩, hent⟩, -⟩, -⟩ := himg
+  simp only [renImageB, X86Backend.ImageAddrRouteW.slotArrC_nil, Bool.and_eq_true] at himg
+  obtain ⟨⟨⟨⟨⟨⟨⟨-, -⟩, hphys⟩, himgT⟩, -⟩, hent⟩, -⟩, -⟩ := himg
+  obtain ⟨-, -, hcls, hgate⟩ := calleeImgBT_some himgT
   have hcellsE : d.cells = regionCells σ exportReg d.ps b (d.fused.drop d.pre.length) := by
     rw [← hd]; rfl
   have hcb0 : cellBody (slotRen (slotArrOf σ exportReg) (renOf d.ps)) b = b :=
     cellBody_of_cellArrsOf_nil _ (cellArrsOf_nil_of_regionCells_nil (hcellsE ▸ hcells))
   rw [hcb0] at hphys hrelF
+  have hfm : X86Backend.ImageStraightCells.frameMarkC [] b
+      = X86Backend.ImageAddrFrame.frameMark (X86Backend.ImageAddrFrame.frameNames b) := rfl
+  rw [hcb0, hfm] at hgate
   -- The checks of the calling body.
   have hok := calleeBodyBT_spec.mp hcb
   have hsites := hok.callSites
