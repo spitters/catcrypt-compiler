@@ -30,15 +30,14 @@ register file each is the x86 legalisation, by `rfl`.
   routed through `I.reload` and `I.reloadSnd`.
 * `setccSpillI?`: the materialised comparison with spilled operands routed through the two
   scratch registers.
-* `andnSpillI?`: the and-not with spilled operands routed through the two scratch
-  registers.
-* `legalizeSpillDstI`: the scratch select, the scratch comparison, the scratch and-not, or
-  the single instruction.
+* `legalizeSpillDstI`: the scratch select, the scratch comparison, the scratch and-not
+  (`andnSpillI?`, defined with its x86 application `andnSpill?` in
+  `JasminLprogExport.ExportPhysAbi`), or the single instruction.
 
 ## Main results
 
 * `legalizeMovI_x86`, `legalizeOneSrcI_x86`, `cmovSpillSeqI_x86`, `cmovSpillDstI?_x86`,
-  `setccSpillI?_x86`, `andnSpillI?_x86`, `legalizeSpillDstI_x86`: at the x86 register file the legalisations
+  `setccSpillI?_x86`, `legalizeSpillDstI_x86`: at the x86 register file the legalisations
   are the x86 ones.
 -/
 
@@ -114,14 +113,14 @@ def cmovSpillSeqI (opn : String) (d c t f : LOperand) : List LinstrR :=
         else [.Lopn [d] opn [if c.isSpill then .reg I.reloadSnd else c, t, f]])
 
 /-- **The select with spilled operands over a register file**: for a single destination
-    `d`, the mnemonic `CMOV:64` and three sources `c`, `t`, `f`, where the destination or
-    the condition is a spill slot, `cmovSpillSeqI I opn d c t f`; `none` in every other
-    case. -/
+    `d`, a select mnemonic `opn` (`CMOV` at any width tag) and three sources `c`, `t`, `f`,
+    where the destination or the condition is a spill slot, `cmovSpillSeqI I opn d c t f`;
+    `none` in every other case. -/
 def cmovSpillDstI? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     Option (List LinstrR) :=
   match dsts, srcs with
   | [d], [c, t, f] =>
-      if (d.isSpill || c.isSpill) && opn == "CMOV:64" then
+      if (d.isSpill || c.isSpill) && stripWidthTag opn == "CMOV" then
         some (cmovSpillSeqI I opn d c t f)
       else none
   | _, _ => none
@@ -142,23 +141,6 @@ def setccSpillI? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
               .Lopn [.reg I.reloadSnd] (setccMov opn) [.reg b],
               .Lopn [.reg I.reload] opn [.reg I.reload, .reg I.reloadSnd],
               .Lopn [d] (setccMov opn) [.reg I.reload]]
-      else none
-  | _, _ => none
-
-/-- **The and-not with spilled operands over a register file**: for a single destination
-    `d`, the mnemonic `ANDN:64` and two register sources `a`, `b`, one of the three a spill
-    slot, `MOV:64 I.reload, a; MOV:64 I.reloadSnd, b; ANDN:64 I.reload, [I.reload,
-    I.reloadSnd]; MOV:64 d, I.reload`; `none` in every other case. -/
-def andnSpillI? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
-    Option (List LinstrR) :=
-  match dsts, srcs with
-  | [d], [.reg a, .reg b] =>
-      if (d.isSpill || (LOperand.reg a).isSpill || (LOperand.reg b).isSpill)
-          && opn == "ANDN:64" then
-        some [.Lopn [.reg I.reload] "MOV:64" [.reg a],
-              .Lopn [.reg I.reloadSnd] "MOV:64" [.reg b],
-              .Lopn [.reg I.reload] opn [.reg I.reload, .reg I.reloadSnd],
-              .Lopn [d] "MOV:64" [.reg I.reload]]
       else none
   | _, _ => none
 
@@ -196,9 +178,6 @@ theorem cmovSpillDstI?_x86 (dsts : List LOperand) (opn : String) (srcs : List LO
 
 theorem setccSpillI?_x86 (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     setccSpillI? x86Data.toIsaAbi dsts opn srcs = setccSpill? dsts opn srcs := rfl
-
-theorem andnSpillI?_x86 (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
-    andnSpillI? x86Data.toIsaAbi dsts opn srcs = andnSpill? dsts opn srcs := rfl
 
 theorem legalizeSpillDstI_x86 (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     legalizeSpillDstI x86Data.toIsaAbi dsts opn srcs = legalizeSpillDst dsts opn srcs := rfl

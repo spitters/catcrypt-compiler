@@ -1332,7 +1332,7 @@ theorem haltsC_of_linkedChecksOne {frame : String → Option (BitVec 64)}
             (fun _ => 0) (fun _ => 0)) it := by
     intro it hit ht d hd
     obtain ⟨f, hf, i, hi, hr⟩ :=
-      LprogBytesLinkReloc.fundefItemsRelocL_sym symBase _ body ds it hit ht d hd
+      LprogBytesLinkReloc.fundefItemsRelocL_sym symBase _ body ds hshapes it hit ht d hd
     have hmem : f ∈ body.filterMap fun i => remoteSym i.li_i :=
       List.mem_filterMap.mpr ⟨i, hi, hr⟩
     simp [LprogBytesLinkReloc.symTgt, hf, LprogBytesLinkReloc.regionTgt, hmem]

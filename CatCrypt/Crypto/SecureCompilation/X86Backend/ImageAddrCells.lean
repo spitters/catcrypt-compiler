@@ -362,11 +362,11 @@ theorem accArr_cellBody {slotArr : String → Option (String × Nat)} {body : Lc
   exact hq
 
 /-- The frame-word move of an instruction names a name that is no cell name exactly where the
-    instruction does, and reads it as a carry-in exactly where the instruction does. -/
+    instruction does, and reads it as a one-bit value exactly where the instruction does. -/
 theorem cellMove_names (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat)
     {d : String} (hd : hasPrefix d "mem." = false) (i : Linstr) :
     namesB d (cellMove slotArr body k i).li_i = namesB d i.li_i
-      ∧ carryUseB d (cellMove slotArr body k i).li_i = carryUseB d i.li_i := by
+      ∧ bitUseB d (cellMove slotArr body k i).li_i = bitUseB d i.li_i := by
   unfold cellMove
   split
   · rename_i D B off hc
@@ -375,7 +375,7 @@ theorem cellMove_names (slotArr : String → Option (String × Nat)) (body : Lcm
     split
     · rename_i A _ _
       have hmd : memName A off ≠ d := fun e => by rw [← e, hasPrefix_memName] at hd; cases hd
-      simp [hx, namesB, opNamesB, carryUseB, beq_eq_false_iff_ne.2 hnd,
+      simp [hx, namesB, opNamesB, bitUseB, carryUseB, condUseB, beq_eq_false_iff_ne.2 hnd,
         beq_eq_false_iff_ne.2 hmd]
     · exact ⟨rfl, rfl⟩
   · rename_i B off S hc
@@ -384,7 +384,7 @@ theorem cellMove_names (slotArr : String → Option (String × Nat)) (body : Lcm
     split
     · rename_i A _ _
       have hmd : memName A off ≠ d := fun e => by rw [← e, hasPrefix_memName] at hd; cases hd
-      simp [hx, namesB, opNamesB, carryUseB, beq_eq_false_iff_ne.2 hnd,
+      simp [hx, namesB, opNamesB, bitUseB, carryUseB, condUseB, beq_eq_false_iff_ne.2 hnd,
         beq_eq_false_iff_ne.2 hmd]
     · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
@@ -397,9 +397,9 @@ theorem tagAt_cellBody (slotArr : String → Option (String × Nat)) (body : Lcm
     split
     · rename_i d n _
       cases hd : hasPrefix d "mem."
-      · have hc : carryInNext (cellBody slotArr body) k d = carryInNext body k d := by
-          unfold carryInNext
-          apply carryInFirst_congr
+      · have hc : bitInNext (cellBody slotArr body) k d = bitInNext body k d := by
+          unfold bitInNext
+          apply useFirst_congr
           · simp [cellBody_length]
           · intro i h h'
             simp only [List.getElem_drop, cellBody, List.getElem_mapIdx]

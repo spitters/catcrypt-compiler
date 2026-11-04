@@ -2145,7 +2145,7 @@ theorem decCount_itemsFromReloc (symBase : String → Option Int) (P : Params) {
         intro hab _
         simp only [shapeOf, Option.some.injEq] at hab
         subst hab
-        simp [nOf]
+        by_cases hf : f' = "" <;> simp [nOf, hf]
       | _ => simp [remoteSym, shapeOf]
 
 /-- No item of a body without a definition of the label `l` defines `l`. -/
@@ -2180,44 +2180,46 @@ theorem itemsFromReloc_noLabel (symBase : String → Option Int) (P : Params) (l
 
 /-- A call item without target label of the item list of a body carries a callee symbol,
     the symbol of a remote transfer of the body. -/
-theorem itemsFromReloc_sym (symBase : String → Option Int) (P : Params) :
-    ∀ (b : Lcmd) (ss : List DShape) (off : Nat), ∀ it ∈ itemsFromReloc symBase P off b ss,
+theorem itemsFromReloc_sym (symBase : String → Option Int) (P : Params) {b : Lcmd}
+    {ss : List DShape} (h : List.Forall₂ (fun i sh => shapeOf P i.li_i = some sh) b ss) :
+    ∀ (off : Nat), ∀ it ∈ itemsFromReloc symBase P off b ss,
       it.target = none → ∀ d, it.dec = some (.call d) →
         ∃ f, it.sym = some f ∧ ∃ i ∈ b, remoteSym i.li_i = some f := by
-  intro b
-  induction b with
-  | nil => intro ss off it hit; simp [itemsFromReloc] at hit
-  | cons i b ih =>
-    intro ss off it hit ht d hd
-    cases ss with
-    | nil => simp [itemsFromReloc] at hit
-    | cons s ss =>
-      cases hr : remoteSym i.li_i with
-      | none =>
-        simp only [itemsFromReloc, hr, List.mem_append] at hit
-        rcases hit with hit | hit
-        · cases s with
-          | one sh =>
-            simp only [dItems, List.mem_singleton] at hit
-            subst hit
-            cases sh <;> simp_all [Shape.target, Shape.dec]
-          | ops pcs =>
-            simp only [dItems, List.mem_map] at hit
-            obtain ⟨p, -, rfl⟩ := hit
-            simp at hd
-        · obtain ⟨f, hf, j, hj, hjr⟩ := ih ss _ it hit ht d hd
-          exact ⟨f, hf, j, List.mem_cons_of_mem _ hj, hjr⟩
-      | some f =>
-        simp only [itemsFromReloc, hr, List.mem_cons] at hit
-        rcases hit with rfl | hit
-        · exact ⟨f, rfl, i, List.mem_cons_self, hr⟩
-        · obtain ⟨f, hf, j, hj, hjr⟩ := ih ss _ it hit ht d hd
-          exact ⟨f, hf, j, List.mem_cons_of_mem _ hj, hjr⟩
+  induction h with
+  | nil => intro off it hit; simp [itemsFromReloc] at hit
+  | @cons i s b ss h1 _ ih =>
+    intro off it hit ht d hd
+    cases hr : remoteSym i.li_i with
+    | none =>
+      simp only [itemsFromReloc, hr, List.mem_append] at hit
+      rcases hit with hit | hit
+      · cases s with
+        | one sh =>
+          simp only [dItems, List.mem_singleton] at hit
+          subst hit
+          cases sh with
+          | callSym l =>
+            obtain ⟨ra, f, he, hf⟩ := DecodePrintedCFG.eq_of_shapeOf_callSym h1
+            rw [he] at hr
+            simp [remoteSym, String.isEmpty_iff, hf] at hr
+          | _ => simp_all [Shape.target, Shape.dec]
+        | ops pcs =>
+          simp only [dItems, List.mem_map] at hit
+          obtain ⟨p, -, rfl⟩ := hit
+          simp at hd
+      · obtain ⟨f, hf, j, hj, hjr⟩ := ih _ it hit ht d hd
+        exact ⟨f, hf, j, List.mem_cons_of_mem _ hj, hjr⟩
+    | some f =>
+      simp only [itemsFromReloc, hr, List.mem_cons] at hit
+      rcases hit with rfl | hit
+      · exact ⟨f, rfl, i, List.mem_cons_self, hr⟩
+      · obtain ⟨f, hf, j, hj, hjr⟩ := ih _ it hit ht d hd
+        exact ⟨f, hf, j, List.mem_cons_of_mem _ hj, hjr⟩
 
 /-- **A call item without target label of the relocated item list of a function carries a
     callee symbol**, the symbol of a remote transfer of the body. -/
 theorem fundefItemsRelocL_sym (symBase : String → Option Int) (P : Params) (body : Lcmd)
-    (ds : List DShape) :
+    (ds : List DShape) (hs : shapesOf P body = some ds) :
     ∀ it ∈ fundefItemsRelocL symBase P body ds, it.target = none →
       ∀ d, it.dec = some (.call d) →
         ∃ f, it.sym = some f ∧ ∃ i ∈ body, remoteSym i.li_i = some f := by
@@ -2225,7 +2227,7 @@ theorem fundefItemsRelocL_sym (symBase : String → Option Int) (P : Params) (bo
   simp only [fundefItemsRelocL, List.mem_cons, List.mem_append] at hit
   rcases hit with rfl | hit | rfl | hit
   · simp [mkLea] at hd
-  · exact itemsFromReloc_sym symBase P body ds 0 it hit ht d hd
+  · exact itemsFromReloc_sym symBase P (shapesOf_forall₂_shapeOf P body ds hs) 0 it hit ht d hd
   · simp [mkLea] at hd
   · simp only [List.not_mem_nil, or_false] at hit
     subst hit
@@ -2499,7 +2501,7 @@ theorem linked_callL {body : Lcmd} {ds : List DShape} (hF : LinkFacts body ds)
   obtain ⟨f, l⟩ := t
   simp only [shapeOf, Option.some.injEq] at h1
   rw [posOf_succ _ p (by omega), ← h1]
-  rfl
+  split <;> rfl
 
 /-- The end of the run of a relocated body: the byte state is the state after the closing
     `lea` of the frame `F`, from a byte state that corresponds to the address state. -/

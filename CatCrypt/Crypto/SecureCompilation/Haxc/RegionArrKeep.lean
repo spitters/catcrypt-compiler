@@ -470,11 +470,12 @@ theorem renImage_bytes_ro {σ : AbiLayout} {nm : String → String}
 
 /-- **The read-only check of the back half**: `roKeepB` at the pairs, the cell arrays and
     the reference of the parts `regionCoParts` that the gate of `compileRegion` computes from
-    the export of the legalised program, the first body of the printed program of its
+    the webs of the export of the legalised program, the first body of the printed program of its
     allocation and the allocation certificate; `false` when a stage declines. -/
 def regionROB (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : Bool :=
-  match exportR Γ.length a.fname (legalizeRegion p) Γ.length 0,
+  match (exportR Γ.length a.fname (legalizeRegion p) Γ.length 0).map
+        (regionWebsAt (regionWebsEx σ exportReg) none),
       regionLprogC a (legalizeRegion p) none (regionWebsEx σ exportReg) with
   | some r, some (P, cert) =>
       match firstBody (printedLprog P) with
@@ -488,15 +489,16 @@ def regionROB (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : Jas
   | _, _ => false
 
 /-- **The facts of `compileRegion_spec` with the read-only check.** A result of
-    `compileRegion σ a p` on a program that passes `regionROB` has the export, the printed
-    body, the certificate and the checks of `compileRegion_spec`, and the parts of the gate
-    at that body pass `roKeepB`. -/
+    `compileRegion σ a p` on a program that passes `regionROB` has the export, its webs, the
+    printed body, the certificate and the checks of `compileRegion_spec`, and the parts of the
+    gate at that body pass `roKeepB`. -/
 theorem compileRegion_spec_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
     {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
     (hro : regionROB σ a p = true) :
-    regionExportableB (legalizeRegion p) = true ∧ ∃ r b cert,
-      exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r
+    regionExportableB (legalizeRegion p) = true ∧ ∃ r0 r b cert,
+      exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
+      ∧ r = regionWebsAt (regionWebsEx σ exportReg) none r0
       ∧ X86Backend.LprogBytes.encodeLfundefBytesChecked b = some bytes
       ∧ regionCoB σ exportReg b t r.code r.res cert = true
       ∧ regionCtB σ exportReg b t r.code r.res cert = true
@@ -522,16 +524,16 @@ theorem compileRegion_spec_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminD
           · rename_i b hb
             split at h
             · rename_i bs hbs
-              dsimp only [regionWebsAt_none] at h
+              dsimp only at h
               split at h
               · rename_i hg
                 obtain ⟨-, rfl⟩ := Prod.mk.inj (Option.some.inj h)
                 rw [Bool.and_eq_true] at hg
                 unfold regionROB at hro
-                rw [hr, hP] at hro
+                rw [hr, Option.map_some, hP] at hro
                 simp only [hb] at hro
-                refine ⟨hB, r, b, cert, hr, hbs, ?_, hg.2, ⟨P0, hP⟩, hro⟩
-                rw [← regionCoB_none_fn σ exportReg b t r.code r.res cert a.fname]
+                refine ⟨hB, r, _, b, cert, hr, rfl, hbs, ?_, hg.2, ⟨P0, hP⟩, hro⟩
+                rw [← regionCoB_none_fn σ exportReg b t _ _ cert a.fname]
                 exact hg.1
               · cases h
             · cases h

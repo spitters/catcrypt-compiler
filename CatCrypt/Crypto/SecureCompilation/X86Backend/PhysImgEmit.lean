@@ -529,7 +529,9 @@ theorem legalizeSpillDst_armOut (dsts : List LOperand) (opn : String) (srcs : Li
       · cases h
     · split
       · rename_i h
-        unfold andnSpill? at h
+        unfold andnSpill? andnSpillI? at h
+        rw [CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reload,
+          CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reloadSnd] at h
         split at h
         · split at h
           · cases h
@@ -1073,11 +1075,11 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
     exact ⟨by simp [EmitOk], accLocal_of_noAcc (by simp [isAccB]) (by simp [isArrImmB])⟩
 
 /-- The mnemonics of the constant-index array writes are neither two-address binops, memory
-    stores, the select `CMOV:64` nor comparisons. -/
+    stores, selects nor comparisons. -/
 theorem arrImm_mnem_class {o : String} (hz : o = "ZEROARR" ∨ o = "STOREIMM") :
-    isTwoAddrBinop o = false ∧ isMemStore o = false ∧ o ≠ "CMOV:64" ∧
+    isTwoAddrBinop o = false ∧ isMemStore o = false ∧ stripWidthTag o ≠ "CMOV" ∧
       isSetccMnem o = false := by
-  rcases hz with rfl | rfl <;> refine ⟨by decide +kernel, by decide +kernel, by decide,
+  rcases hz with rfl | rfl <;> refine ⟨by decide +kernel, by decide +kernel, by decide +kernel,
     by decide +kernel⟩
 
 /-- **One position of `physPositionEmit` after the constant-shape base reload** is a block of

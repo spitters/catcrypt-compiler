@@ -419,22 +419,42 @@ theorem arrImmImg_lopn {slotArr : String → Option (String × Nat)} {body : Lcm
     ∃ ds o ss, r.1 = .Lopn ds o ss := by
   grind only [= arrImmImg.eq_def]
 
+/-- The instruction is an address computation `LEA:64 D, (b, X, 8)` based at `b`. -/
+def leaBaseUseB (b : String) : LinstrR → Bool
+  | .Lopn [.reg _] o [.arrIdx B _ 8] => o == "LEA:64" && B == b
+  | _ => false
+
+/-- The instruction is an indexed load `LOADIDX d, (b, x, 8)` or store
+    `STOREIDX d, (b, x, 8), v` based at `b` that names `b` nowhere else. -/
+def idxBaseUseB (b : String) : LinstrR → Bool
+  | .Lopn [.reg d] o [.arrIdx B x 8] =>
+      untagCaret o == "LOADIDX" && B == b && d != b && x != b
+  | .Lopn [.reg d] o [.arrIdx B x 8, .reg v] =>
+      untagCaret o == "STOREIDX" && B == b && d != b && x != b && v != b
+  | _ => false
+
+/-- Among the instructions of `is`, the first that names `b` other than an indexed access based
+    at `b` (`idxBaseUseB`) is an address computation based at `b` (`leaBaseUseB`). -/
+def leaFirst (b : String) : List Linstr → Bool
+  | [] => false
+  | j :: js => leaBaseUseB b j.li_i || ((idxBaseUseB b j.li_i || !namesB b j.li_i) && leaFirst b js)
+
 /-- **The reload of the base of an address computation**: the instruction at position `k` of
     `body` is a move `MOVQ b, q` or `MOV:64 b, q` from a name `q` that holds an array pointer
-    (`slotArr q` is defined), and the instruction at `k + 2` is `LEA:64 D, (b, X, 8)`; as
-    `(b, q)`. Such a move is the source of the width guard on `q` that the address
-    computation reads. -/
+    (`slotArr q` is defined), and an address computation `LEA:64 D, (b, X, 8)` reads it: the
+    instruction at `k + 2`, or the first instruction after `k` that names `b` other than an
+    indexed access based at `b` (`leaFirst`); as `(b, q)`. Such a move is the source of the
+    width guard on `q` that the address computation reads. The image reads an indexed access
+    through `b` as an access of the array of `q`, which reads no word of `b`; the passes after
+    the allocation may place such accesses and other instructions between the reload and the
+    address computation. -/
 def baseReload? (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
     LinstrR → Option (String × String)
   | .Lopn [.reg b] o [.reg q] =>
-      match body[k + 2]? with
-      | some l =>
-          match l.li_i with
-          | .Lopn [.reg _] o' [.arrIdx B _ 8] =>
-              if (o = "MOVQ" ∨ o = "MOV:64") ∧ o' = "LEA:64" ∧ B = b ∧ (slotArr q).isSome = true
-              then some (b, q) else none
-          | _ => none
-      | none => none
+      if (o = "MOVQ" ∨ o = "MOV:64") ∧ (slotArr q).isSome = true ∧
+          ((body[k + 2]?).any (fun l => leaBaseUseB b l.li_i)
+            || leaFirst b (body.drop (k + 1))) = true
+      then some (b, q) else none
   | _ => none
 
 /-- Off the shape of a move between names the instruction is no reload of a base. -/

@@ -1472,7 +1472,18 @@ theorem printed_line_sim (body P1 : Lcmd) (r : Linstr) (hbody : body = P1 ++ [r]
   have hstr := straightOK_of_lineOK hchk hs1
   have hbr' : branchOK (fundefItemsL body (shapesD P P1 ++ [.one .skip])) 0
       (fundefItemsL body (shapesD P P1 ++ [.one .skip])) = true := by
-    rw [hD1, ← hDb]; exact hbr
+    rw [hD1, ← hDb]
+    have hall : shs1.all straightB = true := by
+      simp only [straightOK, hs1, Bool.and_eq_true] at hstr
+      exact hstr.1
+    refine branchOK_of_branchOKL_noSym _ _ 0 (fundefItemsL_noSym body _ ?_) hbr
+    intro sh hm l hl
+    subst hl
+    rw [hDb, List.mem_append] at hm
+    rcases hm with hm | hm
+    · have := List.all_eq_true.mp hall _ hm
+      simp [straightB] at this
+    · simp at hm
   have hlay := DecodeGenStraight.decodeLprog_line_gen body P1 r hbody hstr hr hsaves
     (Int.ofNat_ne_zero.mpr hF0) hF hF' hbr'
   rw [← hP] at hlay

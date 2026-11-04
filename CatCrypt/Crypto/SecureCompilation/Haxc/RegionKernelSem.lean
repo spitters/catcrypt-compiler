@@ -373,10 +373,11 @@ theorem compileRegion_correct_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasm
     (h : compileRegion σ a p = some (P, bytes)) (hro : RegionArrKeep.regionROB σ a p = true) :
     RegionCorrectRO σ p bytes := by
   intro sa V hV hreg fuel v hv
-  obtain ⟨hB, r, b, cert, hr, hb, hco, -, -, hro'⟩ := RegionArrKeep.compileRegion_spec_ro h hro
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, -, -, hro'⟩ :=
+    RegionArrKeep.compileRegion_spec_ro h hro
   rw [← legalizeRegion_denote] at hv
   obtain ⟨prog, sa', hd, hh, hR, hsp, hkeep, ⟨k, s, hrun, hcells⟩, -⟩ :=
-    regionCo_bytes_of_regionExp_virt (regionExportableB_sound hB) (regionExp_of_exportR _ hr)
+    regionCo_bytes_of_regionExp_virt (regionExportableB_sound hB) (regionExp_webs _ hr)
       hco sa V hV hreg fuel hv
   obtain ⟨-, hU⟩ := regionCoB_renImage hco
   have himg := hco

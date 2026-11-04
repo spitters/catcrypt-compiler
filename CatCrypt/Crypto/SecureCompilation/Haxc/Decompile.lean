@@ -16,8 +16,9 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.ExportContract
 Given bytes, an untrusted proposer supplies a candidate: a region program `p` over the
 Jasmin dialect, a printed body `body` and an allocation certificate `cert`. The check
 `decompileB` accepts the candidate when `p` is region-exportable and has no `call`, the
-export `exportR` of `p` passes the gate `regionCoB` and the constant-time check `regionCtB`
-against `body` at `cert`, and `body` encodes to the given bytes. These are the checks
+webs `regionWebsAt` of the export `exportR` of `p` pass the gate `regionCoB` and the
+constant-time check `regionCtB` against `body` at `cert`, and `body` encodes to the given bytes.
+These are the checks
 `compileRegion` applies to the body its allocator prints; here the body is read off the
 bytes, not produced by the compiler.
 
@@ -92,14 +93,17 @@ structure DecompCand (Γ : Ctxt jasminDialect) (t : JasminTy) where
   cert : List (String × String)
 
 /-- **The check of a candidate against bytes** at the layout `σ` and the function name
-    `fn`: `p` is region-exportable and has no `call`, its export passes `regionCoB` and
-    `regionCtB` against `body` at `cert`, and `body` encodes to `bytes`. -/
+    `fn`: `p` is region-exportable and has no `call`, the webs of its export at the result
+    buffer `regionWebsEx σ exportReg` pass `regionCoB` and `regionCtB` against `body` at
+    `cert`, and `body` encodes to `bytes`. -/
 def decompileB (σ : AbiLayout) (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : DecompCand Γ t) (bytes : List (BitVec 8)) : Bool :=
   regionExportableB c.p && c.p.callFree
     && (match exportR Γ.length fn c.p Γ.length 0 with
-      | some r => regionCoB σ exportReg c.body t r.code r.res c.cert
-          && regionCtB σ exportReg c.body t r.code r.res c.cert
+      | some r0 =>
+          let r := regionWebsAt (regionWebsEx σ exportReg) none r0
+          regionCoB σ exportReg c.body t r.code r.res c.cert
+            && regionCtB σ exportReg c.body t r.code r.res c.cert
       | none => false)
     && decide (encodeLfundefBytesChecked c.body = some bytes)
 
@@ -109,7 +113,8 @@ variable {σ : AbiLayout} {fn : String} {Γ : Ctxt jasminDialect} {t : JasminTy}
 theorem decompileB_spec {c : DecompCand Γ t} {bytes : List (BitVec 8)}
     (h : decompileB σ fn c bytes = true) :
     regionExportableB c.p = true ∧ c.p.callFree = true
-      ∧ ∃ r, exportR Γ.length fn c.p Γ.length 0 = some r
+      ∧ ∃ r0 r, exportR Γ.length fn c.p Γ.length 0 = some r0
+        ∧ r = regionWebsAt (regionWebsEx σ exportReg) none r0
         ∧ regionCoB σ exportReg c.body t r.code r.res c.cert = true
         ∧ regionCtB σ exportReg c.body t r.code r.res c.cert = true
         ∧ encodeLfundefBytesChecked c.body = some bytes := by
@@ -117,9 +122,9 @@ theorem decompileB_spec {c : DecompCand Γ t} {bytes : List (BitVec 8)}
   simp only [Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨⟨hB, hcf⟩, hm⟩, hbs⟩ := h
   split at hm
-  · rename_i r hr
+  · rename_i r0 hr
     rw [Bool.and_eq_true] at hm
-    exact ⟨hB, hcf, r, hr, hm.1, hm.2, hbs⟩
+    exact ⟨hB, hcf, r0, _, hr, rfl, hm.1, hm.2, hbs⟩
   · cases hm
 
 /-- **Correctness of the bytes of an accepted candidate.** From every entry state `sa`
@@ -146,9 +151,10 @@ theorem decompile_correct {c : DecompCand Γ t} {bytes : List (BitVec 8)}
       ∧ ∃ frame fuel s zf, runA frame c.body fuel (entryA σ sa) false = some (s, zf)
         ∧ RunSafe frame c.body (AccessIn (layoutMem σ sa) frame c.body) fuel (entryA σ sa)
           false := by
-  obtain ⟨hB, -, r, hr, hco, -, hbs⟩ := decompileB_spec h
+  obtain ⟨hB, -, r0, r, hr, rfl, hco, -, hbs⟩ := decompileB_spec h
   rw [encodeLfundefBytesChecked_eq hbs]
-  exact regionCo_bytes (regionExportableB_sound hB) hr hco sa V hV hreg fuel hv
+  exact regionCo_bytes_of_regionExp (regionExportableB_sound hB) (regionExp_webs _ hr) hco sa V
+    hV hreg fuel hv
 
 /-- **Constant time of the bytes of an accepted candidate.** If `c.p` is constant time at
     the source events for the labels `L` at the fuel `fuel`, on the valuations the layout
@@ -165,10 +171,11 @@ theorem decompile_ct (Pj : JLeakParams) {c : DecompCand Γ t} {bytes : List (Bit
     (hdec : decodeLprog bytes = some prog) :
     ConstantTimeRel (RegionBytePub σ fuel c.p L Pre)
       (fun sa u => ∃ sa', RunL .doitm ok prog 0 sa u sa') := by
-  obtain ⟨hB, hcf, r, hr, hco, hck, hbs⟩ := decompileB_spec h
+  obtain ⟨hB, hcf, r0, r, hr, rfl, hco, hck, hbs⟩ := decompileB_spec h
   obtain ⟨hlk, hprW, hgW⟩ := regionCtB_spec hck
   rw [encodeLfundefBytesChecked_eq hbs] at hdec
-  exact regionWide_bytes_ct Pj fn fuel (regionExportableB_sound hB) hcf hct hr hco hlk hprW
+  exact regionWide_bytes_ct_of_regionExp Pj fn fuel (regionExportableB_sound hB) hcf hct
+    (regionExp_webs _ hr) (regionWebsLeak_of_regionExp (regionExp_webs _ hr)) hco hlk hprW
     hgW ok hdec
 
 /-- **The compiler's output is accepted.** For a result `(P, bytes)` of `compileRegion σ a p`
@@ -178,7 +185,7 @@ theorem decompileB_of_compileRegion {a : AbiNames} {p : NFProg jasminDialect Γ 
     (hcf : p.callFree = true) {P : Lprog} {bytes : List (BitVec 8)}
     (h : compileRegion σ a p = some (P, bytes)) :
     ∃ body cert, decompileB σ a.fname ⟨legalizeRegion p, body, cert⟩ bytes = true := by
-  obtain ⟨hB, r, b, cert, hr, hbs, hco, hck, -⟩ := compileRegion_spec h
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hbs, hco, hck, -⟩ := compileRegion_spec h
   refine ⟨b, cert, ?_⟩
   simp only [decompileB, hB, legalizeRegion_callFree hcf, hr, hco, hck, hbs, Bool.and_self,
     decide_true]
@@ -234,12 +241,13 @@ theorem regionPre_bytes_ct_of_decompileB {c : DecompCand Γ t} {bytes : List (Bi
     ConstantTimeRel
       (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ regionPre σ c.p s₁ ∧ regionPre σ c.p s₂)
       (fun s tr => ∃ s', RunL ctRegime (fun _ _ => True) q 0 s tr s') := by
-  obtain ⟨hB, hcf, r, hr, hco, hck, hb⟩ := decompileB_spec h
+  obtain ⟨hB, hcf, r0, r, hr, rfl, hco, hck, hb⟩ := decompileB_spec h
   obtain ⟨hlk, hprW, hgW⟩ := regionCtB_spec hck
   rw [encodeLfundefBytesChecked_eq hb] at hq
   rintro sa₁ sa₂ u₁ u₂ ⟨hag, ⟨h₁, V₁, fuel, v₁, hV₁, hv₁⟩, ⟨h₂, V₂, -, -, hV₂, -⟩⟩ hb₁ hb₂
-  exact regionWide_bytes_ct JLeakParams.owned fn fuel (regionExportableB_sound hB) hcf
-    (nfCT_restrict _ σ (fun _ => True) (hsrc fuel)) hr hco hlk hprW hgW (fun _ _ => True) hq
+  exact regionWide_bytes_ct_of_regionExp JLeakParams.owned fn fuel (regionExportableB_sound hB)
+    hcf (nfCT_restrict _ σ (fun _ => True) (hsrc fuel)) (regionExp_webs _ hr)
+    (regionWebsLeak_of_regionExp (regionExp_webs _ hr)) hco hlk hprW hgW (fun _ _ => True) hq
     sa₁ sa₂ u₁ u₂
     ⟨V₁, V₂, pubEqV_of_pubAgree hL hag hV₁ hV₂, hV₁, hV₂, h₁, h₂, trivial, trivial, hag.1,
       fun x hx n hn => hag.2 x hx (by simp [AbiLayout.argPub, hn]),

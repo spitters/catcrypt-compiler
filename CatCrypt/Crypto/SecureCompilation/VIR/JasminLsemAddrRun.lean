@@ -26,11 +26,13 @@ the body.
 The printer writes the widening multiply without a width tag (`MULX`); `normA` reads it as
 the 64-bit `MULX:64` that the flag machine steps, the only width the encoder emits for it.
 
-The printer writes a carry constant, the zero or one a carry chain reads as its first
-carry-in, as an untagged `MOV d, #n`, which the register tag steps at width `32`. `tagAt`
-tags such a move with the one-bit descriptor `.reg (some 1)` when the next instruction that
-names `d` reads it only as a carry-in (`carryInNext`); its bytes `mov r32, imm32` clear the
-upper bits of the machine register, which then holds the zero-extension of the bit.
+The printer writes a one-bit constant, the zero or one a carry chain reads as its first
+carry-in or a select reads as its condition, as an immediate move `MOV d, #n` or `MOV^1 d, #n`,
+which the register tag steps at width `32`. `tagAt` tags such a move with the one-bit
+descriptor `.reg (some 1)` when the next instruction that names `d` reads it only as a one-bit
+value, a carry-in or the condition of a select (`bitInNext`), and a move written `MOV^1`
+whatever its next use (`oneBitMnemB`); its bytes `mov r32, imm32` clear
+the upper bits of the machine register, which then holds the zero-extension of the bit.
 
 ## Main results
 
@@ -217,45 +219,68 @@ def carryUseB (d : String) : LinstrR → Bool
       (o == "ADCX:64" || o == "ADCXHI:64") && c == d && x != d && a != d && s != d
   | _ => false
 
-/-- The first instruction of `is` that names `d` reads it only as a carry-in (`carryUseB`). -/
-def carryInFirst (d : String) : List Linstr → Bool
+/-- The instruction reads `d` only as the condition of a select `CMOV x, [c, a, b]` with a
+    register condition `c`, and names it nowhere else. -/
+def condUseB (d : String) : LinstrR → Bool
+  | .Lopn [.reg x] o [.reg c, a, b] =>
+      stripWidthTag o == "CMOV" && c == d && x != d && !opNamesB d a && !opNamesB d b
+  | _ => false
+
+/-- The instruction reads `d` only as a one-bit value: as a carry-in (`carryUseB`) or as the
+    condition of a select (`condUseB`). -/
+def bitUseB (d : String) (i : LinstrR) : Bool := carryUseB d i || condUseB d i
+
+/-- The first instruction of `is` that names `d` reads it only as the use `u` describes. -/
+def useFirst (u : String → LinstrR → Bool) (d : String) : List Linstr → Bool
   | [] => false
-  | j :: js => carryUseB d j.li_i || (!namesB d j.li_i && carryInFirst d js)
+  | j :: js => u d j.li_i || (!namesB d j.li_i && useFirst u d js)
 
 /-- The first instruction after position `k` of `body` that names `d` reads it only as a
     carry-in. -/
 def carryInNext (body : Lcmd) (k : Nat) (d : String) : Bool :=
-  carryInFirst d (body.drop (k + 1))
+  useFirst carryUseB d (body.drop (k + 1))
 
-/-- `carryInFirst` reads of each instruction only whether it names `d` and whether it reads
-    `d` only as a carry-in. -/
-theorem carryInFirst_congr (d : String) :
+/-- The first instruction after position `k` of `body` that names `d` reads it only as a
+    one-bit value (`bitUseB`). -/
+def bitInNext (body : Lcmd) (k : Nat) (d : String) : Bool :=
+  useFirst bitUseB d (body.drop (k + 1))
+
+/-- `useFirst u` reads of each instruction only whether it names `d` and the use `u d`. -/
+theorem useFirst_congr (u : String → LinstrR → Bool) (d : String) :
     ∀ (L L' : List Linstr), L'.length = L.length →
       (∀ i (h : i < L.length) (h' : i < L'.length), namesB d L'[i].li_i = namesB d L[i].li_i
-        ∧ carryUseB d L'[i].li_i = carryUseB d L[i].li_i) →
-      carryInFirst d L' = carryInFirst d L
+        ∧ u d L'[i].li_i = u d L[i].li_i) →
+      useFirst u d L' = useFirst u d L
   | [], [], _, _ => rfl
   | [], _ :: _, hl, _ => by simp at hl
   | _ :: _, [], hl, _ => by simp at hl
   | j :: js, j' :: js', hl, h => by
       obtain ⟨h1, h2⟩ := h 0 (by simp) (by simp)
       simp only [List.getElem_cons_zero] at h1 h2
-      have ih := carryInFirst_congr d js js' (by simpa using hl)
+      have ih := useFirst_congr u d js js' (by simpa using hl)
         (fun i hi hi' => by
           have := h (i + 1) (by simp; omega) (by simp; omega)
           simpa only [List.getElem_cons_succ] using this)
-      simp only [carryInFirst, h1, h2, ih]
+      simp only [useFirst, h1, h2, ih]
 
-/-- The instruction at position `k` of `body` is a carry constant: an untagged immediate move
-    `MOV d, #n` with `n < 2` into a name `d` that is no cell name, whose next use is a
-    carry-in (`carryInNext`). -/
+/-- The instruction is written with the one-bit move mnemonic `MOV^1`
+    (`withWidthTag 1 "MOV"`), the form in which the export writes a move of a one-bit value. -/
+def oneBitMnemB : LinstrR → Bool
+  | .Lopn _ o _ => o == withWidthTag 1 "MOV"
+  | _ => false
+
+/-- The instruction at position `k` of `body` is a one-bit constant: an immediate move
+    `MOV d, #n` or `MOV^w d, #n` (`w ≠ 64`) with `n < 2` into a name `d` that is no cell name,
+    written with the one-bit mnemonic `MOV^1` (`oneBitMnemB`) or whose next use reads `d` only
+    as a one-bit value, a carry-in or the condition of a select (`bitInNext`). -/
 def bitMovB (body : Lcmd) (k : Nat) (i : LinstrR) : Bool :=
   match movImmStruct? i with
-  | some (d, n) => decide (n < 2) && !hasPrefix d "mem." && carryInNext body k d
+  | some (d, n) =>
+      decide (n < 2) && !hasPrefix d "mem." && (oneBitMnemB i || bitInNext body k d)
   | none => false
 
 /-- The memory tag of instruction `k` of `body`: the one-bit register tag `.reg (some 1)` for
-    a carry constant (`bitMovB`), `tagA` otherwise. -/
+    a one-bit constant (`bitMovB`), `tagA` otherwise. -/
 def tagAt (body : Lcmd) (k : Nat) (i : LinstrR) : MemTag :=
   if bitMovB body k i then .reg (some 1) else tagA i
 
@@ -298,14 +323,15 @@ theorem tagAt_castW (body : Lcmd) (k : Nat) {D A o : String} {w : Nat}
   rw [tagAt_of_ne (by simp [movImmStruct?]),
     tagA_lopn_of_caret_free h1 h2 h3 h4 (castTagW_caret_free h), h]
 
-/-- A carry constant is an immediate move of `0` or `1` into a name that is no cell name. -/
+/-- A one-bit constant is an immediate move of `0` or `1` into a name that is no cell name,
+    whose next use reads it only as a one-bit value. -/
 theorem bitMovB_spec {body : Lcmd} {k : Nat} {i : LinstrR} (h : bitMovB body k i = true) :
     ∃ d n, (∃ o, i = .Lopn [.reg d] o [.imm n]) ∧ n < 2 ∧ hasPrefix d "mem." = false
-      ∧ carryInNext body k d = true := by
+      ∧ (oneBitMnemB i = true ∨ bitInNext body k d = true) := by
   unfold bitMovB at h
   split at h
   · rename_i d n hm
-    simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true'] at h
+    simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.not_eq_true', Bool.or_eq_true] at h
     exact ⟨d, n, movImmStruct?_spec hm, h.1.1, h.1.2, h.2⟩
   · cases h
 

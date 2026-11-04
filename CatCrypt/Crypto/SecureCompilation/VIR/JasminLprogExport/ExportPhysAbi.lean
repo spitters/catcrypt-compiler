@@ -771,16 +771,17 @@ def cmovSpillSeq (opn : String) (d c t f : LOperand) : List LinstrR :=
 
 /-- The select with spilled operands through the scratch registers.
 
-    For a single destination `d`, the mnemonic `CMOV:64` and three sources `c`, `t`,
-    `f`, where the destination or the condition is a spill slot, the select is
-    `cmovSpillSeq opn d c t f`. `none` in every other case. -/
+    For a single destination `d`, a select mnemonic `opn` (`CMOV` at any width tag, as
+    `stripWidthTag` reads it) and three sources `c`, `t`, `f`, where the destination or the
+    condition is a spill slot, the select is `cmovSpillSeq opn d c t f`. `none` in every other
+    case. -/
 def cmovSpillDst? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     Option (List LinstrR) :=
   match dsts, srcs with
   | [d], [c, t, f] =>
       -- The spill tests come before the mnemonic, so register operands reduce
       -- without comparing strings.
-      if (d.isSpill || c.isSpill) && opn == "CMOV:64" then
+      if (d.isSpill || c.isSpill) && stripWidthTag opn == "CMOV" then
         some (cmovSpillSeq opn d c t f)
       else none
   | _, _ => none
@@ -813,25 +814,39 @@ def setccSpill? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
       else none
   | _, _ => none
 
-/-- The and-not with spilled operands through the scratch registers.
+/-- The x86 primary reload scratch. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reload :
+    x86Abi.reload = reloadScratch := rfl
+
+/-- The x86 secondary reload scratch. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reloadSnd :
+    x86Abi.reloadSnd = reloadScratch2 := rfl
+
+/-- **The and-not with spilled operands over a register file** `I`.
 
     For a single destination `d`, the mnemonic `ANDN:64` and two register-named sources
     `a`, `b`, one of the three a spill slot, the and-not is
-    `MOV:64 R15, a; MOV:64 R14, b; ANDN:64 R15, [R15, R14]; MOV:64 d, R15`: the BMI1
-    `ANDN` takes register operands only in the fragment of the encoder. `none` in every
-    other case. -/
-def andnSpill? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    `MOV:64 I.reload, a; MOV:64 I.reloadSnd, b; ANDN:64 I.reload, [I.reload, I.reloadSnd];
+    MOV:64 d, I.reload`: the BMI1 `ANDN` takes register operands only in the fragment of the
+    encoder. `none` in every other case. -/
+def andnSpillI? (I : IsaAbi) (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
     Option (List LinstrR) :=
   match dsts, srcs with
   | [d], [.reg a, .reg b] =>
       if (d.isSpill || (LOperand.reg a).isSpill || (LOperand.reg b).isSpill)
           && opn == "ANDN:64" then
-        some [.Lopn [.reg reloadScratch] "MOV:64" [.reg a],
-              .Lopn [.reg reloadScratch2] "MOV:64" [.reg b],
-              .Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg reloadScratch2],
-              .Lopn [d] "MOV:64" [.reg reloadScratch]]
+        some [.Lopn [.reg I.reload] "MOV:64" [.reg a],
+              .Lopn [.reg I.reloadSnd] "MOV:64" [.reg b],
+              .Lopn [.reg I.reload] opn [.reg I.reload, .reg I.reloadSnd],
+              .Lopn [d] "MOV:64" [.reg I.reload]]
       else none
   | _, _ => none
+
+/-- The and-not with spilled operands through the x86 scratch registers `R15` and `R14`:
+    `andnSpillI?` at the x86 register file. -/
+def andnSpill? (dsts : List LOperand) (opn : String) (srcs : List LOperand) :
+    Option (List LinstrR) :=
+  andnSpillI? x86Abi dsts opn srcs
 
 /-- The instructions of a register-allocated `Lopn` with destinations `dsts`,
     mnemonic `opn` and sources `srcs`: the scratch select `cmovSpillDst?`, the
@@ -849,9 +864,9 @@ def legalizeSpillDst (dsts : List LOperand) (opn : String) (srcs : List LOperand
           | some l => l
           | none => [.Lopn dsts opn srcs]
 
-/-- A mnemonic other than `CMOV:64` has no scratch select. -/
+/-- A mnemonic other than a select mnemonic has no scratch select. -/
 theorem cmovSpillDst?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
-    (h : opn ≠ "CMOV:64") : cmovSpillDst? dsts opn srcs = none := by
+    (h : stripWidthTag opn ≠ "CMOV") : cmovSpillDst? dsts opn srcs = none := by
   unfold cmovSpillDst?
   split
   · simp [h]
@@ -868,7 +883,7 @@ theorem setccSpill?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOp
 /-- A mnemonic other than `ANDN:64` has no scratch and-not. -/
 theorem andnSpill?_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
     (h : opn ≠ "ANDN:64") : andnSpill? dsts opn srcs = none := by
-  unfold andnSpill?
+  unfold andnSpill? andnSpillI?
   split
   · simp [h]
   · rfl
@@ -898,7 +913,7 @@ theorem setccSpill?_of_not_spill {dsts : List LOperand} (opn : String)
 theorem andnSpill?_of_not_spill {dsts : List LOperand} (opn : String)
     {srcs : List LOperand} (h : ∀ d ∈ dsts, d.isSpill = false)
     (hs : ∀ s ∈ srcs, s.isSpill = false) : andnSpill? dsts opn srcs = none := by
-  unfold andnSpill?
+  unfold andnSpill? andnSpillI?
   split
   · rename_i a b
     have ha := hs (.reg a) (by simp)
@@ -914,10 +929,18 @@ theorem legalizeSpillDst_of_none {dsts : List LOperand} {opn : String} {srcs : L
     legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] := by
   simp [legalizeSpillDst, h, h', h'']
 
-/-- On a mnemonic other than `CMOV:64`, the comparison mnemonics and `ANDN:64`,
+/-- Where there is neither a scratch select nor a scratch comparison but a scratch and-not,
+    `legalizeSpillDst` is the scratch and-not. -/
+theorem legalizeSpillDst_of_andn {dsts : List LOperand} {opn : String} {srcs : List LOperand}
+    {l : List LinstrR} (h : cmovSpillDst? dsts opn srcs = none)
+    (h' : setccSpill? dsts opn srcs = none) (h'' : andnSpill? dsts opn srcs = some l) :
+    legalizeSpillDst dsts opn srcs = l := by
+  simp [legalizeSpillDst, h, h', h'']
+
+/-- On a mnemonic other than the select mnemonics, the comparison mnemonics and `ANDN:64`,
     `legalizeSpillDst` is the single instruction. -/
 theorem legalizeSpillDst_of_ne (dsts : List LOperand) {opn : String} (srcs : List LOperand)
-    (h : opn ≠ "CMOV:64") (h' : isSetccMnem opn = false) (h'' : opn ≠ "ANDN:64") :
+    (h : stripWidthTag opn ≠ "CMOV") (h' : isSetccMnem opn = false) (h'' : opn ≠ "ANDN:64") :
     legalizeSpillDst dsts opn srcs = [.Lopn dsts opn srcs] :=
   legalizeSpillDst_of_none (cmovSpillDst?_of_ne dsts srcs h) (setccSpill?_of_ne dsts srcs h')
     (andnSpill?_of_ne dsts srcs h'')
@@ -931,12 +954,12 @@ theorem legalizeSpillDst_of_not_spill {dsts : List LOperand} (opn : String)
   legalizeSpillDst_of_none (cmovSpillDst?_of_not_spill opn h hs)
     (setccSpill?_of_not_spill opn h hs) (andnSpill?_of_not_spill opn h hs)
 
-/-- **The scratch select.** A `CMOV:64` whose destination or condition is a spill slot
-    is `cmovSpillSeq "CMOV:64" d c t f`. -/
-theorem legalizeSpillDst_cmov {d c : LOperand} (t f : LOperand)
-    (h : (d.isSpill || c.isSpill) = true) :
-    legalizeSpillDst [d] "CMOV:64" [c, t, f] = cmovSpillSeq "CMOV:64" d c t f := by
-  simp [legalizeSpillDst, cmovSpillDst?, h]
+/-- **The scratch select.** A select `opn` (`CMOV` at a width tag) whose destination or
+    condition is a spill slot is `cmovSpillSeq opn d c t f`. -/
+theorem legalizeSpillDst_cmov {opn : String} {d c : LOperand} (t f : LOperand)
+    (ho : stripWidthTag opn = "CMOV") (h : (d.isSpill || c.isSpill) = true) :
+    legalizeSpillDst [d] opn [c, t, f] = cmovSpillSeq opn d c t f := by
+  simp [legalizeSpillDst, cmovSpillDst?, h, ho]
 
 /-- The select on a spilled condition into a register destination reloads the condition
     into `R14`. -/
@@ -998,8 +1021,8 @@ theorem legalizeSpillDst_andn {d : LOperand} {a b : String}
   have hc : cmovSpillDst? [d] "ANDN:64" [.reg a, .reg b] = none := rfl
   have hs : setccSpill? [d] "ANDN:64" [.reg a, .reg b] = none :=
     setccSpill?_of_ne _ _ (by decide +kernel)
-  simp only [legalizeSpillDst, hc, hs, andnSpill?, h, Bool.true_and, beq_self_eq_true,
-    ite_true]
+  simp only [legalizeSpillDst, hc, hs, andnSpill?, andnSpillI?, h, Bool.true_and,
+    beq_self_eq_true, ite_true, LprogIsa.x86Abi_reload, LprogIsa.x86Abi_reloadSnd]
 
 /-- Every instruction of `legalizeSpillDst dsts opn srcs` is an `Lopn` each of whose
     operands is a destination in `dsts`, a source in `srcs`, or one of the scratch
@@ -1037,11 +1060,12 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
       · cases hl
     · split at h
       · rename_i l _ _ hl
-        unfold andnSpill? at hl
+        unfold andnSpill? andnSpillI? at hl
         split at hl
         · split at hl
           · cases hl
-            simp only [List.mem_cons, List.not_mem_nil, or_false] at h
+            simp only [List.mem_cons, List.not_mem_nil, or_false, LprogIsa.x86Abi_reload,
+              LprogIsa.x86Abi_reloadSnd] at h
             rcases h with rfl | rfl | rfl | rfl <;>
               exact ⟨_, _, _, rfl, by intro x hx; simp at hx; rcases hx with rfl | rfl <;> simp⟩
           · cases hl

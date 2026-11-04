@@ -664,11 +664,12 @@ structure SpillDstOk (F W Q : Nat) (dsts : List LOperand) (opn : String)
   /-- The scratch comparison. -/
   cmp : ∀ l, setccSpill? dsts opn srcs = some l → isSetccEncMnem opn = true ∧
     (∀ o ∈ dsts, AllocOp F W Q o) ∧ ∀ o ∈ srcs, AllocOp F W Q o
-  /-- No scratch and-not: the legal forms do not contain the BMI1 `ANDN`. -/
-  andn : andnSpill? dsts opn srcs = none
+  /-- The scratch and-not. -/
+  andn : ∀ l, andnSpill? dsts opn srcs = some l →
+    (∀ o ∈ dsts, AllocOp F W Q o) ∧ ∀ o ∈ srcs, AllocOp F W Q o
   /-- The single instruction. -/
   one : cmovSpillDst? dsts opn srcs = none → setccSpill? dsts opn srcs = none →
-    LF F W Q (.Lopn dsts opn srcs)
+    andnSpill? dsts opn srcs = none → LF F W Q (.Lopn dsts opn srcs)
 
 /-- **The spill legalisation of a general instruction has legal forms** under `SpillDstOk`. -/
 theorem legalizeSpillDst_legal {dsts : List LOperand} {opn : String} {srcs : List LOperand}
@@ -686,8 +687,7 @@ theorem legalizeSpillDst_legal {dsts : List LOperand} {opn : String} {srcs : Lis
       cases hl'
       simp only [Bool.and_eq_true, beq_iff_eq] at hb
       obtain ⟨hd, hc, tn, fn, rfl, rfl, ht, hf⟩ := h.sel _ hl d c t f rfl rfl
-      rw [hb.2] at hi
-      exact x86Enc_complete.cmovSpillSeqI_legal (c := (F, W, Q)) x86Isa_selectMnemonic
+      exact x86Enc_complete.cmovSpillSeqI_legal (c := (F, W, Q)) x86Isa_selectMnemonic hb.2
         (allocOp_iff_allocOpI.1 hd) (allocOp_iff_allocOpI.1 hc) ht hf i hi
     · cases hl'
   · next hc =>
@@ -698,10 +698,16 @@ theorem legalizeSpillDst_legal {dsts : List LOperand} {opn : String} {srcs : Lis
         (fun o ho => allocOp_iff_allocOpI.1 (hd o ho)) (fun o ho => allocOp_iff_allocOpI.1 (hs o ho))
         i hi
     · next hs =>
-      rw [h.andn] at hi
-      simp only [List.mem_singleton] at hi
-      subst hi
-      exact h.one hc hs
+      split at hi
+      · next l hl =>
+        obtain ⟨hd, hs'⟩ := h.andn l hl
+        exact x86Enc_complete.andnSpillI?_legal (c := (F, W, Q)) hl (by decide +kernel)
+          (fun o ho => allocOp_iff_allocOpI.1 (hd o ho))
+          (fun o ho => allocOp_iff_allocOpI.1 (hs' o ho)) i hi
+      · next ha =>
+        simp only [List.mem_singleton] at hi
+        subst hi
+        exact h.one hc hs ha
 
 /-- **The constant-index stack-array store meets `SpillDstOk`** over a general-purpose base
     and value and an index of `x86StoreImm`, whatever its array destination: it has neither a
@@ -713,8 +719,9 @@ theorem spillDstOk_storeImm {a : LOperand} {bn vn : String} {k : Nat}
     rw [cmovSpillDst?_of_ne (opn := "STOREIMM") _ _ (by decide +kernel)] at hl; cases hl
   cmp l hl := by
     rw [setccSpill?_of_ne (opn := "STOREIMM") _ _ (by decide +kernel)] at hl; cases hl
-  andn := andnSpill?_of_ne _ _ (by decide +kernel)
-  one _ _ := .storeImm a bn vn k hk hb hv
+  andn l hl := by
+    rw [andnSpill?_of_ne (opn := "STOREIMM") _ _ (by decide +kernel)] at hl; cases hl
+  one _ _ _ := .storeImm a bn vn k hk hb hv
 
 /-- **The stack-array zeroing meets `SpillDstOk`** into a general-purpose register at a count
     and width of `x86ZeroArr`: it has neither a scratch select nor a scratch comparison, and
@@ -726,8 +733,9 @@ theorem spillDstOk_zeroArr {dn : String} {n w : Nat} (ho : x86ZeroArr n w = true
     rw [cmovSpillDst?_of_ne (opn := "ZEROARR") _ _ (by decide +kernel)] at hl; cases hl
   cmp l hl := by
     rw [setccSpill?_of_ne (opn := "ZEROARR") _ _ (by decide +kernel)] at hl; cases hl
-  andn := andnSpill?_of_ne _ _ (by decide +kernel)
-  one _ _ := .zeroArr dn n w ho hd
+  andn l hl := by
+    rw [andnSpill?_of_ne (opn := "ZEROARR") _ _ (by decide +kernel)] at hl; cases hl
+  one _ _ _ := .zeroArr dn n w ho hd
 
 /-! ## One position of `physPositionEmit` -/
 

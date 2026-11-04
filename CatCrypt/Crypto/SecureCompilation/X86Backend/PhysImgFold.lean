@@ -402,7 +402,9 @@ theorem nextEnv_nil_of_move (p : Nat × Nat × Nat) {i : Linstr}
   rw [hr]
   simp only [Bool.false_eq_true, ite_false]
   cases hl : lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
-  | some js => exact stepKs_nil (lowerPrinted_slotMov _ _ _ hm hl)
+  | some js =>
+    simp only [stepKs_nil (lowerPrinted_slotMov _ _ _ hm hl)]
+    simp [KEnv.killAll]
   | none =>
     simp only
     rcases hx with hx | hx <;> simp [hx, KEnv.killAll]

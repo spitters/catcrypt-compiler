@@ -98,12 +98,14 @@ def regionAllocTbl (B : Lcmd) : Array Nat :=
 
 /-- **The certificate of the allocation of a region export** (`regionLprogC_cert`): when the
     allocation `regionLprogC a p none ex` returns the program `P` and the certificate `cert`,
-    the program has an export `r`, and on both allocation paths the certificate is
-    `allocCertOf` of the body `regionAllocBody a Γ.length ts r` over its table. -/
+    the program has an export `r0` with webs `r = regionWebsAt ex none r0`, and on both
+    allocation paths the certificate is `allocCertOf` of the body
+    `regionAllocBody a Γ.length ts r` over its table. -/
 theorem regionLprogC_cert (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ cert = allocCertOf (regionAllocBody a Γ.length ts r)
         (regionAllocTbl (regionAllocBody a Γ.length ts r)) := by
   unfold regionLprogC regionAllocC at hP
@@ -112,14 +114,14 @@ theorem regionLprogC_cert (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Ja
     rw [hr] at hP
     cases hP
   | some r =>
-    refine ⟨r, rfl, ?_⟩
-    simp only [exportRLfundef, hr, Option.bind_some, regionWebsAt_none, Option.map_some,
+    refine ⟨r, _, rfl, rfl, ?_⟩
+    simp only [exportRLfundef, hr, Option.bind_some, Option.map_some,
       Option.some.injEq, Prod.mk.injEq] at hP
     obtain ⟨-, rfl⟩ := hP
     unfold regionAllocBody regionAllocTbl
     split
     · simp only [comToLfundefPhysAbiFromVirtCert, List.length_map, List.length_range,
-        Bool.or_true, ite_true]
+        Bool.or_true, ite_true, regionWebsAt_none, regionWebs_res]
       rfl
     · rename_i hts
       dsimp only
@@ -131,7 +133,8 @@ theorem regionLprogC_cert (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Ja
 
 /-- **The merge of the parts at the certificate of the allocation** (`regionCoBody_names_alloc`):
     when `regionLprogC a p none ex` returns the certificate `cert`, the program has an export
-    `r`, and for every layout `σ`, export naming `nm`, printed body `body` and result type `t`
+    `r0` with webs `r = regionWebsAt ex none r0`, and for every layout `σ`, export naming `nm`,
+    printed body `body` and result type `t`
     the merge pairs `tau` of the parts `regionCoParts σ nm body t r.code r.res cert` send a
     name `n` to its image `allocName` in the certified body `regionAllocBody a Γ.length ts r`
     when `n` is a certified name of that body that the merge keeps at the names
@@ -139,7 +142,8 @@ theorem regionLprogC_cert (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Ja
 theorem regionCoBody_names_alloc (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy) (n : String),
         renOf (regionCoParts σ nm body t r.code r.res cert none).tau n
           = if n ∈ allocCertNames (regionAllocBody a Γ.length ts r)
@@ -149,8 +153,8 @@ theorem regionCoBody_names_alloc (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : 
               allocName (regionAllocBody a Γ.length ts r)
                 (regionAllocTbl (regionAllocBody a Γ.length ts r)) n
             else n := by
-  obtain ⟨r, hr, rfl⟩ := regionLprogC_cert a p ex hP
-  exact ⟨r, hr, fun σ nm body t n => renOf_certMerge_allocCertOf _ _ _ _ _ _ n⟩
+  obtain ⟨r0, r, hr, rfl, rfl⟩ := regionLprogC_cert a p ex hP
+  exact ⟨r0, _, hr, rfl, fun σ nm body t n => renOf_certMerge_allocCertOf _ _ _ _ _ _ n⟩
 
 /-- **The targets of the result copy are hardware register names** when the export name
     `nm RA` of a result register `RA` of the layout is one. -/
@@ -196,7 +200,8 @@ def MergeSepField (d : CoParts) : Prop :=
 
 /-- **The separation of the merge from the live ranges of the allocation**
     (`sep_regionLprogC`). Let `regionLprogC a p none ex` return the certificate `cert`, let
-    `r` be the export and `B := regionAllocBody a Γ.length ts r` the certified body, and let
+    `r` be the webs `regionWebsAt ex none r0` of the export `r0` and `B := regionAllocBody a
+    Γ.length ts r` the certified body, and let
     `d` be the parts `regionCoParts σ nm body t r.code r.res cert`. Under the export name
     `nm RA` of a result register `RA` of the layout being a hardware register name, the size
     bound `hfit` of the allocation of `B`, a body `B` without a straight-line call, names
@@ -211,7 +216,8 @@ def MergeSepField (d : CoParts) : Prop :=
 theorem sep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy),
         let B := regionAllocBody a Γ.length ts r
         let d := regionCoParts σ nm body t r.code r.res cert none
@@ -231,8 +237,8 @@ theorem sep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Jas
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
             y ≠ allocName B (regionAllocTbl B) x) →
         MergeSepField d := by
-  obtain ⟨r, hr, rfl⟩ := regionLprogC_cert a p ex hP
-  refine ⟨r, hr, fun σ nm body t => ?_⟩
+  obtain ⟨r0, r, hr, rfl, rfl⟩ := regionLprogC_cert a p ex hP
+  refine ⟨r0, _, hr, rfl, fun σ nm body t => ?_⟩
   intro B d K hRA hfit hsc hpl hcov hnp k i hk hi y hy x hx hyx
   rcases hpl k i hk hi x hx with hxp | ⟨hlast, hxw⟩
   · have hcls : bodyStraightCall B = true →
@@ -259,7 +265,7 @@ theorem sep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Jas
       exact hy
     rw [liveRegTab_end] at hy'
     have hxf : renOf d.tau x = x := renOf_certMerge_of_not (by simp [certMergeKeep, hxw])
-    rw [outs_regionCoParts body t r.code r.res _ none hRA y hy', hxf]
+    rw [outs_regionCoParts body t _ _ _ none hRA y hy', hxf]
     exact hyx
 
 /-! ## 4. The premises of the input of the allocation -/

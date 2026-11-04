@@ -651,7 +651,8 @@ def proposeCand (σ : AbiLayout) (_fn : String) (Γ : Ctxt jasminDialect) (t : J
     check. -/
 def candConjuncts (σ : AbiLayout) (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : DecompCand Γ t) (bytes : List (BitVec 8)) : List (String × Bool) :=
-  let r := exportR Γ.length fn c.p Γ.length 0
+  let r := (exportR Γ.length fn c.p Γ.length 0).map
+    (regionWebsAt (regionWebsEx σ exportReg) none)
   [("regionExportableB", regionExportableB c.p), ("callFree", c.p.callFree),
    ("exportR", r.isSome),
    ("regionCoB", match r with

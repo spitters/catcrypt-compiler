@@ -136,6 +136,9 @@ theorem ExportRegName.ne_empty {x : String} (h : ExportRegName x) : x ≠ "" := 
   rcases h with h | h <;> cases h
 
 /-- An export register name is no argument name. -/
+theorem ExportRegName.notTag {x : String} (h : ExportRegName x) : ¬ IsTag x := by
+  rcases h with h | h <;> exact notTag_of_head h (by decide)
+
 theorem ExportRegName.ne_argName {x : String} (h : ExportRegName x) (j : Nat) :
     x ≠ argName j := by
   rintro rfl
@@ -438,6 +441,111 @@ theorem exportR_defNames (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
       · exact defsR_whileFrame _ _ _ _ _ _ _ (ihb _ _ _ hb) i hi
       · exact ihk _ _ _ hk i hi
 
+/-- A web name of an export register name is an export register name: the web name begins
+    with the name. -/
+theorem ExportRegName.web {x : String} (h : ExportRegName x) (n : Nat) :
+    ExportRegName (x ++ "#w" ++ toString n) := by
+  unfold ExportRegName at h ⊢
+  rcases h with h | h <;>
+    [left; right] <;>
+    · obtain ⟨c, l, hl⟩ : ∃ c l, x.toList = c :: l := by
+        cases hx : x.toList with
+        | nil => rw [hx] at h; cases h
+        | cons c l => exact ⟨c, l, rfl⟩
+      rw [hl, List.head?_cons, Option.some.injEq] at h
+      simp [String.toList_append, hl, h]
+
+/-- **The written names of an exported code** on x86 of a program without `call` that passes
+    `regionExportableB`: the export by `exportR_defNames`; its webs write the names the export
+    writes or web names of them (`mem_defNames_renArr`), which begin with the same letter. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.defsR {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (hp : regionExportableB p = true) (hc : p.callFree = true) : ∀ i ∈ r.code, DefsR i := by
+  obtain ⟨r0, h0, hr | hr⟩ := h <;> subst r
+  · exact exportR_defNames _ _ p _ _ r0 h0
+  · have key := forall_mem_regionWebs_web
+      (P := fun i => RegionCoComplete.NoShadow i ∧ DefsR i)
+      (fun σ i hσ hi => ⟨RegionCoComplete.noShadow_renArr σ hi.1, fun x hx => by
+        rcases mem_defNames_renArr σ hi.1 hx with hx | ⟨y, hy, rfl⟩
+        · exact hi.2 x hx
+        · rcases hσ y with he | ⟨n, he⟩ <;> rw [he]
+          · exact hi.2 y hy
+          · exact (hi.2 y hy).web n⟩) ex r0 (fun _ _ => none) (fun _ => none)
+      (fun i hi => ⟨RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow
+        _ _ p hp hc _ _ r0 h0 i hi, exportR_defNames _ _ p _ _ r0 h0 i hi⟩)
+    exact fun i hi => (key i hi).2
+
+/-- **The certificate of definite assignment of an exported code** on x86 of a program
+    without `call` that passes `regionExportableB` (`RegionExp.cert_of_exportR`): the export
+    writes export register names, which are untagged (`exportR_defNames`), and its array
+    zeroings read no name (`RegionCoComplete.exportR_zeroOK`). -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.cert_x86 {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (hp : regionExportableB p = true) (hc : p.callFree = true) :
+    ∃ D, Cert (ExportE Γ.length r.code) r.code D ∧
+      ∀ x ∈ r.res.flatMap JasminLsemExportRewrites.opNames,
+        D r.code.length x ∨ ExportE Γ.length r.code x :=
+  h.cert_of_exportR hp hc
+    (fun r0 h0 i hi x hx => (exportR_defNames _ _ p _ _ r0 h0 i hi x hx).notTag)
+    (fun r0 h0 i hi w n e => RegionCoComplete.exportR_zeroOK _ _ _ p _ _ r0 h0 i hi w n e)
+
+/-- The returned operands of an exported code are registers. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.res_isReg {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r) :
+    ∀ o ∈ r.res, o = .reg (JasminLsemWidthN.operandName o) := by
+  obtain ⟨r0, h0, -⟩ := id h
+  rw [h.res h0]
+  exact exportR_res_isReg Γ.length fn p _ _ r0 h0
+
+/-- **The symbol-base loads of the export from those of an exported code**: the renaming of
+    array positions keeps the symbol-base loads of an instruction (`symReads_renArr`), so an
+    exported code without symbol-base load is the export or the webs of an export without
+    one. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.symReads_export {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (hp : regionExportableB p = true) (hc : p.callFree = true) {r0 : Exported}
+    (h0 : exportR Γ.length fn p Γ.length 0 x86Data = some r0)
+    (hsym : ∀ i ∈ r.code, symReads i = []) : ∀ i ∈ r0.code, symReads i = [] := by
+  obtain ⟨r1, h1, hr⟩ := h
+  obtain rfl := Option.some.inj (h1.symm.trans h0)
+  have hns := RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p
+    hp hc _ _ r1 h1
+  rcases hr with rfl | rfl
+  · exact hsym
+  · intro i hi
+    unfold regionWebs at hsym
+    split at hsym
+    · dsimp only [X86Backend.ArrWebs.webRen] at hsym
+      obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem hi
+      have := hsym _ (List.mem_mapIdx.mpr ⟨k, hk, rfl⟩)
+      rwa [RegionExportDefInitSort.symReads_renArr (hns _ (List.getElem_mem hk))] at this
+    · exact hsym i hi
+
+/-- **Definite assignment of the tagged code of the parts of an exported code at the
+    argument names of the layout** (`RegionExportDefInitSort.cert_regionCoCodeS_of` at
+    `RegionExp.certS_of_exportR`): for an exported code `r` (`RegionExp`) on x86 of a program
+    without `call` that passes `regionExportableB`, without symbol-base load, at a layout with
+    at least `Γ.length` parameters. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.cert_regionCoCodeS
+    {fn : String} {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (hp : regionExportableB p = true) (hc : p.callFree = true) (σ : AbiLayout)
+    (nm : String → String) (hsym : ∀ i ∈ r.code, symReads i = [])
+    (hlen : Γ.length ≤ σ.args.length) :
+    ∃ D, Cert (ArgS σ.args.length)
+      ((regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)).map
+        (X86Backend.ImageCoalesceCfg.renArr tagA)) D :=
+  RegionExportDefInitSort.cert_regionCoCodeS_of Γ.length (h.noShadow hp hc) σ nm hsym hlen
+    (h.certS_of_exportR hp hc
+      (fun r0 h0 => RegionExportDefInitSort.noTag_exportR fn p hp hc h0
+        (h.symReads_export hp hc h0 hsym)
+        (fun i hi x hx => (exportR_defNames _ _ p _ _ r0 h0 i hi x hx).notTag))
+      (fun r0 h0 i hi w n e => RegionCoComplete.exportR_zeroOK _ _ _ p _ _ r0 h0 i hi w n e))
+
 /-! ## 3. The written registers under the renamings of the reference -/
 
 /-- The register names an instruction writes are among the names it writes. -/
@@ -717,12 +825,13 @@ theorem renOf_certMerge_allocCertOf_eq_empty {σ : AbiLayout} {arrs X : List Str
 theorem empty_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy),
         "" ∉ bodyNames (regionAllocBody a Γ.length ts r) →
         renOf (regionCoParts σ nm body t r.code r.res cert none).tau "" = "" := by
-  obtain ⟨r, hr, rfl⟩ := regionLprogC_cert a p ex hP
-  refine ⟨r, hr, fun σ nm body t hB => ?_⟩
+  obtain ⟨r0, r, hr, rfl, rfl⟩ := regionLprogC_cert a p ex hP
+  refine ⟨r0, _, hr, rfl, fun σ nm body t hB => ?_⟩
   refine (renOf_certMerge_allocCertOf _ _ _ _ _ _ "").trans (ite_eq_right fun h => hB ?_)
   exact (List.mem_filter.mp h.1).1
 
@@ -736,18 +845,18 @@ theorem defNe_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List J
     (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
     (hcf : p.callFree = true) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy),
         let d := regionCoParts σ nm body t r.code r.res cert none
         (∀ RA, σ.result = .reg RA → isHwRegName (nm RA) = true) →
         ∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
           ∀ x ∈ regDefs i, renOf d.tau x ≠ "" := by
-  obtain ⟨r, hr, rfl⟩ := regionLprogC_cert a p ex hP
-  refine ⟨r, hr, fun σ nm body t hRA k i hk hi x hx he => ?_⟩
-  exact defs_ne_empty_regionCoParts σ nm body t r.res _
-    (exportR_defNames _ _ p _ _ r hr)
-    (RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p hp hcf
-      _ _ r hr) hRA k i hk hi x hx (renOf_certMerge_allocCertOf_eq_empty he)
+  obtain ⟨r0, r, hr, rfl, rfl⟩ := regionLprogC_cert a p ex hP
+  refine ⟨r0, _, hr, rfl, fun σ nm body t hRA k i hk hi x hx he => ?_⟩
+  exact defs_ne_empty_regionCoParts σ nm body t _ _
+    ((regionExp_webs ex hr).defsR hp hcf) ((regionExp_webs ex hr).noShadow hp hcf) hRA k i hk
+    hi x hx (renOf_certMerge_allocCertOf_eq_empty he)
 
 /-- **The written-names premise of `sep_regionLprogC`** at the allocation
     `regionLprogC a p none ex` of a program without `call` that passes `regionExportableB`:
@@ -758,18 +867,17 @@ theorem plainDefs_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : Li
     (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
     (hcf : p.callFree = true) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy),
         let d := regionCoParts σ nm body t r.code r.res cert none
         (∀ RA, σ.result = .reg RA → isHwRegName (nm RA) = true) →
         ∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
           ∀ x ∈ regDefs i, PlainName x
             ∨ (k + 1 = (d.pre ++ d.ren).length ∧ isHwRegName x = true) := by
-  obtain ⟨r, hr, -⟩ := regionLprogC_cert a p ex hP
-  exact ⟨r, hr, fun σ nm body t hRA => plainDefs_regionCoParts σ nm body t r.res cert
-    (exportR_defNames _ _ p _ _ r hr)
-    (RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p hp hcf
-      _ _ r hr) hRA⟩
+  obtain ⟨r0, r, hr, rfl, -⟩ := regionLprogC_cert a p ex hP
+  exact ⟨r0, _, hr, rfl, fun σ nm body t hRA => plainDefs_regionCoParts σ nm body t _ cert
+    ((regionExp_webs ex hr).defsR hp hcf) ((regionExp_webs ex hr).noShadow hp hcf) hRA⟩
 
 /-! ## 5. The names live at the entry of the renamed code -/
 
@@ -1097,14 +1205,16 @@ theorem isSome_cmpArgs?_of_renRM (τ : String → String) {i : LinstrRM}
       JasminLsemExportTransfer.renLinstrR] at h
 
 /-- **Definite assignment of the code of the parts at the argument names of the layout**: for
-    the export `r` of a program over `Γ` on x86 without symbol-base loads, at a layout with at
-    least `Γ.length` parameters, the code `regionCoCode` with its result copies has a
+    an exported code `r` (the export or its webs, `RegionExp`) of a program over `Γ` on x86
+    without `call` that passes `regionExportableB`, without symbol-base loads, at a layout with
+    at least `Γ.length` parameters, the code `regionCoCode` with its result copies has a
     certificate of definite assignment at the argument names `isArgNameB σ`. The exported
-    code has one (`exportR_cert`); the result move reads a returned name, and the array result
+    code has one (`RegionExp.cert_x86`); the result move reads a returned name, and the array result
     copy reads the returned name and the result buffer, an argument name of the layout. -/
 theorem cert_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    (p : NFProg jasminDialect Γ ts) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
+    (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {ex : List String} {r : Exported}
+    (h : RegionExp fn p ex r) (σ : AbiLayout)
     (nm : String → String) (t : JasminTy) (hsym : ∀ i ∈ r.code, symReads i = [])
     (hlen : Γ.length ≤ σ.args.length) :
     ∃ D, Cert (fun y => isArgNameB σ y = true)
@@ -1114,7 +1224,7 @@ theorem cert_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : List Jas
     · exact isArgNameB_argName (by omega)
     · rw [hsym i hi] at hy
       cases hy
-  obtain ⟨D0, hC0, hres0⟩ := exportR_cert fn p h
+  obtain ⟨D0, hC0, hres0⟩ := h.cert_x86 hp hc
   have hC1 := hC0.monoE hEA
   have hres : ∀ x ∈ r.res.flatMap JasminLsemExportRewrites.opNames,
       D0 r.code.length x ∨ isArgNameB σ x = true :=
@@ -1123,7 +1233,7 @@ theorem cert_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : List Jas
       ∈ r.res.flatMap JasminLsemExportRewrites.opNames := by
     intro op hop
     refine List.mem_flatMap.mpr ⟨op, hop, ?_⟩
-    rw [exportR_res_isReg Γ.length fn p _ _ r h op hop]
+    rw [h.res_isReg op hop]
     simp [JasminLsemExportRewrites.opNames, JasminLsemWidthN.operandName]
   let L := (regionRet σ nm t r.res).toList
   have hmovs : movesOf L = L.map fun q => movI q.2 (.reg q.1) := rfl
@@ -1177,9 +1287,6 @@ theorem fix_movesOf {τ : String → String} {qs : List (String × String)}
 
 /-! ### The code of the parts mentions no tagged name -/
 
-theorem ExportRegName.notTag {x : String} (h : ExportRegName x) : ¬ IsTag x := by
-  rcases h with h | h <;> exact notTag_of_head h (by decide)
-
 theorem notTag_of_hw {y : String} (hy : isHwRegName y = true) : ¬ IsTag y := by
   have hall : ∀ z ∈ hwRegNames, z.toList.head? ≠ some '@' := by decide
   exact hall y (by simpa [isHwRegName, List.contains_iff_mem] using hy)
@@ -1202,8 +1309,9 @@ theorem notTag_defs_resCopyCode (src : String) (j m : Nat) :
     exact notTag_of_head (c := 'a') (by simp [copyName, argName, String.toList_append])
       (by decide)
 
-/-- **The code of the parts mentions no tagged name**: for the export `r` of a program without
-    `call` that passes `regionExportableB` and has no symbol-base load, at a layout with at
+/-- **The code of the parts mentions no tagged name**: for an exported code `r` (`RegionExp`)
+    of a program without `call` that passes `regionExportableB` and has no symbol-base load, at a
+    layout with at
     least `Γ.length` parameters whose result register has a hardware register name, the code
     `regionCoCode` with its result copy satisfies `NoTag`. It reads argument names or names
     written before (`cert_regionCoCode`), and it writes export register names
@@ -1211,17 +1319,16 @@ theorem notTag_defs_resCopyCode (src : String) (j m : Nat) :
     argument name. -/
 theorem noTag_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
+    (hc : p.callFree = true) {ex : List String} {r : Exported}
+    (h : RegionExp fn p ex r) (σ : AbiLayout)
     (nm : String → String) (t : JasminTy)
     (hRA : ∀ RA, σ.result = .reg RA → isHwRegName (nm RA) = true)
     (hsym : ∀ i ∈ r.code, symReads i = []) (hlen : Γ.length ≤ σ.args.length) :
     NoTag (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)) := by
-  obtain ⟨D, hC⟩ := cert_regionCoCode fn p h σ nm t hsym hlen
-  have hdef := exportR_defNames _ _ p _ _ r h
-  have hGr := exportR_noGoto Γ.length fn p _ _ r h
-  have hns := RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p
-    hp hc _ _ r h
+  obtain ⟨D, hC⟩ := cert_regionCoCode fn p hp hc h σ nm t hsym hlen
+  have hdef := h.defsR hp hc
+  have hGr := h.noGoto
+  have hns := h.noShadow hp hc
   have hmv : ∀ i ∈ movesOf (regionRet σ nm t r.res).toList,
       JasminLsemMemLoop.IsLopn i ∧ ∀ x ∈ defNames i.1, ¬ IsTag x := by
     intro i hi
@@ -1265,8 +1372,8 @@ theorem noTag_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : List Ja
 
 /-- **The merge fixes the names live at the entry of the renamed code** (the field `entry` of
     `MergeSep`) at the certificate of the allocation `regionLprogC a p none ex` of a program
-    without `call` that passes `regionExportableB`. Let `r` be the export, `B` the certified
-    body, `d` the parts `regionCoParts σ nm body t r.code r.res cert`, `C` their code
+    without `call` that passes `regionExportableB`. Let `r` be the webs of the export, `B` the
+    certified body, `d` the parts `regionCoParts σ nm body t r.code r.res cert`, `C` their code
     `regionCoCode` with its result copies and `ρ` its coalescing renaming. The hypotheses: the
     export names of the result register and of the parameter registers of the layout are
     hardware register names; the layout has at least `Γ.length` parameters; the allocation
@@ -1283,7 +1390,8 @@ theorem entry_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List J
     (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
     (hcf : p.callFree = true) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy),
         let B := regionAllocBody a Γ.length ts r
         let d := regionCoParts σ nm body t r.code r.res cert none
@@ -1296,18 +1404,19 @@ theorem entry_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List J
           ∀ x ∈ defNames i.1, x ∈ useNames i.1) →
         ts = [t] →
         ∀ x ∈ tabAt d.live d.pre.length, renOf d.tau x = x := by
-  obtain ⟨r, hr, rfl⟩ := regionLprogC_cert a p ex hP
-  refine ⟨r, hr, ?_⟩
+  obtain ⟨r0, r, hr0, rfl, rfl⟩ := regionLprogC_cert a p ex hP
+  refine ⟨r0, _, hr0, rfl, ?_⟩
+  have hr : RegionExp a.fname p ex (regionWebsAt ex none r0) := regionExp_webs ex hr0
+  generalize regionWebsAt ex none r0 = r at hr ⊢
   intro σ nm body t B d hRA hArg hlen hvec hsym hcmp hts
   let C := regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)
   let ρ := canonMemrefName (regionAliasTab σ nm t none r.res C)
   subst hts
-  have hdef := exportR_defNames _ _ p _ _ r hr
-  have hns := RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p
-    hp hcf _ _ r hr
+  have hdef := hr.defsR hp hcf
+  have hns := hr.noShadow hp hcf
   have hnsC := RegionCoComplete.noShadow_regionCoCode σ nm t r.code r.res
     (regionCopy σ nm t none r.code r.res) hns
-  obtain ⟨D, hC⟩ := cert_regionCoCodeS a.fname p hp hcf hr σ nm hsym hlen
+  obtain ⟨D, hC⟩ := hr.cert_regionCoCodeS hp hcf σ nm hsym hlen
   have hT := noTag_regionCoCode a.fname p hp hcf hr σ nm t hRA hsym hlen
   have hfixA : ∀ n, isArgNameB σ n = true → renOf d.tau n = n := fun n h =>
     renOf_certMerge_of_isArgNameB h
@@ -1369,14 +1478,16 @@ theorem entry_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List J
     of the allocation `regionLprogC a p none ex` of a program without `call` that passes
     `regionExportableB`, the parts satisfy `MergeSep` under the hypotheses of
     `empty_regionLprogC` (the empty name is no name of the certified body), of
-    `entry_regionLprogC` (with the result types `[t]` of the program), and of `sep_regionLprogC` apart from its written-names premise,
+    `entry_regionLprogC` (with the result types `[t]` of the program), and of `sep_regionLprogC`
+    apart from its written-names premise,
     which `plainDefs_regionLprogC` gives: the size bound of the allocation, a body without a
     straight-line call, and the two conditions on the live ranges of the certified body. -/
 theorem mergeSep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
     (hcf : p.callFree = true) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r
+    ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy),
         let B := regionAllocBody a Γ.length ts r
         let d := regionCoParts σ nm body t r.code r.res cert none
@@ -1401,23 +1512,23 @@ theorem mergeSep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : Lis
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
             y ≠ allocName B (regionAllocTbl B) x) →
         MergeSep d := by
-  obtain ⟨r, hr, hE⟩ := empty_regionLprogC a p ex hP
-  obtain ⟨r1, hr1, hN⟩ := entry_regionLprogC a p hp hcf ex hP
-  obtain ⟨r2, hr2, hD⟩ := defNe_regionLprogC a p hp hcf ex hP
-  obtain ⟨r3, hr3, hL⟩ := plainDefs_regionLprogC a p hp hcf ex hP
-  obtain ⟨r4, hr4, hS⟩ := sep_regionLprogC a p ex hP
+  obtain ⟨r, w, hr, rfl, hE⟩ := empty_regionLprogC a p ex hP
+  obtain ⟨r1, w1, hr1, rfl, hN⟩ := entry_regionLprogC a p hp hcf ex hP
+  obtain ⟨r2, w2, hr2, rfl, hD⟩ := defNe_regionLprogC a p hp hcf ex hP
+  obtain ⟨r3, w3, hr3, rfl, hL⟩ := plainDefs_regionLprogC a p hp hcf ex hP
+  obtain ⟨r4, w4, hr4, rfl, hS⟩ := sep_regionLprogC a p ex hP
   obtain rfl : r1 = r := Option.some.inj (hr1.symm.trans hr)
   obtain rfl : r2 = r1 := Option.some.inj (hr2.symm.trans hr1)
   obtain rfl : r3 = r2 := Option.some.inj (hr3.symm.trans hr2)
   obtain rfl : r4 = r3 := Option.some.inj (hr4.symm.trans hr3)
-  refine ⟨r4, hr4, ?_⟩
+  refine ⟨r4, _, hr4, rfl, ?_⟩
   intro σ nm body t B d K h0 hRA hArg hlen hvec hsym hcmp hts hfit hsc hcov hnp
-  obtain ⟨r5, hr5, rfl⟩ := regionLprogC_cert a p ex hP
+  obtain ⟨r5, w5, hr5, rfl, rfl⟩ := regionLprogC_cert a p ex hP
   obtain rfl : r5 = r4 := Option.some.inj (hr5.symm.trans hr4)
   exact
     { empty := hE σ nm body t h0
       entry := hN σ nm body t hRA hArg hlen hvec hsym hcmp hts
-      outs := outs_regionCoParts body t r5.code r5.res _ none hRA
+      outs := outs_regionCoParts body t _ _ _ none hRA
       defNe := hD σ nm body t hRA
       sep := hS σ nm body t hRA hfit hsc (hL σ nm body t hRA) hcov hnp }
 

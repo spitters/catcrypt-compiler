@@ -459,15 +459,43 @@ def dstOpNames : LOperand → List String
   | .arrIdx b x _ => [b, x]
   | _ => []
 
+/-- The destination of an immediate move at a width other than `64` written in its
+    mnemonic (`MOV^w d, #n`, the mnemonic `withWidthTag w "MOV"` for `w ≠ 64`); no name for
+    every other instruction. The value such
+    a move gives its destination has the width `w`, and a 64-bit copy of the destination
+    reads it zero-extended; the fold does not forward it, so that a copy keeps the width
+    of the value it copies. -/
+def narrowImmDsts : LinstrR → List String
+  | .Lopn [.reg d] o [.imm _] =>
+      if List.isPrefixOf "MOV^".toList o.toList then [d] else []
+  | _ => []
+
+/-- An instruction whose mnemonic does not start with `MOV^` writes no narrow immediate. -/
+theorem narrowImmDsts_of_not_narrow {ds : List LOperand} {o : String} {ss : List LOperand}
+    (h : List.isPrefixOf "MOV^".toList o.toList = false) : narrowImmDsts (.Lopn ds o ss) = [] := by
+  unfold narrowImmDsts
+  split
+  · next heq =>
+      obtain ⟨-, rfl, -⟩ := heq
+      simp only [h, Bool.false_eq_true, ite_false]
+  · rfl
+
+/-- Forgetting names keeps the environment true. -/
+theorem KEnv.Holds.killAll {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
+    (ds : List String) : KEnv.Holds s (env.killAll ds) := by
+  intro r v hr
+  exact h r v (KEnv.find_killAll hr).1
+
 /-- The environment after instruction `i`: the analysis step across its gathered
-    block; after an `Lopn` the gather does not lower, the environment without the
-    names of its destination operands; the empty environment after a return or any
-    other instruction the gather does not lower. -/
+    block, without the destination of a narrow immediate move (`narrowImmDsts`); after
+    an `Lopn` the gather does not lower, the environment without the names of its
+    destination operands; the empty environment after a return or any other instruction
+    the gather does not lower. -/
 def nextEnv (p : Nat × Nat × Nat) (env : KEnv) (i : Linstr) : KEnv :=
   if isLret i then []
   else
     match lowerPrinted p.1 p.2.1 p.2.2 i.li_i with
-    | some js => stepKs env js
+    | some js => (stepKs env js).killAll (narrowImmDsts i.li_i)
     | none =>
         match i.li_i with
         | .Lopn d _ _ => env.killAll (d.flatMap dstOpNames)
@@ -694,11 +722,12 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
                   Option.pure_def, Option.some.injEq] at h
                 subst h
                 obtain ⟨js', hj', hrun⟩ := foldInstr_lower p (ex := ex) (env := env) hi
-                have henv : nextEnv p env i = stepKs env js := by
+                have henv :
+                    nextEnv p env i = (stepKs env js).killAll (narrowImmDsts i.li_i) := by
                   simp [nextEnv, hr0, hi]
                 obtain ⟨rest', h1, h2⟩ :=
                   ih (nextEnv p env i) (runBlock s js) rest
-                    (by rw [henv]; exact hs.stepKs js) hrest
+                    (by rw [henv]; exact (hs.stepKs js).killAll _) hrest
                 refine ⟨js' :: rest', ?_, ?_⟩
                 · simp only [gatherList] at h1
                   simp only [gatherList, foldCore, List.filter_cons, hr', Bool.not_false,

@@ -926,7 +926,9 @@ theorem legalizeSpillDst_scratchPrev (dsts : List LOperand) (opn : String)
       · cases h
     · split
       · rename_i h
-        unfold andnSpill? at h
+        unfold andnSpill? andnSpillI? at h
+        rw [CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reload,
+          CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reloadSnd] at h
         split at h
         · split_ifs at h with hc
           cases h

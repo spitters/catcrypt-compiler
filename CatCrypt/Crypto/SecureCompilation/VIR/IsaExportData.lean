@@ -27,7 +27,7 @@ the `Lprog` back end uses.
   `x86ExportData_vecCopy`, `x86ExportData_ip`: the register file fields at x86.
 * `x86ExportData_saveBytes`, `x86ExportData_saveBytesCall`, `x86ExportData_spillCell`,
   `x86ExportData_vecSpillBytes`, `x86ExportData_frameSize`: the frame fields at x86.
-* `x86Abi_reload`, `x86Abi_reloadSnd`, `x86Abi_retReg`, `x86Abi_hwRegNames`,
+* `x86Abi_retReg`, `x86Abi_hwRegNames`,
   `x86Abi_calleeFirstOrder`, `x86Abi_callerSavedPool`, `x86Abi_calleeSavedPoolIdx`,
   `x86Abi_callScratchPoolIdx`, `x86Abi_redZone`: the derived quantities at x86.
 -/
@@ -110,12 +110,6 @@ theorem x86ExportData_frameSize (body : Lcmd) :
 theorem x86Abi_redZone : LprogBytes.cmovRedZone = -(Int.ofNat x86Abi.redZone) := rfl
 
 /-! ## The derived quantities at x86 -/
-
-/-- The x86 primary reload scratch. -/
-theorem x86Abi_reload : x86Abi.reload = reloadScratch := rfl
-
-/-- The x86 secondary reload scratch. -/
-theorem x86Abi_reloadSnd : x86Abi.reloadSnd = reloadScratch2 := rfl
 
 /-- The x86 scalar return register. -/
 theorem x86Abi_retReg : x86Abi.retReg = sysvRetReg := rfl

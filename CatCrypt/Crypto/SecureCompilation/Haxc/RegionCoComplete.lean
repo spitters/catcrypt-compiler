@@ -48,9 +48,12 @@ at this table accepts every admitted body and renaming without real aliasing.
   tags (`TagOK`) and `CallFix`.
 * `GuardsNoShadow`, `x86Data_guardsNoShadow`: the guards and the select of an instruction set
   contain no shadow instruction of a call; x86 satisfies it.
+* `exportR_zeroOK`: the array zeroings of the export read no name.
 * `exportR_tagOK`, `exportR_noShadow`: the export has no compile-time-offset tag, and over
   an instruction set with `GuardsNoShadow` a program without `call` that passes
   `regionExportableB` exports no shadow instruction of a call.
+* `noShadow_renArr`, `RegionExp.noShadow`: the renaming of array positions keeps that, so the
+  webs of the export on x86 have no shadow instruction of a call either.
 * `regionCo_classOK`: `ClassOK` on the coalesced code of a region export that passes the
   stages `commonCalls` and `coClass` of `regionCoStage`.
 * `regionCoStage_coalesce_of`: `regionCoStage` refuses neither at `coCfgB` nor at
@@ -1062,6 +1065,199 @@ theorem exportR_tagOK (nArgs : Nat) (fn : String) (I : IsaData)
       · rw [List.mem_singleton.mp hi]; simp [TagOK, callI]
       · exact ih _ _ _ hk i hi
 
+/-- **An array zeroing reads no name**: an instruction with the tag of an array zeroing has
+    no register read. -/
+def ZeroOK (i : LinstrRM) : Prop :=
+  ∀ w n, i.2 = .zero w n → JasminLsemExportRegAlloc.useNames i.1 = []
+
+theorem zeroOK_of_tag {i : LinstrRM} (h : ∀ w n, i.2 ≠ .zero w n) : ZeroOK i :=
+  fun w n e => absurd e (h w n)
+
+theorem zeroOK_movI (dst : String) (src : LOperand) : ZeroOK (movI dst src) :=
+  zeroOK_of_tag (by simp [movI])
+
+theorem zeroOK_guardI (w : LinstrR) : ZeroOK (guardI w) := zeroOK_of_tag (by simp [guardI])
+
+theorem zeroOK_labelI (l : LLabel) : ZeroOK (labelI l) := zeroOK_of_tag (by simp [labelI])
+
+theorem zeroOK_seedMoves (car : List String) (ops : List LOperand) :
+    ∀ i ∈ seedMoves car ops, ZeroOK i := by
+  intro i hi
+  obtain ⟨p, -, rfl⟩ := List.mem_map.mp hi
+  exact zeroOK_movI _ _
+
+theorem zeroOK_parMoves (D : Nat) (tgts : List String) (ops : List LOperand) :
+    ∀ i ∈ parMoves D tgts ops, ZeroOK i := by
+  intro i hi
+  rcases List.mem_append.mp hi with hi | hi <;> obtain ⟨p, -, rfl⟩ := List.mem_map.mp hi <;>
+    exact zeroOK_movI _ _
+
+theorem zeroOK_arrMoves (z t : String) (mv : List ArrMove) :
+    ∀ i ∈ arrMoves z t mv, ZeroOK i := by
+  intro i hi
+  obtain ⟨a, -, hi⟩ := List.mem_flatMap.mp hi
+  simp only [arrMove, List.mem_cons, List.not_mem_nil, or_false] at hi
+  rcases hi with rfl | rfl <;> exact zeroOK_of_tag (by simp)
+
+theorem zeroOK_typedMoves (z t : String) (tp : List (JasminTy × String × String)) :
+    ∀ i ∈ typedMoves z t tp, ZeroOK i := by
+  intro i hi
+  rcases List.mem_append.mp hi with hi | hi
+  · exact zeroOK_arrMoves _ _ _ i hi
+  · obtain ⟨p, -, rfl⟩ := List.mem_map.mp hi
+    exact zeroOK_movI _ _
+
+theorem zeroOK_arrParMoves (z t : String) (D : Nat) (mv : List ArrMove) :
+    ∀ i ∈ arrParMoves z t D mv, ZeroOK i := by
+  intro i hi
+  unfold arrParMoves at hi
+  split at hi
+  · exact zeroOK_arrMoves _ _ _ i hi
+  · rcases List.mem_append.mp hi with hi | hi <;> exact zeroOK_arrMoves _ _ _ i hi
+
+theorem zeroOK_advanceOps (idx ctr : String) : ∀ i ∈ advanceOps idx ctr, ZeroOK i := by
+  intro i hi
+  simp only [advanceOps, List.mem_cons, List.not_mem_nil, or_false] at hi
+  rcases hi with rfl | rfl <;> exact zeroOK_of_tag (by simp)
+
+theorem zeroOK_flagWord (I : IsaData) (r z : String) (op : LOperand) :
+    ∀ i ∈ flagWord I r z op, ZeroOK i := by
+  intro i hi
+  unfold flagWord at hi
+  split at hi
+  · split at hi
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+      rcases hi with rfl | rfl | rfl <;> exact zeroOK_of_tag (by simp [movImmI, movI])
+    · cases hi
+  · rw [List.mem_singleton.mp hi]
+    exact zeroOK_movI _ _
+
+theorem zeroOK_ifResMoves (rs : List JasminTy) (d D : Nat) (ops : List LOperand) :
+    ∀ i ∈ ifResMoves rs d D ops, ZeroOK i := by
+  intro i hi
+  unfold ifResMoves at hi
+  rcases List.mem_append.mp hi with hi | hi
+  · split at hi
+    · cases hi
+    · rcases List.mem_cons.mp hi with rfl | hi
+      · exact zeroOK_movI _ _
+      · exact zeroOK_arrParMoves _ _ _ _ i hi
+  · exact zeroOK_parMoves _ _ _ i hi
+
+theorem zeroOK_bindOps (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (e : Expr jasminDialect Γ t) (d : Nat) : ∀ i ∈ bindOps nArgs e d, ZeroOK i := by
+  intro i hi
+  simp only [bindOps, straightOpsMem, List.mem_cons, List.not_mem_nil, or_false] at hi
+  subst hi
+  intro w n hz
+  split at hz <;> simp_all [JasminLsemExportRegAlloc.useNames, opToLinstrR,
+    JasminLsemExportRewrites.opNames]
+
+theorem forArrFrame_zeroOK (I : IsaData) (d n : Nat) (cs : List JasminTy)
+    (initOps : List LOperand) (countOp : LOperand) (bodyC : List LinstrRM)
+    (bodyOps : List LOperand) (bodyD : Nat) (hb : ∀ i ∈ bodyC, ZeroOK i) :
+    ∀ i ∈ forArrFrame d n cs initOps countOp bodyC bodyOps bodyD I, ZeroOK i := by
+  intro i hi
+  simp only [forArrFrame, List.mem_append, List.mem_cons, List.mem_map] at hi
+  rcases hi with rfl | hi | hi | ⟨g, -, rfl⟩ | rfl | hi | rfl | hi | hi | hi | ⟨g, -, rfl⟩
+    | rfl | rfl | hi
+  · exact zeroOK_movI _ _
+  · exact zeroOK_typedMoves _ _ _ i hi
+  · exact zeroOK_seedMoves _ _ i hi
+  · exact zeroOK_guardI g
+  · exact zeroOK_labelI _
+  · exact hb i hi
+  · exact zeroOK_movI _ _
+  · exact zeroOK_arrParMoves _ _ _ _ i hi
+  · exact zeroOK_parMoves _ _ _ i hi
+  · exact zeroOK_advanceOps _ _ i hi
+  · exact zeroOK_guardI g
+  · exact zeroOK_labelI _
+  · exact zeroOK_movI _ _
+  · exact zeroOK_typedMoves _ _ _ i hi
+
+theorem whileFrame_zeroOK (I : IsaData) (d n nCar : Nat) (initOps : List LOperand)
+    (bodyC : List LinstrRM) (flagOp : LOperand) (bodyOps : List LOperand) (bodyD : Nat)
+    (hb : ∀ i ∈ bodyC, ZeroOK i) :
+    ∀ i ∈ whileFrame d n nCar initOps bodyC flagOp bodyOps bodyD I, ZeroOK i := by
+  intro i hi
+  simp only [whileFrame, List.mem_append, List.mem_cons, List.mem_map] at hi
+  rcases hi with hi | rfl | hi | hi | hi | ⟨g, -, rfl⟩
+  · exact zeroOK_seedMoves _ _ i hi
+  · exact zeroOK_labelI _
+  · exact hb i hi
+  · exact zeroOK_flagWord _ _ _ _ i hi
+  · exact zeroOK_parMoves _ _ _ i hi
+  · exact zeroOK_guardI g
+
+theorem ifFrame_zeroOK (I : IsaData) (fn : String) (d n : Nat) (rs : List JasminTy)
+    (condOp : LOperand) (thnC : List LinstrRM) (thnOps : List LOperand) (thnD : Nat)
+    (elsC : List LinstrRM) (elsOps : List LOperand) (elsD : Nat)
+    (ht : ∀ i ∈ thnC, ZeroOK i) (he : ∀ i ∈ elsC, ZeroOK i) :
+    ∀ i ∈ ifFrame fn d n rs condOp thnC thnOps thnD elsC elsOps elsD I, ZeroOK i := by
+  intro i hi
+  simp only [ifFrame, List.mem_append, List.mem_cons, List.mem_map, List.not_mem_nil,
+    or_false] at hi
+  rcases hi with hi | ⟨g, -, rfl⟩ | rfl | hi | hi | rfl | ⟨g, -, rfl⟩ | rfl | hi | hi | rfl
+  · exact zeroOK_flagWord _ _ _ _ i hi
+  · exact zeroOK_guardI g
+  · exact zeroOK_labelI _
+  · exact ht i hi
+  · exact zeroOK_ifResMoves _ _ _ _ i hi
+  · exact zeroOK_movI _ _
+  · exact zeroOK_guardI g
+  · exact zeroOK_labelI _
+  · exact he i hi
+  · exact zeroOK_ifResMoves _ _ _ _ i hi
+  · exact zeroOK_labelI _
+
+/-- **The array zeroings of the export read no name**, at every instruction set. -/
+theorem exportR_zeroOK (nArgs : Nat) (fn : String) (I : IsaData)
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
+    ∀ (d n : Nat) (r : Exported), exportR nArgs fn p d n I = some r →
+      ∀ i ∈ r.code, ZeroOK i := by
+  induction p with
+  | ret vs =>
+      intro d n r h i hi
+      simp only [exportR, Option.some.injEq] at h
+      subst h
+      cases hi
+  | var e k ih =>
+      intro d n r h i hi
+      simp only [exportR, Option.map_eq_some_iff] at h
+      obtain ⟨rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact zeroOK_bindOps nArgs e d i hi
+      · exact ih _ _ _ hk i hi
+  | forLoop count inits body k ihb ihk =>
+      intro d n r h i hi
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact forArrFrame_zeroOK I _ _ _ _ _ _ _ _ (ihb _ _ _ hb) i hi
+      · exact ihk _ _ _ hk i hi
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro d n r h i hi
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨t, ht, e, he, rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact ifFrame_zeroOK I _ _ _ _ _ _ _ _ _ _ _ (iht _ _ _ ht) (ihe _ _ _ he) i hi
+      · exact ihk _ _ _ hk i hi
+  | whileLoop inits body k ihb ihk =>
+      intro d n r h i hi
+      simp only [exportR, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
+      obtain ⟨b, hb, rk, hk, rfl⟩ := h
+      rcases List.mem_append.mp hi with hi | hi
+      · exact whileFrame_zeroOK I _ _ _ _ _ _ _ _ (ihb _ _ _ hb) i hi
+      · exact ihk _ _ _ hk i hi
+  | call f args k ih =>
+      intro d n r h i hi
+      obtain ⟨-, rk, hk, rfl⟩ := exportR_call_eq_some.mp h
+      rcases List.mem_append.mp hi with hi | hi
+      · rw [List.mem_singleton.mp hi]
+        exact zeroOK_of_tag (by simp [callI])
+      · exact ih _ _ _ hk i hi
+
 theorem shadowCall?_lopn {ds : List LOperand} {o : String} {ss : List LOperand}
     (h : "CALL:".toList.isPrefixOf o.toList = false) : shadowCall? (.Lopn ds o ss) = none := by
   unfold shadowCall?
@@ -1156,6 +1352,17 @@ theorem shadowCall?_opToLinstrR {op : JasminOp} (hop : opMemB op = true) (dst : 
 
 /-- The instruction is no shadow instruction of a call. -/
 def NoShadow (i : LinstrRM) : Prop := shadowCall? i.1 = none
+
+/-- The renaming of array positions keeps an instruction that is no shadow instruction of a
+    call outside the shadow instructions. -/
+theorem noShadow_renArr (σ : String → String) {i : LinstrRM} (h : NoShadow i) :
+    NoShadow (renArr σ i) := by
+  obtain ⟨w, tag⟩ := i
+  have hn' : shadowCall? w = none := h
+  show shadowCall? (renArr σ (w, tag)).1 = none
+  cases tag <;> simp only [renArr, renCallW_of_none hn'] <;>
+    (try simp only [renLoad, renStore, renZero, renStoreImm]) <;> (repeat' split) <;>
+    simp_all [shadowCall?]
 
 theorem noShadow_movI (dst : String) (src : LOperand) : NoShadow (movI dst src) :=
   shadowCall?_lopn (callPre_withWidthTag_lit 64 (by decide) (by decide))
@@ -1394,6 +1601,18 @@ theorem exportR_noShadow {I : IsaData} (hI : GuardsNoShadow I) (nArgs : Nat) (fn
       · exact ihk hp.2 hc.2 _ _ _ hk i hi
   | call f args k ih =>
       simp [NFProg.callFree] at hc
+
+/-- **An exported code of a program without `call` that passes `regionExportableB` has no
+    shadow instruction of a call** on x86: the export by `exportR_noShadow`, its webs by
+    `noShadow_renArr`. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.noShadow {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (hp : regionExportableB p = true) (hc : p.callFree = true) : ∀ i ∈ r.code, NoShadow i := by
+  obtain ⟨r0, h0, hr | hr⟩ := h <;> subst r
+  · exact exportR_noShadow x86Data_guardsNoShadow _ _ p hp hc _ _ r0 h0
+  · exact forall_mem_regionWebs (P := NoShadow) (fun σ i hi => noShadow_renArr σ hi) ex r0 _ _
+      (exportR_noShadow x86Data_guardsNoShadow _ _ p hp hc _ _ r0 h0)
 
 /-! ## 10. The coalesced code of a region export -/
 
@@ -1777,21 +1996,9 @@ theorem renArr_snd (σ : String → String) (i : LinstrRM) : (renArr σ i).2 = i
 
 /-- The webs of the export keep the tags. -/
 theorem tagOK_regionWebsAt (ex : List String) (callee : Option CalleeTab) (r : Exported)
-    (h : ∀ i ∈ r.code, TagOK i) : ∀ i ∈ (regionWebsAt ex callee r).code, TagOK i := by
-  cases callee with
-  | none => exact h
-  | some T =>
-    intro i hi
-    simp only [regionWebsAt_some] at hi
-    unfold regionWebs at hi
-    split at hi
-    · simp only [X86Backend.ArrWebs.webRen] at hi
-      obtain ⟨k, hk, rfl⟩ := List.mem_mapIdx.mp hi
-      have := h _ (List.getElem_mem hk)
-      unfold TagOK at this ⊢
-      rw [renArr_snd]
-      exact this
-    · exact h i hi
+    (h : ∀ i ∈ r.code, TagOK i) : ∀ i ∈ (regionWebsAt ex callee r).code, TagOK i :=
+  forall_mem_regionWebs (fun σ i hi => by unfold TagOK at hi ⊢; rw [renArr_snd]; exact hi)
+    ex r _ _ h
 
 /-! ## 9. Disjoint storage classes -/
 
@@ -1920,8 +2127,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
     module `refusal?` accepts, the front returns a program `p`, at every table `bi` the chain
     `extChain` returns a program `q` on `p`, and the export `exportR` returns code `r` on `q`
     at every number of arguments, name, depth, label and instruction set. Take the webs
-    `regionWebsAt ex callee r` of `r` at the names `ex` and an optional table of callees (`r`
-    itself without a table). Without a table, let the guards and the select of the instruction
+    `regionWebsAt ex callee r` of `r` at the names `ex` and an optional table of callees.
+    Without a table, let the guards and the select of the instruction
     set contain no shadow instruction of a call (`GuardsNoShadow`) and `q` pass
     `regionExportableB` and have no `call`, as on the call-free arm of `compileRegion`. When
     the alias map of the coalesced code of the webs has no real aliasing, `regionCoStage` on
@@ -1965,7 +2172,8 @@ theorem CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_imp_coalesce
   intro hc
   subst hc
   obtain ⟨hI, h1, h2⟩ := hcf rfl
-  exact exportR_noShadow hI nArgs fn q h1 h2 d n r hr'
+  exact forall_mem_regionWebs (P := NoShadow) (fun σ i hi => noShadow_renArr σ hi) ex r _ _
+    (exportR_noShadow hI nArgs fn q h1 h2 d n r hr')
 
 /-- **The coalescing stage on the output of the chain over x86.** The instance of
     `refusal?_eq_none_imp_coalesce` at x86 (`x86Data_guardsNoShadow`): without a callee, the

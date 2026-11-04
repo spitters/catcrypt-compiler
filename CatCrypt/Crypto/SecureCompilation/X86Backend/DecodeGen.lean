@@ -605,14 +605,16 @@ def shapeOfBytes (bs : List (BitVec 8)) : Option DShape :=
 
 /-- The shape of an instruction under the body parameters `P`: the computed pieces of an
     `Lopn`; nothing for a label, `Lret` and `Lalign`; the branch shapes of a conditional
-    branch and a call. `none` on every other instruction and when a piece is not accepted. -/
+    branch and of a call to a label of the body (`Lcall _ ("", l)`); the shape `callSym` of a
+    call of a named symbol, which has no target label. `none` on every other instruction and
+    when a piece is not accepted. -/
 def shapeOf (P : Params) : LinstrR → Option DShape
   | .Lopn ds o ss => shapeOfBytes (encodeLopn P.frame P.spillW (.Lopn ds o ss) P.qsaveB)
   | .Llabel _ _ => some (.one .skip)
   | .Lret => some (.one .skip)
   | .Lalign => some (.one .skip)
   | .Lcond (.reg cc) l => some (.one (.jcc (ccNibble cc) l))
-  | .Lcall _ (_, l) => some (.one (.call l))
+  | .Lcall _ (f, l) => some (.one (if f.isEmpty then .call l else .callSym l))
   | _ => none
 
 theorem shapeOfBytes_ok {bs : List (BitVec 8)} {sh : DShape} (h : shapeOfBytes bs = some sh) :
@@ -666,7 +668,9 @@ theorem shapeOf_ok (P : Params) (i : LinstrR) (sh : DShape) (h : shapeOf P i = s
     obtain ⟨f, l⟩ := t
     simp only [shapeOf, Option.some.injEq] at h
     subst h
-    exact shapeOK_call P ra f l
+    split
+    · exact shapeOK_call P ra f l
+    · exact shapeOK_callSym P ra f l
   | _ => simp [shapeOf] at h
 
 /-- An instruction whose computed shape is one straight-line instruction defines no label. -/
@@ -747,6 +751,7 @@ def straightB : DShape → Bool
   | .one (.op _) => true
   | .one (.jcc _ _) => false
   | .one (.call _) => false
+  | .one (.callSym _) => false
   | .ops _ => true
 
 theorem straight_of_straightB {sh : DShape} (h : straightB sh = true) : sh.Straight := by

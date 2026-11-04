@@ -32,7 +32,8 @@ forwarding `loadCSE` preserves encodability.
   encoder registers, the resolving names, the spill slots with a frame offset, the memory
   names, the materialised comparisons the encoder builds, against a register and against
   an immediate, and the further instruction families it builds (immediate moves into a
-  slot, two-address operations, three-register shifts, one-source operations, loads and
+  slot, two-address operations, three-register shifts, three-register and-nots, one-source
+  operations, loads and
   stores, register-indexed accesses, stack-array stores at a constant index and stack-array
   zeroings, carry chains, flag materialisations, widening
   multiplications, and the forms it accepts whatever their operands).
@@ -42,8 +43,9 @@ forwarding `loadCSE` preserves encodability.
   of the body, and the operand laws of the encoder.
 * `LegalForm`: the instruction forms the lowering emits, one constructor per family the
   encoder builds: register moves over resolving names with at most one memory name, the
-  select over encoder registers, the materialised comparisons, immediate moves, two-address
-  operations against a register or an immediate, three-register shifts, one-source
+  select at any width tag over encoder registers, the materialised comparisons, immediate
+  moves, two-address operations against a register or an immediate, three-register shifts,
+  three-register and-nots, one-source
   operations, loads and stores, register-indexed loads and stores, constant-index
   stack-array stores and stack-array zeroings, three-source carry
   chains, flag materialisations, widening multiplications, and the forms the encoder accepts
@@ -57,17 +59,21 @@ forwarding `loadCSE` preserves encodability.
 * `EncoderComplete.encodable_of_legal`: a body whose instructions have legal forms in its
   context is encodable.
 * `EncoderComplete.legalizeMovI_legal`, `legalizeOneSrcI_legal`, `cmovSpillSeqI_legal`,
-  `setccSpillI?_legal`, `legalizeSpillDstI_legal`: the legalisations emit legal forms;
+  `setccSpillI?_legal`, `andnSpillI?_legal`, `legalizeSpillDstI_legal`: the legalisations emit
+  legal forms;
   `legalizeSpillDstI_cases`: an instruction of `legalizeSpillDstI` has a legal form or is the
   unlegalised instruction.
 * `EncoderComplete.loadCSE_legalI`: `loadCSE` preserves legal forms;
   `EncoderComplete.encodable_of_legalized`: a legal body forwarded by `loadCSE` is encodable.
 * `EncoderComplete.legalizeMovI_encodable`, `EncoderComplete.legalizeOneSrcI_encodable`:
   every instruction of a legalised register copy over allocated operands is encodable.
-* `EncoderComplete.cmovSpillSeqI_encodable`: every instruction of the scratch select is
-  encodable when the selected values are registers and the select mnemonic is `CMOV`.
+* `EncoderComplete.cmovSpillSeqI_encodable`: every instruction of the scratch select, at any
+  width tag, is encodable when the selected values are registers and the select mnemonic is
+  `CMOV`.
 * `EncoderComplete.setccSpillI?_encodable`: every instruction of the scratch comparison is
   encodable for a comparison the encoder builds.
+* `EncoderComplete.andnSpillI?_encodable`: every instruction of the scratch and-not is
+  encodable when the encoder builds `ANDN:64`.
 * `EncoderComplete.legalizeSpillDstI_encodable`: the combination, with the encodability of
   the unlegalised instruction as the hypothesis of the fall-through arm.
 * `EncoderComplete.loadCSE_encodableI`: `loadCSE` maps a body of instructions encodable in
@@ -138,6 +144,8 @@ structure IsaEncoder : Type 1 where
   /-- Whether the encoder builds the three-register shift with this mnemonic (the count in a
       register). -/
   shiftReg : String → Bool
+  /-- Whether the encoder builds the three-register and-not with this mnemonic. -/
+  andn : String → Bool
   /-- Whether the encoder builds the one-source register operation with this mnemonic. -/
   unary : String → Bool
   /-- Whether the encoder builds the one-source move with this mnemonic between a register and
@@ -181,8 +189,8 @@ def AllocOpI (E : IsaEncoder) (c : E.Ctx) (o : LOperand) : Prop :=
     register and a spill slot with a frame offset resolve; an encoder register is neither a
     spill slot nor a memory name; a spill slot is a memory name; a memory name is one of the
     load forwarding; a register move is encodable exactly when both names resolve and at
-    most one is a memory name; the select at the select mnemonic of `I`, at width 64, over
-    four encoder registers is encodable; and a materialised comparison the encoder builds
+    most one is a memory name; the select at the select mnemonic of `I`, at any width tag,
+    over four encoder registers is encodable; and a materialised comparison the encoder builds
     over three encoder registers, or over two encoder registers and an immediate, is
     encodable. -/
 structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop where
@@ -213,10 +221,12 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
   mov_iff : ∀ (c : E.Ctx) (mn d s : String), isMovMnem mn = true →
     (E.instr c (.Lopn [.reg d] mn [.reg s]) = true ↔
       E.resolves c d ∧ E.resolves c s ∧ (E.memName d && E.memName s) = false)
-  /-- The 64-bit select at the select mnemonic over four encoder registers is encodable. -/
-  select_reg : ∀ m : String, I.selectMnemonic = some m → ∀ (c : E.Ctx) (dn cn tn fn : String),
+  /-- The select at the select mnemonic, at any width tag, over four encoder registers is
+      encodable. -/
+  select_reg : ∀ m : String, I.selectMnemonic = some m →
+    ∀ (c : E.Ctx) (opn dn cn tn fn : String), stripWidthTag opn = m →
     E.reg dn = true → E.reg cn = true → E.reg tn = true → E.reg fn = true →
-    E.instr c (.Lopn [.reg dn] (withWidthTag 64 m) [.reg cn, .reg tn, .reg fn]) = true
+    E.instr c (.Lopn [.reg dn] opn [.reg cn, .reg tn, .reg fn]) = true
   /-- A materialised comparison the encoder builds over three encoder registers is
       encodable. -/
   setcc_reg : ∀ (c : E.Ctx) (opn dn an sn : String), E.setcc opn = true →
@@ -243,6 +253,10 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
     E.reg dn = true → E.instr c (.Lopn [.reg dn] opn [.reg dn, .imm v]) = true
   /-- A three-register shift the encoder builds over encoder registers is encodable. -/
   shift_reg : ∀ (c : E.Ctx) (opn dn an sn : String), E.shiftReg opn = true →
+    E.reg dn = true → E.reg an = true → E.reg sn = true →
+    E.instr c (.Lopn [.reg dn] opn [.reg an, .reg sn]) = true
+  /-- A three-register and-not the encoder builds over encoder registers is encodable. -/
+  andn_reg : ∀ (c : E.Ctx) (opn dn an sn : String), E.andn opn = true →
     E.reg dn = true → E.reg an = true → E.reg sn = true →
     E.instr c (.Lopn [.reg dn] opn [.reg an, .reg sn]) = true
   /-- A one-source register operation the encoder builds over encoder registers is
@@ -297,12 +311,13 @@ structure EncoderComplete {I : Isa} (B : IsaBackend I) (E : IsaEncoder) : Prop w
 
 /-- **The legal forms of the lowering** at the instruction set `I`, the encoder `E` and the
     context `c`, one constructor per instruction family the encoder builds: a register move
-    whose two names resolve in `c` and of which at most one is a memory name; the 64-bit
-    select at the select mnemonic of `I` over four encoder registers; a materialised
+    whose two names resolve in `c` and of which at most one is a memory name; the select at
+    the select mnemonic of `I`, at any width tag, over four encoder registers; a materialised
     comparison the encoder builds over three encoder registers, or against an immediate over
     two; a move of an immediate into an encoder register, or of an immediate the encoder
     builds into a spill slot with a frame offset; a two-address operation the encoder builds
-    over two encoder registers, or against an immediate; a three-register shift; a one-source
+    over two encoder registers, or against an immediate; a three-register shift; a
+    three-register and-not; a one-source
     register operation; a load or store between resolving names of which at most one is a
     memory name; a register-indexed load or address computation and a register-indexed
     store over encoder registers; a constant-index stack-array store and a stack-array
@@ -314,10 +329,10 @@ inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
   /-- A register move between resolving names, at most one a memory name. -/
   | mov (mn d s : String) : isMovMnem mn = true → E.resolves c d → E.resolves c s →
       (E.memName d && E.memName s) = false → LegalForm I E c (.Lopn [.reg d] mn [.reg s])
-  /-- The 64-bit select at the select mnemonic over four encoder registers. -/
-  | select (m dn cn tn fn : String) : I.selectMnemonic = some m → E.reg dn = true →
-      E.reg cn = true → E.reg tn = true → E.reg fn = true →
-      LegalForm I E c (.Lopn [.reg dn] (withWidthTag 64 m) [.reg cn, .reg tn, .reg fn])
+  /-- The select at the select mnemonic, at any width tag, over four encoder registers. -/
+  | select (m opn dn cn tn fn : String) : I.selectMnemonic = some m → stripWidthTag opn = m →
+      E.reg dn = true → E.reg cn = true → E.reg tn = true → E.reg fn = true →
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg cn, .reg tn, .reg fn])
   /-- A materialised comparison over three encoder registers. -/
   | setcc (opn dn an sn : String) : E.setcc opn = true → E.reg dn = true → E.reg an = true →
       E.reg sn = true → LegalForm I E c (.Lopn [.reg dn] opn [.reg an, .reg sn])
@@ -339,6 +354,10 @@ inductive LegalForm (I : Isa) (E : IsaEncoder) (c : E.Ctx) : LinstrR → Prop
   /-- A three-register shift. -/
   | shiftReg (opn dn an sn : String) : E.shiftReg opn = true → E.reg dn = true →
       E.reg an = true → E.reg sn = true → LegalForm I E c (.Lopn [.reg dn] opn [.reg an, .reg sn])
+  /-- A three-register and-not. -/
+  | andn (opn dn an sn : String) : E.andn opn = true → E.reg dn = true →
+      E.reg an = true → E.reg sn = true →
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg an, .reg sn])
   /-- A one-source register operation. -/
   | unary (opn dn sn : String) : E.unary opn = true → E.reg dn = true → E.reg sn = true →
       LegalForm I E c (.Lopn [.reg dn] opn [.reg sn])
@@ -396,7 +415,8 @@ theorem instr_of_legalForm {c : E.Ctx} {i : LinstrR} (hi : LegalForm I E c i) :
     E.instr c i = true := by
   cases hi with
   | mov mn d s hm hd hs hds => exact (h.mov_iff c mn d s hm).2 ⟨hd, hs, hds⟩
-  | select m dn cn tn fn hsel h1 h2 h3 h4 => exact h.select_reg m hsel c dn cn tn fn h1 h2 h3 h4
+  | select m opn dn cn tn fn hsel hs h1 h2 h3 h4 =>
+    exact h.select_reg m hsel c opn dn cn tn fn hs h1 h2 h3 h4
   | setcc opn dn an sn ho h1 h2 h3 => exact h.setcc_reg c opn dn an sn ho h1 h2 h3
   | setccImm opn dn an v ho h1 h2 => exact h.setccImm_reg c opn dn an v ho h1 h2
   | movImmReg mn dn v hm h1 => exact h.movImm_reg c mn dn v hm h1
@@ -404,6 +424,7 @@ theorem instr_of_legalForm {c : E.Ctx} {i : LinstrR} (hi : LegalForm I E c i) :
   | alu opn dn sn ho h1 h2 => exact h.alu_reg c opn dn sn ho h1 h2
   | aluImm opn dn v ho h1 => exact h.alu_imm c opn dn v ho h1
   | shiftReg opn dn an sn ho h1 h2 h3 => exact h.shift_reg c opn dn an sn ho h1 h2 h3
+  | andn opn dn an sn ho h1 h2 h3 => exact h.andn_reg c opn dn an sn ho h1 h2 h3
   | unary opn dn sn ho h1 h2 => exact h.unary_reg c opn dn sn ho h1 h2
   | memMov mn d s hm hd hs hds => exact h.memMov_res c mn d s hm hd hs hds
   | sibLoad opn dn bn xn sc ho h1 h2 h3 => exact h.sibLoad_reg c opn dn bn xn sc ho h1 h2 h3
@@ -534,18 +555,18 @@ theorem legalizeOneSrcI_encodable {c : E.Ctx} {u64 : Bool} {opn : String} {d s :
 /-! ### The scratch select -/
 
 /-- **Every instruction of the scratch select has a legal form** when the select mnemonic of
-    the instruction set is `CMOV`, the destination and the condition are allocated, and the
-    selected values are encoder registers. -/
+    the instruction set is `CMOV`, the select `opn` is `CMOV` at a width tag, the destination
+    and the condition are allocated, and the selected values are encoder registers. -/
 theorem cmovSpillSeqI_legal (hsel : I.selectMnemonic = some "CMOV") {c : E.Ctx}
-    {d cnd : LOperand} {tn fn : String}
+    {opn : String} {d cnd : LOperand} {tn fn : String} (hopn : stripWidthTag opn = "CMOV")
     (hd : AllocOpI E c d) (hc : AllocOpI E c cnd) (ht : E.reg tn = true)
     (hf : E.reg fn = true) :
-    ∀ i ∈ cmovSpillSeqI I.toIsaAbi "CMOV:64" d cnd (.reg tn) (.reg fn),
+    ∀ i ∈ cmovSpillSeqI I.toIsaAbi opn d cnd (.reg tn) (.reg fn),
       LegalForm I E c i := by
   have hm64 : isMovMnem "MOV:64" = true := by decide +kernel
   have hsel' : ∀ dn cn : String, E.reg dn = true → E.reg cn = true →
-      LegalForm I E c (.Lopn [.reg dn] "CMOV:64" [.reg cn, .reg tn, .reg fn]) :=
-    fun dn cn hdn hcn => .select "CMOV" dn cn tn fn hsel hdn hcn ht hf
+      LegalForm I E c (.Lopn [.reg dn] opn [.reg cn, .reg tn, .reg fn]) :=
+    fun dn cn hdn hcn => .select "CMOV" opn dn cn tn fn hsel hopn hdn hcn ht hf
   obtain ⟨dn, rfl, hd'⟩ := hd
   obtain ⟨cn, rfl, hc'⟩ := hc
   have hd : AllocOpI E c (.reg dn) := ⟨dn, rfl, hd'⟩
@@ -569,15 +590,15 @@ theorem cmovSpillSeqI_legal (hsel : I.selectMnemonic = some "CMOV") {c : E.Ctx}
     · exact h.legalForm_mov_right hm64 h.reload_reg hd
 
 /-- **Every instruction of the scratch select is encodable** when the select mnemonic of the
-    instruction set is `CMOV`, the destination and the condition are allocated, and the
-    selected values are encoder registers. -/
+    instruction set is `CMOV`, the select `opn` is `CMOV` at a width tag, the destination and
+    the condition are allocated, and the selected values are encoder registers. -/
 theorem cmovSpillSeqI_encodable (hsel : I.selectMnemonic = some "CMOV") {c : E.Ctx}
-    {d cnd : LOperand} {tn fn : String}
+    {opn : String} {d cnd : LOperand} {tn fn : String} (hopn : stripWidthTag opn = "CMOV")
     (hd : AllocOpI E c d) (hc : AllocOpI E c cnd) (ht : E.reg tn = true)
     (hf : E.reg fn = true) :
-    ∀ i ∈ cmovSpillSeqI I.toIsaAbi "CMOV:64" d cnd (.reg tn) (.reg fn),
+    ∀ i ∈ cmovSpillSeqI I.toIsaAbi opn d cnd (.reg tn) (.reg fn),
       E.instr c i = true :=
-  fun i hi => h.instr_of_legalForm (h.cmovSpillSeqI_legal hsel hd hc ht hf i hi)
+  fun i hi => h.instr_of_legalForm (h.cmovSpillSeqI_legal hsel hopn hd hc ht hf i hi)
 
 /-! ### The scratch comparison -/
 
@@ -615,23 +636,64 @@ theorem setccSpillI?_encodable {c : E.Ctx} {dsts : List LOperand} {opn : String}
     ∀ i ∈ l, E.instr c i = true :=
   fun i hi => h.instr_of_legalForm (h.setccSpillI?_legal hl ho hd hs i hi)
 
+/-! ### The scratch and-not -/
+
+/-- **Every instruction of the scratch and-not has a legal form** for an and-not the encoder
+    builds, over allocated operands: the two loads and the store are register moves between
+    an allocated operand and a scratch register, and the and-not reads and writes the scratch
+    registers. -/
+theorem andnSpillI?_legal {c : E.Ctx} {dsts : List LOperand} {opn : String}
+    {srcs : List LOperand} {l : List LinstrR} (hl : andnSpillI? I.toIsaAbi dsts opn srcs = some l)
+    (ho : E.andn "ANDN:64" = true) (hd : ∀ o ∈ dsts, AllocOpI E c o)
+    (hs : ∀ o ∈ srcs, AllocOpI E c o) :
+    ∀ i ∈ l, LegalForm I E c i := by
+  unfold andnSpillI? at hl
+  split at hl
+  · rename_i d a b
+    split_ifs at hl with hb
+    cases hl
+    simp only [Bool.and_eq_true, beq_iff_eq] at hb
+    obtain ⟨-, rfl⟩ := hb
+    have ha := hs (.reg a) (by simp)
+    have hb := hs (.reg b) (by simp)
+    have hm : isMovMnem "MOV:64" = true := by decide +kernel
+    intro i hi
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+    rcases hi with rfl | rfl | rfl | rfl
+    · exact h.legalForm_mov_left hm h.reload_reg ha
+    · exact h.legalForm_mov_left hm h.reloadSnd_reg hb
+    · exact .andn _ _ _ _ ho h.reload_reg h.reload_reg h.reloadSnd_reg
+    · obtain ⟨dn, rfl, hd'⟩ := hd d (by simp)
+      exact h.legalForm_mov_right hm h.reload_reg ⟨dn, rfl, hd'⟩
+  · cases hl
+
+/-- **Every instruction of the scratch and-not is encodable** for an and-not the encoder
+    builds, over allocated operands. -/
+theorem andnSpillI?_encodable {c : E.Ctx} {dsts : List LOperand} {opn : String}
+    {srcs : List LOperand} {l : List LinstrR} (hl : andnSpillI? I.toIsaAbi dsts opn srcs = some l)
+    (ho : E.andn "ANDN:64" = true) (hd : ∀ o ∈ dsts, AllocOpI E c o)
+    (hs : ∀ o ∈ srcs, AllocOpI E c o) :
+    ∀ i ∈ l, E.instr c i = true :=
+  fun i hi => h.instr_of_legalForm (h.andnSpillI?_legal hl ho hd hs i hi)
+
 /-! ### The spill legalisation of a general instruction -/
 
 /-- **The instructions of `legalizeSpillDstI`**, for allocated operands, when the select
     mnemonic of the instruction set is `CMOV`: each has a legal form (the scratch select when
     its selected values are encoder registers, the scratch comparison when the encoder builds
-    it), or it is the unlegalised instruction, emitted when neither the select nor the
-    comparison applies, on an instruction without a scratch and-not (`andnSpillI?`). -/
+    it, the scratch and-not when the encoder builds it), or it is the unlegalised instruction,
+    emitted when neither the select nor the comparison nor the and-not applies. -/
 theorem legalizeSpillDstI_cases (hsel' : I.selectMnemonic = some "CMOV") {c : E.Ctx}
     {dsts : List LOperand} {opn : String} {srcs : List LOperand}
     (hd : ∀ o ∈ dsts, AllocOpI E c o) (hs : ∀ o ∈ srcs, AllocOpI E c o)
-    (hsel : ∀ cnd t f, srcs = [cnd, t, f] → opn = "CMOV:64" →
+    (hsel : ∀ cnd t f, srcs = [cnd, t, f] → stripWidthTag opn = "CMOV" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ E.reg tn = true ∧ E.reg fn = true)
     (hcmp : isSetccMnem opn = true → E.setcc opn = true)
-    (handn : andnSpillI? I.toIsaAbi dsts opn srcs = none) :
+    (handn : E.andn "ANDN:64" = true) :
     ∀ i ∈ legalizeSpillDstI I.toIsaAbi dsts opn srcs, LegalForm I E c i ∨
       (cmovSpillDstI? I.toIsaAbi dsts opn srcs = none ∧
-        setccSpillI? I.toIsaAbi dsts opn srcs = none ∧ i = .Lopn dsts opn srcs) := by
+        setccSpillI? I.toIsaAbi dsts opn srcs = none ∧
+        andnSpillI? I.toIsaAbi dsts opn srcs = none ∧ i = .Lopn dsts opn srcs) := by
   unfold legalizeSpillDstI
   cases hc : cmovSpillDstI? I.toIsaAbi dsts opn srcs with
   | some l =>
@@ -641,13 +703,12 @@ theorem legalizeSpillDstI_cases (hsel' : I.selectMnemonic = some "CMOV") {c : E.
     · rename_i d cnd t f
       split_ifs at hc with hb
       cases hc
-      have hop : opn = "CMOV:64" := by
+      have hop : stripWidthTag opn = "CMOV" := by
         simp only [Bool.and_eq_true, beq_iff_eq] at hb
         exact hb.2
       obtain ⟨tn, fn, rfl, rfl, ht, hf⟩ := hsel cnd t f rfl hop
-      subst hop
       exact fun i hi =>
-        Or.inl (h.cmovSpillSeqI_legal hsel' (hd d (by simp)) (hs cnd (by simp)) ht hf i hi)
+        Or.inl (h.cmovSpillSeqI_legal hsel' hop (hd d (by simp)) (hs cnd (by simp)) ht hf i hi)
     · cases hc
   | none =>
     cases hs' : setccSpillI? I.toIsaAbi dsts opn srcs with
@@ -661,49 +722,58 @@ theorem legalizeSpillDstI_cases (hsel' : I.selectMnemonic = some "CMOV") {c : E.
         · cases hs'
       exact fun i hi => Or.inl (h.setccSpillI?_legal hs' (hcmp hset) hd hs i hi)
     | none =>
-      simp only [handn, List.mem_cons, List.not_mem_nil, or_false]
-      rintro i rfl
-      exact Or.inr ⟨trivial, trivial, rfl⟩
+      cases ha : andnSpillI? I.toIsaAbi dsts opn srcs with
+      | some l =>
+        simp only
+        exact fun i hi => Or.inl (h.andnSpillI?_legal ha handn hd hs i hi)
+      | none =>
+        simp only [List.mem_cons, List.not_mem_nil, or_false]
+        rintro i rfl
+        exact Or.inr ⟨trivial, trivial, trivial, rfl⟩
 
 /-- **Every instruction of `legalizeSpillDstI` has a legal form**, for allocated operands,
     when the select mnemonic of the instruction set is `CMOV`: the scratch select when its
-    selected values are encoder registers, the scratch comparison when the encoder builds it,
-    and the single instruction when it has a legal form itself. -/
+    selected values are encoder registers, the scratch comparison and the scratch and-not when
+    the encoder builds them, and the single instruction when it has a legal form itself. -/
 theorem legalizeSpillDstI_legal (hsel' : I.selectMnemonic = some "CMOV") {c : E.Ctx}
     {dsts : List LOperand} {opn : String} {srcs : List LOperand}
     (hd : ∀ o ∈ dsts, AllocOpI E c o) (hs : ∀ o ∈ srcs, AllocOpI E c o)
-    (hsel : ∀ cnd t f, srcs = [cnd, t, f] → opn = "CMOV:64" →
+    (hsel : ∀ cnd t f, srcs = [cnd, t, f] → stripWidthTag opn = "CMOV" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ E.reg tn = true ∧ E.reg fn = true)
     (hcmp : isSetccMnem opn = true → E.setcc opn = true)
-    (handn : andnSpillI? I.toIsaAbi dsts opn srcs = none)
+    (handn : E.andn "ANDN:64" = true)
     (hone : cmovSpillDstI? I.toIsaAbi dsts opn srcs = none →
       setccSpillI? I.toIsaAbi dsts opn srcs = none →
+      andnSpillI? I.toIsaAbi dsts opn srcs = none →
       LegalForm I E c (.Lopn dsts opn srcs)) :
     ∀ i ∈ legalizeSpillDstI I.toIsaAbi dsts opn srcs, LegalForm I E c i := by
   intro i hi
-  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp handn i hi with hl | ⟨hc, hs', rfl⟩
+  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp handn i hi with
+    hl | ⟨hc, hs', ha, rfl⟩
   · exact hl
-  · exact hone hc hs'
+  · exact hone hc hs' ha
 
 /-- **Every instruction of `legalizeSpillDstI` is encodable**, for allocated operands, when the
     select mnemonic of the instruction set is `CMOV`: the scratch select when its selected
-    values are encoder registers, the scratch comparison when the encoder builds it, and the
-    single instruction when it is itself encodable. -/
+    values are encoder registers, the scratch comparison and the scratch and-not when the
+    encoder builds them, and the single instruction when it is itself encodable. -/
 theorem legalizeSpillDstI_encodable (hsel' : I.selectMnemonic = some "CMOV") {c : E.Ctx}
     {dsts : List LOperand} {opn : String} {srcs : List LOperand}
     (hd : ∀ o ∈ dsts, AllocOpI E c o) (hs : ∀ o ∈ srcs, AllocOpI E c o)
-    (hsel : ∀ cnd t f, srcs = [cnd, t, f] → opn = "CMOV:64" →
+    (hsel : ∀ cnd t f, srcs = [cnd, t, f] → stripWidthTag opn = "CMOV" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ E.reg tn = true ∧ E.reg fn = true)
     (hcmp : isSetccMnem opn = true → E.setcc opn = true)
-    (handn : andnSpillI? I.toIsaAbi dsts opn srcs = none)
+    (handn : E.andn "ANDN:64" = true)
     (hone : cmovSpillDstI? I.toIsaAbi dsts opn srcs = none →
       setccSpillI? I.toIsaAbi dsts opn srcs = none →
+      andnSpillI? I.toIsaAbi dsts opn srcs = none →
       E.instr c (.Lopn dsts opn srcs) = true) :
     ∀ i ∈ legalizeSpillDstI I.toIsaAbi dsts opn srcs, E.instr c i = true := by
   intro i hi
-  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp handn i hi with hl | ⟨hc, hs', rfl⟩
+  rcases h.legalizeSpillDstI_cases hsel' hd hs hsel hcmp handn i hi with
+    hl | ⟨hc, hs', ha, rfl⟩
   · exact h.instr_of_legalForm hl
-  · exact hone hc hs'
+  · exact hone hc hs' ha
 
 /-! ### Load forwarding -/
 

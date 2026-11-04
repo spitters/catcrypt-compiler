@@ -846,7 +846,8 @@ theorem mergeSep_regionLprogC_complete (fname : String) (σ : AbiLayout) {ts : L
     {P : Lprog} {cert : List (String × String)}
     (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
     (hσ : RegionAllocMapDom.layoutOkB σ = true) :
-    ∃ r, exportR (nfCtx σ).length fname p (nfCtx σ).length 0 x86Data = some r
+    ∃ r0 r, exportR (nfCtx σ).length fname p (nfCtx σ).length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (body : Lcmd) (t : JasminTy),
         let B := regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r
         let d := regionCoParts σ exportReg body t r.code r.res cert none
@@ -860,19 +861,23 @@ theorem mergeSep_regionLprogC_complete (fname : String) (σ : AbiLayout) {ts : L
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
             y ≠ allocName B (regionAllocTbl B) x) →
         MergeSep d := by
-  obtain ⟨r, hr, hM⟩ :=
+  obtain ⟨r, w, hr, rfl, hM⟩ :=
     RegionAllocMapDom.mergeSep_regionLprogC_layout (nfAbiNames fname σ) σ p hp hcf ex hP hσ
-  obtain ⟨r1, hr1, hcert⟩ := regionLprogC_cert (nfAbiNames fname σ) p ex hP
-  obtain ⟨r2, hr2, hE⟩ := RegionAllocMapLive.entry_regionLprogC (nfAbiNames fname σ) p hp hcf ex hP
+  obtain ⟨r1, w1, hr1, rfl, hcert⟩ := regionLprogC_cert (nfAbiNames fname σ) p ex hP
+  obtain ⟨r2, w2, hr2, rfl, hE⟩ :=
+    RegionAllocMapLive.entry_regionLprogC (nfAbiNames fname σ) p hp hcf ex hP
   obtain rfl : r1 = r := Option.some.inj (hr1.symm.trans hr)
   obtain rfl : r2 = r1 := Option.some.inj (hr2.symm.trans hr1)
-  refine ⟨r2, hr, fun body t => ?_⟩
+  refine ⟨r2, _, hr, rfl, ?_⟩
+  have hX : RegionExp fname p ex (regionWebsAt ex none r2) := regionExp_webs ex hr
+  generalize regionWebsAt ex none r2 = r2 at hX hE hcert hM ⊢
+  intro body t
   intro B d K hts hsize hlen hal hnp
   subst hts
   subst hcert
   have hst : ∀ i ∈ allocCo (nfAbiNames fname σ) t r2.code r2.res, StoreOwnBase i.1 :=
     storeOwnBase_renArr
-      (RegionPhysImgArg.exportR_accCode_copy (nfAbiNames fname σ) p hcf hw hr) hal
+      (hX.accCode_copy (nfAbiNames fname σ) hcf hw) hal
   obtain ⟨hRA, hArg, hbuf⟩ := RegionAllocMapDom.layoutOkB_sound hσ
   have hout : ∀ D n, regionResBuf σ exportReg = some (D, n) → (nfAbiNames fname σ).outArg = D :=
     fun D n h => (hbuf fname D n h).symm
@@ -920,17 +925,21 @@ theorem mergeSep_regionLprogC_complete (fname : String) (σ : AbiLayout) {ts : L
         intro dst opn base x s rest he
         cases he
   have hshape : ∀ i ∈ r2.code, RegionAllocMapDom.ShapeB i.1 := fun i hi =>
-    (RegionAllocMapDom.exportR_mnemDom (nfCtx σ).length fname p hp hcf _ _ r2 hr i hi).2.2
-  have hco : ∀ i ∈ r2.code, CoShape i := exportR_coShape _ _ p _ _ r2 hr
+    (hX.mnemDom hp hcf i hi).2.2
+  have hco : ∀ i ∈ r2.code, CoShape i := by
+    obtain ⟨r0, h0, he | he⟩ := hX <;> subst r2
+    · exact exportR_coShape _ _ p _ _ r0 h0
+    · exact forall_mem_regionWebs (P := CoShape) (fun σ i hi => coShape_renArr σ hi) ex r0 _ _
+        (exportR_coShape _ _ p _ _ r0 h0)
   have hcall : bodyHasCall (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length [t] r2)
       = false :=
     RegionAllocMapDom.bodyHasCall_of_shapeB
       (RegionAllocMapDom.shapeB_regionAllocBody (nfAbiNames fname σ) _ [t] r2 hshape)
   have hvec :=
-    ((RegionAllocMapDom.regionAllocBody_dom (nfAbiNames fname σ) p hp hcf hr).2.2 hsize).1
+    ((RegionAllocMapDom.regionAllocBody_dom (nfAbiNames fname σ) p hp hcf hX).2.2 hsize).1
   have hent := hE σ exportReg body t hRA hArg (RegionAllocMapDom.nfCtx_length σ).le
-    (fun n _ => hvec n) (RegionAllocMapDom.exportR_symReads _ _ p hp hcf hr)
-    (RegionAllocMapDom.exportR_cmpReads _ _ p hp hcf hr) rfl
+    (fun n _ => hvec n) (fun i hi => (hX.mnemDom hp hcf i hi).1)
+    (fun i hi => (hX.mnemDom hp hcf i hi).2.1) rfl
   exact hM body t rfl hsize
     (hcov_regionCoParts σ exportReg (nfAbiNames fname σ) (nfCtx σ).length r2 body t hRA hout
       hcopy hrr hshape hco

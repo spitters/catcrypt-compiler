@@ -1644,7 +1644,7 @@ theorem compileRegion_correct_linked_multi {σ : AbiLayout} {a : AbiNames}
   have hRB := T.regionBlocks (regionCallee_fns_ne_nil hcT) q hdecq hne hnoc T.names
     (fun _ hf => hf)
   have hag := symTgt_linkMap_regionTgt T (calleeSym T b)
-    (X86Backend.LprogBytesDecode.Params.ofBody b) b ds hfsR
+    (X86Backend.LprogBytesDecode.Params.ofBody b) b ds hss hfsR
   have hbr' := hbr
   rw [X86Backend.LprogBytesLinkReloc.branchOKRelocMap_congr _ _ (hag _ _)] at hbr'
   have hP' := hP

@@ -159,12 +159,13 @@ theorem foldCore_leak (p : Nat × Nat × Nat) (ex : List String) (r : DoitRegime
                         obtain ⟨js'', hj'', hrun⟩ := foldInstr_lower p (ex := ex) (env := env) hi
                         rw [hi'] at hj''
                         cases hj''
-                        have henv : nextEnv p env i = stepKs env js := by
+                        have henv : nextEnv p env i =
+                            (stepKs env js).killAll (narrowImmDsts i.li_i) := by
                           simp [nextEnv, hr0, hi]
                         simp only [List.flatten_cons, blockLeakCT_append',
                           foldInstr_lower_leak p hi hi' r s hs, hrun s hs]
                         rw [ih (nextEnv p env i) (runBlock s js) rest rest'
-                          (by rw [henv]; exact hs.stepKs js) hrest hrest']
+                          (by rw [henv]; exact (hs.stepKs js).killAll _) hrest hrest']
 
 /-- **Leakage of the fold.** If a body and its fold both gather, the two blocks
     have the same leakage trace from every state, under every regime. -/

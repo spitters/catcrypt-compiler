@@ -317,28 +317,32 @@ def regionAllocFn (a : AbiNames) (ts : List JasminTy) (r : Exported) (fd0 : Lfun
     a.outArg a.inArgs a.abiArgs).1
 
 /-- The allocated program of `regionLprogC` without a callee, for a result other than one
-    register, is `regionPostFuse` of the program whose only function is `regionAllocFn`. -/
+    register, is `regionPostFuse` of the program whose only function is `regionAllocFn` at the
+    webs `regionWebsAt ex none r` of the export `r`. -/
 theorem regionLprogC_lp_funcs (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (ex : List String) {r : Exported} {fd0 : Lfundef}
     (hr : exportR Γ.length a.fname p Γ.length 0 = some r)
     (hfd : exportRLfundef a.fname p = some fd0) (hts : ∀ w, ts ≠ [.reg w])
     {P : Lprog} {cert : List (String × String)}
     (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ P0 : Lprog, P = regionPostFuse P0 ∧ P0.lp_funcs = [(a.fname, regionAllocFn a ts r fd0)] := by
+    ∃ P0 : Lprog, P = regionPostFuse P0
+      ∧ P0.lp_funcs = [(a.fname, regionAllocFn a ts (regionWebsAt ex none r) fd0)] := by
   unfold regionLprogC regionAllocC at hP
   rw [hr, hfd] at hP
-  simp only [Option.bind_some, Option.map_some, Option.some.injEq, Prod.mk.injEq,
-    regionWebsAt_none] at hP
+  simp only [Option.bind_some, Option.map_some, Option.some.injEq, Prod.mk.injEq] at hP
   exact ⟨_, hP.1.symm, rfl⟩
 
 /-- **The image conjunct of the region gate holds on the printed body** for every program
     on the domain of `RegionPhysImgArg.physImgB_regionExport_words`: without `call`, with
     `64`-bit word arrays (`arrW64B`), whose export zeroes only the result root
     (`ZeroAtRoot`), at a layout whose word-array parameters have save slots (`wordsSlotB`) and
-    distinct export registers, and with a result other than one register. For the allocated program `P` of
-    `regionLprogC` and the first body `b` of its printed program, at every slot map `sl` of
-    the gate, `physImgB sl (cellBody sl b)` holds when the side conditions `physImgSideB` of
-    the passes hold on the allocated function `regionAllocFn`. -/
+    distinct export registers, and with a result other than one register, on which the webs
+    pass leaves the export unchanged (`hwe`; the domain of
+    `RegionPhysImgArg.physImgB_regionExport_words` is stated on the export, not on its webs).
+    For the allocated program `P` of `regionLprogC` and the first body `b` of its printed
+    program, at every slot map `sl` of the gate, `physImgB sl (cellBody sl b)` holds when the
+    side conditions `physImgSideB` of the passes hold on the allocated function
+    `regionAllocFn`. -/
 theorem physImgB_printed (fname : String) (σ : AbiLayout) {ts : List JasminTy}
     (p : NFProg jasminDialect (nfCtx σ) ts) (hp : regionExportableB p = true)
     (hc : p.callFree = true) (hw : RegionPhysImgArg.arrW64B p = true)
@@ -347,7 +351,7 @@ theorem physImgB_printed (fname : String) (σ : AbiLayout) {ts : List JasminTy}
     (hzr : RegionPhysImgArg.ZeroAtRoot (nfAbiNames fname σ) ts r)
     {fd0 : Lfundef} (hfd : exportRLfundef fname p = some fd0)
     (hts : ∀ w, ts ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
-    (ex : List String) {P : Lprog} {cert : List (String × String)}
+    (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
     (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b)
     (R : Slots) (ps : List (String × String))
@@ -357,6 +361,7 @@ theorem physImgB_printed (fname : String) (σ : AbiLayout) {ts : List JasminTy}
     physImgB (slotArrC R (slotRen (slotArrOf σ exportReg) (renOf ps)))
       (cellBody (slotArrC R (slotRen (slotArrOf σ exportReg) (renOf ps))) b) = true := by
   obtain ⟨P0, rfl, hP0⟩ := regionLprogC_lp_funcs (nfAbiNames fname σ) p ex hr hfd hts hP
+  rw [regionWebsAt_none, hwe] at hP0
   rw [firstBody_printedLprog_regionPostFuse hP0, Option.some.injEq] at hb
   subst hb
   exact physImgB_printedBody (RegionPhysImg.regionSl_qsave R σ exportReg (renOf ps))
@@ -392,7 +397,8 @@ theorem regionCoStage_ne_physImgB_of (σ : AbiLayout) (nm : String → String) (
 
 /-- **The region gate never refuses at its image conjunct** on the domain of
     `physImgB_printed`: for the allocated program `P` of `regionLprogC` without a callee,
-    the first body `b` of its printed program and the export `r`, when the side conditions
+    the first body `b` of its printed program and the export `r`, which the webs pass leaves
+    unchanged, when the side conditions
     `physImgSideB` hold at the slot map of the gate, `regionCoStage` on `b` does not name
     `physImgB`. -/
 theorem regionCoStage_ne_physImgB (fname : String) (σ : AbiLayout) {t : JasminTy}
@@ -403,7 +409,7 @@ theorem regionCoStage_ne_physImgB (fname : String) (σ : AbiLayout) {t : JasminT
     (hzr : RegionPhysImgArg.ZeroAtRoot (nfAbiNames fname σ) [t] r)
     {fd0 : Lfundef} (hfd : exportRLfundef fname p = some fd0)
     (hts : ∀ w, [t] ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
-    (ex : List String) {P : Lprog} {cert : List (String × String)}
+    (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
     (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b) (fn : String)
     (hside : physImgSideB
@@ -414,6 +420,6 @@ theorem regionCoStage_ne_physImgB (fname : String) (σ : AbiLayout) {t : JasminT
       (regionAllocFn (nfAbiNames fname σ) [t] r fd0).lfd_body = true) :
     regionCoStage σ exportReg b t r.code r.res cert none fn ≠ some "physImgB" :=
   regionCoStage_ne_physImgB_of σ exportReg b t r.code r.res cert none fn
-    (physImgB_printed fname σ p hp hc hw hσ hr hzr hfd hts hnd ex hP hb _ _ hside)
+    (physImgB_printed fname σ p hp hc hw hσ hr hzr hfd hts hnd ex hwe hP hb _ _ hside)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgGate

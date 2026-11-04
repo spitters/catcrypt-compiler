@@ -16,10 +16,11 @@ set_option autoImplicit false
 # Disjoint storage classes of the region export: the entry conjunct
 
 The coalescing completeness theorems of `RegionCoComplete` take the hypothesis
-`StorageDisjoint` on the code with the result copies `regionCoCode` of an export. Its second
-conjunct states that no array name live at the entry (`PLive … 0`) is assigned by an
-instruction of the code (`lopnDst`). This module proves that conjunct on every export of the
-call-free arm on x86.
+`StorageDisjoint` on the code with the result copies `regionCoCode` of an exported code. Its
+second conjunct states that no array name live at the entry (`PLive … 0`) is assigned by an
+instruction of the code (`lopnDst`). This module proves that conjunct on every exported code
+of the call-free arm on x86 (`RegionExp`): the export and its webs, which the call-free arm
+of `compileRegion` coalesces.
 
 ## The argument
 
@@ -47,11 +48,22 @@ buffer, none of which is of the form `"a" ++ toString j`.
   `webSuccs`.
 * `pLive_tagA`: a name live at a position has its tagged name in a certificate of the tagged
   code or among its names read without a prior write.
+* `cert_regionCoCodeS_obs_of`, `cert_regionCoCodeS_obs`: the certificate of the tagged code
+  with the result copies holds the names read after it, from a certificate of the tagged
+  code and on every exported code.
+* `noTag_regionExp`, `writeSorted_regionCoCode`: an exported code mentions no tagged name,
+  and the code with its result copies writes its tagged arrays.
 * `pLive_entry_argName`: a name live at the entry of the code with the result copies of an
-  export is an argument name.
-* `regionCoCode_lopnDst_ne_argName`: that code assigns no argument name.
+  exported code (the export or its webs) is an argument name.
+* `regionCoCode_lopnDst_ne_argName_of`, `regionCoCode_lopnDst_ne_argName`: that code assigns
+  no argument name.
 * `storageDisjoint_entry`: the second conjunct of `StorageDisjoint` on that code.
 * `storageDisjoint_iff_classes`: on that code `StorageDisjoint` is its first conjunct.
+* `noRealAlias_of_interf`: on that code, no real aliasing is the absence of interference
+  `Interf` alone.
+* `regionCoStage_coalesce_webs_of_classes`, `regionCoStage_coalesce_webs_of_interf`: the
+  coalescing stage on the webs of the call-free arm refuses neither at `coCfgB` nor at
+  `coEntryFix` when the storage classes are disjoint, or when no write interferes.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoStorage
@@ -71,7 +83,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk gpList)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoComplete (lopnDst StorageDisjoint NoShadow InUse
   noRealAlias_of_storageDisjoint regionCoStage_coalesce_of exportR_tagOK exportR_noShadow
-  x86Data_guardsNoShadow)
+  x86Data_guardsNoShadow tagOK_regionWebsAt)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionExportDefInit (Cert webSuccs_congr
   findLabelMem_map wrArr_eq_arrWrite defNames_Lopn symReads blk_movs)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemWidthN (operandName)
@@ -293,18 +305,17 @@ theorem copyTmp_ne_argName (j : Nat) : copyTmp ≠ argName j := by
   revert this
   decide
 
-/-- **The code with the result copies of an export assigns no argument name**, when the
-    export name of the result register of the layout is a general-purpose name. -/
-theorem regionCoCode_lopnDst_ne_argName (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) {d n : Nat} {r : Exported}
-    (h : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+/-- **The code with the result copies of a code that writes export register names assigns
+    no argument name**, when the export name of the result register of the layout is a
+    general-purpose name. -/
+theorem regionCoCode_lopnDst_ne_argName_of {r : Exported}
+    (hdefs : ∀ i ∈ r.code, RegionAllocMapLive.DefsR i) (σ : AbiLayout) (nm : String → String)
     (t : JasminTy) (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true)
     (callee : Option CalleeTab) :
     ∀ i ∈ regionCoCode σ nm t r.code r.res (regionCopy σ nm t callee r.code r.res),
       ∀ j, lopnDst i.1 ≠ some (argName j) := by
   have hcode : ∀ i ∈ r.code, ∀ j, lopnDst i.1 ≠ some (argName j) := fun i hi j hd =>
-    not_exportRegName_argName j (exportR_defNames nArgs fn p d n r h i hi _
-      (mem_defNames_of_lopnDst hd))
+    not_exportRegName_argName j (hdefs i hi _ (mem_defNames_of_lopnDst hd))
   have hmov : ∀ i ∈ movesOf (regionRet σ nm t r.res).toList, ∀ j,
       lopnDst i.1 ≠ some (argName j) := by
     intro i hi j hd
@@ -340,6 +351,18 @@ theorem regionCoCode_lopnDst_ne_argName (nArgs : Nat) (fn : String) {Γ : Ctxt j
       · exact copyTmp_ne_argName j
       · exact copyName_succ_ne_argName k j j'
 
+/-- **The code with the result copies of an export assigns no argument name**, when the
+    export name of the result register of the layout is a general-purpose name
+    (`regionCoCode_lopnDst_ne_argName_of` at `exportR_defNames`). -/
+theorem regionCoCode_lopnDst_ne_argName (nArgs : Nat) (fn : String) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) {d n : Nat} {r : Exported}
+    (h : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+    (t : JasminTy) (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true)
+    (callee : Option CalleeTab) :
+    ∀ i ∈ regionCoCode σ nm t r.code r.res (regionCopy σ nm t callee r.code r.res),
+      ∀ j, lopnDst i.1 ≠ some (argName j) :=
+  regionCoCode_lopnDst_ne_argName_of (exportR_defNames nArgs fn p d n r h) σ nm t hgp callee
+
 /-! ## 5. The certificate of the tagged code with the names read after it -/
 
 theorem notTag_of_gpOk {x : String} (h : gpOk x = true) : ¬ IsTag x := by
@@ -347,30 +370,30 @@ theorem notTag_of_gpOk {x : String} (h : gpOk x = true) : ¬ IsTag x := by
   exact notTag_of_head (hall x (by simpa [gpOk] using h)) (by decide)
 
 /-- **The certificate of the tagged code with the result copies, at the names read after
-    it.** The certificate `cert_regionCoCodeS` of the tagged code of `regionCoCode` with its
-    result copy, which holds at the end the tagged names of the array names read after the
-    code (`regionCoObs`), or those tagged names are argument names. -/
-theorem cert_regionCoCodeS_obs (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
-    (nm : String → String) (hsym : ∀ i ∈ r.code, symReads i = [])
-    (hlen : Γ.length ≤ σ.args.length) :
+    it, from a certificate of the tagged code.** As `cert_regionCoCodeS_of`, for a code `r`
+    with one returned operand: the certificate of the tagged code of `regionCoCode` with its
+    result copy holds at the end the tagged names of the array names read after the code
+    (`regionCoObs`), or those tagged names are argument names. -/
+theorem cert_regionCoCodeS_obs_of (n : Nat) {t : JasminTy} {r : Exported}
+    (hns : ∀ i ∈ r.code, NoShadow i) (σ : AbiLayout) (nm : String → String)
+    (hsym : ∀ i ∈ r.code, symReads i = []) (hlen : n ≤ σ.args.length)
+    (hres1 : r.res.length = 1)
+    (hcert : ∃ D0, Cert (ExportES n (r.code.map (renArr tagA))) (r.code.map (renArr tagA)) D0 ∧
+      ∀ q ∈ [t].zip r.res, D0 r.code.length (sortName q.1 (operandName q.2))
+        ∨ ExportES n (r.code.map (renArr tagA)) (sortName q.1 (operandName q.2))) :
     ∃ D, Cert (ArgS σ.args.length)
       ((regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)).map
         (renArr tagA)) D ∧
       ∀ x ∈ regionCoObs t (regionOut (regionCopy σ nm t none r.code r.res) r.res),
         D (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)).length
           (tagA x) ∨ ArgS σ.args.length (tagA x) := by
-  have hns := RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p
-    hp hc _ _ r h
-  have hEA : ∀ y, ExportES Γ.length (r.code.map (renArr tagA)) y → ArgS σ.args.length y := by
+  have hEA : ∀ y, ExportES n (r.code.map (renArr tagA)) y → ArgS σ.args.length y := by
     rintro y (⟨j, hj, hy⟩ | ⟨i, hi, hy⟩)
     · exact ⟨j, by omega, hy⟩
     · obtain ⟨i', hi', rfl⟩ := List.mem_map.mp hi
       rw [symReads_renArr (hns i' hi'), hsym i' hi'] at hy
       cases hy
-  obtain ⟨D0, hC0, hres0⟩ := exportR_certS fn p hp hc h
+  obtain ⟨D0, hC0, hres0⟩ := hcert
   have hC1 := hC0.monoE hEA
   have hres : ∀ q ∈ [t].zip r.res, D0 r.code.length (sortName q.1 (operandName q.2))
       ∨ ArgS σ.args.length (sortName q.1 (operandName q.2)) :=
@@ -416,7 +439,7 @@ theorem cert_regionCoCodeS_obs (fn : String) {Γ : Ctxt jasminDialect} {t : Jasm
     · rename_i w m
       obtain ⟨op, hop, rfl⟩ := List.mem_map.mp hx
       obtain ⟨op', hop'⟩ : ∃ op', r.res = [op'] :=
-        List.length_eq_one_iff.mp (exportR_res_length _ fn p _ _ r h)
+        List.length_eq_one_iff.mp hres1
       rw [hop', List.mem_singleton] at hop
       subst hop
       have := hres (.stackArr w m, op) (by rw [hop']; exact List.mem_singleton_self _)
@@ -451,20 +474,52 @@ theorem cert_regionCoCodeS_obs (fn : String) {Γ : Ctxt jasminDialect} {t : Jasm
       refine cast (congrArg (fun n => D2 n (tagA (copyName (argName j) m))) ?_) this
       simp [L, resCopyCode]
 
+/-- **The certificate of the tagged code with the result copies of an exported code, at the
+    names read after it** (`cert_regionCoCodeS_obs_of` at `RegionExp.certS_of_exportR`): for
+    an exported code `r` (`RegionExp`, the export or its webs) on x86 of a program of one
+    result type without `call` that passes `regionExportableB`, at a layout with at least
+    `Γ.length` parameters. -/
+theorem cert_regionCoCodeS_obs (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (σ : AbiLayout) (nm : String → String) (hlen : Γ.length ≤ σ.args.length) :
+    ∃ D, Cert (ArgS σ.args.length)
+      ((regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)).map
+        (renArr tagA)) D ∧
+      ∀ x ∈ regionCoObs t (regionOut (regionCopy σ nm t none r.code r.res) r.res),
+        D (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)).length
+          (tagA x) ∨ ArgS σ.args.length (tagA x) := by
+  obtain ⟨r0, h0, -⟩ := id h
+  have hsym : ∀ i ∈ r.code, symReads i = [] := fun i hi => (h.mnemDom hp hc i hi).1
+  refine cert_regionCoCodeS_obs_of Γ.length (h.noShadow hp hc) σ nm hsym hlen
+    (by rw [h.res h0]; exact exportR_res_length _ fn p _ _ r0 h0)
+    (h.certS_of_exportR hp hc
+      (fun r1 h1 => noTag_exportR fn p hp hc h1 (h.symReads_export hp hc h1 hsym)
+        (fun i hi x hx => (exportR_defNames _ _ p _ _ r1 h1 i hi x hx).notTag))
+      (fun r1 h1 i hi w n e => RegionCoComplete.exportR_zeroOK _ _ _ p _ _ r1 h1 i hi w n e))
+
+/-- **An exported code on x86 mentions no tagged name** (`RegionExp.noTag` with the register
+    reads of `exportR_regReads`): for an exported code `r` (`RegionExp`) of a program without
+    `call` that passes `regionExportableB`. -/
+theorem noTag_regionExp (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r) :
+    NoTag r.code :=
+  h.noTag hp hc
+    (fun r0 h0 => exportR_regReads fn p hp hc h0
+      (fun i hi x hx => (exportR_defNames _ _ p _ _ r0 h0 i hi x hx).notTag)
+      (fun i hi w n e => RegionCoComplete.exportR_zeroOK _ _ _ p _ _ r0 h0 i hi w n e))
+    (fun i hi => (h.mnemDom hp hc i hi).1)
+    (fun i hi x hx => (h.defsR hp hc i hi x hx).notTag)
+
 /-! ## 6. The entry conjunct -/
 
-/-- **The instructions of the code with the result copies write their tagged arrays.** -/
-theorem writeSorted_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
-    (nm : String → String) (t : JasminTy) (hsym : ∀ i ∈ r.code, symReads i = [])
+/-- **The instructions of the code with the result copies write their tagged arrays**, for a
+    code that mentions no tagged name. -/
+theorem writeSorted_regionCoCode_of {r : Exported} (hT : NoTag r.code) (σ : AbiLayout)
+    (nm : String → String) (t : JasminTy)
     (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true) (cp : Option (String × String × Nat)) :
     ∀ i ∈ regionCoCode σ nm t r.code r.res cp, WriteSorted i := by
-  have hT : NoTag r.code := noTag_exportR fn p hp hc h hsym fun i hi x hx => by
-    rcases exportR_defNames _ fn p _ _ r h i hi x hx with h1 | h1
-    · exact notTag_of_head h1 (by decide)
-    · exact notTag_of_head h1 (by decide)
   have hmov : ∀ i ∈ movesOf (regionRet σ nm t r.res).toList, WriteSorted i := by
     intro i hi
     obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hi
@@ -490,30 +545,39 @@ theorem writeSorted_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : L
       · exact hmov i hi
     · exact writeSorted_resCopyCode _ _ _ i hi
 
+/-- **The instructions of the code with the result copies of an exported code write their
+    tagged arrays** (`writeSorted_regionCoCode_of` at `noTag_regionExp`). -/
+theorem writeSorted_regionCoCode (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (σ : AbiLayout) (nm : String → String) (t : JasminTy)
+    (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true) (cp : Option (String × String × Nat)) :
+    ∀ i ∈ regionCoCode σ nm t r.code r.res cp, WriteSorted i :=
+  writeSorted_regionCoCode_of (noTag_regionExp fn p hp hc h) σ nm t hgp cp
+
 /-- **A name live at the entry of the code with the result copies is an argument name.** For
     the export `r` of a program over `Γ` of result type `t` without `call` that passes
     `regionExportableB`, from the depth and the argument count `Γ.length` and the label `0`
     on x86, at a layout with at least `Γ.length` parameters whose result register has a
     general-purpose export name: every array name live at the entry of the code with the
     result copies `regionCoCode`, when the names read after it are the returned array names
-    `regionCoObs`, is an argument name of the layout. -/
+    `regionCoObs`, is an argument name of the layout. The same holds for every exported code
+    `r` of the program (`RegionExp`): the export and its webs. -/
 theorem pLive_entry_argName (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (σ : AbiLayout)
     (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
     (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true)
     (aa : String → Nat → Option Nat) (ao : String → Option Nat) {x : String}
     (hx : PLive (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)) aa ao
       (regionCoObs t (regionOut (regionCopy σ nm t none r.code r.res) r.res)) 0 x) :
     ∃ j, j < σ.args.length ∧ x = argName j := by
-  have hsym := RegionAllocMapDom.exportR_symReads _ fn p hp hc h
-  obtain ⟨D, hC, ho⟩ := cert_regionCoCodeS_obs fn p hp hc h σ nm hsym hlen
+  obtain ⟨D, hC, ho⟩ := cert_regionCoCodeS_obs fn p hp hc h σ nm hlen
   have hns := RegionCoComplete.noShadow_regionCoCode σ nm t r.code r.res
-    (regionCopy σ nm t none r.code r.res)
-    (RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p hp hc _ _ r h)
+    (regionCopy σ nm t none r.code r.res) (h.noShadow hp hc)
   obtain ⟨j, hj, hx'⟩ := pLive_entry_tagA hC hns
-    (writeSorted_regionCoCode fn p hp hc h σ nm t hsym hgp _) ho hx
+    (writeSorted_regionCoCode fn p hp hc h σ nm t hgp _) ho hx
   rcases hx' with hx' | hx'
   · exact absurd (hx' ▸ isTag_tagA x) (notTag_argName j)
   · exact ⟨j, hj, tagA_injective hx'⟩
@@ -523,9 +587,8 @@ theorem pLive_entry_argName (fn : String) {Γ : Ctxt jasminDialect} {t : JasminT
     assigned by an instruction of the code. -/
 theorem storageDisjoint_entry (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
-    (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (σ : AbiLayout) (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
     (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true)
     (aa : String → Nat → Option Nat) (ao : String → Option Nat) :
     ∀ x, PLive (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)) aa ao
@@ -534,7 +597,7 @@ theorem storageDisjoint_entry (fn : String) {Γ : Ctxt jasminDialect} {t : Jasmi
         lopnDst i.1 ≠ some x := by
   intro x hx i hi
   obtain ⟨j, -, rfl⟩ := pLive_entry_argName fn p hp hc h σ nm hlen hgp aa ao hx
-  exact regionCoCode_lopnDst_ne_argName _ fn p h σ nm t hgp none i hi j
+  exact regionCoCode_lopnDst_ne_argName_of (h.defsR hp hc) σ nm t hgp none i hi j
 
 /-- **On the code with the result copies of an export, `StorageDisjoint` is its first
     conjunct**: under the conditions of `pLive_entry_argName`, at every alias map `ρ`, the
@@ -542,9 +605,8 @@ theorem storageDisjoint_entry (fn : String) {Γ : Ctxt jasminDialect} {t : Jasmi
     the same position. -/
 theorem storageDisjoint_iff_classes (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
-    (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (σ : AbiLayout) (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
     (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true)
     (ρ : String → String) (aa : String → Nat → Option Nat) (ao : String → Option Nat) :
     let body := regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)
@@ -562,9 +624,8 @@ theorem storageDisjoint_iff_classes (fn : String) {Γ : Ctxt jasminDialect} {t :
     code with the result copies, that alias map has no real aliasing on that code. -/
 theorem exportR_noRealAlias_of_classes (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
-    (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (σ : AbiLayout) (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
     (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true)
     (aa : String → Nat → Option Nat) (ao : String → Option Nat)
     (hcls : ∀ k y y',
@@ -618,6 +679,97 @@ theorem regionCoStage_accept_of_classes (fn : String) {Γ : Ctxt jasminDialect} 
     regionCoStage_coalesce_of σ nm body t r.code r.res cert none fn'
       (exportR_tagOK _ fn x86Data p _ _ r h)
       (fun _ => exportR_noShadow x86Data_guardsNoShadow _ fn p hp hc _ _ r h)
-      (exportR_noRealAlias_of_classes fn p hp hc h σ nm hlen hgp _ _ hcls)⟩
+      (exportR_noRealAlias_of_classes fn p hp hc (regionExp_of_exportR [] h) σ nm hlen hgp _ _
+        hcls)⟩
+
+/-- **The coalescing stage accepts the webs from disjoint classes.** For the export `r` of a
+    program over `Γ` of result type `t` without `call` that passes `regionExportableB`, from
+    the depth and the argument count `Γ.length` and the label `0` on x86, at a layout with at
+    least `Γ.length` parameters whose result register has a general-purpose export name, and
+    at every list `ex` of names read after the code: when no two distinct array names of one
+    storage class of `regionAliasTab` are in use at the same position of the code with the
+    result copies of the webs `regionWebsAt ex none r`, `regionCoStage` on those webs, as
+    the call-free arm of `compileRegion` runs it, refuses neither at `coCfgB` nor at
+    `coEntryFix`, at every printed body, certificate and function name. -/
+theorem regionCoStage_coalesce_webs_of_classes (fn : String) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {r : Exported}
+    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
+    (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
+    (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true) (ex : List String)
+    (hcls : ∀ k y y',
+      let w := regionWebsAt ex none r
+      InUse (regionCoCode σ nm t w.code w.res (regionCopy σ nm t none w.code w.res))
+        (calleeAAT none) (calleeAOT none)
+        (regionCoObs t (regionOut (regionCopy σ nm t none w.code w.res) w.res)) k y →
+      InUse (regionCoCode σ nm t w.code w.res (regionCopy σ nm t none w.code w.res))
+        (calleeAAT none) (calleeAOT none)
+        (regionCoObs t (regionOut (regionCopy σ nm t none w.code w.res) w.res)) k y' →
+      canonMemrefName (regionAliasTab σ nm t none w.res
+          (regionCoCode σ nm t w.code w.res (regionCopy σ nm t none w.code w.res))) y =
+        canonMemrefName (regionAliasTab σ nm t none w.res
+          (regionCoCode σ nm t w.code w.res (regionCopy σ nm t none w.code w.res))) y' →
+      y = y')
+    (body : Lcmd) (cert : List (String × String)) (fn' : String) :
+    regionCoStage σ nm body t (regionWebsAt ex none r).code (regionWebsAt ex none r).res cert
+        none fn' ≠ some "coCfgB" ∧
+      regionCoStage σ nm body t (regionWebsAt ex none r).code (regionWebsAt ex none r).res cert
+        none fn' ≠ some "coEntryFix" :=
+  regionCoStage_coalesce_of σ nm body t _ _ cert none fn'
+    (tagOK_regionWebsAt ex none r (exportR_tagOK _ fn x86Data p _ _ r h))
+    (fun _ => (regionExp_webs ex h).noShadow hp hc)
+    (exportR_noRealAlias_of_classes fn p hp hc (regionExp_webs ex h) σ nm hlen hgp _ _ hcls)
+
+/-- **No real aliasing on an exported code from the absence of interference.** Under the
+    conditions of `pLive_entry_argName`, on the code with the result copies of an exported
+    code `r` (`RegionExp`: the export or its webs), the alias map of `regionAliasTab` has no
+    real aliasing when it separates every written array name from the array names live after
+    the write (`Interf`): the entry conjunct of `NoRealAlias` holds on that code
+    (`storageDisjoint_entry`). -/
+theorem noRealAlias_of_interf (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (σ : AbiLayout) (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
+    (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true)
+    (aa : String → Nat → Option Nat) (ao : String → Option Nat)
+    (hI : Interf (canonMemrefName (regionAliasTab σ nm t none r.res
+        (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res))))
+      (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)) ao
+      (PLive (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)) aa ao
+        (regionCoObs t (regionOut (regionCopy σ nm t none r.code r.res) r.res)))) :
+    NoRealAlias (canonMemrefName (regionAliasTab σ nm t none r.res
+        (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res))))
+      (regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)) aa ao
+      (regionCoObs t (regionOut (regionCopy σ nm t none r.code r.res) r.res)) :=
+  ⟨hI, fun x hx => RegionCoComplete.resAliasTab_of_unassigned
+    (storageDisjoint_entry fn p hp hc h σ nm hlen hgp aa ao x hx)⟩
+
+/-- **The coalescing stage accepts the webs without interference.** As
+    `regionCoStage_coalesce_webs_of_classes`, with the weaker hypothesis that the alias map of
+    `regionAliasTab` on the code with the result copies of the webs `regionWebsAt ex none r`
+    separates every written array name from the array names live after the write
+    (`Interf`). This is the whole of `NoRealAlias` that the entry conjunct leaves open. -/
+theorem regionCoStage_coalesce_webs_of_interf (fn : String) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {r : Exported}
+    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
+    (nm : String → String) (hlen : Γ.length ≤ σ.args.length)
+    (hgp : ∀ RA, σ.result = .reg RA → gpOk (nm RA) = true) (ex : List String)
+    (hI : let w := regionWebsAt ex none r
+      Interf (canonMemrefName (regionAliasTab σ nm t none w.res
+          (regionCoCode σ nm t w.code w.res (regionCopy σ nm t none w.code w.res))))
+        (regionCoCode σ nm t w.code w.res (regionCopy σ nm t none w.code w.res)) (calleeAOT none)
+        (PLive (regionCoCode σ nm t w.code w.res (regionCopy σ nm t none w.code w.res))
+          (calleeAAT none) (calleeAOT none)
+          (regionCoObs t (regionOut (regionCopy σ nm t none w.code w.res) w.res))))
+    (body : Lcmd) (cert : List (String × String)) (fn' : String) :
+    regionCoStage σ nm body t (regionWebsAt ex none r).code (regionWebsAt ex none r).res cert
+        none fn' ≠ some "coCfgB" ∧
+      regionCoStage σ nm body t (regionWebsAt ex none r).code (regionWebsAt ex none r).res cert
+        none fn' ≠ some "coEntryFix" :=
+  regionCoStage_coalesce_of σ nm body t _ _ cert none fn'
+    (tagOK_regionWebsAt ex none r (exportR_tagOK _ fn x86Data p _ _ r h))
+    (fun _ => (regionExp_webs ex h).noShadow hp hc)
+    (noRealAlias_of_interf fn p hp hc (regionExp_webs ex h) σ nm hlen hgp _ _ hI)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoStorage

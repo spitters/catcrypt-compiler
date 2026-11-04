@@ -460,7 +460,7 @@ theorem physExpand_mulHiOk {slotArr : String → Option (String × Nat)}
   have hb : isTwoAddrBinop o = false := by simp [isTwoAddrBinop, hs]
   have hst : isMemStore o = false := by simp [isMemStore, hs]
   have hld : isMemLoad o = false := by simp [isMemLoad, hs]
-  have hc : o ≠ "CMOV:64" := fun e => by subst e; revert hs; decide
+  have hc : stripWidthTag o ≠ "CMOV" := by rw [hs]; decide
   have hse : isSetccMnem o = false := by simp [isSetccMnem, hs]
   have han : o ≠ "ANDN:64" := fun e => by subst e; revert hs; decide
   have hmv : stripWidthTag o ≠ "MOV" := by rw [hs]; decide
@@ -976,7 +976,7 @@ theorem regionCoStage_ne_physImgB_of_open (fname : String) (σ : AbiLayout) {t :
     (hzr : RegionPhysImgArg.ZeroAtRoot (nfAbiNames fname σ) [t] r)
     {fd0 : Lfundef} (hfd : exportRLfundef fname p = some fd0)
     (hts : ∀ w, [t] ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
-    (ex : List String) {P : Lprog} {cert : List (String × String)}
+    (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
     (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b) (fn : String)
     (hopt : (splitStraightRuns
@@ -993,7 +993,7 @@ theorem regionCoStage_ne_physImgB_of_open (fname : String) (σ : AbiLayout) {t :
         (regionAllocFn (nfAbiNames fname σ) [t] r fd0).lfd_body)) = true)
     (hflag : flagTiedB (regionAllocFn (nfAbiNames fname σ) [t] r fd0).lfd_body = true) :
     regionCoStage σ exportReg b t r.code r.res cert none fn ≠ some "physImgB" :=
-  regionCoStage_ne_physImgB fname σ p hp hc hw hσ hr hzr hfd hts hnd ex hP hb fn
+  regionCoStage_ne_physImgB fname σ p hp hc hw hσ hr hzr hfd hts hnd ex hwe hP hb fn
     (physImgSideB_of_export fname σ p hp hc hw hσ hr hzr hts fd0 hnd _ _ hopt hhold hcmp hflag)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgSide

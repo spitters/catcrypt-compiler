@@ -16,7 +16,7 @@ After register allocation, `JasminLprogExport.physBodyWithStores` lowers each al
 instruction to a short list of instructions over physical names and spill slots: the
 two-address form of a binop (`lowerTwoAddr`), the legalised one-source instruction
 (`legalizeOneSrc`), the select and the materialised comparison with spilled operands
-(`cmovSpillSeq`, `setccSpill?`). This module states each of these lowerings as a simulation
+(`cmovSpillSeq`, `setccSpill?`, `andnSpill?`). This module states each of these lowerings as a simulation
 of one instruction on the flag machine `lsemFuelMemF`, at the agreement
 `CmpSpillReload.AgreeS` of two bases off the reload scratches `R15` and `R14`. Each such
 simulation gives the per-instruction condition `JasminLsemExportLower.InstrOK` of the
@@ -42,8 +42,10 @@ Both the source instruction and its lowering are typed with one tag function `tg
 * `simS_legalizeBinop`, `simS_lowerTwoAddr`: the two-address lowering of a binop whose
   second source is no spill slot.
 * `simS_lowerTwoAddrShiftImm`: the two-address shift by an immediate.
-* `simS_cmovSpillSeq`, `simS_cmovSpillDst?`: the select with spilled operands.
+* `simS_cmovSpillSeq`, `simS_cmovSpillDst?`: the select with spilled operands, at every width
+  tag of the select.
 * `simS_setccSpill?`: the materialised comparison with spilled operands.
+* `simS_andnSpill?`: the and-not with spilled operands.
 * `fstepF_src2`, `simS_srcScratch`: a second source read by its cell, and through a scratch.
 * `simS_legalizeBinopSpill`, `simS_lowerTwoAddrSpill`: the two-address lowering of a binop
   with a spilled second source and a register destination.
@@ -425,18 +427,21 @@ theorem simS_lowerTwoAddrShiftImm {tg : LinstrR → MemTag} {d s0 : String} {v :
 /-! ## 4. Selects and comparisons with spilled operands -/
 
 /-- **The select with spilled operands.** `cmovSpillSeq` simulates the register-tagged select
-    `CMOV:64 D, [C, T, F]` off the scratches, when `C`, `T` and `F` are no scratches. -/
-theorem simS_cmovSpillSeq {tg : LinstrR → MemTag} (htg : RegTagOn tg "CMOV:64")
+    `CMOV D, [C, T, F]` at the width tag of `w` off the scratches, when `C`, `T` and `F` are
+    no scratches. -/
+theorem simS_cmovSpillSeq {tg : LinstrR → MemTag} {w : Nat}
+    (htg : RegTagOn tg (withWidthTag w "CMOV"))
     {D C T F : String} (hC : KeptS C) (hT : KeptS T) (hF : KeptS F) :
-    SimS (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F],
-        tg (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F]))
-      ((cmovSpillSeq "CMOV:64" (.reg D) (.reg C) (.reg T) (.reg F)).map fun y => (y, tg y)) := by
+    SimS (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F],
+        tg (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F]))
+      ((cmovSpillSeq (withWidthTag w "CMOV") (.reg D) (.reg C) (.reg T) (.reg F)).map
+        fun y => (y, tg y)) := by
   intro a a' t zf zt hA h
   obtain ⟨cd, hcd⟩ := htg [.reg D] [.reg C, .reg T, .reg F]
   rw [hcd] at h
   unfold cmovSpillSeq
   cases hc : (LOperand.reg C).isSpill <;> cases hd : (LOperand.reg D).isSpill
-  · obtain ⟨rfl, w, v, rfl, h2⟩ := fstepF_cmov64_congr (D' := D) (cd' := cd)
+  · obtain ⟨rfl, u, v, rfl, h2⟩ := fstepF_cmov_congr (D' := D) (cd' := cd)
       (hA.reg C hC) (hA.reg T hT) (hA.reg F hF) h
     simp only [Bool.false_eq_true, ite_false, List.nil_append, List.map_cons, List.map_nil,
       hcd]
@@ -444,29 +449,28 @@ theorem simS_cmovSpillSeq {tg : LinstrR → MemTag} (htg : RegTagOn tg "CMOV:64"
   · obtain ⟨cd', hcd'⟩ := htg [.reg reloadScratch] [.reg C, .reg T, .reg F]
     simp only [Bool.false_eq_true, ite_false, ite_true, List.nil_append, List.map_cons,
       List.map_nil, hcd']
-    exact fstepF_cmovDstSpill D C T F cd cd' _ hC hT hF hA h
+    exact fstepF_cmovDstSpill w D C T F cd cd' _ hC hT hF hA h
   · obtain ⟨cd', hcd'⟩ := htg [.reg D] [.reg reloadScratch2, .reg T, .reg F]
     simp only [Bool.false_eq_true, ite_false, ite_true, List.cons_append, List.nil_append,
       List.map_cons, List.map_nil, hcd']
-    exact fstepF_cmovCondSpill D C T F cd cd' _ hC hT hF hA h
+    exact fstepF_cmovCondSpill w D C T F cd cd' _ hC hT hF hA h
   · obtain ⟨cd', hcd'⟩ := htg [.reg reloadScratch] [.reg reloadScratch2, .reg T, .reg F]
     simp only [ite_true, List.cons_append, List.nil_append, List.map_cons, List.map_nil, hcd']
-    exact fstepF_cmovCondDstSpill D C T F cd cd' _ _ hC hT hF hA h
+    exact fstepF_cmovCondDstSpill w D C T F cd cd' _ _ hC hT hF hA h
 
-/-- **The scratch select.** Where `cmovSpillDst?` is defined on a select over register
-    operands, its expansion simulates the select off the scratches, when the condition and
-    the two values are no scratches. -/
-theorem simS_cmovSpillDst? {tg : LinstrR → MemTag} (htg : RegTagOn tg "CMOV:64")
-    {opn D C T F : String} {L : List LinstrR}
-    (h : cmovSpillDst? [.reg D] opn [.reg C, .reg T, .reg F] = some L)
+/-- **The scratch select.** Where `cmovSpillDst?` is defined on a select `CMOV` at the width
+    tag of `w` over register operands, its expansion simulates the select off the scratches,
+    when the condition and the two values are no scratches. -/
+theorem simS_cmovSpillDst? {tg : LinstrR → MemTag} {w : Nat}
+    (htg : RegTagOn tg (withWidthTag w "CMOV")) {D C T F : String} {L : List LinstrR}
+    (h : cmovSpillDst? [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F] = some L)
     (hC : KeptS C) (hT : KeptS T) (hF : KeptS F) :
-    SimS (.Lopn [.reg D] opn [.reg C, .reg T, .reg F],
-        tg (.Lopn [.reg D] opn [.reg C, .reg T, .reg F])) (L.map fun y => (y, tg y)) := by
+    SimS (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F],
+        tg (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F]))
+      (L.map fun y => (y, tg y)) := by
   unfold cmovSpillDst? at h
   dsimp only at h
-  split_ifs at h with hc
-  simp only [Bool.and_eq_true, beq_iff_eq] at hc
-  obtain ⟨-, rfl⟩ := hc
+  split_ifs at h
   cases h
   exact simS_cmovSpillSeq htg hC hT hF
 
@@ -491,6 +495,29 @@ theorem simS_setccSpill? {tg : LinstrR → MemTag} {c : JasminDialect.JasminCmp}
   rw [hcd] at hs
   simp only [List.map_cons, List.map_nil, hcd']
   exact fstepF_setccSpill c wOp D A B _ cd cd' _ _ _ (stripWidthTag_setccMov _) hA' hB' hA hs
+
+/-- **The and-not with spilled operands.** Where `andnSpill?` is defined on a register-tagged
+    instruction `opn D, [A, B]` (so `opn` is `ANDN:64`), its expansion simulates the and-not
+    off the scratches, when `A` and `B` are no scratches. -/
+theorem simS_andnSpill? {tg : LinstrR → MemTag} (htg : RegTagOn tg "ANDN:64")
+    {opn D A B : String} {L : List LinstrR}
+    (h : andnSpill? [.reg D] opn [.reg A, .reg B] = some L)
+    (hA' : KeptS A) (hB' : KeptS B) :
+    SimS (.Lopn [.reg D] opn [.reg A, .reg B], tg (.Lopn [.reg D] opn [.reg A, .reg B]))
+      (L.map fun y => (y, tg y)) := by
+  unfold andnSpill? andnSpillI? at h
+  dsimp only at h
+  split_ifs at h with hc
+  simp only [Bool.and_eq_true, beq_iff_eq] at hc
+  obtain ⟨-, rfl⟩ := hc
+  cases h
+  intro a a' t zf zt hA hs
+  obtain ⟨cd, hcd⟩ := htg [.reg D] [.reg A, .reg B]
+  obtain ⟨cd', hcd'⟩ := htg [.reg reloadScratch] [.reg reloadScratch, .reg reloadScratch2]
+  rw [hcd] at hs
+  simp only [List.map_cons, List.map_nil, LprogIsa.x86Abi_reload, LprogIsa.x86Abi_reloadSnd,
+    hcd']
+  exact fstepF_andnSpill D A B cd cd' _ _ _ hA' hB' hA hs
 
 /-! ## 5. A second source read through a scratch -/
 
@@ -855,7 +882,8 @@ def immSmallB : LOperand → Bool
     cover: a two-address binop `OP d, s0, s1` over register names, by the count `v` when `imm`
     is `some v` and `s1` is the immediate `v`, otherwise when `s1` is neither `d` nor a wide
     immediate and is a spill slot only under a register destination `d`; a non-store `Lopn`
-    with one register destination and two sources that `setccSpill?` leaves unchanged; a
+    with one register destination and two sources that `setccSpill?` leaves unchanged (the
+    scratch and-not `andnSpill?` included); a
     select `CMOV:64` over register names; an `Lopn` with one destination and three or more
     sources that `cmovSpillDst?` leaves unchanged; a load whose source has no spilled SIB base
     or index (`sibPlainB`); a one-source instruction that is no native shift or rotate and no
@@ -873,7 +901,6 @@ def lowerCoreOKB (imm : Option Nat) (u64 : Bool) : LinstrR → Bool
         | none =>
             s1 != .reg d && immSmallB s1 && (!s1.isSpill || !(LOperand.reg d).isSpill)
       else !isMemStore opn && (setccSpill? [.reg d] opn [.reg s0, s1]).isNone
-        && (andnSpill? [.reg d] opn [.reg s0, s1]).isNone
   | .Lopn [.reg _] opn [.reg _, .reg _, .reg _] =>
       !isTwoAddrBinop opn && opn == "CMOV:64"
   | .Lopn [d] opn (s0 :: s1 :: s2 :: ss) =>
@@ -889,13 +916,13 @@ def lowerCoreOKB (imm : Option Nat) (u64 : Bool) : LinstrR → Bool
 /-- **The lowering core off the scratches.** On an instruction `w` that names no scratch and
     on which `lowerCoreOKB imm u64` holds, `lowerCore imm u64 w` simulates `w` off the
     scratches, when the tag function gives each two-address binop with a fixed second source
-    one register tag, every `CMOV:64` a register tag, and each load with a fixed source one
-    tag at every register destination. -/
+    one register tag, every `CMOV:64` and every `ANDN:64` a register tag, and each load with a
+    fixed source one tag at every register destination. -/
 theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool} {w : LinstrR}
     (hok : lowerCoreOKB imm u64 w = true)
     (htg : ∀ opn s1, isTwoAddrBinop opn = true →
       ∃ cd, ∀ D X, tg (.Lopn [.reg D] opn [.reg X, s1]) = .reg cd)
-    (hcm : RegTagOn tg "CMOV:64")
+    (hcm : RegTagOn tg "CMOV:64") (han : RegTagOn tg "ANDN:64")
     (htl : ∀ opn s, isMemLoad opn = true →
       ∀ D D', tg (.Lopn [.reg D] opn [s]) = tg (.Lopn [.reg D'] opn [s]))
     (hn : ∀ n ∈ instrNames w, KeptS n) :
@@ -933,13 +960,24 @@ theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool}
     · simp only [Bool.not_eq_true] at hb
       simp only [hb, Bool.false_eq_true, ite_false, Bool.and_eq_true, Bool.not_eq_true',
         Option.isNone_iff_eq_none] at hok
-      obtain ⟨⟨hst, hset⟩, hand⟩ := hok
-      have hl : lowerCore imm u64 (.Lopn [.reg d] opn [.reg s0, s1])
-          = [.Lopn [.reg d] opn [.reg s0, s1]] := by
-        simp only [lowerCore, hb, hst, Bool.false_eq_true, ite_false]
-        exact legalizeSpillDst_of_none rfl hset hand
-      rw [hl]
-      exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
+      obtain ⟨hst, hset⟩ := hok
+      cases hand : andnSpill? [.reg d] opn [.reg s0, s1] with
+      | some L =>
+        obtain ⟨S, rfl⟩ : ∃ S, s1 = .reg S := by
+          cases s1 <;> first | exact ⟨_, rfl⟩ | simp [andnSpill?, andnSpillI?] at hand
+        have hl : lowerCore imm u64 (.Lopn [.reg d] opn [.reg s0, .reg S]) = L := by
+          simp only [lowerCore, hb, hst, Bool.false_eq_true, ite_false]
+          exact legalizeSpillDst_of_andn rfl hset hand
+        rw [hl]
+        exact simS_andnSpill? han hand (hn s0 (by simp [instrNames, opNames]))
+          (hn S (by simp [instrNames, opNames]))
+      | none =>
+        have hl : lowerCore imm u64 (.Lopn [.reg d] opn [.reg s0, s1])
+            = [.Lopn [.reg d] opn [.reg s0, s1]] := by
+          simp only [lowerCore, hb, hst, Bool.false_eq_true, ite_false]
+          exact legalizeSpillDst_of_none rfl hset hand
+        rw [hl]
+        exact simS_self ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
   · rename_i D opn C T F
     simp only [Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at hok
     obtain ⟨hb, rfl⟩ := hok
@@ -948,13 +986,15 @@ theorem simS_lowerCore {tg : LinstrR → MemTag} {imm : Option Nat} {u64 : Bool}
     have hF : KeptS F := hn F (by simp [instrNames, opNames])
     simp only [lowerCore, hb, Bool.false_eq_true, ite_false]
     unfold legalizeSpillDst
-    cases h : cmovSpillDst? [.reg D] "CMOV:64" [.reg C, .reg T, .reg F] with
+    have e : ("CMOV:64" : String) = withWidthTag 64 "CMOV" := by decide +kernel
+    rw [e] at hcm hn ⊢
+    cases h : cmovSpillDst? [.reg D] (withWidthTag 64 "CMOV") [.reg C, .reg T, .reg F] with
     | some L => exact simS_cmovSpillDst? hcm h hC hT hF
     | none =>
-      simpa [setccSpill?, andnSpill?] using
-        simS_self (i := (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F],
-          tg (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F]))) ⟨_, _, _, rfl⟩ hn
-          (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
+      simpa [setccSpill?, andnSpill?, andnSpillI?] using
+        simS_self (i := (.Lopn [.reg D] (withWidthTag 64 "CMOV") [.reg C, .reg T, .reg F],
+          tg (.Lopn [.reg D] (withWidthTag 64 "CMOV") [.reg C, .reg T, .reg F])))
+          ⟨_, _, _, rfl⟩ hn (mulxFree_of_lopn1 ⟨_, _, _, rfl⟩)
   · rename_i d opn s0 s1 s2 ss _
     simp only [Bool.and_eq_true, Bool.not_eq_true', Option.isNone_iff_eq_none] at hok
     obtain ⟨hb, hc⟩ := hok

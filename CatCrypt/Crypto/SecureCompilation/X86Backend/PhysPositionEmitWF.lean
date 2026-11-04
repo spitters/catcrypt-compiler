@@ -233,7 +233,9 @@ theorem legalizeSpillDst_resolved (dsts : List LOperand) (opn : String) (srcs : 
       · cases h
     · split
       · rename_i h
-        unfold andnSpill? at h
+        unfold andnSpill? andnSpillI? at h
+        rw [CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reload,
+          CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reloadSnd] at h
         split at h
         · split at h
           · cases h

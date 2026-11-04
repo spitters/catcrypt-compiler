@@ -50,9 +50,10 @@ instruction uses the scratch is outside the theorem.
 * `cmpReload_lsemFuelMemF`: a halting run of a body that passes `cmpReloadOK` is matched
   by a halting run of the rewritten body with at most twice the fuel.
 * `fstepF_copySpill`, `fstepF_cmovCondSpill`, `fstepF_cmovDstSpill`,
-  `fstepF_cmovCondDstSpill`, `fstepF_setccSpill`: the spill expansions of the allocation
-  path (`legalizeOneSrc`, `cmovSpillSeq`, `setccSpill?`) reach the state of the source
-  instruction outside `R15` and `R14`, with the same zero flag.
+  `fstepF_cmovCondDstSpill`, `fstepF_setccSpill`, `fstepF_andnSpill`: the spill expansions of
+  the allocation path (`legalizeOneSrc`, `cmovSpillSeq` at every width tag of the select,
+  `setccSpill?`, `andnSpill?`) reach the state of the source instruction outside `R15` and
+  `R14`, with the same zero flag.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CmpSpillReload
@@ -441,45 +442,52 @@ theorem fstepF_copySpill (d s mov : String) (tg t1 t2 : MemTag)
   rw [hR]
   exact (hA.setScratch (fun hk => hk.1 rfl) _).setReg d _
 
-/-- The flag machine steps the register-tagged select `CMOV:64 D, [C, T, F]` by the
-    width-aware step `lsemStepN` on the register file, keeping the zero flag. -/
-theorem fstepF_cmov64_eq (D C T F : String) (cd : Option Nat) (m : LstateM) (zf : Bool) :
-    fstepF (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd) m zf
-      = (lsemStepN (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F]) m.reg).map
+/-- The select mnemonic `CMOV` at a width tag strips to `CMOV`. -/
+theorem stripWidthTag_cmov (w : Nat) : stripWidthTag (withWidthTag w "CMOV") = "CMOV" :=
+  stripWidthTag_withWidthTag w (by decide +kernel)
+
+/-- The flag machine steps the register-tagged select `CMOV D, [C, T, F]` at the width tag of
+    `w` by the width-aware step `lsemStepN` on the register file, keeping the zero flag. -/
+theorem fstepF_cmov_eq (w : Nat) (D C T F : String) (cd : Option Nat) (m : LstateM)
+    (zf : Bool) :
+    fstepF (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F], .reg cd) m zf
+      = (lsemStepN (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F]) m.reg).map
           (fun r => ({ m with reg := r }, zf)) := by
-  have hw : (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F] : LinstrR)
-      = opToLinstrR (JasminDialect.JasminOp.select 64) D [.reg C, .reg T, .reg F] := by
-    rw [opToLinstrR]; rfl
+  have hw : (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F] : LinstrR)
+      = opToLinstrR (JasminDialect.JasminOp.select w) D [.reg C, .reg T, .reg F] := rfl
   obtain ⟨h1, h2, h3, h4, h5⟩ :=
-    JasminLsemMulCarry.struct?_select (w := 64) D [.reg C, .reg T, .reg F]
-  have h6 := JasminLsemShift.sarStruct?_select (w := 64) D [.reg C, .reg T, .reg F]
+    JasminLsemMulCarry.struct?_select (w := w) D [.reg C, .reg T, .reg F]
+  have h6 := JasminLsemShift.sarStruct?_select (w := w) D [.reg C, .reg T, .reg F]
   rw [← hw] at h1 h2 h3 h4 h5 h6
   unfold fstepF
-  have hc : cmpArgs? (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd) = none := rfl
-  have hm : movRegArgs? (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd) = none :=
-    rfl
+  have hc : cmpArgs? (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F], .reg cd)
+      = none := rfl
+  have hm : movRegArgs?
+      (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F], .reg cd) = none := rfl
   simp only [hc, hm]
   rw [stepMemF_of_quiet rfl rfl rfl, lsemStepMem_reg,
     JasminLsemCast.lsemStepCast_of_delegate _ _ (Or.inl ⟨rfl, rfl⟩),
     JasminLsemMulCarry.lsemStepMC_of_delegate _ _ h1 h2 h3 h4 h5,
     JasminLsemShift.lsemStepSh_of_not_sar _ _ h6]
-  cases lsemStepN (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F]) m.reg <;> rfl
+  cases lsemStepN (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F]) m.reg <;>
+    rfl
 
-/-- **The select on substituted cells.** When the select `CMOV:64 D, [C, T, F]` steps from
-    a base `a`, the select `CMOV:64 D', [C', T', F']` steps from every base `b` whose cells
-    at `C'`, `T'`, `F'` are the cells of `a` at `C`, `T`, `F`, writing the same value. -/
-theorem fstepF_cmov64_congr {D D' C C' T T' F F' : String} {cd cd' : Option Nat}
+/-- **The select on substituted cells.** When the select `CMOV D, [C, T, F]` at the width
+    tag of `w` steps from a base `a`, the select `CMOV D', [C', T', F']` at that tag steps from
+    every base `b` whose cells at `C'`, `T'`, `F'` are the cells of `a` at `C`, `T`, `F`,
+    writing the same value. -/
+theorem fstepF_cmov_congr {w : Nat} {D D' C C' T T' F F' : String} {cd cd' : Option Nat}
     {a b t : LstateM} {zf zt : Bool}
     (hC : b.reg.lvm C' = a.reg.lvm C) (hT : b.reg.lvm T' = a.reg.lvm T)
     (hF : b.reg.lvm F' = a.reg.lvm F)
-    (h : fstepF (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd) a zf
+    (h : fstepF (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F], .reg cd) a zf
       = some (t, zt)) :
-    zt = zf ∧ ∃ (w : Nat) (v : BitVec w), t = (a.setReg D v).nextPc
-      ∧ fstepF (.Lopn [.reg D'] "CMOV:64" [.reg C', .reg T', .reg F'], .reg cd') b zf
-          = some ((b.setReg D' v).nextPc, zf) := by
-  rw [fstepF_cmov64_eq] at h
-  rw [fstepF_cmov64_eq]
-  have hs : stripWidthTag "CMOV:64" = "CMOV" := by decide +kernel
+    zt = zf ∧ ∃ (u : Nat) (v : BitVec u), t = (a.setReg D v).nextPc
+      ∧ fstepF (.Lopn [.reg D'] (withWidthTag w "CMOV") [.reg C', .reg T', .reg F'], .reg cd') b
+          zf = some ((b.setReg D' v).nextPc, zf) := by
+  rw [fstepF_cmov_eq] at h
+  rw [fstepF_cmov_eq]
+  have hs := stripWidthTag_cmov w
   have gC : b.reg.getW C' 1 = a.reg.getW C 1 := by unfold LstateN.getW; rw [hC]
   have gF : ∀ w, b.reg.getW F' w = a.reg.getW F w := fun w => by
     unfold LstateN.getW; rw [hF]
@@ -513,39 +521,44 @@ theorem lvm_setReg_self (a : LstateM) (D : String) {w : Nat} (v : BitVec w) :
     ((a.setReg D v).nextPc).reg.lvm D = ⟨w, v⟩ := by
   simp [LstateM.setReg, LstateM.nextPc]
 
-/-- **The select on a reloaded condition.** When the select `CMOV:64 D, [C, T, F]` steps
-    from a base, the pair `MOV:64 R14, C ; CMOV:64 D, [R14, T, F]` runs from every base that
+/-- **The select on a reloaded condition.** When the select `CMOV D, [C, T, F]` at the width
+    tag of `w` steps from a base, the pair `MOV:64 R14, C ; CMOV D, [R14, T, F]` runs from
+    every base that
     agrees with it outside the scratches to a base that agrees with the result outside the
     scratches, with the same zero flag, provided `C`, `T` and `F` are no scratches. -/
-theorem fstepF_cmovCondSpill (D C T F : String) (cd cd' : Option Nat) (t1 : MemTag)
+theorem fstepF_cmovCondSpill (w : Nat) (D C T F : String) (cd cd' : Option Nat)
+    (t1 : MemTag)
     (hC : KeptS C) (hT : KeptS T) (hF : KeptS F) {a a' t : LstateM} {zf zt : Bool}
     (hA : AgreeS a a')
-    (h : fstepF (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd) a zf
+    (h : fstepF (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F], .reg cd) a zf
       = some (t, zt)) :
     ∃ t', runStraightF [(.Lopn [.reg reloadScratch2] "MOV:64" [.reg C], t1),
-        (.Lopn [.reg D] "CMOV:64" [.reg reloadScratch2, .reg T, .reg F], .reg cd')] a' zf
+        (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg reloadScratch2, .reg T, .reg F],
+          .reg cd')] a' zf
         = some (t', zt) ∧ AgreeS t t' := by
   have e1 := fstepF_copyWire reloadScratch2 C "MOV:64" t1 (Or.inl stripWidthTag_mov64) a' zf
   have hX := hA.setScratch not_keptS_reloadScratch2 (a'.reg.lvm C).2
-  obtain ⟨rfl, w, v, rfl, h2⟩ := fstepF_cmov64_congr (D' := D) (cd' := cd')
+  obtain ⟨rfl, u, v, rfl, h2⟩ := fstepF_cmov_congr (D' := D) (cd' := cd')
     (by rw [lvm_copy, hA.reg C hC]) (hX.reg T hT) (hX.reg F hF) h
   exact ⟨_, by rw [runStraightF_cons, e1, Option.bind_some, runStraightF_cons, h2]; rfl,
     hX.setReg D v⟩
 
-/-- **The select into a spilled destination.** When the select `CMOV:64 D, [C, T, F]` steps
-    from a base, the pair `CMOV:64 R15, [C, T, F] ; MOV:64 D, R15` runs from every base that
+/-- **The select into a spilled destination.** When the select `CMOV D, [C, T, F]` at the
+    width tag of `w` steps from a base, the pair `CMOV R15, [C, T, F] ; MOV:64 D, R15` runs
+    from every base that
     agrees with it outside the scratches to a base that agrees with the result outside the
     scratches, with the same zero flag, provided `C`, `T` and `F` are no scratches. -/
-theorem fstepF_cmovDstSpill (D C T F : String) (cd cd' : Option Nat) (t2 : MemTag)
+theorem fstepF_cmovDstSpill (w : Nat) (D C T F : String) (cd cd' : Option Nat) (t2 : MemTag)
     (hC : KeptS C) (hT : KeptS T) (hF : KeptS F) {a a' t : LstateM} {zf zt : Bool}
     (hA : AgreeS a a')
-    (h : fstepF (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd) a zf
+    (h : fstepF (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F], .reg cd) a zf
       = some (t, zt)) :
     ∃ t', runStraightF
-        [(.Lopn [.reg reloadScratch] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd'),
+        [(.Lopn [.reg reloadScratch] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F],
+            .reg cd'),
          (.Lopn [.reg D] "MOV:64" [.reg reloadScratch], t2)] a' zf
         = some (t', zt) ∧ AgreeS t t' := by
-  obtain ⟨rfl, w, v, rfl, h2⟩ := fstepF_cmov64_congr (D' := reloadScratch) (cd' := cd')
+  obtain ⟨rfl, u, v, rfl, h2⟩ := fstepF_cmov_congr (D' := reloadScratch) (cd' := cd')
     (hA.reg C hC) (hA.reg T hT) (hA.reg F hF) h
   have e2 := fstepF_copyWire D reloadScratch "MOV:64" t2 (Or.inl stripWidthTag_mov64)
     (a'.setReg reloadScratch v).nextPc zt
@@ -554,22 +567,24 @@ theorem fstepF_cmovDstSpill (D C T F : String) (cd cd' : Option Nat) (t2 : MemTa
     (hA.setScratch not_keptS_reloadScratch v).setReg D v⟩
 
 /-- **The select on a reloaded condition into a spilled destination.** When the select
-    `CMOV:64 D, [C, T, F]` steps from a base, the sequence
-    `MOV:64 R14, C ; CMOV:64 R15, [R14, T, F] ; MOV:64 D, R15` runs from every base that
+    `CMOV D, [C, T, F]` at the width tag of `w` steps from a base, the sequence
+    `MOV:64 R14, C ; CMOV R15, [R14, T, F] ; MOV:64 D, R15` runs from every base that
     agrees with it outside the scratches to a base that agrees with the result outside the
     scratches, with the same zero flag, provided `C`, `T` and `F` are no scratches. -/
-theorem fstepF_cmovCondDstSpill (D C T F : String) (cd cd' : Option Nat) (t1 t3 : MemTag)
+theorem fstepF_cmovCondDstSpill (w : Nat) (D C T F : String) (cd cd' : Option Nat)
+    (t1 t3 : MemTag)
     (hC : KeptS C) (hT : KeptS T) (hF : KeptS F) {a a' t : LstateM} {zf zt : Bool}
     (hA : AgreeS a a')
-    (h : fstepF (.Lopn [.reg D] "CMOV:64" [.reg C, .reg T, .reg F], .reg cd) a zf
+    (h : fstepF (.Lopn [.reg D] (withWidthTag w "CMOV") [.reg C, .reg T, .reg F], .reg cd) a zf
       = some (t, zt)) :
     ∃ t', runStraightF [(.Lopn [.reg reloadScratch2] "MOV:64" [.reg C], t1),
-        (.Lopn [.reg reloadScratch] "CMOV:64" [.reg reloadScratch2, .reg T, .reg F], .reg cd'),
+        (.Lopn [.reg reloadScratch] (withWidthTag w "CMOV") [.reg reloadScratch2, .reg T, .reg F],
+          .reg cd'),
         (.Lopn [.reg D] "MOV:64" [.reg reloadScratch], t3)] a' zf
         = some (t', zt) ∧ AgreeS t t' := by
   have e1 := fstepF_copyWire reloadScratch2 C "MOV:64" t1 (Or.inl stripWidthTag_mov64) a' zf
   have hX := hA.setScratch not_keptS_reloadScratch2 (a'.reg.lvm C).2
-  obtain ⟨rfl, w, v, rfl, h2⟩ := fstepF_cmov64_congr (D' := reloadScratch) (cd' := cd')
+  obtain ⟨rfl, u, v, rfl, h2⟩ := fstepF_cmov_congr (D' := reloadScratch) (cd' := cd')
     (by rw [lvm_copy, hA.reg C hC]) (hX.reg T hT) (hX.reg F hF) h
   have e3 := fstepF_copyWire D reloadScratch "MOV:64" t3 (Or.inl stripWidthTag_mov64)
     (((a'.setReg reloadScratch2 (a'.reg.lvm C).2).nextPc).setReg reloadScratch v).nextPc zt
@@ -689,6 +704,119 @@ theorem fstepF_setccSpill (c : JasminDialect.JasminCmp) (wOp : Nat) (D A B mov :
   obtain ⟨rfl, w, v, rfl, h3⟩ := fstepF_setcc_congr (D' := reloadScratch) (cd' := cd')
     h15 h14 h
   have e4 := fstepF_copyWire D reloadScratch mov t4 (Or.inl hmov)
+    (((X1.setReg reloadScratch2 (X1.reg.lvm B).2).nextPc).setReg reloadScratch v).nextPc zt
+  rw [lvm_setReg_self] at e4
+  exact ⟨_, by
+      rw [runStraightF_cons, e1, Option.bind_some, runStraightF_cons, e2, Option.bind_some,
+        runStraightF_cons, h3, Option.bind_some, runStraightF_cons, e4]; rfl,
+    (hX2.setScratch not_keptS_reloadScratch v).setReg D v⟩
+
+/-- The flag machine steps the register-tagged and-not `ANDN:64 D, [A, B]` by the width-aware
+    step `lsemStepN` on the register file, keeping the zero flag. -/
+theorem fstepF_andn_eq (D A B : String) (cd : Option Nat) (m : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) m zf
+      = (lsemStepN (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B]) m.reg).map
+          (fun r => ({ m with reg := r }, zf)) := by
+  have n1 : ("ANDN:64" : String) ≠ withWidthTag 64 "CMP" := by decide +kernel
+  have n2 : ("ANDN:64" : String) ≠ withWidthTag 64 "ADD" := by decide +kernel
+  have n3 : ("ANDN:64" : String) ≠ withWidthTag 64 "SUB" := by decide +kernel
+  have n4 : ("ANDN:64" : String) ≠ withWidthTag 64 "AND" := by decide +kernel
+  have n5 : ("ANDN:64" : String) ≠ withWidthTag 64 "OR" := by decide +kernel
+  have n6 : ("ANDN:64" : String) ≠ withWidthTag 64 "XOR" := by decide +kernel
+  have n7 : ("ANDN:64" : String) ≠ withWidthTag 64 "ADC" := by decide +kernel
+  have n8 : ("ANDN:64" : String) ≠ withWidthTag 64 "SBB" := by decide +kernel
+  have n9 : ("ANDN:64" : String) ≠ withWidthTag 64 "ADCX" := by decide +kernel
+  have n10 : ("ANDN:64" : String) ≠ withWidthTag 64 "ADOX" := by decide +kernel
+  have n11 : ("ANDN:64" : String) ≠ withWidthTag 64 "MOV" := by decide +kernel
+  have n12 : stripWidthTag "ANDN:64" ≠ "MULXHI" := by decide +kernel
+  have hc : cmpArgs? (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) = none := by
+    simp only [cmpArgs?, n1, ite_false]
+  have hm : movRegArgs? (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) = none := rfl
+  have ha : aluFlagOp? (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) = none := by
+    simp only [aluFlagOp?, n2, n3, n4, n5, n6, ite_false]
+  have hk : carryArgs? (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) = none := by
+    simp only [carryArgs?, n7, n8, n9, n10, ite_false]
+  have hw : wideArgs? (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) = none := by
+    simp only [wideArgs?, n11, ite_false]
+  have h1 : JasminLsemMulCarry.mulhiStruct? (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B])
+      = none := by
+    simp only [JasminLsemMulCarry.mulhiStruct?, n12, ite_false]
+  unfold fstepF
+  simp only [hc, hm]
+  rw [stepMemF_of_quiet ha hk hw, lsemStepMem_reg,
+    JasminLsemCast.lsemStepCast_of_delegate _ _ (Or.inl ⟨rfl, rfl⟩),
+    JasminLsemMulCarry.lsemStepMC_of_delegate _ _ h1 rfl rfl rfl rfl,
+    JasminLsemShift.lsemStepSh_of_not_sar _ _ rfl]
+  cases lsemStepN (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B]) m.reg <;> rfl
+
+/-- **The and-not on substituted cells.** When the and-not `ANDN:64 D, [A, B]` steps from a
+    base `a`, the and-not `ANDN:64 D', [A', B']` steps from every base `b` whose cells at `A'`,
+    `B'` are the cells of `a` at `A`, `B`, writing the same value. -/
+theorem fstepF_andn_congr {D D' A A' B B' : String} {cd cd' : Option Nat} {a b t : LstateM}
+    {zf zt : Bool} (hA : b.reg.lvm A' = a.reg.lvm A) (hB : b.reg.lvm B' = a.reg.lvm B)
+    (h : fstepF (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) a zf = some (t, zt)) :
+    zt = zf ∧ ∃ (w : Nat) (v : BitVec w), t = (a.setReg D v).nextPc
+      ∧ fstepF (.Lopn [.reg D'] "ANDN:64" [.reg A', .reg B'], .reg cd') b zf
+          = some ((b.setReg D' v).nextPc, zf) := by
+  rw [fstepF_andn_eq] at h
+  rw [fstepF_andn_eq]
+  have gB : ∀ w, b.reg.getW B' w = a.reg.getW B w := fun w => by
+    unfold LstateN.getW; rw [hB]
+  have rA : readReg b.reg (.reg A') = some (a.reg.lvm A) := by simp only [readReg, hA]
+  have rA' : readReg a.reg (.reg A) = some (a.reg.lvm A) := rfl
+  simp only [lsemStepN] at h ⊢
+  rw [rA] at ⊢
+  rw [rA'] at h
+  generalize a.reg.lvm A = cA at h ⊢
+  obtain ⟨wA, vA⟩ := cA
+  simp only [evalOperandN, gB] at h ⊢
+  cases hb : a.reg.getW B wA with
+  | none => simp [hb] at h
+  | some vb =>
+      simp only [hb] at h ⊢
+      cases happ : applyOpnN wA (stripWidthTag "ANDN:64") [vA, vb] with
+      | some v =>
+          simp only [happ, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h ⊢
+          obtain ⟨rfl, rfl⟩ := h
+          exact ⟨rfl, _, v, rfl, rfl, trivial⟩
+      | none =>
+          simp only [happ] at h ⊢
+          cases hcmp : cmpOfName? (stripWidthTag "ANDN:64") with
+          | none => simp [hcmp] at h
+          | some k =>
+              simp only [hcmp, Option.map_some, Option.some.injEq, Prod.mk.injEq] at h ⊢
+              obtain ⟨rfl, rfl⟩ := h
+              exact ⟨rfl, _, JasminDialect.cmpBit k vA vb, rfl, rfl, trivial⟩
+
+/-- **The and-not on the scratches.** When the and-not `ANDN:64 D, [A, B]` steps from a base,
+    the sequence `MOV:64 R15, A ; MOV:64 R14, B ; ANDN:64 R15, [R15, R14] ; MOV:64 D, R15`
+    runs from every base that agrees with it outside the scratches to a base that agrees with
+    the result outside the scratches, with the same zero flag, provided `A` and `B` are no
+    scratches. -/
+theorem fstepF_andnSpill (D A B : String) (cd cd' : Option Nat) (t1 t2 t4 : MemTag)
+    (hA' : KeptS A) (hB' : KeptS B) {a a' t : LstateM} {zf zt : Bool} (hA : AgreeS a a')
+    (h : fstepF (.Lopn [.reg D] "ANDN:64" [.reg A, .reg B], .reg cd) a zf = some (t, zt)) :
+    ∃ t', runStraightF [(.Lopn [.reg reloadScratch] "MOV:64" [.reg A], t1),
+        (.Lopn [.reg reloadScratch2] "MOV:64" [.reg B], t2),
+        (.Lopn [.reg reloadScratch] "ANDN:64" [.reg reloadScratch, .reg reloadScratch2],
+          .reg cd'),
+        (.Lopn [.reg D] "MOV:64" [.reg reloadScratch], t4)] a' zf
+        = some (t', zt) ∧ AgreeS t t' := by
+  have hmov := stripWidthTag_mov64
+  have e1 := fstepF_copyWire reloadScratch A "MOV:64" t1 (Or.inl hmov) a' zf
+  have hX1 := hA.setScratch not_keptS_reloadScratch (a'.reg.lvm A).2
+  generalize hX1d : (a'.setReg reloadScratch (a'.reg.lvm A).2).nextPc = X1 at e1 hX1
+  have e2 := fstepF_copyWire reloadScratch2 B "MOV:64" t2 (Or.inl hmov) X1 zf
+  have hX2 := hX1.setScratch not_keptS_reloadScratch2 (X1.reg.lvm B).2
+  have h15 : ((X1.setReg reloadScratch2 (X1.reg.lvm B).2).nextPc).reg.lvm reloadScratch
+      = a.reg.lvm A := by
+    rw [lvm_copy_other _ _ reloadScratch_ne_reloadScratch2, ← hX1d, lvm_copy, hA.reg A hA']
+  have h14 : ((X1.setReg reloadScratch2 (X1.reg.lvm B).2).nextPc).reg.lvm reloadScratch2
+      = a.reg.lvm B := by
+    rw [lvm_copy, hX1.reg B hB']
+  obtain ⟨rfl, w, v, rfl, h3⟩ := fstepF_andn_congr (D' := reloadScratch) (cd' := cd')
+    h15 h14 h
+  have e4 := fstepF_copyWire D reloadScratch "MOV:64" t4 (Or.inl hmov)
     (((X1.setReg reloadScratch2 (X1.reg.lvm B).2).nextPc).setReg reloadScratch v).nextPc zt
   rw [lvm_setReg_self] at e4
   exact ⟨_, by

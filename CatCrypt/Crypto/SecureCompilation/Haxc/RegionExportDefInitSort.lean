@@ -82,7 +82,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCoalesceCfg (renArr renLo
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (opMemB)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoComplete (NoShadow noShadow_movI
   noShadow_labelI noShadow_x86Guards noShadow_seedMoves noShadow_parMoves
-  noShadow_advanceOps noShadow_flagWord x86Data_guardsNoShadow noShadow_bindOps)
+  noShadow_advanceOps noShadow_flagWord x86Data_guardsNoShadow noShadow_bindOps
+  noShadow_renArr)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionExportDefInit
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (movesOf)
 
@@ -1719,29 +1720,27 @@ theorem symReads_renArr {σ : String → String} {i : LinstrRM} (hn : NoShadow i
        · rfl)
 
 /-- **Definite assignment of the tagged code of the parts at the argument names of the
-    layout**: for the export `r` of a program over `Γ` whose bindings are in `opMemB`, which
-    has no call and no symbol-base load, at a layout with at least `Γ.length` parameters and
-    the result type `t` of the program, the tagged code of `regionCoCode` with its result
-    copy has a certificate of definite assignment at the argument names of the layout in both
-    namespaces. -/
-theorem cert_regionCoCodeS (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
-    (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
-    (hc : p.callFree = true) {r : Exported}
-    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
-    (nm : String → String) (hsym : ∀ i ∈ r.code, symReads i = [])
-    (hlen : Γ.length ≤ σ.args.length) :
+    layout, from a certificate of the tagged code**: for a code `r` without shadow instruction
+    of a call and without symbol-base load whose tagged code has a certificate of definite
+    assignment at `ExportES n` holding the returned names of type `t`, at a layout with at least
+    `n` parameters, the tagged code of `regionCoCode` with its result copy has a certificate of
+    definite assignment at the argument names of the layout in both namespaces. -/
+theorem cert_regionCoCodeS_of (n : Nat) {t : JasminTy} {r : Exported}
+    (hns : ∀ i ∈ r.code, NoShadow i) (σ : AbiLayout) (nm : String → String)
+    (hsym : ∀ i ∈ r.code, symReads i = []) (hlen : n ≤ σ.args.length)
+    (hcert : ∃ D0, Cert (ExportES n (r.code.map (renArr tagA))) (r.code.map (renArr tagA)) D0 ∧
+      ∀ q ∈ [t].zip r.res, D0 r.code.length (sortName q.1 (operandName q.2))
+        ∨ ExportES n (r.code.map (renArr tagA)) (sortName q.1 (operandName q.2))) :
     ∃ D, Cert (ArgS σ.args.length)
       ((regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)).map
         (renArr tagA)) D := by
-  have hns := RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p
-    hp hc _ _ r h
-  have hEA : ∀ y, ExportES Γ.length (r.code.map (renArr tagA)) y → ArgS σ.args.length y := by
+  have hEA : ∀ y, ExportES n (r.code.map (renArr tagA)) y → ArgS σ.args.length y := by
     rintro y (⟨j, hj, hy⟩ | ⟨i, hi, hy⟩)
     · exact ⟨j, by omega, hy⟩
     · obtain ⟨i', hi', rfl⟩ := List.mem_map.mp hi
       rw [symReads_renArr (hns i' hi'), hsym i' hi'] at hy
       cases hy
-  obtain ⟨D0, hC0, hres0⟩ := exportR_certS fn p hp hc h
+  obtain ⟨D0, hC0, hres0⟩ := hcert
   have hC1 := hC0.monoE hEA
   have hres : ∀ q ∈ [t].zip r.res, D0 r.code.length (sortName q.1 (operandName q.2))
       ∨ ArgS σ.args.length (sortName q.1 (operandName q.2)) :=
@@ -1790,6 +1789,25 @@ theorem cert_regionCoCodeS (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy
       (blk_resCopyS src (argName j) m hs (Or.inr ⟨j, hjl, Or.inr rfl⟩) m)
       (isLopn_map_resCopyCode src (argName j) m)
     exact ⟨D2, by rw [List.map_append, List.map_append, hmapM]; exact hC3⟩
+
+/-- **Definite assignment of the tagged code of the parts at the argument names of the
+    layout**: for the export `r` of a program over `Γ` whose bindings are in `opMemB`, which
+    has no call and no symbol-base load, at a layout with at least `Γ.length` parameters and
+    the result type `t` of the program, the tagged code of `regionCoCode` with its result
+    copy has a certificate of definite assignment at the argument names of the layout in both
+    namespaces (`cert_regionCoCodeS_of` at `exportR_certS`). -/
+theorem cert_regionCoCodeS (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
+    (hc : p.callFree = true) {r : Exported}
+    (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)
+    (nm : String → String) (hsym : ∀ i ∈ r.code, symReads i = [])
+    (hlen : Γ.length ≤ σ.args.length) :
+    ∃ D, Cert (ArgS σ.args.length)
+      ((regionCoCode σ nm t r.code r.res (regionCopy σ nm t none r.code r.res)).map
+        (renArr tagA)) D :=
+  cert_regionCoCodeS_of Γ.length
+    (RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow _ _ p hp hc _ _ r h)
+    σ nm hsym hlen (exportR_certS fn p hp hc h)
 
 /-! ## 14. The input of the allocation -/
 
@@ -1863,17 +1881,6 @@ theorem eq_tagA_of_isTag {y : String} (h : IsTag y) : ∃ z, y = tagA z := by
         simp only [hl, List.head?_cons, Option.some.injEq] at h
         exact ⟨rest, by rw [h]⟩
   exact ⟨String.ofList rest, String.toList_inj.mp (by rw [toList_tagA, String.toList_ofList, hr])⟩
-
-/-- The renaming of array positions keeps an instruction that is no shadow instruction of a
-    call outside the shadow instructions. -/
-theorem noShadow_renArr (σ : String → String) {i : LinstrRM} (h : NoShadow i) :
-    NoShadow (renArr σ i) := by
-  obtain ⟨w, tag⟩ := i
-  have hn' : shadowCall? w = none := h
-  show shadowCall? (renArr σ (w, tag)).1 = none
-  cases tag <;> simp only [renArr, renCallW_of_none hn'] <;>
-    (try simp only [renLoad, renStore, renZero, renStoreImm]) <;> (repeat' split) <;>
-    simp_all [shadowCall?]
 
 /-- The code renamed at its array positions has the paths of the code. -/
 theorem path_map_renArr (σ : String → String) {C : List LinstrRM} {k : Nat} {ks : List Nat} :

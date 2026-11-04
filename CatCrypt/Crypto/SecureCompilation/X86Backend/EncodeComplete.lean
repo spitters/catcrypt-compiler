@@ -35,7 +35,7 @@ a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
 
 ## Main definitions
 
-* `x86Alu`, `x86AluImm`, `x86ShiftReg`, `x86Unary`, `x86MemMov`, `x86SibLoad`,
+* `x86Alu`, `x86AluImm`, `x86ShiftReg`, `x86Andn`, `x86Unary`, `x86MemMov`, `x86SibLoad`,
   `x86SibStore`, `x86Carry3`, `x86FlagOut`, `x86WideMul`, `x86StoreImm`, `x86ZeroArr`,
   `x86SlotImm`, `x86Fixed`: the instruction families the x86 encoder builds beyond the register moves, the select and the
   materialised comparisons.
@@ -59,14 +59,15 @@ a name as memory when it is a frame slot or a `mem.*` cell (`encMemName`).
   same conditions.
 * `legalizeMov_encodable`, `legalizeOneSrc_encodable`: every instruction of a
   legalised register copy over allocated operands is encodable.
-* `cmovSpillSeq_encodable`: every instruction of the scratch select is encodable when
-  the selected values are registers.
+* `cmovSpillSeq_encodable`: every instruction of the scratch select, at any width tag, is
+  encodable when the selected values are registers.
 * `setccSpill?_encodable`: every instruction of the scratch comparison is encodable
   for the comparisons `SETE` and `SETNE`.
 * `legalizeSpillDst_encodable`: the combination, with the encodability of the
   unlegalised instruction as the hypothesis of the fall-through arm.
 * `encodableLinstrR_movImm_gp`, `encodableLinstrR_movImm_slot`, `encodableLinstrR_alu`,
-  `encodableLinstrR_aluImm`, `encodableLinstrR_shiftReg`, `encodableLinstrR_unary`,
+  `encodableLinstrR_aluImm`, `encodableLinstrR_shiftReg`, `encodableLinstrR_andn`,
+  `encodableLinstrR_cmov_gp`, `encodableLinstrR_unary`,
   `encodableLinstrR_memMov`, `encodableLinstrR_sibLoad`, `encodableLinstrR_sibStore`,
   `encodableLinstrR_carry3`, `encodableLinstrR_flagOut`, `encodableLinstrR_wideMul`,
   `encodableLinstrR_storeImm`, `encodableLinstrR_zeroArr`, `encodableLinstrR_fixed`: each family is encodable over general-purpose registers (and,
@@ -393,14 +394,24 @@ theorem carriesNoBytes_cmov64 (dn cn tn fn : String) :
   simp [carriesNoBytes, show isMulHiBinding "CMOV:64" = false from by decide +kernel,
     show ("CMOV:64" == "KEEP") = false from by decide +kernel]
 
-/-- A select over four general-purpose registers is encodable. -/
-theorem encodableLinstrR_cmov64_gp {F W Q : Nat} {dn cn tn fn : String}
-    (hd : isGpName dn = true) (hc : isGpName cn = true) (ht : isGpName tn = true)
-    (hf : isGpName fn = true) :
-    encodableLinstrR F W (.Lopn [.reg dn] "CMOV:64" [.reg cn, .reg tn, .reg fn]) Q = true := by
-  have he := GatherFullBody.encodeLopn_cmov64_emits F W dn cn tn fn Q (by simp [hd, hc, ht, hf])
-  simp [encodableLinstrR, encodeLinstrR, he, carriesNoBytes_cmov64,
-    encCmovSelect_ne_nil]
+/-- A select `CMOV` at any width tag over four general-purpose registers is encodable. -/
+theorem encodableLinstrR_cmov_gp {F W Q : Nat} {opn dn cn tn fn : String}
+    (ho : stripWidthTag opn = "CMOV") (hd : isGpName dn = true) (hc : isGpName cn = true)
+    (ht : isGpName tn = true) (hf : isGpName fn = true) :
+    encodableLinstrR F W (.Lopn [.reg dn] opn [.reg cn, .reg tn, .reg fn]) Q = true := by
+  have hb : (isCarryOutBinding opn || isMulHiBinding opn) = false := by
+    simp [isCarryOutBinding, isMulHiBinding, ho]
+  have he := GatherFullBody.dispatch_cmov_three F W _ opn "CMOV" dn cn tn fn Q hb ho rfl
+    (by decide +kernel) (by decide +kernel) (by decide +kernel) (by decide +kernel)
+    (by simp [hd, hc, ht, hf])
+  have hK : (opn == "KEEP") = false := by
+    rw [beq_eq_false_iff_ne]
+    rintro rfl
+    revert ho
+    decide +kernel
+  have hk : carriesNoBytes (.Lopn [.reg dn] opn [.reg cn, .reg tn, .reg fn]) = false := by
+    simp [carriesNoBytes, isMulHiBinding, ho, hK]
+  simp [encodableLinstrR, encodeLinstrR, he, hk, encCmovSelect_ne_nil]
 
 theorem isGpName_of_allocOp_not_spill {F W Q : Nat} {n : String} (h : AllocOp F W Q (.reg n))
     (hs : (LOperand.reg n).isSpill = false) : isGpName n = true := by
@@ -554,6 +565,10 @@ def x86AluImm (opn : String) (v : Nat) : Bool :=
     (the BMI2 `shlx`/`shrx`/`sarx`). -/
 def x86ShiftReg (opn : String) : Bool :=
   ["SHL", "SHR", "SAR"].contains (stripWidthTag opn) && mnemWidth opn == 64
+
+/-- The three-register and-nots the encoder builds: `ANDN` at the 64-bit width (the BMI1
+    `andn`). -/
+def x86Andn (opn : String) : Bool := stripWidthTag opn == "ANDN" && mnemWidth opn == 64
 
 /-- The one-source register operations the encoder builds: the count-in-tag shifts
     `SHL:n`, `SHR:n`, `SAR:n`, the negation `NEG` at the 64-bit width, and the width casts
@@ -760,6 +775,17 @@ theorem encodableLinstrR_shiftReg {F W Q : Nat} {opn dn an sn : String}
     simp [encodeLopn, isCarryOutBinding, isMulHiBinding, h, adxPrefix, tagShiftExt, aluOpcode,
       twoByteOpcode, rexW, hw, hd, ha, hs, ScalarEncoder.encShiftX,
       ScalarEncoder.encVex3RR]
+
+/-- **A three-register and-not of `x86Andn` over general-purpose registers is encodable.** -/
+theorem encodableLinstrR_andn {F W Q : Nat} {opn dn an sn : String}
+    (ho : x86Andn opn = true) (hd : isGpName dn = true) (ha : isGpName an = true)
+    (hs : isGpName sn = true) :
+    encodableLinstrR F W (.Lopn [.reg dn] opn [.reg an, .reg sn]) Q = true := by
+  apply encodable_lopn_of_ne_nil
+  simp only [x86Andn, Bool.and_eq_true, beq_iff_eq] at ho
+  obtain ⟨ho, hw⟩ := ho
+  simp [encodeLopn, isCarryOutBinding, isMulHiBinding, ho, adxPrefix, tagShiftExt, aluOpcode,
+    twoByteOpcode, setccCmpOp, rexW, hw, hd, ha, hs, ScalarEncoder.encVex3RR]
 
 /-- **A one-source register operation of `x86Unary` over general-purpose registers is
     encodable.** -/
@@ -1025,7 +1051,7 @@ end LoadCSE
     `OpResolves` holds; a spill slot has a frame offset when `spillQsaveOff` parses; the
     memory names are `encMemName`; the materialised comparisons are `isSetccEncMnem` against
     a register and `isSetccImmEnc` against an immediate; the further families are decided by
-    `x86SlotImm`, `x86Alu`, `x86AluImm`, `x86ShiftReg`, `x86Unary`, `x86MemMov`,
+    `x86SlotImm`, `x86Alu`, `x86AluImm`, `x86ShiftReg`, `x86Andn`, `x86Unary`, `x86MemMov`,
     `x86SibLoad`, `x86SibStore`, `x86Carry3`, `x86FlagOut`, `x86WideMul`, `x86StoreImm`,
     `x86ZeroArr`, `x86LeaFa` and `x86Fixed`. -/
 def x86Enc : IsaEncoder where
@@ -1042,6 +1068,7 @@ def x86Enc : IsaEncoder where
   alu := x86Alu
   aluImm := x86AluImm
   shiftReg := x86ShiftReg
+  andn := x86Andn
   unary := x86Unary
   memMov := x86MemMov
   sibLoad := x86SibLoad
@@ -1069,10 +1096,12 @@ def x86MovB (c : Nat × Nat × Nat) : LinstrR → Bool
         !(encMemName d && encMemName s)
   | _ => false
 
-/-- The decision of the selects of `LegalForm` at the x86 encoder. -/
+/-- The decision of the selects of `LegalForm` at the x86 encoder: `CMOV` at a width tag (the
+    64-bit tag tested first) over four general-purpose registers. -/
 def x86SelectB : LinstrR → Bool
   | .Lopn [.reg dn] m [.reg cn, .reg tn, .reg fn] =>
-      m == withWidthTag 64 "CMOV" && isGpName dn && isGpName cn && isGpName tn && isGpName fn
+      (m == withWidthTag 64 "CMOV" || stripWidthTag m == "CMOV") && isGpName dn &&
+        isGpName cn && isGpName tn && isGpName fn
   | _ => false
 
 /-- The decision of the materialised comparisons of `LegalForm` at the x86 encoder. -/
@@ -1111,6 +1140,12 @@ def x86AluImmB : LinstrR → Bool
 def x86ShiftRegB : LinstrR → Bool
   | .Lopn [.reg dn] opn [.reg an, .reg sn] =>
       x86ShiftReg opn && isGpName dn && isGpName an && isGpName sn
+  | _ => false
+
+/-- The decision of the three-register and-nots of `LegalForm` at the x86 encoder. -/
+def x86AndnB : LinstrR → Bool
+  | .Lopn [.reg dn] opn [.reg an, .reg sn] =>
+      x86Andn opn && isGpName dn && isGpName an && isGpName sn
   | _ => false
 
 /-- The decision of the one-source register operations of `LegalForm` at the x86 encoder. -/
@@ -1181,14 +1216,14 @@ def x86LegalB (c : Nat × Nat × Nat) (i : LinstrR) : Bool :=
   x86MovB c i || x86SelectB i || x86SetccB i || x86SetccImmB i || x86MovImmB c i ||
     x86AluB i || x86AluImmB i || x86ShiftRegB i || x86UnaryB i || x86MemMovB c i ||
     x86SibLoadB i || x86SibStoreB i || x86Carry3B i || x86FlagOutB i || x86WideMulB i ||
-    x86Fixed i || x86StoreImmB i || x86ZeroArrB i || x86LeaFaB i
+    x86Fixed i || x86StoreImmB i || x86ZeroArrB i || x86LeaFaB i || x86AndnB i
 
 /-- A decision of a family of `x86LegalB` gives a legal form. -/
 theorem legalForm_of_x86LegalB {c : Nat × Nat × Nat} {i : LinstrR} (h : x86LegalB c i = true) :
     LegalForm X86Isa.x86Isa x86Enc c i := by
   simp only [x86LegalB, Bool.or_eq_true] at h
-  rcases h with (((((((((((((((((h | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) |
-    h) | h) | h) | h) | h) | h
+  rcases h with ((((((((((((((((((h | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) | h) |
+    h) | h) | h) | h) | h) | h) | h
   rotate_left 15
   · exact .fixed i h
   · unfold x86StoreImmB at h; split at h
@@ -1208,15 +1243,23 @@ theorem legalForm_of_x86LegalB {c : Nat × Nat × Nat} {i : LinstrR} (h : x86Leg
     · simp only [Bool.and_eq_true] at h
       exact .leaFa _ _ _ h.1 h.2
     · cases h
+  · unfold x86AndnB at h; split at h
+    · simp only [Bool.and_eq_true] at h
+      obtain ⟨⟨⟨ho, h1⟩, h2⟩, h3⟩ := h
+      exact .andn _ _ _ _ ho h1 h2 h3
+    · cases h
   · unfold x86MovB at h; split at h
     · simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
       obtain ⟨⟨⟨hm, hd⟩, hs⟩, hds⟩ := h
       exact .mov _ _ _ hm (opResolvesB_iff.1 hd) (opResolvesB_iff.1 hs) hds
     · cases h
   · unfold x86SelectB at h; split at h
-    · simp only [Bool.and_eq_true, beq_iff_eq] at h
-      obtain ⟨⟨⟨⟨rfl, h1⟩, h2⟩, h3⟩, h4⟩ := h
-      exact .select "CMOV" _ _ _ _ rfl h1 h2 h3 h4
+    · simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h
+      obtain ⟨⟨⟨⟨hm, h1⟩, h2⟩, h3⟩, h4⟩ := h
+      refine .select "CMOV" _ _ _ _ _ rfl ?_ h1 h2 h3 h4
+      rcases hm with rfl | hm
+      · decide +kernel
+      · exact hm
     · cases h
   · unfold x86SetccB at h; split at h
     · simp only [Bool.and_eq_true] at h
@@ -1294,14 +1337,14 @@ theorem x86LegalB_of_legalForm {c : Nat × Nat × Nat} {i : LinstrR}
     have hs' := opResolvesB_iff.2 hs
     change (encMemName d && encMemName s) = false at hds
     simp [x86MovB, hm, hd', hs', hds]
-  | select m dn cn tn fn hsel h1 h2 h3 h4 =>
+  | select m opn dn cn tn fn hsel hs h1 h2 h3 h4 =>
     have hm : m = "CMOV" := (Option.some.inj hsel).symm
     subst hm
     change isGpName dn = true at h1
     change isGpName cn = true at h2
     change isGpName tn = true at h3
     change isGpName fn = true at h4
-    simp [x86SelectB, h1, h2, h3, h4]
+    simp [x86SelectB, hs, h1, h2, h3, h4]
   | setcc opn dn an sn ho h1 h2 h3 =>
     change isSetccEncMnem opn = true at ho
     change isGpName dn = true at h1
@@ -1335,6 +1378,12 @@ theorem x86LegalB_of_legalForm {c : Nat × Nat × Nat} {i : LinstrR}
     change isGpName an = true at h2
     change isGpName sn = true at h3
     simp [x86ShiftRegB, ho, h1, h2, h3]
+  | andn opn dn an sn ho h1 h2 h3 =>
+    change x86Andn opn = true at ho
+    change isGpName dn = true at h1
+    change isGpName an = true at h2
+    change isGpName sn = true at h3
+    simp [x86AndnB, ho, h1, h2, h3]
   | unary opn dn sn ho h1 h2 =>
     change x86Unary opn = true at ho
     change isGpName dn = true at h1
@@ -1469,10 +1518,10 @@ theorem x86Enc_complete : EncoderComplete VIR.LprogIsa.x86Backend x86Enc where
       simp [encMemName_of_isGpName hg]
     · show (encMemName d && encMemName s) = false
       simp [encMemName_of_isGpName hg]
-  select_reg m hm c dn cn tn fn hd hc ht hf := by
+  select_reg m hm c opn dn cn tn fn hs hd hc ht hf := by
     have hm' : m = "CMOV" := (Option.some.inj hm).symm
     subst hm'
-    exact encodableLinstrR_cmov64_gp hd hc ht hf
+    exact encodableLinstrR_cmov_gp hs hd hc ht hf
   setcc_reg c opn dn an sn ho hd ha hs := encodableLinstrR_setcc_gp ho hd ha hs
   setccImm_reg c opn dn an v ho hd ha := encodableLinstrR_setccImm_gp ho hd ha
   movImm_reg _ _ _ _ hm hd := encodableLinstrR_movImm_gp hm hd
@@ -1480,6 +1529,7 @@ theorem x86Enc_complete : EncoderComplete VIR.LprogIsa.x86Backend x86Enc where
   alu_reg _ _ _ _ ho hd hs := encodableLinstrR_alu ho hd hs
   alu_imm _ _ _ _ ho hd := encodableLinstrR_aluImm ho hd
   shift_reg _ _ _ _ _ ho hd ha hs := encodableLinstrR_shiftReg ho hd ha hs
+  andn_reg _ _ _ _ _ ho hd ha hs := encodableLinstrR_andn ho hd ha hs
   unary_reg _ _ _ _ ho hd hs := encodableLinstrR_unary ho hd hs
   memMov_res _ _ _ _ hm hd hs hds := encodableLinstrR_memMov hm hd hs hds
   sibLoad_reg _ _ _ _ _ _ ho hd hb hx := encodableLinstrR_sibLoad ho hd hb hx
@@ -1516,14 +1566,14 @@ theorem legalizeOneSrc_encodable {F W Q : Nat} {u64 : Bool} {opn : String} {d s 
 
 /-! ## The scratch select -/
 
-/-- **Every instruction of the scratch select is encodable** when the destination and
-    the condition are allocated and the selected values are general-purpose
-    registers. -/
-theorem cmovSpillSeq_encodable {F W Q : Nat} {d c : LOperand} {tn fn : String}
-    (hd : AllocOp F W Q d) (hc : AllocOp F W Q c) (ht : isGpName tn = true)
-    (hf : isGpName fn = true) :
-    ∀ i ∈ cmovSpillSeq "CMOV:64" d c (.reg tn) (.reg fn), encodableLinstrR F W i Q = true :=
-  x86Enc_complete.cmovSpillSeqI_encodable (c := (F, W, Q)) x86Isa_selectMnemonic
+/-- **Every instruction of the scratch select is encodable** when the select is `CMOV` at a
+    width tag, the destination and the condition are allocated and the selected values are
+    general-purpose registers. -/
+theorem cmovSpillSeq_encodable {F W Q : Nat} {opn : String} {d c : LOperand} {tn fn : String}
+    (ho : stripWidthTag opn = "CMOV") (hd : AllocOp F W Q d) (hc : AllocOp F W Q c)
+    (ht : isGpName tn = true) (hf : isGpName fn = true) :
+    ∀ i ∈ cmovSpillSeq opn d c (.reg tn) (.reg fn), encodableLinstrR F W i Q = true :=
+  x86Enc_complete.cmovSpillSeqI_encodable (c := (F, W, Q)) x86Isa_selectMnemonic ho
     (allocOp_iff_allocOpI.1 hd)
     (allocOp_iff_allocOpI.1 hc) ht hf
 
@@ -1543,21 +1593,20 @@ theorem setccSpill?_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String
 
 /-- **Every instruction of `legalizeSpillDst` is encodable**, for allocated operands:
     the scratch select when its selected values are registers, the scratch comparison
-    when it is `SETE` or `SETNE`, and the single instruction when it is itself
-    encodable, on an instruction without a scratch and-not. -/
+    when it is `SETE` or `SETNE`, the scratch and-not, and the single instruction when it is
+    itself encodable. -/
 theorem legalizeSpillDst_encodable {F W Q : Nat} {dsts : List LOperand} {opn : String}
     {srcs : List LOperand}
     (hd : ∀ o ∈ dsts, AllocOp F W Q o) (hs : ∀ o ∈ srcs, AllocOp F W Q o)
-    (hsel : ∀ c t f, srcs = [c, t, f] → opn = "CMOV:64" →
+    (hsel : ∀ c t f, srcs = [c, t, f] → stripWidthTag opn = "CMOV" →
       ∃ tn fn, t = .reg tn ∧ f = .reg fn ∧ isGpName tn = true ∧ isGpName fn = true)
     (hcmp : isSetccMnem opn = true → isSetccEncMnem opn = true)
-    (handn : andnSpill? dsts opn srcs = none)
     (hone : cmovSpillDst? dsts opn srcs = none → setccSpill? dsts opn srcs = none →
-      encodableLinstrR F W (.Lopn dsts opn srcs) Q = true) :
+      andnSpill? dsts opn srcs = none → encodableLinstrR F W (.Lopn dsts opn srcs) Q = true) :
     ∀ i ∈ legalizeSpillDst dsts opn srcs, encodableLinstrR F W i Q = true :=
   x86Enc_complete.legalizeSpillDstI_encodable (c := (F, W, Q)) x86Isa_selectMnemonic
     (fun o ho => allocOp_iff_allocOpI.1 (hd o ho)) (fun o ho => allocOp_iff_allocOpI.1 (hs o ho))
-    hsel hcmp handn hone
+    hsel hcmp (by decide +kernel) hone
 
 /-! ## Load forwarding -/
 

@@ -117,8 +117,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytes
     that is constant time at the source events for labels `L` that agree with the public
     data of `σ`, at every fuel. Then the leaky runs of `q` under `ctRegime`, with no side
     condition on the steps, from entry states that agree on the public data of `σ` and
-    satisfy `regionPre σ p` have equal traces. The proof is `regionWide_bytes_ct` at the
-    export and the printed body of `compileRegion_spec`, with the valuations of both entry
+    satisfy `regionPre σ p` have equal traces. The proof is `regionWide_bytes_ct_of_regionExp`
+    at the webs of the export and the printed body of `compileRegion_spec`, with the valuations of
+    both entry
     states from the precondition. -/
 theorem regionPre_bytes_ct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
@@ -129,13 +130,14 @@ theorem regionPre_bytes_ct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
       (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ regionPre σ p s₁ ∧ regionPre σ p s₂)
       (fun s tr => ∃ s', RunL ctRegime (fun _ _ => True) q 0 s tr s') := by
   have hcf := callFree_of_compileRegion h
-  obtain ⟨hB, r, b, cert, hr, hb, hco, hck, -⟩ := compileRegion_spec h
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, hck, -⟩ := compileRegion_spec h
   obtain ⟨hlk, hprW, hgW⟩ := regionCtB_spec hck
   rw [encodeLfundefBytesChecked_eq hb] at hq
   rintro sa₁ sa₂ u₁ u₂ ⟨hag, ⟨h₁, V₁, fuel, v₁, hV₁, hv₁⟩, ⟨h₂, V₂, -, -, hV₂, -⟩⟩ hb₁ hb₂
-  exact regionWide_bytes_ct JLeakParams.owned a.fname fuel (regionExportableB_sound hB)
-    (legalizeRegion_callFree hcf)
-    (nfCT_restrict _ σ (fun _ => True) (nfct_legalizeRegion (fun _ => rfl) (hsrc fuel))) hr hco
+  exact regionWide_bytes_ct_of_regionExp JLeakParams.owned a.fname fuel
+    (regionExportableB_sound hB) (legalizeRegion_callFree hcf)
+    (nfCT_restrict _ σ (fun _ => True) (nfct_legalizeRegion (fun _ => rfl) (hsrc fuel)))
+    (regionExp_webs _ hr) (regionWebsLeak_of_regionExp (regionExp_webs _ hr)) hco
     hlk hprW hgW (fun _ _ => True) hq
     sa₁ sa₂ u₁ u₂
     ⟨V₁, V₂, pubEqV_of_pubAgree hL hag hV₁ hV₂, hV₁, hV₂, h₁, h₂, trivial, trivial, hag.1,

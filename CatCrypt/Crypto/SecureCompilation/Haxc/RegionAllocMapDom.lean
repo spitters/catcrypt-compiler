@@ -1411,6 +1411,58 @@ theorem exportR_res_ne (fn : String) {Γ : Ctxt jasminDialect} {ts : List Jasmin
   · exact argName_ne_empty j
   · exact (exportRegName_regName j).ne_empty
 
+/-- **The mnemonic facts of an exported code** on x86 of a program without `call` that passes
+    `regionExportableB`: the export by `exportR_mnemDom`; the renaming of array positions keeps
+    the symbol-base loads (`symReads_renArr`), fixes a compare (`renArr_of_cmp`) and keeps the
+    shape (`shapeB_renArr`). -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.mnemDom {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (hp : regionExportableB p = true) (hc : p.callFree = true) : ∀ i ∈ r.code, MnemDom i := by
+  obtain ⟨r0, h0, hr | hr⟩ := h <;> subst r
+  · exact exportR_mnemDom _ _ p hp hc _ _ r0 h0
+  · have key := forall_mem_regionWebs (P := fun i => RegionCoComplete.NoShadow i ∧ MnemDom i)
+      (fun σ i hi => ⟨RegionCoComplete.noShadow_renArr σ hi.1,
+        by rw [RegionExportDefInitSort.symReads_renArr hi.1]; exact hi.2.1,
+        fun hcmp => by
+          have hc' := RegionExportDefInitSort.isSome_cmpArgs?_of_renArr σ hcmp
+          rw [RegionExportDefInitSort.renArr_of_cmp σ hc']
+          exact hi.2.2.1 hc',
+        shapeB_renArr σ hi.2.2.2⟩) ex r0 (fun _ _ => none) (fun _ => none)
+      (fun i hi => ⟨RegionCoComplete.exportR_noShadow RegionCoComplete.x86Data_guardsNoShadow
+        _ _ p hp hc _ _ r0 h0 i hi, exportR_mnemDom _ _ p hp hc _ _ r0 h0 i hi⟩)
+    exact fun i hi => (key i hi).2
+
+/-- **The names of an exported code are not empty**: the export by `exportR_namesNE`; a web
+    name is not empty (`namesNE_renArr`). -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.namesNE {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r)
+    (hp : regionExportableB p = true) (hc : p.callFree = true) :
+    ∀ i ∈ r.code, NamesNE i.1 := by
+  obtain ⟨r0, h0, hr | hr⟩ := h <;> subst r
+  · exact exportR_namesNE _ p hp hc h0
+  · have key := RegionExportDefInit.forall_mem_regionWebs_web
+      (P := fun i => ShapeB i.1 ∧ NamesNE i.1)
+      (fun σ i hσ hi => ⟨shapeB_renArr σ hi.1, namesNE_renArr (fun x hx => by
+        rcases hσ x with he | ⟨n, he⟩ <;> rw [he]
+        · exact hx
+        · intro h0
+          have := congrArg String.length h0
+          simp at this) hi.1 hi.2⟩) ex r0 (fun _ _ => none) (fun _ => none)
+      (fun i hi => ⟨(exportR_mnemDom _ _ p hp hc _ _ r0 h0 i hi).2.2,
+        exportR_namesNE _ p hp hc h0 i hi⟩)
+    exact fun i hi => (key i hi).2
+
+/-- The returned operands of an exported code are registers with non-empty names. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.res_ne {fn : String}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {ex : List String} {r : Exported} (h : RegionExp fn p ex r) :
+    ∀ o ∈ r.res, ∃ x, o = .reg x ∧ x ≠ "" := by
+  obtain ⟨r0, h0, -⟩ := id h
+  rw [h.res h0]
+  exact exportR_res_ne _ p h0
+
 /-- **The domain facts of the body the allocation certifies**: at the export `r` of a program
     without `call` that passes `regionExportableB`, the body `B := regionAllocBody a Γ.length
     ts r` does not name the empty name, is no straight-line call body, and under the size
@@ -1418,8 +1470,8 @@ theorem exportR_res_ne (fn : String) {Γ : Ctxt jasminDialect} {ts : List Jasmin
     register and meets the bound `hfit` of the linear scan. -/
 theorem regionAllocBody_dom (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (hp : regionExportableB p = true)
-    (hcf : p.callFree = true) {r : Exported}
-    (hr : exportR Γ.length a.fname p Γ.length 0 x86Data = some r) :
+    (hcf : p.callFree = true) {ex : List String} {r : Exported}
+    (hr : RegionExp a.fname p ex r) :
     "" ∉ bodyNames (regionAllocBody a Γ.length ts r)
       ∧ bodyStraightCall (regionAllocBody a Γ.length ts r) = false
       ∧ (numGPRegs + (bodyNames (regionAllocBody a Γ.length ts r)).length + 1 ≤ vectorBase →
@@ -1428,11 +1480,11 @@ theorem regionAllocBody_dom (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List 
           ∧ numGPRegs + (physLiveItems (bodyTraceOut (regionAllocBody a Γ.length ts r)
             [])).length ≤ vectorBase) := by
   have hshape : ∀ i ∈ r.code, ShapeB i.1 :=
-    fun i hi => (exportR_mnemDom Γ.length a.fname p hp hcf _ _ r hr i hi).2.2
+    fun i hi => (hr.mnemDom hp hcf i hi).2.2
   have hB := shapeB_regionAllocBody a Γ.length ts r hshape
   refine ⟨empty_not_mem_bodyNames (namesNE_regionAllocBody a Γ.length ts r
-    (fun i hi => ⟨hshape i hi, exportR_namesNE a.fname p hp hcf hr i hi⟩)
-    (exportR_res_ne a.fname p hr)), bodyStraightCall_of_shapeB hB, fun hsize => ⟨?_, ?_⟩⟩
+    (fun i hi => ⟨hshape i hi, hr.namesNE hp hcf i hi⟩)
+    hr.res_ne), bodyStraightCall_of_shapeB hB, fun hsize => ⟨?_, ?_⟩⟩
   · exact allocName_not_vec hB hsize
   · have := physLiveItems_length_le (regionAllocBody a Γ.length ts r)
     omega
@@ -1453,7 +1505,8 @@ theorem mergeSep_regionLprogC_dom (a : AbiNames) (σ : AbiLayout) {ts : List Jas
     (p : NFProg jasminDialect (nfCtx σ) ts) (hp : regionExportableB p = true)
     (hcf : p.callFree = true) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert)) :
-    ∃ r, exportR (nfCtx σ).length a.fname p (nfCtx σ).length 0 x86Data = some r
+    ∃ r0 r, exportR (nfCtx σ).length a.fname p (nfCtx σ).length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (nm : String → String) (body : Lcmd) (t : JasminTy),
         let B := regionAllocBody a (nfCtx σ).length ts r
         let d := regionCoParts σ nm body t r.code r.res cert none
@@ -1471,13 +1524,15 @@ theorem mergeSep_regionLprogC_dom (a : AbiNames) (σ : AbiLayout) {ts : List Jas
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
             y ≠ allocName B (regionAllocTbl B) x) →
         MergeSep d := by
-  obtain ⟨r, hr, hM⟩ := mergeSep_regionLprogC a p hp hcf ex hP
-  refine ⟨r, hr, ?_⟩
+  obtain ⟨r0, r, hr0, rfl, hM⟩ := mergeSep_regionLprogC a p hp hcf ex hP
+  refine ⟨r0, _, hr0, rfl, ?_⟩
+  have hr : RegionExp a.fname p ex (regionWebsAt ex none r0) := regionExp_webs ex hr0
   intro nm body t B d K hRA hArg hts hsize hcov hnp
   obtain ⟨h0, hsc, hfit⟩ := regionAllocBody_dom a p hp hcf hr
   obtain ⟨hvec, hfit⟩ := hfit hsize
   exact hM σ nm body t h0 hRA hArg (nfCtx_length σ).le (fun n _ => hvec n)
-    (exportR_symReads _ _ p hp hcf hr) (exportR_cmpReads _ _ p hp hcf hr) hts hfit hsc hcov hnp
+    (fun i hi => (hr.mnemDom hp hcf i hi).1) (fun i hi => (hr.mnemDom hp hcf i hi).2.1) hts hfit
+    hsc hcov hnp
 
 /-! ## 8. The layout conditions -/
 
@@ -1563,7 +1618,8 @@ theorem mergeSep_regionLprogC_layout (a : AbiNames) (σ : AbiLayout) {ts : List 
     (hcf : p.callFree = true) (ex : List String) {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a p none ex = some (P, cert))
     (hσ : layoutOkB σ = true) :
-    ∃ r, exportR (nfCtx σ).length a.fname p (nfCtx σ).length 0 x86Data = some r
+    ∃ r0 r, exportR (nfCtx σ).length a.fname p (nfCtx σ).length 0 x86Data = some r0
+      ∧ r = regionWebsAt ex none r0
       ∧ ∀ (body : Lcmd) (t : JasminTy),
         let B := regionAllocBody a (nfCtx σ).length ts r
         let d := regionCoParts σ exportReg body t r.code r.res cert none
@@ -1579,8 +1635,8 @@ theorem mergeSep_regionLprogC_layout (a : AbiNames) (σ : AbiLayout) {ts : List 
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
             y ≠ allocName B (regionAllocTbl B) x) →
         MergeSep d := by
-  obtain ⟨r, hr, hM⟩ := mergeSep_regionLprogC_dom a σ p hp hcf ex hP
+  obtain ⟨r0, r, hr, hw, hM⟩ := mergeSep_regionLprogC_dom a σ p hp hcf ex hP
   obtain ⟨hRA, hArg, -⟩ := layoutOkB_sound hσ
-  exact ⟨r, hr, fun body t => hM exportReg body t hRA hArg⟩
+  exact ⟨r0, r, hr, hw, fun body t => hM exportReg body t hRA hArg⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapDom

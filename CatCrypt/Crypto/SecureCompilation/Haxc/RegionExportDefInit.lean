@@ -62,8 +62,8 @@ up to the back edge are entered only from inside the loop.
 ## The steps to the input of the allocation
 
 Without a callee the allocation of `regionLprog` takes
-`regionAllocCode (r.code ++ regionLprogCopy a none ts r.code r.res) []`, where
-`regionWebsAt ex none r = r` and
+`regionAllocCode (r.code ++ regionLprogCopy a none ts r.code r.res) []`, where `r` is the
+webs `regionWebsAt ex none r0` of the export `r0`, and
 `regionAllocCode C outs = backEdgePins (pinSelfMoves (C.map (renArr σ)))` at the coalescing
 renaming `σ = canonMemrefName (aliasTab outs C)`. The certificates and the nesting are carried
 through each step:
@@ -2440,10 +2440,6 @@ theorem Cert.renRM {E : String → Prop} {code : List LinstrRM} {D : Nat → Str
       simp only [JasminLsemExportTransfer.renRM, defNames_renLinstrR]
       exact List.mem_map_of_mem hy)
 
-/-- Without a callee the webs of the exported code are the exported code. -/
-theorem regionWebsAt_none_code (ex : List String) (r : Exported) :
-    (regionWebsAt ex none r).code = r.code := rfl
-
 /-- A control instruction: a label or a jump. -/
 def IsCtl (i : LinstrRM) : Prop := labelOf? i.1 ≠ none ∨ jumpLabel? i.1 ≠ none
 
@@ -3803,6 +3799,20 @@ theorem defNames_renArr_noCall (σ : String → String) {i : LinstrRM}
     simp_all [X86Backend.ImageStraightRoute.arrWrite, storeStruct?, zeroStruct?,
       storeImmStruct?, defNames, JasminLsemExportRewrites.opNames]
 
+/-- **The names the renaming of array positions writes**: outside a shadow instruction of a
+    call, a name written by `renArr σ i` is written by `i` or is the image under `σ` of a name
+    written by `i`. -/
+theorem mem_defNames_renArr (σ : String → String) {i : LinstrRM}
+    (h : LprogIsa.shadowCall? i.1 = none) {x : String} (hx : x ∈ defNames (renArr σ i).1) :
+    x ∈ defNames i.1 ∨ ∃ y ∈ defNames i.1, x = σ y := by
+  obtain ⟨w, tag⟩ := i
+  cases tag <;> simp only [renArr] at hx <;>
+    (try simp only [X86Backend.ImageCoalesceCfg.renCallW_of_none h] at hx) <;>
+    (try simp only [X86Backend.ImageCoalesceCfg.renLoad, X86Backend.ImageCoalesceCfg.renStore,
+      X86Backend.ImageCoalesceCfg.renZero, X86Backend.ImageCoalesceCfg.renStoreImm] at hx) <;>
+    (repeat' split at hx) <;>
+    simp_all [defNames, JasminLsemExportRewrites.opNames]
+
 /-- The renaming of array positions writes the image of the array of a store or an array
     zeroing. -/
 theorem defNames_renArr_arrWrite (σ : String → String) {i : LinstrRM} {d : String}
@@ -4104,8 +4114,30 @@ theorem regionWebs_webB (ex : List String) (r : Exported) :
       ∧ regionWebs ex r = { r with code := webRen w (fun _ => none) r.code } := by
   unfold regionWebs
   split
-  · exact Or.inr ⟨_, ‹_›, rfl⟩
+  · next hc => exact Or.inr ⟨_, ((Bool.and_eq_true _ _).mp hc).1, rfl⟩
   · exact Or.inl rfl
+
+/-- **A renaming into web names**: every name is sent to itself or to a web name of it, the
+    name followed by `#w` and a number (`ArrWebs.webLook_cases`). -/
+def WebNameRen (σ : String → String) : Prop :=
+  ∀ x, σ x = x ∨ ∃ n : Nat, σ x = x ++ "#w" ++ toString n
+
+/-- **Facts kept by renamings into web names hold on the webs.** A predicate on instructions
+    that every renaming `renArr σ` into web names keeps and that holds on every instruction of
+    the code of `r` holds on every instruction of the code of `regionWebs ex r aa ao`. -/
+theorem forall_mem_regionWebs_web {P : LinstrRM → Prop}
+    (hP : ∀ σ i, WebNameRen σ → P i → P (renArr σ i)) (ex : List String) (r : Exported)
+    (aa : String → Nat → Option Nat) (ao : String → Option Nat)
+    (h : ∀ i ∈ r.code, P i) : ∀ j ∈ (regionWebs ex r aa ao).code, P j := by
+  intro j hj
+  unfold regionWebs at hj
+  split at hj
+  · dsimp only [webRen] at hj
+    obtain ⟨k, hk, rfl⟩ := List.mem_mapIdx.mp hj
+    refine hP _ _ (fun x => ?_) (h _ (List.getElem_mem hk))
+    unfold stepRen
+    split <;> exact X86Backend.ArrWebs.webLook_cases _ _ _
+  · exact h j hj
 
 /-- **An exported code has no unconditional jump.** -/
 theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.noGoto

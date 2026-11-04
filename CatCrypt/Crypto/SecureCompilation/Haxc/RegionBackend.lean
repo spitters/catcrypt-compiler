@@ -3233,8 +3233,11 @@ def regionWebsObs (ex : List String) (r : Exported) : List String :=
 /-- **The webs of the exported code** `r`, at the names `ex` read after it and the array
     positions `aa` and result lengths `ao` of the called symbols: the code renamed by the
     position map `ArrWebs.webMap` of the liveness table `liveArrTab` of the code from the
-    names `regionWebsObs ex r`, when the check `ArrWebs.webB` accepts that map; `r`
-    otherwise. -/
+    names `regionWebsObs ex r`, when the check `ArrWebs.webB` accepts that map and the
+    renamed code keeps the events of the code (`ArrWebsLeak.webLeakB`); `r` otherwise. The
+    second check makes the events of the webs those of the export renamed position by
+    position, so that constant time of the export carries to the webs
+    (`regionWebsLeak_of_regionExp`). -/
 def regionWebs (ex : List String) (r : Exported)
     (aa : String → Nat → Option Nat := fun _ _ => none)
     (ao : String → Option Nat := fun _ => none) : Exported :=
@@ -3242,7 +3245,11 @@ def regionWebs (ex : List String) (r : Exported)
       (X86Backend.ArrWebs.webLook (X86Backend.ArrWebs.webTab ao
         (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao false)) (regionWebsObs ex r) r.code))
       r.code (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao false)) (regionWebsObs ex r)
-      aa ao then
+      aa ao
+    && X86Backend.ArrWebsLeak.webLeakB
+      (X86Backend.ArrWebs.webLook (X86Backend.ArrWebs.webTab ao
+        (tabAt (liveArrTab r.code (regionWebsObs ex r) aa ao false)) (regionWebsObs ex r) r.code))
+      ao r.code then
     { r with
       code := X86Backend.ArrWebs.webRen
         (X86Backend.ArrWebs.webLook (X86Backend.ArrWebs.webTab ao
@@ -3294,7 +3301,8 @@ theorem regionWebs_run {I : LprogIsa.Isa} {aa : String → Nat → Option Nat}
   unfold regionWebs
   split
   · rename_i hc
-    obtain ⟨t', ht', hRt, -, -⟩ := X86Backend.ArrWebs.lsemFuelMemF_webs_entry hle hcl hc
+    rw [Bool.and_eq_true] at hc
+    obtain ⟨t', ht', hRt, -, -⟩ := X86Backend.ArrWebs.lsemFuelMemF_webs_entry hle hcl hc.1
       fuel hf hpc ⟨rfl, rfl, rfl, rfl, fun _ _ => rfl⟩ rfl rfl h
     exact ⟨t', ht', by rw [X86Backend.ImageCoalesceCfg.coRel_lpc hRt, ht],
       (hS.lsemFuelMemF_lfn _ _ _ _ ht').trans hf, by rw [hRt.reg], fun x hx => hRt.arr x hx⟩
@@ -3363,6 +3371,13 @@ theorem regionExp_of_exportR {fn : String} {Γ : Ctxt jasminDialect} {ts : List 
     {p : NFProg jasminDialect Γ ts} (ex : List String) {r : Exported}
     (hr : exportR Γ.length fn p Γ.length 0 = some r) : RegionExp fn p ex r :=
   ⟨r, hr, Or.inl rfl⟩
+
+/-- The webs of the export of a program are an exported code of it. -/
+theorem regionExp_webs {fn : String} {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} (ex : List String) {r : Exported}
+    (hr : exportR Γ.length fn p Γ.length 0 = some r) :
+    RegionExp fn p ex (regionWebs ex r) :=
+  ⟨r, hr, Or.inr rfl⟩
 
 /-- An exported code returns the operands of the export. -/
 theorem RegionExp.res {fn : String} {Γ : Ctxt jasminDialect} {ts : List JasminTy}
@@ -5868,16 +5883,15 @@ def regionResBuf (σ : AbiLayout) (nm : String → String) : Option (String × N
 def regionWebsEx (σ : AbiLayout) (nm : String → String) : List String :=
   (regionResBuf σ nm).toList.map Prod.fst
 
-/-- **The exported code at an optional table**: the export `r` without a table, and its
-    webs `regionWebs ex r` at the array positions `calleeAAT` and the result lengths
-    `calleeAOT` of a table. -/
+/-- **The exported code at an optional table**: the webs `regionWebs ex r` of the export `r`
+    at the array positions `calleeAAT` and the result lengths `calleeAOT` of the table. Both
+    arms of `compileRegion` take this stage; without a table no symbol has an array position or
+    a result length, and the webs are `regionWebs ex r` at its defaults. -/
 def regionWebsAt (ex : List String) (callee : Option CalleeTab) (r : Exported) : Exported :=
-  match callee with
-  | none => r
-  | some _ => regionWebs ex r (calleeAAT callee) (calleeAOT callee)
+  regionWebs ex r (calleeAAT callee) (calleeAOT callee)
 
 @[simp] theorem regionWebsAt_none (ex : List String) (r : Exported) :
-    regionWebsAt ex none r = r := rfl
+    regionWebsAt ex none r = regionWebs ex r := rfl
 
 @[simp] theorem regionWebsAt_some (ex : List String) (T : CalleeTab) (r : Exported) :
     regionWebsAt ex (some T) r = regionWebs ex r (calleeAAT (some T)) (calleeAOT (some T)) :=
@@ -8152,14 +8166,14 @@ def calleeLinkB (T : CalleeTab) (b : Lcmd) : Bool :=
     caller. -/
 theorem symTgt_linkMap_one (c : CalleeData) (symBase : String → Option Int)
     (P : X86Backend.LprogBytesDecode.Params) (b : Lcmd) (ds : List X86Backend.PhysAbiShape.DShape)
-    (n L : Nat) :
+    (hs : X86Backend.DecodeGen.shapesOf P b = some ds) (n L : Nat) :
     ∀ it ∈ X86Backend.LprogBytesLinkReloc.fundefItemsRelocL symBase P b ds, it.target = none →
       ∀ d, it.dec = some (.call d) →
         X86Backend.LprogBytesLinkReloc.symTgt ((CalleeTab.one c).linkMap n L) it
           = (fun _ => some (n, L)) it := by
   intro it hit ht d hd
-  obtain ⟨f, hf, -⟩ := X86Backend.LprogBytesLinkReloc.fundefItemsRelocL_sym symBase P b ds it hit
-    ht d hd
+  obtain ⟨f, hf, -⟩ := X86Backend.LprogBytesLinkReloc.fundefItemsRelocL_sym symBase P b ds hs it
+    hit ht d hd
   simp [X86Backend.LprogBytesLinkReloc.symTgt, hf]
 
 /-- **`calleeLinkB` at the table of one linked function**: the code of the function is nonempty,
@@ -8184,14 +8198,14 @@ theorem calleeLinkB_one (c : CalleeData) (b : Lcmd) :
   have hall : (CalleeTab.one c).fns.all (fun d => !d.bytes.isEmpty) = !c.bytes.isEmpty := by
     simp [CalleeTab.one]
   rw [hall, CalleeTab.regionB_one, Bool.and_true]
-  cases X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b with
+  cases hss : X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b with
   | none => rfl
   | some ds =>
       dsimp only
       rw [X86Backend.LprogBytesLinkReloc.branchOKRelocMap_congr _ _
-          (symTgt_linkMap_one c _ _ b ds _ _),
+          (symTgt_linkMap_one c _ _ b ds hss _ _),
         X86Backend.LprogBytesLinkReloc.expectedRelocMap_congr _ _
-          (symTgt_linkMap_one c _ _ b ds _ _)]
+          (symTgt_linkMap_one c _ _ b ds hss _ _)]
 
 /-- **The program of the function of a caller of the functions of `T`** with the printed body
     `b`: the program that the items `LprogBytesLinkReloc.fundefItemsRelocL` of `b` at its shapes
@@ -8229,12 +8243,12 @@ theorem calleeProg_one (c : CalleeData) (b : Lcmd) :
             (X86Backend.LprogBytes.encodeLfundefBytesReloc (calleeSym (CalleeTab.one c) b) b).length
             items := by
   unfold calleeProg
-  cases X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b with
+  cases hss : X86Backend.DecodeGen.shapesOf (X86Backend.LprogBytesDecode.Params.ofBody b) b with
   | none => rfl
   | some ds =>
       dsimp only
       rw [X86Backend.LprogBytesLinkReloc.expectedRelocMap_congr _ _
-        (symTgt_linkMap_one c _ _ b ds _ _)]
+        (symTgt_linkMap_one c _ _ b ds hss _ _)]
 
 /-- **The bytes of a printed body at an optional table**: the gated encoder
     `encodeLfundefBytesChecked` without a table; with a table `T`, on a body the checks
@@ -8769,6 +8783,22 @@ theorem regionWebsLeak_of_exportR {fn : String} {Γ : Ctxt jasminDialect} {ts : 
   rw [hr] at hr0
   exact absurd (Option.some.inj hr0) hne
 
+/-- **Every exported code passes the event check**: the webs rename the code only when the
+    renamed code keeps its events (`regionWebs`). -/
+theorem regionWebsLeak_of_regionExp {fn : String} {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {ex : List String} {r : Exported}
+    (hr : RegionExp fn p ex r) : RegionWebsLeak fn p ex r := by
+  intro r0 hr0 hne
+  obtain ⟨r1, h1, h⟩ := hr
+  obtain rfl := Option.some.inj (h1.symm.trans hr0)
+  rcases h with rfl | rfl
+  · exact absurd rfl hne
+  · unfold regionWebs at hne
+    unfold regionWebsLeakB
+    split at hne
+    · next hc => exact ((Bool.and_eq_true _ _).mp hc).2
+    · exact absurd rfl hne
+
 /-- **The two shapes of an exported code that passes the event check.** An exported code `r`
     of `RegionExp fn p ex r` with `RegionWebsLeak fn p ex r` is the export `r0` of `p`, or
     `r0` with its code renamed by `ArrWebs.webRen w` at a position map `w` at which the code
@@ -8790,7 +8820,7 @@ theorem regionExp_webs_cases {fn : String} {Γ : Ctxt jasminDialect} {ts : List 
     have hl := hx r0 hr0 hrr
     unfold regionWebs at hw
     split at hw
-    · next hc => exact Or.inr ⟨_, _, hc, hl, hw⟩
+    · next hc => exact Or.inr ⟨_, _, ((Bool.and_eq_true _ _).mp hc).1, hl, hw⟩
     · exact absurd hw hrr
 
 /-- **Constant time of the virtual body of a region export.** A program of
@@ -11042,23 +11072,25 @@ theorem calleeCtB_tab {σ : AbiLayout} {nm : String → String} {T : CalleeTab} 
 /-- **The back half on a region-exported program** with one result, a word array or a
     register: the region legalisation `legalizeRegion`, then, on the legalised program, the test
     `regionExportableB` on a program without `call` (`NFProg.callFree`),
-    the export `exportR`, the allocated program with its allocation certificate
+    the export `exportR`, its webs `regionWebsAt` at the result buffer
+    `regionWebsEx σ exportReg`, the allocated program with its allocation certificate
     `regionLprogC`, the printed program `printedLprog`, the two-address gate on its first
     function body, the gated encoder, and the gate on the printed body: the check
-    `regionCoB` of the reference of the export against it at the certificate and the
+    `regionCoB` of the reference of the webs against it at the certificate and the
     constant-time check `regionCtB`; the printed program and the bytes, or `none` when a
     stage declines or a check refuses.
 
     A program with a `call` is compiled when `regionCallee` finds its callee among the
-    linked functions `linked`: every stage is then taken at that callee and at the webs
-    `regionWebsAt` of the export at the result buffer `regionWebsEx σ exportReg` (the
-    allocation `calleeAlloc`, the gate `regionCoB` with its two conjuncts on a calling body, the bytes
-    `calleeBytes` of the function followed by the code of the callee, and `calleeCtB`, the
-    constant-time decision with a call on the program of the function). The result of a
-    calling body is gated and is covered by no correctness theorem: `compileRegion_spec` and
-    `compileRegion_correct` are stated at no linked function, where the program has no
-    `call`. Without linked functions, and on every program without `call`
-    (`compileRegion_of_callFree`), the stages are those of the first paragraph. -/
+    linked functions `linked`: every stage is then taken at that callee (the webs at the
+    array positions and result lengths of its symbols, the allocation `calleeAlloc`, the gate
+    `regionCoB` with its two conjuncts on a calling body, the bytes `calleeBytes` of the
+    function followed by the code of the callee, and `calleeCtB`, the constant-time decision
+    with a call on the program of the function). The two arms run the same stages; without a
+    callee each stage is taken at no table. The result of a calling body is gated and is
+    covered by no correctness theorem: `compileRegion_spec` and `compileRegion_correct` are
+    stated at no linked function, where the program has no `call`. Without linked functions,
+    and on every program without `call` (`compileRegion_of_callFree`), the stages are those of
+    the first paragraph. -/
 def compileRegion (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (linked : List CalleeData := []) :
     Option (Lprog × List (BitVec 8)) :=
@@ -11094,15 +11126,17 @@ theorem compileRegion_of_callFree (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jas
   simp only [regionCallee_of_callFree (legalizeRegion_callFree h)]
 
 /-- Every result of `compileRegion` on `p` comes from a legalised program `legalizeRegion p`
-    that passes `regionExportableB`, with an export and a printed body whose gated
-    encoder's bytes are the result's bytes, and an allocation certificate `cert` of
-    `regionLprogC`, such that the export passes `regionCoB` against the printed body at
-    `cert` and the printed body passes the constant-time check `regionCtB` at `cert`. -/
+    that passes `regionExportableB`, with an export `r0`, its webs `r` at the result buffer
+    `regionWebsEx σ exportReg`, and a printed body whose gated encoder's bytes are the
+    result's bytes, and an allocation certificate `cert` of `regionLprogC`, such that the
+    webs pass `regionCoB` against the printed body at `cert` and the printed body passes the
+    constant-time check `regionCtB` at `cert`. -/
 theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
     {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes)) :
-    regionExportableB (legalizeRegion p) = true ∧ ∃ r b cert,
-      exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r
+    regionExportableB (legalizeRegion p) = true ∧ ∃ r0 r b cert,
+      exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
+      ∧ r = regionWebsAt (regionWebsEx σ exportReg) none r0
       ∧ X86Backend.LprogBytes.encodeLfundefBytesChecked b = some bytes
       ∧ regionCoB σ exportReg b t r.code r.res cert = true
       ∧ regionCtB σ exportReg b t r.code r.res cert = true
@@ -11120,8 +11154,8 @@ theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
         · rename_i P0 cert hP
           obtain ⟨b, hbs, hg⟩ := regionEncode_spec h
           rw [Bool.and_eq_true] at hg
-          refine ⟨hB, r, b, cert, hr, hbs, ?_, hg.2, P0, hP⟩
-          rw [← regionCoB_none_fn σ exportReg b t r.code r.res cert a.fname]
+          refine ⟨hB, r, _, b, cert, hr, rfl, hbs, ?_, hg.2, P0, hP⟩
+          rw [← regionCoB_none_fn σ exportReg b t _ _ cert a.fname]
           exact hg.1
         · cases h
       · cases h
@@ -11154,10 +11188,11 @@ theorem compileRegion_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminD
         sa'.mem x = sa.mem x)
       ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
         ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
-  obtain ⟨hB, r, b, cert, hr, hb, hco, -⟩ := compileRegion_spec h
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, -⟩ := compileRegion_spec h
   rw [← legalizeRegion_denote] at hv
   obtain ⟨prog, sa', hd, hh, hR, hsp, hkeep, hA⟩ :=
-    regionCo_bytes (regionExportableB_sound hB) hr hco sa V hV hreg fuel hv
+    regionCo_bytes_of_regionExp (regionExportableB_sound hB) (regionExp_webs _ hr) hco sa V hV
+      hreg fuel hv
   exact ⟨prog, sa', by rw [X86Backend.LprogBytes.encodeLfundefBytesChecked_eq hb]; exact hd,
     hh, hR, hsp, hkeep, b, hA⟩
 
@@ -11222,7 +11257,7 @@ theorem regionCoB_callee {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     `fs` at the entry offsets and indices of the functions of the table. -/
 theorem symTgt_linkMap_regionTgt (T : CalleeTab) (symBase : String → Option Int)
     (P : X86Backend.LprogBytesDecode.Params) (b : Lcmd) (ds : List X86Backend.PhysAbiShape.DShape)
-    {fs : List String}
+    {fs : List String} (hs : X86Backend.DecodeGen.shapesOf P b = some ds)
     (hfs : ∀ i ∈ b, ∀ f, X86Backend.LprogBytes.remoteSym i.li_i = some f → f ∈ fs)
     (n L : Nat) :
     ∀ it ∈ X86Backend.LprogBytesLinkReloc.fundefItemsRelocL symBase P b ds, it.target = none →
@@ -11232,7 +11267,7 @@ theorem symTgt_linkMap_regionTgt (T : CalleeTab) (symBase : String → Option In
               n L (fun g => T.entryOff (T.symPos g)) (fun g => T.entryIdx (T.symPos g))) it := by
   intro it hit ht d hd
   obtain ⟨f, hf, i, hi, hr⟩ :=
-    X86Backend.LprogBytesLinkReloc.fundefItemsRelocL_sym symBase P b ds it hit ht d hd
+    X86Backend.LprogBytesLinkReloc.fundefItemsRelocL_sym symBase P b ds hs it hit ht d hd
   simp [X86Backend.LprogBytesLinkReloc.symTgt, hf, X86Backend.LprogBytesLinkReloc.regionTgt,
     hfs i hi f hr, CalleeTab.linkMap]
 
@@ -11267,7 +11302,7 @@ theorem calleeBytes_decode {T : CalleeTab} {b : Lcmd} {bytes : List (BitVec 8)}
       obtain ⟨pr, hpr'⟩ := Option.isSome_iff_exists.mp hP
       refine ⟨pr, hpr', ?_⟩
       have hag := symTgt_linkMap_regionTgt T (calleeSym T b)
-        (X86Backend.LprogBytesDecode.Params.ofBody b) b ds hfs
+        (X86Backend.LprogBytesDecode.Params.ofBody b) b ds hss hfs
       rw [X86Backend.LprogBytesLinkReloc.branchOKRelocMap_congr _ _ (hag _ _)] at hbr
       rw [X86Backend.LprogBytesLinkReloc.expectedRelocMap_congr _ _ (hag _ _)] at hpr'
       obtain ⟨hsaves, hF0, hFr⟩ := X86Backend.ImageAddrCallW.printedAddrCWB_reloc hpr

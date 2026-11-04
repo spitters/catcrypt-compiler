@@ -137,8 +137,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry (regArrCtxB ab
     decoding of `bytes` is constant time under `ctRegime`, with no side condition on the
     steps, between entry states that satisfy `σ.Regions` and `Pre`, agree on the public data
     of `σ`, and at the first of which `p` denotes at some fuel at a valuation the layout
-    reads off it. The proof is `regionWide_bytes_ct` at the export and the printed body of
-    `compileRegion_spec`, which pass the gate `regionCoB` and the three checks of
+    reads off it. The proof is `regionWide_bytes_ct_of_regionExp` at the webs of the export
+    and the printed body of `compileRegion_spec`, which pass the gate `regionCoB` and the three
+    checks of
     `regionCtB`, for the precondition `Pre` restricted to the two entry states and at a fuel
     above the bounds of the two valuations the layout reads off them, which are unique
     (`abiValOf_unique`). -/
@@ -161,7 +162,7 @@ theorem regionChain_bytes_ct (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDi
         ∧ ∃ (V : Ctxt.Valuation Γ) (fuel : Nat), AbiValOf σ s₁ V
           ∧ (p.denote fuel V).isSome = true)
       (fun s u => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s u s') := by
-  obtain ⟨hB, r, b, cert, hr, hb, hco, hck, -⟩ := compileRegion_spec hJ
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, hck, -⟩ := compileRegion_spec hJ
   obtain ⟨hlk, hprW, hgW⟩ := regionCtB_spec hck
   rw [encodeLfundefBytesChecked_eq hb] at hd
   rintro sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, V₁, fuel, hV₁, hden⟩ hb₁ hb₂
@@ -193,8 +194,9 @@ theorem regionChain_bytes_ct (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDi
   have hden' : (p.denote (max fuel (max N N')) V₁).isSome = true :=
     Option.isSome_iff_exists.mpr
       ⟨out, NFProg.denoteAt_fuel_mono CallEnv.empty (le_max_left _ _) p V₁ out hout⟩
-  exact regionWide_bytes_ct JLeakParams.owned a.fname (max fuel (max N N'))
-    (regionExportableB_sound hB) (legalizeRegion_callFree hcf) hct' hr hco hlk hprW hgW
+  exact regionWide_bytes_ct_of_regionExp JLeakParams.owned a.fname (max fuel (max N N'))
+    (regionExportableB_sound hB) (legalizeRegion_callFree hcf) hct' (regionExp_webs _ hr)
+    (regionWebsLeak_of_regionExp (regionExp_webs _ hr)) hco hlk hprW hgW
     (fun _ _ => True) hd sa₁ sa₂ u₁ u₂
     (by
       rw [regionBytePub_legalizeRegion]

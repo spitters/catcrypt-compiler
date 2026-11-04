@@ -769,6 +769,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.AesEcbBlockObjectEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.CheckKernels
 CatCrypt.Crypto.SecureCompilation.X86Backend.Avx2YmmNttUnifiedEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.BackTranslation
+CatCrypt.Crypto.SecureCompilation.X86Backend.BaseReloadImage
 CatCrypt.Crypto.SecureCompilation.X86Backend.Blake2bGThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381Fp6Fp12TierA
 CatCrypt.Crypto.SecureCompilation.X86Backend.Bls12381InvTowerEmit
@@ -866,6 +867,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftCarrySelectParity
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnSimdExtractEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.NasmParse
+CatCrypt.Crypto.SecureCompilation.X86Backend.OneBitConstImage
 CatCrypt.Crypto.SecureCompilation.X86Backend.OptimizedEmitWiring
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedCFOptimize
 CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogCT

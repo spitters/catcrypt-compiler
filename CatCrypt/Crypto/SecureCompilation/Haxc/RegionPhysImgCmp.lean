@@ -723,7 +723,7 @@ theorem regionCoStage_ne_physImgB_of_loadCSE (fname : String) (σ : AbiLayout) {
     (hzr : RegionPhysImgArg.ZeroAtRoot (nfAbiNames fname σ) [t] r)
     {fd0 : Lfundef} (hfd : exportRLfundef fname p = some fd0)
     (hts : ∀ w, [t] ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
-    (ex : List String) {P : Lprog} {cert : List (String × String)}
+    (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
     (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b) (fn : String)
     (hopt : (splitStraightRuns
@@ -734,7 +734,7 @@ theorem regionCoStage_ne_physImgB_of_loadCSE (fname : String) (σ : AbiLayout) {
     (hhold : memMovFreeB (postBody (regionAllocFn (nfAbiNames fname σ) [t] r fd0).lfd_body)
       = true) :
     regionCoStage σ exportReg b t r.code r.res cert none fn ≠ some "physImgB" :=
-  regionCoStage_ne_physImgB fname σ p hp hc hw hσ hr hzr hfd hts hnd ex hP hb fn
+  regionCoStage_ne_physImgB fname σ p hp hc hw hσ hr hzr hfd hts hnd ex hwe hP hb fn
     (physImgSideB_of_loadCSE fname σ p hp hc hw hσ hr hzr hts fd0 hnd _ _ hopt hhold)
 
 end LoadCSE

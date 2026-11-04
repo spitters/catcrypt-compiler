@@ -60,7 +60,7 @@ type repairs it; the conditions are on the body and its call sites.
 
 A body with a conditional branch is outside (2): its branch check needs the displacement
 of the relaxed encoding (`LprogBytes.labelOffsets`) to land on the label, a layout fact of
-the encoder that no theorem states; the gates of the code base check it (`branchOK` in
+the encoder that no theorem states; the gates of the code base check it (`branchOKL` in
 `DecodeLayout.decodableLcmd`).
 -/
 

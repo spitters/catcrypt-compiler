@@ -421,7 +421,9 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
           cases ha : andnSpill? dsts opn srcs with
           | some l =>
             simp only [ha] at hx
-            unfold andnSpill? at ha
+            unfold andnSpill? andnSpillI? at ha
+            rw [CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reload,
+              CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa.x86Abi_reloadSnd] at ha
             split at ha
             · split at ha
               · cases ha
@@ -1516,6 +1518,7 @@ def DShape.Straight : DShape → Prop
   | .one (.op _) => True
   | .one (.jcc _ _) => False
   | .one (.call _) => False
+  | .one (.callSym _) => False
   | .ops _ => True
 
 /-- The straight-line instructions of a list-valued shape. -/
@@ -1564,6 +1567,7 @@ theorem itemsFromL_opItems (P : Params) {b : Lcmd} {s : List DShape}
             simp [opsOf, dItems, Shape.dec, DShape.ops']⟩
         | jcc _ _ => exact absurd hst id
         | call _ => exact absurd hst id
+        | callSym _ => exact absurd hst id
       | ops pcs =>
         refine ⟨?_, ?_⟩
         · intro it hit

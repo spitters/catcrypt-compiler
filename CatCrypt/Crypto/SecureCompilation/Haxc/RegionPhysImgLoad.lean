@@ -297,7 +297,8 @@ theorem optSide_regionAllocFn (fname : String) (σ : AbiLayout) {ts : List Jasmi
 /-- **The region gate never refuses at its image conjunct** on the domain of
     `RegionPhysImgArg.physImgB_regionExport_words`, under the bound `hsize` on the names of
     the allocator input: `RegionPhysImgCmp.regionCoStage_ne_physImgB_of_loadCSE` with `hopt`
-    and `hhold` from `optSide_regionAllocFn`. -/
+    and `hhold` from `optSide_regionAllocFn`, at a code the webs pass leaves unchanged
+    (`hwe`, the restriction of that lemma). -/
 theorem regionCoStage_ne_physImgB_words (fname : String) (σ : AbiLayout) {t : JasminTy}
     (p : NFProg jasminDialect (nfCtx σ) [t]) (hp : regionExportableB p = true)
     (hc : p.callFree = true) (hw : RegionPhysImgArg.arrW64B p = true)
@@ -308,7 +309,7 @@ theorem regionCoStage_ne_physImgB_words (fname : String) (σ : AbiLayout) {t : J
     (hts : ∀ w, [t] ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
     (hsize : numGPRegs + (bodyNames
       (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length [t] r)).length + 1 ≤ vectorBase)
-    (ex : List String) {P : Lprog} {cert : List (String × String)}
+    (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
     (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b) (fn : String) :
     regionCoStage σ exportReg b t r.code r.res cert none fn ≠ some "physImgB" :=
@@ -316,6 +317,6 @@ theorem regionCoStage_ne_physImgB_words (fname : String) (σ : AbiLayout) {t : J
     (regionCoParts σ exportReg b t r.code r.res cert).cells
     (regionCoParts σ exportReg b t r.code r.res cert).ps hsize
   RegionPhysImgCmp.regionCoStage_ne_physImgB_of_loadCSE fname σ p hp hc hw hσ hr hzr hfd hts hnd
-    ex hP hb fn h.1 h.2
+    ex hwe hP hb fn h.1 h.2
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad

@@ -246,7 +246,7 @@ theorem bitStore?_of_lea {body : Lcmd} {k : Nat} {X D B : String} {n : Nat} {l :
     obtain ⟨rfl, rfl⟩ := hx
     have hlt : k + 1 < body.length := (List.getElem?_eq_some_iff.mp hl).1
     have e : body[k + 1] = l := (List.getElem?_eq_some_iff.mp hl).2
-    simp [carryInNext, List.drop_eq_getElem_cons hlt, e, carryInFirst, hli, carryUseB, namesB,
+    simp [carryInNext, List.drop_eq_getElem_cons hlt, e, useFirst, hli, carryUseB, namesB,
       opNamesB] at hc
 
 /-- The load of an operand of a window is a move between names or a 64-bit immediate move. -/

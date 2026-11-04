@@ -287,7 +287,7 @@ theorem nextEnv_normI (p : Nat × Nat × Nat) (env : KEnv) {j : Linstr}
   rw [isLret_normI]
   change (if isLret j = true then [] else
       match lowerPrinted p.1 p.2.1 p.2.2 (normMulx j.li_i) with
-      | some js => stepKs env js
+      | some js => (stepKs env js).killAll (narrowImmDsts (normMulx j.li_i))
       | none => match normMulx j.li_i with
         | .Lopn d _ _ => env.killAll (d.flatMap dstOpNames)
         | _ => []) = _
@@ -296,7 +296,9 @@ theorem nextEnv_normI (p : Nat × Nat × Nat) (env : KEnv) {j : Linstr}
   · rw [h]
     rfl
   · rw [h, h0]
-    grind
+    simp only [narrowImmDsts_of_not_narrow (o := "MULX:64") (by decide),
+      narrowImmDsts_of_not_narrow (o := "MULX") (by decide)]
+    rfl
 
 /-! ## 4. The fold on the width reading -/
 

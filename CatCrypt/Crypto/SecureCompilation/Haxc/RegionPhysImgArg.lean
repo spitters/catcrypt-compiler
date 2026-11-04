@@ -783,6 +783,23 @@ theorem renArr_lopn (ρ : String → String) {i : LinstrRM} {ds' : List LOperand
       cases tag <;> simp [renArr, renLoad, renStore, renZero, renStoreImm, renCallW,
         LprogIsa.shadowCall?] at h
 
+/-- **The renaming of the array positions keeps the access form `AccCode`**: it renames the
+    base of an indexed load, the destination and the base of an indexed store, and adds no
+    indexed operand to another operation (`renArr_lopn`). -/
+theorem accCode_renArr (ρ : String → String) {i : LinstrRM} (h : AccCode i) :
+    AccCode (renArr ρ i) := by
+  obtain ⟨hL, hS, hO⟩ := h
+  refine ⟨fun ds ss he => ?_, fun ds ss he => ?_, fun ds o ss he h1 h2 b y s hm => ?_⟩
+  · obtain ⟨ds0, ss0, hi, -⟩ := renArr_lopn ρ he
+    obtain ⟨d, b, y, w, n, rfl⟩ := hL ds0 ss0 hi
+    exact ⟨d, ρ b, y, w, n, by simp [renArr, renLoad]⟩
+  · obtain ⟨ds0, ss0, hi, -⟩ := renArr_lopn ρ he
+    obtain ⟨d, b, y, v, w, n, rfl⟩ := hS ds0 ss0 hi
+    exact ⟨ρ d, ρ b, y, v, w, n, by simp [renArr, renStore]⟩
+  · obtain ⟨ds0, ss0, hi, hm'⟩ := renArr_lopn ρ he
+    obtain ⟨b0, hb0⟩ := hm' b y s hm
+    exact hO ds0 o ss0 hi h1 h2 b0 y s hb0
+
 /-- **The renaming of the array positions puts the accesses in the form `AccP P`** when the
     instruction has the access forms `AccCode` and `ImmCode` and the renaming sends its array
     names (`RootIn`) into `P`. -/
@@ -1557,6 +1574,21 @@ theorem exportR_accCode_copy (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List
   intro i hi
   rcases List.mem_append.mp hi with hi | hi
   · exact exportR_accCode _ _ p hc hw _ _ r hr i hi
+  · exact accCode_regionLprogCopy a ts r.code r.res i hi
+
+/-- **The code given to the renaming has the access form `AccCode`** at an exported code
+    (`RegionExp`): the export by `exportR_accCode`, its webs by `accCode_renArr`. -/
+theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.RegionExp.accCode_copy (a : AbiNames)
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    (hc : p.callFree = true) (hw : arrW64B p = true) {ex : List String} {r : Exported}
+    (hr : RegionExp a.fname p ex r) :
+    ∀ i ∈ r.code ++ regionLprogCopy a none ts r.code r.res, AccCode i := by
+  intro i hi
+  rcases List.mem_append.mp hi with hi | hi
+  · obtain ⟨r0, h0, he | he⟩ := hr <;> subst r
+    · exact exportR_accCode _ _ p hc hw _ _ r0 h0 i hi
+    · exact forall_mem_regionWebs (P := AccCode) (fun σ i hi => accCode_renArr σ hi) ex r0 _ _
+        (exportR_accCode _ _ p hc hw _ _ r0 h0) i hi
   · exact accCode_regionLprogCopy a ts r.code r.res i hi
 
 /-! ## 6. The roots of the indexed bases -/

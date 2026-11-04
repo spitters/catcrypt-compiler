@@ -741,7 +741,8 @@ theorem printedAddr_simL (body : Lcmd) (h : printedAddrB body = true) (sa : ASta
   set prog : List RInstr := .op (leaFrame (-(Int.ofNat F)))
     :: (shs.flatMap (blkOf body shs) ++ [.op (leaFrame (Int.ofNat F)), .ret]) with hprog
   have hdecode : decodeLprog (encodeLfundefBytes body) = some prog := by
-    rw [decodeLprog_encodeLfundefBytes hdec, fundefLayout, fundefItems,
+    refine decodeLprog_encodeLfundefBytes hdec ?_
+    rw [fundefLayout, fundefItems,
       show shapesD P body = shs by
         rw [shapesD, show shapesOf P body = some shs from hF.shapes]; rfl]
     exact expectedFrom_fundef body shs hl.symm (targetsOK_of hF)

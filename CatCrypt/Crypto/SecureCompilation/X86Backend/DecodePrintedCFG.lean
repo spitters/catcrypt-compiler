@@ -87,15 +87,17 @@ def posOf (shs : List DShape) (k : Nat) : Nat := 1 + ((shs.take k).map nOf).sum
 def blkOf (body : Lcmd) (shs : List DShape) : DShape → List RInstr
   | .one (.jcc cc l) => [.jcc cc (posOf shs ((labelAt body l).getD 0))]
   | .one (.call l) => [.call (posOf shs ((labelAt body l).getD 0))]
+  | .one (.callSym l) => [.call (posOf shs ((labelAt body l).getD 0))]
   | sh => sh.ops'.map .op
 
 theorem blkOf_length (body : Lcmd) (shs : List DShape) (sh : DShape) :
     (blkOf body shs sh).length = nOf sh := by
-  rcases sh with (_ | _ | _ | _) | pcs <;> simp [blkOf, nOf, DShape.ops']
+  rcases sh with (_ | _ | _ | _ | _) | pcs <;> simp [blkOf, nOf, DShape.ops']
 
 theorem decCount_dItems (P : Params) (off : Nat) (i : Linstr) (sh : DShape) :
     decCount (dItems P off i sh) = nOf sh := by
-  rcases sh with (_ | _ | _ | _) | pcs
+  rcases sh with (_ | _ | _ | _ | _) | pcs
+  · simp [dItems, decCount, nOf, Shape.dec]
   · simp [dItems, decCount, nOf, Shape.dec]
   · simp [dItems, decCount, nOf, Shape.dec]
   · simp [dItems, decCount, nOf, Shape.dec]
@@ -151,24 +153,44 @@ def shTarget : DShape → Option LLabel
   | .one sh => sh.target
   | .ops _ => none
 
-/-- The branch targets of the shapes `shs` of `body` resolve, in the item list `all`, to the
-    decoded index of the first definition of their label. -/
+/-- No shape of `shs` is the shape `callSym` of a call of a named symbol, and the branch
+    targets of the shapes resolve, in the item list `all`, to the decoded index of the first
+    definition of their label. -/
 def TargetsOK (body : Lcmd) (shs : List DShape) (all : List Item) : Prop :=
-  ∀ sh ∈ shs, ∀ l, shTarget sh = some l →
+  ∀ sh ∈ shs, (∀ l, sh ≠ .one (.callSym l)) ∧ ∀ l, shTarget sh = some l →
     ∃ off, labelPos l 0 0 all = some (posOf shs ((labelAt body l).getD 0), off)
+
+/-- An instruction of shape `callSym` is a call of a named symbol. -/
+theorem eq_of_shapeOf_callSym {P : Params} {i : LinstrR} {l : LLabel}
+    (h : shapeOf P i = some (.one (.callSym l))) : ∃ ra f, i = .Lcall ra (f, l) ∧ f ≠ "" := by
+  cases i with
+  | Lopn ds o ss =>
+    rcases shapeOfBytes_ok h with ⟨q, he, -⟩ | ⟨pcs, he, -⟩ <;> cases he
+  | Lcond c l' => cases c <;> simp [shapeOf] at h
+  | Lcall ra t =>
+    obtain ⟨f, l'⟩ := t
+    simp only [shapeOf, Option.some.injEq, DShape.one.injEq] at h
+    split at h
+    · cases h
+    · rename_i hf
+      cases h
+      exact ⟨ra, f, rfl, by simpa [String.isEmpty_iff] using hf⟩
+  | _ => simp [shapeOf] at h
 
 theorem expectedFrom_dItems {body : Lcmd} {shs : List DShape} {all : List Item} (P : Params)
     (off : Nat) (i : Linstr) (sh : DShape)
+    (hS : ∀ l, sh ≠ .one (.callSym l))
     (hT : ∀ l, shTarget sh = some l →
       ∃ o, labelPos l 0 0 all = some (posOf shs ((labelAt body l).getD 0), o)) :
     expectedFrom all (dItems P off i sh) = some (blkOf body shs sh) := by
-  rcases sh with (_ | x | ⟨cc, l⟩ | l) | pcs
+  rcases sh with (_ | x | ⟨cc, l⟩ | l | l) | pcs
   · simp [dItems, expectedFrom, Shape.dec, blkOf, DShape.ops']
   · simp [dItems, expectedFrom, Shape.dec, blkOf, DShape.ops']
   · obtain ⟨o, ho⟩ := hT l rfl
     simp [dItems, expectedFrom, Shape.dec, Shape.target, blkOf, ho]
   · obtain ⟨o, ho⟩ := hT l rfl
     simp [dItems, expectedFrom, Shape.dec, Shape.target, blkOf, ho]
+  · exact absurd rfl (hS l)
   · simp only [dItems, blkOf, DShape.ops']
     clear hT
     induction pcs with
@@ -192,7 +214,8 @@ theorem expectedFrom_itemsFromL {body : Lcmd} {shs : List DShape} {all : List It
     | nil => simp at hl
     | cons sh s =>
       simp only [itemsFromL, expectedFrom_append,
-        expectedFrom_dItems P off i sh (hT sh (hs sh (by simp))), Option.bind_some,
+        expectedFrom_dItems P off i sh (hT sh (hs sh (by simp))).1 (hT sh (hs sh (by simp))).2,
+        Option.bind_some,
         ih s _ (by simpa using hl) (fun x hx => hs x (by simp [hx])), Option.map_some,
         List.flatMap_cons]
 
@@ -737,9 +760,21 @@ theorem bodyFacts_of {body : Lcmd} (h : printedAddrB body = true) :
 theorem targetsOK_of {body : Lcmd} {shs : List DShape} (hF : BodyFacts body shs) :
     TargetsOK body shs (fundefItemsL body shs) := by
   obtain ⟨hl, hsh⟩ := shapesOf_spec _ body shs hF.shapes
-  intro sh hm l ht
+  intro sh hm
   obtain ⟨k, hk, rfl⟩ := List.getElem_of_mem hm
   have hshk := hsh k (by omega) hk
+  refine ⟨fun l hs => ?_, fun l ht => ?_⟩
+  · rw [hs] at hshk
+    obtain ⟨ra, f, he, -⟩ := eq_of_shapeOf_callSym hshk
+    by_cases hkn : k + 1 < body.length
+    · have hok := hF.instr k hkn
+      rw [he] at hok
+      simp [instrOKB] at hok
+    · have hlast := hF.last
+      have hk' : k = body.length - 1 := by omega
+      subst hk'
+      rw [hlast] at he
+      cases he
   by_cases hkn : k + 1 < body.length
   · have hok := hF.instr k hkn
     revert hshk hok
@@ -815,7 +850,8 @@ theorem printedAddr_sim_noCall (body : Lcmd) (h : printedAddrB body = true) (sa 
   set prog : List RInstr := .op (leaFrame (-(Int.ofNat F)))
     :: (shs.flatMap (blkOf body shs) ++ [.op (leaFrame (Int.ofNat F)), .ret]) with hprog
   have hdecode : decodeLprog (encodeLfundefBytes body) = some prog := by
-    rw [decodeLprog_encodeLfundefBytes hdec, fundefLayout, fundefItems,
+    refine decodeLprog_encodeLfundefBytes hdec ?_
+    rw [fundefLayout, fundefItems,
       show shapesD P body = shs by
         rw [shapesD, show shapesOf P body = some shs from hF.shapes]; rfl]
     exact expectedFrom_fundef body shs hl.symm (targetsOK_of hF)

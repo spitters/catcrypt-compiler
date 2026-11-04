@@ -2012,6 +2012,9 @@ inductive Shape where
   | op (i : JInstr 64)
   | jcc (cc : Nat) (l : LLabel)
   | call (l : LLabel)
+  /-- A call of a named symbol: the bytes of a call, whose displacement the encoder of the
+      function computes at the label `l`, with no target label. -/
+  | callSym (l : LLabel)
 
 /-- The decoded instruction of a shape under a displacement resolver. -/
 def Shape.dec : Shape → (LLabel → Int) → Option DInstr
@@ -2019,6 +2022,7 @@ def Shape.dec : Shape → (LLabel → Int) → Option DInstr
   | .op i, _ => some (.op i)
   | .jcc cc l, d => some (.jcc cc (wrap32 (d l)))
   | .call l, d => some (.call (wrap32 (d l)))
+  | .callSym l, d => some (.call (wrap32 (d l)))
 
 /-- The label a shape branches to or calls. -/
 def Shape.target : Shape → Option LLabel
@@ -2102,6 +2106,13 @@ theorem shapeOK_cond (P : Params) (cc : String) (l : LLabel) :
 /-- A call decodes to a call of its label (always the `rel32` form). -/
 theorem shapeOK_call (P : Params) (ra : Option String) (f : String) (l : LLabel) :
     ShapeOK P (.Lcall ra (f, l)) (.call l) := by
+  intro d
+  refine ItemOK_of_decode fun rest => ?_
+  exact decodeLinstr_call32_wrap (d l) rest
+
+/-- A call of a named symbol decodes to a call of its displacement, with no target label. -/
+theorem shapeOK_callSym (P : Params) (ra : Option String) (f : String) (l : LLabel) :
+    ShapeOK P (.Lcall ra (f, l)) (.callSym l) := by
   intro d
   refine ItemOK_of_decode fun rest => ?_
   exact decodeLinstr_call32_wrap (d l) rest
