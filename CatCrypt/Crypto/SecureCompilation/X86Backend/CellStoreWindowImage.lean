@@ -30,7 +30,7 @@ address computation, as long as they keep the index register and the index.
 
 ## Main results
 
-* `keepsB_of_not_dst`: an `Lopn` whose destinations do not name `r` keeps `r`.
+* `keepsB_cellOpMov`: the load of an operand of a window does not keep its destination.
 * `lastDefBelow_of_keep`: the last instruction below `n` that does not keep `X`, when every
   later instruction below `n` keeps it.
 * `cidxStart_of_window`: the start of the window is the load of the index register.
@@ -48,21 +48,11 @@ namespace CatCrypt.Crypto.SecureCompilation.X86Backend.CellStoreWindowImage
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrMem
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemStepFrame (dstNames)
-open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (opNames)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx
-
-/-- An `Lopn` none of whose destinations names `r` keeps `r`. -/
-theorem keepsB_of_not_dst {ds : List LOperand} {o : String} {ss : List LOperand} {r : String}
-    (h : r ∉ dstNames (.Lopn ds o ss)) : keepsB r (.Lopn ds o ss) = true := by
-  simp only [dstNames, List.mem_flatMap, not_exists, not_and] at h
-  simp only [keepsB, Bool.not_eq_eq_eq_not, Bool.not_true, List.any_eq_false]
-  intro op hop hb
-  apply h op hop
-  cases op <;> simp_all [opNames, opNamesB]
 
 /-- The load of an operand of a window does not keep its destination. -/
 theorem keepsB_cellOpMov {x : LinstrR} {d : String} {o : String ⊕ Nat}
@@ -74,20 +64,21 @@ theorem keepsB_cellOpMov {x : LinstrR} {d : String} {o : String ⊕ Nat}
 /-- **The last instruction below `n` that does not keep `X`** is the instruction at `j < n`
     that does not keep `X`, when every instruction at a position between `j` and `n` keeps it. -/
 theorem lastDefBelow_of_keep {X : String} {body : Lcmd} {j : Nat} {r : Linstr}
-    (hr : body[j]? = some r) (hX : keepsB X r.li_i = false)
-    (hkeep : ∀ p, j < p → ∀ x, body[p]? = some x → keepsB X x.li_i = true) :
-    ∀ n, j < n → lastDefBelow X body n = some j := by
-  intro n hn
+    (hr : body[j]? = some r) (hX : keepsB X r.li_i = false) :
+    ∀ n, j < n → (∀ p, j < p → p < n → ∀ x, body[p]? = some x → keepsB X x.li_i = true) →
+      lastDefBelow X body n = some j := by
+  intro n
   induction n with
-  | zero => omega
+  | zero => intro hn; omega
   | succ n ih =>
+    intro hn hkeep
     rcases Nat.lt_or_ge j n with hlt | hge
     · have hall : (body[n]?).all (fun i => keepsB X i.li_i) = true := by
         cases hb : body[n]? with
         | none => rfl
-        | some x => simpa using hkeep n hlt x hb
+        | some x => simpa using hkeep n hlt (by omega) x hb
       simp only [lastDefBelow, hall, ite_true]
-      exact ih hlt
+      exact ih hlt fun p hp hpn => hkeep p hp (by omega)
     · have e : n = j := by omega
       subst e
       simp [lastDefBelow, hr, hX]
@@ -102,14 +93,12 @@ theorem cidxStart_of_window {body : Lcmd} {k j : Nat} {l r : Linstr} {D B X : St
     (hkeep : ∀ p, j < p → p < k - 2 → ∃ x, body[p]? = some x ∧ idxKeepB X idx x.li_i = true) :
     cidxStart body k = j := by
   have hlast : lastDefBelow X body (k - 2) = some j :=
-    lastDefBelow_of_keep hr (keepsB_cellOpMov hrm) (fun p hp x hx => by
-      by_cases hpk : p < k - 2
-      · obtain ⟨x', hx', hk'⟩ := hkeep p hp hpk
-        rw [hx] at hx'
-        obtain rfl := Option.some.inj hx'
-        simp only [idxKeepB, Bool.and_eq_true] at hk'
-        exact hk'.1
-      · omega) (k - 2) hj
+    lastDefBelow_of_keep hr (keepsB_cellOpMov hrm) (k - 2) hj fun p hp hpk x hx => by
+      obtain ⟨x', hx', hk'⟩ := hkeep p hp hpk
+      rw [hx] at hx'
+      obtain rfl := Option.some.inj hx'
+      simp only [idxKeepB, Bool.and_eq_true] at hk'
+      exact hk'.1
   obtain ⟨ii, li⟩ := l
   simp only at hli
   subst hli
@@ -139,9 +128,9 @@ theorem cellIdxStore?_of_window {slotArr : String → Option (String × Nat)} {b
     obtain ⟨x, hx, hkx⟩ := hkeep (j + 1 + t) (by omega) (by omega)
     simp [hx, hkx]
   unfold cellIdxStore?
-  simp only [hc, hl, hs, hr, hm, hli, hrm, hmm]
-  rw [if_pos ⟨rfl, h3, rfl, hv, rfl, rfl, rfl, hd1, hok, by omega, hbs, by rwa [hs] at hrun⟩]
-  simp [hacc]
+  have hrun' : idxKeepRunB X idx body (j + 1) (k - 2) = true := by rwa [hs] at hrun
+  have hj' : j + 3 ≤ k := hj
+  simp [hc, hl, hs, hr, hm, hli, hrm, hmm, h3, hv, hd1, hok, hj', hbs, hrun', hacc]
 
 /-- `cellIdxStore?_of_window` at an index loaded from a frame slot by a move between names,
     which is no stored carry constant. -/
