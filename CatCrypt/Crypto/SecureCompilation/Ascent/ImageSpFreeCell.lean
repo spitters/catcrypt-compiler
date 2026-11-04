@@ -130,8 +130,8 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
       simp [hf, hA']
     · rw [h]
       simpa [rspFreeB, operandNames, srcNames] using hf
-    · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, hacc'⟩ :=
-        cellIdxStore?_spec hc
+    · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, hacc', hj3,
+        -⟩ := cellIdxStore?_spec hc
       obtain ⟨q', -, hq', -⟩ := accArr_spec hacc'
       rw [h]
       subst hx
@@ -141,7 +141,7 @@ theorem rspFreeB_imgInstr {slotArr : String → Option (String × Nat)} {body : 
             unfold cellOpMov? at hm
             grind
           have hqf : rspFreeNameB q = true := by
-            rcases hpre (k - 3) r' (by omega) hr' with hf' | ⟨_, _, _, _, he, -⟩
+            rcases hpre _ r' (by omega) hr' with hf' | ⟨_, _, _, _, he, -⟩
             · have hn : ∀ r ∈ operandNames r'.li_i, rspFreeNameB r = true := by
                 simpa [rspFreeB] using hf'
               exact hn q (rdWr_sub (read_of_slotMov hs))

@@ -177,14 +177,13 @@ def carryHiB : LinstrR → Bool
   | _ => false
 
 /-- **The positions at which no segment of the wide simulation starts**: a flag of `D` is live
-    there, or the instruction there is a carry-out binding, or the position is one of the
-    three positions `k' - 2`, `k' - 1`, `k'` of an indexed store through a cell at `k'`, or the
-    cast width analysis has an entry there. -/
+    there, or the instruction there is a carry-out binding, or an indexed store through a cell
+    covers the position (`ImageAddrCidx.cidxCoversB`), or the cast width analysis has an entry
+    there. -/
 def liveW (D : DeadTab) (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) :
     Bool :=
   D.live k || (body[k]?).any (fun i => carryHiB i.li_i)
-    || (List.range 3).any (fun j => (body[k + j]?).any fun i =>
-      (cellIdxStore? slotArr body (k + j) i.li_i).isSome)
+    || (List.range (body.length - k)).any (fun j => ImageAddrCidx.cidxCoversB slotArr body k (k + j))
     || !(narrowIn body k).isEmpty
 
 /-! ## 2. The facts of the class -/
@@ -394,21 +393,25 @@ theorem bitsDeadB_last {frame : String → Option (BitVec 64)} {D : DeadTab} {bo
   exact h.1
 
 /-- What a position with `liveW` false gives: no flag of `D` is live, no carry-out binding stands
-    there, no store of a window stands at it or at the next two positions, and the cast width
-    analysis has no entry there. -/
+    there, no store of a window covers it, and the cast width analysis has no entry there. -/
 theorem liveW_false_spec {D : DeadTab} {slotArr : String → Option (String × Nat)} {body : Lcmd}
     {k : Nat} (h : liveW D slotArr body k = false) :
     D.live k = false ∧ (body[k]?).any (fun i => carryHiB i.li_i) = false
-      ∧ (∀ j, j < 3 → ∀ i, body[k + j]? = some i →
-          cellIdxStore? slotArr body (k + j) i.li_i = none)
+      ∧ (∀ k', ImageAddrCidx.cidxCoversB slotArr body k k' = false)
       ∧ narrowIn body k = [] := by
   simp only [liveW, Bool.or_eq_false_iff, Bool.not_eq_false', List.isEmpty_iff, List.any_eq_false,
     List.mem_range] at h
   obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
-  refine ⟨h1, h2, fun j hj i hi => ?_, h4⟩
-  have := h3 j hj
-  rw [hi] at this
-  simpa using this
+  refine ⟨h1, h2, fun k' => ?_, h4⟩
+  by_cases hlt : k' < k
+  · exact ImageAddrCidx.cidxCoversB_of_lt hlt
+  · by_cases hge : body.length ≤ k'
+    · unfold ImageAddrCidx.cidxCoversB
+      rw [List.getElem?_eq_none hge]
+      rfl
+    · have := h3 (k' - k) (by omega)
+      rw [show k + (k' - k) = k' by omega] at this
+      simpa using this
 
 /-- The carry requirement at a position that holds no carry-out binding. -/
 theorem carryReq_of_not_carryHi {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
@@ -450,7 +453,8 @@ theorem carryHiB_false {body : Lcmd} {k : Nat} {i : Linstr} (hb : body[k]? = som
   · rfl
 
 /-- **One past a call `liveW` is false**, when no flag is live there: the instruction before a
-    carry-out binding is an add, and the three instructions before a store are no calls. -/
+    carry-out binding is an add, and the instructions of a window up to its store are no
+    calls. -/
 theorem liveW_succ_call {D : DeadTab} {slotArr : String → Option (String × Nat)} {body : Lcmd}
     (hflags : callFlagsB D body = true) (hcarry : ∀ k, k < body.length → carryPrevB body k = true)
     {p : Nat} {bi : Linstr} (hb : body[p]? = some bi) {ra : Option String}
@@ -466,29 +470,9 @@ theorem liveW_succ_call {D : DeadTab} {slotArr : String → Option (String × Na
       simp only [Option.any_some]
       exact carryHiB_false hb1 (hcarry (p + 1) (List.getElem?_eq_some_iff.mp hb1).1)
         (Or.inr ⟨bi, hb, fun d o a s c e => by rw [hbi] at e; cases e⟩)
-  · cases hi : body[p + 1 + j]? with
-    | none => simp
-    | some i =>
-      simp only [Option.any_some, Option.isSome_iff_ne_none, ne_eq]
-      intro hs
-      obtain ⟨y, hy⟩ := Option.ne_none_iff_exists'.mp hs
-      obtain ⟨A, n, idx, v⟩ := y
-      obtain ⟨c, D', B, X', d1, s, l, r, m, hx, hc, h3, hv, hl, hli, hr', hrm, hm, hmm, -⟩ :=
-        cellIdxStore?_spec hy
-      have hj' : j = 0 ∨ j = 1 ∨ j = 2 := by omega
-      rcases hj' with rfl | rfl | rfl
-      · rw [show p + 1 + 0 - 1 = p by omega, hb] at hm
-        obtain rfl := Option.some.inj hm
-        rw [hbi] at hmm
-        simp [cellOpMov?, slotMov?] at hmm
-      · rw [show p + 1 + 1 - 2 = p by omega, hb] at hl
-        obtain rfl := Option.some.inj hl
-        rw [hbi] at hli
-        cases hli
-      · rw [show p + 1 + 2 - 3 = p by omega, hb] at hr'
-        obtain rfl := Option.some.inj hr'
-        rw [hbi] at hrm
-        simp [cellOpMov?, slotMov?] at hrm
+  · rw [ImageAddrCidx.cidxCoversB_succ_of_not_lopn hb
+      (fun ds op ss h => by rw [hbi] at h; cases h)]
+    simp
   · rw [narrowIn_succ hb, hbi]
     simp [narrowStep, classifyK]
 
@@ -504,15 +488,8 @@ theorem liveW_zero {D : DeadTab} {slotArr : String → Option (String × Nat)} {
     | some i =>
       simp only [Option.any_some]
       exact carryHiB_false hb1 (hcarry 0 (List.getElem?_eq_some_iff.mp hb1).1) (Or.inl rfl)
-  · cases hi : body[0 + j]? with
-    | none => simp
-    | some i =>
-      simp only [Option.any_some, Option.isSome_iff_ne_none, ne_eq]
-      intro hs
-      obtain ⟨y, hy⟩ := Option.ne_none_iff_exists'.mp hs
-      obtain ⟨A, n, idx, v⟩ := y
-      obtain ⟨c, D', B, X', d1, s, l, r, m, hx, hc, h3, -⟩ := cellIdxStore?_spec hy
-      omega
+  · rw [ImageAddrCidx.cidxCoversB_zero]
+    simp
 
 /-! ## 4. The conversion to the relaxed relation -/
 

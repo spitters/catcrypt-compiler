@@ -1209,7 +1209,7 @@ theorem image_addr_simCW'_access {frame : String → Option (BitVec 64)}
             cases hcl
             rw [hD] at hp
             cases hp
-            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hac⟩ :=
+            obtain ⟨_, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, hac, _⟩ :=
               JasminLsemAddrImage.cellIdxStore?_spec hpp
             obtain ⟨q, -, hq, -⟩ := ImageAddrSim.accArr_spec hac
             have hm := cell_mem_imgStores (frame := frame) (base := base) hq hw

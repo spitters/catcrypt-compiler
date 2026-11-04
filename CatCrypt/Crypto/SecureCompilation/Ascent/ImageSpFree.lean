@@ -931,7 +931,7 @@ theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd
     ⟨d, o, b, idx, v, A, n, -, rfl, hA, h⟩ | ⟨d, n, rfl, h⟩ | ⟨A, n, q, v, hc, h⟩ |
     ⟨ri, hri, h⟩ | ⟨b', q', hbr, h⟩
   rotate_left 4
-  · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, hacc⟩ :=
+  · obtain ⟨c, D, B, X, d1, s, l, r', m, hx, -, h3, -, -, -, hr', hm, -, -, -, -, hacc, hj3, -⟩ :=
       cellIdxStore?_spec hc
     rw [h] at hr
     obtain ⟨q', -, hq', -⟩ := accArr_spec hacc
@@ -944,7 +944,7 @@ theorem read_imgInstr {slotArr : String → Option (String × Nat)} {body : Lcmd
         · have hs : slotMov? r'.li_i = some (X, r) := by
             unfold cellOpMov? at hm
             grind
-          exact Or.inr (Or.inr ⟨A, n, v, k - 3, r', hc, by omega, hr', read_of_slotMov hs⟩)
+          exact Or.inr (Or.inr ⟨A, n, v, _, r', hc, by omega, hr', read_of_slotMov hs⟩)
         · left
           rw [hx]
           simp [rdWr, opNames]

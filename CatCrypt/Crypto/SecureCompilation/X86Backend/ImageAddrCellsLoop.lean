@@ -468,7 +468,7 @@ theorem cell_stepCW' {frame : String → Option (BitVec 64)}
     obtain ⟨sa1, h1, h2⟩ := rel_cidxStoreW hsep hphys _ hrel hinv hbC harm hst hstep
     exact ⟨haltedA_of hb0 (by rw [hx]; simp),
       ⟨loadSafe_of hb0 (by rw [hx]; simp [normA]), hws, hcs⟩, sa1, by rw [he]; exact h1,
-      Or.inl ⟨h2, cidxInv_store _ hbC hrel.pc.symm hst hstep⟩⟩
+      Or.inl ⟨h2, cidxInv_store _ hbC hrel.pc.symm hst hstep hinv⟩⟩
   · have hinv' := cidxInv_step hsep hG fn hrel hinv hbC hlt hX hstep
     by_cases hcnd : ∃ cc l, b0.li_i = .Lcond cc l
     · obtain ⟨cc, l, hx⟩ := hcnd

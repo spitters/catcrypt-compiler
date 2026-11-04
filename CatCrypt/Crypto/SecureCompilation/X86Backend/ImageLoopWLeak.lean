@@ -325,7 +325,7 @@ theorem cell_step_traceCW {frame : String → Option (BitVec 64)}
       · rename_i heq
         exact absurd heq (hnc' _ _)
       · rfl
-    refine ⟨sa1, hr, cidxInv_store _ hb hrel.pc.symm hst he', fun fuel r ℓ h => ⟨fuel + 1, ?_⟩⟩
+    refine ⟨sa1, hr, cidxInv_store _ hb hrel.pc.symm hst he' hinv, fun fuel r ℓ h => ⟨fuel + 1, ?_⟩⟩
     rw [runALeak_step frame body fuel sa s.zf hh, he, hst1, Option.bind_some, h, hL, hpT]
     rfl
   have hinv' := cidxInv_step hsep hG fn hrel hinv hb hlt hX hstep
