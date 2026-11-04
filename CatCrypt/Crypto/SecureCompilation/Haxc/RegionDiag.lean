@@ -36,8 +36,8 @@ the same arguments.
   reads it into, and the value of `instrOKWB` on it.
 * `wideWhy body`: the first conjunct of `printedAddrWB body` that is `false`, or the first
   cell access of `body`.
-* `printedWhy body`: the reason `body` is outside both classes of the printed-body check of
-  the region back half, `narrowWhy body` followed by `wideWhy body`.
+* `printedWhy body`: the reason `body` is outside the class of the printed-body check of
+  the region back half, `wideWhy body`.
 * `callClassWhy G body`, `callGateWhy frame slotArr body`, `bitsDeadWhy frame D body`: the first
   part refused of the class, the gate and the check of the width analysis of a calling body.
 * `exportableWhy p`: the first node of `p`, in the order of `regionExportableB`, at which
@@ -50,11 +50,10 @@ the same arguments.
 * `regionMergeWhy d`: the synthesised merge pairs of the parts `d` of the reference and,
   when their check refuses them, the reason `regCoWhy`.
 * `regionNopWhy d`: the part of `regionNopB d` that is `false`.
-* `imgWhy sl R outs body`: the part of `regionImgB sl R outs body` that is `false`, after
-  the printed class of `body`, read at the cell body of `body`: the first instruction
-  `instrGateB` refuses, and for a body outside `printedAddrB` or with cells the values of
-  the cell checks and the first instruction `instrGateBW` refuses with the width analysis
-  there, or the observed names `retOutsB` finds in the analysis at the return.
+* `imgWhy sl R outs body`: the part of `regionImgB sl R outs body` that is `false`, read at
+  the cell body of `body`: the values of the cell checks and the first instruction `gateCW`
+  refuses with the width analysis there, or the observed names `retOutsB` finds in the
+  analysis at the return.
 * `imgGateWhyW frame slotArr body`: the first part of `imgGateBW frame slotArr body` that is
   `false`, in one pass over the body: the first instruction the instruction gate refuses
   (`gateFirstW`) with its position, its rendering, the width analysis there and the conjunct
@@ -596,14 +595,11 @@ def wideWhy (body : Lcmd) : String :=
                     | some (i, k) => s!"cell access at instruction {k}: {instrStr i.li_i}"
                     | none => ""
 
-/-- The reason the printed body `body` is outside the class
-    `printedAddrB body || (printedAddrWB body && no cell access)` of the region back half:
-    `narrowWhy body` for the first class, then `wideWhy body` for the second. The empty
-    string when `body` is in one of the two classes. -/
+/-- The reason the printed body `body` is outside the class `printedAddrWB` of the region
+    back half (`regionPrintedB`): `wideWhy body`. The empty string when `body` is in the
+    class. -/
 def printedWhy (body : Lcmd) : String :=
-  let n := narrowWhy body
-  let w := wideWhy body
-  if n.isEmpty || w.isEmpty then "" else s!"{n} | second class: {w}"
+  if X86Backend.DecodePrintedAddrW.printedAddrWB body then "" else wideWhy body
 
 /-! ## 4. The exportability test -/
 
@@ -872,24 +868,17 @@ def regionNopWhy (d : CoParts) : String :=
   else if dead.isEmpty then ""
   else s!"result copy target not live at the end: {boundedStr 2 "," dead}"
 
-open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (printedAddrB) in
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrFrame (frameNames frameMark) in
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (instrGateB reloadSavedB) in
-open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (instrGateBW oneBitAt
-  readOkB) in
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSim (reloadSavedB) in
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrSimW (oneBitAt readOkB) in
 /-- The gate of `regionImgB sl R outs body` that is `false`, for a body of the class
-    `regionPrintedB`, after the printed class of `body` that decides the gate. The gates
-    are read at the cell body of `body` and the frame marks with the cells of `R`, which
-    are the body and its frame marks at no cell array on a body with no cell access. For
-    `imgGateB`: the index and the rendering of the first
-    instruction `instrGateB` refuses, else the last instruction that is no return, else
-    `reloadSavedB`. For a body outside `printedAddrB` or with cells, before it the values
-    of `cellAccB` and `cellNoSlotB`, and after it the part of the gate with carry chains
+    `regionPrintedB`. The gate is read at the cell body of `body` and the frame marks with the
+    cells of `R`, which are the body and its frame marks at no cell array on a body with no
+    cell access: the values of `cellAccB` and `cellNoSlotB`, then the gate with carry chains
     and indexed stores through a cell: the index and the rendering of the first instruction
     `ImageAddrCidx.gateCW` refuses with the width analysis `oneBitAt` there and the value of
-    `readOkB`, else the
-    last instruction that is no return, else `reloadSavedB`, else the observed names that
-    `retOutsB` finds in the width analysis at the return. Empty when the gate holds. -/
+    `readOkB`, else the last instruction that is no return, else `reloadSavedB`, else the
+    observed names that `retOutsB` finds in the width analysis at the return. Empty when the
+    gate holds. -/
 def imgWhy (sl : String → Option (String × Nat)) (R : X86Backend.ImageCellFold.Slots)
     (outs : List String) (body0 : Lcmd) : String :=
   let body := X86Backend.ImageAddrCells.cellBody sl body0
@@ -900,14 +889,7 @@ def imgWhy (sl : String → Option (String × Nat)) (R : X86Backend.ImageCellFol
       "the last instruction is no return"
     else if reloadSavedB sl body = false then "reloadSavedB"
     else ""
-  let plain : String :=
-    match (List.range (body.length - 1)).find? fun k =>
-        !((body[k]?).all fun i => instrGateB fr sl body k i.li_i) with
-    | some k => s!"instrGateB at instruction {k} of {body.length}: {at' k}"
-    | none => tail
   if regionImgB sl R outs body0 then ""
-  else if printedAddrB body0 && cellFreeB body0 && R.isEmpty then
-    s!"class printedAddrB: {plain}"
   else
     let wide : String :=
       match (List.range (body.length - 1)).find? fun k =>
@@ -923,9 +905,8 @@ def imgWhy (sl : String → Option (String × Nat)) (R : X86Backend.ImageCellFol
             let W := oneBitAt fr body (body.length - 1)
             s!"retOutsB: observed names in the width analysis at the return: \
               {boundedStr 4 "," (outs.filter W.contains)}"
-    s!"class printedAddrWB: cellAccB \
-      {X86Backend.ImageStraightCells.cellAccB sl R body0}, cellNoSlotB \
-      {X86Backend.ImageStraightCells.cellNoSlotB sl body0}: {plain} | with carry chains: {wide}"
+    s!"cellAccB {X86Backend.ImageStraightCells.cellAccB sl R body0}, cellNoSlotB \
+      {X86Backend.ImageStraightCells.cellNoSlotB sl body0}: {wide}"
 
 /-- The kind of the name `q` at a frame map and a slot map: whether it is a general-purpose
     name, whether it has a frame word, and the array whose pointer its slot holds. -/

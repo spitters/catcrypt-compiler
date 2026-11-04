@@ -300,10 +300,10 @@ theorem printedAddrCWB_of_printedAddrWB (G : Nat) {body : Lcmd}
     simp only [relocFrameB, h1, Bool.true_and, Bool.and_eq_true, decide_eq_true_eq]
     refine ⟨h2, ?_⟩
     have h3' : Int.ofNat (Params.ofBody body).frame < 2 ^ 31 := by
-      simp only [SailX86Decoder.dispOk32, decide_eq_true_eq, Bool.and_eq_true] at h3
+      simp only [SailX86Decoder.dispOk32, decide_eq_true_eq] at h3
       exact h3.2
     have : (Params.ofBody body).frame = frameSize body := rfl
-    rw [this, Int.ofNat_eq_coe] at h3'
+    rw [this, Int.ofNat_eq_natCast] at h3'
     omega
   simp only [printedAddrCWB, hr, hl, hcf, Bool.true_and, Bool.true_or, Bool.and_true,
     Bool.and_eq_true, List.all_eq_true]
@@ -1509,6 +1509,575 @@ theorem instrOKWB_of_instrOKB {body : Lcmd} {P : Params} {i : LinstrR}
     | reg cc => simpa [instrOKWB, instrOKB] using h
     | _ => simp [instrOKB] at h
   | _ => simp [instrOKB] at h
+
+/-- No name a symbolic state writes holds a word whose outermost constructor fixes the width `1`. -/
+def NoBitWr (ss : OwnedLprogTV.SSt) : Prop :=
+  ∀ a ∈ ss.wr, (ss.regs a).wknown ≠ some 1
+
+/-- `regOut` of the empty analysis is empty at an instruction whose symbolic step satisfies
+    `NoBitWr`. -/
+theorem regOut_nil_of_free {x : LinstrR}
+    (h : ∀ ss gs, OwnedLprogTV.symStep (x, .reg none) OwnedLprogTV.SSt.start = .ok ss gs →
+      NoBitWr ss) : regOut [] x = [] := by
+  unfold regOut
+  split
+  · rename_i ss gs heq
+    have hf := h ss gs heq
+    simp only [List.filter_nil, List.nil_append, List.filter_eq_nil_iff, beq_iff_eq]
+    exact hf
+  · rfl
+
+/-- A symbolic state with the register file and the written names of one write of a term
+    other than a one-bit word satisfies `NoBitWr`. -/
+theorem noBitWr_set {d : String} {t : OwnedLprogTV.STerm} (ht : t.wknown ≠ some 1)
+    (ss : OwnedLprogTV.SSt) (h1 : ss.wr = [d])
+    (h2 : ss.rf = (OwnedLprogTV.SSt.start.setR d t).rf) : NoBitWr ss := by
+  intro a ha
+  rw [h1, List.mem_singleton] at ha
+  subst ha
+  have : ss.regs a = (OwnedLprogTV.SSt.start.setR a t).regs a := by
+    unfold OwnedLprogTV.SSt.regs
+    rw [h2]
+  rw [this, OwnedLprogTV.SSt.setR_regs, ite_eq_left rfl]
+  exact ht
+
+/-- `regOut` of the empty analysis is empty at an instruction with one destination that is no
+    compare and no carry or wide form, and whose register moves and `symMC` writes that destination
+    with a term other than a one-bit word. -/
+theorem regOut_nil_of_mc {d m : String} {ss : List LOperand}
+    (hc : cmpArgs? (.Lopn [.reg d] m ss, .reg none) = none)
+    (hv : ∀ p, movRegArgs? (.Lopn [.reg d] m ss, .reg none) = some p →
+      p.1 = d ∧ (OwnedLprogTV.SSt.start.regs p.2).wknown ≠ some 1)
+    (hca : carryArgs? (.Lopn [.reg d] m ss, .reg none) = none)
+    (hw : wideArgs? (.Lopn [.reg d] m ss, .reg none) = none)
+    (key : ∀ d' t g, OwnedLprogTV.symMC (.Lopn [.reg d] m ss) OwnedLprogTV.SSt.start.regs
+      = .set d' t g → d' = d ∧ t.wknown ≠ some 1) :
+    regOut [] (.Lopn [.reg d] m ss) = [] := by
+  refine regOut_nil_of_free fun s gs h => ?_
+  have hcast : OwnedLprogTV.symCast (.Lopn [.reg d] m ss, none) OwnedLprogTV.SSt.start.regs
+      = OwnedLprogTV.symMC (.Lopn [.reg d] m ss) OwnedLprogTV.SSt.start.regs := by
+    unfold OwnedLprogTV.symCast
+    dsimp only
+    split
+    · cases movImmStruct? (.Lopn [.reg d] m ss) <;> rfl
+    · rfl
+  unfold OwnedLprogTV.symStep at h
+  rw [hc] at h
+  dsimp only at h
+  cases hmv : movRegArgs? (.Lopn [.reg d] m ss, .reg none) with
+  | some p =>
+    rw [hmv] at h
+    obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj h
+    obtain ⟨dst, src⟩ := p
+    obtain ⟨rfl, hk⟩ := hv _ hmv
+    exact noBitWr_set hk _ rfl rfl
+  | none =>
+    rw [hmv] at h
+    simp only [flagCondCC?, hca, hw, OwnedLprogTV.symMem, hcast] at h
+    cases hs : OwnedLprogTV.symMC (.Lopn [.reg d] m ss) OwnedLprogTV.SSt.start.regs with
+    | set d' t g =>
+      rw [hs] at h
+      obtain ⟨rfl, hk⟩ := key d' t g hs
+      simp only [OwnedLprogTV.liftR, OwnedLprogTV.aluFl] at h
+      obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj h
+      exact noBitWr_set hk _ rfl rfl
+    | nop =>
+      rw [hs] at h
+      simp only [OwnedLprogTV.liftR, OwnedLprogTV.aluFl] at h
+      obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj h
+      intro a ha
+      cases ha
+    | fail =>
+      rw [hs] at h
+      simp [OwnedLprogTV.liftR, OwnedLprogTV.aluFl] at h
+    | unk =>
+      rw [hs] at h
+      simp [OwnedLprogTV.liftR, OwnedLprogTV.aluFl] at h
+
+/-- **A move with one register source adds no name to the empty width analysis.** -/
+theorem regOut_one (d m s : String) : regOut [] (.Lopn [.reg d] m [.reg s]) = [] := by
+  refine regOut_nil_of_mc rfl (fun p hp => ?_) rfl rfl (fun d' t g hs => ?_)
+  · simp only [movRegArgs?] at hp
+    split_ifs at hp <;> cases hp <;>
+      exact ⟨rfl, by simp [OwnedLprogTV.STerm.wknown, OwnedLprogTV.SSt.regs,
+        OwnedLprogTV.SSt.start]⟩
+  · simp only [OwnedLprogTV.symMC, OwnedLprogTV.symSh, OwnedLprogTV.symN,
+      JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
+      JasminLsemMulCarry.adcxhiStruct?, JasminLsemMulCarry.sbbStruct?,
+      JasminLsemMulCarry.sbbhiStruct?, JasminLsemShift.sarStruct?] at hs
+    repeat' split at hs
+    all_goals first
+      | (cases hs; exact ⟨rfl, by simp [OwnedLprogTV.STerm.wknown, OwnedLprogTV.SSt.regs,
+          OwnedLprogTV.SSt.start]⟩)
+      | simp at hs
+
+/-- The last hypothesis of `regOut_nil_of_mc` at a concrete mnemonic, from `hs`. -/
+local macro "regout_key" : tactic => `(tactic| (
+  rename_i hs
+  simp (config := { decide := true }) [OwnedLprogTV.symMC, OwnedLprogTV.symSh,
+    OwnedLprogTV.symN, JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
+    JasminLsemMulCarry.adcxhiStruct?, JasminLsemMulCarry.sbbStruct?,
+    JasminLsemMulCarry.sbbhiStruct?, JasminLsemShift.sarStruct?] at hs
+  obtain ⟨h1, h2, -⟩ := hs
+  subst h1 h2
+  exact ⟨rfl, by simp (config := { decide := true }) [OwnedLprogTV.STerm.wknown, widthFromTag]⟩))
+
+/-- The proof of `regOut_nil_of_mc` at a concrete mnemonic. -/
+local macro "regout_arm" : tactic => `(tactic| (
+  refine regOut_nil_of_mc ?_ ?_ ?_ ?_ ?_
+  · first | rfl | simp (config := { decide := true }) [cmpArgs?, withWidthTag]
+  · intro p hp
+    first | cases hp | simp (config := { decide := true }) [movRegArgs?, copyQ, withWidthTag] at hp
+  · first | rfl | simp (config := { decide := true }) [carryArgs?, withWidthTag]
+  · first | rfl | simp (config := { decide := true }) [wideArgs?, withWidthTag]
+  · intro d' t g hs
+    simp (config := { decide := true }) [OwnedLprogTV.symMC, OwnedLprogTV.symSh,
+      OwnedLprogTV.symN, JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
+      JasminLsemMulCarry.adcxhiStruct?, JasminLsemMulCarry.sbbStruct?,
+      JasminLsemMulCarry.sbbhiStruct?, JasminLsemShift.sarStruct?] at hs
+    repeat' split at hs
+    all_goals first
+      | (cases hs; exact ⟨rfl, by simp [OwnedLprogTV.STerm.wknown, OwnedLprogTV.SSt.regs,
+          OwnedLprogTV.SSt.start]⟩)
+      | simp at hs))
+
+/-- The state of the symbolic step of a widening multiply: its two destinations hold terms other
+    than one-bit words. -/
+theorem noBitWr_mulx (L H : String) (tx tb : OwnedLprogTV.STerm) :
+    NoBitWr ((OwnedLprogTV.SSt.start.setR L (OwnedLprogTV.mulLoT tx tb)).setR H
+      (.mulx true tx tb)) := by
+  intro a ha
+  simp only [OwnedLprogTV.SSt.setR_regs]
+  split_ifs
+  · simp [OwnedLprogTV.STerm.wknown]
+  · simp [OwnedLprogTV.STerm.wknown, OwnedLprogTV.mulLoT]
+  · simp only [OwnedLprogTV.SSt.setR, OwnedLprogTV.SSt.start, List.mem_cons, List.not_mem_nil,
+      or_false] at ha
+    grind
+
+/-- **An arm of the narrow class adds no name to the empty width analysis.** -/
+theorem regOut_nil_of_ok {P : Params} {a : AArm} (h : a.ok P = true) :
+    regOut [] (JasminLsemAddrRun.normA a.instr) = [] := by
+  have hone : ∀ d m s, regOut [] (JasminLsemAddrRun.normA (.Lopn [.reg d] m [.reg s])) = [] :=
+    fun _ _ _ => regOut_one _ _ _
+  cases a with
+  | reg b =>
+    simp only [AArm.ok, Bool.and_eq_true] at h
+    obtain ⟨⟨-, hok⟩, -⟩ := h
+    cases b with
+    | movRR m D S => exact hone _ _ _
+    | movRI D v =>
+      simp (config := { decide := true }) only [AArm.instr, Arm.instr, JasminLsemAddrRun.normA,
+        LprogAsmPrinter.untagCaret, ↓reduceIte]
+      refine regOut_nil_of_mc rfl (fun p hp => by simp [movRegArgs?] at hp) rfl rfl
+        (fun d' t g hs => ?_)
+      regout_key
+    | store m q S => exact hone _ _ _
+    | load m D q => exact hone _ _ _
+    | alu m D S =>
+      simp only [Arm.ok, Bool.and_eq_true] at hok
+      rcases aluArm_cases hok.1.1 with rfl | rfl | rfl | rfl | rfl <;>
+        simp (config := { decide := true }) only [AArm.instr, Arm.instr,
+          JasminLsemAddrRun.normA, LprogAsmPrinter.untagCaret, ↓reduceIte] <;> regout_arm
+    | aluI m D v =>
+      simp only [Arm.ok, Bool.and_eq_true] at hok
+      rcases aluArm_cases hok.1.1 with rfl | rfl | rfl | rfl | rfl <;>
+        simp (config := { decide := true }) only [AArm.instr, Arm.instr,
+          JasminLsemAddrRun.normA, LprogAsmPrinter.untagCaret, ↓reduceIte] <;> regout_arm
+    | shr m D S => exact hone _ _ _
+    | shl0 m D S => exact hone _ _ _
+    | shI m D k =>
+      simp only [Arm.ok, Bool.and_eq_true, isShI, Bool.or_eq_true, beq_iff_eq] at hok
+      rcases hok.1.1.1 with rfl | rfl <;>
+        simp (config := { decide := true }) only [AArm.instr, Arm.instr,
+          JasminLsemAddrRun.normA, LprogAsmPrinter.untagCaret, ↓reduceIte] <;> regout_arm
+    | lea D B X sc =>
+      simp (config := { decide := true }) only [AArm.instr, Arm.instr, JasminLsemAddrRun.normA,
+        LprogAsmPrinter.untagCaret, ↓reduceIte]
+      refine regOut_nil_of_mc rfl (fun p hp => by simp [movRegArgs?] at hp) rfl rfl
+        (fun d' t g hs => ?_)
+      regout_key
+  | st m q S => exact hone _ _ _
+  | ld m D q => exact hone _ _ _
+  | leaF d q => exact hone _ _ _
+  | ldx D B I =>
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, ↓reduceIte]
+    regout_arm
+  | stx d B I V =>
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, ↓reduceIte]
+    regout_arm
+  | simm d B V k =>
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, ↓reduceIte]
+    regout_arm
+  | mul D S =>
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, ↓reduceIte]
+    regout_arm
+  | cmpR c r =>
+    refine regOut_nil_of_free fun ss gs hs => ?_
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, OwnedLprogTV.symStep, cmpArgs?, ↓reduceIte] at hs
+    split at hs
+    · obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj hs
+      intro a ha
+      cases ha
+    · cases hs
+  | cmpI c k =>
+    refine regOut_nil_of_free fun ss gs hs => ?_
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, OwnedLprogTV.symStep, cmpArgs?, ↓reduceIte] at hs
+    split at hs
+    · obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj hs
+      intro a ha
+      cases ha
+    · cases hs
+  | cmpM c q =>
+    refine regOut_nil_of_free fun ss gs hs => ?_
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, OwnedLprogTV.symStep, cmpArgs?, ↓reduceIte] at hs
+    split at hs
+    · obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj hs
+      intro a ha
+      cases ha
+    · cases hs
+  | mulxS H S =>
+    refine regOut_nil_of_free fun ss gs hs => ?_
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      OwnedLprogTV.symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?,
+      OwnedLprogTV.symWide, ↓reduceIte] at hs
+    split at hs
+    · obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj hs
+      exact noBitWr_mulx _ _ _ _
+    · cases hs
+  | mulx L H S =>
+    refine regOut_nil_of_free fun ss gs hs => ?_
+    simp (config := { decide := true }) only [AArm.instr, JasminLsemAddrRun.normA,
+      OwnedLprogTV.symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?,
+      OwnedLprogTV.symWide, ↓reduceIte] at hs
+    split at hs
+    · obtain ⟨rfl, -⟩ := OwnedLprogTV.SOut.ok.inj hs
+      exact noBitWr_mulx _ _ _ _
+    · cases hs
+  | zero B n =>
+    refine regOut_nil_of_free fun ss gs hs => ?_
+    simp (config := { decide := true }) [AArm.instr, JasminLsemAddrRun.normA,
+      LprogAsmPrinter.untagCaret, OwnedLprogTV.symStep, cmpArgs?, movRegArgs?, flagCondCC?,
+      carryArgs?, wideArgs?, OwnedLprogTV.symMem, OwnedLprogTV.symCast, OwnedLprogTV.symMC,
+      OwnedLprogTV.symSh, OwnedLprogTV.symN, OwnedLprogTV.liftR, OwnedLprogTV.aluFl,
+      JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?,
+      JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
+      JasminLsemMulCarry.adcxhiStruct?, JasminLsemMulCarry.sbbStruct?,
+      JasminLsemMulCarry.sbbhiStruct?, JasminLsemShift.sarStruct?] at hs
+
+/-- An instruction of a body of the class `printedAddrB`: the return at the last position, an
+    instruction of `instrOKB` at every other position. -/
+theorem narrowB_instr {body : Lcmd} (h : DecodePrintedCFG.printedAddrB body = true) {k : Nat}
+    {i : Linstr} (hb : body[k]? = some i) :
+    isRetB i.li_i = true ∨ instrOKB body (Params.ofBody body) i.li_i = true := by
+  simp only [DecodePrintedCFG.printedAddrB, Bool.and_eq_true, Option.any_eq_true] at h
+  obtain ⟨⟨⟨-, r, hr, hret⟩, hall⟩, -⟩ := h
+  have hk := (List.getElem?_eq_some_iff.mp hb).1
+  by_cases hl : k + 1 < body.length
+  · have hm : i ∈ body.dropLast := List.mem_of_getElem? (i := k) (by
+      rw [List.getElem?_dropLast, ite_eq_left (by omega)]
+      exact hb)
+    exact Or.inr (List.all_eq_true.mp hall i hm)
+  · left
+    have he : k = body.length - 1 := by omega
+    rw [List.getLast?_eq_getElem?, ← he, hb] at hr
+    obtain rfl := Option.some.inj hr
+    exact hret
+
+/-- Every instruction of a body of `printedAddrB` meets no classifier of the wide class before
+    `classifyA`. -/
+theorem noWideArm_of_narrowB {body : Lcmd} (h : DecodePrintedCFG.printedAddrB body = true)
+    {k : Nat} {i : Linstr} (hb : body[k]? = some i) : NoWideArm i.li_i := by
+  obtain ⟨ii, x⟩ := i
+  rcases narrowB_instr h hb with h1 | h1
+  · simp only at h1
+    cases x <;> first
+      | exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+      | simp [isRetB] at h1
+  · simp only at h1 ⊢
+    cases x with
+    | Lopn ds o ss =>
+      simp only [instrOKB] at h1
+      cases hA : classifyA (.Lopn ds o ss) with
+      | none => simp [hA] at h1
+      | some a =>
+        rw [hA] at h1
+        have hw := noWideArm_of_ok (P := Params.ofBody body) h1
+        rwa [classifyA_instr hA] at hw
+    | Llabel kd l => exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    | Lcond c l => exact ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+    | _ => simp [instrOKB] at h1
+
+/-- A body of `printedAddrB` has no carry-out binding, so every position passes `carryPrevB`. -/
+theorem carryPrevB_of_narrowB {body : Lcmd} (h : DecodePrintedCFG.printedAddrB body = true)
+    (k : Nat) : carryPrevB body k = true := by
+  unfold carryPrevB
+  split
+  · rename_i heq
+    rename_i o a s c
+    split_ifs with ho
+    · have hC := (noWideArm_of_narrowB h heq).2.2.2.1
+      simp [classifyC, ho] at hC
+    · rfl
+  · rfl
+
+/-- A body of `printedAddrB` has no cast, so every position passes `castPosB`. -/
+theorem castPosB_of_narrowB {body : Lcmd} (h : DecodePrintedCFG.printedAddrB body = true)
+    (k : Nat) : castPosB body k = true := by
+  unfold castPosB
+  cases hb : body[k]? with
+  | none => rfl
+  | some i =>
+    simp only [Option.all_some]
+    rw [(noWideArm_of_narrowB h hb).1]
+
+/-- **The narrow printed class is in the wide one**: `printedAddrB` implies `printedAddrWB`. -/
+theorem printedAddrWB_of_printedAddrB {body : Lcmd}
+    (h : DecodePrintedCFG.printedAddrB body = true) :
+    DecodePrintedAddrW.printedAddrWB body = true := by
+  have hc := h
+  simp only [DecodePrintedCFG.printedAddrB, Bool.and_eq_true, List.all_eq_true] at hc
+  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := hc
+  simp only [DecodePrintedAddrW.printedAddrWB, Bool.and_eq_true, List.all_eq_true]
+  exact ⟨⟨⟨⟨⟨h1, h2⟩, fun i hi => instrOKWB_of_instrOKB (h3 i hi)⟩, h4⟩,
+    fun k _ => carryPrevB_of_narrowB h k⟩, fun k _ => castPosB_of_narrowB h k⟩
+
+/-- The analysis without a join at the next instruction: one step of `oneBitStepAt0`. -/
+theorem oneBitAt0_succ_at {frame : String → Option (BitVec 64)} {body : Lcmd} {k : Nat}
+    {bi : Linstr} (hb : body[k]? = some bi) :
+    oneBitAt0 frame body (k + 1)
+      = oneBitStepAt0 frame body k (oneBitAt0 frame body k) bi.li_i := by
+  have hk : k < body.length := (List.getElem?_eq_some_iff.mp hb).1
+  unfold oneBitAt0
+  rw [List.take_add_one, hb, Option.toList_some, List.zipIdx_append, List.foldl_append,
+    List.length_take, Nat.min_eq_left hk.le]
+  simp
+
+/-- An immediate move `MOV:64 d, #n` is a register instruction of the gate. -/
+theorem icase_mov64Imm {frame : String → Option (BitVec 64)} {x : LinstrR} {d : String} {n : Nat}
+    (hx : x = .Lopn [.reg d] "MOV:64" [.imm n]) : icase frame x = .reg := by
+  subst hx
+  simp (config := { decide := true }) [icase, slotMov?, slotCmp?, JasminLsemAddrRun.normA,
+    LprogAsmPrinter.untagCaret]
+
+/-- At a register instruction of the gate in a body of `printedAddrB`, `regOut` of the empty
+    analysis is empty. -/
+theorem regOut_nil_of_narrowB {frame : String → Option (BitVec 64)} {body : Lcmd}
+    (hcls : DecodePrintedCFG.printedAddrB body = true) {k : Nat} {i : Linstr}
+    (hb : body[k]? = some i) (hic : icase frame i.li_i = .reg) :
+    regOut [] (JasminLsemAddrRun.normA i.li_i) = [] := by
+  obtain ⟨ii, x⟩ := i
+  simp only at hic ⊢
+  rcases narrowB_instr hcls hb with h1 | h1
+  · cases x <;> simp_all [icase, isRetB]
+  · simp only at h1
+    cases x with
+    | Lopn ds o ss =>
+      simp only [instrOKB] at h1
+      cases hA : classifyA (.Lopn ds o ss) with
+      | none => simp [hA] at h1
+      | some a =>
+        rw [hA] at h1
+        rw [← classifyA_instr hA]
+        exact regOut_nil_of_ok (P := Params.ofBody body) h1
+    | Llabel kd l => simp [icase] at hic
+    | Lcond c l => cases c <;> simp [icase] at hic
+    | _ => simp [instrOKB] at h1
+
+/-- One step of the analysis without a join at an instruction of a body of `printedAddrB` that
+    passes `imgGateB`, from the empty analysis: the return and a gated arm add no name. -/
+theorem oneBitStepAt0_nil_of_narrowB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hcls : DecodePrintedCFG.printedAddrB body = true)
+    (hgate : imgGateB frame slotArr body = true) {k : Nat}
+    {i : Linstr} (hb : body[k]? = some i) : oneBitStepAt0 frame body k [] i.li_i = [] := by
+  obtain ⟨hK, hM, hS, hC, -⟩ := noWideArm_of_narrowB hcls hb
+  have hstep : oneBitStep frame [] i.li_i = [] := by
+    unfold oneBitStep
+    cases hci : carryI? i.li_i with
+    | some p =>
+      obtain ⟨hi, d, a, s, c⟩ := p
+      have hx := carryI?_eq hci
+      rw [hx] at hC
+      cases hi <;> simp [classifyC] at hC
+    | none =>
+      simp only
+      cases hic : icase frame i.li_i
+      case reg => simpa [hM] using regOut_nil_of_narrowB hcls hb hic
+      all_goals simp [castOut, hK]
+  unfold oneBitStepAt0
+  cases hbs : bitStore? body k i.li_i with
+  | none => exact hstep
+  | some p =>
+    exfalso
+    obtain ⟨d, n⟩ := p
+    have hx := (bitStore?_spec hbs).1
+    have hg := hgate
+    simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hg
+    obtain ⟨⟨hall, hlast⟩, -⟩ := hg
+    have hk := (List.getElem?_eq_some_iff.mp hb).1
+    have hlt : k < body.length - 1 := by
+      by_contra hc
+      have he : k = body.length - 1 := by omega
+      rw [List.getLast?_eq_getElem?, ← he, hb] at hlast
+      simp [hx, isRetB] at hlast
+    have hgk := hall k hlt
+    rw [hb] at hgk
+    simp only [Option.all_some] at hgk
+    unfold instrGateB at hgk
+    rw [icase_mov64Imm hx] at hgk
+    simp [bitStoreB, hbs] at hgk
+
+/-- **The width analysis of a body of the narrow gate is empty**: on a body of `printedAddrB`
+    that passes `imgGateB`, `oneBitAt` has no name at any position. The analysis without a
+    join `oneBitAt0` is empty by induction over the body, each step from the empty analysis
+    adding no name (`oneBitStepAt0_nil_of_narrowB`); hence every seed of a label, the names of
+    `oneBitAt0` at the branches to it, is empty, and `oneBitAt` is `oneBitAt0`
+    (`oneBitAt_eq_oneBitAt0`). -/
+theorem oneBitAt_nil_of_narrowB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hcls : DecodePrintedCFG.printedAddrB body = true)
+    (hgate : imgGateB frame slotArr body = true) (k : Nat) :
+    oneBitAt frame body k = [] := by
+  have h0 : ∀ k, oneBitAt0 frame body k = [] := by
+    intro k
+    induction k with
+    | zero => simp [oneBitAt0]
+    | succ k ih =>
+      cases hb : body[k]? with
+      | none =>
+        have hl := List.getElem?_eq_none_iff.mp hb
+        have e : body.take (k + 1) = body.take k := by
+          rw [List.take_of_length_le (by omega), List.take_of_length_le hl]
+        unfold oneBitAt0 at ih ⊢
+        rw [e]
+        exact ih
+      | some i =>
+        rw [oneBitAt0_succ_at hb, ih]
+        exact oneBitStepAt0_nil_of_narrowB hcls hgate hb
+  rw [oneBitAt_eq_oneBitAt0 (fun q _ _ _ _ _ => h0 q) k]
+  exact h0 k
+
+/-- On a body of `printedAddrB` that passes `imgGateB`, every observed name passes `retOutsB`:
+    the width analysis at the last instruction is empty. -/
+theorem retOutsB_of_narrowB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hcls : DecodePrintedCFG.printedAddrB body = true)
+    (hgate : imgGateB frame slotArr body = true) (outs : List String) :
+    retOutsB frame body outs = true := by
+  simp [retOutsB, oneBitAt_nil_of_narrowB hcls hgate]
+
+/-- `regGateB` is `regGateBW` at the empty analysis, up to the disjunct of a one-bit write. -/
+theorem regGateBW_nil_of_regGateB {frame : String → Option (BitVec 64)} {x : LinstrR}
+    (h : regGateB frame x = true) : regGateBW frame [] x = true := by
+  simp only [regGateB, Bool.and_eq_true] at h
+  simp only [regGateBW, Bool.and_eq_true]
+  refine ⟨h.1, ?_⟩
+  have h2 := h.2
+  split at h2
+  · rename_i ss gs heq
+    rw [heq]
+    simp only [List.all_eq_true, Bool.or_eq_true] at h2 ⊢
+    intro r hr
+    refine (h2 r hr).elim (fun hn => Or.inl (Or.inl hn)) fun hw => Or.inl (Or.inr ?_)
+    unfold wid64B at hw
+    unfold wid64WB
+    split at hw <;> simp_all
+  · cases h2
+
+/-- The gate of an instruction of the narrow route at the empty analysis gives `gateAtW`, for an
+    instruction of the class with no frame-array name. -/
+theorem gateAtW_of_instrGateB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat} {x : LinstrR}
+    (hw : NoWideArm x) (hfa : ∀ q ∈ JasminLsemExportRewrites.instrNames x, faB q = false)
+    (hg : instrGateB frame slotArr body k x = true) :
+    gateAtW frame slotArr body k [] x = true := by
+  obtain ⟨-, hM, -, hC, -⟩ := hw
+  have hci : carryI? x = none := by
+    cases hc : carryI? x with
+    | none => rfl
+    | some p =>
+      obtain ⟨hi, d, a, s, c⟩ := p
+      rw [carryI?_eq hc] at hC
+      cases hi <;> simp [classifyC] at hC
+  have hr : readOkB (gateReadSet frame [] x) x = true := by
+    have : gateReadSet frame [] x = [] := by
+      unfold gateReadSet
+      split <;> simp
+    rw [this]
+    simp [readOkB]
+  unfold gateAtW
+  rw [hci, hr]
+  simp only [Bool.true_or, Bool.and_true, Bool.and_eq_true, List.all_eq_true]
+  refine ⟨fun q hq => by simp [hfa q hq], ?_⟩
+  unfold instrGateB at hg
+  cases hic : icase frame x with
+  | other => rw [hic] at hg; cases hg
+  | label => rfl
+  | cond cc l =>
+    rw [hic] at hg
+    simp only [Bool.and_eq_true, Option.isSome_iff_exists] at hg
+    obtain ⟨hp, q, hq⟩ := hg
+    simp [hq, Option.isSome_iff_exists.mpr hp]
+  | ldx d b idx => rw [hic] at hg; exact hg
+  | stx d b idx v => rw [hic] at hg; exact hg
+  | sload d q =>
+    rw [hic] at hg
+    simp only [Bool.and_eq_true] at hg
+    simp [hg.1]
+  | sstore q S =>
+    rw [hic] at hg
+    simp only [Bool.and_eq_true] at hg
+    simp [hg.1]
+  | scmp d y q =>
+    rw [hic] at hg
+    simp only [Bool.and_eq_true] at hg
+    exact hg.1
+  | zarr b n w => rw [hic] at hg; exact hg
+  | simm d b v j => rw [hic] at hg; exact hg
+  | reg =>
+    rw [hic] at hg
+    simp only [Bool.and_eq_true, Bool.not_eq_true'] at hg
+    obtain ⟨⟨h1, -⟩, h3⟩ := hg
+    have hbs : bitStore? body k x = none := by
+      simpa [bitStoreB] using h3
+    simp only [hM, hbs, Bool.or_eq_true, Bool.and_eq_true]
+    refine Or.inr ⟨regGateBW_nil_of_regGateB h1, ?_⟩
+    unfold cmovCondOkB
+    split <;> simp
+
+/-- **The narrow image gate is in the wide one**: a body of `printedAddrB` that passes
+    `imgGateB` and has no frame-array name passes `imgGateBW`. The width analysis is empty there
+    (`oneBitAt_nil_of_narrowB`), and each arm of `gateAtW` at the empty analysis reduces to that
+    of `instrGateB`. The hypothesis `hfa` is needed at the destination of an indexed store, which
+    `instrGateB` leaves free and the first conjunct of `gateAtW` does not. -/
+theorem imgGateBW_of_imgGateB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hcls : DecodePrintedCFG.printedAddrB body = true)
+    (hgate : imgGateB frame slotArr body = true)
+    (hfa : ∀ i ∈ body, ∀ q ∈ JasminLsemExportRewrites.instrNames i.li_i, faB q = false) :
+    imgGateBW frame slotArr body = true := by
+  have hg := hgate
+  simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hg
+  obtain ⟨⟨h1, h2⟩, h3⟩ := hg
+  simp only [imgGateBW, Bool.and_eq_true, List.all_eq_true, List.mem_range]
+  refine ⟨⟨fun k hk => ?_, h2⟩, h3⟩
+  have := h1 k hk
+  cases hb : body[k]? with
+  | none => rfl
+  | some i =>
+    rw [hb] at this
+    simp only [Option.all_some] at this ⊢
+    rw [instrGateBW, oneBitAt_nil_of_narrowB hcls hgate]
+    exact gateAtW_of_instrGateB (noWideArm_of_narrowB hcls hb)
+      (hfa i (List.mem_of_getElem? hb)) this
 
 end Narrow
 

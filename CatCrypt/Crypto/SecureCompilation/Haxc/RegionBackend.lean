@@ -123,8 +123,7 @@ the image of the cell body of the printed body, the bounds invariant of `B` from
 register bounds, the cell body in the image class, the printed class with the gate of its
 image simulation (`regionImgB`), the frame check and the entry check, with the array names
 of the slot map renamed by the pairs `ps`, and the checks of the cell arrays `R`. A body of
-`printedAddrB` with no cell access is gated by `imgGateB`; a body of `printedAddrWB` is
-gated, at its cell body, by `imgGateB` or by the gate with carry chains and indexed stores
+`printedAddrWB` is gated, at its cell body, by the gate with carry chains and indexed stores
 through a cell `imgGateCW`, under which a general-purpose name may hold a one-bit carry. `renImage_bytes` states that every
 halting run of `B` under `lsemFuelMemF` from the entry state `emptiedEntry` is matched by a
 halting run of the decoded bytes of the printed body, at the end of which every array
@@ -227,7 +226,7 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 
 ## Main definitions
 
-* `regionPrintedB`: the covered printed bodies, `printedAddrB` or `printedAddrWB`.
+* `regionPrintedB`: the covered printed bodies, `printedAddrWB`.
 * `cellArrsOf`: the arrays a printed body accesses through cells.
 * `regionCells`: the cell arrays of a region export, those of `cellArrsOf` and the arrays the
   reference accesses at known indices only.
@@ -235,10 +234,9 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   the first save `qsave.X := X` of each callee-saved register `X`, no other write to
   `qsave.X`, and the restores `X := qsave.X` as the last six instructions.
 * `regionImgCoreB`: the printed class of a body with the gate of the image simulation of
-  that class: `imgGateB` for a body of `printedAddrB` with no cell access, and for a body
-  of `printedAddrWB` the checks of its cell accesses and, at its cell body, `imgGateB` or
-  the gate with carry chains `imgGateCW` with the observed names outside its width analysis
-  at the return (`retOutsB`).
+  that class: the class `printedAddrWB`, the checks of its cell accesses and, at its cell
+  body, the gate with carry chains `imgGateCW` with the observed names outside its width
+  analysis at the return (`retOutsB`).
 * `regionImgB`: `regionImgCoreB` and `restoreB` on the image of the cell body.
 * `emptiedEntry`: the entry state of a virtual body with cells.
 * `regionFoldB`: the check of the cell fold of the parts.
@@ -299,6 +297,8 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   `restoreB_of_shape`: the wire of the printer's save prologue, a middle part that writes no
   save slot of a callee-saved register, and the restore epilogue passes `restoreB`.
 * `regionPrintedB_of_regionImgB`: a body that passes `regionImgB` is in `regionPrintedB`.
+* `regionImgCoreB_of_narrowB`: a body of the narrow class `printedAddrB` with no cell access
+  that passes `imgGateB` and names no frame array passes `regionImgCoreB` at no cell array.
 * `halts_det`: a halting run of a decoded program has one final state.
 * `imgStores_export`: the accesses of the image simulation lie in `layoutMem`, the stack
   words and the pointer regions of the layout.
@@ -503,18 +503,11 @@ open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords region
 def cellFreeB (body : Lcmd) : Bool :=
   body.all fun i => (JasminLsemAddrMem.cellA? i.li_i).isNone
 
-/-- **The covered printed bodies of a region export**: the class
-    `DecodePrintedCFG.printedAddrB`, or the class with carry chains, untagged immediate
-    moves and cell accesses `DecodePrintedAddrW.printedAddrWB`. -/
+/-- **The covered printed bodies of a region export**: the class with carry chains, untagged
+    immediate moves and cell accesses `DecodePrintedAddrW.printedAddrWB`, which contains the
+    class `DecodePrintedCFG.printedAddrB` (`ImageAddrCallW.printedAddrWB_of_printedAddrB`). -/
 def regionPrintedB (body : Lcmd) : Bool :=
-  printedAddrB body || printedAddrWB body
-
-/-- On a body with no cell access the covered class is `printedAddrB`, or `printedAddrWB`
-    with `cellFreeB`. -/
-theorem regionPrintedB_of_cellFreeB {body : Lcmd} (h : cellFreeB body = true) :
-    regionPrintedB body = (printedAddrB body || (printedAddrWB body && cellFreeB body)) := by
-  rw [h, Bool.and_true]
-  rfl
+  printedAddrWB body
 
 /-- **The cell arrays of a printed body**: the arrays of `all` that some cell access of
     `body` reaches, an access whose base register holds the pointer of the array at the
@@ -1132,27 +1125,22 @@ theorem restoreB_of_shape (v : Lfundef) (tb : Array Nat) (m : InLoadMap)
 end RestoreCheck
 
 /-- **The printed class of a body with the gate of the image simulation of that class**, at
-    the slot map `sl`, the cell arrays `R` and the observed names `outs`. A body of the
-    class `printedAddrB` with no cell access, at no cell array, passes when it passes
-    `ImageAddrSim.imgGateB` at the frame marks of the body. Every other body passes when it
-    is in the class `printedAddrWB`, its cell accesses reach cells of `R` through
-    general-purpose base registers (`cellAccB`), no frame-word move of a cell names an array
-    slot (`cellNoSlotB`), and its cell body `ImageAddrCells.cellBody` passes, at the frame
-    marks with the cells `frameMarkC`, `imgGateB` or the gate with carry chains and indexed
-    stores through a cell `ImageAddrCidx.imgGateCW` together with `ImageAddrSimW.retOutsB`,
-    which places each observed name outside the width analysis at the return: a carry
-    constant, the carry-out of `ADCXHI:64`, a select on a one-bit condition and an indexed
-    store through a cell pass the second gate. On a body with
-    no cell access, at no cell array, the cell conditions hold and the cell body and the
-    frame marks are those of the body (`regionImgB_of_cellFreeB`). -/
+    the slot map `sl`, the cell arrays `R` and the observed names `outs`: the body is in the
+    class `printedAddrWB`, its cell accesses reach cells of `R` through general-purpose base
+    registers (`cellAccB`), no frame-word move of a cell names an array slot (`cellNoSlotB`),
+    and its cell body `ImageAddrCells.cellBody` passes, at the frame marks with the cells
+    `frameMarkC`, the gate with carry chains and indexed stores through a cell
+    `ImageAddrCidx.imgGateCW` together with `ImageAddrSimW.retOutsB`, which places each
+    observed name outside the width analysis at the return. On a body with no cell access, at
+    no cell array, the cell conditions hold and the cell body and the frame marks are those of
+    the body (`regionImgB_of_cellFreeB`). A body of the narrow class `printedAddrB` that passes
+    `imgGateB` at the frame marks of the body, with no frame-array name, passes the gate
+    (`regionImgCoreB_of_narrowB`). -/
 def regionImgCoreB (sl : String → Option (String × Nat)) (R : Slots) (outs : List String)
     (body : Lcmd) : Bool :=
-  if printedAddrB body && cellFreeB body && R.isEmpty then
-    imgGateB (frameMark (frameNames body)) sl body
-  else printedAddrWB body && cellAccB sl R body && cellNoSlotB sl body
-    && (imgGateB (frameMarkC R body) sl (cellBody sl body)
-      || (imgGateCW (frameMarkC R body) sl (cellBody sl body)
-        && retOutsB (frameMarkC R body) (cellBody sl body) outs))
+  printedAddrWB body && cellAccB sl R body && cellNoSlotB sl body
+    && imgGateCW (frameMarkC R body) sl (cellBody sl body)
+    && retOutsB (frameMarkC R body) (cellBody sl body) outs
 
 /-- **The gate of the image simulation with the restoration of the callee-saved
     registers**: the gate `regionImgCoreB` of the printed class of the body, the
@@ -1183,22 +1171,17 @@ theorem not_fa_of_regionImgB {sl : String → Option (String × Nat)} {R : Slots
   simpa using h2
 
 /-- **On a body with no cell access, at no cell array, `regionImgB` is the gate of the
-    printed class of the body**: `imgGateB` for a body of `printedAddrB`, and for every
-    other body the class `printedAddrWB` with `imgGateB` or `imgGateCW` and `retOutsB`, at
+    printed class of the body**: the class `printedAddrWB` with `imgGateCW` and `retOutsB` at
     the frame marks of the body, with the restoration check on the image of the body. -/
 theorem regionImgB_of_cellFreeB (sl : String → Option (String × Nat)) (outs : List String)
     {body : Lcmd} (h : cellFreeB body = true) :
     regionImgB sl [] outs body
-      = ((if printedAddrB body then imgGateB (frameMark (frameNames body)) sl body
-        else printedAddrWB body && cellFreeB body
-          && (imgGateB (frameMark (frameNames body)) sl body
-            || (imgGateCW (frameMark (frameNames body)) sl body
-              && retOutsB (frameMark (frameNames body)) body outs)))
+      = (printedAddrWB body && imgGateCW (frameMark (frameNames body)) sl body
+          && retOutsB (frameMark (frameNames body)) body outs
         && restoreB ((virtImg sl body).map Prod.fst) && outs.all (fun r => !faB r)) := by
   unfold regionImgB regionImgCoreB
-  rw [cellBody_of_cellFreeB sl h, cellAccB_of_cellFreeB sl [] h, cellNoSlotB_of_cellFreeB sl h,
-    h]
-  simp only [List.isEmpty_nil, Bool.and_true]
+  rw [cellBody_of_cellFreeB sl h, cellAccB_of_cellFreeB sl [] h, cellNoSlotB_of_cellFreeB sl h]
+  simp only [Bool.and_true]
   rfl
 
 /-- A body that passes `regionImgB` is in the covered class `regionPrintedB`. -/
@@ -1206,16 +1189,29 @@ theorem regionPrintedB_of_regionImgB {sl : String → Option (String × Nat)} {R
     {outs : List String} {body : Lcmd} (h : regionImgB sl R outs body = true) :
     regionPrintedB body = true := by
   have h := regionImgCoreB_of_regionImgB h
-  unfold regionImgCoreB at h
-  unfold regionPrintedB
-  by_cases hpl : (printedAddrB body && cellFreeB body && R.isEmpty) = true
-  · simp only [Bool.and_eq_true] at hpl
-    rw [hpl.1.1]
-    rfl
-  · rw [ite_eq_right hpl] at h
-    simp only [Bool.and_eq_true] at h
-    rw [h.1.1.1]
-    exact Bool.or_true _
+  simp only [regionImgCoreB, Bool.and_eq_true] at h
+  exact h.1.1.1.1
+
+/-- **The narrow branch of the gate is contained in the gate**: a body of `printedAddrB` with no
+    cell access that passes `imgGateB` at the frame marks of the body and has no frame-array
+    name passes `regionImgCoreB` at no cell array, at every list of observed names. The width
+    analysis of such a body is empty (`ImageAddrCallW.oneBitAt_nil_of_narrowB`), which gives
+    `imgGateBW` (`ImageAddrCallW.imgGateBW_of_imgGateB`), hence `imgGateCW`, and `retOutsB`
+    (`ImageAddrCallW.retOutsB_of_narrowB`). -/
+theorem regionImgCoreB_of_narrowB (sl : String → Option (String × Nat)) (outs : List String)
+    {body : Lcmd} (hcls : printedAddrB body = true) (hcf : cellFreeB body = true)
+    (hgate : imgGateB (frameMark (frameNames body)) sl body = true)
+    (hfa : ∀ i ∈ body, ∀ q ∈ JasminLsemExportRewrites.instrNames i.li_i, faB q = false) :
+    regionImgCoreB sl [] outs body = true := by
+  unfold regionImgCoreB
+  rw [cellBody_of_cellFreeB sl hcf, cellAccB_of_cellFreeB sl [] hcf,
+    cellNoSlotB_of_cellFreeB sl hcf]
+  have hfm : frameMarkC [] body = frameMark (frameNames body) := rfl
+  rw [hfm, X86Backend.ImageAddrCallW.printedAddrWB_of_printedAddrB hcls,
+    X86Backend.ImageAddrCallW.retOutsB_of_narrowB hcls hgate,
+    X86Backend.ImageAddrCidx.imgGateCW_of_imgGateBW
+      (X86Backend.ImageAddrCallW.imgGateBW_of_imgGateB hcls hgate hfa)]
+  rfl
 
 /-- **A halting run of a decoded program has one final state.** -/
 theorem halts_det {prog : List X86Backend.LprogBytesDecode.RInstr} {pc : Nat}
@@ -1347,10 +1343,7 @@ theorem imgStores_export {σ : AbiLayout} {nm : String → String} {ps : List (S
     `restoreB_sound`, and the relation of the image with the address machine and of the
     address machine with the machine carries them to `sa'`.
 
-    A body of `printedAddrB` with no cell access, at no cell array, runs by
-    `ImageAddrStore.image_addr_sim_access` and `DecodePrintedCFG.printedAddr_sim`. Every
-    other body runs by `DecodePrintedAddrW.printedAddr_simW`, with
-    `ImageAddrStore.image_addr_simB'_access` under `imgGateB` and
+    The body runs by `DecodePrintedAddrW.printedAddr_simW`, with
     `ImageAddrStore.image_addr_simCW'_access` under `imgGateCW`, from the invariant of the
     window at the entry (`ImageAddrCidx.CidxInv.of_lpc_zero`), where the step at a
     conditional branch is `ImageAddrCellsLoop.imgStepWCond_of_gateCW` and the width `64` of
@@ -1430,160 +1423,87 @@ theorem regionImg_sim {σ : AbiLayout} {sl : String → Option (String × Nat)}
   have hofa := not_fa_of_regionImgB hgate
   replace hgate := regionImgCoreB_of_regionImgB hgate
   unfold regionImgCoreB at hgate
-  by_cases hpl : (printedAddrB body && cellFreeB body && R.isEmpty) = true
-  · rw [ite_eq_left hpl] at hgate
-    simp only [Bool.and_eq_true] at hpl
-    obtain ⟨⟨hpl, hcf⟩, hR⟩ := hpl
-    obtain rfl : R = [] := List.isEmpty_iff.mp hR
-    have hcb := cellBody_of_cellFreeB sl hcf
-    rw [hcb] at hphys hrel hr'
-    have hsep0 : X86Backend.ImageAddrSim.ImgSep (frameE body sa) sl base
-        (X86Backend.DecodePrintedCFG.frameRsp body sa) := hsep
-    have hrel0 : X86Backend.ImageAddrSim.ImgRel (frameE body sa) sl base body b (entryA σ sa)
-        false := hrel
-    have hG : imgGateB (frameE body sa) sl body = true := by
-      rw [← hgate]
-      exact X86Backend.ImageAddrFrame.imgGateB_frameMark body _ _
-    obtain ⟨fuel', s', zf', hrA, hrel', hsafe, hacc⟩ :=
-      X86Backend.ImageAddrStore.image_addr_sim_access hsep0 hphys hG fn f' b t' (entryA σ sa)
-        false hfn hrel0 hr'
-    have hkeep : ∀ x, x ∉ imgStores (frameE body sa) sl base → s'.mem x = sa.mem x :=
-      fun x hx => SepLogic.Addr.runA_keep_mem hrA (hacc.mono fun _ h => h.1) hx
-    have hA : ∃ fuel s zf, runA (frameE body sa) body fuel (entryA σ sa) false = some (s, zf)
-        ∧ RunSafe (frameE body sa) body (AccessIn (imgStores (frameE body sa) sl base)
-          (frameE body sa) body) fuel (entryA σ sa) false := ⟨fuel', s', zf', hrA, hacc⟩
-    rw [X86Backend.ImageAddrFrame.runA_frameIn] at hrA
-    rw [X86Backend.ImageAddrFrame.runSafe_frameIn] at hsafe
-    obtain ⟨prog, sa', hdec, hh, hsp, hregs, hm'⟩ :=
-      X86Backend.DecodePrintedCFG.printedAddr_sim body hpl sa (entryA σ sa) false rfl
-        hentA rfl fuel' (s', zf') hrA hsafe
-    exact ⟨prog, sa', s', hdec, hh, fun x _ hx => hrel'.regs x hx, hrel'.cells,
-      fun q a hq ha => by
-        rw [← X86Backend.ImageAddrSim.frameVal_of_not_fa (hofa q hq)]; exact hrel'.slots q a ha,
-      fun r _ hr => hregs r hr, hm', hsp,
-      fun x hx => hfinA s' sa' x
-        ((hrel'.regs x (hsep0.gp x (hcsT x hx).1)).symm.trans (hcsT x hx).2)
-        (Or.inl (hregs x (hcsT x hx).1)),
-      fun x hx hs => (hm' x hx).symm.trans (hkeep x hs), hA⟩
-  · rw [ite_eq_right hpl] at hgate
-    simp only [Bool.and_eq_true] at hgate
-    obtain ⟨⟨⟨hprW, hacc⟩, hns⟩, hgate⟩ := hgate
-    have hsome : ∀ q, (frameC base R (frameE body sa) q).isSome = (frameMarkC R body q).isSome :=
-      X86Backend.ImageStraightCells.frameC_isSome base R body sa
-    have hgpN : ∀ r, gpOk r = true → cellIdx R r = none := by
-      intro r hr
-      cases hc : cellIdx R r with
-      | none => rfl
-      | some _ =>
-          have := hgpC r (by rw [hc]; rfl)
-          rw [hr] at this
-          cases this
-    have hfr : ∀ q ∈ X86Backend.ImageAddrFrame.bodyNamesI body,
-        frameC base R (frameE body sa) q
-          = X86Backend.DecodePrintedAddr.frameP (X86Backend.LprogBytesDecode.Params.ofBody body)
-            (X86Backend.DecodePrintedCFG.frameRsp body sa) q := by
-      intro q hq
-      simp only [frameC, hbody q hq]
-      show X86Backend.ImageAddrFrame.frameIn body _ q = _
-      unfold X86Backend.ImageAddrFrame.frameIn
-      rw [ite_eq_left hq]
-    have hN := X86Backend.ImageStraightCells.cellNoSlotB_spec hns
-    have hF := X86Backend.ImageStraightCells.cellFrames_of (base := base)
-      (rsp := X86Backend.DecodePrintedCFG.frameRsp body sa) (fr := frameE body sa) hacc hgpC
-      (fun r hr => by
-        have := hsep.gp r hr
-        simp only [frameC, hgpN r hr] at this
-        exact this) hred
-    have hg2 : imgGateB (frameC base R (frameE body sa)) sl (cellBody sl body) = true
-        ∨ (imgGateCW (frameC base R (frameE body sa)) sl (cellBody sl body) = true
-          ∧ retOutsB (frameC base R (frameE body sa)) (cellBody sl body) outs = true) := by
-      rcases Bool.or_eq_true_iff.mp hgate with h | h
-      · refine Or.inl ?_
-        rw [X86Backend.ImageAddrFrame.imgGateB_congr hsome]
-        exact h
-      · obtain ⟨h1, h2⟩ := Bool.and_eq_true_iff.mp h
-        refine Or.inr ⟨?_, ?_⟩
-        · rw [X86Backend.ImageAddrCidx.imgGateCW_congr hsome]
-          exact h1
-        · rw [X86Backend.ImageAddrSimW.retOutsB_congr hsome]
-          exact h2
-    rcases hg2 with hg | ⟨hg, hro⟩
-    · obtain ⟨fuel', s', zf', hrA, hrel', hsafe, hacc⟩ :=
-        X86Backend.ImageAddrStore.image_addr_simB'_access (body := body) hsep hphys hg hN hF fn
-          f' b t' (entryA σ sa) false hfn hrel hr'
-      have hkeep : ∀ x, x ∉ imgStores (frameC base R (frameE body sa)) sl base →
-          s'.mem x = sa.mem x :=
-        fun x hx => SepLogic.Addr.runA_keep_mem hrA (hacc.mono fun _ h => h.1) hx
-      have hA := (⟨fuel', s', zf', hrA, hacc⟩ : ∃ fuel s zf,
-        runA (frameC base R (frameE body sa)) body fuel (entryA σ sa) false = some (s, zf)
-        ∧ RunSafe (frameC base R (frameE body sa)) body
-          (AccessIn (imgStores (frameC base R (frameE body sa)) sl base)
-            (frameC base R (frameE body sa)) body) fuel (entryA σ sa) false)
-      rw [X86Backend.ImageAddrFrame.runA_congr hfr] at hrA
-      rw [X86Backend.ImageAddrFrame.runSafe_congr hfr] at hsafe
-      obtain ⟨prog, sa', hdec, hh, hsp, hregs, hm'⟩ :=
-        X86Backend.DecodePrintedAddrW.printedAddr_simW body hprW sa (entryA σ sa) false rfl
-          (fun r hr => Or.inl (hentA r hr)) rfl fuel' (s', zf') hrA hsafe
-      refine ⟨prog, sa', s', hdec, hh, fun x _ hx => hrel'.regs x hx, hrel'.cells,
-        fun q a hq ha => by
-          rw [← X86Backend.ImageAddrSim.frameVal_of_not_fa (hofa q hq)]; exact hrel'.slots q a ha,
-        fun r _ hr => ?_, hm', hsp,
-        fun x hx => hfinA s' sa' x
-          ((hrel'.regs x (hsep.gp x (hcsT x hx).1)).symm.trans (hcsT x hx).2)
-          (hregs x (hcsT x hx).1),
-        fun x hx hs => (hm' x hx).symm.trans (hkeep x hs), hA⟩
-      have hw := hrel'.wid r hr
-      rcases hregs r hr with h | ⟨b1, hb, -⟩ | hn
-      · exact h
-      · rw [hb] at hw
-        cases hw
-      · rcases hn.width with h | h <;> rw [hw] at h <;> cases h
-    · obtain ⟨fuel', s', zf', hrA, hrel', -, hsafe, hacc⟩ :=
-        X86Backend.ImageAddrStore.image_addr_simCW'_access (body := body) hsep hphys hg hN hF fn
-          (X86Backend.ImageAddrCellsLoop.imgStepWCond_of_gateCW _ hphys hg fn) f' b t'
-          (entryA σ sa) false hfn (X86Backend.ImageAddrSimW.imgRelW_of hrel)
-          (X86Backend.ImageAddrCidx.CidxInv.of_lpc_zero (by rw [← hrel.pc]; rfl)) hr'
-      have hkeep : ∀ x, x ∉ imgStores (frameC base R (frameE body sa)) sl base →
-          s'.mem x = sa.mem x :=
-        fun x hx => SepLogic.Addr.runA_keep_mem hrA (hacc.mono fun _ h => h.1) hx
-      have hA := (⟨fuel', s', zf', hrA, hacc⟩ : ∃ fuel s zf,
-        runA (frameC base R (frameE body sa)) body fuel (entryA σ sa) false = some (s, zf)
-        ∧ RunSafe (frameC base R (frameE body sa)) body
-          (AccessIn (imgStores (frameC base R (frameE body sa)) sl base)
-            (frameC base R (frameE body sa)) body) fuel (entryA σ sa) false)
-      have hhalt : JasminLsemAddrRun.haltedA (cellBody sl body) s' = true := by
-        rw [X86Backend.ImageAddrCells.haltedA_cellBody]
-        exact JasminLsemAddrRun.haltedA_of_runA _ body fuel' (entryA σ sa) false (s', zf') hrA
-      rw [X86Backend.ImageAddrFrame.runA_congr hfr] at hrA
-      rw [X86Backend.ImageAddrFrame.runSafe_congr hfr] at hsafe
-      obtain ⟨prog, sa', hdec, hh, hsp, hregs, hm'⟩ :=
-        X86Backend.DecodePrintedAddrW.printedAddr_simW body hprW sa (entryA σ sa) false rfl
-          (fun r hr => Or.inl (hentA r hr)) rfl fuel' (s', zf') hrA hsafe
-      refine ⟨prog, sa', s', hdec, hh, fun x hxo hx => (hrel'.regs x hx).eq
-          (X86Backend.ImageAddrCidx.not_mem_oneBitAt_of_haltedCW hg hhalt
-            (X86Backend.ImageAddrSimW.not_mem_of_retOutsB hro hxo)),
-        hrel'.cells, fun q a hq ha => ?_, fun r hRo hr => ?_, hm', hsp,
-        fun x hx => ?_,
-        fun x hx hs => (hm' x hx).symm.trans (hkeep x hs), hA⟩
-      rotate_left 2
-      · obtain ⟨hgp, ht⟩ := hcsT x hx
-        have hv := hrel'.regs x (hsep.gp x hgp)
-        rw [ht] at hv
-        refine hfinA s' sa' x ?_ (hregs x hgp)
-        rcases hv with h | ⟨-, -, b1, hb, -⟩
-        · exact h.symm
-        · simp at hb
-      · rw [← X86Backend.ImageAddrSim.frameVal_of_not_fa (hofa q hq)]
-        exact (hrel'.slots q a ha).word
-          (X86Backend.ImageAddrCidx.not_mem_oneBitAt_of_haltedCW hg hhalt
-            (X86Backend.ImageAddrSimW.not_mem_of_retOutsB hro hq))
-      · have hw := hrel'.wid r hr (X86Backend.ImageAddrCidx.not_mem_oneBitAt_of_haltedCW hg hhalt
-          (X86Backend.ImageAddrSimW.not_mem_of_retOutsB hro hRo))
-        rcases hregs r hr with h | ⟨b1, hb, -⟩ | hn
-        · exact h
-        · rw [hb] at hw
-          cases hw
-        · rcases hn.width with h | h <;> rw [hw] at h <;> cases h
+  simp only [Bool.and_eq_true] at hgate
+  obtain ⟨⟨⟨⟨hprW, hacc⟩, hns⟩, hg0⟩, hro0⟩ := hgate
+  have hsome : ∀ q, (frameC base R (frameE body sa) q).isSome = (frameMarkC R body q).isSome :=
+    X86Backend.ImageStraightCells.frameC_isSome base R body sa
+  have hgpN : ∀ r, gpOk r = true → cellIdx R r = none := by
+    intro r hr
+    cases hc : cellIdx R r with
+    | none => rfl
+    | some _ =>
+        have := hgpC r (by rw [hc]; rfl)
+        rw [hr] at this
+        cases this
+  have hfr : ∀ q ∈ X86Backend.ImageAddrFrame.bodyNamesI body,
+      frameC base R (frameE body sa) q
+        = X86Backend.DecodePrintedAddr.frameP (X86Backend.LprogBytesDecode.Params.ofBody body)
+          (X86Backend.DecodePrintedCFG.frameRsp body sa) q := by
+    intro q hq
+    simp only [frameC, hbody q hq]
+    show X86Backend.ImageAddrFrame.frameIn body _ q = _
+    unfold X86Backend.ImageAddrFrame.frameIn
+    rw [ite_eq_left hq]
+  have hN := X86Backend.ImageStraightCells.cellNoSlotB_spec hns
+  have hF := X86Backend.ImageStraightCells.cellFrames_of (base := base)
+    (rsp := X86Backend.DecodePrintedCFG.frameRsp body sa) (fr := frameE body sa) hacc hgpC
+    (fun r hr => by
+      have := hsep.gp r hr
+      simp only [frameC, hgpN r hr] at this
+      exact this) hred
+  have hg : X86Backend.ImageAddrCidx.imgGateCW (frameC base R (frameE body sa)) sl
+      (cellBody sl body) = true := by
+    rw [X86Backend.ImageAddrCidx.imgGateCW_congr hsome]
+    exact hg0
+  have hro : retOutsB (frameC base R (frameE body sa)) (cellBody sl body) outs = true := by
+    rw [X86Backend.ImageAddrSimW.retOutsB_congr hsome]
+    exact hro0
+  obtain ⟨fuel', s', zf', hrA, hrel', -, hsafe, hacc⟩ :=
+    X86Backend.ImageAddrStore.image_addr_simCW'_access (body := body) hsep hphys hg hN hF fn
+      (X86Backend.ImageAddrCellsLoop.imgStepWCond_of_gateCW _ hphys hg fn) f' b t'
+      (entryA σ sa) false hfn (X86Backend.ImageAddrSimW.imgRelW_of hrel)
+      (X86Backend.ImageAddrCidx.CidxInv.of_lpc_zero (by rw [← hrel.pc]; rfl)) hr'
+  have hkeep : ∀ x, x ∉ imgStores (frameC base R (frameE body sa)) sl base →
+      s'.mem x = sa.mem x :=
+    fun x hx => SepLogic.Addr.runA_keep_mem hrA (hacc.mono fun _ h => h.1) hx
+  have hA := (⟨fuel', s', zf', hrA, hacc⟩ : ∃ fuel s zf,
+    runA (frameC base R (frameE body sa)) body fuel (entryA σ sa) false = some (s, zf)
+    ∧ RunSafe (frameC base R (frameE body sa)) body
+      (AccessIn (imgStores (frameC base R (frameE body sa)) sl base)
+        (frameC base R (frameE body sa)) body) fuel (entryA σ sa) false)
+  have hhalt : JasminLsemAddrRun.haltedA (cellBody sl body) s' = true := by
+    rw [X86Backend.ImageAddrCells.haltedA_cellBody]
+    exact JasminLsemAddrRun.haltedA_of_runA _ body fuel' (entryA σ sa) false (s', zf') hrA
+  rw [X86Backend.ImageAddrFrame.runA_congr hfr] at hrA
+  rw [X86Backend.ImageAddrFrame.runSafe_congr hfr] at hsafe
+  obtain ⟨prog, sa', hdec, hh, hsp, hregs, hm'⟩ :=
+    X86Backend.DecodePrintedAddrW.printedAddr_simW body hprW sa (entryA σ sa) false rfl
+      (fun r hr => Or.inl (hentA r hr)) rfl fuel' (s', zf') hrA hsafe
+  refine ⟨prog, sa', s', hdec, hh, fun x hxo hx => (hrel'.regs x hx).eq
+      (X86Backend.ImageAddrCidx.not_mem_oneBitAt_of_haltedCW hg hhalt
+        (X86Backend.ImageAddrSimW.not_mem_of_retOutsB hro hxo)),
+    hrel'.cells, fun q a hq ha => ?_, fun r hRo hr => ?_, hm', hsp,
+    fun x hx => ?_,
+    fun x hx hs => (hm' x hx).symm.trans (hkeep x hs), hA⟩
+  rotate_left 2
+  · obtain ⟨hgp, ht⟩ := hcsT x hx
+    have hv := hrel'.regs x (hsep.gp x hgp)
+    rw [ht] at hv
+    refine hfinA s' sa' x ?_ (hregs x hgp)
+    rcases hv with h | ⟨-, -, b1, hb, -⟩
+    · exact h.symm
+    · simp at hb
+  · rw [← X86Backend.ImageAddrSim.frameVal_of_not_fa (hofa q hq)]
+    exact (hrel'.slots q a ha).word
+      (X86Backend.ImageAddrCidx.not_mem_oneBitAt_of_haltedCW hg hhalt
+        (X86Backend.ImageAddrSimW.not_mem_of_retOutsB hro hq))
+  · have hw := hrel'.wid r hr (X86Backend.ImageAddrCidx.not_mem_oneBitAt_of_haltedCW hg hhalt
+      (X86Backend.ImageAddrSimW.not_mem_of_retOutsB hro hRo))
+    rcases hregs r hr with h | ⟨b1, hb, -⟩ | hn
+    · exact h
+    · rw [hb] at hw
+      cases hw
+    · rcases hn.width with h | h <;> rw [hw] at h <;> cases h
 
 /-- **Restoration of the callee-saved registers on the decoded bytes.** Under the hypotheses
     of `regionImg_sim`, the bytes of `body` decode to a program that halts from `sa`, and
@@ -10346,9 +10266,8 @@ def RegionBytePub (σ : AbiLayout) (fuel : Nat) {Γ : Ctxt jasminDialect} {ts : 
     (`CellNoSlot`); the cell frames `CellFrames`; the gate `imgGateCW` of the cell body; the
     frame map is the frame `frameP` of the body at the names of the body; and the relation
     `ImgRel` of the entry state `emptiedEntry` with the entry `entryA σ sa`. The printed
-    class of `regionImgB` gives `CellNoSlot` and `CellFrames`: from `cellNoSlotB` and
-    `cellAccB` on a body with cell accesses, and on a body of `printedAddrB` with no cell
-    access at no cell array from `cellNoSlot_of_cellFreeB` and `cellFrames_of_cellFreeB`. -/
+    class of `regionImgB` gives `CellNoSlot` and `CellFrames` from `cellNoSlotB` and
+    `cellAccB`. -/
 theorem regionCell_entry {σ : AbiLayout} {nm : String → String} {ps : List (String × String)}
     {R : Slots} {outs : List String} {body : Lcmd} {B : List LinstrRM}
     (hg : renImageB σ nm ps R outs body B = true)
@@ -10443,17 +10362,10 @@ theorem regionCell_entry {σ : AbiLayout} {nm : String → String} {ps : List (S
           (slotArrC R (slotRen (slotArrOf σ nm) (renOf ps))) (baseR σ sa ps)
           (frameRsp body sa) body := by
     have hgate := regionImgCoreB_of_regionImgB hgate
-    unfold regionImgCoreB at hgate
-    by_cases hpl : (printedAddrB body && cellFreeB body && R.isEmpty) = true
-    · have hcf : cellFreeB body = true := by
-        simp only [Bool.and_eq_true] at hpl
-        exact hpl.1.2
-      exact ⟨cellNoSlot_of_cellFreeB _ hcf, cellFrames_of_cellFreeB _ _ _ _ hcf⟩
-    · rw [ite_eq_right hpl] at hgate
-      simp only [Bool.and_eq_true] at hgate
-      obtain ⟨⟨⟨-, hacc⟩, hns⟩, -⟩ := hgate
-      exact ⟨X86Backend.ImageStraightCells.cellNoSlotB_spec hns,
-        X86Backend.ImageStraightCells.cellFrames_of hacc N.gp (fun x hx => hS0.gp x hx) hred⟩
+    simp only [regionImgCoreB, Bool.and_eq_true] at hgate
+    obtain ⟨⟨⟨⟨-, hacc⟩, hns⟩, -⟩, -⟩ := hgate
+    exact ⟨X86Backend.ImageStraightCells.cellNoSlotB_spec hns,
+      X86Backend.ImageStraightCells.cellFrames_of hacc N.gp (fun x hx => hS0.gp x hx) hred⟩
   have hgate' : imgGateCW (frameC (baseR σ sa ps) R (frameE body sa))
       (slotArrC R (slotRen (slotArrOf σ nm) (renOf ps)))
       (cellBody (slotArrC R (slotRen (slotArrOf σ nm) (renOf ps))) body) = true := by
