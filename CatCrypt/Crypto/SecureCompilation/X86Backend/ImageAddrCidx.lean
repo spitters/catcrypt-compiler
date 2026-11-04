@@ -387,11 +387,17 @@ theorem cellStoreImg_lvm (P : LprogM) {A v : String} {idx : String ⊕ Nat} {n :
   | inl q =>
     simp only [cellStoreImg] at hs'
     rw [eval_storeIdx] at hs'
-    split at hs' <;> cases hs' <;> rfl
+    split at hs'
+    · cases hs'
+      rfl
+    · cases hs'
   | inr j =>
     simp only [cellStoreImg] at hs'
     rw [eval_storeImm] at hs'
-    split at hs' <;> cases hs' <;> rfl
+    split at hs'
+    · cases hs'
+      rfl
+    · cases hs'
 
 /-- A step of an image by `arrImmImg` keeps every word of the register file. -/
 theorem arrImmImg_lvm {slotArr : String → Option (String × Nat)} {body : Lcmd} {k : Nat}
@@ -403,7 +409,7 @@ theorem arrImmImg_lvm {slotArr : String → Option (String × Nat)} {body : Lcmd
   all_goals first
     | (cases hi; done)
     | (cases hi; rw [eval_zeroArr] at hs; cases hs; rfl)
-    | (cases hi; rw [eval_storeImm] at hs; split at hs <;> cases hs <;> rfl)
+    | (cases hi; rw [eval_storeImm] at hs; split at hs; (cases hs; rfl); cases hs)
 
 /-- An instruction that keeps a name (`keepsB`) is an `Lopn`. -/
 theorem lopn_of_keepsB {x : LinstrR} {r : String} (h : keepsB r x = true) :
@@ -424,7 +430,7 @@ theorem img_keep (slotArr : String → Option (String × Nat)) (body : Lcmd) (k 
     simp only [dstNames, List.mem_flatMap, not_exists, not_and]
     intro op hop hr
     have := hk op hop
-    cases op <;> simp_all [opNames, opNamesB]
+    cases op <;> simp_all [opNames, opNamesB, @eq_comm _ r]
   have hL : ∀ y : LinstrR, keepsB r y = true → ∀ tg, IsLopn (normA y, tg) := by
     intro y hy tg
     obtain ⟨ds, o, ss, rfl⟩ := lopn_of_keepsB hy
@@ -437,14 +443,17 @@ theorem img_keep (slotArr : String → Option (String × Nat)) (body : Lcmd) (k 
   · split_ifs at hs'
     · split at hs'
       · exact gen _ ⟨_, _, _, rfl⟩ rfl hs'
-      · exact gen _ (hL _ hk _) (dstNames_normA _) hs'
-    · exact gen _ (hL _ hk _) (dstNames_normA _) hs'
+      · exact gen _ (hL _ hk _) (by simp only [dstNames_normA]) hs'
+    · exact gen _ (hL _ hk _) (by simp only [dstNames_normA]) hs'
   · split_ifs at hs'
     · split at hs'
       · rw [eval_storeIdx] at hs'
-        split at hs' <;> cases hs' <;> rfl
-      · exact gen _ (hL _ hk _) (dstNames_normA _) hs'
-    · exact gen _ (hL _ hk _) (dstNames_normA _) hs'
+        split at hs'
+        · cases hs'
+          rfl
+        · cases hs'
+      · exact gen _ (hL _ hk _) (by simp only [dstNames_normA]) hs'
+    · exact gen _ (hL _ hk _) (by simp only [dstNames_normA]) hs'
   · split at hs'
     · rename_i d n hb
       obtain ⟨he, -⟩ := bitStore?_spec hb
@@ -458,7 +467,7 @@ theorem img_keep (slotArr : String → Option (String × Nat)) (body : Lcmd) (k 
           · rename_i b q hbr
             obtain ⟨he, -⟩ := baseReload?_spec hbr
             exact gen _ ⟨_, _, _, rfl⟩ (by rcases he with he | he <;> rw [he] <;> rfl) hs'
-          · exact gen _ (hL _ hk _) (dstNames_normA _) hs'
+          · exact gen _ (hL _ hk _) (by simp only [dstNames_normA]) hs'
 
 /-! ## 4. The program counter and the invariant across a step -/
 
