@@ -300,14 +300,26 @@ theorem physExpand_arrImm (shiftImm : ShiftImmOracle) (u64 : Bool)
       generalize materializeWideImm s1 m = p at hx hp
       obtain ⟨pre, s1'⟩ := p
       simp only at hx hp
-      split at hx <;> simp only [List.mem_append] at hx
-      · rcases hx with hx | hx
+      split at hx
+      · simp only [List.mem_append] at hx
+        rcases hx with hx | hx
         · exact hp x hx ds ss
         · exact hBin _ _ _ _ ho hm x hx ds ss
-      · rcases hx with (hx | hx) | hx
-        · exact hMov _ _ _ hm x hx ds ss
-        · exact hp x hx ds ss
-        · exact hBin _ _ _ _ ho hm x hx ds ss
+      · split at hx
+        · simp only [List.mem_append, List.mem_singleton] at hx
+          rcases hx with (hx | hx) | rfl
+          · exact hp x hx ds ss
+          · unfold scratchBinop at hx
+            rintro rfl
+            split at hx <;> simp [ho, hm] at hx
+          · intro h
+            cases h
+            exact hm rfl
+        · simp only [List.mem_append] at hx
+          rcases hx with (hx | hx) | hx
+          · exact hMov _ _ _ hm x hx ds ss
+          · exact hp x hx ds ss
+          · exact hBin _ _ _ _ ho hm x hx ds ss
     have hShI : ∀ d s0 v opn m, o ≠ opn → o ≠ m →
         ∀ x ∈ lowerTwoAddrShiftImm d s0 v opn m, ∀ ds ss, x ≠ .Lopn ds o ss := by
       intro d s0 v opn m ho hm x hx ds ss

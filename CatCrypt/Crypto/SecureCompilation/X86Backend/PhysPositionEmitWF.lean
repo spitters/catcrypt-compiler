@@ -135,6 +135,13 @@ theorem legalizeBinop_resolved (d s : LOperand) (opn mov : String)
   unfold legalizeBinop
   split <;> simp [hd, hs]
 
+/-- `scratchBinop` emits resolved operations on resolved operands. -/
+theorem scratchBinop_resolved (s0 s : LOperand) (opn mov : String)
+    (h0 : opResolved s0 = true) (hs : opResolved s = true) :
+    ∀ x ∈ scratchBinop s0 s opn mov, OpsResolved x := by
+  unfold scratchBinop
+  split <;> simp [h0, hs]
+
 /-- The wide-immediate prelude of `materializeWideImm` is resolved, and so is the source it
     returns. -/
 theorem materializeWideImm_resolved (s : LOperand) (mov : String)
@@ -156,10 +163,18 @@ theorem lowerTwoAddr_resolved (d s0 s1 : LOperand) (opn mov : String)
   rcases hmw : materializeWideImm s1 mov with ⟨pre, s1v⟩
   rw [hmw] at hx hpre hs1'
   simp only at hx hpre hs1'
-  split at hx <;> simp only [List.mem_append] at hx
-  · exact hx.elim (hpre x) (legalizeBinop_resolved d _ opn mov hd hs1' x)
-  · exact hx.elim (fun h => h.elim (legalizeMov_resolved d s0 mov hd hs0 x) (hpre x))
-      (legalizeBinop_resolved d _ opn mov hd hs1' x)
+  split at hx
+  · simp only [List.mem_append] at hx
+    exact hx.elim (hpre x) (legalizeBinop_resolved d _ opn mov hd hs1' x)
+  · split at hx
+    · simp only [List.mem_append, List.mem_singleton] at hx
+      rcases hx with (hx | hx) | rfl
+      · exact hpre x hx
+      · exact scratchBinop_resolved s0 _ opn mov hs0 hs1' x hx
+      · simp [hd]
+    · simp only [List.mem_append] at hx
+      exact hx.elim (fun h => h.elim (legalizeMov_resolved d s0 mov hd hs0 x) (hpre x))
+        (legalizeBinop_resolved d _ opn mov hd hs1' x)
 
 /-- `lowerTwoAddrShiftImm` emits resolved operations on resolved operands. -/
 theorem lowerTwoAddrShiftImm_resolved (d s0 : LOperand) (v : Nat) (opn mov : String)

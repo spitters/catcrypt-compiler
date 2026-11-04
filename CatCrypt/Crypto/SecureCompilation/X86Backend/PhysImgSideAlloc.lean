@@ -421,10 +421,20 @@ theorem lowerTwoAddr_idxFree (d s0 s1 : LOperand) (opn mov : String) (hd : noIdx
   rw [hmw] at hw
   simp only at hw ⊢
   intro r hr
-  split at hr <;> simp only [List.mem_append] at hr
-  · exact hr.elim (hw.1 r) (legalizeBinop_idxFree d s1v opn mov hd hw.2 r)
-  · exact hr.elim (fun h => h.elim (legalizeMov_idxFree d s0 mov h0 r) (hw.1 r))
-      (legalizeBinop_idxFree d s1v opn mov hd hw.2 r)
+  split at hr
+  · simp only [List.mem_append] at hr
+    exact hr.elim (hw.1 r) (legalizeBinop_idxFree d s1v opn mov hd hw.2 r)
+  · split at hr
+    · simp only [List.mem_append, List.mem_singleton] at hr
+      rcases hr with (hr | hr) | rfl
+      · exact hw.1 r hr
+      · unfold scratchBinop at hr
+        split at hr <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hr <;>
+          rcases hr with rfl | rfl | rfl <;> simp [idxFreeB, h0, hw.2]
+      · simp [idxFreeB]
+    · simp only [List.mem_append] at hr
+      exact hr.elim (fun h => h.elim (legalizeMov_idxFree d s0 mov h0 r) (hw.1 r))
+        (legalizeBinop_idxFree d s1v opn mov hd hw.2 r)
 
 theorem lowerTwoAddrShiftImm_idxFree (d s0 : LOperand) (v : Nat) (opn mov : String)
     (hd : noIdxB d = true) (h0 : noIdxB s0 = true) :
@@ -869,10 +879,13 @@ theorem slotArr_resolve_mov_r15 (hs15 : slotArr reloadScratch = none) {env : Scr
 /-- **The home condition on the two-address lowering of a low `MUL`.** If the destination is
     a register, let it be no reload scratch and no array slot. Then the lowering satisfies
     `homeOkB` from every environment that records only reload scratches: each low `MUL` it
-    emits writes the destination, or `R15` after the move of the destination into `R15`. -/
+    emits writes the destination, or `R15` after the move of the destination or, for a spilled
+    destination, of the first source into `R15`; the first source is then no reload scratch
+    and no array slot either. -/
 theorem homeOkB_lowerTwoAddr (hs15 : slotArr reloadScratch = none) (ii : Nat)
     (d s0 s1 : LOperand) (opn mov : String)
     (hd : ∀ n, d = .reg n → n ∉ fuseReloadScratches ∧ slotArr n = none)
+    (h0 : ∀ n, s0 = .reg n → n ∉ fuseReloadScratches ∧ slotArr n = none)
     (env : ScratchEnv) (he : EnvScratch env) :
     homeOkB slotArr env ((lowerTwoAddr d s0 s1 opn mov).map (fun r => (⟨ii, r⟩ : Linstr)))
       = true := by
@@ -955,13 +968,58 @@ theorem homeOkB_lowerTwoAddr (hs15 : slotArr reloadScratch = none) (ii : Nat)
   · rw [List.map_append, homeOkB_append,
       homeOkB_of_noLowMul (hsingle pre hpreS), Bool.true_and]
     exact hbin _ _ (envScratch_foldl he _)
-  · have hmov : ∀ r ∈ legalizeMov d s0 mov, ∃ ds o s, r = .Lopn ds o [s] := by
-      unfold legalizeMov
-      split <;> simp
-    rw [List.map_append, List.map_append, homeOkB_append, homeOkB_append,
-      homeOkB_of_noLowMul (hsingle _ hmov), homeOkB_of_noLowMul (hsingle pre hpreS),
-      Bool.true_and, Bool.true_and]
-    exact hbin _ _ (envScratch_foldl he _)
+  · split
+    · have hr15 : ∀ (env' : ScratchEnv), EnvScratch env' → ∀ (t : LOperand),
+          slotArr (scratchResolve env' reloadScratch) = none →
+          homeOkB slotArr env' [⟨ii, .Lopn [.reg reloadScratch] opn [.reg reloadScratch, t]⟩]
+            = true := by
+        intro env' _ t hres
+        simp only [homeOkB, Bool.and_true]
+        split
+        · rename_i dn _ _ _ heq
+          injection heq with h1 _ _
+          simp only [List.cons.injEq, LOperand.reg.injEq, and_true] at h1
+          subst h1
+          simp [hs15, hres]
+        · rfl
+      have hsc : ∀ (env : ScratchEnv), EnvScratch env →
+          homeOkB slotArr env ((scratchBinop s0 s1v opn mov).map
+            (fun r => (⟨ii, r⟩ : Linstr))) = true := by
+        intro env he
+        unfold scratchBinop
+        split
+        · simp only [List.map_cons, List.map_nil]
+          rw [homeOkB_cons_of_noLowMul (by simp [noLowMulB])]
+          rw [homeOkB_cons_of_noLowMul (by simp [noLowMulB])]
+          have hres : slotArr (scratchResolve (scratchStep (scratchStep env
+              ⟨ii, .Lopn [.reg reloadScratch] mov [s0]⟩)
+              ⟨ii, .Lopn [.reg reloadScratch2] mov [s1v]⟩) reloadScratch) = none := by
+            rw [(scratchResolve_scratchStep _ _ reloadScratch).2 (fun ds o ss heq hm => by
+              cases heq
+              simp only [List.mem_singleton, LOperand.reg.injEq] at hm
+              exact absurd hm.1 (by decide +kernel))]
+            exact slotArr_resolve_mov_r15 hs15 he ii mov s0 h0
+          exact hr15 _ ((he.step _).step _) _ hres
+        · simp only [List.map_cons, List.map_nil]
+          rw [homeOkB_cons_of_noLowMul (by simp [noLowMulB])]
+          exact hr15 _ (he.step _) s1v (slotArr_resolve_mov_r15 hs15 he ii mov s0 h0)
+      have hst : ∀ r ∈ [LinstrR.Lopn [d] mov [.reg reloadScratch]], ∃ ds o s,
+          r = .Lopn ds o [s] := by
+        intro r hr
+        simp only [List.mem_singleton] at hr
+        subst hr
+        exact ⟨_, _, _, rfl⟩
+      rw [List.map_append, List.map_append, homeOkB_append, homeOkB_append,
+        homeOkB_of_noLowMul (hsingle pre hpreS), Bool.true_and,
+        hsc _ (envScratch_foldl he _), Bool.true_and]
+      exact homeOkB_of_noLowMul (hsingle _ hst) _
+    · have hmov : ∀ r ∈ legalizeMov d s0 mov, ∃ ds o s, r = .Lopn ds o [s] := by
+        unfold legalizeMov
+        split <;> simp
+      rw [List.map_append, List.map_append, homeOkB_append, homeOkB_append,
+        homeOkB_of_noLowMul (hsingle _ hmov), homeOkB_of_noLowMul (hsingle pre hpreS),
+        Bool.true_and, Bool.true_and]
+      exact hbin _ _ (envScratch_foldl he _)
 
 /-! ## 7. One expansion -/
 
@@ -1000,7 +1058,8 @@ theorem physExpand_lowMul_homeOkB (hs15 : slotArr reloadScratch = none)
       · simp [physExpand_eq, hnat, hml, legalizeOneSrc_of_ne _ _ hm1 hm2, noLowMulB]
       · simp [physExpand_eq, noLowMulB]
     · simp only [physExpand_eq, hbin, ite_true, hsh, Bool.false_eq_true, ite_false]
-      exact homeOkB_lowerTwoAddr hs15 ii _ _ _ _ _ (fun n h => hrm d n h) env he
+      exact homeOkB_lowerTwoAddr hs15 ii _ _ _ _ _ (fun n h => hrm d n h)
+        (fun n h => hrm s0 n h) env he
 
 /-- An instruction of no virtual mnemonic but `o`, and no move mnemonic. -/
 def MnemOk (i : LinstrR) (L : Lcmd) : Prop :=

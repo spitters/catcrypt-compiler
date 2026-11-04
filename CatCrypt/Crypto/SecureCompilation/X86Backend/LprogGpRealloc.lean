@@ -26,7 +26,11 @@ alphabet `isRecognizedOpn`; `isaRecognized I` is the alphabet of an instruction 
 which excludes every mnemonic with an implicit register read in `I.implicitReads`. The
 shape tests `movClass`, `freeUnary`, `tiedOpn` and `isCopy64` are x86 mnemonic tests.
 The colouring prefers, for a 64-bit copy whose source dies at the copy, the source's colour, so the copy becomes a self-move and is dropped; a frame cell
-whose web fits in a free register is promoted to that register. A move whose
+whose web fits in a free register is promoted to that register. When that colouring finds no
+free colour for some class, the coalescing colouring `coalesceClasses` keeps every class at its
+own name except a class a copy starts, which takes the colour of its dead source where that
+colour is free; the destination of a two-address instruction whose lowering copied a dying
+first source then shares the register of that source. A move whose
 destination is dead is dropped.
 
 The allocator is untrusted. Its decisions (one location per instruction) are
@@ -895,6 +899,61 @@ def colorClasses (st : AllocSt) (promote : Bool) (abi : IsaAbi := x86Abi) :
       | none => ok := false
   return if ok then some color else none
 
+/-- Colour the tie classes by coalescing the copies onto the identity colouring: every class
+    starts at its own name; a class that is not fixed and that a 64-bit copy starts, whose
+    source class ends at or before its start, takes the colour of the source class when that
+    colour is an allowed location of the class (`okLoc`) and no other class of that colour,
+    taken at its colour so far, is live inside the interval of the class. The classes are
+    visited in order, so a chain of copies takes the colour of its first source. The
+    destination of a two-address instruction is in the class of the copy before it, so a copy
+    of a first source that dies at the copy becomes a self-move. Unlike `colorClasses` this
+    colouring always exists: a class whose source colour is taken keeps its own name. -/
+def coalesceClasses (st : AllocSt) (abi : IsaAbi := x86Abi) : Array String := Id.run do
+  let n := st.nCls
+  let mut cName : Array String := Array.replicate n ""
+  let mut cStart : Array Nat := Array.replicate n 0
+  let mut cStop : Array Nat := Array.replicate n 0
+  let mut cFixed : Array Bool := Array.replicate n false
+  let mut cFirst : Array Nat := Array.replicate n 0
+  let mut seen : Array Bool := Array.replicate n false
+  for h : wi in [0:st.webs.size] do
+    let w := st.webs[wi]
+    let c := w.cls
+    if seen[c]! then
+      cStop := cStop.set! c (Nat.max cStop[c]! w.stop)
+      cFixed := cFixed.set! c (cFixed[c]! || w.fixed)
+    else
+      seen := seen.set! c true
+      cName := cName.set! c w.name
+      cStart := cStart.set! c w.start
+      cStop := cStop.set! c w.stop
+      cFixed := cFixed.set! c w.fixed
+      cFirst := cFirst.set! c wi
+  -- The classes of every colour, at the identity colouring.
+  let mut occ : Std.HashMap String (Array Nat) := {}
+  for c in [0:n] do
+    if seen[c]! then
+      occ := occ.insert cName[c]! ((occ.getD cName[c]! #[]).push c)
+  let mut color : Array String := cName
+  for c in [0:n] do
+    if seen[c]! && !cFixed[c]! then
+      match st.webs[cFirst[c]!]!.hint with
+      | some hw =>
+          let hc := st.webs[hw]!.cls
+          let x := color[hc]!
+          let s0 := cStart[c]!
+          let en := cStop[c]!
+          if hc != c && cStop[hc]! ≤ s0 && x != color[c]! && okLoc cName[c]! x abi then
+            let others := occ.getD x #[]
+            let free := others.all (fun o => o == c || cStop[o]! ≤ s0 || en ≤ cStart[o]!)
+            if free then
+              let old := color[c]!
+              occ := occ.insert old ((occ.getD old #[]).filter (· != c))
+              occ := occ.insert x (others.push c)
+              color := color.set! c x
+      | none => pure ()
+  return color
+
 /-- The decisions of a colouring: the colour of the web each instruction defines, the
     destination itself where it defines none. -/
 def decisionsOf (st : AllocSt) (color : Array String) (ann : Array (FI × List String)) :
@@ -934,7 +993,8 @@ theorem reallocWith_sound {w : Nat} {abi : IsaAbi}
   · exact ⟨hwf, σ', h, rfl, fun _ _ => rfl⟩
 
 /-- The candidate decisions for one run with live-out set `lend`: the colourings with
-    and without frame-cell promotion, then the identity decisions. -/
+    and without frame-cell promotion, the coalescing of the copies onto the identity
+    colouring (`coalesceClasses`), then the identity decisions. -/
 def runCands (lend : List String) (is : List FI) (abi : IsaAbi := x86Abi) :
     List (List String) :=
   let ann := (annotate lend is abi).1.toArray
@@ -943,7 +1003,7 @@ def runCands (lend : List String) (is : List FI) (abi : IsaAbi := x86Abi) :
     match colorClasses st promote abi with
     | some col => decisionsOf st col ann
     | none => []
-  [dec true, dec false, is.map FI.d]
+  [dec true, dec false, decisionsOf st (coalesceClasses st abi) ann, is.map FI.d]
 
 /-- The pass on one run with live-out set `lend`. -/
 def reallocRun (lend : List String) (is : List FI) (abi : IsaAbi := x86Abi) : List FI :=

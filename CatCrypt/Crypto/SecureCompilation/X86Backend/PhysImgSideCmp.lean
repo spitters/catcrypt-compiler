@@ -735,8 +735,14 @@ theorem lowerTwoAddr_scratchPrev (d s0 s1 : LOperand) (opn mov : String)
   simp only at hw ⊢
   split
   · exact scratchPrevB_append _ _ hw.1 (legalizeBinop_scratchPrev _ _ _ _ hd hw.2)
-  · exact scratchPrevB_append _ _ (scratchPrevB_append _ _ (legalizeMov_scratchPrev _ _ _ h0)
-      hw.1) (legalizeBinop_scratchPrev _ _ _ _ hd hw.2)
+  · split
+    · rename_i _ hsp
+      refine scratchPrevB_append _ _ (scratchPrevB_append _ _ hw.1 ?_) ?_
+      · unfold scratchBinop
+        split <;> simp [scratchPrevB, scratchMovFreeB_of_src, scratchMovFreeB_two, h0, hw.2]
+      · simp [scratchPrevB, scratchMovFreeB_of_isSpill hsp]
+    · exact scratchPrevB_append _ _ (scratchPrevB_append _ _ (legalizeMov_scratchPrev _ _ _ h0)
+        hw.1) (legalizeBinop_scratchPrev _ _ _ _ hd hw.2)
 
 theorem lowerTwoAddrShiftImm_scratchPrev (d s0 : LOperand) (v : Nat) (opn mov : String)
     (h0 : isScratchOp s0 = false) :

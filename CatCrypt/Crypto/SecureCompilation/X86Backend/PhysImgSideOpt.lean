@@ -545,9 +545,16 @@ theorem physExpand_forall (Q : LinstrR → Prop)
     rcases he : materializeWideImm s1 mov with ⟨pre, s1'⟩
     rw [he] at w1 w2
     simp only at w1 w2 ⊢
-    split <;> simp only [List.forall_mem_append]
-    · exact ⟨w1, hbin _ _ _ _ hd w2⟩
-    · exact ⟨⟨hmov _ _ _ h0, w1⟩, hbin _ _ _ _ hd w2⟩
+    split
+    · simp only [List.forall_mem_append]
+      exact ⟨w1, hbin _ _ _ _ hd w2⟩
+    · split
+      · simp only [List.forall_mem_append]
+        refine ⟨⟨w1, ?_⟩, by q_fin⟩
+        unfold scratchBinop
+        split <;> q_fin
+      · simp only [List.forall_mem_append]
+        exact ⟨⟨hmov _ _ _ h0, w1⟩, hbin _ _ _ _ hd w2⟩
   have hshift : ∀ d s0 v opn mov, GoodOp slotArr d → GoodOp slotArr s0 →
       ∀ r ∈ lowerTwoAddrShiftImm d s0 v opn mov, Q r := by
     intro d s0 v opn mov hd h0

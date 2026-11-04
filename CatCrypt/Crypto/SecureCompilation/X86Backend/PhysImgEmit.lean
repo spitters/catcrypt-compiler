@@ -447,10 +447,22 @@ theorem lowerTwoAddr_armOut (d s0 s1 : LOperand) (opn mov : String)
   simp only at hx hpre
   have hp : ∀ r ∈ pre, ArmOut [d] opn r := fun r hr =>
     armOut_mono (by simp) (hpre r hr)
-  split at hx <;> simp only [List.mem_append] at hx
-  · exact hx.elim (hp x) (legalizeBinop_armOut d _ opn mov hmov x)
-  · exact hx.elim (fun h => h.elim (legalizeMov_armOut d s0 opn mov hmov x) (hp x))
-      (legalizeBinop_armOut d _ opn mov hmov x)
+  have hmov' := hmov
+  simp only [movMnems, List.mem_cons, List.not_mem_nil, or_false] at hmov'
+  split at hx
+  · simp only [List.mem_append] at hx
+    exact hx.elim (hp x) (legalizeBinop_armOut d _ opn mov hmov x)
+  · split at hx
+    · simp only [List.mem_append, List.mem_singleton] at hx
+      rcases hx with (hx | hx) | rfl
+      · exact hp x hx
+      · unfold scratchBinop at hx
+        split at hx <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hx <;>
+          rcases hx with rfl | rfl | rfl <;> simp [ArmOut, movMnems, hmov']
+      · simp [ArmOut, movMnems, hmov']
+    · simp only [List.mem_append] at hx
+      exact hx.elim (fun h => h.elim (legalizeMov_armOut d s0 opn mov hmov x) (hp x))
+        (legalizeBinop_armOut d _ opn mov hmov x)
 
 theorem lowerTwoAddrShiftImm_armOut (d s0 : LOperand) (v : Nat) (opn mov : String)
     (hmov : mov = opn ∨ mov ∈ movMnems) :

@@ -763,7 +763,7 @@ theorem lowerTwoAddr_shape_noSpill (dst s0 s1 : LOperand) (opn : String)
       = (if dst = s0 then [.Lopn [dst] opn [dst, s1]]
          else [.Lopn [dst] "MOV" [s0], .Lopn [dst] opn [dst, s1]]) := by
   simp only [lowerTwoAddr, materializeWideImm_MOV, List.nil_append,
-    List.append_nil]
+    List.append_nil, hd, Bool.false_eq_true, ite_false]
   split
   · exact legalizeBinop_noSpill dst s1 opn hd hs1
   · rw [legalizeMov_noSpill dst s0 (Or.inl hd),
@@ -780,10 +780,17 @@ theorem lowerTwoAddr_legalMemForm (dst s0 s1 : LOperand) (opn : String) :
     List.append_nil] at hr
   split at hr
   · exact legalizeBinop_legalMemForm dst s1 opn "MOV" r hr
-  · rw [List.mem_append] at hr
-    rcases hr with hr | hr
-    · exact legalizeMov_legalMemForm dst s0 "MOV" r hr
-    · exact legalizeBinop_legalMemForm dst s1 opn "MOV" r hr
+  · split at hr
+    · simp only [List.mem_append, List.mem_singleton, scratchBinop] at hr
+      rcases hr with hr | rfl
+      · split at hr <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hr <;>
+          rcases hr with rfl | rfl | rfl <;>
+          simp_all [LinstrR.legalMemForm, reloadScratch_not_spill, reloadScratch2_not_spill]
+      · simp [LinstrR.legalMemForm, reloadScratch_not_spill]
+    · rw [List.mem_append] at hr
+      rcases hr with hr | hr
+      · exact legalizeMov_legalMemForm dst s0 "MOV" r hr
+      · exact legalizeBinop_legalMemForm dst s1 opn "MOV" r hr
 
 set_option linter.unusedVariables false in
 /-- The immediate-shift lowering has three shapes depending on whether `dst` is

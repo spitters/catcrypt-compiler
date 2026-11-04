@@ -210,6 +210,41 @@ theorem legalizeBinop_legal {dst src : LOperand} {opn mov : String}
       · exact .aluImm opn _ v hv h15
       · exact lf_mov_right hm h15 hd
 
+/-- **The scratch two-address op has legal forms**: on a first source a move may copy and a
+    second source that is an allocated operand under an operation of `x86Alu` or
+    `x86ShiftReg`, or an immediate under `x86AluImm`, every instruction of `scratchBinop`
+    has a legal form. -/
+theorem scratchBinop_legal {s0 src : LOperand} {opn mov : String}
+    (hm : isMovMnem mov = true) (h0 : ValOk F W Q mov s0)
+    (hsrc : (AllocOp F W Q src ∧ (x86Alu opn = true ∨ x86ShiftReg opn = true)) ∨
+      ∃ v, src = .imm v ∧ x86AluImm opn v = true) :
+    ∀ i ∈ scratchBinop s0 src opn mov, LF F W Q i := by
+  have h15 := isGpName_reloadScratch
+  have h14 := isGpName_reloadScratch2
+  have hmv : LF F W Q (.Lopn [.reg reloadScratch] mov [s0]) := by
+    rcases h0 with ⟨sn, rfl, hs'⟩ | ⟨w, rfl, -⟩
+    · exact lf_mov_left hm h15 ⟨sn, rfl, hs'⟩
+    · exact .movImmReg _ _ _ hm h15
+  intro i hi
+  unfold scratchBinop at hi
+  rcases hsrc with ⟨⟨sn, rfl, hs'⟩, ho⟩ | ⟨v, rfl, hv⟩
+  · have hs : AllocOp F W Q (.reg sn) := ⟨sn, rfl, hs'⟩
+    cases hss : (LOperand.reg sn).isSpill <;>
+      simp only [hss, Bool.false_eq_true, ite_false, ite_true, List.mem_cons,
+        List.not_mem_nil, or_false] at hi
+    · rcases hi with rfl | rfl
+      · exact hmv
+      · exact lf_binReg ho h15 (gp_of_allocOp hs hss)
+    · rcases hi with rfl | rfl | rfl
+      · exact hmv
+      · exact lf_mov_left hm h14 hs
+      · exact lf_binReg ho h15 h14
+  · simp only [isSpill_imm, Bool.false_eq_true, ite_false, List.mem_cons, List.not_mem_nil,
+      or_false] at hi
+    rcases hi with rfl | rfl
+    · exact hmv
+    · exact .aluImm opn _ v hv h15
+
 /-- The prelude of `materializeWideImm` has legal forms. -/
 theorem materializeWideImm_pre_legal (s1 : LOperand) (mov : String) :
     ∀ i ∈ (materializeWideImm s1 mov).1, LF F W Q i := by
@@ -261,12 +296,27 @@ theorem lowerTwoAddr_legal {dst s0 s1 : LOperand} {opn mov : String}
       rcases h1 with h1 | ⟨v, rfl⟩
       · exact Or.inl ⟨h1, hreg⟩
       · exact Or.inr ⟨v, rfl, himm v rfl (hlt v rfl)⟩
+  have hsc : ∀ i ∈ scratchBinop s0 (materializeWideImm s1 mov).2 opn mov, LF F W Q i := by
+    apply scratchBinop_legal hm h0
+    rcases materializeWideImm_snd s1 mov with h | ⟨h, hlt⟩
+    · rw [h]
+      exact Or.inl ⟨allocOp_of_gp isGpName_reloadScratch2, hreg⟩
+    · rw [h]
+      rcases h1 with h1 | ⟨v, rfl⟩
+      · exact Or.inl ⟨h1, hreg⟩
+      · exact Or.inr ⟨v, rfl, himm v rfl (hlt v rfl)⟩
   intro i hi
   unfold lowerTwoAddr at hi
   split_ifs at hi
   · rcases List.mem_append.1 hi with hi | hi
     · exact hpre i hi
     · exact hbin i hi
+  · simp only [List.mem_append, List.mem_singleton] at hi
+    rcases hi with (hi | hi) | rfl
+    · exact hpre i hi
+    · exact hsc i hi
+    · obtain ⟨dn, rfl, hd'⟩ := hd
+      exact lf_mov_right hm isGpName_reloadScratch ⟨dn, rfl, hd'⟩
   · rcases List.mem_append.1 hi with hi | hi
     · rcases List.mem_append.1 hi with hi | hi
       · exact legalizeMov_legal hm hd h0 i hi

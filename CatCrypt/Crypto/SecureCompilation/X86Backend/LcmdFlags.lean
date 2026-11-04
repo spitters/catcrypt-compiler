@@ -81,10 +81,11 @@ inductive FlagEffect where
   | barrier
   deriving DecidableEq, Repr
 
-/-- The mnemonic bases that read and write no flag. -/
+/-- The mnemonic bases that read and write no flag. `STOREIMM` is the immediate store
+    `mov $v` to a frame word. -/
 def neutralBases : List String :=
   ["MOV", "MOVQ", "MOV:8", "MOV:16", "LOADIDX", "STOREIDX", "LOAD", "STORE", "LOADSYM",
-   "MULX", "MULXMEM", "LEA"]
+   "STOREIMM", "MULX", "MULXMEM", "LEA"]
 
 /-- The mnemonic bases that overwrite every flag a reader consumes. -/
 def killBases : List String :=

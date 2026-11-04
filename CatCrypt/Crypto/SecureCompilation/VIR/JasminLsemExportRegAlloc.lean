@@ -1602,10 +1602,17 @@ theorem lowerTwoAddr_length (dst s0 s1 : LOperand) (opn mov : String) (h : dst �
     unfold legalizeMov; split <;> simp
   have h2 : ∀ s, 1 ≤ (legalizeBinop dst s opn mov).length := by
     intro s; unfold legalizeBinop; split <;> simp
+  have h3 : ∀ s, 2 ≤ (scratchBinop s0 s opn mov).length := by
+    intro s; unfold scratchBinop; split <;> simp
   unfold lowerTwoAddr
-  simp only [ite_eq_right h, List.length_append]
-  have := h2 (materializeWideImm s1 mov).2
-  omega
+  simp only [ite_eq_right h]
+  split
+  · simp only [List.length_append, List.length_singleton]
+    have := h3 (materializeWideImm s1 mov).2
+    omega
+  · simp only [List.length_append]
+    have := h2 (materializeWideImm s1 mov).2
+    omega
 
 /-- A literal body with the instruction sequence of the `mpn_and_n` runtime-count
     loop node before allocation: `LIVEPIN`, then the aliased and canonicalised

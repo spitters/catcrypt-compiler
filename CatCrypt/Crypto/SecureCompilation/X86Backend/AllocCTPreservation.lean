@@ -477,6 +477,12 @@ theorem legalizeBinop_direct {dst src : LOperand} {opn mov : String}
   unfold legalizeBinop
   split <;> simp_all [linstrRDirect]
 
+theorem scratchBinop_direct {s0 src : LOperand} {opn mov : String}
+    (h0 : isIndexed s0 = false) (hs : isIndexed src = false) :
+    lcmdRDirect (scratchBinop s0 src opn mov) = true := by
+  unfold scratchBinop
+  split <;> simp_all [linstrRDirect]
+
 theorem legalizeMov_direct {dst src : LOperand} {mov : String}
     (hd : isIndexed dst = false) (hs : isIndexed src = false) :
     lcmdRDirect (legalizeMov dst src mov) = true := by
@@ -534,7 +540,9 @@ theorem lowerTwoAddr_direct {dst s0 s1 : LOperand} {opn mov : String}
   by_cases hds : dst = s0
   · subst hds
     simp [hpre, legalizeBinop_direct hd hs1]
-  · simp [hds, hpre, legalizeMov_direct hd h0, legalizeBinop_direct hd hs1]
+  · by_cases hsp : dst.isSpill = true
+    · simp [hds, hsp, hpre, scratchBinop_direct h0 hs1, linstrRDirect, hd]
+    · simp [hds, hsp, hpre, legalizeMov_direct hd h0, legalizeBinop_direct hd hs1]
 
 theorem lowerTwoAddrShiftImm_direct {dst s0 : LOperand} {v : Nat} {opn mov : String}
     (hd : isIndexed dst = false) (h0 : isIndexed s0 = false) :

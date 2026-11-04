@@ -580,9 +580,16 @@ theorem wide_lowerTwoAddr {d s0 s1 : LOperand} (opn mov : String) (hd : OpOk d) 
   rcases he : materializeWideImm s1 mov with ⟨pre, s1'⟩
   rw [he] at w1 w2
   simp only at w1 w2 ⊢
-  split <;> simp only [List.forall_mem_append]
-  · exact ⟨w1, wide_legalizeBinop _ _ hd w2⟩
-  · exact ⟨⟨wide_legalizeMov _ hd h0, w1⟩, wide_legalizeBinop _ _ hd w2⟩
+  split
+  · simp only [List.forall_mem_append]
+    exact ⟨w1, wide_legalizeBinop _ _ hd w2⟩
+  · split
+    · simp only [List.forall_mem_append]
+      refine ⟨⟨w1, ?_⟩, by w_fin⟩
+      unfold scratchBinop
+      split <;> w_fin
+    · simp only [List.forall_mem_append]
+      exact ⟨⟨wide_legalizeMov _ hd h0, w1⟩, wide_legalizeBinop _ _ hd w2⟩
 
 theorem wide_lowerTwoAddrShiftImm {d s0 : LOperand} (v : Nat) (opn mov : String) (hd : OpOk d)
     (h0 : OpOk s0) : ∀ r ∈ lowerTwoAddrShiftImm d s0 v opn mov, WideOkR r := by

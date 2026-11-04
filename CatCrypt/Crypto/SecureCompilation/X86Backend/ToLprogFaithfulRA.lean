@@ -1006,8 +1006,9 @@ provable fact about `lowerTwoAddr` (not an assumption). -/
 
 /-- **The collapse-or-mov dichotomy.** On the 32-bit (`MOV`) path,
     `lowerTwoAddr` is *exactly* the collapse form `legalizeBinop dst s1 opn` when
-    `dst = s0`, and the mov-prefixed form `legalizeMov dst s0 ++ legalizeBinop
-    dst s1 opn` when `dst ≠ s0`. Hence `hcol` (which forces the physical
+    `dst = s0`, the scratch form `scratchBinop s0 s1 opn` followed by the store of `R15`
+    when `dst ≠ s0` is a spill slot, and the mov-prefixed form `legalizeMov dst s0 ++
+    legalizeBinop dst s1 opn` otherwise. Hence `hcol` (which forces the physical
     `dst = s0`) selects the collapse branch; its negation routes through the
     already-handled `legalizeMov` prefix. The collapse is therefore never
     *required* — it is an optimization the RA may or may not enable, and the
@@ -1016,6 +1017,9 @@ theorem lowerTwoAddr_dichotomy (dst s0 s1 opn : String) :
     lowerTwoAddr (.reg dst) (.reg s0) (.reg s1) opn "MOV"
       = (if dst = s0
           then legalizeBinop (.reg dst) (.reg s1) opn "MOV"
+          else if (LOperand.reg dst).isSpill then
+            scratchBinop (.reg s0) (.reg s1) opn "MOV"
+              ++ [.Lopn [.reg dst] "MOV" [.reg reloadScratch]]
           else legalizeMov (.reg dst) (.reg s0) "MOV"
                 ++ legalizeBinop (.reg dst) (.reg s1) opn "MOV") := by
   unfold lowerTwoAddr

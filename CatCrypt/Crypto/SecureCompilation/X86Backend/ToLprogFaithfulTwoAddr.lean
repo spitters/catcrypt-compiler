@@ -292,12 +292,13 @@ The block `legalizeMov ++ legalizeBinop` packaged above is exactly what
 reduction and restate the `BlockMaintains` witness directly over `lowerTwoAddr`,
 so the witness reads off the actual emitter output. -/
 
-/-- `lowerTwoAddr` on register-named operands with `ρ nDst ≠ ρ nS0` (the
-    `dst ≠ s0` branch, default `"MOV"`) is exactly `legalizeMov ρdst ρs0 ++
+/-- `lowerTwoAddr` on register-named operands with `ρ nDst ≠ ρ nS0` and a register
+    destination (the `dst ≠ s0` branch, default `"MOV"`) is exactly `legalizeMov ρdst ρs0 ++
     legalizeBinop ρdst ρs1 opn` — the `materializeWideImm` prelude is empty. -/
 theorem lowerTwoAddr_regReg_neq (body : Lcmd) (tbl : Array Nat)
     (nDst nS0 nS1 opn : String)
-    (hne : physRename body tbl nDst ≠ physRename body tbl nS0) :
+    (hne : physRename body tbl nDst ≠ physRename body tbl nS0)
+    (hsp : (LOperand.reg (physRename body tbl nDst)).isSpill = false) :
     lowerTwoAddr (.reg (physRename body tbl nDst))
         (.reg (physRename body tbl nS0)) (.reg (physRename body tbl nS1)) opn "MOV"
       = legalizeMov (.reg (physRename body tbl nDst))
@@ -307,13 +308,70 @@ theorem lowerTwoAddr_regReg_neq (body : Lcmd) (tbl : Array Nat)
   have hneOp : (LOperand.reg (physRename body tbl nDst))
       ≠ (LOperand.reg (physRename body tbl nS0)) := fun h => hne (by injection h)
   unfold lowerTwoAddr
-  simp only [materializeWideImm_MOV, List.append_nil, List.nil_append, ite_eq_right hneOp]
+  simp only [materializeWideImm_MOV, List.append_nil, List.nil_append, ite_eq_right hneOp,
+    hsp, Bool.false_eq_true, ite_false]
+
+/-- `lowerTwoAddr` over register operands whose destination is a spill slot different from
+    the first source is the scratch op `scratchBinop` followed by the store of `R15` to the
+    destination, at any move mnemonic. -/
+theorem lowerTwoAddr_spillDst (dst s0 s1 opn mov : String) (hne : dst ≠ s0)
+    (hsp : (LOperand.reg dst).isSpill = true) :
+    lowerTwoAddr (.reg dst) (.reg s0) (.reg s1) opn mov
+      = scratchBinop (.reg s0) (.reg s1) opn mov
+        ++ [.Lopn [.reg dst] mov [.reg reloadScratch]] := by
+  have hneOp : (LOperand.reg dst) ≠ (LOperand.reg s0) := fun h => hne (by injection h)
+  unfold lowerTwoAddr
+  simp only [materializeWideImm, List.nil_append, ite_eq_right hneOp, hsp, ite_true]
+
+/-- **The scratch form of a spilled-destination binop runs as the move-prefixed form**, up
+    to the program counter: when the destination `D` is a spill slot, the first source `S0`
+    is none and the second source `S1` is not `D`, if `mov D, S0` followed by `legalizeBinop D
+    S1` runs from `s` to `o`, then `scratchBinop S0 S1` followed by `mov D, R15` runs from `s`
+    to a state with the register map of `o`. -/
+theorem scratchBinop_lvm {w : Nat} (D S0 S1 opn mov : String)
+    (hmov : stripWidthTag mov = "MOV")
+    (hD : (LOperand.reg D).isSpill = true) (h0 : (LOperand.reg S0).isSpill = false)
+    (h1 : S1 ≠ D) (s o : Lstate w)
+    (h : lsemStraight (legalizeMov (.reg D) (.reg S0) mov
+      ++ legalizeBinop (.reg D) (.reg S1) opn mov) s = some o) :
+    ∃ n, lsemStraight (scratchBinop (.reg S0) (.reg S1) opn mov
+        ++ [.Lopn [.reg D] mov [.reg reloadScratch]]) s = some n ∧ n.lvm = o.lvm := by
+  have hmv : ∀ a : BitVec w, applyOpn (stripWidthTag mov) [a] = some a := by
+    intro a; rw [hmov]; rfl
+  have h1514 : reloadScratch ≠ reloadScratch2 := reloadScratch_ne_reloadScratch2
+  unfold legalizeMov legalizeBinop at h
+  unfold scratchBinop
+  simp only [hD, h0, Bool.and_false, Bool.false_eq_true, ite_false] at h
+  cases hs1 : (LOperand.reg S1).isSpill <;>
+    simp only [hs1, Bool.false_eq_true, ite_false, ite_true, List.cons_append,
+      List.nil_append] at h ⊢ <;>
+    simp only [lsemStraight_cons, lsemStep, List.map_cons, List.map_nil, evalOperand, hmv,
+      Lstate.setReg, Lstate.nextPc, lsemStraight_nil, ↓reduceIte, ite_eq_right h1,
+      ite_eq_right h1514] at h ⊢ <;>
+    cases hA : applyOpn (stripWidthTag opn)
+      [s.lvm S0, if S1 = reloadScratch then s.lvm S0 else s.lvm S1] <;>
+    simp only [hA, reduceCtorEq, Option.some.injEq] at h ⊢ <;>
+    subst h <;>
+    refine ⟨_, rfl, ?_⟩ <;>
+    funext r <;>
+    split_ifs <;> simp_all
+
+/-- The store relation reads only the register map. -/
+theorem storeRel_of_lvm {w : Nat} {body : Lcmd} {tbl : Array Nat} {L : List String}
+    {s t u : Lstate w} (h : StoreRel body tbl L s t) (hl : u.lvm = t.lvm) :
+    StoreRel body tbl L s u := by
+  intro m hm
+  rw [hl]
+  exact h m hm
 
 /-- **`dst ≠ s0` two-address binop block is a `BlockMaintains` witness — stated
     over the literal `lowerTwoAddr` output.** Same as `movBinopBlockMaintains`,
     but the physical block is the actual emitter output `lowerTwoAddr (.reg ρdst)
-    (.reg ρs0) (.reg ρs1) opn "MOV"` (rewritten by `lowerTwoAddr_regReg_neq`),
-    requiring `ρ nDst ≠ ρ nS0` (the `dst ≠ s0` branch condition). This is the
+    (.reg ρs0) (.reg ρs1) opn "MOV"`, requiring `ρ nDst ≠ ρ nS0` (the `dst ≠ s0` branch
+    condition). At a register destination the block is the move-prefixed form
+    (`lowerTwoAddr_regReg_neq`); at a spilled destination it is the scratch form
+    (`lowerTwoAddr_spillDst`), which runs to the register map of the move-prefixed form
+    (`scratchBinop_lvm`). This is the
     `dst ≠ s0` companion to `ToLprogFaithfulBody.binopBlockMaintains`'s `dst = s0`
     collapse: both yield `BlockMaintains` witnesses that `physBlocks_storeRel`
     threads across the whole body. -/
@@ -334,8 +392,20 @@ theorem lowerTwoAddr_blockMaintains {w : Nat} (body : Lcmd) (tbl : Array Nat)
       (lowerTwoAddr (.reg (physRename body tbl nDst))
         (.reg (physRename body tbl nS0)) (.reg (physRename body tbl nS1)) opn "MOV")
       (fun s => s.setReg nDst (vval s)) := by
-  rw [lowerTwoAddr_regReg_neq body tbl nDst nS0 nS1 opn hne]
-  exact movBinopBlockMaintains body tbl Lin Lout nDst nS0 nS1 opn vval
+  have hold := movBinopBlockMaintains body tbl Lin Lout nDst nS0 nS1 opn vval
     hs0In hinj hcarry hns1 hnsp hstrip hop
+  cases hsp : (LOperand.reg (physRename body tbl nDst)).isSpill
+  · rw [lowerTwoAddr_regReg_neq body tbl nDst nS0 nS1 opn hne hsp]
+    exact hold
+  · rw [lowerTwoAddr_spillDst _ _ _ opn "MOV" hne hsp]
+    intro s s' hrel
+    obtain ⟨o, hrun, hst⟩ := hold s s' hrel
+    have h0 : (LOperand.reg (physRename body tbl nS0)).isSpill = false := by
+      simpa [hsp] using hnsp
+    have h1 : physRename body tbl nS1 ≠ physRename body tbl nDst := fun he =>
+      hns1 (hinj nS1 (List.mem_cons_of_mem _ List.mem_cons_self) he)
+    obtain ⟨n, hn, hl⟩ := scratchBinop_lvm _ _ _ opn "MOV"
+      ToLprogFaithfulProbe.stripWidthTag_MOV hsp h0 h1 s' o hrun
+    exact ⟨n, hn, storeRel_of_lvm hst hl⟩
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulTwoAddr

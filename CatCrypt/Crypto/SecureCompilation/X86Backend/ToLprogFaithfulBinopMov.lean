@@ -71,16 +71,18 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulBinopWide
 /-! ## 1. The `lowerTwoAddr` output over register operands -/
 
 /-- `lowerTwoAddr` over register operands whose destination and first source
-    differ is `legalizeMov dst s0 mov ++ legalizeBinop dst s1 opn mov`, at any
-    move mnemonic: a register second source needs no wide-immediate
+    differ, at a register destination, is `legalizeMov dst s0 mov ++ legalizeBinop dst s1
+    opn mov`, at any move mnemonic: a register second source needs no wide-immediate
     materialization. -/
-theorem lowerTwoAddr_regReg_ne (dst s0 s1 opn mov : String) (hne : dst ≠ s0) :
+theorem lowerTwoAddr_regReg_ne (dst s0 s1 opn mov : String) (hne : dst ≠ s0)
+    (hsp : (LOperand.reg dst).isSpill = false) :
     lowerTwoAddr (.reg dst) (.reg s0) (.reg s1) opn mov
       = legalizeMov (.reg dst) (.reg s0) mov
         ++ legalizeBinop (.reg dst) (.reg s1) opn mov := by
   have hneOp : (LOperand.reg dst) ≠ (LOperand.reg s0) := fun h => hne (by injection h)
   unfold lowerTwoAddr
-  simp only [materializeWideImm_reg, List.nil_append, List.append_nil, ite_eq_right hneOp]
+  simp only [materializeWideImm_reg, List.nil_append, List.append_nil, ite_eq_right hneOp,
+    hsp, Bool.false_eq_true, ite_false]
 
 /-! ## 2. The `physBodyElem` expansion of a binop head
 
@@ -268,10 +270,13 @@ theorem BinopMovWideBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
     movThenBinop_storeRel_step body tbl b.Lin b.Lout s s' b.nDst b.nS0 b.nSrc
       (binOpName b.bop) hrel b.hs0In b.hinj b.hcarry b.hsrcNe b.hnsp
       (stripWidthTag_binOpName b.bop) (b.vval s) (b.hop s)
-  refine ⟨s'', ?_, hst⟩
-  rw [BinopMovWideBinding.block,
-    lowerTwoAddr_regReg_ne _ _ _ _ _ b.hne,
-    lsemStraight_append_congr
+  have hrun64 : lsemStraight
+      (legalizeMov (.reg (physRename body tbl b.nDst))
+        (.reg (physRename body tbl b.nS0)) "MOV:64"
+      ++ legalizeBinop (.reg (physRename body tbl b.nDst))
+        (.reg (physRename body tbl b.nSrc)) (withWidthTag 64 (binOpName b.bop)) "MOV:64") s'
+      = some s'' := by
+    rw [lsemStraight_append_congr
       (legalizeMov (.reg (physRename body tbl b.nDst))
         (.reg (physRename body tbl b.nS0)) "MOV:64")
       (legalizeMov (.reg (physRename body tbl b.nDst))
@@ -285,7 +290,19 @@ theorem BinopMovWideBinding.maintains {w : Nat} {body : Lcmd} {tbl : Array Nat}
       (fun t => legalizeBinop_mnem_congr _ _ _ _ "MOV:64" "MOV"
         (by rw [stripWidthTag_withWidthTag64_binOpName, stripWidthTag_binOpName])
         (by rw [stripWidthTag_MOV64, stripWidthTag_MOV]) t)]
-  exact hrun
+    exact hrun
+  rw [BinopMovWideBinding.block]
+  cases hsp : (LOperand.reg (physRename body tbl b.nDst)).isSpill
+  · rw [lowerTwoAddr_regReg_ne _ _ _ _ _ b.hne hsp]
+    exact ⟨s'', hrun64, hst⟩
+  · rw [lowerTwoAddr_spillDst _ _ _ _ _ b.hne hsp]
+    have h0 : (LOperand.reg (physRename body tbl b.nS0)).isSpill = false := by
+      simpa [hsp] using b.hnsp
+    have h1 : physRename body tbl b.nSrc ≠ physRename body tbl b.nDst := fun he =>
+      b.hsrcNe (b.hinj b.nSrc (List.mem_cons_of_mem _ List.mem_cons_self) he)
+    obtain ⟨n, hn, hl⟩ := scratchBinop_lvm _ _ _ _ "MOV:64" stripWidthTag_MOV64 hsp h0 h1
+      s' s'' hrun64
+    exact ⟨n, hn, storeRel_of_lvm hst hl⟩
 
 /-! ## 6. The covers of the two head shapes
 

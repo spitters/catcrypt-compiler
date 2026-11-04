@@ -1513,19 +1513,36 @@ def materializeWideImm (s1 : LOperand) (mov : String) : List LinstrR × LOperand
       else ([], s1)
   | _, _ => ([], s1)
 
+/-- A two-address binop computed in the primary scratch `R15`: `mov R15, s0; op R15, s1`,
+    with a spill-slot `s1` read through the secondary scratch `R14`
+    (`mov R15, s0; mov R14, s1; op R15, R14`). The lowering of a binop with a spilled
+    destination different from its first source stores `R15` to the destination after it,
+    as `lowerTwoAddrShiftImm` does for an immediate shift. -/
+def scratchBinop (s0 s1 : LOperand) (opn : String) (mov : String := "MOV") : List LinstrR :=
+  if s1.isSpill then
+    [.Lopn [.reg reloadScratch] mov [s0],
+     .Lopn [.reg reloadScratch2] mov [s1],
+     .Lopn [.reg reloadScratch] opn [.reg reloadScratch, .reg reloadScratch2]]
+  else
+    [.Lopn [.reg reloadScratch] mov [s0],
+     .Lopn [.reg reloadScratch] opn [.reg reloadScratch, s1]]
+
 /-- Lower a single resolved binop into its two-address `LinstrR` sequence over
     physical operand names, legalizing any two-memory-operand instruction by
     routing one source through the reserved reload scratch.
     `dst`, `s0`, `s1` are physical operand names; `opn` the producer mnemonic.
     When `dst = s0` the RA already placed `dst` on `s0`'s register, so the leading
-    `mov` collapses; otherwise a `mov dst, s0` (itself legalized) precedes the
-    op (itself legalized). A wide U64 immediate `s1` is materialised into a
-    register first (`materializeWideImm`). -/
+    `mov` collapses. When `dst ≠ s0` and `dst` is a spill slot, the op runs in the
+    primary scratch (`scratchBinop`) and its result is stored to `dst`; otherwise a
+    `mov dst, s0` (itself legalized) precedes the op (itself legalized). A wide U64
+    immediate `s1` is materialised into a register first (`materializeWideImm`). -/
 def lowerTwoAddr (dst s0 s1 : LOperand) (opn : String) (mov : String := "MOV") :
     List LinstrR :=
   let (immPre, s1') := materializeWideImm s1 mov
   if dst = s0 then
     immPre ++ legalizeBinop dst s1' opn mov
+  else if dst.isSpill then
+    immPre ++ scratchBinop s0 s1' opn mov ++ [.Lopn [dst] mov [.reg reloadScratch]]
   else
     legalizeMov dst s0 mov ++ immPre ++ legalizeBinop dst s1' opn mov
 

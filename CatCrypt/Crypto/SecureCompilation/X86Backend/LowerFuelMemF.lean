@@ -382,8 +382,13 @@ theorem simS_lowerTwoAddr {tg : LinstrR → MemTag} {d s0 : String} {s1 : LOpera
   · obtain rfl : d = s0 := by injection hds
     simpa only [ite_true, List.nil_append] using
       simS_legalizeBinop (tg := tg) (mov := mov) htg hmov hcmp hs1 hn'
-  · simp only [hds, ite_false, List.nil_append, List.append_nil, List.map_append]
-    exact simS_movThen hmov hcmp hd hkd hks0 (simS_legalizeBinop htg hmov hcmp hs1 hn')
+  · by_cases hsp : (LOperand.reg d).isSpill = true
+    · simp only [hds, hsp, ite_false, ite_true, List.nil_append, scratchBinop, hs1,
+        Bool.false_eq_true, List.cons_append, List.map_cons, List.map_nil, htg]
+      exact simS_scratch hmov hcmp hn _ _
+    · simp only [hds, hsp, Bool.false_eq_true, ite_false, List.nil_append, List.append_nil,
+        List.map_append]
+      exact simS_movThen hmov hcmp hd hkd hks0 (simS_legalizeBinop htg hmov hcmp hs1 hn')
 
 /-- **The two-address shift by an immediate.** `lowerTwoAddrShiftImm` simulates the
     register-tagged `OP d, s0, #v` off the scratches, when the shift names no scratch, every
@@ -662,7 +667,8 @@ theorem simS_lowerTwoAddrSpill {tg : LinstrR → MemTag} {d s0 S opn mov : Strin
   · obtain rfl : d = s0 := by injection hds
     simpa only [ite_true, List.nil_append] using
       simS_legalizeBinopSpill (tg := tg) (mov := mov) htg' hmov hcmp hd hS hn'
-  · simp only [hds, ite_false, List.nil_append, List.append_nil, List.map_append]
+  · simp only [hds, hd, Bool.false_eq_true, ite_false, List.nil_append, List.append_nil,
+      List.map_append]
     exact simS_movThen hmov hcmp hdS hkd hks0
       (simS_legalizeBinopSpill htg' hmov hcmp hd hS hn')
 

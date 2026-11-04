@@ -1256,11 +1256,28 @@ theorem lowerTwoAddr_wf (dst s0 s1 : LOperand) (opn mov : String)
     · exact hpre i hi
     · exact legalizeBinop_wf dst s1v opn mov hdst hs1' hcd hcs1' i hi
   · rw [ite_eq_right heq] at hi
-    rw [List.mem_append, List.mem_append] at hi
-    rcases hi with (hi | hi) | hi
-    · exact legalizeMov_wf dst s0 mov hdst hs0 hcd hcs0 i hi
-    · exact hpre i hi
-    · exact legalizeBinop_wf dst s1v opn mov hdst hs1' hcd hcs1' i hi
+    by_cases hsp : dst.isSpill = true
+    · simp only [hsp, ite_true, List.mem_append, List.mem_singleton] at hi
+      rcases hi with (hi | hi) | rfl
+      · exact hpre i hi
+      · unfold JasminLprogExport.scratchBinop at hi
+        split at hi <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hi
+        · rcases hi with rfl | rfl | rfl
+          · exact wf_scratch_dst s0 mov hs0
+          · exact wf_scratch2_dst s1v mov hs1'
+          · exact wf_binop (.reg reloadScratch) (.reg reloadScratch2) opn
+              reloadScratch_ok.1 reloadScratch_ok.2 reloadScratch2_ok.1
+        · rcases hi with rfl | rfl
+          · exact wf_scratch_dst s0 mov hs0
+          · exact wf_binop (.reg reloadScratch) s1v opn reloadScratch_ok.1
+              reloadScratch_ok.2 hs1'
+      · exact wf_scratch_src dst mov hdst
+    · simp only [hsp, Bool.false_eq_true, ite_false] at hi
+      rw [List.mem_append, List.mem_append] at hi
+      rcases hi with (hi | hi) | hi
+      · exact legalizeMov_wf dst s0 mov hdst hs0 hcd hcs0 i hi
+      · exact hpre i hi
+      · exact legalizeBinop_wf dst s1v opn mov hdst hs1' hcd hcs1' i hi
 
 /-! ## 6f. Remapped operands, memory-name operands, and the prologue/epilogue
 
