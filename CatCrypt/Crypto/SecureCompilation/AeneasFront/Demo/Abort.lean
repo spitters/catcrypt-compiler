@@ -14,10 +14,12 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.ExtChain
 
 The Aeneas test function `joins.opt_add_1_or_panic` (`TestJoins`, copied unchanged from Aeneas
 commit `b08bf81`) asserts its Boolean argument `b` with `massert b` and returns `x + 1`.
-`reifyAeneas%` reads the assertion as the guard `Reify.assertBit`: the bit `!b` is bound and
-branched on, to the aborting arm `abortArm` or to the empty return, and the continuation reads
-`x + 1`. The elimination of aborting branches, the first step of the chain `extChain`, replaces
-the guard by its continuation (`abortElim_guard`), and keeps every value of the program
+The Boolean argument `b` is the word `boolW b` of the layout, whose bit is bound first
+(`Reify.argBit`). `reifyAeneas%` reads the assertion as the guard `Reify.assert`: the bit of
+`b` (`readBit`) and its negation are bound, the negation is branched on, to the aborting arm
+`abortArm` or to the empty return, and the continuation reads `x + 1`. The elimination of
+aborting branches, the first step of the chain `extChain`, replaces the branch by its
+continuation (`abortElim_guard`), and keeps every value of the program
 (`NFProg.denote_abortElim` with `nfDenote_isAbort`).
 
 ## Main results
@@ -59,7 +61,7 @@ def optAdd := reifyAeneas% joins.opt_add_1_or_panic
 /-- A value of `joins.opt_add_1_or_panic` is the denotation of its NF program in the compiler's
     semantics. -/
 theorem optAdd_denote (b : Bool) (x z : U32) (h : joins.opt_add_1_or_panic b x = .ok z) :
-    ∃ N, ∀ fuel, N ≤ fuel → PDenP hax64WExit fuel optAdd.prog (vCons b (vCons x vNil)) =
+    ∃ N, ∀ fuel, N ≤ fuel → PDenP hax64WExit fuel optAdd.prog (wCons b (vCons x vNil)) =
       some (.cons (embW z) .nil) :=
   Reify.toDenote (optAdd.sound b x) h
 
@@ -70,7 +72,7 @@ theorem optAdd_abortElim_denote (b : Bool) (x z : U32)
     (h : joins.opt_add_1_or_panic b x = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel (NFProg.abortElim NfOp.isAbort optAdd.prog)
-        (vCons b (vCons x vNil)) = some (.cons (embW z) .nil) := by
+        (wCons b (vCons x vNil)) = some (.cons (embW z) .nil) := by
   obtain ⟨N, hN⟩ := optAdd_denote b x z h
   exact ⟨N, fun fuel hf =>
     @NFProg.denote_abortElim nfDialect _ _ _ _ NfOp.isAbort (nfDenote (tableOf hax64WExit)) _

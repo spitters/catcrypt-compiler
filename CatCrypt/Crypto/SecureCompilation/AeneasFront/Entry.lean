@@ -20,7 +20,9 @@ of the compiler, so the compiler `NFEntry.compileR` and its correctness theorem
 `NFEntry.compileR_correct` apply to them with no further proof.
 
 * The codes `AeTy` and the value map `AeTy.val`: an unsigned scalar of a width of at most
-  64 bits is the word of 64 bits of its value, a boolean is a bit, and an array of `n`
+  64 bits is the word of 64 bits of its value, a boolean is the word `0` or `1` that the
+  System V layout passes in a scalar register (its layout entry is a scalar of the bound
+  `1`, its read-back the integer of the register), and an array of `n`
   values is the array of their images; one clause covers every width. `AeTy.vals` maps an
   argument tuple to a valuation of the parameter context `args.map AeTy.nf`.
 * A source `AeSrc` is the codes, a parameter context `Γ`, a result type `t`, value maps
@@ -82,19 +84,19 @@ inductive AeTy where
   | .bool => Bool
   | .arr n τ => Aeneas.Std.Array τ.denote n
 
-/-- The NF type of a code: a scalar is a word of 64 bits, a boolean a bit, an array of `n`
-    values an array of length `n.val`. -/
+/-- The NF type of a code: a scalar is a word of 64 bits, a boolean the word of 64 bits of
+    the layout, an array of `n` values an array of length `n.val`. -/
 def AeTy.nf : AeTy → NfTy
   | .u _ _ => .word 64
-  | .bool => .bit
+  | .bool => .word 64
   | .arr n τ => .arr n.val τ.nf
 
 /-- **The value map**: an unsigned scalar of at most 64 bits is the word of 64 bits of its
-    value, a boolean is a bit, and an array is the array of the images of its elements. One
-    clause covers every width. -/
+    value, a boolean is the word `1` or `0`, and an array is the array of the images of its
+    elements. One clause covers every width. -/
 def AeTy.val : (τ : AeTy) → τ.denote → τ.nf.denote
   | .u _ _, x => BitVec.ofNat 64 x.val
-  | .bool, b => b
+  | .bool, b => BitVec.ofNat 64 b.toNat
   | .arr _ τ, a => fun i => τ.val (a.val[i.val]'(by rw [a.property]; exact i.isLt))
 
 /-- The argument tuple of a list of codes: the unit for no argument, a pair of the first
