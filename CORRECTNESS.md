@@ -145,7 +145,11 @@ tables with the accepted programs.
   checks `regionCtB`. `haxc_correct_auto` is `NFEntry.compileR_correct_linked` at
   `haxEntry` and the pair stage, through `compileRegion_correct`. The compile line is
   `compileA = haxToNF → extChain → compileRegion`, and `compileRegion` is the only back
-  half; the field modules compile through it as well. On a module with linked functions,
+  half; the field modules compile through it as well. The Aeneas front is a second entry of
+  the same compiler: `aeneasEntry` (`AeneasFront/Entry.lean`) takes an Aeneas-printed Lean
+  function, read by `reifyAeneas%` with a proof of its denotation, to `extChain` and
+  `compileRegion`, so `NFEntry.compileR_correct` and `aeneasEntry_compileR_ct` hold at it;
+  `AeneasFront/README.md` lists its statements and the test functions compiled to bytes. On a module with linked functions,
   `compileRegion` reads the table of their data (`CalleeTab`) and checks the calling body
   in one class of printed bodies: `printedAddrCWB` with the gate `imgGateCBW`
   (`X86Backend/ImageAddrCallW.lean`), which admits one-bit and cell-indexed instructions,
