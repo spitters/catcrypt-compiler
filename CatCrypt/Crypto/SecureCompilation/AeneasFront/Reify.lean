@@ -29,13 +29,18 @@ lemma proved once:
 * a value `ok x`, `ok (op x y)`: `Reify.okVar`, `Reify.okExpr`, `Reify.okLit`;
 * a branch `if x < y then a else b` (and `≤`, `>`, `≥`, `=`): `Reify.iteCmp`;
 * a panic guard, `massert P`, `if c then k else fail e` and `if c then fail e else k`:
-  `Reify.assert`, `Reify.iteFailElse`, `Reify.iteFail`, each an instance of `Reify.guardS`, the
-  branch to the aborting arm `abortArm` that `NFProg.abortElim` eliminates; the condition is
-  read by the class `ReadCond`: every comparison of words of every width of at most `64`
-  bits (`readCmp`, with the notations of `CmpProp`), Boolean variables, connectives of two
-  Boolean variables (`readBool`), decided propositions and double negations;
+  `Reify.assert`, `Reify.iteFailElse`, `Reify.iteFail`, each an instance of `Reify.guardS`, and
+  every other guard by `Reify.guardP`, of which `Reify.guardS` is itself an instance: the
+  branch to the aborting arm `abortArm` that `NFProg.abortElim` eliminates; a condition read
+  as one expression by the class `ReadCond` (every comparison of words of every width of at
+  most `64` bits, `readCmp`, with the notations of `CmpProp`; Boolean variables; connectives of
+  two Boolean variables, `readBool`; decided propositions and double negations), and any other
+  condition as a prefix of bindings and a bit by the class `ReadBit`, whose connectives,
+  negations and comparisons take compound operands (`readBitConn`, `readBitNot`,
+  `readBitDecNot`, `readBitCmp`);
 * a Boolean argument: the word `boolW b` of the layout, whose bit is bound first
-  (`Reify.argBit`);
+  (`Reify.argBit`); a Boolean result `ok b`: the prefix of its bit followed by the bit-to-word
+  step `bitWordP` (`Reify.okBit`, at the result map `bitRes`);
 * an operation: the `ReifyE` instances of the checked arithmetic, the lifted bitwise
   operations, the wrapping operations, `Array.index_usize` and `Array.update`;
 * a variable: `Lookup`, the position of a value in the valuation;
@@ -55,7 +60,9 @@ function. There is no definitional check of the whole term.
 
 * `AeVal`: the NF type and value of an Aeneas value
 * `Lookup`, `ReifyE`, `Reify`: the judgements
-* `ReadCond`, `CmpProp`, `BoolForm`: the reading of a condition
+* `ReadCond`, `CmpProp`, `BoolForm`: the reading of a condition as one expression
+* `preReads`, `ReadBit`, `ReadWord`: the reading of a condition as a prefix and a bit
+* `bitWordP`, `bitRes`: the bit-to-word step and the result map of a Boolean result
 * `boolW`, `wCons`: the word of a Boolean argument
 * `Reified`: an NF program with its soundness statement
 * `reifyAeneas%`: the elaborator
@@ -64,12 +71,17 @@ function. There is no definitional check of the whole term.
 
 * `Reify.bind`, `Reify.bindLit`, `Reify.okLit`, `Reify.iteLt`, `Reify.loop`: the congruence
   steps
-* `Reify.guard`, `Reify.guardS`, `Reify.assert`, `Reify.iteFailElse`, `Reify.iteFail`: the guards
+* `Reify.guard`, `Reify.guardP`, `Reify.guardS`, `Reify.assert`, `Reify.iteFailElse`,
+  `Reify.iteFail`: the guards
+* `nfToRustM_plug`, `preReads_append`, `preReads_wk`, `ReifyG.plug`: prefixes
+* `readBitVar`, `readBitNot`, `readBitDecNot`, `readBitDecEq`, `readBitConn`, `readBitCmp`,
+  `readWordVar`, `readWordLit`: conditions with compound operands
+* `aeExpr_selE`, `nfToRustM_bitWordP`, `Reify.okBit`: a Boolean result
 * `readCmp`, `CmpProp.not`, `CmpOp.aen_neg`, `readBool`, `readBit`, `readNotBit`: the conditions
 * `Reify.letE`, `Reify.letLit`: a binding the program reads no further
 * `Reify.argBit`: a Boolean argument
 * `foldRange_reify`, `range_body`, `Reify.loopRange`: the range loop
-* `Reify.toDenote`: from the reading to the compiler's semantics
+* `Reify.toDenote`, `ReifyG.toDenote`: from the reading to the compiler's semantics
 -/
 
 @[expose] public section
@@ -216,6 +228,15 @@ theorem Reify.toDenote {α : Type} [AeVal α] {m : RustM α} {Γ : Ctxt nfDialec
     (h : m = .ok y) : ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel p V = some (.cons (AeVal.emb y) .nil) :=
   nfToRustM_sim p V _ ((show ReifyG single m V p from r).sound y h)
+
+/-- **From the reading to the compiler's semantics, at a result map.** A value of an Aeneas
+    computation read by `p` with the result map `E` is, mapped by `E`, the denotation of `p` in
+    `PDenP hax64WExit` from some fuel on. -/
+theorem ReifyG.toDenote {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {m : RustM α} {Γ : Ctxt nfDialect} {V : Valuation Γ} {p : NFProg nfDialect Γ ts}
+    (r : ReifyG E m V p) {y : α} (h : m = .ok y) : ∃ N, ∀ fuel, N ≤ fuel →
+      PDenP hax64WExit fuel p V = some (E y) :=
+  nfToRustM_sim p V _ (r.sound y h)
 
 /-! ## Calls of two words -/
 
@@ -721,20 +742,298 @@ instance (priority := low) readNotNot {Γ : Ctxt nfDialect} (P : Prop) (V : Valu
     {b : Bool} {e : Expr nfDialect Γ .bit} [h : ReadCond P V b e] : ReadCond (¬ ¬ P) V b e :=
   ⟨h.sound, by rw [not_not]; exact h.iff⟩
 
+/-! ### Conditions with compound operands
+
+A condition whose connectives have compound operands, such as `(¬ b₀) || b₁`, is read as a
+prefix of bindings followed by a bit (`ReadBit`): the prefix `NFPre` binds the bits and words
+of the subterms in order, and the bit of the condition is a variable of the context after the
+prefix. Each construct has one instance, a congruence lemma stated once for every operand:
+a Boolean variable (no binding, `readBitVar`), a negation (`readBitNot`, `readBitDecNot`), a
+connective of two operands through the square `bool_square` (`readBitConn`), a comparison of
+two words of every width of at most `64` bits through the square `cmp_square`
+(`readBitCmp`), and the decision of `b = true` (`readBitDecEq`). A word operand is read by
+`ReadWord`: a variable of the valuation, or else a literal bound first. -/
+
+/-- The call `f` of the table on one bit, with a bit result, as an NF expression. -/
+def callB1 {Γ : Ctxt nfDialect} (f : String) (v : Var Γ .bit) : Expr nfDialect Γ .bit :=
+  ⟨.call f [.bit] .bit, rfl, .cons v .nil⟩
+
+/-- The call `f` of the table on two bits, with a bit result, as an NF expression. -/
+def callB2 {Γ : Ctxt nfDialect} (f : String) (va vb : Var Γ .bit) : Expr nfDialect Γ .bit :=
+  ⟨.call f [.bit, .bit] .bit, rfl, .cons va (.cons vb .nil)⟩
+
+/-- The reading of a call of one bit is the reading `aeCall1` of the call on its encoding. -/
+theorem aeExpr_callB1 {Γ : Ctxt nfDialect} (f : String) (v : Var Γ .bit) (V : Valuation Γ)
+    (a r : Bool) (ha : v.lookup V = a) (h : aeCall1 f (.bool a) = .ok (.bool r)) :
+    aeExpr (callB1 f v) V = .ok r := by
+  change aeOp (.call f [.bit] .bit) (.cons (v.lookup V) .nil) = _
+  unfold aeOp
+  rw [nfDenoteOp]
+  unfold aeTable
+  simp only [encAll]
+  rw [ha, show ImpToNF.enc NfTy.bit a = Value.bool a from rfl, aeCallV, h]
+  rfl
+
+/-- The reading of a call of two bits is the reading `aeCall2` of the call on their
+    encodings. -/
+theorem aeExpr_callB2 {Γ : Ctxt nfDialect} (f : String) (va vb : Var Γ .bit) (V : Valuation Γ)
+    (a b r : Bool) (ha : va.lookup V = a) (hb : vb.lookup V = b)
+    (h : aeCall2 f (.bool a) (.bool b) = .ok (.bool r)) :
+    aeExpr (callB2 f va vb) V = .ok r := by
+  change aeOp (.call f [.bit, .bit] .bit) (.cons (va.lookup V) (.cons (vb.lookup V) .nil)) = _
+  unfold aeOp
+  rw [nfDenoteOp]
+  unfold aeTable
+  simp only [encAll]
+  rw [ha, hb, show ImpToNF.enc NfTy.bit a = Value.bool a from rfl,
+    show ImpToNF.enc NfTy.bit b = Value.bool b from rfl, aeCallV, h]
+  rfl
+
+/-- The call `Not` reads the negation of a Boolean. -/
+theorem aeCall1_not (a : Bool) : aeCall1 "Not" (.bool a) = .ok (.bool !a) := by
+  unfold aeCall1
+  simp only [ite_true, readB, bind_tc_ok]
+
+/-- The call of the name of a connective reads the connective of two Booleans. -/
+theorem aeCall2_bool (o : BoolOp) (a b : Bool) :
+    aeCall2 o.name (.bool a) (.bool b) = .ok (.bool (o.val a b)) := by
+  have hw : wordOpAt? o.name = none := by cases o <;> decide +kernel
+  have hc : checkedAt? o.name = none := by cases o <;> decide +kernel
+  have hm : CmpOp.ofName? o.name = none := by cases o <;> decide +kernel
+  have hn : BoolOp.ofName? o.name = some o := by cases o <;> decide +kernel
+  unfold aeCall2
+  rw [hw, hc, hm, hn]
+  simp only [readB, bind_tc_ok]
+
+/-- The prefix `p` reads, from `V`, the valuation `W` of its hole: each binding reads its value
+    at the valuation before it. A prefix with a loop or a branch reads no valuation. -/
+def preReads : {Γ Δ : Ctxt nfDialect} → NFPre nfDialect Γ Δ → Valuation Γ → Valuation Δ → Prop
+  | _, _, .nil, V, W => W = V
+  | _, _, .var e p, V, W => ∃ a, aeExpr e V = .ok a ∧ preReads p (V.extend a) W
+  | _, _, _, _, _ => False
+
+/-- A program after a prefix that reads `W` reads, from `V`, what the program reads from
+    `W`. -/
+theorem nfToRustM_plug {Γ Δ : Ctxt nfDialect} {ts : List NfTy} (p : NFPre nfDialect Γ Δ)
+    (q : NFProg nfDialect Δ ts) :
+    ∀ {V : Valuation Γ} {W : Valuation Δ}, preReads p V W →
+      nfToRustM (p.plug q) V = nfToRustM q W := by
+  induction p with
+  | nil =>
+    intro V W h
+    obtain rfl : W = V := h
+    rfl
+  | var e p ih =>
+    intro V W h
+    obtain ⟨a, ha, hp⟩ := h
+    rw [NFPre.plug, nfToRustM, ha, bind_tc_ok]
+    exact ih q hp
+  | forLoop => intro V W h; exact h.elim
+  | ifThenElse => intro V W h; exact h.elim
+  | whileLoop => intro V W h; exact h.elim
+
+/-- A prefix followed by a prefix reads the valuation the second reads from the valuation the
+    first reads. -/
+theorem preReads_append {Γ Δ Θ : Ctxt nfDialect} (p : NFPre nfDialect Γ Δ)
+    (q : NFPre nfDialect Δ Θ) :
+    ∀ {V : Valuation Γ} {W : Valuation Δ} {X : Valuation Θ}, preReads p V W → preReads q W X →
+      preReads (p.append q) V X := by
+  induction p with
+  | nil =>
+    intro V W X h hq
+    obtain rfl : W = V := h
+    exact hq
+  | var e p ih =>
+    intro V W X h hq
+    obtain ⟨a, ha, hp⟩ := h
+    exact ⟨a, ha, ih q hp hq⟩
+  | forLoop => intro V W X h; exact h.elim
+  | ifThenElse => intro V W X h; exact h.elim
+  | whileLoop => intro V W X h; exact h.elim
+
+/-- A variable weakened along a prefix reads in the valuation of the hole what it reads at
+    the start. -/
+theorem preReads_wk {Γ Δ : Ctxt nfDialect} {t : NfTy} (p : NFPre nfDialect Γ Δ) :
+    ∀ (v : Var Γ t) {V : Valuation Γ} {W : Valuation Δ}, preReads p V W →
+      (p.wk v).lookup W = v.lookup V := by
+  induction p with
+  | nil =>
+    intro v V W h
+    obtain rfl : W = V := h
+    rfl
+  | var e p ih =>
+    intro v V W h
+    obtain ⟨a, _, hp⟩ := h
+    exact ih v.there hp
+  | forLoop => intro v V W h; exact h.elim
+  | ifThenElse => intro v V W h; exact h.elim
+  | whileLoop => intro v V W h; exact h.elim
+
+/-- The prefix of one binding of an expression that reads `a`. -/
+theorem preReads_one {Γ : Ctxt nfDialect} {t : NfTy} {V : Valuation Γ} {e : Expr nfDialect Γ t}
+    {a : t.denote} (he : aeExpr e V = .ok a) :
+    preReads (.var e .nil) V (HVector.cons a V) :=
+  ⟨a, he, rfl⟩
+
+/-- A prefix followed by the binding of an expression that reads `a`. -/
+theorem preReads_snoc {Γ Δ : Ctxt nfDialect} {t : NfTy} {p : NFPre nfDialect Γ Δ}
+    {V : Valuation Γ} {W : Valuation Δ} {e : Expr nfDialect Δ t} {a : t.denote}
+    (hp : preReads p V W) (he : aeExpr e W = .ok a) :
+    preReads (p.append (.var e .nil)) V (HVector.cons a W) :=
+  preReads_append p _ hp (preReads_one he)
+
+/-- **A reading of a plugged prefix.** When the prefix `p` reads `W` from `V`, a reading of `m`
+    at `W` by `q` is a reading of `m` at `V` by `p` with the hole filled by `q`. -/
+theorem ReifyG.plug {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {Γ Δ : Ctxt nfDialect} {p : NFPre nfDialect Γ Δ} {V : Valuation Γ} {W : Valuation Δ}
+    {q : NFProg nfDialect Δ ts} (m : RustM α) (hp : preReads p V W) (h : ReifyG E m W q) :
+    ReifyG E m V (p.plug q) :=
+  ⟨fun y hy => (nfToRustM_plug p q hp).trans (h.sound y hy)⟩
+
+/-- The prefix `p` reads, from `V`, a valuation `W` in which the variable `v` holds the bit
+    `b`. -/
+class ReadBit {Γ : Ctxt nfDialect} (b : Bool) (V : Valuation Γ)
+    (Δ : outParam (Ctxt nfDialect)) (p : outParam (NFPre nfDialect Γ Δ))
+    (W : outParam (Valuation Δ)) (v : outParam (Var Δ .bit)) : Prop where
+  /-- The prefix reads the valuation. -/
+  reads : preReads p V W
+  /-- The variable holds the bit. -/
+  bit : v.lookup W = b
+
+/-- The prefix `p` reads, from `V`, a valuation `W` in which the variable `v` holds the word of
+    `x`. -/
+class ReadWord {Γ : Ctxt nfDialect} {ty : UScalarTy} (x : UScalar ty) (V : Valuation Γ)
+    (Δ : outParam (Ctxt nfDialect)) (p : outParam (NFPre nfDialect Γ Δ))
+    (W : outParam (Valuation Δ)) (v : outParam (Var Δ (.word 64))) : Prop where
+  /-- The prefix reads the valuation. -/
+  reads : preReads p V W
+  /-- The variable holds the word. -/
+  word : v.lookup W = embW x
+
+/-- A Boolean whose truth is a proposition is the decision of the proposition. -/
+theorem bit_of_iff {b : Bool} {P : Prop} [Decidable P] (h : b = true ↔ P) : b = decide P :=
+  Bool.eq_iff_iff.mpr (by rw [decide_eq_true_iff]; exact h)
+
+/-- **A word variable**: no binding. -/
+instance (priority := high) readWordVar {Γ : Ctxt nfDialect} {ty : UScalarTy} (x : UScalar ty)
+    (V : Valuation Γ) {v : Var Γ (.word 64)} [hx : Lookup V (embW x) v] :
+    ReadWord x V Γ .nil V v :=
+  ⟨rfl, hx.eq⟩
+
+/-- **A literal word**, no variable of the valuation: bound as a literal. -/
+instance (priority := low) readWordLit {Γ : Ctxt nfDialect} {ty : UScalarTy} [Le64 ty]
+    (x : UScalar ty) (V : Valuation Γ) :
+    ReadWord x V (.word 64 :: Γ) (.var (litE x) .nil) (vCons x V) .here :=
+  ⟨preReads_one (aeExpr_litE x V), rfl⟩
+
+/-- **A Boolean variable**: no binding. -/
+instance (priority := high) readBitVar {Γ : Ctxt nfDialect} (b : Bool) (V : Valuation Γ)
+    {v : Var Γ .bit} [hb : Lookup V (AeVal.emb b) v] : ReadBit b V Γ .nil V v :=
+  ⟨rfl, hb.eq⟩
+
+/-- **A negation**: the operand, then the call `Not` of its bit (the square
+    `notBool_square`). -/
+instance readBitNot {Γ Δ : Ctxt nfDialect} {x : Bool} {V : Valuation Γ}
+    {p : NFPre nfDialect Γ Δ} {W : Valuation Δ} {v : Var Δ .bit} [h : ReadBit x V Δ p W v] :
+    ReadBit (!x) V (.bit :: Δ) (p.append (.var (callB1 "Not" v) .nil)) (HVector.cons (!x) W)
+      .here :=
+  ⟨preReads_snoc h.reads (aeExpr_callB1 _ v W x _ h.bit (aeCall1_not x)), rfl⟩
+
+/-- **A decided negation**: the decided proposition, then the call `Not` of its bit. -/
+instance readBitDecNot {Γ Δ : Ctxt nfDialect} {P : Prop} {j : Decidable (¬ P)}
+    [i : Decidable P] {V : Valuation Γ} {p : NFPre nfDialect Γ Δ} {W : Valuation Δ}
+    {v : Var Δ .bit} [h : ReadBit (@decide P i) V Δ p W v] :
+    ReadBit (@decide (¬ P) j) V (.bit :: Δ) (p.append (.var (callB1 "Not" v) .nil))
+      (HVector.cons (!@decide P i) W) .here :=
+  ⟨preReads_snoc h.reads (aeExpr_callB1 _ v W _ _ h.bit (aeCall1_not _)),
+    bit_of_iff (b := !@decide P i) (by rw [Bool.not_eq_true', decide_eq_false_iff_not])⟩
+
+/-- **The decision of `b = true`** is the bit `b`. -/
+instance readBitDecEq {Γ Δ : Ctxt nfDialect} {b : Bool} {i : Decidable (b = true)}
+    {V : Valuation Γ} {p : NFPre nfDialect Γ Δ} {W : Valuation Δ} {v : Var Δ .bit}
+    [h : ReadBit b V Δ p W v] : ReadBit (@decide (b = true) i) V Δ p W v :=
+  ⟨h.reads, h.bit.trans (bit_of_iff Iff.rfl)⟩
+
+/-- **A connective of two operands**: the first operand, the second, then the call of the name
+    of the connective on their bits (the square `bool_square`). -/
+instance readBitConn {Γ Δ₁ Δ₂ : Ctxt nfDialect} {b : Bool} {o : BoolOp} {x y : Bool}
+    [hf : BoolForm b o x y] {V : Valuation Γ} {p₁ : NFPre nfDialect Γ Δ₁} {W₁ : Valuation Δ₁}
+    {v₁ : Var Δ₁ .bit} [h₁ : ReadBit x V Δ₁ p₁ W₁ v₁] {p₂ : NFPre nfDialect Δ₁ Δ₂}
+    {W₂ : Valuation Δ₂} {v₂ : Var Δ₂ .bit} [h₂ : ReadBit y W₁ Δ₂ p₂ W₂ v₂] :
+    ReadBit b V (.bit :: Δ₂)
+      ((p₁.append p₂).append (.var (callB2 o.name (p₂.wk v₁) v₂) .nil)) (HVector.cons b W₂)
+      .here :=
+  ⟨preReads_snoc (preReads_append _ _ h₁.reads h₂.reads)
+    (hf.eq ▸ aeExpr_callB2 _ _ _ W₂ x y _ ((preReads_wk p₂ v₁ h₂.reads).trans h₁.bit) h₂.bit
+      (aeCall2_bool o x y)), rfl⟩
+
+/-- **A comparison of two words**, of every width of at most `64` bits and every notation of
+    `CmpProp`: the first operand, the second, then the call of the name of the comparison
+    (the square `cmp_square`). -/
+instance readBitCmp {Γ Δ₁ Δ₂ : Ctxt nfDialect} {P : Prop} {ty : UScalarTy} {c : CmpOp}
+    {x y : UScalar ty} [hp : CmpProp P c x y] [Le64 ty] {i : Decidable P} {V : Valuation Γ}
+    {p₁ : NFPre nfDialect Γ Δ₁} {W₁ : Valuation Δ₁} {va : Var Δ₁ (.word 64)}
+    [h₁ : ReadWord x V Δ₁ p₁ W₁ va] {p₂ : NFPre nfDialect Δ₁ Δ₂} {W₂ : Valuation Δ₂}
+    {vb : Var Δ₂ (.word 64)} [h₂ : ReadWord y W₁ Δ₂ p₂ W₂ vb] :
+    ReadBit (@decide P i) V (.bit :: Δ₂)
+      ((p₁.append p₂).append (.var (callE2 c.name .bit (p₂.wk va) vb) .nil))
+      (HVector.cons (c.aen x y) W₂) .here :=
+  ⟨preReads_snoc (preReads_append _ _ h₁.reads h₂.reads)
+    (aeExpr_callE2 _ _ _ _ W₂ x y ((preReads_wk p₂ va h₂.reads).trans h₁.word) h₂.word
+      (aeCall2_cmp c x y) rfl),
+    bit_of_iff hp.iff⟩
+
 /-! ### The guard shapes -/
 
-/-- **The guard on a condition.** When `S` is read as the bit `b` and every value of `m` is a
-    value of `k` under `S`, the binding of `b`, the binding of its negation and the branch on
-    the negation to the aborting arm, followed by the reading of `k`, read `m`. -/
+/-- **The guard on a condition.** When the decision of `S` is read by the prefix `p` as the
+    bit at `v`, and every value of `m` is a value of `k` under `S`, the prefix, the binding of
+    the negation of the bit and the branch on the negation to the aborting arm, followed by the
+    reading of `k`, read `m`. Every guard of the reader is an instance. -/
+theorem Reify.guardP {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {Γ Δ : Ctxt nfDialect} {p : NFPre nfDialect Γ Δ} {W : Valuation Δ} {v : Var Δ .bit}
+    {pk : NFProg nfDialect (.bit :: Δ) ts}
+    (S : Prop) [Decidable S] (m k : RustM α) (V : Valuation Γ) [hs : ReadBit (decide S) V Δ p W v]
+    (hm : ∀ y, m = .ok y → S ∧ k = .ok y) (hk : ReifyG E k (vCons (!decide S) W) pk) :
+    ReifyG E m V (p.plug (.var (notE v) (.ifThenElse .here abortArm (.ret .nil) pk))) :=
+  ReifyG.plug m hs.reads (Reify.guard m k (!decide S) W (aeExpr_notE v W _ hs.bit)
+    (fun y hy => ⟨by simp only [decide_eq_true (hm y hy).1, Bool.not_true], (hm y hy).2⟩) hk)
+
+/-- **The guard on a condition read as one expression**: `Reify.guardP` at the prefix of the
+    one binding of `e`. When `S` is read as the bit `b`, the binding of `b`, the binding of its
+    negation and the branch on the negation to the aborting arm, followed by the reading of
+    `k`, read `m`. -/
 theorem Reify.guardS {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
     {Γ : Ctxt nfDialect} {e : Expr nfDialect Γ .bit} {b : Bool}
     {pk : NFProg nfDialect (.bit :: .bit :: Γ) ts}
-    (S : Prop) (m k : RustM α) (V : Valuation Γ) [hs : ReadCond S V b e]
+    (S : Prop) [Decidable S] (m k : RustM α) (V : Valuation Γ) [hs : ReadCond S V b e]
     (hm : ∀ y, m = .ok y → S ∧ k = .ok y) (hk : ReifyG E k (vCons (!b) (vCons b V)) pk) :
     ReifyG E m V
       (.var e (.var (notE .here) (.ifThenElse .here abortArm (.ret .nil) pk))) :=
-  Reify.letE m V b hs.sound (Reify.guard m k (!b) (vCons b V) (aeExpr_notE .here _ b rfl)
-    (fun y hy => ⟨by rw [hs.iff.mpr (hm y hy).1]; rfl, (hm y hy).2⟩) hk)
+  have hb : b = decide S := bit_of_iff hs.iff
+  Reify.guardP (v := Var.here) (hs := ⟨preReads_one hs.sound, hb⟩) S m k V hm (by rw [← hb]; exact hk)
+
+/-- The passing condition of `massert P`: a value of `massert P >>= k` is a value of `k ()`
+    under `P`. -/
+theorem pass_massert {α : Type} (P : Prop) [Decidable P] (k : Unit → RustM α) :
+    ∀ y, (massert P >>= k) = .ok y → P ∧ k () = .ok y := fun y hy => by
+  unfold massert at hy
+  split at hy
+  · exact ⟨‹P›, by rw [bind_tc_ok] at hy; exact hy⟩
+  · cases hy
+
+/-- The passing condition of `if c then k else fail e`: `c`. -/
+theorem pass_iteFailElse {α : Type} (c : Prop) [Decidable c] (k : RustM α) (err : Error) :
+    ∀ y, (if c then k else .fail err) = .ok y → c ∧ k = .ok y := fun y hy => by
+  split at hy
+  · exact ⟨‹c›, hy⟩
+  · cases hy
+
+/-- The passing condition of `if c then fail e else k`: `¬ c`. -/
+theorem pass_iteFail {α : Type} (c : Prop) [Decidable c] (err : Error) (k : RustM α) :
+    ∀ y, (if c then .fail err else k) = .ok y → ¬ c ∧ k = .ok y := fun y hy => by
+  split at hy
+  · cases hy
+  · exact ⟨‹¬ c›, hy⟩
 
 /-- **An assertion `massert P`**: the guard on `P`. -/
 theorem Reify.assert {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
@@ -744,11 +1043,7 @@ theorem Reify.assert {α : Type} {ts : List NfTy} {E : α → Valuation (d := nf
     (hk : ReifyG E (k ()) (vCons (!b) (vCons b V)) pk) :
     ReifyG E (massert P >>= k) V
       (.var e (.var (notE .here) (.ifThenElse .here abortArm (.ret .nil) pk))) :=
-  Reify.guardS P _ (k ()) V (fun y hy => by
-    unfold massert at hy
-    split at hy
-    · exact ⟨‹P›, by rw [bind_tc_ok] at hy; exact hy⟩
-    · cases hy) hk
+  Reify.guardS P _ (k ()) V (pass_massert P k) hk
 
 /-- **A branch `if c then k else fail e`**: the guard on `c`. -/
 theorem Reify.iteFailElse {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
@@ -758,10 +1053,7 @@ theorem Reify.iteFailElse {α : Type} {ts : List NfTy} {E : α → Valuation (d 
     (hk : ReifyG E k (vCons (!b) (vCons b V)) pk) :
     ReifyG E (if c then k else .fail err) V
       (.var e (.var (notE .here) (.ifThenElse .here abortArm (.ret .nil) pk))) :=
-  Reify.guardS c _ k V (fun y hy => by
-    split at hy
-    · exact ⟨‹c›, hy⟩
-    · cases hy) hk
+  Reify.guardS c _ k V (pass_iteFailElse c k err) hk
 
 /-- **A branch `if c then fail e else k`**: the guard on `¬ c`. -/
 theorem Reify.iteFail {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
@@ -771,10 +1063,7 @@ theorem Reify.iteFail {α : Type} {ts : List NfTy} {E : α → Valuation (d := n
     (hk : ReifyG E k (vCons (!b) (vCons b V)) pk) :
     ReifyG E (if c then .fail err else k) V
       (.var e (.var (notE .here) (.ifThenElse .here abortArm (.ret .nil) pk))) :=
-  Reify.guardS (¬ c) _ k V (fun y hy => by
-    split at hy
-    · cases hy
-    · exact ⟨‹¬ c›, hy⟩) hk
+  Reify.guardS (¬ c) _ k V (pass_iteFail c err k) hk
 
 /-! ## Boolean arguments
 
@@ -805,6 +1094,87 @@ theorem Reify.argBit {α : Type} {ts : List NfTy} {E : α → Valuation (d := nf
     (aeExpr_callE2 _ _ v.there .here (vCons zeroU V) (boolU b) zeroU
       (hv.eq.trans (embW_boolU b).symm) rfl (aeCall2_cmp .ne _ _)
       (by rw [aen_ne_boolU]; rfl)) h)
+
+/-! ## Boolean results
+
+A Boolean result is returned by the System V layout as the word `boolW b`, `1` or `0`, in the
+result register, the value map `AeTy.val .bool` of the entry. The reading of a Boolean result
+`ok b` reads the bit of `b` by `ReadBit` and ends the program with the bit-to-word step
+`bitWordP`: the literals `1` and `0` are bound and the call `select` of the table chooses one of
+them by the bit (the square `select_square`), a step without a branch. The result map of a
+Boolean result is `bitRes`. -/
+
+/-- The `u64` word `1`. -/
+abbrev oneU : U64 := 1#u64
+
+/-- The selection of one of two words by a bit as an NF expression: the call `select`. -/
+def selE {Γ : Ctxt nfDialect} (vk : Var Γ .bit) (va vb : Var Γ (.word 64)) :
+    Expr nfDialect Γ (.word 64) :=
+  ⟨.call "select" [.bit, .word 64, .word 64] (.word 64), rfl,
+    .cons vk (.cons va (.cons vb .nil))⟩
+
+theorem aeCall3_select (k : Bool) (x y : U64) :
+    aeCall3 "select" (.bool k) (wordV x) (wordV y) = .ok (wordV (selW k x y)) := by
+  unfold aeCall3
+  simp only [show ("select" : String) ≠ "array_update" by decide, ite_false, ite_true, readB,
+    readW_wordV, bind_tc_ok]
+
+/-- The reading of a call of a bit and two words is the reading `aeCall3` of the call on their
+    encodings, decoded at the result type. -/
+theorem aeExpr_call3 {Γ : Ctxt nfDialect} {ty : UScalarTy} [Le64 ty] (f : String) (r : NfTy)
+    (vk : Var Γ .bit) (va vb : Var Γ (.word 64)) (V : Valuation Γ) (k : Bool) (x y : UScalar ty)
+    (hk : vk.lookup V = k) (hx : va.lookup V = embW x) (hy : vb.lookup V = embW y) {v : Value}
+    {res : r.denote} (h : aeCall3 f (.bool k) (wordV x) (wordV y) = .ok v)
+    (hd : dec r v = some res) :
+    aeExpr (⟨.call f [.bit, .word 64, .word 64] r, rfl,
+      .cons vk (.cons va (.cons vb .nil))⟩ : Expr nfDialect Γ r) V = .ok res := by
+  change aeOp (.call f [.bit, .word 64, .word 64] r)
+    (.cons (vk.lookup V) (.cons (va.lookup V) (.cons (vb.lookup V) .nil))) = _
+  unfold aeOp
+  rw [nfDenoteOp]
+  unfold aeTable
+  simp only [encAll]
+  rw [hk, hx, hy, enc_embW, enc_embW, show ImpToNF.enc NfTy.bit k = Value.bool k from rfl,
+    aeCallV, h]
+  simp only [hd]
+
+/-- The reading of a selection is the selected word. -/
+theorem aeExpr_selE {Γ : Ctxt nfDialect} (vk : Var Γ .bit) (va vb : Var Γ (.word 64))
+    (V : Valuation Γ) (k : Bool) (x y : U64) (hk : vk.lookup V = k) (hx : va.lookup V = embW x)
+    (hy : vb.lookup V = embW y) : aeExpr (selE vk va vb) V = .ok (embW (selW k x y)) :=
+  aeExpr_call3 _ _ vk va vb V k x y hk hx hy (aeCall3_select k x y) (dec_wordV _)
+
+/-- **The bit-to-word step**: the word `1` or `0` of the bit at `v`, the call `select` on the
+    bit and the literals `1` and `0`, returned. -/
+def bitWordP {Δ : Ctxt nfDialect} (v : Var Δ .bit) : NFProg nfDialect Δ [.word 64] :=
+  .var (litE oneU) (.var (litE zeroU)
+    (.var (selE v.there.there (Var.there .here) .here) (.ret (.cons .here .nil))))
+
+/-- The result map of a Boolean result: the word `boolW b` of the layout. -/
+def bitRes (b : Bool) : Valuation (d := nfDialect) [.word 64] := .cons (boolW b) .nil
+
+theorem embW_selW_one_zero (b : Bool) : embW (selW b oneU zeroU) = boolW b := by
+  cases b <;> rfl
+
+/-- The bit-to-word step reads the word of the bit. -/
+theorem nfToRustM_bitWordP {Δ : Ctxt nfDialect} (v : Var Δ .bit) (W : Valuation Δ) (b : Bool)
+    (h : v.lookup W = b) : nfToRustM (bitWordP v) W = .ok (bitRes b) := by
+  rw [bitWordP, nfToRustM, aeExpr_litE, bind_tc_ok, nfToRustM, aeExpr_litE, bind_tc_ok,
+    nfToRustM]
+  simp only [extend_eq]
+  rw [aeExpr_selE v.there.there (Var.there .here) .here
+      (HVector.cons (embW zeroU) (HVector.cons (embW oneU) W)) b oneU zeroU h rfl rfl,
+    bind_tc_ok, nfToRustM, embW_selW_one_zero]
+  rfl
+
+/-- **A Boolean result**: the prefix that reads the bit of `b`, then the bit-to-word step. -/
+instance Reify.okBit {Γ Δ : Ctxt nfDialect} (b : Bool) (V : Valuation Γ)
+    {p : NFPre nfDialect Γ Δ} {W : Valuation Δ} {v : Var Δ .bit} [h : ReadBit b V Δ p W v] :
+    ReifyG bitRes (.ok b) V (p.plug (bitWordP v)) where
+  sound y hy := by
+    cases hy
+    rw [nfToRustM_plug p _ h.reads]
+    exact nfToRustM_bitWordP v W b h.bit
 
 /-! ## Loops -/
 
@@ -1169,6 +1539,19 @@ meta def readCond? (S V : Expr) : MetaM (Option Expr) := do
   | some _ => return some (← instantiateMVars b)
   | none => return none
 
+/-- `ReadBit c V` by instance resolution: the context, the prefix, the valuation and the
+    variable of the bit, and the instance, or `none`. -/
+meta def readBit? (c V : Expr) : MetaM (Option (Expr × Expr × Expr × Expr × Expr)) := do
+  let Γ ← ctxOf V
+  let Δ ← mkFreshExprMVar none
+  let p ← mkFreshExprMVar none
+  let W ← mkFreshExprMVar none
+  let v ← mkFreshExprMVar none
+  match ← synthInstance? (mkAppN (mkConst ``ReadBit) #[Γ, c, V, Δ, p, W, v]) with
+  | some inst => return some (← instantiateMVars Δ, ← instantiateMVars p,
+      ← instantiateMVars W, ← instantiateMVars v, inst)
+  | none => return none
+
 /-- The operands of the comparison `S`, by `CmpProp`, or none. -/
 meta def cmpOperands (S : Expr) : MetaM (List Expr) := do
   let ty ← mkFreshExprMVar (some (mkConst ``UScalarTy))
@@ -1187,10 +1570,14 @@ meta def hasWord (V a : Expr) : MetaM Bool := do
   let w64 := mkApp (mkConst ``NfTy.word) (mkNatLit 64)
   return (← synthInstance? (mkAppN (mkConst ``Lookup) #[Γ, w64, V, a, v])).isSome
 
-/-- The reading of a guard of `m` with the passing condition `S`: the operands of `S` that no
-    variable of `V` holds are bound first as literals (`Reify.letLit`), then `mk V' b` reads
-    the guard at the extended valuation `V'` and the bit `b` of `S`. -/
-meta def guardWith (m S V : Expr) (mk : Expr → Expr → MetaM Expr) : MetaM Expr := do
+/-- The reading of a guard of `m` with the passing condition `S`, the continuation `k` and
+    the proof `hm` that a value of `m` is a value of `k` under `S`. A condition read as one
+    expression (`ReadCond`), after the operands of `S` that no variable of `V` holds are bound
+    as literals (`Reify.letLit`), is read by `mk V' b` at the extended valuation `V'` and the
+    bit `b` of `S`. Any other condition is read as a prefix and a bit (`ReadBit`) by
+    `Reify.guardP`, with the continuation read by `readK` at its valuation. -/
+meta def guardWith (m S V k hm : Expr) (mk : Expr → Expr → MetaM Expr)
+    (readK : Expr → MetaM Expr) : MetaM Expr := do
   if let some b ← readCond? S V then return ← mk V b
   let mut lits : Array (Expr × Expr) := #[]
   let mut V' := V
@@ -1198,12 +1585,17 @@ meta def guardWith (m S V : Expr) (mk : Expr → Expr → MetaM Expr) : MetaM Ex
     unless ← hasWord V' (← mkAppM ``embW #[x]) do
       lits := lits.push (x, V')
       V' ← mkAppM ``vCons #[x, V']
-  let some b ← readCond? S V' |
+  if let some b ← readCond? S V' then
+    let mut prf ← mk V' b
+    for (c, Vc) in lits.reverse do
+      prf ← mkAppM ``Reify.letLit #[c, m, Vc, prf]
+    return prf
+  let c ← mkDecide S
+  let some (Δ, p, W, v, inst) ← readBit? c V |
     throwError "reifyAeneas%: no reading of the condition{indentExpr S}"
-  let mut prf ← mk V' b
-  for (c, Vc) in lits.reverse do
-    prf ← mkAppM ``Reify.letLit #[c, m, Vc, prf]
-  return prf
+  let hk ← readK (← mkAppM ``vCons #[← mkAppM ``not #[c], W])
+  mkAppOptM ``Reify.guardP #[none, none, none, none, some Δ, some p, some W, some v, none,
+    some S, none, some m, some k, some V, some inst, some hm, some hk]
 
 /-- The valuation of the continuation of a guard on the bit `b` at `V`. -/
 meta def guardVal (b V : Expr) : MetaM Expr := do
@@ -1228,8 +1620,9 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
     if m1.isAppOfArity ``Aeneas.Std.massert 2 then
       let P := m1.getArg! 0
       let k1 := (mkApp k (mkConst ``Unit.unit)).headBeta
-      return ← guardWith m P V fun V' b => do
-        mkAppM ``Reify.assert #[P, k, V', ← reify crate E k1 (← guardVal b V')]
+      return ← guardWith m P V k1 (← mkAppM ``pass_massert #[P, k])
+        (fun V' b => do mkAppM ``Reify.assert #[P, k, V', ← reify crate E k1 (← guardVal b V')])
+        (reify crate E k1)
     let α ← resTy m1
     if (← synthE m1 V).isSome then
       return ← mkAppM ``Reify.bind #[m1, k, V, ← readUnder α E k V]
@@ -1245,12 +1638,16 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
     let a' ← whnfR a
     if a'.isAppOfArity ``Aeneas.Std.RustM.fail 2 then
       let S ← mkAppM ``Not #[c]
-      return ← guardWith m S V fun V' bit => do
-        mkAppM ``Reify.iteFail #[c, a'.getArg! 1, b, V', ← reify crate E b (← guardVal bit V')]
+      return ← guardWith m S V b (← mkAppM ``pass_iteFail #[c, a'.getArg! 1, b])
+        (fun V' bit => do
+          mkAppM ``Reify.iteFail #[c, a'.getArg! 1, b, V', ← reify crate E b (← guardVal bit V')])
+        (reify crate E b)
     let b' ← whnfR b
     if b'.isAppOfArity ``Aeneas.Std.RustM.fail 2 then
-      return ← guardWith m c V fun V' bit => do
-        mkAppM ``Reify.iteFailElse #[c, a, b'.getArg! 1, V', ← reify crate E a (← guardVal bit V')]
+      return ← guardWith m c V a (← mkAppM ``pass_iteFailElse #[c, a, b'.getArg! 1])
+        (fun V' bit => do
+          mkAppM ``Reify.iteFailElse #[c, a, b'.getArg! 1, V', ← reify crate E a (← guardVal bit V')])
+        (reify crate E a)
     if c.isAppOfArity ``LT.lt 4 then
       let x := c.getArg! 2
       let y := c.getArg! 3
@@ -1325,7 +1722,9 @@ elab "reifyAeneas% " f:ident : term => do
     let eqPrf := mkAppN (mkConst eqns[0]! lvls) xs
     let eqTy ← whnfR (← inferType eqPrf)
     let rhs := eqTy.appArg!
-    let E ← mkAppOptM ``single #[some (← resTy rhs), none]
+    let resT ← resTy rhs
+    let boolRes := (← whnfR resT).isConstOf ``Bool
+    let E ← if boolRes then pure (Lean.mkConst ``bitRes) else mkAppOptM ``single #[some resT, none]
     let bools ← xs.filterM isBool
     let zero := Lean.mkConst ``zeroU
     let mut Vs : Array Expr := #[]
@@ -1342,7 +1741,8 @@ elab "reifyAeneas% " f:ident : term => do
     let prfEq ← mkAppM ``ReifyG.of_eq #[eqPrf, prf]
     let fx := mkAppN (mkConst c lvls) xs
     let S ← withLocalDeclD `p (← inferType p) fun q => do
-      let body ← mkForallFVars xs (← mkAppM ``Reify #[fx, V, q])
+      let body ← mkForallFVars xs (← if boolRes then mkAppM ``ReifyG #[E, fx, V, q]
+        else mkAppM ``Reify #[fx, V, q])
       mkLambdaFVars #[q] body
     let sound ← mkLambdaFVars xs prfEq
     mkAppOptM ``Reified.mk #[none, none, some S, some p, some sound]

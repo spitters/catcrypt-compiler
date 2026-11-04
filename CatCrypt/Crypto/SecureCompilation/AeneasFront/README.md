@@ -26,13 +26,14 @@ Lean has one congruence lemma in
 unfolds only the defining equation of the function and applies these lemmas. No reified
 program is checked by `rfl` or `decide` on the whole term.
 
-**Guards.** One lemma, `Reify.guardS`, reads every panic guard: `massert P`,
-`if c then k else fail e` and `if c then fail e else k` are its instances. The passing
-condition is read by `ReadCond`: a comparison `<`, `<=`, `>`, `>=`, `=`, `!=` at every width
-of at most 64 bits and its negation, a Boolean variable in either polarity, `&&` and `||` of
-two Boolean variables, a decided proposition. The guard compiles to the abort of `nfDialect`,
-which the first pass of `extChain` (`abortElim`) removes with a value and a constant-time
-certificate.
+**Guards.** One lemma, `Reify.guardP`, reads every panic guard: `massert P`,
+`if c then k else fail e` and `if c then fail e else k` are its instances (through
+`Reify.guardS`). The passing condition is read as a prefix of bindings and a bit: a
+comparison `<`, `<=`, `>`, `>=`, `=`, `!=` at every width of at most 64 bits and its negation,
+a Boolean variable in either polarity, a negation, `&&` and `||` of compound operands, a
+decided proposition, each by one instance of `ReadBit`. The guard compiles to the abort of
+`nfDialect`, which the first pass of `extChain` (`abortElim`) removes with a value and a
+constant-time certificate.
 
 **Words of every width, through ParamTransfer.** The operations on Aeneas scalars and arrays
 are related to the table `hax64WExit` of the compiler by squares stated once for every width
@@ -47,20 +48,23 @@ Unsigned division and remainder go through the chain's `divChain` with no machin
 shows that it simulates the compiler's semantics for every NF program, loops included
 (`loop_whileIter`, by fixpoint induction).
 
-**Bytes of Aeneas test functions.** Two functions of the Aeneas test suite (commit b08bf81,
+**Bytes of Aeneas test functions.** Three functions of the Aeneas test suite (commit b08bf81,
 copied unchanged in `Demo/Test*.lean`) are compiled with both theorems instantiated:
+`bitwise.and_bool`, with two Boolean arguments and a Boolean result (246 bytes, no branch,
+[`andBool_compileR_correct`, `andBool_compileR_ct`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/CompiledAndBool.lean)),
 `arrays.incr_array` (120 bytes,
 [`incrArray_compileR_correct`, `incrArray_compileR_ct`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/Compiled.lean))
 and `joins.opt_add_1_or_panic`, with a Boolean argument and a panic guard (104 bytes,
 [`optAdd_compileR_correct`, `optAdd_compileR_ct`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/CompiledOptAdd.lean)).
-The bytes are written by the rows `aeneas_incr_array` and `aeneas_opt_add` of the dev
-executable `linked-kernel-emit`. `Demo/Reified` and `Demo/Guards` read further test
-functions (`iter_loop`, `sum`, the assertions of `assert_cfg`).
+The bytes are written by the rows `aeneas_and_bool`, `aeneas_incr_array` and
+`aeneas_opt_add` of the dev executable `linked-kernel-emit`. `Demo/Reified`, `Demo/Guards` and
+`Demo/CompoundGuards` read further test functions (`iter_loop`, `sum`, the assertions of
+`assert_cfg`).
 
 ## Types the entry accepts
 
 `AeTy`: unsigned scalars of at most 64 bits (a word of 64 bits, zero-extended), Booleans (the
-word 0 or 1 in a public register), and arrays of `n` such values.
+word 0 or 1 in a register, as argument or result), and arrays of `n` such values.
 
 ## Adding an Aeneas function
 

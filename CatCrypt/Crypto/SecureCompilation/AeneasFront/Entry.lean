@@ -45,6 +45,11 @@ of the compiler, so the compiler `NFEntry.compileR` and its correctness theorem
   `fieldCalls` and `fieldCallsWide` are those of `hax64WExit` (`fieldCalls_hax64WExit`,
   `fieldCallsWideEq_hax64WExit`).
 
+## Main results
+
+* `aeneasToNF_sound` — a run of a source is a run of its program.
+* `enc_val_bool`, `aeneasRuns_bool` — a Boolean result is read back as the integer `0` or `1`.
+
 The correctness of the compiled bytes is `aeneasEntry.compileR_correct`, which is
 `NFEntry.compileR_correct aeneasEntry`.
 -/
@@ -182,6 +187,24 @@ theorem aeneasToNF_sound (σ : AbiLayout) (s : AeSrc)
   have hVa' : V = argVal a := hVa
   subst hVa'
   exact ⟨k, e, _, resVal y, he, hV, hk, rfl⟩
+
+/-- **The read-back of a Boolean**: the encoding of the image of a Boolean under the value map
+    is the integer `1` or `0`. -/
+theorem enc_val_bool (b : Bool) : enc AeTy.bool.nf (AeTy.val .bool b) = .int (b.toNat : Int) := by
+  cases b <;> rfl
+
+/-- **A Boolean result is read back as `0` or `1`**: at a source of the result code
+    `AeTy.bool`, the value of a run is the integer of the Boolean that the Aeneas function
+    returns. -/
+theorem aeneasRuns_bool {σ : AbiLayout} {args : List AeTy}
+    {fn : AeTy.Args args → RustM Bool}
+    {prog : NFProg nfDialect (args.map AeTy.nf) [AeTy.bool.nf]}
+    {cert : ∀ a y, fn a = .ok y → ∃ fuel,
+      PDenP hax64WExit fuel prog (AeTy.vals args a) = some (.cons (AeTy.val .bool y) .nil)}
+    {sa : AState} {v : Value} (h : aeneasRuns σ (AeSrc.ofFn args .bool fn prog cert) sa v) :
+    ∃ a y, fn a = .ok y ∧ v = .int (y.toNat : Int) := by
+  obtain ⟨_, _, _, a, y, _, _, _, hfn, hv⟩ := h
+  exact ⟨a, y, hfn, hv.trans (enc_val_bool y)⟩
 
 /-! ## The entry -/
 

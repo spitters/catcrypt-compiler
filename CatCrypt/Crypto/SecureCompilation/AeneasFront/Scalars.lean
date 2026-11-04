@@ -45,8 +45,10 @@ the table returns the same value.
 * `relatedBinOp_of`, `relatedBinOpOn_of`, `relatedUnOp_of`: a pointwise square gives the
   ParamTransfer square
 * `word_square`, `not_square`, `checked_square`, `rotl_square`, `rotr_square`,
-  `cast_square`, `cmp_square`, `bool_square`: the pointwise squares
-* the instances `bandRelated` ... `boolOrRelated`
+  `cast_square`, `cmp_square`, `bool_square`, `notBool_square`, `select_square`: the pointwise
+  squares
+* the instances `bandRelated` ... `boolOrRelated`; `notBoolRelated`, the negation of a
+  Boolean; `selectRelated`, the selection of a word by a Boolean
 * `wordComposite_related`: a composite of total operations is related to its call tree by
   instance resolution
 -/
@@ -562,6 +564,54 @@ instance boolRelated (o : BoolOp) :
   ⟨relatedBinOp_of (fun _ _ => ⟨_, rfl⟩) (fun x y z hz => by
     cases hz
     exact bool_square o x y)⟩
+
+/-- **The negation of a Boolean** is the value of the table at `Not`. -/
+theorem notBool_square (b : Bool) : hax64WExit "Not" [.bool b] = some (.bool !b) := by
+  have hres : exitScalarRes "Not" = true := by decide +kernel
+  have hop : hax64ScalarOp "Not" = false := by decide +kernel
+  have hto : exitMarshalOk (towerOfCallName "Not") = true := exitMarshalOk_of_arrCtorLen rfl
+  have hb : hax64Builtins "Not" [.bool b] = some (.bool !b) :=
+    WordOpsSim.hax64Builtins_of_some (_root_.Hax.hax64WordOps_notBool b)
+  rw [hax64WExit_of_ne (by decide) (by decide) (by decide) (by decide)]
+  unfold hax64Exit
+  rw [hb]
+  simp only [hax64ScalarAdmit, hax64ArgsShape, hres, hop, hto, scalarValNB, Value.isControlFlow,
+    Bool.not_false, Bool.true_and, Bool.false_eq_true, ite_false, ite_true, Bool.and_true]
+  rfl
+
+/-- **The negation of a Boolean as a `RelatedUnOp` square.** -/
+instance notBoolRelated :
+    RelatedUnOp encB (bindR1 fun b => .ok (!b)) (call1 "Not") :=
+  ⟨relatedUnOp_of (fun _ => ⟨_, rfl⟩) (fun x z hz => by
+    cases hz
+    exact notBool_square x)⟩
+
+/-- The selection of one of two words by a Boolean, as an Aeneas value. -/
+def selW {ty : UScalarTy} (k : Bool) (x y : UScalar ty) : UScalar ty := if k then x else y
+
+/-- **Selection.** The selection of one of two words of any width by a Boolean is the value of
+    the table at `select`. -/
+theorem select_square {ty : UScalarTy} (k : Bool) (x y : UScalar ty) :
+    hax64WExit "select" [.bool k, wordV x, wordV y] = some (wordV (selW k x y)) := by
+  rw [hax64WExit_select_bool k rfl rfl]
+  cases k <;> rfl
+
+/-- A three-argument call of `hax64WExit` lifted to optional values. -/
+def call3 (f : String) (a b c : Option Value) : Option Value :=
+  a.bind fun x => b.bind fun y => c.bind fun z => hax64WExit f [x, y, z]
+
+/-- **Selection as a square from a Boolean and two words to a word**: related operands give a
+    related selection, at every width. -/
+instance selectRelated {ty : UScalarTy} (c : RustM Bool) (a b : RustM (UScalar ty))
+    (c' a' b' : Option Value) [hc : Related encB c c'] [ha : Related (encU ty) a a']
+    [hb : Related (encU ty) b b'] :
+    Related (encU ty) (c >>= fun k => bindR2 (fun x y => .ok (selW k x y)) a b)
+      (call3 "select" c' a' b') where
+  rel := by
+    rw [← hc.rel, ← ha.rel, ← hb.rel]
+    cases c <;> cases a <;> cases b <;>
+      simp only [encR, call3, bindR2, bind_tc_ok, Option.bind_some, Option.bind_none,
+        select_square] <;> rfl
 
 /-- **Literals**: a word value encodes as the integer of its value. -/
 instance litRelated {ty : UScalarTy} (x : UScalar ty) :

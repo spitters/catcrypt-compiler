@@ -209,7 +209,9 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonCryptoModel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Compiled
+CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledAndBool
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledOptAdd
+CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompoundGuards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards
 CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry

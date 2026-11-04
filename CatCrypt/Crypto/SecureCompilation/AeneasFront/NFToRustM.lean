@@ -13,9 +13,11 @@ public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Arrays
 `nfToRustM p V` runs an NF program `p : NFProg nfDialect Γ ts` in the result monad `RustM`
 of the vendored Aeneas model, on the values `V` of its context: every call of the scalar and
 array names of the compiler's table is read as the Aeneas operation that the squares of
-`AeneasFront/Scalars.lean` and `AeneasFront/Arrays.lean` relate to it (`aeCallV`), the other
-operations as their NF meaning, a counted loop as a fold of its body, a branch by its bit, an
-exit-flag loop as the Aeneas combinator `loop`, and a call of a symbol fails.
+`AeneasFront/Scalars.lean` and `AeneasFront/Arrays.lean` relate to it (`aeCallV`; the call
+`select` of a Boolean and two words is the selection `selW`, by the square `select_square`; the
+call `Not` of a Boolean its negation, by `notBool_square`), the other operations as their NF
+meaning, a counted loop as a fold of its body, a branch by its bit, an exit-flag loop as the
+Aeneas combinator `loop`, and a call of a symbol fails.
 
 The simulation runs the other way than an equation: a value of the reading is a value of
 the denotation `PDenP hax64WExit` of the compiler, from some fuel on. The step lemmas
@@ -165,8 +167,10 @@ def aeCall2 (f : String) (a b : Value) : RustM Value :=
       arr.2.index_usize i >>= fun z => .ok (wordV z)
   else .fail .undef
 
-/-- A unary call: a complement `Not#t` or a cast `cast#t` of a `u64` word. -/
+/-- A unary call: the negation `Not` of a Boolean, a complement `Not#t` or a cast `cast#t` of a
+    `u64` word. -/
 def aeCall1 (f : String) (a : Value) : RustM Value :=
+  if f = "Not" then readB a >>= fun b => .ok (.bool !b) else
   match tagTyAt? "Not#" f with
   | some ty =>
     if tableTy ty then readW ty a >>= fun x => .ok (wordV (~~~x)) else .fail .undef
@@ -177,11 +181,14 @@ def aeCall1 (f : String) (a : Value) : RustM Value :=
     else .fail .undef
   | none => .fail .undef
 
-/-- A ternary call: `array_update`. -/
+/-- A ternary call: `array_update`, and `select` of one of two `u64` words by a Boolean. -/
 def aeCall3 (f : String) (a i v : Value) : RustM Value :=
   if f = "array_update" then
     readArr a >>= fun arr => readW .Usize i >>= fun j => readW .U64 v >>= fun x =>
       arr.2.update j x >>= fun arr' => .ok (arrV arr')
+  else if f = "select" then
+    readB a >>= fun k => readW .U64 i >>= fun x => readW .U64 v >>= fun y =>
+      .ok (wordV (selW k x y))
   else .fail .undef
 
 /-- **The Aeneas reading of a call of the table** on chain values. -/
@@ -260,6 +267,13 @@ theorem aeCall2_sound {f : String} {a b v : Value} (h : aeCall2 f a b = .ok v) :
 theorem aeCall1_sound {f : String} {a v : Value} (h : aeCall1 f a = .ok v) :
     hax64WExit f [a] = some v := by
   unfold aeCall1 at h
+  split at h
+  · rename_i hf
+    subst hf
+    obtain ⟨b, hb, h⟩ := rustM_bind_ok h
+    cases h
+    rw [readB_ok hb]
+    exact notBool_square b
   rcases hn : tagTyAt? "Not#" f with _ | ty
   · rw [hn] at h
     simp only at h
@@ -298,7 +312,16 @@ theorem aeCall3_sound {f : String} {a i x v : Value} (h : aeCall3 f a i x = .ok 
     cases h
     rw [readArr_ok ha, readW_ok hj, readW_ok hy]
     exact update_square arr.2 j y arr' harr
-  · cases h
+  · split at h
+    · rename_i hf
+      subst hf
+      obtain ⟨k, hk, h⟩ := rustM_bind_ok h
+      obtain ⟨x', hx, h⟩ := rustM_bind_ok h
+      obtain ⟨y', hy, h⟩ := rustM_bind_ok h
+      cases h
+      rw [readB_ok hk, readW_ok hx, readW_ok hy]
+      exact select_square k x' y'
+    · cases h
 
 /-- **Soundness of the reading of the calls**: a value the Aeneas reading of a call returns
     is the value of `hax64WExit` on the same arguments. -/
