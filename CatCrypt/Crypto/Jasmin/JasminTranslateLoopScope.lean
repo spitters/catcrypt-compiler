@@ -86,7 +86,7 @@ theorem translateFun_countLoop_eval (env : TransEnv) (sid : ScopeId) (heap : Hea
     ∃ heap', (translateFun env countLoopFun sid [] 10).eval heap =
       SDistr.pure ([⟨.sword .U64, (3 : BitVec 64)⟩], heap') := by
   simp only [translateFun, translateFun.writeParams, translateFun.readResults, countLoopFun,
-    translateCmd, translateInstrR, translateForLoop, loopRange, translatePExpr, readGVar,
+    translateCmd, translateInstrR, translateForLoop, rangeIndices, translatePExpr, readGVar,
     readVar, writeVar, translateWriteLVal, wordConstU64, evalSop1, evalSop2, coerceValue,
     countX, countI, countY, CatCrypt.Deep.eval_bind, CatCrypt.Deep.eval_get,
     CatCrypt.Deep.eval_ret, SPComp.bind_def, SPComp.get_def, SPComp.pure_def, SDistr.pure_bind,

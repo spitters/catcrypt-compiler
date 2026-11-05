@@ -25,14 +25,13 @@
 #   OWNED_ASM       the directory of the shipped owned-backend files named in
 #                   owned_kernels.txt. Default: crates/catcrypt-ed25519/asm in
 #                   the sibling SSProve-lean tree.
-#   HEAVY_RUN       a wrapper for the `lake lean` commands. Default: the
-#                   sibling SSProve-lean tree's scripts/heavy-run.sh when that
-#                   file exists, otherwise none.
+#   BUILD_PREFIX    a command prefix for the `lake lean` commands (for
+#                   instance a build-lock wrapper). Default: none.
 
 REPO := $(abspath ../..)
 S2N_BIGNUM_DIR ?= $(abspath $(REPO)/../SSProve-lean/bench/reference_install/s2n-bignum)
 export S2N_BIGNUM_DIR
-HEAVY_RUN ?= $(wildcard $(abspath $(REPO)/../SSProve-lean/scripts/heavy-run.sh))
+BUILD_PREFIX ?=
 DEMOS := $(REPO)/CatCrypt/Crypto/SecureCompilation/Ascent/Demos
 LEAN_MODULE := $(DEMOS)/S2nMontmulP384.lean
 BYTES_MODULE := $(DEMOS)/S2nMontmulP384Bytes.lean
@@ -45,7 +44,7 @@ FRAMED_MODULE := $(DEMOS)/S2nMontmulP384Framed.lean
 FRAMED := gen/bignum_montmul_p384_framed.s
 S2N_LIB := $(S2N_BIGNUM_DIR)/x86/libs2nbignum.a
 IMPORTER := import_s2n.sh translate.awk
-LAKE_LEAN := cd $(REPO) && LEAN_NUM_THREADS=1 $(if $(HEAVY_RUN),bash $(HEAVY_RUN)) lake lean
+LAKE_LEAN := cd $(REPO) && LEAN_NUM_THREADS=1 $(BUILD_PREFIX) lake lean
 
 .PHONY: import import-montmul import-montsqr reemit reemit-montmul reemit-montsqr \
         encode encode-montmul encode-montsqr compare compare-montmul compare-montsqr field \

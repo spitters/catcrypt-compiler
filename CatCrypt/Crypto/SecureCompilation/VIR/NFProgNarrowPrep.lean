@@ -451,12 +451,12 @@ theorem opBlock?_ctLeak (hV : ∀ op, Pj.opVT op = none) {Γ : Ctxt jasminDialec
     (args : HVector (fun t => Var Γ t) (DialectSignature.sig (d := jasminDialect) op))
     (blk : Com jasminDialect (Γ.map wideTy)
       (wideTy (DialectSignature.ret (d := jasminDialect) op)))
-    (h : opBlock? op args = some blk) (V : Valuation Γ) :
+    (h : wideOpBlock? op args = some blk) (V : Valuation Γ) :
     ComLevelCheck.Com.ctLeak (jLeakModel Pj) blk (mapVal V) =
       ComLevelCheck.Expr.ctLeak (jLeakModel Pj)
         (⟨op, rfl, args⟩ : Expr jasminDialect Γ _) V := by
-  have L := fun {t : JasminTy} (v : Var Γ t) => lookup_mapVar_mapVal v V
-  cases op <;> simp only [opBlock?, reduceCtorEq] at h <;> (injection h with h; subst h)
+  have L := fun {t : JasminTy} (v : Var Γ t) => lookup_mapVar_mapVal_wide v V
+  cases op <;> simp only [wideOpBlock?, reduceCtorEq] at h <;> (injection h with h; subst h)
   case stackLoad w n =>
     rcases args with _ | ⟨a, _ | ⟨i, _ | _⟩⟩
     have hi : (mapVar i).lookup (mapVal V) = i.lookup V := (L i).trans (transTy_reg64 _)
@@ -473,8 +473,8 @@ theorem opBlock?_ctLeak (hV : ∀ op, Pj.opVT op = none) {Γ : Ctxt jasminDialec
     rw [hi, List.append_nil]
   all_goals
     simp only [ComLevelCheck.Expr.ctLeak, opLeak, jLeakModel, jKind, hV]
-    simp only [arithBlock, castBlock, mulhiBlock, addLoBlock, addHiBlock, rorBlock, sarBlock,
-      shlBlock, withMask, countThen, one]
+    simp only [arithBlock, castBlock, mulhiBlock, addLoBlock, addHiBlock, wideRorBlock, sarBlock,
+      wideShlBlock, withMask, countThen, one]
     repeat' split
     all_goals simp [ComLevelCheck.Com.ctLeak, ComLevelCheck.Expr.ctLeak, opLeak,
       jKind, hV]
@@ -588,7 +588,7 @@ theorem leakRun_maskElimGo (hV : ∀ op, Pj.opVT op = none) (fuel : Nat)
           Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel k (hvAppend acc V) :=
         fun acc => ihk _ _ _ _ (MRel.appExact hR _ acc) hk
       simp only [maskElimGo, Dialects.NFLeak.NFProg.leakRun, hR.lookupArgs_eq inits hi,
-        hR.lookup_eq count hc, hbd, hkd]
+        hR.lookup_ren_eq count hc, hbd, hkd]
   | ifThenElse cond thn els k iht ihe ihk =>
       intro Δ A ren V W hR hok
       simp only [okP, Bool.and_eq_true, Option.isNone_iff_eq_none] at hok
@@ -597,7 +597,7 @@ theorem leakRun_maskElimGo (hV : ∀ op, Pj.opVT op = none) (fuel : Nat)
             (maskElimGo k (Facts.appExact _ A) (appLift _ ren)) (hvAppend r W) =
           Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel k (hvAppend r V) :=
         fun r => ihk _ _ _ _ (MRel.appExact hR _ r) hk
-      simp only [maskElimGo, Dialects.NFLeak.NFProg.leakRun, hR.lookup_eq cond hc,
+      simp only [maskElimGo, Dialects.NFLeak.NFProg.leakRun, hR.lookup_ren_eq cond hc,
         iht A ren V W hR htn, ihe A ren V W hR hel, hkd]
   | whileLoop inits body k ihb ihk =>
       intro Δ A ren V W hR hok
@@ -760,7 +760,7 @@ theorem narrowPrep_cast_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
   have h1 := denote_heq hΓ.symm hts.symm (castProg_heq hΓ hts q)
     (mapVal_heq_of_wide hΓ V).symm fuel
   rw [narrowPrep_denote_eq hq] at h1
-  exact eq_of_heq (h1.trans (option_map_heq hts _ (transArgs_heq_of_wide hts) _))
+  exact eq_of_heq (h1.trans (option_map_hvector_heq hts _ (transArgs_heq_of_wide hts) _))
 
 /-- **On a wide context the stages keep constant time.** At parameters with no variable-time
     operation, a result of `narrowPrep p` carried back to the context and result types of `p`
@@ -811,7 +811,7 @@ theorem wordSig_wide {as rs : List JasminTy} (h : wordSig as rs = true) :
   · rcases hr with rfl | ⟨n, rfl⟩ <;> rfl
 
 /-- A call of a program whose calls pass `callsAll C` passes `C`. -/
-theorem calls_of_callsAll {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty]
+private theorem forall_calls_of_callsAll {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty]
     [HasWord64 d] [HasBoolBit d] (C : String → List d.Ty → List d.Ty → Bool) {Γ : Ctxt d}
     {ts : List d.Ty} (p : NFProg d Γ ts) (h : Haxc.ChainTotal.callsAll C p = true) :
     ∀ f as rs, p.Calls f as rs → C f as rs = true := by
@@ -844,7 +844,7 @@ theorem wordSig_of_calls {Γ : Ctxt jasminDialect} {ts : List JasminTy}
   simp only [Bool.and_eq_true] at h
   have hw := h.2
   rw [wordCalls_eq_callsAll] at hw
-  exact calls_of_callsAll _ p hw
+  exact forall_calls_of_callsAll _ p hw
 
 /-- **A call environment agrees with itself along the widening at word signatures**: the
     widening fixes their types and values. -/

@@ -575,8 +575,7 @@ open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords region
     when `E.linked s` reduces to `[]`) and only the first case occurs. A program without
     `call` is the case of `NFEntry.compileR_correct`; a program with a `call` is that of
     `NFEntry.call_halts_multi`. The hax instance is `haxc_correct_auto`; the Aeneas instance
-    is stated at `aeneasEntry` with the linked functions of its opaque callees (branch
-    `work/aeneas-entry`). -/
+    is stated at `aeneasEntry` with the linked functions of its opaque callees. -/
 theorem NFEntry.compileR_correct_linked (E : NFEntry) (s : E.Src) (σ : AbiLayout)
     (fname : String) (P : Lprog) (bytes : List (BitVec 8))
     (hc : E.compileR s σ fname ((E.linked s).filterMap LinkedFn.calleeData) = some (P, bytes))

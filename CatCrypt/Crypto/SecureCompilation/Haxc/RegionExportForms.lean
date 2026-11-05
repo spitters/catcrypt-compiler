@@ -143,13 +143,13 @@ namespace ExportClosed
 
 variable {P : LinstrRM → Prop} {nArgs : Nat} {I : IsaData}
 
-theorem seedMoves (h : ExportClosed P nArgs I) (car : List String) (ops : List LOperand)
+theorem forall_mem_seedMoves (h : ExportClosed P nArgs I) (car : List String) (ops : List LOperand)
     (hops : ∀ o ∈ ops, plainOpB o = true) : ∀ i ∈ seedMoves car ops, P i := by
   intro i hi
   obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hi
   exact h.mov _ _ (hops _ (List.of_mem_zip hp).2)
 
-theorem parMoves (h : ExportClosed P nArgs I) (D : Nat) (tgts : List String)
+theorem forall_mem_parMoves (h : ExportClosed P nArgs I) (D : Nat) (tgts : List String)
     (ops : List LOperand) (hops : ∀ o ∈ ops, plainOpB o = true) :
     ∀ i ∈ parMoves D tgts ops, P i := by
   intro i hi
@@ -160,29 +160,29 @@ theorem parMoves (h : ExportClosed P nArgs I) (D : Nat) (tgts : List String)
   · obtain ⟨p, -, rfl⟩ := List.mem_map.mp hi
     exact h.mov _ _ rfl
 
-theorem arrMoves (h : ExportClosed P nArgs I) (z t : String) (mv : List ArrMove) :
+theorem forall_mem_arrMoves (h : ExportClosed P nArgs I) (z t : String) (mv : List ArrMove) :
     ∀ i ∈ arrMoves z t mv, P i := by
   intro i hi
   obtain ⟨a, -, hi⟩ := List.mem_flatMap.mp hi
   exact h.arr z t a i hi
 
-theorem typedMoves (h : ExportClosed P nArgs I) (z t : String)
+theorem forall_mem_typedMoves (h : ExportClosed P nArgs I) (z t : String)
     (tp : List (JasminTy × String × String)) : ∀ i ∈ typedMoves z t tp, P i := by
   intro i hi
   rcases List.mem_append.mp hi with hi | hi
-  · exact h.arrMoves z t _ i hi
+  · exact h.forall_mem_arrMoves z t _ i hi
   · obtain ⟨p, -, rfl⟩ := List.mem_map.mp hi
     exact h.mov _ _ rfl
 
-theorem arrParMoves (h : ExportClosed P nArgs I) (z t : String) (D : Nat)
+theorem forall_mem_arrParMoves (h : ExportClosed P nArgs I) (z t : String) (D : Nat)
     (mv : List ArrMove) : ∀ i ∈ arrParMoves z t D mv, P i := by
   intro i hi
   unfold ExportRegions.arrParMoves at hi
   split at hi
-  · exact h.arrMoves z t _ i hi
-  · rcases List.mem_append.mp hi with hi | hi <;> exact h.arrMoves z t _ i hi
+  · exact h.forall_mem_arrMoves z t _ i hi
+  · rcases List.mem_append.mp hi with hi | hi <;> exact h.forall_mem_arrMoves z t _ i hi
 
-theorem ifResMoves (h : ExportClosed P nArgs I) (rs : List JasminTy) (d D : Nat)
+theorem forall_mem_ifResMoves (h : ExportClosed P nArgs I) (rs : List JasminTy) (d D : Nat)
     (ops : List LOperand) : ∀ i ∈ ifResMoves rs d D ops, P i := by
   intro i hi
   unfold ExportRegions.ifResMoves at hi
@@ -191,8 +191,8 @@ theorem ifResMoves (h : ExportClosed P nArgs I) (rs : List JasminTy) (d D : Nat)
     · cases hi
     · rcases List.mem_cons.mp hi with rfl | hi
       · exact h.mov _ _ rfl
-      · exact h.arrParMoves _ _ _ _ i hi
-  · refine h.parMoves _ _ _ ?_ i hi
+      · exact h.forall_mem_arrParMoves _ _ _ _ i hi
+  · refine h.forall_mem_parMoves _ _ _ ?_ i hi
     intro o ho
     obtain ⟨p, -, rfl⟩ := List.mem_map.mp ho
     rfl
@@ -206,7 +206,7 @@ theorem guards (h : ExportClosed P nArgs I) (ctr : String) (top endL : LLabel) :
   · obtain ⟨g, hg, rfl⟩ := List.mem_map.mp hi
     exact h.loop ctr top g hg
 
-theorem forArrFrame (h : ExportClosed P nArgs I) (d n : Nat) (cs : List JasminTy)
+theorem forall_mem_forArrFrame (h : ExportClosed P nArgs I) (d n : Nat) (cs : List JasminTy)
     (initOps : List LOperand) (countOp : LOperand) (bodyC : List LinstrRM)
     (bodyOps : List LOperand) (bodyD : Nat) (hc : plainOpB countOp = true)
     (hb : ∀ i ∈ bodyC, P i) :
@@ -215,8 +215,8 @@ theorem forArrFrame (h : ExportClosed P nArgs I) (d n : Nat) (cs : List JasminTy
   simp only [ExportRegions.forArrFrame, List.mem_append, List.mem_cons] at hi
   rcases hi with rfl | hi | hi | hi | rfl | hi | rfl | hi | hi | hi | hi | rfl | rfl | hi
   · exact h.mov _ _ rfl
-  · exact h.typedMoves _ _ _ i hi
-  · refine h.seedMoves _ _ ?_ i hi
+  · exact h.forall_mem_typedMoves _ _ _ i hi
+  · refine h.forall_mem_seedMoves _ _ ?_ i hi
     intro o ho
     rw [List.mem_singleton.mp ho]
     exact hc
@@ -224,8 +224,8 @@ theorem forArrFrame (h : ExportClosed P nArgs I) (d n : Nat) (cs : List JasminTy
   · exact h.label _
   · exact hb i hi
   · exact h.mov _ _ rfl
-  · exact h.arrParMoves _ _ _ _ i hi
-  · refine h.parMoves _ _ _ ?_ i hi
+  · exact h.forall_mem_arrParMoves _ _ _ _ i hi
+  · refine h.forall_mem_parMoves _ _ _ ?_ i hi
     intro o ho
     obtain ⟨p, -, rfl⟩ := List.mem_map.mp ho
     rfl
@@ -233,9 +233,10 @@ theorem forArrFrame (h : ExportClosed P nArgs I) (d n : Nat) (cs : List JasminTy
   · exact (h.guards _ _ 0).2 i hi
   · exact h.label _
   · exact h.mov _ _ rfl
-  · exact h.typedMoves _ _ _ i hi
+  · exact h.forall_mem_typedMoves _ _ _ i hi
 
-theorem whileFrame (h : ExportClosed P nArgs I) (d n nCar : Nat) (initOps : List LOperand)
+theorem forall_mem_whileFrame (h : ExportClosed P nArgs I) (d n nCar : Nat)
+    (initOps : List LOperand)
     (bodyC : List LinstrRM) (flagOp : LOperand) (bodyOps : List LOperand) (bodyD : Nat)
     (hi0 : ∀ o ∈ initOps, plainOpB o = true) (hf : plainOpB flagOp = true)
     (hbo : ∀ o ∈ bodyOps, plainOpB o = true) (hb : ∀ i ∈ bodyC, P i) :
@@ -243,11 +244,11 @@ theorem whileFrame (h : ExportClosed P nArgs I) (d n nCar : Nat) (initOps : List
   intro i hi
   simp only [ExportRegions.whileFrame, List.mem_append, List.mem_cons] at hi
   rcases hi with hi | rfl | hi | hi | hi | hi
-  · exact h.seedMoves _ _ hi0 i hi
+  · exact h.forall_mem_seedMoves _ _ hi0 i hi
   · exact h.label _
   · exact hb i hi
   · exact h.flag _ _ _ hf i hi
-  · exact h.parMoves _ _ _ hbo i hi
+  · exact h.forall_mem_parMoves _ _ _ hbo i hi
   · exact (h.guards _ _ 0).2 i hi
 
 theorem ifFrame (h : ExportClosed P nArgs I) (fn : String) (d n : Nat) (rs : List JasminTy)
@@ -263,12 +264,12 @@ theorem ifFrame (h : ExportClosed P nArgs I) (fn : String) (d n : Nat) (rs : Lis
   · exact (h.guards _ _ _).1 i hi
   · exact h.label _
   · exact ht i hi
-  · exact h.ifResMoves _ _ _ _ i hi
+  · exact h.forall_mem_ifResMoves _ _ _ _ i hi
   · exact h.mov _ _ rfl
   · exact (h.guards _ _ 0).2 i hi
   · exact h.label _
   · exact he i hi
-  · exact h.ifResMoves _ _ _ _ i hi
+  · exact h.forall_mem_ifResMoves _ _ _ _ i hi
   · exact h.label _
 
 end ExportClosed
@@ -305,7 +306,7 @@ theorem exportR_forall {P : LinstrRM → Prop} {nArgs : Nat} {I : IsaData}
       obtain ⟨hkc, hres⟩ := ihk _ _ _ hk
       refine ⟨fun i hi => ?_, hres⟩
       rcases List.mem_append.mp hi with hi | hi
-      · exact h.forArrFrame _ _ _ _ _ _ _ _ (resolveVar_plain _ _ _ _) hbc i hi
+      · exact h.forall_mem_forArrFrame _ _ _ _ _ _ _ _ (resolveVar_plain _ _ _ _) hbc i hi
       · exact hkc i hi
   | ifThenElse cond thn els k iht ihe ihk =>
       intro d n r hr
@@ -330,7 +331,7 @@ theorem exportR_forall {P : LinstrRM → Prop} {nArgs : Nat} {I : IsaData}
         | cons o os => exact hbr o (by simp [hbs])
       refine ⟨fun i hi => ?_, hres⟩
       rcases List.mem_append.mp hi with hi | hi
-      · exact h.whileFrame _ _ _ _ _ _ _ _ (exprArgsHV_plain _ _ _ _) hhead
+      · exact h.forall_mem_whileFrame _ _ _ _ _ _ _ _ (exprArgsHV_plain _ _ _ _) hhead
           (fun o ho => hbr o (List.mem_of_mem_tail ho)) hbc i hi
       · exact hkc i hi
   | call f args k ih =>

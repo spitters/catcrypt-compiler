@@ -17,8 +17,8 @@ CFLAGS ?= -O2 -Wall -Wextra
 COMPILER := $(abspath $(CURDIR)/../..)
 # Lake root: a sibling development checkout when present, this repository otherwise.
 DEV      := $(or $(wildcard $(abspath $(COMPILER)/../SSProve-lean)),$(COMPILER))
-# Build-lock wrapper of the development checkout, when there is one.
-HEAVY_RUN ?= $(if $(wildcard $(DEV)/scripts/heavy-run.sh),bash scripts/heavy-run.sh)
+# A command prefix for the Lean build, empty by default (for instance a build-lock wrapper).
+BUILD_PREFIX ?=
 GEN    := $(CURDIR)/gen
 
 GL_S := $(GEN)/gl_add.s $(GEN)/gl_sub.s $(GEN)/gl_mul.s $(GEN)/gl_neg.s
@@ -29,7 +29,7 @@ GL_S := $(GEN)/gl_add.s $(GEN)/gl_sub.s $(GEN)/gl_mul.s $(GEN)/gl_neg.s
 KERNELS := gl_add gl_sub gl_mul gl_neg poseidon2_kb poseidon2_m31 poseidon_bn254_t3
 
 gen:
-	cd $(DEV) && $(HEAVY_RUN) taskset -c 0-1 lake build zkfieldsowned
+	cd $(DEV) && $(BUILD_PREFIX) taskset -c 0-1 lake build zkfieldsowned
 	cd $(COMPILER) && ulimit -s unlimited && for k in $(KERNELS); do \
 	  $(COMPILER)/.lake/build/bin/zkfieldsowned $(GEN) $$k || exit 1; done
 

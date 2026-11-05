@@ -141,7 +141,7 @@ def SWithin (E : Array TEnt) (X : String → Prop) (i : LinstrRM) (ss : SSt) : S
 
 section Shapes
 
-private theorem castStruct?_shape {x : LinstrR} {d a : String}
+private theorem castStruct?_eq_lopn {x : LinstrR} {d a : String}
     (h : castStruct? x = some (d, a)) : ∃ opn, x = .Lopn [.reg d] opn [.reg a] := by
   unfold castStruct? at h
   split at h
@@ -150,7 +150,7 @@ private theorem castStruct?_shape {x : LinstrR} {d a : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem movImmStruct?_shape {x : LinstrR} {d : String} {n : Nat}
+private theorem movImmStruct?_eq_lopn {x : LinstrR} {d : String} {n : Nat}
     (h : movImmStruct? x = some (d, n)) : ∃ opn, x = .Lopn [.reg d] opn [.imm n] := by
   unfold movImmStruct? at h
   split at h
@@ -159,7 +159,7 @@ private theorem movImmStruct?_shape {x : LinstrR} {d : String} {n : Nat}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem sarStruct?_shape {x : LinstrR} {d a : String} {n : Nat}
+private theorem sarStruct?_eq_lopn {x : LinstrR} {d a : String} {n : Nat}
     (h : JasminLsemShift.sarStruct? x = some (d, a, n)) :
     ∃ opn, x = .Lopn [.reg d] opn [.reg a, .imm n] := by
   unfold JasminLsemShift.sarStruct? at h
@@ -169,7 +169,7 @@ private theorem sarStruct?_shape {x : LinstrR} {d a : String} {n : Nat}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem mulhiStruct?_shape {x : LinstrR} {d a b : String}
+private theorem mulhiStruct?_eq_lopn {x : LinstrR} {d a b : String}
     (h : JasminLsemMulCarry.mulhiStruct? x = some (d, a, b)) :
     ∃ opn, x = .Lopn [.reg d] opn [.reg a, .reg b] := by
   unfold JasminLsemMulCarry.mulhiStruct? at h
@@ -179,7 +179,7 @@ private theorem mulhiStruct?_shape {x : LinstrR} {d a b : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem adcxStruct?_shape {x : LinstrR} {d a b c : String}
+private theorem adcxStruct?_eq_lopn {x : LinstrR} {d a b c : String}
     (h : JasminLsemMulCarry.adcxStruct? x = some (d, a, b, c)) :
     ∃ opn, x = .Lopn [.reg d] opn [.reg a, .reg b, .reg c] := by
   unfold JasminLsemMulCarry.adcxStruct? at h
@@ -189,7 +189,7 @@ private theorem adcxStruct?_shape {x : LinstrR} {d a b c : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem adcxhiStruct?_shape {x : LinstrR} {d a b c : String}
+private theorem adcxhiStruct?_eq_lopn {x : LinstrR} {d a b c : String}
     (h : JasminLsemMulCarry.adcxhiStruct? x = some (d, a, b, c)) :
     ∃ opn, x = .Lopn [.reg d] opn [.reg a, .reg b, .reg c] := by
   unfold JasminLsemMulCarry.adcxhiStruct? at h
@@ -199,7 +199,7 @@ private theorem adcxhiStruct?_shape {x : LinstrR} {d a b c : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem sbbStruct?_shape {x : LinstrR} {d a b c : String}
+private theorem sbbStruct?_eq_lopn {x : LinstrR} {d a b c : String}
     (h : JasminLsemMulCarry.sbbStruct? x = some (d, a, b, c)) :
     ∃ opn, x = .Lopn [.reg d] opn [.reg a, .reg b, .reg c] := by
   unfold JasminLsemMulCarry.sbbStruct? at h
@@ -209,7 +209,7 @@ private theorem sbbStruct?_shape {x : LinstrR} {d a b c : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem sbbhiStruct?_shape {x : LinstrR} {d a b c : String}
+private theorem sbbhiStruct?_eq_lopn {x : LinstrR} {d a b c : String}
     (h : JasminLsemMulCarry.sbbhiStruct? x = some (d, a, b, c)) :
     ∃ opn, x = .Lopn [.reg d] opn [.reg a, .reg b, .reg c] := by
   unfold JasminLsemMulCarry.sbbhiStruct? at h
@@ -219,7 +219,7 @@ private theorem sbbhiStruct?_shape {x : LinstrR} {d a b c : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem loadStruct?_shape {x : LinstrR} {d b i : String}
+private theorem loadStruct?_eq_lopn {x : LinstrR} {d b i : String}
     (h : loadStruct? x = some (d, b, i)) : ∃ sc, x = .Lopn [.reg d] "LOADIDX" [.arrIdx b i sc] := by
   unfold loadStruct? at h
   split at h
@@ -229,7 +229,7 @@ private theorem loadStruct?_shape {x : LinstrR} {d b i : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem storeStruct?_shape {x : LinstrR} {d b i v : String}
+private theorem storeStruct?_eq_lopn {x : LinstrR} {d b i v : String}
     (h : storeStruct? x = some (d, b, i, v)) :
     ∃ sc, x = .Lopn [.reg d] "STOREIDX" [.arrIdx b i sc, .reg v] := by
   unfold storeStruct? at h
@@ -240,7 +240,7 @@ private theorem storeStruct?_shape {x : LinstrR} {d b i v : String}
     exact ⟨_, rfl⟩
   · cases h
 
-private theorem storeImmStruct?_shape {x : LinstrR} {d b v : String} {k : Nat}
+private theorem storeImmStruct?_eq_lopn {x : LinstrR} {d b v : String} {k : Nat}
     (h : storeImmStruct? x = some (d, b, v, k)) :
     x = .Lopn [.reg d] "STOREIMM" [.reg b, .reg v, .imm k] := by
   unfold storeImmStruct? at h
@@ -251,7 +251,7 @@ private theorem storeImmStruct?_shape {x : LinstrR} {d b v : String} {k : Nat}
     rfl
   · cases h
 
-private theorem cmpArgs?_shape {i : LinstrRM} {a b : LOperand} (h : cmpArgs? i = some (a, b)) :
+private theorem cmpArgs?_eq_lopn {i : LinstrRM} {a b : LOperand} (h : cmpArgs? i = some (a, b)) :
     ∃ d, i.1 = .Lopn [d] (withWidthTag 64 "CMP") [a, b] := by
   unfold cmpArgs? at h
   split at h
@@ -261,7 +261,7 @@ private theorem cmpArgs?_shape {i : LinstrRM} {a b : LOperand} (h : cmpArgs? i =
     exact ⟨d, by rw [he, ho]⟩
   · cases h
 
-private theorem movRegArgs?_shape {i : LinstrRM} {d a : String}
+private theorem movRegArgs?_eq_lopn {i : LinstrRM} {d a : String}
     (h : movRegArgs? i = some (d, a)) : ∃ opn, i.1 = .Lopn [.reg d] opn [.reg a] := by
   unfold movRegArgs? at h
   split at h
@@ -269,7 +269,7 @@ private theorem movRegArgs?_shape {i : LinstrRM} {d a : String}
     split_ifs at h <;> cases h <;> exact ⟨opn, he⟩
   · cases h
 
-private theorem carryArgs?_shape {i : LinstrRM} {op : CarryOp} {d : String} {a b : LOperand}
+private theorem carryArgs?_eq_lopn {i : LinstrRM} {op : CarryOp} {d : String} {a b : LOperand}
     (h : carryArgs? i = some (op, d, a, b)) :
     ∃ opn, i.1 = .Lopn [.reg d] opn [a, b] ∧
       (opn = withWidthTag 64 "ADC" ∨ opn = withWidthTag 64 "SBB" ∨
@@ -284,7 +284,7 @@ private theorem carryArgs?_shape {i : LinstrRM} {op : CarryOp} {d : String} {a b
     · exact ⟨opn, he, Or.inr (Or.inr (Or.inr h4))⟩
   · cases h
 
-private theorem wideArgs?_shape {i : LinstrRM} {w : WideOp} (h : wideArgs? i = some w) :
+private theorem wideArgs?_eq_lopn {i : LinstrRM} {w : WideOp} (h : wideArgs? i = some w) :
     (∃ d x b, w = .mov d b ∧ i.1 = .Lopn [.reg d] (withWidthTag 64 "MOV") [x, b]) ∨
       ∃ lo hi b opn, w = .mulx lo hi b ∧ i.1 = .Lopn [.reg lo, .reg hi] opn [b] := by
   unfold wideArgs? at h
@@ -308,7 +308,7 @@ private theorem storeHit?_shape {i : LinstrRM} {a : String} (h : storeHit? i = s
   cases tag with
   | store w n =>
       obtain ⟨⟨d, b, j, v⟩, hp, -⟩ := Option.map_eq_some_iff.mp h
-      obtain ⟨sc, rfl⟩ := storeStruct?_shape hp
+      obtain ⟨sc, rfl⟩ := storeStruct?_eq_lopn hp
       exact ⟨_, _, Or.inl rfl⟩
   | zero w n =>
       simp only at h
@@ -320,7 +320,7 @@ private theorem storeHit?_shape {i : LinstrRM} {a : String} (h : storeHit? i = s
       · cases h
   | storeImm w n =>
       obtain ⟨⟨d, b, v, k⟩, hp, -⟩ := Option.map_eq_some_iff.mp h
-      rw [storeImmStruct?_shape hp]
+      rw [storeImmStruct?_eq_lopn hp]
       exact ⟨_, _, Or.inr (Or.inr rfl)⟩
   | reg _ => cases h
   | load _ _ => cases h
@@ -422,7 +422,7 @@ theorem symSh_within (x : LinstrR) (R : String → STerm) (hR : SrcsIn E X x R) 
   unfold symSh
   split
   · rename_i d a n h
-    obtain ⟨opn, rfl⟩ := sarStruct?_shape h
+    obtain ⟨opn, rfl⟩ := sarStruct?_eq_lopn h
     exact within_set hR (fun v hv => ⟨a, by simp, by simpa [STerm.varsT] using hv⟩)
       (fun g hg => by simp at hg)
   · exact symN_within x R hR
@@ -452,7 +452,7 @@ theorem symMC_within (x : LinstrR) (R : String → STerm) (hR : SrcsIn E X x R) 
   unfold symMC
   split
   · rename_i d a b h
-    obtain ⟨opn, rfl⟩ := mulhiStruct?_shape h
+    obtain ⟨opn, rfl⟩ := mulhiStruct?_eq_lopn h
     refine within_set hR (fun v hv => ?_) (fun g hg v hv => ?_)
     · simp only [STerm.varsT, List.mem_append] at hv
       rcases hv with h | h
@@ -466,7 +466,7 @@ theorem symMC_within (x : LinstrR) (R : String → STerm) (hR : SrcsIn E X x R) 
       · exact ⟨b, by simp, h⟩
   · split
     · rename_i d a b c h
-      obtain ⟨opn, rfl⟩ := adcxStruct?_shape h
+      obtain ⟨opn, rfl⟩ := adcxStruct?_eq_lopn h
       exact within_set3 hR fun v hv => by
         simp only [STerm.varsT, List.mem_append] at hv
         rcases hv with (h | h) | h
@@ -475,7 +475,7 @@ theorem symMC_within (x : LinstrR) (R : String → STerm) (hR : SrcsIn E X x R) 
         · exact Or.inr (Or.inr h)
     · split
       · rename_i d a b c h
-        obtain ⟨opn, rfl⟩ := adcxhiStruct?_shape h
+        obtain ⟨opn, rfl⟩ := adcxhiStruct?_eq_lopn h
         exact within_set3 hR fun v hv => by
           simp only [STerm.varsT, List.mem_append] at hv
           rcases hv with (h | h) | h
@@ -484,7 +484,7 @@ theorem symMC_within (x : LinstrR) (R : String → STerm) (hR : SrcsIn E X x R) 
           · exact Or.inr (Or.inr h)
       · split
         · rename_i d a b c h
-          obtain ⟨opn, rfl⟩ := sbbStruct?_shape h
+          obtain ⟨opn, rfl⟩ := sbbStruct?_eq_lopn h
           exact within_set3 hR fun v hv => by
             simp only [STerm.varsT, List.mem_append] at hv
             rcases hv with (h | h) | h
@@ -493,7 +493,7 @@ theorem symMC_within (x : LinstrR) (R : String → STerm) (hR : SrcsIn E X x R) 
             · exact Or.inr (Or.inr h)
         · split
           · rename_i d a b c h
-            obtain ⟨opn, rfl⟩ := sbbhiStruct?_shape h
+            obtain ⟨opn, rfl⟩ := sbbhiStruct?_eq_lopn h
             exact within_set3 hR fun v hv => by
               simp only [STerm.varsT, List.mem_append] at hv
               rcases hv with (h | h) | h
@@ -510,14 +510,14 @@ theorem symCast_within (i : LinstrRT) (R : String → STerm) (hR : SrcsIn E X i.
   split
   · split
     · rename_i d n w' h _
-      obtain ⟨opn, he⟩ := movImmStruct?_shape h
+      obtain ⟨opn, he⟩ := movImmStruct?_eq_lopn h
       rw [he]
       exact ⟨dst_mem, fun v hv => by simp [STerm.varsT] at hv, fun g hg => by simp at hg⟩
     · exact symMC_within i.1 R hR
   · rename_i d a h
     split
     · exact symMC_within i.1 R hR
-    · obtain ⟨opn, he⟩ := castStruct?_shape h
+    · obtain ⟨opn, he⟩ := castStruct?_eq_lopn h
       rw [he] at hR ⊢
       exact within_set hR (fun v hv => ⟨a, by simp, by simpa [castT, STerm.varsT] using hv⟩)
         (fun g hg => by simp at hg)
@@ -578,7 +578,7 @@ theorem liftR_within {i : LinstrRM} {ss : SSt} {o : ROut} (hi : OneDst i)
 
 /-! ## 4. The memory layer and the step -/
 
-private theorem aluFlagOp?_shape {i : LinstrRM} {op : AluOp} {a b : LOperand}
+private theorem aluFlagOp?_eq_lopn {i : LinstrRM} {op : AluOp} {a b : LOperand}
     (h : aluFlagOp? i = some (op, a, b)) : ∃ d opn, i.1 = .Lopn [.reg d] opn [a, b] := by
   unfold aluFlagOp? at h
   split at h
@@ -596,7 +596,7 @@ theorem aluFlT_vars {i : LinstrRM} {ss : SSt} (hX : ReadsIn E X (· ∈ useNames
   unfold aluFlT
   split
   · rename_i op a b h
-    obtain ⟨d, opn, he⟩ := aluFlagOp?_shape h
+    obtain ⟨d, opn, he⟩ := aluFlagOp?_eq_lopn h
     have hsrc : ∀ o ∈ [a, b], ∀ (t : STerm) (g : List SG), symOp64 ss.regs o = some (t, g) →
         ∀ v ∈ t.varsT E, X v := by
       intro o ho t g hs v hv
@@ -645,7 +645,7 @@ theorem symMem_within {i : LinstrRM} {ss : SSt} (hi : OneDst i)
       dsimp only
       split
       · rename_i dst base idx h
-        obtain ⟨sc, rfl⟩ := loadStruct?_shape h
+        obtain ⟨sc, rfl⟩ := loadStruct?_eq_lopn h
         have hreg : regDefs (LinstrR.Lopn [.reg dst] "LOADIDX" [.arrIdx base idx sc],
             MemTag.load w n) = [dst] := by
           rw [regDefs_of_none h1 h2 rfl]
@@ -672,7 +672,7 @@ theorem symMem_within {i : LinstrRM} {ss : SSt} (hi : OneDst i)
       dsimp only
       split
       · rename_i dst base idx val h
-        obtain ⟨sc, rfl⟩ := storeStruct?_shape h
+        obtain ⟨sc, rfl⟩ := storeStruct?_eq_lopn h
         have hreg : regDefs (LinstrR.Lopn [.reg dst] "STOREIDX" [.arrIdx base idx sc, .reg val],
             MemTag.store w n) = [] := by
           simp [regDefs, memRegDefs, h1, h2, storeHit?, storeStruct?]
@@ -721,7 +721,7 @@ theorem symMem_within {i : LinstrRM} {ss : SSt} (hi : OneDst i)
       dsimp only
       split
       · rename_i dst base val k h
-        have he := storeImmStruct?_shape h
+        have he := storeImmStruct?_eq_lopn h
         subst he
         split_ifs
         · have hreg : regDefs (LinstrR.Lopn [.reg dst] "STOREIMM" [.reg base, .reg val, .imm k],
@@ -766,7 +766,7 @@ theorem symStep_within {i : LinstrRM} {ss : SSt} (hi : OneDst i)
   unfold symStep
   split
   · rename_i a b hc
-    obtain ⟨d, he⟩ := cmpArgs?_shape hc
+    obtain ⟨d, he⟩ := cmpArgs?_eq_lopn hc
     have hreg : regDefs i = [] := by simp [regDefs, hc]
     split
     · rename_i ta ga tb gb hta htb
@@ -791,7 +791,7 @@ theorem symStep_within {i : LinstrRM} {ss : SSt} (hi : OneDst i)
   · rename_i hc
     split
     · rename_i dst src hm
-      obtain ⟨opn, he⟩ := movRegArgs?_shape hm
+      obtain ⟨opn, he⟩ := movRegArgs?_eq_lopn hm
       have hreg : regDefs i = [dst] := by
         simp only [regDefs, hc, hm, Option.isSome_none, Option.isSome_some, Bool.false_eq_true,
           ite_false, ite_true, he, defNames, List.flatMap_cons, List.flatMap_nil, opNames,
@@ -824,7 +824,7 @@ theorem symStep_within {i : LinstrRM} {ss : SSt} (hi : OneDst i)
         · trivial
         · split
           · rename_i op d a b hca
-            obtain ⟨opn, he, hop⟩ := carryArgs?_shape hca
+            obtain ⟨opn, he, hop⟩ := carryArgs?_eq_lopn hca
             have h3 : storeHit? i = none := by
               refine storeHit?_none_of_opn he ?_ ?_ ?_ <;> intro ho <;> subst ho <;>
                 rcases hop with h | h | h | h <;> exact absurd h (by decide +kernel)
@@ -881,7 +881,7 @@ theorem symStep_within {i : LinstrRM} {ss : SSt} (hi : OneDst i)
           · rename_i hca
             split
             · rename_i w hw
-              rcases wideArgs?_shape hw with ⟨d, x, b, rfl, he⟩ | ⟨lo, hi', b, opn, rfl, he⟩
+              rcases wideArgs?_eq_lopn hw with ⟨d, x, b, rfl, he⟩ | ⟨lo, hi', b, opn, rfl, he⟩
               · have h3 : storeHit? i = none :=
                   storeHit?_none_of_opn he (by decide +kernel) (by decide +kernel)
                     (by decide +kernel)

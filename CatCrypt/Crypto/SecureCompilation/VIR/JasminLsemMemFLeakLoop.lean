@@ -269,7 +269,7 @@ theorem opToLinstrR_arrOK (op : JasminOp) (hop : OpPlain op) (dst : String)
     · exact ⟨by simp, hna⟩
 
 /-- The resolved operands of an expression are registers. -/
-theorem exprArgs_go_reg (d nArgs : Nat) {Γ : Ctxt jasminDialect} :
+private theorem exprArgs_go_argName_reg (d nArgs : Nat) {Γ : Ctxt jasminDialect} :
     ∀ {tys : List JasminTy} (hv : HVector (fun ty => Ctxt.Var Γ ty) tys),
       ∀ o ∈ exprArgs.go d nArgs argName (fun _ => none) hv, ∃ r, o = .reg r
   | [], _ => by simp [exprArgs.go]
@@ -277,7 +277,7 @@ theorem exprArgs_go_reg (d nArgs : Nat) {Γ : Ctxt jasminDialect} :
       intro o ho
       rcases List.mem_cons.mp ho with h | h
       · rw [h, resolveVar_isReg]; exact ⟨_, rfl⟩
-      · exact exprArgs_go_reg d nArgs rest o h
+      · exact exprArgs_go_argName_reg d nArgs rest o h
 
 /-- **The chain is `ArrOK`.** Every instruction of the chain of a program whose ops lie in
     the fragment's op set is an `ArrOK` `Lopn`. -/
@@ -288,7 +288,7 @@ theorem straightOpsMem_arrOK (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : Jasmin
   | ret v => intro i hi; simp [straightOpsMem] at hi
   | var e body ih =>
       obtain ⟨hop, hbody⟩ := hcom
-      have hs := exprArgs_go_reg d nArgs e.args
+      have hs := exprArgs_go_argName_reg d nArgs e.args
       intro i hi
       simp only [straightOpsMem, List.mem_cons] at hi
       rcases hi with rfl | hi

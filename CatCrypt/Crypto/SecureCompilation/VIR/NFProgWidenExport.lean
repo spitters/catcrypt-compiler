@@ -17,7 +17,7 @@ The region back half exports a structured Jasmin program that passes `regionExpo
 the operations of its bindings are in the stack-memory fragment `opMemB`, its exit-flag
 loops carry register types and its calls are at the word signatures `wordSig`
 (`regionExportableB_eq`). This module states that `widenJ` keeps the first two and makes
-the third hold at the widened signatures: every block `opBlock?` gives an operation of
+the third hold at the widened signatures: every block `wideOpBlock?` gives an operation of
 `opMemB` has its operations in `opMemB` (at a narrow width, at width `64`), and `wideTy`
 sends no register type to an array type.
 
@@ -55,8 +55,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.ChainTotal (callsAll callsAll_map?)
 /-- `widenP` accepts every operation of `opMemB`. -/
 theorem opBlock?_isSome {Γ : Ctxt jasminDialect} (op : JasminOp)
     (args : HVector (fun t => Var Γ t) (DialectSignature.sig (d := jasminDialect) op))
-    (h : opMemB op = true) : (opBlock? op args).isSome = true := by
-  cases op <;> simp_all [opMemB, opBlock?] <;> rfl
+    (h : opMemB op = true) : (wideOpBlock? op args).isSome = true := by
+  cases op <;> simp_all [opMemB, wideOpBlock?] <;> rfl
 
 /-- **The blocks stay in the fragment.** The block of an operation of `opMemB` has its
     operations in `opMemB`. -/
@@ -65,8 +65,8 @@ theorem opBlock?_opMemB {Γ : Ctxt jasminDialect} (op : JasminOp)
     (hop : opMemB op = true)
     (blk : Com jasminDialect (Γ.map wideTy)
       (wideTy (DialectSignature.ret (d := jasminDialect) op)))
-    (h : opBlock? op args = some blk) : CoveredCom (fun e => opMemB e.op = true) blk := by
-  cases op <;> simp only [opBlock?, reduceCtorEq] at h <;> (injection h with h; subst h)
+    (h : wideOpBlock? op args = some blk) : CoveredCom (fun e => opMemB e.op = true) blk := by
+  cases op <;> simp only [wideOpBlock?, reduceCtorEq] at h <;> (injection h with h; subst h)
   case regArith bop w =>
     unfold arithBlock
     split
@@ -105,7 +105,7 @@ theorem opBlock?_opMemB {Γ : Ctxt jasminDialect} (op : JasminOp)
       omega
     · simp [CoveredCom, opMemB]
   case rorImm w k =>
-    unfold rorBlock
+    unfold wideRorBlock
     split
     · rename_i hn
       have := le32_of_narrow hn
@@ -129,7 +129,7 @@ theorem opBlock?_opMemB {Γ : Ctxt jasminDialect} (op : JasminOp)
       simp only [opMemB, decide_eq_true_eq] at hop
       simp [CoveredCom, opMemB, wideW_of_not (by simpa using hn), hop]
   case shlImm w k =>
-    unfold shlBlock
+    unfold wideShlBlock
     split
     · rename_i hn
       have := shiftMask_lt32 (le32_of_narrow hn) k

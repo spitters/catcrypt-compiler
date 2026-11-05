@@ -2,7 +2,8 @@
  * (safegcd_bn254) — verified-CT Bernstein-Yang inverter.
  *
  * Headline path: the AUCurves-verified Bernstein-Yang inverter from
- * `~/Claude/BLS/AUCurves/curve25519-jasmin-rs/src/safegcd_bn254.rs`
+ * `src/safegcd_bn254.rs` of the AUCurves crate `curve25519-jasmin-rs` (a checkout at
+ * `BLS/AUCurves/` beside this repository)
  * (`bn254_invert_divstep_sat`), re-exported via the staticlib shim in
  * `shim/src/lib.rs` under the C symbol `safegcd_bn254_invert`.
  *

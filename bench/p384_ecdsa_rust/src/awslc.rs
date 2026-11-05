@@ -130,8 +130,8 @@ struct Api {
     hkdf_expand: unsafe extern "C" fn(*mut u8, usize, *const EVP_MD, *const u8, usize, *const u8, usize) -> c_int,
 }
 
-/// The library path: `P384_AWSLC_LIBCRYPTO`, else the AWS-LC build tree at
-/// `~/Claude/bench_refs/aws-lc-build`, located relative to this crate.
+/// The library path: `P384_AWSLC_LIBCRYPTO`, else the AWS-LC build tree
+/// `bench_refs/aws-lc-build` beside this repository, located relative to this crate.
 pub fn library_path() -> String {
     std::env::var("P384_AWSLC_LIBCRYPTO").unwrap_or_else(|_| {
         concat!(env!("CARGO_MANIFEST_DIR"), "/../../../bench_refs/aws-lc-build/crypto/libcrypto.so").to_string()

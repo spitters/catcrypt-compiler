@@ -54,16 +54,14 @@ The hypothesis is on the *virtual* body `(comToLfundef com immSlotMap).lfd_body`
 `Com` that lowers to a `LOADIDX`/`STOREIDX` (the image of `memrefGetDyn` /
 `memrefSetDyn`) is outside the class, and the conclusion says nothing about it.
 
-Which shipped kernels that excludes, as of 2026-07-27: the emitted `.s` carrying
-a scaled-index memory operand are `FAEST/VoleCommitEmit`'s `vole_commit_owned`
-and `FAEST/BavcOpenEmit`'s `bavc_open_owned`. Every other owned kernel — the
-GF(251) SDitH, GF(256) UOV and MQOM row-dot families included — addresses memory
-only as a base register plus a compile-time displacement, so it is inside the
-class. Byte- and halfword-packed kernels reach their cells by a word index and
-immediate shifts rather than a scaled index, which is why a narrow ABI width
-does not by itself leave the fragment. Re-derive the list with a search for a
-`(%base,%index,scale)` operand over the emitted assembly rather than assuming
-it; a front change that admits `memrefGetDyn` on a new kernel will extend it.
+The class excludes a kernel whose emitted `.s` carries a scaled-index memory operand
+`(%base,%index,scale)`, the image of `memrefGetDyn`; a search for that operand over
+the emitted assembly gives the excluded kernels (among them `vole_commit_owned` of
+`FAEST/VoleCommitEmit` and `bavc_open_owned` of `FAEST/BavcOpenEmit`). A kernel that
+addresses memory only as a base register plus a compile-time displacement is inside
+the class. Byte- and halfword-packed kernels reach their cells by a word index and
+immediate shifts rather than a scaled index, so a narrow ABI width does not by itself
+leave the class.
 
 The conclusion is preservation of the addressing class, not equality of leakage
 traces. Allocation is a compile-time decision, so no spill introduces a

@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.AeneasFront.TableReads
+public import CatCrypt.Crypto.Hax.AeneasTableReads
 public import Transfer.Base.RelatedOn
 
 /-!

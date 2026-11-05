@@ -26,7 +26,7 @@ guarded squares (a value of the Aeneas operation is, encoded, the value of the t
 
 ## Main results
 
-* `index_square`, `update_square`, `indexMut_square`, `repeat_square`, `make_square`: the
+* `index_square`, `update_square`, `indexMut_square`, `hax64WExit_repeat_arrV`, `make_square`: the
   pointwise squares
 * `index_related`, `update_related`: the guarded squares on outcomes
 * `repeatRelated`: the total square of `repeat`, an instance
@@ -108,7 +108,8 @@ theorem indexMut_square {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (USca
 
 /-- **`repeat`.** At a width of at most `64` bits, `Array.repeat n x` is, encoded, the value
     of the table at `repeat`. -/
-theorem repeat_square {ty : UScalarTy} (hty : ty.numBits ≤ 64) (n : Usize) (x : UScalar ty) :
+private theorem hax64WExit_repeat_arrV {ty : UScalarTy} (hty : ty.numBits ≤ 64) (n : Usize)
+    (x : UScalar ty) :
     hax64WExit "repeat" [wordV x, wordV n] = some (arrV (Aeneas.Std.Array.repeat n x)) := by
   have hr : appRepeat (.w ty x) (.w .Usize n) = .ok (.arr ty n (Aeneas.Std.Array.repeat n x)) := by
     rw [appRepeat, asW_w]
@@ -181,6 +182,6 @@ instance repeatRelated {ty : UScalarTy} [TableTy ty] (n : Usize) (a : RustM (USc
     rw [← ha.rel]
     exact relatedR1_of (fun _ => ⟨_, rfl⟩) (fun x z hz => by
       cases hz
-      exact repeat_square (TableTy.le64 ty) n x) a
+      exact hax64WExit_repeat_arrV (TableTy.le64 ty) n x) a
 
 end CatCrypt.Crypto.SecureCompilation.AeneasFront

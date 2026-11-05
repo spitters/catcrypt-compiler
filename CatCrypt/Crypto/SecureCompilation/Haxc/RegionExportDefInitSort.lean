@@ -53,8 +53,8 @@ every other frame instruction is its own renaming.
 * `exportR_regReads`: the register reads of the export are written as registers on every
   path (`RegReads`); `RegionExp.cert_of_exportR`, `RegionExp.defInit_of_exportR` and
   `RegionExp.certS_of_exportR` discharge `RegReads` through it.
-* `Cert.regionLprogCopyS`, `cert_regionCoCodeS`: the certificates of the tagged code with the
-  array result copy.
+* `Cert.regionLprogCopyS`, `cert_regionCoCodeS_of_exportR`: the certificates of the tagged
+  code with the array result copy.
 * `allocChain`, `regionAllocCode_chain`: definite assignment, forward reachability and loop
   headers of the input of the allocation from a certificate of the tagged code.
 -/
@@ -1796,7 +1796,7 @@ theorem cert_regionCoCodeS_of (n : Nat) {t : JasminTy} {r : Exported}
     the result type `t` of the program, the tagged code of `regionCoCode` with its result
     copy has a certificate of definite assignment at the argument names of the layout in both
     namespaces (`cert_regionCoCodeS_of` at `exportR_certS`). -/
-theorem cert_regionCoCodeS (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
+private theorem cert_regionCoCodeS_of_exportR (fn : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
     (hc : p.callFree = true) {r : Exported}
     (h : exportR Γ.length fn p Γ.length 0 x86Data = some r) (σ : AbiLayout)

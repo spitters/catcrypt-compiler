@@ -20,7 +20,7 @@ invariant `nfToCat` keeps for the scalars of hax.
 
 `widenP : PartialBlockLowering jasminDialect jasminDialect` has the type map `wideTy`, the
 context map `List.map wideTy`, and gives each operation at a narrow width `w` its 64-bit
-implementation (`opBlock?`), with `m = 2 ^ w - 1`:
+implementation (`wideOpBlock?`), with `m = 2 ^ w - 1`:
 
 * `regArith` `add`, `sub`, `mul`: the operation at `64`, then the conjunction with `m`
   (`withMask`); `and`, `or`, `xor`, `andn`: the operation at `64`;
@@ -58,7 +58,7 @@ and the transport of the results is the identity, up to the cast of their types
 * `narrowB`, `wideW`, `wideTy`, `transTy`, `mapVar`, `mapVal`.
 * `mapVarL`, `mapVarFast` — the widened variable over a given widened context, whose `there`
   nodes store the tails of that context.
-* `withMask`, `countThen`, `opBlock?` — the blocks.
+* `withMask`, `countThen`, `wideOpBlock?` — the blocks.
 * `widenP`, `widenJ` — the lowering and the pass.
 
 ## Main results
@@ -177,10 +177,10 @@ def mapVal {Γ : Ctxt jasminDialect} (V : Valuation Γ) :
   transArgs wideTy transTy V
 
 /-- A mapped variable reads the transported value. -/
-theorem lookup_mapVar_mapVal : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Var Γ t)
+theorem lookup_mapVar_mapVal_wide : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Var Γ t)
     (V : Valuation Γ), (mapVar v).lookup (mapVal V) = transTy (v.lookup V)
   | _, _, .here, .cons _ _ => rfl
-  | _, _, .there v, .cons _ xs => lookup_mapVar_mapVal v xs
+  | _, _, .there v, .cons _ xs => lookup_mapVar_mapVal_wide v xs
 
 /-! ## 2. The blocks -/
 
@@ -277,7 +277,7 @@ def addHiBlock (W w : Nat) (a b : Var Δ (.reg W)) (c : Var Δ (.reg 1)) :
 
 /-- The block of `rorImm w k`: at a narrow width, the masked disjunction of the shifts by
     `k % w` and `w - k % w`. -/
-def rorBlock (W w k : Nat) (a : Var Δ (.reg W)) : Com jasminDialect Δ (.reg W) :=
+def wideRorBlock (W w k : Nat) (a : Var Δ (.reg W)) : Com jasminDialect Δ (.reg W) :=
   if narrowB w then
     .var ⟨.shrImm W (k % w), rfl, .cons a .nil⟩
       (.var ⟨.shlImm W (w - k % w), rfl, .cons (.there a) .nil⟩
@@ -293,7 +293,7 @@ def sarBlock (W w k : Nat) (a : Var Δ (.reg W)) : Com jasminDialect Δ (.reg W)
   else one ⟨.sarImm W k, rfl, .cons a .nil⟩
 
 /-- The block of `shlImm w k`: at a narrow width, the masked shift by `shiftMask w k`. -/
-def shlBlock (W w k : Nat) (a : Var Δ (.reg W)) : Com jasminDialect Δ (.reg W) :=
+def wideShlBlock (W w k : Nat) (a : Var Δ (.reg W)) : Com jasminDialect Δ (.reg W) :=
   if narrowB w then withMask W (some w) ⟨.shlImm W (shiftMask w k), rfl, .cons a .nil⟩
   else one ⟨.shlImm W k, rfl, .cons a .nil⟩
 
@@ -537,10 +537,10 @@ theorem addHiBlock_denote (W w : Nat) (hW : W = wideW w) (a b : Var Δ (.reg W))
     rw [ha, hb, hc, BitVec.setWidth_eq, BitVec.setWidth_eq]
 
 /-- The block of `rorImm w k` denotes the widened rotation. -/
-theorem rorBlock_denote (W w k : Nat) (hW : W = wideW w) (a : Var Δ (.reg W))
+theorem wideRorBlock_denote (W w k : Nat) (hW : W = wideW w) (a : Var Δ (.reg W))
     (V : Valuation Δ) (x : BitVec w) (ha : a.lookup V = x.setWidth W) :
-    (rorBlock W w k a).denote V = (x.rotateRight k).setWidth W := by
-  unfold rorBlock
+    (wideRorBlock W w k a).denote V = (x.rotateRight k).setWidth W := by
+  unfold wideRorBlock
   split
   · rename_i h
     have h64 : W = 64 := hW.trans (wideW_of_narrow h)
@@ -589,10 +589,10 @@ theorem sarBlock_denote (W w k : Nat) (hW : W = wideW w) (a : Var Δ (.reg W))
     rw [ha, BitVec.setWidth_eq, BitVec.setWidth_eq]
 
 /-- The block of `shlImm w k` denotes the widened shift. -/
-theorem shlBlock_denote (W w k : Nat) (hW : W = wideW w) (a : Var Δ (.reg W))
+theorem wideShlBlock_denote (W w k : Nat) (hW : W = wideW w) (a : Var Δ (.reg W))
     (V : Valuation Δ) (x : BitVec w) (ha : a.lookup V = x.setWidth W) :
-    (shlBlock W w k a).denote V = (x <<< shiftMask w k).setWidth W := by
-  unfold shlBlock
+    (wideShlBlock W w k a).denote V = (x <<< shiftMask w k).setWidth W := by
+  unfold wideShlBlock
   split
   · rename_i h
     have h64 : W = 64 := hW.trans (wideW_of_narrow h)
@@ -684,7 +684,7 @@ end Values
 /-- **The block of an operation.** The 64-bit implementation of an operation at a narrow
     width, the operation itself at the widened width otherwise; `none` for an external call,
     a multi-result call and a vector operation. -/
-def opBlock? {Γ : Ctxt jasminDialect} : (op : JasminOp) →
+def wideOpBlock? {Γ : Ctxt jasminDialect} : (op : JasminOp) →
     HVector (fun t => Var Γ t) (DialectSignature.sig (d := jasminDialect) op) →
     Option (Com jasminDialect (Γ.map wideTy)
       (wideTy (DialectSignature.ret (d := jasminDialect) op)))
@@ -706,11 +706,11 @@ def opBlock? {Γ : Ctxt jasminDialect} : (op : JasminOp) →
   | .addCarryHi w, args =>
       some (addHiBlock (wideW w) w (mapVar args.head) (mapVar args.tail.head)
         (mapVar args.tail.tail.head))
-  | .rorImm w k, args => some (rorBlock (wideW w) w k (mapVar args.head))
+  | .rorImm w k, args => some (wideRorBlock (wideW w) w k (mapVar args.head))
   | .shrImm w k, args => some (one ⟨.shrImm (wideW w) (wideCount w k), rfl,
       .cons (mapVar args.head) .nil⟩)
   | .sarImm w k, args => some (sarBlock (wideW w) w k (mapVar args.head))
-  | .shlImm w k, args => some (shlBlock (wideW w) w k (mapVar args.head))
+  | .shlImm w k, args => some (wideShlBlock (wideW w) w k (mapVar args.head))
   | .select w, args =>
       some (one ⟨.select (wideW w), rfl,
         .cons (mapVar args.head)
@@ -726,10 +726,10 @@ def opBlock? {Γ : Ctxt jasminDialect} : (op : JasminOp) →
         .cons (mapVar args.head) (.cons (mapVar args.tail.head) .nil)⟩)
   | _, _ => none
 
-/-- The block of an expression: `opBlock?` of its operation. -/
+/-- The block of an expression: `wideOpBlock?` of its operation. -/
 def exprBlock? : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Expr jasminDialect Γ t →
     Option (Com jasminDialect (Γ.map wideTy) (wideTy t))
-  | _, _, ⟨op, rfl, args⟩ => opBlock? op args
+  | _, _, ⟨op, rfl, args⟩ => wideOpBlock? op args
 
 /-- **The widening of narrow words** as a partial block lowering of `jasminDialect` into
     itself. -/
@@ -754,11 +754,11 @@ theorem opBlock?_denote {Γ : Ctxt jasminDialect} (op : JasminOp)
     (args : HVector (fun t => Var Γ t) (DialectSignature.sig (d := jasminDialect) op))
     (blk : Com jasminDialect (Γ.map wideTy)
       (wideTy (DialectSignature.ret (d := jasminDialect) op)))
-    (h : opBlock? op args = some blk) (V : Valuation Γ) :
+    (h : wideOpBlock? op args = some blk) (V : Valuation Γ) :
     blk.denote (mapVal V) =
       transTy (Expr.denote (⟨op, rfl, args⟩ : Expr jasminDialect Γ _) V) := by
-  have L := fun {t : JasminTy} (v : Var Γ t) => lookup_mapVar_mapVal v V
-  cases op <;> simp only [opBlock?, reduceCtorEq] at h <;> (injection h with h; subst h)
+  have L := fun {t : JasminTy} (v : Var Γ t) => lookup_mapVar_mapVal_wide v V
+  cases op <;> simp only [wideOpBlock?, reduceCtorEq] at h <;> (injection h with h; subst h)
   case regArith bop w =>
     rcases args with _ | ⟨a, _ | ⟨b, _ | _⟩⟩
     exact arithBlock_denote _ _ rfl _ _ _ _ _ _ (L a) (L b)
@@ -790,7 +790,7 @@ theorem opBlock?_denote {Γ : Ctxt jasminDialect} (op : JasminOp)
       ((L c).trans (transTy_reg1 _))).trans (transTy_reg1 _).symm
   case rorImm w k =>
     rcases args with _ | ⟨a, _ | _⟩
-    exact rorBlock_denote _ _ _ rfl _ _ _ (L a)
+    exact wideRorBlock_denote _ _ _ rfl _ _ _ (L a)
   case shrImm w k =>
     rcases args with _ | ⟨a, _ | _⟩
     change BitVec.ushiftRight ((mapVar a).lookup (mapVal V)) (shiftMask (wideW w) (wideCount w k))
@@ -802,7 +802,7 @@ theorem opBlock?_denote {Γ : Ctxt jasminDialect} (op : JasminOp)
     exact sarBlock_denote _ _ _ rfl _ _ _ (L a)
   case shlImm w k =>
     rcases args with _ | ⟨a, _ | _⟩
-    exact shlBlock_denote _ _ _ rfl _ _ _ (L a)
+    exact wideShlBlock_denote _ _ _ rfl _ _ _ (L a)
   case select w =>
     rcases args with _ | ⟨c, _ | ⟨a, _ | ⟨b, _ | _⟩⟩⟩
     change selectW ((mapVar c).lookup (mapVal V)) ((mapVar a).lookup (mapVal V))
@@ -843,7 +843,7 @@ theorem widenP_regionTypes : widenP.RegionTypes := ⟨rfl, rfl⟩
 
 /-- The variable leaf of `widenP`. -/
 theorem widenP_varTransports : widenP.VarTransports (fun x => transTy x) (fun V => mapVal V) :=
-  fun v V => lookup_mapVar_mapVal v V
+  fun v V => lookup_mapVar_mapVal_wide v V
 
 /-- The binding leaf of `widenP`. -/
 theorem widenP_mapValExtends : widenP.MapValExtends (fun x => transTy x) (fun V => mapVal V) :=
@@ -947,7 +947,7 @@ theorem mapVal_heq_of_wide {Γ : Ctxt jasminDialect} (h : Γ.map wideTy = Γ) (V
 
 /-- A map of an option along a function that is the identity up to the cast of its type is the
     identity up to the cast. -/
-theorem option_map_heq {l l' : List JasminTy} (h : l' = l)
+theorem option_map_hvector_heq {l l' : List JasminTy} (h : l' = l)
     (f : HVector (fun t => ⟦t⟧) l → HVector (fun t => ⟦t⟧) l') (hf : ∀ r, f r ≍ r)
     (o : Option (HVector (fun t => ⟦t⟧) l)) : o.map f ≍ o := by
   subst h
@@ -968,6 +968,6 @@ theorem widenJ_denote_of_wide (fuel : Nat) {Γ : Ctxt jasminDialect} {ts : List 
     q.denote fuel W ≍ p.denote fuel V := by
   obtain rfl : W = mapVal V := eq_of_heq (hW.trans (mapVal_heq_of_wide hΓ V).symm)
   rw [widenJ_denote_empty fuel p V q hq]
-  exact option_map_heq hts _ (transArgs_heq_of_wide hts) _
+  exact option_map_hvector_heq hts _ (transArgs_heq_of_wide hts) _
 
 end CatCrypt.Crypto.SecureCompilation.VIR.NarrowWords

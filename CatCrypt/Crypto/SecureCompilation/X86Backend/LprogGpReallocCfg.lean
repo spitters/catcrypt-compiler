@@ -333,42 +333,42 @@ local macro "val_shape" : tactic =>
 
 variable {d c opn srcs σ}
 
-theorem sarStruct?_shape {p : String × String × Nat}
+private theorem sarStruct?_srcs {p : String × String × Nat}
     (h : sarStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.reg p.2.1, .imm p.2.2] := by
   unfold sarStruct? at h; val_shape
 
-theorem mulhiStruct?_shape {p : String × String × String}
+private theorem mulhiStruct?_srcs {p : String × String × String}
     (h : mulhiStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.reg p.2.1, .reg p.2.2] := by
   unfold mulhiStruct? at h; val_shape
 
-theorem adcxStruct?_shape {p : String × String × String × String}
+private theorem adcxStruct?_srcs {p : String × String × String × String}
     (h : adcxStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.reg p.2.1, .reg p.2.2.1, .reg p.2.2.2] := by
   unfold adcxStruct? at h; val_shape
 
-theorem adcxhiStruct?_shape {p : String × String × String × String}
+private theorem adcxhiStruct?_srcs {p : String × String × String × String}
     (h : adcxhiStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.reg p.2.1, .reg p.2.2.1, .reg p.2.2.2] := by
   unfold adcxhiStruct? at h; val_shape
 
-theorem sbbStruct?_shape {p : String × String × String × String}
+private theorem sbbStruct?_srcs {p : String × String × String × String}
     (h : sbbStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.reg p.2.1, .reg p.2.2.1, .reg p.2.2.2] := by
   unfold sbbStruct? at h; val_shape
 
-theorem sbbhiStruct?_shape {p : String × String × String × String}
+private theorem sbbhiStruct?_srcs {p : String × String × String × String}
     (h : sbbhiStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.reg p.2.1, .reg p.2.2.1, .reg p.2.2.2] := by
   unfold sbbhiStruct? at h; val_shape
 
-theorem castStruct?_shape {p : String × String}
+private theorem castStruct?_srcs {p : String × String}
     (h : castStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.reg p.2] := by
   unfold castStruct? at h; val_shape
 
-theorem movImmStruct?_shape {p : String × Nat}
+private theorem movImmStruct?_srcs {p : String × Nat}
     (h : movImmStruct? (.Lopn [.reg d] opn srcs) = some p) :
     p.1 = d ∧ srcs = [.imm p.2] := by
   obtain ⟨_, he⟩ := JasminLsemCast.movImmStruct?_spec (d := p.1) (n := p.2) h
@@ -389,7 +389,7 @@ theorem lsemStepSh_val (hwf : ∀ o ∈ srcs, regOrImm o = true) (hA : SrcAgree 
       exact lsemStepN_val _ rfl c hwf hA h
   | some p =>
       obtain ⟨d', a, n⟩ := p
-      obtain ⟨rfl, rfl⟩ := sarStruct?_shape hs
+      obtain ⟨rfl, rfl⟩ := sarStruct?_srcs hs
       simp only [hs, Option.map_some] at h ⊢
       rw [hA.readReg_reg (x := a) (by simp)]
       val_close
@@ -407,7 +407,7 @@ theorem lsemStepMC_val (hwf : ∀ o ∈ srcs, regOrImm o = true) (hA : SrcAgree 
   cases h1 : mulhiStruct? (.Lopn [.reg d] opn srcs) with
   | some p =>
       obtain ⟨d', a, b⟩ := p
-      obtain ⟨rfl, rfl⟩ := mulhiStruct?_shape h1
+      obtain ⟨rfl, rfl⟩ := mulhiStruct?_srcs h1
       simp only [h1, Option.map_some] at h ⊢
       rw [hA.readReg_reg (x := a) (by simp)]
       simp only [fun w => hA.getW w (x := b) (by simp)]
@@ -417,7 +417,7 @@ theorem lsemStepMC_val (hwf : ∀ o ∈ srcs, regOrImm o = true) (hA : SrcAgree 
   cases h2 : adcxStruct? (.Lopn [.reg d] opn srcs) with
   | some p =>
       obtain ⟨d', a, b, e⟩ := p
-      obtain ⟨rfl, rfl⟩ := adcxStruct?_shape h2
+      obtain ⟨rfl, rfl⟩ := adcxStruct?_srcs h2
       simp only [h2, Option.map_some] at h ⊢
       rw [hA.readReg_reg (x := a) (by simp)]
       simp only [fun w => hA.getW w (x := b) (by simp), hA.getW 1 (x := e) (by simp)]
@@ -427,7 +427,7 @@ theorem lsemStepMC_val (hwf : ∀ o ∈ srcs, regOrImm o = true) (hA : SrcAgree 
   cases h3 : adcxhiStruct? (.Lopn [.reg d] opn srcs) with
   | some p =>
       obtain ⟨d', a, b, e⟩ := p
-      obtain ⟨rfl, rfl⟩ := adcxhiStruct?_shape h3
+      obtain ⟨rfl, rfl⟩ := adcxhiStruct?_srcs h3
       simp only [h3, Option.map_some] at h ⊢
       rw [hA.readReg_reg (x := a) (by simp)]
       simp only [fun w => hA.getW w (x := b) (by simp), hA.getW 1 (x := e) (by simp)]
@@ -437,7 +437,7 @@ theorem lsemStepMC_val (hwf : ∀ o ∈ srcs, regOrImm o = true) (hA : SrcAgree 
   cases h4 : sbbStruct? (.Lopn [.reg d] opn srcs) with
   | some p =>
       obtain ⟨d', a, b, e⟩ := p
-      obtain ⟨rfl, rfl⟩ := sbbStruct?_shape h4
+      obtain ⟨rfl, rfl⟩ := sbbStruct?_srcs h4
       simp only [h4, Option.map_some] at h ⊢
       rw [hA.readReg_reg (x := a) (by simp)]
       simp only [fun w => hA.getW w (x := b) (by simp), hA.getW 1 (x := e) (by simp)]
@@ -447,7 +447,7 @@ theorem lsemStepMC_val (hwf : ∀ o ∈ srcs, regOrImm o = true) (hA : SrcAgree 
   cases h5 : sbbhiStruct? (.Lopn [.reg d] opn srcs) with
   | some p =>
       obtain ⟨d', a, b, e⟩ := p
-      obtain ⟨rfl, rfl⟩ := sbbhiStruct?_shape h5
+      obtain ⟨rfl, rfl⟩ := sbbhiStruct?_srcs h5
       simp only [h5, Option.map_some] at h ⊢
       rw [hA.readReg_reg (x := a) (by simp)]
       simp only [fun w => hA.getW w (x := b) (by simp), hA.getW 1 (x := e) (by simp)]
@@ -480,13 +480,13 @@ theorem lsemStepCast_val (cd : Option Nat) (hwf : ∀ o ∈ srcs, regOrImm o = t
               exact lsemStepMC_val hwf hA h
           | some p =>
               obtain ⟨d', n⟩ := p
-              obtain ⟨rfl, rfl⟩ := movImmStruct?_shape h2
+              obtain ⟨rfl, rfl⟩ := movImmStruct?_srcs h2
               simp only [h1, h2, Option.map_none, Option.map_some] at h ⊢
               cases h
               exact ⟨_, _, rfl, rfl⟩
       | some p =>
           obtain ⟨d', a⟩ := p
-          obtain ⟨rfl, rfl⟩ := castStruct?_shape h1
+          obtain ⟨rfl, rfl⟩ := castStruct?_srcs h1
           simp only [h1, Option.map_some] at h ⊢
           rw [hA.readReg_reg (x := a) (by simp)]
           val_close
@@ -532,7 +532,7 @@ theorem wideArgs?_val :
 
 variable {d c opn srcs σ tg}
 
-theorem cmpArgs?_shape {p : LOperand × LOperand}
+private theorem cmpArgs?_srcs {p : LOperand × LOperand}
     (h : cmpArgs? (.Lopn [.reg d] opn srcs, tg) = some p) :
     opn = withWidthTag 64 "CMP" ∧ srcs = [p.1, p.2] := by
   unfold cmpArgs? at h
@@ -546,7 +546,7 @@ theorem cmpArgs?_shape {p : LOperand × LOperand}
       exact ⟨h1, rfl⟩
   · cases h
 
-theorem movRegArgs?_shape {p : String × String}
+private theorem movRegArgs?_srcs {p : String × String}
     (h : movRegArgs? (.Lopn [.reg d] opn srcs, tg) = some p) :
     p.1 = d ∧ srcs = [.reg p.2] := by
   unfold movRegArgs? at h
@@ -558,7 +558,7 @@ theorem movRegArgs?_shape {p : String × String}
       split_ifs at h <;> cases h <;> simp
   · cases h
 
-theorem carryArgs?_shape {p : CarryOp × String × LOperand × LOperand}
+private theorem carryArgs?_srcs {p : CarryOp × String × LOperand × LOperand}
     (h : carryArgs? (.Lopn [.reg d] opn srcs, tg) = some p) :
     p.2.1 = d ∧ srcs = [p.2.2.1, p.2.2.2] := by
   unfold carryArgs? at h
@@ -570,7 +570,7 @@ theorem carryArgs?_shape {p : CarryOp × String × LOperand × LOperand}
       split_ifs at h <;> cases h <;> simp
   · cases h
 
-theorem wideArgs?_shape {w : WideOp}
+private theorem wideArgs?_srcs {w : WideOp}
     (h : wideArgs? (.Lopn [.reg d] opn srcs, tg) = some w) :
     ∃ a b, w = .mov d b ∧ srcs = [a, b] := by
   rcases srcs with _ | ⟨a, _ | ⟨b, _ | ⟨e, rest⟩⟩⟩ <;> simp [wideArgs?] at h
@@ -583,7 +583,7 @@ def writeDstF (s : LstateM) (d : String) (wr : Option (Σ w, BitVec w)) (cf of :
       | some v => s.setReg d v.2
       | none => s).nextPc with cf := cf, of := of }
 
-theorem aluFlagOp?_shape {p : AluOp × LOperand × LOperand}
+private theorem aluFlagOp?_lopn_srcs {p : AluOp × LOperand × LOperand}
     (h : aluFlagOp? (.Lopn [.reg d] opn srcs, tg) = some p) : srcs = [p.2.1, p.2.2] := by
   unfold aluFlagOp? at h
   dsimp only at h
@@ -608,7 +608,7 @@ theorem withALUFlags_val {s s' b b' : LstateM} (hA : SrcAgree σ srcs s.reg s'.r
   | none => exact ⟨hcf, hof⟩
   | some p =>
       obtain ⟨op, a, e⟩ := p
-      have hs := aluFlagOp?_shape h1
+      have hs := aluFlagOp?_lopn_srcs h1
       simp only [Option.map_some]
       rw [hA.evalOperandN 64 (o := a) (by simp [hs]), hA.evalOperandN 64 (o := e) (by simp [hs])]
       split <;> simp [hcf, hof]
@@ -632,7 +632,7 @@ theorem fstepF_val {s s' : LstateM} (hwf : ∀ o ∈ srcs, regOrImm o = true)
   cases h1 : cmpArgs? (LinstrR.Lopn [.reg d] opn srcs, MemTag.reg none) with
   | some p =>
       obtain ⟨a, e⟩ := p
-      obtain ⟨hop, rfl⟩ := cmpArgs?_shape h1
+      obtain ⟨hop, rfl⟩ := cmpArgs?_srcs h1
       simp only [h1, Option.map_some] at h ⊢
       rw [hA.evalOperandN 64 (o := a) (by simp), hA.evalOperandN 64 (o := e) (by simp)]
       cases hva : evalOperandN s.reg 64 a <;> cases hvb : evalOperandN s.reg 64 e <;>
@@ -646,7 +646,7 @@ theorem fstepF_val {s s' : LstateM} (hwf : ∀ o ∈ srcs, regOrImm o = true)
   cases h2 : movRegArgs? (LinstrR.Lopn [.reg d] opn srcs, MemTag.reg none) with
   | some p =>
       obtain ⟨d', a⟩ := p
-      obtain ⟨rfl, rfl⟩ := movRegArgs?_shape h2
+      obtain ⟨rfl, rfl⟩ := movRegArgs?_srcs h2
       simp only [h2, Option.map_some] at h ⊢
       rw [hA.readReg_reg (x := a) (by simp)]
       cases hr : JasminLsemWidthN.readReg s.reg (.reg a) with
@@ -687,7 +687,7 @@ theorem fstepF_val {s s' : LstateM} (hwf : ∀ o ∈ srcs, regOrImm o = true)
   cases h3 : carryArgs? (LinstrR.Lopn [.reg d] opn srcs, MemTag.reg none) with
   | some p =>
       obtain ⟨op, d', a, e⟩ := p
-      obtain ⟨rfl, rfl⟩ := carryArgs?_shape h3
+      obtain ⟨rfl, rfl⟩ := carryArgs?_srcs h3
       have h3' := carryArgs?_val d' c opn [a, e] σ (.reg none)
       rw [h3, Option.map_some] at h3'
       rw [JasminLsemExportRewrites.lsemStepMem_of_carryArgs h3' s']
@@ -705,7 +705,7 @@ theorem fstepF_val {s s' : LstateM} (hwf : ∀ o ∈ srcs, regOrImm o = true)
   rw [wideArgs?_val d c opn srcs σ]
   cases h4 : wideArgs? (LinstrR.Lopn [.reg d] opn srcs, MemTag.reg none) with
   | some w =>
-      obtain ⟨a, e, rfl, rfl⟩ := wideArgs?_shape h4
+      obtain ⟨a, e, rfl, rfl⟩ := wideArgs?_srcs h4
       have h4' := wideArgs?_val d c opn [a, e] σ (.reg none)
       rw [h4, Option.map_some] at h4'
       rw [JasminLsemExportRewrites.lsemStepMem_of_wideArgs h4' s']

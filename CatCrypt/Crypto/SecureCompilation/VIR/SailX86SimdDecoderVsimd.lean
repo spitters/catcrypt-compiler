@@ -36,7 +36,7 @@ decode-round-trips `VsimdByteEncoder`'s unified encoder directly.
   inverts the 2-byte-VEX (`C5`) form, `roundtrip_vex2_alu` proves the field
   round-trip, and `roundtrip_encodeVsimdInst_alu` lifts it onto the `SimdOp`
   dispatcher (`roundtrip_encodeVsimdInst_vpxor` is the named pilot).
-* **VEX-3 (`C4`) `0F38`-map `VPSHUFB`** — `encAvx2_0F38 0x00`: `decodeVex3`
+* **VEX-3 (`C4`) `0F38`-map `VPSHUFB`** — `encAvx2_0F38 0x00`: `decodeVex3Prefix`
   inverts the 3-byte form, `roundtrip_vex3` / `roundtrip_encodeVsimdInst_vpshufb`
   prove the round-trip.
 * **VEX-2 `VPSHUFD` shuffle** — `encVpshufdU` (`0F 70 /r ib`):
@@ -47,7 +47,7 @@ decode-round-trips `VsimdByteEncoder`'s unified encoder directly.
 ## What the VEX-3 round-trip does *not* pin (`DecVex3` has no `pp`/`L` field)
 
 `DecVex3` (§5 below) records only `opcode`/`mm`/`d`/`v`/`m`/`w` — it has **no
-`pp` and no `L` field**. `decodeVex3` never reads VEX-3 byte-2's `pp` bits
+`pp` and no `L` field**. `decodeVex3Prefix` never reads VEX-3 byte-2's `pp` bits
 (the mandatory-prefix selector, SDM §2.3.6) or the vector-length `L` bit, and
 `roundtrip_vex3` proves nothing about either: `encVex3 mm pp w l op d v m imm`
 round-trips for *every* `pp < 4` and `l < 2` the caller supplies, with the
@@ -217,7 +217,7 @@ deriving DecidableEq, Repr
 
 /-- Decode a 3-byte-VEX register form `[0xC4, P1, P2, op, ModRM(mod=11)]` (a
     trailing `imm8` is not part of the operand recovery). Requires `mod = 0b11`. -/
-def decodeVex3 : List (BitVec 8) → Option DecVex3
+def decodeVex3Prefix : List (BitVec 8) → Option DecVex3
   | v0 :: p1 :: p2 :: op :: modrm :: _ =>
       if v0.toNat = 0xc4 ∧ modField modrm = 3 then
         some { opcode := op.toNat
@@ -235,7 +235,7 @@ def decodeVex3 : List (BitVec 8) → Option DecVex3
 theorem roundtrip_vex3 (mm pp w l op d v m : Nat) (imm : Option Nat)
     (hop : op < 256) (hmm : mm < 32) (hpp : pp < 4) (hw : w < 2) (hl : l < 2)
     (hd : d < 16) (hv : v < 16) (hm : m < 16) :
-    decodeVex3 (encVex3 mm pp w l op d v m imm)
+    decodeVex3Prefix (encVex3 mm pp w l op d v m imm)
       = some { opcode := op, mm := mm, d := d, v := v, m := m, w := w } := by
   have hbd : d >>> 3 &&& 1 < 2 := by interval_cases d <;> decide
   have hbm : m >>> 3 &&& 1 < 2 := by interval_cases m <;> decide
@@ -270,11 +270,11 @@ theorem roundtrip_vex3 (mm pp w l op d v m : Nat) (imm : Option Nat)
     rw [hb_g _ _ hbd hbm, hrm, hmsplit]
   have hmm_id : (((1 - (d >>> 3 &&& 1)) * 128 + 64 + (1 - (m >>> 3 &&& 1)) * 32 + mm)
       % 2 ^ 8) &&& 31 = mm := hmm_g _ _ hbd hbm
-  have hdec : decodeVex3 (encVex3 mm pp w l op d v m imm)
+  have hdec : decodeVex3Prefix (encVex3 mm pp w l op d v m imm)
       = some { opcode := op % 2 ^ 8, mm := mm, d := d, v := v, m := m, w := w } := by
     cases imm <;>
     · simp only [encVex3, vex3p1, vex3p2, modRMReg,
-        bit, cbit, decodeVex3, List.map_cons, List.map_nil,
+        bit, cbit, decodeVex3Prefix, List.map_cons, List.map_nil,
         List.cons_append, List.nil_append,
         modField, regField, rmField, vex3Mm, vex3R, vex3B, vex3Vvvv, vex3W,
         BitVec.toNat_ofNat]
@@ -286,7 +286,7 @@ theorem roundtrip_vex3 (mm pp w l op d v m : Nat) (imm : Option Nat)
 /-- **`VPSHUFB` round-trip** (the byte-rotate + lane shuffle), an instance of
     `roundtrip_vex3` on `encAvx2_0F38 0x00`. -/
 theorem roundtrip_vpshufb (d v m : Nat) (hd : d < 16) (hv : v < 16) (hm : m < 16) :
-    decodeVex3 (encAvx2_0F38 0x00 0 d v m)
+    decodeVex3Prefix (encAvx2_0F38 0x00 0 d v m)
       = some { opcode := 0x00, mm := 0b00010, d := d, v := v, m := m, w := 0 } := by
   simpa [encAvx2_0F38] using
     roundtrip_vex3 0b00010 0b01 0 0 0x00 d v m none (by decide) (by decide)
@@ -297,7 +297,7 @@ theorem roundtrip_vpshufb (d v m : Nat) (hd : d < 16) (hv : v < 16) (hm : m < 16
     VEX-3 parse, for `d, a, b < 16`. -/
 theorem roundtrip_encodeVsimdInst_vpshufb (d a b : Nat)
     (hd : d < 16) (ha : a < 16) (hb : b < 16) :
-    decodeVex3 (encodeVsimdInst .vpshufb d a b)
+    decodeVex3Prefix (encodeVsimdInst .vpshufb d a b)
       = some { opcode := 0x00, mm := 0b00010, d := d, v := a, m := b, w := 0 } := by
   simpa [encodeVsimdInst] using roundtrip_vpshufb d a b hd ha hb
 

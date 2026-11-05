@@ -2109,7 +2109,8 @@ theorem cutAt_getElem? (fn : String) (fin : LLabel) (B : List LinstrRM) {e x : O
           rfl
 
 /-- A cut program ends with the declaration of `fin`. -/
-theorem cutAt_last (fn : String) (fin : LLabel) (B : List LinstrRM) (e x : Option Nat) :
+private theorem cutAt_eq_append_finI (fn : String) (fin : LLabel) (B : List LinstrRM)
+    (e x : Option Nat) :
     ∃ L, cutAt fn fin B e x = L ++ [finI fin] := by
   unfold cutAt
   cases x <;> cases e
@@ -2127,7 +2128,7 @@ theorem cutAt_last (fn : String) (fin : LLabel) (B : List LinstrRM) (e x : Optio
 theorem cutAt_getElem?_fin (fn : String) (fin : LLabel) (B : List LinstrRM)
     {e : Option Nat} (x : Option Nat) (he : SiteOk B e) :
     (cutAt fn fin B e x)[B.length + 1]? = some (finI fin) := by
-  obtain ⟨L, hL⟩ := cutAt_last fn fin B e x
+  obtain ⟨L, hL⟩ := cutAt_eq_append_finI fn fin B e x
   have hl := cutAt_length fn fin B x he
   rw [hL] at hl ⊢
   simp only [List.length_append, List.length_singleton] at hl

@@ -938,7 +938,7 @@ theorem decodeCmp_nonrex {b0 : BitVec 8} (t : List (BitVec 8)) (hr : isRex b0 = 
 
 /-- Off a `REX` prefix, `decodeJ1` is `decodeRex` at `REX.W = 1` and `decodeRexW0`
     otherwise. -/
-theorem decodeJ1_rex {b : BitVec 8} (t : List (BitVec 8)) (hr : isRex b = true) :
+private theorem decodeJ1_of_isRex {b : BitVec 8} (t : List (BitVec 8)) (hr : isRex b = true) :
     decodeJ1 (b :: t) = if rexW b = 1 then decodeRex b t else decodeRexW0 b t := by
   have hb : 0x40 ≤ b.toNat ∧ b.toNat ≤ 0x4f := by simpa [isRex] using hr
   simp only [decodeJ1, show ¬ b.toNat = 0x66 by omega, show ¬ b.toNat = 0xf3 by omega,
@@ -949,7 +949,7 @@ theorem decodeJ1_none_of_shift1 {bs r : List (BitVec 8)} {x : JInstr 64}
     (e : List (BitVec 8)) (h : decodeShift1 bs = some (x, r)) : decodeJ1 (bs ++ e) = none := by
   fun_cases decodeShift1 bs
   all_goals (try simp_all [decodeShift1])
-  all_goals simp_all [decodeJ1_rex, decodeRex, aluMnemonic]
+  all_goals simp_all [decodeJ1_of_isRex, decodeRex, aluMnemonic]
 
 /-- A stream `decodeCmp` decodes is, with any continuation, rejected by `decodeJ1` and by
     `decodeShift1`. -/
@@ -958,7 +958,7 @@ theorem decodeJ1_none_of_cmp {bs r : List (BitVec 8)} {x : JInstr 64}
     decodeJ1 (bs ++ e) = none ∧ decodeShift1 (bs ++ e) = none := by
   fun_cases decodeCmp bs
   all_goals (try simp_all [decodeCmp])
-  all_goals simp_all [decodeJ1_rex, decodeRex, aluMnemonic, aluImmMnemonic, decodeShift1]
+  all_goals simp_all [decodeJ1_of_isRex, decodeRex, aluMnemonic, aluImmMnemonic, decodeShift1]
 
 /-- `decodeJ1_6` is stable under extension of its input (`ExtStable`). -/
 theorem decodeJ1_6_ext : ExtStable decodeJ1_6 := by
@@ -1111,7 +1111,7 @@ theorem decodeJ1_6_rexW1 {b0 op : BitVec 8} (t : List (BitVec 8)) (hrex : isRex 
   have hc : decodeCmp (b0 :: op :: t) = none := by
     unfold decodeCmp; split <;> simp_all
   unfold decodeJ1_6
-  rw [decodeJ1_rex _ hrex]
+  rw [decodeJ1_of_isRex _ hrex]
   simp only [hw, ↓reduceIte]
   cases decodeRex b0 (op :: t) <;> simp [hs, hc]
 
@@ -1173,7 +1173,7 @@ theorem decodeJ1_6_rexW0 {b0 : BitVec 8} (t : List (BitVec 8)) (hrex : isRex b0 
   have hc : decodeCmp (b0 :: t) = none := by
     unfold decodeCmp; split <;> simp_all
   unfold decodeJ1_6
-  rw [decodeJ1_rex _ hrex]
+  rw [decodeJ1_of_isRex _ hrex]
   simp only [hw, zero_ne_one, ↓reduceIte]
   cases decodeRexW0 b0 t <;> simp [hs, hc]
 

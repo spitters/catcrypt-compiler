@@ -25,7 +25,7 @@ with `@[csimp]`, so compiled code that calls `maskElim` runs `maskElimFast`.
 ## Main definitions
 
 * `FTree`, `fvTree` — the free variables of a program and of each of its subprograms.
-* `AgreeOff` — two fact maps agree on the variables of a set outside a set of tainted indices.
+* `FactsAgreeOff` — two fact maps agree on the variables of a set outside a set of tainted indices.
 * `okPT` — the analysis along a set of tainted indices.
 * `maskElimGoF`, `maskElimFast` — the pass deciding each mask with `okPT`.
 
@@ -99,7 +99,7 @@ def fvTree : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasmi
 /-! ## 2. Agreement of fact maps -/
 
 /-- `A` and `B` agree at every variable whose index is in `S` and not in `R`. -/
-def AgreeOff {Γ : Ctxt jasminDialect} (A B : Facts Γ) (R S : LiveSet) : Prop :=
+def FactsAgreeOff {Γ : Ctxt jasminDialect} (A B : Facts Γ) (R S : LiveSet) : Prop :=
   ∀ {s : JasminTy} (v : Var Γ s), v.idx ∈ S → v.idx ∉ R → A v = B v
 
 theorem mem_varsSet_cons {Γ : Ctxt jasminDialect} {t : JasminTy} {ts : List JasminTy}
@@ -110,7 +110,7 @@ theorem mem_varsSet_cons {Γ : Ctxt jasminDialect} {t : JasminTy} {ts : List Jas
 
 theorem allExactB_congr {Γ : Ctxt jasminDialect} {A B : Facts Γ} :
     {ts : List JasminTy} → (vs : HVector (fun t => Var Γ t) ts) →
-      AgreeOff A B [] (varsSet vs) → allExactB A vs = allExactB B vs
+      FactsAgreeOff A B [] (varsSet vs) → allExactB A vs = allExactB B vs
   | [], .nil, _ => rfl
   | _ :: _, .cons v vs, h => by
       change ((A v).relW.isNone && allExactB A vs) = ((B v).relW.isNone && allExactB B vs)
@@ -120,19 +120,20 @@ theorem allExactB_congr {Γ : Ctxt jasminDialect} {A B : Facts Γ} :
 
 theorem agreeOff_head {Γ : Ctxt jasminDialect} {A B : Facts Γ} {t : JasminTy}
     {ts : List JasminTy} (args : HVector (fun t => Var Γ t) (t :: ts))
-    (h : AgreeOff A B [] (varsSet args)) : A args.head = B args.head := by
+    (h : FactsAgreeOff A B [] (varsSet args)) : A args.head = B args.head := by
   cases args with
   | cons v vs => exact h v ((mem_varsSet_cons v vs _).mpr (.inl rfl)) List.not_mem_nil
 
 theorem agreeOff_tail {Γ : Ctxt jasminDialect} {A B : Facts Γ} {t : JasminTy}
     {ts : List JasminTy} (args : HVector (fun t => Var Γ t) (t :: ts))
-    (h : AgreeOff A B [] (varsSet args)) : AgreeOff A B [] (varsSet args.tail) := by
+    (h : FactsAgreeOff A B [] (varsSet args)) : FactsAgreeOff A B [] (varsSet args.tail) := by
   cases args with
   | cons v vs => exact fun w hw hr => h w ((mem_varsSet_cons v vs _).mpr (.inr hw)) hr
 
 /-- The analysis of an expression reads the facts of its arguments only. -/
 theorem okE_congr {Γ : Ctxt jasminDialect} {t : JasminTy} {A B : Facts Γ}
-    (e : Expr jasminDialect Γ t) (h : AgreeOff A B [] (varsSet e.args)) : okE A e = okE B e := by
+    (e : Expr jasminDialect Γ t) (h : FactsAgreeOff A B [] (varsSet e.args)) :
+    okE A e = okE B e := by
   obtain ⟨op, _, args⟩ := e
   have hall := allExactB_congr args h
   simp only [okE]
@@ -160,25 +161,25 @@ theorem mem_shiftUp {k n : Nat} {R : LiveSet} : n ∈ shiftUp k R ↔ k ≤ n �
     exact ⟨n - k, hn, Nat.sub_add_cancel hk⟩
 
 theorem agreeOff_congrS {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R S S' : LiveSet}
-    (hS : ∀ i, i ∈ S' → i ∈ S) (h : AgreeOff A B R S) : AgreeOff A B R S' :=
+    (hS : ∀ i, i ∈ S' → i ∈ S) (h : FactsAgreeOff A B R S) : FactsAgreeOff A B R S' :=
   fun v hv hr => h v (hS _ hv) hr
 
 theorem agreeOff_mono {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R R' S : LiveSet}
-    (hR : ∀ i, i ∈ S → i ∉ R' → i ∉ R) (h : AgreeOff A B R S) : AgreeOff A B R' S :=
+    (hR : ∀ i, i ∈ S → i ∉ R' → i ∉ R) (h : FactsAgreeOff A B R S) : FactsAgreeOff A B R' S :=
   fun v hv hr => h v hv (hR _ hv hr)
 
 theorem agreeOff_push {Γ : Ctxt jasminDialect} {t : JasminTy} {A B : Facts Γ} {R R' S : LiveSet}
-    {i j : Info} (h : AgreeOff A B R (LiveSet.shift 1 S)) (h0 : 0 ∈ S → 0 ∉ R' → i = j)
+    {i j : Info} (h : FactsAgreeOff A B R (LiveSet.shift 1 S)) (h0 : 0 ∈ S → 0 ∉ R' → i = j)
     (hR : ∀ n, n + 1 ∉ R' → n ∉ R) :
-    AgreeOff (Facts.push (t := t) i A) (Facts.push j B) R' S := by
+    FactsAgreeOff (Facts.push (t := t) i A) (Facts.push j B) R' S := by
   intro s v hv hr
   cases v with
   | here => exact h0 hv hr
   | there v => exact h v (LiveSet.mem_shift.mpr hv) (hR _ hr)
 
 theorem agreeOff_appExact {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R : LiveSet} :
-    ∀ (cs : List JasminTy) {S : LiveSet}, AgreeOff A B R (LiveSet.shift cs.length S) →
-      AgreeOff (Facts.appExact cs A) (Facts.appExact cs B) (shiftUp cs.length R) S
+    ∀ (cs : List JasminTy) {S : LiveSet}, FactsAgreeOff A B R (LiveSet.shift cs.length S) →
+      FactsAgreeOff (Facts.appExact cs A) (Facts.appExact cs B) (shiftUp cs.length R) S
   | [], S, h => by
       refine agreeOff_mono (R := R) (fun i _ hi => ?_) (agreeOff_congrS (S := LiveSet.shift 0 S)
         (fun i hi => by simpa [LiveSet.mem_shift] using hi) h)
@@ -194,13 +195,13 @@ theorem agreeOff_appExact {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R : LiveSe
         rwa [show n + 1 - (cs.length + 1) = n - cs.length by omega]
 
 theorem agreeOff_appExact0 {Γ : Ctxt jasminDialect} {A B : Facts Γ} (cs : List JasminTy)
-    {S : LiveSet} (h : AgreeOff A B [] (LiveSet.shift cs.length S)) :
-    AgreeOff (Facts.appExact cs A) (Facts.appExact cs B) [] S :=
+    {S : LiveSet} (h : FactsAgreeOff A B [] (LiveSet.shift cs.length S)) :
+    FactsAgreeOff (Facts.appExact cs A) (Facts.appExact cs B) [] S :=
   fun v hv _ => agreeOff_appExact cs h v hv (by simp [shiftUp])
 
 /-- **The analysis reads the facts of the free variables only.** -/
 theorem okP_congr {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
-    ∀ {A B : Facts Γ}, AgreeOff A B [] (fvTree p).set → okP p A = okP p B := by
+    ∀ {A B : Facts Γ}, FactsAgreeOff A B [] (fvTree p).set → okP p A = okP p B := by
   induction p with
   | ret vs => intro A B h; exact allExactB_congr vs h
   | var e k ih =>
@@ -294,8 +295,8 @@ def okPT : FTree → {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
 
 theorem agreeOff_appExact_push {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R : LiveSet}
     (cs : List JasminTy) {t : JasminTy} {S : LiveSet}
-    (h : AgreeOff A B R (LiveSet.shift (cs.length + 1) S)) :
-    AgreeOff (Facts.appExact cs (Facts.push (t := t) .exact A))
+    (h : FactsAgreeOff A B R (LiveSet.shift (cs.length + 1) S)) :
+    FactsAgreeOff (Facts.appExact cs (Facts.push (t := t) .exact A))
       (Facts.appExact cs (Facts.push .exact B)) (shiftUp (cs.length + 1) R) S := by
   refine agreeOff_mono (fun i _ hi hR => hi ?_) (agreeOff_appExact cs (agreeOff_push
     (R' := shiftUp 1 R) (agreeOff_congrS (fun i hi => ?_) h) (fun _ _ => rfl) (fun n hn hr => ?_)))
@@ -369,11 +370,11 @@ theorem mem_filter_set {S R : LiveSet} {i : Nat} (hi : i ∈ S) :
 
 /-- The tainted indices a program reads keep the agreement of the full set. -/
 theorem agreeOff_filter {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R S : LiveSet}
-    (h : AgreeOff A B R S) : AgreeOff A B (R.filter fun r => S.contains r) S :=
+    (h : FactsAgreeOff A B R S) : FactsAgreeOff A B (R.filter fun r => S.contains r) S :=
   agreeOff_mono (fun _ hi hr hR => hr ((mem_filter_set hi).mpr hR)) h
 
 theorem agreeOff_nil_of_isEmpty {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R S : LiveSet}
-    (h : AgreeOff A B R S) (he : R.isEmpty = true) : AgreeOff A B [] S := by
+    (h : FactsAgreeOff A B R S) (he : R.isEmpty = true) : FactsAgreeOff A B [] S := by
   rw [List.isEmpty_iff] at he
   subst he
   exact h
@@ -381,7 +382,7 @@ theorem agreeOff_nil_of_isEmpty {Γ : Ctxt jasminDialect} {A B : Facts Γ} {R S 
 /-- **At fact maps that agree outside the tainted indices, where the analysis holds at the
     second, `okPT` is the analysis at the first.** -/
 theorem okPT_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
-    ∀ {A B : Facts Γ} {R : LiveSet}, AgreeOff A B R (fvTree p).set → okP p B = true →
+    ∀ {A B : Facts Γ} {R : LiveSet}, FactsAgreeOff A B R (fvTree p).set → okP p B = true →
       okPT (fvTree p) p A R = okP p A := by
   induction p with
   | ret vs =>
@@ -399,7 +400,7 @@ theorem okPT_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasmi
       split
       · rename_i he
         exact ((okP_congr _ (agreeOff_nil_of_isEmpty (agreeOff_filter h) he)).trans hB).symm
-      · have hf : AgreeOff A B (liveIn (fvTree (.var e k)).set R) (fvTree (.var e k)).set :=
+      · have hf : FactsAgreeOff A B (liveIn (fvTree (.var e k)).set R) (fvTree (.var e k)).set :=
           agreeOff_filter h
         simp only [fvTree, FTree.set_one] at hf
         have hB' := hB
@@ -434,7 +435,7 @@ theorem okPT_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasmi
       split
       · rename_i he
         exact ((okP_congr _ (agreeOff_nil_of_isEmpty (agreeOff_filter h) he)).trans hB).symm
-      · have hf : AgreeOff A B (liveIn (fvTree (.forLoop count inits body k)).set R)
+      · have hf : FactsAgreeOff A B (liveIn (fvTree (.forLoop count inits body k)).set R)
             (fvTree (.forLoop count inits body k)).set := agreeOff_filter h
         simp only [fvTree, FTree.set_two] at hf
         simp only [okP, Bool.and_eq_true] at hB
@@ -451,7 +452,7 @@ theorem okPT_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasmi
       split
       · rename_i he
         exact ((okP_congr _ (agreeOff_nil_of_isEmpty (agreeOff_filter h) he)).trans hB).symm
-      · have hf : AgreeOff A B (liveIn (fvTree (.ifThenElse cond thn els k)).set R)
+      · have hf : FactsAgreeOff A B (liveIn (fvTree (.ifThenElse cond thn els k)).set R)
             (fvTree (.ifThenElse cond thn els k)).set := agreeOff_filter h
         simp only [fvTree, FTree.set_three] at hf
         simp only [okP, Bool.and_eq_true] at hB
@@ -470,7 +471,7 @@ theorem okPT_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasmi
       split
       · rename_i he
         exact ((okP_congr _ (agreeOff_nil_of_isEmpty (agreeOff_filter h) he)).trans hB).symm
-      · have hf : AgreeOff A B (liveIn (fvTree (.whileLoop inits body k)).set R)
+      · have hf : FactsAgreeOff A B (liveIn (fvTree (.whileLoop inits body k)).set R)
             (fvTree (.whileLoop inits body k)).set := agreeOff_filter h
         simp only [fvTree, FTree.set_two] at hf
         simp only [okP, Bool.and_eq_true] at hB
@@ -487,7 +488,7 @@ theorem okPT_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasmi
       split
       · rename_i he
         exact ((okP_congr _ (agreeOff_nil_of_isEmpty (agreeOff_filter h) he)).trans hB).symm
-      · have hf : AgreeOff A B (liveIn (fvTree (.call fn args k)).set R)
+      · have hf : FactsAgreeOff A B (liveIn (fvTree (.call fn args k)).set R)
             (fvTree (.call fn args k)).set := agreeOff_filter h
         simp only [fvTree, FTree.set_one] at hf
         simp only [okP, Bool.and_eq_true] at hB
@@ -537,7 +538,7 @@ def maskElimFast {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasm
 
 /-- The fact maps `A.push i` and `A.push j` agree off the index `0`. -/
 theorem agreeOff_push_zero {Γ : Ctxt jasminDialect} {t : JasminTy} (A : Facts Γ) (i j : Info)
-    (S : LiveSet) : AgreeOff (Facts.push (t := t) i A) (Facts.push j A) [0] S := by
+    (S : LiveSet) : FactsAgreeOff (Facts.push (t := t) i A) (Facts.push j A) [0] S := by
   intro s v _ hr
   cases v with
   | here => exact absurd (List.mem_singleton_self _) hr

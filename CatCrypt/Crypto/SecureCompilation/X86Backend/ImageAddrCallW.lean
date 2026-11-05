@@ -1995,7 +1995,7 @@ theorem head_of_faB {q : String} (h : faB q = true) : q.toList.head? = some 'f' 
   · simp at h
 
 /-- A general-purpose name is no frame-array name. -/
-theorem faB_of_gpOk {r : String} (h : gpOk r = true) : faB r = false := by
+private theorem faB_eq_false_of_gpOk {r : String} (h : gpOk r = true) : faB r = false := by
   have hall : ∀ r ∈ DecodePrinted.gpList, faB r = false := by decide +kernel
   exact hall r (DecodePrinted.mem_gpList h)
 
@@ -2086,27 +2086,28 @@ theorem faB_names_of_narrowB {frame : String → Option (BitVec 64)}
               List.cons_append, List.nil_append, List.flatMap_cons, List.flatMap_nil,
               List.append_nil, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
               forall_eq] <;>
-            grind [faB_of_gpOk, faB_of_spillQsaveOff]
+            grind [faB_eq_false_of_gpOk, faB_of_spillQsaveOff]
         | leaF d q =>
           simp [AArm.instr, instrGateB_lea_reg] at hg
         | stx d B I V =>
           have hd := hstx d B I V rfl
           simp only [AArm.ok, Bool.and_eq_true] at h1
-          simp [AArm.instr, instrNames, opNames, hd, faB_of_gpOk, h1]
+          simp [AArm.instr, instrNames, opNames, hd, faB_eq_false_of_gpOk, h1]
         | st m q S =>
           simp only [AArm.ok, Bool.and_eq_true] at h1
-          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1, faB_of_spillQsaveOff h1.1.1.2]
+          simp [AArm.instr, instrNames, opNames, faB_eq_false_of_gpOk, h1,
+            faB_of_spillQsaveOff h1.1.1.2]
         | ld m D q =>
           simp only [AArm.ok, Bool.and_eq_true] at h1
-          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1,
+          simp [AArm.instr, instrNames, opNames, faB_eq_false_of_gpOk, h1,
             faB_of_spillQsaveOff h1.1.1.1.2]
         | cmpM c q =>
           simp only [AArm.ok, Bool.and_eq_true] at h1
-          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1,
+          simp [AArm.instr, instrNames, opNames, faB_eq_false_of_gpOk, h1,
             faB_of_isSpillOrQsave h1.1.1.1.2]
         | _ =>
           simp only [AArm.ok, Bool.and_eq_true] at h1
-          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1]
+          simp [AArm.instr, instrNames, opNames, faB_eq_false_of_gpOk, h1]
     | _ => simp [instrNames]
 
 /-- The gate of an instruction of the narrow route at the empty analysis gives `gateAtW`, for an

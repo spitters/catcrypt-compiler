@@ -359,14 +359,14 @@ section Spec
 variable {q : Nat} [Fact (Nat.Prime q)]
 
 /-- Reading back the index a `set!` wrote. -/
-theorem getD_set!_self (A : Array (ZMod q)) (j : Nat) (x : ZMod q)
+private theorem getD_set!_self_of_lt (A : Array (ZMod q)) (j : Nat) (x : ZMod q)
     (h : j < A.size) : (A.set! j x).getD j 0 = x := by
   rw [Array.set!_eq_setIfInBounds, Array.getD_eq_getD_getElem?,
     Array.getElem?_setIfInBounds_self_of_lt h]
   rfl
 
 /-- Reading back an index a `set!` did not write. -/
-theorem getD_set!_ne (A : Array (ZMod q)) (j i : Nat) (x : ZMod q)
+private theorem getD_set!_of_ne (A : Array (ZMod q)) (j i : Nat) (x : ZMod q)
     (h : j ≠ i) : (A.set! j x).getD i 0 = A.getD i 0 := by
   rw [Array.set!_eq_setIfInBounds, Array.getD_eq_getD_getElem?,
     Array.getElem?_setIfInBounds_ne h, ← Array.getD_eq_getD_getElem?]
@@ -458,16 +458,16 @@ theorem innerRun_spec (bs half : Nat) (hbs : bs = half + half) (hh : 0 < half)
       · rw [hres]
         by_cases h1 : i = block * bs + m + half
         · subst h1
-          rw [getD_set!_self _ _ _ (by simp [hsz]; omega), ite_eq_right (by omega),
+          rw [getD_set!_self_of_lt _ _ _ (by simp [hsz]; omega), ite_eq_right (by omega),
             ite_eq_left (by omega),
             show block * bs + m + half - half = block * bs + m from by omega,
             show block * bs + m + half - block * bs - half = m from by omega]
         · by_cases h0 : i = block * bs + m
           · subst h0
-            rw [getD_set!_ne _ _ _ _ (by omega),
-              getD_set!_self _ _ _ (by rw [hsz]; omega), ite_eq_left (by omega),
+            rw [getD_set!_of_ne _ _ _ _ (by omega),
+              getD_set!_self_of_lt _ _ _ (by rw [hsz]; omega), ite_eq_left (by omega),
               show block * bs + m - block * bs = m from by omega]
-          · rw [getD_set!_ne _ _ _ _ (Ne.symm h1), getD_set!_ne _ _ _ _ (Ne.symm h0),
+          · rw [getD_set!_of_ne _ _ _ _ (Ne.symm h1), getD_set!_of_ne _ _ _ _ (Ne.symm h0),
               hget i]
             split_ifs <;> first | rfl | omega
 

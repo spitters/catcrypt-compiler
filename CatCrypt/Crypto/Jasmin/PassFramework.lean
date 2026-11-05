@@ -235,7 +235,7 @@ theorem exprPass_lifting_joint (pass : PExpr → PExpr) (h : ExprPassCorrect pas
         simp only [mapInstrExprs, translateInstrR.eq_def]
         exact ⟨translateForLoop_map_eval pass h 0
           (fun env cmd sid => by simp [translateCmd.eq_def]) env sid v.var
-          (loopRange range) body, trivial⟩
+          (rangeIndices range) body, trivial⟩
       | Cwhile cb cond ca =>
         simp only [mapInstrExprs, translateInstrR.eq_def]
         exact ⟨trivial, trivial⟩
@@ -293,7 +293,7 @@ theorem exprPass_lifting_joint (pass : PExpr → PExpr) (h : ExprPassCorrect pas
       simp only [mapInstrExprs, translateInstrR.eq_def]
       exact ⟨translateForLoop_map_eval pass h (n + 1)
         (fun env cmd sid => (cmd_succ env cmd sid).1) env sid v.var
-        (loopRange range) body, trivial⟩
+        (rangeIndices range) body, trivial⟩
     | Cwhile cb cond ca =>
       simp only [mapInstrExprs, translateInstrR.eq_def]
       exact ⟨trivial, trivial⟩
@@ -440,7 +440,7 @@ theorem fuel_step_joint :
         simp only [fuelBoundInstr, fuelBoundInstr_fuelBoundList] at h; exact h
       exact ⟨translateForLoop_fuel_step (n + 1)
         (fun env cmd sid hb => cmd_step env cmd sid hb) env sid v.var
-        (loopRange range) body hbody, trivial⟩
+        (rangeIndices range) body hbody, trivial⟩
     | Cwhile => simp only [translateInstrR.eq_def]; exact ⟨trivial, trivial⟩
     | Ccall => simp only [translateInstrR.eq_def]; exact ⟨trivial, trivial⟩
 

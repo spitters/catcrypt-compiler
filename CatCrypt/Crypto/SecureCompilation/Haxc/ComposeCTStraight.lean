@@ -307,8 +307,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (phys)
     establishes at each call. Its premise, the halting of the calling body under the oracle
     of the blocks of `T` guarded by the preconditions of these interfaces from both entry
     states, is `NFEntry.call_halts_tab` at the same table. The hax instance is
-    `ct_of_compileARegion`; the Aeneas instance is stated at `aeneasEntry` (branch
-    `work/aeneas-entry`). -/
+    `ct_of_compileARegion`; the Aeneas instance is `aeneasEntry_compileR_ct`, stated at
+    `aeneasEntry`. -/
 theorem NFEntry.compileR_ct (E : NFEntry) (sec : _root_.Hax.FnSecrecy) (s : E.Src)
     (σ : AbiLayout) (fname : String) (P : Lprog) (bytes : List (BitVec 8))
     (hc : E.compileR s σ fname ((E.linked s).filterMap LinkedFn.calleeData) = some (P, bytes))

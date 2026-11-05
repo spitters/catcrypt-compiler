@@ -265,7 +265,7 @@ theorem aliasRegName_loopReg (d k : Nat) (out : String) :
   rw [ite_eq_right (by simpa using loopReg_ne_regName d k d)]
 
 /-- The model resolves every operand to a register. -/
-theorem exprArgs_go_reg (cd nArgs : Nat) {Γ : Ctxt jasminDialect} :
+private theorem exprArgs_go_argName_isReg (cd nArgs : Nat) {Γ : Ctxt jasminDialect} :
     ∀ {tys : List JasminTy} (hv : HVector (fun ty => Ctxt.Var Γ ty) tys),
       ∀ o ∈ exprArgs.go cd nArgs argName (fun _ => none) hv, ∃ r, o = .reg r
   | [], .nil => by simp [exprArgs.go]
@@ -277,7 +277,7 @@ theorem exprArgs_go_reg (cd nArgs : Nat) {Γ : Ctxt jasminDialect} :
       · unfold resolveVar
         dsimp only
         split <;> exact ⟨_, rfl⟩
-      · exact exprArgs_go_reg cd nArgs rest o ho
+      · exact exprArgs_go_argName_isReg cd nArgs rest o ho
 
 /-- **The alias list of the aliased body walk.** From an alias list resolving the store
     slots `S` to `out`, at a thread head that is the accumulator argument or a slot of `S`,
@@ -311,7 +311,7 @@ theorem foldl_aliasStepL_walk {d nInv : Nat} {invRegs : List String} {σ : Strin
         rfl
       rw [hw]
       simp only [renLcmd, List.map_cons, List.foldl_cons]
-      have hsrc := exprArgs_go_reg cd (nInv + 2) e.args
+      have hsrc := exprArgs_go_argName_isReg cd (nInv + 2) e.args
       rcases aliasStepL_binding σ (aliasRegName (regName d) out) d cd e.op
           (exprArgs cd (nInv + 2) argName (fun _ => none) e) hsrc l with
         ⟨hn, ha⟩ | ⟨b, hn, hb, ha⟩ | ⟨hn, hb⟩

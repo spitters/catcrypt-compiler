@@ -43,7 +43,7 @@ while IFS=$'\t' read -r job name cmd kind; do
   script="$(printf '%s' "$cmd" | awk '{print $2}')"
   if [ ! -f "$script" ]; then summary+="MISSING  $cmd"$'\n'; fails=$((fails+1)); continue; fi
   # A gate that starts a build is not a text scan; CI runs it in a build job.
-  if grep -qE '(^|[^A-Za-z_-])(lake (build|exe|env)|cargo |cmake |heavy-run\.sh)' "$script" \
+  if grep -qE '(^|[^A-Za-z_-])(lake (build|exe|env)|cargo |cmake )' "$script" \
      && ! grep -qE '^# *ci-gates-local: text-scan' "$script"; then
     summary+="skip     $cmd   (builds)"$'\n'; skipped=$((skipped+1)); continue
   fi

@@ -178,7 +178,7 @@ def bodySplitSeg (body : Lcmd) : Array (Option Nat) :=
     | _ => (st.1, st.2 + 1)) (#[], 0)).1
 
 /-- The register names an operand mentions. -/
-def LOperand.allNames : LOperand → List String
+def LOperand.mentionedNames : LOperand → List String
   | .reg n => [n]
   | .arr b _ => [b]
   | .imm _ => []
@@ -199,14 +199,14 @@ def splitFixedNames (body : Lcmd) : List String :=
   body.flatMap fun i =>
     match i.li_i with
     | .Lopn dsts opn srcs =>
-        if splitFixedOp opn then (dsts ++ srcs).flatMap LOperand.allNames
-        else (dsts.drop 1).flatMap LOperand.allNames ++
+        if splitFixedOp opn then (dsts ++ srcs).flatMap LOperand.mentionedNames
+        else (dsts.drop 1).flatMap LOperand.mentionedNames ++
           (dsts ++ srcs).flatMap fun o =>
             match o with
             | .reg _ => []
-            | o => o.allNames
-    | .Lcond c _ => c.allNames
-    | .Ligoto t => t.allNames
+            | o => o.mentionedNames
+    | .Lcond c _ => c.mentionedNames
+    | .Ligoto t => t.mentionedNames
     | .LstoreLabel d _ => [d]
     | .Lcall ra _ => ra.toList
     | _ => []

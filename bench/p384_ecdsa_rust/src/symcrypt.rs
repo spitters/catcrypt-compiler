@@ -122,7 +122,7 @@ unsafe impl Send for Api {}
 unsafe impl Sync for Api {}
 
 /// The module path: `P384_SYMCRYPT_LIB`, else the SymCrypt CMake build tree
-/// at `~/Claude/bench_refs/symcrypt`, located relative to this crate.
+/// `bench_refs/symcrypt` beside this repository, located relative to this crate.
 pub fn library_path() -> String {
     std::env::var("P384_SYMCRYPT_LIB").unwrap_or_else(|_| {
         concat!(

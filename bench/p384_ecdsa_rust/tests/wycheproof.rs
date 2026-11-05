@@ -32,10 +32,11 @@ const FILE: &str = "ecdsa_secp384r1_sha384_p1363_test.txt";
 
 fn vectors_path() -> PathBuf {
     let dir = std::env::var("WYCHEPROOF_DIR").unwrap_or_else(|_| {
-        format!(
-            "{}/Claude/bench_refs/boringssl/third_party/wycheproof_testvectors",
-            std::env::var("HOME").unwrap_or_default()
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../bench_refs/boringssl/third_party/wycheproof_testvectors"
         )
+        .to_string()
     });
     PathBuf::from(dir).join(FILE)
 }

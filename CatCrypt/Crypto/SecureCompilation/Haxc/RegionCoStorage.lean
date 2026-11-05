@@ -280,7 +280,7 @@ theorem argName_ne_of_gpOk {x : String} (h : gpOk x = true) (j : Nat) : x ≠ ar
   rw [head_argName] at this
   simp at this
 
-theorem copyName_succ_ne_argName (k j j' : Nat) :
+private theorem copyName_argName_succ_ne_argName (k j j' : Nat) :
     copyName (argName j') (k + 1) ≠ argName j := by
   intro h
   have h' := congrArg String.toList h
@@ -349,7 +349,7 @@ theorem regionCoCode_lopnDst_ne_argName_of {r : Exported}
         Option.some.injEq]
       · exact copyIdx_ne_argName j
       · exact copyTmp_ne_argName j
-      · exact copyName_succ_ne_argName k j j'
+      · exact copyName_argName_succ_ne_argName k j j'
 
 /-- **The code with the result copies of an export assigns no argument name**, when the
     export name of the result register of the layout is a general-purpose name

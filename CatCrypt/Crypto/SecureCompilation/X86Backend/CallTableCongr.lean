@@ -225,7 +225,7 @@ theorem segWalk_congr (cs : List IdxFact) {is : List LinstrRM} (h : ProcTable.Do
       · simp only [ht]
       · simp only [hm, ht]
 
-theorem mem_of_mem_bodyAt {B : List LinstrRM} {b : Block} {Tm : Term} {j : LinstrRM}
+private theorem mem_list_of_mem_bodyAt {B : List LinstrRM} {b : Block} {Tm : Term} {j : LinstrRM}
     (hj : j ∈ bodyAt B b Tm) : j ∈ B :=
   List.mem_of_mem_drop (List.mem_of_mem_take hj)
 
@@ -235,7 +235,7 @@ theorem blockInvOkP_congr {ann : List (List IdxFact)} {B : List LinstrRM}
   unfold blockInvOkP
   split
   · rfl
-  · rw [segWalk_congr _ (h.mono fun j hj => Or.inl (mem_of_mem_bodyAt hj))]
+  · rw [segWalk_congr _ (h.mono fun j hj => Or.inl (mem_list_of_mem_bodyAt hj))]
 
 /-- **The bounds check with calls is the same under tables that agree on the body.** -/
 theorem idxInvCheckPB_congr {entry : List IdxFact} {ann : List (List IdxFact)}

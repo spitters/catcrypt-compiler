@@ -28,7 +28,7 @@ proof by construction composed with `nfToRustM_sim`).
   a checked `+` of a literal, `cont` and `done`), read as an exit-flag `whileLoop`;
 * a range loop: `iterators.copy_arrays`, the Aeneas `loop` over the range `0..256` stepped by
   `IteratorRange.next`, whose step reads `src[i]` and writes it to `dst[i]`, read as a counted
-  `forLoop` (`Reify.loopRange`, through `loop_range` and `foldRangeAux`).
+  `forLoop` (`Reify.rangeForLoop`, through `loop_range` and `foldRangeAux`).
 
 ## Main results
 

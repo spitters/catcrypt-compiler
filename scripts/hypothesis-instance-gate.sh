@@ -149,9 +149,8 @@
 #   bash scripts/hypothesis-instance-gate.sh --instances  # the derived instance set
 #
 # Env:
-#   HYP_GATE_PREFIX   command prefix for the evaluator run, e.g.
-#                     "bash /path/to/heavy-run.sh" (a build-lock wrapper) to keep the Lean
-#                     process out of a memory-tight shell scope.
+#   HYP_GATE_PREFIX   command prefix for the evaluator run, e.g. a build-lock wrapper
+#                     that keeps the Lean process out of a memory-tight shell scope.
 #   LEAN_NUM_THREADS  bounds the concurrent Lean workers of the import build
 #                     (default 1 here).
 #   HYP_GATE_PROBE_OUT  a file holding a captured evaluator run, used in place of

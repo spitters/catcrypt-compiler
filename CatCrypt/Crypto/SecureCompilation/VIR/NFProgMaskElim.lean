@@ -286,7 +286,7 @@ theorem constOK_exact {s : JasminTy} (x : ⟦s⟧) : constOK .exact x := by
   cases s <;> trivial
 
 /-- An exact variable reads in the target what it reads in the source. -/
-theorem MRel.lookup_eq {Γ Δ : Ctxt jasminDialect} {A : Facts Γ} {ren : Ctxt.Hom Γ Δ}
+theorem MRel.lookup_ren_eq {Γ Δ : Ctxt jasminDialect} {A : Facts Γ} {ren : Ctxt.Hom Γ Δ}
     {V : Valuation Γ} {W : Valuation Δ} (h : MRel A ren V W) {s : JasminTy} (v : Var Γ s)
     (hv : (A v).relW = none) : (ren v).lookup W = v.lookup V :=
   rel_eq_of_relW hv (h v).1
@@ -300,7 +300,7 @@ theorem MRel.lookupArgs_eq {Γ Δ : Ctxt jasminDialect} {A : Facts Γ} {ren : Ct
   | _ :: _, .cons v vs, hv => by
       obtain ⟨h1, h2⟩ := Bool.and_eq_true_iff.mp hv
       change HVector.cons _ _ = HVector.cons _ _
-      rw [h.lookup_eq v (Option.isNone_iff_eq_none.mp h1), h.lookupArgs_eq vs h2]
+      rw [h.lookup_ren_eq v (Option.isNone_iff_eq_none.mp h1), h.lookupArgs_eq vs h2]
 
 /-- The relation extended by one binding. -/
 theorem MRel.push {Γ Δ : Ctxt jasminDialect} {A : Facts Γ} {ren : Ctxt.Hom Γ Δ}
@@ -455,7 +455,7 @@ theorem okOp_sound {Γ Δ : Ctxt jasminDialect} {A : Facts Γ} {ren : Ctxt.Hom �
       · rename_i m hm
         obtain ⟨hbe, hbm⟩ := maskWidth?_spec hm
         have hbv := hbm _ hb.2
-        have hbeq := hR.lookup_eq b hbe
+        have hbeq := hR.lookup_ren_eq b hbe
         simp only [maskInfo] at h
         refine ⟨?_, ?_⟩
         · change rel i (s := .reg 64) (JasminBinOp.apply .and (a.lookup V) (b.lookup V))
@@ -621,7 +621,7 @@ theorem denoteAt_maskElimGo (E : CallEnv jasminDialect) (fuel : Nat) {Γ : Ctxt 
         fun acc => ihk _ _ _ _ (MRel.appExact hR _ acc) hk
       simp only [NFProg.denoteAt] at hbd hkd
       simp only [maskElimGo, NFProg.denoteAt, NFProg.denote, hR.lookupArgs_eq inits hi,
-        hR.lookup_eq count hc, hbd, hkd]
+        hR.lookup_ren_eq count hc, hbd, hkd]
   | ifThenElse cond thn els k iht ihe ihk =>
       intro Δ A ren V W hR hok
       simp only [okP, Bool.and_eq_true, Option.isNone_iff_eq_none] at hok
@@ -632,7 +632,7 @@ theorem denoteAt_maskElimGo (E : CallEnv jasminDialect) (fuel : Nat) {Γ : Ctxt 
       have ht := iht A ren V W hR htn
       have he := ihe A ren V W hR hel
       simp only [NFProg.denoteAt] at hkd ht he
-      simp only [maskElimGo, NFProg.denoteAt, NFProg.denote, hR.lookup_eq cond hc, ht, he, hkd]
+      simp only [maskElimGo, NFProg.denoteAt, NFProg.denote, hR.lookup_ren_eq cond hc, ht, he, hkd]
   | whileLoop inits body k ihb ihk =>
       intro Δ A ren V W hR hok
       simp only [okP, Bool.and_eq_true] at hok

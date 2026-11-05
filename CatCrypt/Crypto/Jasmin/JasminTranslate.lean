@@ -252,7 +252,7 @@ def translateWriteLVals (sid : ScopeId) :
 /-! ## For-Loop -/
 
 /-- Generate loop index range. -/
-def loopRange (r : Range) : List Int :=
+def rangeIndices (r : Range) : List Int :=
   match r.dir with
   | .UpTo => (List.range (r.hi - r.lo)).map fun j => ((j + r.lo : Nat) : Int)
   | .DownTo => (List.range (r.hi - r.lo)).map fun j => ((r.hi - 1 - j : Nat) : Int)
@@ -284,7 +284,7 @@ def translateInstrR (env : TransEnv) (sid : ScopeId) (fuel : Nat) :
         | _ => thenResult.code }
   | .Cfor v range body =>
     { newSid := sid,
-      code := translateForLoop env sid v.var (loopRange range) body fuel }
+      code := translateForLoop env sid v.var (rangeIndices range) body fuel }
   | .Cwhile _ _ _ => { newSid := sid, code := .fail }
   | .Ccall _ii lvs fn args =>
     { newSid := sid,

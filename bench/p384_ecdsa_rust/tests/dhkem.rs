@@ -7,8 +7,8 @@
 //! §7.1.2 serialises them as 48 big-endian bytes.  Every test converts
 //! explicitly with `dhkem_kdf::sk_le_from_be` / `sk_be_from_le`.
 //!
-//! No official DHKEM(P-384) known-answer vectors exist on this machine: the
-//! CFRG `test-vectors.json` copy in `~/Claude/libcrux/tests` carries KEM ids
+//! No official DHKEM(P-384) known-answer vectors are used: the CFRG
+//! `test-vectors.json` in the `tests` directory of libcrux carries KEM ids
 //! 0x0010, 0x0012, 0x0020 and 0x0021 only, BoringSSL's HPKE has no P-384
 //! KEM, and hpke-rs 0.7.0 ships no test data.  Agreement across
 //! implementations is the evidence here.

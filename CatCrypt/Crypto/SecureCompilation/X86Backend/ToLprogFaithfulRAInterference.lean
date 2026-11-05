@@ -454,16 +454,16 @@ variable {items : List (Nat × Nat × Nat)} {uses : Array Nat} {univ : Nat}
 /-- The items of the scan with splitting are a permutation of the items followed by the
     pieces. -/
 theorem splitScanInput_perm :
-    (splitScanInput items uses univ cands).1.Perm (items ++ splitPieces univ cands) := by
+    (splitScanInput items uses univ cands).1.Perm (items ++ splitIntervalPieces univ cands) := by
   simp only [splitScanInput, kernelMergeSort_eq]
   exact List.mergeSort_perm _ _
 
 /-- A piece of the split is the interval of slot `univ + j` over the range of candidate
     `j`. -/
-theorem mem_splitPieces {it : Nat × Nat × Nat} :
-    it ∈ splitPieces univ cands
+theorem mem_splitIntervalPieces {it : Nat × Nat × Nat} :
+    it ∈ splitIntervalPieces univ cands
       ↔ ∃ j c, cands[j]? = some c ∧ it = (univ + j, c.2.1, c.2.2.1) := by
-  simp only [splitPieces, List.mem_map]
+  simp only [splitIntervalPieces, List.mem_map]
   constructor
   · rintro ⟨⟨c, j⟩, hm, rfl⟩
     exact ⟨j, c, List.mem_zipIdx_iff_getElem?.mp hm, rfl⟩
@@ -493,7 +493,7 @@ theorem splitScanInput_countP (hlt : ∀ it ∈ items, it.1 < univ) :
     List.countP_eq_length.mpr (fun it hit => by
       rw [splitScanInput_parent_lt (hlt it hit)]; rfl),
     List.countP_eq_zero.mpr (fun it hit => by
-      obtain ⟨j, c, hc, rfl⟩ := mem_splitPieces.mp hit
+      obtain ⟨j, c, hc, rfl⟩ := mem_splitIntervalPieces.mp hit
       rw [splitScanInput_parent_piece hc]
       simp)]
   simp
@@ -516,7 +516,7 @@ theorem splitScanInput_range {R : Nat → Nat × Nat} (hlt : ∀ it ∈ items, i
   rcases List.mem_append.mp (splitScanInput_perm.mem_iff.mp hit) with h | h
   · rw [splitRange, ite_eq_left (hlt it h)]
     exact hR it h
-  · obtain ⟨j, c, hc, rfl⟩ := mem_splitPieces.mp h
+  · obtain ⟨j, c, hc, rfl⟩ := mem_splitIntervalPieces.mp h
     simp only [splitRange, Nat.not_lt.mpr (Nat.le_add_right univ j), ite_false,
       Nat.add_sub_cancel_left, hc]
 
@@ -534,10 +534,10 @@ theorem splitScanInput_sorted (hlt : ∀ it ∈ items, it.1 < univ)
     refine List.pairwise_append.mpr ⟨hnd, ?_, ?_⟩
     · rw [List.pairwise_iff_getElem]
       intro i k hi hk hik
-      simp only [splitPieces, List.getElem_map, List.getElem_zipIdx]
+      simp only [splitIntervalPieces, List.getElem_map, List.getElem_zipIdx]
       omega
     · intro a ha b hb
-      obtain ⟨j, c, -, rfl⟩ := mem_splitPieces.mp hb
+      obtain ⟨j, c, -, rfl⟩ := mem_splitIntervalPieces.mp hb
       have := hlt a ha
       simp only []
       omega

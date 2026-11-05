@@ -22,7 +22,7 @@ destinations, and keeps no guards, which `posOK` does not read.
 The carried state `FSt` holds the symbolic registers and arrays in hash maps, so a lookup
 costs a hash-map access and not one test per write since the start of the block. A step
 runs `symStep` on the state `FSt.toSSt` the maps describe and inserts the at most two
-registers and array names the step writes (`FSt.upd`), which the frame lemma `symStep_frame`
+registers and array names the step writes (`FSt.upd`), which the frame lemma `frameT_of_symStep`
 justifies. `stepOut` takes both states apart before it inserts, so the closures of the
 returned state, which read the maps, are released and the maps are updated in place.
 Symbolic words share their subterms in memory, and the comparisons of `siteOK` run through
@@ -61,7 +61,7 @@ unchanged.
 
 ## Main results
 
-* `symStep_frame` — a symbolic step changes only the first two written registers and array
+* `frameT_of_symStep` — a symbolic step changes only the first two written registers and array
   names.
 * `FSt.toSSt_upd` — the hash-map state after a step describes the state `symStep` returns.
 * `posPass_drop` — the forward pass from position `k` equals the per-position checks from `k`.
@@ -239,7 +239,7 @@ theorem symWide_frame {w : WideOp} {ss : SSt} {ss' : SSt} {gs : List SG}
       · cases h
 
 /-- **A symbolic step changes at most the first two written registers and array names.** -/
-theorem symStep_frame (i : LinstrRM) {ss : SSt} {ss' : SSt} {gs : List SG}
+private theorem frameT_of_symStep (i : LinstrRM) {ss : SSt} {ss' : SSt} {gs : List SG}
     (h : symStep i ss = .ok ss' gs) : FrameT ss ss' := by
   unfold symStep at h
   split at h
@@ -682,7 +682,7 @@ theorem nextF_EA (E : List String) {o : FOut} {l : Option (Option String)} {i : 
         dsimp only
         cases hs : symStep i F.toSSt with
         | ok ss' g =>
-            have hf := symStep_frame i hs
+            have hf := frameT_of_symStep i hs
             simp only [stepOut_eq, FOut.EA, FSt.toSSt_upd hf]
             exact all_w64_frame hf hall
         | fail => trivial
@@ -699,7 +699,7 @@ theorem nextF_toS (E : List String) (o : FOut) (i : LinstrRM) :
     | ok F ea =>
         simp only [FOut.toS, symSnoc]
         cases h : symStep i F.toSSt with
-        | ok ss' g => simp only [stepOut_eq, forgetG, FSt.toSSt_upd (symStep_frame i h)]
+        | ok ss' g => simp only [stepOut_eq, forgetG, FSt.toSSt_upd (frameT_of_symStep i h)]
         | fail => rfl
         | unk => rfl
     | fail => rfl

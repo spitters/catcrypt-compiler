@@ -46,7 +46,7 @@ lemma proved once:
 * a variable: `Lookup`, the position of a value in the valuation;
 * an exit-flag loop `loop b init`: `Reify.loop`, a `whileLoop`;
 * a range loop `loop F (⟨0, n⟩, acc)` whose body steps the range by `IteratorRange.next`:
-  `Reify.loopRange`, a counted `forLoop` with the bound `n` as trip count and the range index
+  `Reify.rangeForLoop`, a counted `forLoop` with the bound `n` as trip count and the range index
   as trip index. Its hypothesis on the body is `range_body` (through `next_usize`) with the
   step of the body split off its final continuation by `tailCont_bind` and `tailCont_ok`; the
   loop is `foldRangeAux` of the step by `loop_range`, and the fold is the counted loop by
@@ -80,7 +80,7 @@ function. There is no definitional check of the whole term.
 * `readCmp`, `CmpProp.not`, `CmpOp.aen_neg`, `readBool`, `readBit`, `readNotBit`: the conditions
 * `Reify.letE`, `Reify.letLit`: a binding the program reads no further
 * `Reify.argBit`: a Boolean argument
-* `foldRange_reify`, `range_body`, `Reify.loopRange`: the range loop
+* `foldRange_reify`, `range_body`, `Reify.rangeForLoop`: the range loop
 * `Reify.toDenote`, `ReifyG.toDenote`: from the reading to the compiler's semantics
 -/
 
@@ -1369,7 +1369,7 @@ theorem tailCont_bind {α σ R : Type} (r : R) (m : RustM α)
     bound, is the counted loop of `pb`: the bound `n` is bound as a literal and is the trip
     count, the trip index is the range index. The proof is `loop_range` and
     `foldRange_reify`. -/
-theorem Reify.loopRange {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeVal.nty σ)}
+theorem Reify.rangeForLoop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeVal.nty σ)}
     {pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: .word 64 :: Γ) [AeVal.nty σ]}
     (F : core.ops.range.Range Usize × σ →
       RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
@@ -1498,7 +1498,7 @@ meta partial def tailCont (r M : Expr) : MetaM (Expr × Expr) := do
     stepped range{indentExpr M}"
 
 /-- The step `f` of the body `F` of a range loop over `⟨_, n⟩` with states of type `σ`, and the
-    proof of the hypothesis `hF` of `Reify.loopRange`: the body at `(⟨s, n⟩, acc)` is unfolded by
+    proof of the hypothesis `hF` of `Reify.rangeForLoop`: the body at `(⟨s, n⟩, acc)` is unfolded by
     the equation lemma of the definition it calls, its bind of `IteratorRange.next` is
     `range_body`, whose continuation at `none` is done with `acc` and at `some i` and the
     stepped range `r` is the chain `f acc i` continued with `r` (`tailCont`). -/
@@ -1679,7 +1679,7 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
             if p.containsFVar i.fvarId! || p.containsFVar acc.fvarId! then
               throwError "reifyAeneas%: the program of the range loop step depends on its state"
             mkLambdaFVars #[i, acc] prf
-        return ← mkAppM ``Reify.loopRange #[body, n, acc0, f, V, hF, hb]
+        return ← mkAppM ``Reify.rangeForLoop #[body, n, acc0, f, V, hF, hb]
     let Es ← mkAppOptM ``stepVal #[some σ, none]
     return ← mkAppM ``Reify.loop #[body, init, V, ← readUnder σ Es body V]
   if let some c ← litOf m then

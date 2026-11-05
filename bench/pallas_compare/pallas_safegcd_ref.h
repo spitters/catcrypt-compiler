@@ -7,7 +7,8 @@
  *     void pallas_safegcd_invert(uint64_t out[4], const uint64_t x[4]);
  *
  * The shim is a one-line wrapper; the verified body lives in
- * `~/Claude/BLS/AUCurves/curve25519-jasmin-rs/src/safegcd_pallas.rs`
+ * `src/safegcd_pallas.rs` of the AUCurves crate `curve25519-jasmin-rs` (a checkout at
+ * `BLS/AUCurves/` beside this repository)
  * (10 outer × 59 inner = 590 divsteps ≥ Theorem 1 bound 588 for the
  * 255-bit base prime).
  *

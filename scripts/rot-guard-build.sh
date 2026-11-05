@@ -43,21 +43,26 @@
 # `--affected` is the check for a change in progress; `--build` is the full sweep,
 # for CI and before a release.
 #
-# On a machine whose builds share the heavy-run lock, take the lock per lake
-# invocation, through the prefix, and run this script UNWRAPPED:
+# On a machine whose builds share a lock taken by a wrapper command, take the lock per
+# lake invocation, through the prefix, and run this script UNWRAPPED:
 #
-#   ROT_GUARD_PREFIX="/path/to/heavy-run.sh env LEAN_NUM_THREADS=1" \
+#   ROT_GUARD_PREFIX="/path/to/lock-wrapper env LEAN_NUM_THREADS=1" \
+#   ROT_GUARD_LOCK=/path/to/the/lock/file \
 #     bash scripts/rot-guard-build.sh --affected
 #
 # The lock is then released after every batch, so other builds get in between
-# batches. Wrapping the script itself in heavy-run.sh holds the lock for the whole
-# run, and doing both deadlocks; the script refuses that combination.
+# batches. Wrapping the script itself in the lock wrapper holds the lock for the whole
+# run, and doing both deadlocks; with ROT_GUARD_LOCK set the script refuses that
+# combination.
 #
 # Env:
 #   ROT_GUARD_MANIFEST         manifest path (default scripts/rot-guard/build-roots.txt)
 #   ROT_GUARD_PREFIX           command prefix for each build invocation, e.g.
 #                              "env LEAN_NUM_THREADS=1" to bound the number of
 #                              concurrent workers on a memory-tight box.
+#   ROT_GUARD_LOCK             the lock file a lock wrapper in ROT_GUARD_PREFIX takes on
+#                              descriptor 9; the script refuses to run with a prefix when
+#                              it already holds that lock (default: no check).
 #   ROT_GUARD_BATCH            roots per lake invocation for --affected (default 16).
 #   ROT_GUARD_WRITE_BASELINE=1 rewrite the orphan baseline from the current tree.
 #   ROT_GUARD_WRITE_MANIFEST=1 regenerate the manifest from the current import graph.
@@ -109,16 +114,14 @@ import_edges() {
 # interrupted run resumes where it stopped.
 build_mods() {
   local list="$1" batch="$2" prefix="${ROT_GUARD_PREFIX:-}" total fail=0 i=0 ec b
-  # A prefix that takes the heavy-run lock, under a process that already holds
-  # it, waits on itself for ever. heavy-run.sh holds the lock on descriptor 9.
-  case "$prefix" in
-    *heavy-run*)
-      if [ "$(readlink "/proc/$$/fd/9" 2>/dev/null)" = "${TMPDIR:-/tmp}/catcrypt-heavy-build.lock" ]; then
-        echo "rot-guard: this script already runs under the heavy-run lock, and ROT_GUARD_PREFIX" >&2
-        echo "  takes it again, which deadlocks. Run the script unwrapped." >&2
-        return 2
-      fi ;;
-  esac
+  # A prefix that takes the lock ROT_GUARD_LOCK, under a process that already holds it
+  # on descriptor 9, waits on itself for ever.
+  if [ -n "$prefix" ] && [ -n "${ROT_GUARD_LOCK:-}" ] \
+     && [ "$(readlink "/proc/$$/fd/9" 2>/dev/null)" = "$ROT_GUARD_LOCK" ]; then
+    echo "rot-guard: this script already holds the lock ROT_GUARD_LOCK, and ROT_GUARD_PREFIX" >&2
+    echo "  takes it again, which deadlocks. Run the script unwrapped." >&2
+    return 2
+  fi
   total=$(wc -l < "$list")
   rm -f "$tmp"/batch.*
   split -l "$batch" "$list" "$tmp/batch."

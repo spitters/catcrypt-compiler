@@ -1,7 +1,8 @@
 # BN254 (alt_bn128) Fp BY/safegcd inversion bench (AUCurves safegcd_bn254).
 #
 # Headline: AUCurves' verified-CT Bernstein-Yang divstep inverter
-#   ~/Claude/BLS/AUCurves/curve25519-jasmin-rs/src/safegcd_bn254.rs
+#   src/safegcd_bn254.rs of the AUCurves crate curve25519-jasmin-rs, read by
+#   shim/src/lib.rs from a checkout at BLS/AUCurves/ beside this repository
 #   (bn254_invert_divstep_sat), re-exported via the staticlib shim in
 #   shim/ under the C symbol `safegcd_bn254_invert`.
 #

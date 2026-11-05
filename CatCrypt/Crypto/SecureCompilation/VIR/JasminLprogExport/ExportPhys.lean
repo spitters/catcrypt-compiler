@@ -941,7 +941,8 @@ def splitCands (tr : List PhysEvent) (univ : Nat) (cfg : SplitCfg) :
 
 /-- The pieces of the split as intervals of the scan: candidate `j` of `cands` as the interval
     of slot `univ + j` over the range from its first to its last touch. -/
-def splitPieces (univ : Nat) (cands : List (Nat × Nat × Nat × Nat)) : List (Nat × Nat × Nat) :=
+def splitIntervalPieces (univ : Nat) (cands : List (Nat × Nat × Nat × Nat)) :
+    List (Nat × Nat × Nat) :=
   cands.zipIdx.map fun (c, j) => (univ + j, c.2.1, c.2.2.1)
 
 /-- The input of the scan with splitting, from the live items `items`, the touch counts `uses`
@@ -954,7 +955,7 @@ def splitScanInput (items : List (Nat × Nat × Nat)) (uses : Array Nat) (univ :
     List (Nat × Nat × Nat) × Array Nat × (Nat → Option Nat) :=
   let parents : Array Nat := (cands.map Prod.fst).toArray
   (kernelMergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1))
-    (items ++ splitPieces univ cands),
+    (items ++ splitIntervalPieces univ cands),
    uses ++ (cands.map fun c => c.2.2.2).toArray,
    fun s => if univ ≤ s then parents[s - univ]? else none)
 

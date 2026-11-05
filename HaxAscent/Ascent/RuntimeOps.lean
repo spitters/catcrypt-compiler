@@ -647,11 +647,11 @@ theorem Ne_arr (a b : Array Int) :
     Leaf.orElse_of_none (leaf2_bool_none _ _ fun _ h => Value.noConfusion h)]
   exact leaf2_apply _ a b
 
-theorem and_bool (x y : Bool) :
+theorem band_bool (x y : Bool) :
     runtimeBuiltins base "&&" [.bool x, .bool y] = some (.bool (Hax.band x y)) :=
   (runtimeBuiltins_of_lookup rfl).trans (leaf2_apply _ x y)
 
-theorem or_bool (x y : Bool) :
+theorem bor_bool (x y : Bool) :
     runtimeBuiltins base "||" [.bool x, .bool y] = some (.bool (Hax.bor x y)) :=
   (runtimeBuiltins_of_lookup rfl).trans (leaf2_apply _ x y)
 

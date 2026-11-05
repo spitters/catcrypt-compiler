@@ -3056,7 +3056,8 @@ theorem regExposed_fold (is : List LinstrR) :
 
 /-- A name of `regExposed is` is read by an instruction of `is` before which no instruction
     writes it. -/
-theorem mem_regExposed {is : List LinstrR} {x : String} (h : x ∈ regExposed is) :
+private theorem exists_first_read_of_mem_regExposed {is : List LinstrR} {x : String}
+    (h : x ∈ regExposed is) :
     ∃ m, m < is.length ∧ (∃ i, is[m]? = some i ∧ x ∈ regReads i)
       ∧ ∀ m', m' < m → ∀ i', is[m']? = some i' → x ∉ regWrites i' := by
   rcases regExposed_fold is [] [] x h with h | ⟨-, h⟩
@@ -3103,7 +3104,7 @@ theorem exposed_mustW {E : String → Prop} {code : List LinstrRM} (hD : DefInit
     (hp : findLabelMem l code = some p) (hpk : p < k) {x : String}
     (hx : x ∈ regExposed (((code.drop p).take (k - p)).map Prod.fst)) :
     E x ∨ MustW code k x := by
-  obtain ⟨m, hm, ⟨w, hw, hxr⟩, hnw⟩ := mem_regExposed hx
+  obtain ⟨m, hm, ⟨w, hw, hxr⟩, hnw⟩ := exists_first_read_of_mem_regExposed hx
   simp only [List.length_map, List.length_take, List.length_drop] at hm
   have hlen : k < code.length := (List.getElem?_eq_some_iff.mp hk).1
   rw [List.getElem?_map, List.getElem?_take_of_lt (by omega), List.getElem?_drop] at hw
@@ -3192,7 +3193,8 @@ theorem Cert.pLiveR {E : String → Prop} {code : List LinstrRM} {D : Nat → St
       · exact Or.inr (Or.inl h)
 
 /-- A name live at the position of a label is live at the next position. -/
-theorem pLiveR_label {code : List LinstrRM} {outs : List String} {p : Nat} {ip : LinstrRM}
+private theorem pLiveR_succ_of_labelOf {code : List LinstrRM} {outs : List String} {p : Nat}
+    {ip : LinstrRM}
     {l : LLabel} (hp : code[p]? = some ip) (hl : labelOf? ip.1 = some l) {r : String}
     (h : RegionAllocMapComplete.PLiveR code outs p r) :
     RegionAllocMapComplete.PLiveR code outs (p + 1) r := by
@@ -3229,7 +3231,7 @@ theorem tab_mustW {E : String → Prop} {code : List LinstrRM} (hD : DefInit E c
     {x : String} (hx : x ∈ tabAt (liveRegTab code []) p) :
     MustW code k x ∨ E x ∨ ArrOnly code x := by
   obtain ⟨ip, hip, hlp⟩ := findLabelMem_label hp
-  have h1 := pLiveR_label hip hlp (RegionAllocMapComplete.pLiveR_of_liveRegTab hx)
+  have h1 := pLiveR_succ_of_labelOf hip hlp (RegionAllocMapComplete.pLiveR_of_liveRegTab hx)
   rcases hD.cert.pLiveR (outs := []) (by simp) h1 with h | h
   · exact Or.inl (MustW.loop (loopHeader_of_nest hN ⟨i, l, hk, hl, hp, hpk⟩) hpk h)
   · exact Or.inr h

@@ -864,8 +864,8 @@ theorem appBool2_ok (base : Hax.Builtins) {f : String} {a b r : AVal}
       cases h
       unfold boolRt? at hg
       split at hg <;> cases hg
-      · exact Hax.Ascent.RuntimeOps.and_bool x y
-      · exact Hax.Ascent.RuntimeOps.or_bool x y
+      · exact Hax.Ascent.RuntimeOps.band_bool x y
+      · exact Hax.Ascent.RuntimeOps.bor_bool x y
       · exact Hax.Ascent.RuntimeOps.Eq_bool x y
       · exact Hax.Ascent.RuntimeOps.Ne_bool x y
     · cases h

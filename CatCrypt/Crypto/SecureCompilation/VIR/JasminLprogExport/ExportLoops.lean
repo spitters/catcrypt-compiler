@@ -626,10 +626,10 @@ emits the **System V AMD64** sequence around a real `Lcall`:
 
 The marshalling `MOV`s name the ABI arg registers literally, so they survive
 the physical RA (the linear scan never reassigns a literal hardware register).
-They form a parallel move (`parMoves`): a move into an argument register is
+They form a parallel move (`sequentialMoves`): a move into an argument register is
 emitted only after every other move that reads that register, and a cycle of
 argument registers is broken through `RAX`, so every argument register receives
-the value its operand has before the sequence (`runMoves_parMoves`). An out call,
+the value its operand has before the sequence (`runMoves_sequentialMoves`). An out call,
 whose callee writes its result through the pointer of its first argument, has no
 copy of `RAX` into its destination, which keeps that pointer.
 
@@ -672,23 +672,23 @@ def substReg (d t : String) : LOperand → LOperand
     when every move is blocked, the destination `d` of the first move is copied into
     `tmp` and every source register `d` is replaced by `tmp`, provided no pending
     move writes or reads `tmp`. `none` when that proviso fails or the fuel runs out. -/
-def parMovesAux (tmp : String) : Nat → List (String × LOperand) →
+def sequentialMovesAux (tmp : String) : Nat → List (String × LOperand) →
     Option (List (String × LOperand))
   | _, [] => some []
   | 0, _ :: _ => none
   | fuel + 1, m0 :: ms0 =>
       let ms := m0 :: ms0
       match ms.find? (fun m => !moveBlockedB ms m.1) with
-      | some m => (parMovesAux tmp fuel (ms.filter fun m' => m'.1 != m.1)).map (m :: ·)
+      | some m => (sequentialMovesAux tmp fuel (ms.filter fun m' => m'.1 != m.1)).map (m :: ·)
       | none =>
           if ms.any (fun m => m.1 == tmp || (marshalReads m.2).contains tmp) then none
-          else (parMovesAux tmp fuel (ms.map fun m => (m.1, substReg m0.1 tmp m.2))).map
+          else (sequentialMovesAux tmp fuel (ms.map fun m => (m.1, substReg m0.1 tmp m.2))).map
             ((tmp, .reg m0.1) :: ·)
 
-/-- The parallel move of `ms` through `tmp` (`parMovesAux` with fuel twice the number of
+/-- The parallel move of `ms` through `tmp` (`sequentialMovesAux` with fuel twice the number of
     moves, plus one), or `ms` in order when it fails. -/
-def parMoves (tmp : String) (ms : List (String × LOperand)) : List (String × LOperand) :=
-  (parMovesAux tmp (2 * ms.length + 1) ms).getD ms
+def sequentialMoves (tmp : String) (ms : List (String × LOperand)) : List (String × LOperand) :=
+  (sequentialMovesAux tmp (2 * ms.length + 1) ms).getD ms
 
 /-- The run of a list of moves, in order, on the register file `R`, with `ev R o` the
     value of the operand `o` at `R`. -/
@@ -712,26 +712,26 @@ theorem eq_of_mem_of_fst_eq {β γ : Type} : ∀ {l : List (β × γ)}, (l.map P
 
 /-- **Soundness of the parallel move.** Let `ev` read a register as its value and
     let the value of an operand depend only on the names it reads (`marshalReads`).
-    If `parMovesAux` returns `out` on moves `ms` with distinct destinations, none of
+    If `sequentialMovesAux` returns `out` on moves `ms` with distinct destinations, none of
     them `tmp`, then the run of `out` from `R` holds, at the destination of each move
     of `ms`, the value of its source at `R`, and keeps every register that is neither
     a destination nor `tmp`. -/
-theorem runMoves_parMovesAux {α : Type} {ev : (String → α) → LOperand → α}
+theorem runMoves_sequentialMovesAux {α : Type} {ev : (String → α) → LOperand → α}
     (hreg : ∀ R x, ev R (.reg x) = R x)
     (hloc : ∀ R R' o, (∀ x ∈ marshalReads o, R x = R' x) → ev R o = ev R' o)
     (tmp : String) :
     ∀ (fuel : Nat) (ms : List (String × LOperand)) (out : List (String × LOperand))
-      (R : String → α), parMovesAux tmp fuel ms = some out → (ms.map Prod.fst).Nodup →
+      (R : String → α), sequentialMovesAux tmp fuel ms = some out → (ms.map Prod.fst).Nodup →
       (∀ m ∈ ms, m.1 ≠ tmp) →
       (∀ m ∈ ms, runMoves ev R out m.1 = ev R m.2)
         ∧ ∀ x, x ∉ ms.map Prod.fst → x ≠ tmp → runMoves ev R out x = R x
   | fuel, [], out, R, h, _, _ => by
       obtain rfl : out = [] := by
-        cases fuel <;> simp only [parMovesAux, Option.some.injEq] at h <;> exact h.symm
+        cases fuel <;> simp only [sequentialMovesAux, Option.some.injEq] at h <;> exact h.symm
       exact ⟨fun _ hm => absurd hm List.not_mem_nil, fun _ _ _ => rfl⟩
   | 0, _ :: _, _, _, h, _, _ => by cases h
   | fuel + 1, m0 :: ms0, out, R, h, hnd, htmp => by
-      simp only [parMovesAux] at h
+      simp only [sequentialMovesAux] at h
       split at h
       · rename_i m hf
         obtain ⟨out', h', rfl⟩ := Option.map_eq_some_iff.mp h
@@ -745,7 +745,7 @@ theorem runMoves_parMovesAux {α : Type} {ev : (String → α) → LOperand → 
           (hsub.map Prod.fst).nodup hnd
         have htmp' : ∀ m' ∈ ms.filter (fun m' => m'.1 != m.1), m'.1 ≠ tmp :=
           fun m' hm' => htmp m' (hsub.subset hm')
-        obtain ⟨ih1, ih2⟩ := runMoves_parMovesAux hreg hloc tmp fuel _ out'
+        obtain ⟨ih1, ih2⟩ := runMoves_sequentialMovesAux hreg hloc tmp fuel _ out'
           (fun x => if x = m.1 then ev R m.2 else R x) h' hnd' htmp'
         have hdst : m.1 ∉ (ms.filter fun m' => m'.1 != m.1).map Prod.fst := by
           simp
@@ -779,7 +779,7 @@ theorem runMoves_parMovesAux {α : Type} {ev : (String → α) → LOperand → 
             intro m' hm'
             obtain ⟨m, hm, rfl⟩ := List.mem_map.mp hm'
             exact htmp m hm
-          obtain ⟨ih1, ih2⟩ := runMoves_parMovesAux hreg hloc tmp fuel _ out'
+          obtain ⟨ih1, ih2⟩ := runMoves_sequentialMovesAux hreg hloc tmp fuel _ out'
             (fun x => if x = tmp then ev R (.reg m0.1) else R x) h' hnd' htmp'
           refine ⟨fun m hm => ?_, fun x hx hxt => ?_⟩
           · rw [runMoves, ih1 (m.1, substReg m0.1 tmp m.2) (List.mem_map_of_mem hm)]
@@ -811,38 +811,38 @@ theorem runMoves_parMovesAux {α : Type} {ev : (String → α) → LOperand → 
           · rw [runMoves, ih2 x (by rw [hmap]; exact hx) hxt]
             simp [hxt]
 
-/-- **Soundness of `parMoves`** when the parallel move succeeds: the run of
-    `parMoves tmp ms` holds, at the destination of each move of `ms`, the value of its
+/-- **Soundness of `sequentialMoves`** when the parallel move succeeds: the run of
+    `sequentialMoves tmp ms` holds, at the destination of each move of `ms`, the value of its
     source before the run, and keeps every register that is neither a destination nor
     `tmp`. -/
-theorem runMoves_parMoves {α : Type} {ev : (String → α) → LOperand → α}
+theorem runMoves_sequentialMoves {α : Type} {ev : (String → α) → LOperand → α}
     (hreg : ∀ R x, ev R (.reg x) = R x)
     (hloc : ∀ R R' o, (∀ x ∈ marshalReads o, R x = R' x) → ev R o = ev R' o)
     {tmp : String} {ms : List (String × LOperand)}
-    (hok : (parMovesAux tmp (2 * ms.length + 1) ms).isSome) (hnd : (ms.map Prod.fst).Nodup)
+    (hok : (sequentialMovesAux tmp (2 * ms.length + 1) ms).isSome) (hnd : (ms.map Prod.fst).Nodup)
     (htmp : ∀ m ∈ ms, m.1 ≠ tmp) (R : String → α) :
-    (∀ m ∈ ms, runMoves ev R (parMoves tmp ms) m.1 = ev R m.2)
-      ∧ ∀ x, x ∉ ms.map Prod.fst → x ≠ tmp → runMoves ev R (parMoves tmp ms) x = R x := by
+    (∀ m ∈ ms, runMoves ev R (sequentialMoves tmp ms) m.1 = ev R m.2)
+      ∧ ∀ x, x ∉ ms.map Prod.fst → x ≠ tmp → runMoves ev R (sequentialMoves tmp ms) x = R x := by
   obtain ⟨out, hout⟩ := Option.isSome_iff_exists.mp hok
-  rw [parMoves, hout, Option.getD_some]
-  exact runMoves_parMovesAux hreg hloc tmp _ ms out R hout hnd htmp
+  rw [sequentialMoves, hout, Option.getD_some]
+  exact runMoves_sequentialMovesAux hreg hloc tmp _ ms out R hout hnd htmp
 
 /-- Every source of the parallel move satisfies a property of operands that holds at
     every register and at every source of `ms`. -/
-theorem parMovesAux_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : String) :
-    ∀ (fuel : Nat) (ms out : List (String × LOperand)), parMovesAux tmp fuel ms = some out →
+theorem sequentialMovesAux_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : String) :
+    ∀ (fuel : Nat) (ms out : List (String × LOperand)), sequentialMovesAux tmp fuel ms = some out →
       (∀ m ∈ ms, P m.2) → ∀ m ∈ out, P m.2
   | fuel, [], out, h, _ => by
       obtain rfl : out = [] := by
-        cases fuel <;> simp only [parMovesAux, Option.some.injEq] at h <;> exact h.symm
+        cases fuel <;> simp only [sequentialMovesAux, Option.some.injEq] at h <;> exact h.symm
       intro m hm; cases hm
   | 0, _ :: _, _, h, _ => by cases h
   | fuel + 1, m0 :: ms0, out, h, hms => by
-      simp only [parMovesAux] at h
+      simp only [sequentialMovesAux] at h
       split at h
       · rename_i m hf
         obtain ⟨out', h', rfl⟩ := Option.map_eq_some_iff.mp h
-        have ih := parMovesAux_src hP tmp fuel _ out' h'
+        have ih := sequentialMovesAux_src hP tmp fuel _ out' h'
           (fun m' hm' => hms m' (List.mem_filter.mp hm').1)
         intro m' hm'
         rcases List.mem_cons.mp hm' with rfl | hm'
@@ -851,7 +851,7 @@ theorem parMovesAux_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : 
       · split at h
         · cases h
         · obtain ⟨out', h', rfl⟩ := Option.map_eq_some_iff.mp h
-          have ih := parMovesAux_src hP tmp fuel _ out' h' (by
+          have ih := sequentialMovesAux_src hP tmp fuel _ out' h' (by
             intro m' hm'
             obtain ⟨m, hm, rfl⟩ := List.mem_map.mp hm'
             have := hms m hm
@@ -864,20 +864,20 @@ theorem parMovesAux_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : 
           · exact hP _
           · exact ih m' hm'
 
-/-- Every source of `parMoves tmp ms` satisfies a property of operands that holds at
+/-- Every source of `sequentialMoves tmp ms` satisfies a property of operands that holds at
     every register and at every source of `ms`. -/
-theorem parMoves_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : String)
+theorem sequentialMoves_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) (tmp : String)
     {ms : List (String × LOperand)} (hms : ∀ m ∈ ms, P m.2) :
-    ∀ m ∈ parMoves tmp ms, P m.2 := by
-  unfold parMoves
-  cases h : parMovesAux tmp (2 * ms.length + 1) ms with
+    ∀ m ∈ sequentialMoves tmp ms, P m.2 := by
+  unfold sequentialMoves
+  cases h : sequentialMovesAux tmp (2 * ms.length + 1) ms with
   | none => exact hms
-  | some out => exact parMovesAux_src hP tmp _ ms out h hms
+  | some out => exact sequentialMovesAux_src hP tmp _ ms out h hms
 
-/-- **The marshalling moves of a call**: the parallel move (`parMoves`, through
+/-- **The marshalling moves of a call**: the parallel move (`sequentialMoves`, through
     `sysvRetReg`) of the pairs of each SysV argument register and its operand. -/
 def marshalMoves (argOps : List LOperand) : List (String × LOperand) :=
-  parMoves sysvRetReg ((argOps.zip sysvArgRegs).map fun p => (p.2, p.1))
+  sequentialMoves sysvRetReg ((argOps.zip sysvArgRegs).map fun p => (p.2, p.1))
 
 /-- Emit a real-`Lcall` SysV call to the opaque leaf `sym`, marshalling the
     resolved call-argument operands `argOps` into the SysV arg registers, then
@@ -904,7 +904,7 @@ def loopBodyCallLcmd (dst : String) (sym : String) (argOps : List LOperand)
     holds at every register and at every operand of the call. -/
 theorem marshalMoves_src {P : LOperand → Prop} (hP : ∀ x, P (.reg x)) {argOps : List LOperand}
     (h : ∀ o ∈ argOps, P o) : ∀ m ∈ marshalMoves argOps, P m.2 :=
-  parMoves_src hP sysvRetReg (fun m hm => by
+  sequentialMoves_src hP sysvRetReg (fun m hm => by
     obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hm
     exact h _ (List.of_mem_zip hp).1)
 

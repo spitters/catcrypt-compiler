@@ -2839,7 +2839,8 @@ theorem ifFrame_forall (Q : LinstrRM → Prop) (hQ : ∀ i, NoArrImm i.1 → Q i
 /-- **A predicate that holds at every instruction without `ZEROARR` and `STOREIMM` and at
     every instruction of every binding holds along the export** of a program without
     `call`. -/
-theorem exportR_forall (Q : LinstrRM → Prop) (hQ : ∀ i, NoArrImm i.1 → Q i) (nArgs : Nat)
+private theorem exportR_forall_of_noArrImm (Q : LinstrRM → Prop) (hQ : ∀ i, NoArrImm i.1 → Q i)
+    (nArgs : Nat)
     (fn : String) {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts)
     (hc : p.callFree = true)
     (hb : ∀ {Γ' : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ' t) (d : Nat),
@@ -3104,7 +3105,7 @@ theorem exportR_immCode_copy (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List
     ∀ i ∈ r.code ++ regionLprogCopy a none ts r.code r.res, ImmCode i := by
   intro i hi
   rcases List.mem_append.mp hi with hi | hi
-  · exact exportR_forall ImmCode (fun _ h => immCode_of_noArrImm h) _ _ p hc
+  · exact exportR_forall_of_noArrImm ImmCode (fun _ h => immCode_of_noArrImm h) _ _ p hc
       (fun e d => bindOps_immCode _ e d) _ _ r hr i hi
   · exact immCode_of_noArrImm (noArrImm_regionLprogCopy a ts r.code r.res i hi)
 

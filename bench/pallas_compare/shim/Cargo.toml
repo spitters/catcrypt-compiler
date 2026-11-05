@@ -13,9 +13,8 @@ name = "pallas_safegcd_shim"
 crate-type = ["staticlib"]
 
 [dependencies]
-# Local path to AUCurves' curve25519-jasmin-rs crate (sibling layout
-# under ~/Claude/BLS/AUCurves/).  Same path convention as the sibling
-# `../SSProve-lean/bench/bls12381_safegcd_compare/shim/`.
+# Path to AUCurves' curve25519-jasmin-rs crate, relative to this file: a
+# checkout of AUCurves at BLS/AUCurves/ beside this repository.
 #
 # `features = ["dalek_leaves"]` is the smallest feature set that compiles
 # the parent crate end-to-end: the `ed25519_rustcmd` module is declared

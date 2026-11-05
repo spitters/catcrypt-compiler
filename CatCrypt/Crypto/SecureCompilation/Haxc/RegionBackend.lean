@@ -11267,7 +11267,8 @@ theorem denVal_wideTy_transTy {t : JasminTy} (ht : narrowArrB t = false) (x : �
   | bool => rfl
 
 /-- The parameter index of a variable is that of the variable under one more binding. -/
-theorem argIdx_there {Γ : Ctxt jasminDialect} {s t : JasminTy} (v : Ctxt.Var Γ t) :
+private theorem exportCertArgIdx_there {Γ : Ctxt jasminDialect} {s t : JasminTy}
+    (v : Ctxt.Var Γ t) :
     X86Backend.ExportCertEntry.argIdx (Ctxt.Var.there (s := s) v) =
       X86Backend.ExportCertEntry.argIdx v := by
   have := VIR.JasminLsemSimulation.varIndex_lt v
@@ -11280,15 +11281,15 @@ theorem abiValOf_tail {σ : AbiLayout} {sa : AState} {Γ : Ctxt jasminDialect} {
     (h : AbiValOf σ sa (Γ := s :: Γ) (.cons x V)) : AbiValOf σ sa V :=
   ⟨fun v => by
       have hv := h.arg (Ctxt.Var.there (s := s) v)
-      rw [argIdx_there] at hv
+      rw [exportCertArgIdx_there] at hv
       exact hv,
     fun v => by
       have hv := h.reg (Ctxt.Var.there (s := s) v)
-      rw [argIdx_there] at hv
+      rw [exportCertArgIdx_there] at hv
       exact hv,
     fun v => by
       have hv := h.arr (Ctxt.Var.there (s := s) v)
-      rw [argIdx_there] at hv
+      rw [exportCertArgIdx_there] at hv
       exact hv⟩
 
 /-- **A context the layout reads holds 64-bit words only**: the widening fixes it. -/

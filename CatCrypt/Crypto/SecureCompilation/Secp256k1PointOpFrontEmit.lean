@@ -23,35 +23,25 @@ The
 either is renamed or weakened away, this module stops compiling rather than
 silently reverting to an unjustified emit.
 
-## The render is a second, separate wall
+## Cost of the lowering
 
-Removing the denotation gate is necessary but not sufficient, and the remaining
-obstacle is a different one. Measured 2026-08-09: `lake exe secp256k1pointop`
-built natively against this producer ran **25 minutes without completing**, at
-about 1.35 GB — the PSI guard declined to kill it, correctly, as being under its
-1500 MB selector floor. So this is throughput, not memory, and it is not the
->11 GB whole-op denotation.
-
-The cost is in the `cryptoDialectToJasminCom` LOWERING inside
-`jacDblLowered`/`jacAddLowered`, not in `toLprogPhysAbi`/`renderLprogAtt`.
-A staged probe (`Secp256k1PointOpStageProbe`) times the pipeline as explicit
-calls: `translateDialectControl` 16-18 s, the `ret` cap ~90 ms, and the run does
-not survive the lowering. The lowering is a single linear pass, but
-`VIR/Core.Ctxt.Var` is a unary Peano inductive, so a variable at de Bruijn depth
-d is a d-cell chain the lowering rebuilds; the point-op front binds the reduction
-constants and ~24 half-limbs at the top and every brick references them across
-the schedule, giving `Θ(nodes × schedule-length × depth)` ≈ 50M output cells.
-The fix is a front re-tile to frame-relative composition (each brick loads its
-operands from and stores its result to the frame, keeping reference range
-O(field-op size)), the proven `Ed25519PointKernel` shape. `bench/…/gen_com/` is
-still empty.
+The emitter runs the `cryptoDialectToJasminCom` lowering inside
+`jacDblLowered`/`jacAddLowered`. The lowering is a single linear pass, but
+`VIR/Core.Ctxt.Var` is a unary inductive, so a variable at de Bruijn depth d is a
+chain of d cells that the lowering rebuilds. The point-op front binds the reduction
+constants and about 24 half-limbs at the top and every brick references them across
+the schedule, so the lowered program has `Θ(nodes × schedule-length × depth)` cells,
+about 50M. The staged probe `Secp256k1PointOpStageProbe` times the pipeline stage by
+stage. A front that composes each brick relative to the frame (each brick loads its
+operands from and stores its result to the frame, as `Ed25519PointKernel` does) keeps
+the reference range at the size of a field operation.
 
 ## Main results
 
 * `emitProven` — writes the front-generated `secp256k1_jac_dbl` /
   `secp256k1_jac_add` owned `.s`, with correctness carried by the theorems
-  rather than by a runtime check. Producing the artifact additionally needs the
-  render cost above brought down.
+  rather than by a runtime check; its run includes the lowering whose cost is
+  described above.
 -/
 
 @[expose] public section

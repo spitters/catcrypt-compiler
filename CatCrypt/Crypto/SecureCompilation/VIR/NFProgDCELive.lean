@@ -139,7 +139,7 @@ def comp {Γ Δ Θ : Ctxt d} (f : PRen Δ Θ) (g : PRen Γ Δ) : PRen Γ Θ :=
 def KeepsSet {Γ Δ : Ctxt d} (f : PRen Γ Δ) (s : LiveSet) : Prop :=
   ∀ {t : d.Ty} (v : Var Γ t), v.idx ∈ s → (f v).isSome
 
-theorem lift_congr {Γ Δ : Ctxt d} {s : d.Ty} {f g : PRen Γ Δ}
+private theorem lift_congr_apply {Γ Δ : Ctxt d} {s : d.Ty} {f g : PRen Γ Δ}
     (h : ∀ {t : d.Ty} (v : Var Γ t), f v = g v) {t : d.Ty} (v : Var (s :: Γ) t) :
     lift f v = lift g v := by
   cases v with
@@ -156,7 +156,7 @@ theorem comp_liftApp {Γ Δ Θ : Ctxt d} (f : PRen Δ Θ) (g : PRen Γ Δ) :
     ∀ (cs : List d.Ty) {t : d.Ty} (v : Var (cs ++ Γ) t),
       comp (liftApp cs f) (liftApp cs g) v = liftApp cs (comp f g) v
   | [], _, _ => rfl
-  | _ :: cs, _, v => (comp_lift _ _ v).trans (lift_congr (comp_liftApp f g cs) v)
+  | _ :: cs, _, v => (comp_lift _ _ v).trans (lift_congr_apply (comp_liftApp f g cs) v)
 
 theorem comp_drop {Γ Δ : Ctxt d} {s : d.Ty} (f : PRen Γ Δ) {t : d.Ty} (v : Var (s :: Γ) t) :
     comp f drop v = skip f v := by
@@ -307,7 +307,7 @@ theorem PRen.liftApp_congr {Γ Δ : Ctxt d} {f g : PRen Γ Δ}
     (h : ∀ {t : d.Ty} (v : Var Γ t), f v = g v) :
     ∀ (cs : List d.Ty) {t : d.Ty} (v : Var (cs ++ Γ) t), PRen.liftApp cs f v = PRen.liftApp cs g v
   | [], _, v => h v
-  | _ :: cs, _, v => PRen.lift_congr (PRen.liftApp_congr h cs) v
+  | _ :: cs, _, v => PRen.lift_congr_apply (PRen.liftApp_congr h cs) v
 
 omit [DialectSignature d] [TyDenote d.Ty] in
 theorem PRen.lift_id {Γ : Ctxt d} {s : d.Ty} {t : d.Ty} (v : Var (s :: Γ) t) :
@@ -319,7 +319,7 @@ theorem PRen.liftApp_id {Γ : Ctxt d} :
     ∀ (cs : List d.Ty) {t : d.Ty} (v : Var (cs ++ Γ) t),
       PRen.liftApp cs (fun v => some v : PRen Γ Γ) v = some v
   | [], _, _ => rfl
-  | _ :: cs, _, v => (PRen.lift_congr (PRen.liftApp_id cs) v).trans (PRen.lift_id v)
+  | _ :: cs, _, v => (PRen.lift_congr_apply (PRen.liftApp_id cs) v).trans (PRen.lift_id v)
 
 omit [DialectSignature d] [TyDenote d.Ty] in
 theorem PRen.vars?_id {Γ : Ctxt d} :

@@ -40,7 +40,7 @@ are related to the table `hax64WExit` of the compiler by squares stated once for
 of at most 64 bits, as ParamTransfer `Related`, `RelatedBinOp` and `RelatedUnOp` instances
 ([`Scalars`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Scalars.lean),
 [`Arrays`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Arrays.lean),
-over [`TableReads`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/TableReads.lean)).
+over [`AeneasTableReads`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/Hax/AeneasTableReads.lean)).
 Unsigned division and remainder go through the chain's `divChain` with no machine `DIV`.
 
 **The converse reading.** `nfToRustM` reads an NF program back into the Aeneas monad, and

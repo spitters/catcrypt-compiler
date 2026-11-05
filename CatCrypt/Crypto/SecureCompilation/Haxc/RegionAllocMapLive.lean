@@ -59,7 +59,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulRAInterference (LiveAt)
 open RegionAllocMapComplete RegionExportDefInit RegionAllocMapAlign RegionAllocMapClose
 open RegionExportDefInitSort (tagA untag IsTag NoTag notTag_of_head notTag_argName untag_of_not
-  untag_tagA renArr_of_cmp isSome_cmpArgs?_of_renArr cert_regionCoCodeS ArgS ExportES
+  untag_tagA renArr_of_cmp isSome_cmpArgs?_of_renArr ArgS ExportES
   exportR_certS noTag_of_cert regionAllocCode_chain sortName_of_arr)
 
 /-! ## 1. Export register names -/

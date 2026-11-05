@@ -1,7 +1,7 @@
 //! C-linkable shim re-exporting AUCurves' safegcd_pallas BY-inversion leaf.
 //!
-//! The parent crate `curve25519-jasmin` (at
-//! `~/Claude/BLS/AUCurves/curve25519-jasmin-rs/`) ships as an rlib and
+//! The parent crate `curve25519-jasmin` (`curve25519-jasmin-rs/` of a checkout of
+//! AUCurves at `BLS/AUCurves/` beside this repository) ships as an rlib and
 //! does NOT export C-callable symbols.  This shim is a `staticlib` that
 //! re-exports `safegcd_pallas::pallas_invert_divstep_sat` under the
 //! C symbol `pallas_invert_divstep_sat` so the verified-front emitted

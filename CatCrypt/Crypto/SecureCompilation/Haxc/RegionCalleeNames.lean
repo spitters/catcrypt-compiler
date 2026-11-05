@@ -583,7 +583,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.CalleeSegCheck (segOutsAt shad
 
 variable {B : List LinstrRM} {outs : List String}
 
-theorem regDefs_sub_defNames (i : LinstrRM) :
+private theorem mem_defNames_of_mem_regDefs (i : LinstrRM) :
     ∀ y ∈ regDefs i, y ∈ JasminLsemExportRegAlloc.defNames i.1 := by
   intro y hy
   unfold regDefs JasminLsemExportRegAlloc.memRegDefs at hy
@@ -657,7 +657,7 @@ theorem mulxReads_not_lopn {i : LinstrRM} (h : ∀ ds o ss, i.1 ≠ .Lopn ds o s
 theorem regDefs_not_lopn {i : LinstrRM} (h : ∀ ds o ss, i.1 ≠ .Lopn ds o ss) :
     regDefs i = [] := by
   refine List.eq_nil_iff_forall_not_mem.mpr fun y hy => ?_
-  have := regDefs_sub_defNames i y hy
+  have := mem_defNames_of_mem_regDefs i y hy
   obtain ⟨w, tag⟩ := i
   cases w <;> simp_all [JasminLsemExportRegAlloc.defNames]
 
@@ -802,7 +802,7 @@ theorem segOutsAt_sub {x : Option Nat} :
               exact List.mem_flatMap.mpr ⟨o, ho, mem_opNames_of_regName hoy⟩
             · refine .next hi (fun z => by rw [he]; exact fun e => by cases e)
                 (fun _ _ _ _ hd => hy2 ?_) (mem_liveRegTab_iff.mp hy1)
-              have := regDefs_sub_defNames i y hd
+              have := mem_defNames_of_mem_regDefs i y hd
               rw [he] at this
               simpa [JasminLsemExportRegAlloc.defNames, JasminLsemExportRewrites.opNames]
                 using this

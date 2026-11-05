@@ -25,8 +25,14 @@ COMPILER := $(abspath $(CURDIR)/../..)
 DEV      := $(or $(wildcard $(abspath $(COMPILER)/../SSProve-lean)),$(COMPILER))
 # lake env/build from the dev root (one-root rule); the command runs in the compiler tree
 LEAN_IN_COMPILER := cd $(DEV) && lake env sh -c 'cd $(COMPILER) && exec "$$@"' sh
+# A command prefix for the Lean builds, empty by default (for instance a build-lock wrapper).
+BUILD_PREFIX ?=
+# The crate catcrypt-plonky3 of the development checkout, and the proof file the whole-prover
+# check writes.
+PLONKY3_CRATE ?= $(DEV)/crates/catcrypt-plonky3
+PROOF_OUT ?= $(CURDIR)/gen/catcrypt_plonky3_proof.bin
 # build a compiler-package exe from the dev root, then run it in the compiler tree
-EXE_IN_COMPILER = cd $(DEV) && bash scripts/heavy-run.sh taskset -c 0-1 lake build $(1) && cd $(COMPILER) && $(COMPILER)/.lake/build/bin/$(1)
+EXE_IN_COMPILER = cd $(DEV) && $(BUILD_PREFIX) taskset -c 0-1 lake build $(1) && cd $(COMPILER) && $(COMPILER)/.lake/build/bin/$(1)
 
 .PHONY: plonky3-lde-rustcmd-bench plonky3-merkle-rustcmd-bench \
         plonky3-fri-rustcmd-bench plonky3-air-rustcmd-bench \
@@ -79,11 +85,12 @@ plonky3-p3-accept-prove: plonky3_honest_prove.s lde_column_from_rustcmd.s p3_acc
 #   (2) the crate's prove() bytes, fed to the REAL p3 0.5.3 verifier, are ACCEPTed
 #       (and are byte-identical to p3_ref/p3_default_proof.bin).
 plonky3-crate-whole-prover-kat:
-	cd ../../../SSProve-lean/crates/catcrypt-plonky3 && cargo test
-	cd ../../../SSProve-lean/crates/catcrypt-plonky3 && cargo run --release --example prove_to_file -- /tmp/catcrypt_plonky3_proof.bin
-	cmp /tmp/catcrypt_plonky3_proof.bin p3_ref/p3_default_proof.bin && echo "crate prove() BYTE-IDENTICAL to genuine p3 0.5.3 proof"
+	cd $(PLONKY3_CRATE) && cargo test
+	mkdir -p $(dir $(PROOF_OUT))
+	cd $(PLONKY3_CRATE) && cargo run --release --example prove_to_file -- $(PROOF_OUT)
+	cmp $(PROOF_OUT) p3_ref/p3_default_proof.bin && echo "crate prove() BYTE-IDENTICAL to genuine p3 0.5.3 proof"
 	cd p3_ref && cargo build --release --bin p3-fib-dump
-	./p3_ref/target/release/p3-fib-dump verify /tmp/catcrypt_plonky3_proof.bin
+	./p3_ref/target/release/p3-fib-dump verify $(PROOF_OUT)
 
 # #656 jasmin-tail migration: the four regArith Plonky3 leaves (compress /
 # hash_leaf / ntt_layer / fri_fold+bb_inv) are now emitted OWNED — the verified

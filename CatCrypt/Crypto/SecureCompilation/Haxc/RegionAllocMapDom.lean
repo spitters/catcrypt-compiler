@@ -1112,7 +1112,8 @@ theorem regReads_sub_instrNames {w : LinstrR} {x : String} (hx : x ∈ regReads 
   | _ => simp [regReads] at hx
 
 /-- The names a list of instructions reads before it writes them are read names. -/
-theorem mem_regExposed {is : List LinstrR} {x : String} (hx : x ∈ regExposed is) :
+private theorem exists_regReads_of_mem_regExposed {is : List LinstrR} {x : String}
+    (hx : x ∈ regExposed is) :
     ∃ i ∈ is, x ∈ regReads i := by
   have key : ∀ (L : List LinstrR) (acc : List String × List String),
       (∀ y ∈ acc.1, ∃ i ∈ is, y ∈ regReads i) → (∀ i ∈ L, i ∈ is) →
@@ -1186,7 +1187,7 @@ theorem namesNE_backEdgePins {C : List LinstrRM} (h : ∀ i ∈ C, NamesNE i.1) 
         refine namesNE_livepin fun x hx => ?_
         unfold backEdgePinNames at hx
         rcases List.mem_append.mp hx with hx | hx
-        · obtain ⟨w, hw, hx⟩ := mem_regExposed hx
+        · obtain ⟨w, hw, hx⟩ := exists_regReads_of_mem_regExposed hx
           obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hw
           exact h j (List.mem_of_mem_drop (List.mem_of_mem_take hj)) x
             (regReads_sub_instrNames hx)

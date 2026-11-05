@@ -35,10 +35,8 @@ it looked for when the checkout is absent. `make import` also requires the
 checkout to be at the commit pinned in `kernels/<kernel>.sh`.
 
 `reemit`, `encode` and `encode-framed` run `lake lean` from the repository
-root, which builds the imported modules when needed. `HEAVY_RUN` names a
-wrapper for those commands; its default is
-`$(REPO)/../SSProve-lean/scripts/heavy-run.sh` when that file exists, and no
-wrapper otherwise. `compare` and `field` depend on the files `reemit` and
+root, which builds the imported modules when needed. `BUILD_PREFIX` is a
+command prefix for those commands (for instance a build-lock wrapper), empty by default. `compare` and `field` depend on the files `reemit` and
 `encode` write, so they run Lean when those files are older than their Lean
 sources. `import` and `framed-kat` run no Lean when their inputs are present:
 `framed-kat` needs the framed file `$(FRAMED)`, which `encode-framed` writes.

@@ -217,7 +217,7 @@ theorem Rel.setScalar {β : String → Bool} {L : Levels} {rs₁ rs₂ : RustSta
   · simp only [Levels.setSc, lk, hyx, ite_false] at hy
     simp [rsSetScalar, hyx, (h y).1 hy]
 
-theorem lookup_eq {β : String → Bool} {L : Levels} {rs₁ rs₂ : RustState}
+private theorem locatedLookup_eq_of_rel {β : String → Bool} {L : Levels} {rs₁ rs₂ : RustState}
     (h : Rel β L rs₁ rs₂) {loc : Located} (hl : lk β L.tw loc.locVar = false) :
     locatedLookup rs₁ loc = locatedLookup rs₂ loc := by
   unfold locatedLookup; rw [(h loc.locVar).2 hl]
@@ -364,7 +364,7 @@ theorem callNUpdate_public {β : String → Bool} {L : Levels} (lsp : LeafSpec) 
       Rel β L (callNUpdate lsp f argTs a i ds rs₁) (callNUpdate lsp f argTs a i ds rs₂)
   | [], _, _, _, h, _ => h
   | d :: ds, i, rs₁, rs₂, h, hd => by
-    have hl := lookup_eq h (hd d (by simp))
+    have hl := locatedLookup_eq_of_rel h (hd d (by simp))
     simp only [callNUpdate, locatedUpdate, hl]
     exact callNUpdate_public lsp f argTs a ds (i + 1) _ _ (h.setTower_eq _ _)
       (fun d' hd' => hd d' (by simp [hd']))
@@ -511,7 +511,7 @@ theorem callOne_sound {f : String} {dest : Located} {args : List Located} {L L' 
     have hd := secArgs_false hs dest (by simp)
     have hargs : secArgs β L args = false := by
       unfold secArgs at hs ⊢; simp only [List.any_cons, Bool.or_eq_false_iff] at hs; exact hs.2
-    rw [lookup_eq hR hd, hl₂] at hl₁
+    rw [locatedLookup_eq_of_rel hR hd, hl₂] at hl₁
     cases hl₁
     rw [argList_eq hR hargs]
   · cases hc
@@ -535,7 +535,7 @@ theorem callDst_sound {f : String} {dst : Located} {args : List Located} {L L' :
     have hd := secArgs_false hs dst (by simp)
     have hargs : secArgs β L (dst :: args) = false := by
       unfold secArgs at hs ⊢; simp only [List.any_cons, Bool.or_eq_false_iff] at hs ⊢; exact hs.2
-    rw [lookup_eq hR hd, hl₂] at hl₁
+    rw [locatedLookup_eq_of_rel hR hd, hl₂] at hl₁
     cases hl₁
     rw [argList_eq hR hargs]
   · cases hc
@@ -714,7 +714,7 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
     cases hs : lk β L.tw loc.locVar with
     | true => exact hR.setTower_secret hs _ _
     | false =>
-      rw [lookup_eq hR hs, hl₂] at hl₁
+      rw [locatedLookup_eq_of_rel hR hs, hl₂] at hl₁
       cases hl₁
       exact hR.setTower_eq _ _
   | RLimbStoreExpr loc idx e =>
@@ -731,7 +731,7 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
       unfold locatedUpdate
       refine hR.setTower _ _ _ _ fun hb => ?_
       simp only [Bool.or_eq_false_iff] at hb
-      rw [lookup_eq hR hb.1, hl₂] at hl₁
+      rw [locatedLookup_eq_of_rel hR hb.1, hl₂] at hl₁
       cases hl₁
       rw [sLvl_eval hR e hb.2]
     · cases hc
@@ -779,7 +779,7 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
         unfold locatedUpdate
         refine hR.setTower _ _ _ _ fun hb => ?_
         simp only [Bool.or_eq_false_iff] at hb
-        rw [lookup_eq hR hb.1.2, hl₂] at hl₁
+        rw [locatedLookup_eq_of_rel hR hb.1.2, hl₂] at hl₁
         cases hl₁; rfl
       | selectTrue _ _ _ _ _ hh₂ v₂ sv₂ hsel₂ hv₂ hl₂ =>
         unfold locatedUpdate
@@ -797,7 +797,7 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
         unfold locatedUpdate
         refine hR.setTower _ _ _ _ fun hb => ?_
         simp only [Bool.or_eq_false_iff] at hb
-        rw [lookup_eq hR hb.2, hl₂] at hl₁
+        rw [locatedLookup_eq_of_rel hR hb.2, hl₂] at hl₁
         cases hl₁; rfl
   | RAssert label =>
     intro L L' hc rs₁ rs₂ t₁ t₂ r₁ r₂ hR h₁ h₂
@@ -828,8 +828,8 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
     unfold locatedUpdate
     refine hR.setTower _ _ _ _ fun hb => ?_
     simp only [Bool.or_eq_false_iff] at hb
-    rw [lookup_eq hR hb.1, ho₂] at ho₁
-    rw [lookup_eq hR hb.2, hs₂] at hs₁
+    rw [locatedLookup_eq_of_rel hR hb.1, ho₂] at ho₁
+    rw [locatedLookup_eq_of_rel hR hb.2, hs₂] at hs₁
     cases ho₁; cases hs₁; rfl
   | RArrStore arr i src =>
     intro L L' hc rs₁ rs₂ t₁ t₂ r₁ r₂ hR h₁ h₂
@@ -849,8 +849,8 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
       unfold locatedUpdate
       refine hR.setTower _ _ _ _ fun hb => ?_
       simp only [Bool.or_eq_false_iff] at hb
-      rw [lookup_eq hR hb.1, ho₂] at ho₁
-      rw [lookup_eq hR hb.2, hs₂] at hs₁
+      rw [locatedLookup_eq_of_rel hR hb.1, ho₂] at ho₁
+      rw [locatedLookup_eq_of_rel hR hb.2, hs₂] at hs₁
       cases ho₁; cases hs₁; rfl
   | RArrLoad dst src i =>
     intro L L' hc rs₁ rs₂ t₁ t₂ r₁ r₂ hR h₁ h₂
@@ -870,8 +870,8 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
       unfold locatedUpdate
       refine hR.setTower _ _ _ _ fun hb => ?_
       simp only [Bool.or_eq_false_iff] at hb
-      rw [lookup_eq hR hb.1, ho₂] at ho₁
-      rw [lookup_eq hR hb.2, hs₂] at hs₁
+      rw [locatedLookup_eq_of_rel hR hb.1, ho₂] at ho₁
+      rw [locatedLookup_eq_of_rel hR hb.2, hs₂] at hs₁
       cases ho₁; cases hs₁; rfl
   | RArrStoreLit arr idx src =>
     intro L L' hc rs₁ rs₂ t₁ t₂ r₁ r₂ hR h₁ h₂
@@ -884,8 +884,8 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
     unfold locatedUpdate
     refine hR.setTower _ _ _ _ fun hb => ?_
     simp only [Bool.or_eq_false_iff] at hb
-    rw [lookup_eq hR hb.1, ho₂] at ho₁
-    rw [lookup_eq hR hb.2, hs₂] at hs₁
+    rw [locatedLookup_eq_of_rel hR hb.1, ho₂] at ho₁
+    rw [locatedLookup_eq_of_rel hR hb.2, hs₂] at hs₁
     cases ho₁; cases hs₁; rfl
   | RArrLoadLit dst src idx =>
     intro L L' hc rs₁ rs₂ t₁ t₂ r₁ r₂ hR h₁ h₂
@@ -898,8 +898,8 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
     unfold locatedUpdate
     refine hR.setTower _ _ _ _ fun hb => ?_
     simp only [Bool.or_eq_false_iff] at hb
-    rw [lookup_eq hR hb.1, ho₂] at ho₁
-    rw [lookup_eq hR hb.2, hs₂] at hs₁
+    rw [locatedLookup_eq_of_rel hR hb.1, ho₂] at ho₁
+    rw [locatedLookup_eq_of_rel hR hb.2, hs₂] at hs₁
     cases ho₁; cases hs₁; rfl
   | RScalarSetExpr x e =>
     intro L L' hc rs₁ rs₂ t₁ t₂ r₁ r₂ hR h₁ h₂
@@ -939,7 +939,7 @@ theorem check_sound : ∀ (c : LowCT) (L L' : Levels), check β M c L = some L' 
     refine ⟨rfl, ?_⟩
     unfold locatedUpdate
     refine hR.setTower _ _ _ _ fun hb => ?_
-    rw [lookup_eq hR hb, hs₂] at hs₁
+    rw [locatedLookup_eq_of_rel hR hb, hs₂] at hs₁
     cases hs₁; rfl
 
 end LevelCheck

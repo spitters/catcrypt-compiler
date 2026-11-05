@@ -814,7 +814,7 @@ theorem stripDecl_map_atTable (D : List ExtDecl) (bi : Builtins)
     table of every fuel (`linkedAgree`). The compiler theorem with linked functions is
     `NFEntry.compileR_correct_linked`, its constant-time theorem `NFEntry.compileR_ct`. The
     instances are `haxEntry` (below) and `aeneasEntry`, whose linked functions are the opaque
-    callees of the Aeneas output (branch `work/aeneas-entry`). -/
+    callees of the Aeneas output. -/
 structure NFEntry where
   /-- The source programs. -/
   Src : Type
