@@ -95,7 +95,9 @@ def crateKernels (_ : Unit) : List (String × Option Lprog) :=
 
 /-- Write the eight seam kernels' verified-encoder ELF objects into
     `bench/integration_owned/gen_bytes/`, and the five the crate links into
-    `crates/catcrypt-mpn/obj/`, at elaboration so lake owns the dependency.
+    `crates/catcrypt-mpn/obj/` of this repository, at elaboration so lake owns
+    the dependency. Both paths are relative to the dev root, the working
+    directory of every build.
     Fails rather than writing a truncated object when a kernel is outside the
     encoder fragment. -/
 def emitMain : IO Unit := do
@@ -111,12 +113,12 @@ def emitMain : IO Unit := do
   -- The crate links the encoder objects directly, so write them into the
   -- crate's own obj/ from the same bytes: the artifact the crate ships is the
   -- encoder's output, drift-proof against a stale hand copy.
-  IO.FS.createDirAll "crates/catcrypt-mpn/obj"
+  IO.FS.createDirAll "../catcrypt-compiler/crates/catcrypt-mpn/obj"
   for (name, p) in crateKernels () do
     match objBytes p with
     | some bs =>
         IO.FS.writeBinFile
-          s!"crates/catcrypt-mpn/obj/{name}.o" (toByteArray bs)
+          s!"../catcrypt-compiler/crates/catcrypt-mpn/obj/{name}.o" (toByteArray bs)
     | none =>
         throw (IO.userError s!"{name}: outside the byte-encoder fragment")
   IO.println "wrote verified-encoder ELF objects for the 8 mpn seam kernels + the crate obj/"

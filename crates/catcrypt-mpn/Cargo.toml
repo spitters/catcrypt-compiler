@@ -1,0 +1,40 @@
+[package]
+name = "catcrypt-mpn"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+license = "MIT"
+description = "GMP-style mpn limb kernels (add/sub/and/ior/xor) emitted by the verified CatCrypt compiler, with a safe-Rust variable-length seam and C-ABI entries for the Lean 4 runtime. Dependency-free."
+repository = "https://github.com/spitters/catcrypt-compiler"
+keywords = ["bignum", "mpn", "gmp", "cryptography", "verified"]
+categories = ["cryptography", "mathematics"]
+
+# `staticlib` is what the Lean 4 runtime's CMake links in place of the C
+# adapter + kernel objects; `rlib` serves Rust consumers and the tests.
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+# `panic = "abort"` so the `no_std` staticlib build (--no-default-features)
+# needs no `eh_personality` unwinding runtime. Only the release profile the
+# fork links is abort; dev/test stay on unwind so the KAT harness runs.
+[profile.release]
+panic = "abort"
+
+# The differential sweeps in tests/seam_diff.rs run schoolbook references over
+# operands of thousands of limbs; optimize the test build so they finish in
+# seconds. The test profile keeps unwinding (`should_panic` tests).
+[profile.test]
+opt-level = 3
+
+# The default `std` feature keeps the crate on std for `cargo test`; the fork
+# builds the staticlib with `--no-default-features --release` for a self-
+# contained no_std archive (no Rust std in the final link).
+[features]
+default = ["std"]
+std = []
+
+# No external dependencies: the verified .s files are assembled directly by
+# build.rs using the system assembler, so `cargo build` works fully offline.
+[dependencies]
+
+[dev-dependencies]
