@@ -1,0 +1,40 @@
+catcrypt-compiler
+Copyright (c) 2024-2026 CatCrypt Contributors
+Released under the MIT licence (see LICENSE).
+
+This package contains material derived from, and builds against, the projects
+below. Each remains under its own licence. THIRD_PARTY_NOTICES.md lists every
+ported or transcribed file with its upstream, licence and copyright line.
+
+Aeneas (https://github.com/AeneasVerif/aeneas), Apache License 2.0.
+  The Lean files under CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/
+  named Test*.lean contain definitions copied from the Aeneas test outputs
+  tests/lean/*.lean at commit b08bf81f2524ee295a8c37444893acfc9c5f4dde; each
+  file header names its source file and the changes made.
+
+hax (https://github.com/cryspen/hax), Apache License 2.0.
+  The hax front reads modules that hax extracts from Rust. The modules named
+  *_haxpipe.lean under CatCrypt/Crypto/*/Extraction/ are hax output.
+  The Lake dependency hax-lean (https://github.com/spitters/hax-lean, MIT)
+  carries the typed AST and runtime of those extractions.
+
+Jasmin (https://github.com/jasmin-lang/jasmin), MIT licence,
+  Copyright (C) 2016 IMDEA Software Institute, Copyright (C) 2016 Inria.
+  The linear and x86 semantics, the lprog/uprog data types and the output
+  conventions of the Jasmin compiler are transcribed into Lean in the files
+  listed under "Jasmin" in THIRD_PARTY_NOTICES.md.
+
+Veir (https://github.com/opencompl/veir) and lean-mlir
+  (https://github.com/opencompl/lean-mlir), Apache License 2.0 with LLVM
+  Exceptions for Veir, Apache License 2.0 for lean-mlir.
+  The Lake dependency Veir is the fork https://github.com/spitters/veir-catcrypt
+  of Veir. The SSA framework Com of this package follows lean-mlir's framework
+  and Veir's operation records, in the files listed under "lean-mlir and Veir"
+  in THIRD_PARTY_NOTICES.md.
+
+Mathlib (https://github.com/leanprover-community/mathlib4), Apache License 2.0.
+  A Lake dependency. No Mathlib source is copied into this package.
+
+Other Lake dependencies (CatCrypt-core, ParamTransfer, CompPoly, doc-gen4 and
+their transitive dependencies) are listed with their licences in
+THIRD_PARTY_NOTICES.md, section "Lake dependencies".

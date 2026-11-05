@@ -183,8 +183,8 @@ structured machine fold; the last is stated at the export node.
 - `VIR.JasminLsemMemSourceTieWhileUncond.whileMem_export_faithful_comL_uncond_trips`:
   the countdown loop `while (n != 0) { …; n -= 1 }`, run as the do-while
   `whileLinstrRM` from a state whose guard register holds the guard value `n > 0`,
-  decodes to `ComL.whileNz`'s denotation. A guard of `0` is excluded: the exported
-  do-while `whileLcmdNz` has no zero-trip guard.
+  decodes to `ComL.whileNz`'s denotation. A guard of `0` is excluded: the emitted
+  do-while `whileLcmd` has no zero-trip guard.
 - `VIR.JasminLsemMemLoopNestInline.inlineNest_closed`: a loop nest of any depth with
   data-dependent per-level trip counts halts on the state of the structured machine
   fold `runIBsL`, when that fold terminates.

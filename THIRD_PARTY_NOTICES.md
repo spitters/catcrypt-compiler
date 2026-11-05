@@ -359,7 +359,7 @@ repository states it. Paths are relative to the root of this package.
 
 - Upstream: <https://github.com/opencompl/lean-mlir> and
   <https://github.com/opencompl/veir>
-- Licence: Apache-2.0 for both.
+- Licence: Apache-2.0 for lean-mlir; Apache-2.0 with LLVM Exceptions for Veir.
 - Derived material: a reimplementation of lean-mlir's `Dialect`, `Com`, `Ctxt`,
   `Expr` and `HVector` framework (`LeanMLIR/Framework/Basic.lean`,
   `ErasedContext.lean`); the structure of Veir's `Veir/IR/OpInfo.lean` and
@@ -369,6 +369,34 @@ repository states it. Paths are relative to the root of this package.
   - `CatCrypt/Crypto/SecureCompilation/CryptoSSA.lean`
   - `CatCrypt/Crypto/SecureCompilation/VIR/CatCryptOpInfo.lean`
   - `CatCrypt/Crypto/SecureCompilation/VIR/Grind.lean`
+
+### Aeneas
+
+- Upstream: <https://github.com/AeneasVerif/aeneas>, commit
+  `b08bf81f2524ee295a8c37444893acfc9c5f4dde`
+- Licence: Apache-2.0, as each file header states.
+- Derived material: definitions of the Aeneas test outputs `tests/lean/*.lean`,
+  copied unchanged except for the file header (`import Aeneas` replaced by
+  `import HaxLean.AeneasBackendPrelude`, options removed); each file names its
+  source file and the copied line ranges.
+- Files:
+  - `CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/TestArrays.lean`
+  - `CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/TestAssertCfg.lean`
+  - `CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/TestBitwise.lean`
+  - `CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/TestIterators.lean`
+  - `CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/TestJoins.lean`
+  - `CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/TestLoops.lean`
+  - `CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/TestScalars.lean`
+
+### hax
+
+- Upstream: <https://github.com/cryspen/hax>
+- Licence: Apache-2.0.
+- Derived material: extractions that the hax pipeline (`haxpipeT`) wrote for Rust
+  sources of this project.
+- Files:
+  - `CatCrypt/Crypto/Mpn/Extraction/Mpn_haxpipe.lean`
+  - `CatCrypt/Crypto/PrimeIR/Extraction/Fp256Mont_haxpipe.lean`
 
 ### Dziembowski, Fabiański, Micciancio and Stefański, ePrint 2025/1700
 
@@ -399,7 +427,7 @@ the package repository's `LICENSE` file.
 | Package | Repository | Licence |
 |---|---|---|
 | `catcryptCore` | <https://github.com/spitters/CatCrypt-core> | MIT, "Copyright (c) 2026 CatCrypt Contributors" |
-| `Veir` | <https://github.com/spitters/veir-catcrypt> (a public fork of <https://github.com/opencompl/veir> at commit `ae4fa0a1` with five CatCrypt dialect folders and toolchain updates) | Apache-2.0 |
+| `Veir` | <https://github.com/spitters/veir-catcrypt> (a public fork of <https://github.com/opencompl/veir> at commit `ae4fa0a1` with five CatCrypt dialect folders and toolchain updates) | Apache-2.0 with LLVM Exceptions (`LICENSE` of the fork and of upstream Veir) |
 | `paramTransfer` | <https://github.com/spitters/ParamTransfer> | LGPL-3.0 (`LICENSE`; the GPL-3.0 text it incorporates is in `COPYING`) |
 | `CompPoly` | <https://github.com/Verified-zkEVM/CompPoly> | Apache-2.0 |
 | `hax-lean` | <https://github.com/spitters/hax-lean> | MIT, "Copyright (c) 2026 CatCrypt Contributors" |
@@ -413,6 +441,10 @@ These packages in turn require:
 | `nominalLean` (<https://github.com/spitters/nominal-lean>) | `catcryptCore` | MIT, "Copyright (c) 2026 CatCrypt Contributors" |
 | `iris` (<https://github.com/spitters/iris-catcrypt>, a fork of iris-lean) | `nominalLean` | Apache-2.0, with a `NOTICE` naming the Iris-Lean Contributors |
 | `batteries`, `Qq`, `aesop`, `proofwidgets`, `importGraph`, `LeanSearchClient`, `plausible` | `mathlib` | Apache-2.0 |
+| `QuantumFoundations` (<https://github.com/lean-crypto-foundations/QuantumFoundations>) | `catcryptCore` | not determined here |
+| `PolyFun` (<https://github.com/Verified-zkEVM/PolyFun>) | `catcryptCore` | Apache-2.0 |
+| `lean-ctrees`, `ExArray` (directories of the Veir repository) | `Veir` | Apache-2.0 |
+| `Coinductive` (<https://github.com/ISTA-PLV/coinductive>) | `lean-ctrees` | Apache-2.0 |
 
 ## `ReprTransfer`
 

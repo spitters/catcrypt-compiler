@@ -76,5 +76,5 @@ that is missing; add that lemma to `Reify` once, for every instance of the const
 ## Related documents
 
 The Aeneas standard-library names the front relies on, with their vendored definitions, are
-listed in [`docs/aeneas-std-names.md`](https://github.com/spitters/hax-lean/blob/work/aeneas-entry/docs/aeneas-std-names.md)
+listed in [`docs/aeneas-std-names.md`](https://github.com/spitters/hax-lean/blob/81fca54fb84838fdcef7a52f4dd63d7230f08e7b/docs/aeneas-std-names.md)
 of hax-lean. The compiler's correctness methods are in [CORRECTNESS.md](../../../../CORRECTNESS.md).

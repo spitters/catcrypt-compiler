@@ -2,10 +2,14 @@ cff-version: 1.2.0
 message: "If you use this software, please cite the CatCrypt paper below."
 title: "CatCrypt: From Rust to Cryptographic Security in Lean"
 abstract: >-
-  A machine-checked compiler from a covered fragment of hax-extracted Rust,
-  through the Com IR, to a verified x86-64 / AArch64 / RISC-V backend that emits
-  machine bytes inside Lean 4, with an isolated ISA / jasmin / byte-level trust
-  surface.
+  A compiler for cryptographic code written in Lean 4 with its correctness
+  proofs. Its compile line takes a hax-extracted Rust module through typed
+  dialects over the Com IR to x86-64 machine bytes, which the package's own
+  decoder reads and its own x86-64 model runs. Value correctness is proved for
+  every result, and constant time for every result under hypotheses on the
+  translated source. Instruction selection to AArch64 and RV64
+  is proved for straight-line code over virtual registers, without register
+  allocation.
 type: software
 authors:
   - family-names: Spitters
