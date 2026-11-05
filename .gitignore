@@ -11,8 +11,8 @@ docs/lake-manifest.json
 /.beam.stale-*/
 
 # Artifacts that the emit drivers write under bench/<kernel>/gen, gen_com and
-# gen_ra when a module is elaborated or run. The artifacts listed in
-# bench/PROVENANCE.md are tracked and re-included below.
+# gen_ra when a module is elaborated or run. The artifacts re-included below are
+# tracked.
 /bench/*/gen/*
 /bench/*/gen_com/*
 /bench/*/gen_ra/*

@@ -3,7 +3,7 @@
 The directories under `bench/` hold the emit drivers, known-answer tests and timing
 harnesses of individual kernels. They are not part of the Lean package: no Lake target,
 no CI step and no hook of this repository runs them, and each is invoked by hand with
-`make` in its own directory.
+`make` in its own directory. [BENCHMARKS.md](../BENCHMARKS.md) reports the timings.
 
 A harness that runs Lean (`lake env`, `lake build`) runs it from this repository's root,
 or from the root of a sibling checkout of the CatCrypt development tree when that

@@ -45,7 +45,7 @@ the module and prints AArch64 assembly for the routine
   bytes, and [BUILDING.md](BUILDING.md#run-the-hax-compiler) to run it on a Rust crate.
 - [EXAMPLES.md](EXAMPLES.md): a set of buildable example modules.
 - [NAVIGATION.md](NAVIGATION.md): where each subsystem lives and its main theorem.
-- [bench.md](bench.md): performance ratios against production implementations.
+- [BENCHMARKS.md](BENCHMARKS.md): timings against production implementations and `jasminc`.
 - The [manual](docs/CompilerManual.lean); [BUILDING.md](BUILDING.md#generate-the-documentation)
   builds it.
 - [AxiomAudit.lean](AxiomAudit.lean): prints the axioms of the theorems it lists;

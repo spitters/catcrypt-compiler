@@ -401,18 +401,10 @@ theorems. `CAPABILITIES.md` states, per primitive, which parts are trusted leave
 
 # Benchmarks
 
-`bench.md` reports cycle-count ratios measured in the CatCrypt development
-repository against production implementations at the same instruction tier
-(s2n-bignum, libcrux, `HACL*`, formosa, liboqs and the PQC reference codes), with
-the rows where we lead only through an instruction-set extension the production
-code does not use listed apart. The 4-way SHA-512, ML-KEM-768 against libcrux,
-SDitH, the 8-way SHA-256 and SNOVA are ahead; the field multiplies, X25519,
-ChaCha20-Poly1305, AES-CTR and HMAC are at parity; the scalar SHA-2 and Keccak
-kernels and the whole-protocol signers are behind. `bench/SCOREBOARD.md` is the
-full record with tiers, harness commands and corrections. The harnesses and
-references are not in this package, so no ratio can be reproduced from it, and for
-most rows the timed object file is not shipped; `bench/PROVENANCE.md` describes the
-assembly files that are.
+`BENCHMARKS.md` reports timings of generated kernels, field multiplications and P-384
+operations against production implementations, and of `compileA` against `jasminc`.
+The harnesses of the kernels and the field multiplications are in the development
+repository, so those ratios cannot be reproduced from this package.
 
 # A worked example
 

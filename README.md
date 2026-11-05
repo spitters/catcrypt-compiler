@@ -108,4 +108,5 @@ the contract of each linked kernel.
 - [OVERVIEW.md](OVERVIEW.md): a worked example and related work.
 - [HEADLINES.md](HEADLINES.md): each theorem with its hypotheses.
 - [PIPELINE.md](PIPELINE.md): the stages, each with its check and theorem.
+- [BENCHMARKS.md](BENCHMARKS.md): timings against production implementations and `jasminc`.
 - [NAVIGATION.md](NAVIGATION.md): where each subsystem lives.

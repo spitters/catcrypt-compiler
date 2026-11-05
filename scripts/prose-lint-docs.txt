@@ -27,9 +27,7 @@ PROVENANCE.md
 CatCrypt/Crypto/SecureCompilation/AeneasFront/README.md
 THIRD_PARTY_NOTICES.md
 THIR_GENERATOR.md
-bench.md
-bench/PROVENANCE.md
-bench/SCOREBOARD.md
+BENCHMARKS.md
 bench/p384_ecdsa_rust/README.md
 bench/p384_ecdsa_rust/PERF.md
 bench/p384_ecdsa_rust/gen/PROVENANCE.md

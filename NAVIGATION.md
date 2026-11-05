@@ -77,7 +77,7 @@ ascent.
 | `CatCrypt/Crypto/Bridges/` | 18 | 2.8 k | CoqEAL ports, representation transfer and the compiler's ParamTransfer registry (`Transfer/`) | - | [CORRECTNESS.md](CORRECTNESS.md#transfer-parametricity-across-representations) |
 | `CatCrypt/Tactic/`, `CatCrypt/Tactics/` | 14, 37 | 1.1 k, 3.9 k | `kernel_rfl`, preservation combinators, pRHL tactics, re-exports | - | [CatCrypt/Tactic/AGENTS.md](CatCrypt/Tactic/AGENTS.md), [CatCrypt/Tactics/AGENTS.md](CatCrypt/Tactics/AGENTS.md) |
 | `CatCrypt/Core/`, `Deep/`, `Relational/` | 39 | 1.4 k | re-exports of CatCrypt-core and small extensions of its relational layer | - | - |
-| `bench/` | | | benchmark harnesses, comparisons with external implementations, and the provenance of emitted artifacts | - | [bench.md](bench.md), [bench/PROVENANCE.md](bench/PROVENANCE.md) |
+| `bench/` | | | benchmark harnesses and comparisons with external implementations | - | [BENCHMARKS.md](BENCHMARKS.md), [bench/README.md](bench/README.md) |
 | `docs/`, `blueprint/` | | | the Verso manual and the blueprint | - | [BUILDING.md](BUILDING.md#generate-the-documentation) |
 
 The module counts and line counts are those of the tracked `.lean` files of each
