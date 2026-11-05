@@ -28,7 +28,8 @@ of every instruction of the export, and instantiates it at x86 with the forms `F
 forms are kept by the result copies of the gate and by the renaming of array positions
 `renArr`, and they give five conjuncts of the back half on every export at x86: the class
 stage `coClass` of the gate `regionCoB`, and the first four conjuncts of the event check
-`regionLeakB`.
+`regionLeakB`. The statements take the forms of the exported code as their hypothesis, so they
+hold on the export and on its webs.
 
 The third and fourth conjuncts of `regionLeakB` check the events of the renamed and of the
 merged code (`regLeakB`) against the liveness tables `d.live` and `d.liveM` of the parts.
@@ -64,6 +65,11 @@ and every certificate.
   table.
 * `regionLeakB_live`, `regionLeakB_four`: the third and fourth conjuncts, and the first four
   conjuncts, of `regionLeakB` hold on every export at x86.
+* `formB_exportR`, `formB_regionWebs`, `formB_regionWebsAt`: the export at x86 and its webs,
+  the code that both arms of `compileRegion` gate, have the forms.
+* `regionLeakB_eq_ownedCheckML`, `regionCtB_eq`: on such a code the event check is its check on
+  traced runs `ownedCheckML`, and the constant-time check is that check, the printed class and
+  the image gate.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.RegionExportForms
@@ -706,23 +712,21 @@ theorem formB_resCopyCode (src D : String) (m : Nat) : ∀ i ∈ resCopyCode src
   · exact Or.inr (Or.inl ⟨_, _, _, _, _, _, rfl⟩)
   · exact Or.inr (Or.inr (Or.inl ⟨_, _, _, _, _, _, _, rfl⟩))
 
-/-- **Every instruction of the code with the result copies of an export at x86 has the forms
-    `FormB`.** -/
-theorem formB_regionCoCode {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+/-- **The result copies keep the forms**: when every instruction of the exported code `r`
+    has the forms `FormB`, so does every instruction of the code with the result copies. -/
+theorem formB_regionCoCode {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (t : JasminTy) (cp : Option (String × String × Nat)) :
     ∀ i ∈ regionCoCode σ nm t r.code r.res cp, FormB i := by
-  have hc := (exportR_forall (exportClosed_formB nArgs) fn p d n r hr).1
   intro i hi
   unfold regionCoCode at hi
   split at hi
   · rcases List.mem_append.mp hi with hi | hi
-    · exact hc i hi
+    · exact hr i hi
     · exact formB_movesOf _ i hi
   · rcases List.mem_append.mp hi with hi | hi
     · rcases List.mem_append.mp hi with hi | hi
-      · exact hc i hi
+      · exact hr i hi
       · exact formB_movesOf _ i hi
     · exact formB_resCopyCode _ _ _ i hi
 
@@ -749,12 +753,11 @@ theorem constArrFreeB_of_formB {i : LinstrRM} (h : FormB i) : constArrFreeB i = 
 
 /-! ## 8. The conjuncts of the gate and of the event check -/
 
-/-- **The class conjunct of the gate holds on every export at x86** (stage `coClass` of
+/-- **The class conjunct of the gate holds on every code in `FormB`** (stage `coClass` of
     `regionCoStage`): every instruction of the code with the result copies is in the classes
     of the simulation (`clsB`) and is no `MULX` (`mulxFree`). -/
-theorem coClass_regionCoCode {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+theorem coClass_regionCoCode {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (t : JasminTy) (cp : Option (String × String × Nat)) :
     (regionCoCode σ nm t r.code r.res cp).all (fun i => clsB i && mulxFree i) = true := by
   rw [List.all_eq_true]
@@ -763,21 +766,19 @@ theorem coClass_regionCoCode {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialec
   rw [h1, h2]
   rfl
 
-/-- **The first conjunct of the event check holds on every export at x86**: the code with
+/-- **The first conjunct of the event check holds on every code in `FormB`**: the code with
     the result copies passes `leakFixCfgB` at every renaming, the alias map of the gate among
     them. -/
-theorem leakFixCfgB_regionCoCode {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+theorem leakFixCfgB_regionCoCode {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (t : JasminTy) (cp : Option (String × String × Nat)) (ρ : String → String) :
     leakFixCfgB ρ (regionCoCode σ nm t r.code r.res cp) = true :=
   List.all_eq_true.mpr fun i hi => leakFixB_of_formB ρ (formB_regionCoCode hr σ nm t cp i hi)
 
-/-- **The second conjunct of the event check holds on every export at x86**: the coalesced
+/-- **The second conjunct of the event check holds on every code in `FormB`**: the coalesced
     code `regionCoBody` has no compile-time array operand. -/
-theorem constArrFreeB_regionCoBody {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+theorem constArrFreeB_regionCoBody {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (t : JasminTy) :
     (regionCoBody σ nm t r.code r.res).all constArrFreeB = true := by
   rw [List.all_eq_true]
@@ -785,27 +786,25 @@ theorem constArrFreeB_regionCoBody {nArgs : Nat} {fn : String} {Γ : Ctxt jasmin
   obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hi
   exact constArrFreeB_of_formB (formB_renArr _ (formB_regionCoCode hr σ nm t _ j hj))
 
-/-- **The first two conjuncts of `regionLeakB` hold on every export at x86**: the alias map
+/-- **The first two conjuncts of `regionLeakB` hold on every code in `FormB`**: the alias map
     `regionAliasN` fixes the array bases of the events of the code with the result copies
     (`leakFixCfgB`), and the coalesced code has no compile-time array operand. The remaining
     conjuncts are the liveness checks `regLeakB` of the merge and the check on traced runs
     `ownedCheckML`. -/
-theorem regionLeakB_fix_constArr {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+theorem regionLeakB_fix_constArr {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (t : JasminTy) :
     leakFixCfgB (regionAliasN σ nm t r.res (regionCoCodeN σ nm t r.code r.res))
         (regionCoCodeN σ nm t r.code r.res) = true ∧
       (regionCoBody σ nm t r.code r.res).all constArrFreeB = true :=
   ⟨leakFixCfgB_regionCoCode hr σ nm t _ _, constArrFreeB_regionCoBody hr σ nm t⟩
 
-/-- **The gate does not refuse an export at x86 at the class stage**: on the call-free arm
-    (no table of callees), `regionCoStage` on the code and the returned operands of an export
-    at x86 is not `coClass`, at every printed body, result type, certificate and function
+/-- **The gate does not refuse a code of the forms `FormB` at the class stage**: on the
+    call-free arm (no table of callees), `regionCoStage` on such a code and its returned
+    operands is not `coClass`, at every printed body, result type, certificate and function
     name. -/
-theorem regionCoStage_ne_coClass {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+theorem regionCoStage_ne_coClass {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (body : Lcmd) (t : JasminTy) (cert : List (String × String)) (fn' : String) :
     regionCoStage σ nm body t r.code r.res cert none fn' ≠ some "coClass" := by
   have hc := coClass_regionCoCode hr σ nm t (regionCopy σ nm t none r.code r.res)
@@ -951,23 +950,21 @@ theorem regLeakB_liveRegTab (τ : String → String) (pre C : List LinstrRM) (ou
   exact List.mem_cons_of_mem _ (liveRegTab_closed (liveRegTab_stable _ _) hi x
     (mem_liveRegNeed_of_useNames hx))
 
-/-- Every instruction of the coalesced code of an export at x86 has its event operands among
-    its sources. -/
-theorem idxSrc_regionCoBody {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+/-- Every instruction of the coalesced code of a code of the forms `FormB` has its event
+    operands among its sources. -/
+theorem idxSrc_regionCoBody {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (t : JasminTy) : ∀ i ∈ regionCoBody σ nm t r.code r.res, IdxSrc i.1 := by
   intro i hi
   obtain ⟨j, hj, rfl⟩ := List.mem_map.mp hi
   exact idxSrc_of_formB (formB_renArr _ (formB_regionCoCode hr σ nm t _ j hj))
 
-/-- **The third and fourth conjuncts of `regionLeakB` hold on every export at x86**: at every
+/-- **The third and fourth conjuncts of `regionLeakB` hold on every code in `FormB`**: at every
     printed body, result type and certificate, the renamed code of the parts passes `regLeakB`
     of the merge at the table `d.live`, and the merged code passes `regLeakB` of the identity
     at the table `d.liveM`. -/
-theorem regionLeakB_live {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+theorem regionLeakB_live {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (body : Lcmd) (t : JasminTy) (cert : List (String × String)) :
     ((regionCoParts σ nm body t r.code r.res cert).tau == []
         || regLeakB (renOf (regionCoParts σ nm body t r.code r.res cert).tau)
@@ -989,14 +986,13 @@ theorem regionLeakB_live {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
   · exact regLeakB_liveRegTab _ _ _ _ hren
   · exact regLeakB_liveRegTab _ _ _ _ hmer
 
-/-- **The first four conjuncts of `regionLeakB` hold on every export at x86**: the alias map
+/-- **The first four conjuncts of `regionLeakB` hold on every code in `FormB`**: the alias map
     fixes the array bases of the events of the code with the result copies, the coalesced code
     has no compile-time array operand, and the renamed and the merged code pass the liveness
     checks of their events. The remaining conjunct is the check on traced runs
     `ownedCheckML`. -/
-theorem regionLeakB_four {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
-    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
-    (hr : exportR nArgs fn p d n x86Data = some r) (σ : AbiLayout) (nm : String → String)
+theorem regionLeakB_four {r : Exported}
+    (hr : ∀ i ∈ r.code, FormB i) (σ : AbiLayout) (nm : String → String)
     (body : Lcmd) (t : JasminTy) (cert : List (String × String)) :
     (leakFixCfgB (regionAliasN σ nm t r.res (regionCoCodeN σ nm t r.code r.res))
         (regionCoCodeN σ nm t r.code r.res)
@@ -1013,5 +1009,75 @@ theorem regionLeakB_four {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
   obtain ⟨h3, h4⟩ := regionLeakB_live hr σ nm body t cert
   rw [h1, h2, h3, h4]
   rfl
+
+/-! ## 10. The event check and the constant-time check on the exported code -/
+
+open CatCrypt.Crypto.SecureCompilation.Haxc (regionLeakB regionCtB regionSl regionWebs
+  regionWebsAt)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedTVLeak (ownedCheckML)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCells (cellBody)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageStraightCells (frameMarkC)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (printedAddrWB)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx (imgGateCW)
+
+/-- Every instruction of an export at x86 has the forms `FormB`. -/
+theorem formB_exportR {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r : Exported}
+    (hr : exportR nArgs fn p d n x86Data = some r) : ∀ i ∈ r.code, FormB i :=
+  (exportR_forall (exportClosed_formB nArgs) fn p d n r hr).1
+
+/-- **The webs keep the forms**: when every instruction of `r` has the forms `FormB`, so does
+    every instruction of the webs `regionWebs ex r aa ao`, which rename array positions
+    instruction by instruction (`ArrWebs.webRen`). -/
+theorem formB_regionWebs {r : Exported} (hr : ∀ i ∈ r.code, FormB i) (ex : List String)
+    (aa : String → Nat → Option Nat) (ao : String → Option Nat) :
+    ∀ i ∈ (regionWebs ex r aa ao).code, FormB i := by
+  unfold regionWebs
+  split
+  · intro i hi
+    obtain ⟨k, hk, rfl⟩ := List.mem_mapIdx.mp hi
+    exact formB_renArr _ (hr _ (List.getElem_mem hk))
+  · exact hr
+
+/-- Every instruction of the webs `regionWebsAt ex callee r0` of an export `r0` at x86 has the
+    forms `FormB`. -/
+theorem formB_regionWebsAt {nArgs : Nat} {fn : String} {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p : NFProg jasminDialect Γ ts} {d n : Nat} {r0 : Exported}
+    (hr : exportR nArgs fn p d n x86Data = some r0) (ex : List String)
+    (callee : Option CalleeTab) : ∀ i ∈ (regionWebsAt ex callee r0).code, FormB i :=
+  formB_regionWebs (formB_exportR hr) ex _ _
+
+/-- **The event check is its check on traced runs** on every code in `FormB`: at every printed
+    body, result type and certificate, `regionLeakB` is its fifth conjunct, the check
+    `ownedCheckML` of the reference `d.ref` of the parts `d := regionCoParts` against the image
+    of the cell body of the printed body at the slot map `regionSl σ nm d`. -/
+theorem regionLeakB_eq_ownedCheckML {r : Exported} (hr : ∀ i ∈ r.code, FormB i)
+    (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy)
+    (cert : List (String × String)) :
+    regionLeakB σ nm body t r.code r.res cert
+      = ownedCheckML (regionCoParts σ nm body t r.code r.res cert).outs
+          (regionCoParts σ nm body t r.code r.res cert).ref
+          (virtImg (regionSl σ nm (regionCoParts σ nm body t r.code r.res cert))
+            (cellBody (regionSl σ nm (regionCoParts σ nm body t r.code r.res cert)) body)) := by
+  have h := regionLeakB_four hr σ nm body t cert
+  simp only [regionLeakB, h, Bool.true_and]
+
+/-- **The constant-time check on every code in `FormB`** is the check on traced runs
+    `ownedCheckML` of `regionLeakB_eq_ownedCheckML`, the printed class `printedAddrWB` and the
+    image gate `imgGateCW` of the cell body at the frame marks of the cells of the parts. -/
+theorem regionCtB_eq {r : Exported} (hr : ∀ i ∈ r.code, FormB i)
+    (σ : AbiLayout) (nm : String → String) (body : Lcmd) (t : JasminTy)
+    (cert : List (String × String)) :
+    regionCtB σ nm body t r.code r.res cert
+      = (ownedCheckML (regionCoParts σ nm body t r.code r.res cert).outs
+          (regionCoParts σ nm body t r.code r.res cert).ref
+          (virtImg (regionSl σ nm (regionCoParts σ nm body t r.code r.res cert))
+            (cellBody (regionSl σ nm (regionCoParts σ nm body t r.code r.res cert)) body))
+        && printedAddrWB body
+        && imgGateCW (frameMarkC (regionCoParts σ nm body t r.code r.res cert).cells body)
+          (regionSl σ nm (regionCoParts σ nm body t r.code r.res cert))
+          (cellBody (regionSl σ nm (regionCoParts σ nm body t r.code r.res cert)) body)) := by
+  rw [regionCtB, regionLeakB_eq_ownedCheckML hr]
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionExportForms

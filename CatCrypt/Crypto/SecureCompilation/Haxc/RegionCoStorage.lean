@@ -675,7 +675,8 @@ theorem regionCoStage_accept_of_classes (fn : String) {Γ : Ctxt jasminDialect} 
     regionCoStage σ nm body t r.code r.res cert none fn' ≠ some "coClass" ∧
       regionCoStage σ nm body t r.code r.res cert none fn' ≠ some "coCfgB" ∧
       regionCoStage σ nm body t r.code r.res cert none fn' ≠ some "coEntryFix" :=
-  ⟨RegionExportForms.regionCoStage_ne_coClass h σ nm body t cert fn',
+  ⟨RegionExportForms.regionCoStage_ne_coClass (RegionExportForms.formB_exportR h) σ nm body
+    t cert fn',
     regionCoStage_coalesce_of σ nm body t r.code r.res cert none fn'
       (exportR_tagOK _ fn x86Data p _ _ r h)
       (fun _ => exportR_noShadow x86Data_guardsNoShadow _ fn p hp hc _ _ r h)
