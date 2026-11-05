@@ -405,6 +405,27 @@ repository states it. Paths are relative to the root of this package.
 - Licence: not determined.
 - Files: `CatCrypt/Crypto/Symbolic/Soundness/Fixpoints.lean`
 
+## Benchmark circuits
+
+### Q-Synth
+
+- Upstream: <https://github.com/irfansha/Q-Synth>, `Benchmarks/VQE/original` at commit
+  95a820e16ac5.
+- Licence: MIT; copyright Irfansha Shaik and Jaco van de Pol. The licence file is
+  `bench/qasm/qsynth/LICENSE-Q-Synth`.
+- Files: `bench/qasm/qsynth/*.qasm`, copied unchanged.
+
+### QASMBench
+
+- Upstream: <https://github.com/pnnl/QASMBench>.
+- Licence: the QASMBench licence of Battelle Memorial Institute (redistribution in
+  source form with the copyright notice and disclaimer retained); copyright Battelle
+  Memorial Institute. The licence file is `bench/qasm/qasmbench/LICENSE`.
+- Files: `bench/qasm/qasmbench/small/*.qasm`, copied unchanged.
+
+The Nam arithmetic and Toffoli circuits (<https://github.com/inQWIRE/VOQC-benchmarks>, no
+licence stated) are not redistributed; `bench/qrunch/fetch-nam.sh` downloads them.
+
 ## Results restated without copied source
 
 The following modules state definitions or theorems that follow a published

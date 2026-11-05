@@ -3021,6 +3021,7 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.UC,
     Lake.Glob.one `CatCrypt.Crypto.UCDSL,
     Lake.Glob.one `CatCrypt.Crypto.UCMonad,
+    Lake.Glob.one `CatCrypt.Crypto.UCMonad.QuantumUC,
     Lake.Glob.one `CatCrypt.Crypto.Util.Aes128Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12377PPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.BLS12381PPrimeCert,
@@ -3067,9 +3068,9 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381Msm,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Bls12381MsmCoqAxioms,
     Lake.Glob.one `CatCrypt.Crypto.Vale.ChaCha20Vec256,
-    Lake.Glob.one `CatCrypt.Crypto.Vale.Curve25519,
   ]
 def pkgModules16 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Vale.Curve25519,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Ed25519,
     Lake.Glob.one `CatCrypt.Crypto.Vale.Ed25519Decompress,
     Lake.Glob.one `CatCrypt.Crypto.Vale.GHASH,
@@ -3144,6 +3145,90 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.ToRawCode,
     Lake.Glob.one `CatCrypt.Hax.TypedToRawCode,
     Lake.Glob.one `CatCrypt.Hax.VacuityAudit,
+    Lake.Glob.one `CatCrypt.Quantum.AngleQ,
+    Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchCompile,
+    Lake.Glob.one `CatCrypt.Quantum.ControlledGates,
+    Lake.Glob.one `CatCrypt.Quantum.ControlledProjections,
+    Lake.Glob.one `CatCrypt.Quantum.GateUnitarity,
+    Lake.Glob.one `CatCrypt.Quantum.HQPL,
+    Lake.Glob.one `CatCrypt.Quantum.HQPL.ConcreteLowering,
+    Lake.Glob.one `CatCrypt.Quantum.Instrument,
+    Lake.Glob.one `CatCrypt.Quantum.Measurement,
+    Lake.Glob.one `CatCrypt.Quantum.OpenQASM,
+    Lake.Glob.one `CatCrypt.Quantum.OpenQASMBytes,
+    Lake.Glob.one `CatCrypt.Quantum.OpenQASMDiscrete,
+    Lake.Glob.one `CatCrypt.Quantum.OpenQASMImport,
+    Lake.Glob.one `CatCrypt.Quantum.OpenQASMImportGates,
+    Lake.Glob.one `CatCrypt.Quantum.OpenQASMParser,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.CommutationRules,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.CommuteCancel,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.CommuteMergeSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.CommuteSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.ControlCommute,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.DisjointCommute,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.EGraphRuleSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.EGraphSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.Embed2Commute,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.FullOptimizer,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.FusionSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.HardwareRouting,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.MatrixCorrect,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.MatrixSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.MixedCommute,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.NotPropSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.NotPropagation,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.PassPipeline,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.PhaseInvariance,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.PhasePolyExtract,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.PhasePolySemantics,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.PhasePolynomial,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.ResynthLevel,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.RewriteFixpoint,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.RotMergeSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.RotationMerging,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.RotationMergingV2,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.RoutingPerm,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.RzQCanon,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.SwapConj,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.TCountOpt,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.TMergeSound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.TemplateMatching,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.TemplatePass,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.UnitarySound,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.UnitarySoundFull,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.UnitarySoundL2,
+    Lake.Glob.one `CatCrypt.Quantum.Optimization.UnitarySoundL3,
+    Lake.Glob.one `CatCrypt.Quantum.PiLin,
+    Lake.Glob.one `CatCrypt.Quantum.Programs.Qubit,
+    Lake.Glob.one `CatCrypt.Quantum.QCircuit,
+    Lake.Glob.one `CatCrypt.Quantum.QFT.Circuit,
+    Lake.Glob.one `CatCrypt.Quantum.QFT.Inverse,
+    Lake.Glob.one `CatCrypt.Quantum.QFT.Spec,
+    Lake.Glob.one `CatCrypt.Quantum.QPL,
+    Lake.Glob.one `CatCrypt.Quantum.QPLExtended,
+    Lake.Glob.one `CatCrypt.Quantum.QPLToCircuit,
+    Lake.Glob.one `CatCrypt.Quantum.QTree,
+    Lake.Glob.one `CatCrypt.Quantum.QasmAngle,
+    Lake.Glob.one `CatCrypt.Quantum.Qelib,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchBasis,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchCommute,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchFuse,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.ApproxEmit,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.CBall,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.ExpIBall,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.GateBall,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAK,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKFloat,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKPass,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKPassSmall,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKSmall,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.QrunchFit,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZ,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZPass,
+    Lake.Glob.one `CatCrypt.Quantum.TensorProduct,
+    Lake.Glob.one `CatCrypt.Quantum.UnitaryChannel,
+    Lake.Glob.one `CatCrypt.Quantum.ZXCalculus,
+    Lake.Glob.one `CatCrypt.Quantum.ZXOptimize,
     Lake.Glob.one `CatCrypt.Relational.Approx,
     Lake.Glob.one `CatCrypt.Relational.BadEventAlgebra,
     Lake.Glob.one `CatCrypt.Relational.Basic,
@@ -3185,6 +3270,8 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.LazySampling,
     Lake.Glob.one `CatCrypt.Tactics.LeOfSum,
     Lake.Glob.one `CatCrypt.Tactics.PkgCoherenceBang,
+  ]
+def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.PreservationCombinator,
     Lake.Glob.one `CatCrypt.Tactics.Proc,
     Lake.Glob.one `CatCrypt.Tactics.ProofFrog,
@@ -3382,7 +3469,7 @@ def veirModules1 : Array Lake.Glob := #[
 
 @[default_target]
 lean_lib CatCryptCompiler where
-  globs := pkgModules1 ++ pkgModules2 ++ pkgModules3 ++ pkgModules4 ++ pkgModules5 ++ pkgModules6 ++ pkgModules7 ++ pkgModules8 ++ pkgModules9 ++ pkgModules10 ++ pkgModules11 ++ pkgModules12 ++ pkgModules13 ++ pkgModules14 ++ pkgModules15 ++ pkgModules16
+  globs := pkgModules1 ++ pkgModules2 ++ pkgModules3 ++ pkgModules4 ++ pkgModules5 ++ pkgModules6 ++ pkgModules7 ++ pkgModules8 ++ pkgModules9 ++ pkgModules10 ++ pkgModules11 ++ pkgModules12 ++ pkgModules13 ++ pkgModules14 ++ pkgModules15 ++ pkgModules16 ++ pkgModules17
 
 -- Demos, probes, tests and benchmark drivers. Nothing in `CatCryptCompiler`
 -- imports a module of this library.
@@ -3456,6 +3543,11 @@ lean_exe haxc where
   -- The hax compiler `compileA` on one function of a hax frontend export read at run time;
   -- prints the x86-64 AT&T assembly, or the refusing stage with exit code 2.
   root := `CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
+
+lean_exe «catq-compile» where
+  -- The Qrunch circuit compiler: an OpenQASM 2 file to an OpenQASM 2 file over
+  -- {rx, ry, rz, cx, p} and the global phase; `--serve` answers request lines.
+  root := `CatCrypt.Quantum.Benchmark.QrunchCompile
 
 lean_exe «algebraic-census» where
   -- Per-kernel counts of the algebraic `Com` rewrites under `KEnv.unknown`, and the

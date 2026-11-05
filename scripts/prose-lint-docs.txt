@@ -4,7 +4,11 @@
 # listed. `--docs` fails when a tracked document of these kinds is missing from
 # this list, so a new document joins the gate when it is added.
 PIPELINE.md
+QRUNCH.md
 README.md
+bridge/README.md
+bench/qasm/qsynth/README.md
+bench/qasm/qasmbench/README.md
 BUILDING.md
 GETTING_STARTED.md
 EXAMPLES.md

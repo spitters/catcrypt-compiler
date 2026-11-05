@@ -1014,6 +1014,7 @@ CatCrypt.Hax.ReprBridge
 CatCrypt.Hax.RustM
 CatCrypt.Hax.TypedToRawCode
 CatCrypt.Hax.VacuityAudit
+CatCrypt.Quantum.Benchmark.QrunchCompile
 CatCrypt.Relational.BadEventAlgebra
 CatCrypt.Relational.Basic
 CatCrypt.Relational.ForLoop
@@ -1027,8 +1028,6 @@ CatCrypt.Tactic.BignumReason
 CatCrypt.Tactic.BindAlign
 CatCrypt.Tactic.BindVcgen
 CatCrypt.Tactic.EnvSearch
-CatCrypt.Tactic.MatrixDecide
-CatCrypt.Tactic.NormSqrt
 CatCrypt.Tactic.ProofTermAudit
 CatCrypt.Tactic.ReprTransferAuto
 CatCrypt.Tactic.SDistrNorm
@@ -1049,7 +1048,6 @@ CatCrypt.Tactics.EnvSearch
 CatCrypt.Tactics.FieldClear
 CatCrypt.Tactics.Invariant
 CatCrypt.Tactics.LazySampling
-CatCrypt.Tactics.LeOfSum
 CatCrypt.Tactics.PkgCoherenceBang
 CatCrypt.Tactics.PolyZpTest
 CatCrypt.Tactics.PreservationCombinator
