@@ -165,6 +165,46 @@ tables with the accepted programs.
   `calleeSegB` (`X86Backend/CalleeSegCheck.lean`, `calleeSegB_soundK`), and the decoded
   code of each linked kernel passes `keepCheckAtB` at the frame of its code and the store
   policy `StorePol` it declares (`calleeCodeB`, `calleeCodeBT`).
+- `compileRegion` (`Haxc/RegionBackend.lean`) is the gate `regionExportableB`, the
+  narrow-word stages `narrowPrep` (`VIR/NFProgNarrowPrep.lean`) and the stages
+  `regionBack` on the program they return, over the context `Γ.map wideTy`. The
+  narrow-word stages are the widening `widenJ`, which holds every word of width 8, 16 or
+  32 zero extended in a 64-bit register or a 64-bit array slot, mask elimination
+  `maskElim`, which removes a mask whose value reaches only width-insensitive operations,
+  and dead-binding elimination `NFProg.dce`. Their theorems are the denotation
+  (`narrowPrep_denote_eq`), acceptance by the export gate (`narrowPrep_of_exportable`),
+  call freedom (`callFree_narrowPrep`) and the leakage relation and events
+  (`narrowPrep_ctRel`, `narrowPrep_events`). The code that runs is the linear-time form of
+  each pass, `@[csimp]`-registered through its equation with the definition
+  (`dce_eq_dceLive` in `VIR/NFProgDCELive.lean`, `maskElim_eq_maskElimFast` in
+  `VIR/NFProgMaskElimFast.lean`, `mapVar_eq_mapVarFast` in `VIR/NFProgWiden.lean`), so
+  the theorems hold of it. `compileRegion_correct` states correctness at the widened
+  valuation `mapVal V`, a caller passing each narrow argument in a 64-bit slot with zero
+  high bits; `compileRegion_correct_wide` is the statement at 64-bit arguments and a
+  result other than an array of narrow words, and `compileRegion_spec` lists the stages.
+- The register allocation of `regionAllocC` and `regionLprogC` splits spilled intervals
+  on a body without a call: it runs under the split configuration `bodySplitOpt`
+  (`bodySplitCfg` in `VIR/JasminLprogExport/ExportPhysAbi.lean`; none on a body with a
+  call). A run of touches of a slot within one segment, consecutive touches at most
+  `splitGap` trace positions apart, is a piece; pieces of a slot held in a stack cell
+  compete for a register in the same scan `physScanSpill`, and `physBodySplit` renders a
+  piece in its register with a reload of the cell before its first read and a store
+  after its last write. The gap `splitGap` is a heuristic constant: no theorem depends on
+  its value. Soundness does not depend on the split: the gate (`renImageB` with
+  `ownedCheckMC`, `regionMergeB`, `regionCoB`, `regionCtB`) checks every split body, and
+  `compileRegion_correct`, `compileRegion_spec` and `regionChain_bytes_ct` are stated of
+  `compileRegion`, whose allocation is `regionLprogC` at its default configuration. Of the completeness lemmas,
+  the scan invariants (`physScanSpill_ScanInv`, `physScanSpill_no_collision`) and the
+  merge completeness (`regionMergeB_regionLprogC`, `mergeSep_regionLprogC_complete`)
+  hold at every split configuration. The image-class completeness lemmas
+  (`physImgB_regionExport` in `Haxc/RegionPhysImg.lean`, `physImgB_regionExport_param`
+  and `physImgB_regionExport_words` in `Haxc/RegionPhysImgArg.lean`, `regionAllocFn`,
+  `regionLprogC_lp_funcs`, `physImgB_printed` and `regionCoStage_ne_physImgB` in
+  `Haxc/RegionPhysImgGate.lean`, and the lemmas of `Haxc/RegionPhysImgCmp.lean`,
+  `RegionPhysImgFlag.lean`, `RegionPhysImgLoad.lean` and `RegionPhysImgSide.lean` over that
+  allocation function) are stated at the unsplit allocation `noSplit`: no theorem
+  states that the image class `physImgB` accepts a split body, which the gate decides
+  when it runs.
 - The image route `CellFoldLReg.routeBW` (`X86Backend/CellFoldLReg.lean`,
   `loop_image_bytesW`) covers loops with carry chains and cell accesses, with a width
   analysis that joins one-bit names at labels (`seedAt`, `imgGateBW_of_old` in

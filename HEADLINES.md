@@ -60,6 +60,25 @@ ideal observation whose trace the choice simulator `RCGate.simLeak`, defined by
 the entry state. That conjunct holds for every compiler that satisfies the gate
 conclusion with a deterministic target (`haxcTgtRes_det`).
 
+`Haxc.haxc_gate_proved_all_of_checkB`, `Haxc.haxc_rc_proved_all_of_checkB` and
+`Haxc.haxc_correct_auto_ct_proved_all_of_checkB` (`Haxc/HtermOfKinds.lean`) are the joint
+theorems at a module without callees and linked functions, with the termination
+hypothesis `hterm` replaced by a run of the kind checker `wKindSig.check` on the body of
+the pair stage in the context `entryKindsB` of its layout, which gives a scalar parameter
+the range of its register bound in the layout (`run_val_of_checkB`). This covers
+straight-line word code and loops whose bound is a literal or a scalar parameter bounded
+by the layout. `haxc_correct_auto_ct_proved_all_of_checkB` states value correctness and
+constant time together.
+
+The back half `Haxc.compileRegion` (`Haxc/RegionBackend.lean`) runs the narrow-word stages
+`VIR.NarrowWords.narrowPrep` (`VIR/NFProgNarrowPrep.lean`: the widening `widenJ` of every
+word of width 8, 16 or 32 to a zero-extended 64-bit word, mask elimination and dead-binding
+elimination) before the stages `regionBack`. `Haxc.compileRegion_correct` reads the
+arguments and the result at their widening `mapVal`; `Haxc.compileRegion_correct_wide` is
+the statement at 64-bit arguments and a result other than an array of narrow words.
+`narrowPrep_denote_eq` and `narrowPrep_ctRel` give the denotation and the leakage of the
+stages.
+
 `Haxc.AndNCorrect.mpn_and_n_rc_proved` and `Haxc.LtuCorrect.ltu_rc_proved`
 (`Haxc/WorkedKernelCorollaries.lean`) are `haxc_rc_proved_all` at `mpn_and_n`, under
 the layout `andAbi4` of three 4-word arrays (`n ≤ 4`), and at `ltu`. Both keep the

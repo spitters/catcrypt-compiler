@@ -18,11 +18,13 @@ The compiler `compileA` (`Haxc/ComposeV1.lean`, executable `lake exe haxc`, root
 elimination, the translation to `catCryptDialect` with the declared procedures, the
 e-graph pass, the conversion to `jasminDialect`, Montgomery form, the field dialect step,
 select lowering, range analysis and a second e-graph pass), and the back half
-`compileRegion` (`Haxc/RegionBackend.lean`: export to `Lprog`, allocation with lowering
-and frame, post-fusion, the printed body, the checked encoder, and the gate
-`regionCoB && regionCtB`). Its headline theorems are `haxc_correct_auto`
+`compileRegion` (`Haxc/RegionBackend.lean`: the narrow-word stages `narrowPrep` in
+`VIR/NFProgNarrowPrep.lean`, then `regionBack`: export to `Lprog`, allocation with
+splitting of spilled intervals, lowering and frame, post-fusion, the printed body, the
+checked encoder, and the gate `regionCoB && regionCtB`). Its headline theorems are `haxc_correct_auto`
 (`Haxc/RegionLinkCall.lean`), `haxc_ct_proved_all` (`Haxc/ComposeCTStraight.lean`), and
-`haxc_gate_proved_all` and `haxc_rc_proved_all` (`Haxc/RCInstance.lean`);
+`haxc_gate_proved_all` and `haxc_rc_proved_all` (`Haxc/RCInstance.lean`), with their forms
+`*_of_checkB` that derive termination from the kind checker (`Haxc/HtermOfKinds.lean`);
 [CORRECTNESS.md](CORRECTNESS.md#descent-the-verified-compiler) states them with their
 hypotheses. Kernels are
 linked code produced by the templates, by `LowCT` written in Lean, by relational
@@ -33,7 +35,8 @@ ascent.
 |---|---|---|---|
 | Headlines | `ComposeV1`, `RegionLinkCall`, `ComposeCTStraight`, `RCInstance` | `compileA`, value correctness, constant time, gate conclusion and robust compilation | `compileA`, `haxc_correct_auto`, `haxc_ct_proved_all`, `haxc_rc_proved_all` |
 | Front and chain | `NFChain*`, `NFFront*`, `NFToRoute*`, `NFMontify*`, `ExtChain*`, `RouteChain`, `RouteProg` | `haxToNF`, its domain check, the pass chain and its certificate | `haxToNF`, `HaxModule.refusal?`, `extChain_denote` |
-| Back half | `Region*`, `BackHalf*`, `PrintedLprogFuel`, `CmpReloadBracket*` | `compileRegion`: export, allocation, post-fusion, printing, encoding and the gate | `compileRegion`, `compileRegion_correct` |
+| Back half | `Region*`, `BackHalf*`, `PrintedLprogFuel`, `CmpReloadBracket*` | `compileRegion`: the narrow-word stages, then `regionBack`: export, allocation, post-fusion, printing, encoding and the gate | `compileRegion`, `regionBack`, `compileRegion_correct` |
+| Termination from the kind checker | `HtermOfKinds` | the joint theorems with `hterm` replaced by a run of `wKindSig.check` at the layout's bounds | `haxc_correct_auto_ct_proved_all_of_checkB`, `haxc_rc_proved_all_of_checkB` |
 | Constant time | `ComposeCT*`, `CT*`, `FrontLeak*`, `NFChainCT`, `ExtChainCT`, `RegionCallCT` | leakage along the chain and at the bytes | `regionChain_bytes_ct` |
 | Completeness | `*Complete*`, `RegionCoComplete`, `ExportComplete`, `FrontComplete` | acceptance by later stages of what earlier stages return | - |
 | Field route | `Field*` | field operations through the field dialect into `compileRegion` | `fieldChain_correct_auto`, `field_correct_auto`, `field_correct_bytes` |
@@ -49,7 +52,7 @@ ascent.
 | `CatCrypt/Crypto/Hax/` | 95 | 79.7 k | the front of `compileA` from `ImpExpr` (`ImpToNF`, `ANormCore`, `Hax64Table`, `HaxFrontOracle`, `HaxFrontPrep*`, `HaxSpine`); the front `haxToLowCT` to `LowCT` used by the kernel producers | `impToNF`, `haxToLowCT_simulates_programT` | [CatCrypt/Crypto/Hax/AGENTS.md](CatCrypt/Crypto/Hax/AGENTS.md) |
 | `CatCrypt/Hax/` | 28 | 7.5 k | reading Lean into `ImpExpr` (`reifyImp%`, `reifyField%`), typing of `TExpr`, the prime-ir builtins and names | `primeirBuiltins`, `defaultFieldTable` | [CatCrypt/Hax/AGENTS.md](CatCrypt/Hax/AGENTS.md) |
 | `HaxAscent/` | 66 | 25.9 k | the ascent over `ImpExpr`: `Corres`, `FnCorres`, the generator `hax_ascend`, the `RustM` semantics and calculus | `fnCorres_toRustMS_triple_of_kindOf`, `fnCorres_enc_unique` | [ASCENT_OVERVIEW_LEAN.md](ASCENT_OVERVIEW_LEAN.md) |
-| `VIR/` | 768 | 369.7 k | the SSA `Com` and its dialects, `NFProg` regions and certified pass chains, lowerings to `jasminDialect`, export to `Lprog` (`VIR/JasminLprogExport/`), the linear and flag machines `lsem`, `lsemFuelMemF`, whole-body passes (`VIR/LsemBridgePass/`), word templates, vector paths, prime-ir dialects, per-primitive kernels | `aegraphStep`, `cryptoDialectToJasminCom`, `exportR_memFCT`, `lsemFuelMemFk_blockRel`, `rustToJasminCom_endToEnd_unconditional` | [VIR/AGENTS.md](CatCrypt/Crypto/SecureCompilation/VIR/AGENTS.md), [VIR/DIALECTS.md](CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md), [VIR/SEMANTICS.md](CatCrypt/Crypto/SecureCompilation/VIR/SEMANTICS.md) |
+| `VIR/` | 768 | 369.7 k | the SSA `Com` and its dialects, `NFProg` regions and certified pass chains, lowerings to `jasminDialect`, the narrow-word stages of `compileRegion` (`NFProgNarrowPrep`, `NFProgWiden`, `NFProgMaskElimFast`, `NFProgDCELive`), export to `Lprog` (`VIR/JasminLprogExport/`), the linear and flag machines `lsem`, `lsemFuelMemF`, whole-body passes (`VIR/LsemBridgePass/`), word templates, vector paths, prime-ir dialects, per-primitive kernels | `aegraphStep`, `cryptoDialectToJasminCom`, `exportR_memFCT`, `lsemFuelMemFk_blockRel`, `rustToJasminCom_endToEnd_unconditional` | [VIR/AGENTS.md](CatCrypt/Crypto/SecureCompilation/VIR/AGENTS.md), [VIR/DIALECTS.md](CatCrypt/Crypto/SecureCompilation/VIR/DIALECTS.md), [VIR/SEMANTICS.md](CatCrypt/Crypto/SecureCompilation/VIR/SEMANTICS.md) |
 | `X86Backend/` | 580 | 322.7 k | the x86-64 back end: machine models (`runBlock`), register allocation and its translation validation, printed-body passes, the image relation and gates of `compileRegion`, the encoder and decoder, decoded-byte simulation and constant time, linked calls, front-generated kernels | `ownedCheckMC_sound`, `printedAddr_simW`, `decodeLprog_encodeLfundefBytes`, `encodeLfundefBytesChecked`, `haltsC_of_linkedChecks`, `blockLeak_pub_determined` | [X86Backend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/X86Backend/AGENTS.md) |
 | `ARMBackend/`, `RISCVBackend/` | 33, 35 | 13.5 k, 11.7 k | AArch64 and RV64 models, encoders and Sail-grounded decoders | `comToArmLsem_correct`, `riscvStep64_sail_grounded` | [ARMBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/ARMBackend/AGENTS.md), [RISCVBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/RISCVBackend/AGENTS.md) |
 | `TileBackend/` | 13 | 4.2 k | NVIDIA Tile IR emitter | - | [TileBackend/AGENTS.md](CatCrypt/Crypto/SecureCompilation/TileBackend/AGENTS.md) |
