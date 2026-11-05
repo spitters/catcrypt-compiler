@@ -141,7 +141,8 @@ theorem AArm.pieces_ne_nil_or (P : Params) (a : AArm) (h : a.ok P = true) :
         simp [AArm.pieces, Arm.pieces, hDS]
     | shr m D S =>
       left
-      simp [AArm.pieces, Arm.pieces]
+      simp only [AArm.pieces, Arm.pieces]
+      split <;> simp
     | _ => left; simp [AArm.pieces, Arm.pieces]
   | zero B n =>
     left
