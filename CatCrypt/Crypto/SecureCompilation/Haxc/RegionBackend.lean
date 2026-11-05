@@ -306,7 +306,8 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   save slot of a callee-saved register, and the restore epilogue passes `restoreB`.
 * `regionPrintedB_of_regionImgB`: a body that passes `regionImgB` is in `regionPrintedB`.
 * `regionImgCoreB_of_narrowB`: a body of the narrow class `printedAddrB` with no cell access
-  that passes `imgGateB` and names no frame array passes `regionImgCoreB` at no cell array.
+  that passes `imgGateB`, and whose indexed stores write to no frame-array name, passes
+  `regionImgCoreB` at no cell array.
 * `callsTabB_iff`: `callsTabB` holds exactly when every call names a symbol of the list.
 * `printedAddrWB_eq`: `printedAddrWB` is `callsTabB []` with `decodableLcmd` and the calling
   class `printedAddrCWB` at every frame.
@@ -1147,8 +1148,8 @@ end RestoreCheck
     observed name outside the width analysis at the return. On a body with no cell access, at
     no cell array, the cell conditions hold and the cell body and the frame marks are those of
     the body (`regionImgB_of_cellFreeB`). A body of the narrow class `printedAddrB` that passes
-    `imgGateB` at the frame marks of the body, with no frame-array name, passes the gate
-    (`regionImgCoreB_of_narrowB`). -/
+    `imgGateB` at the frame marks of the body, whose indexed stores have destinations that are
+    no frame-array names, passes the gate (`regionImgCoreB_of_narrowB`). -/
 def regionImgCoreB (sl : String → Option (String × Nat)) (R : Slots) (outs : List String)
     (body : Lcmd) : Bool :=
   printedAddrWB body && cellAccB sl R body && cellNoSlotB sl body
@@ -1206,15 +1207,18 @@ theorem regionPrintedB_of_regionImgB {sl : String → Option (String × Nat)} {R
   exact h.1.1.1.1
 
 /-- **The narrow branch of the gate is contained in the gate**: a body of `printedAddrB` with no
-    cell access that passes `imgGateB` at the frame marks of the body and has no frame-array
-    name passes `regionImgCoreB` at no cell array, at every list of observed names. The width
-    analysis of such a body is empty (`ImageAddrCallW.oneBitAt_nil_of_narrowB`), which gives
-    `imgGateBW` (`ImageAddrCallW.imgGateBW_of_imgGateB`), hence `imgGateCW`, and `retOutsB`
-    (`ImageAddrCallW.retOutsB_of_narrowB`). -/
+    cell access that passes `imgGateB` at the frame marks of the body, and whose indexed stores
+    `STOREIDX d, (b, x, 8), v` have destinations `d` that are no frame-array names, passes
+    `regionImgCoreB` at no cell array, at every list of observed names. The width analysis of
+    such a body is empty (`ImageAddrCallW.oneBitAt_nil_of_narrowB`), every other name of the
+    body is a general-purpose name or a frame slot (`ImageAddrCallW.faB_names_of_narrowB`),
+    which gives `imgGateBW` (`ImageAddrCallW.imgGateBW_of_imgGateB`), hence `imgGateCW`, and
+    `retOutsB` (`ImageAddrCallW.retOutsB_of_narrowB`). -/
 theorem regionImgCoreB_of_narrowB (sl : String → Option (String × Nat)) (outs : List String)
     {body : Lcmd} (hcls : printedAddrB body = true) (hcf : cellFreeB body = true)
     (hgate : imgGateB (frameMark (frameNames body)) sl body = true)
-    (hfa : ∀ i ∈ body, ∀ q ∈ JasminLsemExportRewrites.instrNames i.li_i, faB q = false) :
+    (hstx : ∀ i ∈ body, ∀ d b x v,
+      i.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b x 8, .reg v] → faB d = false) :
     regionImgCoreB sl [] outs body = true := by
   unfold regionImgCoreB
   rw [cellBody_of_cellFreeB sl hcf, cellAccB_of_cellFreeB sl [] hcf,
@@ -1223,7 +1227,7 @@ theorem regionImgCoreB_of_narrowB (sl : String → Option (String × Nat)) (outs
   rw [hfm, X86Backend.ImageAddrCallW.printedAddrWB_of_printedAddrB hcls,
     X86Backend.ImageAddrCallW.retOutsB_of_narrowB hcls hgate,
     X86Backend.ImageAddrCidx.imgGateCW_of_imgGateBW
-      (X86Backend.ImageAddrCallW.imgGateBW_of_imgGateB hcls hgate hfa)]
+      (X86Backend.ImageAddrCallW.imgGateBW_of_imgGateB hcls hgate hstx)]
   rfl
 
 /-! ### The image check at a table -/

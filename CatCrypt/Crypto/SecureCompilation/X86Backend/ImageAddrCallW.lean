@@ -1974,6 +1974,141 @@ theorem regGateBW_nil_of_regGateB {frame : String → Option (BitVec 64)} {x : L
     split at hw <;> simp_all
   · cases h2
 
+/-! ### The frame-array names of a narrow body -/
+
+/-- A name with the prefix `p` begins with the first character of `p`. -/
+theorem head_of_hasPrefix {q p : String} {c : Char} {cs : List Char} (hp : p.toList = c :: cs)
+    (h : hasPrefix q p = true) : q.toList.head? = some c := by
+  unfold hasPrefix at h
+  rw [hp] at h
+  cases hq : q.toList with
+  | nil => simp [hq] at h
+  | cons c' t =>
+    simp only [hq, List.isPrefixOf, Bool.and_eq_true, beq_iff_eq] at h
+    simp [h.1]
+
+/-- A frame-array name begins with `f`. -/
+theorem head_of_faB {q : String} (h : faB q = true) : q.toList.head? = some 'f' := by
+  unfold faB faParts? at h
+  split_ifs at h with hp
+  · exact head_of_hasPrefix (cs := ['a', '.']) (by decide +kernel) hp
+  · simp at h
+
+/-- A general-purpose name is no frame-array name. -/
+theorem faB_of_gpOk {r : String} (h : gpOk r = true) : faB r = false := by
+  have hall : ∀ r ∈ DecodePrinted.gpList, faB r = false := by decide +kernel
+  exact hall r (DecodePrinted.mem_gpList h)
+
+/-- A spill name `k.…` or a save slot `qsave.…` is no frame-array name. -/
+theorem faB_of_isSpillOrQsave {q : String} (h : LprogBytes.isSpillOrQsave q = true) :
+    faB q = false := by
+  cases hf : faB q with
+  | false => rfl
+  | true =>
+    have hh := head_of_faB hf
+    simp only [LprogBytes.isSpillOrQsave, Bool.or_eq_true] at h
+    rcases h with h | h
+    · rw [head_of_hasPrefix (c := 'k') (cs := ['.']) (by decide +kernel) h] at hh; cases hh
+    · rw [head_of_hasPrefix (c := 'q') (cs := ['s', 'a', 'v', 'e', '.']) (by decide +kernel) h]
+        at hh
+      cases hh
+
+/-- A name with a frame word of `spillQsaveOff` is no frame-array name. -/
+theorem faB_of_spillQsaveOff {F W Q : Nat} {q : String}
+    (h : (LprogBytes.spillQsaveOff F W q Q).isSome = true) : faB q = false := by
+  apply faB_of_isSpillOrQsave
+  unfold LprogBytes.spillQsaveOff at h
+  simp only [LprogBytes.isSpillOrQsave, Bool.or_eq_true]
+  split_ifs at h with h1 h2
+  · exact Or.inl h1
+  · exact Or.inr h2
+  · simp at h
+
+open OwnedLprogTV JasminLsemMemFlagGuard in
+/-- The symbolic step of the address load `LEA:64 d, q` of a name fails. -/
+theorem symStep_lea_reg (d q : String) :
+    symStep (.Lopn [.reg d] "LEA:64" [.reg q], .reg none) SSt.start = .fail := by
+  have h1 : stripWidthTag "LEA:64" = "LEA" := by decide +kernel
+  have h2 : JasminImmShiftMnem.immShiftMnem? "LEA:64" = none := by decide +kernel
+  simp [h1, h2, symStep, cmpArgs?, movRegArgs?, flagCondCC?, carryArgs?, wideArgs?, symMem,
+    symCast, JasminLsemCast.castStruct?, JasminLsemCast.movImmStruct?, symMC, symSh, symN,
+    JasminLsemMulCarry.mulhiStruct?, JasminLsemMulCarry.adcxStruct?,
+    JasminLsemMulCarry.adcxhiStruct?, JasminLsemMulCarry.sbbStruct?,
+    JasminLsemMulCarry.sbbhiStruct?, VIR.JasminLsemShift.sarStruct?, liftR, aluFl]
+
+/-- The address load `LEA:64` carries no cast width. -/
+theorem castTagW_lea : JasminLsemAddrRun.castTagW "LEA:64" = none := by decide
+
+/-- **The gate refuses the address load of a name**: `instrGateB` is false on
+    `LEA:64 d, q`, whose symbolic step fails. -/
+theorem instrGateB_lea_reg (frame : String → Option (BitVec 64))
+    (slotArr : String → Option (String × Nat)) (body : Lcmd) (k : Nat) (d q : String) :
+    instrGateB frame slotArr body k (.Lopn [.reg d] "LEA:64" [.reg q]) = false := by
+  simp [instrGateB, icase, regGateB, regOkB, slotMov?, slotCmp?, JasminLsemAddrRun.normA,
+    castTagW_lea, symStep_lea_reg]
+
+open JasminLsemExportRewrites (instrNames opNames) in
+/-- **The names of an instruction of a narrow body at the gate**: at an instruction of a body
+    of `printedAddrB` that passes `instrGateB`, every name other than the destination of an
+    indexed store `STOREIDX` is a general-purpose name or a frame slot `k.…`, `qsave.…`, so
+    no name is a frame-array name when the destination of an indexed store is none (`hstx`).
+    The frame-array address `LEA:64 d, fa.<o>.<n>` of the class does not pass the gate
+    (`instrGateB_lea_reg`). -/
+theorem faB_names_of_narrowB {frame : String → Option (BitVec 64)}
+    {slotArr : String → Option (String × Nat)} {body : Lcmd}
+    (hcls : DecodePrintedCFG.printedAddrB body = true) {k : Nat} {i : Linstr}
+    (hb : body[k]? = some i)
+    (hg : instrGateB frame slotArr body k i.li_i = true)
+    (hstx : ∀ d b x v, i.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b x 8, .reg v] →
+      faB d = false) :
+    ∀ q ∈ instrNames i.li_i, faB q = false := by
+  obtain ⟨ii, x⟩ := i
+  simp only at hg hstx ⊢
+  rcases narrowB_instr hcls hb with h1 | h1
+  · cases x <;> simp_all [isRetB, instrNames]
+  · cases x with
+    | Lopn ds o ss =>
+      simp only [instrOKB] at h1
+      cases hA : classifyA (.Lopn ds o ss) with
+      | none => simp [hA] at h1
+      | some a =>
+        rw [hA] at h1
+        have hx := classifyA_instr hA
+        rw [← hx] at hg hstx ⊢
+        clear hb hA hx hcls
+        cases a with
+        | reg a' =>
+          simp only [AArm.ok, Bool.and_eq_true] at h1
+          obtain ⟨⟨-, h1⟩, -⟩ := h1
+          clear hstx hg
+          cases a' <;> simp only [DecodePrinted.Arm.ok, Bool.and_eq_true] at h1 <;>
+            simp only [AArm.instr, DecodePrinted.Arm.instr, instrNames, opNames,
+              List.cons_append, List.nil_append, List.flatMap_cons, List.flatMap_nil,
+              List.append_nil, List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp,
+              forall_eq] <;>
+            grind [faB_of_gpOk, faB_of_spillQsaveOff]
+        | leaF d q =>
+          simp [AArm.instr, instrGateB_lea_reg] at hg
+        | stx d B I V =>
+          have hd := hstx d B I V rfl
+          simp only [AArm.ok, Bool.and_eq_true] at h1
+          simp [AArm.instr, instrNames, opNames, hd, faB_of_gpOk, h1]
+        | st m q S =>
+          simp only [AArm.ok, Bool.and_eq_true] at h1
+          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1, faB_of_spillQsaveOff h1.1.1.2]
+        | ld m D q =>
+          simp only [AArm.ok, Bool.and_eq_true] at h1
+          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1,
+            faB_of_spillQsaveOff h1.1.1.1.2]
+        | cmpM c q =>
+          simp only [AArm.ok, Bool.and_eq_true] at h1
+          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1,
+            faB_of_isSpillOrQsave h1.1.1.1.2]
+        | _ =>
+          simp only [AArm.ok, Bool.and_eq_true] at h1
+          simp [AArm.instr, instrNames, opNames, faB_of_gpOk, h1]
+    | _ => simp [instrNames]
+
 /-- The gate of an instruction of the narrow route at the empty analysis gives `gateAtW`, for an
     instruction of the class with no frame-array name. -/
 theorem gateAtW_of_instrGateB {frame : String → Option (BitVec 64)}
@@ -2036,15 +2171,17 @@ theorem gateAtW_of_instrGateB {frame : String → Option (BitVec 64)}
     split <;> simp
 
 /-- **The narrow image gate is in the wide one**: a body of `printedAddrB` that passes
-    `imgGateB` and has no frame-array name passes `imgGateBW`. The width analysis is empty there
-    (`oneBitAt_nil_of_narrowB`), and each arm of `gateAtW` at the empty analysis reduces to that
-    of `instrGateB`. The hypothesis `hfa` is needed at the destination of an indexed store, which
-    `instrGateB` leaves free and the first conjunct of `gateAtW` does not. -/
+    `imgGateB`, and whose indexed stores have destinations that are no frame-array names
+    (`hstx`), passes `imgGateBW`. The width analysis is empty there
+    (`oneBitAt_nil_of_narrowB`), each arm of `gateAtW` at the empty analysis reduces to that
+    of `instrGateB`, and the first conjunct of `gateAtW`, no frame-array name, holds at every
+    other name by the class (`faB_names_of_narrowB`). -/
 theorem imgGateBW_of_imgGateB {frame : String → Option (BitVec 64)}
     {slotArr : String → Option (String × Nat)} {body : Lcmd}
     (hcls : DecodePrintedCFG.printedAddrB body = true)
     (hgate : imgGateB frame slotArr body = true)
-    (hfa : ∀ i ∈ body, ∀ q ∈ JasminLsemExportRewrites.instrNames i.li_i, faB q = false) :
+    (hstx : ∀ i ∈ body, ∀ d b x v,
+      i.li_i = .Lopn [.reg d] "STOREIDX" [.arrIdx b x 8, .reg v] → faB d = false) :
     imgGateBW frame slotArr body = true := by
   have hg := hgate
   simp only [imgGateB, Bool.and_eq_true, List.all_eq_true, List.mem_range] at hg
@@ -2059,7 +2196,7 @@ theorem imgGateBW_of_imgGateB {frame : String → Option (BitVec 64)}
     simp only [Option.all_some] at this ⊢
     rw [instrGateBW, oneBitAt_nil_of_narrowB hcls hgate]
     exact gateAtW_of_instrGateB (noWideArm_of_narrowB hcls hb)
-      (hfa i (List.mem_of_getElem? hb)) this
+      (faB_names_of_narrowB hcls hb this (hstx i (List.mem_of_getElem? hb))) this
 
 end Narrow
 
