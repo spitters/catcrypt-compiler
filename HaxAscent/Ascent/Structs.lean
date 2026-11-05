@@ -15,7 +15,9 @@ The printer renders an `n`-field struct `S` as the right-nested product
 projections `def «.f» (x : S_T)` or `def «S.f» (x : S_T)` along the path `projPath i n`,
 and the update `struct_update#S#i#n` rendered as a nest of `Hax.struct_update_snd`
 around one `Hax.struct_update_fst` (the last field: around one `struct_update_snd`).
-A one-field struct is the field itself, with identity projection and update. The
+A one-field struct is the field itself, with identity projection and update. A fieldless
+struct is a structure `S_T` with no fields and the value `def S : S_T := {}`; it is encoded
+as the empty tuple (`HaxEnc.fieldless`), the value of `ctorLeaf 0`. The
 literal calls the same names with `.app`. `HaxEnc` encodes a right-nested product as
 one flat `.tuple`, so the leaves act on flat tuples:
 
@@ -41,6 +43,7 @@ the update names built by `structUpdateHead`.
 
 * `ctorLeaf`, `projLeaf`, `updateLeaf`
 * `HaxField`, `fieldGet`, `fieldSet`, `HaxField.Lawful`
+* `HaxEnc.fieldless` — the encoding of a fieldless struct
 * `StructSpec`, `StructSpec.table`, `structsTable`
 
 ## Main results
@@ -48,6 +51,8 @@ the update names built by `structUpdateHead`.
 * `ctorLeaf_prod`, `projLeaf_prod`, `updateLeaf_prod` — the `corres_app` equations of the
   three leaves on encoded products
 * `ctorLeaf_one`, `projLeaf_one`, `updateLeaf_one` — the same for a one-field struct
+* `ctorLeaf_zero` — the constructor leaf of a fieldless struct, encoded by
+  `HaxEnc.fieldless` as the empty tuple
 -/
 
 @[expose] public section
@@ -172,6 +177,36 @@ theorem ctorLeaf_prod (p : α × γ) {n : Nat} (hlen : (HaxTupleEnc.encList p).l
   rfl
 
 theorem ctorLeaf_one (a : α) : ctorLeaf 1 [enc a] = some (enc a) := rfl
+
+end Transport
+
+/-! ### Fieldless structs -/
+
+section Fieldless
+
+/-- The encoding of a fieldless struct: every value is the empty tuple, the value of the
+    constructor leaf `ctorLeaf 0` at no arguments. -/
+abbrev HaxEnc.fieldless (α : Type) : HaxEnc α := ⟨fun _ => .tuple []⟩
+
+/-- The encoding of a fieldless struct is not a control-flow value. -/
+theorem HaxEnc.fieldless_plain (α : Type) : @HaxEnc.Plain α (HaxEnc.fieldless α) :=
+  @HaxEnc.Plain.mk α (HaxEnc.fieldless α) fun _ => rfl
+
+/-- The encoding of a fieldless struct is injective. -/
+theorem HaxEnc.fieldless_inj (α : Type) [Subsingleton α] :
+    @HaxEnc.Inj α (HaxEnc.fieldless α) :=
+  @HaxEnc.Inj.mk α (HaxEnc.fieldless α) fun a b _ => Subsingleton.elim a b
+
+/-- **Constructor of a fieldless struct.** The constructor leaf of no arguments is the
+    encoding of the struct's value. -/
+theorem ctorLeaf_zero {α : Type} (a : α) :
+    ctorLeaf 0 [] = some (@enc α (HaxEnc.fieldless α) a) := rfl
+
+end Fieldless
+
+section Transport
+
+variable {α γ β : Type} [HaxEnc α] [HaxTupleEnc γ]
 
 /-- **Projection.** The projection leaf of field `i` maps the encoding of a product to
     the encoding of the field. -/

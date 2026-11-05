@@ -43,7 +43,8 @@ in source order from the module that declares the class.
 The generated declarations are `Ns.HaxGen.structs`, `Ns.HaxGen.deps`, `Ns.HaxGen.table`
 (`updates ++ structsTable structs ++ depsTable deps`), one leaf lemma `Ns.HaxLeaf.«name»`
 per struct and dependency name the literals use, and `Ns.HaxGen.fns`, `Ns.HaxGen.names`,
-`Ns.HaxGen.notIn_fns`, `Ns.HaxGen.builtins := extBuiltins table fns`.
+`Ns.HaxGen.notIn_fns`, `Ns.HaxGen.builtins := extBuiltins table fns`. A fieldless struct
+`S_T` gets the instances `Ns.HaxGen.«S».enc`, `.plain` and `.inj` (`HaxEnc.fieldless`).
 
 ## Local functions
 
@@ -214,7 +215,11 @@ def collectStructs (ns : Name) (consts : Array Name) :
       unless r.isConstOf c do return none
       return some (xs.size, ← xs.mapM inferType)
     let some (arity, tys) := info? | skipped := skipped.push s!"{S}: pass-through struct"; continue
-    if arity == 0 then continue
+    if arity == 0 then
+      -- a fieldless struct: a structure with no fields and its value `S`
+      unless isStructure env c && (getStructureFields env c).isEmpty do continue
+      out := out.push { lit := S, ctor, tyName := c, arity := 0, fieldTys := #[], projs := #[] }
+      continue
     let boxed ← if arity ≥ 2 then isProdTy tys.back! else pure false
     let mut projs := #[]
     for p in consts do
@@ -493,6 +498,28 @@ partial def renameApps (σ : List (String × String)) (e : Expr) : Expr :=
       some (mkApp2 x.appFn!.appFn! f' (renameApps σ x.appArg!))
     else none
 
+/-- Declare the encoding instances of the fieldless struct `ty` (literal name `S`) as
+    `Ns.HaxGen.«S».enc`, `.plain` and `.inj`: `HaxEnc.fieldless`, `HaxEnc.fieldless_plain`,
+    and `HaxEnc.fieldless_inj` at the subsingleton proof of structure eta. -/
+def declareFieldless (ns : Name) (S : String) (ty : Name) : MetaM Unit := do
+  let base := ns ++ `HaxGen ++ Name.mkSimple S
+  let T := mkConst ty
+  let encN := base ++ `enc
+  if (← getEnv).contains encN then return
+  addDefn encN (← mkAppM ``Hax.Ascent.HaxEnc #[T]) (← mkAppM ``Hax.Ascent.HaxEnc.fieldless #[T])
+  setReducibilityStatus encN .instanceReducible
+  addInstance encN .global (eval_prio default)
+  let inst := mkConst encN
+  let plainV ← mkAppM ``Hax.Ascent.HaxEnc.fieldless_plain #[T]
+  addThm (base ++ `plain) (mkApp2 (mkConst ``Hax.Ascent.HaxEnc.Plain) T inst) plainV
+  addInstance (base ++ `plain) .global (eval_prio default)
+  let allEq ← withLocalDeclD `a T fun a => withLocalDeclD `b T fun b => do
+    mkLambdaFVars #[a, b] (← mkExpectedTypeHint (← mkEqRefl a) (← mkEq a b))
+  let sub := mkApp2 (mkConst ``Subsingleton.intro [Level.one]) T allEq
+  let injV := mkApp2 (mkConst ``Hax.Ascent.HaxEnc.fieldless_inj) T sub
+  addThm (base ++ `inj) (mkApp2 (mkConst ``Hax.Ascent.HaxEnc.Inj) T inst) injV
+  addInstance (base ++ `inj) .global (eval_prio default)
+
 /-- A trait-generic function at a carrier: the surface applied to the carrier and its
     instances, the monomorphisation table and instance list as terms, and the equation
     naming the specialised literal. -/
@@ -529,6 +556,8 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
   let mut notes : Array String := #[]
   let (structs, skippedS) ← collectStructs ns consts
   notes := notes ++ skippedS
+  for s in structs do
+    if s.arity == 0 then declareFieldless ns s.lit s.tyName
   let rtNames ← runtimeNames
   let widthNames ← tableKeys ``Hax.Ascent.widthTable
   let hasCls := env.contains clsName && isClass env clsName
@@ -682,7 +711,8 @@ def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
         match ← budgeted (mkLeafThm s.lit s.lit s.fieldTys.toList
             (mkAppM ``Hax.Ascent.ctorLeaf #[mkNatLit s.arity])
             (fun xs => do
-              if s.arity == 1 then mkAppM ``Hax.Ascent.ctorLeaf_one #[xs[0]!]
+              if s.arity == 0 then mkAppM ``Hax.Ascent.ctorLeaf_zero #[mkConst s.ctor]
+              else if s.arity == 1 then mkAppM ``Hax.Ascent.ctorLeaf_one #[xs[0]!]
               else
                 let r ← rapp ``Hax.Ascent.ctorLeaf_prod
                 r.set `p (← mkExpectedTypeHint (mkAppN (mkConst s.ctor) xs) sty)
