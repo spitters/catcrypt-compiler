@@ -56,9 +56,13 @@ open CatCrypt.Crypto.SecureCompilation.VarTimeOpDetector (VOp)
 inductive CTLeak where
   /-- The outcome of a conditional branch. -/
   | branch (b : Bool)
-  /-- A memory access at offset `off` of the region `region`. At the machine
-      level `region` is the base register name and `off` the byte offset; at
-      `LowCT` it is the array variable and the element index. -/
+  /-- A memory access at offset `off` of the region `region`. In the events of
+      `MachineConstantTime.instrLeak`, embedded by `mleakToCT`, `region` is the
+      base register name and `off` the byte offset. On the address machine
+      (`DecodedCT.RunL`) the event is `addr "" a`: `DecodedCT.opLeak` maps each
+      memory event through `DecodedCT.resolveEv`, which resolves the effective
+      address, so the region name is empty and `a` is the concrete address. At
+      `LowCT` `region` is the array variable and `off` the element index. -/
   | addr (region : String) (off : Int)
   /-- A variable-time instruction `op` executed on the data operands `args`. -/
   | vt (op : X86Mnem) (args : List Nat)
