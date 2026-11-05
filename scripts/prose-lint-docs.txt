@@ -6,6 +6,7 @@
 PIPELINE.md
 QRUNCH.md
 README.md
+OVERVIEW.md
 bridge/README.md
 bench/qasm/qsynth/README.md
 bench/qasm/qasmbench/README.md
