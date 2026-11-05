@@ -270,6 +270,20 @@ theorem gateCount_ofList (gs : List (Gate n)) :
   | nil => simp [Circuit.ofList]
   | cons g gs ih => simp [Circuit.ofList, ih, Nat.add_comm]
 
+/-- Flatten a circuit to its gate list, applied left to right; `Circuit.ofList` rebuilds it. -/
+def circuitToList : Circuit n → List (Gate n)
+  | .empty     => []
+  | .gate g c  => g :: circuitToList c
+  | .seq c₁ c₂ => circuitToList c₁ ++ circuitToList c₂
+
+/-- `circuitToList` preserves gate count as list length. -/
+theorem circuitToList_length (c : Circuit n) :
+    (circuitToList c).length = c.gateCount := by
+  induction c with
+  | empty => simp [circuitToList]
+  | gate g c ih => simp [circuitToList, ih, Nat.add_comm]
+  | seq c₁ c₂ ih₁ ih₂ => simp [circuitToList, ih₁, ih₂]
+
 /-! ## Gate Count Properties -/
 
 /-- Gate count is additive under sequential composition. -/

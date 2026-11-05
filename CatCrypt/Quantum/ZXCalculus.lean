@@ -415,7 +415,7 @@ theorem repeatedBasisKet_cross_inner {n : ℕ} (hn : 0 < n) (b₁ b₂ : Fin 2)
               (b₂ = 1 ∧ l = ⟨2 ^ n - 1, two_pow_sub_one_lt n⟩)) by
     rcases this with h | h <;> simp only [h, ite_false, zero_mul, mul_zero]
   by_contra habs
-  push_neg at habs
+  push Not at habs
   obtain ⟨h1, h2⟩ := habs
   have h2n : 1 ≤ 2 ^ n := Nat.one_le_two_pow
   rcases h1 with ⟨hb1, hl⟩ | ⟨hb1, hl⟩ <;> rcases h2 with ⟨hb2, hl'⟩ | ⟨hb2, hl'⟩
@@ -671,12 +671,6 @@ theorem color_change (m n : ℕ) (α : ℝ) :
       hadamardTensor n * denote (.zSpider m n α : ZXDiagram m n) * hadamardTensor m := by
   simp [denote, xSpiderMatrix]
 
--- Shared sqrt(2) helpers for ZX matrix proofs.
-theorem sqrt2_inv_sq : (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ := by
-  rw [← mul_inv, ← Complex.ofReal_mul,
-      Real.mul_self_sqrt (by norm_num : (0:ℝ) ≤ 2)]
-  push_cast; rfl
-
 theorem sqrt2_ne_zero : (↑(Real.sqrt 2) : ℂ) ≠ 0 :=
   Complex.ofReal_ne_zero.mpr (Real.sqrt_ne_zero'.mpr (by norm_num : (0:ℝ) < 2))
 
@@ -700,7 +694,7 @@ local macro "zx_matrix_tac" : tactic => `(tactic|
     Fin.sum_univ_one, Fin.sum_univ_two, Fin.sum_univ_four,
     sum_fin_pow2_2, Fin.isValue,
     Nat.add_eq, Nat.add_zero,
-    sqrt2_inv_sq]
+    ofReal_sqrt2_inv_sq]
    first | ring | (field_simp [sqrt2_ne_zero]; simp [sqrt2_sq_pow])))
 
 /-- Helper: `X(1,1,π) = !![0,1;1,0]` (Pauli σ_x), proved via the colour-change
@@ -724,7 +718,8 @@ private lemma xSpiderMatrix_one_one_pi :
     simp [hadamardMatrix, Matrix.of_apply, one_div]
   have hH11 : hadamardMatrix 1 1 = -((↑(Real.sqrt 2) : ℂ)⁻¹) := by
     simp [hadamardMatrix, Matrix.of_apply, one_div]
-  have hinvsq : (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ := sqrt2_inv_sq
+  have hinvsq : (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ :=
+    ofReal_sqrt2_inv_sq
   have hinvsq2 : (↑(Real.sqrt 2) : ℂ)⁻¹ ^ 2 = (2 : ℂ)⁻¹ := by rw [sq]; exact hinvsq
   simp only [xSpiderMatrix, hadamardTensor_one_eq, hZpi]
   rw [Matrix.mul_assoc]
@@ -981,7 +976,7 @@ theorem zSpider_half_pi_eq :
     Strategy: X(π/2) = H · Z(π/2) · H by `xSpiderMatrix` definition (color-change).
     `zSpider_half_pi_eq` gives `Z(π/2) = ![[1,0],[0,I]]`. Then we expand
     H · D(1,I) · H entry-wise using `linear_combination` with the
-    `sqrt2_inv_sq` identity `(↑√2)⁻¹ * (↑√2)⁻¹ = 1/2`. -/
+    `ofReal_sqrt2_inv_sq` identity `(↑√2)⁻¹ * (↑√2)⁻¹ = 1/2`. -/
 theorem xSpider_half_pi_eq :
     xSpiderMatrix 1 1 (Real.pi / 2) =
       Matrix.of ![![(1 + Complex.I) / 2, (1 - Complex.I) / 2],
@@ -995,7 +990,8 @@ theorem xSpider_half_pi_eq :
     simp [hadamardMatrix, Matrix.of_apply, one_div]
   have hH11 : hadamardMatrix 1 1 = -((↑(Real.sqrt 2) : ℂ)⁻¹) := by
     simp [hadamardMatrix, Matrix.of_apply, one_div]
-  have hinvsq : (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ := sqrt2_inv_sq
+  have hinvsq : (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ :=
+    ofReal_sqrt2_inv_sq
   have hinvsq2 : (↑(Real.sqrt 2) : ℂ)⁻¹ ^ 2 = (2 : ℂ)⁻¹ := by rw [sq]; exact hinvsq
   -- xSpiderMatrix 1 1 (π/2) = H * Z(π/2) * H, with Fin (2^1) indexing.
   -- Convert via hadamardTensor_one_eq, then expand both sums.
@@ -1040,7 +1036,8 @@ theorem hadamardBox_denote_eq :
   have hdiv : ((1 + Complex.I) / ↑(Real.sqrt 2) : ℂ) =
       (1 + Complex.I) * (↑(Real.sqrt 2) : ℂ)⁻¹ := by
     rw [div_eq_mul_inv]
-  have hinvsq : (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ := sqrt2_inv_sq
+  have hinvsq : (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ :=
+    ofReal_sqrt2_inv_sq
   have hinvsq2 : (↑(Real.sqrt 2) : ℂ)⁻¹ ^ 2 = (2 : ℂ)⁻¹ := by rw [sq]; exact hinvsq
   -- Reassociate (D*X)*D so each entry computation needs only two sums.
   rw [Matrix.mul_assoc]

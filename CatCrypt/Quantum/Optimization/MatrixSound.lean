@@ -60,9 +60,9 @@ variable {n : ℕ}
 
 /-! ## Gate lists -/
 
-/-- `TemplateMatching.circuitToList` preserves `circuitUnitary`. -/
+/-- `QCircuit.circuitToList` preserves `circuitUnitary`. -/
 theorem circuitUnitary_ofList_circuitToList_template (c : Circuit n) :
-    circuitUnitary (Circuit.ofList (TemplateMatching.circuitToList c)) = circuitUnitary c :=
+    circuitUnitary (Circuit.ofList (QCircuit.circuitToList c)) = circuitUnitary c :=
   circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c
 
 /-! ## The template pass -/

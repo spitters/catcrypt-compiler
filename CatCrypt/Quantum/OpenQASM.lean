@@ -127,22 +127,18 @@ variable {n : ℕ}
 
 /-! ## Program text -/
 
-/-- Join a list of strings with newlines. -/
-def joinLines (ls : List String) : String :=
-  "\n".intercalate ls
-
 /-- The three header lines of an OpenQASM 3.0 program on `numQubits` qubits. -/
 def qasmHeaderLines (numQubits : ℕ) : List String :=
   ["OPENQASM 3.0;", "include \"stdgates.inc\";", s!"qubit[{numQubits}] q;"]
 
 /-- The OpenQASM 3.0 header with qubit declaration. -/
 def qasmHeader (numQubits : ℕ) : String :=
-  joinLines (qasmHeaderLines numQubits)
+  "\n".intercalate (qasmHeaderLines numQubits)
 
 /-- The OpenQASM 3.0 program of a list of exact gates: the header, then one
 statement per line. -/
 def emitDQASM (n : ℕ) (gs : List (DGate n)) : String :=
-  joinLines (qasmHeaderLines n ++ gs.map DGate.toQASM)
+  "\n".intercalate (qasmHeaderLines n ++ gs.map DGate.toQASM)
 
 /-! ## Gate to QASM String -/
 

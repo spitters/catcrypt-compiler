@@ -8,6 +8,7 @@ module
 public import CatCrypt.Quantum.QCircuit
 public import CatCrypt.Quantum.UnitaryChannel
 public import CatCrypt.Crypto.UCMonad.QuantumUC
+public import CatCrypt.Tactic.NormSqrt
 
 
 @[expose] public section
@@ -58,30 +59,8 @@ namespace CatCrypt.Quantum.GateUnitarity
 
 variable {n : ℕ}
 
-/-! ## √n Simp Lemmas for Complex Matrix Arithmetic
-
-These local `@[simp]` lemmas normalize products of `(↑(Real.sqrt n) : ℂ)` and
-its inverse. They unblock `ring` / `simp; ring` for matrix proofs involving
-Hadamard gates (√2) and similar constructions. -/
-
-theorem ofReal_sqrt_sq {r : ℝ} (hr : 0 ≤ r) :
-    (↑(Real.sqrt r) : ℂ) * (↑(Real.sqrt r) : ℂ) = ↑r := by
-  rw [← Complex.ofReal_mul, Real.mul_self_sqrt hr]
-
-theorem ofReal_sqrt_inv_sq {r : ℝ} (hr : 0 ≤ r) :
-    (↑(Real.sqrt r) : ℂ)⁻¹ * (↑(Real.sqrt r) : ℂ)⁻¹ = (↑r)⁻¹ := by
-  rw [← mul_inv, ofReal_sqrt_sq hr]
-
-theorem ofReal_sqrt2_sq :
-    (↑(Real.sqrt 2) : ℂ) * (↑(Real.sqrt 2) : ℂ) = 2 := by
-  rw [ofReal_sqrt_sq (by norm_num : (0:ℝ) ≤ 2)]; push_cast; rfl
-
-theorem ofReal_sqrt2_inv_sq :
-    (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ := by
-  rw [ofReal_sqrt_inv_sq (by norm_num : (0:ℝ) ≤ 2)]; push_cast; rfl
-
-theorem ofReal_sqrt2_ne_zero :
-    (↑(Real.sqrt 2) : ℂ) ≠ 0 := by positivity
+/-! The `√2` identities of the matrix proofs below (`ofReal_sqrt2_sq`, `ofReal_sqrt2_inv_sq`)
+are in `CatCrypt.Tactic.NormSqrt`. -/
 
 /-! ## embedGate1 Algebraic Properties -/
 
@@ -591,11 +570,6 @@ section BaseGates
 
 open CatCrypt.Quantum.Programs.Qubit
 
-private theorem sqrt2_inv_sq :
-    (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ := by
-  rw [← mul_inv, ← Complex.ofReal_mul, Real.mul_self_sqrt (by norm_num : (0:ℝ) ≤ 2)]
-  simp
-
 set_option linter.unusedSimpArgs false in
 @[grind =]
 theorem hadamard_sq :
@@ -604,7 +578,7 @@ theorem hadamard_sq :
     simp [Programs.Qubit.hadamard, Matrix.mul_apply, Fin.sum_univ_two,
           Matrix.of_apply, Matrix.cons_val_zero, Matrix.cons_val_one,
           neg_mul, mul_neg, neg_neg] <;>
-    rw [sqrt2_inv_sq] <;> ring
+    rw [ofReal_sqrt2_inv_sq] <;> ring
 
 set_option linter.unusedSimpArgs false in
 @[grind =]
@@ -614,7 +588,7 @@ theorem hadamard_unitary :
     simp [Programs.Qubit.hadamard, Matrix.mul_apply, conjTranspose_apply, Fin.sum_univ_two,
           Matrix.of_apply, Matrix.cons_val_zero, Matrix.cons_val_one,
           star_neg, star_trivial, neg_mul, mul_neg, neg_neg] <;>
-    rw [sqrt2_inv_sq] <;> ring
+    rw [ofReal_sqrt2_inv_sq] <;> ring
 
 set_option linter.unusedSimpArgs false in
 @[grind =]
@@ -698,6 +672,23 @@ theorem rzGate_unitary (θ : ℝ) :
   · change Complex.exp _ * (starRingEnd ℂ) (Complex.exp _) = 1
     rw [← Complex.exp_conj, ← Complex.exp_add]
     simp [map_mul, Complex.conj_I, Complex.conj_ofReal]
+
+/-! ### The Rz-family gates as `Rz` matrices -/
+
+theorem tGate_eq_rzGate : tGate = rzGate (Real.pi / 4) := rfl
+
+theorem tDaggerGate_eq_rzGate : tDaggerGate = rzGate (-(Real.pi / 4)) := by
+  ext i j; fin_cases i <;> fin_cases j <;> simp [tDaggerGate, rzGate]
+
+theorem phaseS_eq_rzGate : phaseS = rzGate (Real.pi / 2) := by
+  have h : Complex.exp (Complex.I * ((Real.pi / 2 : ℝ) : ℂ)) = Complex.I := by
+    rw [mul_comm, Complex.ofReal_div, Complex.ofReal_ofNat, Complex.exp_pi_div_two_mul_I]
+  rw [rzGate, h, phaseS]
+
+theorem pauliZ_eq_rzGate : pauliZ = rzGate Real.pi := by
+  have h : Complex.exp (Complex.I * ↑Real.pi) = -1 := by
+    rw [mul_comm, Complex.exp_pi_mul_I]
+  ext i j; fin_cases i <;> fin_cases j <;> simp [pauliZ, rzGate, h]
 
 end BaseGates
 
@@ -968,7 +959,7 @@ theorem hadamard_pauliX_hadamard :
   ext i j; fin_cases i <;> fin_cases j <;>
     simp [Programs.Qubit.hadamard, pauliZ, Matrix.mul_apply, Matrix.of_apply, Fin.sum_univ_two,
           Matrix.cons_val_zero, Matrix.cons_val_one, neg_mul, mul_neg, neg_neg] <;>
-    rw [sqrt2_inv_sq] <;> ring
+    rw [ofReal_sqrt2_inv_sq] <;> ring
 
 set_option linter.unusedSimpArgs false in
 /-- H · Z · H = X: Hadamard conjugation of Z gives X. -/
@@ -984,7 +975,7 @@ theorem hadamard_pauliZ_hadamard :
   ext i j; fin_cases i <;> fin_cases j <;>
     simp [Programs.Qubit.hadamard, pauliX, Matrix.mul_apply, Matrix.of_apply, Fin.sum_univ_two,
           Matrix.cons_val_zero, Matrix.cons_val_one, neg_mul, mul_neg, neg_neg] <;>
-    rw [sqrt2_inv_sq] <;> ring
+    rw [ofReal_sqrt2_inv_sq] <;> ring
 
 end GateCompositions
 

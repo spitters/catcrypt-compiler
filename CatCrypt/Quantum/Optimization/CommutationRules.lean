@@ -123,12 +123,6 @@ def gateCommutes (g₁ g₂ : Gate n) : Bool :=
 
 /-! ## Commute-and-Merge Optimization -/
 
-/-- Flatten a circuit into a list of gates. -/
-def circuitToList : Circuit n → List (Gate n)
-  | .empty     => []
-  | .gate g c  => g :: circuitToList c
-  | .seq c₁ c₂ => circuitToList c₁ ++ circuitToList c₂
-
 /-- Check if a gate is an Rz rotation and extract the qubit and angle. -/
 def asRz : Gate n → Option (Fin n × ℝ)
   | .Rz i θ => some (i, θ)

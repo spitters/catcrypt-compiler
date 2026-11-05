@@ -427,7 +427,7 @@ theorem level1Pass_eq (single : Fin n → List (Template n))
 
 /-- A test family: `H;H` and `X;X` cancellation and CNOT cancellation. -/
 def testFamily : Gate 3 → List (Template 3) :=
-  level1Family (fun q => [cancelHH q, cancelXX q]) cnotTemplates
+  level1Family (fun q => [cancelHH q, cancelXXTemplate q]) cnotTemplates
 
 -- `H X X H` cancels in one pass: `X X` goes first, exposing `H H`.
 set_option linter.hashCommand false in

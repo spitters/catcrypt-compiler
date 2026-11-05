@@ -703,7 +703,7 @@ private theorem saturateCircuit_length_le
     rewriting loop `saturateCircuit` over `allCircuitRules` with fuel 100,
     and reconstruct. -/
 def rewriteFixpointOptimize (c : Circuit n) : Circuit n :=
-  let gates := TemplateMatching.circuitToList c
+  let gates := QCircuit.circuitToList c
   let optimized := saturateCircuit (allCircuitRules n) 100 gates
   Circuit.ofList optimized
 
@@ -714,8 +714,8 @@ theorem rewriteFixpointOptimize_gateCount_le (c : Circuit n) :
   simp only [rewriteFixpointOptimize]
   rw [gateCount_ofList]
   have hsat := saturateCircuit_length_le (allCircuitRules n) (allCircuitRules_nonIncreasing n)
-    100 (TemplateMatching.circuitToList c)
-  rw [TemplateMatching.circuitToList_length] at hsat
+    100 (QCircuit.circuitToList c)
+  rw [QCircuit.circuitToList_length] at hsat
   exact hsat
 
 end CatCrypt.Quantum.Optimization.RewriteFixpoint

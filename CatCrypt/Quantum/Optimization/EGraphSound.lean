@@ -181,11 +181,11 @@ theorem rewriteFixpointOptimize_unitaryDenote (c : Circuit n) :
   simp only [rewriteFixpointOptimize]
   -- `rewriteFixpointOptimize c = Circuit.ofList (saturateCircuit … (circuitToList c))`.
   -- `unitaryDenote (Circuit.ofList gs) = udL gs` by definition of `udL`.
-  show udL (saturateCircuit (allCircuitRules n) 100 (TemplateMatching.circuitToList c))
+  show udL (saturateCircuit (allCircuitRules n) 100 (QCircuit.circuitToList c))
       = unitaryDenote c
   rw [saturateCircuit_udL (allCircuitRules n) (rewriteFixpointRules_soundU) 100
-        (TemplateMatching.circuitToList c)]
-  show unitaryDenote (Circuit.ofList (TemplateMatching.circuitToList c)) = unitaryDenote c
+        (QCircuit.circuitToList c)]
+  show unitaryDenote (Circuit.ofList (QCircuit.circuitToList c)) = unitaryDenote c
   exact unitaryDenote_circuitToList c
 
 /-- The Level-4 rule-rewriting optimizer is unitary-correct (`UnitaryCorrectQ`). -/

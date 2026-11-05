@@ -160,7 +160,7 @@ theorem standardTemplates_correctM (q : Fin n) :
     apply Subtype.ext
     change embedGate1 n q hadamard * embedGate1 n q hadamard = 1
     rw [embedGate1_mul, hadamard_sq, embedGate1_one]
-  · simp only [CorrectM, cancelXX, circuitUnitary_pair]
+  · simp only [CorrectM, cancelXXTemplate, circuitUnitary_pair]
     apply Subtype.ext
     change embedGate1 n q pauliX * embedGate1 n q pauliX = 1
     rw [embedGate1_mul, pauliX_sq, embedGate1_one]

@@ -48,6 +48,7 @@ open CatCrypt.Quantum.OpenQASMImportGates
 open CatCrypt.Quantum.Qelib
 open CatCrypt.Quantum.ControlledGates (ctrlMatrix proj0 proj1 embedGate2_cnot)
 open CatCrypt.Quantum.Programs.Qubit (pauliX)
+open CatCrypt.Quantum.Synthesis.KAK (exp_I_mul_ofReal)
 
 namespace CatCrypt.Quantum.QrunchFuse
 
@@ -1224,11 +1225,6 @@ def sig : Axis → M2
   | .x => ⟨0, 1, 1, 0⟩
   | .y => ⟨0, ⟨0, 0, -1, 0⟩, ⟨0, 0, 1, 0⟩, 0⟩
   | .z | .p => ⟨1, 0, 0, ⟨-1, 0, 0, 0⟩⟩
-
-/-- `e^{ix} = cos x + i sin x`. -/
-theorem exp_I_mul_ofReal (x : ℝ) :
-    Complex.exp (Complex.I * x) = Real.cos x + Real.sin x * Complex.I := by
-  rw [mul_comm, Complex.exp_mul_I, ← Complex.ofReal_cos, ← Complex.ofReal_sin]
 
 /-- `rz(θ) = cos(θ/2) - i sin(θ/2) Z`. -/
 theorem rzMatrix_eq_sig (θ : ℝ) :

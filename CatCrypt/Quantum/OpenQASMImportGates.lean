@@ -94,9 +94,6 @@ theorem tDaggerGate_mul_self : tDaggerGate * tDaggerGate = sdgMatrix := by
     = -(↑Real.pi / 2 * Complex.I) by ring, Complex.exp_neg, Complex.exp_pi_div_two_mul_I,
     Complex.inv_I]
 
-private theorem ofReal_sqrt_two_sq : ((Real.sqrt 2 : ℝ) : ℂ) ^ 2 = 2 := by
-  rw [← Complex.ofReal_pow]; simp
-
 /-- `H·S·H = sx`. -/
 theorem hadamard_phaseS_hadamard : hadamard * phaseS * hadamard = sxMatrix := by
   ext i j

@@ -99,10 +99,6 @@ namespace AngleQ
 /-- The real angle `q · π` denoted by `q`. -/
 noncomputable abbrev toReal (q : AngleQ) : ℝ := QasmAngle.toReal q
 
-@[simp] theorem toReal_zero : toReal 0 = 0 := QasmAngle.toReal_zero
-
-@[simp] theorem toReal_one : toReal 1 = Real.pi := QasmAngle.toReal_one
-
 @[simp] theorem toReal_add (p q : AngleQ) : toReal (p + q) = toReal p + toReal q := by
   simp [QasmAngle.toReal, add_mul]
 

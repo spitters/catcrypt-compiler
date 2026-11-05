@@ -83,6 +83,20 @@ theorem unitaryDenote_ofList_append (xs ys : List (Gate n)) :
   | cons g xs ih =>
     simp only [List.cons_append, Circuit.ofList, unitaryDenote, ih, QComp.qbind_assoc]
 
+/-- `unitaryDenote (ofList (g :: xs))` factors as `denoteGateU g` bound to the
+denotation of the tail. -/
+theorem unitaryDenote_ofList_cons (g : Gate n) (xs : List (Gate n)) :
+    unitaryDenote (Circuit.ofList (g :: xs))
+      = QComp.qbind (denoteGateU g) (fun _ => unitaryDenote (Circuit.ofList xs)) :=
+  rfl
+
+/-- Equal tail denotations give equal `g :: ·` denotations. -/
+theorem unitaryDenote_cons_congr (g : Gate n) {xs ys : List (Gate n)}
+    (h : unitaryDenote (Circuit.ofList xs) = unitaryDenote (Circuit.ofList ys)) :
+    unitaryDenote (Circuit.ofList (g :: xs))
+      = unitaryDenote (Circuit.ofList (g :: ys)) := by
+  rw [unitaryDenote_ofList_cons, unitaryDenote_ofList_cons, h]
+
 /-- Flattening a circuit to its gate list (and rebuilding) preserves
 `unitaryDenote`. -/
 theorem unitaryDenote_circuitToList (c : Circuit n) :
@@ -193,7 +207,8 @@ Each is discharged by reusing the corresponding already-proven matrix identity
 in `GateUnitarity`. -/
 
 theorem cancelHH_correctU (q : Fin n) : CorrectU (cancelHH q) := templateHH_correct q
-theorem cancelXX_correctU (q : Fin n) : CorrectU (cancelXX q) := templateXX_correct q
+theorem cancelXXTemplate_correctU (q : Fin n) : CorrectU (cancelXXTemplate q) :=
+  templateXX_correct q
 theorem cancelYY_correctU (q : Fin n) : CorrectU (cancelYY q) := templateYY_correct q
 theorem cancelZZ_correctU (q : Fin n) : CorrectU (cancelZZ q) := templateZZ_correct q
 theorem cancelTTdg_correctU (q : Fin n) : CorrectU (cancelTTdg q) := templateTTdg_correct q
@@ -206,7 +221,7 @@ theorem hzh_to_x_correctU (q : Fin n) : CorrectU (hzh_to_x q) := templateHZH_cor
 /-- The verified single-qubit template set for a qubit `q`: every entry is
 proven `CorrectU` against the real unitary semantics. -/
 def verifiedTemplates (q : Fin n) : List (Template n) :=
-  [ cancelHH q, cancelXX q, cancelYY q, cancelZZ q,
+  [ cancelHH q, cancelXXTemplate q, cancelYY q, cancelZZ q,
     cancelTTdg q, cancelTdgT q, mergeTT q, mergeSS q,
     hxh_to_z q, hzh_to_x q ]
 
@@ -215,7 +230,7 @@ theorem verifiedTemplates_correctU (q : Fin n) :
   intro t ht
   fin_cases ht
   · exact cancelHH_correctU q
-  · exact cancelXX_correctU q
+  · exact cancelXXTemplate_correctU q
   · exact cancelYY_correctU q
   · exact cancelZZ_correctU q
   · exact cancelTTdg_correctU q

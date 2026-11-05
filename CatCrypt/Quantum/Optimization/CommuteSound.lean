@@ -32,11 +32,7 @@ drops to `embedGate1 n q D₂ * embedGate1 n q D₁ = embedGate1 n q D₁ * embe
 which `embedGate1_mul` (both directions) reduces to `D₂ * D₁ = D₁ * D₂` for the
 two `2×2` diagonal matrices — `diag(1,a) * diag(1,b) = diag(1,a*b) = diag(1,b) * diag(1,a)`.
 
-## Disjoint-qubit commutation
-
-For single-qubit gates on distinct qubits `i ≠ j`,
-`embedGate1 n i G * embedGate1 n j H = embedGate1 n j H * embedGate1 n i G`
-(`embedGate1_disjoint_comm`): the embeddings act on disjoint tensor factors.
+Single-qubit gates on distinct qubits commute by `DisjointCommute.embedGate1_disjoint_comm`.
 
 ## Main results
 
@@ -46,7 +42,6 @@ For single-qubit gates on distinct qubits `i ≠ j`,
 * `diag_same_qubit_commuteU` — two gates diagonal on the same qubit commute under
   `unitaryDenote`.
 * `TS_commuteU`, `ZRz_commuteU` — the instances `T; S = S; T` and `Z; Rz θ = Rz θ; Z`.
-* `embedGate1_disjoint_comm` — one-qubit embeddings on distinct qubits commute as matrices.
 -/
 
 @[expose] public section
@@ -177,19 +172,5 @@ theorem ZRz_commuteU (q : Fin n) (θ : ℝ) :
     unitaryDenote (Circuit.seq (Circuit.single (Gate.Z q)) (Circuit.single (Gate.Rz q θ)))
       = unitaryDenote (Circuit.seq (Circuit.single (Gate.Rz q θ)) (Circuit.single (Gate.Z q))) :=
   diag_same_qubit_commuteU (isDiagOn_Z q) (isDiagOn_Rz q θ)
-
-/-! ## Disjoint-qubit commutation (documented gap)
-
-For single-qubit gates on **distinct** qubits `i ≠ j`, the two embeddings act
-on disjoint tensor factors and so commute (`embedGate1_disjoint_comm`). -/
-
-/-- **Disjoint-qubit commutation** at the `embedGate1` matrix level:
-`embedGate1 n i G * embedGate1 n j H = embedGate1 n j H * embedGate1 n i G` for
-`i ≠ j`. The two embeddings act on disjoint bits of the basis index, so they
-commute (`DisjointCommute.embedGate1_disjoint_comm`, proved by bit-decomposition). -/
-theorem embedGate1_disjoint_comm {i j : Fin n} (h : i ≠ j)
-    (G H : Matrix (Fin 2) (Fin 2) ℂ) :
-    embedGate1 n i G * embedGate1 n j H = embedGate1 n j H * embedGate1 n i G :=
-  DisjointCommute.embedGate1_disjoint_comm h G H
 
 end CatCrypt.Quantum.Optimization.CommuteSound

@@ -19,7 +19,7 @@ construction of the proofs of `kak{k}_exists`: in the magic basis `M` the unitar
 tolerance (`classify`); each local factor `M O M†` is split as `A ⊗ B` (`kronFactor`) and
 each of `A, B` as a ZYZ product (`zyz`).
 
-The output carries no proof: its check is `residual U (templateMatF k θ)`, the Frobenius
+The output carries no proof: its check is `phaseDist U (templateMatF k θ)`, the Frobenius
 distance of `U` from the template up to the best global phase. Existence of exact angles
 is `kakPassSmall_correct` (`KAKPassSmall.lean`).
 
@@ -35,7 +35,7 @@ Conventions: a `4 × 4` index is `2 · (bit of qubit i) + (bit of qubit j)`, qub
 * `classify` — the smallest template class `k` of a two-qubit unitary.
 * `fitK` — the global phase and the angles of `kak{k}` for a unitary of class `k`.
 * `templateMatF` — the `Float` matrix of `kak{k} θ`.
-* `residual` — `‖U − e^{iφ} V‖_F` at `φ = arg tr(V† U)`.
+* `phaseDist` — `‖U − e^{iφ} V‖_F` at `φ = arg tr(V† U)`.
 -/
 
 @[expose] public section
@@ -601,7 +601,7 @@ def templateMatF (k : Fin 4) (θ : Array Float) : M4 :=
 def bestPhase (U V : M4) : Float := (V.adjoint * U).trace.arg
 
 /-- `‖U − e^{iφ} V‖_F` at `φ = arg tr(V† U)`. -/
-def residual (U V : M4) : Float := (M4.sub U (M4.smul (C.expI (bestPhase U V)) V)).frob
+def phaseDist (U V : M4) : Float := (M4.sub U (M4.smul (C.expI (bestPhase U V)) V)).frob
 
 /-- The result of a fit: `U ≈ e^{i phase} · kak{k} angles`. -/
 structure KFit where
@@ -610,7 +610,7 @@ structure KFit where
   /-- The template angles, in the index order of `kak{k}Gates`. -/
   angles : Array Float
   /-- `‖U − e^{iφ} kak{k} θ‖_F`. -/
-  residual : Float
+  phaseDist : Float
   deriving Inhabited, Repr
 
 /-- The angles of `kak3` (`exists_vwCore` on the canonical phases), from the canonical form
@@ -644,11 +644,11 @@ def anglesSmall (can : M4 × Array C × M4) (k : Nat) : Array Float :=
 def anglesK (can : M4 × Array C × M4) (k : Fin 4) : Array Float :=
   if k = 3 then angles3 can else anglesSmall can k.val
 
-/-- `(φ, θ, residual)` with `U ≈ e^{iφ} · kak{k} θ`. For `U` outside class `k` the residual
-is the distance reached. -/
+/-- `(φ, θ, d)` with `U ≈ e^{iφ} · kak{k} θ` and `d` the Frobenius distance `phaseDist`. For
+`U` outside class `k`, `d` is the distance reached. -/
 def fitK (U : M4) (k : Fin 4) : Option KFit := do
   let θ := anglesK (← canonical U) k
   let V := templateMatF k θ
-  return ⟨bestPhase U V, θ, residual U V⟩
+  return ⟨bestPhase U V, θ, phaseDist U V⟩
 
 end CatCrypt.Quantum.Synthesis.KAKFloat

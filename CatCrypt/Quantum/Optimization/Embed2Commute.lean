@@ -17,7 +17,7 @@ matrices:
 
 `embedGate2 n i j G * embedGate2 n k l H = embedGate2 n k l H * embedGate2 n i j G`
 
-whenever `{i, j} ∩ {k, l} = ∅`. This is the recurring residual blocking
+whenever `{i, j} ∩ {k, l} = ∅`. This is the recurring obstacle blocking
 `EGraphRuleSound` and the general two-qubit commute cases.
 
 ## Proof outline

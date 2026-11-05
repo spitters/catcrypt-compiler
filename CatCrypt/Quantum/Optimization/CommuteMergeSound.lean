@@ -38,7 +38,7 @@ gate-level facts:
 
 The commutation side-conditions accepted by `gateCommutes` for an `Rz` on the
 left are discharged by `CommuteSound.diag_same_qubit_commuteU` (same-qubit
-diagonal gates), `CommuteSound.embedGate1_disjoint_comm` (disjoint single-qubit
+diagonal gates), `DisjointCommute.embedGate1_disjoint_comm` (disjoint single-qubit
 gates). The case of `Rz` commuting with a two-qubit
 gate (`CNOT`/`CZ`) — on disjoint qubits, or, for `CZ`, diagonal-vs-diagonal on a
 shared qubit, or, for `CNOT`, on the control wire — is `rz_twoQubit_commuteU`,
@@ -75,6 +75,7 @@ noncomputable section
 namespace CatCrypt.Quantum.Optimization.CommuteMergeSound
 
 open CatCrypt.Quantum.Optimization.CommuteSound
+open CatCrypt.Quantum.Optimization.DisjointCommute (embedGate1_disjoint_comm)
 open CatCrypt.Quantum.Optimization.RoutingPerm (circuitUnitary)
 open CatCrypt.Quantum.Optimization.MatrixSound
 
@@ -352,20 +353,6 @@ theorem rz_gateCommutes_commuteU (i : Fin n) (θ : ℝ) (g : Gate n)
 
 /-! ## `unitaryDenote` is a head-congruence over gate lists -/
 
-/-- `unitaryDenote (ofList (g :: xs))` factors as `denoteGateU g` bound to the
-denotation of the tail. -/
-theorem unitaryDenote_ofList_cons (g : Gate n) (xs : List (Gate n)) :
-    unitaryDenote (Circuit.ofList (g :: xs))
-      = QComp.qbind (denoteGateU g) (fun _ => unitaryDenote (Circuit.ofList xs)) :=
-  rfl
-
-/-- Equal tail denotations give equal `g :: ·` denotations. -/
-theorem unitaryDenote_cons_congr (g : Gate n) {xs ys : List (Gate n)}
-    (h : unitaryDenote (Circuit.ofList xs) = unitaryDenote (Circuit.ofList ys)) :
-    unitaryDenote (Circuit.ofList (g :: xs))
-      = unitaryDenote (Circuit.ofList (g :: ys)) := by
-  rw [unitaryDenote_ofList_cons, unitaryDenote_ofList_cons, h]
-
 /-! ## `tryMergeRz` preserves `unitaryDenote` -/
 
 /-- Threading an `Rz i θ` through `tryMergeRz` preserves the unitary: when the merge
@@ -418,16 +405,6 @@ theorem tryMergeRz_correctU (i : Fin n) (θ : ℝ) :
       unitaryDenote (Circuit.ofList (Gate.Rz i θ :: gs))
         = unitaryDenote (Circuit.ofList gs') :=
   fun h => unitaryDenote_eq_of_circuitUnitary_eq (circuitUnitary_tryMergeRz i θ h)
-
-/-! ## Flattening (`CommutationRules.circuitToList`) preserves `unitaryDenote` -/
-
-/-- Flattening a circuit via `CommutationRules.circuitToList` and rebuilding with
-`ofList` preserves `unitaryDenote`. (Mirrors `UnitarySound.unitaryDenote_circuitToList`
-for the `CommutationRules` flattener, which `commuteAndMerge` actually uses.) -/
-theorem unitaryDenote_circuitToList' (c : Circuit n) :
-    unitaryDenote (Circuit.ofList (circuitToList c)) = unitaryDenote c :=
-  unitaryDenote_eq_of_circuitUnitary_eq
-    (circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c)
 
 /-! ## `mergePass` preserves `unitaryDenote` -/
 

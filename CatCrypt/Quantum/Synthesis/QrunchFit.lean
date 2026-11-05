@@ -19,13 +19,13 @@ templates (`KAKPassSmall.kakEmit`) and one-qubit runs by ZYZ or XYX templates
 The block fit `qrunchFit` is floating point (`KAKFloat`): the class of the block's matrix, the
 template angles of `fitK`, as exact multiples of `π/4` when they are within `10⁻¹²` of one and
 else rounded to decimals with 15 fractional digits (`snapQ`, `roundQ`), and the
-residual of the matrix of the emitted gates (`blockMatF` of `tmplGatesQ`) against the block,
-below `1e-9`. It tries the classes from `classify` up to one below the block's CNOT count and
+Frobenius distance `phaseDist` of the matrix of the emitted gates (`blockMatF` of
+`tmplGatesQ`) from the block, below `1e-9`. It tries the classes from `classify` up to one below the block's CNOT count and
 returns the first that passes. The run fit `qrunchZFitAt` fits a one-qubit run that prints as
 more than three statements in the Qrunch basis (`qrunchCost`) in the form `runAxes` chooses
 from the two-qubit gates around it. Both fits are unverified proposals; the level runs them
 behind the verified checker of `ApproxEmit` (`qrunchFitChecked`, `qrunchZFitChecked`), which
-keeps a proposal only when it bounds the residual of the block or run against its template,
+keeps a proposal only when it bounds the distance of the block or run from its template,
 at the phase `phaseQ`, by at most `checkBound` in the `ℓ²` operator norm.
 
 ## Main definitions
@@ -75,22 +75,22 @@ def snapQ (x : Float) : PiLin :=
 def anglesQ (θ : Array Float) : Fin 15 → PiLin :=
   fun x => if h : x.val < θ.size then snapQ θ[x.val] else 0
 
-/-- The residual bound of a replaced block: the matrix of the emitted gates against the
+/-- The distance bound of a replaced block: the matrix of the emitted gates against the
     block's matrix, up to global phase, in the Frobenius norm. -/
-def residualBound : Float := 1e-9
+def phaseDistBound : Float := 1e-9
 
 /-- The fit of one class `k` to a block on `(i, j)` with matrix `U` and canonical form `can`:
     the rounded angles of `anglesK` and the phase `ψ` with `U ≈ e^{iψ} V` for the matrix `V`
-    of the emitted gates, when they pass the residual bound. -/
+    of the emitted gates, when they pass the distance bound. -/
 def fitClass {n : ℕ} (i j : Fin n) (U : M4) (can : M4 × Array C × M4) (k : Fin 4) :
     Option ((Fin 15 → PiLin) × Float) := do
   let θ := anglesQ (anglesK can k)
   let V ← blockMatF i j (tmplGatesQ k i j θ)
-  if residual U V < residualBound then some (θ, bestPhase U V) else none
+  if phaseDist U V < phaseDistBound then some (θ, bestPhase U V) else none
 
 /-- **The floating-point block fit.** A block with at least two CNOTs and a matrix
     (`blockMatF`) gets the first class `k`, from its class (`classOf` of the canonical form,
-    as `classify`) up to one below its CNOT count, whose rounded angles pass the residual
+    as `classify`) up to one below its CNOT count, whose rounded angles pass the distance
     bound; the payload is the phase `ψ` of the block against its template. The canonical
     form is computed once per block. -/
 def qrunchFit {n : ℕ} : BlockFit n Float := fun i j gs =>
@@ -117,7 +117,7 @@ def qrunchCost {n : ℕ} (gs : List (Gate n)) : ℕ :=
     as more than three statements in the Qrunch basis (`qrunchCost`; its ZYZ form prints as
     `p ry p`, its XYX form as `rx ry rx`): the Euler angles of its matrix (`KAKFloat.zyz`, of the
     matrix conjugated by `H` for XYX), made exact as `snapQ`, when the emitted
-    `ZYZPass.runTemplate` gates pass the residual bound against the run (both as matrices on the
+    `ZYZPass.runTemplate` gates pass the distance bound against the run (both as matrices on the
     pair `(q, q)`, `blockMatF`); the payload is the phase of the run against the emitted gates. -/
 def qrunchZFitAt {n : ℕ} (ax : ZYZPass.Axis) (q : Fin n) (gs : List (Gate n)) :
     Option (ZYZPass.Axis × (Fin 3 → PiLin) × Float) := do
@@ -130,7 +130,7 @@ def qrunchZFitAt {n : ℕ} (ax : ZYZPass.Axis) (q : Fin n) (gs : List (Gate n)) 
   let θ : Fin 3 → PiLin := fun x => snapQ a[x.val]!
   let U ← blockMatF q q gs
   let V ← blockMatF q q (ZYZPass.runTemplate ax q θ)
-  if residual U V < residualBound then some (ax, θ, bestPhase U V) else none
+  if phaseDist U V < phaseDistBound then some (ax, θ, bestPhase U V) else none
 
 /-- The role of qubit `q` in a segment: `some true` for the target of a CNOT, `some false`
     for its control or either qubit of a CZ, `none` when the segment does not touch `q` as a

@@ -157,12 +157,6 @@ def propagateNot (gs : List (Gate n)) (fuel : ℕ := gs.length + 1) :
       | none =>
         g :: propagateNot rest fuel'
 
-/-- Flatten a circuit to a gate list. -/
-def circuitToList : Circuit n → List (Gate n)
-  | .empty     => []
-  | .gate g c  => g :: circuitToList c
-  | .seq c₁ c₂ => circuitToList c₁ ++ circuitToList c₂
-
 /-- The NOT propagation pass: flatten, propagate X gates, cancel X; X pairs,
     and rebuild the circuit. -/
 def notPropagationPass (c : Circuit n) : Circuit n :=
@@ -192,13 +186,6 @@ private theorem cancelXX_length_le :
       all_goals first
         | exact le_trans (ih _) (by omega)  -- cancel case
         | exact Nat.succ_le_succ (ih _)    -- recurse on tail
-
-private theorem circuitToList_length (c : Circuit n) :
-    (circuitToList c).length = c.gateCount := by
-  induction c with
-  | empty => simp [circuitToList]
-  | gate g c ih => simp [circuitToList, ih, Nat.add_comm]
-  | seq c₁ c₂ ih₁ ih₂ => simp [circuitToList, ih₁, ih₂]
 
 /-- In every branch of `propagateX`, the output length is bounded by
     `rest.length + fuel + 1`. -/
