@@ -18,7 +18,9 @@ package catcryptCompiler where
   weakLeanArgs := #["-M", "8000"]
 
   -- The CatCrypt verified compiler: two fronts (hax/Rust → LowCT → `Com` IR) →
-  -- one verified x86/ARM/RISC-V backend. The verified compiler proper is the
+  -- one backend that emits x86-64 machine code and AT&T assembly; instruction
+  -- selection to AArch64 and RV64 register models covers straight-line register
+  -- code, without register allocation. The verified compiler proper is the
   -- subtree `SecureCompilation/` + `Jasmin/` + `Optimizer/`; the module set below
   -- adds its dependency closure over the workspace (the `catcryptCore` re-export
   -- shims and the foundational leaves it imports), the per-scheme emit endpoints,
@@ -3412,7 +3414,7 @@ lean_lib HaxAscent where
 -- `CatCryptCore.Crypto.RCGate`, which `Haxc.RCInstance` imports, and with the
 -- `CATCRYPT_KAT_MS_SCALE` factor of `#kat` that CI sets).
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "791eab88a5988c10c81878efc15d63c98cb23bf8"
+  "https://github.com/spitters/CatCrypt-core.git" @ "be551ecd9822ee4e7c05866dfd6007421e19147c"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
@@ -3420,9 +3422,10 @@ require catcryptCore from git
 require Veir from git
   "https://github.com/spitters/veir-catcrypt" @ "v4.35.0-catcrypt.1"
 
--- ParamTransfer (proof-transfer bridge) + CompPoly (NTT algebraic theory).
+-- ParamTransfer (proof-transfer bridge), pinned by commit on its `lean-upgrade-4.35`
+-- branch, + CompPoly (NTT algebraic theory).
 require paramTransfer from git
-  "https://github.com/spitters/ParamTransfer.git" @ "lean-upgrade-4.35"
+  "https://github.com/spitters/ParamTransfer.git" @ "40916765d6df5954da9105db764858233cdada86"
 require CompPoly from git
   "https://github.com/Verified-zkEVM/CompPoly" @ "v4.35.0"
 
@@ -3460,13 +3463,14 @@ lean_exe «algebraic-census» where
   root := `CatCrypt.Crypto.Optimizer.AlgebraicCensusMain
 
 lean_exe «mldsa-jinc-emit» where
-  -- Writes the imported ML-DSA leaves into bench/mldsa_compare/gen_com/; the
-  -- rendered text is checked by the bench Makefile and the C harness.
+  -- Writes the imported ML-DSA leaves into bench/mldsa_compare/gen_com/, creating
+  -- the directory. The bench that checks the text is not in this repository.
   root := `CatCrypt.Crypto.Jasmin.MldsaJincEmit
 
 lean_exe «keccak-jinc-emit» where
   -- Writes keccak_f1600 imported from the formosa-keccak Jasmin source into
-  -- bench/keccak_compare/gen_com/; checked by `make keccak-kat-jinc` there.
+  -- bench/keccak_compare/gen_com/, creating the directory. The bench that checks
+  -- the text is not in this repository.
   root := `CatCrypt.Crypto.Jasmin.KeccakJincEmit
 
 lean_exe sha256linear where
