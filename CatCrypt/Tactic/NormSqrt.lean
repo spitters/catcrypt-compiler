@@ -39,6 +39,24 @@ theorem _root_.ofReal_sqrt_inv_sq {r : ℝ} (hr : 0 ≤ r) :
     (↑(Real.sqrt r) : ℂ)⁻¹ ^ 2 = (↑r : ℂ)⁻¹ := by
   rw [sq, ofReal_sqrt_inv_mul_self hr]
 
+/-- `(√2)² = 2` in `ℂ`, as a product. -/
+theorem _root_.ofReal_sqrt2_sq :
+    (↑(Real.sqrt 2) : ℂ) * (↑(Real.sqrt 2) : ℂ) = 2 := by
+  rw [ofReal_sqrt_mul_self (by norm_num : (0:ℝ) ≤ 2)]; push_cast; rfl
+
+/-- `(√2)² = 2` in `ℂ`, as a square. -/
+theorem _root_.ofReal_sqrt_two_sq : ((Real.sqrt 2 : ℝ) : ℂ) ^ 2 = 2 := by
+  rw [sq, ofReal_sqrt2_sq]
+
+/-- `(√2)⁻² = 2⁻¹` in `ℂ`, as a product. -/
+theorem _root_.ofReal_sqrt2_inv_sq :
+    (↑(Real.sqrt 2) : ℂ)⁻¹ * (↑(Real.sqrt 2) : ℂ)⁻¹ = (2 : ℂ)⁻¹ := by
+  rw [ofReal_sqrt_inv_mul_self (by norm_num : (0:ℝ) ≤ 2)]; push_cast; rfl
+
+theorem _root_.ofReal_sqrt2_ne_zero :
+    (↑(Real.sqrt 2) : ℂ) ≠ 0 :=
+  Complex.ofReal_ne_zero.mpr (Real.sqrt_ne_zero'.mpr (by norm_num : (0:ℝ) < 2))
+
 theorem _root_.ofReal_sqrt_mul_inv {r : ℝ} (hr : 0 < r) :
     (↑(Real.sqrt r) : ℂ) * (↑(Real.sqrt r) : ℂ)⁻¹ = 1 := by
   apply mul_inv_cancel₀; simp [Real.sqrt_ne_zero'.mpr hr]

@@ -66,6 +66,12 @@ We use a self-contained predicate `IsDiagonal M := ∀ r c, r ≠ c → M r c = 
 def IsDiagonal {m : Type*} {R : Type*} [Zero R] (M : Matrix m m R) : Prop :=
   ∀ r c, r ≠ c → M r c = 0
 
+theorem isDiagonal_rzGate (θ : ℝ) : IsDiagonal (rzGate θ) := by
+  intro r c hrc; fin_cases r <;> fin_cases c <;> simp_all [rzGate]
+
+theorem isDiagonal_pauliZ : IsDiagonal Programs.Qubit.pauliZ := by
+  intro r c hrc; fin_cases r <;> fin_cases c <;> simp_all [Programs.Qubit.pauliZ]
+
 /-- Two diagonal matrices over a commutative semiring commute. -/
 theorem isDiagonal_mul_comm {m : Type*} [Fintype m] [DecidableEq m]
     {R : Type*} [NonUnitalCommSemiring R] {A B : Matrix m m R}

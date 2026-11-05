@@ -37,9 +37,9 @@ No new sorries are introduced by QTree itself.
 
 @[expose] public section
 
-open CatCrypt.Quantum
-
 noncomputable section
+
+namespace CatCrypt.Quantum
 
 /-! ## QTree Definition -/
 
@@ -154,3 +154,5 @@ theorem bind_assoc (s : QTree d α) (f : α → QTree d β) (g : β → QTree d 
 
 
 end QTree
+
+end CatCrypt.Quantum

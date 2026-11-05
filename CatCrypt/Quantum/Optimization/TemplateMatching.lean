@@ -22,7 +22,7 @@ Google Cirq, and the t|ket> compiler.
 ## Main definitions
 
 * `Template n`          -- a circuit identity (pattern, replacement)
-* Library of templates: `cancelHH`, `cancelXX`, `cancelCNOT`, `mergeRz`,
+* Library of templates: `cancelHH`, `cancelXXTemplate`, `cancelCNOT`, `mergeRz`,
   `hxh_to_z`, `hzh_to_x`
 * `applyTemplate`       -- find and replace the first match of a template
 * `applyTemplates`      -- apply a list of templates exhaustively
@@ -67,7 +67,7 @@ def cancelHH (q : Fin n) : Template n where
   replacement := Circuit.empty
 
 /-- X . X = I (Pauli X is self-inverse). -/
-def cancelXX (q : Fin n) : Template n where
+def cancelXXTemplate (q : Fin n) : Template n where
   pattern := Circuit.seq (Circuit.single (Gate.X q)) (Circuit.single (Gate.X q))
   replacement := Circuit.empty
 
@@ -162,20 +162,6 @@ def Gate.beqSyn {n : ℕ} : Gate n → Gate n → Bool
 theorem Gate.eq_of_beqSyn {n : ℕ} : ∀ {g h : Gate n}, Gate.beqSyn g h = true → g = h := by
   intro g h hb
   cases g <;> cases h <;> simp_all [Gate.beqSyn]
-
-/-- Flatten a circuit into a list of gates. -/
-def circuitToList : Circuit n → List (Gate n)
-  | .empty     => []
-  | .gate g c  => g :: circuitToList c
-  | .seq c₁ c₂ => circuitToList c₁ ++ circuitToList c₂
-
-/-- `circuitToList` preserves gate count as list length. -/
-theorem circuitToList_length (c : Circuit n) :
-    (circuitToList c).length = c.gateCount := by
-  induction c with
-  | empty => simp [circuitToList]
-  | gate g c ih => simp [circuitToList, ih, Nat.add_comm]
-  | seq c₁ c₂ ih₁ ih₂ => simp [circuitToList, ih₁, ih₂]
 
 /-- Check if a gate list starts with the pattern gate list.
     Returns the remaining gates after the match, or `none` if no match. -/

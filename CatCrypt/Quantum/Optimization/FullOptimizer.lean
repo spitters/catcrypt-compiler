@@ -94,7 +94,7 @@ inductive OptLevel : Type where
     Hadamard conjugation rules. -/
 def standardTemplates (q : Fin n) : List (Template n) :=
   [ cancelHH q,
-    cancelXX q,
+    cancelXXTemplate q,
     cancelYY q,
     cancelZZ q,
     cancelTTdg q,

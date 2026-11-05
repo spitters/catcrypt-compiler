@@ -134,12 +134,6 @@ def tPowerToGates (q : Fin n) (k : ℕ) : List (Gate n) :=
   | 7 => [Gate.Tdg q]                    -- T^7 = Tdg
   | _ => [Gate.T q]                      -- unreachable
 
-/-- Flatten a circuit into a list of gates. -/
-def circuitToList : Circuit n → List (Gate n)
-  | .empty     => []
-  | .gate g c  => g :: circuitToList c
-  | .seq c₁ c₂ => circuitToList c₁ ++ circuitToList c₂
-
 /-- Merge consecutive T gates on a gate list: T*T = S, T^4 = Z, T^8 = I.
     Uses a fuel parameter for guaranteed termination. -/
 def tMergeList (gs : List (Gate n)) (fuel : ℕ := gs.length + 1) : List (Gate n) :=

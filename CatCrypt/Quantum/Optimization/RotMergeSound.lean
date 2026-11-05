@@ -447,13 +447,6 @@ theorem mergeStep_correctU :
 
 /-! ## The fuel recursion and the full pass -/
 
-/-- Prepending a fixed gate `g` is a left `qbind`, so it preserves any
-list-denotation equality on the tail. -/
-private theorem unitaryDenote_cons_congr (g : Gate n) {gs gs' : List (Gate n)}
-    (h : unitaryDenote (Circuit.ofList gs) = unitaryDenote (Circuit.ofList gs')) :
-    unitaryDenote (Circuit.ofList (g :: gs)) = unitaryDenote (Circuit.ofList (g :: gs')) :=
-  CommuteMergeSound.unitaryDenote_cons_congr g h
-
 /-- The fuel-bounded merge recursion preserves `unitaryDenote`. -/
 theorem mergeRotations_unitaryDenote :
     ∀ (gs : List (Gate n)) (fuel : ℕ),
@@ -484,25 +477,25 @@ theorem mergeRotations_unitaryDenote :
                | none => g :: mergeRotations rest fuel')
             from rfl]
       cases hrz : rzAngle? g with
-      | none => simp only []; exact unitaryDenote_cons_congr g (ih rest)
+      | none => simp only []; exact UnitarySound.unitaryDenote_cons_congr g (ih rest)
       | some qθ =>
         obtain ⟨q, θ₁⟩ := qθ
         simp only []
         cases hfind : findMergePartner rest q with
-        | none => exact unitaryDenote_cons_congr g (ih rest)
+        | none => exact UnitarySound.unitaryDenote_cons_congr g (ih rest)
         | some k =>
           simp only []
           cases hgetk : List.getAt? rest k with
-          | none => exact unitaryDenote_cons_congr g (ih rest)
+          | none => exact UnitarySound.unitaryDenote_cons_congr g (ih rest)
           | some partner =>
             simp only []
             cases hpz : rzAngle? partner with
-            | none => exact unitaryDenote_cons_congr g (ih rest)
+            | none => exact UnitarySound.unitaryDenote_cons_congr g (ih rest)
             | some pθ =>
               obtain ⟨qp, θ₂⟩ := pθ
               simp only []
               cases hadd : θ₁.add? θ₂ with
-              | none => exact unitaryDenote_cons_congr g (ih rest)
+              | none => exact UnitarySound.unitaryDenote_cons_congr g (ih rest)
               | some θ =>
               simp only []
               -- The partner found by `findMergePartner` at the match index is on
@@ -523,7 +516,7 @@ theorem mergeRotations_unitaryDenote :
                       (θ.gate q :: mergeRotations (List.removeAt' rest k) fuel'))
                   = unitaryDenote (Circuit.ofList
                       (θ.gate q :: List.removeAt' rest k)) :=
-                    unitaryDenote_cons_congr _ (ih (List.removeAt' rest k))
+                    UnitarySound.unitaryDenote_cons_congr _ (ih (List.removeAt' rest k))
                 _ = unitaryDenote (Circuit.ofList
                       (Gate.Rz q (θ₁.toReal + θ₂.toReal) :: List.removeAt' rest k)) := by
                     change QComp.qbind (denoteGateU (θ.gate q))
@@ -540,14 +533,6 @@ theorem mergeRotations_unitaryDenote :
                           (fun _ => unitaryDenote (Circuit.ofList rest))
                     rw [hgθ]
 
-/-- Flattening a circuit via `CommutationRules.circuitToList` (the flattener used
-by `rotationMergingPass`) and rebuilding preserves `unitaryDenote`.  (`UnitarySound`
-proves the analogue for `TemplateMatching.circuitToList`, a distinct constant.) -/
-theorem circuitToList_unitaryDenote (c : Circuit n) :
-    unitaryDenote (Circuit.ofList (circuitToList c)) = unitaryDenote c :=
-  MatrixSound.unitaryDenote_eq_of_circuitUnitary_eq
-    (MatrixSound.circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c)
-
 /-- **The VOQC-style rotation merging pass preserves the unitary
 semantics.**  `rotationMergingPass` flattens, normalizes the `Rz`-family,
 merges compatible rotations, and rebuilds; the resulting circuit has the same
@@ -556,7 +541,7 @@ theorem rotationMergingPass_unitaryDenote (c : Circuit n) :
     unitaryDenote (rotationMergingPass c) = unitaryDenote c := by
   show unitaryDenote (Circuit.ofList (mergeRotations (normalizeList (circuitToList c)))) = _
   rw [mergeRotations_unitaryDenote, normalizeList_unitaryDenote,
-    circuitToList_unitaryDenote]
+    UnitarySound.unitaryDenote_circuitToList]
 
 /-- The rotation merging pass is `UnitaryCorrectQ`: it preserves the real
 unitary-channel denotation. -/

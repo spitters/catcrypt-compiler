@@ -231,13 +231,6 @@ private theorem mergeRotations_length_le :
         | exact Nat.succ_le_succ (le_trans (ih _) (removeAt'_length_le _ _))
         | exact Nat.succ_le_succ (ih _))
 
-private theorem circuitToList_length (c : Circuit n) :
-    (circuitToList c).length = c.gateCount := by
-  induction c with
-  | empty => simp [circuitToList]
-  | gate g c ih => simp [circuitToList, ih, Nat.add_comm]
-  | seq c₁ c₂ ih₁ ih₂ => simp [circuitToList, ih₁, ih₂]
-
 /-- The rotation merging pass does not increase gate count.
     Each merge strictly reduces the number of gates by one. -/
 theorem rotationMergingPass_gateCount_le (c : Circuit n) :

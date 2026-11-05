@@ -524,9 +524,6 @@ theorem udL_three_eq_one_of_rawEmb {a b c x : Gate n}
 
 /-! ## Diagonality of the basic phase-gate matrices -/
 
-theorem isDiagonal_rzGate (θ : ℝ) : MixedCommute.IsDiagonal (rzGate θ) := by
-  intro r c hrc; fin_cases r <;> fin_cases c <;> simp_all [rzGate]
-
 theorem isDiagonal_tGate : MixedCommute.IsDiagonal Programs.Qubit.tGate := by
   intro r c hrc; fin_cases r <;> fin_cases c <;> simp_all [Programs.Qubit.tGate]
 
@@ -535,9 +532,6 @@ theorem isDiagonal_tDaggerGate : MixedCommute.IsDiagonal tDaggerGate := by
 
 theorem isDiagonal_phaseS : MixedCommute.IsDiagonal Programs.Qubit.phaseS := by
   intro r c hrc; fin_cases r <;> fin_cases c <;> simp_all [Programs.Qubit.phaseS]
-
-theorem isDiagonal_pauliZ : MixedCommute.IsDiagonal Programs.Qubit.pauliZ := by
-  intro r c hrc; fin_cases r <;> fin_cases c <;> simp_all [Programs.Qubit.pauliZ]
 
 /-! ## Gate-level control commute: a diagonal single-qubit gate on the control
 of `CNOT c t` (with `c ≠ t`) commutes past it
@@ -759,7 +753,7 @@ theorem gateEmbedding_disjoint_comm {g₁ g₂ : Gate n}
     have hq : q₁ ≠ q₂ := by
       have := disjoint_not_mem hdis (q := q₁) (by rw [ht₁]; simp)
       rw [ht₂] at this; simpa using this
-    rw [he₁, he₂, CommuteSound.embedGate1_disjoint_comm hq.symm]
+    rw [he₁, he₂, DisjointCommute.embedGate1_disjoint_comm hq.symm]
   · -- single × two
     rcases hg₂ with ⟨_, hg₂⟩ | ⟨M₂, hct₂, hg₂⟩
     · rw [hg₂]; simp

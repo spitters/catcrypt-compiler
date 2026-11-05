@@ -10,7 +10,7 @@ public import CatCrypt.Quantum.Synthesis.ZYZPass
 public import Mathlib.Analysis.CStarAlgebra.Spectrum
 
 /-!
-# Enclosures of gate matrices and the residual checkers
+# Enclosures of gate matrices and the distance checkers
 
 The computable counterparts, in ball arithmetic, of the `2 × 2` matrix of a one-qubit gate,
 of `KAKPass.pairMat` and of `KAKPass.blockMat`: `gate1B g`, `pairB i j g` and `blockB i j gs`
@@ -366,7 +366,7 @@ theorem norm_embedGate1_le (q : Fin n) (G : Matrix (Fin 2) (Fin 2) ℂ) :
 
 /-! ## The checkers -/
 
-/-- The residual checker of a block: for gate lists `gs` and `rs` on the distinct qubits
+/-- The distance checker of a block: for gate lists `gs` and `rs` on the distinct qubits
 `(i, j)` with enclosed matrices, the bound `bnorm` of the enclosure of
 `blockMat rs - e^{iφ} blockMat gs`; `none` otherwise. -/
 def checkPair (i j : Fin n) (gs rs : List (Gate n)) (φ : PiLin) : Option ℚ :=
@@ -402,7 +402,7 @@ theorem norm_sub_le_checkPair {i j : Fin n} {gs rs : List (Gate n)} {φ : PiLin}
     exact norm_le_bnorm (memM_sub (memM_blockB hR) (memM_smul (mem_expIBall φ) (memM_blockB hG)))
   · exact absurd h (by simp)
 
-/-- The residual checker of a one-qubit run: for gate lists `gs` and `rs` of one-qubit gates
+/-- The distance checker of a one-qubit run: for gate lists `gs` and `rs` of one-qubit gates
 on `q` with enclosed matrices, the bound `bnorm` of the enclosure of
 `runMat rs - e^{iφ} runMat gs`; `none` otherwise. -/
 def checkRun (q : Fin n) (gs rs : List (Gate n)) (φ : PiLin) : Option ℚ :=

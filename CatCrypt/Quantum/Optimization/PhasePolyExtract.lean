@@ -60,7 +60,6 @@ noncomputable section
 namespace CatCrypt.Quantum.Optimization.PhasePolyExtract
 
 open CatCrypt.Quantum.Optimization.MixedCommute
-open CatCrypt.Quantum.Optimization.CommutationRules (circuitToList)
 open CatCrypt.Quantum.Optimization.PhasePolySemantics
 open CatCrypt.Quantum.Optimization.PhasePolynomial (Parity)
 open CatCrypt.Quantum.Optimization.RotationMerging (isRzGate isRzFamily)
@@ -327,34 +326,10 @@ theorem zcnotG_unitZ_of_eq {c t : Fin n} (hct : c ≠ t) :
     simp [Function.update_self, unitZ]
   · simp [unitZ, hic]
 
-/-! ## Rz-family gates as `Rz` matrices -/
+/-! ## Rz-family gates as `Rz` matrices
 
-theorem tGate_eq_rzGate : tGate = rzGate (Real.pi / 4) := rfl
-
-theorem tDaggerGate_eq_rzGate : tDaggerGate = rzGate (-(Real.pi / 4)) := by
-  have h : Complex.exp (Complex.I * ((-(Real.pi / 4) : ℝ) : ℂ))
-      = Complex.exp (-Complex.I * ((Real.pi / 4 : ℝ) : ℂ)) := by
-    congr 1
-    push_cast
-    ring
-  unfold tDaggerGate rzGate
-  rw [h]
-
-theorem phaseS_eq_rzGate : phaseS = rzGate (Real.pi / 2) := by
-  have h : Complex.exp (Complex.I * ((Real.pi / 2 : ℝ) : ℂ)) = Complex.I := by
-    rw [mul_comm, Complex.exp_mul_I]
-    push_cast
-    rw [Complex.cos_pi_div_two, Complex.sin_pi_div_two]
-    ring
-  unfold phaseS rzGate
-  rw [h]
-
-theorem pauliZ_eq_rzGate : pauliZ = rzGate Real.pi := by
-  have h : Complex.exp (Complex.I * ((Real.pi : ℝ) : ℂ)) = -1 := by
-    rw [mul_comm]
-    exact Complex.exp_pi_mul_I
-  unfold pauliZ rzGate
-  rw [h]
+The identities `tGate_eq_rzGate`, `tDaggerGate_eq_rzGate`, `phaseS_eq_rzGate` and
+`pauliZ_eq_rzGate` are in `GateUnitarity`. -/
 
 /-- A gate recognised by `isRzGate` embeds as the `Rz` matrix it stands for. -/
 theorem isRzGate_gateEmbedding {g : Gate n} {q : Fin n} {θ : ℝ}
@@ -1082,7 +1057,7 @@ theorem optimizeSegments_circuitUnitary :
         rw [ih]
         rfl
 
-/-- Flattening a circuit with `CommutationRules.circuitToList` and rebuilding
+/-- Flattening a circuit with `QCircuit.circuitToList` and rebuilding
     preserves the unitary it realizes. -/
 theorem circuitToList_circuitUnitary (c : Circuit n) :
     RoutingPerm.circuitUnitary (Circuit.ofList (circuitToList c))

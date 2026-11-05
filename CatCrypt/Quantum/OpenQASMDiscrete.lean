@@ -403,7 +403,7 @@ theorem parseDFixed_emitDQASM (n : ℕ) (gs : List (DGate n)) :
       DQASM.isSkipLine]
   have hsplit : (emitDQASM n gs).toList.splitOn '\n' =
       (qasmHeaderLines n).map String.toList ++ gs.map fun g => (g.toQASM).toList := by
-    simp only [emitDQASM, joinLines, String.toList_intercalate]
+    simp only [emitDQASM, String.toList_intercalate]
     rw [show ("\n" : String).toList = ['\n'] from rfl, List.splitOn_intercalate]
     · simp
     · simp [qasmHeaderLines, toString, DQASM.not_mem_toDigits '\n' (by decide),

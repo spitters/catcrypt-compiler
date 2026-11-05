@@ -223,9 +223,6 @@ theorem ctrlH_target :
 
 /-! ## Diagonal matrices and the controlled phase -/
 
-theorem isDiagonal_rzGate (θ : ℝ) : IsDiagonal (rzGate θ) :=
-  rzGate_isDiagonal θ
-
 /-- A single-qubit embedding of a diagonal matrix is the diagonal matrix of its entries at
     the qubit's bit. -/
 theorem embedGate1_eq_diagonal (q : Fin n) {G : Matrix (Fin 2) (Fin 2) ℂ} (hG : IsDiagonal G) :
@@ -285,22 +282,6 @@ theorem cphase_matrix {c t : Fin n} (hct : c ≠ t) (α : ℝ) :
   fin_cases u <;> fin_cases v <;>
     simp [ZMod.val_one, show ((1 : ZMod 2) + 1) = 0 from by decide]
   ring
-
-theorem tDaggerGate_eq_rzGate : tDaggerGate = rzGate (-(Real.pi / 4)) := by
-  ext i j; fin_cases i <;> fin_cases j <;> simp [tDaggerGate, rzGate]
-
-theorem tGate_eq_rzGate : tGate = rzGate (Real.pi / 4) := rfl
-
-theorem phaseS_eq_rzGate : phaseS = rzGate (2 * (Real.pi / 4)) := by
-  have h : Complex.exp (Complex.I * ↑(2 * (Real.pi / 4))) = Complex.I := by
-    rw [show (2 * (Real.pi / 4) : ℝ) = Real.pi / 2 by ring, mul_comm, Complex.ofReal_div,
-      Complex.ofReal_ofNat, Complex.exp_pi_div_two_mul_I]
-  rw [rzGate, h, phaseS]
-
-theorem pauliZ_eq_rzGate : pauliZ = rzGate Real.pi := by
-  have h : Complex.exp (Complex.I * ↑Real.pi) = -1 := by
-    rw [mul_comm, Complex.exp_pi_mul_I]
-  ext i j; fin_cases i <;> fin_cases j <;> simp [pauliZ, rzGate, h]
 
 /-- A diagonal matrix controlled on `c` is diagonal. -/
 theorem ctrlMatrix_diagonal (c : Fin n) (f : Fin (2 ^ n) → ℂ) :
@@ -489,7 +470,7 @@ theorem listMatrix_ctrlGates {c : Fin n} {g : Gate n} (h : Avoids c g) :
     have hct : c ≠ t := Ne.symm h
     simp only [ctrlGates, listMatrix_cons, listMatrix_nil, one_mul, gateEmbedding, dite_eq_right hct,
       tGate_eq_rzGate, tDaggerGate_eq_rzGate]
-    rw [cphase_matrix hct, ← phaseS_eq_rzGate]
+    rw [cphase_matrix hct, show 2 * (Real.pi / 4) = Real.pi / 2 by ring, ← phaseS_eq_rzGate]
   | Rz t θ => rw [ctrlGates, listMatrix_cphaseRz (Ne.symm h), gateEmbedding]
   | RzQ t a => rw [ctrlGates, listMatrix_cphaseGates (Ne.symm h), gateEmbedding]
   | CNOT a b =>

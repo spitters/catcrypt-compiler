@@ -147,12 +147,6 @@ theorem unitaryDenote_XX_cancel (q : Fin n) (rest : List (Gate n)) :
       = unitaryDenote (Circuit.ofList rest) :=
   unitaryDenote_eq_of_circuitUnitary_eq (circuitUnitary_XX_cancel q rest)
 
-/-- Cons of a gate onto an `ofList` denotation unfolds to a `qbind`. -/
-theorem unitaryDenote_ofList_cons (g : Gate n) (gs : List (Gate n)) :
-    unitaryDenote (Circuit.ofList (g :: gs))
-      = QComp.qbind (denoteGateU g) (fun _ => unitaryDenote (Circuit.ofList gs)) :=
-  rfl
-
 /-! ## `cancelXX` preserves the real semantics -/
 
 /-- Removing adjacent `X(i); X(i)` pairs preserves `unitaryDenote`. -/
@@ -659,17 +653,10 @@ theorem propagateNot_correctU :
 
 /-! ## Top-level soundness of the NOT-propagation pass -/
 
-/-- `NotPropagation.circuitToList` preserves `circuitUnitary`. -/
+/-- `QCircuit.circuitToList` preserves `circuitUnitary`. -/
 theorem circuitUnitary_ofList_circuitToList_notProp (c : Circuit n) :
-    circuitUnitary (Circuit.ofList (NotPropagation.circuitToList c)) = circuitUnitary c :=
+    circuitUnitary (Circuit.ofList (QCircuit.circuitToList c)) = circuitUnitary c :=
   circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c
-
-/-- Flattening a circuit with `NotPropagation.circuitToList` and rebuilding
-preserves `unitaryDenote` (the local `circuitToList` is definitionally the same
-as `TemplateMatching.circuitToList`, but distinct as a name). -/
-theorem unitaryDenote_circuitToList' (c : Circuit n) :
-    unitaryDenote (Circuit.ofList (NotPropagation.circuitToList c)) = unitaryDenote c :=
-  unitaryDenote_eq_of_circuitUnitary_eq (circuitUnitary_ofList_circuitToList_notProp c)
 
 /-- `notPropagationPass` preserves `circuitUnitary`. -/
 theorem notPropagationPass_matrixCorrect :

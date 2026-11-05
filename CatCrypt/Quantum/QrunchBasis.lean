@@ -58,9 +58,6 @@ theorem exp_neg_pi_div_two_I :
   rw [show Complex.I * ((-(Real.pi / 2) : ℝ) : ℂ) = -(↑Real.pi / 2 * Complex.I) by
       push_cast; ring, Complex.exp_neg, Complex.exp_pi_div_two_mul_I, Complex.inv_I]
 
-private theorem ofReal_sqrt_two_sq : ((Real.sqrt 2 : ℝ) : ℂ) ^ 2 = 2 := by
-  rw [← Complex.ofReal_pow]; simp
-
 private theorem half_quarter : Real.pi / 2 / 2 = Real.pi / 4 := by ring
 
 private theorem neg_half_quarter : -(Real.pi / 2) / 2 = -(Real.pi / 4) := by ring
@@ -170,7 +167,7 @@ theorem qelibListMatrix_gateQ (g : Gate n) (hg : NoRz g) :
       Complex.exp_zero, one_smul]
   | S q =>
     simp only [gateQ, qelibListMatrix, qelibMatrix, h12, one_mul, gateEmbedding,
-      show Real.pi / 2 = 2 * (Real.pi / 4) by ring, ← phaseS_eq_rzGate, PiLin.toReal_zero,
+      ← phaseS_eq_rzGate, PiLin.toReal_zero,
       Complex.ofReal_zero, mul_zero, Complex.exp_zero, one_smul]
   | CNOT c t => simp [gateQ, qelibListMatrix, qelibMatrix]
   | CZ c t =>

@@ -44,7 +44,7 @@ noncomputable def toReal (q : QasmAngle) : ℝ := (q : ℝ) * Real.pi
 
 @[simp] theorem toReal_zero : toReal 0 = 0 := by simp [toReal]
 
-theorem toReal_one : toReal 1 = Real.pi := by simp [toReal]
+@[simp] theorem toReal_one : toReal 1 = Real.pi := by simp [toReal]
 
 /-! ## Emit: representable angle → OpenQASM 3.0 literal -/
 

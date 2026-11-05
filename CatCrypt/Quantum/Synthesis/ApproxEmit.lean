@@ -9,7 +9,7 @@ public import CatCrypt.Quantum.Synthesis.GateBall
 public import CatCrypt.Quantum.Synthesis.KAKPassSmall
 
 /-!
-# Approximate correctness of the resynthesis passes, with a verified residual checker
+# Approximate correctness of the resynthesis passes, with a verified distance checker
 
 The exact theorems `KAKPassSmall.listMatrix_kakEmit` and `ZYZPass.listMatrix_zyzEmit` assume
 that each replaced block's template has exactly the block's matrix up to a phase
@@ -108,20 +108,13 @@ theorem norm_listMatrix_flatMap_sub_le {α : Type*} (L : List α) (F G : α → 
       _ _ (Complex.norm_exp_I_mul_ofReal _)).trans ?_
     linarith
 
-/-- The sum of `f` over a flat map is the sum over the segments of the sums of `f`. -/
-theorem sum_map_flatMap {α γ : Type*} (L : List α) (P : α → List γ) (f : γ → ℝ) :
-    ((L.flatMap P).map f).sum = (L.map fun x => ((P x).map f).sum).sum := by
-  induction L with
-  | nil => simp
-  | cons x L ih => simp [List.flatMap_cons, List.sum_append, ih]
-
 /-! ## The KAK pass -/
 
 variable {β : Type}
 
 /-- The checked hypothesis of the KAK pass, for payload readings `ph` (phase) and `ep`
 (bound): on every block of `l` where `fit` proposes a template with fewer CNOTs, the checker
-`checkPair` bounds the residual of the block against its template at the phase `ph b` by at
+`checkPair` bounds the distance of the block from its template at the phase `ph b` by at
 most `ep b`. -/
 def KFitChecked (fit : BlockFit n β) (ph : β → PiLin) (ep : β → ℚ) (l : List (Gate n)) :
     Prop :=
@@ -138,7 +131,10 @@ theorem listMatrix_kakEmit_approx (fit : BlockFit n β) (ph : β → PiLin) (ep 
           listMatrix l‖ ≤ ((kakEmit fit l).2.map fun b => (ep b : ℝ)).sum := by
   have h2 : (kakEmit fit l).2 = (collectBlocks l).flatMap fun b => (blockEmit fit b).2 := by
     simp [kakEmit, List.flatMap_map]
-  rw [← listMatrix_collectBlocks l, kakEmit_fst, h2, sum_map_flatMap, sum_map_flatMap]
+  have hsum : ∀ {γ δ : Type} (L : List γ) (P : γ → List δ) (f : δ → ℝ),
+      ((L.flatMap P).map f).sum = (L.map fun x => ((P x).map f).sum).sum := fun L P f => by
+    rw [List.map_flatMap, List.flatMap_def, List.sum_flatten, List.map_map]; rfl
+  rw [← listMatrix_collectBlocks l, kakEmit_fst, h2, hsum, hsum]
   refine norm_listMatrix_flatMap_sub_le _ _ _ _ _ fun b hb => ?_
   cases b with
   | gate g => simp [blockEmit, Block.gates]
@@ -198,7 +194,7 @@ theorem listMatrix_kakEmit_checkedFit (fit : BlockFit n β) (phase : β → PiLi
 
 /-- The checked hypothesis of the run pass: on every run `gs` on `q` at position `i` of
 `collectRuns l` where `fit` proposes an axis `a` and angles `θ`, the checker `checkRun` bounds
-the residual of the run against its template `runTemplate a q θ` at the phase `ph b` by at
+the distance of the run from its template `runTemplate a q θ` at the phase `ph b` by at
 most `ep b`. -/
 def ZFitChecked (fit : ZFit n β) (ph : β → PiLin) (ep : β → ℚ) (l : List (Gate n)) : Prop :=
   ∀ i q gs a θ b, (collectRuns l)[i]? = some (Seg.run q gs) → fit i q gs = some (a, θ, b) →
@@ -218,7 +214,10 @@ theorem listMatrix_zyzEmit_approx (fit : ZFit n β) (ph : β → PiLin) (ep : β
   have h0 : (collectRuns l).zipIdx.flatMap (fun si => Seg.gates si.1) =
       (collectRuns l).flatMap Seg.gates := by
     rw [← List.flatMap_map (f := Prod.fst) (g := Seg.gates), List.zipIdx_map_fst]
-  rw [← listMatrix_collectRuns l, ← h0, zyzEmit_fst, h2, sum_map_flatMap, sum_map_flatMap]
+  have hsum : ∀ {γ δ : Type} (L : List γ) (P : γ → List δ) (f : δ → ℝ),
+      ((L.flatMap P).map f).sum = (L.map fun x => ((P x).map f).sum).sum := fun L P f => by
+    rw [List.map_flatMap, List.flatMap_def, List.sum_flatten, List.map_map]; rfl
+  rw [← listMatrix_collectRuns l, ← h0, zyzEmit_fst, h2, hsum, hsum]
   refine norm_listMatrix_flatMap_sub_le _ _ _ _ _ fun si hsi => ?_
   obtain ⟨s, i⟩ := si
   have hi : (collectRuns l)[i]? = some s := by grind [List.mem_zipIdx']
