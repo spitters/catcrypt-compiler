@@ -104,20 +104,20 @@ def gpKernelAgreement (p : Option Lprog) : Option ((Nat × Nat × Nat) × (Nat �
 /-! ## General-purpose registers, per run -/
 
 set_option kat.ms 500 in
-#kat gpKernelAgreement (MpnLoopFrontEmit.addLprogFront ()) == some ((18, 18, 0), (18, 1, 0))
+#kat gpKernelAgreement (MpnLoopFrontEmit.addLprogFront ()) == some ((24, 24, 0), (18, 1, 0))
 set_option kat.ms 500 in
-#kat gpKernelAgreement (MpnLoopFrontEmit.subLprogFront ()) == some ((18, 18, 0), (18, 1, 0))
+#kat gpKernelAgreement (MpnLoopFrontEmit.subLprogFront ()) == some ((24, 24, 0), (18, 1, 0))
 set_option kat.ms 500 in
-#kat gpKernelAgreement (MpnLoopFrontEmit.andLprog ()) == some ((18, 18, 0), (18, 1, 0))
+#kat gpKernelAgreement (MpnLoopFrontEmit.andLprog ()) == some ((24, 24, 0), (18, 1, 0))
 set_option kat.ms 500 in
-#kat gpKernelAgreement (MpnLoopFrontEmit.iorLprog ()) == some ((18, 18, 0), (18, 1, 0))
+#kat gpKernelAgreement (MpnLoopFrontEmit.iorLprog ()) == some ((24, 24, 0), (18, 1, 0))
 set_option kat.ms 500 in
-#kat gpKernelAgreement (MpnLoopFrontEmit.xorLprog ()) == some ((18, 18, 0), (18, 1, 0))
+#kat gpKernelAgreement (MpnLoopFrontEmit.xorLprog ()) == some ((24, 24, 0), (18, 1, 0))
 set_option kat.ms 2500 in
 #kat gpKernelAgreement (some Fe25519LfundefBridge.monoStepLprog) ==
-  some ((168, 168, 0), (168, 9, 0))
+  some ((224, 224, 0), (168, 9, 0))
 set_option kat.ms 4000 in
-#kat gpKernelAgreement keccakRolledPre == some ((18, 18, 0), (18, 2, 0))
+#kat gpKernelAgreement keccakRolledPre == some ((24, 24, 0), (18, 2, 0))
 
 /-! ## General-purpose registers, whole bodies -/
 
