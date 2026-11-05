@@ -14,8 +14,8 @@
 # A token with a file extension or a `/` is checked. An extension-less token whose
 # first component is not the name of a package directory (a repository slug such as
 # `opencompl/veir`) is skipped, as are tokens with a URL scheme, a glob or a
-# placeholder character. THIRD_PARTY_NOTICES.md and CHANGELOG.md are not read: the
-# first names files of upstream repositories, the second files that were removed.
+# placeholder character. THIRD_PARTY_NOTICES.md is not read: it names files of upstream
+# repositories.
 # `scripts/doc-path-exempt.txt` lists `document<TAB>token` pairs that are skipped,
 # each with its reason.
 #
@@ -28,7 +28,7 @@ EXEMPT="scripts/doc-path-exempt.txt"
 [ -f "$EXEMPT" ] || EXEMPT=/dev/null
 
 docs=$( { git ls-files '*.md'; git ls-files 'docs/*.lean'; git ls-files 'blueprint/*.tex'; } \
-  | grep -vxE 'THIRD_PARTY_NOTICES\.md|CHANGELOG\.md' | sort -u)
+  | grep -vxE 'THIRD_PARTY_NOTICES\.md' | sort -u)
 
 # One record per code span: document, line, span text.
 spans() {
