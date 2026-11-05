@@ -20,9 +20,9 @@ statements are parametric in the Aeneas width `ty : UScalarTy`; the widths `8`, 
 `64` form `tableTy`, and `usize`, whose width is that of the platform, enters through
 `wordAt` for the operations whose value does not depend on the width.
 
-The section was moved from the dev module `CatCrypt.Crypto.Hax.Hax64WReading`, which imports
-it, so that the Aeneas front of the compiler (`AeneasFront/Scalars.lean`,
-`AeneasFront/Arrays.lean`) states its squares over it.
+The Aeneas front of the compiler (`AeneasFront/Scalars.lean`, `AeneasFront/Arrays.lean`)
+states its squares over these statements, and `CatCrypt.Crypto.Hax.Hax64WReading` builds the
+reading `app64` on them.
 
 ## Main definitions
 
