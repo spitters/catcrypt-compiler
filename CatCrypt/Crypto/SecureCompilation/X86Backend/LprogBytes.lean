@@ -448,6 +448,10 @@ def memDstOp (op : Nat) : Nat := if op = 0x8b then 0x89 else op
     (`ADD` `01`→`03`, `ADC` `11`→`13`, `MOV` `89`→`8B`, …), and `0x8B` for `LOAD`. -/
 def memSrcOp (op : Nat) : Nat := if op = 0x8b then 0x8b else op + 2
 
+/-- The two-address operations whose memory-source form `memSrcOp op` the encoder emits as
+    one instruction at `REX.W = 1`: `OR` (`09`), `AND` (`21`), `SUB` (`29`), `XOR` (`31`). -/
+def memAluSrcOp (op : Nat) : Bool := op == 0x09 || op == 0x21 || op == 0x29 || op == 0x31
+
 /-- The red-zone cell a borrowed scratch register is parked in, the same `-128(%rsp)` the
     printer uses. Call-free leaves do not write below `%rsp`, and the export's slots sit
     at `-8k` for the register ABI arguments, never that deep. -/
@@ -484,6 +488,16 @@ def encAluMemScratch (w op r b : Nat) (off : Int) (memDst : Bool) : List (BitVec
   encAluViaScratch w op r (aluMemScratch r b) memDst
     (encMemMovw w 0x8b (aluMemScratch r b) b off) (encMemMovw w 0x89 (aluMemScratch r b) b off)
 
+/-- The and-not `ANDN d, a, m64` with a memory second source named `sn`: a frame word
+    `off(%rsp)` (a spill or ABI-save name) or a cell `off(%b)` (a `mem.*` name with a
+    general-purpose base), `VEX.LZ.0F38.W1 F2 /r` with a memory ModRM
+    (`ScalarEncoder.encVex3Mem`); no bytes for any other name. -/
+def encAndnMemOp (frame spillW qsaveB d a : Nat) (sn : String) : List (BitVec 8) :=
+  match spillQsaveOff frame spillW sn qsaveB, parseMemNameGp sn with
+  | some off, _ => encVex3Mem 0b00010 0b00 0xf2 d a 4 off
+  | none, some (bb, off) => encVex3Mem 0b00010 0b00 0xf2 d a bb off
+  | none, none => []
+
 /-- Encode a two-address binop / move whose AT&T form is `op<sz> src, dst`, given the
     one-byte ALU opcode `op`, the frame size + body-uniform spill width (to resolve
     `%rsp`-relative spill/qsave operands to their offset, matching
@@ -499,9 +513,10 @@ def encAluMemScratch (w op r b : Nat) (off : Int) (memDst : Bool) : List (BitVec
     unparseable slot name, and a name that is none of register, `mem.*`, spill or
     qsave, which `gpNumU` would otherwise read as `%rax`. For `ADD` (`0x01`), the moves
     (`0x89`) and `LOAD` (`0x8b`) a memory destination takes the `r/m ← r` opcode
-    `memDstOp op` and a memory source the `r ← r/m` opcode `memSrcOp op`, one instruction.
-    The other operations (`OR`, `ADC`, `SBB`, `AND`, `SUB`, `XOR`) with a memory operand
-    go through a scratch register parked in the red zone (`encAluRspScratch`,
+    `memDstOp op` and a memory source the `r ← r/m` opcode `memSrcOp op`, one instruction;
+    so do `OR`, `AND`, `SUB` and `XOR` with a memory source at `REX.W = 1`
+    (`memAluSrcOp`, the `0B`, `23`, `2B`, `33 /r` forms). The other operations with a
+    memory operand go through a scratch register parked in the red zone (`encAluRspScratch`,
     `encAluMemScratch`). Two registers take the `r/m ← r` form `memDstOp op` with `rm` the
     destination: for the `LOAD` opcode `0x8B` that is the `MOV` `89 /r` from the source
     into the destination. -/
@@ -519,7 +534,8 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
       -- reload from a spill/qsave slot: src is `%rsp`-relative, dst is a register.
       | none, some off =>
           if isGpName dn then
-            if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b then encRspMem w (memSrcOp op) (gpNumU dn) off
+            if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b ∨ (w = 1 ∧ memAluSrcOp op = true) then
+              encRspMem w (memSrcOp op) (gpNumU dn) off
             else encAluRspScratch w op (gpNumU dn) off false
           else []
       | some _, some _ => []
@@ -538,7 +554,7 @@ def encTwoAddr (frame spillW w : Nat) (op : Nat) (d s : LOperand)
           -- load: src is memory. `reg`=dst, base=src mem.
           | none, some (bb, off) =>
               if isGpName dn then
-                if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b then
+                if op = 0x01 ∨ op = 0x89 ∨ op = 0x8b ∨ (w = 1 ∧ memAluSrcOp op = true) then
                   encMemMovw w (memSrcOp op) (gpNumU dn) bb off
                 else encAluMemScratch w op (gpNumU dn) bb off false
               else []
@@ -1488,7 +1504,9 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
             -- identity, so `s == d` carries no bytes and `s ≠ d` degenerates to
             -- the copy the binding stands for (`mov s, d`, the `89 /r` form); a
             -- real count shifts in place when `s == d` and prepends the same
-            -- `mov` when it does not, so the shifted value is the source's.
+            -- `mov` when it does not, so the shifted value is the source's. A 64-bit
+            -- rotate into a register other than its source is the BMI2 three-operand
+            -- `rorx $n, %s, %d` (`ScalarEncoder.encRorx`), which needs no copy.
             match tagShiftExt base, d, s with
             | some ext, .reg dn, .reg sn =>
                 if isGpName dn && isGpName sn then
@@ -1497,6 +1515,7 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                     if dn == sn then []
                     else encAluRRw w 0x89 (gpNumU dn) (gpNumU sn)
                   if n = 0 then movPart
+                  else if ext = 1 ∧ w = 1 ∧ dn ≠ sn then encRorx (gpNumU dn) (gpNumU sn) n
                   else movPart ++ encTagShift w ext (gpNumU dn) base
                 else []
             | _, _, _ =>
@@ -1692,6 +1711,11 @@ def encodeLopn (frame spillW : Nat) (i : LinstrR)
                           | .reg dn, .reg an, .reg sn =>
                               if w = 1 && isGpName dn && isGpName an && isGpName sn then
                                 encVex3RR 0b00010 0b00 0xf2 (gpNumU dn) (gpNumU an) (gpNumU sn)
+                              -- the memory second source `ANDN d, a, m64`: a frame word
+                              -- `off(%rsp)` or a cell `off(%b)`, `VEX.LZ.0F38.W1 F2 /r`
+                              -- with a memory ModRM (`ScalarEncoder.encVex3Mem`).
+                              else if w = 1 && isGpName dn && isGpName an then
+                                encAndnMemOp frame spillW qsaveB (gpNumU dn) (gpNumU an) sn
                               else []
                           | _, _, _ => []
                         else []
@@ -2264,6 +2288,12 @@ def mnemonicEncodability : List (LinstrR × Bool) :=
   , (.Lopn [.reg "R8"] "ROL:7:64" [.reg "R8"], false)
   , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R8"], true)
   , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "RBX"], true)
+  -- the BMI1 and-not with a frame word or a cell as its `r/m64` second source
+  -- (`encVex3Mem`), and the BMI2 rotate `rorx` of a 64-bit rotate into a register
+  -- other than its source (`encRorx`).
+  , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "k.3"], true)
+  , (.Lopn [.reg "R8"] "ANDN:64" [.reg "RAX", .reg "mem.RBX.16"], true)
+  , (.Lopn [.reg "R8"] "ROR:7:64" [.reg "R9"], true)
   -- the two-source materialised comparison the compare-and-select export emits,
   -- `LprogAsmPrinter.renderSetcc`'s `cmp b, a ; mov $0, d ; set<cc> d8`, encoded by
   -- `encSetccCmp` over registers; with a memory operand it is declined.

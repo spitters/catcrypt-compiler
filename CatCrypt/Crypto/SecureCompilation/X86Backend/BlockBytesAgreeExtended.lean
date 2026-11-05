@@ -319,7 +319,9 @@ theorem dispatch_tagshift_reg_emits
       = encTagShift (rexW (mnemWidth mnem)) ext (gpNumU dn) base := by
   simp only [encodeLopn, hbind, hstrip, hmulx, hmulxmem, hadx, hext,
     Bool.false_eq_true, ite_false]
-  rw [ite_eq_left hgp, ite_eq_right hcnt, ite_eq_left hds, List.nil_append]
+  have hne : ¬ (ext = 1 ∧ rexW (mnemWidth mnem) = 1 ∧ dn ≠ sn) := fun h =>
+    h.2.2 (beq_iff_eq.mp hds)
+  rw [ite_eq_left hgp, ite_eq_right hcnt, ite_eq_right hne, ite_eq_left hds, List.nil_append]
 
 /-- **`SHR:19:64` now ENCODES** (asconSigma0's first rotate-hi shift). The Lprog byte encoder
     emits the `shr %d, $19` bytes (`encTagShift 1 5 (gpNumU dn) "SHR:19"`) — the rotation is no

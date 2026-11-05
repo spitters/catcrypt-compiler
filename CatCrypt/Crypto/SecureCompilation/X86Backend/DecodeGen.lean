@@ -200,6 +200,33 @@ def tmplLea : JInstr 64 → List (List (BitVec 8) × JInstr 64)
       | _, _, _ => []
   | _ => []
 
+/-- The templates of the memory-source `SUB`/`AND`/`OR`/`XOR` (`REX.W 2B`/`23`/`0B`/`33 /r`
+    against `[base + disp]`), the memory-source and-not (`VEX.LZ.0F38.W1 F2 /r` against
+    `[base + disp]`) and the BMI2 rotate (`VEX.LZ.F2.0F3A.W1 F0 /r ib`) at the register
+    numbers of the names of `j`. -/
+def tmplExt : JInstr 64 → List (List (BitVec 8) × JInstr 64)
+  | .aluMem o d b off =>
+      match regNum? d, regNum? b with
+      | some r, some bn =>
+          if dispOk32 off then
+            [(encMemMovw 1 (memAluOpcode o) r bn off, .aluMem o (regName r) (regName bn) off)]
+          else []
+      | _, _ => []
+  | .andnMem d a b off =>
+      match regNum? d, regNum? a, regNum? b with
+      | some r, some an, some bn =>
+          if dispOk32 off then
+            [(encVex3Mem 0b00010 0b00 0xf2 r an bn off,
+              .andnMem (regName r) (regName an) (regName bn) off)]
+          else []
+      | _, _, _ => []
+  | .rorx d s (.imm k) =>
+      match regNum? d, regNum? s with
+      | some r, some sn =>
+          if k < 256 then [(encRorx r sn k, .rorx (regName r) (regName sn) (.imm k))] else []
+      | _, _ => []
+  | _ => []
+
 /-- The register names of an operand. -/
 def opNames : JOperand → List String
   | .reg r => [r]
@@ -234,7 +261,7 @@ def guess : JInstr 64 → List String × List Nat × List Int
 def pieceTemplates (j : JInstr 64) : List (List (BitVec 8) × JInstr 64) :=
   let g := guess j
   let ns := g.1.filterMap regNum?
-  tmplJ j ++ tmplLea j ++ ns.flatMap (fun d =>
+  tmplJ j ++ tmplLea j ++ tmplExt j ++ ns.flatMap (fun d =>
     ns.flatMap (fun s => tmplRR d s ++ tmplCast d s
         ++ ns.flatMap (fun c => tmplIdx d s c ++ tmpl3 d s c)
         ++ tmplCmovRR d s ++ g.2.2.flatMap (tmplMemAdd d s))
@@ -513,6 +540,40 @@ theorem tmplLea_sound (j : JInstr 64) : ∀ q ∈ tmplLea j, PieceDec q := by
     · simp at hq
   · simp at hq
 
+theorem tmplExt_sound (j : JInstr 64) : ∀ q ∈ tmplExt j, PieceDec q := by
+  intro q hq rest
+  unfold tmplExt at hq
+  split at hq
+  · split at hq
+    · rename_i r bn hr hb
+      split at hq
+      · rename_i hoff
+        simp only [List.mem_singleton] at hq
+        subst hq
+        exact decodeLinstr_aluMem _ r bn _ rest (regNum?_spec hr).1 (regNum?_spec hb).1 hoff
+      · simp at hq
+    · simp at hq
+  · split at hq
+    · rename_i r an bn hr ha hb
+      split at hq
+      · rename_i hoff
+        simp only [List.mem_singleton] at hq
+        subst hq
+        exact decodeLinstr_andnMem r an bn _ rest (regNum?_spec hr).1 (regNum?_spec ha).1
+          (regNum?_spec hb).1 hoff
+      · simp at hq
+    · simp at hq
+  · split at hq
+    · rename_i r sn hr hs
+      split at hq
+      · rename_i hk
+        simp only [List.mem_singleton] at hq
+        subst hq
+        exact decodeLinstr_rorx r sn _ rest (regNum?_spec hr).1 (regNum?_spec hs).1 hk
+      · simp at hq
+    · simp at hq
+  · simp at hq
+
 /-- **Every template decodes to its instruction.** -/
 theorem pieceTemplates_sound (j : JInstr 64) : ∀ q ∈ pieceTemplates j, PieceDec q := by
   intro q hq
@@ -520,9 +581,10 @@ theorem pieceTemplates_sound (j : JInstr 64) : ∀ q ∈ pieceTemplates j, Piece
   have hn : ∀ n ∈ (guess j).1.filterMap regNum?, n < 16 := fun n hn => by
     obtain ⟨r, _, hr⟩ := List.mem_filterMap.mp hn
     exact (regNum?_spec hr).1
-  rcases hq with (hq | hq) | ⟨d, hd, hq⟩
+  rcases hq with ((hq | hq) | hq) | ⟨d, hd, hq⟩
   · exact tmplJ_sound j q hq
   · exact tmplLea_sound j q hq
+  · exact tmplExt_sound j q hq
   · rcases hq with (((⟨s, hs, hq⟩ | ⟨v, _, hq⟩) | hq) | ⟨off, _, hq⟩)
     · rcases hq with ((((hq | hq) | ⟨c, hc, hq⟩) | hq) | ⟨off, _, hq⟩)
       · exact tmplRR_sound d s (hn d hd) (hn s hs) q hq

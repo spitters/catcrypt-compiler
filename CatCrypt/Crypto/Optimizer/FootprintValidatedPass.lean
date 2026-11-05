@@ -82,7 +82,7 @@ def memReadBases : JInstr 64 → List String
   -- the memory-operand arithmetic reads its cell through `base`.
   | .addMem _ base _ | .addToMem base _ _ | .adcxMem _ base _ | .adoxMem _ base _
   | .imulMem _ base _ | .imulriMem _ base _ _ | .cmpMem _ base _
-  | .cmovccMem _ _ base _ => [base]
+  | .cmovccMem _ _ base _ | .aluMem _ _ base _ | .andnMem _ _ base _ => [base]
   -- `lea` computes `base + idx·scale + off` into a register and dereferences
   -- nothing, so it reads memory through no base.
   | .lea _ _ _ _ _ => []
@@ -237,7 +237,8 @@ theorem agreeExcept_evalInstr {D : List (String × Int)} (i : JInstr 64)
     · simp only [ite_eq_right hc]; exact hm b o hbo
   -- The memory-source arithmetic reads a cell through a base outside `D`.
   | addMem dst base off | adcxMem dst base off | adoxMem dst base off | imulMem dst base off
-  | imulriMem dst base off _ | cmpMem dst base off | cmovccMem _ dst base off =>
+  | imulriMem dst base off _ | cmpMem dst base off | cmovccMem _ dst base off
+  | aluMem _ dst base off | andnMem dst _ base off =>
     have hmb : ∀ o, sm base o = tm base o := fun o =>
       hm base o (pair_notin_of_base_notin o (hi base (by simp [memReadBases])))
     refine ⟨?_, ?_, fun b o hbo => ?_⟩

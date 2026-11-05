@@ -256,6 +256,7 @@ theorem encodeLopn_shr1_emits (frame spillW : Nat) (dn sn : String)
     hgp, hds, Bool.false_eq_true, ite_false, List.nil_append,
     encTagShift, hn, ite_eq_left]
   rw [ite_eq_right (by decide)]
+  exact ite_eq_right (fun h => absurd h.1 (by decide))
 
 /-- The Lprog `encodeLopn` of a count-1 left shift `SHL:1:64` reduces to the
     3-byte `D1 /4` short form `encShift1 1 4 (gpNumU dn)`, given `hn`. -/
@@ -275,6 +276,7 @@ theorem encodeLopn_shl1_emits (frame spillW : Nat) (dn sn : String)
     hgp, hds, Bool.false_eq_true, ite_false, List.nil_append,
     encTagShift, hn, ite_eq_left]
   rw [ite_eq_right (by decide)]
+  exact ite_eq_right (fun h => absurd h.1 (by decide))
 
 /-- The `encodeJInstr6` count-1 right shift reduces to the same `encShift1 1 5`
     short form (closed `decide +kernel` on `RAX` under `physAlloc`). -/

@@ -1014,6 +1014,24 @@ inductive JOperand where
   | .reg r => s.get r
   | .imm v => BitVec.ofNat w v
 
+/-- The two-address logic and subtract operations whose memory-source form `aluMem`
+    transcribes: `Ox86_SUB_instr`, `Ox86_AND_instr`, `Ox86_OR_instr` and `Ox86_XOR_instr`
+    at the operand kind `r_rm` (the `2B`, `23`, `0B` and `33 /r` opcodes). -/
+inductive MemAluOp where
+  | sub
+  | and_
+  | or_
+  | xor_
+  deriving DecidableEq, Repr
+
+/-- The semantic function of a memory-source operation, the `x86_*` function of its
+    register form. -/
+def MemAluOp.sem {w : Nat} : MemAluOp → BitVec w → BitVec w → B5W w
+  | .sub => x86_SUB
+  | .and_ => x86_AND
+  | .or_ => x86_OR
+  | .xor_ => x86_XOR
+
 /-- The emitted scalar x86 instruction subset, each arm naming the Jasmin
     `Ox86_*_instr` it transcribes. Two-address arithmetic/logical form (the
     destination is also source 0).
@@ -1044,12 +1062,13 @@ inductive JOperand where
     for `m_ri`, whose output word goes to the cell through `JState.writeB5Mem`),
     `ADCX` and `ADOX` at `check_adcx`'s `r_rm` (`adcxMem`, `adoxMem`), `IMULr` at
     `r_rm` (`imulMem`), `IMULri` at `[r; rm; i]` (`imulriMem`), `CMP` at `r_rm`
-    (`cmpMem`) and `CMOVcc` at `r_rm` (`cmovccMem`). Each evaluates as
+    (`cmpMem`), `CMOVcc` at `r_rm` (`cmovccMem`), `SUB`, `AND`, `OR` and `XOR` at `r_rm`
+    (`aluMem`, the operation a `MemAluOp`) and `ANDN` with a memory second source
+    (`andnMem`). Each evaluates as
     its register form with the cell's word in place of the register operand; the
     equations `runBlock_loadMem_add_eq_addMem` and its siblings (section 10) state
     that each is a `loadMem` into a scratch register followed by the register
-    form. The memory kinds of the other instructions sharing `check_add` (`SUB`,
-    `ADC`, `SBB`) are not transcribed.
+    form. The memory kinds of `ADC` and `SBB` are not transcribed.
 
     Not yet transcribed: `MOVX`, `POR`, `PADD` and the SIMD/AES/SHA families.
     Add these as the fragment needs them, following the transcription
@@ -1293,6 +1312,12 @@ inductive JInstr (w : Nat) where
       condition `c`: `dst := if c then [base + off] else dst`. The cell is read
       whatever the condition; no flag is written. -/
   | cmovccMem (c : Condt) (dst base : String) (off : Int)
+  /-- `Ox86_SUB_instr`, `Ox86_AND_instr`, `Ox86_OR_instr` or `Ox86_XOR_instr` with a
+      memory source (`r_rm`): `dst := op dst [base + off]`, writing the five flags. -/
+  | aluMem (op : MemAluOp) (dst base : String) (off : Int)
+  /-- `Ox86_ANDN_instr` (BMI1) with a memory second source (`src2` is `r/m64`):
+      `dst := (~~~ src1) &&& [base + off]`, writing the flags of `x86_ANDN`. -/
+  | andnMem (dst src1 base : String) (off : Int)
   /-- `BZHI` (BMI2) on registers, `x86_BZHI`: `dst := src` with the bits at and above
       the low byte of `idx` cleared, writing the five flags (`PF` undefined).
       Non-destructive in both sources. -/
@@ -1416,6 +1441,8 @@ def evalInstr {w : Nat} (s : JState w) : JInstr w → JState w
   | .cmovccMem c dst base off =>
       s.setReg dst (x86_CMOVcc (s.condB c) (s.load base off) (s.get dst))
   | .bzhi d src idx => s.writeB5W d (x86_BZHI (s.get src) (s.get idx))
+  | .aluMem op dst base off => s.writeB5W dst (op.sem (s.get dst) (s.load base off))
+  | .andnMem d a base off => s.writeB5W d (x86_ANDN (s.get a) (s.load base off))
 
 /-- `runBlock`: a straight-line fold of `evalInstr`, the analogue of jasmin's
     sequential `lsem`/`eval_instr` iteration over a basic block. -/
@@ -1581,5 +1608,45 @@ theorem runBlock_loadMem_add_store_eq_addToMem {w : Nat} (s : JState w) (base t 
   congr 1
   funext r
   by_cases h : r = t <;> simp [h]
+
+/-- The register form of a memory-source operation: `sub`, `and_`, `or_` or `xor_`. -/
+def MemAluOp.regInstr {w : Nat} : MemAluOp → String → JOperand → JInstr w
+  | .sub => .sub
+  | .and_ => .and_
+  | .or_ => .or_
+  | .xor_ => .xor_
+
+/-- The register form of a memory-source operation evaluates through its semantic
+    function. -/
+theorem evalInstr_regInstr {w : Nat} (s : JState w) (op : MemAluOp) (dst : String)
+    (src : JOperand) :
+    evalInstr s (op.regInstr dst src) = s.writeB5W dst (op.sem (s.get dst) (src.eval s)) := by
+  cases op <;> rfl
+
+/-- `op dst, [base + off]` is `loadMem t base off; op dst t`, with `t` holding the loaded
+    word, for each operation of `MemAluOp`. -/
+theorem runBlock_loadMem_alu_eq_aluMem {w : Nat} (s : JState w) (op : MemAluOp)
+    (dst base t : String) (off : Int) (ht : t ≠ dst) :
+    runBlock s [.loadMem t base off, op.regInstr dst (.reg t)] =
+      (evalInstr s (.aluMem op dst base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil]
+  rw [evalInstr_regInstr]
+  simp only [evalInstr, JState.setReg, JState.writeB5W, JState.get, JOperand.eval, x86_MOV,
+    ite_eq_right (Ne.symm ht), ite_eq_left]
+  congr 1
+  funext r
+  by_cases h1 : r = t <;> by_cases h2 : r = dst <;> simp_all
+
+/-- `andn d, a, [base + off]` is `loadMem t base off; andn d a t`, with `t` holding the
+    loaded word, for a scratch `t` other than `d` and `a`. -/
+theorem runBlock_loadMem_andn_eq_andnMem {w : Nat} (s : JState w) (d a base t : String)
+    (off : Int) (ht : t ≠ d) (hta : t ≠ a) :
+    runBlock s [.loadMem t base off, .andn d a t] =
+      (evalInstr s (.andnMem d a base off)).setReg t (s.load base off) := by
+  simp only [runBlock_cons, runBlock_nil, evalInstr, JState.setReg,
+    JState.writeB5W, JState.get, x86_MOV, ite_eq_right (Ne.symm hta), ite_eq_left]
+  congr 1
+  funext r
+  by_cases h1 : r = t <;> by_cases h2 : r = d <;> simp_all
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin

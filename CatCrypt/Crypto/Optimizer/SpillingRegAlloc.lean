@@ -96,6 +96,7 @@ def writtenNames : JInstr 64 → List String
   | .cmp _ _ => []
   | .inc d | .dec d | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
   | .cmovcc _ d _ | .cmovccMem _ d _ _ | .setcc _ d | .btr d _ | .bts d _ => [d]
+  | .aluMem _ d _ _ | .andnMem d _ _ _ => [d]
   -- `xchg` writes both operands.
   | .xchg a b => [a, b]
   -- the widening multiplies write the high word and the low word.
@@ -175,6 +176,8 @@ def readNames : JInstr 64 → List String
   | .cmpMem a base _ => [a, base]
   -- `cmov<c> dst, [base + off]` keeps `dst` when the condition fails, so `dst` is read.
   | .cmovccMem _ d base _ => [d, base]
+  | .aluMem _ d base _ => [d, base]
+  | .andnMem _ a base _ => [a, base]
   -- BMI2 `bzhi`: non-destructive in both sources, `dst` is write-only.
   | .bzhi _ src idx => [src, idx]
 

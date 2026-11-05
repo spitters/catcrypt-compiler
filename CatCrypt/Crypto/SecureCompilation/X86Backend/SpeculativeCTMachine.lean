@@ -222,6 +222,18 @@ def specStep {w : Nat} (O : BypassOracle w) (σ : SpecState w) :
           { arch := σ.arch.setReg dst (x86_CMOVcc (σ.arch.condB c) stale (σ.arch.get dst))
             buf := σ.buf, window := σ.window - 1 }
       | none => { σ with arch := evalInstr σ.arch (.cmovccMem c dst base off) }
+  | .aluMem op dst base off =>
+      match bypasses O σ base off with
+      | some stale =>
+          { arch := σ.arch.writeB5W dst (op.sem (σ.arch.get dst) stale)
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.aluMem op dst base off) }
+  | .andnMem dst a base off =>
+      match bypasses O σ base off with
+      | some stale =>
+          { arch := σ.arch.writeB5W dst (x86_ANDN (σ.arch.get a) stale)
+            buf := σ.buf, window := σ.window - 1 }
+      | none => { σ with arch := evalInstr σ.arch (.andnMem dst a base off) }
   | .addToMem base off src =>
       match bypasses O σ base off with
       | some stale =>

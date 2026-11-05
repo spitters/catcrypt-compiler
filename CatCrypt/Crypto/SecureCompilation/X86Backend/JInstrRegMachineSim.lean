@@ -196,6 +196,12 @@ theorem aux_stepJ (ρ : String → String) (s t : JState 64) (i : JInstr 64)
     | cmpMem a base off =>
       have hd : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
       simp only [renameInstr, evalInstr, JState.writeB5, JState.load, hmem base off, hd]
+    | aluMem op d base off =>
+      have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
+      simp only [renameInstr, evalInstr, JState.writeB5W, JState.load, hmem base off, hd]
+    | andnMem d a base off =>
+      have ha : t.get (ρ a) = s.get a := h a (List.mem_cons_self ..)
+      simp only [renameInstr, evalInstr, JState.writeB5W, JState.load, hmem base off, ha]
     | adcxMem d base off =>
       have hd : t.get (ρ d) = s.get d := h d (List.mem_cons_self ..)
       simp only [renameInstr, evalInstr, JState.load, hmem base off, hd, hcf, hflag]

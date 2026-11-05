@@ -101,7 +101,8 @@ def flagWrites : JInstr 64 → List FlagId
   | .rcl _ _ | .rcr _ _ => [.CF, .OF]
   | .xchg _ _ | .cmovcc _ _ _ | .cmovccMem _ _ _ _ | .setcc _ _ => []
   -- the memory-operand forms write the flags of their register forms.
-  | .addMem _ _ _ | .addToMem _ _ _ | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _ =>
+  | .addMem _ _ _ | .addToMem _ _ _ | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _
+  | .aluMem _ _ _ _ | .andnMem _ _ _ _ =>
       [.CF, .PF, .ZF, .SF, .OF]
   | .adcxMem _ _ _ => [.CF]
   | .adoxMem _ _ _ => [.OF]
@@ -142,6 +143,7 @@ def touchesMem : JInstr 64 → Bool
   | .loadMemIdx _ _ _ _ | .storeMemIdx _ _ _ _ | .loadSym _ _ => true
   | .addMem _ _ _ | .addToMem _ _ _ | .adcxMem _ _ _ | .adoxMem _ _ _ | .imulMem _ _ _
   | .imulriMem _ _ _ _ | .cmpMem _ _ _ | .cmovccMem _ _ _ _ => true
+  | .aluMem _ _ _ _ | .andnMem _ _ _ _ => true
   | .lea _ _ _ _ _ => false
   | _ => false
 

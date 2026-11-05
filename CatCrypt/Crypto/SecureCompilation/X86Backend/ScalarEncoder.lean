@@ -546,6 +546,26 @@ def encVex3RR (mm pp op dst vvvv rm : Nat) : List (BitVec 8) :=
   let vex2 := 128 + vbar * 8 + pp                       -- W = 1, L = 0
   [ 0xc4, vex1, vex2, op, modRMReg dst rm ].map (BitVec.ofNat 8)
 
+/-- A three-byte-VEX register-memory form, `W=1` (64-bit), `L=0`: the fields of
+    `encVex3RR` with the `ModRM.rm` operand the cell `[base + off]`, its
+    ModRM/SIB/displacement tail the shared `memTail` and `B̄` the high bit of `base`.
+    `encMulxMem` is this shape at `mm=0F38, pp=F2, op=F6`. -/
+def encVex3Mem (mm pp op dst vvvv base : Nat) (off : Int) : List (BitVec 8) :=
+  let rbar := 1 - bit dst 3
+  let bbar := 1 - bit base 3
+  let vex1 := rbar * 128 + 1 * 64 + bbar * 32 + mm     -- X̄ = 1
+  let vbar := 15 - (vvvv &&& 15)
+  let vex2 := 128 + vbar * 8 + pp                       -- W = 1, L = 0
+  [ 0xc4, vex1, vex2, op ].map (BitVec.ofNat 8) ++ memTail dst base off
+
+/-- The `r ← r/m` opcode of a memory-source operation: `SUB` `2B`, `AND` `23`, `OR` `0B`,
+    `XOR` `33`. -/
+def memAluOpcode : MemAluOp → Nat
+  | .sub => 0x2b
+  | .and_ => 0x23
+  | .or_ => 0x0b
+  | .xor_ => 0x33
+
 /-- The VEX `pp` field of the BMI2 variable shift at group-2 extension `ext`:
     `SHLX` (`/4`) is `VEX.66` (`01`), `SHRX` (`/5`) is `VEX.F2` (`11`), `SARX`
     (`/7`) is `VEX.F3` (`10`). SDM Vol 2B, `SARX/SHLX/SHRX`. -/
@@ -900,6 +920,13 @@ def encodeJInstr (alloc : GpAlloc) : JInstr 64 → List (BitVec 8)
       let dn := gpNum (regOf alloc d); let bn := gpNum (regOf alloc base)
       ([ rex 1 (bit dn 3) 0 (bit bn 3), 0x0f, 0x40 + condCode c ].map (BitVec.ofNat 8))
         ++ memTail dn bn off
+  -- `SUB`/`AND`/`OR`/`XOR r64, m64` = `REX.W 2B/23/0B/33 /r` with a memory ModRM.
+  | .aluMem op d base off =>
+      encMemMov (memAluOpcode op) (gpNum (regOf alloc d)) (gpNum (regOf alloc base)) off
+  -- `ANDN r64a, r64b, m64` = `VEX.LZ.0F38.W1 F2 /r` with a memory ModRM.
+  | .andnMem d a base off =>
+      encVex3Mem 0b00010 0b00 0xf2 (gpNum (regOf alloc d)) (gpNum (regOf alloc a))
+        (gpNum (regOf alloc base)) off
   -- BZHI = VEX.LZ.0F38.W1 F5 /r; `vvvv` carries the index. Gas-pinned:
   -- `bzhi %rbx,%rcx,%rax` = `C4 E2 E0 F5 C1`, `bzhi %r11,%rbx,%r13` = `C4 62 A0 F5 EB`.
   | .bzhi d src idx =>

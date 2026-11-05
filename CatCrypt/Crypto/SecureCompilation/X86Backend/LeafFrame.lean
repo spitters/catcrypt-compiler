@@ -97,6 +97,8 @@ def bankFree {w : Nat} (b : String) : JInstr w → Bool
   | .imulriMem _ base _ _ => base != b
   | .cmpMem _ base _ => base != b
   | .cmovccMem _ _ base _ => base != b
+  | .aluMem _ _ base _ => base != b
+  | .andnMem _ _ base _ => base != b
   | _ => true
 
 /-- A bank-free instruction commutes with replacing that bank. -/

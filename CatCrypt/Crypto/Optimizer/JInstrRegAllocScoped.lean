@@ -660,6 +660,20 @@ theorem evalInstr_renameInstr_rel_on {ns : List String} {ρ : String → String}
       (by simp [bNamesX, SpillingRegAlloc.readNames])
     simp only [renameInstr, evalInstr, hget_on d hd, load_rel_on h base hbase off, hcond c]
     exact setReg_rel_on hinj h d hd _
+  | aluMem op d base off =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have hbase : base ∈ ns := hsubX base
+      (by simp [bNamesX, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on d hd, load_rel_on h base hbase off]
+    exact writeB5W_rel_on hinj h d hd _
+  | andnMem d a base off =>
+    have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
+    have ha : a ∈ ns := hsubX a (by simp [bNamesX, SpillingRegAlloc.writtenNames,
+      SpillingRegAlloc.readNames])
+    have hbase : base ∈ ns := hsubX base
+      (by simp [bNamesX, SpillingRegAlloc.readNames])
+    simp only [renameInstr, evalInstr, hget_on a ha, load_rel_on h base hbase off]
+    exact writeB5W_rel_on hinj h d hd _
   | adcxMem d base off =>
     have hd : d ∈ ns := hsubX d (by simp [bNamesX, SpillingRegAlloc.writtenNames])
     have hbase : base ∈ ns := hsubX base

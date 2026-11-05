@@ -997,8 +997,9 @@ theorem decodeJ1_6_plain {b0 : BitVec 8} (t : List (BitVec 8)) (hr : isRex b0 = 
 theorem decodeVex3_ext : ExtStable decodeVex3 := by
   intro bs x r e h
   fun_cases decodeVex3 bs
+  all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
   all_goals (try simp_all [decodeVex3])
-  all_goals (split_ifs at h <;> simp_all)
+  all_goals (try (split_ifs at h <;> simp_all))
 
 /-- `decodeRexExt` is stable under extension of its input (`ExtStable`). -/
 theorem decodeRexExt_ext (rx : BitVec 8) : ExtStable (decodeRexExt rx) := by
@@ -1114,6 +1115,12 @@ theorem decodeJ1_6_rexW1 {b0 op : BitVec 8} (t : List (BitVec 8)) (hrex : isRex 
   simp only [hw, ↓reduceIte]
   cases decodeRex b0 (op :: t) <;> simp [hs, hc]
 
+/-- An opcode `memAluOfOp?` reads is one of `2B`, `23`, `0B`, `33`. -/
+theorem memAluOfOp?_cases {n : Nat} {o : MemAluOp} (h : memAluOfOp? n = some o) :
+    n = 0x2b ∨ n = 0x23 ∨ n = 0x0b ∨ n = 0x33 := by
+  unfold memAluOfOp? at h
+  split_ifs at h <;> omega
+
 /-- Off a `REX` prefix, a stream `decodeRexExt` decodes and `decodeJ1_6` rejects is, with any
     continuation, still rejected by `decodeJ1_6`. -/
 theorem decodeJ1_6_rexExt {b0 : BitVec 8} {t r : List (BitVec 8)} {x : JInstr 64}
@@ -1122,6 +1129,7 @@ theorem decodeJ1_6_rexExt {b0 : BitVec 8} {t r : List (BitVec 8)} {x : JInstr 64
   fun_cases decodeRexExt b0 t
   all_goals try (have := decodeMemTail_ext _ e ‹decodeMemTail _ _ = some _›)
   all_goals (try simp_all [decodeRexExt])
+  all_goals try (have hop := memAluOfOp?_cases ‹memAluOfOp? _ = some _›)
   all_goals
     rw [decodeJ1_6_rexW1 _ hrex (by assumption) (by omega) (by omega) (by omega)] at hn ⊢
   case case2 => clear h hn; simp_all [decodeRex, aluMnemonic]
@@ -1146,11 +1154,14 @@ theorem decodeJ1_6_rexExt {b0 : BitVec 8} {t r : List (BitVec 8)} {x : JInstr 64
         · exact decodeRex_cmov_reg _ _ ‹_› hc ‹_› hn
         · simp at h
       · simp at h
-  case case20 => exact absurd ‹_ = 4› h.1.1
-  case case21 =>
+  case case20 =>
+    clear h hn
+    rcases hop with h | h | h | h <;> simp_all [decodeRex]
+  case case22 => exact absurd ‹_ = 4› h.1.1
+  case case23 =>
     exact absurd hn
       (decodeRex_sib0_ne_none _ (Or.inl ‹_›) ‹_ ∧ _›.1 ‹_ ∧ _›.2 ‹_ ∧ _›.2)
-  case case22 =>
+  case case24 =>
     exact absurd hn
       (decodeRex_sib0_ne_none _ (Or.inr ‹_›) ‹_ ∧ _›.1 ‹_ ∧ _›.2 ‹_ ∧ _›.2)
 
@@ -1420,7 +1431,9 @@ theorem decodeRexW0_len (rx : BitVec 8) : NoLonger (decodeRexW0 rx) := by
 theorem decodeVex3_len : NoLonger decodeVex3 := by
   intro bs x r h
   fun_cases decodeVex3 bs
+  all_goals try (have := decodeMemTail_len _ ‹decodeMemTail _ _ = some _›)
   all_goals (try simp_all [decodeVex3])
+  all_goals try omega
   all_goals try (split_ifs at h <;> simp_all)
   all_goals try (obtain ⟨_, _, _, rfl⟩ := h; omega)
 

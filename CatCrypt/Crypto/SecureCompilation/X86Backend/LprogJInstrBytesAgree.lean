@@ -299,7 +299,10 @@ theorem encTwoAddr_load (frame spillW w op : Nat) (dn sn : String) (bb : Nat) (o
     (hdg : isGpName dn = true) (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr frame spillW w op (.reg dn) (.reg sn) qsaveB
       = encMemMovw w (memSrcOp op) (gpNumU dn) bb off := by
-  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, hsm, hdg, ite_true, ite_eq_left hop]
+  have hop' : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b ∨ (w = 1 ∧ memAluSrcOp op = true) := by
+    rcases hop with h | h | h <;> simp [h]
+  simp only [encTwoAddr, hdk, hsk, parseMemNameGp_eq_none hdm, hsm, hdg, ite_true,
+    ite_eq_left hop']
 
 /-- An opcode whose memory-source opcode is the `MOV` load `0x8B` is a move or `LOAD`. -/
 theorem op_native_of_memSrcOp {op : Nat} (h : memSrcOp op = 0x8b) :

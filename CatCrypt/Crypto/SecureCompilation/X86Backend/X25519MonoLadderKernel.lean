@@ -193,6 +193,8 @@ def rebaseInstr (rmap : String → String) (bmap : String → String)
   | .imulriMem d base off imm => .imulriMem (rmap d) (bmap base) (off + boff base) imm
   | .cmpMem a base off => .cmpMem (rmap a) (bmap base) (off + boff base)
   | .cmovccMem c d base off => .cmovccMem c (rmap d) (bmap base) (off + boff base)
+  | .aluMem op d base off => .aluMem op (rmap d) (bmap base) (off + boff base)
+  | .andnMem d a base off => .andnMem (rmap d) (rmap a) (bmap base) (off + boff base)
   | .bzhi d src idx => .bzhi (rmap d) (rmap src) (rmap idx)
 
 /-- Rebase a whole leaf body. -/

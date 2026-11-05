@@ -108,7 +108,11 @@ def shiftXOf (pp : Nat) : Option (String → String → String → JInstr 64) :=
     (`VEX.LZ.{66,F2,F3}.0F38.W1 F7 /r`): the destination is `ModRM.reg` extended by `R̄`, the
     shifted value `ModRM.rm` extended by `B̄`, the count the inverted `vvvv`. The BMI1
     and-not `ANDN r64a, r64b, r64` (`VEX.LZ.0F38.W1 F2 /r`, `pp = 00`): the destination is
-    `ModRM.reg`, the complemented source the inverted `vvvv`, the other source `ModRM.rm`. -/
+    `ModRM.reg`, the complemented source the inverted `vvvv`, the other source `ModRM.rm`,
+    a register or, at `mod ≠ 11`, the cell `[base + disp]` (`andnMem`). In the map `0F3A`
+    (`mm = 00011`), the BMI2 rotate `RORX r64, r64, imm8` (`VEX.LZ.F2.0F3A.W1 F0 /r ib`,
+    `vvvv = 1111`): the destination `ModRM.reg`, the source `ModRM.rm`, the count the
+    trailing byte. -/
 def decodeVex3 : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
   | v1 :: v2 :: op :: modrm :: rest =>
       if op.toNat = 0xf7 ∧ v1.toNat &&& 31 = 2 ∧ (v2.toNat >>> 7) &&& 1 = 1
@@ -125,6 +129,25 @@ def decodeVex3 : List (BitVec 8) → Option (JInstr 64 × List (BitVec 8))
         let bBit := 1 - ((v1.toNat >>> 5) &&& 1)
         some (.andn (regName (rBit * 8 + regField modrm)) (regName (15 - ((v2.toNat >>> 3) &&& 15)))
           (regName (bBit * 8 + rmField modrm)), rest)
+      else if op.toNat = 0xf0 ∧ v1.toNat &&& 31 = 3 ∧ (v2.toNat >>> 7) &&& 1 = 1
+          ∧ (v2.toNat >>> 2) &&& 1 = 0 ∧ v2.toNat &&& 3 = 3
+          ∧ (v2.toNat >>> 3) &&& 15 = 15 ∧ modField modrm = 3 then
+        let rBit := 1 - ((v1.toNat >>> 7) &&& 1)
+        let bBit := 1 - ((v1.toNat >>> 5) &&& 1)
+        match rest with
+        | ib :: rest1 =>
+            some (.rorx (regName (rBit * 8 + regField modrm)) (regName (bBit * 8 + rmField modrm))
+              (.imm ib.toNat), rest1)
+        | [] => none
+      else if op.toNat = 0xf2 ∧ v1.toNat &&& 31 = 2 ∧ (v2.toNat >>> 7) &&& 1 = 1
+          ∧ (v2.toNat >>> 2) &&& 1 = 0 ∧ v2.toNat &&& 3 = 0 then
+        let rBit := 1 - ((v1.toNat >>> 7) &&& 1)
+        let bBit := 1 - ((v1.toNat >>> 5) &&& 1)
+        match decodeMemTail 0 (modrm :: rest) with
+        | some (rf, bLow, none, off, rest1) =>
+            some (.andnMem (regName (rBit * 8 + rf)) (regName (15 - ((v2.toNat >>> 3) &&& 15)))
+              (regName (bBit * 8 + bLow)) off, rest1)
+        | _ => none
       else none
   | _ => none
 
@@ -150,11 +173,21 @@ theorem condOfCode?_condCode (c : Condt) : condOfCode? (ScalarEncoder.condCode c
 theorem condCode_lt (c : Condt) : ScalarEncoder.condCode c < 16 := by
   cases c <;> decide
 
+/-- The memory-source operation of an `r ← r/m` opcode: `2B` `SUB`, `23` `AND`, `0B` `OR`,
+    `33` `XOR`; `none` for every other byte. -/
+def memAluOfOp? (op : Nat) : Option MemAluOp :=
+  if op = 0x2b then some .sub else if op = 0x23 then some .and_
+  else if op = 0x0b then some .or_ else if op = 0x33 then some .xor_ else none
+
+theorem memAluOfOp?_opcode (o : MemAluOp) : memAluOfOp? (memAluOpcode o) = some o := by
+  cases o <;> rfl
+
 /-- The `REX.W`-prefixed forms `decodeJ1_6` has no arm for: the sign-extended-`imm8`
     group-1 form `83 /digit ib`, the memory-source compare `3B /r`, the
     conditional move `0F 40+tttn /r` from memory and, for the conditions `decodeRex` does
     not read, from a register, the memory-source and memory-destination `ADD` `03 /r` and
-    `01 /r` against `[base + disp]`, and the register-indexed address
+    `01 /r` and the memory-source `SUB`, `AND`, `OR`, `XOR` (`2B`, `23`, `0B`, `33 /r`)
+    against `[base + disp]`, and the register-indexed address
     computation `8D /r` against `[base + index*scale + disp]`. The
     arm for the register-indexed `MOV` `8B`/`89` against `[base + index*scale]` at
     `mod = 00`, is a reading `decodeRex` also gives (`decodeMemTail` under
@@ -221,6 +254,11 @@ def decodeRexExt (r : BitVec 8) :
             some (.lea (regName (rexR r * 8 + rf)) (regName (rexB r * 8 + bLow)) (regName idx)
               scale off, rest1)
         | _ => none
+      else if (memAluOfOp? op.toNat).isSome then
+        match memAluOfOp? op.toNat, decodeMemTail (SailX86Decoder.rexX r) (modrm :: rest) with
+        | some o, some (rf, bLow, none, off, rest1) =>
+            some (.aluMem o (regName (rexR r * 8 + rf)) (regName (rexB r * 8 + bLow)) off, rest1)
+        | _, _ => none
       else if modField modrm = 0 ∧ rmField modrm = 4 then
         match rest with
         | sib :: rest1 =>
@@ -750,6 +788,54 @@ theorem decodeLinstr_addToMem (r b : Nat) (off : Int) (rest : List (BitVec 8))
   simp only [SailX86Decoder.rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec, Nat.reducePow,
     Nat.reduceMod, reduceIte, Nat.reduceEqDiff, ite_true, Option.map_some,
     bitsplit _ hr, bitsplit _ hb]
+
+/-- The memory-source `SUB`, `AND`, `OR` and `XOR` forms at `[base + disp]` behind `REX.W`
+    are routed to `decodeRexExt`. -/
+theorem decodeLinstr_memAluSrc (o : MemAluOp) (r b : Nat) (off : Int) (rest : List (BitVec 8)) :
+    decodeLinstr (encMemMovw 1 (memAluOpcode o) r b off ++ rest)
+      = (decodeRexExt (BitVec.ofNat 8 (rex 1 (bit r 3) 0 (bit b 3)))
+          (BitVec.ofNat 8 (memAluOpcode o) :: (memTail r b off ++ rest))).map
+          fun p => (.op p.1, p.2) := by
+  obtain ⟨m, ts, hm, hmod⟩ := memTail_head r b off
+  have hnone : decodeRex (BitVec.ofNat 8 (rex 1 (bit r 3) 0 (bit b 3)))
+      (BitVec.ofNat 8 (memAluOpcode o) :: m :: (ts ++ rest)) = none := by
+    cases o <;> simp [decodeRex, hmod, memAluOpcode]
+  have hs : decodeShift1 (BitVec.ofNat 8 (rex 1 (bit r 3) 0 (bit b 3))
+      :: BitVec.ofNat 8 (memAluOpcode o) :: m :: (ts ++ rest)) = none := by
+    cases o <;> simp [decodeShift1, memAluOpcode]
+  have hc : decodeCmp (BitVec.ofNat 8 (rex 1 (bit r 3) 0 (bit b 3))
+      :: BitVec.ofNat 8 (memAluOpcode o) :: m :: (ts ++ rest)) = none := by
+    simp [decodeCmp, hmod]
+  simp only [encMemMovw, rexOpt_w1, hm, List.cons_append, List.nil_append]
+  rw [decodeLinstr_rex_of_none _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _) _ hnone
+    hs hc]
+
+/-- `SUB`/`AND`/`OR`/`XOR off(%b), %r` (`REX.W 2B`/`23`/`0B`/`33 /r` with a memory operand)
+    decodes to `aluMem`. -/
+theorem decodeLinstr_aluMem (o : MemAluOp) (r b : Nat) (off : Int) (rest : List (BitVec 8))
+    (hr : r < 16) (hb : b < 16) (h : dispOk32 off = true) :
+    decodeLinstr (encMemMovw 1 (memAluOpcode o) r b off ++ rest)
+      = some (.op (.aluMem o (regName r) (regName b) off), rest) := by
+  obtain ⟨m, ts, hm, hmod⟩ := memTail_head r b off
+  have hdec := decodeMemTail_memTail32 r b off rest h
+  rw [decodeLinstr_memAluSrc]
+  rw [hm, List.cons_append] at hdec ⊢
+  have hop : (BitVec.ofNat 8 (memAluOpcode o)).toNat = memAluOpcode o := by
+    cases o <;> rfl
+  have hn : ¬ (memAluOpcode o = 0x3b ∨ memAluOpcode o = 0x03) := by cases o <;> decide
+  have h0f : memAluOpcode o ≠ 0x0f := by cases o <;> decide
+  have h3b : memAluOpcode o ≠ 0x3b := by cases o <;> decide
+  have h03 : memAluOpcode o ≠ 0x03 := by cases o <;> decide
+  have h01 : memAluOpcode o ≠ 0x01 := by cases o <;> decide
+  have h8d : memAluOpcode o ≠ 0x8d := by cases o <;> decide
+  simp only [decodeRexExt, hop, ite_eq_right hmod,
+    rexW_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _), ne_eq,
+    not_true_eq_false, ite_false, h0f, h3b, h03, h01, h8d, memAluOfOp?_opcode, Option.isSome_some,
+    ite_true,
+    rexR_rex _ _ _ (bit_le_one _ _) (Nat.zero_le 1) (bit_le_one _ _),
+    rexB_rex _ _ _ (bit_le_one _ _)]
+  simp only [SailX86Decoder.rexX_rex _ _ _ (Nat.zero_le 1) (bit_le_one _ _), hdec,
+    Option.map_some, bitsplit _ hr, bitsplit _ hb]
 
 /-- The register-direct conditional move `CMOVcc %s, %d` (`REX.W 0F 40+tttn /r`, `mod = 11`)
     for a condition other than `b`, `e` and `ne` (whose forms `decodeRex` reads) decodes to
@@ -1303,6 +1389,69 @@ theorem decodeLinstr_andn (d a b : Nat) (rest : List (BitVec 8)) (hd : d < 16) (
     vex1_bbar _ _ (bit_le_one _ _) (bit_le_one _ _), one_sub_one_sub_bit,
     modField_modRMReg, regField_modRMReg, rmField_modRMReg, bitsplit _ hd, bitsplit _ hb]
   simp
+
+/-- The BMI1 and-not `ANDN d, a, [b + off]` (`encVex3Mem 0b00010 0b00 0xf2 d a b off`,
+    `VEX.LZ.0F38.W1 F2 /r` with a memory operand) decodes to `andnMem` of `d`, `a`, `b`. -/
+theorem decodeLinstr_andnMem (d a b : Nat) (off : Int) (rest : List (BitVec 8)) (hd : d < 16)
+    (ha : a < 16) (hb : b < 16) (h : dispOk32 off = true) :
+    decodeLinstr (encVex3Mem 0b00010 0b00 0xf2 d a b off ++ rest)
+      = some (.op (.andnMem (regName d) (regName a) (regName b) off), rest) := by
+  obtain ⟨m, ts, hm, hmod⟩ := memTail_head d b off
+  have hdec := decodeMemTail_memTail32 d b off rest h
+  rw [hm, List.cons_append] at hdec
+  have hj : decodeJ1 (encVex3Mem 0b00010 0b00 0xf2 d a b off ++ rest) = none := by
+    simp [encVex3Mem, decodeJ1, decodeMulx, hm]
+  have hnr : isRex (BitVec.ofNat 8 0xc4) = false := by decide
+  have he : encVex3Mem 0b00010 0b00 0xf2 d a b off ++ rest
+      = BitVec.ofNat 8 0xc4 :: BitVec.ofNat 8 ((1 - bit d 3) * 128 + 1 * 64 + (1 - bit b 3) * 32
+          + 0b00010) :: BitVec.ofNat 8 (128 + (15 - (a &&& 15)) * 8 + 0b00)
+          :: BitVec.ofNat 8 0xf2 :: m :: (ts ++ rest) := by
+    simp [encVex3Mem, hm]
+  rw [he] at hj ⊢
+  simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, BitVec.toNat_ofNat,
+    decodeVex3, vex1_map, vex2g_w _ _ (show 0 < 4 by decide), vex2g_l _ _ (show 0 < 4 by decide),
+    vex2g_pp _ _ (show 0 < 4 by decide), vex2g_vvvv _ _ ha (show 0 < 4 by decide),
+    vex1_rbar _ _ (bit_le_one _ _) (bit_le_one _ _),
+    vex1_bbar _ _ (bit_le_one _ _) (bit_le_one _ _), one_sub_one_sub_bit,
+    hdec, bitsplit _ hd, bitsplit _ hb]
+  simp [hmod]
+
+/-- Bits 0–4 of the first VEX byte of the map `0F3A` are `00011`. -/
+theorem vex1_map3 (r b : Nat) :
+    (((1 - r) * 128 + 1 * 64 + (1 - b) * 32 + 3) % 2 ^ 8) &&& 31 = 3 := by
+  rw [Nat.and_two_pow_sub_one_eq_mod _ 5]
+  omega
+
+theorem vex1_rbar3 (r b : Nat) (hr : r ≤ 1) (hb : b ≤ 1) :
+    ((((1 - r) * 128 + 1 * 64 + (1 - b) * 32 + 3) % 2 ^ 8) >>> 7) &&& 1 = 1 - r := by
+  rw [Nat.and_two_pow_sub_one_eq_mod _ 1, Nat.shiftRight_eq_div_pow]
+  omega
+
+theorem vex1_bbar3 (r b : Nat) (hr : r ≤ 1) (hb : b ≤ 1) :
+    ((((1 - r) * 128 + 1 * 64 + (1 - b) * 32 + 3) % 2 ^ 8) >>> 5) &&& 1 = 1 - b := by
+  rw [Nat.and_two_pow_sub_one_eq_mod _ 1, Nat.shiftRight_eq_div_pow]
+  omega
+
+/-- The BMI2 rotate `RORX d, s, k` (`encRorx d s k`, `VEX.LZ.F2.0F3A.W1 F0 /r ib`) by a
+    count `k < 256` decodes to `rorx` of `d`, `s` by the immediate `k`. -/
+theorem decodeLinstr_rorx (d s k : Nat) (rest : List (BitVec 8)) (hd : d < 16) (hs : s < 16)
+    (hk : k < 256) :
+    decodeLinstr (encRorx d s k ++ rest)
+      = some (.op (.rorx (regName d) (regName s) (.imm k)), rest) := by
+  have hj : decodeJ1 (encRorx d s k ++ rest) = none := by
+    simp [encRorx, encVex3RR, decodeJ1, decodeMulx]
+  have hnr : isRex (BitVec.ofNat 8 0xc4) = false := by decide
+  have hkk : (k &&& 255) % 256 = k := by
+    rw [Nat.and_two_pow_sub_one_eq_mod _ 8]; omega
+  simp only [encRorx, encVex3RR, List.map_cons, List.map_nil, List.cons_append,
+    List.nil_append] at hj ⊢
+  simp only [decodeLinstr, decodeJ1_6_of_not_rex hnr, hj, BitVec.toNat_ofNat,
+    decodeVex3, vex1_map3, vex2g_w _ _ (show 3 < 4 by decide), vex2g_l _ _ (show 3 < 4 by decide),
+    vex2g_pp _ _ (show 3 < 4 by decide),
+    vex1_rbar3 _ _ (bit_le_one _ _) (bit_le_one _ _),
+    vex1_bbar3 _ _ (bit_le_one _ _) (bit_le_one _ _), one_sub_one_sub_bit,
+    modField_modRMReg, regField_modRMReg, rmField_modRMReg, bitsplit _ hd, bitsplit _ hs]
+  simp [hkk]
 
 /-- `SETE`/`SETNE %d8` (`encSetccReg`, `0F 94`/`95 /0` with the byte-register `REX`)
     decodes to `setcc` of `d`, which writes the low byte and keeps the rest of the

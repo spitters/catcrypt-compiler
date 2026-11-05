@@ -82,7 +82,8 @@ def keepsReg (r : String) : JInstr 64 → Bool
   | .loadMem d _ _ | .loadMemIdx d _ _ _ | .loadSym d _ | .inc d | .dec d
   | .imulri d _ _ | .shld d _ _ | .shrd d _ _ | .rcl d _ | .rcr d _
   | .btr d _ | .bts d _ | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _
-  | .imulMem d _ _ | .imulriMem d _ _ _ | .bzhi d _ _ => r != d
+  | .imulMem d _ _ | .imulriMem d _ _ _ | .bzhi d _ _
+  | .aluMem _ d _ _ | .andnMem d _ _ _ => r != d
   | .cmovcc _ d _ | .cmovccMem _ d _ _ | .setcc _ d => r != d
   | .mulx d₁ d₂ _ _ | .mulxMem d₁ d₂ _ _ _ | .mul d₁ d₂ _ | .imulWide d₁ d₂ _
   | .xchg d₁ d₂ => r != d₁ && r != d₂
@@ -167,7 +168,7 @@ theorem holds_stepKeep {s : JState 64} {env : KEnv} (h : KEnv.Holds s env)
   | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _
   | .addMem _ _ _ | .addToMem _ _ _ | .adcxMem _ _ _ | .adoxMem _ _ _
   | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _ | .cmovccMem _ _ _ _
-  | .bzhi _ _ _ => exact hkept
+  | .bzhi _ _ _ | .aluMem _ _ _ _ | .andnMem _ _ _ _ => exact hkept
 
 /-! ## 3. The class check and the leakage theorem -/
 
@@ -209,7 +210,8 @@ theorem instrLeak_eq_of_idxOK {env : KEnv} {i : JInstr 64} (h : idxOK env i = tr
   | .imulWide _ _ _ | .shld _ _ _ | .shrd _ _ _ | .rcl _ _ | .rcr _ _
   | .cmovcc _ _ _ | .setcc _ _ | .testN _ _ _ | .bt _ _ | .btr _ _ | .bts _ _
   | .addMem _ _ _ | .addToMem _ _ _ | .adcxMem _ _ _ | .adoxMem _ _ _
-  | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _ | .cmovccMem _ _ _ _ | .bzhi _ _ _ =>
+  | .imulMem _ _ _ | .imulriMem _ _ _ _ | .cmpMem _ _ _ | .cmovccMem _ _ _ _ | .bzhi _ _ _
+  | .aluMem _ _ _ _ | .andnMem _ _ _ _ =>
       exact instrLeak_state_independent _ (by simpa [idxOK] using h) s₁ s₂
 
 /-- **The leakage trace of a block in the class is state-independent.** A

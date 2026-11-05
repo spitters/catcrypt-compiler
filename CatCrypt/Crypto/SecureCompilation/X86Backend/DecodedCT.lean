@@ -339,7 +339,7 @@ def memBase : JInstr 64 → Option String
   | .loadMem _ b _ | .storeMem b _ _ | .mulxMem _ _ _ b _ | .addMem _ b _
   | .adcxMem _ b _ | .adoxMem _ b _ | .imulMem _ b _ | .imulriMem _ b _ _
   | .addToMem b _ _ | .cmpMem _ b _ | .cmovccMem _ _ b _ | .loadMemIdx _ b _ _
-  | .storeMemIdx b _ _ _ => some b
+  | .storeMemIdx b _ _ _ | .aluMem _ _ b _ | .andnMem _ _ b _ => some b
   | _ => none
 
 /-- `i` writes memory through the base register `%rsp`. -/

@@ -286,7 +286,7 @@ def memBase {w : Nat} : JInstr w → Option String
   | .loadMem _ b _ | .storeMem b _ _ | .mulxMem _ _ _ b _ | .addMem _ b _
   | .adcxMem _ b _ | .adoxMem _ b _ | .imulMem _ b _ | .imulriMem _ b _ _
   | .addToMem b _ _ | .cmpMem _ b _ | .cmovccMem _ _ b _ | .loadMemIdx _ b _ _
-  | .storeMemIdx b _ _ _ => some b
+  | .storeMemIdx b _ _ _ | .aluMem _ _ b _ | .andnMem _ _ b _ => some b
   | _ => none
 
 /-- The effective addresses `i` accesses from state `s`, as processor words: the
@@ -295,7 +295,7 @@ def memBase {w : Nat} : JInstr w → Option String
 def instrAddr {w : Nat} (s : JState w) : JInstr w → List (BitVec w)
   | .loadMem _ b o | .storeMem b o _ | .mulxMem _ _ _ b o | .addMem _ b o
   | .adcxMem _ b o | .adoxMem _ b o | .imulMem _ b o | .imulriMem _ b o _ | .cmpMem _ b o
-  | .cmovccMem _ _ b o =>
+  | .cmovccMem _ _ b o | .aluMem _ _ b o | .andnMem _ _ b o =>
       [s.get b + BitVec.ofInt w o]
   | .addToMem b o _ => [s.get b + BitVec.ofInt w o, s.get b + BitVec.ofInt w o]
   | .loadMemIdx _ b x sc | .storeMemIdx b x sc _ =>

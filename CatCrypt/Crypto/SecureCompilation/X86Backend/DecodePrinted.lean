@@ -208,7 +208,9 @@ theorem encTwoAddr_load (F W w op : Nat) (D q : String) (qB : Nat) (off : Int)
     (hop : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b) :
     encTwoAddr F W w op (.reg D) (.reg q) qB = encRspMem w (memSrcOp op) (gpNumU D) off := by
   have fD := gpFacts hD
-  simp only [encTwoAddr, hq, fD.off, fD.isGp, ite_true, ite_eq_left hop]
+  have hop' : op = 0x01 ∨ op = 0x89 ∨ op = 0x8b ∨ (w = 1 ∧ memAluSrcOp op = true) := by
+    rcases hop with h | h | h <;> simp [h]
+  simp only [encTwoAddr, hq, fD.off, fD.isGp, ite_true, ite_eq_left hop']
 
 /-- The register moves of a printed body: `MOV:64` and the whole-word `MOVQ`. -/
 def isMovM (m : String) : Bool := m == "MOV:64" || m == "MOVQ"
@@ -275,8 +277,11 @@ theorem encodeLopn_shift (F W : Nat) (m D S : String) (qB ext : Nat)
     (hext : tagShiftExt (stripWidthTag m) = some ext)
     (hD : gpOk D = true) (hS : gpOk S = true) (hn : tagShiftCount (stripWidthTag m) ≠ 0) :
     encodeLopn F W (.Lopn [.reg D] m [.reg S]) qB
-      = (if D = S then [] else encAluRRw (LprogBytes.rexW (mnemWidth m)) 0x89 (gpNumU D) (gpNumU S))
-        ++ encTagShift (LprogBytes.rexW (mnemWidth m)) ext (gpNumU D) (stripWidthTag m) := by
+      = if ext = 1 ∧ LprogBytes.rexW (mnemWidth m) = 1 ∧ D ≠ S then
+          ScalarEncoder.encRorx (gpNumU D) (gpNumU S) (tagShiftCount (stripWidthTag m))
+        else (if D = S then [] else
+            encAluRRw (LprogBytes.rexW (mnemWidth m)) 0x89 (gpNumU D) (gpNumU S))
+          ++ encTagShift (LprogBytes.rexW (mnemWidth m)) ext (gpNumU D) (stripWidthTag m) := by
   have fD := gpFacts hD
   have fS := gpFacts hS
   simp only [encodeLopn, hbind, hmulx, hmulxmem, hadx, hext, fD.isGp, fS.isGp,
@@ -677,6 +682,10 @@ def Arm.pieces (P : Params) : Arm → List (List (BitVec 8) × JInstr 64)
             mk (phys D) (.imm v))]
       | none => []
   | .shr m D S =>
+      if tagRor m = true ∧ D ≠ S then
+        [(ScalarEncoder.encRorx (gpNumU D) (gpNumU S) (shrK m),
+          .rorx (phys D) (phys S) (.imm (shrK m)))]
+      else
       (if D = S then [] else
         [(encAluRRw 1 0x89 (gpNumU D) (gpNumU S), .mov (phys D) (.reg (phys S)))])
         ++ [(encTagShift 1 (tagShExt m) (gpNumU D) (stripWidthTag m),
@@ -862,13 +871,27 @@ theorem Arm.bytes (P : Params) (Q : List (String × Int)) (a : Arm) (h : a.ok P 
       decide_eq_true_eq, Bool.or_eq_false_iff] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, hbind⟩, hmulx⟩, hmulxmem⟩, hadx⟩, hext⟩, hw⟩, hk0⟩, hk⟩, -⟩ :=
       h
+    have hext1 : tagShExt m = 1 ↔ tagRor m = true := by
+      unfold tagShExt
+      by_cases h4 : tagShl m = true
+      · have : tagRor m = false := by
+          simp only [tagShl, tagRor, beq_iff_eq] at h4 ⊢; rw [h4]; decide
+        simp [h4, this]
+      · by_cases h1 : tagRor m = true <;> simp [h4, h1]
     refine ⟨?_, ?_⟩
     · rw [Arm.instr, encodeLopn_shift P.frame P.spillW m D S P.qsaveB (tagShExt m)
         (by simp [hbind]) (by simp [hmulx]) (by simp [hmulxmem]) hadx hext hD hS
         (by unfold shrK at hk0; omega), hw]
-      by_cases hDS : D = S <;> simp [Arm.pieces, hDS]
+      by_cases hR : tagRor m = true <;> by_cases hDS : D = S <;>
+        simp [Arm.pieces, hDS, hR, hext1, shrK]
     · intro p hp
-      simp only [Arm.pieces, List.mem_append, List.mem_singleton] at hp
+      by_cases hRx : tagRor m = true ∧ D ≠ S
+      · simp only [Arm.pieces, ite_eq_left_of_eq_true _ _ (eq_true hRx), List.mem_singleton] at hp
+        subst hp
+        exact fun rest => decodeLinstr_rorx _ _ _ rest (gpNumU_lt_16 D) (gpNumU_lt_16 S)
+          (by omega)
+      simp only [Arm.pieces, ite_eq_right_of_eq_false _ _ (eq_false hRx), List.mem_append,
+        List.mem_singleton] at hp
       rcases hp with hp | rfl
       · split at hp
         · simp at hp
@@ -1191,9 +1214,41 @@ theorem Arm.sim (P : Params) (Q : List (String × Int)) (rsp : BitVec 64) (a : A
     simp only [Arm.ok, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at h
     obtain ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hD, hS⟩, -⟩, -⟩, -⟩, -⟩, -⟩, -⟩, hk0⟩, hk⟩, hm⟩ :=
       h
+    by_cases hRx : tagRor m = true ∧ D ≠ S
+    · -- the BMI2 rotate into a register other than its source
+      have hs : tagShl m = false := by
+        have h1 := hRx.1
+        simp only [tagShl, tagRor, beq_iff_eq] at h1 ⊢; rw [h1]; decide
+      simp only [tagShName, hs, hRx.1, Bool.false_eq_true, ite_false, ite_true] at hm
+      have hjs : Arm.js P (.shr m D S) = [.rorx (phys D) (phys S) (.imm (shrK m))] := by
+        simp [Arm.js, Arm.pieces, hRx]
+      rw [hjs]
+      generalize shrK m = k at hk0 hk hm ⊢
+      have hi : ((Arm.shr m D S).instr, MemTag.reg none) = immShiftI "ROR" D S k := by
+        rw [Arm.instr, immShiftI, ← hm]
+      rw [hi]
+      intro sa b zf hc
+      have hst := fstepF_rorImmI D S k b zf _ (hc.regs S hS)
+      refine ⟨_, zf, (by rw [runStraightF_singleton]; exact hst), ?_⟩
+      have hw : (x86_RORX (sa.regs (phys S)) (BitVec.ofNat 64 k)) = (sa.regs (phys S)).rotateRight k := by
+        have hkn : (BitVec.ofNat 64 k).toNat = k := by
+          rw [BitVec.toNat_ofNat]; exact Nat.mod_eq_of_lt (by omega)
+        simp only [x86_RORX, shiftCount, hkn, shiftMask_of_lt hk, wror]
+        rw [JasminDialect.rorImm_denote_eq_shiftOr k hk]
+      show PCorr Q rsp (evalInstrA sa (.rorx (phys D) (phys S) (.imm k))) _ zf
+      exact hc.write hD _ (fun r => by
+          show (if r = phys D then x86_RORX (sa.regs (phys S)) (BitVec.ofNat 64 k)
+            else sa.regs r) = _
+          rw [hw]) rfl
+        (fun r hr => by rw [getW_setReg_nextPc, ite_eq_right hr])
+        (by rw [getW_setReg_nextPc, ite_eq_left rfl])
+    have hRx' : D ≠ S → tagRor m = false := fun hDS => by
+      by_contra hc; exact hRx ⟨by simpa using hc, hDS⟩
     have hjs : Arm.js P (.shr m D S) = (if D = S then [] else [.mov (phys D) (.reg (phys S))])
         ++ [tagShMk m (phys D) (.imm (shrK m))] := by
-      by_cases hDS : D = S <;> simp [Arm.js, Arm.pieces, hDS]
+      by_cases hDS : D = S
+      · simp [Arm.js, Arm.pieces, hDS]
+      · simp [Arm.js, Arm.pieces, hDS, hRx' hDS]
     rw [hjs]
     by_cases hs : tagShl m = true
     · simp only [tagShName, tagShMk, hs, ite_true] at hm ⊢

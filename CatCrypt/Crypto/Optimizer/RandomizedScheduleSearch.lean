@@ -507,7 +507,7 @@ def writeSet' : JInstr 64 → List String
   | .storeMem _ _ _ => [memCell]
   -- the memory-source arithmetic writes its destination; `addToMem` writes memory.
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _
-  | .cmovccMem _ d _ _ => [d]
+  | .cmovccMem _ d _ _ | .aluMem _ d _ _ | .andnMem d _ _ _ => [d]
   | .addToMem _ _ _ => [memCell]
   -- `test` and `cmp` have no destination: their whole output is the flag state.
   | .test _ _ => []
@@ -574,6 +574,8 @@ def readSet' : JInstr 64 → List String
   | .cmpMem a base _ => [a, base, memCell]
   -- `cmovccMem` keeps its destination when the condition fails, so it reads it.
   | .cmovccMem _ d base _ => [d, base, memCell]
+  | .aluMem _ d base _ => [d, base, memCell]
+  | .andnMem _ a base _ => [a, base, memCell]
   | .addToMem base _ (.reg r) => [base, r, memCell]
   | .addToMem base _ _ => [base, memCell]
   -- `lea` reads its two address registers and performs no memory access, so it

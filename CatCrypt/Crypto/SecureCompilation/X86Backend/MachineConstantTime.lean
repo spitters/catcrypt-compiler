@@ -113,6 +113,7 @@ def instrLeak {w : Nat} (s : JState w) : JInstr w → List MLeak
   | .mulxMem _ _ _ base off => [.mem base off]
   | .addMem _ base off | .adcxMem _ base off | .adoxMem _ base off
   | .imulMem _ base off | .imulriMem _ base off _ | .cmpMem _ base off => [.mem base off]
+  | .aluMem _ _ base off | .andnMem _ _ base off => [.mem base off]
   -- `cmov<c> dst, [base + off]` loads the cell whatever the condition
   | .cmovccMem _ _ base off => [.mem base off]
   -- `add [base + off], src` reads the cell and writes it back: two accesses at one address
@@ -353,6 +354,7 @@ def dstRegs {w : Nat} : JInstr w → List String
   | .xchg a b => [a, b]
   | .mul dHi dLo _ | .imulWide dHi dLo _ => [dHi, dLo]
   | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _ => [d]
+  | .aluMem _ d _ _ | .andnMem d _ _ _ => [d]
   -- `add [base + off], src` writes memory and the five flags, no register.
   | .addToMem _ _ _ => []
   -- `cmp a, [base + off]` writes the five flags only.

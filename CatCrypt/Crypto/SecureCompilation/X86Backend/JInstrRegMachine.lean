@@ -176,6 +176,8 @@ def writesJ (s : JState 64) : JInstr 64 → List (String × BitVec 64)
   | .cmovccMem c dst base off =>
       [(dst, x86_CMOVcc (s.condB c) (s.load base off) (s.get dst))]
   | .bzhi d src idx => [(d, (x86_BZHI (s.get src) (s.get idx)).word)]
+  | .aluMem op dst base off => [(dst, (op.sem (s.get dst) (s.load base off)).word)]
+  | .andnMem d a base off => [(d, (x86_ANDN (s.get a) (s.load base off)).word)]
 
 /- The written register names of one `JInstr` in the order `writesJ` applies them are
 `SpillingRegAlloc.writtenNamesJ`, defined beside the x86 allocator together with the

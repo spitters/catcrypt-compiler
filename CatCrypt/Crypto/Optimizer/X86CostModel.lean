@@ -235,6 +235,8 @@ def costOf : JInstr 64 → InstrCost
   | .imulriMem _ _ _ _   => ⟨4, 1, [.p1, .p23], 4⟩
   | .cmpMem _ _ _        => ⟨2, 1, [.p0, .p1, .p5, .p6, .p23], 2⟩
   | .cmovccMem _ _ _ _   => ⟨2, 1, [.p0, .p1, .p23], 2⟩
+  | .aluMem _ _ _ _      => ⟨2, 1, [.p0, .p1, .p5, .p6, .p23], 2⟩
+  | .andnMem _ _ _ _     => ⟨2, 1, [.p1, .p5, .p23], 2⟩
   -- ADD into memory: load, add and store-data, with the AGU on p23 and the store on p4.
   | .addToMem _ _ _      => ⟨2, 1, [.p0, .p1, .p5, .p6, .p4, .p23], 2⟩
   -- BZHI (BMI2): charged as ANDN, 1c on p1/p5.

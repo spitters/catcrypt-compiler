@@ -266,7 +266,7 @@ theorem encTwoAddr_ne_nil_iff {F W Q w op : Nat} {d s : String} :
       | some os =>
         have hgs := isGpName_of_spillQsaveOff hos
         cases hgd : isGpName d <;>
-          simp [hod, hos, hgd, hgs, hop, encRspMem_ne_nil, encAluRspScratch_ne_nil]
+          simp [hod, hos, hgd, hgs, encRspMem_ne_nil, encAluRspScratch_ne_nil, ite_eq_iff]
       | none =>
         cases hpd : parseMemNameGp d with
         | some pd =>
@@ -286,7 +286,8 @@ theorem encTwoAddr_ne_nil_iff {F W Q w op : Nat} {d s : String} :
             obtain ⟨bs, os⟩ := ps
             have hgs := isGpName_of_parseMemName (parseMemName_of_parseMemNameGp hps)
             cases hgd : isGpName d <;>
-              simp [hod, hos, hpd, hps, hgd, hgs, hop, encMemMovw_ne_nil, encAluMemScratch_ne_nil]
+              simp [hod, hos, hpd, hps, hgd, hgs, encMemMovw_ne_nil, encAluMemScratch_ne_nil,
+                ite_eq_iff]
           | none =>
             cases hgd : isGpName d <;> cases hgs : isGpName s <;>
               simp [hod, hos, hpd, hps, hgd, hgs, encAluRRw_ne_nil]
@@ -820,6 +821,8 @@ theorem encodableLinstrR_unary {F W Q : Nat} {opn dn sn : String} (ho : x86Unary
         = (if tagShiftCount (stripWidthTag opn) = 0 then
              (if dn = sn then [] else encAluRRw (rexW (mnemWidth opn)) 0x89 (gpNumU dn)
                (gpNumU sn))
+           else if ext = 1 ∧ rexW (mnemWidth opn) = 1 ∧ dn ≠ sn then
+             ScalarEncoder.encRorx (gpNumU dn) (gpNumU sn) (tagShiftCount (stripWidthTag opn))
            else (if dn = sn then [] else encAluRRw (rexW (mnemWidth opn)) 0x89 (gpNumU dn)
                (gpNumU sn)) ++ encTagShift (rexW (mnemWidth opn)) ext (gpNumU dn)
                  (stripWidthTag opn)) := by
@@ -835,7 +838,10 @@ theorem encodableLinstrR_unary {F W Q : Nat} {opn dn sn : String} (ho : x86Unary
         simp [hn, hds, encAluRRw]
     · apply encodable_lopn_of_ne_nil
       rw [henc]
-      simp [hn, encTagShift_ne_nil]
+      simp only [hn, ite_false]
+      split
+      · simp [ScalarEncoder.encRorx, ScalarEncoder.encVex3RR]
+      · simp [encTagShift_ne_nil]
   · apply encodable_lopn_of_ne_nil
     simp [encodeLopn, isCarryOutBinding, isMulHiBinding, hn, adxPrefix, tagShiftExt, aluOpcode,
       twoByteOpcode, hw, rexW, hd, hs, ScalarEncoder.encUnaryF7]

@@ -159,8 +159,9 @@ def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.JInstr.dataArgs {
       [(s.get d).toNat, (s.get src).toNat, (amt.eval s).toNat]
   | .rcl d amt | .rcr d amt =>
       [(s.get d).toNat, (amt.eval s).toNat, (s.flagB (·.cf)).toNat]
-  | .addMem d base off | .imulMem d base off =>
+  | .addMem d base off | .imulMem d base off | .aluMem _ d base off =>
       [(s.get d).toNat, (s.load base off).toNat]
+  | .andnMem _ a base off => [(s.get a).toNat, (s.load base off).toNat]
   | .addToMem base off src => [(s.load base off).toNat, (src.eval s).toNat]
   | .adcxMem d base off =>
       [(s.get d).toNat, (s.load base off).toNat, (s.flagB (·.cf)).toNat]

@@ -267,6 +267,11 @@ def _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin.JInstr.mnem {w : 
   | .cmpMem _ _ _ => .cmp
   | .cmovccMem _ _ _ _ => .cmovcc
   | .bzhi _ _ _ => .bzhi
+  | .aluMem .sub _ _ _ => .sub
+  | .aluMem .and_ _ _ _ => .and
+  | .aluMem .or_ _ _ _ => .or
+  | .aluMem .xor_ _ _ _ => .xor
+  | .andnMem _ _ _ _ => .andn
 
 /-- The SIMD mnemonic of an AVX2 dialect op. -/
 def _root_.CatCrypt.Crypto.SecureCompilation.VIR.YmmDialect.YmmOp.simdMnem :
@@ -350,11 +355,15 @@ theorem JInstr.mnem_timing_varTime_iff {w : Nat} (i : JInstr w) :
     i.mnem.timing = .varTime ↔
       i.mnem = .sarx ∨ i.mnem = .bzhi ∨ i.mnem = .xchg ∨ i.mnem = .rcl ∨
         i.mnem = .rcr ∨ i.mnem = .clc ∨ i.mnem = .stc := by
-  cases i <;> simp [JInstr.mnem, X86Mnem.timing]
+  cases i
+  case aluMem op _ _ _ => cases op <;> simp [JInstr.mnem, X86Mnem.timing]
+  all_goals simp [JInstr.mnem, X86Mnem.timing]
 
 /-- No scalar `JInstr` is a control transfer. -/
 theorem JInstr.mnem_timing_ne_control {w : Nat} (i : JInstr w) :
     i.mnem.timing ≠ .control := by
-  cases i <;> simp [JInstr.mnem, X86Mnem.timing]
+  cases i
+  case aluMem op _ _ _ => cases op <;> simp [JInstr.mnem, X86Mnem.timing]
+  all_goals simp [JInstr.mnem, X86Mnem.timing]
 
 end CatCrypt.Crypto.SecureCompilation.CT
