@@ -143,7 +143,7 @@ identification of that fold with elementwise conjunction is not part of it.
 
 ### The referent of each certificate
 
-Three of the four blocks were printed by this package's owned backend and are treated as
+Three of the four blocks were printed by the compiler's backend and are treated as
 foreign code: the proofs do not use the compiler's correctness theorems. The specifications are Lean
 functions written for the proof (`paSpec`, `x mod L`, `(a · b + c) mod L`) and the source fold
 of the limb body; none of the four is stated against a hax reference. The ascent has also been

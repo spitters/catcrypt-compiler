@@ -29,7 +29,7 @@ copies.
 
 The `.jinc` importer (`CatCrypt/Crypto/Jasmin/JincInline.lean`) reads
 `mlkem768_amd64_avx2.jazz` as a single source unit; the file has no `require`
-lines. The importer's output, and the assembly the owned backend renders from
+lines. The importer's output, and the assembly the compiler's backend renders from
 it, are derived from this source; `MODIFICATIONS.md` states the changes.
 
 ## Updating

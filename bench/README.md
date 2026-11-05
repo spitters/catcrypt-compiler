@@ -23,4 +23,4 @@ says which targets are affected.
 | `msm_compare` | the real-curve and Straus KATs, which link HACL\* objects |
 | `plonky3_compare` | the `catcrypt-plonky3` crate targets, the butterfly emit drivers and the Poseidon2 leaves |
 | `p384_ecdsa_rust` | the default s2n-bignum checkout (`S2N_BIGNUM_DIR` overrides it) |
-| `s2n_import` | the default s2n-bignum checkout and owned assembly (`S2N_BIGNUM_DIR`, `OWNED_ASM` override them) |
+| `s2n_import` | the default s2n-bignum checkout and the compiler's assembly (`S2N_BIGNUM_DIR`, `OWNED_ASM` override them) |

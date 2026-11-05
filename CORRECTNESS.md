@@ -25,7 +25,7 @@ Descent generates code from a source and proves each lowering a simulation. The
 source is therefore the specification: correctness is equivalence to the source (the
 Rust reference for extracted code), and known-answer tests are regressions. The chain
 runs from the front through `LowCT`, the SSA dialects, `Com jasminDialect` and
-`Lprog` to the owned x86, AArch64 and RISC-V encoders. The intended source is
+`Lprog` to the compiler's x86, AArch64 and RISC-V encoders. The intended source is
 orchestration: Rust above the field interface, with field operations as primeIR calls
 and limb-level or bit-level kernels as calls to optimised implementations whose
 correctness is a template theorem or an ascent theorem ([ASCENT.md](ASCENT.md)).
@@ -88,7 +88,7 @@ tables with the accepted programs.
   [HEADLINES.md](HEADLINES.md) states each with its hypotheses.
 - The hax compiler `haxc` (`CatCrypt/Crypto/SecureCompilation/Haxc/`, executable
   `lake exe haxc`) composes the hax front, the route to the Jasmin dialect, the export to
-  `Lprog`, the owned back end and the encoder, and ends at decoded x86 bytes run by the
+  `Lprog`, the compiler's back end and the encoder, and ends at decoded x86 bytes run by the
   address machine `aMachine`. The bytes are read by the package's own decoder
   `decodeLprog` and run on its own x86-64 model `aMachine`; the encoder round trip
   `roundtrip_block` relates the encoder to that decoder. Its general theorems quantify over
@@ -310,8 +310,8 @@ In the table, a name given with a `Haxc.*` module is in
 | Every halting run of `B` from a state at program counter `0` is matched by a halting run of `B'` from the same state, and the end states agree on the registers `outs`, on the arrays and on the word memory; `ownedCheckML` adds equal leakage traces | pairs `B`, `B'` accepted by `ownedCheckM`, by `ownedCheckMC` (bounds-checked runs) or by `ownedCheckML` (traced runs): the output of register allocation `reallocLprog` against its input | `ownedCheckMC`, `ownedCheckML`, V | [`ownedCheckM_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTV.lean), [`ownedCheckMC_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVChecked.lean), [`ownedCheckML_sound_leak`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedTVLeak.lean) |
 | `ownedCheckM` accepts the fold of a body against the body, and a body against its two-address form | non-empty straight-line bodies whose symbolic run lies in the fragment of the checker; for the two-address form, instructions accepted by `twoAddrRouteWF` | `twoAddrRouteWF`, D | [`foldIndexed_ownedCheckM_complete`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVDeadImm.lean), [`twoAddr_ownedCheckM_complete`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVTwoAddr.lean) |
 | Every halting run of a typed body `pre ++ loop` is matched by a halting run of `pre ++ fuseMulHiRM loop` from the same state, with at most four times the fuel | typed bodies accepted by `fuseOKL`, from a base whose registers in the checked list have width 64 | `fuseOKL`, D | [`fuseMulHi_lsemFuelMemF_pre`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemFuseMulHi.lean) |
-| Every halting run of a function body without its return is matched by a run of the body that the owned back end `ownedLprog` gives it (block optimiser, constant-index fold, register re-allocation, two-address form), with at most five times the fuel, to a state related to the source state by `OwnedObs` (equal function name, flags and word memory, equal arrays off the slot arrays, equal result registers, slot arrays held in their cells) | functions ending in a return whose bodies pass `optBlocksOKB`, `FoldIndexedOK`, `reallocCfgOKB` and `twoAddrOK` | `optBlocksOKB`, `reallocCfgOKB`, `twoAddrOK`, D | [`ownedLprog_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogFuel.lean) |
-| The same for the printed program `printedLprog` (the owned back end followed by the compare reload `cmpReload`), with at most ten times the fuel; the deadWriteRet half and the whole fusion post-pass `regionPostFuse` on programs | as above, with `cmpReloadOK`; for the post-pass, bodies passing the dead-write checks and the fusion check, read through `normMulx` | `cmpReloadOK`, `fuseMulHiOK`, D | `printedLprog_lsemFuelMemF` (`Haxc.PrintedLprogFuel`), `regionPostFuse_lsemFuelMemF` (`Haxc.RegionPostFuseLift`) |
+| Every halting run of a function body without its return is matched by a run of the body that the back end `ownedLprog` gives it (block optimiser, constant-index fold, register re-allocation, two-address form), with at most five times the fuel, to a state related to the source state by `OwnedObs` (equal function name, flags and word memory, equal arrays off the slot arrays, equal result registers, slot arrays held in their cells) | functions ending in a return whose bodies pass `optBlocksOKB`, `FoldIndexedOK`, `reallocCfgOKB` and `twoAddrOK` | `optBlocksOKB`, `reallocCfgOKB`, `twoAddrOK`, D | [`ownedLprog_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogFuel.lean) |
+| The same for the printed program `printedLprog` (the back end `ownedLprog` followed by the compare reload `cmpReload`), with at most ten times the fuel; the deadWriteRet half and the whole fusion post-pass `regionPostFuse` on programs | as above, with `cmpReloadOK`; for the post-pass, bodies passing the dead-write checks and the fusion check, read through `normMulx` | `cmpReloadOK`, `fuseMulHiOK`, D | `printedLprog_lsemFuelMemF` (`Haxc.PrintedLprogFuel`), `regionPostFuse_lsemFuelMemF` (`Haxc.RegionPostFuseLift`) |
 | The printed program of `compileRegion` is `printedLprog (regionPostFuse P0)` for the allocation `P0` of the allocation stage `regionAllocC` | every program `compileRegion` accepts | none | `regionImage_split` (`Haxc.RegionLprogSplit`) |
 | Each instruction of the lowering core and its lowering simulate one another up to agreement off the two scratch registers | instructions accepted by `lowerCoreOKB`: two-address operations and conditional moves over registers, two-address operations with a register destination and a spilled second source, one-source legalisation, loads without a spilled base or index | `lowerCoreOKB`, D | [`simS_lowerCore`](CatCrypt/Crypto/SecureCompilation/X86Backend/LowerFuelMemF.lean) |
 | A halting run of a body is matched by a halting run of the body framed by the prologue (with the saves of the third and later arguments) and the callee-save restore, with the callee-saved registers restored from their slots | bodies with labels and jumps accepted by `frameInstrOKB`: no scratch register, no save slot, no return, call or base reload | `frameInstrOKB`, D | [`frame_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/X86Backend/FrameFuelMemFCfg.lean) |
@@ -328,7 +328,7 @@ In `compileRegion` one pair is validated. The call of `ownedCheckMC` in the gate
 printed body; `ownedCheckML` in `regionLeakB` is the same comparison on traced runs, and on
 a calling body `calleeSegB` compares the segments between calls. The printed body is
 `printedLprog (regionPostFuse P0)` for the allocation `P0` (`regionImage_split`): the
-output of allocation, lowering, frame expansion, the post-pass, the owned back end
+output of allocation, lowering, frame expansion, the post-pass, the back end
 `ownedLprog` and the compare reload. For a pair accepted by these checks,
 `ownedCheckMC_sound` gives the simulation across all of these passes together. The
 reference side applies the fusion as `fuseMulHiRM`; for a typed body accepted by

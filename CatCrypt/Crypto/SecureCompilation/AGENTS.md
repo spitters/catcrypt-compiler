@@ -157,15 +157,15 @@ fragment and hypotheses of each.
 
 Emit and output.
 - An emit kernel is generated: by the descent over a `LowCT` program written in Lean
-  (`reifyLowCT%`, `translateDialectControl`, `cryptoDialectToJasminCom`, the owned
-  backend), by relational compilation from a Lean specification
+  (`reifyLowCT%`, `translateDialectControl`, `cryptoDialectToJasminCom`, the
+  compiler's backend), by relational compilation from a Lean specification
   (`RelationalCompile.lean`), or by a field template. It is never hand-authored as
   `Com`, `Lcmd`, `JInstr` or assembly text: a hand-authored kernel checked against a
   hand-authored specification says nothing about generated code. If a front cannot
   express a kernel, extend the front. The legacy hax fronts `compileFromHax` and
   `haxToLowCT` are not kernel sources. `scripts/handcom-provenance-ratchet.sh` fails
   when the number of hand-authored kernels rises.
-- The owned backend produces the artifact. Jasmin source is printed only by
+- The compiler's backend produces the artifact. Jasmin source is printed only by
   `Jazz.print` (`CatCrypt/Crypto/Jasmin/JazzPrint.lean`) behind the round-trip gate
   `printChecked` (`CatCrypt/Crypto/Jasmin/JazzRoundTrip.lean`), as `jasminOfA` does
   for `compileA`; a new module does not render Jasmin text from string templates.

@@ -1,7 +1,7 @@
 # The THIR kernel generator
 
 The THIR generator compiles small scalar kernels written in a let-normal arithmetic IR,
-`Thir`, to `Com jasminDialect`, and from there to owned x86 assembly or to Jasmin. It is one of
+`Thir`, to `Com jasminDialect`, and from there to x86 assembly by the compiler's backend or to Jasmin. It is one of
 the five producers of the linked kernels that programs compiled by `compileA` call; the others
 are the field and lattice templates, LowCT written in Lean, relational compilation, and the
 Jasmin `.jinc` importer. [NAVIGATION.md](NAVIGATION.md) locates its modules.

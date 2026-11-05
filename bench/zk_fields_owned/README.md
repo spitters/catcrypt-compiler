@@ -1,7 +1,7 @@
-# Goldilocks, Poseidon2 and BN254 Poseidon kernels on the owned x86-64 backend
+# Goldilocks, Poseidon2 and BN254 Poseidon kernels on the compiler's x86-64 backend
 
 `CatCrypt.Crypto.SecureCompilation.Algebraic.ZkFieldsEmitMain` (`lake exe
-zkfieldsowned`) renders seven kernels through `Com.toLprogPhysAbi` and the owned
+zkfieldsowned`) renders seven kernels through `Com.toLprogPhysAbi` and the compiler's
 printer, without jasminc, to `gen/*.s`. The C programs here test the assembled
 output against references that do not come from this repository.
 

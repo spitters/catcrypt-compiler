@@ -222,7 +222,7 @@ repository states it. Paths are relative to the root of this package.
   the attribution and `third_party/mlkem-libjade/MODIFICATIONS.md` the
   statement of changes required by section 4(b) of the licence.
 - Derived material: the ML-KEM-768 functions imported through the `.jinc`
-  importer and the assembly the owned backend renders from them.
+  importer and the assembly the compiler's backend renders from them.
 - Files: `third_party/mlkem-libjade/`
 
 ### formosa-keccak
@@ -242,7 +242,7 @@ repository states it. Paths are relative to the root of this package.
   trailing whitespace.
 - Derived material: the Keccak-f[1600] permutation (scalar and four-way AVX2)
   and the SHA3-256, SHAKE128 and SHAKE256 sponges imported through the `.jinc`
-  importer, and the assembly the owned backend renders from them.
+  importer, and the assembly the compiler's backend renders from them.
 - Files: `CatCrypt/Crypto/Jasmin/KeccakJincImport.lean`
 
 ### Plonky3

@@ -14,8 +14,8 @@ encoder, and checks the results against s2n-bignum.
 | `encode.lean`, `encode_montsqr.lean` | encodes the imported block with `ScalarEncoder.encodeJBlock` and writes the bytes as `.byte` directives to `gen/<kernel>_encoded.s` |
 | `compare_insns.sh [KERNEL]` | assembles the re-emitted and encoded files and compares their disassembly and size with the s2n-bignum archive |
 | `encode_framed.lean`, `kat_framed/` | the framed montmul and its known-answer test ([§ The framed function](#the-framed-function)) |
-| `import_owned.sh FILE.s MODULE [SYMBOL]`, `translate_owned.awk`, `owned_kernels.txt` | the importer for x86-64 files printed by CatCrypt's owned backend ([§ Importing the owned backend's output](#importing-the-owned-backends-output)) |
-| `reemit_owned.lean`, `compare_owned.sh` | prints the imported owned-backend functions back and compares them with their sources |
+| `import_owned.sh FILE.s MODULE [SYMBOL]`, `translate_owned.awk`, `owned_kernels.txt` | the importer for x86-64 files printed by the compiler's backend ([§ Importing the compiler's backend output](#importing-the-compilers-backend-output)) |
+| `reemit_owned.lean`, `compare_owned.sh` | prints the imported functions of the compiler's backend back and compares them with their sources |
 | `Makefile` | `import`, `reemit`, `encode`, `compare` (each for both kernels, or `-montmul` / `-montsqr`), `encode-framed`, `framed-kat`, `field`, `import-owned`, `reemit-owned`, `compare-owned` |
 
 The known-answer gate and the timing are the `s2n-reemitted`, `s2n-encoded`,
@@ -197,10 +197,10 @@ checks that each name is a 64-bit general register. Its prologue and epilogue ar
 s2n-bignum's frame (`endbr64`, six `pushq`, six `popq`, `retq`), written as text:
 like every `renderLeafFn` frame they are outside the translated block.
 
-## Importing the owned backend's output
+## Importing the compiler's backend output
 
 `import_owned.sh FILE.s MODULE [SYMBOL]` translates one function of an x86-64 AT&T
-file printed by CatCrypt's owned backend (`AsmPrinter.renderLeafFn`,
+file printed by the compiler's backend (`AsmPrinter.renderLeafFn`,
 `renderSysVLeafFn`, `LprogAsmPrinter`) into
 `CatCrypt/Crypto/SecureCompilation/Ascent/Imported/<MODULE>.lean`, with the same
 guarantees as `import_s2n.sh`: an instruction outside the accepted shapes stops the
@@ -367,5 +367,5 @@ line after this normalisation, applied to both sides:
 The spellings differ because the printers differ: `AsmPrinter` prints `setb` for
 `setc`, `adcx`/`adox` without suffix, `mulx` with a `# src1=` comment, and
 `D(%b, %b, 0)` for the index-free `lea`, which the assembler rejects (scale 0); the
-owned files print `setc`, `adcxq`, `(%r10)` and `leaq D(%b)`. `make compare-owned`
+files of the compiler's backend print `setc`, `adcxq`, `(%r10)` and `leaq D(%b)`. `make compare-owned`
 exits 1 on any difference.

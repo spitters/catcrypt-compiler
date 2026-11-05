@@ -49,12 +49,12 @@ generics.
   byte-level theorem for a program the back end accepts. fiat-crypto proves each generated
   file by running its certified pipeline; the template proves the generator.
 - Two consumers of one program. The same `Com jasminDialect` program is the input
-  of the owned x86 back end and of the Rust printer (`Jasmin/ComToRustEmit.lean`,
+  of the compiler's x86 back end and of the Rust printer (`Jasmin/ComToRustEmit.lean`,
   fiat's straight-line style with `u128` products and `u64` carries).
 
 The two consumers carry different evidence.
 
-- The owned x86 back end. `field_correct_bytes` (`Haxc/FieldBytes.lean`) states, at
+- The compiler's x86 back end. `field_correct_bytes` (`Haxc/FieldBytes.lean`) states, at
   every `LimbParams n`, that the decoded bytes of an accepted multiply program read back
   the Montgomery limbs of the product. `Haxc/FieldInstances.lean` states the
   corresponding theorems for the Montgomery multiply, square, addition and subtraction
