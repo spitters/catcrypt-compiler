@@ -40,8 +40,9 @@ scalar-return slot. Asserted here: the parameter names `rp/ap/bp/n`, the
 read/write modes (`rp` written, `ap`/`bp` read, `n` the shared limb count),
 and the carry/borrow meaning of `RAX` for `add`/`sub`. A mismatch between
 the asserted and derived signature makes `WrapperSpec.ofLprog` return
-`none`, and `emitMain` — run at elaboration by the closing `#eval` — then
-fails the build.
+`none`, and `emitMain` then throws without writing the crate. The closing
+`#eval emitMain` is commented out, so no build runs the emit; run it from the
+dev root, the working directory against which `crateDir` is resolved.
 
 The hand-written crate portions (`src/lib.rs` seam glue, `build.rs`,
 `Cargo.toml`, `tests/`) live in `crates/catcrypt-mpn/` directly; see the
@@ -99,12 +100,12 @@ def xorEntry (_ : Unit) : Option (Lprog × WrapperSpec) :=
 def entries (_ : Unit) : List (Option (Lprog × WrapperSpec)) :=
   [addEntry (), subEntry (), andEntry (), iorEntry (), xorEntry ()]
 
-/-- Crate root, relative to the repo root (the elaboration cwd). -/
-def crateDir : String := "crates/catcrypt-mpn"
+/-- Crate root, relative to the dev root, the working directory of every build. -/
+def crateDir : String := "../catcrypt-compiler/crates/catcrypt-mpn"
 
 /-- Write `asm/<symbol>.s` for each kernel and the generated
-    `src/mpn_ffi.rs`. Throws (failing elaboration via the `#eval` below)
-    when a front compile or a spec derivation returns `none`. -/
+    `src/mpn_ffi.rs`. Throws when a front compile or a spec derivation
+    returns `none`. -/
 def emitMain : IO Unit := do
   IO.FS.createDirAll (crateDir ++ "/asm")
   IO.FS.createDirAll (crateDir ++ "/src")

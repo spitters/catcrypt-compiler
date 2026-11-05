@@ -67,3 +67,4 @@ bench/msm_compare/README.md
 bench/pallas_compare/README.md
 third_party/mlkem-libjade/MODIFICATIONS.md
 third_party/mlkem-libjade/README.md
+crates/catcrypt-mpn/README.md
