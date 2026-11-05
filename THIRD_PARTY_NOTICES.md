@@ -201,7 +201,8 @@ repository states it. Paths are relative to the root of this package.
 - Upstream: <https://github.com/formosa-crypto/libjade>
 - Licence: CC0-1.0 OR Apache-2.0 (`LICENSE`).
 - Derived material: the SHA-256 functions of
-  `oldsrc-should-delete/crypto_hash/sha256/amd64/ref/sha256.jinc`.
+  `oldsrc-should-delete/crypto_hash/sha256/amd64/ref/sha256.jinc`, at commit
+  `9426b320031ea121c9b07b1a7d7d616dd97c1a75`.
 - Files:
   - `CatCrypt/Crypto/Jasmin/Examples/Sha256JasminDemo.lean`
   - `CatCrypt/Crypto/Jasmin/Examples/Sha256JasminFull.lean`
