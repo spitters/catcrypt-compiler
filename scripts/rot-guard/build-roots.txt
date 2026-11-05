@@ -192,7 +192,6 @@ CatCrypt.Crypto.Pairing.HashToCurveBLS12381
 CatCrypt.Crypto.Pairing.LeafProvenDenote
 CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow
-CatCrypt.Crypto.Primitives.HMACMulti
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
 CatCrypt.Crypto.Primitives.Poly1305
@@ -208,9 +207,6 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.EncoderDiffAudit
 CatCrypt.Crypto.SecureCompilation.ARMBackend.NeonCryptoModel
 CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
-CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Compiled
-CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledAndBool
-CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledOptAdd
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompoundGuards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards
 CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
@@ -376,7 +372,6 @@ CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity2
 CatCrypt.Crypto.SecureCompilation.Dialects.MoreDialectSecurity3
 CatCrypt.Crypto.SecureCompilation.Dialects.MulHiFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakDeclass
-CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakOfCom
 CatCrypt.Crypto.SecureCompilation.Dialects.NestedRuntimeLoopFrontValidate
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchLoopFront
 CatCrypt.Crypto.SecureCompilation.Dialects.OrchestrationFrontValidate
@@ -419,6 +414,11 @@ CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitMldsa
 CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitQ
 CatCrypt.Crypto.SecureCompilation.FieldWidenMulEmitCurve
 CatCrypt.Crypto.SecureCompilation.FrontJasminCT
+CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2Linked
+CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinked
+CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmitMain
+CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
+CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2Linked
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
 CatCrypt.Crypto.SecureCompilation.Haxc.AbiEncode
 CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
@@ -440,7 +440,6 @@ CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoStorage
-CatCrypt.Crypto.SecureCompilation.Haxc.RegionKernelSem
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad

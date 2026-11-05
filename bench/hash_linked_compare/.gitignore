@@ -1,0 +1,4 @@
+# Build outputs: gen/ is ignored by the top-level .gitignore; build/ and results/ are the
+# outputs of make (the recorded results stay in the development checkout).
+build/
+results/
