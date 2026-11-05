@@ -56,11 +56,15 @@ and the transport of the results is the identity, up to the cast of their types
 ## Main definitions
 
 * `narrowB`, `wideW`, `wideTy`, `transTy`, `mapVar`, `mapVal`.
+* `mapVarL`, `mapVarFast` — the widened variable over a given widened context, whose `there`
+  nodes store the tails of that context.
 * `withMask`, `countThen`, `opBlock?` — the blocks.
 * `widenP`, `widenJ` — the lowering and the pass.
 
 ## Main results
 
+* `mapVar_eq_mapVarFast` — `mapVar` is `mapVarFast` (`@[csimp]`): the compiled code widens
+  the context once per variable, not once per `there` node.
 * `opBlock?_denote` — the block of an operation denotes, on the widened valuation, the
   widened value of the operation.
 * `widenJ_denote` — the pass preserves the denotation along `transTy`, at every fuel and at
@@ -140,6 +144,32 @@ def mapVar : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Var Γ t →
     Var (d := jasminDialect) (Γ.map wideTy) (wideTy t)
   | _, _, .here => .here
   | _, _, .there v => .there (mapVar v)
+
+/-- **The widened variable over the widened context `L`**: the `there` node of depth `j` stores
+    the `j`-th tail of `L`, where `mapVar` stores the widening of the `j`-th suffix of `Γ`. -/
+def mapVarL : {Γ : Ctxt jasminDialect} → {t : JasminTy} → (L : Ctxt jasminDialect) →
+    L = Γ.map wideTy → Var Γ t → Var (d := jasminDialect) L (wideTy t)
+  | _ :: _, _, _ :: _, h, .here => (List.cons.inj h).1 ▸ .here
+  | _ :: _, _, _ :: L, h, .there v => .there (mapVarL L (List.cons.inj h).2 v)
+  | _ :: _, _, [], h, _ => absurd h (List.cons_ne_nil _ _).symm
+
+/-- `mapVarL` at the widened context is `mapVar`. -/
+theorem mapVarL_eq : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Var Γ t),
+    mapVarL (Γ.map wideTy) rfl v = mapVar v
+  | _ :: _, _, .here => rfl
+  | _ :: _, _, .there v => by
+      show Var.there (mapVarL _ _ v) = Var.there (mapVar v)
+      rw [mapVarL_eq v]
+
+/-- `mapVarL` at the widened context: one widening of the context per variable. -/
+def mapVarFast {Γ : Ctxt jasminDialect} {t : JasminTy} (v : Var Γ t) :
+    Var (d := jasminDialect) (Γ.map wideTy) (wideTy t) :=
+  mapVarL (Γ.map wideTy) rfl v
+
+/-- **`mapVar` is `mapVarFast`**, so the compiled code of `mapVar` widens the context once. -/
+@[csimp] theorem mapVar_eq_mapVarFast : @mapVar = @mapVarFast := by
+  funext Γ t v
+  exact (mapVarL_eq v).symm
 
 /-- The valuation transport: `transTy` at every variable. -/
 def mapVal {Γ : Ctxt jasminDialect} (V : Valuation Γ) :

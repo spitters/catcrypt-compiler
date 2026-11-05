@@ -23,6 +23,7 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ArrWebsLeak
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrStore
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrLeak
 public import CatCrypt.Crypto.SecureCompilation.SepLogic.Abi
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgNarrowPrep
 
 @[expose] public section
 
@@ -31,9 +32,12 @@ set_option autoImplicit false
 /-!
 # The back half on a region-exported program
 
-`compileRegion σ a p` takes a structured program `p : NFProg jasminDialect Γ [stackArr 64 m]`
-to the printed `Lprog` and the `.text` bytes of its function, or `none` when a stage declines
-or a check refuses. The stages are, in order:
+`compileRegion σ a p` takes a structured program `p : NFProg jasminDialect Γ [t]` to the
+printed `Lprog` and the `.text` bytes of its function, or `none` when a stage declines or a
+check refuses. It tests `regionExportableB` on `p`, runs the narrow-word stages
+`VIR.NarrowWords.narrowPrep` (each word of width `8`, `16` or `32` held zero extended in a
+64-bit register or array slot, redundant masks and dead bindings removed), and then the
+stages `regionBack` on the widened program. The stages of `regionBack` are, in order:
 
 0. the region legalisation `legalizeRegion`, which rewrites each and-not into its and-xor
    block (`legalizeAndn`), and keeps the denotation and the leakage run; a rotate by an
@@ -295,7 +299,11 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 * `regionEncode`: the stages after the allocation.
 * `regionCtB`, `calleeCtB`: the constant-time check of a printed body, and the check at an
   optional callee.
-* `compileRegion`: the back half on a region-exported program.
+* `regionBack`: the stages after the narrow-word stages.
+* `compileRegion`: the back half: the gate `regionExportableB`, the narrow-word stages
+  `narrowPrep` (widening of narrow words, mask elimination, dead-binding elimination), then
+  `regionBack` on the widened program.
+* `narrowArrB`: the array types of narrow words.
 * `layoutMem`: the bytes of the stack words and of the pointer regions of a layout.
 
 ## Main results
@@ -452,13 +460,26 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 * `calleeBody_stackRoom`, `calleeBody_callerSep`: under the checks `calleeBodyB`, the stack
   room and frame checks at the frame of the callee, and the caller separation
   `ImageAddrCall.CallerSep` from the entry conditions of the layout.
-* `compileRegion_spec`: the checks a result of `compileRegion` passed.
-* `compileRegion_correct`: for a result `(P, bytes)` of `compileRegion σ a p`, from every
+* `regionBack_spec`: the checks a result of `regionBack` passed.
+* `regionBack_correct`: for a result `(P, bytes)` of `regionBack σ a p`, from every
   entry state satisfying `σ.Regions`, at every valuation the layout reads off it at which
   `p` denotes a value at some fuel, the bytes decode to a program that halts on the machine
   in a state from which `σ` reads back that value, with the entry stack register, the entry
   bytes outside the stack words and the pointer regions, and a halting run of the address
   machine whose accesses lie in `layoutMem`.
+* `abiValOf_widen`, `denVal_wideTy_transTy`: a valuation the layout reads holds 64-bit
+  words, so the layout reads its widening; the widened value of a result other than a narrow
+  array is its value.
+* `compileRegion_eq_some`, `compileRegion_spec`: a result of `compileRegion` is a result of
+  `regionBack` on the widened program, with the checks it passed.
+* `compileRegion_correct`: `regionBack_correct` through the narrow-word stages, at the
+  widened valuation `mapVal V` (narrow arguments in 64-bit slots with zero high bits) and
+  the widened result.
+* `compileRegion_correct_wide`: the same statement as `regionBack_correct` for
+  `compileRegion` at a valuation of 64-bit words and a result other than a narrow array.
+* `compileRegion_wide`, `compileRegion_ctx`: over a context (and result type) of 64-bit
+  words, the back half runs on the widened program carried back to them, which denotes the
+  (widened) denotation of the source.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc
@@ -5889,7 +5910,7 @@ def regionWebsEx (σ : AbiLayout) (nm : String → String) : List String :=
 
 /-- **The exported code at an optional table**: the webs `regionWebs ex r` of the export `r`
     at the array positions `calleeAAT` and the result lengths `calleeAOT` of the table. Both
-    arms of `compileRegion` take this stage; without a table no symbol has an array position or
+    arms of `regionBack` take this stage; without a table no symbol has an array position or
     a result length, and the webs are `regionWebs ex r` at its defaults. -/
 def regionWebsAt (ex : List String) (callee : Option CalleeTab) (r : Exported) : Exported :=
   regionWebs ex r (calleeAAT callee) (calleeAOT callee)
@@ -7827,7 +7848,7 @@ def regionLprogCopy (a : AbiNames) (callee : Option CalleeTab) (ts : List Jasmin
     moved into `RAX`; for every other result it is `lfundefPhysAbiOfVirt` with each array
     base paired with the register of its own argument slot, on the body preceded by
     `arrBasePins`. The gate `regionCoB` of
-    `compileRegion` checks the printed body against the reference `CoParts.ref`, in which
+    `regionBack` checks the printed body against the reference `CoParts.ref`, in which
     `selfNop` has replaced the array moves and the high multiplications are fused as in
     the post-pass.
 
@@ -7838,7 +7859,7 @@ def regionLprogCopy (a : AbiNames) (callee : Option CalleeTab) (ts : List Jasmin
     `calleeOutsT` of the table, so that the destination of an out call is the array of its
     operand at the destination position.
     The register-result path expands the shadow instructions before it allocates
-    (`comToLfundefPhysAbiFromVirt`), and `compileRegion` refuses a calling body with a
+    (`comToLfundefPhysAbiFromVirt`), and `regionBack` refuses a calling body with a
     register result.
 
     Without a table, the exported code is followed by the array result copy
@@ -11073,7 +11094,8 @@ theorem calleeCtB_tab {σ : AbiLayout} {nm : String → String} {T : CalleeTab} 
   · exact ⟨_, ‹_›, h⟩
   · cases h
 
-/-- **The back half on a region-exported program** with one result, a word array or a
+/-- **The stages of the back half after the narrow-word stages**, on a program with one
+    result, a word array or a
     register: the region legalisation `legalizeRegion`, then, on the legalised program, the test
     `regionExportableB` on a program without `call` (`NFProg.callFree`),
     the export `exportR`, its webs `regionWebsAt` at the result buffer
@@ -11091,11 +11113,11 @@ theorem calleeCtB_tab {σ : AbiLayout} {nm : String → String} {T : CalleeTab} 
     function followed by the code of the callee, and `calleeCtB`, the constant-time decision
     with a call on the program of the function). The two arms run the same stages; without a
     callee each stage is taken at no table. The result of a calling body is gated and is
-    covered by no correctness theorem: `compileRegion_spec` and `compileRegion_correct` are
+    covered by no correctness theorem: `regionBack_spec` and `regionBack_correct` are
     stated at no linked function, where the program has no `call`. Without linked functions,
-    and on every program without `call` (`compileRegion_of_callFree`), the stages are those of
+    and on every program without `call` (`regionBack_of_callFree`), the stages are those of
     the first paragraph. -/
-def compileRegion (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
+def regionBack (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) (linked : List CalleeData := []) :
     Option (Lprog × List (BitVec 8)) :=
   if regionExportableB (legalizeRegion p) = true then
@@ -11123,21 +11145,21 @@ theorem regionBytePub_legalizeRegion (σ : AbiLayout) (fuel : Nat) {Γ : Ctxt ja
   simp only [legalizeRegion_denoteAt]
 
 /-- **On a program without `call` the back half does not read the linked functions.** -/
-theorem compileRegion_of_callFree (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
+theorem regionBack_of_callFree (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} (h : p.callFree = true)
-    (linked : List CalleeData) : compileRegion σ a p linked = compileRegion σ a p := by
-  unfold compileRegion
+    (linked : List CalleeData) : regionBack σ a p linked = regionBack σ a p := by
+  unfold regionBack
   simp only [regionCallee_of_callFree (legalizeRegion_callFree h)]
 
-/-- Every result of `compileRegion` on `p` comes from a legalised program `legalizeRegion p`
+/-- Every result of `regionBack` on `p` comes from a legalised program `legalizeRegion p`
     that passes `regionExportableB`, with an export `r0`, its webs `r` at the result buffer
     `regionWebsEx σ exportReg`, and a printed body whose gated encoder's bytes are the
     result's bytes, and an allocation certificate `cert` of `regionLprogC`, such that the
     webs pass `regionCoB` against the printed body at `cert` and the printed body passes the
     constant-time check `regionCtB` at `cert`. -/
-theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes)) :
+    {bytes : List (BitVec 8)} (h : regionBack σ a p = some (P, bytes)) :
     regionExportableB (legalizeRegion p) = true ∧ ∃ r0 r b cert,
       exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
       ∧ r = regionWebsAt (regionWebsEx σ exportReg) none r0
@@ -11146,7 +11168,7 @@ theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
       ∧ regionCtB σ exportReg b t r.code r.res cert = true
       ∧ ∃ P0, regionLprogC a (legalizeRegion p) none (regionWebsEx σ exportReg)
         = some (P0, cert) := by
-  unfold compileRegion at h
+  unfold regionBack at h
   split at h
   · rename_i hB
     split at h
@@ -11167,7 +11189,7 @@ theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
   · cases h
 
 /-- **Correctness of the back half on a region-exported program.** For a result
-    `(P, bytes)` of `compileRegion σ a p`: from every entry state `sa` satisfying
+    `(P, bytes)` of `regionBack σ a p`: from every entry state `sa` satisfying
     `σ.Regions`, at every valuation `V` that `σ` reads off `sa` at which `p` denotes `v` at
     some fuel, the bytes decode to a program that halts on the machine from `sa` in a state
     `sa'` from which `σ` reads back the source value of the result, a word array or a
@@ -11176,9 +11198,9 @@ theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
     `frameLo ≤ o ≤ frameHi`, and outside the words of each pointer region of `σ`, at the
     registers of `sa`; some run of the address machine on a body from `entryA σ sa` halts
     and stores to and loads from `layoutMem σ sa` only. -/
-theorem compileRegion_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
+    {bytes : List (BitVec 8)} (h : regionBack σ a p = some (P, bytes))
     (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (hreg : σ.Regions sa)
     (fuel : Nat) {v : Ctxt.Valuation (d := jasminDialect) [t]}
     (hv : p.denote fuel V = some v) :
@@ -11192,13 +11214,277 @@ theorem compileRegion_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminD
         sa'.mem x = sa.mem x)
       ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
         ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
-  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, -⟩ := compileRegion_spec h
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, -⟩ := regionBack_spec h
   rw [← legalizeRegion_denote] at hv
   obtain ⟨prog, sa', hd, hh, hR, hsp, hkeep, hA⟩ :=
     regionCo_bytes_of_regionExp (regionExportableB_sound hB) (regionExp_webs _ hr) hco sa V hV
       hreg fuel hv
   exact ⟨prog, sa', by rw [X86Backend.LprogBytes.encodeLfundefBytesChecked_eq hb]; exact hd,
     hh, hR, hsp, hkeep, b, hA⟩
+
+/-! ## 11b. The narrow-word stages and the region back half -/
+
+/-- The array types of narrow words: a stack array of `8`-, `16`- or `32`-bit words. -/
+def narrowArrB : JasminTy → Bool
+  | .stackArr w _ => VIR.NarrowWords.narrowB w
+  | _ => false
+
+/-- **The value of a widened result is the value of the result** at every type other than an
+    array of narrow words: a register keeps its natural number under zero extension, and the
+    widening fixes every other type. -/
+theorem denVal_wideTy_transTy {t : JasminTy} (ht : narrowArrB t = false) (x : ⟦t⟧) :
+    denVal (VIR.NarrowWords.wideTy t) (VIR.NarrowWords.transTy x) = denVal t x := by
+  cases t with
+  | reg w =>
+      simp only [VIR.NarrowWords.wideTy, VIR.NarrowWords.transTy, denVal, BitVec.toNat_setWidth]
+      rw [Nat.mod_eq_of_lt (lt_of_lt_of_le x.isLt
+        (Nat.pow_le_pow_right (by decide) (VIR.NarrowWords.le_wideW w)))]
+  | stackArr w n =>
+      have hw : VIR.NarrowWords.wideW w = w := VIR.NarrowWords.wideW_of_not ht
+      have he : VIR.NarrowWords.wideTy (.stackArr w n) = .stackArr w n := by
+        show JasminTy.stackArr (VIR.NarrowWords.wideW w) n = _
+        rw [hw]
+      have key : ∀ (t' : JasminTy) (e : t' = .stackArr w n) (y : ⟦t'⟧), y ≍ x →
+          denVal t' y = denVal (.stackArr w n) x := by
+        intro t' e
+        subst e
+        intro y hy
+        obtain rfl := eq_of_heq hy
+        rfl
+      exact key _ he _ (VIR.NarrowWords.transTy_heq_of_wide he x)
+  | inlineInt => rfl
+  | bool => rfl
+
+/-- The parameter index of a variable is that of the variable under one more binding. -/
+theorem argIdx_there {Γ : Ctxt jasminDialect} {s t : JasminTy} (v : Ctxt.Var Γ t) :
+    X86Backend.ExportCertEntry.argIdx (Ctxt.Var.there (s := s) v) =
+      X86Backend.ExportCertEntry.argIdx v := by
+  have := VIR.JasminLsemSimulation.varIndex_lt v
+  simp only [X86Backend.ExportCertEntry.argIdx, List.length_cons, varIndex] at this ⊢
+  omega
+
+/-- The ABI reading of a valuation of a longer context reads its tail. -/
+theorem abiValOf_tail {σ : AbiLayout} {sa : AState} {Γ : Ctxt jasminDialect} {s : JasminTy}
+    {x : ⟦s⟧} {V : Ctxt.Valuation Γ}
+    (h : AbiValOf σ sa (Γ := s :: Γ) (.cons x V)) : AbiValOf σ sa V :=
+  ⟨fun v => by
+      have hv := h.arg (Ctxt.Var.there (s := s) v)
+      rw [argIdx_there] at hv
+      exact hv,
+    fun v => by
+      have hv := h.reg (Ctxt.Var.there (s := s) v)
+      rw [argIdx_there] at hv
+      exact hv,
+    fun v => by
+      have hv := h.arr (Ctxt.Var.there (s := s) v)
+      rw [argIdx_there] at hv
+      exact hv⟩
+
+/-- **A context the layout reads holds 64-bit words only**: the widening fixes it. -/
+theorem map_wideTy_of_abiValOf {σ : AbiLayout} {sa : AState} :
+    {Γ : Ctxt jasminDialect} → (V : Ctxt.Valuation Γ) → AbiValOf σ sa V →
+      Γ.map VIR.NarrowWords.wideTy = Γ
+  | [], _, _ => rfl
+  | s :: Γ, .cons x V, h => by
+      have ht : VIR.NarrowWords.wideTy s = s := by
+        cases s with
+        | reg w =>
+            obtain ⟨_, -, -, rfl, -⟩ := h.reg (Ctxt.Var.here (Γ := Γ))
+            rfl
+        | stackArr w n =>
+            obtain ⟨_, -, -, rfl, -⟩ := h.arr (Ctxt.Var.here (Γ := Γ))
+            rfl
+        | inlineInt => rfl
+        | bool => rfl
+      show VIR.NarrowWords.wideTy s :: Γ.map VIR.NarrowWords.wideTy = s :: Γ
+      rw [ht, map_wideTy_of_abiValOf V (abiValOf_tail h)]
+
+/-- **The ABI reading of the widened valuation.** A valuation the layout reads off a state is
+    a valuation of 64-bit words, so its widening is read off the same state. -/
+theorem abiValOf_widen {σ : AbiLayout} {sa : AState} {Γ : Ctxt jasminDialect}
+    {V : Ctxt.Valuation Γ} (h : AbiValOf σ sa V) : AbiValOf σ sa (VIR.NarrowWords.mapVal V) := by
+  have hΓ := map_wideTy_of_abiValOf V h
+  have key : ∀ {Γ' : Ctxt jasminDialect} (_ : Γ' = Γ) (W : Ctxt.Valuation Γ'), W ≍ V →
+      AbiValOf σ sa W := by
+    intro Γ' e
+    subst e
+    intro W hW
+    obtain rfl := eq_of_heq hW
+    exact h
+  exact key hΓ _ (VIR.NarrowWords.mapVal_heq_of_wide hΓ V)
+
+/-- **The region back half** on a structured program with one result: the gate
+    `regionExportableB` on the program; the narrow-word stages `narrowPrep`, which hold every
+    word of a width `8`, `16` or `32` zero extended in a 64-bit register or a 64-bit array
+    slot (`widenJ`), remove the masks whose value reaches only width-insensitive operations
+    (`maskElim`) and the dead bindings (`NFProg.dce`); then the stages `regionBack` on the
+    widened program, over the context `Γ.map wideTy`, at the linked functions `linked`.
+    `none` when a stage declines or a check refuses. A caller passes a narrow argument in a
+    64-bit slot with zero high bits: the valuation it provides is `mapVal V`. -/
+def compileRegion (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (p : NFProg jasminDialect Γ [t]) (linked : List CalleeData := []) :
+    Option (Lprog × List (BitVec 8)) :=
+  if regionExportableB p = true then
+    (VIR.NarrowWords.narrowPrep p).bind fun q => regionBack σ a q linked
+  else none
+
+/-- A result of `compileRegion` is a result of `regionBack` on the widened program of a
+    program that passes the gate. -/
+theorem compileRegion_eq_some {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData}
+    {out : Lprog × List (BitVec 8)} :
+    compileRegion σ a p linked = some out ↔ regionExportableB p = true ∧
+      ∃ q, VIR.NarrowWords.narrowPrep p = some q ∧ regionBack σ a q linked = some out := by
+  unfold compileRegion
+  by_cases h : regionExportableB p = true
+  · simp only [h, ite_true, true_and, Option.bind_eq_some_iff]
+  · simp only [h, Bool.false_eq_true, ite_false, reduceCtorEq, false_and]
+
+/-- **On a program without `call` the back half does not read the linked functions.** -/
+theorem compileRegion_of_callFree (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} (h : p.callFree = true)
+    (linked : List CalleeData) : compileRegion σ a p linked = compileRegion σ a p := by
+  unfold compileRegion
+  split
+  · cases hq : VIR.NarrowWords.narrowPrep p with
+    | none => rfl
+    | some q =>
+        simp only [Option.bind_some]
+        exact regionBack_of_callFree σ a ((VIR.NarrowWords.callFree_narrowPrep hq).trans h)
+          linked
+  · rfl
+
+/-- **The specification of the back half**: every result of `compileRegion` on `p` comes from
+    a program that passes `regionExportableB`, whose narrow-word stages return a program `q`
+    over `Γ.map wideTy` on which the stages of `regionBack` run as `regionBack_spec` states:
+    `q` passes `regionExportableB`, with an export `r0`, its webs `r`, a printed body whose
+    gated encoder's bytes are the result's bytes, and an allocation certificate `cert`, the
+    webs passing `regionCoB` and the body passing `regionCtB` at `cert`. -/
+theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
+    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes)) :
+    regionExportableB p = true ∧ ∃ q, VIR.NarrowWords.narrowPrep p = some q
+      ∧ regionExportableB (legalizeRegion q) = true ∧ ∃ r0 r b cert,
+        exportR Γ.length a.fname (legalizeRegion q) Γ.length 0 = some r0
+        ∧ r = regionWebsAt (regionWebsEx σ exportReg) none r0
+        ∧ X86Backend.LprogBytes.encodeLfundefBytesChecked b = some bytes
+        ∧ regionCoB σ exportReg b (VIR.NarrowWords.wideTy t) r.code r.res cert = true
+        ∧ regionCtB σ exportReg b (VIR.NarrowWords.wideTy t) r.code r.res cert = true
+        ∧ ∃ P0, regionLprogC a (legalizeRegion q) none (regionWebsEx σ exportReg)
+          = some (P0, cert) := by
+  obtain ⟨hB, q, hq, hb⟩ := compileRegion_eq_some.mp h
+  have hs := regionBack_spec hb
+  rw [List.length_map] at hs
+  exact ⟨hB, q, hq, hs⟩
+
+/-- **Correctness of the back half.** For a result `(P, bytes)` of `compileRegion σ a p`: from
+    every entry state `sa` satisfying `σ.Regions` at which `σ` reads the widened valuation
+    `mapVal V` (each narrow argument in a 64-bit slot with zero high bits), at every `V` at
+    which `p` denotes `v` at some fuel, the bytes decode to a program that halts on the
+    machine from `sa` in a state `sa'` from which `σ` reads back the widened result. The stack
+    register of `sa'` holds its value in `sa`, and the memory of `sa'` agrees with that of
+    `sa` at every byte outside the stack words `%rsp + o`, `frameLo ≤ o ≤ frameHi`, and outside
+    the words of each pointer region of `σ`, at the registers of `sa`; some run of the address
+    machine on a body from `entryA σ sa` halts and stores to and loads from `layoutMem σ sa`
+    only. -/
+theorem compileRegion_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
+    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
+    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa (VIR.NarrowWords.mapVal V))
+    (hreg : σ.Regions sa) (fuel : Nat) {v : Ctxt.Valuation (d := jasminDialect) [t]}
+    (hv : p.denote fuel V = some v) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ σ.ResultOf sa sa' (denVal (VIR.NarrowWords.wideTy t) (VIR.NarrowWords.transTy
+          (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)))
+      ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x, SepLogic.X86.Loc.mem x
+          ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
+        (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
+        sa'.mem x = sa.mem x)
+      ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
+        ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
+  obtain ⟨-, q, hq, hb⟩ := compileRegion_eq_some.mp h
+  have hw := VIR.NarrowWords.narrowPrep_denote hq hv
+  cases v with
+  | cons x xs =>
+      cases xs
+      exact regionBack_correct hb sa (VIR.NarrowWords.mapVal V) hV hreg fuel hw
+
+/-- **Correctness of the back half on 64-bit arguments**, the statement of `regionBack_correct`
+    for `compileRegion`: at a valuation `V` that `σ` reads off `sa` (whose context then holds
+    64-bit words only, `abiValOf_widen`) and a result type other than an array of narrow
+    words (`denVal_wideTy_transTy`), `σ` reads back the source value of the result. -/
+theorem compileRegion_correct_wide {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
+    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
+    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (hreg : σ.Regions sa)
+    (fuel : Nat) {v : Ctxt.Valuation (d := jasminDialect) [t]}
+    (hv : p.denote fuel V = some v) (hn : narrowArrB t = false := by decide) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ σ.ResultOf sa sa' (denVal t
+          (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
+      ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x, SepLogic.X86.Loc.mem x
+          ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
+        (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
+        sa'.mem x = sa.mem x)
+      ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
+        ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
+  rw [← denVal_wideTy_transTy hn]
+  exact compileRegion_correct h sa V (abiValOf_widen hV) hreg fuel hv
+
+/-- **Over a context and result type of 64-bit words, the back half runs on a program that
+    denotes as the source.** When `wideTy` fixes the context and the result type of `p`, a
+    result of `compileRegion` on `p` is a result of `regionBack` on the widened program carried
+    back to them, `castProg hΓ ht q`, which denotes what `p` denotes
+    (`NarrowWords.narrowPrep_cast_denote`), is constant time where `p` is
+    (`NarrowWords.narrowPrep_cast_nfct`) and has the calls of `p`
+    (`NarrowWords.narrowPrep_cast_callFree`). -/
+theorem compileRegion_wide {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData}
+    {out : Lprog × List (BitVec 8)} (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ)
+    (ht : [t].map VIR.NarrowWords.wideTy = [t]) (h : compileRegion σ a p linked = some out) :
+    regionExportableB p = true ∧ ∃ q, VIR.NarrowWords.narrowPrep p = some q
+      ∧ regionBack σ a (VIR.NarrowWords.castProg hΓ ht q) linked = some out := by
+  obtain ⟨hB, q, hq, hb⟩ := compileRegion_eq_some.mp h
+  refine ⟨hB, q, hq, ?_⟩
+  have key : ∀ {Γ' : Ctxt jasminDialect} {t' : JasminTy} (e₁ : Γ' = Γ) (e₂ : [t'] = [t])
+      (r : NFProg jasminDialect Γ' [t']),
+      regionBack σ a (VIR.NarrowWords.castProg e₁ e₂ r) linked = regionBack σ a r linked := by
+    intro Γ' t' e₁ e₂ r
+    subst e₁
+    obtain rfl : t' = t := (List.cons.inj e₂).1
+    rfl
+  rw [key hΓ ht q]
+  exact hb
+
+/-- **Over a context of 64-bit words, the back half runs on a program that denotes the widened
+    source.** When `wideTy` fixes the context of `p`, a result of `compileRegion` on `p` is a
+    result of `regionBack` on the widened program carried back to the context of `p`,
+    `castProg hΓ rfl q`, which has the calls of `p` and denotes, at every call environment, the
+    widened denotation of `p` (`NarrowWords.narrowPrep_castCtx_denoteAt`). -/
+theorem compileRegion_ctx {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData}
+    {out : Lprog × List (BitVec 8)} (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ)
+    (h : compileRegion σ a p linked = some out) :
+    regionExportableB p = true ∧ ∃ q, VIR.NarrowWords.narrowPrep p = some q
+      ∧ regionBack σ a (VIR.NarrowWords.castProg hΓ rfl q) linked = some out
+      ∧ (VIR.NarrowWords.castProg hΓ rfl q).callFree = p.callFree
+      ∧ ∀ (E : CallEnv jasminDialect) (fuel : Nat) (V : Ctxt.Valuation Γ),
+        (VIR.NarrowWords.castProg hΓ rfl q).denoteAt E fuel V = (p.denoteAt E fuel V).map
+          (BlockLoweringExtend.transArgs VIR.NarrowWords.wideTy
+            (fun x => VIR.NarrowWords.transTy x)) := by
+  obtain ⟨hB, q, hq, hb⟩ := compileRegion_eq_some.mp h
+  have key : ∀ {Γ' : Ctxt jasminDialect} {t' : JasminTy} (e₁ : Γ' = Γ)
+      (r : NFProg jasminDialect Γ' [t']),
+      regionBack σ a (VIR.NarrowWords.castProg e₁ rfl r) linked = regionBack σ a r linked ∧
+        (VIR.NarrowWords.castProg e₁ rfl r).callFree = r.callFree := by
+    intro Γ' t' e₁ r
+    subst e₁
+    exact ⟨rfl, rfl⟩
+  refine ⟨hB, q, hq, (key hΓ q).1.trans hb,
+    (key hΓ q).2.trans (VIR.NarrowWords.callFree_narrowPrep hq), fun E fuel V =>
+    VIR.NarrowWords.narrowPrep_castCtx_denoteAt E hΓ hB hq fuel V⟩
 
 /-! ## 12. The bytes of a calling body -/
 

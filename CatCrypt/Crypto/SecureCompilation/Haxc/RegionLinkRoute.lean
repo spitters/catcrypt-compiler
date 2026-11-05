@@ -16,8 +16,8 @@ set_option autoImplicit false
 /-!
 # Correctness of a compiled body with linked kernels
 
-A program with `call`s that `compileRegion` compiles at a table `T` of linked functions runs on
-its bytes through the calls of the code of the table (`compileRegion_correct_linked_multi`):
+A program with `call`s that `regionBack` compiles at a table `T` of linked functions runs on
+its bytes through the calls of the code of the table (`regionBack_correct_linked_multi`):
 the reference run of the gate at the procedure table (`RegionLinkCompose.regionCo_bytes_tab`)
 gives the run of the image of the calling body (`RegionLinkCompose.calleeBody_imgRun_tab`),
 which the chains of the calling class carry to the caller program under an oracle that answers
@@ -51,12 +51,12 @@ states the runs of the bytes of `compileA` and the compiler theorems over them.
   gate of a calling body and its width check read only which names have a frame word.
 * `callParamsB_forall₂W`: the operands of a call site pass the parameters of the callee under
   the wide gate.
-* `compileRegion_spec_linked`: a result of `compileRegion σ a p [c]` on a program with a
+* `regionBack_spec_linked`: a result of `regionBack σ a p [c]` on a program with a
   `call` has a word-array result, an export and a printed body that passes `regionCoB` at
   `c`, with bytes `calleeBytes`.
 * `callParamsAtB_forall₂W`: the operands of a call that pass `callParamsAtB` pass the
   parameters of the callee under the wide gate.
-* `regionCallee_fns_ne_nil`, `compileRegion_spec_tab`, `compileRegion_tab`: a result of the
+* `regionCallee_fns_ne_nil`, `regionBack_spec_tab`, `regionBack_tab`: a result of the
   back half on a program with a `call` at its table, and the table found among linked
   functions is found at its own functions, with the same result.
 * `calleeBytes_tab`, `lookup_of_call`, `remoteSym_mem_names`: the bytes of a calling body at a
@@ -75,7 +75,7 @@ states the runs of the bytes of `compileA` and the compiler theorems over them.
 * `CalleeKind.Top`, `outCallee_facts`, `regCallee_facts`, `wordCallee_arrArgs`,
   `CalleeKind.Top.facts`, `CalleeKind.Top.ok`: the top hypotheses of a callee of a kind, and
   the summary, the interface and the hypotheses of the calls of a symbol of a table they give.
-* `CalleeTab.eq_one_of_sublist`, `compileRegion_correct_linked_multi`: the correctness of a
+* `CalleeTab.eq_one_of_sublist`, `regionBack_correct_linked_multi`: the correctness of a
   calling body with a table of linked kernels, under the oracle of the callees and through the
   calls.
 * `calleeBytes_some`: the byte hypotheses of the linked image theorem from `calleeBytes`,
@@ -83,7 +83,7 @@ states the runs of the bytes of `compileA` and the compiler theorems over them.
 * `calleeBytes_items`: the caller part of `calleeBytes` is the bytes of an item list whose
   layout resolves to the caller program.
 * `calleeSpec_guard`: a callee guarded by its precondition meets its specification.
-* `compileRegion_correct_linked`: the bytes of a calling body with one linked word kernel
+* `regionBack_correct_linked`: the bytes of a calling body with one linked word kernel
   whose code meets its word interface halt through the call, and the caller halts under the
   oracle of the guarded kernel, in a state from which the layout reads back the source value
   of the result.
@@ -101,18 +101,18 @@ states the runs of the bytes of `compileA` and the compiler theorems over them.
   meeting the interface of its data, and its summary at its call sites.
 * `linkedEnvAt`, `summaryTable`, `callsTo`, `procsAgree_summaryTable`: the environment and the
   table of one linked function alone, and their agreement.
-* `callsTo_of_exportR`, `callsTo_of_compileRegion`, `denoteAt_linkedEnvAt`: every `call` of a
+* `callsTo_of_exportR`, `callsTo_of_regionBack`, `denoteAt_linkedEnvAt`: every `call` of a
   program the back half compiles at one callee names the callee, and such a program denotes
   the same at the environment of the callee alone as at that of all linked functions.
 * `linkedSummary_eq_outSummary`: the summary of a linked function with an array result is
   its out summary `LinkedFnCallee.outSummary`.
 * `CallRoom`, `callRoom_of_forall`: the precondition of a linked function at its call
   sites, and its instance at a precondition that holds at every entry state.
-* `compileRegion_correct_linked_outO`: the program of a calling body with one linked out
+* `regionBack_correct_linked_outO`: the program of a calling body with one linked out
   kernel, one of whose parameters is the destination array and which satisfies its
   precondition at its call sites, halts under the oracle of the guarded kernel in a state
   from which the layout reads back the source value of the result;
-  `compileRegion_correct_linked_out`: with the kernel the leaky runs of its decoded bytes,
+  `regionBack_correct_linked_out`: with the kernel the leaky runs of its decoded bytes,
   the bytes of the calling body halt through the call.
 -/
 
@@ -348,16 +348,16 @@ theorem callParamsB_forall₂W {c : CalleeData} {sl : String → Option (String 
 /-! ## 3. The back half at a table of linked functions -/
 
 /-- **A result of the back half at one linked function on a program with `call`.** For a
-    result of `compileRegion σ a p [c]` on a program `p` with a `call`, the result type is a
+    result of `regionBack σ a p [c]` on a program `p` with a `call`, the result type is a
     word array, the program passes `regionExportableB`, has an export `r0` with the webs
     `r = regionWebs (regionWebsEx σ exportReg) r0 (calleeAA (some c)) (calleeAO (some c))`,
     and a printed body `b` whose bytes at the callee `c` (`calleeBytes`) are the result's
     bytes and that passes the gate `regionCoB` at `c` and the function name `a.fname` at the
     code and returned operands of `r` and the allocation certificate `cert` of
     `regionLprogC`. -/
-theorem compileRegion_spec_linked {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_spec_linked {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {c : CalleeData} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p [c] = some (P, bytes))
+    {bytes : List (BitVec 8)} (h : regionBack σ a p [c] = some (P, bytes))
     (hcf : p.callFree = false) :
     (∃ w m, t = .stackArr w m) ∧ regionExportableB (legalizeRegion p) = true
       ∧ ∃ r0 r b cert, exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
@@ -366,7 +366,7 @@ theorem compileRegion_spec_linked {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
       ∧ regionCoB σ exportReg b t r.code r.res cert (some (CalleeTab.one c)) a.fname = true
       ∧ ∃ P0, regionLprogC a (legalizeRegion p) (some (CalleeTab.one c)) (regionWebsEx σ exportReg)
           = some (P0, cert) := by
-  unfold compileRegion at h
+  unfold regionBack at h
   split at h
   · rename_i hB
     split at h
@@ -516,15 +516,15 @@ theorem regionCallee_fns_ne_nil {linked : List CalleeData} {Γ : Ctxt jasminDial
   exact List.ne_nil_of_mem (List.mem_filter.mpr ⟨hc, by simp [hfs]⟩)
 
 /-- **A result of the back half on a program with `call`, at its table.** For a result of
-    `compileRegion σ a p linked` on a program `p` with a `call`, the legalised program has an
+    `regionBack σ a p linked` on a program `p` with a `call`, the legalised program has an
     export `r0` at whose code `regionCallee` finds the table `T`, the result type is a word
     array, the program passes `regionExportableB`, and a printed body `b` has the bytes
     `calleeBytes` at `T`, passes the gate `regionCoB` at `T` and the function name `a.fname`
     at the code and returned operands of the webs `r` and the allocation certificate `cert` of
     `regionLprogC`, and passes the constant-time check `calleeCtB` at `T`. -/
-theorem compileRegion_spec_tab {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_spec_tab {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p linked = some (P, bytes))
+    {bytes : List (BitVec 8)} (h : regionBack σ a p linked = some (P, bytes))
     (hcf : p.callFree = false) :
     ∃ (T : CalleeTab) (r0 : Exported),
       exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
@@ -537,7 +537,7 @@ theorem compileRegion_spec_tab {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasmin
         ∧ calleeCtB σ exportReg (some T) b t r.code r.res cert = true
         ∧ ∃ P0, regionLprogC a (legalizeRegion p) (some T) (regionWebsEx σ exportReg)
           = some (P0, cert) := by
-  unfold compileRegion at h
+  unfold regionBack at h
   split at h
   · rename_i hB
     split at h
@@ -561,15 +561,15 @@ theorem compileRegion_spec_tab {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasmin
   · cases h
 
 /-- **A table found among linked functions is found at its own functions.** For a result of
-    `compileRegion σ a p linked` on a program `p` with a `call`, the table `T` the back half
-    finds is a nonempty sublist of `linked`, and `compileRegion σ a p T.fns` gives the same
+    `regionBack σ a p linked` on a program `p` with a `call`, the table `T` the back half
+    finds is a nonempty sublist of `linked`, and `regionBack σ a p T.fns` gives the same
     result. -/
-theorem compileRegion_tab {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_tab {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData}
-    {r : Lprog × List (BitVec 8)} (h : compileRegion σ a p linked = some r)
+    {r : Lprog × List (BitVec 8)} (h : regionBack σ a p linked = some r)
     (hcf : p.callFree = false) :
-    ∃ T : CalleeTab, T.fns.Sublist linked ∧ T.fns ≠ [] ∧ compileRegion σ a p T.fns = some r := by
-  unfold compileRegion at h
+    ∃ T : CalleeTab, T.fns.Sublist linked ∧ T.fns ≠ [] ∧ regionBack σ a p T.fns = some r := by
+  unfold regionBack at h
   split at h
   · rename_i hB
     split at h
@@ -582,7 +582,7 @@ theorem compileRegion_tab {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDiale
           cases hcf
         | some T =>
           refine ⟨T, regionCallee_sublist hc, regionCallee_fns_ne_nil hc, ?_⟩
-          unfold compileRegion
+          unfold regionBack
           rw [ite_eq_left hB]
           simp only [hr, regionCallee_self hc]
           exact h
@@ -992,9 +992,9 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallMeets.C
   | outC l ins po n => exact sContract_guarded h _ _
 
 /-- **The top hypotheses of a callee of a kind**, at its callee data `c`: the hypotheses of the
-    correctness theorems at one linked function of that kind (`compileRegion_correct_linked`,
-    `compileRegion_correct_linked_outO`, `RegionLinkArr.compileRegion_correct_contract_ins`,
-    `RegionLinkArr.compileRegion_correct_contract_out`), less the specification of the
+    correctness theorems at one linked function of that kind (`regionBack_correct_linked`,
+    `regionBack_correct_linked_outO`, `RegionLinkArr.regionBack_correct_contract_ins`,
+    `RegionLinkArr.regionBack_correct_contract_out`), less the specification of the
     callee and the summary of its symbol.
 
     * A word callee `.word sig res pr room` is the data of a linked function `l` with the word
@@ -1296,7 +1296,7 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.CalleeTab.eq_one_of_sublis
   rfl
 
 /-- **Correctness of a calling body with a table of linked kernels.** For a result
-    `(P, bytes)` of `compileRegion σ a p linked` on a program `p` with a `call`, the back half
+    `(P, bytes)` of `regionBack σ a p linked` on a program `p` with a `call`, the back half
     finds a nonempty table `T` of linked functions (the table `regionCallee` finds at the export
     `r0` of the legalised program), a sublist of `linked` with distinct symbols,
     every `call` of `p` names a symbol of `T`, and the block the code of each function of `T`
@@ -1327,10 +1327,10 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.CalleeTab.eq_one_of_sublis
     `ImageAddrCallMeets.haltsC_of_contracts`, with the hypotheses of the calls of each symbol
     from `CalleeKind.Top.ok` and the region of the code of `T` from `CalleeTab.regionBlocks`.
     The correctness theorems at one linked function are its instances at `linked = [c]`. -/
-theorem compileRegion_correct_linked_multi {σ : AbiLayout} {a : AbiNames}
+theorem regionBack_correct_linked_multi {σ : AbiLayout} {a : AbiNames}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]}
     {linked : List CalleeData} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p linked = some (P, bytes)) (hcf : p.callFree = false) :
+    (h : regionBack σ a p linked = some (P, bytes)) (hcf : p.callFree = false) :
     ∃ T : CalleeTab, (∃ r0, exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
         ∧ regionCallee linked (legalizeRegion p) r0.code = some (some T))
       ∧ T.fns.Sublist linked ∧ T.fns ≠ [] ∧ T.names.Nodup
@@ -1364,7 +1364,7 @@ theorem compileRegion_correct_linked_multi {σ : AbiLayout} {a : AbiNames}
                 (X86Backend.LprogBytesLinkReloc.regionProg (T.regionEntries q))) 0 sa sa'
               ∧ σ.ResultOf sa sa' (denVal t
                 (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
-  obtain ⟨T, r0, hr0, hcT, hst, hB, r, b, cert, hwb, hbs, hg, -, -⟩ := compileRegion_spec_tab h hcf
+  obtain ⟨T, r0, hr0, hcT, hst, hB, r, b, cert, hwb, hbs, hg, -, -⟩ := regionBack_spec_tab h hcf
   have hnd : T.names.Nodup := by
     have hg' := hg
     simp only [regionCoB, Option.all, Bool.and_eq_true] at hg'
@@ -1683,7 +1683,7 @@ end Table
     interface at entry states satisfying `room` (`WordCallee`), and let every entry state
     of a call satisfy `room`.
 
-    Let `compileRegion σ a p [c]` give the bytes `bytes` on a program `p` with a `call`,
+    Let `regionBack σ a p [c]` give the bytes `bytes` on a program `p` with a `call`,
     and let the table `T`
     agree with the call environment `Ec`, hold summaries on words with word results only,
     and give the symbol of `c` the summary `pr`. From every entry state `sa`
@@ -1698,9 +1698,9 @@ end Table
       satisfy the precondition of `wordSig l c.args c.resReg` (the guarded callee
       `DecodedCTCall.guarded`), in a state from which `σ` reads back the same value.
 
-    It is `compileRegion_correct_linked_multi` at the table of `c` and the word kind
+    It is `regionBack_correct_linked_multi` at the table of `c` and the word kind
     `.word (wordSig l c.args c.resReg) c.resReg pr room`, whose region is the block `qk`. -/
-theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
+theorem regionBack_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
     {c : CalleeData} (hc : l.calleeData = some c)
     (hL : X86Backend.LinkedFnCallee.WordLayout l c.args c.resReg) {qk : List RInstr}
     (hqk : decodeLprog c.bytes = some qk) (hnc : ∀ tg, RInstr.call tg ∉ qk)
@@ -1713,7 +1713,7 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
     (hroom : ∀ ret (sA : AState), room (entryOf ret sA))
     {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
+    (h : regionBack σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
     {Ec : CallEnv jasminDialect} {T : ProcTable} (hT : ProcsAgree Ec T)
     (hwo : ∀ f pr, T f = some pr → pr.WordOnly) (hrw : ∀ f pr, T f = some pr → pr.RetWord)
     (hTc : T c.name = some pr)
@@ -1731,7 +1731,7 @@ theorem compileRegion_correct_linked {l : CatCrypt.Crypto.Hax.LinkedFn}
           pc 0 sa sa'
         ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
-  obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ := compileRegion_correct_linked_multi h hcf
+  obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ := regionBack_correct_linked_multi h hcf
   obtain rfl := CalleeTab.eq_one_of_sublist hsub hne
   have hmem : ∀ c' ∈ (CalleeTab.one c).fns, c' = c := fun c' hc' => List.mem_singleton.mp hc'
   obtain ⟨pc, -, ⟨sO, hO, hRO⟩, hC⟩ :=
@@ -1788,7 +1788,7 @@ theorem linkedSummary_eq_outSummary {l : CatCrypt.Crypto.Hax.LinkedFn}
     let `X` meet the out interface `outSig l ins n`, and let `l` satisfy its precondition at
     its call sites (`CallRoom l ins`).
 
-    Let `compileRegion σ a p [c]` give the bytes `bytes` on a program `p` with a `call`, and
+    Let `regionBack σ a p [c]` give the bytes `bytes` on a program `p` with a `call`, and
     let the table `T` agree with the call environment `Ec`, hold summaries on words with word
     results at every other symbol, and give the symbol of `c` the summary
     `outSummary l ins n`. From every entry state `sa` satisfying `σ.Regions`, at every
@@ -1802,10 +1802,10 @@ theorem linkedSummary_eq_outSummary {l : CatCrypt.Crypto.Hax.LinkedFn}
     of `outSig l ins n`, in a state from which `σ` reads back the source value of the
     result.
 
-    The run under the oracle is `compileRegion_correct_linked_multi` at the table of `c` and
+    The run under the oracle is `regionBack_correct_linked_multi` at the table of `c` and
     the out kind `.outO l ins po n`; the items are `calleeBytes_items` and the decoded bytes
     `calleeBytes_decode_one` at the printed body it gives. -/
-theorem compileRegion_correct_linked_outO
+theorem regionBack_correct_linked_outO
     {l : CatCrypt.Crypto.Hax.LinkedFn} {c : CalleeData} (hc : l.calleeData = some c)
     {ins : List (String × ArgKind)} {po : String} {n : Nat}
     (hL : X86Backend.LinkedFnCallee.OutLayout l ins po n) (hins : c.ins = ins)
@@ -1815,7 +1815,7 @@ theorem compileRegion_correct_linked_outO
     (hroom : CallRoom l ins)
     {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
+    (h : regionBack σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
     {Ec : CallEnv jasminDialect} {T : ProcTable} (hT : ProcsAgree Ec T)
     (hwo : ∀ f pr, f ≠ c.name → T f = some pr → pr.WordOnly)
     (hrw : ∀ f pr, f ≠ c.name → T f = some pr → pr.RetWord)
@@ -1838,7 +1838,7 @@ theorem compileRegion_correct_linked_outO
           pc 0 sa sa'
         ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
-  obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ := compileRegion_correct_linked_multi h hcf
+  obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ := regionBack_correct_linked_multi h hcf
   obtain rfl := CalleeTab.eq_one_of_sublist hsub hne
   have hmem : ∀ c' ∈ (CalleeTab.one c).fns, c' = c := fun c' hc' => List.mem_singleton.mp hc'
   obtain ⟨pc, ⟨b, hbs, hpr, hprog⟩, ⟨sO, hO, hRO⟩, -⟩ :=
@@ -1864,14 +1864,14 @@ theorem compileRegion_correct_linked_outO
     exact ⟨ht.symm, tr, hx⟩
 
 /-- **Correctness of a calling body with one linked out kernel, through the call.** Under the
-    hypotheses of `compileRegion_correct_linked_outO`, with `X` the leaky runs under
+    hypotheses of `regionBack_correct_linked_outO`, with `X` the leaky runs under
     `ctRegime` of the block `qk` the bytes of `l` decode to: the bytes decode to the caller
     program `pc` followed by the shifted block `qk`, and this program halts through the call
     (`HaltsC`) from `sa` at index `0` in a state from which `σ` reads back the source value of
     the result. The block `qk` has no `call` (`regionCoB_callee`), so the oracle run of
-    `compileRegion_correct_linked_outO` links with it
+    `regionBack_correct_linked_outO` links with it
     (`Callee.haltsC_append_of_haltsO_runOf`). -/
-theorem compileRegion_correct_linked_out
+theorem regionBack_correct_linked_out
     {l : CatCrypt.Crypto.Hax.LinkedFn} {c : CalleeData} (hc : l.calleeData = some c)
     {ins : List (String × ArgKind)} {po : String} {n : Nat}
     (hL : X86Backend.LinkedFnCallee.OutLayout l ins po n) (hins : c.ins = ins)
@@ -1882,7 +1882,7 @@ theorem compileRegion_correct_linked_out
     (hroom : CallRoom l ins)
     {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
+    (h : regionBack σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
     {Ec : CallEnv jasminDialect} {T : ProcTable} (hT : ProcsAgree Ec T)
     (hwo : ∀ f pr, f ≠ c.name → T f = some pr → pr.WordOnly)
     (hrw : ∀ f pr, f ≠ c.name → T f = some pr → pr.RetWord)
@@ -1895,9 +1895,9 @@ theorem compileRegion_correct_linked_out
       ∧ ∃ sa', HaltsC aMachine (pc ++ X86Backend.LprogBytesLink.shiftProg pc.length qk) 0 sa sa'
         ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
-  obtain ⟨pc, -, -, -, -, hdec, sa', hO, hR⟩ := compileRegion_correct_linked_outO hc hL hins
+  obtain ⟨pc, -, -, -, -, hdec, sa', hO, hR⟩ := regionBack_correct_linked_outO hc hL hins
     hpar hX hroom h hcf hT hwo hrw hTc sa V hV hreg fuel hv
-  obtain ⟨-, -, -, r, b, cert, -, -, -, hg, -⟩ := compileRegion_spec_linked h hcf
+  obtain ⟨-, -, -, r, b, cert, -, -, -, hg, -⟩ := regionBack_spec_linked h hcf
   obtain ⟨-, hnc⟩ := regionCoB_callee hg
   have hcb : c.bytes = l.bytes := (CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hc).2.2.2.2.2.1
   exact ⟨pc, hdec qk hqk, sa', X86Backend.Callee.haltsC_append_of_haltsO_runOf ctRegime pc qk
@@ -2278,13 +2278,13 @@ theorem callsTo_of_exportR {nArgs : Nat} {fn f : String} {Γ : Ctxt jasminDialec
 
 /-- **Every call of a program the back half compiles at one callee names the callee**:
     `callsToAny_of_regionCallee` at the table of the callee (`regionCallee_singleton`). -/
-theorem callsTo_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem callsTo_of_regionBack {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {c : CalleeData}
     {r : Lprog × List (BitVec 8)}
-    (h : compileRegion σ a p [c] = some r) (hcf : p.callFree = false) :
+    (h : regionBack σ a p [c] = some r) (hcf : p.callFree = false) :
     callsTo c.name p = true := by
   obtain ⟨P, bytes⟩ := r
-  obtain ⟨T, r0, hr0, hc, -⟩ := compileRegion_spec_tab h hcf
+  obtain ⟨T, r0, hr0, hc, -⟩ := regionBack_spec_tab h hcf
   have h1 := callsToAny_of_regionCallee hr0 hc
   rw [regionCallee_singleton hc, CalleeTab.names_one] at h1
   exact h1

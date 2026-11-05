@@ -2123,14 +2123,14 @@ open CatCrypt.Crypto.SecureCompilation.Haxc
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoComplete
 open CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize (x86Data)
 
-/-- **The coalescing stage on the output of the chain, on both arms of `compileRegion`.** On a
+/-- **The coalescing stage on the output of the chain, on both arms of `regionBack`.** On a
     module `refusal?` accepts, the front returns a program `p`, at every table `bi` the chain
     `extChain` returns a program `q` on `p`, and the export `exportR` returns code `r` on `q`
     at every number of arguments, name, depth, label and instruction set. Take the webs
     `regionWebsAt ex callee r` of `r` at the names `ex` and an optional table of callees.
     Without a table, let the guards and the select of the instruction
     set contain no shadow instruction of a call (`GuardsNoShadow`) and `q` pass
-    `regionExportableB` and have no `call`, as on the call-free arm of `compileRegion`. When
+    `regionExportableB` and have no `call`, as on the call-free arm of `regionBack`. When
     the alias map of the coalesced code of the webs has no real aliasing, `regionCoStage` on
     the webs refuses neither at `coCfgB` nor at `coEntryFix`, at every printed body, result
     type and function name. The checker theorems of `CoalesceComplete` this rests on name no

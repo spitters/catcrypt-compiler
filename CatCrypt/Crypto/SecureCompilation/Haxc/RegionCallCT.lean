@@ -16,7 +16,7 @@ set_option autoImplicit false
 /-!
 # Byte-level constant time of a calling body
 
-The region back half `compileRegion` compiles a program with calls of linked functions to
+The region back half `regionBack` compiles a program with calls of linked functions to
 the bytes of the function followed by the code of the table `T` of the called functions that
 `regionCallee` finds, and gates the function with the constant-time decision with calls of
 linked callees `AbiLayout.ctCheckRXT` at the interface of the table (`calleeCtB`): the clobber
@@ -31,12 +31,12 @@ when the leaky runs of each block meet an interface within that of its function.
 
 * `regionCoB_remoteSym`: the remote symbols of a calling body that passes the gate are
   symbols of its table.
-* `compileRegion_spec_callee`: a result of `compileRegion` on a program with `call` has the
+* `regionBack_spec_callee`: a result of `regionBack` on a program with `call` has the
   table `T` that `regionCallee` finds at the export of the legalised program, a nonempty
   sublist of the linked functions with distinct symbols; the program `pr` of the function
   passes `ctCheckRXT` at the interface of `T`; and at the blocks the codes of `T` decode to,
   the code of `T` is their region and the bytes decode to `pr` followed by that region.
-* `compileRegion_call_bytes_ct`: for such a result, every two runs with leakage of the
+* `regionBack_call_bytes_ct`: for such a result, every two runs with leakage of the
   decoded bytes from entry states satisfying `σ.Regions`, agreeing on the public data of
   `σ`, from which `pr` halts under the guarded oracle of the blocks at the entries of `T`,
   have equal traces.
@@ -63,7 +63,7 @@ open CatCrypt.Crypto.SecureCompilation.CT
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions (exportR)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall (remoteSym_mem_names
-  compileRegion_spec_tab calleeBytes_tab regionCallee_fns_ne_nil)
+  regionBack_spec_tab calleeBytes_tab regionCallee_fns_ne_nil)
 
 /-- The remote symbols of a body that passes `regionCoB` at a table are symbols of the table:
     the decode of the call sites of the gate (`calleeBodyBT_spec`) at the class
@@ -78,7 +78,7 @@ theorem regionCoB_remoteSym {σ : AbiLayout} {nm : String → String} {body : Lc
   exact remoteSym_mem_names hpr (calleeBodyBT_spec.mp hb).decode
 
 /-- **The bytes and the gate of a calling body, at its table.** A result `(P, bytes)` of
-    `compileRegion σ a p linked` on a program `p` with `call` has the table `T` that
+    `regionBack σ a p linked` on a program `p` with `call` has the table `T` that
     `regionCallee` finds at the export `r0` of the legalised program: a nonempty sublist of
     `linked` with distinct symbols and nonempty codes. The program `pr` of the function
     passes the constant-time decision with calls of linked callees `σ.ctCheckRXT` at the
@@ -88,9 +88,9 @@ theorem regionCoB_remoteSym {σ : AbiLayout} {nm : String → String} {body : Lc
     is the region of these blocks at the entry offsets and indices of the table
     (`CalleeTab.regionBlocks`), and the bytes decode to `pr` followed by the region program
     with its targets raised by `pr.length` (`calleeBytes_decode`). -/
-theorem compileRegion_spec_callee {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_spec_callee {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p linked = some (P, bytes))
+    {bytes : List (BitVec 8)} (h : regionBack σ a p linked = some (P, bytes))
     (hcf : p.callFree = false) :
     ∃ T : CalleeTab, (∃ r0, exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
         ∧ regionCallee linked (legalizeRegion p) r0.code = some (some T))
@@ -105,7 +105,7 @@ theorem compileRegion_spec_callee {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
               (X86Backend.LprogBytesLinkReloc.regionProg (T.regionEntries q))
           ∧ decodeLprog bytes = some (pr ++ shiftProg pr.length
               (X86Backend.LprogBytesLinkReloc.regionProg (T.regionEntries q))) := by
-  obtain ⟨T, r0, hr0, hcT, -, -, r, b, cert, -, hbs, hg, hct, -⟩ := compileRegion_spec_tab h hcf
+  obtain ⟨T, r0, hr0, hcT, -, -, r, b, cert, -, hbs, hg, hct, -⟩ := regionBack_spec_tab h hcf
   have hnd : T.names.Nodup := by
     have hg' := hg
     simp only [regionCoB, Option.all, Bool.and_eq_true] at hg'
@@ -157,8 +157,8 @@ theorem AbiLayout.ctCheckRXO_sound_opt {σ : AbiLayout} {clob : String → Bool}
         exact .inr hdw
 
 /-- **Byte-level constant time of a calling body, at its table.** For a result `(P, bytes)` of
-    `compileRegion σ a p linked` on a program `p` with `call`, the table `T` that
-    `regionCallee` finds (`compileRegion_spec_callee`) and the program `pr` of the function
+    `regionBack σ a p linked` on a program `p` with `call`, the table `T` that
+    `regionCallee` finds (`regionBack_spec_callee`) and the program `pr` of the function
     satisfy: for every map `q` such that the code of each function `c` of `T` decodes to
     `q c.name`, the bytes decode to `pr` followed by the region program of the blocks; and for
     interfaces `sg` such that the leaky runs of `q c.name` meet `sg c.name` (`CalleeSpec`),
@@ -172,9 +172,9 @@ theorem AbiLayout.ctCheckRXO_sound_opt {σ : AbiLayout} {clob : String → Bool}
     `AbiLayout.ctCheckRXT_sound` at the blocks of the region (`CalleeTab.regionBlocks`), whose
     entries are distinct (`CalleeTab.entryIdx_inj`) and carry the interface of their function
     (`CalleeTab.ctIfc_entry`, `CalleeTab.ctDst_entry`, `CalleeTab.clob_of_clobB`). -/
-theorem compileRegion_call_bytes_ct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_call_bytes_ct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p linked = some (P, bytes))
+    {bytes : List (BitVec 8)} (h : regionBack σ a p linked = some (P, bytes))
     (hcf : p.callFree = false) :
     ∃ T : CalleeTab, (∃ r0, exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
         ∧ regionCallee linked (legalizeRegion p) r0.code = some (some T))
@@ -202,7 +202,7 @@ theorem compileRegion_call_bytes_ct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt j
               RunL ctRegime ok₂ (pr ++ shiftProg pr.length
                 (X86Backend.LprogBytesLinkReloc.regionProg (T.regionEntries fun c => q c.name)))
                 0 s₂ t₂ e₂ → t₁ = t₂ := by
-  obtain ⟨T, hpin, hsub, hne, hnd, hneB, pr, hct, hrest⟩ := compileRegion_spec_callee h hcf
+  obtain ⟨T, hpin, hsub, hne, hnd, hneB, pr, hct, hrest⟩ := regionBack_spec_callee h hcf
   refine ⟨T, hpin, hsub, hne, hnd, pr, fun q hq => ?_⟩
   obtain ⟨hnoc, hR, hd⟩ := hrest (fun c => q c.name) hq
   refine ⟨hd, fun sg hsg s₁ s₂ s₁' s₂' hag hR₁ hR₂ h₁ h₂ ok₁ ok₂ t₁ t₂ e₁ e₂ hr₁ hr₂ => ?_⟩

@@ -128,7 +128,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytesChecked_eq) in
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry (regArrCtxB abiValOf_unique) in
 /-- **Constant time of the bytes of the region back half from the proved chain.** Let
-    `Pre` be a precondition on machine states. Let `compileRegion` return `(P, bytes)` on a
+    `Pre` be a precondition on machine states. Let the stages `regionBack` return `(P, bytes)` on a
     program `p` over a context of registers and stack arrays, without a `call`, that is
     constant time at the source events for labels `L` that agree with the public data of
     `σ`, on the valuations the layout reads off machine states that satisfy `σ.Regions` and
@@ -138,14 +138,14 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry (regArrCtxB ab
     steps, between entry states that satisfy `σ.Regions` and `Pre`, agree on the public data
     of `σ`, and at the first of which `p` denotes at some fuel at a valuation the layout
     reads off it. The proof is `regionWide_bytes_ct_of_regionExp` at the webs of the export
-    and the printed body of `compileRegion_spec`, which pass the gate `regionCoB` and the three
+    and the printed body of `regionBack_spec`, which pass the gate `regionCoB` and the three
     checks of
     `regionCtB`, for the precondition `Pre` restricted to the two entry states and at a fuel
     above the bounds of the two valuations the layout reads off them, which are unique
     (`abiValOf_unique`). -/
-theorem regionChain_bytes_ct (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
+theorem regionBackChain_bytes_ct (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (p : NFProg jasminDialect Γ [t]) (hcf : p.callFree = true) {P : Lprog}
-    {bytes : List (BitVec 8)} (hJ : compileRegion σ a p = some (P, bytes)) (L : Labels Γ)
+    {bytes : List (BitVec 8)} (hJ : regionBack σ a p = some (P, bytes)) (L : Labels Γ)
     (Pre : AState → Prop)
     (hct : ∀ V₁ V₂ : Ctxt.Valuation Γ,
       (∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa V₁) →
@@ -162,7 +162,7 @@ theorem regionChain_bytes_ct (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDi
         ∧ ∃ (V : Ctxt.Valuation Γ) (fuel : Nat), AbiValOf σ s₁ V
           ∧ (p.denote fuel V).isSome = true)
       (fun s u => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s u s') := by
-  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, hck, -⟩ := compileRegion_spec hJ
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, hck, -⟩ := regionBack_spec hJ
   obtain ⟨hlk, hprW, hgW⟩ := regionCtB_spec hck
   rw [encodeLfundefBytesChecked_eq hb] at hd
   rintro sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, V₁, fuel, hV₁, hden⟩ hb₁ hb₂
@@ -202,6 +202,57 @@ theorem regionChain_bytes_ct (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDi
       rw [regionBytePub_legalizeRegion]
       exact regionBytePub_of_pubAgree hL hV₁ hV₂ hag h₁ h₂ ⟨hP₁, Or.inl rfl⟩
         ⟨hP₂, Or.inr rfl⟩ hden') hb₁ hb₂
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry (regArrCtxB) in
+/-- **Constant time of the bytes of the region back half from the proved chain**, through
+    the narrow-word stages. The hypotheses and the conclusion are those of
+    `regionBackChain_bytes_ct` at `compileRegion`. The context of `p` holds 64-bit words, since
+    the layout reads a valuation of it off the first entry state (`map_wideTy_of_abiValOf`), so
+    `compileRegion` runs `regionBack` on the widened program carried back to that context
+    (`compileRegion_ctx`); its events at a valuation are those of the widened program at the
+    widened valuation (`NarrowWords.leakRun_snd_heq`), which the stages keep equal where the
+    source events are (`NarrowWords.narrowPrep_events`), and it denotes the widened
+    denotation of `p`. -/
+theorem regionChain_bytes_ct (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (p : NFProg jasminDialect Γ [t]) (hcf : p.callFree = true) {P : Lprog}
+    {bytes : List (BitVec 8)} (hJ : compileRegion σ a p = some (P, bytes)) (L : Labels Γ)
+    (Pre : AState → Prop)
+    (hct : ∀ V₁ V₂ : Ctxt.Valuation Γ,
+      (∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa V₁) →
+      (∃ sa, σ.Regions sa ∧ Pre sa ∧ AbiValOf σ sa V₂) → PubEqV L V₁ V₂ →
+      ∃ N, ∀ fuel, N ≤ fuel →
+        (Dialects.NFLeak.NFProg.leakRun (jLeakModel JLeakParams.owned) fuel p V₁).map Prod.snd
+          = (Dialects.NFLeak.NFProg.leakRun (jLeakModel JLeakParams.owned) fuel p V₂).map
+            Prod.snd)
+    (hL : PubLabelsOK σ L) (hΓ : regArrCtxB Γ = true)
+    (hval : ∀ sa, σ.Regions sa → ∃ V : Ctxt.Valuation Γ, AbiValOf σ sa V)
+    {prog : List RInstr} (hd : decodeLprog bytes = some prog) :
+    ConstantTimeRel
+      (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
+        ∧ ∃ (V : Ctxt.Valuation Γ) (fuel : Nat), AbiValOf σ s₁ V
+          ∧ (p.denote fuel V).isSome = true)
+      (fun s u => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s u s') := by
+  rintro sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, V₁, fuel, hV₁, hden⟩ hb₁ hb₂
+  have hw := map_wideTy_of_abiValOf V₁ hV₁
+  obtain ⟨-, q, hq, hb, hcfq, hdq⟩ := compileRegion_ctx hw hJ
+  have hev : ∀ fuel (V : Ctxt.Valuation Γ),
+      (Dialects.NFLeak.NFProg.leakRun (jLeakModel JLeakParams.owned) fuel
+          (VIR.NarrowWords.castProg hw rfl q) V).map Prod.snd =
+        (Dialects.NFLeak.NFProg.leakRun (jLeakModel JLeakParams.owned) fuel q
+          (VIR.NarrowWords.mapVal V)).map Prod.snd := fun fuel V =>
+    VIR.NarrowWords.leakRun_snd_heq _ hw.symm rfl (VIR.NarrowWords.castProg_heq hw rfl q)
+      (VIR.NarrowWords.mapVal_heq_of_wide hw V).symm fuel
+  refine regionBackChain_bytes_ct σ a (VIR.NarrowWords.castProg hw rfl q) (hcfq.trans hcf) hb L
+    Pre ?_ hL hΓ hval hd sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, V₁, fuel, hV₁, ?_⟩ hb₁ hb₂
+  · intro W₁ W₂ hW₁ hW₂ hpub
+    obtain ⟨N, hN⟩ := hct W₁ W₂ hW₁ hW₂ hpub
+    exact ⟨N, fun fuel hf => (hev fuel W₁).trans
+      ((VIR.NarrowWords.narrowPrep_events (fun _ => rfl) fuel hq W₁ W₂ (hN fuel hf)).trans
+        (hev fuel W₂).symm)⟩
+  · have h := hdq (CallDenote.env (d := jasminDialect)) fuel V₁
+    change (VIR.NarrowWords.castProg hw rfl q).denote fuel V₁ = (p.denote fuel V₁).map _ at h
+    rw [h, Option.isSome_map]
+    exact hden
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertEntry (regArrCtxB) in
 /-- The context `nfCtx σ` of the route program under a layout holds registers and stack
@@ -345,9 +396,13 @@ theorem NFEntry.compileR_ct (E : NFEntry) (sec : _root_.Hax.FnSecrecy) (s : E.Sr
       obtain ⟨y, hy, -⟩ := Option.map_eq_some_iff.mp hx
       exact H sa₁ sa₂ u₁ u₂ ⟨hag, h₁, h₂, hP₁, hP₂, V, fuel, hV, by rw [hy]; rfl⟩ hb₁ hb₂
   | false =>
-      obtain ⟨T, ⟨r0, hr0, hcT⟩, hsub, hne, -, pr, hCT⟩ := compileRegion_call_bytes_ct hJ hcf
-      obtain ⟨T', ⟨r0', hr0', hcT'⟩, -, -, -, -, hdq, -, sg, hsg, H⟩ :=
+      obtain ⟨-, w, hw, hJb, hcfw, -⟩ := compileRegion_ctx (nfCtx_wide σ) hJ
+      obtain ⟨T, ⟨r0, hr0, hcT⟩, hsub, hne, -, pr, hCT⟩ :=
+        regionBack_call_bytes_ct hJb (hcfw.trans hcf)
+      obtain ⟨T', ⟨w', r0', hw', hr0', hcT'⟩, -, -, -, -, hdq, -, sg, hsg, H⟩ :=
         E.call_halts_tab hnd hk hq hpj hcf hJ
+      rw [hw, Option.some.injEq] at hw'
+      subst hw'
       rw [hr0, Option.some.injEq] at hr0'
       subst hr0'
       rw [hcT, Option.some.injEq, Option.some.injEq] at hcT'

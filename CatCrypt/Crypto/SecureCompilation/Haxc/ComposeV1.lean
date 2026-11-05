@@ -100,13 +100,13 @@ open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords region
 
 /-! ## 1. The compiler at an entry -/
 
-/-- A structured program the region back half compiles without linked functions has no
+/-- A structured program the stages `regionBack` compile without linked functions has no
     `call`: `regionCallee` at the empty list returns a result on a program without `call`
     only. -/
-theorem callFree_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem callFree_of_regionBack {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {r : Lprog × List (BitVec 8)}
-    (h : compileRegion σ a p = some r) : p.callFree = true := by
-  unfold compileRegion at h
+    (h : regionBack σ a p = some r) : p.callFree = true := by
+  unfold regionBack at h
   split at h
   · split at h
     · split at h
@@ -117,6 +117,32 @@ theorem callFree_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jas
       · cases h
     · cases h
   · cases h
+
+/-- A structured program the region back half compiles without linked functions has no
+    `call`: its widened program has none (`callFree_of_regionBack`), and the narrow-word
+    stages keep the calls (`NarrowWords.callFree_narrowPrep`). -/
+theorem callFree_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {r : Lprog × List (BitVec 8)}
+    (h : compileRegion σ a p = some r) : p.callFree = true := by
+  obtain ⟨-, q, hq, hb⟩ := compileRegion_eq_some.mp h
+  rw [← VIR.NarrowWords.callFree_narrowPrep hq]
+  exact callFree_of_regionBack hb
+
+/-- The result type of the region front is not an array of narrow words: the conversion
+    `catTy` sends every array to a `memref` of 64-bit words. -/
+theorem narrowArrB_mapTy_catTy (x : NFDialect.NfTy) :
+    narrowArrB (CryptoToJasminCom.mapTy (CatCrypt.Crypto.Hax.NFToCat.catTy x)) = false := by
+  cases x <;> rfl
+
+/-- The context of the region front holds 64-bit words only: the widening fixes it. -/
+theorem nfCtx_wide (σ : AbiLayout) : (nfCtx σ).map VIR.NarrowWords.wideTy = nfCtx σ := by
+  simp only [nfCtx, CryptoToJasminCom.mapCtx, CatCrypt.Crypto.Hax.ImpToNF.entryCtx,
+    NFToRoute.abiEntry, CatCrypt.Crypto.Hax.NFToCat.abiParamsArr, List.map_map,
+    List.map_reverse]
+  congr 1
+  apply List.map_congr_left
+  intro a _
+  rcases a with ⟨_, _, _ | _⟩ <;> rfl
 
 /-- **The structured program of the compiler at an entry**: the translation `E.toNF` of the
     source program and the chain `extChain` at its declared procedures, ending in the
@@ -170,7 +196,8 @@ theorem NFEntry.frontR_of_compileRegion {E : NFEntry} {s : E.Src} {σ : AbiLayou
     E.frontR σ s = some ⟨nfCtx σ, _, .regions p⟩ := by
   have hex : exportRegion (declSigs (E.decls s)) p = some (.regions p) := by
     unfold exportRegion
-    rw [(compileRegion_spec hc).1, onlyCalls_of_callFree _ p (callFree_of_compileRegion hc)]
+    rw [show ExportRegions.regionExportableB (legalizeRegion p) = true from (compileRegion_spec hc).1,
+      onlyCalls_of_callFree _ p (callFree_of_compileRegion hc)]
     rfl
   unfold NFEntry.frontR
   rw [hq, Option.bind_some, hp, Option.bind_some, hex]
@@ -212,11 +239,15 @@ theorem NFEntry.compileR_correct (E : NFEntry) (s : E.Src) (σ : AbiLayout) (fna
         sa'.mem x = sa.mem x)
       ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
         ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
-  obtain ⟨t, q, hf, hJ⟩ := NFEntry.compileR_spec hc
+  rw [NFEntry.compileR_eq_bind] at hc
+  obtain ⟨q0, hq0, hc⟩ := Option.bind_eq_some_iff.mp hc
+  obtain ⟨q, hp, hJ⟩ := Option.bind_eq_some_iff.mp hc
+  have hf := NFEntry.frontR_of_compileRegion hq0 hp hJ
   obtain ⟨V, fuel, x, hV, hx, hv⟩ := E.toFrontLegOfR.leg σ s _ hf sa v hsep hrun
   rw [RouteProgJ.envDenote_regions_of_callFree _ fuel q (callFree_of_compileRegion hJ)] at hx
   obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp hx
-  obtain ⟨prog', sa', hd, hh, hR, hsp, hkeep, hA⟩ := compileRegion_correct hJ sa V hV hsep fuel hw
+  obtain ⟨prog', sa', hd, hh, hR, hsp, hkeep, hA⟩ := compileRegion_correct_wide hJ sa V hV hsep fuel hw
+    (narrowArrB_mapTy_catTy _)
   refine ⟨prog', sa', hd, hh, ?_, hsp, hkeep, hA⟩
   rw [hv]
   exact hR

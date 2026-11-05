@@ -19,7 +19,7 @@ Jasmin dialect, a printed body `body` and an allocation certificate `cert`. The 
 webs `regionWebsAt` of the export `exportR` of `p` pass the gate `regionCoB` and the
 constant-time check `regionCtB` against `body` at `cert`, and `body` encodes to the given bytes.
 These are the checks
-`compileRegion` applies to the body its allocator prints; here the body is read off the
+`regionBack` applies to the body its allocator prints; here the body is read off the
 bytes, not produced by the compiler.
 
 ## Main results
@@ -31,7 +31,7 @@ bytes, not produced by the compiler.
 * `decompile_ct`: the decodings of the bytes of an accepted candidate are constant time
   between entry states related by `RegionBytePub`, when `p` is constant time at the source
   events.
-* `decompileB_of_compileRegion`: the result of `compileRegion` on a program without `call`
+* `decompileB_of_regionBack`: the result of `regionBack` on a program without `call`
   is accepted at that program after the region legalisation `legalizeRegion` (the identity
   on a program without `rorImm` and without and-not), with the printed body and certificate
   of the compiler.
@@ -178,14 +178,14 @@ theorem decompile_ct (Pj : JLeakParams) {c : DecompCand Γ t} {bytes : List (Bit
     (regionExp_webs _ hr) (regionWebsLeak_of_regionExp (regionExp_webs _ hr)) hco hlk hprW
     hgW ok hdec
 
-/-- **The compiler's output is accepted.** For a result `(P, bytes)` of `compileRegion σ a p`
+/-- **The compiler's output is accepted.** For a result `(P, bytes)` of `regionBack σ a p`
     on a program without `call`, the candidate of `p` with the printed body and certificate
     of the compiler passes `decompileB` at the function name of `a`. -/
-theorem decompileB_of_compileRegion {a : AbiNames} {p : NFProg jasminDialect Γ [t]}
+theorem decompileB_of_regionBack {a : AbiNames} {p : NFProg jasminDialect Γ [t]}
     (hcf : p.callFree = true) {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p = some (P, bytes)) :
+    (h : regionBack σ a p = some (P, bytes)) :
     ∃ body cert, decompileB σ a.fname ⟨legalizeRegion p, body, cert⟩ bytes = true := by
-  obtain ⟨hB, r0, r, b, cert, hr, rfl, hbs, hco, hck, -⟩ := compileRegion_spec h
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hbs, hco, hck, -⟩ := regionBack_spec h
   refine ⟨b, cert, ?_⟩
   simp only [decompileB, hB, legalizeRegion_callFree hcf, hr, hco, hck, hbs, Bool.and_self,
     decide_true]

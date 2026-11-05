@@ -39,8 +39,8 @@ at its halt each observed cell name holds the word of its cell.
   that passes `cellKeepB`.
 * `keepRO_of_cells`, `renImage_bytes_ro`: `renImage_bytes` with the bytes of the read-only
   regions kept.
-* `regionROB`, `compileRegion_spec_ro`: the check `roKeepB` on the virtual body that
-  `compileRegion` computes, and the facts of `compileRegion_spec` with it.
+* `regionROB`, `regionBack_spec_ro`: the check `roKeepB` on the virtual body that
+  `regionBack` computes, and the facts of `regionBack_spec` with it.
 -/
 
 @[expose] public section
@@ -466,10 +466,10 @@ theorem renImage_bytes_ro {σ : AbiLayout} {nm : String → String}
   exact ⟨prog, sa', hd, hh, hcells, hsp,
     keepRO_of_cells hg hU sa hreg hrun hro hd hh hcells hkeep⟩
 
-/-! ## 6. The read-only check of `compileRegion` -/
+/-! ## 6. The read-only check of `regionBack` -/
 
 /-- **The read-only check of the back half**: `roKeepB` at the pairs, the cell arrays and
-    the reference of the parts `regionCoParts` that the gate of `compileRegion` computes from
+    the reference of the parts `regionCoParts` that the gate of `regionBack` computes from
     the webs of the export of the legalised program, the first body of the printed program of its
     allocation and the allocation certificate; `false` when a stage declines. -/
 def regionROB (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -488,13 +488,13 @@ def regionROB (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : Jas
       | none => false
   | _, _ => false
 
-/-- **The facts of `compileRegion_spec` with the read-only check.** A result of
-    `compileRegion σ a p` on a program that passes `regionROB` has the export, its webs, the
-    printed body, the certificate and the checks of `compileRegion_spec`, and the parts of the
+/-- **The facts of `regionBack_spec` with the read-only check.** A result of
+    `regionBack σ a p` on a program that passes `regionROB` has the export, its webs, the
+    printed body, the certificate and the checks of `regionBack_spec`, and the parts of the
     gate at that body pass `roKeepB`. -/
-theorem compileRegion_spec_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_spec_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
+    {bytes : List (BitVec 8)} (h : regionBack σ a p = some (P, bytes))
     (hro : regionROB σ a p = true) :
     regionExportableB (legalizeRegion p) = true ∧ ∃ r0 r b cert,
       exportR Γ.length a.fname (legalizeRegion p) Γ.length 0 = some r0
@@ -509,7 +509,7 @@ theorem compileRegion_spec_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminD
           ((regionCoParts σ exportReg b t r.code r.res cert).outs
             ++ (regionCoParts σ exportReg b t r.code r.res cert).cellOuts) b
           (regionCoParts σ exportReg b t r.code r.res cert).ref = true := by
-  unfold compileRegion at h
+  unfold regionBack at h
   split at h
   · rename_i hB
     split at h

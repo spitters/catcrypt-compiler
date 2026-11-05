@@ -12,7 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.RegionBackend
 
 The allocated program `regionLprog` of a region export is the fusion post-pass
 `regionPostFuse` of the program of the allocation stage `regionAllocC` (the export, its webs
-and the physical-ABI allocation). The printed program that `compileRegion` returns is the
+and the physical-ABI allocation). The printed program that `regionBack` returns is the
 printed program `printedLprog` of that post-pass, so the theorems on `printedLprog` and on
 `regionPostFuse` apply to it at the program of the allocation stage.
 
@@ -20,7 +20,7 @@ printed program `printedLprog` of that post-pass, so the theorems on `printedLpr
 
 * `regionLprog_split`: `regionLprog` is `regionPostFuse` of the program of `regionAllocC`.
 * `regionEncode_fst`: the program of a result of `regionEncode P` is `printedLprog P`.
-* `regionImage_split`: the program of a result of `compileRegion` is
+* `regionImage_split`: the program of a result of `regionBack` is
   `printedLprog (regionPostFuse P0)` for the program `P0` of the allocation stage.
 -/
 
@@ -50,16 +50,16 @@ theorem regionEncode_fst {P : Lprog} {gate : Lcmd → Bool} {callee : Option Cal
   grind
 
 /-- **The printed program of the region back half is the printed post-pass of the allocation
-    stage**: every result `(P, bytes)` of `compileRegion` has a callee `callee` and a result
+    stage**: every result `(P, bytes)` of `regionBack` has a callee `callee` and a result
     `(P0, cert)` of the allocation stage `regionAllocC` on the legalised program at the webs
     of the result buffer, with `P = printedLprog (regionPostFuse P0)`. -/
 theorem regionImage_split {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {linked : List CalleeData} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p linked = some (P, bytes)) :
+    {bytes : List (BitVec 8)} (h : regionBack σ a p linked = some (P, bytes)) :
     ∃ callee P0 cert,
       regionAllocC a (legalizeRegion p) callee (regionWebsEx σ exportReg) = some (P0, cert)
       ∧ P = printedLprog (regionPostFuse P0) := by
-  unfold compileRegion at h
+  unfold regionBack at h
   split at h
   · split at h
     · split at h

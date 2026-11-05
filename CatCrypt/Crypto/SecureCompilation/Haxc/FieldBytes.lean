@@ -66,8 +66,8 @@ theorem field_correct_bytes {n : Nat} (P : LimbParams n) (hn : n < 2 ^ 64) (a : 
       ∧ ∃ arr : Fin n → BitVec 64, (fieldAbi2 n).ResultOf sa sa' (arrVal arr)
         ∧ arrLimbs arr n 0 = enc P (x * y) := by
   obtain ⟨prog, sa', hd, hh, hr, -⟩ :=
-    compileRegion_correct h sa (abiVal2 n P.p sa) (abiValOf_fieldAbi2 n P.p sa) hreg 0
-      (NFProg.denote_ofCom _ 0 _)
+    compileRegion_correct_wide h sa (abiVal2 n P.p sa) (abiValOf_fieldAbi2 n P.p sa) hreg 0
+      (NFProg.denote_ofCom _ 0 _) rfl
   refine ⟨prog, sa', hd, hh, (fieldCom P (mulProg P.p)).denote (abiVal2 n P.p sa), hr, ?_⟩
   have hm := fieldMul_denote P hn sa x y hx hy
   rwa [RouteProg.denote_straight] at hm

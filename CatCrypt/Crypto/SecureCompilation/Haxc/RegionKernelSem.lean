@@ -12,9 +12,9 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.RegionArrKeep
 /-!
 # The specification of a region-compiled callee from the semantics of the back half
 
-`calleeSpec_of_compileRegion` derives the specification of a region-compiled callee from the
+`calleeSpec_of_regionBack` derives the specification of a region-compiled callee from the
 keep check `keepCheckWB` on the decoded block. This module derives it from
-`compileRegion_correct` and two decided facts: a linear check `clobOkB` that every register
+`regionBack_correct` and two decided facts: a linear check `clobOkB` that every register
 the block writes, other than the stack register, is in the clobber set, and a check
 `layoutFootB` on the layout, the frame size and the store policy that the stack words and
 the pointer regions of the layout lie in the footprint `KeepFoot`.
@@ -28,8 +28,8 @@ the pointer regions of the layout lie in the footprint `KeepFoot`.
   written registers, and its soundness.
 * `layoutFootB`, `keepFoot_of_frameWords`, `keepFoot_of_regionWords`: the check that the
   layout's stack words and regions lie in `KeepFoot`, and its soundness.
-* `calleeSpec_of_compileRegion_sem`: the leaky run of the decoded block of a result of
-  `compileRegion` meets `regionSig`, from `clobOkB` and `layoutFootB`.
+* `calleeSpec_of_regionBack_sem`: the leaky run of the decoded block of a result of
+  `regionBack` meets `regionSig`, from `clobOkB` and `layoutFootB`.
 * `layoutFootRoB`, `RegionCorrectRO`, `calleeSpec_of_regionCorrectRO`: the footprint check
   on the stack words and the regions of an out result only, the correctness clause of the
   back half with the read-only regions kept, and the specification of the callee from them.
@@ -198,14 +198,14 @@ theorem keepFoot_of_regionWords {σ : AbiLayout} {F : Nat} {K : StorePol}
 /-! ## 4. The specification of a region-compiled callee -/
 
 /-- **The specification of a region-compiled callee from the back half.** Let
-    `compileRegion σ a p` give the bytes `bytes`, decoding to the block `q` that passes the
+    `regionBack σ a p` give the bytes `bytes`, decoding to the block `q` that passes the
     clobber check `clobOkB` at `clob`, with the layout, the frame size `F` and the store
     policy `K` passing `layoutFootB`, on a program `p` that is constant time at the source
     events for labels `L` that agree with the public data of `σ`, at every fuel. Then the
     leaky run of `q` under `ctRegime` meets `regionSig σ p args res clob F K`. -/
-theorem calleeSpec_of_compileRegion_sem {σ : AbiLayout} {a : AbiNames}
+theorem calleeSpec_of_regionBack_sem {σ : AbiLayout} {a : AbiNames}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    {bytes : List (BitVec 8)} (h : regionBack σ a p = some (P, bytes)) {q : List RInstr}
     (hq : decodeLprog bytes = some q) {args : List String} {res : Option String}
     {clob : String → Bool} {F : Nat} {K : StorePol} (hc : clobOkB q clob = true)
     (hF : layoutFootB σ F K = true) (L : Labels Γ)
@@ -215,7 +215,7 @@ theorem calleeSpec_of_compileRegion_sem {σ : AbiLayout} {a : AbiNames}
       ∧ s'.regs "%rsp" = s.regs "%rsp"
       ∧ ∀ x, ¬ KeepFoot K F s.regs x → s'.mem x = s.mem x := by
     rintro s ⟨hreg, V, fuel, v, hV, hv⟩
-    obtain ⟨prog, s', hd, hh, hR, hsp, hmem, -⟩ := compileRegion_correct h s V hV hreg fuel hv
+    obtain ⟨prog, s', hd, hh, hR, hsp, hmem, -⟩ := regionBack_correct h s V hV hreg fuel hv
     rw [hq, Option.some.injEq] at hd
     subst hd
     exact ⟨s', hh, ⟨V, fuel, v, hV, hv, hR⟩, hsp, fun x hx => hmem x
@@ -317,12 +317,12 @@ def RegionCorrectRO (σ : AbiLayout) {Γ : Ctxt jasminDialect} {t : JasminTy}
           sa'.mem x = sa.mem x
 
 /-- **The specification of a region-compiled callee with read-only regions.**
-    `calleeSpec_of_compileRegion_sem` with the footprint check `layoutFootRoB` on the stack
+    `calleeSpec_of_regionBack_sem` with the footprint check `layoutFootRoB` on the stack
     words and the regions of an out result, from the correctness clause `RegionCorrectRO` of
-    the bytes in place of the memory clause of `compileRegion_correct`. -/
+    the bytes in place of the memory clause of `regionBack_correct`. -/
 theorem calleeSpec_of_regionCorrectRO {σ : AbiLayout} {a : AbiNames}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    {bytes : List (BitVec 8)} (h : regionBack σ a p = some (P, bytes)) {q : List RInstr}
     (hq : decodeLprog bytes = some q) {args : List String} {res : Option String}
     {clob : String → Bool} {F : Nat} {K : StorePol} (hc : clobOkB q clob = true)
     (hF : layoutFootRoB σ F K = true) (hcor : RegionCorrectRO σ p bytes) (L : Labels Γ)
@@ -364,17 +364,17 @@ theorem calleeSpec_of_regionCorrectRO {σ : AbiLayout} {a : AbiNames}
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions (regionExportableB_sound)
 
-/-- **The back half keeps the read-only regions**: a result of `compileRegion` on a program
+/-- **The back half keeps the read-only regions**: a result of `regionBack` on a program
     that passes `regionROB` satisfies `RegionCorrectRO`. The virtual run behind the final
     state (`regionCo_bytes_of_regionExp_virt`) writes no read-only array, so the words of those
     regions are their entry words (`RegionArrKeep.keepRO_of_cells`). -/
-theorem compileRegion_correct_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem regionBack_correct_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p = some (P, bytes)) (hro : RegionArrKeep.regionROB σ a p = true) :
+    (h : regionBack σ a p = some (P, bytes)) (hro : RegionArrKeep.regionROB σ a p = true) :
     RegionCorrectRO σ p bytes := by
   intro sa V hV hreg fuel v hv
   obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, -, -, hro'⟩ :=
-    RegionArrKeep.compileRegion_spec_ro h hro
+    RegionArrKeep.regionBack_spec_ro h hro
   rw [← legalizeRegion_denote] at hv
   obtain ⟨prog, sa', hd, hh, hR, hsp, hkeep, ⟨k, s, hrun, hcells⟩, -⟩ :=
     regionCo_bytes_of_regionExp_virt (regionExportableB_sound hB) (regionExp_webs _ hr)
@@ -387,18 +387,18 @@ theorem compileRegion_correct_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasm
   exact ⟨prog, sa', by rw [X86Backend.LprogBytes.encodeLfundefBytesChecked_eq hb]; exact hd,
     hh, hR, hsp, RegionArrKeep.keepRO_of_cells himg hU sa hreg hrun hro' hd hh hcells hkeep⟩
 
-/-- **The specification of a region-compiled callee**, from `compileRegion`, the clobber check
+/-- **The specification of a region-compiled callee**, from `regionBack`, the clobber check
     `clobOkB`, the read-only check `regionROB` and the footprint check `layoutFootRoB`; no
     syntactic keep check of the decoded block. -/
-theorem calleeSpec_of_compileRegion_ro {σ : AbiLayout} {a : AbiNames}
+theorem calleeSpec_of_regionBack_ro {σ : AbiLayout} {a : AbiNames}
     {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
-    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    {bytes : List (BitVec 8)} (h : regionBack σ a p = some (P, bytes)) {q : List RInstr}
     (hq : decodeLprog bytes = some q) {args : List String} {res : Option String}
     {clob : String → Bool} {F : Nat} {K : StorePol} (hc : clobOkB q clob = true)
     (hro : RegionArrKeep.regionROB σ a p = true) (hF : layoutFootRoB σ F K = true)
     (L : Labels Γ) (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p)
     (hL : PubLabelsOK σ L) :
     CalleeSpec (runOf ctRegime q) (regionSig σ p args res clob F K) :=
-  calleeSpec_of_regionCorrectRO h hq hc hF (compileRegion_correct_ro h hro) L hsrc hL
+  calleeSpec_of_regionCorrectRO h hq hc hF (regionBack_correct_ro h hro) L hsrc hL
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionKernelSem

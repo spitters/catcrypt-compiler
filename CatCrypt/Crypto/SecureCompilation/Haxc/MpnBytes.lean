@@ -409,8 +409,8 @@ theorem mpn_add_n_bytes_correct {n : Nat} (hn : n + 1 < 2 ^ 64) (a : AbiNames)
             = memVal sa "%rsi" n n + memVal sa "%rdx" n n
         ∧ (stackGet arr n).toNat ≤ 1 := by
   obtain ⟨prog, sa', hd, hh, hr, -⟩ :=
-    compileRegion_correct h sa (abiVal2 n sa) (abiValOf_mpnAbi2 n sa) hreg 0
-      (NFProg.denote_ofCom _ 0 _)
+    compileRegion_correct_wide h sa (abiVal2 n sa) (abiValOf_mpnAbi2 n sa) hreg 0
+      (NFProg.denote_ofCom _ 0 _) rfl
   obtain ⟨S, cy, hS, hv, hc⟩ := mpnAddN_denote n (arrLimbs (wordsFn sa (sa.regs "%rsi") n) n 0)
     (arrLimbs (wordsFn sa (sa.regs "%rdx") n) n 0)
   obtain ⟨h1, h2⟩ := addSubCom_denote hn (mpnAddN n) _ _ (wordsFn sa (sa.regs "%rdi") (n + 1))
@@ -437,8 +437,8 @@ theorem mpn_sub_n_bytes_correct {n : Nat} (hn : n + 1 < 2 ^ 64) (a : AbiNames)
             = memVal sa "%rsi" n n + 2 ^ (64 * n) * (stackGet arr n).toNat
         ∧ (stackGet arr n).toNat ≤ 1 := by
   obtain ⟨prog, sa', hd, hh, hr, -⟩ :=
-    compileRegion_correct h sa (abiVal2 n sa) (abiValOf_mpnAbi2 n sa) hreg 0
-      (NFProg.denote_ofCom _ 0 _)
+    compileRegion_correct_wide h sa (abiVal2 n sa) (abiValOf_mpnAbi2 n sa) hreg 0
+      (NFProg.denote_ofCom _ 0 _) rfl
   obtain ⟨S, bw, hS, hv, hc⟩ := mpnSubN_denote n (arrLimbs (wordsFn sa (sa.regs "%rsi") n) n 0)
     (arrLimbs (wordsFn sa (sa.regs "%rdx") n) n 0)
   obtain ⟨h1, h2⟩ := addSubCom_denote hn (mpnSubN n) _ _ (wordsFn sa (sa.regs "%rdi") (n + 1))
@@ -463,8 +463,8 @@ theorem mpn_mul_1_bytes_correct {n : Nat} (hn : n + 1 < 2 ^ 64) (a : AbiNames)
         ∧ limbsVal (arrLimbs arr n 0) + 2 ^ (64 * n) * (stackGet arr n).toNat
             = memVal sa "%rsi" n n * (sa.regs "%rdx").toNat := by
   obtain ⟨prog, sa', hd, hh, hr, -⟩ :=
-    compileRegion_correct h sa (abiValS n sa) (abiValOf_mpnAbiS n sa) hreg 0
-      (NFProg.denote_ofCom _ 0 _)
+    compileRegion_correct_wide h sa (abiValS n sa) (abiValOf_mpnAbiS n sa) hreg 0
+      (NFProg.denote_ofCom _ 0 _) rfl
   obtain ⟨S, hi, hS, hv⟩ :=
     mpnMul1_denote n (arrLimbs (wordsFn sa (sa.regs "%rsi") n) n 0) (sa.regs "%rdx")
   obtain ⟨h1, h2⟩ := mul1Com_denote hn (sa.regs "%rdx") _ (wordsFn sa (sa.regs "%rdi") (n + 1))
@@ -488,8 +488,8 @@ theorem mpn_addmul_1_bytes_correct {n : Nat} (hn : n + 1 < 2 ^ 64) (a : AbiNames
         ∧ limbsVal (arrLimbs arr n 0) + 2 ^ (64 * n) * (stackGet arr n).toNat
             = memVal sa "%rdi" (n + 1) n + memVal sa "%rsi" n n * (sa.regs "%rdx").toNat := by
   obtain ⟨prog, sa', hd, hh, hr, -⟩ :=
-    compileRegion_correct h sa (abiValS n sa) (abiValOf_mpnAbiS n sa) hreg 0
-      (NFProg.denote_ofCom _ 0 _)
+    compileRegion_correct_wide h sa (abiValS n sa) (abiValOf_mpnAbiS n sa) hreg 0
+      (NFProg.denote_ofCom _ 0 _) rfl
   obtain ⟨S, hi, hS, hv⟩ :=
     mpnAddmul1_denote n (arrLimbs (wordsFn sa (sa.regs "%rdi") (n + 1)) n 0)
       (arrLimbs (wordsFn sa (sa.regs "%rsi") n) n 0) (sa.regs "%rdx")

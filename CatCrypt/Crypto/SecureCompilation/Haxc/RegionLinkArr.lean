@@ -15,13 +15,13 @@ set_option autoImplicit false
 /-!
 # Correctness of a compiled body with one linked kernel at its contract
 
-A program with a `call` that `compileRegion` compiles at the callee data `c` of one linked
+A program with a `call` that `regionBack` compiles at the callee data `c` of one linked
 function `l` whose parameters are scalars and read-only word arrays and whose result is a
 word in a register runs on its bytes through the call of the code of `l`, when the code of
 `l` meets the contract of `l` (`SContract (runOf ctRegime qk) l.contract`). Both theorems of this
-module are instances at `linked = [c]` of `RegionLinkCall.compileRegion_correct_linked_multi`,
+module are instances at `linked = [c]` of `RegionLinkCall.regionBack_correct_linked_multi`,
 at the contract kinds `.ins` and `.outC`. The route is
-that of `RegionLinkCall.compileRegion_correct_linked_outO` with a word result: the reference
+that of `RegionLinkCall.regionBack_correct_linked_outO` with a word result: the reference
 run of the gate (`RegionLinkCompose.regionCo_bytes_callee`) at the array positions of the
 summary, the image run at the call sites `calleeSiteAt`
 (`RegionLinkCompose.calleeBody_imgRun_at`),
@@ -41,11 +41,11 @@ back the source value of the result.
 
 * `linkedSummary_eq_insSummary`: the summary of a linked function without an array result is
   its summary on parameters `ImageAddrCallArrChain.insSummary`.
-* `compileRegion_correct_contract_ins`: the bytes of a calling body with one such linked
+* `regionBack_correct_contract_ins`: the bytes of a calling body with one such linked
   function halt through the call, and the caller halts under the oracle of the callee
   guarded by the precondition of the contract, in a state from which the layout reads back
   the source value of the result.
-* `compileRegion_correct_contract_out`: the same for one linked function whose result is the
+* `regionBack_correct_contract_out`: the same for one linked function whose result is the
   words of a destination array, at the interface `l.contractSig c.args none`; the
   destination operand of the call differs from every other array operand by the conjunct
   `outDestB` of the gate.
@@ -73,7 +73,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe (entryOf)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemRenameLoop (renOf)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCallArrChain (InsLayout insSummary
   insSummary_retWord)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall (compileRegion_spec_linked
+open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall (regionBack_spec_linked
   calleeBytes_some cellBody_of_cellArrsOf_nil cellArrsOf_nil_of_regionCells_nil
   imgGateCBW_frameMark bitsDeadB_frameMark callParamsB_forall₂W sContract_guarded)
 open CatCrypt.Crypto.SecureCompilation.SepLogic (SContract)
@@ -98,7 +98,7 @@ theorem linkedSummary_eq_insSummary {l : CatCrypt.Crypto.Hax.LinkedFn}
     below `2 ^ 64` (`hfb`). Let the code of `c` decode to the block `qk` without `call`, whose
     leaky runs under `ctRegime` meet the contract of `l`.
 
-    Let `compileRegion σ a p [c]` give the bytes `bytes` on a program `p` with a `call`, and
+    Let `regionBack σ a p [c]` give the bytes `bytes` on a program `p` with a `call`, and
     let the table `T` agree with the call environment `Ec`, hold summaries on words with word
     results at every other symbol, and give the symbol of `c` the summary `linkedSummary l`.
     From every entry state `sa` satisfying `σ.Regions`, at every valuation `V` that `σ` reads
@@ -111,7 +111,7 @@ theorem linkedSummary_eq_insSummary {l : CatCrypt.Crypto.Hax.LinkedFn}
       `oracleAt pc.length` of the leaky runs of `qk` under `ctRegime` from entry states that
       satisfy the precondition of `l.contractSig c.args (some c.resReg)`, in a state from
       which `σ` reads back the same value. -/
-theorem compileRegion_correct_contract_ins
+theorem regionBack_correct_contract_ins
     {l : CatCrypt.Crypto.Hax.LinkedFn} {c : CalleeData} (hc : l.calleeData = some c)
     (hL : InsLayout l c.ins c.resReg)
     (hk : linkedKinds l = c.ins.map (·.2)) (hn : arrLen? l.res = none)
@@ -121,7 +121,7 @@ theorem compileRegion_correct_contract_ins
     (hm : SContract (runOf ctRegime qk) l.contract)
     {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
+    (h : regionBack σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
     {Ec : CallEnv jasminDialect} {T : ProcTable} (hT : ProcsAgree Ec T)
     (hwo : ∀ f pr, f ≠ c.name → T f = some pr → pr.WordOnly)
     (hrw : ∀ f pr, f ≠ c.name → T f = some pr → pr.RetWord)
@@ -141,7 +141,7 @@ theorem compileRegion_correct_contract_ins
         ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
   obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ :=
-    RegionLinkCall.compileRegion_correct_linked_multi h hcf
+    RegionLinkCall.regionBack_correct_linked_multi h hcf
   obtain rfl := CalleeTab.eq_one_of_sublist hsub hne
   have hmem : ∀ c' ∈ (CalleeTab.one c).fns, c' = c := fun c' hc' => List.mem_singleton.mp hc'
   rw [linkedSummary_eq_insSummary hk hn] at hTc
@@ -176,7 +176,7 @@ theorem compileRegion_correct_contract_ins
     and whose frame and return word fit below `2 ^ 64` (`hfb`). Let the code of `c` decode to
     the block `qk` without `call`, whose leaky runs under `ctRegime` meet the contract of `l`.
 
-    Let `compileRegion σ a p [c]` give the bytes `bytes` on a program `p` with a `call`, and
+    Let `regionBack σ a p [c]` give the bytes `bytes` on a program `p` with a `call`, and
     let the table `T` agree with the call environment `Ec`, hold summaries on words with word
     results at every other symbol, and give the symbol of `c` the summary `outSummary l ins
     n`. From every entry state `sa` satisfying `σ.Regions`, at every valuation `V` that `σ`
@@ -192,7 +192,7 @@ theorem compileRegion_correct_contract_ins
 
     The destination operand of the call site differs from every other array operand by the
     conjunct `outDestB` of the gate (`outDestB_iff`). -/
-theorem compileRegion_correct_contract_out
+theorem regionBack_correct_contract_out
     {l : CatCrypt.Crypto.Hax.LinkedFn} {c : CalleeData} (hc : l.calleeData = some c)
     {ins : List (String × ArgKind)} {po : String} {n : Nat}
     (hL : X86Backend.LinkedFnCallee.OutLayout l ins po n) (hins : c.ins = ins)
@@ -202,7 +202,7 @@ theorem compileRegion_correct_contract_out
     (hm : SContract (runOf ctRegime qk) l.contract)
     {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
+    (h : regionBack σ a p [c] = some (P, bytes)) (hcf : p.callFree = false)
     {Ec : CallEnv jasminDialect} {T : ProcTable} (hT : ProcsAgree Ec T)
     (hwo : ∀ f pr, f ≠ c.name → T f = some pr → pr.WordOnly)
     (hrw : ∀ f pr, f ≠ c.name → T f = some pr → pr.RetWord)
@@ -222,7 +222,7 @@ theorem compileRegion_correct_contract_out
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)) := by
   subst hins
   obtain ⟨T, -, hsub, hne, -, -, -, hrest⟩ :=
-    RegionLinkCall.compileRegion_correct_linked_multi h hcf
+    RegionLinkCall.regionBack_correct_linked_multi h hcf
   obtain rfl := CalleeTab.eq_one_of_sublist hsub hne
   have hmem : ∀ c' ∈ (CalleeTab.one c).fns, c' = c := fun c' hc' => List.mem_singleton.mp hc'
   obtain ⟨pc, -, ⟨sO, hO, hRO⟩, hC⟩ :=

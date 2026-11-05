@@ -19,7 +19,7 @@ set_option autoImplicit false
 /-!
 # A region-compiled program as a linked callee
 
-A result `(P, bytes)` of `compileRegion σ a p` whose decoded block `q` passes the keep check
+A result `(P, bytes)` of `regionBack σ a p` whose decoded block `q` passes the keep check
 `Callee.keepCheckB` is a callee of a linked call. Its interface `regionSig` has the
 precondition `regionPre σ p` (the entry conditions of the layout and a valuation the layout
 reads off the entry state at which `p` denotes), the footprint `KeepFoot P F` of a store
@@ -33,11 +33,11 @@ public relation `σ.PubAgree`.
 * `regionPre_bytes_ct`: the decoded block is constant time under `ctRegime` between
   publicly related entry states that satisfy `regionPre`, from the source constant time of
   the program and `regionWide_bytes_ct`.
-* `calleeSpec_of_compileRegion`: the leaky run of the decoded block meets `regionSig`, from
-  the keep check, `compileRegion_correct` and `regionPre_bytes_ct`.
+* `calleeSpec_of_regionBack`: the leaky run of the decoded block meets `regionSig`, from
+  the keep check, `regionBack_correct` and `regionPre_bytes_ct`.
 * `LinkedFn.ofRegion`: the linked function of a region-compiled kernel, with the value-level
   contract `post_sem` as a hypothesis.
-* `ofRegion_calleeSpec`, `ofRegion_pre_of`, `ofRegion_pub`: the specification of the code of
+* `ofRegion_calleeSpec`, `ofRegion_calleeSpec_of_compile`, `ofRegion_pre_of`, `ofRegion_pub`: the specification of the code of
   `LinkedFn.ofRegion` at the interface of its fields, its precondition from the entry
   conditions and a denoting valuation, and its public relation from the public registers.
 * `ofRegion_keepCheckAt`: the code check `calleeCodeB` accepts the data of
@@ -47,10 +47,17 @@ public relation `σ.PubAgree`.
   are values of source runs, from the leg of a front that gives the program, without `call`
   and over a context of registers and stack arrays (`abiValOf_unique`, `denoteAt_fuel_mono`).
 * `haltsC_of_regionCallee`: `CheckedIsaCall.haltsC_of_linkedChecksKW` at a region-compiled
-  callee, with the callee specification from `calleeSpec_of_compileRegion`, the absence of
+  callee, with the callee specification from `calleeSpec_of_regionBack`, the absence of
   `call` in the callee from the keep check, the caller separation from the layout of the
   caller (`CalleeStackRoom.callerSep_of_regions`) and the footprint bound from
   `keepFoot_frame`.
+* `regionPre_congr`, `regionPost_congr`, `regionSig_congr`: the interface depends on the
+  program only through its denotation.
+* `narrowPrep_castCtx_nfct`, `regionSig_castCtx`: over a wide context the program the back half
+  compiles is constant time where the source is and has the interface of the source.
+* `calleeSpec_of_compileRegion`, `haltsC_of_compileRegionCallee`: the same at a result of
+  `compileRegion` over a context of 64-bit words, at a result type that is not an array of
+  narrow words, through `compileRegion_ctx`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.RegionKernel
@@ -113,24 +120,24 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
   (regionExportableB_sound) in
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytesChecked_eq) in
 /-- **Constant time of a region-compiled callee at its precondition.** Let
-    `compileRegion σ a p` give the bytes `bytes`, decoding to the block `q`, on a program `p`
+    `regionBack σ a p` give the bytes `bytes`, decoding to the block `q`, on a program `p`
     that is constant time at the source events for labels `L` that agree with the public
     data of `σ`, at every fuel. Then the leaky runs of `q` under `ctRegime`, with no side
     condition on the steps, from entry states that agree on the public data of `σ` and
     satisfy `regionPre σ p` have equal traces. The proof is `regionWide_bytes_ct_of_regionExp`
-    at the webs of the export and the printed body of `compileRegion_spec`, with the valuations of
+    at the webs of the export and the printed body of `regionBack_spec`, with the valuations of
     both entry
     states from the precondition. -/
 theorem regionPre_bytes_ct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p = some (P, bytes)) (L : Labels Γ)
+    (h : regionBack σ a p = some (P, bytes)) (L : Labels Γ)
     (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p) (hL : PubLabelsOK σ L)
     {q : List RInstr} (hq : decodeLprog bytes = some q) :
     ConstantTimeRel
       (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ regionPre σ p s₁ ∧ regionPre σ p s₂)
       (fun s tr => ∃ s', RunL ctRegime (fun _ _ => True) q 0 s tr s') := by
-  have hcf := callFree_of_compileRegion h
-  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, hck, -⟩ := compileRegion_spec h
+  have hcf := callFree_of_regionBack h
+  obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, hck, -⟩ := regionBack_spec h
   obtain ⟨hlk, hprW, hgW⟩ := regionCtB_spec hck
   rw [encodeLfundefBytesChecked_eq hb] at hq
   rintro sa₁ sa₂ u₁ u₂ ⟨hag, ⟨h₁, V₁, fuel, v₁, hV₁, hv₁⟩, ⟨h₂, V₂, -, -, hV₂, -⟩⟩ hb₁ hb₂
@@ -146,15 +153,15 @@ theorem regionPre_bytes_ct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
         rw [legalizeRegion_denote, hv₁]; rfl⟩
     hb₁ hb₂
 
-/-- **The specification of a region-compiled callee.** Let `compileRegion σ a p` give the
+/-- **The specification of a region-compiled callee.** Let `regionBack σ a p` give the
     bytes `bytes`, decoding to the block `q` that passes `keepCheckWB` at the clobber set
     `clob`, the frame of `F` bytes and the store policy `K`, on a program `p` that is
     constant time at the source events for labels `L` that agree with the public data of
     `σ`, at every fuel. Then the leaky run of `q` under `ctRegime` meets
     `regionSig σ p args res clob F K`; the equal traces are `regionPre_bytes_ct`. -/
-theorem calleeSpec_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+theorem calleeSpec_of_regionBack {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
-    (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    (h : regionBack σ a p = some (P, bytes)) {q : List RInstr}
     (hq : decodeLprog bytes = some q) {args : List String} {res : Option String}
     {clob : String → Bool} {F : Nat} {K : StorePol} (hk : keepCheckWB q clob F K = true)
     (L : Labels Γ)
@@ -163,11 +170,118 @@ theorem calleeSpec_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt j
   calleeSpec_of_keepCheckW (c := regionSig σ p args res clob F K) (P := K) hk
     (fun _ _ hx => hx)
     (fun s ⟨hreg, V, fuel, v, hV, hv⟩ => by
-      obtain ⟨prog, s', hd, hh, hR, -⟩ := compileRegion_correct h s V hV hreg fuel hv
+      obtain ⟨prog, s', hd, hh, hR, -⟩ := regionBack_correct h s V hV hreg fuel hv
       rw [hq, Option.some.injEq] at hd
       subst hd
       exact ⟨s', hh, V, fuel, v, hV, hv, hR⟩)
     (regionPre_bytes_ct h L hsrc hL hq)
+
+/-- The precondition of a region-compiled callee depends on the program only through its
+    denotation. -/
+theorem regionPre_congr (σ : AbiLayout) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {p p' : NFProg jasminDialect Γ [t]} (h : ∀ fuel V, p'.denote fuel V = p.denote fuel V) :
+    regionPre σ p' = regionPre σ p := by
+  funext s
+  simp only [regionPre, h]
+
+/-- The postcondition of a region-compiled callee depends on the program only through its
+    denotation. -/
+theorem regionPost_congr (σ : AbiLayout) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {p p' : NFProg jasminDialect Γ [t]} (h : ∀ fuel V, p'.denote fuel V = p.denote fuel V) :
+    regionPost σ p' = regionPost σ p := by
+  funext s s'
+  simp only [regionPost, h]
+
+/-- The interface of a region-compiled callee depends on the program only through its
+    denotation. -/
+theorem regionSig_congr (σ : AbiLayout) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    {p p' : NFProg jasminDialect Γ [t]} (h : ∀ fuel V, p'.denote fuel V = p.denote fuel V)
+    (args : List String) (res : Option String) (clob : String → Bool) (F : Nat) (K : StorePol) :
+    regionSig σ p' args res clob F K = regionSig σ p args res clob F K := by
+  simp only [regionSig, regionPre_congr σ h, regionPost_congr σ h]
+
+/-- **On a wide context the stages keep constant time** of the program carried back to the
+    context alone (`castProg hΓ rfl`), at parameters with no variable-time operation. -/
+theorem narrowPrep_castCtx_nfct {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ)
+    {p : NFProg jasminDialect Γ ts}
+    {q : NFProg jasminDialect (Γ.map VIR.NarrowWords.wideTy) (ts.map VIR.NarrowWords.wideTy)}
+    (hq : VIR.NarrowWords.narrowPrep p = some q) {L : Labels Γ} {fuel : Nat}
+    (h : NFCT (jLeakModel Pj) L fuel p) :
+    NFCT (jLeakModel Pj) L fuel (VIR.NarrowWords.castProg hΓ rfl q) := by
+  intro V₁ V₂ hpub
+  have e : ∀ V : Ctxt.Valuation Γ,
+      (Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel (VIR.NarrowWords.castProg hΓ rfl q)
+          V).map Prod.snd =
+        (Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel q
+          (VIR.NarrowWords.mapVal V)).map Prod.snd :=
+    fun V => VIR.NarrowWords.leakRun_snd_heq _ hΓ.symm rfl
+      (VIR.NarrowWords.castProg_heq hΓ rfl q) (VIR.NarrowWords.mapVal_heq_of_wide hΓ V).symm fuel
+  rw [e, e]
+  exact VIR.NarrowWords.narrowPrep_events hV fuel hq V₁ V₂ (h V₁ V₂ hpub)
+
+/-- **The interface of the program the back half compiles over a wide context is that of the
+    source.** Over a context that `wideTy` fixes and at a result type that is not an array of
+    narrow words, the widened program carried back to the context denotes the widened values
+    of `p`, which the layout reads as the values of `p` (`denVal_wideTy_transTy`). -/
+theorem regionSig_castCtx (σ : AbiLayout) {Γ : Ctxt jasminDialect} {t : JasminTy}
+    (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ) (ht : narrowArrB t = false)
+    {p : NFProg jasminDialect Γ [t]}
+    (hB : JasminLprogExport.ExportRegions.regionExportableB p = true)
+    {q : NFProg jasminDialect (Γ.map VIR.NarrowWords.wideTy) ([t].map VIR.NarrowWords.wideTy)}
+    (hq : VIR.NarrowWords.narrowPrep p = some q)
+    (args : List String) (res : Option String) (clob : String → Bool) (F : Nat) (K : StorePol) :
+    regionSig σ (VIR.NarrowWords.castProg hΓ rfl q) args res clob F K =
+      regionSig σ p args res clob F K := by
+  have hd : ∀ fuel V, (VIR.NarrowWords.castProg hΓ rfl q).denote fuel V =
+      (p.denote fuel V).map
+        (BlockLoweringExtend.transArgs VIR.NarrowWords.wideTy (fun x => VIR.NarrowWords.transTy x)) :=
+    fun fuel V => VIR.NarrowWords.narrowPrep_castCtx_denoteAt CallDenote.env hΓ hB hq fuel V
+  have hpre : regionPre σ (VIR.NarrowWords.castProg hΓ rfl q) = regionPre σ p := by
+    funext s
+    simp only [regionPre, hd, Option.map_eq_some_iff]
+    apply propext
+    constructor
+    · rintro ⟨hr, V, fuel, -, hV, v, hv, -⟩
+      exact ⟨hr, V, fuel, v, hV, hv⟩
+    · rintro ⟨hr, V, fuel, v, hV, hv⟩
+      exact ⟨hr, V, fuel, _, hV, v, hv, rfl⟩
+  have hpost : regionPost σ (VIR.NarrowWords.castProg hΓ rfl q) = regionPost σ p := by
+    funext s s'
+    simp only [regionPost, hd, Option.map_eq_some_iff]
+    apply propext
+    constructor
+    · rintro ⟨V, fuel, -, hV, ⟨v, hv, rfl⟩, hR⟩
+      refine ⟨V, fuel, v, hV, hv, ?_⟩
+      obtain ⟨x, ⟨⟩⟩ := v
+      rwa [← denVal_wideTy_transTy ht]
+    · rintro ⟨V, fuel, v, hV, hv, hR⟩
+      refine ⟨V, fuel, _, hV, ⟨v, hv, rfl⟩, ?_⟩
+      obtain ⟨x, ⟨⟩⟩ := v
+      rwa [← denVal_wideTy_transTy ht] at hR
+  simp only [regionSig, hpre, hpost]
+
+/-- **The specification of a callee compiled by `compileRegion`.** Over a context that
+    `wideTy` fixes and at a result type that is not an array of narrow words, let
+    `compileRegion σ a p` give the bytes `bytes`, decoding to the block `q` that passes
+    `keepCheckWB` at `clob`, `F` and `K`, on a program `p` that is constant time at the source
+    events for labels `L` that agree with the public data of `σ`, at every fuel. Then the leaky
+    run of `q` under `ctRegime` meets `regionSig σ p args res clob F K`: `regionBack` runs on
+    the widened program carried back to the context (`compileRegion_ctx`), whose interface is
+    that of `p` (`regionSig_castCtx`) and which is constant time where `p` is. -/
+theorem calleeSpec_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog} {bytes : List (BitVec 8)}
+    (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ) (ht : narrowArrB t = false)
+    (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    (hq : decodeLprog bytes = some q) {args : List String} {res : Option String}
+    {clob : String → Bool} {F : Nat} {K : StorePol} (hk : keepCheckWB q clob F K = true)
+    (L : Labels Γ)
+    (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p) (hL : PubLabelsOK σ L) :
+    CalleeSpec (runOf ctRegime q) (regionSig σ p args res clob F K) := by
+  obtain ⟨hB, q', hq', hb, -, -⟩ := compileRegion_ctx hΓ h
+  rw [← regionSig_castCtx σ hΓ ht hB hq']
+  exact calleeSpec_of_regionBack hb hq hk L
+    (fun fuel => narrowPrep_castCtx_nfct (fun _ => rfl) hΓ hq' (hsrc fuel)) hL
 
 /-! ## 3. The linked function of a region-compiled kernel -/
 
@@ -177,7 +291,7 @@ theorem calleeSpec_of_compileRegion {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt j
     `KeepFoot P F` of the entry register file under the store policy `P`, postcondition
     `regionPost σ p`, public relation `σ.PubAgree`), the clobbered registers `clob`, the
     frame size `F` and the machine code `bytes`, the code of a result of
-    `compileRegion σ a p`. The value-level contract is the hypothesis `hsem`; the layout has
+    `regionBack σ a p`. The value-level contract is the hypothesis `hsem`; the layout has
     no public array (`h0`), so agreement on the stack register and the public registers is
     the public relation. At the default `P := .frame` the footprint is the `F` bytes below
     the entry stack register (`keepFoot_frame`). The frame of the record is the larger of
@@ -227,7 +341,7 @@ variable {name : String} {params : List (String × NFDialect.NfTy)} {res : NFDia
   {K : StorePol}
 
 /-- **The specification of the code of a region-compiled linked function.** Let
-    `compileRegion σ a p` give the bytes `bytes` of `LinkedFn.ofRegion`, decoding to the block
+    `regionBack σ a p` give the bytes `bytes` of `LinkedFn.ofRegion`, decoding to the block
     `q` that passes `keepCheckWB` at the clobbered registers, the frame size and the store
     policy `K` of the record,
     on a program `p` that is constant time at the source events for labels `L` that agree
@@ -236,6 +350,23 @@ variable {name : String} {params : List (String × NFDialect.NfTy)} {res : NFDia
     whose clobber set, precondition, footprint, postcondition and public relation are those
     of the record. -/
 theorem ofRegion_calleeSpec {a : AbiNames} {P : Lprog}
+    (h : regionBack σ a p = some (P, bytes)) {q : List RInstr}
+    (hq : decodeLprog bytes = some q) (args : List String) (cres : Option String)
+    (hk : keepCheckWB q (fun x => clob.contains x) F K = true) (L : Labels Γ)
+    (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p) (hL : PubLabelsOK σ L) :
+    let l := CatCrypt.Crypto.Hax.LinkedFn.ofRegion name params res sem sem_res σ p clob F
+      bytes hsem h0 K
+    CalleeSpec (runOf ctRegime q)
+      { args := args, res := cres, clob := fun x => l.clob.contains x, pre := l.pre,
+        foot := l.foot, post := l.post, pub := l.pub } :=
+  calleeSpec_of_regionBack (args := args) (res := cres) h hq hk L hsrc hL
+
+/-- **The specification of the code of a linked function compiled by `compileRegion`.**
+    `ofRegion_calleeSpec` at a result of `compileRegion σ a p` over a context that `wideTy`
+    fixes, at a result type that is not an array of narrow words
+    (`calleeSpec_of_compileRegion`). -/
+theorem ofRegion_calleeSpec_of_compile {a : AbiNames} {P : Lprog}
+    (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ) (ht : narrowArrB t = false)
     (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
     (hq : decodeLprog bytes = some q) (args : List String) (cres : Option String)
     (hk : keepCheckWB q (fun x => clob.contains x) F K = true) (L : Labels Γ)
@@ -245,7 +376,7 @@ theorem ofRegion_calleeSpec {a : AbiNames} {P : Lprog}
     CalleeSpec (runOf ctRegime q)
       { args := args, res := cres, clob := fun x => l.clob.contains x, pre := l.pre,
         foot := l.foot, post := l.post, pub := l.pub } :=
-  calleeSpec_of_compileRegion (args := args) (res := cres) h hq hk L hsrc hL
+  calleeSpec_of_compileRegion (args := args) (res := cres) hΓ ht h hq hk L hsrc hL
 
 /-- **The precondition of a region-compiled linked function from the entry conditions.** At
     an entry state `s` that satisfies `σ.Regions`, a valuation `V` that `σ` reads off `s` and
@@ -349,11 +480,11 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageCallProbe (entryOf)
 
 /-- **A linked call to a region-compiled callee.** `CheckedIsaCall.haltsC_of_linkedChecksKW`
     over the wide class `ImageAddrCallW.printedAddrCWB` and the gate `ImageAddrCallW.imgGateCBW`
-    at the callee given by a result of `compileRegion σk ak pk` whose decoded block `q`
+    at the callee given by a result of `regionBack σk ak pk` whose decoded block `q`
     passes `keepCheckB` at `clob` and `F`, under the interface
     `regionSig σk pk args (some res) clob F`, with:
 
-    * the callee specification under `ctRegime` from `calleeSpec_of_compileRegion`, with
+    * the callee specification under `ctRegime` from `calleeSpec_of_regionBack`, with
       the source program constant time at labels `Lk` that agree with the public data of
       `σk`;
     * the absence of `call` in `q` from `not_call_mem_of_keepCheckW`;
@@ -379,7 +510,7 @@ theorem haltsC_of_regionCallee
     (hsites : callSitesB slotArr body = true)
     {σk : AbiLayout} {ak : AbiNames} {Γk : Ctxt jasminDialect} {tk : JasminTy}
     {pk : NFProg jasminDialect Γk [tk]} {Pk : Lprog} {cb : List (BitVec 8)}
-    (hc : compileRegion σk ak pk = some (Pk, cb)) {q : List RInstr}
+    (hc : regionBack σk ak pk = some (Pk, cb)) {q : List RInstr}
     (hcb : decodeLprog cb = some q) (hne : cb ≠ []) {args : List String} {res : String}
     {clob : String → Bool} {F : Nat} (hk : keepCheckB q clob F = true) (Lk : Labels Γk)
     (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) Lk fuel pk) (hLk : PubLabelsOK σk Lk)
@@ -432,7 +563,83 @@ theorem haltsC_of_regionCallee
           (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
         ∧ Fin t sA' :=
   haltsC_of_linkedChecksKW hsep hphys hgate hsites ctRegime
-    (calleeSpec_of_compileRegion hc hcb hk Lk hsrc hLk) (not_call_mem_of_keepCheckW hk) hw
+    (calleeSpec_of_regionBack hc hcb hk Lk hsrc hLk) (not_call_mem_of_keepCheckW hk) hw
+    (callerSep_of_regions hrs hreg0 hroomB hn hsl)
+    (footBelow_mono (fun _ _ hx => keepFoot_frame.1 hx) hFG hG) hroom hcls hshapes frameIn_eq
+    symBase hcb hne hbr hP hbits hdead hflags hcond hT hshape hseg hfin hFin n hrun hfn hlen hL
+    hI0 hA
+
+/-- **A linked call to a callee compiled by `compileRegion`.** `haltsC_of_regionCallee` with
+    the callee given by a result of `compileRegion σk ak pk` over a context that `wideTy` fixes,
+    at a result type that is not an array of narrow words, its specification from
+    `calleeSpec_of_compileRegion`. -/
+theorem haltsC_of_compileRegionCallee
+    {σ : AbiLayout} {rs : List Region} (hrs : rsOK σ rs = true) {sa0 : AState}
+    (hreg0 : σ.Regions sa0) {body : Lcmd} {G : Nat} (hroomB : stackRoomB σ body G = true)
+    (hn : frameNonnegB body G = true) {slotArr : String → Option (String × Nat)}
+    (hsl : ∀ q A n, slotArr q = some (A, n) → regLen rs A = n)
+    (hsep : ImgSep (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0))) slotArr
+      (abiBase (abiReg σ) sa0) (frameRsp body sa0))
+    (hphys : physImgB slotArr body = true)
+    (hgate : imgGateCBW (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0)))
+      slotArr body = true)
+    (hsites : callSitesB slotArr body = true)
+    {σk : AbiLayout} {ak : AbiNames} {Γk : Ctxt jasminDialect} {tk : JasminTy}
+    {pk : NFProg jasminDialect Γk [tk]} {Pk : Lprog} {cb : List (BitVec 8)}
+    (hΓk : Γk.map VIR.NarrowWords.wideTy = Γk) (htk : narrowArrB tk = false) (hc : compileRegion σk ak pk = some (Pk, cb)) {q : List RInstr}
+    (hcb : decodeLprog cb = some q) (hne : cb ≠ []) {args : List String} {res : String}
+    {clob : String → Bool} {F : Nat} (hk : keepCheckB q clob F = true) (Lk : Labels Γk)
+    (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) Lk fuel pk) (hLk : PubLabelsOK σk Lk)
+    (hFG : F ≤ G) (hG : G ≤ 2 ^ 64)
+    {pr : LprogIsa.ProcSummary} {room : AState → Prop}
+    (hw : WordCallee (regionSig σk pk args (some res) clob F) res pr room)
+    (hroom : ∀ ret sA, sA.regs "%rsp" = frameRsp body sa0 → room (entryOf ret sA))
+    {ds : List PhysAbiShape.DShape} (hcls : printedAddrCWB G body = true)
+    (hshapes : DecodeGen.shapesOf (Params.ofBody body) body = some ds)
+    (symBase : String → Option Int) {prog : List RInstr}
+    (hbr : LprogBytesLinkReloc.branchOKReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length 0
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = true)
+    (hP : LprogBytesLinkReloc.expectedReloc
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds)
+      (LprogBytesDecode.decCount
+        (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds))
+      (LprogBytes.encodeLfundefBytesReloc symBase body).length
+      (LprogBytesLinkReloc.fundefItemsRelocL symBase (Params.ofBody body) body ds) = some prog)
+    {D : DeadTab}
+    (hbits : bitsDeadB (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0))) D body
+      = true)
+    (hdead : callDeadB (regionSig σk pk args (some res) clob F) (fun _ => (res, args)) D.dead
+      body = true)
+    (hflags : callFlagsB D body = true) (hcond : condLiveB D body = true)
+    {T : LprogIsa.ProcTable} {f fn : String} (hT : T f = some pr)
+    (hshape : siteShapeB f (fun _ => (res, args))
+      (callImg slotArr (fun _ => (res, args)) body) = true)
+    (hseg : deadSegB D (callImg slotArr (fun _ => (res, args)) body) = true)
+    {Fin : LstateMF → AState → Prop}
+    (hfin : ∀ t sa zf sA, ImgRel (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0)))
+      slotArr (abiBase (abiReg σ) sa0) body t sa zf →
+      LprogBytesLinkReloc.FinLea (frameRsp body sa0) (Params.ofBody body).frame sa sA →
+      Fin t sA)
+    (hFin : ∀ t t' sA, AgreeOffF (D.dead t.prog.base.reg.lpc) t t' → Fin t' sA → Fin t sA)
+    (n : Nat) {s t : LstateMF}
+    (hrun : (x86IsaK.withProcs T).lsemFuelMemF
+      (singletonProgM fn (callImg slotArr (fun _ => (res, args)) body)) n s = some t)
+    {sa : LstateA} {sA : AState} (hfn : s.prog.lfn = fn) (hlen : sa.reg.lpc < body.length)
+    (hL : liveW D slotArr body sa.reg.lpc = false)
+    (hI0 : ImgRelF (frameIn body (frameP (Params.ofBody body) (frameRsp body sa0))) slotArr
+      (abiBase (abiReg σ) sa0) body (D.dead sa.reg.lpc) s sa)
+    (hA : ACorr (frameRsp body sa0) sA sa) :
+    decodeLprog (LprogBytes.encodeLfundefBytesReloc symBase body ++ cb)
+        = some (prog ++ LprogBytesLink.shiftProg prog.length q)
+      ∧ ∃ sA', RInstrSemantics.HaltsC aMachine (prog ++ LprogBytesLink.shiftProg prog.length q)
+          (DecodePrintedCFG.posOf ds sa.reg.lpc) sA sA'
+        ∧ Fin t sA' :=
+  haltsC_of_linkedChecksKW hsep hphys hgate hsites ctRegime
+    (calleeSpec_of_compileRegion hΓk htk hc hcb hk Lk hsrc hLk) (not_call_mem_of_keepCheckW hk) hw
     (callerSep_of_regions hrs hreg0 hroomB hn hsl)
     (footBelow_mono (fun _ _ hx => keepFoot_frame.1 hx) hFG hG) hroom hcls hshapes frameIn_eq
     symBase hcb hne hbr hP hbits hdead hflags hcond hT hshape hseg hfin hFin n hrun hfn hlen hL

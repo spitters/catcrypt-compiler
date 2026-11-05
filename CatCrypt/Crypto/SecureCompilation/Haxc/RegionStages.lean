@@ -10,7 +10,7 @@ set_option autoImplicit false
 /-!
 # The stages of the region back half, one at a time
 
-The stages of `compileRegion` on a structured program with one result and no `call`, as a
+The stages of `regionBack` on a structured program with one result and no `call`, as a
 trace that is computed one node per stage: each node of a `StageTrace` holds the name of
 the stage, a size of its output, and the rest of the trace as a function of `Unit`, so that
 forcing a node runs exactly one stage. The census (`haxc-census`) reads the first refusing
@@ -26,8 +26,8 @@ after another between two clock reads (`StageTrace.profile`).
 * `nfNodes`: the number of nodes of a structured program.
 * `gateTrace`, `gateTraceFine`: the gate `regionCoB` followed by the constant-time check
   `regionCtB` on a printed body, as two stages, or as their conjuncts.
-* `regionTraceBody`, `regionTrace`: the stages of `compileRegion` on a structured program.
-* `regionStageBody`, `regionStage`: the first stage of `compileRegion` that refuses, or
+* `regionTraceBody`, `regionTrace`: the stages of `regionBack` on a structured program.
+* `regionStageBody`, `regionStage`: the first stage of `regionBack` that refuses, or
   `accepted`.
 * `regionCoStages`: the stages of `regionCoStage` that `RegionDiag.regionCoWhy` explains.
 -/
@@ -120,7 +120,7 @@ def nfNodes : {Γ : Ctxt jasminDialect} → {ts : List jasminDialect.Ty} →
 
 /-! ## The stages of the region back half -/
 
-/-- The gate of `compileRegion` on the printed body `b` of the export with the code `code`
+/-- The gate of `regionBack` on the printed body `b` of the export with the code `code`
     and the returned operands `res` at the result type `t` and the allocation certificate
     `cert`, as two stages: `regionCoB`, whose refusal is named by its first conjunct that is
     `false` (`regionCoStage`), and `regionCtB`. -/
@@ -133,7 +133,7 @@ def gateTrace (σ : AbiLayout) (b : Lcmd) (t : JasminTy) (code : List LinstrRM)
       else .refused "regionCtB"
   else .refused ((regionCoStage σ exportReg b t code res cert).getD "regionCoB")
 
-/-- The gate of `compileRegion` on the printed body `b` as its conjuncts, one stage each, at
+/-- The gate of `regionBack` on the printed body `b` as its conjuncts, one stage each, at
     no callee and the allocation certificate `cert`. The intermediate values the conjuncts share are stages of their own, computed
     once: the code with the result copy `regionCoCode`, the array liveness table
     `liveArrTab`, the coalesced code `regionCoBody`, the parts `regionCoParts` (size: the
@@ -229,7 +229,7 @@ def gateTraceFine (σ : AbiLayout) (b : Lcmd) (t : JasminTy) (code : List Linstr
   if imgGateCW (frameMarkC d.cells b) sl cb = false then .refused "imgGateCW" else
   .stage "imgGateCW" none fun _ => .accepted
 
-/-- The stages of `compileRegion σ a p` on the structured program `p` with one result, in
+/-- The stages of `regionBack σ a p` on the structured program `p` with one result, in
     the order of its definition: `regionExportableB`, `callFree`, the export `exportR` (size:
     the length of its code), its webs `regionWebsAt` at the result buffer
     `regionWebsEx σ exportReg` (size: the length of their code), whose code and returned
@@ -266,7 +266,7 @@ def regionTraceBody (fine : Bool) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jas
   .stage "encodeLfundefBytesChecked" (some bs.length) fun _ =>
   if fine then gateTraceFine σ b t r.code r.res cert else gateTrace σ b t r.code r.res cert
 
-/-- The stages of `compileRegion`: `.refused "resultTy"` when the result type is neither
+/-- The stages of `regionBack`: `.refused "resultTy"` when the result type is neither
     `reg 64` nor `stackArr 64 m`, else `regionTraceBody`. -/
 def regionTrace (fine : Bool) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} :
     {t : JasminTy} → NFProg jasminDialect Γ [t] → StageTrace
@@ -274,7 +274,7 @@ def regionTrace (fine : Bool) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminD
   | .reg 64, p => regionTraceBody fine σ a p
   | _, _ => .refused "resultTy"
 
-/-- The first stage of `compileRegion σ a p` that refuses the structured program `p` with
+/-- The first stage of `regionBack σ a p` that refuses the structured program `p` with
     one result, or `accepted`: the outcome of `regionTraceBody` with the gate as two
     stages. When the gate `regionCoB` refuses, the value is its first conjunct that is
     `false` (`regionCoStage`). -/
@@ -282,7 +282,7 @@ def regionStageBody (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t
     (p : NFProg jasminDialect Γ [t]) : String :=
   (regionTraceBody false σ a p).outcome
 
-/-- The first stage of `compileRegion` that refuses the structured program `p`, or
+/-- The first stage of `regionBack` that refuses the structured program `p`, or
     `accepted`: the outcome of `regionTrace` with the gate as two stages. -/
 def regionStage (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : String :=

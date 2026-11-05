@@ -21,7 +21,7 @@ program with `call`s, halt through the calls of the code of the linked functions
 from every entry state with a source run: the source run denotes the source value at the
 environment of these functions alone (`NFEntry.run_linkedEnv`,
 `RegionLinkCall.denoteAt_linkedEnvOn`), and the calling body compiled at the table of these
-functions runs through its calls (`RegionLinkCall.compileRegion_correct_linked_multi`). The
+functions runs through its calls (`RegionLinkCall.regionBack_correct_linked_multi`). The
 compiler theorem at an entry combines this case with the program without `call`; the hax
 compiler `compileA` is its instance at `haxEntry`.
 
@@ -78,9 +78,9 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytesLink (shiftProg)
     guarded by the precondition of the interface of the contract `l.contractSig c.args c.res.reg?`
     in such a state. The source run denotes the source value in `linkedEnv (E.linked s)`
     (`NFEntry.run_linkedEnv`), hence in the environment `linkedEnvAt (E.linked s) l.name` of `l`
-    alone, since every call of `p` names `l` (`callsTo_of_compileRegion`, `denoteAt_linkedEnvAt`);
+    alone, since every call of `p` names `l` (`callsTo_of_regionBack`, `denoteAt_linkedEnvAt`);
     the table `summaryTable l` agrees with it (`procsAgree_summaryTable`), and the runs are
-    `compileRegion_correct_contract_ins` or `compileRegion_correct_contract_out` at the shape of the
+    `regionBack_correct_contract_ins` or `regionBack_correct_contract_out` at the shape of the
     code of `l`. -/
 theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts (E : NFEntry)
     {s : E.Src} {σ : AbiLayout} {fname : String} {P : Lprog}
@@ -102,18 +102,22 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts (E : NF
       ∧ ∃ sa', HaltsO aMachine
           (oracleAt pc.length (guarded (l.contractSig c.args c.res.reg?) (runOf ctRegime qk)))
           pc 0 sa sa' ∧ σ.ResultOf sa sa' v := by
+  obtain ⟨-, w, -, h1, hcfw, hden⟩ := compileRegion_ctx (nfCtx_wide σ) h1
+  have hcf' := hcfw.trans hcf
   have K := hk l hl
   obtain ⟨qk, hqk, hm⟩ := K.contract_code hlc
   obtain ⟨hcres, hname, hcargs, -, -, -, -, -, -, -, -⟩ :=
     CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hlc
   -- The code of the callee has no `call`.
-  obtain ⟨-, -, -, r, b, cert, -, -, -, hg, -⟩ := compileRegion_spec_linked h1 hcf
+  obtain ⟨-, -, -, r, b, cert, -, -, -, hg, -⟩ := regionBack_spec_linked h1 hcf'
   have hnc := (regionCoB_callee hg).2 c (by simp [CalleeTab.one]) qk hqk
   -- The source run at the linked function `l` alone.
   obtain ⟨k, V, x, hV, hvx, hx⟩ := E.run_linkedEnv hq0 hp hsep hrun
-  have hx' : p.denoteAt (linkedEnvAt (E.linked s) l.name) k V = some (HVector.cons x .nil) := by
-    rw [denoteAt_linkedEnvAt (hname ▸ callsTo_of_compileRegion h1 hcf)]
-    exact hx
+  have hx' : (VIR.NarrowWords.castProg (nfCtx_wide σ) rfl w).denoteAt
+      (linkedEnvAt (E.linked s) l.name) k V =
+        some (HVector.cons (VIR.NarrowWords.transTy x) .nil) := by
+    rw [denoteAt_linkedEnvAt (hname ▸ callsTo_of_regionBack h1 hcf'), hden, hx]
+    rfl
   -- The table of `l` alone.
   have hT := procsAgree_summaryTable hnd hl K.sem_kinds K.res_slice
   have hcl : ∀ f pr, f ≠ c.name → summaryTable l f = some pr → False := by
@@ -144,13 +148,13 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts (E : NF
           rw [hcr] at hcres
           simp [CatCrypt.Crypto.Hax.LinkedFn.calleeRes, hL.result] at hcres
     obtain ⟨pc, hdec, ⟨sa1, hC, hR1⟩, sa2, hO, hR2⟩ :=
-      RegionLinkArr.compileRegion_correct_contract_ins hlc hL hkinds hres hn K.args_nodup
-        K.frame_fit hqk hnc hm h1 hcf hT hwo hrw hTc sa V hV hsep k hx'
+      RegionLinkArr.regionBack_correct_contract_ins hlc hL hkinds hres hn K.args_nodup
+        K.frame_fit hqk hnc hm h1 hcf' hT hwo hrw hTc sa V hV hsep k hx'
     rw [hcsig]
     refine ⟨pc, qk, hqk, hdec, ⟨sa1, hC, ?_⟩, sa2, hO, ?_⟩
-    · rw [hvx]
+    · rw [hvx, ← denVal_wideTy_transTy (narrowArrB_mapTy_catTy _)]
       exact hR1
-    · rw [hvx]
+    · rw [hvx, ← denVal_wideTy_transTy (narrowArrB_mapTy_catTy _)]
       exact hR2
   · -- Scalars and word arrays with the words of a destination array as result.
     have hkinds : linkedKinds l = c.ins.map (·.2) := by
@@ -165,13 +169,13 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts (E : NF
       | out n' kd => rfl
     rw [linkedSummary_eq_outSummary hkinds hres] at hTc
     obtain ⟨pc, hdec, ⟨sa1, hC, hR1⟩, sa2, hO, hR2⟩ :=
-      RegionLinkArr.compileRegion_correct_contract_out hlc hL rfl hn K.args_nodup
-        K.frame_fit hqk hnc hm h1 hcf hT hwo hrw hTc sa V hV hsep k hx'
+      RegionLinkArr.regionBack_correct_contract_out hlc hL rfl hn K.args_nodup
+        K.frame_fit hqk hnc hm h1 hcf' hT hwo hrw hTc sa V hV hsep k hx'
     rw [hcsig]
     refine ⟨pc, qk, hqk, hdec, ⟨sa1, hC, ?_⟩, sa2, hO, ?_⟩
-    · rw [hvx]
+    · rw [hvx, ← denVal_wideTy_transTy (narrowArrB_mapTy_catTy _)]
       exact hR1
-    · rw [hvx]
+    · rw [hvx, ← denVal_wideTy_transTy (narrowArrB_mapTy_catTy _)]
       exact hR2
 
 /-- **The calling body of a linked program is determined by the program.** Two calling
@@ -290,7 +294,7 @@ theorem tabOracle_one (c : CalleeData) (n : Nat) (q : List RInstr) :
     by the preconditions of `sg`, at the entries of the functions of `T`. The source run denotes the
     source value at the environment of the functions of `T` alone (`denoteAt_linkedEnvOn`), whose
     table of summaries agrees with it (`procsAgree_summaryTableL`), and the runs are
-    `compileRegion_correct_linked_multi` at the kinds `kernelKind` of the linked kernels. -/
+    `regionBack_correct_linked_multi` at the kinds `kernelKind` of the linked kernels. -/
 theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts_tab (E : NFEntry)
     {s : E.Src} {σ : AbiLayout} {fname : String} {P : Lprog}
     {bytes : List (BitVec 8)} (hnd : ((E.linked s).map (·.name)).Nodup)
@@ -304,9 +308,12 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts_tab (E 
     (hp : (extChain (E.decls s) _ q0.1).run q0.2 = some p) (hcf : p.callFree = false)
     (h1 : compileRegion σ (E.names fname σ) p ((E.linked s).filterMap LinkedFn.calleeData)
       = some (P, bytes)) :
-    ∃ T : CalleeTab, (∃ r0, exportR (nfCtx σ).length (E.names fname σ).fname
-          (legalizeRegion p) (nfCtx σ).length 0 = some r0
-        ∧ regionCallee ((E.linked s).filterMap LinkedFn.calleeData) (legalizeRegion p) r0.code
+    ∃ T : CalleeTab, (∃ w r0, VIR.NarrowWords.narrowPrep p = some w
+        ∧ exportR (nfCtx σ).length (E.names fname σ).fname
+          (legalizeRegion (VIR.NarrowWords.castProg (nfCtx_wide σ) rfl w)) (nfCtx σ).length 0
+          = some r0
+        ∧ regionCallee ((E.linked s).filterMap LinkedFn.calleeData)
+          (legalizeRegion (VIR.NarrowWords.castProg (nfCtx_wide σ) rfl w)) r0.code
           = some (some T))
       ∧ T.fns.Sublist ((E.linked s).filterMap LinkedFn.calleeData) ∧ T.fns ≠ [] ∧ T.names.Nodup
       ∧ (∀ c ∈ T.fns, c.bytes ≠ [])
@@ -328,8 +335,10 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts_tab (E 
                 (fun f => pc.length + T.entryIdx (T.symPos f))
                 (fun f => guarded (sg f) (runOf ctRegime (moduleBlock (E.linked s) f)))) pc 0 sa sa'
               ∧ σ.ResultOf sa sa' v := by
+  obtain ⟨-, w, hw, h1, hcfw, hden⟩ := compileRegion_ctx (nfCtx_wide σ) h1
+  have hcf' := hcfw.trans hcf
   obtain ⟨T, hpin, hsub, hne, hndT, hcalls, hnoc, hrest⟩ :=
-    compileRegion_correct_linked_multi h1 hcf
+    regionBack_correct_linked_multi h1 hcf'
   -- The linked function of each function of the table, the first with its name.
   have hlc : ∀ c ∈ T.fns, ∃ l ∈ E.linked s, l.calleeData = some c ∧
       (E.linked s).find? (·.name == c.name) = some l := by
@@ -420,28 +429,33 @@ theorem _root_.CatCrypt.Crypto.SecureCompilation.Haxc.NFEntry.call_halts_tab (E 
     exact hm
   have hneB : ∀ c ∈ T.fns, c.bytes ≠ [] := by
     obtain ⟨r0, hr0, hcT⟩ := hpin
-    obtain ⟨T', r0', hr0', hcT', -, -, r, b, cert, -, hbs, -⟩ := compileRegion_spec_tab h1 hcf
+    obtain ⟨T', r0', hr0', hcT', -, -, r, b, cert, -, hbs, -⟩ := regionBack_spec_tab h1 hcf'
     rw [hr0, Option.some.injEq] at hr0'
     subst hr0'
     rw [hcT, Option.some.injEq, Option.some.injEq] at hcT'
     subst hcT'
     exact (calleeBytes_tab hbs).2.1
-  refine ⟨T, hpin, hsub, hne, hndT, hneB, hdecq, fun c hc => hnoc c hc _ (hdecq c hc),
+  refine ⟨T, (by obtain ⟨r0, hr0, hcT⟩ := hpin; exact ⟨w, r0, hw, hr0, hcT⟩), hsub, hne, hndT,
+    hneB, hdecq, fun c hc => hnoc c hc _ (hdecq c hc),
     fun f => (moduleKind (E.linked s) (.ins l0 [] "") f).sig, fun c hc => ?_,
     fun sa hsep v hrun => ?_⟩
   · obtain ⟨l, hl, hlc, hkk, -⟩ := hkind c hc
     exact ⟨l, hl, hlc, by simp only [hkk]⟩
   obtain ⟨k, V, x, hV, hvx, hx⟩ := E.run_linkedEnv hq0 hp hsep hrun
-  have hx' : p.denoteAt (linkedEnvOn (E.linked s) T.names) k V = some (HVector.cons x .nil) := by
-    rw [denoteAt_linkedEnvOn hcalls]
-    exact hx
+  have hx' : (VIR.NarrowWords.castProg (nfCtx_wide σ) rfl w).denoteAt
+      (linkedEnvOn (E.linked s) T.names) k V =
+        some (HVector.cons (VIR.NarrowWords.transTy x) .nil) := by
+    rw [denoteAt_linkedEnvOn hcalls, hden, hx]
+    rfl
   obtain ⟨pc, -, ⟨sO, hO, hRO⟩, hC⟩ :=
     hrest (moduleKind (E.linked s) (.ins l0 [] ""))
       (fun f => runOf ctRegime (moduleBlock (E.linked s) f)) hK hT hwo hTc
       sa V hV hsep k hx'
   obtain ⟨hdecB, sC, hhC, hRC⟩ := hC (fun c => moduleBlock (E.linked s) c.name) hdecq
     (fun c hc => hnoc c hc _ (hdecq c hc)) (fun _ _ => rfl)
-  exact ⟨pc, hdecB, ⟨sC, hhC, by rw [hvx]; exact hRC⟩, sO, hO, by rw [hvx]; exact hRO⟩
+  have hval := denVal_wideTy_transTy (narrowArrB_mapTy_catTy q0.1) x
+  exact ⟨pc, hdecB, ⟨sC, hhC, by rw [hvx, ← hval]; exact hRC⟩, sO, hO,
+    by rw [hvx, ← hval]; exact hRO⟩
 
 /-- **The runs of the bytes of a program with calls of several linked kernels, at an entry.** Let
     the linked functions of the source program `s` of the entry `E` have distinct names and each be
@@ -552,7 +566,7 @@ open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords region
       `tabOracle cs pc.length k q` of the leaky runs of the blocks guarded by the
       preconditions of the interfaces of their functions, in such a state. At one function
       `c` the oracle is `oracleAt pc.length (guarded c.sig (runOf ctRegime q))`
-      (`tabOracle_one`), the premise of `compileRegion_call_bytes_ct`.
+      (`tabOracle_one`), the premise of `regionBack_call_bytes_ct`.
 
     The linked functions enter through the fields `NFEntry.linked` and `NFEntry.linkedAgree`:
     the environment of the linked functions alone implements the declared procedures, and

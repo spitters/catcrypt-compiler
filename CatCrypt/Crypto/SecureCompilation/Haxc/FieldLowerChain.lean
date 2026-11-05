@@ -346,7 +346,7 @@ def fieldChainRuns (ps : List (String × NfTy)) (ks : HVector (Kind P.p) (entryC
     value `v` of a source run of the body (`fieldChainRuns`) is matched by a halting run of
     the machine on the decoded bytes from which `σ` reads back `v`. The conclusion is the
     halting run and the read-back of `haxc_correct_auto`; the proof composes
-    `fieldRegionFront_denote` with `compileRegion_correct`. -/
+    `fieldRegionFront_denote` with `compileRegion_correct_wide`. -/
 theorem fieldChain_correct_auto (hn : n < 2 ^ 64) (ps : List (String × NfTy))
     (ks : HVector (Kind P.p) (entryCtx ps)) (e : ImpExpr) (hsp : spineLamFree e = true)
     (σ : AbiLayout) (a : AbiNames)
@@ -361,7 +361,7 @@ theorem fieldChain_correct_auto (hn : n < 2 ^ 64) (ps : List (String × NfTy))
   rw [denoteSpine_eq_of_spineLamFree _ _ _ hsp] at hrun
   obtain ⟨x, hx, hl⟩ := fieldRegionFront_denote P hn ps ks e hp env V hV X W hX hW fuel r env'
     hrun 0
-  obtain ⟨prog, sa', hd, hh, hR, -⟩ := compileRegion_correct hc sa W hA hsep 0 hx
+  obtain ⟨prog, sa', hd, hh, hR, -⟩ := compileRegion_correct_wide hc sa W hA hsep 0 hx rfl
   exact ⟨prog, sa', hd, hh, by rwa [arrVal_eq_of_arrLimbs (harr.trans hl.symm)]⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldLower

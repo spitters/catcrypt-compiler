@@ -7,8 +7,8 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgWiden
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminImageOps
-public import CatCrypt.Crypto.SecureCompilation.Haxc.ExportComplete
-public import CatCrypt.Crypto.SecureCompilation.Haxc.ChainTotalJ
+public import CatCrypt.Crypto.SecureCompilation.Haxc.RegionExportTests
+public import CatCrypt.Crypto.SecureCompilation.Haxc.CallsAll
 
 /-!
 # The widened program is exportable by the region back half

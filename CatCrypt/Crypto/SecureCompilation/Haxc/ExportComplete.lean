@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.FrontComplete
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegionsAbi
+public import CatCrypt.Crypto.SecureCompilation.Haxc.RegionExportTests
 
 /-!
 # The region export on the output of the chain
@@ -20,16 +21,12 @@ depth, label and instruction set.
 
 The range stage `rangeNF` keeps the tests `whileRegB` and `wordCalls`.
 
-## Main definitions
-
-* `whileRegB` — every exit-flag loop of a program carries register types.
+The tests `whileRegB` and `regionExportableB_eq` are in `RegionExportTests`.
 
 ## Main results
 
 * `regVar?_isSome_of_var`, `bindMemNB_of_opMemB`, `opMemB_of_bindMemNB` — a binding passes
   `bindMemNB` exactly when its operation is in `opMemB`.
-* `regionExportableB_eq` — `regionExportableB` is the conjunction of `allOps opMemB`,
-  `whileRegB` and `wordCalls`.
 * `wordCalls_of_regionExportableB`, `exportR_isSome_of_regionExportableB` — the export
   returns code on every program that passes `regionExportableB`.
 * `whileRegB_rangeGo`, `wordCalls_rangeGo`, `structTests_rangeNF` — the range stage
@@ -50,16 +47,6 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (IsaData)
 
 /-! ## 1. The tests -/
 
-/-- Every exit-flag loop of the program carries register types (`isRegTy`), in every region
-    and continuation. -/
-def whileRegB : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} →
-    NFProg jasminDialect Γ ts → Bool
-  | _, _, .ret _ => true
-  | _, _, .var _ k => whileRegB k
-  | _, _, .forLoop _ _ body k => whileRegB body && whileRegB k
-  | _, _, .ifThenElse _ thn els k => whileRegB thn && whileRegB els && whileRegB k
-  | _, _, .whileLoop (cs := cs) _ body k => cs.all isRegTy && whileRegB body && whileRegB k
-  | _, _, .call _ _ k => whileRegB k
 
 /-! ## 2. A binding passes `bindMemNB` exactly when its operation is in `opMemB` -/
 
@@ -93,38 +80,9 @@ theorem bindMemNB_of_opMemB {Γ : Ctxt jasminDialect} {t : JasminTy}
 theorem opMemB_of_bindMemNB {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) (h : bindMemNB e = true) : opMemB e.op = true := h
 
-/-- **`bindMemNB` is the test `opMemB` on the operation.** -/
-theorem bindMemNB_eq {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t) :
-    bindMemNB e = opMemB e.op := rfl
 
 /-! ## 3. `regionExportableB` is the conjunction of the three tests -/
 
-/-- **`regionExportableB` is the conjunction of the three tests**: the operations of the
-    bindings are in `opMemB`, the exit-flag loops carry register types and the calls are at
-    signatures of `wordSig`. -/
-theorem regionExportableB_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    (p : NFProg jasminDialect Γ ts) :
-    regionExportableB p = (p.allOps opMemB && whileRegB p && wordCalls p) := by
-  induction p with
-  | ret vs => rfl
-  | var e k ih =>
-      simp only [regionExportableB, NFProg.allOps, whileRegB, wordCalls, ih, bindMemNB_eq]
-      cases opMemB e.op <;> simp
-  | forLoop count inits body k ihb ihk =>
-      simp only [regionExportableB, NFProg.allOps, whileRegB, wordCalls, ihb, ihk]
-      cases NFProg.allOps opMemB body <;> cases whileRegB body <;> cases wordCalls body <;>
-        simp
-  | ifThenElse cond thn els k iht ihe ihk =>
-      simp only [regionExportableB, NFProg.allOps, whileRegB, wordCalls, iht, ihe, ihk]
-      cases NFProg.allOps opMemB thn <;> cases whileRegB thn <;> cases wordCalls thn <;>
-        cases NFProg.allOps opMemB els <;> cases whileRegB els <;> cases wordCalls els <;> simp
-  | whileLoop inits body k ihb ihk =>
-      simp only [regionExportableB, NFProg.allOps, whileRegB, wordCalls, ihb, ihk]
-      cases NFProg.allOps opMemB body <;> cases whileRegB body <;> cases wordCalls body <;>
-        cases List.all _ isRegTy <;> simp
-  | call f args k ih =>
-      simp only [regionExportableB, NFProg.allOps, whileRegB, wordCalls, ih]
-      cases NFProg.allOps opMemB k <;> cases whileRegB k <;> cases wordCalls k <;> simp
 
 /-- A program that passes `regionExportableB` is a program of `wordCalls`. -/
 theorem wordCalls_of_regionExportableB {Γ : Ctxt jasminDialect} {ts : List JasminTy}

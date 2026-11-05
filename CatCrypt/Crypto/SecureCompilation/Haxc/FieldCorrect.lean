@@ -642,7 +642,7 @@ def fieldLeg (p : Nat) (xs : List String) : FrontLegOf where
     is matched by a halting run of the machine on the decoded bytes from which `σ` reads back
     `v`. The conclusion is the halting run and the read-back of `haxc_correct_auto`; the
     modulus `p` and the parameters `xs` are parameters. The proof composes the leg of
-    `fieldLeg p xs` with `compileRegion_correct` at `NFProg.denote_ofCom`. -/
+    `fieldLeg p xs` with `compileRegion_correct_wide` at `NFProg.denote_ofCom`. -/
 theorem field_correct_auto (p : Nat) (xs : List String) (te : TExpr) (σ : AbiLayout)
     (fname : String) {q : AnyRouteProg} (hf : (fieldLeg p xs).front σ te = some q)
     {c : Com jasminDialect q.1 q.2.1} (hcq : q.2.2.com.toCom? = some c)
@@ -657,8 +657,12 @@ theorem field_correct_auto (p : Nat) (xs : List String) (te : TExpr) (σ : AbiLa
     rw [ComL.eq_comToComL_of_toCom? hcq]
     exact NFProgToComL.comToComL_denote c V
   rw [hv, hd]
+  have hn : narrowArrB q.2.1 = false := by
+    obtain ⟨T, -, hf'⟩ := Option.bind_eq_some_iff.mp hf
+    obtain ⟨rp, -, rfl⟩ := Option.map_eq_some_iff.mp hf'
+    rfl
   obtain ⟨prog, sa', hdec, hh, hR, -⟩ :=
-    compileRegion_correct hc sa V hV hsep 0 (NFProg.denote_ofCom c 0 V)
+    compileRegion_correct_wide hc sa V hV hsep 0 (NFProg.denote_ofCom c 0 V) hn
   exact ⟨prog, sa', hdec, hh, hR⟩
 
 /-! ## 5. Test moduli

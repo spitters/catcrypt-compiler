@@ -46,6 +46,8 @@ general-purpose registers is a word callee of the image call step
   region-compiled linked function from its region layout, and its code meets the out
   interface `LinkedFnCallee.outSig`; these are the callee hypotheses of
   `ImageAddrCallOutChain.haltsC_of_linkedChecks_out`.
+* `regionCallee_wordSpec_of_compile`, `regionCallee_out_of_compile`: the same at a result of
+  `compileRegion` over a context of 64-bit words.
 * `commonCalls?_append`, `commonCalls?_movesOf`: the rewriting onto common names of a
   concatenation and of copies.
 * `fnStable_withProcs`: the steps of `x86Isa.withProcs T` stay in the function.
@@ -430,14 +432,14 @@ theorem regionCallee_word {ws : List String} {r : String}
   wordCallee_of_linkedFn (wordLayout_ofRegion hargs hres hws hr hclob)
 
 /-- **The code of a region-compiled linked function meets its word interface.** Let
-    `compileRegion σ a p` give the bytes of `LinkedFn.ofRegion`, decoding to the block `q`
+    `regionBack σ a p` give the bytes of `LinkedFn.ofRegion`, decoding to the block `q`
     that passes `keepCheckWB` at the clobbered registers, the frame size and the store policy
     `K` of the record, on a program `p` that is constant time at the source events for labels
     `L` that agree with the public data of `σ`, at every fuel. Then the leaky run of `q`
     under `ctRegime` meets the word interface `wordSig` at the names `ws` and `r`
     (`ofRegion_calleeSpec` and `calleeSpec_wordSig`). -/
 theorem regionCallee_wordSpec {a : AbiNames} {P : Lprog}
-    (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    (h : regionBack σ a p = some (P, bytes)) {q : List RInstr}
     (hq : decodeLprog bytes = some q) (ws : List String) (r : String)
     (hk : keepCheckWB q (fun x => clob.contains x) F K = true) (L : Labels Γ)
     (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p) (hL : PubLabelsOK σ L) :
@@ -473,7 +475,7 @@ theorem outLayout_ofRegion {ins : List (String × ArgKind)} {po : String} {n : N
     at the names of `ins` and no result register, under the precondition of
     `outSig`). -/
 theorem regionCallee_out {a : AbiNames} {P : Lprog}
-    (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    (h : regionBack σ a p = some (P, bytes)) {q : List RInstr}
     (hq : decodeLprog bytes = some q) (ins : List (String × ArgKind)) (n : Nat)
     (hk : keepCheckWB q (fun x => clob.contains x) F K = true) (L : Labels Γ)
     (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p) (hL : PubLabelsOK σ L) :
@@ -484,6 +486,41 @@ theorem regionCallee_out {a : AbiNames} {P : Lprog}
   exact CalleeSpec.restrictPre
     (ofRegion_calleeSpec (name := name) (params := params) (res := kres) (sem_res := sem_res)
       (hsem := hsem) (h0 := h0) h hq (ins.map Prod.fst) none hk L hsrc hL)
+    (P := (outSig l ins n).pre) fun _ hs => hs.1
+
+/-- **The word interface of a linked function compiled by `compileRegion`.**
+    `regionCallee_wordSpec` at a result of `compileRegion σ a p` over a context that `wideTy`
+    fixes, at a result type that is not an array of narrow words
+    (`ofRegion_calleeSpec_of_compile`). -/
+theorem regionCallee_wordSpec_of_compile {a : AbiNames} {P : Lprog}
+    (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ) (ht : narrowArrB t = false)
+    (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    (hq : decodeLprog bytes = some q) (ws : List String) (r : String)
+    (hk : keepCheckWB q (fun x => clob.contains x) F K = true) (L : Labels Γ)
+    (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p) (hL : PubLabelsOK σ L) :
+    let l := CatCrypt.Crypto.Hax.LinkedFn.ofRegion name params kres sem sem_res σ p clob F
+      bytes hsem h0 K
+    CalleeSpec (runOf ctRegime q) (wordSig l ws r) :=
+  calleeSpec_wordSig
+    (ofRegion_calleeSpec_of_compile (hsem := hsem) (h0 := h0) hΓ ht h hq ws (some r) hk L hsrc hL)
+
+/-- **The out interface of a linked function compiled by `compileRegion`.** `regionCallee_out`
+    at a result of `compileRegion σ a p` over a context that `wideTy` fixes, at a result type
+    that is not an array of narrow words (`ofRegion_calleeSpec_of_compile`). -/
+theorem regionCallee_out_of_compile {a : AbiNames} {P : Lprog}
+    (hΓ : Γ.map VIR.NarrowWords.wideTy = Γ) (ht : narrowArrB t = false)
+    (h : compileRegion σ a p = some (P, bytes)) {q : List RInstr}
+    (hq : decodeLprog bytes = some q) (ins : List (String × ArgKind)) (n : Nat)
+    (hk : keepCheckWB q (fun x => clob.contains x) F K = true) (L : Labels Γ)
+    (hsrc : ∀ fuel, NFCT (jLeakModel JLeakParams.owned) L fuel p) (hL : PubLabelsOK σ L) :
+    let l := CatCrypt.Crypto.Hax.LinkedFn.ofRegion name params kres sem sem_res σ p clob F
+      bytes hsem h0 K
+    CalleeSpec (runOf ctRegime q) (outSig l ins n) := by
+  intro l
+  exact CalleeSpec.restrictPre
+    (ofRegion_calleeSpec_of_compile (name := name) (params := params) (res := kres)
+      (sem_res := sem_res) (hsem := hsem) (h0 := h0) hΓ ht h hq (ins.map Prod.fst) none hk L
+      hsrc hL)
     (P := (outSig l ins n).pre) fun _ hs => hs.1
 
 end OfRegion

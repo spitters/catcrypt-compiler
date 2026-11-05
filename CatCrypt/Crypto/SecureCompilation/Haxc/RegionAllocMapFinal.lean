@@ -831,7 +831,7 @@ theorem storeOwnBase_renArr {C : List LinstrRM} {rr : Option (String × String)}
 /-- **The merge conditions at the allocation of a program without `call`, with the cover
     condition discharged** (`mergeSep_regionLprogC_complete`): `mergeSep_regionLprogC_layout`
     at the export names `nfAbiNames fname σ` of the direct route, the names `compileA` passes
-    to `compileRegion`, with its hypothesis `hcov` proved by `hcov_regionCoParts`. The
+    to `regionBack`, with its hypothesis `hcov` proved by `hcov_regionCoParts`. The
     hypotheses left are the result types `[t]`, the size bound, that the result buffer of the
     layout has the length of an array result of type `t` (`hlen`, a consequence of the result
     check `regionResultB` of the gate, `regionResBuf_len_of_regionResultB`), that the stores

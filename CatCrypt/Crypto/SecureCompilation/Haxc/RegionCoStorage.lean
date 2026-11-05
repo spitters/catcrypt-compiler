@@ -20,7 +20,7 @@ The coalescing completeness theorems of `RegionCoComplete` take the hypothesis
 second conjunct states that no array name live at the entry (`PLive … 0`) is assigned by an
 instruction of the code (`lopnDst`). This module proves that conjunct on every exported code
 of the call-free arm on x86 (`RegionExp`): the export and its webs, which the call-free arm
-of `compileRegion` coalesces.
+of `regionBack` coalesces.
 
 ## The argument
 
@@ -689,7 +689,7 @@ theorem regionCoStage_accept_of_classes (fn : String) {Γ : Ctxt jasminDialect} 
     at every list `ex` of names read after the code: when no two distinct array names of one
     storage class of `regionAliasTab` are in use at the same position of the code with the
     result copies of the webs `regionWebsAt ex none r`, `regionCoStage` on those webs, as
-    the call-free arm of `compileRegion` runs it, refuses neither at `coCfgB` nor at
+    the call-free arm of `regionBack` runs it, refuses neither at `coCfgB` nor at
     `coEntryFix`, at every printed body, certificate and function name. -/
 theorem regionCoStage_coalesce_webs_of_classes (fn : String) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (p : NFProg jasminDialect Γ [t]) (hp : regionExportableB p = true)
