@@ -232,9 +232,10 @@ theorem optSide_regionAllocFn (fname : String) (σ : AbiLayout) {ts : List Jasmi
     simp only [nfAbiNames, List.mem_map] at ha
     obtain ⟨x, -, rfl⟩ := ha
     exact hasPrefix_exportReg _
-  have hT : regionAllocTbl (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r) =
+  have hT : straightCallComposeTable (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r)
+      (physTableOut (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r) [] []) =
       physTableOut (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length ts r) [] := by
-    unfold regionAllocTbl straightCallComposeTable
+    unfold straightCallComposeTable
     rw [bodyStraightCall_of_shapeB hB]
     rfl
   have hname : ∀ n, NameOk (physRegName (physMapTabled
@@ -310,7 +311,7 @@ theorem regionCoStage_ne_physImgB_words (fname : String) (σ : AbiLayout) {t : J
     (hsize : numGPRegs + (bodyNames
       (regionAllocBody (nfAbiNames fname σ) (nfCtx σ).length [t] r)).length + 1 ≤ vectorBase)
     (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
-    (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
+    (hP : regionLprogC (nfAbiNames fname σ) p none ex noSplit = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b) (fn : String) :
     regionCoStage σ exportReg b t r.code r.res cert none fn ≠ some "physImgB" :=
   have h := optSide_regionAllocFn fname σ p hp hc hw hσ hr hzr hts fd0 hnd

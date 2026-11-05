@@ -669,51 +669,75 @@ def spillVictim (st : Nat) (uses : Array Nat) (act : List PhysActive) :
       | none => some a)
     none
 
+/-- A piece of a split interval is skipped when its parent slot is not in a stack cell:
+    `pieceOf s = some p` and the location of `p` in `acc` is no cell index `≥ numRegs`. A
+    slot that is no piece is never skipped. -/
+def pieceSkip (numRegs : Nat) (pieceOf : Nat → Option Nat) (acc : List (Nat × Nat))
+    (s : Nat) : Bool :=
+  match pieceOf s with
+  | some p => !(((acc.find? (fun q => q.1 == p)).map Prod.snd).any (fun ph => numRegs ≤ ph))
+  | none => false
+
+/-- The step of an interval that gets no register: a piece is dropped, leaving the state as
+    it is, and any other interval moves to a stack cell for its whole range. -/
+def physScanSpillLose (numRegs : Nat) (pieceOf : Nat → Option Nat)
+    (act : List PhysActive) (hulls : CellHulls) (acc : List (Nat × Nat))
+    (s st en : Nat) : List PhysActive × CellHulls × List (Nat × Nat) :=
+  if (pieceOf s).isSome then (act, hulls, acc)
+  else
+    let r := allocCell hulls st en
+    (act, r.2, (s, numRegs + r.1) :: acc)
+
 /-- One scan step over the interval `[st, en]` of slot `s`.
 
     Register allocations whose range ended before `st` are reclaimed. If a
     register in `[0, numRegs)` is then free, `s` takes the lowest one. Otherwise
-    `spillVictim` ranks the register-resident values, the winner is compared
-    against the incoming interval under the same `spillPrefer` order, and the
-    higher-ranked of the two moves to a stack cell for its whole range
-    (`allocCell`). When the victim is a resident value, `s` takes the register it
-    vacates.
+    `spillVictim` ranks the register-resident values that are no pieces, the winner is
+    compared against the incoming interval under the same `spillPrefer` order, and the
+    higher-ranked of the two gives up the register: a resident value moves to a stack cell
+    for its whole range (`allocCell`) and `s` takes the register it vacates; an incoming
+    interval that loses is handled by `physScanSpillLose`.
+
+    `pieceOf s = some p` marks `s` as a piece of the split interval of slot `p`: a
+    sub-range of the range of `p` over a run of its touches. A piece is considered only when
+    `p` is in a stack cell (`pieceSkip`); it then competes for a register like any interval,
+    is never chosen as a victim, and is dropped rather than spilled when it loses. With
+    `pieceOf` returning `none` everywhere (the default) no slot is a piece.
 
     Assignments are accumulated most-recent-first, so `find?` on the result reads
     the final location of a slot that a later step moved to a cell. -/
 def physScanSpillStep (numRegs : Nat) (uses : Array Nat)
     (act : List PhysActive) (hulls : CellHulls) (acc : List (Nat × Nat))
-    (s st en : Nat) (reserved : List Nat := []) :
+    (s st en : Nat) (reserved : List Nat := []) (pieceOf : Nat → Option Nat := fun _ => none) :
     List PhysActive × CellHulls × List (Nat × Nat) :=
   let act' := act.filter (fun a => a.en ≥ st)
   let used := act'.map PhysActive.phys
+  if pieceSkip numRegs pieceOf acc s then (act', hulls, acc)
+  else
   match freeRegIn numRegs used reserved with
   | some ph => (⟨st, en, ph, s⟩ :: act', hulls, (s, ph) :: acc)
   | none =>
       let inc : PhysActive := ⟨st, en, numRegs, s⟩
-      match spillVictim st uses act' with
+      match spillVictim st uses (act'.filter (fun a => (pieceOf a.slot).isNone)) with
       | some far =>
           if spillPrefer st uses far inc then
             let r := allocCell hulls far.st far.en
             (⟨st, en, far.phys, s⟩ :: act'.filter (fun a => a.phys != far.phys),
              r.2, (far.slot, numRegs + r.1) :: (s, far.phys) :: acc)
-          else
-            let r := allocCell hulls st en
-            (act', r.2, (s, numRegs + r.1) :: acc)
-      | none =>
-          let r := allocCell hulls st en
-          (act', r.2, (s, numRegs + r.1) :: acc)
+          else physScanSpillLose numRegs pieceOf act' hulls acc s st en
+      | none => physScanSpillLose numRegs pieceOf act' hulls acc s st en
 
 /-- Run the bounded scan over `(slot, start, end)` triples sorted by start. -/
 def physScanSpill (numRegs : Nat) (uses : Array Nat)
     (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
-    (acc : List (Nat × Nat)) (reserved : List Nat := []) : List (Nat × Nat) :=
+    (acc : List (Nat × Nat)) (reserved : List Nat := [])
+    (pieceOf : Nat → Option Nat := fun _ => none) : List (Nat × Nat) :=
   match items with
   | [] => acc
   | (s, st, en) :: rest =>
       let (act', hulls', acc') :=
-        physScanSpillStep numRegs uses act hulls acc s st en reserved
-      physScanSpill numRegs uses rest act' hulls' acc' reserved
+        physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf
+      physScanSpill numRegs uses rest act' hulls' acc' reserved pieceOf
 
 /-! #### The scan's register-distinctness invariant
 
@@ -844,6 +868,96 @@ def physTable (tr : List PhysEvent) (abi : IsaAbi := x86Abi) : Array Nat :=
 /-- Memoised `physMap` via an `O(1)` table lookup. -/
 def physMapTabled (tbl : Array Nat) (s : Nat) : Nat := tbl[s]?.getD s
 
+/-! ### 7c″. Live-interval splitting
+
+A slot that the scan places in a stack cell is read and written through the reload scratch at
+every touch. Splitting gives such a slot register-resident pieces. The touches of the slot are
+cut into runs, each run a candidate piece over the range from its first to its last touch, and
+each candidate enters the scan as an interval of its own slot (`physScanSpillStep`, `pieceOf`).
+A piece that gets a register holds the value of its slot over its range; the value lives in the
+cell of the slot outside its pieces.
+
+The runs are cut by a rule over the touch positions alone: two consecutive touches of a slot are
+in one run when they are at most `SplitCfg.gap` positions apart and in one segment of the trace
+(`SplitCfg.seg`). A run of one touch, and a run from the first to the last touch of its slot, is
+no candidate. -/
+
+/-- The parameters of the split: the segment of each trace position (`none` at a position whose
+    touches are in no piece), the slots that may be split, and the largest distance between two
+    consecutive touches of one run. -/
+structure SplitCfg where
+  /-- The segment of each trace position. -/
+  seg : Array (Option Nat)
+  /-- The slots that may be split. -/
+  ok : Array Bool
+  /-- The largest distance between two consecutive touches of one run. -/
+  gap : Nat
+
+/-- The touch positions of each slot below `univ` in the trace, in increasing order, each
+    position once. -/
+def physTouchPos (tr : List PhysEvent) (univ : Nat) : Array (List Nat) :=
+  let rev := tr.zipIdx.foldl (fun (a : Array (List Nat)) (e : PhysEvent × Nat) =>
+    e.1.touched.foldl (fun (a : Array (List Nat)) s =>
+      match a[s]? with
+      | some (q :: l) => if q == e.2 then a else a.set! s (e.2 :: q :: l)
+      | some [] => a.set! s [e.2]
+      | none => a) a) (Array.replicate univ [])
+  rev.map List.reverse
+
+/-- Two consecutive touch positions `p < q` are in one run under `cfg`: `q ≤ p + gap` and both
+    positions are in one segment. -/
+def splitJoin (cfg : SplitCfg) (p q : Nat) : Bool :=
+  decide (q ≤ p + cfg.gap) &&
+    match cfg.seg[p]?.join, cfg.seg[q]?.join with
+    | some a, some b => a == b
+    | _, _ => false
+
+/-- The runs of a list of positions under `cfg`: the maximal stretches of consecutive positions
+    that `splitJoin` joins pairwise. -/
+def splitRuns (cfg : SplitCfg) : List Nat → List (List Nat)
+  | [] => []
+  | p :: ps =>
+    match splitRuns cfg ps with
+    | (q :: r) :: rs => if splitJoin cfg p q then (p :: q :: r) :: rs else [p] :: (q :: r) :: rs
+    | rs => [p] :: rs
+
+/-- The candidate pieces of the split of the slots below `univ`: for each slot `s` that `cfg`
+    allows, each run of at least two touches other than the run from the first to the last
+    touch of `s`, as `(s, first touch, last touch, number of touches)`. -/
+def splitCands (tr : List PhysEvent) (univ : Nat) (cfg : SplitCfg) :
+    List (Nat × Nat × Nat × Nat) :=
+  let tp := physTouchPos tr univ
+  (List.range univ).flatMap fun s =>
+    if cfg.ok[s]?.getD false then
+      let ps := tp[s]?.getD []
+      (splitRuns cfg ps).filterMap fun r =>
+        match r.head?, r.getLast? with
+        | some x, some y =>
+            if decide (2 ≤ r.length) && !(some x == ps.head? && some y == ps.getLast?) then
+              some (s, x, y, r.length)
+            else none
+        | _, _ => none
+    else []
+
+/-- The pieces of the split as intervals of the scan: candidate `j` of `cands` as the interval
+    of slot `univ + j` over the range from its first to its last touch. -/
+def splitPieces (univ : Nat) (cands : List (Nat × Nat × Nat × Nat)) : List (Nat × Nat × Nat) :=
+  cands.zipIdx.map fun (c, j) => (univ + j, c.2.1, c.2.2.1)
+
+/-- The input of the scan with splitting, from the live items `items`, the touch counts `uses`
+    of the slots below `univ` and the candidate pieces `cands`: the items and the pieces, piece
+    `j` as the interval of slot `univ + j`, in one list sorted by start and then slot; the touch
+    counts followed by those of the pieces; and the parent map, which sends `univ + j` to the
+    slot of piece `j`. -/
+def splitScanInput (items : List (Nat × Nat × Nat)) (uses : Array Nat) (univ : Nat)
+    (cands : List (Nat × Nat × Nat × Nat)) :
+    List (Nat × Nat × Nat) × Array Nat × (Nat → Option Nat) :=
+  let parents : Array Nat := (cands.map Prod.fst).toArray
+  (kernelMergeSort (fun a b => a.2.1 < b.2.1 || (a.2.1 == b.2.1 && a.1 ≤ b.1))
+    (items ++ splitPieces univ cands),
+   uses ++ (cands.map fun c => c.2.2.2).toArray,
+   fun s => if univ ≤ s then parents[s - univ]? else none)
+
 /-! ### 7c′. Two-class linear scan (GP + vector in one pass)
 
 `physAssign` runs a single linear scan over *all* live slots into the GP pool.
@@ -866,12 +980,20 @@ the result is byte-identical to the GP-only allocator. -/
     physical indices by `vectorBase`. Reduces to `physAssign tr` when no slot is
     vector. -/
 def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool)
-    (reserved : List Nat := []) (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) :
+    (reserved : List Nat := []) (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi)
+    (split : Option SplitCfg := none) :
     List (Nat × Nat) :=
   let d := physLiveData tr
   let gpItems := d.1.filter (fun it => !slotIsVec vecArr it.1)
   let vecItems := d.1.filter (fun it => slotIsVec vecArr it.1)
-  let gpAssign := physScanSpill abi.allocPool.length d.2 gpItems [] #[] [] reserved
+  -- With a split configuration the general-purpose scan also runs the candidate pieces of
+  -- the general-purpose slots (`splitScanInput`); the vector scan never splits.
+  let gpAssign := match split with
+    | none => physScanSpill abi.allocPool.length d.2 gpItems [] #[] [] reserved
+    | some cfg =>
+        let inp := splitScanInput gpItems d.2 (physUniverse tr)
+          ((splitCands tr (physUniverse tr) cfg).filter (fun c => !slotIsVec vecArr c.1))
+        physScanSpill abi.allocPool.length inp.2.1 inp.1 [] #[] [] reserved inp.2.2
   -- `reservedVec` (default `[]`) lists vector-pool indices the scan must avoid.
   -- The batch8 path passes `[numVecRegs - 1]` (= `[15]`) to reserve `%ymm15` as
   -- the printer's spill-legalization scratch: the excluded index is never handed
@@ -883,13 +1005,14 @@ def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool)
 /-- Compiled class-aware `physTable`: scatter the class-aware assignment into an
     identity-seeded array in one pass. -/
 @[inline] def physTableClassedImpl (tr : List PhysEvent) (vecArr : Array Bool)
-    (reserved : List Nat := []) (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) :
+    (reserved : List Nat := []) (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi)
+    (split : Option SplitCfg := none) :
     Array Nat :=
   let univ := physUniverse tr
   Id.run do
     let mut t : Array Nat := (Array.range univ)
     -- Reverse for the same last-write-wins reason as `physTableImpl`.
-    for (s, ph) in (physAssignClassed tr vecArr reserved reservedVec abi).reverse do
+    for (s, ph) in (physAssignClassed tr vecArr reserved reservedVec abi split).reverse do
       if s < univ then t := t.set! s ph
     return t
 
@@ -898,14 +1021,32 @@ def physAssignClassed (tr : List PhysEvent) (vecArr : Array Bool)
     body with no vector slot this is `physTable tr` exactly. -/
 @[implemented_by physTableClassedImpl]
 def physTableClassed (tr : List PhysEvent) (vecArr : Array Bool)
-    (reserved : List Nat := []) (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) :
+    (reserved : List Nat := []) (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi)
+    (split : Option SplitCfg := none) :
     Array Nat :=
-  let assign := physAssignClassed tr vecArr reserved reservedVec abi
+  let assign := physAssignClassed tr vecArr reserved reservedVec abi split
   let univ := physUniverse tr
   (Array.range univ).map (fun s =>
     match assign.find? (fun p => p.1 == s) with
     | some (_, ph) => ph
     | none => s)
+
+/-- The pieces of the split under `cfg` that the general-purpose scan of `physAssignClassed`
+    places in a register, as `(slot, first touch, last touch, register index)`: the candidate
+    piece `j` of the general-purpose slots (`splitCands`) whose slot `physUniverse tr + j` the
+    scan assigns an index below the size of the allocation pool. -/
+def physSplitPieces (tr : List PhysEvent) (vecArr : Array Bool) (reserved : List Nat)
+    (abi : IsaAbi) (cfg : SplitCfg) : List (Nat × Nat × Nat × Nat) :=
+  let univ := physUniverse tr
+  let cands := (splitCands tr univ cfg).filter (fun c => !slotIsVec vecArr c.1)
+  let a := physAssignClassed tr vecArr reserved [] abi (some cfg)
+  let loc : Array (Option Nat) := a.reverse.foldl (fun t q =>
+      if univ ≤ q.1 && q.1 - univ < t.size then t.set! (q.1 - univ) (some q.2) else t)
+    (Array.replicate cands.length none)
+  cands.zipIdx.filterMap fun (c, j) =>
+    match loc[j]?.join with
+    | some ph => if ph < abi.allocPool.length then some (c.1, c.2.1, c.2.2.1, ph) else none
+    | none => none
 
 /-- The class-aware physical table for a body: `physTableClassed` over `bodyTrace`
     with the body's own `bodyVecSlots` classification. This is the single-pass

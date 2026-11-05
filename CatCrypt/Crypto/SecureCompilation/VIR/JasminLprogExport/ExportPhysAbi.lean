@@ -163,19 +163,84 @@ def bodyTraceOut (body : Lcmd) (outStoreMap : OutStoreMap) : List PhysEvent :=
   | [] => base
   | slots@(s0 :: _) => base ++ [{ wr := s0, rds := slots }]
 
+/-! ### The split configuration of a body -/
+
+/-- The largest distance between two consecutive touches of one run of the split. -/
+def splitGap : Nat := 16
+
+/-- The trace segments of `body`: the `Lopn` positions with no other instruction between them
+    share a segment, and a `LIVEPIN` position has none. -/
+def bodySplitSeg (body : Lcmd) : Array (Option Nat) :=
+  (body.foldl (fun (st : Array (Option Nat) × Nat) i =>
+    match i.li_i with
+    | .Lopn _ opn _ =>
+        if opn == "LIVEPIN" then (st.1.push none, st.2 + 1) else (st.1.push (some st.2), st.2)
+    | _ => (st.1, st.2 + 1)) (#[], 0)).1
+
+/-- The register names an operand mentions. -/
+def LOperand.allNames : LOperand → List String
+  | .reg n => [n]
+  | .arr b _ => [b]
+  | .imm _ => []
+  | .arrIdx b i _ => [b, i]
+
+/-- An operation whose operands the split leaves at their locations: a memory access, an
+    operation on an array operand (`ZEROARR`, `STOREIMM`), a high multiplication, a call shadow
+    or a `LIVEPIN`. -/
+def splitFixedOp (opn : String) : Bool :=
+  isMemLoad opn || isMemStore opn || opn == "LIVEPIN" ||
+    hasPrefix opn "ZEROARR" || hasPrefix opn "STOREIMM" || hasPrefix opn "MULXHI" ||
+    hasPrefix opn "CALL"
+
+/-- The names of `body` that the split leaves at their locations: every name of an instruction
+    other than an `Lopn`, of an `Lopn` of `splitFixedOp`, of a destination other than the first,
+    and of an array operand. -/
+def splitFixedNames (body : Lcmd) : List String :=
+  body.flatMap fun i =>
+    match i.li_i with
+    | .Lopn dsts opn srcs =>
+        if splitFixedOp opn then (dsts ++ srcs).flatMap LOperand.allNames
+        else (dsts.drop 1).flatMap LOperand.allNames ++
+          (dsts ++ srcs).flatMap fun o =>
+            match o with
+            | .reg _ => []
+            | o => o.allNames
+    | .Lcond c _ => c.allNames
+    | .Ligoto t => t.allNames
+    | .LstoreLabel d _ => [d]
+    | .Lcall ra _ => ra.toList
+    | _ => []
+
+/-- The split configuration of `body`: the segments `bodySplitSeg`, the slots of the names other
+    than the liveness pin, a hardware register name, a frame-slot name and a name of
+    `splitFixedNames`, and the distance `splitGap`. -/
+def bodySplitCfg (body : Lcmd) : SplitCfg :=
+  let fixed : Std.HashMap String Unit :=
+    (splitFixedNames body).foldl (fun m n => m.insert n ()) {}
+  { seg := bodySplitSeg body
+    ok := ((bodyNames body).map fun n =>
+      n != "%livepin" && !isHwRegName n && !isFrameSlotName n && !fixed.contains n).toArray
+    gap := splitGap }
+
+/-- The split configuration of the allocation of `body`: `bodySplitCfg body` on a body without
+    a call, and no split on a body with a call. -/
+def bodySplitOpt (body : Lcmd) : Option SplitCfg :=
+  if bodyHasCall body then none else some (bodySplitCfg body)
+
 /-- The output-liveness-extended physical-allocation table: `physTable` over the
     trace augmented by `bodyTraceOut`. Used wherever the ABI export resolves a
     body name to its post-RA physical register so that the `n` distinct outputs
     occupy `n` distinct physical registers across the epilogue stores. Reduces to
     `physTable (bodyTrace body)` when `outStoreMap = []`. -/
 def physTableOut (body : Lcmd) (outStoreMap : OutStoreMap)
-    (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) : Array Nat :=
+    (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) (split : Option SplitCfg := none) :
+    Array Nat :=
   -- Class-aware (`bodyVecSlots`): GP outputs → GP regs, vector outputs → XMM, in
   -- one scan. For a body with no vector op this is `physTable (bodyTraceOut …)`,
   -- so the GP-only multi-output allocation is byte-identical. `reservedVec`
   -- (default `[]`) excludes vector indices; the batch8 path passes `[numVecRegs-1]`.
   physTableClassed (bodyTraceOut body outStoreMap) (bodyVecSlots body)
-    (bodyReservedGP body) reservedVec abi
+    (bodyReservedGP body) reservedVec abi split
 
 /-- Conservative upper bound on the argument-slot count referenced by a virtual
     body: the maximum `s` such that `argName s` appears anywhere in the body,
@@ -1083,8 +1148,8 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
     `reservedVec`, with the straight-line call relocation composed in
     (`straightCallComposeTable`). -/
 def physAllocTbl (body : Lcmd) (outStoreMap : OutStoreMap) (reservedVec : List Nat := [])
-    (abi : IsaAbi := x86Abi) : Array Nat :=
-  straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi)
+    (abi : IsaAbi := x86Abi) (split : Option SplitCfg := none) : Array Nat :=
+  straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi split)
 
 /-- **The allocator's renaming** of a register name `n` of `body` over the table `tbl`:
     the name of the register operand `physBodyWithStores` writes for `.reg n`, that is
@@ -2955,6 +3020,146 @@ theorem faLayout_bytes (roots : List (String × Nat)) :
   intro e he
   simpa using (faLayoutFrom_bounds 0 roots e he).2
 
+/-! ### The register-allocated body with split intervals -/
+
+/-- The register-allocated expansion of one virtual instruction `i` under the operand renaming
+    `rmap`, with `u64` the 8-byte spill slot flag: the two-address lowering of a binop, the base
+    reload and legalization of a memory access, the lowering of a native shift, the legalized
+    one-source instruction, and the renaming of every other `Lopn`. It is the expansion that
+    `physBodyWithStores` gives a position without argument loads, output stores and calls, at
+    the renaming `rmap`. -/
+def physExpandR (shiftImm : ShiftImmOracle) (u64 : Bool) (rmap : LOperand → LOperand)
+    (memrefBaseReload : String → Option String) (i : Linstr) : Lcmd :=
+  let movFor (opn : String) : String :=
+    if hasSuffix opn ":64" then "MOV:64" else "MOV"
+  let shiftImmVal (s1 : LOperand) : Option Nat :=
+    match s1 with
+    | .imm v => some v
+    | .reg n => shiftImm n
+    | _ => none
+  match i.li_i with
+  | .Lopn (d :: _) opn (s0 :: s1 :: _) =>
+      if isTwoAddrBinop opn then
+        match (if stripWidthTag opn == "SHL" || stripWidthTag opn == "SHR" then shiftImmVal s1
+               else none) with
+        | some v =>
+            (lowerTwoAddrShiftImm (rmap d) (rmap s0) v opn (movFor opn)).map
+              (fun r => ⟨i.li_ii, r⟩)
+        | none =>
+            (lowerTwoAddr (rmap d) (rmap s0) (rmap s1) opn (movFor opn)).map
+              (fun r => ⟨i.li_ii, r⟩)
+      else
+        match i.li_i with
+        | .Lopn [d'] opn' [addr, val] =>
+            if isMemStore opn' then
+              let (baseReload, addr') := reloadMemrefBase memrefBaseReload (rmap addr)
+              (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
+              (legalizeMemStoreK (idxConst shiftImm addr) (rmap d') addr' (rmap val) opn'
+                 (movFor opn')).map (fun r => ⟨i.li_ii, r⟩)
+            else
+              (legalizeSpillDst [rmap d'] opn' [rmap addr, rmap val]).map
+                (fun r => ⟨i.li_ii, r⟩)
+        | .Lopn dsts opn srcs =>
+            (legalizeSpillDst (dsts.map rmap) opn (srcs.map rmap)).map
+              (fun r => ⟨i.li_ii, r⟩)
+        | other => [⟨i.li_ii, other⟩]
+  | .Lopn [d] opn [s] =>
+      if isNativeShiftRotate opn then
+        (lowerNativeShiftRotate (rmap d) (rmap s) opn (movFor opn)).map
+          (fun r => ⟨i.li_ii, r⟩)
+      else if isMemLoad opn then
+        let (baseReload, s') := reloadMemrefBase memrefBaseReload (rmap s)
+        (baseReload.map (fun r => ⟨i.li_ii, r⟩)) ++
+        (legalizeMemLoad (rmap d) s' opn (movFor opn)).map
+          (fun r => ⟨i.li_ii, r⟩)
+      else
+        (legalizeOneSrc u64 opn (rmap d) (rmap s)).map (fun r => ⟨i.li_ii, r⟩)
+  | .Lopn dsts opn srcs =>
+      [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
+  | other => [⟨i.li_ii, other⟩]
+
+/-- A piece of the split as the renderer reads it: the name, its first and last touch, the
+    register name, whether the first touch reads the name, so that the value is reloaded from
+    the cell before it, and whether the value is stored to the cell after the last touch, which
+    holds when a touch of the piece writes the name and the name is touched after the piece. -/
+structure SplitPiece where
+  /-- The name of the split slot. -/
+  name : String
+  /-- The first touch of the piece. -/
+  first : Nat
+  /-- The last touch of the piece. -/
+  last : Nat
+  /-- The register of the piece. -/
+  reg : String
+  /-- The first touch reads the name. -/
+  reload : Bool
+  /-- The value is stored to the cell after the last touch. -/
+  store : Bool
+
+/-- The pieces of the split of `body` that the scan places in a register
+    (`physSplitPieces` over the trace `bodyTraceOut body []` at the configuration `cfg`), named. -/
+def bodySplitPieces (body : Lcmd) (cfg : SplitCfg) (abi : IsaAbi := x86Abi) :
+    List SplitPiece :=
+  let tr := bodyTraceOut body []
+  let names := (bodyNames body).toArray
+  let evs := tr.toArray
+  let lastA : Array Nat := (physLiveData tr).1.foldl
+    (fun a it => if it.1 < a.size then a.set! it.1 it.2.2 else a)
+    (Array.replicate (physUniverse tr) 0)
+  (physSplitPieces tr (bodyVecSlots body) (bodyReservedGP body) abi cfg).filterMap
+    fun (s, x, y, ph) =>
+      match names[s]? with
+      | some n => some
+          { name := n, first := x, last := y, reg := physRegName ph abi
+            reload := (evs[x]?.map fun e => e.rds.contains s).getD true
+            store := (List.range (y + 1 - x)).any (fun k =>
+                (evs[x + k]?.map fun e => e.wr == s).getD true) &&
+              decide (y < lastA[s]?.getD 0) }
+      | none => none
+
+/-- **The register-allocated body with split intervals** of a call-free `body`: the expansion
+    `physExpandR` of each instruction under the renaming through the table
+    `physAllocTbl body [] [] abi (some cfg)` of the scan with the split configuration `cfg`, except that at the trace
+    position of an `Lopn` inside a piece of `bodySplitPieces body cfg` the name of the piece renames to
+    the register of the piece; before the first touch of a piece that reloads, the move of the
+    cell of its name into its register, and after the last touch of a piece that stores, the
+    move of its register into that cell. -/
+def physBodySplit (shiftImm : ShiftImmOracle) (body : Lcmd) (cfg : SplitCfg)
+    (memrefBaseReload : String → Option String := fun _ => none) (abi : IsaAbi := x86Abi) :
+    Lcmd :=
+  let tbl := physAllocTbl body [] [] abi (some cfg)
+  let rmap := remapOperand body tbl (abi := abi)
+  let u64 : Bool := body.any (fun i =>
+    match i.li_i with
+    | .Lopn _ opn _ => hasSuffix opn ":64"
+    | _ => false)
+  let mov : String := if u64 then "MOV:64" else "MOV"
+  let pcs := bodySplitPieces body cfg abi
+  let byPos : Array (List SplitPiece) := pcs.foldl (fun a p =>
+      (List.range (p.last + 1 - p.first)).foldl (fun a k =>
+        let q := p.first + k
+        if q < a.size then a.set! q (p :: a[q]!) else a) a)
+    (Array.replicate (bodyTraceOut body []).length [])
+  (body.foldl (fun (st : Array Linstr × Nat) i =>
+    match i.li_i with
+    | .Lopn _ _ _ =>
+        let here := byPos[st.2]?.getD []
+        let rk : LOperand → LOperand := fun o =>
+          match o with
+          | .reg nm =>
+              match here.find? (fun p => p.name == nm) with
+              | some p => .reg p.reg
+              | none => rmap o
+          | _ => rmap o
+        let pre : Lcmd := (here.filter fun p => p.first == st.2 && p.reload).map fun p =>
+          ⟨0, .Lopn [.reg p.reg] mov [rmap (.reg p.name)]⟩
+        let post : Lcmd := (here.filter fun p => p.last == st.2 && p.store).map fun p =>
+          ⟨0, .Lopn [rmap (.reg p.name)] mov [.reg p.reg]⟩
+        (st.1 ++ (pre ++ physExpandR shiftImm u64 rk memrefBaseReload i ++ post).toArray,
+         st.2 + 1)
+    | _ => (st.1 ++ (physExpandR shiftImm u64 rmap memrefBaseReload i).toArray, st.2))
+    (#[], 0)).1.toList
+
 /-- **The 2-pointer-ABI physical `lfundef` of a virtual looped `lfundef` with its
     allocation certificate**: the physical `lfundef` of `lfundefPhysAbiOfVirt` and the
     certificate `allocCertOf` of the allocator input body over the table that
@@ -2965,7 +3170,8 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
     (shiftImm : ShiftImmOracle := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
-    (posBind : Bool := false) (frameArrs : List (String × Nat × Nat) := []) :
+    (posBind : Bool := false) (frameArrs : List (String × Nat × Nat) := [])
+    (splitCfg : Lcmd → Option SplitCfg := fun _ => none) :
     Lfundef × List (String × String) :=
   -- Argument-liveness pin (4+-argument looped signatures — the chained-phase
   -- kernels whose per-phase runtime bounds are read LATE, at each phase's loop
@@ -2988,7 +3194,7 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
          (accRegs.foldl (fun b r => aliasRegBody r outArg' b) virt0.lfd_body)
   let virt := { virt0 with lfd_body := body1 }
   -- Output-liveness allocation table (`outStoreMap = []` ⇒ `physTable (bodyTrace …)`).
-  let tbl := physTableOut virt.lfd_body [] (abi := abi)
+  let tbl := physTableOut virt.lfd_body [] (abi := abi) (split := splitCfg virt.lfd_body)
   -- Prologue: save both SysV pointer args (and the six callee-saved GP regs) to
   -- the red zone; the per-access reload sources the array bases from there.
   -- For a MULTI-INPUT signature (`[RDI, RSI, RDX, …]` — the GF-dot kernels),
@@ -3077,10 +3283,14 @@ def lfundefPhysAbiOfVirtCert (virt0 : Lfundef) (outArg' : String) (inArgs' : Lis
   -- (the body self-addresses through the array pointers, not per-word loads).
   -- A `ZEROARR`/`STOREIMM` whose register base has a save slot addresses its base
   -- through `R14`, reloaded from that slot (`reloadArrImmBody`).
+  -- At a split configuration (`splitCfg`, given for call-free bodies) the body is
+  -- `physBodySplit`, whose table is `tbl`.
   let bodyWithReload := reloadArrImmBody memrefBaseReload
-    ((physBodyWithStores shiftImm' virt.lfd_body
-      (fun _ => none) reloadScratch2 [] reloadScratch2 0 memrefBaseReload
-      callArgBaseReload (abi := abi)).filter
+    ((match splitCfg virt.lfd_body with
+      | some cfg => physBodySplit shiftImm' virt.lfd_body cfg memrefBaseReload abi
+      | none => physBodyWithStores shiftImm' virt.lfd_body
+          (fun _ => none) reloadScratch2 [] reloadScratch2 0 memrefBaseReload
+          callArgBaseReload (abi := abi)).filter
       (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true))
   -- Restore the callee-saved registers before the final `Lret`.
   let bodyWithRestore := insertEpilogue bodyWithReload calleeSaveRestoreEpilogue
@@ -3115,10 +3325,10 @@ def lfundefPhysAbiOfVirt (virt0 : Lfundef) (outArg' : String) (inArgs' : List St
     (shiftImm : ShiftImmOracle := fun _ => none)
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64]) (abi : IsaAbi := x86Abi)
-    (posBind : Bool := false) :
+    (posBind : Bool := false) (splitCfg : Lcmd → Option SplitCfg := fun _ => none) :
     Lfundef :=
   (lfundefPhysAbiOfVirtCert virt0 outArg' inArgs' accRegs shiftImm abiArgs abiTyin abi
-    posBind).1
+    posBind (splitCfg := splitCfg)).1
 
 /-- The function of `lfundefPhysAbiOfVirtCert` is `lfundefPhysAbiOfVirt`. -/
 theorem lfundefPhysAbiOfVirtCert_fst (virt0 : Lfundef) (outArg' : String)

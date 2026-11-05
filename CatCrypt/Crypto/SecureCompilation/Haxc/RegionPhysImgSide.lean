@@ -977,7 +977,7 @@ theorem regionCoStage_ne_physImgB_of_open (fname : String) (σ : AbiLayout) {t :
     {fd0 : Lfundef} (hfd : exportRLfundef fname p = some fd0)
     (hts : ∀ w, [t] ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
     (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
-    (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
+    (hP : regionLprogC (nfAbiNames fname σ) p none ex noSplit = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b) (fn : String)
     (hopt : (splitStraightRuns
       (postBody (regionAllocFn (nfAbiNames fname σ) [t] r fd0).lfd_body)).all

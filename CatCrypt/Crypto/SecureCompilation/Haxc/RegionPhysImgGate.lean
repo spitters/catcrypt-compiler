@@ -314,7 +314,7 @@ def regionAllocFn (a : AbiNames) (ts : List JasminTy) (r : Exported) (fd0 : Lfun
           ++ ((regionAllocCode (r.code ++ regionLprogCopy a none ts r.code r.res) []
             (resAliasOf none (some a.outArg) ts r.res)).map
             (fun i => (⟨0, i.1⟩ : Linstr)) ++ [⟨0, .Lret⟩])) }
-    a.outArg a.inArgs a.abiArgs).1
+    a.outArg a.inArgs a.abiArgs noSplit).1
 
 /-- The allocated program of `regionLprogC` without a callee, for a result other than one
     register, is `regionPostFuse` of the program whose only function is `regionAllocFn` at the
@@ -324,7 +324,7 @@ theorem regionLprogC_lp_funcs (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : Lis
     (hr : exportR Γ.length a.fname p Γ.length 0 = some r)
     (hfd : exportRLfundef a.fname p = some fd0) (hts : ∀ w, ts ≠ [.reg w])
     {P : Lprog} {cert : List (String × String)}
-    (hP : regionLprogC a p none ex = some (P, cert)) :
+    (hP : regionLprogC a p none ex noSplit = some (P, cert)) :
     ∃ P0 : Lprog, P = regionPostFuse P0
       ∧ P0.lp_funcs = [(a.fname, regionAllocFn a ts (regionWebsAt ex none r) fd0)] := by
   unfold regionLprogC regionAllocC at hP
@@ -352,7 +352,7 @@ theorem physImgB_printed (fname : String) (σ : AbiLayout) {ts : List JasminTy}
     {fd0 : Lfundef} (hfd : exportRLfundef fname p = some fd0)
     (hts : ∀ w, ts ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
     (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
-    (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
+    (hP : regionLprogC (nfAbiNames fname σ) p none ex noSplit = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b)
     (R : Slots) (ps : List (String × String))
     (hside : physImgSideB (slotArrC R (slotRen (slotArrOf σ exportReg) (renOf ps)))
@@ -410,7 +410,7 @@ theorem regionCoStage_ne_physImgB (fname : String) (σ : AbiLayout) {t : JasminT
     {fd0 : Lfundef} (hfd : exportRLfundef fname p = some fd0)
     (hts : ∀ w, [t] ≠ [.reg w]) (hnd : (σ.args.map fun a => exportReg a.reg).Nodup)
     (ex : List String) (hwe : regionWebs ex r = r) {P : Lprog} {cert : List (String × String)}
-    (hP : regionLprogC (nfAbiNames fname σ) p none ex = some (P, cert))
+    (hP : regionLprogC (nfAbiNames fname σ) p none ex noSplit = some (P, cert))
     {b : Lcmd} (hb : firstBody (printedLprog P) = some b) (fn : String)
     (hside : physImgSideB
       (slotArrC (regionCoParts σ exportReg b t r.code r.res cert).cells

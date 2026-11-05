@@ -615,14 +615,15 @@ theorem allocCertNames_mem {body : Lcmd} {n : String} (h : n ∈ allocCertNames 
     not kept, its own name differs from the image of the other. The case of two kept names
     is `allocName_injOn_liveAt`. -/
 theorem certMerge_ne_of_liveAt {σ : AbiLayout} {arrs X : List String} {body : Lcmd}
-    {outStoreMap : OutStoreMap} {reservedVec : List Nat} {r d : String} {pos : Nat}
+    {outStoreMap : OutStoreMap} {reservedVec : List Nat} {split : Option SplitCfg} {r d : String}
+    {pos : Nat}
     (hfit : numGPRegs + (physLiveItems (bodyTraceOut body outStoreMap)).length ≤ vectorBase)
     (hcls : bodyStraightCall body = true →
-      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec).size),
+      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec (split := split)).size),
         slotIsVec (bodyVecSlots body) s
-          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec)[s]))
+          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec (split := split))[s]))
     (hsp : bodyStraightCall body = true →
-      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec) + numGPRegs
+      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec (split := split)) + numGPRegs
         ≤ vectorBase)
     (hrd : r ≠ d)
     (hla : r ∈ allocCertNames body → certMergeKeep σ arrs X r = true →
@@ -631,16 +632,16 @@ theorem certMerge_ne_of_liveAt {σ : AbiLayout} {arrs X : List String} {body : L
         ∧ LiveAt (bodyTraceOut body outStoreMap) pos (nameSlot body d))
     (hrI : r ∈ allocCertNames body ∧ certMergeKeep σ arrs X r = true →
       ¬ (d ∈ allocCertNames body ∧ certMergeKeep σ arrs X d = true) →
-      allocName body (straightCallComposeTable body (physTableOut body outStoreMap reservedVec))
+      allocName body (straightCallComposeTable body (physTableOut body outStoreMap reservedVec (split := split)))
         r ≠ d)
     (hIr : ¬ (r ∈ allocCertNames body ∧ certMergeKeep σ arrs X r = true) →
       d ∈ allocCertNames body ∧ certMergeKeep σ arrs X d = true →
       r ≠ allocName body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) d) :
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec (split := split))) d) :
     renOf (certMerge σ arrs X (allocCertOf body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)))) r
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec (split := split))))) r
       ≠ renOf (certMerge σ arrs X (allocCertOf body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)))) d := by
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec (split := split))))) d := by
   rw [renOf_certMerge_allocCertOf, renOf_certMerge_allocCertOf]
   by_cases hr : r ∈ allocCertNames body ∧ certMergeKeep σ arrs X r = true
   · by_cases hd : d ∈ allocCertNames body ∧ certMergeKeep σ arrs X d = true
@@ -1120,14 +1121,15 @@ theorem renOf_certMerge_of_not {σ : AbiLayout} {arrs X : List String}
     `allocName`, which is no plain name other than itself (`allocName_ne`), and a name that
     is not kept goes to itself. -/
 theorem certMerge_ne_of_liveAt_plain {σ : AbiLayout} {arrs X : List String} {body : Lcmd}
-    {outStoreMap : OutStoreMap} {reservedVec : List Nat} {r d : String} {pos : Nat}
+    {outStoreMap : OutStoreMap} {reservedVec : List Nat} {split : Option SplitCfg} {r d : String}
+    {pos : Nat}
     (hfit : numGPRegs + (physLiveItems (bodyTraceOut body outStoreMap)).length ≤ vectorBase)
     (hcls : bodyStraightCall body = true →
-      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec).size),
+      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec (split := split)).size),
         slotIsVec (bodyVecSlots body) s
-          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec)[s]))
+          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec (split := split))[s]))
     (hsp : bodyStraightCall body = true →
-      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec) + numGPRegs
+      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec (split := split)) + numGPRegs
         ≤ vectorBase)
     (hrd : r ≠ d) (hr : PlainName r) (hd : PlainName d)
     (hla : r ∈ allocCertNames body → certMergeKeep σ arrs X r = true →
@@ -1135,9 +1137,9 @@ theorem certMerge_ne_of_liveAt_plain {σ : AbiLayout} {arrs X : List String} {bo
       LiveAt (bodyTraceOut body outStoreMap) pos (nameSlot body r)
         ∧ LiveAt (bodyTraceOut body outStoreMap) pos (nameSlot body d)) :
     renOf (certMerge σ arrs X (allocCertOf body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)))) r
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec (split := split))))) r
       ≠ renOf (certMerge σ arrs X (allocCertOf body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)))) d :=
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec (split := split))))) d :=
   certMerge_ne_of_liveAt hfit hcls hsp hrd hla (fun _ _ => allocName_ne hd hrd)
     (fun _ _ => (allocName_ne hr (Ne.symm hrd)).symm)
 

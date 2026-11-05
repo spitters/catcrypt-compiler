@@ -117,22 +117,22 @@ theorem live_out_of_mem_bodyNames {body : Lcmd} {outStoreMap : OutStoreMap} {a :
   exact live_of_touched ⟨e, mem_bodyTraceOut_of_mem he, hs⟩
 
 theorem physTableClassed_size (tr : List PhysEvent) (vecArr : Array Bool)
-    (reserved reservedVec : List Nat) :
-    (physTableClassed tr vecArr reserved reservedVec).size = physUniverse tr := by
+    (reserved reservedVec : List Nat) (split : Option SplitCfg := none) :
+    (physTableClassed tr vecArr reserved reservedVec x86Abi split).size = physUniverse tr := by
   simp [physTableClassed]
 
 theorem physTableOut_no_collision {body : Lcmd} {outStoreMap : OutStoreMap}
-    {reservedVec : List Nat} {a b : String}
+    {reservedVec : List Nat} {split : Option SplitCfg} {a b : String}
     (hfit : numGPRegs + (physLiveItems (bodyTraceOut body outStoreMap)).length ≤ vectorBase)
     (ha : a ∈ bodyNames body) (hb : b ∈ bodyNames body) (hne : a ≠ b)
     (hov : physRangesOverlap (physLiveRange (bodyTraceOut body outStoreMap) (nameSlot body a))
       (physLiveRange (bodyTraceOut body outStoreMap) (nameSlot body b))) :
-    physMapTabled (physTableOut body outStoreMap reservedVec) (nameSlot body a)
-      ≠ physMapTabled (physTableOut body outStoreMap reservedVec) (nameSlot body b) := by
+    physMapTabled (physTableOut body outStoreMap reservedVec x86Abi split) (nameSlot body a)
+      ≠ physMapTabled (physTableOut body outStoreMap reservedVec x86Abi split) (nameSlot body b) := by
   obtain ⟨hu1, hl1⟩ := live_out_of_mem_bodyNames (outStoreMap := outStoreMap) ha
   obtain ⟨hu2, hl2⟩ := live_out_of_mem_bodyNames (outStoreMap := outStoreMap) hb
   have hsl : nameSlot body a ≠ nameSlot body b := fun h => hne (nameSlot_injOn ha hb h)
-  exact physTableClassed_no_collision _ _ _ _ hfit hsl hu1 hu2 hl1 hl2 hov
+  exact physTableClassed_no_collision _ _ _ _ hfit hsl hu1 hu2 hl1 hl2 hov (split := split)
 
 theorem calleeFirstPhys_inj {p q : Nat} (h : calleeFirstPhys p = calleeFirstPhys q) : p = q := by
   have hn : numGPRegs = 13 := rfl
@@ -641,14 +641,14 @@ theorem straightCallComposeTable_ne {body : Lcmd} {T : Array Nat} {a b : String}
     every slot is the class its table entry's threshold reads) places every GP
     spill entry below `gpSpillBase`. -/
 theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
-    {reservedVec : List Nat} {a b : String}
+    {reservedVec : List Nat} {split : Option SplitCfg} {a b : String}
     (hfit : numGPRegs + (physLiveItems (bodyTraceOut body outStoreMap)).length ≤ vectorBase)
     (hcls : bodyStraightCall body = true →
-      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec).size),
+      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec x86Abi split).size),
         slotIsVec (bodyVecSlots body) s
-          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec)[s]))
+          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec x86Abi split)[s]))
     (hsp : bodyStraightCall body = true →
-      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec) + numGPRegs
+      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec x86Abi split) + numGPRegs
         ≤ vectorBase)
     (ha : a ∈ bodyNames body) (hb : b ∈ bodyNames body) (hne : a ≠ b)
     (hpa : a ≠ "%livepin") (hpb : b ≠ "%livepin")
@@ -657,15 +657,15 @@ theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
     (hov : physRangesOverlap (physLiveRange (bodyTraceOut body outStoreMap) (nameSlot body a))
       (physLiveRange (bodyTraceOut body outStoreMap) (nameSlot body b))) :
     allocName body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) a
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec x86Abi split)) a
       ≠ allocName body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) b := by
-  have hT := physTableOut_no_collision (reservedVec := reservedVec) hfit ha hb hne hov
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec x86Abi split)) b := by
+  have hT := physTableOut_no_collision (reservedVec := reservedVec) (split := split) hfit ha hb hne hov
   have hsize : ∀ n, n ∈ bodyNames body →
-      nameSlot body n < (physTableOut body outStoreMap reservedVec).size := by
+      nameSlot body n < (physTableOut body outStoreMap reservedVec x86Abi split).size := by
     intro n hn
     unfold physTableOut
-    rw [physTableClassed_size]
+    rw [physTableClassed_size _ _ _ _ split]
     exact (live_out_of_mem_bodyNames hn).1
   unfold allocName
   by_cases hc : bodyHasCall body = true
@@ -678,8 +678,8 @@ theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
       exact straightCallComposeTable_ne hs (hcls hs) (hsp hs) ha hb
         (maskName_nameSlot ha hpa hwa) (maskName_nameSlot hb hpb hwb)
         (hsize a ha) (hsize b hb) hT (physRegName_inj h)
-    · have hid : straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
-          = physTableOut body outStoreMap reservedVec := by
+    · have hid : straightCallComposeTable body (physTableOut body outStoreMap reservedVec x86Abi split)
+          = physTableOut body outStoreMap reservedVec x86Abi split := by
         unfold straightCallComposeTable; rw [ite_eq_right hs]
       simp only [hs, Bool.false_eq_true, ite_false, hid]
       intro h
@@ -687,8 +687,8 @@ theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
   · rw [ite_eq_right hc, ite_eq_right hc]
     have hs : bodyStraightCall body = false := by
       unfold bodyStraightCall; simp only [Bool.not_eq_true] at hc; simp [hc]
-    have hid : straightCallComposeTable body (physTableOut body outStoreMap reservedVec)
-        = physTableOut body outStoreMap reservedVec := by
+    have hid : straightCallComposeTable body (physTableOut body outStoreMap reservedVec x86Abi split)
+        = physTableOut body outStoreMap reservedVec x86Abi split := by
       unfold straightCallComposeTable; rw [hs]; rfl
     rw [hid]
     intro h
@@ -699,14 +699,14 @@ theorem allocName_injOn_overlap {body : Lcmd} {outStoreMap : OutStoreMap}
     live at one position of `bodyTraceOut`, have distinct images under the
     allocator's renaming. -/
 theorem allocName_injOn_liveAt {body : Lcmd} {outStoreMap : OutStoreMap}
-    {reservedVec : List Nat} {a b : String} {pos : Nat}
+    {reservedVec : List Nat} {split : Option SplitCfg} {a b : String} {pos : Nat}
     (hfit : numGPRegs + (physLiveItems (bodyTraceOut body outStoreMap)).length ≤ vectorBase)
     (hcls : bodyStraightCall body = true →
-      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec).size),
+      ∀ (s : Nat) (h : s < (physTableOut body outStoreMap reservedVec x86Abi split).size),
         slotIsVec (bodyVecSlots body) s
-          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec)[s]))
+          = decide (vectorBase ≤ (physTableOut body outStoreMap reservedVec x86Abi split)[s]))
     (hsp : bodyStraightCall body = true →
-      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec) + numGPRegs
+      gpSpillBase (bodyVecSlots body) (physTableOut body outStoreMap reservedVec x86Abi split) + numGPRegs
         ≤ vectorBase)
     (ha : a ∈ bodyNames body) (hb : b ∈ bodyNames body) (hne : a ≠ b)
     (hpa : a ≠ "%livepin") (hpb : b ≠ "%livepin")
@@ -715,9 +715,9 @@ theorem allocName_injOn_liveAt {body : Lcmd} {outStoreMap : OutStoreMap}
     (hla : LiveAt (bodyTraceOut body outStoreMap) pos (nameSlot body a))
     (hlb : LiveAt (bodyTraceOut body outStoreMap) pos (nameSlot body b)) :
     allocName body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) a
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec x86Abi split)) a
       ≠ allocName body
-        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec)) b :=
+        (straightCallComposeTable body (physTableOut body outStoreMap reservedVec x86Abi split)) b :=
   allocName_injOn_overlap hfit hcls hsp ha hb hne hpa hpb hwa hwb hfa hfb
     (overlap_of_liveAt hla hlb)
 

@@ -691,88 +691,139 @@ theorem inv_evict {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
           · rw [ite_eq_right hs2] at h2
             exact inv.noColl t₁ t₂ p hne h1 h2
 
+/-- An interval that takes no location leaves the invariant at its start, with the ended
+    allocations reclaimed. -/
+theorem inv_skip {numRegs : Nat} {rg : Nat → Nat × Nat} {pos : Nat}
+    {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)} {st : Nat}
+    (inv : ScanInv numRegs rg pos act hulls acc) (hpos : pos ≤ st) :
+    ScanInv numRegs rg st (act.filter (fun a => a.en ≥ st)) hulls acc := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, inv.cell, inv.noColl⟩
+  · intro a ha; exact inv.bound a (List.mem_filter.mp ha).1
+  · exact nodup_phys_filter _ inv.nodup
+  · intro a ha; exact inv.range a (List.mem_filter.mp ha).1
+  · intro a ha; exact inv.actLoc a (List.mem_filter.mp ha).1
+  · intro t ph hph hloc
+    rcases inv.regLive t ph hph hloc with ⟨a, ha, hs, hp⟩ | hd
+    · by_cases hf : a ∈ act.filter (fun a => a.en ≥ st)
+      · exact Or.inl ⟨a, hf, hs, hp⟩
+      · refine Or.inr ?_
+        have hr : rg t = (a.st, a.en) := hs ▸ inv.range a ha
+        rw [hr]
+        exact dead_of_not_filtered ha hf
+    · exact Or.inr (by omega)
+
+/-- The victim of a step is an allocation that survives the reclamation. -/
+theorem victim_mem {st : Nat} {uses : Array Nat} {act : List PhysActive}
+    {pieceOf : Nat → Option Nat} {far : PhysActive}
+    (hv : spillVictim st uses ((act.filter (fun a => a.en ≥ st)).filter
+      (fun a => (pieceOf a.slot).isNone)) = some far) :
+    far ∈ act.filter (fun a => a.en ≥ st) :=
+  (List.mem_filter.mp (spillVictim_mem hv)).1
+
 /-! ### One step and the whole scan -/
 
 /-- One `physScanSpillStep` re-establishes `ScanInv` at the interval's start. -/
 theorem physScanSpillStep_ScanInv {numRegs : Nat} {uses : Array Nat}
     {rg : Nat → Nat × Nat} {pos : Nat}
     {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
-    {s st en : Nat} {reserved : List Nat}
+    {s st en : Nat} {reserved : List Nat} {pieceOf : Nat → Option Nat}
     (inv : ScanInv numRegs rg pos act hulls acc)
     (hpos : pos ≤ st) (hrg : rg s = (st, en))
     (hact : ∀ a ∈ act, a.slot ≠ s) :
     ScanInv numRegs rg st
-      (physScanSpillStep numRegs uses act hulls acc s st en reserved).1
-      (physScanSpillStep numRegs uses act hulls acc s st en reserved).2.1
-      (physScanSpillStep numRegs uses act hulls acc s st en reserved).2.2 := by
-  simp only [physScanSpillStep]
+      (physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).1
+      (physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).2.1
+      (physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).2.2 := by
+  simp only [physScanSpillStep, physScanSpillLose]
   split
-  next ph hfr => exact inv_take_reg inv hpos hrg hact hfr
-  next hfr =>
+  next => exact inv_skip inv hpos
+  next =>
     split
-    next far hv =>
+    next ph hfr => exact inv_take_reg inv hpos hrg hact hfr
+    next hfr =>
       split
-      next hp => exact inv_evict inv hpos hrg hact (spillVictim_mem hv)
-      next hp => exact inv_spill_incoming inv hpos hrg hact
-    next hv => exact inv_spill_incoming inv hpos hrg hact
+      next far hv =>
+        split
+        next hp => exact inv_evict inv hpos hrg hact (victim_mem hv)
+        next hp =>
+          split
+          next => exact inv_skip inv hpos
+          next => exact inv_spill_incoming inv hpos hrg hact
+      next hv =>
+        split
+        next => exact inv_skip inv hpos
+        next => exact inv_spill_incoming inv hpos hrg hact
 
 /-- A step does not assign a slot other than the one it processes. -/
 theorem physScanSpillStep_fresh {numRegs : Nat} {uses : Array Nat}
     {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
-    {s st en t : Nat} {reserved : List Nat}
+    {s st en t : Nat} {reserved : List Nat} {pieceOf : Nat → Option Nat}
     (h1 : physLoc acc t = none) (h2 : ¬ s = t) (h3 : ∀ a ∈ act, ¬ a.slot = t) :
-    physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved).2.2 t = none := by
-  simp only [physScanSpillStep]
+    physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).2.2 t
+      = none := by
+  simp only [physScanSpillStep, physScanSpillLose]
   split
-  next ph hfr => rw [physLoc_cons, ite_eq_right h2]; exact h1
-  next hfr =>
+  next => exact h1
+  next =>
     split
-    next far hv =>
+    next ph hfr => rw [physLoc_cons, ite_eq_right h2]; exact h1
+    next hfr =>
       split
-      next hp =>
-        have hfarAct : far ∈ act := (List.mem_filter.mp (spillVictim_mem hv)).1
-        rw [physLoc_cons, ite_eq_right (h3 far hfarAct), physLoc_cons, ite_eq_right h2]
-        exact h1
-      next hp => rw [physLoc_cons, ite_eq_right h2]; exact h1
-    next hv => rw [physLoc_cons, ite_eq_right h2]; exact h1
+      next far hv =>
+        split
+        next hp =>
+          have hfarAct : far ∈ act := (List.mem_filter.mp (victim_mem hv)).1
+          rw [physLoc_cons, ite_eq_right (h3 far hfarAct), physLoc_cons, ite_eq_right h2]
+          exact h1
+        next hp =>
+          split
+          next => exact h1
+          next => rw [physLoc_cons, ite_eq_right h2]; exact h1
+      next hv =>
+        split
+        next => exact h1
+        next => rw [physLoc_cons, ite_eq_right h2]; exact h1
 
 /-- A step keeps out of the in-flight allocations every slot it does not process. -/
 theorem physScanSpillStep_act_slot {numRegs : Nat} {uses : Array Nat}
     {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
-    {s st en t : Nat} {reserved : List Nat}
+    {s st en t : Nat} {reserved : List Nat} {pieceOf : Nat → Option Nat}
     (h2 : ¬ s = t) (h3 : ∀ a ∈ act, ¬ a.slot = t) :
-    ∀ a ∈ (physScanSpillStep numRegs uses act hulls acc s st en reserved).1,
+    ∀ a ∈ (physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).1,
       ¬ a.slot = t := by
   have hfil : ∀ (p : PhysActive → Bool) (l : List PhysActive),
       (∀ a ∈ l, ¬ a.slot = t) → ∀ a ∈ l.filter p, ¬ a.slot = t :=
     fun _ _ hl a ha => hl a (List.mem_filter.mp ha).1
-  simp only [physScanSpillStep]
+  simp only [physScanSpillStep, physScanSpillLose]
   split
-  next ph hfr =>
-    intro a ha
-    rcases List.mem_cons.mp ha with rfl | ha'
-    · exact h2
-    · exact hfil _ _ h3 a ha'
-  next hfr =>
+  next => exact hfil _ _ h3
+  next =>
     split
-    next far hv =>
+    next ph hfr =>
+      intro a ha
+      rcases List.mem_cons.mp ha with rfl | ha'
+      · exact h2
+      · exact hfil _ _ h3 a ha'
+    next hfr =>
       split
-      next hp =>
-        intro a ha
-        rcases List.mem_cons.mp ha with rfl | ha'
-        · exact h2
-        · exact hfil _ _ (hfil _ _ h3) a ha'
-      next hp => exact hfil _ _ h3
-    next hv => exact hfil _ _ h3
+      next far hv =>
+        split
+        next hp =>
+          intro a ha
+          rcases List.mem_cons.mp ha with rfl | ha'
+          · exact h2
+          · exact hfil _ _ (hfil _ _ h3) a ha'
+        next hp => split <;> exact hfil _ _ h3
+      next hv => split <;> exact hfil _ _ h3
 
 /-- The scan's input contract: intervals in non-decreasing start order, one per
     slot. -/
 def ItemsSorted (items : List (Nat × Nat × Nat)) : Prop :=
   items.Pairwise (fun a b => a.2.1 ≤ b.2.1 ∧ ¬ a.1 = b.1)
 
-/-- `ScanInv` threads over the whole scan. -/
+/-- `ScanInv` threads over the whole scan, pieces of split intervals included. -/
 theorem physScanSpill_ScanInv (numRegs : Nat) (uses : Array Nat) (reserved : List Nat)
-    (rg : Nat → Nat × Nat) :
+    (rg : Nat → Nat × Nat) {pieceOf : Nat → Option Nat} :
     ∀ (items : List (Nat × Nat × Nat)) (pos : Nat) (act : List PhysActive)
       (hulls : CellHulls) (acc : List (Nat × Nat)),
       ScanInv numRegs rg pos act hulls acc →
@@ -781,7 +832,7 @@ theorem physScanSpill_ScanInv (numRegs : Nat) (uses : Array Nat) (reserved : Lis
         physLoc acc it.1 = none ∧ ∀ a ∈ act, ¬ a.slot = it.1) →
       ∃ pos' act' hulls',
         ScanInv numRegs rg pos' act' hulls'
-          (physScanSpill numRegs uses items act hulls acc reserved) := by
+          (physScanSpill numRegs uses items act hulls acc reserved pieceOf) := by
   intro items
   induction items with
   | nil => intro pos act hulls acc inv _ _; exact ⟨pos, act, hulls, inv⟩
@@ -791,9 +842,9 @@ theorem physScanSpill_ScanInv (numRegs : Nat) (uses : Array Nat) (reserved : Lis
     obtain ⟨hp, hr, hf, ha⟩ := hok _ List.mem_cons_self
     rw [ItemsSorted, List.pairwise_cons] at hsort
     simp only [physScanSpill]
-    refine ih stt (physScanSpillStep numRegs uses act hulls acc s stt enn reserved).1
-      (physScanSpillStep numRegs uses act hulls acc s stt enn reserved).2.1
-      (physScanSpillStep numRegs uses act hulls acc s stt enn reserved).2.2
+    refine ih stt (physScanSpillStep numRegs uses act hulls acc s stt enn reserved pieceOf).1
+      (physScanSpillStep numRegs uses act hulls acc s stt enn reserved pieceOf).2.1
+      (physScanSpillStep numRegs uses act hulls acc s stt enn reserved pieceOf).2.2
       (physScanSpillStep_ScanInv inv hp hr (fun a hA => ha a hA)) hsort.2 ?_
     intro it' hit'
     obtain ⟨hle, hnem⟩ := hsort.1 it' hit'
@@ -801,7 +852,7 @@ theorem physScanSpill_ScanInv (numRegs : Nat) (uses : Array Nat) (reserved : Lis
     exact ⟨hle, hr', physScanSpillStep_fresh hf' hnem ha',
       physScanSpillStep_act_slot hnem ha'⟩
 
-/-! ### Every processed slot ends up with a location -/
+/-! ### Every processed slot other than a piece ends up with a location -/
 
 theorem physLoc_cons_ne_none (p : Nat × Nat) (acc : List (Nat × Nat)) (t : Nat)
     (h : physLoc acc t ≠ none) : physLoc (p :: acc) t ≠ none := by
@@ -813,24 +864,40 @@ theorem physLoc_cons_ne_none (p : Nat × Nat) (acc : List (Nat × Nat)) (t : Nat
 
 theorem physScanSpillStep_keeps {numRegs : Nat} {uses : Array Nat}
     {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
-    {s st en t : Nat} {reserved : List Nat} (h : physLoc acc t ≠ none) :
-    physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved).2.2 t ≠ none := by
-  simp only [physScanSpillStep]
+    {s st en t : Nat} {reserved : List Nat} {pieceOf : Nat → Option Nat}
+    (h : physLoc acc t ≠ none) :
+    physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).2.2 t
+      ≠ none := by
+  simp only [physScanSpillStep, physScanSpillLose]
   split
-  next ph hfr => exact physLoc_cons_ne_none _ _ _ h
-  next hfr =>
+  next => exact h
+  next =>
     split
-    next far hv =>
+    next ph hfr => exact physLoc_cons_ne_none _ _ _ h
+    next hfr =>
       split
-      next hp => exact physLoc_cons_ne_none _ _ _ (physLoc_cons_ne_none _ _ _ h)
-      next hp => exact physLoc_cons_ne_none _ _ _ h
-    next hv => exact physLoc_cons_ne_none _ _ _ h
+      next far hv =>
+        split
+        next hp => exact physLoc_cons_ne_none _ _ _ (physLoc_cons_ne_none _ _ _ h)
+        next hp =>
+          split
+          next => exact h
+          next => exact physLoc_cons_ne_none _ _ _ h
+      next hv =>
+        split
+        next => exact h
+        next => exact physLoc_cons_ne_none _ _ _ h
 
 theorem physScanSpillStep_assigns {numRegs : Nat} {uses : Array Nat}
     {act : List PhysActive} {hulls : CellHulls} {acc : List (Nat × Nat)}
-    {s st en : Nat} {reserved : List Nat} :
-    physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved).2.2 s ≠ none := by
-  simp only [physScanSpillStep]
+    {s st en : Nat} {reserved : List Nat} {pieceOf : Nat → Option Nat}
+    (hs : pieceOf s = none) :
+    physLoc (physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).2.2 s
+      ≠ none := by
+  have hskip : pieceSkip numRegs pieceOf acc s = false := by
+    simp [pieceSkip, hs]
+  simp only [physScanSpillStep, physScanSpillLose, hskip, hs, Bool.false_eq_true, ite_false,
+    Option.isSome_none]
   split
   next ph hfr => rw [physLoc_cons, ite_eq_left rfl]; simp
   next hfr =>
@@ -845,10 +912,11 @@ theorem physScanSpillStep_assigns {numRegs : Nat} {uses : Array Nat}
       next hp => rw [physLoc_cons, ite_eq_left rfl]; simp
     next hv => rw [physLoc_cons, ite_eq_left rfl]; simp
 
-theorem physScanSpill_keeps (numRegs : Nat) (uses : Array Nat) (reserved : List Nat) :
+theorem physScanSpill_keeps (numRegs : Nat) (uses : Array Nat) (reserved : List Nat)
+    {pieceOf : Nat → Option Nat} :
     ∀ (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
       (acc : List (Nat × Nat)) (t : Nat), physLoc acc t ≠ none →
-      physLoc (physScanSpill numRegs uses items act hulls acc reserved) t ≠ none := by
+      physLoc (physScanSpill numRegs uses items act hulls acc reserved pieceOf) t ≠ none := by
   intro items
   induction items with
   | nil => intro act hulls acc t h; exact h
@@ -858,20 +926,24 @@ theorem physScanSpill_keeps (numRegs : Nat) (uses : Array Nat) (reserved : List 
     simp only [physScanSpill]
     exact ih _ _ _ t (physScanSpillStep_keeps h)
 
-theorem physScanSpill_assigns (numRegs : Nat) (uses : Array Nat) (reserved : List Nat) :
+/-- Every item of the scan that is no piece receives a location. -/
+theorem physScanSpill_assigns (numRegs : Nat) (uses : Array Nat) (reserved : List Nat)
+    {pieceOf : Nat → Option Nat} :
     ∀ (items : List (Nat × Nat × Nat)) (act : List PhysActive) (hulls : CellHulls)
-      (acc : List (Nat × Nat)), ∀ it ∈ items,
-      physLoc (physScanSpill numRegs uses items act hulls acc reserved) it.1 ≠ none := by
+      (acc : List (Nat × Nat)), ∀ it ∈ items, pieceOf it.1 = none →
+      physLoc (physScanSpill numRegs uses items act hulls acc reserved pieceOf) it.1
+        ≠ none := by
   intro items
   induction items with
   | nil => intro _ _ _ it hit; exact absurd hit (by simp)
   | cons it0 rest ih =>
-    intro act hulls acc it hit
+    intro act hulls acc it hit hpc
     obtain ⟨s, stt, enn⟩ := it0
     simp only [physScanSpill]
     rcases List.mem_cons.mp hit with rfl | hit'
-    · exact physScanSpill_keeps numRegs uses reserved rest _ _ _ _ physScanSpillStep_assigns
-    · exact ih _ _ _ it hit'
+    · exact physScanSpill_keeps numRegs uses reserved rest _ _ _ _
+        (physScanSpillStep_assigns hpc)
+    · exact ih _ _ _ it hit' hpc
 
 /-! ## 4. The allocation is collision-free
 
@@ -879,17 +951,20 @@ The scan-level statement, then its instance for the shipped item list
 `physLiveItems` and the shipped table `physAssign`/`physMap`. -/
 
 /-- Two distinct slots whose ranges overlap never receive the same physical
-    location from the bounded scan. -/
+    location from the bounded scan. The slots range over the items, pieces of split
+    intervals included (`pieceOf`): a piece that holds a register over its range shares it
+    with no slot or piece whose range overlaps. -/
 theorem physScanSpill_no_collision (numRegs : Nat) (uses : Array Nat) (reserved : List Nat)
     (rg : Nat → Nat × Nat) (items : List (Nat × Nat × Nat))
     (hsort : ItemsSorted items)
     (hrg : ∀ it ∈ items, rg it.1 = (it.2.1, it.2.2))
+    {pieceOf : Nat → Option Nat}
     {t₁ t₂ p : Nat} (hne : t₁ ≠ t₂)
-    (h1 : physLoc (physScanSpill numRegs uses items [] #[] [] reserved) t₁ = some p)
-    (h2 : physLoc (physScanSpill numRegs uses items [] #[] [] reserved) t₂ = some p) :
+    (h1 : physLoc (physScanSpill numRegs uses items [] #[] [] reserved pieceOf) t₁ = some p)
+    (h2 : physLoc (physScanSpill numRegs uses items [] #[] [] reserved pieceOf) t₂ = some p) :
     ¬ physRangesOverlap (rg t₁) (rg t₂) := by
   obtain ⟨_, _, _, inv⟩ :=
-    physScanSpill_ScanInv numRegs uses reserved rg items 0 [] #[] []
+    physScanSpill_ScanInv numRegs uses reserved rg (pieceOf := pieceOf) items 0 [] #[] []
       ⟨by simp, by simp, by simp, by simp, by simp, by simp, by simp⟩
       hsort (fun it hit => ⟨Nat.zero_le _, hrg it hit, rfl, by simp⟩)
   exact inv.noColl t₁ t₂ p hne h1 h2
@@ -970,7 +1045,7 @@ theorem physAssign_physLoc_live (tr : List PhysEvent) {s : Nat}
     (hs : ∃ it ∈ physLiveItems tr, it.1 = s) : physLoc (physAssign tr) s ≠ none := by
   obtain ⟨it, hit, rfl⟩ := hs
   exact physScanSpill_assigns numGPRegs (physLiveData tr).2 []
-    (physLiveData tr).1 [] #[] [] it hit
+    (physLiveData tr).1 [] #[] [] it hit rfl
 
 /-- The physical location `physMap` reports separates any two distinct live slots
     whose ranges overlap — registers and stack cells alike. -/

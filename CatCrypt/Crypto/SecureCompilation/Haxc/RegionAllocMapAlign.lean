@@ -91,10 +91,28 @@ def regionAllocBody (a : AbiNames) (nArgs : Nat) (ts : List JasminTy) (r : Expor
           ((List.range a.abiArgs.length).map fun j => (.reg (argName j) : LOperand))⟩]
        else []) ++ canonicalizeMemrefThread (arrBasePins a ac ++ body)
 
-/-- The allocation table of a body without output stores and reserved vector registers:
-    the scan table `physTableOut` with the straight-line call relocation composed in. -/
-def regionAllocTbl (B : Lcmd) : Array Nat :=
-  straightCallComposeTable B (physTableOut B [] [])
+/-- The split configuration of the allocation of a region export with the result types `ts`
+    and the body `B`: none for one register result, whose allocation
+    `comToLfundefPhysAbiFromVirtCert` does not split, and `bodySplitOpt B` otherwise, the
+    configuration of `calleeAllocCert` without a table. -/
+def regionSplitAt (ts : List JasminTy) (B : Lcmd) : Option SplitCfg :=
+  match ts with
+  | [.reg _] => none
+  | _ => bodySplitOpt B
+
+/-- At result types other than one register the split configuration is `bodySplitOpt`. -/
+theorem regionSplitAt_of_ne {ts : List JasminTy} (B : Lcmd) (h : ∀ w, ts ≠ [.reg w]) :
+    regionSplitAt ts B = bodySplitOpt B := by
+  unfold regionSplitAt
+  split
+  · exact (h _ rfl).elim
+  · rfl
+
+/-- The allocation table of a body without output stores and reserved vector registers, at
+    the result types `ts`: the scan table `physTableOut` at the split configuration
+    `regionSplitAt ts B`, with the straight-line call relocation composed in. -/
+def regionAllocTbl (ts : List JasminTy) (B : Lcmd) : Array Nat :=
+  straightCallComposeTable B (physTableOut B [] [] (split := regionSplitAt ts B))
 
 /-- **The certificate of the allocation of a region export** (`regionLprogC_cert`): when the
     allocation `regionLprogC a p none ex` returns the program `P` and the certificate `cert`,
@@ -107,7 +125,7 @@ theorem regionLprogC_cert (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Ja
     ∃ r0 r, exportR Γ.length a.fname p Γ.length 0 x86Data = some r0
       ∧ r = regionWebsAt ex none r0
       ∧ cert = allocCertOf (regionAllocBody a Γ.length ts r)
-        (regionAllocTbl (regionAllocBody a Γ.length ts r)) := by
+        (regionAllocTbl ts (regionAllocBody a Γ.length ts r)) := by
   unfold regionLprogC regionAllocC at hP
   cases hr : exportR Γ.length a.fname p Γ.length 0 x86Data with
   | none =>
@@ -127,7 +145,8 @@ theorem regionLprogC_cert (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Ja
       dsimp only
       split
       · exact (hts _ rfl).elim
-      · rfl
+      · rw [regionSplitAt_of_ne _ hts]
+        rfl
 
 /-! ## 2. The merge pairs against the certified names -/
 
@@ -151,7 +170,7 @@ theorem regionCoBody_names_alloc (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : 
                   (crossNames ((regionCoParts σ nm body t r.code r.res cert none).pre
                     ++ (regionCoParts σ nm body t r.code r.res cert none).ren)) n = true then
               allocName (regionAllocBody a Γ.length ts r)
-                (regionAllocTbl (regionAllocBody a Γ.length ts r)) n
+                (regionAllocTbl ts (regionAllocBody a Γ.length ts r)) n
             else n := by
   obtain ⟨r0, r, hr, rfl, rfl⟩ := regionLprogC_cert a p ex hP
   exact ⟨r0, _, hr, rfl, fun σ nm body t n => renOf_certMerge_allocCertOf _ _ _ _ _ _ n⟩
@@ -235,29 +254,33 @@ theorem sep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List Jas
               ∧ LiveAt (bodyTraceOut B []) pos (nameSlot B x)) →
         (∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
-            y ≠ allocName B (regionAllocTbl B) x) →
+            y ≠ allocName B (regionAllocTbl ts B) x) →
         MergeSepField d := by
   obtain ⟨r0, r, hr, rfl, rfl⟩ := regionLprogC_cert a p ex hP
   refine ⟨r0, _, hr, rfl, fun σ nm body t => ?_⟩
   intro B d K hRA hfit hsc hpl hcov hnp k i hk hi y hy x hx hyx
   rcases hpl k i hk hi x hx with hxp | ⟨hlast, hxw⟩
   · have hcls : bodyStraightCall B = true →
-        ∀ (s : Nat) (h : s < (physTableOut B [] []).size),
-          slotIsVec (bodyVecSlots B) s = decide (vectorBase ≤ (physTableOut B [] [])[s]) :=
+        ∀ (s : Nat) (h : s < (physTableOut B [] [] (split := regionSplitAt ts B)).size),
+          slotIsVec (bodyVecSlots B) s
+            = decide (vectorBase ≤ (physTableOut B [] [] (split := regionSplitAt ts B))[s]) :=
       fun h => absurd h (by simp [hsc])
     have hsp : bodyStraightCall B = true →
-        gpSpillBase (bodyVecSlots B) (physTableOut B [] []) + numGPRegs ≤ vectorBase :=
+        gpSpillBase (bodyVecSlots B) (physTableOut B [] [] (split := regionSplitAt ts B))
+          + numGPRegs ≤ vectorBase :=
       fun h => absurd h (by simp [hsc])
-    have hIr : ¬ K y → K x → y ≠ allocName B (regionAllocTbl B) x := by
+    have hIr : ¬ K y → K x → y ≠ allocName B (regionAllocTbl ts B) x := by
       intro _ hKx
       by_cases hyp : PlainName y
       · exact (allocName_ne hyp (Ne.symm hyx)).symm
       · exact hnp k i hk hi y hy x hx hyp hKx
     by_cases hb : K y ∧ K x
     · obtain ⟨pos, h1, h2⟩ := hcov k i hk hi y hy x hx hyx hb.1 hb.2
-      exact certMerge_ne_of_liveAt (outStoreMap := []) (reservedVec := []) (pos := pos) hfit
+      exact certMerge_ne_of_liveAt (outStoreMap := []) (reservedVec := [])
+        (split := regionSplitAt ts B) (pos := pos) hfit
         hcls hsp hyx (fun _ _ _ _ => ⟨h1, h2⟩) (fun _ _ => allocName_ne hxp hyx) hIr
-    · exact certMerge_ne_of_liveAt (outStoreMap := []) (reservedVec := []) (pos := 0) hfit
+    · exact certMerge_ne_of_liveAt (outStoreMap := []) (reservedVec := [])
+        (split := regionSplitAt ts B) (pos := 0) hfit
         hcls hsp hyx (fun h1 h2 h3 h4 => absurd ⟨⟨h1, h2⟩, h3, h4⟩ hb)
         (fun _ _ => allocName_ne hxp hyx) hIr
   · have hy' : y ∈ tabAt (liveRegTab (d.pre ++ d.ren) d.outs) (d.pre ++ d.ren).length := by

@@ -7733,18 +7733,25 @@ theorem regionAllocCode_eq_of_noZero {code : List LinstrRM} (outs : List (String
     regionAllocCode code outs rr = regionAllocCode code outs := by
   rw [regionAllocCode, regionAllocCode, resAliasTab_eq_of_noZero outs rr h]; rfl
 
+/-- The split configuration that splits no interval. -/
+def noSplit (_ : Lcmd) : Option SplitCfg := none
+
 /-- **The physical-ABI allocation of the array-result path at an optional table, with its
     allocation certificate**, with `64`-bit arguments and each array base paired with the
     register of its own argument slot: `lfundefPhysAbiOfVirtCert` without a table, and
     the allocation `ImageAddrCall.lfundefPhysAbiOfVirtPoolCert` of a virtual function that
     calls the functions of the table with one, at the pool `CalleeTab.pool` and the out symbols
-    `CalleeTab.outs`, whose calls copy no result register. -/
+    `CalleeTab.outs`, whose calls copy no result register. Without a table the allocation
+    splits the intervals of its body under the configuration `splitCfg` of the body (by default
+    `bodySplitOpt`: the split of `bodySplitCfg` on a body without a call). -/
 def calleeAllocCert (callee : Option CalleeTab) (fd : Lfundef) (outArg : String)
-    (inArgs abiArgs : List String) : Lfundef × List (String × String) :=
+    (inArgs abiArgs : List String) (splitCfg : Lcmd → Option SplitCfg := bodySplitOpt) :
+    Lfundef × List (String × String) :=
   match callee with
   | none =>
       lfundefPhysAbiOfVirtCert fd outArg inArgs [] (abiArgs := abiArgs)
         (abiTyin := abiArgs.map fun _ => 64) (posBind := true)
+        (splitCfg := splitCfg)
   | some T =>
       X86Backend.ImageAddrCall.lfundefPhysAbiOfVirtPoolCert T.pool fd outArg inArgs [] abiArgs
         (abiArgs.map fun _ => 64) true (T.outs.map Prod.fst)
@@ -7753,14 +7760,15 @@ def calleeAllocCert (callee : Option CalleeTab) (fd : Lfundef) (outArg : String)
     function of `calleeAllocCert`, `lfundefPhysAbiOfVirt` without a table and
     `ImageAddrCall.lfundefPhysAbiOfVirtPool` with one. -/
 def calleeAlloc (callee : Option CalleeTab) (fd : Lfundef) (outArg : String)
-    (inArgs abiArgs : List String) : Lfundef :=
-  (calleeAllocCert callee fd outArg inArgs abiArgs).1
+    (inArgs abiArgs : List String) (splitCfg : Lcmd → Option SplitCfg := bodySplitOpt) :
+    Lfundef :=
+  (calleeAllocCert callee fd outArg inArgs abiArgs splitCfg).1
 
 /-- The function of `calleeAllocCert` is `calleeAlloc`. -/
 theorem calleeAllocCert_fst (callee : Option CalleeTab) (fd : Lfundef) (outArg : String)
-    (inArgs abiArgs : List String) :
-    (calleeAllocCert callee fd outArg inArgs abiArgs).1
-      = calleeAlloc callee fd outArg inArgs abiArgs := rfl
+    (inArgs abiArgs : List String) (splitCfg : Lcmd → Option SplitCfg) :
+    (calleeAllocCert callee fd outArg inArgs abiArgs splitCfg).1
+      = calleeAlloc callee fd outArg inArgs abiArgs splitCfg := rfl
 
 /-- **The allocation at the table of one linked function** is
     `ImageAddrCall.lfundefPhysAbiOfVirtCCert` at its interface. -/
@@ -7774,10 +7782,10 @@ theorem calleeAllocCert_one (c : CalleeData) (fd : Lfundef) (outArg : String)
 
 /-- Without a callee the allocation of the array-result path is `lfundefPhysAbiOfVirt`. -/
 @[simp] theorem calleeAlloc_none (fd : Lfundef) (outArg : String)
-    (inArgs abiArgs : List String) :
-    calleeAlloc none fd outArg inArgs abiArgs =
+    (inArgs abiArgs : List String) (splitCfg : Lcmd → Option SplitCfg) :
+    calleeAlloc none fd outArg inArgs abiArgs splitCfg =
       lfundefPhysAbiOfVirt fd outArg inArgs [] (abiArgs := abiArgs)
-        (abiTyin := abiArgs.map fun _ => 64) (posBind := true) := rfl
+        (abiTyin := abiArgs.map fun _ => 64) (posBind := true) (splitCfg := splitCfg) := rfl
 
 /-- The names the liveness instruction at entry reads, for the names `a` and the code `C`
     given to the allocation: the array base names of `a` that the allocation pairs with an
@@ -7868,10 +7876,12 @@ def regionLprogCopy (a : AbiNames) (callee : Option CalleeTab) (ts : List Jasmin
     (`regionWebsAt` at the names `ex` read after it).
 
     The program `regionAllocC` returns is the one-function program before the post-pass,
-    with the allocation certificate. -/
+    with the allocation certificate. The array-result path without a table splits the
+    intervals of its body under `splitCfg` (`calleeAllocCert`). -/
 def regionAllocC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (callee : Option CalleeTab := none)
-    (ex : List String := []) : Option (Lprog × List (String × String)) :=
+    (ex : List String := []) (splitCfg : Lcmd → Option SplitCfg := bodySplitOpt) :
+    Option (Lprog × List (String × String)) :=
   (exportR Γ.length a.fname p Γ.length 0).bind fun r0 =>
   let r := regionWebsAt ex callee r0
   (exportRLfundef a.fname p).map fun fd0 =>
@@ -7887,7 +7897,7 @@ def regionAllocC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
             (retToRax := true)
       | _ =>
           calleeAllocCert callee { fd with lfd_body := arrBasePins a ac ++ fd.lfd_body }
-            a.outArg a.inArgs a.abiArgs
+            a.outArg a.inArgs a.abiArgs splitCfg
     (({ lp_rip := VIR.LprogIsa.x86ExportData.ip
         lp_rsp := X86Backend.LprogAsmPrinter.x86Abi.sp
         lp_globs := []
@@ -7899,8 +7909,9 @@ def regionAllocC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     with the certificate of that stage. -/
 def regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (callee : Option CalleeTab := none)
-    (ex : List String := []) : Option (Lprog × List (String × String)) :=
-  (regionAllocC a p callee ex).map fun x => (regionPostFuse x.1, x.2)
+    (ex : List String := []) (splitCfg : Lcmd → Option SplitCfg := bodySplitOpt) :
+    Option (Lprog × List (String × String)) :=
+  (regionAllocC a p callee ex splitCfg).map fun x => (regionPostFuse x.1, x.2)
 
 /-- **The allocated program of a region export**: the program of `regionLprogC`, without
     its allocation certificate. -/

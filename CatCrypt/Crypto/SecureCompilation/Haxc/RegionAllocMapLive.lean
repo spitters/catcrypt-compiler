@@ -1398,7 +1398,7 @@ theorem entry_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List J
         (∀ RA, σ.result = .reg RA → isHwRegName (nm RA) = true) →
         (∀ q ∈ σ.args, isHwRegName (nm q.reg) = true) →
         Γ.length ≤ σ.args.length →
-        (∀ n, isArgNameB σ n = true → allocName B (regionAllocTbl B) n ∉ vectorRegNames) →
+        (∀ n, isArgNameB σ n = true → allocName B (regionAllocTbl ts B) n ∉ vectorRegNames) →
         (∀ i ∈ r.code, symReads i = []) →
         (∀ i ∈ r.code, (JasminLsemMemFlagGuard.cmpArgs? i).isSome = true →
           ∀ x ∈ defNames i.1, x ∈ useNames i.1) →
@@ -1497,7 +1497,7 @@ theorem mergeSep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : Lis
         (∀ RA, σ.result = .reg RA → isHwRegName (nm RA) = true) →
         (∀ q ∈ σ.args, isHwRegName (nm q.reg) = true) →
         Γ.length ≤ σ.args.length →
-        (∀ n, isArgNameB σ n = true → allocName B (regionAllocTbl B) n ∉ vectorRegNames) →
+        (∀ n, isArgNameB σ n = true → allocName B (regionAllocTbl ts B) n ∉ vectorRegNames) →
         (∀ i ∈ r.code, symReads i = []) →
         (∀ i ∈ r.code, (JasminLsemMemFlagGuard.cmpArgs? i).isSome = true →
           ∀ x ∈ defNames i.1, x ∈ useNames i.1) →
@@ -1510,7 +1510,7 @@ theorem mergeSep_regionLprogC (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : Lis
               ∧ LiveAt (bodyTraceOut B []) pos (nameSlot B x)) →
         (∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
-            y ≠ allocName B (regionAllocTbl B) x) →
+            y ≠ allocName B (regionAllocTbl ts B) x) →
         MergeSep d := by
   obtain ⟨r, w, hr, rfl, hE⟩ := empty_regionLprogC a p ex hP
   obtain ⟨r1, w1, hr1, rfl, hN⟩ := entry_regionLprogC a p hp hcf ex hP

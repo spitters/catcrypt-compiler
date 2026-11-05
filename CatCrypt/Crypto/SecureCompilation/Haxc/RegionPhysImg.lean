@@ -505,7 +505,7 @@ theorem physImgB_regionExport (fname : String) (σ : AbiLayout)
                   r.res) []
                   (resAliasOf none (some (nfAbiNames fname σ).outArg) ts r.res)).map (fun i => (⟨0, i.1⟩ : Linstr)) ++ [⟨0, .Lret⟩])) }
         (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
-        (nfAbiNames fname σ).abiArgs).1.lfd_body = true := by
+        (nfAbiNames fname σ).abiArgs noSplit).1.lfd_body = true := by
   have hB : ∀ i ∈ regionAllocBody (nfAbiNames fname σ) Γ.length ts r, ShapeB i.li_i :=
     shapeB_regionAllocBody _ _ ts r fun i hi =>
       (exportR_mnemDom Γ.length fname p hp hc _ _ r hr i hi).2.2

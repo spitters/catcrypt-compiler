@@ -444,18 +444,18 @@ theorem hcov_regionCoParts (σ : AbiLayout) (nm : String → String) (a : AbiNam
           (fun i => (⟨0, i.1⟩ : Linstr)) ++ [⟨0, .Lret⟩]))
     (hcall : bodyHasCall (regionAllocBody a nArgs [t] r) = false)
     (hvec : ∀ n, allocName (regionAllocBody a nArgs [t] r)
-      (regionAllocTbl (regionAllocBody a nArgs [t] r)) n ∉ vectorRegNames)
+      (regionAllocTbl [t] (regionAllocBody a nArgs [t] r)) n ∉ vectorRegNames)
     (hent : ∀ x ∈ tabAt (regionCoParts σ nm body t r.code r.res
         (allocCertOf (regionAllocBody a nArgs [t] r)
-          (regionAllocTbl (regionAllocBody a nArgs [t] r))) none).live
+          (regionAllocTbl [t] (regionAllocBody a nArgs [t] r))) none).live
         (regionCoParts σ nm body t r.code r.res
           (allocCertOf (regionAllocBody a nArgs [t] r)
-            (regionAllocTbl (regionAllocBody a nArgs [t] r))) none).pre.length,
+            (regionAllocTbl [t] (regionAllocBody a nArgs [t] r))) none).pre.length,
       JasminLsemRenameLoop.renOf (regionCoParts σ nm body t r.code r.res
         (allocCertOf (regionAllocBody a nArgs [t] r)
-          (regionAllocTbl (regionAllocBody a nArgs [t] r))) none).tau x = x) :
+          (regionAllocTbl [t] (regionAllocBody a nArgs [t] r))) none).tau x = x) :
     let B := regionAllocBody a nArgs [t] r
-    let d := regionCoParts σ nm body t r.code r.res (allocCertOf B (regionAllocTbl B)) none
+    let d := regionCoParts σ nm body t r.code r.res (allocCertOf B (regionAllocTbl [t] B)) none
     let K : String → Prop := fun n => n ∈ allocCertNames B
       ∧ certMergeKeep σ d.arrs (crossNames (d.pre ++ d.ren)) n = true
     ∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
@@ -607,7 +607,7 @@ theorem hcov_regionCoParts (σ : AbiLayout) (nm : String → String) (a : AbiNam
       have hfx := hent y0 (mem_liveRegTab_iff.mpr h0)
       have hm : JasminLsemRenameLoop.renOf d.tau y0
           = if y0 ∈ allocCertNames B ∧ certMergeKeep σ d.arrs (crossNames (d.pre ++ d.ren)) y0
-              = true then allocName B (regionAllocTbl B) y0 else y0 :=
+              = true then allocName B (regionAllocTbl [t] B) y0 else y0 :=
         renOf_certMerge_allocCertOf _ _ _ _ _ _ y0
       change JasminLsemRenameLoop.renOf d.tau y0 = y0 at hfx
       rw [hm, ite_eq_left hKy] at hfx
@@ -859,7 +859,7 @@ theorem mergeSep_regionLprogC_complete (fname : String) (σ : AbiLayout) {ts : L
         StoreRootAgree (r.code ++ regionLprogCopy (nfAbiNames fname σ) none [t] r.code r.res) →
         (∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
-            y ≠ allocName B (regionAllocTbl B) x) →
+            y ≠ allocName B (regionAllocTbl ts B) x) →
         MergeSep d := by
   obtain ⟨r, w, hr, rfl, hM⟩ :=
     RegionAllocMapDom.mergeSep_regionLprogC_layout (nfAbiNames fname σ) σ p hp hcf ex hP hσ

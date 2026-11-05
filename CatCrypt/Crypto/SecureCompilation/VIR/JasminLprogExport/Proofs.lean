@@ -313,28 +313,32 @@ theorem spillVictim_mem {st : Nat} {uses : Array Nat} {act : List PhysActive}
     registers. -/
 theorem physScanSpillStep_nodup (numRegs : Nat) (uses : Array Nat)
     (act : List PhysActive) (hulls : CellHulls) (acc : List (Nat × Nat))
-    (s st en : Nat) (h : (act.map PhysActive.phys).Nodup) :
-    ((physScanSpillStep numRegs uses act hulls acc s st en).1.map
+    (s st en : Nat) (reserved : List Nat) (pieceOf : Nat → Option Nat)
+    (h : (act.map PhysActive.phys).Nodup) :
+    ((physScanSpillStep numRegs uses act hulls acc s st en reserved pieceOf).1.map
       PhysActive.phys).Nodup := by
   have hfs : ∀ (p : PhysActive → Bool) (l : List PhysActive),
       (l.map PhysActive.phys).Nodup → ((l.filter p).map PhysActive.phys).Nodup :=
     fun _ l hl => hl.sublist (List.filter_sublist.map PhysActive.phys)
-  simp only [physScanSpillStep]
+  simp only [physScanSpillStep, physScanSpillLose]
   split
-  next ph hfr =>
-    exact List.nodup_cons.mpr ⟨by simpa using freeRegIn_not_mem hfr, hfs _ _ h⟩
-  next hfr =>
+  next => exact hfs _ _ h
+  next =>
     split
-    next far hv =>
+    next ph hfr =>
+      exact List.nodup_cons.mpr ⟨by simpa using freeRegIn_not_mem hfr, hfs _ _ h⟩
+    next hfr =>
       split
-      next hp =>
-        refine List.nodup_cons.mpr ⟨?_, hfs _ _ (hfs _ _ h)⟩
-        simp only [List.mem_map, not_exists, not_and]
-        intro x hx hxp
-        have hne := (List.mem_filter.mp hx).2
-        simp [hxp] at hne
-      next hp => exact hfs _ _ h
-    next hv => exact hfs _ _ h
+      next far hv =>
+        split
+        next hp =>
+          refine List.nodup_cons.mpr ⟨?_, hfs _ _ (hfs _ _ h)⟩
+          simp only [List.mem_map, not_exists, not_and]
+          intro x hx hxp
+          have hne := (List.mem_filter.mp hx).2
+          simp [hxp] at hne
+        next hp => split <;> exact hfs _ _ h
+      next hv => split <;> exact hfs _ _ h
 
 /-- `mergeFuel` agrees with `List.merge` when the fuel covers both lists. -/
 theorem mergeFuel_eq {α : Type} (le : α → α → Bool) :

@@ -749,9 +749,12 @@ theorem physRegName_not_vec {p : Nat} (hp : p < vectorBase) : physRegName p ∉ 
     body, for a body of the shape `ShapeB` whose names leave room for one stack cell each: the
     general-purpose scan places a live slot below `vectorBase` (`gpHalf_lt_vectorBase`), the
     vector scan has no item, and every other slot keeps its own index. -/
-theorem physMapTabled_regionAllocTbl_lt {B : Lcmd} (hB : ∀ i ∈ B, ShapeB i.li_i)
+theorem physMapTabled_regionAllocTbl_lt {B : Lcmd} {sp : Option SplitCfg}
+    (hB : ∀ i ∈ B, ShapeB i.li_i)
     (hsize : numGPRegs + (bodyNames B).length + 1 ≤ vectorBase) {s : Nat}
-    (hs : s ≤ (bodyNames B).length) : physMapTabled (regionAllocTbl B) s < vectorBase := by
+    (hs : s ≤ (bodyNames B).length) :
+    physMapTabled (straightCallComposeTable B (physTableOut B [] [] (split := sp))) s
+      < vectorBase := by
   have hfit : numGPRegs + (physLiveItems (bodyTraceOut B [])).length ≤ vectorBase := by
     have := physLiveItems_length_le B
     omega
@@ -764,9 +767,19 @@ theorem physMapTabled_regionAllocTbl_lt {B : Lcmd} (hB : ∀ i ∈ B, ShapeB i.l
       simp only [slotIsVec, Array.getElem?_replicate]
       split <;> simp)]
     rfl
-  unfold regionAllocTbl straightCallComposeTable
-  rw [bodyStraightCall_of_shapeB hB, ite_eq_right Bool.false_ne_true, physTableOut,
-    X86Backend.PhysAbiShape.physTableClassed_eq]
+  have htab : ∀ (tr : List PhysEvent) (v : Array Bool) (r rv : List Nat),
+      physTableClassed tr v r rv X86Backend.LprogAsmPrinter.x86Abi sp =
+        ((List.range (physUniverse tr)).map (fun s =>
+          match (physAssignClassed tr v r rv X86Backend.LprogAsmPrinter.x86Abi sp).find? (fun p => p.1 == s) with
+          | some (_, ph) => ph
+          | none => s)).toArray := by
+    intro tr v r rv
+    unfold physTableClassed
+    apply Array.toList_inj.mp
+    simp only [Array.toList_map, Array.toList_range]
+    rfl
+  unfold straightCallComposeTable
+  rw [bodyStraightCall_of_shapeB hB, ite_eq_right Bool.false_ne_true, physTableOut, htab]
   unfold physMapTabled
   rw [List.getElem?_toArray]
   by_cases hu : s < physUniverse (bodyTraceOut B [])
@@ -786,9 +799,9 @@ theorem physMapTabled_regionAllocTbl_lt {B : Lcmd} (hB : ∀ i ∈ B, ShapeB i.l
     `entry_regionLprogC`, for every name): on a body of the shape `ShapeB`, without a call,
     the allocation renders the table entry of the slot of a name, which is below `vectorBase`
     under the size bound, as a general-purpose register or a spill. -/
-theorem allocName_not_vec {B : Lcmd} (hB : ∀ i ∈ B, ShapeB i.li_i)
+theorem allocName_not_vec {ts : List JasminTy} {B : Lcmd} (hB : ∀ i ∈ B, ShapeB i.li_i)
     (hsize : numGPRegs + (bodyNames B).length + 1 ≤ vectorBase) (n : String) :
-    allocName B (regionAllocTbl B) n ∉ vectorRegNames := by
+    allocName B (regionAllocTbl ts B) n ∉ vectorRegNames := by
   unfold allocName
   rw [bodyHasCall_of_shapeB hB, ite_eq_right Bool.false_ne_true]
   exact physRegName_not_vec (physMapTabled_regionAllocTbl_lt hB hsize List.idxOf_le_length)
@@ -1476,7 +1489,7 @@ theorem regionAllocBody_dom (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List 
       ∧ bodyStraightCall (regionAllocBody a Γ.length ts r) = false
       ∧ (numGPRegs + (bodyNames (regionAllocBody a Γ.length ts r)).length + 1 ≤ vectorBase →
           (∀ n, allocName (regionAllocBody a Γ.length ts r)
-            (regionAllocTbl (regionAllocBody a Γ.length ts r)) n ∉ vectorRegNames)
+            (regionAllocTbl ts (regionAllocBody a Γ.length ts r)) n ∉ vectorRegNames)
           ∧ numGPRegs + (physLiveItems (bodyTraceOut (regionAllocBody a Γ.length ts r)
             [])).length ≤ vectorBase) := by
   have hshape : ∀ i ∈ r.code, ShapeB i.1 :=
@@ -1522,7 +1535,7 @@ theorem mergeSep_regionLprogC_dom (a : AbiNames) (σ : AbiLayout) {ts : List Jas
               ∧ LiveAt (bodyTraceOut B []) pos (nameSlot B x)) →
         (∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
-            y ≠ allocName B (regionAllocTbl B) x) →
+            y ≠ allocName B (regionAllocTbl ts B) x) →
         MergeSep d := by
   obtain ⟨r0, r, hr0, rfl, hM⟩ := mergeSep_regionLprogC a p hp hcf ex hP
   refine ⟨r0, _, hr0, rfl, ?_⟩
@@ -1633,7 +1646,7 @@ theorem mergeSep_regionLprogC_layout (a : AbiNames) (σ : AbiLayout) {ts : List 
               ∧ LiveAt (bodyTraceOut B []) pos (nameSlot B x)) →
         (∀ (k : Nat) (i : LinstrRM), d.pre.length ≤ k → (d.pre ++ d.ren)[k]? = some i →
           ∀ y ∈ tabAt d.live (k + 1), ∀ x ∈ regDefs i, ¬ PlainName y → K x →
-            y ≠ allocName B (regionAllocTbl B) x) →
+            y ≠ allocName B (regionAllocTbl ts B) x) →
         MergeSep d := by
   obtain ⟨r0, r, hr, hw, hM⟩ := mergeSep_regionLprogC_dom a σ p hp hcf ex hP
   obtain ⟨hRA, hArg, -⟩ := layoutOkB_sound hσ

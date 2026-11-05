@@ -3437,7 +3437,7 @@ theorem physImgB_regionExport_param (fname : String) (σ : AbiLayout) {Γ : Ctxt
                   r.res) []
                   (resAliasOf none (some (nfAbiNames fname σ).outArg) ts r.res)).map (fun i => (⟨0, i.1⟩ : Linstr)) ++ [⟨0, .Lret⟩])) }
         (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
-        (nfAbiNames fname σ).abiArgs).1.lfd_body = true :=
+        (nfAbiNames fname σ).abiArgs noSplit).1.lfd_body = true :=
   RegionPhysImg.physImgB_regionExport fname σ p hp hc hr hts fd0 hnd
     (fun i hi => accArg_of_accP
       (accP_regionAllocBody (ArgSlotName σ) _ _ r hts hC hI hroot
@@ -3538,7 +3538,7 @@ theorem physImgB_regionExport_words (fname : String) (σ : AbiLayout) {ts : List
                   r.res) []
                   (resAliasOf none (some (nfAbiNames fname σ).outArg) ts r.res)).map (fun i => (⟨0, i.1⟩ : Linstr)) ++ [⟨0, .Lret⟩])) }
         (nfAbiNames fname σ).outArg (nfAbiNames fname σ).inArgs
-        (nfAbiNames fname σ).abiArgs).1.lfd_body = true :=
+        (nfAbiNames fname σ).abiArgs noSplit).1.lfd_body = true :=
   physImgB_regionExport_param fname σ p hp hc hr hts fd0 hnd
     (exportR_accCode_copy (nfAbiNames fname σ) p hc hw hr)
     (exportR_immCode_copy (nfAbiNames fname σ) p hc hr)
