@@ -166,3 +166,12 @@ CatCrypt/Crypto/SecureCompilation/Haxc/RorLegal.lean	380	2280	1683
 CatCrypt/Crypto/SecureCompilation/Haxc/RorLegalComplete.lean	133	2120	1847
 CatCrypt/Crypto/SecureCompilation/Haxc/TraitLinkAccept.lean	1220	3660	2193
 CatCrypt/Crypto/SecureCompilation/Haxc/TupleTail.lean	349	1970	1640
+CatCrypt/Crypto/SecureCompilation/HashTemplate/Blake2.lean	685	2010	1936
+CatCrypt/Crypto/SecureCompilation/HashTemplate/Blake2Linked.lean	153	2080	2122
+CatCrypt/Crypto/SecureCompilation/HashTemplate/Keccak.lean	203	1740	1744
+CatCrypt/Crypto/SecureCompilation/HashTemplate/KeccakLinked.lean	149	2210	2187
+CatCrypt/Crypto/SecureCompilation/HashTemplate/Sha2.lean	955	2050	1766
+CatCrypt/Crypto/SecureCompilation/HashTemplate/Sha256MultiRef.lean	16	1910	1755
+CatCrypt/Crypto/SecureCompilation/HashTemplate/Sha2Linked.lean	159	2040	2183
+CatCrypt/Crypto/SecureCompilation/HashTemplate/StraightLine.lean	369	1870	1757
+CatCrypt/Crypto/SecureCompilation/HashTemplate/TemplateKernel.lean	374	2050	2035

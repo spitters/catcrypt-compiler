@@ -24,3 +24,14 @@ docs/CompilerManual.lean	bench/slothy_perf/README.md	# measurement record of the
 docs/CompilerManual.lean	bench/x25519_fieldmul_compare/README.md	# measurement record of the development repository, named as such
 third_party/mlkem-libjade/MODIFICATIONS.md	src/mlkem768_amd64_avx2/mlkem768_amd64_avx2.s	# upstream libjade file the document states is not distributed
 third_party/mlkem-libjade/README.md	MAINTAINERS.md	# file of the upstream libjade repository, named as such
+CatCrypt/Crypto/SecureCompilation/HashTemplate/AGENTS.md	bench/sha2_template_h0	# directory of the development checkout SSProve-lean, named as such
+CatCrypt/Crypto/SecureCompilation/HashTemplate/AGENTS.md	bench/blake2_template_params	# directory of the development checkout SSProve-lean, named as such
+CatCrypt/Crypto/SecureCompilation/HashTemplate/AGENTS.md	bench/keccak_template_params	# directory of the development checkout SSProve-lean, named as such
+bench/hash_linked_compare/README.md	gen/	# output path of `lake exe linked-kernel-emit`, not tracked
+bench/hash_linked_compare/README.md	gen/sha512_compress.o	# output path of `lake exe linked-kernel-emit`, not tracked
+bench/hash_linked_compare/README.md	gen/blake2b_compress.o	# output path of `lake exe linked-kernel-emit`, not tracked
+bench/hash_linked_compare/README.md	gen/keccak_f1600.o	# output path of `lake exe linked-kernel-emit`, not tracked
+bench/hash_linked_compare/README.md	Hacl_Hash_Blake2b.c	# file of the libcrux tree, named as such
+bench/hash_linked_compare/README.md	SSProve-lean/bench/measurement_lib/tscbench.h	# file of the development checkout SSProve-lean, named as such
+bench/hash_linked_compare/README.md	SSProve-lean/bench/framework/geomean_ratios.tsv	# file of the development checkout SSProve-lean, named as such
+bench/hash_linked_compare/README.md	SSProve-lean/bench/hash_linked_compare/results/conform.txt	# file of the development checkout SSProve-lean, named as such
