@@ -847,7 +847,8 @@ def sumCert (T : OpTable) (hT : T.ok = true) {bi : Builtins}
     exact nfToSum_sound T hT hbi prog σ
       (HVector.cons (Kind.fld (p := FieldLowerTemplate.p P)) .nil) q hr V X hA tf o hd
 
-/-- **The field lowering step** `fieldLowerStep`: `lowerF P` from the renaming `ρ`. -/
+/-- **The field lowering step** `fieldLowerStep`: `lowerF P` from the renaming `ρ`. It is a
+    step of the chains of `FieldLowerChain`; `compileA` does not apply it. -/
 def fieldLowerStep {Δ : Ctxt nfFieldDialect} {Θ : Ctxt jasminDialect} (ρ : JRen n Δ Θ)
     (ts : List nfFieldDialect.Ty) :
     Step (NFProg nfFieldDialect Δ ts) (NFProg jasminDialect Θ (ts.map (jTy n))) :=

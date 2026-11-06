@@ -46,7 +46,7 @@ flowchart TD
     RUST -->|"hax frontend export, haxpipeT"| MOD
     LEAN -->|"reifyField%"| MOD
     MOD -->|"haxToNF: domain check refusal?, typing, inlining of callees"| NF
-    NF -->|"extChain: tuple flattening, DCE, extern calls,<br/>e-graph (catRules), catToJasmin, montify, field inlining,<br/>select lowering, range analysis, e-graph (jasminRules)"| JNF
+    NF -->|"extChain: tuple flattening, DCE, extern calls,<br/>e-graph (catRules), catToJasmin, montify, field dialect step,<br/>select lowering, range analysis, e-graph (jasminRules)"| JNF
     TPL -->|"fieldRegionFront: limb lowering, select lowering, e-graph"| JNF
     JNF -->|"regionExportableB, exportR"| REF
     REF -->|"regionLprog: untrusted register allocation"| ALLOC
@@ -64,7 +64,6 @@ flowchart TD
 | Lean function to a literal | [`reifyField%`](CatCrypt/Hax/ReifyField.lean) | elaboration | [`leanFront_correct`](CatCrypt/Crypto/SecureCompilation/Haxc/LeanFront.lean) |
 | Front | [`haxToNF`](CatCrypt/Crypto/SecureCompilation/Haxc/NFChain.lean) | [`HaxModule.refusal?`](CatCrypt/Crypto/SecureCompilation/Haxc/NFChain.lean), decided | [`NFEntry.compileR_correct`](CatCrypt/Crypto/SecureCompilation/Haxc/ComposeV1.lean) at `haxEntry` |
 | Chain to the Jasmin dialect | [`extChain`](CatCrypt/Crypto/SecureCompilation/Haxc/ExtChain.lean), a run of a certified pass chain | per-step side conditions, decided | [`extChainCert`, `extChain_denote`](CatCrypt/Crypto/SecureCompilation/Haxc/ExtChain.lean); [`PassChain.Cert.sound`](CatCrypt/Crypto/SecureCompilation/VIR/PassChain.lean) |
-| Field front | [`fieldRegionFront`](CatCrypt/Crypto/SecureCompilation/Haxc/FieldLowerChain.lean), a function over the field lowered to limbs | the front equation is a hypothesis | [`fieldRegionFront_denote`, `fieldChain_correct_auto`](CatCrypt/Crypto/SecureCompilation/Haxc/FieldLowerChain.lean) |
 | Export | [`exportR`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/ExportRegions.lean) | [`regionExportableB`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogExport/ExportRegionsAbi.lean), decided | [`compileRegion_correct`](CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean) |
 | Register allocation and printing | [`regionLprog`](CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean), [`printedLprog`](CatCrypt/Crypto/SecureCompilation/Haxc/BackHalfBase.lean) | [`regionCoB`](CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean), whose image conjunct is the translation validation [`ownedCheckMC`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVChecked.lean) of the printed body against the reference | [`ownedCheckMC_sound`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogTVChecked.lean), `compileRegion_correct` |
 | Leakage | the printed body | [`regionCtB`](CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean): event check, printed class [`printedAddrWB`](CatCrypt/Crypto/SecureCompilation/X86Backend/DecodePrintedAddrW.lean), image gate [`imgGateBW`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrSimW.lean), decided | [`regionChain_bytes_ct`](CatCrypt/Crypto/SecureCompilation/Haxc/ComposeCTStraight.lean) |
@@ -82,6 +81,15 @@ both for the run through the call and for the run with the call answered by the
 guarded meaning of the callee. [CORRECTNESS.md](CORRECTNESS.md) gives each check with
 its class (decided side condition or translation validation);
 [HEADLINES.md](HEADLINES.md) states each headline with its hypotheses.
+
+The field front [`fieldRegionFront`](CatCrypt/Crypto/SecureCompilation/Haxc/FieldLowerChain.lean)
+is a route beside `compileA` into the structured program of `jasminDialect`: it lowers a
+function over a prime field to limbs (`fieldLowerStep`), followed by the select lowering and
+the e-graph pass, and `compileRegion` compiles its program
+([`fieldRegionFront_denote`, `fieldChain_correct_auto`](CatCrypt/Crypto/SecureCompilation/Haxc/FieldLowerChain.lean)).
+`compileA` applies neither `fieldRegionFront` nor the inlining step `fieldInlineStep`
+(`NFChainCall`): its front inlines the calls of the functions of the module by
+`HaxModule.inline?`, and `extChain` lowers the tagged field calls by `fieldDialectStep`.
 
 ## The dialect tower beside `compileA`
 

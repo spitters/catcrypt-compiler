@@ -54,11 +54,12 @@ CatCrypt.Crypto.Jasmin.Ed25519.PowP58
 CatCrypt.Crypto.Jasmin.Ed25519.PowP58Algo
 CatCrypt.Crypto.Jasmin.Ed25519Optimizations
 CatCrypt.Crypto.Jasmin.Examples.ArrayDemoEmit
+CatCrypt.Crypto.Jasmin.Examples.BenchOut
 CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrEmit
 CatCrypt.Crypto.Jasmin.Examples.CombTableInitArrV2Emit
 CatCrypt.Crypto.Jasmin.Examples.CombTableInitEmit
 CatCrypt.Crypto.Jasmin.Examples.Curve25519CryptoptCorrect
-CatCrypt.Crypto.Jasmin.Examples.Ed25519DalekEmit
+CatCrypt.Crypto.Jasmin.Examples.Ed25519AddChainsDSL
 CatCrypt.Crypto.Jasmin.Examples.Ed25519Scalarmult
 CatCrypt.Crypto.Jasmin.Examples.Fe25519InvertEmit
 CatCrypt.Crypto.Jasmin.Examples.ForNToyDialect
@@ -67,14 +68,11 @@ CatCrypt.Crypto.Jasmin.Examples.HmacSha256JasminEmit
 CatCrypt.Crypto.Jasmin.Examples.InstrRReflectDemo
 CatCrypt.Crypto.Jasmin.Examples.JasminCoqSemMirrorDemo
 CatCrypt.Crypto.Jasmin.Examples.MontUToEdwardsEmit
-CatCrypt.Crypto.Jasmin.Examples.P256DemoEmit
 CatCrypt.Crypto.Jasmin.Examples.SHA512CompressDSL
 CatCrypt.Crypto.Jasmin.Examples.Scalar25519OpsEmit
 CatCrypt.Crypto.Jasmin.Examples.Sha256JasminDemo
 CatCrypt.Crypto.Jasmin.Examples.Sha256JasminFull
-CatCrypt.Crypto.Jasmin.Examples.X25519BenchEmit
 CatCrypt.Crypto.Jasmin.Examples.X25519LadderDSLEmit
-CatCrypt.Crypto.Jasmin.Examples.X25519ReflectEmit
 CatCrypt.Crypto.Jasmin.Examples.X25519StepBodiesSafety
 CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerifySplitSafety
 CatCrypt.Crypto.Jasmin.FaestGfDotReflect
@@ -97,7 +95,6 @@ CatCrypt.Crypto.Jasmin.MemAbiReflect
 CatCrypt.Crypto.Jasmin.MldsaJincEmit
 CatCrypt.Crypto.Jasmin.MldsaJincImport
 CatCrypt.Crypto.Jasmin.Mpn.GenericWidth
-CatCrypt.Crypto.Jasmin.Mpn.MLIRBackend
 CatCrypt.Crypto.Jasmin.Mpn.QhatBound
 CatCrypt.Crypto.Jasmin.MsmReflect
 CatCrypt.Crypto.Jasmin.P256.EvalChain
@@ -424,6 +421,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
 CatCrypt.Crypto.SecureCompilation.Haxc.DecompilePropose
+CatCrypt.Crypto.SecureCompilation.Haxc.DeriveAbiBounds
 CatCrypt.Crypto.SecureCompilation.Haxc.ExportSafety
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances

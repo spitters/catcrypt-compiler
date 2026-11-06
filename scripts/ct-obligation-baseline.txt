@@ -12,7 +12,6 @@ CatCrypt/Crypto/Jasmin/Examples/MontUToEdwards.lean
 CatCrypt/Crypto/Jasmin/Examples/Scalar25519Ops.lean
 CatCrypt/Crypto/Jasmin/Examples/Sha256JasminDemo.lean
 CatCrypt/Crypto/Jasmin/Examples/Sha256JasminFull.lean
-CatCrypt/Crypto/Jasmin/Examples/X25519BenchEmit.lean
 CatCrypt/Crypto/Jasmin/Examples/X25519LadderDSLEmit.lean
 CatCrypt/Crypto/Jasmin/JasminEmit.lean
 CatCrypt/Crypto/Jasmin/JasminToRustEmit.lean

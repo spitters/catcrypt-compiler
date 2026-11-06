@@ -595,7 +595,10 @@ theorem fieldFree_of_callFree {d : Dialect.{0, 0}} [DialectSignature d] [TyDenot
   | call _ _ _ _ => simp [NFProg.callFree] at hp
 
 /-- **The inlining of the tagged calls as a chain step**: one round of `NFProg.inline?` at
-    the library `fieldLibJ`, refused when the result keeps a `call` of a tagged head. -/
+    the library `fieldLibJ`, refused when the result keeps a `call` of a tagged head.
+    `compileA` does not apply this step: its front inlines the calls of the functions of the
+    module by `HaxModule.inline?`, and its chain `extChain` lowers the tagged calls by
+    `FieldDialectStep.fieldDialectStep`. -/
 def fieldInlineStep (Γ : Ctxt jasminDialect) (ts : List JasminTy) :
     Step (NFProg jasminDialect Γ ts) (NFProg jasminDialect Γ ts) :=
   ⟨"fieldInline", fun p => (NFProg.inline? fieldLibJ p).bind fun q =>
