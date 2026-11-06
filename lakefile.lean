@@ -3147,6 +3147,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.VacuityAudit,
     Lake.Glob.one `CatCrypt.Quantum.AndAncilla,
     Lake.Glob.one `CatCrypt.Quantum.AngleQ,
+    Lake.Glob.one `CatCrypt.Quantum.AngleSnap,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchCompile,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchExportMain,
     Lake.Glob.one `CatCrypt.Quantum.ControlledGates,
