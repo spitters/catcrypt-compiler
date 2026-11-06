@@ -9,6 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.NFChainPre
 import CatCrypt.Crypto.SecureCompilation.Haxc.RegionBackend
 import CatCrypt.Crypto.SecureCompilation.Haxc.RegionStages
 import CatCrypt.Crypto.SecureCompilation.Haxc.RegionDiag
+import CatCrypt.Crypto.SecureCompilation.Haxc.DeriveBounds
 import HaxLean.TExpr
 import HaxLean.FreeVars
 
@@ -46,7 +47,11 @@ the firings of the optimiser rules along the stages it reaches.
    its `&mut` array parameter (`tailVar`) in that parameter, the pair `([u64; n], u64)` of a
    body ending in `let y = a[k]; (a, y)` as the words of `a` and its word at `k`, the
    literal constants of the
-   crate bound by `bindConsts`; any other parameter or result type is a refusal at stage `ABI`, and the
+   crate bound by `bindConsts`; the result type is read off the statement spine where the
+   extraction leaves the root type unknown (`DeriveBounds.spineTy`), and a scalar parameter
+   that bounds a counted loop whose every trip indexes an array at the counter, or that
+   indexes an array on the spine, is bounded by the least length it needs
+   (`DeriveBounds.deriveBounds`); any other parameter or result type is a refusal at stage `ABI`, and the
    stages are then run under the widened layout that admits signed and narrow scalars,
    Booleans and arrays of narrow words (columns `wideStage`, `wideConstruct`);
 2. the module `crateModule c te` (the entry, the census functions of the crate it reaches by
@@ -401,11 +406,22 @@ def roles : List String := ["kernel", "algebra", "orchestration", "mixed"]
 /-- The System V argument registers, in order. -/
 def regs : List String := ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
 
-/-- The parameters of an extraction: its leading bindings `let x = x`, with their types. -/
+/-- The parameters of an extraction: its leading bindings `let x = x`, with their types. A
+    later binding `let x = x` of a name already read (the `let mut x = x` of a parameter) is
+    the same parameter. -/
 def prelude : Nat → TExpr → List (String × ImpType)
   | 0, _ => []
-  | n + 1, .mk (.letBind x (.mk (.var y) τ) b) _ => if x == y then (x, τ) :: prelude n b else []
+  | n + 1, .mk (.letBind x (.mk (.var y) τ) b) _ =>
+      if x == y then (x, τ) :: (prelude n b).filter (·.1 != x) else []
   | _ + 1, _ => []
+
+/-- **The parameters of an extraction have pairwise distinct names.** -/
+theorem prelude_nodup (n : Nat) (te : TExpr) : ((prelude n te).map (·.1)).Nodup := by
+  fun_induction prelude n te
+  all_goals first
+    | (simp; done)
+    | (simp only [List.map_cons]
+       exact List.nodup_cons.mpr ⟨by simp, ‹List.Nodup _›.sublist (List.filter_sublist.map _)⟩)
 
 /-- The value of a constant whose extraction is a literal. -/
 def constVal (c : TExpr) : Option Value :=
@@ -498,17 +514,73 @@ def mkResult (wide : Bool) (ps : List (String × ImpType)) (args : List AbiArg)
       | none => .error s!"result {tyStr 8 τ}"
 
 /-- The System V layout of an extraction, with the literal constants of `consts` that occur
-    free in it. -/
+    free in it. The result type is read off the statement spine (`DeriveBounds.spineTy`), and
+    each scalar parameter that bounds a counted loop whose accesses every trip reaches, or that
+    indexes an array on the spine, is bounded by its least cap (`DeriveBounds.deriveBounds`). -/
 def deriveAbi (wide : Bool) (consts : List (String × TExpr)) (te : TExpr) :
     Except String AbiLayout := do
   let ps := prelude 64 te
   let args ← mkArgs wide ps regs
-  let (args', rk) ← mkResult wide ps args (tailVar te.erase) (spineArrTail te.erase) te.ty
+  let (args', rk) ← mkResult wide ps args (tailVar te.erase) (spineArrTail te.erase)
+    (DeriveBounds.spineTy te)
   let free := (_root_.Hax.freeVars te.erase).eraseDups
   let cs := consts.filterMap fun c =>
     if free.contains c.1 && !(ps.any (·.1 == c.1)) then (constVal c.2).map fun v => (c.1, v)
     else none
-  pure (AbiLayout.mk args' cs rk [] (-256) (-8) [])
+  pure (AbiLayout.mk args' cs rk (DeriveBounds.deriveBounds args' te) (-256) (-8) [])
+
+/-- **The bounds of a derived layout** are the derived bounds of its parameters: each is on the
+    register of a scalar parameter and is at most every cap of that parameter along the spine
+    (`DeriveBounds.deriveBounds_le_cap`). -/
+theorem deriveAbi_bounds {wide : Bool} {consts : List (String × TExpr)} {te : TExpr}
+    {σ : AbiLayout} (h : deriveAbi wide consts te = .ok σ) :
+    σ.bounds = DeriveBounds.deriveBounds σ.args te := by
+  simp only [deriveAbi, bind, Except.bind, pure, Except.pure] at h
+  split at h
+  · cases h
+  · split at h
+    · cases h
+    · cases h
+      rfl
+
+/-- **The result check accepts every scalar result**: a result type that `argKind?` reads as a
+    scalar is read back from `%rax`. -/
+theorem mkResult_scalar {wide : Bool} {ps : List (String × ImpType)} {args : List AbiArg}
+    {tail : Option String} {pair : Option (String × String)} {τ : ImpType}
+    (h : argKind? wide τ = some .scalar) :
+    mkResult wide ps args tail pair τ = .ok (args, .reg "%rax") := by
+  simp only [mkResult, h]
+
+/-- **The result check accepts every array result with a buffer**: a result type that
+    `argKind?` reads as an array of `n` words is read back from an array parameter of length
+    `n`, or from a further output parameter while an argument register is free. -/
+theorem mkResult_words_isOk {wide : Bool} {ps : List (String × ImpType)} {args : List AbiArg}
+    {tail : Option String} {pair : Option (String × String)} {τ : ImpType} {n : Nat}
+    (h : argKind? wide τ = some (.words n)) (hr : args.length < regs.length) :
+    ∃ r, mkResult wide ps args tail pair τ = .ok r := by
+  simp only [mkResult, h]
+  split
+  · exact ⟨_, rfl⟩
+  · have hs : (regs[args.length]?).isSome := by
+      rw [List.getElem?_eq_getElem hr]; rfl
+    obtain ⟨r, hr'⟩ := Option.isSome_iff_exists.mp hs
+    simp only [hr']
+    exact ⟨_, rfl⟩
+
+/-- **The result check accepts every pair tail**: at a result type `([u64; n], u64)` (a pair
+    whose components `argKind?` reads as an array of `n` words and a scalar) of a body ending in
+    `let y = a[k]; (a, y)` with `a` an array parameter of length `n` and `k` a scalar parameter,
+    the result is the words of `a` and its word at `k`. -/
+theorem mkResult_pair {wide : Bool} {ps : List (String × ImpType)} {args : List AbiArg}
+    {tail : Option String} {x k : String} {ta tw : ImpType} {n : Nat} {a i : AbiArg}
+    (hta : argKind? wide ta = some (.words n)) (htw : argKind? wide tw = some .scalar)
+    (ha : args.find? (·.name == x) = some a) (hi : args.find? (·.name == k) = some i)
+    (hak : a.kind = .words n) (hik : i.kind = .scalar) (hnu : tail = none) :
+    mkResult wide ps args tail (some (x, k)) (.tuple [ta, tw])
+      = .ok (args, .tuple [.words a.reg n, .wordAt a.reg i.reg]) := by
+  subst hnu
+  have h0 : argKind? wide (.tuple [ta, tw]) = none := rfl
+  simp [mkResult, h0, ha, hi, hta, htw, hak, hik, bind, Option.bind]
 
 /-! ## The constructs of a refusal -/
 
