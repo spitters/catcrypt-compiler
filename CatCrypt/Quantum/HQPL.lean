@@ -85,7 +85,7 @@ noncomputable section
 
 namespace CatCrypt.Quantum.HQPL
 
-open CatCrypt.Quantum CatCrypt.Quantum.QPLExtended CatCrypt.Quantum.QCircuit
+open CatCrypt.Quantum CatCrypt.Quantum.QPL CatCrypt.Quantum.QPLExtended CatCrypt.Quantum.QCircuit
 
 /-! ## Register-Level Operations -/
 
@@ -278,8 +278,8 @@ theorem denote_applyGates (l : List (Gate n)) (k : CatCrypt.Quantum.QPL.QPL n α
 theorem lowerHQPL_denote (p : HQPLProg n α) : (lowerHQPL p).denote = XQPL.denote p := by
   induction p with
   | ret a => rfl
-  | gate g k ih => simp only [lowerHQPL, QPL.QPL.denote, XQPL.denote, ih]
-  | meas i kt kf iht ihf => simp only [lowerHQPL, QPL.QPL.denote, XQPL.denote, iht, ihf]
+  | gate g k ih => simp only [lowerHQPL, XQPL.denote, ih]
+  | meas i kt kf iht ihf => simp only [lowerHQPL, XQPL.denote, iht, ihf]
   | custom op k ih =>
     rw [lowerHQPL, denote_applyGates, ih]
     rfl
