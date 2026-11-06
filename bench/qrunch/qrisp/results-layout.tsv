@@ -1,0 +1,10 @@
+# qrisp 0.9.10, qiskit 2.5.2, catq-compile level 2r; load average 4.17 (taken under load), best of 5, 2026-11-06 18:00 CET
+circuit	qubits	classical	cx_in	ours_cx	qiskit_cx	ours_depth2	qiskit_depth2	ours_gates	qiskit_gates	ours_ms	qiskit_ms	qrisp_ms	ours_dev	qiskit_dev	qiskit_perm	qiskit_ne_cx	qiskit_ne_gates	eps	ours_lay_cx	ours_lay_depth2	ours_lay_gates	ours_lay_dev
+qpe	6	no	82	82	76	77	74	184	178	10.3	6.3	66	9.8e-16	1.1e-15	yes	82	187	unchecked	76	74	178	9.8e-16
+shor15	13	no	1912	1283	1271	719	716	2527	2584	581.7	73.2	3934	5.1e-15	1.3e-15	yes	1283	2606	unchecked	1271	716	2515	5.1e-15
+shor15_mcm	153	yes	3425	3415	3396	2831	2827	6467	6876	623.2	284.2	7156	nan	-	yes	3408	6889	unchecked	3403	2828	6455	nan
+qaoa_maxcut	6	no	48	46	46	20	20	104	111	11.3	7.0	52	9.9e-16	5.4e-16	no	46	111	unchecked	46	20	104	9.9e-16
+vqe_heisenberg	6	no	75	42	42	14	14	147	237	16.4	7.1	157	2.8e-15	9.5e-15	no	42	237	unchecked	42	14	147	2.8e-15
+grover	5	no	240	240	240	161	161	542	533	48.8	10.1	230	8.2e-15	1.1e-14	no	240	533	unchecked	240	161	542	8.2e-15
+qft8	8	no	68	68	56	29	26	119	111	16.0	6.6	42	3.1e-16	1.9e-16	yes	68	123	unchecked	56	26	107	3.1e-16
+dicke	7	no	90	87	87	79	79	182	234	27.6	7.6	112	4.7e-15	4.4e-15	no	87	234	unchecked	87	79	182	4.7e-15

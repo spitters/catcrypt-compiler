@@ -13,14 +13,16 @@ public meta import CatCrypt.Quantum.OpenQASMParser
 /-!
 # Importing OpenQASM benchmark files
 
-A line is either a declaration the importer skips by name, or a gate it knows, or
-the import returns `none`; an unsupported gate fails the import rather than being
-dropped. The skipped names are the OpenQASM 2.0 and 3.0 headers, register
-declarations, comments, `barrier` and `measure` — `barrier` and `measure` are the
-identity on `unitaryDenote`, and the benchmark suites' published gate counts
-exclude them.
+A source is split into statement texts, each ending at its `;` (`stmtsGo`), so a line
+may carry several statements and a statement may span lines. A `//` between statements
+begins a comment to the end of its line. Non-blank text after the last `;` fails the
+import. A statement is either a declaration the importer skips by name, or a gate it
+knows, or the import returns `none`; an unsupported gate fails the import rather than
+being dropped. The skipped names are the OpenQASM 2.0 and 3.0 headers, register
+declarations, `barrier` and `measure` — `barrier` and `measure` are the identity on
+`unitaryDenote`, and the benchmark suites' published gate counts exclude them.
 
-A gate line is read by `OpenQASMParser.parseLine` first, which covers the
+A gate statement is read by `OpenQASMParser.parseLine` first, which covers the
 single-gate statements `h`, `x`, `y`, `z`, `s`, `t`, `tdg`, `cx`, `cz` and `rz`.
 The statements that denote a list of gates (`sdg`, `cu1`, `cp`, `u1`, `p`, `sx`,
 `sxdg`, `swap`, `rx`, `ry`, `U`/`u`/`u3`, `u2`, `ccx`, `ccz`) and `rz` on a
@@ -40,11 +42,14 @@ transcription.
 * `QGate`, `lowerQ` — the `qelib1.inc` gate statements and the gate list of each;
   `Qelib` gives their matrices.
 * `parseAngles` — the angles of a parenthesised argument list.
-* `parseQ` — one line to its statements, `none` if unrecognised.
-* `parseOps` — one line to the gates it denotes, the lowering of `parseQ`.
+* `stmtsGo`, `statements` — the statement texts of a source.
+* `parseQ` — one statement text to its statements, `none` if unrecognised.
+* `parseOps` — one statement text to the gates it denotes, the lowering of `parseQ`.
 * `importQ`, `importGates_eq_importQ` — the statements of a whole file, whose lowering
   is the gate list `importGates` reads.
-* `importQASM` — a whole file, `none` if any line is unrecognised.
+* `importQASM` — a whole file, `none` if any statement text is unrecognised.
+* `importQ_join` — completeness: whitespace-separated statement texts read as the
+  statements of the texts.
 * `qregSize` — the qubit count of the first `qreg` declaration.
 -/
 
@@ -342,7 +347,7 @@ def parseAngles (s : String) : Option (List PiLin) :=
 def isSkipped (name : String) : Bool :=
   name == "OPENQASM" || name == "include" || name == "qreg" || name == "creg" ||
     name == "qubit" || name == "bit" || name == "barrier" || name == "measure" ||
-    name == "gate" || name == "opaque" || name == ""
+    name == "gate" || name == "opaque"
 
 /-- The statement of a line that `OpenQASMParser.parseLine` does not read, dispatched on
     the operation name `name` and the bracketed indices `idx`, with the parenthesised
@@ -397,20 +402,27 @@ def parseQRest (n : ℕ) (name : String) (idx : List ℕ) (arg : Option (List Ch
       let x ← fin? a; let y ← fin? b; let z ← fin? t; some (.ccz x y z)
   | _, _ => none
 
-/-- The statements of a line: `some []` for a line that carries none, `some [g]` for a
-    gate statement, `none` for a line this importer does not recognise. A line
-    `OpenQASMParser.parseLine` reads is the statement of its gate (`ofGate?`); any
-    other line is read by `parseQRest`. -/
+/-- The statements of one statement text (its leading whitespace dropped): `some []` for a
+    declaration the importer skips by name, `some [g]` for a gate statement, `none` for a
+    text this importer does not recognise. A text `OpenQASMParser.parseLine` reads is the
+    statement of its gate (`ofGate?`); any other text is read by `parseQRest`. -/
 def parseQ (n : ℕ) (line : String) : Option (List (QGate n)) :=
-  let s := line.trimAsciiStart.copy
-  if s.startsWith "//" then some []
-  else
-    let name := opName s
-    if isSkipped name then some []
-    else match OpenQASMParser.parseLine n s with
-    | some g => (ofGate? g).map ([·])
-    | none =>
-      (parseQRest n name (bracketIndices s) (parenArg s) (parseAngles s)).map ([·])
+  let s := String.ofList (line.toList.dropWhile Char.isWhitespace)
+  let name := opName s
+  if isSkipped name then some []
+  else match OpenQASMParser.parseLine n s with
+  | some g => (ofGate? g).map ([·])
+  | none =>
+    (parseQRest n name (bracketIndices s) (parenArg s) (parseAngles s)).map ([·])
+
+/-- `parseQ` reads a text after its leading whitespace. -/
+theorem parseQ_append_ws (n : ℕ) (w t : List Char) (hw : ∀ c ∈ w, c.isWhitespace = true) :
+    parseQ n (String.ofList (w ++ t)) = parseQ n (String.ofList t) := by
+  have h : (w ++ t).dropWhile Char.isWhitespace = t.dropWhile Char.isWhitespace := by
+    induction w with
+    | nil => rfl
+    | cons c w ih => grind [List.dropWhile_cons_of_pos]
+  simp only [parseQ, String.toList_ofList, h]
 
 /-- Every gate an optional result carries is the gate of a statement. -/
 def StmtGates {n : ℕ} (o : Option (Gate n)) : Prop :=
@@ -476,62 +488,180 @@ def parseOps (n : ℕ) (line : String) : Option (List (Gate n)) :=
 
 /-! ## Files -/
 
-/-- The statements of a whole file, `none` if any line is unrecognised. -/
-def importQ (n : ℕ) (src : String) : Option (List (QGate n)) :=
-  ((src.splitOn "\n").mapM (parseQ n)).map List.flatten
+/-- The statement texts of the characters `cs`, given the texts `acc` read before (in
+    reverse order), the current text `cur` (reversed) and whether `cur` is blank. A text
+    ends at its `;`, which it keeps. A `//` where the current text is blank begins a
+    comment: the comment, up to the end of its line, and the blank text before it are
+    dropped. The second component is whether the text after the last `;` is blank. -/
+def stmtsGo (cs cur : List Char) (blank : Bool) (acc : List (List Char)) :
+    List (List Char) × Bool :=
+  match cs with
+  | [] => (acc.reverse, blank)
+  | c :: rest =>
+    if c = ';' then stmtsGo rest [] true ((c :: cur).reverse :: acc)
+    else if blank = true ∧ c = '/' ∧ rest.head? = some '/' then
+      stmtsGo (rest.dropWhile (· != '\n')) [] true acc
+    else stmtsGo rest (c :: cur) (blank && c.isWhitespace) acc
+termination_by cs.length
+decreasing_by
+  all_goals simp only [List.length_cons]
+  all_goals grind [List.dropWhile_suffix, List.IsSuffix.length_le]
 
-/-- **`parseOps` dispatched by line.** A comment or skipped line carries no gate, a line
-    `OpenQASMParser.parseLine` reads is its one gate, and any other line is the lowering of
+/-- The statement texts of a source, each with its `;` and without comments; `none` if
+    non-blank text follows the last `;`. -/
+def statements (cs : List Char) : Option (List (List Char)) :=
+  let r := stmtsGo cs [] true []
+  if r.2 then some r.1 else none
+
+/-- The statements of a whole file, `none` if any statement text is unrecognised or
+    non-blank text follows the last `;`. -/
+def importQ (n : ℕ) (src : String) : Option (List (QGate n)) :=
+  (statements src.toList).bind fun ss =>
+    (ss.mapM fun s => parseQ n (String.ofList s)).map List.flatten
+
+/-- **`parseOps` dispatched by statement.** A skipped declaration carries no gate, a text
+    `OpenQASMParser.parseLine` reads is its one gate, and any other text is the lowering of
     the statement `parseQRest` reads. -/
 theorem parseOps_eq (n : ℕ) (line : String) :
+    let s := String.ofList (line.toList.dropWhile Char.isWhitespace)
     parseOps n line =
-      if line.trimAsciiStart.copy.startsWith "//" then some []
-      else if isSkipped (opName line.trimAsciiStart.copy) then some []
-      else match OpenQASMParser.parseLine n line.trimAsciiStart.copy with
+      if isSkipped (opName s) then some []
+      else match OpenQASMParser.parseLine n s with
       | some g => some [g]
-      | none => (parseQRest n (opName line.trimAsciiStart.copy)
-          (bracketIndices line.trimAsciiStart.copy) (parenArg line.trimAsciiStart.copy)
-          (parseAngles line.trimAsciiStart.copy)).map lowerQ := by
+      | none => (parseQRest n (opName s) (bracketIndices s) (parenArg s)
+          (parseAngles s)).map lowerQ := by
+  intro s
   unfold parseOps parseQ
   dsimp only
   split_ifs
   · rfl
-  · rfl
-  · cases h : OpenQASMParser.parseLine n line.trimAsciiStart.copy with
-    | none => simp [Option.map_map, Function.comp_def]
+  · cases h : OpenQASMParser.parseLine n s with
+    | none => simp [s, Option.map_map, Function.comp_def]
     | some g =>
       obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp (stmtGates_parseLine n _ g h)
       simp [hq, lowerQ_of_ofGate? hq]
 
-/-- The gates of a whole file, `none` if any line is unrecognised: the gates of each line,
-    concatenated once (linear in the file, where appending line by line is quadratic). -/
+/-- The gates of a whole file, `none` if any statement text is unrecognised or non-blank
+    text follows the last `;`: the gates of each statement, concatenated once (linear in
+    the file, where appending statement by statement is quadratic). -/
 def importGates (n : ℕ) (src : String) : Option (List (Gate n)) :=
-  ((src.splitOn "\n").mapM (parseOps n)).map List.flatten
+  (statements src.toList).bind fun ss =>
+    (ss.mapM fun s => parseOps n (String.ofList s)).map List.flatten
 
 /-- The gates of a file are the lowering of its statements. -/
 theorem importGates_eq_importQ (n : ℕ) (src : String) :
     importGates n src = (importQ n src).map (·.flatMap lowerQ) := by
   unfold importGates importQ parseOps
-  generalize src.splitOn "\n" = ls
+  cases statements src.toList with
+  | none => rfl
+  | some ls =>
+  simp only [Option.bind_some]
   induction ls with
   | nil => rfl
   | cons l ls ih =>
-    cases h : parseQ n l <;> cases h' : ls.mapM (parseQ n) <;>
+    cases h : parseQ n (String.ofList l) <;>
+      cases h' : ls.mapM (fun s => parseQ n (String.ofList s)) <;>
       simp_all [List.mapM_cons, List.flatMap_append]
     obtain ⟨a, ha, ha'⟩ := ih
     simp [ha, ha']
 
-/-- **The circuit a file denotes**, `none` if any line is unrecognised. -/
+/-- **The circuit a file denotes**, `none` if any statement text is unrecognised. -/
 def importQASM (n : ℕ) (src : String) : Option (Circuit n) :=
   (importGates n src).map Circuit.ofList
 
-/-- The size of the first `qreg` declaration, `qreg q[n];`: the qubit count `importQASM`
-    is called with. -/
+/-- The size of the first `qreg` declaration, `qreg q[n];`, among the statement texts of
+    the source: the qubit count `importQASM` is called with. -/
 def qregSize (src : String) : Option ℕ := do
-  let l ← (src.splitOn "\n").find?
-    (fun l => (l.toList.dropWhile Char.isWhitespace).take 4 == "qreg".toList)
-  let inner := ((l.toList.dropWhile (· != '[')).drop 1).takeWhile (· != ']')
+  let l ← (stmtsGo src.toList [] true []).1.find?
+    (fun l => (l.dropWhile Char.isWhitespace).take 4 == "qreg".toList)
+  let inner := ((l.dropWhile (· != '[')).drop 1).takeWhile (· != ']')
   OpenQASMParser.natOfDigits (inner.filter (fun c => !c.isWhitespace))
+
+/-! ## Completeness
+
+A source made of statement texts, each preceded by whitespace, with whitespace at its end,
+is split into exactly those texts with their preceding whitespace. A statement text
+(`IsStmtText`) starts with a character that is not whitespace, `/` or `;`, and has exactly
+one `;`, at its end. -/
+
+/-- A text the scanner `stmtsGo` reads as one statement: a first character that is not
+    whitespace, `/` or `;`, then text without `;`, then `;`. -/
+def IsStmtText (t : List Char) : Prop :=
+  ∃ c u, t = c :: (u ++ [';']) ∧ c.isWhitespace = false ∧ c ≠ '/' ∧ c ≠ ';' ∧ ';' ∉ u
+
+/-- The scanner adds whitespace in a blank state to the current text. -/
+theorem stmtsGo_ws (w r cur : List Char) (acc : List (List Char))
+    (hw : ∀ c ∈ w, c.isWhitespace = true) :
+    stmtsGo (w ++ r) cur true acc = stmtsGo r (w.reverse ++ cur) true acc := by
+  induction w generalizing cur with
+  | nil => rfl
+  | cons c w ih =>
+    have hc := hw c (by simp)
+    have h1 : c ≠ ';' := by rintro rfl; simp at hc
+    have h2 : c ≠ '/' := by rintro rfl; simp at hc
+    rw [List.cons_append, stmtsGo]
+    simp only [h1, h2, hc, false_and, and_false, ite_false, Bool.and_self]
+    rw [ih _ (fun d hd => hw d (by simp [hd]))]
+    simp
+
+/-- The scanner reads the rest of a statement text in a non-blank state. -/
+theorem stmtsGo_body (u r cur : List Char) (acc : List (List Char)) (hu : ';' ∉ u) :
+    stmtsGo (u ++ ';' :: r) cur false acc =
+      stmtsGo r [] true ((cur.reverse ++ u ++ [';']) :: acc) := by
+  induction u generalizing cur with
+  | nil => simp [stmtsGo]
+  | cons c u ih =>
+    have h1 : c ≠ ';' := by rintro rfl; simp at hu
+    rw [List.cons_append, stmtsGo]
+    simp only [h1, Bool.false_eq_true, false_and, ite_false, Bool.false_and]
+    rw [ih _ (fun h => hu (by simp [h]))]
+    simp
+
+/-- The scanner reads a statement text after whitespace as one statement. -/
+theorem stmtsGo_stmt (w t r : List Char) (acc : List (List Char))
+    (hw : ∀ c ∈ w, c.isWhitespace = true) (ht : IsStmtText t) :
+    stmtsGo (w ++ t ++ r) [] true acc = stmtsGo r [] true ((w ++ t) :: acc) := by
+  obtain ⟨c, u, rfl, hc, h1, h2, hu⟩ := ht
+  rw [List.append_assoc, stmtsGo_ws _ _ _ _ hw, List.cons_append, stmtsGo]
+  simp only [h1, h2, hc, false_and, and_false, ite_false, Bool.true_and]
+  rw [List.append_assoc, List.singleton_append, stmtsGo_body _ _ _ _ hu]
+  simp
+
+/-- The scanner splits whitespace-separated statement texts into those texts. -/
+theorem stmtsGo_join (ps : List (List Char × List Char)) (last : List Char)
+    (acc : List (List Char))
+    (hw : ∀ p ∈ ps, ∀ c ∈ p.1, c.isWhitespace = true)
+    (hlast : ∀ c ∈ last, c.isWhitespace = true) (ht : ∀ p ∈ ps, IsStmtText p.2) :
+    stmtsGo (ps.flatMap (fun p => p.1 ++ p.2) ++ last) [] true acc =
+      (acc.reverse ++ ps.map (fun p => p.1 ++ p.2), true) := by
+  induction ps generalizing acc with
+  | nil =>
+    rw [List.flatMap_nil, List.nil_append, ← List.append_nil last, stmtsGo_ws _ _ _ _ hlast]
+    simp [stmtsGo]
+  | cons p ps ih =>
+    rw [List.flatMap_cons, List.append_assoc,
+      stmtsGo_stmt _ _ _ _ (hw p (by simp)) (ht p (by simp)),
+      ih _ (fun q hq => hw q (by simp [hq])) (fun q hq => ht q (by simp [hq]))]
+    simp
+
+/-- **Completeness of the reader.** A source made of statement texts, each preceded by
+    whitespace, and whitespace at its end, reads as the statements `parseQ` reads from
+    the texts, in order: one statement a line, several a line and any other whitespace
+    between them. -/
+theorem importQ_join (n : ℕ) (ps : List (List Char × List Char)) (last : List Char)
+    (hw : ∀ p ∈ ps, ∀ c ∈ p.1, c.isWhitespace = true)
+    (hlast : ∀ c ∈ last, c.isWhitespace = true) (ht : ∀ p ∈ ps, IsStmtText p.2) :
+    importQ n (String.ofList (ps.flatMap (fun p => p.1 ++ p.2) ++ last)) =
+      (ps.mapM fun p => parseQ n (String.ofList p.2)).map List.flatten := by
+  rw [importQ, statements, String.toList_ofList, stmtsGo_join ps last [] hw hlast ht]
+  simp only [List.reverse_nil, List.nil_append, ite_true, Option.bind_some]
+  congr 1
+  induction ps with
+  | nil => rfl
+  | cons p ps ih =>
+    simp only [List.map_cons, List.mapM_cons]
+    rw [parseQ_append_ws n _ _ (hw p (by simp)),
+      ih (fun q hq => hw q (by simp [hq])) (fun q hq => ht q (by simp [hq]))]
 
 /-- The circuit a file denotes, or the empty circuit. Used where the import is
     pinned by a `#guard` on the gate count, so a failure is visible. -/

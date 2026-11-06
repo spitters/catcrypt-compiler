@@ -20,12 +20,17 @@ for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
 import numpy as np  # noqa: E402
 import pytest
 from qiskit import QuantumCircuit, qasm2, transpile
-from qiskit.circuit.library import CU1Gate, U1Gate, U2Gate, U3Gate
+from qiskit.circuit import Parameter
+from qiskit.circuit.library import CU1Gate, RYGate, U1Gate, U2Gate, U3Gate
 from qiskit.quantum_info import Operator, Statevector, random_statevector
 
 BRIDGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BRIDGE)
-from catq import VerifiedCompiler, decode_angle, encode_angle  # noqa: E402
+sys.path.insert(0, os.path.join(BRIDGE, "tests"))
+from catq import (VerifiedCompiler, append_swaps, decode_angle, encode_angle,  # noqa: E402
+                  swap_network)
+from catq.compiler import EPS_FIELD  # noqa: E402
+from branching import same_distribution, segments_equiv  # noqa: E402
 
 QSYNTH = sorted(glob.glob(os.path.join(os.path.dirname(BRIDGE), "bench", "qasm", "qsynth",
                                        "*.qasm")))
@@ -126,7 +131,7 @@ def run(qc: QuantumCircuit, name: str, level: int | str = 2, checked: bool = Fal
     row = {"circuit": name, "qubits": qc.num_qubits, "cx_in": rep.cx_in,
            "cx_out": rep.cx_out, "gates_in": qc.size(), "gates_out": out.size(),
            "seconds": round(rep.seconds, 2),
-           "eps": rep.rows[-1].split()[-1] if rep.rows else "0", **check(qc, out)}
+           "eps": rep.rows[-1].split()[EPS_FIELD] if rep.rows else "0", **check(qc, out)}
     print("\t".join(str(v) for v in row.values()), flush=True)
     assert row["equiv"] and row["exact"], row
     return row
@@ -167,9 +172,199 @@ def test_level2r_qsynth(src, checked):
 
 def test_unsupported_unchanged():
     qc = QuantumCircuit(2, 2)
-    qc.h(0); qc.measure(0, 0)
+    qc.h(0); qc.rx(Parameter("t"), 1); qc.measure(0, 0)
     vc = VerifiedCompiler()
     assert vc.compile(qc) is qc and not vc.last_report.optimized
+
+
+def mid_circuit() -> QuantumCircuit:
+    """Three qubits: a mid-circuit measurement, an `if_test` with an else branch, a reset
+    and final measurements, with gates the compiler removes in each segment."""
+    qc = QuantumCircuit(3, 3, global_phase=0.4)
+    qc.h(0); qc.cx(0, 1); qc.rz(0.3, 1); qc.cx(0, 1); qc.t(2); qc.cx(1, 2); qc.cx(1, 2)
+    qc.ry(0.9, 0)
+    qc.measure(0, 0)
+    qc.ry(0.7, 1); qc.h(0); qc.cx(1, 2); qc.s(2); qc.sdg(2); qc.h(1)
+    with qc.if_test((qc.clbits[0], 1)) as orelse:
+        qc.x(2); qc.rz(0.2, 1)
+    with orelse:
+        qc.h(2)
+    qc.cx(1, 2); qc.cx(1, 2); qc.ry(1.1, 1); qc.rx(0.4, 2); qc.cx(2, 0); qc.cx(0, 1)
+    qc.reset(0)
+    qc.cx(2, 0); qc.ry(0.8, 0); qc.rz(0.5, 0); qc.rz(-0.1, 0)
+    qc.measure([0, 1, 2], [0, 1, 2])
+    return qc
+
+
+@pytest.mark.parametrize("level", ["2", "2r"])
+def test_mid_circuit_measurement(level):
+    """Measurement, reset and `if_test` stay in place on their qubits and clbits; each
+    unitary segment equals its input up to global phase (`Operator`), the measured
+    distribution is the input's (exact branching simulation), and the input's global phase
+    is kept."""
+    qc = mid_circuit()
+    vc = VerifiedCompiler(level=level, check=True)
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and not rep.unitary, rep.reason
+    assert rep.phase == 0.0 and float(out.global_phase) == pytest.approx(0.4)
+    assert rep.eps is not None and len(rep.segment_phases) == 4
+    assert segments_equiv(qc, out) == 7
+    assert same_distribution(qc, out)
+    assert rep.cx_out < rep.cx_in
+    gates = {ins.operation.name for ins in out.data}
+    assert gates <= OUT_GATES | {"measure", "reset", "if_else"}, gates
+
+
+def test_branching_detects_change():
+    """The distribution check separates circuits: an extra rotation on each qubit, before
+    the mid-circuit measurement or after it, changes the distribution."""
+    qc = mid_circuit()
+    k = next(i for i, ins in enumerate(qc.data) if ins.operation.name == "measure")
+    for at in (k, k + 1):
+        for q in qc.qubits:
+            bad = qc.copy()
+            bad.data.insert(at, qc.data[0].replace(operation=RYGate(0.5), qubits=(q,)))
+            assert not same_distribution(qc, bad), (at, q)
+
+
+def test_final_measurements_only():
+    """A unitary circuit followed by measurements is optimized; its phase is dropped."""
+    qc = all_gates()
+    qc.measure_all()
+    vc = VerifiedCompiler()
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and not rep.unitary
+    assert float(out.global_phase) == pytest.approx(0.3)
+    # the swap of `all_gates` is elided; the final measurements absorb the permutation
+    assert rep.final_permutation == [2, 1, 0] and rep.swaps_appended == 0
+    assert same_distribution(qc, out)
+
+
+def test_swap_network():
+    """The appended swaps move the state on wire `sigma[q]` to wire `q`: preparing qubit q's
+    state on wire `sigma[q]` and appending the swaps gives the state prepared in place. (As
+    unitaries the two differ by the permutation on the input side, so states are compared.)"""
+    sigma = [2, 0, 3, 1]
+    qc = QuantumCircuit(4)
+    for q in range(4):
+        qc.ry(0.3 + q, q)
+    moved = QuantumCircuit(4)
+    for q in range(4):
+        moved.ry(0.3 + q, sigma[q])
+    append_swaps(moved, swap_network(sigma))
+    assert Statevector(qc).equiv(Statevector(moved))
+
+
+def test_swaps_final_measurements():
+    """Swaps before final measurements: elided, absorbed by the measurements (each reads the
+    wire of its qubit), no swap appended, no CX beyond the input's two `cx`, the same
+    distribution."""
+    qc = QuantumCircuit(3, 3)
+    qc.h(0); qc.ry(0.4, 1); qc.cx(0, 1); qc.swap(0, 2); qc.rx(0.7, 0); qc.swap(1, 2)
+    qc.cx(2, 0)
+    qc.measure([0, 1, 2], [0, 1, 2])
+    vc = VerifiedCompiler(check=True)
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized, rep.reason
+    assert rep.final_permutation != [0, 1, 2] and rep.swaps_appended == 0
+    assert rep.cx_out <= 2 and "swap" not in out.count_ops()
+    assert same_distribution(qc, out)
+
+
+def test_swaps_unitary():
+    """A unitary circuit with swaps: they are elided and the remaining permutation is
+    appended as swaps (three `cx` each); the output equals the input exactly."""
+    qc = QuantumCircuit(3, global_phase=0.2)
+    qc.h(0); qc.cx(0, 1); qc.swap(0, 1); qc.rz(0.3, 0); qc.swap(1, 2); qc.ry(0.5, 2)
+    qc.cx(2, 0)
+    row = run(qc, "swaps (unitary)", level="2r", checked=True)
+    assert row["exact"]
+
+
+def swaps_circuit(cycle: bool) -> QuantumCircuit:
+    """Three qubits with one swap (`cycle=False`) or two, whose product is a 3-cycle."""
+    qc = QuantumCircuit(3, global_phase=0.2)
+    qc.h(0); qc.ry(0.4, 1); qc.rx(0.9, 2); qc.cx(0, 1); qc.swap(0, 1)
+    if cycle:
+        qc.swap(1, 2)
+    qc.rz(0.3, 0); qc.cx(2, 0)
+    return qc
+
+
+@pytest.mark.parametrize("cycle", [False, True], ids=["one swap", "3-cycle"])
+def test_swaps_layout(cycle):
+    """`permutation="layout"`: no swap is appended, the output's `final_layout` is the
+    reported permutation, and `Operator.from_circuit` of the output equals the input's
+    operator exactly; the default appends the swaps and sets no layout."""
+    qc = swaps_circuit(cycle)
+    vc = VerifiedCompiler(check=True, permutation="layout")
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and rep.swaps_appended == 0, rep.reason
+    assert rep.final_permutation == ([1, 0, 2] if not cycle else [1, 2, 0])
+    assert out.layout.final_index_layout() == rep.final_permutation
+    assert rep.layouts[-1] == rep.final_permutation
+    assert rep.cx_out == 2
+    assert np.allclose(Operator.from_circuit(out).data, Operator(qc).data, atol=TOL)
+    assert not np.allclose(Operator(out).data, Operator(qc).data, atol=1e-3)
+    vc = VerifiedCompiler(check=True)
+    out = vc.compile(qc)
+    vc.close()
+    assert out.layout is None and vc.last_report.swaps_appended == (2 if cycle else 1)
+    assert np.allclose(Operator(out).data, Operator(qc).data, atol=TOL)
+
+
+def test_swaps_layout_composes():
+    """An input with a layout (Qiskit's level 3 elides its swaps into one) and a further
+    swap: the output's `final_layout` composes ours after the input's, and
+    `Operator.from_circuit` of the two agree."""
+    qk = transpile(swaps_circuit(True), basis_gates=["rx", "ry", "rz", "cx", "p"],
+                   optimization_level=3, seed_transpiler=0)
+    assert qk.layout.final_index_layout() != [0, 1, 2]
+    qk.swap(0, 2); qk.rx(0.5, 2)
+    vc = VerifiedCompiler(check=True, permutation="layout")
+    out = vc.compile(qk)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and rep.swaps_appended == 0 and "swap" not in out.count_ops()
+    f = qk.layout.final_index_layout()
+    assert out.layout.final_index_layout() == [rep.final_permutation[f[i]] for i in range(3)]
+    assert np.allclose(Operator.from_circuit(out).data, Operator.from_circuit(qk).data,
+                       atol=TOL)
+
+
+def test_permutation_argument():
+    with pytest.raises(ValueError):
+        VerifiedCompiler(permutation="none")
+
+
+def test_swap_before_mid_circuit_measurement():
+    """A swap before a mid-circuit measurement: the measurement and the later segment are
+    relabelled to the wires that carry their qubits; the distribution is the input's."""
+    qc = QuantumCircuit(3, 3)
+    qc.h(0); qc.ry(0.6, 1); qc.cx(0, 2); qc.swap(0, 1)
+    qc.measure(0, 0)
+    qc.ry(0.9, 1); qc.cx(1, 2); qc.swap(1, 2); qc.rx(0.3, 2)
+    with qc.if_test((qc.clbits[0], 1)):
+        qc.x(1)
+    qc.h(2)
+    qc.measure([1, 2], [1, 2])
+    vc = VerifiedCompiler(check=True)
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and not rep.unitary, rep.reason
+    assert rep.layouts[1] == [1, 0, 2]
+    m = next(ins for ins in out.data if ins.operation.name == "measure")
+    assert out.find_bit(m.qubits[0]).index == 1
+    assert same_distribution(qc, out)
 
 
 @pytest.mark.parametrize("path", QSYNTH, ids=[os.path.basename(p) for p in QSYNTH])

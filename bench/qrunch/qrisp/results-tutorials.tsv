@@ -1,0 +1,8 @@
+# qrisp 0.9.10, qiskit 2.5.2, catq-compile level 2r --check; load average 15.18 (taken under load), one run, 2026-11-06 21:21 CET
+circuit	qubits	classical	cx_in	ours_cx	qiskit_cx	ours_depth2	qiskit_depth2	ours_gates	qiskit_gates	ours_ms	qiskit_ms	qrisp_ms	ours_dev	qiskit_dev	qiskit_perm	qiskit_ne_cx	qiskit_ne_gates	eps	ours_lay_cx	ours_lay_depth2	ours_lay_gates	ours_lay_dev
+tsp	21	no	1804	1742	1742	1059	1059	3549	3690	979.6	63.9	1108	nan	nan	no	1754	3711	5.8e-13	1742	1059	3549	nan
+backtrack_binary	16	no	989	975	972	596	596	2076	2614	2065.5	31.8	1080	2.5e-15	1.3e-15	yes	975	2618	2.1e-12	972	596	2073	2.5e-15
+sudoku	24	no	3037	3037	3034	1227	1227	7166	7780	1418.3	45.6	1767	nan	nan	yes	3037	7784	1.1e-12	3034	1227	7163	nan
+hhl	6	no	256	231	231	163	163	516	538	60.8	8.4	304	3.3e-15	6.7e-15	no	237	554	3.8e-14	231	163	516	3.3e-15
+iqae_qmci	25	no	2489	2347	2347	808	808	4832	4950	2922.7	132.8	797	nan	nan	no	2347	4950	2.3e-12	2347	808	4832	nan
+counting	8	no	528	513	507	439	436	1157	1260	227.3	18.7	1024	1.2e-14	1.0e-14	yes	513	1266	3.1e-13	507	436	1151	1.2e-14

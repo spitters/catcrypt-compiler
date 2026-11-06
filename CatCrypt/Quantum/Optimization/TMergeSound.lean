@@ -288,18 +288,13 @@ theorem gateProdU_tMergeList :
       | CNOT i j => exact other (by simp)
       | CZ i j => exact other (by simp)
 
-/-- `QCircuit.circuitToList` preserves `circuitUnitary`. -/
-theorem circuitUnitary_ofList_circuitToList_tCount (c : Circuit n) :
-    circuitUnitary (Circuit.ofList (QCircuit.circuitToList c)) = circuitUnitary c :=
-  circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c
-
 /-- `tMerge` preserves `circuitUnitary`. -/
 theorem tMerge_matrixCorrect : MatrixCorrect (tMerge : Circuit n → Circuit n) := by
   intro c
   unfold tMerge
   rw [circuitUnitary_ofList_eq_gateProdU,
     gateProdU_tMergeList _ _ (Nat.lt_succ_self _),
-    ← circuitUnitary_ofList_eq_gateProdU, circuitUnitary_ofList_circuitToList_tCount]
+    ← circuitUnitary_ofList_eq_gateProdU, circuitUnitary_ofList_circuitToList]
 
 /-! ## Main result -/
 

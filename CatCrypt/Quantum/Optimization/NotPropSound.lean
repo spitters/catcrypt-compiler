@@ -653,18 +653,13 @@ theorem propagateNot_correctU :
 
 /-! ## Top-level soundness of the NOT-propagation pass -/
 
-/-- `QCircuit.circuitToList` preserves `circuitUnitary`. -/
-theorem circuitUnitary_ofList_circuitToList_notProp (c : Circuit n) :
-    circuitUnitary (Circuit.ofList (QCircuit.circuitToList c)) = circuitUnitary c :=
-  circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c
-
 /-- `notPropagationPass` preserves `circuitUnitary`. -/
 theorem notPropagationPass_matrixCorrect :
     MatrixCorrect (notPropagationPass : Circuit n → Circuit n) := by
   intro c
   simp only [notPropagationPass]
   rw [circuitUnitary_cancelXX, circuitUnitary_propagateNot,
-    circuitUnitary_ofList_circuitToList_notProp]
+    circuitUnitary_ofList_circuitToList]
 
 /-- **The NOT-propagation pass preserves the unitary semantics.**
 `notPropagationPass c` denotes the same unitary channel `ρ ↦ U ρ U†` as `c`. -/

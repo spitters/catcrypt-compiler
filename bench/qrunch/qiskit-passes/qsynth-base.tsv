@@ -1,0 +1,14 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point; 2026-11-06 15:26 CET
+suite	circuit	qubits	cx_in	cx_1	gates_1	runs	cx	depth2	gates	check
+qsynth	pennylane_16q_100o_0	16	800	748	1941	1	748	396	1941	ok
+qsynth	pennylane_16q_100o_1	16	860	802	2076	1	802	445	2076	ok
+qsynth	pennylane_8q_50o_0	8	316	292	765	1	292	214	765	ok
+qsynth	pennylane_8q_50o_1	8	376	348	909	1	348	256	909	ok
+qsynth	simple_16q_100o_0	16	800	788	1508	1	788	465	1508	ok
+qsynth	simple_16q_100o_1	16	860	855	1587	1	855	534	1587	ok
+qsynth	simple_8q_50o_0	8	316	310	617	1	310	250	617	ok
+qsynth	simple_8q_50o_1	8	376	367	709	1	367	300	709	ok
+qsynth	yardanov_16q_100o_0	16	750	738	2002	1	738	429	2002	ok
+qsynth	yardanov_16q_100o_1	16	805	800	2165	1	800	491	2165	ok
+qsynth	yardanov_8q_50o_0	8	298	292	787	1	292	232	787	ok
+qsynth	yardanov_8q_50o_1	8	353	344	936	1	344	277	936	ok

@@ -1,0 +1,475 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point; 2026-11-06 15:28 CET
+suite	circuit	pass	cx	depth2	gates	d_cx	d_depth2	d_gates	check
+nam	adder_8	init:RemoveDiagonalGatesBeforeMeasure	385	135	953	0	0	0	same
+nam	adder_8	init:RemoveIdentityEquivalent	385	135	952	0	0	-1	nosim
+nam	adder_8	init:RemoveIdentityEquivalent +catq	385	135	952	0	0	-1	nosim
+nam	adder_8	init:InverseCancellation	385	135	953	0	0	0	same
+nam	adder_8	init:ContractIdleWiresInControlFlow	385	135	953	0	0	0	same
+nam	adder_8	init:CommutativeCancellation	385	135	953	0	0	0	same
+nam	adder_8	init:ConsolidateBlocks	385	135	953	0	0	0	same
+nam	adder_8	opt:TwoQubitPeepholeOptimization	385	135	953	0	0	0	same
+nam	adder_8	opt:RemoveIdentityEquivalent	385	135	952	0	0	-1	nosim
+nam	adder_8	opt:RemoveIdentityEquivalent +catq	385	135	952	0	0	-1	nosim
+nam	adder_8	opt:Optimize1qGatesDecomposition	385	135	939	0	0	-14	nosim
+nam	adder_8	opt:Optimize1qGatesDecomposition +catq	385	135	939	0	0	-14	nosim
+nam	adder_8	opt:CommutativeCancellation	385	135	953	0	0	0	same
+nam	adder_8	opt:ContractIdleWiresInControlFlow	385	135	953	0	0	0	same
+nam	adder_8	stage:init (no elide)	385	135	952	0	0	-1	nosim
+nam	adder_8	stage:init (no elide) +catq	385	135	952	0	0	-1	nosim
+nam	adder_8	stage:optimization	385	135	939	0	0	-14	nosim
+nam	adder_8	stage:optimization +catq	385	135	939	0	0	-14	nosim
+nam	adder_8	preset (no elide)	385	135	939	0	0	-14	nosim
+nam	adder_8	preset (no elide) +catq	385	135	939	0	0	-14	nosim
+nam	adder_8	snap +catq	385	135	953	0	0	0	same
+nam	barenco_tof_10	init:RemoveDiagonalGatesBeforeMeasure	192	162	444	0	0	0	same
+nam	barenco_tof_10	init:RemoveIdentityEquivalent	192	162	444	0	0	0	same
+nam	barenco_tof_10	init:InverseCancellation	192	162	444	0	0	0	same
+nam	barenco_tof_10	init:ContractIdleWiresInControlFlow	192	162	444	0	0	0	same
+nam	barenco_tof_10	init:CommutativeCancellation	192	162	444	0	0	0	same
+nam	barenco_tof_10	init:ConsolidateBlocks	192	162	514	0	0	70	ok
+nam	barenco_tof_10	opt:TwoQubitPeepholeOptimization	192	162	444	0	0	0	same
+nam	barenco_tof_10	opt:RemoveIdentityEquivalent	192	162	444	0	0	0	same
+nam	barenco_tof_10	opt:Optimize1qGatesDecomposition	192	162	444	0	0	0	same
+nam	barenco_tof_10	opt:CommutativeCancellation	192	162	444	0	0	0	same
+nam	barenco_tof_10	opt:ContractIdleWiresInControlFlow	192	162	444	0	0	0	same
+nam	barenco_tof_10	stage:init (no elide)	192	162	514	0	0	70	ok
+nam	barenco_tof_10	stage:optimization	192	162	444	0	0	0	same
+nam	barenco_tof_10	preset (no elide)	192	162	493	0	0	49	ok
+nam	barenco_tof_10	snap +catq	192	162	444	0	0	0	same
+nam	barenco_tof_3	init:RemoveDiagonalGatesBeforeMeasure	24	22	59	0	0	0	same
+nam	barenco_tof_3	init:RemoveIdentityEquivalent	24	22	59	0	0	0	same
+nam	barenco_tof_3	init:InverseCancellation	24	22	59	0	0	0	same
+nam	barenco_tof_3	init:ContractIdleWiresInControlFlow	24	22	59	0	0	0	same
+nam	barenco_tof_3	init:CommutativeCancellation	24	22	59	0	0	0	same
+nam	barenco_tof_3	init:ConsolidateBlocks	24	22	59	0	0	0	same
+nam	barenco_tof_3	opt:TwoQubitPeepholeOptimization	24	22	59	0	0	0	same
+nam	barenco_tof_3	opt:RemoveIdentityEquivalent	24	22	59	0	0	0	same
+nam	barenco_tof_3	opt:Optimize1qGatesDecomposition	24	22	59	0	0	0	same
+nam	barenco_tof_3	opt:CommutativeCancellation	24	22	59	0	0	0	same
+nam	barenco_tof_3	opt:ContractIdleWiresInControlFlow	24	22	59	0	0	0	same
+nam	barenco_tof_3	stage:init (no elide)	24	22	59	0	0	0	same
+nam	barenco_tof_3	stage:optimization	24	22	59	0	0	0	same
+nam	barenco_tof_3	preset (no elide)	24	22	59	0	0	0	same
+nam	barenco_tof_3	snap +catq	24	22	59	0	0	0	same
+nam	barenco_tof_4	init:RemoveDiagonalGatesBeforeMeasure	48	42	114	0	0	0	same
+nam	barenco_tof_4	init:RemoveIdentityEquivalent	48	42	114	0	0	0	same
+nam	barenco_tof_4	init:InverseCancellation	48	42	114	0	0	0	same
+nam	barenco_tof_4	init:ContractIdleWiresInControlFlow	48	42	114	0	0	0	same
+nam	barenco_tof_4	init:CommutativeCancellation	48	42	114	0	0	0	same
+nam	barenco_tof_4	init:ConsolidateBlocks	48	42	124	0	0	10	ok
+nam	barenco_tof_4	opt:TwoQubitPeepholeOptimization	48	42	114	0	0	0	same
+nam	barenco_tof_4	opt:RemoveIdentityEquivalent	48	42	114	0	0	0	same
+nam	barenco_tof_4	opt:Optimize1qGatesDecomposition	48	42	114	0	0	0	same
+nam	barenco_tof_4	opt:CommutativeCancellation	48	42	114	0	0	0	same
+nam	barenco_tof_4	opt:ContractIdleWiresInControlFlow	48	42	114	0	0	0	same
+nam	barenco_tof_4	stage:init (no elide)	48	42	124	0	0	10	ok
+nam	barenco_tof_4	stage:optimization	48	42	114	0	0	0	same
+nam	barenco_tof_4	preset (no elide)	48	42	121	0	0	7	ok
+nam	barenco_tof_4	snap +catq	48	42	114	0	0	0	same
+nam	barenco_tof_5	init:RemoveDiagonalGatesBeforeMeasure	72	62	169	0	0	0	same
+nam	barenco_tof_5	init:RemoveIdentityEquivalent	72	62	169	0	0	0	same
+nam	barenco_tof_5	init:InverseCancellation	72	62	169	0	0	0	same
+nam	barenco_tof_5	init:ContractIdleWiresInControlFlow	72	62	169	0	0	0	same
+nam	barenco_tof_5	init:CommutativeCancellation	72	62	169	0	0	0	same
+nam	barenco_tof_5	init:ConsolidateBlocks	72	62	189	0	0	20	ok
+nam	barenco_tof_5	opt:TwoQubitPeepholeOptimization	72	62	169	0	0	0	same
+nam	barenco_tof_5	opt:RemoveIdentityEquivalent	72	62	169	0	0	0	same
+nam	barenco_tof_5	opt:Optimize1qGatesDecomposition	72	62	169	0	0	0	same
+nam	barenco_tof_5	opt:CommutativeCancellation	72	62	169	0	0	0	same
+nam	barenco_tof_5	opt:ContractIdleWiresInControlFlow	72	62	169	0	0	0	same
+nam	barenco_tof_5	stage:init (no elide)	72	62	189	0	0	20	ok
+nam	barenco_tof_5	stage:optimization	72	62	169	0	0	0	same
+nam	barenco_tof_5	preset (no elide)	72	62	183	0	0	14	ok
+nam	barenco_tof_5	snap +catq	72	62	169	0	0	0	same
+nam	csla_mux_3	init:RemoveDiagonalGatesBeforeMeasure	71	35	167	0	0	0	same
+nam	csla_mux_3	init:RemoveIdentityEquivalent	71	35	167	0	0	0	same
+nam	csla_mux_3	init:InverseCancellation	71	35	167	0	0	0	same
+nam	csla_mux_3	init:ContractIdleWiresInControlFlow	71	35	167	0	0	0	same
+nam	csla_mux_3	init:CommutativeCancellation	71	35	167	0	0	0	same
+nam	csla_mux_3	init:ConsolidateBlocks	71	35	167	0	0	0	same
+nam	csla_mux_3	opt:TwoQubitPeepholeOptimization	71	35	165	0	0	-2	ok
+nam	csla_mux_3	opt:TwoQubitPeepholeOptimization +catq	71	35	165	0	0	-2	ok
+nam	csla_mux_3	opt:RemoveIdentityEquivalent	71	35	167	0	0	0	same
+nam	csla_mux_3	opt:Optimize1qGatesDecomposition	71	35	164	0	0	-3	ok
+nam	csla_mux_3	opt:Optimize1qGatesDecomposition +catq	71	35	164	0	0	-3	ok
+nam	csla_mux_3	opt:CommutativeCancellation	71	35	167	0	0	0	same
+nam	csla_mux_3	opt:ContractIdleWiresInControlFlow	71	35	167	0	0	0	same
+nam	csla_mux_3	stage:init (no elide)	71	35	167	0	0	0	same
+nam	csla_mux_3	stage:optimization	71	35	164	0	0	-3	ok
+nam	csla_mux_3	stage:optimization +catq	71	35	164	0	0	-3	ok
+nam	csla_mux_3	preset (no elide)	71	35	164	0	0	-3	ok
+nam	csla_mux_3	preset (no elide) +catq	71	35	164	0	0	-3	ok
+nam	csla_mux_3	snap +catq	71	35	167	0	0	0	same
+nam	csum_mux_9	init:RemoveDiagonalGatesBeforeMeasure	168	32	405	0	0	0	same
+nam	csum_mux_9	init:RemoveIdentityEquivalent	168	32	405	0	0	0	same
+nam	csum_mux_9	init:InverseCancellation	168	32	405	0	0	0	same
+nam	csum_mux_9	init:ContractIdleWiresInControlFlow	168	32	405	0	0	0	same
+nam	csum_mux_9	init:CommutativeCancellation	168	32	405	0	0	0	same
+nam	csum_mux_9	init:ConsolidateBlocks	168	32	405	0	0	0	same
+nam	csum_mux_9	opt:TwoQubitPeepholeOptimization	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	opt:TwoQubitPeepholeOptimization +catq	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	opt:RemoveIdentityEquivalent	168	32	405	0	0	0	same
+nam	csum_mux_9	opt:Optimize1qGatesDecomposition	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	opt:Optimize1qGatesDecomposition +catq	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	opt:CommutativeCancellation	168	32	405	0	0	0	same
+nam	csum_mux_9	opt:ContractIdleWiresInControlFlow	168	32	405	0	0	0	same
+nam	csum_mux_9	stage:init (no elide)	168	32	405	0	0	0	same
+nam	csum_mux_9	stage:optimization	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	stage:optimization +catq	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	preset (no elide)	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	preset (no elide) +catq	168	32	403	0	0	-2	nosim
+nam	csum_mux_9	snap +catq	168	32	405	0	0	0	same
+nam	gf2^10_mult	init:RemoveDiagonalGatesBeforeMeasure	609	172	1276	0	0	0	same
+nam	gf2^10_mult	init:RemoveIdentityEquivalent	609	172	1276	0	0	0	same
+nam	gf2^10_mult	init:InverseCancellation	609	172	1276	0	0	0	same
+nam	gf2^10_mult	init:ContractIdleWiresInControlFlow	609	172	1276	0	0	0	same
+nam	gf2^10_mult	init:CommutativeCancellation	609	172	1276	0	0	0	same
+nam	gf2^10_mult	init:ConsolidateBlocks	609	172	1276	0	0	0	same
+nam	gf2^10_mult	opt:TwoQubitPeepholeOptimization	609	172	1276	0	0	0	same
+nam	gf2^10_mult	opt:RemoveIdentityEquivalent	609	172	1276	0	0	0	same
+nam	gf2^10_mult	opt:Optimize1qGatesDecomposition	609	172	1276	0	0	0	same
+nam	gf2^10_mult	opt:CommutativeCancellation	609	172	1276	0	0	0	same
+nam	gf2^10_mult	opt:ContractIdleWiresInControlFlow	609	172	1276	0	0	0	same
+nam	gf2^10_mult	stage:init (no elide)	609	172	1276	0	0	0	same
+nam	gf2^10_mult	stage:optimization	609	172	1276	0	0	0	same
+nam	gf2^10_mult	preset (no elide)	609	172	1276	0	0	0	same
+nam	gf2^10_mult	snap +catq	609	172	1276	0	0	0	same
+nam	gf2^16_mult	init:RemoveDiagonalGatesBeforeMeasure	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	init:RemoveIdentityEquivalent	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	init:InverseCancellation	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	init:ContractIdleWiresInControlFlow	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	init:CommutativeCancellation	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	init:ConsolidateBlocks	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	opt:TwoQubitPeepholeOptimization	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	opt:RemoveIdentityEquivalent	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	opt:Optimize1qGatesDecomposition	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	opt:CommutativeCancellation	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	opt:ContractIdleWiresInControlFlow	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	stage:init (no elide)	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	stage:optimization	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	preset (no elide)	1581	292	3210	0	0	0	same
+nam	gf2^16_mult	snap +catq	1581	292	3210	0	0	0	same
+nam	gf2^32_mult	init:RemoveDiagonalGatesBeforeMeasure	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	init:RemoveIdentityEquivalent	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	init:InverseCancellation	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	init:ContractIdleWiresInControlFlow	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	init:CommutativeCancellation	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	init:ConsolidateBlocks	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	opt:TwoQubitPeepholeOptimization	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	opt:RemoveIdentityEquivalent	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	opt:Optimize1qGatesDecomposition	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	opt:CommutativeCancellation	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	opt:ContractIdleWiresInControlFlow	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	stage:init (no elide)	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	stage:optimization	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	preset (no elide)	6299	598	12632	0	0	0	same
+nam	gf2^32_mult	snap +catq	6299	598	12632	0	0	0	same
+nam	gf2^4_mult	init:RemoveDiagonalGatesBeforeMeasure	99	58	220	0	0	0	same
+nam	gf2^4_mult	init:RemoveIdentityEquivalent	99	58	220	0	0	0	same
+nam	gf2^4_mult	init:InverseCancellation	99	58	220	0	0	0	same
+nam	gf2^4_mult	init:ContractIdleWiresInControlFlow	99	58	220	0	0	0	same
+nam	gf2^4_mult	init:CommutativeCancellation	99	58	220	0	0	0	same
+nam	gf2^4_mult	init:ConsolidateBlocks	99	58	260	0	0	40	ok
+nam	gf2^4_mult	opt:TwoQubitPeepholeOptimization	99	58	220	0	0	0	same
+nam	gf2^4_mult	opt:RemoveIdentityEquivalent	99	58	220	0	0	0	same
+nam	gf2^4_mult	opt:Optimize1qGatesDecomposition	99	58	220	0	0	0	same
+nam	gf2^4_mult	opt:CommutativeCancellation	99	58	220	0	0	0	same
+nam	gf2^4_mult	opt:ContractIdleWiresInControlFlow	99	58	220	0	0	0	same
+nam	gf2^4_mult	stage:init (no elide)	99	58	260	0	0	40	ok
+nam	gf2^4_mult	stage:optimization	99	58	220	0	0	0	same
+nam	gf2^4_mult	preset (no elide)	99	58	244	0	0	24	ok
+nam	gf2^4_mult	snap +catq	99	58	220	0	0	0	same
+nam	gf2^5_mult	init:RemoveDiagonalGatesBeforeMeasure	154	77	336	0	0	0	same
+nam	gf2^5_mult	init:RemoveIdentityEquivalent	154	77	336	0	0	0	same
+nam	gf2^5_mult	init:InverseCancellation	154	77	336	0	0	0	same
+nam	gf2^5_mult	init:ContractIdleWiresInControlFlow	154	77	336	0	0	0	same
+nam	gf2^5_mult	init:CommutativeCancellation	154	77	336	0	0	0	same
+nam	gf2^5_mult	init:ConsolidateBlocks	154	77	336	0	0	0	same
+nam	gf2^5_mult	opt:TwoQubitPeepholeOptimization	154	77	336	0	0	0	same
+nam	gf2^5_mult	opt:RemoveIdentityEquivalent	154	77	336	0	0	0	same
+nam	gf2^5_mult	opt:Optimize1qGatesDecomposition	154	77	336	0	0	0	same
+nam	gf2^5_mult	opt:CommutativeCancellation	154	77	336	0	0	0	same
+nam	gf2^5_mult	opt:ContractIdleWiresInControlFlow	154	77	336	0	0	0	same
+nam	gf2^5_mult	stage:init (no elide)	154	77	336	0	0	0	same
+nam	gf2^5_mult	stage:optimization	154	77	336	0	0	0	same
+nam	gf2^5_mult	preset (no elide)	154	77	336	0	0	0	same
+nam	gf2^5_mult	snap +catq	154	77	336	0	0	0	same
+nam	gf2^64_mult	init:RemoveDiagonalGatesBeforeMeasure	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	init:RemoveIdentityEquivalent	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	init:InverseCancellation	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	init:ContractIdleWiresInControlFlow	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	init:CommutativeCancellation	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	init:ConsolidateBlocks	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	opt:TwoQubitPeepholeOptimization	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	opt:RemoveIdentityEquivalent	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	opt:Optimize1qGatesDecomposition	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	opt:CommutativeCancellation	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	opt:ContractIdleWiresInControlFlow	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	stage:init (no elide)	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	stage:optimization	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	preset (no elide)	24765	1204	49722	0	0	0	same
+nam	gf2^64_mult	snap +catq	24765	1204	49722	0	0	0	same
+nam	gf2^6_mult	init:RemoveDiagonalGatesBeforeMeasure	221	96	476	0	0	0	same
+nam	gf2^6_mult	init:RemoveIdentityEquivalent	221	96	476	0	0	0	same
+nam	gf2^6_mult	init:InverseCancellation	221	96	476	0	0	0	same
+nam	gf2^6_mult	init:ContractIdleWiresInControlFlow	221	96	476	0	0	0	same
+nam	gf2^6_mult	init:CommutativeCancellation	221	96	476	0	0	0	same
+nam	gf2^6_mult	init:ConsolidateBlocks	221	96	476	0	0	0	same
+nam	gf2^6_mult	opt:TwoQubitPeepholeOptimization	221	96	476	0	0	0	same
+nam	gf2^6_mult	opt:RemoveIdentityEquivalent	221	96	476	0	0	0	same
+nam	gf2^6_mult	opt:Optimize1qGatesDecomposition	221	96	476	0	0	0	same
+nam	gf2^6_mult	opt:CommutativeCancellation	221	96	476	0	0	0	same
+nam	gf2^6_mult	opt:ContractIdleWiresInControlFlow	221	96	476	0	0	0	same
+nam	gf2^6_mult	stage:init (no elide)	221	96	476	0	0	0	same
+nam	gf2^6_mult	stage:optimization	221	96	476	0	0	0	same
+nam	gf2^6_mult	preset (no elide)	221	96	476	0	0	0	same
+nam	gf2^6_mult	snap +catq	221	96	476	0	0	0	same
+nam	gf2^7_mult	init:RemoveDiagonalGatesBeforeMeasure	300	115	640	0	0	0	same
+nam	gf2^7_mult	init:RemoveIdentityEquivalent	300	115	640	0	0	0	same
+nam	gf2^7_mult	init:InverseCancellation	300	115	640	0	0	0	same
+nam	gf2^7_mult	init:ContractIdleWiresInControlFlow	300	115	640	0	0	0	same
+nam	gf2^7_mult	init:CommutativeCancellation	300	115	640	0	0	0	same
+nam	gf2^7_mult	init:ConsolidateBlocks	300	115	640	0	0	0	same
+nam	gf2^7_mult	opt:TwoQubitPeepholeOptimization	300	115	640	0	0	0	same
+nam	gf2^7_mult	opt:RemoveIdentityEquivalent	300	115	640	0	0	0	same
+nam	gf2^7_mult	opt:Optimize1qGatesDecomposition	300	115	640	0	0	0	same
+nam	gf2^7_mult	opt:CommutativeCancellation	300	115	640	0	0	0	same
+nam	gf2^7_mult	opt:ContractIdleWiresInControlFlow	300	115	640	0	0	0	same
+nam	gf2^7_mult	stage:init (no elide)	300	115	640	0	0	0	same
+nam	gf2^7_mult	stage:optimization	300	115	640	0	0	0	same
+nam	gf2^7_mult	preset (no elide)	300	115	640	0	0	0	same
+nam	gf2^7_mult	snap +catq	300	115	640	0	0	0	same
+nam	gf2^8_mult	init:RemoveDiagonalGatesBeforeMeasure	405	140	834	0	0	0	same
+nam	gf2^8_mult	init:RemoveIdentityEquivalent	405	140	834	0	0	0	same
+nam	gf2^8_mult	init:InverseCancellation	405	140	834	0	0	0	same
+nam	gf2^8_mult	init:ContractIdleWiresInControlFlow	405	140	834	0	0	0	same
+nam	gf2^8_mult	init:CommutativeCancellation	405	140	834	0	0	0	same
+nam	gf2^8_mult	init:ConsolidateBlocks	405	140	834	0	0	0	same
+nam	gf2^8_mult	opt:TwoQubitPeepholeOptimization	405	140	834	0	0	0	same
+nam	gf2^8_mult	opt:RemoveIdentityEquivalent	405	140	834	0	0	0	same
+nam	gf2^8_mult	opt:Optimize1qGatesDecomposition	405	140	834	0	0	0	same
+nam	gf2^8_mult	opt:CommutativeCancellation	405	140	834	0	0	0	same
+nam	gf2^8_mult	opt:ContractIdleWiresInControlFlow	405	140	834	0	0	0	same
+nam	gf2^8_mult	stage:init (no elide)	405	140	834	0	0	0	same
+nam	gf2^8_mult	stage:optimization	405	140	834	0	0	0	same
+nam	gf2^8_mult	preset (no elide)	405	140	834	0	0	0	same
+nam	gf2^8_mult	snap +catq	405	140	834	0	0	0	same
+nam	gf2^9_mult	init:RemoveDiagonalGatesBeforeMeasure	494	153	1040	0	0	0	same
+nam	gf2^9_mult	init:RemoveIdentityEquivalent	494	153	1040	0	0	0	same
+nam	gf2^9_mult	init:InverseCancellation	494	153	1040	0	0	0	same
+nam	gf2^9_mult	init:ContractIdleWiresInControlFlow	494	153	1040	0	0	0	same
+nam	gf2^9_mult	init:CommutativeCancellation	494	153	1040	0	0	0	same
+nam	gf2^9_mult	init:ConsolidateBlocks	494	153	1040	0	0	0	same
+nam	gf2^9_mult	opt:TwoQubitPeepholeOptimization	494	153	1040	0	0	0	same
+nam	gf2^9_mult	opt:RemoveIdentityEquivalent	494	153	1040	0	0	0	same
+nam	gf2^9_mult	opt:Optimize1qGatesDecomposition	494	153	1040	0	0	0	same
+nam	gf2^9_mult	opt:CommutativeCancellation	494	153	1040	0	0	0	same
+nam	gf2^9_mult	opt:ContractIdleWiresInControlFlow	494	153	1040	0	0	0	same
+nam	gf2^9_mult	stage:init (no elide)	494	153	1040	0	0	0	same
+nam	gf2^9_mult	stage:optimization	494	153	1040	0	0	0	same
+nam	gf2^9_mult	preset (no elide)	494	153	1040	0	0	0	same
+nam	gf2^9_mult	snap +catq	494	153	1040	0	0	0	same
+nam	mod5_4	init:RemoveDiagonalGatesBeforeMeasure	28	28	61	0	0	0	same
+nam	mod5_4	init:RemoveIdentityEquivalent	28	28	61	0	0	0	same
+nam	mod5_4	init:InverseCancellation	28	28	61	0	0	0	same
+nam	mod5_4	init:ContractIdleWiresInControlFlow	28	28	61	0	0	0	same
+nam	mod5_4	init:CommutativeCancellation	28	28	61	0	0	0	same
+nam	mod5_4	init:ConsolidateBlocks	28	28	61	0	0	0	same
+nam	mod5_4	opt:TwoQubitPeepholeOptimization	28	28	61	0	0	0	same
+nam	mod5_4	opt:RemoveIdentityEquivalent	28	28	61	0	0	0	same
+nam	mod5_4	opt:Optimize1qGatesDecomposition	28	28	61	0	0	0	same
+nam	mod5_4	opt:CommutativeCancellation	28	28	61	0	0	0	same
+nam	mod5_4	opt:ContractIdleWiresInControlFlow	28	28	61	0	0	0	same
+nam	mod5_4	stage:init (no elide)	28	28	61	0	0	0	same
+nam	mod5_4	stage:optimization	28	28	61	0	0	0	same
+nam	mod5_4	preset (no elide)	28	28	61	0	0	0	same
+nam	mod5_4	snap +catq	28	28	61	0	0	0	same
+nam	mod_adder_1024	init:RemoveDiagonalGatesBeforeMeasure	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	init:RemoveIdentityEquivalent	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	init:InverseCancellation	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	init:ContractIdleWiresInControlFlow	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	init:CommutativeCancellation	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	init:ConsolidateBlocks	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	opt:TwoQubitPeepholeOptimization	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	opt:RemoveIdentityEquivalent	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	opt:Optimize1qGatesDecomposition	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	opt:CommutativeCancellation	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	opt:ContractIdleWiresInControlFlow	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	stage:init (no elide)	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	stage:optimization	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	preset (no elide)	1702	1318	3900	0	0	0	same
+nam	mod_adder_1024	snap +catq	1702	1318	3900	0	0	0	same
+nam	mod_mult_55	init:RemoveDiagonalGatesBeforeMeasure	48	28	124	0	0	0	same
+nam	mod_mult_55	init:RemoveIdentityEquivalent	48	28	124	0	0	0	same
+nam	mod_mult_55	init:InverseCancellation	48	28	124	0	0	0	same
+nam	mod_mult_55	init:ContractIdleWiresInControlFlow	48	28	124	0	0	0	same
+nam	mod_mult_55	init:CommutativeCancellation	48	28	124	0	0	0	same
+nam	mod_mult_55	init:ConsolidateBlocks	48	28	124	0	0	0	same
+nam	mod_mult_55	opt:TwoQubitPeepholeOptimization	48	28	124	0	0	0	same
+nam	mod_mult_55	opt:RemoveIdentityEquivalent	48	28	124	0	0	0	same
+nam	mod_mult_55	opt:Optimize1qGatesDecomposition	48	28	124	0	0	0	same
+nam	mod_mult_55	opt:CommutativeCancellation	48	28	124	0	0	0	same
+nam	mod_mult_55	opt:ContractIdleWiresInControlFlow	48	28	124	0	0	0	same
+nam	mod_mult_55	stage:init (no elide)	48	28	124	0	0	0	same
+nam	mod_mult_55	stage:optimization	48	28	124	0	0	0	same
+nam	mod_mult_55	preset (no elide)	48	28	124	0	0	0	same
+nam	mod_mult_55	snap +catq	48	28	124	0	0	0	same
+nam	mod_red_21	init:RemoveDiagonalGatesBeforeMeasure	105	82	265	0	0	0	same
+nam	mod_red_21	init:RemoveIdentityEquivalent	105	82	265	0	0	0	same
+nam	mod_red_21	init:InverseCancellation	105	82	265	0	0	0	same
+nam	mod_red_21	init:ContractIdleWiresInControlFlow	105	82	265	0	0	0	same
+nam	mod_red_21	init:CommutativeCancellation	105	82	265	0	0	0	same
+nam	mod_red_21	init:ConsolidateBlocks	105	82	265	0	0	0	same
+nam	mod_red_21	opt:TwoQubitPeepholeOptimization	105	82	265	0	0	0	same
+nam	mod_red_21	opt:RemoveIdentityEquivalent	105	82	265	0	0	0	same
+nam	mod_red_21	opt:Optimize1qGatesDecomposition	105	82	265	0	0	0	same
+nam	mod_red_21	opt:CommutativeCancellation	105	82	265	0	0	0	same
+nam	mod_red_21	opt:ContractIdleWiresInControlFlow	105	82	265	0	0	0	same
+nam	mod_red_21	stage:init (no elide)	105	82	265	0	0	0	same
+nam	mod_red_21	stage:optimization	105	82	265	0	0	0	same
+nam	mod_red_21	preset (no elide)	105	82	265	0	0	0	same
+nam	mod_red_21	snap +catq	105	82	265	0	0	0	same
+nam	qcla_adder_10	init:RemoveDiagonalGatesBeforeMeasure	213	43	506	0	0	0	same
+nam	qcla_adder_10	init:RemoveIdentityEquivalent	213	43	506	0	0	0	same
+nam	qcla_adder_10	init:InverseCancellation	213	43	506	0	0	0	same
+nam	qcla_adder_10	init:ContractIdleWiresInControlFlow	213	43	506	0	0	0	same
+nam	qcla_adder_10	init:CommutativeCancellation	213	43	506	0	0	0	same
+nam	qcla_adder_10	init:ConsolidateBlocks	213	43	506	0	0	0	same
+nam	qcla_adder_10	opt:TwoQubitPeepholeOptimization	213	43	506	0	0	0	same
+nam	qcla_adder_10	opt:RemoveIdentityEquivalent	213	43	506	0	0	0	same
+nam	qcla_adder_10	opt:Optimize1qGatesDecomposition	213	43	505	0	0	-1	nosim
+nam	qcla_adder_10	opt:Optimize1qGatesDecomposition +catq	213	43	505	0	0	-1	nosim
+nam	qcla_adder_10	opt:CommutativeCancellation	213	43	506	0	0	0	same
+nam	qcla_adder_10	opt:ContractIdleWiresInControlFlow	213	43	506	0	0	0	same
+nam	qcla_adder_10	stage:init (no elide)	213	43	506	0	0	0	same
+nam	qcla_adder_10	stage:optimization	213	43	505	0	0	-1	nosim
+nam	qcla_adder_10	stage:optimization +catq	213	43	505	0	0	-1	nosim
+nam	qcla_adder_10	preset (no elide)	213	43	505	0	0	-1	nosim
+nam	qcla_adder_10	preset (no elide) +catq	213	43	505	0	0	-1	nosim
+nam	qcla_adder_10	snap +catq	213	43	506	0	0	0	same
+nam	qcla_com_7	init:RemoveDiagonalGatesBeforeMeasure	174	47	417	0	0	0	same
+nam	qcla_com_7	init:RemoveIdentityEquivalent	174	47	417	0	0	0	same
+nam	qcla_com_7	init:InverseCancellation	174	47	417	0	0	0	same
+nam	qcla_com_7	init:ContractIdleWiresInControlFlow	174	47	417	0	0	0	same
+nam	qcla_com_7	init:CommutativeCancellation	174	47	417	0	0	0	same
+nam	qcla_com_7	init:ConsolidateBlocks	174	47	417	0	0	0	same
+nam	qcla_com_7	opt:TwoQubitPeepholeOptimization	174	47	417	0	0	0	same
+nam	qcla_com_7	opt:RemoveIdentityEquivalent	174	47	417	0	0	0	same
+nam	qcla_com_7	opt:Optimize1qGatesDecomposition	174	47	416	0	0	-1	nosim
+nam	qcla_com_7	opt:Optimize1qGatesDecomposition +catq	174	47	416	0	0	-1	nosim
+nam	qcla_com_7	opt:CommutativeCancellation	174	47	417	0	0	0	same
+nam	qcla_com_7	opt:ContractIdleWiresInControlFlow	174	47	417	0	0	0	same
+nam	qcla_com_7	stage:init (no elide)	174	47	417	0	0	0	same
+nam	qcla_com_7	stage:optimization	174	47	416	0	0	-1	nosim
+nam	qcla_com_7	stage:optimization +catq	174	47	416	0	0	-1	nosim
+nam	qcla_com_7	preset (no elide)	174	47	416	0	0	-1	nosim
+nam	qcla_com_7	preset (no elide) +catq	174	47	416	0	0	-1	nosim
+nam	qcla_com_7	snap +catq	174	47	417	0	0	0	same
+nam	qcla_mod_7	init:RemoveDiagonalGatesBeforeMeasure	366	117	850	0	0	0	same
+nam	qcla_mod_7	init:RemoveIdentityEquivalent	366	117	850	0	0	0	same
+nam	qcla_mod_7	init:InverseCancellation	366	117	850	0	0	0	same
+nam	qcla_mod_7	init:ContractIdleWiresInControlFlow	366	117	850	0	0	0	same
+nam	qcla_mod_7	init:CommutativeCancellation	366	117	850	0	0	0	same
+nam	qcla_mod_7	init:ConsolidateBlocks	366	117	850	0	0	0	same
+nam	qcla_mod_7	opt:TwoQubitPeepholeOptimization	366	117	850	0	0	0	same
+nam	qcla_mod_7	opt:RemoveIdentityEquivalent	366	117	850	0	0	0	same
+nam	qcla_mod_7	opt:Optimize1qGatesDecomposition	366	117	850	0	0	0	same
+nam	qcla_mod_7	opt:CommutativeCancellation	366	117	850	0	0	0	same
+nam	qcla_mod_7	opt:ContractIdleWiresInControlFlow	366	117	850	0	0	0	same
+nam	qcla_mod_7	stage:init (no elide)	366	117	850	0	0	0	same
+nam	qcla_mod_7	stage:optimization	366	117	850	0	0	0	same
+nam	qcla_mod_7	preset (no elide)	366	117	850	0	0	0	same
+nam	qcla_mod_7	snap +catq	366	117	850	0	0	0	same
+nam	rc_adder_6	init:RemoveDiagonalGatesBeforeMeasure	81	52	192	0	0	0	same
+nam	rc_adder_6	init:RemoveIdentityEquivalent	81	52	192	0	0	0	same
+nam	rc_adder_6	init:InverseCancellation	81	52	192	0	0	0	same
+nam	rc_adder_6	init:ContractIdleWiresInControlFlow	81	52	192	0	0	0	same
+nam	rc_adder_6	init:CommutativeCancellation	81	52	192	0	0	0	same
+nam	rc_adder_6	init:ConsolidateBlocks	81	52	192	0	0	0	same
+nam	rc_adder_6	opt:TwoQubitPeepholeOptimization	81	52	192	0	0	0	same
+nam	rc_adder_6	opt:RemoveIdentityEquivalent	81	52	192	0	0	0	same
+nam	rc_adder_6	opt:Optimize1qGatesDecomposition	81	52	190	0	0	-2	ok
+nam	rc_adder_6	opt:Optimize1qGatesDecomposition +catq	81	52	190	0	0	-2	ok
+nam	rc_adder_6	opt:CommutativeCancellation	81	52	192	0	0	0	same
+nam	rc_adder_6	opt:ContractIdleWiresInControlFlow	81	52	192	0	0	0	same
+nam	rc_adder_6	stage:init (no elide)	81	52	192	0	0	0	same
+nam	rc_adder_6	stage:optimization	81	52	190	0	0	-2	ok
+nam	rc_adder_6	stage:optimization +catq	81	52	190	0	0	-2	ok
+nam	rc_adder_6	preset (no elide)	81	52	190	0	0	-2	ok
+nam	rc_adder_6	preset (no elide) +catq	81	52	190	0	0	-2	ok
+nam	rc_adder_6	snap +catq	81	52	192	0	0	0	same
+nam	tof_10	init:RemoveDiagonalGatesBeforeMeasure	102	86	264	0	0	0	same
+nam	tof_10	init:RemoveIdentityEquivalent	102	86	264	0	0	0	same
+nam	tof_10	init:InverseCancellation	102	86	264	0	0	0	same
+nam	tof_10	init:ContractIdleWiresInControlFlow	102	86	264	0	0	0	same
+nam	tof_10	init:CommutativeCancellation	102	86	264	0	0	0	same
+nam	tof_10	init:ConsolidateBlocks	102	86	264	0	0	0	same
+nam	tof_10	opt:TwoQubitPeepholeOptimization	102	86	264	0	0	0	same
+nam	tof_10	opt:RemoveIdentityEquivalent	102	86	264	0	0	0	same
+nam	tof_10	opt:Optimize1qGatesDecomposition	102	86	264	0	0	0	same
+nam	tof_10	opt:CommutativeCancellation	102	86	264	0	0	0	same
+nam	tof_10	opt:ContractIdleWiresInControlFlow	102	86	264	0	0	0	same
+nam	tof_10	stage:init (no elide)	102	86	264	0	0	0	same
+nam	tof_10	stage:optimization	102	86	264	0	0	0	same
+nam	tof_10	preset (no elide)	102	86	264	0	0	0	same
+nam	tof_10	snap +catq	102	86	264	0	0	0	same
+nam	tof_3	init:RemoveDiagonalGatesBeforeMeasure	18	16	47	0	0	0	same
+nam	tof_3	init:RemoveIdentityEquivalent	18	16	47	0	0	0	same
+nam	tof_3	init:InverseCancellation	18	16	47	0	0	0	same
+nam	tof_3	init:ContractIdleWiresInControlFlow	18	16	47	0	0	0	same
+nam	tof_3	init:CommutativeCancellation	18	16	47	0	0	0	same
+nam	tof_3	init:ConsolidateBlocks	18	16	47	0	0	0	same
+nam	tof_3	opt:TwoQubitPeepholeOptimization	18	16	47	0	0	0	same
+nam	tof_3	opt:RemoveIdentityEquivalent	18	16	47	0	0	0	same
+nam	tof_3	opt:Optimize1qGatesDecomposition	18	16	47	0	0	0	same
+nam	tof_3	opt:CommutativeCancellation	18	16	47	0	0	0	same
+nam	tof_3	opt:ContractIdleWiresInControlFlow	18	16	47	0	0	0	same
+nam	tof_3	stage:init (no elide)	18	16	47	0	0	0	same
+nam	tof_3	stage:optimization	18	16	47	0	0	0	same
+nam	tof_3	preset (no elide)	18	16	47	0	0	0	same
+nam	tof_3	snap +catq	18	16	47	0	0	0	same
+nam	tof_4	init:RemoveDiagonalGatesBeforeMeasure	30	26	78	0	0	0	same
+nam	tof_4	init:RemoveIdentityEquivalent	30	26	78	0	0	0	same
+nam	tof_4	init:InverseCancellation	30	26	78	0	0	0	same
+nam	tof_4	init:ContractIdleWiresInControlFlow	30	26	78	0	0	0	same
+nam	tof_4	init:CommutativeCancellation	30	26	78	0	0	0	same
+nam	tof_4	init:ConsolidateBlocks	30	26	78	0	0	0	same
+nam	tof_4	opt:TwoQubitPeepholeOptimization	30	26	78	0	0	0	same
+nam	tof_4	opt:RemoveIdentityEquivalent	30	26	78	0	0	0	same
+nam	tof_4	opt:Optimize1qGatesDecomposition	30	26	78	0	0	0	same
+nam	tof_4	opt:CommutativeCancellation	30	26	78	0	0	0	same
+nam	tof_4	opt:ContractIdleWiresInControlFlow	30	26	78	0	0	0	same
+nam	tof_4	stage:init (no elide)	30	26	78	0	0	0	same
+nam	tof_4	stage:optimization	30	26	78	0	0	0	same
+nam	tof_4	preset (no elide)	30	26	78	0	0	0	same
+nam	tof_4	snap +catq	30	26	78	0	0	0	same
+nam	tof_5	init:RemoveDiagonalGatesBeforeMeasure	42	36	109	0	0	0	same
+nam	tof_5	init:RemoveIdentityEquivalent	42	36	109	0	0	0	same
+nam	tof_5	init:InverseCancellation	42	36	109	0	0	0	same
+nam	tof_5	init:ContractIdleWiresInControlFlow	42	36	109	0	0	0	same
+nam	tof_5	init:CommutativeCancellation	42	36	109	0	0	0	same
+nam	tof_5	init:ConsolidateBlocks	42	36	109	0	0	0	same
+nam	tof_5	opt:TwoQubitPeepholeOptimization	42	36	109	0	0	0	same
+nam	tof_5	opt:RemoveIdentityEquivalent	42	36	109	0	0	0	same
+nam	tof_5	opt:Optimize1qGatesDecomposition	42	36	109	0	0	0	same
+nam	tof_5	opt:CommutativeCancellation	42	36	109	0	0	0	same
+nam	tof_5	opt:ContractIdleWiresInControlFlow	42	36	109	0	0	0	same
+nam	tof_5	stage:init (no elide)	42	36	109	0	0	0	same
+nam	tof_5	stage:optimization	42	36	109	0	0	0	same
+nam	tof_5	preset (no elide)	42	36	109	0	0	0	same
+nam	tof_5	snap +catq	42	36	109	0	0	0	same
+nam	vbe_adder_3	init:RemoveDiagonalGatesBeforeMeasure	58	42	131	0	0	0	same
+nam	vbe_adder_3	init:RemoveIdentityEquivalent	58	42	131	0	0	0	same
+nam	vbe_adder_3	init:InverseCancellation	58	42	131	0	0	0	same
+nam	vbe_adder_3	init:ContractIdleWiresInControlFlow	58	42	131	0	0	0	same
+nam	vbe_adder_3	init:CommutativeCancellation	58	42	131	0	0	0	same
+nam	vbe_adder_3	init:ConsolidateBlocks	58	42	131	0	0	0	same
+nam	vbe_adder_3	opt:TwoQubitPeepholeOptimization	58	42	131	0	0	0	same
+nam	vbe_adder_3	opt:RemoveIdentityEquivalent	58	42	131	0	0	0	same
+nam	vbe_adder_3	opt:Optimize1qGatesDecomposition	58	42	131	0	0	0	same
+nam	vbe_adder_3	opt:CommutativeCancellation	58	42	131	0	0	0	same
+nam	vbe_adder_3	opt:ContractIdleWiresInControlFlow	58	42	131	0	0	0	same
+nam	vbe_adder_3	stage:init (no elide)	58	42	131	0	0	0	same
+nam	vbe_adder_3	stage:optimization	58	42	131	0	0	0	same
+nam	vbe_adder_3	preset (no elide)	58	42	131	0	0	0	same
+nam	vbe_adder_3	snap +catq	58	42	131	0	0	0	same

@@ -1,0 +1,14 @@
+# qiskit 2.5.2, catq-compile level 2r --check (permutation=layout), seeds 0..19, eps 1e-10 (T_arb 100), 2026-11-06 18:43 CET
+circuit	qubits	ours_dev	in_cx	in_nonclifford	in_t	in_arb	in_rot_depth	in_t_count_est	in_t_depth_est	ours_cx	ours_nonclifford	ours_t	ours_arb	ours_rot_depth	ours_t_count_est	ours_t_depth_est	qk_cx	qk_nonclifford	qk_t	qk_arb	qk_rot_depth	qk_t_count_est	qk_t_depth_est
+adder_n4	4	7.0e-16	10	8	8	0	2	8	2	10	8	8	0	4	8	4	10	8	8	0	2	8	2
+cat_state_n4	4	1.4e-16	3	0	0	0	0	0	0	3	0	0	0	0	0	0	3	0	0	0	0	0	0
+deutsch_n2	2	1.7e-16	1	0	0	0	0	0	0	1	0	0	0	0	0	0	1	0	0	0	0	0	0
+fredkin_n3	3	9.2e-16	8	7	7	0	4	7	4	8	7	7	0	5	7	5	8	7	7	0	4	7	4
+grover_n2	2	7.9e-16	2	0	0	0	0	0	0	2	0	0	0	0	0	0	2	9	2	7	7	702	502
+hs4_n4	4	1.5e-15	4	0	0	0	0	0	0	4	0	0	0	0	0	0	4	0	0	0	0	0	0
+iswap_n2	2	3.9e-16	2	0	0	0	0	0	0	2	0	0	0	0	0	0	2	0	0	0	0	0	0
+lpn_n5	5	4.5e-16	2	0	0	0	0	0	0	2	0	0	0	0	0	0	2	0	0	0	0	0	0
+qec_en_n5	5	9.7e-16	10	1	1	0	1	1	1	10	1	1	0	1	1	1	10	1	1	0	1	1	1
+qft_n4	4	4.8e-16	12	18	9	9	11	909	700	12	15	7	8	8	807	503	12	15	7	8	9	807	600
+teleportation_n3	3	3.4e-16	2	1	1	0	1	1	1	2	1	1	0	1	1	1	2	1	1	0	1	1	1
+toffoli_n3	3	5.9e-16	6	7	7	0	5	7	5	6	7	7	0	5	7	5	6	7	7	0	5	7	5

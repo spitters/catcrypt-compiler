@@ -10,7 +10,12 @@ reference is Qiskit. Per file, interleaved, best of REPEAT:
   qiskit_ms    qasm2.load + transpile(optimization_level=3, basis above, seed 0)
 and for both outputs, in the same basis: CX count, two-qubit depth, gate count, and
 equality with the input (Operator up to 10 qubits, else four random statevectors), with
-the phase catq-compile reports applied to ours.
+the phase catq-compile reports applied to ours and, for equality only, its output permutation
+(appended as swaps; `ours_perm` says whether it is not the identity); Qiskit's output is read
+through its layout (`Operator.from_circuit`). The `ours_lay_*` columns are those of
+`VerifiedCompiler(level="2r", permutation="layout")` on the same circuit (run once, not timed):
+no swap appended, the permutation in the output's `final_layout`, the deviation through
+`Operator.from_circuit`.
 
 usage: cd bridge && uv run python -I ../bench/qrunch/compare.py [--check] [--out NAME.tsv]
        [FILE.qasm ...] (default: bench/qasm/qsynth/*.qasm); writes bench/qrunch/results.tsv or
@@ -34,6 +39,9 @@ from qiskit.quantum_info import Operator, Statevector, random_statevector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, os.path.join(ROOT, "bridge"))
+from catq.compiler import (PERM_FIELD, VerifiedCompiler, append_swaps, parse_perm,  # noqa: E402
+                           swap_network)
 EXE = os.path.join(ROOT, ".lake", "build", "bin", "catq-compile")
 BASIS = ["rx", "ry", "rz", "cx", "p"]
 REPEAT = 5
@@ -56,17 +64,27 @@ def figures(qc: QuantumCircuit) -> tuple[int, int, int]:
     return int(ops.get("cx", 0)), depth2, qc.size()
 
 
+def unpermute(data: np.ndarray, b: QuantumCircuit) -> np.ndarray:
+    """A state on the wires of `b` read through the output permutation of `b.layout`."""
+    if b.layout is None:
+        return data
+    p = b.layout.final_index_layout(filter_ancillas=True)
+    n = len(p)
+    t = data.reshape((2,) * n)
+    return t.transpose([n - 1 - p[n - 1 - k] for k in range(n)]).reshape(2 ** n)
+
+
 def deviation(a: QuantumCircuit, b: QuantumCircuit) -> float:
-    """max |A - B| entrywise (Operator) or over four statevectors; NaN above 20 qubits
-    (not checked)."""
+    """max |A - B| entrywise (Operator, `b` through its layout) or over four statevectors;
+    NaN above 20 qubits (not checked)."""
     if a.num_qubits > 20:
         return float("nan")
     if a.num_qubits <= 10:
-        return float(np.abs(Operator(a).data - Operator(b).data).max())
+        return float(np.abs(Operator(a).data - Operator.from_circuit(b).data).max())
     dev = 0.0
     for s in range(4):
         v = Statevector(random_statevector(2 ** a.num_qubits, seed=s))
-        dev = max(dev, float(np.abs(v.evolve(a).data - v.evolve(b).data).max()))
+        dev = max(dev, float(np.abs(v.evolve(a).data - unpermute(v.evolve(b).data, b)).max()))
     return dev
 
 
@@ -84,7 +102,9 @@ def main(args: list[str]) -> None:
     rows = []
     header = ["circuit", "qubits", "cx_in", "ours_cx", "qiskit_cx", "ours_depth2", "qiskit_depth2",
               "ours_gates", "qiskit_gates", "ours_ms", "ours_core_ms", "ours_proc_ms", "qiskit_ms",
-              "ours_dev", "qiskit_dev"]
+              "ours_dev", "qiskit_dev", "ours_perm", "ours_lay_cx", "ours_lay_gates",
+              "ours_lay_dev"]
+    vc = VerifiedCompiler(level="2r", check=bool(flag), permutation="layout")
     print("\t".join(header), flush=True)
     with tempfile.TemporaryDirectory(prefix="qrunch-bench-") as wd:
         for path in paths:
@@ -118,15 +138,28 @@ def main(args: list[str]) -> None:
                 continue
             ours = load(out)
             ours.global_phase += float(Fraction(row[PHASE_FIELD]))
+            # the output permutation of swap elision, applied for the deviation only (Qiskit's
+            # level 3 elides swaps into its layout in the same way)
+            perm = parse_perm(row[PERM_FIELD])
+            ours_net = ours.copy()
+            append_swaps(ours_net, swap_network(perm))
             (ocx, od2, og), (qcx, qd2, qg) = figures(ours), figures(qk)
+            lay = vc.compile(src)
+            if vc.last_report.optimized:
+                lcx, _, lg = figures(lay)
+                lay_cols = [lcx, lg, f"{deviation(src, lay):.1e}"]
+            else:
+                lay_cols = ["-", "-", f"refused: {vc.last_report.reason}"]
             r = [name, src.num_qubits, figures(src)[0], ocx, qcx, od2, qd2, og, qg,
                  f"{min(t_ours) * 1e3:.1f}", f"{min(t_core) * 1e3:.1f}",
                  f"{min(t_proc) * 1e3:.1f}", f"{min(t_qk) * 1e3:.1f}",
-                 f"{deviation(src, ours):.1e}", f"{deviation(src, qk):.1e}"]
+                 f"{deviation(src, ours_net):.1e}", f"{deviation(src, qk):.1e}",
+                 "no" if perm == list(range(len(perm))) else "yes", *lay_cols]
             print("\t".join(map(str, r)), flush=True)
             rows.append(r)
     server.stdin.close()
     server.wait(timeout=10)
+    vc.close()
     with open(os.path.join(HERE, out_name), "w") as f:
         f.write(f"# load average {load_avg:.2f}, best of {REPEAT}, "
                 f"{time.strftime('%Y-%m-%d %H:%M %Z')}\n")

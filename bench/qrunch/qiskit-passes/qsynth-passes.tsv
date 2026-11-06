@@ -1,0 +1,191 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point; 2026-11-06 15:26 CET
+suite	circuit	pass	cx	depth2	gates	d_cx	d_depth2	d_gates	check
+qsynth	pennylane_16q_100o_0	init:RemoveDiagonalGatesBeforeMeasure	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	init:RemoveIdentityEquivalent	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	init:InverseCancellation	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	init:ContractIdleWiresInControlFlow	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	init:CommutativeCancellation	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	init:ConsolidateBlocks	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	opt:TwoQubitPeepholeOptimization	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	opt:RemoveIdentityEquivalent	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	opt:Optimize1qGatesDecomposition	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	opt:CommutativeCancellation	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	opt:ContractIdleWiresInControlFlow	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	stage:init (no elide)	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	stage:optimization	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	preset (no elide)	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_0	snap +catq	748	396	1941	0	0	0	same
+qsynth	pennylane_16q_100o_1	init:RemoveDiagonalGatesBeforeMeasure	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	init:RemoveIdentityEquivalent	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	init:InverseCancellation	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	init:ContractIdleWiresInControlFlow	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	init:CommutativeCancellation	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	init:ConsolidateBlocks	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	opt:TwoQubitPeepholeOptimization	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	opt:RemoveIdentityEquivalent	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	opt:Optimize1qGatesDecomposition	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	opt:CommutativeCancellation	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	opt:ContractIdleWiresInControlFlow	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	stage:init (no elide)	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	stage:optimization	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	preset (no elide)	802	445	2076	0	0	0	same
+qsynth	pennylane_16q_100o_1	snap +catq	802	445	2076	0	0	0	same
+qsynth	pennylane_8q_50o_0	init:RemoveDiagonalGatesBeforeMeasure	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	init:RemoveIdentityEquivalent	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	init:InverseCancellation	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	init:ContractIdleWiresInControlFlow	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	init:CommutativeCancellation	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	init:ConsolidateBlocks	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	opt:TwoQubitPeepholeOptimization	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	opt:RemoveIdentityEquivalent	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	opt:Optimize1qGatesDecomposition	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	opt:CommutativeCancellation	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	opt:ContractIdleWiresInControlFlow	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	stage:init (no elide)	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	stage:optimization	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	preset (no elide)	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_0	snap +catq	292	214	765	0	0	0	same
+qsynth	pennylane_8q_50o_1	init:RemoveDiagonalGatesBeforeMeasure	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	init:RemoveIdentityEquivalent	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	init:InverseCancellation	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	init:ContractIdleWiresInControlFlow	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	init:CommutativeCancellation	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	init:ConsolidateBlocks	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	opt:TwoQubitPeepholeOptimization	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	opt:RemoveIdentityEquivalent	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	opt:Optimize1qGatesDecomposition	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	opt:CommutativeCancellation	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	opt:ContractIdleWiresInControlFlow	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	stage:init (no elide)	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	stage:optimization	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	preset (no elide)	348	256	909	0	0	0	same
+qsynth	pennylane_8q_50o_1	snap +catq	348	256	909	0	0	0	same
+qsynth	simple_16q_100o_0	init:RemoveDiagonalGatesBeforeMeasure	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	init:RemoveIdentityEquivalent	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	init:InverseCancellation	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	init:ContractIdleWiresInControlFlow	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	init:CommutativeCancellation	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	init:ConsolidateBlocks	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	opt:TwoQubitPeepholeOptimization	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	opt:RemoveIdentityEquivalent	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	opt:Optimize1qGatesDecomposition	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	opt:CommutativeCancellation	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	opt:ContractIdleWiresInControlFlow	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	stage:init (no elide)	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	stage:optimization	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	preset (no elide)	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_0	snap +catq	788	465	1508	0	0	0	same
+qsynth	simple_16q_100o_1	init:RemoveDiagonalGatesBeforeMeasure	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	init:RemoveIdentityEquivalent	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	init:InverseCancellation	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	init:ContractIdleWiresInControlFlow	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	init:CommutativeCancellation	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	init:ConsolidateBlocks	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	opt:TwoQubitPeepholeOptimization	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	opt:RemoveIdentityEquivalent	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	opt:Optimize1qGatesDecomposition	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	opt:CommutativeCancellation	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	opt:ContractIdleWiresInControlFlow	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	stage:init (no elide)	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	stage:optimization	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	preset (no elide)	855	534	1587	0	0	0	same
+qsynth	simple_16q_100o_1	snap +catq	855	534	1587	0	0	0	same
+qsynth	simple_8q_50o_0	init:RemoveDiagonalGatesBeforeMeasure	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	init:RemoveIdentityEquivalent	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	init:InverseCancellation	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	init:ContractIdleWiresInControlFlow	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	init:CommutativeCancellation	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	init:ConsolidateBlocks	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	opt:TwoQubitPeepholeOptimization	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	opt:RemoveIdentityEquivalent	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	opt:Optimize1qGatesDecomposition	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	opt:CommutativeCancellation	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	opt:ContractIdleWiresInControlFlow	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	stage:init (no elide)	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	stage:optimization	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	preset (no elide)	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_0	snap +catq	310	250	617	0	0	0	same
+qsynth	simple_8q_50o_1	init:RemoveDiagonalGatesBeforeMeasure	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	init:RemoveIdentityEquivalent	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	init:InverseCancellation	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	init:ContractIdleWiresInControlFlow	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	init:CommutativeCancellation	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	init:ConsolidateBlocks	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	opt:TwoQubitPeepholeOptimization	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	opt:RemoveIdentityEquivalent	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	opt:Optimize1qGatesDecomposition	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	opt:CommutativeCancellation	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	opt:ContractIdleWiresInControlFlow	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	stage:init (no elide)	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	stage:optimization	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	preset (no elide)	367	300	709	0	0	0	same
+qsynth	simple_8q_50o_1	snap +catq	367	300	709	0	0	0	same
+qsynth	yardanov_16q_100o_0	init:RemoveDiagonalGatesBeforeMeasure	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	init:RemoveIdentityEquivalent	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	init:InverseCancellation	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	init:ContractIdleWiresInControlFlow	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	init:CommutativeCancellation	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	init:ConsolidateBlocks	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	opt:TwoQubitPeepholeOptimization	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	opt:RemoveIdentityEquivalent	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	opt:Optimize1qGatesDecomposition	738	429	2001	0	0	-1	ok
+qsynth	yardanov_16q_100o_0	opt:Optimize1qGatesDecomposition +catq	738	429	2001	0	0	-1	ok
+qsynth	yardanov_16q_100o_0	opt:CommutativeCancellation	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	opt:ContractIdleWiresInControlFlow	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	stage:init (no elide)	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_0	stage:optimization	738	429	2001	0	0	-1	ok
+qsynth	yardanov_16q_100o_0	stage:optimization +catq	738	429	2001	0	0	-1	ok
+qsynth	yardanov_16q_100o_0	preset (no elide)	738	429	2001	0	0	-1	ok
+qsynth	yardanov_16q_100o_0	preset (no elide) +catq	738	429	2001	0	0	-1	ok
+qsynth	yardanov_16q_100o_0	snap +catq	738	429	2002	0	0	0	same
+qsynth	yardanov_16q_100o_1	init:RemoveDiagonalGatesBeforeMeasure	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	init:RemoveIdentityEquivalent	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	init:InverseCancellation	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	init:ContractIdleWiresInControlFlow	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	init:CommutativeCancellation	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	init:ConsolidateBlocks	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	opt:TwoQubitPeepholeOptimization	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	opt:RemoveIdentityEquivalent	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	opt:Optimize1qGatesDecomposition	800	491	2164	0	0	-1	ok
+qsynth	yardanov_16q_100o_1	opt:Optimize1qGatesDecomposition +catq	800	491	2164	0	0	-1	ok
+qsynth	yardanov_16q_100o_1	opt:CommutativeCancellation	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	opt:ContractIdleWiresInControlFlow	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	stage:init (no elide)	800	491	2165	0	0	0	same
+qsynth	yardanov_16q_100o_1	stage:optimization	800	491	2164	0	0	-1	ok
+qsynth	yardanov_16q_100o_1	stage:optimization +catq	800	491	2164	0	0	-1	ok
+qsynth	yardanov_16q_100o_1	preset (no elide)	800	491	2164	0	0	-1	ok
+qsynth	yardanov_16q_100o_1	preset (no elide) +catq	800	491	2164	0	0	-1	ok
+qsynth	yardanov_16q_100o_1	snap +catq	800	491	2165	0	0	0	same
+qsynth	yardanov_8q_50o_0	init:RemoveDiagonalGatesBeforeMeasure	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	init:RemoveIdentityEquivalent	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	init:InverseCancellation	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	init:ContractIdleWiresInControlFlow	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	init:CommutativeCancellation	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	init:ConsolidateBlocks	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	opt:TwoQubitPeepholeOptimization	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	opt:RemoveIdentityEquivalent	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	opt:Optimize1qGatesDecomposition	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	opt:CommutativeCancellation	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	opt:ContractIdleWiresInControlFlow	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	stage:init (no elide)	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	stage:optimization	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	preset (no elide)	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_0	snap +catq	292	232	787	0	0	0	same
+qsynth	yardanov_8q_50o_1	init:RemoveDiagonalGatesBeforeMeasure	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	init:RemoveIdentityEquivalent	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	init:InverseCancellation	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	init:ContractIdleWiresInControlFlow	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	init:CommutativeCancellation	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	init:ConsolidateBlocks	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	opt:TwoQubitPeepholeOptimization	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	opt:RemoveIdentityEquivalent	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	opt:Optimize1qGatesDecomposition	344	277	934	0	0	-2	ok
+qsynth	yardanov_8q_50o_1	opt:Optimize1qGatesDecomposition +catq	344	277	934	0	0	-2	ok
+qsynth	yardanov_8q_50o_1	opt:CommutativeCancellation	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	opt:ContractIdleWiresInControlFlow	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	stage:init (no elide)	344	277	936	0	0	0	same
+qsynth	yardanov_8q_50o_1	stage:optimization	344	277	934	0	0	-2	ok
+qsynth	yardanov_8q_50o_1	stage:optimization +catq	344	277	934	0	0	-2	ok
+qsynth	yardanov_8q_50o_1	preset (no elide)	344	277	934	0	0	-2	ok
+qsynth	yardanov_8q_50o_1	preset (no elide) +catq	344	277	934	0	0	-2	ok
+qsynth	yardanov_8q_50o_1	snap +catq	344	277	926	0	0	-10	ok

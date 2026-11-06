@@ -3162,8 +3162,11 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.ToRawCode,
     Lake.Glob.one `CatCrypt.Hax.TypedToRawCode,
     Lake.Glob.one `CatCrypt.Hax.VacuityAudit,
+    Lake.Glob.one `CatCrypt.Quantum.AndAncilla,
     Lake.Glob.one `CatCrypt.Quantum.AngleQ,
+    Lake.Glob.one `CatCrypt.Quantum.AngleSnap,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchCompile,
+    Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchExportMain,
     Lake.Glob.one `CatCrypt.Quantum.ControlledGates,
     Lake.Glob.one `CatCrypt.Quantum.ControlledProjections,
     Lake.Glob.one `CatCrypt.Quantum.GateUnitarity,
@@ -3224,12 +3227,18 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.QPL,
     Lake.Glob.one `CatCrypt.Quantum.QPLExtended,
     Lake.Glob.one `CatCrypt.Quantum.QPLToCircuit,
+    Lake.Glob.one `CatCrypt.Quantum.QRegister,
+    Lake.Glob.one `CatCrypt.Quantum.QRegisterMeas,
     Lake.Glob.one `CatCrypt.Quantum.QTree,
     Lake.Glob.one `CatCrypt.Quantum.QasmAngle,
     Lake.Glob.one `CatCrypt.Quantum.Qelib,
     Lake.Glob.one `CatCrypt.Quantum.QrunchBasis,
     Lake.Glob.one `CatCrypt.Quantum.QrunchCommute,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchExport,
     Lake.Glob.one `CatCrypt.Quantum.QrunchFuse,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchRound,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchShort,
+    Lake.Glob.one `CatCrypt.Quantum.SwapElide,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ApproxEmit,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.CBall,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ExpIBall,
@@ -3243,7 +3252,10 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZ,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZPass,
     Lake.Glob.one `CatCrypt.Quantum.TensorProduct,
+    Lake.Glob.one `CatCrypt.Quantum.Uncomputation,
     Lake.Glob.one `CatCrypt.Quantum.UnitaryChannel,
+    Lake.Glob.one `CatCrypt.Quantum.XQPLEnv,
+    Lake.Glob.one `CatCrypt.Quantum.XQPLGates,
     Lake.Glob.one `CatCrypt.Quantum.ZXCalculus,
     Lake.Glob.one `CatCrypt.Quantum.ZXOptimize,
     Lake.Glob.one `CatCrypt.Relational.Approx,
@@ -3258,6 +3270,8 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Relational.Sync,
     Lake.Glob.one `CatCrypt.Tactic.Basic,
     Lake.Glob.one `CatCrypt.Tactic.BignumReason,
+  ]
+def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactic.BindAlign,
     Lake.Glob.one `CatCrypt.Tactic.BindVcgen,
     Lake.Glob.one `CatCrypt.Tactic.EnvSearch,
@@ -3270,8 +3284,6 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactic.SDistrNorm,
     Lake.Glob.one `CatCrypt.Tactic.TowerRing377,
     Lake.Glob.one `CatCrypt.Tactic.Unitarity,
-  ]
-def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.Auto,
     Lake.Glob.one `CatCrypt.Tactics.Basic,
     Lake.Glob.one `CatCrypt.Tactics.BindAlign,
@@ -3566,6 +3578,11 @@ lean_exe «catq-compile» where
   -- The Qrunch circuit compiler: an OpenQASM 2 file to an OpenQASM 2 file over
   -- {rx, ry, rz, cx, p} and the global phase; `--serve` answers request lines.
   root := `CatCrypt.Quantum.Benchmark.QrunchCompile
+
+lean_exe «catq-export» where
+  -- The OpenQASM 2 export over {rx, ry, cx, p} of the QFT, phase estimation and amplitude
+  -- amplification gate lists, one file each, with the exact global phases.
+  root := `CatCrypt.Quantum.Benchmark.QrunchExportMain
 
 lean_exe «algebraic-census» where
   -- Per-kernel counts of the algebraic `Com` rewrites under `KEnv.unknown`, and the

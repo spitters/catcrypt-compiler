@@ -1,0 +1,14 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point; 2026-11-06 15:28 CET
+suite	circuit	qubits	cx_in	cx_1	gates_1	runs	cx	depth2	gates	check
+qasmbench	adder_n4	4	10	10	24	1	10	6	24	ok
+qasmbench	cat_state_n4	4	3	3	5	1	3	3	5	ok
+qasmbench	deutsch_n2	2	1	1	4	1	1	1	4	ok
+qasmbench	fredkin_n3	3	8	8	21	1	8	8	21	ok
+qasmbench	grover_n2	2	2	2	8	1	2	2	8	ok
+qasmbench	hs4_n4	4	4	4	14	1	4	2	14	ok
+qasmbench	iswap_n2	2	2	2	9	1	2	2	9	ok
+qasmbench	lpn_n5	5	2	2	8	1	2	2	8	ok
+qasmbench	qec_en_n5	5	10	10	26	1	10	10	26	ok
+qasmbench	qft_n4	4	0	12	32	1	12	10	32	ok
+qasmbench	teleportation_n3	3	2	2	7	1	2	2	7	ok
+qasmbench	toffoli_n3	3	6	6	19	1	6	6	19	ok

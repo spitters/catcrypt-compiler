@@ -9,6 +9,7 @@ public import CatCrypt.Quantum.QPLExtended
 public import CatCrypt.Quantum.Instrument
 public import CatCrypt.Quantum.QFT.Inverse
 public import CatCrypt.Quantum.ControlledGates
+public import CatCrypt.Quantum.XQPLGates
 
 /-!
 # HQPL: High-Level QPL with Register-Level Operations
@@ -56,14 +57,15 @@ are the transforms on the window:
 * `lowerRegisterOp` -- `qft` and `iqft` to the transform circuits `qftGates`
   and `qftInvGates` on the window, `phaseEstimation` and
   `amplitudeAmplification` to their gate lists, `barrier` to no gates
-* `lowerHQPL` -- lowering from HQPL to standard QPL
+* `OpGateList (RegisterOps n) n`, `OpGates (RegisterOps n) n` -- the exact gate list of an
+  operation is its lowering
+* `lowerHQPL` -- lowering from HQPL to standard QPL, the lowering `XQPL.lowerXQPL`
+  of `XQPLGates.lean` at `RegisterOps n`
 
 ## Main results
 
 * `lowerHQPL_denote` -- every HQPL program and its lowering to QPL have the
   same denotation
-* `denote_applyGates` -- a gate list in front of a QPL program denotes the
-  circuit of the list followed by the program
 * `unitaryDenote_lowerRegisterOp_qft`, `unitaryDenote_lowerRegisterOp_iqft` --
   on the whole register the lowered transforms denote the channels of
   `qftUnitary n` and its inverse
@@ -85,7 +87,7 @@ noncomputable section
 
 namespace CatCrypt.Quantum.HQPL
 
-open CatCrypt.Quantum CatCrypt.Quantum.QPLExtended CatCrypt.Quantum.QCircuit
+open CatCrypt.Quantum CatCrypt.Quantum.QPL CatCrypt.Quantum.QPLExtended CatCrypt.Quantum.QCircuit
 
 /-! ## Register-Level Operations -/
 
@@ -196,6 +198,15 @@ theorem denote_registerOp (op : RegisterOps n) :
     OpDenote.denote op = GateUnitarity.unitaryDenote (Circuit.ofList (lowerRegisterOp op)) :=
   rfl
 
+/-- The gate list of a register operation is its lowering. -/
+instance instOpGateListRegisterOps : OpGateList (RegisterOps n) n where
+  gates := lowerRegisterOp
+
+/-- The exact gate list of a register operation is its lowering. -/
+instance instOpGatesRegisterOps : OpGates (RegisterOps n) n where
+  toOpGateList := instOpGateListRegisterOps
+  denote_eq := denote_registerOp
+
 /-! ## HQPLProg Type -/
 
 /-- High-level QPL: XQPL instantiated with register-level operations. -/
@@ -233,19 +244,13 @@ def barrierExample : HQPLProg 2 Unit :=
 
 /-! ## Lowering: HQPL to QPL -/
 
-/-- Apply a list of gates in sequence, then continue with `k`. -/
-def applyGates (gates : List (Gate n)) (k : CatCrypt.Quantum.QPL.QPL n α) :
-    CatCrypt.Quantum.QPL.QPL n α :=
-  gates.foldr (fun g acc => .gate g acc) k
+export CatCrypt.Quantum.QPL.XQPL (applyGates denote_applyGates)
 
 /-- Lower an HQPL program to standard QPL, replacing each register-level
-    operation by the gate list `lowerRegisterOp` of it. -/
-def lowerHQPL : HQPLProg n α → CatCrypt.Quantum.QPL.QPL n α
-  | .ret a => .ret a
-  | .gate g k => .gate g (lowerHQPL k)
-  | .meas i kt kf => .meas i (lowerHQPL kt) (lowerHQPL kf)
-  | .custom op k => applyGates (lowerRegisterOp op) (lowerHQPL k)
-  | .fail => .fail
+    operation by the gate list `lowerRegisterOp` of it: the lowering `XQPL.lowerXQPL`
+    at the operations `RegisterOps n`. -/
+def lowerHQPL {n : ℕ} {α : Type} : HQPLProg n α → CatCrypt.Quantum.QPL.QPL n α :=
+  XQPL.lowerXQPL (Ops := RegisterOps n)
 
 /-! ## Properties -/
 
@@ -258,32 +263,12 @@ def lowerHQPL : HQPLProg n α → CatCrypt.Quantum.QPL.QPL n α
 /-- Barrier lowers to identity (no gates inserted). -/
 theorem lowerHQPL_barrier (k : HQPLProg n α) :
     lowerHQPL (addBarrier k) = lowerHQPL k := by
-  simp [addBarrier, lowerHQPL, lowerRegisterOp, applyGates]
-
-/-- A gate list in front of a QPL program denotes the circuit of the list
-    followed by the program. -/
-theorem denote_applyGates (l : List (Gate n)) (k : CatCrypt.Quantum.QPL.QPL n α) :
-    (applyGates l k).denote =
-      QComp.qbind (GateUnitarity.unitaryDenote (Circuit.ofList l)) (fun _ => k.denote) := by
-  induction l with
-  | nil =>
-    simp only [applyGates, List.foldr_nil, Circuit.ofList, GateUnitarity.unitaryDenote,
-      QComp.qpure_qbind]
-  | cons g l ih =>
-    rw [Circuit.ofList, GateUnitarity.unitaryDenote, QComp.qbind_assoc, ← ih]
-    rfl
+  rfl
 
 /-- **Soundness of the lowering.** Every HQPL program and its lowering to QPL
-    have the same denotation. -/
-theorem lowerHQPL_denote (p : HQPLProg n α) : (lowerHQPL p).denote = XQPL.denote p := by
-  induction p with
-  | ret a => rfl
-  | gate g k ih => simp only [lowerHQPL, QPL.QPL.denote, XQPL.denote, ih]
-  | meas i kt kf iht ihf => simp only [lowerHQPL, QPL.QPL.denote, XQPL.denote, iht, ihf]
-  | custom op k ih =>
-    rw [lowerHQPL, denote_applyGates, ih]
-    rfl
-  | fail => rfl
+    have the same denotation (`XQPL.lowerXQPL_denote` at `RegisterOps n`). -/
+theorem lowerHQPL_denote (p : HQPLProg n α) : (lowerHQPL p).denote = XQPL.denote p :=
+  XQPL.lowerXQPL_denote (Ops := RegisterOps n) p
 
 /-- The lowered `qft` on the whole register is the transform circuit. -/
 theorem lowerRegisterOp_qft_whole :

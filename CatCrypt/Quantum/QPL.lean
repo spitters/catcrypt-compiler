@@ -30,7 +30,7 @@ The language provides:
 - **Gate application**: apply a gate from the Clifford+T universal set
 - **Measurement**: measure a qubit in the computational basis, branch on result
 - **Classical control**: choose different continuations based on measurement outcomes
-- **Sequential composition**: `QPL.bind`, substitution at the `ret` leaves
+- **Sequential composition**: `XQPL.bind`, substitution at the `ret` leaves
 - **Reset**: the derived program `reset i k` measures qubit `i` and applies `X` on
   outcome `|1⟩`, leaving qubit `i` in `|0⟩` (`reset_qubit_zero`)
 
@@ -43,10 +43,12 @@ of a circuit, with classically-controlled gates replacing conditional branches.
 
 ## Main definitions
 
-* `QPL n α` — QPL program on `n` qubits with classical output `α`
-* `QPL.denote` — denotational semantics into `QComp (2^n) α`
-* `QPL.toQTree` — compilation to `QTree` (intermediate representation)
-* `QPL.gateCount` — gate complexity metric
+* `XQPL Ops n α` — program on `n` qubits with custom operations from `Ops` and classical
+  output `α`; their semantics is an `OpDenote Ops n` instance
+* `QPL n α` — `XQPL Empty n α`, the programs without custom operations
+* `XQPL.denote` — denotational semantics into `QComp (2^n) α`
+* `XQPL.toQTree` — compilation to `QTree` (intermediate representation)
+* `XQPL.gateCount` — gate complexity metric
 * `QPL.deferMeasurement` — deferred measurement compilation to `UnitaryTree`
 
 ## Compilation Pipeline
@@ -78,25 +80,7 @@ namespace CatCrypt.Quantum.QPL
 
 variable {n : ℕ}
 
-/-! ## QPL Syntax -/
-
-/-- A QPL program on `n` qubits producing a classical value of type `α`.
-
-    * `ret a` — return classical value `a`
-    * `gate g k` — apply gate `g`, continue with `k`
-    * `meas i kt kf` — measure qubit `i`, branch: `kt` if |1⟩, `kf` if |0⟩
-    * `fail` — abort (probability 0 branch)
-
-    Sequential composition is the derived operation `QPL.bind`. -/
-inductive QPL (n : ℕ) : Type → Type 1 where
-  | ret {α : Type} : α → QPL n α
-  | gate {α : Type} : Gate n → QPL n α → QPL n α
-  | meas {α : Type} : Fin n → QPL n α → QPL n α → QPL n α
-  | fail {α : Type} : QPL n α
-
 namespace QPL
-
-variable {α β : Type}
 
 /-! ## Computational-basis measurement of one qubit -/
 
@@ -135,87 +119,129 @@ def measQubitPM (i : Fin n) : ProjectiveMeasurement (2 ^ n) Bool where
 def measQubit (i : Fin n) : QComp (2 ^ n) Bool :=
   projectiveMeasure (measQubitPM i)
 
+end QPL
+
+/-! ## Custom operations -/
+
+/-- Denotational semantics of a set of custom operations: each operation in `Ops` is
+    interpreted as a `QComp` on `2^n` dimensions. -/
+class OpDenote (Ops : Type) (n : ℕ) where
+  denote : Ops → QComp (2 ^ n) Unit
+
+/-- `Empty` has no inhabitants, so its denotation is the empty function. -/
+instance : OpDenote Empty n where
+  denote e := e.elim
+
+/-! ## Syntax -/
+
+/-- A QPL program on `n` qubits with custom operations from `Ops`, producing a classical
+    value of type `α`.
+
+    * `ret a` — return classical value `a`
+    * `gate g k` — apply gate `g`, continue with `k`
+    * `meas i kt kf` — measure qubit `i`, branch: `kt` if |1⟩, `kf` if |0⟩
+    * `custom op k` — apply custom operation `op`, continue with `k`
+    * `fail` — abort (probability 0 branch)
+
+    Sequential composition is the derived operation `XQPL.bind`. Standard QPL is the
+    instance without custom operations, `QPL n = XQPL Empty n`. -/
+inductive XQPL (Ops : Type) (n : ℕ) : Type → Type 1 where
+  | ret {α : Type} : α → XQPL Ops n α
+  | gate {α : Type} : Gate n → XQPL Ops n α → XQPL Ops n α
+  | meas {α : Type} : Fin n → XQPL Ops n α → XQPL Ops n α → XQPL Ops n α
+  | custom {α : Type} : Ops → XQPL Ops n α → XQPL Ops n α
+  | fail {α : Type} : XQPL Ops n α
+
+namespace XQPL
+
+variable {Ops : Type} {α β : Type}
+
 /-! ## Denotational Semantics -/
 
-/-- Denotational semantics: interpret a QPL program as a `QComp`.
+/-- Denotational semantics: interpret a program as a `QComp`.
 
     * `ret a` → `qpure a`
     * `gate g k` → `denoteGateU g >>= fun () => k.denote`
     * `meas i kt kf` → `measQubit i >>= fun b => if b then kt.denote else kf.denote`
+    * `custom op k` → `OpDenote.denote op >>= fun () => k.denote`
     * `fail` → `qfail` -/
-def denote : QPL n α → QComp (2 ^ n) α
+def denote [OpDenote Ops n] : XQPL Ops n α → QComp (2 ^ n) α
   | .ret a => QComp.qpure a
   | .gate g k => QComp.qbind (GateUnitarity.denoteGateU g) (fun () => k.denote)
   | .meas i kt kf =>
-    QComp.qbind (measQubit i) fun b => if b then kt.denote else kf.denote
+    QComp.qbind (QPL.measQubit i) fun b => if b then kt.denote else kf.denote
+  | .custom op k => QComp.qbind (OpDenote.denote op) (fun () => k.denote)
   | .fail => QComp.qfail
 
-/-- Translate QPL to QTree (preserving measurement structure). -/
-def toQTree : QPL n α → QTree (2 ^ n) α
+/-- Translate to QTree (preserving measurement structure). -/
+def toQTree [OpDenote Ops n] : XQPL Ops n α → QTree (2 ^ n) α
   | .ret a => .ret a
   | .gate g k => .op Unit inferInstance (GateUnitarity.denoteGateU g) (fun () => k.toQTree)
   | .meas i kt kf =>
-    .op Bool inferInstance (measQubit i) (fun b => if b then kt.toQTree else kf.toQTree)
+    .op Bool inferInstance (QPL.measQubit i) (fun b => if b then kt.toQTree else kf.toQTree)
+  | .custom op k => .op Unit inferInstance (OpDenote.denote op) (fun () => k.toQTree)
   | .fail => .fail
 
 /-! ## Gate Count -/
 
-/-- Gate count: number of gate + measurement operations on longest path. -/
-def gateCount : QPL n α → ℕ
+/-- Gate count: number of gate, measurement and custom operations on the longest path. -/
+def gateCount : XQPL Ops n α → ℕ
   | .ret _ => 0
   | .gate _ k => 1 + k.gateCount
   | .meas _ kt kf => 1 + max kt.gateCount kf.gateCount
+  | .custom _ k => 1 + k.gateCount
   | .fail => 0
 
 /-! ## Structural Properties -/
 
-@[simp] theorem denote_ret (a : α) :
-    (QPL.ret a : QPL n α).denote = QComp.qpure a := rfl
+@[simp] theorem denote_ret [OpDenote Ops n] (a : α) :
+    (XQPL.ret a : XQPL Ops n α).denote = QComp.qpure a := rfl
 
-@[simp] theorem denote_fail :
-    (QPL.fail : QPL n α).denote = QComp.qfail := rfl
+@[simp] theorem denote_fail [OpDenote Ops n] :
+    (XQPL.fail : XQPL Ops n α).denote = QComp.qfail := rfl
 
-theorem denote_gate (g : Gate n) (k : QPL n α) :
-    (QPL.gate g k).denote = QComp.qbind (GateUnitarity.denoteGateU g) (fun () => k.denote) :=
+theorem denote_gate [OpDenote Ops n] (g : Gate n) (k : XQPL Ops n α) :
+    (XQPL.gate g k).denote = QComp.qbind (GateUnitarity.denoteGateU g) (fun () => k.denote) :=
   rfl
 
-theorem denote_meas (i : Fin n) (kt kf : QPL n α) :
-    (QPL.meas i kt kf).denote =
-      QComp.qbind (measQubit i) (fun b => if b then kt.denote else kf.denote) :=
+theorem denote_meas [OpDenote Ops n] (i : Fin n) (kt kf : XQPL Ops n α) :
+    (XQPL.meas i kt kf).denote =
+      QComp.qbind (QPL.measQubit i) (fun b => if b then kt.denote else kf.denote) :=
   rfl
 
 @[simp] theorem gateCount_ret (a : α) :
-    (QPL.ret a : QPL n α).gateCount = 0 := rfl
+    (XQPL.ret a : XQPL Ops n α).gateCount = 0 := rfl
 
 @[simp] theorem gateCount_fail :
-    (QPL.fail : QPL n α).gateCount = 0 := rfl
+    (XQPL.fail : XQPL Ops n α).gateCount = 0 := rfl
 
-theorem gateCount_gate (g : Gate n) (k : QPL n α) :
-    (QPL.gate g k).gateCount = 1 + k.gateCount := rfl
+theorem gateCount_gate (g : Gate n) (k : XQPL Ops n α) :
+    (XQPL.gate g k).gateCount = 1 + k.gateCount := rfl
 
-theorem gateCount_meas (i : Fin n) (kt kf : QPL n α) :
-    (QPL.meas i kt kf).gateCount = 1 + max kt.gateCount kf.gateCount := rfl
+theorem gateCount_meas (i : Fin n) (kt kf : XQPL Ops n α) :
+    (XQPL.meas i kt kf).gateCount = 1 + max kt.gateCount kf.gateCount := rfl
 
 /-! ## Monadic Bind -/
 
 /-- Monadic bind: substitute at `ret` leaves. -/
-def bind : QPL n α → (α → QPL n β) → QPL n β
+def bind : XQPL Ops n α → (α → XQPL Ops n β) → XQPL Ops n β
   | .ret a, f => f a
   | .gate g k, f => .gate g (k.bind f)
   | .meas i kt kf, f => .meas i (kt.bind f) (kf.bind f)
+  | .custom op k, f => .custom op (k.bind f)
   | .fail, _ => .fail
 
-@[simp] theorem bind_ret (a : α) (f : α → QPL n β) :
-    (QPL.ret a).bind f = f a := rfl
+@[simp] theorem bind_ret (a : α) (f : α → XQPL Ops n β) :
+    (XQPL.ret a).bind f = f a := rfl
 
-@[simp] theorem bind_fail (f : α → QPL n β) :
-    (QPL.fail : QPL n α).bind f = .fail := rfl
+@[simp] theorem bind_fail (f : α → XQPL Ops n β) :
+    (XQPL.fail : XQPL Ops n α).bind f = .fail := rfl
 
-theorem bind_gate (g : Gate n) (k : QPL n α) (f : α → QPL n β) :
-    (QPL.gate g k).bind f = .gate g (k.bind f) := rfl
+theorem bind_gate (g : Gate n) (k : XQPL Ops n α) (f : α → XQPL Ops n β) :
+    (XQPL.gate g k).bind f = .gate g (k.bind f) := rfl
 
-theorem bind_meas (i : Fin n) (kt kf : QPL n α) (f : α → QPL n β) :
-    (QPL.meas i kt kf).bind f = .meas i (kt.bind f) (kf.bind f) := rfl
+theorem bind_meas (i : Fin n) (kt kf : XQPL Ops n α) (f : α → XQPL Ops n β) :
+    (XQPL.meas i kt kf).bind f = .meas i (kt.bind f) (kf.bind f) := rfl
 
 /-! ## Deferred Measurement Principle
 
@@ -230,19 +256,31 @@ that:
 This transforms `QPL n α` (with measurements) into `QPL (n + k) Unit`
 (measurement-free), where `k` is the number of mid-circuit measurements. -/
 
-/-- Count the number of measurement operations in a QPL program. -/
-def measCount : QPL n α → ℕ
+/-- Count the number of measurement operations in a program. -/
+def measCount : XQPL Ops n α → ℕ
   | .ret _ => 0
   | .gate _ k => k.measCount
   | .meas _ kt kf => 1 + kt.measCount + kf.measCount
+  | .custom _ k => k.measCount
   | .fail => 0
 
-/-- A QPL program is measurement-free (purely unitary). -/
-def isMeasFree : QPL n α → Prop
+/-- A program is measurement-free. -/
+def isMeasFree : XQPL Ops n α → Prop
   | .ret _ => True
   | .gate _ k => k.isMeasFree
   | .meas _ _ _ => False
+  | .custom _ k => k.isMeasFree
   | .fail => False
+
+end XQPL
+
+/-- A QPL program on `n` qubits producing a classical value of type `α`: the programs
+    without custom operations. -/
+abbrev QPL (n : ℕ) := XQPL Empty n
+
+namespace QPL
+
+variable {α β : Type}
 
 /-- A measurement-free QPL program can be converted to a UnitaryTree. -/
 def toUnitaryTree : (p : QPL n Unit) → p.isMeasFree →
@@ -251,7 +289,8 @@ def toUnitaryTree : (p : QPL n Unit) → p.isMeasFree →
   | .gate g k, h => .op (GateUnitarity.denoteGateU g) (Circuit.single g)
       (CatCrypt.Quantum.QPLToCircuit.GateDecomp.correct
         (self := CatCrypt.Quantum.QPLToCircuit.gateDecomp_single g))
-      (k.toUnitaryTree h)
+      (toUnitaryTree k h)
+  | .custom e _, _ => e.elim
   | .fail, _ => .ret  -- fail → identity (vacuously measurement-free)
 
 /-! ## Example Programs -/
@@ -322,9 +361,10 @@ theorem toCircuit_gateCount_le (p : QPL n Unit) (h : p.isMeasFree) :
     have hk : k.isMeasFree := h
     have ihk := ih hk
     simp only [toCircuit, toUnitaryTree, UnitaryTree.toCircuit, Circuit.gateCount,
-      gateCount_single, gateCount_gate]
+      gateCount_single, XQPL.gateCount_gate]
     exact Nat.add_le_add_left ihk 1
-  | meas i kt kf => exact absurd h (by simp [isMeasFree])
+  | meas i kt kf => exact absurd h (by simp [XQPL.isMeasFree])
+  | custom e _ => exact e.elim
   | fail => exact absurd h id
 
 /-! ## Reset -/
@@ -342,7 +382,7 @@ theorem denote_reset (i : Fin n) (ρ : Matrix (Fin (2 ^ n)) (Fin (2 ^ n)) ℂ) :
       gateEmbedding (.X i) * (embedGate1 n i (qubitProj true) * ρ *
           embedGate1 n i (qubitProj true)) * (gateEmbedding (.X i))ᴴ +
         embedGate1 n i (qubitProj false) * ρ * embedGate1 n i (qubitProj false) := by
-  simp only [reset, denote, QComp.qbind, measQubit, projectiveMeasure, measureOps, measQubitPM,
+  simp only [reset, XQPL.denote, QComp.qbind, measQubit, projectiveMeasure, measureOps, measQubitPM,
     GateUnitarity.denoteGateU, unitaryChannel, GateUnitarity.gateEmbedding_unitaryGroup,
     QComp.qpure, LinearMap.coe_mk, AddHom.coe_mk, tsum_fintype, Fintype.sum_bool, ite_true,
     Bool.false_eq_true, ite_false, Fintype.univ_punit, Finset.sum_singleton, LinearMap.id_apply,

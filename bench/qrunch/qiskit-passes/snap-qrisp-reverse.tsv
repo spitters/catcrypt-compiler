@@ -1,0 +1,10 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point after snapping; 2026-11-06 15:30 CET
+suite	circuit	qiskit_cx	qiskit_depth2	qiskit_gates	catq_cx	catq_depth2	catq_gates	d_cx	d_depth2	d_gates	runs	check
+qrisp	qpe	82	77	187	82	77	187	0	0	0	1	same
+qrisp	shor15	1283	719	2606	1283	719	2527	0	0	-79	1	ok
+qrisp	shor15_mcm	3408	2830	6889	3408	2830	6714	0	0	-175	2	nosim
+qrisp	qaoa_maxcut	46	20	111	46	20	109	0	0	-2	1	ok
+qrisp	vqe_heisenberg	42	14	237	42	14	213	0	0	-24	2	ok
+qrisp	grover	240	161	533	240	161	542	0	0	9	1	ok
+qrisp	qft8	68	29	123	68	29	120	0	0	-3	2	ok
+qrisp	dicke	87	79	234	87	79	219	0	0	-15	2	ok
