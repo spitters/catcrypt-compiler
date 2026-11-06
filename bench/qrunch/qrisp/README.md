@@ -31,6 +31,15 @@ removes SWAP gates by permuting its output qubits (`ElidePermutations`); ours ke
 in place. The figure in parentheses is Qiskit's CX count with that pass removed, and the rows
 with one are those where Qiskit permuted the output.
 
+`results-layout.tsv` (`--out results-layout.tsv`, 2026-11-06, load average 4.5) adds the
+`ours_lay_*` columns: `VerifiedCompiler(permutation="layout")` returns the output permutation
+of swap elision in the output's `final_layout` instead of appending swaps, as Qiskit does. With
+it ours has 76 CX on QPE, 56 on the QFT and 1271 on Shor, Qiskit's counts on all three, and
+3403 against Qiskit's 3396 on the mid-circuit row; the deviation through
+`Operator.from_circuit` is at most 8.2·10⁻¹⁵ on the unitary rows. The other columns of that
+file were measured with a newer `catq-compile` than the table above (Shor 1283 CX without the
+layout).
+
 Every output equals its input: on the unitary rows the largest entrywise deviation is
 1.1·10⁻¹⁴ (Operator up to 10 qubits, four random statevectors for Shor), Qiskit's taken
 through its output permutation. The

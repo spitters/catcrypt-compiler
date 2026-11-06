@@ -11,7 +11,8 @@ and `zyzEmit`, behind the verified checker with `check`), and prints the result 
 (`QrunchBasis.printQelib`); Qiskit's `qasm2.loads` reads it back. The answer line carries the
 phase relating the two programs' qelib1 matrices, the bound `eps` of the level and the output
 permutation of swap elision, which the compiler carries to the later segments, lets final
-measurements absorb, and otherwise undoes by appended swaps. For a
+measurements absorb, and otherwise undoes by appended swaps or, with
+`permutation="layout"`, records in the output's Qiskit layout. For a
 circuit without classical instructions the result's `global_phase` adds the segments' phases;
 otherwise the phases are unobservable and are dropped. A circuit with a gate the lowering does
 not translate or an unbound parameter, or whose run fails, is returned unchanged, and the
@@ -23,11 +24,12 @@ import os
 import subprocess
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from fractions import Fraction
 from typing import Optional, Protocol
 
 from qiskit import QuantumCircuit, qasm2
+from qiskit.transpiler import Layout, TranspileLayout
 
 from .qasm_io import Segment, Unsupported, lower, split_segments
 
@@ -36,6 +38,7 @@ CATQ_COMPILE = os.environ.get("CATQ_COMPILE",
                               os.path.join(ROOT, ".lake", "build", "bin", "catq-compile"))
 ADDRESS_CAP = 4000 * 1024 * 1024
 LEVELS = ("1", "2", "2r")
+PERMUTATIONS = ("swaps", "layout")
 PHASE_FIELD = 12
 EPS_FIELD = 13
 ROUNDS_FIELD = 14
@@ -64,7 +67,9 @@ class CompileReport:
     identity, and `layouts[-1]` is the identity when `swaps_appended > 0`. Final
     measurements absorb the permutation (each reads the wire of its qubit); when a moved
     qubit is not ended by a measurement, the output ends with `swaps_appended` swaps (three
-    `cx` each) that put every state back on its input wire."""
+    `cx` each) that put every state back on its input wire. With `permutation="layout"` no
+    swap is appended, and `final_permutation` is the `final_layout` of the output's layout
+    (`with_final_permutation`)."""
     optimized: bool
     reason: str = ""
     segments: int = 0
@@ -108,6 +113,25 @@ def append_swaps(qc: QuantumCircuit, pairs: list[tuple[int, int]]) -> None:
     """Append each swap of `pairs` to `qc` as three `cx`."""
     for a, b in pairs:
         qc.cx(a, b); qc.cx(b, a); qc.cx(a, b)
+
+
+def with_final_permutation(qc: QuantumCircuit, sigma: list[int],
+                           base: Optional[TranspileLayout] = None) -> TranspileLayout:
+    """The layout of a circuit `qc` that ends with the state its source leaves on wire `q` on
+    wire `sigma[q]`, composed after `base`, the source's layout (`None`: the trivial layout).
+    In Qiskit's convention `final_layout[qc.qubits[i]] = j` says that the state the circuit
+    without that permutation leaves on wire `i` is on wire `j`; `Operator.from_circuit(qc)`
+    applies the inverse permutation. A source `final_layout` `F` composes to `sigma[F[i]]`."""
+    n = qc.num_qubits
+    if base is None:
+        trivial = {q: i for i, q in enumerate(qc.qubits)}
+        return TranspileLayout(Layout(dict(trivial)), trivial,
+                               final_layout=Layout({qc.qubits[i]: sigma[i] for i in range(n)}),
+                               _input_qubit_count=n, _output_qubit_list=list(qc.qubits))
+    # `Layout.to_permutation` reads the physical-to-virtual direction; this is the other one.
+    f = (list(range(n)) if base.final_layout is None
+         else [base.final_layout[q] for q in qc.qubits])
+    return replace(base, final_layout=Layout({qc.qubits[i]: sigma[f[i]] for i in range(n)}))
 
 
 def _measured_last(qc: QuantumCircuit) -> set[int]:
@@ -174,14 +198,25 @@ class VerifiedCompiler:
     theorem is `QrunchRound.norm_runCompile_sub_le`. The permutation is carried across
     segments: every later operation and boundary instruction is relabelled to the wire that
     carries its qubit, so final measurements absorb it, and swaps (three `cx` each) are
-    appended only when a moved qubit is not ended by a measurement (`CompileReport`)."""
+    appended only when a moved qubit is not ended by a measurement (`CompileReport`).
+
+    With `permutation="layout"` no swap is appended: the output carries a Qiskit
+    `TranspileLayout` whose `final_layout` records the permutation, composed after the
+    input's layout if it has one, so that `Operator.from_circuit(out)` is the input's
+    operator (`Operator.from_circuit` of the input when it has a layout) up to the reported
+    phase and `eps`. Qrunch's `UniversalGateCircuit` carries no layout, and the default
+    `"swaps"` serves that path."""
 
     def __init__(self, inner: Optional[Compiler] = None, level: int | str = "2r",
                  catq_compile: str = CATQ_COMPILE, address_cap: int = ADDRESS_CAP,
-                 check: bool = False, elide: bool = True, snap: bool = True):
+                 check: bool = False, elide: bool = True, snap: bool = True,
+                 permutation: str = "swaps"):
         level = str(level)
         if level not in LEVELS:
             raise ValueError("level must be 1, 2 or 2r")
+        if permutation not in PERMUTATIONS:
+            raise ValueError('permutation must be "swaps" or "layout"')
+        self.permutation = permutation
         self.inner = inner
         self.level = level
         self.check = check
@@ -264,8 +299,10 @@ class VerifiedCompiler:
         rep.phase = phase if unitary else 0.0
         rep.eps = eps
         rep.final_permutation = list(sigma)
-        measured = _measured_last(out)
-        if any(sigma[q] != q and sigma[q] not in measured for q in range(n)):
+        if self.permutation == "layout":
+            if sigma != list(range(n)) or circuit.layout is not None:
+                out._layout = with_final_permutation(out, sigma, circuit.layout)
+        elif any(sigma[q] != q and sigma[q] not in _measured_last(out) for q in range(n)):
             pairs = swap_network(sigma)
             append_swaps(out, pairs)
             rep.swaps_appended = len(pairs)

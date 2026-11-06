@@ -18,7 +18,11 @@ input up to a phase, over four random statevectors, for ours only (Qiskit moves 
 measurements, so its segments do not align: `-`). `cx_in` is the CX count of the input as
 catq-compile imports it (cp, cz, swap and ccx lowered). Qiskit's level 3 elides SWAP gates into
 an output permutation (`ElidePermutations`; `qiskit_perm` = yes when it did), which ours does
-not; `qiskit_ne_cx` and `qiskit_ne_gates` are its counts with that pass removed.
+not; `qiskit_ne_cx` and `qiskit_ne_gates` are its counts with that pass removed. The
+`ours_lay_*` columns are those of `VerifiedCompiler(level="2r", permutation="layout")` on the
+same input (run once, not timed), which returns the output permutation of swap elision in the
+output's `final_layout` instead of appending swaps; `ours_lay_dev` reads it through
+`Operator.from_circuit` (unitary rows) or through `CompileReport.layouts` (`*_mcm` rows).
 
 usage: cd bridge && uv sync --extra qrisp && uv run python -I ../bench/qrunch/qrisp_compare.py
        [--check] [--out NAME.tsv] [CIRCUIT ...]; writes bench/qrunch/qrisp/results.tsv or NAME.tsv
@@ -267,10 +271,12 @@ def main(args: list[str]) -> None:
         out_name, args = args[1], args[2:]
     names = args or list(PROGRAMS)
     vc = VerifiedCompiler(level="2r", check=check)
+    vc_lay = VerifiedCompiler(level="2r", check=check, permutation="layout")
     load_avg = os.getloadavg()[0]
     header = ["circuit", "qubits", "classical", "cx_in", "ours_cx", "qiskit_cx", "ours_depth2",
               "qiskit_depth2", "ours_gates", "qiskit_gates", "ours_ms", "qiskit_ms", "qrisp_ms",
-              "ours_dev", "qiskit_dev", "qiskit_perm", "qiskit_ne_cx", "qiskit_ne_gates", "eps"]
+              "ours_dev", "qiskit_dev", "qiskit_perm", "qiskit_ne_cx", "qiskit_ne_gates", "eps",
+              "ours_lay_cx", "ours_lay_depth2", "ours_lay_gates", "ours_lay_dev"]
     pm_ne = no_elide_pass_manager()
     print("\t".join(header), flush=True)
     rows = []
@@ -307,12 +313,21 @@ def main(args: list[str]) -> None:
         ne = pm_ne.run(qin)
         assert classical or qin.num_qubits > 10 or Operator(qin).equiv(Operator(ne))
         necx, _, neg = figures(ne)
+        lay = vc_lay.compile(qin)
+        lrep = vc_lay.last_report
+        if not lrep.optimized:
+            lay_cols = ["-", "-", "-", f"refused: {lrep.reason}"]
+        else:
+            lay_dev = (segment_deviation(qin, lay, lrep.layouts) if classical
+                       else deviation(qin, lay))
+            lay_cols = [*figures(lay), f"{lay_dev:.1e}"]
         r = [name, qin.num_qubits, "yes" if classical else "no", cx_in, ocx, qcx,
              od2, qd2, og, qg, f"{min(t_ours) * 1e3:.1f}", f"{min(t_qk) * 1e3:.1f}",
-             f"{t_qrisp * 1e3:.0f}", ours_dev, qk_dev, permuted(qk), necx, neg, eps]
+             f"{t_qrisp * 1e3:.0f}", ours_dev, qk_dev, permuted(qk), necx, neg, eps, *lay_cols]
         print("\t".join(map(str, r)), flush=True)
         rows.append(r)
     vc.close()
+    vc_lay.close()
     os.makedirs(OUT_DIR, exist_ok=True)
     with open(os.path.join(OUT_DIR, out_name), "w") as f:
         f.write(f"# qrisp {qrisp.__version__ if hasattr(qrisp, '__version__') else _version('qrisp')}"

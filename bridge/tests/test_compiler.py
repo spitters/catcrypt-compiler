@@ -287,6 +287,64 @@ def test_swaps_unitary():
     assert row["exact"]
 
 
+def swaps_circuit(cycle: bool) -> QuantumCircuit:
+    """Three qubits with one swap (`cycle=False`) or two, whose product is a 3-cycle."""
+    qc = QuantumCircuit(3, global_phase=0.2)
+    qc.h(0); qc.ry(0.4, 1); qc.rx(0.9, 2); qc.cx(0, 1); qc.swap(0, 1)
+    if cycle:
+        qc.swap(1, 2)
+    qc.rz(0.3, 0); qc.cx(2, 0)
+    return qc
+
+
+@pytest.mark.parametrize("cycle", [False, True], ids=["one swap", "3-cycle"])
+def test_swaps_layout(cycle):
+    """`permutation="layout"`: no swap is appended, the output's `final_layout` is the
+    reported permutation, and `Operator.from_circuit` of the output equals the input's
+    operator exactly; the default appends the swaps and sets no layout."""
+    qc = swaps_circuit(cycle)
+    vc = VerifiedCompiler(check=True, permutation="layout")
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and rep.swaps_appended == 0, rep.reason
+    assert rep.final_permutation == ([1, 0, 2] if not cycle else [1, 2, 0])
+    assert out.layout.final_index_layout() == rep.final_permutation
+    assert rep.layouts[-1] == rep.final_permutation
+    assert rep.cx_out == 2
+    assert np.allclose(Operator.from_circuit(out).data, Operator(qc).data, atol=TOL)
+    assert not np.allclose(Operator(out).data, Operator(qc).data, atol=1e-3)
+    vc = VerifiedCompiler(check=True)
+    out = vc.compile(qc)
+    vc.close()
+    assert out.layout is None and vc.last_report.swaps_appended == (2 if cycle else 1)
+    assert np.allclose(Operator(out).data, Operator(qc).data, atol=TOL)
+
+
+def test_swaps_layout_composes():
+    """An input with a layout (Qiskit's level 3 elides its swaps into one) and a further
+    swap: the output's `final_layout` composes ours after the input's, and
+    `Operator.from_circuit` of the two agree."""
+    qk = transpile(swaps_circuit(True), basis_gates=["rx", "ry", "rz", "cx", "p"],
+                   optimization_level=3, seed_transpiler=0)
+    assert qk.layout.final_index_layout() != [0, 1, 2]
+    qk.swap(0, 2); qk.rx(0.5, 2)
+    vc = VerifiedCompiler(check=True, permutation="layout")
+    out = vc.compile(qk)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and rep.swaps_appended == 0 and "swap" not in out.count_ops()
+    f = qk.layout.final_index_layout()
+    assert out.layout.final_index_layout() == [rep.final_permutation[f[i]] for i in range(3)]
+    assert np.allclose(Operator.from_circuit(out).data, Operator.from_circuit(qk).data,
+                       atol=TOL)
+
+
+def test_permutation_argument():
+    with pytest.raises(ValueError):
+        VerifiedCompiler(permutation="none")
+
+
 def test_swap_before_mid_circuit_measurement():
     """A swap before a mid-circuit measurement: the measurement and the later segment are
     relabelled to the wires that carry their qubits; the distribution is the input's."""
