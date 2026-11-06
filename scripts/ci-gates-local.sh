@@ -4,7 +4,8 @@
 # The steps are read from `.github/workflows/ci.yml`, so this script cannot drift from
 # the workflow: a step is run when its `run:` is one line of the form
 # `bash scripts/<name>.sh [args]` and the script does not load Lean or another build
-# tool. Steps that CI runs only against a pull-request base, or that build, are listed
+# tool. Steps that CI runs only against a pull-request base, that build, or whose script
+# is marked `# ci-gates-local: network` (it fetches or restores remote state), are listed
 # as skipped. A step marked `continue-on-error: true` is a report: it is run, its
 # failure is shown, and it does not fail this script. The pre-push hook calls this
 # script.
@@ -42,6 +43,12 @@ while IFS=$'\t' read -r job name cmd kind; do
   [ -n "$cmd" ] || continue
   script="$(printf '%s' "$cmd" | awk '{print $2}')"
   if [ ! -f "$script" ]; then summary+="MISSING  $cmd"$'\n'; fails=$((fails+1)); continue; fi
+  # A step whose script declares `# ci-gates-local: network` reads or writes remote state
+  # (restore-cloud-cache.sh replaces .lake/build from a cache release); it is CI setup, not
+  # a gate, and run here it would overwrite or delete the local build.
+  if grep -qE '^# *ci-gates-local: network' "$script"; then
+    summary+="skip     $cmd   (network)"$'\n'; skipped=$((skipped+1)); continue
+  fi
   # A gate that starts a build is not a text scan; CI runs it in a build job.
   if grep -qE '(^|[^A-Za-z_-])(lake (build|exe|env)|cargo |cmake )' "$script" \
      && ! grep -qE '^# *ci-gates-local: text-scan' "$script"; then
