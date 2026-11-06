@@ -1,0 +1,7 @@
+# load average 8.98, best of 5, 2026-11-06 15:40 CET
+circuit	qubits	cx_in	ours_cx	qiskit_cx	ours_depth2	qiskit_depth2	ours_gates	qiskit_gates	ours_ms	ours_core_ms	ours_proc_ms	qiskit_ms	ours_dev	qiskit_dev
+amp3_ccz	3	32	32	32	32	32	74	74	8.5	8.0	99.1	8.7	1.7e-15	4.2e-15
+grover2	2	2	2	2	2	2	6	13	3.6	3.3	45.3	5.6	3.3e-16	5.7e-16
+qft4	4	18	18	18	15	15	38	38	3.3	3.0	40.2	6.2	4.5e-16	2.8e-16
+qft6	6	39	39	39	33	33	81	81	5.3	4.9	39.9	7.1	2.9e-16	1.9e-16
+qpe3_t	4	23	14	14	14	14	42	44	10.9	10.5	48.0	6.7	7.3e-16	2.8e-15

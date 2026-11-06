@@ -64,6 +64,11 @@ other rotations are conjugated.
   [`qelibListMatrix_pauliQ`](CatCrypt/Quantum/QrunchFuse.lean),
   [`cxCount_pauliQ`](CatCrypt/Quantum/QrunchFuse.lean),
   [`length_pauliQ_le`](CatCrypt/Quantum/QrunchFuse.lean)).
+- A gate list of our own programs is exported as OpenQASM 2 text, and reading that text back
+  gives statements whose matrix is the gate list's matrix times an exact phase
+  ([`listMatrix_importGates_exportQASM`](CatCrypt/Quantum/QrunchExport.lean)); `lake exe
+  catq-export` writes the QFT, phase estimation and amplitude amplification circuits to
+  [`bench/qasm/catcrypt/`](bench/qasm/catcrypt/).
 
 ## Measurements
 
@@ -76,6 +81,7 @@ circuit, measured by [`bench/qrunch/compare.py`](bench/qrunch/compare.py) and re
 | Q-Synth VQE | 12 (8–16) | equal on all | 0.85–1.01, below on 11 | median 0.78 |
 | Nam | 30 (5–192) | equal on all | 0.91–1.01, below on 16 | median 0.47 |
 | QASMBench small | 12 (2–5) | equal on all | 0.53–1.05, below on 8 | median 0.10 |
+| Our programs (`catq-export`) | 5 (2–6) | equal on all | 0.46–1.00, below on 2 | median 0.75 |
 
 ## What is trusted
 

@@ -3147,6 +3147,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.VacuityAudit,
     Lake.Glob.one `CatCrypt.Quantum.AngleQ,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchCompile,
+    Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchExportMain,
     Lake.Glob.one `CatCrypt.Quantum.ControlledGates,
     Lake.Glob.one `CatCrypt.Quantum.ControlledProjections,
     Lake.Glob.one `CatCrypt.Quantum.GateUnitarity,
@@ -3212,6 +3213,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Qelib,
     Lake.Glob.one `CatCrypt.Quantum.QrunchBasis,
     Lake.Glob.one `CatCrypt.Quantum.QrunchCommute,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchExport,
     Lake.Glob.one `CatCrypt.Quantum.QrunchFuse,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ApproxEmit,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.CBall,
@@ -3548,6 +3550,11 @@ lean_exe «catq-compile» where
   -- The Qrunch circuit compiler: an OpenQASM 2 file to an OpenQASM 2 file over
   -- {rx, ry, rz, cx, p} and the global phase; `--serve` answers request lines.
   root := `CatCrypt.Quantum.Benchmark.QrunchCompile
+
+lean_exe «catq-export» where
+  -- The OpenQASM 2 export over {rx, ry, cx, p} of the QFT, phase estimation and amplitude
+  -- amplification gate lists, one file each, with the exact global phases.
+  root := `CatCrypt.Quantum.Benchmark.QrunchExportMain
 
 lean_exe «algebraic-census» where
   -- Per-kernel counts of the algebraic `Com` rewrites under `KEnv.unknown`, and the
