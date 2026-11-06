@@ -31,8 +31,9 @@ proved for `resynth` by `norm_listMatrix_resynth_sub_le`), the qelib1 matrix of 
 within the bound of `e^{iφ}` times the qelib1 matrix of the input, in the `ℓ²` operator norm.
 
 The iteration `runRounds stage k qs` runs one round, then further rounds while a round lowers
-the CX count of its input, or keeps it and lowers the statement count (`Better`), at most `k`
-rounds in all: it stops at a fixed point of the round up to this order or at the fuel.
+the CX count of its input, or keeps it and lowers the statement count by at least
+`stmtMargin` of it, the larger of two statements and 2 % (`Better`), at most `k` rounds in
+all: it stops at a fixed point of the round up to this order or at the fuel.
 **The iteration theorem** `norm_runRounds_sub_le`: the bound of the iteration is the sum of
 the bounds of its rounds and its phase the sum of their phases, since every phase factor has
 norm one and errors of approximations add (`ResynthLevel.norm_sub_smul_trans_le`). The CX
@@ -192,11 +193,15 @@ theorem norm_round_sub_le {stage : Circuit n → Resynth n} (hS : StageBound sta
   rw [he, ← smul_smul, ← smul_sub, norm_smul, Complex.norm_exp_I_mul_ofReal, one_mul]
   exact hs
 
-/-- The order of the iteration: `l'` has fewer CX statements than `l`, or as many and fewer
-statements. -/
+/-- The least drop in the statement count of a round that keeps the CX count, for an input of
+`m` statements: `max 2 (m / 50)`, two statements or 2 % of `m`. -/
+def stmtMargin (m : ℕ) : ℕ := max 2 (m / 50)
+
+/-- The order of the iteration: `l'` has fewer CX statements than `l`, or as many and at least
+`stmtMargin l.length` fewer statements. -/
 def Better (l' l : List (QGate n)) : Bool :=
   decide (cxCount l' < cxCount l) ||
-    (decide (cxCount l' = cxCount l) && decide (l'.length < l.length))
+    (decide (cxCount l' = cxCount l) && decide (l'.length + stmtMargin l.length ≤ l.length))
 
 /-- A `Better` list has at most as many CX statements. -/
 theorem cxCount_le_of_better {l' l : List (QGate n)} (h : Better l' l = true) :
@@ -338,7 +343,8 @@ theorem better_iterFrom (stage : Circuit n → Resynth n) (k : ℕ) (l : List (Q
 /-- **The best iterate.** The output of the iteration is the output of each of its rounds or
 `Better` than it: every kept round is `Better` than its input, and the iteration stops at the
 first round whose output is not `Better` than its input, so the returned statements have the
-lowest CX count, and then the lowest statement count, of all the iterates it computed. -/
+lowest CX count of all the iterates it computed, and among those at that count each other
+iterate has at least `stmtMargin` of its length more statements. -/
 theorem better_runRounds (stage : Circuit n → Resynth n) (k : ℕ) (qs : List (QGate n)) :
     ∀ o' ∈ runRounds stage k qs, finalOut qs (runRounds stage k qs) = o'.out ∨
       Better (finalOut qs (runRounds stage k qs)) o'.out = true := by
@@ -404,7 +410,7 @@ theorem norm_prepQ_sub_le (elide snap : Bool) (qs : List (QGate n))
     refine AngleSnap.norm_qelibListMatrix_snapQ_sub_le _ fun g hg => ?_
     have hm : (AngleSnap.snapGate g).1 ∈ (AngleSnap.snapQ
         (if elide then SwapElide.elideQ qs else (qs, 1)).1).1 := by
-      simp only [AngleSnap.snapQ, List.mem_map]
+      simp only [AngleSnap.snapQ_fst, List.mem_map]
       exact ⟨g, hg, rfl⟩
     exact (AngleSnap.distinct_snapGate g).1 (hd _ hm)
 

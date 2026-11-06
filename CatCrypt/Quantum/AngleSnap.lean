@@ -28,7 +28,7 @@ angles, of the constant times the moved-distance bound.
 ## Main definitions
 
 * `snapDist`, `snapFind`, `snapAngle` — the bound of the moved distance, the decision and
-  the snapping of one angle.
+  the snapping of one angle; `snapNear` is the floating-point pre-test of the decision.
 * `snapGate`, `snapQ` — angle snapping of a statement and of a list, with the bound.
 
 ## Main results
@@ -72,12 +72,24 @@ def snapTol : ℚ := 1 / 10 ^ 12
 def snapDist (a : ℚ) (j : ℤ) (k : ℕ) : ℚ :=
   |(j : ℚ) * piLo / 2 ^ k - a| + |(j : ℚ)| / 2 ^ k / 10 ^ 20
 
+/-- The floating-point pre-test of `snapFind`: `a`, read as a `Float`, lies within
+`10⁻⁹ · (1 + |a|)` of a multiple of `π/16`, or its reading is not finite. Every `j·π/2^k` with
+`k ≤ 4` is a multiple of `π/16`. -/
+def snapNear (a : ℚ) : Bool :=
+  let aF := Float.ofInt a.num / Float.ofNat a.den
+  let u : Float := 3.141592653589793 / 16
+  let x := aF / u
+  x.isNaN || x.isInf || (x - x.round).abs * u ≤ 1e-9 * (1 + aF.abs)
+
 /-- The first `k ≤ 4` and the integer `j` nearest to `a·2^k/π` such that `a` lies within
-`snapTol` of `j·π/2^k`, with `π` read as `piLo`. -/
+`snapTol` of `j·π/2^k`, with `π` read as `piLo`; `none` without the exact search when the
+pre-test `snapNear a` fails. -/
 def snapFind (a : ℚ) : Option (ℤ × ℕ) :=
-  (List.range 5).findSome? fun k =>
-    let j := round (a * 2 ^ k / piLo)
-    if |(j : ℚ) * piLo / 2 ^ k - a| ≤ snapTol then some (j, k) else none
+  if snapNear a then
+    (List.range 5).findSome? fun k =>
+      let j := round (a * 2 ^ k / piLo)
+      if |(j : ℚ) * piLo / 2 ^ k - a| ≤ snapTol then some (j, k) else none
+  else none
 
 /-- Angle snapping of `a + b·π`: `(b + j/2^k)·π` when `snapFind a` returns `(j, k)`, with the
 bound `snapDist a j k` of the moved distance; the angle itself with the bound `0` otherwise. -/
@@ -299,7 +311,12 @@ def snapGate : QGate n → QGate n × ℚ
 
 /-- Angle snapping of a list of statements, with the sum of the bounds of the statements. -/
 def snapQ (l : List (QGate n)) : List (QGate n) × ℚ :=
-  (l.map fun g => (snapGate g).1, (l.map fun g => (snapGate g).2).sum)
+  let r := l.map snapGate
+  (r.map Prod.fst, (r.map Prod.snd).sum)
+
+/-- The statements of `snapQ`. -/
+theorem snapQ_fst (l : List (QGate n)) : (snapQ l).1 = l.map fun g => (snapGate g).1 := by
+  simp [snapQ]
 
 /-- `snapQ` on a cons. -/
 theorem snapQ_cons (g : QGate n) (l : List (QGate n)) :
@@ -413,7 +430,7 @@ theorem norm_qelibListMatrix_snapQ_sub_le (l : List (QGate n)) (hl : ∀ g ∈ l
     have h2 := norm_qelibMatrix_snapGate_sub_le g
     have hA : ‖qelibListMatrix (snapQ l).1‖ ≤ 1 := by
       refine norm_qelibListMatrix_le_one _ fun x hx => ?_
-      simp only [snapQ, List.mem_map] at hx
+      simp only [snapQ_fst, List.mem_map] at hx
       obtain ⟨y, hy, rfl⟩ := hx
       exact (distinct_snapGate y).2 (hl' y hy)
     have hB := norm_qelibMatrix_le_one g (hl g List.mem_cons_self)
@@ -431,7 +448,7 @@ theorem length_snapQ (l : List (QGate n)) : (snapQ l).1.length = l.length := by
 theorem cxCount_snapQ (l : List (QGate n)) : cxCount (snapQ l).1 = cxCount l := by
   have h : ∀ g : QGate n, isCx (snapGate g).1 = isCx g := by
     intro g; cases g <;> rfl
-  simp only [snapQ, cxCount, List.countP_map]
+  simp only [snapQ_fst, cxCount, List.countP_map]
   exact List.countP_congr fun g _ => by simp [Function.comp, h]
 
 end CatCrypt.Quantum.AngleSnap

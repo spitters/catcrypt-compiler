@@ -508,12 +508,34 @@ def bestFrame (k : Nat) (f : Array C) : Float × Array Nat × Array Float := Id.
       if dev < best.1 then best := (dev, sg, e)
   return best
 
-/-- The class of `f`: the smallest `k ∈ {0, 1, 2}` whose best frame deviates by less than
-`tol`, else `3`. -/
+/-- The deviation of `ε · (f ∘ σ)` from class `k`, `classDev k (frameVec f sg e)`, computed
+without building the vector. -/
+def frameDev (k : Nat) (f : Array C) (sg : Array Nat) (e : Array Float) : Float :=
+  let iC : C := ⟨0, 1⟩
+  let g0 := C.scale e[0]! f[sg[0]!]!
+  let g1 := C.scale e[1]! f[sg[1]!]!
+  let g2 := C.scale e[2]! f[sg[2]!]!
+  let g3 := C.scale e[3]! f[sg[3]!]!
+  match k with
+  | 0 => max (g1 - g0).abs (max (g2 - g0).abs (g3 - g0).abs)
+  | 1 => max (g1 - g0).abs (max (g2 - iC * g0).abs (g3 - iC * g0).abs)
+  | 2 => (g0 * g3 - g1 * g2).abs
+  | _ => 0
+
+/-- Some frame `(σ, ε)` of `perms4 × signs4` brings `f` within `tol` of class `k`; the search
+stops at the first such frame. -/
+def frameWithin (k : Nat) (f : Array C) (tol : Float) : Bool := Id.run do
+  for sg in perms4 do
+    for e in signs4 do
+      if frameDev k f sg e < tol then return true
+  return false
+
+/-- The class of `f`: the smallest `k ∈ {0, 1, 2}` with a frame deviating by less than `tol`,
+else `3`. -/
 def classOf (f : Array C) (tol : Float) : Fin 4 :=
-  if (bestFrame 0 f).1 < tol then 0
-  else if (bestFrame 1 f).1 < tol then 1
-  else if (bestFrame 2 f).1 < tol then 2 else 3
+  if frameWithin 0 f tol then 0
+  else if frameWithin 1 f tol then 1
+  else if frameWithin 2 f tol then 2 else 3
 
 /-- The smallest `k` such that a phase vector of `U` in the Weyl orbit of `canonical`
 satisfies `classPhase k` within `tol` (default `1e-7`): the numeric test for `InClass k U`. -/
