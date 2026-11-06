@@ -175,6 +175,13 @@ theorem trimAsciiStart_copy_of_cons {s : String} {c : Char} {r : List Char}
   rw [trimAsciiStart_copy, h, List.dropWhile_cons_of_neg (by simp [hc]), ← h,
     String.ofList_toList]
 
+/-- A string whose first character is not whitespace is its own text after leading
+    whitespace. -/
+theorem ofList_dropWhile_of_cons {s : String} {c : Char} {r : List Char}
+    (h : s.toList = c :: r) (hc : c.isWhitespace = false) :
+    String.ofList (s.toList.dropWhile Char.isWhitespace) = s := by
+  rw [h, List.dropWhile_cons_of_neg (by simp [hc]), ← h, String.ofList_toList]
+
 /-- `bracketIndices` passes over a text without `[` outside brackets. -/
 theorem bracketIndices_go_skip (t r : List Char) (acc : List ℕ) (ht : '[' ∉ t) :
     bracketIndices.go (t ++ r) none acc = bracketIndices.go r none acc := by
@@ -251,7 +258,7 @@ theorem parseQ_p (q : Fin n) (a : PiLin) :
     rw [bracketIndices, hl]
     exact bracketIndices_angle ['p', '('] a q.val (by decide)
   have harg := parenArg_angle _ ['p'] a q.val hl (by decide)
-  simp only [parseQ, ht, startsWith_eq, hl, hname, hline, hidx, harg]
+  simp only [parseQ, ofList_dropWhile_of_cons hl (by decide), hname, hline, hidx, harg]
   simp [isSkipped, parseQRest, angleOf_toQASM]
 
 /-- A field list without `,` is one field. -/
@@ -285,7 +292,8 @@ theorem parseQ_rx (q : Fin n) (a : PiLin) :
     exact bracketIndices_angle ['r', 'x', '('] a q.val (by decide)
   have harg := parenArg_angle _ ['r', 'x'] a q.val hl (by decide)
   have hangs := parseAngles_angle _ ['r', 'x'] a q.val hl (by decide)
-  simp only [parseQ, ht, startsWith_eq, hl, hname, hline, hidx, harg, hangs]
+  simp only [parseQ, ofList_dropWhile_of_cons hl (by decide), hname, hline, hidx, harg,
+    hangs]
   simp [isSkipped, parseQRest]
 
 /-- A printed `ry` statement reads back as itself. -/
@@ -303,7 +311,8 @@ theorem parseQ_ry (q : Fin n) (a : PiLin) :
     exact bracketIndices_angle ['r', 'y', '('] a q.val (by decide)
   have harg := parenArg_angle _ ['r', 'y'] a q.val hl (by decide)
   have hangs := parseAngles_angle _ ['r', 'y'] a q.val hl (by decide)
-  simp only [parseQ, ht, startsWith_eq, hl, hname, hline, hidx, harg, hangs]
+  simp only [parseQ, ofList_dropWhile_of_cons hl (by decide), hname, hline, hidx, harg,
+    hangs]
   simp [isSkipped, parseQRest]
 
 /-- The index of a bracket `[k]` at the head of a text. -/
@@ -362,7 +371,7 @@ theorem parseQ_cx (c t : Fin n) :
       some (.CNOT c t) := by
     simp only [OpenQASMParser.parseLine, hstrip]
     simp [OpenQASMParser.hasPrefix, hl, hext]
-  simp only [parseQ, ht, startsWith_eq, hl, hname, hline]
+  simp only [parseQ, ofList_dropWhile_of_cons hl (by decide), hname, hline]
   simp [isSkipped, ofGate?]
 
 /-- A printed statement of the basis reads back as itself. -/
@@ -397,7 +406,7 @@ def headerLines (n : ℕ) : List String :=
 /-- The header lines carry no statement. -/
 theorem mapM_parseQ_header :
     (headerLines n).mapM (parseQ n) = some [[], [], []] := by
-  simp [headerLines, parseQ, opName, isSkipped, trimAsciiStart_copy, startsWith_eq, toString,
+  simp [headerLines, parseQ, opName, isSkipped, trimAsciiStart_copy, toString,
     Nat.repr_eq_ofList_toDigits]
 
 /-- The characters of a header line are ASCII and not a newline. -/
@@ -470,22 +479,117 @@ theorem splitOn_printQelib (l : List (QGate n)) (hl : ∀ g ∈ l, Emitted g) :
     exact (hall s hs _ hc).2 rfl
   · simp
 
+/-- A header line is one statement text. -/
+theorem isStmtText_header : ∀ s ∈ headerLines n, IsStmtText s.toList := by
+  have hdig : ';' ∉ Nat.toDigits 10 n := not_mem_toDigits_of n ';' (by decide)
+  simp only [headerLines, List.mem_cons, List.not_mem_nil, or_false]
+  rintro s (rfl | rfl | rfl)
+  · exact ⟨'O', "PENQASM 2.0".toList, by decide, by decide, by decide, by decide, by decide⟩
+  · exact ⟨'i', "nclude \"qelib1.inc\"".toList, by decide, by decide, by decide, by decide,
+      by decide⟩
+  · refine ⟨'q', "reg q[".toList ++ Nat.toDigits 10 n ++ [']'], ?_, by decide, by decide,
+      by decide, by simp [hdig]⟩
+    simp [toString, Nat.repr_eq_ofList_toDigits]
+
+/-- A printed statement of the basis is one statement text. -/
+theorem isStmtText_toQASM (g : QGate n) (hg : Emitted g) :
+    IsStmtText (QrunchBasis.QGate.toQASM g).toList := by
+  have hpi : ∀ a : PiLin, ';' ∉ a.toQASM.toList := fun a => not_mem_piLin_of a ';' (by decide)
+  have hdig : ∀ k : ℕ, ';' ∉ Nat.toDigits 10 k := fun k => not_mem_toDigits_of k ';' (by decide)
+  cases g <;> simp only [Emitted] at hg
+  · rename_i q a
+    exact ⟨'r', 'x' :: '(' :: (a.toQASM.toList ++ ')' :: ' ' :: 'q' :: '[' ::
+      (Nat.toDigits 10 q.val ++ [']'])), by simp [toList_toQASM_rx], by decide, by decide,
+      by decide, by simp [hpi, hdig]⟩
+  · rename_i q a
+    exact ⟨'r', 'y' :: '(' :: (a.toQASM.toList ++ ')' :: ' ' :: 'q' :: '[' ::
+      (Nat.toDigits 10 q.val ++ [']'])), by simp [toList_toQASM_ry], by decide, by decide,
+      by decide, by simp [hpi, hdig]⟩
+  · rename_i q a
+    exact ⟨'p', '(' :: (a.toQASM.toList ++ ')' :: ' ' :: 'q' :: '[' ::
+      (Nat.toDigits 10 q.val ++ [']'])), by simp [toList_toQASM_p], by decide, by decide,
+      by decide, by simp [hpi, hdig]⟩
+  · rename_i c t
+    exact ⟨'c', 'x' :: ' ' :: 'q' :: '[' :: (Nat.toDigits 10 c.val ++ ']' :: ',' :: 'q' ::
+      '[' :: (Nat.toDigits 10 t.val ++ [']'])), by simp [toList_toQASM_cx], by decide,
+      by decide, by decide, by simp [hdig]⟩
+
+/-- Printed statements of the basis read back as themselves, one statement each. -/
+theorem mapM_parseQ_toQASM (l : List (QGate n)) (hl : ∀ g ∈ l, Emitted g) :
+    (l.map QrunchBasis.QGate.toQASM).mapM (parseQ n) = some (l.map ([·])) := by
+  induction l with
+  | nil => rfl
+  | cons g l ih =>
+    simp [List.mapM_cons, parseQ_toQASM g (hl g (by simp)), ih (fun g h => hl g (by simp [h]))]
+
+/-- **Completeness for printed statements.** The header lines and the printed statements
+    of a list of the basis `{rx, ry, cx, p}`, in order, each preceded by any whitespace and
+    followed at the end by any whitespace, read back as that list: one statement a line,
+    several a line, or any other whitespace between them. -/
+theorem importQ_printWs (l : List (QGate n)) (hl : ∀ g ∈ l, Emitted g)
+    (ps : List (List Char × String)) (last : List Char)
+    (hps : ps.map Prod.snd = headerLines n ++ l.map QrunchBasis.QGate.toQASM)
+    (hw : ∀ p ∈ ps, ∀ c ∈ p.1, c.isWhitespace = true)
+    (hlast : ∀ c ∈ last, c.isWhitespace = true) :
+    importQ n (String.ofList (ps.flatMap (fun p => p.1 ++ p.2.toList) ++ last)) = some l := by
+  have hflat : (ps.flatMap fun p => p.1 ++ p.2.toList) =
+      (ps.map fun p => (p.1, p.2.toList)).flatMap (fun p => p.1 ++ p.2) := by
+    simp [List.flatMap_map]
+  have ht : ∀ p ∈ ps.map (fun p => (p.1, p.2.toList)), IsStmtText p.2 := by
+    intro p hp
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hp
+    have hm : q.2 ∈ headerLines n ++ l.map QrunchBasis.QGate.toQASM :=
+      hps ▸ List.mem_map_of_mem hq
+    rcases List.mem_append.mp hm with h | h
+    · exact isStmtText_header _ h
+    · obtain ⟨g, hg, hgq⟩ := List.mem_map.mp h
+      change IsStmtText q.2.toList
+      rw [← hgq]
+      exact isStmtText_toQASM g (hl g hg)
+  have hm : (ps.map fun p => (p.1, p.2.toList)).mapM (fun p => parseQ n (String.ofList p.2)) =
+      (ps.map Prod.snd).mapM (parseQ n) := by
+    rw [mapM_map, mapM_map]
+    congr 1
+    funext p
+    simp
+  have hw' : ∀ p ∈ ps.map (fun p => (p.1, p.2.toList)), ∀ c ∈ p.1, c.isWhitespace = true := by
+    intro p hp
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hp
+    exact hw q hq
+  rw [hflat, importQ_join n _ last hw' hlast ht, hm, hps, List.mapM_append,
+    mapM_parseQ_header, mapM_parseQ_toQASM l hl]
+  have hf : (l.map fun x => [x]).flatten = l := by
+    clear hl hps
+    induction l <;> simp_all
+  simp [hf]
+
+/-- The characters of an intercalation by a one-character separator. -/
+theorem intercalate_singleton_cons {α : Type} (a : α) (x : List α) (ys : List (List α)) :
+    [a].intercalate (x :: ys) = x ++ ys.flatMap (a :: ·) := by
+  induction ys generalizing x with
+  | nil => simp
+  | cons y ys ih => rw [List.intercalate_cons_cons, ih]; simp
+
 /-- **Reading a printed statement list** of the basis `{rx, ry, cx, p}` returns that list. -/
 theorem importQ_printQelib (l : List (QGate n)) (hl : ∀ g ∈ l, Emitted g) :
     importQ n (printQelib n l) = some l := by
-  have hs : (l.map QrunchBasis.QGate.toQASM).mapM (parseQ n) = some (l.map ([·])) := by
-    induction l with
-    | nil => rfl
-    | cons g l ih =>
-      simp [List.mapM_cons, parseQ_toQASM g (hl g (by simp)), ih (fun g h => hl g (by simp [h]))]
-  have he : ([""] : List String).mapM (parseQ n) = some [[]] := by
-    simp [parseQ, opName, isSkipped, trimAsciiStart_copy, startsWith_eq]
-  rw [importQ, splitOn_printQelib l hl, List.mapM_append, List.mapM_append, mapM_parseQ_header,
-    hs, he]
-  have hf : (l.map fun x => [x]).flatten = l := by
-    clear hl hs
-    induction l <;> simp_all
-  simp [hf]
+  have hp : printQelib n l = String.ofList
+      ((([], "OPENQASM 2.0;") ::
+        ((headerLines n).tail ++ l.map QrunchBasis.QGate.toQASM).map (fun s => (['\n'], s))
+        ).flatMap (fun p => p.1 ++ p.2.toList) ++ ['\n']) := by
+    refine String.ofList_toList.symm.trans ?_
+    congr 1
+    rw [printQelib, String.toList_append, String.toList_intercalate]
+    simp [headerLines, intercalate_singleton_cons, List.flatMap_map]
+  rw [hp]
+  refine importQ_printWs l hl _ _ (by simp [headerLines]) ?_ (by simp)
+  intro p hp c hc
+  rcases List.mem_cons.mp hp with rfl | hp
+  · simp at hc
+  · obtain ⟨s, -, rfl⟩ := List.mem_map.mp hp
+    simp only [List.mem_singleton] at hc
+    subst hc
+    decide
 
 /-! ## Reading the export -/
 

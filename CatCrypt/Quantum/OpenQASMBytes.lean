@@ -15,11 +15,11 @@ import all Init.Data.String.Slice
 /-!
 # Importing OpenQASM files from their bytes
 
-The importer `OpenQASMImport.importQASM` reads a file as a `String`, splits it into
-lines and parses each line as a list of characters. This module computes the same
-function on the bytes of the file: a line is a span `⟨bs, lo, hi⟩` of byte indices,
-found by scanning for the newline byte, and each parsing combinator reads the bytes
-of a span by index.
+The importer `OpenQASMImport.importQASM` reads a file as a `String`, splits its
+characters into statement texts at `;` (`OpenQASMImport.stmtsGo`) and parses each text.
+This module computes the same function on the bytes of the file: a statement text is a
+span `⟨bs, lo, hi⟩` of byte indices, found by scanning the bytes (`stmtsGoB`), and each
+parsing combinator reads the bytes of a span by index.
 
 The byte and character views are related by the representation relation
 `paramChars : Param .map3 .map0 ByteSpan (List Char)`, the graph of `ByteSpan.chars`,
@@ -33,7 +33,7 @@ hold for every string whose characters are ASCII.
 
 The angle text of a gate (between its parentheses) and the digits of an `rz`
 operand are decoded to characters and read by `OpenQASMImport.angleOf` and
-`String.toNat?`, and the operation name of a line that `OpenQASMParser.parseLine`
+`String.toNat?`, and the operation name of a text that `OpenQASMParser.parseLine`
 does not read is decoded before the name dispatch.
 
 ## Main definitions
@@ -42,14 +42,15 @@ does not read is decoded before the name dispatch.
   characters they denote.
 * `dropWhileB`, `takeWhileB`, `hasPrefixB`, `eqLitB`, `natOfDigitsB`, `splitB`,
   `bracketB`, `parenArgB`, `parseAnglesB` — the byte combinators.
+* `stmtsGoB`, `statementsB` — the statement spans of a span.
 * `parseLineB`, `parseQB`, `parseOpsB`, `importQB`, `importGatesB`, `importQASMB` — the byte
   importer.
 
 ## Main results
 
 * `dropWhileB_square`, `takeWhileB_square`, `hasPrefixB_square`, `natOfDigitsB_square`,
-  `splitB_square`, `parseLineB_square`, `parseQB_square`, `parseOpsB_square` — the
-  squares.
+  `splitB_square`, `parseLineB_square`, `parseQB_square`, `parseOpsB_square`,
+  `stmtsGoB_eq`, `statementsB_eq` — the squares.
 * `splitOn_ascii`, `trimAsciiStart_copy` — the `String` operations as list operations.
 * `importQASMB_eq` — on the UTF-8 bytes of an ASCII source, the byte importer returns
   what `OpenQASMImport.importQASM` returns.
@@ -795,7 +796,7 @@ def isSkippedB (nm : ByteSpan) : Bool :=
   eqLitB nm "OPENQASM".toList || eqLitB nm "include".toList || eqLitB nm "qreg".toList ||
     eqLitB nm "creg".toList || eqLitB nm "qubit".toList || eqLitB nm "bit".toList ||
     eqLitB nm "barrier".toList || eqLitB nm "measure".toList || eqLitB nm "gate".toList ||
-    eqLitB nm "opaque".toList || eqLitB nm "".toList
+    eqLitB nm "opaque".toList
 
 theorem isSkippedB_eq (nm : ByteSpan) :
     isSkippedB nm = OpenQASMImport.isSkipped (String.ofList nm.chars) := by
@@ -894,21 +895,20 @@ theorem parseAnglesB_eq (s : ByteSpan) :
 
 /-! ## Statements -/
 
-/-- The statements of a line, read from its bytes as `OpenQASMImport.parseQ` reads the
-line. The operation name is decoded only for a line `parseLineB` does not read. -/
+/-- The statements of a statement text, read from its bytes as `OpenQASMImport.parseQ`
+reads the text. The operation name is decoded only for a text `parseLineB` does not
+read. -/
 def parseQB (n : ℕ) (line : ByteSpan) : Option (List (OpenQASMImport.QGate n)) :=
   let s := dropWhileB Char.isWhitespace line
-  if hasPrefixB s "//".toList then some []
-  else
-    let nm := takeWhileB Char.isAlphanum (dropWhileB Char.isWhitespace s)
-    if isSkippedB nm then some []
-    else match parseLineB n s with
-    | some g => (OpenQASMImport.ofGate? g).map ([·])
-    | none =>
-      (OpenQASMImport.parseQRest n (String.ofList nm.chars) (bracketB s)
-        ((parenArgB s).map ByteSpan.chars) (parseAnglesB s)).map ([·])
+  let nm := takeWhileB Char.isAlphanum (dropWhileB Char.isWhitespace s)
+  if isSkippedB nm then some []
+  else match parseLineB n s with
+  | some g => (OpenQASMImport.ofGate? g).map ([·])
+  | none =>
+    (OpenQASMImport.parseQRest n (String.ofList nm.chars) (bracketB s)
+      ((parenArgB s).map ByteSpan.chars) (parseAnglesB s)).map ([·])
 
-/-- The gates a line denotes, read from its bytes: the lowering of `parseQB`. -/
+/-- The gates a statement text denotes, read from its bytes: the lowering of `parseQB`. -/
 def parseOpsB (n : ℕ) (line : ByteSpan) : Option (List (Gate n)) :=
   (parseQB n line).map (·.flatMap OpenQASMImport.lowerQ)
 
@@ -925,17 +925,9 @@ theorem parseQB_square (n : ℕ) :
   rintro t _ ⟨h, rfl⟩
   change parseQB n t = OpenQASMImport.parseQ n (String.ofList t.chars)
   simp only [parseQB, OpenQASMImport.parseQ, OpenQASMImport.opName, trimAsciiStart_copy,
-    String.toList_ofList, startsWith_eq, hasPrefixB_eq, chars_dropWhileB, chars_takeWhileB,
+    String.toList_ofList, chars_dropWhileB, chars_takeWhileB,
     isSkippedB_eq, parseLineB_eq n (dropWhileB Char.isWhitespace t) h, bracketB_eq,
     parenArgB_eq, parseAnglesB_eq]
-  generalize String.ofList (List.takeWhile Char.isAlphanum
-    (List.dropWhile Char.isWhitespace (List.dropWhile Char.isWhitespace t.chars))) = name
-  generalize OpenQASMImport.bracketIndices
-    (String.ofList (List.dropWhile Char.isWhitespace t.chars)) = idx
-  generalize OpenQASMImport.parenArg
-    (String.ofList (List.dropWhile Char.isWhitespace t.chars)) = arg
-  generalize OpenQASMImport.parseAngles
-    (String.ofList (List.dropWhile Char.isWhitespace t.chars)) = angs
   rfl
 
 /-- **Square.** `parseOpsB` realizes `OpenQASMImport.parseOps` along `paramLine`. -/
@@ -964,28 +956,116 @@ theorem bs_of_mem_splitGo (c : Char) (bs : ByteArray) (hi start k : ℕ) (acc : 
     · rfl
     · exact hacc x hx
 
-/-- **Square.** The lines of a source, split by scanning for the newline byte, are
-related by `paramLine` to the lines `String.splitOn` returns. -/
-theorem linesB_square (bs : ByteArray) (src : String) (h : paramSource.R bs src) :
-    List.Forall₂ paramLine.R (splitB '\n' (fullSpan bs)) (src.splitOn "\n") := by
-  obtain ⟨ha, rfl⟩ := h
+/-- The byte form of `OpenQASMImport.stmtsGo`: the statement spans of the bytes from index
+`k` below `hi`, the current statement starting at index `start`, after the spans `acc`
+(in reverse order). A span ends at its `;`, which it keeps; a `//` where the current
+statement is blank skips to the next newline byte. -/
+def stmtsGoB (bs : ByteArray) (hi : ℕ) (start k : ℕ) (blank : Bool) (acc : List ByteSpan) :
+    List ByteSpan × Bool :=
+  if k < hi then
+    if byteChar bs[k]! = ';' then
+      stmtsGoB bs hi (k + 1) (k + 1) true (⟨bs, start, k + 1⟩ :: acc)
+    else if blank = true ∧ byteChar bs[k]! = '/' ∧ headB? ⟨bs, k + 1, hi⟩ = some '/' then
+      stmtsGoB bs hi (scanWhile (· != '\n') bs hi (k + 1))
+        (scanWhile (· != '\n') bs hi (k + 1)) true acc
+    else stmtsGoB bs hi start (k + 1) (blank && (byteChar bs[k]!).isWhitespace) acc
+  else (acc.reverse, blank)
+termination_by hi - k
+decreasing_by
+  all_goals first | omega | (have := le_scanWhile (· != '\n') bs hi (k + 1); omega)
+
+theorem stmtsGoB_eq (bs : ByteArray) (hi start k : ℕ) (blank : Bool) (acc : List ByteSpan)
+    (hsk : start ≤ k) :
+    ((stmtsGoB bs hi start k blank acc).1.map ByteSpan.chars,
+        (stmtsGoB bs hi start k blank acc).2) =
+      OpenQASMImport.stmtsGo (⟨bs, k, hi⟩ : ByteSpan).chars
+        (⟨bs, start, k⟩ : ByteSpan).chars.reverse blank (acc.map ByteSpan.chars) := by
+  fun_induction stmtsGoB bs hi start k blank acc with
+  | case1 start k blank acc hk hc ih =>
+    rw [ih le_rfl, chars_of_lt bs hk, OpenQASMImport.stmtsGo, ite_eq_left hc,
+      chars_of_le (s := ⟨bs, k + 1, k + 1⟩) le_rfl]
+    simp [hc, chars_snoc bs hsk]
+  | case2 start k blank acc hk hc hcm ih =>
+    have hcm' : blank = true ∧ byteChar bs[k]! = '/' ∧
+        (⟨bs, k + 1, hi⟩ : ByteSpan).chars.head? = some '/' := by rwa [← headB?_eq]
+    rw [ih le_rfl, chars_of_lt bs hk, OpenQASMImport.stmtsGo,
+      ite_eq_right_of_eq_false _ _ (eq_false hc), ite_eq_left hcm',
+      chars_of_le (s := ⟨bs, _, _⟩) le_rfl, ← chars_dropWhileB]
+    rfl
+  | case3 start k blank acc hk hc hcm ih =>
+    have hcm' : ¬(blank = true ∧ byteChar bs[k]! = '/' ∧
+        (⟨bs, k + 1, hi⟩ : ByteSpan).chars.head? = some '/') := by rwa [← headB?_eq]
+    rw [ih (by omega), chars_of_lt bs hk, OpenQASMImport.stmtsGo,
+      ite_eq_right_of_eq_false _ _ (eq_false hc),
+      ite_eq_right_of_eq_false _ _ (eq_false hcm'),
+      chars_snoc bs hsk]
+    simp
+  | case4 start k blank acc hk =>
+    rw [chars_of_le (s := ⟨bs, k, hi⟩) (by simp only; omega), OpenQASMImport.stmtsGo]
+    simp [List.map_reverse]
+
+theorem bs_of_mem_stmtsGoB (bs : ByteArray) (hi start k : ℕ) (blank : Bool)
+    (acc : List ByteSpan) (hacc : ∀ x ∈ acc, x.bs = bs) :
+    ∀ x ∈ (stmtsGoB bs hi start k blank acc).1, x.bs = bs := by
+  fun_induction stmtsGoB bs hi start k blank acc with
+  | case1 start k blank acc _ _ ih => exact ih (by simp_all)
+  | case2 start k blank acc _ _ _ ih => exact ih hacc
+  | case3 start k blank acc _ _ _ ih => exact ih hacc
+  | case4 start k blank acc _ => simpa using hacc
+
+/-- The statement spans of a span, `none` if non-blank text follows the last `;`. -/
+def statementsB (s : ByteSpan) : Option (List ByteSpan) :=
+  let r := stmtsGoB s.bs s.hi s.lo s.lo true []
+  if r.2 then some r.1 else none
+
+theorem statementsB_eq (s : ByteSpan) :
+    (statementsB s).map (·.map ByteSpan.chars) = OpenQASMImport.statements s.chars := by
+  obtain ⟨bs, lo, hi⟩ := s
+  have h := stmtsGoB_eq bs hi lo lo true [] le_rfl
+  rw [chars_of_le (s := ⟨bs, lo, lo⟩) le_rfl] at h
+  rw [statementsB, OpenQASMImport.statements]
+  simp only [List.reverse_nil, List.map_nil] at h
+  rw [← h]
+  split <;> simp_all
+
+/-- Reading the statement spans of the bytes of an ASCII source with a function on spans
+that realizes a function on strings along `paramLine` is reading the statement texts of
+the source with that function. -/
+theorem bind_statementsB {γ δ : Type} (f : ByteSpan → Option γ) (g : String → Option γ)
+    (k : List γ → δ) (hfg : ∀ x s, paramLine.R x s → f x = g s) (src : String)
+    (ha : IsAsciiList src.toList) :
+    (statementsB (fullSpan src.toUTF8)).bind (fun ss => (ss.mapM f).map k) =
+      (OpenQASMImport.statements src.toList).bind
+        (fun ss => (ss.mapM fun s => g (String.ofList s)).map k) := by
   have hb := asciiBytes_toUTF8 ha
-  have hl := splitOn_ascii ha (sep := "\n") (c := '\n') rfl (by decide)
-  rw [← chars_fullSpan ha, ← chars_splitB] at hl
-  have hs : src.splitOn "\n" =
-      (splitB '\n' (fullSpan src.toUTF8)).map (String.ofList ∘ ByteSpan.chars) := by
-    have := congrArg (List.map String.ofList) hl
-    simpa [List.map_map, Function.comp_def] using this
-  rw [hs, List.forall₂_map_right_iff]
-  refine List.forall₂_same.mpr fun x hx => ⟨?_, rfl⟩
-  rw [bs_of_mem_splitGo '\n' _ _ _ _ [] (by simp) x hx]
-  exact hb
+  have he := statementsB_eq (fullSpan src.toUTF8)
+  rw [chars_fullSpan ha] at he
+  rw [← he]
+  cases hs : statementsB (fullSpan src.toUTF8) with
+  | none => rfl
+  | some ss =>
+    have hmem := bs_of_mem_stmtsGoB src.toUTF8 src.toUTF8.size 0 0 true [] (by simp)
+    simp only [Option.map_some, Option.bind_some]
+    congr 1
+    refine mapM_forall₂ (R := fun x s => paramLine.R x (String.ofList s))
+      (fun a b hab => hfg _ _ hab) ?_
+    rw [List.forall₂_map_right_iff]
+    refine List.forall₂_same.mpr fun x hx => ⟨?_, rfl⟩
+    have hx' : x ∈ (stmtsGoB src.toUTF8 src.toUTF8.size 0 0 true []).1 := by
+      simp only [statementsB, fullSpan] at hs
+      cases h2 : (stmtsGoB src.toUTF8 src.toUTF8.size 0 0 true []).2 <;>
+        simp only [h2, Bool.false_eq_true, ite_false, ite_true, reduceCtorEq,
+          Option.some.injEq] at hs
+      exact hs ▸ hx
+    rw [hmem x hx']
+    exact hb
 
-/-- The gates of a whole file read from its bytes, `none` if any line is unrecognised. -/
+/-- The gates of a whole file read from its bytes, `none` if any statement text is
+unrecognised or non-blank text follows the last `;`. -/
 def importGatesB (n : ℕ) (bs : ByteArray) : Option (List (Gate n)) :=
-  ((splitB '\n' (fullSpan bs)).mapM (parseOpsB n)).map List.flatten
+  (statementsB (fullSpan bs)).bind fun ss => (ss.mapM (parseOpsB n)).map List.flatten
 
-/-- **The circuit a file denotes**, read from its bytes; `none` if any line is
+/-- **The circuit a file denotes**, read from its bytes; `none` if any statement text is
 unrecognised. -/
 def importQASMB (n : ℕ) (bs : ByteArray) : Option (Circuit n) :=
   (importGatesB n bs).map Circuit.ofList
@@ -994,24 +1074,24 @@ def importQASMB (n : ℕ) (bs : ByteArray) : Option (Circuit n) :=
 theorem importGatesB_square (n : ℕ) :
     R_arrow paramSource (paramEqCod (Option (List (Gate n)))) (importGatesB n)
       (OpenQASMImport.importGates n) := by
-  intro bs src h
-  change importGatesB n bs = OpenQASMImport.importGates n src
-  rw [importGatesB, OpenQASMImport.importGates,
-    mapM_forall₂ (parseOpsB_square n) (linesB_square bs src h)]
+  rintro bs src ⟨ha, rfl⟩
+  change importGatesB n src.toUTF8 = OpenQASMImport.importGates n src
+  exact bind_statementsB (parseOpsB n) (OpenQASMImport.parseOps n) List.flatten
+    (fun _ _ h => parseOpsB_square n h) src ha
 
-/-- The statements of a whole file read from its bytes, `none` if any line is
-unrecognised. -/
+/-- The statements of a whole file read from its bytes, `none` if any statement text is
+unrecognised or non-blank text follows the last `;`. -/
 def importQB (n : ℕ) (bs : ByteArray) : Option (List (OpenQASMImport.QGate n)) :=
-  ((splitB '\n' (fullSpan bs)).mapM (parseQB n)).map List.flatten
+  (statementsB (fullSpan bs)).bind fun ss => (ss.mapM (parseQB n)).map List.flatten
 
 /-- **Square.** `importQB` realizes `OpenQASMImport.importQ` along `paramSource`. -/
 theorem importQB_square (n : ℕ) :
     R_arrow paramSource (paramEqCod (Option (List (OpenQASMImport.QGate n)))) (importQB n)
       (OpenQASMImport.importQ n) := by
-  intro bs src h
-  change importQB n bs = OpenQASMImport.importQ n src
-  rw [importQB, OpenQASMImport.importQ,
-    mapM_forall₂ (parseQB_square n) (linesB_square bs src h)]
+  rintro bs src ⟨ha, rfl⟩
+  change importQB n src.toUTF8 = OpenQASMImport.importQ n src
+  exact bind_statementsB (parseQB n) (OpenQASMImport.parseQ n) List.flatten
+    (fun _ _ h => parseQB_square n h) src ha
 
 /-- **Square.** `importQASMB` realizes `OpenQASMImport.importQASM` along `paramSource`. -/
 theorem importQASMB_square (n : ℕ) :
