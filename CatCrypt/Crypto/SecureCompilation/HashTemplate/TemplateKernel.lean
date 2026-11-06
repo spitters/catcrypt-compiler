@@ -685,7 +685,7 @@ def frameBack (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : Jas
             let r := regionWebsAt (regionWebsEx σ exportReg) none r0
             match regionLprogC a (legalizeRegion p) none (regionWebsEx σ exportReg) with
             | some (P, cert) =>
-                match firstBody (printedLprog P) with
+                match firstBody (regionPrinted P) with
                 | some b =>
                     match X86Backend.LprogBytes.encodeLfundefBytesChecked b with
                     | some bs =>
@@ -695,7 +695,7 @@ def frameBack (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : Jas
                               cert then
                           let q := regionCoParts (redLayout σ (frameSize b)) exportReg b t r.code
                             r.res cert
-                          some (frameSize b, printedLprog P, bs,
+                          some (frameSize b, regionPrinted P, bs,
                             roKeepB (redLayout σ (frameSize b)) exportReg q.ps q.cells
                               (q.outs ++ q.cellOuts) b q.ref)
                         else none
