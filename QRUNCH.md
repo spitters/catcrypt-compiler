@@ -22,6 +22,11 @@ OpenQASM 2 ─read─▶ qelib1 statements ─lower─▶ gates over exact angle
   ─fuse─▶ ─commute back across cx─▶ ─Clifford frame─▶ ─fuse─▶ OpenQASM 2 and phase
 ```
 
+The statements after the last pass are the input of the next round. Rounds repeat while the CX
+count, or at equal CX count the statement count, falls, at most eight times (`--rounds k`); the
+bounds of the rounds add up, and so do their exact phases
+([`norm_runRounds_sub_le`](CatCrypt/Quantum/QrunchRound.lean)).
+
 ## Main ideas
 
 Every angle is a + bπ with rational a and b. The rewriting passes therefore add and compare
@@ -89,9 +94,10 @@ Qiskit's reading and writing of OpenQASM 2 in the bridge, the segmentation at ba
 measurements, resets and classically controlled operations, and the printing in
 [`bridge/catq/qasm_io.py`](bridge/catq/qasm_io.py), the Lean compiler and runtime
 that run `catq-compile`, and the executable
-[`compileFile`](CatCrypt/Quantum/Benchmark/QrunchCompile.lean), which composes the stages and
-adds their phases in floating point. Without `--check` the fits are not checked and the bound is
-reported as `unchecked`.
+[`compileFile`](CatCrypt/Quantum/Benchmark/QrunchCompile.lean), which reads and writes the files
+and prints the exact phase in floating point; the composition of the stages within a round is
+proved ([`norm_round_sub_le`](CatCrypt/Quantum/QrunchRound.lean)). Without `--check` the fits
+are not checked and the bound is reported as `unchecked`.
 
 ## Where the code is
 

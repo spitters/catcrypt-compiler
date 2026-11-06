@@ -28,6 +28,7 @@ BRIDGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BRIDGE)
 sys.path.insert(0, os.path.join(BRIDGE, "tests"))
 from catq import VerifiedCompiler, decode_angle, encode_angle  # noqa: E402
+from catq.compiler import EPS_FIELD  # noqa: E402
 from branching import same_distribution, segments_equiv  # noqa: E402
 
 QSYNTH = sorted(glob.glob(os.path.join(os.path.dirname(BRIDGE), "bench", "qasm", "qsynth",
@@ -129,7 +130,7 @@ def run(qc: QuantumCircuit, name: str, level: int | str = 2, checked: bool = Fal
     row = {"circuit": name, "qubits": qc.num_qubits, "cx_in": rep.cx_in,
            "cx_out": rep.cx_out, "gates_in": qc.size(), "gates_out": out.size(),
            "seconds": round(rep.seconds, 2),
-           "eps": rep.rows[-1].split()[-1] if rep.rows else "0", **check(qc, out)}
+           "eps": rep.rows[-1].split()[EPS_FIELD] if rep.rows else "0", **check(qc, out)}
     print("\t".join(str(v) for v in row.values()), flush=True)
     assert row["equiv"] and row["exact"], row
     return row

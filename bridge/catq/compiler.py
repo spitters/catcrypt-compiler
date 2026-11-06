@@ -35,6 +35,8 @@ CATQ_COMPILE = os.environ.get("CATQ_COMPILE",
 ADDRESS_CAP = 4000 * 1024 * 1024
 LEVELS = ("1", "2", "2r")
 PHASE_FIELD = 12
+EPS_FIELD = 13
+ROUNDS_FIELD = 14
 
 
 class Compiler(Protocol):
@@ -71,8 +73,9 @@ def cx_count(circuit: QuantumCircuit) -> int:
 
 class _Server:
     """One `catq-compile --serve` process: a request line `<in> <out> <level>` per file,
-    answered by `ok <qubits> <cx_in> <cx_l2> <cx_out> <gates_out> <us> ... <phase> <eps>`
-    (`PHASE_FIELD` is the index of `<phase>`) or `error <reason>`."""
+    answered by `ok <qubits> <cx_in> <cx_l2> <cx_out> <gates_out> <us> ... <phase> <eps>
+    <rounds>` (`PHASE_FIELD`, `EPS_FIELD` and `ROUNDS_FIELD` are their indices; phase and eps
+    are summed over the rounds run) or `error <reason>`."""
 
     def __init__(self, exe: str, address_cap: int):
         self.proc = subprocess.Popen(["prlimit", f"--as={address_cap}", exe, "--serve"],
@@ -169,8 +172,8 @@ class VerifiedCompiler:
                     fields = row.split()
                     rep.segment_phases.append(float(Fraction(fields[PHASE_FIELD])))
                     phase += rep.segment_phases[-1]
-                    eps = None if eps is None or fields[-1] == "unchecked" \
-                        else eps + float(fields[-1])
+                    eps = None if eps is None or fields[EPS_FIELD] == "unchecked" \
+                        else eps + float(fields[EPS_FIELD])
         except (RunError, qasm2.QASM2ParseError) as e:
             rep.reason = f"{type(e).__name__}: {e}"
             rep.cx_out = rep.cx_in
