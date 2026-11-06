@@ -21,7 +21,7 @@ and its lowerings live in `SecureCompilation/VIR/`.
 | [`JasminAST`](JasminAST.lean), [`JasminSem`](JasminSem.lean), [`JasminOps`](JasminOps.lean) | the Jasmin AST, its semantics and x86 operation semantics |
 | [`JasminCoqSemMirror`](JasminCoqSemMirror.lean) | a port of `jasminc`'s Coq operational semantics |
 | [`JasminToRustEmit`](JasminToRustEmit.lean), [`JasminToRustEmitSimulates`](JasminToRustEmitSimulates.lean) | Jasmin AST to safe Rust, with its simulation theorem |
-| [`JincParser`](JincParser.lean), [`JincToCom`](JincToCom.lean), [`JincElab`](JincElab.lean), [`JincToLowCT`](JincToLowCT.lean) | the `.jinc` import path: text, untyped AST, `Com jasminDialect`, the compiler's x86; [JINC_IMPORT.md](../../../JINC_IMPORT.md) states its fragment, its imports and its theorems |
+| [`JincToCom`](JincToCom.lean), [`JincElab`](JincElab.lean), [`JincToLowCT`](JincToLowCT.lean) | the `.jinc` import path: text, untyped AST, `Com jasminDialect`, the compiler's x86; [JINC_IMPORT.md](../../../JINC_IMPORT.md) states its fragment, its imports and its theorems |
 | [`MemoryModel`](MemoryModel.lean), [`Hoare`](Hoare.lean) | the flat memory model and Hoare triples over `JasminMemState` |
 | [`ISA`](ISA.lean) | the ISA abstraction for compiler targets |
 | [`BignumExec`](BignumExec.lean), [`InstrRReflect`](InstrRReflect.lean), `BignumHoare/` | the bignum SSA fragment, its interpreter and reflective evaluators |

@@ -116,8 +116,8 @@ compiles _to_ the Jasmin dialect, which reaches x86 through CatCrypt's own backe
 or as printed Jasmin text through Jasmin's compiler `jasminc`; the Jasmin printer is
 proved structurally only (`VIR/JasminPrintCorrect.lean`). It also imports _from_
 Jasmin: hand-written Jasmin leaves are imported through the same backend, and
-`JincParserDemo` parses one `.jinc` leaf into the intermediate representation and
-inspects it. A further path prints a
+`MldsaJincImport` elaborates one `.jinc` leaf to the intermediate representation and
+renders it to x86. A further path prints a
 Jasmin program as MLIR text for `mlir-opt`, `mlir-translate` and `llc`. That path has
 no end-to-end correctness theorem; `MLIRBackend/Denote.lean` proves the shape of the
 emitted text and names the external toolchain's correctness as the opaque

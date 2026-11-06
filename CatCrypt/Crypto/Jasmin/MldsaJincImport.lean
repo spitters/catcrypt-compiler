@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.Number.MontgomeryReduction
 
 The per-coefficient Montgomery reduction at the ML-DSA parameters
 (`q = 8380417`, radix `R = 2^32`) as a straight-line Jasmin `.jinc` leaf, taken
-through `JincParser` / `JincToCom` / `JincElab` to a `Com jasminDialect` and
+through `JincToCom` / `JincElab` to a `Com jasminDialect` and
 rendered to AT&T x86 by `Com.toLprogPhysAbi` / `renderLprogAtt`.
 
 `mldsaMontRedWord` is the 64-bit word computation the leaf performs, and

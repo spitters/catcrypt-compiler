@@ -59,8 +59,8 @@ tables with the accepted programs.
   `FrontOracle` with the body selection (`Hax.HaxFrontOracle`), the `u64` tables
   `hax64Exit` and `hax64WExit` (`Hax.Hax64Table`), the spine and typing facts of a body
   (`Hax.HaxSpine`) and the word results of source runs (`Haxc.WordResult`).
-- In the Jasmin `.jinc` importer (`CatCrypt/Crypto/Jasmin/`), `JincParser` and
-  `JincToCom` read the straight-line fragment, `JincElab` elaborates it to
+- In the Jasmin `.jinc` importer (`CatCrypt/Crypto/Jasmin/`),
+  `JincToCom` reads the straight-line fragment, `JincElab` elaborates it to
   `Com jasminDialect`, and `JincToLowCT` emits `for` and `while` as the loop nodes
   `RFor` and `RWhileNz`. `JincInline` partially evaluates a Jasmin source unit
   (inlining, constant folding, scalar replacement of register arrays).

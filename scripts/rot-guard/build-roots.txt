@@ -66,7 +66,6 @@ CatCrypt.Crypto.Jasmin.Examples.HkdfSha256JasminEmit
 CatCrypt.Crypto.Jasmin.Examples.HmacSha256JasminEmit
 CatCrypt.Crypto.Jasmin.Examples.InstrRReflectDemo
 CatCrypt.Crypto.Jasmin.Examples.JasminCoqSemMirrorDemo
-CatCrypt.Crypto.Jasmin.Examples.JincParserDemo
 CatCrypt.Crypto.Jasmin.Examples.MontUToEdwardsEmit
 CatCrypt.Crypto.Jasmin.Examples.P256DemoEmit
 CatCrypt.Crypto.Jasmin.Examples.SHA512CompressDSL

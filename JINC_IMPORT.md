@@ -5,7 +5,6 @@ without `jasminc`.
 
 ```
 Jasmin source text
-   │  JincParser   text to JasminCoqSemMirror.Cmd, the straight-line subset
    │  JincToCom    text to the untyped JFun
    │  JincInline   a source unit to JFun, by partial evaluation
    ├▶ JincElab     JFun to Com jasminDialect, with loops unrolled
@@ -43,7 +42,6 @@ correctness techniques.
 | `JincToLowCT` | `JFun` to `LowCT` with loop nodes, and x86-64 | constant time of the rendered `Lprog` |
 | `MldsaJincImport` | the ML-DSA Montgomery reduction | `mldsaMontRedWord_toNat`, `mldsaMontRed_montgomery_law` |
 | `KeccakJincImport` | formosa-keccak's permutation, its sponges and the AVX2 four-way permutation | known-answer tests; `KeccakJincEmit.keccakF1600_constant_time` |
-| `Examples/JincParserDemo` | parser fidelity | `parsedCmdValue = handGf16MulStepCmd` |
 
 ## Adding an import
 
