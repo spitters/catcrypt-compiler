@@ -1318,7 +1318,8 @@ theorem blockOkR_fallW {outs : List String} {L : Nat → List String × Bool}
   · simp only [guardsT, Bool.and_eq_true, List.all_eq_true, List.mem_append]
     refine ⟨fun x hx => hx.elim (hg x) (fun h => hg x (hsub x h)), fun x hx => ⟨?_, ?_⟩⟩
     · obtain ⟨y, hy, hxy⟩ := List.mem_flatMap.mp hx
-      simpa [normGT] using ⟨y, hsub y hy, hxy⟩
+      simp only [Bool.or_eq_true]
+      exact Or.inl (by simpa [normGT] using ⟨y, hsub y hy, hxy⟩)
     · simp only [okInGT, Bool.and_eq_true]
       obtain ⟨y, hy, hxy⟩ := List.mem_flatMap.mp hx
       refine ⟨SG.normT_refsLt hE (hg y (hsub y hy)) x hxy,
@@ -1335,8 +1336,8 @@ theorem blockOkR_fallW {outs : List String} {L : Nat → List String × Bool}
         cases x <;> simp_all [termAgreeT, AllocCheck.LcmdCFG.isTermR]
   · simp only [exitAgreeT, AllocCheck.LcmdCFG.Term.succs, Option.toList, List.all_nil,
       AllocCheck.LcmdCFG.Term.halts, Bool.not_true, Bool.false_or, Bool.true_and,
-      Bool.and_eq_true, List.all_eq_true, beq_iff_eq]
-    refine ⟨fun r hr => ⟨congrFun e.1 r, ?_⟩, fun q hq =>
+      Bool.and_eq_true, List.all_eq_true]
+    refine ⟨fun r hr => regAgreeT_of_eq (congrFun e.1 r) ?_, fun q hq =>
       arrAgreeT_of_eq (congrFun e.2.1 q) ?_⟩
     · simp only [okInT, Bool.and_eq_true]
       refine ⟨hI.1.1 r, okIn_of_live hL (fun v hv => ?_) (fun h => ?_)⟩

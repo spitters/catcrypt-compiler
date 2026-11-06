@@ -55,13 +55,27 @@ The two control-flow graphs (`AllocCheck.LcmdCFG.cfgOf`) must have the same numb
 blocks and the same terminators. Each block pair is run symbolically from one symbolic
 start state; the pair is accepted when the source block always fails or ends in `Lret`
 (no halting run passes through it), or when every guard of the normal form (`normG`) of the
-rewritten block's guards is one of the source block, two jumps name the same function, two
+rewritten block's guards is one of the source block or holds wherever the source block's
+guards hold, two jumps name the same function, two
 branch conditions have the same symbolic value, and at each exit the final symbolic states
 agree on the registers live at the successor (on `outs` at an exit that leaves the body), on
 the zero, carry and overflow flags when the flags are live, and on every array written,
 with every start register these values read live at the block, and the flags live at the
-block when a value reads a start flag. The live sets are computed by a fixpoint iteration
-(`liveIter`) and checked, not trusted.
+block when a value reads a start flag. A register agrees when its two words are one word or
+evaluate alike wherever the source block's guards hold (`regAgree`). The live sets are
+computed by a fixpoint iteration (`liveIter`) and checked, not trusted.
+
+## Carries in flags
+
+The check over the term table decides the two semantic agreements by canonical keys (section
+14b): a normal form `STerm.normC` of each node over the keys of its children, computed once for
+the table (`CanonT.build`) with the widths that the source block's guards state of start
+registers (`guardFacts`). The value form of a carry step (the three-source `ADCX`, its
+carry-out `ADCXHI`) and its flag form (`ADD`, `ADC`, `ADCX`, `ADOX` and the carry and overflow
+flags they write) have one key, and so have the sources of an addition in either order. Two exit
+words with one key evaluate alike (`canonEqT_ev`), and a guard decided by the widths of the keys
+holds (`SG.impT_holds`), so a body whose carries are held in the flags is checked against the
+same computation with materialised carries.
 
 ## Shared terms
 
@@ -94,6 +108,10 @@ instances at it (`symLaws_x86`, `symSubst_x86`).
   the symbolic step layer by layer, and runs.
 * `SDec`, `symDec`: the symbolic value of a branch condition.
 * `blockOk`, `ownedCheckWith`, `ownedCheckM`: the checker.
+* `STerm.semEqG`, `SG.impG`, `regAgree`: agreement of two words and a guard implied by the
+  source guards, at every evaluation where those guards hold.
+* `STerm.normC`, `CanonT`, `CanonT.build`, `canonEqT`, `guardFacts`, `SG.impT`, `regAgreeT`:
+  the canonical keys of a term table and the checks over them.
 * `STerm.subst`, `TEnt`, `Tbl`, `Tbl.intern`, `tRun`: substitution, the term table and the
   run over it.
 * `blockRuns`, `blockOkR`, `runsOf`, `ownedCheckWithR`: the checker over the table.
@@ -119,6 +137,12 @@ instances at it (`symLaws_x86`, `symSubst_x86`).
   over the table.
 * `ownedCheckWith_sound_at`, `ownedCheckM_sound_at`: soundness of the checker over an
   instruction set.
+* `carryWord_adc`, `carryBit_adc`, `carryOutBit_eq`, `borrowOutBit_eq`, `aluBit_add`,
+  `aluBit_sub`, `binW_add_carry`, `binW_sub_borrow`: the words and carries of one carry step in
+  its two forms agree.
+* `STerm.normC_ev`, `CanonT.ok_build`, `canonEqT_ev`, `SG.impT_holds`, `guardFacts_sound`,
+  `regAgreeT_spec`: the normal form evaluates as the node, the canonical keys describe the
+  table, and words with one key evaluate alike.
 * `ownedCheckWith_sound`, `ownedCheckM_sound`, `ownedCheckTy_sound`,
   `ownedCheckTy_sound_mem`: soundness of the checker.
 -/
@@ -2777,6 +2801,52 @@ def vIn (n : List String × Bool) (vs : List String) : Bool := vs.all (fun v => 
 def okIn (n : List String × Bool) (vs : List String) (rf : Bool) : Bool :=
   vIn n vs && (!rf || n.2)
 
+/-! ### Agreement at every evaluation
+
+The checker on the term table (`blockOkR`) accepts two exit words that are not one word when
+their canonical keys agree (`canonEqT`), and a guard of the rewritten block that is not one
+of the source block when the widths of the canonical keys decide it (`SG.impT`). The check
+`blockOk` that its soundness is stated for reads these as the facts they establish: the two
+words evaluate alike, and the guard holds, at every evaluation where the guards of the source
+block hold. These two tests are classical; the checker never evaluates them. -/
+
+/-- The words `t` and `t'` evaluate alike at every evaluation where the guards `gs` hold. -/
+noncomputable def STerm.semEqG (gs : List SG) (t t' : STerm) : Bool :=
+  @decide (∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool),
+    AllG V A C O gs → t.ev V A C O = t'.ev V A C O) (Classical.propDecidable _)
+
+/-- The guard `g` holds at every evaluation where the guards `gs` hold. -/
+noncomputable def SG.impG (gs : List SG) (g : SG) : Bool :=
+  @decide (∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool),
+    AllG V A C O gs → g.holds V A C O) (Classical.propDecidable _)
+
+/-- The exit words `t` (source) and `t'` (rewritten) of a register agree at a block with live
+    set `n` under the guards `gs` of the source block: they are one word, or they evaluate
+    alike wherever `gs` hold and `t'` may be compared at the block; and `t` may be compared at
+    the block. -/
+noncomputable def regAgree (n : List String × Bool) (gs : List SG) (t t' : STerm) : Bool :=
+  (t == t' || (STerm.semEqG gs t t' && okIn n t'.vars t'.readsF)) && okIn n t.vars t.readsF
+
+theorem STerm.semEqG_spec {gs : List SG} {t t' : STerm} (h : STerm.semEqG gs t t' = true)
+    {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} (hg : AllG V A C O gs) :
+    t.ev V A C O = t'.ev V A C O :=
+  @of_decide_eq_true _ (Classical.propDecidable _) h V A C O hg
+
+theorem SG.impG_spec {gs : List SG} {g : SG} (h : SG.impG gs g = true)
+    {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} (hg : AllG V A C O gs) :
+    g.holds V A C O :=
+  @of_decide_eq_true _ (Classical.propDecidable _) h V A C O hg
+
+theorem STerm.semEqG_of {gs : List SG} {t t' : STerm}
+    (h : ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool),
+      AllG V A C O gs → t.ev V A C O = t'.ev V A C O) : STerm.semEqG gs t t' = true :=
+  @decide_eq_true _ (Classical.propDecidable _) h
+
+theorem SG.impG_of {gs : List SG} {g : SG}
+    (h : ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool),
+      AllG V A C O gs → g.holds V A C O) : SG.impG gs g = true :=
+  @decide_eq_true _ (Classical.propDecidable _) h
+
 /-- **The laws of a symbolic step against an instruction set.** The symbolic step `sym` and
     the symbolic branch condition `dec` describe the instruction set `I`: `sym` describes
     `I.step` exactly (`step_sound`), `dec` evaluates to `I.condEval` (`dec_sound`), `sym`
@@ -2934,24 +3004,25 @@ def arrAgree (n : List String × Bool) (gs gs' : List SG) (a a' : SArr) : Bool :
     terminator `T`: on the registers live at each successor and, when the flags are live
     there, on the zero, carry and overflow flags; on `outs` when the block may leave the
     body; and on every array written, up to stores of the element read (`arrAgree`, under
-    the guards `gs` and `gs'` of the two runs). Every value compared passes `okIn n`. -/
-def exitAgree (outs : List String) (L : Nat → List String × Bool) (n : List String × Bool)
+    the guards `gs` and `gs'` of the two runs). A register agrees when its two words are one
+    word or evaluate alike wherever the guards `gs` of the source run hold (`regAgree`).
+    Every value compared passes `okIn n`. -/
+noncomputable def exitAgree (outs : List String) (L : Nat → List String × Bool)
+    (n : List String × Bool)
     (T : Term) (ss ss' : SSt) (gs gs' : List SG) : Bool :=
   T.succs.all (fun j =>
-      (L j).1.all (fun r =>
-          ss.regs r == ss'.regs r && okIn n (ss.regs r).vars (ss.regs r).readsF) &&
+      (L j).1.all (fun r => regAgree n gs (ss.regs r) (ss'.regs r)) &&
         (!(L j).2 || (ss.zf == ss'.zf && okIn n ss.zf.vars ss.zf.readsInit &&
           ss.cf == ss'.cf && okIn n ss.cf.vars ss.cf.readsF &&
           ss.of == ss'.of && okIn n ss.of.vars ss.of.readsF))) &&
-    (!T.halts ||
-      outs.all (fun r => ss.regs r == ss'.regs r && okIn n (ss.regs r).vars (ss.regs r).readsF)) &&
+    (!T.halts || outs.all (fun r => regAgree n gs (ss.regs r) (ss'.regs r))) &&
     (ss.awr ++ ss'.awr).all (fun q => arrAgree n gs gs' (ss.arrs q) (ss'.arrs q))
 
 /-- The check of block `k` of the source body `B` (block `b`) against block `k` of the
     rewritten body `B'` (block `b'`), both with terminator `T`, for the live sets `L`, under
     the symbolic step `sym` and branch condition `dec`. -/
-def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T : Term)
-    (B B' : List LinstrRM) (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
+noncomputable def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat)
+    (T : Term) (B B' : List LinstrRM) (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
     (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match T with
   | .ret => true
@@ -2962,7 +3033,8 @@ def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T 
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) SSt.start sym with
           | .ok ss' gs' =>
-              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
+              (normG gs').all (fun g =>
+                  ((normG gs).contains g || SG.impG gs g) && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
                 exitAgree outs L (L k) T ss ss' gs gs'
           | _ => false
@@ -2970,7 +3042,7 @@ def blockOk (outs : List String) (L : Nat → List String × Bool) (k : Nat) (T 
 /-- The checker for the live sets `L`: the two bodies are non-empty, their graphs have the
     same number of blocks and the same terminators, and every block pair passes
     `blockOk`. -/
-def ownedCheckWith (outs : List String) (L : Nat → List String × Bool)
+noncomputable def ownedCheckWith (outs : List String) (L : Nat → List String × Bool)
     (B B' : List LinstrRM) (sym : LinstrRM → SSt → SOut := symStep)
     (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
@@ -3013,13 +3085,11 @@ theorem exitAgree_spec {outs : List String} {L : Nat → List String × Bool}
     {n : List String × Bool} {T : Term} {ss ss' : SSt} {gs gs' : List SG}
     (h : exitAgree outs L n T ss ss' gs gs' = true) :
     (∀ j ∈ T.succs,
-      (∀ r ∈ (L j).1, ss.regs r = ss'.regs r ∧
-        okIn n (ss.regs r).vars (ss.regs r).readsF = true) ∧
+      (∀ r ∈ (L j).1, regAgree n gs (ss.regs r) (ss'.regs r) = true) ∧
       ((L j).2 = true → ss.zf = ss'.zf ∧ okIn n ss.zf.vars ss.zf.readsInit = true ∧
         ss.cf = ss'.cf ∧ okIn n ss.cf.vars ss.cf.readsF = true ∧
         ss.of = ss'.of ∧ okIn n ss.of.vars ss.of.readsF = true)) ∧
-    (T.halts = true → ∀ r ∈ outs, ss.regs r = ss'.regs r ∧
-      okIn n (ss.regs r).vars (ss.regs r).readsF = true) ∧
+    (T.halts = true → ∀ r ∈ outs, regAgree n gs (ss.regs r) (ss'.regs r) = true) ∧
     (∀ q ∈ ss.awr ++ ss'.awr, arrAgree n gs gs' (ss.arrs q) (ss'.arrs q) = true) := by
   simp only [exitAgree, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
     Bool.not_eq_true'] at h
@@ -3061,15 +3131,17 @@ theorem exit_rel {outs : List String} {L : Nat → List String × Bool} {n : Lis
     · simp only [List.mem_append, not_or] at hq
       rw [hg.2 q hq.1, hg'.2 q hq.2]
       rfl
-  have hreg : ∀ r, ss.regs r = ss'.regs r →
-      okIn n (ss.regs r).vars (ss.regs r).readsF = true →
+  have hreg : ∀ r, regAgree n gs (ss.regs r) (ss'.regs r) = true →
       u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r := by
-    intro r e v
-    rw [hH'.1 r, hH.1 r, ← e]
-    exact hterm _ v
+    intro r h
+    simp only [regAgree, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h
+    obtain ⟨e | ⟨hs, v'⟩, v⟩ := h
+    · rw [hH'.1 r, hH.1 r, ← e]
+      exact hterm _ v
+    · rw [hH'.1 r, hH.1 r, hterm _ v']
+      exact (STerm.semEqG_spec hs hG).symm
   refine ⟨fun j hj => ⟨hlfn, harr, hmem, fun r hr => ?_, fun hl => ?_⟩, fun hT => ?_⟩
-  · obtain ⟨e, v⟩ := (hs j hj).1 r hr
-    exact hreg r e v
+  · exact hreg r ((hs j hj).1 r hr)
   · obtain ⟨e, z, ec, zc, eo, zo⟩ := (hs j hj).2 hl
     refine ⟨?_, ?_, ?_⟩
     · rw [hH'.2.2.1, hH.2.2.1, ← e]
@@ -3077,9 +3149,7 @@ theorem exit_rel {outs : List String} {L : Nat → List String × Bool} {n : Lis
         (fun hr => hZ ((okIn_spec z).2 hr))
     · rw [hH'.2.2.2.1, hH.2.2.2.1, ← ec, hterm _ zc]
     · rw [hH'.2.2.2.2, hH.2.2.2.2, ← eo, hterm _ zo]
-  · refine ⟨fun r hr => ?_, harr, hmem⟩
-    obtain ⟨e, v⟩ := hh hT r hr
-    exact hreg r e v
+  · exact ⟨fun r hr => hreg r (hh hT r hr), harr, hmem⟩
 
 /-! ## 11. Blocks of a checked body -/
 
@@ -3227,7 +3297,9 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
     symRun (bodyAt B b T) SSt.start sym = .fail ∨
       ∃ ss gs ss' gs', symRun (bodyAt B b T) SSt.start sym = .ok ss gs ∧
         symRun (bodyAt B' b' T) SSt.start sym = .ok ss' gs' ∧
-        (∀ g ∈ normG gs', g ∈ normG gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
+        (∀ g ∈ normG gs',
+          (∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool),
+            AllG V A C O gs → g.holds V A C O) ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
           (g.readsF = true → (L k).2 = true)) ∧
         termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec = true ∧
         exitAgree outs L (L k) T ss ss' gs gs' = true := by
@@ -3237,7 +3309,8 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) SSt.start sym with
           | .ok ss' gs' =>
-              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
+              (normG gs').all (fun g =>
+                  ((normG gs).contains g || SG.impG gs g) && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
                 exitAgree outs L (L k) T ss ss' gs gs'
           | _ => false) = true := by
@@ -3252,10 +3325,14 @@ theorem blockOk_spec {outs : List String} {L : Nat → List String × Bool} {k :
       cases ht : symRun (bodyAt B' b' T) SSt.start sym with
       | ok ss' gs' =>
           rw [ht] at h2
-          simp only [Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at h2
+          simp only [Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
+            List.contains_iff_mem] at h2
           obtain ⟨⟨hg, hta⟩, hex⟩ := h2
-          exact Or.inr ⟨ss, gs, ss', gs', rfl, rfl,
-            fun g hg' => ⟨(hg g hg').1, okIn_spec (hg g hg').2⟩, hta, hex⟩
+          refine Or.inr ⟨ss, gs, ss', gs', rfl, rfl, fun g hg' => ⟨fun V A C O hA => ?_,
+            okIn_spec (hg g hg').2⟩, hta, hex⟩
+          rcases (hg g hg').1 with hm | hi
+          · exact allG_normG.mpr hA g hm
+          · exact SG.impG_spec hi hA
       | fail => rw [ht] at h2; cases h2
       | unk => rw [ht] at h2; cases h2
 
@@ -3462,14 +3539,13 @@ theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpe
     ((B'.drop s'.prog.base.reg.lpc).take
     (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) SSt.start _ _ _ _ _ s' hH0'
   rw [symRun_entry_at hL.label hE' hle', hS'] at hD'
-  have hAllN := allG_normG.mpr hAll
   have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
     allG_normG.mp fun g hg =>
       (SG.holds_congr _ g (fun r hr => (hV r ((hgs g hg).2.1 r hr)).symm)
         (fun e => by
           obtain ⟨-, hc, ho⟩ := hrel.2.2.2.2 ((hgs g hg).2.2 e)
           exact ⟨hc.symm, ho.symm⟩)).mp
-      (hAllN g (hgs g hg).1)
+      ((hgs g hg).1 _ _ _ _ hAll)
   obtain ⟨u', hu'⟩ := Option.isSome_iff_exists.mp (hD'.2 hAll')
   obtain ⟨-, hH', hFr'⟩ := hD'.1 u' hu'
   have hplain' := body_plain hc.hG' hk' hs1'
@@ -3482,7 +3558,7 @@ theorem sim_step {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOpe
   obtain ⟨hsucc, hhalt⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
     (symRun_good_at hL.good _ SSt.good_start hS) (symRun_good_at hL.good _ SSt.good_start hS')
     (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hAll
-    (allG_normG.mp fun g hg => hAllN g (hgs g hg).1) hex
+    (allG_normG.mp fun g hg => (hgs g hg).1 _ _ _ _ hAll) hex
   have hfle : f ≤ fuel := by omega
   obtain ⟨m', hm'⟩ : ∃ m', ∀ f0, I.lsemFuelMemF (singletonProgM fn B') (m' + f0) s' =
       I.lsemFuelMemF (singletonProgM fn B') f0 u' := ⟨_, hrun'⟩
@@ -4944,6 +5020,790 @@ theorem tRun_subst {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E) (is : 
     (tRun is ss T).2.subst σ = symRun is (ss.subst σ) :=
   tRun_subst_at symStep_subst h is ss T hx
 
+/-! ## 14b. Canonical keys
+
+A carry step has two forms. In the value form the carry is a register: the three-source `ADCX
+d, [a, b, c]` of `lsemStepMC` is the word `(a + b) + c` (`bin "ADD"`) and `ADCXHI` its
+carry-out (`STerm.cout`). In the flag form the carry is the carry flag: `ADD`, `ADC`, `ADCX`
+(and `ADOX` on the overflow flag) are the words `bin "ADD"` and `carryW`, and their carry-out
+the flag terms `aluF` and `carryF`. The two forms of one computation have different terms.
+
+`STerm.normC` is a normal form of one node over the normal forms of its children: a sum of
+two words of width `64` is `carryW .adcx x y 0`, a sum of such a word and a bit is
+`carryW .adcx x y c`, the words of `ADC`, `ADCX` and `ADOX` are `carryW .adcx`, every
+carry-out of an addition of words of width `64` is `carryF .adcx false`, the carry and
+overflow flags of `AND`, `OR`, `XOR` are the zero bit, the sources of an addition are in a
+canonical order, and differences and borrows are normalised alike to `carryW .sbb` and
+`carryF .sbb false`. The widths it needs are the widths that the outermost constructors fix
+(`STerm.swC`), and those that facts `F` state of start registers. `CanonT.build F E` computes
+the canonical keys of a term table `E` in one pass, hash-consing the keys, so that two words
+with one canonical form (`canonEqT`) evaluate alike at every evaluation where the facts hold
+(`canonEqT_ev`); `SG.impT` is a guard that the widths of the keys decide. The facts that the
+check uses are the widths that the normalised guards of the source block state of start
+registers (`guardFacts`), which hold wherever those guards hold (`guardFacts_sound`). -/
+
+section Canon
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
+  (x86_ADD x86_SUB x86_AND x86_OR x86_XOR waddcarry add_carry sub_borrow rflags_of_aluop
+   rflags_of_bwop wunsigned)
+
+/-! ### The words of one carry step -/
+
+theorem carryWord_adc (a b : BitVec 64) (c : Bool) :
+    carryWord .adc a b c = carryWord .adcx a b c := by
+  simp only [carryWord, x86_ADC, x86_ADCX, waddcarry, rflags_of_aluop, add_carry]
+
+theorem carryWord_adcx_comm (a b : BitVec 64) (c : Bool) :
+    carryWord .adcx a b c = carryWord .adcx b a c := by
+  simp only [carryWord, x86_ADCX, waddcarry, Nat.add_comm a.toNat b.toNat]
+
+theorem carryBit_adc (a b : BitVec 64) (c : Bool) :
+    carryBit .adc false a b c = carryBit .adcx false a b c := by
+  have ha := a.isLt
+  have hb := b.isLt
+  simp only [carryBit, x86_ADC, x86_ADCX, waddcarry, rflags_of_aluop, add_carry, wunsigned,
+    Option.getD_some, Bool.false_eq_true, ↓reduceIte, BitVec.toNat_ofNat]
+  rw [decide_eq_decide]
+  constructor
+  · intro h
+    by_contra h'
+    exact h (Nat.mod_eq_of_lt (by omega))
+  · intro h e
+    have := Nat.mod_lt (a.toNat + b.toNat + (if c then 1 else 0)) (by norm_num : 0 < 2 ^ 64)
+    omega
+
+theorem carryBit_adcx_comm (a b : BitVec 64) (c : Bool) :
+    carryBit .adcx false a b c = carryBit .adcx false b a c := by
+  simp only [carryBit, x86_ADCX, waddcarry, Nat.add_comm a.toNat b.toNat]
+
+theorem carryBit_adcx_zero (c : Bool) : carryBit .adcx false 0 0 c = false := by
+  cases c <;> simp [carryBit, x86_ADCX, waddcarry]
+
+theorem aluBit_add (a b : BitVec 64) : aluBit .add false a b = carryBit .adcx false a b false := by
+  rw [← carryBit_adc]
+  simp [aluBit, aluB5, x86_ADD, carryBit, x86_ADC, add_carry, rflags_of_aluop, BitVec.toNat_add]
+
+theorem aluBit_logic {op : AluOp} (h : op = .and ∨ op = .or ∨ op = .xor) (ofl : Bool)
+    (a b : BitVec 64) : aluBit op ofl a b = false := by
+  rcases h with rfl | rfl | rfl <;> cases ofl <;>
+    simp [aluBit, aluB5, x86_AND, x86_OR, x86_XOR, rflags_of_bwop]
+
+theorem binW_add (a b : BitVec 64) : binW 64 "ADD" a b = carryWord .adcx a b false := by
+  simp only [binW, applyOpnN, carryWord, x86_ADCX, waddcarry]
+  apply BitVec.eq_of_toNat_eq
+  simp
+
+theorem binW_add_carry (a b : BitVec 64) (c : BitVec 1) :
+    binW 64 "ADD" (carryWord .adcx a b false) (c.setWidth 64) =
+      carryWord .adcx a b (c.getLsbD 0) := by
+  simp only [binW, applyOpnN, carryWord, x86_ADCX, waddcarry]
+  apply BitVec.eq_of_toNat_eq
+  have hc : c.toNat = if c.getLsbD 0 then 1 else 0 := by
+    have : c = 0#1 ∨ c = 1#1 := by bv_omega
+    rcases this with rfl | rfl <;> rfl
+  simp [BitVec.toNat_setWidth, hc]
+
+theorem bv1_toNat (c : BitVec 1) : c.toNat = if c.getLsbD 0 then 1 else 0 := by
+  have : c = 0#1 ∨ c = 1#1 := by bv_omega
+  rcases this with rfl | rfl <;> rfl
+
+theorem ite_bv1 (p : Prop) [Decidable p] :
+    (if p then 1#1 else 0#1) = BitVec.ofBool (decide p) := by
+  by_cases h : p <;> simp [h]
+
+theorem carryBit_adcx_eq (a b : BitVec 64) (c : Bool) :
+    carryBit .adcx false a b c = decide (2 ^ 64 ≤ a.toNat + b.toNat + (if c then 1 else 0)) := by
+  simp only [carryBit, x86_ADCX, waddcarry, Option.getD_some]
+
+theorem carryOutBit_eq (a b : BitVec 64) (c : BitVec 1) :
+    JasminDialect.carryOutBit a b c = BitVec.ofBool (carryBit .adcx false a b (c.getLsbD 0)) := by
+  rw [carryBit_adcx_eq, JasminDialect.carryOutBit, bv1_toNat]
+  exact ite_bv1 _
+
+theorem carryBit_sbb (a b : BitVec 64) (c : Bool) :
+    carryBit .sbb false a b c = decide (a.toNat < b.toNat + (if c then 1 else 0)) := by
+  have ha := a.isLt
+  have hb := b.isLt
+  simp only [carryBit, x86_SBB, sub_borrow, wunsigned, Option.getD_some, Bool.false_eq_true,
+    ↓reduceIte, BitVec.toNat_ofInt]
+  rw [decide_eq_decide]
+  cases c <;> simp only [Bool.false_eq_true, ↓reduceIte] <;> omega
+
+theorem borrowOutBit_eq (a b : BitVec 64) (c : BitVec 1) :
+    JasminDialect.borrowOutBit a b c = BitVec.ofBool (carryBit .sbb false a b (c.getLsbD 0)) := by
+  rw [carryBit_sbb, JasminDialect.borrowOutBit, bv1_toNat]
+  exact ite_bv1 _
+
+theorem aluBit_sub (a b : BitVec 64) : aluBit .sub false a b = carryBit .sbb false a b false := by
+  have ha := a.isLt
+  have hb := b.isLt
+  rw [carryBit_sbb]
+  simp only [aluBit, aluB5, x86_SUB, Option.getD_some, Bool.false_eq_true, ↓reduceIte]
+  apply Bool.eq_iff_iff.mpr
+  constructor
+  · intro hd
+    have h := of_decide_eq_true hd
+    simp only [wunsigned, BitVec.toNat_sub] at h
+    exact decide_eq_true (by omega)
+  · intro hd
+    have h := of_decide_eq_true hd
+    exact decide_eq_true (by simp only [wunsigned, BitVec.toNat_sub]; omega)
+
+theorem binW_sub (a b : BitVec 64) : binW 64 "SUB" a b = carryWord .sbb a b false := by
+  have ha := a.isLt
+  have hb := b.isLt
+  simp only [binW,
+    ite_eq_right_iff.mpr (fun h : ("SUB" : String) = "MULXHI" => absurd h (by decide)), applyOpnN,
+    Option.getD_some, carryWord, x86_SBB, sub_borrow, Bool.false_eq_true, ↓reduceIte]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_sub, BitVec.toNat_ofInt]
+  omega
+
+theorem binW_sub_borrow (a b : BitVec 64) (c : BitVec 1) :
+    binW 64 "SUB" (carryWord .sbb a b false) (c.setWidth 64) =
+      carryWord .sbb a b (c.getLsbD 0) := by
+  have ha := a.isLt
+  have hb := b.isLt
+  have hc := bv1_toNat c
+  rw [← binW_sub]
+  simp only [binW,
+    ite_eq_right_iff.mpr (fun h : ("SUB" : String) = "MULXHI" => absurd h (by decide)), applyOpnN,
+    Option.getD_some, carryWord, x86_SBB, sub_borrow]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_sub, BitVec.toNat_ofInt, BitVec.toNat_setWidth]
+  cases h : c.getLsbD 0 <;> rw [h] at hc <;> simp only [hc, Bool.false_eq_true, ↓reduceIte] <;>
+    omega
+
+/-! ### Substitution and evaluation -/
+
+mutual
+/-- Substitutions whose images evaluate alike give words that evaluate alike. -/
+theorem STerm.ev_subst_congr {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {σ τ : Nat → STerm} (h : ∀ k, (σ k).ev V A C O = (τ k).ev V A C O) :
+    ∀ t : STerm, (t.subst σ).ev V A C O = (t.subst τ).ev V A C O
+  | .reg _ => rfl
+  | .immW _ _ => rfl
+  | .immAt _ x => by simp only [STerm.subst, STerm.ev]; rw [STerm.ev_subst_congr h x]
+  | .bin _ x y => by
+      simp only [STerm.subst, STerm.ev]; rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y]
+  | .un _ x => by simp only [STerm.subst, STerm.ev]; rw [STerm.ev_subst_congr h x]
+  | .shImm _ _ x => by simp only [STerm.subst, STerm.ev]; rw [STerm.ev_subst_congr h x]
+  | .aget a _ _ i => by
+      simp only [STerm.subst, STerm.ev]; rw [SArr.ev_subst_congr h a, STerm.ev_subst_congr h i]
+  | .cin _ => rfl
+  | .aluF _ _ x y o => by
+      simp only [STerm.subst, STerm.ev];
+      rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y, STerm.ev_subst_congr h o]
+  | .carryW _ x y c => by
+      simp only [STerm.subst, STerm.ev];
+      rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y, STerm.ev_subst_congr h c]
+  | .carryF _ _ x y c => by
+      simp only [STerm.subst, STerm.ev];
+      rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y, STerm.ev_subst_congr h c]
+  | .mulx _ x y => by
+      simp only [STerm.subst, STerm.ev]; rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y]
+  | .cout _ x y c => by
+      simp only [STerm.subst, STerm.ev];
+      rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y, STerm.ev_subst_congr h c]
+  | .sel x y c => by
+      simp only [STerm.subst, STerm.ev];
+      rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y, STerm.ev_subst_congr h c]
+  | .setcc _ x y => by
+      simp only [STerm.subst, STerm.ev]; rw [STerm.ev_subst_congr h x, STerm.ev_subst_congr h y]
+  | .ref k => h k
+
+/-- Substitutions whose images evaluate alike give arrays that evaluate alike. -/
+theorem SArr.ev_subst_congr {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {σ τ : Nat → STerm} (h : ∀ k, (σ k).ev V A C O = (τ k).ev V A C O) :
+    ∀ a : SArr, (a.subst σ).ev V A C O = (a.subst τ).ev V A C O
+  | .cell _ => rfl
+  | .aset a _ _ i v => by
+      simp only [SArr.subst, SArr.ev];
+      rw [SArr.ev_subst_congr h a, STerm.ev_subst_congr h i, STerm.ev_subst_congr h v]
+  | .zero _ _ => rfl
+end
+
+mutual
+/-- Two substitutions in a row are one substitution. -/
+theorem STerm.subst_subst (ρ σ : Nat → STerm) :
+    ∀ t : STerm, (t.subst ρ).subst σ = t.subst (fun k => (ρ k).subst σ)
+  | .reg _ => rfl
+  | .immW _ _ => rfl
+  | .immAt _ x => by simp only [STerm.subst, STerm.subst_subst ρ σ x]
+  | .bin _ x y => by simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y]
+  | .un _ x => by simp only [STerm.subst, STerm.subst_subst ρ σ x]
+  | .shImm _ _ x => by simp only [STerm.subst, STerm.subst_subst ρ σ x]
+  | .aget a _ _ i => by simp only [STerm.subst, SArr.subst_subst ρ σ a, STerm.subst_subst ρ σ i]
+  | .cin _ => rfl
+  | .aluF _ _ x y o => by
+      simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y,
+        STerm.subst_subst ρ σ o]
+  | .carryW _ x y c => by
+      simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y,
+        STerm.subst_subst ρ σ c]
+  | .carryF _ _ x y c => by
+      simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y,
+        STerm.subst_subst ρ σ c]
+  | .mulx _ x y => by simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y]
+  | .cout _ x y c => by
+      simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y,
+        STerm.subst_subst ρ σ c]
+  | .sel x y c => by
+      simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y,
+        STerm.subst_subst ρ σ c]
+  | .setcc _ x y => by simp only [STerm.subst, STerm.subst_subst ρ σ x, STerm.subst_subst ρ σ y]
+  | .ref _ => rfl
+
+/-- Two substitutions in a row are one substitution. -/
+theorem SArr.subst_subst (ρ σ : Nat → STerm) :
+    ∀ a : SArr, (a.subst ρ).subst σ = a.subst (fun k => (ρ k).subst σ)
+  | .cell _ => rfl
+  | .aset a _ _ i v => by
+      simp only [SArr.subst, SArr.subst_subst ρ σ a, STerm.subst_subst ρ σ i,
+        STerm.subst_subst ρ σ v]
+  | .zero _ _ => rfl
+end
+
+/-! ### Static widths -/
+
+/-- The width the facts `F` state of the start register `r`. -/
+def factW (F : List (String × Nat)) (r : String) : Option Nat := (F.find? (·.1 == r)).map (·.2)
+
+/-- The width of a word over a table whose entries have the widths `W` (`none` when not
+    known) and whose start registers have the widths the facts `F` state, when its outermost
+    constructors fix it. -/
+def STerm.swC (W : Array (Option Nat)) (F : List (String × Nat)) : STerm → Option Nat
+  | .immW w _ => some w
+  | .immAt _ x => x.swC W F
+  | .bin _ x _ => x.swC W F
+  | .un _ x => x.swC W F
+  | .shImm _ _ x => x.swC W F
+  | .aget _ w _ _ => some w
+  | .cin _ => some 1
+  | .carryW .. => some 64
+  | .carryF .. => some 1
+  | .mulx .. => some 64
+  | .cout .. => some 1
+  | .sel x _ _ => x.swC W F
+  | .setcc .. => some 1
+  | .ref k => W.getD k none
+  | .reg r => factW F r
+  | .aluF .. => none
+
+theorem STerm.swC_ev {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {σ : Nat → STerm} {W : Array (Option Nat)} {F : List (String × Nat)}
+    (hW : ∀ k w, W.getD k none = some w → ((σ k).ev V A C O).1 = w)
+    (hF : ∀ r w, factW F r = some w → (V r).1 = w) :
+    ∀ (t : STerm) (w : Nat), t.swC W F = some w → ((t.subst σ).ev V A C O).1 = w
+  | .immW _ _, w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .immAt _ x, w, h => by
+      simp only [STerm.swC] at h; simp only [STerm.subst, STerm.ev]; exact STerm.swC_ev hW hF x w h
+  | .bin _ x _, w, h => by
+      simp only [STerm.swC] at h; simp only [STerm.subst, STerm.ev]; exact STerm.swC_ev hW hF x w h
+  | .un _ x, w, h => by
+      simp only [STerm.swC] at h; simp only [STerm.subst, STerm.ev]; exact STerm.swC_ev hW hF x w h
+  | .shImm _ _ x, w, h => by
+      simp only [STerm.swC] at h; simp only [STerm.subst, STerm.ev]; exact STerm.swC_ev hW hF x w h
+  | .aget _ _ _ _, w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .cin _, w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .carryW .., w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .carryF .., w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .mulx .., w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .cout .., w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .sel x _ _, w, h => by
+      simp only [STerm.swC] at h; simp only [STerm.subst, STerm.ev]; exact STerm.swC_ev hW hF x w h
+  | .setcc .., w, h => by
+      simp only [STerm.swC, Option.some.injEq] at h; simp [STerm.subst, STerm.ev, h]
+  | .ref k, w, h => by simp only [STerm.swC] at h; exact hW k w h
+  | .reg r, w, h => by simp only [STerm.swC] at h; exact hF r w h
+  | .aluF .., w, h => by simp [STerm.swC] at h
+
+/-! ### The normal form of one node -/
+
+/-- The sources of a commutative node are in canonical order unless this holds: a reference
+    comes before a word that is no reference, and of two references the lower index comes
+    first. -/
+def swapC : STerm → STerm → Bool
+  | .ref a, .ref b => b < a
+  | .ref _, _ => false
+  | _, .ref _ => true
+  | _, _ => false
+
+/-- The canonical add-with-carry word of `x`, `y` and the carry-in `c`. -/
+def addWC (x y c : STerm) : STerm :=
+  if swapC x y then .carryW .adcx y x c else .carryW .adcx x y c
+
+/-- The canonical carry-out of `x + y + c`, the zero bit when both sources are the zero
+    word. -/
+def addFC (x y c : STerm) : STerm :=
+  if x == .immW 64 0 && y == .immW 64 0 then .immW 1 0
+  else if swapC x y then .carryF .adcx false y x c else .carryF .adcx false x y c
+
+/-- The node a word stands for: the key `K` of a reference, the word itself otherwise. -/
+def viewC (K : Array STerm) : STerm → STerm
+  | .ref j => K.getD j (.ref j)
+  | t => t
+
+/-- **The normal form of one node** over a table with keys `K` and widths `W`. The value
+    form and the flag form of one carry step, and the words of `ADC`, `ADCX` and `ADOX`, have
+    one normal form: a sum `x + y` at width `64` is `carryW .adcx x y 0`, and a sum whose first
+    source is such a word `carryW .adcx a b 0` and whose second source is a bit `c` is
+    `carryW .adcx a b c`; the carry-out `cout` of sources of width `64`, the carry flag of
+    `ADD`, `ADC`, `ADCX` and the overflow flag of `ADOX` are `carryF .adcx false x y c`; the
+    carry and overflow flags of `AND`, `OR`, `XOR` at width `64` are the zero bit. The
+    differences and borrows are normalised alike to `carryW .sbb` and `carryF .sbb false`.
+    The sources of an addition are in canonical order (`swapC`). -/
+def STerm.normC (K : Array STerm) (W : Array (Option Nat)) (F : List (String × Nat))
+    (n : STerm) : STerm :=
+  match n with
+  | .carryW .sbb _ _ _ => n
+  | .carryW _ x y c => addWC x y c
+  | .carryF .sbb _ _ _ _ => n
+  | .carryF .adc true _ _ _ => n
+  | .carryF _ _ x y c => addFC x y c
+  | .cout false x y c => if x.swC W F == some 64 && y.swC W F == some 64 then addFC x y c else n
+  | .cout true x y c =>
+      if x.swC W F == some 64 && y.swC W F == some 64 then .carryF .sbb false x y c else n
+  | .aluF .add false x y _ =>
+      if x.swC W F == some 64 && y.swC W F == some 64 then addFC x y (.immW 1 0) else n
+  | .aluF .sub false x y _ =>
+      if x.swC W F == some 64 && y.swC W F == some 64 then .carryF .sbb false x y (.immW 1 0)
+      else n
+  | .aluF op _ x y _ =>
+      if (op == .and || op == .or || op == .xor) && x.swC W F == some 64 && y.swC W F == some 64
+      then .immW 1 0 else n
+  | .bin m x y =>
+      if m = "ADD" then
+        if x.swC W F == some 64 && y.swC W F == some 64 then addWC x y (.immW 1 0)
+        else if y.swC W F == some 1 then
+          match viewC K x with
+          | .carryW .adcx a b c0 => if c0 == .immW 1 0 then addWC a b y else n
+          | _ => n
+        else n
+      else if m = "SUB" then
+        if x.swC W F == some 64 && y.swC W F == some 64 then .carryW .sbb x y (.immW 1 0)
+        else if y.swC W F == some 1 then
+          match viewC K x with
+          | .carryW .sbb a b c0 => if c0 == .immW 1 0 then .carryW .sbb a b y else n
+          | _ => n
+        else n
+      else n
+  | _ => n
+
+section NormSound
+
+variable {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} {σ : Nat → STerm}
+
+theorem viewC_ev {K : Array STerm}
+    (hK : ∀ j, ((K.getD j (.ref j)).subst σ).ev V A C O = (σ j).ev V A C O) (t : STerm) :
+    ((viewC K t).subst σ).ev V A C O = (t.subst σ).ev V A C O := by
+  cases t with
+  | ref j => exact hK j
+  | _ => rfl
+
+theorem addWC_ev (x y c : STerm) :
+    ((addWC x y c).subst σ).ev V A C O = ((STerm.carryW .adcx x y c).subst σ).ev V A C O := by
+  unfold addWC
+  split
+  · simp only [STerm.subst, STerm.ev, carryWord_adcx_comm]
+  · rfl
+
+theorem addFC_ev (x y c : STerm) :
+    ((addFC x y c).subst σ).ev V A C O =
+      ((STerm.carryF .adcx false x y c).subst σ).ev V A C O := by
+  unfold addFC
+  split
+  · rename_i h
+    simp only [Bool.and_eq_true, beq_iff_eq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    simp only [STerm.subst, STerm.ev, castW_mk, carryBit_adcx_eq]
+    split <;> rfl
+  · split
+    · simp only [STerm.subst, STerm.ev, carryBit_adcx_comm]
+    · rfl
+
+/-- A word of a known width `w`, as a pair. -/
+theorem ev_of_wid {t : STerm} {w : Nat} (h : (t.ev V A C O).1 = w) :
+    t.ev V A C O = ⟨w, castW (t.ev V A C O) w⟩ := by
+  generalize t.ev V A C O = p at h ⊢
+  obtain ⟨w', v⟩ := p
+  obtain rfl : w' = w := h
+  simp
+
+theorem bitOf_setWidth1 (p : Σ w, BitVec w) : (p.2.setWidth 1).getLsbD 0 = bitOf p := by
+  simp [bitOf]
+
+/-- **The normal form of a node evaluates as the node**, over a table whose keys `K`
+    evaluate as their entries and whose widths `W` are widths of their entries. -/
+theorem STerm.normC_ev {K : Array STerm} {W : Array (Option Nat)} {F : List (String × Nat)}
+    (hK : ∀ j, ((K.getD j (.ref j)).subst σ).ev V A C O = (σ j).ev V A C O)
+    (hW : ∀ k w, W.getD k none = some w → ((σ k).ev V A C O).1 = w)
+    (hF : ∀ r w, factW F r = some w → (V r).1 = w) (n : STerm) :
+    ((n.normC K W F).subst σ).ev V A C O = (n.subst σ).ev V A C O := by
+  have w64 : ∀ t : STerm, (t.swC W F == some 64) = true → ((t.subst σ).ev V A C O).1 = 64 :=
+    fun t h => STerm.swC_ev hW hF t 64 (by simpa using h)
+  have w1 : ∀ t : STerm, (t.swC W F == some 1) = true → ((t.subst σ).ev V A C O).1 = 1 :=
+    fun t h => STerm.swC_ev hW hF t 1 (by simpa using h)
+  cases n with
+  | carryW op x y c =>
+      cases op
+      · simp only [STerm.normC]; rw [addWC_ev]; simp only [STerm.subst, STerm.ev, carryWord_adc]
+      · rfl
+      · simp only [STerm.normC]; rw [addWC_ev]
+      · simp only [STerm.normC]; rw [addWC_ev]; rfl
+  | carryF op ofl x y c =>
+      cases op <;> cases ofl
+      · simp only [STerm.normC]; rw [addFC_ev]; simp only [STerm.subst, STerm.ev, carryBit_adc]
+      · rfl
+      · rfl
+      · rfl
+      · simp only [STerm.normC]; rw [addFC_ev]
+      · simp only [STerm.normC]; rw [addFC_ev]; rfl
+      · simp only [STerm.normC]; rw [addFC_ev]; rfl
+      · simp only [STerm.normC]; rw [addFC_ev]; rfl
+  | cout sub x y c =>
+      cases sub
+      · simp only [STerm.normC]
+        split
+        · rename_i h
+          simp only [Bool.and_eq_true] at h
+          rw [addFC_ev]
+          simp only [STerm.subst, STerm.ev, coutBit]
+          rw [ev_of_wid (w64 x h.1), ev_of_wid (w64 y h.2)]
+          simp only [castW_mk, extW, BitVec.setWidth_eq, carryOutBit_eq, bitOf_setWidth1,
+            Bool.false_eq_true, ↓reduceIte]
+        · rfl
+      · simp only [STerm.normC]
+        split
+        · rename_i h
+          simp only [Bool.and_eq_true] at h
+          simp only [STerm.subst, STerm.ev, coutBit]
+          rw [ev_of_wid (w64 x h.1), ev_of_wid (w64 y h.2)]
+          simp only [castW_mk, extW, BitVec.setWidth_eq, borrowOutBit_eq, bitOf_setWidth1,
+            ↓reduceIte]
+        · rfl
+  | aluF op ofl x y o =>
+      have hl : ∀ {op : AluOp}, (op = .and ∨ op = .or ∨ op = .xor) → ∀ ofl : Bool,
+          (x.swC W F == some 64 && y.swC W F == some 64) = true →
+          ((STerm.immW 1 0).subst σ).ev V A C O =
+            ((STerm.aluF op ofl x y o).subst σ).ev V A C O := by
+        intro op hop ofl h
+        simp only [Bool.and_eq_true] at h
+        simp only [STerm.subst, STerm.ev, w64 x h.1, w64 y h.2, and_self, ↓reduceIte,
+          aluBit_logic hop]
+        rfl
+      cases op <;> cases ofl <;> simp only [STerm.normC]
+      · split
+        · rename_i h
+          simp only [Bool.and_eq_true] at h
+          rw [addFC_ev]
+          simp only [STerm.subst, STerm.ev, w64 x h.1, w64 y h.2, and_self, ↓reduceIte,
+            aluBit_add]
+          rfl
+        · rfl
+      · rfl
+      · split
+        · rename_i h
+          simp only [Bool.and_eq_true] at h
+          simp only [STerm.subst, STerm.ev, w64 x h.1, w64 y h.2, and_self, ↓reduceIte,
+            aluBit_sub]
+          rfl
+        · rfl
+      · rfl
+      all_goals
+        split
+        · rename_i h
+          simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, reduceCtorEq,
+            false_or, or_false, true_and] at h
+          exact hl (by simp) _ (by simpa using h)
+        · rfl
+  | bin m x y =>
+      simp only [STerm.normC]
+      by_cases hA : m = "ADD"
+      · subst hA
+        simp only [↓reduceIte]
+        split
+        · rename_i h
+          simp only [Bool.and_eq_true] at h
+          rw [addWC_ev]
+          simp only [STerm.subst, STerm.ev]
+          rw [ev_of_wid (w64 x h.1), ev_of_wid (w64 y h.2)]
+          simp [extW, binW_add, bitOf]
+        · split
+          · rename_i h1
+            split
+            · rename_i a b c0 hv
+              split
+              · rename_i hc
+                simp only [beq_iff_eq] at hc
+                subst hc
+                rw [addWC_ev]
+                have hx := viewC_ev hK x
+                rw [hv] at hx
+                simp only [STerm.subst, STerm.ev] at hx ⊢
+                rw [← hx, ev_of_wid (w1 y h1)]
+                simp [extW, binW_add_carry, bitOf]
+              · rfl
+            · rfl
+          · rfl
+      · simp only [hA, ↓reduceIte]
+        by_cases hS : m = "SUB"
+        · subst hS
+          simp only [↓reduceIte]
+          split
+          · rename_i h
+            simp only [Bool.and_eq_true] at h
+            simp only [STerm.subst, STerm.ev]
+            rw [ev_of_wid (w64 x h.1), ev_of_wid (w64 y h.2)]
+            simp [extW, binW_sub, bitOf]
+          · split
+            · rename_i h1
+              split
+              · rename_i a b c0 hv
+                split
+                · rename_i hc
+                  simp only [beq_iff_eq] at hc
+                  subst hc
+                  have hx := viewC_ev hK x
+                  rw [hv] at hx
+                  simp only [STerm.subst, STerm.ev] at hx ⊢
+                  rw [← hx, ev_of_wid (w1 y h1)]
+                  simp [extW, binW_sub_borrow, bitOf]
+                · rfl
+              · rfl
+            · rfl
+        · simp only [hS, ↓reduceIte]
+  | _ => rfl
+
+end NormSound
+
+/-! ### Canonical keys of a term table -/
+
+/-- The canonical keys of the first entries of a term table: for each entry its canonical
+    form (`rep`: a leaf, or a reference to the first entry with its key), its key (`key`: the
+    normal form `normC` of its node over the canonical forms of its children) and the width
+    its key fixes (`wid`), with an index from keys to entries (`idx`, a hint checked against
+    `key`). -/
+structure CanonT where
+  /-- The canonical form of each entry. -/
+  rep : Array STerm
+  /-- The key of each entry. -/
+  key : Array STerm
+  /-- The width the key of each entry fixes. -/
+  wid : Array (Option Nat)
+  /-- The first entry of each key. -/
+  idx : Std.HashMap STerm Nat
+
+/-- The canonical keys of no entry. -/
+def CanonT.empty : CanonT := ⟨#[], #[], #[], {}⟩
+
+/-- The word `t` with each reference replaced by the canonical form of its entry. -/
+def CanonT.form (Cn : CanonT) (t : STerm) : STerm := t.subst (fun j => Cn.rep.getD j (.ref j))
+
+/-- A leaf word or a reference. -/
+def STerm.isLeafC : STerm → Bool
+  | .reg _ | .immW _ _ | .cin _ | .ref _ => true
+  | _ => false
+
+/-- The canonical keys with the entry of node `n` appended at the index `Cn.rep.size`. -/
+def CanonT.push (F : List (String × Nat)) (Cn : CanonT) (n : STerm) : CanonT :=
+  let r := (Cn.form n).normC Cn.key Cn.wid F
+  let w := r.swC Cn.wid F
+  if r.isLeafC then
+    { Cn with rep := Cn.rep.push r, key := Cn.key.push (viewC Cn.key r), wid := Cn.wid.push w }
+  else
+    match Cn.idx[r]? with
+    | some j =>
+        if Cn.key[j]? == some r then
+          { Cn with rep := Cn.rep.push (.ref j), key := Cn.key.push r, wid := Cn.wid.push w }
+        else
+          { rep := Cn.rep.push (.ref Cn.rep.size), key := Cn.key.push r, wid := Cn.wid.push w,
+            idx := Cn.idx.insert r Cn.rep.size }
+    | none =>
+        { rep := Cn.rep.push (.ref Cn.rep.size), key := Cn.key.push r, wid := Cn.wid.push w,
+          idx := Cn.idx.insert r Cn.rep.size }
+
+/-- The canonical keys of the term table `E`, with the facts `F`. -/
+def CanonT.build (F : List (String × Nat)) (E : Array TEnt) : CanonT :=
+  E.foldl (fun Cn e => Cn.push F e.node) CanonT.empty
+
+/-- Two words over the table `E` have one canonical form, with the facts `F`. -/
+def canonEqT (F : List (String × Nat)) (E : Array TEnt) (t t' : STerm) : Bool :=
+  (CanonT.build F E).form t == (CanonT.build F E).form t'
+
+section CanonSound
+
+variable {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} {σ : Nat → STerm}
+
+/-- The canonical keys describe the substitution `σ` at one evaluation: the canonical forms
+    and the keys evaluate as the entries, and the widths are their widths. -/
+def CanonT.OK (σ : Nat → STerm) (V : String → Σ w, BitVec w) (A : String → ArrCell)
+    (C O : Bool) (Cn : CanonT) : Prop :=
+  Cn.key.size = Cn.rep.size ∧ Cn.wid.size = Cn.rep.size ∧
+    (∀ j, ((Cn.rep.getD j (.ref j)).subst σ).ev V A C O = (σ j).ev V A C O) ∧
+    (∀ j, ((Cn.key.getD j (.ref j)).subst σ).ev V A C O = (σ j).ev V A C O) ∧
+    (∀ j w, Cn.wid.getD j none = some w → ((σ j).ev V A C O).1 = w)
+
+theorem CanonT.ok_empty : CanonT.empty.OK σ V A C O :=
+  ⟨rfl, rfl, fun _ => by simp [CanonT.empty, STerm.subst], fun _ => by
+    simp [CanonT.empty, STerm.subst], fun _ _ h => by simp [CanonT.empty] at h⟩
+
+theorem CanonT.form_ev {Cn : CanonT} (h : Cn.OK σ V A C O) (t : STerm) :
+    ((Cn.form t).subst σ).ev V A C O = (t.subst σ).ev V A C O := by
+  unfold CanonT.form
+  rw [STerm.subst_subst]
+  exact STerm.ev_subst_congr h.2.2.1 t
+
+theorem getD_push_eq {α : Type} (xs : Array α) (x d : α) (j : Nat) :
+    (xs.push x).getD j d = if j = xs.size then x else xs.getD j d := by
+  simp only [Array.getD_eq_getD_getElem?, Array.getElem?_push]
+  split <;> rfl
+
+theorem CanonT.ok_push {F : List (String × Nat)} (hF : ∀ r w, factW F r = some w → (V r).1 = w)
+    {Cn : CanonT} (h : Cn.OK σ V A C O) (n : STerm)
+    (hn : (n.subst σ).ev V A C O = (σ Cn.rep.size).ev V A C O) :
+    (Cn.push F n).OK σ V A C O ∧ (Cn.push F n).rep.size = Cn.rep.size + 1 := by
+  obtain ⟨hk, hw, hr, hkey, hwid⟩ := h
+  have hR : (((Cn.form n).normC Cn.key Cn.wid F).subst σ).ev V A C O =
+      (σ Cn.rep.size).ev V A C O := by
+    rw [STerm.normC_ev hkey hwid hF, CanonT.form_ev ⟨hk, hw, hr, hkey, hwid⟩, hn]
+  have hW : ∀ w, ((Cn.form n).normC Cn.key Cn.wid F).swC Cn.wid F = some w →
+      ((σ Cn.rep.size).ev V A C O).1 = w := fun w hw' => by
+    rw [← hR]; exact STerm.swC_ev hwid hF _ w hw'
+  -- the three arrays receive their new element at one index
+  have mk : ∀ (x y : STerm) (z : Option Nat) (I : Std.HashMap STerm Nat),
+      (x.subst σ).ev V A C O = (σ Cn.rep.size).ev V A C O →
+      (y.subst σ).ev V A C O = (σ Cn.rep.size).ev V A C O →
+      (∀ w, z = some w → ((σ Cn.rep.size).ev V A C O).1 = w) →
+      (CanonT.mk (Cn.rep.push x) (Cn.key.push y) (Cn.wid.push z) I).OK σ V A C O ∧
+        (CanonT.mk (Cn.rep.push x) (Cn.key.push y) (Cn.wid.push z) I).rep.size =
+          Cn.rep.size + 1 := by
+    intro x y z I ex ey ez
+    refine ⟨⟨by simp [hk], by simp [hw], fun j => ?_, fun j => ?_, fun j w hj => ?_⟩,
+      by simp⟩
+    · simp only [getD_push_eq]
+      split
+      · subst_vars; exact ex
+      · exact hr j
+    · simp only [getD_push_eq, hk]
+      split
+      · subst_vars; exact ey
+      · exact hkey j
+    · simp only [getD_push_eq, hw] at hj
+      by_cases hjk : j = Cn.rep.size
+      · subst hjk
+        simp only [↓reduceIte] at hj
+        exact ez w hj
+      · simp only [hjk, ↓reduceIte] at hj
+        exact hwid j w hj
+  unfold CanonT.push
+  dsimp only
+  generalize (Cn.form n).normC Cn.key Cn.wid F = r at hR hW ⊢
+  split
+  · exact mk _ _ _ _ hR (by rw [viewC_ev hkey, hR]) hW
+  · split
+    · rename_i j _
+      split
+      · rename_i hj
+        have hkj : Cn.key.getD j (.ref j) = r := by
+          simp only [beq_iff_eq] at hj
+          simp [Array.getD_eq_getD_getElem?, hj]
+        refine mk _ _ _ _ ?_ hR hW
+        rw [← hR, ← hkj, hkey j]
+        rfl
+      · exact mk _ _ _ _ (by rw [STerm.subst]) hR hW
+    · exact mk _ _ _ _ (by rw [STerm.subst]) hR hW
+
+/-- **The canonical keys of a valid term table describe it.** -/
+theorem CanonT.ok_build {F : List (String × Nat)}
+    (hF : ∀ r w, factW F r = some w → (V r).1 = w) {E : Array TEnt} (hE : TblOK σ E) :
+    (CanonT.build F E).OK σ V A C O := by
+  unfold CanonT.build
+  have := Array.foldl_induction (as := E)
+    (fun i (Cn : CanonT) => Cn.OK σ V A C O ∧ Cn.rep.size = i) (init := CanonT.empty)
+    ⟨CanonT.ok_empty, rfl⟩ (f := fun Cn e => Cn.push F e.node) (fun i Cn ⟨hok, hs⟩ => by
+      obtain ⟨h1, h2⟩ := CanonT.ok_push hF hok E[i].node (by
+        rw [hs, (hE i i.isLt).1]
+        rfl)
+      exact ⟨h1, by rw [h2, hs]⟩)
+  exact this.1
+
+/-- **Words with one canonical form evaluate alike.** -/
+theorem canonEqT_ev {F : List (String × Nat)} {E : Array TEnt} (hE : TblOK σ E) {t t' : STerm}
+    (h : canonEqT F E t t' = true) (V : String → Σ w, BitVec w) (A : String → ArrCell)
+    (C O : Bool) (hF : ∀ r w, factW F r = some w → (V r).1 = w) :
+    (t.subst σ).ev V A C O = (t'.subst σ).ev V A C O := by
+  simp only [canonEqT, beq_iff_eq] at h
+  rw [← CanonT.form_ev (CanonT.ok_build hF hE) t, h, CanonT.form_ev (CanonT.ok_build hF hE) t']
+
+end CanonSound
+
+/-! ### Facts and guards implied by widths -/
+
+/-- The widths that the guards `gs` state of start registers. -/
+def guardFacts (gs : List SG) : List (String × Nat) :=
+  gs.filterMap fun g => match g with
+    | .wid (.reg r) w => some (r, w)
+    | _ => none
+
+theorem guardFacts_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {σ : Nat → STerm} {gs : List SG} (h : AllG V A C O (gs.map (SG.subst σ))) :
+    ∀ r w, factW (guardFacts gs) r = some w → (V r).1 = w := by
+  intro r w hr
+  simp only [factW, Option.map_eq_some_iff] at hr
+  obtain ⟨⟨r', w'⟩, hf, rfl⟩ := hr
+  have hmem := List.mem_of_find?_eq_some hf
+  have hr' : r' = r := by simpa using List.find?_some hf
+  subst hr'
+  simp only [guardFacts, List.mem_filterMap] at hmem
+  obtain ⟨g, hg, hgw⟩ := hmem
+  rcases g with ⟨t, w0⟩ | _ | _ <;> try simp at hgw
+  rcases t with _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ | _ <;> simp at hgw
+  obtain ⟨rfl, rfl⟩ := hgw
+  have := h _ (List.mem_map.mpr ⟨_, hg, rfl⟩)
+  simpa [SG.subst, STerm.subst, SG.holds, STerm.ev] using this
+
+/-- A guard that the widths of the canonical keys `Cn` and the facts `F` decide to hold. -/
+def SG.impT (Cn : CanonT) (F : List (String × Nat)) : SG → Bool
+  | .wid t w => (Cn.form t).swC Cn.wid F == some w
+  | .eqW x y =>
+      match (Cn.form x).swC Cn.wid F, (Cn.form y).swC Cn.wid F with
+      | some a, some b => a == b
+      | _, _ => false
+  | .shp _ _ _ => false
+
+theorem SG.impT_holds {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {σ : Nat → STerm} {Cn : CanonT} {F : List (String × Nat)} (h : Cn.OK σ V A C O)
+    (hF : ∀ r w, factW F r = some w → (V r).1 = w) {g : SG} (hg : g.impT Cn F = true) :
+    (g.subst σ).holds V A C O := by
+  have hw : ∀ (t : STerm) (w : Nat), (Cn.form t).swC Cn.wid F = some w →
+      ((t.subst σ).ev V A C O).1 = w := fun t w ht => by
+    rw [← CanonT.form_ev h t]; exact STerm.swC_ev h.2.2.2.2 hF _ w ht
+  cases g with
+  | wid t w =>
+      simp only [SG.impT, beq_iff_eq] at hg
+      exact hw t w hg
+  | eqW x y =>
+      simp only [SG.impT] at hg
+      split at hg
+      · rename_i a b ha hb
+        simp only [beq_iff_eq] at hg
+        subst hg
+        simp only [SG.subst, SG.holds]
+        rw [hw x a ha, hw y a hb]
+      · cases hg
+  | shp _ _ _ => simp [SG.impT] at hg
+
+end Canon
+
 /-! ## 15. The shared checker
 
 `blockOkR` is `blockOk` over the term table: both bodies of a block pair run over one table
@@ -5150,21 +6010,44 @@ theorem symDec_subst (σ : Nat → STerm) (ss : SSt) (c : LOperand) :
   · rfl
   · split <;> simp [SDec.subst]
 
-/-- The guard check of `blockOk` over the table `E`. -/
+/-- The start registers that the guard `g` over the table `E` reads are read by guards of
+    `gs`. -/
+def guardVarsIn (E : Array TEnt) (gs : List SG) (g : SG) : Bool :=
+  (g.varsT E).all fun v => gs.any fun g0 => (g0.varsT E).contains v
+
+/-- The guard check of `blockOk` over the table `E`: every guard of the normal form of the
+    rewritten block's guards `gs'` is one of the source block's, or the widths of the canonical
+    keys of `E` under the facts of the source block's guards `gs` decide it (`SG.impT`) and
+    the start registers it reads are read by guards of the source block (`guardVarsIn`). -/
 def guardsT (E : Array TEnt) (n : List String × Bool) (gs gs' : List SG) : Bool :=
   (gs ++ gs').all (SG.refsLt E.size) &&
-    (normGT E gs').all (fun g => (normGT E gs).contains g && okInGT E n g)
+    (normGT E gs').all (fun g =>
+      ((normGT E gs).contains g ||
+        (guardVarsIn E (normGT E gs) g &&
+          g.impT (CanonT.build (guardFacts (normGT E gs)) E) (guardFacts (normGT E gs)))) &&
+      okInGT E n g)
 
 theorem guardsT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
     {n : List String × Bool} {gs gs' : List SG} (hg : guardsT E n gs gs' = true) :
     (normG (gs'.map (SG.subst σ))).all (fun g =>
-      (normG (gs.map (SG.subst σ))).contains g && okIn n g.vars g.readsF) = true := by
+      ((normG (gs.map (SG.subst σ))).contains g || SG.impG (gs.map (SG.subst σ)) g) &&
+        okIn n g.vars g.readsF) = true := by
   simp only [guardsT, Bool.and_eq_true, List.all_append] at hg
   obtain ⟨⟨hb, hb'⟩, hc⟩ := hg
-  rw [← normGT_subst h gs hb, ← normGT_subst h gs' hb']
-  simp only [List.all_eq_true, List.mem_map, Bool.and_eq_true, List.contains_iff_mem] at hc ⊢
+  rw [← normGT_subst h gs' hb']
+  simp only [List.all_eq_true, List.mem_map, Bool.and_eq_true, Bool.or_eq_true,
+    List.contains_iff_mem] at hc ⊢
   rintro _ ⟨g, hg, rfl⟩
-  exact ⟨⟨g, (hc g hg).1, rfl⟩, okInGT_spec h (hc g hg).2⟩
+  refine ⟨?_, okInGT_spec h (hc g hg).2⟩
+  rcases (hc g hg).1 with hm | hi
+  · left
+    rw [← normGT_subst h gs hb]
+    exact List.mem_map.mpr ⟨g, hm, rfl⟩
+  · right
+    refine SG.impG_of fun V A C O hA => ?_
+    have hN : AllG V A C O ((normGT E gs).map (SG.subst σ)) := by
+      rw [normGT_subst h gs hb]; exact allG_normG.mpr hA
+    exact SG.impT_holds (CanonT.ok_build (guardFacts_sound hN) h) (guardFacts_sound hN) hi.2
 
 /-- The substitution laws of a symbolic step `sym` and a symbolic branch condition `dec`: both
     commute with every substitution of table entries. The check over the term table implies
@@ -5362,15 +6245,49 @@ theorem arrAgreeT_of_eq {E : Array TEnt} {n : List String × Bool} {gs gs' : Lis
   simp only [arrAgreeT, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq]
   exact Or.inl ⟨e, o⟩
 
+/-- The register agreement of `exitAgree` over the table `E` (`regAgree`): the two words are
+    one word, or they have one canonical form under the facts of the source block's guards `gs`
+    and `t'` may be compared at the block; and `t` may be compared at the block. -/
+def regAgreeT (E : Array TEnt) (n : List String × Bool) (gs : List SG) (t t' : STerm) : Bool :=
+  (t == t' || (gs.all (SG.refsLt E.size) && canonEqT (guardFacts (normGT E gs)) E t t' &&
+    okInT E n t')) && okInT E n t
+
+theorem regAgreeT_of_eq {E : Array TEnt} {n : List String × Bool} {gs : List SG}
+    {t t' : STerm} (e : t = t') (o : okInT E n t = true) : regAgreeT E n gs t t' = true := by
+  subst e
+  simp [regAgreeT, o]
+
+theorem regAgreeT_mono {E : Array TEnt} {n n' : List String × Bool} {gs : List SG}
+    (hm : ∀ t, okInT E n t = true → okInT E n' t = true) {t t' : STerm}
+    (h : regAgreeT E n gs t t' = true) : regAgreeT E n' gs t t' = true := by
+  simp only [regAgreeT, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h ⊢
+  obtain ⟨h1 | ⟨⟨h2, h3⟩, h4⟩, h5⟩ := h
+  · exact ⟨Or.inl h1, hm _ h5⟩
+  · exact ⟨Or.inr ⟨⟨h2, h3⟩, hm _ h4⟩, hm _ h5⟩
+
+theorem regAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
+    {n : List String × Bool} {gs : List SG} {t t' : STerm}
+    (ha : regAgreeT E n gs t t' = true) :
+    regAgree n (gs.map (SG.subst σ)) (t.subst σ) (t'.subst σ) = true := by
+  simp only [regAgreeT, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at ha
+  simp only [regAgree, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq]
+  obtain ⟨h1 | ⟨⟨hb, hc⟩, ho'⟩, ho⟩ := ha
+  · exact ⟨Or.inl (by rw [h1]), okInT_spec h ho⟩
+  · refine ⟨Or.inr ⟨STerm.semEqG_of fun V A C O hA => ?_, okInT_spec h ho'⟩,
+      okInT_spec h ho⟩
+    have hN : AllG V A C O ((normGT E gs).map (SG.subst σ)) := by
+      rw [normGT_subst h gs hb]; exact allG_normG.mpr hA
+    exact canonEqT_ev h hc V A C O (guardFacts_sound hN)
+
 /-- The exit check of `blockOk` over the table `E` (`exitAgree`). -/
 def exitAgreeT (E : Array TEnt) (outs : List String) (L : Nat → List String × Bool)
     (n : List String × Bool) (T : Term) (ss ss' : SSt) (gs gs' : List SG) : Bool :=
   T.succs.all (fun j =>
-      (L j).1.all (fun r => ss.regs r == ss'.regs r && okInT E n (ss.regs r)) &&
+      (L j).1.all (fun r => regAgreeT E n gs (ss.regs r) (ss'.regs r)) &&
         (!(L j).2 || (ss.zf == ss'.zf && okInFT E n ss.zf &&
           ss.cf == ss'.cf && okInT E n ss.cf &&
           ss.of == ss'.of && okInT E n ss.of))) &&
-    (!T.halts || outs.all (fun r => ss.regs r == ss'.regs r && okInT E n (ss.regs r))) &&
+    (!T.halts || outs.all (fun r => regAgreeT E n gs (ss.regs r) (ss'.regs r))) &&
     (ss.awr ++ ss'.awr).all (fun q => arrAgreeT E n gs gs' (ss.arrs q) (ss'.arrs q))
 
 theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
@@ -5384,9 +6301,8 @@ theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
   simp only [exitAgree, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
     Bool.not_eq_true']
   refine ⟨⟨fun j hj => ⟨fun r hr => ?_, ?_⟩, ?_⟩, fun q hq => ?_⟩
-  · obtain ⟨e, o⟩ := (hs j hj).1 r hr
-    rw [SSt.subst_regs_apply, SSt.subst_regs_apply]
-    exact ⟨by rw [e], okInT_spec h o⟩
+  · rw [SSt.subst_regs_apply, SSt.subst_regs_apply]
+    exact regAgreeT_spec h ((hs j hj).1 r hr)
   · rcases (hs j hj).2 with h0 | ⟨⟨⟨⟨⟨z1, z2⟩, c1⟩, c2⟩, o1⟩, o2⟩
     · exact Or.inl h0
     · exact Or.inr ⟨⟨⟨⟨⟨by simp only [SSt.subst, z1], okInFT_spec h z2⟩,
@@ -5396,7 +6312,7 @@ theorem exitAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
     · exact Or.inl h0
     · refine Or.inr fun r hr => ?_
       rw [SSt.subst_regs_apply, SSt.subst_regs_apply]
-      exact ⟨by rw [(ho r hr).1], okInT_spec h (ho r hr).2⟩
+      exact regAgreeT_spec h (ho r hr)
   · have hq' : q ∈ ss.awr ++ ss'.awr := hq
     exact arrAgreeT_spec h (ha q hq')
 

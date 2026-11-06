@@ -3431,6 +3431,7 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.CompilerHelloDemo,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldMulCarryFlagsTest,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.AutoVectorize.Demo,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.ConsumerDemo,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.MLIR.VectorDialect.LoweringAVX512Demo,

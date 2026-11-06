@@ -684,14 +684,13 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
     (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) (startC (A' k))
     _ _ _ _ _ s' hH0'
   rw [symRun_entryS_at hL.label hE' hle', hS'] at hD'
-  have hAllN := allG_normG.mpr hAll
   have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
     allG_normG.mp fun g hg =>
       (SG.holds_congr _ g (fun r hr => (hV r ((hgs g hg).2.1 r hr)).symm)
         (fun e => by
           obtain ⟨-, hc, ho⟩ := hrel.2.2.2.2 ((hgs g hg).2.2 e)
           exact ⟨hc.symm, ho.symm⟩)).mp
-      (hAllN g (hgs g hg).1)
+      ((hgs g hg).1 _ _ _ _ hAll)
   obtain ⟨u', hu'⟩ := Option.isSome_iff_exists.mp (hD'.2 hAll')
   obtain ⟨-, hH', hFr'⟩ := hD'.1 u' hu'
   have hplain' := body_plain hc.hG' hk' hs1'
@@ -731,7 +730,7 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
   obtain ⟨hsucc, -⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
     (symRun_good_at hL.good _ (startC_good _) hS) (symRun_good_at hL.good _ (startC_good _) hS')
     (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hAll
-    (allG_normG.mp fun g hg => hAllN g (hgs g hg).1) hex
+    (allG_normG.mp fun g hg => (hgs g hg).1 _ _ _ _ hAll) hex
   have hfk' := factCheck_blk hc.facts' hk'
   rw [hTk] at hfk'
   have hfs : ∀ j ∈ (G.blk k).term.succs, FactsAt (A j) u ∧ FactsAt (A' j) u' := fun j hj =>

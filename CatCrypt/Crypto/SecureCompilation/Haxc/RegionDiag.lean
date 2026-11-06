@@ -88,7 +88,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM MemTag)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCheck.LcmdCFG (Term Block CFG cfgOf)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTV (STerm SArr SSt SOut SG Tbl TEnt tRun
   symRun bodyAt okIn okInT okInAT okInFT okInGT normGT guardsT termAgreeT exitAgreeT arrAgreeT
-  blockOkR runsOf liveIter)
+  blockOkR runsOf liveIter guardFacts guardVarsIn CanonT regAgreeT)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (symObl oblOk)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodeLayout (decodableLcmd)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (isRetB gpOk)
@@ -229,13 +229,16 @@ def guardsWhy (E : Array TEnt) (n : List String × Bool) (gs gs' : List SG) : St
   if (gs ++ gs').all (SG.refsLt E.size) = false then
     "guardsT: a guard refers outside the term table"
   else
-    match (normGT E gs').zipIdx.find? fun p =>
-        !((normGT E gs).contains p.1 && okInGT E n p.1) with
+    let F := guardFacts (normGT E gs)
+    let inRef := fun g => (normGT E gs).contains g ||
+      (guardVarsIn E (normGT E gs) g && g.impT (CanonT.build F E) F)
+    match (normGT E gs').zipIdx.find? fun p => !(inRef p.1 && okInGT E n p.1) with
     | some (g, i) =>
         s!"guardsT: guard {i} ({guardKind g}) of the {(normGT E gs').length} of the allocated " ++
           "block " ++
-          (if (normGT E gs).contains g then "reads a name not live at the block start"
-           else s!"is none of the {(normGT E gs).length} guards of the reference block")
+          (if inRef g then "reads a name not live at the block start"
+           else s!"is none of the {(normGT E gs).length} guards of the reference block " ++
+             "and the widths of the canonical keys do not decide it")
     | none => "guardsT"
 
 /-- The first `k` entries of `xs` separated by `sep`, followed by the count of the entries
@@ -333,8 +336,9 @@ def pairingStr (E : Array TEnt) (outs : List String) (L : Nat → List String ×
     s!"arrays: {arrStr} || injective: {injStr}"
 
 /-- The first component of `exitAgreeT E outs L n T ss ss' gs gs'` that is `false`: the
-    register live at a successor, the flag live at a successor or the output register whose
-    symbolic values differ or read a name not live at the block start, or the written array
+    register live at a successor or the output register that `regAgreeT` refuses (its symbolic
+    values differ, also in canonical form, or read a name not live at the block start), the
+    flag live at a successor whose symbolic values differ or read a name not live, or the written array
     that `arrAgreeT` refuses: its two symbolic arrays differ and so do their normal forms
     `SArr.nfT`, or they read a name not live at the block start. For a register, whether
     each block writes it. -/
@@ -342,10 +346,10 @@ def exitFirstWhy (E : Array TEnt) (outs : List String) (L : Nat → List String 
     (n : List String × Bool) (T : Term) (ss ss' : SSt) (gs gs' : List SG) : String :=
   let regWhy (r : String) : String :=
     if ss.regs r == ss'.regs r then "reads a name not live at the block start"
-    else s!"differs (written by the reference block: {ss.wr.contains r}; by the allocated " ++
-      s!"block: {ss'.wr.contains r})"
+    else s!"differs, also in canonical form (written by the reference block: " ++
+      s!"{ss.wr.contains r}; by the allocated block: {ss'.wr.contains r})"
   let succWhy : Option String := T.succs.findSome? fun j =>
-    match (L j).1.find? fun r => !(ss.regs r == ss'.regs r && okInT E n (ss.regs r)) with
+    match (L j).1.find? fun r => !regAgreeT E n gs (ss.regs r) (ss'.regs r) with
     | some r => some s!"exitAgreeT: register {r} live at successor {j} {regWhy r}"
     | none =>
         if (L j).2 = false then none
@@ -366,7 +370,7 @@ def exitFirstWhy (E : Array TEnt) (outs : List String) (L : Nat → List String 
   | some s => s
   | none =>
       match (if T.halts then
-          outs.find? fun r => !(ss.regs r == ss'.regs r && okInT E n (ss.regs r))
+          outs.find? fun r => !regAgreeT E n gs (ss.regs r) (ss'.regs r)
         else none) with
       | some r => s!"exitAgreeT: output register {r} {regWhy r}"
       | none =>

@@ -597,9 +597,9 @@ def constAnnot (B : List LinstrRM) (G : CFG) (sym : LinstrRM → SSt → SOut :=
 
 /-- `blockOk` with the symbolic run of the source block started at `st` and that of the
     rewritten block started at `st'`. -/
-def blockOkS (st st' : SSt) (outs : List String) (L : Nat → List String × Bool) (k : Nat)
-    (T : Term) (B B' : List LinstrRM) (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
-    (dec : SSt → LOperand → SDec := symDec) : Bool :=
+noncomputable def blockOkS (st st' : SSt) (outs : List String) (L : Nat → List String × Bool)
+    (k : Nat) (T : Term) (B B' : List LinstrRM) (b b' : Block)
+    (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match T with
   | .ret => true
   | _ =>
@@ -609,7 +609,8 @@ def blockOkS (st st' : SSt) (outs : List String) (L : Nat → List String × Boo
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) st' sym with
           | .ok ss' gs' =>
-              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
+              (normG gs').all (fun g =>
+                  ((normG gs).contains g || SG.impG gs g) && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
                 exitAgree outs L (L k) T ss ss' gs gs'
           | _ => false
@@ -621,7 +622,9 @@ theorem blockOkS_spec {st st' : SSt} {outs : List String} {L : Nat → List Stri
     symRun (bodyAt B b T) st sym = .fail ∨
       ∃ ss gs ss' gs', symRun (bodyAt B b T) st sym = .ok ss gs ∧
         symRun (bodyAt B' b' T) st' sym = .ok ss' gs' ∧
-        (∀ g ∈ normG gs', g ∈ normG gs ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
+        (∀ g ∈ normG gs',
+          (∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool),
+            AllG V A C O gs → g.holds V A C O) ∧ (∀ v ∈ g.vars, v ∈ (L k).1) ∧
           (g.readsF = true → (L k).2 = true)) ∧
         termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec = true ∧
         exitAgree outs L (L k) T ss ss' gs gs' = true := by
@@ -631,7 +634,8 @@ theorem blockOkS_spec {st st' : SSt} {outs : List String} {L : Nat → List Stri
       | .ok ss gs =>
           match symRun (bodyAt B' b' T) st' sym with
           | .ok ss' gs' =>
-              (normG gs').all (fun g => (normG gs).contains g && okIn (L k) g.vars g.readsF) &&
+              (normG gs').all (fun g =>
+                  ((normG gs).contains g || SG.impG gs g) && okIn (L k) g.vars g.readsF) &&
                 termAgree T (L k) ss ss' B[b.stop - 1]? B'[b'.stop - 1]? dec &&
                 exitAgree outs L (L k) T ss ss' gs gs'
           | _ => false) = true := by
@@ -646,10 +650,14 @@ theorem blockOkS_spec {st st' : SSt} {outs : List String} {L : Nat → List Stri
       cases ht : symRun (bodyAt B' b' T) st' sym with
       | ok ss' gs' =>
           rw [ht] at h2
-          simp only [Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at h2
+          simp only [Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
+            List.contains_iff_mem] at h2
           obtain ⟨⟨hg, hta⟩, hex⟩ := h2
-          exact Or.inr ⟨ss, gs, ss', gs', rfl, rfl,
-            fun g hg' => ⟨(hg g hg').1, okIn_spec (hg g hg').2⟩, hta, hex⟩
+          refine Or.inr ⟨ss, gs, ss', gs', rfl, rfl, fun g hg' => ⟨fun V A C O hA => ?_,
+            okIn_spec (hg g hg').2⟩, hta, hex⟩
+          rcases (hg g hg').1 with hm | hi
+          · exact allG_normG.mpr hA g hm
+          · exact SG.impG_spec hi hA
       | fail => rw [ht] at h2; cases h2
       | unk => rw [ht] at h2; cases h2
 
@@ -1137,14 +1145,13 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
     (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) (startC (A' k))
     _ _ _ _ _ s' hH0'
   rw [symRun_entryS_at hL.label hE' hle', hS'] at hD'
-  have hAllN := allG_normG.mpr hAll
   have hAll' : AllG s'.prog.base.reg.lvm s.prog.base.larr s'.prog.base.cf s'.prog.base.of gs' :=
     allG_normG.mp fun g hg =>
       (SG.holds_congr _ g (fun r hr => (hV r ((hgs g hg).2.1 r hr)).symm)
         (fun e => by
           obtain ⟨-, hc, ho⟩ := hrel.2.2.2.2 ((hgs g hg).2.2 e)
           exact ⟨hc.symm, ho.symm⟩)).mp
-      (hAllN g (hgs g hg).1)
+      ((hgs g hg).1 _ _ _ _ hAll)
   obtain ⟨u', hu'⟩ := Option.isSome_iff_exists.mp (hD'.2 hAll')
   obtain ⟨-, hH', hFr'⟩ := hD'.1 u' hu'
   have hplain' := body_plain hc.hG' hk' hs1'
@@ -1188,7 +1195,7 @@ theorem sim_stepCF {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LO
   obtain ⟨hsucc, hhalt⟩ := exit_rel hH hH' hV (fun hz => hrel.2.2.2.2 hz)
     (symRun_good_at hL.good _ (startC_good _) hS) (symRun_good_at hL.good _ (startC_good _) hS')
     (by rw [hul'', hul']) (by rw [hFr'.2.2, hrel.2.2.1, hFr.2.2]) hAll
-    (allG_normG.mp fun g hg => hAllN g (hgs g hg).1) hex
+    (allG_normG.mp fun g hg => (hgs g hg).1 _ _ _ _ hAll) hex
   have hfk' := factCheck_blk hc.facts' hk'
   rw [hTk] at hfk'
   have hfs : ∀ j ∈ (G.blk k).term.succs, FactsAt (A j) u ∧ FactsAt (A' j) u' := fun j hj =>

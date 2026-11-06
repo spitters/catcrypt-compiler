@@ -43,10 +43,10 @@ flags live, are a post-fixpoint of `liveRound` (`livePost_tab`): the needs of a 
 the table bounds from above (`VarsUB`, kept by interning, `tRun_validU`), so they are
 registers that the words of the symbolic run read, and these lie in the table at the start of
 the block by the transfer of the table along the run (`symRun_tab`). The image enters only
-through its guards, which the block checks place among the reference guards (`GuardsIn`). A
-table closed along a body gives, along the inverse `cutBack` of `LprogCallCut.cutPos`, a
-table closed along each of its cut programs (`tabClosed_cutAt`); the module
-`Haxc.RegionCalleeNames` instantiates it at the liveness table and `insTab`.
+through its guards, whose start registers the block checks place among those of the reference
+guards (`GuardsIn`). A table closed along a body gives, along the inverse `cutBack` of
+`LprogCallCut.cutPos`, a table closed along each of its cut programs (`tabClosed_cutAt`); the
+module `Haxc.RegionCalleeNames` instantiates it at the liveness table and `insTab`.
 
 ## Main definitions
 
@@ -59,7 +59,8 @@ table closed along each of its cut programs (`tabClosed_cutAt`); the module
 * `StepTr`, `TabClosed`: a table of names over the positions of a body transfers every step
   and is closed along the jumps, the conditional jumps and the end.
 * `tabLive`: the names of a table at the starts of the blocks, with the flags live.
-* `GuardsIn`: the image guards of a block pair are among its reference guards.
+* `GuardsIn`: the start registers of the image guards of a block pair are read by its
+  reference guards.
 * `LabelsOnce`, `FinFree`: labels declared once; a label neither declared nor jumped to.
 * `cutBack`, `cutIns`, `cutTab`: the positions, instructions and table of a body along a cut
   program.
@@ -923,10 +924,10 @@ theorem blockOkR_obs_mono {O₁ O₂ : List String} {L₁ L₂ : Nat → List St
       have hrunG : T ≠ .ret → RunsOk T (tb, SOut.ok ss g, SOut.ok ss' g') :=
         fun hT => ⟨hT, ss, g, ss', g', rfl, rfl⟩
       have hhaltG : T ≠ .ret →
-          (T.halts = false ∨ ∀ x ∈ O₁, ss.regs x = ss'.regs x ∧
-            okInT tb.ents (L₁ k) (ss.regs x) = true) →
-          (T.halts = false ∨ ∀ x ∈ O₂, ss.regs x = ss'.regs x ∧
-            okInT tb.ents (L₂ k) (ss.regs x) = true) := by
+          (T.halts = false ∨
+            ∀ x ∈ O₁, regAgreeT tb.ents (L₁ k) g (ss.regs x) (ss'.regs x) = true) →
+          (T.halts = false ∨
+            ∀ x ∈ O₂, regAgreeT tb.ents (L₂ k) g (ss.regs x) (ss'.regs x) = true) := by
         intro hT hh
         cases hb : T.halts
         · exact Or.inl rfl
@@ -934,9 +935,9 @@ theorem blockOkR_obs_mono {O₁ O₂ : List String} {L₁ L₂ : Nat → List St
           have ho := hh.resolve_left (by simp)
           refine Or.inr fun v hv => ?_
           rcases hhalt (hrunG hT) hb v hv with hv1 | ⟨e1, e2, hvk⟩
-          · exact ⟨(ho v hv1).1, okInT_mono hcov (ho v hv1).2⟩
+          · exact regAgreeT_mono (fun _ => okInT_mono hcov) (ho v hv1)
           · rw [e1 ss g rfl, e2 ss' g' rfl]
-            exact ⟨rfl, hreg v hvk⟩
+            exact regAgreeT_of_eq rfl (hreg v hvk)
       unfold blockOkR at h ⊢
       cases T
       case ret => rfl
@@ -951,9 +952,9 @@ theorem blockOkR_obs_mono {O₁ O₂ : List String} {L₁ L₂ : Nat → List St
         obtain ⟨⟨hs, hh⟩, ha⟩ := h3
         refine ⟨⟨fun j hj => ⟨fun v hv => ?_, ?_⟩, ?_⟩, fun q hq => ?_⟩
         · rcases hsucc hrun j hj v hv with hv1 | ⟨e1, e2, hvk⟩
-          · exact ⟨((hs j hj).1 v hv1).1, okInT_mono hcov ((hs j hj).1 v hv1).2⟩
+          · exact regAgreeT_mono (fun _ => okInT_mono hcov) ((hs j hj).1 v hv1)
           · rw [e1 ss g rfl, e2 ss' g' rfl]
-            exact ⟨rfl, hreg v hvk⟩
+            exact regAgreeT_of_eq rfl (hreg v hvk)
         · rw [hF j]
           rcases (hs j hj).2 with h0 | ⟨⟨⟨⟨⟨z1, z2⟩, c1⟩, c2⟩, o1'⟩, o2'⟩
           · exact Or.inl h0
@@ -1724,12 +1725,13 @@ theorem tabLive_getD (G : CFG) (A : Nat → List String) {k : Nat} (hk : k < G.b
     (tabLive G A).getD k ([], false) = (A (G.blk k).start, true) := by
   rw [tabLive, getD_map_range, ite_eq_left hk]
 
-/-- **The image guards of the shared runs `r` are among the reference guards**, and all
-    guards read only entries of the table. -/
+/-- **The start registers of the image guards of the shared runs `r` are read by reference
+    guards**, and all guards read only entries of the table. -/
 def GuardsIn (r : Tbl × SOut × SOut) : Prop :=
   ∀ ss gs ss' gs', r.2.1 = .ok ss gs → r.2.2 = .ok ss' gs' →
     (gs ++ gs').all (SG.refsLt r.1.ents.size) = true ∧
-      ∀ g ∈ normGT r.1.ents gs', g ∈ normGT r.1.ents gs
+      ∀ g ∈ normGT r.1.ents gs', ∀ v ∈ g.varsT r.1.ents,
+        ∃ g0 ∈ normGT r.1.ents gs, v ∈ g0.varsT r.1.ents
 
 /-- The block check gives the guard containment. -/
 theorem guardsIn_of_blockOkR {O : List String} {L : Nat → List String × Bool} {k : Nat}
@@ -1742,8 +1744,14 @@ theorem guardsIn_of_blockOkR {O : List String} {L : Nat → List String × Bool}
   · rw [h1, h2] at h
     simp only [Bool.and_eq_true] at h
     have hg := h.1.1
-    simp only [guardsT, Bool.and_eq_true, List.all_eq_true, List.contains_iff_mem] at hg
-    exact ⟨List.all_eq_true.mpr hg.1, fun g hgm => (hg.2 g hgm).1⟩
+    simp only [guardsT, Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
+      List.contains_iff_mem] at hg
+    refine ⟨List.all_eq_true.mpr hg.1, fun g hgm v hv => ?_⟩
+    rcases (hg.2 g hgm).1 with hm | ⟨hi, -⟩
+    · exact ⟨g, hm, hv⟩
+    · simp only [guardVarsIn, List.all_eq_true, List.any_eq_true,
+        List.contains_iff_mem] at hi
+      exact hi v hv
 
 /-- **The block structure against a closed table**: the body of block `k` lies in `C`;
     the names at the start of every successor are names at the end of the body; at a halt
@@ -1871,8 +1879,9 @@ theorem livePost_tab {C C' : List LinstrRM} {O : List String} {G G' : CFG}
       obtain ⟨hgb, hgc⟩ := hgk hT ss gs1 ss' gs' h1 h2
       simp only [List.mem_append, List.mem_flatMap] at hv
       rcases hv with ((((⟨g, hg, hv⟩ | hv) | ⟨j, hj, hv⟩) | hv) | ⟨q, -, hv⟩)
-      · exact fg (by simp only [List.all_append, Bool.and_eq_true] at hgb; exact hgb.1) g
-          (hgc g hg) v hv
+      · obtain ⟨g0, hg0, hv0⟩ := hgc g hg v hv
+        exact fg (by simp only [List.all_append, Bool.and_eq_true] at hgb; exact hgb.1) g0
+          hg0 v hv0
       · revert hv
         split
         · rename_i t nx c l tag hT' hc

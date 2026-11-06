@@ -486,7 +486,8 @@ theorem blockOkR_eqv {outs : List String} {L : Nat → List String × Bool} {k :
   simp only [Bool.and_eq_true]
   refine ⟨⟨?_, ?_⟩, ?_⟩
   · simp only [guardsT, Bool.and_eq_true, List.all_eq_true, List.mem_append]
-    refine ⟨fun x hx => hx.elim (hg x) (hg x), fun x hx => ⟨by simpa using hx, ?_⟩⟩
+    refine ⟨fun x hx => hx.elim (hg x) (hg x), fun x hx =>
+      ⟨by simp only [Bool.or_eq_true]; exact Or.inl (by simpa using hx), ?_⟩⟩
     simp only [okInGT, Bool.and_eq_true]
     obtain ⟨y, hy, hxy⟩ := List.mem_flatMap.mp hx
     exact ⟨SG.normT_refsLt hE (hg y hy) x hxy, hNg x hx⟩
@@ -522,7 +523,8 @@ theorem blockOkR_eqv {outs : List String} {L : Nat → List String × Bool} {k :
   · obtain ⟨hr, ha, hz, hc, ho⟩ := e
     simp only [exitAgreeT, Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true,
       Bool.not_eq_true', beq_iff_eq]
-    refine ⟨⟨fun j hj => ⟨fun r hr' => ⟨congrFun hr r, ?_⟩, ?_⟩, ?_⟩, fun q hq =>
+    refine ⟨⟨fun j hj => ⟨fun r hr' => regAgreeT_of_eq (congrFun hr r) ?_, ?_⟩, ?_⟩,
+      fun q hq =>
       arrAgreeT_of_eq (congrFun ha q) ?_⟩
     · simp only [okInT, Bool.and_eq_true]
       exact ⟨hI.1.1 r, hNr j hj r hr'⟩
@@ -535,7 +537,7 @@ theorem blockOkR_eqv {outs : List String} {L : Nat → List String × Bool} {k :
         · simp only [okInT, Bool.and_eq_true]; exact ⟨hI.1.2.2.2.2, h3⟩
     · cases hh : T.halts
       · exact Or.inl rfl
-      · refine Or.inr fun r hr' => ⟨congrFun hr r, ?_⟩
+      · refine Or.inr fun r hr' => regAgreeT_of_eq (congrFun hr r) ?_
         simp only [okInT, Bool.and_eq_true]
         exact ⟨hI.1.1 r, hNh hh r hr'⟩
     · simp only [okInAT, Bool.and_eq_true]
