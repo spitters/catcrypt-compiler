@@ -3217,6 +3217,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Qelib,
     Lake.Glob.one `CatCrypt.Quantum.QrunchBasis,
     Lake.Glob.one `CatCrypt.Quantum.QrunchCommute,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchConnect,
     Lake.Glob.one `CatCrypt.Quantum.QrunchExport,
     Lake.Glob.one `CatCrypt.Quantum.QrunchFuse,
     Lake.Glob.one `CatCrypt.Quantum.QrunchRound,
