@@ -87,16 +87,22 @@ other rotations are conjugated.
 
 ## Measurements
 
-Against Qiskit's `transpile` at optimization level 3 into the same basis, best of five runs per
-circuit, measured by [`bench/qrunch/compare.py`](bench/qrunch/compare.py) and recorded in
+Against Qiskit's `transpile` at optimization level 3 into the same basis, measured by
+[`bench/qrunch/compare.py`](bench/qrunch/compare.py) and recorded in
 [`bench/qrunch/`](bench/qrunch/); gates and time are ratios ours/Qiskit.
 
 | Suite | Circuits (qubits) | CX count and two-qubit depth | Gates | Time |
 |---|---|---|---|---|
-| Q-Synth VQE | 12 (8–16) | equal on all | 0.85–1.01, below on 11 | median 0.78 |
-| Nam | 30 (5–192) | equal on all | 0.91–1.01, below on 16 | median 0.47 |
-| QASMBench small | 12 (2–5) | equal on all | 0.53–1.05, below on 8 | median 0.10 |
+| Q-Synth VQE | 12 (8–16) | equal on all | 0.85–1.01, below on 11 | median 1.9 |
+| Nam | 30 (5–192) | equal on all | 0.91–1.01, below on 16 | median 0.9 |
+| QASMBench small | 12 (2–5) | equal on all | 0.53–1.05, below on 8 | median 0.2 |
 | Our programs (`catq-export`) | 5 (2–6) | equal on all | 0.46–1.00, below on 2 | median 0.75 |
+| Qrisp's algorithms, with the layout option | 7 (5–13) | equal on all | 0.62–1.02, below on 5 | median 2.4 |
+
+Times are rough: the runs shared the machine with Lean builds, and catq-compile runs up to eight
+rounds. The Qrisp rows are in [`bench/qrunch/qrisp/`](bench/qrunch/qrisp/); after routing onto IQM
+and IBM coupling maps the CX counts and expected success probabilities of the two compilers agree
+within the router's variance ([`bench/qrunch/hw-metrics/`](bench/qrunch/hw-metrics/)).
 
 ## What is trusted
 
@@ -108,6 +114,40 @@ that run `catq-compile`, and the executable
 and prints the exact phase in floating point; the composition of the stages within a round is
 proved ([`norm_round_sub_le`](CatCrypt/Quantum/QrunchRound.lean)). Without `--check` the fits
 are not checked and the bound is reported as `unchecked`.
+
+## Programs in the Qrisp-like layer
+
+Programs can also be written in Lean, in XQPL with the constructs of Qrisp, and exported to
+`catq-compile`. A program's operations come with exact gate lists
+([`OpGateList`, `OpGates`](CatCrypt/Quantum/XQPLGates.lean)); every such program lowers to QPL
+with its denotation kept ([`lowerXQPL_denote`](CatCrypt/Quantum/XQPLGates.lean)), and HQPL's
+register operations are one instance. On measurement-free programs:
+
+- `adjoint`, `controlled` and `conjugate` have the matrices of the inverse, the controlled
+  unitary and U·V·U† ([`unitary_adjoint`](CatCrypt/Quantum/XQPLGates.lean),
+  [`unitary_controlled`](CatCrypt/Quantum/XQPLGates.lean),
+  [`listMatrix_conjugate`](CatCrypt/Quantum/XQPLGates.lean)); control is defined on the exact
+  matrix, which the channel of a program does not determine.
+- A predicate computed into a clean ancilla, used as a control and uncomputed, applies the
+  body where the predicate holds and restores the ancilla, also when the compute step adds a
+  diagonal phase, as the relative-phase Toffoli does
+  ([`listMatrix_predAncilla_conj`](CatCrypt/Quantum/AndAncilla.lean),
+  [`listMatrix_rtofGates`](CatCrypt/Quantum/AndAncilla.lean)); `mcontrolled` and `with r == v`
+  are its instances ([`unitary_mcontrolled`](CatCrypt/Quantum/XQPLEnv.lean),
+  [`unitary_withEq`](CatCrypt/Quantum/XQPLEnv.lean)).
+- Typed registers place gate lists on their qubits and read basis states as values
+  ([`listMatrix_place`](CatCrypt/Quantum/QRegister.lean)); measuring a register on a basis
+  state returns its value with probability one
+  ([`measReg_trace_basisState`](CatCrypt/Quantum/QRegisterMeas.lean)).
+- Uncomputation has a Boolean qfree and permeable check on reversible atoms; a computation
+  that passes it is undone by its inverse with the ancilla restored
+  ([`computes_of_check`](CatCrypt/Quantum/Uncomputation.lean),
+  [`unitary_uncompute`](CatCrypt/Quantum/XQPLEnv.lean)).
+- The exported text of a program reads back as its matrix times an exact phase
+  ([`qelibListMatrix_export_xqpl`](CatCrypt/Quantum/XQPLEnv.lean)).
+
+Qrisp programs themselves reach `catq-compile` through the adapter of the bridge
+([`bridge/catq/qrisp_adapter.py`](bridge/catq/qrisp_adapter.py)).
 
 ## Where the code is
 
