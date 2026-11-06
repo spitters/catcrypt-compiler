@@ -40,8 +40,8 @@ quiet, with one leaf per step:
    leakage parameters with no variable-time operation: two runs at `fieldEnv E'` give two
    runs of its result at `E'`, with equal events from equal events
    (`fieldDialectStep_leakRunC`, `fieldDialectCTStep`);
-8. to 10. `lowerSelects`, `rangeNF` and the e-graph pass at `jasminRules`, at `E'`:
-   `NFProg.lowerSelects_ctRelC`, `rangeNF_ctRelC` and `aegraphOptNF_ctRelC`.
+8. to 10. `lowerSelects`, the range stage `synRange` and the e-graph pass at `jasminRules`,
+   at `E'`: `NFProg.lowerSelects_ctRelC`, `loopRange_ctRelC` and `aegraphOptNF_ctRelC`.
 
 A call of a declared name emits no event in the translated program; its own constant time is
 a property of the callee.
@@ -58,7 +58,7 @@ a property of the callee.
 * `aegraphCTStepC`, `extCallCTStep`, `mapCTStepC`, `montifyCTStep`, `fieldDialectCTStep`,
   `lowerSelectsCTStepC`, `rangeCTStepC` — the constant-time step certificates of the e-graph
   pass, of the translation with declarations, of the conversion `map?`, of the montify step,
-  of the field dialect step, of the select lowering and of `rangeNF`.
+  of the field dialect step, of the select lowering and of the range stage `synRange`.
 * `fieldInlineCTStep` — the constant-time step certificate of the inlining `fieldInlineStep`
   of the tagged calls.
 * `extChainCTCert` — the constant-time certificate of `extChain`.
@@ -110,7 +110,8 @@ open CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric (RuleSet RulesIndep)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (aegraphOptNF aegraphOptNF_ctRelC)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules catRules_indep)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules jasminRules_indep)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNFStep rangeNF_ctRelC)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synAnn synRangeStep)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop (loopRange_ctRelC)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.ImpToNF (nfLeakModelQ nfLeakRunQ nfLeakRunQ_eq)
 open _root_.Hax.FieldTag (fieldTag?)
@@ -505,23 +506,27 @@ def lowerSelectsCTStepC {P : CatLeakParams} {Pj : JLeakParams}
     exact ⟨s₁.2, s₂.2, by simp only [leakSemNFC, hs₁, Option.map_some],
       by simp only [leakSemNFC, hs₂, Option.map_some], he⟩
 
-/-- The constant-time step certificate of `rangeNF` at the leakage semantics at the call
-    environment `E'`, from `rangeNF_ctRelC` under quiet register arithmetic. -/
+/-- The constant-time step certificate of the range stage `synRange` at the leakage semantics
+    at the call environment `E'`, from `loopRange_ctRelC` at the synthesised annotation under
+    quiet register arithmetic. -/
 def rangeCTStepC {Pj : JLeakParams}
     (hq : ∀ bop w, (jLeakModel Pj).kind (.regArith bop w) = .quiet)
     (E' : CallEnv jasminDialect) (fuel : Nat) (Γ : Ctxt jasminDialect) (ts : List JasminTy) :
-    StepCert (rangeNFStep Γ ts).run (leakSemNFC (jLeakModel Pj) E' fuel Γ ts).twoRun
+    StepCert (synRangeStep Γ ts).run (leakSemNFC (jLeakModel Pj) E' fuel Γ ts).twoRun
       (leakSemNFC (jLeakModel Pj) E' fuel Γ ts).twoRun :=
   stepCertOfLeak _ _ Eq fun {p q V₁ V₂ _ _ l₁ l₂} hf hV₁ hV₂ h₁ h₂ => by
     cases hf
     subst hV₁ hV₂
     obtain ⟨r₁, hr₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
     obtain ⟨r₂, hr₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
-    obtain ⟨s₁, -, hs₁, -⟩ := rangeNF_ctRelC hq E' fuel p V₁ V₁ r₁ r₁ hr₁ hr₁ rfl
-    obtain ⟨s₂, -, hs₂, -⟩ := rangeNF_ctRelC hq E' fuel p V₂ V₂ r₂ r₂ hr₂ hr₂ rfl
+    obtain ⟨s₁, -, hs₁, -⟩ := loopRange_ctRelC hq E' fuel (synAnn p) p V₁ V₁ r₁ r₁ hr₁ hr₁
+      rfl
+    obtain ⟨s₂, -, hs₂, -⟩ := loopRange_ctRelC hq E' fuel (synAnn p) p V₂ V₂ r₂ r₂ hr₂ hr₂
+      rfl
     refine ⟨s₁.2, s₂.2, by simp only [leakSemNFC, hs₁, Option.map_some],
       by simp only [leakSemNFC, hs₂, Option.map_some], fun he => ?_⟩
-    obtain ⟨t₁, t₂, ht₁, ht₂, -, -, het⟩ := rangeNF_ctRelC hq E' fuel p V₁ V₂ r₁ r₂ hr₁ hr₂ he
+    obtain ⟨t₁, t₂, ht₁, ht₂, -, -, het⟩ := loopRange_ctRelC hq E' fuel (synAnn p) p V₁ V₂
+      r₁ r₂ hr₁ hr₂ he
     rw [hs₁, Option.some.injEq] at ht₁
     rw [hs₂, Option.some.injEq] at ht₂
     rw [ht₁, ht₂, het]

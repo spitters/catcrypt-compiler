@@ -27,7 +27,7 @@ program `RouteProg` through the structured programs of each dialect:
 
 Stages 2 to 6 form `catToRouteVia`, a function of the program of `NFProg catCryptDialect`.
 The front `nfFront` runs the chain `NFChain.nfChain`: these stages with the step `range`
-(`RangeNF.rangeNF`) between stages 4 and 5, and with the last step `exportNFJ` (the export
+(`RangeAnnSyn.synRange`) between stages 4 and 5, and with the last step `exportNFJ` (the export
 `exportNF` tried first, then the region export). `nfChain_run` states the chain as
 its stages after `NFProg.dce` under the check of the result type, and
 `nfChain_run_of_exportNF` relates a result of `exportNF` to a result of the chain.

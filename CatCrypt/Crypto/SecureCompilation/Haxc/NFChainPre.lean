@@ -45,7 +45,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin (catToJasmin
 open CatCrypt.Crypto.Hax.NFToCat (catTy)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNFStep)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synRangeStep)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFToRoute
 
 /-- **The linear route up to the structured program of `jasminDialect`**: the steps of
@@ -57,7 +57,7 @@ def nfChainPre (Γ : Ctxt nfDialect) (t : NfTy) :
     .cons (aegraphStep catRules (Γ.map catTy) [catTy t]) <|
     .cons (mapStep catToJasmin catToJasmin_regionTypes (Γ.map catTy) [catTy t]) <|
     .cons (lowerSelectsStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
-    .cons (rangeNFStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
+    .cons (synRangeStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (aegraphStep jasminRules (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <| .nil _
 
 /-- The chain `nfChain` is `nfChainPre` followed by the export step. -/

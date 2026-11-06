@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.NFChain
 public import CatCrypt.Crypto.SecureCompilation.Haxc.FrontLeakOpt
 public import CatCrypt.Crypto.SecureCompilation.Haxc.ExportNF
 public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphNFLeak
-public import CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
+public import CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn
 public import CatCrypt.Crypto.SecureCompilation.Dialects.NFMapLeak
 public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelectLeak
 
@@ -28,7 +28,8 @@ with one leaf per step, each an existing leakage lemma of the stage:
 5. `lowerSelects`: `lowerSelects_ctRel`; the lowering speculates only the ops `jasminQuiet`
    lists, whose events do not depend on their argument values at the parameters of the
    certificate (`jasminQuiet_opLeak_indep`), and the selects are quiet (`jasminSel_kind`);
-6. `range`: `rangeNF_ctRel`, under quiet register arithmetic of the leakage model;
+6. `range`: `loopRange_ctRel` at the synthesised annotation, under quiet register
+   arithmetic of the leakage model;
 7. `aegraph` at `jasminRules`: `aegraphOptNF_ctRel` under `jasminRules_indep`, which needs the
    register arithmetic of the leakage model to be quiet;
 8. `exportNFJ`: `exportNFJ_ctLeak`, at the same fuel.
@@ -44,7 +45,7 @@ The statement from the level check, `nfChain_routeCT_cat`, takes the program of
 the program may branch. Each step keeps `NFCT`; at `lowerSelects` this is
 `NFProg.nfCT_lowerSelects`, from `jasminQuiet_opLeak_indep` and `jasminSel_kind`, both
 consequences of the compatibility of the leakage parameters and of quiet register
-arithmetic; at `range` it is `rangeNF_nfCT`.
+arithmetic; at `range` it is `loopRange_nfCT`.
 
 The front `nfFront` is the source `nfSrcProg σ te` followed by the chain, and
 `nfFrontC.front` is `nfFront` on the extraction with the constants of the layout bound
@@ -106,7 +107,8 @@ open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (aegraphOptNF aegraphOptNF_ctRe
   aegraphOptNF_catRules_nfCT aegraphOptNF_jasminRules_nfCT ifFree_aegraphOptNF)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules catRules_indep)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules jasminRules_indep)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNF rangeNFStep rangeNF_ctRel rangeNF_nfCT)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synAnn synRangeStep)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop (loopRange_ctRel loopRange_nfCT)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.ImpToNF (entryCtx entryEnv impToNF hax64SigOf tableOf)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFToRoute
@@ -399,24 +401,25 @@ def lowerSelectsCTStep (Pj : JLeakParams) (fuel : Nat) (Γ : Ctxt jasminDialect)
     · exact (congrArg (Option.map Prod.snd) (NFProg.leakRun_lowerSelects _ fuel p hif V₁)).trans h₁
     · exact (congrArg (Option.map Prod.snd) (NFProg.leakRun_lowerSelects _ fuel p hif V₂)).trans h₂
 
-/-- The constant-time step certificate of the range stage, from `rangeNF_ctRel` under quiet
-    register arithmetic: two runs of the source give two runs of `rangeNF` of it, with equal
-    events when those of the source are equal. -/
+/-- The constant-time step certificate of the range stage, from `loopRange_ctRel` at the
+    synthesised annotation under quiet register arithmetic: two runs of the source give two
+    runs of `synRange` of it, with equal events when those of the source are equal. -/
 def rangeCTStep {Pj : JLeakParams}
     (hq : ∀ bop w, (jLeakModel Pj).kind (.regArith bop w) = .quiet) (fuel : Nat)
     (Γ : Ctxt jasminDialect) (ts : List JasminTy) :
-    StepCert (rangeNFStep Γ ts).run (leakSemNF (jLeakModel Pj) fuel Γ ts).twoRun
+    StepCert (synRangeStep Γ ts).run (leakSemNF (jLeakModel Pj) fuel Γ ts).twoRun
       (leakSemNF (jLeakModel Pj) fuel Γ ts).twoRun :=
   stepCertOfLeak _ _ Eq fun {p q V₁ V₂ _ _ l₁ l₂} hf hV₁ hV₂ h₁ h₂ => by
     cases hf
     subst hV₁ hV₂
     obtain ⟨r₁, hr₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
     obtain ⟨r₂, hr₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
-    obtain ⟨s₁, -, hs₁, -⟩ := rangeNF_ctRel hq fuel p V₁ V₁ r₁ r₁ hr₁ hr₁ rfl
-    obtain ⟨s₂, -, hs₂, -⟩ := rangeNF_ctRel hq fuel p V₂ V₂ r₂ r₂ hr₂ hr₂ rfl
+    obtain ⟨s₁, -, hs₁, -⟩ := loopRange_ctRel hq fuel (synAnn p) p V₁ V₁ r₁ r₁ hr₁ hr₁ rfl
+    obtain ⟨s₂, -, hs₂, -⟩ := loopRange_ctRel hq fuel (synAnn p) p V₂ V₂ r₂ r₂ hr₂ hr₂ rfl
     refine ⟨s₁.2, s₂.2, by simp only [leakSemNF, hs₁, Option.map_some],
       by simp only [leakSemNF, hs₂, Option.map_some], fun he => ?_⟩
-    obtain ⟨t₁, t₂, ht₁, ht₂, -, -, het⟩ := rangeNF_ctRel hq fuel p V₁ V₂ r₁ r₂ hr₁ hr₂ he
+    obtain ⟨t₁, t₂, ht₁, ht₂, -, -, het⟩ := loopRange_ctRel hq fuel (synAnn p) p V₁ V₂ r₁ r₂
+      hr₁ hr₂ he
     rw [hs₁, Option.some.injEq] at ht₁
     rw [hs₂, Option.some.injEq] at ht₂
     rw [ht₁, ht₂, het]
@@ -504,7 +507,7 @@ theorem nfChain_ifFree_lowerSelects {Γ : Ctxt nfDialect} {t : NfTy}
     returns `rp` for `p` and the program `p'` that `nfToCat` translates `NFProg.dce p` to is
     constant time for `L`, the route program is constant time for `mapLabels L`: the e-graph
     passes and the range stage keep `NFCT` (`aegraphOptNF_catRules_nfCT`,
-    `aegraphOptNF_jasminRules_nfCT`, `rangeNF_nfCT`),
+    `aegraphOptNF_jasminRules_nfCT`, `loopRange_nfCT`),
     `map?` transports it (`catToJasmin_map?_ctLeak` with the section `ctBackV`),
     `lowerSelects` keeps it (`NFProg.nfCT_lowerSelects`: a branch it lowers emits the events
     of both arms, which do not depend on the valuation, and a branch it keeps emits the
@@ -548,7 +551,7 @@ theorem nfChain_routeCT_cat {P : CatLeakParams} {Pj : JLeakParams} (hc : LeakCom
       NFProg.nfCT_lowerSelects (jLeakModel Pj) (jasminQuiet_opLeak_indep hc hq)
         (jasminSel_kind hc) fuel _ q4 c4
     exact exportNFJ_routeCT Pj fuel _ h8 _
-      (aegraphOptNF_jasminRules_nfCT hq fuel _ _ (rangeNF_nfCT hq fuel _ _ c5))
+      (aegraphOptNF_jasminRules_nfCT hq fuel _ _ (loopRange_nfCT hq fuel _ _ _ c5))
   · cases h0
 
 /-! ## The hax front through the chain -/

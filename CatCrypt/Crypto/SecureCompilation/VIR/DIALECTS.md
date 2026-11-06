@@ -505,7 +505,7 @@ Kind `record`: a lowering record `R A B`; `signature`: a function from a program
 | `gf2Dialect` | `jasminDialect` | `gf2ToJasmin` | record | `VIR/Gf2Dialect.lean` |
 | `jasField` | `jasminDialect` | `lowerBody` | signature | `Haxc/FieldDialectStep.lean` |
 | `jasField` | `jasMod` | `fieldToModArithJ` | record | `VIR/FieldToModArithChain.lean` |
-| `jasminDialect` | `jasminSel` | `entrySel` | signature | `CatCrypt/Crypto/Optimizer/Rewrite/RangeAnnSyn.lean` |
+| `jasminDialect` | `jasminSel` | `entrySel` | signature | `CatCrypt/Crypto/Optimizer/Rewrite/RangeSelSyn.lean` |
 | `jasminDialect` | `jasminSel` | `ofScalar` | signature | `VIR/SelDialect.lean` |
 | `jasminDialect` | `jasminSel` | `rangeSel` | signature | `CatCrypt/Crypto/Optimizer/Rewrite/RangeSelNF.lean` |
 | `jasminDialect` | `jasminSel` | `selGo` | signature | `CatCrypt/Crypto/Optimizer/Rewrite/RangeSelNF.lean` |

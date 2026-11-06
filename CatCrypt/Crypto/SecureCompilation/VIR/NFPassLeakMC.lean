@@ -6,12 +6,13 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.NFIfToSelectLeak
-public import CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
+public import CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop
 
 /-!
 # The leakage of three jasmin-level passes at a call environment
 
-The two-run leakage statements of `NFProg.lowerSelects`, `RangeNF.rangeNF` and the e-graph
+The two-run leakage statements of `NFProg.lowerSelects`, the range stage `RangeNFLoop.loopRange`
+and the e-graph
 pass at the jasmin rule set, for the runs `NFProg.leakRunMC` at a call environment `E`, in
 which a `call` node runs its callee and emits no event.
 
@@ -30,8 +31,9 @@ straight-line and contain no call.
 
 * `NFProg.lowerSel_ctRelC`, `NFProg.lowerSelects_ctRelC` — equal source events at `E` give
   equal events after the lowering of branches to selects.
-* `RangeNF.rangeGo_ctRelC`, `RangeNF.rangeNF_ctRelC` — equal source events at `E` give
-  equal events after the range stage.
+* `RangeNFLoop.carriedGo_ctRelC`, `RangeNFLoop.loopRange_ctRelC` — equal source events at
+  `E` give equal events after the range stage, at every annotation of the loop-carried
+  variables.
 * `AegraphNF.aegraphOptNF_jasminRules_ctRelC` — the e-graph pass at the jasmin rule set,
   from `AegraphNF.aegraphOptNF_ctRelC`.
 -/
@@ -470,68 +472,107 @@ end NFProg
 
 end CatCrypt.Crypto.SecureCompilation.VIR
 
-/-! ## 2. The range stage -/
+/-! ## 2. The range stage with checked carried intervals -/
 
-namespace CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
+namespace CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop
 
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.ComRange
 open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering (hvAppend)
 open CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
 open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck (LeakModel Expr.ctLeak)
 open CatCrypt.Crypto.SecureCompilation.CT (CTLeak)
 open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
-open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (forIterLeak_ctRel whileIterLeak_ctRel)
 open CatCrypt.Crypto.Optimizer.Rewrite.ComGVN (opLeak_length)
 
+/-- The leakage run at `E` of the body of a counted loop keeps `CarriedOK` at the result of
+    the checker. -/
+theorem forInductive_leakStepC (M : LeakModel jasminDialect) (E : CallEnv jasminDialect)
+    (fuel : Nat) {Γ : JCtxt} {cs : List JasminTy} {A : AEnv Γ} {len : Nat} {a : CarriedAnn}
+    {inits : HVector (fun t => Ctxt.Var Γ t) cs}
+    {body : NFProg jasminDialect (cs ++ HasWord64.word (d := jasminDialect) :: Γ) cs}
+    {V : Ctxt.Valuation Γ} (hlen : len = Γ.length) (hA : EnvOK A V) (i : Nat)
+    (X : Ctxt.Valuation (d := jasminDialect) cs)
+    (r : Ctxt.Valuation (d := jasminDialect) cs × List CTLeak)
+    (hP : CarriedOK (forInductive A len a inits body) cs a.ivs X)
+    (hr : NFProg.leakRunMC M E fuel body
+      (hvAppend X (.cons (HasWord64.ofNat (d := jasminDialect) i) V)) = some r) :
+    CarriedOK (forInductive A len a inits body) cs a.ivs r.1 := by
+  have h := NFProg.leakRunMC_fst M E fuel body
+    (hvAppend X (.cons (HasWord64.ofNat (d := jasminDialect) i) V))
+  rw [hr, Option.map_some] at h
+  let _ : CallDenote jasminDialect := ⟨E⟩
+  exact forInductive_step fuel hlen hA X i r.1 hP h.symm
+
+/-- The leakage run at `E` of the body of an exit-flag loop keeps `CarriedOK` at the result
+    of the checker. -/
+theorem whileInductive_leakStepC (M : LeakModel jasminDialect) (E : CallEnv jasminDialect)
+    (fuel : Nat) {Γ : JCtxt} {cs : List JasminTy} {A : AEnv Γ} {len : Nat} {a : CarriedAnn}
+    {inits : HVector (fun t => Ctxt.Var Γ t) cs}
+    {body : NFProg jasminDialect (cs ++ Γ) (HasBitType.bit (d := jasminDialect) :: cs)}
+    {V : Ctxt.Valuation Γ} (hlen : len = Γ.length) (hA : EnvOK A V)
+    (X : Ctxt.Valuation (d := jasminDialect) cs)
+    (r : Ctxt.Valuation (d := jasminDialect) (HasBitType.bit (d := jasminDialect) :: cs) ×
+      List CTLeak)
+    (hP : CarriedOK (whileInductive A len a inits body) cs a.ivs X)
+    (hr : NFProg.leakRunMC M E fuel body (hvAppend X V) = some r) :
+    CarriedOK (whileInductive A len a inits body) cs a.ivs r.1.tail := by
+  have h := NFProg.leakRunMC_fst M E fuel body (hvAppend X V)
+  rw [hr, Option.map_some] at h
+  let _ : CallDenote jasminDialect := ⟨E⟩
+  exact whileInductive_step fuel hlen hA X r.1 hP h.symm
+
 /-- The results of the leakage run at `E` of the traversal are those of the source. -/
-theorem rangeGo_leakRunMC_fst (M : LeakModel jasminDialect) (E : CallEnv jasminDialect)
-    (fuel : Nat) {Γ : JCtxt} {ts : List JasminTy} (A : AEnv Γ) (len : Nat)
+theorem carriedGo_leakRunMC_fst (M : LeakModel jasminDialect) (E : CallEnv jasminDialect)
+    (fuel : Nat) {Γ : JCtxt} {ts : List JasminTy} (A : AEnv Γ) (len : Nat) (a : CarriedAnn)
     (p : NFProg jasminDialect Γ ts) (V : Ctxt.Valuation Γ) (hlen : len = Γ.length)
     (hA : EnvOK A V) :
-    (NFProg.leakRunMC M E fuel (rangeGo A len p) V).map Prod.fst =
+    (NFProg.leakRunMC M E fuel (carriedGo A len a p) V).map Prod.fst =
       (NFProg.leakRunMC M E fuel p V).map Prod.fst := by
   rw [NFProg.leakRunMC_fst, NFProg.leakRunMC_fst]
   let _ : CallDenote jasminDialect := ⟨E⟩
-  exact rangeGo_denote fuel A len p V hlen hA
+  exact carriedGo_denote fuel A len a p V hlen hA
 
 /-- A run at `E` of the traversal and a run at `E` of the source have the same results. -/
-theorem rangeGo_fst_eqC (M : LeakModel jasminDialect) (E : CallEnv jasminDialect)
-    (fuel : Nat) {Γ : JCtxt} {ts : List JasminTy} {A : AEnv Γ} {len : Nat}
+theorem carriedGo_fst_eqC (M : LeakModel jasminDialect) (E : CallEnv jasminDialect)
+    (fuel : Nat) {Γ : JCtxt} {ts : List JasminTy} {A : AEnv Γ} {len : Nat} {a : CarriedAnn}
     {p : NFProg jasminDialect Γ ts} {V : Ctxt.Valuation Γ} (hlen : len = Γ.length)
     (hA : EnvOK A V) {r s : Ctxt.Valuation (d := jasminDialect) ts × List CTLeak}
     (h : NFProg.leakRunMC M E fuel p V = some r)
-    (h' : NFProg.leakRunMC M E fuel (rangeGo A len p) V = some s) : s.1 = r.1 := by
-  have := rangeGo_leakRunMC_fst M E fuel A len p V hlen hA
+    (h' : NFProg.leakRunMC M E fuel (carriedGo A len a p) V = some s) : s.1 = r.1 := by
+  have := carriedGo_leakRunMC_fst M E fuel A len a p V hlen hA
   rw [h, h'] at this
   exact Option.some.inj this
 
 variable {L : LeakModel jasminDialect}
 
 /-- **Leakage of the traversal at a call environment, two-run.** The statement
-    `rangeGo_ctRel` for the runs `NFProg.leakRunMC` at `E`. A call node is kept and its
+    `carriedGo_ctRel` for the runs `NFProg.leakRunMC` at `E`. A call node is kept and its
     results enter the abstract environment at the full lane range, which holds of every
     value the callee returns. -/
-theorem rangeGo_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
+theorem carriedGo_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
     (E : CallEnv jasminDialect) (fuel : Nat) :
-    ∀ {Γ : JCtxt} {ts : List JasminTy} (A : AEnv Γ) (len : Nat)
+    ∀ {Γ : JCtxt} {ts : List JasminTy} (A : AEnv Γ) (len : Nat) (a : CarriedAnn)
       (p : NFProg jasminDialect Γ ts) (V₁ V₂ : Ctxt.Valuation Γ), len = Γ.length →
       EnvOK A V₁ → EnvOK A V₂ →
       ∀ (r₁ r₂ s₁ s₂ : Ctxt.Valuation (d := jasminDialect) ts × List CTLeak),
       NFProg.leakRunMC L E fuel p V₁ = some r₁ → NFProg.leakRunMC L E fuel p V₂ = some r₂ →
-      NFProg.leakRunMC L E fuel (rangeGo A len p) V₁ = some s₁ →
-      NFProg.leakRunMC L E fuel (rangeGo A len p) V₂ = some s₂ → r₁.2 = r₂.2 → s₁.2 = s₂.2
-  | _, _, _, _, .ret vs, V₁, V₂, _, _, _, r₁, r₂, s₁, s₂, _, _, h₃, h₄, _ => by
-      simp only [rangeGo, NFProg.leakRunMC, Option.some.injEq] at h₃ h₄
+      NFProg.leakRunMC L E fuel (carriedGo A len a p) V₁ = some s₁ →
+      NFProg.leakRunMC L E fuel (carriedGo A len a p) V₂ = some s₂ → r₁.2 = r₂.2 →
+      s₁.2 = s₂.2
+  | _, _, _, _, _, .ret vs, V₁, V₂, _, _, _, r₁, r₂, s₁, s₂, _, _, h₃, h₄, _ => by
+      simp only [carriedGo, NFProg.leakRunMC, Option.some.injEq] at h₃ h₄
       subst h₃ h₄
       rfl
-  | _, _, A, len, .var e k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂, s₁, s₂, h₁, h₂, h₃, h₄, he => by
+  | _, _, A, len, a, .var e k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂, s₁, s₂, h₁, h₂, h₃, h₄,
+      he => by
       simp only [NFProg.leakRunMC, Expr.denoteM_option_eq_some, Option.bind_some] at h₁ h₂
       obtain ⟨u₁, hu₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
       obtain ⟨u₂, hu₂, rfl⟩ := Option.map_eq_some_iff.mp h₂
       obtain ⟨hE, hB⟩ := List.append_inj he (opLeak_length L e.op _ _)
-      simp only [rangeGo, NFProg.leakRunMC, Expr.denoteM_option_eq_some,
+      simp only [carriedGo, NFProg.leakRunMC, Expr.denoteM_option_eq_some,
         Option.bind_some] at h₃ h₄
       rw [rangeExpr_denote hA₁ hlen e] at h₃
       rw [rangeExpr_denote hA₂ hlen e] at h₄
@@ -547,13 +588,13 @@ theorem rangeGo_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
         Expr.ctLeak L (rangeExpr A len e) V₂ ++ t₂.2
       rw [hE2]
       congr 1
-      exact rangeGo_ctRelC hq E fuel _ (len + 1) k _ _ (by simp [hlen])
+      exact carriedGo_ctRelC hq E fuel _ (len + 1) a k _ _ (by simp [hlen])
         (hA₁.cons (stageAbs_sound hA₁ hlen e)) (hA₂.cons (stageAbs_sound hA₂ hlen e))
         u₁ u₂ t₁ t₂ hu₁ hu₂ ht₁ ht₂ hB
-  | Γ, _, A, len, .forLoop (cs := cs) count inits body k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂,
+  | Γ, _, A, len, a, .forLoop (cs := cs) count inits body k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂,
       s₁, s₂, h₁, h₂, h₃, h₄, he => by
       simp only [NFProg.leakRunMC] at h₁ h₂
-      simp only [rangeGo, NFProg.leakRunMC] at h₃ h₄
+      simp only [carriedGo, NFProg.leakRunMC] at h₃ h₄
       obtain ⟨i₁, hi₁, h₁⟩ := Option.bind_eq_some_iff.mp h₁
       obtain ⟨q₁, hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
       obtain ⟨i₂, hi₂, h₂⟩ := Option.bind_eq_some_iff.mp h₂
@@ -566,43 +607,54 @@ theorem rangeGo_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
       injection hn with hn
       rw [← hn] at hi₂ hj₂
       have hb : ∀ (V : Ctxt.Valuation Γ) (X : Ctxt.Valuation (d := jasminDialect) cs)
-          (i : Nat), EnvOK A V →
-          EnvOK (topApp cs (topCons (HasWord64.word (d := jasminDialect)) A))
+          (i : Nat), EnvOK A V → CarriedOK (forInductive A len a inits body) cs a.ivs X →
+          EnvOK
+            (carriedEnv (forInductive A len a inits body) cs a.ivs
+              (topCons (HasWord64.word (d := jasminDialect)) A))
             (hvAppend X (.cons (HasWord64.ofNat (d := jasminDialect) i) V)) :=
-        fun V X i h => envOK_topApp cs X (envOK_topCons h _)
+        fun V X i h hX => envOK_carriedEnv cs a.ivs X hX (envOK_topCons h _)
       have hlb := length_body cs (HasWord64.word (d := jasminDialect)) hlen
-      obtain ⟨hi, hj, hji₁, hji₂⟩ := forIterLeak_ctRel
+      obtain ⟨hi, hj, hji₁, hji₂, hp₁, hp₂⟩ := forIterLeak_carried
+        (CarriedOK (forInductive A len a inits body) cs a.ivs)
         (fun i X => NFProg.leakRunMC L E fuel body
           (hvAppend X (.cons (HasWord64.ofNat (d := jasminDialect) i) V₁)))
         (fun i X => NFProg.leakRunMC L E fuel body
           (hvAppend X (.cons (HasWord64.ofNat (d := jasminDialect) i) V₂)))
         (fun i X => NFProg.leakRunMC L E fuel
-          (rangeGo (topApp cs (topCons (HasWord64.word (d := jasminDialect)) A))
-            (cs.length + (len + 1)) body)
+          (carriedGo
+            (carriedEnv (forInductive A len a inits body) cs a.ivs
+              (topCons (HasWord64.word (d := jasminDialect)) A))
+            (cs.length + (len + 1)) a.inner body)
           (hvAppend X (.cons (HasWord64.ofNat (d := jasminDialect) i) V₁)))
         (fun i X => NFProg.leakRunMC L E fuel
-          (rangeGo (topApp cs (topCons (HasWord64.word (d := jasminDialect)) A))
-            (cs.length + (len + 1)) body)
+          (carriedGo
+            (carriedEnv (forInductive A len a inits body) cs a.ivs
+              (topCons (HasWord64.word (d := jasminDialect)) A))
+            (cs.length + (len + 1)) a.inner body)
           (hvAppend X (.cons (HasWord64.ofNat (d := jasminDialect) i) V₂)))
-        (fun i X => rangeGo_leakRunMC_fst L E fuel _ _ body _ hlb (hb V₁ X i hA₁))
-        (fun i X => rangeGo_leakRunMC_fst L E fuel _ _ body _ hlb (hb V₂ X i hA₂))
-        (fun i X Y r r' x y h h' hxy =>
+        (fun i X r hX hr => forInductive_leakStepC L E fuel hlen hA₁ i X r hX hr)
+        (fun i X r hX hr => forInductive_leakStepC L E fuel hlen hA₂ i X r hX hr)
+        (fun i X hX => carriedGo_leakRunMC_fst L E fuel _ _ _ body _ hlb (hb V₁ X i hA₁ hX))
+        (fun i X hX => carriedGo_leakRunMC_fst L E fuel _ _ _ body _ hlb (hb V₂ X i hA₂ hX))
+        (fun i X Y r r' x y _ _ h h' hxy =>
           NFProg.leakRunMC_prefix L E fuel body _ _ r r' x y h h' hxy)
-        (fun i X Y r r' s s' h h' g g' hr =>
-          rangeGo_ctRelC hq E fuel _ _ body _ _ hlb (hb V₁ X i hA₁) (hb V₂ Y i hA₂)
-            r r' s s' h h' g g' hr)
-        _ _ _ i₁ i₂ j₁ j₂ q₁.2 q₂.2 hi₁ hi₂ hj₁ hj₂ he'
+        (fun i X Y r r' s s' hX hY h h' g g' hr =>
+          carriedGo_ctRelC hq E fuel _ _ a.inner body _ _ hlb (hb V₁ X i hA₁ hX)
+            (hb V₂ Y i hA₂ hY) r r' s s' h h' g g' hr)
+        _ _ _ i₁ i₂ j₁ j₂ q₁.2 q₂.2 (forInductive_init hA₁) (forInductive_init hA₂)
+        hi₁ hi₂ hj₁ hj₂ he'
       rw [hi] at he'
       have hqq := List.append_cancel_left he'
-      have hk := rangeGo_ctRelC hq E fuel _ _ k _ _ (length_app cs hlen)
-        (envOK_topApp cs j₁.1 hA₁) (envOK_topApp cs j₂.1 hA₂) q₁ q₂ t₁ t₂
+      have hk := carriedGo_ctRelC hq E fuel _ _ a.rest k _ _ (length_app cs hlen)
+        (envOK_carriedEnv cs a.ivs j₁.1 (by rw [hji₁]; exact hp₁) hA₁)
+        (envOK_carriedEnv cs a.ivs j₂.1 (by rw [hji₂]; exact hp₂) hA₂) q₁ q₂ t₁ t₂
         (by rw [hji₁]; exact hq₁) (by rw [hji₂]; exact hq₂) ht₁ ht₂ hqq
       show _ :: (j₁.2 ++ t₁.2) = _ :: (j₂.2 ++ t₂.2)
       rw [hj, hk, hn]
-  | _, _, A, len, .ifThenElse (rs := rs) cond thn els k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂,
+  | _, _, A, len, a, .ifThenElse (rs := rs) cond thn els k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂,
       s₁, s₂, h₁, h₂, h₃, h₄, he => by
       simp only [NFProg.leakRunMC] at h₁ h₂
-      simp only [rangeGo, NFProg.leakRunMC] at h₃ h₄
+      simp only [carriedGo, NFProg.leakRunMC] at h₃ h₄
       obtain ⟨a₁, ha₁, h₁⟩ := Option.bind_eq_some_iff.mp h₁
       obtain ⟨q₁, hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
       obtain ⟨a₂, ha₂, h₂⟩ := Option.bind_eq_some_iff.mp h₂
@@ -618,25 +670,25 @@ theorem rangeGo_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
         cases hcb : HasBoolBit.toBool (d := jasminDialect) (cond.lookup V₁) <;>
           simp only [hcb, ite_true, ite_false, Bool.false_eq_true] at ha₁ ha₂ hb₁ hb₂
         · have ha := NFProg.leakRunMC_prefix L E fuel els _ _ a₁ a₂ q₁.2 q₂.2 ha₁ ha₂ he'
-          exact ⟨ha, rangeGo_ctRelC hq E fuel A len els V₁ V₂ hlen hA₁ hA₂ a₁ a₂ b₁ b₂
-            ha₁ ha₂ hb₁ hb₂ ha, rangeGo_fst_eqC L E fuel hlen hA₁ ha₁ hb₁,
-            rangeGo_fst_eqC L E fuel hlen hA₂ ha₂ hb₂⟩
+          exact ⟨ha, carriedGo_ctRelC hq E fuel A len a.other els V₁ V₂ hlen hA₁ hA₂ a₁ a₂
+            b₁ b₂ ha₁ ha₂ hb₁ hb₂ ha, carriedGo_fst_eqC L E fuel hlen hA₁ ha₁ hb₁,
+            carriedGo_fst_eqC L E fuel hlen hA₂ ha₂ hb₂⟩
         · have ha := NFProg.leakRunMC_prefix L E fuel thn _ _ a₁ a₂ q₁.2 q₂.2 ha₁ ha₂ he'
-          exact ⟨ha, rangeGo_ctRelC hq E fuel A len thn V₁ V₂ hlen hA₁ hA₂ a₁ a₂ b₁ b₂
-            ha₁ ha₂ hb₁ hb₂ ha, rangeGo_fst_eqC L E fuel hlen hA₁ ha₁ hb₁,
-            rangeGo_fst_eqC L E fuel hlen hA₂ ha₂ hb₂⟩
+          exact ⟨ha, carriedGo_ctRelC hq E fuel A len a.inner thn V₁ V₂ hlen hA₁ hA₂ a₁ a₂
+            b₁ b₂ ha₁ ha₂ hb₁ hb₂ ha, carriedGo_fst_eqC L E fuel hlen hA₁ ha₁ hb₁,
+            carriedGo_fst_eqC L E fuel hlen hA₂ ha₂ hb₂⟩
       obtain ⟨ha, hb, hba₁, hba₂⟩ := harm
       rw [ha] at he'
       have hqq := List.append_cancel_left he'
-      have hk := rangeGo_ctRelC hq E fuel _ _ k _ _ (length_app rs hlen)
+      have hk := carriedGo_ctRelC hq E fuel _ _ a.rest k _ _ (length_app rs hlen)
         (envOK_topApp rs b₁.1 hA₁) (envOK_topApp rs b₂.1 hA₂) q₁ q₂ t₁ t₂
         (by rw [hba₁]; exact hq₁) (by rw [hba₂]; exact hq₂) ht₁ ht₂ hqq
       show _ :: (b₁.2 ++ t₁.2) = _ :: (b₂.2 ++ t₂.2)
       rw [hb, hk, hc]
-  | _, _, A, len, .whileLoop (cs := cs) inits body k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂,
+  | _, _, A, len, a, .whileLoop (cs := cs) inits body k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂,
       s₁, s₂, h₁, h₂, h₃, h₄, he => by
       simp only [NFProg.leakRunMC] at h₁ h₂
-      simp only [rangeGo, NFProg.leakRunMC] at h₃ h₄
+      simp only [carriedGo, NFProg.leakRunMC] at h₃ h₄
       obtain ⟨i₁, hi₁, h₁⟩ := Option.bind_eq_some_iff.mp h₁
       obtain ⟨q₁, hq₁, rfl⟩ := Option.map_eq_some_iff.mp h₁
       obtain ⟨i₂, hi₂, h₂⟩ := Option.bind_eq_some_iff.mp h₂
@@ -646,64 +698,76 @@ theorem rangeGo_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
       obtain ⟨j₂, hj₂, h₄⟩ := Option.bind_eq_some_iff.mp h₄
       obtain ⟨t₂, ht₂, rfl⟩ := Option.map_eq_some_iff.mp h₄
       have hla := length_app cs hlen
-      obtain ⟨hi, hj, hji₁, hji₂⟩ := whileIterLeak_ctRel
+      obtain ⟨hi, hj, hji₁, hji₂, hp₁, hp₂⟩ := whileIterLeak_carried
+        (CarriedOK (whileInductive A len a inits body) cs a.ivs)
         (fun X => NFProg.leakRunMC L E fuel body (hvAppend X V₁))
         (fun X => NFProg.leakRunMC L E fuel body (hvAppend X V₂))
-        (fun X => NFProg.leakRunMC L E fuel (rangeGo (topApp cs A) (cs.length + len) body)
-          (hvAppend X V₁))
-        (fun X => NFProg.leakRunMC L E fuel (rangeGo (topApp cs A) (cs.length + len) body)
-          (hvAppend X V₂))
-        (fun X => rangeGo_leakRunMC_fst L E fuel _ _ body _ hla (envOK_topApp cs X hA₁))
-        (fun X => rangeGo_leakRunMC_fst L E fuel _ _ body _ hla (envOK_topApp cs X hA₂))
-        (fun X Y r r' x y h h' hxy =>
+        (fun X => NFProg.leakRunMC L E fuel
+          (carriedGo (carriedEnv (whileInductive A len a inits body) cs a.ivs A)
+            (cs.length + len) a.inner body) (hvAppend X V₁))
+        (fun X => NFProg.leakRunMC L E fuel
+          (carriedGo (carriedEnv (whileInductive A len a inits body) cs a.ivs A)
+            (cs.length + len) a.inner body) (hvAppend X V₂))
+        (fun X r hX hr => whileInductive_leakStepC L E fuel hlen hA₁ X r hX hr)
+        (fun X r hX hr => whileInductive_leakStepC L E fuel hlen hA₂ X r hX hr)
+        (fun X hX => carriedGo_leakRunMC_fst L E fuel _ _ _ body _ hla
+          (envOK_carriedEnv cs a.ivs X hX hA₁))
+        (fun X hX => carriedGo_leakRunMC_fst L E fuel _ _ _ body _ hla
+          (envOK_carriedEnv cs a.ivs X hX hA₂))
+        (fun X Y r r' x y _ _ h h' hxy =>
           NFProg.leakRunMC_prefix L E fuel body _ _ r r' x y h h' hxy)
-        (fun X Y r r' s s' h h' g g' hr =>
-          rangeGo_ctRelC hq E fuel _ _ body _ _ hla (envOK_topApp cs X hA₁)
-            (envOK_topApp cs Y hA₂) r r' s s' h h' g g' hr)
-        _ _ _ i₁ i₂ j₁ j₂ q₁.2 q₂.2 hi₁ hi₂ hj₁ hj₂ he
+        (fun X Y r r' s s' hX hY h h' g g' hr =>
+          carriedGo_ctRelC hq E fuel _ _ a.inner body _ _ hla
+            (envOK_carriedEnv cs a.ivs X hX hA₁) (envOK_carriedEnv cs a.ivs Y hY hA₂)
+            r r' s s' h h' g g' hr)
+        _ _ _ i₁ i₂ j₁ j₂ q₁.2 q₂.2 (whileInductive_init hA₁) (whileInductive_init hA₂)
+        hi₁ hi₂ hj₁ hj₂ he
       rw [hi] at he
       have hqq := List.append_cancel_left he
-      have hk := rangeGo_ctRelC hq E fuel _ _ k _ _ hla
-        (envOK_topApp cs j₁.1 hA₁) (envOK_topApp cs j₂.1 hA₂) q₁ q₂ t₁ t₂
+      have hk := carriedGo_ctRelC hq E fuel _ _ a.rest k _ _ hla
+        (envOK_carriedEnv cs a.ivs j₁.1 (by rw [hji₁]; exact hp₁) hA₁)
+        (envOK_carriedEnv cs a.ivs j₂.1 (by rw [hji₂]; exact hp₂) hA₂) q₁ q₂ t₁ t₂
         (by rw [hji₁]; exact hq₁) (by rw [hji₂]; exact hq₂) ht₁ ht₂ hqq
       show j₁.2 ++ t₁.2 = j₂.2 ++ t₂.2
       rw [hj, hk]
-  | _, _, A, len, .call (rs := rs) f args k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂, s₁, s₂,
+  | _, _, A, len, a, .call (rs := rs) f args k, V₁, V₂, hlen, hA₁, hA₂, r₁, r₂, s₁, s₂,
       h₁, h₂, h₃, h₄, he => by
       simp only [NFProg.leakRunMC] at h₁ h₂
-      simp only [rangeGo, NFProg.leakRunMC] at h₃ h₄
+      simp only [carriedGo, NFProg.leakRunMC] at h₃ h₄
       obtain ⟨c₁, hc₁, h₁⟩ := Option.bind_eq_some_iff.mp h₁
       obtain ⟨c₂, hc₂, h₂⟩ := Option.bind_eq_some_iff.mp h₂
       rw [hc₁, Option.bind_some] at h₃
       rw [hc₂, Option.bind_some] at h₄
-      exact rangeGo_ctRelC hq E fuel _ _ k _ _ (length_app rs hlen)
+      exact carriedGo_ctRelC hq E fuel _ _ a k _ _ (length_app rs hlen)
         (envOK_topApp rs c₁ hA₁) (envOK_topApp rs c₂ hA₂) r₁ r₂ s₁ s₂ h₁ h₂ h₃ h₄ he
 
-/-- **Leakage of the range pass at a call environment, two-run.** The statement
-    `rangeNF_ctRel` for the runs `NFProg.leakRunMC` at `E`: under a leakage model whose
+/-- **Leakage of the stage at a call environment, two-run.** The statement
+    `loopRange_ctRel` for the runs `NFProg.leakRunMC` at `E`: under a leakage model whose
     `regArith` operations are quiet, two runs of `p` at `E` that succeed with equal events
-    give two runs of `rangeNF p` at `E` that succeed, with the same results and equal
-    events. -/
-theorem rangeNF_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
+    give two runs of `loopRange a p` at `E` that succeed, with the same results and equal
+    events, for every annotation `a`. -/
+theorem loopRange_ctRelC (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet)
     (E : CallEnv jasminDialect) (fuel : Nat) {Γ : JCtxt} {ts : List JasminTy}
-    (p : NFProg jasminDialect Γ ts) (V₁ V₂ : Ctxt.Valuation Γ)
+    (a : CarriedAnn) (p : NFProg jasminDialect Γ ts) (V₁ V₂ : Ctxt.Valuation Γ)
     (r₁ r₂ : Ctxt.Valuation (d := jasminDialect) ts × List CTLeak)
     (h₁ : NFProg.leakRunMC L E fuel p V₁ = some r₁)
     (h₂ : NFProg.leakRunMC L E fuel p V₂ = some r₂) (he : r₁.2 = r₂.2) :
-    ∃ s₁ s₂, NFProg.leakRunMC L E fuel (rangeNF p) V₁ = some s₁ ∧
-      NFProg.leakRunMC L E fuel (rangeNF p) V₂ = some s₂ ∧ s₁.1 = r₁.1 ∧ s₂.1 = r₂.1 ∧
+    ∃ s₁ s₂, NFProg.leakRunMC L E fuel (loopRange a p) V₁ = some s₁ ∧
+      NFProg.leakRunMC L E fuel (loopRange a p) V₂ = some s₂ ∧ s₁.1 = r₁.1 ∧ s₂.1 = r₂.1 ∧
       s₁.2 = s₂.2 := by
-  have f₁ := rangeGo_leakRunMC_fst L E fuel (topEnv Γ) Γ.length p V₁ rfl (envOK_topEnv V₁)
-  have f₂ := rangeGo_leakRunMC_fst L E fuel (topEnv Γ) Γ.length p V₂ rfl (envOK_topEnv V₂)
+  have f₁ := carriedGo_leakRunMC_fst L E fuel (topEnv Γ) Γ.length a p V₁ rfl
+    (envOK_topEnv V₁)
+  have f₂ := carriedGo_leakRunMC_fst L E fuel (topEnv Γ) Γ.length a p V₂ rfl
+    (envOK_topEnv V₂)
   rw [h₁, Option.map_some] at f₁
   rw [h₂, Option.map_some] at f₂
   obtain ⟨s₁, hs₁, e₁⟩ := Option.map_eq_some_iff.mp f₁
   obtain ⟨s₂, hs₂, e₂⟩ := Option.map_eq_some_iff.mp f₂
   exact ⟨s₁, s₂, hs₁, hs₂, e₁, e₂,
-    rangeGo_ctRelC hq E fuel _ _ p V₁ V₂ rfl (envOK_topEnv V₁) (envOK_topEnv V₂) r₁ r₂ s₁ s₂
-      h₁ h₂ hs₁ hs₂ he⟩
+    carriedGo_ctRelC hq E fuel _ _ a p V₁ V₂ rfl (envOK_topEnv V₁) (envOK_topEnv V₂) r₁ r₂
+      s₁ s₂ h₁ h₂ hs₁ hs₂ he⟩
 
-end CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
+end CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop
 
 /-! ## 3. The e-graph pass at the jasmin rule set -/
 

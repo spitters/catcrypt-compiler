@@ -46,7 +46,7 @@ flowchart TD
     RUST -->|"hax frontend export, haxpipeT"| MOD
     LEAN -->|"reifyField%"| MOD
     MOD -->|"haxToNF: domain check refusal?, typing, inlining of callees"| NF
-    NF -->|"extChain: tuple flattening, DCE, extern calls,<br/>e-graph (catRules), catToJasmin, montify, field dialect step,<br/>select lowering, range analysis, e-graph (jasminRules)"| JNF
+    NF -->|"extChain: tuple flattening, DCE, extern calls,<br/>e-graph (catRules), catToJasmin, montify, field dialect step,<br/>select lowering, range analysis with checked loop-carried intervals, e-graph (jasminRules)"| JNF
     TPL -->|"fieldRegionFront: limb lowering, select lowering, e-graph"| JNF
     JNF -->|"regionExportableB, exportR"| REF
     REF -->|"regionLprog: untrusted register allocation"| ALLOC

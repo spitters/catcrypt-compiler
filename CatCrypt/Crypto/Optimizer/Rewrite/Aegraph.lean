@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric
 public import CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
 public import CatCrypt.Crypto.Optimizer.Rewrite.ComGVN
 public import CatCrypt.Crypto.Optimizer.Rewrite.Peephole
+public import CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
 
 /-!
 # An acyclic e-graph over `Com jasminDialect`
@@ -21,6 +22,12 @@ the set at the operations `binRule` does not read: constant folding of a width c
 constant (`constFoldRule jasminReify jasminFoldSel`), and the width cast `castW w w` as a
 copy (`copyRule jasminCastCopy`). The rule `cmpOneRule` reads a one-bit equality
 `cmp .eq 1 a b` whose operand `b` is bound to the constant `1`, and gives the variable `a`.
+The Mersenne rule `mersenneRule` reads a multiply `x * c` whose operand `c` is bound to
+`2 ^ a - 1` with `2 ≤ a < w`, and gives `(x <<< k) - x` when the definition table binds a
+variable `k` to the constant `a`: two register operations, of cost two together, against the multiply
+of cost four (`mersenneAlt_cost`), which extraction takes. When the program also computes
+the high word of that product (`mulhi` on the same operands), the rewrite leaves the high
+multiply without the low multiply that the `MULX` fusion pairs with it.
 
 ## The rule set
 
@@ -49,6 +56,9 @@ apply to no node, are
 
 * `rule_sound`: every term of `binRules` denotes `bop.apply a b`, under a definition
   table sound for the valuation.
+* `mersenneAlts_sound`, `mersenneAlt_cost`, `mersenneAlts_indep`: the alternatives of the
+  Mersenne rule denote the multiply, cost two, and emit no event under quiet register
+  arithmetic.
 * `extract_denote`: the extracted alternative denotes the value of the expression;
   `choose_cost_le`: its cost is at most the cost of the expression.
 * `aegraphOpt`, `aegraphOpt_denote`: the pass from the empty state; it denotes the same
@@ -582,7 +592,145 @@ theorem cmpOneAlts_sound {D : Defs} {Δ : Ctxt jasminDialect} {s : JasminTy}
       · cases halt
   · cases halt
 
-/-! ## 5. The jasmin rule set and the pass -/
+/-! ## 5. Multiplication by a constant `2 ^ a - 1`
+
+A multiply `x * c` whose operand `c` holds `2 ^ a - 1` with `2 ≤ a < w` is
+`(x <<< k) - x` when the definition table binds a variable `k` to the constant `a`
+(`mersenneAlt`): two register operations of cost one each against the multiply of cost four,
+so extraction takes the alternative (`mersenneAlt_cost`). The rule reads only constants the
+program already binds; it introduces no binding of the count. -/
+
+section Mersenne
+
+variable {Δ : Ctxt jasminDialect} {w : Nat}
+
+/-- The exponent `a` with `2 ≤ a < w` and `2 ^ a - 1 = n`, when there is one. -/
+def asMersenne (w n : Nat) : Option Nat :=
+  (List.range w).find? (fun a => 2 ≤ a && 2 ^ a - 1 == n)
+
+theorem asMersenne_spec {w n a : Nat} (h : asMersenne w n = some a) :
+    2 ≤ a ∧ a < w ∧ 2 ^ a - 1 = n := by
+  unfold asMersenne at h
+  have hm := List.mem_of_find?_eq_some h
+  have hp := List.find?_some h
+  simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hp
+  exact ⟨hp.1, List.mem_range.mp hm, hp.2⟩
+
+/-- A variable of the context `Δ` that the definition table binds to the register constant
+    `regConst w n`, when the table has one. -/
+def constVar? (D : Defs) (Δ : Ctxt jasminDialect) (w n : Nat) :
+    Option (Ctxt.Var Δ (.reg w)) :=
+  D.fold (init := none) fun acc l p =>
+    match acc, p with
+    | some v, _ => some v
+    | none, (.regConst w' n', []) =>
+        if w' = w ∧ n' = n then varOfLvl? Δ (.reg w) l else none
+    | none, _ => none
+
+/-- The alternative `(x <<< k) - x` of `x * c`, where `c` holds `2 ^ a - 1` with `2 ≤ a < w`
+    and `k` is a variable the definition table binds to the constant `a`. -/
+def mersenneAlt (D : Defs) (x : Ctxt.Var Δ (.reg w)) (c : BitVec w) :
+    List (Alt Δ (.reg w)) :=
+  match asMersenne w c.toNat with
+  | some a =>
+      match constVar? D Δ w a with
+      | some k =>
+          if constOf D k = some a then [.two (binE .shl x k) (binE .sub .here x.there)]
+          else []
+      | none => []
+  | none => []
+
+theorem mersenneAlt_sound {D : Defs} {V : Ctxt.Valuation Δ} (hD : DSound V D)
+    (x : Ctxt.Var Δ (.reg w)) (c : BitVec w) (alt : Alt Δ (.reg w))
+    (ha : alt ∈ mersenneAlt D x c) : alt.denote V = JasminBinOp.mul.apply (x.lookup V) c := by
+  unfold mersenneAlt at ha
+  split at ha
+  · rename_i a hm
+    split at ha
+    · rename_i k _
+      split at ha
+      · rename_i hk
+        obtain rfl := List.mem_singleton.mp ha
+        obtain ⟨-, hlt, hc⟩ := asMersenne_spec hm
+        have ha2 : a < 2 ^ w := Nat.lt_trans hlt Nat.lt_two_pow_self
+        show JasminBinOp.sub.apply (JasminBinOp.shl.apply (x.lookup V) (k.lookup V))
+            (x.lookup V) = JasminBinOp.mul.apply (x.lookup V) c
+        simp only [JasminBinOp.apply]
+        rw [constOf_sound hD hk, BitVec.toNat_ofNat, Nat.mod_eq_of_lt ha2, shiftMask_of_lt hlt,
+          ← MulByConst.bitvec_mul_mersenne_eq hlt.le, hc, BitVec.ofNat_toNat,
+          BitVec.setWidth_eq]
+      · cases ha
+    · cases ha
+  · cases ha
+
+/-- **The alternative lowers the cost**: its two register operations cost two under `opCost`,
+    the multiply four. -/
+theorem mersenneAlt_cost (D : Defs) (x : Ctxt.Var Δ (.reg w)) (c : BitVec w)
+    (alt : Alt Δ (.reg w)) (ha : alt ∈ mersenneAlt D x c) :
+    alt.cost opCost = 2 ∧ opCost (.regArith .mul w) = 4 := by
+  unfold mersenneAlt at ha
+  split at ha
+  · split at ha
+    · split at ha
+      · obtain rfl := List.mem_singleton.mp ha
+        exact ⟨rfl, rfl⟩
+      · cases ha
+    · cases ha
+  · cases ha
+
+/-- The alternatives of a multiply `a * b` by a constant `2 ^ k - 1` at either operand. -/
+def mersenneTerms (D : Defs) (a b : Ctxt.Var Δ (.reg w)) : List (Alt Δ (.reg w)) :=
+  (match constOf D b with
+    | some n => mersenneAlt D a (BitVec.ofNat w n)
+    | none => []) ++
+  (match constOf D a with
+    | some n => mersenneAlt D b (BitVec.ofNat w n)
+    | none => [])
+
+theorem mersenneTerms_sound {D : Defs} {V : Ctxt.Valuation Δ} (hD : DSound V D)
+    (a b : Ctxt.Var Δ (.reg w)) (alt : Alt Δ (.reg w)) (ha : alt ∈ mersenneTerms D a b) :
+    alt.denote V = JasminBinOp.mul.apply (a.lookup V) (b.lookup V) := by
+  simp only [mersenneTerms, List.mem_append] at ha
+  rcases ha with ha | ha
+  · split at ha
+    · rename_i n hn
+      rw [constOf_sound hD hn]
+      exact mersenneAlt_sound hD a _ alt ha
+    · cases ha
+  · split at ha
+    · rename_i n hn
+      rw [constOf_sound hD hn, apply_comm (bop := .mul) rfl]
+      exact mersenneAlt_sound hD b _ alt ha
+    · cases ha
+
+/-- The alternatives of the Mersenne rule: for a multiply `regArith .mul w`, the terms of
+    `mersenneTerms`; for every other expression, none. -/
+def mersenneAlts (D : Defs) {s : JasminTy} (e : Expr jasminDialect Δ s) :
+    List (Alt Δ s) :=
+  match e with
+  | ⟨.regArith .mul w, hop, args⟩ =>
+      let a : Ctxt.Var Δ (.reg w) := args.head
+      let b : Ctxt.Var Δ (.reg w) := args.tail.head
+      hop ▸ mersenneTerms D a b
+  | _ => []
+
+theorem mersenneAlts_sound {D : Defs} {s : JasminTy} (e : Expr jasminDialect Δ s)
+    {V : Ctxt.Valuation Δ} (hD : DSound V D) :
+    ∀ alt ∈ mersenneAlts D e, alt.denote V = e.denote V := by
+  intro alt halt
+  unfold mersenneAlts at halt
+  split at halt
+  · rename_i w' hop args
+    subst hop
+    match args, (rfl : args = args) with
+    | .cons a (.cons b .nil), _ =>
+      simp only [HVector.head, HVector.tail] at halt
+      exact mersenneTerms_sound hD a b alt halt
+  · cases halt
+
+end Mersenne
+
+/-! ## 6. The jasmin rule set and the pass -/
 
 /-- The rule of the jasmin rule set: the alternatives `ruleAlts` of a binary `regArith`
     node, sound by `ruleAlts_sound`. -/
@@ -595,6 +743,12 @@ def binRule : Rule jasminDialect where
 def cmpOneRule : Rule jasminDialect where
   apply D _ _ e := cmpOneAlts D e
   sound _ _ _ hD _ e := cmpOneAlts_sound e hD
+
+/-- **The Mersenne rule**: a multiply by a constant `2 ^ a - 1` is the shift by a variable
+    bound to `a` less the operand (`mersenneAlts`), sound by `mersenneAlts_sound`. -/
+def mersenneRule : Rule jasminDialect where
+  apply D _ _ e := mersenneAlts D e
+  sound _ _ _ hD _ e := mersenneAlts_sound e hD
 
 open CatCrypt.Crypto.Optimizer.Rewrite.TraitRules
   (ConstReify CopyOp un app0 constFoldRule copyRule constFoldRule_indep copyRule_indep
@@ -648,14 +802,14 @@ def jasminCastCopy : CopyOp jasminDialect where
          simp [un, DialectDenote.denote, HVector.head])
 
 /-- The jasmin rule set: the rule `binRule`, constant folding of width casts, the copy
-    `castW w w` and the rule `cmpOneRule`, over the operation traits `jasminTraits`, whose
+    `castW w w`, the rule `cmpOneRule` and the Mersenne rule `mersenneRule`, over the operation traits `jasminTraits`, whose
     cost is `opCost`, whose extraction weight is `opKey` (`opKey_eq`), and whose purity
     `ComGVN.gvnPure` keeps the operations of the instruction pairs of the x86 lowering out
     of the node table. -/
 def jasminRules : RuleSet jasminDialect where
   toOpTraits := jasminTraits
   rules := [binRule, constFoldRule jasminReify jasminFoldSel, copyRule jasminCastCopy,
-    cmpOneRule]
+    cmpOneRule, mersenneRule]
 
 /-- **Extraction** at the jasmin rule set. -/
 def choose (S : Tbl × Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}
@@ -698,7 +852,7 @@ theorem aegraphOpt_denote {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : (aegraphOpt c).denote = c.denote :=
   AegraphGeneric.aegraphOptOf_denote jasminRules c
 
-/-! ## 6. Cost -/
+/-! ## 7. Cost -/
 
 theorem agGo_cost_le {Γ Δ : Ctxt jasminDialect} {t : JasminTy}
     (ρ : Ctxt.Hom Γ Δ) (S : Tbl × Defs) (c : Com jasminDialect Γ t) :
@@ -711,7 +865,7 @@ theorem aegraphOpt_cost_le {Γ : Ctxt jasminDialect} {t : JasminTy}
     (c : Com jasminDialect Γ t) : comCost (aegraphOpt c) ≤ comCost c :=
   agGo_cost_le _ _ c
 
-/-! ## 7. Constant time under a leakage model
+/-! ## 8. Constant time under a leakage model
 
 The bindings the rules emit are `regArith` and `regConst` bindings. Under a leakage model
 whose `regArith` operations are quiet, the former emit no event, and a `regConst` binding
@@ -774,17 +928,51 @@ theorem cmpOneAlts_indep (D : Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}
     · cases halt
   · cases halt
 
+/-- An alternative of `mersenneAlts` binds two register operations, which emit no event
+    under a leakage model whose `regArith` operations are quiet. -/
+theorem mersenneAlts_indep (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) (D : Defs)
+    {Δ : Ctxt jasminDialect} {s : JasminTy} (e : Expr jasminDialect Δ s) :
+    ∀ alt ∈ mersenneAlts D e, alt.Indep L := by
+  have hm : ∀ {w : Nat} (x : Ctxt.Var Δ (.reg w)) (c : BitVec w), ∀ alt ∈ mersenneAlt D x c,
+      alt.Indep L := by
+    intro w x c alt ha
+    unfold mersenneAlt at ha
+    split at ha
+    · split at ha
+      · split at ha
+        · obtain rfl := List.mem_singleton.mp ha
+          exact ⟨fun V₁ V₂ => by rw [binE_ctLeak hq, binE_ctLeak hq],
+            fun V₁ V₂ => by rw [binE_ctLeak hq, binE_ctLeak hq]⟩
+        · cases ha
+      · cases ha
+    · cases ha
+  intro alt halt
+  unfold mersenneAlts at halt
+  split at halt
+  · rename_i w' hop args
+    subst hop
+    simp only [mersenneTerms, List.mem_append] at halt
+    rcases halt with halt | halt
+    · split at halt
+      · exact hm _ _ alt halt
+      · cases halt
+    · split at halt
+      · exact hm _ _ alt halt
+      · cases halt
+  · cases halt
+
 /-- Under a leakage model whose `regArith` operations are quiet, the events of every
     alternative of the jasmin rule set do not depend on the valuation. -/
 theorem jasminRules_indep (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) :
     AegraphGeneric.RulesIndep L jasminRules := by
   refine rulesIndep_of_forall fun r hr => ?_
   simp only [jasminRules, List.mem_cons, List.not_mem_nil, or_false] at hr
-  rcases hr with rfl | rfl | rfl | rfl
+  rcases hr with rfl | rfl | rfl | rfl | rfl
   · exact fun D _ _ e alt ha => ruleAlts_indep hq D e alt ha
   · exact constFoldRule_indep L jasminReify jasminFoldSel
   · exact copyRule_indep L jasminCastCopy
   · exact fun D _ _ e alt ha => cmpOneAlts_indep D e alt ha
+  · exact fun D _ _ e alt ha => mersenneAlts_indep hq D e alt ha
 
 /-- **Leakage of the traversal.** Under states sound for `V₁` and `V₂`, equal leakage of
     the input at the pulled-back valuations gives equal leakage of the output. -/

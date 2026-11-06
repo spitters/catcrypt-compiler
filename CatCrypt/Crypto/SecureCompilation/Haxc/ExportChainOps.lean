@@ -46,7 +46,7 @@ arithmetic at the type of the binding they replace.
 
 * `callsLoopsAll_rename?`, `callsLoopsAll_seq?`, `callsLoopsAll_inline?`, `callsLoopsAll_dce`,
   `callsLoopsAll_flatSame`, `callsLoopsAll_nfGo`, `callsLoopsAll_map?`,
-  `callsLoopsAll_lowerSel`, `callsLoopsAll_rangeGo`, `callsLoopsAll_montifyPass`,
+  `callsLoopsAll_lowerSel`, `callsLoopsAll_carriedGo`, `callsLoopsAll_montifyPass`,
   `callsLoopsAll_fieldDialect` — the passes keep or transport `callsLoopsAll`.
 * `callsAll_of_callsLoopsAll`, `whileFree_of_callsLoopsAll` — `callsLoopsAll C W` gives
   `callsAll C`, and at `W = fun _ => false` the absence of exit-flag loops.
@@ -60,7 +60,7 @@ arithmetic at the type of the binding they replace.
   width.
 * `extChain_whileRegB`, `extChain_wordCalls` — every such program passes `whileRegB` and
   `wordCalls`.
-* `allOps_nfGo`, `catRules_ops`, `jasminRules_ops`, `allOps_rangeGo`, `allOps_montifyPass`,
+* `allOps_nfGo`, `catRules_ops`, `jasminRules_ops`, `allOps_carriedGo`, `allOps_montifyPass`,
   `allOps_lowerSel` — the passes keep their operation predicates.
 * `unitFree_dce`, `unitFree_flatSame` — the input of the translation is unit-free.
 * `extChain_allOps` — every program `extChain` returns has its operations in `opMemB` at
@@ -733,29 +733,30 @@ end Translation
 
 /-! ## 5. The range stage, the montify pass, the inlining step and the field dialect step -/
 
-/-- **The traversal of the range stage keeps `callsLoopsAll C W`.** -/
-theorem callsLoopsAll_rangeGo (C : String → List JasminTy → List JasminTy → Bool)
+/-- **The traversal of the range stage keeps `callsLoopsAll C W`**, at every annotation. -/
+theorem callsLoopsAll_carriedGo (C : String → List JasminTy → List JasminTy → Bool)
     (W : List JasminTy → Bool) : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (A : _)
-    (len : Nat) (p : NFProg jasminDialect Γ ts),
-    callsLoopsAll C W (CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo A len p) =
+    (len : Nat) (a : CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.CarriedAnn)
+    (p : NFProg jasminDialect Γ ts),
+    callsLoopsAll C W (CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo A len a p) =
       callsLoopsAll C W p
-  | _, _, _, _, .ret _ => rfl
-  | _, _, _, _, .var _ k => by
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, callsLoopsAll,
-        callsLoopsAll_rangeGo C W _ _ k]
-  | _, _, _, _, .forLoop _ _ body k => by
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, callsLoopsAll,
-        callsLoopsAll_rangeGo C W _ _ body, callsLoopsAll_rangeGo C W _ _ k]
-  | _, _, _, _, .ifThenElse _ thn els k => by
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, callsLoopsAll,
-        callsLoopsAll_rangeGo C W _ _ thn, callsLoopsAll_rangeGo C W _ _ els,
-        callsLoopsAll_rangeGo C W _ _ k]
-  | _, _, _, _, .whileLoop _ body k => by
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, callsLoopsAll,
-        callsLoopsAll_rangeGo C W _ _ body, callsLoopsAll_rangeGo C W _ _ k]
-  | _, _, _, _, .call _ _ k => by
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, callsLoopsAll,
-        callsLoopsAll_rangeGo C W _ _ k]
+  | _, _, _, _, _, .ret _ => rfl
+  | _, _, _, _, _, .var _ k => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, callsLoopsAll,
+        callsLoopsAll_carriedGo C W _ _ _ k]
+  | _, _, _, _, _, .forLoop _ _ body k => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, callsLoopsAll,
+        callsLoopsAll_carriedGo C W _ _ _ body, callsLoopsAll_carriedGo C W _ _ _ k]
+  | _, _, _, _, _, .ifThenElse _ thn els k => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, callsLoopsAll,
+        callsLoopsAll_carriedGo C W _ _ _ thn, callsLoopsAll_carriedGo C W _ _ _ els,
+        callsLoopsAll_carriedGo C W _ _ _ k]
+  | _, _, _, _, _, .whileLoop _ body k => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, callsLoopsAll,
+        callsLoopsAll_carriedGo C W _ _ _ body, callsLoopsAll_carriedGo C W _ _ _ k]
+  | _, _, _, _, _, .call _ _ k => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, callsLoopsAll,
+        callsLoopsAll_carriedGo C W _ _ _ k]
 
 section Montify
 
@@ -1215,8 +1216,8 @@ theorem extChain_callsLoopsAll (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfT
   have h4 := callsLoopsAll_fieldDialect _ _ h3 hj2
   have h5 := callsLoopsAll_lowerSel _ _ _ h4 (fun v => v)
   unfold CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF.aegraphOptNF
-    CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeNF
-  rw [callsLoopsAll_nfGo (d := jasminDialect), callsLoopsAll_rangeGo]
+    CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.loopRange
+  rw [callsLoopsAll_nfGo (d := jasminDialect), callsLoopsAll_carriedGo]
   exact h5
 
 /-- **Every program `extChain` returns passes `whileRegB`.** -/
@@ -1657,6 +1658,41 @@ theorem cmpOneAlts_altConst (C : JasminOp → Bool) (D : Defs) {Δ : Ctxt jasmin
       · cases halt
   · cases halt
 
+/-- The alternatives of the Mersenne rule bind two register operations at the width of the
+    multiply. -/
+theorem mersenneAlts_ops (D : Defs) {Δ : Ctxt jasminDialect} {s : JasminTy}
+    (e : Expr jasminDialect Δ s) (he : (opMemB e.op && bindPosB e.op) = true) :
+    ∀ alt ∈ mersenneAlts D e, altOpsB (opMemPos) alt = true := by
+  intro alt halt
+  unfold mersenneAlts at halt
+  split at halt
+  · rename_i w hop args
+    subst hop
+    have hw : 0 < w := by
+      simpa [opMemB, bindPosB, widthPos, DialectSignature.ret] using he
+    have hm : ∀ (x : Ctxt.Var Δ (.reg w)) (c : BitVec w), ∀ alt ∈ mersenneAlt D x c,
+        altOpsB (opMemPos) alt = true := by
+      intro x c alt ha
+      unfold mersenneAlt at ha
+      split at ha
+      · split at ha
+        · split at ha
+          · obtain rfl := List.mem_singleton.mp ha
+            simp [altOpsB, CatCrypt.Crypto.Optimizer.Rewrite.Egraph.binE, opMemB, bindPosB,
+              widthPos, hw, DialectSignature.ret]
+          · cases ha
+        · cases ha
+      · cases ha
+    simp only [mersenneTerms, List.mem_append] at halt
+    rcases halt with halt | halt
+    · split at halt
+      · exact hm _ _ alt halt
+      · cases halt
+    · split at halt
+      · exact hm _ _ alt halt
+      · cases halt
+  · cases halt
+
 /-- **The jasmin rule set keeps `opMemB` at positive width**: the terms of `binRule` bind
     register constants and register arithmetic at the width of the node, constant folding
     binds a register constant at the type of the folded binding, and the copy and the
@@ -1671,12 +1707,13 @@ theorem jasminRules_ops : RulesOps jasminRules (opMemPos) := by
     cases op <;> first | exact fun h => h | exact absurd hc Bool.false_ne_true
   obtain ⟨r, hr, ha⟩ := List.mem_flatMap.mp ha
   simp only [jasminRules, List.mem_cons, List.not_mem_nil, or_false] at hr
-  rcases hr with rfl | rfl | rfl | rfl
+  rcases hr with rfl | rfl | rfl | rfl | rfl
   · exact ruleAlts_ops D e he alt ha
   · exact altOpsB_of_altConstB hC alt
       (constFoldRule_altConst _ jasminReify _ (fun _ h => h) D e alt ha)
   · exact altOpsB_of_altConstB hC alt (copyRule_altConst _ jasminCastCopy D e alt ha)
   · exact altOpsB_of_altConstB hC alt (cmpOneAlts_altConst _ D e alt ha)
+  · exact mersenneAlts_ops D e he alt ha
 
 open CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline (rangeExpr rangeRule ruleOp_op)
 open CatCrypt.Crypto.Optimizer.ComRangeFold (pointExpr)
@@ -1722,34 +1759,37 @@ theorem rangeExpr_ops {Γ : Ctxt jasminDialect} (A : _) (len : Nat) {t : JasminT
       simp only [Bool.and_eq_true] at he
       exact he.1
 
-/-- **The traversal of the range stage keeps `opMemB` at positive width.** -/
-theorem allOps_rangeGo : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (A : _)
-    (len : Nat) (p : NFProg jasminDialect Γ ts), p.allOps (opMemPos) = true →
-    (CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo A len p).allOps (opMemPos) = true
-  | _, _, _, _, .ret _, _ => rfl
-  | _, _, A, len, .var e k, hp => by
+/-- **The traversal of the range stage keeps `opMemB` at positive width**, at every
+    annotation. -/
+theorem allOps_carriedGo : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (A : _)
+    (len : Nat) (a : CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.CarriedAnn)
+    (p : NFProg jasminDialect Γ ts), p.allOps (opMemPos) = true →
+    (CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo A len a p).allOps (opMemPos) =
+      true
+  | _, _, _, _, _, .ret _, _ => rfl
+  | _, _, A, len, _, .var e k, hp => by
       simp only [NFProg.allOps, Bool.and_eq_true] at hp
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, NFProg.allOps,
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, NFProg.allOps,
         Bool.and_eq_true]
       have h1 := rangeExpr_ops A len e ((Bool.and_eq_true _ _).mpr hp.1)
       simp only [Bool.and_eq_true] at h1
-      exact ⟨h1, allOps_rangeGo _ _ k hp.2⟩
-  | _, _, _, _, .forLoop _ _ body k, hp => by
+      exact ⟨h1, allOps_carriedGo _ _ _ k hp.2⟩
+  | _, _, _, _, _, .forLoop _ _ body k, hp => by
       simp only [NFProg.allOps, Bool.and_eq_true] at hp
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, NFProg.allOps,
-        allOps_rangeGo _ _ body hp.1, allOps_rangeGo _ _ k hp.2, Bool.and_self]
-  | _, _, _, _, .ifThenElse _ thn els k, hp => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, NFProg.allOps,
+        allOps_carriedGo _ _ _ body hp.1, allOps_carriedGo _ _ _ k hp.2, Bool.and_self]
+  | _, _, _, _, _, .ifThenElse _ thn els k, hp => by
       simp only [NFProg.allOps, Bool.and_eq_true] at hp
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, NFProg.allOps,
-        allOps_rangeGo _ _ thn hp.1.1, allOps_rangeGo _ _ els hp.1.2,
-        allOps_rangeGo _ _ k hp.2, Bool.and_self]
-  | _, _, _, _, .whileLoop _ body k, hp => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, NFProg.allOps,
+        allOps_carriedGo _ _ _ thn hp.1.1, allOps_carriedGo _ _ _ els hp.1.2,
+        allOps_carriedGo _ _ _ k hp.2, Bool.and_self]
+  | _, _, _, _, _, .whileLoop _ body k, hp => by
       simp only [NFProg.allOps, Bool.and_eq_true] at hp
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, NFProg.allOps,
-        allOps_rangeGo _ _ body hp.1, allOps_rangeGo _ _ k hp.2, Bool.and_self]
-  | _, _, _, _, .call _ _ k, hp => by
-      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeGo, NFProg.allOps]
-      exact allOps_rangeGo _ _ k hp
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, NFProg.allOps,
+        allOps_carriedGo _ _ _ body hp.1, allOps_carriedGo _ _ _ k hp.2, Bool.and_self]
+  | _, _, _, _, _, .call _ _ k, hp => by
+      simp only [CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.carriedGo, NFProg.allOps]
+      exact allOps_carriedGo _ _ _ k hp
 
 end JasminOps
 
@@ -2465,8 +2505,8 @@ theorem extChain_allOps (D : List ExtDecl) {Γ : Ctxt nfDialect} {t : NfTy}
   have hc4 := callsLoopsAll_fieldDialect _ _ hc3 hj2
   have h5 := allOps_lowerSel _ _ hΓ h4 hc4 (fun v => v)
   unfold CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF.aegraphOptNF
-    CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeNF
-  exact allOps_nfGo jasminRules _ jasminRules_ops _ _ _ (allOps_rangeGo _ _ _ h5)
+    CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop.loopRange
+  exact allOps_nfGo jasminRules _ jasminRules_ops _ _ _ (allOps_carriedGo _ _ _ _ h5)
 
 /-- The entry context of an ABI layout maps to Jasmin types of positive width. -/
 theorem widthPos_entryCtx (σ : AbiLayout) :

@@ -20,8 +20,9 @@ built by `Chain.cons` from complete steps whose domains meet is complete
 it is complete from `D` into `E` whenever `f` maps `D` into `E` (`Step.completeOn_total`).
 
 The steps `dceStep`, `aegraphStep`, `NFMontify.montifyStep`, `lowerSelectsStep` and
-`rangeNFStep` are total steps (`dceStep_eq_total` and its siblings); each is complete on
-`True`, and on every predicate the pass maps into itself (`*_preserves_Dom`).
+the range step `RangeAnnSyn.synRangeStep` never refuse (`dceStep_eq_total` and its
+siblings, `synRangeStep_isSome`); each is complete on `True`, and on every predicate the pass
+maps into itself (`*_preserves_Dom`).
 
 The first step of `extChain`, tuple flattening `flatSameStep`, is complete on the programs
 it runs into a domain, into that domain (`flatSameStep_completeOn`). The domains of the
@@ -135,7 +136,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.PassChain
 open CatCrypt.Crypto.SecureCompilation.VIR.NFProgPasses
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNF rangeNFStep)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synRange synRangeStep)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (aegraphOptNF)
 
 /-! ## The passes that never refuse -/
@@ -201,16 +202,13 @@ theorem montifyStep_preserves_Dom {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (NFMontify.montifyStep Γ ts).CompleteOn D D :=
   fun p hp => ⟨_, rfl, h p hp⟩
 
-theorem rangeNFStep_eq_total (Γ : Ctxt jasminDialect) (ts : List JasminTy) :
-    rangeNFStep Γ ts = Step.total "range" (rangeNF (Γ := Γ) (ts := ts)) := rfl
-
-theorem rangeNFStep_isSome (Γ : Ctxt jasminDialect) (ts : List JasminTy) (p : NFProg jasminDialect Γ ts) :
-    ((rangeNFStep Γ ts).run p).isSome = true := rfl
+theorem synRangeStep_isSome (Γ : Ctxt jasminDialect) (ts : List JasminTy)
+    (p : NFProg jasminDialect Γ ts) : ((synRangeStep Γ ts).run p).isSome = true := rfl
 
 /-- The range stage is complete on every predicate it preserves. -/
-theorem rangeNFStep_preserves_Dom {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    (D : NFProg jasminDialect Γ ts → Prop) (h : ∀ p, D p → D (rangeNF p)) :
-    (rangeNFStep Γ ts).CompleteOn D D :=
+theorem synRangeStep_preserves_Dom {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (D : NFProg jasminDialect Γ ts → Prop) (h : ∀ p, D p → D (synRange p)) :
+    (synRangeStep Γ ts).CompleteOn D D :=
   fun p hp => ⟨_, rfl, h p hp⟩
 
 /-! ## The domains of `extChain` before the translation -/

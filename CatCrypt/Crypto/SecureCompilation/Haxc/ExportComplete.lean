@@ -29,8 +29,9 @@ The tests `whileRegB` and `regionExportableB_eq` are in `RegionExportTests`.
   `bindMemNB` exactly when its operation is in `opMemB`.
 * `wordCalls_of_regionExportableB`, `exportR_isSome_of_regionExportableB` — the export
   returns code on every program that passes `regionExportableB`.
-* `whileRegB_rangeGo`, `wordCalls_rangeGo`, `structTests_rangeNF` — the range stage
-  `rangeNF` keeps `whileRegB` and `wordCalls`.
+* `whileRegB_carriedGo`, `wordCalls_carriedGo`, `structTests_synRange` — the range stage
+  `synRange` keeps `whileRegB` and `wordCalls`, and so does its traversal at every
+  annotation.
 -/
 
 @[expose] public section
@@ -103,41 +104,50 @@ theorem exportR_isSome_of_regionExportableB {Γ : Ctxt jasminDialect} {ts : List
 
 section Range
 
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeGo rangeNF)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop (CarriedAnn carriedGo)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synRange)
 
-/-- The traversal of the range stage keeps `whileRegB`. -/
-theorem whileRegB_rangeGo : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (A : _)
-    (len : Nat) (p : NFProg jasminDialect Γ ts), whileRegB (rangeGo A len p) = whileRegB p
-  | _, _, _, _, .ret _ => rfl
-  | _, _, _, _, .var _ k => by simp only [rangeGo, whileRegB, whileRegB_rangeGo _ _ k]
-  | _, _, _, _, .forLoop _ _ body k => by
-      simp only [rangeGo, whileRegB, whileRegB_rangeGo _ _ body, whileRegB_rangeGo _ _ k]
-  | _, _, _, _, .ifThenElse _ thn els k => by
-      simp only [rangeGo, whileRegB, whileRegB_rangeGo _ _ thn, whileRegB_rangeGo _ _ els,
-        whileRegB_rangeGo _ _ k]
-  | _, _, _, _, .whileLoop _ body k => by
-      simp only [rangeGo, whileRegB, whileRegB_rangeGo _ _ body, whileRegB_rangeGo _ _ k]
-  | _, _, _, _, .call _ _ k => by simp only [rangeGo, whileRegB, whileRegB_rangeGo _ _ k]
+/-- The traversal of the range stage keeps `whileRegB`, at every annotation. -/
+theorem whileRegB_carriedGo : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (A : _)
+    (len : Nat) (a : CarriedAnn) (p : NFProg jasminDialect Γ ts),
+    whileRegB (carriedGo A len a p) = whileRegB p
+  | _, _, _, _, _, .ret _ => rfl
+  | _, _, _, _, _, .var _ k => by simp only [carriedGo, whileRegB, whileRegB_carriedGo _ _ _ k]
+  | _, _, _, _, _, .forLoop _ _ body k => by
+      simp only [carriedGo, whileRegB, whileRegB_carriedGo _ _ _ body,
+        whileRegB_carriedGo _ _ _ k]
+  | _, _, _, _, _, .ifThenElse _ thn els k => by
+      simp only [carriedGo, whileRegB, whileRegB_carriedGo _ _ _ thn,
+        whileRegB_carriedGo _ _ _ els, whileRegB_carriedGo _ _ _ k]
+  | _, _, _, _, _, .whileLoop _ body k => by
+      simp only [carriedGo, whileRegB, whileRegB_carriedGo _ _ _ body,
+        whileRegB_carriedGo _ _ _ k]
+  | _, _, _, _, _, .call _ _ k => by
+      simp only [carriedGo, whileRegB, whileRegB_carriedGo _ _ _ k]
 
-/-- The traversal of the range stage keeps `wordCalls`. -/
-theorem wordCalls_rangeGo : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (A : _)
-    (len : Nat) (p : NFProg jasminDialect Γ ts), wordCalls (rangeGo A len p) = wordCalls p
-  | _, _, _, _, .ret _ => rfl
-  | _, _, _, _, .var _ k => by simp only [rangeGo, wordCalls, wordCalls_rangeGo _ _ k]
-  | _, _, _, _, .forLoop _ _ body k => by
-      simp only [rangeGo, wordCalls, wordCalls_rangeGo _ _ body, wordCalls_rangeGo _ _ k]
-  | _, _, _, _, .ifThenElse _ thn els k => by
-      simp only [rangeGo, wordCalls, wordCalls_rangeGo _ _ thn, wordCalls_rangeGo _ _ els,
-        wordCalls_rangeGo _ _ k]
-  | _, _, _, _, .whileLoop _ body k => by
-      simp only [rangeGo, wordCalls, wordCalls_rangeGo _ _ body, wordCalls_rangeGo _ _ k]
-  | _, _, _, _, .call _ _ k => by simp only [rangeGo, wordCalls, wordCalls_rangeGo _ _ k]
+/-- The traversal of the range stage keeps `wordCalls`, at every annotation. -/
+theorem wordCalls_carriedGo : ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (A : _)
+    (len : Nat) (a : CarriedAnn) (p : NFProg jasminDialect Γ ts),
+    wordCalls (carriedGo A len a p) = wordCalls p
+  | _, _, _, _, _, .ret _ => rfl
+  | _, _, _, _, _, .var _ k => by simp only [carriedGo, wordCalls, wordCalls_carriedGo _ _ _ k]
+  | _, _, _, _, _, .forLoop _ _ body k => by
+      simp only [carriedGo, wordCalls, wordCalls_carriedGo _ _ _ body,
+        wordCalls_carriedGo _ _ _ k]
+  | _, _, _, _, _, .ifThenElse _ thn els k => by
+      simp only [carriedGo, wordCalls, wordCalls_carriedGo _ _ _ thn,
+        wordCalls_carriedGo _ _ _ els, wordCalls_carriedGo _ _ _ k]
+  | _, _, _, _, _, .whileLoop _ body k => by
+      simp only [carriedGo, wordCalls, wordCalls_carriedGo _ _ _ body,
+        wordCalls_carriedGo _ _ _ k]
+  | _, _, _, _, _, .call _ _ k => by
+      simp only [carriedGo, wordCalls, wordCalls_carriedGo _ _ _ k]
 
 /-- The range stage keeps `whileRegB` and `wordCalls`. -/
-theorem structTests_rangeNF {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+theorem structTests_synRange {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) :
-    whileRegB (rangeNF p) = whileRegB p ∧ wordCalls (rangeNF p) = wordCalls p :=
-  ⟨whileRegB_rangeGo _ _ p, wordCalls_rangeGo _ _ p⟩
+    whileRegB (synRange p) = whileRegB p ∧ wordCalls (synRange p) = wordCalls p :=
+  ⟨whileRegB_carriedGo _ _ _ p, wordCalls_carriedGo _ _ _ p⟩
 
 end Range
 

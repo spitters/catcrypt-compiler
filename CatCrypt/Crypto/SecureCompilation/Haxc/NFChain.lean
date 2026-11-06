@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.Hax.NFToCatImages
 public import CatCrypt.Crypto.Hax.NFToCatCall
 public import CatCrypt.Crypto.Hax.Module
 public import CatCrypt.Crypto.Hax.FrontDomain
-public import CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
+public import CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn
 public import CatCrypt.Crypto.SecureCompilation.Haxc.FieldLevel
 
 /-!
@@ -29,12 +29,13 @@ of named partial steps (`PassChain.Chain`):
 3. `aegraph`: the e-graph pass at the catCrypt rule set `catRules`;
 4. `map?`: the lowering along the partial block lowering `catToJasmin`;
 5. `lowerSelects`: the lowering of branches to selects;
-6. `range`: the range stage `rangeNF` on structured programs;
+6. `range`: the range stage `synRange` on structured programs, `loopRange` at the
+   intervals of the loop-carried variables that `synAnn` proposes and the stage checks;
 7. `aegraph`: the e-graph pass at the jasmin rule set `jasminRules`;
 8. `exportNFJ`: the export to a route program, else to a structured program.
 
 `nfChainCert` certifies every step: the steps 1, 3, 4, 5 and 7 by the certificates of
-`VIR/NFProgPasses.lean`, step 6 by `rangeNFCert`, the check by the identity
+`VIR/NFProgPasses.lean`, step 6 by `synRangeCert`, the check by the identity
 relations, and the translation `nfToCat` and the export by direct certificates from
 `nfToCat_sound` and `exportNFJ_denote`, at every fuel of the structured programs.
 
@@ -111,7 +112,7 @@ function of `nfFrontC` is `nfFront` on the extraction with the constants of the 
 ## Main results
 
 * `nfChain_run` — the chain runs as the stages of `nfToRouteProgVia` after `NFProg.dce`,
-  with the range stage `rangeNF` before the e-graph pass at `jasminRules`, followed by
+  with the range stage `synRange` before the e-graph pass at `jasminRules`, followed by
   `exportNFJ`, under the check `outTyB t`; `nfChain_run_of_exportNF` — a result of `exportNF`
   on the program of the last e-graph pass is a result of the chain as
   `RouteProgJ.straightLoop`.
@@ -158,7 +159,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.NFProgCatToJasmin (catToJasmin
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNF rangeNFStep rangeNFCert)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synRange synRangeStep synRangeCert)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.ImpToNF (enc dec encAll PDenP entryCtx EntryVals entryEnv impToNF
   hax64SigOf hax64NFWordTy TypedCalls entryVals_of_typed impToNF_sound entryEnv_rel
@@ -256,14 +257,14 @@ def exportCert (cf : Nat) (Γ : Ctxt jasminDialect) (t : JasminTy) :
 
 /-- **The linear route as a chain**: the check `outTyB t`, `dce`, `nfToCat` from `TRd.id`,
     the e-graph pass at `catRules`, `map?` along `catToJasmin`, the select lowering, the
-    range stage `rangeNF`, the e-graph pass at `jasminRules`, and `exportNFJ`. -/
+    range stage `synRange`, the e-graph pass at `jasminRules`, and `exportNFJ`. -/
 def nfChain (Γ : Ctxt nfDialect) (t : NfTy) :
     Chain (NFProg nfDialect Γ [t]) (RouteProgJ (mapCtx (Γ.map catTy)) (mapTy (catTy t))) :=
   .cons (outTyStep Γ t) <| .cons (dceStep Γ [t]) <| .cons (nfToCatStep Γ [t]) <|
     .cons (aegraphStep catRules (Γ.map catTy) [catTy t]) <|
     .cons (mapStep catToJasmin catToJasmin_regionTypes (Γ.map catTy) [catTy t]) <|
     .cons (lowerSelectsStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
-    .cons (rangeNFStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
+    .cons (synRangeStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (aegraphStep jasminRules (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (exportStep (mapCtx (Γ.map catTy)) (mapTy (catTy t))) <| .nil _
 
@@ -281,12 +282,12 @@ def nfChainCert {bi : Builtins} (hbi : SubTable bi) (tf cf : Nat) (Γ : Ctxt nfD
       catToJasmin_varTransports (fun e blk hb V => catToJasmin_block e blk hb V)
       catToJasmin_mapValExtends catToJasmin_regionTransports cf (Γ.map catTy) [catTy t]) <|
     .cons (lowerSelectsCert cf (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
-    .cons (rangeNFCert cf (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
+    .cons (synRangeCert cf (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (aegraphCert jasminRules cf (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (exportCert cf (mapCtx (Γ.map catTy)) (mapTy (catTy t))) <| .nil _
 
 /-- **The chain runs as the linear route**: after `NFProg.dce`,
-    the stages of `nfToRouteProgVia` up to the export, with the range stage `rangeNF` before
+    the stages of `nfToRouteProgVia` up to the export, with the range stage `synRange` before
     the e-graph pass at `jasminRules`, followed by `exportNFJ`, when the result type passes
     the check `outTyB`. -/
 theorem nfChain_run (Γ : Ctxt nfDialect) (t : NfTy) (p : NFProg nfDialect Γ [t]) :
@@ -295,11 +296,11 @@ theorem nfChain_run (Γ : Ctxt nfDialect) (t : NfTy) (p : NFProg nfDialect Γ [t
         (NFProg.map? catToJasmin catToJasmin_regionTypes
             (Optimizer.Rewrite.AegraphNF.aegraphOptNF catRules p') (fun v => v)).bind fun q =>
           exportNFJ (Optimizer.Rewrite.AegraphNF.aegraphOptNF jasminRules
-            (rangeNF (NFProg.lowerSelects q)))
+            (synRange (NFProg.lowerSelects q)))
     else none := by
   cases h : outTyB t <;>
     simp [h, nfChain, Chain.run, outTyStep, dceStep, nfToCatStep, aegraphStep, mapStep,
-      lowerSelectsStep, rangeNFStep, exportStep] <;> rfl
+      lowerSelectsStep, synRangeStep, exportStep] <;> rfl
 
 /-- **A route program of the export is a result of the chain.** At a result type that passes
     the check `outTyB`, when `nfToCat` returns `p'` on `NFProg.dce p`, the lowering along
@@ -314,7 +315,7 @@ theorem nfChain_run_of_exportNF {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfD
     (hq : NFProg.map? catToJasmin catToJasmin_regionTypes
       (Optimizer.Rewrite.AegraphNF.aegraphOptNF catRules p') (fun v => v) = some q)
     (h : exportNF (Optimizer.Rewrite.AegraphNF.aegraphOptNF jasminRules
-      (rangeNF (NFProg.lowerSelects q))) = some rp) :
+      (synRange (NFProg.lowerSelects q))) = some rp) :
     (nfChain Γ t).run p = some (.straightLoop rp) := by
   rw [nfChain_run, ite_eq_left ht, hp', Option.bind_some, hq]
   exact exportNFJ_of_exportNF h

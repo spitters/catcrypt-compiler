@@ -6,17 +6,18 @@ Authors: CatCrypt Contributors
 module
 
 public meta import CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop
-public meta import CatCrypt.Crypto.Optimizer.Rewrite.RangeSelNF
-public import CatCrypt.Crypto.Optimizer.Rewrite.RangeSelNF
+public import CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop
 
 /-!
-# Synthesis of the loop annotation of the range stages, and entry environments
+# Synthesis of the loop annotation of the range stage, and entry environments
 
-The stages `RangeNFLoop.loopRange` and `RangeSelNF.rangeSel` take an annotation
-`RangeNFLoop.CarriedAnn` that proposes one interval per variable a loop carries, and check
-each proposal (`RangeNFLoop.forInductive`, `RangeNFLoop.whileInductive`). This file computes
-an annotation from the program, and states the two stages from an abstract environment of
-the inputs.
+The stage `RangeNFLoop.loopRange` takes an annotation `RangeNFLoop.CarriedAnn` that proposes
+one interval per variable a loop carries, and checks each proposal
+(`RangeNFLoop.forInductive`, `RangeNFLoop.whileInductive`). This file computes an annotation
+from the program, gives the stage at the computed annotation (`synRange`, the range stage of
+the chains `extChain` and `nfChain`), and states the stage from an abstract environment of
+the inputs. The selections of `RangeSelNF.rangeSel` at the same annotation are in
+`RangeSelSyn.lean`.
 
 ## The synthesiser
 
@@ -42,42 +43,37 @@ variables at the solved intervals when the checker accepts them, at the full lan
 otherwise. The number of analyses of a loop body is at most
 `2 * joinRounds + cs.length + 2` per analysis of the loop.
 
-The synthesiser carries no theorem of its own. Every theorem of the two stages holds for
-every annotation, and the stages check each proposal.
+The synthesiser carries no theorem of its own. Every theorem of the stage holds for every
+annotation, and the stage checks each proposal.
 
 ## Entry environments
 
-`entryRange A a p` and `entrySel A a p` are the traversals `RangeNFLoop.carriedGo` and
-`RangeSelNF.selGo` from the abstract environment `A` of the inputs. Their denotation
-theorems hold at every valuation `V` with `EnvOK A V`. The certificates `inputRangeCert`
-and `inputSelCert` have the input relation `V = W ∧ EnvOK A V` and equality of results as
-output relation.
+`entryRange A a p` is the traversal `RangeNFLoop.carriedGo` from the abstract environment
+`A` of the inputs. Its denotation theorem holds at every valuation `V` with `EnvOK A V`. The
+certificate `inputRangeCert` has the input relation `V = W ∧ EnvOK A V` and equality of
+results as output relation.
 
 ## Main results
 
 * `synAnn`: the annotation synthesised from the full lane range of every input.
 * `entryAnn`: the annotation synthesised from an abstract environment of the inputs.
-* `synRange_denote`, `synSel_denote`: `loopRange` and `rangeSel` at `synAnn p` denote what
-  `p` denotes.
-* `synRangeStep`, `synRangeCert`, `synSelStep`, `synSelCert`: the chain steps of the two
-  stages at `synAnn`, with their certificates.
-* `entryRange`, `entrySel`: the two stages from an abstract environment of the inputs.
-* `entryRange_denote`, `entrySel_denote`: under `EnvOK A V` the outputs denote at `V` what
-  the input denotes at `V`.
-* `entrySel_leakRun`: under `EnvOK A V` and a leakage model whose `regArith` operations are
-  quiet, the leakage run of `entrySel A a p` at `V` is that of `p`.
-* `entryRange_topEnv`, `entrySel_topEnv`: at `topEnv` the entry forms are `loopRange` and
-  `rangeSel`.
-* `inputRangeStep`, `inputRangeCert`, `inputSelStep`, `inputSelCert`: the chain steps of
-  the entry forms, with certificates whose input relation is `V = W ∧ EnvOK A V`.
+* `synRange`: `loopRange` at `synAnn p`, the range stage of the chains.
+* `synRange_denote`: `synRange p` denotes what `p` denotes.
+* `synRangeStep`, `synRangeCert`: the chain step of the stage at `synAnn`, with its
+  certificate.
+* `entryRange`: the stage from an abstract environment of the inputs.
+* `entryRange_denote`: under `EnvOK A V` the output denotes at `V` what the input denotes
+  at `V`.
+* `entryRange_topEnv`: at `topEnv` the entry form is `loopRange`.
+* `inputRangeStep`, `inputRangeCert`: the chain step of the entry form, with a certificate
+  whose input relation is `V = W ∧ EnvOK A V`.
 * `acceptedLoops`: the number of loops of a program whose proposal the checker accepts.
 * On `RangeNFLoop.lazyAddLoop` the synthesised interval of the carried word is
   `[0, p - 1]`, the checker accepts it, and `loopRange` keeps one `and` operation, as under
   `RangeNFLoop.lazyAddAnn` (`#kat`).
 * On `plainAddLoop`, whose body does not mask the carried word, the entry form from
-  `plainAddEnv` (the input below the BabyBear prime) keeps one of the two `and` operations
-  and binds one `umin`; from the full lane range both `and` operations stay and no `umin`
-  is bound (`#kat`).
+  `plainAddEnv` (the input below the BabyBear prime) keeps one of the two `and` operations;
+  from the full lane range both `and` operations stay (`#kat`).
 -/
 
 @[expose] public section
@@ -93,10 +89,6 @@ open CatCrypt.Crypto.SecureCompilation.VIR.ComRange
 open CatCrypt.Crypto.Optimizer.Rewrite.ComPipeline
 open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF
 open CatCrypt.Crypto.Optimizer.Rewrite.RangeNFLoop
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeSelNF
-open CatCrypt.Crypto.SecureCompilation.VIR.SelDialect
-open CatCrypt.Crypto.SecureCompilation.VIR.ComLevelCheck (LeakModel)
-open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeak
 
 /-! ## 1. Operations on lists of intervals -/
 
@@ -220,19 +212,19 @@ def entryAnn {Γ : JCtxt} {ts : List JasminTy} (A : AEnv Γ)
 def synAnn {Γ : JCtxt} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) : CarriedAnn :=
   entryAnn (topEnv Γ) p
 
-/-! ## 4. The two stages at the synthesised annotation -/
+/-! ## 4. The range stage at the synthesised annotation -/
 
-/-- `loopRange` at the synthesised annotation denotes what its input denotes. -/
+/-- **The range stage of the chains**: `loopRange` at the annotation synthesised for `p`.
+    The annotation is not trusted: the stage checks each proposed interval. -/
+def synRange {Γ : JCtxt} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
+    NFProg jasminDialect Γ ts :=
+  loopRange (synAnn p) p
+
+/-- `synRange p` denotes what `p` denotes. -/
 theorem synRange_denote [CallDenote jasminDialect] {Γ : JCtxt} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) (fuel : Nat) :
-    (loopRange (synAnn p) p).denote fuel = p.denote fuel :=
+    (synRange p).denote fuel = p.denote fuel :=
   loopRange_denote (synAnn p) p fuel
-
-/-- `rangeSel` at the synthesised annotation denotes what its input denotes. -/
-theorem synSel_denote {Γ : JCtxt} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts)
-    (fuel : Nat) (V : Ctxt.Valuation Γ) :
-    (rangeSel (synAnn p) p).denote fuel V = p.denote fuel V :=
-  rangeSel_denote (synAnn p) p fuel V
 
 open NFProgPasses (nfSem)
 
@@ -247,19 +239,7 @@ def synRangeCert [CallDenote jasminDialect] (fuel : Nat) (Γ : JCtxt) (ts : List
       (nfSem fuel jasminDialect Γ ts) :=
   carriedCert fuel Γ ts synAnn
 
-/-- The pass `rangeSel` at the synthesised annotation, as a chain step. -/
-def synSelStep (Γ : JCtxt) (ts : List JasminTy) :
-    PassChain.Step (NFProg jasminDialect Γ ts) (NFProg jasminSel Γ ts) :=
-  selStep Γ ts synAnn
-
-/-- The certificate of `synSelStep`: at the same valuation the output has the denotation of
-    its input. -/
-def synSelCert (fuel : Nat) (Γ : JCtxt) (ts : List JasminTy) :
-    PassChain.StepCert (synSelStep Γ ts).run (nfSem fuel jasminDialect Γ ts)
-      (nfSem fuel jasminSel Γ ts) :=
-  selCert fuel Γ ts synAnn
-
-/-! ## 5. The two stages from an abstract environment of the inputs -/
+/-! ## 5. The stage from an abstract environment of the inputs -/
 
 /-- The range stage with checked carried intervals, from the abstract environment `A` of
     the inputs. -/
@@ -279,37 +259,6 @@ theorem entryRange_denote [CallDenote jasminDialect] {Γ : JCtxt} {ts : List Jas
 /-- At the full lane range of every input the entry form is `loopRange`. -/
 theorem entryRange_topEnv {Γ : JCtxt} {ts : List JasminTy} (a : CarriedAnn)
     (p : NFProg jasminDialect Γ ts) : entryRange (topEnv Γ) a p = loopRange a p :=
-  rfl
-
-/-- The range-conditioned selections from the abstract environment `A` of the inputs. -/
-def entrySel {Γ : JCtxt} {ts : List JasminTy} (A : AEnv Γ) (a : CarriedAnn)
-    (p : NFProg jasminDialect Γ ts) : NFProg jasminSel Γ ts :=
-  selGo A [] Γ.length a (VarMap.same Γ) p
-
-/-- **Denotation of the selections from an entry environment.** At a valuation of which
-    `A` holds, `entrySel A a p`, read in `jasminSel`, denotes what `p` denotes, at every
-    fuel and for every annotation. -/
-theorem entrySel_denote {Γ : JCtxt} {ts : List JasminTy} (A : AEnv Γ) (a : CarriedAnn)
-    (p : NFProg jasminDialect Γ ts) (fuel : Nat) (V : Ctxt.Valuation Γ) (hA : EnvOK A V) :
-    (entrySel A a p).denote fuel V = p.denote fuel V :=
-  selGo_denote fuel A [] Γ.length a (VarMap.same Γ) p V V rfl hA (fun _ h => nomatch h)
-    (VarMap.OK.same V)
-
-/-- **Leakage run of the selections from an entry environment.** Under a leakage model `L`
-    whose `regArith` operations are quiet, at a valuation of which `A` holds,
-    `entrySel A a p` runs under `jasminSelLeak L` to the results and the events of the run
-    of `p` under `L`. -/
-theorem entrySel_leakRun {L : LeakModel jasminDialect}
-    (hq : ∀ bop w, L.kind (.regArith bop w) = .quiet) (fuel : Nat) {Γ : JCtxt}
-    {ts : List JasminTy} (A : AEnv Γ) (a : CarriedAnn) (p : NFProg jasminDialect Γ ts)
-    (V : Ctxt.Valuation Γ) (hA : EnvOK A V) :
-    NFProg.leakRun (jasminSelLeak L) fuel (entrySel A a p) V = NFProg.leakRun L fuel p V :=
-  selGo_leakRun hq fuel A [] Γ.length a (VarMap.same Γ) p V V rfl hA (fun _ h => nomatch h)
-    (VarMap.OK.same V)
-
-/-- At the full lane range of every input the entry form is `rangeSel`. -/
-theorem entrySel_topEnv {Γ : JCtxt} {ts : List JasminTy} (a : CarriedAnn)
-    (p : NFProg jasminDialect Γ ts) : entrySel (topEnv Γ) a p = rangeSel a p :=
   rfl
 
 /-- The stage `entryRange A` as a chain step, at the annotation `syn p` computed from the
@@ -335,29 +284,6 @@ def inputRangeCert [CallDenote jasminDialect] (fuel : Nat) {Γ : JCtxt} (ts : Li
     cases hf
     exact ⟨o, (entryRange_denote A (syn p) p fuel V hA).trans hd, rfl⟩
 
-/-- The pass `entrySel A` as a chain step, at the annotation `syn p` computed from the
-    input `p`. -/
-def inputSelStep {Γ : JCtxt} (ts : List JasminTy) (A : AEnv Γ)
-    (syn : NFProg jasminDialect Γ ts → CarriedAnn) :
-    PassChain.Step (NFProg jasminDialect Γ ts) (NFProg jasminSel Γ ts) :=
-  ⟨"range-sel-entry", fun p => some (entrySel A (syn p) p)⟩
-
-/-- The certificate of `inputSelStep`. The input relation is equality of the two
-    valuations together with `EnvOK A` of the valuation; the output relation is equality.
-    A successful run of the input at a valuation of which `A` holds is a run of the output,
-    read in `jasminSel`, with the same result. -/
-def inputSelCert (fuel : Nat) {Γ : JCtxt} (ts : List JasminTy) (A : AEnv Γ)
-    (syn : NFProg jasminDialect Γ ts → CarriedAnn) :
-    PassChain.StepCert (inputSelStep ts A syn).run (nfSem fuel jasminDialect Γ ts)
-      (nfSem fuel jasminSel Γ ts) where
-  relIn V W := V = W ∧ EnvOK A V
-  relOut := Eq
-  sound := by
-    intro p q V W o hf hVW hd
-    obtain ⟨rfl, hA⟩ := hVW
-    cases hf
-    exact ⟨o, (entrySel_denote A (syn p) p fuel V hA).trans hd, rfl⟩
-
 /-! ## 6. Instances
 
 `acceptedLoops A len a p` counts the loops of `p` whose proposal in `a` the checker
@@ -373,8 +299,8 @@ From the full lane range of `x₀` the body returns the full lane range, no inte
 it is inductive, and both `and` operations stay. Under `plainAddEnv`, with `x₀` in
 `[0, p - 1]`, the start interval `[0, p - 1]` is inductive: the analysis gives the sum in
 `[5, p + 4]`, the difference in `[5 - p, 4]` and the conditional add in `[0, p - 1]`. The
-31-bit mask of the continuation becomes a copy, and the conditional add becomes an unsigned
-minimum under `entrySel`. -/
+31-bit mask of the continuation becomes a copy (and the conditional add an unsigned minimum
+under `RangeSelSyn.entrySel`). -/
 
 /-- The number of loops of `p` whose proposed intervals the checker accepts, in the
     environments of `carriedGo A len a p`. -/
@@ -443,31 +369,30 @@ def plainAddEnv : AEnv [JasminTy.reg 64, JasminTy.reg 64] :=
 /- On `lazyAddLoop` the synthesised interval of the carried word is `[0, p - 1]`, the
    interval of `lazyAddAnn`. The budget covers the start of the evaluator at the first
    check of the file. -/
+
+/- On `lazyAddLoop` the synthesised interval of the carried word is `[0, p - 1]`, the
+   interval of `lazyAddAnn`. The budget covers the start of the evaluator at the first
+   check of the file. -/
 set_option kat.ms 3000 in
 #kat (synAnn lazyAddLoop).ivs == [(0, 2013265920)]
 
 /- The checker accepts the synthesised annotation of the one loop of `lazyAddLoop`. -/
 #kat acceptedLoops (topEnv _) 1 (synAnn lazyAddLoop) lazyAddLoop == 1
 
-/- Under the synthesised annotation `loopRange` keeps one `and` operation and `rangeSel`
-   binds one unsigned minimum, as under `lazyAddAnn`. -/
-#kat andCount (loopRange (synAnn lazyAddLoop) lazyAddLoop) == 1
-#kat bindCount isUmin (rangeSel (synAnn lazyAddLoop) lazyAddLoop) == 1
+/- Under the synthesised annotation `loopRange` keeps one `and` operation, as under
+   `lazyAddAnn`. -/
+#kat andCount (synRange lazyAddLoop) == 1
 
 /- `plainAddLoop` has two `and` operations. From the full lane range the synthesised
-   interval is the full lane range, both operations stay and no unsigned minimum is
-   bound. -/
+   interval is the full lane range and both operations stay. -/
 #kat andCount plainAddLoop == 2
 #kat (synAnn plainAddLoop).ivs == [tyTop (JasminTy.reg 64)]
-#kat andCount (loopRange (synAnn plainAddLoop) plainAddLoop) == 2
-#kat bindCount isUmin (rangeSel (synAnn plainAddLoop) plainAddLoop) == 0
+#kat andCount (synRange plainAddLoop) == 2
 
-/- From `plainAddEnv` the synthesised interval is `[0, p - 1]`, the checker accepts it,
-   one `and` operation stays and one unsigned minimum is bound. -/
+/- From `plainAddEnv` the synthesised interval is `[0, p - 1]`, the checker accepts it, and
+   one `and` operation stays. -/
 #kat (entryAnn plainAddEnv plainAddLoop).ivs == [(0, 2013265920)]
 #kat acceptedLoops plainAddEnv 2 (entryAnn plainAddEnv plainAddLoop) plainAddLoop == 1
 #kat andCount (entryRange plainAddEnv (entryAnn plainAddEnv plainAddLoop) plainAddLoop) == 1
-#kat bindCount isUmin
-  (entrySel plainAddEnv (entryAnn plainAddEnv plainAddLoop) plainAddLoop) == 1
 
 end CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn

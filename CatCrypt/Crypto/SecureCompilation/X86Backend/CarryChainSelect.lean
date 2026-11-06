@@ -17,14 +17,17 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.ConstantTimeCoverage
 
 This module implements a *generic* instruction-selection pass that recognises a
 low-word multiply paired with the widening (high-word) form of the same product and rewrites the pair to a single
-two-output `MULX`. Today the fast ADX/BMI2 instructions (`MULX`/`ADCX`/`ADOX`)
-reach the emitted assembly only from hand-written `*Emit` kernels and the
-one-off `FuseMulHi.fuseMulHiLprog` post-pass, which runs on the
-*string-keyed* `Lprog` layer (a syntactic `MUL`+`MULXHI` coalesce, value-checked
-externally by the orchestrator's GMP KAT). There is no generic selector that
-operates on the *typed* machine model where soundness is provable inside Lean.
+two-output `MULX`. The fast ADX/BMI2 instructions (`MULX`/`ADCX`/`ADOX`) reach the
+emitted assembly from hand-written `*Emit` kernels and from the post-pass
+`FuseMulHi.fuseMulHiLprog`, which coalesces a `MUL`+`MULXHI` pair on the string-keyed
+`Lprog` layer. That post-pass has a theorem at the flag machine,
+`JasminLsemFuseMulHi.fuseMulHi_lsemFuelMemF_pre` (a run of the unfused code is matched by
+a run of the fused code under the decided check `fuseOKL`), and the gate of
+`compileRegion` validates its output against a reference that carries the same fusion
+(`Haxc/RegionBackend.lean`, "The multiplication fusion"). It is a rewrite of the allocated
+`Lprog`, not a selector on the typed instruction set.
 
-`fuseMulx` is that selector, over the faithful `JasminModel` instruction set
+`fuseMulx` is a generic selector over the faithful `JasminModel` instruction set
 (`JInstr 64`, `runBlock`, `evalInstr`). Because the model is typed and executable
 it carries a **symbolic** soundness proof — not a syntactic substring check.
 

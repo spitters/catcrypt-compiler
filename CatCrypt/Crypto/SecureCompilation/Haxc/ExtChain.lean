@@ -89,7 +89,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakLower (ctBackTy ctTransTy_
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNFStep rangeNFCert)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synRangeStep)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (aegraphOptNF aegraphOptNF_denote)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric (RuleSet)
 open CatCrypt.Crypto.Hax.NFToCat
@@ -126,7 +126,8 @@ open _root_.Hax (Env Builtins)
     `montifyStep` (Montgomery representatives at each modulus of the tagged calls that passes
     `mont32Cert`), the field dialect step `fieldDialectStep` (the tagged calls raised to the
     field dialect and lowered through `modArith` to limb templates), the select lowering,
-    the range stage `rangeNF`, and the e-graph pass at `jasminRules`. -/
+    the range stage `synRange` (`loopRange` at the synthesised intervals of the loop-carried
+    variables, each checked by the stage), and the e-graph pass at `jasminRules`. -/
 def extChainCore (D : List ExtDecl) (Γ : Ctxt nfDialect) (t : NfTy) :
     Chain (NFProg nfDialect Γ [t])
       (NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) :=
@@ -136,7 +137,7 @@ def extChainCore (D : List ExtDecl) (Γ : Ctxt nfDialect) (t : NfTy) :
     .cons (montifyStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (fieldDialectStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (lowerSelectsStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
-    .cons (rangeNFStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
+    .cons (synRangeStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <|
     .cons (aegraphStep jasminRules (mapCtx (Γ.map catTy)) [mapTy (catTy t)]) <| .nil _
 
 /-- **The linear route with the declared procedures `D`, up to the structured program of
@@ -218,7 +219,7 @@ theorem extChainCore_run_of_nfToCat (D : List ExtDecl) {Γ : Ctxt nfDialect} {t 
           rw [h4']
           exact congrArg (fun o => o.bind fun p =>
             ((lowerSelectsStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]).run p).bind fun p =>
-              ((rangeNFStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]).run p).bind fun p =>
+              ((synRangeStep (mapCtx (Γ.map catTy)) [mapTy (catTy t)]).run p).bind fun p =>
                 ((aegraphStep jasminRules (mapCtx (Γ.map catTy)) [mapTy (catTy t)]).run p).bind
                   some) h5
 
@@ -516,7 +517,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.FieldDialectStep (fieldDialectStep
   fieldDialectStep_completeOn)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNF rangeNFStep)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synRangeStep)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (aegraphOptNF)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.NFToCatImages (Convertible OpsHaveImages
@@ -565,7 +566,7 @@ theorem extChainCore_completeOn_NB (D : List ExtDecl) (Γ : Ctxt nfDialect) (t :
     Chain.completeOn_cons (catToJasmin_completeOn _ _) <| Chain.completeOn_cons h5 <|
     Chain.completeOn_cons h6 <|
     Chain.completeOn_cons (hT _ (lowerSelectsStep_isSome _ _)) <|
-    Chain.completeOn_cons (hT _ (rangeNFStep_isSome _ _)) <|
+    Chain.completeOn_cons (hT _ (synRangeStep_isSome _ _)) <|
     Chain.completeOn_cons (hT _ (aegraphStep_isSome _ _ _)) <| Chain.completeOn_nil _
 
 /-- **`extChain` is complete on the programs whose flattening after the elimination of
@@ -643,7 +644,7 @@ theorem extChainCore_completeOn_NBD (D : List ExtDecl) (Γ : Ctxt nfDialect) (t 
     Chain.completeOn_cons h4 <| Chain.completeOn_cons (montifyStep_completeOn _ _) <|
     Chain.completeOn_cons h6 <|
     Chain.completeOn_cons (hT _ (lowerSelectsStep_isSome _ _)) <|
-    Chain.completeOn_cons (hT _ (rangeNFStep_isSome _ _)) <|
+    Chain.completeOn_cons (hT _ (synRangeStep_isSome _ _)) <|
     Chain.completeOn_cons (hT _ (aegraphStep_isSome _ _ _)) <| Chain.completeOn_nil _
 
 /-- **`extChain` is complete on the programs whose flattening after the elimination of

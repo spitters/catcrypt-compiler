@@ -60,7 +60,8 @@ at `fieldEnv E'` and at `E'` (`fieldInlineCert`). The hypotheses of the certific
 ## Main definitions
 
 * `aegraphEnvCert`, `lowerSelectsEnvCert`, `rangeEnvCert` — the certificates of the e-graph
-  pass, of the select lowering and of the stage `rangeNF` at an explicit call environment.
+  pass, of the select lowering and of the range stage `synRange` at an explicit call
+  environment.
 * `fieldBlockOf`, `narrowFieldOf`, `fieldBody`, `fieldLibJ` — the template block of a
   method, the narrow template at a modulus, and the inlining library of the tagged heads.
 * `fieldFree`, `fieldInlineStep`, `fieldInlineCert` — the test that no `call` has a field
@@ -132,7 +133,7 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.NFLeakLower (ctBackTy ctTransTy_
 open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNFStep rangeNFCert)
+open CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn (synRangeStep synRangeCert)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (aegraphOptNF aegraphOptNF_denote)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphGeneric (RuleSet)
 open CatCrypt.Crypto.Hax.NFToCat
@@ -182,12 +183,13 @@ def aegraphEnvCert [DecidableEq d.Ty] [DialectDenote d] [DecidableEq d.Op] (E : 
 
 end EnvCerts
 
-/-- The certificate of the stage `rangeNF` at the call environment `E`: `rangeNFCert` at the
+/-- The certificate of the range stage `synRange` at the call environment `E`: `synRangeCert`
+    at the
     instance of `E`. -/
 def rangeEnvCert (E : CallEnv jasminDialect) (fuel : Nat) (Γ : Ctxt jasminDialect)
     (ts : List JasminTy) :
-    StepCert (rangeNFStep Γ ts).run (nfSemE E fuel Γ ts) (nfSemE E fuel Γ ts) :=
-  @rangeNFCert ⟨E⟩ fuel Γ ts
+    StepCert (synRangeStep Γ ts).run (nfSemE E fuel Γ ts) (nfSemE E fuel Γ ts) :=
+  @synRangeCert ⟨E⟩ fuel Γ ts
 
 /-! ## The tagged field calls in `jasminDialect` -/
 

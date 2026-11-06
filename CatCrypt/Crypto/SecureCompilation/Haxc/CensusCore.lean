@@ -822,7 +822,7 @@ def chainFire {Γ : Ctxt nfDialect} {t : NfTy} (p : NFProg nfDialect Γ [t]) :
         | none => (c, none)
         | some q =>
             (c, some (aegraphFire jasminRules
-              (CatCrypt.Crypto.Optimizer.Rewrite.RangeNF.rangeNF (NFProg.lowerSelects q))))
+              (CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn.synRange (NFProg.lowerSelects q))))
 
 /-! ## The stages of the region back half -/
 

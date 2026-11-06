@@ -106,7 +106,6 @@ open CatCrypt.Crypto.SecureCompilation.Haxc
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFMontify (montifyStep montifyStep_of_callFree)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphCat (catRules)
 open CatCrypt.Crypto.Optimizer.Rewrite.Aegraph (jasminRules)
-open CatCrypt.Crypto.Optimizer.Rewrite.RangeNF (rangeNF rangeNFStep)
 open CatCrypt.Crypto.Optimizer.Rewrite.AegraphNF (aegraphOptNF)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.NFToCatImages (Convertible OpsHaveImages
