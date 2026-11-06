@@ -20,6 +20,7 @@ jobs:
   # ninety minutes into the Lean build.
   gates:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -127,7 +128,11 @@ jobs:
         run: git diff --exit-code -- scripts/
 
   build:
-    if: github.event_name != 'push'
+    # A gate failure stops the run before the build. The build runs on pull requests and on a
+    # dispatch from master; a work branch is built by a cloud routine that restores the
+    # catcrypt-cloud-cache release, not by Actions.
+    needs: gates
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     # The full library on a 16 GB runner: long, but bounded. A run that has not
     # finished by here is stuck, not slow.
@@ -145,6 +150,10 @@ jobs:
       # The wall-clock budgets of `#kat` checks are set on a development machine; the
       # runner is slower, so CI multiplies them (the heartbeat budgets are unscaled).
       CATCRYPT_KAT_MS_SCALE: "4"
+      # Read access to the releases of spitters/catcrypt-cloud-cache. When the secret is set,
+      # the build outputs are restored from the latest dev cache release; otherwise from the
+      # Actions cache of earlier runs.
+      CLOUD_CACHE_TOKEN: ${{ secrets.CLOUD_CACHE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -175,7 +184,14 @@ jobs:
       # this run built (also on failure), and let the completeness step below be
       # the pass/fail signal. The build step itself is time-bounded so the VM
       # survives to the save step instead of dying mid-elaboration.
+      - name: Restore the build outputs from the cloud cache
+        if: env.CLOUD_CACHE_TOKEN != ''
+        env:
+          GH_TOKEN: ${{ env.CLOUD_CACHE_TOKEN }}
+        run: bash scripts/restore-cloud-cache.sh
+
       - name: Restore the package build cache
+        if: env.CLOUD_CACHE_TOKEN == ''
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -229,7 +245,7 @@ jobs:
           kill "$GUARD" 2>/dev/null || true
 
       - name: Save the package build cache
-        if: always()
+        if: always() && env.CLOUD_CACHE_TOKEN == ''
         uses: actions/cache/save@v4
         with:
           path: |
