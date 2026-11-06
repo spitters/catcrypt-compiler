@@ -82,11 +82,26 @@ The memory operand for `[base + off]` is rendered as the register-name string
     skipped (e.g. constant-input slots covered by an `immSlotMap`). -/
 abbrev InLoadMap := Nat → Option (String × Nat)
 
-/-- An output-store target: the i-th entry is the `(base-pointer register, byte
-    offset)` to store the i-th of the last `storeTargets.length` bindings'
-    results into. The epilogue emits a `mov [base + off], R_phys_of_output_i`
-    for each target, before the body's `Lret`. -/
+/-- The output cells of a producer: the `j`-th entry is the `(base-pointer register, byte
+    offset)` of the cell that output `j` is stored to. Which binding output `j` is comes from
+    the producer's output names (`outNames` of `comToLfundefPhysAbiFromVirtCert`), not from
+    the position of a binding in the body. -/
 abbrev OutStoreMap := List (String × Nat)
+
+/-- The output stores of the ABI export resolved against the body the allocator reads: the
+    `j`-th entry is the name of the binding whose value store `j` writes, and the byte offset
+    of its cell. A binding is named by its destination register (`outStoresOf`). -/
+abbrev OutStores := List (String × Nat)
+
+/-- The byte offsets of the cells that the output stores `outs` write from a binding whose
+    destination is `d`: the offsets of the entries named by the register `d`, in the order
+    of `outs`. -/
+def outStoreOffs (outs : OutStores) : LOperand → List Nat
+  | .reg nm => outs.filterMap fun p => if p.1 == nm then some p.2 else none
+  | _ => []
+
+@[simp] theorem outStoreOffs_nil (d : LOperand) : outStoreOffs [] d = [] := by
+  cases d <;> rfl
 
 /-- Render a `[base + off]` memory reference as a register-name string, using
     the convention `read_linear.ml` parses (mirrors the `k.<N>` spill prefix).
@@ -120,19 +135,82 @@ def numBindings (body : Lcmd) : Nat :=
     | .Lopn _ _ _ => n + 1
     | _ => n) 0
 
-/-- The logical slots holding the `n = outStoreMap.length` designated outputs of
-    `body`, in output order. The `j`-th output is the destination register of the
-    `(firstOutIdx + j)`-th `Lopn` binding (`firstOutIdx = numBindings - n`) — the
-    SAME binding the epilogue stores into `out[j]`. A binding with no register
-    destination (or out of range) contributes no slot. -/
-def outStoreSlots (body : Lcmd) (outStoreMap : OutStoreMap) : List Nat :=
-  let n := outStoreMap.length
-  let total := numBindings body
-  let firstOutIdx := total - n
-  (List.range n).filterMap (fun j =>
-    match bindingDstOp body (firstOutIdx + j) with
-    | some (.reg name) => some (nameSlot body name)
-    | _ => none)
+/-- The logical slots of the bindings that the output stores `outStoreMap` name, in output
+    order: store `j` reads the binding named by its first component, whose slot is
+    `nameSlot body` of that name. The epilogue stores the same binding into its cell. -/
+def outStoreSlots (body : Lcmd) (outStoreMap : OutStores) : List Nat :=
+  outStoreMap.map fun p => nameSlot body p.1
+
+@[simp] theorem outStoreSlots_nil (body : Lcmd) : outStoreSlots body [] = [] := rfl
+
+/-- The register names an operand mentions. -/
+def LOperand.mentionedNames : LOperand → List String
+  | .reg n => [n]
+  | .arr b _ => [b]
+  | .imm _ => []
+  | .arrIdx b i _ => [b, i]
+
+/-- The number of bindings of `body` whose destination is the register `nm`. -/
+def defCount (body : Lcmd) (nm : String) : Nat :=
+  body.countP fun i =>
+    match i.li_i with
+    | .Lopn (.reg d :: _) _ _ => d == nm
+    | _ => false
+
+/-- The names an instruction reads: the names of its sources, of its destinations other than
+    a register, of a condition and of a jump target. -/
+def linstrReadNames : LinstrR → List String
+  | .Lopn ds _ ss =>
+      ss.flatMap LOperand.mentionedNames ++
+        ds.flatMap fun d => match d with | .reg _ => [] | o => o.mentionedNames
+  | .Lcond c _ => c.mentionedNames
+  | .Ligoto t => t.mentionedNames
+  | _ => []
+
+/-- **The output names of a producer that names none**, on the virtual function `virt` with
+    `n` output cells. One cell: the returned binding `virt.lfd_res`. Several cells: the
+    destinations of the last `n` bindings, in order, only when they are distinct registers
+    and no instruction of the body reads any of them; otherwise none, and the export stores
+    nothing. A trailing binding that some instruction reads is an intermediate value (a
+    constant, a partial result), not an output, so the rule refuses the body on which "the
+    last `n` bindings" would name it. -/
+def defaultOutNames (virt : Lfundef) (n : Nat) : List String :=
+  if n == 1 then virt.lfd_res.take 1
+  else
+    let body := virt.lfd_body
+    let firstOutIdx := numBindings body - n
+    let names := (List.range n).filterMap fun j =>
+      match bindingDstOp body (firstOutIdx + j) with
+      | some (.reg nm) => some nm
+      | _ => none
+    if names.length == n && decide names.Nodup &&
+        body.all (fun i => (linstrReadNames i.li_i).all (fun x => !names.contains x))
+    then names else []
+
+/-- **The output stores of a producer's cells and output names** on the body `body` the
+    allocator reads: the `j`-th cell paired with the `j`-th name. The names must number the
+    cells and each must be the destination of exactly one binding of `body`, so that the name
+    designates one binding; otherwise there are no stores. -/
+def outStoresOf (body : Lcmd) (outStoreMap : OutStoreMap) (names : List String) : OutStores :=
+  if names.length == outStoreMap.length && names.all (fun nm => defCount body nm == 1) then
+    names.zip (outStoreMap.map Prod.snd)
+  else []
+
+@[simp] theorem outStoresOf_nil (body : Lcmd) (names : List String) :
+    outStoresOf body [] names = [] := by
+  unfold outStoresOf; split <;> simp_all
+
+/-- Each output store `outStoresOf` resolves names a binding of the body: its name is the
+    destination of exactly one binding, so the store reads that binding and no other. -/
+theorem defCount_of_mem_outStoresOf {body : Lcmd} {outStoreMap : OutStoreMap}
+    {names : List String} {p : String × Nat} (h : p ∈ outStoresOf body outStoreMap names) :
+    defCount body p.1 = 1 := by
+  unfold outStoresOf at h
+  split at h
+  · rename_i hc
+    simp only [Bool.and_eq_true, List.all_eq_true, beq_iff_eq] at hc
+    exact hc.2 _ (List.of_mem_zip h).1
+  · simp at h
 
 /-- **Multi-output liveness fix.** The body's register allocator (`physTable ∘
     bodyTrace`) computes each slot's live range as `[firstTouch, lastTouch]` over
@@ -142,11 +220,11 @@ def outStoreSlots (body : Lcmd) (outStoreMap : OutStoreMap) : List Nat :=
     never read again inside the body, and the linear scan freely reclaims its
     physical register for a later binding.
 
-    When the last `n` bindings are short, non-overlapping live ranges (the worst
-    case: trailing identity copies `out[k] := out[k] | out[k]` emitted by a
-    multi-output producer), the scan assigns ALL of them the lowest free physical
-    register — so every output slot coalesces onto ONE register and the epilogue
-    stores the same value into every `out[j]`.
+    When the output bindings named by `outStoreMap` (`outStoreSlots`) are short,
+    non-overlapping live ranges (the worst case: trailing identity copies
+    `out[k] := out[k] | out[k]` emitted by a multi-output producer), the scan assigns ALL
+    of them the lowest free physical register — so every output slot coalesces onto ONE
+    register and the epilogue stores the same value into every `out[j]`.
 
     This appends one synthetic liveness event to the trace that READS every output
     slot simultaneously at the final position. That extends each output slot's
@@ -157,7 +235,7 @@ def outStoreSlots (body : Lcmd) (outStoreMap : OutStoreMap) : List Nat :=
     the slot universe. When `outStoreMap = []` (every register-ABI / single-store
     kernel) the appended event list is empty and the trace is byte-identical, so
     those exports are unchanged. -/
-def bodyTraceOut (body : Lcmd) (outStoreMap : OutStoreMap) : List PhysEvent :=
+def bodyTraceOut (body : Lcmd) (outStoreMap : OutStores) : List PhysEvent :=
   let base := bodyTrace body
   match outStoreSlots body outStoreMap with
   | [] => base
@@ -176,13 +254,6 @@ def bodySplitSeg (body : Lcmd) : Array (Option Nat) :=
     | .Lopn _ opn _ =>
         if opn == "LIVEPIN" then (st.1.push none, st.2 + 1) else (st.1.push (some st.2), st.2)
     | _ => (st.1, st.2 + 1)) (#[], 0)).1
-
-/-- The register names an operand mentions. -/
-def LOperand.mentionedNames : LOperand → List String
-  | .reg n => [n]
-  | .arr b _ => [b]
-  | .imm _ => []
-  | .arrIdx b i _ => [b, i]
 
 /-- An operation whose operands the split leaves at their locations: a memory access, an
     operation on an array operand (`ZEROARR`, `STOREIMM`), a high multiplication, a call shadow
@@ -232,7 +303,7 @@ def bodySplitOpt (body : Lcmd) : Option SplitCfg :=
     body name to its post-RA physical register so that the `n` distinct outputs
     occupy `n` distinct physical registers across the epilogue stores. Reduces to
     `physTable (bodyTrace body)` when `outStoreMap = []`. -/
-def physTableOut (body : Lcmd) (outStoreMap : OutStoreMap)
+def physTableOut (body : Lcmd) (outStoreMap : OutStores)
     (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) (split : Option SplitCfg := none) :
     Array Nat :=
   -- Class-aware (`bodyVecSlots`): GP outputs → GP regs, vector outputs → XMM, in
@@ -574,38 +645,26 @@ def buildArgPtrMaterialize (virt : Lfundef) (tbl : Array Nat)
     Then for each output target, emit a `mov [R14 + off], R_phys` (register
     source) or a two-step `mov R15, [k.N]; mov [R14 + off], R15` (spill source
     — single-memory legality forbids `mov [mem], [spill]` directly). The
-    source's physical name comes from the post-RA lookup of the i-th `Lopn`
-    binding's destination in the virtual body (the i-th of the last `n`,
-    where `n = outStoreMap.length`). Stores are emitted in output order
-    (target 0 first). The base register inside `memName` is always `R14`,
-    regardless of what the caller-side `outStoreMap` says. -/
+    source's physical name comes from the post-RA lookup of the binding the store
+    names (the first component of its entry in `outStoreMap`). Stores are emitted in
+    output order (target 0 first). The base register inside `memName` is always `R14`. -/
 def buildEpilogue (virt : Lfundef) (tbl : Array Nat)
-    (outStoreMap : OutStoreMap) (abi : IsaAbi := x86Abi) : Lcmd :=
+    (outStoreMap : OutStores) (abi : IsaAbi := x86Abi) : Lcmd :=
   let restore : Lcmd :=
     [⟨0, .Lopn [.reg reloadScratch2] "MOV" [.reg abiSaveRdiName]⟩]
-  let n := outStoreMap.length
-  let total := numBindings virt.lfd_body
-  let firstOutIdx := total - n
-  let stores : Lcmd := (List.range n).flatMap (fun j =>
-    match outStoreMap[j]? with
-    | none => []
-    | some (_base, off) =>
-        match bindingDstOp virt.lfd_body (firstOutIdx + j) with
-        | none => []
-        | some (.reg srcName) =>
-            -- Resolve through the body's barrier (`physNameForBody`) so the
-            -- store reads from the register a call-containing body wrote.
-            let phys := physNameForBody virt.lfd_body tbl srcName abi
-            let src : LOperand := .reg phys
-            -- Always store via R14 (the restored out-pointer).
-            let memDst : LOperand := .reg (memName reloadScratch2 off)
-            if src.isSpill then
-              -- spill source: route through the reserved reload scratch
-              [⟨0, .Lopn [.reg reloadScratch] "MOV" [src]⟩,
-               ⟨0, .Lopn [memDst] "MOV" [.reg reloadScratch]⟩]
-            else
-              [⟨0, .Lopn [memDst] "MOV" [src]⟩]
-        | some _ => [])
+  let stores : Lcmd := outStoreMap.flatMap (fun (srcName, off) =>
+    -- Resolve through the body's barrier (`physNameForBody`) so the
+    -- store reads from the register a call-containing body wrote.
+    let phys := physNameForBody virt.lfd_body tbl srcName abi
+    let src : LOperand := .reg phys
+    -- Always store via R14 (the restored out-pointer).
+    let memDst : LOperand := .reg (memName reloadScratch2 off)
+    if src.isSpill then
+      -- spill source: route through the reserved reload scratch
+      [⟨0, .Lopn [.reg reloadScratch] "MOV" [src]⟩,
+       ⟨0, .Lopn [memDst] "MOV" [.reg reloadScratch]⟩]
+    else
+      [⟨0, .Lopn [memDst] "MOV" [src]⟩])
   restore ++ stores
 
 /-- Insert the epilogue stores just before the final `Lret` of a body. The
@@ -1147,7 +1206,7 @@ theorem legalizeSpillDst_mem {dsts : List LOperand} {opn : String} {srcs : List 
     `body` at the output stores `outStoreMap` and the reserved vector indices
     `reservedVec`, with the straight-line call relocation composed in
     (`straightCallComposeTable`). -/
-def physAllocTbl (body : Lcmd) (outStoreMap : OutStoreMap) (reservedVec : List Nat := [])
+def physAllocTbl (body : Lcmd) (outStoreMap : OutStores) (reservedVec : List Nat := [])
     (abi : IsaAbi := x86Abi) (split : Option SplitCfg := none) : Array Nat :=
   straightCallComposeTable body (physTableOut body outStoreMap reservedVec abi split)
 
@@ -1177,7 +1236,7 @@ def allocCertOf (body : Lcmd) (tbl : Array Nat) (abi : IsaAbi := x86Abi) :
 /-- **The allocation certificate of `physBodyWithStores`**: `allocCertOf` over the table
     `physAllocTbl`, the pairs `(n, allocName body tbl n)` of the names the allocator
     renames. -/
-def allocCert (body : Lcmd) (outStoreMap : OutStoreMap) (reservedVec : List Nat := [])
+def allocCert (body : Lcmd) (outStoreMap : OutStores) (reservedVec : List Nat := [])
     (abi : IsaAbi := x86Abi) : List (String × String) :=
   allocCertOf body (physAllocTbl body outStoreMap reservedVec abi) abi
 
@@ -1207,10 +1266,11 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
        liveness doesn't overlap) would clobber each other. Loading at
        first-use exactly matches the RA's lifetime model.
 
-    2. Inserts ABI-epilogue stores INLINE — for each of the last `n` `Lopn`
-       bindings (where `n = outStoreMap.length`), a store of the binding's
-       destination physical register to `[storeBase + offset]` is emitted
-       just after the binding's physBody expansion. This solves the lifetime
+    2. Inserts ABI-epilogue stores INLINE — for each binding named by an entry
+       `(name, offset)` of `outStoreMap` (the binding whose destination is the
+       register `name`, `outStoreOffs`), a store of the binding's destination
+       physical register to `[storeBase + offset]` is emitted just after the
+       binding's physBody expansion. This solves the lifetime
        problem on the OUTPUT side: under SSA only the LAST `Com.ret` value
        is live at function exit; the other 15 outputs' physical registers
        have been reclaimed for later computations. Storing each output
@@ -1228,8 +1288,6 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
     below, but it removes the spec's quadratic recomputations for a ~4000-binding
     body:
 
-    * `bidx` (binding index at each position) is carried in a running counter
-      instead of `(body.take virtIdx).filter …).length` per position (`O(n²)`);
     * the argument-slot first-use map is built by parsing the `aN` slot index
       directly from each source name (`O(n)`), instead of scanning
       `List.range nArgs` per source (`O(n·nArgs)`);
@@ -1239,7 +1297,7 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
     are byte-for-byte the spec's. -/
 @[inline] unsafe def physBodyWithStoresImpl (shiftImm : ShiftImmOracle)
     (body : Lcmd) (inLoadMap : InLoadMap) (loadBase : String)
-    (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
+    (outStoreMap : OutStores) (storeBase : String) (abiW : Nat := 0)
     (memrefBaseReload : String → Option String := fun _ => none)
     (callArgBaseReload : List (String × String) := [])
     (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) : Lcmd :=
@@ -1289,9 +1347,6 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
     | .imm v => some v
     | .reg n => shiftImm n
     | _ => none
-  let n := outStoreMap.length
-  let total := numBindings body
-  let firstOutIdx := total - n
   let nArgs := virtBodyNumArgs body
   -- Parse `argName s = "a" ++ toString s` back to its index `s` (none if the
   -- name is not an arg name in range).
@@ -1330,10 +1385,9 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
             | none => pure ()
       | none => pure ()
     return arr
-  -- Emit, carrying the running binding index (`bidx` of each position).
+  -- Emit position by position.
   Id.run do
     let mut out : Array Linstr := #[]
-    let mut bidx := 0
     let mut virtIdx := 0
     for i in body do
       let loads : Lcmd := (loadsByPos[virtIdx]!).flatMap (fun ⟨_s, base, off⟩ =>
@@ -1349,7 +1403,6 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
         else
           [reloadIn,
            ⟨0, .Lopn [dst] abiMovBuf [memSrc]⟩])
-      let thisBidx := bidx
       let expanded : Lcmd :=
         match i.li_i with
         | .Lopn (d :: _) opn (s0 :: s1 :: _) =>
@@ -1410,23 +1463,18 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
       let store : Lcmd :=
         match i.li_i with
         | .Lopn (d :: _) _ _ =>
-            if thisBidx ≥ firstOutIdx ∧ thisBidx < total then
-              let outIdx := thisBidx - firstOutIdx
-              match outStoreMap[outIdx]? with
-              | some (_base, off) =>
-                  let src := rmap d
-                  let memDst : LOperand := .reg (memName storeBase off)
-                  let reloadOut : Linstr :=
-                    ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRdiName]⟩
-                  if src.isSpill then
-                    [⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩,
-                     reloadOut,
-                     ⟨0, .Lopn [memDst] abiMovBuf [.reg reloadScratch]⟩]
-                  else
-                    [reloadOut,
-                     ⟨0, .Lopn [memDst] abiMovBuf [src]⟩]
-              | none => []
-            else []
+            (outStoreOffs outStoreMap d).flatMap fun off =>
+              let src := rmap d
+              let memDst : LOperand := .reg (memName storeBase off)
+              let reloadOut : Linstr :=
+                ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRdiName]⟩
+              if src.isSpill then
+                [⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩,
+                 reloadOut,
+                 ⟨0, .Lopn [memDst] abiMovBuf [.reg reloadScratch]⟩]
+              else
+                [reloadOut,
+                 ⟨0, .Lopn [memDst] abiMovBuf [src]⟩]
         | _ => []
       -- After a real in-loop `Lcall`, restore each loop-invariant pointer base
       -- that the looped-call barrier overflowed into a *caller-saved* register
@@ -1441,10 +1489,6 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
             callArgBaseReload.map (fun (physReg, qsave) =>
               (⟨0, .Lopn [.reg physReg] "MOVQ" [.reg qsave]⟩ : Linstr))
         | _ => []
-      -- advance the binding counter (only `Lopn`s count, matching the spec)
-      match i.li_i with
-      | .Lopn _ _ _ => bidx := bidx + 1
-      | _ => pure ()
       virtIdx := virtIdx + 1
       out := (((out ++ loads.toArray) ++ expanded.toArray)
                 ++ callReload.toArray) ++ store.toArray
@@ -1453,7 +1497,7 @@ theorem mem_allocCertOf {body : Lcmd} {tbl : Array Nat} {abi : IsaAbi} {n m : St
 @[implemented_by physBodyWithStoresImpl]
 def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
     (inLoadMap : InLoadMap) (loadBase : String)
-    (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
+    (outStoreMap : OutStores) (storeBase : String) (abiW : Nat := 0)
     (memrefBaseReload : String → Option String := fun _ => none)
     (callArgBaseReload : List (String × String) := [])
     (reservedVec : List Nat := []) (abi : IsaAbi := x86Abi) : Lcmd :=
@@ -1492,9 +1536,6 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
     | .imm v => some v
     | .reg n => shiftImm n
     | _ => none
-  let n := outStoreMap.length
-  let total := numBindings body
-  let firstOutIdx := total - n
   let nArgs := virtBodyNumArgs body
   -- Build a list of (virtPosition, argSlot) pairs: the first-use position of
   -- each argument slot. We use this to insert the load just before the
@@ -1546,11 +1587,6 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
       else
         [reloadIn,
          ⟨0, .Lopn [dst] abiMovBuf [memSrc]⟩])
-    -- The binding index of this position: count of Lopns strictly before it
-    -- in the body. (The body's last instruction is `Lret`, not an Lopn, so
-    -- non-Lopn positions get `bidx = total` which is past the last-n range.)
-    let bidx := ((body.take virtIdx).filter (fun li =>
-      match li.li_i with | .Lopn _ _ _ => true | _ => false)).length
     let expanded : Lcmd :=
       match i.li_i with
       | .Lopn (d :: _) opn (s0 :: s1 :: _) =>
@@ -1603,30 +1639,25 @@ def physBodyWithStores (shiftImm : ShiftImmOracle) (body : Lcmd)
       | .Lopn dsts opn srcs =>
           [⟨i.li_ii, .Lopn (dsts.map rmap) opn (srcs.map rmap)⟩]
       | other => [⟨i.li_ii, other⟩]
-    -- If this binding is one of the last n, append a store of its dst. The
+    -- If an output store names this binding, append a store of its dst. The
     -- store is preceded by a reload of the out-pointer into R14 (the body
     -- may have clobbered R14 since it's the secondary scratch). When the src
     -- is itself a spill slot, route it through R15 first.
     let store : Lcmd :=
       match i.li_i with
       | .Lopn (d :: _) _ _ =>
-          if bidx ≥ firstOutIdx ∧ bidx < total then
-            let outIdx := bidx - firstOutIdx
-            match outStoreMap[outIdx]? with
-            | some (_base, off) =>
-                let src := rmap d
-                let memDst : LOperand := .reg (memName storeBase off)
-                let reloadOut : Linstr :=
-                  ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRdiName]⟩
-                if src.isSpill then
-                  [⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩,
-                   reloadOut,
-                   ⟨0, .Lopn [memDst] abiMovBuf [.reg reloadScratch]⟩]
-                else
-                  [reloadOut,
-                   ⟨0, .Lopn [memDst] abiMovBuf [src]⟩]
-            | none => []
-          else []
+          (outStoreOffs outStoreMap d).flatMap fun off =>
+            let src := rmap d
+            let memDst : LOperand := .reg (memName storeBase off)
+            let reloadOut : Linstr :=
+              ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRdiName]⟩
+            if src.isSpill then
+              [⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩,
+               reloadOut,
+               ⟨0, .Lopn [memDst] abiMovBuf [.reg reloadScratch]⟩]
+            else
+              [reloadOut,
+               ⟨0, .Lopn [memDst] abiMovBuf [src]⟩]
       | _ => []
     -- After a real in-loop `Lcall`, reload each loop-invariant pointer base the
     -- looped-call barrier overflowed into a caller-saved register from its qsave
@@ -1747,7 +1778,7 @@ theorem reloadArrImmBody_filter {mbr : String → Option String} (p : Linstr →
     the equality. -/
 def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
     (inLoadMap : InLoadMap) (loadBase : String)
-    (outStoreMap : OutStoreMap) (storeBase : String) (abiW : Nat := 0)
+    (outStoreMap : OutStores) (storeBase : String) (abiW : Nat := 0)
     (memrefBaseReload : String → Option String := fun _ => none)
     (callArgBaseReload : List (String × String) := [])
     (reservedVec : List Nat := []) : Linstr × Nat → Lcmd :=
@@ -1774,9 +1805,6 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
     | .imm v => some v
     | .reg n => shiftImm n
     | _ => none
-  let n := outStoreMap.length
-  let total := numBindings body
-  let firstOutIdx := total - n
   let nArgs := virtBodyNumArgs body
   let firstUseMap : Array (Option Nat) :=
     Id.run do
@@ -1817,8 +1845,6 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
       else
         [reloadIn,
          ⟨0, .Lopn [dst] abiMovBuf [memSrc]⟩])
-    let bidx := ((body.take virtIdx).filter (fun li =>
-      match li.li_i with | .Lopn _ _ _ => true | _ => false)).length
     let expanded : Lcmd :=
       match i.li_i with
       | .Lopn (d :: _) opn (s0 :: s1 :: _) =>
@@ -1862,23 +1888,18 @@ def physPositionEmit (shiftImm : ShiftImmOracle) (body : Lcmd)
     let store : Lcmd :=
       match i.li_i with
       | .Lopn (d :: _) _ _ =>
-          if bidx ≥ firstOutIdx ∧ bidx < total then
-            let outIdx := bidx - firstOutIdx
-            match outStoreMap[outIdx]? with
-            | some (_base, off) =>
-                let src := rmap d
-                let memDst : LOperand := .reg (memName storeBase off)
-                let reloadOut : Linstr :=
-                  ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRdiName]⟩
-                if src.isSpill then
-                  [⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩,
-                   reloadOut,
-                   ⟨0, .Lopn [memDst] abiMovBuf [.reg reloadScratch]⟩]
-                else
-                  [reloadOut,
-                   ⟨0, .Lopn [memDst] abiMovBuf [src]⟩]
-            | none => []
-          else []
+          (outStoreOffs outStoreMap d).flatMap fun off =>
+            let src := rmap d
+            let memDst : LOperand := .reg (memName storeBase off)
+            let reloadOut : Linstr :=
+              ⟨0, .Lopn [.reg reloadScratch2] "MOVQ" [.reg abiSaveRdiName]⟩
+            if src.isSpill then
+              [⟨0, .Lopn [.reg reloadScratch] abiMovReg [src]⟩,
+               reloadOut,
+               ⟨0, .Lopn [memDst] abiMovBuf [.reg reloadScratch]⟩]
+            else
+              [reloadOut,
+               ⟨0, .Lopn [memDst] abiMovBuf [src]⟩]
       | _ => []
     let callReload : Lcmd :=
       match i.li_i with
@@ -2139,11 +2160,37 @@ def faReloadPairs (key : String → String) (frameArrs : List (String × Nat × 
     List (String × String) :=
   frameArrs.map fun e => (key e.1, faName e.2.1 e.2.2)
 
+/-- **The output stores of the ABI export** on the body `B` the allocator reads, for the
+    virtual function `virt0` with its call shadows expanded, the residence slots `residence`,
+    the producer's cells `outStoreMap` and its output names `outNames`: each cell paired with
+    the binding its output names (`outStoresOf`). The names are `outNames`, or
+    `defaultOutNames` when the producer gives none; under residence coalescing each name is
+    renamed onto its residence slot, as its binding is. Without cells there are no stores,
+    whatever the names. -/
+def abiOutStores (virt0 : Lfundef) (residence : Option (Array Nat)) (outStoreMap : OutStoreMap)
+    (outNames : List String) (B : Lcmd) : OutStores :=
+  match outStoreMap with
+  | [] => []
+  | _ =>
+    let names0 := if outNames.isEmpty then defaultOutNames virt0 outStoreMap.length else outNames
+    let names := match residence with
+      | none => names0
+      | some slots =>
+          names0.map (residenceRenameName virt0.lfd_arg.length (residenceArraySlotOf slots))
+    outStoresOf B outStoreMap names
+
+@[simp] theorem abiOutStores_nil (virt0 : Lfundef) (residence : Option (Array Nat))
+    (outNames : List String) (B : Lcmd) : abiOutStores virt0 residence [] outNames B = [] := rfl
+
 /-- **The ABI-wrapping tail of `comToLfundefPhysAbi` with its allocation certificate**:
     the physical `lfundef` of an already-built virtual `Lfundef` and the certificate
     `allocCertOf` of the allocator input body over the table that `physBodyWithStores`
     reads (`physAllocTbl` at the output stores and the reserved vector indices),
-    computed with that table. `comToLfundefPhysAbiFromVirt` is its first component. -/
+    computed with that table. `comToLfundefPhysAbiFromVirt` is its first component.
+
+    Output `j` is stored to the `j`-th cell of `outStoreMap` from the binding named by the
+    `j`-th of `outNames` (`abiOutStores`): the binding whose destination is that register.
+    A producer that names no output gets `defaultOutNames`. -/
 def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
     (shiftImm : ShiftImmOracle := fun _ => none)
     (inLoadMap : InLoadMap := fun _ => none)
@@ -2156,7 +2203,7 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
     (forwarderBody? : Option Lcmd := none)
     (reserveVecScratch : Bool := false)
     (retToRax : Bool := false) (abi : IsaAbi := x86Abi)
-    (frameArrs : List (String × Nat × Nat) := []) :
+    (frameArrs : List (String × Nat × Nat) := []) (outNames : List String := []) :
     Lfundef × List (String × String) :=
   -- `reserveVecScratch` (batch8 SoA path): cap the vector RA pool at
   -- `numVecRegs - 1`, reserving `%ymm15` as the printer's spill-legalization
@@ -2214,6 +2261,8 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
   let virt := { virtR with
     lfd_body := livePin ++ canonicalizeMemrefThread virtR.lfd_body
       ++ resLivePin retToRax outStoreMap virtR.lfd_res }
+  -- The output stores: each cell of `outStoreMap` with the binding its output names.
+  let outs := abiOutStores virt0 residence outStoreMap outNames virt.lfd_body
   -- Output-liveness-extended allocation table (multi-output store fix): the `n`
   -- designated outputs occupy `n` DISTINCT physical registers across the epilogue
   -- stores (see `bodyTraceOut`). EVERY consumer of `tbl` here (prologue,
@@ -2227,7 +2276,7 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
   -- indices) then reads one coherent table via `physNameForBody`'s plain
   -- lookup. Identity on call-free and looped bodies.
   let tbl := straightCallComposeTable virt.lfd_body
-    (physTableOut virt.lfd_body outStoreMap reservedVec abi)
+    (physTableOut virt.lfd_body outs reservedVec abi)
   -- Each EXTRA SysV argument register beyond `RDI`/`RSI` (`RDX`/`RCX`/`R8`/`R9`,
   -- a 3+-argument signature) gets its own red-zone qsave slot, appended after the
   -- fixed prologue, so the argument materialize / SIB-base reloads can source it
@@ -2287,7 +2336,7 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
     fun base => (pairs.find? (fun p => p.1 == base)).map Prod.snd
   -- Drop the synthetic argument-liveness pin (it carried no value, only liveness).
   let bodyWithInlineStores := (physBodyWithStores shiftImm' virt.lfd_body
-    inLoadMap reloadScratch2 outStoreMap reloadScratch2 abiW memrefBaseReload
+    inLoadMap reloadScratch2 outs reloadScratch2 abiW memrefBaseReload
     (reservedVec := reservedVec) (abi := abi)).filter
     (fun i => match i.li_i with | .Lopn _ opn _ => opn != "LIVEPIN" | _ => true)
   -- Straight-line-call return materialization: the liveness-computed barrier
@@ -2343,7 +2392,9 @@ def comToLfundefPhysAbiFromVirtCert (virt0 : Lfundef)
     * `shiftImm` — legacy SSA-name-keyed shift-count oracle.
     * `inLoadMap` — argument slot → `(base, off)` memory load (default: none —
       which reproduces `comToLfundefPhys`'s register-only behaviour).
-    * `outStoreMap` — list of output store targets (default: empty — no stores).
+    * `outStoreMap` — the cells of the outputs, in output order (default: empty — no stores).
+    * `outNames` — the names of the output bindings, in output order (default: empty —
+      `defaultOutNames`).
     * `abiArgs` — the `lfd_arg` list (default: `["RDI", "RSI"]` for `out, inp`).
     * `abiTyin` — the `lfd_tyin` list (default: two 64-bit pointer widths).
 -/
@@ -2358,20 +2409,24 @@ def comToLfundefPhysAbiFromVirt (virt0 : Lfundef)
     (forceLivePin : Bool := false)
     (forwarderBody? : Option Lcmd := none)
     (reserveVecScratch : Bool := false)
-    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) :
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) (outNames : List String := []) :
     Lfundef :=
   (comToLfundefPhysAbiFromVirtCert virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
-    residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi).1
+    residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi
+    (outNames := outNames)).1
 
 /-- The function of `comToLfundefPhysAbiFromVirtCert` is `comToLfundefPhysAbiFromVirt`. -/
 theorem comToLfundefPhysAbiFromVirtCert_fst (virt0 : Lfundef) (shiftImm : ShiftImmOracle)
     (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap) (abiArgs : List String)
     (abiTyin : List Nat) (residence : Option (Array Nat)) (abiW : Nat) (forceLivePin : Bool)
-    (forwarderBody? : Option Lcmd) (reserveVecScratch retToRax : Bool) (abi : IsaAbi) :
+    (forwarderBody? : Option Lcmd) (reserveVecScratch retToRax : Bool) (abi : IsaAbi)
+    (outNames : List String) :
     (comToLfundefPhysAbiFromVirtCert virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
-        residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi).1
+        residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi
+        (outNames := outNames)).1
       = comToLfundefPhysAbiFromVirt virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
-        residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi := rfl
+        residence abiW forceLivePin forwarderBody? reserveVecScratch retToRax abi
+        (outNames := outNames) := rfl
 
 /-- The ABI-wrapped physical `lfundef` for a `Com`: same args/types as the
     underlying physical export, but `lfd_arg` is reset to a fixed 2-pointer
@@ -2386,7 +2441,9 @@ theorem comToLfundefPhysAbiFromVirtCert_fst (virt0 : Lfundef) (shiftImm : ShiftI
     * `immSlotMap` — producer-level slot → constant map (default: none).
     * `inLoadMap` — argument slot → `(base, off)` memory load (default: none —
       which reproduces `comToLfundefPhys`'s register-only behaviour).
-    * `outStoreMap` — list of output store targets (default: empty — no stores).
+    * `outStoreMap` — the cells of the outputs, in output order (default: empty — no stores).
+    * `outNames` — the names of the output bindings, in output order (default: empty —
+      `defaultOutNames`).
     * `abiArgs` — the `lfd_arg` list (default: `["RDI", "RSI"]` for `out, inp`).
     * `abiTyin` — the `lfd_tyin` list (default: two 64-bit pointer widths).
 -/
@@ -2400,7 +2457,7 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
     (forceLivePin : Bool := false)
-    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) :
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) (outNames : List String := []) :
     Lfundef :=
   comToLfundefPhysAbiFromVirt (comToLfundef com immSlotMap)
     (shiftImm := shiftImm) (inLoadMap := inLoadMap) (outStoreMap := outStoreMap)
@@ -2408,6 +2465,7 @@ def comToLfundefPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     (abiW := abiW) (forceLivePin := forceLivePin) (retToRax := retToRax) (abi := abi)
     (forwarderBody? := (degenerateForwarderSym? com abiArgs).map
       (fun sym => [⟨0, .Lcall none (sym, 0)⟩, ⟨0, .Lret⟩]))
+    (outNames := outNames)
 
 /-- Export a `Com` to a 2-pointer-ABI physical-register, two-address `Lprog`.
     See `comToLfundefPhysAbi` for the ABI wrapping (prologue loads + epilogue
@@ -2423,14 +2481,16 @@ def Com.toLprogPhysAbi {Γ : Ctxt jasminDialect} {t : JasminTy}
     (residence : Option (Array Nat) := none)
     (abiW : Nat := 0)
     (forceLivePin : Bool := false)
-    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) : Lprog :=
+    (retToRax : Bool := false) (abi : IsaAbi := x86Abi) (outNames : List String := []) :
+    Lprog :=
   { lp_rip := "RIP"
     lp_rsp := "RSP"
     lp_globs := []
     lp_glob_names := []
     lp_funcs :=
       [(fname, comToLfundefPhysAbi com shiftImm immSlotMap inLoadMap
-                 outStoreMap abiArgs abiTyin residence abiW forceLivePin retToRax abi)] }
+                 outStoreMap abiArgs abiTyin residence abiW forceLivePin retToRax abi
+                 outNames)] }
 
 /-- Serialize the ABI-wrapped physical export to the textual lprog blob. -/
 def Com.toLprogPhysAbiText {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -2441,9 +2501,9 @@ def Com.toLprogPhysAbiText {Γ : Ctxt jasminDialect} {t : JasminTy}
     (outStoreMap : OutStoreMap := [])
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64])
-    (residence : Option (Array Nat) := none) : String :=
+    (residence : Option (Array Nat) := none) (outNames : List String := []) : String :=
   magic ++ (Com.toLprogPhysAbi com fname shiftImm immSlotMap inLoadMap
-              outStoreMap abiArgs abiTyin residence).toText ++ "\n"
+              outStoreMap abiArgs abiTyin residence (outNames := outNames)).toText ++ "\n"
 
 /-- The ABI-wrapped physical export's bytes. -/
 def Com.toLprogPhysAbiBytes {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -2454,9 +2514,9 @@ def Com.toLprogPhysAbiBytes {Γ : Ctxt jasminDialect} {t : JasminTy}
     (outStoreMap : OutStoreMap := [])
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64])
-    (residence : Option (Array Nat) := none) : ByteArray :=
+    (residence : Option (Array Nat) := none) (outNames : List String := []) : ByteArray :=
   (Com.toLprogPhysAbiText com fname shiftImm immSlotMap inLoadMap
-    outStoreMap abiArgs abiTyin residence).toUTF8
+    outStoreMap abiArgs abiTyin residence outNames).toUTF8
 
 /-- Write the ABI-wrapped physical-register lprog blob to a file. -/
 def Com.writeLprogPhysAbiFile {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -2467,11 +2527,11 @@ def Com.writeLprogPhysAbiFile {Γ : Ctxt jasminDialect} {t : JasminTy}
     (outStoreMap : OutStoreMap := [])
     (abiArgs : List String := ["RDI", "RSI"])
     (abiTyin : List Nat := [64, 64])
-    (residence : Option (Array Nat) := none) :
+    (residence : Option (Array Nat) := none) (outNames : List String := []) :
     IO Unit :=
   IO.FS.writeBinFile path
     (Com.toLprogPhysAbiBytes com fname shiftImm immSlotMap inLoadMap
-       outStoreMap abiArgs abiTyin residence)
+       outStoreMap abiArgs abiTyin residence outNames)
 
 /-! ### 7g. Physical-register export of a looped `ComL`
 

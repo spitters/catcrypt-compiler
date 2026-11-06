@@ -15,8 +15,8 @@ set_option autoImplicit false
 # The inline output store block and the value it leaves in its cell
 
 `physBodyWithStores` gets a multi-output kernel's results to the C-side `out`
-buffer with an inline store block: after the expansion of each of the last `n`
-bindings it emits a reload of the out-pointer into `reloadScratch2` followed by
+buffer with an inline store block: after the expansion of each binding that an
+output store names (by its destination register) it emits a reload of the out-pointer into `reloadScratch2` followed by
 a move of the binding's destination into the cell `memName storeBase off`.
 `inlineStoreOps` is that pair at `LinstrR`, and `storeBlocks` is the
 concatenation of the blocks of a list of `(offset, source-register)` targets.

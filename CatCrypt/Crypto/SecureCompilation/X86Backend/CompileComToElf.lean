@@ -149,8 +149,10 @@ does NOT carry over to the multi-input flattened context — the 4-limb-add KAT,
 def deriveInLoadArr (nLimbsTotal cellBytes : Nat) : InLoadMap := fun slot =>
   if slot < nLimbsTotal then some ("RSI", slot * cellBytes) else none
 
-/-- Multi-limb output store. The last `nLimbsOut` `Lopn` bindings are the result
-    limbs (limb `j` = the `j`-th of the last `nLimbsOut`); each is stored to
+/-- Multi-limb output store. Without output names the export takes the last `nLimbsOut`
+    `Lopn` bindings as the result limbs when no instruction reads them
+    (`JasminLprogExport.defaultOutNames`; limb `j` = the `j`-th of the last `nLimbsOut`);
+    each is stored to
     `[RDI + j*cellBytes]` — i.e. all result limbs concatenated in the single
     `out` buffer. Wide generalisation of `deriveOutStore`; `nLimbsOut = 1`
     recovers the scalar single-word store. -/

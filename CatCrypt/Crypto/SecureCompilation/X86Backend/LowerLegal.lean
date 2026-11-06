@@ -898,8 +898,7 @@ theorem lower_legal (shiftImm : ShiftImmOracle) (body : Lcmd)
     (hloadBase : isGpName loadBase = true) (hstoreBase : isGpName storeBase = true)
     (hcall : ∀ p ∈ callArgBaseReload, isGpName p.1 = true ∧ OpResolves F W Q p.2)
     (hout : ∀ d tl opn srcs, i.li_i = .Lopn (d :: tl) opn srcs →
-      numBindings body - outStoreMap.length ≤ posBidx body virtIdx →
-      posBidx body virtIdx < numBindings body → AllocOp F W Q (rm d))
+      outStoreOffs outStoreMap d ≠ [] → AllocOp F W Q (rm d))
     (hpos : PosOk F W Q rm shiftImm i.li_i) :
     ∀ r ∈ physPositionEmit shiftImm body inLoadMap loadBase outStoreMap storeBase abiW
       memrefBaseReload callArgBaseReload reservedVec (i, virtIdx), LF F W Q r.li_i := by
@@ -1028,26 +1027,21 @@ theorem lower_legal (shiftImm : ShiftImmOracle) (body : Lcmd)
   · -- the inline output store
     split at hr
     · next d tail opn srcs =>
-      split at hr
-      · next hg =>
-        obtain ⟨n, hn, hn'⟩ := hout d tail opn srcs rfl hg.1 hg.2
-        have hdn : AllocOp F W Q (.reg n) := ⟨n, rfl, hn'⟩
-        rw [hn] at hr
-        split at hr
-        · next off _ =>
-          split at hr <;>
-            simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
-          · rcases hr with rfl | rfl | rfl
-            · exact lf_mov_left (hmovB _) h15 hdn
-            · exact lf_mov_res_left hmq h14 hrdi
-            · exact lf_mov_res_right (hmovB _) h15 (opResolves_memName hstoreBase off)
-          · next hsp =>
-            rcases hr with rfl | rfl
-            · exact lf_mov_res_left hmq h14 hrdi
-            · have hg' := gp_of_allocOp hdn (by simpa using hsp)
-              exact lf_mov_res_right (hmovB _) hg' (opResolves_memName hstoreBase off)
-        · simp at hr
-      · simp at hr
+      obtain ⟨off, hoff, hr⟩ := List.mem_flatMap.mp hr
+      obtain ⟨n, hn, hn'⟩ := hout d tail opn srcs rfl (List.ne_nil_of_mem hoff)
+      have hdn : AllocOp F W Q (.reg n) := ⟨n, rfl, hn'⟩
+      rw [hn] at hr
+      split at hr <;>
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
+      · rcases hr with rfl | rfl | rfl
+        · exact lf_mov_left (hmovB _) h15 hdn
+        · exact lf_mov_res_left hmq h14 hrdi
+        · exact lf_mov_res_right (hmovB _) h15 (opResolves_memName hstoreBase off)
+      · next hsp =>
+        rcases hr with rfl | rfl
+        · exact lf_mov_res_left hmq h14 hrdi
+        · have hg' := gp_of_allocOp hdn (by simpa using hsp)
+          exact lf_mov_res_right (hmovB _) hg' (opResolves_memName hstoreBase off)
     · simp at hr
 
 
@@ -1073,8 +1067,7 @@ theorem physBodyWithStores_legal (shiftImm : ShiftImmOracle) (body : Lcmd)
     (hloadBase : isGpName loadBase = true) (hstoreBase : isGpName storeBase = true)
     (hcall : ∀ p ∈ callArgBaseReload, isGpName p.1 = true ∧ OpResolves F W Q p.2)
     (hout : ∀ p ∈ body.zipIdx, ∀ d tl opn srcs, p.1.li_i = .Lopn (d :: tl) opn srcs →
-      numBindings body - outStoreMap.length ≤ posBidx body p.2 →
-      posBidx body p.2 < numBindings body → AllocOp F W Q (rm d))
+      outStoreOffs outStoreMap d ≠ [] → AllocOp F W Q (rm d))
     (hpos : ∀ p ∈ body.zipIdx, PosOk F W Q rm shiftImm p.1.li_i) :
     ∀ r ∈ physBodyWithStores shiftImm body inLoadMap loadBase outStoreMap storeBase abiW
       memrefBaseReload callArgBaseReload reservedVec, LF F W Q r.li_i := by
@@ -1161,8 +1154,7 @@ theorem lower_legal_loadCSE (shiftImm : ShiftImmOracle) (body : Lcmd)
     (hloadBase : isGpName loadBase = true) (hstoreBase : isGpName storeBase = true)
     (hcall : ∀ p ∈ callArgBaseReload, isGpName p.1 = true ∧ OpResolves F W Q p.2)
     (hout : ∀ p ∈ body.zipIdx, ∀ d tl opn srcs, p.1.li_i = .Lopn (d :: tl) opn srcs →
-      numBindings body - outStoreMap.length ≤ posBidx body p.2 →
-      posBidx body p.2 < numBindings body → AllocOp F W Q (rm d))
+      outStoreOffs outStoreMap d ≠ [] → AllocOp F W Q (rm d))
     (hpos : ∀ p ∈ body.zipIdx, PosOk F W Q rm shiftImm p.1.li_i) :
     ∀ r ∈ CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE (physBodyWithStores shiftImm body
       inLoadMap loadBase outStoreMap storeBase abiW memrefBaseReload callArgBaseReload
@@ -1196,8 +1188,7 @@ theorem encodable_loadCSE_physBodyWithStores (shiftImm : ShiftImmOracle) (body :
     (hloadBase : isGpName loadBase = true) (hstoreBase : isGpName storeBase = true)
     (hcall : ∀ p ∈ callArgBaseReload, isGpName p.1 = true ∧ OpResolves F W Q p.2)
     (hout : ∀ p ∈ body.zipIdx, ∀ d tl opn srcs, p.1.li_i = .Lopn (d :: tl) opn srcs →
-      numBindings body - outStoreMap.length ≤ posBidx body p.2 →
-      posBidx body p.2 < numBindings body → AllocOp F W Q (rm d))
+      outStoreOffs outStoreMap d ≠ [] → AllocOp F W Q (rm d))
     (hpos : ∀ p ∈ body.zipIdx, PosOk F W Q rm shiftImm p.1.li_i) :
     encodableLcmd (CatCrypt.Crypto.Optimizer.LoadCSE.loadCSE (physBodyWithStores shiftImm body
       inLoadMap loadBase outStoreMap storeBase abiW memrefBaseReload callArgBaseReload

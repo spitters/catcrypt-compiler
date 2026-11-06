@@ -747,11 +747,8 @@ theorem physBodyWithStores_lcmdDirect
     · rename_i heq
       rw [heq] at hi
       obtain ⟨hD, _⟩ := linstrRDirect_Lopn hi
-      split
-      · split
-        · split <;> simp [lcmdDirect, linstrRDirect, hr, hD _ (List.mem_cons_self ..)]
-        · simp
-      · simp
+      refine lcmdDirect_flatMap _ _ fun off _ => ?_
+      split <;> simp [lcmdDirect, linstrRDirect, hr, hD _ (List.mem_cons_self ..)]
     · simp
 
 /-! ## 6. The ABI wrapper and the pre-allocation rewrites -/

@@ -134,48 +134,35 @@ def atTagZero (l : List LinstrR) : Lcmd := l.map (fun r => ⟨0, r⟩)
 /-! ## 3. The emitted block -/
 
 /-- **The emitted store block is an `inlineStoreOps` block.** At a virtual
-    position holding an `Lopn` with a register destination, whose binding ordinal
-    falls in the designated output range, whose output target is `(base, off)`,
-    and whose remapped destination is not a spill slot, the list
-    `physBodyWithStores` emits splits around exactly the `inlineStoreOps` block
-    of the cell `memName storeBase off` and that destination. -/
+    position holding an `Lopn` with a register destination `d` that an output store
+    names with the cell offset `off` (`off ∈ outStoreOffs outStoreMap d`), and whose
+    remapped destination is not a spill slot, the list `physBodyWithStores` emits splits
+    around exactly the `inlineStoreOps` block of the cell `memName storeBase off` and that
+    destination. -/
 theorem physBodyWithStores_inlineStoreOps
     (shiftImm : ShiftImmOracle) (body : Lcmd) (inLoadMap : InLoadMap)
-    (loadBase : String) (outStoreMap : OutStoreMap) (storeBase : String)
+    (loadBase : String) (outStoreMap : OutStores) (storeBase : String)
     (abiW : Nat) (memrefBaseReload : String → Option String)
     (callArgBaseReload : List (String × String)) (reservedVec : List Nat)
     {i : Linstr} {virtIdx : Nat} (hmem : (i, virtIdx) ∈ body.zipIdx)
     {d : LOperand} {ds : List LOperand} {opn : String} {srcs : List LOperand}
     (hi : i.li_i = .Lopn (d :: ds) opn srcs)
-    (hlo : bindingIndexAt body virtIdx ≥ numBindings body - outStoreMap.length)
-    (hhi : bindingIndexAt body virtIdx < numBindings body)
-    {base : String} {off : Nat}
-    (hout : outStoreMap[bindingIndexAt body virtIdx
-              - (numBindings body - outStoreMap.length)]? = some (base, off))
+    {off : Nat} (hout : off ∈ outStoreOffs outStoreMap d)
     (hnospill : (physRmap body outStoreMap reservedVec d).isSpill = false) :
     ∃ pre post,
       physBodyWithStores shiftImm body inLoadMap loadBase outStoreMap storeBase
           abiW memrefBaseReload callArgBaseReload reservedVec
         = pre ++ atTagZero (inlineStoreOps (physAbiMovBuf body abiW) storeBase off
             (physRmap body outStoreMap reservedVec d)) ++ post := by
-  simp only [bindingIndexAt] at hlo hhi hout
   simp only [physRmap] at hnospill
   unfold physBodyWithStores
   simp only []
   refine split_trans (flatMap_split_of_mem _ _ hmem) ?_
   simp only [hi]
   refine split_trans (split_last _ _ _ _) ?_
-  split
-  · split
-    · rename_i _b o hsome
-      have ho : o = off := congrArg Prod.snd (Option.some.inj (hsome.symm.trans hout))
-      subst ho
-      rw [hnospill]
-      simp only [Bool.false_eq_true, ite_false]
-      exact split_refl _
-    · rename_i hnone
-      exact absurd (hnone.symm.trans hout) (by simp)
-  · rename_i hcond
-    exact absurd (And.intro hlo hhi) hcond
+  refine split_trans (flatMap_split_of_mem _ _ hout) ?_
+  rw [hnospill]
+  simp only [Bool.false_eq_true, ite_false]
+  exact split_refl _
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreBlockEmit

@@ -28,11 +28,10 @@ destination, the emitted list is
 
 ## Scope
 
-The positions are ordered by their virtual index `k < k'`, not by their binding
-ordinal. On a body whose instructions are all `Lopn` the two agree; on a body
-carrying non-`Lopn` positions the binding ordinal of a position is the number of
-`Lopn`s before it, which is monotone in the virtual index but not injective, so
-the theorem is stated at the level it proves.
+The positions are ordered by their virtual index `k < k'`. A store is selected by
+the name of the binding's destination (`outStoreOffs`), not by the binding's
+ordinal, so the statement needs no fact about the number of `Lopn`s before a
+position.
 
 The hypotheses select the spill-free arm at both positions, as in
 `physBodyWithStores_inlineStoreOps`: a designated binding whose remapped
@@ -96,60 +95,47 @@ theorem flatMap_split_two {α β : Type} {l : List α} {a b : α} {A B : List β
 
 /-- **The chunk a designated position contributes is an `inlineStoreOps`
     block.** At a virtual position holding an `Lopn` with a register
-    destination, whose binding ordinal falls in the designated output range,
-    whose output target is `(base, off)`, and whose remapped destination is not
+    destination `d` that an output store names with the cell offset `off`
+    (`off ∈ outStoreOffs outStoreMap d`), and whose remapped destination is not
     a spill slot, the instructions `physPositionEmit` contributes at that
     position split around exactly the `inlineStoreOps` block of the cell
     `memName storeBase off` and that destination. -/
 theorem physPositionEmit_inlineStoreOps
     (shiftImm : ShiftImmOracle) (body : Lcmd) (inLoadMap : InLoadMap)
-    (loadBase : String) (outStoreMap : OutStoreMap) (storeBase : String)
+    (loadBase : String) (outStoreMap : OutStores) (storeBase : String)
     (abiW : Nat) (memrefBaseReload : String → Option String)
     (callArgBaseReload : List (String × String)) (reservedVec : List Nat)
     {i : Linstr} {virtIdx : Nat}
     {d : LOperand} {ds : List LOperand} {opn : String} {srcs : List LOperand}
     (hi : i.li_i = .Lopn (d :: ds) opn srcs)
-    (hlo : bindingIndexAt body virtIdx ≥ numBindings body - outStoreMap.length)
-    (hhi : bindingIndexAt body virtIdx < numBindings body)
-    {base : String} {off : Nat}
-    (hout : outStoreMap[bindingIndexAt body virtIdx
-              - (numBindings body - outStoreMap.length)]? = some (base, off))
+    {off : Nat} (hout : off ∈ outStoreOffs outStoreMap d)
     (hnospill : (physRmap body outStoreMap reservedVec d).isSpill = false) :
     ∃ pre post,
       physPositionEmit shiftImm body inLoadMap loadBase outStoreMap storeBase
           abiW memrefBaseReload callArgBaseReload reservedVec (i, virtIdx)
         = pre ++ atTagZero (inlineStoreOps (physAbiMovBuf body abiW) storeBase off
             (physRmap body outStoreMap reservedVec d)) ++ post := by
-  simp only [bindingIndexAt] at hlo hhi hout
   simp only [physRmap, physAllocTbl] at hnospill
   unfold physPositionEmit
   simp only []
   simp only [hi]
   refine split_trans (split_last _ _ _ _) ?_
-  split
-  · split
-    · rename_i _b o hsome
-      have ho : o = off := congrArg Prod.snd (Option.some.inj (hsome.symm.trans hout))
-      subst ho
-      rw [hnospill]
-      simp only [Bool.false_eq_true, ite_false]
-      exact split_refl _
-    · rename_i hnone
-      exact absurd (hnone.symm.trans hout) (by simp)
-  · rename_i hcond
-    exact absurd (And.intro hlo hhi) hcond
+  refine split_trans (flatMap_split_of_mem _ _ hout) ?_
+  rw [hnospill]
+  simp only [Bool.false_eq_true, ite_false]
+  exact split_refl _
 
 /-! ## 3. The two-block ordering -/
 
 /-- **Two emitted store blocks appear in binding order.** At two virtual
     positions `k < k'` of the body, each holding an `Lopn` with a register
-    destination, each with a binding ordinal in the designated output range and
-    a non-spill remapped destination, the list `physBodyWithStores` emits
+    destination that an output store names, and each with a non-spill remapped
+    destination, the list `physBodyWithStores` emits
     contains the `inlineStoreOps` block of the position `k` output cell before
     the block of the position `k'` output cell. -/
 theorem physBodyWithStores_inlineStoreOps_ordered
     (shiftImm : ShiftImmOracle) (body : Lcmd) (inLoadMap : InLoadMap)
-    (loadBase : String) (outStoreMap : OutStoreMap) (storeBase : String)
+    (loadBase : String) (outStoreMap : OutStores) (storeBase : String)
     (abiW : Nat) (memrefBaseReload : String → Option String)
     (callArgBaseReload : List (String × String)) (reservedVec : List Nat)
     {k k' : Nat} (hlt : k < k')
@@ -158,15 +144,9 @@ theorem physBodyWithStores_inlineStoreOps_ordered
     {srcs₁ srcs₂ : List LOperand}
     (hi₁ : i₁.li_i = .Lopn (d₁ :: ds₁) opn₁ srcs₁)
     (hi₂ : i₂.li_i = .Lopn (d₂ :: ds₂) opn₂ srcs₂)
-    (hlo₁ : bindingIndexAt body k ≥ numBindings body - outStoreMap.length)
-    (hhi₁ : bindingIndexAt body k < numBindings body)
-    (hlo₂ : bindingIndexAt body k' ≥ numBindings body - outStoreMap.length)
-    (hhi₂ : bindingIndexAt body k' < numBindings body)
-    {base₁ base₂ : String} {off₁ off₂ : Nat}
-    (hout₁ : outStoreMap[bindingIndexAt body k
-              - (numBindings body - outStoreMap.length)]? = some (base₁, off₁))
-    (hout₂ : outStoreMap[bindingIndexAt body k'
-              - (numBindings body - outStoreMap.length)]? = some (base₂, off₂))
+    {off₁ off₂ : Nat}
+    (hout₁ : off₁ ∈ outStoreOffs outStoreMap d₁)
+    (hout₂ : off₂ ∈ outStoreOffs outStoreMap d₂)
     (hns₁ : (physRmap body outStoreMap reservedVec d₁).isSpill = false)
     (hns₂ : (physRmap body outStoreMap reservedVec d₂).isSpill = false) :
     ∃ pre mid post,
@@ -181,7 +161,7 @@ theorem physBodyWithStores_inlineStoreOps_ordered
   · refine split_of_two_getElem hlt ?_ ?_
     · simp [List.getElem?_zipIdx, hk]
     · simp [List.getElem?_zipIdx, hk']
-  · exact physPositionEmit_inlineStoreOps _ _ _ _ _ _ _ _ _ _ hi₁ hlo₁ hhi₁ hout₁ hns₁
-  · exact physPositionEmit_inlineStoreOps _ _ _ _ _ _ _ _ _ _ hi₂ hlo₂ hhi₂ hout₂ hns₂
+  · exact physPositionEmit_inlineStoreOps _ _ _ _ _ _ _ _ _ _ hi₁ hout₁ hns₁
+  · exact physPositionEmit_inlineStoreOps _ _ _ _ _ _ _ _ _ _ hi₂ hout₂ hns₂
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminInlineStoreBlockOrder

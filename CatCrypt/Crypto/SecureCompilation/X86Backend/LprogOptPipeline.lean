@@ -1464,9 +1464,10 @@ def renderOwnedReserveVecScratch (p : Lprog) : String :=
 `Optimizer.ComRangeFold.comRangeOpt`, selected by the input intervals: `none` (the
 default) leaves the program unchanged (`ownedComStage_none`), and `some ivs` folds the
 bindings the intervals of `ivs` settle and removes the copies and dead bindings outside
-the last `nOut` bindings, in time linear in the size of the program. The exporter stores
-the last `nOut` bindings as the outputs (`JasminLprogExport.outStoreSlots`, with `nOut` the
-length of the output store map) and returns the value of the program. Its soundness covers
+the last `nOut` bindings, in time linear in the size of the program. Without output names
+the exporter stores, at several outputs, the last `nOut` bindings when no instruction reads
+them (`JasminLprogExport.defaultOutNames`, with `nOut` the length of the output store map),
+and returns the value of the program. Its soundness covers
 both, on every valuation whose register inputs lie in their intervals:
 `ownedComStage_denote` (the returned value) and `ownedComStage_outputs` (the values of the
 last `nOut` bindings, `ComDCE.outputs`). `renderOwnedCom` is the whole owned back end from a

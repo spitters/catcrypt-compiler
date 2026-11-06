@@ -921,9 +921,8 @@ theorem physPositionEmit_blockOk {slotArr : String → Option (String × Nat)}
   unfold physPositionEmit
   dsimp only
   rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
-  simp only [List.flatMap_nil, List.nil_append, List.length_nil, Nat.sub_zero, ← hrm]
-  have hst : ∀ (b t : Nat), ¬ (b ≥ t ∧ b < t) := fun b t h => by omega
-  simp only [hst, ite_false]
+  simp only [List.flatMap_nil, List.nil_append, ← hrm]
+  simp only [outStoreOffs_nil, List.flatMap_nil]
   cases x with
   | Lopn ds o ss =>
     have hopn : opnOf (.Lopn ds o ss) = some o := rfl
@@ -1126,9 +1125,9 @@ theorem physPositionEmit_physImg {slotArr : String → Option (String × Nat)}
       unfold physPositionEmit
       dsimp only
       rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
-      simp only [List.flatMap_nil, List.nil_append, List.length_nil, Nat.sub_zero, ← hrm]
-      have hst : ∀ (b t : Nat), ¬ (b ≥ t ∧ b < t) := fun b t h => by omega
-      simp only [hst, ite_false, hbin, Bool.false_eq_true, legalizeSpillDst]
+      simp only [List.flatMap_nil, List.nil_append, ← hrm]
+      simp only [outStoreOffs_nil, List.flatMap_nil, ite_false, hbin, Bool.false_eq_true,
+        legalizeSpillDst]
       rcases t with _ | ⟨s2, t⟩ <;>
         simp only [hms, Bool.false_eq_true, ite_false, cmovSpillDst?_of_ne _ _ hcm,
           setccSpill?_of_ne _ _ hset, andnSpill?_of_ne _ _ han, List.map_cons, List.map_nil,
@@ -1713,7 +1712,8 @@ theorem physPositionEmit_dst (P : LOperand → Prop)
     · simp at hr
   · -- the inline output store
     split at hr
-    · repeat' split at hr
+    · obtain ⟨_, -, hr⟩ := List.mem_flatMap.mp hr
+      repeat' split at hr
       all_goals simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
       all_goals
         rcases hr with rfl | rfl | rfl <;>

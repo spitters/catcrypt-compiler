@@ -197,26 +197,23 @@ theorem emittedStoreBlock_value_of_countP {w : Nat} (movReg movBuf storeBase : S
 /-! ## 4. The emitted list -/
 
 /-- **The output cell of a designated binding after a run of the emitted list.**
-    For a designated binding at virtual position `virtIdx` whose remapped
+    For a binding at virtual position `virtIdx` that an output store names with the cell
+    offset `off` (`off ∈ outStoreOffs outStoreMap d` for its destination `d`), whose remapped
     destination is the register `src`, not a spill slot and not the out-pointer
-    scratch, whose output target is `(base, off)`, and whose cell
+    scratch, and whose cell
     `memName storeBase off` is the destination of exactly one instruction of the
     emitted list, a run of the emitted list reaches that binding's store block
     from a state `sMid` and leaves the cell holding `sMid.lvm src &&& mask`, the
     mask that of the buffer mnemonic `physAbiMovBuf body abiW`. -/
 theorem physBodyWithStores_cell_value {w : Nat}
     (shiftImm : ShiftImmOracle) (body : Lcmd) (inLoadMap : InLoadMap)
-    (loadBase : String) (outStoreMap : OutStoreMap) (storeBase : String)
+    (loadBase : String) (outStoreMap : OutStores) (storeBase : String)
     (abiW : Nat) (memrefBaseReload : String → Option String)
     (callArgBaseReload : List (String × String)) (reservedVec : List Nat)
     {i : Linstr} {virtIdx : Nat} (hmem : (i, virtIdx) ∈ body.zipIdx)
     {d : LOperand} {ds : List LOperand} {opn : String} {srcs : List LOperand}
     (hi : i.li_i = .Lopn (d :: ds) opn srcs)
-    (hlo : bindingIndexAt body virtIdx ≥ numBindings body - outStoreMap.length)
-    (hhi : bindingIndexAt body virtIdx < numBindings body)
-    {base : String} {off : Nat}
-    (hout : outStoreMap[bindingIndexAt body virtIdx
-              - (numBindings body - outStoreMap.length)]? = some (base, off))
+    {off : Nat} (hout : off ∈ outStoreOffs outStoreMap d)
     {src : String} (hd : physRmap body outStoreMap reservedVec d = .reg src)
     (hnospill : (LOperand.reg src).isSpill = false) (hsrc : src ≠ reloadScratch2)
     (mask : BitVec w) (hbuf : MovesMasked w mask (physAbiMovBuf body abiW))
@@ -230,7 +227,7 @@ theorem physBodyWithStores_cell_value {w : Nat}
     ∃ sMid : Lstate w, s'.lvm (memName storeBase off) = sMid.lvm src &&& mask := by
   obtain ⟨pre, post, hsplit⟩ := physBodyWithStores_inlineStoreOps shiftImm body inLoadMap
     loadBase outStoreMap storeBase abiW memrefBaseReload callArgBaseReload reservedVec
-    hmem hi hlo hhi hout (hd ▸ hnospill)
+    hmem hi hout (hd ▸ hnospill)
   rw [hsplit, hd] at hrun hcount
   have hblk : (atTagZero (inlineStoreOps (physAbiMovBuf body abiW) storeBase off
         (.reg src))).map Linstr.li_i

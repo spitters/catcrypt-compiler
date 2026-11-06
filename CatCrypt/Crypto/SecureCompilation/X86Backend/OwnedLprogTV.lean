@@ -6586,35 +6586,90 @@ def dropRet (c : List LinstrRM) : List LinstrRM :=
   | some (.Lret, _) => c.dropLast
   | _ => c
 
-/-- The memory cells at the argument pointers `args` that the body `c` writes: the
-    destination registers `mem.<a>.<off>`, `a ∈ args`, of its operations, without
-    repetition. The array ABI keeps such a cell as a register of that name. -/
+/-- The memory cells that the body `c` writes at the argument pointers `args` or at the
+    output-store base `reloadScratch2`: the destination registers `mem.<a>.<off>`,
+    `a ∈ reloadScratch2 :: args`, of its operations, without repetition. The array ABI keeps
+    such a cell as a register of that name. The ABI export stores its outputs through
+    `reloadScratch2`, reloaded with the output pointer before each store
+    (`physBodyWithStores`), so its output cells are `mem.R14.<off>`. -/
 def memOuts (args : List String) (c : Lcmd) : List String :=
   (c.flatMap fun i =>
     match i.li_i with
     | .Lopn ds _ _ =>
         ds.filterMap fun
-          | .reg d => if args.any (fun a => ("mem." ++ a ++ ".").isPrefixOf d) then some d else none
+          | .reg d =>
+              if (reloadScratch2 :: args).any (fun a => ("mem." ++ a ++ ".").isPrefixOf d) then
+                some d
+              else none
           | _ => none
     | _ => []).eraseDups
 
 /-- The observed registers of a function: its result registers and the memory cells at its
-    argument pointers that its body writes (`memOuts`). -/
+    argument pointers or its output-store base that its body writes (`memOuts`). -/
 def resOuts (f : Lfundef) : List String := f.lfd_res ++ memOuts f.lfd_arg f.lfd_body
+
+/-- **Every result register is observed.** -/
+theorem mem_resOuts_of_res {f : Lfundef} {r : String} (h : r ∈ f.lfd_res) : r ∈ resOuts f :=
+  List.mem_append_left _ h
+
+/-- **Every stored output cell is observed.** A cell `mem.<a>.<off>` that an operation of the
+    body writes, at an argument pointer `a` or at the output-store base `reloadScratch2`, is
+    among the observed registers `resOuts f`. -/
+theorem mem_resOuts_of_cell {f : Lfundef} {i : Linstr} {ds : List LOperand} {opn : String}
+    {ss : List LOperand} {d a : String} (hi : i ∈ f.lfd_body) (hl : i.li_i = .Lopn ds opn ss)
+    (hd : LOperand.reg d ∈ ds) (ha : a ∈ reloadScratch2 :: f.lfd_arg)
+    (hp : ("mem." ++ a ++ ".").isPrefixOf d = true) : d ∈ resOuts f := by
+  have hany : (reloadScratch2 :: f.lfd_arg).any (fun a => ("mem." ++ a ++ ".").isPrefixOf d)
+      = true := List.any_eq_true.mpr ⟨a, ha, hp⟩
+  unfold resOuts memOuts
+  refine List.mem_append_right _ ?_
+  rw [List.mem_eraseDups]
+  refine List.mem_flatMap.mpr ⟨i, hi, ?_⟩
+  rw [hl]
+  exact List.mem_filterMap.mpr ⟨.reg d, hd, by simp only [hany, ite_true]⟩
+
+/-- An operation writes an array: an indexed store, an immediate store or a zeroing. The
+    checker's observation `Obs` compares the arrays. -/
+def writesArrB : LinstrR → Bool
+  | .Lopn _ opn _ =>
+      opn.startsWith "STOREIDX" || opn.startsWith "STOREIMM" || opn.startsWith "ZEROARR"
+  | _ => false
+
+/-- **The function has an output the checker compares**: a result register or a written
+    output cell (`resOuts`), or an array store. A function without one computes nothing the
+    checker reads, so `ownedCheckTy` refuses it rather than accept a comparison of no
+    output. -/
+def hasOutB (f : Lfundef) : Bool :=
+  !(resOuts f).isEmpty || f.lfd_body.any (fun i => writesArrB i.li_i)
 
 theorem Obs.of_append {xs ys : List String} {t t' : LstateMF} (h : Obs (xs ++ ys) t t') :
     Obs xs t t' :=
   ⟨fun r hr => h.1 r (List.mem_append_left ys hr), h.2⟩
 
+/-- **Every block of the body runs symbolically**: the symbolic run of each block of `B`
+    before its terminator is not `.fail`. `ownedCheckM` accepts a block whose run fails from
+    every state without a comparison, since no halting run passes through it; a body with
+    such a block (an operation the flag machine does not step, such as a narrow move) gives
+    an acceptance that compares nothing on the runs through that block. -/
+def blocksRunB (B : List LinstrRM) : Bool :=
+  match cfgOf (B.map Prod.fst) with
+  | some G => (List.range G.blocks.size).all fun k =>
+      match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
+      | .fail => false
+      | _ => true
+  | none => false
+
 /-- The checker on the first functions of two programs, for a typing `ty` of function
-    bodies: the functions have the same name, the rewritten body satisfies the printer's
-    two-address precondition `TwoAddrLegalize.bodyTiedOk`, and `ownedCheckM` accepts the
-    two typed bodies with the function's result registers and the memory cells its body
-    writes at its argument pointers (`resOuts`) as the observed registers. -/
+    bodies: the functions have the same name, the source function has an output the check
+    compares (`hasOutB`) and every block of its typed body runs symbolically (`blocksRunB`),
+    the rewritten body satisfies the printer's two-address
+    precondition `TwoAddrLegalize.bodyTiedOk`, and `ownedCheckM` accepts the two typed
+    bodies with the function's result registers and the memory cells its body writes at its
+    argument pointers or its output-store base (`resOuts`) as the observed registers. -/
 def ownedCheckTy (ty : Lcmd → List LinstrRM) (P P' : Lprog) : Bool :=
   match P.lp_funcs.head?, P'.lp_funcs.head? with
   | some (n, f), some (n', f') =>
-      n == n' && TwoAddrLegalize.bodyTiedOk f'.lfd_body &&
+      n == n' && hasOutB f && blocksRunB (ty f.lfd_body) && TwoAddrLegalize.bodyTiedOk f'.lfd_body &&
         ownedCheckM (resOuts f) (ty f.lfd_body) (ty f'.lfd_body)
   | _, _ => false
 
@@ -6623,14 +6678,18 @@ def ownedCheck (P P' : Lprog) : Bool :=
   ownedCheckTy (fun c => dropRet (typeBody (fun _ => .reg none) c)) P P'
 
 /-- **Soundness of the program checker, with the memory results.** If `ownedCheckTy ty P P'`
-    accepts, the first functions of `P` and `P'` have one name, the rewritten body satisfies
-    `bodyTiedOk`, and every halting `lsemFuelMemF` run of the typed source body from pc `0`
-    is matched by a halting run of the typed rewritten body from the same state, with end
-    states that agree on the result registers, on the memory cells the source body writes at
-    its argument pointers, on the arrays and on the word memory. -/
+    accepts, the first functions of `P` and `P'` have one name, the source function has an
+    output the check compares (`hasOutB`) and its typed body has no block whose symbolic run
+    fails (`blocksRunB`), the rewritten body satisfies `bodyTiedOk`, and
+    every halting `lsemFuelMemF` run of the typed source body from pc `0` is matched by a
+    halting run of the typed rewritten body from the same state, with end states that agree
+    on the result registers, on the memory cells the source body writes at its argument
+    pointers or its output-store base (every stored output cell, `mem_resOuts_of_cell`), on
+    the arrays and on the word memory. -/
 theorem ownedCheckTy_sound_mem {ty : Lcmd → List LinstrRM} {P P' : Lprog}
     (h : ownedCheckTy ty P P' = true) :
     ∃ n f f', P.lp_funcs.head? = some (n, f) ∧ P'.lp_funcs.head? = some (n, f') ∧
+      hasOutB f = true ∧ blocksRunB (ty f.lfd_body) = true ∧
       TwoAddrLegalize.bodyTiedOk f'.lfd_body = true ∧
       ∀ (fn : String) (s t : LstateMF), s.prog.lfn = fn → s.prog.base.reg.lpc = 0 →
         ∀ fuel, lsemFuelMemF (singletonProgM fn (ty f.lfd_body)) fuel s = some t →
@@ -6640,9 +6699,9 @@ theorem ownedCheckTy_sound_mem {ty : Lcmd → List LinstrRM} {P P' : Lprog}
   split at h
   · rename_i n f n' f' h1 h2
     simp only [Bool.and_eq_true, beq_iff_eq] at h
-    obtain ⟨⟨hn, htied⟩, hchk⟩ := h
+    obtain ⟨⟨⟨⟨hn, hout⟩, hrunB⟩, htied⟩, hchk⟩ := h
     subst hn
-    exact ⟨n, f, f', h1, h2, htied, fun fn s t hfn hpc fuel hrun =>
+    exact ⟨n, f, f', h1, h2, hout, hrunB, htied, fun fn s t hfn hpc fuel hrun =>
       ownedCheckM_sound hchk fn s t hfn hpc fuel hrun⟩
   · cases h
 
@@ -6659,7 +6718,7 @@ theorem ownedCheckTy_sound {ty : Lcmd → List LinstrRM} {P P' : Lprog}
         ∀ fuel, lsemFuelMemF (singletonProgM fn (ty f.lfd_body)) fuel s = some t →
         ∃ fuel' t', lsemFuelMemF (singletonProgM fn (ty f'.lfd_body)) fuel' s = some t' ∧
           Obs f.lfd_res t t' := by
-  obtain ⟨n, f, f', h1, h2, htied, hsim⟩ := ownedCheckTy_sound_mem h
+  obtain ⟨n, f, f', h1, h2, -, -, htied, hsim⟩ := ownedCheckTy_sound_mem h
   refine ⟨n, f, f', h1, h2, htied, fun fn s t hfn hpc fuel hrun => ?_⟩
   obtain ⟨fuel', t', hrun', hobs⟩ := hsim fn s t hfn hpc fuel hrun
   exact ⟨fuel', t', hrun', hobs.of_append⟩

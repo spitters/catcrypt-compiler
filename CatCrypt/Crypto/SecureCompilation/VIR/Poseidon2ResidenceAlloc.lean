@@ -325,14 +325,19 @@ def firstFitColors (tr : List PhysEvent) : Array Nat := Id.run do
     instructions that would shift the binding ordinals, so it is not applied
     here.)
 
-    The coloring runs over `bodyTraceOut emitBody outStoreMap`, whose appended
-    output-read event keeps every designated output live to the epilogue store, so
+    The coloring runs over `bodyTraceOut` at the output stores of `outStoreMap`, each cell
+    paired with the binding its output names (`outNames`, or `defaultOutNames` when none
+    is given, `outStoresOf`), whose appended output-read event keeps every designated
+    output live to the epilogue store, so
     no two simultaneously live values receive the same cell. The `n`-th entry is
     the cell of the `n`-th binding's defined value (`(bodyTrace emitBody)`'s `n`-th
     event writes it), matching `residenceArraySlotOf`'s binding-ordinal indexing. -/
-def residenceOfBody (body : Lcmd) (outStoreMap : OutStoreMap) : Array Nat :=
+def residenceOfBody (body : Lcmd) (outStoreMap : OutStoreMap) (outNames : List String := []) :
+    Array Nat :=
   let emitBody := materializeShiftCountImms body
-  let colorByRank := firstFitColors (bodyTraceOut emitBody outStoreMap)
+  let names := if outNames.isEmpty then defaultOutNames { lfd_body := body } outStoreMap.length
+    else outNames
+  let colorByRank := firstFitColors (bodyTraceOut emitBody (outStoresOf emitBody outStoreMap names))
   ((bodyTrace emitBody).map (fun ev => colorByRank[ev.wr]?.getD 0)).toArray
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport

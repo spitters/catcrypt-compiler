@@ -614,6 +614,7 @@ theorem physPositionEmit_resolved (shiftImm : ShiftImmOracle) (body : Lcmd)
     · next d tail opn srcs =>
       have hd := hdst _ _ _ rfl d List.mem_cons_self
       have hrdi : opResolved (.reg abiSaveRdiName) = true := by decide
+      obtain ⟨off, -, hr⟩ := List.mem_flatMap.mp hr
       repeat' split at hr
       all_goals
         simp only [List.mem_cons, List.not_mem_nil, or_false] at hr
@@ -1082,11 +1083,13 @@ theorem retMat_resolved (B : Lcmd) (tbl : Array Nat) (res : Option String) (c : 
 theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
     (shiftImm : ShiftImmOracle) (inLoadMap : InLoadMap) (outStoreMap : OutStoreMap)
     (abiArgs : List String) (abiTyin : List Nat) (residence : Option (Array Nat))
-    (abiW : Nat) (forceLivePin reserveVecScratch retToRax : Bool)
+    (abiW : Nat) (forceLivePin reserveVecScratch retToRax : Bool) (outNames : List String)
     (rm : LOperand → LOperand)
     (hrm : rm =
       let B := fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap
-      let tbl := straightCallComposeTable B (physTableOut B outStoreMap
+      let tbl := straightCallComposeTable B (physTableOut B
+        (abiOutStores { virt0 with lfd_body := expandCallShadows virt0.lfd_body } residence
+          outStoreMap outNames B)
         (if reserveVecScratch then [numVecRegs - 1] else []))
       if bodyHasCall B then remapOperandCalleeSave B tbl else remapOperand B tbl)
     (hsib : ∀ i ∈ fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap,
@@ -1098,14 +1101,17 @@ theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
     (hargs : ∀ s,
       let B := fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap
       opResolved (.reg (physNameForBody B (straightCallComposeTable B (physTableOut B
-        outStoreMap (if reserveVecScratch then [numVecRegs - 1] else []))) (argName s))) = true)
+        (abiOutStores { virt0 with lfd_body := expandCallShadows virt0.lfd_body } residence
+          outStoreMap outNames B) (if reserveVecScratch then [numVecRegs - 1] else []))) (argName s))) = true)
     (hret : ∀ rn ∈ virt0.lfd_res.head?,
       let B := fromVirtAllocBody virt0 residence forceLivePin retToRax outStoreMap
       opResolved (.reg (physNameForBody B (straightCallComposeTable B (physTableOut B
-        outStoreMap (if reserveVecScratch then [numVecRegs - 1] else []))) rn)) = true)
+        (abiOutStores { virt0 with lfd_body := expandCallShadows virt0.lfd_body } residence
+          outStoreMap outNames B) (if reserveVecScratch then [numVecRegs - 1] else []))) rn)) = true)
     (habi : ∀ r ∈ abiArgs, abiSlotOfExt r = none → opResolved (.reg r) = true) :
     ∀ r ∈ (comToLfundefPhysAbiFromVirt virt0 shiftImm inLoadMap outStoreMap abiArgs abiTyin
-        residence abiW forceLivePin none reserveVecScratch retToRax).lfd_body,
+        residence abiW forceLivePin none reserveVecScratch retToRax
+        (outNames := outNames)).lfd_body,
       ∀ o ∈ lopnOperands r.li_i, opResolvedI TwoAddrLegalize.x86Data o = true := by
   intro r hr
   refine (opsResolved_iff_allocOut_x86 _).mp ?_
@@ -1122,7 +1128,9 @@ theorem comToLfundefPhysAbiFromVirt_allocOut_resolved (virt0 : Lfundef)
         have hmem := (List.mem_filter.mp hr').1
         refine (opsResolved_iff_allocOut_x86 _).mpr
           (physBodyWithStores_allocOut_resolved_abi _
-            (fromVirtAllocBody virt0 _ forceLivePin retToRax outStoreMap) inLoadMap outStoreMap abiW _ [] (if reserveVecScratch then [numVecRegs - 1] else [])
+            (fromVirtAllocBody virt0 _ forceLivePin retToRax outStoreMap) inLoadMap
+            (abiOutStores _ _ outStoreMap outNames _) abiW _ []
+            (if reserveVecScratch then [numVecRegs - 1] else [])
             rm hrm hsib hdir haddr ?_ hargs (by simp) r' hmem)
         refine findSnd_resolved _ ?_
         intro p hp

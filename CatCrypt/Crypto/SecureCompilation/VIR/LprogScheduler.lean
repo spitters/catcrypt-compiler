@@ -743,8 +743,8 @@ theorem bubble_only_indep_swaps (i1 i2 : Linstr) (rest : List Linstr) :
 
 /-! ## 6b. Tail-preserving schedule (ABI output-staging barrier)
 
-`Com.toLprogPhysAbi` stores the **last `n` bindings'** results to the output
-pointer (`firstOutIdx = numBindings - n` in `physBodyWithStores`). So the
+An emit whose producer names no outputs stores, at several outputs, the results of the
+last `n` bindings when no instruction reads them (`defaultOutNames`). So the
 scheduler must not disturb the output-staging tail: the last `keepTail`
 instructions stay fixed, and only the prefix is reordered. `scheduleBodyTail`
 schedules `body.take (len - keepTail)` and re-appends `body.drop (len -
@@ -810,8 +810,8 @@ theorem scheduleLfundef_sig (f : Lfundef) :
 `comToLfundefPhysAbiScheduled` mirrors `JasminLprogExport.comToLfundefPhysAbi`
 but schedules the **virtual (pre-RA) body** with `scheduleBodyTail nOut` before
 register allocation. The last `nOut` bindings (the output-staging moves) are kept
-in place so the ABI epilogue still stores the right bindings
-(`physBodyWithStores`'s `firstOutIdx = numBindings - nOut`). RA, two-address
+in place. The output stores are resolved by name (`outStoresOf`, at `outNames` or
+`defaultOutNames` of the unscheduled body, whose bindings the schedule keeps). RA, two-address
 lowering, prologue/epilogue, and inline stores then run exactly as in the
 unscheduled path — over the *scheduled* body, so the linear scan adapts to the
 new order. -/
@@ -821,9 +821,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 /-- The ABI-wrapped physical `Lfundef` for a `Com`, with the virtual body
     ILP-scheduled before register allocation, keeping the last `nOut` virtual-body
     **list elements** fixed. For an ABI emit those must cover the output-staging
-    bindings the epilogue stores (`firstOutIdx = numBindings - storeMap.length`)
-    plus the trailing `Lret` `comToBody` appends — e.g. `nOut = 25 + 1` for the
-    25-lane Keccak/SHA-3 output. A drop-in for `comToLfundefPhysAbi`. -/
+    bindings the epilogue stores plus the trailing `Lret` `comToBody` appends — e.g.
+    `nOut = 25 + 1` for the 25-lane Keccak/SHA-3 output. A drop-in for
+    `comToLfundefPhysAbi`. -/
 def comToLfundefPhysAbiScheduled {Γ : Ctxt jasminDialect} {t : JasminTy}
     (com : Com jasminDialect Γ t) (nOut : Nat)
     (shiftImm : ShiftImmOracle := fun _ => none)
@@ -831,7 +831,7 @@ def comToLfundefPhysAbiScheduled {Γ : Ctxt jasminDialect} {t : JasminTy}
     (inLoadMap : InLoadMap := fun _ => none)
     (outStoreMap : OutStoreMap := [])
     (abiArgs : List String := ["RDI", "RSI"])
-    (abiTyin : List Nat := [64, 64]) :
+    (abiTyin : List Nat := [64, 64]) (outNames : List String := []) :
     Lfundef :=
   let virt0 := comToLfundef com immSlotMap
   -- Schedule the virtual body for ILP, keeping the output-staging tail fixed.
@@ -845,8 +845,10 @@ def comToLfundefPhysAbiScheduled {Γ : Ctxt jasminDialect} {t : JasminTy}
     match shiftImm nm with
     | some v => some v
     | none => movImmLookup movTbl nm
+  let outs := outStoresOf virt.lfd_body outStoreMap
+    (if outNames.isEmpty then defaultOutNames virt0 outStoreMap.length else outNames)
   let bodyWithInlineStores := physBodyWithStores shiftImm' virt.lfd_body
-    inLoadMap reloadScratch2 outStoreMap reloadScratch2
+    inLoadMap reloadScratch2 outs reloadScratch2
   let bodyWithRestore := insertEpilogue bodyWithInlineStores calleeSaveRestoreEpilogue
   { virt with
     lfd_body := prologue ++ bodyWithRestore

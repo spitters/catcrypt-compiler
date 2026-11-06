@@ -922,7 +922,7 @@ theorem buildPrologue_all_MOVQ (virt : Lfundef) (tbl : Array Nat)
     single `Lopn` with `opn = "MOV"`. (Structural invariant of `buildEpilogue`;
     the leading restore MOV and each target's 1-or-2 store MOVs are all MOVs.) -/
 theorem buildEpilogue_all_MOV (virt : Lfundef) (tbl : Array Nat)
-    (outStoreMap : OutStoreMap) :
+    (outStoreMap : OutStores) :
     ∀ r ∈ buildEpilogue virt tbl outStoreMap,
       ∃ dsts srcs, r.li_i = LinstrR.Lopn dsts "MOV" srcs := by
   intro r hr
@@ -933,27 +933,12 @@ theorem buildEpilogue_all_MOV (virt : Lfundef) (tbl : Array Nat)
     subst hres
     exact ⟨_, _, rfl⟩
   · rw [List.mem_flatMap] at hr
-    obtain ⟨j, _hj, h⟩ := hr
-    cases ho : outStoreMap[j]? with
-    | none => simp [ho] at h
-    | some bo =>
-        simp [ho] at h
-        cases hbd : bindingDstOp virt.lfd_body
-                      (numBindings virt.lfd_body - outStoreMap.length + j) with
-        | none => simp [hbd] at h
-        | some d =>
-            cases d with
-            | reg srcName =>
-                simp [hbd] at h
-                by_cases hs : (LOperand.reg
-                                (physNameForBody virt.lfd_body tbl srcName)).isSpill
-                · simp [hs] at h
-                  rcases h with h | h <;> subst h <;> exact ⟨_, _, rfl⟩
-                · simp [hs] at h
-                  subst h
-                  exact ⟨_, _, rfl⟩
-            | arr _ _ => simp [hbd] at h
-            | imm _ => simp [hbd] at h
-            | arrIdx _ _ _ => simp [hbd] at h
+    obtain ⟨⟨srcName, off⟩, _hj, h⟩ := hr
+    by_cases hs : (LOperand.reg (physNameForBody virt.lfd_body tbl srcName)).isSpill
+    · simp [hs] at h
+      rcases h with h | h <;> subst h <;> exact ⟨_, _, rfl⟩
+    · simp [hs] at h
+      subst h
+      exact ⟨_, _, rfl⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport

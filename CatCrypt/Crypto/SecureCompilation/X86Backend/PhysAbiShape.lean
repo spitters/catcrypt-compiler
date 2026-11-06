@@ -198,12 +198,11 @@ theorem physPositionEmit_eq_physExpand (shiftImm : ShiftImmOracle) (body : Lcmd)
   unfold physPositionEmit
   dsimp only
   rw [List.filterMap_eq_nil_iff.mpr (fun s _ => by split <;> (try split) <;> rfl)]
-  simp only [List.flatMap_nil, List.nil_append, List.length_nil, Nat.sub_zero]
-  have hst : ∀ (b t : Nat), ¬ (b ≥ t ∧ b < t) := fun b t h => by omega
-  simp only [hst, ite_false]
+  simp only [List.flatMap_nil, List.nil_append]
   obtain ⟨ii, w⟩ := i
   cases w with
-  | Lopn ds o ss => cases ds <;> simp only [List.append_nil] <;> rfl
+  | Lopn ds o ss =>
+    cases ds <;> simp only [outStoreOffs_nil, List.flatMap_nil, List.append_nil] <;> try rfl
   | _ => rfl
 
 /-- **One position as base reload and lowering core.** Without argument loads, output

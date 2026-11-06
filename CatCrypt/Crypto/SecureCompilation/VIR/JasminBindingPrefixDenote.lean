@@ -312,33 +312,30 @@ theorem comToLprog_lsem_binding {w : Nat} {Γ : Ctxt jasminDialect} {t : JasminT
 
 /-- The epilogue's instruction list, lifted from `Linstr` to the `LinstrR` the
     linear semantics steps. -/
-def epilogueOps (virt : Lfundef) (tbl : Array Nat) (outStoreMap : OutStoreMap) :
+def epilogueOps (virt : Lfundef) (tbl : Array Nat) (outStoreMap : OutStores) :
     List LinstrR :=
   (buildEpilogue virt tbl outStoreMap).map Linstr.li_i
 
 /-- `stripWidthTag` leaves the untagged `MOV` mnemonic alone. -/
 @[simp] theorem stripWidthTag_MOV : stripWidthTag "MOV" = "MOV" := by decide +kernel
 
-/-- **The single-output epilogue stores the binding's value.** For a one-target
-    `outStoreMap` whose designated binding has a register destination allocated
-    to a physical register other than the out-pointer scratch, the epilogue runs
-    to a state whose `[R14 + off]` cell holds the value that register held on
-    entry to the epilogue. -/
+/-- **The single-output epilogue stores the named binding's value.** For a one-store
+    `outStoreMap` naming the binding `srcName`, allocated to a physical register other than
+    the out-pointer scratch, the epilogue runs to a state whose `[R14 + off]` cell holds the
+    value that register held on entry to the epilogue. -/
 theorem buildEpilogue_single_store_value {w : Nat} (virt : Lfundef) (tbl : Array Nat)
-    (base : String) (off : Nat) (srcName : String)
-    (hdst : bindingDstOp virt.lfd_body (numBindings virt.lfd_body - 1)
-      = some (.reg srcName))
+    (srcName : String) (off : Nat)
     (hns : ¬ (LOperand.reg (physNameForBody virt.lfd_body tbl srcName)).isSpill)
     (hne : physNameForBody virt.lfd_body tbl srcName ≠ reloadScratch2)
     (s : Lstate w) :
-    ∃ s', lsemStraight (epilogueOps virt tbl [(base, off)]) s = some s' ∧
+    ∃ s', lsemStraight (epilogueOps virt tbl [(srcName, off)]) s = some s' ∧
       s'.lvm (memName reloadScratch2 off)
         = s.lvm (physNameForBody virt.lfd_body tbl srcName) := by
-  have hops : epilogueOps virt tbl [(base, off)] =
+  have hops : epilogueOps virt tbl [(srcName, off)] =
       [.Lopn [.reg reloadScratch2] "MOV" [.reg abiSaveRdiName],
        .Lopn [.reg (memName reloadScratch2 off)] "MOV"
          [.reg (physNameForBody virt.lfd_body tbl srcName)]] := by
-    simp [epilogueOps, buildEpilogue, hdst, hns]
+    simp [epilogueOps, buildEpilogue, hns]
   rw [hops]
   refine ⟨_, rfl, ?_⟩
   have hne' : physNameForBody virt.lfd_body tbl srcName ≠ "R14" := by
@@ -347,16 +344,15 @@ theorem buildEpilogue_single_store_value {w : Nat} (virt : Lfundef) (tbl : Array
 
 /-- **What the epilogue writes.** Every epilogue instruction is a single-`MOV`
     `Lopn` whose destination is the out-pointer scratch `R14`, the reload scratch
-    `R15`, or an `[R14 + off]` cell at an offset the `outStoreMap` carries. With
+    `R15`, or an `[R14 + off]` cell at an offset an entry of `outStoreMap` carries. With
     `lsemStraight_lvm_of_dsts` this bounds what a store can disturb. -/
 theorem buildEpilogue_dsts (virt : Lfundef) (tbl : Array Nat)
-    (outStoreMap : OutStoreMap) :
+    (outStoreMap : OutStores) :
     ∀ i ∈ buildEpilogue virt tbl outStoreMap,
       ∃ dst srcs, i.li_i = LinstrR.Lopn [.reg dst] "MOV" srcs ∧
         (dst = reloadScratch2 ∨ dst = reloadScratch ∨
-          ∃ (j : Nat) (base : String) (off : Nat),
-            outStoreMap[j]? = some (base, off) ∧
-            dst = memName reloadScratch2 off) := by
+          ∃ (nm : String) (off : Nat),
+            (nm, off) ∈ outStoreMap ∧ dst = memName reloadScratch2 off) := by
   intro i hi
   unfold buildEpilogue at hi
   rw [List.mem_append] at hi
@@ -365,29 +361,14 @@ theorem buildEpilogue_dsts (virt : Lfundef) (tbl : Array Nat)
     subst hres
     exact ⟨_, _, rfl, Or.inl rfl⟩
   · rw [List.mem_flatMap] at hi
-    obtain ⟨j, _hj, h⟩ := hi
-    cases ho : outStoreMap[j]? with
-    | none => simp [ho] at h
-    | some bo =>
-        simp [ho] at h
-        cases hbd : bindingDstOp virt.lfd_body
-                      (numBindings virt.lfd_body - outStoreMap.length + j) with
-        | none => simp [hbd] at h
-        | some d =>
-            cases d with
-            | reg srcName =>
-                simp [hbd] at h
-                by_cases hs : (LOperand.reg
-                                (physNameForBody virt.lfd_body tbl srcName)).isSpill
-                · simp [hs] at h
-                  rcases h with h | h <;> subst h
-                  · exact ⟨_, _, rfl, Or.inr (Or.inl rfl)⟩
-                  · exact ⟨_, _, rfl, Or.inr (Or.inr ⟨j, bo.1, bo.2, by simpa using ho, rfl⟩)⟩
-                · simp [hs] at h
-                  subst h
-                  exact ⟨_, _, rfl, Or.inr (Or.inr ⟨j, bo.1, bo.2, by simpa using ho, rfl⟩)⟩
-            | imm _ => simp [hbd] at h
-            | arr _ _ => simp [hbd] at h
-            | arrIdx _ _ _ => simp [hbd] at h
+    obtain ⟨⟨srcName, off⟩, hmem, h⟩ := hi
+    by_cases hs : (LOperand.reg (physNameForBody virt.lfd_body tbl srcName)).isSpill
+    · simp [hs] at h
+      rcases h with h | h <;> subst h
+      · exact ⟨_, _, rfl, Or.inr (Or.inl rfl)⟩
+      · exact ⟨_, _, rfl, Or.inr (Or.inr ⟨srcName, off, hmem, rfl⟩)⟩
+    · simp [hs] at h
+      subst h
+      exact ⟨_, _, rfl, Or.inr (Or.inr ⟨srcName, off, hmem, rfl⟩)⟩
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminBindingPrefixDenote
