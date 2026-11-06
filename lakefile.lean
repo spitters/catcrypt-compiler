@@ -3210,6 +3210,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.QPL,
     Lake.Glob.one `CatCrypt.Quantum.QPLExtended,
     Lake.Glob.one `CatCrypt.Quantum.QPLToCircuit,
+    Lake.Glob.one `CatCrypt.Quantum.QRegister,
     Lake.Glob.one `CatCrypt.Quantum.QTree,
     Lake.Glob.one `CatCrypt.Quantum.QasmAngle,
     Lake.Glob.one `CatCrypt.Quantum.Qelib,
