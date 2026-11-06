@@ -58,13 +58,6 @@ namespace CatCrypt.Quantum.Optimization.MatrixSound
 
 variable {n : ℕ}
 
-/-! ## Gate lists -/
-
-/-- `QCircuit.circuitToList` preserves `circuitUnitary`. -/
-theorem circuitUnitary_ofList_circuitToList_template (c : Circuit n) :
-    circuitUnitary (Circuit.ofList (QCircuit.circuitToList c)) = circuitUnitary c :=
-  circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c
-
 /-! ## The template pass -/
 
 section TemplatePass
@@ -83,8 +76,7 @@ theorem sound_compileFamilyM {ts : Gate n → List (Template n)}
     ∀ g, ∀ c ∈ compileFamily ts g, CTemplateSoundM c :=
   compileFamily_preserves (fun l => circuitUnitary (Circuit.ofList l)) (P := CorrectM)
     (fun t ht => by
-      rw [circuitUnitary_ofList_circuitToList_template,
-        circuitUnitary_ofList_circuitToList_template]
+      rw [circuitUnitary_ofList_circuitToList, circuitUnitary_ofList_circuitToList]
       exact ht) hts
 
 /-- Each step of the compiled pass preserves the unitary of the stack (in circuit
@@ -103,7 +95,7 @@ theorem circuitUnitary_templatePassC (ts : Gate n → List (Template n))
   intro c
   rw [templatePassC, compiledPassC, compiledPass,
     circuitUnitary_templatePassAuxC _ (sound_compileFamilyM hts)]
-  simpa using circuitUnitary_ofList_circuitToList_template c
+  simpa using circuitUnitary_ofList_circuitToList c
 
 /-- Every template of `level1Family` is matrix-correct when those of `single` are and
 those of `two` are on distinct qubits. -/

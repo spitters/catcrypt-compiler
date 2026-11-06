@@ -565,7 +565,7 @@ theorem commuteCancel_matrixCorrect :
     Subtype.ext (listM_commuteCancelList _)
   unfold commuteCancel
   rw [circuitUnitary_ofList_eq_listU, hl, ← circuitUnitary_ofList_eq_listU,
-    circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c]
+    circuitUnitary_ofList_circuitToList c]
 
 /-- **The pass preserves the unitary-channel semantics.** -/
 theorem unitaryDenote_commuteCancel (c : Circuit n) :

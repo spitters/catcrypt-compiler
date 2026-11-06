@@ -454,8 +454,7 @@ theorem commuteAndMerge_matrixCorrect :
     MatrixCorrect (commuteAndMerge : Circuit n → Circuit n) := by
   intro c
   unfold commuteAndMerge
-  rw [circuitUnitary_mergePass,
-    circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c]
+  rw [circuitUnitary_mergePass, circuitUnitary_ofList_circuitToList c]
 
 /-- `commuteAndMerge` preserves `unitaryDenote`: flattening, one merge pass, and
 rebuilding yield a circuit with the same unitary-channel denotation. -/

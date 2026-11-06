@@ -1057,18 +1057,11 @@ theorem optimizeSegments_circuitUnitary :
         rw [ih]
         rfl
 
-/-- Flattening a circuit with `QCircuit.circuitToList` and rebuilding
-    preserves the unitary it realizes. -/
-theorem circuitToList_circuitUnitary (c : Circuit n) :
-    RoutingPerm.circuitUnitary (Circuit.ofList (circuitToList c))
-      = RoutingPerm.circuitUnitary c :=
-  MatrixSound.circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c
-
 /-- The phase-polynomial pass preserves the unitary a circuit realizes. -/
 theorem phasePolynomialOpt_circuitUnitary (c : Circuit n) :
     RoutingPerm.circuitUnitary (phasePolynomialOpt c) = RoutingPerm.circuitUnitary c := by
   show RoutingPerm.circuitUnitary (Circuit.ofList (optimizeSegments (circuitToList c) _)) = _
-  rw [← circuitToList_circuitUnitary c]
+  rw [← MatrixSound.circuitUnitary_ofList_circuitToList c]
   exact Subtype.ext (optimizeSegments_circuitUnitary _ (circuitToList c))
 
 /-- The phase-polynomial pass preserves the unitary-channel denotation. -/

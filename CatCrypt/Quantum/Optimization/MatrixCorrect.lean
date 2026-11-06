@@ -26,6 +26,8 @@ statements are the corollaries `unitaryDenote_eq_of_circuitUnitary_eq` and
   multiplicative over `++`
 * `circuitUnitary_ofList_flatten` — a flattening with the equations of
   `circuitToList` preserves `circuitUnitary`
+* `circuitUnitary_ofList_circuitToList` — flattening with `circuitToList` and
+  rebuilding preserves `circuitUnitary`
 -/
 
 @[expose] public section
@@ -122,6 +124,12 @@ theorem circuitUnitary_ofList_flatten (f : Circuit n → List (Gate n))
   | empty => rw [h₀]; rfl
   | gate g c ih => rw [h₁, circuitUnitary_ofList_cons, ih]; rfl
   | seq c₁ c₂ ih₁ ih₂ => rw [h₂, circuitUnitary_ofList_append, ih₁, ih₂]; rfl
+
+/-- Flattening a circuit with `circuitToList` and rebuilding preserves
+`circuitUnitary`. -/
+theorem circuitUnitary_ofList_circuitToList (c : Circuit n) :
+    circuitUnitary (Circuit.ofList (circuitToList c)) = circuitUnitary c :=
+  circuitUnitary_ofList_flatten _ rfl (fun _ _ => rfl) (fun _ _ => rfl) c
 
 /-- The unitary of a one-gate circuit is the gate's embedding. -/
 theorem circuitUnitary_single (g : Gate n) :
