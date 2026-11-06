@@ -1,0 +1,14 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point after snapping; 2026-11-06 15:31 CET
+suite	circuit	qiskit_cx	qiskit_depth2	qiskit_gates	catq_cx	catq_depth2	catq_gates	d_cx	d_depth2	d_gates	runs	check
+qsynth	pennylane_16q_100o_0	748	396	2260	748	396	1996	0	0	-264	1	ok
+qsynth	pennylane_16q_100o_1	802	445	2430	802	445	2118	0	0	-312	1	ok
+qsynth	pennylane_8q_50o_0	292	214	897	292	214	799	0	0	-98	2	ok
+qsynth	pennylane_8q_50o_1	348	256	1061	348	256	919	0	0	-142	2	ok
+qsynth	simple_16q_100o_0	788	465	1610	788	465	1527	0	0	-83	2	ok
+qsynth	simple_16q_100o_1	855	534	1719	855	534	1612	0	0	-107	1	ok
+qsynth	simple_8q_50o_0	310	250	659	310	250	621	0	0	-38	1	ok
+qsynth	simple_8q_50o_1	367	300	772	367	300	717	0	0	-55	2	ok
+qsynth	yardanov_16q_100o_0	738	429	1988	738	429	2013	0	0	25	3	ok
+qsynth	yardanov_16q_100o_1	800	491	2167	800	491	2179	0	0	12	3	ok
+qsynth	yardanov_8q_50o_0	292	232	797	292	232	804	0	0	7	2	ok
+qsynth	yardanov_8q_50o_1	344	277	957	344	277	942	0	0	-15	4	ok

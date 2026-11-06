@@ -1,0 +1,10 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point; 2026-11-06 15:25 CET
+suite	circuit	qubits	cx_in	cx_1	gates_1	runs	cx	depth2	gates	check
+qrisp	qpe	6	28	82	192	1	82	77	192	ok
+qrisp	shor15	13	1756	1760	3467	6	1308	730	2623	ok
+qrisp	shor15_mcm	153	3269	3415	6735	1	3415	2831	6735	nosim
+qrisp	qaoa_maxcut	6	48	46	104	1	46	20	104	ok
+qrisp	vqe_heisenberg	6	75	42	149	2	42	14	146	ok
+qrisp	grover	5	240	240	550	1	240	161	550	ok
+qrisp	qft8	8	56	68	123	2	68	29	119	ok
+qrisp	dicke	7	90	87	219	1	87	79	219	ok

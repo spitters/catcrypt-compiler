@@ -1,0 +1,152 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point after snapping; 2026-11-06 15:30 CET
+suite	circuit	pass	cx	depth2	gates	d_cx	d_depth2	d_gates	check
+qrisp	qpe	init:RemoveDiagonalGatesBeforeMeasure	82	77	192	0	0	0	same
+qrisp	qpe	init:RemoveIdentityEquivalent	82	77	192	0	0	0	same
+qrisp	qpe	init:InverseCancellation	82	77	192	0	0	0	same
+qrisp	qpe	init:ContractIdleWiresInControlFlow	82	77	192	0	0	0	same
+qrisp	qpe	init:CommutativeCancellation	82	77	192	0	0	0	same
+qrisp	qpe	init:ConsolidateBlocks	82	77	210	0	0	18	ok
+qrisp	qpe	opt:TwoQubitPeepholeOptimization	82	77	192	0	0	0	same
+qrisp	qpe	opt:RemoveIdentityEquivalent	82	77	192	0	0	0	same
+qrisp	qpe	opt:Optimize1qGatesDecomposition	82	77	190	0	0	-2	ok
+qrisp	qpe	opt:Optimize1qGatesDecomposition +catq	82	77	190	0	0	-2	ok
+qrisp	qpe	opt:CommutativeCancellation	82	77	192	0	0	0	same
+qrisp	qpe	opt:ContractIdleWiresInControlFlow	82	77	192	0	0	0	same
+qrisp	qpe	stage:init (no elide)	82	77	210	0	0	18	ok
+qrisp	qpe	stage:optimization	82	77	190	0	0	-2	ok
+qrisp	qpe	stage:optimization +catq	82	77	190	0	0	-2	ok
+qrisp	qpe	preset (no elide)	82	77	204	0	0	12	ok
+qrisp	qpe	snap +catq	82	77	192	0	0	0	same
+qrisp	qpe	input:ElidePermutations	76	74	182	-6	-3	-10	ok
+qrisp	shor15	init:RemoveDiagonalGatesBeforeMeasure	1283	719	2571	0	0	0	same
+qrisp	shor15	init:RemoveIdentityEquivalent	1283	719	2571	0	0	0	same
+qrisp	shor15	init:InverseCancellation	1283	719	2571	0	0	0	same
+qrisp	shor15	init:ContractIdleWiresInControlFlow	1283	719	2571	0	0	0	same
+qrisp	shor15	init:CommutativeCancellation	1283	719	2571	0	0	0	same
+qrisp	shor15	init:ConsolidateBlocks	1283	719	2571	0	0	0	same
+qrisp	shor15	opt:TwoQubitPeepholeOptimization	1283	719	2557	0	0	-14	ok
+qrisp	shor15	opt:TwoQubitPeepholeOptimization +catq	1283	719	2557	0	0	-14	ok
+qrisp	shor15	opt:RemoveIdentityEquivalent	1283	719	2571	0	0	0	same
+qrisp	shor15	opt:Optimize1qGatesDecomposition	1283	719	2544	0	0	-27	ok
+qrisp	shor15	opt:Optimize1qGatesDecomposition +catq	1283	719	2544	0	0	-27	ok
+qrisp	shor15	opt:CommutativeCancellation	1283	719	2571	0	0	0	same
+qrisp	shor15	opt:ContractIdleWiresInControlFlow	1283	719	2571	0	0	0	same
+qrisp	shor15	stage:init (no elide)	1283	719	2571	0	0	0	same
+qrisp	shor15	stage:optimization	1283	719	2544	0	0	-27	ok
+qrisp	shor15	stage:optimization +catq	1283	719	2544	0	0	-27	ok
+qrisp	shor15	preset (no elide)	1283	719	2544	0	0	-27	ok
+qrisp	shor15	preset (no elide) +catq	1283	719	2544	0	0	-27	ok
+qrisp	shor15	snap +catq	1283	719	2571	0	0	0	same
+qrisp	shor15	input:ElidePermutations	1296	727	2607	13	8	36	ok
+qrisp	shor15_mcm	init:RemoveDiagonalGatesBeforeMeasure	3415	2831	6547	0	0	-188	nosim
+qrisp	shor15_mcm	init:RemoveDiagonalGatesBeforeMeasure +catq	3412	2831	6578	-3	0	-157	nosim
+qrisp	shor15_mcm	init:RemoveIdentityEquivalent	3415	2831	6734	0	0	-1	nosim
+qrisp	shor15_mcm	init:RemoveIdentityEquivalent +catq	3412	2831	6766	-3	0	31	nosim
+qrisp	shor15_mcm	init:InverseCancellation	3415	2831	6735	0	0	0	nosim
+qrisp	shor15_mcm	init:ContractIdleWiresInControlFlow	3415	2831	6735	0	0	0	nosim
+qrisp	shor15_mcm	init:CommutativeCancellation	3415	2831	6720	0	0	-15	nosim
+qrisp	shor15_mcm	init:CommutativeCancellation +catq	3412	2831	6757	-3	0	22	nosim
+qrisp	shor15_mcm	init:ConsolidateBlocks	3408	2830	6770	-7	-1	35	nosim
+qrisp	shor15_mcm	init:ConsolidateBlocks +catq	3408	2830	6770	-7	-1	35	nosim
+qrisp	shor15_mcm	opt:TwoQubitPeepholeOptimization	3408	2830	6736	-7	-1	1	nosim
+qrisp	shor15_mcm	opt:TwoQubitPeepholeOptimization +catq	3408	2830	6736	-7	-1	1	nosim
+qrisp	shor15_mcm	opt:RemoveIdentityEquivalent	3415	2831	6734	0	0	-1	nosim
+qrisp	shor15_mcm	opt:RemoveIdentityEquivalent +catq	3412	2831	6766	-3	0	31	nosim
+qrisp	shor15_mcm	opt:Optimize1qGatesDecomposition	3415	2831	6324	0	0	-411	nosim
+qrisp	shor15_mcm	opt:Optimize1qGatesDecomposition +catq	3412	2831	6356	-3	0	-379	nosim
+qrisp	shor15_mcm	opt:CommutativeCancellation	3415	2831	6720	0	0	-15	nosim
+qrisp	shor15_mcm	opt:CommutativeCancellation +catq	3412	2831	6757	-3	0	22	nosim
+qrisp	shor15_mcm	opt:ContractIdleWiresInControlFlow	3415	2831	6735	0	0	0	nosim
+qrisp	shor15_mcm	stage:init (no elide)	3408	2830	6586	-7	-1	-149	nosim
+qrisp	shor15_mcm	stage:init (no elide) +catq	3408	2830	6586	-7	-1	-149	nosim
+qrisp	shor15_mcm	stage:optimization	3408	2830	6316	-7	-1	-419	nosim
+qrisp	shor15_mcm	stage:optimization +catq	3408	2830	6316	-7	-1	-419	nosim
+qrisp	shor15_mcm	preset (no elide)	3408	2830	6144	-7	-1	-591	nosim
+qrisp	shor15_mcm	preset (no elide) +catq	3408	2830	6144	-7	-1	-591	nosim
+qrisp	shor15_mcm	snap +catq	3415	2831	6735	0	0	0	same
+qrisp	shor15_mcm	input:ElidePermutations	3396	2827	6989	-19	-4	254	nosim
+qrisp	qaoa_maxcut	init:RemoveDiagonalGatesBeforeMeasure	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	init:RemoveIdentityEquivalent	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	init:InverseCancellation	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	init:ContractIdleWiresInControlFlow	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	init:CommutativeCancellation	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	init:ConsolidateBlocks	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	opt:TwoQubitPeepholeOptimization	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	opt:RemoveIdentityEquivalent	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	opt:Optimize1qGatesDecomposition	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	opt:CommutativeCancellation	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	opt:ContractIdleWiresInControlFlow	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	stage:init (no elide)	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	stage:optimization	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	preset (no elide)	46	20	104	0	0	0	same
+qrisp	qaoa_maxcut	snap +catq	46	20	104	0	0	0	same
+qrisp	vqe_heisenberg	init:RemoveDiagonalGatesBeforeMeasure	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	init:RemoveIdentityEquivalent	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	init:InverseCancellation	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	init:ContractIdleWiresInControlFlow	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	init:CommutativeCancellation	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	init:ConsolidateBlocks	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	opt:TwoQubitPeepholeOptimization	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	opt:RemoveIdentityEquivalent	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	opt:Optimize1qGatesDecomposition	42	14	142	0	0	-4	ok
+qrisp	vqe_heisenberg	opt:Optimize1qGatesDecomposition +catq	42	14	142	0	0	-4	ok
+qrisp	vqe_heisenberg	opt:CommutativeCancellation	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	opt:ContractIdleWiresInControlFlow	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	stage:init (no elide)	42	14	146	0	0	0	same
+qrisp	vqe_heisenberg	stage:optimization	42	14	142	0	0	-4	ok
+qrisp	vqe_heisenberg	stage:optimization +catq	42	14	142	0	0	-4	ok
+qrisp	vqe_heisenberg	preset (no elide)	42	14	142	0	0	-4	ok
+qrisp	vqe_heisenberg	preset (no elide) +catq	42	14	142	0	0	-4	ok
+qrisp	vqe_heisenberg	snap +catq	42	14	146	0	0	0	same
+qrisp	grover	init:RemoveDiagonalGatesBeforeMeasure	240	161	550	0	0	0	same
+qrisp	grover	init:RemoveIdentityEquivalent	240	161	550	0	0	0	same
+qrisp	grover	init:InverseCancellation	240	161	550	0	0	0	same
+qrisp	grover	init:ContractIdleWiresInControlFlow	240	161	550	0	0	0	same
+qrisp	grover	init:CommutativeCancellation	240	161	550	0	0	0	same
+qrisp	grover	init:ConsolidateBlocks	240	161	550	0	0	0	same
+qrisp	grover	opt:TwoQubitPeepholeOptimization	240	161	550	0	0	0	same
+qrisp	grover	opt:RemoveIdentityEquivalent	240	161	550	0	0	0	same
+qrisp	grover	opt:Optimize1qGatesDecomposition	240	161	542	0	0	-8	ok
+qrisp	grover	opt:Optimize1qGatesDecomposition +catq	240	161	542	0	0	-8	ok
+qrisp	grover	opt:CommutativeCancellation	240	161	550	0	0	0	same
+qrisp	grover	opt:ContractIdleWiresInControlFlow	240	161	550	0	0	0	same
+qrisp	grover	stage:init (no elide)	240	161	550	0	0	0	same
+qrisp	grover	stage:optimization	240	161	542	0	0	-8	ok
+qrisp	grover	stage:optimization +catq	240	161	542	0	0	-8	ok
+qrisp	grover	preset (no elide)	240	161	542	0	0	-8	ok
+qrisp	grover	preset (no elide) +catq	240	161	542	0	0	-8	ok
+qrisp	grover	snap +catq	240	161	550	0	0	0	same
+qrisp	qft8	init:RemoveDiagonalGatesBeforeMeasure	68	29	119	0	0	0	same
+qrisp	qft8	init:RemoveIdentityEquivalent	68	29	119	0	0	0	same
+qrisp	qft8	init:InverseCancellation	68	29	119	0	0	0	same
+qrisp	qft8	init:ContractIdleWiresInControlFlow	68	29	119	0	0	0	same
+qrisp	qft8	init:CommutativeCancellation	68	29	119	0	0	0	same
+qrisp	qft8	init:ConsolidateBlocks	68	29	119	0	0	0	same
+qrisp	qft8	opt:TwoQubitPeepholeOptimization	68	29	119	0	0	0	same
+qrisp	qft8	opt:RemoveIdentityEquivalent	68	29	119	0	0	0	same
+qrisp	qft8	opt:Optimize1qGatesDecomposition	68	29	119	0	0	0	same
+qrisp	qft8	opt:CommutativeCancellation	68	29	119	0	0	0	same
+qrisp	qft8	opt:ContractIdleWiresInControlFlow	68	29	119	0	0	0	same
+qrisp	qft8	stage:init (no elide)	68	29	119	0	0	0	same
+qrisp	qft8	stage:optimization	68	29	119	0	0	0	same
+qrisp	qft8	preset (no elide)	68	29	119	0	0	0	same
+qrisp	qft8	snap +catq	68	29	119	0	0	0	same
+qrisp	qft8	input:ElidePermutations	56	26	107	-12	-3	-12	ok
+qrisp	dicke	init:RemoveDiagonalGatesBeforeMeasure	87	79	219	0	0	0	same
+qrisp	dicke	init:RemoveIdentityEquivalent	87	79	219	0	0	0	same
+qrisp	dicke	init:InverseCancellation	87	79	219	0	0	0	same
+qrisp	dicke	init:ContractIdleWiresInControlFlow	87	79	219	0	0	0	same
+qrisp	dicke	init:CommutativeCancellation	87	79	219	0	0	0	same
+qrisp	dicke	init:ConsolidateBlocks	87	79	219	0	0	0	same
+qrisp	dicke	opt:TwoQubitPeepholeOptimization	87	79	219	0	0	0	same
+qrisp	dicke	opt:RemoveIdentityEquivalent	87	79	219	0	0	0	same
+qrisp	dicke	opt:Optimize1qGatesDecomposition	87	79	208	0	0	-11	ok
+qrisp	dicke	opt:Optimize1qGatesDecomposition +catq	87	79	208	0	0	-11	ok
+qrisp	dicke	opt:CommutativeCancellation	87	79	219	0	0	0	same
+qrisp	dicke	opt:ContractIdleWiresInControlFlow	87	79	219	0	0	0	same
+qrisp	dicke	stage:init (no elide)	87	79	219	0	0	0	same
+qrisp	dicke	stage:optimization	87	79	208	0	0	-11	ok
+qrisp	dicke	stage:optimization +catq	87	79	208	0	0	-11	ok
+qrisp	dicke	preset (no elide)	87	79	208	0	0	-11	ok
+qrisp	dicke	preset (no elide) +catq	87	79	208	0	0	-11	ok
+qrisp	dicke	snap +catq	87	79	219	0	0	0	same

@@ -1,0 +1,182 @@
+# qiskit 2.5.2, catq-compile level 2r unchecked at its fixed point; 2026-11-06 15:28 CET
+suite	circuit	pass	cx	depth2	gates	d_cx	d_depth2	d_gates	check
+qasmbench	adder_n4	init:RemoveDiagonalGatesBeforeMeasure	10	6	24	0	0	0	same
+qasmbench	adder_n4	init:RemoveIdentityEquivalent	10	6	24	0	0	0	same
+qasmbench	adder_n4	init:InverseCancellation	10	6	24	0	0	0	same
+qasmbench	adder_n4	init:ContractIdleWiresInControlFlow	10	6	24	0	0	0	same
+qasmbench	adder_n4	init:CommutativeCancellation	10	6	24	0	0	0	same
+qasmbench	adder_n4	init:ConsolidateBlocks	10	6	24	0	0	0	same
+qasmbench	adder_n4	opt:TwoQubitPeepholeOptimization	10	6	24	0	0	0	same
+qasmbench	adder_n4	opt:RemoveIdentityEquivalent	10	6	24	0	0	0	same
+qasmbench	adder_n4	opt:Optimize1qGatesDecomposition	10	6	24	0	0	0	same
+qasmbench	adder_n4	opt:CommutativeCancellation	10	6	24	0	0	0	same
+qasmbench	adder_n4	opt:ContractIdleWiresInControlFlow	10	6	24	0	0	0	same
+qasmbench	adder_n4	stage:init (no elide)	10	6	24	0	0	0	same
+qasmbench	adder_n4	stage:optimization	10	6	24	0	0	0	same
+qasmbench	adder_n4	preset (no elide)	10	6	24	0	0	0	same
+qasmbench	adder_n4	snap +catq	10	6	24	0	0	0	same
+qasmbench	cat_state_n4	init:RemoveDiagonalGatesBeforeMeasure	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	init:RemoveIdentityEquivalent	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	init:InverseCancellation	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	init:ContractIdleWiresInControlFlow	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	init:CommutativeCancellation	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	init:ConsolidateBlocks	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	opt:TwoQubitPeepholeOptimization	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	opt:RemoveIdentityEquivalent	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	opt:Optimize1qGatesDecomposition	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	opt:CommutativeCancellation	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	opt:ContractIdleWiresInControlFlow	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	stage:init (no elide)	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	stage:optimization	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	preset (no elide)	3	3	5	0	0	0	same
+qasmbench	cat_state_n4	snap +catq	3	3	5	0	0	0	same
+qasmbench	deutsch_n2	init:RemoveDiagonalGatesBeforeMeasure	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	init:RemoveIdentityEquivalent	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	init:InverseCancellation	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	init:ContractIdleWiresInControlFlow	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	init:CommutativeCancellation	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	init:ConsolidateBlocks	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	opt:TwoQubitPeepholeOptimization	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	opt:RemoveIdentityEquivalent	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	opt:Optimize1qGatesDecomposition	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	opt:CommutativeCancellation	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	opt:ContractIdleWiresInControlFlow	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	stage:init (no elide)	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	stage:optimization	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	preset (no elide)	1	1	4	0	0	0	same
+qasmbench	deutsch_n2	snap +catq	1	1	4	0	0	0	same
+qasmbench	fredkin_n3	init:RemoveDiagonalGatesBeforeMeasure	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	init:RemoveIdentityEquivalent	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	init:InverseCancellation	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	init:ContractIdleWiresInControlFlow	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	init:CommutativeCancellation	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	init:ConsolidateBlocks	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	opt:TwoQubitPeepholeOptimization	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	opt:RemoveIdentityEquivalent	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	opt:Optimize1qGatesDecomposition	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	opt:CommutativeCancellation	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	opt:ContractIdleWiresInControlFlow	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	stage:init (no elide)	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	stage:optimization	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	preset (no elide)	8	8	21	0	0	0	same
+qasmbench	fredkin_n3	snap +catq	8	8	21	0	0	0	same
+qasmbench	grover_n2	init:RemoveDiagonalGatesBeforeMeasure	2	2	8	0	0	0	same
+qasmbench	grover_n2	init:RemoveIdentityEquivalent	2	2	8	0	0	0	same
+qasmbench	grover_n2	init:InverseCancellation	2	2	8	0	0	0	same
+qasmbench	grover_n2	init:ContractIdleWiresInControlFlow	2	2	8	0	0	0	same
+qasmbench	grover_n2	init:CommutativeCancellation	2	2	8	0	0	0	same
+qasmbench	grover_n2	init:ConsolidateBlocks	2	2	8	0	0	0	same
+qasmbench	grover_n2	opt:TwoQubitPeepholeOptimization	2	2	8	0	0	0	same
+qasmbench	grover_n2	opt:RemoveIdentityEquivalent	2	2	8	0	0	0	same
+qasmbench	grover_n2	opt:Optimize1qGatesDecomposition	2	2	8	0	0	0	same
+qasmbench	grover_n2	opt:CommutativeCancellation	2	2	8	0	0	0	same
+qasmbench	grover_n2	opt:ContractIdleWiresInControlFlow	2	2	8	0	0	0	same
+qasmbench	grover_n2	stage:init (no elide)	2	2	8	0	0	0	same
+qasmbench	grover_n2	stage:optimization	2	2	8	0	0	0	same
+qasmbench	grover_n2	preset (no elide)	2	2	8	0	0	0	same
+qasmbench	grover_n2	snap +catq	2	2	8	0	0	0	same
+qasmbench	hs4_n4	init:RemoveDiagonalGatesBeforeMeasure	4	2	14	0	0	0	same
+qasmbench	hs4_n4	init:RemoveIdentityEquivalent	4	2	14	0	0	0	same
+qasmbench	hs4_n4	init:InverseCancellation	4	2	14	0	0	0	same
+qasmbench	hs4_n4	init:ContractIdleWiresInControlFlow	4	2	14	0	0	0	same
+qasmbench	hs4_n4	init:CommutativeCancellation	4	2	14	0	0	0	same
+qasmbench	hs4_n4	init:ConsolidateBlocks	4	2	14	0	0	0	same
+qasmbench	hs4_n4	opt:TwoQubitPeepholeOptimization	4	2	14	0	0	0	same
+qasmbench	hs4_n4	opt:RemoveIdentityEquivalent	4	2	14	0	0	0	same
+qasmbench	hs4_n4	opt:Optimize1qGatesDecomposition	4	2	14	0	0	0	same
+qasmbench	hs4_n4	opt:CommutativeCancellation	4	2	14	0	0	0	same
+qasmbench	hs4_n4	opt:ContractIdleWiresInControlFlow	4	2	14	0	0	0	same
+qasmbench	hs4_n4	stage:init (no elide)	4	2	14	0	0	0	same
+qasmbench	hs4_n4	stage:optimization	4	2	14	0	0	0	same
+qasmbench	hs4_n4	preset (no elide)	4	2	14	0	0	0	same
+qasmbench	hs4_n4	snap +catq	4	2	14	0	0	0	same
+qasmbench	iswap_n2	init:RemoveDiagonalGatesBeforeMeasure	2	2	9	0	0	0	same
+qasmbench	iswap_n2	init:RemoveIdentityEquivalent	2	2	9	0	0	0	same
+qasmbench	iswap_n2	init:InverseCancellation	2	2	9	0	0	0	same
+qasmbench	iswap_n2	init:ContractIdleWiresInControlFlow	2	2	9	0	0	0	same
+qasmbench	iswap_n2	init:CommutativeCancellation	2	2	9	0	0	0	same
+qasmbench	iswap_n2	init:ConsolidateBlocks	2	2	9	0	0	0	same
+qasmbench	iswap_n2	opt:TwoQubitPeepholeOptimization	2	2	9	0	0	0	same
+qasmbench	iswap_n2	opt:RemoveIdentityEquivalent	2	2	9	0	0	0	same
+qasmbench	iswap_n2	opt:Optimize1qGatesDecomposition	2	2	9	0	0	0	same
+qasmbench	iswap_n2	opt:CommutativeCancellation	2	2	9	0	0	0	same
+qasmbench	iswap_n2	opt:ContractIdleWiresInControlFlow	2	2	9	0	0	0	same
+qasmbench	iswap_n2	stage:init (no elide)	2	2	9	0	0	0	same
+qasmbench	iswap_n2	stage:optimization	2	2	9	0	0	0	same
+qasmbench	iswap_n2	preset (no elide)	2	2	9	0	0	0	same
+qasmbench	iswap_n2	snap +catq	2	2	9	0	0	0	same
+qasmbench	lpn_n5	init:RemoveDiagonalGatesBeforeMeasure	2	2	8	0	0	0	same
+qasmbench	lpn_n5	init:RemoveIdentityEquivalent	2	2	8	0	0	0	same
+qasmbench	lpn_n5	init:InverseCancellation	2	2	8	0	0	0	same
+qasmbench	lpn_n5	init:ContractIdleWiresInControlFlow	2	2	8	0	0	0	same
+qasmbench	lpn_n5	init:CommutativeCancellation	2	2	8	0	0	0	same
+qasmbench	lpn_n5	init:ConsolidateBlocks	2	2	8	0	0	0	same
+qasmbench	lpn_n5	opt:TwoQubitPeepholeOptimization	2	2	8	0	0	0	same
+qasmbench	lpn_n5	opt:RemoveIdentityEquivalent	2	2	8	0	0	0	same
+qasmbench	lpn_n5	opt:Optimize1qGatesDecomposition	2	2	8	0	0	0	same
+qasmbench	lpn_n5	opt:CommutativeCancellation	2	2	8	0	0	0	same
+qasmbench	lpn_n5	opt:ContractIdleWiresInControlFlow	2	2	8	0	0	0	same
+qasmbench	lpn_n5	stage:init (no elide)	2	2	8	0	0	0	same
+qasmbench	lpn_n5	stage:optimization	2	2	8	0	0	0	same
+qasmbench	lpn_n5	preset (no elide)	2	2	8	0	0	0	same
+qasmbench	lpn_n5	snap +catq	2	2	8	0	0	0	same
+qasmbench	qec_en_n5	init:RemoveDiagonalGatesBeforeMeasure	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	init:RemoveIdentityEquivalent	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	init:InverseCancellation	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	init:ContractIdleWiresInControlFlow	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	init:CommutativeCancellation	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	init:ConsolidateBlocks	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	opt:TwoQubitPeepholeOptimization	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	opt:RemoveIdentityEquivalent	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	opt:Optimize1qGatesDecomposition	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	opt:CommutativeCancellation	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	opt:ContractIdleWiresInControlFlow	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	stage:init (no elide)	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	stage:optimization	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	preset (no elide)	10	10	26	0	0	0	same
+qasmbench	qec_en_n5	snap +catq	10	10	26	0	0	0	same
+qasmbench	qft_n4	init:RemoveDiagonalGatesBeforeMeasure	12	10	32	0	0	0	same
+qasmbench	qft_n4	init:RemoveIdentityEquivalent	12	10	32	0	0	0	same
+qasmbench	qft_n4	init:InverseCancellation	12	10	32	0	0	0	same
+qasmbench	qft_n4	init:ContractIdleWiresInControlFlow	12	10	32	0	0	0	same
+qasmbench	qft_n4	init:CommutativeCancellation	12	10	32	0	0	0	same
+qasmbench	qft_n4	init:ConsolidateBlocks	12	10	32	0	0	0	same
+qasmbench	qft_n4	opt:TwoQubitPeepholeOptimization	12	10	32	0	0	0	same
+qasmbench	qft_n4	opt:RemoveIdentityEquivalent	12	10	32	0	0	0	same
+qasmbench	qft_n4	opt:Optimize1qGatesDecomposition	12	10	32	0	0	0	same
+qasmbench	qft_n4	opt:CommutativeCancellation	12	10	32	0	0	0	same
+qasmbench	qft_n4	opt:ContractIdleWiresInControlFlow	12	10	32	0	0	0	same
+qasmbench	qft_n4	stage:init (no elide)	12	10	32	0	0	0	same
+qasmbench	qft_n4	stage:optimization	12	10	32	0	0	0	same
+qasmbench	qft_n4	preset (no elide)	12	10	32	0	0	0	same
+qasmbench	qft_n4	snap +catq	12	10	32	0	0	0	same
+qasmbench	teleportation_n3	init:RemoveDiagonalGatesBeforeMeasure	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	init:RemoveIdentityEquivalent	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	init:InverseCancellation	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	init:ContractIdleWiresInControlFlow	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	init:CommutativeCancellation	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	init:ConsolidateBlocks	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	opt:TwoQubitPeepholeOptimization	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	opt:RemoveIdentityEquivalent	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	opt:Optimize1qGatesDecomposition	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	opt:CommutativeCancellation	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	opt:ContractIdleWiresInControlFlow	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	stage:init (no elide)	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	stage:optimization	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	preset (no elide)	2	2	7	0	0	0	same
+qasmbench	teleportation_n3	snap +catq	2	2	7	0	0	0	same
+qasmbench	toffoli_n3	init:RemoveDiagonalGatesBeforeMeasure	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	init:RemoveIdentityEquivalent	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	init:InverseCancellation	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	init:ContractIdleWiresInControlFlow	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	init:CommutativeCancellation	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	init:ConsolidateBlocks	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	opt:TwoQubitPeepholeOptimization	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	opt:RemoveIdentityEquivalent	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	opt:Optimize1qGatesDecomposition	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	opt:CommutativeCancellation	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	opt:ContractIdleWiresInControlFlow	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	stage:init (no elide)	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	stage:optimization	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	preset (no elide)	6	6	19	0	0	0	same
+qasmbench	toffoli_n3	snap +catq	6	6	19	0	0	0	same
