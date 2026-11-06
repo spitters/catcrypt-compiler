@@ -40,9 +40,12 @@ the `ℓ²` operator norm, at every level whose stage satisfies `QrunchRound.Sta
 with `--check` (`stageBound_levelStage_l2r`) and `2`, with bound `0` for the rounds
 (`stageBound_levelStage_l2`).
 
-`catq-compile <in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap] [--rounds k]`
-compiles one file (`2r` by default); `--no-elide` and `--no-snap` turn off swap elision and
-angle snapping. At `2r`, `--check` runs `resynthAt` at the checked fits and reports its bound;
+`catq-compile <in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap] [--rounds k]
+[--cost cx|t]` compiles one file (`2r` by default); `--no-elide` and `--no-snap` turn off swap
+elision and angle snapping. `--cost t` orders the iterates by the T-cost first
+(`QrunchRound.BetterC`) and keeps the input when the first round raises its T-cost
+(`QrunchRound.tCost_runRounds_le`); `--cost cx`, the default, is the order above. At `2r`,
+`--check` runs `resynthAt` at the checked fits and reports its bound;
 without it `resynthAt` runs at the unchecked fits, which replace the same blocks and runs when
 every fit passes the checker, and the bound is reported as `unchecked`. `--rounds 1` runs one
 round. `catq-compile --serve` reads request lines from standard input and answers each with
@@ -167,14 +170,15 @@ def roundsArg : List String → Option (ℕ × List String)
     within `eps` of `W(π) e^{-iΦ}` times the qelib1 matrix of the output, in the `ℓ²` operator
     norm. Without it the `2r` fits are unchecked and `<eps>` is `unchecked`. -/
 def compileFile (inp outp : String) (level : Level := .l2r) (check : Bool := false)
-    (rounds : ℕ := 8) (elide snap : Bool := true) : IO String := do
+    (rounds : ℕ := 8) (elide snap : Bool := true) (cost : QrunchRound.Cost := .cx) :
+    IO String := do
   let src ← IO.FS.readFile inp
   let some n := OpenQASMImport.qregSize src | pure "error no qreg declaration"
   -- The byte importer; `importQB_eq` equates it with `importQ` on ASCII sources.
   let (qs?, tI) ← timed fun _ => OpenQASMBytes.importQB n src.toUTF8
   let some qs := qs? | pure "error a line the importer does not recognise"
   let (o, tR) ← timed fun _ =>
-    QrunchRound.runCompile (levelStage level check) rounds elide snap qs
+    QrunchRound.runCompile (levelStage level check) rounds elide snap qs cost
   let rs := o.rounds
   let some o₁ := rs.head? |
     pure "error a statement with repeated operands or a real-valued Rz in the output"
@@ -193,24 +197,46 @@ def compileFile (inp outp : String) (level : Level := .l2r) (check : Bool := fal
 /-- The flags of a request that are not `--rounds`: `--check`, `--no-elide`, `--no-snap`. -/
 def flagArgs : List String := ["--check", "--no-elide", "--no-snap"]
 
+/-- The cost named by a request argument: `cx` or `t`. -/
+def costOfString? : String → Option QrunchRound.Cost
+  | "cx" => some .cx
+  | "t" => some .t
+  | _ => none
+
+/-- The cost of a request and its other arguments: `--cost c` gives the cost `c`, else
+`cx`. -/
+def costArg : List String → Option (QrunchRound.Cost × List String)
+  | [] => some (.cx, [])
+  | "--cost" :: c :: rest => do
+    let v ← costOfString? c
+    let (_, l) ← costArg rest
+    pure (v, l)
+  | a :: rest => do
+    let (v, l) ← costArg rest
+    pure (v, a :: l)
+
 /-- The answer to the arguments of one request,
-    `<in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap] [--rounds k]`. -/
+    `<in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap] [--rounds k]
+    [--cost cx|t]`. -/
 def request (args : List String) : IO String :=
   let check := args.contains "--check"
   let elide := !args.contains "--no-elide"
   let snap := !args.contains "--no-snap"
-  match roundsArg (args.filter (· ∉ flagArgs)) with
-  | none => pure "error --rounds expects a natural number"
-  | some (k, [inp, outp]) => compileFile inp outp .l2r check k elide snap
-  | some (k, [inp, outp, lv]) =>
-    match Level.ofString? lv with
-    | some l => compileFile inp outp l check k elide snap
-    | none => pure "error level 1, 2 or 2r"
-  | some _ => pure "error expected <in.qasm> <out.qasm> [level] [--check] [--no-elide] \
-      [--no-snap] [--rounds k]"
+  match costArg args with
+  | none => pure "error --cost expects cx or t"
+  | some (cost, args) =>
+    match roundsArg (args.filter (· ∉ flagArgs)) with
+    | none => pure "error --rounds expects a natural number"
+    | some (k, [inp, outp]) => compileFile inp outp .l2r check k elide snap cost
+    | some (k, [inp, outp, lv]) =>
+      match Level.ofString? lv with
+      | some l => compileFile inp outp l check k elide snap cost
+      | none => pure "error level 1, 2 or 2r"
+    | some _ => pure "error expected <in.qasm> <out.qasm> [level] [--check] [--no-elide] \
+        [--no-snap] [--rounds k] [--cost cx|t]"
 
 /-- Answer the request lines `<in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap]
-    [--rounds k]` of standard input until it ends. -/
+    [--rounds k] [--cost cx|t]` of standard input until it ends. -/
 partial def serve : IO Unit := do
   let stdin ← IO.getStdin
   let stdout ← IO.getStdout
