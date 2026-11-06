@@ -19,7 +19,9 @@ only) Qiskit level 3 given the coupling map, its own layout, routing and post-ro
 best of the same seeds; `rto` (routed table only) the routed `in` circuit (the same level-0 Sabre
 run, fewest CX kept) compiled by the same catq-compile server and level with swap elision off
 (`elide=False`), so that its output stays on the physical wires of the routed circuit;
-`rto_viol` counts its multi-qubit gates that do not lie on an edge of the coupling map. The
+`oro` (routed table only) the routed `ours` circuit compiled again in the same way, so that
+catq-compile runs both before and after routing; `rto_viol` and `oro_viol` count the multi-qubit
+gates of the output that do not lie on an edge of the coupling map. The
 layouts of `ours` and `qk` are dropped before routing: the output permutation relabels the final
 wires and costs no gate.
 
@@ -27,7 +29,8 @@ Times: `*_wall` is wall-clock seconds and `*_cpu` user plus system CPU seconds. 
 the CPU is that of the `catq-compile --serve` process (psutil, read before and after the call)
 plus the bridge's own Python CPU (`time.process_time`) during the call; for Qiskit it is
 `time.process_time` of this process, which counts its Rayon threads (cap: RAYON_NUM_THREADS,
-recorded in the header line). The `qkr` times cover all SEEDS transpiles.
+recorded in the header line). The `qkr` times cover all SEEDS transpiles; the `oro` times cover
+the second compile only (the first is `ours_*` of the FT table).
 
 Native-gate model for (2). Each maximal run of one-qubit gates on a wire is one unitary U.
 IQM (Garnet, Aphrodite: native prx and cz, z rotations virtual): `cx(c,t)` is `h(t) cz h(t)`, the
@@ -248,6 +251,22 @@ def catq_timed(vc: VerifiedCompiler, qc: QuantumCircuit) -> tuple[QuantumCircuit
     return out, time.perf_counter() - w0, time.process_time() - p0 + _server_cpu(vc) - s0
 
 
+def catq_on_wires(vc: VerifiedCompiler, routed: QuantumCircuit, dev: Device) -> tuple:
+    """catq-compile of a routed circuit with swap elision off, so that it stays on its physical
+    wires: the output in the basis and the columns viol, status, eps, wall, cpu."""
+    vc.elide = False
+    out, wall, cpu = catq_timed(vc, bare(routed))
+    vc.elide = True
+    rep = vc.last_report
+    status = "ok" if rep.optimized else f"refused: {rep.reason}"
+    if rep.optimized and rep.final_permutation != list(range(out.num_qubits)):
+        status = "permuted"
+    basis = to_basis(out)
+    viol = violations(out, dev) + violations(basis, dev)
+    eps = "-" if rep.eps is None else f"{rep.eps:.1e}"
+    return basis, [viol, " ".join(status.split()), eps, f"{wall:.3f}", f"{cpu:.3f}"]
+
+
 def route(qc: QuantumCircuit, dev: Device, own_level3: bool = False) -> QuantumCircuit:
     """The fewest-CX routed circuit over seeds 0..SEEDS-1 (ties: two-qubit depth)."""
     best = None
@@ -383,7 +402,8 @@ def suite_inputs(suite: str) -> list[tuple[str, QuantumCircuit]]:
 
 
 VARIANTS = ("in", "ours", "qk")
-ROUTED = VARIANTS + ("rto", "qkr")
+ROUTED = VARIANTS + ("rto", "oro", "qkr")
+ON_WIRES = (("rto", "in"), ("oro", "ours"))  # catq-compile on the routed wires of in / ours
 FIGS = ("cx", "depth2", "gates", "us", "esp")
 
 
@@ -398,7 +418,8 @@ def run(suite: str) -> None:
         for k in ("cx", "nonclifford", "t", "arb", "rot_depth", "t_count_est", "t_depth_est")] + [
         "ours_wall", "ours_cpu", "qk_wall", "qk_cpu"]
     rt_head = ["circuit", "qubits", "device"] + [f"{v}_{k}" for v in ROUTED for k in FIGS] + [
-        "rto_viol", "rto_status", "rto_eps", "rto_wall", "rto_cpu", "qkr_wall", "qkr_cpu"]
+        f"{v}_{k}" for v, _ in ON_WIRES for k in ("viol", "status", "eps", "wall", "cpu")] + [
+        "qkr_wall", "qkr_cpu"]
     ft_rows, rt_rows = [], []
     print("\t".join(rt_head), flush=True)
     for name, src in suite_inputs(suite):
@@ -421,15 +442,10 @@ def run(suite: str) -> None:
             if src.num_qubits > d.n:
                 continue
             routed = {v: route(circs[v], d) for v in VARIANTS}
-            vc.elide = False
-            rto, r_wall, r_cpu = catq_timed(vc, bare(routed["in"]))
-            vc.elide = True
-            rep = vc.last_report
-            status = "ok" if rep.optimized else f"refused: {rep.reason}"
-            if rep.optimized and rep.final_permutation != list(range(rto.num_qubits)):
-                status = "permuted"
-            routed["rto"] = to_basis(rto)
-            viol = violations(rto, d) + violations(routed["rto"], d)
+            extra = []
+            for v, base in ON_WIRES:
+                routed[v], cols = catq_on_wires(vc, routed[base], d)
+                extra += cols
             w0, p0 = time.perf_counter(), time.process_time()
             routed["qkr"] = route(src, d, own_level3=True)
             k_wall, k_cpu = time.perf_counter() - w0, time.process_time() - p0
@@ -438,14 +454,12 @@ def run(suite: str) -> None:
                 p, us = esp(routed[v], d)
                 r += [routed[v].count_ops().get("cx", 0), two_q_depth(routed[v]),
                       gate_count(routed[v]), f"{us:.3f}", f"{p:.4g}"]
-            eps = "-" if rep.eps is None else f"{rep.eps:.1e}"
-            r += [viol, " ".join(status.split()), eps, f"{r_wall:.3f}", f"{r_cpu:.3f}",
-                  f"{k_wall:.3f}", f"{k_cpu:.3f}"]
+            r += extra + [f"{k_wall:.3f}", f"{k_cpu:.3f}"]
             print("\t".join(map(str, r)), flush=True)
             rt_rows.append(r)
     vc.close()
     stamp = (f"# qiskit {qiskit.__version__}, catq-compile level 2r --check "
-             f"(permutation=layout; rto with --no-elide), seeds 0..{SEEDS - 1}, eps {EPS:g} "
+             f"(permutation=layout; rto and oro with --no-elide), seeds 0..{SEEDS - 1}, eps {EPS:g} "
              f"(T_arb {T_ARB}), RAYON_NUM_THREADS={os.environ.get('RAYON_NUM_THREADS', '-')}, "
              f"{time.strftime('%Y-%m-%d %H:%M %Z')}\n")
     for fname, head, rows in ((f"{suite}-routed.tsv", rt_head, rt_rows),
@@ -482,38 +496,44 @@ def summary() -> None:
                   f"{s['qkr_cx']} | {s['ours_depth2']} / {s['qk_depth2']} | "
                   f"{sorted(lr)[len(lr) // 2]:+.3f} | {w[0]}-{w[1]}-{w[2]} |")
     print()
-    print("| suite | device | n | routed CX in / ours / qk / rto / qkr | depth2 rto / qkr "
-          "| median log10(ESP / ESP in) ours / qk / rto / qkr "
-          "| ESP rto vs qkr better-equal-worse | rto violations | rto refused |")
-    print("|---|---|---|---|---|---|---|---|---|")
+    def wtl(rs: list[dict], a: str, b: str) -> str:
+        lr = [math.log10(float(r[f"{a}_esp"])) - math.log10(float(r[f"{b}_esp"])) for r in rs]
+        return (f"{sum(x > 1e-3 for x in lr)}-{sum(abs(x) <= 1e-3 for x in lr)}-"
+                f"{sum(x < -1e-3 for x in lr)}")
+
+    wires = [v for v, _ in ON_WIRES]
+    print("| suite | device | n | routed CX in / ours / qk / rto / oro / qkr "
+          "| depth2 rto / oro / qkr | median log10(ESP / ESP in) ours / qk / rto / oro / qkr "
+          "| ESP rto vs qkr | ESP oro vs qkr | ESP oro vs rto | violations rto / oro "
+          "| refused rto / oro |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|")
     for suite in ("qsynth", "qasmbench", "catcrypt", "qrisp"):
         rows = _read(f"{suite}-routed.tsv")
         for d in DEVICES:
             rs = [r for r in rows if r["device"] == d]
             cx = " / ".join(str(sum(int(r[f"{v}_cx"]) for r in rs)) for v in ROUTED)
-            dp = " / ".join(str(sum(int(r[f"{v}_depth2"]) for r in rs)) for v in ("rto", "qkr"))
+            dp = " / ".join(str(sum(int(r[f"{v}_depth2"]) for r in rs)) for v in wires + ["qkr"])
             med = []
-            for v in ("ours", "qk", "rto", "qkr"):
+            for v in ["ours", "qk"] + wires + ["qkr"]:
                 lr = sorted(math.log10(float(r[f"{v}_esp"])) - math.log10(float(r["in_esp"]))
                             for r in rs)
                 med.append(f"{lr[len(lr) // 2]:+.3f}")
-            lr = [math.log10(float(r["rto_esp"])) - math.log10(float(r["qkr_esp"])) for r in rs]
-            w = sum(x > 1e-3 for x in lr), sum(abs(x) <= 1e-3 for x in lr), sum(x < -1e-3 for x in lr)
-            viol = sum(int(r["rto_viol"]) for r in rs)
-            ref = sum(r["rto_status"] != "ok" for r in rs)
+            viol = " / ".join(str(sum(int(r[f"{v}_viol"]) for r in rs)) for v in wires)
+            ref = " / ".join(str(sum(r[f"{v}_status"] != "ok" for r in rs)) for v in wires)
             print(f"| {suite} | {d} | {len(rs)} | {cx} | {dp} | {' / '.join(med)} | "
-                  f"{w[0]}-{w[1]}-{w[2]} | {viol} | {ref} |")
+                  f"{wtl(rs, 'rto', 'qkr')} | {wtl(rs, 'oro', 'qkr')} | {wtl(rs, 'oro', 'rto')} | "
+                  f"{viol} | {ref} |")
     print()
     print("| suite | unrouted: ours wall / CPU s | qk wall / CPU s | routed, 3 devices: rto wall / "
-          "CPU s | qkr (20 seeds) wall / CPU s |")
-    print("|---|---|---|---|---|")
+          "CPU s | oro (second compile) wall / CPU s | qkr (20 seeds) wall / CPU s |")
+    print("|---|---|---|---|---|---|")
     for suite in ("qsynth", "qasmbench", "catcrypt", "qrisp"):
         fs = [r for r in _read(f"{suite}-ft.tsv") if "ours_wall" in r]
         rs = _read(f"{suite}-routed.tsv")
         cell = [f"{sum(float(r[f'{v}_wall']) for r in fs):.1f} / "
                 f"{sum(float(r[f'{v}_cpu']) for r in fs):.1f}" for v in ("ours", "qk")]
         cell += [f"{sum(float(r[f'{v}_wall']) for r in rs):.1f} / "
-                 f"{sum(float(r[f'{v}_cpu']) for r in rs):.1f}" for v in ("rto", "qkr")]
+                 f"{sum(float(r[f'{v}_cpu']) for r in rs):.1f}" for v in ("rto", "oro", "qkr")]
         print(f"| {suite} | " + " | ".join(cell) + " |")
     print()
     print("| suite | n | non-Clifford rot. in / ours / qk | T gates in / ours / qk "

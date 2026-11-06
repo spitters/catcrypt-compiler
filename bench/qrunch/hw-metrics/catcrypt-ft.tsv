@@ -1,7 +1,7 @@
-# qiskit 2.5.2, catq-compile level 2r --check (permutation=layout; rto with --no-elide), seeds 0..19, eps 1e-10 (T_arb 100), RAYON_NUM_THREADS=2, 2026-11-06 23:30 CET
+# qiskit 2.5.2, catq-compile level 2r --check (permutation=layout; rto and oro with --no-elide), seeds 0..19, eps 1e-10 (T_arb 100), RAYON_NUM_THREADS=2, 2026-11-06 23:40 CET
 circuit	qubits	ours_dev	in_cx	in_nonclifford	in_t	in_arb	in_rot_depth	in_t_count_est	in_t_depth_est	ours_cx	ours_nonclifford	ours_t	ours_arb	ours_rot_depth	ours_t_count_est	ours_t_depth_est	qk_cx	qk_nonclifford	qk_t	qk_arb	qk_rot_depth	qk_t_count_est	qk_t_depth_est	ours_wall	ours_cpu	qk_wall	qk_cpu
-amp3_ccz	3	1.3e-15	32	28	28	0	18	28	18	32	30	24	6	21	624	615	32	32	24	8	22	824	814	0.413	0.224	0.101	0.146
-grover2	2	3.3e-16	2	0	0	0	0	0	0	2	0	0	0	0	0	0	2	5	2	3	5	302	302	0.012	0.013	0.008	0.009
-qft4	4	4.5e-16	18	18	9	9	12	909	606	18	15	7	8	13	807	805	18	15	7	8	11	807	605	0.017	0.013	0.013	0.013
-qft6	6	3.5e-16	39	45	15	30	30	3015	2010	39	35	11	24	31	2411	2407	39	35	11	24	27	2411	2007	0.023	0.023	0.011	0.012
-qpe3_t	4	1.0e-15	23	30	6	24	20	2406	1604	14	12	6	6	9	606	503	14	19	7	12	17	1207	1106	0.029	0.033	0.061	0.061
+amp3_ccz	3	1.3e-15	32	28	28	0	18	28	18	32	30	24	6	21	624	615	32	32	24	8	22	824	814	0.222	0.072	0.025	0.021
+grover2	2	3.3e-16	2	0	0	0	0	0	0	2	0	0	0	0	0	0	2	5	2	3	5	302	302	0.006	0.011	0.004	0.004
+qft4	4	4.5e-16	18	18	9	9	12	909	606	18	15	7	8	13	807	805	18	15	7	8	11	807	605	0.009	0.011	0.004	0.005
+qft6	6	3.5e-16	39	45	15	30	30	3015	2010	39	35	11	24	31	2411	2407	39	35	11	24	27	2411	2007	0.013	0.011	0.005	0.006
+qpe3_t	4	1.0e-15	23	30	6	24	20	2406	1604	14	12	6	6	9	606	503	14	19	7	12	17	1207	1106	0.020	0.022	0.005	0.006

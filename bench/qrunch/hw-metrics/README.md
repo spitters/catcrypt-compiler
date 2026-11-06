@@ -5,8 +5,9 @@
 CX count and two-qubit depth after routing onto three device coupling maps, the expected success
 probability (ESP) of the routed circuit from published device calibrations, and the fault-tolerant
 cost of the unrouted output (non-Clifford rotations, T gates, estimated T-count and T-depth after
-Clifford+T synthesis). It also compiles the routed input with catq-compile (`rto`), checks that
-every two-qubit gate of the result lies on a coupler of the device, and records wall-clock and CPU
+Clifford+T synthesis). It also compiles the routed input (`rto`) and the routed output of
+catq-compile (`oro`) with catq-compile, checks that every two-qubit gate of the result lies on a
+coupler of the device, and records wall-clock and CPU
 time of both compilers.
 
 ## Commands and versions
@@ -42,6 +43,7 @@ per circuit).
 | `ours` | `VerifiedCompiler(level="2r", check=True, permutation="layout")`: resynthesis level behind the verified residual checker; the output permutation of swap elision is in the output's layout and no swap is appended |
 | `qk` | `transpile(optimization_level=3, basis_gates=BASIS, seed_transpiler=0)` without a coupling map, as in `compare.py`; its `ElidePermutations` pass records swaps in the layout in the same way |
 | `rto` | routed table only: the routed `in` circuit of (1) (same Sabre run, fewest-CX seed) compiled by the same `VerifiedCompiler` server with swap elision off (`elide=False`, `--no-elide`), so that the output stays on the physical wires of the routed circuit |
+| `oro` | routed table only: the routed `ours` circuit of (1) compiled again in the same way as `rto`, so that catq-compile runs before and after routing |
 | `qkr` | routed table only: Qiskit level 3 given the coupling map (its own layout, routing and post-routing optimization), best of the same seeds |
 
 The layouts of `ours` and `qk` are dropped before routing: the output permutation relabels final
@@ -121,14 +123,22 @@ permutation is not the identity, and the refusal reason otherwise; `rto_eps` is 
 of the checked compile. `rto_viol` counts the multi-qubit gates of the output, before and after
 translation into the basis, whose qubits are not the two ends of one coupler (a gate on three or
 more qubits counts as one). The figures of (1) and (2) are then taken on `rto` as on the other
-variants. Each variant also records `*_gates`, its gate count in the basis without barriers and
+variants.
+
+`oro` is the same step applied to the routed `ours` circuit of (1) instead of the routed `in`
+circuit: catq-compile with swap elision, then the level-0 Sabre layout and routing of (1) (20
+seeds, fewest CX kept), then catq-compile again with `elide=False`. Its columns `oro_viol`,
+`oro_status` and `oro_eps` are defined as for `rto`. In the results below `oro` has 0.6 to 0.7%
+fewer routed CX than `rto` on Q-Synth and remains 1.8 to 2.2% above `qkr`, and on the Qrisp
+programs it has 8 to 15% fewer than `qkr`, through `shor15`, where `rto` is behind `ours` routed. Each variant also records `*_gates`, its gate count in the basis without barriers and
 measurements.
 
 ## (4) Compile times
 
 `*_wall` is wall-clock seconds and `*_cpu` user plus system CPU seconds of one compile:
-`ours_*` and `qk_*` in `SUITE-ft.tsv` for the unrouted compiles, `rto_*` and `qkr_*` in
-`SUITE-routed.tsv` (`qkr` covers its 20 seeded transpiles). The CPU of catq-compile is that of the
+`ours_*` and `qk_*` in `SUITE-ft.tsv` for the unrouted compiles, `rto_*`, `oro_*` and `qkr_*` in
+`SUITE-routed.tsv` (`qkr` covers its 20 seeded transpiles; `oro` covers the compile after routing,
+the one before it being `ours_*`). The CPU of catq-compile is that of the
 `catq-compile --serve` process (psutil, read before and after the call) plus the bridge's own
 Python CPU during the call; the wall time includes the bridge's QASM writing and reading, and the
 first compile of a suite includes the server's start-up (about 0.25 s). The CPU of Qiskit is
@@ -165,34 +175,34 @@ the higher, equal (within 0.001 decades) and lower ESP.
 | qrisp | aphrodite | 7 | 4852 / 3618 / 3561 / 3771 | 2589 / 2597 | +0.000 | 1-5-1 |
 | qrisp | kolkata | 7 | 6169 / 4746 / 4689 / 4427 | 3235 / 3203 | -0.008 | 1-2-4 |
 
-The second table adds `rto`. Its ESP column is the median over the suite's circuits of
-log10(ESP_v / ESP_in) for each variant v; the next column counts circuits where `rto` has the
-higher, equal and lower ESP than `qkr`.
+The second table adds `rto` and `oro`. Its ESP column is the median over the suite's circuits of
+log10(ESP_v / ESP_in) for each variant v; the next three columns count circuits where the first
+variant has the higher, equal and lower ESP than the second.
 
-| suite | device | n | routed CX in / ours / qk / rto / qkr | depth2 rto / qkr | median log10(ESP / ESP in) ours / qk / rto / qkr | ESP rto vs qkr better-equal-worse | rto violations | rto refused |
-|---|---|---|---|---|---|---|---|---|
-| qsynth | garnet | 12 | 15643 / 15414 / 15456 / 14393 / 13983 | 9386 / 8996 | -0.424 / -0.431 / +2.830 / +2.712 | 5-0-7 | 0 | 0 |
-| qsynth | aphrodite | 12 | 15679 / 15435 / 15414 / 14419 / 14041 | 9334 / 9116 | -1.112 / +0.839 / +7.182 / +6.007 | 4-0-8 | 0 | 0 |
-| qsynth | kolkata | 12 | 21586 / 21372 / 21312 / 19488 / 19030 | 11626 / 11056 | -0.646 / -0.645 / +3.754 / +3.186 | 5-0-7 | 0 | 0 |
-| qasmbench | garnet | 12 | 77 / 77 / 77 / 75 / 67 | 60 / 61 | +0.000 / +0.000 / +0.000 / +0.002 | 4-1-7 | 0 | 0 |
-| qasmbench | aphrodite | 12 | 77 / 77 / 77 / 77 / 67 | 65 / 61 | +0.000 / +0.000 / +0.000 / +0.003 | 1-0-11 | 0 | 0 |
-| qasmbench | kolkata | 12 | 86 / 86 / 86 / 80 / 76 | 71 / 67 | +0.000 / +0.000 / +0.000 / +0.003 | 5-1-6 | 0 | 0 |
-| catcrypt | garnet | 5 | 162 / 153 / 153 / 147 / 143 | 133 / 137 | +0.000 / +0.000 / +0.000 / -0.004 | 5-0-0 | 0 | 0 |
-| catcrypt | aphrodite | 5 | 162 / 153 / 153 / 147 / 143 | 133 / 134 | +0.000 / +0.000 / +0.000 / +0.044 | 3-0-2 | 0 | 0 |
-| catcrypt | kolkata | 5 | 174 / 165 / 165 / 159 / 157 | 141 / 142 | +0.000 / +0.000 / +0.014 / +0.062 | 2-0-3 | 0 | 0 |
-| qrisp | garnet | 7 | 4864 / 3642 / 3612 / 4070 / 3687 | 2859 / 2593 | +0.045 / +0.045 / +0.255 / +0.239 | 3-0-4 | 0 | 0 |
-| qrisp | aphrodite | 7 | 4852 / 3618 / 3561 / 4019 / 3771 | 2804 / 2536 | +0.180 / +0.180 / +0.644 / +1.218 | 1-0-6 | 0 | 0 |
-| qrisp | kolkata | 7 | 6169 / 4746 / 4689 / 4900 / 4427 | 3220 / 2701 | +0.031 / +0.040 / +0.213 / +0.028 | 4-0-3 | 0 | 0 |
+| suite | device | n | routed CX in / ours / qk / rto / oro / qkr | depth2 rto / oro / qkr | median log10(ESP / ESP in) ours / qk / rto / oro / qkr | ESP rto vs qkr | ESP oro vs qkr | ESP oro vs rto | violations rto / oro | refused rto / oro |
+|---|---|---|---|---|---|---|---|---|---|---|
+| qsynth | garnet | 12 | 15643 / 15414 / 15456 / 14393 / 14294 / 13983 | 9386 / 9447 / 8996 | -0.424 / -0.431 / +2.830 / +0.451 / +2.712 | 5-0-7 | 2-0-10 | 3-0-9 | 0 / 0 | 0 / 0 |
+| qsynth | aphrodite | 12 | 15679 / 15435 / 15414 / 14419 / 14332 / 14041 | 9334 / 9445 / 9116 | -1.112 / +0.839 / +7.182 / +3.078 / +6.007 | 4-0-8 | 2-0-10 | 3-0-9 | 0 / 0 | 0 / 0 |
+| qsynth | kolkata | 12 | 21586 / 21372 / 21312 / 19488 / 19366 / 19030 | 11626 / 11427 / 11056 | -0.646 / -0.645 / +3.754 / +1.801 / +3.186 | 5-0-7 | 5-0-7 | 4-1-7 | 0 / 0 | 0 / 0 |
+| qasmbench | garnet | 12 | 77 / 77 / 77 / 75 / 75 / 67 | 60 / 60 / 61 | +0.000 / +0.000 / +0.000 / +0.000 / +0.002 | 4-1-7 | 4-1-7 | 0-12-0 | 0 / 0 | 0 / 0 |
+| qasmbench | aphrodite | 12 | 77 / 77 / 77 / 77 / 77 / 67 | 65 / 65 / 61 | +0.000 / +0.000 / +0.000 / +0.000 / +0.003 | 1-0-11 | 1-0-11 | 0-12-0 | 0 / 0 | 0 / 0 |
+| qasmbench | kolkata | 12 | 86 / 86 / 86 / 80 / 80 / 76 | 71 / 71 / 67 | +0.000 / +0.000 / +0.000 / +0.000 / +0.003 | 5-1-6 | 5-1-6 | 0-12-0 | 0 / 0 | 0 / 0 |
+| catcrypt | garnet | 5 | 162 / 153 / 153 / 147 / 147 / 143 | 133 / 133 / 137 | +0.000 / +0.000 / +0.000 / +0.000 / -0.004 | 5-0-0 | 5-0-0 | 0-5-0 | 0 / 0 | 0 / 0 |
+| catcrypt | aphrodite | 5 | 162 / 153 / 153 / 147 / 147 / 143 | 133 / 133 / 134 | +0.000 / +0.000 / +0.000 / +0.000 / +0.044 | 3-0-2 | 3-0-2 | 0-5-0 | 0 / 0 | 0 / 0 |
+| catcrypt | kolkata | 5 | 174 / 165 / 165 / 159 / 159 / 157 | 141 / 141 / 142 | +0.000 / +0.000 / +0.014 / +0.014 / +0.062 | 2-0-3 | 2-0-3 | 0-4-1 | 0 / 0 | 0 / 0 |
+| qrisp | garnet | 7 | 4864 / 3642 / 3612 / 4070 / 3238 / 3687 | 2859 / 2316 / 2593 | +0.045 / +0.045 / +0.255 / +0.256 / +0.239 | 3-0-4 | 4-0-3 | 3-2-2 | 0 / 0 | 0 / 0 |
+| qrisp | aphrodite | 7 | 4852 / 3618 / 3561 / 4019 / 3195 / 3771 | 2804 / 2271 / 2536 | +0.180 / +0.180 / +0.644 / +0.651 / +1.218 | 1-0-6 | 1-0-6 | 3-3-1 | 0 / 0 | 0 / 0 |
+| qrisp | kolkata | 7 | 6169 / 4746 / 4689 / 4900 / 4082 / 4427 | 3220 / 2786 / 2701 | +0.031 / +0.040 / +0.213 / +0.224 / +0.028 | 4-0-3 | 4-1-2 | 2-0-5 | 0 / 0 | 0 / 0 |
 
 Compile times summed over the suite (unrouted: one compile per circuit; routed: one per circuit
 and device).
 
-| suite | unrouted: ours wall / CPU s | qk wall / CPU s | routed, 3 devices: rto wall / CPU s | qkr (20 seeds) wall / CPU s |
-|---|---|---|---|---|
-| qsynth | 2.2 / 2.0 | 0.2 / 0.3 | 19.8 / 19.8 | 52.5 / 89.7 |
-| qasmbench | 0.3 / 0.2 | 0.1 / 0.1 | 0.4 / 0.4 | 9.7 / 10.4 |
-| catcrypt | 0.5 / 0.3 | 0.2 / 0.2 | 0.4 / 0.4 | 5.1 / 5.7 |
-| qrisp | 3.6 / 3.4 | 0.3 / 0.5 | 16.4 / 16.3 | 34.3 / 55.0 |
+| suite | unrouted: ours wall / CPU s | qk wall / CPU s | routed, 3 devices: rto wall / CPU s | oro (second compile) wall / CPU s | qkr (20 seeds) wall / CPU s |
+|---|---|---|---|---|---|
+| qsynth | 2.5 / 2.3 | 0.3 / 0.4 | 23.0 / 23.0 | 18.9 / 18.9 | 61.3 / 104.4 |
+| qasmbench | 0.2 / 0.1 | 0.1 / 0.1 | 0.3 / 0.2 | 0.2 / 0.2 | 4.2 / 4.7 |
+| catcrypt | 0.3 / 0.1 | 0.0 / 0.0 | 0.3 / 0.3 | 0.2 / 0.2 | 2.2 / 2.7 |
+| qrisp | 1.9 / 1.8 | 0.2 / 0.2 | 10.3 / 10.3 | 5.3 / 5.3 | 23.3 / 38.8 |
 
 | suite | n | non-Clifford rot. in / ours / qk | T gates in / ours / qk | est. T-count in / ours / qk | est. T-depth in / ours / qk |
 |---|---|---|---|---|---|
@@ -216,7 +226,8 @@ gates and 6 arbitrary rotations, 624) and `qaoa_maxcut` (42 to 44 arbitrary rota
 raises both further (824 and 50 rotations).
 
 Compiling after routing, catq-compile keeps every two-qubit gate on a coupler: the violation count
-is 0 on all 108 routed rows, and every compile was accepted with the identity permutation. On
+is 0 on all 108 routed rows for both `rto` and `oro`, and every compile was accepted with the
+identity permutation. On
 Q-Synth `rto` has 8.0% (Garnet, Aphrodite) and 9.7% (Kolkata) fewer routed CX than the routed
 input, against 10.4 to 11.8% for `qkr`; it closes 71% (Garnet), 73% (Aphrodite) and 80% (Kolkata)
 of the CX gap between `ours` routed and `qkr`, and remains 2.4 to 2.9% above `qkr`. Its median ESP
@@ -224,7 +235,24 @@ gain over the routed input is above `qkr`'s on all three devices, while per circ
 higher ESP on 7 or 8 of the 12. On QASMBench and catcrypt `rto` has at most the routed CX of `ours`
 and 2 to 10 more than `qkr` per suite and device. On the Qrisp programs `rto` is behind `ours` routed on the IQM maps
 (4070 against 3642 on Garnet): on `shor15` the optimization before routing removes more CX (3859 to
-2699 on Garnet) than the one after it (3859 routed to 3195). catq-compile runs single-threaded
-(CPU equal to wall time); Qiskit's CPU is 1.6 to 1.7 times its wall time at two Rayon threads.
-One `rto` compile of a routed Q-Synth circuit takes 0.14 to 1.36 s, about 7.5 times the 0.073 s
-mean of one Qiskit level-3 transpile with the map (`qkr`, 20 per row).
+2699 on Garnet) than the one after it (3859 routed to 3195).
+
+Compiling both before and after routing (`oro`) gives at most the routed CX of `ours` and `rto` on
+every suite and device, and fewer than both on Q-Synth and Qrisp. On Q-Synth it has 0.6 to 0.7% fewer than `rto`,
+closes 78% (Garnet), 79% (Aphrodite) and 86% (Kolkata) of the gap between `ours` routed and `qkr`,
+and remains 1.8 to 2.2% above `qkr`. On the Qrisp programs it has 11 to 14% fewer routed CX than
+`ours` routed and 8 to 15% fewer than `qkr` (3238 against 3687 on Garnet); `shor15` accounts for
+the difference (2389 against 2858 for `qkr` on Garnet), and on the other six programs `qkr` has 4
+to 26 fewer per device. On QASMBench and catcrypt `oro` has the routed CX of `rto`. Its median ESP
+on Q-Synth is below that of `rto` (+0.45 against +2.83 decades over the routed input on Garnet)
+although its CX count is lower: the second compile gains about as much over its own routed input
+(median +1.96, +5.17 and +3.23 decades on Garnet, Aphrodite and Kolkata) as `rto` over the routed
+input (+2.11, +5.39, +3.14), and the difference comes from the routing of `ours`, whose Sabre
+layout, chosen for fewest CX, places the circuit on qubits with lower calibrated fidelity (median
+ESP of `ours` routed against `in` routed: -0.80, -2.16, -0.68 decades). On the Qrisp programs the
+median ESP of `oro` equals that of `rto` to within 0.011 decades.
+
+catq-compile runs single-threaded (CPU equal to wall time); Qiskit's CPU is 1.5 to 1.8 times its
+wall time at two Rayon threads. One `rto` compile of a routed Q-Synth circuit takes 0.17 to 1.48 s,
+about 7.5 times the 0.085 s mean of one Qiskit level-3 transpile with the map (`qkr`, 20 per row);
+the second compile of `oro` takes 0.10 to 1.26 s.
