@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 
 from qiskit import QuantumCircuit
+from qiskit.circuit import ControlFlowOp
 
 PI = math.pi
 
@@ -99,14 +100,24 @@ STATEMENTS: dict[str, tuple[int, int]] = {
 
 # skipped: the identity on the unitary
 IDENTITY = {"id"}
-# segment boundaries
+# segment boundaries that act as the identity
 ANNOTATION = {"barrier"}
+# segment boundaries that are not unitary
+NONUNITARY = {"measure", "reset"}
 
 
 @dataclass
 class Segment:
-    """A maximal run of gates between annotation instructions."""
+    """A maximal run of gates between boundary instructions."""
     ops: list = field(default_factory=list)
+
+
+def is_classical(ins) -> bool:
+    """A measurement, a reset, or an instruction with classical operands or control
+    (`if_test` and the other control-flow operations, a gate with a condition)."""
+    op = ins.operation
+    return (op.name in NONUNITARY or isinstance(op, ControlFlowOp) or bool(ins.clbits)
+            or getattr(op, "condition", None) is not None)
 
 
 def _angles(op) -> list[float]:
@@ -119,20 +130,24 @@ def _angles(op) -> list[float]:
     return out
 
 
-def split_segments(circuit: QuantumCircuit) -> tuple[list[Segment], list]:
-    """The gate segments of `circuit` and the annotation instructions between them
-    (`len(segments) == len(annotations) + 1`). Raises `Unsupported` on any other
-    instruction (measurement, reset, classical control, an unknown gate)."""
-    segs, notes = [Segment()], []
+def split_segments(circuit: QuantumCircuit) -> tuple[list[Segment], list, bool]:
+    """The gate segments of `circuit`, the boundary instructions between them
+    (`len(segments) == len(boundaries) + 1`), and whether the circuit is unitary.
+
+    A boundary is a barrier or a classical instruction (`is_classical`: measurement,
+    reset, classically controlled operation); each cuts every qubit, and the circuit is
+    unitary when all its boundaries are barriers. Raises `Unsupported` on an unknown
+    gate or an unbound parameter."""
+    segs, notes, unitary = [Segment()], [], True
     for ins in circuit.data:
         op = ins.operation
         name = op.name
-        if name in ANNOTATION:
+        classical = is_classical(ins)
+        if name in ANNOTATION or classical:
+            unitary = unitary and not classical
             notes.append(ins)
             segs.append(Segment())
             continue
-        if getattr(op, "condition", None) is not None or ins.clbits:
-            raise Unsupported(f"{name}: classical operands or control")
         if name in IDENTITY:
             continue
         if name not in STATEMENTS:
@@ -142,7 +157,7 @@ def split_segments(circuit: QuantumCircuit) -> tuple[list[Segment], list]:
             raise Unsupported(f"{name}: {len(op.params)} parameters on {len(ins.qubits)} qubits")
         qs = [circuit.find_bit(q).index for q in ins.qubits]
         segs[-1].ops.append((name, _angles(op), qs))
-    return segs, notes
+    return segs, notes, unitary
 
 
 def lower(n: int, seg: Segment) -> str:

@@ -20,12 +20,15 @@ for _v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
 import numpy as np  # noqa: E402
 import pytest
 from qiskit import QuantumCircuit, qasm2, transpile
-from qiskit.circuit.library import CU1Gate, U1Gate, U2Gate, U3Gate
+from qiskit.circuit import Parameter
+from qiskit.circuit.library import CU1Gate, RYGate, U1Gate, U2Gate, U3Gate
 from qiskit.quantum_info import Operator, Statevector, random_statevector
 
 BRIDGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BRIDGE)
+sys.path.insert(0, os.path.join(BRIDGE, "tests"))
 from catq import VerifiedCompiler, decode_angle, encode_angle  # noqa: E402
+from branching import same_distribution, segments_equiv  # noqa: E402
 
 QSYNTH = sorted(glob.glob(os.path.join(os.path.dirname(BRIDGE), "bench", "qasm", "qsynth",
                                        "*.qasm")))
@@ -167,9 +170,75 @@ def test_level2r_qsynth(src, checked):
 
 def test_unsupported_unchanged():
     qc = QuantumCircuit(2, 2)
-    qc.h(0); qc.measure(0, 0)
+    qc.h(0); qc.rx(Parameter("t"), 1); qc.measure(0, 0)
     vc = VerifiedCompiler()
     assert vc.compile(qc) is qc and not vc.last_report.optimized
+
+
+def mid_circuit() -> QuantumCircuit:
+    """Three qubits: a mid-circuit measurement, an `if_test` with an else branch, a reset
+    and final measurements, with gates the compiler removes in each segment."""
+    qc = QuantumCircuit(3, 3, global_phase=0.4)
+    qc.h(0); qc.cx(0, 1); qc.rz(0.3, 1); qc.cx(0, 1); qc.t(2); qc.cx(1, 2); qc.cx(1, 2)
+    qc.ry(0.9, 0)
+    qc.measure(0, 0)
+    qc.ry(0.7, 1); qc.h(0); qc.cx(1, 2); qc.s(2); qc.sdg(2); qc.h(1)
+    with qc.if_test((qc.clbits[0], 1)) as orelse:
+        qc.x(2); qc.rz(0.2, 1)
+    with orelse:
+        qc.h(2)
+    qc.cx(1, 2); qc.cx(1, 2); qc.ry(1.1, 1); qc.rx(0.4, 2); qc.cx(2, 0); qc.cx(0, 1)
+    qc.reset(0)
+    qc.cx(2, 0); qc.ry(0.8, 0); qc.rz(0.5, 0); qc.rz(-0.1, 0)
+    qc.measure([0, 1, 2], [0, 1, 2])
+    return qc
+
+
+@pytest.mark.parametrize("level", ["2", "2r"])
+def test_mid_circuit_measurement(level):
+    """Measurement, reset and `if_test` stay in place on their qubits and clbits; each
+    unitary segment equals its input up to global phase (`Operator`), the measured
+    distribution is the input's (exact branching simulation), and the input's global phase
+    is kept."""
+    qc = mid_circuit()
+    vc = VerifiedCompiler(level=level, check=True)
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and not rep.unitary, rep.reason
+    assert rep.phase == 0.0 and float(out.global_phase) == pytest.approx(0.4)
+    assert rep.eps is not None and len(rep.segment_phases) == 4
+    assert segments_equiv(qc, out) == 7
+    assert same_distribution(qc, out)
+    assert rep.cx_out < rep.cx_in
+    gates = {ins.operation.name for ins in out.data}
+    assert gates <= OUT_GATES | {"measure", "reset", "if_else"}, gates
+
+
+def test_branching_detects_change():
+    """The distribution check separates circuits: an extra rotation on each qubit, before
+    the mid-circuit measurement or after it, changes the distribution."""
+    qc = mid_circuit()
+    k = next(i for i, ins in enumerate(qc.data) if ins.operation.name == "measure")
+    for at in (k, k + 1):
+        for q in qc.qubits:
+            bad = qc.copy()
+            bad.data.insert(at, qc.data[0].replace(operation=RYGate(0.5), qubits=(q,)))
+            assert not same_distribution(qc, bad), (at, q)
+
+
+def test_final_measurements_only():
+    """A unitary circuit followed by measurements is optimized; its phase is dropped."""
+    qc = all_gates()
+    qc.measure_all()
+    vc = VerifiedCompiler()
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and not rep.unitary
+    assert float(out.global_phase) == pytest.approx(0.3)
+    segments_equiv(qc, out)
+    assert same_distribution(qc, out)
 
 
 @pytest.mark.parametrize("path", QSYNTH, ids=[os.path.basename(p) for p in QSYNTH])

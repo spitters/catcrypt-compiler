@@ -1,16 +1,19 @@
 """`VerifiedCompiler`: the Lean circuit optimizer behind Qrunch's `Compiler` protocol,
 over Qiskit circuits.
 
-`compile(circuit)` runs the inner compiler (if any), splits the result at barriers, prints
-each segment as OpenQASM 2 (`qasm_io.lower`: statement names, exact angles, qubit indices),
+`compile(circuit)` runs the inner compiler (if any), splits the result at barriers and at
+classical instructions (measurement, reset, classically controlled operations), which stay in
+place on their qubits and clbits, prints each segment as OpenQASM 2 (`qasm_io.lower`: statement names, exact angles, qubit indices),
 and sends it to one `catq-compile --serve` process kept for the life of the compiler. Lean
 reads the statements with their qelib1 meaning, optimizes at `level` (`1` and `2`:
 `fullOptimize`; `2r`: the resynthesis level `ResynthLevel.resynthAt`, Level 2 then `kakEmit`
 and `zyzEmit`, behind the verified checker with `check`), and prints the result in qelib1 over {rx, ry, rz, cx, p}
 (`QrunchBasis.printQelib`); Qiskit's `qasm2.loads` reads it back. The answer line carries the
-phase relating the two programs' qelib1 matrices, which the result's `global_phase` adds, and
-the bound `eps` of the level. A circuit with an instruction the lowering does not translate,
-or whose run fails, is returned unchanged, and the reason is in `last_report`.
+phase relating the two programs' qelib1 matrices and the bound `eps` of the level. For a
+circuit without classical instructions the result's `global_phase` adds the segments' phases;
+otherwise the phases are unobservable and are dropped. A circuit with a gate the lowering does
+not translate or an unbound parameter, or whose run fails, is returned unchanged, and the
+reason is in `last_report`.
 """
 from __future__ import annotations
 
@@ -44,9 +47,18 @@ class RunError(Exception):
 
 @dataclass
 class CompileReport:
+    """`phase`: the radians added to the output's `global_phase` (the sum of
+    `segment_phases` for a unitary circuit, else 0); `eps`: the sum of the segments'
+    bounds, `None` when unchecked. For a unitary circuit, `M_in = e^{i phase} M_out` up to
+    `eps` in the operator norm; for one with classical boundaries the same holds for each
+    segment with its own phase."""
     optimized: bool
     reason: str = ""
     segments: int = 0
+    unitary: bool = True
+    phase: float = 0.0
+    eps: Optional[float] = 0.0
+    segment_phases: list[float] = field(default_factory=list)
     cx_in: int = 0
     cx_out: int = 0
     seconds: float = 0.0
@@ -132,15 +144,17 @@ class VerifiedCompiler:
         rep = CompileReport(optimized=False, cx_in=cx_count(circuit))
         self.last_report = rep
         try:
-            segs, notes = split_segments(circuit)
+            segs, notes, unitary = split_segments(circuit)
         except Unsupported as e:
             rep.reason = f"unsupported instruction: {e}"
             rep.cx_out = rep.cx_in
             return circuit
         rep.segments = len(segs)
+        rep.unitary = unitary
         n = circuit.num_qubits
         out = circuit.copy_empty_like()
-        phase = float(circuit.global_phase)
+        phase = 0.0
+        eps: Optional[float] = 0.0
         try:
             with tempfile.TemporaryDirectory(prefix="catq-") as wd:
                 for i, seg in enumerate(segs):
@@ -152,13 +166,21 @@ class VerifiedCompiler:
                     rep.rows.append(row)
                     out.compose(lean_out, qubits=list(range(n)), inplace=True)
                     # M_in = e^{i phase} M_out for the qelib1 matrices (up to eps).
-                    phase += float(Fraction(row.split()[PHASE_FIELD]))
+                    fields = row.split()
+                    rep.segment_phases.append(float(Fraction(fields[PHASE_FIELD])))
+                    phase += rep.segment_phases[-1]
+                    eps = None if eps is None or fields[-1] == "unchecked" \
+                        else eps + float(fields[-1])
         except (RunError, qasm2.QASM2ParseError) as e:
             rep.reason = f"{type(e).__name__}: {e}"
             rep.cx_out = rep.cx_in
             rep.seconds = time.perf_counter() - t0
             return circuit
-        out.global_phase = phase
+        # A segment's phase multiplies the whole state; where a classical boundary follows,
+        # it is unobservable and is dropped, and only a unitary circuit carries their sum.
+        rep.phase = phase if unitary else 0.0
+        rep.eps = eps
+        out.global_phase = float(circuit.global_phase) + rep.phase
         rep.optimized = True
         rep.cx_out = cx_count(out)
         rep.seconds = time.perf_counter() - t0

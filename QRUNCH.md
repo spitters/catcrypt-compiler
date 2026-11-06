@@ -79,8 +79,9 @@ circuit, measured by [`bench/qrunch/compare.py`](bench/qrunch/compare.py) and re
 
 ## What is trusted
 
-Qiskit's reading and writing of OpenQASM 2 in the bridge, the segmentation at barriers and the
-printing in [`bridge/catq/qasm_io.py`](bridge/catq/qasm_io.py), the Lean compiler and runtime
+Qiskit's reading and writing of OpenQASM 2 in the bridge, the segmentation at barriers and at
+measurements, resets and classically controlled operations, and the printing in
+[`bridge/catq/qasm_io.py`](bridge/catq/qasm_io.py), the Lean compiler and runtime
 that run `catq-compile`, and the executable
 [`compileFile`](CatCrypt/Quantum/Benchmark/QrunchCompile.lean), which composes the stages and
 adds their phases in floating point. Without `--check` the fits are not checked and the bound is
@@ -113,6 +114,9 @@ lake exe catq-compile bench/qasm/qsynth/simple_8q_50o_0.qasm out.qasm 2r --check
 cd bridge && uv run python -I ../bench/qrunch/compare.py
 ```
 
-[`bridge/README.md`](bridge/README.md) describes the adapter to Qrunch's `Compiler` protocol.
+[`bridge/README.md`](bridge/README.md) describes the adapter to Qrunch's `Compiler` protocol
+and the adapter for Qrisp programs, whose trusted base adds Qrisp's decomposition and
+conversion to Qiskit; [`bench/qrunch/qrisp/`](bench/qrunch/qrisp/) measures Qrisp's QPE, Shor,
+QAOA, VQE, Grover, QFT and Dicke-state circuits.
 The Q-Synth and QASMBench circuits are in [`bench/qasm/`](bench/qasm/);
 [`bench/qrunch/fetch-nam.sh`](bench/qrunch/fetch-nam.sh) downloads the Nam circuits.
