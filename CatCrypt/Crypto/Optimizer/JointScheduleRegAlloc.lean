@@ -11,6 +11,8 @@ public meta import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 public import CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 public meta import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
 public import CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFootprint
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFootprint
 
 /-!
 # Joint schedule + register-allocation search (SLOTHY phase-ordering fix)
@@ -38,11 +40,16 @@ renamed instructions — so the aliasing is visible and the hazard is caught.
 1. `JointMove` — the combined move type.
 2. `applyJoint` — apply rename then permute.
 3. `jointLegal` — legality predicate accounting for BOTH schedule dependencies
-   (on the renamed instructions) AND rename injectivity (no new aliasing).
+   (the footprint independence `JInstrFootprint.indepF` of every pair of renamed input
+   instructions whose order the permutation inverts) AND rename injectivity.
 4. `#eval` regressions: the `distinctNamesBlock` example showing that
    `schedOnlyLegal` is blind to colliding renames but `jointLegal` is not.
-5. `searchJoint` — a heuristic driver over `JointMove`s, parameterised over
-   an external cost function so it composes with `X86CostModel` later.
+5. `searchJointSegs`, `searchJoint` — the search over a block of segments: a move is the
+   transposition of two adjacent segments with independent footprints
+   (`JInstrFootprint.checkSwapSeg`) or the renaming of one name outside the pinned names
+   to a register of `gpPool` that the block does not use, ranked by an external cost.
+   A segment is the machine image of one instruction of a printed body, or one
+   instruction (`searchJoint`).
 
 > **`@bench-only`.** The `distinctNamesBlock` `List (JInstr 64)` is a
 > search-regression fixture; the module emits no deployed `.s` artifact.
@@ -59,6 +66,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
 open CatCrypt.Crypto.SecureCompilation.X86Backend.AsmPrinter
 open CatCrypt.Crypto.Optimizer.RandomizedRegAlloc
 open CatCrypt.Crypto.Optimizer.SpillingRegAlloc
+open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFootprint (indepF runBlock_swapSeg)
 
 /-! ## 1. The joint move type -/
 
@@ -219,18 +227,27 @@ def permInverts (perm : List Nat) (i j : Nat) : Bool :=
 /-- **Joint legality** of a `JointMove` on a block.
 
   (a) Rename is injective on live names.
-  (b) For every `(i, j)` with `i < j` where the permutation places `i` after
-      `j`, the renamed instructions have no WAW/WAR/RAW or flag-chain hazard.
--/
+  (b) For every pair of output positions `i < j` whose instructions the permutation takes
+      from input positions `perm[i] > perm[j]`, the renamed input instructions at
+      `perm[j]` and `perm[i]` have independent footprints (`JInstrFootprint.indepF`).
+
+  An earlier version compared the instructions at the input positions `i` and `j`
+  themselves instead of the positions `perm[i]` and `perm[j]` the permutation moves, and
+  used the register-only hazard `hasHazard`, which reads no memory footprint. -/
 def jointLegal (block : List (JInstr 64)) (mv : JointMove) : Bool :=
   renameInjective mv.rename block &&
   (let renamed := renameBlock mv.rename block
    let n := renamed.length
    (List.range n).all fun i =>
      (List.range n).all fun j =>
-       if i < j && permInverts mv.perm i j then
-         match renamed[i]?, renamed[j]? with
-         | some a, some b => !hasHazard a b && !hasFlagHazard a b
+       if i < j then
+         match mv.perm[i]?, mv.perm[j]? with
+         | some pi, some pj =>
+             if pj < pi then
+               match renamed[pj]?, renamed[pi]? with
+               | some a, some b => indepF a b
+               | _, _ => true
+             else true
          | _, _ => true
        else true)
 
@@ -240,7 +257,7 @@ def jointLegal (block : List (JInstr 64)) (mv : JointMove) : Bool :=
     to what rename was applied.  This is the predicate the sibling search uses. -/
 def schedOnlyLegal (block : List (JInstr 64)) (i : Nat) : Bool :=
   match block[i]?, block[i+1]? with
-  | some a, some b => !hasHazard a b && !hasFlagHazard a b
+  | some a, some b => indepF a b
   | _, _ => false
 
 /-! ## 5. Regression: colliding vs injective rename
@@ -365,58 +382,162 @@ def randomInjectiveRename (pinned : GpAlloc) (block : List (JInstr 64))
   let ren : String → String := fun s => (assign.lookup s).getD s
   (ren, lcgNext seed)
 
-/-- Try one joint move: generate a random permutation and a GP-pool injective
-    rename, accept if **both** legality gates pass and the cost decreases. The
-    two gates are independent and both required:
-    - `jointLegal` is the schedule + rename-injectivity dependency check (§3);
-    - `RandomizedRegAlloc.accept [] (renameToAlloc ren block) block` is the
-      GP-overflow / physical-distinctness guard — it rejects any rename that
-      would spill past `AsmPrinter.gpPool` or alias two virtuals onto one
-      physical. Only moves passing both are candidates;
-      the chosen winner is still TV-gated downstream (the joint search only
-      *widens* the candidate space, never bypasses translation validation). -/
-def searchJointStep
-    (cost : List (JInstr 64) → Nat)
-    (block : List (JInstr 64)) (bestCost : Nat) (seed : UInt32) :
-    List (JInstr 64) × Nat × UInt32 :=
-  let n := block.length
-  let (perm, seed1) := randomPerm n seed
-  let (ren, seed2)  := randomInjectiveRename [] block seed1
-  let mv : JointMove := { perm := perm, rename := ren }
-  if jointLegal block mv && accept [] (renameToAlloc ren block) block then
-    let cand := applyJoint mv block
-    let c    := cost cand
-    if c < bestCost then (cand, c, seed2)
-    else (block, bestCost, seed2)
-  else
-    (block, bestCost, seed2)
+/-! ### The search over segments
 
-/-- Run `iters` joint-search steps from `block`, optimising `cost`.
-    The cost function is a **parameter** so this driver composes with
-    `X86CostModel.scheduleCostV2` without importing it.
-    Returns the best block found and its cost. -/
-def searchJoint
-    (iters : Nat)
-    (cost : List (JInstr 64) → Nat)
-    (block : List (JInstr 64))
-    (seed : UInt32) :
-    List (JInstr 64) × Nat :=
-  let rec go (n : Nat) (b : List (JInstr 64)) (bestC : Nat) (s : UInt32) :
-      List (JInstr 64) × Nat :=
-    match n with
-    | 0     => (b, bestC)
-    | n + 1 =>
-      let (b', c', s') := searchJointStep cost b bestC s
-      go n b' c' s'
-  go iters block (cost block) seed
+The moves are local. A random permutation of a block of a hundred instructions inverts a
+dependent pair with probability close to one, so a step that draws a whole permutation
+almost never proposes a legal move; the step below draws a position and transposes two
+adjacent segments, or renames one name. -/
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFootprint
+  (checkSwapSeg swapSeg indepSeg)
+
+/-- A move of the segment search. -/
+inductive SegMove where
+  /-- Transpose the segments at `k` and `k + 1`. -/
+  | swap (k : Nat)
+  /-- Exchange the names `r` and `f` throughout the block. -/
+  | rename (r f : String)
+  deriving DecidableEq, Repr
+
+/-- The transposition of two names, an injective renaming. -/
+def swapName (r f : String) (x : String) : String :=
+  if x = r then f else if x = f then r else x
+
+theorem swapName_injective (r f : String) : Function.Injective (swapName r f) := by
+  intro x y h
+  simp only [swapName] at h
+  split_ifs at h <;> grind
+
+/-- The names of a block of segments. -/
+def segNames (segs : List (List (JInstr 64))) : List String :=
+  blockLiveNames segs.flatten
+
+/-- The renamings available on a block: a name outside `pinned` paired with a register of
+    `gpPool` that the block does not use. -/
+def renameCands (pinned : List String) (segs : List (List (JInstr 64))) :
+    List String × List String :=
+  let names := segNames segs
+  (names.filter fun n => !pinned.contains n, gpPool.filter fun r => !names.contains r)
+
+/-- Apply a move, or `none` when it is not legal. -/
+def applySegMove (pinned : List String) (segs : List (List (JInstr 64))) :
+    SegMove → Option (List (List (JInstr 64)))
+  | .swap k => if checkSwapSeg k segs then some (swapSeg k segs) else none
+  | .rename r f =>
+      let (rs, fs) := renameCands pinned segs
+      if rs.contains r && fs.contains f then some (segs.map (renameBlock (swapName r f)))
+      else none
+
+/-- Draw a move: with probability one in eight a renaming, otherwise a transposition at a
+    random position. Returns the move and the next seed. -/
+def drawSegMove (pinned : List String) (segs : List (List (JInstr 64))) (seed : UInt32) :
+    Option SegMove × UInt32 :=
+  let s1 := lcgNext seed
+  let s2 := lcgNext s1
+  if s1.toNat % 8 = 0 then
+    let (rs, fs) := renameCands pinned segs
+    match rs[s2.toNat % (rs.length + 1)]?, fs[(lcgNext s2).toNat % (fs.length + 1)]? with
+    | some r, some f => (some (.rename r f), lcgNext s2)
+    | _, _ => (none, lcgNext s2)
+  else (some (.swap (s2.toNat % max 1 (segs.length - 1))), s2)
+
+/-- The state of the segment search: the current block, its cost, the moves applied so
+    far (newest first), the best block seen with its cost, and the seed. -/
+structure SegSearch where
+  cur : List (List (JInstr 64))
+  cost : Nat
+  log : List SegMove
+  best : List (List (JInstr 64))
+  bestCost : Nat
+  seed : UInt32
+
+/-- One step of the segment search: draw a move; apply it when it is legal and the cost
+    of the result does not exceed the current cost. -/
+def segSearchStep (cost : List (JInstr 64) → Nat) (pinned : List String) (st : SegSearch) :
+    SegSearch :=
+  let (mv?, seed') := drawSegMove pinned st.cur st.seed
+  match mv? with
+  | none => { st with seed := seed' }
+  | some mv =>
+      match applySegMove pinned st.cur mv with
+      | none => { st with seed := seed' }
+      | some cand =>
+          let c := cost cand.flatten
+          if c ≤ st.cost then
+            let better := c < st.bestCost
+            { cur := cand, cost := c, log := mv :: st.log,
+              best := if better then cand else st.best,
+              bestCost := if better then c else st.bestCost, seed := seed' }
+          else { st with seed := seed' }
+
+/-- The initial state of the segment search. -/
+def segSearchInit (cost : List (JInstr 64) → Nat) (segs : List (List (JInstr 64)))
+    (seed : UInt32) : SegSearch :=
+  let c := cost segs.flatten
+  ⟨segs, c, [], segs, c, seed⟩
+
+/-- Run `iters` steps of the segment search. -/
+def segSearchRun (cost : List (JInstr 64) → Nat) (pinned : List String) :
+    Nat → SegSearch → SegSearch
+  | 0, st => st
+  | n + 1, st => segSearchRun cost pinned n (segSearchStep cost pinned st)
+
+/-- **The joint search over segments**: `iters` steps from `segs` with seed `seed`; the best
+    block seen, its cost, and the moves applied (oldest first). The cost is a parameter, so
+    the driver composes with `Zen4ListSchedule.zen4Cost` without importing it. -/
+def searchJointSegs (iters : Nat) (cost : List (JInstr 64) → Nat) (pinned : List String)
+    (segs : List (List (JInstr 64))) (seed : UInt32) :
+    List (List (JInstr 64)) × Nat × List SegMove :=
+  let st := segSearchRun cost pinned iters (segSearchInit cost segs seed)
+  (st.best, st.bestCost, st.log.reverse)
+
+/-- **The joint search** on a block of single instructions, with no pinned name. Returns the
+    best block found and its cost. -/
+def searchJoint (iters : Nat) (cost : List (JInstr 64) → Nat) (block : List (JInstr 64))
+    (seed : UInt32) : List (JInstr 64) × Nat :=
+  let (b, c, _) := searchJointSegs iters cost [] (block.map fun i => [i]) seed
+  (b.flatten, c)
+
+/-- A transposition the search applies preserves `runBlock` of the block; a renaming is
+    the injective `swapName r f`, under which `RandomizedRegAlloc.regalloc_runBlock_sound`
+    relates the runs. -/
+theorem applySegMove_swap_runBlock (s : JState 64) (pinned : List String)
+    (segs segs' : List (List (JInstr 64))) (k : Nat)
+    (h : applySegMove pinned segs (.swap k) = some segs') :
+    runBlock s segs'.flatten = runBlock s segs.flatten := by
+  simp only [applySegMove] at h
+  split at h
+  · rename_i hk
+    obtain rfl := Option.some.inj h
+    exact runBlock_swapSeg s k segs hk
+  · cases h
+
+/-- On a log of transpositions only, the block the moves reach runs to the same state as the
+    input, on every state. -/
+theorem applySegMoves_swaps_runBlock (s : JState 64) (pinned : List String) :
+    ∀ (log : List SegMove) (segs segs' : List (List (JInstr 64))),
+      (∀ mv ∈ log, ∃ k, mv = .swap k) →
+      log.foldlM (applySegMove pinned) segs = some segs' →
+      runBlock s segs'.flatten = runBlock s segs.flatten
+  | [], segs, segs', _, h => by
+      simp only [List.foldlM_nil, Option.pure_def, Option.some.injEq] at h
+      rw [h]
+  | mv :: log, segs, segs', hs, h => by
+      obtain ⟨k, rfl⟩ := hs mv List.mem_cons_self
+      simp only [List.foldlM_cons, Option.bind_eq_bind, Option.bind_eq_some_iff] at h
+      obtain ⟨mid, hmid, hrest⟩ := h
+      rw [applySegMoves_swaps_runBlock s pinned log mid segs'
+        (fun m hm => hs m (List.mem_cons_of_mem _ hm)) hrest]
+      exact applySegMove_swap_runBlock s pinned segs mid k hmid
 
 /-! ## 7. Orchestrator wiring notes
 
 To plug `searchJoint` into the live pipeline:
 
-1. **Cost function**: pass `RandomizedScheduleSearch.scheduleCost` or
-   `X86CostModel.scheduleCostV2` as the `cost` argument.  `searchJoint` imports
-   neither — the dependency is injected at call sites.
+1. **Cost function**: pass `Zen4ListSchedule.zen4Cost` as the `cost` argument; it
+   depends on the order of the block. `searchJoint` does not import it — the
+   dependency is injected at call sites.
 
 2. **Integration point**: after `RandomizedScheduleSearch.searchBest` produces a
    candidate, if translation validation (TV) *rejects* it (as it does for the BLS
@@ -424,11 +545,10 @@ To plug `searchJoint` into the live pipeline:
    instead, with a cost that accounts for both latency and register pressure.  The
    joint search explores moves the schedule-only search cannot reach.
 
-3. **Physical register pool**: `randomInjectiveRename` draws from
-   `AsmPrinter.gpPool` (seeded by `RandomizedRegAlloc.shuffle`), and
-   `searchJointStep` gates every candidate with `RandomizedRegAlloc.accept` so a
-   rename that overflows the GP pool or aliases two virtuals onto one physical is
-   rejected before it can be a winner.
+3. **Physical register pool**: a renaming move exchanges a name outside the pinned
+   names with a register of `AsmPrinter.gpPool` that the block does not use, an
+   injective renaming. On a block that uses every register of the pool there is no
+   renaming move.
 
 4. **TV of the winner**: feed the winner of `searchJoint` through
    `runBlock`-equality or `lowerBlock_denote_closed` (the same TV gate the sibling

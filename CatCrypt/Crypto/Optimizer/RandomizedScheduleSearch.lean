@@ -13,6 +13,8 @@ public meta import CatCrypt.Crypto.Optimizer.JointScheduleRegAlloc
 public import CatCrypt.Crypto.Optimizer.JointScheduleRegAlloc
 public meta import CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
+public meta import CatCrypt.Crypto.Optimizer.Zen4ListSchedule
+public import CatCrypt.Crypto.Optimizer.Zen4ListSchedule
 
 /-!
 # Verified CryptOpt: randomized schedule search with in-Lean translation validation
@@ -30,18 +32,23 @@ This module is the **verified** form of that loop for one block — the safegcd
 ADC` single-carry-flag chain that s2n-bignum hand-schedules):
 
 1. **Randomized local search** over equivalent schedules of the block
-   (`searchBest` below). The neighborhood is *semantics-preserving moves* —
-   adjacent transpositions of instructions with disjoint footprints. The search
-   is stochastic (a seeded LCG drives random restarts + greedy descent on a
-   static cost proxy), and candidates are *unverified* during the search, exactly
-   as in CryptOpt.
+   (`searchBest` below). The moves are adjacent transpositions of two
+   instructions whose footprints are disjoint under `legalSwap`, the
+   independence `JInstrFootprint.indepF` of the read and write footprints of
+   registers, flags and memory cells. Every such move preserves `runBlock` on
+   every state (`legalSwap_comm`), so every candidate of the search, not only
+   the winner, is equivalent to the input (`searchIterate_runBlock`). The search
+   is a seeded LCG driving greedy descent that accepts moves which do not raise
+   the cost.
 
-2. **On-CPU cost evaluation** is CryptOpt's fitness function. In Lean we use a
-   static latency/port-pressure *proxy* (`scheduleCost`) to drive the in-Lean
-   search; the real rdtsc core-pinned harness lives at
-   `bench/cryptopt_safegcd/` and times the emitted candidates on the real CPU.
-   The proxy and the CPU harness agree on the qualitative ranking that matters
-   here (front-load the independent `MULX`es).
+2. **The cost** is `Zen4ListSchedule.zen4Cost`, the finishing cycle of the block
+   under a list scheduler over the Zen 4 integer ports, which depends on the
+   order of the block (`Zen4ListSchedule.zen4Cost_order_dependent`). CryptOpt
+   times candidates on the CPU; the timing of the emitted candidates is done
+   outside Lean (`bench/cryptopt_safegcd/`, `bench/cryptopt_search/`). The
+   earlier fitness `X86CostModel.scheduleCostV2` is the maximum of the critical
+   path and the port load, which a reorder that keeps the dependences does not
+   change, so under it every legal move was accepted.
 
 3. **In-Lean translation validation of the WINNER** (the contribution). The
    chosen output block passes `runBlock output s = runBlock input s` for **all**
@@ -64,8 +71,9 @@ namespace CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-open CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
-  (indepJ checkAdjTranspositions applySwaps runBlock_perm_eq)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence (applySwaps)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFootprint
+  (indepF evalInstr_comm_of_indepF checkAdjTranspositionsF runBlock_perm_eqF)
 open CatCrypt.Crypto.Optimizer.JointScheduleRegAlloc
   (searchJoint JointMove applyJoint)
 
@@ -105,7 +113,11 @@ def hoistedBlock : List (JInstr 64) :=
   , .add  "acc_lo" (.reg "l1")
   , .adc  "acc_hi" (.reg "h1") ]
 
-/-! ## 2. Static cost proxy (the in-Lean fitness function)
+/-! ## 2. The former static cost proxy
+
+`scheduleCost` was the fitness of the first version of the search; it is kept for the
+theorems of §8 and §10 that compare the safegcd blocks under it. The fitness of the search
+is `Zen4ListSchedule.zen4Cost` (§4).
 
 A cheap per-instruction latency model with a critical-path penalty for a `MULX`
 whose result is consumed by the *immediately following* dependent op (no
@@ -198,14 +210,22 @@ def scheduleCost : List (JInstr 64) → Nat
 /-! ## 3. Move neighborhood: adjacent transposition of independent instructions
 
 The only schedule moves the search may make are **adjacent transpositions of
-instructions with disjoint footprints** — these are exactly the
-semantics-preserving reorderings (the commute lemmas of §5 justify each one).
-This keeps the search inside the equivalence class, so *every* candidate is
-equivalent to the input (not only the winner); the winner's TV theorem (§6) is
-the machine-checked certificate of that for the specific output we ship. -/
+instructions with disjoint footprints**: `legalSwap`, which is
+`JInstrFootprint.indepF` on the read and write footprints `JInstrFootprint.rdLocs`
+and `JInstrFootprint.wrLocs` (registers, the five flags, memory cells and banks).
+`legalSwap_comm` proves that such a transposition preserves `evalInstr` on every
+state, so every candidate the search visits is equivalent to the input.
 
-/-- The set of registers an instruction writes, as a list (over-approximate but
-    sound for the shapes in this block). -/
+`writeSet`, `readSet` and `legalSwapRegs` are the footprints and the predicate of the
+first version of the search. Their register footprint omits the memory forms
+(`mulxMem`, `loadMem`, `storeMem` and the other memory-operand forms read and write
+nothing under them) and the register forms they do not list (`neg`, `setc`, `or_`,
+`shl`, `sar`, `imul`, the conditional moves and others), so `legalSwapRegs` admits
+transpositions that change the result; `ScheduleSearchMontMulNtt.bls_search7_breaks_runBlock`
+is the witness. They are kept for that witness. -/
+
+/-- The register footprint of writes of the first version of the search. It lists no
+    memory form and not every register form, which makes `legalSwapRegs` unsound. -/
 def writeSet : JInstr 64 → List String
   | .mulx dHi dLo _ _ => [dHi, dLo]
   | .add d _ => [d]
@@ -223,7 +243,8 @@ def writeSet : JInstr 64 → List String
   | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
   | _ => []
 
-/-- The set of registers an instruction reads. -/
+/-- The register footprint of reads of the first version of the search, with the same
+    omissions as `writeSet`. -/
 def readSet : JInstr 64 → List String
   | .mulx _ _ (.reg a) (.reg b) => [a, b]
   | .mulx _ _ (.reg a) _ => [a]
@@ -307,18 +328,30 @@ def readsFlags : JInstr 64 → Bool
 def disjointLists (xs ys : List String) : Bool :=
   xs.all (fun x => ys.all (fun y => x ≠ y))
 
-/-- A *legal* adjacent transposition of `a` then `b`: their register read/write
-    footprints are pairwise disjoint (no WAR/WAW/RAW hazard) AND not both touch
-    the flag state, and neither reads a flag the other writes. Under this
-    predicate the two `evalInstr`s commute (§5). -/
-def legalSwap (a b : JInstr 64) : Bool :=
+/-- The predicate of the first version of the search: disjoint `writeSet`/`readSet`
+    register footprints, at most one flag writer, and no flag read across a flag write.
+    It is **unsound**: `writeSet` and `readSet` give `mulxMem` and the other memory forms
+    no footprint, so a `mulxMem` is moved across an instruction that reads its result
+    (`ScheduleSearchMontMulNtt.bls_search7_breaks_runBlock`). -/
+def legalSwapRegs (a b : JInstr 64) : Bool :=
   disjointLists (writeSet a) (writeSet b) &&
   disjointLists (writeSet a) (readSet b) &&
   disjointLists (readSet a) (writeSet b) &&
-  -- at most one writes flags, and neither's flag-read crosses the other's write
   (! (writesFlags a && writesFlags b)) &&
   (! (writesFlags a && readsFlags b)) &&
   (! (readsFlags a && writesFlags b))
+
+/-- **A legal adjacent transposition** of `a` then `b`: the read and write footprints of
+    the two instructions, over registers, flags and memory, are disjoint
+    (`JInstrFootprint.indepF`). -/
+def legalSwap (a b : JInstr 64) : Bool :=
+  indepF a b
+
+/-- **A legal transposition preserves the machine state**: the two instructions commute
+    on every state. -/
+theorem legalSwap_comm (s : JState 64) (a b : JInstr 64) (h : legalSwap a b = true) :
+    evalInstr (evalInstr s a) b = evalInstr (evalInstr s b) a :=
+  evalInstr_comm_of_indepF s a b h
 
 /-! ## 4. The randomized local search
 
@@ -333,38 +366,89 @@ unverified — only `searchBest`'s output is fed to the TV theorem. -/
     index plus the next state. -/
 def lcgNext (s : UInt32) : UInt32 := s * 1664525 + 1013904223
 
-/-- Try one legal adjacent swap at position `k` of the block; return the swapped
-    block if legal, else the input unchanged. -/
-def trySwapAt (block : List (JInstr 64)) (k : Nat) : List (JInstr 64) :=
+/-- Try one adjacent swap at position `k` of the block under the legality predicate
+    `legal`; return the swapped block if legal, else the input unchanged. -/
+def trySwapAtWith (legal : JInstr 64 → JInstr 64 → Bool) (block : List (JInstr 64))
+    (k : Nat) : List (JInstr 64) :=
   match block, k with
-  | a :: b :: rest, 0 => if legalSwap a b then b :: a :: rest else a :: b :: rest
-  | x :: xs, (n+1) => x :: trySwapAt xs n
+  | a :: b :: rest, 0 => if legal a b then b :: a :: rest else a :: b :: rest
+  | x :: xs, (n+1) => x :: trySwapAtWith legal xs n
   | xs, _ => xs
 
-/-- One greedy step: propose a random adjacent swap; keep it iff it does not
-    increase the cost. Returns `(newBlock, newSeed)`. -/
-def searchStep (block : List (JInstr 64)) (seed : UInt32) :
-    List (JInstr 64) × UInt32 :=
+/-- One greedy step under `legal` and `cost`: propose a random adjacent swap; keep it iff
+    it does not increase the cost. Returns `(newBlock, newSeed)`. -/
+def searchStepWith (legal : JInstr 64 → JInstr 64 → Bool) (cost : List (JInstr 64) → Nat)
+    (block : List (JInstr 64)) (seed : UInt32) : List (JInstr 64) × UInt32 :=
   let seed' := lcgNext seed
   let k := (seed'.toNat % (block.length))
-  let cand := trySwapAt block k
-  -- Fitness (#1): SLOTHY-style critical-path + port-pressure proxy. Legality is
-  -- enforced upstream by `trySwapAt`/`legalSwap`; the cost only RANKS candidates,
-  -- so this is a drop-in swap of the coarse `scheduleCost` for the principled
-  -- `X86CostModel.scheduleCostV2` (same `List (JInstr 64) → Nat` signature). The
-  -- translation-validation theorems are cost-agnostic and remain untouched.
-  if X86CostModel.scheduleCostV2 cand ≤ X86CostModel.scheduleCostV2 block then
-    (cand, seed')
-  else (block, seed')
+  let cand := trySwapAtWith legal block k
+  if cost cand ≤ cost block then (cand, seed') else (block, seed')
 
-/-- Run `n` greedy search steps from `block` with seed `seed`. -/
-def searchIterate (n : Nat) (block : List (JInstr 64)) (seed : UInt32) :
-    List (JInstr 64) :=
+/-- Run `n` greedy search steps under `legal` and `cost` from `block` with seed `seed`. -/
+def searchIterateWith (legal : JInstr 64 → JInstr 64 → Bool) (cost : List (JInstr 64) → Nat)
+    (n : Nat) (block : List (JInstr 64)) (seed : UInt32) : List (JInstr 64) :=
   match n with
   | 0 => block
   | n+1 =>
-      let (block', seed') := searchStep block seed
-      searchIterate n block' seed'
+      let (block', seed') := searchStepWith legal cost block seed
+      searchIterateWith legal cost n block' seed'
+
+/-- One adjacent swap at `k` under `legalSwap`. -/
+def trySwapAt (block : List (JInstr 64)) (k : Nat) : List (JInstr 64) :=
+  trySwapAtWith legalSwap block k
+
+/-- One step of the search: `legalSwap` moves, ranked by `Zen4ListSchedule.zen4Cost`. -/
+def searchStep (block : List (JInstr 64)) (seed : UInt32) : List (JInstr 64) × UInt32 :=
+  searchStepWith legalSwap Zen4ListSchedule.zen4Cost block seed
+
+/-- Run `n` steps of the search from `block` with seed `seed`. -/
+def searchIterate (n : Nat) (block : List (JInstr 64)) (seed : UInt32) :
+    List (JInstr 64) :=
+  searchIterateWith legalSwap Zen4ListSchedule.zen4Cost n block seed
+
+/-- A swap under a predicate that commutes the instructions it admits preserves
+    `runBlock`. -/
+theorem trySwapAtWith_runBlock {legal : JInstr 64 → JInstr 64 → Bool}
+    (hl : ∀ s a b, legal a b = true → evalInstr (evalInstr s a) b = evalInstr (evalInstr s b) a)
+    (s : JState 64) (block : List (JInstr 64)) (k : Nat) :
+    runBlock s (trySwapAtWith legal block k) = runBlock s block := by
+  induction block generalizing s k with
+  | nil => cases k <;> rfl
+  | cons a tl ih =>
+    cases tl with
+    | nil => cases k <;> rfl
+    | cons b rest =>
+      cases k with
+      | zero =>
+        simp only [trySwapAtWith]
+        split
+        · rename_i h
+          simp only [runBlock_cons, hl s a b h]
+        · rfl
+      | succ k =>
+        simp only [trySwapAtWith, runBlock_cons]
+        exact ih (evalInstr s a) k
+
+/-- **Every candidate of the search is equivalent to its input**: for a legality predicate
+    whose transpositions commute, `n` steps of the search preserve `runBlock` on every
+    state, whatever the cost. -/
+theorem searchIterateWith_runBlock {legal : JInstr 64 → JInstr 64 → Bool}
+    (hl : ∀ s a b, legal a b = true → evalInstr (evalInstr s a) b = evalInstr (evalInstr s b) a)
+    (cost : List (JInstr 64) → Nat) (n : Nat) (s : JState 64) (block : List (JInstr 64))
+    (seed : UInt32) : runBlock s (searchIterateWith legal cost n block seed) = runBlock s block := by
+  induction n generalizing block seed with
+  | zero => rfl
+  | succ n ih =>
+    simp only [searchIterateWith, searchStepWith]
+    split
+    · rw [ih, trySwapAtWith_runBlock hl]
+    · rw [ih]
+
+/-- **The search is sound**: its output after any number of steps runs to the same machine
+    state as its input, on every state. -/
+theorem searchIterate_runBlock (n : Nat) (s : JState 64) (block : List (JInstr 64))
+    (seed : UInt32) : runBlock s (searchIterate n block seed) = runBlock s block :=
+  searchIterateWith_runBlock legalSwap_comm _ n s block seed
 
 /-- The randomized search entry point: from `inputBlock`, `iters` greedy steps. -/
 def searchBest (iters : Nat) (seed : UInt32) : List (JInstr 64) :=
@@ -470,130 +554,14 @@ the *same* loop against the favourable target: the dual-ADCX/ADOX schoolbook
 field-mul `fe25519_mul` (`Fe25519MulKernel.feMulBlock`), CryptOpt's home turf,
 which sits at 1.34× s2n.
 
-To search this block soundly we extend the footprint model to the full
-`mulxMem`/`loadMem`/`storeMem`/`imul`/`shr`/`and_`/`sub`/`sbb`/`xor_` mix the
-block uses, then run `searchBest` on it. The **finding** the search makes is the
-result we report — including a null (no legal disjoint-footprint reschedule
-beats the input), which is itself a real datum about *where* the residual lives.
+The footprint of `legalSwap` covers the whole `mulxMem`/`loadMem`/`storeMem`/`imul`/
+`shr`/`and_`/`sub`/`sbb`/`xor_` mix of this block, with a memory cell per base name and
+offset (`JInstrFootprint`). `legalSwap'` is the same predicate under the name the bench
+drivers use. -/
 
-### Footprint model for the full instruction mix
-
-Memory is treated as a single coarse footprint cell `"@mem"`: any `loadMem`
-reads it and any `storeMem` writes it, so loads/stores never reorder across a
-store (sound over-approximation — we do not alias-analyse offsets). A `mulxMem`
-reads its index register, the base pointer, and `"@mem"`, and writes its two
-destination registers. -/
-
-/-- The coarse memory footprint cell. A single name standing for all of memory:
-    sound (never lets a load/store reorder across a store) though conservative. -/
-def memCell : String := "@mem"
-
-/-- Full write-footprint for the field-mul instruction mix. -/
-def writeSet' : JInstr 64 → List String
-  | .mulx dHi dLo _ _ => [dHi, dLo]
-  | .mulxMem dHi dLo _ _ _ => [dHi, dLo]
-  | .add d _ => [d]
-  | .adc d _ => [d]
-  | .adcx d _ => [d]
-  | .adox d _ => [d]
-  | .sub d _ => [d]
-  | .sbb d _ => [d]
-  | .imul d _ => [d]
-  | .and_ d _ => [d]
-  | .xor_ d _ => [d]
-  | .shr d _ => [d]
-  | .mov d _ => [d]
-  | .loadMem d _ _ => [d]
-  | .storeMem _ _ _ => [memCell]
-  -- the memory-source arithmetic writes its destination; `addToMem` writes memory.
-  | .addMem d _ _ | .adcxMem d _ _ | .adoxMem d _ _ | .imulMem d _ _ | .imulriMem d _ _ _
-  | .cmovccMem _ d _ _ | .aluMem _ d _ _ | .andnMem d _ _ _ => [d]
-  | .addToMem _ _ _ => [memCell]
-  -- `test` and `cmp` have no destination: their whole output is the flag state.
-  | .test _ _ => []
-  | .cmp _ _ => []
-  -- each remaining new op writes its destination register and nothing else;
-  -- `lea` computes an address without touching memory, so `memCell` is absent.
-  | .not_ d | .andn d _ _ | .bzhi d _ _ => [d]
-  | .rol d _ | .ror d _ | .rorx d _ _ => [d]
-  | .shlx d _ _ | .shrx d _ _ | .sarx d _ _ => [d]
-  | .movzx d _ _ | .movsx d _ _ | .lea d _ _ _ _ => [d]
-  | _ => []
-
-/-- Full read-footprint for the field-mul instruction mix. The `mov rdx`-style
-    write to the implicit `%rdx` multiplier source is *not* modelled here because
-    `feMulBlock` uses explicit-operand `mulx`/`mulxMem`; the implicit-`rdx`
-    coupling is introduced only by `AsmPrinter` lowering, downstream of the
-    schedule search, so reordering at the `JInstr` level is sound. -/
-def readSet' : JInstr 64 → List String
-  | .mulx _ _ (.reg a) (.reg b) => [a, b]
-  | .mulx _ _ (.reg a) _ => [a]
-  | .mulx _ _ _ (.reg b) => [b]
-  | .mulxMem _ _ (.reg a) base _ => [a, base, memCell]
-  | .mulxMem _ _ _ base _ => [base, memCell]
-  | .add d (.reg r) => [d, r]
-  | .add d _ => [d]
-  | .adc d (.reg r) => [d, r]
-  | .adc d _ => [d]
-  | .adcx d (.reg r) => [d, r]
-  | .adcx d _ => [d]
-  | .adox d (.reg r) => [d, r]
-  | .adox d _ => [d]
-  | .sub d (.reg r) => [d, r]
-  | .sub d _ => [d]
-  | .sbb d (.reg r) => [d, r]
-  | .sbb d _ => [d]
-  | .imul d _ => [d]
-  | .and_ d (.reg r) => [d, r]
-  | .and_ d _ => [d]
-  | .xor_ d (.reg r) => [d, r]
-  | .xor_ d _ => [d]
-  | .shr d _ => [d]
-  | .mov _ (.reg r) => [r]
-  | .mov _ _ => []
-  | .loadMem _ base _ => [base, memCell]
-  -- Both `test` operands are reads; neither is a destination.
-  | .test a (.reg r) => [a, r]
-  | .test a _ => [a]
-  -- `cmp` reads both operands, exactly as `test` does.
-  | .cmp a (.reg r) => [a, r]
-  | .cmp a _ => [a]
-  | .not_ d => [d]
-  | .rol d (.reg r) | .ror d (.reg r) => [d, r]
-  | .rol d _ | .ror d _ => [d]
-  | .andn _ a b | .bzhi _ a b => [a, b]
-  | .rorx _ src (.reg r) => [src, r]
-  | .rorx _ src _ => [src]
-  | .shlx _ src c | .shrx _ src c | .sarx _ src c => [src, c]
-  | .movzx _ _ src | .movsx _ _ src => [src]
-  -- the memory-source arithmetic reads its cell through `base`; the two-address forms
-  -- also read the destination.
-  | .addMem d base _ | .adcxMem d base _ | .adoxMem d base _ | .imulMem d base _ =>
-      [d, base, memCell]
-  | .imulriMem _ base _ _ => [base, memCell]
-  | .cmpMem a base _ => [a, base, memCell]
-  -- `cmovccMem` keeps its destination when the condition fails, so it reads it.
-  | .cmovccMem _ d base _ => [d, base, memCell]
-  | .aluMem _ d base _ => [d, base, memCell]
-  | .andnMem _ a base _ => [a, base, memCell]
-  | .addToMem base _ (.reg r) => [base, r, memCell]
-  | .addToMem base _ _ => [base, memCell]
-  -- `lea` reads its two address registers and performs no memory access, so it
-  -- does not read `memCell` the way `loadMem`/`mulxMem` do.
-  | .lea _ base idx _ _ => [base, idx]
-  | _ => []
-
-/-- Legal adjacent transposition under the full footprint model: read/write
-    footprints pairwise disjoint (no RAW/WAR/WAW), at most one touches the flag
-    state, and no flag-read crosses the other's flag-write. Reuses §3's
-    `writesFlags`/`readsFlags`/`disjointLists`. -/
-def legalSwap' (a b : JInstr 64) : Bool :=
-  disjointLists (writeSet' a) (writeSet' b) &&
-  disjointLists (writeSet' a) (readSet' b) &&
-  disjointLists (readSet' a) (writeSet' b) &&
-  (! (writesFlags a && writesFlags b)) &&
-  (! (writesFlags a && readsFlags b)) &&
-  (! (readsFlags a && writesFlags b))
+/-- `legalSwap` under the name of the former field-multiply predicate, which the bench
+    drivers of `bench/x25519_fieldmul_compare/` call. -/
+abbrev legalSwap' (a b : JInstr 64) : Bool := legalSwap a b
 
 /-- The real Curve25519 field-multiply block (verbatim copy of
     `Fe25519MulKernel.feMulBlock` / `bench/x25519_fieldmul_compare/emit_min.lean`),
@@ -648,28 +616,26 @@ def feMulBlock : List (JInstr 64) :=
   , .adcx "t7" (.reg "zr") ]
 
 /-- Count of *legal* disjoint-footprint adjacent transpositions available in a
-    block: how many positions `k` admit a `legalSwap'`. Zero means the block is a
+    block: how many positions `k` admit a `legalSwap`. Zero means the block is a
     schedule fixpoint under the disjoint-footprint neighbourhood — no
     reschedule exists without renaming (which is regalloc, not scheduling). -/
 def countLegalSwaps (block : List (JInstr 64)) : Nat :=
   let idx := List.range (block.length)
   (idx.filter (fun k =>
     match block.drop k with
-    | a :: b :: _ => legalSwap' a b
+    | a :: b :: _ => legalSwap a b
     | _ => false)).length
 
-/-- **Field-multiply search result (machine-checked).** The Curve25519 field-multiply
-    schoolbook admits exactly 8 legal disjoint-footprint adjacent transpositions.
-    The reschedules they generate are all *cost-neutral* under `scheduleCost`
-    (the search finds no static improvement) and, when benched on-CPU
-    (`bench/x25519_fieldmul_compare/candidate_bench.c`), within noise of the
-    baseline — never a reliable win. Like the safegcd pilot (`bench/cryptopt_safegcd`
-    null), the `fe25519_mul` 1.34×-s2n residual is therefore **not** in the
-    within-block instruction schedule: the block reuses the `hi`/`lo` mul-output
-    register names across every product, which serialises the schedule by name,
-    so unlocking the real parallelism (front-loading all four column multiplies)
-    requires *renaming* those outputs — register allocation, not scheduling. -/
-theorem feMulBlock_legal_swaps : countLegalSwaps feMulBlock = 8 := by native_decide
+/-- **Field-multiply neighbourhood (machine-checked).** The Curve25519 field-multiply
+    schoolbook admits 20 legal adjacent transpositions under the footprint predicate
+    `legalSwap`. The predicate of the first version of the search admitted 8: it rejected
+    every `adcx`/`adox` pair as two flag writers, although they write different flags. The
+    on-CPU bench of `bench/x25519_fieldmul_compare/candidate_bench.c` measured reschedules
+    reached through those 8 within noise of the baseline. The block reuses the `hi`/`lo`
+    mul-output register names across every product, which serialises the schedule by name,
+    so front-loading all four column multiplies requires renaming those outputs, a register
+    allocation move, not a transposition. -/
+theorem feMulBlock_legal_swaps : countLegalSwaps feMulBlock = 20 := by native_decide
 
 /-! ## 10. The full divstep ACCUMULATE body — the three-product step
 
@@ -879,28 +845,32 @@ entails `runBlock s (applySwaps swaps block) = runBlock s block` for **all** `s`
 — the all-states equivalence CryptOpt delegates to an external checker. -/
 
 /-- The decidable TV certificate for a reorder presented as a swap sequence:
-    every adjacent transposition is `indepJ`-certified. Sound by
-    `RescheduleEquivalence.runBlock_perm_eq` (§ below). -/
+    every adjacent transposition is certified by the footprint independence
+    `JInstrFootprint.indepF` against the block it acts on. Sound by
+    `JInstrFootprint.runBlock_perm_eqF`. It accepts every sequence that the
+    `indepJ` certificate `RescheduleEquivalence.checkAdjTranspositions` accepts on
+    the instructions `{mov, mulx, adcx, adox}` that `indepJ` covers, and the
+    transpositions of memory and flag-writing instructions with disjoint
+    footprints. -/
 def tvCertifiesSwaps (swaps : List Nat) (block : List (JInstr 64)) : Bool :=
-  checkAdjTranspositions swaps block
+  checkAdjTranspositionsF swaps block
 
 /-- **TV certificate soundness.** A passing `tvCertifiesSwaps` yields an
     all-states `runBlock`-equality between the rescheduled block and the input —
     this is the in-Lean equivalence checker that stands in for CryptOpt's external
-    one. Direct corollary of `runBlock_perm_eq`. -/
+    one. -/
 theorem tvCertifiesSwaps_sound (s : JState 64) (swaps : List Nat)
     (block : List (JInstr 64)) (h : tvCertifiesSwaps swaps block = true) :
     runBlock s (applySwaps swaps block) = runBlock s block :=
-  runBlock_perm_eq s swaps block h
+  runBlock_perm_eqF s swaps block h
 
 /-- **The #2 driver.** Given the schedule search's chosen reorder as a swap
     sequence `schedSwaps`, emit the TV-passing block:
 
     1. if `schedSwaps` is TV-certified, the schedule-only winner ships
        (`applySwaps schedSwaps block`);
-    2. otherwise — the TV-reject case (`bls_search7_breaks_runBlock`) — route the
-       **original** `block` to `searchJoint` with `scheduleCostV2`, returning the
-       joint winner. (The joint winner's rename is `accept`-gated inside
+    2. otherwise route the **original** `block` to `searchJoint` with
+       `Zen4ListSchedule.zen4Cost`, returning the joint winner. (The joint winner's rename is `accept`-gated inside
        `searchJointStep`; a caller emits it only after the §-below joint-winner TV
        certificate passes.)
 
@@ -914,8 +884,8 @@ def searchBestJointFallback
     -- schedule-only winner is TV-certified: ship it
     (applySwaps schedSwaps block, false)
   else
-    -- TV reject: widen to the joint sched+RA search, cost = scheduleCostV2
-    let (jw, _) := searchJoint jointIters X86CostModel.scheduleCostV2 block seed
+    -- TV reject: widen to the joint sched+RA search
+    let (jw, _) := searchJoint jointIters Zen4ListSchedule.zen4Cost block seed
     (jw, true)
 
 /-- **Joint-winner TV gate.** When the joint search returns a winner whose
@@ -936,8 +906,7 @@ theorem jointWinner_tv_sound (s : JState 64) (jointSwaps : List Nat)
     joint fallback. -/
 theorem searchBestJointFallback_nil (block : List (JInstr 64)) (seed : UInt32) :
     searchBestJointFallback block [] 0 seed = (block, false) := by
-  simp [searchBestJointFallback, tvCertifiesSwaps, checkAdjTranspositions,
-    CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence.checkAndApply,
-    applySwaps]
+  simp [searchBestJointFallback, tvCertifiesSwaps,
+    checkAdjTranspositionsF, applySwaps]
 
 end CatCrypt.Crypto.Optimizer.RandomizedScheduleSearch

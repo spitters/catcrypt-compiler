@@ -183,23 +183,38 @@ Three modules follow CryptOpt (Kuepper et al., PLDI 2023): a randomized local se
 over equivalent forms of a straight-line x86 block, whose winner is validated in
 Lean in place of CryptOpt's external equivalence checker.
 `RandomizedScheduleSearch.searchBest` runs seeded greedy descent over adjacent
-transpositions of instructions with disjoint footprints, ranked by the static
-latency and port-pressure proxy `scheduleCost`; `tvCertifiesSwaps_sound` validates a
+transpositions of instructions whose footprints are independent
+(`JInstrFootprint.indepF`: the read and write footprints of registers, flags, memory
+cells and banks of every instruction form, justified by the frame and dependence
+facts `evalInstr_frame` and `evalInstr_dep`), ranked by `Zen4ListSchedule.zen4Cost`,
+the finishing cycle of a list scheduler over the Zen 4 integer ports, which depends on
+the order of the block (`zen4Cost_order_dependent`); its table is transcribed from the
+LLVM scheduling model of Zen 4. Every candidate the search visits runs to the same
+state as its input (`searchIterate_runBlock`); `tvCertifiesSwaps_sound` validates a
 sequence of swaps, and `hoisted_runBlock_eq_input` and `hoisted3_runBlock_eq_input`
 prove the winners for the two- and three-product safegcd accumulate equal to the
-input on every machine state. `RandomizedRegAlloc.searchAssign` draws a renaming of
-virtual registers and accepts it only when it is injective on the live names and
+input on every machine state. The predicate of the first version of the search gave
+`mulxMem` and the other memory forms no footprint, and
+`ScheduleSearchMontMulNtt.bls_search7_breaks_runBlock` records a reschedule it
+produced that changes the result. `RandomizedRegAlloc.searchAssign` draws a renaming
+of virtual registers and accepts it only when it is injective on the live names and
 fits the register pool; `regalloc_runBlock_sound` covers every accepted renaming.
-`JointScheduleRegAlloc.searchJoint` searches permutations and renamings as one move
-space, and its legality predicate `jointLegal` checks schedule dependencies on the
-renamed instructions, which excludes the phase-ordering hazard described for SLOTHY
-(Becker et al.).
+`JointScheduleRegAlloc.searchJointSegs` searches transpositions of adjacent segments
+with independent footprints (`JInstrFootprint.runBlock_swapSeg`) and renamings of a
+name to an unused register of the pool as one move space; a segment is one
+instruction, or the machine instructions of one instruction of a printed body. Its
+legality predicate for a general permutation, `jointLegal`, checks the footprint
+independence of each pair of renamed input instructions whose order the permutation
+inverts, which excludes the phase-ordering hazard described for SLOTHY (Becker et al.).
 
 No emit driver calls the three searches, and no shipped kernel is a search output.
 The scheduler on the emit path is the deterministic `LprogScheduler.scheduleLprog`
 inside `optimizeLprog` and `renderOwned`; it swaps only adjacent independent
 instructions (`bubble_only_indep_swaps`) and preserves `lsemStraight`
-(`scheduleBody_lsemStraight`).
+(`scheduleBody_lsemStraight`). The development repository's
+`bench/cryptopt_search/search_variants.lean` runs the joint search on the printed body
+of the P-256 template multiply and on the linked kernel `fe25519_mul_x86_from_lean`
+and writes the searched variants as assembly for timing.
 
 The measurements, recorded in the development repository, show no speed gain. On
 the safegcd accumulate the search winner is 1.03 to 1.05 times slower than the input
@@ -207,9 +222,9 @@ schedule with two products and 1.21 to 1.30 times slower with three
 (`bench/cryptopt_safegcd/README.md`, lines 45-55 and 93-101). The same two-product
 reordering, unrolled 128 times, measures 1.015 times faster, within run-to-run noise
 (`bench/slothy_perf/README.md`, lines 16-22). On the fe25519 schoolbook multiply the
-search has eight legal swaps, all neutral under the static proxy
-(`feMulBlock_legal_swaps`), and the rescheduled block is within noise of the
-baseline (`bench/x25519_fieldmul_compare/README.md`, lines 92-124). These files
+first version of the search had eight legal swaps (twenty under the footprint
+predicate, `feMulBlock_legal_swaps`), all neutral under its static proxy, and the
+rescheduled block is within noise of the baseline (`bench/x25519_fieldmul_compare/README.md`, lines 92-124). These files
 attribute the result to the carry chain being the critical path and to the
 out-of-order core issuing independent multiplies regardless of their order.
 
