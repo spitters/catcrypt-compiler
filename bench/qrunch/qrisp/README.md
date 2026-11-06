@@ -85,9 +85,9 @@ they were taken with load average 15 (other jobs on the box), and ours includes 
 
 | Program | Qubits | CX in | CX ours / Qiskit | 2q depth ours / Qiskit | Gates ours / Qiskit | Deviation ours / Qiskit | ms ours / Qiskit |
 |---|---|---|---|---|---|---|---|
-| TSP, 4 cities, Grover with QPE oracle | 21 | 1804 | 1742 / 1742 (1754) | 1059 / 1059 | 3549 / 3690 | not simulated | 980 / 64 |
+| TSP, 4 cities, Grover with QPE oracle | 21 | 1804 | 1742 / 1742 (1754) | 1059 / 1059 | 3549 / 3690 | 4.3·10⁻¹⁷ / 7.8·10⁻¹⁷ | 1051 / 91 |
 | Backtracking, binary tree of depth 3 | 16 | 989 | 975 / 972 (975) | 596 / 596 | 2076 / 2614 | 2.5·10⁻¹⁵ / 1.3·10⁻¹⁵ | 2066 / 32 |
-| Backtracking, Sudoku with 3 empty fields | 24 | 3037 | 3037 / 3034 (3037) | 1227 / 1227 | 7166 / 7780 | not simulated | 1418 / 46 |
+| Backtracking, Sudoku with 3 empty fields | 24 | 3037 | 3037 / 3034 (3037) | 1227 / 1227 | 7166 / 7777 | 1.8·10⁻¹⁶ / 3.8·10⁻¹⁶ | 1603 / 95 |
 | HHL, 2x2 system, precision 3 | 6 | 256 | 231 / 231 (237) | 163 / 163 | 516 / 538 | 3.3·10⁻¹⁵ / 6.7·10⁻¹⁵ | 61 / 8 |
 | QMCI, one IQAE round (K = 3) | 25 | 2489 | 2347 / 2347 | 808 / 808 | 4832 / 4950 | not simulated | 2923 / 133 |
 | Quantum counting, 4 qubits, precision 4 | 8 | 528 | 513 / 507 (513) | 439 / 436 | 1157 / 1260 | 1.2·10⁻¹⁴ / 1.0·10⁻¹⁴ | 227 / 19 |
@@ -95,8 +95,18 @@ they were taken with load average 15 (other jobs on the box), and ours includes 
 The figure in parentheses is Qiskit's CX count without `ElidePermutations`, as above. With
 `permutation="layout"` ours has Qiskit's CX count on every row (972 on the binary tree, 3034
 on the Sudoku, 507 on counting). All six circuits are unitary. The deviation is the entrywise
-maximum through `Operator` on the rows of at most 12 qubits (HHL, counting) and over four
-random statevectors on the 16-qubit row; the TSP (21 qubits), Sudoku (24) and QMCI (25) rows
-are above the 20-qubit limit of the statevector check and are not simulated. The checker's
+maximum through `Operator` on the rows of at most 12 qubits (HHL, counting), over four random
+statevectors (Qiskit's `Statevector.evolve`) on the 16-qubit row, and over two random
+statevectors on the TSP (21 qubits) and Sudoku (24) rows. `Statevector.evolve` takes about
+0.8 s per gate at 22 qubits, so above 20 qubits the script uses `_simulate`: numba kernels
+that apply the circuit's gates, fused into blocks of at most three qubits, in place and one
+state at a time (peak RSS 0.5 GiB at 21 qubits, 1.2 GiB at 24). On the 16-qubit row it agrees
+with `Statevector.evolve` to 6·10⁻¹⁷, and appending `rz(10⁻³)` to the input gives a deviation
+of 7·10⁻⁶ there. An entry of a random state has magnitude about 2^(-n/2), so the statevector
+deviations are smaller than the Operator deviations of the small rows. The TSP and Sudoku rows
+were rerun for this check (22:57 and 23:23), so their times come from that run, and Qiskit's
+gate count on the Sudoku differs by 3 from the first run. The QMCI row (25 qubits, 0.5 GiB per
+state) is not checked: its run was killed for low memory, and it needs MemAvailable above
+3 GB. The checker's
 summed bound `eps` is at most 2.3·10⁻¹² on every row. Qrisp built every program, and
 catq-compile refused none.
