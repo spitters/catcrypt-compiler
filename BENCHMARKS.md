@@ -17,7 +17,7 @@ The verified front generates these objects from a Lean program. Cycles per opera
 | UOV dot product, GF(256) | 192.5 | pqov production `gf256_mul` | 106.4 | 1.81 |
 | SNOVA ring, GF(16) | 356.7 | SNOVA production, multiplication table | 57.6 | 6.19 |
 | MQOM MQ evaluation, GF(251), n = 8 | 646.5 | schoolbook C | 377.3 | 1.71 |
-| FrodoKEM matrix multiply, 16 × 16, AVX2 | 465.0 | HACL\* `matrix_mul`, C | 53.2 | 8.73 |
+| FrodoKEM matrix multiply, 16 × 16 | 465.0 | HACL\* `matrix_mul`, C at `-O2 -mavx2` | 53.2 | 8.73 |
 
 ## Field multiplication
 
