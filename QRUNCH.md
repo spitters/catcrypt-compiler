@@ -86,6 +86,25 @@ that run `catq-compile`, and the executable
 adds their phases in floating point. Without `--check` the fits are not checked and the bound is
 reported as `unchecked`.
 
+## Where the code is
+
+The reader is [OpenQASMBytes](CatCrypt/Quantum/OpenQASMBytes.lean), specified by the character
+reader of [OpenQASMImport](CatCrypt/Quantum/OpenQASMImport.lean); [Qelib](CatCrypt/Quantum/Qelib.lean)
+gives each qelib1 statement its matrix and its lowering. Level 2 is a list of named passes in
+[PassPipeline](CatCrypt/Quantum/Optimization/PassPipeline.lean), with their matrix theorems in
+[MatrixSound](CatCrypt/Quantum/Optimization/MatrixSound.lean). The resynthesis level is
+[ResynthLevel](CatCrypt/Quantum/Optimization/ResynthLevel.lean): the KAK templates are in
+[KAK](CatCrypt/Quantum/Synthesis/KAK.lean) and [KAKSmall](CatCrypt/Quantum/Synthesis/KAKSmall.lean), the
+block pass in [KAKPassSmall](CatCrypt/Quantum/Synthesis/KAKPassSmall.lean), the one-qubit pass in
+[ZYZPass](CatCrypt/Quantum/Synthesis/ZYZPass.lean), and the floating-point fits in
+[KAKFloat](CatCrypt/Quantum/Synthesis/KAKFloat.lean) and [QrunchFit](CatCrypt/Quantum/Synthesis/QrunchFit.lean).
+The checker is built from complex balls in fixed-point dyadics
+([CBall](CatCrypt/Quantum/Synthesis/CBall.lean)), enclosures of e^{iθ} at exact angles
+([ExpIBall](CatCrypt/Quantum/Synthesis/ExpIBall.lean)) and the per-block bound of
+[GateBall](CatCrypt/Quantum/Synthesis/GateBall.lean); [ApproxEmit](CatCrypt/Quantum/Synthesis/ApproxEmit.lean)
+adds the bounds over blocks. The output passes are [QrunchBasis](CatCrypt/Quantum/QrunchBasis.lean),
+[QrunchFuse](CatCrypt/Quantum/QrunchFuse.lean) and [QrunchCommute](CatCrypt/Quantum/QrunchCommute.lean).
+
 ## Try it
 
 ```
