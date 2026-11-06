@@ -546,6 +546,53 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrRun (runA)
 open CatCrypt.Crypto.SecureCompilation.SepLogic.Addr (AccessIn)
 open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords regionWords)
 
+/-- **The compiler theorem at an entry with linked functions, with the callee-saved
+    registers**: the statement of `NFEntry.compileR_correct_linked`, whose first case adds
+    that every System V callee-saved register (`DecodedCT.calleeSaved`) holds its value in
+    `sa`. The proof is that of `NFEntry.compileR_correct_linked` with
+    `NFEntry.compileR_correct_saved` at a program without `call`. -/
+theorem NFEntry.compileR_correct_linked_saved (E : NFEntry) (s : E.Src) (σ : AbiLayout)
+    (fname : String) (P : Lprog) (bytes : List (BitVec 8))
+    (hc : E.compileR s σ fname ((E.linked s).filterMap LinkedFn.calleeData) = some (P, bytes))
+    (sa : AState) (hsep : σ.Regions sa) (v : _root_.Hax.Value) (hrun : E.Runs σ s sa v)
+    (hnd : ((E.linked s).map (·.name)).Nodup := by exact List.nodup_nil)
+    (hk : ∀ l ∈ E.linked s, LinkedKernel l := by exact fun _ h => nomatch h) :
+    ∃ prog, decodeLprog bytes = some prog ∧
+      ((∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v
+        ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+        ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
+        ∧ (∀ x, SepLogic.X86.Loc.mem x
+            ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
+          (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
+          sa'.mem x = sa.mem x)
+        ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
+          ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false)
+      ∨ ∃ cs : List CalleeData, cs.Sublist ((E.linked s).filterMap LinkedFn.calleeData)
+          ∧ cs ≠ [] ∧ (cs.map (·.name)).Nodup
+          ∧ ∃ (pc Q : List RInstr) (k : String → Nat) (q : String → List RInstr),
+            (∀ c ∈ cs, decodeLprog c.bytes = some (q c.name))
+            ∧ decodeLprog (cs.flatMap (·.bytes)) = some Q
+            ∧ (∀ c ∈ cs, ∃ A B, Q = A ++ shiftProg A.length (q c.name) ++ B ∧ A.length = k c.name)
+            ∧ prog = pc ++ shiftProg pc.length Q
+            ∧ (∃ sa', HaltsC aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
+            ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
+              ∧ σ.ResultOf sa sa' v) := by
+  rw [NFEntry.compileR_eq_bind] at hc
+  obtain ⟨q0, hq0, hc⟩ := Option.bind_eq_some_iff.mp hc
+  obtain ⟨p, hp, hc⟩ := Option.bind_eq_some_iff.mp hc
+  cases hcf : p.callFree with
+  | true =>
+      rw [compileRegion_of_callFree _ _ hcf] at hc
+      have hc' : E.compileR s σ fname = some (P, bytes) := by
+        simp only [NFEntry.compileR, NFEntry.chainNF, hq0, Option.bind_some, hp, Option.map_some]
+        exact hc
+      obtain ⟨prog, sa', hd, h⟩ := E.compileR_correct_saved s σ fname P bytes hc' sa hsep v hrun
+      exact ⟨prog, hd, .inl ⟨sa', h⟩⟩
+  | false =>
+      obtain ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, hdec, hC, hO⟩ :=
+        E.call_halts_multi hnd hk hq0 hp hcf hc sa hsep v hrun
+      exact ⟨_, hdec, .inr ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, rfl, hC, hO⟩⟩
+
 /-- **The compiler theorem at an entry with linked functions.** Let the linked functions of the
     source program `s` of the entry `E` have distinct names (`hnd`) and each be a linked kernel
     (`hk`, `LinkedKernel`). For a result of `E.compileR` at the data of these functions, the
@@ -601,21 +648,56 @@ theorem NFEntry.compileR_correct_linked (E : NFEntry) (s : E.Src) (σ : AbiLayou
             ∧ (∃ sa', HaltsC aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
             ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
               ∧ σ.ResultOf sa sa' v) := by
-  rw [NFEntry.compileR_eq_bind] at hc
-  obtain ⟨q0, hq0, hc⟩ := Option.bind_eq_some_iff.mp hc
-  obtain ⟨p, hp, hc⟩ := Option.bind_eq_some_iff.mp hc
-  cases hcf : p.callFree with
-  | true =>
-      rw [compileRegion_of_callFree _ _ hcf] at hc
-      have hc' : E.compileR s σ fname = some (P, bytes) := by
-        simp only [NFEntry.compileR, NFEntry.chainNF, hq0, Option.bind_some, hp, Option.map_some]
-        exact hc
-      obtain ⟨prog, sa', hd, h⟩ := E.compileR_correct s σ fname P bytes hc' sa hsep v hrun
-      exact ⟨prog, hd, .inl ⟨sa', h⟩⟩
-  | false =>
-      obtain ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, hdec, hC, hO⟩ :=
-        E.call_halts_multi hnd hk hq0 hp hcf hc sa hsep v hrun
-      exact ⟨_, hdec, .inr ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, rfl, hC, hO⟩⟩
+  obtain ⟨prog, hd, h⟩ :=
+    E.compileR_correct_linked_saved s σ fname P bytes hc sa hsep v hrun hnd hk
+  refine ⟨prog, hd, ?_⟩
+  rcases h with ⟨sa', hh, hR, hsp, -, hkeep, hA⟩ | h
+  · exact .inl ⟨sa', hh, hR, hsp, hkeep, hA⟩
+  · exact .inr h
+
+/-- **The general compiler theorem with no witness, on a module, with the callee-saved
+    registers**: the statement of `haxc_correct_auto`, whose first case adds that every
+    System V callee-saved register (`DecodedCT.calleeSaved`) holds its value in `sa`. The
+    proof is that of `haxc_correct_auto` at `NFEntry.compileR_correct_linked_saved`. -/
+theorem haxc_correct_auto_saved (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lprog)
+    (bytes : List (BitVec 8)) (hc : compileA m σ fname = some (P, bytes))
+    (sa : AState) (hsep : σ.Regions sa) (v : _root_.Hax.Value) (hrun : haxRuns σ m sa v)
+    (hnd : (m.linked.map (·.name)).Nodup := by exact List.nodup_nil)
+    (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
+    ∃ prog, decodeLprog bytes = some prog ∧
+      ((∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v
+        ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+        ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
+        ∧ (∀ x, SepLogic.X86.Loc.mem x
+            ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
+          (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
+          sa'.mem x = sa.mem x)
+        ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
+          ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false)
+      ∨ ∃ cs : List CalleeData, cs.Sublist (m.linked.filterMap LinkedFn.calleeData)
+          ∧ cs ≠ [] ∧ (cs.map (·.name)).Nodup
+          ∧ ∃ (pc Q : List RInstr) (k : String → Nat) (q : String → List RInstr),
+            (∀ c ∈ cs, decodeLprog c.bytes = some (q c.name))
+            ∧ decodeLprog (cs.flatMap (·.bytes)) = some Q
+            ∧ (∀ c ∈ cs, ∃ A B, Q = A ++ shiftProg A.length (q c.name) ++ B ∧ A.length = k c.name)
+            ∧ prog = pc ++ shiftProg pc.length Q
+            ∧ (∃ sa', HaltsC aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
+            ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
+              ∧ σ.ResultOf sa sa' v) := by
+  obtain ⟨x, hrun', hback⟩ := haxRuns_pairStage hrun
+  have hl : haxEntry.linked (pairStage m σ).1 = m.linked := pairStage_linked m σ
+  obtain ⟨hlo, hhi, hrg⟩ := pairStage_frame m σ
+  obtain ⟨prog, hd, h⟩ := haxEntry.compileR_correct_linked_saved _ _ fname P bytes hc sa
+    ((pairStage_regions m σ sa).2 hsep) x hrun' (hl ▸ hnd) (hl ▸ hk)
+  rw [hl] at h
+  refine ⟨prog, hd, ?_⟩
+  rcases h with ⟨sa', hh, hR, hsp, hcs, hkeep, hA⟩
+    | ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, hp, ⟨sa', hC, hR⟩, sa'', hO, hR'⟩
+  · rw [hlo, hhi, hrg] at hkeep
+    rw [entryA_pairStage, layoutMem_pairStage] at hA
+    exact .inl ⟨sa', hh, hback _ hR, hsp, hcs, hkeep, hA⟩
+  · exact .inr ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, hp, ⟨sa', hC, hback _ hR⟩, sa'',
+      hO, hback _ hR'⟩
 
 /-- **The general compiler theorem with no witness, on a module.** Let the linked functions of
     `m` have distinct names (`hnd`) and each be a linked kernel (`hk`, `LinkedKernel`). For the
@@ -661,20 +743,11 @@ theorem haxc_correct_auto (m : HaxModule) (σ : AbiLayout) (fname : String) (P :
             ∧ (∃ sa', HaltsC aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
             ∧ ∃ sa', HaltsO aMachine (tabOracle cs pc.length k q) pc 0 sa sa'
               ∧ σ.ResultOf sa sa' v) := by
-  obtain ⟨x, hrun', hback⟩ := haxRuns_pairStage hrun
-  have hl : haxEntry.linked (pairStage m σ).1 = m.linked := pairStage_linked m σ
-  obtain ⟨hlo, hhi, hrg⟩ := pairStage_frame m σ
-  obtain ⟨prog, hd, h⟩ := haxEntry.compileR_correct_linked _ _ fname P bytes hc sa
-    ((pairStage_regions m σ sa).2 hsep) x hrun' (hl ▸ hnd) (hl ▸ hk)
-  rw [hl] at h
+  obtain ⟨prog, hd, h⟩ := haxc_correct_auto_saved m σ fname P bytes hc sa hsep v hrun hnd hk
   refine ⟨prog, hd, ?_⟩
-  rcases h with ⟨sa', hh, hR, hsp, hkeep, hA⟩
-    | ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, hp, ⟨sa', hC, hR⟩, sa'', hO, hR'⟩
-  · rw [hlo, hhi, hrg] at hkeep
-    rw [entryA_pairStage, layoutMem_pairStage] at hA
-    exact .inl ⟨sa', hh, hback _ hR, hsp, hkeep, hA⟩
-  · exact .inr ⟨cs, hsub, hne, hndc, pc, Q, k, q, hq, hQ, hB, hp, ⟨sa', hC, hback _ hR⟩, sa'',
-      hO, hback _ hR'⟩
+  rcases h with ⟨sa', hh, hR, hsp, -, hkeep, hA⟩ | h
+  · exact .inl ⟨sa', hh, hR, hsp, hkeep, hA⟩
+  · exact .inr h
 
 /-- **The general compiler theorem at one linked function.** On a module `m` with at most one
     linked function, a linked kernel (`hk`), the conclusion of `haxc_correct_auto` holds with

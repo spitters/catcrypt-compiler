@@ -256,7 +256,7 @@ def regionTraceBody (fine : Bool) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jas
   | some (P, cert) =>
   .stage "regionLprog" (some (P.lp_funcs.foldl (fun n f => n + f.2.lfd_body.length) 0))
     fun _ =>
-  match firstBody (printedLprog P) with
+  match firstBody (regionPrinted P) with
   | none => .refused "firstBody"
   | some b =>
   .stage "firstBody" (some b.length) fun _ =>

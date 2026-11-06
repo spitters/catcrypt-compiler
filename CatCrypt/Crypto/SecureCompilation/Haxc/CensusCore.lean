@@ -785,7 +785,7 @@ def regionWhyBody (stage : String) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt ja
         regionLprogC a p none (regionWebsEx σ exportReg) with
     | some r0, some (P, cert) =>
         let r := regionWebsAt (regionWebsEx σ exportReg) none r0
-        match firstBody (printedLprog P) with
+        match firstBody (regionPrinted P) with
         | none => ""
         | some b => RegionDiag.regionCoWhy stage σ exportReg b t r.code r.res cert
     | _, _ => ""

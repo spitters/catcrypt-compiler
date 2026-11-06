@@ -215,7 +215,7 @@ theorem calleeSpec_of_regionBack_sem {σ : AbiLayout} {a : AbiNames}
       ∧ s'.regs "%rsp" = s.regs "%rsp"
       ∧ ∀ x, ¬ KeepFoot K F s.regs x → s'.mem x = s.mem x := by
     rintro s ⟨hreg, V, fuel, v, hV, hv⟩
-    obtain ⟨prog, s', hd, hh, hR, hsp, hmem, -⟩ := regionBack_correct h s V hV hreg fuel hv
+    obtain ⟨prog, s', hd, hh, hR, hsp, -, hmem, -⟩ := regionBack_correct h s V hV hreg fuel hv
     rw [hq, Option.some.injEq] at hd
     subst hd
     exact ⟨s', hh, ⟨V, fuel, v, hV, hv, hR⟩, hsp, fun x hx => hmem x
@@ -376,7 +376,7 @@ theorem regionBack_correct_ro {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminD
   obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, -, -, hro'⟩ :=
     RegionArrKeep.regionBack_spec_ro h hro
   rw [← legalizeRegion_denote] at hv
-  obtain ⟨prog, sa', hd, hh, hR, hsp, hkeep, ⟨k, s, hrun, hcells⟩, -⟩ :=
+  obtain ⟨prog, sa', hd, hh, hR, hsp, -, hkeep, ⟨k, s, hrun, hcells⟩, -⟩ :=
     regionCo_bytes_of_regionExp_virt (regionExportableB_sound hB) (regionExp_webs _ hr)
       hco sa V hV hreg fuel hv
   obtain ⟨-, hU⟩ := regionCoB_renImage hco

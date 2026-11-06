@@ -239,7 +239,11 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   reference accesses at known indices only.
 * `restoreB`: the restoration check of the callee-saved registers on the wire of an image:
   the first save `qsave.X := X` of each callee-saved register `X`, no other write to
-  `qsave.X`, and the restores `X := qsave.X` as the last six instructions.
+  `qsave.X`, and the restores `X := qsave.X` as the last six instructions (`restoreAllB`);
+  or, per register, no write of `X` at all (`keepRegB`) or its save and its first restore
+  with no write of `X` after it (`restoreRegAtB`) (`restoreSomeB`).
+* `frameTrim`: a printed body without the saves and restores of the callee-saved registers
+  it does not write and without the dead saves of the pointer arguments.
 * `regionImgCoreB`: the printed class of a body with the gate of the image simulation of
   that class: the class `printedAddrWB`, the checks of its cell accesses and, at its cell
   body, the gate with carry chains `imgGateCW` with the observed names outside its width
@@ -296,6 +300,7 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   register liveness table at its target.
 * `regionPostFuse`: the fusion post-pass on an allocated program.
 * `regionLprog`: the allocated one-function program of a region export.
+* `regionPrinted`: the printed program with its frames trimmed by `frameTrim`.
 * `regionEncode`: the stages after the allocation.
 * `regionCtB`, `calleeCtB`: the constant-time check of a printed body, and the check at an
   optional callee.
@@ -309,7 +314,8 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 ## Main results
 
 * `restoreB_sound`: a halting run of an image whose wire passes the restoration check
-  `restoreB` ends with every callee-saved register at its entry value;
+  `restoreB` ends with every callee-saved register at its entry value (`keep_run` for a
+  register no instruction writes);
   `restoreB_of_shape`: the wire of the printer's save prologue, a middle part that writes no
   save slot of a callee-saved register, and the restore epilogue passes `restoreB`.
 * `regionPrintedB_of_regionImgB`: a body that passes `regionImgB` is in `regionPrintedB`.
@@ -465,18 +471,20 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   entry state satisfying `σ.Regions`, at every valuation the layout reads off it at which
   `p` denotes a value at some fuel, the bytes decode to a program that halts on the machine
   in a state from which `σ` reads back that value, with the entry stack register, the entry
-  bytes outside the stack words and the pointer regions, and a halting run of the address
-  machine whose accesses lie in `layoutMem`.
+  System V callee-saved registers, the entry bytes outside the stack words and the pointer
+  regions, and a halting run of the address machine whose accesses lie in `layoutMem`.
 * `abiValOf_widen`, `denVal_wideTy_transTy`: a valuation the layout reads holds 64-bit
   words, so the layout reads its widening; the widened value of a result other than a narrow
   array is its value.
 * `compileRegion_eq_some`, `compileRegion_spec`: a result of `compileRegion` is a result of
   `regionBack` on the widened program, with the checks it passed.
-* `compileRegion_correct`: `regionBack_correct` through the narrow-word stages, at the
-  widened valuation `mapVal V` (narrow arguments in 64-bit slots with zero high bits) and
-  the widened result.
-* `compileRegion_correct_wide`: the same statement as `regionBack_correct` for
-  `compileRegion` at a valuation of 64-bit words and a result other than a narrow array.
+* `compileRegion_correct_saved`: `regionBack_correct` through the narrow-word stages, at
+  the widened valuation `mapVal V` (narrow arguments in 64-bit slots with zero high bits)
+  and the widened result; `compileRegion_correct` is the statement without the
+  callee-saved registers.
+* `compileRegion_correct_wide_saved`, `compileRegion_correct_wide`: the same statement as
+  `regionBack_correct` for `compileRegion` at a valuation of 64-bit words and a result
+  other than a narrow array, with and without the callee-saved registers.
 * `compileRegion_wide`, `compileRegion_ctx`: over a context (and result type) of 64-bit
   words, the back half runs on the widened program carried back to them, which denotes the
   (widened) denotation of the source.
@@ -973,10 +981,10 @@ def restoreRegB (w : List LinstrR) (X : String) : Bool :=
               && (k == i || (restKindB x && !(dstNames x).contains (slotOfReg X)))
         | none => true
 
-/-- **The callee-saved restoration check** on the wire `w` of an image: its last six
-    instructions are the restores `X := qsave.X` of the callee-saved registers
+/-- **The restoration check of the whole callee-saved set** on the wire `w` of an image: its
+    last six instructions are the restores `X := qsave.X` of the callee-saved registers
     `calleeSavedRegs`, in order, and each of them passes `restoreRegB`. -/
-def restoreB (w : List LinstrR) : Bool :=
+def restoreAllB (w : List LinstrR) : Bool :=
   decide (6 ≤ w.length)
     && ((w.drop (w.length - 6)).map slotMov?
       == calleeSavedRegs.map fun X => some (X, slotOfReg X))
@@ -1020,11 +1028,11 @@ theorem dstNames_slotMov {x : LinstrR} {d s : String} (h : slotMov? x = some (d,
   simp [dstNames, isLopnR, JasminLsemExportRewrites.opNames]
 
 /-- **The facts of the restoration of a callee-saved register** on a wire that passes
-    `restoreB`: the save of `X` at its first save and the restore of `X` in the last six
+    `restoreAllB`: the save of `X` at its first save and the restore of `X` in the last six
     instructions. -/
-theorem restoreB_facts {w : List LinstrR} (h : restoreB w = true) {X : String}
+theorem restoreAllB_facts {w : List LinstrR} (h : restoreAllB w = true) {X : String}
     (hX : X ∈ calleeSavedRegs) : ∃ i r, RestoreFacts w X i r := by
-  simp only [restoreB, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq, List.all_eq_true]
+  simp only [restoreAllB, Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq, List.all_eq_true]
     at h
   obtain ⟨⟨h6, hep⟩, hall⟩ := h
   obtain ⟨i, hi6, hsv, hpre, hmid⟩ := restoreRegB_spec (hall X hX)
@@ -1063,6 +1071,126 @@ theorem restoreB_facts {w : List LinstrR} (h : restoreB w = true) {X : String}
     have := (hnd.getElem_inj_iff).mp he
     omega
 
+/-- A halting run of a body none of whose instructions writes `X`, each of `restKindB`,
+    ends with `X` at its value in the entry state. -/
+theorem keep_run {img : List LinstrRM} {X : String} {fn : String}
+    (hk : ∀ x ∈ img.map Prod.fst, restKindB x = true ∧ X ∉ dstNames x) {ck : Bool}
+    {t : LstateMF} :
+    ∀ (f : Nat) (s : LstateMF), s.prog.lfn = fn →
+      lsemFuelMemFk ck (singletonProgM fn img) f s = some t →
+      t.prog.base.reg.lvm X = s.prog.base.reg.lvm X
+  | 0, s, _, h => by
+      simp only [lsemFuelMemFk] at h
+      split at h
+      · cases h
+        rfl
+      · cases h
+  | f + 1, s, hfn, h => by
+      simp only [lsemFuelMemFk] at h
+      split at h
+      · cases h
+        rfl
+      · rename_i x hx
+        split at h
+        · rename_i s' hs'
+          have he' := evalInstrPMemF_of_k hs'
+          obtain ⟨hfn', -⟩ := evalInstrPMemF_next _ x s s' he'
+          have hxi : img[s.prog.base.lpc]? = some x := by
+            simpa [findInstrMem, singletonProgM, hfn] using hx
+          obtain ⟨hkind, hX⟩ := hk x.1 (List.mem_map_of_mem (List.mem_of_getElem? hxi))
+          obtain ⟨x1, tag⟩ := x
+          have hstep : evalInstrPMemF (singletonProgM fn img) (x1, tag) s = some s' := he'
+          rw [keep_run hk f s' (hfn'.trans hfn) h]
+          exact evalInstrPMemF_keep _ hkind tag hstep hX
+        · cases h
+
+/-- **The keep check of the register `X`** on a wire: every instruction is of `restKindB` and
+    none writes `X`. A body that passes it needs no save of `X`. -/
+def keepRegB (w : List LinstrR) (X : String) : Bool :=
+  w.all fun x => restKindB x && !(dstNames x).contains X
+
+/-- The conditions `keepRegB` checks. -/
+theorem keepRegB_spec {w : List LinstrR} {X : String} (h : keepRegB w X = true) :
+    ∀ x ∈ w, restKindB x = true ∧ X ∉ dstNames x := by
+  intro x hx
+  have := List.all_eq_true.mp h x hx
+  simp only [Bool.and_eq_true, Bool.not_eq_true'] at this
+  exact ⟨this.1, by simpa using this.2⟩
+
+/-- The instruction is a 64-bit move (`slotMov?`) of the frame slot `qsave.X` into `X`. -/
+def restoreOfB (X : String) (x : LinstrR) : Bool := slotMov? x == some (X, slotOfReg X)
+
+/-- **The restoration check of the register `X` at its first restore** on the wire `w`: the
+    first save of `X` is at `i` and the first restore of `X` at `r > i`; every instruction
+    before `i` is an `Lopn` that does not write `X`; every other instruction is of
+    `restKindB` and does not write `qsave.X`; from `r` on every instruction is an `Lopn`, and
+    none after `r` writes `X`. These are the facts `RestoreFacts`, at any position of the
+    restore in the epilogue. -/
+def restoreRegAtB (w : List LinstrR) (X : String) : Bool :=
+  match w.findIdx? (saveOfB X), w.findIdx? (restoreOfB X) with
+  | some i, some r =>
+      decide (i < r) &&
+      (List.range w.length).all fun k =>
+        match w[k]? with
+        | some x =>
+            (!decide (k < i) || (isLopnR x && !(dstNames x).contains X))
+              && (k == i || (restKindB x && !(dstNames x).contains (slotOfReg X)))
+              && (!decide (r ≤ k) || isLopnR x)
+              && (!decide (r < k) || !(dstNames x).contains X)
+        | none => true
+  | _, _ => false
+
+/-- A wire that passes `restoreRegAtB` at `X` has the facts `RestoreFacts` of `X`. -/
+theorem restoreRegAtB_facts {w : List LinstrR} {X : String} (h : restoreRegAtB w X = true) :
+    ∃ i r, RestoreFacts w X i r := by
+  unfold restoreRegAtB at h
+  split at h
+  · rename_i i r hi hr
+    simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.mem_range] at h
+    obtain ⟨hlt, hall⟩ := h
+    obtain ⟨hil, hsv, -⟩ := List.findIdx?_eq_some_iff_getElem.mp hi
+    obtain ⟨hrl, hrs, -⟩ := List.findIdx?_eq_some_iff_getElem.mp hr
+    have hat : ∀ k x, w[k]? = some x →
+        ((!decide (k < i) || (isLopnR x && !(dstNames x).contains X))
+          && (k == i || (restKindB x && !(dstNames x).contains (slotOfReg X)))
+          && (!decide (r ≤ k) || isLopnR x)
+          && (!decide (r < k) || !(dstNames x).contains X)) = true := by
+      intro k x hk
+      have := hall k (List.getElem?_eq_some_iff.mp hk).1
+      rwa [hk] at this
+    refine ⟨i, r, ⟨hlt, hrl, fun k x hk hki => ?_,
+      ⟨w[i], List.getElem?_eq_getElem hil, by simpa [saveOfB] using hsv⟩,
+      fun k x hk hki => ?_,
+      ⟨w[r], List.getElem?_eq_getElem hrl, by simpa [restoreOfB] using hrs⟩,
+      fun k x hk hrk => ?_, fun k x hk hrk => ?_⟩⟩
+    · have := hat k x hk
+      simp only [hki, decide_true, Bool.not_true, Bool.false_or, Bool.and_eq_true,
+        Bool.not_eq_true'] at this
+      exact ⟨this.1.1.1.1, by simpa using this.1.1.1.2⟩
+    · have := hat k x hk
+      simp only [Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq, hki, false_or,
+        Bool.not_eq_true'] at this
+      exact ⟨this.1.1.2.1, by simpa using this.1.1.2.2⟩
+    · have := hat k x hk
+      simp only [hrk, decide_true, Bool.not_true, Bool.false_or, Bool.and_eq_true] at this
+      exact this.1.2
+    · have := hat k x hk
+      simp only [hrk, decide_true, Bool.not_true, Bool.false_or, Bool.and_eq_true,
+        Bool.not_eq_true'] at this
+      simpa using this.2
+  · cases h
+
+/-- **The restoration check of a saved subset** on the wire `w` of an image: each
+    callee-saved register either passes the keep check `keepRegB` (no instruction writes it,
+    so the frame need not save it) or the restoration check `restoreRegAtB`. -/
+def restoreSomeB (w : List LinstrR) : Bool :=
+  calleeSavedRegs.all fun X => keepRegB w X || restoreRegAtB w X
+
+/-- **The callee-saved restoration check** on the wire `w` of an image: the check of the
+    whole callee-saved set `restoreAllB`, or the check of a saved subset `restoreSomeB`. -/
+def restoreB (w : List LinstrR) : Bool :=
+  restoreAllB w || restoreSomeB w
+
 /-- **Soundness of the restoration check.** A halting run of an image whose wire passes
     `restoreB`, from program counter `0`, ends with every callee-saved register at its
     entry value. -/
@@ -1072,8 +1200,13 @@ theorem restoreB_sound {img : List LinstrRM} (h : restoreB (img.map Prod.fst) = 
     (hr : lsemFuelMemFk ck (singletonProgM fn img) f s = some t) :
     ∀ X ∈ calleeSavedRegs, t.prog.base.reg.lvm X = s.prog.base.reg.lvm X := by
   intro X hX
-  obtain ⟨i, r, F⟩ := restoreB_facts h hX
-  exact restore_of_facts F hfn hpc hr
+  rcases Bool.or_eq_true_iff.mp h with h | h
+  · obtain ⟨i, r, F⟩ := restoreAllB_facts h hX
+    exact restore_of_facts F hfn hpc hr
+  · rcases Bool.or_eq_true_iff.mp (List.all_eq_true.mp h X hX) with hk | hk
+    · exact keep_run (keepRegB_spec hk) f s hfn hr
+    · obtain ⟨i, r, F⟩ := restoreRegAtB_facts hk
+      exact restore_of_facts F hfn hpc hr
 
 /-- `restoreRegB` on a wire `A ++ B` whose first save of `X` is at `i` in `A`: the conditions
     of the check on the instructions of `A` and of `B`. -/
@@ -1114,6 +1247,7 @@ theorem restoreB_of_shape (v : Lfundef) (tb : Array Nat) (m : InLoadMap)
     (hmid : ∀ x ∈ mid, restKindB x = true ∧ ∀ X ∈ calleeSavedRegs, slotOfReg X ∉ dstNames x) :
     restoreB ((buildPrologue v tb m).map Linstr.li_i ++ mid
       ++ calleeSaveRestoreEpilogue.map Linstr.li_i) = true := by
+  refine Bool.or_eq_true_iff.mpr (Or.inl ?_)
   have hpro : (buildPrologue v tb m).map Linstr.li_i
       = (buildPrologue {} #[] (fun _ => none)).map Linstr.li_i := rfl
   rw [hpro]
@@ -1133,7 +1267,7 @@ theorem restoreB_of_shape (v : Lfundef) (tb : Array Nat) (m : InLoadMap)
     intro i hi
     simp only [List.length_append, hP, hE]
     omega
-  unfold restoreB
+  unfold restoreAllB
   simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq, List.all_eq_true,
     List.length_append, hP, hE]
   refine ⟨⟨by omega, ?_⟩, fun X hX => ?_⟩
@@ -1156,6 +1290,50 @@ theorem restoreB_of_shape (v : Lfundef) (tb : Array Nat) (m : InLoadMap)
         (hB _ (by decide))
     · exact restoreRegB_append (i := 7) (by decide) (h6 7 (by omega)) (by decide)
         (hB _ (by decide))
+
+/-! ### The frame of the written registers
+
+The allocation saves every callee-saved register and both pointer arguments on entry
+(`ExportPhysAbi.buildPrologue`) and restores the callee-saved registers on exit
+(`ExportPhysAbi.calleeSaveRestoreEpilogue`). `frameTrim` removes, from a printed body, the
+save and the restore of each callee-saved register that no other instruction of the body
+writes, and the save of a pointer argument whose slot no other instruction names. The
+gate of `regionBack` runs on the trimmed body; the restoration check `restoreB` accepts it
+through `restoreSomeB`, at which a register the body does not write passes `keepRegB`. -/
+
+/-- The instruction kinds `frameTrim` reads a body of: an `Lopn`, a label, a jump, a
+    conditional jump, a return or an alignment. -/
+def trimKindB : LinstrR → Bool
+  | .Lopn .. | .Llabel .. | .Lgoto .. | .Lcond .. | .Lret | .Lalign => true
+  | _ => false
+
+/-- **The callee-saved registers a body does not write**: on a body of `trimKindB`, each
+    register `X` of `calleeSavedRegs` such that every instruction is the restore of `X`, or
+    does not write `X` and is the save of `X` or names no slot `qsave.X`; on any other body
+    none. -/
+def unwrittenSaved (b : Lcmd) : List String :=
+  if b.all (fun i => trimKindB i.li_i) then
+    calleeSavedRegs.filter fun X =>
+      b.all fun i => restoreOfB X i.li_i ||
+        (!(dstNames i.li_i).contains X
+          && (saveOfB X i.li_i || !JasminLsemAddrRun.namesB (slotOfReg X) i.li_i))
+  else []
+
+/-- **The pointer arguments whose save is dead**: each of `RDI` and `RSI` such that every
+    instruction of the body is its save or names no slot `qsave.R`. -/
+def deadArgSaves (b : Lcmd) : List String :=
+  ["RDI", "RSI"].filter fun R =>
+    b.all fun i => saveOfB R i.li_i || !JasminLsemAddrRun.namesB (slotOfReg R) i.li_i
+
+/-- **The frame of the written registers**: the body without the saves and restores of the
+    callee-saved registers it does not write (`unwrittenSaved`) and without the dead saves of
+    the pointer arguments (`deadArgSaves`). -/
+def frameTrim (b : Lcmd) : Lcmd :=
+  let D := unwrittenSaved b
+  let A := deadArgSaves b
+  b.filter fun i => !(D.any (fun X => saveOfB X i.li_i || restoreOfB X i.li_i)
+    || A.any (fun R => saveOfB R i.li_i))
+
 
 end RestoreCheck
 
@@ -3943,6 +4121,7 @@ theorem renImage_bytes {σ : AbiLayout} {nm : String → String} {ps : List (Str
       ∧ (∀ r, r ∈ outs → gpOk r = true → (frameMark (frameNames body) r).isNone = true →
         t.prog.base.reg.getW r 64 = some (sa'.regs (phys r)))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -3985,13 +4164,20 @@ theorem renImage_bytes {σ : AbiLayout} {nm : String → String} {ps : List (Str
   have hck' := JasminLsemMemChecked.lsemFuelMemFk_of_runIdxOk true _ fuel _ t hrun hok
   obtain ⟨f', t', hr', hobs⟩ :=
     X86Backend.OwnedLprogTVChecked.ownedCheckMC_sound hck fn _ t rfl rfl fuel hck'
-  obtain ⟨prog, sa', s', hdec, hh, hrelR, hrelC, hslots, hregs, hm', hsp, -, hkeep, fA, sA,
+  obtain ⟨prog, sa', s', hdec, hh, hrelR, hrelC, hslots, hregs, hm', hsp, hcs, hkeep, fA, sA,
       zA, hrA, hacc⟩ :=
     regionImg_sim (σ := σ) (base := baseR σ sa ps) hphys hgate hsep N.gp N.body hred fn f' _ t'
       rfl hrel hr'
   have hsub := imgStores_export (nm := nm) hfr E hlen hU
+  have hcs' : ∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x := by
+    have hmap : X86Backend.DecodedCT.calleeSaved
+        = X86Backend.LprogAsmPrinter.calleeSavedRegs.map phys := by decide
+    intro x hx
+    rw [hmap, List.mem_map] at hx
+    obtain ⟨y, hy, rfl⟩ := hx
+    exact hcs y hy
   refine ⟨prog, sa', hdec, hh, fun q A n hq hA => ?_, fun p hp j hj hmem => ?_,
-    fun r hR hgp hfR => ?_, hsp, fun x hxF hxR => hkeep x ?_ ?_, _, fA, sA, zA, hrA,
+    fun r hR hgp hfR => ?_, hsp, hcs', fun x hxF hxR => hkeep x ?_ ?_, _, fA, sA, zA, hrA,
     hacc.mono fun _ h => ⟨fun x hx => hsub (h.1 x hx), fun x hx => hsub (h.2 x hx)⟩⟩
   · have hq' : slotArrC R (slotRen (slotArrOf σ nm) (renOf ps)) q = some (renOf ps A, n) := by
       simp [slotArrC, slotRen, hq, hA]
@@ -6791,6 +6977,7 @@ theorem coRef_bytes_copy_of_regionExp {σ : AbiLayout} {nm : String → String} 
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -6821,9 +7008,9 @@ theorem coRef_bytes_copy_of_regionExp {σ : AbiLayout} {nm : String → String} 
       (Bool.and_eq_true_iff.mp (List.all_eq_true.mp hcl i hi)).2).1) hco
     (fun x hx => by simpa using List.all_eq_true.mp hfix x hx) RF k s hrun0
   obtain ⟨k', s', hrun', hA2, hC2, -⟩ := hB sa hreg k1 s1 hrun1
-  obtain ⟨prog, sa', hd, hh, hcells, hcellR, -, hsp, hkeep, hA⟩ := renImage_bytes himg
+  obtain ⟨prog, sa', hd, hh, hcells, hcellR, -, hsp, hcs, hkeep, hA⟩ := renImage_bytes himg
     (fun j hj => (RF.unr j hj).2) sa hreg fn k' s' hrun'
-  refine ⟨prog, sa', hd, hh, ?_, hsp, hkeep, ⟨k', s', hrun', hcells⟩, hA⟩
+  refine ⟨prog, sa', hd, hh, ?_, hsp, hcs, hkeep, ⟨k', s', hrun', hcells⟩, hA⟩
   have hmem : copyName D m ∈ regionCoObs (.stackArr 64 m) (regionOut (some (src, D, m)) r.res) :=
     List.mem_singleton_self _
   have hN := List.all_eq_true.mp hobs _ hmem
@@ -6937,6 +7124,7 @@ theorem coRef_bytes_copy {σ : AbiLayout} {nm : String → String} {fn : String}
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -7023,6 +7211,7 @@ theorem coRef_bytes_of_regionExp {σ : AbiLayout} {nm : String → String} {fn :
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -7051,9 +7240,9 @@ theorem coRef_bytes_of_regionExp {σ : AbiLayout} {nm : String → String} {fn :
       (Bool.and_eq_true_iff.mp (List.all_eq_true.mp hcl i hi)).2).1) hco
     (fun x hx => by simpa using List.all_eq_true.mp hfix x hx) RF k s hrun
   obtain ⟨k', s', hrun', hA2, hC2, hR2⟩ := hB sa hreg k1 s1 hrun1
-  obtain ⟨prog, sa', hd, hh, hcells, hcellR, hregs, hsp, hkeep, hA⟩ := renImage_bytes himg
+  obtain ⟨prog, sa', hd, hh, hcells, hcellR, hregs, hsp, hcs, hkeep, hA⟩ := renImage_bytes himg
     (fun j hj => (RF.unr j hj).2) sa hreg fn k' s' hrun'
-  refine ⟨prog, sa', hd, hh, ?_, hsp, hkeep, ⟨k', s', hrun', hcells⟩, hA⟩
+  refine ⟨prog, sa', hd, hh, ?_, hsp, hcs, hkeep, ⟨k', s', hrun', hcells⟩, hA⟩
   cases t with
   | stackArr w m =>
       obtain rfl : s = s0 := hnone rfl
@@ -7229,6 +7418,7 @@ theorem coRef_bytes {σ : AbiLayout} {nm : String → String} {fn : String}
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -7268,6 +7458,7 @@ theorem regionCo_bytes_of_regionExp_virt {σ : AbiLayout} {nm : String → Strin
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -7493,15 +7684,16 @@ theorem regionCo_bytes_of_regionExp {σ : AbiLayout} {nm : String → String} {f
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
         sa'.mem x = sa.mem x)
       ∧ ∃ frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
         ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
-  obtain ⟨prog, sa', hd, hh, hR, hsp, hkeep, -, hA⟩ :=
+  obtain ⟨prog, sa', hd, hh, hR, hsp, hcs, hkeep, -, hA⟩ :=
     regionCo_bytes_of_regionExp_virt hp hr hg sa V hV hreg fuel hv
-  exact ⟨prog, sa', hd, hh, hR, hsp, hkeep, hA⟩
+  exact ⟨prog, sa', hd, hh, hR, hsp, hcs, hkeep, hA⟩
 
 /-- **The image check behind `regionCoB`**: a code that passes `regionCoB` has its reference
     `ref` of the parts of the gate pass `renImageB` at the pairs and the cell arrays of the
@@ -7535,6 +7727,7 @@ theorem regionCo_bytes {σ : AbiLayout} {nm : String → String} {fn : String}
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -8304,17 +8497,28 @@ def calleeBytes (callee : Option CalleeTab) (b : Lcmd) : Option (List (BitVec 8)
 @[simp] theorem calleeBytes_none (b : Lcmd) :
     calleeBytes none b = X86Backend.LprogBytes.encodeLfundefBytesChecked b := rfl
 
+/-- **The printed program of the region back half**: the printed program `printedLprog`
+    with the frame of each body trimmed to the registers it writes (`frameTrim`). -/
+def regionPrinted (P : Lprog) : Lprog :=
+  X86Backend.LprogOptPipeline.mapBodies frameTrim (printedLprog P)
+
+/-- The first body of the printed program of the region back half is the trimmed first body
+    of `printedLprog`. -/
+theorem firstBody_regionPrinted (P : Lprog) :
+    firstBody (regionPrinted P) = (firstBody (printedLprog P)).map frameTrim :=
+  firstBody_mapBodies _ _
+
 /-- **The stages after the allocation** on an allocated program `P` with the gate `gate` on
-    the printed body: the printed program `printedLprog`, the gated encoder on its first
-    function body and the gate; the printed program and the bytes, or
-    `none`. At a table the bytes are `calleeBytes`, the function followed by the code of
-    the table. -/
+    the printed body: the printed program `regionPrinted` (whose bodies save only the
+    callee-saved registers they write), the gated encoder on its first function body and the
+    gate; the printed program and the bytes, or `none`. At a table the bytes are
+    `calleeBytes`, the function followed by the code of the table. -/
 def regionEncode (P : Lprog) (gate : Lcmd → Bool)
     (callee : Option CalleeTab := none) : Option (Lprog × List (BitVec 8)) :=
-  match firstBody (printedLprog P) with
+  match firstBody (regionPrinted P) with
   | some b =>
       match calleeBytes callee b with
-      | some bs => if gate b then some (printedLprog P, bs) else none
+      | some bs => if gate b then some (regionPrinted P, bs) else none
       | none => none
   | none => none
 
@@ -11219,6 +11423,7 @@ theorem regionBack_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
       ∧ σ.ResultOf sa sa' (denVal t
           (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
       ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
       ∧ (∀ x, SepLogic.X86.Loc.mem x
           ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
         (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
@@ -11227,11 +11432,11 @@ theorem regionBack_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
         ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
   obtain ⟨hB, r0, r, b, cert, hr, rfl, hb, hco, -⟩ := regionBack_spec h
   rw [← legalizeRegion_denote] at hv
-  obtain ⟨prog, sa', hd, hh, hR, hsp, hkeep, hA⟩ :=
+  obtain ⟨prog, sa', hd, hh, hR, hsp, hcs, hkeep, hA⟩ :=
     regionCo_bytes_of_regionExp (regionExportableB_sound hB) (regionExp_webs _ hr) hco sa V hV
       hreg fuel hv
   exact ⟨prog, sa', by rw [X86Backend.LprogBytes.encodeLfundefBytesChecked_eq hb]; exact hd,
-    hh, hR, hsp, hkeep, b, hA⟩
+    hh, hR, hsp, hcs, hkeep, b, hA⟩
 
 /-! ## 11b. The narrow-word stages and the region back half -/
 
@@ -11389,6 +11594,42 @@ theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
   rw [List.length_map] at hs
   exact ⟨hB, q, hq, hs⟩
 
+/-- **Correctness of the back half, with the callee-saved registers.** For a result
+    `(P, bytes)` of `compileRegion σ a p`: from
+    every entry state `sa` satisfying `σ.Regions` at which `σ` reads the widened valuation
+    `mapVal V` (each narrow argument in a 64-bit slot with zero high bits), at every `V` at
+    which `p` denotes `v` at some fuel, the bytes decode to a program that halts on the
+    machine from `sa` in a state `sa'` from which `σ` reads back the widened result. The stack
+    register of `sa'` holds its value in `sa`, so does every callee-saved register of
+    System V (`DecodedCT.calleeSaved`: `%rbx`, `%rbp`, `%r12` to `%r15`), and the memory of
+    `sa'` agrees with that of `sa` at every byte outside the stack words `%rsp + o`, `frameLo ≤ o ≤ frameHi`, and outside
+    the words of each pointer region of `σ`, at the registers of `sa`; some run of the address
+    machine on a body from `entryA σ sa` halts and stores to and loads from `layoutMem σ sa`
+    only. -/
+theorem compileRegion_correct_saved {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
+    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
+    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa (VIR.NarrowWords.mapVal V))
+    (hreg : σ.Regions sa) (fuel : Nat) {v : Ctxt.Valuation (d := jasminDialect) [t]}
+    (hv : p.denote fuel V = some v) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ σ.ResultOf sa sa' (denVal (VIR.NarrowWords.wideTy t) (VIR.NarrowWords.transTy
+          (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v)))
+      ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
+      ∧ (∀ x, SepLogic.X86.Loc.mem x
+          ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
+        (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
+        sa'.mem x = sa.mem x)
+      ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
+        ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
+  obtain ⟨-, q, hq, hb⟩ := compileRegion_eq_some.mp h
+  have hw := VIR.NarrowWords.narrowPrep_denote hq hv
+  cases v with
+  | cons x xs =>
+      cases xs
+      exact regionBack_correct hb sa (VIR.NarrowWords.mapVal V) hV hreg fuel hw
+
 /-- **Correctness of the back half.** For a result `(P, bytes)` of `compileRegion σ a p`: from
     every entry state `sa` satisfying `σ.Regions` at which `σ` reads the widened valuation
     `mapVal V` (each narrow argument in a 64-bit slot with zero high bits), at every `V` at
@@ -11415,12 +11656,9 @@ theorem compileRegion_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminD
         sa'.mem x = sa.mem x)
       ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
         ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
-  obtain ⟨-, q, hq, hb⟩ := compileRegion_eq_some.mp h
-  have hw := VIR.NarrowWords.narrowPrep_denote hq hv
-  cases v with
-  | cons x xs =>
-      cases xs
-      exact regionBack_correct hb sa (VIR.NarrowWords.mapVal V) hV hreg fuel hw
+  obtain ⟨prog, sa', hd, hh, hR, hsp, -, hkeep, hA⟩ :=
+    compileRegion_correct_saved h sa V hV hreg fuel hv
+  exact ⟨prog, sa', hd, hh, hR, hsp, hkeep, hA⟩
 
 /-- **Correctness of the back half on 64-bit arguments**, the statement of `regionBack_correct`
     for `compileRegion`: at a valuation `V` that `σ` reads off `sa` (whose context then holds
@@ -11444,6 +11682,31 @@ theorem compileRegion_correct_wide {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt ja
         ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
   rw [← denVal_wideTy_transTy hn]
   exact compileRegion_correct h sa V (abiValOf_widen hV) hreg fuel hv
+
+/-- **Correctness of the back half on 64-bit arguments, with the callee-saved registers**,
+    the statement of `regionBack_correct` for `compileRegion`: at a valuation `V` that `σ`
+    reads off `sa` (whose context then holds 64-bit words only, `abiValOf_widen`) and a result type other than an array of narrow
+    words (`denVal_wideTy_transTy`), `σ` reads back the source value of the result. -/
+theorem compileRegion_correct_wide_saved {σ : AbiLayout} {a : AbiNames}
+    {Γ : Ctxt jasminDialect}
+    {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
+    {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
+    (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (hreg : σ.Regions sa)
+    (fuel : Nat) {v : Ctxt.Valuation (d := jasminDialect) [t]}
+    (hv : p.denote fuel V = some v) (hn : narrowArrB t = false := by decide) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ σ.ResultOf sa sa' (denVal t
+          (Ctxt.Var.lookup (d := jasminDialect) (Γ := [t]) (t := t) .here v))
+      ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
+      ∧ (∀ x, SepLogic.X86.Loc.mem x
+          ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
+        (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
+        sa'.mem x = sa.mem x)
+      ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
+        ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
+  rw [← denVal_wideTy_transTy hn]
+  exact compileRegion_correct_saved h sa V (abiValOf_widen hV) hreg fuel hv
 
 /-- **Over a context and result type of 64-bit words, the back half runs on a program that
     denotes as the source.** When `wideTy` fixes the context and the result type of `p`, a

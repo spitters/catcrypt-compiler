@@ -461,7 +461,7 @@ theorem renImage_bytes_ro {σ : AbiLayout} {nm : String → String}
         (∀ p ∈ σ.regions, isResRegion σ p = true →
           Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
         sa'.mem x = sa.mem x := by
-  obtain ⟨prog, sa', hd, hh, hcells, -, -, hsp, hkeep, -⟩ :=
+  obtain ⟨prog, sa', hd, hh, hcells, -, -, hsp, -, hkeep, -⟩ :=
     renImage_bytes hg hU sa hreg fn fuel t hrun
   exact ⟨prog, sa', hd, hh, hcells, hsp,
     keepRO_of_cells hg hU sa hreg hrun hro hd hh hcells hkeep⟩
@@ -478,7 +478,7 @@ def regionROB (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : Jas
         (regionWebsAt (regionWebsEx σ exportReg) none),
       regionLprogC a (legalizeRegion p) none (regionWebsEx σ exportReg) with
   | some r, some (P, cert) =>
-      match firstBody (printedLprog P) with
+      match firstBody (regionPrinted P) with
       | some b =>
           roKeepB σ exportReg (regionCoParts σ exportReg b t r.code r.res cert).ps
             (regionCoParts σ exportReg b t r.code r.res cert).cells

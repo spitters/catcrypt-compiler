@@ -153,8 +153,9 @@ theorem decompile_correct {c : DecompCand Γ t} {bytes : List (BitVec 8)}
           false := by
   obtain ⟨hB, -, r0, r, hr, rfl, hco, -, hbs⟩ := decompileB_spec h
   rw [encodeLfundefBytesChecked_eq hbs]
-  exact regionCo_bytes_of_regionExp (regionExportableB_sound hB) (regionExp_webs _ hr) hco sa V
-    hV hreg fuel hv
+  obtain ⟨prog, sa', hd, hh, hR, hsp, -, hkeep, hA⟩ := regionCo_bytes_of_regionExp
+    (regionExportableB_sound hB) (regionExp_webs _ hr) hco sa V hV hreg fuel hv
+  exact ⟨prog, sa', hd, hh, hR, hsp, hkeep, hA⟩
 
 /-- **Constant time of the bytes of an accepted candidate.** If `c.p` is constant time at
     the source events for the labels `L` at the fuel `fuel`, on the valuations the layout

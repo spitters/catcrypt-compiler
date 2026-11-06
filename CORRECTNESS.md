@@ -109,7 +109,12 @@ tables with the accepted programs.
     the stack register restored and the memory outside the stack frame and the pointer
     regions unchanged, or, for a program that calls a linked function, from a halting run
     through the call. The statement is partial correctness: it concerns source runs that
-    reach a value.
+    reach a value. `haxc_correct_auto_saved` adds, in the first case, that every System V
+    callee-saved register (`DecodedCT.calleeSaved`: `%rbx`, `%rbp`, `%r12` to `%r15`) holds
+    its entry value; `NFEntry.compileR_correct_saved` and `compileRegion_correct_saved`
+    state the same at an entry and for the back half. The printed body saves and restores
+    only the callee-saved registers it writes (`frameTrim`), and the restoration check
+    `restoreB` accepts a register no instruction writes by `keepRegB`.
   - `haxc_ct_proved_all` (`Haxc/ComposeCTStraight.lean`), constant time: for a result of
     `compileA`, every decoding of the bytes is constant time under `ctRegime` between entry
     states that satisfy the regions of `σ` and a precondition `Pre`, agree on its public
@@ -312,7 +317,7 @@ In the table, a name given with a `Haxc.*` module is in
 | Every halting run of a typed body `pre ++ loop` is matched by a halting run of `pre ++ fuseMulHiRM loop` from the same state, with at most four times the fuel | typed bodies accepted by `fuseOKL`, from a base whose registers in the checked list have width 64 | `fuseOKL`, D | [`fuseMulHi_lsemFuelMemF_pre`](CatCrypt/Crypto/SecureCompilation/VIR/JasminLsemFuseMulHi.lean) |
 | Every halting run of a function body without its return is matched by a run of the body that the back end `ownedLprog` gives it (block optimiser, constant-index fold, register re-allocation, two-address form), with at most five times the fuel, to a state related to the source state by `OwnedObs` (equal function name, flags and word memory, equal arrays off the slot arrays, equal result registers, slot arrays held in their cells) | functions ending in a return whose bodies pass `optBlocksOKB`, `FoldIndexedOK`, `reallocCfgOKB` and `twoAddrOK` | `optBlocksOKB`, `reallocCfgOKB`, `twoAddrOK`, D | [`ownedLprog_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/X86Backend/OwnedLprogFuel.lean) |
 | The same for the printed program `printedLprog` (the back end `ownedLprog` followed by the compare reload `cmpReload`), with at most ten times the fuel; the deadWriteRet half and the whole fusion post-pass `regionPostFuse` on programs | as above, with `cmpReloadOK`; for the post-pass, bodies passing the dead-write checks and the fusion check, read through `normMulx` | `cmpReloadOK`, `fuseMulHiOK`, D | `printedLprog_lsemFuelMemF` (`Haxc.PrintedLprogFuel`), `regionPostFuse_lsemFuelMemF` (`Haxc.RegionPostFuseLift`) |
-| The printed program of `compileRegion` is `printedLprog (regionPostFuse P0)` for the allocation `P0` of the allocation stage `regionAllocC` | every program `compileRegion` accepts | none | `regionImage_split` (`Haxc.RegionLprogSplit`) |
+| The printed program of `compileRegion` is `regionPrinted (regionPostFuse P0)`, the printed program `printedLprog` with the frame of each body trimmed by `frameTrim`, for the allocation `P0` of the allocation stage `regionAllocC` | every program `compileRegion` accepts | none | `regionImage_split` (`Haxc.RegionLprogSplit`) |
 | Each instruction of the lowering core and its lowering simulate one another up to agreement off the two scratch registers | instructions accepted by `lowerCoreOKB`: two-address operations and conditional moves over registers, two-address operations with a register destination and a spilled second source, one-source legalisation, loads without a spilled base or index | `lowerCoreOKB`, D | [`simS_lowerCore`](CatCrypt/Crypto/SecureCompilation/X86Backend/LowerFuelMemF.lean) |
 | A halting run of a body is matched by a halting run of the body framed by the prologue (with the saves of the third and later arguments) and the callee-save restore, with the callee-saved registers restored from their slots | bodies with labels and jumps accepted by `frameInstrOKB`: no scratch register, no save slot, no return, call or base reload | `frameInstrOKB`, D | [`frame_lsemFuelMemF`](CatCrypt/Crypto/SecureCompilation/X86Backend/FrameFuelMemFCfg.lean) |
 | Every checked run of the image of the cell body is matched by a run of the address machine on the body, in the image relation with one-bit carries | bodies free of conditional branches whose cell body is accepted by `imgGateBW` and `physImgB`, the physical half of the register-allocation pair | `imgGateBW`, `physImgB`, D | [`image_addr_simBW`](CatCrypt/Crypto/SecureCompilation/X86Backend/ImageAddrCells.lean) |
@@ -327,9 +332,10 @@ In `compileRegion` one pair is validated. The call of `ownedCheckMC` in the gate
 `renImageB` (`Haxc.RegionBackend`) compares the reference chain with the image of the
 printed body; `ownedCheckML` in `regionLeakB` is the same comparison on traced runs, and on
 a calling body `calleeSegB` compares the segments between calls. The printed body is
-`printedLprog (regionPostFuse P0)` for the allocation `P0` (`regionImage_split`): the
-output of allocation, lowering, frame expansion, the post-pass, the back end
-`ownedLprog` and the compare reload. For a pair accepted by these checks,
+`frameTrim` of the first body of `printedLprog (regionPostFuse P0)` for the allocation `P0`
+(`regionImage_split`): the output of allocation, lowering, frame expansion, the post-pass,
+the back end `ownedLprog`, the compare reload and the removal of the saves of the
+registers the body does not write. For a pair accepted by these checks,
 `ownedCheckMC_sound` gives the simulation across all of these passes together. The
 reference side applies the fusion as `fuseMulHiRM`; for a typed body accepted by
 `fuseOKL`, `fuseMulHi_lsemFuelMemF_pre` gives its run. The image routes

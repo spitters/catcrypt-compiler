@@ -216,6 +216,44 @@ theorem NFEntry.compileR_spec {E : NFEntry} {s : E.Src} {σ : AbiLayout} {fname 
   obtain ⟨p, hp, hc⟩ := Option.bind_eq_some_iff.mp hc
   exact ⟨_, p, NFEntry.frontR_of_compileRegion hq0 hp hc, hc⟩
 
+/-- **The compiler theorem at an entry, with the callee-saved registers.** For a result
+    `(P, bytes)` of `E.compileR s σ fname`: from every entry state `sa` satisfying
+    `σ.Regions`, every value `v` of a source run of `s` from `sa` is matched by a halting run
+    of the machine on the decoded bytes in a state from which `σ` reads back `v`, whose stack
+    register and System V callee-saved registers (`DecodedCT.calleeSaved`) hold their entry
+    values, and whose memory agrees with the entry memory at every byte outside the stack
+    words and the pointer regions of `σ`; some run of the address machine on a body from
+    `entryA σ sa` halts and stores to and loads from `layoutMem σ sa` only. The proof
+    composes the leg of the region front `E.toFrontLegOfR` at the structured program of
+    `NFEntry.compileR_spec` with `RegionBackend.compileRegion_correct_saved`: the compiled program has no `call`, so it
+    denotes the same value at the environment in which every call refuses
+    (`RouteProgJ.envDenote_regions_of_callFree`). -/
+theorem NFEntry.compileR_correct_saved (E : NFEntry) (s : E.Src) (σ : AbiLayout)
+    (fname : String) (P : Lprog) (bytes : List (BitVec 8)) (hc : E.compileR s σ fname = some (P, bytes))
+    (sa : AState) (hsep : σ.Regions sa) (v : Value) (hrun : E.Runs σ s sa v) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ σ.ResultOf sa sa' v
+      ∧ sa'.regs "%rsp" = sa.regs "%rsp"
+      ∧ (∀ x ∈ X86Backend.DecodedCT.calleeSaved, sa'.regs x = sa.regs x)
+      ∧ (∀ x, SepLogic.X86.Loc.mem x
+          ∉ wordsLocs (frameWords (sa.regs "%rsp") σ.frameLo σ.frameHi) →
+        (∀ p ∈ σ.regions, SepLogic.X86.Loc.mem x ∉ wordsLocs (regionWords (sa.regs p.1) p.2)) →
+        sa'.mem x = sa.mem x)
+      ∧ ∃ body frame fuel s zf, runA frame body fuel (entryA σ sa) false = some (s, zf)
+        ∧ RunSafe frame body (AccessIn (layoutMem σ sa) frame body) fuel (entryA σ sa) false := by
+  rw [NFEntry.compileR_eq_bind] at hc
+  obtain ⟨q0, hq0, hc⟩ := Option.bind_eq_some_iff.mp hc
+  obtain ⟨q, hp, hJ⟩ := Option.bind_eq_some_iff.mp hc
+  have hf := NFEntry.frontR_of_compileRegion hq0 hp hJ
+  obtain ⟨V, fuel, x, hV, hx, hv⟩ := E.toFrontLegOfR.leg σ s _ hf sa v hsep hrun
+  rw [RouteProgJ.envDenote_regions_of_callFree _ fuel q (callFree_of_compileRegion hJ)] at hx
+  obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.mp hx
+  obtain ⟨prog', sa', hd, hh, hR, hsp, hcs, hkeep, hA⟩ :=
+    compileRegion_correct_wide_saved hJ sa V hV hsep fuel hw (narrowArrB_mapTy_catTy _)
+  refine ⟨prog', sa', hd, hh, ?_, hsp, hcs, hkeep, hA⟩
+  rw [hv]
+  exact hR
+
 /-- **The compiler theorem at an entry.** For a result `(P, bytes)` of `E.compileR s σ fname`:
     from every entry state `sa` satisfying `σ.Regions`, every value `v` of a source run of `s`
     from `sa` is matched by a halting run of the machine on the decoded bytes in a state from
