@@ -158,10 +158,24 @@ def window {start : ℕ} (h : start + w ≤ n) : Reg n w where
   q i := ⟨start + i.val, by omega⟩
   inj i j hij := Fin.ext (by have := congrArg Fin.val hij; simp only at this; omega)
 
+/-- Position `i` of the window `[start, start + w)` is the qubit `start + i`. -/
+@[simp]
+theorem window_q {start : ℕ} (h : start + w ≤ n) (i : Fin w) :
+    (window h).q i = ⟨start + i.val, by omega⟩ :=
+  rfl
+
+/-- The window `[0, n)` is the identity register. -/
+theorem window_zero_q : (window (Nat.zero_add n).le).q = id :=
+  funext fun i => Fin.ext (Nat.zero_add i.val)
+
 variable (r : Reg n w)
 
 /-- The gate list `l` on `w` qubits placed on the qubits of the register. -/
 def place (l : List (Gate w)) : List (Gate n) := l.map (mapGate r.q)
+
+/-- Placing a gate list on the window `[0, n)` leaves it unchanged. -/
+theorem place_window_zero (l : List (Gate n)) : (window (Nat.zero_add n).le).place l = l := by
+  rw [place, window_zero_q, QFT.map_mapGate_id]
 
 /-- The value of the register at the basis index `x`: the bits of `x` at the qubits of the
     register, position `0` most significant. -/
@@ -399,7 +413,8 @@ theorem commOn_listMatrix_X {qs : List (Fin n)} {c : Fin n} (hc : c ∉ qs) :
     obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hg
     exact fun e => hc (e ▸ hq)
 
-/-- An `X` layer on distinct qubits is an involution. -/
+/-- An `X` layer on distinct qubits is an involution: the doubly-applied layer is the
+    identity. -/
 theorem listMatrix_mapX_mul_self {qs : List (Fin n)} (hnd : qs.Nodup) :
     listMatrix (qs.map Gate.X) * listMatrix (qs.map Gate.X) = 1 := by
   induction qs with
