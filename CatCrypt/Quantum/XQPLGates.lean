@@ -27,6 +27,7 @@ only up to a global phase. Both return `XQPL.ofGates l`, a measurement-free prog
 
 ## Main definitions
 
+* `OpGateList Ops n` -- a gate list for each operation, without denotation
 * `OpGates Ops n` -- an exact gate list for each operation, denoting the operation
 * `XQPL.applyGates`, `XQPL.ofGates` -- a gate list in front of a program; a gate list as
   a program
@@ -66,22 +67,35 @@ variable {n : ℕ}
 
 /-! ## Operations with exact gate lists -/
 
-/-- An exact gate list for each operation of `Ops`, whose circuit has the denotation of
-    the operation. -/
-class OpGates (Ops : Type) (n : ℕ) [OpDenote Ops n] where
+/-- A gate list for each operation of `Ops`. It carries no denotation, so the gate lists of
+    programs are computable. -/
+class OpGateList (Ops : Type) (n : ℕ) where
   /-- The gate list of an operation. -/
   gates : Ops → List (Gate n)
+
+/-- An exact gate list for each operation of `Ops`, whose circuit has the denotation of
+    the operation. -/
+class OpGates (Ops : Type) (n : ℕ) [OpDenote Ops n] extends OpGateList Ops n where
   /-- An operation denotes the circuit of its gate list. -/
   denote_eq : ∀ op, OpDenote.denote op = GateUnitarity.unitaryDenote (Circuit.ofList (gates op))
+
+/- The gate lists of a concrete operation set resolve to its `OpGateList` instance, which is
+computable, before the projection from `OpGates`, which carries the denotation. -/
+attribute [instance 100] OpGates.toOpGateList
 
 /-- The operations of `A ⊕ B` denote as the operations of `A` and of `B`. -/
 instance instOpDenoteSum {A B : Type} [OpDenote A n] [OpDenote B n] : OpDenote (A ⊕ B) n where
   denote := Sum.elim OpDenote.denote OpDenote.denote
 
 /-- The gate lists of `A ⊕ B` are those of `A` and of `B`. -/
+instance instOpGateListSum {A B : Type} [OpGateList A n] [OpGateList B n] :
+    OpGateList (A ⊕ B) n where
+  gates := Sum.elim OpGateList.gates OpGateList.gates
+
+/-- The exact gate lists of `A ⊕ B` are those of `A` and of `B`. -/
 instance instOpGatesSum {A B : Type} [OpDenote A n] [OpDenote B n] [OpGates A n]
     [OpGates B n] : OpGates (A ⊕ B) n where
-  gates := Sum.elim OpGates.gates OpGates.gates
+  toOpGateList := instOpGateListSum
   denote_eq
     | .inl a => OpGates.denote_eq a
     | .inr b => OpGates.denote_eq b
@@ -132,7 +146,7 @@ def lowerXQPL [OpDenote Ops n] [OpGates Ops n] : XQPL Ops n α → QPL n α
   | .ret a => .ret a
   | .gate g k => .gate g (lowerXQPL k)
   | .meas i kt kf => .meas i (lowerXQPL kt) (lowerXQPL kf)
-  | .custom op k => applyGates (OpGates.gates op) (lowerXQPL k)
+  | .custom op k => applyGates (OpGateList.gates op) (lowerXQPL k)
   | .fail => .fail
 
 /-- **Soundness of the lowering.** A program and its lowering to QPL have the same
@@ -161,12 +175,12 @@ instance : DecidablePred (XQPL.isMeasFree (Ops := Ops) (n := n) (α := α)) := d
 
 /-- The exact gate list of a measurement-free program: its gates and the gate lists of
     its operations, in program order. -/
-def toGates [OpDenote Ops n] [OpGates Ops n] :
+def toGates [OpGateList Ops n] :
     (p : XQPL Ops n α) → p.isMeasFree → List (Gate n)
   | .ret _, _ => []
   | .gate g k, h => g :: k.toGates h
   | .meas _ _ _, h => False.elim h
-  | .custom op k, h => OpGates.gates op ++ k.toGates h
+  | .custom op k, h => OpGateList.gates op ++ k.toGates h
   | .fail, h => False.elim h
 
 /-- The return value of a measurement-free program. -/
@@ -178,7 +192,7 @@ def retVal : (p : XQPL Ops n α) → p.isMeasFree → α
   | .fail, h => False.elim h
 
 /-- The exact unitary of a measurement-free program: the matrix of its gate list. -/
-def unitary [OpDenote Ops n] [OpGates Ops n] (p : XQPL Ops n α) (h : p.isMeasFree) :
+def unitary [OpGateList Ops n] (p : XQPL Ops n α) (h : p.isMeasFree) :
     Matrix (Fin (2 ^ n)) (Fin (2 ^ n)) ℂ :=
   listMatrix (p.toGates h)
 
@@ -205,7 +219,7 @@ theorem denote_eq_toGates [OpDenote Ops n] [OpGates Ops n] (p : XQPL Ops n α)
   rw [denote_eq_applyGates_toGates p h, denote_applyGates]
   rfl
 
-theorem toGates_applyGates [OpDenote Ops n] [OpGates Ops n] (l : List (Gate n))
+theorem toGates_applyGates [OpGateList Ops n] (l : List (Gate n))
     {k : XQPL Ops n α} (hk : k.isMeasFree) :
     (applyGates l k).toGates (isMeasFree_applyGates l hk) = l ++ k.toGates hk := by
   induction l with
@@ -213,13 +227,13 @@ theorem toGates_applyGates [OpDenote Ops n] [OpGates Ops n] (l : List (Gate n))
   | cons g l ih => simp only [applyGates, List.foldr_cons, toGates, List.cons_append] at ih ⊢; grind
 
 /-- The exact gate list of `ofGates l` is `l`. -/
-theorem toGates_ofGates [OpDenote Ops n] [OpGates Ops n] (l : List (Gate n))
+theorem toGates_ofGates [OpGateList Ops n] (l : List (Gate n))
     (h : (ofGates l : XQPL Ops n Unit).isMeasFree := isMeasFree_ofGates l) :
     (ofGates l : XQPL Ops n Unit).toGates h = l :=
   (toGates_applyGates l (k := (.ret () : XQPL Ops n Unit)) trivial).trans (List.append_nil l)
 
 /-- The unitary of `ofGates l` is the matrix of `l`. -/
-theorem unitary_ofGates [OpDenote Ops n] [OpGates Ops n] (l : List (Gate n))
+theorem unitary_ofGates [OpGateList Ops n] (l : List (Gate n))
     (h : (ofGates l : XQPL Ops n Unit).isMeasFree) :
     (ofGates l : XQPL Ops n Unit).unitary h = listMatrix l := by
   rw [unitary, toGates_ofGates]
@@ -227,12 +241,12 @@ theorem unitary_ofGates [OpDenote Ops n] [OpGates Ops n] (l : List (Gate n))
 /-! ## Adjoint -/
 
 /-- The adjoint of a measurement-free program: the inverse of its exact gate list. -/
-def adjoint [OpDenote Ops n] [OpGates Ops n] (p : XQPL Ops n Unit) (h : p.isMeasFree) :
+def adjoint [OpGateList Ops n] (p : XQPL Ops n Unit) (h : p.isMeasFree) :
     XQPL Ops n Unit :=
   ofGates (invGates (p.toGates h))
 
 /-- The unitary of the adjoint is the conjugate transpose of the unitary. -/
-theorem unitary_adjoint [OpDenote Ops n] [OpGates Ops n] (p : XQPL Ops n Unit)
+theorem unitary_adjoint [OpGateList Ops n] (p : XQPL Ops n Unit)
     (h : p.isMeasFree) :
     (adjoint p h).unitary (isMeasFree_ofGates _) = (p.unitary h)ᴴ := by
   exact (unitary_ofGates _ _).trans (listMatrix_invGates _)
@@ -254,19 +268,19 @@ theorem denote_adjoint [OpDenote Ops n] [OpGates Ops n] (p : XQPL Ops n Unit)
 /-! ## Control -/
 
 /-- The measurement-free program `p` controlled on the qubit `c`, gate by gate. -/
-def controlled [OpDenote Ops n] [OpGates Ops n] (c : Fin n) (p : XQPL Ops n Unit)
+def controlled [OpGateList Ops n] (c : Fin n) (p : XQPL Ops n Unit)
     (h : p.isMeasFree) : XQPL Ops n Unit :=
   ofGates (ctrlList c (p.toGates h))
 
 /-- For a program whose gates avoid `c`, the unitary of the controlled program is the
     control of the unitary on `c`. -/
-theorem unitary_controlled [OpDenote Ops n] [OpGates Ops n] (c : Fin n) (p : XQPL Ops n Unit)
+theorem unitary_controlled [OpGateList Ops n] (c : Fin n) (p : XQPL Ops n Unit)
     (h : p.isMeasFree) (hc : ∀ g ∈ p.toGates h, Avoids c g) :
     (controlled c p h).unitary (isMeasFree_ofGates _) = ctrlMatrix c (p.unitary h) := by
   exact (unitary_ofGates _ _).trans (listMatrix_ctrlList hc)
 
 /-- The measurement-free program `p` controlled on every qubit of `cs`, ancilla-free. -/
-def mcontrolledNoAnc [OpDenote Ops n] [OpGates Ops n] (cs : List (Fin n))
+def mcontrolledNoAnc [OpGateList Ops n] (cs : List (Fin n))
     (p : XQPL Ops n Unit) (h : p.isMeasFree) : XQPL Ops n Unit :=
   ofGates ((p.toGates h).flatMap (mctrlGates cs))
 
@@ -295,7 +309,7 @@ variable {Ops : Type}
 
 /-- For distinct controls that the program's gates avoid, the unitary of the
     multi-controlled program is the unitary controlled on every qubit of `cs`. -/
-theorem unitary_mcontrolledNoAnc [OpDenote Ops n] [OpGates Ops n] (cs : List (Fin n))
+theorem unitary_mcontrolledNoAnc [OpGateList Ops n] (cs : List (Fin n))
     (p : XQPL Ops n Unit) (h : p.isMeasFree) (hnd : cs.Nodup)
     (hc : ∀ c ∈ cs, ∀ g ∈ p.toGates h, Avoids c g) :
     (mcontrolledNoAnc cs p h).unitary (isMeasFree_ofGates _) = mctrlMatrix cs (p.unitary h) := by

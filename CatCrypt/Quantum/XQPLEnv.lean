@@ -27,13 +27,15 @@ theorem of the construct:
   program as a list of atoms, an operation of `Ops` as the gate atoms of its gate list.
 
 The operation set of the language is `RegisterOps n ⊕ RevOp n`; `RevOp n` has the
-`OpDenote` and `OpGates` instances of its gate lists here. `XQPL.seq` sequences two programs,
+`OpDenote`, `OpGateList` and `OpGates` instances of its gate lists here; the environments
+need only `OpGateList`, so the gate lists of their programs are computable. `XQPL.seq` sequences two programs,
 and its unitary is the product (`XQPL.unitary_seq`).
 
 A measurement-free program whose gate list has no real-angle `Rz` (`QrunchBasis.NoRz`)
 exports to OpenQASM 2 through `QrunchExport.exportQASM`: the text read back realises the
 unitary of the program times the exact global phase (`XQPL.qelibListMatrix_export_xqpl`).
-`noRz_ctrlList`, `noRz_mctrlGates` and `noRz_invGates` carry `NoRz` through the constructs.
+`noRz_ctrlList`, `noRz_mctrlGates` and `noRz_invGates` carry `NoRz` through the constructs,
+and `XQPL.noRz_seq`, `XQPL.noRz_mcontrolled` and `XQPL.noRz_withEq` through the environments.
 
 ## Main results
 
@@ -67,9 +69,13 @@ variable {n : ℕ}
 instance instOpDenoteRevOp : OpDenote (RevOp n) n where
   denote o := GateUnitarity.unitaryDenote (Circuit.ofList o.gates)
 
+/-- The gate list of a reversible atom is `RevOp.gates`. -/
+instance instOpGateListRevOp : OpGateList (RevOp n) n where
+  gates := RevOp.gates
+
 /-- The exact gate list of a reversible atom is `RevOp.gates`. -/
 instance instOpGatesRevOp : OpGates (RevOp n) n where
-  gates := RevOp.gates
+  toOpGateList := instOpGateListRevOp
   denote_eq _ := rfl
 
 /-- `Avoids c g` is decidable. -/
@@ -106,16 +112,26 @@ theorem noRz_invGates {l : List (Gate n)} (hl : ∀ g ∈ l, NoRz g) : ∀ g ∈
   obtain ⟨g, hg, rfl⟩ := List.mem_map.mp (List.mem_reverse.mp hg')
   exact noRz_invGate (hl g hg)
 
+/-- The ancilla construction of exact-angle lists has exact angles. -/
+theorem noRz_ancillaCtrlGates {V U : List (Gate n)} (a : Fin n) (hV : ∀ g ∈ V, NoRz g)
+    (hU : ∀ g ∈ U, NoRz g) : ∀ g ∈ ancillaCtrlGates V a U, NoRz g := by
+  intro g hg
+  simp only [ancillaCtrlGates, List.mem_append] at hg
+  rcases hg with (h | h) | h
+  · exact hV g h
+  · exact noRz_ctrlList a hU g h
+  · exact noRz_invGates hV g h
+
 namespace XQPL
 
-variable {Ops : Type} [OpDenote Ops n] [OpGates Ops n] {α β : Type}
+variable {Ops : Type} [OpGateList Ops n] {α β : Type}
 
 /-! ## Sequencing -/
 
 /-- `p`, then `q`, discarding the value of `p`. -/
 def seq (p : XQPL Ops n α) (q : XQPL Ops n β) : XQPL Ops n β := p.bind fun _ => q
 
-omit [OpDenote Ops n] [OpGates Ops n] in
+omit [OpGateList Ops n] in
 theorem isMeasFree_seq {p : XQPL Ops n α} {q : XQPL Ops n β} (hp : p.isMeasFree)
     (hq : q.isMeasFree) : (seq p q).isMeasFree := by
   induction p with
@@ -134,7 +150,7 @@ theorem toGates_seq {p : XQPL Ops n α} {q : XQPL Ops n β} (hp : p.isMeasFree)
   | gate g k ih => exact congrArg (List.cons g) (ih hp)
   | meas i kt kf _ _ => exact hp.elim
   | custom op k ih =>
-    exact (congrArg (OpGates.gates op ++ ·) (ih hp)).trans (List.append_assoc _ _ _).symm
+    exact (congrArg (OpGateList.gates op ++ ·) (ih hp)).trans (List.append_assoc _ _ _).symm
   | fail => exact hp.elim
 
 /-- The unitary of `seq p q` is the unitary of `q` times the unitary of `p`. -/
@@ -185,7 +201,7 @@ def toRevOps : (p : XQPL (Ops ⊕ RevOp n) n α) → p.isMeasFree → List (RevO
   | .ret _, _ => []
   | .gate g k, h => RevOp.gate g :: k.toRevOps h
   | .meas _ _ _, h => False.elim h
-  | .custom (.inl op) k, h => (OpGates.gates op).map RevOp.gate ++ k.toRevOps h
+  | .custom (.inl op) k, h => (OpGateList.gates op).map RevOp.gate ++ k.toRevOps h
   | .custom (.inr o) k, h => o :: k.toRevOps h
   | .fail, h => False.elim h
 
@@ -207,7 +223,7 @@ theorem revGates_toRevOps (p : XQPL (Ops ⊕ RevOp n) n α) (h : p.isMeasFree) :
 def ofRevOps (l : List (RevOp n)) : XQPL (Ops ⊕ RevOp n) n Unit :=
   l.foldr (fun o k => .custom (.inr o) k) (.ret ())
 
-omit [OpDenote Ops n] [OpGates Ops n] in
+omit [OpGateList Ops n] in
 theorem isMeasFree_ofRevOps (l : List (RevOp n)) :
     (ofRevOps l : XQPL (Ops ⊕ RevOp n) n Unit).isMeasFree := by
   induction l with
@@ -253,6 +269,47 @@ theorem unitary_uncompute {a : Fin n} {ins : List (Fin n)} {C U : XQPL (Ops ⊕ 
   · rw [unitary, ← revGates_toRevOps U hU, hB]
   · rw [hK, e₁]
   · rw [hK, e₂]
+
+/-! ## Exact angles through the environments -/
+
+/-- `seq` of exact-angle programs has exact angles. -/
+theorem noRz_seq {p : XQPL Ops n α} {q : XQPL Ops n β} {hp : p.isMeasFree}
+    {hq : q.isMeasFree} (h₁ : ∀ g ∈ p.toGates hp, NoRz g) (h₂ : ∀ g ∈ q.toGates hq, NoRz g) :
+    ∀ g ∈ (seq p q).toGates (isMeasFree_seq hp hq), NoRz g := by
+  intro g hg
+  rw [toGates_seq hp hq, List.mem_append] at hg
+  rcases hg with h | h
+  · exact h₁ g h
+  · exact h₂ g h
+
+/-- `mcontrolled` of an exact-angle block has exact angles. -/
+theorem noRz_mcontrolled {cs : List (Fin n)} {a : Fin n} {p : XQPL Ops n Unit}
+    {h : p.isMeasFree} (hp : ∀ g ∈ p.toGates h, NoRz g) :
+    ∀ g ∈ (mcontrolled cs a p h).toGates (isMeasFree_ofGates _), NoRz g := by
+  intro g hg
+  change g ∈ (ofGates _ : XQPL Ops n Unit).toGates _ at hg
+  rw [toGates_ofGates] at hg
+  exact noRz_ancillaCtrlGates a (noRz_mctrlGates (g := Gate.X a) trivial cs) hp g hg
+
+/-- `withEq` of an exact-angle block has exact angles. -/
+theorem noRz_withEq {w : ℕ} {r : Reg n w} {v : Fin (2 ^ w)} {a : Fin n} {p : XQPL Ops n Unit}
+    {h : p.isMeasFree} (hp : ∀ g ∈ p.toGates h, NoRz g) :
+    ∀ g ∈ (withEq r v a p h).toGates (isMeasFree_ofGates _), NoRz g := by
+  intro g hg
+  change g ∈ (ofGates _ : XQPL Ops n Unit).toGates _ at hg
+  rw [toGates_ofGates] at hg
+  have hX : ∀ g ∈ r.xPattern v, NoRz g := by
+    intro g hg
+    obtain ⟨q, -, rfl⟩ := List.mem_map.mp hg
+    trivial
+  have hE : ∀ g ∈ r.eqIntoGates v a, NoRz g := by
+    intro g hg
+    simp only [Reg.eqIntoGates, List.mem_append] at hg
+    rcases hg with (h | h) | h
+    · exact hX g h
+    · exact noRz_mctrlGates (g := Gate.X a) trivial _ g h
+    · exact hX g h
+  exact noRz_ancillaCtrlGates a hE hp g hg
 
 /-! ## Export -/
 

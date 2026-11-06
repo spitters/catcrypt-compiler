@@ -57,7 +57,8 @@ are the transforms on the window:
 * `lowerRegisterOp` -- `qft` and `iqft` to the transform circuits `qftGates`
   and `qftInvGates` on the window, `phaseEstimation` and
   `amplitudeAmplification` to their gate lists, `barrier` to no gates
-* `OpGates (RegisterOps n) n` -- the exact gate list of an operation is its lowering
+* `OpGateList (RegisterOps n) n`, `OpGates (RegisterOps n) n` -- the exact gate list of an
+  operation is its lowering
 * `lowerHQPL` -- lowering from HQPL to standard QPL, the lowering `XQPL.lowerXQPL`
   of `XQPLGates.lean` at `RegisterOps n`
 
@@ -197,9 +198,13 @@ theorem denote_registerOp (op : RegisterOps n) :
     OpDenote.denote op = GateUnitarity.unitaryDenote (Circuit.ofList (lowerRegisterOp op)) :=
   rfl
 
-/-- The exact gate list of a register operation is its lowering. -/
-instance : OpGates (RegisterOps n) n where
+/-- The gate list of a register operation is its lowering. -/
+instance instOpGateListRegisterOps : OpGateList (RegisterOps n) n where
   gates := lowerRegisterOp
+
+/-- The exact gate list of a register operation is its lowering. -/
+instance instOpGatesRegisterOps : OpGates (RegisterOps n) n where
+  toOpGateList := instOpGateListRegisterOps
   denote_eq := denote_registerOp
 
 /-! ## HQPLProg Type -/
