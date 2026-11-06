@@ -3237,6 +3237,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.TensorProduct,
     Lake.Glob.one `CatCrypt.Quantum.Uncomputation,
     Lake.Glob.one `CatCrypt.Quantum.UnitaryChannel,
+    Lake.Glob.one `CatCrypt.Quantum.XQPLEnv,
     Lake.Glob.one `CatCrypt.Quantum.XQPLGates,
     Lake.Glob.one `CatCrypt.Quantum.ZXCalculus,
     Lake.Glob.one `CatCrypt.Quantum.ZXOptimize,
