@@ -9,6 +9,9 @@ README.md
 bridge/README.md
 bench/qasm/qsynth/README.md
 bench/qasm/qasmbench/README.md
+bench/qrunch/hw-metrics/README.md
+bench/qrunch/qiskit-passes/README.md
+bench/qrunch/qrisp/README.md
 BUILDING.md
 GETTING_STARTED.md
 EXAMPLES.md

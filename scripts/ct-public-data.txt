@@ -15,6 +15,6 @@ CatCrypt/Crypto/Jasmin/Examples/CombTableInit.lean  # builds the fixed comb tabl
 CatCrypt/Crypto/Jasmin/Examples/CombTableInitArr.lean  # the array-slot form of the same table build, over the same two constant inputs
 CatCrypt/Crypto/Jasmin/Examples/CombTableInitArrV2.lean  # the runtime-indexed form of the same table build, over the same two constant inputs
 CatCrypt/Quantum/Benchmark/QrunchCompile.lean  # the quantum circuit compiler catq-compile writes the optimized OpenQASM 2 file of its input circuit; it emits no cryptographic kernel and handles no secret
+CatCrypt/Quantum/Benchmark/QrunchExportMain.lean  # catq-export writes fixed quantum algorithm circuits (QFT, phase estimation, amplitude amplification) as OpenQASM 2 files; it emits no cryptographic kernel and handles no secret
 CatCrypt/Crypto/Jasmin/Examples/XEdDSAVerify.lean  # signature verification: the public key, the signature and the message digest are the verifier's public inputs
-CatCrypt/Crypto/SecureCompilation/VIR/JasminLprogShapeKat.lean  # writes the golden instruction-text shape file; its inputs are exported program texts, not runtime data
 CatCrypt/Hax/ReifyImpEmit.lean  # writes the Rust source text of reified Lean functions and their leaf stubs for the hax round trip; it runs no kernel, so there is no leakage trace
