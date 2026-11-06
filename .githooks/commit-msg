@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
-# commit-msg: this repository has no gate on the commit message; the per-file
-# checks are in pre-commit and the CI gates in pre-push.
-exit 0
+# commit-msg: the message gate; the per-file checks are in pre-commit and the CI gates in
+# pre-push.
+exec bash "$(git rev-parse --show-toplevel)/scripts/commit-msg-gate.sh" "$1"
