@@ -16,8 +16,18 @@ Variants: `in` the input translated into the basis (Qiskit level 0, no optimizat
 elision recorded in the layout and no swap appended; `qk` Qiskit level 3 without a coupling map
 (seed 0, as compare.py), which elides swaps into its layout in the same way; `qkr` (routed table
 only) Qiskit level 3 given the coupling map, its own layout, routing and post-routing optimization,
-best of the same seeds. The layouts of `ours` and `qk` are dropped before routing: the output
-permutation relabels the final wires and costs no gate.
+best of the same seeds; `rto` (routed table only) the routed `in` circuit (the same level-0 Sabre
+run, fewest CX kept) compiled by the same catq-compile server and level with swap elision off
+(`elide=False`), so that its output stays on the physical wires of the routed circuit;
+`rto_viol` counts its multi-qubit gates that do not lie on an edge of the coupling map. The
+layouts of `ours` and `qk` are dropped before routing: the output permutation relabels the final
+wires and costs no gate.
+
+Times: `*_wall` is wall-clock seconds and `*_cpu` user plus system CPU seconds. For catq-compile
+the CPU is that of the `catq-compile --serve` process (psutil, read before and after the call)
+plus the bridge's own Python CPU (`time.process_time`) during the call; for Qiskit it is
+`time.process_time` of this process, which counts its Rayon threads (cap: RAYON_NUM_THREADS,
+recorded in the header line). The `qkr` times cover all SEEDS transpiles.
 
 Native-gate model for (2). Each maximal run of one-qubit gates on a wire is one unitary U.
 IQM (Garnet, Aphrodite: native prx and cz, z rotations virtual): `cx(c,t)` is `h(t) cz h(t)`, the
@@ -55,6 +65,7 @@ import sys
 import time
 
 import numpy as np
+import psutil
 from qiskit import QuantumCircuit, transpile
 from qiskit.transpiler import CouplingMap, generate_preset_pass_manager
 
@@ -201,6 +212,42 @@ def two_q_depth(qc: QuantumCircuit) -> int:
     return qc.depth(lambda ins: ins.operation.num_qubits == 2)
 
 
+def gate_count(qc: QuantumCircuit) -> int:
+    return sum(1 for ins in qc.data if ins.operation.name not in ("barrier", "measure"))
+
+
+def violations(qc: QuantumCircuit, dev: Device) -> int:
+    """Multi-qubit gates of `qc` whose qubits are not the two ends of one coupling-map edge."""
+    edges = {tuple(e) for e in dev.cmap.get_edges()}
+    bad = 0
+    for ins in qc.data:
+        if ins.operation.name == "barrier" or len(ins.qubits) < 2:
+            continue
+        qs = tuple(qc.find_bit(b).index for b in ins.qubits)
+        if len(qs) != 2 or qs not in edges:
+            bad += 1
+    return bad
+
+
+def _server_cpu(vc: VerifiedCompiler) -> float:
+    """User plus system CPU seconds of the catq-compile server process (0 before it starts)."""
+    srv = vc._server
+    if srv is None or srv.proc.poll() is not None:
+        return 0.0
+    try:
+        t = psutil.Process(srv.proc.pid).cpu_times()
+    except psutil.Error:
+        return 0.0
+    return t.user + t.system + t.children_user + t.children_system
+
+
+def catq_timed(vc: VerifiedCompiler, qc: QuantumCircuit) -> tuple[QuantumCircuit, float, float]:
+    """`vc.compile(qc)` with its wall seconds and CPU seconds (server plus bridge Python)."""
+    w0, p0, s0 = time.perf_counter(), time.process_time(), _server_cpu(vc)
+    out = vc.compile(qc)
+    return out, time.perf_counter() - w0, time.process_time() - p0 + _server_cpu(vc) - s0
+
+
 def route(qc: QuantumCircuit, dev: Device, own_level3: bool = False) -> QuantumCircuit:
     """The fewest-CX routed circuit over seeds 0..SEEDS-1 (ties: two-qubit depth)."""
     best = None
@@ -336,47 +383,70 @@ def suite_inputs(suite: str) -> list[tuple[str, QuantumCircuit]]:
 
 
 VARIANTS = ("in", "ours", "qk")
+ROUTED = VARIANTS + ("rto", "qkr")
+FIGS = ("cx", "depth2", "gates", "us", "esp")
 
 
 def run(suite: str) -> None:
     import qiskit
     os.makedirs(OUT, exist_ok=True)
     devices = [Device(d) for d in DEVICES]
+    # One server for both uses; `elide` is sent with each request.
     vc = VerifiedCompiler(level="2r", check=True, permutation="layout")
     ft_head = ["circuit", "qubits", "ours_dev"] + [
         f"{v}_{k}" for v in VARIANTS
-        for k in ("cx", "nonclifford", "t", "arb", "rot_depth", "t_count_est", "t_depth_est")]
-    rt_head = ["circuit", "qubits", "device"] + [
-        f"{v}_{k}" for v in VARIANTS + ("qkr",) for k in ("cx", "depth2", "us", "esp")]
+        for k in ("cx", "nonclifford", "t", "arb", "rot_depth", "t_count_est", "t_depth_est")] + [
+        "ours_wall", "ours_cpu", "qk_wall", "qk_cpu"]
+    rt_head = ["circuit", "qubits", "device"] + [f"{v}_{k}" for v in ROUTED for k in FIGS] + [
+        "rto_viol", "rto_status", "rto_eps", "rto_wall", "rto_cpu", "qkr_wall", "qkr_cpu"]
     ft_rows, rt_rows = [], []
     print("\t".join(rt_head), flush=True)
     for name, src in suite_inputs(suite):
-        ours = vc.compile(src)
+        vc.elide = True
+        ours, o_wall, o_cpu = catq_timed(vc, src)
         if not vc.last_report.optimized:
             ft_rows.append([name, src.num_qubits, f"refused: {vc.last_report.reason}"])
             continue
+        w0, p0 = time.perf_counter(), time.process_time()
         qk = transpile(src, basis_gates=BASIS, optimization_level=3, seed_transpiler=0)
+        q_wall, q_cpu = time.perf_counter() - w0, time.process_time() - p0
         circs = {"in": to_basis(src), "ours": to_basis(ours), "qk": to_basis(qk)}
         dev = deviation(src, ours)
         row = [name, src.num_qubits, f"{dev:.1e}"]
         for v in VARIANTS:
             row += list(ft(circs[v]).values())
+        row += [f"{o_wall:.3f}", f"{o_cpu:.3f}", f"{q_wall:.3f}", f"{q_cpu:.3f}"]
         ft_rows.append(row)
         for d in devices:
             if src.num_qubits > d.n:
                 continue
+            routed = {v: route(circs[v], d) for v in VARIANTS}
+            vc.elide = False
+            rto, r_wall, r_cpu = catq_timed(vc, bare(routed["in"]))
+            vc.elide = True
+            rep = vc.last_report
+            status = "ok" if rep.optimized else f"refused: {rep.reason}"
+            if rep.optimized and rep.final_permutation != list(range(rto.num_qubits)):
+                status = "permuted"
+            routed["rto"] = to_basis(rto)
+            viol = violations(rto, d) + violations(routed["rto"], d)
+            w0, p0 = time.perf_counter(), time.process_time()
+            routed["qkr"] = route(src, d, own_level3=True)
+            k_wall, k_cpu = time.perf_counter() - w0, time.process_time() - p0
             r = [name, src.num_qubits, d.name]
-            for v in VARIANTS + ("qkr",):
-                routed = (route(src, d, own_level3=True) if v == "qkr"
-                          else route(circs[v], d))
-                p, us = esp(routed, d)
-                r += [routed.count_ops().get("cx", 0), two_q_depth(routed), f"{us:.3f}",
-                      f"{p:.4g}"]
+            for v in ROUTED:
+                p, us = esp(routed[v], d)
+                r += [routed[v].count_ops().get("cx", 0), two_q_depth(routed[v]),
+                      gate_count(routed[v]), f"{us:.3f}", f"{p:.4g}"]
+            eps = "-" if rep.eps is None else f"{rep.eps:.1e}"
+            r += [viol, " ".join(status.split()), eps, f"{r_wall:.3f}", f"{r_cpu:.3f}",
+                  f"{k_wall:.3f}", f"{k_cpu:.3f}"]
             print("\t".join(map(str, r)), flush=True)
             rt_rows.append(r)
     vc.close()
     stamp = (f"# qiskit {qiskit.__version__}, catq-compile level 2r --check "
-             f"(permutation=layout), seeds 0..{SEEDS - 1}, eps {EPS:g} (T_arb {T_ARB}), "
+             f"(permutation=layout; rto with --no-elide), seeds 0..{SEEDS - 1}, eps {EPS:g} "
+             f"(T_arb {T_ARB}), RAYON_NUM_THREADS={os.environ.get('RAYON_NUM_THREADS', '-')}, "
              f"{time.strftime('%Y-%m-%d %H:%M %Z')}\n")
     for fname, head, rows in ((f"{suite}-routed.tsv", rt_head, rt_rows),
                               (f"{suite}-ft.tsv", ft_head, ft_rows)):
@@ -411,6 +481,40 @@ def summary() -> None:
             print(f"| {suite} | {d} | {len(rs)} | {s['in_cx']} / {s['ours_cx']} / {s['qk_cx']} / "
                   f"{s['qkr_cx']} | {s['ours_depth2']} / {s['qk_depth2']} | "
                   f"{sorted(lr)[len(lr) // 2]:+.3f} | {w[0]}-{w[1]}-{w[2]} |")
+    print()
+    print("| suite | device | n | routed CX in / ours / qk / rto / qkr | depth2 rto / qkr "
+          "| median log10(ESP / ESP in) ours / qk / rto / qkr "
+          "| ESP rto vs qkr better-equal-worse | rto violations | rto refused |")
+    print("|---|---|---|---|---|---|---|---|---|")
+    for suite in ("qsynth", "qasmbench", "catcrypt", "qrisp"):
+        rows = _read(f"{suite}-routed.tsv")
+        for d in DEVICES:
+            rs = [r for r in rows if r["device"] == d]
+            cx = " / ".join(str(sum(int(r[f"{v}_cx"]) for r in rs)) for v in ROUTED)
+            dp = " / ".join(str(sum(int(r[f"{v}_depth2"]) for r in rs)) for v in ("rto", "qkr"))
+            med = []
+            for v in ("ours", "qk", "rto", "qkr"):
+                lr = sorted(math.log10(float(r[f"{v}_esp"])) - math.log10(float(r["in_esp"]))
+                            for r in rs)
+                med.append(f"{lr[len(lr) // 2]:+.3f}")
+            lr = [math.log10(float(r["rto_esp"])) - math.log10(float(r["qkr_esp"])) for r in rs]
+            w = sum(x > 1e-3 for x in lr), sum(abs(x) <= 1e-3 for x in lr), sum(x < -1e-3 for x in lr)
+            viol = sum(int(r["rto_viol"]) for r in rs)
+            ref = sum(r["rto_status"] != "ok" for r in rs)
+            print(f"| {suite} | {d} | {len(rs)} | {cx} | {dp} | {' / '.join(med)} | "
+                  f"{w[0]}-{w[1]}-{w[2]} | {viol} | {ref} |")
+    print()
+    print("| suite | unrouted: ours wall / CPU s | qk wall / CPU s | routed, 3 devices: rto wall / "
+          "CPU s | qkr (20 seeds) wall / CPU s |")
+    print("|---|---|---|---|---|")
+    for suite in ("qsynth", "qasmbench", "catcrypt", "qrisp"):
+        fs = [r for r in _read(f"{suite}-ft.tsv") if "ours_wall" in r]
+        rs = _read(f"{suite}-routed.tsv")
+        cell = [f"{sum(float(r[f'{v}_wall']) for r in fs):.1f} / "
+                f"{sum(float(r[f'{v}_cpu']) for r in fs):.1f}" for v in ("ours", "qk")]
+        cell += [f"{sum(float(r[f'{v}_wall']) for r in rs):.1f} / "
+                 f"{sum(float(r[f'{v}_cpu']) for r in rs):.1f}" for v in ("rto", "qkr")]
+        print(f"| {suite} | " + " | ".join(cell) + " |")
     print()
     print("| suite | n | non-Clifford rot. in / ours / qk | T gates in / ours / qk "
           "| est. T-count in / ours / qk | est. T-depth in / ours / qk |")
