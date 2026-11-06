@@ -9,6 +9,7 @@ public import CatCrypt.Quantum.HQPL
 public import CatCrypt.Quantum.Uncomputation
 public import CatCrypt.Quantum.QRegister
 public import CatCrypt.Quantum.QrunchExport
+public import CatCrypt.Quantum.AndLadder
 
 /-!
 # Program-level environments of XQPL
@@ -22,6 +23,9 @@ theorem of the construct:
   computed into the ancilla `a` by a multi-controlled `X`, the block is controlled on `a`,
   and the AND is uncomputed (`AndAncilla.ancillaCtrlGates`);
 * `XQPL.withEq r v a p h` — Qrisp's `with r == v:` (`QRegister.Reg.withEq`);
+* `XQPL.mcontrolledLadder c cs as p h`, `XQPL.withEqLadder r v as p h` — the same
+  environments with the AND ladder of relative-phase Toffolis (`AndLadder.andLadder`) on the
+  clean ancillae `as` as the compute step, linear in the number of controls;
 * `XQPL.uncompute C U hC hU` — compute; use; uncompute over the reversible atoms
   `Uncomputation.RevOp n`, on programs over `Ops ⊕ RevOp n`; `XQPL.toRevOps` reads such a
   program as a list of atoms, an operation of `Ops` as the gate atoms of its gate list.
@@ -41,6 +45,8 @@ and `XQPL.noRz_seq`, `XQPL.noRz_mcontrolled` and `XQPL.noRz_withEq` through the 
 
 * `XQPL.unitary_mcontrolled`, `XQPL.unitary_withEq`, `XQPL.unitary_uncompute` — the unitary
   of each environment on ancilla `|0⟩`;
+* `XQPL.unitary_mcontrolledLadder`, `XQPL.unitary_withEqLadder` — the unitary of the ladder
+  environments on clean ancillae;
 * `noRz_ctrlList`, `noRz_invGates` — control and inversion keep exact angles;
 * `XQPL.qelibListMatrix_export_xqpl` — the export of a measurement-free program.
 -/
@@ -53,7 +59,7 @@ noncomputable section
 
 open scoped Matrix
 open CatCrypt.Quantum CatCrypt.Quantum.QCircuit CatCrypt.Quantum.Programs.Qubit
-open CatCrypt.Quantum.ControlledGates CatCrypt.Quantum.AndAncilla
+open CatCrypt.Quantum.ControlledGates CatCrypt.Quantum.AndAncilla CatCrypt.Quantum.AndLadder
 open CatCrypt.Quantum.Uncomputation CatCrypt.Quantum.QRegister
 open CatCrypt.Quantum.OpenQASMImport CatCrypt.Quantum.Qelib CatCrypt.Quantum.QrunchBasis
 open CatCrypt.Quantum.OpenQASMBytes CatCrypt.Quantum.QrunchExport
@@ -121,6 +127,23 @@ theorem noRz_ancillaCtrlGates {V U : List (Gate n)} (a : Fin n) (hV : ∀ g ∈ 
   · exact hV g h
   · exact noRz_ctrlList a hU g h
   · exact noRz_invGates hV g h
+
+/-- The relative-phase Toffoli has exact angles. -/
+theorem noRz_rtofGates (c₁ c₂ a : Fin n) : ∀ g ∈ rtofGates c₁ c₂ a, NoRz g := by
+  intro g hg
+  simp only [rtofGates, List.mem_cons, List.not_mem_nil, or_false] at hg
+  rcases hg with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> trivial
+
+/-- The AND ladder has exact angles. -/
+theorem noRz_andLadder : ∀ (c : Fin n) (cs as : List (Fin n)), ∀ g ∈ andLadder c cs as, NoRz g
+  | _, [], _, g, hg => by simp [andLadder] at hg
+  | _, _ :: _, [], g, hg => by simp [andLadder] at hg
+  | c, c₁ :: cs, a :: as, g, hg => by
+    have e : andLadder c (c₁ :: cs) (a :: as) = rtofGates c c₁ a ++ andLadder a cs as := rfl
+    rw [e, List.mem_append] at hg
+    rcases hg with h | h
+    · exact noRz_rtofGates c c₁ a g h
+    · exact noRz_andLadder a cs as g h
 
 namespace XQPL
 
@@ -310,6 +333,111 @@ theorem noRz_withEq {w : ℕ} {r : Reg n w} {v : Fin (2 ^ w)} {a : Fin n} {p : X
     · exact noRz_mctrlGates (g := Gate.X a) trivial _ g h
     · exact hX g h
   exact noRz_ancillaCtrlGates a hE hp g hg
+
+/-! ## `control(qbs)` with an AND ladder -/
+
+/-- The block `p` controlled on every qubit of `c :: cs` through the clean ancillae `as`: the
+    AND of the controls into the last ancilla by the AND ladder of relative-phase Toffolis, the
+    block controlled on it, and the inverse ladder. -/
+def mcontrolledLadder (c : Fin n) (cs as : List (Fin n)) (p : XQPL Ops n Unit)
+    (h : p.isMeasFree) : XQPL Ops n Unit :=
+  ofGates (ancillaCtrlGates (andLadder c cs as) (ladderTarget c as) (p.toGates h))
+
+/-- On clean ancillae, `mcontrolledLadder c cs as p` is the unitary of `p` controlled on every
+    qubit of `c :: cs`. -/
+theorem unitary_mcontrolledLadder {c : Fin n} {cs as : List (Fin n)} {p : XQPL Ops n Unit}
+    {h : p.isMeasFree} (hlen : cs.length = as.length) (hnd : (c :: cs ++ as).Nodup)
+    (hU : ∀ g ∈ p.toGates h, ∀ q ∈ c :: cs ++ as, Avoids q g) :
+    (mcontrolledLadder c cs as p h).unitary (isMeasFree_ofGates _) * cleanProj as
+      = mctrlMatrix (c :: cs) (p.unitary h) * cleanProj as :=
+  (congrArg (· * cleanProj as) (unitary_ofGates _ _)).trans (listMatrix_ladderCtrl hlen hnd hU)
+
+/-! ## `with r == v` with an AND ladder -/
+
+/-- The block `p` under the condition `r == v` with the clean ancillae `as`: the `X` pattern
+    of `v` and the AND ladder over the register compute `r = v` into the last ancilla, the
+    block is controlled on it, and the computation is inverted. -/
+def withEqLadder {w : ℕ} (r : Reg n (w + 1)) (v : Fin (2 ^ (w + 1))) (as : List (Fin n))
+    (p : XQPL Ops n Unit) (h : p.isMeasFree) : XQPL Ops n Unit :=
+  ofGates (ancillaCtrlGates
+    (r.xPattern v ++ andLadder (r.q 0) (List.ofFn fun i : Fin w => r.q i.succ) as)
+    (ladderTarget (r.q 0) as) (p.toGates h))
+
+/-- On clean ancillae, `withEqLadder r v as p` applies the unitary of `p` exactly where `r`
+    reads `v`. -/
+theorem unitary_withEqLadder {w : ℕ} {r : Reg n (w + 1)} {v : Fin (2 ^ (w + 1))}
+    {as : List (Fin n)} {p : XQPL Ops n Unit} {h : p.isMeasFree} (hlen : w = as.length)
+    (hnd : (List.ofFn r.q ++ as).Nodup)
+    (hU : ∀ g ∈ p.toGates h, ∀ q ∈ List.ofFn r.q ++ as, Avoids q g) :
+    (withEqLadder r v as p h).unitary (isMeasFree_ofGates _) * cleanProj as
+      = (1 + r.proj v * (p.unitary h - 1)) * cleanProj as := by
+  have hofn : List.ofFn r.q = r.q 0 :: List.ofFn fun i : Fin w => r.q i.succ := List.ofFn_succ
+  have hdis : ∀ q ∈ List.ofFn r.q, q ∉ as := fun q hq hq' =>
+    List.disjoint_of_nodup_append hnd hq hq'
+  have hxq : ∀ q ∈ r.xQubits v, q ∈ List.ofFn r.q := by
+    intro q hq
+    obtain ⟨i, -, rfl⟩ := List.mem_map.mp hq
+    exact List.mem_ofFn.mpr ⟨i, rfl⟩
+  have hXX := r.xPattern_mul_self v
+  have hXh : (listMatrix (r.xPattern v))ᴴ = listMatrix (r.xPattern v) := by
+    calc (listMatrix (r.xPattern v))ᴴ
+        = (listMatrix (r.xPattern v))ᴴ
+          * (listMatrix (r.xPattern v) * listMatrix (r.xPattern v)) := by
+          rw [hXX, mul_one]
+      _ = _ := by rw [← mul_assoc, listMatrix_conjTranspose_mul, one_mul]
+  have hXQ : Commute (listMatrix (r.xPattern v)) (cleanProj as) :=
+    (commute_of_phaseOn (phaseOn_cleanProj as) fun g hg q hq => by
+      obtain ⟨q', hq', rfl⟩ := List.mem_map.mp hg
+      rintro rfl
+      exact hdis q' (hxq q' hq') hq).symm
+  have hXU : Commute (listMatrix (r.xPattern v)) (listMatrix (p.toGates h)) :=
+    commute_listMatrix_X fun q hq => commOn_listMatrix fun g hg =>
+      hU g hg q (List.mem_append_left _ (hxq q hq))
+  have hL := listMatrix_ladderCtrl (U := p.toGates h) (c := r.q 0)
+    (cs := List.ofFn fun i : Fin w => r.q i.succ) (as := as) (by simp [hlen])
+    (by rw [← hofn]; exact hnd) (by rw [← hofn]; exact hU)
+  refine (congrArg (· * cleanProj as) (unitary_ofGates _ _)).trans ?_
+  rw [listMatrix_ancillaCtrlGates_append, hXh]
+  calc _ = listMatrix (r.xPattern v) * (listMatrix (ancillaCtrlGates
+          (andLadder (r.q 0) (List.ofFn fun i : Fin w => r.q i.succ) as)
+          (ladderTarget (r.q 0) as) (p.toGates h)) * cleanProj as) * listMatrix (r.xPattern v) := by
+        rw [mul_assoc _ (listMatrix (r.xPattern v)), hXQ.eq]
+        simp only [mul_assoc]
+    _ = listMatrix (r.xPattern v) * (mctrlMatrix (List.ofFn r.q) (listMatrix (p.toGates h))
+          * cleanProj as) * listMatrix (r.xPattern v) := by rw [hL, hofn]
+    _ = listMatrix (r.xPattern v) * mctrlMatrix (List.ofFn r.q) (listMatrix (p.toGates h))
+          * listMatrix (r.xPattern v) * cleanProj as := by
+        simp only [mul_assoc]
+        rw [← hXQ.eq]
+    _ = _ := by
+        rw [mctrlMatrix_eq, conj_one_add hXX hXU, r.xPattern_conj_prod_proj1]
+        rfl
+
+/-- `mcontrolledLadder` of an exact-angle block has exact angles. -/
+theorem noRz_mcontrolledLadder {c : Fin n} {cs as : List (Fin n)} {p : XQPL Ops n Unit}
+    {h : p.isMeasFree} (hp : ∀ g ∈ p.toGates h, NoRz g) :
+    ∀ g ∈ (mcontrolledLadder c cs as p h).toGates (isMeasFree_ofGates _), NoRz g := by
+  intro g hg
+  change g ∈ (ofGates _ : XQPL Ops n Unit).toGates _ at hg
+  rw [toGates_ofGates] at hg
+  exact noRz_ancillaCtrlGates _ (noRz_andLadder c cs as) hp g hg
+
+/-- `withEqLadder` of an exact-angle block has exact angles. -/
+theorem noRz_withEqLadder {w : ℕ} {r : Reg n (w + 1)} {v : Fin (2 ^ (w + 1))}
+    {as : List (Fin n)} {p : XQPL Ops n Unit} {h : p.isMeasFree}
+    (hp : ∀ g ∈ p.toGates h, NoRz g) :
+    ∀ g ∈ (withEqLadder r v as p h).toGates (isMeasFree_ofGates _), NoRz g := by
+  intro g hg
+  change g ∈ (ofGates _ : XQPL Ops n Unit).toGates _ at hg
+  rw [toGates_ofGates] at hg
+  have hV : ∀ g ∈ r.xPattern v ++ andLadder (r.q 0) (List.ofFn fun i : Fin w => r.q i.succ) as,
+      NoRz g := by
+    intro g hg
+    rcases List.mem_append.mp hg with h | h
+    · obtain ⟨q, -, rfl⟩ := List.mem_map.mp h
+      trivial
+    · exact noRz_andLadder _ _ _ g h
+  exact noRz_ancillaCtrlGates _ hV hp g hg
 
 /-! ## Export -/
 

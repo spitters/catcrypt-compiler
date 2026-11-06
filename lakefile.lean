@@ -3146,6 +3146,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.TypedToRawCode,
     Lake.Glob.one `CatCrypt.Hax.VacuityAudit,
     Lake.Glob.one `CatCrypt.Quantum.AndAncilla,
+    Lake.Glob.one `CatCrypt.Quantum.AndLadder,
     Lake.Glob.one `CatCrypt.Quantum.AngleQ,
     Lake.Glob.one `CatCrypt.Quantum.AngleSnap,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchCompile,
@@ -3269,9 +3270,9 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactics.Auto,
     Lake.Glob.one `CatCrypt.Tactics.Basic,
     Lake.Glob.one `CatCrypt.Tactics.BindAlign,
-    Lake.Glob.one `CatCrypt.Tactics.BindMatch,
   ]
 def pkgModules17 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Tactics.BindMatch,
     Lake.Glob.one `CatCrypt.Tactics.BindVcgen,
     Lake.Glob.one `CatCrypt.Tactics.BindVcgenSum,
     Lake.Glob.one `CatCrypt.Tactics.BridgeGen,
