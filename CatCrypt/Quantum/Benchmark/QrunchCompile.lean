@@ -17,8 +17,10 @@ public import CatCrypt.Quantum.QrunchRound
 # The compiler executable of the Qrunch bridge
 
 `lake exe catq-compile` reads an OpenQASM 2 file as qelib1 statements
-(`OpenQASMBytes.importQB`) and iterates the round `QrunchRound.round` of the pipeline to a
-fixed point (`QrunchRound.runRounds`). A round lowers the statements
+(`OpenQASMBytes.importQB`), elides its `swap` statements into an output permutation
+(`SwapElide.elideQ`), snaps its angles (`AngleSnap.snapQ`) and iterates the round
+`QrunchRound.round` of the pipeline to a fixed point (`QrunchRound.runCompile`). A round
+lowers the statements
 (`OpenQASMImport.lowerQ`), runs one level of the optimizer (`levelStage`): `1` and `2` are
 `fullOptimize .Level1` and `fullOptimize .Level2` (`PassPipeline.levelPasses`), `2r` is the
 resynthesis level `ResynthLevel.resynthAt`: Level 2, then the KAK pass and the ZYZ pass at the
@@ -30,15 +32,17 @@ lowers the statement count, at most `--rounds k` rounds (8 by default), and retu
 iterate (`QrunchRound.better_runRounds`). The executable writes it with `printQelib`.
 
 The answer line reports the phase that relates the qelib1 matrices of input and output, the
-sum of the exact phases of the rounds (`QrunchRound.sumPhase`), and the bound, the sum of the
-bounds of the rounds (`QrunchRound.sumEps`). By the iteration theorem
-`QrunchRound.norm_runRounds_sub_le` the qelib1 matrix of the output is within the bound of the
-phase times the qelib1 matrix of the input, in the `ℓ²` operator norm, at every level whose
-stage satisfies `QrunchRound.StageBound`: `2r` with `--check` (`stageBound_levelStage_l2r`)
-and `2`, with bound `0` (`stageBound_levelStage_l2`).
+sum of the exact phases of the rounds (`QrunchRound.sumPhase`), the bound, the snap bound plus
+the sum of the bounds of the rounds (`QrunchRound.sumEps`), and the output permutation. By the
+compile theorem `QrunchRound.norm_runCompile_sub_le` the qelib1 matrix of the input is within
+the bound of the output permutation after the phase times the qelib1 matrix of the output, in
+the `ℓ²` operator norm, at every level whose stage satisfies `QrunchRound.StageBound`: `2r`
+with `--check` (`stageBound_levelStage_l2r`) and `2`, with bound `0` for the rounds
+(`stageBound_levelStage_l2`).
 
-`catq-compile <in.qasm> <out.qasm> [level] [--check] [--rounds k]` compiles one file (`2r` by
-default). At `2r`, `--check` runs `resynthAt` at the checked fits and reports its bound;
+`catq-compile <in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap] [--rounds k]`
+compiles one file (`2r` by default); `--no-elide` and `--no-snap` turn off swap elision and
+angle snapping. At `2r`, `--check` runs `resynthAt` at the checked fits and reports its bound;
 without it `resynthAt` runs at the unchecked fits, which replace the same blocks and runs when
 every fit passes the checker, and the bound is reported as `unchecked`. `--rounds 1` runs one
 round. `catq-compile --serve` reads request lines from standard input and answers each with
@@ -65,6 +69,10 @@ open CatCrypt.Quantum.Optimization.ResynthLevel
 
 /-- A rational `q ≥ 0` as the decimal upper bound `⌈q·10¹⁸⌉e-18`. -/
 def epsString (q : ℚ) : String := s!"{⌈q * 10 ^ 18⌉}e-18"
+
+/-- A permutation of the qubits as `π 0,π 1,…,π (n-1)`, or `-` on no qubits. -/
+def permString {n : ℕ} (σ : Equiv.Perm (Fin n)) : String :=
+  if n = 0 then "-" else ",".intercalate ((List.finRange n).map fun q => toString (σ q).val)
 
 /-- Force `f ()` between two clock reads: its value and the elapsed microseconds. -/
 def timed {α : Type} (f : Unit → α) : IO (α × Nat) := do
@@ -138,58 +146,71 @@ def roundsArg : List String → Option (ℕ × List String)
     pure (r, a :: l)
 
 /-- Compile the OpenQASM 2 file `inp` at `level` into the OpenQASM 2 file `outp` over the
-    Qrunch basis `{rx, ry, cx, p}` by at most `rounds` rounds (`QrunchRound.runRounds` at the
-    stage `levelStage level check`, `printQelib`), and return the answer line `ok <qubits>
-    <cx_in> <cx_l2> <cx_out> <gates_out> <us> <us_import> <us_rounds> <us_kak> <us_zyz>
-    <us_print> <phase> <eps> <rounds_run>` or `error <reason>`. `<cx_in>` is the CNOT count
-    of the lowered input, `<cx_l2>` that of Level 2 in the first round, `<cx_out>` and
-    `<gates_out>` the `cx` and statement counts of the output; `<us_rounds>` is the time of
-    all rounds, and `<us_kak>`, `<us_zyz>` are `0`.
+    Qrunch basis `{rx, ry, cx, p}` by swap elision (when `elide`), angle snapping (when
+    `snap`) and at most `rounds` rounds (`QrunchRound.runCompile` at the stage
+    `levelStage level check`, `printQelib`), and return the answer line `ok <qubits> <cx_in>
+    <cx_l2> <cx_out> <gates_out> <us> <us_import> <us_rounds> <us_kak> <us_zyz> <us_print>
+    <phase> <eps> <rounds_run> <perm>` or `error <reason>`. `<cx_in>` is the CNOT count of the
+    lowered input, `<cx_l2>` that of Level 2 in the first round, `<cx_out>` and `<gates_out>`
+    the `cx` and statement counts of the output; `<us_rounds>` is the time of elision,
+    snapping and all rounds, and `<us_kak>`, `<us_zyz>` are `0`. `<perm>` is the output
+    permutation `π 0,π 1,…` (`permString`): the state of input qubit `q` at the end is on
+    output wire `π q`.
 
-    The phase relates the qelib1 matrices of the two files: `M_in ≈ e^{i·phase} M_out`. It is
-    `-Φ`, `Φ = QrunchRound.sumPhase` the exact sum of the phases of the rounds; it is evaluated
-    in floating point, reduced to `[-π, π]` and printed as the rational `roundQ` gives.
+    The phase relates the qelib1 matrices of the two files: `M_in ≈ W(π) e^{i·phase} M_out`,
+    `W(π)` the permutation matrix `SwapElide.wireMatrix π`. It is `-Φ`,
+    `Φ = QrunchRound.sumPhase` the exact sum of the phases of the rounds; it is evaluated in
+    floating point, reduced to `[-π, π]` and printed as the rational `roundQ` gives.
 
-    With `check`, or at `1` and `2`, `<eps>` is `QrunchRound.sumEps` (`epsString`): by
-    `QrunchRound.norm_runRounds_sub_le` the qelib1 matrix of the output is within `eps` of
-    `e^{iΦ}` times the qelib1 matrix of the input, in the `ℓ²` operator norm. Without it the
-    `2r` fits are unchecked and `<eps>` is `unchecked`. -/
+    With `check`, or at `1` and `2`, `<eps>` is the snap bound plus `QrunchRound.sumEps`
+    (`epsString`): by `QrunchRound.norm_runCompile_sub_le` the qelib1 matrix of the input is
+    within `eps` of `W(π) e^{-iΦ}` times the qelib1 matrix of the output, in the `ℓ²` operator
+    norm. Without it the `2r` fits are unchecked and `<eps>` is `unchecked`. -/
 def compileFile (inp outp : String) (level : Level := .l2r) (check : Bool := false)
-    (rounds : ℕ := 8) : IO String := do
+    (rounds : ℕ := 8) (elide snap : Bool := true) : IO String := do
   let src ← IO.FS.readFile inp
   let some n := OpenQASMImport.qregSize src | pure "error no qreg declaration"
   -- The byte importer; `importQB_eq` equates it with `importQ` on ASCII sources.
   let (qs?, tI) ← timed fun _ => OpenQASMBytes.importQB n src.toUTF8
   let some qs := qs? | pure "error a line the importer does not recognise"
-  let (rs, tR) ← timed fun _ => QrunchRound.runRounds (levelStage level check) rounds qs
+  let (o, tR) ← timed fun _ =>
+    QrunchRound.runCompile (levelStage level check) rounds elide snap qs
+  let rs := o.rounds
   let some o₁ := rs.head? |
     pure "error a statement with repeated operands or a real-valued Rz in the output"
-  let qOut := QrunchRound.finalOut qs rs
+  let qOut := o.out
   let (text, tP) ← timed fun _ => QrunchBasis.printQelib n qOut
   IO.FS.writeFile outp text
-  let eps := if check || level != .l2r then epsString (QrunchRound.sumEps rs) else "unchecked"
+  let eps := if check || level != .l2r then epsString (o.snapEps + QrunchRound.sumEps rs)
+    else "unchecked"
   let phase := -piLinF (QrunchRound.sumPhase rs)
   let twoPi := 2 * piF
   let phase := phase - twoPi * Float.round (phase / twoPi)
   pure s!"ok {n} {cnotCount (qs.flatMap OpenQASMImport.lowerQ)} {cnotCount o₁.stage.l2} \
     {QrunchFuse.cxCount qOut} {qOut.length} {tI + tR + tP} {tI} {tR} 0 0 {tP} \
-    {roundQ phase} {eps} {rs.length}"
+    {roundQ phase} {eps} {rs.length} {permString o.perm}"
+
+/-- The flags of a request that are not `--rounds`: `--check`, `--no-elide`, `--no-snap`. -/
+def flagArgs : List String := ["--check", "--no-elide", "--no-snap"]
 
 /-- The answer to the arguments of one request,
-    `<in.qasm> <out.qasm> [level] [--check] [--rounds k]`. -/
+    `<in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap] [--rounds k]`. -/
 def request (args : List String) : IO String :=
   let check := args.contains "--check"
-  match roundsArg (args.filter (· ≠ "--check")) with
+  let elide := !args.contains "--no-elide"
+  let snap := !args.contains "--no-snap"
+  match roundsArg (args.filter (· ∉ flagArgs)) with
   | none => pure "error --rounds expects a natural number"
-  | some (k, [inp, outp]) => compileFile inp outp .l2r check k
+  | some (k, [inp, outp]) => compileFile inp outp .l2r check k elide snap
   | some (k, [inp, outp, lv]) =>
     match Level.ofString? lv with
-    | some l => compileFile inp outp l check k
+    | some l => compileFile inp outp l check k elide snap
     | none => pure "error level 1, 2 or 2r"
-  | some _ => pure "error expected <in.qasm> <out.qasm> [level] [--check] [--rounds k]"
+  | some _ => pure "error expected <in.qasm> <out.qasm> [level] [--check] [--no-elide] \
+      [--no-snap] [--rounds k]"
 
-/-- Answer the request lines `<in.qasm> <out.qasm> [level] [--check] [--rounds k]` of
-    standard input until it ends. -/
+/-- Answer the request lines `<in.qasm> <out.qasm> [level] [--check] [--no-elide] [--no-snap]
+    [--rounds k]` of standard input until it ends. -/
 partial def serve : IO Unit := do
   let stdin ← IO.getStdin
   let stdout ← IO.getStdout

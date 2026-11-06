@@ -38,7 +38,7 @@ from qiskit.quantum_info import Operator, Statevector, random_statevector
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "bridge"))
-from catq import VerifiedCompiler  # noqa: E402
+from catq import VerifiedCompiler, append_swaps, swap_network  # noqa: E402
 from catq.qasm_io import split_segments  # noqa: E402
 from catq.qrisp_adapter import to_qiskit  # noqa: E402
 
@@ -222,20 +222,30 @@ def _segment(n: int, seg) -> QuantumCircuit:
     return qc
 
 
-def segment_deviation(a: QuantumCircuit, b: QuantumCircuit) -> float:
-    """The largest deviation, up to a phase per segment, between aligned unitary segments;
-    NaN above 20 qubits."""
+def segment_deviation(a: QuantumCircuit, b: QuantumCircuit,
+                      layouts: list[list[int]] | None = None) -> float:
+    """The largest deviation, up to a phase per segment, between aligned unitary segments,
+    segment `i` of `b` read through the wire layouts `layouts[i]` before it and
+    `layouts[i + 1]` after it (`CompileReport.layouts`; the identity when `None`); NaN above
+    20 qubits."""
     if a.num_qubits > 20:
         return float("nan")
     sa, na, _ = split_segments(a)
     sb, nb, _ = split_segments(b)
     assert len(sa) == len(sb) and [x.operation.name for x in na] == [y.operation.name for y in nb]
+    n = b.num_qubits
+    layouts = layouts or [list(range(n))] * (len(sb) + 1)
     states = _states(a.num_qubits)
     dev = 0.0
-    for x, y in zip(sa, sb):
+    for i, (x, y) in enumerate(zip(sa, sb)):
         if not x.ops and not y.ops:
             continue
-        cx_, cy = _segment(a.num_qubits, x), _segment(b.num_qubits, y)
+        cx_ = _segment(a.num_qubits, x)
+        # input qubit q onto wire layouts[i][q], the segment, then back from layouts[i + 1]
+        cy = QuantumCircuit(n)
+        append_swaps(cy, list(reversed(swap_network(layouts[i]))))
+        cy.compose(_segment(n, y), inplace=True)
+        append_swaps(cy, swap_network(layouts[i + 1]))
         for v in states:
             u, w = v.evolve(cx_).data, v.evolve(cy).data
             ph = cmath.phase(np.vdot(w, u))
@@ -287,7 +297,7 @@ def main(args: list[str]) -> None:
             continue
         classical = not rep.unitary
         if classical:
-            ours_dev, qk_dev = f"{segment_deviation(qin, ours):.1e}", "-"
+            ours_dev, qk_dev = f"{segment_deviation(qin, ours, rep.layouts):.1e}", "-"
         else:
             ours_dev, qk_dev = f"{deviation(qin, ours):.1e}", f"{deviation(qin, qk):.1e}"
         (ocx, od2, og), (qcx, qd2, qg) = figures(ours), figures(qk)

@@ -9,6 +9,9 @@ public import CatCrypt.Quantum.Optimization.ResynthLevel
 public import CatCrypt.Quantum.QrunchBasis
 public import CatCrypt.Quantum.QrunchFuse
 public import CatCrypt.Quantum.QrunchCommute
+public import CatCrypt.Quantum.QrunchShort
+public import CatCrypt.Quantum.AngleSnap
+public import CatCrypt.Quantum.SwapElide
 
 /-!
 # One round of the Qrunch pipeline and its iteration to a fixed point
@@ -17,7 +20,8 @@ A round `round stage qs` maps a list of qelib1 statements to a list of qelib1 st
 lowers the statements (`OpenQASMImport.lowerQ`), runs a stage `stage : Circuit n → Resynth n`
 (Level 1, Level 2 or the resynthesis level of `ResynthLevel`), translates the gates of the
 stage to the basis `{rx, ry, cx, p}` (`QrunchBasis.toQelib`) and runs `fuseQ`, the backward
-commutation pass `commuteQ`, the Pauli frame pass `pauliQ` and `fuseQ` again. It refuses
+commutation pass `commuteQ`, the Pauli frame pass `pauliQ`, the one-qubit run shortening
+`QrunchShort.shortQ` and `fuseQ` again. It refuses
 (`none`) an input with a statement whose operands are not distinct (`Qelib.Distinct`) and a
 stage output with a real-angle `Rz`, which has no exact statement.
 
@@ -34,17 +38,27 @@ the bounds of its rounds and its phase the sum of their phases, since every phas
 norm one and errors of approximations add (`ResynthLevel.norm_sub_smul_trans_le`). The CX
 count never rises after the first round (`cxCount_runRounds_le`).
 
+The whole run `runCompile` prepares the input before the first round (`prepQ`): swap elision
+`SwapElide.elideQ`, which drops the `swap` statements and returns an output permutation `π`,
+then angle snapping `AngleSnap.snapQ`, which moves angles near multiples of `π/16` onto them
+with a bound. **The compile theorem** `norm_runCompile_sub_le`: the qelib1 matrix of the input
+is within the snap bound plus the sum of the bounds of the rounds of
+`wireMatrix π * e^{-iΦ} • M_out`; `wireMatrix π` is unitary, so the bounds of the rounds
+transfer through it.
+
 ## Main definitions
 
 * `round` — one round of the pipeline, with its phase and bound (`RoundOut`).
 * `runRounds` — the iteration of the round to a fixed point, at most `k` rounds.
 * `finalOut` — the statements after a list of rounds.
+* `prepQ`, `runCompile` — the preparation of the input and the whole run (`CompileOut`).
 
 ## Main results
 
 * `norm_round_sub_le` — the round theorem.
 * `norm_runRounds_sub_le` — the iteration theorem.
 * `cxCount_runRounds_le` — the CX count of the iteration is at most that of its first round.
+* `norm_runCompile_sub_le` — the compile theorem.
 -/
 
 @[expose] public section
@@ -109,11 +123,12 @@ structure RoundOut (n : ℕ) where
   eps : ℚ
 
 /-- The output statements and phase of the basis passes on the gates `l`: `toQelib`, `fuseQ`,
-`commuteQ`, `pauliQ`, `fuseQ`. -/
+`commuteQ`, `pauliQ`, the one-qubit run shortening `shortQ`, `fuseQ`. -/
 def basisPasses (l : List (Gate n)) : List (QGate n) × PiLin :=
   let t := toQelib l
   let p := pauliQ (commuteQ (fuseQ t.1))
-  (fuseQ p.1, t.2 + p.2)
+  let s := QrunchShort.shortQ p.1
+  (fuseQ s.1, t.2 + p.2 + s.2)
 
 /-- **One round** of the pipeline on the statements `qs`, with the stage `stage`; `none` when
 a statement has operands that are not distinct or the stage outputs a real-angle `Rz`. -/
@@ -132,9 +147,10 @@ theorem qelibListMatrix_basisPasses (l : List (Gate n)) (hl : ∀ g ∈ l, NoRz 
     qelibListMatrix (basisPasses l).1 =
       Complex.exp (Complex.I * (basisPasses l).2.toReal) • listMatrix l := by
   simp only [basisPasses]
-  rw [QrunchFuse.qelibListMatrix_fuseQ, QrunchFuse.qelibListMatrix_pauliQ,
-    QrunchCommute.qelibListMatrix_commuteQ, QrunchFuse.qelibListMatrix_fuseQ,
-    QrunchBasis.qelibListMatrix_toQelib l hl, smul_smul, ← Complex.exp_add, PiLin.toReal_add]
+  rw [QrunchFuse.qelibListMatrix_fuseQ, QrunchShort.qelibListMatrix_shortQ,
+    QrunchFuse.qelibListMatrix_pauliQ, QrunchCommute.qelibListMatrix_commuteQ,
+    QrunchFuse.qelibListMatrix_fuseQ, QrunchBasis.qelibListMatrix_toQelib l hl, smul_smul,
+    smul_smul, ← Complex.exp_add, ← Complex.exp_add, PiLin.toReal_add, PiLin.toReal_add]
   congr 2
   push_cast
   ring
@@ -333,5 +349,113 @@ theorem better_runRounds (stage : Circuit n → Resynth n) (k : ℕ) (qs : List 
     simp only [finalOut, List.mem_cons, forall_eq_or_imp]
     exact ⟨h₁, h₂⟩
   · simp
+
+/-! ## The whole run: swap elision and angle snapping, then the rounds -/
+
+/-- The statements before the first round: swap elision `elideQ` when `elide`, then angle
+snapping `snapQ` when `snap`; with the output permutation of the elision (`1` without it) and
+the bound of the snapping (`0` without it). -/
+def prepQ (elide snap : Bool) (qs : List (QGate n)) :
+    List (QGate n) × Equiv.Perm (Fin n) × ℚ :=
+  let e := if elide then SwapElide.elideQ qs else (qs, 1)
+  let s := if snap then AngleSnap.snapQ e.1 else (e.1, 0)
+  (s.1, e.2, s.2)
+
+/-- The value of a whole run: the rounds, the output statements, the output permutation and
+the bound of the angle snapping. -/
+structure CompileOut (n : ℕ) where
+  /-- The rounds run on the prepared statements. -/
+  rounds : List (RoundOut n)
+  /-- The output statements. -/
+  out : List (QGate n)
+  /-- The output permutation: input qubit `q` at the end is output wire `perm q`. -/
+  perm : Equiv.Perm (Fin n)
+  /-- The bound of the angle snapping. -/
+  snapEps : ℚ
+
+/-- **The whole run**: `prepQ`, then at most `k` rounds of the pipeline (`runRounds`). -/
+def runCompile (stage : Circuit n → Resynth n) (k : ℕ) (elide snap : Bool)
+    (qs : List (QGate n)) : CompileOut n :=
+  let p := prepQ elide snap qs
+  let rs := runRounds stage k p.1
+  ⟨rs, finalOut p.1 rs, p.2.1, p.2.2⟩
+
+/-- The input of a round that does not refuse has statements with distinct operands. -/
+theorem distinct_of_runRounds_ne_nil {stage : Circuit n → Resynth n} {k : ℕ}
+    {qs : List (QGate n)} (h : runRounds stage k qs ≠ []) : ∀ g ∈ qs, Distinct g := by
+  unfold runRounds at h
+  split at h
+  · rename_i o ho
+    unfold round at ho
+    split_ifs at ho with h1
+    simpa only [List.all_eq_true, decide_eq_true_eq] using h1
+  · exact absurd rfl h
+
+/-- The prepared statements are the elided ones, within the snap bound. -/
+theorem norm_prepQ_sub_le (elide snap : Bool) (qs : List (QGate n))
+    (hd : ∀ g ∈ (prepQ elide snap qs).1, Distinct g) :
+    ‖qelibListMatrix (prepQ elide snap qs).1 -
+        qelibListMatrix (if elide then SwapElide.elideQ qs else (qs, 1)).1‖ ≤
+      ((prepQ elide snap qs).2.2 : ℝ) := by
+  cases snap with
+  | false => simp [prepQ]
+  | true =>
+    simp only [prepQ, ↓reduceIte] at hd ⊢
+    refine AngleSnap.norm_qelibListMatrix_snapQ_sub_le _ fun g hg => ?_
+    have hm : (AngleSnap.snapGate g).1 ∈ (AngleSnap.snapQ
+        (if elide then SwapElide.elideQ qs else (qs, 1)).1).1 := by
+      simp only [AngleSnap.snapQ, List.mem_map]
+      exact ⟨g, hg, rfl⟩
+    exact (AngleSnap.distinct_snapGate g).1 (hd _ hm)
+
+/-- The input is the elided statements followed by the output permutation. -/
+theorem qelibListMatrix_eq_prepQ (elide snap : Bool) (qs : List (QGate n)) :
+    qelibListMatrix qs = SwapElide.wireMatrix (prepQ elide snap qs).2.1 *
+      qelibListMatrix (if elide then SwapElide.elideQ qs else (qs, 1)).1 := by
+  cases elide with
+  | false => simp [prepQ, SwapElide.wireMatrix_one]
+  | true => simpa [prepQ] using SwapElide.qelibListMatrix_elideQ qs
+
+/-- **The compile theorem.** For a run whose first round does not refuse, the qelib1 matrix
+of the input is within the snap bound plus the sum of the bounds of the rounds of the output
+permutation `wireMatrix perm` after `e^{-iΦ}` times the qelib1 matrix of the output, `Φ` the
+sum of the exact phases of the rounds, in the `ℓ²` operator norm. -/
+theorem norm_runCompile_sub_le {stage : Circuit n → Resynth n} (hS : StageBound stage)
+    (k : ℕ) (elide snap : Bool) (qs : List (QGate n))
+    (h : (runCompile stage k elide snap qs).rounds ≠ []) :
+    ‖qelibListMatrix qs - SwapElide.wireMatrix (runCompile stage k elide snap qs).perm *
+        (Complex.exp (-(Complex.I * (sumPhase (runCompile stage k elide snap qs).rounds).toReal)) •
+          qelibListMatrix (runCompile stage k elide snap qs).out)‖ ≤
+      ((runCompile stage k elide snap qs).snapEps +
+        sumEps (runCompile stage k elide snap qs).rounds : ℚ) := by
+  simp only [runCompile] at h ⊢
+  set p := prepQ elide snap qs with hp
+  set rs := runRounds stage k p.1
+  set e := (if elide then SwapElide.elideQ qs else (qs, 1)).1
+  set c := Complex.exp (Complex.I * (sumPhase rs).toReal)
+  have hR : ‖qelibListMatrix (finalOut p.1 rs) - c • qelibListMatrix p.1‖ ≤ (sumEps rs : ℝ) :=
+    norm_runRounds_sub_le hS k p.1
+  have hP : ‖qelibListMatrix p.1 - qelibListMatrix e‖ ≤ (p.2.2 : ℝ) :=
+    norm_prepQ_sub_le elide snap qs (distinct_of_runRounds_ne_nil h)
+  have hU : SwapElide.wireMatrix p.2.1 ∈ unitary (Matrix (Fin (2 ^ n)) (Fin (2 ^ n)) ℂ) :=
+    (Optimization.RoutingPerm.qubitPermUnitary _).prop
+  have hc : Complex.exp (-(Complex.I * (sumPhase rs).toReal)) * c = 1 := by
+    rw [← Complex.exp_add, neg_add_cancel, Complex.exp_zero]
+  have hn : ‖Complex.exp (-(Complex.I * (sumPhase rs).toReal))‖ = 1 := by
+    rw [Complex.norm_exp]; simp
+  have h2 : qelibListMatrix p.1 -
+      Complex.exp (-(Complex.I * (sumPhase rs).toReal)) • qelibListMatrix (finalOut p.1 rs) =
+      Complex.exp (-(Complex.I * (sumPhase rs).toReal)) •
+        (c • qelibListMatrix p.1 - qelibListMatrix (finalOut p.1 rs)) := by
+    rw [smul_sub, smul_smul, hc, one_smul]
+  rw [qelibListMatrix_eq_prepQ elide snap qs, ← mul_sub,
+    CStarRing.norm_mem_unitary_mul _ hU, Rat.cast_add]
+  calc _ ≤ ‖qelibListMatrix e - qelibListMatrix p.1‖ + ‖qelibListMatrix p.1 -
+        Complex.exp (-(Complex.I * (sumPhase rs).toReal)) • qelibListMatrix (finalOut p.1 rs)‖ :=
+        norm_sub_le_norm_sub_add_norm_sub _ _ _
+    _ ≤ _ := by
+      gcongr
+      · rwa [norm_sub_rev]
+      · rwa [h2, norm_smul, hn, one_mul, norm_sub_rev]
 
 end CatCrypt.Quantum.QrunchRound

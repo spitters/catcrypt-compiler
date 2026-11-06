@@ -17,15 +17,25 @@ holds for every input, whatever the floating-point fits return.
 ## The pipeline
 
 ```
-OpenQASM 2 ─read─▶ qelib1 statements ─lower─▶ gates over exact angles ─Level 2─▶
-  ─KAK on two-qubit blocks─▶ ─ZYZ/XYX on one-qubit runs─▶ ─Qrunch basis─▶
-  ─fuse─▶ ─commute back across cx─▶ ─Clifford frame─▶ ─fuse─▶ OpenQASM 2 and phase
+OpenQASM 2 ─read─▶ qelib1 statements ─elide swaps─▶ ─snap angles─▶
+  ─lower─▶ gates over exact angles ─Level 2─▶ ─KAK on two-qubit blocks─▶
+  ─ZYZ/XYX on one-qubit runs─▶ ─Qrunch basis─▶ ─fuse─▶ ─commute back across cx─▶
+  ─Clifford frame─▶ ─shorten one-qubit runs─▶ ─fuse─▶ OpenQASM 2, phase and permutation
 ```
 
-The statements after the last pass are the input of the next round. Rounds repeat while the CX
-count, or at equal CX count the statement count, falls, at most eight times (`--rounds k`); the
-bounds of the rounds add up, and so do their exact phases
-([`norm_runRounds_sub_le`](CatCrypt/Quantum/QrunchRound.lean)).
+Swap statements are removed and the statements after them relabelled; the permutation is
+returned with the phase ([`qelibListMatrix_elideQ`](CatCrypt/Quantum/SwapElide.lean)). An angle
+within 10⁻¹² of a multiple of π/16 read from a decimal is replaced by that multiple, and the
+distance moved enters the bound
+([`norm_qelibListMatrix_snapQ_sub_le`](CatCrypt/Quantum/AngleSnap.lean)). The statements after
+the last pass are the input of the next round. Rounds repeat while the CX count, or at equal CX
+count the statement count, falls, at most eight times (`--rounds k`); the bounds of the rounds
+add up, and so do their exact phases
+([`norm_runRounds_sub_le`](CatCrypt/Quantum/QrunchRound.lean)), and the whole run satisfies
+`M_in ≈ P_π · e^{i·phase} M_out` within the snapping bound plus the bounds of the rounds
+([`norm_runCompile_sub_le`](CatCrypt/Quantum/QrunchRound.lean)). The bridge applies π by
+relabelling later operations and the qubits final measurements read, and appends a swap
+network where neither absorbs it.
 
 ## Main ideas
 

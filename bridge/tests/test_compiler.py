@@ -27,7 +27,8 @@ from qiskit.quantum_info import Operator, Statevector, random_statevector
 BRIDGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BRIDGE)
 sys.path.insert(0, os.path.join(BRIDGE, "tests"))
-from catq import VerifiedCompiler, decode_angle, encode_angle  # noqa: E402
+from catq import (VerifiedCompiler, append_swaps, decode_angle, encode_angle,  # noqa: E402
+                  swap_network)
 from catq.compiler import EPS_FIELD  # noqa: E402
 from branching import same_distribution, segments_equiv  # noqa: E402
 
@@ -238,7 +239,73 @@ def test_final_measurements_only():
     rep = vc.last_report
     assert rep.optimized and not rep.unitary
     assert float(out.global_phase) == pytest.approx(0.3)
-    segments_equiv(qc, out)
+    # the swap of `all_gates` is elided; the final measurements absorb the permutation
+    assert rep.final_permutation == [2, 1, 0] and rep.swaps_appended == 0
+    assert same_distribution(qc, out)
+
+
+def test_swap_network():
+    """The appended swaps move the state on wire `sigma[q]` to wire `q`: preparing qubit q's
+    state on wire `sigma[q]` and appending the swaps gives the state prepared in place. (As
+    unitaries the two differ by the permutation on the input side, so states are compared.)"""
+    sigma = [2, 0, 3, 1]
+    qc = QuantumCircuit(4)
+    for q in range(4):
+        qc.ry(0.3 + q, q)
+    moved = QuantumCircuit(4)
+    for q in range(4):
+        moved.ry(0.3 + q, sigma[q])
+    append_swaps(moved, swap_network(sigma))
+    assert Statevector(qc).equiv(Statevector(moved))
+
+
+def test_swaps_final_measurements():
+    """Swaps before final measurements: elided, absorbed by the measurements (each reads the
+    wire of its qubit), no swap appended, no CX beyond the input's two `cx`, the same
+    distribution."""
+    qc = QuantumCircuit(3, 3)
+    qc.h(0); qc.ry(0.4, 1); qc.cx(0, 1); qc.swap(0, 2); qc.rx(0.7, 0); qc.swap(1, 2)
+    qc.cx(2, 0)
+    qc.measure([0, 1, 2], [0, 1, 2])
+    vc = VerifiedCompiler(check=True)
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized, rep.reason
+    assert rep.final_permutation != [0, 1, 2] and rep.swaps_appended == 0
+    assert rep.cx_out <= 2 and "swap" not in out.count_ops()
+    assert same_distribution(qc, out)
+
+
+def test_swaps_unitary():
+    """A unitary circuit with swaps: they are elided and the remaining permutation is
+    appended as swaps (three `cx` each); the output equals the input exactly."""
+    qc = QuantumCircuit(3, global_phase=0.2)
+    qc.h(0); qc.cx(0, 1); qc.swap(0, 1); qc.rz(0.3, 0); qc.swap(1, 2); qc.ry(0.5, 2)
+    qc.cx(2, 0)
+    row = run(qc, "swaps (unitary)", level="2r", checked=True)
+    assert row["exact"]
+
+
+def test_swap_before_mid_circuit_measurement():
+    """A swap before a mid-circuit measurement: the measurement and the later segment are
+    relabelled to the wires that carry their qubits; the distribution is the input's."""
+    qc = QuantumCircuit(3, 3)
+    qc.h(0); qc.ry(0.6, 1); qc.cx(0, 2); qc.swap(0, 1)
+    qc.measure(0, 0)
+    qc.ry(0.9, 1); qc.cx(1, 2); qc.swap(1, 2); qc.rx(0.3, 2)
+    with qc.if_test((qc.clbits[0], 1)):
+        qc.x(1)
+    qc.h(2)
+    qc.measure([1, 2], [1, 2])
+    vc = VerifiedCompiler(check=True)
+    out = vc.compile(qc)
+    vc.close()
+    rep = vc.last_report
+    assert rep.optimized and not rep.unitary, rep.reason
+    assert rep.layouts[1] == [1, 0, 2]
+    m = next(ins for ins in out.data if ins.operation.name == "measure")
+    assert out.find_bit(m.qubits[0]).index == 1
     assert same_distribution(qc, out)
 
 

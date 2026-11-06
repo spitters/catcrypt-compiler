@@ -10,7 +10,8 @@ reference is Qiskit. Per file, interleaved, best of REPEAT:
   qiskit_ms    qasm2.load + transpile(optimization_level=3, basis above, seed 0)
 and for both outputs, in the same basis: CX count, two-qubit depth, gate count, and
 equality with the input (Operator up to 10 qubits, else four random statevectors), with
-the phase catq-compile reports applied to ours.
+the phase catq-compile reports applied to ours and, for equality only, its output permutation
+(appended as swaps; `ours_perm` says whether it is not the identity).
 
 usage: cd bridge && uv run python -I ../bench/qrunch/compare.py [--check] [--out NAME.tsv]
        [FILE.qasm ...] (default: bench/qasm/qsynth/*.qasm); writes bench/qrunch/results.tsv or
@@ -34,6 +35,8 @@ from qiskit.quantum_info import Operator, Statevector, random_statevector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, os.path.join(ROOT, "bridge"))
+from catq.compiler import PERM_FIELD, append_swaps, parse_perm, swap_network  # noqa: E402
 EXE = os.path.join(ROOT, ".lake", "build", "bin", "catq-compile")
 BASIS = ["rx", "ry", "rz", "cx", "p"]
 REPEAT = 5
@@ -84,7 +87,7 @@ def main(args: list[str]) -> None:
     rows = []
     header = ["circuit", "qubits", "cx_in", "ours_cx", "qiskit_cx", "ours_depth2", "qiskit_depth2",
               "ours_gates", "qiskit_gates", "ours_ms", "ours_core_ms", "ours_proc_ms", "qiskit_ms",
-              "ours_dev", "qiskit_dev"]
+              "ours_dev", "qiskit_dev", "ours_perm"]
     print("\t".join(header), flush=True)
     with tempfile.TemporaryDirectory(prefix="qrunch-bench-") as wd:
         for path in paths:
@@ -118,11 +121,17 @@ def main(args: list[str]) -> None:
                 continue
             ours = load(out)
             ours.global_phase += float(Fraction(row[PHASE_FIELD]))
+            # the output permutation of swap elision, applied for the deviation only (Qiskit's
+            # level 3 elides swaps into its layout in the same way)
+            perm = parse_perm(row[PERM_FIELD])
+            ours_net = ours.copy()
+            append_swaps(ours_net, swap_network(perm))
             (ocx, od2, og), (qcx, qd2, qg) = figures(ours), figures(qk)
             r = [name, src.num_qubits, figures(src)[0], ocx, qcx, od2, qd2, og, qg,
                  f"{min(t_ours) * 1e3:.1f}", f"{min(t_core) * 1e3:.1f}",
                  f"{min(t_proc) * 1e3:.1f}", f"{min(t_qk) * 1e3:.1f}",
-                 f"{deviation(src, ours):.1e}", f"{deviation(src, qk):.1e}"]
+                 f"{deviation(src, ours_net):.1e}", f"{deviation(src, qk):.1e}",
+                 "no" if perm == list(range(len(perm))) else "yes"]
             print("\t".join(map(str, r)), flush=True)
             rows.append(r)
     server.stdin.close()
