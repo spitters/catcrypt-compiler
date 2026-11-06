@@ -32,9 +32,8 @@ bytes, not produced by the compiler.
   between entry states related by `RegionBytePub`, when `p` is constant time at the source
   events.
 * `decompileB_of_regionBack`: the result of `regionBack` on a program without `call`
-  is accepted at that program after the region legalisation `legalizeRegion` (the identity
-  on a program without `rorImm` and without and-not), with the printed body and certificate
-  of the compiler.
+  is accepted at that program after the region legalisation `legalizeRegion` (the identity),
+  with the printed body and certificate of the compiler.
 * `regionPre_bytes_ct_of_decompileB`, `calleeSpec_of_decompileB`: the decoded block of the
   bytes of an accepted candidate is constant time at `regionPre σ c.p`, and it meets
   `regionSig σ c.p` when it passes the keep check at a store policy.

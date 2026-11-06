@@ -18,13 +18,16 @@ set_option autoImplicit false
 # The legalisation of a structured program by a block
 
 A legalisation of a structured program of `jasminDialect` rewrites every binding into a block
-of `jasminDialect` that denotes the value of the binding. The stage `legalizeBy isB blk`
+of `jasminDialect` that denotes the value of the binding. The pass `legalizeBy isB blk`
 returns the program itself when no binding is an operation of the test `isB`, and otherwise
 maps every binding `e` of every region to the block `blk e`, by `NFProg.map` along the block
-lowering `legalLowering blk` of `jasminDialect` into itself.
+lowering `legalLowering blk` of `jasminDialect` into itself. Its instances are the rotate
+legalisation `legalizeRor` (`RorLegal`) and the and-not legalisation `legalizeAndn`
+(`AndnLegal`); both are proved and neither is applied: the region legalisation
+`legalizeRegion` of the region back half is the identity.
 
 The theorems of this module hold for every block that denotes the value of the binding: the
-stage keeps the denotation; when the block emits the events of the binding, it keeps the
+pass keeps the denotation; when the block emits the events of the binding, it keeps the
 leakage run and constant time; it keeps every test that reads only the calls; and when the
 block of every binding of an operation `acc` binds operations of the stack-memory fragment
 `opMemB` only, it sends every program of `regionExportableByB acc` to a program of
@@ -33,20 +36,20 @@ block of every binding of an operation `acc` binds operations of the stack-memor
 ## Main definitions
 
 * `legalLowering` — the block lowering of `jasminDialect` into itself by a block.
-* `legalizeBy` — the stage on a program with one result.
+* `legalizeBy` — the pass on a program with one result.
 * `CallTest` — the tests of a program that read only its calls.
 * `regionExportableByB` — the test `regionExportableB` with a test `acc` of the operations in
   place of `opMemB` at the bindings.
 
 ## Main results
 
-* `legalizeBy_eq_of_none` — the stage is the identity on a program with no operation of `isB`.
-* `legalizeBy_denoteAt`, `legalizeBy_denote` — the stage keeps the denotation.
-* `legalizeBy_leakRun`, `nfct_legalizeBy` — the stage keeps the leakage run and constant time.
-* `legalizeBy_callTest`, `legalizeBy_callFree_eq` — the stage keeps every test that reads only
+* `legalizeBy_eq_of_none` — the pass is the identity on a program with no operation of `isB`.
+* `legalizeBy_denoteAt`, `legalizeBy_denote` — the pass keeps the denotation.
+* `legalizeBy_leakRun`, `nfct_legalizeBy` — the pass keeps the leakage run and constant time.
+* `legalizeBy_callTest`, `legalizeBy_callFree_eq` — the pass keeps every test that reads only
   the calls, among them the absence of `call`.
 * `regionExportableB_legalizeBy` — completeness of `regionExportableB` on the image of the
-  stage.
+  pass.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc
@@ -63,7 +66,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertFragment (opMemB)
 open CatCrypt.Crypto.SecureCompilation.VIR.BlockLoweringCPS (CoveredCom coveredCom_rename)
 open Ctxt (Var Valuation)
 
-/-! ## 1. The lowering and the stage -/
+/-! ## 1. The lowering and the pass -/
 
 /-- **The block lowering of `jasminDialect` into itself by the block `blk`**: types, contexts
     and variables are unchanged, and a binding `e` becomes `blk e`. -/
@@ -105,7 +108,7 @@ variable {isB : JasminOp → Bool}
   {blk : {Γ : Ctxt jasminDialect} → {t : JasminTy} → Expr jasminDialect Γ t →
     Com jasminDialect Γ t}
 
-/-- **On a program with no operation of `isB` the stage is the identity.** -/
+/-- **On a program with no operation of `isB` the pass is the identity.** -/
 theorem legalizeBy_eq_of_none {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} (h : p.allOps (fun op => !isB op) = true) :
     legalizeBy isB blk p = p := by
@@ -135,7 +138,7 @@ private theorem callEnv_transports_legal (E : CallEnv jasminDialect)
 
 /-! ## 2. Denotation and leakage -/
 
-/-- **The stage keeps the denotation** at every call environment and fuel, for a block that
+/-- **The pass keeps the denotation** at every call environment and fuel, for a block that
     denotes the value of the binding. -/
 theorem legalizeBy_denoteAt
     (hden : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t)
@@ -158,7 +161,7 @@ theorem legalizeBy_denoteAt
     | none => rfl
     | some r => exact congrArg some (transArgs_id_single r)
 
-/-- **The stage keeps the denotation**, at every fuel. -/
+/-- **The pass keeps the denotation**, at every fuel. -/
 theorem legalizeBy_denote [CallDenote jasminDialect]
     (hden : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t)
       (V : Valuation Γ), (blk e).denote V = e.denote V)
@@ -167,7 +170,7 @@ theorem legalizeBy_denote [CallDenote jasminDialect]
   funext V
   exact legalizeBy_denoteAt hden CallDenote.env fuel p V
 
-/-- **The stage keeps the leakage run** at leakage parameters `Pj` at every fuel, for a block
+/-- **The pass keeps the leakage run** at leakage parameters `Pj` at every fuel, for a block
     that denotes the value of the binding and emits its events at `Pj`. -/
 theorem legalizeBy_leakRun {Pj : JLeakParams}
     (hden : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t)
@@ -195,7 +198,7 @@ theorem legalizeBy_leakRun {Pj : JLeakParams}
     | none => rfl
     | some r => exact congrArg some (Prod.ext (transArgs_id_single r.1) rfl)
 
-/-- **The stage keeps constant time at the source events** at leakage parameters `Pj`, for a
+/-- **The pass keeps constant time at the source events** at leakage parameters `Pj`, for a
     block that denotes the value of the binding and emits its events at `Pj`. -/
 theorem nfct_legalizeBy {Pj : JLeakParams}
     (hden : ∀ {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t)
@@ -310,7 +313,7 @@ private theorem map_callTest_aux {c : String → Bool}
       exact (hF.call _ _ _).trans ((congrArg (fun y => c f && y) (ih _ hk)).trans
         (hF.call f args k).symm)
 
-/-- **The stage keeps the value of every test that reads only the calls.** -/
+/-- **The pass keeps the value of every test that reads only the calls.** -/
 theorem legalizeBy_callTest {c : String → Bool}
     {F : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts → Bool}
     (hF : CallTest c F) {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -320,12 +323,12 @@ theorem legalizeBy_callTest {c : String → Bool}
   · rfl
   · exact map_callTest_aux hF p (fun v => v) (map?_legalLowering p)
 
-/-- **The stage keeps the absence of `call` and its presence.** -/
+/-- **The pass keeps the absence of `call` and its presence.** -/
 theorem legalizeBy_callFree_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : (legalizeBy isB blk p).callFree = p.callFree :=
   legalizeBy_callTest callTest_callFree p
 
-/-! ## 4. Completeness of the region export test on the image of the stage -/
+/-! ## 4. Completeness of the region export test on the image of the pass -/
 
 /-- **The test `regionExportableB` with the test `acc` of the operations** in place of
     `opMemB` at the bindings, by the same recursion. -/
@@ -460,7 +463,7 @@ private theorem regionExportableB_of_none {acc : JasminOp → Bool}
       simp only [regionExportableB, Bool.and_eq_true]
       exact ⟨hp.1, ih hp.2 hn⟩
 
-/-- **Completeness of the region export test on the image of the stage.** When the block of
+/-- **Completeness of the region export test on the image of the pass.** When the block of
     every binding of an operation of `acc` binds operations of `opMemB` only, and every
     operation of `acc` and not of `isB` is of `opMemB`, a program of `regionExportableByB acc`
     passes `regionExportableB` after `legalizeBy isB blk`. -/

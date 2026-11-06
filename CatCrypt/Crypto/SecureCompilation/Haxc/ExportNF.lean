@@ -22,8 +22,8 @@ return exports to the embedding of its straight-line program `NFProg.toCom? p`
 
 * `exportNF` — the route program of a program of `NFProg jasminDialect`.
 * `exportNFJ` — the program `RouteProgJ` of a program: `exportNF`, else the program itself
-  for the region back half when its region legalisation `legalizeRegion` passes
-  `regionExportableB` and it has no `call` (`exportNFJ_regions`).
+  for the region back half when its region legalisation `legalizeRegion` (the identity)
+  passes `regionExportableB` and it has no `call` (`exportNFJ_regions`).
 * `onlyCalls` — the test that every `call` of a program is at a signature of a list.
 * `exportRegion` — the program itself for the region back half when its region legalisation
   passes `regionExportableB` and every `call` of it is at a signature of a list `L`

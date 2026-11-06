@@ -14,27 +14,32 @@ set_option autoImplicit false
 /-!
 # The rotate legalisation of a structured program
 
-The stage `legalizeRor` of the region back half rewrites every binding of a rotate by an
-immediate `rorImm w k` with `0 < k < w` into the shift-or block
-`(x >>> k) ||| (x <<< (w - k))` of `shrImm w k`, `shlImm w (w - k)` and `regArith .or w`
-(`rorBlock`), in every region: it is the legalisation `legalizeBy isRorB rorBlock`. A program
-with no `rorImm` binding is returned unchanged (`legalizeRor_eq_of_noRor`).
+The pass `legalizeRor` rewrites every binding of a rotate by an immediate `rorImm w k` with
+`0 < k < w` into the shift-or block `(x >>> k) ||| (x <<< (w - k))` of `shrImm w k`,
+`shlImm w (w - k)` and `regArith .or w` (`rorBlock`), in every region: it is the legalisation
+`legalizeBy isRorB rorBlock`. A program with no `rorImm` binding is returned unchanged
+(`legalizeRor_eq_of_noRor`).
+
+The pass is proved and is not applied. The region legalisation `legalizeRegion` of the region
+back half (`AndnLegal`) is the identity: the region export test admits a rotate by an
+immediate with `0 < k < w` (`opMemRorB_eq_opMemB`), and the export emits it as the machine
+rotate `ROR`.
 
 ## Main definitions
 
 * `isRorB` — the test of a rotate by an immediate.
 * `shiftOrBlock`, `rorBlock` — the shift-or block of a rotate, and the block of a binding.
-* `legalizeRor` — the stage on a program with one result.
+* `legalizeRor` — the pass on a program with one result.
 
 ## Main results
 
 * `rorBlock_denote` — the block of a binding denotes the value of the binding.
-* `legalizeRor_eq_of_noRor` — the stage is the identity on a program with no `rorImm`.
-* `legalizeRor_denoteAt`, `legalizeRor_denote` — the stage keeps the denotation, at every
+* `legalizeRor_eq_of_noRor` — the pass is the identity on a program with no `rorImm`.
+* `legalizeRor_denoteAt`, `legalizeRor_denote` — the pass keeps the denotation, at every
   call environment and fuel.
-* `legalizeRor_leakRun` — at leakage parameters with no variable-time operation the stage
+* `legalizeRor_leakRun` — at leakage parameters with no variable-time operation the pass
   keeps the leakage run, and `nfct_legalizeRor` constant time at the source events.
-* `legalizeRor_callTest`, `legalizeRor_callFree_eq`, `legalizeRor_callFree` — the stage keeps
+* `legalizeRor_callTest`, `legalizeRor_callFree_eq`, `legalizeRor_callFree` — the pass keeps
   every test that reads only the calls, among them the absence of `call`.
 -/
 
@@ -121,7 +126,7 @@ theorem rorBlock_ctLeak {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
             simp [Com.ctLeak]
   | _ => simp [rorBlock, Com.ctLeak]
 
-/-! ## 2. The stage -/
+/-! ## 2. The pass -/
 
 /-- **The rotate legalisation** of a program with one result: the legalisation by the block
     `rorBlock` at the test `isRorB`. -/
@@ -129,25 +134,25 @@ def legalizeRor {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDiale
     NFProg jasminDialect Γ [t] :=
   legalizeBy isRorB rorBlock p
 
-/-- **On a program with no rotate the stage is the identity.** -/
+/-- **On a program with no rotate the pass is the identity.** -/
 theorem legalizeRor_eq_of_noRor {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} (h : p.allOps (fun op => !isRorB op) = true) :
     legalizeRor p = p :=
   legalizeBy_eq_of_none h
 
-/-- **The stage keeps the denotation** at every call environment and fuel. -/
+/-- **The pass keeps the denotation** at every call environment and fuel. -/
 theorem legalizeRor_denoteAt (E : CallEnv jasminDialect) (fuel : Nat) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (p : NFProg jasminDialect Γ [t]) (V : Valuation Γ) :
     (legalizeRor p).denoteAt E fuel V = p.denoteAt E fuel V :=
   legalizeBy_denoteAt rorBlock_denote E fuel p V
 
-/-- **The stage keeps the denotation**, at every fuel. -/
+/-- **The pass keeps the denotation**, at every fuel. -/
 theorem legalizeRor_denote [CallDenote jasminDialect] (fuel : Nat) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (p : NFProg jasminDialect Γ [t]) :
     (legalizeRor p).denote fuel = p.denote fuel :=
   legalizeBy_denote rorBlock_denote fuel p
 
-/-- **The stage keeps the leakage run** at leakage parameters with no variable-time
+/-- **The pass keeps the leakage run** at leakage parameters with no variable-time
     operation, at every fuel. -/
 theorem legalizeRor_leakRun {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none) (fuel : Nat)
     {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDialect Γ [t]) (V : Valuation Γ) :
@@ -155,7 +160,7 @@ theorem legalizeRor_leakRun {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none) 
       = Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel p V :=
   legalizeBy_leakRun rorBlock_denote (rorBlock_ctLeak hV) fuel p V
 
-/-- **The stage keeps constant time at the source events** at leakage parameters with no
+/-- **The pass keeps constant time at the source events** at leakage parameters with no
     variable-time operation. -/
 theorem nfct_legalizeRor {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
     {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]}
@@ -164,19 +169,19 @@ theorem nfct_legalizeRor {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
     Dialects.NFLeak.NFCT (jLeakModel Pj) L fuel (legalizeRor p) :=
   nfct_legalizeBy rorBlock_denote (rorBlock_ctLeak hV) h
 
-/-- **The stage keeps the value of every test that reads only the calls.** -/
+/-- **The pass keeps the value of every test that reads only the calls.** -/
 theorem legalizeRor_callTest {c : String → Bool}
     {F : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts → Bool}
     (hF : CallTest c F) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : F (legalizeRor p) = F p :=
   legalizeBy_callTest hF p
 
-/-- **The stage keeps the absence of `call` and its presence.** -/
+/-- **The pass keeps the absence of `call` and its presence.** -/
 theorem legalizeRor_callFree_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : (legalizeRor p).callFree = p.callFree :=
   legalizeBy_callFree_eq p
 
-/-- **The stage keeps the absence of `call`.** -/
+/-- **The pass keeps the absence of `call`.** -/
 theorem legalizeRor_callFree {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} (h : p.callFree = true) :
     (legalizeRor p).callFree = true := by

@@ -39,9 +39,10 @@ check refuses. It tests `regionExportableB` on `p`, runs the narrow-word stages
 64-bit register or array slot, redundant masks and dead bindings removed), and then the
 stages `regionBack` on the widened program. The stages of `regionBack` are, in order:
 
-0. the region legalisation `legalizeRegion`, which rewrites each and-not into its and-xor
-   block (`legalizeAndn`), and keeps the denotation and the leakage run; a rotate by an
-   immediate is kept and compiled to the machine rotate;
+0. the region legalisation `legalizeRegion`, the identity: an and-not and a rotate by an
+   immediate of the widened program are kept and compiled to the BMI1 `ANDN` and the machine
+   rotate `ROR`, and the and-not legalisation `legalizeAndn` and the rotate legalisation
+   `legalizeRor` (`Haxc/AndnLegal`, `Haxc/RorLegal`) are proved and not applied;
 1. the test `regionExportableB` of the legalised program, and the test `NFProg.callFree` that
    it has no `call`;
 2. the region export `exportR` from the depth `Γ.length` and the label `0`, and its virtual
@@ -11311,8 +11312,8 @@ theorem calleeCtB_tab {σ : AbiLayout} {nm : String → String} {T : CalleeTab} 
 
 /-- **The stages of the back half after the narrow-word stages**, on a program with one
     result, a word array or a
-    register: the region legalisation `legalizeRegion`, then, on the legalised program, the test
-    `regionExportableB` on a program without `call` (`NFProg.callFree`),
+    register: the region legalisation `legalizeRegion` (the identity), then, on the legalised
+    program, the test `regionExportableB` on a program without `call` (`NFProg.callFree`),
     the export `exportR`, its webs `regionWebsAt` at the result buffer
     `regionWebsEx σ exportReg`, the allocated program with its allocation certificate
     `regionLprogC`, the printed program `printedLprog`, the two-address gate on its first

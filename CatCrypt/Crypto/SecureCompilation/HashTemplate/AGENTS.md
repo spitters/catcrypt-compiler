@@ -33,7 +33,8 @@ A template becomes a linked callee of `compileA` through `LinkedFn.ofRegion` ove
   (BLAKE2's counter and flag words) are register arguments.
 - **Rotations and `andn`** (SHA-2's `Ch`, Keccak's `χ`) are compiled natively (`ROR` and the
   BMI1 `ANDN` of the encoder); the region legalisation `legalizeRegion` is the identity
-  (`Haxc/AndnLegal`).
+  (`Haxc/AndnLegal`), and the and-not and rotate legalisations `legalizeAndn` and
+  `legalizeRor` are proved and not applied.
 - **Size.** In a module `compileRegion` is evaluated by the interpreter (the modules are not
   precompiled, so `native_decide` is no faster than `#eval`), and its cost grows faster than
   linearly in the number of lets: the 12-round BLAKE2b compression does not finish within the

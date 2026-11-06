@@ -14,31 +14,34 @@ set_option autoImplicit false
 /-!
 # The and-not legalisation and the region legalisation of a structured program
 
-The stage `legalizeAndn` rewrites every binding of the BMI1 and-not `regArith .andn w` of
+The pass `legalizeAndn` rewrites every binding of the BMI1 and-not `regArith .andn w` of
 `a` and `b`, which denotes `(~~~a) &&& b`, into the block `(a &&& b) ^^^ b` of
 `regArith .and w` and `regArith .xor w` (`andXorBlock`), in every region: it is the
 legalisation `legalizeBy isAndnB andnBlock`. A program with no and-not binding is returned
-unchanged (`legalizeAndn_eq_of_noAndn`). The region legalisation `legalizeRegion` of the
-region back half is the identity: a rotate by an immediate and the and-not are compiled
-natively (`ROR`, and the BMI1 `ANDN` of the encoder and the decoder), so no operation of the
-fragment is rewritten before the export.
+unchanged (`legalizeAndn_eq_of_noAndn`).
+
+The region legalisation `legalizeRegion` of the region back half is the identity: a rotate by
+an immediate and the and-not are compiled natively (`ROR`, and the BMI1 `ANDN` of the encoder
+and the decoder), so no operation of the fragment is rewritten before the export. The and-not
+legalisation `legalizeAndn` and the rotate legalisation `legalizeRor` (`RorLegal`) are proved
+and neither is applied.
 
 ## Main definitions
 
 * `isAndnB` — the test of an and-not.
 * `andXorBlock`, `andnBlock` — the and-xor block of an and-not, and the block of a binding.
-* `legalizeAndn` — the stage on a program with one result.
+* `legalizeAndn` — the pass on a program with one result.
 * `legalizeRegion` — the region legalisation, the identity.
 
 ## Main results
 
 * `andnBlock_denote` — the block of a binding denotes the value of the binding.
-* `legalizeAndn_eq_of_noAndn` — the stage is the identity on a program with no and-not.
-* `legalizeAndn_denoteAt`, `legalizeAndn_denote` — the stage keeps the denotation, at every
+* `legalizeAndn_eq_of_noAndn` — the pass is the identity on a program with no and-not.
+* `legalizeAndn_denoteAt`, `legalizeAndn_denote` — the pass keeps the denotation, at every
   call environment and fuel.
-* `legalizeAndn_leakRun` — at leakage parameters with no variable-time operation the stage
+* `legalizeAndn_leakRun` — at leakage parameters with no variable-time operation the pass
   keeps the leakage run, and `nfct_legalizeAndn` constant time at the source events.
-* `legalizeAndn_callTest` — the stage keeps the value of every `CallTest`, and
+* `legalizeAndn_callTest` — the pass keeps the value of every `CallTest`, and
   `legalizeAndn_callFree_eq`, `legalizeAndn_callFree` the absence of `call`.
 * `legalizeRegion_denoteAt`, `legalizeRegion_denote`, `legalizeRegion_leakRun`,
   `nfct_legalizeRegion`, `legalizeRegion_callTest`, `legalizeRegion_callFree_eq`,
@@ -127,7 +130,7 @@ theorem andnBlock_ctLeak {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
       | _ => simp [andnBlock, Com.ctLeak]
   | _ => simp [andnBlock, Com.ctLeak]
 
-/-! ## 2. The stage -/
+/-! ## 2. The pass -/
 
 /-- **The and-not legalisation** of a program with one result: the legalisation by the block
     `andnBlock` at the test `isAndnB`. -/
@@ -135,26 +138,26 @@ def legalizeAndn {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDial
     NFProg jasminDialect Γ [t] :=
   legalizeBy isAndnB andnBlock p
 
-/-- **On a program with no and-not the stage is the identity.** -/
+/-- **On a program with no and-not the pass is the identity.** -/
 theorem legalizeAndn_eq_of_noAndn {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} (h : p.allOps (fun op => !isAndnB op) = true) :
     legalizeAndn p = p :=
   legalizeBy_eq_of_none h
 
-/-- **The stage keeps the denotation** at every call environment and fuel. -/
+/-- **The pass keeps the denotation** at every call environment and fuel. -/
 theorem legalizeAndn_denoteAt (E : CallEnv jasminDialect) (fuel : Nat)
     {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDialect Γ [t])
     (V : Valuation Γ) :
     (legalizeAndn p).denoteAt E fuel V = p.denoteAt E fuel V :=
   legalizeBy_denoteAt andnBlock_denote E fuel p V
 
-/-- **The stage keeps the denotation**, at every fuel. -/
+/-- **The pass keeps the denotation**, at every fuel. -/
 theorem legalizeAndn_denote [CallDenote jasminDialect] (fuel : Nat) {Γ : Ctxt jasminDialect}
     {t : JasminTy} (p : NFProg jasminDialect Γ [t]) :
     (legalizeAndn p).denote fuel = p.denote fuel :=
   legalizeBy_denote andnBlock_denote fuel p
 
-/-- **The stage keeps the leakage run** at leakage parameters with no variable-time
+/-- **The pass keeps the leakage run** at leakage parameters with no variable-time
     operation, at every fuel. -/
 theorem legalizeAndn_leakRun {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none) (fuel : Nat)
     {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDialect Γ [t])
@@ -163,7 +166,7 @@ theorem legalizeAndn_leakRun {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
       = Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel p V :=
   legalizeBy_leakRun andnBlock_denote (andnBlock_ctLeak hV) fuel p V
 
-/-- **The stage keeps constant time at the source events** at leakage parameters with no
+/-- **The pass keeps constant time at the source events** at leakage parameters with no
     variable-time operation. -/
 theorem nfct_legalizeAndn {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
     {Γ : Ctxt jasminDialect} {t : JasminTy} {p : NFProg jasminDialect Γ [t]}
@@ -172,19 +175,19 @@ theorem nfct_legalizeAndn {Pj : JLeakParams} (hV : ∀ op, Pj.opVT op = none)
     Dialects.NFLeak.NFCT (jLeakModel Pj) L fuel (legalizeAndn p) :=
   nfct_legalizeBy andnBlock_denote (andnBlock_ctLeak hV) h
 
-/-- **The stage keeps the value of every test that reads only the calls.** -/
+/-- **The pass keeps the value of every test that reads only the calls.** -/
 theorem legalizeAndn_callTest {c : String → Bool}
     {F : {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts → Bool}
     (hF : CallTest c F) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : F (legalizeAndn p) = F p :=
   legalizeBy_callTest hF p
 
-/-- **The stage keeps the absence of `call` and its presence.** -/
+/-- **The pass keeps the absence of `call` and its presence.** -/
 theorem legalizeAndn_callFree_eq {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : (legalizeAndn p).callFree = p.callFree :=
   legalizeBy_callFree_eq p
 
-/-- **The stage keeps the absence of `call`.** -/
+/-- **The pass keeps the absence of `call`.** -/
 theorem legalizeAndn_callFree {Γ : Ctxt jasminDialect} {t : JasminTy}
     {p : NFProg jasminDialect Γ [t]} (h : p.callFree = true) :
     (legalizeAndn p).callFree = true := by
@@ -193,8 +196,8 @@ theorem legalizeAndn_callFree {Γ : Ctxt jasminDialect} {t : JasminTy}
 /-! ## 3. The region legalisation -/
 
 /-- **The region legalisation** of a program with one result: the identity. A rotate by an
-    immediate and the and-not are compiled natively, so neither the rotate legalisation
-    `legalizeRor` nor the and-not legalisation `legalizeAndn` is a stage. -/
+    immediate and the and-not are compiled natively, so the region back half applies neither
+    the rotate legalisation `legalizeRor` nor the and-not legalisation `legalizeAndn`. -/
 def legalizeRegion {Γ : Ctxt jasminDialect} {t : JasminTy} (p : NFProg jasminDialect Γ [t]) :
     NFProg jasminDialect Γ [t] :=
   p
