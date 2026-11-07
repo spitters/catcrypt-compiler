@@ -112,7 +112,7 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (idxInvCheckB idxA
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedLprogTVChecked (ownedCheckMC
   ownedCheckMC_sound)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.OwnedTVLeak (ownedCheckML TVPub
-  memFCT_of_ownedCheckML ownedCheckMC_of_ownedCheckML)
+  memFCT_of_ownedCheckML)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrinted (gpOk phys)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedCFG (frameRsp)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddr (frameP)

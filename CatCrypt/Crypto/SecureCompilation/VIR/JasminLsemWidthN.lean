@@ -295,6 +295,11 @@ theorem stripWidthTag_withWidthTag_binOpName' (w : Nat) (bop : JasminBinOp) :
     stripWidthTag (withWidthTag w (binOpName bop)) = binOpName bop :=
   stripWidthTag_withWidthTag w (by cases bop <;> decide +kernel)
 
+/-- The mask of a narrow buffer move of the byte and halfword ABI (`abiMovBuf`): `0xFF` for
+    `MOV:8` and `0xFFFF` for `MOV:16` (the masks of their word semantics `applyOpn`), at any
+    other mnemonic `0xFFFF`. -/
+def narrowMask (opn : String) : Nat := if opn = "MOV:8" then 0xFF else 0xFFFF
+
 /-- The register name carried by an operand (the empty string for a
     non-register operand — never reached for the in-scope `.reg`-resolved
     operands). -/
@@ -454,6 +459,11 @@ def immFirstN (s : LstateN) (dst opn : String) (n : Nat) (b : LOperand) : Option
       count-in-mnemonic immediate shift `opToLinstrR` emits for
       `shrImm`/`shlImm`/`sarImm`: read the data width `wₐ` from `a`'s store tag,
       apply `applyImmShiftN wₐ m k`, write `dst` at width `wₐ`, advance pc.
+    * `Lopn [.reg dst] opn [.reg a]` with `opn` the narrow buffer move `MOV:8` or `MOV:16`
+      of the byte and halfword ABI (`abiMovBuf`), a load from or a store to a cell
+      `mem.<base>.<off>`: read the data width `wₐ` from `a`'s store tag, write
+      `a &&& narrowMask opn` (`0xFF`, `0xFFFF`) at width `wₐ` to `dst`, advance pc; the word
+      semantics `applyOpn` of `JasminLsem` at a single width.
       A one-source `Lopn` under any other mnemonic returns `none`.
     * `Lopn [.reg dst] opn [.arrIdx b x sc]` with `stripWidthTag opn = "LEA"` — the
       load-effective-address: read `b` and `x` at width 64, write the address
@@ -529,7 +539,13 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
                 | some v => some ((s.setReg dst v).nextPc)
                 | none => none
             | none => none
-        | none => none
+        | none =>
+            if opn = "MOV:8" ∨ opn = "MOV:16" then
+              match readReg s (.reg a) with
+              | some ⟨wₐ, va⟩ =>
+                  some ((s.setReg dst (va &&& BitVec.ofNat wₐ (narrowMask opn))).nextPc)
+              | none => none
+            else none
   | .Lopn [.reg dst] opn [.arrIdx b x sc] =>
       -- `LEA` image: the effective address `b + sc · x` of the SIB operand, computed
       -- without a memory access and written to `dst` at width 64.
@@ -552,6 +568,20 @@ def lsemStepN (i : LinstrR) (s : LstateN) : Option LstateN :=
 /-- The two-source operation with an immediate first source steps by `immFirstN`. -/
 theorem lsemStepN_immFirst (s : LstateN) (dst opn : String) (n : Nat) (b : LOperand) :
     lsemStepN (.Lopn [.reg dst] opn [.imm n, b]) s = immFirstN s dst opn n b := rfl
+
+/-- **The narrow buffer move.** `MOV:8` or `MOV:16` from a register `a` writes
+    `a &&& narrowMask opn`, at the store width of `a`, to `dst` and advances the pc. -/
+theorem lsemStepN_narrow (s : LstateN) (dst opn a : String)
+    (h : opn = "MOV:8" ∨ opn = "MOV:16") :
+    lsemStepN (.Lopn [.reg dst] opn [.reg a]) s =
+      some ((s.setReg dst ((s.lvm a).2 &&& BitVec.ofNat (s.lvm a).1 (narrowMask opn))).nextPc) := by
+  rcases h with rfl | rfl
+  · have hs : stripWidthTag "MOV:8" = "MOV:8" := by decide +kernel
+    have hi : JasminImmShiftMnem.immShiftMnem? "MOV:8" = none := by decide +kernel
+    simp [lsemStepN, hs, hi, readReg]
+  · have hs : stripWidthTag "MOV:16" = "MOV:16" := by decide +kernel
+    have hi : JasminImmShiftMnem.immShiftMnem? "MOV:16" = none := by decide +kernel
+    simp [lsemStepN, hs, hi, readReg]
 
 /-- `getW r w = some v` exactly pins the store tag at `r` to `⟨w, v⟩`. The bridge
     between the expected-width read `getW` and the raw width-tagged cell, used to

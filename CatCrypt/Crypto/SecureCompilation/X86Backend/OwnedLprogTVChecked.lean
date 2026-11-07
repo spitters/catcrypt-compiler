@@ -47,7 +47,8 @@ instances at `X86Isa.x86Isa`.
 * `factsOk`, `factCheck`: the invariant check of the facts; `constAnnot`: the annotation.
 * `blockOkS`, `blockRunsS`, `runsOfC`, `CheckedC`: the block check from given start states,
   its shared runs, and the facts the checks establish.
-* `oblOk`, `oblCheckWith`, `ownedCheckMC`: the checks.
+* `oblOk`, `oblCheckWith`, `ownedCheckMC`: the checks; `hasOutsB`, `callPieces`, `blocksRunCB`:
+  the conditions under which an acceptance of `ownedCheckMC` compares an output.
 
 ## Main results
 
@@ -59,6 +60,8 @@ instances at `X86Isa.x86Isa`.
   pass to the successors.
 * `blockOkR_specS`, `checkedC_of_withR`, `checkedC_of_with`, `ownedCheckMC_checked_at`: the
   shared check gives `CheckedC`; `ownedCheckWith` gives it with no fact.
+* `ownedCheckMC_hasOuts`: an accepted pair has an output to compare and no block whose
+  symbolic run fails between its calls.
 * `OwnedCheckFuel.sim_stepCF`, `OwnedCheckFuel.simAtCF_all`,
   `OwnedCheckFuel.checkedC_sound_at_fuel`, `OwnedCheckFuel.ownedCheckWithC_sound_at_fuel`,
   `OwnedCheckFuel.ownedCheckMC_idx_sound_at_fuel`: the simulation of the rewritten body, with
@@ -844,11 +847,45 @@ theorem oblCheckWith_spec {L : Nat → List String × Bool} {B B' : List LinstrR
   rw [hG, hG'] at h
   simpa only [List.all_eq_true, List.mem_range] using h
 
+/-- **The check has an output to compare**: an observed name, or an array store of `B`
+    (`writesArrB`), which `Obs` compares with the arrays. A check with neither compares nothing
+    that a run of `B` computes. -/
+def hasOutsB (outs : List String) (B : List LinstrRM) : Bool :=
+  !outs.isEmpty || B.any (fun i => writesArrB i.1)
+
+/-- The pieces of a list of instructions between its call shadows (`LprogIsa.shadowCall?`):
+    the maximal runs of instructions that are no call shadow, in order. -/
+def callPieces : List LinstrRM → List (List LinstrRM)
+  | [] => [[]]
+  | i :: is =>
+      match callPieces is with
+      | p :: ps => if (LprogIsa.shadowCall? i.1).isSome then [] :: p :: ps else (i :: p) :: ps
+      | [] => [[i]]
+
+/-- **Every block runs symbolically between its calls**: for each block of `B`, the symbolic
+    run under `sym` of each piece of the block between its call shadows (`callPieces`) is not
+    `.fail`. A block whose run fails is accepted by the block check without a comparison
+    (`blockOkR`), since no halting run passes through it: an operation the flag machine does
+    not step makes the acceptance compare nothing on the runs through that block. A call
+    shadow is such an operation; the segments between the calls of a calling body are
+    compared by the segment check `calleeSegB` of the region gate (`ownedCheckMCIn` on the
+    cut programs), and every other instruction of the block must be stepped. -/
+def blocksRunCB (B : List LinstrRM) (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
+  match cfgOf (B.map Prod.fst) with
+  | some G => (List.range G.blocks.size).all fun k =>
+      (callPieces (bodyAt B (G.blk k) (G.blk k).term)).all fun p =>
+        match symRun p SSt.start sym with
+        | .fail => false
+        | _ => true
+  | none => false
+
 /-- **The checker on bounds-checked runs.** The must-constant facts are computed once on each
     of the two graphs as the table `constAnnotArr`, read through `annotAt`, and checked as
     its invariant (`factCheck`); each block pair runs once over a shared term table from the facts of its two blocks (`runsOfC`);
     the live sets are computed from these runs by `liveIter` and the runs checked by
-    `ownedCheckWithR`, and so are the index obligations (`oblCheckWith`). The symbolic step
+    `ownedCheckWithR`, and so are the index obligations (`oblCheckWith`). The check has an
+    output to compare (`hasOutsB`) and every block of `B` runs symbolically between its calls
+    (`blocksRunCB`), so that an acceptance is not a comparison of nothing. The symbolic step
     `sym` and the symbolic branch condition `dec` default to the x86 ones, `symStep` and
     `symDec`. -/
 def ownedCheckMC (outs : List String) (B B' : List LinstrRM)
@@ -863,6 +900,7 @@ def ownedCheckMC (outs : List String) (B B' : List LinstrRM)
       ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R dec
         && oblCheckWith (fun k => L.getD k ([], false)) B B' sym A A'
         && factCheck A B G sym && factCheck A' B' G' sym
+        && hasOutsB outs B && blocksRunCB B sym
   | _, _ => false
 
 /-- A pair `ownedCheckMC` accepts under `sym` and `dec` satisfies `CheckedC` and the index
@@ -883,9 +921,26 @@ theorem ownedCheckMC_checked_at {sym : LinstrRM → SSt → SOut} {dec : SSt →
       | some G' =>
           rw [hG, hG'] at h
           simp only [Bool.and_eq_true] at h
-          obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
+          obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, -⟩, -⟩ := h
           exact ⟨_, _, _, G, G', checkedC_of_withR hS hG hG' h1 h3 h4,
             oblCheckWith_spec hG hG' h2⟩
+
+/-- **An accepted pair compares an output.** If `ownedCheckMC outs B B' sym dec` accepts, the
+    check has an output to compare (an observed name or an array store of `B`) and every
+    block of `B` runs symbolically between its calls. -/
+theorem ownedCheckMC_hasOuts {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
+    {outs : List String} {B B' : List LinstrRM} (h : ownedCheckMC outs B B' sym dec = true) :
+    hasOutsB outs B = true ∧ blocksRunCB B sym = true := by
+  unfold ownedCheckMC at h
+  cases hG : cfgOf (B.map Prod.fst) with
+  | none => simp [hG] at h
+  | some G =>
+      cases hG' : cfgOf (B'.map Prod.fst) with
+      | none => simp [hG, hG'] at h
+      | some G' =>
+          rw [hG, hG'] at h
+          simp only [Bool.and_eq_true] at h
+          exact ⟨h.1.2, h.2⟩
 
 /-- **The checker with an entry set**: `ownedCheckMC`, and at the entry block the live
     names of the computed live sets are names of `ins` and the flags are dead. A pair it

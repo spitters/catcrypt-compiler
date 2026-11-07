@@ -823,7 +823,9 @@ theorem desc_bin_swap {f : LstateN → Option LstateN} {V : String → Σ w, Bit
     with a register `a` is the term `setcc cc a b`, under the guard, for a register `b`, that
     `a` and `b` have one width; an immediate `b` is described as the immediate second source
     of a two-source operation. A load-effective-address `LEA d, [b + x · sc]` is the term `b + x · sc` at width `64`,
-    under the guards that `b` and `x` have width `64`. -/
+    under the guards that `b` and `x` have width `64`. A narrow buffer move `MOV:8 d, [a]` or
+    `MOV:16 d, [a]`, the load or store of a byte or halfword cell, is the term
+    `a &&& narrowMask opn` at the width of `a`, `bin "AND" a (immAt (narrowMask opn) a)`. -/
 def symN (x : LinstrR) (R : String → STerm) : ROut :=
   match x with
   | .Lopn [.reg dst] opn [c, a, b] =>
@@ -888,7 +890,10 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
                 .set dst (.bin m (R a) (.immW (widthFromTag opn) k)) []
               else .set dst (.shImm m k (R a)) []
             else .fail
-        | none => .fail
+        | none =>
+            if opn = "MOV:8" ∨ opn = "MOV:16" then
+              .set dst (.bin "AND" (R a) (.immAt (narrowMask opn) (R a))) []
+            else .fail
   | .Lopn [.reg dst] opn [.arrIdx b x sc] =>
       if stripWidthTag opn = "LEA" then
         .set dst (.bin "ADD" (R b) (.bin "MUL" (R x) (.immW 64 sc))) [.wid (R b) 64, .wid (R x) 64]
@@ -1089,9 +1094,17 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
     · simp [ROut.Desc, lsemStepN, h, AllG, STerm.ev]
     · simp [ROut.Desc, lsemStepN, h]
   · rename_i dst opn a
-    split_ifs with h1 h2
+    split_ifs with h1 h2 hk
     · simp [ROut.Desc, lsemStepN, h1, readReg, hr a, AllG, STerm.ev, applyOpnN]
     · simp [ROut.Desc, lsemStepN, h2, readReg, hr a, AllG, applyOpnN]
+    · have hn : immShiftMnem? opn = none := by rcases hk with rfl | rfl <;> decide +kernel
+      split
+      · rename_i m k hm
+        rw [hn] at hm
+        cases hm
+      · simp only [ROut.Desc]
+        rw [lsemStepN_narrow r dst opn a hk, hr a]
+        simp [AllG, STerm.ev, binW_of_binOk (show binOk "AND" = true from rfl), extW, applyOpnN]
     · split
       · rename_i m k hm
         split_ifs with hs hz hsl
@@ -1114,7 +1127,7 @@ theorem symN_sound (x : LinstrR) (R : String → STerm) : RSound (lsemStepN x) R
         · simp [ROut.Desc, lsemStepN, h1, h2, hm, readReg,
             applyImmShiftN_none (Bool.eq_false_iff.mpr hs)]
       · rename_i hm
-        simp [ROut.Desc, lsemStepN, h1, h2, hm]
+        simp [ROut.Desc, lsemStepN, h1, h2, hm, hk]
   · rename_i dst opn b x sc
     split_ifs with h
     · simp only [ROut.Desc]
@@ -6646,15 +6659,15 @@ theorem Obs.of_append {xs ys : List String} {t t' : LstateMF} (h : Obs (xs ++ ys
     Obs xs t t' :=
   ⟨fun r hr => h.1 r (List.mem_append_left ys hr), h.2⟩
 
-/-- **Every block of the body runs symbolically**: the symbolic run of each block of `B`
-    before its terminator is not `.fail`. `ownedCheckM` accepts a block whose run fails from
-    every state without a comparison, since no halting run passes through it; a body with
-    such a block (an operation the flag machine does not step, such as a narrow move) gives
-    an acceptance that compares nothing on the runs through that block. -/
-def blocksRunB (B : List LinstrRM) : Bool :=
+/-- **Every block of the body runs symbolically**: the symbolic run under `sym` of each block
+    of `B` before its terminator is not `.fail`. `ownedCheckM` accepts a block whose run fails
+    from every state without a comparison, since no halting run passes through it; a body
+    with such a block (an operation the flag machine does not step) gives an acceptance that
+    compares nothing on the runs through that block. -/
+def blocksRunB (B : List LinstrRM) (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
   match cfgOf (B.map Prod.fst) with
   | some G => (List.range G.blocks.size).all fun k =>
-      match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start with
+      match symRun (bodyAt B (G.blk k) (G.blk k).term) SSt.start sym with
       | .fail => false
       | _ => true
   | none => false

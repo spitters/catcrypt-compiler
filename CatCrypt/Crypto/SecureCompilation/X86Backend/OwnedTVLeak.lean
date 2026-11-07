@@ -485,9 +485,12 @@ theorem leakCheckWith_spec {L : Nat → List String × Bool} {B B' : List Linstr
   rw [hG, hG'] at h
   simpa only [List.all_eq_true, List.mem_range] using h
 
-/-- **The checker on traced runs**: `ownedCheckMC` and `leakCheckWith` at its live sets and
-    facts. The symbolic step `sym` and the symbolic branch condition `dec` default to the x86
-    ones, `symStep` and `symDec`. -/
+/-- **The checker on traced runs**: the comparison of `ownedCheckMC` and `leakCheckWith` at
+    its live sets and facts, with every block of `B` run symbolically between its calls
+    (`blocksRunCB`), so that the traces of every block are compared. The check compares
+    traces, so it needs no observed name: the leak check of the region gate observes none
+    (`regionLeakB`). The symbolic step `sym` and the symbolic branch condition `dec` default
+    to the x86 ones, `symStep` and `symDec`. -/
 def ownedCheckML (outs : List String) (B B' : List LinstrRM)
     (sym : LinstrRM → SSt → SOut := symStep) (dec : SSt → LOperand → SDec := symDec) : Bool :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
@@ -500,13 +503,16 @@ def ownedCheckML (outs : List String) (B B' : List LinstrRM)
       ownedCheckWithR outs (fun k => L.getD k ([], false)) B B' G G' R dec
         && oblCheckWith (fun k => L.getD k ([], false)) B B' sym A A'
         && factCheck A B G sym && factCheck A' B' G' sym
+        && blocksRunCB B sym
         && leakCheckWith (fun k => L.getD k ([], false)) B B' sym A A'
   | _, _ => false
 
-/-- `ownedCheckML` accepts only pairs `ownedCheckMC` accepts. -/
+/-- `ownedCheckML` accepts only pairs `ownedCheckMC` accepts, when the check has an output to
+    compare. -/
 theorem ownedCheckMC_of_ownedCheckML {outs : List String} {B B' : List LinstrRM}
     {sym : LinstrRM → SSt → SOut} {dec : SSt → LOperand → SDec}
-    (h : ownedCheckML outs B B' sym dec = true) : ownedCheckMC outs B B' sym dec = true := by
+    (h : ownedCheckML outs B B' sym dec = true) (ho : hasOutsB outs B = true) :
+    ownedCheckMC outs B B' sym dec = true := by
   unfold ownedCheckML at h
   unfold ownedCheckMC
   cases hG : cfgOf (B.map Prod.fst) with
@@ -517,7 +523,28 @@ theorem ownedCheckMC_of_ownedCheckML {outs : List String} {B B' : List LinstrRM}
       | some G' =>
           rw [hG, hG'] at h
           simp only [Bool.and_eq_true] at h ⊢
-          exact h.1
+          exact ⟨⟨h.1.1, ho⟩, h.1.2⟩
+
+/-- A pair `ownedCheckML` accepts satisfies `CheckedC` and the index obligations for some
+    live sets and facts, when `sym` and `dec` commute with substitution. -/
+theorem ownedCheckML_checkedObl_at {sym : LinstrRM → SSt → SOut}
+    {dec : SSt → LOperand → SDec} (hS : SymSubst sym dec) {outs : List String}
+    {B B' : List LinstrRM} (h : ownedCheckML outs B B' sym dec = true) :
+    ∃ L A A' G G', CheckedC outs L A A' B B' G G' sym dec ∧
+      ∀ k < G.blocks.size,
+        oblOk L k (G.blk k).term B B' (G.blk k) (G'.blk k) sym A A' = true := by
+  unfold ownedCheckML at h
+  cases hG : cfgOf (B.map Prod.fst) with
+  | none => simp [hG] at h
+  | some G =>
+      cases hG' : cfgOf (B'.map Prod.fst) with
+      | none => simp [hG, hG'] at h
+      | some G' =>
+          rw [hG, hG'] at h
+          simp only [Bool.and_eq_true] at h
+          obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, -⟩, -⟩ := h
+          exact ⟨_, _, _, G, G', checkedC_of_withR hS hG hG' h1 h3 h4,
+            oblCheckWith_spec hG hG' h2⟩
 
 /-- A pair `ownedCheckML` accepts under `sym` and `dec` satisfies `CheckedC` and the event
     check for some live sets and facts, when `sym` and `dec` commute with substitution. -/
@@ -536,7 +563,7 @@ theorem ownedCheckML_checked_at {sym : LinstrRM → SSt → SOut} {dec : SSt →
       | some G' =>
           rw [hG, hG'] at h
           simp only [Bool.and_eq_true] at h
-          obtain ⟨⟨⟨⟨h1, -⟩, h3⟩, h4⟩, h5⟩ := h
+          obtain ⟨⟨⟨⟨⟨h1, -⟩, h3⟩, h4⟩, -⟩, h5⟩ := h
           exact ⟨_, _, _, G, G', checkedC_of_withR hS hG hG' h1 h3 h4,
             leakCheckWith_spec hG hG' h5⟩
 
@@ -947,8 +974,10 @@ theorem ownedCheckML_sound_leak_at {I : Isa} {sym : LinstrRM → SSt → SOut}
     (hl : I.FRun (singletonProgM fn B) s ℓ) :
     ∃ fuel' t', I.lsemFuelMemFk true (singletonProgM fn B') fuel' s = some t' ∧
       Obs outs t t' ∧ I.FRun (singletonProgM fn B') s ℓ := by
-  obtain ⟨f', t', hr', hobs⟩ :=
-    ownedCheckMC_sound_at hL hS (ownedCheckMC_of_ownedCheckML h) fn s t hfn hpc fuel hrun
+  obtain ⟨L, A, A', G, G', hc, hob⟩ := ownedCheckML_checkedObl_at hS h
+  obtain ⟨f', t', -, hr, hobs, hok⟩ := OwnedCheckFuel.checkedC_sound_at_fuel hL hc hob fn s t
+    hfn hpc fuel (I.lsemFuelMemF_of_checked _ fuel s t hrun) (I.runIdxOk_of_checked _ fuel s t hrun)
+  have hr' := I.lsemFuelMemFk_of_runIdxOk true _ f' s t' hr hok
   refine ⟨f', t', hr', hobs, ?_⟩
   have hu := I.lsemFuelMemF_of_checked _ f' s t' hr'
   rw [← I.lsemFuelMemFLeak_fst] at hu

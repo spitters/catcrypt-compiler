@@ -442,9 +442,10 @@ def oblWhy (L : Nat → List String × Bool) (k : Nat) (T : Term) (B B' : List L
 
 /-- The first component of `ownedCheckMC outs B B'` that is `false`, at the x86 symbolic
     step, in the order of its definition: the control-flow graphs, the empty bodies and the
-    block counts of `ownedCheckWithR`, the first block pair `blockWhy` refuses, then the
-    first block whose index obligations `oblOk` refuses. `B` is the reference body and `B'`
-    the allocated body. The empty string when no component is `false`. -/
+    block counts of `ownedCheckWithR`, the first block pair `blockWhy` refuses, the
+    first block whose index obligations `oblOk` refuses, then an output to compare
+    (`hasOutsB`) and the symbolic runs of the blocks (`blocksRunCB`). `B` is the reference
+    body and `B'` the allocated body. The empty string when no component is `false`. -/
 def ownedWhy (outs : List String) (B B' : List LinstrRM) : String :=
   match cfgOf (B.map Prod.fst), cfgOf (B'.map Prod.fst) with
   | none, _ => "cfgOf of the reference body is none"
@@ -470,7 +471,12 @@ def ownedWhy (outs : List String) (B B' : List LinstrRM) : String :=
             | some k =>
                 s!"oblCheckWith block {k} of {G.blocks.size}: " ++
                   oblWhy L k (G.blk k).term B B' (G.blk k) (G'.blk k)
-            | none => ""
+            | none =>
+                if !X86Backend.OwnedLprogTVChecked.hasOutsB outs B then
+                  "no output to compare: no observed name and no array store (hasOutsB)"
+                else if !X86Backend.OwnedLprogTVChecked.blocksRunCB B then
+                  "a block whose symbolic run fails between its calls (blocksRunCB)"
+                else ""
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.IdxInvCheck (IdxFact entails startF annAt
   blockInvOk idxAnnot boundFacts)

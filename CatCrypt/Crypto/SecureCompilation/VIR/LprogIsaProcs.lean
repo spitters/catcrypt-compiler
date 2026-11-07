@@ -165,14 +165,16 @@ theorem lsemStepN_callMnem (h : CallMnem opn) (s : LstateN) :
     cmpOfName?_eq_none (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide))
       (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide))
       (h.strip_ne _ (by decide))
+  have h6 : ¬ (opn = "MOV:8" ∨ opn = "MOV:16") := fun h' =>
+    h'.elim (h.ne _ (by decide)) (h.ne _ (by decide))
   unfold lsemStepN
   split <;> first
     | rfl
     | (rename_i heq
-       cases heq <;>
-         (try simp only [h1, h2, h3, h4, h5, hap, immFirstN, immShiftMnem?_callMnem h, ite_false,
-           Option.map_none]) <;>
-         repeat' (first | rfl | split))
+       cases heq
+       try simp only [h1, h2, h3, h4, h5, h6, hap, immFirstN, immShiftMnem?_callMnem h, ite_false,
+         Option.map_none]
+       repeat' (first | rfl | split))
 
 /-- The shift-aware and the multiply-and-carry steps have no step on a shadow instruction. -/
 theorem lsemStepMC_callMnem (h : CallMnem opn) (s : LstateN) :

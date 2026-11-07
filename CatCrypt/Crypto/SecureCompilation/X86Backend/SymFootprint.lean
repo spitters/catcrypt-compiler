@@ -998,12 +998,14 @@ theorem symN_callMnem {dst opn : String} {srcs : List LOperand} (h : LprogIsaPro
       (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide)) (h.strip_ne _ (by decide))
       (h.strip_ne _ (by decide))
   have h6 := LprogIsaProcs.immShiftMnem?_callMnem h
+  have h7 : ¬ (opn = "MOV:8" ∨ opn = "MOV:16") := fun h' =>
+    h'.elim (h.ne _ (by decide)) (h.ne _ (by decide))
   unfold symN
   split <;> first
     | rfl
     | (rename_i heq
        cases heq
-       try simp only [h1, h2, h3, h4, h5, h6, hb, ite_false, Option.isSome_none,
+       try simp only [h1, h2, h3, h4, h5, h6, h7, hb, ite_false, Option.isSome_none,
          Bool.false_eq_true]
        repeat' (first | rfl | split))
 

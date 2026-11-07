@@ -1351,7 +1351,12 @@ def stepEff (i : LinstrR) (s : LstateN) : Option (Option Cell) :=
                   | some v => some (some (dst, ⟨wa, v⟩))
                   | none => none
               | none => none
-          | none => none
+          | none =>
+              if opn = "MOV:8" ∨ opn = "MOV:16" then
+                match readReg s (.reg a) with
+                | some ⟨wa, va⟩ => some (some (dst, ⟨wa, va &&& BitVec.ofNat wa (narrowMask opn)⟩))
+                | none => none
+              else none
   | .Lopn [.reg dst] opn [.arrIdx b x sc] =>
       if stripWidthTag opn = "LEA" then
         match s.getW b 64, s.getW x 64 with
