@@ -238,6 +238,11 @@ static void vectors(void) {
       snprintf(what, sizeof what, "%s blake2b_compress: BLAKE2b-512(abc) (RFC 7693 App. A)", BLAKE2B_ARMS[a].arm);
       check_bytes(what, got, want, 64);
     }
+    /* The Rust peers expose whole digests only. */
+    rc_blake2b512(abc, 3, got);
+    check_bytes("rustcrypto blake2b512: BLAKE2b-512(abc) (RFC 7693 App. A)", got, want, 64);
+    lc_blake2b512(abc, 3, got);
+    check_bytes("libcrux blake2b512: BLAKE2b-512(abc) (RFC 7693 App. A)", got, want, 64);
   }
 
   /* SHA3-256("abc"): one permutation of the absorbed padded block (rate 136). */
@@ -329,6 +334,23 @@ static void random_batch(long nrand) {
     hacl_blake2b_simd256(c, blk, t0, t1, last);
     check_words("blake2b ours vs HACL*", a, b, 8);
     check_words("blake2b ours vs HACL* Simd256", a, c, 8);
+
+    /* Rust peers: whole BLAKE2b-512 digests of a random message of 0..383 bytes against
+     * OpenSSL's, which the abc vector above ties to RFC 7693. */
+    {
+      uint8_t msg[384], dr[64], dl[64], de[64];
+      unsigned int delen = 0;
+      size_t len = (size_t)(rnd64() % sizeof msg);
+      rnd_bytes(msg, sizeof msg);
+      rc_blake2b512(msg, len, dr);
+      lc_blake2b512(msg, len, dl);
+      if (evp_digest("BLAKE2B-512", msg, len, de, &delen)) {
+        check_bytes("blake2b512 RustCrypto vs OpenSSL", dr, de, 64);
+        check_bytes("blake2b512 libcrux vs OpenSSL", dl, de, 64);
+      } else {
+        check_bytes("blake2b512 RustCrypto vs libcrux", dr, dl, 64);
+      }
+    }
 
     uint64_t s[25], x[25], y[25], v2[25], v5[25];
     for (int i = 0; i < 25; i++) s[i] = x[i] = y[i] = v2[i] = v5[i] = rnd64();
@@ -445,6 +467,13 @@ static void bench(Cfg cfg, const char *label, int run) {
     TIME_ARM("blake2b_compress", "hacl", { peer_hacl_blake2b(hash16, wv, blk, 128, 0, 0); peer_hacl_blake2b(hash16, wv, blk, 128, 0, 0); });
     peer_hacl_blake2b_init_rows(hash16, SHA512_IV);
     TIME_ARM("blake2b_compress", "hacl_simd256", { peer_hacl_blake2b_simd256(hash16, wv, blk, 128, 0, 0); peer_hacl_blake2b_simd256(hash16, wv, blk, 128, 0, 0); });
+    /* Rust peers on their own state: RustCrypto runs one compression per call (counter +128,
+     * flag clear); libcrux's streaming update copies the block into its buffer and
+     * compresses the previous one, through one indirect call (rust_refs/lib.rs). */
+    void *rc = rc_blake2b_new();
+    TIME_ARM("blake2b_compress", "rustcrypto", { rc_blake2b_update_block(rc, blk); rc_blake2b_update_block(rc, blk); });
+    void *lc = lc_blake2b_new();
+    TIME_ARM("blake2b_compress", "libcrux", { lc_blake2b_update_block(lc, blk); lc_blake2b_update_block(lc, blk); });
   }
 
   /* Keccak-f[1600] */

@@ -126,9 +126,17 @@ PEER_OBJS := $(BUILD)/refs.o $(BUILD)/refs_hacl_blake2b_simd256.o $(BUILD)/refs_
   $(BUILD)/hacl_sha3_simd256.o $(BUILD)/lib_memzero0.o $(BUILD)/xkcp_opt64.o \
   $(BUILD)/xkcp_avx2.o $(BUILD)/xkcp_avx512.o
 
-$(BUILD)/compare: compare.c arms.h Makefile $(OURS) $(BUILD)/tramp.o $(PEER_OBJS) $(MEASLIB_OBJS) | $(BUILD)
+# Rust BLAKE2b peers (RustCrypto blake2 0.10.6, libcrux-blake2) as one static library, built
+# offline from the local cargo registry and the libcrux checkout, at opt-level 3 with LTO and
+# -C target-cpu=native. Run make under heavy-run (scripts/heavy-run.sh), which covers cargo.
+RUST_REFS := $(BUILD)/rust/release/libhash_rust_refs.a
+$(RUST_REFS): rust_refs/Cargo.toml rust_refs/lib.rs | $(BUILD)
+	cd rust_refs && RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=$(abspath $(BUILD))/rust \
+	  cargo build --release --offline
+
+$(BUILD)/compare: compare.c arms.h Makefile $(OURS) $(BUILD)/tramp.o $(PEER_OBJS) $(RUST_REFS) $(MEASLIB_OBJS) | $(BUILD)
 	$(CC) $(OPTFLAGS) $(WARNFLAGS) $(HDR_DEFS) $(MEASLIB_CFLAGS) compare.c $(BUILD)/tramp.o $(OURS) \
-	  $(PEER_OBJS) $(MEASLIB_OBJS) $(OPENSSL_LIBS) $(LDFLAGS) -o $@
+	  $(PEER_OBJS) $(RUST_REFS) $(MEASLIB_OBJS) $(OPENSSL_LIBS) -lpthread -ldl -lm $(LDFLAGS) -o $@
 
 conform: $(BUILD)/compare
 	./$(BUILD)/compare conform $(NRAND) | tee results/conform.txt

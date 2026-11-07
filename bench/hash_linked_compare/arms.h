@@ -65,6 +65,17 @@ void peer_hacl_sha512_x4(uint64_t st[32], const uint8_t *b0, const uint8_t *b1,
                          const uint8_t *b2, const uint8_t *b3);
 void peer_hacl_keccak_x4_absorb0(uint64_t st[100]);
 
+/* Rust BLAKE2b peers (rust_refs/lib.rs, static library build/rust/release/libhash_rust_refs.a).
+ * rc_*: RustCrypto blake2 0.10.6 (unverified); lc_*: libcrux-blake2 (Rust generated from
+ * HACL*, verified).  *_update_block advances the peer's own state by one 128-byte block;
+ * *_blake2b512 is the whole BLAKE2b-512 digest, used for conformance. */
+void *rc_blake2b_new(void);
+void rc_blake2b_update_block(void *st, const uint8_t blk[128]);
+void rc_blake2b512(const uint8_t *msg, size_t len, uint8_t out[64]);
+void *lc_blake2b_new(void);
+void lc_blake2b_update_block(void *st, const uint8_t blk[128]);
+void lc_blake2b512(const uint8_t *msg, size_t len, uint8_t out[64]);
+
 /* Resident-state entry points for timing (refs.c). */
 void *peer_openssl_sha512_ctx(void);
 void peer_openssl_sha512_ctx_step(void *ctx, const uint8_t blk[128]);
