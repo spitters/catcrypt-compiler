@@ -73,6 +73,11 @@ LEAN_NUM_THREADS=1 lake build     # the smallest footprint
 still starts the full set, time-sharing two cores. Lake has no `-j`/`--jobs` flag and
 `LAKE_JOBS` has no effect.
 
+The known-answer checks `#kat` and `#kat_kernel` carry wall-clock budgets set on a
+development machine: a false check fails the build, and an overrun of the budget is a
+warning by default. `CATCRYPT_KAT_STRICT=1` makes an overrun an error, as CI does, and
+`CATCRYPT_KAT_MS_SCALE` multiplies every budget for a slower machine (CI sets it to 4).
+
 ## Run the hax compiler
 
 The executable `haxc` runs `compileA` on one function of a hax frontend export, the

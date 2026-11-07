@@ -27,9 +27,8 @@ flowchart LR
 
 ## Compiler
 
-The compiler has two fronts: Rust through hax, and Lean through
-[relational compilation](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean) in the style of
-Rupicola. An Aeneas front is in progress.
+The compiler takes Rust through hax or Aeneas, and Lean functions;
+[PIPELINE.md](PIPELINE.md) describes each front and its theorem.
 
 Every intermediate language is a typed SSA dialect with a Lean denotation, in the style of
 lean-mlir.
@@ -43,15 +42,26 @@ instructions, under a named hardware timing regime
 ([`ConstantTimeRel`](CatCrypt/Crypto/SecureCompilation/CT/Leakage.lean)). The compiler also satisfies
 robust compilation ([`haxc_rc_proved_all`](CatCrypt/Crypto/SecureCompilation/Haxc/RCInstance.lean)).
 
-A template, as in Fiat Cryptography, is a Lean function from parameters to a program, with one
-denotation theorem over all parameters and a checked certificate per instance. We extend the method
-from curve fields to
+## Kernels
+
+The compiler compiles orchestration: control flow and calls to field operations. Kernels (bignum
+loops, carry chains, symmetric primitives and NTTs) are linked code, called under a
+[contract](CatCrypt/Crypto/SecureCompilation/Haxc/LinkedKernel.lean). A kernel is produced in one of
+four ways; the first three come with a theorem about the kernel's own code, not a compilation of its
+source. A template, as in Fiat Cryptography, is a Lean function from parameters to a program, with
+one denotation theorem over all parameters and a checked certificate per instance; we extend the
+method from curve fields to
 [lattice transforms](CatCrypt/Crypto/SecureCompilation/VIR/NegacyclicNttTemplate.lean),
 [hash functions](CatCrypt/Crypto/SecureCompilation/HashTemplate/), GHASH and extension towers
 ([FIAT_TEMPLATES.md](FIAT_TEMPLATES.md)).
-
-Source programs contain control flow and field calls. Bignum loops, symmetric primitives and NTTs
-are linked code with a [contract](CatCrypt/Crypto/SecureCompilation/Haxc/LinkedKernel.lean).
+[Relational compilation](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean), in the style of
+Rupicola, derives a kernel from a functional specification in Lean. Existing optimised code, such as
+s2n-bignum and CryptOpt output, is taken as given and proved correct by
+[ascent](ASCENT_OVERVIEW_HIGHLEVEL.md). The [Jasmin importer](JINC_IMPORT.md) reads Jasmin source
+with its own front end, a parser and a partial evaluator, which are trusted as `jasminc`'s front end
+is, and compiles the resulting program through this compiler's back end; a theorem about an imported
+kernel is a theorem about that program, such as constant time for formosa-keccak's permutation
+([`keccakF1600_constant_time`](CatCrypt/Crypto/Jasmin/KeccakJincEmit.lean)).
 
 ## Descent, ascent and transfer
 
