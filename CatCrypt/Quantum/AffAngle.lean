@@ -26,7 +26,7 @@ A numeral, a cast of a natural number or an integer, and the coercion `PiLin →
 go through `AffAngle.ofLin`, the angle with no parameter part, so a numeral denotes the
 multiple of `π` it denotes as a `PiLin`. Division `x / y` divides both parts of `x` by the
 `π`-coefficient of the constant part of `y`; on a divisor `q·π` it divides the real angle
-by `q` (`AffAngle.toReal_div_ofPi`).
+by `q` (`AffAngle.toReal_div_ofPi_at`).
 
 ## Main definitions
 
@@ -36,8 +36,9 @@ by `q` (`AffAngle.toReal_div_ofPi`).
 
 ## Main results
 
-* `AffAngle.toReal_add`, `AffAngle.toReal_neg`, `AffAngle.toReal_sub`,
-  `AffAngle.toReal_div_ofPi`, `AffAngle.toReal_ofLin`, `AffAngle.toReal_param`.
+* `AffAngle.toReal_add_at`, `AffAngle.toReal_neg_at`, `AffAngle.toReal_sub_at`,
+  `AffAngle.toReal_div_ofPi_at` — the real angle at every valuation `ρ` of the parameters
+  respects the operations; `AffAngle.toReal_ofLin`, `AffAngle.toReal_param`.
 * `AffAngle.const?_spec`.
 * `AffAngle.normal_ofLin`, `AffAngle.normal_param`, `AffAngle.Normal.add`,
   `AffAngle.Normal.neg`, `AffAngle.Normal.sub`, `AffAngle.Normal.div`.
@@ -202,21 +203,21 @@ theorem sum_divCoef (ρ : ℕ → ℝ) (d : ℚ) (l : List (ℕ × ℚ)) :
   simp [toReal]
 
 /-- Addition of angles is addition of their values. -/
-@[simp] theorem toReal_add (ρ : ℕ → ℝ) (x y : AffAngle) :
+@[simp] theorem toReal_add_at (ρ : ℕ → ℝ) (x y : AffAngle) :
     (x + y).toReal ρ = x.toReal ρ + y.toReal ρ := by
   simp only [toReal, add_c, add_coef, PiLin.toReal_add, sum_addCoef]; ring
 
 /-- Negation of an angle is negation of its value. -/
-@[simp] theorem toReal_neg (ρ : ℕ → ℝ) (x : AffAngle) : (-x).toReal ρ = -x.toReal ρ := by
+@[simp] theorem toReal_neg_at (ρ : ℕ → ℝ) (x : AffAngle) : (-x).toReal ρ = -x.toReal ρ := by
   simp only [toReal, neg_c, neg_coef, PiLin.toReal_neg, sum_negCoef]; ring
 
 /-- Subtraction of angles is subtraction of their values. -/
-@[simp] theorem toReal_sub (ρ : ℕ → ℝ) (x y : AffAngle) :
+@[simp] theorem toReal_sub_at (ρ : ℕ → ℝ) (x y : AffAngle) :
     (x - y).toReal ρ = x.toReal ρ - y.toReal ρ := by
   simp only [toReal, sub_c, sub_coef, PiLin.toReal_sub, sum_addCoef, sum_negCoef]; ring
 
 /-- Division by the angle `q·π` divides the real angle by `q`. -/
-@[simp] theorem toReal_div_ofPi (ρ : ℕ → ℝ) (x : AffAngle) (q : QasmAngle) :
+@[simp] theorem toReal_div_ofPi_at (ρ : ℕ → ℝ) (x : AffAngle) (q : QasmAngle) :
     (x / PiLin.ofPi q).toReal ρ = x.toReal ρ / q := by
   simp only [toReal, div_c, div_coef, ofLin_c, PiLin.ofPi_b, PiLin.toReal_div_ofPi,
     sum_divCoef]
