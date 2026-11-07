@@ -556,7 +556,7 @@ theorem ct_of_compileARegion (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : Ab
     (hk : ∀ l ∈ m.linked, LinkedKernel l := by exact fun _ h => nomatch h) :
     ConstantTimeRel
       (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
-        ∧ (∃ v, haxRuns σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRuns σ m s₂ v))
+        ∧ (∃ v, haxRunsW σ m s₁ v) ∧ (m.linked = [] ∨ ∃ v, haxRunsW σ m s₂ v))
       (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
   have hq' : ∀ q, haxEntry.toNF σ m = some q → ∀ l ∈ m.linked, linkNameOk l.name = true :=
     fun q hq => (haxToNF_eq_some hq).2.2.1
@@ -606,7 +606,7 @@ theorem haxc_ct_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModule) (σ : AbiL
   have hc' : compileARegion (pairStage m σ).1 (pairStage m σ).2 fname = some (P, bytes) := hc
   have hR := pairStage_regions m σ
   have hA := pairStage_pubAgree m σ
-  have hrun : ∀ {sa v}, haxRuns σ m sa v → ∃ x, haxRuns (pairStage m σ).2 (pairStage m σ).1 sa x :=
+  have hrun : ∀ {sa v}, haxRuns σ m sa v → ∃ x, haxRunsW (pairStage m σ).2 (pairStage m σ).1 sa x :=
     fun h => by
       obtain ⟨x, hx, -⟩ := haxRuns_pairStage h
       exact ⟨x, hx⟩
@@ -722,7 +722,8 @@ theorem haxc_correct_auto_ct_proved_all (s : _root_.Hax.FnSecrecy) (m : HaxModul
     program, and any two runs of it from entry states that satisfy `σ.Regions` and the
     precondition `Pre` and agree on `σ.PubAgree`, from the first of which `te` has a source
     run, have equal leakage traces under `ctRegime`. It is `haxc_correct_auto_ct_proved_all`
-    at the single function, with the run of the source from `isControlFlow_false_of_pairTail`. -/
+    at the single function, with the run of the source from `isControlFlow_false_of_pairTail`, on
+    a layout whose narrow parameters are not cut to their widths (`hn`). -/
 theorem haxc_correct_auto_tuple_ct_regions (s : _root_.Hax.FnSecrecy) (te : TExpr)
     (σ : AbiLayout) (fname : String) (P : Lprog) (bytes : List (BitVec 8))
     (hc : compileA te σ fname = some (P, bytes))
@@ -741,20 +742,23 @@ theorem haxc_correct_auto_tuple_ct_regions (s : _root_.Hax.FnSecrecy) (te : TExp
     (hres : WordArrResult σ.arrPart (stripArrTailT te))
     (sa : AState) (hsep : σ.Regions sa) (env : Env) (henv : σ.EnvOf sa env)
     (fuel : Nat) (v : Value) (env' : Env)
-    (hrun : (denoteSpine hax64WExit fuel te.erase).run env = (.val v, env')) :
+    (hrun : (denoteSpine hax64WExit fuel te.erase).run env = (.val v, env'))
+    (hn : narrowOk te σ = false := by rfl) :
     ∃ prog, decodeLprog bytes = some prog
       ∧ (∃ sa', Halts aMachine prog 0 sa sa' ∧ σ.ResultOf sa sa' v)
       ∧ ConstantTimeRel
           (fun s₁ s₂ => σ.PubAgree s₁ s₂ ∧ σ.Regions s₁ ∧ σ.Regions s₂ ∧ Pre s₁ ∧ Pre s₂
             ∧ ∃ v, haxRuns σ te s₁ v)
           (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') := by
+  have hns : narrowStage te σ = ((te : HaxModule), σ) := by simp [narrowStage, hn]
+  have he : narrowEntry te σ sa = sa := by simp [narrowEntry, hn]
   have hps : pairStage te σ = ((stripArrTailT te : HaxModule), σ.arrPart) := by
-    simp only [pairStage, hpt]; rfl
+    simp only [pairStage, hns, pairTailStage, hpt]; rfl
   obtain ⟨prog, hd, hv, hct⟩ := haxc_correct_auto_ct_proved_all s te σ fname P bytes hc
     (by rw [hps]; exact haxToNFCTBL_of_haxToNFCTB rfl hck) F fuelC Pre
     (by rw [hps, HaxModule.linkTable_of_linked_nil rfl]; exact hterm) (by rw [hps]; exact hL)
-    (by rw [hps]; exact hnd) sa hsep v ((haxRuns_single σ te sa v).mpr ⟨env, fuel, env', henv,
-      hrun, isControlFlow_false_of_pairTail hpt hres hsep henv hrun⟩)
+    (by rw [hps]; exact hnd) sa hsep v ((haxRuns_single σ te sa v).mpr ⟨env, fuel, env',
+      (by rw [he]; exact henv), hrun, isControlFlow_false_of_pairTail hpt hres hsep henv hrun⟩)
   exact ⟨prog, hd, hv, fun s₁ s₂ t₁ t₂ h => hct s₁ s₂ t₁ t₂ ⟨h.1, h.2.1, h.2.2.1, h.2.2.2.1,
     h.2.2.2.2.1, h.2.2.2.2.2, .inl rfl⟩⟩
 

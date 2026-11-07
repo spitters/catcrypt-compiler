@@ -102,15 +102,36 @@ theorem abiArg_read_congr {σ : AbiLayout} {a : AbiArg} (ha : a ∈ σ.args) {s 
       (show s.regs a.reg + BitVec.ofNat 64 (8 * j) ∈ regionWords (s.regs a.reg) n from
         ⟨j, List.mem_range.1 hj, rfl⟩) hl)
 
+/-- At the entry state the source reads (`narrowEntry`), the value a parameter denotes depends
+    on the state only at its register and, for an array parameter, at the words of its region:
+    `abiArg_read_congr`, and for a narrow parameter the low bits of its register. -/
+theorem abiArg_read_narrowEntry_congr {σ : AbiLayout} {m : HaxModule} {a : AbiArg}
+    (ha : a ∈ σ.args) {s t : AState} (hr : s.regs a.reg = t.regs a.reg)
+    (hm : Footprinted.AgreeOn (regionLocs σ s.regs) s t) :
+    a.read (narrowEntry m σ s) = a.read (narrowEntry m σ t) := by
+  unfold narrowEntry
+  split
+  · rename_i hok
+    cases hw : σ.widthOf a.reg with
+    | none =>
+        rw [AbiLayout.read_clean_of_none hw, AbiLayout.read_clean_of_none hw]
+        exact abiArg_read_congr ha hr hm
+    | some w =>
+        have hk : a.kind = .scalar :=
+          ((narrowOk_spec hok).1 _ (mem_widths_of_widthOf hw)).2 a ha rfl
+        rw [AbiLayout.read_clean_of_width hk hw, AbiLayout.read_clean_of_width hk hw, hr]
+  · exact abiArg_read_congr ha hr hm
+
 /-- **The source run reads the entry state only at the parameter registers and the words of
-    the pointer regions**: `EnvOf` reads the state through `AbiArg.read`. -/
+    the pointer regions**: `EnvOf` reads the entry state `narrowEntry` through `AbiArg.read`. -/
 theorem haxRuns_congr {σ : AbiLayout} {m : HaxModule} {s t : AState} {v : _root_.Hax.Value}
     (hr : ∀ a ∈ σ.args, s.regs a.reg = t.regs a.reg)
     (hm : Footprinted.AgreeOn (regionLocs σ s.regs) s t) (h : haxRuns σ m s v) :
     haxRuns σ m t v := by
   obtain ⟨env, fuel, fuelC, env', ⟨h1, h2, h3⟩, hrun, hcf⟩ := h
   exact ⟨env, fuel, fuelC, env',
-    ⟨fun a ha => (h1 a ha).trans (congrArg some (abiArg_read_congr ha (hr a ha) hm)), h2, h3⟩,
+    ⟨fun a ha => (h1 a ha).trans
+      (congrArg some (abiArg_read_narrowEntry_congr ha (hr a ha) hm)), h2, h3⟩,
     hrun, hcf⟩
 
 /-- The locations the source run reads at the entry register values `rv`: the parameter

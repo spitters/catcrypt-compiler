@@ -336,16 +336,18 @@ theorem canonEnv_eq_bindParams_words (σ : AbiLayout) (sz : AbiArg → Nat)
     `f a` under the table `hax64WExit` for every argument `a` in the guard. Then from every
     entry state `sa` satisfying `σ.Regions` whose canonical environment is
     `bindParams (ps a)` for an argument `a` in the guard, the bytes decode to a program that
-    halts in a state from which `σ` reads back the encoding of `f a`. -/
+    halts in a state from which `σ` reads back the encoding of `f a`, on a layout whose narrow
+    parameters are not cut to their widths (`hn`). -/
 theorem leanFront_correct {A β : Type} [HaxEnc β] [HaxEnc.Plain β] (te : TExpr)
     (σ : AbiLayout) (fname : String) (P : Lprog) (bytes : List (BitVec 8))
     (hc : compileA te σ fname = some (P, bytes)) (hsp : spineLamFree te.erase = true)
     (ps : A → List (String × Value)) (G : A → Prop) (f : A → β)
     (hf : FnCorres hax64WExit te.erase (fun a => bindParams (ps a)) G f)
     (hnd : σ.envNames.Nodup) (sa : AState) (hsep : σ.Regions sa) (a : A) (hG : G a)
-    (hcanon : σ.canonEnv sa = bindParams (ps a)) :
+    (hcanon : σ.canonEnv sa = bindParams (ps a)) (hn : narrowOk te σ = false := by rfl) :
     ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ σ.ResultOf sa sa' (enc (f a)) := by
+  have he : narrowEntry te σ sa = sa := by simp [narrowEntry, hn]
   obtain ⟨fuel, hr⟩ := hf a hG
   have hrun : (denoteSpine hax64WExit fuel te.erase).run (bindParams (ps a)) =
       (.val (enc (f a)), (denote' hax64WExit fuel te.erase (bindParams (ps a))).2) := by
@@ -353,7 +355,7 @@ theorem leanFront_correct {A β : Type} [HaxEnc β] [HaxEnc.Plain β] (te : TExp
     exact Prod.ext (hr fuel (Nat.le_refl fuel)) rfl
   have henv : σ.EnvOf sa (bindParams (ps a)) := hcanon ▸ σ.envOf_canonEnv hnd sa
   obtain ⟨x, hx, hback⟩ := haxRuns_pairStage ((haxRuns_single σ te sa _).mpr
-    ⟨_, fuel, _, henv, hrun, HaxEnc.Plain.not_cf (f a)⟩)
+    ⟨_, fuel, _, by rw [he]; exact henv, hrun, HaxEnc.Plain.not_cf (f a)⟩)
   obtain ⟨prog, sa', hd, hh, hR, -⟩ := haxEntry.compileR_correct
     (pairStage (te : CatCrypt.Crypto.Hax.HaxModule) σ).1 (pairStage te σ).2 fname P bytes
     ((linkedNil_compileARegion_eq (pairStage_linked _ σ) _ _).symm.trans hc) sa
@@ -371,11 +373,12 @@ theorem leanFront_correct_scalar {A β : Type} [HaxEnc β] [HaxEnc.Plain β] (te
     (hf : FnCorres hax64WExit te.erase (fun a => bindParams (ps a)) G f)
     (hs : ∀ a ∈ σ.args, a.kind = .scalar) (hconsts : σ.consts = [])
     (hnd : σ.envNames.Nodup) (sa : AState) (hsep : σ.Regions sa) (a : A) (hG : G a)
-    (hregs : σ.args.map (fun x => (x.name, Value.int (sa.regs x.reg).toNat)) = ps a) :
+    (hregs : σ.args.map (fun x => (x.name, Value.int (sa.regs x.reg).toNat)) = ps a)
+    (hn : narrowOk te σ = false := by rfl) :
     ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ σ.ResultOf sa sa' (enc (f a)) :=
   leanFront_correct te σ fname P bytes hc hsp ps G f hf hnd sa hsep a hG
-    (by rw [canonEnv_eq_bindParams σ hs hconsts sa, hregs])
+    (by rw [canonEnv_eq_bindParams σ hs hconsts sa, hregs]) hn
 
 /-- **Compiled bytes compute the function on two word arrays.** The statement of
     `leanFront_correct` for a layout with two word-array parameters `xn` (`n₁` words at the
@@ -396,14 +399,15 @@ theorem leanFront_correct_words {α β : Type} [HaxEnc α] [HaxEnc β] [HaxEnc.P
       (fun a => bindParams [(xn, enc a.1), (yn, enc a.2.1)]) G f)
     (hnd : σ.envNames.Nodup) (sa : AState) (hsep : σ.Regions sa) (x y : Array α)
     (hx : wordsAt sa.mem (sa.regs rx) n₁ = x.toList.map enc)
-    (hy : wordsAt sa.mem (sa.regs ry) n₂ = y.toList.map enc) (hG : G (x, y, ())) :
+    (hy : wordsAt sa.mem (sa.regs ry) n₂ = y.toList.map enc) (hG : G (x, y, ()))
+    (hn : narrowOk te σ = false := by rfl) :
     ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ enc (f (x, y, ())) = .array (wordsAt sa'.mem (sa.regs "%rdi") N) := by
   obtain ⟨prog, sa', hd, hh, hR⟩ := leanFront_correct te σ fname P bytes hc hsp
     (fun a => [(xn, enc a.1), (yn, enc a.2.1)]) G f hf hnd sa hsep (x, y, ()) hG (by
       rw [canonEnv_eq_bindParams_read σ hconsts sa, hargs]
       simp only [List.map_cons, List.map_nil, AbiArg.read, hx, hy]
-      rfl)
+      rfl) hn
   refine ⟨prog, sa', hd, hh, ?_⟩
   unfold AbiLayout.ResultOf at hR
   rw [hR, hres]

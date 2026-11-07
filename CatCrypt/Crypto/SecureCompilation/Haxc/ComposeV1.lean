@@ -10,6 +10,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.BackHalf
 public import CatCrypt.Crypto.SecureCompilation.Haxc.FrontLegOf
 public import CatCrypt.Crypto.SecureCompilation.Haxc.Consts
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFChain
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NarrowStage
 public import CatCrypt.Crypto.SecureCompilation.Haxc.ExtChain
 public import CatCrypt.Crypto.SecureCompilation.Haxc.TupleTail
 
@@ -75,9 +76,12 @@ under the table of the module. A program compiled without linked functions has n
   shape of that data.
 * `isControlFlow_false_of_wordResult` — a run of an extraction satisfying `WordArrResult` or
   `WordScalResult` returns a value that is not a control-flow value.
-* `pairStage_frame`, `entryA_pairStage`, `layoutMem_pairStage` — the layout of the pair stage
-  has the stack range, the pointer regions, the entry state of the address machine and the
-  bytes `layoutMem` of the layout.
+* `pairStage_frame`, `entryA_pairStage`, `layoutMem_pairStage` — the layout of the stages
+  before the front (`pairStage`: the narrow stage, then the pair tail stage) has the stack
+  range, the pointer regions, the entry state of the address machine and the bytes
+  `layoutMem` of the layout.
+* `haxRuns_pairStage` — a source run that reads each narrow parameter at its width is a run of
+  the module of the stages at the whole registers.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc
@@ -434,35 +438,45 @@ def pairTailOf (m : HaxModule) (σ : AbiLayout) : Option (String × String) :=
   | .tuple _ => (arrWordTailOf σ m.entry.erase).filter fun _ => indexFreeB m
   | _ => none
 
-/-- **The pair stage**: on a module and a layout with a pair tail (`pairTailOf`), the module
-    whose entry has the tail `let y = a[k]; (a, y)` replaced by `a` (`stripArrTailT`) and the
-    array part of the layout (`AbiLayout.arrPart`); the module and the layout otherwise. -/
-def pairStage (m : HaxModule) (σ : AbiLayout) : HaxModule × AbiLayout :=
+/-- **The pair tail stage**: on a module and a layout with a pair tail (`pairTailOf`), the
+    module whose entry has the tail `let y = a[k]; (a, y)` replaced by `a` (`stripArrTailT`) and
+    the array part of the layout (`AbiLayout.arrPart`); the module and the layout otherwise. -/
+def pairTailStage (m : HaxModule) (σ : AbiLayout) : HaxModule × AbiLayout :=
   match pairTailOf m σ with
   | some _ => ({ m with entry := stripArrTailT m.entry }, σ.arrPart)
   | none => (m, σ)
 
-/-- **The hax compiler with no witness**, on a module: the pair stage `pairStage`, then
-    `compileARegion`, the region back half on the structured program of the module at the
-    linked functions of the module. The calls of the functions of the module are inlined to
-    its depth. A module the region route refuses has no result. A single function is the
-    module with no callee and no linked function, and a `TExpr` coerces to it. -/
+/-- **The stages before the front**: the narrow stage `narrowStage`, which cuts each narrow
+    parameter to its width at entry, then the pair tail stage `pairTailStage`. -/
+def pairStage (m : HaxModule) (σ : AbiLayout) : HaxModule × AbiLayout :=
+  pairTailStage (narrowStage m σ).1 (narrowStage m σ).2
+
+/-- **The hax compiler with no witness**, on a module: the stages `pairStage` (the narrow
+    parameters cut to their widths, then the pair tail), then `compileARegion`, the region back
+    half on the structured program of the module at the linked functions of the module. The
+    calls of the functions of the module are inlined to its depth. A module the region route
+    refuses has no result. A single function is the module with no callee and no linked
+    function, and a `TExpr` coerces to it. -/
 def compileA (m : HaxModule) (σ : AbiLayout) (fname : String) :
     Option (Lprog × List (BitVec 8)) :=
   compileARegion (pairStage m σ).1 (pairStage m σ).2 fname
 
-/-- Without a pair tail, `compileA` is `compileARegion`. -/
+/-- Without narrow parameters read at their widths and without a pair tail, `compileA` is
+    `compileARegion`. -/
 theorem pairTailOf_none_compileA_eq {m : HaxModule} {σ : AbiLayout} (h : pairTailOf m σ = none)
-    (fname : String) : compileA m σ fname = compileARegion m σ fname := by
-  simp only [compileA, pairStage, h]
+    (fname : String) (hn : narrowOk m σ = false := by rfl) :
+    compileA m σ fname = compileARegion m σ fname := by
+  have hs : narrowStage m σ = (m, σ) := by simp [narrowStage, hn]
+  simp only [compileA, pairStage, hs, pairTailStage, h]
 
-/-- With a pair tail, `compileA` is `compileARegion` on the stripped entry under the array
-    part of the layout. -/
+/-- Without narrow parameters read at their widths, with a pair tail, `compileA` is
+    `compileARegion` on the stripped entry under the array part of the layout. -/
 theorem pairTailOf_some_compileA_eq {m : HaxModule} {σ : AbiLayout} {d : String × String}
-    (h : pairTailOf m σ = some d) (fname : String) :
+    (h : pairTailOf m σ = some d) (fname : String) (hn : narrowOk m σ = false := by rfl) :
     compileA m σ fname = compileARegion { m with entry := stripArrTailT m.entry } σ.arrPart fname
     := by
-  simp only [compileA, pairStage, h]
+  have hs : narrowStage m σ = (m, σ) := by simp [narrowStage, hn]
+  simp only [compileA, pairStage, hs, pairTailStage, h]
 
 /-- The data of a pair tail: the data `arrWordTailOf` of the entry, and no function of the
     module has the name `index`. -/
@@ -484,51 +498,51 @@ theorem pairTailOf_spec {m : HaxModule} {σ : AbiLayout} {d : String × String}
 /-- On a module without linked functions and without a pair tail, `compileA` is
     `haxEntry.compileR` at no linked function. -/
 theorem linkedNil_compileA_eq {m : HaxModule} (h : m.linked = []) (σ : AbiLayout)
-    (fname : String) (hp : pairTailOf m σ = none := by rfl) :
+    (fname : String) (hp : pairTailOf m σ = none := by rfl) (hn : narrowOk m σ = false := by rfl) :
     compileA m σ fname = haxEntry.compileR m σ fname := by
-  rw [pairTailOf_none_compileA_eq hp]
+  rw [pairTailOf_none_compileA_eq hp fname hn]
   exact linkedNil_compileARegion_eq h σ fname
 
-/-- The pair stage keeps the linked functions of the module. -/
-theorem pairStage_linked (m : HaxModule) (σ : AbiLayout) :
-    (pairStage m σ).1.linked = m.linked := by
-  unfold pairStage
+/-- The pair tail stage keeps the linked functions of the module. -/
+theorem pairTailStage_linked (m : HaxModule) (σ : AbiLayout) :
+    (pairTailStage m σ).1.linked = m.linked := by
+  unfold pairTailStage
   split <;> rfl
 
-/-- The layout of the pair stage has the regions of the layout. -/
-theorem pairStage_regions (m : HaxModule) (σ : AbiLayout) (sa : AState) :
-    (pairStage m σ).2.Regions sa ↔ σ.Regions sa := by
-  unfold pairStage
+/-- The layout of the pair tail stage has the regions of the layout. -/
+theorem pairTailStage_regions (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    (pairTailStage m σ).2.Regions sa ↔ σ.Regions sa := by
+  unfold pairTailStage
   split
   · exact arrPart_regions σ sa
   · exact Iff.rfl
 
-/-- The layout of the pair stage has the stack range and the pointer regions of the
+/-- The layout of the pair tail stage has the stack range and the pointer regions of the
     layout. -/
-theorem pairStage_frame (m : HaxModule) (σ : AbiLayout) :
-    (pairStage m σ).2.frameLo = σ.frameLo ∧ (pairStage m σ).2.frameHi = σ.frameHi
-      ∧ (pairStage m σ).2.regions = σ.regions := by
-  unfold pairStage
+theorem pairTailStage_frame (m : HaxModule) (σ : AbiLayout) :
+    (pairTailStage m σ).2.frameLo = σ.frameLo ∧ (pairTailStage m σ).2.frameHi = σ.frameHi
+      ∧ (pairTailStage m σ).2.regions = σ.regions := by
+  unfold pairTailStage
   split
   · unfold AbiLayout.arrPart
     split <;> exact ⟨rfl, rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl⟩
 
-/-- The entry state of the address machine at the layout of the pair stage is that at the
-    layout: the pair stage changes only the result of the layout. -/
-theorem entryA_pairStage (m : HaxModule) (σ : AbiLayout) (sa : AState) :
-    entryA (pairStage m σ).2 sa = entryA σ sa := by
-  unfold pairStage
+/-- The entry state of the address machine at the layout of the pair tail stage is that at the
+    layout: the pair tail stage changes only the result of the layout. -/
+theorem entryA_pairTailStage (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    entryA (pairTailStage m σ).2 sa = entryA σ sa := by
+  unfold pairTailStage
   split
   · unfold AbiLayout.arrPart
     split <;> rfl
   · rfl
 
-/-- The bytes of the stack words and the pointer regions at the layout of the pair stage are
+/-- The bytes of the stack words and the pointer regions at the layout of the pair tail stage are
     those at the layout. -/
-theorem layoutMem_pairStage (m : HaxModule) (σ : AbiLayout) (sa : AState) :
-    layoutMem (pairStage m σ).2 sa = layoutMem σ sa := by
-  obtain ⟨hlo, hhi, hrg⟩ := pairStage_frame m σ
+theorem layoutMem_pairTailStage (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    layoutMem (pairTailStage m σ).2 sa = layoutMem σ sa := by
+  obtain ⟨hlo, hhi, hrg⟩ := pairTailStage_frame m σ
   unfold layoutMem
   rw [hlo, hhi, hrg]
 
@@ -539,34 +553,34 @@ theorem arrPart_pubAgree (σ : AbiLayout) (s₁ s₂ : AState) :
   unfold AbiLayout.arrPart
   split <;> exact ⟨fun h => ⟨h.rsp, h.regs, h.words⟩, fun h => ⟨h.rsp, h.regs, h.words⟩⟩
 
-/-- The layout of the pair stage has the public data of the layout. -/
-theorem pairStage_pubAgree (m : HaxModule) (σ : AbiLayout) (s₁ s₂ : AState) :
-    (pairStage m σ).2.PubAgree s₁ s₂ ↔ σ.PubAgree s₁ s₂ := by
-  unfold pairStage
+/-- The layout of the pair tail stage has the public data of the layout. -/
+theorem pairTailStage_pubAgree (m : HaxModule) (σ : AbiLayout) (s₁ s₂ : AState) :
+    (pairTailStage m σ).2.PubAgree s₁ s₂ ↔ σ.PubAgree s₁ s₂ := by
+  unfold pairTailStage
   split
   · exact arrPart_pubAgree σ s₁ s₂
   · exact Iff.rfl
 
-/-- **The source run through the pair stage.** Every source run of `m` from `sa` to `v` under
-    `σ` is matched by a source run to a value `x` of the module of the pair stage under its
-    layout, and every state from which the layout of the pair stage reads back `x` is one from
+/-- **The source run through the pair tail stage.** Every source run of `m` from `sa` to `v` under
+    `σ` is matched by a source run to a value `x` of the module of the pair tail stage under its
+    layout, and every state from which the layout of the pair tail stage reads back `x` is one from
     which `σ` reads back `v`. Without a pair tail `x` is `v`. With a pair tail
     `let y = a[k]; (a, y)`, `x` is the array `a` and `v` the pair of `x` and its word at the
     entry value of `k` (`denoteSpine_stripArrTail`): the table of the module answers `index`
     as `hax64WExit` (`table_index_of_indexFreeB`), and the layout reads back the pair
     (`resultOf_arrWordTail`). -/
-theorem haxRuns_pairStage {m : HaxModule} {σ : AbiLayout} {sa : AState} {v : Value}
-    (hrun : haxRuns σ m sa v) :
-    ∃ x, haxRuns (pairStage m σ).2 (pairStage m σ).1 sa x ∧
-      ∀ sa', (pairStage m σ).2.ResultOf sa sa' x → σ.ResultOf sa sa' v := by
+theorem haxRunsW_pairTailStage {m : HaxModule} {σ : AbiLayout} {sa : AState} {v : Value}
+    (hrun : haxRunsW σ m sa v) :
+    ∃ x, haxRunsW (pairTailStage m σ).2 (pairTailStage m σ).1 sa x ∧
+      ∀ sa', (pairTailStage m σ).2.ResultOf sa sa' x → σ.ResultOf sa sa' v := by
   cases hpt : pairTailOf m σ with
   | none =>
-      have hs : pairStage m σ = (m, σ) := by simp only [pairStage, hpt]
+      have hs : pairTailStage m σ = (m, σ) := by simp only [pairTailStage, hpt]
       rw [hs]
       exact ⟨v, hrun, fun _ h => h⟩
   | some d =>
-      have hs : pairStage m σ = ({ m with entry := stripArrTailT m.entry }, σ.arrPart) := by
-        simp only [pairStage, hpt]
+      have hs : pairTailStage m σ = ({ m with entry := stripArrTailT m.entry }, σ.arrPart) := by
+        simp only [pairTailStage, hpt]
       rw [hs]
       obtain ⟨hdat, hfree⟩ := pairTailOf_spec hpt
       obtain ⟨r, n, a, hσ, htail, hka, hkeep⟩ := arrWordTailOf_spec hdat
@@ -583,6 +597,99 @@ theorem haxRuns_pairStage {m : HaxModule} {σ : AbiLayout} {sa : AState} {v : Va
       exact ⟨x, ⟨env, fuel, fuelC, env'', (arrPart_envOf σ sa env).2 henv,
         by rw [erase_stripArrTailT]; exact hrs, hxc⟩,
         fun sa' hR => resultOf_arrWordTail hσ hR hw⟩
+
+
+/-! ## The stages before the front -/
+
+/-- The layout of the narrow stage has the regions of the layout. -/
+theorem narrowStage_regions (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    (narrowStage m σ).2.Regions sa ↔ σ.Regions sa := by
+  rcases narrowStage_layout m σ with h | h <;> rw [h]
+  exact Iff.rfl
+
+/-- The layout of the narrow stage has the stack range and the pointer regions of the
+    layout. -/
+theorem narrowStage_frame (m : HaxModule) (σ : AbiLayout) :
+    (narrowStage m σ).2.frameLo = σ.frameLo ∧ (narrowStage m σ).2.frameHi = σ.frameHi
+      ∧ (narrowStage m σ).2.regions = σ.regions := by
+  rcases narrowStage_layout m σ with h | h <;> rw [h] <;> exact ⟨rfl, rfl, rfl⟩
+
+/-- The entry state of the address machine at the layout of the narrow stage is that at the
+    layout. -/
+theorem entryA_narrowStage (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    entryA (narrowStage m σ).2 sa = entryA σ sa := by
+  rcases narrowStage_layout m σ with h | h <;> rw [h]
+  rfl
+
+/-- The layout of the narrow stage has the public data of the layout. -/
+theorem narrowStage_pubAgree (m : HaxModule) (σ : AbiLayout) (s₁ s₂ : AState) :
+    (narrowStage m σ).2.PubAgree s₁ s₂ ↔ σ.PubAgree s₁ s₂ := by
+  rcases narrowStage_layout m σ with h | h <;> rw [h]
+  exact ⟨fun h => ⟨h.rsp, h.regs, h.words⟩, fun h => ⟨h.rsp, h.regs, h.words⟩⟩
+
+/-- The layout of the narrow stage reads back the result as the layout. -/
+theorem narrowStage_resultOf (m : HaxModule) (σ : AbiLayout) (sa sa' : AState) (v : Value) :
+    (narrowStage m σ).2.ResultOf sa sa' v ↔ σ.ResultOf sa sa' v := by
+  rcases narrowStage_layout m σ with h | h <;> rw [h]
+  exact Iff.rfl
+
+/-- The stages keep the linked functions of the module. -/
+theorem pairStage_linked (m : HaxModule) (σ : AbiLayout) :
+    (pairStage m σ).1.linked = m.linked :=
+  (pairTailStage_linked _ _).trans (narrowStage_linked m σ)
+
+/-- The stages keep the functions of the module. -/
+theorem pairStage_fns (m : HaxModule) (σ : AbiLayout) :
+    (pairStage m σ).1.fns = m.fns := by
+  have h1 : (narrowStage m σ).1.fns = m.fns := by unfold narrowStage; split <;> rfl
+  have h2 : ∀ (n : HaxModule) (τ : AbiLayout), (pairTailStage n τ).1.fns = n.fns := by
+    intro n τ; unfold pairTailStage; split <;> rfl
+  exact (h2 _ _).trans h1
+
+/-- The layout of the stages has the regions of the layout. -/
+theorem pairStage_regions (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    (pairStage m σ).2.Regions sa ↔ σ.Regions sa :=
+  (pairTailStage_regions _ _ sa).trans (narrowStage_regions m σ sa)
+
+/-- The layout of the stages has the stack range and the pointer regions of the layout. -/
+theorem pairStage_frame (m : HaxModule) (σ : AbiLayout) :
+    (pairStage m σ).2.frameLo = σ.frameLo ∧ (pairStage m σ).2.frameHi = σ.frameHi
+      ∧ (pairStage m σ).2.regions = σ.regions := by
+  obtain ⟨h1, h2, h3⟩ := pairTailStage_frame (narrowStage m σ).1 (narrowStage m σ).2
+  obtain ⟨g1, g2, g3⟩ := narrowStage_frame m σ
+  exact ⟨h1.trans g1, h2.trans g2, h3.trans g3⟩
+
+/-- The entry state of the address machine at the layout of the stages is that at the
+    layout. -/
+theorem entryA_pairStage (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    entryA (pairStage m σ).2 sa = entryA σ sa :=
+  (entryA_pairTailStage _ _ sa).trans (entryA_narrowStage m σ sa)
+
+/-- The bytes of the stack words and the pointer regions at the layout of the stages are
+    those at the layout. -/
+theorem layoutMem_pairStage (m : HaxModule) (σ : AbiLayout) (sa : AState) :
+    layoutMem (pairStage m σ).2 sa = layoutMem σ sa := by
+  obtain ⟨hlo, hhi, hrg⟩ := pairStage_frame m σ
+  unfold layoutMem
+  rw [hlo, hhi, hrg]
+
+/-- The layout of the stages has the public data of the layout. -/
+theorem pairStage_pubAgree (m : HaxModule) (σ : AbiLayout) (s₁ s₂ : AState) :
+    (pairStage m σ).2.PubAgree s₁ s₂ ↔ σ.PubAgree s₁ s₂ :=
+  (pairTailStage_pubAgree _ _ s₁ s₂).trans (narrowStage_pubAgree m σ s₁ s₂)
+
+/-- **The source run through the stages.** Every source run of `m` from `sa` to `v` under `σ`,
+    which reads each narrow parameter at its width (`haxRuns`), is matched by a run at the whole
+    registers (`haxRunsW`) to a value `x` of the module of the stages under its layout: the
+    narrow stage cuts the parameters at entry (`haxRunsW_narrowStage`), and the pair tail stage
+    is `haxRunsW_pairTailStage`. Every state from which the layout of the stages reads back `x`
+    is one from which `σ` reads back `v`. -/
+theorem haxRuns_pairStage {m : HaxModule} {σ : AbiLayout} {sa : AState} {v : Value}
+    (hrun : haxRuns σ m sa v) :
+    ∃ x, haxRunsW (pairStage m σ).2 (pairStage m σ).1 sa x ∧
+      ∀ sa', (pairStage m σ).2.ResultOf sa sa' x → σ.ResultOf sa sa' v := by
+  obtain ⟨x, hx, hback⟩ := haxRunsW_pairTailStage (haxRunsW_narrowStage hrun)
+  exact ⟨x, hx, fun sa' h => (narrowStage_resultOf m σ sa sa' v).1 (hback sa' h)⟩
 
 /-- A run of the source reading of `te` from an environment `σ` reads off an entry state
     satisfying `σ.Regions` returns a value that is not a control-flow value, when the

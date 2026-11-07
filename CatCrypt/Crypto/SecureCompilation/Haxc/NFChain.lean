@@ -73,7 +73,9 @@ function of `nfFrontC` is `nfFront` on the extraction with the constants of the 
   chain steps; `nfToCatCert`, `exportCert` their certificates.
 * `nfChain`, `nfChainCert` — the chain and its certificate.
 * `haxRuns`, `nfFront` — the source semantics of the hax front, and the front half of the
-  hax compiler through the chain.
+  hax compiler through the chain; `haxRunsW`, the source semantics at the whole registers,
+  which the chain proves, and `narrowOk`, `narrowEntry`, the entry state at which `haxRuns`
+  reads a narrow parameter at its width.
 * `nfFrontReport` — the run of `nfFront` that names the refusing step: `nfSrcProg`, or the
   index and name of the first refusing step of `nfChain` (`Chain.runTrace`).
 * `NFEntry`, `NFEntry.toFrontLegOf` — an entry into `NFProg nfDialect` and its composite
@@ -129,11 +131,11 @@ function of `nfFrontC` is `nfFront` on the extraction with the constants of the 
   `SubTable`, the typing `hax64SigOf` and the array operations of the base table.
 * `nfFront_leg` — the leg of the front: a valuation the layout reads off the entry state at
   which the program denotes the value of the source run.
-* `haxRuns_single`, `haxToNF_single` — the source semantics and the translation at the
-  module of a single function.
+* `haxRuns_single`, `haxRunsW_single`, `haxToNF_single` — the source semantics and the
+  translation at the module of a single function.
 * `HaxModule.refusal?_eq_none_iff` — `HaxModule.refusal?`, the first refusal of `haxToNF`
   on a module under a layout, is `none` exactly when `haxToNF` returns a program.
-* `nfFrontC_leg` — the leg of `nfFrontC`, at the source semantics `haxRuns`;
+* `nfFrontC_leg` — the leg of `nfFrontC`, at the source semantics `haxRunsW`;
   `nfFrontC_front` — at the module of a single function the compile function of `nfFrontC`
   is `nfFront` on the extraction with the constants of the layout bound.
 -/
@@ -388,9 +390,11 @@ theorem nfChain_mapStep_isSome (Γ : Ctxt nfDialect) (ts : List NfTy)
 
 /-! ## The front half of the hax compiler -/
 
-/-- **The source semantics of the hax front**: the source relation `HaxModule.Runs` of the
-    module `m` at the table `hax64WExit`. A hax environment `env` that `σ` reads off the entry
-    state `sa`, and a run of the source reading of the entry of `m` from `env`, at the table
+/-- **The source semantics of the hax front at the whole registers**: the source relation
+    `HaxModule.Runs` of the module `m` at the table `hax64WExit`, in which every scalar
+    parameter denotes its whole register. The chain proves its theorems at it; the compiler
+    theorems read a narrow parameter at its width (`haxRuns`). A hax environment `env` that `σ`
+    reads off the entry state `sa`, and a run of the source reading of the entry of `m` from `env`, at the table
     of `m` for some fuel of the callees, to a value `v` that is not a control-flow value. A
     call of a function of `m` is the run of the source reading of the extraction of the
     callee under that table, from the environment binding the names of its parameters to the
@@ -403,19 +407,70 @@ theorem nfChain_mapStep_isSome (Γ : Ctxt nfDialect) (ts : List NfTy)
     `haxc_correct_auto` then gives its second disjunct (a run through the call). For a
     module without linked functions the table is the
     reference table of its functions over `hax64WExit` (`HaxModule.table_of_linked_nil`). -/
-def haxRuns (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
+def haxRunsW (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
   HaxModule.Runs CatCrypt.Crypto.Hax.hax64WExit σ m sa v
 
-/-- **The source semantics of a single function**: at the module of the function `te`,
-    `haxRuns` is a hax environment `env` that `σ` reads off the entry state `sa`, and a run
-    of the source reading of `te` at `hax64WExit` from `env` to a value `v` that is not a
+/-- **The register-wide source semantics of a single function**: at the module of the function
+    `te`, `haxRunsW` is a hax environment `env` that `σ` reads off the entry state `sa`, and a
+    run of the source reading of `te` at `hax64WExit` from `env` to a value `v` that is not a
     control-flow value. -/
-theorem haxRuns_single (σ : AbiLayout) (te : TExpr) (sa : AState) (v : Value) :
-    haxRuns σ (te : HaxModule) sa v ↔
+theorem haxRunsW_single (σ : AbiLayout) (te : TExpr) (sa : AState) (v : Value) :
+    haxRunsW σ (te : HaxModule) sa v ↔
       ∃ env fuel env', σ.EnvOf sa env ∧
         (denoteSpine CatCrypt.Crypto.Hax.hax64WExit fuel te.erase).run env = (.val v, env') ∧
           v.isControlFlow = false :=
   HaxModule.runs_single _ σ te sa v
+
+/-- The name of the call that cuts a narrow parameter to its width at entry. -/
+def maskCall : String := "BitAnd#64"
+
+/-- **The narrow parameters of a layout are read at their widths** on the module `m`: the
+    layout narrows a register (`AbiLayout.widths`), each width is at most `64`, every parameter
+    carried in a narrowed register is a scalar, the parameters have distinct names, no constant
+    has the name of a parameter, and no function or linked function of `m` has the name
+    `maskCall`. The compiler then cuts each such parameter to its width at entry
+    (`Haxc.narrowStage`), and the source semantics `haxRuns` reads it at its width. -/
+def narrowOk (m : HaxModule) (σ : AbiLayout) : Bool :=
+  !σ.widths.isEmpty
+    && σ.widths.all (fun p => decide (p.2 ≤ 64)
+      && σ.args.all fun a => a.reg != p.1 || a.kind == .scalar)
+    && decide (σ.args.map (·.name)).Nodup
+    && σ.consts.all (fun c => !σ.args.any (·.name == c.1))
+    && m.fns.all (·.name != maskCall) && m.linked.all (·.name != maskCall)
+
+/-- **The entry state the source reads**: the state with each narrowed register cut to its
+    width (`AbiLayout.clean`) when the narrow parameters are read at their widths
+    (`narrowOk`), the state itself otherwise. -/
+def narrowEntry (m : HaxModule) (σ : AbiLayout) (sa : AState) : AState :=
+  if narrowOk m σ then σ.clean sa else sa
+
+/-- **The source semantics of the hax front**: `haxRunsW` from the entry state `narrowEntry`,
+    so that a scalar parameter of an unsigned type narrower than `64` bits denotes the low bits
+    of its register (`AbiLayout.read_clean_of_width`) whatever the caller leaves above them. On
+    a layout without narrowed registers it is `haxRunsW` (`haxRuns_iff_of_widths_nil`). -/
+def haxRuns (σ : AbiLayout) (m : HaxModule) (sa : AState) (v : Value) : Prop :=
+  haxRunsW σ m (narrowEntry m σ sa) v
+
+/-- A layout without narrowed registers enters at the state itself. -/
+theorem narrowEntry_of_widths_nil {σ : AbiLayout} (h : σ.widths = []) (m : HaxModule)
+    (sa : AState) : narrowEntry m σ sa = sa := by
+  simp [narrowEntry, narrowOk, h]
+
+/-- On a layout without narrowed registers the source semantics is `haxRunsW`. -/
+theorem haxRuns_iff_of_widths_nil {σ : AbiLayout} (h : σ.widths = []) (m : HaxModule)
+    (sa : AState) (v : Value) : haxRuns σ m sa v ↔ haxRunsW σ m sa v := by
+  rw [haxRuns, narrowEntry_of_widths_nil h]
+
+/-- **The source semantics of a single function**: at the module of the function `te`,
+    `haxRuns` is a hax environment `env` that `σ` reads off the entry state `narrowEntry`, and
+    a run of the source reading of `te` at `hax64WExit` from `env` to a value `v` that is not a
+    control-flow value. -/
+theorem haxRuns_single (σ : AbiLayout) (te : TExpr) (sa : AState) (v : Value) :
+    haxRuns σ (te : HaxModule) sa v ↔
+      ∃ env fuel env', σ.EnvOf (narrowEntry te σ sa) env ∧
+        (denoteSpine CatCrypt.Crypto.Hax.hax64WExit fuel te.erase).run env = (.val v, env') ∧
+          v.isControlFlow = false :=
+  HaxModule.runs_single _ σ te _ v
 
 open _root_.Hax.FieldTag (fieldArgs fieldHeadB) in
 /-- **The table `hax64WExit` at a field head on integer words is the `u64` table**, when the
@@ -1409,7 +1464,7 @@ theorem _root_.CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_iff (σ : AbiLayou
       simp
 
 /-- **The hax front as an entry**: the modules `HaxModule` with the source semantics
-    `haxRuns`, the translation `haxToNF` and the export names `nfAbiNames`. At a module `m`
+    `haxRunsW`, the translation `haxToNF` and the export names `nfAbiNames`. At a module `m`
     and every fuel of the callees, the table is the table `m.linkTable hax64WExit` of the
     linked functions, in which a call of a linked function is the value of its meaning `sem`,
     and the call environment is the one read off that table (`tableEnv`).
@@ -1435,7 +1490,7 @@ theorem _root_.CatCrypt.Crypto.Hax.HaxModule.refusal?_eq_none_iff (σ : AbiLayou
     at the wide tagged heads (`fieldCallsWideEq_linkBi`, `fieldCallsWideEq_hax64WExit`). -/
 def haxEntry : NFEntry where
   Src := HaxModule
-  Runs := haxRuns
+  Runs := haxRunsW
   names := nfAbiNames
   toNF := haxToNF
   bi m _ := m.linkTable CatCrypt.Crypto.Hax.hax64WExit
@@ -1706,12 +1761,12 @@ theorem modFnsE_toOption_eq_none_iff (consts : List (String × Value))
 def nfFrontC : FrontLegOfJ := haxEntry.toFrontLegOf
 
 /-- **The leg of the hax front through the chain**: for a result `p` of the compile
-    function, every value `v` of a run of the source reading (`haxRuns`) from an entry state
+    function, every value `v` of a run of the source reading (`haxRunsW`) from an entry state
     satisfying `σ.Regions` is the source value `denVal` of a value the program denotes at
     some fuel, at a valuation `σ` reads off the entry state. -/
 theorem nfFrontC_leg (σ : AbiLayout) (m : HaxModule) (p : AnyRouteProgJ)
     (hf : nfFrontC.front σ m = some p) (sa : AState) (v : Value) (hreg : σ.Regions sa)
-    (hrun : haxRuns σ m sa v) :
+    (hrun : haxRunsW σ m sa v) :
     ∃ (V : Valuation p.1) (fuel : Nat) (x : ⟦p.2.1⟧), AbiValOf σ sa V ∧
       p.2.2.denoteF fuel V = some x ∧ v = denVal p.2.1 x :=
   nfFrontC.leg σ m p hf sa v hreg hrun

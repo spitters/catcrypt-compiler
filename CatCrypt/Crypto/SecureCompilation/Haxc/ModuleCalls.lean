@@ -199,21 +199,38 @@ theorem sameCallees_compileA_eq {m₁ m₂ : HaxModule} (he : m₁.entry = m₂.
     (hl : m₁.linked.map LinkedFn.callee = m₂.linked.map LinkedFn.callee)
     (hc : m₁.linked.filterMap LinkedFn.calleeData = m₂.linked.filterMap LinkedFn.calleeData)
     (σ : AbiLayout) (fname : String) : compileA m₁ σ fname = compileA m₂ σ fname := by
-  have hn : m₁.linked.all (fun l => l.name != "index")
-      = m₂.linked.all (fun l => l.name != "index") := by
-    have := congrArg (fun cs => cs.all fun c => c.name != "index") hl
+  have hall : ∀ g : String, m₁.linked.all (fun l => l.name != g)
+      = m₂.linked.all (fun l => l.name != g) := fun g => by
+    have := congrArg (fun cs => cs.all fun c => c.name != g) hl
     simpa [List.all_map, Function.comp_def, LinkedFn.callee] using this
-  have hp : pairTailOf m₁ σ = pairTailOf m₂ σ := by
-    simp only [pairTailOf, indexFreeB, he, hf, hn]
-  cases h : pairTailOf m₂ σ with
-  | none =>
-      rw [pairTailOf_none_compileA_eq (hp.trans h), pairTailOf_none_compileA_eq h]
-      exact sameCallees_compileARegion_eq he hf hd hl hc σ fname
+  have hok : narrowOk m₁ σ = narrowOk m₂ σ := by simp only [narrowOk, hf, hall]
+  -- the narrow stage changes the entry alike and keeps the rest of each module
+  obtain ⟨τ, hτ₁, hτ₂, he', hf', hd', hl₁, hl₂⟩ : ∃ τ, (narrowStage m₁ σ).2 = τ
+      ∧ (narrowStage m₂ σ).2 = τ ∧ (narrowStage m₁ σ).1.entry = (narrowStage m₂ σ).1.entry
+      ∧ (narrowStage m₁ σ).1.fns = (narrowStage m₂ σ).1.fns
+      ∧ (narrowStage m₁ σ).1.depth = (narrowStage m₂ σ).1.depth
+      ∧ (narrowStage m₁ σ).1.linked = m₁.linked ∧ (narrowStage m₂ σ).1.linked = m₂.linked := by
+    unfold narrowStage
+    rw [hok]
+    split
+    · exact ⟨_, rfl, rfl, by simp [he], hf, hd, rfl, rfl⟩
+    · exact ⟨_, rfl, rfl, he, hf, hd, rfl, rfl⟩
+  set n₁ := (narrowStage m₁ σ).1
+  set n₂ := (narrowStage m₂ σ).1
+  have hp : pairTailOf n₁ τ = pairTailOf n₂ τ := by
+    simp only [pairTailOf, indexFreeB, he', hf', hl₁, hl₂, hall]
+  have hl' : n₁.linked.map LinkedFn.callee = n₂.linked.map LinkedFn.callee := by
+    rw [hl₁, hl₂]; exact hl
+  have hc' : n₁.linked.filterMap LinkedFn.calleeData = n₂.linked.filterMap LinkedFn.calleeData := by
+    rw [hl₁, hl₂]; exact hc
+  simp only [compileA, pairStage, hτ₁, hτ₂, pairTailStage]
+  rw [hp]
+  cases pairTailOf n₂ τ with
+  | none => exact sameCallees_compileARegion_eq he' hf' hd' hl' hc' τ fname
   | some d =>
-      rw [pairTailOf_some_compileA_eq (hp.trans h), pairTailOf_some_compileA_eq h]
-      exact sameCallees_compileARegion_eq (m₁ := { m₁ with entry := stripArrTailT m₁.entry })
-        (m₂ := { m₂ with entry := stripArrTailT m₂.entry }) (congrArg stripArrTailT he) hf hd hl
-        hc σ.arrPart fname
+      exact sameCallees_compileARegion_eq (m₁ := { n₁ with entry := stripArrTailT n₁.entry })
+        (m₂ := { n₂ with entry := stripArrTailT n₂.entry }) (congrArg stripArrTailT he') hf' hd'
+        hl' hc' τ.arrPart fname
 
 /-! ## 3. Linking functions of a module in turn -/
 
@@ -253,6 +270,49 @@ theorem runs_foldl_linkFn (bi : _root_.Hax.Builtins) (σ : AbiLayout) :
   | [], _, _, _, _, h => h
   | l :: ls, m, ⟨⟨_, hf, hsem⟩, hs⟩, _, _, h =>
       runs_foldl_linkFn bi σ ls (m.linkFn l) hs (HaxModule.runs_linkFn bi σ m hf hsem h)
+
+/-- Linking a function of the module keeps `narrowOk`: the linked function has the name of a
+    function of the module, so the names `narrowOk` reads are those of the module. -/
+theorem narrowOk_linkFn (σ : AbiLayout) {m : HaxModule} {l : LinkedFn}
+    {f : CatCrypt.Crypto.Hax.ModFn} (hf : m.fns.find? (·.name == l.name) = some f) :
+    narrowOk (m.linkFn l) σ = narrowOk m σ := by
+  have hfm : f ∈ m.fns := List.mem_of_find?_eq_some hf
+  have hfn : f.name = l.name := by simpa using List.find?_some hf
+  have key : ((m.fns.filter (·.name != l.name)).all (·.name != maskCall)
+      && (l :: m.linked).all (·.name != maskCall))
+      = (m.fns.all (·.name != maskCall) && m.linked.all (·.name != maskCall)) := by
+    by_cases hl : l.name = maskCall
+    · have h1 : m.fns.all (·.name != maskCall) = false := by
+        rw [List.all_eq_false]; exact ⟨f, hfm, by simp [hfn, hl]⟩
+      simp [h1, hl]
+    · have h2 : (m.fns.filter (·.name != l.name)).all (·.name != maskCall)
+          = m.fns.all (·.name != maskCall) := by
+        rw [Bool.eq_iff_iff, List.all_eq_true, List.all_eq_true]
+        refine ⟨fun h g hg => ?_, fun h g hg => h g (List.mem_filter.mp hg).1⟩
+        by_cases hgl : g.name = l.name
+        · simp [hgl, hl]
+        · exact h g (List.mem_filter.mpr ⟨hg, by simpa using hgl⟩)
+      have hl' : (l.name != maskCall) = true := by simpa using hl
+      simp [h2, hl']
+  simp only [narrowOk, HaxModule.linkFn, Bool.and_assoc] at key ⊢
+  rw [key]
+
+/-- Linking functions in turn keeps `narrowOk`. -/
+theorem narrowOk_foldl_linkFn (bi : _root_.Hax.Builtins) (σ : AbiLayout) :
+    ∀ (ls : List LinkedFn) (m : HaxModule), LinkSteps bi m ls →
+      narrowOk (ls.foldl HaxModule.linkFn m) σ = narrowOk m σ
+  | [], _, _ => rfl
+  | l :: ls, m, ⟨⟨_, hf, _⟩, hs⟩ =>
+      (narrowOk_foldl_linkFn bi σ ls (m.linkFn l) hs).trans (narrowOk_linkFn σ hf)
+
+/-- **A source run of a module is a source run of the module with functions linked in turn**:
+    `runs_foldl_linkFn` at the entry state `narrowEntry`, which the linking keeps. -/
+theorem haxRuns_foldl_linkFn (σ : AbiLayout) (ls : List LinkedFn) (m : HaxModule)
+    (hs : LinkSteps CatCrypt.Crypto.Hax.hax64WExit m ls) {sa : AState} {v : _root_.Hax.Value}
+    (h : haxRuns σ m sa v) : haxRuns σ (ls.foldl HaxModule.linkFn m) sa v := by
+  unfold haxRuns haxRunsW at *
+  rw [narrowEntry, narrowOk_foldl_linkFn _ σ ls m hs, ← narrowEntry]
+  exact runs_foldl_linkFn _ σ ls m hs h
 
 /-! ## 4. The driver -/
 
@@ -324,7 +384,7 @@ def compileCallee (pl : CalleePlan) (f : CatCrypt.Crypto.Hax.ModFn) : Option Com
         match decodeLprog r.2 with
         | some q =>
             if X86Backend.Callee.keepCheckB q (fun x => pl.clob.contains x) pl.frame
-                && pl.freeB && (pairTailOf m pl.layout).isNone then
+                && pl.freeB && (pairTailOf m pl.layout).isNone && !narrowOk m pl.layout then
               some ⟨f, pl, _, p, r.2⟩
             else none
         | none => none
@@ -349,9 +409,9 @@ theorem compileCallee_compileA {pl : CalleePlan} {f : CatCrypt.Crypto.Hax.ModFn}
     split at h
     · rename_i hk
       cases h
-      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none] at hk
-      refine ⟨rfl, rfl, ⟨P, hr, ?_⟩, q, hq, hk.1.1, hk.1.2⟩
-      rw [pairTailOf_none_compileA_eq hk.2]
+      simp only [Bool.and_eq_true, Option.isNone_iff_eq_none, Bool.not_eq_true'] at hk
+      refine ⟨rfl, rfl, ⟨P, hr, ?_⟩, q, hq, hk.1.1.1, hk.1.1.2⟩
+      rw [pairTailOf_none_compileA_eq hk.1.2 _ hk.2]
       simp only [compileARegion, NFEntry.compileR, NFEntry.chainNF, hq0, Option.bind_some, hp,
         Option.map_some]
       exact hr
@@ -494,7 +554,7 @@ theorem compileModule_correct {m : HaxModule} {σ : AbiLayout} {fname : String}
   obtain ⟨order, ks, ho, hks, hc⟩ := compileModule_eq h
   refine ⟨order, ks, ho, hks, fun ls hls hnd hk hsteps sa hsep v hrun => ?_⟩
   obtain ⟨prog, hd, h⟩ := haxc_correct_auto _ σ fname P bytes (hc ls hls) sa hsep v
-    (runs_foldl_linkFn _ σ ls m hsteps hrun) hnd hk
+    (haxRuns_foldl_linkFn σ ls m hsteps hrun) hnd hk
   rcases h with ⟨sa', hh, hR, -⟩ | h
   · exact ⟨prog, hd, .inl ⟨sa', hh, hR⟩⟩
   · exact ⟨prog, hd, .inr h⟩

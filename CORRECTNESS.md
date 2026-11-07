@@ -122,7 +122,15 @@ tables with the accepted programs.
     the stack register restored and the memory outside the stack frame and the pointer
     regions unchanged, or, for a program that calls a linked function, from a halting run
     through the call. The statement is partial correctness: it concerns source runs that
-    reach a value. `haxc_correct_auto_saved` adds, in the first case, that every System V
+    reach a value. The source run `haxRuns` reads a scalar parameter of an unsigned type
+    narrower than 64 bits at its width: `deriveAbi` lists its register in `AbiLayout.widths`,
+    the environment is read off the entry state with each such register cut to its low bits
+    (`narrowEntry`, `AbiLayout.clean`; `AbiLayout.read_clean_lt`, `read_clean_congr`), and the
+    compiler cuts the parameter at entry by a binding of the source (`narrowStage`,
+    `haxRunsW_narrowStage`, `Haxc/NarrowStage.lean`), so the theorem holds whatever the caller
+    leaves in the bits above. The chain is proved at the whole registers (`haxRunsW`). The
+    regions (`AbiLayout.Regions`: the bounds) and the public data (`PubAgree`) still read
+    the whole register of a narrow parameter. `haxc_correct_auto_saved` adds, in the first case, that every System V
     callee-saved register (`DecodedCT.calleeSaved`: `%rbx`, `%rbp`, `%r12` to `%r15`) holds
     its entry value; `NFEntry.compileR_correct_saved` and `compileRegion_correct_saved`
     state the same at an entry and for the back half. The printed body saves and restores
@@ -162,14 +170,16 @@ tables with the accepted programs.
   keeps the acceptance `compileA … = some (P, bytes)` and, where it states constant time,
   the level check `haxToNFCTB … = true` as hypotheses; `mpn_and_n` is at the layout
   `andAbi4` of three 4-word arrays (`n ≤ 4`).
-- `compileA` (`Haxc/ComposeV1.lean`) is `compileARegion` at the pair stage `pairStage m σ`,
-  which strips a tail `let y = a[k]; (a, y)` of the entry; `compileARegion` is the region
+- `compileA` (`Haxc/ComposeV1.lean`) is `compileARegion` at the stages `pairStage m σ`: the
+  narrow stage `narrowStage`, which binds each narrow parameter to its register cut to its
+  width at the head of the entry and is the identity on a layout without widths, then the
+  pair tail stage `pairTailStage`, which strips a tail `let y = a[k]; (a, y)` of the entry; `compileARegion` is the region
   compiler `NFEntry.compileR` at the hax entry `haxEntry` and the data of the linked
   functions of the module. Its front is `haxToNF` (`Haxc/NFChain.lean`), whose domain check
   is `HaxModule.refusal?`; its chain is `extChain` (`Haxc/ExtChain.lean`); its back half is
   `compileRegion` (`Haxc/RegionBackend.lean`), with the gate `regionCoB` and the leakage
   checks `regionCtB`. `haxc_correct_auto` is `NFEntry.compileR_correct_linked` at
-  `haxEntry` and the pair stage, through `compileRegion_correct`. The compile line is
+  `haxEntry` and the stages `pairStage`, through `compileRegion_correct`. The compile line is
   `compileA = haxToNF → extChain → compileRegion`, and `compileRegion` is the only back
   half; the field modules compile through it as well. The Aeneas front is a second entry of
   the same compiler: `aeneasEntry` (`AeneasFront/Entry.lean`) takes an Aeneas-printed Lean

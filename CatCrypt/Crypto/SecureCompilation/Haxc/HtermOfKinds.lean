@@ -158,7 +158,7 @@ theorem haxc_gate_proved_all_of_check (s : _root_.Hax.FnSecrecy) (m : HaxModule)
       (haxcLeakRun prog) :=
   haxc_gate_proved_all s m σ fname P bytes hc hck B 0
     (fun _ V _ _ => run_val_of_check
-      (by unfold pairStage; split <;> exact hfns)
+      ((pairStage_fns m σ).trans hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl V)
     hL hnds hd (by simp [hlk]) (by simp [hlk])
 
@@ -183,7 +183,7 @@ theorem haxc_rc_proved_all_of_check (s : _root_.Hax.FnSecrecy) (m : HaxModule)
         (idealObs (pubOf σ)) :=
   haxc_rc_proved_all s m σ fname P bytes hc hck B 0
     (fun _ V _ _ => run_val_of_check
-      (by unfold pairStage; split <;> exact hfns)
+      ((pairStage_fns m σ).trans hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl V)
     hL hnds hd (by simp [hlk]) (by simp [hlk])
 
@@ -210,7 +210,7 @@ theorem haxc_correct_auto_ct_proved_all_of_check (s : _root_.Hax.FnSecrecy) (m :
           (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') :=
   haxc_correct_auto_ct_proved_all s m σ fname P bytes hc hck B 0 Pre
     (fun _ V _ _ _ => run_val_of_check
-      (by unfold pairStage; split <;> exact hfns)
+      ((pairStage_fns m σ).trans hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl V)
     hL hnds sa hsep v hrun (by simp [hlk]) (by simp [hlk])
 
@@ -328,7 +328,7 @@ theorem haxc_gate_proved_all_of_checkB (s : _root_.Hax.FnSecrecy) (m : HaxModule
       (haxcLeakRun prog) :=
   haxc_gate_proved_all s m σ fname P bytes hc hck B 0
     (fun _ V hR hV => run_val_of_checkB
-      (by unfold pairStage; split <;> exact hfns)
+      ((pairStage_fns m σ).trans hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl hR V hV)
     hL hnds hd (by simp [hlk]) (by simp [hlk])
 
@@ -354,7 +354,7 @@ theorem haxc_rc_proved_all_of_checkB (s : _root_.Hax.FnSecrecy) (m : HaxModule)
         (idealObs (pubOf σ)) :=
   haxc_rc_proved_all s m σ fname P bytes hc hck B 0
     (fun _ V hR hV => run_val_of_checkB
-      (by unfold pairStage; split <;> exact hfns)
+      ((pairStage_fns m σ).trans hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl hR V hV)
     hL hnds hd (by simp [hlk]) (by simp [hlk])
 
@@ -382,7 +382,7 @@ theorem haxc_correct_auto_ct_proved_all_of_checkB (s : _root_.Hax.FnSecrecy) (m 
           (fun s t => ∃ s', RunL ctRegime (fun _ _ => True) prog 0 s t s') :=
   haxc_correct_auto_ct_proved_all s m σ fname P bytes hc hck B 0 Pre
     (fun _ V hR _ hV => run_val_of_checkB
-      (by unfold pairStage; split <;> exact hfns)
+      ((pairStage_fns m σ).trans hfns)
       ((pairStage_linked m σ).trans hlk) hcheck 0 le_rfl hR V hV)
     hL hnds sa hsep v hrun (by simp [hlk]) (by simp [hlk])
 

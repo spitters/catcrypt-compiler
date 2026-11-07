@@ -21,7 +21,10 @@ general compiler theorem: each source parameter is a `u64` scalar or a word arra
 pointer, carried in an argument register or in a stack word `%rsp + 8 k` at entry (the
 seventh and later integer arguments), a list of named
 constants completes the environment, and the result is read back from registers and from
-the words at the entry pointers after the run.
+the words at the entry pointers after the run. A scalar parameter of an unsigned type narrower
+than `64` bits has its register listed in `widths` with the width of its type: System V leaves
+the bits above that width unspecified, and the source environment of the compiler theorem is
+read off the entry state with each such register cut to its width (`AbiLayout.clean`).
 
 The layout also states the separation the compiled bytes rely on: the pointer regions are
 pairwise disjoint and disjoint from the stack words the body uses below the entry `%rsp`,
@@ -52,6 +55,11 @@ and the runtime counts stay within stated bounds.
 * `AbiLayout.canonEnv`, `AbiLayout.envOf_canonEnv` — the canonical environment of an entry
   state, which `EnvOf` admits when the names of the layout are pairwise distinct.
 * `AbiLayout.ResultOf` — a source value equals the read-back of the result.
+* `AbiLayout.widthOf`, `AbiLayout.clean` — the width of a narrowed register, and the entry state
+  with each narrowed register cut to its width.
+* `AbiLayout.read_clean_of_width`, `AbiLayout.read_clean_lt`, `AbiLayout.read_clean_congr` — a
+  scalar parameter of a narrowed register is read at its width: its value is the low `w` bits
+  of the register, below `2 ^ w`, and independent of the bits above.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc
@@ -173,9 +181,81 @@ structure AbiLayout where
   /-- The registers of the array parameters whose words are public data, such as a table of
       public indices. -/
   pubWords : List String := []
+  /-- The registers of the scalar parameters of an unsigned type narrower than `64` bits, each
+      with the width of its type: the caller's bits above that width are unspecified (System V),
+      so the parameter is read at its width (`AbiLayout.clean`). -/
+  widths : List (String × Nat) := []
   deriving Repr, Inhabited
 
 namespace AbiLayout
+
+/-- The width at which the layout reads the register `r`, when it narrows it. -/
+def widthOf (σ : AbiLayout) (r : String) : Option Nat :=
+  (σ.widths.find? (·.1 == r)).map (·.2)
+
+/-- The register `r` of the state `sa` at its width under the layout: its low `w` bits when
+    the layout narrows it to `w` bits, the whole register otherwise. -/
+def regAt (σ : AbiLayout) (sa : AState) (r : String) : BitVec 64 :=
+  match σ.widthOf r with
+  | some w => BitVec.ofNat 64 ((sa.regs r).toNat % 2 ^ w)
+  | none => sa.regs r
+
+/-- **The entry state at the widths of the layout**: the state `sa` with each narrowed
+    register cut to its width (`regAt`) and everything else unchanged. -/
+def clean (σ : AbiLayout) (sa : AState) : AState := { sa with regs := σ.regAt sa }
+
+@[simp] theorem clean_mem (σ : AbiLayout) (sa : AState) : (σ.clean sa).mem = sa.mem := rfl
+
+/-- A register the layout does not narrow is unchanged in the entry state at the widths. -/
+theorem clean_regs_of_none {σ : AbiLayout} {r : String} (h : σ.widthOf r = none)
+    (sa : AState) : (σ.clean sa).regs r = sa.regs r := by
+  simp [clean, regAt, h]
+
+/-- A register the layout narrows to `w` bits holds its low `w` bits in the entry state at the
+    widths. -/
+theorem clean_regs_of_some {σ : AbiLayout} {r : String} {w : Nat} (h : σ.widthOf r = some w)
+    (sa : AState) : ((σ.clean sa).regs r).toNat = (sa.regs r).toNat % 2 ^ w := by
+  simp only [clean, regAt, h, BitVec.toNat_ofNat]
+  exact Nat.mod_eq_of_lt (lt_of_le_of_lt (Nat.mod_le _ _) (sa.regs r).isLt)
+
+/-- **A narrow scalar parameter is read at its width**: at the entry state at the widths, a
+    scalar parameter whose register the layout narrows to `w` bits denotes the low `w` bits of
+    the register. -/
+theorem read_clean_of_width {σ : AbiLayout} {a : AbiArg} {w : Nat} (hk : a.kind = .scalar)
+    (h : σ.widthOf a.reg = some w) (sa : AState) :
+    a.read (σ.clean sa) = .int (((sa.regs a.reg).toNat % 2 ^ w : Nat) : Int) := by
+  simp only [AbiArg.read, hk, clean_regs_of_some h]
+
+/-- **The value of a narrow parameter is below `2 ^ w`.** -/
+theorem read_clean_lt {σ : AbiLayout} {a : AbiArg} {w : Nat} (hk : a.kind = .scalar)
+    (h : σ.widthOf a.reg = some w) (sa : AState) :
+    ∃ n : Nat, a.read (σ.clean sa) = .int (n : Int) ∧ n < 2 ^ w :=
+  ⟨_, read_clean_of_width hk h sa, Nat.mod_lt _ (Nat.two_pow_pos w)⟩
+
+/-- **The value of a narrow parameter does not depend on the bits of its register above its
+    width**: two entry states whose registers agree on the low `w` bits give the parameter the
+    same value. -/
+theorem read_clean_congr {σ : AbiLayout} {a : AbiArg} {w : Nat} (hk : a.kind = .scalar)
+    (h : σ.widthOf a.reg = some w) {sa sb : AState}
+    (hab : (sa.regs a.reg).toNat % 2 ^ w = (sb.regs a.reg).toNat % 2 ^ w) :
+    a.read (σ.clean sa) = a.read (σ.clean sb) := by
+  rw [read_clean_of_width hk h, read_clean_of_width hk h, hab]
+
+/-- A parameter whose register the layout does not narrow reads the same at the entry state at
+    the widths. -/
+theorem read_clean_of_none {σ : AbiLayout} {a : AbiArg} (h : σ.widthOf a.reg = none)
+    (sa : AState) : a.read (σ.clean sa) = a.read sa := by
+  unfold AbiArg.read
+  split <;> simp [clean_regs_of_none h]
+
+/-- A layout without narrowed registers reads every register whole. -/
+theorem clean_of_widths_nil {σ : AbiLayout} (h : σ.widths = []) (sa : AState) :
+    σ.clean sa = sa := by
+  have hw : ∀ r, σ.widthOf r = none := fun r => by simp [widthOf, h]
+  cases sa
+  simp only [clean, AState.mk.injEq, and_true]
+  funext r
+  simp [regAt, hw r]
 
 /-- The pointer regions of a layout: register and length in words of each array
     parameter, in parameter order. -/

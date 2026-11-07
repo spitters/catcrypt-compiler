@@ -41,7 +41,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc
     `redLayout keccakFAbi keccakFFrame`. -/
 def keccakFAbi : AbiLayout :=
   AbiLayout.mk [⟨"dst", "%rdi", .words 25⟩, ⟨"src", "%rsi", .words 25⟩] [] (.words "%rdi" 25)
-    [] (-4096) (-8) []
+    [] (-4096) (-8) [] []
 
 /-- The context of the layout: the input array, then the output array. -/
 abbrev keccakFCtxt : Ctxt jasminDialect := [.stackArr 64 25, .stackArr 64 25]

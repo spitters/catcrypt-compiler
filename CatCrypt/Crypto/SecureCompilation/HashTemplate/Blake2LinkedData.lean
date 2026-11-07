@@ -41,6 +41,6 @@ def blake2bKFrameLo : Int := -4096
 def blake2bKAbi : AbiLayout :=
   AbiLayout.mk [⟨"h", "%rdi", .words 8⟩, ⟨"f0", "%rsi", .scalar⟩, ⟨"t1", "%rdx", .scalar⟩,
     ⟨"t0", "%rcx", .scalar⟩, ⟨"hm", "%r8", .words 24⟩] [] (.words "%rdi" 8) []
-    blake2bKFrameLo (-8) []
+    blake2bKFrameLo (-8) [] []
 
 end CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2Linked

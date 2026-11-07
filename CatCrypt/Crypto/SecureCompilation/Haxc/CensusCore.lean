@@ -513,10 +513,26 @@ def mkResult (wide : Bool) (ps : List (String × ImpType)) (args : List AbiArg)
       | some rk => .ok (args, rk)
       | none => .error s!"result {tyStr 8 τ}"
 
+/-- The width of a parameter type that the layout reads below the whole register: an unsigned
+    integer type narrower than `64` bits. -/
+def narrowWidth? : ImpType → Option Nat
+  | .uint w => if w.bits < 64 then some w.bits else none
+  | _ => none
+
+/-- The widths of the narrow parameters of a layout, read off the signature `ps`: the register
+    of each parameter of an unsigned type narrower than `64` bits, with the width of its type. -/
+def narrowWidths (ps : List (String × ImpType)) (args : List AbiArg) : List (String × Nat) :=
+  ps.filterMap fun p => do
+    let w ← narrowWidth? p.2
+    let a ← args.find? (·.name == p.1)
+    pure (a.reg, w)
+
 /-- The System V layout of an extraction, with the literal constants of `consts` that occur
-    free in it. The result type is read off the statement spine (`DeriveBounds.spineTy`), and
-    each scalar parameter that bounds a counted loop whose accesses every trip reaches, or that
-    indexes an array on the spine, is bounded by its least cap (`DeriveBounds.deriveBounds`). -/
+    free in it. The result type is read off the statement spine (`DeriveBounds.spineTy`), each
+    parameter of an unsigned type narrower than `64` bits is read at its width
+    (`narrowWidths`), and each scalar parameter that bounds a counted loop whose accesses every
+    trip reaches, or that indexes an array on the spine, is bounded by its least cap
+    (`DeriveBounds.deriveBounds`). -/
 def deriveAbi (wide : Bool) (consts : List (String × TExpr)) (te : TExpr) :
     Except String AbiLayout := do
   let ps := prelude 64 te
@@ -527,7 +543,8 @@ def deriveAbi (wide : Bool) (consts : List (String × TExpr)) (te : TExpr) :
   let cs := consts.filterMap fun c =>
     if free.contains c.1 && !(ps.any (·.1 == c.1)) then (constVal c.2).map fun v => (c.1, v)
     else none
-  pure (AbiLayout.mk args' cs rk (DeriveBounds.deriveBounds args' te) (-256) (-8) [])
+  pure (AbiLayout.mk args' cs rk (DeriveBounds.deriveBounds args' te) (-256) (-8) []
+    (narrowWidths ps args'))
 
 /-- **The bounds of a derived layout** are the derived bounds of its parameters: each is on the
     register of a scalar parameter and is at most every cap of that parameter along the spine

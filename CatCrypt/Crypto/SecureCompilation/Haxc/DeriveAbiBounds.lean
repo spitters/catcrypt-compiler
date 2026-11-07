@@ -21,7 +21,8 @@ the table `hax64WExit`): the first conjunct of `AbiLayout.Regions` excludes no s
 
 * `deriveAbi_consts_noCF` — no constant of a derived layout is a control-flow value.
 * `deriveAbi_bounds_hold` — the bounds hold at every run of `denoteSpine` at `hax64WExit`.
-* `deriveAbi_bounds_of_haxRuns` — the bounds hold at every run of `haxRuns`.
+* `deriveAbi_bounds_of_haxRuns`, `deriveAbi_bounds_of_haxRunsW` — the bounds hold at every run of
+  `haxRuns`, at the entry state it reads, and at every run of `haxRunsW`.
 -/
 
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.DeriveBounds
@@ -66,12 +67,23 @@ theorem deriveAbi_bounds_hold {wide : Bool} {consts : List (String × TExpr)} {t
   exact deriveBounds_hold siteTable_hax64WExit henv (deriveAbi_consts_noCF hσ) hrun hv
 
 /-- **The bounds of a derived layout hold at every source run of `haxRuns`** of the function
-    `te`: `deriveAbi_bounds_hold` through `haxRuns_single`. -/
+    `te`, at the entry state the source reads (`narrowEntry`): `deriveAbi_bounds_hold` through
+    `haxRuns_single`. A bound on the register of a narrow parameter holds of its value at its
+    width; `AbiLayout.Regions` asks it of the whole register. -/
 theorem deriveAbi_bounds_of_haxRuns {wide : Bool} {consts : List (String × TExpr)}
     {te : TExpr} {σ : AbiLayout} (hσ : Census.deriveAbi wide consts te = .ok σ) {sa : AState}
     {v : Value} (hrun : haxRuns σ (te : HaxModule) sa v) :
-    ∀ b ∈ σ.bounds, (sa.regs b.1).toNat ≤ b.2 := by
+    ∀ b ∈ σ.bounds, ((narrowEntry te σ sa).regs b.1).toNat ≤ b.2 := by
   obtain ⟨env, fuel, env', henv, hr, hv⟩ := (haxRuns_single σ te sa v).mp hrun
+  exact deriveAbi_bounds_hold hσ henv hr hv
+
+/-- **The bounds of a derived layout hold at every source run of `haxRunsW`** of the function
+    `te`, at the whole registers. -/
+theorem deriveAbi_bounds_of_haxRunsW {wide : Bool} {consts : List (String × TExpr)}
+    {te : TExpr} {σ : AbiLayout} (hσ : Census.deriveAbi wide consts te = .ok σ) {sa : AState}
+    {v : Value} (hrun : haxRunsW σ (te : HaxModule) sa v) :
+    ∀ b ∈ σ.bounds, (sa.regs b.1).toNat ≤ b.2 := by
+  obtain ⟨env, fuel, env', henv, hr, hv⟩ := (haxRunsW_single σ te sa v).mp hrun
   exact deriveAbi_bounds_hold hσ henv hr hv
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.DeriveBounds

@@ -42,7 +42,7 @@ def sha512LayoutFrame : Nat := 4096
     stack pointer. The kernel has the layout `redLayout sha512Abi sha512Frame`. -/
 def sha512Abi : AbiLayout :=
   AbiLayout.mk [⟨"h", "%rdi", .words 8⟩, ⟨"hm", "%rsi", .words 24⟩] [] (.words "%rdi" 8) []
-    (-(sha512LayoutFrame : Int)) (-8) []
+    (-(sha512LayoutFrame : Int)) (-8) [] []
 
 /-- **The u64-slot layout of the SHA-256 compression**: the output array `h` (8 slots) at `%rdi`,
     the input array `hm` (24 slots) at `%rsi`, each slot a 64-bit word holding a 32-bit word with
@@ -50,6 +50,6 @@ def sha512Abi : AbiLayout :=
     `sha512LayoutFrame` bytes below the entry stack pointer. -/
 def sha256Abi : AbiLayout :=
   AbiLayout.mk [⟨"h", "%rdi", .words 8⟩, ⟨"hm", "%rsi", .words 24⟩] [] (.words "%rdi" 8) []
-    (-(sha512LayoutFrame : Int)) (-8) []
+    (-(sha512LayoutFrame : Int)) (-8) [] []
 
 end CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2Linked

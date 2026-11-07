@@ -92,19 +92,22 @@ theorem isControlFlow_false_of_pairTail {te : TExpr} {σ : AbiLayout} {d : Strin
     the layout: from every entry state satisfying `σ.Regions` and every hax environment `σ`
     reads off it, every run of the source reading of `te` to a value `v` is matched by a
     halting run of the machine on the decoded bytes from which `σ` reads back `v`, the pair.
-    It is `haxc_correct_auto` at the single function. -/
+    It is `haxc_correct_auto` at the single function, on a layout whose narrow parameters are
+    not cut to their widths (`hn`), where the source reads the whole registers. -/
 theorem haxc_correct_auto_tuple (te : TExpr) (σ : AbiLayout) (fname : String) (P : Lprog)
     (bytes : List (BitVec 8)) (hc : compileA te σ fname = some (P, bytes))
     {d : String × String} (hpt : pairTailOf te σ = some d)
     (hres : WordArrResult σ.arrPart (stripArrTailT te))
     (sa : AState) (hsep : σ.Regions sa) (env : Env) (henv : σ.EnvOf sa env)
     (fuel : Nat) (v : Value) (env' : Env)
-    (hrun : (denoteSpine hax64WExit fuel te.erase).run env = (.val v, env')) :
+    (hrun : (denoteSpine hax64WExit fuel te.erase).run env = (.val v, env'))
+    (hn : narrowOk te σ = false := by rfl) :
     ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
       ∧ σ.ResultOf sa sa' v := by
+  have he : narrowEntry te σ sa = sa := by simp [narrowEntry, hn]
   obtain ⟨prog, hd, ⟨sa', hh, hR, -⟩ | ⟨cs, hsub, hne, -⟩⟩ :=
     haxc_correct_auto te σ fname P bytes hc sa hsep v
-      ((haxRuns_single σ te sa v).mpr ⟨env, fuel, env', henv, hrun,
+      ((haxRuns_single σ te sa v).mpr ⟨env, fuel, env', (by rw [he]; exact henv), hrun,
         isControlFlow_false_of_pairTail hpt hres hsep henv hrun⟩)
   · exact ⟨prog, sa', hd, hh, hR⟩
   · exact absurd (List.sublist_nil.mp hsub) hne
