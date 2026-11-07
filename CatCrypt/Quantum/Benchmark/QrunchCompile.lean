@@ -44,7 +44,9 @@ with `--check` (`stageBound_levelStage_l2r`) and `2`, with bound `0` for the rou
 [--cost cx|t]` compiles one file (`2r` by default); `--no-elide` and `--no-snap` turn off swap
 elision and angle snapping. `--cost t` orders the iterates by the T-cost first
 (`QrunchRound.BetterC`) and keeps the input when the first round raises its T-cost
-(`QrunchRound.tCost_runRounds_le`); `--cost cx`, the default, is the order above. At `2r`,
+(`QrunchRound.tCost_runRounds_le`), and runs level `2` where `2r` is asked, since the
+floating-point resynthesis replaces T gates by arbitrary rotations; `--cost cx`, the default,
+is the order above. At `2r`,
 `--check` runs `resynthAt` at the checked fits and reports its bound;
 without it `resynthAt` runs at the unchecked fits, which replace the same blocks and runs when
 every fit passes the checker, and the bound is reported as `unchecked`. `--rounds 1` runs one
@@ -177,6 +179,11 @@ def compileFile (inp outp : String) (level : Level := .l2r) (check : Bool := fal
   -- The byte importer; `importQB_eq` equates it with `importQ` on ASCII sources.
   let (qs?, tI) ← timed fun _ => OpenQASMBytes.importQB n src.toUTF8
   let some qs := qs? | pure "error a line the importer does not recognise"
+  -- Under the T-cost the floating-point resynthesis, which replaces T gates by arbitrary
+  -- rotations, is skipped: the rounds run Level 2 and the exact basis passes.
+  let level : Level := match cost, level with
+    | .t, .l2r => .l2
+    | _, l => l
   let (o, tR) ← timed fun _ =>
     QrunchRound.runCompile (levelStage level check) rounds elide snap qs cost
   let rs := o.rounds
