@@ -28,6 +28,10 @@ fi
 if [ -n "$staged_lean" ]; then
   # shellcheck disable=SC2086
   bash scripts/duplicate-decl-guard.sh $staged_lean || exit 1
+  # A search tactic (grind? +suggestions, try?, exact?, catcrypt_auto, ...) left in a
+  # proof runs its search at every elaboration; the proof holds the tactic it printed.
+  # shellcheck disable=SC2086
+  bash scripts/search-tactic-gate.sh $staged_lean || exit 1
 fi
 
 # A new module of substance states its main results in its module docstring.
