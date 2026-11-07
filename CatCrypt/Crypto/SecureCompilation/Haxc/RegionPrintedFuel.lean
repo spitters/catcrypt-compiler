@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.PrintedLprogFuel
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NormMulxTail
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSem
 
 /-!
 # The printed program of the region post-pass on the flag machine
@@ -27,12 +28,29 @@ halting run of the corresponding body of `printedLprog (regionPostFuse P)` read 
 yields an unchecked run, which is a checked run when its accesses are in bounds
 (`JasminLsemMemChecked.lsemFuelMemFk_of_runIdxOk`).
 
+The theorems of these passes are stated on typed bodies `typeBody tag b`, which read an array
+through the name of the base operand of an access. The allocation of the region back half reloads
+every array base into `R14` before the access, so on typed physical bodies all arrays of an
+allocated body are the one array `R14`. The gate of the region back half compares its reference
+with the image `JasminLsemAddrImage.virtImg sl (ImageAddrCells.cellBody sl b)`, in which each
+access names the array whose pointer its base holds, and the image simulation
+`ImageAddrCells.image_addr_simBW` starts from runs of that image. The image is a typed body of the
+image body `PhysImgSem.imgL` at a tag of the instruction shape
+(`PhysImgSem.virtImg_eq_typeBody_of_imgL_eq`): when a pass commutes with the image (the image
+body of the pass output is the pass applied to the image body of its input) and the tags of the
+two images are functions of the instruction shape (`PhysImgSem.shapeFunB`), the typed theorem of
+the pass holds between the two images. Section 2 states it for the dead-write elimination
+`deadWriteRet` and for the block optimiser `optimizeBasicBlocks`.
+
 ## Main results
 
 * `printedLprog_lsemFuelMemF_noCmp`: the printed program on a function whose two-address
   body has no compare on a spilled first operand.
 * `regionPrinted_lsemFuelMemF`: the printed program of the region post-pass, read through
   `normMulxBody`, on the functions of a program.
+* `deadWriteRet_virtImg`: the dead-write elimination between images.
+* `optimizeBasicBlocks_virtImg`: the block optimiser between images, as a whole-body simulation
+  from states of the bridge invariant `RelInv`.
 -/
 
 @[expose] public section
@@ -200,5 +218,68 @@ theorem regionPrinted_lsemFuelMemF (P : Lprog) {fn : String} {fd : Lfundef}
   have hck := lsemFuelMemFk_of_runIdxOk true _ f2 s t2 hrun2 (hidx f2)
   obtain ⟨f3, t3, -, hrun3, hobs3⟩ := hsim2 hpc hI hC hck
   exact ⟨t1, t2, f3, t3, hA, hz, hl, hobs, hrun3, by simpa [hres''] using hobs3⟩
+
+/-! ## 2. The passes between images -/
+
+section Image
+
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (virtImg)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSem
+
+/-- **`deadWriteRet_virtImg`: the dead-write elimination between images.** Let the image body
+    of `c` be `deadWriteRet` of the image body of `b`, let the tags of the images of `b` and `c`
+    together be functions of the instruction shape, let every instruction of the image body of
+    `b` pass `deadWriteStepOK` at the tag `shapeTag` of the two images, and let the symbolic run
+    of the image of `b` be inside the fragment. Every halting run of the flag machine on the
+    image of `b`, from a state at pc `0` of its function, is matched by a halting run on the
+    image of `c` from the same state, and the end states agree on the registers `outs`, on the
+    arrays and on the word memory (`Obs outs`). -/
+theorem deadWriteRet_virtImg (outs : List String) {sl : String → Option (String × Nat)}
+    {b c : Lcmd} (hc : imgL sl c = deadWriteRet (imgL sl b))
+    (h : shapeFunB (virtImg sl b ++ virtImg sl c) = true)
+    (hok : ∀ i ∈ imgL sl b,
+      deadWriteStepOK (shapeTag (virtImg sl b ++ virtImg sl c)) i.li_i = true)
+    (hfrag : symRun (virtImg sl b) SSt.start ≠ .unk)
+    (fn : String) (s t : LstateMF) (hfn : s.prog.lfn = fn) (hpc : s.prog.base.reg.lpc = 0)
+    (fuel : Nat) (hrun : lsemFuelMemF (singletonProgM fn (virtImg sl b)) fuel s = some t) :
+    ∃ fuel' t', lsemFuelMemF (singletonProgM fn (virtImg sl c)) fuel' s = some t'
+      ∧ Obs outs t t' := by
+  obtain ⟨hb, hc'⟩ := virtImg_eq_typeBody_of_imgL_eq hc h
+  rw [hb] at hfrag hrun
+  rw [hc']
+  exact deadWriteRet_lsemFuelMemF outs _ _ hok hfrag fn s t hfn hpc fuel hrun
+
+/-- **`optimizeBasicBlocks_virtImg`: the block optimiser between images.** Let the image body of
+    `c` be `optimizeBasicBlocks` of the image body of `b`, let the tags of the images of `b` and
+    `c` together be functions of the instruction shape, and let the image body of `b` without
+    its return pass `optBlocksOKB A` at the tag `shapeTag` of the two images. Then every
+    checked halting run of the image of `b` from program counter `0` and a state of `RelInv A`
+    is matched by a halting run of the image of `c` from the same state with at most the same
+    fuel, to a state with the same function name and zero flag and a base equal up to the
+    program counter, which satisfies `RelInv A` (`WholeBodySim`). -/
+theorem optimizeBasicBlocks_virtImg {A : String → Option Nat}
+    {sl : String → Option (String × Nat)} {b c : Lcmd}
+    (hc : imgL sl c = optimizeBasicBlocks (imgL sl b))
+    (h : shapeFunB (virtImg sl b ++ virtImg sl c) = true)
+    (hok : optBlocksOKB A (shapeTag (virtImg sl b ++ virtImg sl c)) (imgL sl b).dropLast = true)
+    (fn : String) :
+    WholeBodySim true (RelInv A) fn (virtImg sl b) (virtImg sl c) := by
+  obtain ⟨hb, hc'⟩ := virtImg_eq_typeBody_of_imgL_eq hc h
+  have hT := tagShape_shapeTag (virtImg sl b ++ virtImg sl c)
+  generalize shapeTag (virtImg sl b ++ virtImg sl c) = T at hb hc' hok hT
+  have hopt : dropRet (typeBody T (optimizeBasicBlocks (imgL sl b)))
+      = typeBody T (optimizeBasicBlocks (imgL sl b).dropLast) := by
+    cases hj : b.getLast? with
+    | none =>
+        rw [List.getLast?_eq_none_iff.mp hj]
+        rfl
+    | some j =>
+        rw [imgL_eq_dropLast_append hj, X86Backend.OwnedLprogFuel.optimizeBasicBlocks_append_ret,
+          dropRet_typeBody_of_ret T _ _ rfl, List.dropLast_concat]
+  rw [hb, hc', dropRet_typeBody_imgL_eq_dropLast, hopt]
+  intro fuel s t
+  exact optBlocksOKB_sound hT hok fn
+
+end Image
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RegionPrintedFuel
