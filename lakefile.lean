@@ -3528,11 +3528,12 @@ lean_lib HaxAscent where
 -- `Crypto.{SDist,CryptoWord,UC,Advantage}`, `Deep.{RawCode,Eval}`,
 -- `Relational.Rules`, `Tactics.FieldClear` — each behind a re-export shim under
 -- `CatCrypt/`, so `import CatCrypt.…` paths keep resolving.
--- CatCrypt-core is pinned by commit on its `main` branch (a commit with
--- `CatCryptCore.Crypto.RCGate`, which `Haxc.RCInstance` imports, and with the
--- `CATCRYPT_KAT_MS_SCALE` factor of `#kat` that CI sets).
+-- CatCrypt-core is pinned by commit (a commit with `CatCryptCore.Crypto.RCGate`,
+-- which `Haxc.RCInstance` imports, with the `CATCRYPT_KAT_MS_SCALE` factor of `#kat`,
+-- and with `CATCRYPT_KAT_STRICT`, which CI sets to make an overrun of a `#kat`
+-- wall-clock budget an error instead of a warning).
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "6f2a6d320272b0b87bf7f06ef4f5dd9fedc0fc05"
+  "https://github.com/spitters/CatCrypt-core.git" @ "2697fb91014c3df365145035049b0af41949c2e5"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
