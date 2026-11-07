@@ -69,10 +69,40 @@ masked into the buffer (the index check reads the mask), and the division by a K
 product and a shift. SHA-512 reverses the bytes of its words with `swap_bytes#64`, translated by
 `NFToCat.bswapChain`. The known-answer harness is `bench/hash_whole_compare`.
 
-Not done: the extraction of the three crates (`cargo hax json --use-ids`, then
-`scripts/reextract.sh` of the dev checkout), the modules stating `compileA` acceptance and the
-instances of `haxc_correct_auto_one` and `haxc_ct_proved_all` (the pattern of
-`FAEST/FaestV3Compile`), the rows of `EmitRegistry` and `scripts/acceptance-registry.tsv`, and
-the objects in `bench/hash_whole_compare/gen/`. A `BSWAP` or `MOVBE` lowering of the byte
-reversal needs a `jasminDialect` operation, its `Lprog` op, the encoder and decoder entries and
-its `aMachine` semantics.
+The three crates are extracted into `Sponge_haxpipe`, `Blake2b_haxpipe` and `Sha512_haxpipe`
+of the dev checkout (`scripts/reextract.sh`). On the module of an entry with its kernel linked,
+under the layout of the harness (`msg` at `%rdi` as 2048 words, `len` at `%rsi` bounded by
+16384, the storage arrays at `%rdx` and `%rcx`, the output at `%r8`, the constant
+`MSG_MASK = 2047`), `compileA` refuses as follows; no module states acceptance and no object
+exists in `bench/hash_whole_compare/gen/`.
+
+- **The System V kernels are refused as callees.** The callee checks of a calling body
+  (`calleeBodyBT`) decode the code of a kernel and run the keep check
+  `Callee.keepCheckAtB` at its clobber set. `keepCheckSWB` refuses a body that writes a
+  register outside the clobber set, and the `*KernelAbi` code writes the callee-saved
+  registers it saves and restores (`regionBack_restores`), so at `abiClob` the conjuncts
+  `codeOk`, `dead` and `calleeSeg` fail; `verify_chall2` is accepted with `keccakFKernel`
+  and refused with `keccakFKernelAbi`. Accepting them needs a keep check that admits a
+  register saved to a frame slot and restored before the return (the provenance facts
+  `KFact` of `kstepS` already track register-to-slot and slot-to-register moves), with its
+  soundness beside `keepCheck_soundBy`. The kernels at the full clobber set (`keccakFKernel`,
+  `blake2bKernel`, `sha512Kernel`) are usable from C: a calling body saves every
+  callee-saved register (`unwrittenSaved` is empty on a body with a call).
+- **The sponge entries are refused by the class of a calling body.** With `keccakFKernel`,
+  every callee check passes and the image check `calleeImgBT` fails at
+  `printedAddrCWB`: the carry-out `ADCXHI` of the checked product `len * 30841` (the
+  division by the rate, `(len * m) >> s`) is not directly after its add in the printed
+  body (`carryPrevB` and `instrOKWB` at position 205 of 330).
+- **BLAKE2b and SHA-512 are not evaluated in a module.** The bytes of `blake2bKernel` and
+  `sha512Kernel` are `compileRegion` on the template, which the interpreter (`lean --run`,
+  `#eval`) does not finish in 40 minutes; only an executable (`linked-kernel-emit`) evaluates
+  them, so `compileA` on these modules is decided only there.
+
+The stages of `compileA` on a calling body are those of `regionBack` at the table
+`regionCallee` finds: `regionExportableB`, `narrowPrep`, `exportR`, `regionCallee`,
+`regionLprogC`, `calleeBytes`, then the gate `regionCoB` (whose callee conjuncts are
+`calleeBodyBT` and the image check `renImageB`, with `calleeImgBT` = `regionImgCB` at the frame
+of the table) and the constant-time decision `calleeCtB`. `RegionDiag` explains the stages of a
+body without a call only. A `BSWAP` or `MOVBE` lowering of the byte reversal needs a
+`jasminDialect` operation, its `Lprog` op, the encoder and decoder entries and its `aMachine`
+semantics.
