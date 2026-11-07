@@ -29,7 +29,7 @@ sys.path.insert(0, BRIDGE)
 sys.path.insert(0, os.path.join(BRIDGE, "tests"))
 from catq import (VerifiedCompiler, append_swaps, decode_angle, encode_angle,  # noqa: E402
                   swap_network)
-from catq.compiler import EPS_FIELD  # noqa: E402
+from catq.compiler import ADDRESS_CAP, CATQ_COMPILE, EPS_FIELD, RunError, _Server  # noqa: E402
 from branching import same_distribution, segments_equiv  # noqa: E402
 
 QSYNTH = sorted(glob.glob(os.path.join(os.path.dirname(BRIDGE), "bench", "qasm", "qsynth",
@@ -343,6 +343,18 @@ def test_swaps_layout_composes():
 def test_permutation_argument():
     with pytest.raises(ValueError):
         VerifiedCompiler(permutation="none")
+
+
+def test_resident_memory_guard(tmp_path):
+    """A server whose resident set passes its cap is killed and the request raises RunError;
+    the cap here (1 MB) is below any resident set of the server."""
+    src = os.path.join(BRIDGE, "..", "bench", "qasm", "qsynth", "simple_8q_50o_0.qasm")
+    server = _Server(CATQ_COMPILE, ADDRESS_CAP, rss_cap=1024 * 1024)
+    try:
+        with pytest.raises(RunError):
+            server.request(src, str(tmp_path / "out.qasm"), "2r", check=True)
+    finally:
+        server.proc.kill()
 
 
 def test_swap_before_mid_circuit_measurement():

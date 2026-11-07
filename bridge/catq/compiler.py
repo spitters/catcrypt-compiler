@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import subprocess
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field, replace
 from fractions import Fraction
@@ -36,7 +37,12 @@ from .qasm_io import Segment, Unsupported, lower, split_segments
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CATQ_COMPILE = os.environ.get("CATQ_COMPILE",
                               os.path.join(ROOT, ".lake", "build", "bin", "catq-compile"))
-ADDRESS_CAP = 4000 * 1024 * 1024
+# The address-space cap is generous: the Lean runtime reserves about 3.4 GB of address space
+# single-threaded and more per worker thread, while its resident set stays near 65 MB. The
+# resident set is what is bounded, by RSS_CAP, checked while a request runs.
+ADDRESS_CAP = 16 * 1024 * 1024 * 1024
+RSS_CAP = 4000 * 1024 * 1024
+LEAN_THREADS = 4
 LEVELS = ("1", "2", "2r")
 PERMUTATIONS = ("swaps", "layout")
 PHASE_FIELD = 12
@@ -158,10 +164,35 @@ class _Server:
     `perm` is the output permutation `π 0,π 1,…`: the state of input qubit `q` at the end is
     on output wire `π q`) or `error <reason>`."""
 
-    def __init__(self, exe: str, address_cap: int):
+    def __init__(self, exe: str, address_cap: int, rss_cap: int = RSS_CAP):
+        env = dict(os.environ)
+        env.setdefault("LEAN_NUM_THREADS", str(LEAN_THREADS))
+        self.rss_cap = rss_cap
         self.proc = subprocess.Popen(["prlimit", f"--as={address_cap}", exe, "--serve"],
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     text=True, bufsize=1, cwd=ROOT)
+                                     text=True, bufsize=1, cwd=ROOT, env=env)
+
+    def _rss(self) -> int:
+        """The resident set of the server in bytes (0 when it cannot be read)."""
+        try:
+            with open(f"/proc/{self.proc.pid}/status") as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        return int(line.split()[1]) * 1024
+        except OSError:
+            pass
+        return 0
+
+    def _guard(self, done: threading.Event, killed: list) -> None:
+        """Kill the server when its resident set passes `rss_cap` before `done` is set."""
+        while True:
+            rss = self._rss()
+            if rss > self.rss_cap:
+                killed.append(rss)
+                self.proc.kill()
+                return
+            if done.wait(0.05):
+                return
 
     def request(self, src: str, out: str, level: str, check: bool = False,
                 elide: bool = True, snap: bool = True) -> str:
@@ -169,9 +200,20 @@ class _Server:
             raise RunError(f"catq-compile exited with rc={self.proc.returncode}")
         flag = (" --check" if check else "") + ("" if elide else " --no-elide") \
             + ("" if snap else " --no-snap")
-        self.proc.stdin.write(f"{src} {out} {level}{flag}\n")
-        self.proc.stdin.flush()
-        return self.proc.stdout.readline().strip()
+        done, killed = threading.Event(), []
+        guard = threading.Thread(target=self._guard, args=(done, killed), daemon=True)
+        guard.start()
+        try:
+            self.proc.stdin.write(f"{src} {out} {level}{flag}\n")
+            self.proc.stdin.flush()
+            line = self.proc.stdout.readline().strip()
+        finally:
+            done.set()
+            guard.join()
+        if killed:
+            raise RunError(f"catq-compile passed its resident-memory cap "
+                           f"({killed[0] // (1024 * 1024)} MB > {self.rss_cap // (1024 * 1024)} MB)")
+        return line
 
     def close(self) -> None:
         if self.proc.poll() is None:
