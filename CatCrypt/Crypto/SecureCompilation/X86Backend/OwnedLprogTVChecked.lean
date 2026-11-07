@@ -47,7 +47,7 @@ instances at `X86Isa.x86Isa`.
 * `factsOk`, `factCheck`: the invariant check of the facts; `constAnnot`: the annotation.
 * `blockOkS`, `blockRunsS`, `runsOfC`, `CheckedC`: the block check from given start states,
   its shared runs, and the facts the checks establish.
-* `oblOk`, `oblCheckWith`, `ownedCheckMC`: the checks; `hasOutsB`, `callPieces`, `blocksRunCB`:
+* `oblOk`, `oblCheckWith`, `ownedCheckMC`: the checks; `hasOutsB`, `callFreePieces`, `blocksRunCB`:
   the conditions under which an acceptance of `ownedCheckMC` compares an output.
 
 ## Main results
@@ -855,15 +855,15 @@ def hasOutsB (outs : List String) (B : List LinstrRM) : Bool :=
 
 /-- The pieces of a list of instructions between its call shadows (`LprogIsa.shadowCall?`):
     the maximal runs of instructions that are no call shadow, in order. -/
-def callPieces : List LinstrRM → List (List LinstrRM)
+def callFreePieces : List LinstrRM → List (List LinstrRM)
   | [] => [[]]
   | i :: is =>
-      match callPieces is with
+      match callFreePieces is with
       | p :: ps => if (LprogIsa.shadowCall? i.1).isSome then [] :: p :: ps else (i :: p) :: ps
       | [] => [[i]]
 
 /-- **Every block runs symbolically between its calls**: for each block of `B`, the symbolic
-    run under `sym` of each piece of the block between its call shadows (`callPieces`) is not
+    run under `sym` of each piece of the block between its call shadows (`callFreePieces`) is not
     `.fail`. A block whose run fails is accepted by the block check without a comparison
     (`blockOkR`), since no halting run passes through it: an operation the flag machine does
     not step makes the acceptance compare nothing on the runs through that block. A call
@@ -873,7 +873,7 @@ def callPieces : List LinstrRM → List (List LinstrRM)
 def blocksRunCB (B : List LinstrRM) (sym : LinstrRM → SSt → SOut := symStep) : Bool :=
   match cfgOf (B.map Prod.fst) with
   | some G => (List.range G.blocks.size).all fun k =>
-      (callPieces (bodyAt B (G.blk k) (G.blk k).term)).all fun p =>
+      (callFreePieces (bodyAt B (G.blk k) (G.blk k).term)).all fun p =>
         match symRun p SSt.start sym with
         | .fail => false
         | _ => true

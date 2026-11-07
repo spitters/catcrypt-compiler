@@ -825,7 +825,7 @@ theorem desc_bin_swap {f : LstateN → Option LstateN} {V : String → Σ w, Bit
     of a two-source operation. A load-effective-address `LEA d, [b + x · sc]` is the term `b + x · sc` at width `64`,
     under the guards that `b` and `x` have width `64`. A narrow buffer move `MOV:8 d, [a]` or
     `MOV:16 d, [a]`, the load or store of a byte or halfword cell, is the term
-    `a &&& narrowMask opn` at the width of `a`, `bin "AND" a (immAt (narrowMask opn) a)`. -/
+    `a &&& narrowMovMask opn` at the width of `a`, `bin "AND" a (immAt (narrowMovMask opn) a)`. -/
 def symN (x : LinstrR) (R : String → STerm) : ROut :=
   match x with
   | .Lopn [.reg dst] opn [c, a, b] =>
@@ -892,7 +892,7 @@ def symN (x : LinstrR) (R : String → STerm) : ROut :=
             else .fail
         | none =>
             if opn = "MOV:8" ∨ opn = "MOV:16" then
-              .set dst (.bin "AND" (R a) (.immAt (narrowMask opn) (R a))) []
+              .set dst (.bin "AND" (R a) (.immAt (narrowMovMask opn) (R a))) []
             else .fail
   | .Lopn [.reg dst] opn [.arrIdx b x sc] =>
       if stripWidthTag opn = "LEA" then
