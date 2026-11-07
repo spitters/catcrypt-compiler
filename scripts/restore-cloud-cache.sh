@@ -11,10 +11,16 @@
 # after `lake update`, so that the package directories exist. A build whose sources differ
 # from the snapshot is rebuilt by Lake from its trace; the build that follows is the verdict.
 #
-# Needs GH_TOKEN with read access to the cache repository. CATCRYPT_DEV_TAG selects the
-# release (default: the latest). Exit 1 on a checksum mismatch, after removing what was
-# extracted.
+# Needs zstd and GH_TOKEN with read access to the cache repository; without either it restores
+# nothing and exits 0, so the build that follows elaborates from source. CATCRYPT_DEV_TAG selects
+# the release (default: the latest). Exit 1 on a checksum mismatch. On GitHub Actions
+# (GITHUB_ACTIONS=true) the extracted builds are then removed; elsewhere they are kept, since
+# the directories also hold the builds of a local checkout, which a removal would delete.
 set -euo pipefail
+command -v zstd >/dev/null 2>&1 \
+  || { echo "restore-cloud-cache: zstd not found; nothing restored" >&2; exit 0; }
+[ -n "${GH_TOKEN:-}" ] \
+  || { echo "restore-cloud-cache: GH_TOKEN not set; nothing restored" >&2; exit 0; }
 REPO=spitters/catcrypt-cloud-cache
 TAG="${CATCRYPT_DEV_TAG:-$(gh api "repos/$REPO/releases/latest" -q .tag_name)}"
 T="$(mktemp -d)"
@@ -51,8 +57,13 @@ sleep 2
 want=$(grep ' devbuild.tar.zst.' "$T/SHA256SUMS" | tr -s ' ' | sort)
 got=$(tr -s ' ' < "$T/got" | sort)
 if [ "$want" != "$got" ]; then
-  echo "restore-cloud-cache: checksum mismatch in $TAG; removing the extracted builds" >&2
-  rm -rf "${DIRS[@]}"
+  if [ "${GITHUB_ACTIONS:-}" = true ]; then
+    echo "restore-cloud-cache: checksum mismatch in $TAG; removing the extracted builds" >&2
+    rm -rf "${DIRS[@]}"
+  else
+    echo "restore-cloud-cache: checksum mismatch in $TAG; the extracted builds are kept, outside" \
+      "GitHub Actions nothing is removed" >&2
+  fi
   exit 1
 fi
 for d in "${DIRS[@]}"; do
