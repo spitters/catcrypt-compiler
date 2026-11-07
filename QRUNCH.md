@@ -57,7 +57,12 @@ other rotations are conjugated.
 - Each qelib1 statement is lowered to gates whose matrix is its qelib1 matrix times an exact
   phase ([`listMatrix_lowerQ`](CatCrypt/Quantum/Qelib.lean)), and the reader on bytes returns
   what the reader on characters returns, for ASCII sources
-  ([`importQB_eq`](CatCrypt/Quantum/OpenQASMBytes.lean)).
+  ([`importQB_eq`](CatCrypt/Quantum/OpenQASMBytes.lean)). Statements end at `;`; every statement
+  kind reads back from its printed text, a printed list with any whitespace between statements
+  reads back as the list, and text after a statement's operands is refused
+  ([`parseQ_toQASM`](CatCrypt/Quantum/QrunchExport.lean),
+  [`importQ_printAll`](CatCrypt/Quantum/QrunchExport.lean),
+  [`parseQ_trailing`](CatCrypt/Quantum/QrunchExport.lean)).
 - Every pass of Level 2 preserves the matrix of the circuit exactly, not only its channel
   ([`runNamed_level2_matrixCorrect`](CatCrypt/Quantum/Optimization/MatrixSound.lean)).
 - Replacing two-qubit blocks by KAK templates never increases the CNOT count
@@ -93,16 +98,33 @@ Against Qiskit's `transpile` at optimization level 3 into the same basis, measur
 
 | Suite | Circuits (qubits) | CX count and two-qubit depth | Gates | Time |
 |---|---|---|---|---|
-| Q-Synth VQE | 12 (8–16) | equal on all | 0.85–1.01, below on 11 | median 1.9 |
-| Nam | 30 (5–192) | equal on all | 0.91–1.01, below on 16 | median 0.9 |
-| QASMBench small | 12 (2–5) | equal on all | 0.53–1.05, below on 8 | median 0.2 |
+| Q-Synth VQE | 12 (8–16) | equal on all | 0.85–1.01, below on 11 | median 1.1 |
+| Nam | 30 (5–192) | equal on all | 0.91–1.01, below on 16 | median 0.7 |
+| QASMBench small | 12 (2–5) | equal on all | 0.53–1.05, below on 8 | median 0.13 |
 | Our programs (`catq-export`) | 5 (2–6) | equal on all | 0.46–1.00, below on 2 | median 0.75 |
-| Qrisp's algorithms, with the layout option | 7 (5–13) | equal on all | 0.62–1.02, below on 5 | median 2.4 |
+| Qrisp's algorithms, with the layout option | 7 (5–13) | equal on all | 0.62–1.02, below on 5 | median 1.9 |
 
-Times are rough: the runs shared the machine with Lean builds, and catq-compile runs up to eight
-rounds. The Qrisp rows are in [`bench/qrunch/qrisp/`](bench/qrunch/qrisp/); after routing onto IQM
-and IBM coupling maps the CX counts and expected success probabilities of the two compilers agree
-within the router's variance ([`bench/qrunch/hw-metrics/`](bench/qrunch/hw-metrics/)).
+Times are rough (one machine shared with Lean builds; Qiskit uses several cores, catq-compile
+one). The Qrisp rows, and six of Qrisp's tutorial programs (TSP, backtracking, HHL, QMCI,
+quantum counting, CX equal on all six with the layout option), are in
+[`bench/qrunch/qrisp/`](bench/qrunch/qrisp/); MQT Bench's 36 families are in
+[`bench/qrunch/mqt/`](bench/qrunch/mqt/) (CX equal in 32, below in one, above in three).
+
+## On a device
+
+Every stage keeps two-qubit gates on the qubit pairs of its input, so a circuit routed on a
+coupling map stays routed
+([`cxPairs_runCompile_subset`](CatCrypt/Quantum/QrunchConnect.lean),
+[`routed_runCompile`](CatCrypt/Quantum/QrunchConnect.lean)); swap elision, which relabels, is
+off for routed input. The bridge's
+[`compile_for_device`](bridge/catq/routing.py) compiles, routes with Qiskit's Sabre router and
+compiles again. On IQM Garnet, IQM Aphrodite and IBM Kolkata
+([`bench/qrunch/hw-metrics/`](bench/qrunch/hw-metrics/)) this is 1.8–2.2% above Qiskit level 3
+given the map on Q-Synth, and 8–15% below it on Qrisp's algorithms; no gate leaves the map.
+
+`--cost t` orders the rounds by T-count first, never raises it
+([`tCost_runRounds_le`](CatCrypt/Quantum/QrunchRound.lean)), and runs the exact passes without the
+floating-point resynthesis, which turns T gates into arbitrary rotations.
 
 ## What is trusted
 
