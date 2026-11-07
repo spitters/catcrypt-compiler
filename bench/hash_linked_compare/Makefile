@@ -32,8 +32,8 @@ COMPILER := $(abspath $(CURDIR)/../..)
 # runs in; `gen` copies them here.
 DEV      := $(abspath $(COMPILER)/../SSProve-lean)
 
-# Peers.
-LIBCRUX  ?= $(HOME)/Claude/libcrux
+# Peers, by default checkouts beside this package; set LIBCRUX and XKCP_DIR to override.
+LIBCRUX  ?= $(abspath $(COMPILER)/../libcrux)
 HACL_SRC := $(LIBCRUX)/sys/hacl/c/src
 HACL_INC := $(LIBCRUX)/sys/hacl/c/include
 HACL_INT := $(LIBCRUX)/sys/hacl/c/include/internal
@@ -41,7 +41,7 @@ HACL_KRM := $(LIBCRUX)/sys/hacl/c/karamel/include
 HACL_K2  := $(LIBCRUX)/sys/hacl/c/karamel/krmllib/dist/minimal
 HACL_CFLAGS := -I$(HACL_SRC) -I$(HACL_INC) -I$(HACL_INT) -I$(HACL_KRM) -I$(HACL_K2)
 # XKCP KeccakP-1600 opt64, as vendored by the FAEST reference implementation.
-XKCP_DIR ?= $(HOME)/Claude/faest-ref-v3/sha3
+XKCP_DIR ?= $(abspath $(COMPILER)/../faest-ref-v3/sha3)
 XKCP_CFLAGS := -I$(XKCP_DIR)/opt64 -I$(XKCP_DIR)
 OPENSSL_LIBS ?= -lcrypto
 

@@ -9,8 +9,8 @@
  * checks byte-identity of the four-lane digest over random inputs.
  *
  * Build:
- *   cc -O2 merkle_leaves_owned_kat.c gen_com/merkle_leaves_owned.s -o /tmp/mlkat
- *   /tmp/mlkat
+ *   cc -O2 merkle_leaves_owned_kat.c gen_com/merkle_leaves_owned.s -o merkle_leaves_owned_kat
+ *   ./merkle_leaves_owned_kat
  *
  * ABI (matching toLprogPhysAbi (out:RDI, inp:RSI), stdOutStore 4):
  *   _p3_hleaf_u64(out[4], inp[16]):  inp[0]=v, inp[1]=GOLDEN, inp[2]=SPLIT
