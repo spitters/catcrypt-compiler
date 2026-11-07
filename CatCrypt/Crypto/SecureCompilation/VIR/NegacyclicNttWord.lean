@@ -402,7 +402,7 @@ theorem semW_ofNat (hS : SchedOk P S) (hW : WordOk P S logR) (hq : 0 < P.q) (ℓ
   have hoffq : 2 * P.q ≤ S.off * P.q := Nat.mul_le_mul_right _ hoff
   funext i
   have hofn : ∀ j, (BitVec.ofNat 64 (f j)).toNat = f j := fun j => by
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hfw j)]
+    have := hfw j; grind
   apply BitVec.eq_of_toNat_eq
   simp only [semW, lazyLayer, hred ℓ hl, Bool.false_eq_true, ite_false]
   generalize 2 ^ ℓ + i / (2 ^ (P.logN - 1 - ℓ) + 2 ^ (P.logN - 1 - ℓ)) = k
@@ -417,10 +417,10 @@ theorem semW_ofNat (hS : SchedOk P S) (hW : WordOk P S logR) (hq : 0 < P.q) (ℓ
   · rw [BitVec.toNat_add, hofn, hmont, BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by
       have := hf i; have := ht (i + len); omega)]
   · have hoq : (BitVec.ofNat 64 (S.off * P.q)).toNat = S.off * P.q := by
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+      grind
     have hadd : (BitVec.ofNat 64 (f (i - len)) + BitVec.ofNat 64 (S.off * P.q)).toNat
         = f (i - len) + S.off * P.q := by
-      rw [BitVec.toNat_add, hofn, hoq, Nat.mod_eq_of_lt (by have := hf (i - len); omega)]
+      have := hf (i - len); grind
     rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def, hadd, hmont]; have := ht i; omega), hadd,
       hmont,
       BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by have := hf (i - len); omega)]
@@ -477,7 +477,7 @@ theorem nttProgW_denote (hP : P.Ok) (hS : SchedOk P S) (hW : WordOk P S logR) (f
   have hw : (2 : ℕ) ^ S.w ≤ 2 ^ 64 := Nat.pow_le_pow_right (by norm_num) (by have := hW.2.2.1; omega)
   have hval : (BitVec.ofNat 64 (lazyRun P S P.layers 0 f i)).toNat
       = lazyRun P S P.layers 0 f i := by
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+    grind
   rw [hval]
   refine ⟨hlt, ?_⟩
   rw [lazyRun_cast P S hS hq P.layers 0 f (by omega) hf i]
@@ -673,7 +673,7 @@ theorem invSemW_layer (hS : SchedOk P S) (hW : WordOk P S logR) (hI : InvWordOk 
   generalize 2 ^ (P.logN - 1 - ℓ) = len
   split
   · have hsum : (g i + g (i + len)).toNat = (g i).toNat + (g (i + len)).toNat := by
-      rw [BitVec.toNat_add, Nat.mod_eq_of_lt (by have := hg i; have := hg (i + len); omega)]
+      have := hg i; have := hg (i + len); grind
     obtain ⟨h1, h2⟩ := montW_zrc P S logR hS hW hq 1 _
       (by rw [hsum]; have := hg i; have := hg (i + len); omega)
     refine ⟨h1, ?_⟩
@@ -681,12 +681,12 @@ theorem invSemW_layer (hS : SchedOk P S) (hW : WordOk P S logR) (hI : InvWordOk 
     push_cast
     ring
   · have hoq : (BitVec.ofNat 64 (2 * P.q)).toNat = 2 * P.q := by
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+      grind
     have hadd : (g (i - len) + BitVec.ofNat 64 (2 * P.q)).toNat = (g (i - len)).toNat + 2 * P.q := by
-      rw [BitVec.toNat_add, hoq, Nat.mod_eq_of_lt (by have := hg (i - len); omega)]
+      have := hg (i - len); grind
     have hsub : (g (i - len) + BitVec.ofNat 64 (2 * P.q) - g i).toNat
         = (g (i - len)).toNat + 2 * P.q - (g i).toNat := by
-      rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def, hadd]; have := hg i; omega), hadd]
+      have := hg i; have := hg (i - len); grind
     obtain ⟨h1, h2⟩ := montW_zrc P S logR hS hW hq
       (P.psi ^ (2 ^ (P.layers + 1) - bitrev P.layers k)) _
       (by rw [hsub]; have := hg i; have := hg (i - len); omega)
@@ -765,7 +765,7 @@ theorem inttProgW_denote (hP : P.Ok) (hS : SchedOk P S) (hW : WordOk P S logR)
   have hq : 0 < P.q := by have := hP.2.2.1; omega
   have hR64 := R_lt_word P S logR hS hW hq
   have hfw : ∀ j, (BitVec.ofNat 64 (f j)).toNat = f j := fun j => by
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by have := hf j; omega)]
+    have := hf j; grind
   have := inttProgW_denote_words P S logR hP hS hW hI s _
     (fun j => by rw [hfw]; exact hf j) i hi
   simpa only [hfw] using this
@@ -1150,7 +1150,7 @@ theorem semUW_ofNat (hS : SchedOk P S) (hW : UWordOk P S logR) (hq : 0 < P.q) (�
   have hfw : ∀ j, f j < 2 ^ S.w := fun j => by have := hf j; omega
   funext i
   have hofn : ∀ j, (BitVec.ofNat S.w (f j)).toNat = f j := fun j => by
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hfw j)]
+    have := hfw j; grind
   apply BitVec.eq_of_toNat_eq
   have hlay := redW_layer P S logR ⟨hoff, hRpos, ‹_›, hN, hRw, hb⟩ ⟨hR, hlog, ‹_›⟩ hq ℓ hl
   simp only [semUW, lazyLayer]
@@ -1168,7 +1168,7 @@ theorem semUW_ofNat (hS : SchedOk P S) (hW : UWordOk P S logR) (hq : 0 < P.q) (�
     rw [BitVec.toNat_add, hofn, hmont, Nat.mod_eq_of_lt (by
       have := hf i; have := ht (i + len); omega)]
   · have hoq : (BitVec.ofNat S.w (S.off * P.q)).toNat = S.off * P.q := by
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by have := hf 0; omega)]
+      have := hf 0; grind
     have hadd : (BitVec.ofNat S.w (f (i - len)) + BitVec.ofNat S.w (S.off * P.q)).toNat
         = f (i - len) + S.off * P.q := by
       rw [BitVec.toNat_add, hofn, hoq, Nat.mod_eq_of_lt (by have := hf (i - len); omega)]
@@ -1221,7 +1221,7 @@ theorem nttProgUW_denote (hP : P.Ok) (hS : SchedOk P S) (hW : UWordOk P S logR) 
   have hb := (hS.2.2.2.2.2 P.layers (by omega)).2
   have hval : (BitVec.ofNat S.w (lazyRun P S P.layers 0 f i)).toNat
       = lazyRun P S P.layers 0 f i := by
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+    grind
   rw [hval]
   refine ⟨hlt, ?_⟩
   rw [lazyRun_cast P S hS hq P.layers 0 f (by omega) hf i]
@@ -1419,7 +1419,7 @@ theorem invSemUW_layer (hS : SchedOk P S) (hW : UWordOk P S logR) (hI : UInvWord
     push_cast
     ring
   · have hoq : (BitVec.ofNat S.w (2 * P.q)).toNat = 2 * P.q := by
-      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (by omega)]
+      grind
     have hadd : (g (i - len) + BitVec.ofNat S.w (2 * P.q)).toNat
         = (g (i - len)).toNat + 2 * P.q := by
       rw [BitVec.toNat_add, hoq, Nat.mod_eq_of_lt (by have := hg (i - len); omega)]
@@ -1504,7 +1504,7 @@ theorem inttProgUW_denote (hP : P.Ok) (hS : SchedOk P S) (hW : UWordOk P S logR)
       = inttSpec (P.psi : ZMod P.q) P.layers P.logN (s : ZMod P.q)
           (fun j => (f j : ZMod P.q)) i := by
   have hofn : ∀ j, (BitVec.ofNat S.w (f j)).toNat = f j := fun j => by
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt (hfw j)]
+    have := hfw j; grind
   have := inttProgUW_denote_words P S logR hP hS hW hI s _
     (fun j => by rw [hofn]; exact hf j) i hi
   simpa only [hofn] using this
