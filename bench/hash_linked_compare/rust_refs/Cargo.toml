@@ -1,0 +1,25 @@
+[package]
+name = "hash-rust-refs"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Rust BLAKE2b peers of bench/hash_linked_compare: RustCrypto blake2 and libcrux-blake2, as a static library with a C interface"
+
+[lib]
+crate-type = ["staticlib"]
+path = "lib.rs"
+
+[dependencies]
+# RustCrypto BLAKE2 (unverified; portable Rust), from the local cargo registry.
+blake2 = "=0.10.6"
+# libcrux BLAKE2 (Rust generated from HACL*; verified), from the libcrux checkout named by
+# LIBCRUX in the Makefile (default ../../../../libcrux, a sibling of this repository).
+libcrux-blake2 = { path = "../../../../libcrux/blake2" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true
+panic = "abort"
+
+[workspace]

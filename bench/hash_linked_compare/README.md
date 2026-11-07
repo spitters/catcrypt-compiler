@@ -20,18 +20,44 @@ test evidence and timings, not proof.
 
 ## Arms
 
-| kernel | arm | source | side |
-|---|---|---|---|
-| all | ours | `gen/*.o`, linked as is, behind the trampoline of `tramp.c` | verified compiler output |
-| SHA-512 compression | openssl | `SHA512_Transform`, system libcrypto (OpenSSL 3.0.13, its x86_64 assembly with run-time CPU dispatch) | peer |
-| SHA-512 compression | hacl | `Hacl_Hash_SHA2_sha512_update_nblocks` (one block), HACL\* C from libcrux `sys/hacl/c` | peer, verified C |
-| BLAKE2b compression | hacl | `update_block` of `Hacl_Hash_Blake2b.c` (included by `refs.c` to reach the static function) | peer, verified C |
-| Keccak-f[1600] | xkcp | `KeccakP1600_Permute_24rounds`, XKCP `opt64` (generic 64-bit, all rounds unrolled, no lane complementing) as vendored in faest-ref v3.0.2 `sha3/opt64` | peer |
-| Keccak-f[1600] | hacl | `Hacl_Hash_SHA3_state_permute` | peer, verified C |
+`OPTFLAGS` is `-O3 -march=native` unless overridden; `SIMDFLAGS` is `-mavx2
+-DHACL_CAN_COMPILE_VEC128 -DHACL_CAN_COMPILE_VEC256`, the flags libcrux's `build.rs` sets for
+HACL\*'s vector code on x86-64. `compare` prints the compiler and both flag sets in the header
+of its output, and `make provenance` prints the versions and commits of every peer and the
+hashes of our objects.
 
-libb2 is not installed on this host, and OpenSSL exports no single-block BLAKE2b or
-Keccak-f entry point; BLAKE2b has the HACL\* arm only. `make provenance` prints the
-versions and the hashes of our objects.
+| kernel | arm | source | flags | verified | vectorised |
+|---|---|---|---|---|---|
+| all | ours | `gen/*.o`, linked as is and called directly under the System V convention; SHA-512 and BLAKE2b through the block wrappers `ours_sha512_block`, `ours_blake2b_block` of `tramp.c` | objects as emitted; wrappers `OPTFLAGS` | yes: compiler output whose meaning is the reference, proved in Lean | no |
+| SHA-512 compression | openssl | `SHA512_Transform`, system libcrypto (OpenSSL 3.0.13), x86_64 assembly with run-time CPU dispatch | prebuilt | no | message schedule in the AVX and AVX2 paths |
+| SHA-512 compression | hacl | `Hacl_Hash_SHA2_sha512_update_nblocks` (one block), HACL\* C from libcrux `sys/hacl/c` | `OPTFLAGS` | yes (HACL\*) | no (portable C) |
+| SHA-512 compression, 4 lanes | hacl_vec256 | static `sha512_update4` of `Hacl_SHA2_Vec256.c` (included by `refs_hacl_vec256.c`) | `OPTFLAGS SIMDFLAGS` | yes (HACL\*) | AVX2, four independent lanes |
+| BLAKE2b compression | hacl | static `update_block` of `Hacl_Hash_Blake2b.c` (included by `refs.c`) | `OPTFLAGS` | yes (HACL\*) | no (portable C) |
+| BLAKE2b compression | hacl_simd256 | static `update_block` of `Hacl_Hash_Blake2b_Simd256.c` (included by `refs_hacl_blake2b_simd256.c`) | `OPTFLAGS SIMDFLAGS` | yes (HACL\*) | AVX2, one state as four rows of four words |
+| BLAKE2b compression | rustcrypto | `Blake2bVarCore::update_blocks` of RustCrypto `blake2` 0.10.6 on one block, on its own state (`rust_refs/lib.rs`); conformance on whole BLAKE2b-512 digests against OpenSSL | rustc opt-level 3, LTO, `-C target-cpu=native` | no | no (portable Rust) |
+| BLAKE2b compression | libcrux | one 128-byte `Blake2b::update` of `libcrux-blake2` (Rust generated from HACL\*) on its own state, through one indirect call; the streaming state copies each block into its buffer | rustc opt-level 3, LTO, `-C target-cpu=native` | yes (HACL\*) | no |
+| Keccak-f[1600] | xkcp | `KeccakP1600_Permute_24rounds`, XKCP `opt64` (generic 64-bit, all rounds unrolled, no lane complementing) as vendored in faest-ref v3.0.2 `sha3/opt64` | `OPTFLAGS` | no | no |
+| Keccak-f[1600] | xkcp_avx2 | `KeccakP1600_AVX2_Permute_24rounds`, XKCP `lib/low/KeccakP-1600/AVX2/KeccakP-1600-AVX2.s` (CRYPTOGAMS assembly), the XKCP submodule of formosa-keccak | assembly | no | AVX2, one state |
+| Keccak-f[1600] | xkcp_avx512 | `KeccakP1600_AVX512_Permute_24rounds`, XKCP `lib/low/KeccakP-1600/AVX512/KeccakP-1600-AVX512.s` (CRYPTOGAMS assembly), same checkout | assembly | no | AVX-512, one state |
+| Keccak-f[1600] | hacl | `Hacl_Hash_SHA3_state_permute` | `OPTFLAGS` | yes (HACL\*) | no (portable C) |
+| Keccak-f[1600], 4 states | hacl_simd256_absorb | `Hacl_Hash_SHA3_Simd256_shake128_absorb_nblocks` over one 168-byte block of zeros per state (`Hacl_Hash_SHA3_Simd256.c`) | `OPTFLAGS SIMDFLAGS` | yes (HACL\*) | AVX2, four states |
+
+Interface: every arm is timed one block (one permutation) per call, in chained calls. The
+SHA-512 and BLAKE2b arms all take the 128-byte block and load its message words inside the
+call: the peers in their compression functions, ours in the block wrappers, which load the 16
+words into the kernel's input array (with a byte swap for SHA-512, as a copy for BLAKE2b on
+little-endian x86-64) and then call the kernel. The Keccak-f arms take the 25-lane state. The
+4-lane rows (`sha512_compress_x4`, `keccak_f1600_x4`) process four independent states per
+call and report cycles per call divided by 4, that is per block per lane and per state; ours
+has no 4-lane arm, so these rows give the throughput of HACL\*'s multi-buffer code and are not
+ratios against ours. HACL\* exports neither a single-state vector Keccak-f nor a 4-way
+permutation alone, so the `keccak_f1600_x4` arm includes the copy, transposition and XOR of
+the zero block into the four states. With `-march=native` on an AVX-512 host the C compiler
+may also vectorise the portable C peers and the block wrappers.
+
+Not added: libb2 is not installed on this host; libsodium is installed as the runtime library
+only (no headers), and its `crypto_generichash_blake2b` interface buffers input and exposes
+no block compression; OpenSSL exports no single-block BLAKE2b or Keccak-f entry point.
 
 ## Adapters
 
@@ -43,22 +69,49 @@ Calling conventions (from the layouts `sha512Abi`, `blake2bKAbi`, `keccakFAbi`):
   `%r8` (message words little-endian); the second flag word is 0.
 * Keccak-f[1600]: `dst[25]` out at `%rdi`, `src[25]` in at `%rsi`, lane `(x, y)` at `5y + x`.
 
-The kernels may change every general-purpose register but `%rsp` (`sha512Clob`,
-`blake2bKClob`, `keccakFClob`), including the System V callee-saved ones, and use a red zone
-below their frame. `tramp.c` therefore calls each object through a trampoline that saves and
-restores `%rbx`, `%rbp`, `%r12`-`%r15`; the trampoline is harness code, and its cost is in
-every "ours" figure.
+The objects follow the System V AMD64 calling convention, and the harness calls the symbols
+`catcrypt_*` directly. Each kernel saves every callee-saved register its body writes (`%rbx`,
+`%rbp`, `%r12`-`%r15`) in its own frame after its `leaq -F(%rsp), %rsp` and restores it before
+the return, and uses the 128-byte red zone below that frame, which a leaf function may. The
+linked functions at this convention are `Sha2Linked.sha512KernelAbi`,
+`Blake2Linked.blake2bKernelAbi` and `KeccakLinked.keccakFKernelAbi`
+(`CatCrypt/Crypto/SecureCompilation/HashTemplate/LinkedAbi.lean`): the bytes of the kernels
+above, whose contracts (`*KernelAbi_meets`, `*KernelAbi_linked`) state the clobber sets
+`abiClob sha512Clob`, `abiClob blake2bKClob`, `abiClob keccakFClob`, which contain no
+callee-saved register (`*KernelAbi_clob`). The construction is
+`TemplateKernelData.abiKernel` (`HashTemplate/TemplateKernelAbi.lean`); the restoration is the
+callee-saved clause of `regionBack_correct`. The register saves and restores are part of the
+kernel's code, and so of every "ours" figure. Each of the three bodies writes all six
+callee-saved registers, so each object saves all six: six `mov` stores into its frame after
+`leaq -F(%rsp), %rsp` and six loads before `leaq F(%rsp), %rsp; ret`, at the frames of 288
+(SHA-512), 336 (BLAKE2b) and 272 (Keccak-f) bytes; the code has no `push`, `pop`, `call` or
+branch. The conformance run checks the registers at run time (item 3 below). The block
+wrappers `ours_sha512_block` and `ours_blake2b_block` of `tramp.c` call the kernels; their
+message loads are also in every "ours" figure for SHA-512 and BLAKE2b.
+
+The XKCP AVX2 state holds the lanes in a permuted order, so both XKCP assembly arms are read
+and written through their `AddBytes` and `ExtractBytes` in the conformance check and permute
+a resident state in the timing. HACL\*'s 4-lane states are arrays of 256-bit vectors in which
+word (or lane) `i` of lane (or state) `j` is 64-bit word `4i + j`.
 
 ## Conformance (`make conform`)
 
-1. Official vectors computed through our objects alone: SHA-512("abc") (FIPS 180-4) by one
-   compression of the padded block from the IV; BLAKE2b-512("abc") (RFC 7693 Appendix A) by
-   one final compression from the parameter-adjusted IV; SHA3-256("abc") (FIPS 202) by one
-   permutation of the absorbed padded block; lane 0 of Keccak-f[1600] of the zero state.
-   Each literal vector is also compared with OpenSSL's EVP one-shot digest.
-2. `NRAND` random inputs per kernel (xorshift64\*, fixed seed), compared word for word with
-   every peer: SHA-512 against OpenSSL and HACL\*; BLAKE2b at random counters `t0`, `t1` and a
-   random final flag against HACL\*; Keccak-f against XKCP and HACL\*.
+1. Official vectors computed by every arm on its own (ours through the block wrappers that
+   the timing calls; a 4-lane arm with the vector in all four lanes, the lanes checked
+   equal): SHA-512("abc") (FIPS 180-4) by one compression of the padded block from the IV;
+   BLAKE2b-512("abc") (RFC 7693 Appendix A) by one final compression from the
+   parameter-adjusted IV; SHA3-256("abc") (FIPS 202) by one permutation of the absorbed
+   padded block; lane 0 of Keccak-f[1600] of the zero state. Each literal vector is also
+   compared with OpenSSL's EVP one-shot digest.
+2. `NRAND` random inputs per kernel (xorshift64\*, fixed seed), compared word for word between
+   ours and every peer: SHA-512 against OpenSSL, HACL\* and each lane of HACL\* Vec256 (four
+   independent random blocks and chaining values); BLAKE2b at random counters `t0`, `t1` and a
+   random final flag against HACL\* and HACL\* Simd256; Keccak-f against XKCP opt64, XKCP AVX2,
+   XKCP AVX-512, HACL\* and each state of HACL\* Simd256 (four independent random states).
+3. The callee-saved registers: each object is called once through `abi_check_call` of
+   `tramp.c`, which sets `%rbx`, `%rbp`, `%r12`-`%r15` to sentinel values before the call and
+   counts those that differ after it (none may), and its output is compared with that of a
+   direct call.
 
 ## Timing (`make run`)
 
@@ -67,8 +120,9 @@ TSC cycles per call (`SSProve-lean/bench/measurement_lib/tscbench.h`, CPUID/RDTS
 `CPU`). Each sample runs `INNER` calls, chained: a peer updates its state in place; ours
 alternates two input arrays, each call writing its output into the chaining words (or the
 lanes) of the other, so every call depends on the previous one. The peers' state stays
-resident; ours reads 24 or 25 input words and writes 8 or 25 output words per call.
-TSC cycles are reference-clock cycles, not core cycles.
+resident; ours reads 8 chaining words and the 128-byte block (SHA-512, BLAKE2b) or 25 lanes
+(Keccak-f) and writes 8 or 25 output words per call. The 4-lane rows divide by 4 as stated
+under Arms. TSC cycles are reference-clock cycles, not core cycles.
 
 ## Ratios
 
@@ -77,7 +131,36 @@ ours/peer of the median of the three per-run medians.
 
 ## Results
 
-Run of 2026-11-01 (label `2026-11-01 night, load ~3.5, pinned core`), AMD Ryzen 7 PRO 7840U
+Run of 2026-11-07, AMD Ryzen 7 PRO 7840U (Zen 4), one pinned core, three runs, each a
+separate process, after `make conform` passed (the four official vectors, the callee-saved
+register check, and 10000 random inputs per kernel, ours equal to every peer; the Rust peers
+on whole BLAKE2b-512 digests). The objects are those written by `linked-kernel-emit` on
+2026-11-07, called directly under the System V convention; every arm takes the message block
+inside the timed loop. TSC cycles per call, median of the three per-run medians:
+
+| kernel | ours | peer | peer cyc | ours / peer |
+|---|---|---|---|---|
+| SHA-512 compression | 541.1 | OpenSSL 3.0.13 `SHA512_Transform` | 371.9 | 1.45 |
+| SHA-512 compression | 541.1 | HACL\* `sha512_update_nblocks` | 578.1 | 0.94 |
+| BLAKE2b compression | 326.7 | HACL\* `update_block` | 323.7 | 1.01 |
+| BLAKE2b compression | 326.7 | HACL\* Simd256 `update_block` | 387.9 | 0.84 |
+| BLAKE2b compression | 326.7 | RustCrypto `blake2` 0.10.6 | 358.2 | 0.91 |
+| BLAKE2b compression | 326.7 | libcrux-blake2 streaming `update` | 557.8 | 0.59 |
+| Keccak-f[1600] | 1000.3 | XKCP opt64 | 606.5 | 1.65 |
+| Keccak-f[1600] | 1000.3 | XKCP AVX2 | 679.0 | 1.47 |
+| Keccak-f[1600] | 1000.3 | XKCP AVX-512 | 742.8 | 1.35 |
+| Keccak-f[1600] | 1000.3 | HACL\* `state_permute` | 1675.0 | 0.60 |
+
+The libcrux row is not like for like: its streaming state copies each block into a buffer and
+the arm calls it through one indirect call. The four-lane HACL\* arms (Vec256 SHA-512: 218.0
+cycles per block per lane; Simd256 Keccak absorb: 576.6 cycles per state) do four independent
+inputs per call and have no single-call counterpart here.
+
+### Run of 2026-11-01
+
+The figures below were measured with the previous adapter, which converted the SHA-512
+message words outside the timed loop and copied the BLAKE2b block once before it, and without
+the vector arms. Run of 2026-11-01 (label `2026-11-01 night, load ~3.5, pinned core`), AMD Ryzen 7 PRO 7840U
 (`/proc/cpuinfo`), one pinned core, three runs, each a separate process, after `make conform` passed (`SSProve-lean/bench/hash_linked_compare/results/conform.txt`: the four official
 vectors and 10000 random inputs per kernel, ours equal to every peer). The host carried a
 load average of about 3.5 from other jobs; all arms of a kernel were measured in one process
@@ -96,6 +179,12 @@ cycles per call, median of the three per-run medians (`SSProve-lean/bench/hash_l
 | Keccak-f[1600] | 2823.8 | XKCP opt64 | 685.5 | 4.12 |
 | Keccak-f[1600] | 2823.8 | HACL\* `state_permute` | 1918.4 | 1.47 |
 
-Our figures include the trampoline of `tramp.c`. The objects' `.text` sections are 25987
+These figures were measured through the register-saving trampoline that `tramp.c` then held
+(six pushes, six pops and a call around each kernel), on objects emitted by an earlier
+compiler; the objects are now called directly, and new figures include only the kernels' own
+saves. The objects of that run had `.text` sections of 25987
 (SHA-512), 13432 (BLAKE2b) and 62474 (Keccak-f) bytes, of 6954, 3417 and 13890 instructions:
-each template is straight-line code.
+each template is straight-line code. The objects written by `linked-kernel-emit` on 2026-11-07,
+which the harness now calls directly, have `.text` sections of 15890, 7977 and 29343 bytes, of
+3814, 1916 and 5972 instructions; `make conform` passed on them (the four official vectors,
+the callee-saved register check and 10000 random inputs per kernel, ours equal to every peer).
