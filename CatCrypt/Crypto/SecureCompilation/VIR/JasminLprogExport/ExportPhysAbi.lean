@@ -151,7 +151,7 @@ def LOperand.mentionedNames : LOperand → List String
   | .arrIdx b i _ => [b, i]
 
 /-- The number of bindings of `body` whose destination is the register `nm`. -/
-def defCount (body : Lcmd) (nm : String) : Nat :=
+def destCount (body : Lcmd) (nm : String) : Nat :=
   body.countP fun i =>
     match i.li_i with
     | .Lopn (.reg d :: _) _ _ => d == nm
@@ -192,7 +192,7 @@ def defaultOutNames (virt : Lfundef) (n : Nat) : List String :=
     cells and each must be the destination of exactly one binding of `body`, so that the name
     designates one binding; otherwise there are no stores. -/
 def outStoresOf (body : Lcmd) (outStoreMap : OutStoreMap) (names : List String) : OutStores :=
-  if names.length == outStoreMap.length && names.all (fun nm => defCount body nm == 1) then
+  if names.length == outStoreMap.length && names.all (fun nm => destCount body nm == 1) then
     names.zip (outStoreMap.map Prod.snd)
   else []
 
@@ -204,7 +204,7 @@ def outStoresOf (body : Lcmd) (outStoreMap : OutStoreMap) (names : List String) 
     destination of exactly one binding, so the store reads that binding and no other. -/
 theorem defCount_of_mem_outStoresOf {body : Lcmd} {outStoreMap : OutStoreMap}
     {names : List String} {p : String × Nat} (h : p ∈ outStoresOf body outStoreMap names) :
-    defCount body p.1 = 1 := by
+    destCount body p.1 = 1 := by
   unfold outStoresOf at h
   split at h
   · rename_i hc

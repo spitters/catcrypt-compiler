@@ -135,7 +135,7 @@ tables with the accepted programs.
     its entry value; `NFEntry.compileR_correct_saved` and `compileRegion_correct_saved`
     state the same at an entry and for the back half. The printed body saves and restores
     only the callee-saved registers it writes (`frameTrim`), and the restoration check
-    `restoreB` accepts a register no instruction writes by `keepRegB`.
+    `restoreB` accepts a register no instruction writes by `wireKeepsRegB`.
   - `haxc_ct_proved_all` (`Haxc/ComposeCTStraight.lean`), constant time: for a result of
     `compileA`, every decoding of the bytes is constant time under `ctRegime` between entry
     states that satisfy the regions of `σ` and a precondition `Pre`, agree on its public

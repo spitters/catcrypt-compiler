@@ -105,7 +105,7 @@ def access? : TExpr → Option (TExpr × TExpr)
   | _ => none
 
 /-- The name of a variable node. -/
-def varName? : TExpr → Option String
+def varNodeName? : TExpr → Option String
   | .mk (.var x) _ => some x
   | _ => none
 
@@ -114,7 +114,7 @@ def varName? : TExpr → Option String
     leaves the array. -/
 def siteCap? (K : List (String × Nat)) (i : String) (e : TExpr) : Option Nat := do
   let (a, ix) ← access? e
-  let x ← varName? a
+  let x ← varNodeName? a
   let l ← List.lookup x K
   let c ← ctrOff? i ix
   pure (l - c)
@@ -226,7 +226,9 @@ def headCaps (K : List (String × Nat)) (p : String) : TExpr → List Nat
   | e =>
       match access? e with
       | some (a, .mk (.var q) _) =>
-          if q == p then (((varName? a).bind fun x => List.lookup x K).map (· - 1)).toList else []
+          if q == p then
+            (((varNodeName? a).bind fun x => List.lookup x K).map (· - 1)).toList
+          else []
       | _ => []
 
 /-- **The caps of the parameter `p` along the statement spine** of a body, for the array

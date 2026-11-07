@@ -219,7 +219,7 @@ def latAt (i : JInstr 64) (c : OpCost) (l : Loc) : Nat :=
   | _ => c.lat
 
 /-- One step of the scheduler. -/
-def schedStep (st : SchedState) (i : JInstr 64) : SchedState :=
+def listScheduleStep (st : SchedState) (i : JInstr 64) : SchedState :=
   let c := zen4Op i
   let (disp, slots) :=
     if st.slots + c.uops ≤ dispatchWidth then (st.disp, st.slots + c.uops)
@@ -237,7 +237,7 @@ def schedStep (st : SchedState) (i : JInstr 64) : SchedState :=
 /-- **The order-dependent cost**: the finishing cycle of the block under the list scheduler
     of the Zen 4 table. -/
 def zen4Cost (block : List (JInstr 64)) : Nat :=
-  (block.foldl schedStep ⟨0, 0, [], [], 0⟩).finish
+  (block.foldl listScheduleStep ⟨0, 0, [], [], 0⟩).finish
 
 /-! ## 3. The cost depends on the order -/
 

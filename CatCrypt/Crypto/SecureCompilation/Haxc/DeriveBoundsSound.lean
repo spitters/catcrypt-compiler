@@ -123,17 +123,17 @@ theorem NoCFEnv.extend {env : Env} (h : NoCFEnv env) (x : String) {w : Value}
     exact hw
   · exact h y u hy
 
-theorem extend_ne {env : Env} {x y : String} {w : Value} (h : y ≠ x) :
+theorem extend_apply_of_ne {env : Env} {x y : String} {w : Value} (h : y ≠ x) :
     Env.extend env x w y = env y := by
   simp [Env.extend, h]
 
-theorem extend_self {env : Env} {x : String} {w : Value} :
+theorem extend_apply_self {env : Env} {x : String} {w : Value} :
     Env.extend env x w x = some w := by
   simp [Env.extend]
 
 /-! ## One-step evaluation -/
 
-theorem denoteArgs'_cons_run (bi : Builtins) (fuel : Nat) (e : ImpExpr) (es : List ImpExpr)
+theorem denoteArgs'_cons_unfold (bi : Builtins) (fuel : Nat) (e : ImpExpr) (es : List ImpExpr)
     (env : Env) :
     denoteArgs' bi fuel (e :: es) env =
       match denote' bi fuel e env with
@@ -153,21 +153,21 @@ theorem denoteArgs'_cons_of_val' {bi : Builtins} {fuel : Nat} {e : ImpExpr}
     (he : denote' bi fuel e env = (.val w, env1)) (hw : w.isControlFlow = false) :
     denoteArgs' bi fuel (e :: es) env =
       ((denoteArgs' bi fuel es env1).1.map (w :: ·), (denoteArgs' bi fuel es env1).2) := by
-  rw [denoteArgs'_cons_run, he]
+  rw [denoteArgs'_cons_unfold, he]
   cases w <;> first | rfl | simp [Value.isControlFlow] at hw
 
 theorem denoteArgs'_cons_of_nonval {bi : Builtins} {fuel : Nat} {e : ImpExpr}
     {es : List ImpExpr} {env env1 : Env} {r : Outcome}
     (he : denote' bi fuel e env = (r, env1)) (hr : ∀ w, r = .val w → w.isControlFlow = true) :
     denoteArgs' bi fuel (e :: es) env = (none, env1) := by
-  rw [denoteArgs'_cons_run, he]
+  rw [denoteArgs'_cons_unfold, he]
   cases r with
   | val w =>
       have := hr w rfl
       cases w <;> first | rfl | simp [Value.isControlFlow] at this
   | _ => rfl
 
-theorem denote'_app_run (bi : Builtins) (fuel : Nat) (f : String) (args : List ImpExpr)
+theorem denote'_app_unfold (bi : Builtins) (fuel : Nat) (f : String) (args : List ImpExpr)
     (env : Env) :
     denote' bi fuel (.app f args) env =
       ((match (denoteArgs' bi fuel args env).1 with
@@ -363,7 +363,7 @@ theorem contains_cons_false {x y : String} {l : List String} (h : (x :: l).conta
 /-- A counted loop whose body returns no control-flow value and changes the environment only
     at the names `ws` returns no control-flow value and changes the environment only at `ws`
     and its counter. -/
-theorem forLoop_run {bi : Builtins} {x : String} {body : ImpExpr} {ws : List String}
+theorem denoteForLoop'_good_frame {bi : Builtins} {x : String} {body : ImpExpr} {ws : List String}
     (hb : ∀ fuel env, NoCFEnv env → Good (denote' bi fuel body env).1 ∧
       NoCFEnv (denote' bi fuel body env).2 ∧
       ∀ y, ws.contains y = false → (denote' bi fuel body env).2 y = env y) :
@@ -396,11 +396,11 @@ theorem forLoop_run {bi : Builtins} {x : String} {body : ImpExpr} {ws : List Str
             rw [denoteForLoop'_of_val (by omega) (by omega) hr (g1 w rfl), Nat.add_sub_cancel]
             obtain ⟨g2, n2, f2⟩ := ih (lo + 1) hi env1 n1
             refine ⟨g2, n2, fun y hy hyx => ?_⟩
-            rw [f2 y hy hyx, f1 y hy, extend_ne hyx]
+            rw [f2 y hy hyx, f1 y hy, extend_apply_of_ne hyx]
         | _ =>
             rw [denoteForLoop'_of_nonval (by omega) (by omega) hr (fun w hw => by cases hw)]
             exact ⟨(fun w hw => by cases hw), n1,
-              fun y hy hyx => by dsimp only; rw [f1 y hy, extend_ne hyx]⟩
+              fun y hy hyx => by dsimp only; rw [f1 y hy, extend_apply_of_ne hyx]⟩
 
 mutual
 
@@ -424,7 +424,7 @@ theorem cfFree_run {bi : Builtins} (hbi : SiteTable bi) :
   | .mk (.app f args) _, h, fuel, env, henv => by
       have ha : cfFreeList args = true := by simpa [cfFree] using h
       obtain ⟨n1, f1⟩ := cfFreeList_run hbi args ha fuel env henv
-      simp only [TExpr.erase, TExpr.eraseList_eq, denote'_app_run]
+      simp only [TExpr.erase, TExpr.eraseList_eq, denote'_app_unfold]
       refine ⟨?_, n1, fun y hy => f1 y (by simpa [writes] using hy)⟩
       intro w hw
       revert hw
@@ -458,7 +458,7 @@ theorem cfFree_run {bi : Builtins} (hbi : SiteTable bi) :
           refine ⟨g2, n2, fun y hy => ?_⟩
           obtain ⟨hyx, hy⟩ := contains_cons_false (by simpa only [writes] using hy)
           obtain ⟨hy1, hy2⟩ := contains_append_false hy
-          rw [f2 y hy2, extend_ne hyx, f1 y hy1]
+          rw [f2 y hy2, extend_apply_of_ne hyx, f1 y hy1]
       | _ =>
           rw [denote'_letBind_of_nonval hr (fun w hw => by cases hw)]
           refine ⟨(fun w hw => by cases hw), n1, fun y hy => ?_⟩
@@ -538,7 +538,7 @@ theorem cfFree_run {bi : Builtins} (hbi : SiteTable bi) :
           rcases denote'_forFold_of_hi (x := i) (body := b.erase) hr (g1 w rfl) hr2 with
             ⟨l, u, hl⟩ | ⟨s, hs⟩ | hs
           · rw [hl]
-            obtain ⟨g3, n3, f3⟩ := forLoop_run (x := i) (body := b.erase)
+            obtain ⟨g3, n3, f3⟩ := denoteForLoop'_good_frame (x := i) (body := b.erase)
               (fun fuel' env' h' => cfFree_run hbi b hb fuel' env' h') fuel l u env2 n2
             refine ⟨g3, n3, fun y hy => ?_⟩
             obtain ⟨hyi, h1, h2, h3⟩ := hw' y hy
@@ -614,10 +614,10 @@ theorem denote'_var_of {bi : Builtins} {fuel : Nat} {env : Env} {x : String} {u 
     (h : env x = some u) : denote' bi fuel (.var x) env = (.val u, env) := by
   rw [_root_.Hax.denote'_var_run, h]
 
-theorem varName?_erase {a : TExpr} {x : String} (h : varName? a = some x) :
+theorem varNodeName?_erase {a : TExpr} {x : String} (h : varNodeName? a = some x) :
     a.erase = .var x := by
   obtain ⟨k, t⟩ := a
-  cases k <;> simp only [varName?, reduceCtorEq, Option.some.injEq] at h
+  cases k <;> simp only [varNodeName?, reduceCtorEq, Option.some.injEq] at h
   subst h
   rfl
 
@@ -625,7 +625,7 @@ theorem denoteArgs'_cons_inv {bi : Builtins} {fuel : Nat} {e : ImpExpr} {es : Li
     {env : Env} {vals : List Value} (h : (denoteArgs' bi fuel (e :: es) env).1 = some vals) :
     ∃ w ws, vals = w :: ws ∧ (denote' bi fuel e env).1 = .val w ∧
       (denoteArgs' bi fuel es (denote' bi fuel e env).2).1 = some ws := by
-  rw [denoteArgs'_cons_run] at h
+  rw [denoteArgs'_cons_unfold] at h
   rcases hr : denote' bi fuel e env with ⟨r, env1⟩
   rw [hr] at h
   cases r with
@@ -645,7 +645,7 @@ theorem denoteArgs'_nil_inv {bi : Builtins} {fuel : Nat} {env : Env} {vals : Lis
 theorem app_val_inv {bi : Builtins} {fuel : Nat} {f : String} {args : List ImpExpr}
     {env : Env} {w : Value} (h : (denote' bi fuel (.app f args) env).1 = .val w) :
     ∃ vals, (denoteArgs' bi fuel args env).1 = some vals ∧ bi f vals = some w := by
-  rw [denote'_app_run] at h
+  rw [denote'_app_unfold] at h
   revert h
   rcases ho : (denoteArgs' bi fuel args env).1 with _ | vals
   · intro h; cases h
@@ -696,12 +696,12 @@ theorem ctrOff_val {bi : Builtins} (hbi : SiteTable bi) {i : String} {ix : TExpr
     `vs`. -/
 theorem access_fail {bi : Builtins} (hbi : SiteTable bi) {e a ix : TExpr} {x : String}
     {env : Env} {vs : List Value} {fuel : Nat}
-    (he : access? e = some (a, ix)) (ha : varName? a = some x) (hx : env x = some (.array vs))
+    (he : access? e = some (a, ix)) (ha : varNodeName? a = some x) (hx : env x = some (.array vs))
     (hix : ∀ w, (denote' bi fuel ix.erase env).1 = .val w →
       ∃ k : Int, w = .int k ∧ (vs.length : Int) ≤ k) :
     ∀ w, (denote' bi fuel e.erase env).1 ≠ .val w := by
   intro w hw
-  have hae := varName?_erase ha
+  have hae := varNodeName?_erase ha
   unfold access? at he
   split at he
   · cases he
@@ -739,7 +739,7 @@ theorem site_fail {bi : Builtins} (hbi : SiteTable bi) {K : List (String × Nat)
   rcases hacc : access? e with _ | ⟨a, ix⟩
   · rw [hacc] at h; cases h
   rw [hacc] at h
-  rcases hx : varName? a with _ | x
+  rcases hx : varNodeName? a with _ | x
   · simp [hx] at h
   rcases hL : List.lookup x K with _ | L
   · simp [hx, hL] at h
@@ -766,7 +766,7 @@ theorem strictCaps_fail {bi : Builtins} (hbi : SiteTable bi) {i : String} {k : I
       · exact site_fail hbi hc hK hi hck fuel
       · have h1 := strictCapsList_fail hbi args K fuel env hK henv hi c hc hck
         intro w hw
-        simp only [TExpr.erase, TExpr.eraseList_eq, denote'_app_run, h1] at hw
+        simp only [TExpr.erase, TExpr.eraseList_eq, denote'_app_unfold, h1] at hw
         cases hw
   | .mk (.tuple es) t, K, fuel, env, hK, henv, hi, c, hc, hck => by
       simp only [strictCaps] at hc
@@ -798,8 +798,8 @@ theorem strictCaps_fail {bi : Builtins} (hbi : SiteTable bi) {i : String} {k : I
               refine strictCaps_fail hbi c' _ fuel _ (hK.dropW fun y hy => ?_)
                 (n1.extend x (g1 w1 rfl)) ?_ c hc hck
               · obtain ⟨hyx, hy⟩ := contains_cons_false hy
-                rw [extend_ne hyx, f1 y hy]
-              · rw [extend_ne (Ne.symm hxi'), f1 i hwi', hi]
+                rw [extend_apply_of_ne hyx, f1 y hy]
+              · rw [extend_apply_of_ne (Ne.symm hxi'), f1 i hwi', hi]
           | _ =>
               rw [denote'_letBind_of_nonval hr (fun w hw => by cases hw)]
               intro w hw
@@ -924,7 +924,7 @@ theorem loop_fail {bi : Builtins} (hbi : SiteTable bi) {K : List (String × Nat)
     intro env j hK
     refine hK.mono fun y L hy => ?_
     obtain ⟨-, hc⟩ := lookup_dropW hy
-    exact extend_ne (contains_cons_false hc).1
+    exact extend_apply_of_ne (contains_cons_false hc).1
   intro t
   induction t with
   | zero =>
@@ -935,7 +935,7 @@ theorem loop_fail {bi : Builtins} (hbi : SiteTable bi) {K : List (String × Nat)
           cases hw
       | succ m =>
           have h1 := strictCaps_fail hbi b _ (m + 1) _ (hext env j hK) (henv.extend i rfl)
-            extend_self cap hcap (by omega)
+            extend_apply_self cap hcap (by omega)
           rcases hr : denote' bi (m + 1) b.erase (Env.extend env i (.int j)) with ⟨r, env2⟩
           rw [hr] at h1
           rw [denoteForLoop'_of_nonval (by omega) (by omega) hr h1] at hw
@@ -958,7 +958,7 @@ theorem loop_fail {bi : Builtins} (hbi : SiteTable bi) {K : List (String × Nat)
               refine ih (j + 1) m env2 (by omega) (hK.mono fun y L hy => ?_) n1 w hw
               obtain ⟨-, hc⟩ := lookup_dropW hy
               obtain ⟨hyi, hyw⟩ := contains_cons_false hc
-              rw [f1 y hyw, extend_ne hyi]
+              rw [f1 y hyw, extend_apply_of_ne hyi]
           | _ =>
               rw [denoteForLoop'_of_nonval (by omega) (by omega) hr (fun w h => by cases h)] at hw
               cases hw
@@ -1030,7 +1030,7 @@ theorem headCaps_fail {bi : Builtins} (hbi : SiteTable bi) {K : List (String × 
       · rename_i hq
         have hq' := beq_iff_eq.mp hq
         subst hq'
-        rcases hx : varName? a with _ | x
+        rcases hx : varNodeName? a with _ | x
         · simp [hx] at hc
         rcases hL : List.lookup x K with _ | L
         · simp [hx, hL] at hc
@@ -1176,8 +1176,8 @@ theorem capsOf_fail {bi : Builtins} (hbi : SiteTable bi) {p : String} {n : Int} 
                       intro y
                       by_cases hyx : y = x
                       · subst hyx
-                        rw [extend_self, hxw]
-                      · exact extend_ne hyx
+                        rw [extend_apply_self, hxw]
+                      · exact extend_apply_of_ne hyx
                     exact ⟨hK.mono fun y _ _ => hsame y, by rw [hsame, hp]⟩
                   · rename_i hsb
                     have hxp' : x ≠ p := by
@@ -1187,8 +1187,8 @@ theorem capsOf_fail {bi : Builtins} (hbi : SiteTable bi) {p : String} {n : Int} 
                       · exact absurd h hsb
                     refine ⟨hK.dropW fun y hy => ?_, ?_⟩
                     · obtain ⟨hyx, hy⟩ := contains_cons_false hy
-                      rw [extend_ne hyx, f1 y hy]
-                    · rw [extend_ne (Ne.symm hxp'), f1 p hwp', hp]
+                      rw [extend_apply_of_ne hyx, f1 y hy]
+                    · rw [extend_apply_of_ne (Ne.symm hxp'), f1 p hwp', hp]
                 exact ih c' hs' _ fuel _ key.1 (n1.extend x hw1) key.2 c hc hcn w hw'
             | _ => cases hw
           · simp at hc

@@ -43,7 +43,7 @@ the grammar the parsers implement fails the build here.
 
 set_option autoImplicit false
 
-namespace CatCrypt.Crypto.Jasmin.JincGrammarDemo
+namespace CatCrypt.Crypto.Jasmin.Examples.JincGrammarDemo
 
 open CatCrypt.Crypto.Jasmin.JincInline
 open CatCrypt.Crypto.Jasmin.JincToCom (Stmt Rhs Operand)
@@ -62,7 +62,7 @@ def exprOf (src : String) : Except String E := do
   | _ => throw "not one function"
 
 /-- Whether `src` parses to the expression `e`. -/
-def parsesTo (src : String) (e : E) : Bool :=
+def exprParsesTo (src : String) (e : E) : Bool :=
   match exprOf src with
   | .ok e' => e' == e
   | .error _ => false
@@ -71,31 +71,31 @@ def parsesTo (src : String) (e : E) : Bool :=
 abbrev v (s : String) : E := .var s
 
 -- `& | ^` bind tighter than `== != <`.
-#kat parsesTo "a & b == c" (.bin "==" (.bin "&" (v "a") (v "b")) (v "c"))
-#kat parsesTo "a | b < c" (.bin "<" (.bin "|" (v "a") (v "b")) (v "c"))
-#kat parsesTo "a ^ b != c" (.bin "!=" (.bin "^" (v "a") (v "b")) (v "c"))
-#kat parsesTo "a == b & c" (.bin "==" (v "a") (.bin "&" (v "b") (v "c")))
-#kat parsesTo "a <s b | c" (.bin "<s" (v "a") (.bin "|" (v "b") (v "c")))
-#kat parsesTo "a & b >=u c" (.bin ">=u" (.bin "&" (v "a") (v "b")) (v "c"))
+#kat exprParsesTo "a & b == c" (.bin "==" (.bin "&" (v "a") (v "b")) (v "c"))
+#kat exprParsesTo "a | b < c" (.bin "<" (.bin "|" (v "a") (v "b")) (v "c"))
+#kat exprParsesTo "a ^ b != c" (.bin "!=" (.bin "^" (v "a") (v "b")) (v "c"))
+#kat exprParsesTo "a == b & c" (.bin "==" (v "a") (.bin "&" (v "b") (v "c")))
+#kat exprParsesTo "a <s b | c" (.bin "<s" (v "a") (.bin "|" (v "b") (v "c")))
+#kat exprParsesTo "a & b >=u c" (.bin ">=u" (.bin "&" (v "a") (v "b")) (v "c"))
 -- `== !=` bind looser than `< <= > >=`, and `&&` looser than both.
-#kat parsesTo "a == b < c" (.bin "==" (v "a") (.bin "<" (v "b") (v "c")))
-#kat parsesTo "a && b | c" (.bin "&&" (v "a") (.bin "|" (v "b") (v "c")))
+#kat exprParsesTo "a == b < c" (.bin "==" (v "a") (.bin "<" (v "b") (v "c")))
+#kat exprParsesTo "a && b | c" (.bin "&&" (v "a") (.bin "|" (v "b") (v "c")))
 -- `|` below `^` below `&` below the shifts below `+ -` below `* / %`.
-#kat parsesTo "a | b ^ c & d"
+#kat exprParsesTo "a | b ^ c & d"
   (.bin "|" (v "a") (.bin "^" (v "b") (.bin "&" (v "c") (v "d"))))
-#kat parsesTo "a & b << c + d * e"
+#kat exprParsesTo "a & b << c + d * e"
   (.bin "&" (v "a") (.bin "<<" (v "b") (.bin "+" (v "c") (.bin "*" (v "d") (v "e")))))
 -- Left associativity.
-#kat parsesTo "a - b - c" (.bin "-" (.bin "-" (v "a") (v "b")) (v "c"))
+#kat exprParsesTo "a - b - c" (.bin "-" (.bin "-" (v "a") (v "b")) (v "c"))
 -- A unary `-` takes the products that follow it; `!` takes a unary expression.
-#kat parsesTo "-a / b" (.neg (.bin "/" (v "a") (v "b")))
-#kat parsesTo "-a * b + c" (.bin "+" (.neg (.bin "*" (v "a") (v "b"))) (v "c"))
-#kat parsesTo "a * -b % c" (.bin "*" (v "a") (.neg (.bin "%" (v "b") (v "c"))))
-#kat parsesTo "!a & b" (.bin "&" (.not (v "a")) (v "b"))
+#kat exprParsesTo "-a / b" (.neg (.bin "/" (v "a") (v "b")))
+#kat exprParsesTo "-a * b + c" (.bin "+" (.neg (.bin "*" (v "a") (v "b"))) (v "c"))
+#kat exprParsesTo "a * -b % c" (.bin "*" (v "a") (.neg (.bin "%" (v "b") (v "c"))))
+#kat exprParsesTo "!a & b" (.bin "&" (.not (v "a")) (v "b"))
 -- A cast binds tightest.
-#kat parsesTo "(64u) a & b" (.bin "&" (.cast 64 (v "a")) (v "b"))
+#kat exprParsesTo "(64u) a & b" (.bin "&" (.cast 64 (v "a")) (v "b"))
 -- `?:` is loosest.
-#kat parsesTo "a | b == c ? d : e"
+#kat exprParsesTo "a | b == c ? d : e"
   (.cond (.bin "==" (.bin "|" (v "a") (v "b")) (v "c")) (v "d") (v "e"))
 
 /-! ## `JincInline`: casts and word-int types -/
@@ -120,9 +120,9 @@ def progRefuses (src frag : String) : Bool :=
 #kat progRefuses "fn f() { reg si64 y; y = 0; }" "si64"
 #kat progRefuses "fn f(reg si32 y) { }" "si32"
 -- Kept: `(Nui)` as `(Nu)`, `(uint)` and `(int)` as the unsigned value, `uiN` as `uN`.
-#kat parsesTo "(64ui) a" (.cast 64 (v "a"))
-#kat parsesTo "(uint) a + 1" (.bin "+" (.cast 0 (v "a")) (.num 1))
-#kat parsesTo "(int) a" (.cast 0 (v "a"))
+#kat exprParsesTo "(64ui) a" (.cast 64 (v "a"))
+#kat exprParsesTo "(uint) a + 1" (.bin "+" (.cast 0 (v "a")) (.num 1))
+#kat exprParsesTo "(int) a" (.cast 0 (v "a"))
 #kat match parseProg "fn f() { reg ui64 y; y = 0; }" with
   | .ok p => match p.fns with
     | [fn] => match fn.body with
@@ -217,4 +217,4 @@ open CatCrypt.Crypto.Jasmin.JazzToInstrR.RoundTrip
 
 end JazzLevels
 
-end CatCrypt.Crypto.Jasmin.JincGrammarDemo
+end CatCrypt.Crypto.Jasmin.Examples.JincGrammarDemo

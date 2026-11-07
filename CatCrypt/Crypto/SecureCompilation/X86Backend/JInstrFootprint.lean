@@ -69,7 +69,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.X86Backend.JInstrFootprint
 
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
-open CatCrypt.Crypto.Optimizer.SpillingRegAlloc (writtenNames readNames)
+open CatCrypt.Crypto.Optimizer.SpillingRegAlloc (writtenNames readNames runBlock_append)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence
   (FlagId flagWrites flagReads applySwap applySwaps)
 
@@ -191,16 +191,16 @@ def wrLocs (i : JInstr 64) : List Loc :=
   (writtenNames i).map Loc.reg ++ (flagWrites i).map Loc.flag ++ memWr i
 
 /-- No location of `L` overlaps a location of `M`. -/
-def disjointL (L M : List Loc) : Bool :=
+def disjointLocs (L M : List Loc) : Bool :=
   L.all fun l => M.all fun m => !l.overlap m
 
 /-- **Independence**: no write of either instruction overlaps a write or a read of the
     other. -/
 def indepF (a b : JInstr 64) : Bool :=
-  disjointL (wrLocs a) (wrLocs b) && disjointL (wrLocs a) (rdLocs b)
-    && disjointL (rdLocs a) (wrLocs b)
+  disjointLocs (wrLocs a) (wrLocs b) && disjointLocs (wrLocs a) (rdLocs b)
+    && disjointLocs (rdLocs a) (wrLocs b)
 
-theorem not_covered_of_disjointL {L M : List Loc} (h : disjointL L M = true) {x : Atom}
+theorem not_covered_of_disjointLocs {L M : List Loc} (h : disjointLocs L M = true) {x : Atom}
     (hx : Covered L x) : ¬ Covered M x := by
   rintro ⟨m, hm, hmx⟩
   obtain ⟨l, hl, hlx⟩ := hx
@@ -268,14 +268,14 @@ theorem eval_agree {s t : JState 64} (src : JOperand)
 
 /-- The hypotheses of the dependence lemmas: the two states agree at the read locations of
     `i`, split by kind of location. -/
-structure ReadAgree (i : JInstr 64) (s t : JState 64) : Prop where
+structure ReadLocsAgree (i : JInstr 64) (s t : JState 64) : Prop where
   reg : ∀ r, Loc.reg r ∈ rdLocs i → s.regs r = t.regs r
   flag : ∀ f, Loc.flag f ∈ rdLocs i → flagGet f s.flags = flagGet f t.flags
   cell : ∀ b o, Loc.cell b o ∈ rdLocs i → s.mem b o = t.mem b o
   bank : ∀ b, Loc.bank b ∈ rdLocs i → ∀ o, s.mem b o = t.mem b o
 
-theorem ReadAgree.of {i : JInstr 64} {s t : JState 64}
-    (h : ∀ x, Covered (rdLocs i) x → AgreeAt s t x) : ReadAgree i s t :=
+theorem ReadLocsAgree.of {i : JInstr 64} {s t : JState 64}
+    (h : ∀ x, Covered (rdLocs i) x → AgreeAt s t x) : ReadLocsAgree i s t :=
   ⟨fun _ hr => agree_reg h hr, fun _ hf => agree_flag h hf, fun _ _ hc => agree_cell h hc,
     fun _ hb => agree_bank h hb⟩
 
@@ -295,9 +295,9 @@ registers. A register covered by the write footprint is a written name
 register `d` is `fun r ↦ if r = d then v else s.regs r`, and after one that writes two it has
 two such tests; `regs_ite_dep` and `regs_ite₂_dep` reduce the goal to the agreement of the
 written values. The read hypotheses give that agreement from the agreement of the inputs, one
-lemma per kind of input: a register (`ReadAgree.get`), an operand (`ReadAgree.eval`), a flag
-(`ReadAgree.flagB_cf` and its two siblings), a condition (`ReadAgree.condB`), a memory cell
-(`ReadAgree.load`) and a register-indexed cell (`ReadAgree.loadIdx`). The constructors are
+lemma per kind of input: a register (`ReadLocsAgree.get`), an operand (`ReadLocsAgree.eval`), a flag
+(`ReadLocsAgree.flagB_cf` and its two siblings), a condition (`ReadLocsAgree.condB`), a memory cell
+(`ReadLocsAgree.load`) and a register-indexed cell (`ReadLocsAgree.loadIdx`). The constructors are
 grouped by the inputs they read, and each group is closed by one rewrite with these lemmas. -/
 
 /-- `memWr` holds no register. -/
@@ -319,60 +319,60 @@ theorem mem_writtenNames_of_covered {i : JInstr 64} {r : String}
       exact absurd (hc ▸ hm) (reg_not_mem_memWr i r)
     | _ => simp [Loc.covers] at hc
 
-namespace ReadAgree
+namespace ReadLocsAgree
 
 variable {i : JInstr 64} {s t : JState 64}
 
 /-- Agreement at a read register. -/
-theorem get (h : ReadAgree i s t) {x : String} (hx : x ∈ readNames i) : s.get x = t.get x :=
+theorem get (h : ReadLocsAgree i s t) {x : String} (hx : x ∈ readNames i) : s.get x = t.get x :=
   h.reg x (List.mem_append_left _ (List.mem_append_left _ (List.mem_map_of_mem hx)))
 
 /-- Agreement at an operand whose registers are read. -/
-theorem eval (h : ReadAgree i s t) {o : JOperand} (ho : AsmPrinter.srcNames o ⊆ readNames i) :
+theorem eval (h : ReadLocsAgree i s t) {o : JOperand} (ho : AsmPrinter.srcNames o ⊆ readNames i) :
     o.eval s = o.eval t :=
   eval_agree o fun _ hx => h.get (ho hx)
 
 /-- Agreement at a read flag. -/
-theorem flag' (h : ReadAgree i s t) {f : FlagId} (hf : f ∈ flagReads i) :
+theorem flag' (h : ReadLocsAgree i s t) {f : FlagId} (hf : f ∈ flagReads i) :
     flagGet f s.flags = flagGet f t.flags :=
   h.flag f (List.mem_append_left _ (List.mem_append_right _ (List.mem_map_of_mem hf)))
 
 /-- Agreement at the carry flag, when it is read. -/
-theorem flagB_cf (h : ReadAgree i s t) (hf : FlagId.CF ∈ flagReads i) :
+theorem flagB_cf (h : ReadLocsAgree i s t) (hf : FlagId.CF ∈ flagReads i) :
     s.flagB (·.cf) = t.flagB (·.cf) := by
   simp only [JState.flagB]
   rw [show s.flags.cf = t.flags.cf from h.flag' hf]
 
 /-- Agreement at the overflow flag, when it is read. -/
-theorem flagB_of (h : ReadAgree i s t) (hf : FlagId.OF ∈ flagReads i) :
+theorem flagB_of (h : ReadLocsAgree i s t) (hf : FlagId.OF ∈ flagReads i) :
     s.flagB (·.of) = t.flagB (·.of) := by
   simp only [JState.flagB]
   rw [show s.flags.of = t.flags.of from h.flag' hf]
 
 /-- Agreement at the zero flag, when it is read. -/
-theorem flagB_zf (h : ReadAgree i s t) (hf : FlagId.ZF ∈ flagReads i) :
+theorem flagB_zf (h : ReadLocsAgree i s t) (hf : FlagId.ZF ∈ flagReads i) :
     s.flagB (·.zf) = t.flagB (·.zf) := by
   simp only [JState.flagB]
   rw [show s.flags.zf = t.flags.zf from h.flag' hf]
 
 /-- Agreement at a condition whose flags are read. -/
-theorem condB (h : ReadAgree i s t) {c : Condt}
+theorem condB (h : ReadLocsAgree i s t) {c : Condt}
     (hc : RescheduleEquivalence.condFlagReads c ⊆ flagReads i) : s.condB c = t.condB c :=
   condB_agree c fun _ hf => h.flag' (hc hf)
 
 /-- Agreement at a read memory cell. -/
-theorem load (h : ReadAgree i s t) {b : String} {o : Int} (hc : Loc.cell b o ∈ memRd i) :
+theorem load (h : ReadLocsAgree i s t) {b : String} {o : Int} (hc : Loc.cell b o ∈ memRd i) :
     s.load b o = t.load b o :=
   h.cell b o (List.mem_append_right _ hc)
 
 /-- Agreement at a register-indexed cell of a read bank, with a read index register. -/
-theorem loadIdx (h : ReadAgree i s t) {b x : String} {sc : Nat} (hb : Loc.bank b ∈ memRd i)
+theorem loadIdx (h : ReadLocsAgree i s t) {b x : String} {sc : Nat} (hb : Loc.bank b ∈ memRd i)
     (hx : x ∈ readNames i) : s.loadIdx b x sc = t.loadIdx b x sc := by
   unfold JState.loadIdx
   rw [h.get hx]
   exact h.bank b (List.mem_append_right _ hb) _
 
-end ReadAgree
+end ReadLocsAgree
 
 /-- One register written: the register files agree at `r = d` when the written values do. -/
 theorem regs_ite_dep {s t : JState 64} {d r : String} {v v' : BitVec 64} (hr : r = d)
@@ -389,7 +389,7 @@ theorem regs_ite₂_dep {s t : JState 64} {a b r : String} {u u' v v' : BitVec 6
   rcases hr with rfl | rfl <;> simp
 
 /-- Dependence at a register. -/
-theorem evalInstr_dep_reg (s t : JState 64) (i : JInstr 64) (h : ReadAgree i s t)
+theorem evalInstr_dep_reg (s t : JState 64) (i : JInstr 64) (h : ReadLocsAgree i s t)
     (r : String) (hx : Covered (wrLocs i) (.reg r)) :
     (evalInstr s i).regs r = (evalInstr t i).regs r := by
   have hw := mem_writtenNames_of_covered hx
@@ -483,7 +483,7 @@ theorem evalInstr_dep_reg (s t : JState 64) (i : JInstr 64) (h : ReadAgree i s t
       (by rw [h.get List.mem_cons_self, h.get (List.mem_cons_of_mem _ List.mem_cons_self)])
 
 /-- Dependence at a flag. -/
-theorem evalInstr_dep_flag (s t : JState 64) (i : JInstr 64) (h : ReadAgree i s t)
+theorem evalInstr_dep_flag (s t : JState 64) (i : JInstr 64) (h : ReadLocsAgree i s t)
     (f : FlagId) (hx : Covered (wrLocs i) (.flag f)) :
     flagGet f (evalInstr s i).flags = flagGet f (evalInstr t i).flags := by
   obtain ⟨hR, hF, hC, hB⟩ := h
@@ -500,7 +500,7 @@ theorem evalInstr_dep_flag (s t : JState 64) (i : JInstr 64) (h : ReadAgree i s 
          all_goals cases f <;> simp_all [flagGet])
 
 /-- Dependence at a memory cell. -/
-theorem evalInstr_dep_cell (s t : JState 64) (i : JInstr 64) (h : ReadAgree i s t)
+theorem evalInstr_dep_cell (s t : JState 64) (i : JInstr 64) (h : ReadLocsAgree i s t)
     (b : String) (o : Int) (hx : Covered (wrLocs i) (.cell b o)) :
     (evalInstr s i).mem b o = (evalInstr t i).mem b o := by
   obtain ⟨hR, hF, hC, hB⟩ := h
@@ -534,15 +534,15 @@ theorem evalInstr_comm_of_indepF (s : JState 64) (a b : JInstr 64) (h : indepF a
   intro x
   by_cases hb : Covered (wrLocs b) x
   · -- `x` is written by `b`, so not by `a`.
-    have hna : ¬ Covered (wrLocs a) x := fun ha => not_covered_of_disjointL hww ha hb
+    have hna : ¬ Covered (wrLocs a) x := fun ha => not_covered_of_disjointLocs hww ha hb
     have h1 : AgreeAt (evalInstr (evalInstr s a) b) (evalInstr s b) x :=
       evalInstr_dep _ _ b (fun y hy => evalInstr_frame s a y
-        (fun ha => not_covered_of_disjointL hwr ha hy)) x hb
+        (fun ha => not_covered_of_disjointLocs hwr ha hy)) x hb
     exact h1.trans (evalInstr_frame _ a x hna).symm
   · by_cases ha : Covered (wrLocs a) x
     · have h1 : AgreeAt (evalInstr (evalInstr s b) a) (evalInstr s a) x :=
         evalInstr_dep _ _ a (fun y hy => evalInstr_frame s b y
-          (fun hb' => not_covered_of_disjointL hrw hy hb')) x ha
+          (fun hb' => not_covered_of_disjointLocs hrw hy hb')) x ha
       exact (evalInstr_frame _ b x hb).trans h1.symm
     · exact ((evalInstr_frame _ b x hb).trans (evalInstr_frame s a x ha)).trans
         ((evalInstr_frame _ a x ha).trans (evalInstr_frame s b x hb)).symm
@@ -608,12 +608,6 @@ instruction of a printed body. Two segments are independent when every instructi
 one is independent of every instruction of the other; independent adjacent segments can be
 transposed. -/
 
-theorem runBlock_append (s : JState 64) (l₁ l₂ : List (JInstr 64)) :
-    runBlock s (l₁ ++ l₂) = runBlock (runBlock s l₁) l₂ := by
-  induction l₁ generalizing s with
-  | nil => rfl
-  | cons i is ih => exact ih _
-
 /-- Every instruction of `u` is independent of every instruction of `v`. -/
 def indepSeg (u v : List (JInstr 64)) : Bool :=
   u.all fun a => v.all fun b => indepF a b
@@ -675,7 +669,7 @@ theorem runBlock_swapSeg (s : JState 64) (k : Nat) (segs : List (List (JInstr 64
     | x :: y :: rest =>
       simp only [checkSwapSeg] at h
       simp only [swapSeg, List.flatten_cons]
-      rw [runBlock_append s x, runBlock_append s x]
+      rw [runBlock_append (s := s) x, runBlock_append (s := s) x]
       simpa only [List.flatten_cons] using ih (runBlock s x) (y :: rest) h
 
 /-- Every segment transposition of `swaps`, applied left to right, is certified. -/

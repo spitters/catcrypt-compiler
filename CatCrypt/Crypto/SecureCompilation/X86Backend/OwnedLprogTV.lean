@@ -62,7 +62,7 @@ agree on the registers live at the successor (on `outs` at an exit that leaves t
 the zero, carry and overflow flags when the flags are live, and on every array written,
 with every start register these values read live at the block, and the flags live at the
 block when a value reads a start flag. A register agrees when its two words are one word or
-evaluate alike wherever the source block's guards hold (`regAgree`). The live sets are
+evaluate alike wherever the source block's guards hold (`exitRegAgree`). The live sets are
 computed by a fixpoint iteration (`liveIter`) and checked, not trusted.
 
 ## Carries in flags
@@ -108,7 +108,7 @@ instances at it (`symLaws_x86`, `symSubst_x86`).
   the symbolic step layer by layer, and runs.
 * `SDec`, `symDec`: the symbolic value of a branch condition.
 * `blockOk`, `ownedCheckWith`, `ownedCheckM`: the checker.
-* `STerm.semEqG`, `SG.impG`, `regAgree`: agreement of two words and a guard implied by the
+* `STerm.semEqG`, `SG.impG`, `exitRegAgree`: agreement of two words and a guard implied by the
   source guards, at every evaluation where those guards hold.
 * `STerm.normC`, `CanonT`, `CanonT.build`, `canonEqT`, `guardFacts`, `SG.impT`, `regAgreeT`:
   the canonical keys of a term table and the checks over them.
@@ -137,9 +137,9 @@ instances at it (`symLaws_x86`, `symSubst_x86`).
   over the table.
 * `ownedCheckWith_sound_at`, `ownedCheckM_sound_at`: soundness of the checker over an
   instruction set.
-* `carryWord_adc`, `carryBit_adc`, `carryOutBit_eq`, `borrowOutBit_eq`, `aluBit_add`,
-  `aluBit_sub`, `binW_add_carry`, `binW_sub_borrow`: the words and carries of one carry step in
-  its two forms agree.
+* `carryWord_adc`, `carryBit_adc`, `carryOutBit_eq_ofBool_carryBit`, `borrowOutBit_eq`,
+  `aluBit_add`, `aluBit_sub`, `binW_add_carry`, `binW_sub_borrow`: the words and carries of one
+  carry step in its two forms agree.
 * `STerm.normC_ev`, `CanonT.ok_build`, `canonEqT_ev`, `SG.impT_holds`, `guardFacts_sound`,
   `regAgreeT_spec`: the normal form evaluates as the node, the canonical keys describe the
   table, and words with one key evaluate alike.
@@ -2837,7 +2837,7 @@ noncomputable def SG.impG (gs : List SG) (g : SG) : Bool :=
     set `n` under the guards `gs` of the source block: they are one word, or they evaluate
     alike wherever `gs` hold and `t'` may be compared at the block; and `t` may be compared at
     the block. -/
-noncomputable def regAgree (n : List String × Bool) (gs : List SG) (t t' : STerm) : Bool :=
+noncomputable def exitRegAgree (n : List String × Bool) (gs : List SG) (t t' : STerm) : Bool :=
   (t == t' || (STerm.semEqG gs t t' && okIn n t'.vars t'.readsF)) && okIn n t.vars t.readsF
 
 theorem STerm.semEqG_spec {gs : List SG} {t t' : STerm} (h : STerm.semEqG gs t t' = true)
@@ -3018,17 +3018,17 @@ def arrAgree (n : List String × Bool) (gs gs' : List SG) (a a' : SArr) : Bool :
     there, on the zero, carry and overflow flags; on `outs` when the block may leave the
     body; and on every array written, up to stores of the element read (`arrAgree`, under
     the guards `gs` and `gs'` of the two runs). A register agrees when its two words are one
-    word or evaluate alike wherever the guards `gs` of the source run hold (`regAgree`).
+    word or evaluate alike wherever the guards `gs` of the source run hold (`exitRegAgree`).
     Every value compared passes `okIn n`. -/
 noncomputable def exitAgree (outs : List String) (L : Nat → List String × Bool)
     (n : List String × Bool)
     (T : Term) (ss ss' : SSt) (gs gs' : List SG) : Bool :=
   T.succs.all (fun j =>
-      (L j).1.all (fun r => regAgree n gs (ss.regs r) (ss'.regs r)) &&
+      (L j).1.all (fun r => exitRegAgree n gs (ss.regs r) (ss'.regs r)) &&
         (!(L j).2 || (ss.zf == ss'.zf && okIn n ss.zf.vars ss.zf.readsInit &&
           ss.cf == ss'.cf && okIn n ss.cf.vars ss.cf.readsF &&
           ss.of == ss'.of && okIn n ss.of.vars ss.of.readsF))) &&
-    (!T.halts || outs.all (fun r => regAgree n gs (ss.regs r) (ss'.regs r))) &&
+    (!T.halts || outs.all (fun r => exitRegAgree n gs (ss.regs r) (ss'.regs r))) &&
     (ss.awr ++ ss'.awr).all (fun q => arrAgree n gs gs' (ss.arrs q) (ss'.arrs q))
 
 /-- The check of block `k` of the source body `B` (block `b`) against block `k` of the
@@ -3098,11 +3098,11 @@ theorem exitAgree_spec {outs : List String} {L : Nat → List String × Bool}
     {n : List String × Bool} {T : Term} {ss ss' : SSt} {gs gs' : List SG}
     (h : exitAgree outs L n T ss ss' gs gs' = true) :
     (∀ j ∈ T.succs,
-      (∀ r ∈ (L j).1, regAgree n gs (ss.regs r) (ss'.regs r) = true) ∧
+      (∀ r ∈ (L j).1, exitRegAgree n gs (ss.regs r) (ss'.regs r) = true) ∧
       ((L j).2 = true → ss.zf = ss'.zf ∧ okIn n ss.zf.vars ss.zf.readsInit = true ∧
         ss.cf = ss'.cf ∧ okIn n ss.cf.vars ss.cf.readsF = true ∧
         ss.of = ss'.of ∧ okIn n ss.of.vars ss.of.readsF = true)) ∧
-    (T.halts = true → ∀ r ∈ outs, regAgree n gs (ss.regs r) (ss'.regs r) = true) ∧
+    (T.halts = true → ∀ r ∈ outs, exitRegAgree n gs (ss.regs r) (ss'.regs r) = true) ∧
     (∀ q ∈ ss.awr ++ ss'.awr, arrAgree n gs gs' (ss.arrs q) (ss'.arrs q) = true) := by
   simp only [exitAgree, Bool.and_eq_true, List.all_eq_true, beq_iff_eq, Bool.or_eq_true,
     Bool.not_eq_true'] at h
@@ -3144,10 +3144,10 @@ theorem exit_rel {outs : List String} {L : Nat → List String × Bool} {n : Lis
     · simp only [List.mem_append, not_or] at hq
       rw [hg.2 q hq.1, hg'.2 q hq.2]
       rfl
-  have hreg : ∀ r, regAgree n gs (ss.regs r) (ss'.regs r) = true →
+  have hreg : ∀ r, exitRegAgree n gs (ss.regs r) (ss'.regs r) = true →
       u'.prog.base.reg.lvm r = u.prog.base.reg.lvm r := by
     intro r h
-    simp only [regAgree, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h
+    simp only [exitRegAgree, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h
     obtain ⟨e | ⟨hs, v'⟩, v⟩ := h
     · rw [hH'.1 r, hH.1 r, ← e]
       exact hterm _ v
@@ -5129,7 +5129,7 @@ theorem carryBit_adcx_eq (a b : BitVec 64) (c : Bool) :
     carryBit .adcx false a b c = decide (2 ^ 64 ≤ a.toNat + b.toNat + (if c then 1 else 0)) := by
   simp only [carryBit, x86_ADCX, waddcarry, Option.getD_some]
 
-theorem carryOutBit_eq (a b : BitVec 64) (c : BitVec 1) :
+theorem carryOutBit_eq_ofBool_carryBit (a b : BitVec 64) (c : BitVec 1) :
     JasminDialect.carryOutBit a b c = BitVec.ofBool (carryBit .adcx false a b (c.getLsbD 0)) := by
   rw [carryBit_adcx_eq, JasminDialect.carryOutBit, bv1_toNat]
   exact ite_bv1 _
@@ -5491,8 +5491,8 @@ theorem STerm.normC_ev {K : Array STerm} {W : Array (Option Nat)} {F : List (Str
           rw [addFC_ev]
           simp only [STerm.subst, STerm.ev, coutBit]
           rw [ev_of_wid (w64 x h.1), ev_of_wid (w64 y h.2)]
-          simp only [castW_mk, extW, BitVec.setWidth_eq, carryOutBit_eq, bitOf_setWidth1,
-            Bool.false_eq_true, ↓reduceIte]
+          simp only [castW_mk, extW, BitVec.setWidth_eq, carryOutBit_eq_ofBool_carryBit,
+            bitOf_setWidth1, Bool.false_eq_true, ↓reduceIte]
         · rfl
       · simp only [STerm.normC]
         split
@@ -6258,7 +6258,7 @@ theorem arrAgreeT_of_eq {E : Array TEnt} {n : List String × Bool} {gs gs' : Lis
   simp only [arrAgreeT, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq]
   exact Or.inl ⟨e, o⟩
 
-/-- The register agreement of `exitAgree` over the table `E` (`regAgree`): the two words are
+/-- The register agreement of `exitAgree` over the table `E` (`exitRegAgree`): the two words are
     one word, or they have one canonical form under the facts of the source block's guards `gs`
     and `t'` may be compared at the block; and `t` may be compared at the block. -/
 def regAgreeT (E : Array TEnt) (n : List String × Bool) (gs : List SG) (t t' : STerm) : Bool :=
@@ -6281,9 +6281,9 @@ theorem regAgreeT_mono {E : Array TEnt} {n n' : List String × Bool} {gs : List 
 theorem regAgreeT_spec {σ : Nat → STerm} {E : Array TEnt} (h : TblOK σ E)
     {n : List String × Bool} {gs : List SG} {t t' : STerm}
     (ha : regAgreeT E n gs t t' = true) :
-    regAgree n (gs.map (SG.subst σ)) (t.subst σ) (t'.subst σ) = true := by
+    exitRegAgree n (gs.map (SG.subst σ)) (t.subst σ) (t'.subst σ) = true := by
   simp only [regAgreeT, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at ha
-  simp only [regAgree, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq]
+  simp only [exitRegAgree, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq]
   obtain ⟨h1 | ⟨⟨hb, hc⟩, ho'⟩, ho⟩ := ha
   · exact ⟨Or.inl (by rw [h1]), okInT_spec h ho⟩
   · refine ⟨Or.inr ⟨STerm.semEqG_of fun V A C O hA => ?_, okInT_spec h ho'⟩,

@@ -241,7 +241,7 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 * `restoreB`: the restoration check of the callee-saved registers on the wire of an image:
   the first save `qsave.X := X` of each callee-saved register `X`, no other write to
   `qsave.X`, and the restores `X := qsave.X` as the last six instructions (`restoreAllB`);
-  or, per register, no write of `X` at all (`keepRegB`) or its save and its first restore
+  or, per register, no write of `X` at all (`wireKeepsRegB`) or its save and its first restore
   with no write of `X` after it (`restoreRegAtB`) (`restoreSomeB`).
 * `frameTrim`: a printed body without the saves and restores of the callee-saved registers
   it does not write and without the dead saves of the pointer arguments.
@@ -315,8 +315,8 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
 ## Main results
 
 * `restoreB_sound`: a halting run of an image whose wire passes the restoration check
-  `restoreB` ends with every callee-saved register at its entry value (`keep_run` for a
-  register no instruction writes);
+  `restoreB` ends with every callee-saved register at its entry value
+  (`lsemFuelMemFk_keep_reg` for a register no instruction writes);
   `restoreB_of_shape`: the wire of the printer's save prologue, a middle part that writes no
   save slot of a callee-saved register, and the restore epilogue passes `restoreB`.
 * `regionPrintedB_of_regionImgB`: a body that passes `regionImgB` is in `regionPrintedB`.
@@ -1074,7 +1074,7 @@ theorem restoreAllB_facts {w : List LinstrR} (h : restoreAllB w = true) {X : Str
 
 /-- A halting run of a body none of whose instructions writes `X`, each of `restKindB`,
     ends with `X` at its value in the entry state. -/
-theorem keep_run {img : List LinstrRM} {X : String} {fn : String}
+theorem lsemFuelMemFk_keep_reg {img : List LinstrRM} {X : String} {fn : String}
     (hk : ∀ x ∈ img.map Prod.fst, restKindB x = true ∧ X ∉ dstNames x) {ck : Bool}
     {t : LstateMF} :
     ∀ (f : Nat) (s : LstateMF), s.prog.lfn = fn →
@@ -1101,17 +1101,17 @@ theorem keep_run {img : List LinstrRM} {X : String} {fn : String}
           obtain ⟨hkind, hX⟩ := hk x.1 (List.mem_map_of_mem (List.mem_of_getElem? hxi))
           obtain ⟨x1, tag⟩ := x
           have hstep : evalInstrPMemF (singletonProgM fn img) (x1, tag) s = some s' := he'
-          rw [keep_run hk f s' (hfn'.trans hfn) h]
+          rw [lsemFuelMemFk_keep_reg hk f s' (hfn'.trans hfn) h]
           exact evalInstrPMemF_keep _ hkind tag hstep hX
         · cases h
 
 /-- **The keep check of the register `X`** on a wire: every instruction is of `restKindB` and
     none writes `X`. A body that passes it needs no save of `X`. -/
-def keepRegB (w : List LinstrR) (X : String) : Bool :=
+def wireKeepsRegB (w : List LinstrR) (X : String) : Bool :=
   w.all fun x => restKindB x && !(dstNames x).contains X
 
-/-- The conditions `keepRegB` checks. -/
-theorem keepRegB_spec {w : List LinstrR} {X : String} (h : keepRegB w X = true) :
+/-- The conditions `wireKeepsRegB` checks. -/
+theorem wireKeepsRegB_spec {w : List LinstrR} {X : String} (h : wireKeepsRegB w X = true) :
     ∀ x ∈ w, restKindB x = true ∧ X ∉ dstNames x := by
   intro x hx
   have := List.all_eq_true.mp h x hx
@@ -1182,10 +1182,10 @@ theorem restoreRegAtB_facts {w : List LinstrR} {X : String} (h : restoreRegAtB w
   · cases h
 
 /-- **The restoration check of a saved subset** on the wire `w` of an image: each
-    callee-saved register either passes the keep check `keepRegB` (no instruction writes it,
+    callee-saved register either passes the keep check `wireKeepsRegB` (no instruction writes it,
     so the frame need not save it) or the restoration check `restoreRegAtB`. -/
 def restoreSomeB (w : List LinstrR) : Bool :=
-  calleeSavedRegs.all fun X => keepRegB w X || restoreRegAtB w X
+  calleeSavedRegs.all fun X => wireKeepsRegB w X || restoreRegAtB w X
 
 /-- **The callee-saved restoration check** on the wire `w` of an image: the check of the
     whole callee-saved set `restoreAllB`, or the check of a saved subset `restoreSomeB`. -/
@@ -1205,7 +1205,7 @@ theorem restoreB_sound {img : List LinstrRM} (h : restoreB (img.map Prod.fst) = 
   · obtain ⟨i, r, F⟩ := restoreAllB_facts h hX
     exact restore_of_facts F hfn hpc hr
   · rcases Bool.or_eq_true_iff.mp (List.all_eq_true.mp h X hX) with hk | hk
-    · exact keep_run (keepRegB_spec hk) f s hfn hr
+    · exact lsemFuelMemFk_keep_reg (wireKeepsRegB_spec hk) f s hfn hr
     · obtain ⟨i, r, F⟩ := restoreRegAtB_facts hk
       exact restore_of_facts F hfn hpc hr
 
@@ -1300,7 +1300,7 @@ The allocation saves every callee-saved register and both pointer arguments on e
 save and the restore of each callee-saved register that no other instruction of the body
 writes, and the save of a pointer argument whose slot no other instruction names. The
 gate of `regionBack` runs on the trimmed body; the restoration check `restoreB` accepts it
-through `restoreSomeB`, at which a register the body does not write passes `keepRegB`. -/
+through `restoreSomeB`, at which a register the body does not write passes `wireKeepsRegB`. -/
 
 /-- The instruction kinds `frameTrim` reads a body of: an `Lopn`, a label, a jump, a
     conditional jump, a return or an alignment. -/
