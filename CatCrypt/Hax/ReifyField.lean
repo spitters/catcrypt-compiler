@@ -36,10 +36,13 @@ the `forFold` (`forFoldRev`) of the hax extraction, an integer literal bound kep
 literal. The ascent generator states the loop by the same combinator, so `ascend_reified`
 validates the literal against the function.
 
-Values of `ZMod p` are encoded as the integer of their canonical representative
-(`HaxEnc (ZMod p)`, `enc x = .int x.val`), the encoding `Hax.hax64Builtins` reads at a modulus
-below `2^64`. The leaf lemmas `hax64Builtins_zmod_add`, `_sub`, `_mul`, `_neg` state that the
-table answers a tagged head on encoded elements by the encoding of the field operation.
+Values of `ZMod p` are encoded as the hax runtime holds them (`HaxEnc (ZMod p)`): at a modulus
+below `2^64` the integer of their canonical representative (`enc_zmod`), at a modulus
+`p ≥ 2^64` the array of the little-endian `64`-bit limbs of the representative in
+`fieldLimbs p` words (`enc_zmod_wide`), the encodings `Hax.hax64Builtins` reads at a narrow and
+at a wide tagged head. The leaf lemmas `hax64Builtins_zmod_add`, `_sub`, `_mul`, `_neg` and
+their `_wide` forms state that the table answers a tagged head on encoded elements by the
+encoding of the field operation.
 
 `ImpExpr.toTExpr Γ e` lifts a literal to a typed expression whose erasure is `e`
 (`erase_toTExpr`), typing a narrow field call as one `u64` word.
@@ -57,8 +60,11 @@ table answers a tagged head on encoded elements by the encoding of the field ope
 
 ## Main results
 
+* `enc_zmod`, `enc_zmod_wide` — the encoding at a narrow and at a wide modulus
 * `hax64Builtins_zmod_add`, `hax64Builtins_zmod_sub`, `hax64Builtins_zmod_mul`,
   `hax64Builtins_zmod_neg` — the table answers the tagged heads on encoded elements
+* `hax64Builtins_zmod_add_wide`, `hax64Builtins_zmod_sub_wide`, `hax64Builtins_zmod_mul_wide`,
+  `hax64Builtins_zmod_neg_wide` — the same at a modulus `p ≥ 2^64`, on limb arrays
 * `hax64Builtins_mul_babyBear` and its siblings — the same at the BabyBear heads, in the
   form the ascent generator indexes
 * `erase_toTExpr` — the erasure of the lift is the literal
@@ -381,15 +387,47 @@ namespace CatCrypt.Hax.ReifyField
 
 open _root_.Hax _root_.Hax.Ascent _root_.Hax.FieldTag
 
-/-- The encoding of an element of `ZMod p`: the integer of its canonical representative. -/
-instance instHaxEncZMod {p : ℕ} : HaxEnc (ZMod p) := ⟨fun x => .int x.val⟩
+/-- The encoding of an element of `ZMod p`, the value the hax runtime gives it: at a modulus
+    below `2^64` the integer of its canonical representative, at a modulus `p ≥ 2^64` the array
+    of the little-endian `64`-bit limbs of the representative in `fieldLimbs p` words, the
+    operands and results of a wide tagged head (`FieldTag.fieldCall`). -/
+instance instHaxEncZMod {p : ℕ} : HaxEnc (ZMod p) :=
+  ⟨fun x => if p < 2 ^ 64 then .int x.val else .array (limbsOf (fieldLimbs p) x.val)⟩
 
-theorem enc_zmod {p : ℕ} (x : ZMod p) : enc x = .int x.val := rfl
+/-- At a modulus below `2^64` an element is encoded as the integer of its canonical
+    representative. -/
+theorem enc_zmod {p : ℕ} (hp : p < 2 ^ 64) (x : ZMod p) : enc x = .int x.val :=
+  ite_eq_left hp
 
-instance {p : ℕ} : HaxEnc.Plain (ZMod p) := ⟨fun _ => rfl⟩
+/-- At a modulus `p ≥ 2^64` an element is encoded as the limbs of its canonical
+    representative in `fieldLimbs p` words. -/
+theorem enc_zmod_wide {p : ℕ} (hp : 2 ^ 64 ≤ p) (x : ZMod p) :
+    enc x = .array (limbsOf (fieldLimbs p) x.val) :=
+  ite_eq_right (Nat.not_lt.mpr hp)
+
+instance {p : ℕ} : HaxEnc.Plain (ZMod p) :=
+  ⟨fun x => by
+    by_cases hp : p < 2 ^ 64
+    · rw [enc_zmod hp]; rfl
+    · rw [enc_zmod_wide (Nat.le_of_not_lt hp)]; rfl⟩
+
+/-- The canonical representative of an element is below `2 ^ (64 · fieldLimbs p)`, so its limbs
+    in `fieldLimbs p` words determine it. -/
+theorem val_eq_of_limbsOf_eq {p : ℕ} [NeZero p] {x y : ZMod p}
+    (h : limbsOf (fieldLimbs p) x.val = limbsOf (fieldLimbs p) y.val) : x = y := by
+  have hx := (ZMod.val_lt x).trans_le (le_pow_fieldLimbs p)
+  have hy := (ZMod.val_lt y).trans_le (le_pow_fieldLimbs p)
+  have hd := congrArg limbsDec h
+  rw [limbsDec_limbsOf, limbsDec_limbsOf, Nat.mod_eq_of_lt hx, Nat.mod_eq_of_lt hy] at hd
+  exact ZMod.val_injective _ (Option.some.inj hd)
 
 instance {p : ℕ} [NeZero p] : HaxEnc.Inj (ZMod p) :=
-  ⟨fun _ _ h => ZMod.val_injective _ (by exact_mod_cast Value.int.inj h)⟩
+  ⟨fun x y h => by
+    by_cases hp : p < 2 ^ 64
+    · rw [enc_zmod hp, enc_zmod hp] at h
+      exact ZMod.val_injective _ (by exact_mod_cast Value.int.inj h)
+    · rw [enc_zmod_wide (Nat.le_of_not_lt hp), enc_zmod_wide (Nat.le_of_not_lt hp)] at h
+      exact val_eq_of_limbsOf_eq (Value.array.inj h)⟩
 
 /-! ## The table at the tagged heads -/
 
@@ -404,7 +442,7 @@ theorem hax64Builtins_zmod_binary {m : FieldMethod} (ht : fieldTag? f = some (m,
     hax64Builtins f [enc x, enc y] = some (.int (fieldVal m p x.val y.val : ℕ)) := by
   have h := hax64Builtins_fieldArgs ht hp x.val y.val
   simp only [fieldArgs, hm, ite_true] at h
-  rw [enc_zmod, enc_zmod, h, fieldArm, ite_eq_left ⟨ZMod.val_lt x, fun _ => ZMod.val_lt y⟩]
+  rw [enc_zmod hp, enc_zmod hp, h, fieldArm, ite_eq_left ⟨ZMod.val_lt x, fun _ => ZMod.val_lt y⟩]
 
 /-- At a tagged head of a method with one argument at a modulus below `2^64`, the table
     `hax64Builtins` on an encoded element is the integer of `fieldVal`. -/
@@ -413,18 +451,18 @@ theorem hax64Builtins_zmod_unary {m : FieldMethod} (ht : fieldTag? f = some (m, 
     hax64Builtins f [enc x] = some (.int (fieldVal m p x.val 0 : ℕ)) := by
   have h := hax64Builtins_fieldArgs ht hp x.val 0
   simp only [fieldArgs, hm, Bool.false_eq_true, ite_false] at h
-  rw [enc_zmod, h, fieldArm, ite_eq_left ⟨ZMod.val_lt x, fun h => absurd h (by simp [hm])⟩]
+  rw [enc_zmod hp, h, fieldArm, ite_eq_left ⟨ZMod.val_lt x, fun h => absurd h (by simp [hm])⟩]
 
 /-- The table answers the tagged head of `add` by the encoding of the sum. -/
 theorem hax64Builtins_zmod_add (ht : fieldTag? f = some (.add, p)) (hp : p < 2 ^ 64)
     (x y : ZMod p) : hax64Builtins f [enc x, enc y] = some (enc (x + y)) := by
-  rw [hax64Builtins_zmod_binary ht hp rfl, enc_zmod, ZMod.val_add]
+  rw [hax64Builtins_zmod_binary ht hp rfl, enc_zmod hp, ZMod.val_add]
   rfl
 
 /-- The table answers the tagged head of `mul` by the encoding of the product. -/
 theorem hax64Builtins_zmod_mul (ht : fieldTag? f = some (.mul, p)) (hp : p < 2 ^ 64)
     (x y : ZMod p) : hax64Builtins f [enc x, enc y] = some (enc (x * y)) := by
-  rw [hax64Builtins_zmod_binary ht hp rfl, enc_zmod, ZMod.val_mul]
+  rw [hax64Builtins_zmod_binary ht hp rfl, enc_zmod hp, ZMod.val_mul]
   rfl
 
 /-- The canonical representative of `x - y` is `(x.val + p - y.val) % p`. -/
@@ -445,13 +483,62 @@ theorem val_neg_eq (x : ZMod p) : (-x).val = (p - x.val) % p := by
 /-- The table answers the tagged head of `sub` by the encoding of the difference. -/
 theorem hax64Builtins_zmod_sub (ht : fieldTag? f = some (.sub, p)) (hp : p < 2 ^ 64)
     (x y : ZMod p) : hax64Builtins f [enc x, enc y] = some (enc (x - y)) := by
-  rw [hax64Builtins_zmod_binary ht hp rfl, enc_zmod, val_sub_eq]
+  rw [hax64Builtins_zmod_binary ht hp rfl, enc_zmod hp, val_sub_eq]
   rfl
 
 /-- The table answers the tagged head of `neg` by the encoding of the negation. -/
 theorem hax64Builtins_zmod_neg (ht : fieldTag? f = some (.neg, p)) (hp : p < 2 ^ 64)
     (x : ZMod p) : hax64Builtins f [enc x] = some (enc (-x)) := by
-  rw [hax64Builtins_zmod_unary ht hp rfl, enc_zmod, val_neg_eq]
+  rw [hax64Builtins_zmod_unary ht hp rfl, enc_zmod hp, val_neg_eq]
+  rfl
+
+/-- At a tagged head of a method with two arguments at a modulus `p ≥ 2^64`, the table
+    `hax64Builtins` on encoded elements is the array of the limbs of `fieldVal`. -/
+theorem hax64Builtins_zmod_wide_binary {m : FieldMethod} (ht : fieldTag? f = some (m, p))
+    (hp : 2 ^ 64 ≤ p) (hm : m.binary = true) (x y : ZMod p) :
+    hax64Builtins f [enc x, enc y] =
+      some (.array (limbsOf (fieldLimbs p) (fieldVal m p x.val y.val))) := by
+  have h := hax64Builtins_fieldArgsWide ht hp (ZMod.val_lt x) (ZMod.val_lt y)
+  simp only [fieldArgsWide, hm, ite_true] at h
+  rw [enc_zmod_wide hp, enc_zmod_wide hp, h]
+
+/-- At a tagged head of a method with one argument at a modulus `p ≥ 2^64`, the table
+    `hax64Builtins` on an encoded element is the array of the limbs of `fieldVal`. -/
+theorem hax64Builtins_zmod_wide_unary {m : FieldMethod} (ht : fieldTag? f = some (m, p))
+    (hp : 2 ^ 64 ≤ p) (hm : m.binary = false) (x : ZMod p) :
+    hax64Builtins f [enc x] =
+      some (.array (limbsOf (fieldLimbs p) (fieldVal m p x.val 0))) := by
+  have h := hax64Builtins_fieldArgsWide ht hp (ZMod.val_lt x)
+    (Nat.lt_of_lt_of_le (Nat.two_pow_pos 64) hp)
+  simp only [fieldArgsWide, hm, Bool.false_eq_true, ite_false] at h
+  rw [enc_zmod_wide hp, h]
+
+/-- At a modulus `p ≥ 2^64` the table answers the tagged head of `add` by the encoding of
+    the sum. -/
+theorem hax64Builtins_zmod_add_wide (ht : fieldTag? f = some (.add, p)) (hp : 2 ^ 64 ≤ p)
+    (x y : ZMod p) : hax64Builtins f [enc x, enc y] = some (enc (x + y)) := by
+  rw [hax64Builtins_zmod_wide_binary ht hp rfl, enc_zmod_wide hp, ZMod.val_add]
+  rfl
+
+/-- At a modulus `p ≥ 2^64` the table answers the tagged head of `mul` by the encoding of
+    the product. -/
+theorem hax64Builtins_zmod_mul_wide (ht : fieldTag? f = some (.mul, p)) (hp : 2 ^ 64 ≤ p)
+    (x y : ZMod p) : hax64Builtins f [enc x, enc y] = some (enc (x * y)) := by
+  rw [hax64Builtins_zmod_wide_binary ht hp rfl, enc_zmod_wide hp, ZMod.val_mul]
+  rfl
+
+/-- At a modulus `p ≥ 2^64` the table answers the tagged head of `sub` by the encoding of
+    the difference. -/
+theorem hax64Builtins_zmod_sub_wide (ht : fieldTag? f = some (.sub, p)) (hp : 2 ^ 64 ≤ p)
+    (x y : ZMod p) : hax64Builtins f [enc x, enc y] = some (enc (x - y)) := by
+  rw [hax64Builtins_zmod_wide_binary ht hp rfl, enc_zmod_wide hp, val_sub_eq]
+  rfl
+
+/-- At a modulus `p ≥ 2^64` the table answers the tagged head of `neg` by the encoding of
+    the negation. -/
+theorem hax64Builtins_zmod_neg_wide (ht : fieldTag? f = some (.neg, p)) (hp : 2 ^ 64 ≤ p)
+    (x : ZMod p) : hax64Builtins f [enc x] = some (enc (-x)) := by
+  rw [hax64Builtins_zmod_wide_unary ht hp rfl, enc_zmod_wide hp, val_neg_eq]
   rfl
 
 end Leaves
