@@ -942,9 +942,18 @@ theorem stagePairs_resynthAt
   exact List.Subset.trans (gPairs_zyzEmit_subset _ _)
     (List.Subset.trans (gPairs_kakEmit_subset _ _) (gPairs_level2Gates_subset c))
 
+/-- The resynthesis level at the checked fits, with or without the T-guard, keeps
+connectivity. -/
+theorem stagePairs_resynthT (tSafe : Bool) :
+    StagePairs (Optimization.ResynthLevel.resynthT (n := n) tSafe) := fun c =>
+  stagePairs_resynthAt
+    (Optimization.ResynthLevel.tGuardFit tSafe Synthesis.QrunchFit.qrunchFitChecked)
+    (fun ax => Optimization.ResynthLevel.tGuardZFit tSafe
+      (Synthesis.QrunchFit.qrunchZFitChecked ax)) c
+
 /-- The resynthesis level at the checked fits keeps connectivity. -/
 theorem stagePairs_resynth : StagePairs (Optimization.ResynthLevel.resynth (n := n)) :=
-  stagePairs_resynthAt _ _
+  stagePairs_resynthT false
 
 /-! ## The round, the iteration and the whole run -/
 

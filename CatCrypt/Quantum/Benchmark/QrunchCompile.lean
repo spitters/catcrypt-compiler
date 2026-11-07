@@ -44,9 +44,10 @@ with `--check` (`stageBound_levelStage_l2r`) and `2`, with bound `0` for the rou
 [--cost cx|t]` compiles one file (`2r` by default); `--no-elide` and `--no-snap` turn off swap
 elision and angle snapping. `--cost t` orders the iterates by the T-cost first
 (`QrunchRound.BetterC`) and keeps the input when the first round raises its T-cost
-(`QrunchRound.tCost_runRounds_le`), and runs level `2` where `2r` is asked, since the
-floating-point resynthesis replaces T gates by arbitrary rotations; `--cost cx`, the default,
-is the order above. At `2r`,
+(`QrunchRound.tCost_runRounds_le`), and at `2r` guards the fits by the T-cost
+(`ResynthLevel.tGuardFit`, `ResynthLevel.tGuardZFit`): a block or run is replaced by its
+template only when the template does not raise its T-cost (`ResynthLevel.tCostG_resynthT_out_le`);
+`--cost cx`, the default, is the order above and runs the fits unguarded. At `2r`,
 `--check` runs `resynthAt` at the checked fits and reports its bound;
 without it `resynthAt` runs at the unchecked fits, which replace the same blocks and runs when
 every fit passes the checker, and the bound is reported as `unchecked`. `--rounds 1` runs one
@@ -105,16 +106,21 @@ def Level.ofString? : String → Option Level
   | _ => none
 
 /-- The fit pair of `resynthAt`: the checked fits of `resynth` when `check`, else the unchecked
-fits `qrunchFitUnchecked`, `qrunchZFitUnchecked`. -/
-def fits {n : ℕ} (check : Bool) :
+fits `qrunchFitUnchecked`, `qrunchZFitUnchecked`, both under the T-cost guard `tSafe`
+(`tGuardFit`, `tGuardZFit`). -/
+def fits {n : ℕ} (check tSafe : Bool) :
     Synthesis.KAKPassSmall.BlockFit n Payload ×
       (Array Synthesis.ZYZPass.Axis → Synthesis.ZYZPass.ZFit n Payload) :=
-  if check then (Synthesis.QrunchFit.qrunchFitChecked, Synthesis.QrunchFit.qrunchZFitChecked)
-  else (Synthesis.QrunchFit.qrunchFitUnchecked, Synthesis.QrunchFit.qrunchZFitUnchecked)
+  if check then
+    (tGuardFit tSafe Synthesis.QrunchFit.qrunchFitChecked,
+      fun ax => tGuardZFit tSafe (Synthesis.QrunchFit.qrunchZFitChecked ax))
+  else
+    (tGuardFit tSafe Synthesis.QrunchFit.qrunchFitUnchecked,
+      fun ax => tGuardZFit tSafe (Synthesis.QrunchFit.qrunchZFitUnchecked ax))
 
 /-- The stage of a round at a level, as a `Resynth` record: at `1` and `2` the gates of
-`fullOptimize` in every stage and no payload, at `2r` `resynthAt` at `fits check`. -/
-def levelStage {n : ℕ} (level : Level) (check : Bool) (c : Circuit n) : Resynth n :=
+`fullOptimize` in every stage and no payload, at `2r` `resynthAt` at `fits check tSafe`. -/
+def levelStage {n : ℕ} (level : Level) (check tSafe : Bool) (c : Circuit n) : Resynth n :=
   match level with
   | .l1 =>
     let l := OpenQASM.toGateList (Optimization.FullOptimizer.fullOptimize .Level1 c)
@@ -122,18 +128,18 @@ def levelStage {n : ℕ} (level : Level) (check : Bool) (c : Circuit n) : Resynt
   | .l2 =>
     let l := level2Gates c
     ⟨l, l, [], l, []⟩
-  | .l2r => resynthAt (fits check).1 (fits check).2 c
+  | .l2r => resynthAt (fits check tSafe).1 (fits check tSafe).2 c
 
-/-- The resynthesis stage at the checked fits satisfies its bound
-(`norm_listMatrix_resynth_sub_le`). -/
-theorem stageBound_levelStage_l2r {n : ℕ} :
-    QrunchRound.StageBound (n := n) (levelStage .l2r true) :=
-  QrunchRound.stageBound_resynth
+/-- The resynthesis stage at the checked fits satisfies its bound, guard on or off
+(`norm_listMatrix_resynthT_sub_le`). -/
+theorem stageBound_levelStage_l2r {n : ℕ} (tSafe : Bool) :
+    QrunchRound.StageBound (n := n) (levelStage .l2r true tSafe) :=
+  norm_listMatrix_resynthT_sub_le tSafe
 
 /-- The stage of Level 2 satisfies the bound `0` at the phase `0`
 (`fullOptimize_level2_circuitUnitary`). -/
-theorem stageBound_levelStage_l2 {n : ℕ} (check : Bool) :
-    QrunchRound.StageBound (n := n) (levelStage .l2 check) := by
+theorem stageBound_levelStage_l2 {n : ℕ} (check tSafe : Bool) :
+    QrunchRound.StageBound (n := n) (levelStage .l2 check tSafe) := by
   open scoped Matrix.Norms.L2Operator in
   intro c
   simp [levelStage, Resynth.phase, Resynth.eps, Resynth.payloads, listMatrix_level2Gates]
@@ -153,9 +159,9 @@ def roundsArg : List String → Option (ℕ × List String)
 /-- Compile the OpenQASM 2 file `inp` at `level` into the OpenQASM 2 file `outp` over the
     Qrunch basis `{rx, ry, cx, p}` by swap elision (when `elide`), angle snapping (when
     `snap`) and at most `rounds` rounds (`QrunchRound.runCompile` at the stage
-    `levelStage level check`, `printQelib`), and return the answer line `ok <qubits> <cx_in>
-    <cx_l2> <cx_out> <gates_out> <us> <us_import> <us_rounds> <us_kak> <us_zyz> <us_print>
-    <phase> <eps> <rounds_run> <perm>` or `error <reason>`. `<cx_in>` is the CNOT count of the
+    `levelStage level check (cost = t)`, `printQelib`), and return the answer line
+    `ok <qubits> <cx_in> <cx_l2> <cx_out> <gates_out> <us> <us_import> <us_rounds> <us_kak>
+    <us_zyz> <us_print> <phase> <eps> <rounds_run> <perm>` or `error <reason>`. `<cx_in>` is the CNOT count of the
     lowered input, `<cx_l2>` that of Level 2 in the first round, `<cx_out>` and `<gates_out>`
     the `cx` and statement counts of the output; `<us_rounds>` is the time of elision,
     snapping and all rounds, and `<us_kak>`, `<us_zyz>` are `0`. `<perm>` is the output
@@ -179,13 +185,10 @@ def compileFile (inp outp : String) (level : Level := .l2r) (check : Bool := fal
   -- The byte importer; `importQB_eq` equates it with `importQ` on ASCII sources.
   let (qs?, tI) ← timed fun _ => OpenQASMBytes.importQB n src.toUTF8
   let some qs := qs? | pure "error a line the importer does not recognise"
-  -- Under the T-cost the floating-point resynthesis, which replaces T gates by arbitrary
-  -- rotations, is skipped: the rounds run Level 2 and the exact basis passes.
-  let level : Level := match cost, level with
-    | .t, .l2r => .l2
-    | _, l => l
+  -- Under the T-cost the resynthesis keeps a block or run whose template raises its T-cost.
   let (o, tR) ← timed fun _ =>
-    QrunchRound.runCompile (levelStage level check) rounds elide snap qs cost
+    QrunchRound.runCompile (levelStage level check (decide (cost = .t))) rounds elide snap qs
+      cost
   let rs := o.rounds
   let some o₁ := rs.head? |
     pure "error a statement with repeated operands or a real-valued Rz in the output"
