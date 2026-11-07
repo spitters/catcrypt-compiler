@@ -131,6 +131,33 @@ ours/peer of the median of the three per-run medians.
 
 ## Results
 
+Run of 2026-11-07, AMD Ryzen 7 PRO 7840U (Zen 4), one pinned core, three runs, each a
+separate process, after `make conform` passed (the four official vectors, the callee-saved
+register check, and 10000 random inputs per kernel, ours equal to every peer; the Rust peers
+on whole BLAKE2b-512 digests). The objects are those written by `linked-kernel-emit` on
+2026-11-07, called directly under the System V convention; every arm takes the message block
+inside the timed loop. TSC cycles per call, median of the three per-run medians:
+
+| kernel | ours | peer | peer cyc | ours / peer |
+|---|---|---|---|---|
+| SHA-512 compression | 541.1 | OpenSSL 3.0.13 `SHA512_Transform` | 371.9 | 1.45 |
+| SHA-512 compression | 541.1 | HACL\* `sha512_update_nblocks` | 578.1 | 0.94 |
+| BLAKE2b compression | 326.7 | HACL\* `update_block` | 323.7 | 1.01 |
+| BLAKE2b compression | 326.7 | HACL\* Simd256 `update_block` | 387.9 | 0.84 |
+| BLAKE2b compression | 326.7 | RustCrypto `blake2` 0.10.6 | 358.2 | 0.91 |
+| BLAKE2b compression | 326.7 | libcrux-blake2 streaming `update` | 557.8 | 0.59 |
+| Keccak-f[1600] | 1000.3 | XKCP opt64 | 606.5 | 1.65 |
+| Keccak-f[1600] | 1000.3 | XKCP AVX2 | 679.0 | 1.47 |
+| Keccak-f[1600] | 1000.3 | XKCP AVX-512 | 742.8 | 1.35 |
+| Keccak-f[1600] | 1000.3 | HACL\* `state_permute` | 1675.0 | 0.60 |
+
+The libcrux row is not like for like: its streaming state copies each block into a buffer and
+the arm calls it through one indirect call. The four-lane HACL\* arms (Vec256 SHA-512: 218.0
+cycles per block per lane; Simd256 Keccak absorb: 576.6 cycles per state) do four independent
+inputs per call and have no single-call counterpart here.
+
+### Run of 2026-11-01
+
 The figures below were measured with the previous adapter, which converted the SHA-512
 message words outside the timed loop and copied the BLAKE2b block once before it, and without
 the vector arms. Run of 2026-11-01 (label `2026-11-01 night, load ~3.5, pinned core`), AMD Ryzen 7 PRO 7840U
