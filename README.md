@@ -58,9 +58,11 @@ method from curve fields to
 [Relational compilation](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean), in the style of
 Rupicola, derives a kernel from a functional specification in Lean. Existing optimised code, such as
 s2n-bignum and CryptOpt output, is taken as given and proved correct by
-[ascent](ASCENT_OVERVIEW_HIGHLEVEL.md). The [Jasmin importer](JINC_IMPORT.md) reads Jasmin source;
-as with `jasminc`, its front end is trusted, and the back end is the verified one of this compiler;
-an imported kernel is checked by known-answer tests.
+[ascent](ASCENT_OVERVIEW_HIGHLEVEL.md). The [Jasmin importer](JINC_IMPORT.md) reads Jasmin source
+with its own front end, a parser and a partial evaluator, which are trusted as `jasminc`'s front end
+is, and compiles the resulting program through this compiler's back end; a theorem about an imported
+kernel is a theorem about that program, such as constant time for formosa-keccak's permutation
+([`keccakF1600_constant_time`](CatCrypt/Crypto/Jasmin/KeccakJincEmit.lean)).
 
 ## Descent, ascent and transfer
 
