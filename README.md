@@ -27,9 +27,8 @@ flowchart LR
 
 ## Compiler
 
-The compiler has two fronts: Rust through hax, and Lean through
-[relational compilation](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean) in the style of
-Rupicola. An Aeneas front is in progress.
+The compiler takes Rust through hax or Aeneas, and Lean functions;
+[PIPELINE.md](PIPELINE.md) describes each front and its theorem.
 
 Every intermediate language is a typed SSA dialect with a Lean denotation, in the style of
 lean-mlir.
