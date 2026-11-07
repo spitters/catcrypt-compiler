@@ -427,19 +427,19 @@ theorem mem_operandFields (ks : List ℕ) (t : List Char) :
 
 /-- The operand fields read back as their indices when the text after them is whitespace. -/
 theorem mapM_operandFieldsGo (ks : List ℕ) (t : List Char) (h : ks ≠ []) :
-    (operandFieldsGo ks t).mapM parseOperand =
+    (operandFieldsGo ks t).mapM parseQOperand =
       if t.all Char.isWhitespace then some ks else none := by
   fun_induction operandFieldsGo ks t with
   | case1 => exact absurd rfl h
   | case2 k t =>
-    have hk := parseOperand_q [] t k (by simp)
+    have hk := parseQOperand_q [] t k (by simp)
     simp only [List.nil_append] at hk
     simp only [qOperand, List.cons_append, List.append_assoc, List.mapM_cons, List.mapM_nil,
       List.nil_append]
     rw [hk]
     split <;> simp
   | case3 k k' ks t ih =>
-    have hk := parseOperand_q [] [] k (by simp)
+    have hk := parseQOperand_q [] [] k (by simp)
     simp only [List.nil_append, List.all_nil, ite_true] at hk
     rw [List.mapM_cons, ih (by simp)]
     simp only [qOperand, hk]
@@ -448,12 +448,12 @@ theorem mapM_operandFieldsGo (ks : List ℕ) (t : List Char) (h : ks ≠ []) :
 /-- The printed operand fields read back as their indices when the text after them is
     whitespace. -/
 theorem mapM_operandFields (ks : List ℕ) (t : List Char) (h : ks ≠ []) :
-    (operandFields ks t).mapM parseOperand =
+    (operandFields ks t).mapM parseQOperand =
       if t.all Char.isWhitespace then some ks else none := by
   have hg := mapM_operandFieldsGo ks t h
   obtain ⟨f, fs, hf⟩ := List.exists_cons_of_ne_nil (operandFieldsGo_ne_nil ks t h)
   rw [hf] at hg
-  simpa only [operandFields, hf, List.mapM_cons, parseOperand_cons_ws ' ' f (by decide)]
+  simpa only [operandFields, hf, List.mapM_cons, parseQOperand_cons_ws ' ' f (by decide)]
     using hg
 
 /-- A character other than `,`, a digit and `-`, `*`, `p`, `i`, `/`, `+` is not in a printed
@@ -512,7 +512,7 @@ theorem parseQL_printParts (g : QGate n) (t : List Char) (ht : ',' ∉ t) :
     parseQL n ((printParts g).1.toList ++ argText (angleArg (printParts g).2.1) ++
       [','].intercalate (operandFields (printParts g).2.2 t) ++ [';']) =
     if t.all Char.isWhitespace then
-      (parseStmt n (printParts g).1 (printParts g).2.2
+      (parseQStmt n (printParts g).1 (printParts g).2.2
         (if (printParts g).2.1 = [] then none else some (printParts g).2.1)).map ([·])
     else none := by
   have hks := printParts_ops_ne_nil g
@@ -540,7 +540,7 @@ theorem parseQL_printParts (g : QGate n) (t : List Char) (ht : ',' ∉ t) :
 /-- **A printed statement reads back as itself**, for every statement of `qelib1.inc`. -/
 theorem parseQ_toQASM (g : QGate n) : parseQ n (QrunchBasis.QGate.toQASM g) = some [g] := by
   rw [parseQ, toList_toQASM_parts, parseQL_printParts g [] (by simp)]
-  cases g <;> simp [printParts, parseStmt]
+  cases g <;> simp [printParts, parseQStmt]
 
 /-- **Text after the operands is refused.** A printed statement with a text `t` without `,`
     that is not whitespace between its last operand and its `;` reads as `none`. -/

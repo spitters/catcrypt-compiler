@@ -241,7 +241,7 @@ def angleTCost (θ : PiLin) : ℕ :=
 /-- The T-cost of a statement: `1` for `t` and `tdg`, `angleTCost` of the angle of a one-qubit
 rotation (`rx`, `ry`, `rz`, `p`) and the sum over the three rotations of `u` and the two
 of `u2`, three rotations by `θ/2` for `cp θ`, `7` for `ccx` and `ccz`, `0` otherwise. -/
-def gateTCost : QGate n → ℕ
+def stmtTCost : QGate n → ℕ
   | .t _ | .tdg _ => 1
   | .rx _ θ | .ry _ θ | .rz _ θ | .p _ θ => angleTCost θ
   | .u _ θ φ l => angleTCost θ + angleTCost φ + angleTCost l
@@ -251,7 +251,7 @@ def gateTCost : QGate n → ℕ
   | _ => 0
 
 /-- The T-cost of a statement list: the sum of the T-costs of its statements. -/
-def tCost (l : List (QGate n)) : ℕ := (l.map gateTCost).sum
+def tCost (l : List (QGate n)) : ℕ := (l.map stmtTCost).sum
 
 /-- The order of the iteration under a cost: `Better` under `cx`; under `t`, `l'` has a lower
 T-cost than `l`, or the same T-cost and `Better l' l`. -/

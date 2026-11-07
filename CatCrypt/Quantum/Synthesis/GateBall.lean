@@ -30,7 +30,7 @@ the pair `(i, j)` and the phase `φ`, after checking that both act on `(i, j)` o
 
 ## Main definitions
 
-* `ExpCache` — a table of `expIBall` at given angles; `ExpCache.lookup_eq` says it returns
+* `ExpCache` — a table of `expIBall` at given angles; `ExpCache.lookup_expIBall` says it returns
   `expIBall`.
 * `gate1BW`, `pairBW`, `blockBW`, `runBW` — the enclosures with the balls of `e^{iθ}` read from
   a function; `gate1B`, `pairB`, `blockB`, `runB` read them from `expIBall`. `runMat`.
@@ -97,7 +97,7 @@ def lookup (c : ExpCache) (p : PiLin) : CBall :=
   | none => expIBall p
 
 /-- A table returns `expIBall`. -/
-theorem lookup_eq (c : ExpCache) (p : PiLin) : c.lookup p = expIBall p := by
+theorem lookup_expIBall (c : ExpCache) (p : PiLin) : c.lookup p = expIBall p := by
   unfold lookup
   split
   · next e h =>
@@ -106,7 +106,7 @@ theorem lookup_eq (c : ExpCache) (p : PiLin) : c.lookup p = expIBall p := by
   · rfl
 
 /-- A table returns `expIBall`, as functions. -/
-theorem lookup_eq_expIBall (c : ExpCache) : c.lookup = expIBall := funext c.lookup_eq
+theorem lookup_eq_expIBall (c : ExpCache) : c.lookup = expIBall := funext c.lookup_expIBall
 
 end ExpCache
 

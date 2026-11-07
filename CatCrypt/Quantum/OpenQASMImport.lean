@@ -26,7 +26,7 @@ A gate statement is its operation name, an optional parenthesised angle list, it
 comma-separated operands `r[k]`, and `;` (`parseQL`); text between the last operand and the
 `;` that is not whitespace makes the statement, and so the import, fail. The names read are
 `h`, `x`, `y`, `z`, `s`, `sdg`, `t`, `tdg`, `sx`, `sxdg`, `rx`, `ry`, `rz`, `p`/`u1`,
-`U`/`u`/`u3`, `u2`, `cx`, `cz`, `swap`, `cp`/`cu1`, `ccx` and `ccz` (`parseStmt`), each with
+`U`/`u`/`u3`, `u2`, `cx`, `cz`, `swap`, `cp`/`cu1`, `ccx` and `ccz` (`parseQStmt`), each with
 its number of operands and angles. Every angle is read exactly as a `PiLin`
 `a + b·π` by `OpenQASMParser.parseAngleLin`: a multiple of `π`, a decimal in radians,
 or their sum.
@@ -44,7 +44,7 @@ transcription.
   `Qelib` gives their matrices.
 * `parseAngles` — the angles of a parenthesised argument list.
 * `stmtsGo`, `statements` — the statement texts of a source.
-* `parseOperand`, `splitArg`, `stripSemi`, `parseStmt` — the parts of a statement.
+* `parseQOperand`, `splitArg`, `stripSemi`, `parseQStmt` — the parts of a statement.
 * `parseQL`, `parseQ` — one statement text to its statements, `none` if unrecognised.
 * `parseQL_shape` — a statement text of a given shape reads as the statement of its name,
   operands and angles.
@@ -354,12 +354,12 @@ def isSkipped (name : String) : Bool :=
     name == "gate" || name == "opaque"
 
 /-- A character of a register name: a letter, a digit or `_`. -/
-def isIdentChar (c : Char) : Bool := c.isAlphanum || c == '_'
+def isQasmIdentChar (c : Char) : Bool := c.isAlphanum || c == '_'
 
 /-- The index of one operand `r[k]`: whitespace, a register name, `[`, the digits of `k`,
     `]`, whitespace; `none` for any other text. -/
-def parseOperand (f : List Char) : Option ℕ :=
-  match (f.dropWhile Char.isWhitespace).dropWhile isIdentChar with
+def parseQOperand (f : List Char) : Option ℕ :=
+  match (f.dropWhile Char.isWhitespace).dropWhile isQasmIdentChar with
   | '[' :: r =>
     match r.dropWhile Char.isDigit with
     | ']' :: t =>
@@ -396,7 +396,7 @@ def finOf? (n i : ℕ) : Option (Fin n) := if h : i < n then some ⟨i, h⟩ els
 /-- The statement of an operation name `name`, operand indices `idx` and angle list `angs`
     (`none` for a statement without parentheses); `none` if they are not a statement. `u1`
     is read as `p`, `cu1` as `cp`, and `U`, `u3` as `u`. -/
-def parseStmt (n : ℕ) (name : String) (idx : List ℕ) (angs : Option (List PiLin)) :
+def parseQStmt (n : ℕ) (name : String) (idx : List ℕ) (angs : Option (List PiLin)) :
     Option (QGate n) :=
   match name, idx, angs with
   | "h", [a], none => (finOf? n a).map .h
@@ -431,7 +431,7 @@ def parseStmt (n : ℕ) (name : String) (idx : List ℕ) (angs : Option (List Pi
     importer skips by name, `some [g]` for a gate statement, `none` for a text this importer
     does not recognise. After leading whitespace a gate statement is its operation name
     (letters and digits), an optional parenthesised angle list, the comma-separated operands
-    (`parseOperand`), `;` and whitespace; text between an operand and the `;` that is not
+    (`parseQOperand`), `;` and whitespace; text between an operand and the `;` that is not
     whitespace makes the text unrecognised. -/
 def parseQL (n : ℕ) (cs : List Char) : Option (List (QGate n)) :=
   let s := cs.dropWhile Char.isWhitespace
@@ -440,11 +440,11 @@ def parseQL (n : ℕ) (cs : List Char) : Option (List (QGate n)) :=
   else do
     let (arg, rest) ← splitArg (s.dropWhile Char.isAlphanum)
     let body ← stripSemi rest
-    let idx ← (splitCommas body).mapM parseOperand
+    let idx ← (splitCommas body).mapM parseQOperand
     let angs ← match arg with
       | none => some none
       | some a => ((splitCommas a).mapM angleOf).map some
-    (parseStmt n name idx angs).map ([·])
+    (parseQStmt n name idx angs).map ([·])
 
 /-- The statements of one statement text (`parseQL` on its characters). -/
 def parseQ (n : ℕ) (line : String) : Option (List (QGate n)) := parseQL n line.toList
@@ -529,28 +529,28 @@ theorem splitArg_argText (arg : Option (List Char)) (r : List Char)
 
 /-- An operand `q[k]`, after whitespace `w`, followed by a text `t`: the index `k` when `t` is
     whitespace, `none` otherwise. -/
-theorem parseOperand_q (w t : List Char) (k : ℕ) (hw : ∀ c ∈ w, c.isWhitespace = true) :
-    parseOperand (w ++ 'q' :: '[' :: (Nat.toDigits 10 k ++ ']' :: t)) =
+theorem parseQOperand_q (w t : List Char) (k : ℕ) (hw : ∀ c ∈ w, c.isWhitespace = true) :
+    parseQOperand (w ++ 'q' :: '[' :: (Nat.toDigits 10 k ++ ']' :: t)) =
       if t.all Char.isWhitespace then some k else none := by
   have hd : ∀ c ∈ Nat.toDigits 10 k, c.isDigit = true := fun c hc =>
     Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc
-  rw [parseOperand, List.dropWhile_append_of_pos hw]
+  rw [parseQOperand, List.dropWhile_append_of_pos hw]
   simp only [List.dropWhile_cons_of_neg (p := Char.isWhitespace) (a := 'q') (by decide),
-    List.dropWhile_cons_of_pos (p := isIdentChar) (a := 'q') (by decide),
-    List.dropWhile_cons_of_neg (p := isIdentChar) (a := '[') (by decide),
+    List.dropWhile_cons_of_pos (p := isQasmIdentChar) (a := 'q') (by decide),
+    List.dropWhile_cons_of_neg (p := isQasmIdentChar) (a := '[') (by decide),
     List.dropWhile_append_of_pos hd, List.takeWhile_append_of_pos hd,
     List.dropWhile_cons_of_neg (p := Char.isDigit) (a := ']') (by decide),
     List.takeWhile_cons_of_neg (p := Char.isDigit) (a := ']') (by decide), List.append_nil,
     OpenQASMParser.natOfDigits_toDigits]
 
 /-- An operand is read after leading whitespace. -/
-theorem parseOperand_cons_ws (c : Char) (f : List Char) (hc : c.isWhitespace = true) :
-    parseOperand (c :: f) = parseOperand f := by
-  simp [parseOperand, List.dropWhile_cons_of_pos (p := Char.isWhitespace) hc]
+theorem parseQOperand_cons_ws (c : Char) (f : List Char) (hc : c.isWhitespace = true) :
+    parseQOperand (c :: f) = parseQOperand f := by
+  simp [parseQOperand, List.dropWhile_cons_of_pos (p := Char.isWhitespace) hc]
 
 /-- **A statement text of a given shape.** An operation name `nm` of letters and digits that
     is not skipped, a printed argument, and operand fields without `,` whose text does not
-    start with a letter, a digit or `(`, followed by `;`, reads as the statement `parseStmt`
+    start with a letter, a digit or `(`, followed by `;`, reads as the statement `parseQStmt`
     reads from the indices of the fields and the angles of the argument. -/
 theorem parseQL_shape (n : ℕ) (nm : List Char) (arg : Option (List Char))
     (fs : List (List Char)) (hnm : nm ≠ []) (hal : ∀ c ∈ nm, c.isAlphanum = true)
@@ -558,11 +558,11 @@ theorem parseQL_shape (n : ℕ) (nm : List Char) (arg : Option (List Char))
     (hc : ∀ g ∈ fs, ',' ∉ g)
     (hhd : ∀ c ∈ ([','].intercalate fs).head?, c.isAlphanum = false ∧ c ≠ '(') :
     parseQL n (nm ++ argText arg ++ [','].intercalate fs ++ [';']) =
-      (fs.mapM parseOperand).bind fun idx =>
+      (fs.mapM parseQOperand).bind fun idx =>
         (match arg with
           | none => some none
           | some a => ((splitCommas a).mapM angleOf).map some).bind fun angs =>
-        (parseStmt n (String.ofList nm) idx angs).map ([·]) := by
+        (parseQStmt n (String.ofList nm) idx angs).map ([·]) := by
   set I := [','].intercalate fs with hI
   have hX : ∀ c ∈ (argText arg ++ (I ++ [';'])).head?, c.isAlphanum = false := by
     intro c hc
