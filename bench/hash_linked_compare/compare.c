@@ -14,7 +14,9 @@
  * alternates two input arrays, writing each call's output words into the
  * chaining words (or lanes) of the other array.  The SHA-512 and BLAKE2b arms all
  * take the 128-byte block: ours through the block wrappers of tramp.c, which load
- * the message words on every call.
+ * the message words on every call.  Ours is called directly: the objects keep the
+ * System V callee-saved registers, which the conformance run checks
+ * (abi_check_call).
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -102,7 +104,7 @@ static void x4_get(const uint64_t *st, int words, int j, uint64_t *w) {
 
 static void ours_keccak(uint64_t s[25]) {
   uint64_t out[25];
-  ours_keccak_f1600(out, s);
+  catcrypt_keccak_f1600(out, s);
   memcpy(s, out, sizeof out);
 }
 
@@ -267,6 +269,42 @@ static void vectors(void) {
   }
 }
 
+/* The System V callee-saved registers: each object called through abi_check_call,
+ * which sets %rbx, %rbp, %r12-%r15 to sentinels before the call and counts those
+ * that differ after it; the output must also equal that of a direct call. */
+static void abi_regs(void) {
+  uint8_t blk[128];
+  rnd_bytes(blk, 128);
+  uint64_t src[24], dst[8], ref[8];
+  for (int i = 0; i < 24; i++) src[i] = rnd64();
+  memcpy(src + 8, blk, 128);
+  catcrypt_sha512_compress(ref, src);
+  long d = abi_check_call((void *)catcrypt_sha512_compress, (uint64_t)(uintptr_t)dst,
+                          (uint64_t)(uintptr_t)src, 0, 0, 0);
+  printf("%s callee-saved registers kept: catcrypt_sha512_compress (%ld changed)\n",
+         d ? "MISMATCH" : "ok      ", d);
+  if (d) failures++;
+  check_words("sha512 through abi_check_call vs direct", dst, ref, 8);
+
+  catcrypt_blake2b_compress(ref, ~0ULL, 7, 128, src);
+  d = abi_check_call((void *)catcrypt_blake2b_compress, (uint64_t)(uintptr_t)dst, ~0ULL, 7,
+                     128, (uint64_t)(uintptr_t)src);
+  printf("%s callee-saved registers kept: catcrypt_blake2b_compress (%ld changed)\n",
+         d ? "MISMATCH" : "ok      ", d);
+  if (d) failures++;
+  check_words("blake2b through abi_check_call vs direct", dst, ref, 8);
+
+  uint64_t ks[25], ko[25], kr[25];
+  for (int i = 0; i < 25; i++) ks[i] = rnd64();
+  catcrypt_keccak_f1600(kr, ks);
+  d = abi_check_call((void *)catcrypt_keccak_f1600, (uint64_t)(uintptr_t)ko,
+                     (uint64_t)(uintptr_t)ks, 0, 0, 0);
+  printf("%s callee-saved registers kept: catcrypt_keccak_f1600 (%ld changed)\n",
+         d ? "MISMATCH" : "ok      ", d);
+  if (d) failures++;
+  check_words("keccak_f1600 through abi_check_call vs direct", ko, kr, 25);
+}
+
 static void random_batch(long nrand) {
   long n0 = failures;
   for (long r = 0; r < nrand; r++) {
@@ -413,7 +451,7 @@ static void bench(Cfg cfg, const char *label, int run) {
   {
     uint64_t A[25], B[25];
     for (int i = 0; i < 25; i++) A[i] = rnd64();
-    TIME_ARM("keccak_f1600", "ours", { ours_keccak_f1600(B, A); ours_keccak_f1600(A, B); });
+    TIME_ARM("keccak_f1600", "ours", { catcrypt_keccak_f1600(B, A); catcrypt_keccak_f1600(A, B); });
     void *st = peer_xkcp_state();
     TIME_ARM("keccak_f1600", "xkcp", { peer_xkcp_state_step(st); peer_xkcp_state_step(st); });
     free(st);
@@ -455,7 +493,7 @@ static void print_build_header(void) {
   printf("# HACL* Simd256/Vec256 peers: %s\n", HARNESS_SIMDFLAGS);
   printf("# XKCP AVX2/AVX-512 peers: assembly (.s), assembled by the compiler above\n");
   printf("# OpenSSL peer: system libcrypto, prebuilt (%s)\n", peer_openssl_version());
-  printf("# ours: gen/*.o as emitted, behind the register-saving trampoline of tramp.c\n");
+  printf("# ours: gen/*.o as emitted, called directly (System V; the kernels save the callee-saved registers they write)\n");
 }
 
 /* Every TIME_ARM body makes two calls; TIME_ARM divides by 2 * inner. */
@@ -464,6 +502,7 @@ int main(int argc, char **argv) {
     long nrand = argc >= 3 ? atol(argv[2]) : 10000;
     print_build_header();
     vectors();
+    abi_regs();
     random_batch(nrand);
     printf("%s: %d mismatch(es)\n", failures ? "FAIL" : "PASS", failures);
     return failures ? 1 : 0;

@@ -28,7 +28,7 @@ hashes of our objects.
 
 | kernel | arm | source | flags | verified | vectorised |
 |---|---|---|---|---|---|
-| all | ours | `gen/*.o`, linked as is, behind the trampoline of `tramp.c`; SHA-512 and BLAKE2b through the block wrappers `ours_sha512_block`, `ours_blake2b_block` of `tramp.c` | objects as emitted; wrappers `OPTFLAGS` | yes: compiler output whose meaning is the reference, proved in Lean | no |
+| all | ours | `gen/*.o`, linked as is and called directly under the System V convention; SHA-512 and BLAKE2b through the block wrappers `ours_sha512_block`, `ours_blake2b_block` of `tramp.c` | objects as emitted; wrappers `OPTFLAGS` | yes: compiler output whose meaning is the reference, proved in Lean | no |
 | SHA-512 compression | openssl | `SHA512_Transform`, system libcrypto (OpenSSL 3.0.13), x86_64 assembly with run-time CPU dispatch | prebuilt | no | message schedule in the AVX and AVX2 paths |
 | SHA-512 compression | hacl | `Hacl_Hash_SHA2_sha512_update_nblocks` (one block), HACL\* C from libcrux `sys/hacl/c` | `OPTFLAGS` | yes (HACL\*) | no (portable C) |
 | SHA-512 compression, 4 lanes | hacl_vec256 | static `sha512_update4` of `Hacl_SHA2_Vec256.c` (included by `refs_hacl_vec256.c`) | `OPTFLAGS SIMDFLAGS` | yes (HACL\*) | AVX2, four independent lanes |
@@ -67,13 +67,25 @@ Calling conventions (from the layouts `sha512Abi`, `blake2bKAbi`, `keccakFAbi`):
   `%r8` (message words little-endian); the second flag word is 0.
 * Keccak-f[1600]: `dst[25]` out at `%rdi`, `src[25]` in at `%rsi`, lane `(x, y)` at `5y + x`.
 
-The kernels may change every general-purpose register but `%rsp` (`sha512Clob`,
-`blake2bKClob`, `keccakFClob`), including the System V callee-saved ones, and use a red zone
-below their frame. `tramp.c` therefore calls each object through a trampoline that saves and
-restores `%rbx`, `%rbp`, `%r12`-`%r15`; the trampoline is harness code, and its cost is in
-every "ours" figure. The block wrappers `ours_sha512_block` and `ours_blake2b_block` of
-`tramp.c` sit above the trampoline; their message loads are also in every "ours" figure for
-SHA-512 and BLAKE2b.
+The objects follow the System V AMD64 calling convention, and the harness calls the symbols
+`catcrypt_*` directly. Each kernel saves every callee-saved register its body writes (`%rbx`,
+`%rbp`, `%r12`-`%r15`) in its own frame after its `leaq -F(%rsp), %rsp` and restores it before
+the return, and uses the 128-byte red zone below that frame, which a leaf function may. The
+linked functions at this convention are `Sha2Linked.sha512KernelAbi`,
+`Blake2Linked.blake2bKernelAbi` and `KeccakLinked.keccakFKernelAbi`
+(`CatCrypt/Crypto/SecureCompilation/HashTemplate/LinkedAbi.lean`): the bytes of the kernels
+above, whose contracts (`*KernelAbi_meets`, `*KernelAbi_linked`) state the clobber sets
+`abiClob sha512Clob`, `abiClob blake2bKClob`, `abiClob keccakFClob`, which contain no
+callee-saved register (`*KernelAbi_clob`). The construction is
+`TemplateKernelData.abiKernel` (`HashTemplate/TemplateKernelAbi.lean`); the restoration is the
+callee-saved clause of `regionBack_correct`. The register saves and restores are part of the
+kernel's code, and so of every "ours" figure. Each of the three bodies writes all six
+callee-saved registers, so each object saves all six: six `mov` stores into its frame after
+`leaq -F(%rsp), %rsp` and six loads before `leaq F(%rsp), %rsp; ret`, at the frames of 288
+(SHA-512), 336 (BLAKE2b) and 272 (Keccak-f) bytes; the code has no `push`, `pop`, `call` or
+branch. The conformance run checks the registers at run time (item 3 below). The block
+wrappers `ours_sha512_block` and `ours_blake2b_block` of `tramp.c` call the kernels; their
+message loads are also in every "ours" figure for SHA-512 and BLAKE2b.
 
 The XKCP AVX2 state holds the lanes in a permuted order, so both XKCP assembly arms are read
 and written through their `AddBytes` and `ExtractBytes` in the conformance check and permute
@@ -94,6 +106,10 @@ word (or lane) `i` of lane (or state) `j` is 64-bit word `4i + j`.
    independent random blocks and chaining values); BLAKE2b at random counters `t0`, `t1` and a
    random final flag against HACL\* and HACL\* Simd256; Keccak-f against XKCP opt64, XKCP AVX2,
    XKCP AVX-512, HACL\* and each state of HACL\* Simd256 (four independent random states).
+3. The callee-saved registers: each object is called once through `abi_check_call` of
+   `tramp.c`, which sets `%rbx`, `%rbp`, `%r12`-`%r15` to sentinel values before the call and
+   counts those that differ after it (none may), and its output is compared with that of a
+   direct call.
 
 ## Timing (`make run`)
 
@@ -134,6 +150,12 @@ cycles per call, median of the three per-run medians (`SSProve-lean/bench/hash_l
 | Keccak-f[1600] | 2823.8 | XKCP opt64 | 685.5 | 4.12 |
 | Keccak-f[1600] | 2823.8 | HACL\* `state_permute` | 1918.4 | 1.47 |
 
-Our figures include the trampoline of `tramp.c`. The objects' `.text` sections are 25987
+These figures were measured through the register-saving trampoline that `tramp.c` then held
+(six pushes, six pops and a call around each kernel), on objects emitted by an earlier
+compiler; the objects are now called directly, and new figures include only the kernels' own
+saves. The objects of that run had `.text` sections of 25987
 (SHA-512), 13432 (BLAKE2b) and 62474 (Keccak-f) bytes, of 6954, 3417 and 13890 instructions:
-each template is straight-line code.
+each template is straight-line code. The objects written by `linked-kernel-emit` on 2026-11-07,
+which the harness now calls directly, have `.text` sections of 15890, 7977 and 29343 bytes, of
+3814, 1916 and 5972 instructions; `make conform` passed on them (the four official vectors,
+the callee-saved register check and 10000 random inputs per kernel, ours equal to every peer).

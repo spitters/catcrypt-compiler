@@ -1,8 +1,8 @@
 /* arms.h -- the arms of hash_linked_compare.
  *
- * ours: the compiler's objects in gen/ (symbols catcrypt_*), reached through the
- *       register-saving trampolines of tramp.c (symbols ours_*), and for SHA-512 and
- *       BLAKE2b through the block wrappers of tramp.c, which take the 128-byte block.
+ * ours: the compiler's objects in gen/ (symbols catcrypt_*), called directly under the
+ *       System V convention, and for SHA-512 and BLAKE2b through the block wrappers of
+ *       tramp.c, which take the 128-byte block.
  * peers: OpenSSL (system libcrypto), HACL* (libcrux vendored C, portable and 256-bit
  *        vector), XKCP (opt64, AVX2, AVX-512).
  */
@@ -14,17 +14,22 @@
 /* SHA-512 compression: h[0..8) := compress(hm[0..8), hm[8..24)), where hm[0..8)
  * are the chaining words and hm[8..24) the 16 message words (big-endian loads
  * of the 128-byte block).  h and hm are disjoint. */
-void ours_sha512_compress(uint64_t h[8], const uint64_t hm[24]);
+void catcrypt_sha512_compress(uint64_t h[8], const uint64_t hm[24]);
 
 /* BLAKE2b compression F (RFC 7693 3.2): h[0..8) := F(hm[0..8), hm[8..24), t, f)
  * with t = (t0, t1) and the flag words (f0, 0); message words are little-endian
  * loads of the block.  Register order: h %rdi, f0 %rsi, t1 %rdx, t0 %rcx,
  * hm %r8. */
-void ours_blake2b_compress(uint64_t h[8], uint64_t f0, uint64_t t1, uint64_t t0,
-                           const uint64_t hm[24]);
+void catcrypt_blake2b_compress(uint64_t h[8], uint64_t f0, uint64_t t1, uint64_t t0,
+                               const uint64_t hm[24]);
 
 /* Keccak-f[1600]: dst := keccak_f(src), lane (x, y) at index 5y + x. */
-void ours_keccak_f1600(uint64_t dst[25], const uint64_t src[25]);
+void catcrypt_keccak_f1600(uint64_t dst[25], const uint64_t src[25]);
+
+/* Conformance only (tramp.c): call fn(a0, a1, a2, a3, a4) with sentinels in the six
+ * callee-saved registers; the number of them that differ after the return. */
+long abi_check_call(void *fn, uint64_t a0, uint64_t a1, uint64_t a2, uint64_t a3,
+                    uint64_t a4);
 
 /* Block wrappers (tramp.c): src[0..8) holds the chaining words; the wrapper loads the
  * 16 message words of blk into src[8..24) (big-endian for SHA-512, little-endian for
