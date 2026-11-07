@@ -43,15 +43,24 @@ instructions, under a named hardware timing regime
 ([`ConstantTimeRel`](CatCrypt/Crypto/SecureCompilation/CT/Leakage.lean)). The compiler also satisfies
 robust compilation ([`haxc_rc_proved_all`](CatCrypt/Crypto/SecureCompilation/Haxc/RCInstance.lean)).
 
-A template, as in Fiat Cryptography, is a Lean function from parameters to a program, with one
-denotation theorem over all parameters and a checked certificate per instance. We extend the method
-from curve fields to
+## Kernels
+
+The compiler compiles orchestration: control flow and calls to field operations. Kernels (bignum
+loops, carry chains, symmetric primitives and NTTs) are linked code, called under a
+[contract](CatCrypt/Crypto/SecureCompilation/Haxc/LinkedKernel.lean). A kernel is produced in one of
+four ways; the first three come with a theorem about the kernel's own code, not a compilation of its
+source. A template, as in Fiat Cryptography, is a Lean function from parameters to a program, with
+one denotation theorem over all parameters and a checked certificate per instance; we extend the
+method from curve fields to
 [lattice transforms](CatCrypt/Crypto/SecureCompilation/VIR/NegacyclicNttTemplate.lean),
 [hash functions](CatCrypt/Crypto/SecureCompilation/HashTemplate/), GHASH and extension towers
 ([FIAT_TEMPLATES.md](FIAT_TEMPLATES.md)).
-
-Source programs contain control flow and field calls. Bignum loops, symmetric primitives and NTTs
-are linked code with a [contract](CatCrypt/Crypto/SecureCompilation/Haxc/LinkedKernel.lean).
+[Relational compilation](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean), in the style of
+Rupicola, derives a kernel from a functional specification in Lean. Existing optimised code, such as
+s2n-bignum and CryptOpt output, is taken as given and proved correct by
+[ascent](ASCENT_OVERVIEW_HIGHLEVEL.md). The [Jasmin importer](JINC_IMPORT.md) reads Jasmin source;
+as with `jasminc`, its front end is trusted, and the back end is the verified one of this compiler;
+an imported kernel is checked by known-answer tests.
 
 ## Descent, ascent and transfer
 
