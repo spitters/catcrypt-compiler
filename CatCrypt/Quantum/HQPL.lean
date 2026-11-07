@@ -10,6 +10,7 @@ public import CatCrypt.Quantum.Instrument
 public import CatCrypt.Quantum.QFT.Inverse
 public import CatCrypt.Quantum.ControlledGates
 public import CatCrypt.Quantum.XQPLGates
+public import CatCrypt.Quantum.QRegister
 
 /-!
 # HQPL: High-Level QPL with Register-Level Operations
@@ -109,29 +110,20 @@ inductive RegisterOps (n : ℕ) where
 
 /-! ## Lowering of register operations -/
 
-/-- A gate list on `len` qubits placed on the qubits `[start, start + len)` of
-    `n`: qubit `i` of the list becomes qubit `start + i`. The result is empty
-    when `start + len > n`. -/
+/-- A gate list on `len` qubits placed on the contiguous typed register
+    `QRegister.Reg.window` `[start, start + len)` of `n`: qubit `i` of the list
+    becomes qubit `start + i`. The result is empty when `start + len > n`. -/
 def registerGates (start len : ℕ) (l : List (Gate len)) : List (Gate n) :=
-  if h : start + len ≤ n then
-    l.map (QFT.mapGate fun i =>
-      ⟨start + i.val, Nat.lt_of_lt_of_le (Nat.add_lt_add_left i.isLt start) h⟩)
-  else []
+  if h : start + len ≤ n then (QRegister.Reg.window h).place l else []
 
 /-- Placing a gate list on the whole register leaves it unchanged. -/
 theorem registerGates_whole (l : List (Gate n)) : registerGates 0 n l = l := by
-  rw [registerGates, dite_eq_left (Nat.zero_add n).le]
-  have hf : (fun i : Fin n =>
-      (⟨0 + i.val, Nat.lt_of_lt_of_le (Nat.add_lt_add_left i.isLt 0)
-        (Nat.zero_add n).le⟩ : Fin n)) = id := by
-    funext i
-    exact Fin.ext (Nat.zero_add i.val)
-  rw [hf, QFT.map_mapGate_id]
+  rw [registerGates, dite_eq_left (Nat.zero_add n).le, QRegister.Reg.place_window_zero]
 
-/-- Qubit `i` of the window `[start, start + len)` of `n` qubits: the qubit
-    `start + i`. -/
+/-- Qubit `i` of the window `[start, start + len)` of `n` qubits: position `i`
+    of the typed register `QRegister.Reg.window h`, the qubit `start + i`. -/
 def windowQubit {start len : ℕ} (h : start + len ≤ n) (i : Fin len) : Fin n :=
-  ⟨start + i.val, Nat.lt_of_lt_of_le (Nat.add_lt_add_left i.isLt start) h⟩
+  (QRegister.Reg.window h).q i
 
 /-- The gate list `l` repeated `k` times: its matrix is the `k`-th power of
     the matrix of `l`. -/
@@ -461,12 +453,6 @@ theorem listMatrix_X_conj :
           simp only [mul_assoc]
       _ = _ := by rw [listMatrix_X_conj hnd' G]
 
-/-- The doubly-applied `X` layer is the identity. -/
-theorem listMatrix_X_mul_self {qs : List (Fin n)} (hnd : qs.Nodup) :
-    listMatrix (qs.map Gate.X) * listMatrix (qs.map Gate.X) = 1 := by
-  have := listMatrix_X_conj hnd 1
-  simp_all [embedGate1_one, pauliX_sq]
-
 /-- The multi-controlled `Z` of `zeroReflectGates` is `I - 2 |1…1⟩⟨1…1|`. -/
 theorem listMatrix_mctrlZ (m : ℕ) :
     listMatrix (mctrlGates ((List.finRange m).map Fin.succ) (Gate.Z (0 : Fin (m + 1))))
@@ -507,7 +493,7 @@ theorem listMatrix_zeroReflectGates :
         simp [pauliZ, pauliX, ← Matrix.ext_iff, Fin.forall_fin_succ]
       rw [embedGate1_mul, embedGate1_mul, embedGate1_mul, hm, embedGate1_smul, embedGate1_one,
         neg_one_smul]
-    have hLL := listMatrix_X_mul_self (List.nodup_finRange (m + 1))
+    have hLL := QRegister.listMatrix_mapX_mul_self (List.nodup_finRange (m + 1))
     have hLPL := listMatrix_X_conj (List.nodup_finRange (m + 1)) proj1
     rw [pauliX_proj1_pauliX] at hLPL
     rw [zeroReflectGates, listMatrix_append, listMatrix_append, listMatrix_append, hs,

@@ -22,11 +22,12 @@ being dropped. The skipped names are the OpenQASM 2.0 and 3.0 headers, register
 declarations, `barrier` and `measure` — `barrier` and `measure` are the identity on
 `unitaryDenote`, and the benchmark suites' published gate counts exclude them.
 
-A gate statement is read by `OpenQASMParser.parseLine` first, which covers the
-single-gate statements `h`, `x`, `y`, `z`, `s`, `t`, `tdg`, `cx`, `cz` and `rz`.
-The statements that denote a list of gates (`sdg`, `cu1`, `cp`, `u1`, `p`, `sx`,
-`sxdg`, `swap`, `rx`, `ry`, `U`/`u`/`u3`, `u2`, `ccx`, `ccz`) and `rz` on a
-register not named `q` are read here. Every angle is read exactly as a `PiLin`
+A gate statement is its operation name, an optional parenthesised angle list, its
+comma-separated operands `r[k]`, and `;` (`parseQL`); text between the last operand and the
+`;` that is not whitespace makes the statement, and so the import, fail. The names read are
+`h`, `x`, `y`, `z`, `s`, `sdg`, `t`, `tdg`, `sx`, `sxdg`, `rx`, `ry`, `rz`, `p`/`u1`,
+`U`/`u`/`u3`, `u2`, `cx`, `cz`, `swap`, `cp`/`cu1`, `ccx` and `ccz` (`parseQStmt`), each with
+its number of operands and angles. Every angle is read exactly as a `PiLin`
 `a + b·π` by `OpenQASMParser.parseAngleLin`: a multiple of `π`, a decimal in radians,
 or their sum.
 
@@ -43,7 +44,10 @@ transcription.
   `Qelib` gives their matrices.
 * `parseAngles` — the angles of a parenthesised argument list.
 * `stmtsGo`, `statements` — the statement texts of a source.
-* `parseQ` — one statement text to its statements, `none` if unrecognised.
+* `parseQOperand`, `splitArg`, `stripSemi`, `parseQStmt` — the parts of a statement.
+* `parseQL`, `parseQ` — one statement text to its statements, `none` if unrecognised.
+* `parseQL_shape` — a statement text of a given shape reads as the statement of its name,
+  operands and angles.
 * `parseOps` — one statement text to the gates it denotes, the lowering of `parseQ`.
 * `importQ`, `importGates_eq_importQ` — the statements of a whole file, whose lowering
   is the gate list `importGates` reads.
@@ -349,71 +353,101 @@ def isSkipped (name : String) : Bool :=
     name == "qubit" || name == "bit" || name == "barrier" || name == "measure" ||
     name == "gate" || name == "opaque"
 
-/-- The statement of a line that `OpenQASMParser.parseLine` does not read, dispatched on
-    the operation name `name` and the bracketed indices `idx`, with the parenthesised
-    argument `arg` and the angles `angs`; `none` if it is not a statement. `u1` is read
-    as `p`, `cu1` as `cp`, and `U`, `u3` as `u`. -/
-def parseQRest (n : ℕ) (name : String) (idx : List ℕ) (arg : Option (List Char))
-    (angs : Option (List PiLin)) : Option (QGate n) :=
-  let fin? : ℕ → Option (Fin n) := fun i => if h : i < n then some ⟨i, h⟩ else none
-  match name, idx with
-  | "sdg", [a] => (fin? a).map .sdg
-  | "cu1", [a, b] | "cp", [a, b] => do
-      let c ← fin? a; let t ← fin? b
-      let arg ← arg
-      let ang ← angleOf arg
-      some (.cp c t ang)
-  | "rz", [a] => do
-      let q ← fin? a
-      let arg ← arg
-      let ang ← angleOf arg
-      some (.rz q ang)
-  | "u1", [a] | "p", [a] => do
-      let q ← fin? a
-      let arg ← arg
-      let ang ← angleOf arg
-      some (.p q ang)
-  | "sx", [a] => (fin? a).map .sx
-  | "sxdg", [a] => (fin? a).map .sxdg
-  | "swap", [a, b] => do let x ← fin? a; let y ← fin? b; some (.swap x y)
-  | "rx", [a] => do
-      let q ← fin? a
-      match ← angs with
-      | [θ] => some (.rx q θ)
-      | _ => none
-  | "ry", [a] => do
-      let q ← fin? a
-      match ← angs with
-      | [θ] => some (.ry q θ)
-      | _ => none
-  | "U", [a] | "u", [a] | "u3", [a] => do
-      let q ← fin? a
-      match ← angs with
-      | [θ, φ, l] => some (.u q θ φ l)
-      | _ => none
-  | "u2", [a] => do
-      let q ← fin? a
-      match ← angs with
-      | [φ, l] => some (.u2 q φ l)
-      | _ => none
-  | "ccx", [a, b, t] => do
-      let x ← fin? a; let y ← fin? b; let z ← fin? t; some (.ccx x y z)
-  | "ccz", [a, b, t] => do
-      let x ← fin? a; let y ← fin? b; let z ← fin? t; some (.ccz x y z)
-  | _, _ => none
+/-- A character of a register name: a letter, a digit or `_`. -/
+def isQasmIdentChar (c : Char) : Bool := c.isAlphanum || c == '_'
 
-/-- The statements of one statement text (its leading whitespace dropped): `some []` for a
-    declaration the importer skips by name, `some [g]` for a gate statement, `none` for a
-    text this importer does not recognise. A text `OpenQASMParser.parseLine` reads is the
-    statement of its gate (`ofGate?`); any other text is read by `parseQRest`. -/
-def parseQ (n : ℕ) (line : String) : Option (List (QGate n)) :=
-  let s := String.ofList (line.toList.dropWhile Char.isWhitespace)
-  let name := opName s
+/-- The index of one operand `r[k]`: whitespace, a register name, `[`, the digits of `k`,
+    `]`, whitespace; `none` for any other text. -/
+def parseQOperand (f : List Char) : Option ℕ :=
+  match (f.dropWhile Char.isWhitespace).dropWhile isQasmIdentChar with
+  | '[' :: r =>
+    match r.dropWhile Char.isDigit with
+    | ']' :: t =>
+      if t.all Char.isWhitespace then OpenQASMParser.natOfDigits (r.takeWhile Char.isDigit)
+      else none
+    | _ => none
+  | _ => none
+
+/-- The parenthesised argument at the head of a text and the text after it: the text up to
+    the first `)` after a leading `(`, or no argument when the text does not start with `(`;
+    `none` for a `(` without its `)`. -/
+def splitArg (cs : List Char) : Option (Option (List Char) × List Char) :=
+  match cs with
+  | '(' :: r =>
+    match r.dropWhile (· != ')') with
+    | ')' :: t => some (some (r.takeWhile (· != ')')), t)
+    | _ => none
+  | _ => some (none, cs)
+
+/-- A text without the `;` that ends it and the whitespace after that `;`; `none` for a
+    text that does not end with `;` and whitespace. -/
+def stripSemi (cs : List Char) : Option (List Char) :=
+  match cs.reverse.dropWhile Char.isWhitespace with
+  | ';' :: r => some r.reverse
+  | _ => none
+
+/-- The qubit `i` of `n` qubits, `none` for `i ≥ n`. -/
+def finOf? (n i : ℕ) : Option (Fin n) := if h : i < n then some ⟨i, h⟩ else none
+
+/-- The index of a qubit is that qubit. -/
+@[simp] theorem finOf?_val {n : ℕ} (q : Fin n) : finOf? n q.val = some q := by
+  simp [finOf?]
+
+/-- The statement of an operation name `name`, operand indices `idx` and angle list `angs`
+    (`none` for a statement without parentheses); `none` if they are not a statement. `u1`
+    is read as `p`, `cu1` as `cp`, and `U`, `u3` as `u`. -/
+def parseQStmt (n : ℕ) (name : String) (idx : List ℕ) (angs : Option (List PiLin)) :
+    Option (QGate n) :=
+  match name, idx, angs with
+  | "h", [a], none => (finOf? n a).map .h
+  | "x", [a], none => (finOf? n a).map .x
+  | "y", [a], none => (finOf? n a).map .y
+  | "z", [a], none => (finOf? n a).map .z
+  | "s", [a], none => (finOf? n a).map .s
+  | "sdg", [a], none => (finOf? n a).map .sdg
+  | "t", [a], none => (finOf? n a).map .t
+  | "tdg", [a], none => (finOf? n a).map .tdg
+  | "sx", [a], none => (finOf? n a).map .sx
+  | "sxdg", [a], none => (finOf? n a).map .sxdg
+  | "rx", [a], some [θ] => (finOf? n a).map (.rx · θ)
+  | "ry", [a], some [θ] => (finOf? n a).map (.ry · θ)
+  | "rz", [a], some [θ] => (finOf? n a).map (.rz · θ)
+  | "p", [a], some [θ] | "u1", [a], some [θ] => (finOf? n a).map (.p · θ)
+  | "U", [a], some [θ, φ, l] | "u", [a], some [θ, φ, l] | "u3", [a], some [θ, φ, l] =>
+      (finOf? n a).map (.u · θ φ l)
+  | "u2", [a], some [φ, l] => (finOf? n a).map (.u2 · φ l)
+  | "cx", [a, b], none => do let c ← finOf? n a; let t ← finOf? n b; some (.cx c t)
+  | "cz", [a, b], none => do let c ← finOf? n a; let t ← finOf? n b; some (.cz c t)
+  | "swap", [a, b], none => do let x ← finOf? n a; let y ← finOf? n b; some (.swap x y)
+  | "cp", [a, b], some [θ] | "cu1", [a, b], some [θ] => do
+      let c ← finOf? n a; let t ← finOf? n b; some (.cp c t θ)
+  | "ccx", [a, b, c], none => do
+      let x ← finOf? n a; let y ← finOf? n b; let z ← finOf? n c; some (.ccx x y z)
+  | "ccz", [a, b, c], none => do
+      let x ← finOf? n a; let y ← finOf? n b; let z ← finOf? n c; some (.ccz x y z)
+  | _, _, _ => none
+
+/-- The statements of one statement text, as characters: `some []` for a declaration the
+    importer skips by name, `some [g]` for a gate statement, `none` for a text this importer
+    does not recognise. After leading whitespace a gate statement is its operation name
+    (letters and digits), an optional parenthesised angle list, the comma-separated operands
+    (`parseQOperand`), `;` and whitespace; text between an operand and the `;` that is not
+    whitespace makes the text unrecognised. -/
+def parseQL (n : ℕ) (cs : List Char) : Option (List (QGate n)) :=
+  let s := cs.dropWhile Char.isWhitespace
+  let name := String.ofList (s.takeWhile Char.isAlphanum)
   if isSkipped name then some []
-  else match OpenQASMParser.parseLine n s with
-  | some g => (ofGate? g).map ([·])
-  | none =>
-    (parseQRest n name (bracketIndices s) (parenArg s) (parseAngles s)).map ([·])
+  else do
+    let (arg, rest) ← splitArg (s.dropWhile Char.isAlphanum)
+    let body ← stripSemi rest
+    let idx ← (splitCommas body).mapM parseQOperand
+    let angs ← match arg with
+      | none => some none
+      | some a => ((splitCommas a).mapM angleOf).map some
+    (parseQStmt n name idx angs).map ([·])
+
+/-- The statements of one statement text (`parseQL` on its characters). -/
+def parseQ (n : ℕ) (line : String) : Option (List (QGate n)) := parseQL n line.toList
 
 /-- `parseQ` reads a text after its leading whitespace. -/
 theorem parseQ_append_ws (n : ℕ) (w t : List Char) (hw : ∀ c ∈ w, c.isWhitespace = true) :
@@ -422,7 +456,157 @@ theorem parseQ_append_ws (n : ℕ) (w t : List Char) (hw : ∀ c ∈ w, c.isWhit
     induction w with
     | nil => rfl
     | cons c w ih => grind [List.dropWhile_cons_of_pos]
-  simp only [parseQ, String.toList_ofList, h]
+  simp only [parseQ, parseQL, String.toList_ofList, h]
+
+/-! ## Reading a statement of a given shape -/
+
+/-- A letter or digit is not whitespace. -/
+theorem isWhitespace_of_isAlphanum {c : Char} (h : c.isAlphanum = true) :
+    c.isWhitespace = false := by
+  revert h
+  simp only [Char.isAlphanum, Char.isAlpha, Char.isUpper, Char.isLower, Char.isDigit,
+    Char.isWhitespace, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+  intro h
+  rcases h with (⟨h1, h2⟩ | ⟨h1, h2⟩) | ⟨h1, h2⟩ <;>
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not] <;>
+    refine ⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩ <;> rintro rfl <;> revert h1 h2 <;> decide
+
+/-- `splitCommas` adds a text without `,` to the current field. -/
+theorem splitCommas_go_append (f r cur : List Char) (acc : List (List Char)) (h : ',' ∉ f) :
+    splitCommas.go (f ++ r) cur acc = splitCommas.go r (f.reverse ++ cur) acc := by
+  induction f generalizing cur with
+  | nil => rfl
+  | cons c f ih => grind [splitCommas.go]
+
+/-- The comma-separated fields of `cur` followed by fields without `,`. -/
+theorem splitCommas_go_intercalate (f : List Char) (fs : List (List Char)) (cur : List Char)
+    (acc : List (List Char)) (h : ∀ g ∈ f :: fs, ',' ∉ g) :
+    splitCommas.go ([','].intercalate (f :: fs)) cur acc =
+      acc.reverse ++ (cur.reverse ++ f) :: fs := by
+  induction fs generalizing f cur acc with
+  | nil =>
+    rw [List.intercalate_singleton, ← List.append_nil f,
+      splitCommas_go_append _ _ _ _ (h f (by simp))]
+    simp [splitCommas.go]
+  | cons g gs ih =>
+    rw [List.intercalate_cons_cons, List.append_assoc,
+      splitCommas_go_append _ _ _ _ (h f (by simp))]
+    simp only [List.singleton_append, splitCommas.go, ite_true]
+    rw [ih g [] _ (fun x hx => h x (List.mem_cons_of_mem _ hx))]
+    simp
+
+/-- The fields of comma-separated fields without `,` are those fields. -/
+theorem splitCommas_intercalate (fs : List (List Char)) (hfs : fs ≠ [])
+    (h : ∀ g ∈ fs, ',' ∉ g) : splitCommas ([','].intercalate fs) = fs := by
+  obtain ⟨f, fs, rfl⟩ := List.exists_cons_of_ne_nil hfs
+  simp [splitCommas, splitCommas_go_intercalate f fs [] [] h]
+
+/-- A text ending with `;` is that text before the `;`. -/
+theorem stripSemi_append (cs : List Char) : stripSemi (cs ++ [';']) = some cs := by
+  simp [stripSemi]
+
+/-- The parenthesised argument `(a)` printed before the operands, nothing for no argument. -/
+def argText : Option (List Char) → List Char
+  | none => []
+  | some a => '(' :: (a ++ [')'])
+
+/-- `splitArg` reads a printed argument back. -/
+theorem splitArg_argText (arg : Option (List Char)) (r : List Char)
+    (ha : ∀ a ∈ arg, ')' ∉ a) (hr : arg = none → r.head? ≠ some '(') :
+    splitArg (argText arg ++ r) = some (arg, r) := by
+  cases arg with
+  | none =>
+    cases r with
+    | nil => rfl
+    | cons c r =>
+      have hc : c ≠ '(' := fun h => hr rfl (by simp [h])
+      simp only [argText, List.nil_append, splitArg]
+      split <;> simp_all
+  | some a =>
+    have hq : ∀ c ∈ a, (c != ')') = true := fun c hc =>
+      bne_iff_ne.mpr (fun h => ha a rfl (h ▸ hc))
+    simp [argText, splitArg, List.dropWhile_append_of_pos hq, List.takeWhile_append_of_pos hq]
+
+/-- An operand `q[k]`, after whitespace `w`, followed by a text `t`: the index `k` when `t` is
+    whitespace, `none` otherwise. -/
+theorem parseQOperand_q (w t : List Char) (k : ℕ) (hw : ∀ c ∈ w, c.isWhitespace = true) :
+    parseQOperand (w ++ 'q' :: '[' :: (Nat.toDigits 10 k ++ ']' :: t)) =
+      if t.all Char.isWhitespace then some k else none := by
+  have hd : ∀ c ∈ Nat.toDigits 10 k, c.isDigit = true := fun c hc =>
+    Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc
+  rw [parseQOperand, List.dropWhile_append_of_pos hw]
+  simp only [List.dropWhile_cons_of_neg (p := Char.isWhitespace) (a := 'q') (by decide),
+    List.dropWhile_cons_of_pos (p := isQasmIdentChar) (a := 'q') (by decide),
+    List.dropWhile_cons_of_neg (p := isQasmIdentChar) (a := '[') (by decide),
+    List.dropWhile_append_of_pos hd, List.takeWhile_append_of_pos hd,
+    List.dropWhile_cons_of_neg (p := Char.isDigit) (a := ']') (by decide),
+    List.takeWhile_cons_of_neg (p := Char.isDigit) (a := ']') (by decide), List.append_nil,
+    OpenQASMParser.natOfDigits_toDigits]
+
+/-- An operand is read after leading whitespace. -/
+theorem parseQOperand_cons_ws (c : Char) (f : List Char) (hc : c.isWhitespace = true) :
+    parseQOperand (c :: f) = parseQOperand f := by
+  simp [parseQOperand, List.dropWhile_cons_of_pos (p := Char.isWhitespace) hc]
+
+/-- **A statement text of a given shape.** An operation name `nm` of letters and digits that
+    is not skipped, a printed argument, and operand fields without `,` whose text does not
+    start with a letter, a digit or `(`, followed by `;`, reads as the statement `parseQStmt`
+    reads from the indices of the fields and the angles of the argument. -/
+theorem parseQL_shape (n : ℕ) (nm : List Char) (arg : Option (List Char))
+    (fs : List (List Char)) (hnm : nm ≠ []) (hal : ∀ c ∈ nm, c.isAlphanum = true)
+    (hsk : isSkipped (String.ofList nm) = false) (ha : ∀ a ∈ arg, ')' ∉ a) (hfs : fs ≠ [])
+    (hc : ∀ g ∈ fs, ',' ∉ g)
+    (hhd : ∀ c ∈ ([','].intercalate fs).head?, c.isAlphanum = false ∧ c ≠ '(') :
+    parseQL n (nm ++ argText arg ++ [','].intercalate fs ++ [';']) =
+      (fs.mapM parseQOperand).bind fun idx =>
+        (match arg with
+          | none => some none
+          | some a => ((splitCommas a).mapM angleOf).map some).bind fun angs =>
+        (parseQStmt n (String.ofList nm) idx angs).map ([·]) := by
+  set I := [','].intercalate fs with hI
+  have hX : ∀ c ∈ (argText arg ++ (I ++ [';'])).head?, c.isAlphanum = false := by
+    intro c hc
+    cases arg with
+    | some a => simp only [argText, List.cons_append, List.head?_cons,
+        Option.mem_def, Option.some.injEq] at hc; subst hc; decide
+    | none =>
+      cases hI' : I with
+      | nil => simp only [argText, hI', List.nil_append, List.head?_cons,
+          Option.mem_def, Option.some.injEq] at hc; subst hc; decide
+      | cons d I' =>
+        simp only [argText, hI', List.nil_append, List.cons_append, List.head?_cons,
+          Option.mem_def, Option.some.injEq] at hc
+        subst hc
+        exact (hhd d (by simp [hI'])).1
+  have hws : (nm ++ argText arg ++ I ++ [';']).dropWhile Char.isWhitespace =
+      nm ++ (argText arg ++ (I ++ [';'])) := by
+    obtain ⟨c, nm', rfl⟩ := List.exists_cons_of_ne_nil hnm
+    simp only [List.cons_append, List.append_assoc]
+    exact List.dropWhile_cons_of_neg
+      (by simp [isWhitespace_of_isAlphanum (hal c (by simp))])
+  have htk : (nm ++ (argText arg ++ (I ++ [';']))).takeWhile Char.isAlphanum = nm := by
+    generalize argText arg ++ (I ++ [';']) = Y at hX ⊢
+    rw [List.takeWhile_append_of_pos hal]
+    cases Y with
+    | nil => simp
+    | cons c Y => simp [hX c (by simp)]
+  have hdr : (nm ++ (argText arg ++ (I ++ [';']))).dropWhile Char.isAlphanum =
+      argText arg ++ (I ++ [';']) := by
+    generalize argText arg ++ (I ++ [';']) = Y at hX ⊢
+    rw [List.dropWhile_append_of_pos hal]
+    cases Y with
+    | nil => simp
+    | cons c Y => simp [hX c (by simp)]
+  have hsa : splitArg (argText arg ++ (I ++ [';'])) = some (arg, I ++ [';']) := by
+    refine splitArg_argText arg _ ha fun _ hh => ?_
+    cases hI' : I with
+    | nil => simp [hI'] at hh
+    | cons d I' =>
+      simp only [hI', List.cons_append, List.head?_cons, Option.some.injEq] at hh
+      exact (hhd d (by simp [hI'])).2 hh
+  have hsc : splitCommas I = fs := splitCommas_intercalate fs hfs hc
+  simp only [parseQL, hws, htk, hsk, hdr, hsa, Bool.false_eq_true, ite_false]
+  cases arg <;> simp [stripSemi_append I, hsc]
 
 /-- Every gate an optional result carries is the gate of a statement. -/
 def StmtGates {n : ℕ} (o : Option (Gate n)) : Prop :=
@@ -518,28 +702,6 @@ def statements (cs : List Char) : Option (List (List Char)) :=
 def importQ (n : ℕ) (src : String) : Option (List (QGate n)) :=
   (statements src.toList).bind fun ss =>
     (ss.mapM fun s => parseQ n (String.ofList s)).map List.flatten
-
-/-- **`parseOps` dispatched by statement.** A skipped declaration carries no gate, a text
-    `OpenQASMParser.parseLine` reads is its one gate, and any other text is the lowering of
-    the statement `parseQRest` reads. -/
-theorem parseOps_eq (n : ℕ) (line : String) :
-    let s := String.ofList (line.toList.dropWhile Char.isWhitespace)
-    parseOps n line =
-      if isSkipped (opName s) then some []
-      else match OpenQASMParser.parseLine n s with
-      | some g => some [g]
-      | none => (parseQRest n (opName s) (bracketIndices s) (parenArg s)
-          (parseAngles s)).map lowerQ := by
-  intro s
-  unfold parseOps parseQ
-  dsimp only
-  split_ifs
-  · rfl
-  · cases h : OpenQASMParser.parseLine n s with
-    | none => simp [s, Option.map_map, Function.comp_def]
-    | some g =>
-      obtain ⟨q, hq⟩ := Option.isSome_iff_exists.mp (stmtGates_parseLine n _ g h)
-      simp [hq, lowerQ_of_ofGate? hq]
 
 /-- The gates of a whole file, `none` if any statement text is unrecognised or non-blank
     text follows the last `;`: the gates of each statement, concatenated once (linear in

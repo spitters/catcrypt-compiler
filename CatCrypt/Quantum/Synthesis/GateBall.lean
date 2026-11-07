@@ -30,7 +30,10 @@ the pair `(i, j)` and the phase `φ`, after checking that both act on `(i, j)` o
 
 ## Main definitions
 
-* `gate1B`, `pairB`, `blockB`, `runB`, `runMat`.
+* `ExpCache` — a table of `expIBall` at given angles; `ExpCache.lookup_expIBall` says it returns
+  `expIBall`.
+* `gate1BW`, `pairBW`, `blockBW`, `runBW` — the enclosures with the balls of `e^{iθ}` read from
+  a function; `gate1B`, `pairB`, `blockB`, `runB` read them from `expIBall`. `runMat`.
 * `embed2Hom`, `embed1Hom`.
 * `checkPair`, `checkRun`.
 
@@ -59,6 +62,64 @@ namespace CatCrypt.Quantum.Synthesis.IntervalArith
 open CBall BMat
 
 variable {n : ℕ}
+
+/-! ## A table of `expIBall` at given angles -/
+
+/-- A table of the balls `expIBall p` at finitely many exact angles `p`: each entry `(p, B)`
+has `B = expIBall p`. -/
+structure ExpCache where
+  /-- The angles of the table with their balls. -/
+  entries : List (PiLin × CBall)
+  /-- Each ball of the table is `expIBall` at its angle. -/
+  valid : ∀ e ∈ entries, e.2 = expIBall e.1
+
+namespace ExpCache
+
+/-- The empty table. -/
+def empty : ExpCache := ⟨[], by simp⟩
+
+/-- The table with the angle `p` added when it is absent. -/
+def insert (c : ExpCache) (p : PiLin) : ExpCache :=
+  if c.entries.any (fun e => e.1 == p) then c
+  else ⟨(p, expIBall p) :: c.entries, by
+    intro e he
+    rcases List.mem_cons.mp he with rfl | he
+    · rfl
+    · exact c.valid e he⟩
+
+/-- The table over the angles `ps`, each `expIBall` computed once. -/
+def ofAngles (ps : List PiLin) : ExpCache := ps.foldl insert empty
+
+/-- The ball of the table at `p`, and `expIBall p` when `p` is not in the table. -/
+def lookup (c : ExpCache) (p : PiLin) : CBall :=
+  match c.entries.find? (fun e => e.1 == p) with
+  | some e => e.2
+  | none => expIBall p
+
+/-- A table returns `expIBall`. -/
+theorem lookup_expIBall (c : ExpCache) (p : PiLin) : c.lookup p = expIBall p := by
+  unfold lookup
+  split
+  · next e h =>
+    have hp : e.1 = p := by simpa using List.find?_some h
+    rw [c.valid e (List.mem_of_find?_eq_some h), hp]
+  · rfl
+
+/-- A table returns `expIBall`, as functions. -/
+theorem lookup_eq_expIBall (c : ExpCache) : c.lookup = expIBall := funext c.lookup_expIBall
+
+end ExpCache
+
+/-- The exact angle whose ball `gate1B` and `pairB` read for a gate: `π/4` for `T`, `-π/4`
+for `Tdg`, `a` for `RzQ a`; `none` for the other gates. -/
+def gateAngle? : Gate n → Option PiLin
+  | .T _ => some (PiLin.ofPi (1 / 4))
+  | .Tdg _ => some (PiLin.ofPi (-(1 / 4)))
+  | .RzQ _ a => some a
+  | _ => none
+
+/-- The exact angles of a list of gates, in order and with repetitions. -/
+def anglesOf (l : List (Gate n)) : List PiLin := l.filterMap gateAngle?
 
 /-! ## Literal matrices -/
 
@@ -139,26 +200,30 @@ theorem memM_tdgB : MemM tDaggerGate (rzB (PiLin.ofPi (-(1 / 4)))) := by
     ring_nf
   rwa [he]
 
-/-- The `2 × 2` matrix of a one-qubit gate with an exact angle; `none` for a real-valued
-`Rz` and for the two-qubit gates. -/
-def gate1B : Gate n → Option (BMat 2)
+/-- The `2 × 2` matrix of a one-qubit gate with an exact angle, the ball of `e^{iθ}` at an
+angle `θ` read from `e`; `none` for a real-valued `Rz` and for the two-qubit gates. -/
+def gate1BW (e : PiLin → CBall) : Gate n → Option (BMat 2)
   | .H _ => some hadB
   | .X _ => some xB
   | .Y _ => some yB
   | .Z _ => some zB
-  | .T _ => some (rzB (PiLin.ofPi (1 / 4)))
-  | .Tdg _ => some (rzB (PiLin.ofPi (-(1 / 4))))
+  | .T _ => some (lit2 CBall.one CBall.zero CBall.zero (e (PiLin.ofPi (1 / 4))))
+  | .Tdg _ => some (lit2 CBall.one CBall.zero CBall.zero (e (PiLin.ofPi (-(1 / 4)))))
   | .S _ => some sB
-  | .RzQ _ a => some (rzB a)
+  | .RzQ _ a => some (lit2 CBall.one CBall.zero CBall.zero (e a))
   | .Rz _ _ => none
   | .CNOT _ _ => none
   | .CZ _ _ => none
+
+/-- The `2 × 2` matrix of a one-qubit gate with an exact angle; `none` for a real-valued
+`Rz` and for the two-qubit gates. -/
+def gate1B : Gate n → Option (BMat 2) := gate1BW expIBall
 
 /-- The `2 × 2` matrix of a gate: `gateMatrix1`, and the identity for a two-qubit gate. -/
 noncomputable def mat1 (g : Gate n) : Matrix (Fin 2) (Fin 2) ℂ := (gateMatrix1 g).getD 1
 
 theorem memM_gate1B {g : Gate n} {B : BMat 2} (h : gate1B g = some B) : MemM (mat1 g) B := by
-  cases g <;> simp only [gate1B, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
+  cases g <;> simp only [gate1B, gate1BW, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
     simp only [mat1, gateMatrix1, Option.getD_some]
   · exact memM_hadB
   · exact memM_xB
@@ -186,21 +251,25 @@ theorem listMatrix_eq_embedGate1_runMat {q : Fin n} {l : List (Gate n)}
     rw [listMatrix_cons, ih (fun x hx => hl x (List.mem_cons_of_mem g hx)),
       gateEmbedding_eq_embedGate1_mat1 (hl g List.mem_cons_self), embedGate1_mul, runMat]
 
-/-- The `2 × 2` matrix of balls of a list of one-qubit gates with exact angles. -/
-def runB : List (Gate n) → Option (BMat 2)
+/-- The `2 × 2` matrix of balls of a list of one-qubit gates with exact angles, the balls of
+`e^{iθ}` read from `e`. -/
+def runBW (e : PiLin → CBall) : List (Gate n) → Option (BMat 2)
   | [] => some BMat.one
   | g :: l => do
-    let B ← runB l
-    let G ← gate1B g
+    let B ← runBW e l
+    let G ← gate1BW e g
     pure (BMat.mul B G)
+
+/-- The `2 × 2` matrix of balls of a list of one-qubit gates with exact angles. -/
+def runB : List (Gate n) → Option (BMat 2) := runBW expIBall
 
 theorem memM_runB : ∀ {l : List (Gate n)} {B : BMat 2}, runB l = some B → MemM (runMat l) B
   | [], B, h => by
-    simp only [runB, Option.some.injEq] at h
+    simp only [runB, runBW, Option.some.injEq] at h
     subst h
     exact memM_one
   | g :: l, B, h => by
-    simp only [runB, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+    simp only [runB, runBW, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
       Option.some.injEq] at h
     obtain ⟨B', hB', G, hG, rfl⟩ := h
     exact memM_mul (memM_runB hB') (memM_gate1B hG)
@@ -255,26 +324,31 @@ theorem memM_sideB (i q : Fin n) {A : Matrix (Fin 2) (Fin 2) ℂ} {A' : BMat 2} 
   · exact memM_kron h memM_one
   · exact memM_kron memM_one h
 
-/-- The matrix of balls of `pairMat i j g`; `none` for a real-valued `Rz`. -/
-def pairB (i _j : Fin n) : Gate n → Option (BMat 4)
+/-- The matrix of balls of `pairMat i j g`, the balls of `e^{iθ}` read from `e`; `none` for a
+real-valued `Rz`. -/
+def pairBW (e : PiLin → CBall) (i _j : Fin n) : Gate n → Option (BMat 4)
   | .H q => some (sideB i q hadB)
   | .X q => some (sideB i q xB)
   | .Y q => some (sideB i q yB)
   | .Z q => some (sideB i q zB)
-  | .T q => some (sideB i q (rzB (PiLin.ofPi (1 / 4))))
-  | .Tdg q => some (sideB i q (rzB (PiLin.ofPi (-(1 / 4)))))
+  | .T q => some (sideB i q (lit2 CBall.one CBall.zero CBall.zero (e (PiLin.ofPi (1 / 4)))))
+  | .Tdg q =>
+    some (sideB i q (lit2 CBall.one CBall.zero CBall.zero (e (PiLin.ofPi (-(1 / 4))))))
   | .S q => some (sideB i q sB)
   | .Rz _ _ => none
-  | .RzQ q a => some (sideB i q (rzB a))
+  | .RzQ q a => some (sideB i q (lit2 CBall.one CBall.zero CBall.zero (e a)))
   | .CNOT a b =>
     some (if a = b then BMat.one else if a = i then cnotB
       else BMat.mul (BMat.mul swapB cnotB) swapB)
   | .CZ a b =>
     some (if a = b then BMat.one else if a = i then czB else BMat.mul (BMat.mul swapB czB) swapB)
 
+/-- The matrix of balls of `pairMat i j g`; `none` for a real-valued `Rz`. -/
+def pairB (i j : Fin n) : Gate n → Option (BMat 4) := pairBW expIBall i j
+
 theorem memM_pairB {i j : Fin n} {g : Gate n} {B : BMat 4} (h : pairB i j g = some B) :
     MemM (pairMat i j g) B := by
-  cases g <;> simp only [pairB, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
+  cases g <;> simp only [pairB, pairBW, Option.some.injEq, reduceCtorEq] at h <;> subst h <;>
     simp only [pairMat]
   · exact memM_sideB i _ memM_hadB
   · exact memM_sideB i _ memM_xB
@@ -295,22 +369,26 @@ theorem memM_pairB {i j : Fin n} {g : Gate n} {B : BMat 4} (h : pairB i j g = so
       · exact memM_mul (memM_mul memM_swapB memM_czB) memM_swapB
   · exact memM_sideB i _ (memM_rzB _)
 
-/-- The matrix of balls of `blockMat i j l`; `none` when a gate has no enclosure. -/
-def blockB (i j : Fin n) : List (Gate n) → Option (BMat 4)
+/-- The matrix of balls of `blockMat i j l`, the balls of `e^{iθ}` read from `e`; `none` when
+a gate has no enclosure. -/
+def blockBW (e : PiLin → CBall) (i j : Fin n) : List (Gate n) → Option (BMat 4)
   | [] => some BMat.one
   | g :: l => do
-    let B ← blockB i j l
-    let P ← pairB i j g
+    let B ← blockBW e i j l
+    let P ← pairBW e i j g
     pure (BMat.mul B P)
+
+/-- The matrix of balls of `blockMat i j l`; `none` when a gate has no enclosure. -/
+def blockB (i j : Fin n) : List (Gate n) → Option (BMat 4) := blockBW expIBall i j
 
 theorem memM_blockB {i j : Fin n} :
     ∀ {l : List (Gate n)} {B : BMat 4}, blockB i j l = some B → MemM (blockMat i j l) B
   | [], B, h => by
-    simp only [blockB, Option.some.injEq] at h
+    simp only [blockB, blockBW, Option.some.injEq] at h
     subst h
     exact memM_one
   | g :: l, B, h => by
-    simp only [blockB, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
+    simp only [blockB, blockBW, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
       Option.some.injEq] at h
     obtain ⟨B', hB', P, hP, rfl⟩ := h
     exact memM_mul (memM_blockB hB') (memM_pairB hP)
@@ -368,12 +446,15 @@ theorem norm_embedGate1_le (q : Fin n) (G : Matrix (Fin 2) (Fin 2) ℂ) :
 
 /-- The distance checker of a block: for gate lists `gs` and `rs` on the distinct qubits
 `(i, j)` with enclosed matrices, the bound `bnorm` of the enclosure of
-`blockMat rs - e^{iφ} blockMat gs`; `none` otherwise. -/
+`blockMat rs - e^{iφ} blockMat gs`; `none` otherwise. The balls `expIBall` are read from a
+table over the distinct angles of `φ`, `gs` and `rs`. -/
 def checkPair (i j : Fin n) (gs rs : List (Gate n)) (φ : PiLin) : Option ℚ :=
-  if i ≠ j ∧ gs.all (onPair i j) = true ∧ rs.all (onPair i j) = true then do
-    let G ← blockB i j gs
-    let R ← blockB i j rs
-    pure (bnorm (BMat.sub R (BMat.smul (expIBall φ) G)))
+  if i ≠ j ∧ gs.all (onPair i j) = true ∧ rs.all (onPair i j) = true then
+    let c := ExpCache.ofAngles (φ :: anglesOf (gs ++ rs))
+    do
+    let G ← blockBW c.lookup i j gs
+    let R ← blockBW c.lookup i j rs
+    pure (bnorm (BMat.sub R (BMat.smul (c.lookup φ) G)))
   else none
 
 /-- **Soundness of the block checker.** If `checkPair i j gs rs φ = some ε`, the matrices of
@@ -386,8 +467,8 @@ theorem norm_sub_le_checkPair {i j : Fin n} {gs rs : List (Gate n)} {φ : PiLin}
   split at h
   · next hc =>
     obtain ⟨hij, hgs, hrs⟩ := hc
-    simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
-      Option.some.injEq] at h
+    simp only [ExpCache.lookup_eq_expIBall, Option.bind_eq_bind, Option.bind_eq_some_iff,
+      Option.pure_def, Option.some.injEq] at h
     obtain ⟨G, hG, R, hR, rfl⟩ := h
     have hgs' : ∀ g ∈ gs, onPair i j g = true := List.all_eq_true.mp hgs
     have hrs' : ∀ g ∈ rs, onPair i j g = true := List.all_eq_true.mp hrs
@@ -404,12 +485,15 @@ theorem norm_sub_le_checkPair {i j : Fin n} {gs rs : List (Gate n)} {φ : PiLin}
 
 /-- The distance checker of a one-qubit run: for gate lists `gs` and `rs` of one-qubit gates
 on `q` with enclosed matrices, the bound `bnorm` of the enclosure of
-`runMat rs - e^{iφ} runMat gs`; `none` otherwise. -/
+`runMat rs - e^{iφ} runMat gs`; `none` otherwise. The balls `expIBall` are read from a table
+over the distinct angles of `φ`, `gs` and `rs`. -/
 def checkRun (q : Fin n) (gs rs : List (Gate n)) (φ : PiLin) : Option ℚ :=
-  if gs.all (fun g => oneQ? g == some q) = true ∧ rs.all (fun g => oneQ? g == some q) = true then do
-    let G ← runB gs
-    let R ← runB rs
-    pure (bnorm (BMat.sub R (BMat.smul (expIBall φ) G)))
+  if gs.all (fun g => oneQ? g == some q) = true ∧ rs.all (fun g => oneQ? g == some q) = true then
+    let c := ExpCache.ofAngles (φ :: anglesOf (gs ++ rs))
+    do
+    let G ← runBW c.lookup gs
+    let R ← runBW c.lookup rs
+    pure (bnorm (BMat.sub R (BMat.smul (c.lookup φ) G)))
   else none
 
 /-- **Soundness of the run checker.** If `checkRun q gs rs φ = some ε`, the matrices of `rs`
@@ -422,8 +506,8 @@ theorem norm_sub_le_checkRun {q : Fin n} {gs rs : List (Gate n)} {φ : PiLin} {�
   split at h
   · next hc =>
     obtain ⟨hgs, hrs⟩ := hc
-    simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
-      Option.some.injEq] at h
+    simp only [ExpCache.lookup_eq_expIBall, Option.bind_eq_bind, Option.bind_eq_some_iff,
+      Option.pure_def, Option.some.injEq] at h
     obtain ⟨G, hG, R, hR, rfl⟩ := h
     have hgs' : ∀ g ∈ gs, oneQ? g = some q := fun g hg => by
       simpa using List.all_eq_true.mp hgs g hg

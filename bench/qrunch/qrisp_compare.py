@@ -26,7 +26,10 @@ output's `final_layout` instead of appending swaps; `ours_lay_dev` reads it thro
 
 With `--tutorials` the programs are those of Qrisp's tutorials (`TUTORIALS`), each run once
 (the times are rough), Operator up to 12 qubits, written to results-tutorials.tsv; a program
-Qrisp cannot build gets a row with the exception.
+Qrisp cannot build gets a row with the exception. Above SV_FAST (20) and up to SV_MAX (25)
+qubits the deviation is taken over two random states with `_simulate` (numba, in place, one
+state at a time: 2^n complex amplitudes are 0.5 GB at 25 qubits); QRISP_COMPARE_THREADS sets
+its threads (default 4).
 
 usage: cd bridge && uv sync --extra qrisp && uv run python -I ../bench/qrunch/qrisp_compare.py
        [--tutorials] [--check] [--out NAME.tsv] [CIRCUIT ...]; writes
@@ -36,6 +39,7 @@ from __future__ import annotations
 
 import cmath
 import os
+import resource
 import sys
 import time
 
@@ -414,11 +418,193 @@ def _unpermute(data: np.ndarray, b: QuantumCircuit) -> np.ndarray:
     return t.transpose([n - 1 - p[n - 1 - k] for k in range(n)]).reshape(2 ** n)
 
 
+SV_MAX = 25   # the statevector check runs up to this many qubits
+SV_FAST = 20  # above this, `_simulate` (numba) instead of Statevector.evolve, two states
+SIM_THREADS = int(os.environ.get("QRISP_COMPARE_THREADS", "4"))  # numba threads of `_simulate`
+_KERNELS = None
+
+
+def _kernels():
+    """In-place numba kernels applying a 1-, 2- or 3-qubit matrix to a state (bit q of the
+    index is qubit q; bit k of the matrix index is the k-th qubit argument), and the largest
+    |u[i] - ph * w[map(i)]|, where map(i) = sum_j bit_j(i) << perm[j] reads `w` through an
+    output permutation as `_unpermute` does."""
+    global _KERNELS
+    if _KERNELS is not None:
+        return _KERNELS
+    import numba
+    from numba import njit, prange
+
+    numba.set_num_threads(min(SIM_THREADS, numba.config.NUMBA_NUM_THREADS))
+
+    @njit(inline="always")
+    def ins(i, s):
+        return ((i >> s) << (s + 1)) | (i & ((1 << s) - 1))
+
+    @njit(parallel=True)
+    def k1(psi, q, m):
+        b = 1 << q
+        for i in prange(psi.size >> 1):
+            j = ins(i, q)
+            x0, x1 = psi[j], psi[j | b]
+            psi[j] = m[0, 0] * x0 + m[0, 1] * x1
+            psi[j | b] = m[1, 0] * x0 + m[1, 1] * x1
+
+    @njit(parallel=True)
+    def k2(psi, qa, qb, m):
+        s0, s1 = min(qa, qb), max(qa, qb)
+        a, b = 1 << qa, 1 << qb
+        for i in prange(psi.size >> 2):
+            j = ins(ins(i, s0), s1)
+            x0, x1, x2, x3 = psi[j], psi[j | a], psi[j | b], psi[j | a | b]
+            psi[j] = m[0, 0] * x0 + m[0, 1] * x1 + m[0, 2] * x2 + m[0, 3] * x3
+            psi[j | a] = m[1, 0] * x0 + m[1, 1] * x1 + m[1, 2] * x2 + m[1, 3] * x3
+            psi[j | b] = m[2, 0] * x0 + m[2, 1] * x1 + m[2, 2] * x2 + m[2, 3] * x3
+            psi[j | a | b] = m[3, 0] * x0 + m[3, 1] * x1 + m[3, 2] * x2 + m[3, 3] * x3
+
+    @njit(parallel=True)
+    def k3(psi, qs, offs, m):
+        s = np.sort(qs)
+        for i in prange(psi.size >> 3):
+            j = ins(ins(ins(i, s[0]), s[1]), s[2])
+            x0, x1, x2, x3 = psi[j], psi[j | offs[1]], psi[j | offs[2]], psi[j | offs[3]]
+            x4, x5, x6, x7 = psi[j | offs[4]], psi[j | offs[5]], psi[j | offs[6]], psi[j | offs[7]]
+            for r in range(8):
+                psi[j | offs[r]] = (m[r, 0] * x0 + m[r, 1] * x1 + m[r, 2] * x2 + m[r, 3] * x3
+                                    + m[r, 4] * x4 + m[r, 5] * x5 + m[r, 6] * x6
+                                    + m[r, 7] * x7)
+
+    @njit
+    def chunk_diff(u, w, perm, ph, lo, hi):
+        best = 0.0
+        for i in range(lo, hi):
+            k = 0
+            for t in range(perm.size):
+                k = k | (((i >> t) & 1) << perm[t])
+            d = abs(u[i] - ph * w[k])
+            if d > best:
+                best = d
+        return best
+
+    @njit(parallel=True)
+    def kdiff(u, w, perm, ph):
+        chunks = 1024
+        size = u.size // chunks
+        out = np.zeros(chunks)
+        for c in prange(chunks):
+            out[c] = chunk_diff(u, w, perm, ph, c * size, (c + 1) * size)
+        return out.max()
+
+    _KERNELS = (k1, k2, k3, kdiff)
+    return _KERNELS
+
+
+def _embed(m: np.ndarray, pos: list[int], k: int) -> np.ndarray:
+    """The matrix `m` on qubits `pos` (bit t of its index is qubit pos[t]) as a matrix on k
+    qubits."""
+    g = np.zeros((2 ** k, 2 ** k), dtype=np.complex128)
+    mask = sum(1 << p for p in pos)
+    for c in range(2 ** k):
+        s = sum(((c >> p) & 1) << t for t, p in enumerate(pos))
+        for r in range(2 ** len(pos)):
+            g[(c & ~mask) | sum(((r >> t) & 1) << p for t, p in enumerate(pos)), c] = m[r, s]
+    return g
+
+
+def _fused_ops(qc: QuantumCircuit) -> list[tuple[list[int], np.ndarray]]:
+    """The gates of `qc` as (qubits, matrix) fused greedily into blocks of at most three qubits
+    (bit t of a block's matrix index is its t-th qubit). Blocks on disjoint qubits stay open
+    together; a gate joins (and merges) the open blocks it touches when their qubits and its
+    own number at most three, and otherwise those blocks are emitted and it opens a new one.
+    An open block it does not touch acts on other qubits, so it commutes with the gate."""
+    idx = {q: i for i, q in enumerate(qc.qubits)}
+    out: list[tuple[list[int], np.ndarray]] = []
+    open_: list[tuple[list[int], np.ndarray]] = []
+    for ins in qc.data:
+        if ins.operation.name == "barrier":
+            continue
+        qs = [idx[q] for q in ins.qubits]
+        assert len(qs) <= 3 and not ins.clbits, ins.operation.name
+        m = Operator(ins.operation).data
+        hit = [b for b in open_ if set(b[0]) & set(qs)]
+        rest = [b for b in open_ if not set(b[0]) & set(qs)]
+        union = {q for b in hit for q in b[0]} | set(qs)
+        if len(union) <= 3:
+            block, mat = [], np.eye(1, dtype=np.complex128)
+            for bq, bm in hit:  # disjoint blocks: their product is the Kronecker product
+                block, mat = block + bq, np.kron(bm, mat)
+        else:
+            out.extend(hit)
+            block, mat = [], np.eye(1, dtype=np.complex128)
+        for q in qs:
+            if q not in block:  # a new qubit of the block is its next (highest) bit
+                block, mat = block + [q], np.kron(np.eye(2), mat)
+        mat = _embed(m, [block.index(q) for q in qs], len(block)) @ mat
+        open_ = rest + [(block, mat)]
+    out.extend(open_)
+    return [(b, np.ascontiguousarray(m)) for b, m in out]
+
+
+def _simulate(qc: QuantumCircuit, psi: np.ndarray) -> np.ndarray:
+    """`psi` evolved in place by `qc`, without its global phase."""
+    k1, k2, k3, _ = _kernels()
+    for qs, m in _fused_ops(qc):
+        if len(qs) == 1:
+            k1(psi, qs[0], m)
+        elif len(qs) == 2:
+            k2(psi, qs[0], qs[1], m)
+        else:
+            offs = np.array([sum(((r >> t) & 1) << qs[t] for t in range(3)) for r in range(8)])
+            k3(psi, np.array(qs), offs, m)
+    return psi
+
+
+def _random_state(n: int, seed: int) -> np.ndarray:
+    """A Haar-random state of n qubits (normalised complex Gaussian), built in place."""
+    rng = np.random.default_rng(seed)
+    psi = np.empty(2 ** n, dtype=np.complex128)
+    psi.real = rng.standard_normal(2 ** n)
+    psi.imag = rng.standard_normal(2 ** n)
+    psi /= np.linalg.norm(psi)
+    return psi
+
+
+def _deviations_fast(a: QuantumCircuit, bs: list[QuantumCircuit], n_states: int = 2) -> list[float]:
+    """`deviation(a, b)` for each `b` in `bs` over `n_states` random states, one state at a
+    time: the state evolved by `a` is kept while each `b` evolves a fresh copy, which is freed
+    before the next."""
+    _, _, _, kdiff = _kernels()
+    n = a.num_qubits
+    devs = [0.0] * len(bs)
+    for s in range(n_states):
+        u = _simulate(a, _random_state(n, s))
+        u *= cmath.exp(1j * a.global_phase)
+        for t, b in enumerate(bs):
+            w = _simulate(b, _random_state(n, s))
+            perm = (np.arange(n) if b.layout is None
+                    else np.array(b.layout.final_index_layout(filter_ancillas=True)))
+            devs[t] = max(devs[t], float(kdiff(u, w, perm, cmath.exp(1j * b.global_phase))))
+            del w
+        del u
+    return devs
+
+
+def deviations(a: QuantumCircuit, bs: list[QuantumCircuit], op_max: int = 10) -> list[float]:
+    """`deviation(a, b)` for each `b` in `bs`; above SV_FAST qubits through `_deviations_fast`,
+    which evolves the input once per state for all of `bs`."""
+    if SV_FAST < a.num_qubits <= SV_MAX:
+        return _deviations_fast(a, bs)
+    return [deviation(a, b, op_max) for b in bs]
+
+
 def deviation(a: QuantumCircuit, b: QuantumCircuit, op_max: int = 10) -> float:
     """max |A - B| entrywise (Operator up to `op_max` qubits, through the output permutation
-    of `b.layout`) or over four statevectors; NaN above 20 qubits."""
-    if a.num_qubits > 20:
+    of `b.layout`) or over four statevectors (two above SV_FAST qubits, `_deviations_fast`);
+    NaN above SV_MAX qubits."""
+    if a.num_qubits > SV_MAX:
         return float("nan")
+    if a.num_qubits > SV_FAST:
+        return _deviations_fast(a, [b])[0]
     if a.num_qubits <= op_max:
         return float(np.abs(Operator(a).data - Operator.from_circuit(b).data).max())
     return max(float(np.abs(v.evolve(a).data - _unpermute(v.evolve(b).data, b)).max())
@@ -485,7 +671,8 @@ def segment_deviation(a: QuantumCircuit, b: QuantumCircuit,
         for v in states:
             u, w = v.evolve(cx_).data, v.evolve(cy).data
             ph = cmath.phase(np.vdot(w, u))
-            dev = max(dev, float(np.abs(u - cmath.exp(-1j * ph) * w).max()))
+            # u = e^{i ph} w up to the deviation, ph = arg <w, u>
+            dev = max(dev, float(np.abs(u - cmath.exp(1j * ph) * w).max()))
     return dev
 
 
@@ -550,11 +737,15 @@ def main(args: list[str]) -> None:
             rows.append(r)
             continue
         classical = not rep.unitary
+        lay = vc_lay.compile(qin)
+        lrep = vc_lay.last_report
         if classical:
             ours_dev, qk_dev = f"{segment_deviation(qin, ours, rep.layouts):.1e}", "-"
+            lay_dev = segment_deviation(qin, lay, lrep.layouts) if lrep.optimized else None
         else:
-            ours_dev = f"{deviation(qin, ours, op_max):.1e}"
-            qk_dev = f"{deviation(qin, qk, op_max):.1e}"
+            devs = deviations(qin, [ours, qk] + ([lay] if lrep.optimized else []), op_max)
+            ours_dev, qk_dev = f"{devs[0]:.1e}", f"{devs[1]:.1e}"
+            lay_dev = devs[2] if lrep.optimized else None
         (ocx, od2, og), (qcx, qd2, qg) = figures(ours), figures(qk)
         eps = "unchecked" if rep.eps is None else f"{rep.eps:.1e}"
         # the CX count of the input as catq-compile imports it (cp, cz, swap, ccx lowered)
@@ -562,13 +753,9 @@ def main(args: list[str]) -> None:
         ne = pm_ne.run(qin)
         assert classical or qin.num_qubits > op_max or Operator(qin).equiv(Operator(ne))
         necx, _, neg = figures(ne)
-        lay = vc_lay.compile(qin)
-        lrep = vc_lay.last_report
         if not lrep.optimized:
             lay_cols = ["-", "-", "-", f"refused: {lrep.reason}"]
         else:
-            lay_dev = (segment_deviation(qin, lay, lrep.layouts) if classical
-                       else deviation(qin, lay, op_max))
             lay_cols = [*figures(lay), f"{lay_dev:.1e}"]
         r = [name, qin.num_qubits, "yes" if classical else "no", cx_in, ocx, qcx,
              od2, qd2, og, qg, f"{min(t_ours) * 1e3:.1f}", f"{min(t_qk) * 1e3:.1f}",
@@ -582,7 +769,8 @@ def main(args: list[str]) -> None:
         f.write(f"# qrisp {qrisp.__version__ if hasattr(qrisp, '__version__') else _version('qrisp')}"
                 f", qiskit {qiskit.__version__}, catq-compile level 2r{' --check' if check else ''}"
                 f"; load average {load_avg:.2f} (taken under load), "
-                f"{'best of ' + str(repeat) if repeat > 1 else 'one run'}, "
+                f"{'best of ' + str(repeat) if repeat > 1 else 'one run'}, peak RSS "
+                f"{resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2 ** 20:.1f} GiB, "
                 f"{time.strftime('%Y-%m-%d %H:%M %Z')}\n")
         f.write("\t".join(header) + "\n")
         for r in rows:

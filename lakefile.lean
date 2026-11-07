@@ -3163,7 +3163,9 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Hax.ToRawCode,
     Lake.Glob.one `CatCrypt.Hax.TypedToRawCode,
     Lake.Glob.one `CatCrypt.Hax.VacuityAudit,
+    Lake.Glob.one `CatCrypt.Quantum.AffAngle,
     Lake.Glob.one `CatCrypt.Quantum.AndAncilla,
+    Lake.Glob.one `CatCrypt.Quantum.AndLadder,
     Lake.Glob.one `CatCrypt.Quantum.AngleQ,
     Lake.Glob.one `CatCrypt.Quantum.AngleSnap,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchCompile,
@@ -3235,6 +3237,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Qelib,
     Lake.Glob.one `CatCrypt.Quantum.QrunchBasis,
     Lake.Glob.one `CatCrypt.Quantum.QrunchCommute,
+    Lake.Glob.one `CatCrypt.Quantum.QrunchConnect,
     Lake.Glob.one `CatCrypt.Quantum.QrunchExport,
     Lake.Glob.one `CatCrypt.Quantum.QrunchFuse,
     Lake.Glob.one `CatCrypt.Quantum.QrunchRound,
@@ -3249,6 +3252,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKPass,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKPassSmall,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKSmall,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.ParMap,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.QrunchFit,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZ,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZPass,
@@ -3266,12 +3270,12 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Relational.Frame,
     Lake.Glob.one `CatCrypt.Relational.Judgment,
     Lake.Glob.one `CatCrypt.Relational.Reorder,
+  ]
+def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Relational.Rules,
     Lake.Glob.one `CatCrypt.Relational.SpanLifting,
     Lake.Glob.one `CatCrypt.Relational.Sync,
     Lake.Glob.one `CatCrypt.Tactic.Basic,
-  ]
-def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Tactic.BignumReason,
     Lake.Glob.one `CatCrypt.Tactic.BindAlign,
     Lake.Glob.one `CatCrypt.Tactic.BindVcgen,

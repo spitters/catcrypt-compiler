@@ -31,12 +31,18 @@ proved for `resynth` by `norm_listMatrix_resynth_sub_le`), the qelib1 matrix of 
 within the bound of `e^{iφ}` times the qelib1 matrix of the input, in the `ℓ²` operator norm.
 
 The iteration `runRounds stage k qs` runs one round, then further rounds while a round lowers
-the CX count of its input, or keeps it and lowers the statement count (`Better`), at most `k`
-rounds in all: it stops at a fixed point of the round up to this order or at the fuel.
-**The iteration theorem** `norm_runRounds_sub_le`: the bound of the iteration is the sum of
-the bounds of its rounds and its phase the sum of their phases, since every phase factor has
-norm one and errors of approximations add (`ResynthLevel.norm_sub_smul_trans_le`). The CX
-count never rises after the first round (`cxCount_runRounds_le`).
+the CX count of its input, or keeps it and lowers the statement count by at least
+`stmtMargin` of it, the larger of two statements and 2 % (`Better`), at most `k` rounds in
+all: it stops at a fixed point of the round up to this order or at the fuel. Under the cost
+`Cost.t` the order compares the T-cost `tCost` first (`BetterC`): `t`, `tdg` and a rotation
+by an odd multiple of `π/4` count one, a rotation by a multiple of `π/2` zero and any other
+rotation 100; a first round that raises the T-cost is replaced by the identity round
+(`idRound`, phase `0`, bound `0`).
+**The iteration theorem** `norm_runRounds_sub_le`, at both costs: the bound of the iteration is
+the sum of the bounds of its rounds and its phase the sum of their phases, since every phase
+factor has norm one and errors of approximations add (`ResynthLevel.norm_sub_smul_trans_le`).
+Under `cx` the CX count never rises after the first round (`cxCount_runRounds_le`); under `t`
+the T-cost of the output is at most that of the input (`tCost_runRounds_le`).
 
 The whole run `compileQGates` prepares the input before the first round (`prepQ`): swap elision
 `SwapElide.elideQ`, which drops the `swap` statements and returns an output permutation `π`,
@@ -49,6 +55,7 @@ transfer through it.
 ## Main definitions
 
 * `round` — one round of the pipeline, with its phase and bound (`RoundOut`).
+* `Cost`, `tCost`, `BetterC` — the cost of the iteration, the T-cost and the order under a cost.
 * `runRounds` — the iteration of the round to a fixed point, at most `k` rounds.
 * `finalOut` — the statements after a list of rounds.
 * `prepQ`, `compileQGates` — the preparation of the input and the whole run (`CompileOut`).
@@ -58,6 +65,7 @@ transfer through it.
 * `norm_round_sub_le` — the round theorem.
 * `norm_runRounds_sub_le` — the iteration theorem.
 * `cxCount_runRounds_le` — the CX count of the iteration is at most that of its first round.
+* `tCost_runRounds_le` — under `t`, the T-cost of the iteration is at most that of its input.
 * `norm_compileQGates_sub_le` — the compile theorem.
 -/
 
@@ -192,11 +200,15 @@ theorem norm_round_sub_le {stage : Circuit n → Resynth n} (hS : StageBound sta
   rw [he, ← smul_smul, ← smul_sub, norm_smul, Complex.norm_exp_I_mul_ofReal, one_mul]
   exact hs
 
-/-- The order of the iteration: `l'` has fewer CX statements than `l`, or as many and fewer
-statements. -/
+/-- The least drop in the statement count of a round that keeps the CX count, for an input of
+`m` statements: `max 2 (m / 50)`, two statements or 2 % of `m`. -/
+def stmtMargin (m : ℕ) : ℕ := max 2 (m / 50)
+
+/-- The order of the iteration: `l'` has fewer CX statements than `l`, or as many and at least
+`stmtMargin l.length` fewer statements. -/
 def Better (l' l : List (QGate n)) : Bool :=
   decide (cxCount l' < cxCount l) ||
-    (decide (cxCount l' = cxCount l) && decide (l'.length < l.length))
+    (decide (cxCount l' = cxCount l) && decide (l'.length + stmtMargin l.length ≤ l.length))
 
 /-- A `Better` list has at most as many CX statements. -/
 theorem cxCount_le_of_better {l' l : List (QGate n)} (h : Better l' l = true) :
@@ -210,13 +222,80 @@ theorem better_trans {l₁ l₂ l₃ : List (QGate n)} (h₁ : Better l₁ l₂ 
   simp only [Better, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h₁ h₂ ⊢
   omega
 
+/-- The cost the iteration lowers: `cx`, the order `Better`, or `t`, the T-cost `tCost` first
+and then `Better`. -/
+inductive Cost where
+  /-- The CX count, then the statement count (`Better`). -/
+  | cx
+  /-- The T-cost (`tCost`), then the CX count, then the statement count. -/
+  | t
+  deriving DecidableEq, Repr
+
+/-- The T-cost of a rotation by `θ`: `0` at a multiple of `π/2` (a Clifford rotation), `1` at an
+odd multiple of `π/4` (a T gate up to Clifford gates) and `100` at any other angle, the estimate
+of the T gates of its Clifford+T synthesis. -/
+def angleTCost (θ : PiLin) : ℕ :=
+  let q := 4 * θ.b
+  if θ.a = 0 ∧ q.den = 1 then (if q.num % 2 = 0 then 0 else 1) else 100
+
+/-- The T-cost of a statement: `1` for `t` and `tdg`, `angleTCost` of the angle of a one-qubit
+rotation (`rx`, `ry`, `rz`, `p`) and the sum over the three rotations of `u` and the two
+of `u2`, three rotations by `θ/2` for `cp θ`, `7` for `ccx` and `ccz`, `0` otherwise. -/
+def stmtTCost : QGate n → ℕ
+  | .t _ | .tdg _ => 1
+  | .rx _ θ | .ry _ θ | .rz _ θ | .p _ θ => angleTCost θ
+  | .u _ θ φ l => angleTCost θ + angleTCost φ + angleTCost l
+  | .u2 _ φ l => angleTCost φ + angleTCost l
+  | .cp _ _ θ => 3 * angleTCost ⟨θ.a / 2, θ.b / 2⟩
+  | .ccx _ _ _ | .ccz _ _ _ => 7
+  | _ => 0
+
+/-- The T-cost of a statement list: the sum of the T-costs of its statements. -/
+def tCost (l : List (QGate n)) : ℕ := (l.map stmtTCost).sum
+
+/-- The order of the iteration under a cost: `Better` under `cx`; under `t`, `l'` has a lower
+T-cost than `l`, or the same T-cost and `Better l' l`. -/
+def BetterC : Cost → List (QGate n) → List (QGate n) → Bool
+  | .cx, l', l => Better l' l
+  | .t, l', l => decide (tCost l' < tCost l) || (decide (tCost l' = tCost l) && Better l' l)
+
+/-- `BetterC` is transitive. -/
+theorem betterC_trans {c : Cost} {l₁ l₂ l₃ : List (QGate n)} (h₁ : BetterC c l₁ l₂ = true)
+    (h₂ : BetterC c l₂ l₃ = true) : BetterC c l₁ l₃ = true := by
+  cases c with
+  | cx => exact better_trans h₁ h₂
+  | t =>
+    simp only [BetterC, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h₁ h₂ ⊢
+    rcases h₁ with h₁ | ⟨e₁, b₁⟩ <;> rcases h₂ with h₂ | ⟨e₂, b₂⟩
+    · exact Or.inl (h₁.trans h₂)
+    · exact Or.inl (by omega)
+    · exact Or.inl (by omega)
+    · exact Or.inr ⟨e₁.trans e₂, better_trans b₁ b₂⟩
+
+/-- A list `BetterC` under `t` has at most the T-cost. -/
+theorem tCost_le_of_betterC_t {l' l : List (QGate n)} (h : BetterC .t l' l = true) :
+    tCost l' ≤ tCost l := by
+  simp only [BetterC, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
+  omega
+
+/-- Whether the round `o` on `qs` raises the cost: never under `cx`; under `t`, when the T-cost
+of its output exceeds that of `qs`. -/
+def raisesT : Cost → List (QGate n) → RoundOut n → Bool
+  | .cx, _, _ => false
+  | .t, qs, o => decide (tCost qs < tCost o.out)
+
+/-- The identity round on `qs`, with the stage value of `o`: output `qs`, phase `0`, bound
+`0`. -/
+def idRound (o : RoundOut n) (qs : List (QGate n)) : RoundOut n := ⟨o.stage, qs, 0, 0⟩
+
 /-- The rounds after the first: at most `k` more rounds from `l`, each kept only when its
-output is `Better` than its input. -/
-def iterFrom (stage : Circuit n → Resynth n) : ℕ → List (QGate n) → List (RoundOut n)
-  | 0, _ => []
-  | k + 1, l =>
+output is `BetterC cost` than its input. -/
+def iterFrom (stage : Circuit n → Resynth n) :
+    ℕ → List (QGate n) → (cost : Cost := .cx) → List (RoundOut n)
+  | 0, _, _ => []
+  | k + 1, l, c =>
     match round stage l with
-    | some o => if Better o.out l then o :: iterFrom stage k o.out else []
+    | some o => if BetterC c o.out l then o :: iterFrom stage k o.out c else []
     | none => []
 
 /-- The statements after a list of rounds from `l`: the output of the last round, or `l`. -/
@@ -224,12 +303,14 @@ def finalOut : List (QGate n) → List (RoundOut n) → List (QGate n)
   | l, [] => l
   | _, o :: rs => finalOut o.out rs
 
-/-- **The iteration to a fixed point**: one round, then at most `k - 1` further rounds while
-the output improves (`iterFrom`); empty when the first round refuses its input. -/
-def runRounds (stage : Circuit n → Resynth n) (k : ℕ) (qs : List (QGate n)) :
-    List (RoundOut n) :=
+/-- **The iteration to a fixed point** under the cost `cost`: one round, then at most `k - 1`
+further rounds while the output improves (`iterFrom`); the identity round alone when the first
+round raises the T-cost under `t` (`raisesT`); empty when the first round refuses its input. -/
+def runRounds (stage : Circuit n → Resynth n) (k : ℕ) (qs : List (QGate n))
+    (cost : Cost := .cx) : List (RoundOut n) :=
   match round stage qs with
-  | some o => o :: iterFrom stage (k - 1) o.out
+  | some o =>
+    if raisesT cost qs o then [idRound o qs] else o :: iterFrom stage (k - 1) o.out cost
   | none => []
 
 /-- The sum of the phases of a list of rounds. -/
@@ -262,10 +343,11 @@ theorem norm_finalOut_cons_sub_le {l : List (QGate n)} {o : RoundOut n}
 
 /-- The iteration theorem for the rounds after the first. -/
 theorem norm_iterFrom_sub_le {stage : Circuit n → Resynth n} (hS : StageBound stage)
-    (k : ℕ) (l : List (QGate n)) :
-    ‖qelibListMatrix (finalOut l (iterFrom stage k l)) -
-        Complex.exp (Complex.I * (sumPhase (iterFrom stage k l)).toReal) • qelibListMatrix l‖ ≤
-      (sumEps (iterFrom stage k l) : ℝ) := by
+    (k : ℕ) (l : List (QGate n)) (cost : Cost := .cx) :
+    ‖qelibListMatrix (finalOut l (iterFrom stage k l cost)) -
+        Complex.exp (Complex.I * (sumPhase (iterFrom stage k l cost)).toReal) •
+          qelibListMatrix l‖ ≤
+      (sumEps (iterFrom stage k l cost) : ℝ) := by
   induction k generalizing l with
   | zero => simp [iterFrom, finalOut, sumPhase, sumEps]
   | succ k ih =>
@@ -281,15 +363,47 @@ theorem norm_iterFrom_sub_le {stage : Circuit n → Resynth n} (hS : StageBound 
 is within the sum of the bounds of the rounds of `e^{iΦ}` times the qelib1 matrix of the input,
 `Φ` the sum of their exact phases. -/
 theorem norm_runRounds_sub_le {stage : Circuit n → Resynth n} (hS : StageBound stage)
-    (k : ℕ) (qs : List (QGate n)) :
-    ‖qelibListMatrix (finalOut qs (runRounds stage k qs)) -
-        Complex.exp (Complex.I * (sumPhase (runRounds stage k qs)).toReal) • qelibListMatrix qs‖ ≤
-      (sumEps (runRounds stage k qs) : ℝ) := by
+    (k : ℕ) (qs : List (QGate n)) (cost : Cost := .cx) :
+    ‖qelibListMatrix (finalOut qs (runRounds stage k qs cost)) -
+        Complex.exp (Complex.I * (sumPhase (runRounds stage k qs cost)).toReal) •
+          qelibListMatrix qs‖ ≤
+      (sumEps (runRounds stage k qs cost) : ℝ) := by
   unfold runRounds
   split
   · rename_i o ho
-    exact norm_finalOut_cons_sub_le (norm_round_sub_le hS ho) (norm_iterFrom_sub_le hS _ o.out)
+    split
+    · simp [finalOut, sumPhase, sumEps, idRound, PiLin.toReal]
+    · exact norm_finalOut_cons_sub_le (norm_round_sub_le hS ho)
+        (norm_iterFrom_sub_le hS _ o.out cost)
   · simp [finalOut, sumPhase, sumEps]
+
+/-- The T-cost never rises in the rounds after the first, under `t`. -/
+theorem tCost_iterFrom_le (stage : Circuit n → Resynth n) (k : ℕ) (l : List (QGate n)) :
+    tCost (finalOut l (iterFrom stage k l .t)) ≤ tCost l := by
+  induction k generalizing l with
+  | zero => simp [iterFrom, finalOut]
+  | succ k ih =>
+    unfold iterFrom
+    split
+    · split
+      · rename_i o _ hb
+        exact (ih o.out).trans (tCost_le_of_betterC_t hb)
+      · simp [finalOut]
+    · simp [finalOut]
+
+/-- **The T-cost never rises** under `t`: the output of the iteration has at most the T-cost of
+its input. -/
+theorem tCost_runRounds_le (stage : Circuit n → Resynth n) (k : ℕ) (qs : List (QGate n)) :
+    tCost (finalOut qs (runRounds stage k qs .t)) ≤ tCost qs := by
+  unfold runRounds
+  split
+  · rename_i o _
+    split
+    · simp [finalOut, idRound]
+    · rename_i hr
+      simp only [raisesT, decide_eq_true_eq, not_lt] at hr
+      exact (tCost_iterFrom_le stage _ o.out).trans hr
+  · simp [finalOut]
 
 /-- The CX count never rises in the rounds after the first. -/
 theorem cxCount_iterFrom_le (stage : Circuit n → Resynth n) (k : ℕ) (l : List (QGate n)) :
@@ -310,15 +424,17 @@ as many CX statements as the output of its first round. -/
 theorem cxCount_runRounds_le (stage : Circuit n → Resynth n) (k : ℕ) (qs : List (QGate n))
     {o : RoundOut n} (h : round stage qs = some o) :
     cxCount (finalOut qs (runRounds stage k qs)) ≤ cxCount o.out := by
-  simp only [runRounds, h, finalOut]
+  simp only [runRounds, h]
   exact cxCount_iterFrom_le stage (k - 1) o.out
 
 /-- The output of the rounds after the first is their input or `Better` than it, and it is the
 output of each kept round or `Better` than it. -/
-theorem better_iterFrom (stage : Circuit n → Resynth n) (k : ℕ) (l : List (QGate n)) :
-    (finalOut l (iterFrom stage k l) = l ∨ Better (finalOut l (iterFrom stage k l)) l = true) ∧
-    ∀ o' ∈ iterFrom stage k l, finalOut l (iterFrom stage k l) = o'.out ∨
-      Better (finalOut l (iterFrom stage k l)) o'.out = true := by
+theorem better_iterFrom (stage : Circuit n → Resynth n) (k : ℕ) (l : List (QGate n))
+    (cost : Cost := .cx) :
+    (finalOut l (iterFrom stage k l cost) = l ∨
+      BetterC cost (finalOut l (iterFrom stage k l cost)) l = true) ∧
+    ∀ o' ∈ iterFrom stage k l cost, finalOut l (iterFrom stage k l cost) = o'.out ∨
+      BetterC cost (finalOut l (iterFrom stage k l cost)) o'.out = true := by
   induction k generalizing l with
   | zero => simp [iterFrom, finalOut]
   | succ k ih =>
@@ -331,23 +447,28 @@ theorem better_iterFrom (stage : Circuit n → Resynth n) (k : ℕ) (l : List (Q
         refine ⟨?_, h₁, h₂⟩
         rcases h₁ with h | h
         · rw [h]; exact Or.inr hb
-        · exact Or.inr (better_trans h hb)
+        · exact Or.inr (betterC_trans h hb)
       · simp [finalOut]
     · simp [finalOut]
 
 /-- **The best iterate.** The output of the iteration is the output of each of its rounds or
-`Better` than it: every kept round is `Better` than its input, and the iteration stops at the
-first round whose output is not `Better` than its input, so the returned statements have the
-lowest CX count, and then the lowest statement count, of all the iterates it computed. -/
-theorem better_runRounds (stage : Circuit n → Resynth n) (k : ℕ) (qs : List (QGate n)) :
-    ∀ o' ∈ runRounds stage k qs, finalOut qs (runRounds stage k qs) = o'.out ∨
-      Better (finalOut qs (runRounds stage k qs)) o'.out = true := by
+`BetterC cost` than it: every kept round is `BetterC cost` than its input, and the iteration
+stops at the first round whose output is not, so under `cx` the returned statements have the
+lowest CX count of all the iterates it computed, and among those at that count each other
+iterate has at least `stmtMargin` of its length more statements; under `t` the T-cost comes
+first. -/
+theorem better_runRounds (stage : Circuit n → Resynth n) (k : ℕ) (qs : List (QGate n))
+    (cost : Cost := .cx) :
+    ∀ o' ∈ runRounds stage k qs cost, finalOut qs (runRounds stage k qs cost) = o'.out ∨
+      BetterC cost (finalOut qs (runRounds stage k qs cost)) o'.out = true := by
   unfold runRounds
   split
   · rename_i o _
-    obtain ⟨h₁, h₂⟩ := better_iterFrom stage (k - 1) o.out
-    simp only [finalOut, List.mem_cons, forall_eq_or_imp]
-    exact ⟨h₁, h₂⟩
+    split
+    · simp [finalOut, idRound]
+    · obtain ⟨h₁, h₂⟩ := better_iterFrom stage (k - 1) o.out cost
+      simp only [finalOut, List.mem_cons, forall_eq_or_imp]
+      exact ⟨h₁, h₂⟩
   · simp
 
 /-! ## The whole run: swap elision and angle snapping, then the rounds -/
@@ -375,14 +496,15 @@ structure CompileOut (n : ℕ) where
 
 /-- **The whole run**: `prepQ`, then at most `k` rounds of the pipeline (`runRounds`). -/
 def compileQGates (stage : Circuit n → Resynth n) (k : ℕ) (elide snap : Bool)
-    (qs : List (QGate n)) : CompileOut n :=
+    (qs : List (QGate n)) (cost : Cost := .cx) : CompileOut n :=
   let p := prepQ elide snap qs
-  let rs := runRounds stage k p.1
+  let rs := runRounds stage k p.1 cost
   ⟨rs, finalOut p.1 rs, p.2.1, p.2.2⟩
 
 /-- The input of a round that does not refuse has statements with distinct operands. -/
 theorem distinct_of_runRounds_ne_nil {stage : Circuit n → Resynth n} {k : ℕ}
-    {qs : List (QGate n)} (h : runRounds stage k qs ≠ []) : ∀ g ∈ qs, Distinct g := by
+    {qs : List (QGate n)} {cost : Cost} (h : runRounds stage k qs cost ≠ []) :
+    ∀ g ∈ qs, Distinct g := by
   unfold runRounds at h
   split at h
   · rename_i o ho
@@ -404,7 +526,7 @@ theorem norm_prepQ_sub_le (elide snap : Bool) (qs : List (QGate n))
     refine AngleSnap.norm_qelibListMatrix_snapQ_sub_le _ fun g hg => ?_
     have hm : (AngleSnap.snapGate g).1 ∈ (AngleSnap.snapQ
         (if elide then SwapElide.elideQ qs else (qs, 1)).1).1 := by
-      simp only [AngleSnap.snapQ, List.mem_map]
+      simp only [AngleSnap.snapQ_fst, List.mem_map]
       exact ⟨g, hg, rfl⟩
     exact (AngleSnap.distinct_snapGate g).1 (hd _ hm)
 
@@ -421,21 +543,21 @@ of the input is within the snap bound plus the sum of the bounds of the rounds o
 permutation `wireMatrix perm` after `e^{-iΦ}` times the qelib1 matrix of the output, `Φ` the
 sum of the exact phases of the rounds, in the `ℓ²` operator norm. -/
 theorem norm_compileQGates_sub_le {stage : Circuit n → Resynth n} (hS : StageBound stage)
-    (k : ℕ) (elide snap : Bool) (qs : List (QGate n))
-    (h : (compileQGates stage k elide snap qs).rounds ≠ []) :
-    ‖qelibListMatrix qs - SwapElide.wireMatrix (compileQGates stage k elide snap qs).perm *
+    (k : ℕ) (elide snap : Bool) (qs : List (QGate n)) (cost : Cost)
+    (h : (compileQGates stage k elide snap qs cost).rounds ≠ []) :
+    ‖qelibListMatrix qs - SwapElide.wireMatrix (compileQGates stage k elide snap qs cost).perm *
         (Complex.exp
-            (-(Complex.I * (sumPhase (compileQGates stage k elide snap qs).rounds).toReal)) •
-          qelibListMatrix (compileQGates stage k elide snap qs).out)‖ ≤
-      ((compileQGates stage k elide snap qs).snapEps +
-        sumEps (compileQGates stage k elide snap qs).rounds : ℚ) := by
+            (-(Complex.I * (sumPhase (compileQGates stage k elide snap qs cost).rounds).toReal)) •
+          qelibListMatrix (compileQGates stage k elide snap qs cost).out)‖ ≤
+      ((compileQGates stage k elide snap qs cost).snapEps +
+        sumEps (compileQGates stage k elide snap qs cost).rounds : ℚ) := by
   simp only [compileQGates] at h ⊢
   set p := prepQ elide snap qs with hp
-  set rs := runRounds stage k p.1
+  set rs := runRounds stage k p.1 cost
   set e := (if elide then SwapElide.elideQ qs else (qs, 1)).1
   set c := Complex.exp (Complex.I * (sumPhase rs).toReal)
   have hR : ‖qelibListMatrix (finalOut p.1 rs) - c • qelibListMatrix p.1‖ ≤ (sumEps rs : ℝ) :=
-    norm_runRounds_sub_le hS k p.1
+    norm_runRounds_sub_le hS k p.1 cost
   have hP : ‖qelibListMatrix p.1 - qelibListMatrix e‖ ≤ (p.2.2 : ℝ) :=
     norm_prepQ_sub_le elide snap qs (distinct_of_runRounds_ne_nil h)
   have hU : SwapElide.wireMatrix p.2.1 ∈ unitary (Matrix (Fin (2 ^ n)) (Fin (2 ^ n)) ℂ) :=

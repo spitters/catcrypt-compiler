@@ -18,8 +18,10 @@ import all Init.Data.String.Slice
 The importer `OpenQASMImport.importQASM` reads a file as a `String`, splits its
 characters into statement texts at `;` (`OpenQASMImport.stmtsGo`) and parses each text.
 This module computes the same function on the bytes of the file: a statement text is a
-span `⟨bs, lo, hi⟩` of byte indices, found by scanning the bytes (`stmtsGoB`), and each
-parsing combinator reads the bytes of a span by index.
+span `⟨bs, lo, hi⟩` of byte indices, found by scanning the bytes (`stmtsGoB`), and the
+characters of each statement span are read by `OpenQASMImport.parseQL` (`parseQB`). The
+byte combinators below read the bytes of a span by index; `parseLineB` reads a line as
+`OpenQASMParser.parseLine` does.
 
 The byte and character views are related by the representation relation
 `paramChars : Param .map3 .map0 ByteSpan (List Char)`, the graph of `ByteSpan.chars`,
@@ -30,11 +32,6 @@ results, equal) outputs. The importer's equation is assembled from these squares
 from the facts relating the `String` operations of the list importer (`splitOn`,
 `trimAsciiStart`, `startsWith`, `==`) to list operations on `String.toList`, which
 hold for every string whose characters are ASCII.
-
-The angle text of a gate (between its parentheses) and the digits of an `rz`
-operand are decoded to characters and read by `OpenQASMImport.angleOf` and
-`String.toNat?`, and the operation name of a text that `OpenQASMParser.parseLine`
-does not read is decoded before the name dispatch.
 
 ## Main definitions
 
@@ -895,18 +892,10 @@ theorem parseAnglesB_eq (s : ByteSpan) :
 
 /-! ## Statements -/
 
-/-- The statements of a statement text, read from its bytes as `OpenQASMImport.parseQ`
-reads the text. The operation name is decoded only for a text `parseLineB` does not
-read. -/
+/-- The statements of a statement text, read from its bytes: the characters of the span,
+read by `OpenQASMImport.parseQL`. -/
 def parseQB (n : ℕ) (line : ByteSpan) : Option (List (OpenQASMImport.QGate n)) :=
-  let s := dropWhileB Char.isWhitespace line
-  let nm := takeWhileB Char.isAlphanum (dropWhileB Char.isWhitespace s)
-  if isSkippedB nm then some []
-  else match parseLineB n s with
-  | some g => (OpenQASMImport.ofGate? g).map ([·])
-  | none =>
-    (OpenQASMImport.parseQRest n (String.ofList nm.chars) (bracketB s)
-      ((parenArgB s).map ByteSpan.chars) (parseAnglesB s)).map ([·])
+  OpenQASMImport.parseQL n line.chars
 
 /-- The gates a statement text denotes, read from its bytes: the lowering of `parseQB`. -/
 def parseOpsB (n : ℕ) (line : ByteSpan) : Option (List (Gate n)) :=
@@ -922,13 +911,9 @@ def paramLine : Param .map0 .map0 ByteSpan String where
 theorem parseQB_square (n : ℕ) :
     R_arrow paramLine (paramEqCod (Option (List (OpenQASMImport.QGate n)))) (parseQB n)
       (OpenQASMImport.parseQ n) := by
-  rintro t _ ⟨h, rfl⟩
+  rintro t _ ⟨-, rfl⟩
   change parseQB n t = OpenQASMImport.parseQ n (String.ofList t.chars)
-  simp only [parseQB, OpenQASMImport.parseQ, OpenQASMImport.opName, trimAsciiStart_copy,
-    String.toList_ofList, chars_dropWhileB, chars_takeWhileB,
-    isSkippedB_eq, parseLineB_eq n (dropWhileB Char.isWhitespace t) h, bracketB_eq,
-    parenArgB_eq, parseAnglesB_eq]
-  rfl
+  rw [parseQB, OpenQASMImport.parseQ, String.toList_ofList]
 
 /-- **Square.** `parseOpsB` realizes `OpenQASMImport.parseOps` along `paramLine`. -/
 theorem parseOpsB_square (n : ℕ) :

@@ -12,6 +12,9 @@ dependencies = [
 qrisp = [
     "qrisp>=0.9,<0.10",
 ]
+mqt = [
+    "mqt.bench>=2.3,<3",
+]
 
 [dependency-groups]
 dev = [
