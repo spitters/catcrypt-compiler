@@ -123,10 +123,10 @@ Programs can also be written in Lean, in XQPL with the constructs of Qrisp, and 
 with its denotation kept ([`lowerXQPL_denote`](CatCrypt/Quantum/XQPLGates.lean)), and HQPL's
 register operations are one instance. On measurement-free programs:
 
-- `adjoint`, `controlled` and `conjugate` have the matrices of the inverse, the controlled
+- `adjoint`, `controlled` and `conjGates` have the matrices of the inverse, the controlled
   unitary and U·V·U† ([`unitary_adjoint`](CatCrypt/Quantum/XQPLGates.lean),
   [`unitary_controlled`](CatCrypt/Quantum/XQPLGates.lean),
-  [`listMatrix_conjugate`](CatCrypt/Quantum/XQPLGates.lean)); control is defined on the exact
+  [`listMatrix_conjGates`](CatCrypt/Quantum/XQPLGates.lean)); control is defined on the exact
   matrix, which the channel of a program does not determine.
 - A predicate computed into a clean ancilla, used as a control and uncomputed, applies the
   body where the predicate holds and restores the ancilla, also when the compute step adds a

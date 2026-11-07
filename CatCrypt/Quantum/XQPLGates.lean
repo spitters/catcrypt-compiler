@@ -37,7 +37,7 @@ only up to a global phase. Both return `XQPL.ofGates l`, a measurement-free prog
 * `XQPL.adjoint` -- the inverse gate list (`QFT.invGates`)
 * `XQPL.controlled`, `XQPL.mcontrolledNoAnc` -- control on one qubit (`ctrlList`) and on a
   list of qubits without ancillae (`mctrlGates`)
-* `conjugate U V` -- the conjugation `U ++ V ++ invGates U`
+* `conjGates U V` -- the conjugation `U ++ V ++ invGates U`
 
 ## Main results
 
@@ -45,7 +45,7 @@ only up to a global phase. Both return `XQPL.ofGates l`, a measurement-free prog
 * `XQPL.denote_eq_toGates`, `XQPL.toGates_ofGates`
 * `XQPL.unitary_adjoint`, `XQPL.denote_adjoint`
 * `XQPL.unitary_controlled`, `XQPL.unitary_mcontrolledNoAnc`
-* `listMatrix_conjugate`, `listMatrix_conjugate_ctrl` -- the controlled conjugation
+* `listMatrix_conjGates`, `listMatrix_conjGates_ctrl` -- the controlled conjugation
   controls only the middle list
 -/
 
@@ -320,12 +320,12 @@ end XQPL
 /-! ## Conjugation -/
 
 /-- The conjugation of `V` by `U`: `U`, then `V`, then the inverse of `U`. -/
-def conjugate (U V : List (Gate n)) : List (Gate n) := U ++ V ++ invGates U
+def conjGates (U V : List (Gate n)) : List (Gate n) := U ++ V ++ invGates U
 
 /-- The matrix of a conjugation is `(L U)ᴴ * L V * L U`. -/
-theorem listMatrix_conjugate (U V : List (Gate n)) :
-    listMatrix (conjugate U V) = (listMatrix U)ᴴ * listMatrix V * listMatrix U := by
-  rw [conjugate, listMatrix_append, listMatrix_append, listMatrix_invGates, mul_assoc]
+theorem listMatrix_conjGates (U V : List (Gate n)) :
+    listMatrix (conjGates U V) = (listMatrix U)ᴴ * listMatrix V * listMatrix U := by
+  rw [conjGates, listMatrix_append, listMatrix_append, listMatrix_invGates, mul_assoc]
 
 /-- The inverse of a gate acts on the qubits of the gate. -/
 theorem avoids_invGate {c : Fin n} {g : Gate n} (h : Avoids c g) : Avoids c (invGate g) := by
@@ -333,9 +333,9 @@ theorem avoids_invGate {c : Fin n} {g : Gate n} (h : Avoids c g) : Avoids c (inv
 
 /-- **Controlled conjugation.** Controlling only the middle list of a conjugation controls
     the whole conjugation, when both lists avoid the control. -/
-theorem listMatrix_conjugate_ctrl {c : Fin n} {U V : List (Gate n)}
+theorem listMatrix_conjGates_ctrl {c : Fin n} {U V : List (Gate n)}
     (hU : ∀ g ∈ U, Avoids c g) (hV : ∀ g ∈ V, Avoids c g) :
-    listMatrix (conjugate U (ctrlList c V)) = ctrlMatrix c (listMatrix (conjugate U V)) := by
+    listMatrix (conjGates U (ctrlList c V)) = ctrlMatrix c (listMatrix (conjGates U V)) := by
   have hA : CommOn c (listMatrix U)ᴴ := by
     rw [← listMatrix_invGates]
     refine commOn_listMatrix fun g hg => ?_
@@ -343,7 +343,7 @@ theorem listMatrix_conjugate_ctrl {c : Fin n} {U V : List (Gate n)}
     exact avoids_invGate (hU g₀ hg₀)
   have hAB : (listMatrix U)ᴴ * listMatrix U = 1 :=
     Matrix.mem_unitaryGroup_iff'.mp (RoutingPerm.circuitUnitary (Circuit.ofList U)).2
-  rw [listMatrix_conjugate, listMatrix_conjugate, listMatrix_ctrlList hV,
+  rw [listMatrix_conjGates, listMatrix_conjGates, listMatrix_ctrlList hV,
     mul_ctrlMatrix_mul hA hAB]
 
 end CatCrypt.Quantum.QPL
