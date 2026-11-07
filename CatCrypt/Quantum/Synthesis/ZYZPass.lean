@@ -6,7 +6,6 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Quantum.Synthesis.KAKPass
-public import CatCrypt.Quantum.Synthesis.ParMap
 
 /-!
 # One-qubit run resynthesis by the ZYZ template
@@ -489,10 +488,9 @@ def segEmit (fit : ZFit n β) (i : ℕ) : Seg n → List (Gate n) × List β
 
 /-- The run pass with exact angles: over the segments of `collectRuns l` with their positions,
 the gates and the payloads of `segEmit fit` on each segment, concatenated (the payloads are
-those of the replaced runs, in order). The fitter is evaluated once per segment, one task per
-segment (`parMap`). -/
+those of the replaced runs, in order). -/
 def zyzEmit (fit : ZFit n β) (l : List (Gate n)) : List (Gate n) × List β :=
-  let r := parMap (fun si => segEmit fit si.2 si.1) (collectRuns l).zipIdx
+  let r := (collectRuns l).zipIdx.map fun si => segEmit fit si.2 si.1
   (r.flatMap Prod.fst, r.flatMap Prod.snd)
 
 /-- The gates of `zyzEmit fit l` are the gates of `segEmit fit` over the segments of

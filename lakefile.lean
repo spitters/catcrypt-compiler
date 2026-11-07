@@ -3233,7 +3233,6 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKPass,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKPassSmall,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.KAKSmall,
-    Lake.Glob.one `CatCrypt.Quantum.Synthesis.ParMap,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.QrunchFit,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZ,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZPass,
