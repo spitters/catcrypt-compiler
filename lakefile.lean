@@ -3345,6 +3345,7 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.HmacSha256JasminEmit,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.InstrRReflectDemo,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.JasminCoqSemMirrorDemo,
+    Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.JincGrammarDemo,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.MontUToEdwardsEmit,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.SHA512CompressDSL,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.Scalar25519OpsEmit,

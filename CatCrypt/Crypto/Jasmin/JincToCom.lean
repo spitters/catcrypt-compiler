@@ -286,7 +286,10 @@ def compoundKind : Tok → Option BinKind
     `Wu) src` or `Wu) arr[idx]`. -/
 def parseCastRhs : P Rhs := do
   let w ← number
-  let _ ← ident                -- the `u` suffix tokenizes as ident "u"
+  -- the `u` suffix tokenizes as ident "u"; a sign-extending `(Ws)` is refused
+  match ← ident with
+  | "u" => pure ()
+  | s => throw s!"the cast '({w}{s})' is not supported, only the zero-extension '({w}u)'"
   expect .rparen
   let src ← ident
   match ← peek with

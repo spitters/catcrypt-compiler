@@ -19,10 +19,16 @@ elaborates to a `Com jasminDialect`.
 
 `param int` constants; `type` aliases; global `uW[n]` tables and `uW` constants;
 `inline fn`, `fn` and `export fn` definitions with `inline int`, `reg`, `reg ptr`
-and `stack` parameters and locals; expressions with C precedence over
+and `stack` parameters and locals; expressions over
 `+ - * / % & | ^ << >> == != < <= > >=` (with the signed and unsigned forms `<s`,
-`<=u`, `>>s`, …), `&& ||`, unary `!` and `-`, casts `(64u) e`, `(u64) e` and
-`(uint) e`, `c ? a : b`, array indexing, width-typed cells `a[:uW e]`, memory
+`<=u`, `>>s`, …), `&& ||`, unary `!` and `-`, with the precedence of Jasmin's
+grammar (`parser.mly`), loosest first: `?:`; `||`; `&&`; `== !=`; the
+comparisons; `|`; `^`; `&`; the shifts; `+ -`; `* / %`; `!` and the casts.
+Unlike C, `| ^ &` bind tighter than the comparisons (`a & b == c` is
+`(a & b) == c`), and a unary `-` takes the product that follows it (`-a / b` is
+`-(a / b)`); binary operators associate to the left. Casts `(Nu) e`, `(uN) e`,
+`(Nui) e`, `(uint) e` and `(int) e` (see `parsePrimary` for what each is read
+as), `c ? a : b`, array indexing, width-typed cells `a[:uW e]`, memory
 words `[:uW e]`, array views `a.[:uW e]`, vector packs `(kuW)[e, …]`, binary
 operators with a width annotation (`^256u`, `+4u64`), calls to source functions,
 to the intrinsics `#ROL_64`, `#ROR_64`, `#swap`, `#spill` and `#unspill`, and to
@@ -33,13 +39,18 @@ destination `?{…}`, declarations with an initial value, conditional assignment
 `x = e if c;` (an `if` without `else`), compound assignments, `if`/`else`,
 `for v = lo to hi`, `while { pre } (c) { post }`, and a final `return`.
 Sub-arrays `a[e : n]` and `a[:uW e : n]`, packs of 1-, 2- and 4-bit lanes
-(`(4u2)[…]`, the first lane the most significant), the casts `(64ui)` and
-`(64si)` and the alignment annotations `#unaligned` / `#aligned` of an access
+(`(4u2)[…]`, the first lane the most significant), the word-int types `uiN`
+(read as `uN`, see `wordWidth?`) and the alignment annotations `#unaligned` / `#aligned` of an access
 are parsed. Block comments nest, as in Jasmin. `namespace N { … }` qualifies
 each name its items define, and each reference to it from inside, as `N::x`
 (`qualifyNamespace`). `#[…]` annotations and `require` lines are skipped; the
 caller supplies the required units in the text, a unit required inside a
 namespace inside that namespace.
+
+Refused, with an error naming the construct, until they are implemented: the
+sign-extending casts `(Ns) e` and `(Nsi) e`, the cast `(sint) e`, and the
+signed word-int types `siN`. Each has a signed meaning the evaluator, which holds
+words as their unsigned values, would otherwise replace by the unsigned one.
 
 ## Evaluation
 
@@ -262,6 +273,7 @@ inductive E where
   | bin (op : String) (a b : E)
   | neg (a : E)
   | not (a : E)
+  /-- `(Nu) a` at `w = N`; `w = 0` is `(uint) a`, the unsigned value of a word. -/
   | cast (w : Nat) (a : E)
   | cond (c t f : E)
   /-- `[:uW e]`: the `W`-bit word in memory at the address `e`. -/
@@ -271,7 +283,7 @@ inductive E where
   /-- `a[e : n]` (`w = 0`): the `n` cells of the array `a` from cell `e`;
       `a[:uW e : n]`: the `n` `W`-bit cells of `a` from `W`-bit cell `e`. -/
   | slice (a : String) (w : Nat) (off len : E)
-  deriving Repr, Inhabited
+  deriving Repr, Inhabited, BEq
 
 /-- An assignment destination: `_`, a variable, an array cell, a memory word, an
     array view, a sub-array `a[e : n]` or `a[:uW e : n]`, or the flags `?{…}`,
@@ -361,26 +373,43 @@ def ident : P String := do
   | .id s => return s
   | t => throw s!"parse: expected an identifier, got {repr t}"
 
-/-- The width of a word type keyword. -/
+/-- The width of a word type keyword. An unsigned word-int type `uiN` is read as
+    `uN`: its values are those of `uN` read as integers, Jasmin makes their
+    overflow a safety condition, and so in a program without overflow its
+    arithmetic is that of `uN`. A signed word-int type `siN` is not a word type
+    here (`signedWordInt?`). -/
 def wordWidth? : String → Option Nat
   | "u8" => some 8 | "u16" => some 16 | "u32" => some 32 | "u64" => some 64
   | "u128" => some 128 | "u256" => some 256
   | "ui8" => some 8 | "ui16" => some 16 | "ui32" => some 32 | "ui64" => some 64
-  | "si8" => some 8 | "si16" => some 16 | "si32" => some 32 | "si64" => some 64
   | _ => none
 
-/-- The binding strength of a binary operator symbol, C order; a signed or
-    unsigned comparison binds as its plain form. -/
+/-- Whether a keyword is a signed word-int type `siN`, which the importer
+    refuses: its values are signed, and the evaluator holds words unsigned. -/
+def signedWordInt? (s : String) : Bool :=
+  ["si8", "si16", "si32", "si64", "si128", "si256"].contains s
+
+/-- The binding strength of a binary operator symbol, the order of Jasmin's
+    grammar (`parser.mly`): `||`, `&&`, `== !=`, the comparisons, `|`, `^`, `&`,
+    the shifts, `+ -`, `* / %`, loosest first. A signed or unsigned comparison
+    binds as its plain form. -/
 def binPrec : String → Option Nat
-  | "||" => some 1 | "&&" => some 2 | "|" => some 3 | "^" => some 4 | "&" => some 5
-  | "==" => some 6 | "!=" => some 6
-  | "<" => some 7 | "<=" => some 7 | ">" => some 7 | ">=" => some 7
-  | "<s" => some 7 | "<=s" => some 7 | ">s" => some 7 | ">=s" => some 7
-  | "<u" => some 7 | "<=u" => some 7 | ">u" => some 7 | ">=u" => some 7
+  | "||" => some 1 | "&&" => some 2
+  | "==" => some 3 | "!=" => some 3
+  | "<" => some 4 | "<=" => some 4 | ">" => some 4 | ">=" => some 4
+  | "<s" => some 4 | "<=s" => some 4 | ">s" => some 4 | ">=s" => some 4
+  | "<u" => some 4 | "<=u" => some 4 | ">u" => some 4 | ">=u" => some 4
+  | "|" => some 5 | "^" => some 6 | "&" => some 7
   | "<<" => some 8 | ">>" => some 8 | ">>s" => some 8
   | "+" => some 9 | "-" => some 9
   | "*" => some 10 | "/" => some 10 | "%" => some 10
   | _ => none
+
+/-- The binding strength of the operand of a unary `-`: in Jasmin's grammar the
+    unary `-` has the precedence of the binary `-`, so it takes the operators
+    binding tighter than `+ -` that follow it, `-a * b / c` being
+    `-((a * b) / c)`. -/
+def negOperandPrec : Nat := 10
 
 /-- The binary operator of a compound-assignment symbol. -/
 def opOfAssign : String → Option String
@@ -444,9 +473,14 @@ partial def parsePrimary : P E := do
   | .sym "(" =>
       match ← get with
       | .num w :: .id "u" :: .sym ")" :: r => set r; return .cast w (← parseUnary)
-      | .num w :: .id "s" :: .sym ")" :: r => set r; return .cast w (← parseUnary)
+      | .num w :: .id "s" :: .sym ")" :: _ =>
+          throw s!"parse: the sign-extending cast '({w}s)' is not supported"
+      -- `(Nui) e` is read as `(Nu) e`: its result is the unsigned word-int of
+      -- `e`, whose value Jasmin requires (a safety condition) to be in range, and
+      -- in range it is the zero-extended or truncated unsigned word.
       | .num w :: .id "ui" :: .sym ")" :: r => set r; return .cast w (← parseUnary)
-      | .num w :: .id "si" :: .sym ")" :: r => set r; return .cast w (← parseUnary)
+      | .num w :: .id "si" :: .sym ")" :: _ =>
+          throw s!"parse: the signed word-int cast '({w}si)' is not supported"
       | .num k :: .id s :: .sym ")" :: .sym "[" :: r =>
           -- a vector pack `(kuW)[e₁, …, eₖ]`, the intrinsic `#pack` with the
           -- lane count and the lane width ahead of the lanes
@@ -461,9 +495,16 @@ partial def parsePrimary : P E := do
             return .call "#pack" (.num k :: .num w :: es)
           | none => throw s!"parse: unexpected '({k}{s})'"
       | .id s :: .sym ")" :: r =>
-          if s == "int" || s == "uint" || s == "sint" then
+          -- `(uint) e` (and `(int) e` of older Jasmin) is the unsigned value of
+          -- the word `e`, `.cast 0 e`: a compile-time word becomes the integer
+          -- it holds unsigned, a run-time word stands for its unsigned value.
+          if s == "int" || s == "uint" then
             set r
-            parseUnary
+            return .cast 0 (← parseUnary)
+          else if s == "sint" then
+            throw "parse: the signed cast '(sint)' is not supported"
+          else if signedWordInt? s then
+            throw s!"parse: the signed word-int type '{s}' is not supported"
           else
           match wordWidth? s with
           | some w => set r; return .cast w (← parseUnary)
@@ -503,14 +544,15 @@ partial def parsePrimary : P E := do
       else return .var s
   | t => throw s!"parse: expected an expression, got {repr t}"
 
-/-- A unary expression. -/
+/-- A unary expression: `!` takes a unary expression, `-` the products that
+    follow it (`negOperandPrec`). -/
 partial def parseUnary : P E := do
   if (← isSym "!") then
     let _ ← next
     return .not (← parseUnary)
   else if (← isSym "-") then
     let _ ← next
-    return .neg (← parseUnary)
+    return .neg (← parseBinRhs negOperandPrec (← parseUnary))
   else parsePrimary
 
 /-- The binary operators binding at least as tightly as `minPrec`, applied
@@ -556,10 +598,12 @@ partial def parseArgs : P (List E) := do
 
 end
 
-/-- A type: `int`, `bool`, `uW` or `uW[n]`. -/
+/-- A type: `int`, `bool`, `uW` or `uW[n]` (`uiW` read as `uW`, `wordWidth?`);
+    a signed word-int type `siW` is refused. -/
 def parseTy : P Ty := do
   let s ← ident
   if s == "int" || s == "bool" then return .int
+  if signedWordInt? s then throw s!"parse: the signed word-int type '{s}' is not supported"
   match wordWidth? s with
   | some w =>
       if (← isSym "[") then
@@ -945,12 +989,15 @@ inductive V where
   | vc (w : Nat) (n : Nat)
   deriving Repr, Inhabited, BEq
 
-/-- The kind of a declared name: an `inline int`, a 64-bit word, an array, or a
-    `w`-bit vector word. -/
+/-- The kind of a declared name: an `inline int`, a 64-bit word, an array held
+    by value (`reg` or `stack`), an array held through a pointer (`reg ptr` or
+    `stack ptr`), or a `w`-bit vector word. Assigning an array to an `arr` name
+    copies it; assigning one to a `ptr` name makes the name refer to it. -/
 inductive Kind where
   | int
   | word
   | arr
+  | ptr
   | vword (w : Nat)
   deriving Repr, BEq, Inhabited
 
@@ -1502,12 +1549,15 @@ def ymmBinImmIntrinsic? : String → Option (Nat → YmmOp)
 /-- A binary operator applied to two values: folded when both are compile-time,
     emitted otherwise. A narrow word is rejected as an operand; an operator on a
     vector word is `vecBin`, and a width annotation on a scalar operator must be
-    `64u` or `64s`. -/
+    `64u` or `64s`. The signed annotation `64s` is refused on an operator whose
+    signed meaning differs from its unsigned one (`< <= > >= / % >>`). -/
 def binV (op0 : String) (a b : V) : M V := do
   let (op, ann) := splitOp op0
   if isVec a || isVec b then return ← vecBin op0 op ann a b
   unless ann.isEmpty || ann == "64u" || ann == "64s" do
     throw s!"eval: '{op0}' on 64-bit words"
+  if ann == "64s" && ["<", "<=", ">", ">=", "/", "%", ">>"].contains op then
+    throw s!"eval: the signed operator '{op0}' is not supported"
   match a, b with
   | .nw _ _, _ | _, .nw _ _ => throw s!"eval: '{op}' on a narrow word"
   | .int x, .int y =>
@@ -1595,6 +1645,9 @@ def coerce (k : Kind) (v : V) : M V :=
   | .arr, .ra els => pure (.ra els)
   | .arr, .mem nm n => pure (.mem nm n)
   | .arr, .gtab nm els => pure (.gtab nm els)
+  | .ptr, .ra els => pure (.ra els)
+  | .ptr, .mem nm n => pure (.mem nm n)
+  | .ptr, .gtab nm els => pure (.gtab nm els)
   | .vword w, .vw w' x =>
       if w == w' then pure (.vw w x) else throw s!"eval: cannot store {repr v} in a {repr k}"
   | .vword w, .vc w' n =>
@@ -1619,6 +1672,13 @@ def kindOf : Ty → M Kind
   | .word 256 => pure (.vword 256)
   | .arr 8 _ | .arr 16 _ | .arr 32 _ | .arr 64 _ | .arr 256 _ => pure .arr
   | ty => throw s!"eval: unsupported type {repr ty} (words are 64-bit or 256-bit)"
+
+/-- The kind of a declared type under its `ptr` flag: an array declared `ptr` is
+    held through a pointer. -/
+def kindOfPtr (ty : Ty) (ptr : Bool) : M Kind := do
+  match ← kindOf ty with
+  | .arr => pure (if ptr then .ptr else .arr)
+  | k => pure k
 
 /-- Cell `k` of an array value: the cell of a register array, or an emitted
     `load` of a memory array. -/
@@ -2024,7 +2084,15 @@ partial def evalE (p : Prog) (env : Env) : E → M V
         throw s!"eval: u{w} view read outside a (64u) cast"
       readField p a av w (← evalE p env off)
   | .cast w a => do
-      if w == 64 then
+      if w == 0 then
+        -- `(uint) e`: the unsigned value of the word `e`
+        match ← evalE p env a with
+        | .cw n => pure (.int n)
+        | .int n => pure (.int n)
+        | .w x => pure (.w x)
+        | .nw _ x => pure (.w x)
+        | v => throw s!"eval: '(uint)' of {repr v}"
+      else if w == 64 then
         match a with
         | .mem mw ad =>
             let (vn, idx) ← memAt mw (← evalE p env ad)
@@ -2173,14 +2241,35 @@ partial def callFn (p : Prog) (fn : Fn) (vs : List V) : M (List V) := do
   unless fn.params.length == vs.length do
     throw s!"eval: '{fn.name}' takes {fn.params.length} arguments, given {vs.length}"
   let mut env : Env := []
-  for ((ty, _, nm), v) in fn.params.zip vs do
-    let k ← kindOf ty
+  for ((ty, ptr, nm), v) in fn.params.zip vs do
+    let k ← kindOfPtr ty ptr
     env := (nm, k, ← coerce k v) :: env
   modify fun s => { s with depth := s.depth + 1 }
   let env' ← execBlock p env fn.body
   let rs ← fn.ret.mapM (evalE p env')
   modify fun s => { s with depth := s.depth - 1 }
   pure rs
+
+/-- `x = src` for `x` an array held by value (`Kind.arr`, a `reg` or `stack`
+    array) and `src` the memory array of `n` cells: Jasmin copies the array.
+    Each cell of `src` is read now, so a later write to `src` does not reach `x`.
+    A memory array `x` (a `stack` array of the frame) receives the cells by
+    `storeAt`; a register array `x` holds the loaded values. -/
+partial def copyMemArr (env : Env) (x : String) (cur : V) (src : String) (n : Nat) :
+    M Env := do
+  match cur with
+  | .mem dst m =>
+      if dst == src then return env
+      unless m == n do throw s!"eval: copy of {n} cells of '{src}' into {m} cells of '{x}'"
+      for k in [0:n] do
+        let y ← cellName dst (← readCell (.mem src n) k)
+        emit (.storeAt dst (.lit k) (.glob y))
+      return env
+  | _ =>
+      let mut els : Array V := #[]
+      for k in [0:n] do
+        els := els.push (← readCell (.mem src n) k)
+      return env.set x (.ra els)
 
 /-- Write the `w`-bit field at byte offset `off` of the array `a` of 64-bit
     cells: a narrow field is merged into its cell,
@@ -2246,9 +2335,10 @@ partial def assignLV (p : Prog) (env : Env) (lv : LV) (v : V) : M Env := do
           pure (env.set a (.ra els'))
       | _, _ => throw s!"eval: store into the slice of '{a}' of {repr v}"
   | .var x =>
-      match env.get? x with
-      | some (k, _) => pure (env.set x (← coerce k v))
-      | none => throw s!"eval: assignment to undeclared '{x}'"
+      match env.get? x, v with
+      | some (.arr, cur), .mem src n => copyMemArr env x cur src n
+      | some (k, _), _ => pure (env.set x (← coerce k v))
+      | none, _ => throw s!"eval: assignment to undeclared '{x}'"
   | .mem w a =>
       let (vn, idx) ← memAt w (← evalE p env a)
       viewStore w vn idx v
@@ -2282,7 +2372,7 @@ partial def assignLV (p : Prog) (env : Env) (lv : LV) (v : V) : M Env := do
     function's own body is a memory array of its frame. -/
 partial def execS (p : Prog) (env : Env) : S → M Env
   | .decl ty ptr stk names => do
-      let k ← kindOf ty
+      let k ← kindOfPtr ty ptr
       let depth := (← get).depth
       let mut e := env
       for nm in names do
@@ -2512,13 +2602,13 @@ end
 def importFnM (p : Prog) (fn : Fn) : M (List Param × List V) := do
   let mut env : Env := []
   let mut params : Array Param := #[]
-  for (ty, _, nm) in fn.params do
+  for (ty, ptr, nm) in fn.params do
     match ty with
     | .arr w n =>
         unless w == 8 || w == 16 || w == 32 || w == 64 || w == 256 do
           throw s!"import: unsupported parameter type {repr ty} of '{nm}'"
         let m ← constNat (← evalE p [] n)
-        env := (nm, .arr, .mem nm m) :: env
+        env := (nm, ← kindOfPtr ty ptr, .mem nm m) :: env
         params := params.push ⟨.arr w m, nm⟩
         setWidth nm w
     | .word 64 =>

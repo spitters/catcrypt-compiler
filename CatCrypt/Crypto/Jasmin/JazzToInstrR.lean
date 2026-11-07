@@ -58,8 +58,13 @@ latest declaration, so a variable is found in constant expected time.
   `!e` (`Olnot`), the cast `(NNu) e` (`Ozeroext`), the cast `(uint) e`
   (`Oint_of_word`, at the width of `e`), parentheses, the conditional `c ? a : b` (`Pif`, at the type
   `uNN` of the width of `a`, else of the target), and the binary operators
-  `|| && | ^ & == != < <= > >= <s <=s >s >=s << >> >>s + - *` with C precedence
-  and left associativity. The width of a binary operator is the width of its
+  `|| && | ^ & == != < <= > >= <s <=s >s >=s << >> >>s + - *` with left
+  associativity and the precedence of Jasmin's grammar (`parser.mly`), loosest
+  first: `||`; `&&`; `== !=`; the comparisons; `|`; `^`; `&`; the shifts; `+ -`;
+  `*`. Unlike C, `| ^ &` bind tighter than the comparisons, so `a & b == c` is
+  `(a & b) == c`. The unary `-` and `!` take an atom; Jasmin's `-` takes the
+  product that follows it, `-a * b` being `-(a * b)`, which as a word is
+  `(-a) * b`, the only operator of that level here being `*`. The width of a binary operator is the width of its
   left operand when that is a word-typed variable, load, array read or cast, and
   otherwise the width of the assignment target.
 * Comments `// …` and `/* … */`; a `//` line outside every function body is a
@@ -509,23 +514,24 @@ inductive EGoal where
   | atom
 
 /-- The binary operator a token denotes at precedence level `n` (0 binds
-    loosest), as a function of the operator width. -/
+    loosest, the levels of Jasmin's grammar), as a function of the operator
+    width. -/
 def opOf : Nat → Token → Option (WSize → SOp2)
   | 0, .orOr => some fun _ => .Oor
   | 1, .andAnd => some fun _ => .Oand
-  | 2, .bin .lor => some .Olor
-  | 3, .bin .lxor => some .Olxor
-  | 4, .bin .land => some .Oland
-  | 5, .cmp .eq => some .Oeq
-  | 5, .cmp .ne => some .Oneq
-  | 6, .cmp .lt => some (.Olt .Uextend)
-  | 6, .cmp .le => some (.Ole .Uextend)
-  | 6, .cmp .gt => some (.Ogt .Uextend)
-  | 6, .cmp .ge => some (.Oge .Uextend)
-  | 6, .cmp .lts => some (.Olt .Sextend)
-  | 6, .cmp .les => some (.Ole .Sextend)
-  | 6, .cmp .gts => some (.Ogt .Sextend)
-  | 6, .cmp .ges => some (.Oge .Sextend)
+  | 2, .cmp .eq => some .Oeq
+  | 2, .cmp .ne => some .Oneq
+  | 3, .cmp .lt => some (.Olt .Uextend)
+  | 3, .cmp .le => some (.Ole .Uextend)
+  | 3, .cmp .gt => some (.Ogt .Uextend)
+  | 3, .cmp .ge => some (.Oge .Uextend)
+  | 3, .cmp .lts => some (.Olt .Sextend)
+  | 3, .cmp .les => some (.Ole .Sextend)
+  | 3, .cmp .gts => some (.Ogt .Sextend)
+  | 3, .cmp .ges => some (.Oge .Sextend)
+  | 4, .bin .lor => some .Olor
+  | 5, .bin .lxor => some .Olxor
+  | 6, .bin .land => some .Oland
   | 7, .bin .shl => some .Olsl
   | 7, .bin .shr => some .Olsr
   | 7, .bin .sar => some .Oasr
