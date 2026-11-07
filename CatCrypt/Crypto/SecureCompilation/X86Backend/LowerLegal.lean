@@ -642,10 +642,9 @@ theorem legalizeOneSrc_legal (u64 : Bool) {opn : String} {d s : LOperand}
   · simp only [Bool.not_eq_true] at h
     have he : spillImmMovMnem u64 opn d s = opn := by
       apply spillImmMovMnem_of_ne
+      apply narrowMovWidth?_of_strip
       intro he
-      subst he
-      revert h
-      decide +kernel
+      simp [he] at h
     simp only [he, List.mem_singleton] at hi
     subst hi
     exact hone h
@@ -827,8 +826,7 @@ theorem valOk_spillImmMovMnem {u64 : Bool} {opn : String} {d s : LOperand}
     unfold spillImmMovMnem
     dsimp only
     split_ifs with hc
-    · simp only [Bool.and_eq_true, decide_eq_true_eq] at hc
-      simp [x86SlotImm, hc.2]
+    · simp [x86SlotImm, lt_of_spillImmRetagB hc]
     · exact hv
 
 /-- A two-address binop other than a shift is an operation of `x86Alu`. -/

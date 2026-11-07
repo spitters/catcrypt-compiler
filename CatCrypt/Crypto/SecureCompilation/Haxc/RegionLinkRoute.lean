@@ -254,7 +254,7 @@ theorem imgGateCBW_congr {frame frame' : String → Option (BitVec 64)}
       X86Backend.ImageAddrSimW.carryOkB, X86Backend.ImageAddrSimW.oneBitAt_congr h,
       X86Backend.ImageAddrFrame.icase_congr h, X86Backend.ImageAddrSimW.gateReadSet_congr h,
       X86Backend.ImageAddrSimW.regGateBW_congr h, X86Backend.ImageAddrSimW.sImmB_congr h,
-      X86Backend.ImageAddrSimW.sCmovB_congr h, hcg, hn, h]
+      X86Backend.ImageAddrSimW.sCmovB_congr h, X86Backend.ImageAddrSimW.copyInB_congr h, hcg, hn, h]
   have hc : ∀ k x, X86Backend.ImageAddrCidx.cidxArmCW frame slotArr body k x
       = X86Backend.ImageAddrCidx.cidxArmCW frame' slotArr body k x := by
     intro k x

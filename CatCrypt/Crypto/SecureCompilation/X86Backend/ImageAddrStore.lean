@@ -722,9 +722,11 @@ theorem idx_mem_of_imgStepWG {frame : String → Option (BitVec 64)}
   · rw [icase_idx_ne hsc hx] at hg
     simp [castGateB, hkc] at hg
   subst hsc
+  have hcp : copyInB frame c (oneBitAt frame c sa.reg.lpc) bi.li_i = false := by
+    rcases hx with ⟨_, _, _, -, hx⟩ | ⟨_, _, -, hx⟩ <;> rw [hx] <;> simp [copyInB, slotMov?]
   have hrd : readOkB (gateReadSet frame (oneBitAt frame c sa.reg.lpc) bi.li_i) bi.li_i
       = true := by
-    simpa [castReadB, hkc] using hrd0
+    simpa [castReadB, hkc, hcp] using hrd0
   rcases hx with ⟨d, o, v, ho, hx⟩ | ⟨d, o, ho, hx⟩
   · have hc : icase frame bi.li_i = .stx d b idx v := by rw [hx]; simp [icase, ho]
     simp only [hc, Bool.and_eq_true, Option.isNone_iff_eq_none,

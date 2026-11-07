@@ -918,7 +918,8 @@ theorem step_leakWG {frame : String → Option (BitVec 64)}
           rw [hx] at hg hb ⊢
           obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_loadIdx ho' hg
           obtain ⟨q, -, hp⟩ := ImgGateW.ptr_of_reloadW hsep hG hrel hacc hbf
-          have hidxW := gateAtW_notW hg rfl (r := idx)
+          have hidxW := gateAtW_notW hg rfl (by simp [ImageAddrSimW.copyInB, slotMov?])
+            (r := idx)
             (by simp [readNames, JasminLsemAddrCongr.srcNames])
             (by simp [DecodePrintedAddrW.carryIns])
             (fun q h => by simp [icase, ho'] at h)
@@ -939,7 +940,8 @@ theorem step_leakWG {frame : String → Option (BitVec 64)}
               rw [hx] at hg hb ⊢
               obtain ⟨rfl, ⟨A, n, hacc⟩, hidx, hbf⟩ := gateAtW_storeIdx ho' hg
               obtain ⟨q, -, hp⟩ := ImgGateW.ptr_of_reloadW hsep hG hrel hacc hbf
-              have hidxW := gateAtW_notW hg rfl (r := idx)
+              have hidxW := gateAtW_notW hg rfl
+                (by simp [ImageAddrSimW.copyInB, slotMov?]) (r := idx)
                 (by simp [readNames, JasminLsemAddrCongr.srcNames])
                 (by simp [DecodePrintedAddrW.carryIns])
                 (fun q h => by simp [icase, ho'] at h)

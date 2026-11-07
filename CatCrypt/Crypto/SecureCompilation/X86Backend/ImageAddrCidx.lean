@@ -1193,7 +1193,7 @@ theorem imgGateCW_congr {frame frame' : String → Option (BitVec 64)}
     have hcg : castGateB frame x = castGateB frame' x := by simp only [castGateB, hn]
     simp only [instrGateBW, gateAtW, carryOkB, oneBitAt_congr h,
       ImageAddrFrame.icase_congr h, gateReadSet_congr h, regGateBW_congr h, sImmB_congr h,
-      sCmovB_congr h, hcg, hn, h]
+      sCmovB_congr h, ImageAddrSimW.copyInB_congr h, hcg, hn, h]
   have hc : ∀ k x, cidxArmCW frame slotArr body k x = cidxArmCW frame' slotArr body k x := by
     intro k x
     simp only [cidxArmCW, cidxArmB, cidxArmAt, oneBitAt_congr h, hn]

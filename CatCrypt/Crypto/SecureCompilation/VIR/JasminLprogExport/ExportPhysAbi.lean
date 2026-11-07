@@ -673,25 +673,64 @@ def buildEpilogue (virt : Lfundef) (tbl : Array Nat)
 def insertEpilogue (body : Lcmd) (epi : Lcmd) : Lcmd :=
   body.dropLast ++ epi ++ [⟨0, .Lret⟩]
 
-/-- The mnemonic of a register-allocated one-source instruction `d := opn s`: the
-    64-bit move `MOV:64` when `opn` is the untagged `MOV`, the destination `d` is a
-    spill slot, the source `s` is an immediate below `2^31` and the body's spill
-    slots are 8 bytes wide (`u64`); `opn` otherwise. The 64-bit store writes the
-    whole slot, and a `movq` of an immediate below `2^31` sign-extends it to the
-    same value. -/
+/-- The width of an immediate move other than a 64-bit one: `32` for the untagged `MOV`
+    and `w` for a mnemonic `MOV^w` (`withWidthTag w "MOV"`, `w ≠ 64`); `none` for every
+    other mnemonic. -/
+def narrowMovWidth? (opn : String) : Option Nat :=
+  if opn = "MOV" then some 32
+  else if hasPrefix opn "MOV^" then strDropToNat? opn 4
+  else none
+
+/-- A mnemonic whose width tag is not that of a move has no narrow move width. -/
+theorem narrowMovWidth?_of_strip {opn : String} (h : stripWidthTag opn ≠ "MOV") :
+    narrowMovWidth? opn = none := by
+  unfold narrowMovWidth?
+  split_ifs with h1 h2
+  · subst h1; exact absurd (by decide +kernel) h
+  · exfalso
+    apply h
+    obtain ⟨u, hu⟩ := List.isPrefixOf_iff_prefix.mp h2
+    have hs : "MOV^".toList = ['M', 'O', 'V', '^'] := by decide
+    rw [hs] at hu
+    unfold stripWidthTag
+    rw [← hu]
+    simp
+  · rfl
+
+/-- The retag of `spillImmMovMnem`: the body's spill slots are 8 bytes wide (`u64`), the
+    destination is a spill slot, and the immediate `v` is below `2^31` and below `2^w` for the
+    width `w` of the immediate move `opn` (`narrowMovWidth?`). -/
+def spillImmRetagB (u64 : Bool) (opn : String) (d : LOperand) (v : Nat) : Bool :=
+  u64 && d.isSpill && decide (v < 2 ^ 31) &&
+    match narrowMovWidth? opn with
+    | some w => decide (v < 2 ^ w)
+    | none => false
+
+/-- The immediate of a retagged move is below `2^31`. -/
+theorem lt_of_spillImmRetagB {u64 : Bool} {opn : String} {d : LOperand} {v : Nat}
+    (h : spillImmRetagB u64 opn d v = true) : v < 2 ^ 31 := by
+  unfold spillImmRetagB at h
+  simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+  exact h.1.2
+
+/-- The mnemonic of a register-allocated one-source instruction `d := opn s`: the 64-bit move
+    `MOV:64` when `opn` is an immediate move other than a 64-bit one (the untagged `MOV` or a
+    tagged `MOV^w`), the destination `d` is a spill slot, the source `s` is an immediate below
+    `2^31` and below `2^w` for the width `w` of the move, and the body's spill slots are 8
+    bytes wide (`u64`) (`spillImmRetagB`); `opn` otherwise. The 64-bit store writes the whole
+    slot; a `movq` of an immediate below `2^31` sign-extends it to the same value, which is the
+    zero-extension of the `w`-bit value the move writes, since the immediate is below `2^w`. -/
 def spillImmMovMnem (u64 : Bool) (opn : String) (d s : LOperand) : String :=
   match s with
-  | .imm v =>
-      if u64 && opn == "MOV" && d.isSpill && decide (v < 2 ^ 31) then withWidthTag 64 "MOV"
-      else opn
+  | .imm v => if spillImmRetagB u64 opn d v then withWidthTag 64 "MOV" else opn
   | _ => opn
 
-/-- `spillImmMovMnem` leaves every mnemonic other than `MOV` unchanged. -/
+/-- `spillImmMovMnem` leaves every mnemonic without a narrow move width unchanged. -/
 theorem spillImmMovMnem_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
-    (h : opn ≠ "MOV") : spillImmMovMnem u64 opn d s = opn := by
+    (h : narrowMovWidth? opn = none) : spillImmMovMnem u64 opn d s = opn := by
   unfold spillImmMovMnem
   split
-  · simp [h]
+  · simp [spillImmRetagB, h]
   · rfl
 
 /-- The instructions of a register-allocated one-source instruction `d := opn s`
@@ -709,8 +748,7 @@ def legalizeOneSrc (u64 : Bool) (opn : String) (d s : LOperand) : List LinstrR :
 theorem legalizeOneSrc_of_ne {u64 : Bool} {opn : String} (d s : LOperand)
     (h : stripWidthTag opn ≠ "MOV") (h' : stripWidthTag opn ≠ "MOVQ") :
     legalizeOneSrc u64 opn d s = [.Lopn [d] opn [s]] := by
-  have hm : opn ≠ "MOV" := fun e => h (by rw [e]; decide)
-  simp [legalizeOneSrc, h, h', spillImmMovMnem_of_ne d s hm]
+  simp [legalizeOneSrc, h, h', spillImmMovMnem_of_ne d s (narrowMovWidth?_of_strip h)]
 
 /-- On operands of which at most one is a spill slot, `legalizeOneSrc` is the single
     instruction under the move selection. -/

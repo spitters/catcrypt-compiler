@@ -668,6 +668,78 @@ theorem lopn_stepW {body : Lcmd} {shs : List DShape} (hF : BodyFactsW body shs)
       · cases hmv
     simp only [LinstrR.Lopn.injEq] at hia
     obtain ⟨rfl, rfl, rfl⟩ := hia
+    by_cases hgq : gpOk q = true
+    · -- a copy of a one-bit name between general-purpose names
+      have hgS : gpOk S = true := hq.resolve_left (by simp [hgq])
+      have hcA : classifyA (.Lopn [.reg q] o [.reg S])
+          = (classify (.Lopn [.reg q] o [.reg S])).map AArm.reg := by
+        rcases hm with rfl | rfl <;> simp [classifyA, isMovM, hgq, hgS]
+      have hcq' := cellParts?_gp hgq
+      have hcS' := cellParts?_gp hgS
+      cases hcl : classifyA (.Lopn [.reg q] o [.reg S]) with
+      | none =>
+        exfalso
+        rcases hm with rfl | rfl <;>
+          simp (config := { decide := true }) [movImmStruct?, classifyS,
+            classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
+            classifyEI, classifyR, hcl, hcq', hcS'] at hok
+      | some a =>
+      have hok' : a.ok P = true := by
+        rcases hm with rfl | rfl <;>
+          simpa (config := { decide := true }) [instrOKWB, classifyK, movImmStruct?, classifyS,
+            classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
+            classifyEI, classifyR, hcl, hcq', hcS'] using hok
+      obtain ⟨arm, -, rfl⟩ := Option.map_eq_some_iff.mp (hcA.symm.trans hcl)
+      have hai := classifyA_instr hcl
+      have hli := AArm.li_eq hok'
+      rw [hai] at hli
+      have hli' : (AArm.reg arm).li = ((AArm.reg arm).li.fst, .reg none) := by
+        rw [← hli]
+        rcases hm with rfl | rfl <;> rfl
+      have hmv' : slotMov? (AArm.reg arm).li.fst = some (q, S) := by
+        rw [← hli]
+        rcases hm with rfl | rfl <;>
+          simpa (config := { decide := true }) [normA,
+            LprogAsmPrinter.untagCaret_of_caret_free] using hmv
+      have hgw : gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf)
+          = instrLeakA frame (AArm.reg arm).li s ++ redLeak rsp (.reg arm) := by
+        have h1 : gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf)
+            = stepLeakA frame body s zf ++ redLeak rsp (.reg arm) := by
+          rcases hm with rfl | rfl <;>
+            simp (config := { decide := true }) [gW, hclK, movImmStruct?, classifyS, classifyC,
+              classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
+              classifyR, hcl, hcq', hcS']
+        rw [h1, hGl, hli]
+      rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl)), hli] at hst
+      have hc' := DecodePrintedAddrW.AArm.simW_copy1 P rsp (.reg arm) hok' hli' hmv' hgq hgS sa
+        s zf trivial hc hbS s' zf' hst
+      have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+      have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+          (aMachine.runBlock sa ((AArm.reg arm).js P)).flags.zf.getD false = zf' := by
+        intro hcnd
+        have hcm := hcondNext hcnd
+        rw [hcl] at hcm
+        simp [cmpArmB] at hcm
+      have hna : ∀ ii' d a s c, body[k]? ≠
+          some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
+        intro ii' d a s c h
+        rw [hbk?] at h
+        simp only [Option.some.injEq, Linstr.mk.injEq, LinstrR.Lopn.injEq] at h
+        rcases hm with rfl | rfl <;> simp at h
+      have hlk : blockLeakA .doitm sa ((AArm.reg arm).js P)
+          = gW P rsp (.Lopn [.reg q] o [.reg S]) (stepLeakA frame body s zf) := by
+        rw [hgw, AArm.leak P rsp _ hok' sa (widenS sa s) hc.widen]
+        congr 1
+        have hcellN : cellA? (normA (.Lopn [.reg q] o [.reg S])) = none := by
+          rcases hm with rfl | rfl <;>
+            simp (disch := decide) [normA, cellA?, hcq', hcS',
+              LprogAsmPrinter.untagCaret_of_caret_free]
+        have e : (AArm.reg arm).li.fst = normA (.Lopn [.reg q] o [.reg S]) := by rw [← hli]
+        rw [hli', e]
+        exact instrLeakA_reg_indep hcellN none _ _
+      exact ⟨_, AArm.shape_ops hok' (by rw [hai]; exact hshk), hpc', hc', hz', hnoadd hna _ _,
+        hlk⟩
+    have hq : gpOk q = false := by simpa using hgq
     have hcl : classifyA (.Lopn [.reg q] o [.reg S]) = some (.st o q S) := by
       rcases hm with rfl | rfl <;> simp [classifyA, isMovM, hq]
     have hcS : o = "MOV:64" → cellParts? S = none := by

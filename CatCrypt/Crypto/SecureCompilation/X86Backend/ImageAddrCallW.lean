@@ -645,7 +645,8 @@ theorem cellLd_of_gateAtW {frame : String → Option (BitVec 64)}
     rw [← hc, ← cellA?_untagCaret]
     rcases hu with hu | hu <;>
       simp (config := { decide := true }) [JasminLsemAddrRun.normA, hu]
-  simp [JasminLsemCast.movImmStruct?, bitStore?, sImmB, sCmovB, regGateBW, regOkB, hnorm] at h2
+  simp [JasminLsemCast.movImmStruct?, bitStore?, sImmB, sCmovB, regGateBW, regOkB, hnorm,
+    copyInB_of_slotMov_none (frame := frame) (body := body) (W := W) hs] at h2
 
 /-- At the program counter of a state related by `ImgRelW`, in a body passing `imgGateCBW`, off
     the calls: the general-purpose names the instruction reads hold a value of width `64`, and the
@@ -1498,6 +1499,7 @@ theorem regOut_nil_of_free {x : LinstrR}
     (h : ∀ ss gs, OwnedLprogTV.symStep (x, .reg none) OwnedLprogTV.SSt.start = .ok ss gs →
       NoBitWr ss) : regOut [] x = [] := by
   unfold regOut
+  rw [copyOut_nil, List.append_nil]
   split
   · rename_i ss gs heq
     have hf := h ss gs heq
@@ -2167,7 +2169,7 @@ theorem gateAtW_of_instrGateB {frame : String → Option (BitVec 64)}
     have hbs : bitStore? body k x = none := by
       simpa [bitStoreB] using h3
     simp only [hM, hbs, Bool.or_eq_true, Bool.and_eq_true]
-    refine Or.inr ⟨regGateBW_nil_of_regGateB h1, ?_⟩
+    refine Or.inl (Or.inr ⟨regGateBW_nil_of_regGateB h1, ?_⟩)
     unfold cmovCondOkB
     split <;> simp
 

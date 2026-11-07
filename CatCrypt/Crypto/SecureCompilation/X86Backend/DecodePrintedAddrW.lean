@@ -29,7 +29,9 @@ step from a state related by `ACorrW` is the step from the state with every gene
 name at a narrow width replaced by its machine register (`widenS`), which `ACorr` relates, up to the congruence `JasminLsemAddrCongr.fstepA_congr`
 in the names the instruction reads (`AArm.simW`). The frame-word store of a one-bit name
 (`bitSrc`) stores the zero-extension of the bit, which the machine register holds
-(`AArm.simW_st1`).
+(`AArm.simW_st1`), and a copy of a one-bit name between general-purpose names, also of
+`bitSrc`, gives its destination the bit, whose zero-extension the machine register of the
+destination holds after the copy (`AArm.simW_copy1`).
 
 The carry arms (`CArm`) are the add `ADCX:64 D, A, S, C`, printed `bt $0, C; adcx S, D` after
 the copy of `A` into `D`, and its carry-out binding `ADCXHI:64 O, A, S, C`, printed `setc O`;
@@ -4833,20 +4835,22 @@ theorem instrOKWB_sarImm (body : Lcmd) (P : Params) {R : String} {k : Nat}
     classifyEI, classifyR, rOk, hR, hk0, hk]
 
 /-- The source of a frame-word store `m q, S` at the program counter of `s` (`slotMov?`, `q`
-    neither a general-purpose name nor a cell name `mem.B.off`) when `S` holds a one-bit value
-    in `s`. -/
+    neither a general-purpose name nor a cell name `mem.B.off`), or of a copy `m q, S` between
+    general-purpose names, when `S` holds a one-bit value in `s`. -/
 def bitSrc (body : Lcmd) (s : LstateA) : List String :=
   match body[s.reg.lpc]? with
   | some i =>
       match slotMov? i.li_i with
       | some (q, S) =>
-          if !gpOk q && !hasPrefix q "mem." && (s.reg.lvm S).1 == 1 then [S] else []
+          if !hasPrefix q "mem." && (!gpOk q || gpOk S) && (s.reg.lvm S).1 == 1 then [S]
+          else []
       | none => []
   | none => []
 
 /-- A name of `bitSrc` is the one-bit source of a frame-word store at the program counter. -/
 theorem bitSrc_spec {body : Lcmd} {s : LstateA} {r : String} (h : r ∈ bitSrc body s) :
-    ∃ i q b, body[s.reg.lpc]? = some i ∧ slotMov? i.li_i = some (q, r) ∧ gpOk q = false
+    ∃ i q b, body[s.reg.lpc]? = some i ∧ slotMov? i.li_i = some (q, r)
+      ∧ (gpOk q = false ∨ gpOk r = true)
       ∧ hasPrefix q "mem." = false ∧ s.reg.lvm r = ⟨1, b⟩ := by
   unfold bitSrc at h
   split at h
@@ -4857,8 +4861,8 @@ theorem bitSrc_spec {body : Lcmd} {s : LstateA} {r : String} (h : r ∈ bitSrc b
       · rename_i hc
         simp only [List.mem_singleton] at h
         subst h
-        simp only [Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq] at hc
-        obtain ⟨⟨hq, hcp⟩, hw⟩ := hc
+        simp only [Bool.and_eq_true, Bool.not_eq_true', beq_iff_eq, Bool.or_eq_true] at hc
+        obtain ⟨⟨hcp, hq⟩, hw⟩ := hc
         generalize hr : s.reg.lvm r = c at hw
         obtain ⟨w, v⟩ := c
         simp only at hw
@@ -5093,6 +5097,93 @@ theorem reaches_block {body : Lcmd} {shs : List DShape} (a b : JInstr 64) {k : N
 theorem body_get {body : Lcmd} {k : Nat} (hk : k < body.length) :
     body[k]? = some (body[k]'hk) := List.getElem?_eq_getElem hk
 
+/-- **A register copy on the address machine.** A move between names without a frame word
+    (`slotMov?`) writes the value of the source, at its width, to the destination. -/
+theorem fstepA_regCopy (frame : String → Option (BitVec 64)) {x : LinstrR} {d q : String}
+    (h : slotMov? x = some (d, q)) (hq : frame q = none) (hd : frame d = none) (sa : LstateA)
+    (zf : Bool) :
+    fstepA frame (x, .reg none) sa zf
+      = some ({ sa with reg := (sa.reg.setReg d (sa.reg.lvm q).2).nextPc }, zf) := by
+  have hx : x = .Lopn [.reg d] "MOVQ" [.reg q] ∨ x = .Lopn [.reg d] "MOV:64" [.reg q] := by
+    unfold slotMov? at h
+    split at h
+    · split_ifs at h with hm
+      obtain ⟨rfl, rfl⟩ := Prod.mk.inj (Option.some.inj h)
+      rcases hm with rfl | rfl
+      · exact Or.inl rfl
+      · exact Or.inr rfl
+    · cases h
+  have hc : cmpArgs? (x, MemTag.reg none) = none := by
+    rcases hx with rfl | rfl <;> rfl
+  have hm : movRegArgs? (x, MemTag.reg none) = some (d, q) := by
+    rcases hx with rfl | rfl
+    · simp only [movRegArgs?, show stripWidthTag "MOVQ" = "MOVQ" by decide +kernel]
+      rfl
+    · simp only [movRegArgs?, show stripWidthTag "MOV:64" = "MOV" by decide +kernel]
+      rfl
+  simp only [fstepA, h, hq, hd, regStepA, fstepF, hc, hm]
+  rfl
+
+/-- **The copy of a one-bit name.** An arm whose instruction is a copy `m q, S` between
+    general-purpose names, with `S` holding the bit `b`, gives `q` the bit on the address
+    machine; the machine copies the register of `S`, which holds the zero-extension of `b`, so
+    `ACorrW` relates `q` to the machine register of `q` after the decoded instructions. Every
+    other name keeps its machine register, read off the step from the widened state. -/
+theorem AArm.simW_copy1 (P : Params) (rsp : BitVec 64) (a : AArm) (h : a.ok P = true)
+    {q S : String} (hli : a.li = (a.li.fst, .reg none))
+    (hmv : slotMov? a.li.fst = some (q, S)) (hq : gpOk q = true) (hS : gpOk S = true)
+    (sa : AState) (s : LstateA) (zf : Bool) (hsafe : a.LoadSafe rsp (widenS sa s))
+    (hc : ACorrW rsp sa s) {b : BitVec 1}
+    (hb : s.reg.lvm S = ⟨1, b⟩) (s' : LstateA) (zf' : Bool)
+    (hst : fstepA (frameP P rsp) a.li s zf = some (s', zf')) :
+    ACorrW rsp (aMachine.runBlock sa (a.js P)) s' := by
+  have hphys : sa.regs (phys S) = b.setWidth 64 := by
+    rcases hc.regs S hS with h1 | ⟨b', h1, h2⟩ | h1
+    · rw [getW_eq_some_iff, hb] at h1; cases h1
+    · rw [hb] at h1
+      obtain ⟨-, h1⟩ := Sigma.mk.inj_iff.mp h1
+      rw [h2, eq_of_heq h1]
+    · have := h1.width; rw [hb] at this; simp at this
+  obtain ⟨t', zt, h1, h2, -⟩ := AArm.sim P rsp a h sa (widenS sa s) zf hc.widen hsafe
+  rw [hli, fstepA_regCopy (frameP P rsp) hmv (frameP_gp hS) (frameP_gp hq)] at hst h1
+  obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj hst)
+  obtain ⟨rfl, -⟩ := Prod.mk.inj (Option.some.inj h1)
+  have hwS : (widenS sa s).reg.lvm S = ⟨64, b.setWidth 64⟩ := by
+    show widenCell S (sa.regs (phys S)) (s.reg.lvm S) = _
+    simp [widenCell, hb, hS, narrowW, hphys]
+  refine ⟨fun r hr => ?_, h2.sp, fun x hx => ?_⟩
+  · have hM := h2.regs r hr
+    by_cases hrq : r = q
+    · rw [hrq] at hM ⊢
+      refine Or.inr (Or.inl ⟨b, by simp [LstateN.setReg, LstateN.nextPc, hb], ?_⟩)
+      have e : ((widenS sa s).reg.setReg q ((widenS sa s).reg.lvm S).2).nextPc.lvm q
+          = ⟨64, b.setWidth 64⟩ := by
+        simp only [LstateN.setReg, LstateN.nextPc, ite_true]
+        exact hwS
+      rw [getW_eq_some_iff] at hM
+      rw [e] at hM
+      exact (eq_of_heq (Sigma.mk.inj_iff.mp hM).2).symm
+    · have hw : (widenS sa s).reg.lvm r = ⟨64, sa.regs (phys r)⟩ := by
+        show widenCell r (sa.regs (phys r)) (s.reg.lvm r) = _
+        apply widenCell_of_regs hr
+        rcases hc.regs r hr with hg | hb' | hn
+        · exact Or.inl (lvm_of_getW hg)
+        · exact Or.inr (Or.inl hb')
+        · exact Or.inr (Or.inr hn)
+      have hreg : (aMachine.runBlock sa (a.js P)).regs (phys r) = sa.regs (phys r) := by
+        rw [getW_eq_some_iff] at hM
+        simp only [LstateN.setReg, LstateN.nextPc, hrq, ite_false, hw] at hM
+        exact (eq_of_heq (Sigma.mk.inj_iff.mp hM).2).symm
+      have hl : ((s.reg.setReg q (s.reg.lvm S).2).nextPc).lvm r = s.reg.lvm r := by
+        simp [LstateN.setReg, LstateN.nextPc, hrq]
+      have hg : ((s.reg.setReg q (s.reg.lvm S).2).nextPc).getW r 64 = s.reg.getW r 64 := by
+        unfold LstateN.getW
+        rw [hl]
+      rw [hreg, hg, hl]
+      exact hc.regs r hr
+  · rw [← h2.mem x hx]
+    rfl
+
 /-- **One step on both machines, with carry chains.** Let `prog` hold the decoded instructions
     of position `k` of a body with the facts `BodyFactsCW` from the decoded index of `k`. A
     step of the address machine at `k`, from states related by `ACorrW`, with the machine zero
@@ -5235,6 +5326,57 @@ theorem step_simWN {body : Lcmd} {shs : List DShape} (hF : BodyFactsCW body shs)
           · cases hmv
         simp only [LinstrR.Lopn.injEq] at hia
         obtain ⟨rfl, rfl, rfl⟩ := hia
+        by_cases hgq : gpOk q = true
+        · -- a copy of a one-bit name between general-purpose names
+          have hgS : gpOk S = true := hq.resolve_left (by simp [hgq])
+          have hcA : classifyA (.Lopn [.reg q] o [.reg S])
+              = (classify (.Lopn [.reg q] o [.reg S])).map AArm.reg := by
+            rcases hm with rfl | rfl <;> simp [classifyA, isMovM, hgq, hgS]
+          cases hcl : classifyA (.Lopn [.reg q] o [.reg S]) with
+          | none =>
+            exfalso
+            rcases hm with rfl | rfl <;>
+              simp (config := { decide := true }) [movImmStruct?, classifyS,
+                classifyC, classifyM, classifyI, classifyL, classifyV, classifyE, classifyX,
+                classifyEI, classifyR, hcl, cellParts?_gp hgq, cellParts?_gp hgS] at hok
+          | some a =>
+          have hok' : a.ok P = true := by
+            rcases hm with rfl | rfl <;>
+              simpa (config := { decide := true }) [movImmStruct?, classifyS, classifyC,
+                classifyM, classifyI, classifyL, classifyV, classifyE, classifyX, classifyEI,
+                classifyR, hcl, cellParts?_gp hgq, cellParts?_gp hgS] using hok
+          obtain ⟨arm, -, rfl⟩ := Option.map_eq_some_iff.mp (hcA.symm.trans hcl)
+          have hai := classifyA_instr hcl
+          have hli := AArm.li_eq hok'
+          rw [hai] at hli
+          have hli' : (AArm.reg arm).li = ((AArm.reg arm).li.fst, .reg none) := by
+            rw [← hli]
+            rcases hm with rfl | rfl <;> rfl
+          have hmv' : slotMov? (AArm.reg arm).li.fst = some (q, S) := by
+            rw [← hli]
+            rcases hm with rfl | rfl <;>
+              simpa (config := { decide := true }) [normA,
+                LprogAsmPrinter.untagCaret_of_caret_free] using hmv
+          rw [tagAt_of_not (bitMovB_of_ne (by rcases hm with rfl | rfl <;> rfl)), hli] at hst
+          have hc' := AArm.simW_copy1 P rsp (.reg arm) hok' hli' hmv' hgq hgS sa s zf trivial hc
+            hbS s' zf' hst
+          have hpc' : s'.reg.lpc = k + 1 := by rw [fstepA_lpc _ _ _ _ _ _ hst, hpc]
+          have hz' : isCondB (body[k + 1]'hkn).li_i = true →
+              (aMachine.runBlock sa ((AArm.reg arm).js P)).flags.zf.getD false = zf' := by
+            intro hcnd
+            have hcm := hcondNext hcnd
+            rw [hcl] at hcm
+            simp [cmpArmB] at hcm
+          have hna : ∀ ii' d a s c, body[k]? ≠
+              some ⟨ii', .Lopn [.reg d] "ADCX:64" [.reg a, .reg s, .reg c]⟩ := by
+            intro ii' d a s c h
+            rw [hbk?] at h
+            simp only [Option.some.injEq, Linstr.mk.injEq, LinstrR.Lopn.injEq] at h
+            rcases hm with rfl | rfl <;> simp at h
+          have hops : shs[k].ops' = (AArm.reg arm).js P :=
+            AArm.shape_ops hok' (by rw [hai]; exact hshk)
+          exact hnext _ hops hpc' hc' hz' (hnoadd hna _ _)
+        have hq : gpOk q = false := by simpa using hgq
         have hcl : classifyA (.Lopn [.reg q] o [.reg S]) = some (.st o q S) := by
           rcases hm with rfl | rfl <;> simp [classifyA, isMovM, hq]
         have hcS : o = "MOV:64" → cellParts? S = none := by

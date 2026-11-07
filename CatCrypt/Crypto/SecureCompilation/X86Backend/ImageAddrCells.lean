@@ -1225,7 +1225,7 @@ theorem wideSafe_cellBodyW {frame : String → Option (BitVec 64)}
     rw [hb]
     simp only
     rw [hm]
-    simp [hgq, hpq, hb1]
+    rcases hgq with hgq | hgq <;> simp [hgq, hpq, hb1]
   have hbC := cellBody_getElem? slotArr body sa.reg.lpc
   rw [hb, Option.map_some] at hbC
   cases hca : cellA? (LinstrR.Lopn ds o ss) with

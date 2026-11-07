@@ -919,13 +919,14 @@ def nameKindStr (frame : String → Option (BitVec 64))
   s!"{q} (gp {gpOk q}, frame {(frame q).isSome}, slot of {(slotArr q).map (·.1)})"
 
 open X86Backend.ImageAddrSimW (oneBitAt readOkB gateReadSet castReadB carryOkB carryI?
-  readNames movlNames castDsts sImmB sCmovB regGateBW cmovCondOkB castGateB) in
+  readNames movlNames castDsts sImmB sCmovB regGateBW cmovCondOkB castGateB copyInB) in
 open X86Backend.ImageAddrSim (ICase icase regOkB) in
 open VIR.JasminLsemAddrRun (condPol labelAt bitMovB normA) in
 open VIR.JasminLsemAddrImage (accArr bitStore?) in
 /-- The first conjunct of `gateAtW frame slotArr body k W x` that is `false`, in the order of
     its definition, with the values it compares: the frame-array operand names, the names
-    read that lie in the read set `gateReadSet` (with `castReadB` false), the kinds of the
+    read that lie in the read set `gateReadSet` (with `castReadB` and `copyInB` false), the
+    kinds of the
     names of a carry-chain instruction that `carryOkB` refuses, and in the arm of `icase`
     the components of its test. Empty when the gate holds. -/
 def gateAtWWhy (frame : String → Option (BitVec 64)) (slotArr : String → Option (String × Nat))
@@ -934,10 +935,11 @@ def gateAtWWhy (frame : String → Option (BitVec 64)) (slotArr : String → Opt
   let fa := (JasminLsemExportRewrites.instrNames x).filter JasminLprogExport.faB
   let RS := gateReadSet frame W x
   if !fa.isEmpty then s!"frame-array operand names [{boundedStr 4 "," fa}]"
-  else if !(readOkB RS x || castReadB body k x) then
+  else if !(readOkB RS x || castReadB body k x || copyInB frame body W x) then
     let bad := (readNames x).filter fun r =>
       !(X86Backend.DecodePrintedAddrW.carryIns x).contains r && RS.contains r
-    s!"readOkB: names read in the width analysis [{boundedStr 6 "," bad}]; castReadB false"
+    s!"readOkB: names read in the width analysis [{boundedStr 6 "," bad}]; castReadB false; \
+      copyInB false"
   else
     match carryI? x with
     | some (_, d, a, s, c) =>
@@ -982,7 +984,8 @@ def gateAtWWhy (frame : String → Option (BitVec 64)) (slotArr : String → Opt
                 | none =>
                     s!"register instruction: sImmB {sImmB frame slotArr x}, sCmovB \
                       {sCmovB frame slotArr x}, regOkB {regOkB frame (normA x)}, regGateBW \
-                      {regGateBW frame W (normA x)}, cmovCondOkB {cmovCondOkB W x}"
+                      {regGateBW frame W (normA x)}, cmovCondOkB {cmovCondOkB W x}, copyInB \
+                      {copyInB frame body W x}"
         | .zarr .. => "ZEROARR is outside the gate with carry chains"
         | .simm .. => "STOREIMM is outside the gate with carry chains"
         | .other => s!"castGateB {castGateB frame x}: no width-carrying cast between \
