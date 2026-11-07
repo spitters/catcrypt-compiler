@@ -827,11 +827,11 @@ theorem storeImgB_imgInstr {frame : String → Option (BitVec 64)}
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨-, rfl, -⟩ := heq
-    rw [if_neg h1]; exact hop _
+    rw [ite_eq_right h1]; exact hop _
   · rename_i heq
     simp only [LinstrR.Lopn.injEq] at heq
     obtain ⟨-, rfl, -⟩ := heq
-    rw [if_neg h2]; exact hop _
+    rw [ite_eq_right h2]; exact hop _
   · split
     · exact storeImgB_of_op _ (by decide) (by decide)
     · rw [hw]
