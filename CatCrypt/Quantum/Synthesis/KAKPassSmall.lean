@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Quantum.Synthesis.KAKSmall
 public import CatCrypt.Quantum.Synthesis.KAKPass
+public import CatCrypt.Quantum.Synthesis.ParMap
 
 /-!
 # Two-qubit block resynthesis by the smallest KAK template
@@ -361,9 +362,9 @@ def blockEmit (fit : BlockFit n β) : Block n → List (Gate n) × List β
 
 /-- The KAK pass with exact angles: over `collectBlocks l`, the gates and the payloads of
 `blockEmit fit` on each segment, concatenated (the payloads are those of the replaced blocks,
-in order). The fitter is evaluated once per segment. -/
+in order). The fitter is evaluated once per segment, one task per segment (`parMap`). -/
 def kakEmit (fit : BlockFit n β) (l : List (Gate n)) : List (Gate n) × List β :=
-  let r := (collectBlocks l).map (blockEmit fit)
+  let r := parMap (blockEmit fit) (collectBlocks l)
   (r.flatMap Prod.fst, r.flatMap Prod.snd)
 
 /-- The gates of `kakEmit fit l` are the gates of `blockEmit fit` over `collectBlocks l`. -/
